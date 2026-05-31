@@ -1,3 +1,9 @@
 # Agent Rules
 
-1. Test processes must be stopped after testing finishes. When starting a test runner, dev server, game/editor process, browser automation process, or other helper process for verification, close or stop it before ending the task unless the user explicitly asks to keep it running.
+1. **结束前清理进程**：任务结束前，必须关闭/停止所有因验证而启动的辅助进程（如测试、服务器、Godot无头进程等），除非用户要求保留。
+2. **严格进程核实**：在声明清理完毕前，必须用命令核实。Godot项目需专门查找并停止带 `--headless`、`--check-only` 等参数的测试用 `Godot.exe`，**切勿误关用户的正常编辑器**。
+3. **防止子进程残留**：即便验证命令看似成功结束，也必须执行进程检查以防有残留。在最终回复中汇报清理结果。
+4. **Godot节点编辑方式**：尽可能避免在脚本中动态生成 Godot 节点。需要新增或调整节点时，优先直接编辑 `.tscn` 场景、使用 Godot 编辑器/原生场景结构，保持接近人类在编辑器中搭建节点的方式。
+5. **优先使用 Godot 原生能力**：实现功能时优先寻找并使用 Godot 原生提供的节点、资源、信号、方法和函数。遇到不确定的需求，应根据需求查找 Godot 官方文档中合适的解决方案，再决定实现方式。
+6. **禁止滥用兜底代码**：不要为了掩盖结构问题而堆叠宽泛的 fallback、空判断、动态探测或兼容分支。兜底逻辑只能在确有必要且行为明确时使用，并应保持简单、可解释。
+7. **默认使用 UTF-8**：读取或编辑代码、场景、配置和文档时，默认使用 UTF-8 编码，尤其是包含中文内容的文件（如 `AGENTS.md`）。若出现乱码，应先用 UTF-8 重新读取确认内容，再进行修改。
