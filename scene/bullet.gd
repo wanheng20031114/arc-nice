@@ -14,10 +14,6 @@ var remaining_lifetime : float = 0.0
 
 func _ready() -> void:
 	remaining_lifetime = max_lifetime
-	
-	# 连接 Area2D 碰撞信号
-	area_entered.connect(_on_area_entered)
-	body_entered.connect(_on_body_entered)
 
 
 # 外部生成子弹后调用，用来设置方向
@@ -73,7 +69,7 @@ func _on_area_entered(area: Area2D) -> void:
 
 
 # 撞到 PhysicsBody2D 时，比如 StaticBody2D / CharacterBody2D / RigidBody2D
-func _on_body_entered(body: Node2D) -> void:
+func _on_body_entered(_body: Node2D) -> void:
 	# 这里之后可以写伤害逻辑
 	# 例如：
 	# if body.has_method("take_damage"):
