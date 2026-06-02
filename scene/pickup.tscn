@@ -1,3 +1,31 @@
 [gd_scene format=3 uid="uid://c3l67vm8hu25t"]
 
+[ext_resource type="Script" uid="uid://cgrr7x2x60mie" path="res://scene/pickup.gd" id="1_x228r"]
+[ext_resource type="Shader" uid="uid://b47uq42hh5vq1" path="res://scene/blink.gdshader" id="2_w3o6f"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_78gox"]
+resource_local_to_scene = true
+shader = ExtResource("2_w3o6f")
+shader_parameter/blink_enabled = false
+shader_parameter/blink_speed = 6.0000002375
+shader_parameter/hidden_ratio = 0.5
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_seisu"]
+radius = 6.0
+
 [node name="Pickup" type="Area2D" unique_id=790573697]
+collision_layer = 32
+collision_mask = 2
+script = ExtResource("1_x228r")
+blink_before_expire = null
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=705146324]
+material = SubResource("ShaderMaterial_78gox")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1440868187]
+shape = SubResource("CircleShape2D_seisu")
+
+[node name="LifetimeTimer" type="Timer" parent="." unique_id=1532768228]
+
+[connection signal="body_entered" from="." to="." method="_on_body_entered"]
+[connection signal="timeout" from="LifetimeTimer" to="." method="_on_lifetime_timer_timeout"]

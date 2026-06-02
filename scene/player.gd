@@ -1,5 +1,7 @@
 extends CharacterBody2D
 
+class_name Player
+
 @export var move_speed: float = 120.0
 @export var fire_interval: float = 0.18
 @export var bullet_spawn_distance: float = 18.0
