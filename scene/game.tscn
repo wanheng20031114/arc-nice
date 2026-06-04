@@ -3,6 +3,10 @@
 [ext_resource type="Texture2D" uid="uid://cbrmpw5d481ci" path="res://resources/texture/瓦片.png" id="1_80nbo"]
 [ext_resource type="Texture2D" uid="uid://ciwwo78eluybc" path="res://resources/texture/动态瓦片.png" id="2_e2o6t"]
 [ext_resource type="PackedScene" uid="uid://h7x0o8vhlixl" path="res://scene/player.tscn" id="3_feb5d"]
+[ext_resource type="PackedScene" uid="uid://c3l67vm8hu25t" path="res://scene/pickup.tscn" id="4_qpk70"]
+[ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickup_rapid.tres" id="5_ll5lq"]
+[ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickup_speed.tres" id="6_17rxn"]
+[ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickup_spiral.tres" id="7_yq8tf"]
 
 [sub_resource type="TileMapPattern" id="TileMapPattern_33cqm"]
 tile_data = PackedInt32Array(0, 0, 0, 65536, 131072, 2, 1, 0, 0, 65537, 0, 0)
@@ -118,6 +122,18 @@ position = Vector2(151, 70)
 [node name="CollisionShape2D" type="CollisionShape2D" parent="WorldBounds/TopBoundary" unique_id=1111589015]
 scale = Vector2(0.3, 0.3)
 shape = SubResource("SegmentShape2D_feb5d")
+
+[node name="Pickup" parent="WorldBounds/TopBoundary" unique_id=790573697 instance=ExtResource("4_qpk70")]
+position = Vector2(55, 59)
+config = ExtResource("5_ll5lq")
+
+[node name="Pickup2" parent="WorldBounds/TopBoundary" unique_id=1166272984 instance=ExtResource("4_qpk70")]
+position = Vector2(41, 86)
+config = ExtResource("6_17rxn")
+
+[node name="Pickup3" parent="WorldBounds/TopBoundary" unique_id=1742385973 instance=ExtResource("4_qpk70")]
+position = Vector2(58, 119)
+config = ExtResource("7_yq8tf")
 
 [node name="BottomBoundary" type="StaticBody2D" parent="WorldBounds" unique_id=278691607]
 

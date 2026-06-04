@@ -17,7 +17,7 @@ radius = 6.0
 collision_layer = 32
 collision_mask = 2
 script = ExtResource("1_x228r")
-blink_before_expire = null
+blink_before_expire = 4.0
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=705146324]
 material = SubResource("ShaderMaterial_78gox")
@@ -26,6 +26,7 @@ material = SubResource("ShaderMaterial_78gox")
 shape = SubResource("CircleShape2D_seisu")
 
 [node name="LifetimeTimer" type="Timer" parent="." unique_id=1532768228]
+wait_time = 12.0
 
 [connection signal="body_entered" from="." to="." method="_on_body_entered"]
 [connection signal="timeout" from="LifetimeTimer" to="." method="_on_lifetime_timer_timeout"]

@@ -18,8 +18,6 @@ var is_expiring: bool = false
 
 # 初始化显示图标、寿命计时与拾取检测。
 func _ready() -> void:
-	body_entered.connect(_on_body_entered)
-	lifetime_timer.timeout.connect(_on_lifetime_timer_timeout)
 	lifetime_timer.one_shot = true
 	if lifetime_timer.wait_time > 0.0:
 		lifetime_timer.start()

@@ -379,6 +379,8 @@ animations = [{
 radius = 7.5
 
 [node name="Player" type="CharacterBody2D" unique_id=1640433019]
+collision_layer = 2
+collision_mask = 3
 script = ExtResource("1_onrkg")
 
 [node name="BodySprite" type="AnimatedSprite2D" parent="." unique_id=2014942495]
