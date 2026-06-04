@@ -5,6 +5,7 @@ enum PickupType {
 	SPEED,
 	RAPID,
 	SPIRAL,
+	TENPURA,
 	
 }
 
@@ -27,6 +28,7 @@ enum ShotPattern {
 
 @export_group("显示资源")
 @export var icon_texture : Texture2D
+@export var icon_scale: Vector2 = Vector2.ONE
 
 
 @export_group("Buff 效果")

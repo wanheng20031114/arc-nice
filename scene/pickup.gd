@@ -43,6 +43,7 @@ func _apply_config_to_visual() -> void:
 		return
 		
 	sprite.texture = config.icon_texture
+	sprite.scale = config.icon_scale
 	
 
 func _on_body_entered(body: Node2D) -> void:

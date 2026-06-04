@@ -7,6 +7,7 @@
 [ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickup_rapid.tres" id="5_ll5lq"]
 [ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickup_speed.tres" id="6_17rxn"]
 [ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickup_spiral.tres" id="7_yq8tf"]
+[ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickup_tenpura.tres" id="8_rrr3j"]
 
 [sub_resource type="TileMapPattern" id="TileMapPattern_33cqm"]
 tile_data = PackedInt32Array(0, 0, 0, 65536, 131072, 2, 1, 0, 0, 65537, 0, 0)
@@ -134,6 +135,10 @@ config = ExtResource("6_17rxn")
 [node name="Pickup3" parent="WorldBounds/TopBoundary" unique_id=1742385973 instance=ExtResource("4_qpk70")]
 position = Vector2(58, 119)
 config = ExtResource("7_yq8tf")
+
+[node name="Pickup4" parent="WorldBounds/TopBoundary" unique_id=609932481 instance=ExtResource("4_qpk70")]
+position = Vector2(80, 135)
+config = ExtResource("8_rrr3j")
 
 [node name="BottomBoundary" type="StaticBody2D" parent="WorldBounds" unique_id=278691607]
 
