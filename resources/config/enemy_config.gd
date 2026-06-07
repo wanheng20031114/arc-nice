@@ -1,0 +1,35 @@
+extends Resource
+class_name EnemyConfig
+
+enum EnemyType {
+	BASIC,
+	SHELLED,
+	FAST_SMALL,
+	BOMBER,
+	
+}
+
+@export_group("基础信息")
+
+@export var enemy_type: EnemyType = EnemyType.BASIC
+@export var display_name : String = "基础敌人"
+
+@export_group("基础数值")
+# 最大生命值，敌人生成时可用它初始化当前生命值。
+@export_range(1, 999, 1, "or_greater") var max_health: int = 3
+# 移动速度，单位通常为像素/秒。
+@export_range(0.0, 1000.0, 1.0, "or_greater") var move_speed: float = 60.0
+# 圆形碰撞区域半径，可用于不同体型敌人的碰撞大小配置。
+@export_range(1.0, 256.0, 0.5, "or_greater") var collision_radius: float = 8
+
+
+@export_group("动画资源")
+# 敌人本体使用的 SpriteFrames 资源。
+# 建议在同一个资源中同时配置移动、待机、死亡等动画。
+@export var enemy_frames: SpriteFrames
+# 敌人正常移动时默认播放的动画名。
+@export var move_animation_name: StringName = &"move"
+# 敌人死亡时默认播放的动画名。
+@export var death_animation_name: StringName = &"death"
+# 爆炸特效默认播放的动画名。
+@export var explosion_animation_name: StringName = &"explode"
