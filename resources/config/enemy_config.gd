@@ -33,3 +33,23 @@ enum EnemyType {
 @export var death_animation_name: StringName = &"death"
 # 爆炸特效默认播放的动画名。
 @export var explosion_animation_name: StringName = &"explode"
+
+
+@export_group("死亡效果")
+# 是否在死亡时触发自爆。
+@export var explode_on_death: bool = false
+# 自爆伤害，只有 explode_on_death 为 true 时才有意义。
+@export_range(0, 999, 1, "or_greater") var explosion_damage: int = 0
+# 自爆半径，只有 explode_on_death 为 true 时才有意义。
+@export_range(0.0, 512.0, 1.0, "or_greater") var explosion_radius: float = 0
+
+
+@export_group("掉落")
+# 敌人死亡后尝试掉落道具的概率。
+@export_range(0.0, 1.0, 0.01) var pickup_drop_chance: float = 0.3
+# 当前敌人允许掉落的道具配置列表；为空时表示该敌人不会掉落道具。
+@export var pickup_drop_configs: Array[PickupConfig] = [
+	preload("res://resources/config/pickup_speed.tres"),
+	preload("res://resources/config/pickup_rapid.tres"),
+	preload("res://resources/config/pickup_spiral.tres"),
+]
