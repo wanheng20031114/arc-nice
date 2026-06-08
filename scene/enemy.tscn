@@ -1,0 +1,30 @@
+[gd_scene format=3 uid="uid://ccvfm2ck2jkky"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_vufel"]
+resource_local_to_scene = true
+radius = 8.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_h08p8"]
+resource_local_to_scene = true
+radius = 6.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_f87vc"]
+resource_local_to_scene = true
+radius = 6.0
+
+[node name="Enemy" type="CharacterBody2D" unique_id=2066499932]
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=1398407782]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1687096047]
+shape = SubResource("CircleShape2D_vufel")
+
+[node name="TouchDamageArea" type="Area2D" parent="." unique_id=738698124]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="TouchDamageArea" unique_id=1983778379]
+shape = SubResource("CircleShape2D_h08p8")
+
+[node name="ExplosionArea" type="Area2D" parent="." unique_id=86146111]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ExplosionArea" unique_id=1610569664]
+shape = SubResource("CircleShape2D_f87vc")
