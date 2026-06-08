@@ -1,0 +1,14 @@
+[gd_scene format=3 uid="uid://bcopug355gqjb"]
+
+[ext_resource type="Script" uid="uid://c76yrwk60qy0g" path="res://scene/player_health_bar.gd" id="1_qh2iq"]
+
+[node name="HealthBar" type="Control" unique_id=1169360038]
+layout_mode = 3
+anchors_preset = 0
+offset_left = -9.0
+offset_top = -18.0
+offset_right = 9.0
+offset_bottom = -13.0
+mouse_filter = 2
+script = ExtResource("1_qh2iq")
+editor_preview_ratio = 0.9

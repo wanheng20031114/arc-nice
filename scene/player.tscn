@@ -10,6 +10,7 @@
 [ext_resource type="AudioStream" uid="uid://cutwkun6hroo5" path="res://resources/audio/cowboy_dead.wav" id="7_splgi"]
 [ext_resource type="AudioStream" uid="uid://vc2m1l0d1rov" path="res://resources/audio/cowboy_powerup.wav" id="8_rhcc0"]
 [ext_resource type="AudioStream" uid="uid://by1qh436lhf54" path="res://resources/audio/Cowboy_Secret.wav" id="9_6vinx"]
+[ext_resource type="PackedScene" uid="uid://bcopug355gqjb" path="res://scene/player_health_bar.tscn" id="10_owf57"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_s4jxa"]
 resource_local_to_scene = true
@@ -414,29 +415,33 @@ shape = SubResource("CircleShape2D_sh265")
 
 [node name="ShootingTimer" type="Timer" parent="." unique_id=1653986996]
 
-[node name="GunshotAudio" type="AudioStreamPlayer2D" parent="."]
+[node name="HealthBar" parent="." unique_id=1666344635 instance=ExtResource("10_owf57")]
+offset_top = -15.0
+offset_bottom = -10.0
+
+[node name="GunshotAudio" type="AudioStreamPlayer2D" parent="." unique_id=1132200383]
 stream = ExtResource("4_r4x4y")
 volume_db = -4.0
 max_polyphony = 8
 
-[node name="GunloadAudio" type="AudioStreamPlayer2D" parent="."]
+[node name="GunloadAudio" type="AudioStreamPlayer2D" parent="." unique_id=260980079]
 stream = ExtResource("5_6f8ak")
 volume_db = -3.0
 
-[node name="FootstepAudio" type="AudioStreamPlayer2D" parent="."]
+[node name="FootstepAudio" type="AudioStreamPlayer2D" parent="." unique_id=2035136595]
 stream = ExtResource("6_n4ivg")
 volume_db = -12.0
 max_distance = 256.0
 
-[node name="DeathAudio" type="AudioStreamPlayer2D" parent="."]
+[node name="DeathAudio" type="AudioStreamPlayer2D" parent="." unique_id=1079360533]
 stream = ExtResource("7_splgi")
 volume_db = -3.0
 
-[node name="PowerupAudio" type="AudioStreamPlayer2D" parent="."]
+[node name="PowerupAudio" type="AudioStreamPlayer2D" parent="." unique_id=1478046610]
 stream = ExtResource("8_rhcc0")
 volume_db = -4.0
 
-[node name="SecretAudio" type="AudioStreamPlayer2D" parent="."]
+[node name="SecretAudio" type="AudioStreamPlayer2D" parent="." unique_id=146643442]
 stream = ExtResource("9_6vinx")
 volume_db = -2.0
 

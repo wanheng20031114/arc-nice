@@ -23,6 +23,7 @@ var is_dead: bool = false
 @onready var death_audio: AudioStreamPlayer2D = $DeathAudio
 @onready var powerup_audio: AudioStreamPlayer2D = $PowerupAudio
 @onready var secret_audio: AudioStreamPlayer2D = $SecretAudio
+@onready var health_bar: Control = $HealthBar
 
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const NORMAL_ANIMATION_PREFIX := &"normal"
@@ -61,6 +62,7 @@ func _ready() -> void:
 	shooting_timer.one_shot = true
 	shooting_timer.wait_time = _get_effective_fire_interval()
 	_set_hurt_blink_enabled(false)
+	health_bar.setup(max_health, current_health)
 	_update_animation()
 	_update_armed_effect()
 
@@ -175,6 +177,7 @@ func apply_damage(amount: int) -> bool:
 		return false
 
 	current_health = maxi(current_health - amount, 0)
+	health_bar.set_health(current_health, max_health)
 	if current_health <= 0:
 		_die()
 		return true
