@@ -19,6 +19,7 @@ var displayed_color: Color = Color(0.27, 0.68, 0.28)
 var max_health_value: int = 1
 
 
+# 初始化血条控件，忽略鼠标事件，并处理编辑器预览与初始可见性
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if Engine.is_editor_hint():
@@ -29,6 +30,7 @@ func _ready() -> void:
 	modulate.a = 0.0
 
 
+# 初始化血条的状态和最大值，通常在游戏开始时或角色复活时调用
 func setup(max_health: int, current_health: int) -> void:
 	max_health_value = maxi(max_health, 1)
 	displayed_health = clampi(current_health, 0, max_health_value)
@@ -37,6 +39,7 @@ func setup(max_health: int, current_health: int) -> void:
 	queue_redraw()
 
 
+# 更新当前血量，包含数值过渡动画与颜色的变化，并在满血时自动隐藏血条
 func set_health(current_health: int, max_health: int) -> void:
 	max_health_value = maxi(max_health, 1)
 	var safe_current_health := clampi(current_health, 0, max_health_value)
@@ -51,6 +54,7 @@ func set_health(current_health: int, max_health: int) -> void:
 		_fade_in()
 
 
+# 自定义绘制逻辑，根据当前比例计算出各层级的矩形框并绘制圆角矩形
 func _draw() -> void:
 	if Engine.is_editor_hint():
 		_apply_editor_preview_values()
@@ -67,6 +71,7 @@ func _draw() -> void:
 		_draw_rounded_rect(fill_rect, displayed_color, 1)
 
 
+# 使用 Tween 动画平滑过渡到目标的血量显示值
 func _animate_value(target_value: int) -> void:
 	if value_tween != null:
 		value_tween.kill()
@@ -76,6 +81,7 @@ func _animate_value(target_value: int) -> void:
 	value_tween.tween_method(_set_displayed_health, displayed_health, float(target_value), value_duration)
 
 
+# 更新血量条的填充颜色，支持立即改变或通过 Tween 动画平滑过渡
 func _update_fill_color(health_ratio: float, immediate: bool) -> void:
 	var target_color := _get_health_color(health_ratio)
 	if color_tween != null:
@@ -111,6 +117,7 @@ func _draw_rounded_rect(rect: Rect2, color: Color, corner_radius: int) -> void:
 	draw_style_box(style_box, rect)
 
 
+# 播放透明度淡入动画，使血条显示
 func _fade_in() -> void:
 	if visibility_tween != null:
 		visibility_tween.kill()
@@ -121,6 +128,7 @@ func _fade_in() -> void:
 	visibility_tween.tween_property(self, "modulate:a", 1.0, fade_duration)
 
 
+# 播放透明度淡出动画，并在动画结束后将控件设置为隐藏
 func _fade_out() -> void:
 	if visibility_tween != null:
 		visibility_tween.kill()
@@ -131,6 +139,7 @@ func _fade_out() -> void:
 	visibility_tween.finished.connect(func() -> void: visible = false)
 
 
+# 立即设置可见性和透明度，无过渡动画
 func _set_visible_immediate(should_show: bool) -> void:
 	visible = should_show
 	modulate.a = 1.0 if should_show else 0.0
@@ -149,10 +158,12 @@ func _apply_editor_preview_values() -> void:
 	displayed_color = _get_health_color(editor_preview_ratio)
 
 
+# 计算当前的血量比例，并将其安全地限制在 0.0 到 1.0 之间
 func _get_health_ratio(current_health: float, safe_max_health: int) -> float:
 	return clampf(current_health / float(safe_max_health), 0.0, 1.0)
 
 
+# 根据剩余血量的比例，计算出不同阶段的颜色渐变（绿 -> 黄 -> 橙 -> 红）
 func _get_health_color(health_ratio: float) -> Color:
 	var green := Color(0.27, 0.68, 0.28)
 	var yellow := Color(0.82, 0.7, 0.18)
