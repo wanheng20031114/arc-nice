@@ -6,6 +6,7 @@ enum PickupType {
 	RAPID,
 	SPIRAL,
 	TENPURA,
+	HEALTH,
 	
 }
 
@@ -32,6 +33,8 @@ enum ShotPattern {
 
 
 @export_group("Buff 效果")
+# 拾取后回复的生命值，0 表示该道具不回复生命。
+@export_range(0, 99, 1, "or_greater") var heal_amount: int = 0
 # 道具效果持续时间，单位为秒。
 @export_range(0.0, 120.0, 0.1, "or_greater") var duration: float = 5.0
 # 玩家移速倍率，1.0 表示不改变，1.2 表示提升 20%。

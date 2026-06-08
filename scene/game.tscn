@@ -104,12 +104,12 @@ b = Vector2(846.6666, 0)
 [node name="Game" type="Node2D" unique_id=20737211]
 script = ExtResource("1_17rxn")
 
-[node name="MusicPlayer" type="AudioStreamPlayer" parent="."]
+[node name="MusicPlayer" type="AudioStreamPlayer" parent="." unique_id=707834306]
 stream = ExtResource("10_swtgm")
 volume_db = -9.0
 autoplay = true
 
-[node name="EnemySpawnAudio" type="AudioStreamPlayer" parent="."]
+[node name="EnemySpawnAudio" type="AudioStreamPlayer" parent="." unique_id=1067691072]
 stream = ExtResource("11_26owc")
 volume_db = -18.0
 max_polyphony = 8

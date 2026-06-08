@@ -142,6 +142,9 @@ func apply_pickup(config: PickupConfig) -> bool:
 		speed_buff_time_left = buff_duration
 		applied = true
 
+	if config.heal_amount > 0:
+		applied = _try_heal(config.heal_amount) or applied
+
 	# 普通射速道具与形态专属射速提升维护，避免螺旋形态的射速被其他 Buff 状态覆盖。
 	if has_fire_rate_override and not has_form_override:
 		rapid_fire_rate_multiplier = config.fire_rate_multiplier
@@ -188,6 +191,19 @@ func apply_damage(amount: int) -> bool:
 # 获取当前生命值
 func get_current_health() -> int:
 	return current_health
+
+
+func _try_heal(amount: int) -> bool:
+	if is_dead:
+		return false
+	if amount <= 0:
+		return false
+	if current_health >= max_health:
+		return false
+
+	current_health = mini(current_health + amount, max_health)
+	health_bar.set_health(current_health, max_health)
+	return true
 	
 # 根据射击模式和方向发射子弹，返回是否成功发射
 func _fire_bullets(base_direction: Vector2) -> bool:
