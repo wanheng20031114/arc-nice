@@ -26,7 +26,7 @@ enum DeathSequenceStage {
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var touch_damage_area: Area2D = $TouchDamageArea
-@onready var touch_damage_shape: CollisionShape2D = $TouchDamageArea/CollisionShape
+@onready var touch_damage_shape: CollisionShape2D = $TouchDamageArea/CollisionShape2D
 @onready var explosion_area: Area2D = $ExplosionArea
 @onready var explosion_shape: CollisionShape2D = $ExplosionArea/CollisionShape2D
 

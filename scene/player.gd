@@ -3,6 +3,13 @@ extends CharacterBody2D
 class_name Player
 
 @export var move_speed: float = 120.0
+@export var max_health: int = 5
+@export var invincibility_duration: float = 1.0
+
+var current_health: int = 0
+var invincibility_time_left: float = 0.0
+var is_dead: bool = false
+
 @export var fire_interval: float = 0.18
 @export var bullet_spawn_distance: float = 18.0
 
@@ -15,8 +22,10 @@ const NORMAL_ANIMATION_PREFIX := &"normal"
 const ARMED_ANIMATION_PREFIX := &"armed"
 const DEFAULT_FIRE_RATE_MULTIPLIER := 1.0
 const DEFAULT_MOVE_SPEED_MULTIPLIER := 1.0
-const SPIRAL_PHASE_STEP := PI /12
+const SPIRAL_PHASE_STEP := PI / 12
 	
+const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
+
 var facing_suffix: StringName = &"right"
 
 # 当前移动倍率，由道具效果驱动。
@@ -39,14 +48,22 @@ var spiral_phase: float = 0.0
 
 
 func _ready() -> void:
+	current_health = maxi(max_health, 1)
 	shooting_timer.one_shot = true
 	shooting_timer.wait_time = _get_effective_fire_interval()
+	_set_hurt_blink_enabled(false)
 	_update_animation()
 	_update_armed_effect()
 
 
 func _physics_process(delta: float) -> void:
+	_update_invincibility(delta)
 	_update_pickup_effects(delta)
+	
+	if is_dead:
+		velocity = Vector2.ZERO
+		return
+	
 	var move_input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	var shoot_input := Input.get_vector("shoot_left", "shoot_right", "shoot_up", "shoot_down")
 
@@ -129,6 +146,28 @@ func apply_pickup(config: PickupConfig) -> bool:
 	if should_refresh_shooting_timer:
 		_refresh_shooting_timer_wait_time()
 	return applied
+	
+# 敌人或其他伤害来源统一通过这个入口让玩家受伤。
+func apply_damage(amount: int) -> bool:
+	if is_dead:
+		return false
+
+	if amount <= 0:
+		return false
+
+	if invincibility_time_left > 0.0:
+		return false
+
+	current_health = maxi(current_health - amount, 0)
+	if current_health <= 0:
+		_die()
+		return true
+
+	_start_invincibility()
+	return true
+	
+func get_current_health() -> int:
+	return current_health
 	
 func _fire_bullets(base_direction: Vector2) -> bool:
 	if current_shot_pattern == PickupConfig.ShotPattern.SPIRAL:
@@ -259,6 +298,42 @@ func _vector_to_facing_suffix(direction: Vector2) -> StringName:
 		return &"right" if direction.x > 0.0 else &"left"
 
 	return &"down" if direction.y > 0.0 else &"up"
+
+func _update_invincibility(delta: float) -> void:
+	if invincibility_time_left <= 0.0:
+		return
+
+	invincibility_time_left = maxf(invincibility_time_left - delta, 0.0)
+	if invincibility_time_left > 0.0:
+		return
+	
+	_set_hurt_blink_enabled(false)
+
+
+# 开启玩家受伤后的无敌闪烁状态。
+func _start_invincibility() -> void:
+	invincibility_time_left = maxf(invincibility_duration, 0.0)
+	_set_hurt_blink_enabled(invincibility_time_left > 0.0)
+
+
+# 统一设置玩家受击闪烁开关，便于后续与其他表现逻辑解耦。
+func _set_hurt_blink_enabled(enabled: bool) -> void:
+	var sprite_material := body_sprite.material as ShaderMaterial
+	if sprite_material != null:
+		sprite_material.set_shader_parameter(BLINK_ENABLED_SHADER_PARAMETER, enabled)
+
+
+# 玩家生命值归零时进入死亡状态。
+func _die() -> void:
+	is_dead = true
+	velocity = Vector2.ZERO
+	invincibility_time_left = 0.0
+	_set_hurt_blink_enabled(false)
+	shooting_timer.stop()
+	armed_effect_sprite.visible = false
+	armed_effect_sprite.stop()
+	if body_sprite.sprite_frames != null and body_sprite.sprite_frames.has_animation(&"death"):
+		body_sprite.play(&"death")
 
 
 func _on_shooting_timer_timeout() -> void:

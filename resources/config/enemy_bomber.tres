@@ -13,6 +13,7 @@ enemy_type = 3
 display_name = "自爆敌人"
 max_health = 2
 move_speed = 18.0
+collision_radius = 7.0
 enemy_frames = ExtResource("1_dmrur")
 explode_on_death = true
 explosion_damage = 2

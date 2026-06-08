@@ -22,8 +22,8 @@ extends Node2D
 # 场上允许同时存在的最大敌人数，避免无限堆积。
 @export_range(1, 200, 1, "or_greater") var max_alive_enemies: int = 100
 
-#测试用
-@export_range(1.0,3600.0,1.0,"or_greater") var spawn_accleration_duration: float = 60.0
+# 测试用：刷怪间隔从初始值过渡到最小值所需的时间。
+@export_range(1.0, 3600.0, 1.0, "or_greater") var spawn_acceleration_duration: float = 60.0
 
 @onready var player: Player = $Player
 @onready var enemy_container: Node2D = $EnemyContainer
@@ -52,8 +52,8 @@ func _ready() -> void:
 	_spawn_initial_enemies()
 	_start_enemy_spawn_timer()
 	
-func _process(delta : float) -> void:
-	game_time_elapsed +=delta
+func _process(delta: float) -> void:
+	game_time_elapsed += delta
 	_update_spawn_interval()
 
 
@@ -129,8 +129,10 @@ func _spawn_initial_enemies() -> void:
 func _start_enemy_spawn_timer() -> void:
 	if not _is_spawn_system_ready():
 		return
+	enemy_spawn_timer.start(_get_current_spawn_interval())
 
-func _on_enemy_spawn_timer_timeout() ->void:
+
+func _on_enemy_spawn_timer_timeout() -> void:
 	for _spawn_index in range(spawn_count_per_tick):
 		if not _try_spawn_enemy():
 			break

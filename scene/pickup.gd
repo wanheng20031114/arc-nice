@@ -50,7 +50,10 @@ func _on_body_entered(body: Node2D) -> void:
 	if config == null:
 		return
 		
-	var player :=body as Player
+	var player := body as Player
+	if player == null:
+		return
+
 	if player.apply_pickup(config):
 		queue_free()
 
