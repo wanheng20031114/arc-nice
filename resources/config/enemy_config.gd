@@ -52,4 +52,5 @@ enum EnemyType {
 	preload("res://resources/config/pickup_speed.tres"),
 	preload("res://resources/config/pickup_rapid.tres"),
 	preload("res://resources/config/pickup_spiral.tres"),
+	preload("res://resources/config/pickup_tenpura.tres"),
 ]

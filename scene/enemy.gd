@@ -23,15 +23,29 @@ enum DeathSequenceStage {
 # 受击闪烁持续时间。
 @export var hurt_blink_duration: float = 0.16
 
+# 寻路路径刷新间隔。多只敌人共享 GridPathfinder，但各自按这个节奏更新目标路径。
+@export var path_refresh_interval: float = 0.25
+
+# 距离当前路点小于该值时，切换到下一个路点。
+@export var waypoint_arrival_distance: float = 6.0
+
+# 足够接近玩家时直接追踪玩家当前位置，避免围绕玩家所在格子中心反复寻路。
+@export var direct_chase_extra_distance: float = 2.0
+
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var touch_damage_area: Area2D = $TouchDamageArea
 @onready var touch_damage_shape: CollisionShape2D = $TouchDamageArea/CollisionShape2D
 @onready var explosion_area: Area2D = $ExplosionArea
 @onready var explosion_shape: CollisionShape2D = $ExplosionArea/CollisionShape2D
+@onready var hit_audio: AudioStreamPlayer2D = $HitAudio
+@onready var death_audio: AudioStreamPlayer2D = $DeathAudio
+@onready var explosion_audio: AudioStreamPlayer2D = $ExplosionAudio
 
 # 当前追踪的玩家对象，由敌人管理器在生成时注入。
 var target_player: Player = null
+# 共享网格寻路器，由生成器注入。
+var pathfinder: Node = null
 # 当前生命值，根据配置资源初始化。
 var current_health: int = 1
 # 敌人死亡后停止移动和受伤处理。
@@ -48,6 +62,10 @@ var death_sequence_stage: DeathSequenceStage = DeathSequenceStage.NONE
 var death_animation_name_in_use: StringName = &""
 # 敌人实例自己的随机数生成器，用于掉落判定。
 var random_generator: RandomNumberGenerator = RandomNumberGenerator.new()
+# 当前缓存路径，避免每帧重复计算 A*。
+var current_path: PackedVector2Array = PackedVector2Array()
+var current_path_index: int = 0
+var path_refresh_time_left: float = 0.0
 
 
 # 初始化配置、信号和默认动画。
@@ -61,13 +79,17 @@ func _ready() -> void:
 
 
 # 管理器可通过统一入口同时注入配置和玩家引用。
-func setup(enemy_config: EnemyConfig, player: Player) -> void:
+func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = null) -> void:
 	config = enemy_config
 	target_player = player
+	pathfinder = shared_pathfinder
 	_apply_config()
 
 func set_target_player(player: Player) -> void:
 	target_player = player 
+
+func set_pathfinder(shared_pathfinder: Node) -> void:
+	pathfinder = shared_pathfinder
 	
 func apply_damage(amount: int) -> bool:
 	if is_dead:
@@ -81,6 +103,7 @@ func apply_damage(amount: int) -> bool:
 		_die()
 		return true
 	
+	hit_audio.play()
 	_start_hurt_blink()
 	return true
 
@@ -98,7 +121,7 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		return
 
-	var move_direction := global_position.direction_to(target_player.global_position)
+	var move_direction := _get_navigation_move_direction(delta)
 	_update_facing(move_direction)
 	velocity = move_direction * _get_move_speed()
 	move_and_slide()
@@ -141,6 +164,68 @@ func _get_move_speed() -> float:
 	if config == null:
 		return 0.0
 	return config.move_speed
+
+
+func _get_navigation_move_direction(delta: float) -> Vector2:
+	path_refresh_time_left = maxf(path_refresh_time_left - delta, 0.0)
+
+	if _should_direct_chase_target():
+		_clear_navigation_path()
+		return global_position.direction_to(target_player.global_position)
+
+	if pathfinder == null or not pathfinder.get("is_built"):
+		return global_position.direction_to(target_player.global_position)
+
+	if path_refresh_time_left <= 0.0 or current_path.is_empty():
+		_refresh_navigation_path()
+
+	if current_path.is_empty():
+		return global_position.direction_to(target_player.global_position)
+
+	while current_path_index < current_path.size():
+		var waypoint := current_path[current_path_index]
+		if global_position.distance_to(waypoint) > waypoint_arrival_distance:
+			return global_position.direction_to(waypoint)
+		current_path_index += 1
+
+	return global_position.direction_to(target_player.global_position)
+
+
+func _refresh_navigation_path() -> void:
+	path_refresh_time_left = maxf(path_refresh_interval, 0.05)
+	current_path = pathfinder.get_global_path(global_position, target_player.global_position)
+	current_path_index = 0
+
+
+func _clear_navigation_path() -> void:
+	current_path = PackedVector2Array()
+	current_path_index = 0
+	path_refresh_time_left = 0.0
+
+
+func _should_direct_chase_target() -> bool:
+	var direct_chase_distance := _get_collision_radius() + _get_target_collision_radius() + direct_chase_extra_distance
+	return global_position.distance_to(target_player.global_position) <= direct_chase_distance
+
+
+func _get_collision_radius() -> float:
+	var body_shape := collision_shape.shape as CircleShape2D
+	if body_shape == null:
+		return 0.0
+
+	return body_shape.radius
+
+
+func _get_target_collision_radius() -> float:
+	var target_collision_shape := target_player.get_node_or_null("CollisionShape2D") as CollisionShape2D
+	if target_collision_shape == null:
+		return 0.0
+
+	var target_circle_shape := target_collision_shape.shape as CircleShape2D
+	if target_circle_shape == null:
+		return 0.0
+
+	return target_circle_shape.radius
 
 
 # 根据水平移动方向更新贴图翻转，竖直移动时保留当前朝向。
@@ -244,6 +329,7 @@ func _die() -> void:
 	touch_damage_shape.set_deferred("disabled", true)
 	touch_damage_area.set_deferred("monitoring", false)
 	touch_damage_area.set_deferred("monitorable", false)
+	death_audio.play()
 	_try_drop_pickup()
 	_start_death_sequence()  
 
@@ -273,6 +359,7 @@ func _start_explosion_sequence() -> void:
 		queue_free()
 		return
 
+	explosion_audio.play()
 	_try_apply_explosion_damage()
 
 	if _play_death_sequence_animation(config.explosion_animation_name, DeathSequenceStage.EXPLOSION):

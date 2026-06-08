@@ -1,5 +1,10 @@
 extends Node2D
 
+const OVERWORLD_MUSIC := preload("res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3")
+const OUTLAW_MUSIC := preload("res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3")
+const FINAL_MUSIC := preload("res://resources/audio/1-29 Journey of the Prairie King (Final Boss & Ending).mp3")
+const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/enemy_spawn_effect.tscn")
+
 @export_group("刷怪资源")
 @export var enemy_scene: PackedScene = preload("res://scene/enemy.tscn")
 @export var enemy_configs: Array[EnemyConfig] = [
@@ -29,6 +34,9 @@ extends Node2D
 @onready var enemy_container: Node2D = $EnemyContainer
 @onready var enemy_spawn_points_root: Node2D = $EnemySpawnPoints
 @onready var enemy_spawn_timer: Timer = $EnemySpawnTimer
+@onready var grid_pathfinder: Node = $GridPathfinder
+@onready var music_player: AudioStreamPlayer = $MusicPlayer
+@onready var enemy_spawn_audio: AudioStreamPlayer = $EnemySpawnAudio
 
 # 随机数生成器，专门用于挑选出生点和敌人配置。
 var random_generator: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -41,6 +49,7 @@ var available_enemy_configs: Array[EnemyConfig] = []
 
 # 当前游戏已经运行的时间，用于逐渐加快刷怪节奏。
 var game_time_elapsed: float = 0.0
+var current_music_stage: int = -1
 
 
 # 初始化刷怪系统：缓存出生点、缓存配置、刷出初始敌人并启动定时器。
@@ -49,12 +58,14 @@ func _ready() -> void:
 	_collect_enemy_spawn_points()
 	_collect_enemy_configs()
 	_configure_enemy_spawn_timer()
+	_update_music()
 	_spawn_initial_enemies()
 	_start_enemy_spawn_timer()
 	
 func _process(delta: float) -> void:
 	game_time_elapsed += delta
 	_update_spawn_interval()
+	_update_music()
 
 
 # 从 EnemySpawnPoints 节点下收集所有 Marker2D 作为可选出生点。
@@ -160,7 +171,9 @@ func _try_spawn_enemy() -> bool:
 
 	enemy_container.add_child(enemy_instance)
 	enemy_instance.global_position = spawn_point.global_position
-	enemy_instance.setup(enemy_config, player)
+	enemy_instance.setup(enemy_config, player, grid_pathfinder)
+	_spawn_enemy_spawn_effect(spawn_point.global_position)
+	enemy_spawn_audio.play()
 
 	return true
 	
@@ -169,6 +182,8 @@ func _is_spawn_system_ready() -> bool:
 	return (
 		player != null
 		and enemy_scene != null
+		and grid_pathfinder != null
+		and grid_pathfinder.get("is_built")
 		and not enemy_spawn_points.is_empty()
 		and not available_enemy_configs.is_empty()
 	)
@@ -198,5 +213,41 @@ func _get_alive_enemy_count() -> int:
 			alive_enemy_count += 1
 			
 	return alive_enemy_count
+
+
+func _spawn_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
+	var effect := ENEMY_SPAWN_EFFECT_SCENE.instantiate() as Node2D
+	if effect == null:
+		return
+
+	add_child(effect)
+	effect.global_position = spawn_global_position
+
+
+func _update_music() -> void:
+	var difficulty_ratio := _get_difficulty_ratio()
+	var next_music_stage := 0
+	var next_stream: AudioStream = OVERWORLD_MUSIC
+
+	if difficulty_ratio >= 0.9:
+		next_music_stage = 2
+		next_stream = FINAL_MUSIC
+	elif difficulty_ratio >= 0.5:
+		next_music_stage = 1
+		next_stream = OUTLAW_MUSIC
+
+	if current_music_stage == next_music_stage:
+		return
+
+	current_music_stage = next_music_stage
+	music_player.stream = next_stream
+	music_player.play()
+
+
+func _get_difficulty_ratio() -> float:
+	if spawn_acceleration_duration <= 0.0:
+		return 1.0
+
+	return clampf(game_time_elapsed / spawn_acceleration_duration, 0.0, 1.0)
 	
 	

@@ -2,6 +2,9 @@
 
 [ext_resource type="Shader" uid="uid://b47uq42hh5vq1" path="res://scene/blink.gdshader" id="1_h08p8"]
 [ext_resource type="Script" uid="uid://dui7s0vx8ttvd" path="res://scene/enemy.gd" id="2_f87vc"]
+[ext_resource type="AudioStream" uid="uid://4xnlqa7gq1qw" path="res://resources/audio/cowboy_monsterhit.wav" id="3_v78ya"]
+[ext_resource type="AudioStream" uid="uid://dtcpsyjgcfb6m" path="res://resources/audio/cowboy_monsterdie.wav" id="4_f87vc"]
+[ext_resource type="AudioStream" uid="uid://bogl46dtqkano" path="res://resources/audio/cowboy_explosion.wav" id="5_h08p8"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_f87vc"]
 resource_local_to_scene = true
@@ -46,3 +49,16 @@ collision_mask = 6
 [node name="CollisionShape2D" type="CollisionShape2D" parent="ExplosionArea" unique_id=1610569664]
 shape = SubResource("CircleShape2D_f87vc")
 debug_color = Color(0.9764706, 0.6, 0.69803923, 0.41960785)
+
+[node name="HitAudio" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("3_v78ya")
+volume_db = -6.0
+max_polyphony = 4
+
+[node name="DeathAudio" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("4_f87vc")
+volume_db = -5.0
+
+[node name="ExplosionAudio" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("5_h08p8")
+volume_db = -4.0

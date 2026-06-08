@@ -5,6 +5,7 @@
 [ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickup_speed.tres" id="2_isqks"]
 [ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickup_rapid.tres" id="3_vwv7o"]
 [ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickup_spiral.tres" id="4_dglay"]
+[ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickup_tenpura.tres" id="4_r0afs"]
 [ext_resource type="Script" uid="uid://cxt041wfb1usj" path="res://resources/config/enemy_config.gd" id="5_gt3et"]
 
 [resource]

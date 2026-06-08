@@ -12,10 +12,17 @@ var is_dead: bool = false
 
 @export var fire_interval: float = 0.18
 @export var bullet_spawn_distance: float = 18.0
+@export var footstep_interval: float = 0.28
 
 @onready var body_sprite: AnimatedSprite2D = $BodySprite
 @onready var armed_effect_sprite: AnimatedSprite2D = $ArmedEffectSprite
 @onready var shooting_timer: Timer = $ShootingTimer
+@onready var gunshot_audio: AudioStreamPlayer2D = $GunshotAudio
+@onready var gunload_audio: AudioStreamPlayer2D = $GunloadAudio
+@onready var footstep_audio: AudioStreamPlayer2D = $FootstepAudio
+@onready var death_audio: AudioStreamPlayer2D = $DeathAudio
+@onready var powerup_audio: AudioStreamPlayer2D = $PowerupAudio
+@onready var secret_audio: AudioStreamPlayer2D = $SecretAudio
 
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const NORMAL_ANIMATION_PREFIX := &"normal"
@@ -45,6 +52,7 @@ var rapid_buff_time_left: float = 0.0
 var form_buff_time_left: float = 0.0
 # 螺旋弹幕的相位，用来让连续射击形成旋转感。
 var spiral_phase: float = 0.0
+var footstep_time_left: float = 0.0
 
 
 func _ready() -> void:
@@ -69,6 +77,7 @@ func _physics_process(delta: float) -> void:
 
 	velocity = move_input * _get_effective_move_speed()
 	move_and_slide()
+	_update_footstep_audio(delta, move_input)
 
 	if current_shot_pattern == PickupConfig.ShotPattern.SPIRAL:
 		_try_auto_spiral_shoot()
@@ -145,6 +154,8 @@ func apply_pickup(config: PickupConfig) -> bool:
 
 	if should_refresh_shooting_timer:
 		_refresh_shooting_timer_wait_time()
+	if applied:
+		_play_pickup_audio(config, has_form_override)
 	return applied
 	
 # 敌人或其他伤害来源统一通过这个入口让玩家受伤。
@@ -192,6 +203,7 @@ func _spawn_bullet(shoot_direction: Vector2) -> bool:
 	bullet.setup(shoot_direction)
 	spawn_parent.add_child(bullet)
 	bullet.global_position = global_position + shoot_direction * bullet_spawn_distance
+	gunshot_audio.play()
 	return true
 
 
@@ -280,6 +292,28 @@ func _update_armed_effect() -> void:
 		armed_effect_sprite.play(&"default")
 
 
+func _update_footstep_audio(delta: float, move_input: Vector2) -> void:
+	footstep_time_left = maxf(footstep_time_left - delta, 0.0)
+	if move_input == Vector2.ZERO:
+		footstep_time_left = 0.0
+		return
+	if footstep_time_left > 0.0:
+		return
+
+	footstep_audio.play()
+	footstep_time_left = maxf(footstep_interval, 0.05)
+
+
+func _play_pickup_audio(config: PickupConfig, has_form_override: bool) -> void:
+	if config.pickup_type == PickupConfig.PickupType.TENPURA:
+		secret_audio.play()
+	else:
+		powerup_audio.play()
+
+	if has_form_override:
+		gunload_audio.play()
+
+
 func _get_animation_prefix() -> StringName:
 	if current_form_mode == PickupConfig.PlayerFormMode.ARMED:
 		return ARMED_ANIMATION_PREFIX
@@ -332,6 +366,8 @@ func _die() -> void:
 	shooting_timer.stop()
 	armed_effect_sprite.visible = false
 	armed_effect_sprite.stop()
+	footstep_audio.stop()
+	death_audio.play()
 	if body_sprite.sprite_frames != null and body_sprite.sprite_frames.has_animation(&"death"):
 		body_sprite.play(&"death")
 
