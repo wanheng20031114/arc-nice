@@ -55,6 +55,7 @@ var spiral_phase: float = 0.0
 var footstep_time_left: float = 0.0
 
 
+# 节点首次进入场景树时的初始化逻辑
 func _ready() -> void:
 	current_health = maxi(max_health, 1)
 	shooting_timer.one_shot = true
@@ -64,6 +65,7 @@ func _ready() -> void:
 	_update_armed_effect()
 
 
+# 物理帧更新，处理玩家移动、射击和无敌/增益状态更新
 func _physics_process(delta: float) -> void:
 	_update_invincibility(delta)
 	_update_pickup_effects(delta)
@@ -89,6 +91,7 @@ func _physics_process(delta: float) -> void:
 	_update_armed_effect()
 
 
+# 根据玩家当前形态和朝向更新基础动画序列
 func _update_animation() -> void:
 	var animation_name := StringName("%s_%s" % [_get_animation_prefix(), facing_suffix])
 
@@ -103,6 +106,7 @@ func _update_animation() -> void:
 		body_sprite.play(animation_name)
 
 
+# 尝试进行一次常规射击
 func _try_shoot(shoot_input: Vector2) -> void:
 	if not shooting_timer.is_stopped():
 		return
@@ -113,6 +117,7 @@ func _try_shoot(shoot_input: Vector2) -> void:
 	if has_spawned_bullet:
 		shooting_timer.start(_get_effective_fire_interval())
 
+# 应用道具效果，更新玩家形态、射速、移速等增益状态
 func apply_pickup(config: PickupConfig) -> bool:
 	if config == null:
 		return false
@@ -177,9 +182,11 @@ func apply_damage(amount: int) -> bool:
 	_start_invincibility()
 	return true
 	
+# 获取当前生命值
 func get_current_health() -> int:
 	return current_health
 	
+# 根据射击模式和方向发射子弹，返回是否成功发射
 func _fire_bullets(base_direction: Vector2) -> bool:
 	if current_shot_pattern == PickupConfig.ShotPattern.SPIRAL:
 		var has_spawned_forward_bullet := _spawn_bullet(base_direction)
@@ -190,6 +197,7 @@ func _fire_bullets(base_direction: Vector2) -> bool:
 	return _spawn_bullet(base_direction)
 
 
+# 在指定方向上生成单颗子弹
 func _spawn_bullet(shoot_direction: Vector2) -> bool:
 	var bullet := BULLET_SCENE.instantiate() as Bullet
 	if bullet == null:
@@ -207,6 +215,7 @@ func _spawn_bullet(shoot_direction: Vector2) -> bool:
 	return true
 
 
+# 螺旋射击模式下，自动根据相位角度发射子弹
 func _try_auto_spiral_shoot() -> void:
 	if not shooting_timer.is_stopped():
 		return
@@ -217,15 +226,18 @@ func _try_auto_spiral_shoot() -> void:
 	if has_spawned_bullet:
 		shooting_timer.start(_get_effective_fire_interval())
 
+# 获取当前实际移动速度（受移速加成影响）
 func _get_effective_move_speed() -> float:
 	return move_speed * current_move_speed_multiplier
 
 
 
+# 获取当前实际射击间隔（受射速加成影响）
 func _get_effective_fire_interval() -> float:
 	return max(fire_interval / _get_effective_fire_rate_multiplier(), 0.01)
 
 
+# 获取当前实际射速倍率
 func _get_effective_fire_rate_multiplier() -> float:
 	if _has_active_form_override():
 		return max(form_fire_rate_multiplier, 0.01)
@@ -233,12 +245,14 @@ func _get_effective_fire_rate_multiplier() -> float:
 	return max(rapid_fire_rate_multiplier, 0.01)
 
 
+# 判断是否处于特殊的形态或弹幕模式下
 func _has_active_form_override() -> bool:
 	return (
 		current_form_mode != PickupConfig.PlayerFormMode.NORMAL
 		or current_shot_pattern != PickupConfig.ShotPattern.NORMAL
 	)
 
+# 刷新射击定时器的等待时间，响应射速 buff 变化
 func _refresh_shooting_timer_wait_time() -> void:
 	var new_interval := _get_effective_fire_interval()
 	shooting_timer.wait_time = new_interval
@@ -272,6 +286,7 @@ func _update_pickup_effects(delta: float) -> void:
 			spiral_phase = 0.0
 			_refresh_shooting_timer_wait_time()
 
+# 更新武装状态特效动画表现
 func _update_armed_effect() -> void:
 	var is_armed := current_form_mode == PickupConfig.PlayerFormMode.ARMED
 
@@ -292,6 +307,7 @@ func _update_armed_effect() -> void:
 		armed_effect_sprite.play(&"default")
 
 
+# 处理移动脚步声播放及间隔控制
 func _update_footstep_audio(delta: float, move_input: Vector2) -> void:
 	footstep_time_left = maxf(footstep_time_left - delta, 0.0)
 	if move_input == Vector2.ZERO:
@@ -304,6 +320,7 @@ func _update_footstep_audio(delta: float, move_input: Vector2) -> void:
 	footstep_time_left = maxf(footstep_interval, 0.05)
 
 
+# 播放道具拾取和形态加载的音效
 func _play_pickup_audio(config: PickupConfig, has_form_override: bool) -> void:
 	if config.pickup_type == PickupConfig.PickupType.TENPURA:
 		secret_audio.play()
@@ -314,6 +331,7 @@ func _play_pickup_audio(config: PickupConfig, has_form_override: bool) -> void:
 		gunload_audio.play()
 
 
+# 根据当前形态获取动画前缀
 func _get_animation_prefix() -> StringName:
 	if current_form_mode == PickupConfig.PlayerFormMode.ARMED:
 		return ARMED_ANIMATION_PREFIX
@@ -321,18 +339,21 @@ func _get_animation_prefix() -> StringName:
 	return NORMAL_ANIMATION_PREFIX
 
 
+# 根据移动和射击输入方向决定玩家角色的朝向更新
 func _update_facing(move_input: Vector2, shoot_input: Vector2) -> void:
 	var facing_input := shoot_input if shoot_input != Vector2.ZERO else move_input
 	if facing_input != Vector2.ZERO:
 		facing_suffix = _vector_to_facing_suffix(facing_input)
 
 
+# 将向量方向映射为预期的字符串后缀名（用于动画）
 func _vector_to_facing_suffix(direction: Vector2) -> StringName:
 	if abs(direction.x) >= abs(direction.y):
 		return &"right" if direction.x > 0.0 else &"left"
 
 	return &"down" if direction.y > 0.0 else &"up"
 
+# 更新受击后的无敌状态计时
 func _update_invincibility(delta: float) -> void:
 	if invincibility_time_left <= 0.0:
 		return

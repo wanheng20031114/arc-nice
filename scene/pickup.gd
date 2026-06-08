@@ -12,15 +12,17 @@ const BLINK_ENABLED_SHADER_PARAMETR := &"blink_enabled"
 
 
 # Called when the node enters the scene tree for the first time.
-# 闪烁一旦开启就保持到道具消失为止。
+# 道具消失前的闪烁状态标志位，一旦开启就保持到道具消失为止。
 var is_expiring: bool = false
 
 
 # 初始化显示图标、寿命计时与拾取检测。
 func _ready() -> void:
 	lifetime_timer.one_shot = true
+	# 启动生命周期定时器
 	if lifetime_timer.wait_time > 0.0:
 		lifetime_timer.start()
+	# 初始状态关闭闪烁效果
 	_set_blink_enabled(false)
 	_apply_config_to_visual()
 
@@ -37,6 +39,7 @@ func _process(_delta: float) -> void:
 	is_expiring = true
 	_set_blink_enabled(true)
 	
+# 将配置应用到视觉表现上
 func _apply_config_to_visual() -> void:
 	if config == null:
 		push_warning("Pickup config is missing.")
@@ -46,6 +49,7 @@ func _apply_config_to_visual() -> void:
 	sprite.scale = config.icon_scale
 	
 
+# 当物体进入道具区域时触发，用于处理玩家拾取
 func _on_body_entered(body: Node2D) -> void:
 	if config == null:
 		return
@@ -57,9 +61,11 @@ func _on_body_entered(body: Node2D) -> void:
 	if player.apply_pickup(config):
 		queue_free()
 
+# 生命周期定时器超时，销毁道具
 func _on_lifetime_timer_timeout() -> void:
 	queue_free()
 
+# 设置道具的闪烁效果开关
 func _set_blink_enabled(enabled:bool) -> void:
 	var sprite_material := sprite.material as ShaderMaterial
 	if sprite_material != null:

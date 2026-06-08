@@ -2,13 +2,17 @@ extends Area2D
 
 class_name Bullet
 
+# 世界碰撞层的掩码
 const WORLD_COLLISION_MASK := 1
 
+# 子弹飞行速度
 @export var speed:float = 320.0
+# 子弹最大存活时间（秒）
 @export var max_lifetime: float = 2.0
-# Called when the node enters the scene tree for the first time.
 
+# 子弹当前的飞行方向
 var direction : Vector2 = Vector2.RIGHT
+# 剩余存活时间
 var remaining_lifetime : float = 0.0
 
 
@@ -23,6 +27,7 @@ func setup(initial_direction: Vector2) -> void:
 		rotation = direction.angle()
 
 
+# 物理帧更新逻辑，处理子弹移动和碰撞检测
 func _physics_process(delta: float) -> void:
 	var current_position: Vector2 = global_position
 	var next_position: Vector2 = current_position + direction * speed * delta

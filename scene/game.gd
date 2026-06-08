@@ -62,6 +62,7 @@ func _ready() -> void:
 	_spawn_initial_enemies()
 	_start_enemy_spawn_timer()
 	
+# 每帧更新逻辑，处理时间流逝、刷怪频率调整以及背景音乐阶段的切换
 func _process(delta: float) -> void:
 	game_time_elapsed += delta
 	_update_spawn_interval()
@@ -206,6 +207,7 @@ func _pick_enemy_config() -> EnemyConfig:
 	var random_index := random_generator.randi_range(0, available_enemy_configs.size() - 1)
 	return available_enemy_configs[random_index]
 
+# 获取当前场景中存活（尚未被销毁）的敌人数
 func _get_alive_enemy_count() -> int:
 	var alive_enemy_count := 0
 	for child in enemy_container.get_children():
@@ -215,6 +217,7 @@ func _get_alive_enemy_count() -> int:
 	return alive_enemy_count
 
 
+# 在指定的出生点位置生成敌人出现时的视觉特效
 func _spawn_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
 	var effect := ENEMY_SPAWN_EFFECT_SCENE.instantiate() as Node2D
 	if effect == null:
@@ -224,6 +227,7 @@ func _spawn_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
 	effect.global_position = spawn_global_position
 
 
+# 根据当前的游戏难度（时间进度）更新背景音乐阶段
 func _update_music() -> void:
 	var difficulty_ratio := _get_difficulty_ratio()
 	var next_music_stage := 0
@@ -244,6 +248,7 @@ func _update_music() -> void:
 	music_player.play()
 
 
+# 计算当前游戏时间的难度比例（0.0 ~ 1.0），用于控制音乐阶段和刷怪频率
 func _get_difficulty_ratio() -> float:
 	if spawn_acceleration_duration <= 0.0:
 		return 1.0
