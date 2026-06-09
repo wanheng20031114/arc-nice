@@ -38,6 +38,7 @@ const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/enemy_spawn_effect.tscn")
 @onready var music_player: AudioStreamPlayer = $MusicPlayer
 @onready var enemy_spawn_audio: AudioStreamPlayer = $EnemySpawnAudio
 @onready var currency_hud: CurrencyHUD = $CurrencyHUD
+@onready var player_profile_panel: PlayerProfilePanel = $PlayerProfilePanel
 
 # 随机数生成器，专门用于挑选出生点和敌人配置。
 var random_generator: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -56,10 +57,13 @@ var current_music_stage: int = -1
 # 初始化刷怪系统：缓存出生点、缓存配置、刷出初始敌人并启动定时器。
 func _ready() -> void:
 	random_generator.randomize()
+	RunState.ensure_run_started()
 	_collect_enemy_spawn_points()
 	_collect_enemy_configs()
 	_configure_enemy_spawn_timer()
 	currency_hud.bind_player(player)
+	player_profile_panel.bind_player(player)
+	currency_hud.profile_requested.connect(player_profile_panel.open)
 	_update_music()
 	_spawn_initial_enemies()
 	_start_enemy_spawn_timer()

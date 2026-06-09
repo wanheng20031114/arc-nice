@@ -11,6 +11,7 @@
 [ext_resource type="AudioStream" uid="uid://vc2m1l0d1rov" path="res://resources/audio/cowboy_powerup.wav" id="8_rhcc0"]
 [ext_resource type="AudioStream" uid="uid://by1qh436lhf54" path="res://resources/audio/Cowboy_Secret.wav" id="9_6vinx"]
 [ext_resource type="PackedScene" uid="uid://bcopug355gqjb" path="res://scene/player_health_bar.tscn" id="10_owf57"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/player.tres" id="11_player_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_s4jxa"]
 resource_local_to_scene = true
@@ -400,7 +401,7 @@ script = ExtResource("1_onrkg")
 
 [node name="BodySprite" type="AnimatedSprite2D" parent="." unique_id=2014942495]
 material = SubResource("ShaderMaterial_s4jxa")
-sprite_frames = SubResource("SpriteFrames_ny14h")
+sprite_frames = ExtResource("11_player_frames")
 animation = &"death"
 autoplay = "normal_right"
 

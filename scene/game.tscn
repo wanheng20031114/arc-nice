@@ -11,6 +11,7 @@
 [ext_resource type="AudioStream" uid="uid://cmfbw4cr7dde" path="res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3" id="10_swtgm"]
 [ext_resource type="AudioStream" uid="uid://bmifvvnjfqsuv" path="res://resources/audio/cowboy_gopher.wav" id="11_26owc"]
 [ext_resource type="PackedScene" path="res://scene/currency_hud.tscn" id="12_currency_hud"]
+[ext_resource type="PackedScene" path="res://scene/player_profile_panel.tscn" id="13_profile_panel"]
 
 [sub_resource type="TileMapPattern" id="TileMapPattern_33cqm"]
 tile_data = PackedInt32Array(0, 0, 0, 65536, 131072, 2, 1, 0, 0, 65537, 0, 0)
@@ -134,7 +135,9 @@ zoom = Vector2(2, 2)
 [node name="Player" parent="." unique_id=1640433019 instance=ExtResource("3_feb5d")]
 position = Vector2(151, 70)
 
-[node name="CurrencyHUD" parent="." instance=ExtResource("12_currency_hud")]
+[node name="CurrencyHUD" parent="." unique_id=912718684 instance=ExtResource("12_currency_hud")]
+
+[node name="PlayerProfilePanel" parent="." unique_id=1216528429 instance=ExtResource("13_profile_panel")]
 
 [node name="WorldBounds" type="Node2D" parent="." unique_id=905261702]
 

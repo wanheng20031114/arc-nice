@@ -3,15 +3,20 @@ extends CharacterBody2D
 class_name Player
 
 signal xirang_changed(total: int, added_amount: int)
+signal health_changed(current: int, maximum: int)
+signal died
 
 @export var move_speed: float = 120.0
 @export var max_health: int = 5
 @export var invincibility_duration: float = 1.0
+@export var attack_damage: int = 1
+@export var attack_method_name: String = "枪"
 
 var current_health: int = 0
 var current_xirang: int = 0
 var invincibility_time_left: float = 0.0
 var is_dead: bool = false
+var controls_locked: bool = false
 
 @export var fire_interval: float = 0.18
 @export var bullet_spawn_distance: float = 18.0
@@ -68,6 +73,7 @@ func _ready() -> void:
 	shooting_timer.wait_time = _get_effective_fire_interval()
 	_set_hurt_blink_enabled(false)
 	health_bar.setup(max_health, current_health)
+	health_changed.emit(current_health, max_health)
 	_update_animation()
 	_update_armed_effect()
 
@@ -79,6 +85,13 @@ func _physics_process(delta: float) -> void:
 	
 	if is_dead:
 		velocity = Vector2.ZERO
+		return
+
+	if controls_locked:
+		velocity = Vector2.ZERO
+		_update_footstep_audio(delta, Vector2.ZERO)
+		_update_animation()
+		_update_armed_effect()
 		return
 	
 	var move_input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
@@ -186,6 +199,7 @@ func apply_damage(amount: int) -> bool:
 
 	current_health = maxi(current_health - amount, 0)
 	health_bar.set_health(current_health, max_health)
+	health_changed.emit(current_health, max_health)
 	if current_health <= 0:
 		_die()
 		return true
@@ -196,6 +210,13 @@ func apply_damage(amount: int) -> bool:
 # 获取当前生命值
 func get_current_health() -> int:
 	return current_health
+
+
+func set_controls_locked(locked: bool) -> void:
+	controls_locked = locked
+	if controls_locked:
+		velocity = Vector2.ZERO
+		footstep_audio.stop()
 
 
 func get_xirang() -> int:
@@ -225,6 +246,7 @@ func _try_heal(amount: int) -> bool:
 
 	current_health = mini(current_health + amount, max_health)
 	health_bar.set_health(current_health, max_health)
+	health_changed.emit(current_health, max_health)
 	return true
 	
 # 根据射击模式和方向发射子弹，返回是否成功发射
@@ -249,7 +271,7 @@ func _spawn_bullet(shoot_direction: Vector2) -> bool:
 		return false
 
 	bullet.top_level = true
-	bullet.setup(shoot_direction)
+	bullet.setup(shoot_direction, attack_damage)
 	spawn_parent.add_child(bullet)
 	bullet.global_position = global_position + shoot_direction * bullet_spawn_distance
 	gunshot_audio.play()
@@ -435,6 +457,7 @@ func _die() -> void:
 	health_bar.visible = false
 	if body_sprite.sprite_frames != null and body_sprite.sprite_frames.has_animation(&"death"):
 		body_sprite.play(&"death")
+	died.emit()
 
 
 func _on_shooting_timer_timeout() -> void:

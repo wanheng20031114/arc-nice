@@ -60,6 +60,10 @@ func _on_body_entered(body: Node2D) -> void:
 
 	if player.apply_pickup(config):
 		queue_free()
+		return
+
+	if RunState.try_add_item(config):
+		queue_free()
 
 # 生命周期定时器超时，销毁道具
 func _on_lifetime_timer_timeout() -> void:

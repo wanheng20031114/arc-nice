@@ -1,7 +1,6 @@
 extends CharacterBody2D
 class_name Enemy
 
-const DEFAULT_BULLET_DAMAGE := 1
 const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
@@ -266,7 +265,7 @@ func _on_touch_damage_area_area_entered(area: Area2D) -> void:
 	if bullet == null:
 		return
 
-	var damaged := apply_damage(DEFAULT_BULLET_DAMAGE, -bullet.direction)
+	var damaged := apply_damage(bullet.damage, -bullet.direction)
 	if damaged:
 		bullet.queue_free()
 		

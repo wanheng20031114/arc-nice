@@ -1,7 +1,8 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scene/currency_hud.gd" id="1_hud"]
 [ext_resource type="Texture2D" path="res://resources/texture/xirang_icon.png" id="2_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/profile_gun_icon.png" id="3_profile"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 bg_color = Color(0.035, 0.055, 0.045, 0.92)
@@ -24,6 +25,33 @@ font_color = Color(0.92, 0.96, 0.9, 1)
 outline_size = 2
 outline_color = Color(0.02, 0.035, 0.025, 0.9)
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_profile"]
+bg_color = Color(0.035, 0.055, 0.05, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.28, 0.48, 0.43, 0.95)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+shadow_color = Color(0, 0, 0, 0.32)
+shadow_size = 2
+shadow_offset = Vector2(0, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_profile_hover"]
+bg_color = Color(0.055, 0.13, 0.115, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.4, 0.82, 0.72, 1)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+
 [node name="CurrencyHUD" type="CanvasLayer"]
 layer = 10
 script = ExtResource("1_hud")
@@ -32,7 +60,7 @@ script = ExtResource("1_hud")
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -92.0
+offset_left = -143.0
 offset_top = 8.0
 offset_right = -8.0
 offset_bottom = 53.0
@@ -42,30 +70,61 @@ theme_override_constants/margin_top = 0
 theme_override_constants/margin_right = 0
 theme_override_constants/margin_bottom = 0
 
-[node name="Panel" type="PanelContainer" parent="TopRightMargin"]
+[node name="Content" type="HBoxContainer" parent="TopRightMargin"]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="ProfileButton" type="Button" parent="TopRightMargin/Content"]
+custom_minimum_size = Vector2(44, 45)
+layout_mode = 2
+focus_mode = 1
+mouse_default_cursor_shape = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_profile")
+theme_override_styles/hover = SubResource("StyleBoxFlat_profile_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_profile_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_profile_hover")
+tooltip_text = "个人数据与背包"
+
+[node name="Icon" type="TextureRect" parent="TopRightMargin/Content/ProfileButton"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 7.0
+offset_top = 7.0
+offset_right = -7.0
+offset_bottom = -7.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("3_profile")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="CurrencyPanel" type="PanelContainer" parent="TopRightMargin/Content"]
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
-[node name="ContentMargin" type="MarginContainer" parent="TopRightMargin/Panel"]
+[node name="ContentMargin" type="MarginContainer" parent="TopRightMargin/Content/CurrencyPanel"]
 layout_mode = 2
 theme_override_constants/margin_left = 6
 theme_override_constants/margin_top = 3
 theme_override_constants/margin_right = 8
 theme_override_constants/margin_bottom = 3
 
-[node name="Content" type="HBoxContainer" parent="TopRightMargin/Panel/ContentMargin"]
+[node name="Content" type="HBoxContainer" parent="TopRightMargin/Content/CurrencyPanel/ContentMargin"]
 layout_mode = 2
 theme_override_constants/separation = 5
 alignment = 1
 
-[node name="Icon" type="TextureRect" parent="TopRightMargin/Panel/ContentMargin/Content"]
+[node name="Icon" type="TextureRect" parent="TopRightMargin/Content/CurrencyPanel/ContentMargin/Content"]
 custom_minimum_size = Vector2(37, 37)
 layout_mode = 2
 texture = ExtResource("2_icon")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Count" type="Label" parent="TopRightMargin/Panel/ContentMargin/Content"]
+[node name="Count" type="Label" parent="TopRightMargin/Content/CurrencyPanel/ContentMargin/Content"]
 custom_minimum_size = Vector2(32, 0)
 layout_mode = 2
 text = "0"

@@ -6,6 +6,7 @@ const LOBBY_SCENE_PATH := "res://scene/lobby.tscn"
 
 # 当“开始游戏”按钮被按下时调用，切换到大厅场景
 func _on_start_pressed() -> void:
+	RunState.begin_new_run()
 	get_tree().change_scene_to_file(LOBBY_SCENE_PATH)
 
 

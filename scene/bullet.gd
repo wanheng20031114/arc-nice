@@ -12,6 +12,8 @@ const WORLD_COLLISION_MASK := 1
 
 # 子弹当前的飞行方向
 var direction : Vector2 = Vector2.RIGHT
+# 由发射者在生成时写入，命中目标时读取。
+var damage: int = 1
 # 剩余存活时间
 var remaining_lifetime : float = 0.0
 
@@ -21,10 +23,11 @@ func _ready() -> void:
 
 
 # 外部生成子弹后调用，用来设置方向
-func setup(initial_direction: Vector2) -> void:
+func setup(initial_direction: Vector2, initial_damage: int = 1) -> void:
 	if initial_direction != Vector2.ZERO:
 		direction = initial_direction.normalized()
 		rotation = direction.angle()
+	damage = maxi(initial_damage, 0)
 
 
 # 物理帧更新逻辑，处理子弹移动和碰撞检测
