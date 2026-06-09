@@ -2,12 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://6dvk4igin3i2"
-valid=false
+uid="uid://b8kq2buesffrr"
+path="res://.godot/imported/upgrade_dodge.png-9f971fedb9e3ae0483b0fa1eb988378a.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
-source_file="res://resources/texture/upgrade_dodge_raw.png"
+source_file="res://resources/texture/upgrade_dodge.png"
+dest_files=["res://.godot/imported/upgrade_dodge.png-9f971fedb9e3ae0483b0fa1eb988378a.ctex"]
 
 [params]
 

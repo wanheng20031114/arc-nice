@@ -1,9 +1,15 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="Script" path="res://scene/player_profile_panel.gd" id="1_panel"]
 [ext_resource type="Texture2D" path="res://resources/texture/player_profile_background.png" id="2_background"]
 [ext_resource type="PackedScene" path="res://scene/inventory_slot.tscn" id="3_slot"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
+[ext_resource type="PackedScene" path="res://scene/upgrade_row.tscn" id="5_upgrade_row"]
+[ext_resource type="Texture2D" path="res://resources/texture/upgrade_attack.png" id="6_attack_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/upgrade_health.png" id="7_health_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/upgrade_speed.png" id="8_speed_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/upgrade_dodge.png" id="9_dodge_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/xirang_icon.png" id="10_xirang_icon"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_close"]
 
@@ -195,6 +201,28 @@ label_settings = SubResource("LabelSettings_value")
 horizontal_alignment = 2
 vertical_alignment = 1
 
+[node name="TabBar" type="HBoxContainer" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 332.0
+offset_top = 68.0
+offset_right = 560.0
+offset_bottom = 102.0
+theme_override_constants/separation = 0
+
+[node name="BagTabButton" type="Button" parent="Overlay/PanelRoot/TabBar"]
+custom_minimum_size = Vector2(100, 34)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 17
+text = "背包"
+
+[node name="UpgradeTabButton" type="Button" parent="Overlay/PanelRoot/TabBar"]
+custom_minimum_size = Vector2(100, 34)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 17
+text = "升级"
+
 [node name="InventoryGrid" type="GridContainer" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 308.0
@@ -284,3 +312,46 @@ slot_index = 18
 [node name="Slot19" parent="Overlay/PanelRoot/InventoryGrid" instance=ExtResource("3_slot")]
 layout_mode = 2
 slot_index = 19
+
+[node name="UpgradePanel" type="VBoxContainer" parent="Overlay/PanelRoot"]
+visible = false
+layout_mode = 0
+offset_left = 308.0
+offset_top = 110.0
+offset_right = 695.0
+offset_bottom = 500.0
+theme_override_constants/separation = 6
+
+[node name="CostHint" type="Label" parent="Overlay/PanelRoot/UpgradePanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.65, 0.68, 0.62, 1)
+text = "每次升级消耗 100 息壤"
+
+[node name="AttackRow" parent="Overlay/PanelRoot/UpgradePanel" instance=ExtResource("5_upgrade_row")]
+layout_mode = 2
+stat_name = "基础攻击力"
+stat_type = 0
+max_level = 2
+icon_texture = ExtResource("6_attack_icon")
+
+[node name="HealthRow" parent="Overlay/PanelRoot/UpgradePanel" instance=ExtResource("5_upgrade_row")]
+layout_mode = 2
+stat_name = "生命值上限"
+stat_type = 1
+max_level = 5
+icon_texture = ExtResource("7_health_icon")
+
+[node name="SpeedRow" parent="Overlay/PanelRoot/UpgradePanel" instance=ExtResource("5_upgrade_row")]
+layout_mode = 2
+stat_name = "攻击速度"
+stat_type = 2
+max_level = 5
+icon_texture = ExtResource("8_speed_icon")
+
+[node name="DodgeRow" parent="Overlay/PanelRoot/UpgradePanel" instance=ExtResource("5_upgrade_row")]
+layout_mode = 2
+stat_name = "闪避能力"
+stat_type = 3
+max_level = 5
+icon_texture = ExtResource("9_dodge_icon")

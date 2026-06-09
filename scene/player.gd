@@ -5,6 +5,7 @@ class_name Player
 signal xirang_changed(total: int, added_amount: int)
 signal health_changed(current: int, maximum: int)
 signal attack_speed_changed(attacks_per_second: float)
+signal dodge_changed(chance: float)
 signal died
 
 @export var move_speed: float = 120.0
@@ -64,6 +65,7 @@ var form_buff_time_left: float = 0.0
 # 螺旋弹幕的相位，用来让连续射击形成旋转感。
 var spiral_phase: float = 0.0
 var footstep_time_left: float = 0.0
+var dodge_chance: float = 0.0
 
 
 # 节点首次进入场景树时的初始化逻辑
@@ -196,6 +198,10 @@ func apply_damage(amount: int) -> bool:
 		return false
 
 	if invincibility_time_left > 0.0:
+		return false
+
+	if dodge_chance > 0.0 and randf() < dodge_chance:
+		_start_invincibility()
 		return false
 
 	current_health = maxi(current_health - amount, 0)
@@ -468,3 +474,28 @@ func _die() -> void:
 
 func _on_shooting_timer_timeout() -> void:
 	pass
+
+
+# 升级基础攻击力，每级 +1
+func upgrade_attack() -> void:
+	attack_damage += 1
+
+
+# 升级生命值上限，每级 +2，并同步回满当前生命
+func upgrade_max_health() -> void:
+	max_health += 2
+	current_health = max_health
+	health_bar.set_health(current_health, max_health)
+	health_changed.emit(current_health, max_health)
+
+
+# 升级攻击速度，每级攻击间隔减少 8%
+func upgrade_attack_speed() -> void:
+	fire_interval *= 0.92
+	_refresh_shooting_timer_wait_time()
+
+
+# 升级闪避能力，每级闪避率 +4%
+func upgrade_dodge() -> void:
+	dodge_chance = minf(dodge_chance + 0.04, 1.0)
+	dodge_changed.emit(dodge_chance)
