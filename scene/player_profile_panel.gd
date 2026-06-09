@@ -9,6 +9,7 @@ const DESIGN_SIZE := Vector2(724.0, 543.0)
 @onready var portrait: AnimatedSprite2D = $Overlay/PanelRoot/Portrait
 @onready var attack_value: Label = $Overlay/PanelRoot/AttackValue
 @onready var health_value: Label = $Overlay/PanelRoot/HealthValue
+@onready var attack_speed_value: Label = $Overlay/PanelRoot/AttackSpeedValue
 @onready var method_value: Label = $Overlay/PanelRoot/MethodValue
 @onready var inventory_grid: GridContainer = $Overlay/PanelRoot/InventoryGrid
 @onready var run_state: Node = get_node("/root/RunState")
@@ -34,6 +35,8 @@ func bind_player(player: Player) -> void:
 			close()
 		if tracked_player.health_changed.is_connected(_on_health_changed):
 			tracked_player.health_changed.disconnect(_on_health_changed)
+		if tracked_player.attack_speed_changed.is_connected(_on_attack_speed_changed):
+			tracked_player.attack_speed_changed.disconnect(_on_attack_speed_changed)
 		if tracked_player.died.is_connected(_on_player_died):
 			tracked_player.died.disconnect(_on_player_died)
 
@@ -43,10 +46,12 @@ func bind_player(player: Player) -> void:
 		return
 
 	tracked_player.health_changed.connect(_on_health_changed)
+	tracked_player.attack_speed_changed.connect(_on_attack_speed_changed)
 	tracked_player.died.connect(_on_player_died)
 	portrait.sprite_frames = tracked_player.body_sprite.sprite_frames
 	portrait.play(&"normal_down")
 	attack_value.text = str(tracked_player.attack_damage)
+	_on_attack_speed_changed(tracked_player.get_attacks_per_second())
 	method_value.text = tracked_player.attack_method_name
 	_on_health_changed(tracked_player.current_health, tracked_player.max_health)
 	_refresh_inventory()
@@ -148,6 +153,10 @@ func _focus_first_available_slot() -> void:
 
 func _on_health_changed(current: int, maximum: int) -> void:
 	health_value.text = "%d / %d" % [current, maximum]
+
+
+func _on_attack_speed_changed(attacks_per_second: float) -> void:
+	attack_speed_value.text = "%.2f/s" % attacks_per_second
 
 
 func _on_player_died() -> void:

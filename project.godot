@@ -31,6 +31,10 @@ window/stretch/mode="canvas_items"
 
 project/assembly_name="arc-nice"
 
+[gui]
+
+theme/custom_font="res://resources/font/ResourceHanRoundedCN-Medium.ttf"
+
 [input]
 
 move_left={

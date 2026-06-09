@@ -4,6 +4,7 @@ class_name Player
 
 signal xirang_changed(total: int, added_amount: int)
 signal health_changed(current: int, maximum: int)
+signal attack_speed_changed(attacks_per_second: float)
 signal died
 
 @export var move_speed: float = 120.0
@@ -212,6 +213,10 @@ func get_current_health() -> int:
 	return current_health
 
 
+func get_attacks_per_second() -> float:
+	return 1.0 / _get_effective_fire_interval()
+
+
 func set_controls_locked(locked: bool) -> void:
 	controls_locked = locked
 	if controls_locked:
@@ -319,6 +324,7 @@ func _has_active_form_override() -> bool:
 func _refresh_shooting_timer_wait_time() -> void:
 	var new_interval := _get_effective_fire_interval()
 	shooting_timer.wait_time = new_interval
+	attack_speed_changed.emit(1.0 / new_interval)
 	
 	if shooting_timer.is_stopped():
 		return

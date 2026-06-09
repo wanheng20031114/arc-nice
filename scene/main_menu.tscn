@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://c5lyhldap105w" path="res://scene/main_menu.gd" id="1_2fwvj"]
 [ext_resource type="Texture2D" uid="uid://cbrmpw5d481ci" path="res://resources/texture/瓦片.png" id="2_0iwki"]
-[ext_resource type="FontFile" uid="uid://c2gx2leegbmhl" path="res://resources/font/IPix.ttf" id="3_sepwh"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_sepwh"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_14wem"]
 bg_color = Color(0.09, 0.095, 0.105, 0.92)

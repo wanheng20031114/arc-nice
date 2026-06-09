@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scene/player_profile_panel.gd" id="1_panel"]
 [ext_resource type="Texture2D" path="res://resources/texture/player_profile_background.png" id="2_background"]
 [ext_resource type="PackedScene" path="res://scene/inventory_slot.tscn" id="3_slot"]
-[ext_resource type="FontFile" path="res://resources/font/IPix.ttf" id="4_font"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_close"]
 
@@ -114,9 +114,9 @@ scale = Vector2(4, 4)
 [node name="AttackLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 48.0
-offset_top = 331.0
+offset_top = 327.0
 offset_right = 150.0
-offset_bottom = 363.0
+offset_bottom = 357.0
 text = "攻击力"
 label_settings = SubResource("LabelSettings_stat")
 vertical_alignment = 1
@@ -124,9 +124,9 @@ vertical_alignment = 1
 [node name="AttackValue" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 168.0
-offset_top = 331.0
+offset_top = 327.0
 offset_right = 248.0
-offset_bottom = 363.0
+offset_bottom = 357.0
 text = "1"
 label_settings = SubResource("LabelSettings_value")
 horizontal_alignment = 2
@@ -135,9 +135,9 @@ vertical_alignment = 1
 [node name="HealthLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 48.0
-offset_top = 369.0
+offset_top = 363.0
 offset_right = 150.0
-offset_bottom = 401.0
+offset_bottom = 393.0
 text = "生命值"
 label_settings = SubResource("LabelSettings_stat")
 vertical_alignment = 1
@@ -145,10 +145,31 @@ vertical_alignment = 1
 [node name="HealthValue" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 150.0
-offset_top = 369.0
+offset_top = 363.0
 offset_right = 248.0
-offset_bottom = 401.0
+offset_bottom = 393.0
 text = "5 / 5"
+label_settings = SubResource("LabelSettings_value")
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="AttackSpeedLabel" type="Label" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 48.0
+offset_top = 398.0
+offset_right = 150.0
+offset_bottom = 428.0
+text = "攻击速度"
+label_settings = SubResource("LabelSettings_stat")
+vertical_alignment = 1
+
+[node name="AttackSpeedValue" type="Label" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 150.0
+offset_top = 398.0
+offset_right = 248.0
+offset_bottom = 428.0
+text = "5.56/s"
 label_settings = SubResource("LabelSettings_value")
 horizontal_alignment = 2
 vertical_alignment = 1
@@ -156,9 +177,9 @@ vertical_alignment = 1
 [node name="MethodLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 48.0
-offset_top = 407.0
+offset_top = 434.0
 offset_right = 150.0
-offset_bottom = 439.0
+offset_bottom = 464.0
 text = "攻击方式"
 label_settings = SubResource("LabelSettings_stat")
 vertical_alignment = 1
@@ -166,9 +187,9 @@ vertical_alignment = 1
 [node name="MethodValue" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 150.0
-offset_top = 407.0
+offset_top = 434.0
 offset_right = 248.0
-offset_bottom = 439.0
+offset_bottom = 464.0
 text = "枪"
 label_settings = SubResource("LabelSettings_value")
 horizontal_alignment = 2
