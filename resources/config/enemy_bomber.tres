@@ -20,6 +20,7 @@ enemy_frames = ExtResource("1_dmrur")
 explode_on_death = true
 explosion_damage = 2
 explosion_radius = 30.0
+explosion_animation_scale = 1.76
 xirang_drop_amount = 2
 pickup_drop_chance = 0.4
 metadata/_custom_type_script = "uid://cxt041wfb1usj"

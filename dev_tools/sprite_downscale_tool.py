@@ -10,9 +10,9 @@
 不会去除空白区域，不会改变子图的相对位置，只做像素级无损压缩。
 
 用法:
-  python pixel_crop_tool.py <input_path> [output_path]
-  python pixel_crop_tool.py <input_path> --scale N           # 手动指定缩放因子
-  python pixel_crop_tool.py <input_path> --detect-only       # 仅检测，不输出图片
+  python sprite_downscale_tool.py <input_path> [output_path]
+  python sprite_downscale_tool.py <input_path> --scale N           # 手动指定缩放因子
+  python sprite_downscale_tool.py <input_path> --detect-only       # 仅检测，不输出图片
 """
 
 import sys

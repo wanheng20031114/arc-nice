@@ -62,7 +62,8 @@ func _on_body_entered(body: Node2D) -> void:
 		queue_free()
 		return
 
-	if RunState.try_add_item(config):
+	var run_state := get_node("/root/RunState")
+	if run_state.try_add_item(config):
 		queue_free()
 
 # 生命周期定时器超时，销毁道具

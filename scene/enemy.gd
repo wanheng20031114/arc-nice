@@ -373,6 +373,7 @@ func _start_explosion_sequence() -> void:
 		queue_free()
 		return
 
+	animated_sprite.scale = Vector2.ONE * maxf(config.explosion_animation_scale, 0.1)
 	explosion_audio.play()
 	_try_apply_explosion_damage()
 

@@ -6,6 +6,7 @@ enum EnemyType {
 	SHELLED,
 	FAST_SMALL,
 	BOMBER,
+	PURPLE_BOMBER,
 	
 }
 
@@ -42,6 +43,8 @@ enum EnemyType {
 @export_range(0, 999, 1, "or_greater") var explosion_damage: int = 0
 # 自爆半径，只有 explode_on_death 为 true 时才有意义。
 @export_range(0.0, 512.0, 1.0, "or_greater") var explosion_radius: float = 0
+# 爆炸动画相对原始帧的显示缩放，用于让视觉范围贴合实际伤害半径。
+@export_range(0.1, 10.0, 0.01, "or_greater") var explosion_animation_scale: float = 1.0
 
 
 @export_group("掉落")

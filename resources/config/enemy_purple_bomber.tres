@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EnemyConfig" format=3]
+
+[ext_resource type="SpriteFrames" path="res://resources/animation/enemy_purple_bomber.tres" id="1_frames"]
+[ext_resource type="Script" path="res://resources/config/enemy_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+enemy_type = 4
+display_name = "紫晶自爆原石虫"
+max_health = 2
+move_speed = 32.0
+collision_radius = 7.0
+enemy_frames = ExtResource("1_frames")
+explode_on_death = true
+explosion_damage = 3
+explosion_radius = 40.0
+explosion_animation_scale = 2.35
+xirang_drop_amount = 3
+pickup_drop_chance = 0.4
