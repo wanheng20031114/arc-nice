@@ -1,6 +1,7 @@
 [gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scene/upgrade_row.gd" id="1_row"]
+[ext_resource type="PackedScene" path="res://scene/upgrade_progress_block.tscn" id="2_block"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_row_bg"]
 bg_color = Color(0.185, 0.185, 0.17, 0.97)
@@ -120,32 +121,22 @@ theme_override_constants/separation = 7
 
 [node name="BlockContainer" type="HBoxContainer" parent="Margin/Content/InfoColumn/ProgressRow"]
 layout_mode = 2
-theme_override_constants/separation = 3
+theme_override_constants/separation = 5
 
-[node name="Block0" type="ColorRect" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer"]
-custom_minimum_size = Vector2(16, 13)
+[node name="Block0" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer" instance=ExtResource("2_block")]
 layout_mode = 2
-color = Color(0.115, 0.13, 0.135, 1)
 
-[node name="Block1" type="ColorRect" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer"]
-custom_minimum_size = Vector2(16, 13)
+[node name="Block1" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer" instance=ExtResource("2_block")]
 layout_mode = 2
-color = Color(0.115, 0.13, 0.135, 1)
 
-[node name="Block2" type="ColorRect" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer"]
-custom_minimum_size = Vector2(16, 13)
+[node name="Block2" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer" instance=ExtResource("2_block")]
 layout_mode = 2
-color = Color(0.115, 0.13, 0.135, 1)
 
-[node name="Block3" type="ColorRect" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer"]
-custom_minimum_size = Vector2(16, 13)
+[node name="Block3" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer" instance=ExtResource("2_block")]
 layout_mode = 2
-color = Color(0.115, 0.13, 0.135, 1)
 
-[node name="Block4" type="ColorRect" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer"]
-custom_minimum_size = Vector2(16, 13)
+[node name="Block4" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer" instance=ExtResource("2_block")]
 layout_mode = 2
-color = Color(0.115, 0.13, 0.135, 1)
 
 [node name="LevelLabel" type="Label" parent="Margin/Content/InfoColumn/ProgressRow"]
 layout_mode = 2

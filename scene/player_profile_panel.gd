@@ -63,6 +63,8 @@ func bind_player(player: Player) -> void:
 			tracked_player.health_changed.disconnect(_on_health_changed)
 		if tracked_player.attack_speed_changed.is_connected(_on_attack_speed_changed):
 			tracked_player.attack_speed_changed.disconnect(_on_attack_speed_changed)
+		if tracked_player.xirang_changed.is_connected(_on_xirang_changed):
+			tracked_player.xirang_changed.disconnect(_on_xirang_changed)
 		if tracked_player.died.is_connected(_on_player_died):
 			tracked_player.died.disconnect(_on_player_died)
 
@@ -73,6 +75,7 @@ func bind_player(player: Player) -> void:
 
 	tracked_player.health_changed.connect(_on_health_changed)
 	tracked_player.attack_speed_changed.connect(_on_attack_speed_changed)
+	tracked_player.xirang_changed.connect(_on_xirang_changed)
 	tracked_player.died.connect(_on_player_died)
 	portrait.sprite_frames = tracked_player.body_sprite.sprite_frames
 	portrait.play(&"normal_down")
@@ -156,10 +159,21 @@ func _refresh_inventory() -> void:
 
 
 func _refresh_upgrades() -> void:
-	attack_row.set_level(run_state.get_upgrade_level(RunState.StatType.ATTACK))
-	health_row.set_level(run_state.get_upgrade_level(RunState.StatType.HEALTH))
-	speed_row.set_level(run_state.get_upgrade_level(RunState.StatType.ATTACK_SPEED))
-	dodge_row.set_level(run_state.get_upgrade_level(RunState.StatType.DODGE))
+	_refresh_upgrade_row(attack_row, RunState.StatType.ATTACK)
+	_refresh_upgrade_row(health_row, RunState.StatType.HEALTH)
+	_refresh_upgrade_row(speed_row, RunState.StatType.ATTACK_SPEED)
+	_refresh_upgrade_row(dodge_row, RunState.StatType.DODGE)
+
+
+func _refresh_upgrade_row(row: UpgradeRow, stat_type: int) -> void:
+	var current_level: int = run_state.get_upgrade_level(stat_type)
+	var current_cost: int = run_state.get_upgrade_cost(stat_type)
+	var can_afford := (
+		tracked_player != null
+		and current_cost >= 0
+		and tracked_player.current_xirang >= current_cost
+	)
+	row.set_upgrade_state(current_level, current_cost, can_afford)
 
 
 func _refresh_stat_display() -> void:
@@ -203,6 +217,10 @@ func _on_health_changed(current: int, maximum: int) -> void:
 
 func _on_attack_speed_changed(attacks_per_second: float) -> void:
 	attack_speed_value.text = "%.2f/s" % attacks_per_second
+
+
+func _on_xirang_changed(_total: int, _added_amount: int) -> void:
+	_refresh_upgrades()
 
 
 func _on_player_died() -> void:

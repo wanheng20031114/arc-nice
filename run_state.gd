@@ -4,7 +4,6 @@ signal inventory_changed
 signal upgrade_changed
 
 const INVENTORY_CAPACITY := 20
-const UPGRADE_COST := 100
 
 enum StatType {
 	ATTACK,
@@ -18,6 +17,13 @@ const MAX_UPGRADE_LEVELS := {
 	StatType.HEALTH: 5,
 	StatType.ATTACK_SPEED: 5,
 	StatType.DODGE: 5,
+}
+
+const UPGRADE_COSTS := {
+	StatType.ATTACK: [100, 300],
+	StatType.HEALTH: [50, 75, 100, 200, 500],
+	StatType.ATTACK_SPEED: [50, 75, 100, 200, 500],
+	StatType.DODGE: [50, 75, 100, 200, 500],
 }
 
 var inventory: Array[PickupConfig] = []
@@ -93,11 +99,12 @@ func try_upgrade(stat_type: int, player: Player) -> bool:
 	var max_level: int = MAX_UPGRADE_LEVELS.get(stat_type, 0)
 	if current_level >= max_level:
 		return false
-	if player.current_xirang < UPGRADE_COST:
+	var upgrade_cost := get_upgrade_cost(stat_type)
+	if upgrade_cost < 0 or player.current_xirang < upgrade_cost:
 		return false
 
-	player.current_xirang -= UPGRADE_COST
-	player.xirang_changed.emit(player.current_xirang, -UPGRADE_COST)
+	player.current_xirang -= upgrade_cost
+	player.xirang_changed.emit(player.current_xirang, -upgrade_cost)
 	upgrade_levels[stat_type] = current_level + 1
 
 	match stat_type:
@@ -120,3 +127,14 @@ func get_upgrade_level(stat_type: int) -> int:
 
 func get_max_upgrade_level(stat_type: int) -> int:
 	return MAX_UPGRADE_LEVELS.get(stat_type, 0)
+
+
+func get_upgrade_cost(stat_type: int) -> int:
+	if not upgrade_levels.has(stat_type):
+		return -1
+
+	var current_level: int = upgrade_levels[stat_type]
+	var costs: Array = UPGRADE_COSTS.get(stat_type, [])
+	if current_level < 0 or current_level >= costs.size():
+		return -1
+	return costs[current_level]

@@ -7,7 +7,7 @@ enum EnemyType {
 	FAST_SMALL,
 	BOMBER,
 	PURPLE_BOMBER,
-	
+	GREEN_SHELLED,
 }
 
 @export_group("基础信息")

@@ -386,6 +386,7 @@ stat_name = "基础攻击力"
 stat_type = 0
 max_level = 2
 icon_texture = ExtResource("6_attack_icon")
+completed_color = Color(0.95, 0.22, 0.18, 1)
 
 [node name="HealthRow" parent="Overlay/PanelRoot/UpgradePanel" instance=ExtResource("5_upgrade_row")]
 layout_mode = 2
@@ -393,6 +394,7 @@ stat_name = "生命值上限"
 stat_type = 1
 max_level = 5
 icon_texture = ExtResource("7_health_icon")
+completed_color = Color(0.24, 0.88, 0.42, 1)
 
 [node name="SpeedRow" parent="Overlay/PanelRoot/UpgradePanel" instance=ExtResource("5_upgrade_row")]
 layout_mode = 2
@@ -400,6 +402,7 @@ stat_name = "攻击速度"
 stat_type = 2
 max_level = 5
 icon_texture = ExtResource("8_speed_icon")
+completed_color = Color(0.2, 0.72, 1, 1)
 
 [node name="DodgeRow" parent="Overlay/PanelRoot/UpgradePanel" instance=ExtResource("5_upgrade_row")]
 layout_mode = 2
@@ -407,3 +410,4 @@ stat_name = "闪避能力"
 stat_type = 3
 max_level = 5
 icon_texture = ExtResource("9_dodge_icon")
+completed_color = Color(0.66, 0.92, 0.24, 1)
