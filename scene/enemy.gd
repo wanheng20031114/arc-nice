@@ -4,7 +4,9 @@ class_name Enemy
 const DEFAULT_BULLET_DAMAGE := 1
 const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
+const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 const EXPLOSION_QUERY_MAX_RESULTS := 16
+const MAX_XIRANG_ORBS_PER_ENEMY := 4
 
 enum DeathSequenceStage {
 	NONE,
@@ -38,6 +40,7 @@ enum DeathSequenceStage {
 @onready var touch_damage_shape: CollisionShape2D = $TouchDamageArea/CollisionShape2D
 @onready var explosion_area: Area2D = $ExplosionArea
 @onready var explosion_shape: CollisionShape2D = $ExplosionArea/CollisionShape2D
+@onready var hit_particles: GPUParticles2D = $HitParticles
 @onready var hit_audio: AudioStreamPlayer2D = $HitAudio
 @onready var death_audio: AudioStreamPlayer2D = $DeathAudio
 @onready var explosion_audio: AudioStreamPlayer2D = $ExplosionAudio
@@ -91,12 +94,13 @@ func set_target_player(player: Player) -> void:
 func set_pathfinder(shared_pathfinder: Node) -> void:
 	pathfinder = shared_pathfinder
 	
-func apply_damage(amount: int) -> bool:
+func apply_damage(amount: int, impact_direction: Vector2 = Vector2.ZERO) -> bool:
 	if is_dead:
 		return false
 	if amount<=0:
 		return false
-	
+
+	_play_hit_particles(impact_direction)
 	current_health -= amount
 	
 	if current_health <= 0:
@@ -262,7 +266,7 @@ func _on_touch_damage_area_area_entered(area: Area2D) -> void:
 	if bullet == null:
 		return
 
-	var damaged := apply_damage(DEFAULT_BULLET_DAMAGE)
+	var damaged := apply_damage(DEFAULT_BULLET_DAMAGE, -bullet.direction)
 	if damaged:
 		bullet.queue_free()
 		
@@ -313,6 +317,16 @@ func _set_hurt_blink_enabled(enabled: bool) -> void:
 	var sprite_material := animated_sprite.material as ShaderMaterial
 	if sprite_material != null:
 		sprite_material.set_shader_parameter(BLINK_ENABLED_SHADER_PARAMETER, enabled)
+
+
+# 复用敌人场景中的一次性粒子节点，朝受击来源方向轻微喷散。
+func _play_hit_particles(impact_direction: Vector2) -> void:
+	if impact_direction == Vector2.ZERO:
+		return
+
+	hit_particles.rotation = impact_direction.angle()
+	hit_particles.restart()
+	hit_particles.emitting = true
 		
 	
 # 进入死亡阶段后停止碰撞，并启动统一的死亡动画流程。
@@ -330,6 +344,7 @@ func _die() -> void:
 	touch_damage_area.set_deferred("monitoring", false)
 	touch_damage_area.set_deferred("monitorable", false)
 	death_audio.play()
+	call_deferred("_drop_xirang")
 	_try_drop_pickup()
 	_start_death_sequence()  
 
@@ -495,6 +510,35 @@ func _spawn_dropped_pickup(pickup_config: PickupConfig, spawn_position: Vector2)
 	pickup_instance.config = pickup_config
 	drop_parent.add_child(pickup_instance)
 	pickup_instance.global_position = spawn_position
+
+
+func _drop_xirang() -> void:
+	if config == null:
+		return
+	if config.xirang_drop_amount <= 0:
+		return
+	if not is_instance_valid(target_player):
+		return
+
+	var drop_parent := get_parent()
+	if drop_parent == null:
+		return
+
+	var orb_count := mini(config.xirang_drop_amount, MAX_XIRANG_ORBS_PER_ENEMY)
+	var base_value := floori(float(config.xirang_drop_amount) / float(orb_count))
+	var remainder := config.xirang_drop_amount % orb_count
+
+	for orb_index in range(orb_count):
+		var drop := XIRANG_DROP_SCENE.instantiate() as XirangDrop
+		if drop == null:
+			continue
+
+		var orb_value := base_value + (1 if orb_index < remainder else 0)
+		var angle := random_generator.randf_range(0.0, TAU)
+		var distance := random_generator.randf_range(8.0, 18.0)
+		var landing_offset := Vector2.RIGHT.rotated(angle) * distance
+		drop_parent.add_child(drop)
+		drop.setup(orb_value, target_player, global_position, landing_offset)
 
 
 # 死亡动画播放完成后销毁敌人实例。

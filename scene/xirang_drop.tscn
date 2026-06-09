@@ -1,0 +1,28 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scene/xirang_drop.gd" id="1_drop"]
+[ext_resource type="Resource" path="res://resources/config/xirang_drop.tres" id="2_config"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_amount"]
+font_size = 9
+font_color = Color(0.53, 0.92, 0.44, 1)
+outline_size = 2
+outline_color = Color(0.02, 0.08, 0.04, 0.9)
+
+[node name="XirangDrop" type="Node2D"]
+script = ExtResource("1_drop")
+config = ExtResource("2_config")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+scale = Vector2(0.25, 0.25)
+
+[node name="AmountLabel" type="Label" parent="."]
+offset_left = -18.0
+offset_top = -13.0
+offset_right = 18.0
+offset_bottom = -1.0
+mouse_filter = 2
+text = "+1"
+label_settings = SubResource("LabelSettings_amount")
+horizontal_alignment = 1

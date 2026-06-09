@@ -7,6 +7,7 @@
 [ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickup_spiral.tres" id="4_4kq6o"]
 [ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickup_tenpura.tres" id="4_rwna3"]
 [ext_resource type="Script" uid="uid://cxt041wfb1usj" path="res://resources/config/enemy_config.gd" id="5_7pxth"]
+[ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickup_health.tres" id="7_4kq6o"]
 
 [resource]
 script = ExtResource("5_7pxth")
@@ -19,5 +20,6 @@ enemy_frames = ExtResource("1_dmrur")
 explode_on_death = true
 explosion_damage = 2
 explosion_radius = 30.0
+xirang_drop_amount = 2
 pickup_drop_chance = 0.4
 metadata/_custom_type_script = "uid://cxt041wfb1usj"

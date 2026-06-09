@@ -2,11 +2,14 @@ extends CharacterBody2D
 
 class_name Player
 
+signal xirang_changed(total: int, added_amount: int)
+
 @export var move_speed: float = 120.0
 @export var max_health: int = 5
 @export var invincibility_duration: float = 1.0
 
 var current_health: int = 0
+var current_xirang: int = 0
 var invincibility_time_left: float = 0.0
 var is_dead: bool = false
 
@@ -23,6 +26,7 @@ var is_dead: bool = false
 @onready var death_audio: AudioStreamPlayer2D = $DeathAudio
 @onready var powerup_audio: AudioStreamPlayer2D = $PowerupAudio
 @onready var secret_audio: AudioStreamPlayer2D = $SecretAudio
+@onready var xirang_pickup_audio: AudioStreamPlayer2D = $XirangPickupAudio
 @onready var health_bar: Control = $HealthBar
 
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
@@ -59,6 +63,7 @@ var footstep_time_left: float = 0.0
 # 节点首次进入场景树时的初始化逻辑
 func _ready() -> void:
 	current_health = maxi(max_health, 1)
+	current_xirang = 0
 	shooting_timer.one_shot = true
 	shooting_timer.wait_time = _get_effective_fire_interval()
 	_set_hurt_blink_enabled(false)
@@ -191,6 +196,23 @@ func apply_damage(amount: int) -> bool:
 # 获取当前生命值
 func get_current_health() -> int:
 	return current_health
+
+
+func get_xirang() -> int:
+	return current_xirang
+
+
+func add_xirang(amount: int) -> bool:
+	if is_dead:
+		return false
+	if amount <= 0:
+		return false
+
+	current_xirang += amount
+	xirang_changed.emit(current_xirang, amount)
+	xirang_pickup_audio.pitch_scale = randf_range(1.12, 1.26)
+	xirang_pickup_audio.play()
+	return true
 
 
 func _try_heal(amount: int) -> bool:
@@ -408,6 +430,9 @@ func _die() -> void:
 	armed_effect_sprite.stop()
 	footstep_audio.stop()
 	death_audio.play()
+	# 玩家死亡时将血条归零并隐藏
+	health_bar.set_health(0, max_health)
+	health_bar.visible = false
 	if body_sprite.sprite_frames != null and body_sprite.sprite_frames.has_animation(&"death"):
 		body_sprite.play(&"death")
 

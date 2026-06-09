@@ -1,10 +1,11 @@
-[gd_scene format=3 uid="uid://ccvfm2ck2jkky"]
+[gd_scene load_steps=13 format=3 uid="uid://ccvfm2ck2jkky"]
 
 [ext_resource type="Shader" uid="uid://b47uq42hh5vq1" path="res://scene/blink.gdshader" id="1_h08p8"]
 [ext_resource type="Script" uid="uid://dui7s0vx8ttvd" path="res://scene/enemy.gd" id="2_f87vc"]
 [ext_resource type="AudioStream" uid="uid://4xnlqa7gq1qw" path="res://resources/audio/cowboy_monsterhit.wav" id="3_v78ya"]
 [ext_resource type="AudioStream" uid="uid://dtcpsyjgcfb6m" path="res://resources/audio/cowboy_monsterdie.wav" id="4_f87vc"]
 [ext_resource type="AudioStream" uid="uid://bogl46dtqkano" path="res://resources/audio/cowboy_explosion.wav" id="5_h08p8"]
+[ext_resource type="Texture2D" uid="uid://bg46042bpug12" path="res://resources/texture/道具ui.png" id="6_hit_texture"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_f87vc"]
 resource_local_to_scene = true
@@ -24,6 +25,20 @@ radius = 6.0
 [sub_resource type="CircleShape2D" id="CircleShape2D_f87vc"]
 resource_local_to_scene = true
 radius = 12.0
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_hit_particle"]
+atlas = ExtResource("6_hit_texture")
+region = Rect2(22, 23, 4, 4)
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_hit"]
+direction = Vector3(1, 0, 0)
+spread = 32.0
+initial_velocity_min = 34.0
+initial_velocity_max = 58.0
+gravity = Vector3(0, 42, 0)
+scale_min = 0.3
+scale_max = 0.55
+color = Color(0.92, 0.76, 0.38, 1)
 
 [node name="Enemy" type="CharacterBody2D" unique_id=2066499932]
 material = SubResource("ShaderMaterial_f87vc")
@@ -49,6 +64,17 @@ collision_mask = 6
 [node name="CollisionShape2D" type="CollisionShape2D" parent="ExplosionArea" unique_id=1610569664]
 shape = SubResource("CircleShape2D_f87vc")
 debug_color = Color(0.9764706, 0.6, 0.69803923, 0.41960785)
+
+[node name="HitParticles" type="GPUParticles2D" parent="."]
+z_index = 2
+emitting = false
+amount = 5
+lifetime = 0.18
+one_shot = true
+explosiveness = 1.0
+local_coords = false
+texture = SubResource("AtlasTexture_hit_particle")
+process_material = SubResource("ParticleProcessMaterial_hit")
 
 [node name="HitAudio" type="AudioStreamPlayer2D" parent="."]
 stream = ExtResource("3_v78ya")

@@ -45,6 +45,8 @@ enum EnemyType {
 
 
 @export_group("掉落")
+# 敌人死亡时必定掉落的息壤晶体总值；0 表示不掉落。
+@export_range(0, 999, 1, "or_greater") var xirang_drop_amount: int = 1
 # 敌人死亡后尝试掉落道具的概率。
 @export_range(0.0, 1.0, 0.01) var pickup_drop_chance: float = 0.3
 # 当前敌人允许掉落的道具配置列表；为空时表示该敌人不会掉落道具。

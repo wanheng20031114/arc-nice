@@ -37,6 +37,7 @@ const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/enemy_spawn_effect.tscn")
 @onready var grid_pathfinder: Node = $GridPathfinder
 @onready var music_player: AudioStreamPlayer = $MusicPlayer
 @onready var enemy_spawn_audio: AudioStreamPlayer = $EnemySpawnAudio
+@onready var currency_hud: CurrencyHUD = $CurrencyHUD
 
 # 随机数生成器，专门用于挑选出生点和敌人配置。
 var random_generator: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -58,6 +59,7 @@ func _ready() -> void:
 	_collect_enemy_spawn_points()
 	_collect_enemy_configs()
 	_configure_enemy_spawn_timer()
+	currency_hud.bind_player(player)
 	_update_music()
 	_spawn_initial_enemies()
 	_start_enemy_spawn_timer()

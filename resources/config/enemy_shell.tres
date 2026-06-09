@@ -7,6 +7,7 @@
 [ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickup_spiral.tres" id="4_dglay"]
 [ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickup_tenpura.tres" id="4_r0afs"]
 [ext_resource type="Script" uid="uid://cxt041wfb1usj" path="res://resources/config/enemy_config.gd" id="5_gt3et"]
+[ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickup_health.tres" id="7_dglay"]
 
 [resource]
 script = ExtResource("5_gt3et")
@@ -16,5 +17,6 @@ max_health = 8
 move_speed = 15.0
 collision_radius = 7.0
 enemy_frames = ExtResource("1_isqks")
+xirang_drop_amount = 3
 pickup_drop_chance = 0.5
 metadata/_custom_type_script = "uid://cxt041wfb1usj"
