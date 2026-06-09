@@ -8,13 +8,13 @@ signal upgrade_requested(stat_type: int)
 @export var max_level: int = 5
 @export var icon_texture: Texture2D
 
-@onready var icon: TextureRect = $Content/Icon
-@onready var name_label: Label = $Content/InfoColumn/NameLabel
-@onready var progress_container: HBoxContainer = $Content/InfoColumn/ProgressRow/BlockContainer
-@onready var level_label: Label = $Content/InfoColumn/ProgressRow/LevelLabel
-@onready var cost_icon: TextureRect = $Content/CostColumn/CostIcon
-@onready var cost_label: Label = $Content/CostColumn/CostLabel
-@onready var upgrade_button: Button = $Content/UpgradeButton
+@onready var icon: TextureRect = $Margin/Content/IconFrame/IconMargin/Icon
+@onready var name_label: Label = $Margin/Content/InfoColumn/NameLabel
+@onready var progress_container: HBoxContainer = $Margin/Content/InfoColumn/ProgressRow/BlockContainer
+@onready var level_label: Label = $Margin/Content/InfoColumn/ProgressRow/LevelLabel
+@onready var cost_icon: TextureRect = $Margin/Content/ActionColumn/CostColumn/CostIcon
+@onready var cost_label: Label = $Margin/Content/ActionColumn/CostColumn/CostLabel
+@onready var upgrade_button: Button = $Margin/Content/ActionColumn/UpgradeButton
 
 var progress_blocks: Array[ColorRect] = []
 
@@ -48,15 +48,10 @@ func set_level(current_level: int) -> void:
 		var block := progress_blocks[block_index]
 		if block_index >= max_level:
 			continue
-		var block_material := block.material as ShaderMaterial
 		if block_index < current_level:
-			block.color = Color(0.35, 0.85, 0.7, 1.0)
-			if block_material != null:
-				block_material.set_shader_parameter("glow_enabled", true)
+			block.color = Color(0.33, 0.8, 0.68, 1.0)
 		else:
-			block.color = Color(0.18, 0.2, 0.22, 0.7)
-			if block_material != null:
-				block_material.set_shader_parameter("glow_enabled", false)
+			block.color = Color(0.115, 0.13, 0.135, 1.0)
 
 	# 满级时禁用升级按钮
 	upgrade_button.disabled = current_level >= max_level

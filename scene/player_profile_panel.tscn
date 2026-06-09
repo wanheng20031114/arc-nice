@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=20 format=3]
 
 [ext_resource type="Script" path="res://scene/player_profile_panel.gd" id="1_panel"]
 [ext_resource type="Texture2D" path="res://resources/texture/player_profile_background.png" id="2_background"]
@@ -10,6 +10,10 @@
 [ext_resource type="Texture2D" path="res://resources/texture/upgrade_speed.png" id="8_speed_icon"]
 [ext_resource type="Texture2D" path="res://resources/texture/upgrade_dodge.png" id="9_dodge_icon"]
 [ext_resource type="Texture2D" path="res://resources/texture/xirang_icon.png" id="10_xirang_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/upgrade_panel_surface.png" id="11_upgrade_surface"]
+[ext_resource type="Texture2D" path="res://resources/texture/profile_tab_unselected.png" id="12_tab_unselected"]
+[ext_resource type="Texture2D" path="res://resources/texture/profile_tab_hovered.png" id="13_tab_hovered"]
+[ext_resource type="Texture2D" path="res://resources/texture/profile_tab_selected.png" id="14_tab_selected"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_close"]
 
@@ -45,6 +49,39 @@ font_size = 20
 font_color = Color(0.45, 0.86, 0.73, 1)
 outline_size = 2
 outline_color = Color(0.07, 0.07, 0.065, 0.9)
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_tab_unselected"]
+texture = ExtResource("12_tab_unselected")
+texture_margin_left = 8.0
+texture_margin_top = 8.0
+texture_margin_right = 8.0
+texture_margin_bottom = 8.0
+content_margin_left = 20.0
+content_margin_top = 8.0
+content_margin_right = 20.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_tab_hovered"]
+texture = ExtResource("13_tab_hovered")
+texture_margin_left = 8.0
+texture_margin_top = 8.0
+texture_margin_right = 8.0
+texture_margin_bottom = 8.0
+content_margin_left = 20.0
+content_margin_top = 8.0
+content_margin_right = 20.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_tab_selected"]
+texture = ExtResource("14_tab_selected")
+texture_margin_left = 8.0
+texture_margin_top = 8.0
+texture_margin_right = 8.0
+texture_margin_bottom = 8.0
+content_margin_left = 20.0
+content_margin_top = 8.0
+content_margin_right = 20.0
+content_margin_bottom = 8.0
 
 [node name="PlayerProfilePanel" type="CanvasLayer"]
 layer = 20
@@ -201,27 +238,25 @@ label_settings = SubResource("LabelSettings_value")
 horizontal_alignment = 2
 vertical_alignment = 1
 
-[node name="TabBar" type="HBoxContainer" parent="Overlay/PanelRoot"]
+[node name="TabBar" type="TabBar" parent="Overlay/PanelRoot"]
+texture_filter = 1
 layout_mode = 0
-offset_left = 332.0
-offset_top = 68.0
-offset_right = 560.0
-offset_bottom = 102.0
-theme_override_constants/separation = 0
-
-[node name="BagTabButton" type="Button" parent="Overlay/PanelRoot/TabBar"]
-custom_minimum_size = Vector2(100, 34)
-layout_mode = 2
+offset_left = 294.0
+offset_top = 24.0
+offset_right = 526.0
+offset_bottom = 66.0
 mouse_default_cursor_shape = 2
-theme_override_font_sizes/font_size = 17
-text = "背包"
-
-[node name="UpgradeTabButton" type="Button" parent="Overlay/PanelRoot/TabBar"]
-custom_minimum_size = Vector2(100, 34)
-layout_mode = 2
-mouse_default_cursor_shape = 2
-theme_override_font_sizes/font_size = 17
-text = "升级"
+theme_override_colors/font_selected_color = Color(0.45, 0.93, 0.8, 1)
+theme_override_colors/font_unselected_color = Color(0.78, 0.78, 0.72, 1)
+theme_override_colors/font_hovered_color = Color(0.93, 0.9, 0.8, 1)
+theme_override_font_sizes/font_size = 18
+theme_override_styles/tab_unselected = SubResource("StyleBoxTexture_tab_unselected")
+theme_override_styles/tab_hovered = SubResource("StyleBoxTexture_tab_hovered")
+theme_override_styles/tab_selected = SubResource("StyleBoxTexture_tab_selected")
+theme_override_styles/tab_focus = SubResource("StyleBoxTexture_tab_selected")
+tab_count = 2
+tab_0/title = "背包"
+tab_1/title = "升级"
 
 [node name="InventoryGrid" type="GridContainer" parent="Overlay/PanelRoot"]
 layout_mode = 0
@@ -313,20 +348,37 @@ slot_index = 18
 layout_mode = 2
 slot_index = 19
 
+[node name="UpgradeSurface" type="NinePatchRect" parent="Overlay/PanelRoot"]
+visible = false
+texture_filter = 1
+layout_mode = 0
+offset_left = 292.0
+offset_top = 70.0
+offset_right = 710.0
+offset_bottom = 514.0
+mouse_filter = 2
+texture = ExtResource("11_upgrade_surface")
+patch_margin_left = 8
+patch_margin_top = 8
+patch_margin_right = 8
+patch_margin_bottom = 8
+
 [node name="UpgradePanel" type="VBoxContainer" parent="Overlay/PanelRoot"]
 visible = false
 layout_mode = 0
-offset_left = 308.0
-offset_top = 110.0
-offset_right = 695.0
-offset_bottom = 500.0
-theme_override_constants/separation = 6
+offset_left = 311.0
+offset_top = 88.0
+offset_right = 691.0
+offset_bottom = 496.0
+theme_override_constants/separation = 8
 
 [node name="CostHint" type="Label" parent="Overlay/PanelRoot/UpgradePanel"]
+custom_minimum_size = Vector2(0, 24)
 layout_mode = 2
 theme_override_font_sizes/font_size = 14
 theme_override_colors/font_color = Color(0.65, 0.68, 0.62, 1)
-text = "每次升级消耗 100 息壤"
+text = "选择属性并消耗息壤进行升级"
+vertical_alignment = 1
 
 [node name="AttackRow" parent="Overlay/PanelRoot/UpgradePanel" instance=ExtResource("5_upgrade_row")]
 layout_mode = 2

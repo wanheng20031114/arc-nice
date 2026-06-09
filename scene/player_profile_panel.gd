@@ -3,12 +3,6 @@ class_name PlayerProfilePanel
 
 const DESIGN_SIZE := Vector2(724.0, 543.0)
 
-# 标签页高亮样式颜色
-const TAB_ACTIVE_BG := Color(0.08, 0.28, 0.27, 0.28)
-const TAB_ACTIVE_BORDER := Color(0.42, 0.85, 0.75, 0.9)
-const TAB_INACTIVE_BG := Color(0.1, 0.11, 0.12, 0.6)
-const TAB_INACTIVE_BORDER := Color(0.25, 0.27, 0.29, 0.5)
-
 @onready var overlay: Control = $Overlay
 @onready var panel_root: Control = $Overlay/PanelRoot
 @onready var close_button: Button = $Overlay/PanelRoot/CloseButton
@@ -18,9 +12,9 @@ const TAB_INACTIVE_BORDER := Color(0.25, 0.27, 0.29, 0.5)
 @onready var attack_speed_value: Label = $Overlay/PanelRoot/AttackSpeedValue
 @onready var method_value: Label = $Overlay/PanelRoot/MethodValue
 @onready var inventory_grid: GridContainer = $Overlay/PanelRoot/InventoryGrid
+@onready var upgrade_surface: NinePatchRect = $Overlay/PanelRoot/UpgradeSurface
 @onready var upgrade_panel: VBoxContainer = $Overlay/PanelRoot/UpgradePanel
-@onready var bag_tab_button: Button = $Overlay/PanelRoot/TabBar/BagTabButton
-@onready var upgrade_tab_button: Button = $Overlay/PanelRoot/TabBar/UpgradeTabButton
+@onready var tab_bar: TabBar = $Overlay/PanelRoot/TabBar
 @onready var attack_row: UpgradeRow = $Overlay/PanelRoot/UpgradePanel/AttackRow
 @onready var health_row: UpgradeRow = $Overlay/PanelRoot/UpgradePanel/HealthRow
 @onready var speed_row: UpgradeRow = $Overlay/PanelRoot/UpgradePanel/SpeedRow
@@ -31,10 +25,6 @@ var tracked_player: Player = null
 var slots: Array[InventorySlot] = []
 var selected_slot_index := -1
 var current_tab := 0  # 0 = 背包, 1 = 升级
-
-# 标签页的 StyleBox 缓存，避免每次切换都创建
-var _tab_style_active: StyleBoxFlat = null
-var _tab_style_inactive: StyleBoxFlat = null
 
 
 func _ready() -> void:
@@ -47,9 +37,7 @@ func _ready() -> void:
 	run_state.inventory_changed.connect(_refresh_inventory)
 	run_state.upgrade_changed.connect(_refresh_upgrades)
 
-	# 标签页按钮
-	bag_tab_button.pressed.connect(_switch_to_bag_tab)
-	upgrade_tab_button.pressed.connect(_switch_to_upgrade_tab)
+	tab_bar.tab_changed.connect(_on_tab_changed)
 
 	# 升级行信号
 	attack_row.upgrade_requested.connect(_on_upgrade_requested)
@@ -64,8 +52,6 @@ func _ready() -> void:
 	speed_row.cost_icon.texture = xirang_icon
 	dodge_row.cost_icon.texture = xirang_icon
 
-	# 初始化标签页样式
-	_init_tab_styles()
 	_apply_tab_state()
 
 
@@ -237,67 +223,22 @@ func _on_upgrade_requested(stat_type: int) -> void:
 
 # ──── 标签页切换 ────
 
-func _switch_to_bag_tab() -> void:
+func _on_tab_changed(tab_index: int) -> void:
+	if tab_index == current_tab:
+		return
+	current_tab = tab_index
+	_apply_tab_state()
 	if current_tab == 0:
-		return
-	current_tab = 0
-	_apply_tab_state()
-	_focus_first_available_slot()
-
-
-func _switch_to_upgrade_tab() -> void:
-	if current_tab == 1:
-		return
-	current_tab = 1
-	_apply_tab_state()
-	_refresh_upgrades()
+		_focus_first_available_slot()
+	else:
+		_refresh_upgrades()
 
 
 func _apply_tab_state() -> void:
 	inventory_grid.visible = current_tab == 0
+	upgrade_surface.visible = current_tab == 1
 	upgrade_panel.visible = current_tab == 1
-
-	_set_tab_button_style(bag_tab_button, current_tab == 0)
-	_set_tab_button_style(upgrade_tab_button, current_tab == 1)
-
-
-func _init_tab_styles() -> void:
-	_tab_style_active = StyleBoxFlat.new()
-	_tab_style_active.bg_color = TAB_ACTIVE_BG
-	_tab_style_active.border_width_left = 1
-	_tab_style_active.border_width_top = 1
-	_tab_style_active.border_width_right = 1
-	_tab_style_active.border_width_bottom = 1
-	_tab_style_active.border_color = TAB_ACTIVE_BORDER
-	_tab_style_active.corner_radius_top_left = 4
-	_tab_style_active.corner_radius_top_right = 4
-	_tab_style_active.corner_radius_bottom_right = 4
-	_tab_style_active.corner_radius_bottom_left = 4
-
-	_tab_style_inactive = StyleBoxFlat.new()
-	_tab_style_inactive.bg_color = TAB_INACTIVE_BG
-	_tab_style_inactive.border_width_left = 1
-	_tab_style_inactive.border_width_top = 1
-	_tab_style_inactive.border_width_right = 1
-	_tab_style_inactive.border_width_bottom = 1
-	_tab_style_inactive.border_color = TAB_INACTIVE_BORDER
-	_tab_style_inactive.corner_radius_top_left = 4
-	_tab_style_inactive.corner_radius_top_right = 4
-	_tab_style_inactive.corner_radius_bottom_right = 4
-	_tab_style_inactive.corner_radius_bottom_left = 4
-
-
-func _set_tab_button_style(button: Button, is_active: bool) -> void:
-	var style := _tab_style_active if is_active else _tab_style_inactive
-	button.add_theme_stylebox_override("normal", style)
-	button.add_theme_stylebox_override("hover", _tab_style_active)
-	button.add_theme_stylebox_override("pressed", _tab_style_active)
-	button.add_theme_stylebox_override("focus", _tab_style_active)
-
-	if is_active:
-		button.add_theme_color_override("font_color", TAB_ACTIVE_BORDER)
-	else:
-		button.remove_theme_color_override("font_color")
+	tab_bar.current_tab = current_tab
 
 
 func _update_panel_transform() -> void:

@@ -1,191 +1,195 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scene/upgrade_row.gd" id="1_row"]
-[ext_resource type="Shader" path="res://scene/glow.gdshader" id="2_glow"]
-[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_font"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_row_bg"]
-bg_color = Color(0.12, 0.13, 0.14, 0.85)
+bg_color = Color(0.185, 0.185, 0.17, 0.97)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 2
+border_color = Color(0.34, 0.325, 0.285, 0.95)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+shadow_color = Color(0.02, 0.025, 0.025, 0.55)
+shadow_size = 2
+shadow_offset = Vector2(0, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_icon_bg"]
+bg_color = Color(0.11, 0.12, 0.115, 0.82)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
-border_color = Color(0.22, 0.24, 0.26, 0.6)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
+border_color = Color(0.29, 0.285, 0.255, 0.9)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_normal"]
-bg_color = Color(0.15, 0.17, 0.19, 0.9)
+bg_color = Color(0.145, 0.16, 0.155, 1)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
-border_color = Color(0.35, 0.38, 0.4, 0.8)
+border_color = Color(0.36, 0.39, 0.37, 1)
 corner_radius_top_left = 3
 corner_radius_top_right = 3
 corner_radius_bottom_right = 3
 corner_radius_bottom_left = 3
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hover"]
-bg_color = Color(0.12, 0.42, 0.38, 0.9)
+bg_color = Color(0.12, 0.33, 0.3, 1)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
-border_color = Color(0.42, 0.85, 0.75, 0.9)
+border_color = Color(0.4, 0.82, 0.71, 1)
 corner_radius_top_left = 3
 corner_radius_top_right = 3
 corner_radius_bottom_right = 3
 corner_radius_bottom_left = 3
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_b0"]
-resource_local_to_scene = true
-shader = ExtResource("2_glow")
-shader_parameter/glow_enabled = false
-shader_parameter/glow_color = Color(0.35, 0.85, 0.7, 1.0)
-shader_parameter/glow_speed = 2.5
-shader_parameter/glow_min = 0.25
-shader_parameter/glow_max = 0.75
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_b1"]
-resource_local_to_scene = true
-shader = ExtResource("2_glow")
-shader_parameter/glow_enabled = false
-shader_parameter/glow_color = Color(0.35, 0.85, 0.7, 1.0)
-shader_parameter/glow_speed = 2.5
-shader_parameter/glow_min = 0.25
-shader_parameter/glow_max = 0.75
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_b2"]
-resource_local_to_scene = true
-shader = ExtResource("2_glow")
-shader_parameter/glow_enabled = false
-shader_parameter/glow_color = Color(0.35, 0.85, 0.7, 1.0)
-shader_parameter/glow_speed = 2.5
-shader_parameter/glow_min = 0.25
-shader_parameter/glow_max = 0.75
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_b3"]
-resource_local_to_scene = true
-shader = ExtResource("2_glow")
-shader_parameter/glow_enabled = false
-shader_parameter/glow_color = Color(0.35, 0.85, 0.7, 1.0)
-shader_parameter/glow_speed = 2.5
-shader_parameter/glow_min = 0.25
-shader_parameter/glow_max = 0.75
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_b4"]
-resource_local_to_scene = true
-shader = ExtResource("2_glow")
-shader_parameter/glow_enabled = false
-shader_parameter/glow_color = Color(0.35, 0.85, 0.7, 1.0)
-shader_parameter/glow_speed = 2.5
-shader_parameter/glow_min = 0.25
-shader_parameter/glow_max = 0.75
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_disabled"]
+bg_color = Color(0.12, 0.125, 0.12, 0.8)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.24, 0.245, 0.23, 0.8)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
 
 [node name="UpgradeRow" type="PanelContainer"]
-custom_minimum_size = Vector2(355, 70)
+custom_minimum_size = Vector2(380, 78)
 theme_override_styles/panel = SubResource("StyleBoxFlat_row_bg")
 script = ExtResource("1_row")
 
-[node name="Content" type="HBoxContainer" parent="."]
+[node name="Margin" type="MarginContainer" parent="."]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 7
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 7
 
-[node name="Icon" type="TextureRect" parent="Content"]
-texture_filter = 1
-custom_minimum_size = Vector2(56, 56)
+[node name="Content" type="HBoxContainer" parent="Margin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="IconFrame" type="PanelContainer" parent="Margin/Content"]
+custom_minimum_size = Vector2(52, 52)
 layout_mode = 2
 size_flags_vertical = 4
+theme_override_styles/panel = SubResource("StyleBoxFlat_icon_bg")
+
+[node name="IconMargin" type="MarginContainer" parent="Margin/Content/IconFrame"]
+layout_mode = 2
+theme_override_constants/margin_left = 5
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_right = 5
+theme_override_constants/margin_bottom = 5
+
+[node name="Icon" type="TextureRect" parent="Margin/Content/IconFrame/IconMargin"]
+texture_filter = 1
+layout_mode = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="InfoColumn" type="VBoxContainer" parent="Content"]
+[node name="InfoColumn" type="VBoxContainer" parent="Margin/Content"]
+custom_minimum_size = Vector2(170, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_stretch_ratio = 1.0
-theme_override_constants/separation = 4
+theme_override_constants/separation = 7
+alignment = 1
 
-[node name="NameLabel" type="Label" parent="Content/InfoColumn"]
+[node name="NameLabel" type="Label" parent="Margin/Content/InfoColumn"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.88, 0.88, 0.82, 1)
+theme_override_font_sizes/font_size = 17
 text = "属性名"
 vertical_alignment = 1
 
-[node name="ProgressRow" type="HBoxContainer" parent="Content/InfoColumn"]
+[node name="ProgressRow" type="HBoxContainer" parent="Margin/Content/InfoColumn"]
 layout_mode = 2
-theme_override_constants/separation = 6
+theme_override_constants/separation = 7
 
-[node name="BlockContainer" type="HBoxContainer" parent="Content/InfoColumn/ProgressRow"]
+[node name="BlockContainer" type="HBoxContainer" parent="Margin/Content/InfoColumn/ProgressRow"]
 layout_mode = 2
 theme_override_constants/separation = 3
 
-[node name="Block0" type="ColorRect" parent="Content/InfoColumn/ProgressRow/BlockContainer"]
-material = SubResource("ShaderMaterial_b0")
-custom_minimum_size = Vector2(18, 14)
+[node name="Block0" type="ColorRect" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer"]
+custom_minimum_size = Vector2(16, 13)
 layout_mode = 2
-color = Color(0.18, 0.2, 0.22, 0.7)
+color = Color(0.115, 0.13, 0.135, 1)
 
-[node name="Block1" type="ColorRect" parent="Content/InfoColumn/ProgressRow/BlockContainer"]
-material = SubResource("ShaderMaterial_b1")
-custom_minimum_size = Vector2(18, 14)
+[node name="Block1" type="ColorRect" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer"]
+custom_minimum_size = Vector2(16, 13)
 layout_mode = 2
-color = Color(0.18, 0.2, 0.22, 0.7)
+color = Color(0.115, 0.13, 0.135, 1)
 
-[node name="Block2" type="ColorRect" parent="Content/InfoColumn/ProgressRow/BlockContainer"]
-material = SubResource("ShaderMaterial_b2")
-custom_minimum_size = Vector2(18, 14)
+[node name="Block2" type="ColorRect" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer"]
+custom_minimum_size = Vector2(16, 13)
 layout_mode = 2
-color = Color(0.18, 0.2, 0.22, 0.7)
+color = Color(0.115, 0.13, 0.135, 1)
 
-[node name="Block3" type="ColorRect" parent="Content/InfoColumn/ProgressRow/BlockContainer"]
-material = SubResource("ShaderMaterial_b3")
-custom_minimum_size = Vector2(18, 14)
+[node name="Block3" type="ColorRect" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer"]
+custom_minimum_size = Vector2(16, 13)
 layout_mode = 2
-color = Color(0.18, 0.2, 0.22, 0.7)
+color = Color(0.115, 0.13, 0.135, 1)
 
-[node name="Block4" type="ColorRect" parent="Content/InfoColumn/ProgressRow/BlockContainer"]
-material = SubResource("ShaderMaterial_b4")
-custom_minimum_size = Vector2(18, 14)
+[node name="Block4" type="ColorRect" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer"]
+custom_minimum_size = Vector2(16, 13)
 layout_mode = 2
-color = Color(0.18, 0.2, 0.22, 0.7)
+color = Color(0.115, 0.13, 0.135, 1)
 
-[node name="LevelLabel" type="Label" parent="Content/InfoColumn/ProgressRow"]
+[node name="LevelLabel" type="Label" parent="Margin/Content/InfoColumn/ProgressRow"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 14
-theme_override_colors/font_color = Color(0.65, 0.68, 0.62, 1)
+theme_override_colors/font_color = Color(0.62, 0.64, 0.59, 1)
+theme_override_font_sizes/font_size = 13
 text = "0/5"
 vertical_alignment = 1
 
-[node name="CostColumn" type="HBoxContainer" parent="Content"]
+[node name="ActionColumn" type="VBoxContainer" parent="Margin/Content"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 4
+alignment = 1
+
+[node name="CostColumn" type="HBoxContainer" parent="Margin/Content/ActionColumn"]
 layout_mode = 2
 theme_override_constants/separation = 3
 alignment = 1
 
-[node name="CostIcon" type="TextureRect" parent="Content/CostColumn"]
-custom_minimum_size = Vector2(22, 22)
+[node name="CostIcon" type="TextureRect" parent="Margin/Content/ActionColumn/CostColumn"]
+texture_filter = 1
+custom_minimum_size = Vector2(18, 18)
 layout_mode = 2
 size_flags_vertical = 4
 expand_mode = 1
 stretch_mode = 5
 
-[node name="CostLabel" type="Label" parent="Content/CostColumn"]
+[node name="CostLabel" type="Label" parent="Margin/Content/ActionColumn/CostColumn"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
 theme_override_colors/font_color = Color(0.92, 0.82, 0.35, 1)
+theme_override_font_sizes/font_size = 14
 text = "100"
 vertical_alignment = 1
 
-[node name="UpgradeButton" type="Button" parent="Content"]
-custom_minimum_size = Vector2(52, 32)
+[node name="UpgradeButton" type="Button" parent="Margin/Content/ActionColumn"]
+custom_minimum_size = Vector2(68, 27)
 layout_mode = 2
-size_flags_vertical = 4
 mouse_default_cursor_shape = 2
+theme_override_colors/font_disabled_color = Color(0.42, 0.43, 0.4, 1)
 theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
 theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_hover")
 theme_override_styles/focus = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
 text = "升级"
