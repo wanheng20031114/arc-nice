@@ -107,6 +107,7 @@ quit={
 2d_render/layer_5="Bullet"
 2d_render/layer_6="Pickup"
 2d_render/layer_7="Explosion"
+2d_render/layer_8="EnemyProjectile"
 2d_physics/layer_1="World"
 2d_physics/layer_2="Player"
 2d_physics/layer_3="EnemyBody"
@@ -114,6 +115,7 @@ quit={
 2d_physics/layer_5="Bullet"
 2d_physics/layer_6="Pickup"
 2d_physics/layer_7="Explosion"
+2d_physics/layer_8="EnemyProjectile"
 
 [physics]
 

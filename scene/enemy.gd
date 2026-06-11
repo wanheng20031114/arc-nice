@@ -6,6 +6,12 @@ const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 const EXPLOSION_QUERY_MAX_RESULTS := 16
 const MAX_XIRANG_ORBS_PER_ENEMY := 4
+const WORLD_COLLISION_MASK := 1
+
+enum CombatState {
+	CHASE,
+	ATTACK,
+}
 
 enum DeathSequenceStage {
 	NONE,
@@ -43,6 +49,7 @@ enum DeathSequenceStage {
 @onready var hit_audio: AudioStreamPlayer2D = $HitAudio
 @onready var death_audio: AudioStreamPlayer2D = $DeathAudio
 @onready var explosion_audio: AudioStreamPlayer2D = $ExplosionAudio
+@onready var attack_audio: AudioStreamPlayer2D = $AttackAudio
 
 # 当前追踪的玩家对象，由敌人管理器在生成时注入。
 var target_player: Player = null
@@ -68,6 +75,12 @@ var random_generator: RandomNumberGenerator = RandomNumberGenerator.new()
 var current_path: PackedVector2Array = PackedVector2Array()
 var current_path_index: int = 0
 var path_refresh_time_left: float = 0.0
+# 当前追逐或攻击状态。
+var combat_state: CombatState = CombatState.CHASE
+# 远程攻击冷却剩余时间。
+var attack_cooldown_left: float = 0.0
+# 当前攻击动画是否已经触发过发射帧。
+var attack_has_fired: bool = false
 
 
 # 初始化配置、信号和默认动画。
@@ -77,6 +90,7 @@ func _ready() -> void:
 	touch_damage_area.body_exited.connect(_on_touch_damage_area_body_exited)
 	touch_damage_area.area_entered.connect(_on_touch_damage_area_area_entered)
 	animated_sprite.animation_finished.connect(_on_animated_sprite_animation_finished)
+	animated_sprite.frame_changed.connect(_on_animated_sprite_frame_changed)
 	_apply_config()
 
 
@@ -114,6 +128,7 @@ func apply_damage(amount: int, impact_direction: Vector2 = Vector2.ZERO) -> bool
 func _physics_process(delta: float) -> void:
 	_update_hurt_blink(delta)
 	_update_touch_damage(delta)
+	_update_attack_cooldown(delta)
 
 	if is_dead:
 		velocity = Vector2.ZERO
@@ -122,6 +137,14 @@ func _physics_process(delta: float) -> void:
 	if not is_instance_valid(target_player):
 		velocity = Vector2.ZERO
 		move_and_slide()
+		return
+
+	if combat_state == CombatState.ATTACK:
+		velocity = Vector2.ZERO
+		return
+
+	if _try_start_ranged_attack():
+		velocity = Vector2.ZERO
 		return
 
 	var move_direction := _get_navigation_move_direction(delta)
@@ -135,8 +158,12 @@ func _apply_config() -> void:
 		return
 
 	current_health = config.max_health
+	combat_state = CombatState.CHASE
+	attack_cooldown_left = 0.0
+	attack_has_fired = false
 	_apply_collision_radius(config.collision_radius)
 	_apply_explosion_radius(config.explosion_radius)
+	attack_audio.stream = config.attack_audio_stream
 
 	if config.enemy_frames != null:
 		animated_sprite.sprite_frames = config.enemy_frames
@@ -144,6 +171,109 @@ func _apply_config() -> void:
 			animated_sprite.play(config.move_animation_name)
 		else:
 			push_warning("Missing enemy move animation: %s" % config.move_animation_name)
+
+
+# 冷却在追逐和攻击期间都继续流逝。
+func _update_attack_cooldown(delta: float) -> void:
+	if attack_cooldown_left <= 0.0:
+		return
+	attack_cooldown_left = maxf(attack_cooldown_left - delta, 0.0)
+
+
+# 玩家进入射程且有直线视野时停止追逐并开始攻击。
+func _try_start_ranged_attack() -> bool:
+	if not _can_start_ranged_attack():
+		return false
+
+	combat_state = CombatState.ATTACK
+	attack_has_fired = false
+	attack_cooldown_left = maxf(config.attack_interval, 0.01)
+	_clear_navigation_path()
+	_update_facing(global_position.direction_to(target_player.global_position))
+	animated_sprite.play(config.attack_animation_name)
+	return true
+
+
+func _can_start_ranged_attack() -> bool:
+	if config == null or not config.ranged_attack_enabled:
+		return false
+	if attack_cooldown_left > 0.0:
+		return false
+	if not is_instance_valid(target_player):
+		return false
+	if config.projectile_scene == null:
+		return false
+	if config.enemy_frames == null:
+		return false
+	if not config.enemy_frames.has_animation(config.attack_animation_name):
+		return false
+	if global_position.distance_to(target_player.global_position) > config.attack_range:
+		return false
+	return _has_clear_world_line_to_target()
+
+
+# 只检测 World 层；玩家本体不应被当作遮挡物。
+func _has_clear_world_line_to_target() -> bool:
+	if not is_instance_valid(target_player):
+		return false
+
+	var query := PhysicsRayQueryParameters2D.create(
+		global_position,
+		target_player.global_position,
+		WORLD_COLLISION_MASK,
+		[get_rid()]
+	)
+	query.collide_with_bodies = true
+	query.collide_with_areas = false
+	return get_world_2d().direct_space_state.intersect_ray(query).is_empty()
+
+
+# 发射帧重新读取玩家位置；玩家躲到墙后时本发落空。
+func _try_fire_ranged_projectile() -> bool:
+	if is_dead or combat_state != CombatState.ATTACK:
+		return false
+	if config == null or config.projectile_scene == null:
+		return false
+	if not is_instance_valid(target_player):
+		return false
+	if not _has_clear_world_line_to_target():
+		return false
+
+	var shoot_direction := global_position.direction_to(target_player.global_position)
+	if shoot_direction == Vector2.ZERO:
+		return false
+
+	var projectile := config.projectile_scene.instantiate() as EnemyFireProjectile
+	if projectile == null:
+		push_warning("Enemy ranged projectile scene must instantiate EnemyFireProjectile.")
+		return false
+
+	var spawn_parent := get_tree().current_scene
+	if spawn_parent == null:
+		projectile.queue_free()
+		return false
+
+	projectile.top_level = true
+	projectile.setup(
+		shoot_direction,
+		config.projectile_damage,
+		config.projectile_speed,
+		config.projectile_lifetime
+	)
+	spawn_parent.add_child(projectile)
+	projectile.global_position = global_position + shoot_direction * config.projectile_spawn_distance
+	attack_audio.pitch_scale = random_generator.randf_range(0.94, 1.06)
+	attack_audio.play()
+	return true
+
+
+func _finish_ranged_attack() -> void:
+	combat_state = CombatState.CHASE
+	attack_has_fired = false
+	if config == null or config.enemy_frames == null:
+		return
+	if config.enemy_frames.has_animation(config.move_animation_name):
+		animated_sprite.play(config.move_animation_name)
 
 
 # 将配置中的圆形半径同步到实体碰撞和接触伤害区域。
@@ -334,6 +464,8 @@ func _die() -> void:
 		return
 
 	is_dead = true
+	combat_state = CombatState.CHASE
+	attack_has_fired = true
 	velocity = Vector2.ZERO
 	touched_player = null
 	hurt_blink_time_left = 0.0
@@ -543,6 +675,15 @@ func _drop_xirang() -> void:
 
 # 死亡动画播放完成后销毁敌人实例。
 func _on_animated_sprite_animation_finished() -> void:
+	if (
+		not is_dead
+		and combat_state == CombatState.ATTACK
+		and config != null
+		and animated_sprite.animation == config.attack_animation_name
+	):
+		_finish_ranged_attack()
+		return
+
 	if not is_dead:
 		return
 
@@ -559,3 +700,17 @@ func _on_animated_sprite_animation_finished() -> void:
 			queue_free()
 		_:
 			queue_free()
+
+
+func _on_animated_sprite_frame_changed() -> void:
+	if is_dead or combat_state != CombatState.ATTACK:
+		return
+	if config == null or attack_has_fired:
+		return
+	if animated_sprite.animation != config.attack_animation_name:
+		return
+	if animated_sprite.frame != config.attack_fire_frame:
+		return
+
+	attack_has_fired = true
+	_try_fire_ranged_projectile()

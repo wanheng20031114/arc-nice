@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="EnemyConfig" format=3]
+
+[ext_resource type="SpriteFrames" path="res://resources/animation/enemy_fire_ranged.tres" id="1_frames"]
+[ext_resource type="Script" path="res://resources/config/enemy_config.gd" id="2_script"]
+[ext_resource type="PackedScene" path="res://scene/enemy_fire_projectile.tscn" id="3_projectile"]
+[ext_resource type="AudioStream" path="res://resources/audio/fire_enemy_attack.wav" id="4_attack_audio"]
+
+[resource]
+script = ExtResource("2_script")
+enemy_type = 6
+display_name = "火焰源石虫"
+max_health = 3
+move_speed = 22.0
+collision_radius = 7.0
+enemy_frames = ExtResource("1_frames")
+ranged_attack_enabled = true
+attack_range = 144.0
+attack_interval = 1.35
+attack_fire_frame = 2
+projectile_scene = ExtResource("3_projectile")
+projectile_damage = 1
+projectile_speed = 190.0
+projectile_lifetime = 2.0
+projectile_spawn_distance = 11.0
+attack_audio_stream = ExtResource("4_attack_audio")
+xirang_drop_amount = 2
+pickup_drop_chance = 0.35

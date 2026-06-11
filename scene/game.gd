@@ -14,6 +14,7 @@ const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/enemy_spawn_effect.tscn")
 	preload("res://resources/config/enemy_bomber.tres"),
 	preload("res://resources/config/enemy_purple_bomber.tres"),
 	preload("res://resources/config/enemy_green_shell.tres"),
+	preload("res://resources/config/enemy_fire_ranged.tres"),
 ]
 
 
