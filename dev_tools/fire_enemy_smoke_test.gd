@@ -4,6 +4,8 @@ const ENEMY_SCENE := preload("res://scene/enemy.tscn")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const FIRE_CONFIG := preload("res://resources/config/enemy_fire_ranged.tres")
 const FIRE_PROJECTILE_SCENE := preload("res://scene/enemy_fire_projectile.tscn")
+const COMBAT_STATE_CHASE := 0
+const COMBAT_STATE_ATTACK := 1
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -65,7 +67,7 @@ func _test_attack_and_live_aim() -> void:
 	await physics_frame
 	await physics_frame
 
-	_expect(enemy.combat_state == Enemy.CombatState.ATTACK, "Enemy did not enter attack in clear range.")
+	_expect(enemy.get("combat_state") == COMBAT_STATE_ATTACK, "Enemy did not enter attack in clear range.")
 	player.global_position = Vector2(100, 60)
 
 	var projectile := await _wait_for_projectile(40)
@@ -91,7 +93,7 @@ func _test_wall_blocks_attack() -> void:
 	var enemy := _spawn_enemy(Vector2.ZERO, player)
 	await _wait_physics_frames(4)
 
-	_expect(enemy.combat_state == Enemy.CombatState.CHASE, "Enemy attacked through a World-layer wall.")
+	_expect(enemy.get("combat_state") == COMBAT_STATE_CHASE, "Enemy attacked through a World-layer wall.")
 	_expect(not enemy._has_clear_world_line_to_target(), "World-layer wall did not block line of sight.")
 	enemy.queue_free()
 	player.queue_free()
@@ -124,7 +126,7 @@ func _test_death_interrupts_attack() -> void:
 	var player := _spawn_player(Vector2(100, 0))
 	var enemy := _spawn_enemy(Vector2.ZERO, player)
 	await _wait_physics_frames(3)
-	_expect(enemy.combat_state == Enemy.CombatState.ATTACK, "Death test enemy did not begin attacking.")
+	_expect(enemy.get("combat_state") == COMBAT_STATE_ATTACK, "Death test enemy did not begin attacking.")
 
 	enemy.apply_damage(FIRE_CONFIG.max_health)
 	await _wait_physics_frames(20)
