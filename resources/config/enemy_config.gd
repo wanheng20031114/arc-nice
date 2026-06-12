@@ -15,6 +15,8 @@ enum EnemyType {
 
 @export var enemy_type: EnemyType = EnemyType.BASIC
 @export var display_name : String = "基础敌人"
+# 特殊敌人可指定专属场景；为空时沿用 Game 的通用敌人场景。
+@export var enemy_scene_override: PackedScene
 
 @export_group("基础数值")
 # 最大生命值，敌人生成时可用它初始化当前生命值。
@@ -35,31 +37,6 @@ enum EnemyType {
 @export var death_animation_name: StringName = &"death"
 # 爆炸特效默认播放的动画名。
 @export var explosion_animation_name: StringName = &"explode"
-
-
-@export_group("远程攻击")
-# 是否会在玩家进入射程且没有墙体遮挡时停下攻击。
-@export var ranged_attack_enabled: bool = false
-# 远程攻击使用的非循环动画。
-@export var attack_animation_name: StringName = &"attack"
-# 允许开始远程攻击的最大距离。
-@export_range(0.0, 1024.0, 1.0, "or_greater") var attack_range: float = 0.0
-# 每次攻击起手后需要等待的冷却时间。
-@export_range(0.01, 60.0, 0.01, "or_greater") var attack_interval: float = 1.0
-# 攻击动画中生成弹丸的帧，从 0 开始。
-@export_range(0, 100, 1, "or_greater") var attack_fire_frame: int = 0
-# 远程攻击生成的弹丸场景。
-@export var projectile_scene: PackedScene
-# 单枚弹丸造成的伤害。
-@export_range(0, 999, 1, "or_greater") var projectile_damage: int = 1
-# 单枚弹丸的飞行速度。
-@export_range(0.0, 2000.0, 1.0, "or_greater") var projectile_speed: float = 190.0
-# 单枚弹丸的最大存活时间。
-@export_range(0.01, 30.0, 0.01, "or_greater") var projectile_lifetime: float = 2.0
-# 弹丸生成点距离敌人中心的距离。
-@export_range(0.0, 256.0, 0.5, "or_greater") var projectile_spawn_distance: float = 11.0
-# 成功发射弹丸时播放的空间音效。
-@export var attack_audio_stream: AudioStream
 
 
 @export_group("死亡效果")

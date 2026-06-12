@@ -175,7 +175,12 @@ func _try_spawn_enemy() -> bool:
 	if enemy_config == null:
 		return false
 
-	var enemy_instance := enemy_scene.instantiate() as Enemy
+	var spawn_scene := (
+		enemy_config.enemy_scene_override
+		if enemy_config.enemy_scene_override != null
+		else enemy_scene
+	)
+	var enemy_instance := spawn_scene.instantiate() as Enemy
 	if enemy_instance == null:
 		push_warning("敌人场景实例化失败，请检查 enemy_scene 设置。")
 		return false

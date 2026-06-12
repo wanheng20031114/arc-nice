@@ -3,7 +3,9 @@ extends SceneTree
 const ENEMY_SCENE := preload("res://scene/enemy.tscn")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const FIRE_CONFIG := preload("res://resources/config/enemy_fire_ranged.tres")
+const BOMBER_CONFIG := preload("res://resources/config/enemy_bomber.tres")
 const FIRE_PROJECTILE_SCENE := preload("res://scene/enemy_fire_projectile.tscn")
+const FIRE_CONFIG_SCRIPT := preload("res://resources/config/fire_ranged_enemy_config.gd")
 const COMBAT_STATE_CHASE := 0
 const COMBAT_STATE_ATTACK := 1
 
@@ -22,6 +24,7 @@ func _run() -> void:
 	current_scene = test_root
 
 	_test_resource_contract()
+	await _test_legacy_bomber_unchanged()
 	await _test_attack_and_live_aim()
 	await _test_wall_blocks_attack()
 	await _test_projectile_damage_and_world_collision()
@@ -42,7 +45,8 @@ func _run() -> void:
 
 func _test_resource_contract() -> void:
 	_expect(FIRE_CONFIG.enemy_type == EnemyConfig.EnemyType.FIRE_RANGED, "Fire enemy enum mismatch.")
-	_expect(FIRE_CONFIG.ranged_attack_enabled, "Ranged attack must be enabled.")
+	_expect(FIRE_CONFIG.get_script() == FIRE_CONFIG_SCRIPT, "Fire enemy must use its dedicated config type.")
+	_expect(FIRE_CONFIG.enemy_scene_override != null, "Fire enemy must use its dedicated scene.")
 	_expect(is_equal_approx(FIRE_CONFIG.attack_range, 144.0), "Attack range must be 144.")
 	_expect(is_equal_approx(FIRE_CONFIG.attack_interval, 1.35), "Attack interval must be 1.35.")
 	_expect(FIRE_CONFIG.attack_fire_frame == 2, "Attack must fire on frame 2.")
@@ -59,6 +63,37 @@ func _test_resource_contract() -> void:
 		_expect(projectile.collision_layer == 128, "Projectile must use EnemyProjectile layer 8.")
 		_expect(projectile.collision_mask == 3, "Projectile must only scan World and Player.")
 		projectile.free()
+
+
+func _test_legacy_bomber_unchanged() -> void:
+	_expect(BOMBER_CONFIG.enemy_type == EnemyConfig.EnemyType.BOMBER, "Bomber enemy type changed.")
+	_expect(BOMBER_CONFIG.enemy_scene_override == null, "Bomber must keep using the base enemy scene.")
+	_expect(BOMBER_CONFIG.explode_on_death, "Bomber lost its self-destruct behavior.")
+	_expect(
+		BOMBER_CONFIG.enemy_frames.resource_path == "res://resources/animation/enemy_bomber.tres",
+		"Bomber animation resource changed."
+	)
+
+	var player := _spawn_player(Vector2(100, 0))
+	var bomber := ENEMY_SCENE.instantiate() as Enemy
+	test_root.add_child(bomber)
+	bomber.global_position = Vector2.ZERO
+	bomber.setup(BOMBER_CONFIG, player)
+	await _wait_physics_frames(20)
+
+	_expect(bomber.get_node_or_null("AttackAudio") == null, "Base bomber unexpectedly contains attack audio.")
+	_expect(bomber.animated_sprite.animation == BOMBER_CONFIG.move_animation_name, "Bomber left move animation.")
+	_expect(_get_projectile_ids().is_empty(), "Base bomber generated a fire projectile.")
+
+	bomber.apply_damage(BOMBER_CONFIG.max_health)
+	await _wait_physics_frames(60)
+	_expect(not is_instance_valid(bomber), "Bomber did not finish its death and explosion sequence.")
+	_expect(_get_projectile_ids().is_empty(), "Dying bomber generated a fire projectile.")
+
+	if is_instance_valid(bomber):
+		bomber.queue_free()
+	player.queue_free()
+	await physics_frame
 
 
 func _test_attack_and_live_aim() -> void:
@@ -94,7 +129,10 @@ func _test_wall_blocks_attack() -> void:
 	await _wait_physics_frames(4)
 
 	_expect(enemy.get("combat_state") == COMBAT_STATE_CHASE, "Enemy attacked through a World-layer wall.")
-	_expect(not enemy._has_clear_world_line_to_target(), "World-layer wall did not block line of sight.")
+	_expect(
+		not enemy.call("_has_clear_world_line_to_target"),
+		"World-layer wall did not block line of sight."
+	)
 	enemy.queue_free()
 	player.queue_free()
 	wall.queue_free()
@@ -146,7 +184,7 @@ func _spawn_player(position: Vector2) -> Player:
 
 
 func _spawn_enemy(position: Vector2, player: Player) -> Enemy:
-	var enemy := ENEMY_SCENE.instantiate() as Enemy
+	var enemy := FIRE_CONFIG.enemy_scene_override.instantiate() as Enemy
 	test_root.add_child(enemy)
 	enemy.global_position = position
 	enemy.setup(FIRE_CONFIG, player)

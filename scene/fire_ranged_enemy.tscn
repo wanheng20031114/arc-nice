@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://scene/enemy.tscn" id="1_base"]
+[ext_resource type="Script" path="res://scene/fire_ranged_enemy.gd" id="2_script"]
+
+[node name="FireRangedEnemy" instance=ExtResource("1_base")]
+script = ExtResource("2_script")
+
+[node name="AttackAudio" type="AudioStreamPlayer2D" parent="."]
+volume_db = -7.0
+pitch_scale = 1.0
+max_polyphony = 4
+max_distance = 240.0

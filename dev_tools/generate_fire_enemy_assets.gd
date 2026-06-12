@@ -1,6 +1,6 @@
 extends SceneTree
 
-const SOURCE_TEXTURE_PATH := "res://resources/texture/源石虫.png"
+const SOURCE_TEXTURE_PATH := "res://resources/texture/green_shell.png"
 const ENEMY_OUTPUT_PATH := "res://resources/texture/fire_ranged_enemy.png"
 const PROJECTILE_OUTPUT_PATH := "res://resources/texture/fire_projectile.png"
 const AUDIO_OUTPUT_PATH := "res://resources/audio/fire_enemy_attack.wav"
@@ -43,16 +43,17 @@ func _build_enemy_sheet(source: Image) -> Image:
 
 	for frame_index in range(3):
 		var move_frame := source.get_region(
-			Rect2i(frame_index * FRAME_SIZE.x, FRAME_SIZE.y, FRAME_SIZE.x, FRAME_SIZE.y)
+			Rect2i(frame_index * FRAME_SIZE.x, 0, FRAME_SIZE.x, FRAME_SIZE.y)
 		)
 		_recolor_fire_enemy(move_frame)
-		_add_ember_details(move_frame, frame_index)
+		_add_flame_crown(move_frame, frame_index, false)
 		sheet.blit_rect(move_frame, Rect2i(Vector2i.ZERO, FRAME_SIZE), Vector2i(frame_index * 32, 0))
 
-	var attack_source := source.get_region(Rect2i(32, 32, 32, 32))
+	var attack_source := source.get_region(Rect2i(32, 0, 32, 32))
 	_recolor_fire_enemy(attack_source)
 	for attack_frame_index in range(4):
 		var attack_frame := attack_source.duplicate()
+		_add_flame_crown(attack_frame, attack_frame_index, true)
 		_add_attack_pose(attack_frame, attack_frame_index)
 		sheet.blit_rect(
 			attack_frame,
@@ -62,7 +63,7 @@ func _build_enemy_sheet(source: Image) -> Image:
 
 	for death_frame_index in range(3):
 		var death_frame := source.get_region(
-			Rect2i(death_frame_index * FRAME_SIZE.x, 160, FRAME_SIZE.x, FRAME_SIZE.y)
+			Rect2i(death_frame_index * FRAME_SIZE.x, 32, FRAME_SIZE.x, FRAME_SIZE.y)
 		)
 		_recolor_fire_enemy(death_frame)
 		_dim_death_frame(death_frame, death_frame_index)
@@ -88,29 +89,56 @@ func _recolor_fire_enemy(image: Image) -> void:
 				+ source_color.b * 0.114
 			)
 			var target_color: Color
-			if lightness < 0.16:
-				target_color = Color8(28, 12, 18, 255)
-			elif lightness < 0.32:
-				target_color = Color8(74, 22, 24, 255)
-			elif lightness < 0.50:
-				target_color = Color8(142, 38, 20, 255)
+			if lightness < 0.18:
+				target_color = Color8(20, 13, 17, 255)
+			elif lightness < 0.36:
+				target_color = Color8(48, 23, 18, 255)
+			elif lightness < 0.54:
+				target_color = Color8(116, 42, 10, 255)
 			elif lightness < 0.72:
-				target_color = Color8(222, 74, 18, 255)
+				target_color = Color8(230, 82, 8, 255)
 			elif lightness < 0.88:
-				target_color = Color8(255, 145, 28, 255)
+				target_color = Color8(255, 174, 18, 255)
 			else:
-				target_color = Color8(255, 224, 92, 255)
+				target_color = Color8(255, 235, 92, 255)
 			image.set_pixel(x, y, target_color)
 
 
-func _add_ember_details(image: Image, frame_index: int) -> void:
-	var ember_pixels: Array[Vector2i] = [
-		Vector2i(12 + frame_index, 10),
-		Vector2i(16, 8 + frame_index),
-		Vector2i(20 - frame_index, 11),
-	]
-	for pixel in ember_pixels:
-		_set_pixel_if_opaque(image, pixel, Color8(255, 214, 68, 255))
+func _add_flame_crown(image: Image, frame_index: int, is_attacking: bool) -> void:
+	var outline := Color8(71, 24, 10, 255)
+	var flame := Color8(244, 70, 6, 255)
+	var hot := Color8(255, 173, 18, 255)
+	var core := Color8(255, 238, 100, 255)
+	var rise := 1 if is_attacking and frame_index >= 1 else 0
+
+	var crown_pixels := {
+		Vector2i(11, 9 - rise): outline,
+		Vector2i(12, 8 - rise): flame,
+		Vector2i(13, 7 - rise): hot,
+		Vector2i(14, 5 - rise): outline,
+		Vector2i(14, 6 - rise): flame,
+		Vector2i(15, 7 - rise): core,
+		Vector2i(16, 4 - rise): outline,
+		Vector2i(16, 5 - rise): flame,
+		Vector2i(16, 6 - rise): hot,
+		Vector2i(17, 7 - rise): core,
+		Vector2i(18, 6 - rise): flame,
+		Vector2i(19, 7 - rise): hot,
+		Vector2i(20, 8 - rise): flame,
+		Vector2i(21, 9 - rise): outline,
+		Vector2i(22, 11): hot,
+		Vector2i(23, 10): flame,
+	}
+	for pixel in crown_pixels:
+		image.set_pixelv(pixel, crown_pixels[pixel])
+
+	var crack_shift := frame_index % 2
+	for pixel in [
+		Vector2i(13 + crack_shift, 12),
+		Vector2i(16, 11 + crack_shift),
+		Vector2i(19 - crack_shift, 13),
+	]:
+		_set_pixel_if_opaque(image, pixel, core)
 
 
 func _add_attack_pose(image: Image, frame_index: int) -> void:
