@@ -38,6 +38,7 @@ func _run() -> void:
 	await physics_frame
 	for _cleanup_frame in range(4):
 		await process_frame
+		await physics_frame
 
 	if failures.is_empty():
 		print("WAVE_SYSTEM_SMOKE_TEST_OK")
@@ -69,6 +70,10 @@ func _test_default_wave_resources() -> void:
 			"Wave %d rest duration is incorrect." % (wave_index + 1)
 		)
 		_expect(wave_config.music != null, "Wave %d music is missing." % (wave_index + 1))
+		_expect(
+			wave_config.max_alive_enemies == 100,
+			"Wave %d max alive enemies must be 100." % (wave_index + 1)
+		)
 		for entry in wave_config.enemy_entries:
 			_expect(entry != null, "Wave %d contains a null entry." % (wave_index + 1))
 			if entry != null:
@@ -94,18 +99,22 @@ func _test_merchant_asset() -> void:
 	_expect(image != null and not image.is_empty(), "Merchant runtime sprite sheet is missing.")
 	if image == null or image.is_empty():
 		return
-	_expect(image.get_size() == Vector2i(256, 32), "Merchant sheet must be 256x32.")
+	_expect(image.get_size() == Vector2i(448, 68), "Merchant sheet must be 448x68.")
 	_expect(image.get_format() == Image.FORMAT_RGBA8, "Merchant sheet must use RGBA8.")
 	for frame_index in range(8):
-		var frame_rect := Rect2i(frame_index * 32, 0, 32, 32)
+		var frame_rect := Rect2i(frame_index * 56, 0, 56, 68)
 		var frame := image.get_region(frame_rect)
 		_expect(not frame.is_invisible(), "Merchant frame %d is empty." % frame_index)
-		for corner in [Vector2i(0, 0), Vector2i(31, 0), Vector2i(0, 31), Vector2i(31, 31)]:
+		var frame_bbox := frame.get_used_rect()
+		_expect(
+			frame_bbox.size.y == 64,
+			"Merchant frame %d must preserve a 64-pixel subject height." % frame_index
+		)
+		for corner in [Vector2i(0, 0), Vector2i(55, 0), Vector2i(0, 67), Vector2i(55, 67)]:
 			_expect(
 				frame.get_pixelv(corner).a == 0.0,
 				"Merchant frame %d has a non-transparent corner." % frame_index
 			)
-
 
 func _test_wave_state_flow() -> void:
 	var game := _create_test_game()
@@ -114,15 +123,33 @@ func _test_wave_state_flow() -> void:
 	await physics_frame
 
 	var merchant := game.get_node("ZhuangfangyiMerchant") as Node2D
+	var merchant_sprite := merchant.get_node("AnimatedSprite2D") as AnimatedSprite2D
+	var merchant_collision := (
+		merchant.get_node("StaticBody2D/CollisionShape2D") as CollisionShape2D
+	)
 	var wave_hud := game.get_node("WaveHUD") as WaveHUD
 	var test_waves := _create_test_waves(3)
 	game.set("waves", test_waves)
 	game.set("pre_wave_duration", 5.0)
 	game.call("_enter_pre_wave", 0)
 
+	_expect(merchant.position == Vector2(192, 64), "Merchant position is incorrect.")
+	_expect(
+		merchant_sprite.scale == Vector2(0.3125, 0.3125),
+		"Merchant display size must be controlled by the scene scale."
+	)
+	_expect(
+		merchant_collision.shape != null,
+		"Merchant must provide a blocking collision shape."
+	)
+	_expect(
+		wave_hud.has_node("WaveInfoBar"),
+		"Wave HUD must expose WaveInfoBar as an editable scene node."
+	)
 	_expect(game.get("wave_state") == STATE_PRE_WAVE, "Game did not enter PRE_WAVE.")
 	_expect(game.get("countdown_seconds") == 5, "Opening countdown must start at 5.")
 	_expect(not merchant.visible, "Merchant appeared during the opening countdown.")
+	_expect(merchant_collision.disabled, "Merchant collision was active before intermission.")
 	_expect(wave_hud.status_label.text.contains("5"), "Wave HUD did not show opening countdown.")
 
 	game.call("_begin_wave", 0)
@@ -130,11 +157,17 @@ func _test_wave_state_flow() -> void:
 	_expect(game.get("wave_state") == STATE_WAVE_ACTIVE, "Wave 1 did not start.")
 	_expect(game.get("current_wave_total") == 1, "Test wave total is incorrect.")
 	_expect(not merchant.visible, "Merchant remained visible during combat.")
+	_expect(
+		wave_hud.status_label.text == "第 1 波  已消灭 0/1",
+		"Wave HUD combat text is incorrect."
+	)
 	await _defeat_only_enemy(game)
 
 	_expect(game.get("wave_state") == STATE_INTERMISSION, "Wave 1 did not enter intermission.")
 	_expect(game.get("countdown_seconds") == 30, "Intermission must last 30 seconds.")
 	_expect(merchant.visible, "Merchant did not appear during intermission.")
+	await physics_frame
+	_expect(not merchant_collision.disabled, "Merchant collision did not activate.")
 	_expect(wave_hud.status_label.text.contains("30"), "HUD did not show intermission countdown.")
 
 	game.set("countdown_seconds", 6)
@@ -145,6 +178,8 @@ func _test_wave_state_flow() -> void:
 	game.call("_begin_wave", 1)
 	await physics_frame
 	_expect(not merchant.visible, "Merchant did not hide when wave 2 began.")
+	await physics_frame
+	_expect(merchant_collision.disabled, "Merchant collision remained active during combat.")
 	await _defeat_only_enemy(game)
 	_expect(game.get("wave_state") == STATE_INTERMISSION, "Wave 2 did not enter intermission.")
 

@@ -13,7 +13,14 @@ from PIL import Image
 
 FRAME_COLUMNS = 4
 FRAME_ROWS = 2
-OUTPUT_FRAME_SIZE = 32
+
+# The source is an approximately 5x enlarged pixel image. A measured subject
+# occupies about 262x339 physical pixels, or roughly 50x64 logical pixels.
+# Keep that native detail in the runtime texture and scale the scene node.
+OUTPUT_FRAME_WIDTH = 56
+OUTPUT_FRAME_HEIGHT = 68
+OUTPUT_SUBJECT_HEIGHT = 64
+OUTPUT_FOOT_Y = 66
 
 
 def _is_background_candidate(rgb: np.ndarray) -> np.ndarray:
@@ -31,7 +38,16 @@ def _is_background_candidate(rgb: np.ndarray) -> np.ndarray:
         np.abs(rgb.astype(np.int16) - key_color),
         axis=2,
     )
-    return color_distance <= 42
+    red = rgb[:, :, 0].astype(np.int16)
+    green = rgb[:, :, 1].astype(np.int16)
+    blue = rgb[:, :, 2].astype(np.int16)
+    strongest_magenta = np.maximum(red, blue)
+    dark_magenta_edge = (
+        (np.abs(red - blue) <= np.maximum(36, strongest_magenta // 3))
+        & (green * 3 <= strongest_magenta)
+        & (red + blue >= 48)
+    )
+    return (color_distance <= 42) | dark_magenta_edge
 
 
 def _find_external_background(candidate: np.ndarray) -> np.ndarray:
@@ -68,23 +84,19 @@ def _find_external_background(candidate: np.ndarray) -> np.ndarray:
     return outside
 
 
-def _remove_checkerboard(frame: Image.Image) -> Image.Image:
+def _remove_chroma_background(frame: Image.Image) -> Image.Image:
     rgba = np.array(frame.convert("RGBA"))
     outside = _find_external_background(_is_background_candidate(rgba[:, :, :3]))
     rgba[outside] = (0, 0, 0, 0)
     return Image.fromarray(rgba)
 
 
-def _fit_frame(frame: Image.Image) -> Image.Image:
+def _fit_frame(frame: Image.Image, scale: float) -> Image.Image:
     bbox = frame.getchannel("A").getbbox()
     if bbox is None:
         raise ValueError("A source frame contains no visible pixels.")
 
     subject = frame.crop(bbox)
-    scale = min(
-        OUTPUT_FRAME_SIZE / subject.width,
-        OUTPUT_FRAME_SIZE / subject.height,
-    )
     target_size = (
         max(1, round(subject.width * scale)),
         max(1, round(subject.height * scale)),
@@ -93,24 +105,19 @@ def _fit_frame(frame: Image.Image) -> Image.Image:
 
     result = Image.new(
         "RGBA",
-        (OUTPUT_FRAME_SIZE, OUTPUT_FRAME_SIZE),
+        (OUTPUT_FRAME_WIDTH, OUTPUT_FRAME_HEIGHT),
         (0, 0, 0, 0),
     )
-    paste_x = (OUTPUT_FRAME_SIZE - subject.width) // 2
-    paste_y = OUTPUT_FRAME_SIZE - subject.height
+    paste_x = (OUTPUT_FRAME_WIDTH - subject.width) // 2
+    paste_y = OUTPUT_FOOT_Y - subject.height
     result.alpha_composite(subject, (paste_x, paste_y))
     return result
 
 
 def build_sheet(source: Image.Image) -> Image.Image:
     source = source.convert("RGBA")
-    sheet = Image.new(
-        "RGBA",
-        (OUTPUT_FRAME_SIZE * FRAME_COLUMNS * FRAME_ROWS, OUTPUT_FRAME_SIZE),
-        (0, 0, 0, 0),
-    )
+    transparent_frames: list[Image.Image] = []
 
-    frame_index = 0
     for row in range(FRAME_ROWS):
         top = round(row * source.height / FRAME_ROWS)
         bottom = round((row + 1) * source.height / FRAME_ROWS)
@@ -118,12 +125,31 @@ def build_sheet(source: Image.Image) -> Image.Image:
             left = round(column * source.width / FRAME_COLUMNS)
             right = round((column + 1) * source.width / FRAME_COLUMNS)
             frame = source.crop((left, top, right, bottom))
-            processed = _fit_frame(_remove_checkerboard(frame))
-            sheet.alpha_composite(
-                processed,
-                (frame_index * OUTPUT_FRAME_SIZE, 0),
-            )
-            frame_index += 1
+            transparent_frames.append(_remove_chroma_background(frame))
+
+    subject_heights = []
+    for frame in transparent_frames:
+        bbox = frame.getchannel("A").getbbox()
+        if bbox is None:
+            raise ValueError("A source frame contains no visible pixels.")
+        subject_heights.append(bbox[3] - bbox[1])
+
+    shared_scale = OUTPUT_SUBJECT_HEIGHT / max(subject_heights)
+    sheet = Image.new(
+        "RGBA",
+        (
+            OUTPUT_FRAME_WIDTH * FRAME_COLUMNS * FRAME_ROWS,
+            OUTPUT_FRAME_HEIGHT,
+        ),
+        (0, 0, 0, 0),
+    )
+
+    for frame_index, frame in enumerate(transparent_frames):
+        processed = _fit_frame(frame, shared_scale)
+        sheet.alpha_composite(
+            processed,
+            (frame_index * OUTPUT_FRAME_WIDTH, 0),
+        )
 
     return sheet
 
@@ -145,8 +171,10 @@ def main() -> None:
     print(f"Output: {output_path}")
     print(f"Size:   {sheet.width}x{sheet.height}")
     for frame_index in range(FRAME_COLUMNS * FRAME_ROWS):
-        left = frame_index * OUTPUT_FRAME_SIZE
-        frame = sheet.crop((left, 0, left + OUTPUT_FRAME_SIZE, OUTPUT_FRAME_SIZE))
+        left = frame_index * OUTPUT_FRAME_WIDTH
+        frame = sheet.crop(
+            (left, 0, left + OUTPUT_FRAME_WIDTH, OUTPUT_FRAME_HEIGHT)
+        )
         print(f"Frame {frame_index}: {frame.getchannel('A').getbbox()}")
 
 

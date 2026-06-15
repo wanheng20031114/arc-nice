@@ -1,60 +1,71 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene format=3 uid="uid://bybgq7nbb2dgy"]
 
-[ext_resource type="Script" path="res://scene/wave_hud.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://dnf2w1eabxawg" path="res://scene/wave_hud.gd" id="1_script"]
+[ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bar"]
-bg_color = Color(0.035, 0.055, 0.045, 0.92)
+bg_color = Color(0.03529412, 0.05490196, 0.043137256, 0.4745098)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
-border_color = Color(0.38, 0.62, 0.42, 0.95)
+border_color = Color(0.38039216, 0.61960787, 0.41960785, 0.61960787)
 corner_radius_top_left = 6
 corner_radius_top_right = 6
 corner_radius_bottom_right = 6
 corner_radius_bottom_left = 6
-shadow_color = Color(0, 0, 0, 0.35)
+shadow_color = Color(0, 0, 0, 0.39215687)
 shadow_size = 2
 shadow_offset = Vector2(0, 1)
 
+[sub_resource type="LabelSettings" id="LabelSettings_status"]
+font = ExtResource("2_font")
+font_size = 18
+font_color = Color(0.92, 0.96, 0.9, 1)
+outline_size = 2
+outline_color = Color(0.02, 0.035, 0.025, 0.9)
+
 [sub_resource type="LabelSettings" id="LabelSettings_result"]
+font = ExtResource("2_font")
 font_size = 36
 font_color = Color(1, 0.9, 0.42, 1)
 outline_size = 5
 outline_color = Color(0.02, 0.03, 0.02, 0.95)
 
-[node name="WaveHUD" type="CanvasLayer"]
+[node name="WaveHUD" type="CanvasLayer" unique_id=1586636991]
 layer = 11
 script = ExtResource("1_script")
 
-[node name="TopCenter" type="CenterContainer" parent="."]
-anchors_preset = 10
-anchor_right = 1.0
+[node name="WaveInfoBar" type="PanelContainer" parent="." unique_id=690214374]
+custom_minimum_size = Vector2(310, 34)
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -155.0
 offset_top = 8.0
+offset_right = 155.0
 offset_bottom = 42.0
 grow_horizontal = 2
 mouse_filter = 2
-
-[node name="TopBar" type="PanelContainer" parent="TopCenter"]
-custom_minimum_size = Vector2(310, 34)
-layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_bar")
 
-[node name="Margin" type="MarginContainer" parent="TopCenter/TopBar"]
+[node name="Margin" type="MarginContainer" parent="WaveInfoBar" unique_id=1056832234]
 layout_mode = 2
 theme_override_constants/margin_left = 12
 theme_override_constants/margin_top = 4
 theme_override_constants/margin_right = 12
 theme_override_constants/margin_bottom = 4
 
-[node name="Status" type="Label" parent="TopCenter/TopBar/Margin"]
+[node name="Status" type="Label" parent="WaveInfoBar/Margin" unique_id=907150030]
 layout_mode = 2
 text = "下一波将在 5 秒后开始"
+label_settings = SubResource("LabelSettings_status")
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="ResultOverlay" type="Control" parent="."]
+[node name="ResultOverlay" type="Control" parent="." unique_id=1055332597]
 visible = false
+layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -62,7 +73,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="Result" type="Label" parent="ResultOverlay"]
+[node name="Result" type="Label" parent="ResultOverlay" unique_id=1240473437]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -79,4 +90,3 @@ text = "通关"
 label_settings = SubResource("LabelSettings_result")
 horizontal_alignment = 1
 vertical_alignment = 1
-

@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="WaveConfig" load_steps=14 format=3]
+[gd_resource type="Resource" script_class="WaveConfig" format=3 uid="uid://b4dxnwumwsnb8"]
 
 [ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="1_wave"]
 [ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="2_entry"]
@@ -39,6 +39,5 @@ script = ExtResource("1_wave")
 wave_name = "第二波"
 enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic"), SubResource("WaveEnemyEntry_fast"), SubResource("WaveEnemyEntry_shell"), SubResource("WaveEnemyEntry_bomber"), SubResource("WaveEnemyEntry_fire")])
 spawn_interval = 0.65
-max_alive_enemies = 16
-rest_duration_after_wave = 30.0
+max_alive_enemies = 100
 music = ExtResource("8_music")

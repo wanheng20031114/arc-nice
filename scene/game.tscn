@@ -153,7 +153,7 @@ position = Vector2(151, 70)
 [node name="PlayerProfilePanel" parent="." unique_id=1216528429 instance=ExtResource("13_profile_panel")]
 
 [node name="ZhuangfangyiMerchant" parent="." instance=ExtResource("15_merchant")]
-position = Vector2(128, 128)
+position = Vector2(192, 64)
 
 [node name="WorldBounds" type="Node2D" parent="." unique_id=905261702]
 

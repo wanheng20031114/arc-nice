@@ -35,7 +35,7 @@ enum WaveState {
 @onready var currency_hud: CurrencyHUD = $CurrencyHUD
 @onready var wave_hud: WaveHUD = $WaveHUD
 @onready var player_profile_panel: PlayerProfilePanel = $PlayerProfilePanel
-@onready var merchant: Node2D = $ZhuangfangyiMerchant
+@onready var merchant: ZhuangfangyiMerchant = $ZhuangfangyiMerchant
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
 var random_generator := RandomNumberGenerator.new()
@@ -60,7 +60,7 @@ func _ready() -> void:
 	player_profile_panel.bind_player(player)
 	currency_hud.profile_requested.connect(player_profile_panel.open)
 	player.died.connect(_on_player_died)
-	merchant.visible = false
+	merchant.set_active(false)
 
 	if auto_start_waves and _is_wave_system_ready():
 		_enter_pre_wave(0)
@@ -98,7 +98,7 @@ func _enter_pre_wave(wave_index: int) -> void:
 	wave_state = WaveState.PRE_WAVE
 	current_wave_index = wave_index
 	enemy_spawn_timer.stop()
-	merchant.visible = false
+	merchant.set_active(false)
 	countdown_seconds = maxi(ceili(pre_wave_duration), 0)
 	wave_hud.show_countdown(countdown_seconds)
 
@@ -113,7 +113,7 @@ func _enter_pre_wave(wave_index: int) -> void:
 func _enter_intermission() -> void:
 	wave_state = WaveState.INTERMISSION
 	enemy_spawn_timer.stop()
-	merchant.visible = true
+	merchant.set_active(true)
 
 	var wave_config := _get_current_wave()
 	countdown_seconds = (
@@ -146,7 +146,7 @@ func _begin_wave(wave_index: int) -> void:
 	wave_state = WaveState.WAVE_ACTIVE
 	current_wave_index = wave_index
 	state_timer.stop()
-	merchant.visible = false
+	merchant.set_active(false)
 	current_wave_spawned = 0
 	current_wave_defeated = 0
 	active_wave_enemy_ids.clear()
@@ -309,7 +309,7 @@ func _enter_victory() -> void:
 	wave_state = WaveState.VICTORY
 	enemy_spawn_timer.stop()
 	state_timer.stop()
-	merchant.visible = false
+	merchant.set_active(false)
 	wave_hud.show_victory()
 
 
@@ -319,7 +319,7 @@ func _enter_defeat() -> void:
 	wave_state = WaveState.DEFEAT
 	enemy_spawn_timer.stop()
 	state_timer.stop()
-	merchant.visible = false
+	merchant.set_active(false)
 	wave_hud.show_defeat()
 
 

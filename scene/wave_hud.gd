@@ -1,8 +1,8 @@
 extends CanvasLayer
 class_name WaveHUD
 
-@onready var top_bar: PanelContainer = $TopCenter/TopBar
-@onready var status_label: Label = $TopCenter/TopBar/Margin/Status
+@onready var top_bar: PanelContainer = $WaveInfoBar
+@onready var status_label: Label = $WaveInfoBar/Margin/Status
 @onready var result_overlay: Control = $ResultOverlay
 @onready var result_label: Label = $ResultOverlay/Result
 
@@ -61,4 +61,3 @@ func _pulse_top_bar() -> void:
 	pulse_tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	pulse_tween.tween_property(top_bar, "scale", Vector2(1.06, 1.06), 0.08)
 	pulse_tween.tween_property(top_bar, "scale", Vector2.ONE, 0.12)
-
