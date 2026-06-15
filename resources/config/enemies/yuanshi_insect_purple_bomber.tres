@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="YuanshiInsectConfig" format=3]
 
-[ext_resource type="SpriteFrames" path="res://resources/animation/yuanshi_insect_purple_bomber.tres" id="1_frames"]
-[ext_resource type="Script" path="res://resources/config/enemies/yuanshi_insect_config.gd" id="2_script"]
+[ext_resource type="SpriteFrames" uid="uid://cwlh2bn3ov35t" path="res://resources/animation/yuanshi_insect_purple_bomber.tres" id="1_frames"]
+[ext_resource type="Script" uid="uid://cxt041wfb1usj" path="res://resources/config/enemies/yuanshi_insect_config.gd" id="2_script"]
 
 [resource]
 script = ExtResource("2_script")

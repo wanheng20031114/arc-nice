@@ -13,11 +13,10 @@ func show_wave_progress(wave_number: int, defeated: int, total: int) -> void:
 	top_bar.visible = true
 	result_overlay.visible = false
 	status_label.modulate = Color.WHITE
-	status_label.text = "第 %d 波  已消灭 %d/%d  剩余 %d" % [
+	status_label.text = "第 %d 波  已消灭 %d/%d" % [
 		wave_number,
 		defeated,
 		total,
-		maxi(total - defeated, 0),
 	]
 
 
