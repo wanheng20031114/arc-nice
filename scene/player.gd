@@ -19,6 +19,8 @@ var current_xirang: int = 0
 var invincibility_time_left: float = 0.0
 var is_dead: bool = false
 var controls_locked: bool = false
+var mouse_fire_held: bool = false
+var mouse_viewport_position: Vector2 = Vector2.ZERO
 
 @export var fire_interval: float = 0.18
 @export var bullet_spawn_distance: float = 18.0
@@ -79,6 +81,31 @@ func _ready() -> void:
 	health_changed.emit(current_health, max_health)
 	_update_animation()
 	_update_armed_effect()
+	get_window().focus_exited.connect(_on_window_focus_exited)
+
+
+func _input(event: InputEvent) -> void:
+	var mouse_motion := event as InputEventMouseMotion
+	if mouse_motion != null:
+		mouse_viewport_position = mouse_motion.position
+		return
+
+	var mouse_event := event as InputEventMouseButton
+	if mouse_event == null:
+		return
+	mouse_viewport_position = mouse_event.position
+	if mouse_event.button_index == MOUSE_BUTTON_LEFT and not mouse_event.pressed:
+		mouse_fire_held = false
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	var mouse_event := event as InputEventMouseButton
+	if mouse_event == null or mouse_event.button_index != MOUSE_BUTTON_LEFT:
+		return
+
+	mouse_fire_held = mouse_event.pressed and not controls_locked and not is_dead
+	if mouse_fire_held:
+		get_viewport().set_input_as_handled()
 
 
 # 物理帧更新，处理玩家移动、射击和无敌/增益状态更新
@@ -99,6 +126,8 @@ func _physics_process(delta: float) -> void:
 	
 	var move_input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	var shoot_input := Input.get_vector("shoot_left", "shoot_right", "shoot_up", "shoot_down")
+	if mouse_fire_held:
+		shoot_input = _get_mouse_shoot_direction()
 
 	velocity = move_input * _get_effective_move_speed()
 	move_and_slide()
@@ -226,6 +255,7 @@ func get_attacks_per_second() -> float:
 func set_controls_locked(locked: bool) -> void:
 	controls_locked = locked
 	if controls_locked:
+		mouse_fire_held = false
 		velocity = Vector2.ZERO
 		footstep_audio.stop()
 
@@ -303,6 +333,15 @@ func _try_auto_spiral_shoot() -> void:
 # 获取当前实际移动速度（受移速加成影响）
 func _get_effective_move_speed() -> float:
 	return move_speed * current_move_speed_multiplier
+
+
+func _get_mouse_shoot_direction() -> Vector2:
+	var mouse_world_position := get_canvas_transform().affine_inverse() * mouse_viewport_position
+	return global_position.direction_to(mouse_world_position)
+
+
+func _on_window_focus_exited() -> void:
+	mouse_fire_held = false
 
 
 
@@ -456,6 +495,7 @@ func _set_hurt_blink_enabled(enabled: bool) -> void:
 # 玩家生命值归零时进入死亡状态。
 func _die() -> void:
 	is_dead = true
+	mouse_fire_held = false
 	velocity = Vector2.ZERO
 	invincibility_time_left = 0.0
 	_set_hurt_blink_enabled(false)
