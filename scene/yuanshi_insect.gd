@@ -194,12 +194,24 @@ func _apply_aura_config() -> void:
 
 	var aura_material := aura_particles.process_material as ParticleProcessMaterial
 	if aura_material != null:
-		aura_material.emission_sphere_radius = aura_config.aura_particle_emission_radius
-		aura_material.initial_velocity_min = minf(
+		var emission_radius := maxf(aura_config.aura_particle_emission_radius, 0.0)
+		var emission_thickness := clampf(
+			aura_config.aura_particle_emission_thickness,
+			0.0,
+			emission_radius
+		)
+		aura_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_RING
+		aura_material.emission_ring_axis = Vector3.BACK
+		aura_material.emission_ring_height = 0.0
+		aura_material.emission_ring_radius = emission_radius
+		aura_material.emission_ring_inner_radius = emission_radius - emission_thickness
+		aura_material.initial_velocity_min = 0.0
+		aura_material.initial_velocity_max = 0.0
+		aura_material.radial_velocity_min = minf(
 			aura_config.aura_particle_speed_min,
 			aura_config.aura_particle_speed_max
 		)
-		aura_material.initial_velocity_max = maxf(
+		aura_material.radial_velocity_max = maxf(
 			aura_config.aura_particle_speed_min,
 			aura_config.aura_particle_speed_max
 		)
@@ -212,6 +224,7 @@ func _apply_aura_config() -> void:
 			aura_config.aura_particle_scale_max
 		)
 		aura_material.color = aura_config.aura_particle_color
+		aura_material.color_initial_ramp = aura_config.aura_particle_color_ramp
 
 	aura_particles.amount = maxi(aura_config.aura_particle_amount, 1)
 	aura_particles.lifetime = maxf(aura_config.aura_particle_lifetime, 0.05)

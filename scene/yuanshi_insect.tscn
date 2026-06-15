@@ -42,18 +42,23 @@ color = Color(0.92, 0.76, 0.38, 1)
 
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_aura"]
 resource_local_to_scene = true
-emission_shape = 1
-emission_sphere_radius = 3.0
+emission_shape = 6
+emission_ring_axis = Vector3(0, 0, 1)
+emission_ring_height = 0.0
+emission_ring_radius = 8.0
+emission_ring_inner_radius = 6.5
 direction = Vector3(1, 0, 0)
 spread = 180.0
-initial_velocity_min = 22.0
-initial_velocity_max = 38.0
+initial_velocity_min = 0.0
+initial_velocity_max = 0.0
+radial_velocity_min = 16.0
+radial_velocity_max = 25.0
 gravity = Vector3(0, 0, 0)
 damping_min = 0.0
 damping_max = 1.5
 scale_min = 0.35
 scale_max = 0.7
-color = Color(0.22, 0.95, 0.12, 0.88)
+color = Color(1, 1, 1, 1)
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_aura"]
 resource_local_to_scene = true
@@ -114,20 +119,20 @@ emitting = false
 amount = 72
 lifetime = 0.9
 randomness = 0.35
-local_coords = false
+local_coords = true
 texture = SubResource("AtlasTexture_hit_particle")
 process_material = SubResource("ParticleProcessMaterial_aura")
 
 [node name="AuraRangeFill" type="Polygon2D" parent="."]
 z_index = -1
 visible = false
-color = Color(0.12, 0.72, 0.08, 0.08)
+color = Color(0.12, 0.72, 0.08, 0.01)
 
 [node name="AuraRangeOutline" type="Line2D" parent="."]
 z_index = 0
 visible = false
-width = 1.25
-default_color = Color(0.38, 1, 0.2, 0.68)
+width = 4.0
+default_color = Color(0.55, 1, 0.35, 0.12)
 closed = true
 antialiased = false
 

@@ -51,6 +51,7 @@ func _test_resource_contract() -> void:
 	_expect(GREEN_SHELL_CONFIG.aura_radius > GREEN_SHELL_CONFIG.collision_radius, "Aura must exceed body radius.")
 	_expect(GREEN_SHELL_CONFIG.aura_particle_amount >= 60, "Aura particles are not dense enough.")
 	_expect(GREEN_SHELL_CONFIG.aura_particle_texture != null, "Aura particle texture is missing.")
+	_expect(GREEN_SHELL_CONFIG.aura_particle_color_ramp != null, "Aura color ramp is missing.")
 	_expect(
 		GREEN_SHELL_CONFIG.aura_particle_emission_radius
 		+ GREEN_SHELL_CONFIG.aura_particle_speed_max
@@ -72,7 +73,7 @@ func _test_aura_visual_configuration() -> void:
 
 	_expect(enemy.aura_active, "Green shell aura did not start.")
 	_expect(enemy.aura_particles.emitting, "Green shell particles are not emitting continuously.")
-	_expect(not enemy.aura_particles.local_coords, "Aura particles must remain in world space after emission.")
+	_expect(enemy.aura_particles.local_coords, "Aura particles must stay attached to the moving enemy.")
 	_expect(enemy.aura_particles.amount == GREEN_SHELL_CONFIG.aura_particle_amount, "Particle amount ignored config.")
 	_expect(enemy.aura_particles.texture == GREEN_SHELL_CONFIG.aura_particle_texture, "Particle texture ignored config.")
 	_expect(
@@ -84,15 +85,36 @@ func _test_aura_visual_configuration() -> void:
 		_expect(is_equal_approx(aura_shape.radius, GREEN_SHELL_CONFIG.aura_radius), "Aura radius ignored config.")
 	_expect(aura_material != null, "Aura particle material is missing.")
 	if aura_material != null:
-		_expect(is_equal_approx(aura_material.spread, 180.0), "Aura particles do not emit in 360 degrees.")
-		_expect(aura_material.direction == Vector3.RIGHT, "Aura particle base direction is invalid.")
 		_expect(
-			is_equal_approx(aura_material.initial_velocity_min, GREEN_SHELL_CONFIG.aura_particle_speed_min),
+			aura_material.emission_shape == ParticleProcessMaterial.EMISSION_SHAPE_RING,
+			"Aura particles are not emitted from a ring."
+		)
+		_expect(
+			is_equal_approx(
+				aura_material.emission_ring_radius,
+				GREEN_SHELL_CONFIG.aura_particle_emission_radius
+			),
+			"Particle emission ring radius ignored config."
+		)
+		_expect(
+			is_equal_approx(
+				aura_material.emission_ring_inner_radius,
+				GREEN_SHELL_CONFIG.aura_particle_emission_radius
+				- GREEN_SHELL_CONFIG.aura_particle_emission_thickness
+			),
+			"Particle emission ring thickness ignored config."
+		)
+		_expect(
+			is_equal_approx(aura_material.radial_velocity_min, GREEN_SHELL_CONFIG.aura_particle_speed_min),
 			"Particle minimum speed ignored config."
 		)
 		_expect(
-			is_equal_approx(aura_material.initial_velocity_max, GREEN_SHELL_CONFIG.aura_particle_speed_max),
+			is_equal_approx(aura_material.radial_velocity_max, GREEN_SHELL_CONFIG.aura_particle_speed_max),
 			"Particle maximum speed ignored config."
+		)
+		_expect(
+			aura_material.color_initial_ramp == GREEN_SHELL_CONFIG.aura_particle_color_ramp,
+			"Particle color variation ignored config."
 		)
 	_expect(aura_material != second_material, "Aura material is shared between enemy instances.")
 	_expect(enemy.aura_range_fill.visible, "Aura range fill is hidden.")

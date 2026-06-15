@@ -8,24 +8,17 @@
 [ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="5_tna6s"]
 [ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="6_frdp7"]
 [ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="7_3pf0l"]
-[ext_resource type="Texture2D" path="res://resources/texture/yuanshi_insect_green_aura_particle.tres" id="8_aura_particle"]
+[ext_resource type="Texture2D" uid="uid://gpwpt2glrhpb" path="res://resources/texture/yuanshi_insect_green_aura_particle.tres" id="8_aura_particle"]
+[ext_resource type="Texture2D" uid="uid://04o6ofntabvg" path="res://resources/texture/yuanshi_insect_green_aura_colors.tres" id="9_aura_colors"]
 
 [resource]
 script = ExtResource("2_script")
-aura_particle_texture = ExtResource("8_aura_particle")
 aura_particle_amount = 84
 aura_particle_lifetime = 0.85
-aura_particle_emission_radius = 2.5
-aura_particle_speed_min = 20.0
-aura_particle_speed_max = 32.0
-aura_particle_scale_min = 0.65
-aura_particle_scale_max = 1.1
-aura_particle_color = Color(0.22, 0.95, 0.12, 0.9)
-aura_outline_color = Color(0.42, 1, 0.2, 0.72)
 variant = 5
 display_name = "翠壳原石虫"
 max_health = 10
-move_speed = 15.0
+move_speed = 9.0
 collision_radius = 7.0
 enemy_frames = ExtResource("1_frames")
 xirang_drop_amount = 10
