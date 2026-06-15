@@ -19,9 +19,6 @@ enum DeathSequenceStage {
 # 敌人配置资源，由生成器或编辑器指定。
 @export var config: YuanshiInsectConfig
 
-# 敌人接触玩家时的伤害值。
-@export var touch_damage: int = 1
-
 # 敌人持续贴住玩家时的伤害间隔。
 @export var touch_damage_interval: float = 0.5
 
@@ -327,7 +324,7 @@ func _try_deal_aura_damage() -> void:
 	if aura_config == null:
 		return
 
-	aura_touched_player.apply_damage(aura_config.aura_damage)
+	aura_touched_player.apply_damage(config.attack_damage)
 	aura_damage_cooldown_left = aura_config.aura_damage_interval
 
 
@@ -458,8 +455,10 @@ func _update_touch_damage(delta: float) -> void:
 func _try_deal_touch_damage() -> void:
 	if touched_player == null:
 		return
+	if config == null:
+		return
 
-	touched_player.apply_damage(touch_damage)
+	touched_player.apply_damage(config.attack_damage)
 	touch_damage_cooldown_left = touch_damage_interval
 	
 # 通过 ShaderMaterial 参数控制敌人短暂闪烁。

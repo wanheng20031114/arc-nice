@@ -138,7 +138,7 @@ func _try_fire_ranged_projectile() -> bool:
 	projectile.top_level = true
 	projectile.setup(
 		shoot_direction,
-		fire_config.projectile_damage,
+		fire_config.attack_damage,
 		fire_config.projectile_speed,
 		fire_config.projectile_lifetime
 	)

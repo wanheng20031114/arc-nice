@@ -64,6 +64,7 @@ func _test_resource_contract() -> void:
 		is_equal_approx(FIRE_CONFIG.projectile_speed, 142.5),
 		"Projectile speed must be 142.5."
 	)
+	_expect(FIRE_CONFIG.attack_damage == 1, "Fire projectile must use base attack damage.")
 	_expect(is_equal_approx(FIRE_CONFIG.attack_interval, 1.35), "Attack interval must be 1.35.")
 	_expect(FIRE_CONFIG.attack_fire_frame == 2, "Attack must fire on frame 2.")
 
@@ -212,7 +213,7 @@ func _spawn_enemy(position: Vector2, player: Player) -> YuanshiInsect:
 
 func _spawn_projectile(position: Vector2, direction: Vector2) -> YuanshiInsectFireProjectile:
 	var projectile := FIRE_PROJECTILE_SCENE.instantiate() as YuanshiInsectFireProjectile
-	projectile.setup(direction, 1, FIRE_CONFIG.projectile_speed, 2.0)
+	projectile.setup(direction, FIRE_CONFIG.attack_damage, FIRE_CONFIG.projectile_speed, 2.0)
 	test_root.add_child(projectile)
 	projectile.global_position = position
 	return projectile

@@ -18,6 +18,7 @@ aura_particle_lifetime = 0.85
 variant = 5
 display_name = "翠壳原石虫"
 max_health = 10
+attack_damage = 2
 move_speed = 9.0
 collision_radius = 7.0
 enemy_frames = ExtResource("1_frames")

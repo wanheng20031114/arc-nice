@@ -12,8 +12,6 @@ class_name YuanshiInsectFireRangedConfig
 @export_range(0, 100, 1, "or_greater") var attack_fire_frame: int = 2
 # 火焰弹场景。
 @export var projectile_scene: PackedScene
-# 单枚火焰弹造成的伤害。
-@export_range(0, 999, 1, "or_greater") var projectile_damage: int = 1
 # 火焰弹飞行速度。
 @export_range(0.0, 2000.0, 0.1, "or_greater") var projectile_speed: float = 142.5
 # 火焰弹最大存活时间。

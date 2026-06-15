@@ -21,6 +21,8 @@ enum Variant {
 @export_group("基础数值")
 # 最大生命值，敌人生成时可用它初始化当前生命值。
 @export_range(1, 999, 1, "or_greater") var max_health: int = 3
+# 常规攻击伤害，供身体接触、光环和远程弹丸等攻击方式统一读取。
+@export_range(0, 999, 1, "or_greater") var attack_damage: int = 1
 # 移动速度，单位通常为像素/秒。
 @export_range(0.0, 1000.0, 1.0, "or_greater") var move_speed: float = 60.0
 # 圆形碰撞区域半径，可用于不同体型敌人的碰撞大小配置。

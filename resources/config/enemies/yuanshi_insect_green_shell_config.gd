@@ -6,8 +6,6 @@ class_name YuanshiInsectGreenShellConfig
 @export var aura_enabled: bool = true
 # 光环的实际伤害半径，同时控制范围提示的大小。
 @export_range(1.0, 256.0, 0.5, "or_greater") var aura_radius: float = 30.0
-# 光环每次命中玩家造成的伤害值。
-@export_range(0, 999, 1, "or_greater") var aura_damage: int = 1
 # 光环连续命中玩家之间的最短间隔（秒）。
 @export_range(0.1, 10.0, 0.01, "or_greater") var aura_damage_interval: float = 1.0
 

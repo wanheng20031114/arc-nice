@@ -23,6 +23,7 @@ func _run() -> void:
 
 	_test_resource_contract()
 	await _test_aura_visual_configuration()
+	await _test_shared_attack_damage()
 	await _test_aura_damage_and_shutdown()
 	await _test_normal_enemy_has_no_aura()
 
@@ -48,6 +49,7 @@ func _test_resource_contract() -> void:
 		"Green shell config must use its dedicated resource type."
 	)
 	_expect(GREEN_SHELL_CONFIG.aura_enabled, "Green shell aura must be enabled.")
+	_expect(GREEN_SHELL_CONFIG.attack_damage == 2, "Green shell attack damage must be 2.")
 	_expect(GREEN_SHELL_CONFIG.aura_radius > GREEN_SHELL_CONFIG.collision_radius, "Aura must exceed body radius.")
 	_expect(GREEN_SHELL_CONFIG.aura_particle_amount >= 60, "Aura particles are not dense enough.")
 	_expect(GREEN_SHELL_CONFIG.aura_particle_texture != null, "Aura particle texture is missing.")
@@ -134,13 +136,63 @@ func _test_aura_visual_configuration() -> void:
 	await physics_frame
 
 
+func _test_shared_attack_damage() -> void:
+	var test_config := GREEN_SHELL_CONFIG.duplicate(true) as YuanshiInsectGreenShellConfig
+	test_config.move_speed = 0.0
+	test_config.aura_damage_interval = 10.0
+
+	var player := _spawn_player(Vector2(200.0, 0.0))
+	player.invincibility_duration = 0.0
+	var enemy := _spawn_enemy(Vector2.ZERO, test_config, player)
+	await _wait_physics_frames(2)
+
+	var initial_health := player.current_health
+	enemy.aura_touched_player = player
+	enemy.call("_try_deal_aura_damage")
+
+	_expect(
+		player.current_health == initial_health - test_config.attack_damage,
+		(
+			"Aura damage did not use base attack damage "
+			+ "(health %d -> %d, config %d, runtime %d)."
+			% [
+				initial_health,
+				player.current_health,
+				test_config.attack_damage,
+				enemy.config.attack_damage,
+			]
+		)
+	)
+
+	enemy.aura_touched_player = null
+	var health_after_aura := player.current_health
+	enemy.touched_player = player
+	enemy.call("_try_deal_touch_damage")
+	_expect(
+		player.current_health == health_after_aura - test_config.attack_damage,
+		(
+			"Body contact damage did not use base attack damage "
+			+ "(health %d -> %d, config %d, runtime %d)."
+			% [
+				health_after_aura,
+				player.current_health,
+				test_config.attack_damage,
+				enemy.config.attack_damage,
+			]
+		)
+	)
+
+	enemy.queue_free()
+	player.queue_free()
+	await physics_frame
+
+
 func _test_aura_damage_and_shutdown() -> void:
 	var test_config := GREEN_SHELL_CONFIG.duplicate(true) as YuanshiInsectGreenShellConfig
 	test_config.move_speed = 0.0
-	test_config.aura_damage = 1
 	test_config.aura_damage_interval = 0.1
 
-	var player := _spawn_player(Vector2(20.0, 0.0))
+	var player := _spawn_player(Vector2(24.0, 0.0))
 	player.invincibility_duration = 0.0
 	var enemy := _spawn_enemy(Vector2.ZERO, test_config, player)
 	var initial_health := player.current_health
@@ -181,6 +233,9 @@ func _test_normal_enemy_has_no_aura() -> void:
 func _spawn_player(position: Vector2) -> Player:
 	var player := PLAYER_SCENE.instantiate() as Player
 	test_root.add_child(player)
+	player.max_health = 20
+	player.current_health = player.max_health
+	player.health_bar.setup(player.max_health, player.current_health)
 	player.global_position = position
 	return player
 
