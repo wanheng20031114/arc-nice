@@ -40,6 +40,25 @@ scale_min = 0.3
 scale_max = 0.55
 color = Color(0.92, 0.76, 0.38, 1)
 
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_aura"]
+resource_local_to_scene = true
+emission_shape = 1
+emission_sphere_radius = 3.0
+direction = Vector3(1, 0, 0)
+spread = 180.0
+initial_velocity_min = 22.0
+initial_velocity_max = 38.0
+gravity = Vector3(0, 0, 0)
+damping_min = 0.0
+damping_max = 1.5
+scale_min = 0.35
+scale_max = 0.7
+color = Color(0.22, 0.95, 0.12, 0.88)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_aura"]
+resource_local_to_scene = true
+radius = 30.0
+
 [node name="YuanshiInsect" type="CharacterBody2D" unique_id=2066499932]
 material = SubResource("ShaderMaterial_f87vc")
 collision_layer = 4
@@ -88,3 +107,36 @@ volume_db = -5.0
 [node name="ExplosionAudio" type="AudioStreamPlayer2D" parent="."]
 stream = ExtResource("5_h08p8")
 volume_db = -4.0
+
+[node name="AuraParticles" type="GPUParticles2D" parent="."]
+z_index = 1
+emitting = false
+amount = 72
+lifetime = 0.9
+randomness = 0.35
+local_coords = false
+texture = SubResource("AtlasTexture_hit_particle")
+process_material = SubResource("ParticleProcessMaterial_aura")
+
+[node name="AuraRangeFill" type="Polygon2D" parent="."]
+z_index = -1
+visible = false
+color = Color(0.12, 0.72, 0.08, 0.08)
+
+[node name="AuraRangeOutline" type="Line2D" parent="."]
+z_index = 0
+visible = false
+width = 1.25
+default_color = Color(0.38, 1, 0.2, 0.68)
+closed = true
+antialiased = false
+
+[node name="AuraArea" type="Area2D" parent="."]
+visible = false
+collision_layer = 0
+collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="AuraArea"]
+shape = SubResource("CircleShape2D_aura")
+disabled = true
+debug_color = Color(0.2, 0.9, 0.15, 0.2)

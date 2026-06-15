@@ -32,6 +32,8 @@ func _run() -> void:
 	test_root.queue_free()
 	await process_frame
 	await physics_frame
+	for _cleanup_frame in range(4):
+		await process_frame
 
 	if failures.is_empty():
 		print("YUANSHI_INSECT_FIRE_SMOKE_TEST_OK")

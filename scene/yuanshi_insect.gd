@@ -4,8 +4,12 @@ class_name YuanshiInsect
 const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
+const GREEN_SHELL_CONFIG_SCRIPT := preload(
+	"res://resources/config/enemies/yuanshi_insect_green_shell_config.gd"
+)
 const EXPLOSION_QUERY_MAX_RESULTS := 16
 const MAX_XIRANG_ORBS_PER_ENEMY := 4
+const AURA_RANGE_SEGMENTS := 48
 
 enum DeathSequenceStage {
 	NONE,
@@ -43,6 +47,11 @@ enum DeathSequenceStage {
 @onready var hit_audio: AudioStreamPlayer2D = $HitAudio
 @onready var death_audio: AudioStreamPlayer2D = $DeathAudio
 @onready var explosion_audio: AudioStreamPlayer2D = $ExplosionAudio
+@onready var aura_particles: GPUParticles2D = $AuraParticles
+@onready var aura_range_fill: Polygon2D = $AuraRangeFill
+@onready var aura_range_outline: Line2D = $AuraRangeOutline
+@onready var aura_area: Area2D = $AuraArea
+@onready var aura_area_shape: CollisionShape2D = $AuraArea/CollisionShape2D
 
 # 当前追踪的玩家对象，由敌人管理器在生成时注入。
 var target_player: Player = null
@@ -69,6 +78,11 @@ var current_path: PackedVector2Array = PackedVector2Array()
 var current_path_index: int = 0
 var path_refresh_time_left: float = 0.0
 
+# 毒性光环状态。
+var aura_active: bool = false
+var aura_touched_player: Player = null
+var aura_damage_cooldown_left: float = 0.0
+
 
 # 初始化配置、信号和默认动画。
 func _ready() -> void:
@@ -77,6 +91,8 @@ func _ready() -> void:
 	touch_damage_area.body_exited.connect(_on_touch_damage_area_body_exited)
 	touch_damage_area.area_entered.connect(_on_touch_damage_area_area_entered)
 	animated_sprite.animation_finished.connect(_on_animated_sprite_animation_finished)
+	aura_area.body_entered.connect(_on_aura_area_body_entered)
+	aura_area.body_exited.connect(_on_aura_area_body_exited)
 	_apply_config()
 
 
@@ -114,6 +130,7 @@ func apply_damage(amount: int, impact_direction: Vector2 = Vector2.ZERO) -> bool
 func _physics_process(delta: float) -> void:
 	_update_hurt_blink(delta)
 	_update_touch_damage(delta)
+	_update_aura_damage(delta)
 
 	if is_dead:
 		velocity = Vector2.ZERO
@@ -145,6 +162,8 @@ func _apply_config() -> void:
 		else:
 			push_warning("Missing enemy move animation: %s" % config.move_animation_name)
 
+	_apply_aura_config()
+
 
 # 将配置中的圆形半径同步到实体碰撞和接触伤害区域。
 func _apply_collision_radius(radius: float) -> void:
@@ -160,6 +179,143 @@ func _apply_explosion_radius(radius: float) -> void:
 	var explosion_circle_shape := explosion_shape.shape as CircleShape2D
 	if explosion_circle_shape != null:
 		explosion_circle_shape.radius = maxf(radius, 0.0)
+
+
+# 根据配置资源启用或禁用毒性光环，同步粒子和碰撞参数。
+func _apply_aura_config() -> void:
+	var aura_config := config as GREEN_SHELL_CONFIG_SCRIPT
+	if aura_config == null or not aura_config.aura_enabled:
+		_stop_aura()
+		return
+
+	var aura_circle := aura_area_shape.shape as CircleShape2D
+	if aura_circle != null:
+		aura_circle.radius = aura_config.aura_radius
+
+	var aura_material := aura_particles.process_material as ParticleProcessMaterial
+	if aura_material != null:
+		aura_material.emission_sphere_radius = aura_config.aura_particle_emission_radius
+		aura_material.initial_velocity_min = minf(
+			aura_config.aura_particle_speed_min,
+			aura_config.aura_particle_speed_max
+		)
+		aura_material.initial_velocity_max = maxf(
+			aura_config.aura_particle_speed_min,
+			aura_config.aura_particle_speed_max
+		)
+		aura_material.scale_min = minf(
+			aura_config.aura_particle_scale_min,
+			aura_config.aura_particle_scale_max
+		)
+		aura_material.scale_max = maxf(
+			aura_config.aura_particle_scale_min,
+			aura_config.aura_particle_scale_max
+		)
+		aura_material.color = aura_config.aura_particle_color
+
+	aura_particles.amount = maxi(aura_config.aura_particle_amount, 1)
+	aura_particles.lifetime = maxf(aura_config.aura_particle_lifetime, 0.05)
+	aura_particles.preprocess = aura_particles.lifetime
+	aura_particles.texture = aura_config.aura_particle_texture
+	var visibility_radius := aura_config.aura_radius + 16.0
+	aura_particles.visibility_rect = Rect2(
+		Vector2.ONE * -visibility_radius,
+		Vector2.ONE * visibility_radius * 2.0
+	)
+	_apply_aura_range_indicator(aura_config)
+
+	_start_aura()
+
+
+func _apply_aura_range_indicator(aura_config: GREEN_SHELL_CONFIG_SCRIPT) -> void:
+	var range_points := PackedVector2Array()
+	for point_index in range(AURA_RANGE_SEGMENTS):
+		var angle := TAU * float(point_index) / float(AURA_RANGE_SEGMENTS)
+		range_points.append(Vector2.RIGHT.rotated(angle) * aura_config.aura_radius)
+
+	aura_range_fill.polygon = range_points
+	aura_range_fill.color = aura_config.aura_fill_color
+	aura_range_outline.points = range_points
+	aura_range_outline.default_color = aura_config.aura_outline_color
+	aura_range_outline.width = aura_config.aura_outline_width
+
+
+# 启动毒性光环的粒子效果和伤害检测。
+func _start_aura() -> void:
+	if aura_active:
+		return
+
+	aura_active = true
+	aura_particles.restart()
+	aura_particles.emitting = true
+	aura_range_fill.visible = true
+	aura_range_outline.visible = true
+	aura_area.visible = true
+	aura_area.set_deferred("monitoring", true)
+	aura_area_shape.set_deferred("disabled", false)
+
+
+# 关闭毒性光环，停止粒子和伤害检测。
+func _stop_aura() -> void:
+	aura_active = false
+	aura_particles.emitting = false
+	aura_range_fill.visible = false
+	aura_range_outline.visible = false
+	aura_area.visible = false
+	aura_area.set_deferred("monitoring", false)
+	aura_area_shape.set_deferred("disabled", true)
+	aura_touched_player = null
+	aura_damage_cooldown_left = 0.0
+
+
+# 光环区域检测到玩家进入。
+func _on_aura_area_body_entered(body: Node2D) -> void:
+	if is_dead or not aura_active:
+		return
+
+	var player := body as Player
+	if player == null:
+		return
+
+	aura_touched_player = player
+	_try_deal_aura_damage()
+
+
+# 玩家离开光环区域。
+func _on_aura_area_body_exited(body: Node2D) -> void:
+	if body == aura_touched_player:
+		aura_touched_player = null
+
+
+# 每帧更新光环持续伤害冷却，在冷却结束后再次造成伤害。
+func _update_aura_damage(delta: float) -> void:
+	if not aura_active:
+		return
+
+	if aura_damage_cooldown_left > 0.0:
+		aura_damage_cooldown_left = maxf(aura_damage_cooldown_left - delta, 0.0)
+
+	if aura_touched_player == null:
+		return
+	if not is_instance_valid(aura_touched_player):
+		aura_touched_player = null
+		return
+	if aura_damage_cooldown_left > 0.0:
+		return
+
+	_try_deal_aura_damage()
+
+
+# 对光环范围内的玩家造成一次伤害并重置冷却。
+func _try_deal_aura_damage() -> void:
+	if aura_touched_player == null:
+		return
+	var aura_config := config as GREEN_SHELL_CONFIG_SCRIPT
+	if aura_config == null:
+		return
+
+	aura_touched_player.apply_damage(aura_config.aura_damage)
+	aura_damage_cooldown_left = aura_config.aura_damage_interval
 
 
 # 获取当前敌人的移动速度。
@@ -342,6 +498,7 @@ func _die() -> void:
 	touch_damage_shape.set_deferred("disabled", true)
 	touch_damage_area.set_deferred("monitoring", false)
 	touch_damage_area.set_deferred("monitorable", false)
+	_stop_aura()
 	death_audio.play()
 	call_deferred("_drop_xirang")
 	_try_drop_pickup()

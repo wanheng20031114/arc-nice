@@ -15,7 +15,7 @@ signal died
 @export var attack_method_name: String = "枪"
 
 var current_health: int = 0
-var current_xirang: int = 0
+var current_xirang: int = 20000
 var invincibility_time_left: float = 0.0
 var is_dead: bool = false
 var controls_locked: bool = false
@@ -73,7 +73,6 @@ var dodge_chance: float = 0.0
 # 节点首次进入场景树时的初始化逻辑
 func _ready() -> void:
 	current_health = maxi(max_health, 1)
-	current_xirang = 0
 	shooting_timer.one_shot = true
 	shooting_timer.wait_time = _get_effective_fire_interval()
 	_set_hurt_blink_enabled(false)
@@ -176,7 +175,7 @@ func apply_pickup(config: PickupConfig) -> bool:
 		
 	var applied := false
 	var should_refresh_shooting_timer := false
-	var buff_duration := maxf(config.duration,0.0)
+	var buff_duration := maxf(config.duration, 0.0)
 	var has_form_override := (
 		config.player_form_mode != PickupConfig.PlayerFormMode.NORMAL
 		or config.shot_pattern != PickupConfig.ShotPattern.NORMAL
@@ -344,7 +343,6 @@ func _on_window_focus_exited() -> void:
 	mouse_fire_held = false
 
 
-
 # 获取当前实际射击间隔（受射速加成影响）
 func _get_effective_fire_interval() -> float:
 	return max(fire_interval / _get_effective_fire_rate_multiplier(), 0.01)
@@ -373,7 +371,7 @@ func _refresh_shooting_timer_wait_time() -> void:
 	
 	if shooting_timer.is_stopped():
 		return
-	if shooting_timer.time_left<= new_interval:
+	if shooting_timer.time_left <= new_interval:
 		return
 		
 	shooting_timer.start(new_interval)
