@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="FireRangedEnemyConfig" format=3 uid="uid://dqch71ylq8wpw"]
+
+[ext_resource type="SpriteFrames" path="res://resources/animation/enemy_fire_ranged.tres" id="1_frames"]
+[ext_resource type="Script" path="res://resources/config/fire_ranged_enemy_config.gd" id="2_script"]
+[ext_resource type="PackedScene" path="res://scene/enemy_fire_projectile.tscn" id="3_projectile"]
+[ext_resource type="AudioStream" path="res://resources/audio/fire_enemy_attack.wav" id="4_attack_audio"]
+[ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="4_oaw6t"]
+[ext_resource type="PackedScene" uid="uid://cbpa0760rtpo4" path="res://scene/fire_ranged_enemy.tscn" id="5_enemy_scene"]
+[ext_resource type="Resource" path="res://resources/config/pickup_speed.tres" id="5_oqlbn"]
+[ext_resource type="Resource" path="res://resources/config/pickup_rapid.tres" id="6_6n8sh"]
+[ext_resource type="Resource" path="res://resources/config/pickup_spiral.tres" id="7_67761"]
+[ext_resource type="Resource" path="res://resources/config/pickup_tenpura.tres" id="8_m1upb"]
+[ext_resource type="Resource" path="res://resources/config/pickup_health.tres" id="9_mt62h"]
+
+[resource]
+script = ExtResource("2_script")
+projectile_scene = ExtResource("3_projectile")
+attack_audio_stream = ExtResource("4_attack_audio")
+enemy_type = 6
+display_name = "火焰源石虫"
+enemy_scene_override = ExtResource("5_enemy_scene")
+move_speed = 22.0
+collision_radius = 7.0
+enemy_frames = ExtResource("1_frames")
+xirang_drop_amount = 2
+pickup_drop_chance = 0.35
