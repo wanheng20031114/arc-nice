@@ -1,6 +1,8 @@
 extends CharacterBody2D
 class_name YuanshiInsect
 
+signal defeated(enemy: YuanshiInsect)
+
 const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
@@ -502,6 +504,7 @@ func _die() -> void:
 		return
 
 	is_dead = true
+	defeated.emit(self)
 	velocity = Vector2.ZERO
 	touched_player = null
 	hurt_blink_time_left = 0.0

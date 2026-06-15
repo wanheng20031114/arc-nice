@@ -1,0 +1,13 @@
+[gd_scene format=3]
+
+[ext_resource type="SpriteFrames" path="res://resources/animation/zhuangfangyi.tres" id="1_frames"]
+
+[node name="ZhuangfangyiMerchant" type="Node2D"]
+visible = false
+z_index = 2
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+sprite_frames = ExtResource("1_frames")
+animation = &"idle"
+autoplay = "idle"
+

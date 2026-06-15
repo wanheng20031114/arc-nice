@@ -6,6 +6,7 @@ const FIRE_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_fire
 const BOMBER_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_bomber.tres")
 const FIRE_PROJECTILE_SCENE := preload("res://scene/yuanshi_insect_fire_projectile.tscn")
 const FIRE_CONFIG_SCRIPT := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged_config.gd")
+const FINAL_WAVE := preload("res://resources/config/waves/wave_03.tres")
 const COMBAT_STATE_CHASE := 0
 const COMBAT_STATE_ATTACK := 1
 
@@ -68,10 +69,13 @@ func _test_resource_contract() -> void:
 	_expect(is_equal_approx(FIRE_CONFIG.attack_interval, 1.35), "Attack interval must be 1.35.")
 	_expect(FIRE_CONFIG.attack_fire_frame == 2, "Attack must fire on frame 2.")
 
-	var game_script_source := FileAccess.get_file_as_string("res://scene/game.gd")
+	var fire_enemy_count := 0
+	for entry in FINAL_WAVE.enemy_entries:
+		if entry != null and entry.enemy_config == FIRE_CONFIG:
+			fire_enemy_count += entry.count
 	_expect(
-		game_script_source.contains("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres"),
-		"Game random spawn list does not contain the fire enemy config."
+		fire_enemy_count == 6,
+		"Final wave must contain 6 fire Yuanshi insects."
 	)
 
 	var projectile := FIRE_PROJECTILE_SCENE.instantiate() as YuanshiInsectFireProjectile

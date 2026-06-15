@@ -1,88 +1,75 @@
 extends Node2D
 
-const OVERWORLD_MUSIC := preload("res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3")
-const OUTLAW_MUSIC := preload("res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3")
-const FINAL_MUSIC := preload("res://resources/audio/1-29 Journey of the Prairie King (Final Boss & Ending).mp3")
 const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/yuanshi_insect_spawn_effect.tscn")
 
-@export_group("刷怪资源")
+enum WaveState {
+	PRE_WAVE,
+	WAVE_ACTIVE,
+	INTERMISSION,
+	VICTORY,
+	DEFEAT,
+}
+
+@export_group("波次资源")
 @export var enemy_scene: PackedScene = preload("res://scene/yuanshi_insect.tscn")
-@export var enemy_configs: Array[YuanshiInsectConfig] = [
-	preload("res://resources/config/enemies/yuanshi_insect_basic.tres"),
-	preload("res://resources/config/enemies/yuanshi_insect_shell.tres"),
-	preload("res://resources/config/enemies/yuanshi_insect_fast.tres"),
-	preload("res://resources/config/enemies/yuanshi_insect_bomber.tres"),
-	preload("res://resources/config/enemies/yuanshi_insect_purple_bomber.tres"),
-	preload("res://resources/config/enemies/yuanshi_insect_green_shell.tres"),
-	preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres"),
+@export var waves: Array[WaveConfig] = [
+	preload("res://resources/config/waves/wave_01.tres"),
+	preload("res://resources/config/waves/wave_02.tres"),
+	preload("res://resources/config/waves/wave_03.tres"),
 ]
 
-
-@export_group("刷怪节奏")
-# 开局立即刷出的敌人数，用于快速验证系统是否正常工作。
-@export_range(0, 100, 1, "or_greater") var initial_spawn_count: int = 1
-# 每次计时器触发时生成的敌人数。
-@export_range(1, 20, 1, "or_greater") var spawn_count_per_tick: int = 1
-# 开局时的刷怪间隔。
-@export_range(0.1, 60.0, 0.1, "or_greater") var spawn_interval: float = 1.5
-# 关卡后期允许缩短到的最小刷怪间隔。
-@export_range(0.1, 60.0, 0.1, "or_greater") var min_spawn_interval: float = 0.6
-# 场上允许同时存在的最大敌人数，避免无限堆积。
-@export_range(1, 200, 1, "or_greater") var max_alive_enemies: int = 100
-
-# 测试用：刷怪间隔从初始值过渡到最小值所需的时间。
-@export_range(1.0, 3600.0, 1.0, "or_greater") var spawn_acceleration_duration: float = 60.0
+@export_group("波次流程")
+@export_range(0.0, 60.0, 1.0, "or_greater") var pre_wave_duration: float = 5.0
+@export var auto_start_waves: bool = true
 
 @onready var player: Player = $Player
 @onready var enemy_container: Node2D = $EnemyContainer
 @onready var enemy_spawn_points_root: Node2D = $EnemySpawnPoints
 @onready var enemy_spawn_timer: Timer = $EnemySpawnTimer
+@onready var state_timer: Timer = $StateTimer
 @onready var grid_pathfinder: Node = $GridPathfinder
 @onready var music_player: AudioStreamPlayer = $MusicPlayer
 @onready var enemy_spawn_audio: AudioStreamPlayer = $EnemySpawnAudio
+@onready var countdown_audio: AudioStreamPlayer = $CountdownAudio
+@onready var wave_start_audio: AudioStreamPlayer = $WaveStartAudio
 @onready var currency_hud: CurrencyHUD = $CurrencyHUD
+@onready var wave_hud: WaveHUD = $WaveHUD
 @onready var player_profile_panel: PlayerProfilePanel = $PlayerProfilePanel
+@onready var merchant: Node2D = $ZhuangfangyiMerchant
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
-# 随机数生成器，专门用于挑选出生点和敌人配置。
-var random_generator: RandomNumberGenerator = RandomNumberGenerator.new()
-
-# 缓存出生点，避免每次刷怪都重新遍历场景树。
+var random_generator := RandomNumberGenerator.new()
 var enemy_spawn_points: Array[Marker2D] = []
+var pending_enemy_configs: Array[YuanshiInsectConfig] = []
+var active_wave_enemy_ids: Dictionary = {}
 
-# 缓存有效的敌人配置资源，自动忽略空条目。
-var available_enemy_configs: Array[YuanshiInsectConfig] = []
+var wave_state: WaveState = WaveState.PRE_WAVE
+var current_wave_index: int = 0
+var current_wave_total: int = 0
+var current_wave_spawned: int = 0
+var current_wave_defeated: int = 0
+var countdown_seconds: int = 0
 
-# 当前游戏已经运行的时间，用于逐渐加快刷怪节奏。
-var game_time_elapsed: float = 0.0
-var current_music_stage: int = -1
 
-
-# 初始化刷怪系统：缓存出生点、缓存配置、刷出初始敌人并启动定时器。
 func _ready() -> void:
 	random_generator.randomize()
 	run_state.ensure_run_started()
 	_collect_enemy_spawn_points()
-	_collect_enemy_configs()
-	_configure_enemy_spawn_timer()
+	_configure_timers()
 	currency_hud.bind_player(player)
 	player_profile_panel.bind_player(player)
 	currency_hud.profile_requested.connect(player_profile_panel.open)
-	_update_music()
-	_spawn_initial_enemies()
-	_start_enemy_spawn_timer()
-	
-# 每帧更新逻辑，处理时间流逝、刷怪频率调整以及背景音乐阶段的切换
-func _process(delta: float) -> void:
-	game_time_elapsed += delta
-	_update_spawn_interval()
-	_update_music()
+	player.died.connect(_on_player_died)
+	merchant.visible = false
+
+	if auto_start_waves and _is_wave_system_ready():
+		_enter_pre_wave(0)
+	else:
+		wave_hud.hide_all()
 
 
-# 从 EnemySpawnPoints 节点下收集所有 Marker2D 作为可选出生点。
 func _collect_enemy_spawn_points() -> void:
 	enemy_spawn_points.clear()
-
 	for child in enemy_spawn_points_root.get_children():
 		var spawn_point := child as Marker2D
 		if spawn_point != null:
@@ -92,87 +79,169 @@ func _collect_enemy_spawn_points() -> void:
 		push_warning("EnemySpawnPoints 下没有可用的 Marker2D 刷新点。")
 
 
-# 缓存有效的敌人配置资源，便于后续随机挑选。
-func _collect_enemy_configs() -> void:
-	available_enemy_configs.clear()
-
-	for enemy_config in enemy_configs:
-		if enemy_config != null:
-			available_enemy_configs.append(enemy_config)
-
-	if available_enemy_configs.is_empty():
-		push_warning("Game 场景没有可用的敌人配置资源。")
-
-func _configure_enemy_spawn_timer() -> void:
+func _configure_timers() -> void:
 	enemy_spawn_timer.one_shot = false
-	enemy_spawn_timer.wait_time = _get_current_spawn_interval()
-
 	if not enemy_spawn_timer.timeout.is_connected(_on_enemy_spawn_timer_timeout):
 		enemy_spawn_timer.timeout.connect(_on_enemy_spawn_timer_timeout)
 
+	state_timer.one_shot = false
+	state_timer.wait_time = 1.0
+	if not state_timer.timeout.is_connected(_on_state_timer_timeout):
+		state_timer.timeout.connect(_on_state_timer_timeout)
 
-# 根据游戏运行时间逐渐缩短刷怪间隔，让后期节奏自然加快。
-func _update_spawn_interval() -> void:
-	var current_interval := _get_current_spawn_interval()
 
-	if is_equal_approx(enemy_spawn_timer.wait_time, current_interval):
+func _enter_pre_wave(wave_index: int) -> void:
+	if wave_index < 0 or wave_index >= waves.size():
+		_enter_victory()
 		return
 
-	enemy_spawn_timer.wait_time = current_interval
+	wave_state = WaveState.PRE_WAVE
+	current_wave_index = wave_index
+	enemy_spawn_timer.stop()
+	merchant.visible = false
+	countdown_seconds = maxi(ceili(pre_wave_duration), 0)
+	wave_hud.show_countdown(countdown_seconds)
 
-	# 如果当前这一轮倒计时比新的间隔还长，就立刻切到更快的节奏。
-	if enemy_spawn_timer.is_stopped():
+	if countdown_seconds <= 0:
+		_begin_wave(current_wave_index)
 		return
-	if enemy_spawn_timer.time_left <= current_interval:
+
+	countdown_audio.play()
+	state_timer.start(1.0)
+
+
+func _enter_intermission() -> void:
+	wave_state = WaveState.INTERMISSION
+	enemy_spawn_timer.stop()
+	merchant.visible = true
+
+	var wave_config := _get_current_wave()
+	countdown_seconds = (
+		maxi(ceili(wave_config.rest_duration_after_wave), 0)
+		if wave_config != null
+		else 0
+	)
+	wave_hud.show_countdown(countdown_seconds)
+
+	if countdown_seconds <= 0:
+		_begin_wave(current_wave_index + 1)
 		return
 
-	enemy_spawn_timer.start(current_interval)
-
-# 通过游戏运行时间计算当前刷怪间隔。
-func _get_current_spawn_interval() -> float:
-	var start_interval := maxf(spawn_interval, 0.1)
-	var end_interval := minf(maxf(min_spawn_interval, 0.1), start_interval)
-
-	if spawn_acceleration_duration <= 0.0:
-		return end_interval
-
-	var difficulty_ratio := clampf(game_time_elapsed / spawn_acceleration_duration, 0.0, 1.0)
-	return lerpf(start_interval, end_interval, difficulty_ratio)
+	if countdown_seconds <= 5:
+		countdown_audio.play()
+	state_timer.start(1.0)
 
 
-# 开局先刷出一小批敌人，方便立即看到运行效果。
-func _spawn_initial_enemies() -> void:
-	for _spawn_index in range(initial_spawn_count):
-		if not _try_spawn_enemy():
-			break
-
-
-# 当前刷怪系统准备完成后再启动定时器。
-func _start_enemy_spawn_timer() -> void:
-	if not _is_spawn_system_ready():
+func _begin_wave(wave_index: int) -> void:
+	if wave_index < 0 or wave_index >= waves.size():
+		_enter_victory()
 		return
-	enemy_spawn_timer.start(_get_current_spawn_interval())
+
+	var wave_config := waves[wave_index]
+	if wave_config == null:
+		push_error("波次 %d 缺少 WaveConfig。" % (wave_index + 1))
+		_enter_defeat()
+		return
+
+	wave_state = WaveState.WAVE_ACTIVE
+	current_wave_index = wave_index
+	state_timer.stop()
+	merchant.visible = false
+	current_wave_spawned = 0
+	current_wave_defeated = 0
+	active_wave_enemy_ids.clear()
+	_build_wave_spawn_queue(wave_config)
+	current_wave_total = pending_enemy_configs.size()
+	_update_wave_music(wave_config)
+	wave_hud.show_wave_progress(
+		current_wave_index + 1,
+		current_wave_defeated,
+		current_wave_total
+	)
+	wave_start_audio.play()
+
+	if current_wave_total <= 0:
+		_check_wave_completion()
+		return
+
+	_spawn_wave_batch()
+	if not pending_enemy_configs.is_empty():
+		enemy_spawn_timer.start(maxf(wave_config.spawn_interval, 0.05))
+
+
+func _build_wave_spawn_queue(wave_config: WaveConfig) -> void:
+	pending_enemy_configs.clear()
+	for entry in wave_config.enemy_entries:
+		if entry == null or entry.enemy_config == null:
+			continue
+		for _enemy_index in range(maxi(entry.count, 0)):
+			pending_enemy_configs.append(entry.enemy_config)
+
+	for source_index in range(pending_enemy_configs.size() - 1, 0, -1):
+		var target_index := random_generator.randi_range(0, source_index)
+		var temporary := pending_enemy_configs[source_index]
+		pending_enemy_configs[source_index] = pending_enemy_configs[target_index]
+		pending_enemy_configs[target_index] = temporary
+
+
+func _on_state_timer_timeout() -> void:
+	if wave_state != WaveState.PRE_WAVE and wave_state != WaveState.INTERMISSION:
+		state_timer.stop()
+		return
+
+	countdown_seconds = maxi(countdown_seconds - 1, 0)
+	if countdown_seconds > 0:
+		wave_hud.show_countdown(countdown_seconds)
+		if countdown_seconds <= 5:
+			countdown_audio.play()
+		return
+
+	state_timer.stop()
+	if wave_state == WaveState.PRE_WAVE:
+		_begin_wave(current_wave_index)
+	else:
+		_begin_wave(current_wave_index + 1)
 
 
 func _on_enemy_spawn_timer_timeout() -> void:
-	for _spawn_index in range(spawn_count_per_tick):
-		if not _try_spawn_enemy():
+	_spawn_wave_batch()
+
+
+func _spawn_wave_batch() -> void:
+	if wave_state != WaveState.WAVE_ACTIVE:
+		enemy_spawn_timer.stop()
+		return
+
+	var wave_config := _get_current_wave()
+	if wave_config == null:
+		enemy_spawn_timer.stop()
+		return
+
+	for _spawn_index in range(maxi(wave_config.spawn_count_per_tick, 1)):
+		if pending_enemy_configs.is_empty():
+			break
+		if active_wave_enemy_ids.size() >= maxi(wave_config.max_alive_enemies, 1):
 			break
 
-# 尝试生成一个敌人，并自动完成位置和玩家目标初始化。
-func _try_spawn_enemy() -> bool:
-	if not _is_spawn_system_ready():
-		return false
+		var enemy_config := pending_enemy_configs[0]
+		if not _try_spawn_enemy(enemy_config):
+			break
 
-	if _get_alive_enemy_count() >= max_alive_enemies:
+		pending_enemy_configs.remove_at(0)
+		current_wave_spawned += 1
+
+	if pending_enemy_configs.is_empty():
+		enemy_spawn_timer.stop()
+
+	_check_wave_completion()
+
+
+func _try_spawn_enemy(enemy_config: YuanshiInsectConfig) -> bool:
+	if not _is_spawn_system_ready() or enemy_config == null:
 		return false
 
 	var spawn_point := _pick_spawn_point()
 	if spawn_point == null:
-		return false
-
-	var enemy_config := _pick_enemy_config()
-	if enemy_config == null:
 		return false
 
 	var spawn_scene := (
@@ -182,18 +251,97 @@ func _try_spawn_enemy() -> bool:
 	)
 	var enemy_instance := spawn_scene.instantiate() as YuanshiInsect
 	if enemy_instance == null:
-		push_warning("敌人场景实例化失败，请检查 enemy_scene 设置。")
+		push_warning("敌人场景实例化失败，请检查波次中的敌人配置。")
 		return false
 
 	enemy_container.add_child(enemy_instance)
 	enemy_instance.global_position = spawn_point.global_position
 	enemy_instance.setup(enemy_config, player, grid_pathfinder)
+	var enemy_id := enemy_instance.get_instance_id()
+	active_wave_enemy_ids[enemy_id] = true
+	enemy_instance.defeated.connect(_on_wave_enemy_defeated)
+	enemy_instance.tree_exited.connect(_on_wave_enemy_tree_exited.bind(enemy_id))
 	_spawn_enemy_spawn_effect(spawn_point.global_position)
 	enemy_spawn_audio.play()
-
 	return true
-	
-# 只要玩家、敌人场景、配置和出生点都有效，就允许继续刷怪。
+
+
+func _on_wave_enemy_defeated(enemy: YuanshiInsect) -> void:
+	if wave_state != WaveState.WAVE_ACTIVE:
+		return
+	if enemy == null or not active_wave_enemy_ids.has(enemy.get_instance_id()):
+		return
+
+	current_wave_defeated = mini(current_wave_defeated + 1, current_wave_total)
+	wave_hud.show_wave_progress(
+		current_wave_index + 1,
+		current_wave_defeated,
+		current_wave_total
+	)
+	_check_wave_completion()
+
+
+func _on_wave_enemy_tree_exited(enemy_id: int) -> void:
+	active_wave_enemy_ids.erase(enemy_id)
+	_check_wave_completion()
+
+
+func _check_wave_completion() -> void:
+	if wave_state != WaveState.WAVE_ACTIVE:
+		return
+	if not pending_enemy_configs.is_empty():
+		return
+	if current_wave_spawned < current_wave_total:
+		return
+	if current_wave_defeated < current_wave_total:
+		return
+	if not active_wave_enemy_ids.is_empty():
+		return
+
+	enemy_spawn_timer.stop()
+	if current_wave_index >= waves.size() - 1:
+		_enter_victory()
+	else:
+		_enter_intermission()
+
+
+func _enter_victory() -> void:
+	wave_state = WaveState.VICTORY
+	enemy_spawn_timer.stop()
+	state_timer.stop()
+	merchant.visible = false
+	wave_hud.show_victory()
+
+
+func _enter_defeat() -> void:
+	if wave_state == WaveState.DEFEAT:
+		return
+	wave_state = WaveState.DEFEAT
+	enemy_spawn_timer.stop()
+	state_timer.stop()
+	merchant.visible = false
+	wave_hud.show_defeat()
+
+
+func _on_player_died() -> void:
+	if wave_state == WaveState.VICTORY:
+		return
+	_enter_defeat()
+
+
+func _is_wave_system_ready() -> bool:
+	if not _is_spawn_system_ready():
+		return false
+	if waves.is_empty():
+		push_warning("Game 场景没有配置任何波次资源。")
+		return false
+	for wave_config in waves:
+		if wave_config == null:
+			push_warning("Game 场景的波次数组包含空资源。")
+			return false
+	return true
+
+
 func _is_spawn_system_ready() -> bool:
 	return (
 		player != null
@@ -201,73 +349,35 @@ func _is_spawn_system_ready() -> bool:
 		and grid_pathfinder != null
 		and grid_pathfinder.get("is_built")
 		and not enemy_spawn_points.is_empty()
-		and not available_enemy_configs.is_empty()
 	)
 
 
-# 随机挑选一个出生点。
+func _get_current_wave() -> WaveConfig:
+	if current_wave_index < 0 or current_wave_index >= waves.size():
+		return null
+	return waves[current_wave_index]
+
+
 func _pick_spawn_point() -> Marker2D:
 	if enemy_spawn_points.is_empty():
 		return null
-
-	var random_index := random_generator.randi_range(0, enemy_spawn_points.size() - 1)
-	return enemy_spawn_points[random_index]
-
-
-# 随机挑选一个敌人配置。
-func _pick_enemy_config() -> YuanshiInsectConfig:
-	if available_enemy_configs.is_empty():
-		return null
-
-	var random_index := random_generator.randi_range(0, available_enemy_configs.size() - 1)
-	return available_enemy_configs[random_index]
-
-# 获取当前场景中存活（尚未被销毁）的敌人数
-func _get_alive_enemy_count() -> int:
-	var alive_enemy_count := 0
-	for child in enemy_container.get_children():
-		if child is YuanshiInsect:
-			alive_enemy_count += 1
-			
-	return alive_enemy_count
+	return enemy_spawn_points[
+		random_generator.randi_range(0, enemy_spawn_points.size() - 1)
+	]
 
 
-# 在指定的出生点位置生成敌人出现时的视觉特效
 func _spawn_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
 	var effect := ENEMY_SPAWN_EFFECT_SCENE.instantiate() as Node2D
 	if effect == null:
 		return
-
 	add_child(effect)
 	effect.global_position = spawn_global_position
 
 
-# 根据当前的游戏难度（时间进度）更新背景音乐阶段
-func _update_music() -> void:
-	var difficulty_ratio := _get_difficulty_ratio()
-	var next_music_stage := 0
-	var next_stream: AudioStream = OVERWORLD_MUSIC
-
-	if difficulty_ratio >= 0.9:
-		next_music_stage = 2
-		next_stream = FINAL_MUSIC
-	elif difficulty_ratio >= 0.5:
-		next_music_stage = 1
-		next_stream = OUTLAW_MUSIC
-
-	if current_music_stage == next_music_stage:
+func _update_wave_music(wave_config: WaveConfig) -> void:
+	if wave_config.music == null:
 		return
-
-	current_music_stage = next_music_stage
-	music_player.stream = next_stream
+	if music_player.stream == wave_config.music and music_player.playing:
+		return
+	music_player.stream = wave_config.music
 	music_player.play()
-
-
-# 计算当前游戏时间的难度比例（0.0 ~ 1.0），用于控制音乐阶段和刷怪频率
-func _get_difficulty_ratio() -> float:
-	if spawn_acceleration_duration <= 0.0:
-		return 1.0
-
-	return clampf(game_time_elapsed / spawn_acceleration_duration, 0.0, 1.0)
-	
-	

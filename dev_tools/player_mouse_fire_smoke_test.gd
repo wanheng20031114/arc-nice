@@ -13,9 +13,7 @@ func _init() -> void:
 
 func _run() -> void:
 	game = GAME_SCENE.instantiate() as Node2D
-	game.set("initial_spawn_count", 0)
-	game.set("spawn_interval", 60.0)
-	game.set("current_music_stage", 0)
+	game.set("auto_start_waves", false)
 	var test_music_player := game.get_node("MusicPlayer") as AudioStreamPlayer
 	test_music_player.autoplay = false
 	root.add_child(game)
