@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="YuanshiInsectConfig" format=3 uid="uid://gh81or2m6c2t"]
+
+[ext_resource type="SpriteFrames" uid="uid://b5wdos2x826w2" path="res://resources/animation/yuanshi_insect_bomber.tres" id="1_dmrur"]
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="1_yk220"]
+[ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="2_dmrur"]
+[ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="3_qmoxg"]
+[ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="4_4kq6o"]
+[ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="4_rwna3"]
+[ext_resource type="Script" uid="uid://cxt041wfb1usj" path="res://resources/config/enemies/yuanshi_insect_config.gd" id="5_7pxth"]
+[ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="7_4kq6o"]
+
+[resource]
+script = ExtResource("5_7pxth")
+variant = 3
+display_name = "自爆原石虫"
+max_health = 2
+move_speed = 18.0
+collision_radius = 7.0
+enemy_frames = ExtResource("1_dmrur")
+explode_on_death = true
+explosion_damage = 2
+explosion_radius = 30.0
+explosion_animation_scale = 1.76
+xirang_drop_amount = 2
+pickup_drop_chance = 0.4
+metadata/_custom_type_script = "uid://cxt041wfb1usj"

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="YuanshiInsectConfig" format=3 uid="uid://d31hbyrmfh543"]
+
+[ext_resource type="SpriteFrames" uid="uid://b8bbt6bw06ogo" path="res://resources/animation/yuanshi_insect_basic.tres" id="1_ca4gr"]
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="1_myn7r"]
+[ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="2_ca4gr"]
+[ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="3_dw0wd"]
+[ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="4_0vk2e"]
+[ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="4_health"]
+[ext_resource type="Script" uid="uid://cxt041wfb1usj" path="res://resources/config/enemies/yuanshi_insect_config.gd" id="5_mboub"]
+
+[resource]
+script = ExtResource("5_mboub")
+move_speed = 20.0
+collision_radius = 6.0
+enemy_frames = ExtResource("1_ca4gr")
+pickup_drop_chance = 0.2
+pickup_drop_configs = Array[ExtResource("1_myn7r")]([ExtResource("2_ca4gr"), ExtResource("3_dw0wd"), ExtResource("4_0vk2e"), ExtResource("4_health")])
+metadata/_custom_type_script = "uid://cxt041wfb1usj"

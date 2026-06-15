@@ -19,7 +19,7 @@ const DESIGN_SIZE := Vector2(724.0, 543.0)
 @onready var health_row: UpgradeRow = $Overlay/PanelRoot/UpgradePanel/HealthRow
 @onready var speed_row: UpgradeRow = $Overlay/PanelRoot/UpgradePanel/SpeedRow
 @onready var dodge_row: UpgradeRow = $Overlay/PanelRoot/UpgradePanel/DodgeRow
-@onready var run_state: Node = get_node("/root/RunState")
+@onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
 var tracked_player: Player = null
 var slots: Array[InventorySlot] = []
@@ -159,10 +159,10 @@ func _refresh_inventory() -> void:
 
 
 func _refresh_upgrades() -> void:
-	_refresh_upgrade_row(attack_row, RunState.StatType.ATTACK)
-	_refresh_upgrade_row(health_row, RunState.StatType.HEALTH)
-	_refresh_upgrade_row(speed_row, RunState.StatType.ATTACK_SPEED)
-	_refresh_upgrade_row(dodge_row, RunState.StatType.DODGE)
+	_refresh_upgrade_row(attack_row, RunStateStore.StatType.ATTACK)
+	_refresh_upgrade_row(health_row, RunStateStore.StatType.HEALTH)
+	_refresh_upgrade_row(speed_row, RunStateStore.StatType.ATTACK_SPEED)
+	_refresh_upgrade_row(dodge_row, RunStateStore.StatType.DODGE)
 
 
 func _refresh_upgrade_row(row: UpgradeRow, stat_type: int) -> void:

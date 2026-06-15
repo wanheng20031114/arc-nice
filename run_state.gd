@@ -1,4 +1,5 @@
 extends Node
+class_name RunStateStore
 
 signal inventory_changed
 signal upgrade_changed

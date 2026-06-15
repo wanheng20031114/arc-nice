@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="YuanshiInsectConfig" format=3 uid="uid://yefrqmv7b306"]
+
+[ext_resource type="SpriteFrames" uid="uid://p451nqj5gojm" path="res://resources/animation/yuanshi_insect_green_shell.tres" id="1_frames"]
+[ext_resource type="Script" uid="uid://cxt041wfb1usj" path="res://resources/config/enemies/yuanshi_insect_config.gd" id="2_script"]
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="2_u8owp"]
+[ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="3_1by86"]
+[ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="4_2atwk"]
+[ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="5_tna6s"]
+[ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="6_frdp7"]
+[ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="7_3pf0l"]
+
+[resource]
+script = ExtResource("2_script")
+variant = 5
+display_name = "翠壳原石虫"
+max_health = 8
+move_speed = 15.0
+collision_radius = 7.0
+enemy_frames = ExtResource("1_frames")
+xirang_drop_amount = 3
+pickup_drop_chance = 0.5

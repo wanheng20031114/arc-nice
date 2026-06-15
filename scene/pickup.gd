@@ -62,7 +62,7 @@ func _on_body_entered(body: Node2D) -> void:
 		queue_free()
 		return
 
-	var run_state := get_node("/root/RunState")
+	var run_state := get_node("/root/RunState") as RunStateStore
 	if run_state.try_add_item(config):
 		queue_free()
 

@@ -3,18 +3,18 @@ extends Node2D
 const OVERWORLD_MUSIC := preload("res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3")
 const OUTLAW_MUSIC := preload("res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3")
 const FINAL_MUSIC := preload("res://resources/audio/1-29 Journey of the Prairie King (Final Boss & Ending).mp3")
-const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/enemy_spawn_effect.tscn")
+const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/yuanshi_insect_spawn_effect.tscn")
 
 @export_group("刷怪资源")
-@export var enemy_scene: PackedScene = preload("res://scene/enemy.tscn")
-@export var enemy_configs: Array[EnemyConfig] = [
-	preload("res://resources/config/enemy_basic.tres"),
-	preload("res://resources/config/enemy_shell.tres"),
-	preload("res://resources/config/enemy_fast.tres"),
-	preload("res://resources/config/enemy_bomber.tres"),
-	preload("res://resources/config/enemy_purple_bomber.tres"),
-	preload("res://resources/config/enemy_green_shell.tres"),
-	preload("res://resources/config/enemy_fire_ranged.tres"),
+@export var enemy_scene: PackedScene = preload("res://scene/yuanshi_insect.tscn")
+@export var enemy_configs: Array[YuanshiInsectConfig] = [
+	preload("res://resources/config/enemies/yuanshi_insect_basic.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_shell.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_fast.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_bomber.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_purple_bomber.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_green_shell.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres"),
 ]
 
 
@@ -42,7 +42,7 @@ const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/enemy_spawn_effect.tscn")
 @onready var enemy_spawn_audio: AudioStreamPlayer = $EnemySpawnAudio
 @onready var currency_hud: CurrencyHUD = $CurrencyHUD
 @onready var player_profile_panel: PlayerProfilePanel = $PlayerProfilePanel
-@onready var run_state: Node = get_node("/root/RunState")
+@onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
 # 随机数生成器，专门用于挑选出生点和敌人配置。
 var random_generator: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -51,7 +51,7 @@ var random_generator: RandomNumberGenerator = RandomNumberGenerator.new()
 var enemy_spawn_points: Array[Marker2D] = []
 
 # 缓存有效的敌人配置资源，自动忽略空条目。
-var available_enemy_configs: Array[EnemyConfig] = []
+var available_enemy_configs: Array[YuanshiInsectConfig] = []
 
 # 当前游戏已经运行的时间，用于逐渐加快刷怪节奏。
 var game_time_elapsed: float = 0.0
@@ -61,7 +61,7 @@ var current_music_stage: int = -1
 # 初始化刷怪系统：缓存出生点、缓存配置、刷出初始敌人并启动定时器。
 func _ready() -> void:
 	random_generator.randomize()
-	run_state.call("ensure_run_started")
+	run_state.ensure_run_started()
 	_collect_enemy_spawn_points()
 	_collect_enemy_configs()
 	_configure_enemy_spawn_timer()
@@ -180,7 +180,7 @@ func _try_spawn_enemy() -> bool:
 		if enemy_config.enemy_scene_override != null
 		else enemy_scene
 	)
-	var enemy_instance := spawn_scene.instantiate() as Enemy
+	var enemy_instance := spawn_scene.instantiate() as YuanshiInsect
 	if enemy_instance == null:
 		push_warning("敌人场景实例化失败，请检查 enemy_scene 设置。")
 		return false
@@ -215,7 +215,7 @@ func _pick_spawn_point() -> Marker2D:
 
 
 # 随机挑选一个敌人配置。
-func _pick_enemy_config() -> EnemyConfig:
+func _pick_enemy_config() -> YuanshiInsectConfig:
 	if available_enemy_configs.is_empty():
 		return null
 
@@ -226,7 +226,7 @@ func _pick_enemy_config() -> EnemyConfig:
 func _get_alive_enemy_count() -> int:
 	var alive_enemy_count := 0
 	for child in enemy_container.get_children():
-		if child is Enemy:
+		if child is YuanshiInsect:
 			alive_enemy_count += 1
 			
 	return alive_enemy_count
