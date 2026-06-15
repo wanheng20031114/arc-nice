@@ -1,27 +1,26 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene format=3 uid="uid://dvti0j6pehsi8"]
 
-[ext_resource type="SpriteFrames" path="res://resources/animation/zhuangfangyi.tres" id="1_frames"]
-[ext_resource type="Script" path="res://scene/zhuangfangyi_merchant.gd" id="2_script"]
+[ext_resource type="SpriteFrames" uid="uid://bmd67nu7qe3n7" path="res://resources/animation/zhuangfangyi.tres" id="1_frames"]
+[ext_resource type="Script" uid="uid://b8ih17lklp3f2" path="res://scene/zhuangfangyi_merchant.gd" id="2_script"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_merchant"]
 radius = 7.5
 
-[node name="ZhuangfangyiMerchant" type="Node2D"]
-visible = false
+[node name="ZhuangfangyiMerchant" type="Node2D" unique_id=147021748]
 z_index = 2
 script = ExtResource("2_script")
 
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=52815356]
 scale = Vector2(0.3125, 0.3125)
 sprite_frames = ExtResource("1_frames")
 animation = &"idle"
 autoplay = "idle"
+frame = 5
 
-[node name="StaticBody2D" type="StaticBody2D" parent="."]
-collision_layer = 1
+[node name="StaticBody2D" type="StaticBody2D" parent="." unique_id=621634863]
 collision_mask = 0
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="StaticBody2D"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="StaticBody2D" unique_id=384137463]
 position = Vector2(0, 1)
 shape = SubResource("CircleShape2D_merchant")
 disabled = true

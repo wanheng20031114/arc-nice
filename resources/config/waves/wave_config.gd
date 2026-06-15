@@ -21,4 +21,3 @@ func get_total_enemy_count() -> int:
 		if entry != null and entry.enemy_config != null:
 			total += maxi(entry.count, 0)
 	return total
-

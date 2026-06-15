@@ -12,10 +12,10 @@
 [ext_resource type="AudioStream" uid="uid://bmifvvnjfqsuv" path="res://resources/audio/cowboy_gopher.wav" id="11_26owc"]
 [ext_resource type="PackedScene" path="res://scene/currency_hud.tscn" id="12_currency_hud"]
 [ext_resource type="PackedScene" path="res://scene/player_profile_panel.tscn" id="13_profile_panel"]
-[ext_resource type="PackedScene" path="res://scene/wave_hud.tscn" id="14_wave_hud"]
+[ext_resource type="PackedScene" uid="uid://bybgq7nbb2dgy" path="res://scene/wave_hud.tscn" id="14_wave_hud"]
 [ext_resource type="PackedScene" path="res://scene/zhuangfangyi_merchant.tscn" id="15_merchant"]
-[ext_resource type="AudioStream" path="res://resources/audio/ui/countdown_tick.wav" id="16_countdown"]
-[ext_resource type="AudioStream" path="res://resources/audio/ui/wave_start.wav" id="17_wave_start"]
+[ext_resource type="AudioStream" uid="uid://dtds82oklhy8w" path="res://resources/audio/ui/countdown_tick.wav" id="16_countdown"]
+[ext_resource type="AudioStream" uid="uid://ds2eyww1uhhr8" path="res://resources/audio/ui/wave_start.wav" id="17_wave_start"]
 
 [sub_resource type="TileMapPattern" id="TileMapPattern_33cqm"]
 tile_data = PackedInt32Array(0, 0, 0, 65536, 131072, 2, 1, 0, 0, 65537, 0, 0)
@@ -120,11 +120,11 @@ stream = ExtResource("11_26owc")
 volume_db = -18.0
 max_polyphony = 8
 
-[node name="CountdownAudio" type="AudioStreamPlayer" parent="."]
+[node name="CountdownAudio" type="AudioStreamPlayer" parent="." unique_id=382140993]
 stream = ExtResource("16_countdown")
 volume_db = -8.0
 
-[node name="WaveStartAudio" type="AudioStreamPlayer" parent="."]
+[node name="WaveStartAudio" type="AudioStreamPlayer" parent="." unique_id=1195857533]
 stream = ExtResource("17_wave_start")
 volume_db = -6.0
 
@@ -148,12 +148,13 @@ position = Vector2(151, 70)
 
 [node name="CurrencyHUD" parent="." unique_id=912718684 instance=ExtResource("12_currency_hud")]
 
-[node name="WaveHUD" parent="." instance=ExtResource("14_wave_hud")]
+[node name="WaveHUD" parent="." unique_id=1126268867 instance=ExtResource("14_wave_hud")]
 
 [node name="PlayerProfilePanel" parent="." unique_id=1216528429 instance=ExtResource("13_profile_panel")]
 
-[node name="ZhuangfangyiMerchant" parent="." instance=ExtResource("15_merchant")]
-position = Vector2(192, 64)
+[node name="ZhuangfangyiMerchant" parent="." unique_id=112812860 instance=ExtResource("15_merchant")]
+visible = true
+position = Vector2(152, 85)
 
 [node name="WorldBounds" type="Node2D" parent="." unique_id=905261702]
 
@@ -211,4 +212,4 @@ position = Vector2(-24, 144)
 
 [node name="EnemySpawnTimer" type="Timer" parent="." unique_id=1007421203]
 
-[node name="StateTimer" type="Timer" parent="."]
+[node name="StateTimer" type="Timer" parent="." unique_id=309792909]
