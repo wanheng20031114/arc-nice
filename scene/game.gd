@@ -17,6 +17,8 @@ enum WaveState {
 	preload("res://resources/config/waves/wave_01.tres"),
 	preload("res://resources/config/waves/wave_02.tres"),
 	preload("res://resources/config/waves/wave_03.tres"),
+	preload("res://resources/config/waves/wave_04.tres"),
+	preload("res://resources/config/waves/wave_05.tres"),
 ]
 
 @export_group("波次流程")

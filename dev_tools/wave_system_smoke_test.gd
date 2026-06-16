@@ -6,6 +6,8 @@ const DEFAULT_WAVES: Array[WaveConfig] = [
 	preload("res://resources/config/waves/wave_01.tres"),
 	preload("res://resources/config/waves/wave_02.tres"),
 	preload("res://resources/config/waves/wave_03.tres"),
+	preload("res://resources/config/waves/wave_04.tres"),
+	preload("res://resources/config/waves/wave_05.tres"),
 ]
 const MERCHANT_FRAMES := preload("res://resources/animation/zhuangfangyi_v2.tres")
 
@@ -51,8 +53,9 @@ func _run() -> void:
 
 
 func _test_default_wave_resources() -> void:
-	var expected_totals := [17, 59, 32]
-	var expected_rests := [30.0, 30.0, 0.0]
+	var expected_totals := [17, 59, 32, 94, 124]
+	var expected_rests := [30.0, 30.0, 0.0, 30.0, 0.0]
+	var expected_max_alive := [100, 100, 100, 120, 140]
 	for wave_index in range(DEFAULT_WAVES.size()):
 		var wave_config := DEFAULT_WAVES[wave_index]
 		_expect(wave_config != null, "Wave %d resource is missing." % (wave_index + 1))
@@ -71,8 +74,8 @@ func _test_default_wave_resources() -> void:
 		)
 		_expect(wave_config.music != null, "Wave %d music is missing." % (wave_index + 1))
 		_expect(
-			wave_config.max_alive_enemies == 100,
-			"Wave %d max alive enemies must be 100." % (wave_index + 1)
+			wave_config.max_alive_enemies == expected_max_alive[wave_index],
+			"Wave %d max alive enemies is incorrect." % (wave_index + 1)
 		)
 		for entry in wave_config.enemy_entries:
 			_expect(entry != null, "Wave %d contains a null entry." % (wave_index + 1))
@@ -90,8 +93,8 @@ func _test_merchant_asset() -> void:
 		"Merchant idle animation must contain 8 frames."
 	)
 	_expect(
-		is_equal_approx(MERCHANT_FRAMES.get_animation_speed(&"idle"), 8.0),
-		"Merchant idle animation must run at 8 FPS."
+		is_equal_approx(MERCHANT_FRAMES.get_animation_speed(&"idle"), 6.5),
+		"Merchant idle animation must run at 6.5 FPS."
 	)
 
 	var texture := load("res://resources/texture/zhuangfangyi_idle_v2.png") as Texture2D
