@@ -94,23 +94,23 @@ func _test_merchant_asset() -> void:
 		"Merchant idle animation must run at 8 FPS."
 	)
 
-	var texture := load("res://resources/texture/zhuangfangyi_idle.png") as Texture2D
+	var texture := load("res://resources/texture/zhuangfangyi_idle_v2.png") as Texture2D
 	var image := texture.get_image() if texture != null else null
 	_expect(image != null and not image.is_empty(), "Merchant runtime sprite sheet is missing.")
 	if image == null or image.is_empty():
 		return
-	_expect(image.get_size() == Vector2i(448, 68), "Merchant sheet must be 448x68.")
+	_expect(image.get_size() == Vector2i(256, 32), "Merchant v2 sheet must be 256x32.")
 	_expect(image.get_format() == Image.FORMAT_RGBA8, "Merchant sheet must use RGBA8.")
 	for frame_index in range(8):
-		var frame_rect := Rect2i(frame_index * 56, 0, 56, 68)
+		var frame_rect := Rect2i(frame_index * 32, 0, 32, 32)
 		var frame := image.get_region(frame_rect)
 		_expect(not frame.is_invisible(), "Merchant frame %d is empty." % frame_index)
 		var frame_bbox := frame.get_used_rect()
 		_expect(
-			frame_bbox.size.y >= 63 and frame_bbox.size.y <= 64,
-			"Merchant frame %d has an unexpected subject height." % frame_index
+			frame_bbox.size.y >= 29 and frame_bbox.size.y <= 30,
+			"Merchant v2 frame %d has an unexpected subject height." % frame_index
 		)
-		for corner in [Vector2i(0, 0), Vector2i(55, 0), Vector2i(0, 67), Vector2i(55, 67)]:
+		for corner in [Vector2i(0, 0), Vector2i(31, 0), Vector2i(0, 31), Vector2i(31, 31)]:
 			_expect(
 				frame.get_pixelv(corner).a == 0.0,
 				"Merchant frame %d has a non-transparent corner." % frame_index
@@ -134,8 +134,8 @@ func _test_wave_state_flow() -> void:
 	game.call("_enter_pre_wave", 0)
 
 	_expect(
-		merchant_sprite.scale == Vector2(0.3125, 0.3125),
-		"Merchant display size must be controlled by the scene scale."
+		merchant_sprite.scale == Vector2.ONE,
+		"Merchant v2 must render at native 32px sprite scale."
 	)
 	_expect(
 		merchant_collision.shape != null,
@@ -147,6 +147,10 @@ func _test_wave_state_flow() -> void:
 	)
 	_expect(game.get("wave_state") == STATE_PRE_WAVE, "Game did not enter PRE_WAVE.")
 	_expect(game.get("countdown_seconds") == 5, "Opening countdown must start at 5.")
+	_expect(
+		not (game.get_node("CountdownAudio") as AudioStreamPlayer).playing,
+		"Countdown tick must not play before final 3 seconds."
+	)
 	_expect(not merchant.visible, "Merchant appeared during the opening countdown.")
 	_expect(merchant_collision.disabled, "Merchant collision was active before intermission.")
 	_expect(wave_hud.status_label.text.contains("5"), "Wave HUD did not show opening countdown.")
@@ -169,10 +173,19 @@ func _test_wave_state_flow() -> void:
 	_expect(not merchant_collision.disabled, "Merchant collision did not activate.")
 	_expect(wave_hud.status_label.text.contains("30"), "HUD did not show intermission countdown.")
 
-	game.set("countdown_seconds", 6)
+	game.set("countdown_seconds", 4)
 	game.call("_on_state_timer_timeout")
-	_expect(game.get("countdown_seconds") == 5, "Final countdown did not reach 5.")
-	_expect(wave_hud.status_label.text.contains("5"), "HUD did not emphasize final countdown.")
+	_expect(game.get("countdown_seconds") == 3, "Final countdown did not reach 3.")
+	_expect(
+		is_equal_approx((game.get_node("CountdownAudio") as AudioStreamPlayer).pitch_scale, 1.0),
+		"Final countdown pitch must be 1.0 at 3 seconds."
+	)
+	_expect(wave_hud.status_label.text.contains("3"), "HUD did not emphasize final countdown.")
+	game.call("_on_state_timer_timeout")
+	_expect(
+		is_equal_approx((game.get_node("CountdownAudio") as AudioStreamPlayer).pitch_scale, 1.0),
+		"Final countdown pitch must stay 1.0 at 2 seconds."
+	)
 
 	game.call("_begin_wave", 1)
 	await physics_frame

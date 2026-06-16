@@ -26,10 +26,10 @@ func show_countdown(seconds: int) -> void:
 	status_label.text = "下一波将在 %d 秒后开始" % maxi(seconds, 0)
 	status_label.modulate = (
 		Color(1.0, 0.86, 0.42, 1.0)
-		if seconds <= 5
+		if seconds <= 3
 		else Color.WHITE
 	)
-	if seconds <= 5:
+	if seconds <= 3:
 		_pulse_top_bar()
 
 

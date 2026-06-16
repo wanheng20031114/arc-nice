@@ -1,6 +1,7 @@
 extends Node2D
 
 const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/yuanshi_insect_spawn_effect.tscn")
+const COUNTDOWN_FINAL_SECONDS := 3
 
 enum WaveState {
 	PRE_WAVE,
@@ -106,7 +107,8 @@ func _enter_pre_wave(wave_index: int) -> void:
 		_begin_wave(current_wave_index)
 		return
 
-	countdown_audio.play()
+	if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
+		_play_countdown_tick()
 	state_timer.start(1.0)
 
 
@@ -127,8 +129,8 @@ func _enter_intermission() -> void:
 		_begin_wave(current_wave_index + 1)
 		return
 
-	if countdown_seconds <= 5:
-		countdown_audio.play()
+	if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
+		_play_countdown_tick()
 	state_timer.start(1.0)
 
 
@@ -192,8 +194,8 @@ func _on_state_timer_timeout() -> void:
 	countdown_seconds = maxi(countdown_seconds - 1, 0)
 	if countdown_seconds > 0:
 		wave_hud.show_countdown(countdown_seconds)
-		if countdown_seconds <= 5:
-			countdown_audio.play()
+		if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
+			_play_countdown_tick()
 		return
 
 	state_timer.stop()
@@ -372,6 +374,11 @@ func _spawn_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
 		return
 	add_child(effect)
 	effect.global_position = spawn_global_position
+
+
+func _play_countdown_tick() -> void:
+	countdown_audio.pitch_scale = 1.0
+	countdown_audio.play()
 
 
 func _update_wave_music(wave_config: WaveConfig) -> void:

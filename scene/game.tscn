@@ -13,7 +13,7 @@
 [ext_resource type="PackedScene" path="res://scene/currency_hud.tscn" id="12_currency_hud"]
 [ext_resource type="PackedScene" path="res://scene/player_profile_panel.tscn" id="13_profile_panel"]
 [ext_resource type="PackedScene" uid="uid://bybgq7nbb2dgy" path="res://scene/wave_hud.tscn" id="14_wave_hud"]
-[ext_resource type="PackedScene" path="res://scene/zhuangfangyi_merchant.tscn" id="15_merchant"]
+[ext_resource type="PackedScene" uid="uid://dvti0j6pehsi8" path="res://scene/zhuangfangyi_merchant.tscn" id="15_merchant"]
 [ext_resource type="AudioStream" uid="uid://dtds82oklhy8w" path="res://resources/audio/ui/countdown_tick.wav" id="16_countdown"]
 [ext_resource type="AudioStream" uid="uid://ds2eyww1uhhr8" path="res://resources/audio/ui/wave_start.wav" id="17_wave_start"]
 
@@ -122,7 +122,7 @@ max_polyphony = 8
 
 [node name="CountdownAudio" type="AudioStreamPlayer" parent="." unique_id=382140993]
 stream = ExtResource("16_countdown")
-volume_db = -8.0
+volume_db = -6.0
 
 [node name="WaveStartAudio" type="AudioStreamPlayer" parent="." unique_id=1195857533]
 stream = ExtResource("17_wave_start")
@@ -153,8 +153,7 @@ position = Vector2(151, 70)
 [node name="PlayerProfilePanel" parent="." unique_id=1216528429 instance=ExtResource("13_profile_panel")]
 
 [node name="ZhuangfangyiMerchant" parent="." unique_id=112812860 instance=ExtResource("15_merchant")]
-visible = true
-position = Vector2(152, 85)
+position = Vector2(167, 94)
 
 [node name="WorldBounds" type="Node2D" parent="." unique_id=905261702]
 
