@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="WaveConfig" format=3]
+[gd_resource type="Resource" script_class="WaveConfig" format=3 uid="uid://dgw2a00imx1o7"]
 
 [ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="1_wave"]
 [ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="2_entry"]
