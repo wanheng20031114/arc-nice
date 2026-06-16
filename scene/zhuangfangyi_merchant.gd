@@ -38,13 +38,13 @@ func set_active(active: bool) -> void:
 	interaction_area.set_deferred("monitoring", active)
 
 	if not active:
-		collision_shape.disabled = true
+		collision_shape.set_deferred("disabled", true)
 		nearby_players.clear()
 		active_player = null
 		dialogue_bubble.hide_bubble()
 		return
 
-	collision_shape.disabled = false
+	collision_shape.set_deferred("disabled", false)
 	call_deferred("_push_overlapping_players_out")
 
 
