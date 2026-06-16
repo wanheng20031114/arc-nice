@@ -1,0 +1,65 @@
+[gd_scene format=3 uid="uid://bhhfet8yl66f3"]
+
+[ext_resource type="Script" uid="uid://dscknhg4tjsdp" path="res://scene/weishidaier_skill1_bomb.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/weishidaier_skill1_projectile.png" id="2_projectile"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_projectile_0"]
+atlas = ExtResource("2_projectile")
+region = Rect2(0, 0, 16, 12)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_projectile_1"]
+atlas = ExtResource("2_projectile")
+region = Rect2(16, 0, 16, 12)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_projectile_2"]
+atlas = ExtResource("2_projectile")
+region = Rect2(32, 0, 16, 12)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_projectile_3"]
+atlas = ExtResource("2_projectile")
+region = Rect2(48, 0, 16, 12)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_projectile"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_projectile_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_projectile_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_projectile_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_projectile_3")
+}],
+"loop": true,
+"name": &"fly",
+"speed": 14.0
+}]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_body"]
+radius = 4.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_explosion"]
+radius = 44.0
+
+[node name="WeishidaierSkill1Bomb" type="Area2D" unique_id=452370655]
+z_index = 2
+collision_layer = 64
+collision_mask = 7
+script = ExtResource("1_script")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=1813255478]
+sprite_frames = SubResource("SpriteFrames_projectile")
+animation = &"fly"
+autoplay = "fly"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=922945283]
+shape = SubResource("CircleShape2D_body")
+
+[node name="ExplosionShape" type="CollisionShape2D" parent="." unique_id=326171678]
+visible = false
+shape = SubResource("CircleShape2D_explosion")
+disabled = true

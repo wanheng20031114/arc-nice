@@ -12,17 +12,17 @@
 [sub_resource type="Resource" id="WaveEnemyEntry_basic"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("3_basic")
-count = 8
+count = 30
 
 [sub_resource type="Resource" id="WaveEnemyEntry_fast"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("4_fast")
-count = 5
+count = 8
 
 [sub_resource type="Resource" id="WaveEnemyEntry_shell"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("5_shell")
-count = 4
+count = 14
 
 [sub_resource type="Resource" id="WaveEnemyEntry_bomber"]
 script = ExtResource("2_entry")
@@ -38,6 +38,7 @@ count = 3
 script = ExtResource("1_wave")
 wave_name = "第二波"
 enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic"), SubResource("WaveEnemyEntry_fast"), SubResource("WaveEnemyEntry_shell"), SubResource("WaveEnemyEntry_bomber"), SubResource("WaveEnemyEntry_fire")])
-spawn_interval = 0.65
+spawn_interval = 0.5
+spawn_count_per_tick = 4
 max_alive_enemies = 100
 music = ExtResource("8_music")

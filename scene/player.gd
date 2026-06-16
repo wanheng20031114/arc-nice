@@ -25,6 +25,8 @@ var mouse_viewport_position: Vector2 = Vector2.ZERO
 @export var fire_interval: float = 0.18
 @export var bullet_spawn_distance: float = 18.0
 @export var footstep_interval: float = 0.28
+@export var skill1_charge_duration: float = 18.0
+@export var skill1_bomb_spawn_distance: float = 18.0
 
 @onready var body_sprite: AnimatedSprite2D = $BodySprite
 @onready var armed_effect_sprite: AnimatedSprite2D = $ArmedEffectSprite
@@ -37,8 +39,10 @@ var mouse_viewport_position: Vector2 = Vector2.ZERO
 @onready var secret_audio: AudioStreamPlayer2D = $SecretAudio
 @onready var xirang_pickup_audio: AudioStreamPlayer2D = $XirangPickupAudio
 @onready var health_bar: Control = $HealthBar
+@onready var skill1_charge_bar: Skill1ChargeBar = $Skill1ChargeBar
 
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
+const SKILL1_BOMB_SCENE := preload("res://scene/weishidaier_skill1_bomb.tscn")
 const NORMAL_ANIMATION_PREFIX := &"normal"
 const ARMED_ANIMATION_PREFIX := &"armed"
 const DEFAULT_FIRE_RATE_MULTIPLIER := 1.0
@@ -68,6 +72,9 @@ var form_buff_time_left: float = 0.0
 var spiral_phase: float = 0.0
 var footstep_time_left: float = 0.0
 var dodge_chance: float = 0.0
+var skill1_unlocked: bool = false
+var skill1_charge: float = 0.0
+var last_attack_direction: Vector2 = Vector2.RIGHT
 
 
 # 节点首次进入场景树时的初始化逻辑
@@ -80,6 +87,7 @@ func _ready() -> void:
 	health_changed.emit(current_health, max_health)
 	_update_animation()
 	_update_armed_effect()
+	_update_skill1_charge_bar()
 	get_window().focus_exited.connect(_on_window_focus_exited)
 
 
@@ -98,6 +106,11 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("skill1"):
+		if _try_use_skill1():
+			get_viewport().set_input_as_handled()
+		return
+
 	var mouse_event := event as InputEventMouseButton
 	if mouse_event == null or mouse_event.button_index != MOUSE_BUTTON_LEFT:
 		return
@@ -111,6 +124,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	_update_invincibility(delta)
 	_update_pickup_effects(delta)
+	_update_skill1_charge(delta)
 	
 	if is_dead:
 		velocity = Vector2.ZERO
@@ -276,6 +290,34 @@ func add_xirang(amount: int) -> bool:
 	return true
 
 
+func has_skill1() -> bool:
+	return skill1_unlocked
+
+
+func try_purchase_skill1(cost: int) -> bool:
+	if skill1_unlocked:
+		return false
+	if cost < 0:
+		return false
+	if current_xirang < cost:
+		return false
+
+	current_xirang -= cost
+	xirang_changed.emit(current_xirang, -cost)
+	unlock_skill1()
+	return true
+
+
+func unlock_skill1() -> bool:
+	if skill1_unlocked:
+		return false
+	skill1_unlocked = true
+	skill1_charge = 0.0
+	_update_skill1_charge_bar()
+	gunload_audio.play()
+	return true
+
+
 func _try_heal(amount: int) -> bool:
 	if is_dead:
 		return false
@@ -292,8 +334,10 @@ func _try_heal(amount: int) -> bool:
 # 根据射击模式和方向发射子弹，返回是否成功发射
 func _fire_bullets(base_direction: Vector2) -> bool:
 	if current_shot_pattern == PickupConfig.ShotPattern.SPIRAL:
-		var has_spawned_forward_bullet := _spawn_bullet(base_direction)
-		var has_spawned_backward_bullet := _spawn_bullet(base_direction.rotated(PI))
+		if base_direction != Vector2.ZERO:
+			last_attack_direction = base_direction.normalized()
+		var has_spawned_forward_bullet := _spawn_bullet(base_direction, false)
+		var has_spawned_backward_bullet := _spawn_bullet(base_direction.rotated(PI), false)
 		spiral_phase = wrapf(spiral_phase + SPIRAL_PHASE_STEP, 0.0, TAU)
 		return has_spawned_forward_bullet or has_spawned_backward_bullet
 
@@ -301,7 +345,7 @@ func _fire_bullets(base_direction: Vector2) -> bool:
 
 
 # 在指定方向上生成单颗子弹
-func _spawn_bullet(shoot_direction: Vector2) -> bool:
+func _spawn_bullet(shoot_direction: Vector2, track_attack_direction: bool = true) -> bool:
 	var bullet := BULLET_SCENE.instantiate() as Bullet
 	if bullet == null:
 		return false
@@ -314,6 +358,8 @@ func _spawn_bullet(shoot_direction: Vector2) -> bool:
 	bullet.setup(shoot_direction, attack_damage)
 	spawn_parent.add_child(bullet)
 	bullet.global_position = global_position + shoot_direction * bullet_spawn_distance
+	if track_attack_direction and shoot_direction != Vector2.ZERO:
+		last_attack_direction = shoot_direction.normalized()
 	gunshot_audio.play()
 	return true
 
@@ -328,6 +374,62 @@ func _try_auto_spiral_shoot() -> void:
 
 	if has_spawned_bullet:
 		shooting_timer.start(_get_effective_fire_interval())
+
+
+func _update_skill1_charge(delta: float) -> void:
+	if not skill1_unlocked:
+		return
+	if is_dead:
+		return
+	if skill1_charge >= skill1_charge_duration:
+		return
+
+	skill1_charge = minf(skill1_charge + delta, skill1_charge_duration)
+	_update_skill1_charge_bar()
+
+
+func _try_use_skill1() -> bool:
+	if not skill1_unlocked:
+		return false
+	if is_dead or controls_locked:
+		return false
+	if skill1_charge < skill1_charge_duration:
+		return false
+
+	var bomb := SKILL1_BOMB_SCENE.instantiate() as WeishidaierSkill1Bomb
+	if bomb == null:
+		return false
+
+	var spawn_parent := get_tree().current_scene
+	if spawn_parent == null:
+		return false
+
+	var shoot_direction := _get_skill1_direction()
+	bomb.top_level = true
+	bomb.setup(self, shoot_direction, floori(float(attack_damage) * 3.3))
+	spawn_parent.add_child(bomb)
+	bomb.global_position = global_position + shoot_direction * skill1_bomb_spawn_distance
+	skill1_charge = 0.0
+	_update_skill1_charge_bar()
+	gunload_audio.play()
+	return true
+
+
+func _update_skill1_charge_bar() -> void:
+	if skill1_charge_bar == null:
+		return
+	skill1_charge_bar.set_unlocked(skill1_unlocked)
+	skill1_charge_bar.set_charge(
+		skill1_charge,
+		skill1_charge_duration,
+		skill1_unlocked and skill1_charge >= skill1_charge_duration
+	)
+
+
+func _get_skill1_direction() -> Vector2:
+	if last_attack_direction != Vector2.ZERO:
+		return last_attack_direction.normalized()
+	return _facing_suffix_to_vector(facing_suffix)
 
 # 获取当前实际移动速度（受移速加成影响）
 func _get_effective_move_speed() -> float:
@@ -464,6 +566,18 @@ func _vector_to_facing_suffix(direction: Vector2) -> StringName:
 		return &"right" if direction.x > 0.0 else &"left"
 
 	return &"down" if direction.y > 0.0 else &"up"
+
+
+func _facing_suffix_to_vector(suffix: StringName) -> Vector2:
+	match suffix:
+		&"left":
+			return Vector2.LEFT
+		&"up":
+			return Vector2.UP
+		&"down":
+			return Vector2.DOWN
+		_:
+			return Vector2.RIGHT
 
 # 更新受击后的无敌状态计时
 func _update_invincibility(delta: float) -> void:

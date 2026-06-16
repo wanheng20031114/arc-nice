@@ -1,11 +1,15 @@
-[gd_scene format=3 uid="uid://dvti0j6pehsi8"]
+[gd_scene load_steps=6 format=3 uid="uid://dvti0j6pehsi8"]
 
 [ext_resource type="SpriteFrames" uid="uid://cuo0t6su1lihy" path="res://resources/animation/zhuangfangyi_v2.tres" id="1_frames"]
 [ext_resource type="Script" uid="uid://b8ih17lklp3f2" path="res://scene/zhuangfangyi_merchant.gd" id="2_script"]
+[ext_resource type="PackedScene" path="res://scene/merchant_dialogue_bubble.tscn" id="3_dialogue"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_3n1ro"]
 radius = 9.0
 height = 26.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_interaction"]
+radius = 34.0
 
 [node name="ZhuangfangyiMerchant" type="Node2D" unique_id=147021748]
 z_index = 2
@@ -24,3 +28,12 @@ collision_mask = 0
 position = Vector2(-1, 1)
 shape = SubResource("CapsuleShape2D_3n1ro")
 disabled = true
+
+[node name="InteractionArea" type="Area2D" parent="."]
+collision_layer = 0
+collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea"]
+shape = SubResource("CircleShape2D_interaction")
+
+[node name="MerchantDialogueBubble" parent="." instance=ExtResource("3_dialogue")]

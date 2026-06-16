@@ -7,7 +7,7 @@ const DEFAULT_WAVES: Array[WaveConfig] = [
 	preload("res://resources/config/waves/wave_02.tres"),
 	preload("res://resources/config/waves/wave_03.tres"),
 ]
-const MERCHANT_FRAMES := preload("res://resources/animation/zhuangfangyi.tres")
+const MERCHANT_FRAMES := preload("res://resources/animation/zhuangfangyi_v2.tres")
 
 const STATE_PRE_WAVE := 0
 const STATE_WAVE_ACTIVE := 1
@@ -51,7 +51,7 @@ func _run() -> void:
 
 
 func _test_default_wave_resources() -> void:
-	var expected_totals := [15, 24, 32]
+	var expected_totals := [17, 59, 32]
 	var expected_rests := [30.0, 30.0, 0.0]
 	for wave_index in range(DEFAULT_WAVES.size()):
 		var wave_config := DEFAULT_WAVES[wave_index]
