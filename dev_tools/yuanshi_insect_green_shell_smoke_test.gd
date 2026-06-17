@@ -121,6 +121,11 @@ func _test_aura_visual_configuration() -> void:
 	_expect(aura_material != second_material, "Aura material is shared between enemy instances.")
 	_expect(enemy.aura_range_fill.visible, "Aura range fill is hidden.")
 	_expect(enemy.aura_range_outline.visible, "Aura range outline is hidden.")
+	_expect(enemy.aura_range_fill.color == GREEN_SHELL_CONFIG.aura_fill_color, "Aura fill color ignored config.")
+	_expect(
+		enemy.aura_range_outline.default_color == GREEN_SHELL_CONFIG.aura_outline_color,
+		"Aura outline color ignored config."
+	)
 	_expect(enemy.aura_range_outline.points.size() >= 32, "Aura outline is too coarse.")
 	for point in enemy.aura_range_outline.points:
 		_expect(

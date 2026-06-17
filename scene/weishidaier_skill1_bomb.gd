@@ -85,7 +85,7 @@ func _apply_explosion_damage() -> void:
 	var results := space_state.intersect_shape(query, EXPLOSION_QUERY_MAX_RESULTS)
 	var damaged_ids: Dictionary = {}
 	for result in results:
-		var enemy := result.get("collider") as YuanshiInsect
+		var enemy := result.get("collider") as Enemy
 		if enemy == null:
 			continue
 		var enemy_id := enemy.get_instance_id()

@@ -1,31 +1,22 @@
-extends CharacterBody2D
+extends Enemy
 class_name YuanshiInsect
 
-signal defeated(enemy: YuanshiInsect)
-
-const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
+const AURA_CONFIG_SCRIPT := preload(
+	"res://resources/config/enemies/yuanshi_insect_aura_config.gd"
+)
 const GREEN_SHELL_CONFIG_SCRIPT := preload(
 	"res://resources/config/enemies/yuanshi_insect_green_shell_config.gd"
+)
+const GUARDIAN_CONFIG_SCRIPT := preload(
+	"res://resources/config/enemies/yuanshi_insect_guardian_config.gd"
 )
 const EXPLOSION_QUERY_MAX_RESULTS := 16
 const MAX_XIRANG_ORBS_PER_ENEMY := 4
 const AURA_RANGE_SEGMENTS := 48
-
-enum DeathSequenceStage {
-	NONE,
-	DEATH,
-	EXPLOSION,
-}
-# 敌人配置资源，由生成器或编辑器指定。
-@export var config: YuanshiInsectConfig
-
-# 敌人持续贴住玩家时的伤害间隔。
-@export var touch_damage_interval: float = 0.5
-
-# 受击闪烁持续时间。
-@export var hurt_blink_duration: float = 0.16
+const PLAYER_COLLISION_MASK := 2
+const ENEMY_COLLISION_MASK := 4
 
 # 寻路路径刷新间隔。多只敌人共享 GridPathfinder，但各自按这个节奏更新目标路径。
 @export var path_refresh_interval: float = 0.25
@@ -36,15 +27,8 @@ enum DeathSequenceStage {
 # 足够接近玩家时直接追踪玩家当前位置，避免围绕玩家所在格子中心反复寻路。
 @export var direct_chase_extra_distance: float = 2.0
 
-@onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
-@onready var collision_shape: CollisionShape2D = $CollisionShape2D
-@onready var touch_damage_area: Area2D = $TouchDamageArea
-@onready var touch_damage_shape: CollisionShape2D = $TouchDamageArea/CollisionShape2D
 @onready var explosion_area: Area2D = $ExplosionArea
 @onready var explosion_shape: CollisionShape2D = $ExplosionArea/CollisionShape2D
-@onready var hit_particles: GPUParticles2D = $HitParticles
-@onready var hit_audio: AudioStreamPlayer2D = $HitAudio
-@onready var death_audio: AudioStreamPlayer2D = $DeathAudio
 @onready var explosion_audio: AudioStreamPlayer2D = $ExplosionAudio
 @onready var aura_particles: GPUParticles2D = $AuraParticles
 @onready var aura_range_fill: Polygon2D = $AuraRangeFill
@@ -52,24 +36,6 @@ enum DeathSequenceStage {
 @onready var aura_area: Area2D = $AuraArea
 @onready var aura_area_shape: CollisionShape2D = $AuraArea/CollisionShape2D
 
-# 当前追踪的玩家对象，由敌人管理器在生成时注入。
-var target_player: Player = null
-# 共享网格寻路器，由生成器注入。
-var pathfinder: Node = null
-# 当前生命值，根据配置资源初始化。
-var current_health: int = 1
-# 敌人死亡后停止移动和受伤处理。
-var is_dead: bool = false
-# 接触伤害冷却时间。
-var touch_damage_cooldown_left: float = 0.0
-# 当前仍在接触范围中的玩家对象。
-var touched_player: Player = null
-# 受击闪烁剩余时间。
-var hurt_blink_time_left: float = 0.0
-# 当前死亡流程所处的阶段。
-var death_sequence_stage: DeathSequenceStage = DeathSequenceStage.NONE
-# 当前死亡阶段正在播放的动画名。
-var death_animation_name_in_use: StringName = &""
 # 敌人实例自己的随机数生成器，用于掉落判定。
 var random_generator: RandomNumberGenerator = RandomNumberGenerator.new()
 # 当前缓存路径，避免每帧重复计算 A*。
@@ -81,49 +47,15 @@ var path_refresh_time_left: float = 0.0
 var aura_active: bool = false
 var aura_touched_player: Player = null
 var aura_damage_cooldown_left: float = 0.0
+var aura_defended_enemies: Dictionary = {}
 
 
 # 初始化配置、信号和默认动画。
 func _ready() -> void:
+	super._ready()
 	random_generator.randomize()
-	touch_damage_area.body_entered.connect(_on_touch_damage_area_body_entered)
-	touch_damage_area.body_exited.connect(_on_touch_damage_area_body_exited)
-	touch_damage_area.area_entered.connect(_on_touch_damage_area_area_entered)
-	animated_sprite.animation_finished.connect(_on_animated_sprite_animation_finished)
 	aura_area.body_entered.connect(_on_aura_area_body_entered)
 	aura_area.body_exited.connect(_on_aura_area_body_exited)
-	_apply_config()
-
-
-# 管理器可通过统一入口同时注入配置和玩家引用。
-func setup(enemy_config: YuanshiInsectConfig, player: Player, shared_pathfinder: Node = null) -> void:
-	config = enemy_config
-	target_player = player
-	pathfinder = shared_pathfinder
-	_apply_config()
-
-func set_target_player(player: Player) -> void:
-	target_player = player 
-
-func set_pathfinder(shared_pathfinder: Node) -> void:
-	pathfinder = shared_pathfinder
-	
-func apply_damage(amount: int, impact_direction: Vector2 = Vector2.ZERO) -> bool:
-	if is_dead:
-		return false
-	if amount<=0:
-		return false
-
-	_play_hit_particles(impact_direction)
-	current_health -= amount
-	
-	if current_health <= 0:
-		_die()
-		return true
-	
-	hit_audio.play()
-	_start_hurt_blink()
-	return true
 
 
 func _physics_process(delta: float) -> void:
@@ -147,32 +79,15 @@ func _physics_process(delta: float) -> void:
 
 
 func _apply_config() -> void:
+	super._apply_config()
+
 	if config == null:
 		return
 
-	current_health = config.max_health
-	_apply_collision_radius(config.collision_radius)
 	_apply_explosion_radius(config.explosion_radius)
-
-	if config.enemy_frames != null:
-		animated_sprite.sprite_frames = config.enemy_frames
-		if config.enemy_frames.has_animation(config.move_animation_name):
-			animated_sprite.play(config.move_animation_name)
-		else:
-			push_warning("Missing enemy move animation: %s" % config.move_animation_name)
-
 	_apply_aura_config()
 
 
-# 将配置中的圆形半径同步到实体碰撞和接触伤害区域。
-func _apply_collision_radius(radius: float) -> void:
-	var body_shape := collision_shape.shape as CircleShape2D
-	if body_shape != null:
-		body_shape.radius = radius
-
-	var damage_shape := touch_damage_shape.shape as CircleShape2D
-	if damage_shape != null:
-		damage_shape.radius = radius
 # 将配置中的爆炸半径同步到一次性爆炸检测区。
 func _apply_explosion_radius(radius: float) -> void:
 	var explosion_circle_shape := explosion_shape.shape as CircleShape2D
@@ -182,7 +97,7 @@ func _apply_explosion_radius(radius: float) -> void:
 
 # 根据配置资源启用或禁用毒性光环，同步粒子和碰撞参数。
 func _apply_aura_config() -> void:
-	var aura_config := config as GREEN_SHELL_CONFIG_SCRIPT
+	var aura_config := config as AURA_CONFIG_SCRIPT
 	if aura_config == null or not aura_config.aura_enabled:
 		_stop_aura()
 		return
@@ -191,55 +106,59 @@ func _apply_aura_config() -> void:
 	if aura_circle != null:
 		aura_circle.radius = aura_config.aura_radius
 
-	var aura_material := aura_particles.process_material as ParticleProcessMaterial
-	if aura_material != null:
-		var emission_radius := maxf(aura_config.aura_particle_emission_radius, 0.0)
-		var emission_thickness := clampf(
-			aura_config.aura_particle_emission_thickness,
-			0.0,
-			emission_radius
-		)
-		aura_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_RING
-		aura_material.emission_ring_axis = Vector3.BACK
-		aura_material.emission_ring_height = 0.0
-		aura_material.emission_ring_radius = emission_radius
-		aura_material.emission_ring_inner_radius = emission_radius - emission_thickness
-		aura_material.initial_velocity_min = 0.0
-		aura_material.initial_velocity_max = 0.0
-		aura_material.radial_velocity_min = minf(
-			aura_config.aura_particle_speed_min,
-			aura_config.aura_particle_speed_max
-		)
-		aura_material.radial_velocity_max = maxf(
-			aura_config.aura_particle_speed_min,
-			aura_config.aura_particle_speed_max
-		)
-		aura_material.scale_min = minf(
-			aura_config.aura_particle_scale_min,
-			aura_config.aura_particle_scale_max
-		)
-		aura_material.scale_max = maxf(
-			aura_config.aura_particle_scale_min,
-			aura_config.aura_particle_scale_max
-		)
-		aura_material.color = aura_config.aura_particle_color
-		aura_material.color_initial_ramp = aura_config.aura_particle_color_ramp
+	if aura_config.aura_particles_enabled:
+		var aura_material := aura_particles.process_material as ParticleProcessMaterial
+		if aura_material != null:
+			var emission_radius := maxf(aura_config.aura_particle_emission_radius, 0.0)
+			var emission_thickness := clampf(
+				aura_config.aura_particle_emission_thickness,
+				0.0,
+				emission_radius
+			)
+			aura_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_RING
+			aura_material.emission_ring_axis = Vector3.BACK
+			aura_material.emission_ring_height = 0.0
+			aura_material.emission_ring_radius = emission_radius
+			aura_material.emission_ring_inner_radius = emission_radius - emission_thickness
+			aura_material.initial_velocity_min = 0.0
+			aura_material.initial_velocity_max = 0.0
+			aura_material.radial_velocity_min = minf(
+				aura_config.aura_particle_speed_min,
+				aura_config.aura_particle_speed_max
+			)
+			aura_material.radial_velocity_max = maxf(
+				aura_config.aura_particle_speed_min,
+				aura_config.aura_particle_speed_max
+			)
+			aura_material.scale_min = minf(
+				aura_config.aura_particle_scale_min,
+				aura_config.aura_particle_scale_max
+			)
+			aura_material.scale_max = maxf(
+				aura_config.aura_particle_scale_min,
+				aura_config.aura_particle_scale_max
+			)
+			aura_material.color = aura_config.aura_particle_color
+			aura_material.color_initial_ramp = aura_config.aura_particle_color_ramp
 
-	aura_particles.amount = maxi(aura_config.aura_particle_amount, 1)
-	aura_particles.lifetime = maxf(aura_config.aura_particle_lifetime, 0.05)
-	aura_particles.preprocess = aura_particles.lifetime
-	aura_particles.texture = aura_config.aura_particle_texture
+		aura_particles.amount = maxi(aura_config.aura_particle_amount, 1)
+		aura_particles.lifetime = maxf(aura_config.aura_particle_lifetime, 0.05)
+		aura_particles.preprocess = aura_particles.lifetime
+		aura_particles.texture = aura_config.aura_particle_texture
+	else:
+		aura_particles.emitting = false
 	var visibility_radius := aura_config.aura_radius + 16.0
 	aura_particles.visibility_rect = Rect2(
 		Vector2.ONE * -visibility_radius,
 		Vector2.ONE * visibility_radius * 2.0
 	)
 	_apply_aura_range_indicator(aura_config)
+	_configure_aura_collision_mask()
 
 	_start_aura()
 
 
-func _apply_aura_range_indicator(aura_config: GREEN_SHELL_CONFIG_SCRIPT) -> void:
+func _apply_aura_range_indicator(aura_config: AURA_CONFIG_SCRIPT) -> void:
 	var range_points := PackedVector2Array()
 	for point_index in range(AURA_RANGE_SEGMENTS):
 		var angle := TAU * float(point_index) / float(AURA_RANGE_SEGMENTS)
@@ -258,8 +177,14 @@ func _start_aura() -> void:
 		return
 
 	aura_active = true
-	aura_particles.restart()
-	aura_particles.emitting = true
+	if config as GUARDIAN_CONFIG_SCRIPT != null:
+		_add_guardian_defense_to_enemy(self)
+	var aura_config := config as AURA_CONFIG_SCRIPT
+	if aura_config != null and aura_config.aura_particles_enabled:
+		aura_particles.restart()
+		aura_particles.emitting = true
+	else:
+		aura_particles.emitting = false
 	aura_range_fill.visible = true
 	aura_range_outline.visible = true
 	aura_area.visible = true
@@ -270,6 +195,7 @@ func _start_aura() -> void:
 # 关闭毒性光环，停止粒子和伤害检测。
 func _stop_aura() -> void:
 	aura_active = false
+	_clear_guardian_defense_modifiers()
 	aura_particles.emitting = false
 	aura_range_fill.visible = false
 	aura_range_outline.visible = false
@@ -280,9 +206,20 @@ func _stop_aura() -> void:
 	aura_damage_cooldown_left = 0.0
 
 
+func _configure_aura_collision_mask() -> void:
+	if config as GUARDIAN_CONFIG_SCRIPT != null:
+		aura_area.collision_mask = ENEMY_COLLISION_MASK
+	else:
+		aura_area.collision_mask = PLAYER_COLLISION_MASK
+
+
 # 光环区域检测到玩家进入。
 func _on_aura_area_body_entered(body: Node2D) -> void:
 	if is_dead or not aura_active:
+		return
+
+	if config as GUARDIAN_CONFIG_SCRIPT != null:
+		_add_guardian_defense_to_enemy(body as Enemy)
 		return
 
 	var player := body as Player
@@ -295,8 +232,52 @@ func _on_aura_area_body_entered(body: Node2D) -> void:
 
 # 玩家离开光环区域。
 func _on_aura_area_body_exited(body: Node2D) -> void:
+	if config as GUARDIAN_CONFIG_SCRIPT != null:
+		_remove_guardian_defense_from_enemy(body as Enemy)
+		return
+
 	if body == aura_touched_player:
 		aura_touched_player = null
+
+
+func _add_guardian_defense_to_enemy(enemy: Enemy) -> void:
+	var guardian_config := config as GUARDIAN_CONFIG_SCRIPT
+	if guardian_config == null:
+		return
+	if enemy == null:
+		return
+	if enemy.is_dead:
+		return
+
+	var enemy_id := enemy.get_instance_id()
+	if aura_defended_enemies.has(enemy_id):
+		return
+
+	aura_defended_enemies[enemy_id] = enemy
+	enemy.add_physical_defense_modifier(
+		get_instance_id(),
+		guardian_config.aura_physical_defense_bonus
+	)
+
+
+func _remove_guardian_defense_from_enemy(enemy: Enemy) -> void:
+	if enemy == null:
+		return
+
+	var enemy_id := enemy.get_instance_id()
+	if not aura_defended_enemies.has(enemy_id):
+		return
+
+	aura_defended_enemies.erase(enemy_id)
+	enemy.remove_physical_defense_modifier(get_instance_id())
+
+
+func _clear_guardian_defense_modifiers() -> void:
+	for enemy in aura_defended_enemies.values():
+		var defended_enemy := enemy as Enemy
+		if is_instance_valid(defended_enemy):
+			defended_enemy.remove_physical_defense_modifier(get_instance_id())
+	aura_defended_enemies.clear()
 
 
 # 每帧更新光环持续伤害冷却，在冷却结束后再次造成伤害。
@@ -405,98 +386,7 @@ func _update_facing(move_direction: Vector2) -> void:
 		return
 
 	animated_sprite.flip_h = move_direction.x < 0.0
-	
-func _on_touch_damage_area_body_entered(body: Node2D) -> void:
-	if is_dead:
-		return
 
-	var player := body as Player
-	if player == null:
-		return
-
-	touched_player = player
-	_try_deal_touch_damage()
-
-
-# 玩家离开接触区域后，停止持续伤害。
-func _on_touch_damage_area_body_exited(body: Node2D) -> void:
-	if body == touched_player:
-		touched_player = null
-
-
-# 子弹进入接触区域时，对敌人造成固定伤害并销毁子弹。
-func _on_touch_damage_area_area_entered(area: Area2D) -> void:
-	if is_dead:
-		return
-
-	var bullet := area as Bullet
-	if bullet == null:
-		return
-
-	var damaged := apply_damage(bullet.damage, -bullet.direction)
-	if damaged:
-		bullet.queue_free()
-		
-# 管理与玩家持续接触时的伤害冷却。
-func _update_touch_damage(delta: float) -> void:
-	if touch_damage_cooldown_left > 0.0:
-		touch_damage_cooldown_left = maxf(touch_damage_cooldown_left - delta, 0.0)
-
-	if touched_player == null:
-		return
-	if not is_instance_valid(touched_player):
-		touched_player = null
-		return
-	if touch_damage_cooldown_left > 0.0:
-		return
-
-	_try_deal_touch_damage()
-
-
-# 只在当前确实接触到玩家时结算接触伤害。
-func _try_deal_touch_damage() -> void:
-	if touched_player == null:
-		return
-	if config == null:
-		return
-
-	touched_player.apply_damage(config.attack_damage)
-	touch_damage_cooldown_left = touch_damage_interval
-	
-# 通过 ShaderMaterial 参数控制敌人短暂闪烁。
-func _start_hurt_blink() -> void:
-	hurt_blink_time_left = hurt_blink_duration
-	_set_hurt_blink_enabled(true)
-
-
-# 闪烁时间结束后恢复正常显示。
-func _update_hurt_blink(delta: float) -> void:
-	if hurt_blink_time_left <= 0.0:
-		return
-
-	hurt_blink_time_left = maxf(hurt_blink_time_left - delta, 0.0)
-	if hurt_blink_time_left > 0.0:
-		return
-
-	_set_hurt_blink_enabled(false)
-
-
-# 统一设置受击闪烁开关，避免散落重复的材质访问代码。
-func _set_hurt_blink_enabled(enabled: bool) -> void:
-	var sprite_material := animated_sprite.material as ShaderMaterial
-	if sprite_material != null:
-		sprite_material.set_shader_parameter(BLINK_ENABLED_SHADER_PARAMETER, enabled)
-
-
-# 复用敌人场景中的一次性粒子节点，朝受击来源方向轻微喷散。
-func _play_hit_particles(impact_direction: Vector2) -> void:
-	if impact_direction == Vector2.ZERO:
-		return
-
-	hit_particles.rotation = impact_direction.angle()
-	hit_particles.restart()
-	hit_particles.emitting = true
-		
 	
 # 进入死亡阶段后停止碰撞，并启动统一的死亡动画流程。
 func _die() -> void:
@@ -556,7 +446,7 @@ func _start_explosion_sequence() -> void:
 
 
 # 统一切换死亡阶段动画，找不到动画时返回 false，由上层决定如何降级处理。
-func _play_death_sequence_animation(animation_name: StringName, stage: DeathSequenceStage) -> bool:
+func _play_death_sequence_animation(animation_name: StringName, stage: Enemy.DeathSequenceStage) -> bool:
 	death_sequence_stage = stage
 	death_animation_name_in_use = animation_name
 
@@ -618,9 +508,9 @@ func _try_apply_explosion_damage() -> void:
 			hit_player.apply_damage(config.explosion_damage)
 			continue
 
-		var hit_yuanshi_insect := collider as YuanshiInsect
-		if hit_yuanshi_insect != null:
-			hit_yuanshi_insect.apply_damage(config.explosion_damage)
+		var hit_enemy := collider as Enemy
+		if hit_enemy != null:
+			hit_enemy.apply_damage(config.explosion_damage)
 
 # 敌人死亡后按概率掉落一个随机道具。
 func _try_drop_pickup() -> void:

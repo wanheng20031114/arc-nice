@@ -43,7 +43,7 @@ enum WaveState {
 
 var random_generator := RandomNumberGenerator.new()
 var enemy_spawn_points: Array[Marker2D] = []
-var pending_enemy_configs: Array[YuanshiInsectConfig] = []
+var pending_enemy_configs: Array[EnemyConfig] = []
 var active_wave_enemy_ids: Dictionary = {}
 
 var wave_state: WaveState = WaveState.PRE_WAVE
@@ -240,7 +240,7 @@ func _spawn_wave_batch() -> void:
 	_check_wave_completion()
 
 
-func _try_spawn_enemy(enemy_config: YuanshiInsectConfig) -> bool:
+func _try_spawn_enemy(enemy_config: EnemyConfig) -> bool:
 	if not _is_spawn_system_ready() or enemy_config == null:
 		return false
 
@@ -253,7 +253,7 @@ func _try_spawn_enemy(enemy_config: YuanshiInsectConfig) -> bool:
 		if enemy_config.enemy_scene_override != null
 		else enemy_scene
 	)
-	var enemy_instance := spawn_scene.instantiate() as YuanshiInsect
+	var enemy_instance := spawn_scene.instantiate() as Enemy
 	if enemy_instance == null:
 		push_warning("敌人场景实例化失败，请检查波次中的敌人配置。")
 		return false
@@ -270,7 +270,7 @@ func _try_spawn_enemy(enemy_config: YuanshiInsectConfig) -> bool:
 	return true
 
 
-func _on_wave_enemy_defeated(enemy: YuanshiInsect) -> void:
+func _on_wave_enemy_defeated(enemy: Enemy) -> void:
 	if wave_state != WaveState.WAVE_ACTIVE:
 		return
 	if enemy == null or not active_wave_enemy_ids.has(enemy.get_instance_id()):

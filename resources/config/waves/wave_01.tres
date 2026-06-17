@@ -5,7 +5,8 @@
 [ext_resource type="Resource" uid="uid://d31hbyrmfh543" path="res://resources/config/enemies/yuanshi_insect_basic.tres" id="3_basic"]
 [ext_resource type="Resource" uid="uid://drqobuvr21y71" path="res://resources/config/enemies/yuanshi_insect_fast.tres" id="4_fast"]
 [ext_resource type="Resource" uid="uid://yefrqmv7b306" path="res://resources/config/enemies/yuanshi_insect_green_shell.tres" id="4_sk47x"]
-[ext_resource type="AudioStream" uid="uid://cmfbw4cr7dde" path="res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3" id="5_music"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_guardian.tres" id="5_guardian"]
+[ext_resource type="AudioStream" uid="uid://cmfbw4cr7dde" path="res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3" id="6_music"]
 
 [sub_resource type="Resource" id="WaveEnemyEntry_basic"]
 script = ExtResource("2_entry")
@@ -23,11 +24,16 @@ enemy_config = ExtResource("4_sk47x")
 count = 2
 metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
+[sub_resource type="Resource" id="WaveEnemyEntry_guardian"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("5_guardian")
+count = 3
+
 [resource]
 script = ExtResource("1_wave")
 wave_name = "第一波"
-enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic"), SubResource("WaveEnemyEntry_fast"), SubResource("Resource_hbu7x")])
+enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic"), SubResource("WaveEnemyEntry_fast"), SubResource("Resource_hbu7x"), SubResource("WaveEnemyEntry_guardian")])
 spawn_interval = 0.1
 spawn_count_per_tick = 4
 max_alive_enemies = 100
-music = ExtResource("5_music")
+music = ExtResource("6_music")

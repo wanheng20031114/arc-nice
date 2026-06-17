@@ -5,7 +5,7 @@ const DIALOGUE_LINES := [
 	"你好，我是终末地的庄方宜",
 	"终末地的鹈鹕已经被我发配到北部禁区",
 	"我可以使用息壤帮助你强化能力",
-	"是否要花费200息壤购买 [img=22]res://resources/texture/weishidaier_skill1_icon.png[/img] ？",
+	"是否要花费[color=#1a8a3e]200息壤[/color]购买 [img=22]res://resources/texture/weishidaier_skill1_icon.png[/img] ？",
 ]
 const PURCHASE_COST := 200
 const INSUFFICIENT_XIRANG_LINE := "息壤不足。"

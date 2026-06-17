@@ -53,7 +53,7 @@ func _run() -> void:
 
 
 func _test_default_wave_resources() -> void:
-	var expected_totals := [17, 59, 32, 94, 124]
+	var expected_totals := [17, 59, 32, 100, 134]
 	var expected_rests := [30.0, 30.0, 30.0, 30.0, 0.0]
 	var expected_max_alive := [100, 100, 100, 120, 140]
 	for wave_index in range(DEFAULT_WAVES.size()):

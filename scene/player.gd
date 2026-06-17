@@ -12,6 +12,8 @@ signal died
 @export var max_health: int = 5
 @export var invincibility_duration: float = 1.0
 @export var attack_damage: int = 1
+@export var physical_defense: int = 0
+@export var magic_defense: int = 0
 @export var attack_method_name: String = "枪"
 
 var current_health: int = 0
@@ -23,7 +25,7 @@ var mouse_fire_held: bool = false
 var mouse_viewport_position: Vector2 = Vector2.ZERO
 
 @export var fire_interval: float = 0.18
-@export var bullet_spawn_distance: float = 18.0
+@export var bullet_spawn_distance: float = 12.0
 @export var footstep_interval: float = 0.28
 @export var skill1_charge_duration: float = 18.0
 @export var skill1_bomb_spawn_distance: float = 18.0
@@ -232,7 +234,10 @@ func apply_pickup(config: PickupConfig) -> bool:
 	return applied
 	
 # 敌人或其他伤害来源统一通过这个入口让玩家受伤。
-func apply_damage(amount: int) -> bool:
+func apply_damage(
+	amount: int,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
+) -> bool:
 	if is_dead:
 		return false
 
@@ -246,7 +251,8 @@ func apply_damage(amount: int) -> bool:
 		_start_invincibility()
 		return false
 
-	current_health = maxi(current_health - amount, 0)
+	var final_damage := _calculate_incoming_damage(amount, damage_type)
+	current_health = maxi(current_health - final_damage, 0)
 	health_bar.set_health(current_health, max_health)
 	health_changed.emit(current_health, max_health)
 	if current_health <= 0:
@@ -255,6 +261,18 @@ func apply_damage(amount: int) -> bool:
 
 	_start_invincibility()
 	return true
+
+
+func _calculate_incoming_damage(
+	amount: int,
+	damage_type: EnemyConfig.DamageType
+) -> int:
+	match damage_type:
+		EnemyConfig.DamageType.MAGIC:
+			var defense_ratio := float(100 - clampi(magic_defense, 0, 100)) / 100.0
+			return maxi(floori(float(amount) * defense_ratio), 1)
+		_:
+			return maxi(amount - maxi(physical_defense, 0), 1)
 	
 # 获取当前生命值
 func get_current_health() -> int:

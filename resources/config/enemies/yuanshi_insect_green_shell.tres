@@ -15,6 +15,8 @@
 script = ExtResource("2_script")
 aura_particle_amount = 84
 aura_particle_lifetime = 0.85
+aura_fill_color = Color(1, 0.16, 0.1, 0.018)
+aura_outline_color = Color(1, 0.38, 0.32, 0.22)
 variant = 5
 display_name = "翠壳原石虫"
 max_health = 10
