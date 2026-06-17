@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="CapooAK47Config" format=3]
+
+[ext_resource type="Script" path="res://resources/config/enemies/capoo_ak47_config.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/capoo_ak47.tscn" id="2_scene"]
+[ext_resource type="PackedScene" path="res://scene/capoo_ak47_bullet.tscn" id="3_bullet"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/capoo_ak47.tres" id="4_frames"]
+[ext_resource type="AudioStream" path="res://resources/audio/capoo_ak47_fire.wav" id="5_audio"]
+
+[resource]
+script = ExtResource("1_script")
+projectile_scene = ExtResource("3_bullet")
+attack_audio_stream = ExtResource("5_audio")
+display_name = "AK猫猫虫"
+enemy_scene_override = ExtResource("2_scene")
+max_health = 12
+attack_damage = 1
+move_speed = 18.0
+collision_radius = 7.0
+enemy_frames = ExtResource("4_frames")
+xirang_drop_amount = 6
+pickup_drop_chance = 0.35

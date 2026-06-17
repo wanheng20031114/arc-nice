@@ -53,7 +53,7 @@ func _run() -> void:
 
 
 func _test_default_wave_resources() -> void:
-	var expected_totals := [17, 59, 32, 100, 134]
+	var expected_totals := [8, 59, 32, 104, 142]
 	var expected_rests := [30.0, 30.0, 30.0, 30.0, 0.0]
 	var expected_max_alive := [100, 100, 100, 120, 140]
 	for wave_index in range(DEFAULT_WAVES.size()):
@@ -265,9 +265,9 @@ func _create_test_waves(wave_count: int) -> Array[WaveConfig]:
 
 func _defeat_only_enemy(game: Node2D) -> void:
 	var enemy_container := game.get_node("EnemyContainer") as Node2D
-	var enemy: YuanshiInsect = null
+	var enemy: Enemy = null
 	for child in enemy_container.get_children():
-		enemy = child as YuanshiInsect
+		enemy = child as Enemy
 		if enemy != null:
 			break
 	_expect(enemy != null, "Wave did not spawn its enemy.")

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bjh6top8xplan"
-path="res://.godot/imported/演示用样例.png-035382d80dbcc16afe0e3ef2e24febfe.ctex"
+uid="uid://5dhgvnf4qeel"
+path="res://.godot/imported/capoo_ak47.png-0acee4c6934c8260b1d2426538ab0049.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/样例用/演示用样例.png"
-dest_files=["res://.godot/imported/演示用样例.png-035382d80dbcc16afe0e3ef2e24febfe.ctex"]
+source_file="res://resources/texture/capoo_ak47.png"
+dest_files=["res://.godot/imported/capoo_ak47.png-0acee4c6934c8260b1d2426538ab0049.ctex"]
 
 [params]
 

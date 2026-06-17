@@ -1,0 +1,19 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy.tscn" id="1_base"]
+[ext_resource type="Script" path="res://scene/capoo_ak47.gd" id="2_script"]
+
+[node name="CapooAK47" instance=ExtResource("1_base")]
+script = ExtResource("2_script")
+
+[node name="MuzzleHeat" type="Polygon2D" parent="." index="8"]
+visible = false
+z_index = 3
+color = Color(1, 0.5, 0.12, 0.45)
+polygon = PackedVector2Array(0, -2, 4, 0, 0, 2)
+
+[node name="AttackAudio" type="AudioStreamPlayer2D" parent="." index="9"]
+volume_db = -8.0
+pitch_scale = 1.0
+max_polyphony = 12
+max_distance = 260.0
