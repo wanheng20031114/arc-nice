@@ -1,0 +1,53 @@
+[gd_scene format=3 uid="uid://74wxe1wtbvkh"]
+
+[node name="root" type="Node2D" unique_id=829556120]
+
+[node name="MySprite" type="Sprite2D" parent="." unique_id=1016079642]
+
+[node name="MainCamera" type="Camera2D" parent="." unique_id=216327615]
+
+[node name="TestCharacter" type="CharacterBody2D" parent="." unique_id=763374514]
+
+[node name="CharCollision" type="CollisionShape2D" parent="TestCharacter" unique_id=662574864]
+
+[node name="CharSprite" type="Sprite2D" parent="TestCharacter" unique_id=2135003802]
+
+[node name="DetectionZone" type="Area2D" parent="." unique_id=667970714]
+
+[node name="AreaCollision" type="CollisionShape2D" parent="DetectionZone" unique_id=634519083]
+
+[node name="TestRigidBody" type="RigidBody2D" parent="." unique_id=1201810380]
+
+[node name="TestStaticBody" type="StaticBody2D" parent="." unique_id=608985894]
+
+[node name="TestAnimSprite" type="AnimatedSprite2D" parent="." unique_id=186486758]
+
+[node name="TestLabel" type="Label" parent="." unique_id=1615341207]
+text = "Hello MCP Test!"
+
+[node name="TestTileMap" type="TileMapLayer" parent="." unique_id=855263907]
+
+[node name="TestLight" type="PointLight2D" parent="." unique_id=2032680110]
+
+[node name="TestParticles" type="GPUParticles2D" parent="." unique_id=789044126]
+
+[node name="TestCPUParticles" type="CPUParticles2D" parent="." unique_id=1162027602]
+
+[node name="TestButton" type="Button" parent="." unique_id=1991461657]
+text = "Click Me"
+
+[node name="TestLine2D" type="Line2D" parent="." unique_id=442324560]
+
+[node name="TestPath" type="Path2D" parent="." unique_id=1363685161]
+
+[node name="TestNavRegion" type="NavigationRegion2D" parent="." unique_id=581990622]
+
+[node name="TestColorRect" type="ColorRect" parent="." unique_id=1955274555]
+
+[node name="TestAudio" type="AudioStreamPlayer2D" parent="." unique_id=675423640]
+
+[node name="TestRayCast" type="RayCast2D" parent="." unique_id=807738249]
+
+[node name="TestTimer" type="Timer" parent="." unique_id=477003847]
+
+[node name="TestPolygon" type="Polygon2D" parent="." unique_id=1891241072]

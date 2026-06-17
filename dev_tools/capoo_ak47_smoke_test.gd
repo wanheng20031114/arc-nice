@@ -49,19 +49,26 @@ func _test_resource_contract() -> void:
 	_expect(CAPOO_CONFIG.display_name == "AK猫猫虫", "Display name mismatch.")
 	_expect(CAPOO_CONFIG.max_health == 12, "AK Capoo health mismatch.")
 	_expect(CAPOO_CONFIG.attack_damage == 1, "AK Capoo projectile damage must be 1.")
-	_expect(CAPOO_CONFIG.collision_radius == 7.0, "AK Capoo collision radius must match shelled insect scale.")
+	_expect(is_equal_approx(CAPOO_CONFIG.collision_radius, 5.5), "AK Capoo collision radius must match its smaller sprite.")
 	_expect(CAPOO_CONFIG.burst_count == 10, "AK Capoo burst count must be 10.")
 	_expect(is_equal_approx(CAPOO_CONFIG.attack_windup, 1.5), "AK Capoo windup must be 1.5 seconds.")
 	_expect(is_equal_approx(CAPOO_CONFIG.projectile_speed, 142.5), "AK projectile speed mismatch.")
 	_expect(CAPOO_CONFIG.enemy_scene_override == CAPOO_SCENE, "AK Capoo must use its own enemy scene.")
 	_expect(CAPOO_CONFIG.projectile_scene == BULLET_SCENE, "AK Capoo must use AK bullet scene.")
 	_expect(CAPOO_CONFIG.attack_audio_stream != null, "AK fire audio is missing.")
+	var capoo_scene_instance := CAPOO_SCENE.instantiate()
+	var attack_audio := capoo_scene_instance.get_node("AttackAudio") as AudioStreamPlayer2D
+	var animated_sprite := capoo_scene_instance.get_node("AnimatedSprite2D") as AnimatedSprite2D
+	_expect(attack_audio.volume_db <= -18.0, "AK fire audio must stay quiet enough for bursts.")
+	_expect(attack_audio.max_polyphony <= 3, "AK fire audio polyphony must avoid noisy overlap.")
+	_expect(animated_sprite.scale.x < 0.5 and animated_sprite.scale.y < 0.5, "AK Capoo high resolution sprite must be scene-scaled down.")
+	capoo_scene_instance.free()
 	_expect(_count_wave_entries(WAVE_04) == 4, "Wave 4 must introduce 4 AK Capoos.")
 	_expect(_count_wave_entries(WAVE_05) == 8, "Wave 5 must contain 8 AK Capoos.")
 
 	var texture := load("res://resources/texture/capoo_ak47.png") as Texture2D
 	var bullet_texture := load("res://resources/texture/capoo_ak47_bullet.png") as Texture2D
-	_expect(texture != null and texture.get_size() == Vector2(128, 128), "AK Capoo sprite sheet size is incorrect.")
+	_expect(texture != null and texture.get_size() == Vector2(384, 384), "AK Capoo sprite sheet size is incorrect.")
 	_expect(
 		bullet_texture != null and bullet_texture.get_size() == Vector2(24, 8),
 		"AK bullet sprite sheet size is incorrect."

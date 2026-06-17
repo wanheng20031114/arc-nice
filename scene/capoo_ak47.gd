@@ -26,6 +26,7 @@ var windup_time_left: float = 0.0
 var burst_shot_direction := Vector2.RIGHT
 var burst_shots_fired: int = 0
 var burst_fire_time_left: float = 0.0
+var burst_audio_step: int = 0
 var current_path: PackedVector2Array = PackedVector2Array()
 var current_path_index: int = 0
 var path_refresh_time_left: float = 0.0
@@ -75,6 +76,7 @@ func _apply_config() -> void:
 	windup_time_left = 0.0
 	burst_shots_fired = 0
 	burst_fire_time_left = 0.0
+	burst_audio_step = 0
 
 	var capoo_config := config as CapooConfig
 	if capoo_config != null:
@@ -152,6 +154,7 @@ func _start_burst(shoot_direction: Vector2) -> void:
 	burst_shot_direction = shoot_direction.normalized() if shoot_direction != Vector2.ZERO else Vector2.RIGHT
 	burst_shots_fired = 0
 	burst_fire_time_left = 0.0
+	burst_audio_step = 0
 	attack_cooldown_left = maxf(capoo_config.attack_interval, 0.01)
 	_update_facing(burst_shot_direction)
 	_play_config_animation(capoo_config.attack_animation_name)
@@ -202,8 +205,10 @@ func _fire_locked_bullet() -> bool:
 	)
 	spawn_parent.add_child(projectile)
 	projectile.global_position = global_position + burst_shot_direction * capoo_config.projectile_spawn_distance
-	attack_audio.pitch_scale = random_generator.randf_range(0.94, 1.06)
-	attack_audio.play()
+	if burst_audio_step % 2 == 0:
+		attack_audio.pitch_scale = random_generator.randf_range(0.98, 1.03)
+		attack_audio.play()
+	burst_audio_step += 1
 	return true
 
 
@@ -211,6 +216,7 @@ func _finish_burst() -> void:
 	combat_state = CombatState.CHASE
 	burst_shots_fired = 0
 	burst_fire_time_left = 0.0
+	burst_audio_step = 0
 	_set_muzzle_heat(0.0, burst_shot_direction)
 	var capoo_config := config as CapooConfig
 	if capoo_config != null:
@@ -221,6 +227,7 @@ func _cancel_attack() -> void:
 	combat_state = CombatState.CHASE
 	burst_shots_fired = 0
 	burst_fire_time_left = 0.0
+	burst_audio_step = 0
 	_set_muzzle_heat(0.0, burst_shot_direction)
 
 

@@ -1,19 +1,48 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene format=3 uid="uid://dto67lqb21m3d"]
 
 [ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy.tscn" id="1_base"]
-[ext_resource type="Script" path="res://scene/capoo_ak47.gd" id="2_script"]
+[ext_resource type="Script" uid="uid://bqc1bimeq0vkr" path="res://scene/capoo_ak47.gd" id="2_script"]
+[ext_resource type="Shader" uid="uid://b47uq42hh5vq1" path="res://scene/blink.gdshader" id="2_vtgnm"]
 
-[node name="CapooAK47" instance=ExtResource("1_base")]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_c053p"]
+resource_local_to_scene = true
+shader = ExtResource("2_vtgnm")
+shader_parameter/blink_enabled = false
+shader_parameter/blink_speed = 12.0
+shader_parameter/hidden_ratio = 0.5
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_dt0cq"]
+resource_local_to_scene = true
+radius = 8.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_n5k2g"]
+resource_local_to_scene = true
+radius = 7.0
+
+[node name="CapooAK47" unique_id=33845177 instance=ExtResource("1_base")]
+material = SubResource("ShaderMaterial_c053p")
 script = ExtResource("2_script")
+path_refresh_interval = 0.25
+waypoint_arrival_distance = 6.0
+direct_chase_extra_distance = 2.0
 
-[node name="MuzzleHeat" type="Polygon2D" parent="." index="8"]
+[node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
+texture_filter = 2
+scale = Vector2(0.31, 0.31)
+
+[node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
+shape = SubResource("CircleShape2D_dt0cq")
+
+[node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
+shape = SubResource("CircleShape2D_n5k2g")
+
+[node name="MuzzleHeat" type="Polygon2D" parent="." index="6" unique_id=1396525811]
 visible = false
 z_index = 3
 color = Color(1, 0.5, 0.12, 0.45)
 polygon = PackedVector2Array(0, -2, 4, 0, 0, 2)
 
-[node name="AttackAudio" type="AudioStreamPlayer2D" parent="." index="9"]
-volume_db = -8.0
-pitch_scale = 1.0
-max_polyphony = 12
-max_distance = 260.0
+[node name="AttackAudio" type="AudioStreamPlayer2D" parent="." index="7" unique_id=940769648]
+volume_db = -19.0
+max_distance = 180.0
+max_polyphony = 3

@@ -11,7 +11,7 @@
 [ext_resource type="Resource" uid="uid://c6unlgwoqktx5" path="res://resources/config/enemies/yuanshi_insect_fire_ranged.tres" id="9_fire"]
 [ext_resource type="AudioStream" uid="uid://dvxl8ixgmll4p" path="res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3" id="10_music"]
 [ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_guardian.tres" id="11_guardian"]
-[ext_resource type="Resource" path="res://resources/config/enemies/capoo_ak47.tres" id="12_capoo_ak47"]
+[ext_resource type="Resource" uid="uid://bwc31dxuxgnhs" path="res://resources/config/enemies/capoo_ak47.tres" id="12_capoo_ak47"]
 
 [sub_resource type="Resource" id="WaveEnemyEntry_basic"]
 script = ExtResource("2_entry")
