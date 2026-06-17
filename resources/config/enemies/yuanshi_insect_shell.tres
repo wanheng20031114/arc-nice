@@ -13,7 +13,7 @@
 script = ExtResource("5_gt3et")
 variant = 1
 display_name = "硬壳原石虫"
-max_health = 100
+max_health = 140
 attack_damage = 14
 physical_defense = 3
 move_speed = 20.0
