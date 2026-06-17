@@ -14,14 +14,14 @@ enum StatType {
 }
 
 const MAX_UPGRADE_LEVELS := {
-	StatType.ATTACK: 2,
+	StatType.ATTACK: 5,
 	StatType.HEALTH: 5,
 	StatType.ATTACK_SPEED: 5,
 	StatType.DODGE: 5,
 }
 
 const UPGRADE_COSTS := {
-	StatType.ATTACK: [100, 300],
+	StatType.ATTACK: [100, 300, 500, 800, 1200],
 	StatType.HEALTH: [50, 75, 100, 200, 500],
 	StatType.ATTACK_SPEED: [50, 75, 100, 200, 500],
 	StatType.DODGE: [50, 75, 100, 200, 500],

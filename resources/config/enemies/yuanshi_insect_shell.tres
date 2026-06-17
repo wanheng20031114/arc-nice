@@ -13,10 +13,12 @@
 script = ExtResource("5_gt3et")
 variant = 1
 display_name = "硬壳原石虫"
-max_health = 8
-move_speed = 15.0
+max_health = 100
+attack_damage = 14
+physical_defense = 3
+move_speed = 20.0
 collision_radius = 7.0
 enemy_frames = ExtResource("1_isqks")
-xirang_drop_amount = 3
-pickup_drop_chance = 0.5
+xirang_drop_amount = 4
+pickup_drop_chance = 0.08
 metadata/_custom_type_script = "uid://cxt041wfb1usj"

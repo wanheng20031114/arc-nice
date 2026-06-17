@@ -384,7 +384,7 @@ vertical_alignment = 1
 layout_mode = 2
 stat_name = "基础攻击力"
 stat_type = 0
-max_level = 2
+max_level = 5
 icon_texture = ExtResource("6_attack_icon")
 completed_color = Color(0.95, 0.22, 0.18, 1)
 

@@ -7,11 +7,10 @@
 script = ExtResource("2_script")
 pickup_type = 4
 display_name = "生命药瓶"
-description = "恢复 1 点生命值。满血拾取时会放入背包。"
+description = "恢复 10 点生命值。满血拾取时会放入背包。"
 can_store_in_inventory = true
-stackable = false
 icon_texture = ExtResource("1_icon")
 icon_scale = Vector2(0.5, 0.5)
-heal_amount = 1
+heal_amount = 10
 duration = 0.0
 metadata/_custom_type_script = "uid://qucrregg4cq0"

@@ -9,9 +9,9 @@ signal dodge_changed(chance: float)
 signal died
 
 @export var move_speed: float = 120.0
-@export var max_health: int = 5
+@export var max_health: int = 50
 @export var invincibility_duration: float = 1.0
-@export var attack_damage: int = 1
+@export var attack_damage: int = 10
 @export var physical_defense: int = 0
 @export var magic_defense: int = 0
 @export var attack_method_name: String = "枪"
@@ -646,14 +646,14 @@ func _on_shooting_timer_timeout() -> void:
 	pass
 
 
-# 升级基础攻击力，每级 +1
+# 升级基础攻击力，每级 +4
 func upgrade_attack() -> void:
-	attack_damage += 1
+	attack_damage += 4
 
 
-# 升级生命值上限，每级 +2，并同步回满当前生命
+# 升级生命值上限，每级 +5，并同步回满当前生命
 func upgrade_max_health() -> void:
-	max_health += 2
+	max_health += 5
 	current_health = max_health
 	health_bar.set_health(current_health, max_health)
 	health_changed.emit(current_health, max_health)
