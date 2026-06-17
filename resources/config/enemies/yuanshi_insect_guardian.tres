@@ -1,7 +1,15 @@
-[gd_resource type="Resource" script_class="YuanshiInsectGuardianConfig" format=3]
+[gd_resource type="Resource" script_class="YuanshiInsectGuardianConfig" format=3 uid="uid://b6g77s6rrfiw8"]
 
-[ext_resource type="SpriteFrames" path="res://resources/animation/yuanshi_insect_guardian.tres" id="1_frames"]
-[ext_resource type="Script" path="res://resources/config/enemies/yuanshi_insect_guardian_config.gd" id="2_script"]
+[ext_resource type="SpriteFrames" uid="uid://ct2ou77cymcl7" path="res://resources/animation/yuanshi_insect_guardian.tres" id="1_frames"]
+[ext_resource type="Texture2D" uid="uid://04o6ofntabvg" path="res://resources/texture/yuanshi_insect_green_aura_colors.tres" id="1_kxoc3"]
+[ext_resource type="Texture2D" uid="uid://gpwpt2glrhpb" path="res://resources/texture/yuanshi_insect_green_aura_particle.tres" id="2_ovnnj"]
+[ext_resource type="Script" uid="uid://dvc3h01lexqkx" path="res://resources/config/enemies/yuanshi_insect_guardian_config.gd" id="2_script"]
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="4_22x4f"]
+[ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="5_jfjvb"]
+[ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="6_fr7ol"]
+[ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="7_1fef3"]
+[ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="8_h0ajm"]
+[ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="9_em1je"]
 
 [resource]
 script = ExtResource("2_script")
@@ -9,12 +17,9 @@ aura_radius = 46.0
 aura_particles_enabled = false
 aura_fill_color = Color(0.1, 0.38, 1, 0.012)
 aura_outline_color = Color(0.36, 0.82, 1, 0.16)
-aura_outline_width = 4.0
-aura_physical_defense_bonus = 1
 variant = 7
 display_name = "守护者原石虫"
 max_health = 16
-attack_damage = 1
 move_speed = 20.0
 collision_radius = 6.0
 enemy_frames = ExtResource("1_frames")

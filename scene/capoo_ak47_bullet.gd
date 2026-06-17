@@ -2,6 +2,7 @@ extends Area2D
 class_name CapooAK47Bullet
 
 const WORLD_COLLISION_MASK := 1
+const HIT_EFFECT_SCENE := preload("res://scene/bullet_hit_effect.tscn")
 
 @export var speed: float = 142.5
 @export var max_lifetime: float = 2.0
@@ -78,4 +79,20 @@ func _consume() -> void:
 		return
 	has_hit = true
 	set_deferred("monitoring", false)
+	_spawn_hit_effect()
 	queue_free()
+
+
+func _spawn_hit_effect() -> void:
+	var spawn_parent := get_tree().current_scene
+	if spawn_parent == null:
+		return
+
+	var effect := HIT_EFFECT_SCENE.instantiate() as BulletHitEffect
+	if effect == null:
+		return
+
+	effect.top_level = true
+	effect.setup(direction)
+	spawn_parent.add_child(effect)
+	effect.global_position = global_position

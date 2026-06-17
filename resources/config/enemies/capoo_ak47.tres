@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="CapooAK47Config" format=3 uid="uid://bwc31dxuxgnhs"]
 
 [ext_resource type="Script" uid="uid://gho1ntlrkebh" path="res://resources/config/enemies/capoo_ak47_config.gd" id="1_script"]
-[ext_resource type="PackedScene" path="res://scene/capoo_ak47.tscn" id="2_scene"]
+[ext_resource type="PackedScene" uid="uid://dto67lqb21m3d" path="res://scene/capoo_ak47.tscn" id="2_scene"]
 [ext_resource type="PackedScene" path="res://scene/capoo_ak47_bullet.tscn" id="3_bullet"]
 [ext_resource type="SpriteFrames" uid="uid://ftdqslfcushq" path="res://resources/animation/capoo_ak47.tres" id="4_frames"]
 [ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="4_tadrt"]
