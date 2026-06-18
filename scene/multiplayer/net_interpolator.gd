@@ -24,6 +24,8 @@ var _buffer_max_size: int = _NetConstants.INTERPOLATION_BUFFER_SIZE * 3
 
 ## 当前的插值渲染延迟（秒）
 var _render_delay: float = 0.1
+var _last_position: Vector2 = Vector2.ZERO
+var _has_position: bool = false
 
 
 func _init(snapshot_interval: float = 0.05) -> void:
@@ -50,7 +52,12 @@ func push_snapshot(
 	frame.health = health
 	frame.is_dead = is_dead
 
-	_buffer.append(frame)
+	if not _buffer.is_empty() and timestamp <= _buffer[_buffer.size() - 1].timestamp:
+		_insert_ordered_snapshot(frame)
+	else:
+		_buffer.append(frame)
+	_last_position = position
+	_has_position = true
 
 	# 保持缓存大小
 	while _buffer.size() > _buffer_max_size:
@@ -63,7 +70,13 @@ func get_interpolated_position(current_time: float) -> Vector2:
 	var render_time := current_time - _render_delay
 
 	if _buffer.is_empty():
-		return Vector2.ZERO
+		return _last_position if _has_position else Vector2.ZERO
+
+	if _buffer.size() == 1:
+		return _buffer[0].position
+
+	if render_time <= _buffer[0].timestamp:
+		return _buffer[0].position
 
 	# 找到 render_time 前后的两帧
 	var before: FrameSnapshot = null
@@ -76,8 +89,7 @@ func get_interpolated_position(current_time: float) -> Vector2:
 			break
 
 	if before == null or after == null:
-		# 若没找到合适的区间，返回最后已知位置
-		return _buffer[_buffer.size() - 1].position
+		return _extrapolate_latest_position(render_time)
 
 	# 计算插值因子
 	var total := after.timestamp - before.timestamp
@@ -94,6 +106,12 @@ func get_interpolated_velocity(current_time: float) -> Vector2:
 
 	if _buffer.is_empty():
 		return Vector2.ZERO
+
+	if _buffer.size() == 1:
+		return _buffer[0].velocity
+
+	if render_time <= _buffer[0].timestamp:
+		return _buffer[0].velocity
 
 	var before: FrameSnapshot = null
 	var after: FrameSnapshot = null
@@ -136,6 +154,7 @@ func get_current_state(current_time: float) -> FrameSnapshot:
 ## 清空缓存
 func clear() -> void:
 	_buffer.clear()
+	_has_position = false
 
 
 ## 获取缓存中最新快照的时间戳
@@ -148,3 +167,24 @@ func get_latest_timestamp() -> float:
 ## 获取缓存大小
 func get_buffer_size() -> int:
 	return _buffer.size()
+
+
+func _insert_ordered_snapshot(frame: FrameSnapshot) -> void:
+	for index in range(_buffer.size()):
+		if is_equal_approx(_buffer[index].timestamp, frame.timestamp):
+			_buffer[index] = frame
+			return
+		if frame.timestamp < _buffer[index].timestamp:
+			_buffer.insert(index, frame)
+			return
+	_buffer.append(frame)
+
+
+func _extrapolate_latest_position(render_time: float) -> Vector2:
+	var latest := _buffer[_buffer.size() - 1]
+	var extrapolation_time := clampf(
+		render_time - latest.timestamp,
+		0.0,
+		_NetConstants.MAX_EXTRAPOLATION_SECONDS
+	)
+	return latest.position + latest.velocity * extrapolation_time
