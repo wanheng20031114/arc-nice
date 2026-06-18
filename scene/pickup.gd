@@ -65,7 +65,7 @@ func _on_body_entered(body: Node2D) -> void:
 		queue_free()
 		return
 
-	var run_state := get_node("/root/RunState") as RunStateStore
+	var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 	var stored := (
 		run_state.try_add_item_for_peer(player.peer_id, config)
 		if net_manager != null and net_manager.is_host() and player.peer_id > 0

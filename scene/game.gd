@@ -475,16 +475,6 @@ func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 	return states
 
 
-func apply_player_snapshot_state(state: SnapshotManager.PlayerState) -> void:
-	var player_instance: Player = peer_players.get(state.peer_id) as Player
-	if player_instance == null or not is_instance_valid(player_instance):
-		return
-	player_instance.global_position = state.position
-	player_instance.velocity = state.velocity
-	player_instance.current_health = state.health
-	player_instance.is_dead = state.is_dead
-
-
 func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
 	var states: Array[SnapshotManager.EnemyState] = []
 	for child in enemy_container.get_children():

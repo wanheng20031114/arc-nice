@@ -4,7 +4,7 @@ const GAME_SCENE_PATH := "res://scene/game.tscn"
 
 
 func _on_singleplayer_pressed() -> void:
-	var run_state := get_node("/root/RunState") as RunStateStore
+	var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 	run_state.begin_new_run()
 	get_tree().change_scene_to_file(GAME_SCENE_PATH)
 

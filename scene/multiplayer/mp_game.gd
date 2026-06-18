@@ -284,4 +284,7 @@ func _on_connection_state_changed(new_state: int) -> void:
 
 
 func _return_to_lobby() -> void:
-	get_tree().change_scene_to_file("res://scene/multiplayer/multiplayer_lobby.tscn")
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return
+	tree.change_scene_to_file("res://scene/multiplayer/multiplayer_lobby.tscn")
