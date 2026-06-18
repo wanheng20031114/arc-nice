@@ -21,6 +21,11 @@ var current_xirang: int = 20000
 var invincibility_time_left: float = 0.0
 var is_dead: bool = false
 var controls_locked: bool = false
+var peer_id: int = 0
+var uses_local_input: bool = true
+var network_move_input: Vector2 = Vector2.ZERO
+var network_shoot_input: Vector2 = Vector2.ZERO
+var network_skill1_requested: bool = false
 var mouse_fire_held: bool = false
 var mouse_viewport_position: Vector2 = Vector2.ZERO
 
@@ -94,6 +99,9 @@ func _ready() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if not uses_local_input:
+		return
+
 	var mouse_motion := event as InputEventMouseMotion
 	if mouse_motion != null:
 		mouse_viewport_position = mouse_motion.position
@@ -108,6 +116,9 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if not uses_local_input:
+		return
+
 	if event.is_action_pressed("skill1"):
 		if _try_use_skill1():
 			get_viewport().set_input_as_handled()
@@ -139,10 +150,13 @@ func _physics_process(delta: float) -> void:
 		_update_armed_effect()
 		return
 	
-	var move_input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
-	var shoot_input := Input.get_vector("shoot_left", "shoot_right", "shoot_up", "shoot_down")
-	if mouse_fire_held:
+	var move_input := _get_current_move_input()
+	var shoot_input := _get_current_shoot_input()
+	if uses_local_input and mouse_fire_held:
 		shoot_input = _get_mouse_shoot_direction()
+	if not uses_local_input and network_skill1_requested:
+		network_skill1_requested = false
+		_try_use_skill1()
 
 	velocity = move_input * _get_effective_move_speed()
 	move_and_slide()
@@ -289,6 +303,27 @@ func set_controls_locked(locked: bool) -> void:
 		mouse_fire_held = false
 		velocity = Vector2.ZERO
 		footstep_audio.stop()
+
+
+func configure_multiplayer_control(new_peer_id: int, use_local_input: bool) -> void:
+	peer_id = new_peer_id
+	uses_local_input = use_local_input
+	mouse_fire_held = false
+	network_move_input = Vector2.ZERO
+	network_shoot_input = Vector2.ZERO
+	network_skill1_requested = false
+	if not uses_local_input:
+		controls_locked = false
+
+
+func apply_network_input(
+	move_input: Vector2,
+	shoot_input: Vector2,
+	use_skill1: bool = false
+) -> void:
+	network_move_input = move_input.limit_length(1.0)
+	network_shoot_input = shoot_input.limit_length(1.0)
+	network_skill1_requested = network_skill1_requested or use_skill1
 
 
 func get_xirang() -> int:
@@ -457,6 +492,18 @@ func _get_effective_move_speed() -> float:
 func _get_mouse_shoot_direction() -> Vector2:
 	var mouse_world_position := get_canvas_transform().affine_inverse() * mouse_viewport_position
 	return global_position.direction_to(mouse_world_position)
+
+
+func _get_current_move_input() -> Vector2:
+	if uses_local_input:
+		return Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	return network_move_input
+
+
+func _get_current_shoot_input() -> Vector2:
+	if uses_local_input:
+		return Input.get_vector("shoot_left", "shoot_right", "shoot_up", "shoot_down")
+	return network_shoot_input
 
 
 func _on_window_focus_exited() -> void:

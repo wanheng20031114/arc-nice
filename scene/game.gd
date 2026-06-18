@@ -1,7 +1,17 @@
 extends Node2D
+class_name Game
 
 const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/yuanshi_insect_spawn_effect.tscn")
+const PLAYER_SCENE := preload("res://scene/player.tscn")
 const COUNTDOWN_FINAL_SECONDS := 3
+
+signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
+
+enum RuntimeMode {
+	SINGLEPLAYER,
+	HOST_AUTHORITY,
+	CLIENT_VIEW,
+}
 
 enum WaveState {
 	PRE_WAVE,
@@ -24,6 +34,7 @@ enum WaveState {
 @export_group("波次流程")
 @export_range(0.0, 60.0, 1.0, "or_greater") var pre_wave_duration: float = 5.0
 @export var auto_start_waves: bool = true
+@export var runtime_mode: RuntimeMode = RuntimeMode.SINGLEPLAYER
 
 @onready var player: Player = $Player
 @onready var enemy_container: Node2D = $EnemyContainer
@@ -52,23 +63,52 @@ var current_wave_total: int = 0
 var current_wave_spawned: int = 0
 var current_wave_defeated: int = 0
 var countdown_seconds: int = 0
+var multiplayer_local_peer_id: int = 0
+var multiplayer_player_names: Dictionary = {}
+var peer_players: Dictionary = {}
+var enemy_retarget_time_left: float = 0.0
+var next_multiplayer_enemy_net_id: int = 1
 
 
 func _ready() -> void:
 	random_generator.randomize()
-	run_state.ensure_run_started()
+	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		run_state.ensure_run_started()
 	_collect_enemy_spawn_points()
 	_configure_timers()
+	if runtime_mode != RuntimeMode.SINGLEPLAYER:
+		run_state.ensure_run_started()
+		run_state.set_active_multiplayer_peer(multiplayer_local_peer_id)
+		_configure_multiplayer_players()
 	currency_hud.bind_player(player)
 	player_profile_panel.bind_player(player)
 	currency_hud.profile_requested.connect(player_profile_panel.open)
-	player.died.connect(_on_player_died)
+	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		player.died.connect(_on_player_died)
 	merchant.set_active(false)
 
-	if auto_start_waves and _is_wave_system_ready():
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		auto_start_waves = false
+		wave_hud.hide_all()
+	elif auto_start_waves and _is_wave_system_ready():
 		_enter_pre_wave(0)
 	else:
 		wave_hud.hide_all()
+
+
+func _physics_process(delta: float) -> void:
+	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
+		_update_multiplayer_enemy_targets(delta)
+
+
+func configure_multiplayer(
+	mode: RuntimeMode,
+	local_peer_id: int,
+	player_names: Dictionary
+) -> void:
+	runtime_mode = mode
+	multiplayer_local_peer_id = local_peer_id
+	multiplayer_player_names = player_names.duplicate()
 
 
 func _collect_enemy_spawn_points() -> void:
@@ -260,11 +300,18 @@ func _try_spawn_enemy(enemy_config: EnemyConfig) -> bool:
 
 	enemy_container.add_child(enemy_instance)
 	enemy_instance.global_position = spawn_point.global_position
-	enemy_instance.setup(enemy_config, player, grid_pathfinder)
+	enemy_instance.setup(enemy_config, _pick_enemy_target(spawn_point.global_position), grid_pathfinder)
 	var enemy_id := enemy_instance.get_instance_id()
+	var enemy_net_id := 0
+	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
+		enemy_net_id = next_multiplayer_enemy_net_id
+		next_multiplayer_enemy_net_id += 1
+		enemy_instance.set_meta("net_id", enemy_net_id)
 	active_wave_enemy_ids[enemy_id] = true
 	enemy_instance.defeated.connect(_on_wave_enemy_defeated)
 	enemy_instance.tree_exited.connect(_on_wave_enemy_tree_exited.bind(enemy_id))
+	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
+		multiplayer_enemy_spawned.emit(enemy_net_id, enemy_config, enemy_instance.global_position)
 	_spawn_enemy_spawn_effect(spawn_point.global_position)
 	enemy_spawn_audio.play()
 	return true
@@ -331,6 +378,154 @@ func _on_player_died() -> void:
 	if wave_state == WaveState.VICTORY:
 		return
 	_enter_defeat()
+
+
+func _on_multiplayer_player_died(_peer_id: int) -> void:
+	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
+		return
+	if wave_state == WaveState.VICTORY:
+		return
+	for peer_id_variant in peer_players:
+		var candidate := peer_players[peer_id_variant] as Player
+		if candidate != null and is_instance_valid(candidate) and not candidate.is_dead:
+			return
+	_enter_defeat()
+
+
+func _configure_multiplayer_players() -> void:
+	peer_players.clear()
+	if multiplayer_player_names.is_empty():
+		multiplayer_player_names[multiplayer_local_peer_id if multiplayer_local_peer_id > 0 else 1] = "Player"
+
+	var peer_ids: Array[int] = []
+	for peer_id_variant in multiplayer_player_names:
+		peer_ids.append(int(peer_id_variant))
+	peer_ids.sort()
+
+	var base_position := player.global_position
+	for index in range(peer_ids.size()):
+		var peer_id := peer_ids[index]
+		var player_instance: Player = player if index == 0 else PLAYER_SCENE.instantiate() as Player
+		if player_instance == null:
+			continue
+		if index > 0:
+			add_child(player_instance)
+		player_instance.name = "Player_%d" % peer_id
+		player_instance.global_position = base_position + _get_multiplayer_spawn_offset(index)
+		var accepts_local_input := (
+			runtime_mode == RuntimeMode.HOST_AUTHORITY
+			and peer_id == multiplayer_local_peer_id
+		)
+		player_instance.configure_multiplayer_control(peer_id, accepts_local_input)
+		if runtime_mode == RuntimeMode.CLIENT_VIEW:
+			player_instance.set_physics_process(false)
+			player_instance.set_process(false)
+		if not player_instance.died.is_connected(_on_multiplayer_player_died.bind(peer_id)):
+			player_instance.died.connect(_on_multiplayer_player_died.bind(peer_id))
+		peer_players[peer_id] = player_instance
+		if peer_id == multiplayer_local_peer_id:
+			player = player_instance
+
+
+func _get_multiplayer_spawn_offset(index: int) -> Vector2:
+	const OFFSETS := [
+		Vector2.ZERO,
+		Vector2(18.0, 0.0),
+		Vector2(0.0, 18.0),
+		Vector2(18.0, 18.0),
+		Vector2(-18.0, 0.0),
+		Vector2(0.0, -18.0),
+		Vector2(-18.0, -18.0),
+		Vector2(18.0, -18.0),
+	]
+	return OFFSETS[index % OFFSETS.size()]
+
+
+func apply_network_input_for_peer(
+	peer_id: int,
+	move_input: Vector2,
+	shoot_input: Vector2,
+	use_skill1: bool
+) -> void:
+	var player_instance: Player = peer_players.get(peer_id) as Player
+	if player_instance == null or not is_instance_valid(player_instance):
+		return
+	player_instance.apply_network_input(move_input, shoot_input, use_skill1)
+
+
+func get_player_for_peer(peer_id: int) -> Player:
+	return peer_players.get(peer_id) as Player
+
+
+func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
+	var states: Array[SnapshotManager.PlayerState] = []
+	for peer_id_variant in peer_players:
+		var peer_id := int(peer_id_variant)
+		var player_instance := peer_players[peer_id] as Player
+		if player_instance == null or not is_instance_valid(player_instance):
+			continue
+		var state := SnapshotManager.PlayerState.new()
+		state.peer_id = peer_id
+		state.position = player_instance.global_position
+		state.velocity = player_instance.velocity
+		state.health = player_instance.current_health
+		state.is_dead = player_instance.is_dead
+		states.append(state)
+	return states
+
+
+func apply_player_snapshot_state(state: SnapshotManager.PlayerState) -> void:
+	var player_instance: Player = peer_players.get(state.peer_id) as Player
+	if player_instance == null or not is_instance_valid(player_instance):
+		return
+	player_instance.global_position = state.position
+	player_instance.velocity = state.velocity
+	player_instance.current_health = state.health
+	player_instance.is_dead = state.is_dead
+
+
+func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
+	var states: Array[SnapshotManager.EnemyState] = []
+	for child in enemy_container.get_children():
+		var enemy := child as Enemy
+		if enemy == null or not is_instance_valid(enemy):
+			continue
+		var state := SnapshotManager.EnemyState.new()
+		state.net_id = int(enemy.get_meta("net_id", enemy.get_instance_id()))
+		state.position = enemy.global_position
+		state.velocity = enemy.velocity
+		state.health = enemy.current_health
+		state.is_dead = enemy.is_dead
+		states.append(state)
+	return states
+
+
+func _update_multiplayer_enemy_targets(delta: float) -> void:
+	enemy_retarget_time_left = maxf(enemy_retarget_time_left - delta, 0.0)
+	if enemy_retarget_time_left > 0.0:
+		return
+	enemy_retarget_time_left = 0.35
+	for child in enemy_container.get_children():
+		var enemy := child as Enemy
+		if enemy == null or enemy.is_dead:
+			continue
+		enemy.set_target_player(_pick_enemy_target(enemy.global_position))
+
+
+func _pick_enemy_target(from_position: Vector2) -> Player:
+	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
+		return player
+	var best_player: Player = null
+	var best_distance := INF
+	for peer_id_variant in peer_players:
+		var candidate := peer_players[peer_id_variant] as Player
+		if candidate == null or not is_instance_valid(candidate) or candidate.is_dead:
+			continue
+		var distance := from_position.distance_squared_to(candidate.global_position)
+		if distance < best_distance:
+			best_distance = distance
+			best_player = candidate
+	return best_player if best_player != null else player
 
 
 func _is_wave_system_ready() -> bool:

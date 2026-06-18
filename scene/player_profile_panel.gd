@@ -20,6 +20,7 @@ const DESIGN_SIZE := Vector2(724.0, 543.0)
 @onready var speed_row: UpgradeRow = $Overlay/PanelRoot/UpgradePanel/SpeedRow
 @onready var dodge_row: UpgradeRow = $Overlay/PanelRoot/UpgradePanel/DodgeRow
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
+@onready var net_manager: Node = get_node("/root/NetManager")
 
 var tracked_player: Player = null
 var slots: Array[InventorySlot] = []
@@ -229,6 +230,11 @@ func _on_player_died() -> void:
 
 func _on_upgrade_requested(stat_type: int) -> void:
 	if tracked_player == null:
+		return
+	if net_manager != null and net_manager.is_client():
+		var current_scene := get_tree().current_scene
+		if current_scene != null and current_scene.has_method("request_multiplayer_upgrade"):
+			current_scene.call("request_multiplayer_upgrade", stat_type)
 		return
 
 	if run_state.try_upgrade(stat_type, tracked_player):

@@ -57,13 +57,21 @@ func _on_body_entered(body: Node2D) -> void:
 	var player := body as Player
 	if player == null:
 		return
+	var net_manager := get_node_or_null("/root/NetManager")
+	if net_manager != null and net_manager.is_client():
+		return
 
 	if player.apply_pickup(config):
 		queue_free()
 		return
 
 	var run_state := get_node("/root/RunState") as RunStateStore
-	if run_state.try_add_item(config):
+	var stored := (
+		run_state.try_add_item_for_peer(player.peer_id, config)
+		if net_manager != null and net_manager.is_host() and player.peer_id > 0
+		else run_state.try_add_item(config)
+	)
+	if stored:
 		queue_free()
 
 # 生命周期定时器超时，销毁道具
