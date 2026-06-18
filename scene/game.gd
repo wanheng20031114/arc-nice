@@ -416,7 +416,8 @@ func _configure_multiplayer_players() -> void:
 			runtime_mode == RuntimeMode.HOST_AUTHORITY
 			and peer_id == multiplayer_local_peer_id
 		)
-		player_instance.configure_multiplayer_control(peer_id, accepts_local_input)
+		var display_name: String = str(multiplayer_player_names.get(peer_id, "Player %d" % peer_id))
+		player_instance.configure_multiplayer_control(peer_id, accepts_local_input, display_name)
 		if runtime_mode == RuntimeMode.CLIENT_VIEW:
 			player_instance.set_physics_process(false)
 			player_instance.set_process(false)

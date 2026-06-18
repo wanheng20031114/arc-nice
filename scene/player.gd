@@ -47,6 +47,7 @@ var mouse_viewport_position: Vector2 = Vector2.ZERO
 @onready var xirang_pickup_audio: AudioStreamPlayer2D = $XirangPickupAudio
 @onready var health_bar: Control = $HealthBar
 @onready var skill1_charge_bar: Skill1ChargeBar = $Skill1ChargeBar
+@onready var name_label: Label = $NameLabel
 
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const SKILL1_BOMB_SCENE := preload("res://scene/weishidaier_skill1_bomb.tscn")
@@ -91,6 +92,7 @@ func _ready() -> void:
 	shooting_timer.wait_time = _get_effective_fire_interval()
 	_set_hurt_blink_enabled(false)
 	health_bar.setup(max_health, current_health)
+	name_label.visible = false
 	health_changed.emit(current_health, max_health)
 	_update_animation()
 	_update_armed_effect()
@@ -305,13 +307,19 @@ func set_controls_locked(locked: bool) -> void:
 		footstep_audio.stop()
 
 
-func configure_multiplayer_control(new_peer_id: int, use_local_input: bool) -> void:
+func configure_multiplayer_control(
+	new_peer_id: int,
+	use_local_input: bool,
+	display_name: String = ""
+) -> void:
 	peer_id = new_peer_id
 	uses_local_input = use_local_input
 	mouse_fire_held = false
 	network_move_input = Vector2.ZERO
 	network_shoot_input = Vector2.ZERO
 	network_skill1_requested = false
+	name_label.text = display_name
+	name_label.visible = not display_name.strip_edges().is_empty()
 	if not uses_local_input:
 		controls_locked = false
 

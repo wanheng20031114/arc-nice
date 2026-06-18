@@ -36,6 +36,7 @@ var lan_status_label: Label
 var host_button: Button
 var join_button: Button
 var back_button: Button
+var is_starting_game: bool = false
 
 
 func _ready() -> void:
@@ -248,7 +249,17 @@ func _on_start_game() -> void:
 
 
 func _start_multiplayer_game() -> void:
-	get_tree().change_scene_to_file(MULTIPLAYER_GAME_SCENE_PATH)
+	if is_starting_game:
+		return
+	is_starting_game = true
+	call_deferred("_change_to_multiplayer_game")
+
+
+func _change_to_multiplayer_game() -> void:
+	var tree := get_tree()
+	if tree == null:
+		return
+	tree.change_scene_to_file(MULTIPLAYER_GAME_SCENE_PATH)
 
 
 func _on_leave_room() -> void:

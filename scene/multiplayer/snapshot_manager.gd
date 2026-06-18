@@ -1,7 +1,7 @@
 extends RefCounted
 class_name SnapshotManager
 
-## 快照管理器：负责在 Host 端构建快照数据、增量压缩；
+## 快照管理器：负责在 Host 端构建快照数据；
 ## 以及在 Client 端解析收到的快照。
 
 ## 位置精度系数 (× 10)，int16 覆盖 ±3276.7 像素
@@ -208,9 +208,7 @@ func encode_all_player_snapshots(players: Array[PlayerState]) -> PackedByteArray
 	var buf := PackedByteArray()
 	buf.append(players.size())
 	for player_state: PlayerState in players:
-		var prev: PlayerState = _prev_player_states.get(player_state.peer_id)
-		buf.append_array(encode_player_snapshot(player_state, prev))
-		# 缓存本帧状态作为下一帧的比较基准
+		buf.append_array(encode_player_snapshot(player_state, null))
 		_prev_player_states[player_state.peer_id] = player_state
 	return buf
 
@@ -239,8 +237,7 @@ func encode_all_enemy_snapshots(enemies: Array[EnemyState]) -> PackedByteArray:
 	buf.append_array(stream.data_array)
 
 	for enemy_state: EnemyState in enemies:
-		var prev: EnemyState = _prev_enemy_states.get(enemy_state.net_id)
-		buf.append_array(encode_enemy_snapshot(enemy_state, prev))
+		buf.append_array(encode_enemy_snapshot(enemy_state, null))
 		_prev_enemy_states[enemy_state.net_id] = enemy_state
 	return buf
 

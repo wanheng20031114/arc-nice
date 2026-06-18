@@ -76,6 +76,11 @@ func _test_game_runtime_modes() -> void:
 	_expect(host_game.peer_players.size() == 2, "Host authority game must create peer players.")
 	_expect(host_game.get_player_for_peer(1) != null, "Host player must exist.")
 	_expect(host_game.get_player_for_peer(2) != null, "Remote player must exist on host.")
+	var host_player := host_game.get_player_for_peer(1) as Player
+	_expect(
+		host_player != null and host_player.name_label.visible and host_player.name_label.text == "Host",
+		"Multiplayer player name label must show the peer name."
+	)
 	host_game.queue_free()
 	await process_frame
 
@@ -102,6 +107,12 @@ func _test_snapshot_round_trip() -> void:
 	if player_states.size() == 1:
 		_expect(player_states[0].peer_id == 2, "Player snapshot peer_id mismatch.")
 		_expect(player_states[0].health == 42, "Player snapshot health mismatch.")
+	var player_data_2 := snapshot_mgr.encode_all_player_snapshots([player_state])
+	var player_states_2 := SnapshotManager.decode_all_player_snapshots(player_data_2)
+	_expect(
+		player_states_2.size() == 1 and player_states_2[0].position.distance_to(player_state.position) < 0.12,
+		"Repeated player snapshots must remain full snapshots."
+	)
 
 	var enemy_state := SnapshotManager.EnemyState.new()
 	enemy_state.net_id = 7
@@ -114,6 +125,12 @@ func _test_snapshot_round_trip() -> void:
 	if enemy_states.size() == 1:
 		_expect(enemy_states[0].net_id == 7, "Enemy snapshot net_id mismatch.")
 		_expect(enemy_states[0].health == 3, "Enemy snapshot health mismatch.")
+	var enemy_data_2 := snapshot_mgr.encode_all_enemy_snapshots([enemy_state])
+	var enemy_states_2 := SnapshotManager.decode_all_enemy_snapshots(enemy_data_2)
+	_expect(
+		enemy_states_2.size() == 1 and enemy_states_2[0].position.distance_to(enemy_state.position) < 0.12,
+		"Repeated enemy snapshots must remain full snapshots."
+	)
 
 
 func _expect(condition: bool, message: String) -> void:

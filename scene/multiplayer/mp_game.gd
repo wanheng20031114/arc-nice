@@ -152,7 +152,10 @@ func _rpc_receive_player_snapshot(timestamp: float, data: PackedByteArray) -> vo
 			player_state.health,
 			player_state.is_dead
 		)
-		game.apply_player_snapshot_state(player_state)
+		var player_node: Player = game.get_player_for_peer(player_state.peer_id)
+		if player_node != null and is_instance_valid(player_node):
+			player_node.current_health = player_state.health
+			player_node.is_dead = player_state.is_dead
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
