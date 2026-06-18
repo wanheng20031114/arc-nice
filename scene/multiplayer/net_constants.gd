@@ -5,6 +5,7 @@ const PROTOCOL_VERSION := 1
 
 ## 玩家限制
 const MAX_PLAYERS := 8
+const MAX_PLAYER_NAME_LENGTH := 12
 
 ## 连接超时
 const DIRECT_CONNECT_TIMEOUT_MS := 3000

@@ -1,0 +1,10 @@
+[gd_resource type="LabelSettings" load_steps=2 format=3]
+
+[ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="1_font"]
+
+[resource]
+font = ExtResource("1_font")
+font_size = 18
+font_color = Color(0.96, 0.98, 1, 1)
+outline_size = 3
+outline_color = Color(0.03, 0.04, 0.055, 0.98)

@@ -78,8 +78,11 @@ func _test_game_runtime_modes() -> void:
 	_expect(host_game.get_player_for_peer(2) != null, "Remote player must exist on host.")
 	var host_player := host_game.get_player_for_peer(1) as Player
 	_expect(
-		host_player != null and host_player.name_label.visible and host_player.name_label.text == "Host",
-		"Multiplayer player name label must show the peer name."
+		host_player != null
+		and not host_player.name_label.visible
+		and host_player.nameplate_layer.visible
+		and host_player.nameplate_label.text == "Host",
+		"Multiplayer player scene nameplate must show the peer name."
 	)
 	host_game.queue_free()
 	await process_frame

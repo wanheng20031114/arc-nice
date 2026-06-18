@@ -28,6 +28,7 @@ var network_shoot_input: Vector2 = Vector2.ZERO
 var network_skill1_requested: bool = false
 var mouse_fire_held: bool = false
 var mouse_viewport_position: Vector2 = Vector2.ZERO
+var multiplayer_display_name: String = ""
 
 @export var fire_interval: float = 0.18
 @export var bullet_spawn_distance: float = 12.0
@@ -48,6 +49,8 @@ var mouse_viewport_position: Vector2 = Vector2.ZERO
 @onready var health_bar: Control = $HealthBar
 @onready var skill1_charge_bar: Skill1ChargeBar = $Skill1ChargeBar
 @onready var name_label: Label = $NameLabel
+@onready var nameplate_layer: CanvasLayer = $NameplateLayer
+@onready var nameplate_label: Label = $NameplateLayer/NameplateLabel
 
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const SKILL1_BOMB_SCENE := preload("res://scene/weishidaier_skill1_bomb.tscn")
@@ -56,6 +59,9 @@ const ARMED_ANIMATION_PREFIX := &"armed"
 const DEFAULT_FIRE_RATE_MULTIPLIER := 1.0
 const DEFAULT_MOVE_SPEED_MULTIPLIER := 1.0
 const SPIRAL_PHASE_STEP := PI / 12
+const MAX_MULTIPLAYER_NAME_LENGTH := 12
+const NAMEPLATE_SIZE := Vector2(160.0, 24.0)
+const NAMEPLATE_WORLD_OFFSET := Vector2(0.0, -19.0)
 	
 const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
 
@@ -93,11 +99,16 @@ func _ready() -> void:
 	_set_hurt_blink_enabled(false)
 	health_bar.setup(max_health, current_health)
 	name_label.visible = false
+	nameplate_layer.visible = false
 	health_changed.emit(current_health, max_health)
 	_update_animation()
 	_update_armed_effect()
 	_update_skill1_charge_bar()
 	get_window().focus_exited.connect(_on_window_focus_exited)
+
+
+func _process(_delta: float) -> void:
+	_update_nameplate_position()
 
 
 func _input(event: InputEvent) -> void:
@@ -318,8 +329,14 @@ func configure_multiplayer_control(
 	network_move_input = Vector2.ZERO
 	network_shoot_input = Vector2.ZERO
 	network_skill1_requested = false
-	name_label.text = display_name
-	name_label.visible = not display_name.strip_edges().is_empty()
+	var safe_display_name := display_name.strip_edges()
+	if safe_display_name.length() > MAX_MULTIPLAYER_NAME_LENGTH:
+		safe_display_name = safe_display_name.left(MAX_MULTIPLAYER_NAME_LENGTH)
+	multiplayer_display_name = safe_display_name
+	name_label.visible = false
+	nameplate_label.text = safe_display_name
+	nameplate_layer.visible = not safe_display_name.is_empty()
+	_update_nameplate_position()
 	if not uses_local_input:
 		controls_locked = false
 
@@ -332,6 +349,13 @@ func apply_network_input(
 	network_move_input = move_input.limit_length(1.0)
 	network_shoot_input = shoot_input.limit_length(1.0)
 	network_skill1_requested = network_skill1_requested or use_skill1
+
+
+func _update_nameplate_position() -> void:
+	if not nameplate_layer.visible:
+		return
+	var anchor := get_global_transform_with_canvas() * NAMEPLATE_WORLD_OFFSET
+	nameplate_label.position = (anchor - Vector2(NAMEPLATE_SIZE.x * 0.5, NAMEPLATE_SIZE.y)).round()
 
 
 func get_xirang() -> int:

@@ -130,9 +130,10 @@ func _client_interpolate_entities() -> void:
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
-func _rpc_receive_player_snapshot(timestamp: float, data: PackedByteArray) -> void:
+func _rpc_receive_player_snapshot(_host_timestamp: float, data: PackedByteArray) -> void:
 	if game == null:
 		return
+	var receive_time: float = _get_net_time()
 	var states := SnapshotManager.decode_all_player_snapshots(data)
 	for state in states:
 		var player_state := state as SnapshotManager.PlayerState
@@ -144,7 +145,7 @@ func _rpc_receive_player_snapshot(timestamp: float, data: PackedByteArray) -> vo
 			)
 		var interp := player_interpolators[player_state.peer_id] as NetInterpolator
 		interp.push_snapshot(
-			timestamp,
+			receive_time,
 			player_state.position,
 			player_state.velocity,
 			player_state.facing,
@@ -159,7 +160,8 @@ func _rpc_receive_player_snapshot(timestamp: float, data: PackedByteArray) -> vo
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
-func _rpc_receive_enemy_snapshot(timestamp: float, data: PackedByteArray) -> void:
+func _rpc_receive_enemy_snapshot(_host_timestamp: float, data: PackedByteArray) -> void:
+	var receive_time: float = _get_net_time()
 	var states := SnapshotManager.decode_all_enemy_snapshots(data)
 	for state in states:
 		var enemy_state := state as SnapshotManager.EnemyState
@@ -171,7 +173,7 @@ func _rpc_receive_enemy_snapshot(timestamp: float, data: PackedByteArray) -> voi
 			)
 		var interp := enemy_interpolators[enemy_state.net_id] as NetInterpolator
 		interp.push_snapshot(
-			timestamp,
+			receive_time,
 			enemy_state.position,
 			enemy_state.velocity,
 			0,
@@ -181,7 +183,6 @@ func _rpc_receive_enemy_snapshot(timestamp: float, data: PackedByteArray) -> voi
 		)
 		var enemy_node: Enemy = _net_enemies.get(enemy_state.net_id) as Enemy
 		if enemy_node != null and is_instance_valid(enemy_node):
-			enemy_node.global_position = enemy_state.position
 			enemy_node.current_health = enemy_state.health
 			enemy_node.is_dead = enemy_state.is_dead
 

@@ -12,6 +12,7 @@
 [ext_resource type="PackedScene" uid="uid://bcopug355gqjb" path="res://scene/player_health_bar.tscn" id="10_owf57"]
 [ext_resource type="SpriteFrames" uid="uid://m5m6keukol1c" path="res://resources/animation/player.tres" id="11_player_frames"]
 [ext_resource type="PackedScene" uid="uid://db4l5h4j6dnqu" path="res://scene/skill1_charge_bar.tscn" id="12_skill1_bar"]
+[ext_resource type="LabelSettings" path="res://resources/ui/player_name_label_settings.tres" id="13_name_settings"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_s4jxa"]
 resource_local_to_scene = true
@@ -120,11 +121,25 @@ offset_bottom = 12.0
 [node name="NameLabel" type="Label" parent="."]
 visible = false
 z_index = 6
-offset_left = -36.0
-offset_top = -31.0
-offset_right = 36.0
-offset_bottom = -18.0
+offset_left = -60.0
+offset_top = -38.0
+offset_right = 60.0
+offset_bottom = -22.0
 theme_override_font_sizes/font_size = 9
+text = "Player"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="NameplateLayer" type="CanvasLayer" parent="."]
+visible = false
+layer = 5
+
+[node name="NameplateLabel" type="Label" parent="NameplateLayer"]
+custom_minimum_size = Vector2(160, 24)
+offset_right = 160.0
+offset_bottom = 24.0
+mouse_filter = 2
+label_settings = ExtResource("13_name_settings")
 text = "Player"
 horizontal_alignment = 1
 vertical_alignment = 1

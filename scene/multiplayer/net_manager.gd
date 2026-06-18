@@ -57,7 +57,11 @@ func host_create_lan_server(port: int = NetConstants.ENET_PORT_DEFAULT) -> Error
 
 	lan_port = port
 	_enet_peer = ENetMultiplayerPeer.new()
-	var err: Error = _enet_peer.create_server(port, NetConstants.MAX_PLAYERS, 0, 0, NetConstants.CHANNEL_COUNT)
+	var err: Error = _enet_peer.create_server(
+		port,
+		NetConstants.MAX_PLAYERS,
+		NetConstants.CHANNEL_COUNT
+	)
 	if err != OK:
 		_enet_peer = null
 		connection_failed.emit("创建局域网主机失败: %s" % error_string(err))
@@ -68,7 +72,7 @@ func host_create_lan_server(port: int = NetConstants.ENET_PORT_DEFAULT) -> Error
 	net_role = NetRole.HOST
 	conn_mode = ConnMode.DIRECT
 	connected_players.clear()
-	connected_players[1] = _get_safe_local_name()
+	connected_players[1] = _sanitize_player_name(local_player_name)
 	_physics_frame_count = 0
 	_set_connection_state(ConnectionState.HOSTING_LAN)
 	player_joined.emit(1, connected_players[1])
@@ -227,7 +231,7 @@ func _rpc_register_player(player_name: String) -> void:
 			_enet_peer.get_peer(sender_id).peer_disconnect()
 		return
 
-	connected_players[sender_id] = player_name.strip_edges()
+	connected_players[sender_id] = _sanitize_player_name(player_name)
 	player_joined.emit(sender_id, connected_players[sender_id])
 	player_list_changed.emit()
 	_rpc_sync_player_list.rpc(_build_player_list_array())
@@ -242,7 +246,7 @@ func _rpc_sync_player_list(player_list: Array) -> void:
 		if entry == null:
 			continue
 		var peer_id: int = int(entry.get("id", 0))
-		var player_name: String = str(entry.get("name", ""))
+		var player_name: String = _sanitize_player_name(str(entry.get("name", "")))
 		if peer_id <= 0:
 			continue
 		connected_players[peer_id] = player_name
@@ -271,7 +275,13 @@ func _set_connection_state(new_state: ConnectionState) -> void:
 
 
 func _get_safe_local_name() -> String:
-	var trimmed_name := local_player_name.strip_edges()
+	return _sanitize_player_name(local_player_name)
+
+
+func _sanitize_player_name(raw_name: String) -> String:
+	var trimmed_name := raw_name.strip_edges()
+	if trimmed_name.length() > NetConstants.MAX_PLAYER_NAME_LENGTH:
+		trimmed_name = trimmed_name.left(NetConstants.MAX_PLAYER_NAME_LENGTH)
 	return trimmed_name if not trimmed_name.is_empty() else "Player"
 
 

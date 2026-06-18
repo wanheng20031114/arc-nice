@@ -41,6 +41,7 @@ var is_starting_game: bool = false
 
 func _ready() -> void:
 	_build_lan_direct_panel()
+	username_input.max_length = _NetConstants.MAX_PLAYER_NAME_LENGTH
 	username_confirm_btn.pressed.connect(_on_confirm_username)
 	username_input.text_submitted.connect(_on_username_text_submitted)
 	host_button.pressed.connect(_on_host_lan_pressed)
@@ -132,8 +133,8 @@ func _on_confirm_username() -> void:
 		username_error_label.text = "请输入用户名"
 		username_error_label.visible = true
 		return
-	if raw_name.length() > 16:
-		username_error_label.text = "用户名最多 16 个字符"
+	if raw_name.length() > _NetConstants.MAX_PLAYER_NAME_LENGTH:
+		username_error_label.text = "用户名最多 %d 个字符" % _NetConstants.MAX_PLAYER_NAME_LENGTH
 		username_error_label.visible = true
 		return
 

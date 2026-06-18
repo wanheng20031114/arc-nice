@@ -420,7 +420,6 @@ func _configure_multiplayer_players() -> void:
 		player_instance.configure_multiplayer_control(peer_id, accepts_local_input, display_name)
 		if runtime_mode == RuntimeMode.CLIENT_VIEW:
 			player_instance.set_physics_process(false)
-			player_instance.set_process(false)
 		if not player_instance.died.is_connected(_on_multiplayer_player_died.bind(peer_id)):
 			player_instance.died.connect(_on_multiplayer_player_died.bind(peer_id))
 		peer_players[peer_id] = player_instance
