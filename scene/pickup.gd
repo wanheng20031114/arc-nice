@@ -1,6 +1,8 @@
 extends Area2D
 class_name Pickup
 
+signal consumed(pickup: Pickup, collector_peer_id: int, applied_immediately: bool)
+
 const BLINK_ENABLED_SHADER_PARAMETR := &"blink_enabled"
 
 @export var config : PickupConfig
@@ -62,6 +64,7 @@ func _on_body_entered(body: Node2D) -> void:
 		return
 
 	if player.apply_pickup(config):
+		consumed.emit(self, player.peer_id, true)
 		queue_free()
 		return
 
@@ -72,6 +75,7 @@ func _on_body_entered(body: Node2D) -> void:
 		else run_state.try_add_item(config)
 	)
 	if stored:
+		consumed.emit(self, player.peer_id, false)
 		queue_free()
 
 # 生命周期定时器超时，销毁道具

@@ -4,8 +4,21 @@ class_name Game
 const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/yuanshi_insect_spawn_effect.tscn")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const COUNTDOWN_FINAL_SECONDS := 3
+const PURCHASE_RESULT_SUCCESS := 0
+const PURCHASE_RESULT_ALREADY_OWNED := 1
+const PURCHASE_RESULT_INSUFFICIENT_XIRANG := 2
+const PURCHASE_RESULT_INVALID_PLAYER := 3
 
 signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
+signal multiplayer_pickup_spawned(net_id: int, pickup_config: PickupConfig, spawn_position: Vector2)
+signal multiplayer_pickup_collected(
+	net_id: int,
+	collector_peer_id: int,
+	pickup_config: PickupConfig,
+	applied_immediately: bool
+)
+signal multiplayer_pickup_removed(net_id: int)
+signal multiplayer_merchant_active_changed(active: bool)
 
 enum RuntimeMode {
 	SINGLEPLAYER,
@@ -66,8 +79,11 @@ var countdown_seconds: int = 0
 var multiplayer_local_peer_id: int = 0
 var multiplayer_player_names: Dictionary = {}
 var peer_players: Dictionary = {}
+var multiplayer_pickups: Dictionary = {}
+var removed_multiplayer_pickup_ids: Dictionary = {}
 var enemy_retarget_time_left: float = 0.0
 var next_multiplayer_enemy_net_id: int = 1
+var next_multiplayer_pickup_net_id: int = 1000
 
 
 func _ready() -> void:
@@ -80,12 +96,13 @@ func _ready() -> void:
 		run_state.ensure_run_started()
 		run_state.set_active_multiplayer_peer(multiplayer_local_peer_id)
 		_configure_multiplayer_players()
+		_register_static_multiplayer_pickups()
 	currency_hud.bind_player(player)
 	player_profile_panel.bind_player(player)
 	currency_hud.profile_requested.connect(player_profile_panel.open)
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		player.died.connect(_on_player_died)
-	merchant.set_active(false)
+	_set_merchant_active(false)
 
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		auto_start_waves = false
@@ -99,6 +116,7 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		_update_multiplayer_enemy_targets(delta)
+		_register_dynamic_multiplayer_pickups()
 
 
 func configure_multiplayer(
@@ -109,6 +127,54 @@ func configure_multiplayer(
 	runtime_mode = mode
 	multiplayer_local_peer_id = local_peer_id
 	multiplayer_player_names = player_names.duplicate()
+
+
+func apply_remote_merchant_active(active: bool) -> void:
+	if merchant == null:
+		return
+	merchant.set_active(active)
+
+
+func try_purchase_skill1_for_peer(peer_id: int) -> int:
+	var player_instance := get_player_for_peer(peer_id)
+	if player_instance == null or not is_instance_valid(player_instance):
+		return PURCHASE_RESULT_INVALID_PLAYER
+	if player_instance.has_skill1():
+		return PURCHASE_RESULT_ALREADY_OWNED
+	if not player_instance.try_purchase_skill1(ZhuangfangyiMerchant.PURCHASE_COST):
+		return PURCHASE_RESULT_INSUFFICIENT_XIRANG
+	return PURCHASE_RESULT_SUCCESS
+
+
+func apply_skill1_purchase_state(
+	peer_id: int,
+	current_xirang: int,
+	skill1_unlocked: bool
+) -> void:
+	var player_instance := get_player_for_peer(peer_id)
+	if player_instance == null or not is_instance_valid(player_instance):
+		return
+	if player_instance.current_xirang != current_xirang:
+		player_instance.current_xirang = current_xirang
+		player_instance.xirang_changed.emit(current_xirang, 0)
+	if skill1_unlocked and not player_instance.has_skill1():
+		player_instance.unlock_skill1()
+
+
+func show_local_skill1_purchase_result(result_code: int) -> void:
+	if merchant == null:
+		return
+	merchant.show_purchase_result(result_code)
+
+
+func _set_merchant_active(active: bool) -> void:
+	if merchant == null:
+		return
+	if merchant.is_active == active:
+		return
+	merchant.set_active(active)
+	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
+		multiplayer_merchant_active_changed.emit(active)
 
 
 func _collect_enemy_spawn_points() -> void:
@@ -141,7 +207,7 @@ func _enter_pre_wave(wave_index: int) -> void:
 	wave_state = WaveState.PRE_WAVE
 	current_wave_index = wave_index
 	enemy_spawn_timer.stop()
-	merchant.set_active(false)
+	_set_merchant_active(false)
 	countdown_seconds = maxi(ceili(pre_wave_duration), 0)
 	wave_hud.show_countdown(countdown_seconds)
 
@@ -157,7 +223,7 @@ func _enter_pre_wave(wave_index: int) -> void:
 func _enter_intermission() -> void:
 	wave_state = WaveState.INTERMISSION
 	enemy_spawn_timer.stop()
-	merchant.set_active(true)
+	_set_merchant_active(true)
 
 	var wave_config := _get_current_wave()
 	countdown_seconds = (
@@ -190,7 +256,7 @@ func _begin_wave(wave_index: int) -> void:
 	wave_state = WaveState.WAVE_ACTIVE
 	current_wave_index = wave_index
 	state_timer.stop()
-	merchant.set_active(false)
+	_set_merchant_active(false)
 	current_wave_spawned = 0
 	current_wave_defeated = 0
 	active_wave_enemy_ids.clear()
@@ -360,7 +426,7 @@ func _enter_victory() -> void:
 	wave_state = WaveState.VICTORY
 	enemy_spawn_timer.stop()
 	state_timer.stop()
-	merchant.set_active(false)
+	_set_merchant_active(false)
 	wave_hud.show_victory()
 
 
@@ -370,7 +436,7 @@ func _enter_defeat() -> void:
 	wave_state = WaveState.DEFEAT
 	enemy_spawn_timer.stop()
 	state_timer.stop()
-	merchant.set_active(false)
+	_set_merchant_active(false)
 	wave_hud.show_defeat()
 
 
@@ -413,12 +479,24 @@ func _configure_multiplayer_players() -> void:
 		player_instance.name = "Player_%d" % peer_id
 		player_instance.global_position = base_position + _get_multiplayer_spawn_offset(index)
 		var accepts_local_input := (
-			runtime_mode == RuntimeMode.HOST_AUTHORITY
+			peer_id == multiplayer_local_peer_id
+			and (
+				runtime_mode == RuntimeMode.HOST_AUTHORITY
+				or runtime_mode == RuntimeMode.CLIENT_VIEW
+			)
+		)
+		var predicts_local_movement := (
+			runtime_mode == RuntimeMode.CLIENT_VIEW
 			and peer_id == multiplayer_local_peer_id
 		)
 		var display_name: String = str(multiplayer_player_names.get(peer_id, "Player %d" % peer_id))
-		player_instance.configure_multiplayer_control(peer_id, accepts_local_input, display_name)
-		if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		player_instance.configure_multiplayer_control(
+			peer_id,
+			accepts_local_input,
+			display_name,
+			predicts_local_movement
+		)
+		if runtime_mode == RuntimeMode.CLIENT_VIEW and not predicts_local_movement:
 			player_instance.set_physics_process(false)
 		if not player_instance.died.is_connected(_on_multiplayer_player_died.bind(peer_id)):
 			player_instance.died.connect(_on_multiplayer_player_died.bind(peer_id))
@@ -457,6 +535,95 @@ func get_player_for_peer(peer_id: int) -> Player:
 	return peer_players.get(peer_id) as Player
 
 
+func get_pickup_for_net_id(net_id: int) -> Pickup:
+	return multiplayer_pickups.get(net_id) as Pickup
+
+
+func _register_static_multiplayer_pickups() -> void:
+	multiplayer_pickups.clear()
+	removed_multiplayer_pickup_ids.clear()
+	next_multiplayer_pickup_net_id = 1000
+	var pickups: Array[Pickup] = []
+	_collect_pickups_recursive(self, pickups)
+	pickups.sort_custom(_sort_pickups_by_path)
+
+	var next_pickup_id := 1
+	for pickup in pickups:
+		if pickup == null or not is_instance_valid(pickup):
+			continue
+		_register_multiplayer_pickup(pickup, next_pickup_id, false)
+		next_pickup_id += 1
+
+
+func _register_dynamic_multiplayer_pickups() -> void:
+	var pickups: Array[Pickup] = []
+	_collect_pickups_recursive(self, pickups)
+	for pickup in pickups:
+		if pickup == null or not is_instance_valid(pickup):
+			continue
+		if int(pickup.get_meta("net_id", 0)) > 0:
+			continue
+		var net_id := next_multiplayer_pickup_net_id
+		next_multiplayer_pickup_net_id += 1
+		_register_multiplayer_pickup(pickup, net_id, true)
+
+
+func _collect_pickups_recursive(node: Node, pickups: Array[Pickup]) -> void:
+	for child in node.get_children():
+		var pickup := child as Pickup
+		if pickup != null:
+			pickups.append(pickup)
+		_collect_pickups_recursive(child, pickups)
+
+
+func _sort_pickups_by_path(a: Pickup, b: Pickup) -> bool:
+	return str(a.get_path()) < str(b.get_path())
+
+
+func _register_multiplayer_pickup(pickup: Pickup, net_id: int, broadcast_spawn: bool) -> void:
+	pickup.set_meta("net_id", net_id)
+	multiplayer_pickups[net_id] = pickup
+	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
+		return
+	if not pickup.consumed.is_connected(_on_multiplayer_pickup_consumed):
+		pickup.consumed.connect(_on_multiplayer_pickup_consumed)
+	if not pickup.tree_exited.is_connected(_on_multiplayer_pickup_tree_exited.bind(net_id)):
+		pickup.tree_exited.connect(_on_multiplayer_pickup_tree_exited.bind(net_id))
+	if broadcast_spawn:
+		multiplayer_pickup_spawned.emit(net_id, pickup.config, pickup.global_position)
+
+
+func _on_multiplayer_pickup_consumed(
+	pickup: Pickup,
+	collector_peer_id: int,
+	applied_immediately: bool
+) -> void:
+	var net_id := int(pickup.get_meta("net_id", 0))
+	if net_id <= 0:
+		return
+	_mark_multiplayer_pickup_removed(net_id)
+	multiplayer_pickup_collected.emit(
+		net_id,
+		collector_peer_id,
+		pickup.config,
+		applied_immediately
+	)
+
+
+func _on_multiplayer_pickup_tree_exited(net_id: int) -> void:
+	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
+		return
+	_mark_multiplayer_pickup_removed(net_id)
+
+
+func _mark_multiplayer_pickup_removed(net_id: int) -> void:
+	if removed_multiplayer_pickup_ids.has(net_id):
+		return
+	removed_multiplayer_pickup_ids[net_id] = true
+	multiplayer_pickups.erase(net_id)
+	multiplayer_pickup_removed.emit(net_id)
+
+
 func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 	var states: Array[SnapshotManager.PlayerState] = []
 	for peer_id_variant in peer_players:
@@ -470,6 +637,7 @@ func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 		state.velocity = player_instance.velocity
 		state.health = player_instance.current_health
 		state.is_dead = player_instance.is_dead
+		state.xirang = player_instance.current_xirang
 		states.append(state)
 	return states
 

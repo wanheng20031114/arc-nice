@@ -26,6 +26,7 @@ var connection_state: ConnectionState = ConnectionState.DISCONNECTED
 var local_player_name: String = ""
 var lan_port: int = NetConstants.ENET_PORT_DEFAULT
 var connected_players: Dictionary = {}
+var host_peer_id: int = 1
 
 var _physics_frame_count: int = 0
 var _enet_peer: ENetMultiplayerPeer = null
@@ -72,10 +73,13 @@ func host_create_lan_server(port: int = NetConstants.ENET_PORT_DEFAULT) -> Error
 	net_role = NetRole.HOST
 	conn_mode = ConnMode.DIRECT
 	connected_players.clear()
-	connected_players[1] = _sanitize_player_name(local_player_name)
+	host_peer_id = get_local_peer_id()
+	if host_peer_id <= 0:
+		host_peer_id = 1
+	connected_players[host_peer_id] = _sanitize_player_name(local_player_name)
 	_physics_frame_count = 0
 	_set_connection_state(ConnectionState.HOSTING_LAN)
-	player_joined.emit(1, connected_players[1])
+	player_joined.emit(host_peer_id, connected_players[host_peer_id])
 	player_list_changed.emit()
 	_debug_log("NetManager: LAN Host 已创建, port=%d" % port)
 	return OK
@@ -107,6 +111,7 @@ func client_connect_lan(host_ip: String, port: int = NetConstants.ENET_PORT_DEFA
 	net_role = NetRole.CLIENT
 	conn_mode = ConnMode.DIRECT
 	connected_players.clear()
+	host_peer_id = 1
 	_physics_frame_count = 0
 	_set_connection_state(ConnectionState.CONNECTING_LAN)
 	_debug_log("NetManager: Client 正在连接 LAN Host %s:%d" % [trimmed_ip, port])
@@ -126,6 +131,7 @@ func disconnect_from_game() -> void:
 	net_role = NetRole.NONE
 	conn_mode = ConnMode.DIRECT
 	connected_players.clear()
+	host_peer_id = 1
 	_physics_frame_count = 0
 	_set_connection_state(ConnectionState.DISCONNECTED)
 	player_list_changed.emit()
@@ -151,6 +157,14 @@ func get_local_peer_id() -> int:
 	if not multiplayer.has_multiplayer_peer():
 		return 0
 	return multiplayer.get_unique_id()
+
+
+func get_host_peer_id() -> int:
+	if is_host():
+		var local_id := get_local_peer_id()
+		if local_id > 0:
+			return local_id
+	return host_peer_id if host_peer_id > 0 else 1
 
 
 func get_lan_ip_candidates() -> PackedStringArray:
@@ -203,7 +217,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 
 func _on_connected_to_server() -> void:
 	connected_players.clear()
-	_rpc_register_player.rpc_id(1, _get_safe_local_name())
+	_rpc_register_player.rpc_id(get_host_peer_id(), _get_safe_local_name())
 	_set_connection_state(ConnectionState.CONNECTED_IN_LOBBY)
 	_debug_log("NetManager: 已连接到 LAN Host")
 
@@ -234,12 +248,23 @@ func _rpc_register_player(player_name: String) -> void:
 	connected_players[sender_id] = _sanitize_player_name(player_name)
 	player_joined.emit(sender_id, connected_players[sender_id])
 	player_list_changed.emit()
-	_rpc_sync_player_list.rpc(_build_player_list_array())
+	_rpc_sync_player_list.rpc(_build_player_list_array(), get_host_peer_id())
 	_debug_log("NetManager: 玩家注册, id=%d, name=%s" % [sender_id, connected_players[sender_id]])
 
 
-@rpc("authority", "call_remote", "reliable", 0)
-func _rpc_sync_player_list(player_list: Array) -> void:
+@rpc("any_peer", "call_remote", "reliable", 0)
+func _rpc_sync_player_list(player_list: Array, new_host_peer_id: int = 0) -> void:
+	if is_host():
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	var resolved_host_id := new_host_peer_id
+	if resolved_host_id <= 0:
+		resolved_host_id = sender_id
+	if resolved_host_id <= 0:
+		resolved_host_id = host_peer_id
+	if sender_id > 0 and resolved_host_id > 0 and sender_id != resolved_host_id:
+		return
+	host_peer_id = resolved_host_id
 	connected_players.clear()
 	for entry_variant in player_list:
 		var entry := entry_variant as Dictionary
@@ -254,8 +279,10 @@ func _rpc_sync_player_list(player_list: Array) -> void:
 	player_list_changed.emit()
 
 
-@rpc("authority", "call_remote", "reliable", 0)
+@rpc("any_peer", "call_remote", "reliable", 0)
 func _rpc_start_game() -> void:
+	if multiplayer.get_remote_sender_id() != get_host_peer_id():
+		return
 	_set_connection_state(ConnectionState.LOADING_GAME)
 
 

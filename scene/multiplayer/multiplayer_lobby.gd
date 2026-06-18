@@ -203,7 +203,7 @@ func _refresh_wait_player_list() -> void:
 		var peer_id: int = int(peer_id_variant)
 		var player_name: String = str(net_manager.connected_players[peer_id])
 		var label := Label.new()
-		var is_host_marker := " (Host)" if peer_id == 1 else ""
+		var is_host_marker := " (Host)" if peer_id == net_manager.get_host_peer_id() else ""
 		var is_local_marker: String = " <- 你" if peer_id == net_manager.get_local_peer_id() else ""
 		label.text = "%s%s%s" % [player_name, is_host_marker, is_local_marker]
 		wait_player_list_vbox.add_child(label)

@@ -29,6 +29,7 @@ var network_skill1_requested: bool = false
 var mouse_fire_held: bool = false
 var mouse_viewport_position: Vector2 = Vector2.ZERO
 var multiplayer_display_name: String = ""
+var client_movement_prediction_only: bool = false
 
 @export var fire_interval: float = 0.18
 @export var bullet_spawn_distance: float = 12.0
@@ -133,6 +134,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if event.is_action_pressed("skill1"):
+		if client_movement_prediction_only:
+			return
 		if _try_use_skill1():
 			get_viewport().set_input_as_handled()
 		return
@@ -174,6 +177,12 @@ func _physics_process(delta: float) -> void:
 	velocity = move_input * _get_effective_move_speed()
 	move_and_slide()
 	_update_footstep_audio(delta, move_input)
+
+	if client_movement_prediction_only:
+		_update_facing(move_input, shoot_input)
+		_update_animation()
+		_update_armed_effect()
+		return
 
 	if current_shot_pattern == PickupConfig.ShotPattern.SPIRAL:
 		_try_auto_spiral_shoot()
@@ -321,10 +330,12 @@ func set_controls_locked(locked: bool) -> void:
 func configure_multiplayer_control(
 	new_peer_id: int,
 	use_local_input: bool,
-	display_name: String = ""
+	display_name: String = "",
+	predict_movement_only: bool = false
 ) -> void:
 	peer_id = new_peer_id
 	uses_local_input = use_local_input
+	client_movement_prediction_only = predict_movement_only
 	mouse_fire_held = false
 	network_move_input = Vector2.ZERO
 	network_shoot_input = Vector2.ZERO

@@ -2,11 +2,19 @@ extends Node2D
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const GAME_SCENE := preload("res://scene/game.tscn")
+const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 
 const INPUT_BUTTON_SKILL1 := 1
 const GAME_RUNTIME_HOST_AUTHORITY := 1
 const GAME_RUNTIME_CLIENT_VIEW := 2
 const STATE_DISCONNECTED := 0
+const PURCHASE_RESULT_SUCCESS := 0
+const PURCHASE_RESULT_ALREADY_OWNED := 1
+const PURCHASE_RESULT_INSUFFICIENT_XIRANG := 2
+const PURCHASE_RESULT_INVALID_PLAYER := 3
+const LOCAL_CORRECTION_SNAP_DISTANCE := 28.0
+const LOCAL_CORRECTION_LERP_DISTANCE := 6.0
+const LOCAL_CORRECTION_LERP_WEIGHT := 0.18
 
 @onready var net_manager: Node = get_node("/root/NetManager")
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
@@ -14,7 +22,7 @@ const STATE_DISCONNECTED := 0
 var snapshot_mgr := SnapshotManager.new()
 var player_interpolators: Dictionary = {}
 var enemy_interpolators: Dictionary = {}
-var game: Node = null
+var game: Game = null
 var input_sequence: int = 0
 var _net_time_origin: float = 0.0
 var _net_enemies: Dictionary = {}
@@ -22,6 +30,7 @@ var _net_enemies: Dictionary = {}
 
 func _ready() -> void:
 	_net_time_origin = Time.get_ticks_msec() / 1000.0
+	set_multiplayer_authority(_get_host_peer_id())
 	net_manager.connection_state_changed.connect(_on_connection_state_changed)
 	if net_manager.is_host():
 		_setup_game(GAME_RUNTIME_HOST_AUTHORITY)
@@ -49,26 +58,37 @@ func _process(_delta: float) -> void:
 
 func request_multiplayer_upgrade(stat_type: int) -> void:
 	if net_manager.is_host():
-		_apply_upgrade_for_peer(1, stat_type)
+		_apply_upgrade_for_peer(_get_local_peer_id(), stat_type)
 	else:
-		net_upgrade_selected.rpc_id(1, stat_type)
+		net_upgrade_selected.rpc_id(_get_host_peer_id(), stat_type)
+
+
+func request_multiplayer_skill1_purchase() -> void:
+	if net_manager.is_host():
+		_apply_skill1_purchase_for_peer(_get_local_peer_id())
+	else:
+		net_skill1_purchase_requested.rpc_id(_get_host_peer_id())
 
 
 func _setup_game(mode: int) -> void:
-	game = GAME_SCENE.instantiate()
+	game = GAME_SCENE.instantiate() as Game
 	if game == null:
 		push_error("MpGame: 无法实例化 game.tscn")
 		return
 
-	var local_peer_id: int = net_manager.get_local_peer_id()
+	var local_peer_id: int = _get_local_peer_id()
 	if local_peer_id <= 0 and net_manager.is_host():
-		local_peer_id = 1
+		local_peer_id = _get_host_peer_id()
 	game.configure_multiplayer(mode, local_peer_id, net_manager.connected_players)
 	add_child(game)
 	run_state.set_active_multiplayer_peer(local_peer_id)
 
 	if net_manager.is_host():
 		game.multiplayer_enemy_spawned.connect(_on_host_enemy_spawned)
+		game.multiplayer_pickup_spawned.connect(_on_host_pickup_spawned)
+		game.multiplayer_pickup_collected.connect(_on_host_pickup_collected)
+		game.multiplayer_pickup_removed.connect(_on_host_pickup_removed)
+		game.multiplayer_merchant_active_changed.connect(_on_host_merchant_active_changed)
 
 
 func _host_physics_tick(frame: int) -> void:
@@ -108,15 +128,18 @@ func _client_send_input() -> void:
 	var buttons := 0
 	if Input.is_action_just_pressed("skill1"):
 		buttons |= INPUT_BUTTON_SKILL1
-	_rpc_client_input.rpc_id(1, input_sequence, move_input, shoot_input, buttons)
+	_rpc_client_input.rpc_id(_get_host_peer_id(), input_sequence, move_input, shoot_input, buttons)
 
 
 func _client_interpolate_entities() -> void:
 	if game == null:
 		return
 	var current_time := _get_net_time()
+	var local_peer_id: int = _get_local_peer_id()
 	for peer_id_variant in player_interpolators:
 		var peer_id := int(peer_id_variant)
+		if peer_id == local_peer_id:
+			continue
 		var interp := player_interpolators[peer_id] as NetInterpolator
 		var player_node: Player = game.get_player_for_peer(peer_id)
 		if interp != null and player_node != null and is_instance_valid(player_node):
@@ -157,6 +180,11 @@ func _rpc_receive_player_snapshot(_host_timestamp: float, data: PackedByteArray)
 		if player_node != null and is_instance_valid(player_node):
 			player_node.current_health = player_state.health
 			player_node.is_dead = player_state.is_dead
+			if player_node.current_xirang != player_state.xirang:
+				player_node.current_xirang = player_state.xirang
+				player_node.xirang_changed.emit(player_state.xirang, 0)
+			if net_manager.is_client() and player_state.peer_id == _get_local_peer_id():
+				_apply_local_player_authority_correction(player_node, player_state.position)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
@@ -201,6 +229,21 @@ func _rpc_client_input(
 	game.apply_network_input_for_peer(sender_id, move_input, shoot_input, use_skill1)
 
 
+func _apply_local_player_authority_correction(
+	player_node: Player,
+	authority_position: Vector2
+) -> void:
+	var error_distance := player_node.global_position.distance_to(authority_position)
+	if error_distance >= LOCAL_CORRECTION_SNAP_DISTANCE:
+		player_node.global_position = authority_position
+		return
+	if error_distance >= LOCAL_CORRECTION_LERP_DISTANCE:
+		player_node.global_position = player_node.global_position.lerp(
+			authority_position,
+			LOCAL_CORRECTION_LERP_WEIGHT
+		)
+
+
 func _on_host_enemy_spawned(
 	net_id: int,
 	enemy_config: EnemyConfig,
@@ -209,6 +252,34 @@ func _on_host_enemy_spawned(
 	if enemy_config == null:
 		return
 	net_enemy_spawned.rpc(net_id, enemy_config.resource_path, spawn_position.x, spawn_position.y)
+
+
+func _on_host_pickup_removed(net_id: int) -> void:
+	net_pickup_removed.rpc(net_id)
+
+
+func _on_host_pickup_spawned(
+	net_id: int,
+	pickup_config: PickupConfig,
+	spawn_position: Vector2
+) -> void:
+	if pickup_config == null:
+		return
+	net_pickup_spawned.rpc(net_id, pickup_config.resource_path, spawn_position.x, spawn_position.y)
+
+
+func _on_host_pickup_collected(
+	net_id: int,
+	collector_peer_id: int,
+	pickup_config: PickupConfig,
+	applied_immediately: bool
+) -> void:
+	var config_path := pickup_config.resource_path if pickup_config != null else ""
+	net_pickup_collected.rpc(net_id, collector_peer_id, config_path, applied_immediately)
+
+
+func _on_host_merchant_active_changed(active: bool) -> void:
+	net_merchant_active_changed.rpc(active)
 
 
 @rpc("authority", "call_remote", "reliable", 3)
@@ -237,12 +308,84 @@ func net_enemy_spawned(net_id: int, config_path: String, pos_x: float, pos_y: fl
 	_net_enemies[net_id] = enemy
 
 
+@rpc("authority", "call_remote", "reliable", 3)
+func net_pickup_removed(net_id: int) -> void:
+	if game == null or net_manager.is_host():
+		return
+	var pickup: Pickup = game.get_pickup_for_net_id(net_id)
+	if pickup == null or not is_instance_valid(pickup):
+		game.multiplayer_pickups.erase(net_id)
+		return
+	game.multiplayer_pickups.erase(net_id)
+	pickup.queue_free()
+
+
+@rpc("authority", "call_remote", "reliable", 3)
+func net_pickup_spawned(net_id: int, config_path: String, pos_x: float, pos_y: float) -> void:
+	if game == null or net_manager.is_host():
+		return
+	if game.get_pickup_for_net_id(net_id) != null:
+		return
+	var pickup_config := load(config_path) as PickupConfig
+	if pickup_config == null:
+		return
+	var pickup := PICKUP_SCENE.instantiate() as Pickup
+	if pickup == null:
+		return
+	pickup.config = pickup_config
+	game.enemy_container.add_child(pickup)
+	pickup.global_position = Vector2(pos_x, pos_y)
+	pickup.set_meta("net_id", net_id)
+	pickup.collision_layer = 0
+	pickup.collision_mask = 0
+	game.multiplayer_pickups[net_id] = pickup
+
+
+@rpc("authority", "call_remote", "reliable", 3)
+func net_pickup_collected(
+	net_id: int,
+	collector_peer_id: int,
+	config_path: String,
+	applied_immediately: bool
+) -> void:
+	if game == null or net_manager.is_host():
+		return
+	var pickup: Pickup = game.get_pickup_for_net_id(net_id)
+	if pickup != null and is_instance_valid(pickup):
+		game.multiplayer_pickups.erase(net_id)
+		pickup.queue_free()
+	if not applied_immediately or config_path.is_empty():
+		return
+	var pickup_config := load(config_path) as PickupConfig
+	if pickup_config == null:
+		return
+	var player_node: Player = game.get_player_for_peer(collector_peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	player_node.apply_pickup(pickup_config)
+
+
+@rpc("authority", "call_remote", "reliable", 3)
+func net_merchant_active_changed(active: bool) -> void:
+	if game == null or net_manager.is_host():
+		return
+	game.apply_remote_merchant_active(active)
+
+
 @rpc("any_peer", "call_remote", "reliable", 3)
 func net_upgrade_selected(stat_type: int) -> void:
 	if not net_manager.is_host():
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	_apply_upgrade_for_peer(sender_id, stat_type)
+
+
+@rpc("any_peer", "call_remote", "reliable", 3)
+func net_skill1_purchase_requested() -> void:
+	if not net_manager.is_host():
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	_apply_skill1_purchase_for_peer(sender_id)
 
 
 @rpc("authority", "call_remote", "reliable", 3)
@@ -263,6 +406,20 @@ func net_upgrade_confirmed(
 		player_node.xirang_changed.emit(current_xirang, 0)
 
 
+@rpc("authority", "call_remote", "reliable", 3)
+func net_skill1_purchase_confirmed(
+	peer_id: int,
+	current_xirang: int,
+	skill1_unlocked: bool,
+	result_code: int
+) -> void:
+	if game == null:
+		return
+	game.apply_skill1_purchase_state(peer_id, current_xirang, skill1_unlocked)
+	if peer_id == _get_local_peer_id():
+		game.show_local_skill1_purchase_result(result_code)
+
+
 func _apply_upgrade_for_peer(peer_id: int, stat_type: int) -> void:
 	if game == null:
 		return
@@ -271,8 +428,32 @@ func _apply_upgrade_for_peer(peer_id: int, stat_type: int) -> void:
 	var level := run_state.get_upgrade_level_for_peer(peer_id, stat_type)
 	var current_xirang := player_node.current_xirang if player_node != null else 0
 	net_upgrade_confirmed.rpc(peer_id, stat_type, level, current_xirang, success)
-	if peer_id == net_manager.get_local_peer_id():
+	if peer_id == _get_local_peer_id():
 		net_upgrade_confirmed(peer_id, stat_type, level, current_xirang, success)
+
+
+func _apply_skill1_purchase_for_peer(peer_id: int) -> void:
+	if game == null:
+		return
+	var result_code := game.try_purchase_skill1_for_peer(peer_id)
+	var player_node := game.get_player_for_peer(peer_id)
+	var current_xirang := player_node.current_xirang if player_node != null else 0
+	var skill1_unlocked := player_node.has_skill1() if player_node != null else false
+	net_skill1_purchase_confirmed.rpc(peer_id, current_xirang, skill1_unlocked, result_code)
+	if peer_id == _get_local_peer_id():
+		net_skill1_purchase_confirmed(peer_id, current_xirang, skill1_unlocked, result_code)
+
+
+func _get_host_peer_id() -> int:
+	if net_manager != null and net_manager.has_method("get_host_peer_id"):
+		return int(net_manager.get_host_peer_id())
+	return 1
+
+
+func _get_local_peer_id() -> int:
+	if net_manager == null:
+		return 0
+	return int(net_manager.get_local_peer_id())
 
 
 func _get_net_time() -> float:

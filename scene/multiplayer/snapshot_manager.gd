@@ -16,6 +16,7 @@ const MASK_FACING := 4
 const MASK_ANIM_STATE := 8
 const MASK_HEALTH := 16
 const MASK_IS_DEAD := 32
+const MASK_XIRANG := 64
 
 
 # ─────────────────────────────────────────────
@@ -31,6 +32,7 @@ class PlayerState:
 	var anim_state: int = 0   # 动画枚举
 	var health: int = 0
 	var is_dead: bool = false
+	var xirang: int = 0
 
 
 ## 上一帧发送的玩家状态缓存（用于增量比较）
@@ -54,7 +56,15 @@ static func encode_player_snapshot(
 	# 2) 计算变化掩码
 	var mask := 0
 	if previous == null:
-		mask = MASK_POSITION | MASK_VELOCITY | MASK_FACING | MASK_ANIM_STATE | MASK_HEALTH | MASK_IS_DEAD
+		mask = (
+			MASK_POSITION
+			| MASK_VELOCITY
+			| MASK_FACING
+			| MASK_ANIM_STATE
+			| MASK_HEALTH
+			| MASK_IS_DEAD
+			| MASK_XIRANG
+		)
 	else:
 		if not current.position.is_equal_approx(previous.position):
 			mask |= MASK_POSITION
@@ -68,6 +78,8 @@ static func encode_player_snapshot(
 			mask |= MASK_HEALTH
 		if current.is_dead != previous.is_dead:
 			mask |= MASK_IS_DEAD
+		if current.xirang != previous.xirang:
+			mask |= MASK_XIRANG
 
 	# 3) 掩码 (uint8)
 	buf.put_u8(mask)
@@ -87,6 +99,8 @@ static func encode_player_snapshot(
 		buf.put_16(current.health)
 	if mask & MASK_IS_DEAD:
 		buf.put_u8(1 if current.is_dead else 0)
+	if mask & MASK_XIRANG:
+		buf.put_32(current.xirang)
 
 	return buf.data_array
 
@@ -118,6 +132,8 @@ static func decode_player_snapshot(
 		target.health = buf.get_16()
 	if mask & MASK_IS_DEAD:
 		target.is_dead = buf.get_u8() != 0
+	if mask & MASK_XIRANG:
+		target.xirang = buf.get_32()
 
 	return buf.get_position()
 

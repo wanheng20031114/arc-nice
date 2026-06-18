@@ -90,6 +90,16 @@ func _advance_dialogue() -> void:
 func _try_purchase_skill() -> void:
 	if active_player == null:
 		return
+	var net_manager := get_node_or_null("/root/NetManager")
+	var current_scene := get_tree().current_scene
+	if (
+		net_manager != null
+		and net_manager.is_multiplayer_active()
+		and current_scene != null
+		and current_scene.has_method("request_multiplayer_skill1_purchase")
+	):
+		current_scene.call("request_multiplayer_skill1_purchase")
+		return
 	if active_player.has_skill1():
 		dialogue_bubble.say(ALREADY_PURCHASED_LINE)
 		purchase_result_visible = true
@@ -103,9 +113,24 @@ func _try_purchase_skill() -> void:
 	purchase_result_visible = true
 
 
+func show_purchase_result(result_code: int) -> void:
+	match result_code:
+		Game.PURCHASE_RESULT_SUCCESS:
+			dialogue_bubble.say(PURCHASED_LINE)
+		Game.PURCHASE_RESULT_ALREADY_OWNED:
+			dialogue_bubble.say(ALREADY_PURCHASED_LINE)
+		Game.PURCHASE_RESULT_INSUFFICIENT_XIRANG:
+			dialogue_bubble.say(INSUFFICIENT_XIRANG_LINE)
+		_:
+			dialogue_bubble.say(INSUFFICIENT_XIRANG_LINE)
+	purchase_result_visible = true
+
+
 func _on_interaction_area_body_entered(body: Node2D) -> void:
 	var player := body as Player
 	if player == null:
+		return
+	if not player.uses_local_input:
 		return
 	nearby_players[player.get_instance_id()] = player
 	if active_player == null:

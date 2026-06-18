@@ -30,13 +30,13 @@ const CHANNEL_COUNT := 4
 
 ## 同步频率 (Hz)
 const HOST_PHYSICS_HZ := 60
-const INPUT_SEND_HZ := 30
+const INPUT_SEND_HZ := 60
 const PLAYER_SNAPSHOT_HZ := 20
 const ENEMY_SNAPSHOT_HZ := 10
 
 ## 同步频率对应的物理帧间隔
 ## 在 60 Hz 物理帧下，每 N 帧执行一次
-const INPUT_SEND_INTERVAL_FRAMES := 2
+const INPUT_SEND_INTERVAL_FRAMES := 1
 const PLAYER_SNAPSHOT_INTERVAL_FRAMES := 3
 const ENEMY_SNAPSHOT_INTERVAL_FRAMES := 6
 
