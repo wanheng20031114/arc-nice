@@ -1,0 +1,48 @@
+class_name NetConstants
+extends RefCounted
+
+## 协议与版本
+const PROTOCOL_VERSION := 1
+
+## 玩家限制
+const MAX_PLAYERS := 8
+
+## 连接超时
+const DIRECT_CONNECT_TIMEOUT_MS := 3000
+const RELAY_CONNECT_TIMEOUT_MS := 5000
+const UPNP_DISCOVER_TIMEOUT_MS := 2000
+
+## 端口
+const ENET_PORT_DEFAULT := 29170
+const RELAY_PORT_RANGE_START := 40001
+const RELAY_PORT_RANGE_END := 40100
+
+## ENet 信道定义
+## 0: 认证、加载、完整状态恢复 — reliable
+## 1: 玩家输入上报 — unreliable_ordered
+## 2: 玩家/敌人位置快照 — unreliable_ordered
+## 3: 伤害、死亡、生成、掉落、升级事件 — reliable
+const CH_AUTH := 0
+const CH_INPUT := 1
+const CH_SNAPSHOT := 2
+const CH_EVENT := 3
+const CHANNEL_COUNT := 4
+
+## 同步频率 (Hz)
+const HOST_PHYSICS_HZ := 60
+const INPUT_SEND_HZ := 30
+const PLAYER_SNAPSHOT_HZ := 20
+const ENEMY_SNAPSHOT_HZ := 10
+
+## 同步频率对应的物理帧间隔
+## 在 60 Hz 物理帧下，每 N 帧执行一次
+const INPUT_SEND_INTERVAL_FRAMES := HOST_PHYSICS_HZ / INPUT_SEND_HZ     # 2
+const PLAYER_SNAPSHOT_INTERVAL_FRAMES := HOST_PHYSICS_HZ / PLAYER_SNAPSHOT_HZ  # 3
+const ENEMY_SNAPSHOT_INTERVAL_FRAMES := HOST_PHYSICS_HZ / ENEMY_SNAPSHOT_HZ    # 6
+
+## 插值
+const INTERPOLATION_BUFFER_SIZE := 3
+const INTERPOLATION_DELAY_FACTOR := 2.0   # 渲染延迟 = delay_factor × snapshot_interval
+
+## Relay 空闲超时（秒）
+const RELAY_IDLE_TIMEOUT_SEC := 300

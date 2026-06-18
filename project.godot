@@ -22,6 +22,7 @@ driver/output_latency=50
 [autoload]
 
 RunState="*res://run_state.gd"
+NetManager="*res://scene/multiplayer/net_manager.gd"
 
 [display]
 

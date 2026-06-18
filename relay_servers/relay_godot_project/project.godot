@@ -1,0 +1,14 @@
+; Engine configuration file.
+; Minimal Godot project for the Relay server.
+
+config_version=5
+
+[application]
+
+config/name="ArcNice Relay"
+run/main_scene="res://relay_server.tscn"
+config/features=PackedStringArray("4.6")
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"

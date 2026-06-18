@@ -1,0 +1,399 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scene/multiplayer/multiplayer_lobby.gd" id="1_lobby"]
+[ext_resource type="Texture2D" uid="uid://cbrmpw5d481ci" path="res://resources/texture/瓦片.png" id="2_tile"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_font"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+bg_color = Color(0.09, 0.095, 0.105, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.72, 0.64, 0.42, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_normal"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.18, 0.19, 0.2, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.58, 0.51, 0.34, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hover"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.24, 0.23, 0.2, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.95, 0.82, 0.48, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_pressed"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.14, 0.14, 0.15, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.95, 0.82, 0.48, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_disabled"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.1, 0.105, 0.115, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.25, 0.25, 0.25, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="MultiplayerLobby" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_lobby")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.055, 0.06, 0.07, 1)
+
+[node name="TilePattern" type="TextureRect" parent="."]
+modulate = Color(1, 1, 1, 0.16)
+texture_filter = 1
+texture_repeat = 2
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+texture = ExtResource("2_tile")
+stretch_mode = 1
+
+[node name="Shade" type="ColorRect" parent="."]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.36)
+
+[node name="LobbyCenter" type="CenterContainer" parent="."]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+; ═══════════════════════════════════════════
+; 用户名输入面板
+; ═══════════════════════════════════════════
+
+[node name="UsernamePanel" type="PanelContainer" parent="LobbyCenter"]
+custom_minimum_size = Vector2(380, 240)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="MarginContainer" type="MarginContainer" parent="LobbyCenter/UsernamePanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 34
+theme_override_constants/margin_top = 34
+theme_override_constants/margin_right = 34
+theme_override_constants/margin_bottom = 34
+
+[node name="VBoxContainer" type="VBoxContainer" parent="LobbyCenter/UsernamePanel/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 14
+alignment = 1
+
+[node name="Title" type="Label" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.88, 0.62, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 28
+text = "输入用户名"
+horizontal_alignment = 1
+
+[node name="Spacer1" type="Control" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(1, 6)
+layout_mode = 2
+
+[node name="UsernameInput" type="LineEdit" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(280, 36)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 16
+placeholder_text = "你的名字"
+max_length = 16
+alignment = 1
+
+[node name="UsernameErrorLabel" type="Label" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.3, 0.3, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+
+[node name="ConfirmUsernameButton" type="Button" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(280, 40)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
+text = "确认"
+
+; ═══════════════════════════════════════════
+; 房间浏览面板
+; ═══════════════════════════════════════════
+
+[node name="RoomBrowserPanel" type="PanelContainer" parent="LobbyCenter"]
+visible = false
+custom_minimum_size = Vector2(480, 480)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="MarginContainer" type="MarginContainer" parent="LobbyCenter/RoomBrowserPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 24
+
+[node name="VBoxContainer" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="BrowserTitle" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.88, 0.62, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 26
+text = "多人模式"
+horizontal_alignment = 1
+
+[node name="TabContainer" type="TabContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 300)
+layout_mode = 2
+
+[node name="RoomListTab" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ScrollContainer" type="ScrollContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/RoomListTab"]
+custom_minimum_size = Vector2(0, 220)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="RoomListVBox" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/RoomListTab/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="RefreshButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/RoomListTab"]
+custom_minimum_size = Vector2(0, 32)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+text = "刷新列表"
+
+[node name="CreateRoomTab" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="RoomNameLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/CreateRoomTab"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 14
+text = "房间名称:"
+
+[node name="RoomNameInput" type="LineEdit" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/CreateRoomTab"]
+custom_minimum_size = Vector2(0, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 14
+placeholder_text = "留空则使用默认名"
+max_length = 32
+
+[node name="MaxPlayersLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/CreateRoomTab"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 14
+text = "最大人数:"
+
+[node name="MaxPlayersSpinBox" type="SpinBox" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/CreateRoomTab"]
+layout_mode = 2
+min_value = 2.0
+max_value = 8.0
+value = 4.0
+
+[node name="CreateRoomButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/CreateRoomTab"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+text = "创建房间"
+
+[node name="QuickMatchTab" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer"]
+visible = false
+layout_mode = 2
+alignment = 1
+
+[node name="QuickMatchButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/QuickMatchTab"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+text = "快速匹配"
+
+[node name="BrowserStatusLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.65, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+
+[node name="BackButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+text = "返回主菜单"
+
+; ═══════════════════════════════════════════
+; 房间等待面板
+; ═══════════════════════════════════════════
+
+[node name="RoomWaitPanel" type="PanelContainer" parent="LobbyCenter"]
+visible = false
+custom_minimum_size = Vector2(420, 400)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="MarginContainer" type="MarginContainer" parent="LobbyCenter/RoomWaitPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 28
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 28
+
+[node name="VBoxContainer" type="VBoxContainer" parent="LobbyCenter/RoomWaitPanel/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="WaitTitle" type="Label" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.88, 0.62, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 22
+text = "房间大厅"
+horizontal_alignment = 1
+
+[node name="RoomCodeLabel" type="Label" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.65, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 13
+text = "房间: ..."
+horizontal_alignment = 1
+
+[node name="PlayerListLabel" type="Label" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 14
+text = "玩家列表:"
+
+[node name="PlayerListScroll" type="ScrollContainer" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 160)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="PlayerListVBox" type="VBoxContainer" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/PlayerListScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="WaitStatusLabel" type="Label" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.75, 0.6, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 13
+text = "等待中…"
+horizontal_alignment = 1
+
+[node name="StartGameButton" type="Button" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer"]
+visible = false
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
+text = "开始游戏"
+
+[node name="LeaveButton" type="Button" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+text = "离开房间"

@@ -10,8 +10,7 @@ func _on_singleplayer_pressed() -> void:
 
 
 func _on_multiplayer_pressed() -> void:
-	# 多人模式 - 暂未实现
-	pass
+	get_tree().change_scene_to_file("res://scene/multiplayer/multiplayer_lobby.tscn")
 
 
 func _on_settings_pressed() -> void:
