@@ -17,6 +17,8 @@ const HOST_TIME_OFFSET_SMOOTH_WEIGHT := 0.08
 const INPUT_CHANGE_EPSILON := 0.001
 const PLAYER_STATE_SNAP_DISTANCE := 128.0
 const PLAYER_STATE_SPEED_SLACK := 96.0
+const PLAYER_REVIVE_DELAY_SECONDS := 10.0
+const PLAYER_REVIVE_INVINCIBILITY_SECONDS := 3.0
 
 @onready var net_manager: Node = get_node("/root/NetManager")
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
@@ -44,6 +46,12 @@ var _processed_player_hit_ids: Dictionary = {}
 var _next_xirang_orb_id: int = 1
 var _xirang_orbs: Dictionary = {}
 var _collected_xirang_orbs: Dictionary = {}
+var _host_player_snapshot_sequence: int = 0
+var _player_health_revisions: Dictionary = {}
+var _local_player_hit_revision: int = 0
+var _dead_player_revive_times: Dictionary = {}
+var _dead_player_revive_last_seconds: Dictionary = {}
+var _xirang_revision: int = 0
 
 
 func _ready() -> void:
@@ -61,10 +69,10 @@ func _ready() -> void:
 	net_manager.mark_in_game()
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	var frame: int = net_manager.get_physics_frame_count()
 	if net_manager.is_host():
-		_host_physics_tick(frame)
+		_host_physics_tick(frame, delta)
 	elif net_manager.is_client():
 		_client_physics_tick(frame)
 
@@ -107,11 +115,13 @@ func _setup_game(mode: int) -> void:
 		game.multiplayer_pickup_collected.connect(_on_host_pickup_collected)
 		game.multiplayer_pickup_removed.connect(_on_host_pickup_removed)
 		game.multiplayer_merchant_active_changed.connect(_on_host_merchant_active_changed)
+		game.multiplayer_revive_all_requested.connect(_on_host_revive_all_requested)
 
 
-func _host_physics_tick(frame: int) -> void:
+func _host_physics_tick(frame: int, _delta: float) -> void:
 	if game == null:
 		return
+	_host_update_player_revives()
 	if frame % _NetConstants.PLAYER_SNAPSHOT_INTERVAL_FRAMES == 0:
 		_host_broadcast_player_snapshots()
 	if frame % _NetConstants.ENEMY_SNAPSHOT_INTERVAL_FRAMES == 0:
@@ -122,6 +132,9 @@ func _host_broadcast_player_snapshots() -> void:
 	var states: Array[SnapshotManager.PlayerState] = game.collect_player_snapshot_states()
 	if states.is_empty():
 		return
+	_host_player_snapshot_sequence += 1
+	for state in states:
+		state.sequence = _host_player_snapshot_sequence
 	var data := snapshot_mgr.encode_all_player_snapshots(states)
 	_rpc_receive_player_snapshot.rpc(_get_net_time(), data)
 
@@ -225,13 +238,6 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 			player_interpolators[player_state.peer_id] = NetInterpolator.new(
 				1.0 / float(_NetConstants.PLAYER_SNAPSHOT_HZ)
 			)
-		var player_node: Player = game.get_player_for_peer(player_state.peer_id)
-		if player_node != null and is_instance_valid(player_node):
-			player_node.current_health = player_state.health
-			player_node.is_dead = player_state.is_dead
-			if player_node.current_xirang != player_state.xirang:
-				player_node.current_xirang = player_state.xirang
-				player_node.xirang_changed.emit(player_state.xirang, 0)
 		if net_manager.is_client() and player_state.peer_id == _get_local_peer_id():
 			continue
 		var interp := player_interpolators[player_state.peer_id] as NetInterpolator
@@ -241,8 +247,8 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 			player_state.velocity,
 			player_state.facing,
 			player_state.anim_state,
-			player_state.health,
-			player_state.is_dead
+			0,
+			false
 		)
 
 
@@ -287,13 +293,14 @@ func _rpc_client_player_state(
 	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id <= 0:
 		return
-	if not _accept_client_player_state(sender_id, sequence, position, velocity):
-		var player_node := game.get_player_for_peer(sender_id)
-		if player_node != null:
-			net_player_state_corrected.rpc_id(sender_id, player_node.global_position, player_node.velocity)
-		return
 	var player_node := game.get_player_for_peer(sender_id)
 	if player_node == null or not is_instance_valid(player_node):
+		return
+	if player_node.is_dead or player_node.controls_locked:
+		net_player_state_corrected.rpc_id(sender_id, player_node.global_position, player_node.velocity)
+		return
+	if not _accept_client_player_state(sender_id, sequence, position, velocity):
+		net_player_state_corrected.rpc_id(sender_id, player_node.global_position, player_node.velocity)
 		return
 	player_node.apply_remote_multiplayer_state(position, velocity, shoot_input)
 
@@ -592,85 +599,126 @@ func net_enemy_damage_applied(
 
 
 func request_player_hit_report(
-	projectile_id: int,
+	source_id: int,
 	player_peer_id: int,
 	damage: int,
-	source_type: StringName
+	source_type: StringName,
+	reported_health_after: int,
+	reported_is_dead: bool
 ) -> void:
+	_local_player_hit_revision += 1
 	if net_manager.is_host():
-		_apply_player_hit_report(projectile_id, player_peer_id, damage, source_type)
+		_apply_player_hit_report(
+			source_id,
+			player_peer_id,
+			damage,
+			source_type,
+			reported_health_after,
+			reported_is_dead,
+			_local_player_hit_revision
+		)
 	else:
 		_rpc_player_hit_report.rpc_id(
 			_get_host_peer_id(),
-			projectile_id,
+			source_id,
 			player_peer_id,
 			damage,
-			String(source_type)
+			String(source_type),
+			reported_health_after,
+			reported_is_dead,
+			_local_player_hit_revision
 		)
 
 
 @rpc("any_peer", "call_remote", "reliable", 4)
 func _rpc_player_hit_report(
-	projectile_id: int,
+	source_id: int,
 	player_peer_id: int,
 	damage: int,
-	source_type: String
+	source_type: String,
+	reported_health_after: int,
+	reported_is_dead: bool,
+	hit_revision: int
 ) -> void:
 	if not net_manager.is_host():
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id > 0 and sender_id != player_peer_id:
 		return
-	_apply_player_hit_report(projectile_id, player_peer_id, damage, StringName(source_type))
+	_apply_player_hit_report(
+		source_id,
+		player_peer_id,
+		damage,
+		StringName(source_type),
+		reported_health_after,
+		reported_is_dead,
+		hit_revision
+	)
 
 
 func _apply_player_hit_report(
-	projectile_id: int,
+	source_id: int,
 	player_peer_id: int,
 	damage: int,
-	source_type: StringName
+	source_type: StringName,
+	reported_health_after: int,
+	reported_is_dead: bool,
+	_hit_revision: int
 ) -> void:
-	if projectile_id <= 0 or player_peer_id <= 0 or damage <= 0:
+	if source_id <= 0 or player_peer_id <= 0 or damage <= 0:
 		return
-	var hit_key := "%d:%d:%s" % [projectile_id, player_peer_id, String(source_type)]
+	var hit_key := "%d:%d:%s" % [source_id, player_peer_id, String(source_type)]
 	if _processed_player_hit_ids.has(hit_key):
 		return
 	_processed_player_hit_ids[hit_key] = true
 	var player_node := game.get_player_for_peer(player_peer_id) if game != null else null
 	if player_node == null or not is_instance_valid(player_node):
 		return
-	if not (player_peer_id == _get_local_peer_id() and player_node.invincibility_time_left > 0.0):
-		player_node.apply_damage(damage)
+	if player_node.is_dead and not reported_is_dead:
+		return
+	var confirmed_health := clampi(reported_health_after, 0, player_node.max_health)
+	if player_node.current_health > 0:
+		confirmed_health = mini(confirmed_health, player_node.current_health)
+	var confirmed_dead := reported_is_dead or confirmed_health <= 0
+	player_node.set_multiplayer_health_state(confirmed_health, confirmed_dead)
+	var health_revision := _next_player_health_revision(player_peer_id)
+	if confirmed_dead:
+		_schedule_player_revive(player_peer_id)
 	net_player_damage_applied.rpc(
 		player_peer_id,
 		player_node.current_health,
-		player_node.is_dead
+		player_node.is_dead,
+		health_revision
 	)
-	if player_peer_id == _get_local_peer_id():
-		net_player_damage_applied(player_peer_id, player_node.current_health, player_node.is_dead)
+	net_player_damage_applied(
+		player_peer_id,
+		player_node.current_health,
+		player_node.is_dead,
+		health_revision
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_player_damage_applied(
 	player_peer_id: int,
 	current_health: int,
-	is_dead: bool
+	is_dead: bool,
+	health_revision: int
 ) -> void:
+	if health_revision <= int(_player_health_revisions.get(player_peer_id, 0)):
+		return
+	_player_health_revisions[player_peer_id] = health_revision
 	var player_node := game.get_player_for_peer(player_peer_id) if game != null else null
 	if player_node == null or not is_instance_valid(player_node):
 		return
-	player_node.current_health = current_health
-	player_node.is_dead = is_dead
-	player_node.health_bar.set_health(current_health, player_node.max_health)
-	player_node.health_changed.emit(current_health, player_node.max_health)
-
+	player_node.set_multiplayer_health_state(current_health, is_dead)
 
 func register_xirang_orb(drop: XirangDrop, amount: int) -> void:
 	if drop == null or not net_manager.is_host():
 		return
 	var orb_id := _next_xirang_orb_id
 	_next_xirang_orb_id += 1
-	drop.setup_multiplayer_orb(orb_id, amount)
+	drop.setup_multiplayer_orb(orb_id, amount, false)
 	_xirang_orbs[orb_id] = {"amount": amount, "drop": drop}
 	net_xirang_orb_spawned.rpc(orb_id, amount, drop.global_position)
 
@@ -686,13 +734,13 @@ func net_xirang_orb_spawned(orb_id: int, amount: int, spawn_position: Vector2) -
 		return
 	game.enemy_container.add_child(drop)
 	drop.global_position = spawn_position
-	drop.setup_multiplayer_orb(orb_id, amount)
+	drop.setup_multiplayer_orb(orb_id, amount, true)
 	_xirang_orbs[orb_id] = {"amount": amount, "drop": drop}
 
 
 func request_xirang_orb_collected(orb_id: int) -> void:
 	if net_manager.is_host():
-		_apply_xirang_orb_collected(orb_id)
+		_apply_xirang_orb_collected(orb_id, _get_local_peer_id())
 	else:
 		_rpc_xirang_orb_collected.rpc_id(_get_host_peer_id(), orb_id)
 
@@ -701,30 +749,47 @@ func request_xirang_orb_collected(orb_id: int) -> void:
 func _rpc_xirang_orb_collected(orb_id: int) -> void:
 	if not net_manager.is_host():
 		return
-	_apply_xirang_orb_collected(orb_id)
+	_apply_xirang_orb_collected(orb_id, multiplayer.get_remote_sender_id())
 
 
-func _apply_xirang_orb_collected(orb_id: int) -> void:
-	if orb_id <= 0 or _collected_xirang_orbs.has(orb_id):
-		return
-	if not _xirang_orbs.has(orb_id):
+func _apply_xirang_orb_collected(orb_id: int, collector_peer_id: int) -> void:
+	if orb_id <= 0 or _collected_xirang_orbs.has(orb_id) or not _xirang_orbs.has(orb_id):
+		if collector_peer_id > 0:
+			net_xirang_orb_removed.rpc_id(collector_peer_id, orb_id)
 		return
 	_collected_xirang_orbs[orb_id] = true
 	var orb_data := _xirang_orbs[orb_id] as Dictionary
 	var amount := int(orb_data.get("amount", 1))
-	net_xirang_granted_all.rpc(orb_id, amount)
-	net_xirang_granted_all(orb_id, amount)
+	var revision := _xirang_revision + 1
+	net_xirang_granted_all.rpc(orb_id, amount, revision)
+	net_xirang_granted_all(orb_id, amount, revision)
 
 
 @rpc("authority", "call_remote", "reliable", 4)
-func net_xirang_granted_all(orb_id: int, amount: int) -> void:
+func net_xirang_granted_all(orb_id: int, amount: int, revision: int) -> void:
+	if revision <= _xirang_revision:
+		return
+	_xirang_revision = revision
 	_grant_xirang_to_all_players(amount)
-	if _xirang_orbs.has(orb_id):
-		var orb_data := _xirang_orbs[orb_id] as Dictionary
-		var drop := orb_data.get("drop") as XirangDrop
-		if drop != null and is_instance_valid(drop):
+	_remove_xirang_orb_local(orb_id, true)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_xirang_orb_removed(orb_id: int) -> void:
+	_remove_xirang_orb_local(orb_id, false)
+
+
+func _remove_xirang_orb_local(orb_id: int, play_collect_feedback: bool) -> void:
+	if not _xirang_orbs.has(orb_id):
+		return
+	var orb_data := _xirang_orbs[orb_id] as Dictionary
+	var drop := orb_data.get("drop") as XirangDrop
+	if drop != null and is_instance_valid(drop):
+		if play_collect_feedback:
 			drop.confirm_multiplayer_collect()
-		_xirang_orbs.erase(orb_id)
+		else:
+			drop.queue_free()
+	_xirang_orbs.erase(orb_id)
 
 
 func _grant_xirang_to_all_players(amount: int) -> void:
@@ -733,8 +798,7 @@ func _grant_xirang_to_all_players(amount: int) -> void:
 	for peer_id_variant in game.peer_players:
 		var player_node := game.peer_players[peer_id_variant] as Player
 		if player_node != null and is_instance_valid(player_node):
-			player_node.add_xirang(amount)
-
+			player_node.grant_multiplayer_xirang(amount)
 
 func get_local_multiplayer_player() -> Player:
 	return game.player if game != null else null
@@ -753,6 +817,140 @@ func _get_host_enemy_for_net_id(enemy_net_id: int) -> Enemy:
 func _get_client_enemy_for_net_id(enemy_net_id: int) -> Enemy:
 	return _net_enemies.get(enemy_net_id) as Enemy
 
+
+func _next_player_health_revision(peer_id: int) -> int:
+	var next_revision := int(_player_health_revisions.get(peer_id, 0)) + 1
+	_player_health_revisions[peer_id] = next_revision
+	return next_revision
+
+
+func _schedule_player_revive(peer_id: int) -> void:
+	if peer_id <= 0 or _dead_player_revive_times.has(peer_id):
+		return
+	_dead_player_revive_times[peer_id] = _get_net_time() + PLAYER_REVIVE_DELAY_SECONDS
+	_dead_player_revive_last_seconds[peer_id] = -1
+	net_player_revive_countdown.rpc(peer_id, int(ceil(PLAYER_REVIVE_DELAY_SECONDS)))
+	net_player_revive_countdown(peer_id, int(ceil(PLAYER_REVIVE_DELAY_SECONDS)))
+
+
+func _host_update_player_revives() -> void:
+	if not net_manager.is_host() or game == null:
+		return
+	if game.wave_state == Game.WaveState.DEFEAT:
+		return
+	var now := _get_net_time()
+	var due_peers: Array[int] = []
+	for peer_id_variant in _dead_player_revive_times:
+		var peer_id := int(peer_id_variant)
+		var revive_at := float(_dead_player_revive_times[peer_id])
+		var seconds_left := maxi(ceili(revive_at - now), 0)
+		if seconds_left != int(_dead_player_revive_last_seconds.get(peer_id, -1)):
+			_dead_player_revive_last_seconds[peer_id] = seconds_left
+			net_player_revive_countdown.rpc(peer_id, seconds_left)
+			net_player_revive_countdown(peer_id, seconds_left)
+		if now >= revive_at:
+			due_peers.append(peer_id)
+	for peer_id in due_peers:
+		var revive_position := _pick_revive_position(peer_id)
+		if revive_position == null:
+			continue
+		_revive_player_peer(peer_id, revive_position)
+
+
+func _pick_revive_position(dead_peer_id: int) -> Variant:
+	if game == null:
+		return null
+	var alive_positions: Array[Vector2] = []
+	for peer_id_variant in game.peer_players:
+		var peer_id := int(peer_id_variant)
+		if peer_id == dead_peer_id:
+			continue
+		var player_node := game.peer_players[peer_id_variant] as Player
+		if player_node != null and is_instance_valid(player_node) and not player_node.is_dead:
+			alive_positions.append(player_node.global_position)
+	if alive_positions.is_empty():
+		return null
+	return alive_positions[randi() % alive_positions.size()]
+
+
+func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
+	var player_node := game.get_player_for_peer(peer_id) if game != null else null
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	_dead_player_revive_times.erase(peer_id)
+	_dead_player_revive_last_seconds.erase(peer_id)
+	var health_revision := _next_player_health_revision(peer_id)
+	player_node.revive_multiplayer(
+		revive_position,
+		player_node.max_health,
+		PLAYER_REVIVE_INVINCIBILITY_SECONDS
+	)
+	net_player_revived.rpc(
+		peer_id,
+		revive_position,
+		player_node.current_health,
+		PLAYER_REVIVE_INVINCIBILITY_SECONDS,
+		health_revision
+	)
+	net_player_revived(
+		peer_id,
+		revive_position,
+		player_node.current_health,
+		PLAYER_REVIVE_INVINCIBILITY_SECONDS,
+		health_revision
+	)
+
+
+func _on_host_revive_all_requested() -> void:
+	if not net_manager.is_host() or game == null:
+		return
+	var fallback_position := _get_first_alive_position()
+	for peer_id_variant in game.peer_players:
+		var peer_id := int(peer_id_variant)
+		var player_node := game.peer_players[peer_id_variant] as Player
+		if player_node == null or not is_instance_valid(player_node) or not player_node.is_dead:
+			continue
+		var revive_position := fallback_position if fallback_position != null else player_node.global_position
+		_revive_player_peer(peer_id, revive_position)
+
+
+func _get_first_alive_position() -> Variant:
+	if game == null:
+		return null
+	for peer_id_variant in game.peer_players:
+		var player_node := game.peer_players[peer_id_variant] as Player
+		if player_node != null and is_instance_valid(player_node) and not player_node.is_dead:
+			return player_node.global_position
+	return null
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_player_revive_countdown(peer_id: int, seconds_left: int) -> void:
+	if game == null:
+		return
+	var player_node := game.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	player_node.set_multiplayer_revive_countdown(seconds_left)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_player_revived(
+	peer_id: int,
+	revive_position: Vector2,
+	current_health: int,
+	invincible_seconds: float,
+	health_revision: int
+) -> void:
+	if health_revision <= int(_player_health_revisions.get(peer_id, 0)):
+		return
+	_player_health_revisions[peer_id] = health_revision
+	var player_node := game.get_player_for_peer(peer_id) if game != null else null
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	_dead_player_revive_times.erase(peer_id)
+	_dead_player_revive_last_seconds.erase(peer_id)
+	player_node.revive_multiplayer(revive_position, current_health, invincible_seconds)
 
 func _on_host_enemy_spawned(
 	net_id: int,

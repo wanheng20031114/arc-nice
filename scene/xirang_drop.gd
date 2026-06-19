@@ -45,10 +45,13 @@ func setup(amount: int, player: Player, spawn_position: Vector2, landing_offset:
 		current_scene.call("register_xirang_orb", self, xirang_value)
 
 
-func setup_multiplayer_orb(new_orb_id: int, amount: int) -> void:
+func setup_multiplayer_orb(new_orb_id: int, amount: int, activate_immediately: bool = true) -> void:
 	orb_id = maxi(new_orb_id, 0)
 	xirang_value = maxi(amount, 1)
 	target_player = _get_local_multiplayer_player()
+	if activate_immediately:
+		can_detect_player = true
+		set_process(true)
 
 
 func _play_scatter_motion(landing_offset: Vector2) -> void:

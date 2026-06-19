@@ -126,6 +126,8 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 			projectile_id,
 			player.peer_id,
 			damage,
-			source_type
+			source_type,
+			player.current_health,
+			player.is_dead
 		)
 	return true

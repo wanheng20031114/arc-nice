@@ -26,13 +26,11 @@ const MASK_XIRANG := 64
 ## 单个玩家的当前帧状态
 class PlayerState:
 	var peer_id: int = 0
+	var sequence: int = 0
 	var position: Vector2 = Vector2.ZERO
 	var velocity: Vector2 = Vector2.ZERO
 	var facing: int = 0       # 0=right, 1=left, 2=up, 3=down
 	var anim_state: int = 0   # 动画枚举
-	var health: int = 0
-	var is_dead: bool = false
-	var xirang: int = 0
 
 
 ## 上一帧发送的玩家状态缓存（用于增量比较）
@@ -50,8 +48,9 @@ static func encode_player_snapshot(
 ) -> PackedByteArray:
 	var buf := StreamPeerBuffer.new()
 
-	# 1) peer_id (int32)
+	# 1) peer_id + sequence (int32)
 	buf.put_32(current.peer_id)
+	buf.put_32(current.sequence)
 
 	# 2) 计算变化掩码
 	var mask := 0
@@ -61,9 +60,6 @@ static func encode_player_snapshot(
 			| MASK_VELOCITY
 			| MASK_FACING
 			| MASK_ANIM_STATE
-			| MASK_HEALTH
-			| MASK_IS_DEAD
-			| MASK_XIRANG
 		)
 	else:
 		if not current.position.is_equal_approx(previous.position):
@@ -74,12 +70,6 @@ static func encode_player_snapshot(
 			mask |= MASK_FACING
 		if current.anim_state != previous.anim_state:
 			mask |= MASK_ANIM_STATE
-		if current.health != previous.health:
-			mask |= MASK_HEALTH
-		if current.is_dead != previous.is_dead:
-			mask |= MASK_IS_DEAD
-		if current.xirang != previous.xirang:
-			mask |= MASK_XIRANG
 
 	# 3) 掩码 (uint8)
 	buf.put_u8(mask)
@@ -95,12 +85,6 @@ static func encode_player_snapshot(
 		buf.put_u8(current.facing)
 	if mask & MASK_ANIM_STATE:
 		buf.put_u8(current.anim_state)
-	if mask & MASK_HEALTH:
-		buf.put_16(current.health)
-	if mask & MASK_IS_DEAD:
-		buf.put_u8(1 if current.is_dead else 0)
-	if mask & MASK_XIRANG:
-		buf.put_32(current.xirang)
 
 	return buf.data_array
 
@@ -116,6 +100,7 @@ static func decode_player_snapshot(
 	buf.seek(offset)
 
 	target.peer_id = buf.get_32()
+	target.sequence = buf.get_32()
 	var mask: int = buf.get_u8()
 
 	if mask & MASK_POSITION:
@@ -128,12 +113,6 @@ static func decode_player_snapshot(
 		target.facing = buf.get_u8()
 	if mask & MASK_ANIM_STATE:
 		target.anim_state = buf.get_u8()
-	if mask & MASK_HEALTH:
-		target.health = buf.get_16()
-	if mask & MASK_IS_DEAD:
-		target.is_dead = buf.get_u8() != 0
-	if mask & MASK_XIRANG:
-		target.xirang = buf.get_32()
 
 	return buf.get_position()
 

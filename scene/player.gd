@@ -377,6 +377,79 @@ func _update_nameplate_position() -> void:
 	nameplate_label.position = (anchor - Vector2(NAMEPLATE_SIZE.x * 0.5, NAMEPLATE_SIZE.y)).round()
 
 
+func set_multiplayer_health_state(new_health: int, new_is_dead: bool) -> void:
+	var clamped_health := clampi(new_health, 0, max_health)
+	current_health = clamped_health
+	if new_is_dead or clamped_health <= 0:
+		current_health = 0
+		if not is_dead:
+			_die()
+		else:
+			health_bar.set_health(0, max_health)
+			health_bar.visible = false
+		health_changed.emit(current_health, max_health)
+		return
+
+	if is_dead:
+		revive_multiplayer(global_position, clamped_health, 0.0)
+		return
+
+	health_bar.visible = true
+	health_bar.set_health(current_health, max_health)
+	health_changed.emit(current_health, max_health)
+
+
+func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invincible_seconds: float = 0.0) -> void:
+	global_position = revive_position
+	is_dead = false
+	controls_locked = false
+	mouse_fire_held = false
+	velocity = Vector2.ZERO
+	current_health = max_health if revived_health < 0 else clampi(revived_health, 1, max_health)
+	health_bar.visible = true
+	health_bar.set_health(current_health, max_health)
+	health_changed.emit(current_health, max_health)
+	_update_multiplayer_nameplate_text(-1)
+	_update_animation()
+	_update_armed_effect()
+	if invincible_seconds > 0.0:
+		start_multiplayer_invincibility(invincible_seconds)
+	else:
+		invincibility_time_left = 0.0
+		_set_hurt_blink_enabled(false)
+
+
+func start_multiplayer_invincibility(seconds: float) -> void:
+	invincibility_time_left = maxf(seconds, 0.0)
+	_set_hurt_blink_enabled(invincibility_time_left > 0.0)
+
+
+func set_multiplayer_revive_countdown(seconds_left: int) -> void:
+	_update_multiplayer_nameplate_text(seconds_left)
+
+
+func grant_multiplayer_xirang(amount: int) -> bool:
+	if amount <= 0:
+		return false
+	current_xirang += amount
+	xirang_changed.emit(current_xirang, amount)
+	if uses_local_input:
+		xirang_pickup_audio.pitch_scale = randf_range(1.12, 1.26)
+		xirang_pickup_audio.play()
+	return true
+
+
+func _update_multiplayer_nameplate_text(seconds_left: int) -> void:
+	var base_name := multiplayer_display_name
+	if seconds_left >= 0:
+		var prefix: String = base_name if not base_name.is_empty() else name
+		nameplate_label.text = "%s %ds" % [prefix, seconds_left]
+		nameplate_layer.visible = true
+	else:
+		nameplate_label.text = base_name
+		nameplate_layer.visible = not base_name.is_empty()
+	_update_nameplate_position()
+
 func get_xirang() -> int:
 	return current_xirang
 
@@ -728,6 +801,21 @@ func _vector_to_facing_suffix(direction: Vector2) -> StringName:
 
 	return &"down" if direction.y > 0.0 else &"up"
 
+
+func get_multiplayer_facing_id() -> int:
+	match facing_suffix:
+		&"left":
+			return 1
+		&"up":
+			return 2
+		&"down":
+			return 3
+		_:
+			return 0
+
+
+func get_multiplayer_anim_state() -> int:
+	return 1 if current_form_mode == PickupConfig.PlayerFormMode.ARMED else 0
 
 func _facing_suffix_to_vector(suffix: StringName) -> Vector2:
 	match suffix:

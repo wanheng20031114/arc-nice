@@ -19,6 +19,7 @@ signal multiplayer_pickup_collected(
 )
 signal multiplayer_pickup_removed(net_id: int)
 signal multiplayer_merchant_active_changed(active: bool)
+signal multiplayer_revive_all_requested
 
 enum RuntimeMode {
 	SINGLEPLAYER,
@@ -221,6 +222,8 @@ func _enter_pre_wave(wave_index: int) -> void:
 
 
 func _enter_intermission() -> void:
+	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
+		multiplayer_revive_all_requested.emit()
 	wave_state = WaveState.INTERMISSION
 	enemy_spawn_timer.stop()
 	_set_merchant_active(true)
@@ -423,6 +426,8 @@ func _check_wave_completion() -> void:
 
 
 func _enter_victory() -> void:
+	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
+		multiplayer_revive_all_requested.emit()
 	wave_state = WaveState.VICTORY
 	enemy_spawn_timer.stop()
 	state_timer.stop()
@@ -638,9 +643,8 @@ func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 		state.peer_id = peer_id
 		state.position = player_instance.global_position
 		state.velocity = player_instance.velocity
-		state.health = player_instance.current_health
-		state.is_dead = player_instance.is_dead
-		state.xirang = player_instance.current_xirang
+		state.facing = player_instance.get_multiplayer_facing_id()
+		state.anim_state = player_instance.get_multiplayer_anim_state()
 		states.append(state)
 	return states
 

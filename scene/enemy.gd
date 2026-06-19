@@ -193,9 +193,32 @@ func _try_deal_touch_damage() -> void:
 	if config == null:
 		return
 
+	var current_scene := get_tree().current_scene
+	if current_scene != null and current_scene.has_method("request_player_hit_report"):
+		if not touched_player.uses_local_input:
+			touch_damage_cooldown_left = touch_damage_interval
+			return
+		if touched_player.apply_damage(config.attack_damage):
+			current_scene.call(
+				"request_player_hit_report",
+				_get_multiplayer_touch_source_id(),
+				touched_player.peer_id,
+				config.attack_damage,
+				&"enemy_touch",
+				touched_player.current_health,
+				touched_player.is_dead
+			)
+		touch_damage_cooldown_left = touch_damage_interval
+		return
+
 	touched_player.apply_damage(config.attack_damage)
 	touch_damage_cooldown_left = touch_damage_interval
 
+
+func _get_multiplayer_touch_source_id() -> int:
+	var net_id := int(get_meta("net_id", get_instance_id()))
+	var tick := int(Time.get_ticks_msec())
+	return maxi(net_id, 1) * 1000000 + tick
 
 func _start_hurt_blink() -> void:
 	hurt_blink_time_left = hurt_blink_duration
