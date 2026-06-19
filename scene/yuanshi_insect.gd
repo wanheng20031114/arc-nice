@@ -307,8 +307,48 @@ func _try_deal_aura_damage() -> void:
 	if aura_config == null:
 		return
 
-	aura_touched_player.apply_damage(config.attack_damage)
+	_apply_multiplayer_player_damage(
+		aura_touched_player,
+		config.attack_damage,
+		_get_multiplayer_damage_source_id(int(Time.get_ticks_msec())),
+		&"yuanshi_aura"
+	)
 	aura_damage_cooldown_left = aura_config.aura_damage_interval
+
+
+func _apply_multiplayer_player_damage(
+	hit_player: Player,
+	damage_amount: int,
+	source_id: int,
+	source_type: StringName
+) -> void:
+	if hit_player == null or damage_amount <= 0:
+		return
+	var current_scene := get_tree().current_scene
+	if current_scene != null and current_scene.has_method("request_player_hit_report"):
+		var is_host_authority: bool = (
+			current_scene.has_method("is_host_multiplayer_authority")
+			and bool(current_scene.call("is_host_multiplayer_authority"))
+		)
+		if not hit_player.uses_local_input and not is_host_authority:
+			return
+		if hit_player.apply_damage(damage_amount):
+			current_scene.call(
+				"request_player_hit_report",
+				source_id,
+				hit_player.peer_id,
+				damage_amount,
+				source_type,
+				hit_player.current_health,
+				hit_player.is_dead
+			)
+		return
+	hit_player.apply_damage(damage_amount)
+
+
+func _get_multiplayer_damage_source_id(source_suffix: int) -> int:
+	var net_id := int(get_meta("net_id", get_instance_id()))
+	return maxi(net_id, 1) * 1000000 + maxi(source_suffix, 0)
 
 
 # 获取当前敌人的移动速度。
@@ -505,7 +545,12 @@ func _try_apply_explosion_damage() -> void:
 
 		var hit_player := collider as Player
 		if hit_player != null:
-			hit_player.apply_damage(config.explosion_damage)
+			_apply_multiplayer_player_damage(
+				hit_player,
+				config.explosion_damage,
+				_get_multiplayer_damage_source_id(900000),
+				&"yuanshi_explosion"
+			)
 			continue
 
 		var hit_enemy := collider as Enemy

@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="WaveConfig" format=3 uid="uid://dbevtsjqluthm"]
+[gd_resource type="Resource" script_class="WaveConfig" format=3 uid="uid://dm53h000ns4da"]
 
 [ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="1_wave"]
 [ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="2_entry"]
@@ -8,44 +8,62 @@
 [ext_resource type="Resource" uid="uid://gh81or2m6c2t" path="res://resources/config/enemies/yuanshi_insect_bomber.tres" id="6_bomber"]
 [ext_resource type="Resource" uid="uid://cpjc7spicocg8" path="res://resources/config/enemies/yuanshi_insect_purple_bomber.tres" id="7_purple"]
 [ext_resource type="Resource" uid="uid://c6unlgwoqktx5" path="res://resources/config/enemies/yuanshi_insect_fire_ranged.tres" id="8_fire"]
-[ext_resource type="AudioStream" uid="uid://cmfbw4cr7dde" path="res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3" id="9_music"]
+[ext_resource type="Resource" uid="uid://yefrqmv7b306" path="res://resources/config/enemies/yuanshi_insect_green_shell.tres" id="9_green"]
+[ext_resource type="Resource" uid="uid://b6g77s6rrfiw8" path="res://resources/config/enemies/yuanshi_insect_guardian.tres" id="10_guardian"]
+[ext_resource type="Resource" uid="uid://bwc31dxuxgnhs" path="res://resources/config/enemies/capoo_ak47.tres" id="11_capoo"]
+[ext_resource type="AudioStream" uid="uid://dvxl8ixgmll4p" path="res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3" id="12_music"]
 
 [sub_resource type="Resource" id="WaveEnemyEntry_basic"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("3_basic")
-count = 30
+count = 10
 
 [sub_resource type="Resource" id="WaveEnemyEntry_fast"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("4_fast")
-count = 25
+count = 20
 
 [sub_resource type="Resource" id="WaveEnemyEntry_shell"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("5_shell")
-count = 20
+count = 16
 
 [sub_resource type="Resource" id="WaveEnemyEntry_bomber"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("6_bomber")
-count = 20
+count = 22
 
 [sub_resource type="Resource" id="WaveEnemyEntry_purple"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("7_purple")
-count = 15
+count = 22
 
 [sub_resource type="Resource" id="WaveEnemyEntry_fire"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("8_fire")
-count = 10
+count = 28
+
+[sub_resource type="Resource" id="WaveEnemyEntry_green"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("9_green")
+count = 18
+
+[sub_resource type="Resource" id="WaveEnemyEntry_guardian"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("10_guardian")
+count = 22
+
+[sub_resource type="Resource" id="WaveEnemyEntry_capoo"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("11_capoo")
+count = 22
 
 [resource]
 script = ExtResource("1_wave")
-wave_name = "第三波 - 爆裂突袭"
-enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic"), SubResource("WaveEnemyEntry_fast"), SubResource("WaveEnemyEntry_shell"), SubResource("WaveEnemyEntry_bomber"), SubResource("WaveEnemyEntry_purple"), SubResource("WaveEnemyEntry_fire")])
-spawn_interval = 0.16
-spawn_count_per_tick = 7
-max_alive_enemies = 75
-rest_duration_after_wave = 20.0
-music = ExtResource("9_music")
+wave_name = "第八波 - 烈焰燎原"
+enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic"), SubResource("WaveEnemyEntry_fast"), SubResource("WaveEnemyEntry_shell"), SubResource("WaveEnemyEntry_bomber"), SubResource("WaveEnemyEntry_purple"), SubResource("WaveEnemyEntry_fire"), SubResource("WaveEnemyEntry_green"), SubResource("WaveEnemyEntry_guardian"), SubResource("WaveEnemyEntry_capoo")])
+spawn_interval = 0.08
+spawn_count_per_tick = 12
+max_alive_enemies = 125
+rest_duration_after_wave = 12.0
+music = ExtResource("12_music")

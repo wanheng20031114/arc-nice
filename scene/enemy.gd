@@ -227,7 +227,11 @@ func _try_deal_touch_damage() -> void:
 
 	var current_scene := get_tree().current_scene
 	if current_scene != null and current_scene.has_method("request_player_hit_report"):
-		if not touched_player.uses_local_input:
+		var is_host_authority: bool = (
+			current_scene.has_method("is_host_multiplayer_authority")
+			and bool(current_scene.call("is_host_multiplayer_authority"))
+		)
+		if not touched_player.uses_local_input and not is_host_authority:
 			touch_damage_cooldown_left = touch_damage_interval
 			return
 		if touched_player.apply_damage(config.attack_damage):

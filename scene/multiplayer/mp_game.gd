@@ -924,6 +924,10 @@ func get_local_multiplayer_player() -> Player:
 	return game.player if game != null else null
 
 
+func is_host_multiplayer_authority() -> bool:
+	return net_manager != null and net_manager.is_host()
+
+
 func _get_host_enemy_for_net_id(enemy_net_id: int) -> Enemy:
 	if game == null:
 		return null
