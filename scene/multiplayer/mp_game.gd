@@ -54,6 +54,7 @@ var _processed_player_hit_ids: Dictionary = {}
 var _next_xirang_orb_id: int = 1
 var _xirang_orbs: Dictionary = {}
 var _collected_xirang_orbs: Dictionary = {}
+var _granted_xirang_orbs: Dictionary = {}
 var _host_player_snapshot_sequence: int = 0
 var _player_health_revisions: Dictionary = {}
 var _local_player_hit_revision: int = 0
@@ -935,8 +936,14 @@ func _apply_xirang_orb_collected(orb_id: int, collector_peer_id: int) -> void:
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_xirang_granted_all(orb_id: int, amount: int, revision: int) -> void:
+	if orb_id <= 0 or amount <= 0:
+		return
+	if _granted_xirang_orbs.has(orb_id):
+		_remove_xirang_orb_local(orb_id, false)
+		return
 	if revision <= _xirang_revision:
 		return
+	_granted_xirang_orbs[orb_id] = true
 	_xirang_revision = revision
 	_grant_xirang_to_all_players(amount)
 	_remove_xirang_orb_local(orb_id, true)
