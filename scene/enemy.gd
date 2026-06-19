@@ -226,27 +226,16 @@ func _try_deal_touch_damage() -> void:
 		return
 
 	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("request_player_hit_report"):
-		var is_host_authority: bool = (
-			current_scene.has_method("is_host_multiplayer_authority")
-			and bool(current_scene.call("is_host_multiplayer_authority"))
+	if current_scene != null and current_scene.has_method("request_multiplayer_player_damage"):
+		current_scene.call(
+			"request_multiplayer_player_damage",
+			_get_multiplayer_touch_source_id(),
+			touched_player.peer_id,
+			config.attack_damage,
+			&"enemy_touch"
 		)
-		if not touched_player.uses_local_input and not is_host_authority:
-			touch_damage_cooldown_left = touch_damage_interval
-			return
-		if touched_player.apply_damage(config.attack_damage):
-			current_scene.call(
-				"request_player_hit_report",
-				_get_multiplayer_touch_source_id(),
-				touched_player.peer_id,
-				config.attack_damage,
-				&"enemy_touch",
-				touched_player.current_health,
-				touched_player.is_dead
-			)
 		touch_damage_cooldown_left = touch_damage_interval
 		return
-
 	touched_player.apply_damage(config.attack_damage)
 	touch_damage_cooldown_left = touch_damage_interval
 

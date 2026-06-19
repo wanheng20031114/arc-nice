@@ -325,23 +325,14 @@ func _apply_multiplayer_player_damage(
 	if hit_player == null or damage_amount <= 0:
 		return
 	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("request_player_hit_report"):
-		var is_host_authority: bool = (
-			current_scene.has_method("is_host_multiplayer_authority")
-			and bool(current_scene.call("is_host_multiplayer_authority"))
+	if current_scene != null and current_scene.has_method("request_multiplayer_player_damage"):
+		current_scene.call(
+			"request_multiplayer_player_damage",
+			source_id,
+			hit_player.peer_id,
+			damage_amount,
+			source_type
 		)
-		if not hit_player.uses_local_input and not is_host_authority:
-			return
-		if hit_player.apply_damage(damage_amount):
-			current_scene.call(
-				"request_player_hit_report",
-				source_id,
-				hit_player.peer_id,
-				damage_amount,
-				source_type,
-				hit_player.current_health,
-				hit_player.is_dead
-			)
 		return
 	hit_player.apply_damage(damage_amount)
 

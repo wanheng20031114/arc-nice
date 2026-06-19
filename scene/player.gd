@@ -17,7 +17,7 @@ signal died
 @export var attack_method_name: String = "枪"
 
 var current_health: int = 0
-var current_xirang: int = 20000
+var current_xirang: int = 0
 var invincibility_time_left: float = 0.0
 var is_dead: bool = false
 var controls_locked: bool = false
@@ -39,6 +39,7 @@ var client_movement_prediction_only: bool = false
 
 @onready var body_sprite: AnimatedSprite2D = $BodySprite
 @onready var armed_effect_sprite: AnimatedSprite2D = $ArmedEffectSprite
+@onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var shooting_timer: Timer = $ShootingTimer
 @onready var gunshot_audio: AudioStreamPlayer2D = $GunshotAudio
 @onready var gunload_audio: AudioStreamPlayer2D = $GunloadAudio
@@ -386,6 +387,8 @@ func apply_multiplayer_snapshot_motion(
 ) -> void:
 	global_position = remote_position
 	velocity = remote_velocity
+	if is_dead:
+		return
 	_set_multiplayer_facing_id(facing_id)
 	if anim_state == 1:
 		current_form_mode = PickupConfig.PlayerFormMode.ARMED
@@ -420,13 +423,7 @@ func apply_multiplayer_realtime_state(
 	speed_buff_time_left = 0.0
 	var clamped_health: int = clampi(new_current_health, 0, max_health)
 	if new_is_dead or clamped_health <= 0:
-		current_health = 0
-		if not is_dead:
-			_die()
-		else:
-			health_bar.set_health(0, max_health)
-			health_bar.visible = false
-		health_changed.emit(current_health, max_health)
+		apply_multiplayer_death_state()
 		_update_skill1_charge_bar()
 		_update_armed_effect()
 		return
@@ -455,13 +452,7 @@ func set_multiplayer_health_state(new_health: int, new_is_dead: bool) -> void:
 	var clamped_health := clampi(new_health, 0, max_health)
 	current_health = clamped_health
 	if new_is_dead or clamped_health <= 0:
-		current_health = 0
-		if not is_dead:
-			_die()
-		else:
-			health_bar.set_health(0, max_health)
-			health_bar.visible = false
-		health_changed.emit(current_health, max_health)
+		apply_multiplayer_death_state()
 		return
 
 	if is_dead:
@@ -480,6 +471,9 @@ func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invi
 	mouse_fire_held = false
 	velocity = Vector2.ZERO
 	current_health = max_health if revived_health < 0 else clampi(revived_health, 1, max_health)
+	body_sprite.visible = true
+	if collision_shape != null:
+		collision_shape.set_deferred("disabled", false)
 	health_bar.visible = true
 	health_bar.set_health(current_health, max_health)
 	health_changed.emit(current_health, max_health)
@@ -500,6 +494,33 @@ func start_multiplayer_invincibility(seconds: float) -> void:
 
 func set_multiplayer_revive_countdown(seconds_left: int) -> void:
 	_update_multiplayer_nameplate_text(seconds_left)
+
+
+func apply_multiplayer_death_state() -> void:
+	var was_dead := is_dead
+	is_dead = true
+	controls_locked = true
+	mouse_fire_held = false
+	network_move_input = Vector2.ZERO
+	network_shoot_input = Vector2.ZERO
+	network_skill1_requested = false
+	velocity = Vector2.ZERO
+	current_health = 0
+	invincibility_time_left = 0.0
+	_set_hurt_blink_enabled(false)
+	shooting_timer.stop()
+	armed_effect_sprite.visible = false
+	armed_effect_sprite.stop()
+	footstep_audio.stop()
+	health_bar.set_health(0, max_health)
+	health_bar.visible = false
+	body_sprite.visible = false
+	if collision_shape != null:
+		collision_shape.set_deferred("disabled", true)
+	health_changed.emit(current_health, max_health)
+	if not was_dead:
+		death_audio.play()
+		died.emit()
 
 
 func grant_multiplayer_xirang(amount: int) -> bool:
@@ -810,6 +831,12 @@ func _update_pickup_effects(delta: float) -> void:
 
 # 更新武装状态特效动画表现
 func _update_armed_effect() -> void:
+	if is_dead:
+		if armed_effect_sprite.visible:
+			armed_effect_sprite.visible = false
+		if armed_effect_sprite.is_playing():
+			armed_effect_sprite.stop()
+		return
 	var is_armed := current_form_mode == PickupConfig.PlayerFormMode.ARMED
 
 	if not is_armed:
@@ -941,6 +968,9 @@ func _set_hurt_blink_enabled(enabled: bool) -> void:
 
 # 玩家生命值归零时进入死亡状态。
 func _die() -> void:
+	if peer_id > 0:
+		apply_multiplayer_death_state()
+		return
 	is_dead = true
 	mouse_fire_held = false
 	velocity = Vector2.ZERO
@@ -951,7 +981,6 @@ func _die() -> void:
 	armed_effect_sprite.stop()
 	footstep_audio.stop()
 	death_audio.play()
-	# 玩家死亡时将血条归零并隐藏
 	health_bar.set_health(0, max_health)
 	health_bar.visible = false
 	if body_sprite.sprite_frames != null and body_sprite.sprite_frames.has_animation(&"death"):

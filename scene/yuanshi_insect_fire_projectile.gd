@@ -95,22 +95,12 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 	if projectile_id <= 0:
 		return false
 	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("request_player_hit_report"):
+	if current_scene == null or not current_scene.has_method("request_multiplayer_player_damage"):
 		return false
-	var is_host_authority: bool = (
-		current_scene.has_method("is_host_multiplayer_authority")
-		and bool(current_scene.call("is_host_multiplayer_authority"))
-	)
-	if not player.uses_local_input and not is_host_authority:
-		return true
-	if player.apply_damage(damage):
-		current_scene.call(
-			"request_player_hit_report",
-			projectile_id,
-			player.peer_id,
-			damage,
-			source_type,
-			player.current_health,
-			player.is_dead
-		)
-	return true
+	return bool(current_scene.call(
+		"request_multiplayer_player_damage",
+		projectile_id,
+		player.peer_id,
+		damage,
+		source_type
+	))

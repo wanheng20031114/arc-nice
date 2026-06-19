@@ -19,6 +19,12 @@ const PLAYER_STATE_SNAP_DISTANCE := 128.0
 const PLAYER_STATE_SPEED_SLACK := 96.0
 const PLAYER_REVIVE_DELAY_SECONDS := 10.0
 const PLAYER_REVIVE_INVINCIBILITY_SECONDS := 3.0
+# Multiplayer protocol map:
+# - CH_INPUT unreliable_ordered: client player pose/input to host.
+# - CH_STATE unreliable_ordered: host player/enemy snapshots to clients.
+# - CH_PROJECTILE unreliable_ordered: projectile visual spawn events.
+# - CH_EVENT reliable: damage, death, revive, spawn/despawn, pickups, upgrades, wave/HUD events.
+# Host owns enemy AI, player damage confirmation, death, revive, pickups, upgrades, and wave lifecycle.
 
 @onready var net_manager: Node = get_node("/root/NetManager")
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
@@ -352,15 +358,6 @@ func _rpc_client_player_state(
 	var player_node := game.get_player_for_peer(sender_id)
 	if player_node == null or not is_instance_valid(player_node):
 		return
-	var reported_alive: bool = not is_dead and current_health > 0
-	if player_node.is_dead and reported_alive:
-		_dead_player_revive_times.erase(sender_id)
-		_dead_player_revive_last_seconds.erase(sender_id)
-		player_node.revive_multiplayer(
-			reported_position,
-			clampi(current_health, 1, maxi(max_health, 1)),
-			invincibility_time_left
-		)
 	if player_node.is_dead or player_node.controls_locked:
 		net_player_state_corrected.rpc_id(sender_id, player_node.global_position, player_node.velocity)
 		return
@@ -370,12 +367,12 @@ func _rpc_client_player_state(
 	var use_skill1: bool = (buttons & INPUT_BUTTON_SKILL1) != 0
 	player_node.apply_remote_multiplayer_view_state(reported_velocity, shoot_input, use_skill1)
 	player_node.apply_multiplayer_realtime_state(
-		current_health,
-		max_health,
-		current_xirang,
-		is_dead,
+		player_node.current_health,
+		player_node.max_health,
+		player_node.current_xirang,
+		player_node.is_dead,
 		invincibility_time_left,
-		skill1_unlocked,
+		player_node.skill1_unlocked,
 		skill1_charge,
 		skill1_charge_duration,
 		form_mode,
@@ -718,6 +715,57 @@ func net_enemy_damage_applied(
 		_remove_client_enemy(enemy_net_id, true)
 
 
+func _next_player_hit_revision() -> int:
+	_local_player_hit_revision += 1
+	return _local_player_hit_revision
+
+
+func request_multiplayer_player_damage(
+	source_id: int,
+	target_peer_id: int,
+	damage: int,
+	source_type: StringName
+) -> bool:
+	if source_id <= 0 or target_peer_id <= 0 or damage <= 0:
+		return false
+	var hit_key := "%d:%d:%s" % [source_id, target_peer_id, String(source_type)]
+	if _processed_player_hit_ids.has(hit_key):
+		return true
+	var player_node := game.get_player_for_peer(target_peer_id) if game != null else null
+	if player_node == null or not is_instance_valid(player_node):
+		return false
+	if net_manager.is_client():
+		if target_peer_id != _get_local_peer_id():
+			return true
+		if player_node.is_dead:
+			return true
+		if player_node.apply_damage(damage):
+			request_player_hit_report(
+				source_id,
+				target_peer_id,
+				damage,
+				source_type,
+				player_node.current_health,
+				player_node.is_dead
+			)
+		return true
+	if net_manager.is_host():
+		if player_node.is_dead:
+			return true
+		if player_node.apply_damage(damage):
+			_apply_player_hit_report(
+				source_id,
+				target_peer_id,
+				damage,
+				source_type,
+				player_node.current_health,
+				player_node.is_dead,
+				_next_player_hit_revision()
+			)
+		return true
+	return false
+
+
 func request_player_hit_report(
 	source_id: int,
 	player_peer_id: int,
@@ -726,7 +774,7 @@ func request_player_hit_report(
 	reported_health_after: int,
 	reported_is_dead: bool
 ) -> void:
-	_local_player_hit_revision += 1
+	var hit_revision := _next_player_hit_revision()
 	if net_manager.is_host():
 		_apply_player_hit_report(
 			source_id,
@@ -735,7 +783,7 @@ func request_player_hit_report(
 			source_type,
 			reported_health_after,
 			reported_is_dead,
-			_local_player_hit_revision
+			hit_revision
 		)
 	else:
 		_rpc_player_hit_report.rpc_id(
@@ -746,7 +794,7 @@ func request_player_hit_report(
 			String(source_type),
 			reported_health_after,
 			reported_is_dead,
-			_local_player_hit_revision
+			hit_revision
 		)
 
 
@@ -1095,6 +1143,9 @@ func net_player_revived(
 		return
 	_dead_player_revive_times.erase(peer_id)
 	_dead_player_revive_last_seconds.erase(peer_id)
+	var player_interp: NetInterpolator = player_interpolators.get(peer_id) as NetInterpolator
+	if player_interp != null:
+		player_interp.clear()
 	player_node.revive_multiplayer(revive_position, current_health, invincible_seconds)
 
 func _on_host_enemy_spawned(

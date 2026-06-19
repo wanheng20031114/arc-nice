@@ -115,19 +115,13 @@ func _spawn_hit_effect() -> void:
 func _try_report_multiplayer_player_hit(player: Player) -> bool:
 	if projectile_id <= 0:
 		return false
-	if not player.uses_local_input:
-		return true
 	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("request_player_hit_report"):
+	if current_scene == null or not current_scene.has_method("request_multiplayer_player_damage"):
 		return false
-	if player.apply_damage(damage):
-		current_scene.call(
-			"request_player_hit_report",
-			projectile_id,
-			player.peer_id,
-			damage,
-			source_type,
-			player.current_health,
-			player.is_dead
-		)
-	return true
+	return bool(current_scene.call(
+		"request_multiplayer_player_damage",
+		projectile_id,
+		player.peer_id,
+		damage,
+		source_type
+	))
