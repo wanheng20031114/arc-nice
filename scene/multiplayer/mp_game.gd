@@ -1041,27 +1041,11 @@ func _host_update_player_revives() -> void:
 		if now >= revive_at:
 			due_peers.append(peer_id)
 	for peer_id in due_peers:
-		var revive_position_variant: Variant = _pick_revive_position(peer_id)
-		if revive_position_variant == null:
-			continue
-		var revive_position: Vector2 = revive_position_variant
-		_revive_player_peer(peer_id, revive_position)
+		_revive_player_peer(peer_id, _get_multiplayer_revive_position())
 
 
-func _pick_revive_position(dead_peer_id: int) -> Variant:
-	if game == null:
-		return null
-	var alive_positions: Array[Vector2] = []
-	for peer_id_variant in game.peer_players:
-		var peer_id := int(peer_id_variant)
-		if peer_id == dead_peer_id:
-			continue
-		var player_node := game.peer_players[peer_id_variant] as Player
-		if player_node != null and is_instance_valid(player_node) and not player_node.is_dead:
-			alive_positions.append(player_node.global_position)
-	if alive_positions.is_empty():
-		return null
-	return alive_positions[randi() % alive_positions.size()]
+func _get_multiplayer_revive_position() -> Vector2:
+	return game.get_multiplayer_revive_position() if game != null else Vector2.ZERO
 
 
 func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
@@ -1102,26 +1086,13 @@ func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
 func _on_host_revive_all_requested() -> void:
 	if not net_manager.is_host() or game == null:
 		return
-	var fallback_position: Variant = _get_first_alive_position()
+	var revive_position := _get_multiplayer_revive_position()
 	for peer_id_variant in game.peer_players:
 		var peer_id := int(peer_id_variant)
 		var player_node := game.peer_players[peer_id_variant] as Player
 		if player_node == null or not is_instance_valid(player_node) or not player_node.is_dead:
 			continue
-		var revive_position: Vector2 = player_node.global_position
-		if fallback_position != null:
-			revive_position = fallback_position
 		_revive_player_peer(peer_id, revive_position)
-
-
-func _get_first_alive_position() -> Variant:
-	if game == null:
-		return null
-	for peer_id_variant in game.peer_players:
-		var player_node := game.peer_players[peer_id_variant] as Player
-		if player_node != null and is_instance_valid(player_node) and not player_node.is_dead:
-			return player_node.global_position
-	return null
 
 
 @rpc("authority", "call_remote", "reliable", 4)

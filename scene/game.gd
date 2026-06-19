@@ -63,6 +63,7 @@ enum WaveState {
 @onready var enemy_spawn_points_root: Node2D = $EnemySpawnPoints
 @onready var enemy_spawn_timer: Timer = $EnemySpawnTimer
 @onready var state_timer: Timer = $StateTimer
+@onready var map_camera: Camera2D = $Camera2D
 @onready var grid_pathfinder: Node = $GridPathfinder
 @onready var music_player: AudioStreamPlayer = $MusicPlayer
 @onready var enemy_spawn_audio: AudioStreamPlayer = $EnemySpawnAudio
@@ -639,6 +640,10 @@ func apply_network_input_for_peer(
 
 func get_player_for_peer(peer_id: int) -> Player:
 	return peer_players.get(peer_id) as Player
+
+
+func get_multiplayer_revive_position() -> Vector2:
+	return map_camera.global_position
 
 
 func get_pickup_for_net_id(net_id: int) -> Pickup:
