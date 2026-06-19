@@ -25,6 +25,7 @@ func _run() -> void:
 	_test_resource_contract()
 	await _test_damage_defense_formulas()
 	await _test_guardian_aura_visual_configuration()
+	await _test_guardian_chase_and_collision_contract()
 	await _test_guardian_aura_defense_lifecycle()
 
 	test_root.queue_free()
@@ -119,7 +120,41 @@ func _test_guardian_aura_visual_configuration() -> void:
 		_expect(is_equal_approx(aura_shape.radius, GUARDIAN_CONFIG.aura_radius), "Guardian aura radius ignored config.")
 	_expect(guardian.aura_range_fill.visible, "Guardian aura fill is hidden.")
 	_expect(guardian.aura_range_outline.visible, "Guardian aura outline is hidden.")
-	_expect(guardian.get_effective_physical_defense() == 1, "Guardian must receive its own aura defense.")
+	_expect(
+		guardian.get_effective_physical_defense()
+		== GUARDIAN_CONFIG.physical_defense + GUARDIAN_CONFIG.aura_physical_defense_bonus,
+		"Guardian must receive its own aura defense."
+	)
+
+	guardian.queue_free()
+	player.queue_free()
+	await physics_frame
+
+
+func _test_guardian_chase_and_collision_contract() -> void:
+	var player := _spawn_player(Vector2(96.0, 0.0))
+	var guardian := _spawn_enemy(Vector2.ZERO, GUARDIAN_CONFIG, player)
+	await _wait_physics_frames(2)
+
+	var body_shape := guardian.collision_shape.shape as CircleShape2D
+	var touch_shape := guardian.touch_damage_shape.shape as CircleShape2D
+	_expect(body_shape != null, "Guardian body collision shape must be circular.")
+	_expect(touch_shape != null, "Guardian touch damage shape must be circular.")
+	if body_shape != null:
+		_expect(
+			is_equal_approx(body_shape.radius, GUARDIAN_CONFIG.collision_radius),
+			"Guardian body collision radius ignored config."
+		)
+	if touch_shape != null:
+		_expect(
+			is_equal_approx(touch_shape.radius, GUARDIAN_CONFIG.collision_radius),
+			"Guardian touch damage radius must match body collision radius."
+		)
+
+	var start_distance := guardian.global_position.distance_to(player.global_position)
+	await _wait_physics_frames(12)
+	var end_distance := guardian.global_position.distance_to(player.global_position)
+	_expect(end_distance < start_distance - 1.0, "Guardian did not move toward the player.")
 
 	guardian.queue_free()
 	player.queue_free()
@@ -145,7 +180,11 @@ func _test_guardian_aura_defense_lifecycle() -> void:
 
 	guardian.call("_on_aura_area_body_entered", ally)
 	_expect(ally.get_effective_physical_defense() == 1, "Guardian aura did not reapply physical defense.")
-	guardian.apply_damage(GUARDIAN_CONFIG.max_health + GUARDIAN_CONFIG.aura_physical_defense_bonus)
+	guardian.apply_damage(
+		GUARDIAN_CONFIG.max_health
+		+ GUARDIAN_CONFIG.physical_defense
+		+ GUARDIAN_CONFIG.aura_physical_defense_bonus
+	)
 	await _wait_physics_frames(45)
 	_expect(ally.get_effective_physical_defense() == 0, "Guardian aura defense did not clear on death.")
 
