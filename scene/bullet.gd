@@ -92,7 +92,11 @@ func _on_area_entered(area: Area2D) -> void:
 # 撞到 PhysicsBody2D 时，比如 StaticBody2D / CharacterBody2D / RigidBody2D
 func _on_body_entered(body: Node2D) -> void:
 	var enemy := body as Enemy
-	if enemy != null and _try_report_multiplayer_enemy_hit(enemy):
+	if enemy != null:
+		if _try_report_multiplayer_enemy_hit(enemy):
+			queue_free()
+			return
+		enemy.apply_damage(damage, -direction)
 		queue_free()
 		return
 

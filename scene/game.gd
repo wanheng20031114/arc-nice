@@ -4,6 +4,7 @@ class_name Game
 const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/yuanshi_insect_spawn_effect.tscn")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const COUNTDOWN_FINAL_SECONDS := 3
+const MULTIPLAYER_DEFEAT_GRACE_SECONDS := 0.25
 const PURCHASE_RESULT_SUCCESS := 0
 const PURCHASE_RESULT_ALREADY_OWNED := 1
 const PURCHASE_RESULT_INSUFFICIENT_XIRANG := 2
@@ -20,6 +21,7 @@ signal multiplayer_pickup_collected(
 )
 signal multiplayer_pickup_removed(net_id: int)
 signal multiplayer_merchant_active_changed(active: bool)
+signal multiplayer_wave_started(wave_index: int)
 signal multiplayer_revive_all_requested
 
 enum RuntimeMode {
@@ -88,6 +90,7 @@ var removed_multiplayer_enemy_ids: Dictionary = {}
 var enemy_retarget_time_left: float = 0.0
 var next_multiplayer_enemy_net_id: int = 1
 var next_multiplayer_pickup_net_id: int = 1000
+var multiplayer_defeat_check_pending: bool = false
 
 
 func _ready() -> void:
@@ -110,7 +113,7 @@ func _ready() -> void:
 
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		auto_start_waves = false
-		wave_hud.hide_all()
+		_start_client_wave_countdown(WaveState.PRE_WAVE, 0, maxi(ceili(pre_wave_duration), 0))
 	elif auto_start_waves and _is_wave_system_ready():
 		_enter_pre_wave(0)
 	else:
@@ -137,6 +140,38 @@ func apply_remote_merchant_active(active: bool) -> void:
 	if merchant == null:
 		return
 	merchant.set_active(active)
+	if runtime_mode != RuntimeMode.CLIENT_VIEW:
+		return
+	if active:
+		var wave_config := _get_current_wave()
+		var countdown := 0
+		if wave_config != null:
+			countdown = maxi(ceili(wave_config.rest_duration_after_wave), 0)
+		_start_client_wave_countdown(WaveState.INTERMISSION, current_wave_index, countdown)
+	elif wave_state == WaveState.PRE_WAVE or wave_state == WaveState.INTERMISSION:
+		state_timer.stop()
+
+
+func apply_remote_wave_started(wave_index: int) -> void:
+	if wave_index < 0 or wave_index >= waves.size():
+		return
+	var wave_config := waves[wave_index]
+	if wave_config == null:
+		return
+	state_timer.stop()
+	wave_state = WaveState.WAVE_ACTIVE
+	current_wave_index = wave_index
+	_update_wave_music(wave_config)
+	wave_hud.show_enemy_count(current_wave_index + 1, 0)
+	wave_start_audio.play()
+
+
+func apply_remote_enemy_count(alive_count: int) -> void:
+	if runtime_mode != RuntimeMode.CLIENT_VIEW:
+		return
+	if wave_state != WaveState.WAVE_ACTIVE:
+		return
+	wave_hud.show_enemy_count(current_wave_index + 1, alive_count)
 
 
 func try_purchase_skill1_for_peer(peer_id: int) -> int:
@@ -275,6 +310,8 @@ func _begin_wave(wave_index: int) -> void:
 		current_wave_total
 	)
 	wave_start_audio.play()
+	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
+		multiplayer_wave_started.emit(current_wave_index)
 
 	if current_wave_total <= 0:
 		_check_wave_completion()
@@ -301,6 +338,9 @@ func _build_wave_spawn_queue(wave_config: WaveConfig) -> void:
 
 
 func _on_state_timer_timeout() -> void:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		_update_client_wave_countdown()
+		return
 	if wave_state != WaveState.PRE_WAVE and wave_state != WaveState.INTERMISSION:
 		state_timer.stop()
 		return
@@ -321,6 +361,30 @@ func _on_state_timer_timeout() -> void:
 
 func _on_enemy_spawn_timer_timeout() -> void:
 	_spawn_wave_batch()
+
+
+func _start_client_wave_countdown(state: int, wave_index: int, seconds: int) -> void:
+	wave_state = state
+	current_wave_index = clampi(wave_index, 0, maxi(waves.size() - 1, 0))
+	countdown_seconds = maxi(seconds, 0)
+	wave_hud.show_countdown(countdown_seconds)
+	if countdown_seconds <= 0:
+		state_timer.stop()
+		return
+	state_timer.start(1.0)
+
+
+func _update_client_wave_countdown() -> void:
+	if wave_state != WaveState.PRE_WAVE and wave_state != WaveState.INTERMISSION:
+		state_timer.stop()
+		return
+	countdown_seconds = maxi(countdown_seconds - 1, 0)
+	wave_hud.show_countdown(countdown_seconds)
+	if countdown_seconds <= 0:
+		state_timer.stop()
+		return
+	if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
+		_play_countdown_tick()
 
 
 func _spawn_wave_batch() -> void:
@@ -470,7 +534,20 @@ func _on_player_died() -> void:
 func _on_multiplayer_player_died(_peer_id: int) -> void:
 	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
 		return
-	if wave_state == WaveState.VICTORY:
+	if wave_state == WaveState.VICTORY or wave_state == WaveState.DEFEAT:
+		return
+	if multiplayer_defeat_check_pending:
+		return
+	multiplayer_defeat_check_pending = true
+	var defeat_timer := get_tree().create_timer(MULTIPLAYER_DEFEAT_GRACE_SECONDS)
+	defeat_timer.timeout.connect(_check_multiplayer_defeat_after_grace)
+
+
+func _check_multiplayer_defeat_after_grace() -> void:
+	multiplayer_defeat_check_pending = false
+	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
+		return
+	if wave_state == WaveState.VICTORY or wave_state == WaveState.DEFEAT:
 		return
 	for peer_id_variant in peer_players:
 		var candidate := peer_players[peer_id_variant] as Player

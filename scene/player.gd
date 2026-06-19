@@ -361,6 +361,14 @@ func apply_remote_multiplayer_state(
 	use_skill1: bool = false
 ) -> void:
 	global_position = remote_position
+	apply_remote_multiplayer_view_state(remote_velocity, shoot_input, use_skill1)
+
+
+func apply_remote_multiplayer_view_state(
+	remote_velocity: Vector2,
+	shoot_input: Vector2,
+	use_skill1: bool = false
+) -> void:
 	velocity = remote_velocity
 	network_shoot_input = shoot_input.limit_length(1.0)
 	if use_skill1:
@@ -368,7 +376,6 @@ func apply_remote_multiplayer_state(
 	_update_facing(remote_velocity, network_shoot_input)
 	_update_animation()
 	_update_armed_effect()
-
 
 
 func apply_multiplayer_snapshot_motion(
@@ -380,11 +387,10 @@ func apply_multiplayer_snapshot_motion(
 	global_position = remote_position
 	velocity = remote_velocity
 	_set_multiplayer_facing_id(facing_id)
-	current_form_mode = (
-		PickupConfig.PlayerFormMode.ARMED
-		if anim_state == 1
-		else PickupConfig.PlayerFormMode.NORMAL
-	)
+	if anim_state == 1:
+		current_form_mode = PickupConfig.PlayerFormMode.ARMED
+	else:
+		current_form_mode = PickupConfig.PlayerFormMode.NORMAL
 	_update_animation()
 	_update_armed_effect()
 

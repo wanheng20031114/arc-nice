@@ -20,6 +20,13 @@ func show_wave_progress(wave_number: int, defeated: int, total: int) -> void:
 	]
 
 
+func show_enemy_count(wave_number: int, alive_count: int) -> void:
+	top_bar.visible = true
+	result_overlay.visible = false
+	status_label.modulate = Color.WHITE
+	status_label.text = "第 %d 波  场上敌人 %d" % [wave_number, maxi(alive_count, 0)]
+
+
 func show_countdown(seconds: int) -> void:
 	top_bar.visible = true
 	result_overlay.visible = false

@@ -4,12 +4,19 @@
 [ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="2_entry"]
 [ext_resource type="Resource" uid="uid://bwc31dxuxgnhs" path="res://resources/config/enemies/capoo_ak47.tres" id="3_capoo_ak47"]
 [ext_resource type="Resource" uid="uid://c6unlgwoqktx5" path="res://resources/config/enemies/yuanshi_insect_fire_ranged.tres" id="3_kj76l"]
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="4_dy84x"]
+[ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="5_dqf42"]
 [ext_resource type="AudioStream" uid="uid://cmfbw4cr7dde" path="res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3" id="6_music"]
+[ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="6_neydf"]
+[ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="7_w3oja"]
+[ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="8_wc5ee"]
+[ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="9_ae4h3"]
+[ext_resource type="Script" uid="uid://cxt041wfb1usj" path="res://resources/config/enemies/yuanshi_insect_config.gd" id="10_63j22"]
 
 [sub_resource type="Resource" id="WaveEnemyEntry_capoo_ak47"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("3_capoo_ak47")
-count = 8
+count = 4
 
 [sub_resource type="Resource" id="Resource_sk47x"]
 script = ExtResource("2_entry")
@@ -17,10 +24,20 @@ enemy_config = ExtResource("3_kj76l")
 count = 20
 metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
+[sub_resource type="Resource" id="Resource_e5yt6"]
+script = ExtResource("10_63j22")
+metadata/_custom_type_script = "uid://cxt041wfb1usj"
+
+[sub_resource type="Resource" id="Resource_hbu7x"]
+script = ExtResource("2_entry")
+enemy_config = SubResource("Resource_e5yt6")
+count = 30
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
 [resource]
 script = ExtResource("1_wave")
 wave_name = "第一波"
-enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_capoo_ak47"), SubResource("Resource_sk47x")])
+enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_capoo_ak47"), SubResource("Resource_sk47x"), SubResource("Resource_hbu7x")])
 spawn_interval = 0.1
 spawn_count_per_tick = 4
 max_alive_enemies = 100
