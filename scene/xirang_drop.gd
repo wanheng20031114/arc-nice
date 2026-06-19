@@ -12,6 +12,8 @@ var is_attracting: bool = false
 var is_collected: bool = false
 var can_detect_player: bool = false
 var movement_tween: Tween = null
+var orb_id: int = 0
+var awaiting_multiplayer_confirmation: bool = false
 
 
 func _ready() -> void:
@@ -24,7 +26,9 @@ func _process(_delta: float) -> void:
 	if not can_detect_player or is_attracting or is_collected:
 		return
 	if not is_instance_valid(target_player):
-		return
+		target_player = _get_local_multiplayer_player()
+		if not is_instance_valid(target_player):
+			return
 
 	var attraction_radius_squared := config.attraction_radius * config.attraction_radius
 	if global_position.distance_squared_to(target_player.global_position) <= attraction_radius_squared:
@@ -36,6 +40,15 @@ func setup(amount: int, player: Player, spawn_position: Vector2, landing_offset:
 	target_player = player
 	global_position = spawn_position
 	_play_scatter_motion(landing_offset)
+	var current_scene := get_tree().current_scene
+	if current_scene != null and current_scene.has_method("register_xirang_orb"):
+		current_scene.call("register_xirang_orb", self, xirang_value)
+
+
+func setup_multiplayer_orb(new_orb_id: int, amount: int) -> void:
+	orb_id = maxi(new_orb_id, 0)
+	xirang_value = maxi(amount, 1)
+	target_player = _get_local_multiplayer_player()
 
 
 func _play_scatter_motion(landing_offset: Vector2) -> void:
@@ -103,12 +116,36 @@ func _move_toward_player(progress: float) -> void:
 func _collect() -> void:
 	if is_collected:
 		return
+	if awaiting_multiplayer_confirmation:
+		return
 	if not is_instance_valid(target_player):
-		queue_free()
+		target_player = _get_local_multiplayer_player()
+		if not is_instance_valid(target_player):
+			queue_free()
+			return
+
+	var current_scene := get_tree().current_scene
+	if orb_id > 0 and current_scene != null and current_scene.has_method("request_xirang_orb_collected"):
+		awaiting_multiplayer_confirmation = true
+		visible = false
+		current_scene.call("request_xirang_orb_collected", orb_id)
 		return
 
 	is_collected = true
 	target_player.add_xirang(xirang_value)
+	_play_collect_feedback()
+
+
+func confirm_multiplayer_collect() -> void:
+	if is_collected:
+		return
+	is_collected = true
+	awaiting_multiplayer_confirmation = false
+	visible = true
+	_play_collect_feedback()
+
+
+func _play_collect_feedback() -> void:
 	amount_label.text = "+%d" % xirang_value
 	amount_label.visible = true
 	amount_label.modulate.a = 1.0
@@ -129,6 +166,13 @@ func _collect() -> void:
 		config.label_fade_duration
 	).set_delay(0.1)
 	feedback_tween.finished.connect(queue_free)
+
+
+func _get_local_multiplayer_player() -> Player:
+	var current_scene := get_tree().current_scene
+	if current_scene == null or not current_scene.has_method("get_local_multiplayer_player"):
+		return null
+	return current_scene.call("get_local_multiplayer_player") as Player
 
 
 func _apply_config_to_visual() -> void:

@@ -134,8 +134,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if event.is_action_pressed("skill1"):
-		if client_movement_prediction_only:
-			return
 		if _try_use_skill1():
 			get_viewport().set_input_as_handled()
 		return
@@ -177,12 +175,6 @@ func _physics_process(delta: float) -> void:
 	velocity = move_input * _get_effective_move_speed()
 	move_and_slide()
 	_update_footstep_audio(delta, move_input)
-
-	if client_movement_prediction_only:
-		_update_facing(move_input, shoot_input)
-		_update_animation()
-		_update_armed_effect()
-		return
 
 	if current_shot_pattern == PickupConfig.ShotPattern.SPIRAL:
 		_try_auto_spiral_shoot()
@@ -362,6 +354,22 @@ func apply_network_input(
 	network_skill1_requested = network_skill1_requested or use_skill1
 
 
+func apply_remote_multiplayer_state(
+	remote_position: Vector2,
+	remote_velocity: Vector2,
+	shoot_input: Vector2,
+	use_skill1: bool = false
+) -> void:
+	global_position = remote_position
+	velocity = remote_velocity
+	network_shoot_input = shoot_input.limit_length(1.0)
+	if use_skill1:
+		_try_use_skill1()
+	_update_facing(remote_velocity, network_shoot_input)
+	_update_animation()
+	_update_armed_effect()
+
+
 func _update_nameplate_position() -> void:
 	if not nameplate_layer.visible:
 		return
@@ -454,6 +462,15 @@ func _spawn_bullet(shoot_direction: Vector2, track_attack_direction: bool = true
 	bullet.setup(shoot_direction, attack_damage)
 	spawn_parent.add_child(bullet)
 	bullet.global_position = global_position + shoot_direction * bullet_spawn_distance
+	_register_multiplayer_projectile(
+		bullet,
+		&"player_bullet",
+		bullet.global_position,
+		shoot_direction,
+		attack_damage,
+		bullet.speed,
+		bullet.max_lifetime
+	)
 	if track_attack_direction and shoot_direction != Vector2.ZERO:
 		last_attack_direction = shoot_direction.normalized()
 	gunshot_audio.play()
@@ -505,10 +522,46 @@ func _try_use_skill1() -> bool:
 	bomb.setup(self, shoot_direction, floori(float(attack_damage) * 3.3))
 	spawn_parent.add_child(bomb)
 	bomb.global_position = global_position + shoot_direction * skill1_bomb_spawn_distance
+	_register_multiplayer_projectile(
+		bomb,
+		&"skill1_bomb",
+		bomb.global_position,
+		shoot_direction,
+		floori(float(attack_damage) * 3.3),
+		bomb.speed,
+		bomb.max_lifetime
+	)
 	skill1_charge = 0.0
 	_update_skill1_charge_bar()
 	gunload_audio.play()
 	return true
+
+
+func _register_multiplayer_projectile(
+	projectile: Node,
+	projectile_type: StringName,
+	spawn_position: Vector2,
+	shoot_direction: Vector2,
+	projectile_damage: int,
+	projectile_speed: float,
+	projectile_lifetime: float
+) -> void:
+	if projectile == null:
+		return
+	var current_scene := get_tree().current_scene
+	if current_scene == null or not current_scene.has_method("register_local_projectile"):
+		return
+	current_scene.call(
+		"register_local_projectile",
+		projectile,
+		projectile_type,
+		peer_id,
+		spawn_position,
+		shoot_direction,
+		projectile_damage,
+		projectile_speed,
+		projectile_lifetime
+	)
 
 
 func _update_skill1_charge_bar() -> void:

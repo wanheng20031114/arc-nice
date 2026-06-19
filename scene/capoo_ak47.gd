@@ -205,6 +205,18 @@ func _fire_locked_bullet() -> bool:
 	)
 	spawn_parent.add_child(projectile)
 	projectile.global_position = global_position + burst_shot_direction * capoo_config.projectile_spawn_distance
+	if spawn_parent.has_method("register_local_projectile"):
+		spawn_parent.call(
+			"register_local_projectile",
+			projectile,
+			&"capoo_ak47_bullet",
+			0,
+			projectile.global_position,
+			burst_shot_direction,
+			capoo_config.attack_damage,
+			capoo_config.projectile_speed,
+			capoo_config.projectile_lifetime
+		)
 	if burst_audio_step % 2 == 0:
 		attack_audio.pitch_scale = random_generator.randf_range(0.98, 1.03)
 		attack_audio.play()

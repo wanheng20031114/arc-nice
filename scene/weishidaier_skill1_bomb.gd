@@ -19,6 +19,9 @@ var damage: int = 1
 var remaining_lifetime: float = 0.0
 var owner_player: Player = null
 var has_exploded: bool = false
+var projectile_id: int = 0
+var owner_peer_id: int = 0
+var source_type: StringName = &"skill1_bomb"
 
 
 func _ready() -> void:
@@ -36,6 +39,16 @@ func setup(initial_owner: Player, initial_direction: Vector2, initial_damage: in
 		direction = initial_direction.normalized()
 	rotation = direction.angle()
 	damage = maxi(initial_damage, 0)
+
+
+func setup_multiplayer(
+	new_projectile_id: int,
+	new_owner_peer_id: int,
+	new_source_type: StringName
+) -> void:
+	projectile_id = maxi(new_projectile_id, 0)
+	owner_peer_id = new_owner_peer_id
+	source_type = new_source_type
 
 
 func _physics_process(delta: float) -> void:
@@ -92,6 +105,8 @@ func _apply_explosion_damage() -> void:
 		if damaged_ids.has(enemy_id):
 			continue
 		damaged_ids[enemy_id] = true
+		if _try_report_multiplayer_enemy_hit(enemy):
+			continue
 		enemy.apply_damage(damage, enemy.global_position.direction_to(global_position))
 
 
@@ -108,3 +123,23 @@ func _spawn_explosion_effect() -> void:
 	explosion.top_level = true
 	spawn_parent.add_child(explosion)
 	explosion.global_position = global_position
+
+
+func _try_report_multiplayer_enemy_hit(enemy: Enemy) -> bool:
+	if projectile_id <= 0:
+		return false
+	var current_scene := get_tree().current_scene
+	if current_scene == null or not current_scene.has_method("request_enemy_hit_report"):
+		return false
+	var enemy_net_id := int(enemy.get_meta("net_id", 0))
+	if enemy_net_id <= 0:
+		return false
+	current_scene.call(
+		"request_enemy_hit_report",
+		projectile_id,
+		owner_peer_id,
+		enemy_net_id,
+		damage,
+		enemy.global_position.direction_to(global_position)
+	)
+	return true

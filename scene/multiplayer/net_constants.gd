@@ -19,27 +19,29 @@ const RELAY_PORT_RANGE_END := 40100
 
 ## ENet 信道定义
 ## 0: 认证、加载、完整状态恢复 — reliable
-## 1: 玩家输入上报 — unreliable_ordered
-## 2: 玩家/敌人位置快照 — unreliable_ordered
-## 3: 伤害、死亡、生成、掉落、升级事件 — reliable
+## 1: 玩家状态上报 — unreliable_ordered
+## 2: 玩家/敌人状态快照 — unreliable_ordered
+## 3: 投射物/技能事件 — unreliable_ordered
+## 4: 伤害、死亡、生成、掉落、升级事件 — reliable
 const CH_AUTH := 0
 const CH_INPUT := 1
-const CH_SNAPSHOT := 2
-const CH_EVENT := 3
-const CHANNEL_COUNT := 4
+const CH_STATE := 2
+const CH_PROJECTILE := 3
+const CH_EVENT := 4
+const CHANNEL_COUNT := 5
 
 ## 同步频率 (Hz)
 const HOST_PHYSICS_HZ := 60
 const INPUT_SEND_HZ := 30
 const PLAYER_SNAPSHOT_HZ := 30
-const ENEMY_SNAPSHOT_HZ := 15
+const ENEMY_SNAPSHOT_HZ := 30
 
 ## 同步频率对应的物理帧间隔
 ## 在 60 Hz 物理帧下，每 N 帧执行一次
 const INPUT_SEND_INTERVAL_FRAMES := 2
 const INPUT_KEEPALIVE_INTERVAL_FRAMES := 6
 const PLAYER_SNAPSHOT_INTERVAL_FRAMES := 2
-const ENEMY_SNAPSHOT_INTERVAL_FRAMES := 4
+const ENEMY_SNAPSHOT_INTERVAL_FRAMES := 2
 
 ## 插值
 const INTERPOLATION_BUFFER_SIZE := 6

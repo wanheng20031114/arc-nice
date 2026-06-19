@@ -146,6 +146,18 @@ func _try_fire_ranged_projectile() -> bool:
 	projectile.global_position = (
 		global_position + shoot_direction * fire_config.projectile_spawn_distance
 	)
+	if spawn_parent.has_method("register_local_projectile"):
+		spawn_parent.call(
+			"register_local_projectile",
+			projectile,
+			&"yuanshi_fire_projectile",
+			0,
+			projectile.global_position,
+			shoot_direction,
+			fire_config.attack_damage,
+			fire_config.projectile_speed,
+			fire_config.projectile_lifetime
+		)
 	attack_audio.pitch_scale = random_generator.randf_range(0.94, 1.06)
 	attack_audio.play()
 	return true

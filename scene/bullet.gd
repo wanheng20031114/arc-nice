@@ -16,6 +16,9 @@ var direction : Vector2 = Vector2.RIGHT
 var damage: int = 1
 # 剩余存活时间
 var remaining_lifetime : float = 0.0
+var projectile_id: int = 0
+var owner_peer_id: int = 0
+var source_type: StringName = &"player_bullet"
 
 
 func _ready() -> void:
@@ -28,6 +31,16 @@ func setup(initial_direction: Vector2, initial_damage: int = 1) -> void:
 		direction = initial_direction.normalized()
 		rotation = direction.angle()
 	damage = maxi(initial_damage, 0)
+
+
+func setup_multiplayer(
+	new_projectile_id: int,
+	new_owner_peer_id: int,
+	new_source_type: StringName
+) -> void:
+	projectile_id = maxi(new_projectile_id, 0)
+	owner_peer_id = new_owner_peer_id
+	source_type = new_source_type
 
 
 # 物理帧更新逻辑，处理子弹移动和碰撞检测
@@ -77,12 +90,30 @@ func _on_area_entered(area: Area2D) -> void:
 
 
 # 撞到 PhysicsBody2D 时，比如 StaticBody2D / CharacterBody2D / RigidBody2D
-func _on_body_entered(_body: Node2D) -> void:
-	# 这里之后可以写伤害逻辑
-	# 例如：
-	# if body.has_method("take_damage"):
-	# 	body.take_damage(1)
-	
+func _on_body_entered(body: Node2D) -> void:
+	var enemy := body as Enemy
+	if enemy != null and _try_report_multiplayer_enemy_hit(enemy):
+		queue_free()
+		return
+
 	queue_free()
-	
-	
+
+
+func _try_report_multiplayer_enemy_hit(enemy: Enemy) -> bool:
+	if projectile_id <= 0:
+		return false
+	var current_scene := get_tree().current_scene
+	if current_scene == null or not current_scene.has_method("request_enemy_hit_report"):
+		return false
+	var enemy_net_id := int(enemy.get_meta("net_id", 0))
+	if enemy_net_id <= 0:
+		return false
+	current_scene.call(
+		"request_enemy_hit_report",
+		projectile_id,
+		owner_peer_id,
+		enemy_net_id,
+		damage,
+		-enemy.global_position.direction_to(global_position)
+	)
+	return true
