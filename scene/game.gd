@@ -10,6 +10,7 @@ const PURCHASE_RESULT_INSUFFICIENT_XIRANG := 2
 const PURCHASE_RESULT_INVALID_PLAYER := 3
 
 signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
+signal multiplayer_enemy_removed(net_id: int)
 signal multiplayer_pickup_spawned(net_id: int, pickup_config: PickupConfig, spawn_position: Vector2)
 signal multiplayer_pickup_collected(
 	net_id: int,
@@ -82,6 +83,8 @@ var multiplayer_player_names: Dictionary = {}
 var peer_players: Dictionary = {}
 var multiplayer_pickups: Dictionary = {}
 var removed_multiplayer_pickup_ids: Dictionary = {}
+var multiplayer_enemy_ids_by_instance: Dictionary = {}
+var removed_multiplayer_enemy_ids: Dictionary = {}
 var enemy_retarget_time_left: float = 0.0
 var next_multiplayer_enemy_net_id: int = 1
 var next_multiplayer_pickup_net_id: int = 1000
@@ -376,6 +379,7 @@ func _try_spawn_enemy(enemy_config: EnemyConfig) -> bool:
 		enemy_net_id = next_multiplayer_enemy_net_id
 		next_multiplayer_enemy_net_id += 1
 		enemy_instance.set_meta("net_id", enemy_net_id)
+		multiplayer_enemy_ids_by_instance[enemy_id] = enemy_net_id
 	active_wave_enemy_ids[enemy_id] = true
 	enemy_instance.defeated.connect(_on_wave_enemy_defeated)
 	enemy_instance.tree_exited.connect(_on_wave_enemy_tree_exited.bind(enemy_id))
@@ -403,7 +407,19 @@ func _on_wave_enemy_defeated(enemy: Enemy) -> void:
 
 func _on_wave_enemy_tree_exited(enemy_id: int) -> void:
 	active_wave_enemy_ids.erase(enemy_id)
+	_mark_multiplayer_enemy_removed(enemy_id)
 	_check_wave_completion()
+
+
+func _mark_multiplayer_enemy_removed(enemy_id: int) -> void:
+	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
+		return
+	var enemy_net_id := int(multiplayer_enemy_ids_by_instance.get(enemy_id, 0))
+	multiplayer_enemy_ids_by_instance.erase(enemy_id)
+	if enemy_net_id <= 0 or removed_multiplayer_enemy_ids.has(enemy_net_id):
+		return
+	removed_multiplayer_enemy_ids[enemy_net_id] = true
+	multiplayer_enemy_removed.emit(enemy_net_id)
 
 
 func _check_wave_completion() -> void:

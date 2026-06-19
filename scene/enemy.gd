@@ -33,6 +33,7 @@ var hurt_blink_time_left: float = 0.0
 var death_sequence_stage: DeathSequenceStage = DeathSequenceStage.NONE
 var death_animation_name_in_use: StringName = &""
 var physical_defense_modifiers: Dictionary = {}
+var is_multiplayer_proxy: bool = false
 
 
 func _ready() -> void:
@@ -56,6 +57,37 @@ func set_target_player(player: Player) -> void:
 
 func set_pathfinder(shared_pathfinder: Node) -> void:
 	pathfinder = shared_pathfinder
+
+
+func configure_multiplayer_proxy() -> void:
+	is_multiplayer_proxy = true
+	target_player = null
+	pathfinder = null
+	touched_player = null
+	touch_damage_cooldown_left = 0.0
+	set_physics_process(false)
+	set_process(false)
+	collision_layer = 4
+	collision_mask = 0
+	_disable_proxy_area_collisions(self)
+
+
+func apply_multiplayer_proxy_motion(proxy_position: Vector2, proxy_velocity: Vector2) -> void:
+	global_position = proxy_position
+	velocity = proxy_velocity
+	if animated_sprite != null and not is_zero_approx(proxy_velocity.x):
+		animated_sprite.flip_h = proxy_velocity.x < 0.0
+
+
+func _disable_proxy_area_collisions(root: Node) -> void:
+	for child in root.get_children():
+		var area: Area2D = child as Area2D
+		if area != null:
+			area.monitoring = false
+			area.monitorable = false
+			area.collision_layer = 0
+			area.collision_mask = 0
+		_disable_proxy_area_collisions(child)
 
 
 func apply_damage(

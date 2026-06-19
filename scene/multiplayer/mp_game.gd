@@ -30,6 +30,8 @@ var game: Game = null
 var input_sequence: int = 0
 var _net_time_origin: float = 0.0
 var _net_enemies: Dictionary = {}
+var _enemy_spawn_snapshot_times: Dictionary = {}
+var _host_had_enemies_last_snapshot: bool = false
 var _has_host_time_offset: bool = false
 var _host_to_client_time_offset: float = 0.0
 var _has_sent_input: bool = false
@@ -111,6 +113,7 @@ func _setup_game(mode: int) -> void:
 
 	if net_manager.is_host():
 		game.multiplayer_enemy_spawned.connect(_on_host_enemy_spawned)
+		game.multiplayer_enemy_removed.connect(_on_host_enemy_removed)
 		game.multiplayer_pickup_spawned.connect(_on_host_pickup_spawned)
 		game.multiplayer_pickup_collected.connect(_on_host_pickup_collected)
 		game.multiplayer_pickup_removed.connect(_on_host_pickup_removed)
@@ -141,8 +144,9 @@ func _host_broadcast_player_snapshots() -> void:
 
 func _host_broadcast_enemy_snapshots() -> void:
 	var states: Array[SnapshotManager.EnemyState] = game.collect_enemy_snapshot_states()
-	if states.is_empty():
+	if states.is_empty() and not _host_had_enemies_last_snapshot:
 		return
+	_host_had_enemies_last_snapshot = not states.is_empty()
 	var data := snapshot_mgr.encode_all_enemy_snapshots(states)
 	_rpc_receive_enemy_snapshot.rpc(_get_net_time(), data)
 
@@ -221,7 +225,9 @@ func _client_interpolate_entities() -> void:
 		var enemy_interp := enemy_interpolators[net_id] as NetInterpolator
 		var enemy_node: Enemy = _net_enemies.get(net_id) as Enemy
 		if enemy_interp != null and enemy_node != null and is_instance_valid(enemy_node):
-			enemy_node.global_position = enemy_interp.get_interpolated_position(current_time)
+			var position: Vector2 = enemy_interp.get_interpolated_position(current_time)
+			var velocity: Vector2 = enemy_interp.get_interpolated_velocity(current_time)
+			enemy_node.apply_multiplayer_proxy_motion(position, velocity)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
@@ -256,10 +262,12 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 func _rpc_receive_enemy_snapshot(host_timestamp: float, data: PackedByteArray) -> void:
 	var snapshot_time := _map_host_timestamp_to_client_time(host_timestamp)
 	var states := SnapshotManager.decode_all_enemy_snapshots(data)
+	var seen_enemy_ids: Dictionary = {}
 	for state in states:
 		var enemy_state := state as SnapshotManager.EnemyState
 		if enemy_state == null:
 			continue
+		seen_enemy_ids[enemy_state.net_id] = true
 		if not enemy_interpolators.has(enemy_state.net_id):
 			enemy_interpolators[enemy_state.net_id] = NetInterpolator.new(
 				1.0 / float(_NetConstants.ENEMY_SNAPSHOT_HZ)
@@ -278,6 +286,7 @@ func _rpc_receive_enemy_snapshot(host_timestamp: float, data: PackedByteArray) -
 		if enemy_node != null and is_instance_valid(enemy_node):
 			enemy_node.current_health = enemy_state.health
 			enemy_node.is_dead = enemy_state.is_dead
+	_reconcile_enemy_roster(seen_enemy_ids, snapshot_time)
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)
@@ -851,9 +860,10 @@ func _host_update_player_revives() -> void:
 		if now >= revive_at:
 			due_peers.append(peer_id)
 	for peer_id in due_peers:
-		var revive_position := _pick_revive_position(peer_id)
-		if revive_position == null:
+		var revive_position_variant: Variant = _pick_revive_position(peer_id)
+		if revive_position_variant == null:
 			continue
+		var revive_position: Vector2 = revive_position_variant
 		_revive_player_peer(peer_id, revive_position)
 
 
@@ -904,13 +914,15 @@ func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
 func _on_host_revive_all_requested() -> void:
 	if not net_manager.is_host() or game == null:
 		return
-	var fallback_position := _get_first_alive_position()
+	var fallback_position: Variant = _get_first_alive_position()
 	for peer_id_variant in game.peer_players:
 		var peer_id := int(peer_id_variant)
 		var player_node := game.peer_players[peer_id_variant] as Player
 		if player_node == null or not is_instance_valid(player_node) or not player_node.is_dead:
 			continue
-		var revive_position := fallback_position if fallback_position != null else player_node.global_position
+		var revive_position: Vector2 = player_node.global_position
+		if fallback_position != null:
+			revive_position = fallback_position
 		_revive_player_peer(peer_id, revive_position)
 
 
@@ -959,7 +971,11 @@ func _on_host_enemy_spawned(
 ) -> void:
 	if enemy_config == null:
 		return
-	net_enemy_spawned.rpc(net_id, enemy_config.resource_path, spawn_position.x, spawn_position.y)
+	net_enemy_spawned.rpc(net_id, enemy_config.resource_path, spawn_position.x, spawn_position.y, _get_net_time())
+
+
+func _on_host_enemy_removed(net_id: int) -> void:
+	net_enemy_removed.rpc(net_id)
 
 
 func _on_host_pickup_removed(net_id: int) -> void:
@@ -991,9 +1007,16 @@ func _on_host_merchant_active_changed(active: bool) -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 4)
-func net_enemy_spawned(net_id: int, config_path: String, pos_x: float, pos_y: float) -> void:
+func net_enemy_spawned(
+	net_id: int,
+	config_path: String,
+	pos_x: float,
+	pos_y: float,
+	host_spawn_timestamp: float
+) -> void:
 	if game == null or net_manager.is_host():
 		return
+	_remove_client_enemy(net_id, false)
 	var enemy_config: EnemyConfig = load(config_path) as EnemyConfig
 	if enemy_config == null:
 		return
@@ -1002,18 +1025,54 @@ func net_enemy_spawned(net_id: int, config_path: String, pos_x: float, pos_y: fl
 		if enemy_config.enemy_scene_override != null
 		else game.enemy_scene
 	)
-	var enemy := spawn_scene.instantiate() as Enemy
+	var enemy: Enemy = spawn_scene.instantiate() as Enemy
 	if enemy == null:
 		return
 	game.enemy_container.add_child(enemy)
-	enemy.global_position = Vector2(pos_x, pos_y)
+	var spawn_position: Vector2 = Vector2(pos_x, pos_y)
+	var mapped_spawn_time: float = _map_host_timestamp_to_client_time(host_spawn_timestamp)
+	_enemy_spawn_snapshot_times[net_id] = mapped_spawn_time
+	enemy.global_position = _get_buffered_enemy_position(net_id, spawn_position)
 	enemy.setup(enemy_config, game.player, game.grid_pathfinder)
-	enemy.set_physics_process(false)
-	enemy.set_process(false)
-	enemy.collision_layer = 4
-	enemy.collision_mask = 0
+	enemy.configure_multiplayer_proxy()
 	enemy.set_meta("net_id", net_id)
 	_net_enemies[net_id] = enemy
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_enemy_removed(net_id: int) -> void:
+	_remove_client_enemy(net_id, true)
+
+
+func _get_buffered_enemy_position(net_id: int, fallback_position: Vector2) -> Vector2:
+	var interp: NetInterpolator = enemy_interpolators.get(net_id) as NetInterpolator
+	if interp == null or interp.get_buffer_size() <= 0:
+		return fallback_position
+	return interp.get_interpolated_position(_get_net_time())
+
+
+func _reconcile_enemy_roster(seen_enemy_ids: Dictionary, snapshot_time: float) -> void:
+	var stale_ids: Array[int] = []
+	for net_id_variant in _net_enemies:
+		var net_id := int(net_id_variant)
+		if seen_enemy_ids.has(net_id):
+			continue
+		var spawn_time := float(_enemy_spawn_snapshot_times.get(net_id, -INF))
+		if spawn_time > snapshot_time:
+			continue
+		stale_ids.append(net_id)
+	for net_id in stale_ids:
+		_remove_client_enemy(net_id, true)
+
+
+func _remove_client_enemy(net_id: int, clear_interpolator: bool) -> void:
+	var enemy: Enemy = _net_enemies.get(net_id) as Enemy
+	if enemy != null and is_instance_valid(enemy):
+		enemy.queue_free()
+	_net_enemies.erase(net_id)
+	_enemy_spawn_snapshot_times.erase(net_id)
+	if clear_interpolator:
+		enemy_interpolators.erase(net_id)
 
 
 @rpc("authority", "call_remote", "reliable", 4)
