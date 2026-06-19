@@ -370,6 +370,74 @@ func apply_remote_multiplayer_state(
 	_update_armed_effect()
 
 
+
+func apply_multiplayer_snapshot_motion(
+	remote_position: Vector2,
+	remote_velocity: Vector2,
+	facing_id: int,
+	anim_state: int
+) -> void:
+	global_position = remote_position
+	velocity = remote_velocity
+	_set_multiplayer_facing_id(facing_id)
+	current_form_mode = (
+		PickupConfig.PlayerFormMode.ARMED
+		if anim_state == 1
+		else PickupConfig.PlayerFormMode.NORMAL
+	)
+	_update_animation()
+	_update_armed_effect()
+
+
+func apply_multiplayer_realtime_state(
+	new_current_health: int,
+	new_max_health: int,
+	new_current_xirang: int,
+	new_is_dead: bool,
+	new_invincibility_time_left: float,
+	new_skill1_unlocked: bool,
+	new_skill1_charge: float,
+	new_skill1_charge_duration: float,
+	new_form_mode: int,
+	new_shot_pattern: int
+) -> void:
+	max_health = maxi(new_max_health, 1)
+	current_xirang = maxi(new_current_xirang, 0)
+	xirang_changed.emit(current_xirang, 0)
+	skill1_unlocked = new_skill1_unlocked
+	skill1_charge_duration = maxf(new_skill1_charge_duration, 0.01)
+	skill1_charge = clampf(new_skill1_charge, 0.0, skill1_charge_duration)
+	current_form_mode = new_form_mode
+	current_shot_pattern = new_shot_pattern
+	form_buff_time_left = 0.0
+	rapid_buff_time_left = 0.0
+	speed_buff_time_left = 0.0
+	var clamped_health: int = clampi(new_current_health, 0, max_health)
+	if new_is_dead or clamped_health <= 0:
+		current_health = 0
+		if not is_dead:
+			_die()
+		else:
+			health_bar.set_health(0, max_health)
+			health_bar.visible = false
+		health_changed.emit(current_health, max_health)
+		_update_skill1_charge_bar()
+		_update_armed_effect()
+		return
+	if is_dead:
+		revive_multiplayer(global_position, clamped_health, new_invincibility_time_left)
+	else:
+		current_health = clamped_health
+		health_bar.visible = true
+		health_bar.setup(max_health, current_health)
+		health_changed.emit(current_health, max_health)
+	invincibility_time_left = maxf(new_invincibility_time_left, 0.0)
+	_set_hurt_blink_enabled(invincibility_time_left > 0.0)
+	_refresh_shooting_timer_wait_time()
+	_update_skill1_charge_bar()
+	_update_animation()
+	_update_armed_effect()
+
 func _update_nameplate_position() -> void:
 	if not nameplate_layer.visible:
 		return
@@ -816,6 +884,18 @@ func get_multiplayer_facing_id() -> int:
 
 func get_multiplayer_anim_state() -> int:
 	return 1 if current_form_mode == PickupConfig.PlayerFormMode.ARMED else 0
+
+
+func _set_multiplayer_facing_id(facing_id: int) -> void:
+	match facing_id:
+		1:
+			facing_suffix = &"left"
+		2:
+			facing_suffix = &"up"
+		3:
+			facing_suffix = &"down"
+		_:
+			facing_suffix = &"right"
 
 func _facing_suffix_to_vector(suffix: StringName) -> Vector2:
 	match suffix:

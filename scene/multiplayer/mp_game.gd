@@ -80,7 +80,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _process(_delta: float) -> void:
-	if net_manager.is_client():
+	if net_manager.is_client() or net_manager.is_host():
 		_client_interpolate_entities()
 
 
@@ -178,6 +178,10 @@ func _client_send_input_if_needed(buttons: int) -> void:
 		move_input != Vector2.ZERO
 		or shoot_input != Vector2.ZERO
 		or player_node.velocity.length_squared() > INPUT_CHANGE_EPSILON
+		or player_node.skill1_unlocked
+		or player_node.invincibility_time_left > 0.0
+		or player_node.current_form_mode != PickupConfig.PlayerFormMode.NORMAL
+		or player_node.current_shot_pattern != PickupConfig.ShotPattern.NORMAL
 	)
 	if not input_changed and not keepalive_due and buttons == 0 and not active_realtime_state:
 		return
@@ -192,7 +196,17 @@ func _client_send_input_if_needed(buttons: int) -> void:
 		player_node.global_position,
 		player_node.velocity,
 		shoot_input,
-		buttons
+		buttons,
+		player_node.current_health,
+		player_node.max_health,
+		player_node.current_xirang,
+		player_node.is_dead,
+		player_node.invincibility_time_left,
+		player_node.skill1_unlocked,
+		player_node.skill1_charge,
+		player_node.skill1_charge_duration,
+		player_node.current_form_mode,
+		player_node.current_shot_pattern
 	)
 
 
@@ -219,7 +233,13 @@ func _client_interpolate_entities() -> void:
 		var interp := player_interpolators[peer_id] as NetInterpolator
 		var player_node: Player = game.get_player_for_peer(peer_id)
 		if interp != null and player_node != null and is_instance_valid(player_node):
-			player_node.global_position = interp.get_interpolated_position(current_time)
+			var frame_state: NetInterpolator.FrameSnapshot = interp.get_current_state(current_time)
+			player_node.apply_multiplayer_snapshot_motion(
+				interp.get_interpolated_position(current_time),
+				interp.get_interpolated_velocity(current_time),
+				frame_state.facing,
+				frame_state.anim_state
+			)
 	for net_id_variant in enemy_interpolators:
 		var net_id := int(net_id_variant)
 		var enemy_interp := enemy_interpolators[net_id] as NetInterpolator
@@ -256,6 +276,20 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 			0,
 			false
 		)
+		var player_node: Player = game.get_player_for_peer(player_state.peer_id)
+		if player_node != null and is_instance_valid(player_node):
+			player_node.apply_multiplayer_realtime_state(
+				player_state.current_health,
+				player_state.max_health,
+				player_state.current_xirang,
+				player_state.is_dead,
+				player_state.invincibility_time_left,
+				player_state.skill1_unlocked,
+				player_state.skill1_charge,
+				player_state.skill1_charge_duration,
+				player_state.form_mode,
+				player_state.shot_pattern
+			)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
@@ -295,7 +329,17 @@ func _rpc_client_player_state(
 	position: Vector2,
 	velocity: Vector2,
 	shoot_input: Vector2,
-	buttons: int
+	buttons: int,
+	current_health: int,
+	max_health: int,
+	current_xirang: int,
+	is_dead: bool,
+	invincibility_time_left: float,
+	skill1_unlocked: bool,
+	skill1_charge: float,
+	skill1_charge_duration: float,
+	form_mode: int,
+	shot_pattern: int
 ) -> void:
 	if not net_manager.is_host() or game == null:
 		return
@@ -312,6 +356,19 @@ func _rpc_client_player_state(
 		net_player_state_corrected.rpc_id(sender_id, player_node.global_position, player_node.velocity)
 		return
 	player_node.apply_remote_multiplayer_state(position, velocity, shoot_input)
+	player_node.apply_multiplayer_realtime_state(
+		player_node.current_health,
+		player_node.max_health,
+		player_node.current_xirang,
+		player_node.is_dead,
+		invincibility_time_left,
+		player_node.skill1_unlocked,
+		skill1_charge,
+		skill1_charge_duration,
+		form_mode,
+		shot_pattern
+	)
+	_push_player_interpolator_snapshot(sender_id, _get_net_time(), player_node)
 
 
 @rpc("authority", "call_remote", "reliable", 4)
@@ -321,6 +378,25 @@ func net_player_state_corrected(position: Vector2, velocity: Vector2) -> void:
 	game.player.global_position = position
 	game.player.velocity = velocity
 
+
+
+func _push_player_interpolator_snapshot(peer_id: int, timestamp: float, player_node: Player) -> void:
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	if not player_interpolators.has(peer_id):
+		player_interpolators[peer_id] = NetInterpolator.new(
+			1.0 / float(_NetConstants.PLAYER_SNAPSHOT_HZ)
+		)
+	var interp: NetInterpolator = player_interpolators[peer_id] as NetInterpolator
+	interp.push_snapshot(
+		timestamp,
+		player_node.global_position,
+		player_node.velocity,
+		player_node.get_multiplayer_facing_id(),
+		player_node.get_multiplayer_anim_state(),
+		0,
+		false
+	)
 
 func _accept_client_player_state(
 	peer_id: int,
@@ -889,12 +965,19 @@ func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
 		return
 	_dead_player_revive_times.erase(peer_id)
 	_dead_player_revive_last_seconds.erase(peer_id)
+	var now: float = _get_net_time()
+	_accepted_player_state_positions[peer_id] = revive_position
+	_accepted_player_state_times[peer_id] = now
+	var player_interp: NetInterpolator = player_interpolators.get(peer_id) as NetInterpolator
+	if player_interp != null:
+		player_interp.clear()
 	var health_revision := _next_player_health_revision(peer_id)
 	player_node.revive_multiplayer(
 		revive_position,
 		player_node.max_health,
 		PLAYER_REVIVE_INVINCIBILITY_SECONDS
 	)
+	net_player_state_corrected.rpc_id(peer_id, revive_position, Vector2.ZERO)
 	net_player_revived.rpc(
 		peer_id,
 		revive_position,

@@ -17,6 +17,7 @@ const MASK_ANIM_STATE := 8
 const MASK_HEALTH := 16
 const MASK_IS_DEAD := 32
 const MASK_XIRANG := 64
+const MASK_PLAYER_META := 128
 
 
 # ─────────────────────────────────────────────
@@ -31,6 +32,16 @@ class PlayerState:
 	var velocity: Vector2 = Vector2.ZERO
 	var facing: int = 0       # 0=right, 1=left, 2=up, 3=down
 	var anim_state: int = 0   # 动画枚举
+	var current_health: int = 0
+	var max_health: int = 0
+	var current_xirang: int = 0
+	var is_dead: bool = false
+	var invincibility_time_left: float = 0.0
+	var skill1_unlocked: bool = false
+	var skill1_charge: float = 0.0
+	var skill1_charge_duration: float = 0.0
+	var form_mode: int = 0
+	var shot_pattern: int = 0
 
 
 ## 上一帧发送的玩家状态缓存（用于增量比较）
@@ -60,6 +71,7 @@ static func encode_player_snapshot(
 			| MASK_VELOCITY
 			| MASK_FACING
 			| MASK_ANIM_STATE
+			| MASK_PLAYER_META
 		)
 	else:
 		if not current.position.is_equal_approx(previous.position):
@@ -70,6 +82,8 @@ static func encode_player_snapshot(
 			mask |= MASK_FACING
 		if current.anim_state != previous.anim_state:
 			mask |= MASK_ANIM_STATE
+		if _player_meta_changed(current, previous):
+			mask |= MASK_PLAYER_META
 
 	# 3) 掩码 (uint8)
 	buf.put_u8(mask)
@@ -85,11 +99,37 @@ static func encode_player_snapshot(
 		buf.put_u8(current.facing)
 	if mask & MASK_ANIM_STATE:
 		buf.put_u8(current.anim_state)
+	if mask & MASK_PLAYER_META:
+		buf.put_16(current.current_health)
+		buf.put_16(current.max_health)
+		buf.put_32(current.current_xirang)
+		buf.put_u8(1 if current.is_dead else 0)
+		buf.put_float(current.invincibility_time_left)
+		buf.put_u8(1 if current.skill1_unlocked else 0)
+		buf.put_float(current.skill1_charge)
+		buf.put_float(current.skill1_charge_duration)
+		buf.put_u8(current.form_mode)
+		buf.put_u8(current.shot_pattern)
 
 	return buf.data_array
 
 
 ## 解码玩家快照数据，将变化应用到 target 上
+
+static func _player_meta_changed(current: PlayerState, previous: PlayerState) -> bool:
+	return (
+		current.current_health != previous.current_health
+		or current.max_health != previous.max_health
+		or current.current_xirang != previous.current_xirang
+		or current.is_dead != previous.is_dead
+		or not is_equal_approx(current.invincibility_time_left, previous.invincibility_time_left)
+		or current.skill1_unlocked != previous.skill1_unlocked
+		or not is_equal_approx(current.skill1_charge, previous.skill1_charge)
+		or not is_equal_approx(current.skill1_charge_duration, previous.skill1_charge_duration)
+		or current.form_mode != previous.form_mode
+		or current.shot_pattern != previous.shot_pattern
+	)
+
 static func decode_player_snapshot(
 	data: PackedByteArray,
 	offset: int,
@@ -113,6 +153,17 @@ static func decode_player_snapshot(
 		target.facing = buf.get_u8()
 	if mask & MASK_ANIM_STATE:
 		target.anim_state = buf.get_u8()
+	if mask & MASK_PLAYER_META:
+		target.current_health = buf.get_16()
+		target.max_health = buf.get_16()
+		target.current_xirang = buf.get_32()
+		target.is_dead = buf.get_u8() != 0
+		target.invincibility_time_left = buf.get_float()
+		target.skill1_unlocked = buf.get_u8() != 0
+		target.skill1_charge = buf.get_float()
+		target.skill1_charge_duration = buf.get_float()
+		target.form_mode = buf.get_u8()
+		target.shot_pattern = buf.get_u8()
 
 	return buf.get_position()
 

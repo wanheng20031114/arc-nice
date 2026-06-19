@@ -661,6 +661,16 @@ func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 		state.velocity = player_instance.velocity
 		state.facing = player_instance.get_multiplayer_facing_id()
 		state.anim_state = player_instance.get_multiplayer_anim_state()
+		state.current_health = player_instance.current_health
+		state.max_health = player_instance.max_health
+		state.current_xirang = player_instance.current_xirang
+		state.is_dead = player_instance.is_dead
+		state.invincibility_time_left = player_instance.invincibility_time_left
+		state.skill1_unlocked = player_instance.skill1_unlocked
+		state.skill1_charge = player_instance.skill1_charge
+		state.skill1_charge_duration = player_instance.skill1_charge_duration
+		state.form_mode = player_instance.current_form_mode
+		state.shot_pattern = player_instance.current_shot_pattern
 		states.append(state)
 	return states
 
