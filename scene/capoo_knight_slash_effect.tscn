@@ -4,6 +4,7 @@
 [ext_resource type="SpriteFrames" path="res://resources/animation/capoo_knight_slash.tres" id="2_frames"]
 
 [node name="CapooKnightSlashEffect" type="Node2D"]
+z_index = 6
 script = ExtResource("1_script")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
@@ -11,3 +12,4 @@ texture_filter = 2
 sprite_frames = ExtResource("2_frames")
 animation = &"slash"
 autoplay = "slash"
+

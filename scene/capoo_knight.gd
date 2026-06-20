@@ -290,8 +290,11 @@ func _play_slash_effect(direction: Vector2) -> void:
 		effect.queue_free()
 		return
 	spawn_parent.add_child(effect)
-	effect.global_position = global_position
-	effect.rotation = direction.angle()
+	var safe_direction := direction.normalized() if direction != Vector2.ZERO else Vector2.RIGHT
+	var effect_distance := (knight_config.slash_inner_radius + knight_config.slash_outer_radius) * 0.5
+	effect.global_position = global_position + safe_direction * effect_distance
+	effect.rotation = safe_direction.angle()
+	effect.z_index = 6
 
 
 func _set_windup_warning(progress: float, direction: Vector2) -> void:
@@ -512,3 +515,4 @@ func _spawn_dropped_pickup(pickup_config: PickupConfig, spawn_position: Vector2)
 	pickup_instance.config = pickup_config
 	drop_parent.add_child(pickup_instance)
 	pickup_instance.global_position = spawn_position
+
