@@ -1,0 +1,67 @@
+[gd_resource type="SpriteFrames" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/capoo_rpg_explosion.png" id="1_texture"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_0"]
+atlas = ExtResource("1_texture")
+region = Rect2(0, 0, 96, 96)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_1"]
+atlas = ExtResource("1_texture")
+region = Rect2(96, 0, 96, 96)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_2"]
+atlas = ExtResource("1_texture")
+region = Rect2(192, 0, 96, 96)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_3"]
+atlas = ExtResource("1_texture")
+region = Rect2(288, 0, 96, 96)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_4"]
+atlas = ExtResource("1_texture")
+region = Rect2(384, 0, 96, 96)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_5"]
+atlas = ExtResource("1_texture")
+region = Rect2(480, 0, 96, 96)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_6"]
+atlas = ExtResource("1_texture")
+region = Rect2(576, 0, 96, 96)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_7"]
+atlas = ExtResource("1_texture")
+region = Rect2(672, 0, 96, 96)
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_3")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_4")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_5")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_7")
+}],
+"loop": false,
+"name": &"explode",
+"speed": 14.0
+}]

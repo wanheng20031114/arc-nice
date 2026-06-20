@@ -6,6 +6,7 @@ const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const SKILL1_BOMB_SCENE := preload("res://scene/weishidaier_skill1_bomb.tscn")
 const CAPOO_AK47_BULLET_SCENE := preload("res://scene/capoo_ak47_bullet.tscn")
+const CAPOO_RPG_ROCKET_SCENE := preload("res://scene/capoo_rpg_rocket.tscn")
 const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/yuanshi_insect_fire_projectile.tscn")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 
@@ -617,6 +618,13 @@ func _instantiate_projectile(
 			capoo_bullet.top_level = true
 			capoo_bullet.setup(direction, damage, speed, lifetime)
 			return capoo_bullet
+		&"capoo_rpg_rocket":
+			var rpg_rocket := CAPOO_RPG_ROCKET_SCENE.instantiate() as CapooRPGRocket
+			if rpg_rocket == null:
+				return null
+			rpg_rocket.top_level = true
+			rpg_rocket.setup(direction, damage, speed, lifetime)
+			return rpg_rocket
 		&"yuanshi_fire_projectile":
 			var fire_projectile := YUANSHI_FIRE_PROJECTILE_SCENE.instantiate() as YuanshiInsectFireProjectile
 			if fire_projectile == null:
