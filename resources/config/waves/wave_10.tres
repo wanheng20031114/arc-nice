@@ -22,7 +22,7 @@ count = 0
 [sub_resource type="Resource" id="WaveEnemyEntry_fast"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("4_fast")
-count = 11
+count = 16
 
 [sub_resource type="Resource" id="WaveEnemyEntry_shell"]
 script = ExtResource("2_entry")
@@ -32,44 +32,44 @@ count = 16
 [sub_resource type="Resource" id="WaveEnemyEntry_bomber"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("6_bomber")
-count = 28
+count = 24
 
 [sub_resource type="Resource" id="WaveEnemyEntry_purple"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("7_purple")
-count = 28
+count = 26
 
 [sub_resource type="Resource" id="WaveEnemyEntry_fire"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("8_fire")
-count = 32
+count = 28
 
 [sub_resource type="Resource" id="WaveEnemyEntry_green"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("9_green")
-count = 24
+count = 22
 
 [sub_resource type="Resource" id="WaveEnemyEntry_guardian"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("10_guardian")
-count = 30
+count = 26
 
 [sub_resource type="Resource" id="WaveEnemyEntry_capoo"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("11_capoo")
-count = 27
+count = 25
 
 [sub_resource type="Resource" id="WaveEnemyEntry_knight"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("13_knight")
-count = 14
+count = 12
 
 [resource]
 script = ExtResource("1_wave")
-wave_name = "第十波 - 终焉"
+wave_name = "第十波 - 末日虫潮"
 enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic"), SubResource("WaveEnemyEntry_fast"), SubResource("WaveEnemyEntry_shell"), SubResource("WaveEnemyEntry_bomber"), SubResource("WaveEnemyEntry_purple"), SubResource("WaveEnemyEntry_fire"), SubResource("WaveEnemyEntry_green"), SubResource("WaveEnemyEntry_guardian"), SubResource("WaveEnemyEntry_capoo"), SubResource("WaveEnemyEntry_knight")])
-spawn_interval = 0.05
-spawn_count_per_tick = 16
-max_alive_enemies = 160
-rest_duration_after_wave = 0.0
+spawn_interval = 0.07
+spawn_count_per_tick = 14
+max_alive_enemies = 140
+rest_duration_after_wave = 10.0
 music = ExtResource("12_music")

@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="WaveConfig" format=3 uid="uid://dgw2a00imx1o7"]
+[gd_resource type="Resource" script_class="WaveConfig" format=3]
 
 [ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="1_wave"]
 [ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="2_entry"]
@@ -10,54 +10,66 @@
 [ext_resource type="Resource" uid="uid://c6unlgwoqktx5" path="res://resources/config/enemies/yuanshi_insect_fire_ranged.tres" id="8_fire"]
 [ext_resource type="Resource" uid="uid://yefrqmv7b306" path="res://resources/config/enemies/yuanshi_insect_green_shell.tres" id="9_green"]
 [ext_resource type="Resource" uid="uid://b6g77s6rrfiw8" path="res://resources/config/enemies/yuanshi_insect_guardian.tres" id="10_guardian"]
-[ext_resource type="AudioStream" uid="uid://dvxl8ixgmll4p" path="res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3" id="11_music"]
+[ext_resource type="Resource" uid="uid://bwc31dxuxgnhs" path="res://resources/config/enemies/capoo_ak47.tres" id="11_capoo"]
+[ext_resource type="AudioStream" uid="uid://diw1565kbaa50" path="res://resources/audio/1-29 Journey of the Prairie King (Final Boss & Ending).mp3" id="12_music"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_knight.tres" id="13_knight"]
 
 [sub_resource type="Resource" id="WaveEnemyEntry_basic"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("3_basic")
-count = 25
+count = 0
 
 [sub_resource type="Resource" id="WaveEnemyEntry_fast"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("4_fast")
-count = 25
+count = 11
 
 [sub_resource type="Resource" id="WaveEnemyEntry_shell"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("5_shell")
-count = 20
+count = 16
 
 [sub_resource type="Resource" id="WaveEnemyEntry_bomber"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("6_bomber")
-count = 15
+count = 28
 
 [sub_resource type="Resource" id="WaveEnemyEntry_purple"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("7_purple")
-count = 20
+count = 28
 
 [sub_resource type="Resource" id="WaveEnemyEntry_fire"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("8_fire")
-count = 15
+count = 32
 
 [sub_resource type="Resource" id="WaveEnemyEntry_green"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("9_green")
-count = 5
+count = 24
 
 [sub_resource type="Resource" id="WaveEnemyEntry_guardian"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("10_guardian")
-count = 5
+count = 30
+
+[sub_resource type="Resource" id="WaveEnemyEntry_capoo"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("11_capoo")
+count = 27
+
+[sub_resource type="Resource" id="WaveEnemyEntry_knight"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("13_knight")
+count = 14
 
 [resource]
 script = ExtResource("1_wave")
-wave_name = "第五波 - 紫焰风暴"
-enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic"), SubResource("WaveEnemyEntry_fast"), SubResource("WaveEnemyEntry_shell"), SubResource("WaveEnemyEntry_bomber"), SubResource("WaveEnemyEntry_purple"), SubResource("WaveEnemyEntry_fire"), SubResource("WaveEnemyEntry_green"), SubResource("WaveEnemyEntry_guardian")])
-spawn_interval = 0.14
-spawn_count_per_tick = 8
-max_alive_enemies = 85
-rest_duration_after_wave = 20.0
-music = ExtResource("11_music")
+wave_name = "第十一波 - 终焉"
+enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic"), SubResource("WaveEnemyEntry_fast"), SubResource("WaveEnemyEntry_shell"), SubResource("WaveEnemyEntry_bomber"), SubResource("WaveEnemyEntry_purple"), SubResource("WaveEnemyEntry_fire"), SubResource("WaveEnemyEntry_green"), SubResource("WaveEnemyEntry_guardian"), SubResource("WaveEnemyEntry_capoo"), SubResource("WaveEnemyEntry_knight")])
+spawn_interval = 0.05
+spawn_count_per_tick = 16
+max_alive_enemies = 160
+rest_duration_after_wave = 0.0
+music = ExtResource("12_music")

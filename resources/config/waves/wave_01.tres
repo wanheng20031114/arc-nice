@@ -2,38 +2,20 @@
 
 [ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="1_wave"]
 [ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="2_entry"]
-[ext_resource type="Resource" uid="uid://d31hbyrmfh543" path="res://resources/config/enemies/yuanshi_insect_basic.tres" id="3_basic"]
-[ext_resource type="Resource" uid="uid://drqobuvr21y71" path="res://resources/config/enemies/yuanshi_insect_fast.tres" id="4_fast"]
-[ext_resource type="Resource" uid="uid://57jdvc0bd7r8" path="res://resources/config/enemies/capoo_swordsman.tres" id="5_hbu7x"]
-[ext_resource type="Resource" uid="uid://chktgvo5mcaul" path="res://resources/config/enemies/yuanshi_insect_shell.tres" id="5_shell"]
-[ext_resource type="AudioStream" uid="uid://cmfbw4cr7dde" path="res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3" id="6_music"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_rpg.tres" id="3_rpg"]
+[ext_resource type="AudioStream" uid="uid://cmfbw4cr7dde" path="res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3" id="4_music"]
 
-[sub_resource type="Resource" id="WaveEnemyEntry_basic"]
+[sub_resource type="Resource" id="WaveEnemyEntry_rpg"]
 script = ExtResource("2_entry")
-enemy_config = ExtResource("3_basic")
-count = 50
-
-[sub_resource type="Resource" id="WaveEnemyEntry_fast"]
-script = ExtResource("2_entry")
-enemy_config = ExtResource("4_fast")
-count = 35
-
-[sub_resource type="Resource" id="WaveEnemyEntry_shell"]
-script = ExtResource("2_entry")
-enemy_config = ExtResource("5_shell")
-count = 15
-
-[sub_resource type="Resource" id="Resource_pobrf"]
-script = ExtResource("2_entry")
-enemy_config = ExtResource("5_hbu7x")
-metadata/_custom_type_script = "uid://x110ar7nhdqa"
+enemy_config = ExtResource("3_rpg")
+count = 1
 
 [resource]
 script = ExtResource("1_wave")
-wave_name = "第一波 - 初潮涌动"
-enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic"), SubResource("WaveEnemyEntry_fast"), SubResource("WaveEnemyEntry_shell"), SubResource("Resource_pobrf")])
+wave_name = "第一波 - RPG猫猫虫"
+enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_rpg")])
 spawn_interval = 0.2
-spawn_count_per_tick = 5
-max_alive_enemies = 55
+spawn_count_per_tick = 1
+max_alive_enemies = 1
 rest_duration_after_wave = 25.0
-music = ExtResource("6_music")
+music = ExtResource("4_music")

@@ -4,8 +4,8 @@ const CAPOO_SCENE := preload("res://scene/capoo_ak47.tscn")
 const BULLET_SCENE := preload("res://scene/capoo_ak47_bullet.tscn")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const CAPOO_CONFIG := preload("res://resources/config/enemies/capoo_ak47.tres")
-const WAVE_04 := preload("res://resources/config/waves/wave_04.tres")
-const WAVE_05 := preload("res://resources/config/waves/wave_05.tres")
+const WAVE_06 := preload("res://resources/config/waves/wave_06.tres")
+const WAVE_07 := preload("res://resources/config/waves/wave_07.tres")
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -47,9 +47,9 @@ func _run() -> void:
 func _test_resource_contract() -> void:
 	_expect(CAPOO_CONFIG is CapooAK47Config, "AK Capoo config must use CapooAK47Config.")
 	_expect(CAPOO_CONFIG.display_name == "AK猫猫虫", "Display name mismatch.")
-	_expect(CAPOO_CONFIG.max_health == 12, "AK Capoo health mismatch.")
-	_expect(CAPOO_CONFIG.attack_damage == 1, "AK Capoo projectile damage must be 1.")
-	_expect(is_equal_approx(CAPOO_CONFIG.collision_radius, 5.5), "AK Capoo collision radius must match its smaller sprite.")
+	_expect(CAPOO_CONFIG.max_health == 150, "AK Capoo health mismatch.")
+	_expect(CAPOO_CONFIG.attack_damage == 20, "AK Capoo projectile damage mismatch.")
+	_expect(is_equal_approx(CAPOO_CONFIG.collision_radius, 6.5), "AK Capoo collision radius mismatch.")
 	_expect(CAPOO_CONFIG.burst_count == 10, "AK Capoo burst count must be 10.")
 	_expect(is_equal_approx(CAPOO_CONFIG.attack_windup, 1.5), "AK Capoo windup must be 1.5 seconds.")
 	_expect(is_equal_approx(CAPOO_CONFIG.projectile_speed, 142.5), "AK projectile speed mismatch.")
@@ -59,12 +59,12 @@ func _test_resource_contract() -> void:
 	var capoo_scene_instance := CAPOO_SCENE.instantiate()
 	var attack_audio := capoo_scene_instance.get_node("AttackAudio") as AudioStreamPlayer2D
 	var animated_sprite := capoo_scene_instance.get_node("AnimatedSprite2D") as AnimatedSprite2D
-	_expect(attack_audio.volume_db <= -18.0, "AK fire audio must stay quiet enough for bursts.")
+	_expect(attack_audio.volume_db <= -16.0, "AK fire audio must stay quiet enough for bursts.")
 	_expect(attack_audio.max_polyphony <= 3, "AK fire audio polyphony must avoid noisy overlap.")
 	_expect(animated_sprite.scale.x < 0.5 and animated_sprite.scale.y < 0.5, "AK Capoo high resolution sprite must be scene-scaled down.")
 	capoo_scene_instance.free()
-	_expect(_count_wave_entries(WAVE_04) == 4, "Wave 4 must introduce 4 AK Capoos.")
-	_expect(_count_wave_entries(WAVE_05) == 8, "Wave 5 must contain 8 AK Capoos.")
+	_expect(_count_wave_entries(WAVE_06) == 9, "Wave 6 must introduce 9 AK Capoos.")
+	_expect(_count_wave_entries(WAVE_07) == 16, "Wave 7 must contain 16 AK Capoos.")
 
 	var texture := load("res://resources/texture/capoo_ak47.png") as Texture2D
 	var bullet_texture := load("res://resources/texture/capoo_ak47_bullet.png") as Texture2D

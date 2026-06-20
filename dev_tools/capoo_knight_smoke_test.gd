@@ -4,12 +4,12 @@ const KNIGHT_SCENE := preload("res://scene/capoo_knight.tscn")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres")
 const WAVES := [
-	preload("res://resources/config/waves/wave_05.tres"),
 	preload("res://resources/config/waves/wave_06.tres"),
 	preload("res://resources/config/waves/wave_07.tres"),
 	preload("res://resources/config/waves/wave_08.tres"),
 	preload("res://resources/config/waves/wave_09.tres"),
 	preload("res://resources/config/waves/wave_10.tres"),
+	preload("res://resources/config/waves/wave_11.tres"),
 ]
 const EXPECTED_KNIGHT_COUNTS := [4, 6, 8, 10, 12, 14]
 const EXPECTED_WAVE_TOTALS := [140, 150, 160, 180, 195, 210]

@@ -6,7 +6,7 @@ const FIRE_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_fire
 const BOMBER_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_bomber.tres")
 const FIRE_PROJECTILE_SCENE := preload("res://scene/yuanshi_insect_fire_projectile.tscn")
 const FIRE_CONFIG_SCRIPT := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged_config.gd")
-const FINAL_WAVE := preload("res://resources/config/waves/wave_03.tres")
+const FIRE_WAVE := preload("res://resources/config/waves/wave_04.tres")
 const COMBAT_STATE_CHASE := 0
 const COMBAT_STATE_ATTACK := 1
 
@@ -65,17 +65,17 @@ func _test_resource_contract() -> void:
 		is_equal_approx(FIRE_CONFIG.projectile_speed, 142.5),
 		"Projectile speed must be 142.5."
 	)
-	_expect(FIRE_CONFIG.attack_damage == 1, "Fire projectile must use base attack damage.")
+	_expect(FIRE_CONFIG.attack_damage == 10, "Fire projectile damage mismatch.")
 	_expect(is_equal_approx(FIRE_CONFIG.attack_interval, 1.35), "Attack interval must be 1.35.")
 	_expect(FIRE_CONFIG.attack_fire_frame == 2, "Attack must fire on frame 2.")
 
 	var fire_enemy_count := 0
-	for entry in FINAL_WAVE.enemy_entries:
+	for entry in FIRE_WAVE.enemy_entries:
 		if entry != null and entry.enemy_config == FIRE_CONFIG:
 			fire_enemy_count += entry.count
 	_expect(
-		fire_enemy_count == 6,
-		"Final wave must contain 6 fire Yuanshi insects."
+		fire_enemy_count == 10,
+		"Wave 4 must contain 10 fire Yuanshi insects."
 	)
 
 	var projectile := FIRE_PROJECTILE_SCENE.instantiate() as YuanshiInsectFireProjectile
@@ -170,7 +170,7 @@ func _test_projectile_damage_and_world_collision() -> void:
 	var projectile := _spawn_projectile(Vector2.ZERO, Vector2.RIGHT)
 	await _wait_physics_frames(30)
 
-	_expect(player.current_health == initial_health - 1, "Projectile did not damage the player exactly once.")
+	_expect(player.current_health == initial_health - FIRE_CONFIG.attack_damage, "Projectile did not damage the player exactly once.")
 	_expect(not is_instance_valid(projectile), "Projectile remained after hitting the player.")
 	player.queue_free()
 	await physics_frame

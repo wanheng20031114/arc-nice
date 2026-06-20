@@ -2,6 +2,7 @@ extends SceneTree
 
 const GAME_SCENE := preload("res://scene/game.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
+const RPG_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
 const DEFAULT_WAVES: Array[WaveConfig] = [
 	preload("res://resources/config/waves/wave_01.tres"),
 	preload("res://resources/config/waves/wave_02.tres"),
@@ -32,6 +33,7 @@ func _run() -> void:
 	current_scene = test_root
 
 	_test_default_wave_resources()
+	_test_game_scene_wave_list()
 	_test_merchant_asset()
 	await _test_wave_state_flow()
 	await _test_defeat_stops_flow()
@@ -53,9 +55,9 @@ func _run() -> void:
 
 
 func _test_default_wave_resources() -> void:
-	var expected_totals := [8, 59, 32, 104, 142]
-	var expected_rests := [30.0, 30.0, 30.0, 30.0, 0.0]
-	var expected_max_alive := [100, 100, 100, 120, 140]
+	var expected_totals := [1, 101, 110, 120, 130]
+	var expected_rests := [25.0, 25.0, 25.0, 20.0, 20.0]
+	var expected_max_alive := [1, 55, 65, 75, 85]
 	for wave_index in range(DEFAULT_WAVES.size()):
 		var wave_config := DEFAULT_WAVES[wave_index]
 		_expect(wave_config != null, "Wave %d resource is missing." % (wave_index + 1))
@@ -84,6 +86,30 @@ func _test_default_wave_resources() -> void:
 					entry.enemy_config != null and entry.count > 0,
 					"Wave %d contains an invalid enemy entry." % (wave_index + 1)
 				)
+
+
+func _test_game_scene_wave_list() -> void:
+	var game := GAME_SCENE.instantiate() as Node2D
+	var game_waves: Array = game.get("waves")
+	_expect(game_waves.size() == 11, "Game scene must load 11 waves after the RPG opener.")
+	if game_waves.size() >= 1:
+		var first_wave := game_waves[0] as WaveConfig
+		_expect(first_wave != null, "Game first wave resource is missing.")
+		if first_wave != null:
+			_expect(first_wave.get_total_enemy_count() == 1, "Game first wave must contain exactly one enemy.")
+			_expect(first_wave.enemy_entries.size() == 1, "Game first wave must contain one enemy entry.")
+			if first_wave.enemy_entries.size() == 1:
+				_expect(
+					first_wave.enemy_entries[0].enemy_config == RPG_CONFIG,
+					"Game first wave must spawn RPG Capoo."
+				)
+	if game_waves.size() >= 11:
+		var final_wave := game_waves[10] as WaveConfig
+		_expect(
+			final_wave != null and final_wave.get_total_enemy_count() == 210,
+			"Game final wave must preserve the old wave 10 content."
+		)
+	game.queue_free()
 
 
 func _test_merchant_asset() -> void:
@@ -204,7 +230,7 @@ func _test_wave_state_flow() -> void:
 	_expect(game.get("wave_state") == STATE_VICTORY, "Third wave did not enter victory.")
 	_expect(not merchant.visible, "Merchant remained visible after victory.")
 	_expect(wave_hud.result_overlay.visible, "Victory overlay is hidden.")
-	_expect(wave_hud.result_label.text == "通关", "Victory text is incorrect.")
+	_expect(wave_hud.result_title.text == "通关", "Victory text is incorrect.")
 	var player := game.get_node("Player") as Player
 	_expect(not player.controls_locked, "Victory incorrectly locked player controls.")
 
