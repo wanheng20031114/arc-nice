@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="CapooAK47Config" format=3 uid="uid://bwc31dxuxgnhs"]
 
 [ext_resource type="Script" uid="uid://gho1ntlrkebh" path="res://resources/config/enemies/capoo_ak47_config.gd" id="1_script"]
-[ext_resource type="PackedScene" path="res://scene/enemy/capoo_ak47.tscn" id="2_scene"]
+[ext_resource type="PackedScene" uid="uid://dto67lqb21m3d" path="res://scene/enemy/capoo_ak47.tscn" id="2_scene"]
 [ext_resource type="PackedScene" path="res://scene/enemy/capoo_ak47_bullet.tscn" id="3_bullet"]
 [ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="4_tadrt"]
 [ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="5_2dwh0"]
@@ -13,10 +13,10 @@
 
 [resource]
 script = ExtResource("1_script")
-enemy_scene = ExtResource("2_scene")
 projectile_scene = ExtResource("3_bullet")
 attack_audio_stream = ExtResource("5_audio")
 display_name = "AK猫猫虫"
+enemy_scene = ExtResource("2_scene")
 max_health = 150
 attack_damage = 20
 move_speed = 18.0

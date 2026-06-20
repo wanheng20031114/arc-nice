@@ -9,18 +9,17 @@
 [ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="7_3pf0l"]
 [ext_resource type="Texture2D" uid="uid://gpwpt2glrhpb" path="res://resources/texture/yuanshi_insect_green_aura_particle.tres" id="8_aura_particle"]
 [ext_resource type="Texture2D" uid="uid://04o6ofntabvg" path="res://resources/texture/yuanshi_insect_green_aura_colors.tres" id="9_aura_colors"]
-
 [ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect_green_shell.tscn" id="enemy_scene"]
 
 [resource]
 script = ExtResource("2_script")
-enemy_scene = ExtResource("enemy_scene")
 aura_particle_amount = 84
 aura_particle_lifetime = 0.85
 aura_fill_color = Color(1, 0.16, 0.1, 0.018)
 aura_outline_color = Color(1, 0.38, 0.32, 0.22)
 variant = 5
 display_name = "翠壳原石虫"
+enemy_scene = ExtResource("enemy_scene")
 max_health = 200
 attack_damage = 20
 physical_defense = 5

@@ -7,14 +7,13 @@
 [ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="4_rwna3"]
 [ext_resource type="Script" uid="uid://cxt041wfb1usj" path="res://resources/config/enemies/yuanshi_insect_config.gd" id="5_7pxth"]
 [ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="7_4kq6o"]
-
 [ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect_bomber.tscn" id="enemy_scene"]
 
 [resource]
 script = ExtResource("5_7pxth")
-enemy_scene = ExtResource("enemy_scene")
 variant = 3
 display_name = "自爆原石虫"
+enemy_scene = ExtResource("enemy_scene")
 max_health = 30
 attack_damage = 10
 move_speed = 18.0

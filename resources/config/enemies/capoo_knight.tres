@@ -12,9 +12,9 @@
 
 [resource]
 script = ExtResource("1_script")
-enemy_scene = ExtResource("2_scene")
 slash_effect_scene = ExtResource("4_slash")
 display_name = "骑士猫猫虫"
+enemy_scene = ExtResource("2_scene")
 max_health = 200
 attack_damage = 28
 physical_defense = 20

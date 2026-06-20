@@ -11,13 +11,13 @@
 
 [resource]
 script = ExtResource("1_script")
-enemy_scene = ExtResource("2_scene")
 attack_range = 64.0
 attack_interval = 3.0
 slash_outer_radius = 64.0
 slash_angle_degrees = 80.0
 slash_effect_scene = ExtResource("4_slash")
 display_name = "剑客猫猫虫"
+enemy_scene = ExtResource("2_scene")
 max_health = 400
 attack_damage = 28
 physical_defense = 5

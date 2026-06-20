@@ -7,14 +7,13 @@
 [ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="4_r0afs"]
 [ext_resource type="Script" uid="uid://cxt041wfb1usj" path="res://resources/config/enemies/yuanshi_insect_config.gd" id="5_gt3et"]
 [ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="7_dglay"]
-
 [ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect_shell.tscn" id="enemy_scene"]
 
 [resource]
 script = ExtResource("5_gt3et")
-enemy_scene = ExtResource("enemy_scene")
 variant = 1
 display_name = "硬壳原石虫"
+enemy_scene = ExtResource("enemy_scene")
 max_health = 140
 attack_damage = 14
 physical_defense = 3

@@ -13,11 +13,11 @@
 
 [resource]
 script = ExtResource("2_script")
-enemy_scene = ExtResource("5_enemy_scene")
 projectile_scene = ExtResource("3_projectile")
 attack_audio_stream = ExtResource("4_attack_audio")
 variant = 6
 display_name = "火焰弹原石虫"
+enemy_scene = ExtResource("5_enemy_scene")
 max_health = 40
 attack_damage = 10
 move_speed = 22.0

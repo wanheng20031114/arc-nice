@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="WaveConfig" format=3]
+[gd_resource type="Resource" script_class="WaveConfig" format=3 uid="uid://bqqwah5vdlkeb"]
 
 [ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="1_wave"]
 [ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="2_entry"]
@@ -12,7 +12,7 @@
 [ext_resource type="Resource" uid="uid://b6g77s6rrfiw8" path="res://resources/config/enemies/yuanshi_insect_guardian.tres" id="10_guardian"]
 [ext_resource type="Resource" uid="uid://bwc31dxuxgnhs" path="res://resources/config/enemies/capoo_ak47.tres" id="11_capoo"]
 [ext_resource type="AudioStream" uid="uid://diw1565kbaa50" path="res://resources/audio/1-29 Journey of the Prairie King (Final Boss & Ending).mp3" id="12_music"]
-[ext_resource type="Resource" path="res://resources/config/enemies/capoo_knight.tres" id="13_knight"]
+[ext_resource type="Resource" uid="uid://b361vcg4kkw13" path="res://resources/config/enemies/capoo_knight.tres" id="13_knight"]
 
 [sub_resource type="Resource" id="WaveEnemyEntry_basic"]
 script = ExtResource("2_entry")
