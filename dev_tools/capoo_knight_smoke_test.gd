@@ -1,6 +1,6 @@
-﻿extends SceneTree
+extends SceneTree
 
-const KNIGHT_SCENE := preload("res://scene/capoo_knight.tscn")
+const KNIGHT_SCENE := preload("res://scene/enemy/capoo_knight.tscn")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres")
 const WAVES := [
@@ -52,13 +52,12 @@ func _run() -> void:
 func _test_resource_contract() -> void:
 	_expect(KNIGHT_CONFIG is CapooKnightConfig, "Knight config must use CapooKnightConfig.")
 	_expect(KNIGHT_CONFIG.display_name == "骑士猫猫虫", "Display name mismatch.")
-	_expect(KNIGHT_CONFIG.enemy_scene_override == KNIGHT_SCENE, "Knight must use its own scene.")
+	_expect(KNIGHT_CONFIG.enemy_scene == KNIGHT_SCENE, "Knight must use its own scene.")
 	_expect(KNIGHT_CONFIG.max_health == 200, "Knight health mismatch.")
 	_expect(KNIGHT_CONFIG.attack_damage == 28, "Knight slash damage mismatch.")
 	_expect(KNIGHT_CONFIG.physical_defense == 20, "Knight physical defense mismatch.")
 	_expect(KNIGHT_CONFIG.magic_defense == 0, "Knight magic defense mismatch.")
 	_expect(is_equal_approx(KNIGHT_CONFIG.move_speed, 34.0), "Knight move speed mismatch.")
-	_expect(is_equal_approx(KNIGHT_CONFIG.collision_radius, 6.5), "Knight collision radius mismatch.")
 	_expect(is_equal_approx(KNIGHT_CONFIG.attack_interval, 4.0), "Knight attack interval mismatch.")
 	_expect(is_equal_approx(KNIGHT_CONFIG.attack_windup, 0.35), "Knight windup mismatch.")
 	_expect(is_equal_approx(KNIGHT_CONFIG.slash_outer_radius, 48.0), "Knight slash outer radius mismatch.")
@@ -70,6 +69,15 @@ func _test_resource_contract() -> void:
 	var slash_texture := load("res://resources/texture/capoo_knight_slash.png") as Texture2D
 	_expect(texture != null and texture.get_size() == Vector2(384, 384), "Knight sprite sheet size is incorrect.")
 	_expect(slash_texture != null and slash_texture.get_size() == Vector2(384, 96), "Knight slash sheet size is incorrect.")
+	var knight_instance := KNIGHT_SCENE.instantiate() as CapooKnight
+	var animated_sprite := knight_instance.get_node("AnimatedSprite2D") as AnimatedSprite2D
+	var body_shape := knight_instance.get_node("CollisionShape2D") as CollisionShape2D
+	var touch_shape := knight_instance.get_node("TouchDamageArea/CollisionShape2D") as CollisionShape2D
+	_expect(animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"move"), "Knight scene must own its move animation.")
+	_expect(body_shape.shape is RectangleShape2D, "Knight body collision must be scene-owned rectangle.")
+	_expect(touch_shape.shape is RectangleShape2D, "Knight touch collision must be scene-owned rectangle.")
+	_expect(body_shape.shape != touch_shape.shape, "Knight body and touch shapes must be independently editable.")
+	knight_instance.free()
 
 	for index in range(WAVES.size()):
 		_expect(_count_wave_entries(WAVES[index]) == EXPECTED_KNIGHT_COUNTS[index], "Knight wave count mismatch.")
@@ -143,6 +151,8 @@ func _test_proxy_action_visuals() -> void:
 func _expect_slash_result(player_position: Vector2, should_hit: bool, message: String) -> void:
 	var player := _spawn_player(player_position)
 	var enemy := _spawn_knight(Vector2.ZERO, player)
+	enemy.touch_damage_area.monitoring = false
+	enemy.touch_damage_area.monitorable = false
 	await _wait_physics_frames(2)
 	enemy.slash_direction = Vector2.RIGHT
 	enemy.action_sequence = 1
@@ -157,8 +167,8 @@ func _expect_slash_result(player_position: Vector2, should_hit: bool, message: S
 
 func _spawn_player(position: Vector2) -> Player:
 	var player := PLAYER_SCENE.instantiate() as Player
-	test_root.add_child(player)
 	player.global_position = position
+	test_root.add_child(player)
 	player.invincibility_duration = 0.0
 	player.invincibility_time_left = 0.0
 	player.current_health = 100

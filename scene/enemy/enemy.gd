@@ -183,24 +183,44 @@ func _apply_config() -> void:
 		return
 
 	current_health = config.max_health
-	_apply_collision_radius(config.collision_radius)
-
-	if config.enemy_frames != null:
-		animated_sprite.sprite_frames = config.enemy_frames
-		if config.enemy_frames.has_animation(config.move_animation_name):
-			animated_sprite.play(config.move_animation_name)
-		else:
-			push_warning("Missing enemy move animation: %s" % config.move_animation_name)
+	_play_scene_animation(config.move_animation_name)
 
 
-func _apply_collision_radius(radius: float) -> void:
-	var body_shape := collision_shape.shape as CircleShape2D
-	if body_shape != null:
-		body_shape.radius = radius
+func _play_scene_animation(animation_name: StringName) -> bool:
+	if not _has_scene_animation(animation_name):
+		return false
+	animated_sprite.play(animation_name)
+	return true
 
-	var damage_shape := touch_damage_shape.shape as CircleShape2D
-	if damage_shape != null:
-		damage_shape.radius = radius
+
+func _has_scene_animation(animation_name: StringName) -> bool:
+	if animated_sprite == null:
+		return false
+	if animated_sprite.sprite_frames == null:
+		return false
+	return animated_sprite.sprite_frames.has_animation(animation_name)
+
+
+func _get_body_collision_extent_radius() -> float:
+	return _get_collision_shape_extent_radius(collision_shape)
+
+
+func _get_collision_shape_extent_radius(shape_node: CollisionShape2D) -> float:
+	if shape_node == null or shape_node.shape == null:
+		return 0.0
+
+	var shape_rect := shape_node.shape.get_rect()
+	var local_transform := shape_node.transform
+	var max_radius := 0.0
+	var corners := [
+		shape_rect.position,
+		shape_rect.position + Vector2(shape_rect.size.x, 0.0),
+		shape_rect.position + Vector2(0.0, shape_rect.size.y),
+		shape_rect.position + shape_rect.size,
+	]
+	for corner in corners:
+		max_radius = maxf(max_radius, (local_transform * corner).length())
+	return max_radius
 
 
 func _on_touch_damage_area_body_entered(body: Node2D) -> void:
@@ -342,15 +362,7 @@ func _play_death_sequence_animation(animation_name: StringName, stage: DeathSequ
 	death_sequence_stage = stage
 	death_animation_name_in_use = animation_name
 
-	if config == null:
-		return false
-	if config.enemy_frames == null:
-		return false
-	if not config.enemy_frames.has_animation(animation_name):
-		return false
-
-	animated_sprite.play(animation_name)
-	return true
+	return _play_scene_animation(animation_name)
 
 
 func _on_animated_sprite_animation_finished() -> void:

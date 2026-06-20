@@ -5,9 +5,9 @@ const GAME_SCENE := preload("res://scene/game.tscn")
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const SKILL1_BOMB_SCENE := preload("res://scene/weishidaier_skill1_bomb.tscn")
-const CAPOO_AK47_BULLET_SCENE := preload("res://scene/capoo_ak47_bullet.tscn")
-const CAPOO_RPG_ROCKET_SCENE := preload("res://scene/capoo_rpg_rocket.tscn")
-const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/yuanshi_insect_fire_projectile.tscn")
+const CAPOO_AK47_BULLET_SCENE := preload("res://scene/enemy/capoo_ak47_bullet.tscn")
+const CAPOO_RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo_rpg_rocket.tscn")
+const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 
 const INPUT_BUTTON_SKILL1 := 1
@@ -1222,11 +1222,9 @@ func net_enemy_spawned(
 	var enemy_config: EnemyConfig = load(config_path) as EnemyConfig
 	if enemy_config == null:
 		return
-	var spawn_scene: PackedScene = (
-		enemy_config.enemy_scene_override
-		if enemy_config.enemy_scene_override != null
-		else game.enemy_scene
-	)
+	var spawn_scene := enemy_config.enemy_scene
+	if spawn_scene == null:
+		return
 	var enemy: Enemy = spawn_scene.instantiate() as Enemy
 	if enemy == null:
 		return

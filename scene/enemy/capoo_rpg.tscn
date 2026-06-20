@@ -1,8 +1,9 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
-[ext_resource type="PackedScene" path="res://scene/enemy.tscn" id="1_base"]
-[ext_resource type="Script" path="res://scene/capoo_rpg.gd" id="2_script"]
+[ext_resource type="PackedScene" path="res://scene/enemy/enemy.tscn" id="1_base"]
+[ext_resource type="Script" path="res://scene/enemy/capoo_rpg.gd" id="2_script"]
 [ext_resource type="Shader" path="res://scene/blink.gdshader" id="3_blink"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/capoo_rpg.tres" id="4_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_rpg"]
 resource_local_to_scene = true
@@ -11,13 +12,13 @@ shader_parameter/blink_enabled = false
 shader_parameter/blink_speed = 12.0
 shader_parameter/hidden_ratio = 0.5
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_body"]
+[sub_resource type="RectangleShape2D" id="CircleShape2D_body"]
 resource_local_to_scene = true
-radius = 8.0
+size = Vector2(18.0, 18.0)
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_touch"]
+[sub_resource type="RectangleShape2D" id="CircleShape2D_touch"]
 resource_local_to_scene = true
-radius = 8.0
+size = Vector2(18.0, 18.0)
 
 [node name="CapooRPG" instance=ExtResource("1_base")]
 material = SubResource("ShaderMaterial_rpg")
@@ -29,6 +30,9 @@ direct_chase_extra_distance = 2.0
 [node name="AnimatedSprite2D" parent="." index="0"]
 texture_filter = 2
 scale = Vector2(0.31, 0.31)
+sprite_frames = ExtResource("4_frames")
+animation = &"move"
+frame = 0
 
 [node name="CollisionShape2D" parent="." index="1"]
 shape = SubResource("CircleShape2D_body")

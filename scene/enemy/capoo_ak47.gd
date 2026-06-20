@@ -300,22 +300,20 @@ func _clear_navigation_path() -> void:
 
 
 func _should_direct_chase_target() -> bool:
-	var direct_chase_distance := _get_collision_radius() + _get_target_collision_radius() + direct_chase_extra_distance
+	var direct_chase_distance := _get_body_extent_radius() + _get_target_extent_radius() + direct_chase_extra_distance
 	return global_position.distance_to(target_player.global_position) <= direct_chase_distance
 
 
-func _get_collision_radius() -> float:
-	var body_shape := collision_shape.shape as CircleShape2D
-	return body_shape.radius if body_shape != null else 0.0
+func _get_body_extent_radius() -> float:
+	return _get_body_collision_extent_radius()
 
 
-func _get_target_collision_radius() -> float:
+func _get_target_extent_radius() -> float:
 	var target_collision_shape := target_player.get_node_or_null("CollisionShape2D") as CollisionShape2D
 	if target_collision_shape == null:
 		return 0.0
 
-	var target_circle_shape := target_collision_shape.shape as CircleShape2D
-	return target_circle_shape.radius if target_circle_shape != null else 0.0
+	return _get_collision_shape_extent_radius(target_collision_shape)
 
 
 func _update_facing(move_direction: Vector2) -> void:
@@ -325,10 +323,7 @@ func _update_facing(move_direction: Vector2) -> void:
 
 
 func _play_config_animation(animation_name: StringName) -> void:
-	if config == null or config.enemy_frames == null:
-		return
-	if config.enemy_frames.has_animation(animation_name):
-		animated_sprite.play(animation_name)
+	_play_scene_animation(animation_name)
 
 
 func _set_muzzle_heat(progress: float, direction: Vector2) -> void:

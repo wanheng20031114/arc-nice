@@ -1,7 +1,7 @@
 [gd_scene load_steps=13 format=3 uid="uid://b3bjc1o0cesxc"]
 
 [ext_resource type="Shader" uid="uid://b47uq42hh5vq1" path="res://scene/blink.gdshader" id="1_h08p8"]
-[ext_resource type="Script" path="res://scene/enemy.gd" id="2_enemy"]
+[ext_resource type="Script" path="res://scene/enemy/enemy.gd" id="2_enemy"]
 [ext_resource type="AudioStream" uid="uid://4xnlqa7gq1qw" path="res://resources/audio/cowboy_monsterhit.wav" id="3_hit_audio"]
 [ext_resource type="AudioStream" uid="uid://dtcpsyjgcfb6m" path="res://resources/audio/cowboy_monsterdie.wav" id="4_death_audio"]
 [ext_resource type="Texture2D" uid="uid://bg46042bpug12" path="res://resources/texture/道具ui.png" id="5_hit_texture"]

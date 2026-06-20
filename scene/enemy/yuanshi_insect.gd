@@ -387,28 +387,20 @@ func _clear_navigation_path() -> void:
 
 
 func _should_direct_chase_target() -> bool:
-	var direct_chase_distance := _get_collision_radius() + _get_target_collision_radius() + direct_chase_extra_distance
+	var direct_chase_distance := _get_body_extent_radius() + _get_target_extent_radius() + direct_chase_extra_distance
 	return global_position.distance_to(target_player.global_position) <= direct_chase_distance
 
 
-func _get_collision_radius() -> float:
-	var body_shape := collision_shape.shape as CircleShape2D
-	if body_shape == null:
-		return 0.0
-
-	return body_shape.radius
+func _get_body_extent_radius() -> float:
+	return _get_body_collision_extent_radius()
 
 
-func _get_target_collision_radius() -> float:
+func _get_target_extent_radius() -> float:
 	var target_collision_shape := target_player.get_node_or_null("CollisionShape2D") as CollisionShape2D
 	if target_collision_shape == null:
 		return 0.0
 
-	var target_circle_shape := target_collision_shape.shape as CircleShape2D
-	if target_circle_shape == null:
-		return 0.0
-
-	return target_circle_shape.radius
+	return _get_collision_shape_extent_radius(target_collision_shape)
 
 
 # 根据水平移动方向更新贴图翻转，竖直移动时保留当前朝向。
@@ -481,15 +473,7 @@ func _play_death_sequence_animation(animation_name: StringName, stage: Enemy.Dea
 	death_sequence_stage = stage
 	death_animation_name_in_use = animation_name
 
-	if config == null:
-		return false
-	if config.enemy_frames == null:
-		return false
-	if not config.enemy_frames.has_animation(animation_name):
-		return false
-
-	animated_sprite.play(animation_name)
-	return true
+	return _play_scene_animation(animation_name)
 
 
 func _should_play_explosion_sequence() -> bool:

@@ -103,13 +103,14 @@ func _test_snapshot_round_trip() -> void:
 	player_state.peer_id = 2
 	player_state.position = Vector2(11.5, 23.25)
 	player_state.velocity = Vector2(1.0, -2.0)
-	player_state.health = 42
+	player_state.current_health = 42
+	player_state.max_health = 100
 	var player_data := snapshot_mgr.encode_all_player_snapshots([player_state])
 	var player_states := SnapshotManager.decode_all_player_snapshots(player_data)
 	_expect(player_states.size() == 1, "Player snapshot count mismatch.")
 	if player_states.size() == 1:
 		_expect(player_states[0].peer_id == 2, "Player snapshot peer_id mismatch.")
-		_expect(player_states[0].health == 42, "Player snapshot health mismatch.")
+		_expect(player_states[0].current_health == 42, "Player snapshot health mismatch.")
 	var player_data_2 := snapshot_mgr.encode_all_player_snapshots([player_state])
 	var player_states_2 := SnapshotManager.decode_all_player_snapshots(player_data_2)
 	_expect(

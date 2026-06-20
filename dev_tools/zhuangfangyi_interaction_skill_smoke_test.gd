@@ -2,7 +2,7 @@ extends SceneTree
 
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const MERCHANT_SCENE := preload("res://scene/zhuangfangyi_merchant.tscn")
-const ENEMY_SCENE := preload("res://scene/yuanshi_insect.tscn")
+const ENEMY_SCENE := preload("res://scene/enemy/yuanshi_insect.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 
 var failures: Array[String] = []

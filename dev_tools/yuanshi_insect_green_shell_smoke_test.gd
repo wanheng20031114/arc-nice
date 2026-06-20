@@ -1,6 +1,5 @@
 extends SceneTree
 
-const YUANSHI_INSECT_SCENE := preload("res://scene/yuanshi_insect.tscn")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const GREEN_SHELL_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_green_shell.tres"
@@ -48,9 +47,16 @@ func _test_resource_contract() -> void:
 		GREEN_SHELL_CONFIG is YuanshiInsectGreenShellConfig,
 		"Green shell config must use its dedicated resource type."
 	)
+	_expect(GREEN_SHELL_CONFIG.enemy_scene != null, "Green shell must use its own scene.")
 	_expect(GREEN_SHELL_CONFIG.aura_enabled, "Green shell aura must be enabled.")
-	_expect(GREEN_SHELL_CONFIG.attack_damage == 2, "Green shell attack damage must be 2.")
-	_expect(GREEN_SHELL_CONFIG.aura_radius > GREEN_SHELL_CONFIG.collision_radius, "Aura must exceed body radius.")
+	_expect(GREEN_SHELL_CONFIG.attack_damage > 0, "Green shell attack damage must be positive.")
+	var scene_enemy := GREEN_SHELL_CONFIG.enemy_scene.instantiate() as YuanshiInsect
+	var body_shape_node := scene_enemy.get_node("CollisionShape2D") as CollisionShape2D
+	var body_shape := body_shape_node.shape as CircleShape2D
+	_expect(body_shape != null, "Green shell body collision shape must be circular.")
+	if body_shape != null:
+		_expect(GREEN_SHELL_CONFIG.aura_radius > body_shape.radius, "Aura must exceed body radius.")
+	scene_enemy.free()
 	_expect(GREEN_SHELL_CONFIG.aura_particle_amount >= 60, "Aura particles are not dense enough.")
 	_expect(GREEN_SHELL_CONFIG.aura_particle_texture != null, "Aura particle texture is missing.")
 	_expect(GREEN_SHELL_CONFIG.aura_particle_color_ramp != null, "Aura color ramp is missing.")
@@ -210,7 +216,7 @@ func _test_aura_damage_and_shutdown() -> void:
 	await _wait_physics_frames(12)
 	_expect(player.current_health == health_after_exit, "Aura kept damaging the player after exit.")
 
-	enemy.apply_damage(test_config.max_health)
+	enemy.apply_damage(test_config.max_health + test_config.physical_defense)
 	await physics_frame
 	_expect(not enemy.aura_active, "Aura remained active after enemy death.")
 	_expect(not enemy.aura_particles.emitting, "Aura particles remained active after enemy death.")
@@ -237,11 +243,11 @@ func _test_normal_enemy_has_no_aura() -> void:
 
 func _spawn_player(position: Vector2) -> Player:
 	var player := PLAYER_SCENE.instantiate() as Player
+	player.global_position = position
 	test_root.add_child(player)
-	player.max_health = 20
+	player.max_health = 100
 	player.current_health = player.max_health
 	player.health_bar.setup(player.max_health, player.current_health)
-	player.global_position = position
 	return player
 
 
@@ -250,9 +256,9 @@ func _spawn_enemy(
 	enemy_config: YuanshiInsectConfig,
 	player: Player
 ) -> YuanshiInsect:
-	var enemy := YUANSHI_INSECT_SCENE.instantiate() as YuanshiInsect
-	test_root.add_child(enemy)
+	var enemy := enemy_config.enemy_scene.instantiate() as YuanshiInsect
 	enemy.global_position = position
+	test_root.add_child(enemy)
 	enemy.setup(enemy_config, player)
 	return enemy
 

@@ -1,6 +1,5 @@
 extends SceneTree
 
-const YUANSHI_INSECT_SCENE := preload("res://scene/yuanshi_insect.tscn")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const GUARDIAN_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_guardian.tres")
@@ -53,16 +52,24 @@ func _test_resource_contract() -> void:
 		GUARDIAN_CONFIG.variant == YuanshiInsectConfig.Variant.GUARDIAN,
 		"Guardian enum variant mismatch."
 	)
+	_expect(BASIC_CONFIG.enemy_scene != null, "Basic Yuanshi insect must use its own scene.")
+	_expect(GUARDIAN_CONFIG.enemy_scene != null, "Guardian must use its own scene.")
 	_expect(GUARDIAN_CONFIG.max_health >= 16, "Guardian health is not high enough.")
 	_expect(GUARDIAN_CONFIG.attack_damage == 1, "Guardian attack damage must be 1.")
 	_expect(
 		is_equal_approx(GUARDIAN_CONFIG.move_speed, BASIC_CONFIG.move_speed),
 		"Guardian must keep normal Yuanshi insect movement speed."
 	)
+	var basic_scene_enemy := BASIC_CONFIG.enemy_scene.instantiate() as YuanshiInsect
+	var guardian_scene_enemy := GUARDIAN_CONFIG.enemy_scene.instantiate() as YuanshiInsect
+	var basic_body := (basic_scene_enemy.get_node("CollisionShape2D") as CollisionShape2D).shape as CircleShape2D
+	var guardian_body := (guardian_scene_enemy.get_node("CollisionShape2D") as CollisionShape2D).shape as CircleShape2D
 	_expect(
-		is_equal_approx(GUARDIAN_CONFIG.collision_radius, BASIC_CONFIG.collision_radius),
+		basic_body != null and guardian_body != null and is_equal_approx(guardian_body.radius, basic_body.radius),
 		"Guardian must keep normal Yuanshi insect body size."
 	)
+	basic_scene_enemy.free()
+	guardian_scene_enemy.free()
 	_expect(
 		GUARDIAN_CONFIG.aura_radius > GREEN_SHELL_CONFIG.aura_radius,
 		"Guardian aura must be larger than green shell aura."
@@ -141,15 +148,13 @@ func _test_guardian_chase_and_collision_contract() -> void:
 	_expect(body_shape != null, "Guardian body collision shape must be circular.")
 	_expect(touch_shape != null, "Guardian touch damage shape must be circular.")
 	if body_shape != null:
-		_expect(
-			is_equal_approx(body_shape.radius, GUARDIAN_CONFIG.collision_radius),
-			"Guardian body collision radius ignored config."
-		)
+		_expect(body_shape.radius > 0.0, "Guardian body collision radius must be positive.")
 	if touch_shape != null:
 		_expect(
-			is_equal_approx(touch_shape.radius, GUARDIAN_CONFIG.collision_radius),
+			body_shape != null and is_equal_approx(touch_shape.radius, body_shape.radius),
 			"Guardian touch damage radius must match body collision radius."
 		)
+	_expect(guardian.collision_shape.shape != guardian.touch_damage_shape.shape, "Guardian body and touch shapes must be independently editable.")
 
 	var start_distance := guardian.global_position.distance_to(player.global_position)
 	await _wait_physics_frames(12)
@@ -207,7 +212,7 @@ func _spawn_enemy(
 	enemy_config: YuanshiInsectConfig,
 	player: Player
 ) -> YuanshiInsect:
-	var enemy := YUANSHI_INSECT_SCENE.instantiate() as YuanshiInsect
+	var enemy := enemy_config.enemy_scene.instantiate() as YuanshiInsect
 	test_root.add_child(enemy)
 	enemy.global_position = position
 	enemy.setup(enemy_config, player)

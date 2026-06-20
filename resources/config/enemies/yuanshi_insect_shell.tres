@@ -1,7 +1,6 @@
 [gd_resource type="Resource" script_class="YuanshiInsectConfig" format=3 uid="uid://chktgvo5mcaul"]
 
 [ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="1_1nhg5"]
-[ext_resource type="SpriteFrames" uid="uid://dil4bd4tna04v" path="res://resources/animation/yuanshi_insect_shell.tres" id="1_isqks"]
 [ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="2_isqks"]
 [ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="3_vwv7o"]
 [ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="4_dglay"]
@@ -9,16 +8,17 @@
 [ext_resource type="Script" uid="uid://cxt041wfb1usj" path="res://resources/config/enemies/yuanshi_insect_config.gd" id="5_gt3et"]
 [ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="7_dglay"]
 
+[ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect_shell.tscn" id="enemy_scene"]
+
 [resource]
 script = ExtResource("5_gt3et")
+enemy_scene = ExtResource("enemy_scene")
 variant = 1
 display_name = "硬壳原石虫"
 max_health = 140
 attack_damage = 14
 physical_defense = 3
 move_speed = 20.0
-collision_radius = 7.0
-enemy_frames = ExtResource("1_isqks")
 xirang_drop_amount = 4
 pickup_drop_chance = 0.08
 metadata/_custom_type_script = "uid://cxt041wfb1usj"

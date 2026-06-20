@@ -1,6 +1,6 @@
 extends SceneTree
 
-const ENEMY_SCENE := preload("res://scene/enemy.tscn")
+const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 const ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 
 var failures: Array[String] = []

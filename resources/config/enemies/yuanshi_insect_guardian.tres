@@ -1,6 +1,5 @@
 [gd_resource type="Resource" script_class="YuanshiInsectGuardianConfig" format=3 uid="uid://b6g77s6rrfiw8"]
 
-[ext_resource type="SpriteFrames" uid="uid://ct2ou77cymcl7" path="res://resources/animation/yuanshi_insect_guardian.tres" id="1_frames"]
 [ext_resource type="Texture2D" path="res://resources/texture/yuanshi_insect_guardian_aura_colors.tres" id="1_kxoc3"]
 [ext_resource type="Texture2D" uid="uid://gpwpt2glrhpb" path="res://resources/texture/yuanshi_insect_green_aura_particle.tres" id="2_ovnnj"]
 [ext_resource type="Script" uid="uid://dvc3h01lexqkx" path="res://resources/config/enemies/yuanshi_insect_guardian_config.gd" id="2_script"]
@@ -11,8 +10,11 @@
 [ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="8_h0ajm"]
 [ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="9_em1je"]
 
+[ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect_guardian.tscn" id="enemy_scene"]
+
 [resource]
 script = ExtResource("2_script")
+enemy_scene = ExtResource("enemy_scene")
 aura_physical_defense_bonus = 1
 aura_radius = 46.0
 aura_particles_enabled = false
@@ -24,7 +26,5 @@ max_health = 150
 attack_damage = 1
 physical_defense = 5
 move_speed = 20.0
-collision_radius = 6.0
-enemy_frames = ExtResource("1_frames")
 xirang_drop_amount = 10
 pickup_drop_chance = 0.2

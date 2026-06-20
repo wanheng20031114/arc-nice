@@ -1,10 +1,9 @@
 extends SceneTree
 
-const YUANSHI_INSECT_SCENE := preload("res://scene/yuanshi_insect.tscn")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const FIRE_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres")
 const BOMBER_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_bomber.tres")
-const FIRE_PROJECTILE_SCENE := preload("res://scene/yuanshi_insect_fire_projectile.tscn")
+const FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
 const FIRE_CONFIG_SCRIPT := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged_config.gd")
 const FIRE_WAVE := preload("res://resources/config/waves/wave_04.tres")
 const COMBAT_STATE_CHASE := 0
@@ -57,7 +56,7 @@ func _test_resource_contract() -> void:
 		"Fire Yuanshi insect must use its dedicated config type."
 	)
 	_expect(
-		FIRE_CONFIG.enemy_scene_override != null,
+		FIRE_CONFIG.enemy_scene != null,
 		"Fire Yuanshi insect must use its dedicated scene."
 	)
 	_expect(is_equal_approx(FIRE_CONFIG.attack_range, 172.8), "Attack range must be 172.8.")
@@ -91,15 +90,11 @@ func _test_legacy_bomber_unchanged() -> void:
 		BOMBER_CONFIG.variant == YuanshiInsectConfig.Variant.BOMBER,
 		"Bomber Yuanshi insect variant changed."
 	)
-	_expect(BOMBER_CONFIG.enemy_scene_override == null, "Bomber must keep using the base enemy scene.")
+	_expect(BOMBER_CONFIG.enemy_scene != null, "Bomber must use its own scene.")
 	_expect(BOMBER_CONFIG.explode_on_death, "Bomber lost its self-destruct behavior.")
-	_expect(
-		BOMBER_CONFIG.enemy_frames.resource_path == "res://resources/animation/yuanshi_insect_bomber.tres",
-		"Bomber animation resource changed."
-	)
 
 	var player := _spawn_player(Vector2(100, 0))
-	var bomber := YUANSHI_INSECT_SCENE.instantiate() as YuanshiInsect
+	var bomber := BOMBER_CONFIG.enemy_scene.instantiate() as YuanshiInsect
 	test_root.add_child(bomber)
 	bomber.global_position = Vector2.ZERO
 	bomber.setup(BOMBER_CONFIG, player)
@@ -107,6 +102,11 @@ func _test_legacy_bomber_unchanged() -> void:
 
 	_expect(bomber.get_node_or_null("AttackAudio") == null, "Base bomber unexpectedly contains attack audio.")
 	_expect(bomber.animated_sprite.animation == BOMBER_CONFIG.move_animation_name, "Bomber left move animation.")
+	_expect(
+		bomber.animated_sprite.sprite_frames != null
+		and bomber.animated_sprite.sprite_frames.resource_path == "res://resources/animation/yuanshi_insect_bomber.tres",
+		"Bomber scene animation resource changed."
+	)
 	_expect(_get_projectile_ids().is_empty(), "Base bomber generated a fire projectile.")
 
 	bomber.apply_damage(BOMBER_CONFIG.max_health)
@@ -208,7 +208,7 @@ func _spawn_player(position: Vector2) -> Player:
 
 
 func _spawn_enemy(position: Vector2, player: Player) -> YuanshiInsect:
-	var enemy := FIRE_CONFIG.enemy_scene_override.instantiate() as YuanshiInsect
+	var enemy := FIRE_CONFIG.enemy_scene.instantiate() as YuanshiInsect
 	test_root.add_child(enemy)
 	enemy.global_position = position
 	enemy.setup(FIRE_CONFIG, player)

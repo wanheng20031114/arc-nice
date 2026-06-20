@@ -9,8 +9,8 @@ enum DamageType {
 @export_group("基础信息")
 
 @export var display_name: String = "敌人"
-# 特殊敌人可指定专属场景；为空时沿用 Game 的默认敌人场景。
-@export var enemy_scene_override: PackedScene
+# 当前敌人的完整场景，包含碰撞体积、接触伤害体积和本体动画。
+@export var enemy_scene: PackedScene
 
 @export_group("基础数值")
 # 最大生命值，敌人生成时可用它初始化当前生命值。
@@ -23,14 +23,9 @@ enum DamageType {
 @export_range(0, 100, 1) var magic_defense: int = 0
 # 移动速度，单位通常为像素/秒。
 @export_range(0.0, 1000.0, 1.0, "or_greater") var move_speed: float = 60.0
-# 圆形碰撞区域半径，可用于不同体型敌人的碰撞大小配置。
-@export_range(1.0, 256.0, 0.5, "or_greater") var collision_radius: float = 8
 
 
-@export_group("动画资源")
-# 敌人本体使用的 SpriteFrames 资源。
-# 建议在同一个资源中同时配置移动、待机、死亡等动画。
-@export var enemy_frames: SpriteFrames
+@export_group("动画名称")
 # 敌人正常移动时默认播放的动画名。
 @export var move_animation_name: StringName = &"move"
 # 敌人死亡时默认播放的动画名。

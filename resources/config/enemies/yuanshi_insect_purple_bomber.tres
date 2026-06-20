@@ -1,6 +1,5 @@
 [gd_resource type="Resource" script_class="YuanshiInsectConfig" format=3 uid="uid://cpjc7spicocg8"]
 
-[ext_resource type="SpriteFrames" uid="uid://cwlh2bn3ov35t" path="res://resources/animation/yuanshi_insect_purple_bomber.tres" id="1_frames"]
 [ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="2_amff3"]
 [ext_resource type="Script" uid="uid://cxt041wfb1usj" path="res://resources/config/enemies/yuanshi_insect_config.gd" id="2_script"]
 [ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="3_ahoyw"]
@@ -9,15 +8,16 @@
 [ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="6_qurg6"]
 [ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="7_465hc"]
 
+[ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect_purple_bomber.tscn" id="enemy_scene"]
+
 [resource]
 script = ExtResource("2_script")
+enemy_scene = ExtResource("enemy_scene")
 variant = 4
 display_name = "紫晶自爆原石虫"
 max_health = 40
 attack_damage = 10
 move_speed = 32.0
-collision_radius = 7.0
-enemy_frames = ExtResource("1_frames")
 explode_on_death = true
 explosion_damage = 30
 explosion_radius = 40.0

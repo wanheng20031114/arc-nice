@@ -1,12 +1,11 @@
 [gd_resource type="Resource" script_class="YuanshiInsectFireRangedConfig" format=3 uid="uid://c6unlgwoqktx5"]
 
-[ext_resource type="SpriteFrames" uid="uid://b0at4donk13di" path="res://resources/animation/yuanshi_insect_fire_ranged.tres" id="1_frames"]
 [ext_resource type="Script" uid="uid://cgc3af0prsgtu" path="res://resources/config/enemies/yuanshi_insect_fire_ranged_config.gd" id="2_script"]
-[ext_resource type="PackedScene" path="res://scene/yuanshi_insect_fire_projectile.tscn" id="3_projectile"]
+[ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect_fire_projectile.tscn" id="3_projectile"]
 [ext_resource type="AudioStream" uid="uid://q0xgspayk7pu" path="res://resources/audio/yuanshi_insect_fire_attack.wav" id="4_attack_audio"]
 [ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="4_db7xf"]
 [ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="5_4e5dc"]
-[ext_resource type="PackedScene" path="res://scene/yuanshi_insect_fire_ranged.tscn" id="5_enemy_scene"]
+[ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect_fire_ranged.tscn" id="5_enemy_scene"]
 [ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="6_1my8j"]
 [ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="7_okp32"]
 [ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="8_5511y"]
@@ -14,15 +13,13 @@
 
 [resource]
 script = ExtResource("2_script")
+enemy_scene = ExtResource("5_enemy_scene")
 projectile_scene = ExtResource("3_projectile")
 attack_audio_stream = ExtResource("4_attack_audio")
 variant = 6
 display_name = "火焰弹原石虫"
-enemy_scene_override = ExtResource("5_enemy_scene")
 max_health = 40
 attack_damage = 10
 move_speed = 22.0
-collision_radius = 7.0
-enemy_frames = ExtResource("1_frames")
 xirang_drop_amount = 2
 pickup_drop_chance = 0.08

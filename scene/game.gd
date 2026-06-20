@@ -1,7 +1,7 @@
 extends Node2D
 class_name Game
 
-const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/yuanshi_insect_spawn_effect.tscn")
+const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/enemy/yuanshi_insect_spawn_effect.tscn")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const COUNTDOWN_FINAL_SECONDS := 3
 const MULTIPLAYER_DEFEAT_GRACE_SECONDS := 0.25
@@ -41,7 +41,6 @@ enum WaveState {
 }
 
 @export_group("波次资源")
-@export var enemy_scene: PackedScene = preload("res://scene/yuanshi_insect.tscn")
 @export var waves: Array[WaveConfig] = [
 	preload("res://resources/config/waves/wave_01.tres"),
 	preload("res://resources/config/waves/wave_02.tres"),
@@ -455,11 +454,10 @@ func _try_spawn_enemy(enemy_config: EnemyConfig) -> bool:
 	if spawn_point == null:
 		return false
 
-	var spawn_scene := (
-		enemy_config.enemy_scene_override
-		if enemy_config.enemy_scene_override != null
-		else enemy_scene
-	)
+	var spawn_scene := enemy_config.enemy_scene
+	if spawn_scene == null:
+		push_warning("敌人配置 %s 缺少 enemy_scene。" % enemy_config.resource_path)
+		return false
 	var enemy_instance := spawn_scene.instantiate() as Enemy
 	if enemy_instance == null:
 		push_warning("敌人场景实例化失败，请检查波次中的敌人配置。")
@@ -849,7 +847,6 @@ func _is_wave_system_ready() -> bool:
 func _is_spawn_system_ready() -> bool:
 	return (
 		player != null
-		and enemy_scene != null
 		and grid_pathfinder != null
 		and grid_pathfinder.get("is_built")
 		and not enemy_spawn_points.is_empty()

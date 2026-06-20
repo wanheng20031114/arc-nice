@@ -1,6 +1,6 @@
 [gd_scene load_steps=4 format=3]
 
-[ext_resource type="Script" path="res://scene/capoo_ak47_bullet.gd" id="1_script"]
+[ext_resource type="Script" path="res://scene/enemy/capoo_ak47_bullet.gd" id="1_script"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/capoo_ak47_bullet.tres" id="2_frames"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_bullet"]

@@ -77,9 +77,7 @@ func _try_start_ranged_attack() -> bool:
 		return false
 	if fire_config.projectile_scene == null:
 		return false
-	if fire_config.enemy_frames == null:
-		return false
-	if not fire_config.enemy_frames.has_animation(fire_config.attack_animation_name):
+	if not _has_scene_animation(fire_config.attack_animation_name):
 		return false
 	if global_position.distance_to(target_player.global_position) > fire_config.attack_range:
 		return false
@@ -91,7 +89,7 @@ func _try_start_ranged_attack() -> bool:
 	attack_cooldown_left = maxf(fire_config.attack_interval, 0.01)
 	_clear_navigation_path()
 	_update_facing(global_position.direction_to(target_player.global_position))
-	animated_sprite.play(fire_config.attack_animation_name)
+	_play_scene_animation(fire_config.attack_animation_name)
 	return true
 
 
@@ -167,10 +165,9 @@ func _finish_ranged_attack() -> void:
 	combat_state = CombatState.CHASE
 	attack_has_fired = false
 	var fire_config := config as FireConfig
-	if fire_config == null or fire_config.enemy_frames == null:
+	if fire_config == null:
 		return
-	if fire_config.enemy_frames.has_animation(fire_config.move_animation_name):
-		animated_sprite.play(fire_config.move_animation_name)
+	_play_scene_animation(fire_config.move_animation_name)
 
 
 func _on_attack_animation_finished() -> void:

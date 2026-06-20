@@ -1,7 +1,7 @@
 extends Area2D
 class_name CapooRPGRocket
 
-const EXPLOSION_SCENE := preload("res://scene/capoo_rpg_explosion.tscn")
+const EXPLOSION_SCENE := preload("res://scene/enemy/capoo_rpg_explosion.tscn")
 const WORLD_COLLISION_MASK := 1
 const PLAYER_COLLISION_MASK := 2
 const EXPLOSION_QUERY_MAX_RESULTS := 16

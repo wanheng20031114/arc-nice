@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://tjoaiedi6l3g"]
 
-[ext_resource type="Script" path="res://scene/yuanshi_insect_spawn_effect.gd" id="1_spawn"]
+[ext_resource type="Script" path="res://scene/enemy/yuanshi_insect_spawn_effect.gd" id="1_spawn"]
 
 [sub_resource type="Curve" id="Curve_spawn_alpha"]
 _data = [Vector2(0, 1), 0.0, -2.66667, 0, 0, Vector2(1, 0), -2.66667, 0.0, 0, 0]

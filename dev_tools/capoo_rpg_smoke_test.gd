@@ -1,8 +1,8 @@
 extends SceneTree
 
-const CAPOO_SCENE := preload("res://scene/capoo_rpg.tscn")
-const ROCKET_SCENE := preload("res://scene/capoo_rpg_rocket.tscn")
-const EXPLOSION_SCENE := preload("res://scene/capoo_rpg_explosion.tscn")
+const CAPOO_SCENE := preload("res://scene/enemy/capoo_rpg.tscn")
+const ROCKET_SCENE := preload("res://scene/enemy/capoo_rpg_rocket.tscn")
+const EXPLOSION_SCENE := preload("res://scene/enemy/capoo_rpg_explosion.tscn")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const CAPOO_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
 const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
@@ -52,7 +52,7 @@ func _run() -> void:
 func _test_resource_contract() -> void:
 	_expect(CAPOO_CONFIG is CapooRPGConfig, "RPG config must use CapooRPGConfig.")
 	_expect(CAPOO_CONFIG.display_name == "RPG猫猫虫", "Display name mismatch.")
-	_expect(CAPOO_CONFIG.enemy_scene_override == CAPOO_SCENE, "RPG Capoo must use its own scene.")
+	_expect(CAPOO_CONFIG.enemy_scene == CAPOO_SCENE, "RPG Capoo must use its own scene.")
 	_expect(CAPOO_CONFIG.projectile_scene == ROCKET_SCENE, "RPG Capoo must use its rocket scene.")
 	_expect(CAPOO_CONFIG.attack_audio_stream != null, "RPG fire audio is missing.")
 	_expect(CAPOO_CONFIG.max_health == 200, "RPG health mismatch.")
@@ -66,14 +66,6 @@ func _test_resource_contract() -> void:
 	_expect(is_equal_approx(CAPOO_CONFIG.projectile_speed, 210.0), "RPG rocket speed mismatch.")
 	_expect(is_equal_approx(CAPOO_CONFIG.projectile_lifetime, 3.0), "RPG rocket lifetime mismatch.")
 	_expect(is_equal_approx(CAPOO_CONFIG.explosion_radius, 44.0), "RPG explosion radius mismatch.")
-
-	var enemy_frames := CAPOO_CONFIG.enemy_frames
-	_expect(enemy_frames != null, "RPG enemy SpriteFrames are missing.")
-	if enemy_frames != null:
-		_expect(enemy_frames.get_frame_count(&"move") == 3, "RPG move frame count mismatch.")
-		_expect(enemy_frames.get_frame_count(&"windup") == 4, "RPG windup frame count mismatch.")
-		_expect(enemy_frames.get_frame_count(&"attack") == 4, "RPG attack frame count mismatch.")
-		_expect(enemy_frames.get_frame_count(&"death") == 3, "RPG death frame count mismatch.")
 
 	var rocket_frames := load("res://resources/animation/capoo_rpg_rocket.tres") as SpriteFrames
 	var explosion_frames := load("res://resources/animation/capoo_rpg_explosion.tres") as SpriteFrames
@@ -102,6 +94,19 @@ func _test_resource_contract() -> void:
 	if capoo_instance != null:
 		_expect(capoo_instance.get_node_or_null("MuzzleHeat") is Polygon2D, "RPG scene is missing MuzzleHeat.")
 		_expect(capoo_instance.get_node_or_null("AttackAudio") is AudioStreamPlayer2D, "RPG scene is missing AttackAudio.")
+		var animated_sprite := capoo_instance.get_node("AnimatedSprite2D") as AnimatedSprite2D
+		var scene_frames := animated_sprite.sprite_frames
+		_expect(scene_frames != null, "RPG scene SpriteFrames are missing.")
+		if scene_frames != null:
+			_expect(scene_frames.get_frame_count(&"move") == 3, "RPG move frame count mismatch.")
+			_expect(scene_frames.get_frame_count(&"windup") == 4, "RPG windup frame count mismatch.")
+			_expect(scene_frames.get_frame_count(&"attack") == 4, "RPG attack frame count mismatch.")
+			_expect(scene_frames.get_frame_count(&"death") == 3, "RPG death frame count mismatch.")
+		var body_shape := capoo_instance.get_node("CollisionShape2D") as CollisionShape2D
+		var touch_shape := capoo_instance.get_node("TouchDamageArea/CollisionShape2D") as CollisionShape2D
+		_expect(body_shape.shape is RectangleShape2D, "RPG body collision must be scene-owned rectangle.")
+		_expect(touch_shape.shape is RectangleShape2D, "RPG touch collision must be scene-owned rectangle.")
+		_expect(body_shape.shape != touch_shape.shape, "RPG body and touch shapes must be independently editable.")
 		capoo_instance.free()
 	if rocket_instance != null:
 		var explosion_shape := rocket_instance.get_node("ExplosionShape") as CollisionShape2D
