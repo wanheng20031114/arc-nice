@@ -1,8 +1,8 @@
-[gd_resource type="Resource" script_class="CapooKnightConfig" format=3]
+[gd_resource type="Resource" script_class="CapooKnightConfig" format=3 uid="uid://b361vcg4kkw13"]
 
-[ext_resource type="Script" path="res://resources/config/enemies/capoo_knight_config.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://bhv1077xeatxy" path="res://resources/config/enemies/capoo_knight_config.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://scene/capoo_knight.tscn" id="2_scene"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/capoo_knight.tres" id="3_frames"]
+[ext_resource type="SpriteFrames" uid="uid://7k14qqwrj73r" path="res://resources/animation/capoo_knight.tres" id="3_frames"]
 [ext_resource type="PackedScene" path="res://scene/capoo_knight_slash_effect.tscn" id="4_slash"]
 [ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="5_pickup_script"]
 [ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="6_speed"]
@@ -13,26 +13,14 @@
 
 [resource]
 script = ExtResource("1_script")
-windup_animation_name = &"windup"
-attack_animation_name = &"attack"
-attack_range = 48.0
-attack_windup = 0.35
-attack_interval = 4.0
-slash_outer_radius = 48.0
-slash_inner_radius = 6.5
-slash_angle_degrees = 60.0
-slash_damage_delay = 0.08
-slash_duration = 0.32
 slash_effect_scene = ExtResource("4_slash")
 display_name = "骑士猫猫虫"
 enemy_scene_override = ExtResource("2_scene")
 max_health = 200
 attack_damage = 28
 physical_defense = 20
-magic_defense = 0
 move_speed = 34.0
 collision_radius = 6.5
 enemy_frames = ExtResource("3_frames")
 xirang_drop_amount = 20
 pickup_drop_chance = 0.2
-pickup_drop_configs = Array[ExtResource("5_pickup_script")]([ExtResource("6_speed"), ExtResource("7_rapid"), ExtResource("8_spiral"), ExtResource("9_tenpura"), ExtResource("10_health")])

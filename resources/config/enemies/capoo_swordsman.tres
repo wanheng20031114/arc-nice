@@ -8,12 +8,12 @@
 [ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="6_speed"]
 [ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="7_rapid"]
 [ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="8_spiral"]
-[ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="9_tenpura"]
 [ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="10_health"]
 
 [resource]
 script = ExtResource("1_script")
 attack_range = 64.0
+attack_interval = 3.0
 slash_outer_radius = 64.0
 slash_angle_degrees = 80.0
 slash_effect_scene = ExtResource("4_slash")
@@ -22,8 +22,9 @@ enemy_scene_override = ExtResource("2_scene")
 max_health = 400
 attack_damage = 28
 physical_defense = 5
-move_speed = 34.0
+move_speed = 38.0
 collision_radius = 6.5
 enemy_frames = ExtResource("3_frames")
 xirang_drop_amount = 20
 pickup_drop_chance = 0.2
+pickup_drop_configs = Array[ExtResource("5_pickup_script")]([ExtResource("6_speed"), ExtResource("7_rapid"), ExtResource("8_spiral"), ExtResource("10_health")])
