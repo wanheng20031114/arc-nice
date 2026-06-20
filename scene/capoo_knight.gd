@@ -312,7 +312,7 @@ func _set_windup_warning(progress: float, direction: Vector2) -> void:
 		12
 	)
 	windup_warning.rotation = direction.angle()
-	windup_warning.color = Color(0.55, 0.86, 1.0, lerpf(0.08, 0.34, clamped_progress))
+	windup_warning.color = Color(1.0, 0.38, 0.32, lerpf(0.08, 0.34, clamped_progress))
 	windup_warning.scale = Vector2.ONE * lerpf(0.88, 1.0, clamped_progress)
 
 
