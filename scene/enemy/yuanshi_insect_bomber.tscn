@@ -1,23 +1,32 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene format=3 uid="uid://62mdayaawmjd"]
 
-[ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect.tscn" id="1_base"]
-[ext_resource type="Script" path="res://scene/enemy/yuanshi_insect_exploder.gd" id="2_script"]
+[ext_resource type="PackedScene" uid="uid://ccvfm2ck2jkky" path="res://scene/enemy/yuanshi_insect.tscn" id="1_base"]
+[ext_resource type="Shader" uid="uid://b47uq42hh5vq1" path="res://scene/blink.gdshader" id="2_qjjxk"]
+[ext_resource type="Script" uid="uid://cok25qb0meq4j" path="res://scene/enemy/yuanshi_insect_exploder.gd" id="2_script"]
 [ext_resource type="SpriteFrames" uid="uid://b5wdos2x826w2" path="res://resources/animation/yuanshi_insect_bomber.tres" id="3_frames"]
 [ext_resource type="AudioStream" uid="uid://bogl46dtqkano" path="res://resources/audio/cowboy_explosion.wav" id="4_explosion_audio"]
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_body"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_513g0"]
 resource_local_to_scene = true
-radius = 7.0
+shader = ExtResource("2_qjjxk")
+shader_parameter/blink_enabled = false
+shader_parameter/blink_speed = 12.0
+shader_parameter/hidden_ratio = 0.5
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_touch"]
-resource_local_to_scene = true
-radius = 7.0
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_2whi5"]
+radius = 5.0
+height = 16.0
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_qjjxk"]
+radius = 5.0
+height = 16.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_explosion"]
 resource_local_to_scene = true
 radius = 30.0
 
-[node name="YuanshiInsectBomber" instance=ExtResource("1_base")]
+[node name="YuanshiInsectBomber" unique_id=1685334405 instance=ExtResource("1_base")]
+material = SubResource("ShaderMaterial_513g0")
 script = ExtResource("2_script")
 
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
@@ -25,19 +34,24 @@ sprite_frames = ExtResource("3_frames")
 animation = &"move"
 
 [node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
-shape = SubResource("CircleShape2D_body")
+position = Vector2(0, 1)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_2whi5")
 
 [node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
-shape = SubResource("CircleShape2D_touch")
+position = Vector2(0, 1)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_qjjxk")
 
-[node name="ExplosionArea" type="Area2D" parent="." index="6"]
+[node name="ExplosionArea" type="Area2D" parent="." index="6" unique_id=1412067951]
 collision_layer = 64
 collision_mask = 6
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="ExplosionArea" index="0"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ExplosionArea" index="0" unique_id=1945204364]
+visible = false
 shape = SubResource("CircleShape2D_explosion")
 debug_color = Color(0.9764706, 0.6, 0.69803923, 0.41960785)
 
-[node name="ExplosionAudio" type="AudioStreamPlayer2D" parent="." index="7"]
+[node name="ExplosionAudio" type="AudioStreamPlayer2D" parent="." index="7" unique_id=283508414]
 stream = ExtResource("4_explosion_audio")
 volume_db = -4.0

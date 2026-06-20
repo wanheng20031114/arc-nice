@@ -432,7 +432,9 @@ func _clear_navigation_path() -> void:
 
 func _should_direct_chase_target() -> bool:
 	var direct_chase_distance := _get_body_extent_radius() + _get_target_extent_radius() + direct_chase_extra_distance
-	return global_position.distance_to(target_player.global_position) <= direct_chase_distance
+	if global_position.distance_to(target_player.global_position) > direct_chase_distance:
+		return false
+	return _has_clear_world_line_to_target()
 
 
 func _get_body_extent_radius() -> float:

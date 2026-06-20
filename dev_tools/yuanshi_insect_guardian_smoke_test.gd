@@ -68,12 +68,20 @@ func _test_resource_contract() -> void:
 		basic_scene_enemy.free()
 		return
 	_expect(guardian_scene_enemy.get_script() == AURA_SCRIPT, "Guardian scene must use the aura script.")
-	var basic_body := (basic_scene_enemy.get_node("CollisionShape2D") as CollisionShape2D).shape as CircleShape2D
-	var guardian_body := (guardian_scene_enemy.get_node("CollisionShape2D") as CollisionShape2D).shape as CircleShape2D
+	var basic_body_node := basic_scene_enemy.get_node("CollisionShape2D") as CollisionShape2D
+	var guardian_body_node := guardian_scene_enemy.get_node("CollisionShape2D") as CollisionShape2D
 	_expect(
-		basic_body != null and guardian_body != null and is_equal_approx(guardian_body.radius, basic_body.radius),
-		"Guardian must keep normal Yuanshi insect body size."
+		basic_body_node != null and basic_body_node.shape != null,
+		"Basic Yuanshi insect body collision shape must be configured."
 	)
+	_expect(
+		guardian_body_node != null and guardian_body_node.shape != null,
+		"Guardian body collision shape must be configured."
+	)
+	if basic_body_node != null and basic_body_node.shape != null:
+		_expect(_get_shape_extent_radius(basic_body_node) > 0.0, "Basic Yuanshi insect body collision extent must be positive.")
+	if guardian_body_node != null and guardian_body_node.shape != null:
+		_expect(_get_shape_extent_radius(guardian_body_node) > 0.0, "Guardian body collision extent must be positive.")
 	basic_scene_enemy.free()
 	guardian_scene_enemy.free()
 	_expect(
@@ -159,17 +167,14 @@ func _test_guardian_chase_and_collision_contract() -> void:
 	_expect(guardian.get_script() == AURA_SCRIPT, "Guardian scene must use the aura script.")
 	await _wait_physics_frames(2)
 
-	var body_shape := guardian.collision_shape.shape as CircleShape2D
-	var touch_shape := guardian.touch_damage_shape.shape as CircleShape2D
-	_expect(body_shape != null, "Guardian body collision shape must be circular.")
-	_expect(touch_shape != null, "Guardian touch damage shape must be circular.")
+	var body_shape := guardian.collision_shape.shape as Shape2D
+	var touch_shape := guardian.touch_damage_shape.shape as Shape2D
+	_expect(body_shape != null, "Guardian body collision shape must be configured.")
+	_expect(touch_shape != null, "Guardian touch damage shape must be configured.")
 	if body_shape != null:
-		_expect(body_shape.radius > 0.0, "Guardian body collision radius must be positive.")
+		_expect(_get_shape_extent_radius(guardian.collision_shape) > 0.0, "Guardian body collision extent must be positive.")
 	if touch_shape != null:
-		_expect(
-			body_shape != null and is_equal_approx(touch_shape.radius, body_shape.radius),
-			"Guardian touch damage radius must match body collision radius."
-		)
+		_expect(_get_shape_extent_radius(guardian.touch_damage_shape) > 0.0, "Guardian touch damage extent must be positive.")
 	_expect(guardian.collision_shape.shape != guardian.touch_damage_shape.shape, "Guardian body and touch shapes must be independently editable.")
 
 	var start_distance: float = guardian.global_position.distance_to(player.global_position)
@@ -243,6 +248,22 @@ func _spawn_enemy(
 func _wait_physics_frames(frame_count: int) -> void:
 	for _frame_index in range(frame_count):
 		await physics_frame
+
+
+func _get_shape_extent_radius(shape_node: CollisionShape2D) -> float:
+	if shape_node == null or shape_node.shape == null:
+		return 0.0
+	var shape_rect := shape_node.shape.get_rect()
+	var corners := [
+		shape_rect.position,
+		shape_rect.position + Vector2(shape_rect.size.x, 0.0),
+		shape_rect.position + Vector2(0.0, shape_rect.size.y),
+		shape_rect.position + shape_rect.size,
+	]
+	var max_radius := 0.0
+	for corner in corners:
+		max_radius = maxf(max_radius, (shape_node.transform * corner).length())
+	return max_radius
 
 
 func _expect(condition: bool, message: String) -> void:

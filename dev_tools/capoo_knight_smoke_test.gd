@@ -1,8 +1,10 @@
 extends SceneTree
 
 const KNIGHT_SCENE := preload("res://scene/enemy/capoo_knight.tscn")
+const SWORDSMAN_SCENE := preload("res://scene/enemy/capoo_swordsman.tscn")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres")
+const SWORDSMAN_CONFIG := preload("res://resources/config/enemies/capoo_swordsman.tres")
 const WAVES := [
 	preload("res://resources/config/waves/wave_06.tres"),
 	preload("res://resources/config/waves/wave_07.tres"),
@@ -15,6 +17,18 @@ const EXPECTED_KNIGHT_COUNTS := [4, 6, 8, 10, 12, 14]
 const EXPECTED_WAVE_TOTALS := [140, 150, 160, 180, 195, 210]
 var failures: Array[String] = []
 var test_root: Node2D
+
+
+class FakePathfinder:
+	extends Node
+
+	var is_built := true
+	var requested_path := false
+	var path := PackedVector2Array()
+
+	func get_global_path(_from_global_position: Vector2, _to_global_position: Vector2) -> PackedVector2Array:
+		requested_path = true
+		return path
 
 
 func _init() -> void:
@@ -32,6 +46,7 @@ func _run() -> void:
 	await _test_windup_delays_damage()
 	await _test_death_interrupts_attack()
 	await _test_proxy_action_visuals()
+	await _test_swordsman_uses_path_when_corner_blocks_direct_chase()
 
 	test_root.queue_free()
 	await process_frame
@@ -152,6 +167,41 @@ func _test_proxy_action_visuals() -> void:
 	await physics_frame
 
 
+func _test_swordsman_uses_path_when_corner_blocks_direct_chase() -> void:
+	var player := _spawn_player(Vector2(18.0, 0.0))
+	var wall := _spawn_wall(Vector2(9.0, 0.0), Vector2(8.0, 64.0))
+	await physics_frame
+	var pathfinder := FakePathfinder.new()
+	pathfinder.path = PackedVector2Array([
+		Vector2(0.0, -32.0),
+		Vector2(18.0, -32.0),
+		player.global_position,
+	])
+	test_root.add_child(pathfinder)
+	var enemy := SWORDSMAN_SCENE.instantiate() as CapooKnight
+	_expect(enemy != null, "Swordsman scene must instantiate CapooKnight.")
+	if enemy == null:
+		player.queue_free()
+		wall.queue_free()
+		pathfinder.queue_free()
+		await physics_frame
+		return
+	test_root.add_child(enemy)
+	enemy.global_position = Vector2.ZERO
+	enemy.setup(SWORDSMAN_CONFIG, player, pathfinder)
+	enemy.attack_cooldown_left = 10.0
+	await _wait_physics_frames(8)
+
+	_expect(pathfinder.requested_path, "Swordsman must use pathfinding when a wall blocks close direct chase.")
+	_expect(enemy.global_position.y < -0.5, "Swordsman did not follow the path away from the blocked corner.")
+
+	enemy.queue_free()
+	wall.queue_free()
+	pathfinder.queue_free()
+	player.queue_free()
+	await physics_frame
+
+
 func _expect_slash_result(player_position: Vector2, should_hit: bool, message: String) -> void:
 	var player := _spawn_player(player_position)
 	var enemy := _spawn_knight(Vector2.ZERO, player)
@@ -186,6 +236,20 @@ func _spawn_knight(position: Vector2, player: Player) -> CapooKnight:
 	enemy.global_position = position
 	enemy.setup(KNIGHT_CONFIG, player)
 	return enemy
+
+
+func _spawn_wall(position: Vector2, size: Vector2) -> StaticBody2D:
+	var wall := StaticBody2D.new()
+	wall.collision_layer = 1
+	wall.collision_mask = 0
+	var shape_node := CollisionShape2D.new()
+	var rectangle := RectangleShape2D.new()
+	rectangle.size = size
+	shape_node.shape = rectangle
+	wall.add_child(shape_node)
+	test_root.add_child(wall)
+	wall.global_position = position
+	return wall
 
 
 func _count_wave_entries(wave_config: WaveConfig) -> int:

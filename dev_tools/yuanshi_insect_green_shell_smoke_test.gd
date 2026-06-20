@@ -57,10 +57,10 @@ func _test_resource_contract() -> void:
 		return
 	_expect(scene_enemy.get_script() == AURA_SCRIPT, "Green shell scene must use the aura script.")
 	var body_shape_node := scene_enemy.get_node("CollisionShape2D") as CollisionShape2D
-	var body_shape := body_shape_node.shape as CircleShape2D
-	_expect(body_shape != null, "Green shell body collision shape must be circular.")
-	if body_shape != null:
-		_expect(GREEN_SHELL_CONFIG.aura_radius > body_shape.radius, "Aura must exceed body radius.")
+	_expect(body_shape_node != null and body_shape_node.shape != null, "Green shell body collision shape must be configured.")
+	if body_shape_node != null and body_shape_node.shape != null:
+		_expect(_get_shape_extent_radius(body_shape_node) > 0.0, "Green shell body collision extent must be positive.")
+		_expect(GREEN_SHELL_CONFIG.aura_radius > _get_shape_extent_radius(body_shape_node), "Aura must exceed body collision extent.")
 	scene_enemy.free()
 	_expect(GREEN_SHELL_CONFIG.aura_particle_amount >= 60, "Aura particles are not dense enough.")
 	_expect(GREEN_SHELL_CONFIG.aura_particle_texture != null, "Aura particle texture is missing.")
@@ -288,6 +288,22 @@ func _spawn_enemy(
 func _wait_physics_frames(frame_count: int) -> void:
 	for _frame_index in range(frame_count):
 		await physics_frame
+
+
+func _get_shape_extent_radius(shape_node: CollisionShape2D) -> float:
+	if shape_node == null or shape_node.shape == null:
+		return 0.0
+	var shape_rect := shape_node.shape.get_rect()
+	var corners := [
+		shape_rect.position,
+		shape_rect.position + Vector2(shape_rect.size.x, 0.0),
+		shape_rect.position + Vector2(0.0, shape_rect.size.y),
+		shape_rect.position + shape_rect.size,
+	]
+	var max_radius := 0.0
+	for corner in corners:
+		max_radius = maxf(max_radius, (shape_node.transform * corner).length())
+	return max_radius
 
 
 func _expect(condition: bool, message: String) -> void:
