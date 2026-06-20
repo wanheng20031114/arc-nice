@@ -1,0 +1,39 @@
+[gd_resource type="SpriteFrames" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/capoo_knight_slash.png" id="1_texture"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_slash_0"]
+atlas = ExtResource("1_texture")
+region = Rect2(0, 0, 96, 96)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_slash_1"]
+atlas = ExtResource("1_texture")
+region = Rect2(96, 0, 96, 96)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_slash_2"]
+atlas = ExtResource("1_texture")
+region = Rect2(192, 0, 96, 96)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_slash_3"]
+atlas = ExtResource("1_texture")
+region = Rect2(288, 0, 96, 96)
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_slash_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_slash_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_slash_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_slash_3")
+}],
+"loop": false,
+"name": &"slash",
+"speed": 14.0
+}]

@@ -11,17 +11,18 @@
 [ext_resource type="Resource" uid="uid://yefrqmv7b306" path="res://resources/config/enemies/yuanshi_insect_green_shell.tres" id="9_green"]
 [ext_resource type="Resource" uid="uid://b6g77s6rrfiw8" path="res://resources/config/enemies/yuanshi_insect_guardian.tres" id="10_guardian"]
 [ext_resource type="Resource" uid="uid://bwc31dxuxgnhs" path="res://resources/config/enemies/capoo_ak47.tres" id="11_capoo"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_knight.tres" id="13_knight"]
 [ext_resource type="AudioStream" uid="uid://diw1565kbaa50" path="res://resources/audio/1-29 Journey of the Prairie King (Final Boss & Ending).mp3" id="12_music"]
 
 [sub_resource type="Resource" id="WaveEnemyEntry_basic"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("3_basic")
-count = 8
+count = 0
 
 [sub_resource type="Resource" id="WaveEnemyEntry_fast"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("4_fast")
-count = 20
+count = 16
 
 [sub_resource type="Resource" id="WaveEnemyEntry_shell"]
 script = ExtResource("2_entry")
@@ -58,10 +59,16 @@ script = ExtResource("2_entry")
 enemy_config = ExtResource("11_capoo")
 count = 25
 
+
+[sub_resource type="Resource" id="WaveEnemyEntry_knight"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("13_knight")
+count = 12
+
 [resource]
 script = ExtResource("1_wave")
 wave_name = "第九波 - 末日虫潮"
-enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic"), SubResource("WaveEnemyEntry_fast"), SubResource("WaveEnemyEntry_shell"), SubResource("WaveEnemyEntry_bomber"), SubResource("WaveEnemyEntry_purple"), SubResource("WaveEnemyEntry_fire"), SubResource("WaveEnemyEntry_green"), SubResource("WaveEnemyEntry_guardian"), SubResource("WaveEnemyEntry_capoo")])
+enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic"), SubResource("WaveEnemyEntry_fast"), SubResource("WaveEnemyEntry_shell"), SubResource("WaveEnemyEntry_bomber"), SubResource("WaveEnemyEntry_purple"), SubResource("WaveEnemyEntry_fire"), SubResource("WaveEnemyEntry_green"), SubResource("WaveEnemyEntry_guardian"), SubResource("WaveEnemyEntry_capoo"), SubResource("WaveEnemyEntry_knight")])
 spawn_interval = 0.07
 spawn_count_per_tick = 14
 max_alive_enemies = 140

@@ -1140,6 +1140,18 @@ func _on_host_enemy_removed(net_id: int) -> void:
 	net_enemy_removed.rpc(net_id)
 
 
+func broadcast_enemy_action(
+	net_id: int,
+	action_name: StringName,
+	direction: Vector2,
+	action_position: Vector2,
+	action_id: int
+) -> void:
+	if not net_manager.is_host() or net_id <= 0 or action_id <= 0:
+		return
+	net_enemy_action.rpc(net_id, String(action_name), direction, action_position, action_id)
+
+
 func _on_host_pickup_removed(net_id: int) -> void:
 	net_pickup_removed.rpc(net_id)
 
@@ -1208,6 +1220,24 @@ func net_enemy_spawned(
 @rpc("authority", "call_remote", "reliable", 4)
 func net_enemy_removed(net_id: int) -> void:
 	_remove_client_enemy(net_id, true)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_enemy_action(
+	net_id: int,
+	action_name: String,
+	direction: Vector2,
+	action_position: Vector2,
+	action_id: int
+) -> void:
+	if game == null or net_manager.is_host():
+		return
+	var enemy: Enemy = _get_valid_client_enemy_for_net_id(net_id)
+	if enemy == null or not is_instance_valid(enemy):
+		return
+	enemy.global_position = action_position
+	if enemy.has_method("play_multiplayer_enemy_action"):
+		enemy.call("play_multiplayer_enemy_action", StringName(action_name), direction, action_id)
 
 
 
