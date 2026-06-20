@@ -1,0 +1,2 @@
+extends CapooKnight
+class_name CapooSwordsman

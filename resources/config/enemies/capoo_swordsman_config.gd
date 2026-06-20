@@ -1,0 +1,2 @@
+extends CapooKnightConfig
+class_name CapooSwordsmanConfig
