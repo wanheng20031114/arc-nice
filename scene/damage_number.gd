@@ -1,10 +1,14 @@
 extends Node2D
 class_name DamageNumber
 
-const DAMAGE_FONT := preload("res://resources/font/IPix.ttf")
+const DAMAGE_FONT := preload("res://resources/font/ResourceHanRoundedCN-Medium.ttf")
 const GROUP_NAME := &"damage_numbers"
-const BASE_SIZE := Vector2(42.0, 14.0)
+const BASE_SIZE := Vector2(64.0, 28.0)
 const LIFETIME := 0.72
+const FONT_SIZE := 18
+const FONT_COLOR := Color(1.0, 0.12, 0.09, 1.0)
+const OUTLINE_COLOR := Color(0.28, 0.02, 0.02, 0.98)
+const OUTLINE_SIZE := 5
 
 var label: Label = null
 
@@ -24,10 +28,10 @@ func setup(amount: int, spawn_position: Vector2, impact_direction: Vector2 = Vec
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.add_theme_font_override("font", DAMAGE_FONT)
-	label.add_theme_font_size_override("font_size", 8)
-	label.add_theme_color_override("font_color", Color(1.0, 0.86, 0.38, 1.0))
-	label.add_theme_color_override("font_outline_color", Color(0.24, 0.08, 0.03, 0.96))
-	label.add_theme_constant_override("outline_size", 2)
+	label.add_theme_font_size_override("font_size", FONT_SIZE)
+	label.add_theme_color_override("font_color", FONT_COLOR)
+	label.add_theme_color_override("font_outline_color", OUTLINE_COLOR)
+	label.add_theme_constant_override("outline_size", OUTLINE_SIZE)
 	add_child(label)
 
 	var horizontal_sign := 0.0
