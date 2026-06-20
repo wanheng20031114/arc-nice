@@ -63,37 +63,86 @@ func _test_enemy_scene_contract(enemy_config: EnemyConfig) -> void:
 		return
 
 	var animated_sprite := enemy.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
-	var body_shape_node := enemy.get_node_or_null("CollisionShape2D") as CollisionShape2D
-	var touch_shape_node := enemy.get_node_or_null("TouchDamageArea/CollisionShape2D") as CollisionShape2D
+	var touch_damage_area := enemy.get_node_or_null("TouchDamageArea") as Area2D
+	var body_shape_nodes := _collect_direct_collision_shapes(enemy)
+	var touch_shape_nodes := _collect_direct_collision_shapes(touch_damage_area)
 	_expect(animated_sprite != null, "%s scene must include AnimatedSprite2D." % enemy_config.resource_path)
-	_expect(body_shape_node != null, "%s scene must include body CollisionShape2D." % enemy_config.resource_path)
-	_expect(touch_shape_node != null, "%s scene must include touch CollisionShape2D." % enemy_config.resource_path)
-	if animated_sprite == null or body_shape_node == null or touch_shape_node == null:
+	_expect(touch_damage_area != null, "%s scene must include TouchDamageArea." % enemy_config.resource_path)
+	_expect(not body_shape_nodes.is_empty(), "%s scene must include body CollisionShape2D nodes." % enemy_config.resource_path)
+	_expect(not touch_shape_nodes.is_empty(), "%s scene must include touch CollisionShape2D nodes." % enemy_config.resource_path)
+	if animated_sprite == null or touch_damage_area == null or body_shape_nodes.is_empty() or touch_shape_nodes.is_empty():
 		enemy.free()
 		return
 
 	var scene_frames := animated_sprite.sprite_frames
-	var body_shape := body_shape_node.shape
-	var touch_shape := touch_shape_node.shape
+	var body_shapes := _get_shape_resources(body_shape_nodes)
+	var touch_shapes := _get_shape_resources(touch_shape_nodes)
 	_expect(scene_frames != null, "%s scene must own SpriteFrames." % enemy_config.resource_path)
 	if scene_frames != null:
 		_expect(scene_frames.has_animation(enemy_config.move_animation_name), "%s scene must include move animation." % enemy_config.resource_path)
 	_expect(animated_sprite.animation == enemy_config.move_animation_name, "%s editor animation must be move." % enemy_config.resource_path)
 	_expect(animated_sprite.frame == 0, "%s editor frame must be 0." % enemy_config.resource_path)
-	_expect(body_shape != null, "%s body shape must be configured in scene." % enemy_config.resource_path)
-	_expect(touch_shape != null, "%s touch shape must be configured in scene." % enemy_config.resource_path)
-	_expect(body_shape != touch_shape, "%s body and touch shapes must be independently editable." % enemy_config.resource_path)
+	_expect(body_shapes.size() == body_shape_nodes.size(), "%s all body shapes must be configured in scene." % enemy_config.resource_path)
+	_expect(touch_shapes.size() == touch_shape_nodes.size(), "%s all touch shapes must be configured in scene." % enemy_config.resource_path)
+	_expect(
+		_are_body_and_touch_shapes_independent(body_shapes, touch_shapes),
+		"%s body and touch shapes must be independently editable." % enemy_config.resource_path
+	)
 
 	test_root.add_child(enemy)
 	enemy.setup(enemy_config, null, null)
 	await process_frame
 
 	_expect(animated_sprite.sprite_frames == scene_frames, "%s setup must not replace scene SpriteFrames." % enemy_config.resource_path)
-	_expect(body_shape_node.shape == body_shape, "%s setup must not replace body shape." % enemy_config.resource_path)
-	_expect(touch_shape_node.shape == touch_shape, "%s setup must not replace touch shape." % enemy_config.resource_path)
+	_expect(enemy.body_collision_shapes.size() == body_shape_nodes.size(), "%s runtime must cache all body collision shapes." % enemy_config.resource_path)
+	_expect(enemy.touch_damage_shapes.size() == touch_shape_nodes.size(), "%s runtime must cache all touch collision shapes." % enemy_config.resource_path)
+	_expect(_shape_nodes_match_resources(body_shape_nodes, body_shapes), "%s setup must not replace body shapes." % enemy_config.resource_path)
+	_expect(_shape_nodes_match_resources(touch_shape_nodes, touch_shapes), "%s setup must not replace touch shapes." % enemy_config.resource_path)
 
 	enemy.queue_free()
 	await process_frame
+
+
+func _collect_direct_collision_shapes(parent_node: Node) -> Array[CollisionShape2D]:
+	var shapes: Array[CollisionShape2D] = []
+	if parent_node == null:
+		return shapes
+	for child in parent_node.get_children():
+		var shape_node := child as CollisionShape2D
+		if shape_node != null:
+			shapes.append(shape_node)
+	return shapes
+
+
+func _get_shape_resources(shape_nodes: Array[CollisionShape2D]) -> Array[Shape2D]:
+	var shapes: Array[Shape2D] = []
+	for shape_node in shape_nodes:
+		if shape_node.shape != null:
+			shapes.append(shape_node.shape)
+	return shapes
+
+
+func _are_body_and_touch_shapes_independent(
+	body_shapes: Array[Shape2D],
+	touch_shapes: Array[Shape2D]
+) -> bool:
+	for body_shape in body_shapes:
+		for touch_shape in touch_shapes:
+			if body_shape == touch_shape:
+				return false
+	return true
+
+
+func _shape_nodes_match_resources(
+	shape_nodes: Array[CollisionShape2D],
+	expected_shapes: Array[Shape2D]
+) -> bool:
+	if shape_nodes.size() != expected_shapes.size():
+		return false
+	for index in range(shape_nodes.size()):
+		if shape_nodes[index].shape != expected_shapes[index]:
+			return false
+	return true
 
 
 func _expect(condition: bool, message: String) -> void:

@@ -1,106 +1,10 @@
 [gd_scene format=3 uid="uid://ccvfm2ck2jkky"]
 
-[ext_resource type="PackedScene" path="res://scene/enemy/enemy.tscn" id="1_base"]
-[ext_resource type="Shader" uid="uid://b47uq42hh5vq1" path="res://scene/blink.gdshader" id="2_olugw"]
-[ext_resource type="Script" path="res://scene/enemy/yuanshi_insect.gd" id="2_script"]
-[ext_resource type="AudioStream" uid="uid://bogl46dtqkano" path="res://resources/audio/cowboy_explosion.wav" id="3_explosion_audio"]
-[ext_resource type="Texture2D" uid="uid://bg46042bpug12" path="res://resources/texture/道具ui.png" id="4_hit_texture"]
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_x60m8"]
-resource_local_to_scene = true
-shader = ExtResource("2_olugw")
-shader_parameter/blink_enabled = false
-shader_parameter/blink_speed = 12.0
-shader_parameter/hidden_ratio = 0.5
-
-[sub_resource type="CircleShape2D" id="CircleShape2D_l73g1"]
-resource_local_to_scene = true
-radius = 8.0
-
-[sub_resource type="CircleShape2D" id="CircleShape2D_pmv48"]
-resource_local_to_scene = true
-radius = 6.0
-
-[sub_resource type="CircleShape2D" id="CircleShape2D_explosion"]
-resource_local_to_scene = true
-radius = 12.0
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_aura_particle"]
-atlas = ExtResource("4_hit_texture")
-region = Rect2(22, 23, 4, 4)
-
-[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_aura"]
-resource_local_to_scene = true
-emission_shape = 6
-emission_ring_axis = Vector3(0, 0, 1)
-emission_ring_height = 0.0
-emission_ring_radius = 8.0
-emission_ring_inner_radius = 6.5
-emission_ring_cone_angle = 90.0
-spread = 180.0
-radial_velocity_min = 16.0
-radial_velocity_max = 25.0
-gravity = Vector3(0, 0, 0)
-damping_max = 1.5
-scale_min = 0.35
-scale_max = 0.7
-
-[sub_resource type="CircleShape2D" id="CircleShape2D_aura"]
-resource_local_to_scene = true
-radius = 30.0
+[ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy/enemy.tscn" id="1_base"]
+[ext_resource type="Script" uid="uid://dui7s0vx8ttvd" path="res://scene/enemy/yuanshi_insect.gd" id="2_script"]
 
 [node name="YuanshiInsect" unique_id=1925063055 instance=ExtResource("1_base")]
-material = SubResource("ShaderMaterial_x60m8")
 script = ExtResource("2_script")
 path_refresh_interval = 0.25
 waypoint_arrival_distance = 6.0
 direct_chase_extra_distance = 2.0
-
-[node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
-shape = SubResource("CircleShape2D_l73g1")
-
-[node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
-shape = SubResource("CircleShape2D_pmv48")
-
-[node name="ExplosionArea" type="Area2D" parent="." index="5" unique_id=576763739]
-collision_layer = 64
-collision_mask = 6
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="ExplosionArea" index="0" unique_id=1833547258]
-shape = SubResource("CircleShape2D_explosion")
-debug_color = Color(0.9764706, 0.6, 0.69803923, 0.41960785)
-
-[node name="ExplosionAudio" type="AudioStreamPlayer2D" parent="." index="7" unique_id=823913350]
-stream = ExtResource("3_explosion_audio")
-volume_db = -4.0
-
-[node name="AuraParticles" type="GPUParticles2D" parent="." index="8" unique_id=178153395]
-z_index = 1
-emitting = false
-amount = 72
-texture = SubResource("AtlasTexture_aura_particle")
-lifetime = 0.9
-randomness = 0.35
-local_coords = true
-process_material = SubResource("ParticleProcessMaterial_aura")
-
-[node name="AuraRangeFill" type="Polygon2D" parent="." index="9" unique_id=624067400]
-visible = false
-z_index = -1
-color = Color(0.12, 0.72, 0.08, 0.01)
-
-[node name="AuraRangeOutline" type="Line2D" parent="." index="10" unique_id=1918475104]
-visible = false
-closed = true
-width = 4.0
-default_color = Color(0.55, 1, 0.35, 0.12)
-
-[node name="AuraArea" type="Area2D" parent="." index="11" unique_id=703005297]
-visible = false
-collision_layer = 0
-collision_mask = 2
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="AuraArea" index="0" unique_id=2041450780]
-shape = SubResource("CircleShape2D_aura")
-disabled = true
-debug_color = Color(0.2, 0.9, 0.15, 0.2)

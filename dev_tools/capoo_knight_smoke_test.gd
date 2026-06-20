@@ -71,12 +71,16 @@ func _test_resource_contract() -> void:
 	_expect(slash_texture != null and slash_texture.get_size() == Vector2(384, 96), "Knight slash sheet size is incorrect.")
 	var knight_instance := KNIGHT_SCENE.instantiate() as CapooKnight
 	var animated_sprite := knight_instance.get_node("AnimatedSprite2D") as AnimatedSprite2D
-	var body_shape := knight_instance.get_node("CollisionShape2D") as CollisionShape2D
-	var touch_shape := knight_instance.get_node("TouchDamageArea/CollisionShape2D") as CollisionShape2D
+	var body_shapes := _collect_direct_collision_shapes(knight_instance)
+	var touch_shapes := _collect_direct_collision_shapes(knight_instance.get_node("TouchDamageArea"))
 	_expect(animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"move"), "Knight scene must own its move animation.")
-	_expect(body_shape.shape is RectangleShape2D, "Knight body collision must be scene-owned rectangle.")
-	_expect(touch_shape.shape is RectangleShape2D, "Knight touch collision must be scene-owned rectangle.")
-	_expect(body_shape.shape != touch_shape.shape, "Knight body and touch shapes must be independently editable.")
+	_expect(body_shapes.size() == 2, "Knight body collision should use both configured CollisionShape2D nodes.")
+	_expect(touch_shapes.size() == 2, "Knight touch damage should use both configured CollisionShape2D nodes.")
+	for body_shape in body_shapes:
+		_expect(body_shape.shape is RectangleShape2D, "Knight body collision must use scene-owned rectangles.")
+	for touch_shape in touch_shapes:
+		_expect(touch_shape.shape is RectangleShape2D, "Knight touch collision must use scene-owned rectangles.")
+	_expect(_are_shapes_independent(body_shapes, touch_shapes), "Knight body and touch shapes must be independently editable.")
 	knight_instance.free()
 
 	for index in range(WAVES.size()):
@@ -211,6 +215,26 @@ func _count_slash_effects() -> int:
 func _wait_physics_frames(frame_count: int) -> void:
 	for _frame_index in range(frame_count):
 		await physics_frame
+
+
+func _collect_direct_collision_shapes(parent_node: Node) -> Array[CollisionShape2D]:
+	var shapes: Array[CollisionShape2D] = []
+	for child in parent_node.get_children():
+		var shape_node := child as CollisionShape2D
+		if shape_node != null:
+			shapes.append(shape_node)
+	return shapes
+
+
+func _are_shapes_independent(
+	body_shapes: Array[CollisionShape2D],
+	touch_shapes: Array[CollisionShape2D]
+) -> bool:
+	for body_shape in body_shapes:
+		for touch_shape in touch_shapes:
+			if body_shape.shape == touch_shape.shape:
+				return false
+	return true
 
 
 func _expect(condition: bool, message: String) -> void:

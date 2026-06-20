@@ -109,6 +109,9 @@ func _test_resource_contract() -> void:
 		_expect(body_shape.shape != touch_shape.shape, "RPG body and touch shapes must be independently editable.")
 		capoo_instance.free()
 	if rocket_instance != null:
+		var rocket_body_shape := rocket_instance.get_node_or_null("CollisionShape2D") as CollisionShape2D
+		_expect(rocket_body_shape != null, "RPG rocket collision shape must be a direct child of the Area2D.")
+		_expect(rocket_body_shape != null and rocket_body_shape.shape is CapsuleShape2D, "RPG rocket collision should use the configured capsule shape.")
 		var explosion_shape := rocket_instance.get_node("ExplosionShape") as CollisionShape2D
 		var explosion_circle := explosion_shape.shape as CircleShape2D
 		_expect(

@@ -4,6 +4,7 @@ const PLAYER_SCENE := preload("res://scene/player.tscn")
 const FIRE_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres")
 const BOMBER_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_bomber.tres")
 const FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
+const EXPLODER_SCRIPT := preload("res://scene/enemy/yuanshi_insect_exploder.gd")
 const FIRE_CONFIG_SCRIPT := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged_config.gd")
 const FIRE_WAVE := preload("res://resources/config/waves/wave_04.tres")
 const COMBAT_STATE_CHASE := 0
@@ -95,12 +96,19 @@ func _test_legacy_bomber_unchanged() -> void:
 
 	var player := _spawn_player(Vector2(100, 0))
 	var bomber := BOMBER_CONFIG.enemy_scene.instantiate() as YuanshiInsect
+	_expect(bomber != null, "Bomber scene must instantiate YuanshiInsect.")
+	if bomber == null:
+		player.queue_free()
+		return
+	_expect(bomber.get_script() == EXPLODER_SCRIPT, "Bomber scene must use the exploder script.")
 	test_root.add_child(bomber)
 	bomber.global_position = Vector2.ZERO
 	bomber.setup(BOMBER_CONFIG, player)
 	await _wait_physics_frames(20)
 
 	_expect(bomber.get_node_or_null("AttackAudio") == null, "Base bomber unexpectedly contains attack audio.")
+	_expect(bomber.get_node_or_null("AuraArea") == null, "Base bomber unexpectedly contains aura nodes.")
+	_expect(bomber.get_node_or_null("ExplosionArea") != null, "Bomber must own its explosion area.")
 	_expect(bomber.animated_sprite.animation == BOMBER_CONFIG.move_animation_name, "Bomber left move animation.")
 	_expect(
 		bomber.animated_sprite.sprite_frames != null

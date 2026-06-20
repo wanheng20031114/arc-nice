@@ -5,6 +5,7 @@ const GREEN_SHELL_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_green_shell.tres"
 )
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
+const AURA_SCRIPT := preload("res://scene/enemy/yuanshi_insect_aura.gd")
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -51,6 +52,10 @@ func _test_resource_contract() -> void:
 	_expect(GREEN_SHELL_CONFIG.aura_enabled, "Green shell aura must be enabled.")
 	_expect(GREEN_SHELL_CONFIG.attack_damage > 0, "Green shell attack damage must be positive.")
 	var scene_enemy := GREEN_SHELL_CONFIG.enemy_scene.instantiate() as YuanshiInsect
+	_expect(scene_enemy != null, "Green shell scene must instantiate YuanshiInsect.")
+	if scene_enemy == null:
+		return
+	_expect(scene_enemy.get_script() == AURA_SCRIPT, "Green shell scene must use the aura script.")
 	var body_shape_node := scene_enemy.get_node("CollisionShape2D") as CollisionShape2D
 	var body_shape := body_shape_node.shape as CircleShape2D
 	_expect(body_shape != null, "Green shell body collision shape must be circular.")
@@ -71,8 +76,14 @@ func _test_resource_contract() -> void:
 
 func _test_aura_visual_configuration() -> void:
 	var player := _spawn_player(Vector2(200.0, 0.0))
-	var enemy := _spawn_enemy(Vector2.ZERO, GREEN_SHELL_CONFIG, player)
-	var second_enemy := _spawn_enemy(Vector2(100.0, 100.0), GREEN_SHELL_CONFIG, player)
+	var enemy: Variant = _spawn_enemy(Vector2.ZERO, GREEN_SHELL_CONFIG, player)
+	var second_enemy: Variant = _spawn_enemy(Vector2(100.0, 100.0), GREEN_SHELL_CONFIG, player)
+	_expect(enemy != null and second_enemy != null, "Green shell scenes must instantiate YuanshiInsect.")
+	if enemy == null or second_enemy == null:
+		player.queue_free()
+		return
+	_expect(enemy.get_script() == AURA_SCRIPT, "Green shell scene must use the aura script.")
+	_expect(second_enemy.get_script() == AURA_SCRIPT, "Second green shell scene must use the aura script.")
 	await _wait_physics_frames(3)
 
 	var aura_shape := enemy.aura_area_shape.shape as CircleShape2D
@@ -154,7 +165,12 @@ func _test_shared_attack_damage() -> void:
 
 	var player := _spawn_player(Vector2(200.0, 0.0))
 	player.invincibility_duration = 0.0
-	var enemy := _spawn_enemy(Vector2.ZERO, test_config, player)
+	var enemy: Variant = _spawn_enemy(Vector2.ZERO, test_config, player)
+	_expect(enemy != null, "Green shell scene must instantiate YuanshiInsect.")
+	if enemy == null:
+		player.queue_free()
+		return
+	_expect(enemy.get_script() == AURA_SCRIPT, "Green shell scene must use the aura script.")
 	await _wait_physics_frames(2)
 
 	var initial_health := player.current_health
@@ -205,7 +221,12 @@ func _test_aura_damage_and_shutdown() -> void:
 
 	var player := _spawn_player(Vector2(24.0, 0.0))
 	player.invincibility_duration = 0.0
-	var enemy := _spawn_enemy(Vector2.ZERO, test_config, player)
+	var enemy: Variant = _spawn_enemy(Vector2.ZERO, test_config, player)
+	_expect(enemy != null, "Green shell scene must instantiate YuanshiInsect.")
+	if enemy == null:
+		player.queue_free()
+		return
+	_expect(enemy.get_script() == AURA_SCRIPT, "Green shell scene must use the aura script.")
 	var initial_health := player.current_health
 	await _wait_physics_frames(5)
 
@@ -232,9 +253,10 @@ func _test_normal_enemy_has_no_aura() -> void:
 	var enemy := _spawn_enemy(Vector2.ZERO, BASIC_CONFIG, player)
 	await _wait_physics_frames(2)
 
-	_expect(not enemy.aura_active, "Normal Yuanshi insect unexpectedly enabled the aura.")
-	_expect(not enemy.aura_particles.emitting, "Normal Yuanshi insect emits aura particles.")
-	_expect(not enemy.aura_range_outline.visible, "Normal Yuanshi insect shows an aura range.")
+	_expect(enemy.get_script() != AURA_SCRIPT, "Normal Yuanshi insect unexpectedly uses the aura script.")
+	_expect(enemy.get_node_or_null("AuraArea") == null, "Normal Yuanshi insect unexpectedly owns AuraArea.")
+	_expect(enemy.get_node_or_null("AuraParticles") == null, "Normal Yuanshi insect unexpectedly owns AuraParticles.")
+	_expect(enemy.get_node_or_null("AuraRangeOutline") == null, "Normal Yuanshi insect unexpectedly owns an aura range.")
 
 	enemy.queue_free()
 	player.queue_free()

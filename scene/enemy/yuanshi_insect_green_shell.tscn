@@ -1,24 +1,89 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene format=3 uid="uid://bsowy8xf3lvlm"]
 
-[ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect.tscn" id="1_base"]
-[ext_resource type="SpriteFrames" uid="uid://p451nqj5gojm" path="res://resources/animation/yuanshi_insect_green_shell.tres" id="2_frames"]
+[ext_resource type="PackedScene" uid="uid://ccvfm2ck2jkky" path="res://scene/enemy/yuanshi_insect.tscn" id="1_base"]
+[ext_resource type="Shader" uid="uid://b47uq42hh5vq1" path="res://scene/blink.gdshader" id="2_g7i4v"]
+[ext_resource type="Script" uid="uid://dfj2c0dhhldw1" path="res://scene/enemy/yuanshi_insect_aura.gd" id="2_script"]
+[ext_resource type="SpriteFrames" uid="uid://p451nqj5gojm" path="res://resources/animation/yuanshi_insect_green_shell.tres" id="3_frames"]
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_body"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_uutsh"]
 resource_local_to_scene = true
-radius = 7.0
+shader = ExtResource("2_g7i4v")
+shader_parameter/blink_enabled = false
+shader_parameter/blink_speed = 12.0
+shader_parameter/hidden_ratio = 0.5
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_touch"]
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_g7i4v"]
+radius = 6.0
+height = 22.0
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_idsss"]
+radius = 6.0
+height = 22.0
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_aura"]
 resource_local_to_scene = true
-radius = 7.0
+emission_shape = 6
+emission_ring_axis = Vector3(0, 0, 1)
+emission_ring_height = 0.0
+emission_ring_radius = 8.0
+emission_ring_inner_radius = 6.5
+emission_ring_cone_angle = 90.0
+spread = 180.0
+radial_velocity_min = 16.0
+radial_velocity_max = 25.0
+gravity = Vector3(0, 0, 0)
+damping_max = 1.5
+scale_min = 0.35
+scale_max = 0.7
 
-[node name="YuanshiInsectGreenShell" instance=ExtResource("1_base")]
+[sub_resource type="CircleShape2D" id="CircleShape2D_aura"]
+resource_local_to_scene = true
+radius = 30.0
+
+[node name="YuanshiInsectGreenShell" unique_id=435097187 instance=ExtResource("1_base")]
+material = SubResource("ShaderMaterial_uutsh")
+script = ExtResource("2_script")
 
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
-sprite_frames = ExtResource("2_frames")
+sprite_frames = ExtResource("3_frames")
 animation = &"move"
 
 [node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
-shape = SubResource("CircleShape2D_body")
+position = Vector2(1, 0)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_g7i4v")
 
 [node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
-shape = SubResource("CircleShape2D_touch")
+position = Vector2(1, 0)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_idsss")
+
+[node name="AuraParticles" type="GPUParticles2D" parent="." index="6" unique_id=163512779]
+z_index = 1
+emitting = false
+amount = 72
+lifetime = 0.9
+randomness = 0.35
+local_coords = true
+process_material = SubResource("ParticleProcessMaterial_aura")
+
+[node name="AuraRangeFill" type="Polygon2D" parent="." index="7" unique_id=390649893]
+visible = false
+z_index = -1
+color = Color(0.12, 0.72, 0.08, 0.01)
+
+[node name="AuraRangeOutline" type="Line2D" parent="." index="8" unique_id=1446351669]
+visible = false
+closed = true
+width = 4.0
+default_color = Color(0.55, 1, 0.35, 0.12)
+
+[node name="AuraArea" type="Area2D" parent="." index="9" unique_id=887218868]
+visible = false
+collision_layer = 0
+collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="AuraArea" index="0" unique_id=1546973820]
+shape = SubResource("CircleShape2D_aura")
+disabled = true
+debug_color = Color(0.2, 0.9, 0.15, 0.2)

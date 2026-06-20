@@ -6,6 +6,7 @@ const GUARDIAN_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_
 const GREEN_SHELL_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_green_shell.tres"
 )
+const AURA_SCRIPT := preload("res://scene/enemy/yuanshi_insect_aura.gd")
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -62,6 +63,11 @@ func _test_resource_contract() -> void:
 	)
 	var basic_scene_enemy := BASIC_CONFIG.enemy_scene.instantiate() as YuanshiInsect
 	var guardian_scene_enemy := GUARDIAN_CONFIG.enemy_scene.instantiate() as YuanshiInsect
+	_expect(guardian_scene_enemy != null, "Guardian scene must instantiate YuanshiInsect.")
+	if guardian_scene_enemy == null:
+		basic_scene_enemy.free()
+		return
+	_expect(guardian_scene_enemy.get_script() == AURA_SCRIPT, "Guardian scene must use the aura script.")
 	var basic_body := (basic_scene_enemy.get_node("CollisionShape2D") as CollisionShape2D).shape as CircleShape2D
 	var guardian_body := (guardian_scene_enemy.get_node("CollisionShape2D") as CollisionShape2D).shape as CircleShape2D
 	_expect(
@@ -113,7 +119,12 @@ func _test_damage_defense_formulas() -> void:
 
 func _test_guardian_aura_visual_configuration() -> void:
 	var player := _spawn_player(Vector2(160.0, 0.0))
-	var guardian := _spawn_enemy(Vector2.ZERO, GUARDIAN_CONFIG, player)
+	var guardian: Variant = _spawn_enemy(Vector2.ZERO, GUARDIAN_CONFIG, player)
+	_expect(guardian != null, "Guardian scene must instantiate YuanshiInsect.")
+	if guardian == null:
+		player.queue_free()
+		return
+	_expect(guardian.get_script() == AURA_SCRIPT, "Guardian scene must use the aura script.")
 	await _wait_physics_frames(3)
 
 	var aura_shape := guardian.aura_area_shape.shape as CircleShape2D
@@ -140,7 +151,12 @@ func _test_guardian_aura_visual_configuration() -> void:
 
 func _test_guardian_chase_and_collision_contract() -> void:
 	var player := _spawn_player(Vector2(96.0, 0.0))
-	var guardian := _spawn_enemy(Vector2.ZERO, GUARDIAN_CONFIG, player)
+	var guardian: Variant = _spawn_enemy(Vector2.ZERO, GUARDIAN_CONFIG, player)
+	_expect(guardian != null, "Guardian scene must instantiate YuanshiInsect.")
+	if guardian == null:
+		player.queue_free()
+		return
+	_expect(guardian.get_script() == AURA_SCRIPT, "Guardian scene must use the aura script.")
 	await _wait_physics_frames(2)
 
 	var body_shape := guardian.collision_shape.shape as CircleShape2D
@@ -156,9 +172,9 @@ func _test_guardian_chase_and_collision_contract() -> void:
 		)
 	_expect(guardian.collision_shape.shape != guardian.touch_damage_shape.shape, "Guardian body and touch shapes must be independently editable.")
 
-	var start_distance := guardian.global_position.distance_to(player.global_position)
+	var start_distance: float = guardian.global_position.distance_to(player.global_position)
 	await _wait_physics_frames(12)
-	var end_distance := guardian.global_position.distance_to(player.global_position)
+	var end_distance: float = guardian.global_position.distance_to(player.global_position)
 	_expect(end_distance < start_distance - 1.0, "Guardian did not move toward the player.")
 
 	guardian.queue_free()
@@ -168,7 +184,12 @@ func _test_guardian_chase_and_collision_contract() -> void:
 
 func _test_guardian_aura_defense_lifecycle() -> void:
 	var player := _spawn_player(Vector2(160.0, 0.0))
-	var guardian := _spawn_enemy(Vector2.ZERO, GUARDIAN_CONFIG, player)
+	var guardian: Variant = _spawn_enemy(Vector2.ZERO, GUARDIAN_CONFIG, player)
+	_expect(guardian != null, "Guardian scene must instantiate YuanshiInsect.")
+	if guardian == null:
+		player.queue_free()
+		return
+	_expect(guardian.get_script() == AURA_SCRIPT, "Guardian scene must use the aura script.")
 	var ally := _spawn_enemy(Vector2(20.0, 0.0), BASIC_CONFIG, player)
 	ally.current_health = 20
 	await _wait_physics_frames(2)

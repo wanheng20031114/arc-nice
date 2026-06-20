@@ -1,21 +1,23 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene format=3 uid="uid://cu2jhdju6m1kc"]
 
-[ext_resource type="Script" path="res://scene/enemy/capoo_ak47_bullet.gd" id="1_script"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/capoo_ak47_bullet.tres" id="2_frames"]
+[ext_resource type="Script" uid="uid://dda52mw718tsk" path="res://scene/enemy/capoo_ak47_bullet.gd" id="1_script"]
+[ext_resource type="SpriteFrames" uid="uid://d2ladw2emumnq" path="res://resources/animation/capoo_ak47_bullet.tres" id="2_frames"]
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_bullet"]
-radius = 2.5
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_k0v7m"]
+size = Vector2(7.142857, 2.8571434)
 
-[node name="CapooAK47Bullet" type="Area2D"]
+[node name="CapooAK47Bullet" type="Area2D" unique_id=476950621]
 z_index = 2
 collision_layer = 128
 collision_mask = 3
 script = ExtResource("1_script")
 
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=1590590142]
 sprite_frames = ExtResource("2_frames")
 animation = &"fly"
 autoplay = "fly"
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-shape = SubResource("CircleShape2D_bullet")
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1759082526]
+position = Vector2(0.5000001, 0)
+scale = Vector2(0.7, 0.7)
+shape = SubResource("RectangleShape2D_k0v7m")

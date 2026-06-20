@@ -2,7 +2,6 @@ extends SceneTree
 
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const MERCHANT_SCENE := preload("res://scene/zhuangfangyi_merchant.tscn")
-const ENEMY_SCENE := preload("res://scene/enemy/yuanshi_insect.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 
 var failures: Array[String] = []
@@ -142,7 +141,7 @@ func _test_skill_charge_and_bomb_direction() -> void:
 func _test_bomb_explosion_damage() -> void:
 	var player := PLAYER_SCENE.instantiate() as Player
 	var other_player := PLAYER_SCENE.instantiate() as Player
-	var enemy := ENEMY_SCENE.instantiate() as YuanshiInsect
+	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as YuanshiInsect
 	var bomb := preload("res://scene/weishidaier_skill1_bomb.tscn").instantiate() as WeishidaierSkill1Bomb
 	var explosion_shape := bomb.get_node("ExplosionShape") as CollisionShape2D
 	var explosion_circle := explosion_shape.shape as CircleShape2D

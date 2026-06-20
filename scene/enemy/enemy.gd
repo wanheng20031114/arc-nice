@@ -18,9 +18,9 @@ enum DeathSequenceStage {
 @export var hurt_blink_duration: float = 0.16
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
-@onready var collision_shape: CollisionShape2D = $CollisionShape2D
+@onready var collision_shape: CollisionShape2D = null
 @onready var touch_damage_area: Area2D = $TouchDamageArea
-@onready var touch_damage_shape: CollisionShape2D = $TouchDamageArea/CollisionShape2D
+@onready var touch_damage_shape: CollisionShape2D = null
 @onready var hit_particles: GPUParticles2D = $HitParticles
 @onready var hit_audio: AudioStreamPlayer2D = $HitAudio
 @onready var death_audio: AudioStreamPlayer2D = $DeathAudio
@@ -37,9 +37,12 @@ var death_animation_name_in_use: StringName = &""
 var physical_defense_modifiers: Dictionary = {}
 var is_multiplayer_proxy: bool = false
 var last_damage_taken: int = 0
+var body_collision_shapes: Array[CollisionShape2D] = []
+var touch_damage_shapes: Array[CollisionShape2D] = []
 
 
 func _ready() -> void:
+	_refresh_collision_shape_cache()
 	touch_damage_area.body_entered.connect(_on_touch_damage_area_body_entered)
 	touch_damage_area.body_exited.connect(_on_touch_damage_area_body_exited)
 	touch_damage_area.area_entered.connect(_on_touch_damage_area_area_entered)
@@ -201,8 +204,33 @@ func _has_scene_animation(animation_name: StringName) -> bool:
 	return animated_sprite.sprite_frames.has_animation(animation_name)
 
 
+func _refresh_collision_shape_cache() -> void:
+	body_collision_shapes = _collect_direct_collision_shapes(self)
+	touch_damage_shapes = _collect_direct_collision_shapes(touch_damage_area)
+	collision_shape = body_collision_shapes[0] if not body_collision_shapes.is_empty() else null
+	touch_damage_shape = touch_damage_shapes[0] if not touch_damage_shapes.is_empty() else null
+
+
+func _collect_direct_collision_shapes(parent_node: Node) -> Array[CollisionShape2D]:
+	var shapes: Array[CollisionShape2D] = []
+	if parent_node == null:
+		return shapes
+	for child in parent_node.get_children():
+		var shape_node := child as CollisionShape2D
+		if shape_node != null:
+			shapes.append(shape_node)
+	return shapes
+
+
 func _get_body_collision_extent_radius() -> float:
-	return _get_collision_shape_extent_radius(collision_shape)
+	return _get_collision_shapes_extent_radius(body_collision_shapes)
+
+
+func _get_collision_shapes_extent_radius(shape_nodes: Array[CollisionShape2D]) -> float:
+	var max_radius := 0.0
+	for shape_node in shape_nodes:
+		max_radius = maxf(max_radius, _get_collision_shape_extent_radius(shape_node))
+	return max_radius
 
 
 func _get_collision_shape_extent_radius(shape_node: CollisionShape2D) -> float:
@@ -335,12 +363,18 @@ func _die() -> void:
 	touched_player = null
 	hurt_blink_time_left = 0.0
 	_set_hurt_blink_enabled(false)
-	collision_shape.set_deferred("disabled", true)
-	touch_damage_shape.set_deferred("disabled", true)
+	_set_collision_shapes_disabled(body_collision_shapes, true)
+	_set_collision_shapes_disabled(touch_damage_shapes, true)
 	touch_damage_area.set_deferred("monitoring", false)
 	touch_damage_area.set_deferred("monitorable", false)
 	death_audio.play()
 	_start_death_sequence()
+
+
+func _set_collision_shapes_disabled(shape_nodes: Array[CollisionShape2D], disabled: bool) -> void:
+	for shape_node in shape_nodes:
+		if shape_node != null:
+			shape_node.set_deferred("disabled", disabled)
 
 
 func _start_death_sequence() -> void:

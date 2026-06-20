@@ -75,8 +75,9 @@ func _test_damage_number_style(damage_number: DamageNumber) -> void:
 			font.resource_path == "res://resources/font/ResourceHanRoundedCN-Medium.ttf",
 			"DamageNumber should use the rounded font instead of the pixel font."
 		)
-	_expect(label.get_theme_font_size(&"font_size") >= 18, "DamageNumber font should be large enough to read.")
-	_expect(label.get_theme_constant(&"outline_size") >= 5, "DamageNumber outline should be thick.")
+	_expect(label.get_theme_font_size(&"font_size") == 9, "DamageNumber font should be half the previous size.")
+	_expect(label.get_theme_constant(&"outline_size") == 2, "DamageNumber outline should stay readable without oversized pixel bulk.")
+	_expect(label.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR, "DamageNumber should use linear texture filtering.")
 	var font_color := label.get_theme_color(&"font_color")
 	_expect(font_color.r > 0.9 and font_color.g < 0.25 and font_color.b < 0.2, "DamageNumber should be red.")
 	var outline_color := label.get_theme_color(&"font_outline_color")

@@ -3,12 +3,12 @@ class_name DamageNumber
 
 const DAMAGE_FONT := preload("res://resources/font/ResourceHanRoundedCN-Medium.ttf")
 const GROUP_NAME := &"damage_numbers"
-const BASE_SIZE := Vector2(64.0, 28.0)
+const BASE_SIZE := Vector2(32.0, 16.0)
 const LIFETIME := 0.72
-const FONT_SIZE := 18
+const FONT_SIZE := 9
 const FONT_COLOR := Color(1.0, 0.12, 0.09, 1.0)
 const OUTLINE_COLOR := Color(0.28, 0.02, 0.02, 0.98)
-const OUTLINE_SIZE := 5
+const OUTLINE_SIZE := 2
 
 var label: Label = null
 
@@ -22,6 +22,7 @@ func setup(amount: int, spawn_position: Vector2, impact_direction: Vector2 = Vec
 	z_index = 100
 	label = Label.new()
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	label.text = str(maxi(amount, 0))
 	label.size = BASE_SIZE
 	label.position = Vector2(-BASE_SIZE.x * 0.5, -BASE_SIZE.y * 0.5)
