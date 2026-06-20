@@ -67,6 +67,13 @@ chmod +x scripts/*.sh
 | `DELETE` | `/rooms/{id}` | 销毁房间 |
 | `POST` | `/matchmaking/quick` | 快速匹配 |
 
+创建房间或快速匹配自动创建房间时，响应会返回 `host_token`。只有房主需要保存它；普通 `join` 响应不会包含该字段。
+
+以下房主操作必须在 JSON 请求体中携带 `host_token`：
+- `PATCH /rooms/{id}`
+- `POST /rooms/{id}/request_relay`
+- `DELETE /rooms/{id}`
+
 ## 防火墙配置
 
 阿里云安全组需开放：

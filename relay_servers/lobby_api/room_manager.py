@@ -94,10 +94,24 @@ class RoomManager:
 
     # ─── 状态更新 ─────────────────────────────────
 
-    def update_room_status(self, room_id: str, status: RoomStatus) -> bool:
+    def verify_host_token(self, room_id: str, host_token: str) -> bool:
         with self._lock:
             room = self._rooms.get(room_id)
             if room is None:
+                return False
+            return bool(host_token) and host_token == room.host_token
+
+    def update_room_status(
+        self,
+        room_id: str,
+        status: RoomStatus,
+        host_token: str,
+    ) -> bool:
+        with self._lock:
+            room = self._rooms.get(room_id)
+            if room is None:
+                return False
+            if not host_token or host_token != room.host_token:
                 return False
             room.status = status
             room.touch()
@@ -116,11 +130,15 @@ class RoomManager:
 
     # ─── 销毁 ────────────────────────────────────
 
-    def destroy_room(self, room_id: str) -> Optional[RoomInfo]:
+    def destroy_room(self, room_id: str, host_token: str) -> Optional[RoomInfo]:
         with self._lock:
-            room = self._rooms.pop(room_id, None)
-            if room is not None:
-                room.status = RoomStatus.CLOSED
+            room = self._rooms.get(room_id)
+            if room is None:
+                return None
+            if not host_token or host_token != room.host_token:
+                return None
+            self._rooms.pop(room_id, None)
+            room.status = RoomStatus.CLOSED
             return room
 
     # ─── 快速匹配 ─────────────────────────────────

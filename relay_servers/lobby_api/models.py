@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import secrets
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -31,6 +32,7 @@ class RoomInfo:
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
     name: str = ""
     host_name: str = ""
+    host_token: str = field(default_factory=lambda: secrets.token_urlsafe(24))
     host_ip: str = ""
     port: int = 29170
     max_players: int = 4
@@ -64,11 +66,13 @@ class RoomInfo:
             "status": self.status.value,
         }
 
-    def to_join_dict(self, public_ip: str) -> dict:
+    def to_join_dict(self, public_ip: str, include_host_token: bool = False) -> dict:
         """返回加入房间时所需的详细信息。"""
         result = self.to_public_dict()
         result["host_ip"] = self.host_ip
         result["port"] = self.port
+        if include_host_token:
+            result["host_token"] = self.host_token
         if self.relay_port > 0:
             result["relay_ip"] = public_ip
             result["relay_port"] = self.relay_port

@@ -68,6 +68,11 @@ class JoinRoomRequest(BaseModel):
 
 class UpdateRoomRequest(BaseModel):
     status: str
+    host_token: str
+
+
+class HostTokenRequest(BaseModel):
+    host_token: str
 
 
 class QuickMatchRequest(BaseModel):
@@ -105,7 +110,7 @@ async def create_room(req: CreateRoomRequest) -> dict:
     if room is None:
         raise HTTPException(status_code=503, detail="房间已满，无法创建更多房间")
 
-    return room.to_join_dict(config.PUBLIC_IP)
+    return room.to_join_dict(config.PUBLIC_IP, include_host_token=True)
 
 
 @app.post("/rooms/{room_id}/join")
@@ -135,18 +140,20 @@ async def update_room(room_id: str, req: UpdateRoomRequest) -> dict:
     except ValueError:
         raise HTTPException(status_code=400, detail=f"无效状态: {req.status}")
 
-    success = room_mgr.update_room_status(room_id, status)
+    success = room_mgr.update_room_status(room_id, status, req.host_token)
     if not success:
-        raise HTTPException(status_code=404, detail="房间不存在")
+        raise HTTPException(status_code=403, detail="房主令牌无效或房间不存在")
     return {"status": "ok"}
 
 
 @app.post("/rooms/{room_id}/request_relay")
-async def request_relay(room_id: str) -> dict:
+async def request_relay(room_id: str, req: HostTokenRequest) -> dict:
     """请求为指定房间启动 Relay 中继。"""
     room = room_mgr.get_room(room_id)
     if room is None:
         raise HTTPException(status_code=404, detail="房间不存在")
+    if not room_mgr.verify_host_token(room_id, req.host_token):
+        raise HTTPException(status_code=403, detail="房主令牌无效")
 
     # 如果已有 Relay 且仍在运行，直接返回
     if room.relay_port > 0 and relay_launcher.is_relay_running(room.relay_port):
@@ -182,11 +189,11 @@ async def request_relay(room_id: str) -> dict:
 
 
 @app.delete("/rooms/{room_id}")
-async def destroy_room(room_id: str) -> dict:
+async def destroy_room(room_id: str, req: HostTokenRequest) -> dict:
     """销毁指定房间及其 Relay。"""
-    room = room_mgr.destroy_room(room_id)
+    room = room_mgr.destroy_room(room_id, req.host_token)
     if room is None:
-        raise HTTPException(status_code=404, detail="房间不存在")
+        raise HTTPException(status_code=403, detail="房主令牌无效或房间不存在")
 
     if room.relay_port > 0:
         relay_launcher.stop_relay(room.relay_port)
@@ -209,7 +216,7 @@ async def quick_match(req: QuickMatchRequest) -> dict:
         )
         if room is None:
             raise HTTPException(status_code=503, detail="无法创建房间")
-        return room.to_join_dict(config.PUBLIC_IP)
+        return room.to_join_dict(config.PUBLIC_IP, include_host_token=True)
 
     # 加入找到的房间
     joined = room_mgr.join_room(room.id, req.player_name)
