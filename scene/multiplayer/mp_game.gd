@@ -695,8 +695,10 @@ func _apply_enemy_hit_report(
 	var enemy := _get_host_enemy_for_net_id(enemy_net_id)
 	if enemy == null or not is_instance_valid(enemy):
 		return
-	enemy.apply_damage(damage, impact_direction)
-	net_enemy_damage_applied.rpc(enemy_net_id, enemy.current_health, enemy.is_dead, impact_direction)
+	if not enemy.apply_damage(damage, impact_direction):
+		return
+	var confirmed_damage := enemy.last_damage_taken
+	net_enemy_damage_applied.rpc(enemy_net_id, enemy.current_health, enemy.is_dead, confirmed_damage, impact_direction)
 
 
 @rpc("authority", "call_remote", "reliable", 4)
@@ -704,14 +706,16 @@ func net_enemy_damage_applied(
 	enemy_net_id: int,
 	current_health: int,
 	is_dead: bool,
+	confirmed_damage: int,
 	impact_direction: Vector2
 ) -> void:
 	var enemy := _get_client_enemy_for_net_id(enemy_net_id)
 	if enemy == null or not is_instance_valid(enemy):
 		return
 	enemy.current_health = current_health
+	enemy.show_damage_number(confirmed_damage, impact_direction)
 	if impact_direction != Vector2.ZERO:
-		enemy.apply_damage(0, impact_direction)
+		enemy.play_multiplayer_damage_feedback(impact_direction)
 	if is_dead:
 		_remove_client_enemy(enemy_net_id, true)
 

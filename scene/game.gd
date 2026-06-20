@@ -115,6 +115,7 @@ func _ready() -> void:
 	currency_hud.bind_player(player)
 	player_profile_panel.bind_player(player)
 	currency_hud.profile_requested.connect(player_profile_panel.open)
+	wave_hud.set_return_button_text("返回菜单" if runtime_mode == RuntimeMode.SINGLEPLAYER else "返回大厅")
 	if not wave_hud.return_to_lobby_requested.is_connected(_on_wave_hud_return_to_lobby_requested):
 		wave_hud.return_to_lobby_requested.connect(_on_wave_hud_return_to_lobby_requested)
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
@@ -229,6 +230,9 @@ func show_local_skill1_purchase_result(result_code: int) -> void:
 
 
 func _on_wave_hud_return_to_lobby_requested() -> void:
+	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		get_tree().change_scene_to_file("res://scene/main_menu.tscn")
+		return
 	return_to_lobby_requested.emit()
 
 

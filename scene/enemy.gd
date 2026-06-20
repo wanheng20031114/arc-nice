@@ -4,6 +4,8 @@ class_name Enemy
 signal defeated(enemy: Enemy)
 
 const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
+const DAMAGE_NUMBER_SCRIPT := preload("res://scene/damage_number.gd")
+const DAMAGE_NUMBER_LIMIT := 80
 
 enum DeathSequenceStage {
 	NONE,
@@ -34,6 +36,7 @@ var death_sequence_stage: DeathSequenceStage = DeathSequenceStage.NONE
 var death_animation_name_in_use: StringName = &""
 var physical_defense_modifiers: Dictionary = {}
 var is_multiplayer_proxy: bool = false
+var last_damage_taken: int = 0
 
 
 func _ready() -> void:
@@ -95,14 +98,17 @@ func apply_damage(
 	impact_direction: Vector2 = Vector2.ZERO,
 	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
 ) -> bool:
+	last_damage_taken = 0
 	if is_dead:
 		return false
 	if amount <= 0:
 		return false
 
-	_play_hit_particles(impact_direction)
 	var final_damage := _calculate_incoming_damage(amount, damage_type)
+	last_damage_taken = final_damage
 	current_health -= final_damage
+	show_damage_number(final_damage, impact_direction)
+	play_multiplayer_damage_feedback(impact_direction)
 
 	if current_health <= 0:
 		_die()
@@ -112,6 +118,29 @@ func apply_damage(
 	_start_hurt_blink()
 	return true
 
+
+func show_damage_number(amount: int, impact_direction: Vector2 = Vector2.ZERO) -> void:
+	if amount <= 0:
+		return
+	var scene_root := get_tree().current_scene
+	if scene_root == null:
+		scene_root = get_parent()
+	if scene_root == null:
+		return
+	var active_numbers := get_tree().get_nodes_in_group(&"damage_numbers")
+	if active_numbers.size() >= DAMAGE_NUMBER_LIMIT:
+		var oldest := active_numbers.front() as Node
+		if oldest != null and is_instance_valid(oldest):
+			oldest.queue_free()
+	var number := DAMAGE_NUMBER_SCRIPT.new() as Node2D
+	if number == null:
+		return
+	scene_root.add_child(number)
+	number.setup(amount, global_position, impact_direction)
+
+
+func play_multiplayer_damage_feedback(impact_direction: Vector2 = Vector2.ZERO) -> void:
+	_play_hit_particles(impact_direction)
 
 func add_physical_defense_modifier(source_id: int, amount: int) -> void:
 	if source_id == 0:
