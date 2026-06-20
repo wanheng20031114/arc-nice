@@ -319,7 +319,7 @@ func _get_target_extent_radius() -> float:
 func _update_facing(move_direction: Vector2) -> void:
 	if is_zero_approx(move_direction.x):
 		return
-	animated_sprite.flip_h = move_direction.x < 0.0
+	_set_facing_from_direction(move_direction)
 
 
 func _play_config_animation(animation_name: StringName) -> void:

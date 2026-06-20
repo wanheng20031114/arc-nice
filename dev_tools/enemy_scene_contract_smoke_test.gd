@@ -98,6 +98,7 @@ func _test_enemy_scene_contract(enemy_config: EnemyConfig) -> void:
 	_expect(enemy.touch_damage_shapes.size() == touch_shape_nodes.size(), "%s runtime must cache all touch collision shapes." % enemy_config.resource_path)
 	_expect(_shape_nodes_match_resources(body_shape_nodes, body_shapes), "%s setup must not replace body shapes." % enemy_config.resource_path)
 	_expect(_shape_nodes_match_resources(touch_shape_nodes, touch_shapes), "%s setup must not replace touch shapes." % enemy_config.resource_path)
+	_test_collision_shapes_mirror_with_facing(enemy_config, enemy, animated_sprite, body_shape_nodes, touch_shape_nodes)
 
 	enemy.queue_free()
 	await process_frame
@@ -143,6 +144,83 @@ func _shape_nodes_match_resources(
 		if shape_nodes[index].shape != expected_shapes[index]:
 			return false
 	return true
+
+
+func _test_collision_shapes_mirror_with_facing(
+	enemy_config: EnemyConfig,
+	enemy: Enemy,
+	animated_sprite: AnimatedSprite2D,
+	body_shape_nodes: Array[CollisionShape2D],
+	touch_shape_nodes: Array[CollisionShape2D]
+) -> void:
+	var all_shape_nodes: Array[CollisionShape2D] = []
+	all_shape_nodes.append_array(body_shape_nodes)
+	all_shape_nodes.append_array(touch_shape_nodes)
+	var right_bounds: Array[Rect2] = []
+	for shape_node in all_shape_nodes:
+		right_bounds.append(_get_collision_shape_local_bounds(shape_node))
+
+	enemy.call("_set_facing_left", true)
+	_expect(animated_sprite.flip_h, "%s facing left must flip the sprite." % enemy_config.resource_path)
+	for index in range(all_shape_nodes.size()):
+		var left_bound := _get_collision_shape_local_bounds(all_shape_nodes[index])
+		_expect(
+			_are_bounds_mirrored_on_x(right_bounds[index], left_bound),
+			"%s collision shape %d must mirror when facing left." % [enemy_config.resource_path, index]
+		)
+
+	enemy.call("_set_facing_left", false)
+	_expect(not animated_sprite.flip_h, "%s facing right must restore the sprite." % enemy_config.resource_path)
+	for index in range(all_shape_nodes.size()):
+		var restored_bound := _get_collision_shape_local_bounds(all_shape_nodes[index])
+		_expect(
+			_are_bounds_equal(right_bounds[index], restored_bound),
+			"%s collision shape %d must restore when facing right." % [enemy_config.resource_path, index]
+		)
+
+
+func _get_collision_shape_local_bounds(shape_node: CollisionShape2D) -> Rect2:
+	if shape_node == null or shape_node.shape == null:
+		return Rect2()
+
+	var shape_rect: Rect2 = shape_node.shape.get_rect()
+	var corners: Array[Vector2] = [
+		shape_rect.position,
+		shape_rect.position + Vector2(shape_rect.size.x, 0.0),
+		shape_rect.position + Vector2(0.0, shape_rect.size.y),
+		shape_rect.position + shape_rect.size,
+	]
+	var minimum: Vector2 = Vector2(INF, INF)
+	var maximum: Vector2 = Vector2(-INF, -INF)
+	for corner in corners:
+		var transformed_corner: Vector2 = shape_node.transform * corner
+		minimum.x = minf(minimum.x, transformed_corner.x)
+		minimum.y = minf(minimum.y, transformed_corner.y)
+		maximum.x = maxf(maximum.x, transformed_corner.x)
+		maximum.y = maxf(maximum.y, transformed_corner.y)
+	return Rect2(minimum, maximum - minimum)
+
+
+func _are_bounds_mirrored_on_x(right_bound: Rect2, left_bound: Rect2) -> bool:
+	var right_min_x := right_bound.position.x
+	var right_max_x := right_bound.position.x + right_bound.size.x
+	var left_min_x := left_bound.position.x
+	var left_max_x := left_bound.position.x + left_bound.size.x
+	return (
+		is_equal_approx(left_min_x, -right_max_x)
+		and is_equal_approx(left_max_x, -right_min_x)
+		and is_equal_approx(left_bound.position.y, right_bound.position.y)
+		and is_equal_approx(left_bound.size.y, right_bound.size.y)
+	)
+
+
+func _are_bounds_equal(expected_bound: Rect2, actual_bound: Rect2) -> bool:
+	return (
+		is_equal_approx(actual_bound.position.x, expected_bound.position.x)
+		and is_equal_approx(actual_bound.position.y, expected_bound.position.y)
+		and is_equal_approx(actual_bound.size.x, expected_bound.size.x)
+		and is_equal_approx(actual_bound.size.y, expected_bound.size.y)
+	)
 
 
 func _expect(condition: bool, message: String) -> void:

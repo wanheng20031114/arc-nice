@@ -39,10 +39,14 @@ var is_multiplayer_proxy: bool = false
 var last_damage_taken: int = 0
 var body_collision_shapes: Array[CollisionShape2D] = []
 var touch_damage_shapes: Array[CollisionShape2D] = []
+var collision_shape_mirror_states: Dictionary = {}
+var facing_left: bool = false
 
 
 func _ready() -> void:
 	_refresh_collision_shape_cache()
+	_cache_collision_shape_mirror_states()
+	_apply_facing_mirror()
 	touch_damage_area.body_entered.connect(_on_touch_damage_area_body_entered)
 	touch_damage_area.body_exited.connect(_on_touch_damage_area_body_exited)
 	touch_damage_area.area_entered.connect(_on_touch_damage_area_area_entered)
@@ -81,8 +85,7 @@ func configure_multiplayer_proxy() -> void:
 func apply_multiplayer_proxy_motion(proxy_position: Vector2, proxy_velocity: Vector2) -> void:
 	global_position = proxy_position
 	velocity = proxy_velocity
-	if animated_sprite != null and not is_zero_approx(proxy_velocity.x):
-		animated_sprite.flip_h = proxy_velocity.x < 0.0
+	_set_facing_from_direction(proxy_velocity)
 
 
 func _disable_proxy_area_collisions(root: Node) -> void:
@@ -220,6 +223,74 @@ func _collect_direct_collision_shapes(parent_node: Node) -> Array[CollisionShape
 		if shape_node != null:
 			shapes.append(shape_node)
 	return shapes
+
+
+func _cache_collision_shape_mirror_states() -> void:
+	collision_shape_mirror_states.clear()
+	var all_shape_nodes: Array[CollisionShape2D] = []
+	all_shape_nodes.append_array(body_collision_shapes)
+	all_shape_nodes.append_array(touch_damage_shapes)
+	for shape_node in all_shape_nodes:
+		if shape_node == null:
+			continue
+		var state := {
+			"position": shape_node.position,
+			"rotation": shape_node.rotation,
+			"segment_a": Vector2.ZERO,
+			"segment_b": Vector2.ZERO,
+			"has_segment": false,
+		}
+		var segment_shape := shape_node.shape as SegmentShape2D
+		if segment_shape != null:
+			state["segment_a"] = segment_shape.a
+			state["segment_b"] = segment_shape.b
+			state["has_segment"] = true
+		collision_shape_mirror_states[shape_node.get_instance_id()] = state
+
+
+func _set_facing_from_direction(direction: Vector2) -> void:
+	if is_zero_approx(direction.x):
+		return
+	_set_facing_left(direction.x < 0.0)
+
+
+func _set_facing_left(new_facing_left: bool) -> void:
+	facing_left = new_facing_left
+	if animated_sprite != null:
+		animated_sprite.flip_h = facing_left
+	_apply_facing_mirror()
+
+
+func _apply_facing_mirror() -> void:
+	var mirror_sign := -1.0 if facing_left else 1.0
+	var all_shape_nodes: Array[CollisionShape2D] = []
+	all_shape_nodes.append_array(body_collision_shapes)
+	all_shape_nodes.append_array(touch_damage_shapes)
+	for shape_node in all_shape_nodes:
+		_apply_collision_shape_mirror(shape_node, mirror_sign)
+
+
+func _apply_collision_shape_mirror(shape_node: CollisionShape2D, mirror_sign: float) -> void:
+	if shape_node == null:
+		return
+	var state: Dictionary = collision_shape_mirror_states.get(shape_node.get_instance_id(), {})
+	if state.is_empty():
+		return
+
+	var original_position := state["position"] as Vector2
+	var original_rotation := float(state["rotation"])
+	shape_node.position = Vector2(original_position.x * mirror_sign, original_position.y)
+	shape_node.rotation = original_rotation * mirror_sign
+
+	if not bool(state.get("has_segment", false)):
+		return
+	var segment_shape := shape_node.shape as SegmentShape2D
+	if segment_shape == null:
+		return
+	var original_a := state["segment_a"] as Vector2
+	var original_b := state["segment_b"] as Vector2
+	segment_shape.a = Vector2(original_a.x * mirror_sign, original_a.y)
+	segment_shape.b = Vector2(original_b.x * mirror_sign, original_b.y)
 
 
 func _get_body_collision_extent_radius() -> float:
