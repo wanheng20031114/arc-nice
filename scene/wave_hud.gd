@@ -1,12 +1,20 @@
 extends CanvasLayer
 class_name WaveHUD
 
+signal return_to_lobby_requested
+
 @onready var top_bar: PanelContainer = $WaveInfoBar
 @onready var status_label: Label = $WaveInfoBar/Margin/Status
 @onready var result_overlay: Control = $ResultOverlay
-@onready var result_label: Label = $ResultOverlay/Result
+@onready var result_title: Label = $ResultOverlay/Center/Panel/Margin/Content/ResultTitle
+@onready var result_subtitle: Label = $ResultOverlay/Center/Panel/Margin/Content/ResultSubtitle
+@onready var return_button: Button = $ResultOverlay/Center/Panel/Margin/Content/ReturnButton
 
 var pulse_tween: Tween = null
+
+
+func _ready() -> void:
+	return_button.pressed.connect(return_to_lobby_requested.emit)
 
 
 func show_wave_progress(wave_number: int, defeated: int, total: int) -> void:
@@ -43,15 +51,21 @@ func show_countdown(seconds: int) -> void:
 func show_victory() -> void:
 	top_bar.visible = false
 	result_overlay.visible = true
-	result_label.text = "通关"
-	result_label.modulate = Color(1.0, 0.9, 0.42, 1.0)
+	result_title.text = "通关"
+	result_title.modulate = Color(1.0, 0.9, 0.42, 1.0)
+	result_subtitle.text = "源石虫的浪潮暂时退去了"
+	return_button.text = "返回大厅"
+	return_button.grab_focus()
 
 
 func show_defeat() -> void:
 	top_bar.visible = false
 	result_overlay.visible = true
-	result_label.text = "战败"
-	result_label.modulate = Color(1.0, 0.38, 0.3, 1.0)
+	result_title.text = "战败"
+	result_title.modulate = Color(1.0, 0.38, 0.3, 1.0)
+	result_subtitle.text = "全员已经倒下，回到大厅重新整备。"
+	return_button.text = "返回大厅"
+	return_button.grab_focus()
 
 
 func hide_all() -> void:

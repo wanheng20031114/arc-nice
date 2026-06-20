@@ -22,7 +22,9 @@ signal multiplayer_pickup_collected(
 signal multiplayer_pickup_removed(net_id: int)
 signal multiplayer_merchant_active_changed(active: bool)
 signal multiplayer_wave_started(wave_index: int)
+signal multiplayer_defeat_started
 signal multiplayer_revive_all_requested
+signal return_to_lobby_requested
 
 enum RuntimeMode {
 	SINGLEPLAYER,
@@ -113,6 +115,8 @@ func _ready() -> void:
 	currency_hud.bind_player(player)
 	player_profile_panel.bind_player(player)
 	currency_hud.profile_requested.connect(player_profile_panel.open)
+	if not wave_hud.return_to_lobby_requested.is_connected(_on_wave_hud_return_to_lobby_requested):
+		wave_hud.return_to_lobby_requested.connect(_on_wave_hud_return_to_lobby_requested)
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		player.died.connect(_on_player_died)
 	_set_merchant_active(false)
@@ -180,6 +184,18 @@ func apply_remote_enemy_count(alive_count: int) -> void:
 	wave_hud.show_enemy_count(current_wave_index + 1, alive_count)
 
 
+
+func apply_remote_defeat() -> void:
+	if runtime_mode != RuntimeMode.CLIENT_VIEW:
+		return
+	if wave_state == WaveState.DEFEAT:
+		return
+	wave_state = WaveState.DEFEAT
+	enemy_spawn_timer.stop()
+	state_timer.stop()
+	_set_merchant_active(false)
+	wave_hud.show_defeat()
+
 func try_purchase_skill1_for_peer(peer_id: int) -> int:
 	var player_instance := get_player_for_peer(peer_id)
 	if player_instance == null or not is_instance_valid(player_instance):
@@ -210,6 +226,10 @@ func show_local_skill1_purchase_result(result_code: int) -> void:
 	if merchant == null:
 		return
 	merchant.show_purchase_result(result_code)
+
+
+func _on_wave_hud_return_to_lobby_requested() -> void:
+	return_to_lobby_requested.emit()
 
 
 func _set_merchant_active(active: bool) -> void:
@@ -529,6 +549,8 @@ func _enter_defeat() -> void:
 	state_timer.stop()
 	_set_merchant_active(false)
 	wave_hud.show_defeat()
+	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
+		multiplayer_defeat_started.emit()
 
 
 func _on_player_died() -> void:

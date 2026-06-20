@@ -128,7 +128,9 @@ func _setup_game(mode: int) -> void:
 		game.multiplayer_pickup_removed.connect(_on_host_pickup_removed)
 		game.multiplayer_merchant_active_changed.connect(_on_host_merchant_active_changed)
 		game.multiplayer_wave_started.connect(_on_host_wave_started)
+		game.multiplayer_defeat_started.connect(_on_host_defeat_started)
 		game.multiplayer_revive_all_requested.connect(_on_host_revive_all_requested)
+	game.return_to_lobby_requested.connect(_on_game_return_to_lobby_requested)
 
 
 func _host_physics_tick(frame: int, _delta: float) -> void:
@@ -164,8 +166,6 @@ func _host_broadcast_enemy_snapshots() -> void:
 func _client_physics_tick(frame: int) -> void:
 	_input_frames_since_last_send += 1
 	var buttons := 0
-	if Input.is_action_just_pressed("skill1"):
-		buttons |= INPUT_BUTTON_SKILL1
 	if frame % _NetConstants.INPUT_SEND_INTERVAL_FRAMES == 0 or buttons != 0:
 		_client_send_input_if_needed(buttons)
 
@@ -1183,6 +1183,19 @@ func _on_host_merchant_active_changed(active: bool) -> void:
 func _on_host_wave_started(wave_index: int) -> void:
 	net_wave_started.rpc(wave_index)
 
+
+func _on_host_defeat_started() -> void:
+	if not net_manager.is_host():
+		return
+	net_game_defeated.rpc()
+
+
+func _on_game_return_to_lobby_requested() -> void:
+	if net_manager != null and net_manager.has_method("disconnect_from_game") and net_manager.is_multiplayer_active():
+		net_manager.disconnect_from_game()
+		return
+	_return_to_lobby()
+
 @rpc("authority", "call_remote", "reliable", 4)
 func net_enemy_spawned(
 	net_id: int,
@@ -1353,6 +1366,13 @@ func net_wave_started(wave_index: int) -> void:
 	if game == null or net_manager.is_host():
 		return
 	game.apply_remote_wave_started(wave_index)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_game_defeated() -> void:
+	if game == null or net_manager.is_host():
+		return
+	game.apply_remote_defeat()
 
 
 @rpc("any_peer", "call_remote", "reliable", 4)
