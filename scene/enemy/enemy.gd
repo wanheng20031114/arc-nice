@@ -402,7 +402,7 @@ func _choose_unblocked_axis_direction(primary_direction: Vector2, secondary_dire
 		return primary_direction
 	if secondary_direction != Vector2.ZERO and not test_move(global_transform, secondary_direction * PATH_DIRECTION_PROBE_DISTANCE):
 		return secondary_direction
-	return primary_direction
+	return Vector2.ZERO
 
 
 func _on_touch_damage_area_body_entered(body: Node2D) -> void:

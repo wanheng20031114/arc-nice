@@ -120,8 +120,6 @@ func _start_aura() -> void:
 		return
 
 	aura_active = true
-	if config as YuanshiInsectGuardianConfig != null:
-		_add_guardian_defense_to_enemy(self)
 	var aura_config := config as YuanshiInsectAuraConfig
 	if aura_config != null and aura_config.aura_particles_enabled:
 		aura_particles.restart()
@@ -188,6 +186,8 @@ func _add_guardian_defense_to_enemy(enemy: Enemy) -> void:
 	if guardian_config == null:
 		return
 	if enemy == null:
+		return
+	if enemy == self:
 		return
 	if enemy.is_dead:
 		return

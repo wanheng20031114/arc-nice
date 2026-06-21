@@ -14,6 +14,7 @@
 [resource]
 script = ExtResource("2_script")
 aura_radius = 46.0
+aura_physical_defense_bonus = 3
 aura_particles_enabled = false
 aura_fill_color = Color(0.1, 0.38, 1, 0.012)
 aura_outline_color = Color(0.36, 0.82, 1, 0.16)

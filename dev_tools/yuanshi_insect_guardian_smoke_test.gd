@@ -89,8 +89,8 @@ func _test_resource_contract() -> void:
 		"Guardian aura must be larger than green shell aura."
 	)
 	_expect(
-		GUARDIAN_CONFIG.aura_physical_defense_bonus == 1,
-		"Guardian aura must provide exactly +1 physical defense."
+		GUARDIAN_CONFIG.aura_physical_defense_bonus == 3,
+		"Guardian aura must provide exactly +3 physical defense."
 	)
 	var texture := load("res://resources/texture/yuanshi_insect_guardian.png") as Texture2D
 	var image := texture.get_image() if texture != null else null
@@ -147,9 +147,8 @@ func _test_guardian_aura_visual_configuration() -> void:
 	_expect(guardian.aura_range_fill.visible, "Guardian aura fill is hidden.")
 	_expect(guardian.aura_range_outline.visible, "Guardian aura outline is hidden.")
 	_expect(
-		guardian.get_effective_physical_defense()
-		== GUARDIAN_CONFIG.physical_defense + GUARDIAN_CONFIG.aura_physical_defense_bonus,
-		"Guardian must receive its own aura defense."
+		guardian.get_effective_physical_defense() == GUARDIAN_CONFIG.physical_defense,
+		"Guardian must not receive its own aura defense."
 	)
 
 	guardian.queue_free()
@@ -195,32 +194,44 @@ func _test_guardian_aura_defense_lifecycle() -> void:
 		player.queue_free()
 		return
 	_expect(guardian.get_script() == AURA_SCRIPT, "Guardian scene must use the aura script.")
+	var second_guardian: Variant = _spawn_enemy(Vector2(120.0, 0.0), GUARDIAN_CONFIG, player)
 	var ally := _spawn_enemy(Vector2(20.0, 0.0), BASIC_CONFIG, player)
 	ally.current_health = 20
 	await _wait_physics_frames(2)
 
+	guardian.call("_on_aura_area_body_entered", guardian)
+	_expect(
+		guardian.get_effective_physical_defense() == GUARDIAN_CONFIG.physical_defense,
+		"Guardian aura must ignore its owner."
+	)
+
 	guardian.call("_on_aura_area_body_entered", ally)
-	_expect(ally.get_effective_physical_defense() == 1, "Guardian aura did not add physical defense.")
+	_expect(ally.get_effective_physical_defense() == 3, "Guardian aura did not add +3 physical defense.")
+	second_guardian.call("_on_aura_area_body_entered", ally)
+	_expect(ally.get_effective_physical_defense() == 6, "Guardian aura bonuses from multiple guardians must stack.")
+	second_guardian.call("_on_aura_area_body_exited", ally)
+	_expect(ally.get_effective_physical_defense() == 3, "Guardian aura stack did not remove one source on exit.")
 	ally.apply_damage(4)
-	_expect(ally.current_health == 17, "Guardian aura did not reduce physical damage by 1.")
+	_expect(ally.current_health == 19, "Guardian aura did not reduce physical damage by 3.")
 
 	guardian.call("_on_aura_area_body_exited", ally)
 	_expect(ally.get_effective_physical_defense() == 0, "Guardian aura defense did not clear on exit.")
 	ally.apply_damage(4)
-	_expect(ally.current_health == 13, "Enemy kept guardian defense after leaving aura.")
+	_expect(ally.current_health == 15, "Enemy kept guardian defense after leaving aura.")
 
 	guardian.call("_on_aura_area_body_entered", ally)
-	_expect(ally.get_effective_physical_defense() == 1, "Guardian aura did not reapply physical defense.")
+	_expect(ally.get_effective_physical_defense() == 3, "Guardian aura did not reapply physical defense.")
 	guardian.apply_damage(
 		GUARDIAN_CONFIG.max_health
 		+ GUARDIAN_CONFIG.physical_defense
-		+ GUARDIAN_CONFIG.aura_physical_defense_bonus
 	)
 	await _wait_physics_frames(45)
 	_expect(ally.get_effective_physical_defense() == 0, "Guardian aura defense did not clear on death.")
 
 	if is_instance_valid(guardian):
 		guardian.queue_free()
+	if is_instance_valid(second_guardian):
+		second_guardian.queue_free()
 	ally.queue_free()
 	player.queue_free()
 	await physics_frame

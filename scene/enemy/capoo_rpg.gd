@@ -320,7 +320,7 @@ func _get_navigation_move_direction(delta: float) -> Vector2:
 		_refresh_navigation_path()
 
 	if current_path.is_empty():
-		return global_position.direction_to(target_player.global_position)
+		return _get_navigation_fallback_move_direction()
 
 	while current_path_index < current_path.size():
 		var waypoint := current_path[current_path_index]
@@ -328,7 +328,7 @@ func _get_navigation_move_direction(delta: float) -> Vector2:
 			return _get_axis_aligned_waypoint_direction(waypoint, waypoint_arrival_distance)
 		current_path_index += 1
 
-	return global_position.direction_to(target_player.global_position)
+	return _get_navigation_fallback_move_direction()
 
 
 func _refresh_navigation_path() -> void:
@@ -361,6 +361,13 @@ func _clear_navigation_path() -> void:
 	current_path = PackedVector2Array()
 	current_path_index = 0
 	path_refresh_time_left = 0.0
+
+
+func _get_navigation_fallback_move_direction() -> Vector2:
+	if _has_clear_world_line_to_target():
+		return global_position.direction_to(target_player.global_position)
+	path_refresh_time_left = minf(path_refresh_time_left, _get_navigation_retry_interval())
+	return Vector2.ZERO
 
 
 func _should_direct_chase_target() -> bool:
