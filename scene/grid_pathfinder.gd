@@ -157,6 +157,24 @@ func prewarm_agent_grid(agent_half_extents: Vector2) -> void:
 	_get_or_create_agent_grid(normalized_extents)
 
 
+func prewarm_flow_navigation_target(
+	to_global_position: Vector2,
+	agent_half_extents: Vector2 = Vector2.ZERO
+) -> void:
+	if not is_built:
+		return
+
+	var normalized_extents := _normalize_agent_half_extents(agent_half_extents)
+	var path_grid := _get_or_create_agent_grid(normalized_extents)
+	var target_cell := _get_closest_walkable_cell(_global_to_map(to_global_position), path_grid)
+	if target_cell == Vector2i.MAX:
+		return
+	if not _get_cached_flow_field(target_cell, normalized_extents).is_empty():
+		return
+
+	_store_flow_field(target_cell, normalized_extents, _build_flow_field(target_cell, path_grid))
+
+
 func _refresh_path_query_budget_frame() -> void:
 	var current_frame := Engine.get_physics_frames()
 	if current_frame == path_query_budget_frame:

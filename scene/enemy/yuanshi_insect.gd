@@ -54,40 +54,42 @@ func _get_move_speed() -> float:
 
 func _get_navigation_move_direction(delta: float) -> Vector2:
 	path_refresh_time_left = maxf(path_refresh_time_left - delta, 0.0)
+	if not _should_update_navigation_direction():
+		return cached_navigation_move_direction
 
 	if _should_direct_chase_target():
 		var direct_move_direction := _get_shape_safe_move_direction_to_target(target_player)
 		if direct_move_direction != Vector2.ZERO:
 			_clear_navigation_path()
-			return direct_move_direction
+			return _cache_navigation_move_direction(direct_move_direction)
 		path_refresh_time_left = minf(path_refresh_time_left, _get_navigation_retry_interval())
 
 	if pathfinder == null or not pathfinder.get("is_built"):
-		return _get_shape_safe_move_direction_to_target(target_player)
+		return _cache_navigation_move_direction(_get_shape_safe_move_direction_to_target(target_player))
 
 	var flow_direction := _get_shared_flow_navigation_direction(target_player, pathfinder)
 	if flow_direction != Vector2.ZERO:
 		_clear_navigation_path()
-		return flow_direction
+		return _cache_navigation_move_direction(flow_direction)
 
 	if path_refresh_time_left <= 0.0 or current_path.is_empty():
 		_refresh_navigation_path()
 
 	if current_path.is_empty():
-		return _get_navigation_fallback_move_direction()
+		return _cache_navigation_move_direction(_get_navigation_fallback_move_direction())
 
 	while current_path_index < current_path.size():
 		var waypoint := current_path[current_path_index]
 		if global_position.distance_to(waypoint) > waypoint_arrival_distance:
 			var waypoint_direction := _get_axis_aligned_waypoint_direction(waypoint, waypoint_arrival_distance)
 			if waypoint_direction != Vector2.ZERO:
-				return waypoint_direction
+				return _cache_navigation_move_direction(waypoint_direction)
 			current_path_index += 1
 			path_refresh_time_left = minf(path_refresh_time_left, _get_navigation_retry_interval())
 			continue
 		current_path_index += 1
 
-	return _get_navigation_fallback_move_direction()
+	return _cache_navigation_move_direction(_get_navigation_fallback_move_direction())
 
 
 func _refresh_navigation_path() -> void:
@@ -120,6 +122,7 @@ func _clear_navigation_path() -> void:
 	current_path = PackedVector2Array()
 	current_path_index = 0
 	path_refresh_time_left = 0.0
+	_clear_cached_navigation_move_direction()
 
 
 func _get_navigation_fallback_move_direction() -> Vector2:

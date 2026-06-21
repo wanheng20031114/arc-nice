@@ -11,6 +11,10 @@ const PURCHASE_RESULT_INSUFFICIENT_XIRANG := 2
 const PURCHASE_RESULT_INVALID_PLAYER := 3
 const PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS := 4
 const PURCHASE_RESULT_SKILL1_UPGRADE_MAXED := 5
+const MIN_WAVE_SPAWN_INTERVAL_SECONDS := 0.1
+const MAX_WAVE_SPAWN_COUNT_PER_TICK := 4
+const SPAWN_EFFECTS_PER_SECOND_LIMIT := 24
+const SPAWN_AUDIO_MIN_INTERVAL_SECONDS := 0.08
 
 signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
 signal multiplayer_enemy_defeated(net_id: int, defeat_position: Vector2)
@@ -78,6 +82,7 @@ enum WaveState {
 @onready var wave_hud: WaveHUD = $WaveHUD
 @onready var player_profile_panel: PlayerProfilePanel = $PlayerProfilePanel
 @onready var merchant: ZhuangfangyiMerchant = $ZhuangfangyiMerchant
+@onready var damage_number_pool: DamageNumberPool = $DamageNumberPool
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
 var random_generator := RandomNumberGenerator.new()
@@ -104,6 +109,9 @@ var enemy_retarget_time_left: float = 0.0
 var next_multiplayer_enemy_net_id: int = 1
 var next_multiplayer_pickup_net_id: int = 1000
 var multiplayer_defeat_check_pending: bool = false
+var spawn_effect_budget_started_msec: int = 0
+var spawn_effects_this_second: int = 0
+var last_spawn_audio_msec: int = -100000
 
 
 func _ready() -> void:
@@ -204,6 +212,17 @@ func apply_remote_defeat() -> void:
 	state_timer.stop()
 	_set_merchant_active(false)
 	wave_hud.show_defeat()
+
+
+func show_damage_number(
+	amount: int,
+	spawn_position: Vector2,
+	impact_direction: Vector2 = Vector2.ZERO
+) -> bool:
+	if damage_number_pool == null:
+		return false
+	return damage_number_pool.show_damage_number(amount, spawn_position, impact_direction)
+
 
 func try_purchase_skill1_for_peer(peer_id: int) -> int:
 	var player_instance := get_player_for_peer(peer_id)
@@ -321,6 +340,12 @@ func _prewarm_enemy_navigation_grids() -> void:
 				continue
 			seen_extent_keys[extent_key] = true
 			grid_pathfinder.call("prewarm_agent_grid", body_half_extents)
+			if grid_pathfinder.has_method("prewarm_flow_navigation_target") and player != null:
+				grid_pathfinder.call(
+					"prewarm_flow_navigation_target",
+					player.global_position,
+					body_half_extents
+				)
 
 
 func _get_enemy_scene_body_half_extents(enemy_config: EnemyConfig) -> Vector2:
@@ -345,6 +370,8 @@ func _enter_pre_wave(wave_index: int) -> void:
 	wave_state = WaveState.PRE_WAVE
 	current_wave_index = wave_index
 	enemy_spawn_timer.stop()
+	if runtime_mode != RuntimeMode.CLIENT_VIEW:
+		_prewarm_enemy_navigation_grids()
 	_set_merchant_active(false)
 	countdown_seconds = maxi(ceili(pre_wave_duration), 0)
 	wave_hud.show_countdown(countdown_seconds)
@@ -418,7 +445,7 @@ func _begin_wave(wave_index: int) -> void:
 
 	_spawn_wave_batch()
 	if _has_pending_enemy_configs():
-		enemy_spawn_timer.start(maxf(wave_config.spawn_interval, 0.05))
+		enemy_spawn_timer.start(maxf(wave_config.spawn_interval, MIN_WAVE_SPAWN_INTERVAL_SECONDS))
 
 
 func _build_wave_spawn_queue(wave_config: WaveConfig) -> void:
@@ -497,7 +524,11 @@ func _spawn_wave_batch() -> void:
 		enemy_spawn_timer.stop()
 		return
 
-	for _spawn_index in range(maxi(wave_config.spawn_count_per_tick, 1)):
+	var spawn_count_this_tick := mini(
+		maxi(wave_config.spawn_count_per_tick, 1),
+		MAX_WAVE_SPAWN_COUNT_PER_TICK
+	)
+	for _spawn_index in range(spawn_count_this_tick):
 		if not _has_pending_enemy_configs():
 			break
 		if active_wave_enemy_ids.size() >= maxi(wave_config.max_alive_enemies, 1):
@@ -560,7 +591,7 @@ func _try_spawn_enemy(enemy_config: EnemyConfig) -> bool:
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_enemy_spawned.emit(enemy_net_id, enemy_config, enemy_instance.global_position)
 	_spawn_enemy_spawn_effect(spawn_point.global_position)
-	enemy_spawn_audio.play()
+	_try_play_enemy_spawn_audio()
 	return true
 
 
@@ -1011,6 +1042,8 @@ func _pick_spawn_point() -> Marker2D:
 
 
 func _spawn_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
+	if not _consume_spawn_effect_budget():
+		return
 	var effect := ENEMY_SPAWN_EFFECT_SCENE.instantiate() as Node2D
 	if effect == null:
 		return
@@ -1020,6 +1053,27 @@ func _spawn_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
 
 func play_remote_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
 	_spawn_enemy_spawn_effect(spawn_global_position)
+
+
+func _consume_spawn_effect_budget() -> bool:
+	var now := Time.get_ticks_msec()
+	if now - spawn_effect_budget_started_msec >= 1000:
+		spawn_effect_budget_started_msec = now
+		spawn_effects_this_second = 0
+	if spawn_effects_this_second >= SPAWN_EFFECTS_PER_SECOND_LIMIT:
+		return false
+	spawn_effects_this_second += 1
+	return true
+
+
+func _try_play_enemy_spawn_audio() -> void:
+	if enemy_spawn_audio == null:
+		return
+	var now := Time.get_ticks_msec()
+	if float(now - last_spawn_audio_msec) * 0.001 < SPAWN_AUDIO_MIN_INTERVAL_SECONDS:
+		return
+	last_spawn_audio_msec = now
+	enemy_spawn_audio.play()
 
 
 func _play_countdown_tick() -> void:

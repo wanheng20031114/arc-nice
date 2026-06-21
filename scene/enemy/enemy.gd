@@ -4,8 +4,6 @@ class_name Enemy
 signal defeated(enemy: Enemy)
 
 const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
-const DAMAGE_NUMBER_SCRIPT := preload("res://scene/damage_number.gd")
-const DAMAGE_NUMBER_LIMIT := 80
 const PATH_DIRECTION_PROBE_DISTANCE := 1.0
 const FLOW_NAVIGATION_WAYPOINT_ARRIVAL_DISTANCE := 1.0
 
@@ -19,6 +17,7 @@ enum DeathSequenceStage {
 @export var touch_damage_interval: float = 0.5
 @export var hurt_blink_duration: float = 0.16
 @export var sprite_faces_left_by_default: bool = false
+@export_range(1, 8, 1, "or_greater") var navigation_update_interval_frames: int = 2
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var collision_shape: CollisionShape2D = null
@@ -48,9 +47,12 @@ var collision_shape_mirror_states: Dictionary = {}
 var facing_left: bool = false
 var proxy_action_animation_name_in_use: StringName = &""
 var proxy_action_restore_token: int = 0
+var navigation_update_frame_offset: int = 0
+var cached_navigation_move_direction := Vector2.ZERO
 
 
 func _ready() -> void:
+	navigation_update_frame_offset = int(get_instance_id()) % maxi(navigation_update_interval_frames, 1)
 	_refresh_collision_shape_cache()
 	_cache_collision_shape_mirror_states()
 	_apply_sprite_facing()
@@ -71,6 +73,7 @@ func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = 
 
 func set_target_player(player: Player) -> void:
 	target_player = player
+	_clear_cached_navigation_move_direction()
 
 
 func set_pathfinder(shared_pathfinder: Node) -> void:
@@ -139,21 +142,12 @@ func apply_damage(
 func show_damage_number(amount: int, impact_direction: Vector2 = Vector2.ZERO) -> void:
 	if amount <= 0:
 		return
-	var scene_root := get_tree().current_scene
-	if scene_root == null:
-		scene_root = get_parent()
-	if scene_root == null:
-		return
-	var active_numbers := get_tree().get_nodes_in_group(&"damage_numbers")
-	if active_numbers.size() >= DAMAGE_NUMBER_LIMIT:
-		var oldest := active_numbers.front() as Node
-		if oldest != null and is_instance_valid(oldest):
-			oldest.queue_free()
-	var number := DAMAGE_NUMBER_SCRIPT.new() as Node2D
-	if number == null:
-		return
-	scene_root.add_child(number)
-	number.setup(amount, global_position, impact_direction)
+	var damage_number_owner := get_parent()
+	while damage_number_owner != null:
+		if damage_number_owner.has_method("show_damage_number"):
+			damage_number_owner.call("show_damage_number", amount, global_position, impact_direction)
+			return
+		damage_number_owner = damage_number_owner.get_parent()
 
 
 func play_multiplayer_damage_feedback(impact_direction: Vector2 = Vector2.ZERO) -> void:
@@ -502,6 +496,24 @@ func _get_shared_flow_navigation_direction(target_node: Node2D, shared_pathfinde
 
 	var waypoint: Vector2 = waypoint_result
 	return _get_axis_aligned_waypoint_direction(waypoint, FLOW_NAVIGATION_WAYPOINT_ARRIVAL_DISTANCE)
+
+
+func _should_update_navigation_direction() -> bool:
+	if cached_navigation_move_direction == Vector2.ZERO:
+		return true
+	var interval := maxi(navigation_update_interval_frames, 1)
+	if interval <= 1:
+		return true
+	return (Engine.get_physics_frames() + navigation_update_frame_offset) % interval == 0
+
+
+func _cache_navigation_move_direction(move_direction: Vector2) -> Vector2:
+	cached_navigation_move_direction = move_direction
+	return move_direction
+
+
+func _clear_cached_navigation_move_direction() -> void:
+	cached_navigation_move_direction = Vector2.ZERO
 
 
 func _get_shape_safe_move_direction_to_target(target_node: Node2D) -> Vector2:

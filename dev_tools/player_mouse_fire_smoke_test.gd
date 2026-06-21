@@ -218,7 +218,10 @@ func _test_profile_upgrade_levels_and_skill_details() -> void:
 	var skill_icon := profile_panel.get_node("Overlay/PanelRoot/SkillInfo/SkillIcon") as TextureRect
 	var skill_name := profile_panel.get_node("Overlay/PanelRoot/SkillInfo/SkillName") as Label
 	var skill_cost := profile_panel.get_node("Overlay/PanelRoot/SkillInfo/SkillCost") as Label
-	var skill_charge := profile_panel.get_node("Overlay/PanelRoot/SkillInfo/SkillCharge") as Label
+	_expect(
+		not profile_panel.has_node("Overlay/PanelRoot/SkillInfo/SkillCharge"),
+		"Skill details must not show current charge anymore."
+	)
 	_expect(skill_icon.texture != null, "Skill details must show the dialogue skill icon.")
 	_expect(skill_name.text == "经典技能", "Skill details must show the requested skill display name.")
 	_expect(
@@ -226,7 +229,6 @@ func _test_profile_upgrade_levels_and_skill_details() -> void:
 		"Skill details must show the expected skill description."
 	)
 	_expect(skill_cost.text.contains("18.0"), "Skill details must show the base required charge.")
-	_expect(skill_charge.text.contains("4.0 / 18.0"), "Skill details must show current charge.")
 
 	player.current_xirang = 500
 	_expect(player.try_upgrade_skill1(), "Skill1 first upgrade should succeed in profile smoke test.")
