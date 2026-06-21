@@ -1,7 +1,10 @@
 param(
     [string]$GodotExe = "C:\Users\wh\Downloads\Godot_v4.6.3-stable_win64.exe\Godot_v4.6.3-stable_win64_console.exe",
     [int]$Port = 29270,
-    [int]$TimeoutSeconds = 25
+    [int]$TimeoutSeconds = 65,
+    [ValidateSet("full", "leave", "wave")]
+    [string]$Scenario = "full",
+    [switch]$GodotVerbose
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,7 +21,8 @@ function Start-ProbePeer {
         [string]$Name,
         [int]$StartDelayMs = 0,
         [double]$RunSeconds = 3.0,
-        [double]$LingerSeconds = 0.0
+        [double]$LingerSeconds = 0.0,
+        [bool]$Events = $false
     )
 
     if ($StartDelayMs -gt 0) {
@@ -27,7 +31,11 @@ function Start-ProbePeer {
 
     $stdout = Join-Path $logRoot "$Name.out.log"
     $stderr = Join-Path $logRoot "$Name.err.log"
-    $args = @(
+    $args = @()
+    if ($GodotVerbose) {
+        $args += "--verbose"
+    }
+    $args += @(
         "--headless",
         "--path", $projectPath,
         "--script", "dev_tools/multiplayer_lan_probe_peer.gd",
@@ -39,7 +47,9 @@ function Start-ProbePeer {
         "--probe-expected_players=4",
         "--probe-timeout_seconds=12",
         "--probe-run_seconds=$RunSeconds",
-        "--probe-linger_seconds=$LingerSeconds"
+        "--probe-linger_seconds=$LingerSeconds",
+        "--probe-events=$Events",
+        "--probe-scenario=$Scenario"
     )
 
     $process = Start-Process `
@@ -61,10 +71,10 @@ function Start-ProbePeer {
 }
 
 try {
-    $processes += Start-ProbePeer -Role "host" -Name "host" -RunSeconds 2.0 -LingerSeconds 5.0
-    $processes += Start-ProbePeer -Role "client" -Name "client2" -StartDelayMs 350 -RunSeconds 4.0
-    $processes += Start-ProbePeer -Role "client" -Name "client3" -StartDelayMs 150 -RunSeconds 4.0
-    $processes += Start-ProbePeer -Role "client" -Name "client4" -StartDelayMs 150 -RunSeconds 4.0
+    $processes += Start-ProbePeer -Role "host" -Name "host" -RunSeconds 3.0
+    $processes += Start-ProbePeer -Role "client" -Name "client2" -StartDelayMs 350 -RunSeconds 2.0 -LingerSeconds 6.0 -Events ($Scenario -eq "full")
+    $processes += Start-ProbePeer -Role "client" -Name "client3" -StartDelayMs 150 -RunSeconds 2.0 -LingerSeconds 6.0
+    $processes += Start-ProbePeer -Role "client" -Name "client4" -StartDelayMs 150 -RunSeconds 2.0 -LingerSeconds 6.0
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
@@ -97,7 +107,7 @@ try {
         if (Test-Path $entry.Stderr) {
             $stderrText = Get-Content $entry.Stderr -Raw
             Write-Host $stderrText
-            if ($stderrText -match "Node not found|Invalid packet received|ERR_UNCONFIGURED|Unable to send packet|Trying to cast") {
+            if ($stderrText -match "Node not found|Invalid packet received|ERR_UNCONFIGURED|Unable to send packet|Trying to cast|ObjectDB instances leaked|resources still in use") {
                 $failed = $true
                 Write-Host "ERROR: $($entry.Name) produced network/runtime errors in stderr."
             }
@@ -115,7 +125,7 @@ try {
         exit 1
     }
 
-    Write-Host "MULTIPLAYER_LAN_PROBE_OK logRoot=$logRoot"
+    Write-Host "MULTIPLAYER_LAN_PROBE_OK scenario=$Scenario logRoot=$logRoot"
     exit 0
 }
 finally {

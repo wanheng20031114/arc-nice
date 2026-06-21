@@ -31,6 +31,7 @@ const CLIENT_PROJECTILE_DIRECTION_MIN_LENGTH := 0.2
 const CLIENT_PROJECTILE_DIRECTION_MAX_LENGTH := 1.5
 const SNAPSHOT_PACKET_WARN_BYTES := 1200
 const SNAPSHOT_PACKET_WARN_INTERVAL_SECONDS := 5.0
+const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 # Multiplayer protocol map:
 # - CH_INPUT unreliable_ordered: client player pose/input to host.
 # - CH_STATE unreliable_ordered: host player/enemy snapshots to clients.
@@ -76,6 +77,7 @@ var _dead_player_revive_last_seconds: Dictionary = {}
 var _xirang_revision: int = 0
 var _recent_event_prune_time_left: float = RECENT_EVENT_PRUNE_INTERVAL_SECONDS
 var _snapshot_packet_warn_time_left: float = 0.0
+var _host_startup_snapshot_grace_time_left: float = 0.0
 var _max_player_snapshot_packet_bytes: int = 0
 var _max_enemy_snapshot_packet_bytes: int = 0
 var _large_player_snapshot_packet_count: int = 0
@@ -91,6 +93,7 @@ func _ready() -> void:
 		net_manager.player_left.connect(_on_net_player_left)
 	if net_manager.is_host():
 		_setup_game(GAME_RUNTIME_HOST_AUTHORITY)
+		_host_startup_snapshot_grace_time_left = HOST_STARTUP_SNAPSHOT_GRACE_SECONDS
 	elif net_manager.is_client():
 		_setup_game(GAME_RUNTIME_CLIENT_VIEW)
 	else:
@@ -179,6 +182,12 @@ func _host_physics_tick(frame: int, _delta: float) -> void:
 	if game == null:
 		return
 	_host_update_player_revives()
+	if _host_startup_snapshot_grace_time_left > 0.0:
+		_host_startup_snapshot_grace_time_left = maxf(
+			_host_startup_snapshot_grace_time_left - _delta,
+			0.0
+		)
+		return
 	if frame % _NetConstants.PLAYER_SNAPSHOT_INTERVAL_FRAMES == 0:
 		_host_broadcast_player_snapshots()
 	if frame % _NetConstants.ENEMY_SNAPSHOT_INTERVAL_FRAMES == 0:
@@ -194,7 +203,9 @@ func _host_broadcast_player_snapshots() -> void:
 		state.sequence = _host_player_snapshot_sequence
 	var data := snapshot_mgr.encode_all_player_snapshots(states)
 	_record_snapshot_packet_size(&"player", data.size(), states.size())
-	_rpc_receive_player_snapshot.rpc(_get_net_time(), data)
+	var snapshot_time := _get_net_time()
+	for peer_id in _get_connected_client_peer_ids():
+		_rpc_receive_player_snapshot.rpc_id(peer_id, snapshot_time, data)
 
 
 func _host_broadcast_enemy_snapshots() -> void:
@@ -204,7 +215,28 @@ func _host_broadcast_enemy_snapshots() -> void:
 	_host_had_enemies_last_snapshot = not states.is_empty()
 	var data := snapshot_mgr.encode_all_enemy_snapshots(states)
 	_record_snapshot_packet_size(&"enemy", data.size(), states.size())
-	_rpc_receive_enemy_snapshot.rpc(_get_net_time(), data)
+	var snapshot_time := _get_net_time()
+	for peer_id in _get_connected_client_peer_ids():
+		_rpc_receive_enemy_snapshot.rpc_id(peer_id, snapshot_time, data)
+
+
+func _get_connected_client_peer_ids() -> Array[int]:
+	var result: Array[int] = []
+	if net_manager == null:
+		return result
+	var connected_players := net_manager.get("connected_players") as Dictionary
+	var host_peer_id := _get_host_peer_id()
+	for peer_id_variant in connected_players:
+		var peer_id := int(peer_id_variant)
+		if peer_id <= 0 or peer_id == host_peer_id:
+			continue
+		if (
+			net_manager.has_method("is_peer_send_ready")
+			and not bool(net_manager.call("is_peer_send_ready", peer_id))
+		):
+			continue
+		result.append(peer_id)
+	return result
 
 
 func _update_snapshot_packet_warning_timer(delta: float) -> void:

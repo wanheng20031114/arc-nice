@@ -9,6 +9,8 @@
 - Godot High-level multiplayer: https://docs.godotengine.org/en/stable/tutorials/networking/high_level_multiplayer.html
 - Godot ENetMultiplayerPeer: https://docs.godotengine.org/en/stable/classes/class_enetmultiplayerpeer.html
 - Gaffer Snapshot Interpolation: https://gafferongames.com/post/snapshot_interpolation/
+- clumsy network simulator: https://jagt.github.io/clumsy/
+- clumsy command line arguments: https://github.com/jagt/clumsy/wiki/Command-Line-Arguments
 
 ## 当前协议地图
 
@@ -39,8 +41,8 @@
 
 ## 剩余高优先级风险
 
-- 客户端玩家实时状态已改为 Host 保有权威值；剩余风险是实际 100-200ms RTT 下远端 skill1 充能、释放反馈与客户端预测的一致性还需要手动验证。
-- 玩家 projectile 参数已改为 Host 重建，record 缺失时也会按 Host 玩家属性封顶，projectile id namespace、spawn 位置和方向已校验；剩余风险是位置容忍窗口还没有经过真实延迟/丢包手动调参。
+- 客户端玩家实时状态已改为 Host 保有权威值；`100ms-2`、`200ms-2`、`200ms-5` 的 4 进程 clumsy 自动矩阵已覆盖 cheat、升级、技能购买、死亡/复活和远端死亡视图。剩余风险是实际真人键鼠操作下 skill1 充能、释放反馈与客户端预测的一致性还需要手动确认。
+- 玩家 projectile 参数已改为 Host 重建，record 缺失时也会按 Host 玩家属性封顶，projectile id namespace、spawn 位置和方向已校验；`100ms-2`、`200ms-2`、`200ms-5` 自动矩阵已覆盖客户端移动上报和基础敌人/掉落事件。剩余风险是高延迟真人连续射击时的位置容忍窗口是否需要调参。
 - 游戏中断线清理已补第一层本地状态释放，但还需要 1 host + 3 client 手动验证：客户端断开后其他客户端的 HUD/镜头/敌人目标是否自然恢复，host 断开后客户端是否稳定回大厅。
 - `_apply_enemy_hit_report()` 在工具/测试直接调用且节点未入树时不会再尝试 RPC，避免无网络树上下文下的 `ERR_UNCONFIGURED`。
 - 升级、技能购买和 cheat 的 Host 入口会拒绝无效 sender；内部 `_apply_upgrade_for_peer()` / `_apply_skill1_purchase_for_peer()` 也会拒绝 `peer_id <= 0` 或已离开的 peer，避免迟到事件污染 run state。
@@ -65,7 +67,17 @@
 - 息壤拾取入口：`_rpc_xirang_orb_collected()` 拒绝无效 sender；`_apply_xirang_orb_collected()` 要求 collector 仍是当前 `Game.peer_players` 中的有效玩家，避免断线后的迟到拾取或工具上下文 collector=0 触发全员加钱。
 - 升级确认入口：`net_upgrade_confirmed()` 现在先确认 peer id 和玩家节点有效，再写入 `RunState.multiplayer_upgrade_levels`，避免不存在 peer 的迟到/异常确认创建升级状态。
 - 手动验证清单：新增 `dev_tools/multiplayer_manual_validation_checklist.md`，固定 4 人 LAN、断线、死亡复活、拾取/升级/技能购买、cheat 和高延迟/轻丢包档位的验证步骤，避免后续手测遗漏关键边界。
-- 玩家列表断线同步：Host 在 `_on_peer_disconnected()` 后会广播新的玩家列表；Client 的 `_rpc_sync_player_list()` 会按差异 emit `player_left` / `player_joined`，让大厅和游戏内清理不完全依赖底层 peer_disconnected 是否在每个客户端触发。
+- 玩家列表断线同步：Host 在大厅/加载阶段 `_on_peer_disconnected()` 后会向剩余 Client 同步新的玩家列表；Client 的 `_rpc_sync_player_list()` 会按差异 emit `player_left` / `player_joined`。游戏内断线清理由 `MpGame.player_left` 和 Host 玩家快照 roster 收敛兜底，避免关闭中的 peer 触发大厅 RPC 发送错误。
 - 大厅信号清理：`multiplayer_lobby.gd` 增加显式 NetManager 信号连接/断开 helper，返回大厅或离开多人界面时不保留旧 UI 回调。
 - 开始游戏竞态：`NetManager.host_start_game()` 现在只进入 loading；Host 侧 `MpGame._ready()` 在 `/root/MpGame` 已经存在后再广播 `_rpc_start_game()`，避免 Client 先进入游戏并向尚未入树的 Host `MpGame` 发送输入 RPC。
-- 真实 LAN 探针：新增 `dev_tools/multiplayer_lan_probe_peer.gd` 与 `dev_tools/run_multiplayer_lan_probe.ps1`，可启动 1 Host + 3 Client headless Godot 进程，验证真实 ENet 注册、玩家列表、开始游戏和玩家快照基础路径；探针会把 `Node not found`、`Invalid packet received`、`ERR_UNCONFIGURED` 等网络竞态错误视为失败。
+- 快照启动宽限：Host `MpGame` 启动后会等待 `0.5s` 再发送玩家/敌人快照，给 Client 从大厅切换到 `/root/MpGame` 留出缓冲，避免可靠 start 事件后紧跟的快照打到尚未存在的 Client 节点。
+- 真实 LAN 探针：新增 `dev_tools/multiplayer_lan_probe_peer.gd` 与 `dev_tools/run_multiplayer_lan_probe.ps1`，可启动 1 Host + 3 Client headless Godot 进程，验证真实 ENet 注册、玩家列表、开始游戏、玩家快照、客户端移动状态上报、敌人生成/移除同步、息壤 orb 收集与全员加钱、死亡/复活状态同步。探针会把 `Node not found`、`Invalid packet received`、`ERR_UNCONFIGURED` 等网络竞态错误视为失败。当前已通过本机 1 Host + 3 Client headless `full` 探针，端口 `29310`，四端均输出 `LAN_PROBE_OK`。
+- 真实可靠事件探针：`run_multiplayer_lan_probe.ps1` 会让 `client2` 在真实 ENet 连接中依次请求 cheat、攻击升级、技能购买，并等待 Host 确认回写；当前通过日志包含 `LAN_PROBE_EVENT cheat_confirmed`、`upgrade_confirmed`、`skill1_confirmed`。
+- Client 中途离开探针：`run_multiplayer_lan_probe.ps1 -Scenario leave` 会让 `client4` 入局后主动断开，Host、`client2`、`client3` 必须确认该 peer 被清理；当前端口 `29309` 通过，四端均输出 `LAN_PROBE_OK`。
+- 探针退出清理：`multiplayer_lan_probe_peer.gd` 退出前会在断开网络后释放 `MpGame`，并多轮清理断线流程可能切出的 `current_scene` / `MultiplayerLobby` 测试根节点；端口 `29309` / `29310` 的 4 进程验证 stderr 为空。`run_multiplayer_lan_probe.ps1` 现在会把 `ObjectDB instances leaked` / `resources still in use` 也视为失败。
+- 波次同步探针：`run_multiplayer_lan_probe.ps1 -Scenario wave` 会在 1 Host + 3 Client 真实 ENet 连接中用测试侧临时双波配置启动第 1 波，验证 Host 开波、敌人生成、Client 收到 `net_wave_started` / `net_enemy_spawned`、敌人移除、进入休整和商店激活。端口 `29461` 已通过，四端 stderr 为空。
+- 多轮 soak：`dev_tools/run_multiplayer_lan_probe_soak.ps1` 现在按 `full` / `leave` / `wave` 连续跑 4 进程探针。端口 `29470` / `29471` / `29472` 已通过一轮 soak，覆盖 full、leave、wave 连续执行后的收尾竞态。
+- 断线收尾防护：`NetManager` 增加断开中状态，`is_host()` / `is_client()` 在断开过程中立即返回 false；`is_peer_send_ready(peer_id)` 会检查底层 ENet peer 仍为 `STATE_CONNECTED`，Host 快照和玩家列表广播发送前会跳过正在断开的 peer，避免 leave soak 中出现 `Unable to send packet on channel 0, max channels: 0`。
+- 网络条件脚本：新增 `dev_tools/run_multiplayer_clumsy_probe.ps1`，用于在 clumsy 可用时包裹 `run_multiplayer_lan_probe.ps1` 执行 `100ms-2`、`200ms-2`、`200ms-5` 档位。
+- 网络条件矩阵：新增 `dev_tools/run_multiplayer_clumsy_matrix.ps1`，用于批量执行 clumsy profile 与 probe scenario 组合。本轮从官方 release 临时下载 `clumsy-0.3-win64-a.zip` 到 `%TEMP%`，未写入仓库；`100ms-2` 端口 `29520` / `29521` / `29522`、`200ms-2` 端口 `29530` / `29531` / `29532`、`200ms-5` 端口 `29540` / `29541` / `29542` 均通过 `full` / `wave` / `leave`，四端 stderr 为空。
+- Smoke 稳定性：`multiplayer_load_smoke_test.gd` 的 proxy action animation restore 断言从固定 24 帧等待改为 1 秒内等待目标动画恢复，避免 headless 下帧时间波动导致 windup tween 尚未走完的假阴性；真正卡住仍会超时失败。

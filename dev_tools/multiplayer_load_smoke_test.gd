@@ -796,7 +796,7 @@ func _expect_proxy_action_restores_to_move(
 	sprite.speed_scale = 24.0
 	enemy.call("play_multiplayer_enemy_action", action_name, Vector2.RIGHT, 1)
 	_expect(sprite.animation == expected_action_animation, message + " Action animation did not start.")
-	await _wait_process_frames(24)
+	await _wait_for_sprite_animation(sprite, enemy_config.move_animation_name, 1.0)
 	_expect(sprite.animation == enemy_config.move_animation_name, message)
 	_expect(sprite.is_playing(), message + " Move animation must keep playing.")
 	enemy.queue_free()
@@ -1005,4 +1005,16 @@ func _expect(condition: bool, message: String) -> void:
 
 func _wait_process_frames(frame_count: int) -> void:
 	for _frame_index in range(frame_count):
+		await process_frame
+
+
+func _wait_for_sprite_animation(
+	sprite: AnimatedSprite2D,
+	expected_animation: StringName,
+	timeout_seconds: float
+) -> void:
+	var end_time := Time.get_ticks_msec() + int(timeout_seconds * 1000.0)
+	while Time.get_ticks_msec() <= end_time:
+		if sprite != null and is_instance_valid(sprite) and sprite.animation == expected_animation:
+			return
 		await process_frame

@@ -30,6 +30,7 @@ var host_peer_id: int = 1
 
 var _physics_frame_count: int = 0
 var _enet_peer: ENetMultiplayerPeer = null
+var _disconnect_in_progress: bool = false
 
 
 func _physics_process(_delta: float) -> void:
@@ -41,15 +42,19 @@ func get_physics_frame_count() -> int:
 
 
 func is_multiplayer_active() -> bool:
-	return net_role != NetRole.NONE and connection_state != ConnectionState.DISCONNECTED
+	return (
+		not _disconnect_in_progress
+		and net_role != NetRole.NONE
+		and connection_state != ConnectionState.DISCONNECTED
+	)
 
 
 func is_host() -> bool:
-	return net_role == NetRole.HOST
+	return not _disconnect_in_progress and net_role == NetRole.HOST
 
 
 func is_client() -> bool:
-	return net_role == NetRole.CLIENT
+	return not _disconnect_in_progress and net_role == NetRole.CLIENT
 
 
 func host_create_lan_server(port: int = NetConstants.ENET_PORT_DEFAULT) -> Error:
@@ -123,6 +128,7 @@ func client_connect_direct(host_ip: String, port: int = NetConstants.ENET_PORT_D
 
 
 func disconnect_from_game() -> void:
+	_disconnect_in_progress = true
 	_cleanup_multiplayer_signals()
 	if multiplayer.has_multiplayer_peer():
 		multiplayer.multiplayer_peer = null
@@ -136,6 +142,7 @@ func disconnect_from_game() -> void:
 	_set_connection_state(ConnectionState.DISCONNECTED)
 	player_list_changed.emit()
 	_debug_log("NetManager: 已断开连接")
+	_disconnect_in_progress = false
 
 
 func host_start_game() -> void:
@@ -172,6 +179,17 @@ func get_host_peer_id() -> int:
 		if local_id > 0:
 			return local_id
 	return host_peer_id if host_peer_id > 0 else 1
+
+
+func is_peer_send_ready(peer_id: int) -> bool:
+	if peer_id <= 0 or _disconnect_in_progress:
+		return false
+	if _enet_peer == null or not multiplayer.has_multiplayer_peer():
+		return false
+	var packet_peer := _enet_peer.get_peer(peer_id)
+	if packet_peer == null:
+		return false
+	return packet_peer.get_state() == ENetPacketPeer.STATE_CONNECTED
 
 
 func get_lan_ip_candidates() -> PackedStringArray:
@@ -219,7 +237,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	connected_players.erase(peer_id)
 	player_left.emit(peer_id)
 	player_list_changed.emit()
-	if is_host():
+	if is_host() and connection_state != ConnectionState.IN_GAME:
 		call_deferred("_broadcast_player_list_to_clients")
 	_debug_log("NetManager: Peer 已断开, id=%d (%s)" % [peer_id, player_name])
 
@@ -319,13 +337,15 @@ func _build_player_list_array() -> Array:
 
 
 func _broadcast_player_list_to_clients() -> void:
-	if not is_host() or _enet_peer == null:
+	if not is_host() or _enet_peer == null or not multiplayer.has_multiplayer_peer():
 		return
 	var host_id := get_host_peer_id()
 	var player_list := _build_player_list_array()
 	for peer_id_variant in connected_players:
 		var peer_id := int(peer_id_variant)
 		if peer_id <= 0 or peer_id == host_id:
+			continue
+		if not is_peer_send_ready(peer_id):
 			continue
 		_rpc_sync_player_list.rpc_id(peer_id, player_list, host_id)
 
