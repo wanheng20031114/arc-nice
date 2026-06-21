@@ -31,6 +31,7 @@ size = Vector2(20, 10)
 [node name="CapooKnightElite" unique_id=476925854 instance=ExtResource("1_base")]
 material = SubResource("ShaderMaterial_tg75k")
 script = ExtResource("2_script")
+sprite_faces_left_by_default = true
 path_refresh_interval = 0.25
 waypoint_arrival_distance = 6.0
 direct_chase_extra_distance = 2.0
@@ -40,6 +41,7 @@ texture_filter = 2
 scale = Vector2(0.31, 0.31)
 sprite_frames = ExtResource("4_frames")
 animation = &"move"
+flip_h = true
 
 [node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
 position = Vector2(0.5, 3)

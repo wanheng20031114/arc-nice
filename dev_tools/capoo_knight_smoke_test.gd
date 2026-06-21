@@ -60,6 +60,7 @@ func _run() -> void:
 
 	_test_resource_contract()
 	_test_elite_resource_contract()
+	await _test_elite_runtime_facing()
 	await _test_slash_geometry()
 	await _test_windup_delays_damage()
 	await _test_death_interrupts_attack()
@@ -171,6 +172,8 @@ func _test_elite_resource_contract() -> void:
 			)
 	_expect(animated_sprite.animation == &"move", "Elite knight editor animation must be move.")
 	_expect(animated_sprite.frame == 0, "Elite knight editor frame must be 0.")
+	_expect(elite_instance.sprite_faces_left_by_default, "Elite knight sprite sheet faces left by default and must declare that.")
+	_expect(animated_sprite.flip_h, "Elite knight editor preview must face right by flipping its left-facing sheet.")
 
 	_expect(
 		_collision_shape_nodes_match(_collect_direct_collision_shapes(elite_instance), _collect_direct_collision_shapes(knight_instance)),
@@ -186,6 +189,24 @@ func _test_elite_resource_contract() -> void:
 
 	elite_instance.free()
 	knight_instance.free()
+
+
+func _test_elite_runtime_facing() -> void:
+	var elite_instance := ELITE_KNIGHT_SCENE.instantiate() as CapooKnight
+	_expect(elite_instance != null, "Elite knight runtime facing test must instantiate CapooKnight.")
+	if elite_instance == null:
+		return
+
+	test_root.add_child(elite_instance)
+	await process_frame
+	var animated_sprite := elite_instance.get_node("AnimatedSprite2D") as AnimatedSprite2D
+	_expect(elite_instance.sprite_faces_left_by_default, "Elite knight sprite sheet faces left by default and must declare that.")
+	elite_instance.call("_set_facing_left", false)
+	_expect(animated_sprite.flip_h, "Elite knight must face right when moving right.")
+	elite_instance.call("_set_facing_left", true)
+	_expect(not animated_sprite.flip_h, "Elite knight must face left when moving left.")
+	elite_instance.queue_free()
+	await process_frame
 
 
 func _test_slash_geometry() -> void:

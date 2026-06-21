@@ -162,7 +162,10 @@ func _test_collision_shapes_mirror_with_facing(
 		right_bounds.append(_get_collision_shape_local_bounds(shape_node))
 
 	enemy.call("_set_facing_left", true)
-	_expect(animated_sprite.flip_h, "%s facing left must flip the sprite." % enemy_config.resource_path)
+	_expect(
+		animated_sprite.flip_h == (not enemy.sprite_faces_left_by_default),
+		"%s facing left must use the configured sprite default direction." % enemy_config.resource_path
+	)
 	for index in range(all_shape_nodes.size()):
 		var left_bound := _get_collision_shape_local_bounds(all_shape_nodes[index])
 		_expect(
@@ -171,7 +174,10 @@ func _test_collision_shapes_mirror_with_facing(
 		)
 
 	enemy.call("_set_facing_left", false)
-	_expect(not animated_sprite.flip_h, "%s facing right must restore the sprite." % enemy_config.resource_path)
+	_expect(
+		animated_sprite.flip_h == enemy.sprite_faces_left_by_default,
+		"%s facing right must use the configured sprite default direction." % enemy_config.resource_path
+	)
 	for index in range(all_shape_nodes.size()):
 		var restored_bound := _get_collision_shape_local_bounds(all_shape_nodes[index])
 		_expect(

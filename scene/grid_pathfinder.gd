@@ -227,16 +227,17 @@ func _get_flow_navigation_waypoint(
 	var next_cells := field.get("next_cells", {}) as Dictionary
 	if next_cells.is_empty():
 		return null
+	var distances := field.get("distances", {}) as Dictionary
 
 	var from_cell := _global_to_map(from_global_position)
 	if not _is_cell_walkable(from_cell, path_grid):
-		var recovery_cell := _get_closest_flow_reachable_cell(from_cell, next_cells, path_grid)
+		var recovery_cell := _get_closest_flow_reachable_cell(from_cell, next_cells, distances, path_grid)
 		if recovery_cell == Vector2i.MAX:
 			return null
 		return _map_to_global(recovery_cell)
 
 	if not next_cells.has(from_cell):
-		var reachable_cell := _get_closest_flow_reachable_cell(from_cell, next_cells, path_grid)
+		var reachable_cell := _get_closest_flow_reachable_cell(from_cell, next_cells, distances, path_grid)
 		if reachable_cell == Vector2i.MAX:
 			return null
 		return _map_to_global(reachable_cell)
@@ -285,15 +286,17 @@ func _build_flow_field(target_cell: Vector2i, path_grid: AStarGrid2D) -> Diction
 func _get_closest_flow_reachable_cell(
 	origin_cell: Vector2i,
 	next_cells: Dictionary,
+	distances: Dictionary,
 	path_grid: AStarGrid2D
 ) -> Vector2i:
 	if next_cells.has(origin_cell):
 		return origin_cell
 
 	var search_radius := maxi(max_nearest_cell_search_radius, 0)
+	var best_cell := Vector2i.MAX
+	var best_flow_distance := INF
+	var best_origin_distance := INF
 	for radius in range(1, search_radius + 1):
-		var best_cell := Vector2i.MAX
-		var best_distance := INF
 		for y in range(origin_cell.y - radius, origin_cell.y + radius + 1):
 			for x in range(origin_cell.x - radius, origin_cell.x + radius + 1):
 				if x != origin_cell.x - radius and x != origin_cell.x + radius and y != origin_cell.y - radius and y != origin_cell.y + radius:
@@ -305,15 +308,20 @@ func _get_closest_flow_reachable_cell(
 				if not _is_cell_walkable(candidate, path_grid):
 					continue
 
-				var distance := origin_cell.distance_squared_to(candidate)
-				if distance < best_distance:
-					best_distance = distance
+				var flow_distance := float(distances.get(candidate, INF))
+				var origin_distance := float(origin_cell.distance_squared_to(candidate))
+				if (
+					flow_distance < best_flow_distance
+					or (
+						is_equal_approx(flow_distance, best_flow_distance)
+						and origin_distance < best_origin_distance
+					)
+				):
+					best_flow_distance = flow_distance
+					best_origin_distance = origin_distance
 					best_cell = candidate
 
-		if best_cell != Vector2i.MAX:
-			return best_cell
-
-	return Vector2i.MAX
+	return best_cell
 
 
 func _get_cached_flow_field(target_cell: Vector2i, agent_half_extents: Vector2) -> Dictionary:

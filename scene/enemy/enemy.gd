@@ -18,6 +18,7 @@ enum DeathSequenceStage {
 @export var config: EnemyConfig
 @export var touch_damage_interval: float = 0.5
 @export var hurt_blink_duration: float = 0.16
+@export var sprite_faces_left_by_default: bool = false
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var collision_shape: CollisionShape2D = null
@@ -52,6 +53,7 @@ var proxy_action_restore_token: int = 0
 func _ready() -> void:
 	_refresh_collision_shape_cache()
 	_cache_collision_shape_mirror_states()
+	_apply_sprite_facing()
 	_apply_facing_mirror()
 	touch_damage_area.body_entered.connect(_on_touch_damage_area_body_entered)
 	touch_damage_area.body_exited.connect(_on_touch_damage_area_body_exited)
@@ -330,9 +332,14 @@ func _set_facing_from_direction(direction: Vector2) -> void:
 
 func _set_facing_left(new_facing_left: bool) -> void:
 	facing_left = new_facing_left
-	if animated_sprite != null:
-		animated_sprite.flip_h = facing_left
+	_apply_sprite_facing()
 	_apply_facing_mirror()
+
+
+func _apply_sprite_facing() -> void:
+	if animated_sprite == null:
+		return
+	animated_sprite.flip_h = facing_left != sprite_faces_left_by_default
 
 
 func _apply_facing_mirror() -> void:
