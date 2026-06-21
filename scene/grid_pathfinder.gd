@@ -1,6 +1,13 @@
 extends Node
 class_name GridPathfinder
 
+const FLOW_CARDINAL_DIRECTIONS: Array[Vector2i] = [
+	Vector2i.RIGHT,
+	Vector2i.LEFT,
+	Vector2i.DOWN,
+	Vector2i.UP,
+]
+
 @export var obstacle_tile_layer_path: NodePath = ^"../GroundTileMapLayer"
 # 用于检测阻挡的碰撞层索引
 @export var tile_physics_layer_index: int = 0
@@ -12,6 +19,10 @@ class_name GridPathfinder
 @export_range(1, 128, 1, "or_greater") var max_path_queries_per_physics_frame: int = 12
 # 敌人体积寻路按实际碰撞外接尺寸计算；Godot 物理允许刚好接触但不重叠。
 @export var agent_clearance_padding: float = 0.0
+# 每个物理帧最多新建多少张 flow field；已缓存的场会被所有敌人共享，不计入预算。
+@export_range(1, 128, 1, "or_greater") var max_flow_field_builds_per_physics_frame: int = 4
+# flow field 按“敌人体型 + 目标格”缓存，限制上限避免长局无限增长。
+@export_range(1, 256, 1, "or_greater") var max_flow_field_cache_entries: int = 48
 
 # 内部使用的 AStarGrid2D 对象，用于 A* 寻路计算
 var astar_grid: AStarGrid2D = AStarGrid2D.new()
@@ -21,8 +32,12 @@ var obstacle_tile_layer: TileMapLayer = null
 var is_built: bool = false
 var path_queries_used_this_frame: int = 0
 var path_query_budget_frame: int = -1
+var flow_field_builds_used_this_frame: int = 0
+var flow_field_budget_frame: int = -1
 var blocked_cells: Array[Vector2i] = []
 var agent_grid_cache: Dictionary = {}
+var flow_field_cache: Dictionary = {}
+var flow_field_cache_order: Array[String] = []
 var region_local_rect: Rect2 = Rect2()
 
 
@@ -49,6 +64,8 @@ func rebuild() -> void:
 
 	astar_grid.clear()
 	agent_grid_cache.clear()
+	flow_field_cache.clear()
+	flow_field_cache_order.clear()
 	blocked_cells.clear()
 	astar_grid.region = used_rect
 	astar_grid.cell_size = Vector2(obstacle_tile_layer.tile_set.tile_size)
@@ -115,6 +132,22 @@ func try_get_global_path(
 	return get_global_path(from_global_position, to_global_position, agent_half_extents)
 
 
+func try_get_flow_navigation_waypoint(
+	from_global_position: Vector2,
+	to_global_position: Vector2,
+	agent_half_extents: Vector2 = Vector2.ZERO
+) -> Variant:
+	return _get_flow_navigation_waypoint(from_global_position, to_global_position, agent_half_extents, true)
+
+
+func get_flow_navigation_waypoint(
+	from_global_position: Vector2,
+	to_global_position: Vector2,
+	agent_half_extents: Vector2 = Vector2.ZERO
+) -> Variant:
+	return _get_flow_navigation_waypoint(from_global_position, to_global_position, agent_half_extents, false)
+
+
 func prewarm_agent_grid(agent_half_extents: Vector2) -> void:
 	if not is_built:
 		return
@@ -132,11 +165,19 @@ func _refresh_path_query_budget_frame() -> void:
 	path_queries_used_this_frame = 0
 
 
+func _refresh_flow_field_budget_frame() -> void:
+	var current_frame := Engine.get_physics_frames()
+	if current_frame == flow_field_budget_frame:
+		return
+	flow_field_budget_frame = current_frame
+	flow_field_builds_used_this_frame = 0
+
+
 func _get_or_create_agent_grid(agent_half_extents: Vector2) -> AStarGrid2D:
 	if agent_half_extents == Vector2.ZERO:
 		return astar_grid
 
-	var cache_key := "%d:%d" % [ceili(agent_half_extents.x), ceili(agent_half_extents.y)]
+	var cache_key := _get_agent_extents_cache_key(agent_half_extents)
 	var cached_grid := agent_grid_cache.get(cache_key) as AStarGrid2D
 	if cached_grid != null:
 		return cached_grid
@@ -156,6 +197,151 @@ func _get_or_create_agent_grid(agent_half_extents: Vector2) -> AStarGrid2D:
 
 	agent_grid_cache[cache_key] = agent_grid
 	return agent_grid
+
+
+func _get_flow_navigation_waypoint(
+	from_global_position: Vector2,
+	to_global_position: Vector2,
+	agent_half_extents: Vector2,
+	uses_build_budget: bool
+) -> Variant:
+	if not is_built:
+		return null
+
+	var normalized_extents := _normalize_agent_half_extents(agent_half_extents)
+	var path_grid := _get_or_create_agent_grid(normalized_extents)
+	var target_cell := _get_closest_walkable_cell(_global_to_map(to_global_position), path_grid)
+	if target_cell == Vector2i.MAX:
+		return null
+
+	var field := _get_cached_flow_field(target_cell, normalized_extents)
+	if field.is_empty():
+		if uses_build_budget:
+			_refresh_flow_field_budget_frame()
+			if flow_field_builds_used_this_frame >= maxi(max_flow_field_builds_per_physics_frame, 1):
+				return null
+			flow_field_builds_used_this_frame += 1
+		field = _build_flow_field(target_cell, path_grid)
+		_store_flow_field(target_cell, normalized_extents, field)
+
+	var next_cells := field.get("next_cells", {}) as Dictionary
+	if next_cells.is_empty():
+		return null
+
+	var from_cell := _global_to_map(from_global_position)
+	if not _is_cell_walkable(from_cell, path_grid):
+		var recovery_cell := _get_closest_flow_reachable_cell(from_cell, next_cells, path_grid)
+		if recovery_cell == Vector2i.MAX:
+			return null
+		return _map_to_global(recovery_cell)
+
+	if not next_cells.has(from_cell):
+		var reachable_cell := _get_closest_flow_reachable_cell(from_cell, next_cells, path_grid)
+		if reachable_cell == Vector2i.MAX:
+			return null
+		return _map_to_global(reachable_cell)
+
+	var next_cell: Vector2i = next_cells.get(from_cell, Vector2i.MAX)
+	if next_cell == Vector2i.MAX:
+		return null
+	if next_cell == from_cell:
+		if _is_global_position_walkable_for_agent(to_global_position, normalized_extents):
+			return to_global_position
+		return _map_to_global(next_cell)
+
+	return _map_to_global(next_cell)
+
+
+func _build_flow_field(target_cell: Vector2i, path_grid: AStarGrid2D) -> Dictionary:
+	var next_cells: Dictionary = {}
+	var distances: Dictionary = {}
+	var pending_cells: Array[Vector2i] = []
+	var pending_cell_index := 0
+	next_cells[target_cell] = target_cell
+	distances[target_cell] = 0
+	pending_cells.append(target_cell)
+
+	while pending_cell_index < pending_cells.size():
+		var current_cell := pending_cells[pending_cell_index]
+		pending_cell_index += 1
+		var current_distance := int(distances[current_cell])
+		for direction in FLOW_CARDINAL_DIRECTIONS:
+			var neighbor: Vector2i = current_cell + direction
+			if distances.has(neighbor):
+				continue
+			if not _is_cell_walkable(neighbor, path_grid):
+				continue
+			distances[neighbor] = current_distance + 1
+			next_cells[neighbor] = current_cell
+			pending_cells.append(neighbor)
+
+	return {
+		"target_cell": target_cell,
+		"next_cells": next_cells,
+		"distances": distances,
+	}
+
+
+func _get_closest_flow_reachable_cell(
+	origin_cell: Vector2i,
+	next_cells: Dictionary,
+	path_grid: AStarGrid2D
+) -> Vector2i:
+	if next_cells.has(origin_cell):
+		return origin_cell
+
+	var search_radius := maxi(max_nearest_cell_search_radius, 0)
+	for radius in range(1, search_radius + 1):
+		var best_cell := Vector2i.MAX
+		var best_distance := INF
+		for y in range(origin_cell.y - radius, origin_cell.y + radius + 1):
+			for x in range(origin_cell.x - radius, origin_cell.x + radius + 1):
+				if x != origin_cell.x - radius and x != origin_cell.x + radius and y != origin_cell.y - radius and y != origin_cell.y + radius:
+					continue
+
+				var candidate := Vector2i(x, y)
+				if not next_cells.has(candidate):
+					continue
+				if not _is_cell_walkable(candidate, path_grid):
+					continue
+
+				var distance := origin_cell.distance_squared_to(candidate)
+				if distance < best_distance:
+					best_distance = distance
+					best_cell = candidate
+
+		if best_cell != Vector2i.MAX:
+			return best_cell
+
+	return Vector2i.MAX
+
+
+func _get_cached_flow_field(target_cell: Vector2i, agent_half_extents: Vector2) -> Dictionary:
+	var cache_key := _get_flow_field_cache_key(target_cell, agent_half_extents)
+	var field := flow_field_cache.get(cache_key, {}) as Dictionary
+	if field.is_empty():
+		return {}
+	flow_field_cache_order.erase(cache_key)
+	flow_field_cache_order.append(cache_key)
+	return field
+
+
+func _store_flow_field(target_cell: Vector2i, agent_half_extents: Vector2, field: Dictionary) -> void:
+	var cache_key := _get_flow_field_cache_key(target_cell, agent_half_extents)
+	flow_field_cache[cache_key] = field
+	flow_field_cache_order.erase(cache_key)
+	flow_field_cache_order.append(cache_key)
+	while flow_field_cache_order.size() > maxi(max_flow_field_cache_entries, 1):
+		var oldest_key := flow_field_cache_order.pop_front() as String
+		flow_field_cache.erase(oldest_key)
+
+
+func _get_flow_field_cache_key(target_cell: Vector2i, agent_half_extents: Vector2) -> String:
+	return "%s:%d:%d" % [_get_agent_extents_cache_key(agent_half_extents), target_cell.x, target_cell.y]
+
+
+func _get_agent_extents_cache_key(agent_half_extents: Vector2) -> String:
+	return "%d:%d" % [ceili(agent_half_extents.x), ceili(agent_half_extents.y)]
 
 
 func _normalize_agent_half_extents(agent_half_extents: Vector2) -> Vector2:

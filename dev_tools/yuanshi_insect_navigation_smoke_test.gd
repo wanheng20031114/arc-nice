@@ -12,7 +12,9 @@ class FakePathfinder:
 
 	var is_built := true
 	var requested_path := false
+	var requested_flow_waypoint := false
 	var path := PackedVector2Array()
+	var flow_waypoint: Variant = null
 
 	func get_global_path(
 		_from_global_position: Vector2,
@@ -30,6 +32,14 @@ class FakePathfinder:
 		requested_path = true
 		return path
 
+	func try_get_flow_navigation_waypoint(
+		_from_global_position: Vector2,
+		_to_global_position: Vector2,
+		_agent_half_extents: Vector2 = Vector2.ZERO
+	) -> Variant:
+		requested_flow_waypoint = true
+		return flow_waypoint
+
 
 func _init() -> void:
 	call_deferred("_run")
@@ -46,6 +56,7 @@ func _run() -> void:
 	await _test_fast_insect_skips_blocked_corner_waypoint()
 	await _test_fast_insect_uses_path_when_direct_chase_shape_is_blocked()
 	await _test_fast_insect_does_not_turn_before_reaching_corner_center()
+	await _test_fast_insect_prefers_shared_flow_waypoint()
 
 	test_root.queue_free()
 	await process_frame
@@ -166,6 +177,29 @@ func _test_fast_insect_does_not_turn_before_reaching_corner_center() -> void:
 	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
 	_expect(move_direction.y > 0.0 and is_zero_approx(move_direction.x), "Fast insect must not turn before reaching the corner waypoint center.")
 	_expect(enemy.current_path_index == 0, "Fast insect must keep the current corner waypoint until it is reached closely enough.")
+
+	enemy.queue_free()
+	pathfinder.queue_free()
+	player.queue_free()
+	await physics_frame
+
+
+func _test_fast_insect_prefers_shared_flow_waypoint() -> void:
+	var player := _spawn_player(Vector2(64.0, 64.0))
+	var pathfinder := FakePathfinder.new()
+	pathfinder.flow_waypoint = Vector2(0.0, 32.0)
+	pathfinder.path = PackedVector2Array([
+		Vector2(32.0, 0.0),
+	])
+	test_root.add_child(pathfinder)
+	await physics_frame
+
+	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
+	enemy.path_refresh_time_left = 10.0
+	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
+	_expect(pathfinder.requested_flow_waypoint, "Fast insect must request the shared flow-field waypoint when it is available.")
+	_expect(not pathfinder.requested_path, "Fast insect must not request an A* path when the shared flow field returns a usable waypoint.")
+	_expect(move_direction.y > 0.0 and is_zero_approx(move_direction.x), "Fast insect must move toward the shared flow-field waypoint.")
 
 	enemy.queue_free()
 	pathfinder.queue_free()

@@ -7,6 +7,7 @@ const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
 const DAMAGE_NUMBER_SCRIPT := preload("res://scene/damage_number.gd")
 const DAMAGE_NUMBER_LIMIT := 80
 const PATH_DIRECTION_PROBE_DISTANCE := 1.0
+const FLOW_NAVIGATION_WAYPOINT_ARRIVAL_DISTANCE := 1.0
 
 enum DeathSequenceStage {
 	NONE,
@@ -450,6 +451,44 @@ func _get_axis_aligned_waypoint_direction(waypoint: Vector2, arrival_distance: f
 	if abs_x >= abs_y:
 		return _choose_unblocked_axis_direction(Vector2(signf(offset.x), 0.0), Vector2(0.0, signf(offset.y)))
 	return _choose_unblocked_axis_direction(Vector2(0.0, signf(offset.y)), Vector2(signf(offset.x), 0.0))
+
+
+func _get_shared_flow_navigation_direction(target_node: Node2D, shared_pathfinder: Node) -> Vector2:
+	if not is_instance_valid(target_node):
+		return Vector2.ZERO
+	if shared_pathfinder == null:
+		return Vector2.ZERO
+	if not shared_pathfinder.get("is_built"):
+		return Vector2.ZERO
+	if not shared_pathfinder.has_method("try_get_flow_navigation_waypoint"):
+		return Vector2.ZERO
+
+	var waypoint_result: Variant = shared_pathfinder.call(
+		"try_get_flow_navigation_waypoint",
+		global_position,
+		target_node.global_position,
+		_get_body_collision_half_extents()
+	)
+	if waypoint_result == null:
+		return Vector2.ZERO
+
+	var waypoint: Vector2 = waypoint_result
+	return _get_axis_aligned_waypoint_direction(waypoint, FLOW_NAVIGATION_WAYPOINT_ARRIVAL_DISTANCE)
+
+
+func _get_shape_safe_move_direction_to_target(target_node: Node2D) -> Vector2:
+	if not is_instance_valid(target_node):
+		return Vector2.ZERO
+	var direct_direction := global_position.direction_to(target_node.global_position)
+	if direct_direction == Vector2.ZERO:
+		return Vector2.ZERO
+	if not test_move(global_transform, direct_direction * PATH_DIRECTION_PROBE_DISTANCE):
+		return direct_direction
+	var x_direction := Vector2(signf(direct_direction.x), 0.0)
+	var y_direction := Vector2(0.0, signf(direct_direction.y))
+	if absf(direct_direction.x) >= absf(direct_direction.y):
+		return _choose_unblocked_axis_direction(x_direction, y_direction)
+	return _choose_unblocked_axis_direction(y_direction, x_direction)
 
 
 func _choose_unblocked_axis_direction(primary_direction: Vector2, secondary_direction: Vector2 = Vector2.ZERO) -> Vector2:

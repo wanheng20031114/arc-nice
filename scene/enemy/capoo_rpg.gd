@@ -316,11 +316,19 @@ func _get_navigation_move_direction(delta: float) -> Vector2:
 	path_refresh_time_left = maxf(path_refresh_time_left - delta, 0.0)
 
 	if _should_direct_chase_target():
-		_clear_navigation_path()
-		return global_position.direction_to(target_player.global_position)
+		var direct_move_direction := _get_shape_safe_move_direction_to_target(target_player)
+		if direct_move_direction != Vector2.ZERO:
+			_clear_navigation_path()
+			return direct_move_direction
+		path_refresh_time_left = minf(path_refresh_time_left, _get_navigation_retry_interval())
 
 	if pathfinder == null or not pathfinder.get("is_built"):
-		return global_position.direction_to(target_player.global_position)
+		return _get_shape_safe_move_direction_to_target(target_player)
+
+	var flow_direction := _get_shared_flow_navigation_direction(target_player, pathfinder)
+	if flow_direction != Vector2.ZERO:
+		_clear_navigation_path()
+		return flow_direction
 
 	if path_refresh_time_left <= 0.0 or current_path.is_empty():
 		_refresh_navigation_path()
@@ -371,7 +379,9 @@ func _clear_navigation_path() -> void:
 
 func _get_navigation_fallback_move_direction() -> Vector2:
 	if _has_clear_world_line_to_target():
-		return global_position.direction_to(target_player.global_position)
+		var direct_direction := _get_shape_safe_move_direction_to_target(target_player)
+		if direct_direction != Vector2.ZERO:
+			return direct_direction
 	path_refresh_time_left = minf(path_refresh_time_left, _get_navigation_retry_interval())
 	return Vector2.ZERO
 

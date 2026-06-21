@@ -56,14 +56,19 @@ func _get_navigation_move_direction(delta: float) -> Vector2:
 	path_refresh_time_left = maxf(path_refresh_time_left - delta, 0.0)
 
 	if _should_direct_chase_target():
-		var direct_move_direction := _get_direct_target_move_direction()
+		var direct_move_direction := _get_shape_safe_move_direction_to_target(target_player)
 		if direct_move_direction != Vector2.ZERO:
 			_clear_navigation_path()
 			return direct_move_direction
 		path_refresh_time_left = minf(path_refresh_time_left, _get_navigation_retry_interval())
 
 	if pathfinder == null or not pathfinder.get("is_built"):
-		return _get_direct_target_move_direction()
+		return _get_shape_safe_move_direction_to_target(target_player)
+
+	var flow_direction := _get_shared_flow_navigation_direction(target_player, pathfinder)
+	if flow_direction != Vector2.ZERO:
+		_clear_navigation_path()
+		return flow_direction
 
 	if path_refresh_time_left <= 0.0 or current_path.is_empty():
 		_refresh_navigation_path()
@@ -119,26 +124,11 @@ func _clear_navigation_path() -> void:
 
 func _get_navigation_fallback_move_direction() -> Vector2:
 	if _has_clear_world_line_to_target():
-		var direct_direction := _get_direct_target_move_direction()
+		var direct_direction := _get_shape_safe_move_direction_to_target(target_player)
 		if direct_direction != Vector2.ZERO:
 			return direct_direction
 	path_refresh_time_left = minf(path_refresh_time_left, _get_navigation_retry_interval())
 	return Vector2.ZERO
-
-
-func _get_direct_target_move_direction() -> Vector2:
-	if not is_instance_valid(target_player):
-		return Vector2.ZERO
-	var direct_direction := global_position.direction_to(target_player.global_position)
-	if direct_direction == Vector2.ZERO:
-		return Vector2.ZERO
-	if not test_move(global_transform, direct_direction * PATH_DIRECTION_PROBE_DISTANCE):
-		return direct_direction
-	var x_direction := Vector2(signf(direct_direction.x), 0.0)
-	var y_direction := Vector2(0.0, signf(direct_direction.y))
-	if absf(direct_direction.x) >= absf(direct_direction.y):
-		return _choose_unblocked_axis_direction(x_direction, y_direction)
-	return _choose_unblocked_axis_direction(y_direction, x_direction)
 
 
 func _should_direct_chase_target() -> bool:
