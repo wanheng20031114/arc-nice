@@ -9,7 +9,7 @@ const MAX_XIRANG_ORBS_PER_ENEMY := 4
 @export var path_refresh_interval: float = 0.25
 
 # 距离当前路点小于该值时，切换到下一个路点。
-@export var waypoint_arrival_distance: float = 6.0
+@export var waypoint_arrival_distance: float = 2.0
 
 # 足够接近玩家时直接追踪玩家当前位置，避免围绕玩家所在格子中心反复寻路。
 @export var direct_chase_extra_distance: float = 2.0

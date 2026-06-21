@@ -45,6 +45,7 @@ func _run() -> void:
 	await _test_fast_insect_can_fallback_chase_with_clear_line()
 	await _test_fast_insect_skips_blocked_corner_waypoint()
 	await _test_fast_insect_uses_path_when_direct_chase_shape_is_blocked()
+	await _test_fast_insect_does_not_turn_before_reaching_corner_center()
 
 	test_root.queue_free()
 	await process_frame
@@ -144,6 +145,29 @@ func _test_fast_insect_uses_path_when_direct_chase_shape_is_blocked() -> void:
 	enemy.queue_free()
 	side_wall.queue_free()
 	lower_wall.queue_free()
+	pathfinder.queue_free()
+	player.queue_free()
+	await physics_frame
+
+
+func _test_fast_insect_does_not_turn_before_reaching_corner_center() -> void:
+	var player := _spawn_player(Vector2(64.0, 16.0))
+	var pathfinder := FakePathfinder.new()
+	test_root.add_child(pathfinder)
+	await physics_frame
+
+	var enemy := _spawn_fast_insect(Vector2(0.0, 10.5), player, pathfinder)
+	enemy.current_path = PackedVector2Array([
+		Vector2(0.0, 16.0),
+		Vector2(16.0, 16.0),
+	])
+	enemy.current_path_index = 0
+	enemy.path_refresh_time_left = 10.0
+	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
+	_expect(move_direction.y > 0.0 and is_zero_approx(move_direction.x), "Fast insect must not turn before reaching the corner waypoint center.")
+	_expect(enemy.current_path_index == 0, "Fast insect must keep the current corner waypoint until it is reached closely enough.")
+
+	enemy.queue_free()
 	pathfinder.queue_free()
 	player.queue_free()
 	await physics_frame
