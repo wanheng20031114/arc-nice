@@ -24,6 +24,13 @@ const CHEAT_XIRANG_AMOUNT := 1000
 const HIT_DEDUP_RETENTION_SECONDS := 30.0
 const ORB_DEDUP_RETENTION_SECONDS := 60.0
 const RECENT_EVENT_PRUNE_INTERVAL_SECONDS := 5.0
+const PROJECTILE_RECORD_RETENTION_SECONDS := 5.0
+const PROJECTILE_ID_NAMESPACE_SIZE := 1000000
+const CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE := 224.0
+const CLIENT_PROJECTILE_DIRECTION_MIN_LENGTH := 0.2
+const CLIENT_PROJECTILE_DIRECTION_MAX_LENGTH := 1.5
+const SNAPSHOT_PACKET_WARN_BYTES := 1200
+const SNAPSHOT_PACKET_WARN_INTERVAL_SECONDS := 5.0
 # Multiplayer protocol map:
 # - CH_INPUT unreliable_ordered: client player pose/input to host.
 # - CH_STATE unreliable_ordered: host player/enemy snapshots to clients.
@@ -54,6 +61,7 @@ var _accepted_player_state_positions: Dictionary = {}
 var _accepted_player_state_times: Dictionary = {}
 var _next_projectile_id: int = 1
 var _known_projectiles: Dictionary = {}
+var _projectile_records: Dictionary = {}
 var _processed_enemy_hit_ids: Dictionary = {}
 var _processed_player_hit_ids: Dictionary = {}
 var _next_xirang_orb_id: int = 1
@@ -67,12 +75,20 @@ var _dead_player_revive_times: Dictionary = {}
 var _dead_player_revive_last_seconds: Dictionary = {}
 var _xirang_revision: int = 0
 var _recent_event_prune_time_left: float = RECENT_EVENT_PRUNE_INTERVAL_SECONDS
+var _snapshot_packet_warn_time_left: float = 0.0
+var _max_player_snapshot_packet_bytes: int = 0
+var _max_enemy_snapshot_packet_bytes: int = 0
+var _large_player_snapshot_packet_count: int = 0
+var _large_enemy_snapshot_packet_count: int = 0
 
 
 func _ready() -> void:
 	_net_time_origin = Time.get_ticks_msec() / 1000.0
 	set_multiplayer_authority(_get_host_peer_id())
-	net_manager.connection_state_changed.connect(_on_connection_state_changed)
+	if not net_manager.connection_state_changed.is_connected(_on_connection_state_changed):
+		net_manager.connection_state_changed.connect(_on_connection_state_changed)
+	if not net_manager.player_left.is_connected(_on_net_player_left):
+		net_manager.player_left.connect(_on_net_player_left)
 	if net_manager.is_host():
 		_setup_game(GAME_RUNTIME_HOST_AUTHORITY)
 	elif net_manager.is_client():
@@ -82,10 +98,22 @@ func _ready() -> void:
 		call_deferred("_return_to_lobby")
 		return
 	net_manager.mark_in_game()
+	if net_manager.is_host() and net_manager.has_method("host_broadcast_start_game"):
+		net_manager.host_broadcast_start_game()
+
+
+func _exit_tree() -> void:
+	if net_manager != null and net_manager.connection_state_changed.is_connected(_on_connection_state_changed):
+		net_manager.connection_state_changed.disconnect(_on_connection_state_changed)
+	if net_manager != null and net_manager.player_left.is_connected(_on_net_player_left):
+		net_manager.player_left.disconnect(_on_net_player_left)
+	if game != null and game.return_to_lobby_requested.is_connected(_on_game_return_to_lobby_requested):
+		game.return_to_lobby_requested.disconnect(_on_game_return_to_lobby_requested)
 
 
 func _physics_process(delta: float) -> void:
 	_update_recent_event_cache_prune(delta)
+	_update_snapshot_packet_warning_timer(delta)
 	var frame: int = net_manager.get_physics_frame_count()
 	if net_manager.is_host():
 		_host_physics_tick(frame, delta)
@@ -165,6 +193,7 @@ func _host_broadcast_player_snapshots() -> void:
 	for state in states:
 		state.sequence = _host_player_snapshot_sequence
 	var data := snapshot_mgr.encode_all_player_snapshots(states)
+	_record_snapshot_packet_size(&"player", data.size(), states.size())
 	_rpc_receive_player_snapshot.rpc(_get_net_time(), data)
 
 
@@ -174,7 +203,44 @@ func _host_broadcast_enemy_snapshots() -> void:
 		return
 	_host_had_enemies_last_snapshot = not states.is_empty()
 	var data := snapshot_mgr.encode_all_enemy_snapshots(states)
+	_record_snapshot_packet_size(&"enemy", data.size(), states.size())
 	_rpc_receive_enemy_snapshot.rpc(_get_net_time(), data)
+
+
+func _update_snapshot_packet_warning_timer(delta: float) -> void:
+	_snapshot_packet_warn_time_left = maxf(_snapshot_packet_warn_time_left - delta, 0.0)
+
+
+func _record_snapshot_packet_size(snapshot_type: StringName, packet_bytes: int, entity_count: int) -> void:
+	if snapshot_type == &"player":
+		_max_player_snapshot_packet_bytes = maxi(_max_player_snapshot_packet_bytes, packet_bytes)
+		if packet_bytes <= SNAPSHOT_PACKET_WARN_BYTES:
+			return
+		_large_player_snapshot_packet_count += 1
+	elif snapshot_type == &"enemy":
+		_max_enemy_snapshot_packet_bytes = maxi(_max_enemy_snapshot_packet_bytes, packet_bytes)
+		if packet_bytes <= SNAPSHOT_PACKET_WARN_BYTES:
+			return
+		_large_enemy_snapshot_packet_count += 1
+	else:
+		return
+	if _snapshot_packet_warn_time_left > 0.0:
+		return
+	_snapshot_packet_warn_time_left = SNAPSHOT_PACKET_WARN_INTERVAL_SECONDS
+	if is_inside_tree():
+		push_warning(
+			"MpGame: %s snapshot packet is %d bytes for %d entities; monitor bandwidth under latency/loss."
+			% [String(snapshot_type), packet_bytes, entity_count]
+		)
+
+
+func get_snapshot_packet_metrics() -> Dictionary:
+	return {
+		"max_player_snapshot_packet_bytes": _max_player_snapshot_packet_bytes,
+		"max_enemy_snapshot_packet_bytes": _max_enemy_snapshot_packet_bytes,
+		"large_player_snapshot_packet_count": _large_player_snapshot_packet_count,
+		"large_enemy_snapshot_packet_count": _large_enemy_snapshot_packet_count,
+	}
 
 
 func _client_physics_tick(frame: int) -> void:
@@ -252,7 +318,7 @@ func _client_interpolate_entities() -> void:
 		return
 	var current_time := _get_net_time()
 	var local_peer_id: int = _get_local_peer_id()
-	for peer_id_variant in player_interpolators:
+	for peer_id_variant in player_interpolators.keys():
 		var peer_id := int(peer_id_variant)
 		if peer_id == local_peer_id:
 			continue
@@ -266,7 +332,7 @@ func _client_interpolate_entities() -> void:
 				frame_state.facing,
 				frame_state.anim_state
 			)
-	for net_id_variant in enemy_interpolators:
+	for net_id_variant in enemy_interpolators.keys():
 		var net_id := int(net_id_variant)
 		var enemy_interp := enemy_interpolators[net_id] as NetInterpolator
 		var enemy_node: Enemy = _get_valid_client_enemy_for_net_id(net_id)
@@ -282,10 +348,15 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 		return
 	var snapshot_time := _map_host_timestamp_to_client_time(host_timestamp)
 	var states := SnapshotManager.decode_all_player_snapshots(data)
+	var snapshot_has_full_roster := _is_complete_player_snapshot_batch(data, states.size())
+	var seen_player_ids: Dictionary = {}
 	for state in states:
 		var player_state := state as SnapshotManager.PlayerState
 		if player_state == null:
 			continue
+		if player_state.peer_id <= 0:
+			continue
+		seen_player_ids[player_state.peer_id] = true
 		if net_manager.is_client() and player_state.peer_id == _get_local_peer_id():
 			continue
 		if not player_interpolators.has(player_state.peer_id):
@@ -316,16 +387,46 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 				player_state.form_mode,
 				player_state.shot_pattern
 			)
+	if snapshot_has_full_roster:
+		_reconcile_player_roster(seen_player_ids)
+
+
+func _is_complete_player_snapshot_batch(data: PackedByteArray, decoded_count: int) -> bool:
+	if data.is_empty():
+		return false
+	var expected_count := int(data[0])
+	return expected_count > 0 and decoded_count == expected_count
+
+
+func _reconcile_player_roster(seen_player_ids: Dictionary) -> void:
+	if game == null or seen_player_ids.is_empty():
+		return
+	if int(game.runtime_mode) != GAME_RUNTIME_CLIENT_VIEW:
+		return
+	var local_peer_id := _get_local_peer_id()
+	if local_peer_id <= 0:
+		local_peer_id = game.multiplayer_local_peer_id
+	for peer_id_variant in game.peer_players.keys():
+		var peer_id := int(peer_id_variant)
+		if peer_id == local_peer_id:
+			continue
+		if seen_player_ids.has(peer_id):
+			continue
+		_clear_peer_network_state(peer_id)
+		game.remove_multiplayer_player(peer_id)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
 func _rpc_receive_enemy_snapshot(host_timestamp: float, data: PackedByteArray) -> void:
 	var snapshot_time := _map_host_timestamp_to_client_time(host_timestamp)
 	var states := SnapshotManager.decode_all_enemy_snapshots(data)
+	var snapshot_has_full_roster := _is_complete_enemy_snapshot_batch(data, states.size())
 	var seen_enemy_ids: Dictionary = {}
 	for state in states:
 		var enemy_state := state as SnapshotManager.EnemyState
 		if enemy_state == null:
+			continue
+		if enemy_state.net_id <= 0:
 			continue
 		seen_enemy_ids[enemy_state.net_id] = true
 		if not enemy_interpolators.has(enemy_state.net_id):
@@ -346,7 +447,17 @@ func _rpc_receive_enemy_snapshot(host_timestamp: float, data: PackedByteArray) -
 		if enemy_node != null and is_instance_valid(enemy_node):
 			enemy_node.current_health = enemy_state.health
 			enemy_node.is_dead = enemy_state.is_dead
-	_reconcile_enemy_roster(seen_enemy_ids, snapshot_time)
+	if snapshot_has_full_roster:
+		_reconcile_enemy_roster(seen_enemy_ids, snapshot_time)
+
+
+func _is_complete_enemy_snapshot_batch(data: PackedByteArray, decoded_count: int) -> bool:
+	if data.size() < 2:
+		return false
+	var stream := StreamPeerBuffer.new()
+	stream.data_array = data
+	var expected_count := stream.get_u16()
+	return decoded_count == expected_count
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)
@@ -388,12 +499,12 @@ func _rpc_client_player_state(
 		player_node.max_health,
 		player_node.current_xirang,
 		player_node.is_dead,
-		invincibility_time_left,
+		player_node.invincibility_time_left,
 		player_node.skill1_unlocked,
-		skill1_charge,
-		skill1_charge_duration,
-		form_mode,
-		shot_pattern
+		player_node.skill1_charge,
+		player_node.skill1_charge_duration,
+		player_node.current_form_mode,
+		player_node.current_shot_pattern
 	)
 	_push_player_interpolator_state(
 		sender_id,
@@ -490,6 +601,7 @@ func register_local_projectile(
 	_next_projectile_id += 1
 	_setup_projectile_network_identity(projectile, projectile_id, owner_peer_id, projectile_type)
 	_known_projectiles[projectile_id] = projectile
+	_remember_projectile_record(projectile_id, owner_peer_id, projectile_type, damage, lifetime)
 	if net_manager.is_host():
 		net_projectile_fired.rpc(
 			projectile_id,
@@ -531,25 +643,47 @@ func _rpc_projectile_fired_from_client(
 	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id <= 0 or owner_peer_id != sender_id:
 		return
+	if _known_projectiles.has(projectile_id):
+		return
+	if not _is_projectile_id_valid_for_owner(projectile_id, owner_peer_id):
+		return
+	var accepted_direction := _get_valid_client_projectile_direction(direction)
+	if accepted_direction == Vector2.ZERO:
+		return
+	if not _is_client_projectile_spawn_position_allowed(
+		StringName(projectile_type),
+		owner_peer_id,
+		spawn_position
+	):
+		return
+	var accepted_parameters := _get_authoritative_client_projectile_parameters(
+		StringName(projectile_type),
+		owner_peer_id
+	)
+	if accepted_parameters.is_empty():
+		return
+	var accepted_damage := int(accepted_parameters["damage"])
+	var accepted_speed := float(accepted_parameters["speed"])
+	var accepted_lifetime := float(accepted_parameters["lifetime"])
 	net_projectile_fired.rpc(
 		projectile_id,
 		projectile_type,
 		owner_peer_id,
 		spawn_position,
-		direction,
-		damage,
-		speed,
-		lifetime
+		accepted_direction,
+		accepted_damage,
+		accepted_speed,
+		accepted_lifetime
 	)
 	net_projectile_fired(
 		projectile_id,
 		projectile_type,
 		owner_peer_id,
 		spawn_position,
-		direction,
-		damage,
-		speed,
-		lifetime
+		accepted_direction,
+		accepted_damage,
+		accepted_speed,
+		accepted_lifetime
 	)
 
 
@@ -593,6 +727,7 @@ func _spawn_network_projectile(
 		return
 	_setup_projectile_network_identity(projectile, projectile_id, owner_peer_id, projectile_type)
 	_known_projectiles[projectile_id] = projectile
+	_remember_projectile_record(projectile_id, owner_peer_id, projectile_type, damage, lifetime)
 	add_child(projectile)
 	projectile.global_position = spawn_position
 
@@ -651,6 +786,159 @@ func _instantiate_projectile(
 			return null
 
 
+func _get_authoritative_client_projectile_parameters(
+	projectile_type: StringName,
+	owner_peer_id: int
+) -> Dictionary:
+	var owner_player: Player = null
+	if game != null:
+		owner_player = game.get_player_for_peer(owner_peer_id)
+	if owner_player == null or not is_instance_valid(owner_player):
+		return {}
+	match projectile_type:
+		&"player_bullet":
+			var bullet := BULLET_SCENE.instantiate() as Bullet
+			if bullet == null:
+				return {}
+			var bullet_result := {
+				"damage": owner_player.attack_damage,
+				"speed": bullet.speed,
+				"lifetime": bullet.max_lifetime,
+			}
+			bullet.free()
+			return bullet_result
+		&"skill1_bomb":
+			if not owner_player.consume_multiplayer_skill1_charge():
+				return {}
+			var bomb := SKILL1_BOMB_SCENE.instantiate() as WeishidaierSkill1Bomb
+			if bomb == null:
+				return {}
+			var bomb_result := {
+				"damage": floori(float(owner_player.attack_damage) * 3.3),
+				"speed": bomb.speed,
+				"lifetime": bomb.max_lifetime,
+			}
+			bomb.free()
+			return bomb_result
+		_:
+			return {}
+
+
+func _remember_projectile_record(
+	projectile_id: int,
+	owner_peer_id: int,
+	projectile_type: StringName,
+	damage: int,
+	lifetime: float
+) -> void:
+	if projectile_id <= 0:
+		return
+	_projectile_records[projectile_id] = {
+		"owner_peer_id": owner_peer_id,
+		"projectile_type": projectile_type,
+		"damage": maxi(damage, 0),
+		"expires_at": _get_net_time() + maxf(lifetime, 0.0) + PROJECTILE_RECORD_RETENTION_SECONDS,
+	}
+
+
+func _get_authoritative_projectile_damage(
+	projectile_id: int,
+	owner_peer_id: int,
+	reported_damage: int
+) -> int:
+	if not _is_projectile_id_valid_for_owner(projectile_id, owner_peer_id):
+		return -1
+	var record_variant: Variant = _projectile_records.get(projectile_id)
+	if record_variant != null:
+		var record := record_variant as Dictionary
+		if record.is_empty():
+			return -1
+		if int(record.get("owner_peer_id", 0)) != owner_peer_id:
+			return -1
+		return int(record.get("damage", -1))
+	return _get_bounded_player_projectile_damage(owner_peer_id, reported_damage)
+
+
+func _get_bounded_player_projectile_damage(owner_peer_id: int, reported_damage: int) -> int:
+	if reported_damage <= 0:
+		return -1
+	var owner_player: Player = null
+	if game != null:
+		owner_player = game.get_player_for_peer(owner_peer_id)
+	if owner_player == null or not is_instance_valid(owner_player):
+		return -1
+	var max_authoritative_damage := owner_player.attack_damage
+	if owner_player.has_skill1():
+		max_authoritative_damage = maxi(
+			max_authoritative_damage,
+			floori(float(owner_player.attack_damage) * 3.3)
+		)
+	return clampi(reported_damage, 1, max_authoritative_damage)
+
+
+func _is_projectile_id_valid_for_owner(projectile_id: int, owner_peer_id: int) -> bool:
+	if projectile_id <= 0 or owner_peer_id <= 0:
+		return false
+	var projectile_namespace := floori(float(projectile_id) / float(PROJECTILE_ID_NAMESPACE_SIZE))
+	return projectile_namespace == owner_peer_id
+
+
+func _get_valid_client_projectile_direction(direction: Vector2) -> Vector2:
+	if not _is_finite_vector2(direction):
+		return Vector2.ZERO
+	var direction_length := direction.length()
+	if (
+		direction_length < CLIENT_PROJECTILE_DIRECTION_MIN_LENGTH
+		or direction_length > CLIENT_PROJECTILE_DIRECTION_MAX_LENGTH
+	):
+		return Vector2.ZERO
+	return direction / direction_length
+
+
+func _is_client_projectile_spawn_position_allowed(
+	projectile_type: StringName,
+	owner_peer_id: int,
+	spawn_position: Vector2
+) -> bool:
+	if not _is_finite_vector2(spawn_position):
+		return false
+	var owner_player: Player = null
+	if game != null:
+		owner_player = game.get_player_for_peer(owner_peer_id)
+	if owner_player == null or not is_instance_valid(owner_player):
+		return false
+	var allowed_distance := CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE
+	match projectile_type:
+		&"player_bullet":
+			allowed_distance += owner_player.bullet_spawn_distance
+		&"skill1_bomb":
+			allowed_distance += owner_player.skill1_bomb_spawn_distance
+		_:
+			return false
+	if owner_player.global_position.distance_to(spawn_position) <= allowed_distance:
+		return true
+	if _accepted_player_state_positions.has(owner_peer_id):
+		var accepted_position := _accepted_player_state_positions[owner_peer_id] as Vector2
+		if accepted_position.distance_to(spawn_position) <= allowed_distance:
+			return true
+	return false
+
+
+func _is_finite_vector2(value: Vector2) -> bool:
+	return is_finite(value.x) and is_finite(value.y)
+
+
+func _prune_projectile_records(now: float) -> void:
+	var expired_projectile_ids: Array[int] = []
+	for projectile_id_variant in _projectile_records.keys():
+		var projectile_id := int(projectile_id_variant)
+		var record := _projectile_records[projectile_id] as Dictionary
+		if record.is_empty() or float(record.get("expires_at", 0.0)) <= now:
+			expired_projectile_ids.append(projectile_id)
+	for projectile_id in expired_projectile_ids:
+		_projectile_records.erase(projectile_id)
+
+
 func _setup_projectile_network_identity(
 	projectile: Node,
 	projectile_id: int,
@@ -679,6 +967,7 @@ func _prune_recent_event_caches(now: float) -> void:
 	_prune_recent_event_cache(_processed_player_hit_ids, now)
 	_prune_recent_event_cache(_collected_xirang_orbs, now)
 	_prune_recent_event_cache(_granted_xirang_orbs, now)
+	_prune_projectile_records(now)
 
 
 func _prune_recent_event_cache(cache: Dictionary, now: float) -> void:
@@ -748,12 +1037,21 @@ func _rpc_enemy_hit_report(
 
 func _apply_enemy_hit_report(
 	projectile_id: int,
-	_owner_peer_id: int,
+	owner_peer_id: int,
 	enemy_net_id: int,
-	damage: int,
+	reported_damage: int,
 	impact_direction: Vector2
 ) -> void:
-	if projectile_id <= 0 or enemy_net_id <= 0 or damage <= 0:
+	if projectile_id <= 0 or owner_peer_id <= 0 or enemy_net_id <= 0:
+		return
+	if not _is_projectile_id_valid_for_owner(projectile_id, owner_peer_id):
+		return
+	var authoritative_damage := _get_authoritative_projectile_damage(
+		projectile_id,
+		owner_peer_id,
+		reported_damage
+	)
+	if authoritative_damage <= 0:
 		return
 	var hit_key := "%d:%d" % [projectile_id, enemy_net_id]
 	var now := _get_net_time()
@@ -762,11 +1060,18 @@ func _apply_enemy_hit_report(
 	var enemy := _get_host_enemy_for_net_id(enemy_net_id)
 	if enemy == null or not is_instance_valid(enemy):
 		return
-	if not enemy.apply_damage(damage, impact_direction):
+	if not enemy.apply_damage(authoritative_damage, impact_direction):
 		return
 	_remember_recent_event(_processed_enemy_hit_ids, hit_key, HIT_DEDUP_RETENTION_SECONDS, now)
 	var confirmed_damage := enemy.last_damage_taken
-	net_enemy_damage_applied.rpc(enemy_net_id, enemy.current_health, enemy.is_dead, confirmed_damage, impact_direction)
+	if is_inside_tree():
+		net_enemy_damage_applied.rpc(
+			enemy_net_id,
+			enemy.current_health,
+			enemy.is_dead,
+			confirmed_damage,
+			impact_direction
+		)
 
 
 @rpc("authority", "call_remote", "reliable", 4)
@@ -953,14 +1258,16 @@ func net_player_damage_applied(
 	is_dead: bool,
 	health_revision: int
 ) -> void:
-	if health_revision <= int(_player_health_revisions.get(player_peer_id, 0)):
+	if player_peer_id <= 0:
 		return
-	_player_health_revisions[player_peer_id] = health_revision
 	var player_node: Player = null
 	if game != null:
 		player_node = game.get_player_for_peer(player_peer_id)
 	if player_node == null or not is_instance_valid(player_node):
 		return
+	if health_revision <= int(_player_health_revisions.get(player_peer_id, 0)):
+		return
+	_player_health_revisions[player_peer_id] = health_revision
 	player_node.set_multiplayer_health_state(current_health, is_dead)
 
 func register_xirang_orb(drop: XirangDrop, amount: int) -> void:
@@ -999,25 +1306,38 @@ func request_xirang_orb_collected(orb_id: int) -> void:
 func _rpc_xirang_orb_collected(orb_id: int) -> void:
 	if not net_manager.is_host():
 		return
-	_apply_xirang_orb_collected(orb_id, multiplayer.get_remote_sender_id())
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
+	_apply_xirang_orb_collected(orb_id, sender_id)
 
 
 func _apply_xirang_orb_collected(orb_id: int, collector_peer_id: int) -> void:
+	if not _is_valid_xirang_collector_peer(collector_peer_id):
+		return
 	var now := _get_net_time()
 	if (
 		orb_id <= 0
 		or _is_recent_event_cached(_collected_xirang_orbs, orb_id, now)
 		or not _xirang_orbs.has(orb_id)
 	):
-		if collector_peer_id > 0:
+		if collector_peer_id > 0 and is_inside_tree():
 			net_xirang_orb_removed.rpc_id(collector_peer_id, orb_id)
 		return
 	_remember_recent_event(_collected_xirang_orbs, orb_id, ORB_DEDUP_RETENTION_SECONDS, now)
 	var orb_data := _xirang_orbs[orb_id] as Dictionary
 	var amount := int(orb_data.get("amount", 1))
 	var revision := _xirang_revision + 1
-	net_xirang_granted_all.rpc(orb_id, amount, revision)
+	if is_inside_tree():
+		net_xirang_granted_all.rpc(orb_id, amount, revision)
 	net_xirang_granted_all(orb_id, amount, revision)
+
+
+func _is_valid_xirang_collector_peer(collector_peer_id: int) -> bool:
+	if collector_peer_id <= 0 or game == null:
+		return false
+	var player_node := game.get_player_for_peer(collector_peer_id)
+	return player_node != null and is_instance_valid(player_node)
 
 
 @rpc("authority", "call_remote", "reliable", 4)
@@ -1186,7 +1506,7 @@ func _on_host_revive_all_requested() -> void:
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_player_revive_countdown(peer_id: int, seconds_left: int) -> void:
-	if game == null:
+	if game == null or peer_id <= 0:
 		return
 	var player_node := game.get_player_for_peer(peer_id)
 	if player_node == null or not is_instance_valid(player_node):
@@ -1202,14 +1522,16 @@ func net_player_revived(
 	invincible_seconds: float,
 	health_revision: int
 ) -> void:
-	if health_revision <= int(_player_health_revisions.get(peer_id, 0)):
+	if peer_id <= 0:
 		return
-	_player_health_revisions[peer_id] = health_revision
 	var player_node: Player = null
 	if game != null:
 		player_node = game.get_player_for_peer(peer_id)
 	if player_node == null or not is_instance_valid(player_node):
 		return
+	if health_revision <= int(_player_health_revisions.get(peer_id, 0)):
+		return
+	_player_health_revisions[peer_id] = health_revision
 	_dead_player_revive_times.erase(peer_id)
 	_dead_player_revive_last_seconds.erase(peer_id)
 	var player_interp: NetInterpolator = player_interpolators.get(peer_id) as NetInterpolator
@@ -1222,12 +1544,14 @@ func _on_host_enemy_spawned(
 	enemy_config: EnemyConfig,
 	spawn_position: Vector2
 ) -> void:
-	if enemy_config == null:
+	if enemy_config == null or not is_inside_tree() or not net_manager.is_host():
 		return
 	net_enemy_spawned.rpc(net_id, enemy_config.resource_path, spawn_position.x, spawn_position.y, _get_net_time())
 
 
 func _on_host_enemy_removed(net_id: int) -> void:
+	if not is_inside_tree() or not net_manager.is_host():
+		return
 	net_enemy_removed.rpc(net_id)
 
 
@@ -1244,6 +1568,8 @@ func broadcast_enemy_action(
 
 
 func _on_host_pickup_removed(net_id: int) -> void:
+	if not is_inside_tree() or not net_manager.is_host():
+		return
 	net_pickup_removed.rpc(net_id)
 
 
@@ -1252,7 +1578,7 @@ func _on_host_pickup_spawned(
 	pickup_config: PickupConfig,
 	spawn_position: Vector2
 ) -> void:
-	if pickup_config == null:
+	if pickup_config == null or not is_inside_tree() or not net_manager.is_host():
 		return
 	net_pickup_spawned.rpc(net_id, pickup_config.resource_path, spawn_position.x, spawn_position.y)
 
@@ -1263,20 +1589,26 @@ func _on_host_pickup_collected(
 	pickup_config: PickupConfig,
 	applied_immediately: bool
 ) -> void:
+	if not is_inside_tree() or not net_manager.is_host():
+		return
 	var config_path := pickup_config.resource_path if pickup_config != null else ""
 	net_pickup_collected.rpc(net_id, collector_peer_id, config_path, applied_immediately)
 
 
 func _on_host_merchant_active_changed(active: bool) -> void:
+	if not is_inside_tree() or not net_manager.is_host():
+		return
 	net_merchant_active_changed.rpc(active)
 
 
 func _on_host_wave_started(wave_index: int) -> void:
+	if not is_inside_tree() or not net_manager.is_host():
+		return
 	net_wave_started.rpc(wave_index)
 
 
 func _on_host_defeat_started() -> void:
-	if not net_manager.is_host():
+	if not is_inside_tree() or not net_manager.is_host():
 		return
 	net_game_defeated.rpc()
 
@@ -1469,6 +1801,8 @@ func net_upgrade_selected(stat_type: int) -> void:
 	if not net_manager.is_host():
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
 	_apply_upgrade_for_peer(sender_id, stat_type)
 
 
@@ -1477,6 +1811,8 @@ func net_skill1_purchase_requested() -> void:
 	if not net_manager.is_host():
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
 	_apply_skill1_purchase_for_peer(sender_id)
 
 
@@ -1485,6 +1821,8 @@ func net_cheat_xirang_requested() -> void:
 	if not net_manager.is_host():
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
 	_apply_cheat_xirang_for_peer(sender_id)
 
 
@@ -1498,17 +1836,18 @@ func net_upgrade_confirmed(
 ) -> void:
 	if not success:
 		return
+	if peer_id <= 0 or game == null:
+		return
+	var player_node: Player = game.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return
 	run_state.ensure_multiplayer_peer_state(peer_id)
 	run_state.set_upgrade_level_for_peer(peer_id, stat_type, level)
-	var player_node: Player = null
-	if game != null:
-		player_node = game.get_player_for_peer(peer_id)
-	if player_node != null:
-		var already_applied_on_host: bool = net_manager.is_host() and peer_id == _get_local_peer_id()
-		if not already_applied_on_host:
-			_apply_confirmed_upgrade_to_player(player_node, stat_type)
-		player_node.current_xirang = current_xirang
-		player_node.xirang_changed.emit(current_xirang, 0)
+	var already_applied_on_host: bool = net_manager.is_host() and peer_id == _get_local_peer_id()
+	if not already_applied_on_host:
+		_apply_confirmed_upgrade_to_player(player_node, stat_type)
+	player_node.current_xirang = current_xirang
+	player_node.xirang_changed.emit(current_xirang, 0)
 
 
 func _apply_confirmed_upgrade_to_player(player_node: Player, stat_type: int) -> void:
@@ -1549,24 +1888,28 @@ func net_cheat_xirang_confirmed(peer_id: int, current_xirang: int, added_amount:
 
 
 func _apply_upgrade_for_peer(peer_id: int, stat_type: int) -> void:
-	if game == null:
+	if game == null or peer_id <= 0:
 		return
 	var player_node: Player = game.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return
 	var success := run_state.try_upgrade_for_peer(peer_id, stat_type, player_node)
 	var level := run_state.get_upgrade_level_for_peer(peer_id, stat_type)
-	var current_xirang := player_node.current_xirang if player_node != null else 0
+	var current_xirang := player_node.current_xirang
 	net_upgrade_confirmed.rpc(peer_id, stat_type, level, current_xirang, success)
 	if peer_id == _get_local_peer_id():
 		net_upgrade_confirmed(peer_id, stat_type, level, current_xirang, success)
 
 
 func _apply_skill1_purchase_for_peer(peer_id: int) -> void:
-	if game == null:
+	if game == null or peer_id <= 0:
+		return
+	var player_node := game.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
 		return
 	var result_code := game.try_purchase_skill1_for_peer(peer_id)
-	var player_node := game.get_player_for_peer(peer_id)
-	var current_xirang := player_node.current_xirang if player_node != null else 0
-	var skill1_unlocked := player_node.has_skill1() if player_node != null else false
+	var current_xirang := player_node.current_xirang
+	var skill1_unlocked := player_node.has_skill1()
 	net_skill1_purchase_confirmed.rpc(peer_id, current_xirang, skill1_unlocked, result_code)
 	if peer_id == _get_local_peer_id():
 		net_skill1_purchase_confirmed(peer_id, current_xirang, skill1_unlocked, result_code)
@@ -1617,6 +1960,61 @@ func _map_host_timestamp_to_client_time(host_timestamp: float) -> float:
 func _on_connection_state_changed(new_state: int) -> void:
 	if new_state == STATE_DISCONNECTED:
 		_return_to_lobby()
+
+
+func _on_net_player_left(peer_id: int) -> void:
+	if peer_id <= 0:
+		return
+	_clear_peer_network_state(peer_id)
+	if game != null and game.has_method("remove_multiplayer_player"):
+		game.call("remove_multiplayer_player", peer_id)
+
+
+func _clear_peer_network_state(peer_id: int) -> void:
+	player_interpolators.erase(peer_id)
+	_last_player_state_sequences.erase(peer_id)
+	_accepted_player_state_positions.erase(peer_id)
+	_accepted_player_state_times.erase(peer_id)
+	_player_health_revisions.erase(peer_id)
+	_dead_player_revive_times.erase(peer_id)
+	_dead_player_revive_last_seconds.erase(peer_id)
+	_clear_projectiles_for_peer(peer_id)
+	_clear_projectile_records_for_peer(peer_id)
+
+
+func _clear_projectiles_for_peer(peer_id: int) -> void:
+	var projectile_ids: Array[int] = []
+	for projectile_id_variant in _known_projectiles.keys():
+		var projectile_id := int(projectile_id_variant)
+		var projectile_variant: Variant = _known_projectiles.get(projectile_id)
+		if projectile_variant == null or not is_instance_valid(projectile_variant):
+			projectile_ids.append(projectile_id)
+			continue
+		var projectile_object := projectile_variant as Object
+		if projectile_object == null:
+			projectile_ids.append(projectile_id)
+			continue
+		var projectile_owner := int(projectile_object.get("owner_peer_id"))
+		if projectile_owner == peer_id:
+			projectile_ids.append(projectile_id)
+	for projectile_id in projectile_ids:
+		var projectile_variant: Variant = _known_projectiles.get(projectile_id)
+		_known_projectiles.erase(projectile_id)
+		if projectile_variant != null and is_instance_valid(projectile_variant):
+			var projectile_node := projectile_variant as Node
+			if projectile_node != null:
+				projectile_node.queue_free()
+
+
+func _clear_projectile_records_for_peer(peer_id: int) -> void:
+	var projectile_ids: Array[int] = []
+	for projectile_id_variant in _projectile_records.keys():
+		var projectile_id := int(projectile_id_variant)
+		var record := _projectile_records[projectile_id] as Dictionary
+		if record.is_empty() or int(record.get("owner_peer_id", 0)) == peer_id:
+			projectile_ids.append(projectile_id)
+	for projectile_id in projectile_ids:
+		_projectile_records.erase(projectile_id)
 
 
 func _return_to_lobby() -> void:

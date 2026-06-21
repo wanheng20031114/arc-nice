@@ -19,6 +19,15 @@ const MASK_IS_DEAD := 32
 const MASK_XIRANG := 64
 const MASK_PLAYER_META := 128
 
+const PLAYER_SNAPSHOT_HEADER_BYTES := 9
+const ENEMY_SNAPSHOT_HEADER_BYTES := 5
+const PACKED_VECTOR2_BYTES := 4
+const PACKED_U8_BYTES := 1
+const PACKED_U16_BYTES := 2
+const PLAYER_META_BYTES := 24
+const PACKED_I16_MIN := -32768
+const PACKED_I16_MAX := 32767
+
 
 # ─────────────────────────────────────────────
 # 玩家快照
@@ -90,11 +99,11 @@ static func encode_player_snapshot(
 
 	# 4) 按掩码写入变化字段
 	if mask & MASK_POSITION:
-		buf.put_16(int(current.position.x * POSITION_SCALE))
-		buf.put_16(int(current.position.y * POSITION_SCALE))
+		buf.put_16(_pack_scaled_i16(current.position.x, POSITION_SCALE))
+		buf.put_16(_pack_scaled_i16(current.position.y, POSITION_SCALE))
 	if mask & MASK_VELOCITY:
-		buf.put_16(int(current.velocity.x * VELOCITY_SCALE))
-		buf.put_16(int(current.velocity.y * VELOCITY_SCALE))
+		buf.put_16(_pack_scaled_i16(current.velocity.x, VELOCITY_SCALE))
+		buf.put_16(_pack_scaled_i16(current.velocity.y, VELOCITY_SCALE))
 	if mask & MASK_FACING:
 		buf.put_u8(current.facing)
 	if mask & MASK_ANIM_STATE:
@@ -135,6 +144,9 @@ static func decode_player_snapshot(
 	offset: int,
 	target: PlayerState,
 ) -> int:
+	var snapshot_size := _get_player_snapshot_size(data, offset)
+	if snapshot_size < 0 or offset + snapshot_size > data.size():
+		return offset
 	var buf := StreamPeerBuffer.new()
 	buf.data_array = data
 	buf.seek(offset)
@@ -166,6 +178,24 @@ static func decode_player_snapshot(
 		target.shot_pattern = buf.get_u8()
 
 	return buf.get_position()
+
+
+static func _get_player_snapshot_size(data: PackedByteArray, offset: int) -> int:
+	if offset < 0 or offset + PLAYER_SNAPSHOT_HEADER_BYTES > data.size():
+		return -1
+	var mask := int(data[offset + PLAYER_SNAPSHOT_HEADER_BYTES - 1])
+	var size := PLAYER_SNAPSHOT_HEADER_BYTES
+	if mask & MASK_POSITION:
+		size += PACKED_VECTOR2_BYTES
+	if mask & MASK_VELOCITY:
+		size += PACKED_VECTOR2_BYTES
+	if mask & MASK_FACING:
+		size += PACKED_U8_BYTES
+	if mask & MASK_ANIM_STATE:
+		size += PACKED_U8_BYTES
+	if mask & MASK_PLAYER_META:
+		size += PLAYER_META_BYTES
+	return size
 
 
 # ─────────────────────────────────────────────
@@ -205,11 +235,11 @@ static func encode_enemy_snapshot(
 	buf.put_u8(mask)
 
 	if mask & MASK_POSITION:
-		buf.put_16(int(current.position.x * POSITION_SCALE))
-		buf.put_16(int(current.position.y * POSITION_SCALE))
+		buf.put_16(_pack_scaled_i16(current.position.x, POSITION_SCALE))
+		buf.put_16(_pack_scaled_i16(current.position.y, POSITION_SCALE))
 	if mask & MASK_VELOCITY:
-		buf.put_16(int(current.velocity.x * VELOCITY_SCALE))
-		buf.put_16(int(current.velocity.y * VELOCITY_SCALE))
+		buf.put_16(_pack_scaled_i16(current.velocity.x, VELOCITY_SCALE))
+		buf.put_16(_pack_scaled_i16(current.velocity.y, VELOCITY_SCALE))
 	if mask & MASK_HEALTH:
 		buf.put_16(current.health)
 	if mask & MASK_IS_DEAD:
@@ -224,6 +254,9 @@ static func decode_enemy_snapshot(
 	offset: int,
 	target: EnemyState,
 ) -> int:
+	var snapshot_size := _get_enemy_snapshot_size(data, offset)
+	if snapshot_size < 0 or offset + snapshot_size > data.size():
+		return offset
 	var buf := StreamPeerBuffer.new()
 	buf.data_array = data
 	buf.seek(offset)
@@ -243,6 +276,26 @@ static func decode_enemy_snapshot(
 		target.is_dead = buf.get_u8() != 0
 
 	return buf.get_position()
+
+
+static func _get_enemy_snapshot_size(data: PackedByteArray, offset: int) -> int:
+	if offset < 0 or offset + ENEMY_SNAPSHOT_HEADER_BYTES > data.size():
+		return -1
+	var mask := int(data[offset + ENEMY_SNAPSHOT_HEADER_BYTES - 1])
+	var size := ENEMY_SNAPSHOT_HEADER_BYTES
+	if mask & MASK_POSITION:
+		size += PACKED_VECTOR2_BYTES
+	if mask & MASK_VELOCITY:
+		size += PACKED_VECTOR2_BYTES
+	if mask & MASK_HEALTH:
+		size += PACKED_U16_BYTES
+	if mask & MASK_IS_DEAD:
+		size += PACKED_U8_BYTES
+	return size
+
+
+static func _pack_scaled_i16(value: float, scale: float) -> int:
+	return clampi(roundi(value * scale), PACKED_I16_MIN, PACKED_I16_MAX)
 
 
 # ─────────────────────────────────────────────
@@ -268,8 +321,14 @@ static func decode_all_player_snapshots(data: PackedByteArray) -> Array[PlayerSt
 	var count: int = data[0]
 	var offset := 1
 	for _i in range(count):
+		var snapshot_size := _get_player_snapshot_size(data, offset)
+		if snapshot_size < 0 or offset + snapshot_size > data.size():
+			break
 		var state := PlayerState.new()
-		offset = decode_player_snapshot(data, offset, state)
+		var next_offset := decode_player_snapshot(data, offset, state)
+		if next_offset <= offset or next_offset > data.size():
+			break
+		offset = next_offset
 		result.append(state)
 	return result
 
@@ -299,8 +358,14 @@ static func decode_all_enemy_snapshots(data: PackedByteArray) -> Array[EnemyStat
 	var count: int = stream.get_u16()
 	var offset := 2
 	for _i in range(count):
+		var snapshot_size := _get_enemy_snapshot_size(data, offset)
+		if snapshot_size < 0 or offset + snapshot_size > data.size():
+			break
 		var state := EnemyState.new()
-		offset = decode_enemy_snapshot(data, offset, state)
+		var next_offset := decode_enemy_snapshot(data, offset, state)
+		if next_offset <= offset or next_offset > data.size():
+			break
+		offset = next_offset
 		result.append(state)
 	return result
 

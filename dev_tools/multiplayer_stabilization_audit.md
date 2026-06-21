@@ -1,0 +1,71 @@
+# 多人模式稳定化审查记录
+
+## 目标边界
+
+本轮目标是在不重写当前可玩多人模式的前提下，做协议梳理、低/中风险加固和回归测试。现有设计继续保留：Host 权威、客户端输入上报、Host 快照同步、可靠事件确认。
+
+参考基线：
+
+- Godot High-level multiplayer: https://docs.godotengine.org/en/stable/tutorials/networking/high_level_multiplayer.html
+- Godot ENetMultiplayerPeer: https://docs.godotengine.org/en/stable/classes/class_enetmultiplayerpeer.html
+- Gaffer Snapshot Interpolation: https://gafferongames.com/post/snapshot_interpolation/
+
+## 当前协议地图
+
+- `CH_INPUT` / unreliable ordered：Client -> Host，玩家位置、速度、射击方向、技能按钮和实时状态。
+- `CH_STATE` / unreliable ordered：Host -> Client，玩家与敌人快照，客户端用 `NetInterpolator` 插值。
+- `CH_PROJECTILE` / unreliable ordered：投射物视觉生成事件，Host 负责广播，客户端发射会先上报 Host。
+- `CH_EVENT` / reliable：伤害确认、死亡/复活、敌人生成/移除、掉落、息壤、升级、技能购买、波次和 HUD 事件。
+
+## 权威边界
+
+- Host 权威：波次生命周期、敌人 AI、敌人生成/移除、敌人受击确认、玩家死亡/复活、掉落/息壤、升级和技能购买。
+- Client 上报：本地输入、玩家移动状态、射击方向、客户端投射物生成和命中报告。
+- Client 展示：玩家/敌人插值、伤害数字、死亡/复活倒计时、HUD。
+
+## 本轮已加固
+
+- 快照解码边界：`SnapshotManager` 在解析玩家/敌人快照前先计算单条快照长度，截断包会停止解码，不再读取部分状态。
+- 插值缓存遍历：`MpGame._client_interpolate_entities()` 改为遍历 `Dictionary.keys()` 快照，避免插值过程中清理敌人缓存导致遍历状态被修改。
+- 断线清理：`NetManager.player_left` 进入 `MpGame` 后会清理对应 peer 的插值器、输入序列、接受位置、血量 revision、复活倒计时和本地 projectile 索引；`Game` 显式移除远端玩家节点和名字索引。
+- 投射物参数：Client -> Host 的玩家 projectile spawn 不再使用客户端上报的 `damage/speed/lifetime`，Host 按玩家权威属性和 projectile 场景默认值重建；敌人命中确认优先使用 Host projectile record 中的 damage 和 owner 校验，若不可靠 spawn 包丢失或跨 channel 乱序导致 record 缺失，则按 Host 侧玩家攻击力做上限裁剪；projectile id 必须落在 owner peer 的 namespace。
+- 投射物 spawn 边界：Client projectile 的方向必须是有限且长度合理的向量，Host 会规范化后广播；spawn 位置必须靠近 Host 当前或最近接受的玩家位置，容忍窗口为高延迟/速度 buff 留余量。
+- 远端玩家权威状态：Host 现在会被动 tick 远端玩家的无敌、buff 和 skill1 充能；`_rpc_client_player_state` 保留协议字段但不再用客户端上报覆盖 Host 的 invincibility、skill charge、form 和 shot pattern；Host 接受 `skill1_bomb` 时要求并消耗 Host 侧 skill1 充能。
+- 4 人自动覆盖：`multiplayer_load_smoke_test.gd` 现在覆盖 4 peer Host runtime、4 人 player snapshot、升级确认、技能购买确认、死亡/过期 revision/复活确认、远端 skill1 被动充能、全员息壤分发。
+- 事件覆盖：`multiplayer_load_smoke_test.gd` 现在直接覆盖敌人命中去重、客户端 enemy removed 清理、客户端 pickup spawn/collect 确认和即时拾取效果应用。
+- Snapshot 边界：玩家/敌人的 position 和 velocity 在 int16 打包前显式饱和到协议可表示范围，避免大地图或异常速度导致二进制回绕。
+- Snapshot 监控：`MpGame` 记录玩家/敌人快照最大包大小和超阈值次数；超过 `1200 bytes` 时低频 warning，给 4 人 LAN 与高延迟/丢包手测提供带宽压力信号，不改变同步协议。
+- 测试覆盖：`multiplayer_load_smoke_test.gd` 增加玩家/敌人截断快照、只有 count 无 payload、snapshot int16 饱和、断线 peer 清理、Host projectile 参数重建、owner/namespace 校验、spawn 位置/方向校验、skill1 充能消耗、敌人 despawn、拾取确认和命中去重断言。
+
+## 剩余高优先级风险
+
+- 客户端玩家实时状态已改为 Host 保有权威值；剩余风险是实际 100-200ms RTT 下远端 skill1 充能、释放反馈与客户端预测的一致性还需要手动验证。
+- 玩家 projectile 参数已改为 Host 重建，record 缺失时也会按 Host 玩家属性封顶，projectile id namespace、spawn 位置和方向已校验；剩余风险是位置容忍窗口还没有经过真实延迟/丢包手动调参。
+- 游戏中断线清理已补第一层本地状态释放，但还需要 1 host + 3 client 手动验证：客户端断开后其他客户端的 HUD/镜头/敌人目标是否自然恢复，host 断开后客户端是否稳定回大厅。
+- `_apply_enemy_hit_report()` 在工具/测试直接调用且节点未入树时不会再尝试 RPC，避免无网络树上下文下的 `ERR_UNCONFIGURED`。
+- 升级、技能购买和 cheat 的 Host 入口会拒绝无效 sender；内部 `_apply_upgrade_for_peer()` / `_apply_skill1_purchase_for_peer()` 也会拒绝 `peer_id <= 0` 或已离开的 peer，避免迟到事件污染 run state。
+- 当前快照仍是全量快照；已有包大小 telemetry，后续如果手测显示带宽或 MTU 压力，再启用 delta 或分包策略。
+- 快照仍是全量快照。`SnapshotManager` 有 delta cache，但当前批量编码传入 `previous = null`，敌人数上千时带宽会明显上升；后续可以在不改 RPC 形状的情况下先启用 per-entity delta。
+
+## 保守后续顺序
+
+1. 做 1 host + 3 client 的 LAN 断线/重连手动验证，记录 skill1 充能、释放和 projectile 位置窗口是否误拒。
+2. 开启快照 delta 或快照包大小监控，先测量再优化。
+3. 根据高延迟手测结果调整 projectile spawn 位置容忍窗口。
+
+## 本轮追加加固
+
+- 客户端玩家名册收敛：`MpGame._rpc_receive_player_snapshot()` 现在会在玩家快照完整解码时记录 Host 快照里存在的 peer，并在 `CLIENT_VIEW` 中清理不再出现的远端玩家。该逻辑跳过本地玩家，只处理完整批次，避免截断包导致误删。
+- 断线兜底范围：如果 `NetManager.player_left` 事件迟到或丢失，客户端仍可通过后续 Host 玩家快照释放旧玩家节点、插值器、血量 revision、复活状态和该 peer 的 projectile 索引。
+- 测试覆盖：`multiplayer_load_smoke_test.gd` 增加 4 人客户端视角 roster reconcile 断言，覆盖空 roster 不清理、缺失 peer 清理、本地 peer 保留、projectile 与 record 同步释放。
+- 大厅 RPC 权限：`NetManager._rpc_sync_player_list()` 和 `_rpc_start_game()` 从 `any_peer` 收紧为 `authority`，保留函数内 sender 校验，避免非 Host peer 伪造玩家列表或开始游戏事件。
+- 敌人快照收敛：`MpGame._rpc_receive_enemy_snapshot()` 现在只在完整敌人快照批次上做 roster reconcile；截断批次仍可更新已解出的敌人插值，但不会把没解出的敌人误判为 stale 后移除。
+- 场景退出清理：`MpGame._exit_tree()` 显式断开 `NetManager.connection_state_changed`、`NetManager.player_left` 和 `Game.return_to_lobby_requested`，降低返回大厅或重开局时旧回调残留的风险。
+- 玩家健康 revision 清理：`net_player_damage_applied()` / `net_player_revived()` 现在会先确认 peer id 和玩家节点有效，再写入 `_player_health_revisions`，避免迟到可靠包指向已离开 peer 时污染后续状态。
+- 息壤拾取入口：`_rpc_xirang_orb_collected()` 拒绝无效 sender；`_apply_xirang_orb_collected()` 要求 collector 仍是当前 `Game.peer_players` 中的有效玩家，避免断线后的迟到拾取或工具上下文 collector=0 触发全员加钱。
+- 升级确认入口：`net_upgrade_confirmed()` 现在先确认 peer id 和玩家节点有效，再写入 `RunState.multiplayer_upgrade_levels`，避免不存在 peer 的迟到/异常确认创建升级状态。
+- 手动验证清单：新增 `dev_tools/multiplayer_manual_validation_checklist.md`，固定 4 人 LAN、断线、死亡复活、拾取/升级/技能购买、cheat 和高延迟/轻丢包档位的验证步骤，避免后续手测遗漏关键边界。
+- 玩家列表断线同步：Host 在 `_on_peer_disconnected()` 后会广播新的玩家列表；Client 的 `_rpc_sync_player_list()` 会按差异 emit `player_left` / `player_joined`，让大厅和游戏内清理不完全依赖底层 peer_disconnected 是否在每个客户端触发。
+- 大厅信号清理：`multiplayer_lobby.gd` 增加显式 NetManager 信号连接/断开 helper，返回大厅或离开多人界面时不保留旧 UI 回调。
+- 开始游戏竞态：`NetManager.host_start_game()` 现在只进入 loading；Host 侧 `MpGame._ready()` 在 `/root/MpGame` 已经存在后再广播 `_rpc_start_game()`，避免 Client 先进入游戏并向尚未入树的 Host `MpGame` 发送输入 RPC。
+- 真实 LAN 探针：新增 `dev_tools/multiplayer_lan_probe_peer.gd` 与 `dev_tools/run_multiplayer_lan_probe.ps1`，可启动 1 Host + 3 Client headless Godot 进程，验证真实 ENet 注册、玩家列表、开始游戏和玩家快照基础路径；探针会把 `Node not found`、`Invalid packet received`、`ERR_UNCONFIGURED` 等网络竞态错误视为失败。

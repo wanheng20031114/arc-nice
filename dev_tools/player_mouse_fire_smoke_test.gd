@@ -26,10 +26,12 @@ func _run() -> void:
 	await _test_profile_button_does_not_fire()
 
 	_release_left_mouse(Vector2.ZERO)
+	_clear_player_bullets()
+	_stop_audio_players(game)
 	game.queue_free()
-	await process_frame
-	await physics_frame
-	await process_frame
+	for _cleanup_frame in range(4):
+		await process_frame
+		await physics_frame
 
 	if failures.is_empty():
 		print("PLAYER_MOUSE_FIRE_SMOKE_TEST_OK")
@@ -173,6 +175,25 @@ func _get_player_bullet_count() -> int:
 		if child is Bullet:
 			bullet_count += 1
 	return bullet_count
+
+
+func _clear_player_bullets() -> void:
+	for child in game.get_children():
+		if child is Bullet:
+			child.queue_free()
+
+
+func _stop_audio_players(node: Node) -> void:
+	for child in node.get_children():
+		var audio_player := child as AudioStreamPlayer
+		if audio_player != null:
+			audio_player.stop()
+			audio_player.stream = null
+		var audio_player_2d := child as AudioStreamPlayer2D
+		if audio_player_2d != null:
+			audio_player_2d.stop()
+			audio_player_2d.stream = null
+		_stop_audio_players(child)
 
 
 func _wait_physics_frames(frame_count: int) -> void:

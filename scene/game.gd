@@ -137,6 +137,7 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
+		_update_multiplayer_remote_player_passive_state(delta)
 		_update_multiplayer_enemy_targets(delta)
 		_register_dynamic_multiplayer_pickups()
 
@@ -731,6 +732,29 @@ func apply_network_input_for_peer(
 	if player_instance == null or not is_instance_valid(player_instance):
 		return
 	player_instance.apply_network_input(move_input, shoot_input, use_skill1)
+
+
+func _update_multiplayer_remote_player_passive_state(delta: float) -> void:
+	for peer_id_variant in peer_players:
+		var peer_id := int(peer_id_variant)
+		if peer_id == multiplayer_local_peer_id:
+			continue
+		var player_instance := peer_players[peer_id] as Player
+		if player_instance == null or not is_instance_valid(player_instance):
+			continue
+		player_instance.update_multiplayer_authority_passive_state(delta)
+
+
+func remove_multiplayer_player(peer_id: int) -> void:
+	if peer_id <= 0 or peer_id == multiplayer_local_peer_id:
+		return
+	var player_instance := peer_players.get(peer_id) as Player
+	peer_players.erase(peer_id)
+	multiplayer_player_names.erase(peer_id)
+	if player_instance != null and is_instance_valid(player_instance):
+		player_instance.queue_free()
+	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
+		_check_multiplayer_defeat_after_grace()
 
 
 func get_player_for_peer(peer_id: int) -> Player:

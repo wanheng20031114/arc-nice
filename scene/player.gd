@@ -385,6 +385,26 @@ func apply_remote_multiplayer_view_state(
 	_update_armed_effect()
 
 
+func update_multiplayer_authority_passive_state(delta: float) -> void:
+	_update_invincibility(delta)
+	_update_pickup_effects(delta)
+	_update_skill1_charge(delta)
+	_update_animation()
+	_update_armed_effect()
+
+
+func consume_multiplayer_skill1_charge() -> bool:
+	if not skill1_unlocked:
+		return false
+	if is_dead or controls_locked:
+		return false
+	if skill1_charge < skill1_charge_duration:
+		return false
+	skill1_charge = 0.0
+	_update_skill1_charge_bar()
+	return true
+
+
 func apply_multiplayer_snapshot_motion(
 	remote_position: Vector2,
 	remote_velocity: Vector2,

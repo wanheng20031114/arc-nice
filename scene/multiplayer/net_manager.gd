@@ -142,6 +142,13 @@ func host_start_game() -> void:
 	if not is_host():
 		return
 	_set_connection_state(ConnectionState.LOADING_GAME)
+
+
+func host_broadcast_start_game() -> void:
+	if not is_host():
+		return
+	if connection_state < ConnectionState.LOADING_GAME:
+		return
 	_rpc_start_game.rpc()
 
 
@@ -212,6 +219,8 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	connected_players.erase(peer_id)
 	player_left.emit(peer_id)
 	player_list_changed.emit()
+	if is_host():
+		call_deferred("_broadcast_player_list_to_clients")
 	_debug_log("NetManager: Peer 已断开, id=%d (%s)" % [peer_id, player_name])
 
 
@@ -248,11 +257,11 @@ func _rpc_register_player(player_name: String) -> void:
 	connected_players[sender_id] = _sanitize_player_name(player_name)
 	player_joined.emit(sender_id, connected_players[sender_id])
 	player_list_changed.emit()
-	_rpc_sync_player_list.rpc(_build_player_list_array(), get_host_peer_id())
+	_broadcast_player_list_to_clients()
 	_debug_log("NetManager: 玩家注册, id=%d, name=%s" % [sender_id, connected_players[sender_id]])
 
 
-@rpc("any_peer", "call_remote", "reliable", 0)
+@rpc("authority", "call_remote", "reliable", 0)
 func _rpc_sync_player_list(player_list: Array, new_host_peer_id: int = 0) -> void:
 	if is_host():
 		return
@@ -264,8 +273,8 @@ func _rpc_sync_player_list(player_list: Array, new_host_peer_id: int = 0) -> voi
 		resolved_host_id = host_peer_id
 	if sender_id > 0 and resolved_host_id > 0 and sender_id != resolved_host_id:
 		return
-	host_peer_id = resolved_host_id
-	connected_players.clear()
+	var previous_players := connected_players.duplicate()
+	var synced_players: Dictionary = {}
 	for entry_variant in player_list:
 		var entry := entry_variant as Dictionary
 		if entry == null:
@@ -274,12 +283,27 @@ func _rpc_sync_player_list(player_list: Array, new_host_peer_id: int = 0) -> voi
 		var player_name: String = _sanitize_player_name(str(entry.get("name", "")))
 		if peer_id <= 0:
 			continue
-		connected_players[peer_id] = player_name
-		player_joined.emit(peer_id, player_name)
+		synced_players[peer_id] = player_name
+	if not synced_players.has(resolved_host_id):
+		return
+	host_peer_id = resolved_host_id
+	connected_players = synced_players
+	for previous_peer_id_variant in previous_players:
+		var previous_peer_id := int(previous_peer_id_variant)
+		if not connected_players.has(previous_peer_id):
+			player_left.emit(previous_peer_id)
+	for peer_id_variant in connected_players:
+		var peer_id := int(peer_id_variant)
+		var player_name := str(connected_players[peer_id])
+		if (
+			not previous_players.has(peer_id)
+			or str(previous_players.get(peer_id, "")) != player_name
+		):
+			player_joined.emit(peer_id, player_name)
 	player_list_changed.emit()
 
 
-@rpc("any_peer", "call_remote", "reliable", 0)
+@rpc("authority", "call_remote", "reliable", 0)
 func _rpc_start_game() -> void:
 	if multiplayer.get_remote_sender_id() != get_host_peer_id():
 		return
@@ -292,6 +316,18 @@ func _build_player_list_array() -> Array:
 		var peer_id: int = int(peer_id_variant)
 		result.append({"id": peer_id, "name": connected_players[peer_id]})
 	return result
+
+
+func _broadcast_player_list_to_clients() -> void:
+	if not is_host() or _enet_peer == null:
+		return
+	var host_id := get_host_peer_id()
+	var player_list := _build_player_list_array()
+	for peer_id_variant in connected_players:
+		var peer_id := int(peer_id_variant)
+		if peer_id <= 0 or peer_id == host_id:
+			continue
+		_rpc_sync_player_list.rpc_id(peer_id, player_list, host_id)
 
 
 func _set_connection_state(new_state: ConnectionState) -> void:

@@ -50,14 +50,46 @@ func _ready() -> void:
 	start_game_btn.pressed.connect(_on_start_game)
 	leave_room_btn.pressed.connect(_on_leave_room)
 
-	net_manager.player_joined.connect(_on_net_player_list_changed.unbind(2))
-	net_manager.player_left.connect(_on_net_player_list_changed.unbind(1))
-	net_manager.player_list_changed.connect(_on_net_player_list_changed)
-	net_manager.connection_failed.connect(_on_net_connection_failed)
-	net_manager.connection_state_changed.connect(_on_net_state_changed)
+	_connect_net_manager_signals()
 
 	_show_view(LobbyView.USERNAME_INPUT)
 	username_input.grab_focus()
+
+
+func _exit_tree() -> void:
+	_disconnect_net_manager_signals()
+
+
+func _connect_net_manager_signals() -> void:
+	var joined_callback := _on_net_player_list_changed.unbind(2)
+	var left_callback := _on_net_player_list_changed.unbind(1)
+	if not net_manager.player_joined.is_connected(joined_callback):
+		net_manager.player_joined.connect(joined_callback)
+	if not net_manager.player_left.is_connected(left_callback):
+		net_manager.player_left.connect(left_callback)
+	if not net_manager.player_list_changed.is_connected(_on_net_player_list_changed):
+		net_manager.player_list_changed.connect(_on_net_player_list_changed)
+	if not net_manager.connection_failed.is_connected(_on_net_connection_failed):
+		net_manager.connection_failed.connect(_on_net_connection_failed)
+	if not net_manager.connection_state_changed.is_connected(_on_net_state_changed):
+		net_manager.connection_state_changed.connect(_on_net_state_changed)
+
+
+func _disconnect_net_manager_signals() -> void:
+	if net_manager == null:
+		return
+	var joined_callback := _on_net_player_list_changed.unbind(2)
+	var left_callback := _on_net_player_list_changed.unbind(1)
+	if net_manager.player_joined.is_connected(joined_callback):
+		net_manager.player_joined.disconnect(joined_callback)
+	if net_manager.player_left.is_connected(left_callback):
+		net_manager.player_left.disconnect(left_callback)
+	if net_manager.player_list_changed.is_connected(_on_net_player_list_changed):
+		net_manager.player_list_changed.disconnect(_on_net_player_list_changed)
+	if net_manager.connection_failed.is_connected(_on_net_connection_failed):
+		net_manager.connection_failed.disconnect(_on_net_connection_failed)
+	if net_manager.connection_state_changed.is_connected(_on_net_state_changed):
+		net_manager.connection_state_changed.disconnect(_on_net_state_changed)
 
 
 func _build_lan_direct_panel() -> void:
