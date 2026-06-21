@@ -19,7 +19,6 @@ const SKILL1_DESCRIPTION := "向上一次射击位置发射一枚炸弹造成攻
 @onready var skill_name_label: Label = $Overlay/PanelRoot/SkillInfo/SkillName
 @onready var skill_description_label: Label = $Overlay/PanelRoot/SkillInfo/SkillDescription
 @onready var skill_cost_label: Label = $Overlay/PanelRoot/SkillInfo/SkillCost
-@onready var skill_charge_label: Label = $Overlay/PanelRoot/SkillInfo/SkillCharge
 @onready var inventory_grid: GridContainer = $Overlay/PanelRoot/InventoryGrid
 @onready var upgrade_surface: NinePatchRect = $Overlay/PanelRoot/UpgradeSurface
 @onready var upgrade_panel: VBoxContainer = $Overlay/PanelRoot/UpgradePanel
@@ -261,9 +260,7 @@ func _refresh_skill_display() -> void:
 	if not has_skill:
 		return
 	var required_charge := maxf(tracked_player.skill1_charge_duration, 0.01)
-	var current_charge := clampf(tracked_player.skill1_charge, 0.0, required_charge)
 	skill_cost_label.text = "所需技力 %.1f" % required_charge
-	skill_charge_label.text = "当前技力 %.1f / %.1f" % [current_charge, required_charge]
 
 
 func _on_xirang_changed(_total: int, _added_amount: int) -> void:

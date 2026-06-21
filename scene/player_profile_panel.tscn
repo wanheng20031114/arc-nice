@@ -347,15 +347,6 @@ text = "所需技力 18.0"
 label_settings = SubResource("LabelSettings_stat_small")
 vertical_alignment = 1
 
-[node name="SkillCharge" type="Label" parent="Overlay/PanelRoot/SkillInfo"]
-layout_mode = 0
-offset_top = 76.0
-offset_right = 221.0
-offset_bottom = 93.0
-text = "当前技力 0.0 / 18.0"
-label_settings = SubResource("LabelSettings_stat_small")
-vertical_alignment = 1
-
 [node name="TabBar" type="TabBar" parent="Overlay/PanelRoot"]
 texture_filter = 1
 layout_mode = 0
