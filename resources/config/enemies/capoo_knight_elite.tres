@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="CapooKnightConfig" format=3]
+
+[ext_resource type="Script" uid="uid://bhv1077xeatxy" path="res://resources/config/enemies/capoo_knight_config.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/enemy/capoo_knight_elite.tscn" id="2_scene"]
+[ext_resource type="PackedScene" path="res://scene/enemy/capoo_knight_slash_effect.tscn" id="4_slash"]
+
+[resource]
+script = ExtResource("1_script")
+attack_range = 48.0
+attack_windup = 0.35
+attack_interval = 2.0
+slash_outer_radius = 48.0
+slash_inner_radius = 6.5
+slash_angle_degrees = 60.0
+slash_damage_delay = 0.08
+slash_duration = 0.32
+slash_effect_scene = ExtResource("4_slash")
+display_name = "精英骑士猫猫虫"
+enemy_scene = ExtResource("2_scene")
+max_health = 350
+attack_damage = 28
+physical_defense = 10
+magic_defense = 0
+move_speed = 34.0
+xirang_drop_amount = 20
+pickup_drop_chance = 0.2

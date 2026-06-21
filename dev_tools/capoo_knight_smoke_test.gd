@@ -1,9 +1,11 @@
 extends SceneTree
 
 const KNIGHT_SCENE := preload("res://scene/enemy/capoo_knight.tscn")
+const ELITE_KNIGHT_SCENE := preload("res://scene/enemy/capoo_knight_elite.tscn")
 const SWORDSMAN_SCENE := preload("res://scene/enemy/capoo_swordsman.tscn")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres")
+const ELITE_KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight_elite.tres")
 const SWORDSMAN_CONFIG := preload("res://resources/config/enemies/capoo_swordsman.tres")
 const WAVES := [
 	preload("res://resources/config/waves/wave_06.tres"),
@@ -57,6 +59,7 @@ func _run() -> void:
 	current_scene = test_root
 
 	_test_resource_contract()
+	_test_elite_resource_contract()
 	await _test_slash_geometry()
 	await _test_windup_delays_damage()
 	await _test_death_interrupts_attack()
@@ -117,7 +120,72 @@ func _test_resource_contract() -> void:
 
 	for index in range(WAVES.size()):
 		_expect(_count_wave_entries(WAVES[index]) == EXPECTED_KNIGHT_COUNTS[index], "Knight wave count mismatch.")
+		_expect(
+			_count_wave_entries_for_config(WAVES[index], ELITE_KNIGHT_CONFIG) == 0,
+			"Elite knight must not be inserted into existing waves."
+		)
 		_expect(_count_total_wave_entries(WAVES[index]) == EXPECTED_WAVE_TOTALS[index], "Wave total changed unexpectedly.")
+
+
+func _test_elite_resource_contract() -> void:
+	_expect(ELITE_KNIGHT_CONFIG is CapooKnightConfig, "Elite knight config must use CapooKnightConfig.")
+	_expect(ELITE_KNIGHT_CONFIG.display_name == "精英骑士猫猫虫", "Elite knight display name mismatch.")
+	_expect(ELITE_KNIGHT_CONFIG.enemy_scene == ELITE_KNIGHT_SCENE, "Elite knight must use its own scene.")
+	_expect(ELITE_KNIGHT_CONFIG.max_health == 350, "Elite knight health mismatch.")
+	_expect(ELITE_KNIGHT_CONFIG.attack_damage == KNIGHT_CONFIG.attack_damage, "Elite knight slash damage must match knight.")
+	_expect(ELITE_KNIGHT_CONFIG.physical_defense == 10, "Elite knight physical defense mismatch.")
+	_expect(ELITE_KNIGHT_CONFIG.magic_defense == 0, "Elite knight magic defense mismatch.")
+	_expect(is_equal_approx(ELITE_KNIGHT_CONFIG.move_speed, KNIGHT_CONFIG.move_speed), "Elite knight move speed must match knight.")
+	_expect(is_equal_approx(ELITE_KNIGHT_CONFIG.attack_interval, 2.0), "Elite knight attack interval mismatch.")
+	_expect(is_equal_approx(ELITE_KNIGHT_CONFIG.attack_range, KNIGHT_CONFIG.attack_range), "Elite knight attack range must match knight.")
+	_expect(is_equal_approx(ELITE_KNIGHT_CONFIG.attack_windup, KNIGHT_CONFIG.attack_windup), "Elite knight windup must match knight.")
+	_expect(is_equal_approx(ELITE_KNIGHT_CONFIG.slash_outer_radius, KNIGHT_CONFIG.slash_outer_radius), "Elite knight slash outer radius must match knight.")
+	_expect(is_equal_approx(ELITE_KNIGHT_CONFIG.slash_inner_radius, KNIGHT_CONFIG.slash_inner_radius), "Elite knight slash inner radius must match knight.")
+	_expect(is_equal_approx(ELITE_KNIGHT_CONFIG.slash_angle_degrees, KNIGHT_CONFIG.slash_angle_degrees), "Elite knight slash angle must match knight.")
+	_expect(ELITE_KNIGHT_CONFIG.slash_effect_scene == KNIGHT_CONFIG.slash_effect_scene, "Elite knight must reuse knight slash effect.")
+
+	var texture := load("res://resources/texture/capoo_knight_elite.png") as Texture2D
+	_expect(texture != null and texture.get_size() == Vector2(384, 384), "Elite knight sprite sheet size is incorrect.")
+
+	var knight_instance := KNIGHT_SCENE.instantiate() as CapooKnight
+	var elite_instance := ELITE_KNIGHT_SCENE.instantiate() as CapooKnight
+	_expect(elite_instance != null, "Elite knight scene must instantiate CapooKnight.")
+	if knight_instance == null or elite_instance == null:
+		if knight_instance != null:
+			knight_instance.free()
+		if elite_instance != null:
+			elite_instance.free()
+		return
+
+	var animated_sprite := elite_instance.get_node("AnimatedSprite2D") as AnimatedSprite2D
+	_expect(animated_sprite.sprite_frames != null, "Elite knight scene must own SpriteFrames.")
+	if animated_sprite.sprite_frames != null:
+		for animation_name in [&"move", &"windup", &"attack", &"death"]:
+			_expect(
+				animated_sprite.sprite_frames.has_animation(animation_name),
+				"Elite knight sprite frames must include %s." % animation_name
+			)
+			_expect(
+				animated_sprite.sprite_frames.get_frame_count(animation_name) == 4,
+				"Elite knight %s animation must have 4 frames." % animation_name
+			)
+	_expect(animated_sprite.animation == &"move", "Elite knight editor animation must be move.")
+	_expect(animated_sprite.frame == 0, "Elite knight editor frame must be 0.")
+
+	_expect(
+		_collision_shape_nodes_match(_collect_direct_collision_shapes(elite_instance), _collect_direct_collision_shapes(knight_instance)),
+		"Elite knight body collision must match knight collision."
+	)
+	_expect(
+		_collision_shape_nodes_match(
+			_collect_direct_collision_shapes(elite_instance.get_node("TouchDamageArea")),
+			_collect_direct_collision_shapes(knight_instance.get_node("TouchDamageArea"))
+		),
+		"Elite knight touch collision must match knight collision."
+	)
+
+	elite_instance.free()
+	knight_instance.free()
 
 
 func _test_slash_geometry() -> void:
@@ -320,9 +388,13 @@ func _spawn_wall(position: Vector2, size: Vector2) -> StaticBody2D:
 
 
 func _count_wave_entries(wave_config: WaveConfig) -> int:
+	return _count_wave_entries_for_config(wave_config, KNIGHT_CONFIG)
+
+
+func _count_wave_entries_for_config(wave_config: WaveConfig, enemy_config: EnemyConfig) -> int:
 	var total := 0
 	for entry in wave_config.enemy_entries:
-		if entry != null and entry.enemy_config == KNIGHT_CONFIG:
+		if entry != null and entry.enemy_config == enemy_config:
 			total += entry.count
 	return total
 
@@ -366,6 +438,35 @@ func _are_shapes_independent(
 			if body_shape.shape == touch_shape.shape:
 				return false
 	return true
+
+
+func _collision_shape_nodes_match(actual_shapes: Array[CollisionShape2D], expected_shapes: Array[CollisionShape2D]) -> bool:
+	if actual_shapes.size() != expected_shapes.size():
+		return false
+	for index in range(expected_shapes.size()):
+		if not _collision_shape_node_matches(actual_shapes[index], expected_shapes[index]):
+			return false
+	return true
+
+
+func _collision_shape_node_matches(actual_shape_node: CollisionShape2D, expected_shape_node: CollisionShape2D) -> bool:
+	if actual_shape_node == null or expected_shape_node == null:
+		return false
+	if not actual_shape_node.position.is_equal_approx(expected_shape_node.position):
+		return false
+	if not actual_shape_node.scale.is_equal_approx(expected_shape_node.scale):
+		return false
+	if not is_equal_approx(actual_shape_node.rotation, expected_shape_node.rotation):
+		return false
+	var actual_shape := actual_shape_node.shape
+	var expected_shape := expected_shape_node.shape
+	if actual_shape == null or expected_shape == null:
+		return actual_shape == expected_shape
+	if actual_shape.get_class() != expected_shape.get_class():
+		return false
+	if actual_shape is RectangleShape2D and expected_shape is RectangleShape2D:
+		return (actual_shape as RectangleShape2D).size.is_equal_approx((expected_shape as RectangleShape2D).size)
+	return actual_shape.get_rect().is_equal_approx(expected_shape.get_rect())
 
 
 func _expect(condition: bool, message: String) -> void:

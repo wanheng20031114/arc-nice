@@ -11,6 +11,7 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres"),
 	preload("res://resources/config/enemies/capoo_ak47.tres"),
 	preload("res://resources/config/enemies/capoo_knight.tres"),
+	preload("res://resources/config/enemies/capoo_knight_elite.tres"),
 	preload("res://resources/config/enemies/capoo_swordsman.tres"),
 	preload("res://resources/config/enemies/capoo_rpg.tres"),
 ]
