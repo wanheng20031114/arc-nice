@@ -126,8 +126,9 @@ func _start_aura() -> void:
 		aura_particles.emitting = true
 	else:
 		aura_particles.emitting = false
-	aura_range_fill.visible = true
-	aura_range_outline.visible = true
+	var show_range_indicator := (config as YuanshiInsectGuardianConfig) == null
+	aura_range_fill.visible = show_range_indicator
+	aura_range_outline.visible = show_range_indicator
 	aura_area.visible = true
 	aura_area.set_deferred("monitoring", true)
 	aura_area_shape.set_deferred("disabled", false)

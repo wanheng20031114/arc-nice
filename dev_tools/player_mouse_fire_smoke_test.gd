@@ -158,6 +158,10 @@ func _test_dodge_success_feedback() -> void:
 			float(sprite_material.get_shader_parameter(&"dodge_effect_strength")) > 0.0,
 			"Successful dodge must raise the dodge shader effect."
 		)
+		_expect(
+			float(sprite_material.get_shader_parameter(&"dodge_outline_width")) >= 3.0,
+			"Successful dodge shader must keep a visible outline width."
+		)
 
 	player.dodge_chance = 0.0
 	player.invincibility_time_left = 0.0
@@ -211,10 +215,14 @@ func _test_profile_upgrade_levels_and_skill_details() -> void:
 	await process_frame
 	_expect(skill_info.visible, "Skill details must show after skill1 is purchased.")
 	var skill_description := profile_panel.get_node("Overlay/PanelRoot/SkillInfo/SkillDescription") as Label
+	var skill_icon := profile_panel.get_node("Overlay/PanelRoot/SkillInfo/SkillIcon") as TextureRect
+	var skill_name := profile_panel.get_node("Overlay/PanelRoot/SkillInfo/SkillName") as Label
 	var skill_cost := profile_panel.get_node("Overlay/PanelRoot/SkillInfo/SkillCost") as Label
 	var skill_charge := profile_panel.get_node("Overlay/PanelRoot/SkillInfo/SkillCharge") as Label
+	_expect(skill_icon.texture != null, "Skill details must show the dialogue skill icon.")
+	_expect(skill_name.text == "经典技能", "Skill details must show the requested skill display name.")
 	_expect(
-		skill_description.text == "投掷炸弹，爆炸造成攻击力 3.3 倍伤害。",
+		skill_description.text == "向上一次射击位置发射一枚炸弹造成攻击力330%的大范围伤害",
 		"Skill details must show the expected skill description."
 	)
 	_expect(skill_cost.text.contains("18.0"), "Skill details must show the base required charge.")

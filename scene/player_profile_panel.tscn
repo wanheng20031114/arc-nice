@@ -1,4 +1,4 @@
-[gd_scene load_steps=23 format=3]
+[gd_scene load_steps=24 format=3]
 
 [ext_resource type="Script" path="res://scene/player_profile_panel.gd" id="1_panel"]
 [ext_resource type="Texture2D" path="res://resources/texture/player_profile_background.png" id="2_background"]
@@ -14,6 +14,7 @@
 [ext_resource type="Texture2D" path="res://resources/texture/profile_tab_unselected.png" id="12_tab_unselected"]
 [ext_resource type="Texture2D" path="res://resources/texture/profile_tab_hovered.png" id="13_tab_hovered"]
 [ext_resource type="Texture2D" path="res://resources/texture/profile_tab_selected.png" id="14_tab_selected"]
+[ext_resource type="Texture2D" path="res://resources/texture/weishidaier_skill1_icon.png" id="15_skill_icon"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_close"]
 
@@ -66,7 +67,7 @@ outline_color = Color(0.07, 0.07, 0.065, 0.9)
 
 [sub_resource type="LabelSettings" id="LabelSettings_skill_desc"]
 font = ExtResource("4_font")
-font_size = 12
+font_size = 11
 font_color = Color(0.72, 0.76, 0.7, 1)
 outline_size = 1
 outline_color = Color(0.07, 0.07, 0.065, 0.9)
@@ -148,9 +149,9 @@ stretch_mode = 0
 
 [node name="Title" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
-offset_left = 28.0
+offset_left = 14.0
 offset_top = 19.0
-offset_right = 126.0
+offset_right = 112.0
 offset_bottom = 49.0
 text = "个人数据"
 label_settings = SubResource("LabelSettings_title")
@@ -178,9 +179,9 @@ scale = Vector2(3.4, 3.4)
 [node name="AttackLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 48.0
-offset_top = 282.0
+offset_top = 280.0
 offset_right = 150.0
-offset_bottom = 306.0
+offset_bottom = 302.0
 text = "攻击力"
 label_settings = SubResource("LabelSettings_stat_small")
 vertical_alignment = 1
@@ -188,9 +189,9 @@ vertical_alignment = 1
 [node name="AttackValue" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 142.0
-offset_top = 282.0
+offset_top = 280.0
 offset_right = 248.0
-offset_bottom = 306.0
+offset_bottom = 302.0
 text = "1"
 label_settings = SubResource("LabelSettings_value_small")
 horizontal_alignment = 2
@@ -199,9 +200,9 @@ vertical_alignment = 1
 [node name="HealthLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 48.0
-offset_top = 308.0
+offset_top = 303.0
 offset_right = 150.0
-offset_bottom = 332.0
+offset_bottom = 325.0
 text = "生命值"
 label_settings = SubResource("LabelSettings_stat_small")
 vertical_alignment = 1
@@ -209,9 +210,9 @@ vertical_alignment = 1
 [node name="HealthValue" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 142.0
-offset_top = 308.0
+offset_top = 303.0
 offset_right = 248.0
-offset_bottom = 332.0
+offset_bottom = 325.0
 text = "5 / 5"
 label_settings = SubResource("LabelSettings_value_small")
 horizontal_alignment = 2
@@ -220,9 +221,9 @@ vertical_alignment = 1
 [node name="AttackSpeedLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 48.0
-offset_top = 334.0
+offset_top = 326.0
 offset_right = 150.0
-offset_bottom = 358.0
+offset_bottom = 348.0
 text = "攻击速度"
 label_settings = SubResource("LabelSettings_stat_small")
 vertical_alignment = 1
@@ -230,9 +231,9 @@ vertical_alignment = 1
 [node name="AttackSpeedValue" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 142.0
-offset_top = 334.0
+offset_top = 326.0
 offset_right = 248.0
-offset_bottom = 358.0
+offset_bottom = 348.0
 text = "5.56/s"
 label_settings = SubResource("LabelSettings_value_small")
 horizontal_alignment = 2
@@ -241,9 +242,9 @@ vertical_alignment = 1
 [node name="AttackIntervalLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 48.0
-offset_top = 360.0
+offset_top = 349.0
 offset_right = 150.0
-offset_bottom = 384.0
+offset_bottom = 371.0
 text = "攻击间隔"
 label_settings = SubResource("LabelSettings_stat_small")
 vertical_alignment = 1
@@ -251,9 +252,9 @@ vertical_alignment = 1
 [node name="AttackIntervalValue" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 142.0
-offset_top = 360.0
+offset_top = 349.0
 offset_right = 248.0
-offset_bottom = 384.0
+offset_bottom = 371.0
 text = "0.18s"
 label_settings = SubResource("LabelSettings_value_small")
 horizontal_alignment = 2
@@ -262,9 +263,9 @@ vertical_alignment = 1
 [node name="DodgeLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 48.0
-offset_top = 386.0
+offset_top = 372.0
 offset_right = 150.0
-offset_bottom = 410.0
+offset_bottom = 394.0
 text = "闪避率"
 label_settings = SubResource("LabelSettings_stat_small")
 vertical_alignment = 1
@@ -272,9 +273,9 @@ vertical_alignment = 1
 [node name="DodgeValue" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 142.0
-offset_top = 386.0
+offset_top = 372.0
 offset_right = 248.0
-offset_bottom = 410.0
+offset_bottom = 394.0
 text = "0%"
 label_settings = SubResource("LabelSettings_value_small")
 horizontal_alignment = 2
@@ -283,9 +284,9 @@ vertical_alignment = 1
 [node name="MethodLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 48.0
-offset_top = 412.0
+offset_top = 395.0
 offset_right = 150.0
-offset_bottom = 436.0
+offset_bottom = 417.0
 text = "攻击方式"
 label_settings = SubResource("LabelSettings_stat_small")
 vertical_alignment = 1
@@ -293,9 +294,9 @@ vertical_alignment = 1
 [node name="MethodValue" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 142.0
-offset_top = 412.0
+offset_top = 395.0
 offset_right = 248.0
-offset_bottom = 436.0
+offset_bottom = 417.0
 text = "枪"
 label_settings = SubResource("LabelSettings_value_small")
 horizontal_alignment = 2
@@ -304,43 +305,53 @@ vertical_alignment = 1
 [node name="SkillInfo" type="Control" parent="Overlay/PanelRoot"]
 visible = false
 layout_mode = 0
-offset_left = 43.0
-offset_top = 446.0
-offset_right = 256.0
-offset_bottom = 526.0
+offset_left = 39.0
+offset_top = 420.0
+offset_right = 260.0
+offset_bottom = 513.0
+
+[node name="SkillIcon" type="TextureRect" parent="Overlay/PanelRoot/SkillInfo"]
+layout_mode = 0
+offset_right = 26.0
+offset_bottom = 26.0
+texture = ExtResource("15_skill_icon")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="SkillName" type="Label" parent="Overlay/PanelRoot/SkillInfo"]
 layout_mode = 0
-offset_right = 213.0
-offset_bottom = 20.0
-text = "维什戴尔炸弹"
+offset_left = 32.0
+offset_top = 1.0
+offset_right = 221.0
+offset_bottom = 23.0
+text = "经典技能"
 label_settings = SubResource("LabelSettings_value_small")
 vertical_alignment = 1
 
 [node name="SkillDescription" type="Label" parent="Overlay/PanelRoot/SkillInfo"]
 layout_mode = 0
-offset_top = 20.0
-offset_right = 213.0
-offset_bottom = 50.0
-text = "投掷炸弹，爆炸造成攻击力 3.3 倍伤害。"
+offset_top = 28.0
+offset_right = 221.0
+offset_bottom = 58.0
+text = "向上一次射击位置发射一枚炸弹造成攻击力330%的大范围伤害"
 label_settings = SubResource("LabelSettings_skill_desc")
 autowrap_mode = 1
 vertical_alignment = 1
 
 [node name="SkillCost" type="Label" parent="Overlay/PanelRoot/SkillInfo"]
 layout_mode = 0
-offset_top = 51.0
-offset_right = 213.0
-offset_bottom = 70.0
+offset_top = 59.0
+offset_right = 221.0
+offset_bottom = 76.0
 text = "所需技力 18.0"
 label_settings = SubResource("LabelSettings_stat_small")
 vertical_alignment = 1
 
 [node name="SkillCharge" type="Label" parent="Overlay/PanelRoot/SkillInfo"]
 layout_mode = 0
-offset_top = 70.0
-offset_right = 213.0
-offset_bottom = 89.0
+offset_top = 76.0
+offset_right = 221.0
+offset_bottom = 93.0
 text = "当前技力 0.0 / 18.0"
 label_settings = SubResource("LabelSettings_stat_small")
 vertical_alignment = 1

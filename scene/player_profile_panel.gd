@@ -2,8 +2,8 @@ extends CanvasLayer
 class_name PlayerProfilePanel
 
 const DESIGN_SIZE := Vector2(724.0, 543.0)
-const SKILL1_DISPLAY_NAME := "维什戴尔炸弹"
-const SKILL1_DESCRIPTION := "投掷炸弹，爆炸造成攻击力 3.3 倍伤害。"
+const SKILL1_DISPLAY_NAME := "经典技能"
+const SKILL1_DESCRIPTION := "向上一次射击位置发射一枚炸弹造成攻击力330%的大范围伤害"
 
 @onready var overlay: Control = $Overlay
 @onready var panel_root: Control = $Overlay/PanelRoot

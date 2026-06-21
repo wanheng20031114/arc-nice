@@ -144,8 +144,19 @@ func _test_guardian_aura_visual_configuration() -> void:
 	_expect(aura_shape != null, "Guardian aura shape is not circular.")
 	if aura_shape != null:
 		_expect(is_equal_approx(aura_shape.radius, GUARDIAN_CONFIG.aura_radius), "Guardian aura radius ignored config.")
-	_expect(guardian.aura_range_fill.visible, "Guardian aura fill is hidden.")
-	_expect(guardian.aura_range_outline.visible, "Guardian aura outline is hidden.")
+	_expect(not guardian.aura_range_fill.visible, "Guardian aura range fill should be hidden.")
+	_expect(not guardian.aura_range_outline.visible, "Guardian aura range outline should be hidden.")
+	var guardian_material := guardian.animated_sprite.material as ShaderMaterial
+	_expect(guardian_material != null, "Guardian must use a shader material for blue glow.")
+	if guardian_material != null:
+		_expect(
+			guardian_material.get_shader_parameter(&"guardian_glow_enabled") == true,
+			"Guardian blue glow shader parameter is disabled."
+		)
+		_expect(
+			float(guardian_material.get_shader_parameter(&"guardian_glow_strength")) > 0.0,
+			"Guardian blue glow strength must be positive."
+		)
 	_expect(
 		guardian.get_effective_physical_defense() == GUARDIAN_CONFIG.physical_defense,
 		"Guardian must not receive its own aura defense."
