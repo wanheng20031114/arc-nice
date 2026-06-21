@@ -21,6 +21,8 @@ func _run() -> void:
 	await _test_merchant_collision_is_solid_on_spawn()
 	await _test_dialogue_purchase()
 	await _test_skill_charge_and_bomb_direction()
+	await _test_skill_charge_bar_hides_on_singleplayer_death()
+	await _test_cheat_xirang_action()
 	await _test_bomb_explosion_damage()
 
 	test_root.queue_free()
@@ -132,6 +134,55 @@ func _test_skill_charge_and_bomb_direction() -> void:
 	if bomb != null:
 		_expect(bomb.direction.dot(Vector2.UP) > 0.99, "Skill1 bomb did not use the last attack direction.")
 		bomb.queue_free()
+
+	player.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_skill_charge_bar_hides_on_singleplayer_death() -> void:
+	var player := PLAYER_SCENE.instantiate() as Player
+	test_root.add_child(player)
+	await process_frame
+	await physics_frame
+
+	player.unlock_skill1()
+	player.call("_update_skill1_charge", player.skill1_charge_duration)
+	_expect(player.get_node("Skill1ChargeBar").visible, "Unlocked skill1 charge bar must be visible while alive.")
+
+	player.apply_damage(player.current_health)
+	await process_frame
+	_expect(player.is_dead, "Player did not enter single-player death state.")
+	_expect(player.get_node("BodySprite").visible, "Single-player death must keep the body sprite visible.")
+	_expect(
+		(player.get_node("BodySprite") as AnimatedSprite2D).animation == &"death",
+		"Single-player death must play the death animation."
+	)
+	_expect(not player.get_node("HealthBar").visible, "Single-player death must hide the health bar.")
+	_expect(not player.get_node("Skill1ChargeBar").visible, "Single-player death must hide the skill1 charge bar.")
+
+	player.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_cheat_xirang_action() -> void:
+	_expect(InputMap.has_action("cheat"), "Project input map must include the cheat action.")
+	var player := PLAYER_SCENE.instantiate() as Player
+	test_root.add_child(player)
+	await process_frame
+	await physics_frame
+
+	var event := InputEventAction.new()
+	event.action = "cheat"
+	event.pressed = true
+	player._unhandled_input(event)
+	_expect(player.current_xirang == 1000, "Cheat action must grant 1000 xirang.")
+
+	player.apply_damage(player.current_health)
+	await process_frame
+	player._unhandled_input(event)
+	_expect(player.current_xirang == 2000, "Cheat action must work even while the player is dead.")
 
 	player.queue_free()
 	await process_frame

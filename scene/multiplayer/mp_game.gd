@@ -20,6 +20,7 @@ const PLAYER_STATE_SNAP_DISTANCE := 128.0
 const PLAYER_STATE_SPEED_SLACK := 96.0
 const PLAYER_REVIVE_DELAY_SECONDS := 10.0
 const PLAYER_REVIVE_INVINCIBILITY_SECONDS := 3.0
+const CHEAT_XIRANG_AMOUNT := 1000
 const HIT_DEDUP_RETENTION_SECONDS := 30.0
 const ORB_DEDUP_RETENTION_SECONDS := 60.0
 const RECENT_EVENT_PRUNE_INTERVAL_SECONDS := 5.0
@@ -111,6 +112,13 @@ func request_multiplayer_skill1_purchase() -> void:
 		_apply_skill1_purchase_for_peer(_get_local_peer_id())
 	else:
 		net_skill1_purchase_requested.rpc_id(_get_host_peer_id())
+
+
+func request_multiplayer_cheat_xirang() -> void:
+	if net_manager.is_host():
+		_apply_cheat_xirang_for_peer(_get_local_peer_id())
+	else:
+		net_cheat_xirang_requested.rpc_id(_get_host_peer_id())
 
 
 func _setup_game(mode: int) -> void:
@@ -1472,6 +1480,14 @@ func net_skill1_purchase_requested() -> void:
 	_apply_skill1_purchase_for_peer(sender_id)
 
 
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_cheat_xirang_requested() -> void:
+	if not net_manager.is_host():
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	_apply_cheat_xirang_for_peer(sender_id)
+
+
 @rpc("authority", "call_remote", "reliable", 4)
 func net_upgrade_confirmed(
 	peer_id: int,
@@ -1521,6 +1537,17 @@ func net_skill1_purchase_confirmed(
 		game.show_local_skill1_purchase_result(result_code)
 
 
+@rpc("authority", "call_remote", "reliable", 4)
+func net_cheat_xirang_confirmed(peer_id: int, current_xirang: int, added_amount: int) -> void:
+	if game == null:
+		return
+	var player_node := game.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	player_node.current_xirang = maxi(current_xirang, 0)
+	player_node.xirang_changed.emit(player_node.current_xirang, maxi(added_amount, 0))
+
+
 func _apply_upgrade_for_peer(peer_id: int, stat_type: int) -> void:
 	if game == null:
 		return
@@ -1543,6 +1570,17 @@ func _apply_skill1_purchase_for_peer(peer_id: int) -> void:
 	net_skill1_purchase_confirmed.rpc(peer_id, current_xirang, skill1_unlocked, result_code)
 	if peer_id == _get_local_peer_id():
 		net_skill1_purchase_confirmed(peer_id, current_xirang, skill1_unlocked, result_code)
+
+
+func _apply_cheat_xirang_for_peer(peer_id: int) -> void:
+	if game == null:
+		return
+	var player_node: Player = game.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	if not player_node.grant_cheat_xirang(CHEAT_XIRANG_AMOUNT):
+		return
+	net_cheat_xirang_confirmed.rpc(peer_id, player_node.current_xirang, CHEAT_XIRANG_AMOUNT)
 
 
 func _get_host_peer_id() -> int:

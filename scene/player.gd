@@ -61,6 +61,7 @@ const ARMED_ANIMATION_PREFIX := &"armed"
 const DEFAULT_FIRE_RATE_MULTIPLIER := 1.0
 const DEFAULT_MOVE_SPEED_MULTIPLIER := 1.0
 const SPIRAL_PHASE_STEP := PI / 12
+const CHEAT_XIRANG_AMOUNT := 1000
 const MAX_MULTIPLAYER_NAME_LENGTH := 12
 const NAMEPLATE_SIZE := Vector2(160.0, 24.0)
 const NAMEPLATE_WORLD_OFFSET := Vector2(0.0, -19.0)
@@ -132,6 +133,11 @@ func _input(event: InputEvent) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not uses_local_input:
+		return
+
+	if event.is_action_pressed("cheat"):
+		_apply_cheat_xirang()
+		get_viewport().set_input_as_handled()
 		return
 
 	if event.is_action_pressed("skill1"):
@@ -478,6 +484,7 @@ func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invi
 	health_bar.set_health(current_health, max_health)
 	health_changed.emit(current_health, max_health)
 	_update_multiplayer_nameplate_text(-1)
+	_update_skill1_charge_bar()
 	_update_animation()
 	_update_armed_effect()
 	if invincible_seconds > 0.0:
@@ -514,7 +521,10 @@ func apply_multiplayer_death_state() -> void:
 	footstep_audio.stop()
 	health_bar.set_health(0, max_health)
 	health_bar.visible = false
-	body_sprite.visible = false
+	_update_skill1_charge_bar()
+	body_sprite.visible = true
+	if not was_dead:
+		_play_death_animation()
 	if collision_shape != null:
 		collision_shape.set_deferred("disabled", true)
 	health_changed.emit(current_health, max_health)
@@ -532,6 +542,10 @@ func grant_multiplayer_xirang(amount: int) -> bool:
 		xirang_pickup_audio.pitch_scale = randf_range(1.12, 1.26)
 		xirang_pickup_audio.play()
 	return true
+
+
+func grant_cheat_xirang(amount: int = CHEAT_XIRANG_AMOUNT) -> bool:
+	return _grant_xirang_unrestricted(amount)
 
 
 func _update_multiplayer_nameplate_text(seconds_left: int) -> void:
@@ -560,6 +574,26 @@ func add_xirang(amount: int) -> bool:
 	xirang_pickup_audio.pitch_scale = randf_range(1.12, 1.26)
 	xirang_pickup_audio.play()
 	return true
+
+
+func _grant_xirang_unrestricted(amount: int) -> bool:
+	if amount <= 0:
+		return false
+
+	current_xirang += amount
+	xirang_changed.emit(current_xirang, amount)
+	if uses_local_input:
+		xirang_pickup_audio.pitch_scale = randf_range(1.12, 1.26)
+		xirang_pickup_audio.play()
+	return true
+
+
+func _apply_cheat_xirang() -> void:
+	var current_scene := get_tree().current_scene
+	if current_scene != null and current_scene.has_method("request_multiplayer_cheat_xirang"):
+		current_scene.call("request_multiplayer_cheat_xirang")
+		return
+	grant_cheat_xirang()
 
 
 func has_skill1() -> bool:
@@ -735,7 +769,7 @@ func _register_multiplayer_projectile(
 func _update_skill1_charge_bar() -> void:
 	if skill1_charge_bar == null:
 		return
-	skill1_charge_bar.set_unlocked(skill1_unlocked)
+	skill1_charge_bar.set_unlocked(skill1_unlocked and not is_dead)
 	skill1_charge_bar.set_charge(
 		skill1_charge,
 		skill1_charge_duration,
@@ -983,9 +1017,15 @@ func _die() -> void:
 	death_audio.play()
 	health_bar.set_health(0, max_health)
 	health_bar.visible = false
+	_update_skill1_charge_bar()
+	_play_death_animation()
+	died.emit()
+
+
+func _play_death_animation() -> void:
+	body_sprite.visible = true
 	if body_sprite.sprite_frames != null and body_sprite.sprite_frames.has_animation(&"death"):
 		body_sprite.play(&"death")
-	died.emit()
 
 
 func _on_shooting_timer_timeout() -> void:

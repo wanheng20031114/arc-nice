@@ -3,6 +3,7 @@ extends SceneTree
 const LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const GAME_SCENE := preload("res://scene/game.tscn")
+const PLAYER_SCENE := preload("res://scene/player.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres")
 const RPG_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
@@ -20,6 +21,8 @@ func _run() -> void:
 	_test_recent_event_cache()
 	_test_freed_pickup_index_cleanup()
 	await _test_enemy_proxy_action_animation_restore()
+	await _test_player_multiplayer_death_visual_state()
+	await _test_multiplayer_cheat_xirang_confirm()
 	await _test_game_runtime_modes()
 	_test_snapshot_round_trip()
 
@@ -170,6 +173,68 @@ func _expect_proxy_action_restores_to_move(
 	_expect(sprite.animation == enemy_config.move_animation_name, message)
 	_expect(sprite.is_playing(), message + " Move animation must keep playing.")
 	enemy.queue_free()
+	await process_frame
+
+
+func _test_player_multiplayer_death_visual_state() -> void:
+	var player := PLAYER_SCENE.instantiate() as Player
+	_expect(player != null, "Player scene must instantiate for multiplayer death visual test.")
+	if player == null:
+		return
+
+	root.add_child(player)
+	await process_frame
+	player.configure_multiplayer_control(2, false, "Client")
+	player.unlock_skill1()
+	player.call("_update_skill1_charge", player.skill1_charge_duration)
+	_expect(player.skill1_charge_bar.visible, "Multiplayer player skill1 bar must be visible while alive.")
+
+	player.apply_multiplayer_death_state()
+	await process_frame
+	_expect(player.is_dead, "Multiplayer player did not enter death state.")
+	_expect(player.body_sprite.visible, "Multiplayer death must keep the body sprite visible.")
+	_expect(player.body_sprite.animation == &"death", "Multiplayer death must play the death animation.")
+	_expect(not player.health_bar.visible, "Multiplayer death must hide the health bar.")
+	_expect(not player.skill1_charge_bar.visible, "Multiplayer death must hide the skill1 charge bar.")
+
+	player.revive_multiplayer(Vector2(8.0, 9.0), player.max_health, 0.0)
+	await process_frame
+	_expect(not player.is_dead, "Multiplayer revive must clear death state.")
+	_expect(player.body_sprite.visible, "Multiplayer revive must show the body sprite.")
+	_expect(player.health_bar.visible, "Multiplayer revive must show the health bar.")
+	_expect(player.skill1_charge_bar.visible, "Multiplayer revive must restore unlocked skill1 charge bar.")
+
+	player.queue_free()
+	await process_frame
+
+
+func _test_multiplayer_cheat_xirang_confirm() -> void:
+	var mp_game := MP_GAME_SCENE.instantiate()
+	_expect(mp_game != null, "MpGame scene must instantiate for cheat xirang confirm test.")
+	if mp_game == null:
+		return
+
+	var host_game := GAME_SCENE.instantiate()
+	_expect(host_game != null, "Game scene must instantiate for cheat xirang confirm test.")
+	if host_game == null:
+		mp_game.free()
+		return
+
+	host_game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
+	host_game.set("auto_start_waves", false)
+	root.add_child(host_game)
+	await process_frame
+	mp_game.set("game", host_game)
+
+	var remote_player := host_game.get_player_for_peer(2) as Player
+	_expect(remote_player != null, "Remote player must exist for cheat xirang confirm test.")
+	if remote_player != null:
+		remote_player.current_xirang = 15
+		mp_game.call("net_cheat_xirang_confirmed", 2, 1015, 1000)
+		_expect(remote_player.current_xirang == 1015, "Cheat confirm must update the selected peer's xirang.")
+
+	host_game.queue_free()
+	mp_game.free()
 	await process_frame
 
 
