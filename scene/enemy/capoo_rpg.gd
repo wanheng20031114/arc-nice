@@ -243,12 +243,18 @@ func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, 
 	var rpg_config := config as CapooRPGConfigScript
 	if action_name == &"windup":
 		if rpg_config != null:
-			_play_config_animation(rpg_config.windup_animation_name)
+			_play_multiplayer_proxy_action_animation(
+				rpg_config.windup_animation_name,
+				rpg_config.attack_windup + 0.15
+			)
 			_play_proxy_muzzle_heat(safe_direction, rpg_config.attack_windup)
 		_update_facing(safe_direction)
 	elif action_name == &"fire":
 		if rpg_config != null:
-			_play_config_animation(rpg_config.attack_animation_name)
+			_play_multiplayer_proxy_action_animation(
+				rpg_config.attack_animation_name,
+				0.23
+			)
 		_update_facing(safe_direction)
 		_set_muzzle_heat(1.0, safe_direction)
 		var tween := create_tween()

@@ -254,12 +254,18 @@ func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, 
 	var knight_config := config as CapooKnightConfigScript
 	if action_name == &"windup":
 		if knight_config != null:
-			_play_config_animation(knight_config.windup_animation_name)
+			_play_multiplayer_proxy_action_animation(
+				knight_config.windup_animation_name,
+				knight_config.attack_windup + 0.15
+			)
 			_play_proxy_windup_warning(safe_direction, knight_config.attack_windup)
 		_update_facing(safe_direction)
 	elif action_name == &"slash":
 		if knight_config != null:
-			_play_config_animation(knight_config.attack_animation_name)
+			_play_multiplayer_proxy_action_animation(
+				knight_config.attack_animation_name,
+				knight_config.slash_duration + 0.05
+			)
 		_update_facing(safe_direction)
 		_set_windup_warning(0.0, safe_direction)
 		_play_slash_effect(safe_direction)

@@ -44,6 +44,8 @@ var body_collision_extent_radius: float = 0.0
 var body_collision_half_extents: Vector2 = Vector2.ZERO
 var collision_shape_mirror_states: Dictionary = {}
 var facing_left: bool = false
+var proxy_action_animation_name_in_use: StringName = &""
+var proxy_action_restore_token: int = 0
 
 
 func _ready() -> void:
@@ -78,17 +80,20 @@ func configure_multiplayer_proxy() -> void:
 	pathfinder = null
 	touched_player = null
 	touch_damage_cooldown_left = 0.0
+	proxy_action_animation_name_in_use = &""
 	set_physics_process(false)
 	set_process(false)
 	collision_layer = 4
 	collision_mask = 0
 	_disable_proxy_area_collisions(self)
+	_ensure_multiplayer_proxy_move_animation()
 
 
 func apply_multiplayer_proxy_motion(proxy_position: Vector2, proxy_velocity: Vector2) -> void:
 	global_position = proxy_position
 	velocity = proxy_velocity
 	_set_facing_from_direction(proxy_velocity)
+	_ensure_multiplayer_proxy_move_animation()
 
 
 func _disable_proxy_area_collisions(root: Node) -> void:
@@ -200,6 +205,58 @@ func _play_scene_animation(animation_name: StringName) -> bool:
 		return false
 	animated_sprite.play(animation_name)
 	return true
+
+
+func _play_multiplayer_proxy_action_animation(
+	animation_name: StringName,
+	restore_delay: float = -1.0
+) -> bool:
+	if not _play_scene_animation(animation_name):
+		return false
+	if not is_multiplayer_proxy:
+		return true
+
+	proxy_action_animation_name_in_use = animation_name
+	proxy_action_restore_token += 1
+	var restore_token := proxy_action_restore_token
+	if restore_delay > 0.0 and is_inside_tree():
+		var tween := create_tween()
+		tween.tween_interval(restore_delay)
+		tween.tween_callback(
+			func() -> void:
+				_restore_multiplayer_proxy_move_animation(restore_token, animation_name)
+		)
+	return true
+
+
+func _restore_multiplayer_proxy_move_animation(
+	restore_token: int,
+	expected_animation: StringName
+) -> void:
+	if not is_multiplayer_proxy:
+		return
+	if is_dead or config == null or animated_sprite == null:
+		return
+	if restore_token != proxy_action_restore_token:
+		return
+	if expected_animation != &"" and animated_sprite.animation != expected_animation:
+		return
+
+	proxy_action_animation_name_in_use = &""
+	_play_scene_animation(config.move_animation_name)
+
+
+func _ensure_multiplayer_proxy_move_animation() -> void:
+	if not is_multiplayer_proxy:
+		return
+	if is_dead or config == null or animated_sprite == null:
+		return
+	if proxy_action_animation_name_in_use != &"":
+		return
+	if animated_sprite.animation == config.move_animation_name and animated_sprite.is_playing():
+		return
+
+	_play_scene_animation(config.move_animation_name)
 
 
 func _has_scene_animation(animation_name: StringName) -> bool:
@@ -554,6 +611,17 @@ func _play_death_sequence_animation(animation_name: StringName, stage: DeathSequ
 
 
 func _on_animated_sprite_animation_finished() -> void:
+	if (
+		is_multiplayer_proxy
+		and proxy_action_animation_name_in_use != &""
+		and animated_sprite.animation == proxy_action_animation_name_in_use
+	):
+		_restore_multiplayer_proxy_move_animation(
+			proxy_action_restore_token,
+			proxy_action_animation_name_in_use
+		)
+		return
+
 	if not is_dead:
 		return
 	if death_animation_name_in_use == &"":

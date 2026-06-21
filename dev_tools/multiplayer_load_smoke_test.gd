@@ -4,6 +4,8 @@ const LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const GAME_SCENE := preload("res://scene/game.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
+const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres")
+const RPG_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
 
 var failures: Array[String] = []
 
@@ -17,6 +19,7 @@ func _run() -> void:
 	_test_net_manager_lan_lifecycle()
 	_test_recent_event_cache()
 	_test_freed_pickup_index_cleanup()
+	await _test_enemy_proxy_action_animation_restore()
 	await _test_game_runtime_modes()
 	_test_snapshot_round_trip()
 
@@ -114,6 +117,62 @@ func _test_freed_pickup_index_cleanup() -> void:
 	game.free()
 
 
+func _test_enemy_proxy_action_animation_restore() -> void:
+	await _expect_proxy_action_restores_to_move(
+		KNIGHT_CONFIG,
+		&"slash",
+		KNIGHT_CONFIG.attack_animation_name,
+		"Knight proxy slash animation must restore to move."
+	)
+	await _expect_proxy_action_restores_to_move(
+		RPG_CONFIG,
+		&"fire",
+		RPG_CONFIG.attack_animation_name,
+		"RPG proxy fire animation must restore to move."
+	)
+
+	var short_windup_config := KNIGHT_CONFIG.duplicate(true) as EnemyConfig
+	short_windup_config.set("attack_windup", 0.01)
+	await _expect_proxy_action_restores_to_move(
+		short_windup_config,
+		&"windup",
+		StringName(short_windup_config.get("windup_animation_name")),
+		"Looping proxy windup animation must time out back to move."
+	)
+
+
+func _expect_proxy_action_restores_to_move(
+	enemy_config: EnemyConfig,
+	action_name: StringName,
+	expected_action_animation: StringName,
+	message: String
+) -> void:
+	var enemy := enemy_config.enemy_scene.instantiate() as Enemy
+	_expect(enemy != null, "Proxy enemy scene must instantiate for action animation test.")
+	if enemy == null:
+		return
+
+	root.add_child(enemy)
+	await process_frame
+	enemy.setup(enemy_config, null, null)
+	enemy.configure_multiplayer_proxy()
+	var sprite := enemy.get_node("AnimatedSprite2D") as AnimatedSprite2D
+	_expect(sprite != null, "Proxy enemy must have an AnimatedSprite2D.")
+	if sprite == null:
+		enemy.queue_free()
+		await process_frame
+		return
+
+	sprite.speed_scale = 24.0
+	enemy.call("play_multiplayer_enemy_action", action_name, Vector2.RIGHT, 1)
+	_expect(sprite.animation == expected_action_animation, message + " Action animation did not start.")
+	await _wait_process_frames(24)
+	_expect(sprite.animation == enemy_config.move_animation_name, message)
+	_expect(sprite.is_playing(), message + " Move animation must keep playing.")
+	enemy.queue_free()
+	await process_frame
+
+
 func _test_game_runtime_modes() -> void:
 	var host_game := GAME_SCENE.instantiate()
 	host_game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
@@ -196,3 +255,8 @@ func _test_snapshot_round_trip() -> void:
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
+
+
+func _wait_process_frames(frame_count: int) -> void:
+	for _frame_index in range(frame_count):
+		await process_frame
