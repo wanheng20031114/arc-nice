@@ -417,7 +417,8 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 				player_state.skill1_charge,
 				player_state.skill1_charge_duration,
 				player_state.form_mode,
-				player_state.shot_pattern
+				player_state.shot_pattern,
+				player_state.skill1_upgrade_level
 			)
 	if snapshot_has_full_roster:
 		_reconcile_player_roster(seen_player_ids)
@@ -1899,11 +1900,19 @@ func net_skill1_purchase_confirmed(
 	peer_id: int,
 	current_xirang: int,
 	skill1_unlocked: bool,
-	result_code: int
+	result_code: int,
+	skill1_upgrade_level: int = -1,
+	skill1_charge_duration: float = -1.0
 ) -> void:
 	if game == null:
 		return
-	game.apply_skill1_purchase_state(peer_id, current_xirang, skill1_unlocked)
+	game.apply_skill1_purchase_state(
+		peer_id,
+		current_xirang,
+		skill1_unlocked,
+		skill1_upgrade_level,
+		skill1_charge_duration
+	)
 	if peer_id == _get_local_peer_id():
 		game.show_local_skill1_purchase_result(result_code)
 
@@ -1942,9 +1951,25 @@ func _apply_skill1_purchase_for_peer(peer_id: int) -> void:
 	var result_code := game.try_purchase_skill1_for_peer(peer_id)
 	var current_xirang := player_node.current_xirang
 	var skill1_unlocked := player_node.has_skill1()
-	net_skill1_purchase_confirmed.rpc(peer_id, current_xirang, skill1_unlocked, result_code)
+	var skill1_upgrade_level := player_node.skill1_upgrade_level
+	var skill1_charge_duration := player_node.skill1_charge_duration
+	net_skill1_purchase_confirmed.rpc(
+		peer_id,
+		current_xirang,
+		skill1_unlocked,
+		result_code,
+		skill1_upgrade_level,
+		skill1_charge_duration
+	)
 	if peer_id == _get_local_peer_id():
-		net_skill1_purchase_confirmed(peer_id, current_xirang, skill1_unlocked, result_code)
+		net_skill1_purchase_confirmed(
+			peer_id,
+			current_xirang,
+			skill1_unlocked,
+			result_code,
+			skill1_upgrade_level,
+			skill1_charge_duration
+		)
 
 
 func _apply_cheat_xirang_for_peer(peer_id: int) -> void:

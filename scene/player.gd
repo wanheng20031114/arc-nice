@@ -62,6 +62,9 @@ const DEFAULT_FIRE_RATE_MULTIPLIER := 1.0
 const DEFAULT_MOVE_SPEED_MULTIPLIER := 1.0
 const SPIRAL_PHASE_STEP := PI / 12
 const CHEAT_XIRANG_AMOUNT := 1000
+const SKILL1_MAX_UPGRADE_LEVEL := 4
+const SKILL1_UPGRADE_CHARGE_REDUCTION := 2.0
+const SKILL1_UPGRADE_COSTS := [500, 750, 1000, 2000]
 const MAX_MULTIPLAYER_NAME_LENGTH := 12
 const NAMEPLATE_SIZE := Vector2(160.0, 24.0)
 const NAMEPLATE_WORLD_OFFSET := Vector2(0.0, -19.0)
@@ -91,11 +94,14 @@ var footstep_time_left: float = 0.0
 var dodge_chance: float = 0.0
 var skill1_unlocked: bool = false
 var skill1_charge: float = 0.0
+var skill1_upgrade_level: int = 0
+var skill1_base_charge_duration: float = 0.0
 var last_attack_direction: Vector2 = Vector2.RIGHT
 
 
 # 节点首次进入场景树时的初始化逻辑
 func _ready() -> void:
+	_ensure_skill1_base_charge_duration()
 	current_health = maxi(max_health, 1)
 	shooting_timer.one_shot = true
 	shooting_timer.wait_time = _get_effective_fire_interval()
@@ -398,6 +404,7 @@ func consume_multiplayer_skill1_charge() -> bool:
 		return false
 	if is_dead or controls_locked:
 		return false
+	_sync_skill1_charge_duration_to_upgrade_level()
 	if skill1_charge < skill1_charge_duration:
 		return false
 	skill1_charge = 0.0
@@ -434,13 +441,30 @@ func apply_multiplayer_realtime_state(
 	new_skill1_charge: float,
 	new_skill1_charge_duration: float,
 	new_form_mode: int,
-	new_shot_pattern: int
+	new_shot_pattern: int,
+	new_skill1_upgrade_level: int = -1
 ) -> void:
 	max_health = maxi(new_max_health, 1)
 	current_xirang = maxi(new_current_xirang, 0)
 	xirang_changed.emit(current_xirang, 0)
 	skill1_unlocked = new_skill1_unlocked
-	skill1_charge_duration = maxf(new_skill1_charge_duration, 0.01)
+	if not skill1_unlocked:
+		skill1_upgrade_level = 0
+	elif new_skill1_upgrade_level >= 0:
+		skill1_upgrade_level = clampi(
+			new_skill1_upgrade_level,
+			0,
+			SKILL1_MAX_UPGRADE_LEVEL
+		)
+	if (
+		new_skill1_charge_duration > 0.0
+		and new_skill1_upgrade_level < 0
+		and skill1_base_charge_duration <= 0.0
+	):
+		_set_skill1_base_charge_duration_from_current_level(new_skill1_charge_duration)
+	else:
+		_ensure_skill1_base_charge_duration()
+	_sync_skill1_charge_duration_to_upgrade_level()
 	skill1_charge = clampf(new_skill1_charge, 0.0, skill1_charge_duration)
 	current_form_mode = new_form_mode
 	current_shot_pattern = new_shot_pattern
@@ -637,11 +661,87 @@ func try_purchase_skill1(cost: int) -> bool:
 func unlock_skill1() -> bool:
 	if skill1_unlocked:
 		return false
+	_ensure_skill1_base_charge_duration()
 	skill1_unlocked = true
 	skill1_charge = 0.0
+	_sync_skill1_charge_duration_to_upgrade_level()
 	_update_skill1_charge_bar()
 	gunload_audio.play()
 	return true
+
+
+func get_skill1_upgrade_cost() -> int:
+	if not skill1_unlocked:
+		return -1
+	if is_skill1_upgrade_maxed():
+		return -1
+	return int(SKILL1_UPGRADE_COSTS[skill1_upgrade_level])
+
+
+func is_skill1_upgrade_maxed() -> bool:
+	return skill1_upgrade_level >= SKILL1_MAX_UPGRADE_LEVEL
+
+
+func try_upgrade_skill1() -> bool:
+	if not skill1_unlocked:
+		return false
+	if is_skill1_upgrade_maxed():
+		return false
+	var upgrade_cost := get_skill1_upgrade_cost()
+	if upgrade_cost < 0 or current_xirang < upgrade_cost:
+		return false
+
+	current_xirang -= upgrade_cost
+	xirang_changed.emit(current_xirang, -upgrade_cost)
+	_apply_next_skill1_upgrade()
+	return true
+
+
+func apply_skill1_upgrade_state(upgrade_level: int, _charge_duration: float = -1.0) -> void:
+	skill1_upgrade_level = clampi(upgrade_level, 0, SKILL1_MAX_UPGRADE_LEVEL)
+	_ensure_skill1_base_charge_duration()
+	_sync_skill1_charge_duration_to_upgrade_level()
+	_update_skill1_charge_bar()
+
+
+func _apply_next_skill1_upgrade() -> void:
+	_ensure_skill1_base_charge_duration()
+	skill1_upgrade_level = mini(skill1_upgrade_level + 1, SKILL1_MAX_UPGRADE_LEVEL)
+	_sync_skill1_charge_duration_to_upgrade_level()
+	_update_skill1_charge_bar()
+	gunload_audio.play()
+
+
+func _ensure_skill1_base_charge_duration() -> void:
+	if skill1_base_charge_duration > 0.0:
+		return
+	skill1_base_charge_duration = maxf(
+		skill1_charge_duration
+		+ float(skill1_upgrade_level) * SKILL1_UPGRADE_CHARGE_REDUCTION,
+		0.01
+	)
+
+
+func _set_skill1_base_charge_duration_from_current_level(current_duration: float) -> void:
+	skill1_base_charge_duration = maxf(
+		current_duration
+		+ float(skill1_upgrade_level) * SKILL1_UPGRADE_CHARGE_REDUCTION,
+		0.01
+	)
+
+
+func _sync_skill1_charge_duration_to_upgrade_level() -> void:
+	_ensure_skill1_base_charge_duration()
+	skill1_charge_duration = _get_skill1_duration_for_level(skill1_upgrade_level)
+	skill1_charge = minf(skill1_charge, skill1_charge_duration)
+
+
+func _get_skill1_duration_for_level(level: int) -> float:
+	return maxf(
+		skill1_base_charge_duration
+		- float(clampi(level, 0, SKILL1_MAX_UPGRADE_LEVEL)) * SKILL1_UPGRADE_CHARGE_REDUCTION,
+		0.01
+	)
 
 
 func _try_heal(amount: int) -> bool:
@@ -716,6 +816,7 @@ func _update_skill1_charge(delta: float) -> void:
 		return
 	if is_dead:
 		return
+	_sync_skill1_charge_duration_to_upgrade_level()
 	if skill1_charge >= skill1_charge_duration:
 		return
 
@@ -728,6 +829,7 @@ func _try_use_skill1() -> bool:
 		return false
 	if is_dead or controls_locked:
 		return false
+	_sync_skill1_charge_duration_to_upgrade_level()
 	if skill1_charge < skill1_charge_duration:
 		return false
 
@@ -789,6 +891,8 @@ func _register_multiplayer_projectile(
 func _update_skill1_charge_bar() -> void:
 	if skill1_charge_bar == null:
 		return
+	if skill1_unlocked:
+		_sync_skill1_charge_duration_to_upgrade_level()
 	skill1_charge_bar.set_unlocked(skill1_unlocked and not is_dead)
 	skill1_charge_bar.set_charge(
 		skill1_charge,

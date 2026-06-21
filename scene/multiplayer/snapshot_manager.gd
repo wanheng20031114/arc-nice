@@ -24,7 +24,7 @@ const ENEMY_SNAPSHOT_HEADER_BYTES := 5
 const PACKED_VECTOR2_BYTES := 4
 const PACKED_U8_BYTES := 1
 const PACKED_U16_BYTES := 2
-const PLAYER_META_BYTES := 24
+const PLAYER_META_BYTES := 25
 const PACKED_I16_MIN := -32768
 const PACKED_I16_MAX := 32767
 
@@ -49,6 +49,7 @@ class PlayerState:
 	var skill1_unlocked: bool = false
 	var skill1_charge: float = 0.0
 	var skill1_charge_duration: float = 0.0
+	var skill1_upgrade_level: int = 0
 	var form_mode: int = 0
 	var shot_pattern: int = 0
 
@@ -117,6 +118,7 @@ static func encode_player_snapshot(
 		buf.put_u8(1 if current.skill1_unlocked else 0)
 		buf.put_float(current.skill1_charge)
 		buf.put_float(current.skill1_charge_duration)
+		buf.put_u8(clampi(current.skill1_upgrade_level, 0, 255))
 		buf.put_u8(current.form_mode)
 		buf.put_u8(current.shot_pattern)
 
@@ -135,6 +137,7 @@ static func _player_meta_changed(current: PlayerState, previous: PlayerState) ->
 		or current.skill1_unlocked != previous.skill1_unlocked
 		or not is_equal_approx(current.skill1_charge, previous.skill1_charge)
 		or not is_equal_approx(current.skill1_charge_duration, previous.skill1_charge_duration)
+		or current.skill1_upgrade_level != previous.skill1_upgrade_level
 		or current.form_mode != previous.form_mode
 		or current.shot_pattern != previous.shot_pattern
 	)
@@ -174,6 +177,7 @@ static func decode_player_snapshot(
 		target.skill1_unlocked = buf.get_u8() != 0
 		target.skill1_charge = buf.get_float()
 		target.skill1_charge_duration = buf.get_float()
+		target.skill1_upgrade_level = buf.get_u8()
 		target.form_mode = buf.get_u8()
 		target.shot_pattern = buf.get_u8()
 

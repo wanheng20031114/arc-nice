@@ -598,6 +598,34 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		mp_game.call("net_skill1_purchase_confirmed", 4, 25, true, 0)
 		_expect(peer_four.has_skill1(), "Skill1 purchase confirm must unlock the selected peer.")
 		_expect(peer_four.current_xirang == 25, "Skill1 purchase confirm must update xirang.")
+		peer_four.current_xirang = 525
+		var skill1_duration_before_upgrade := peer_four.skill1_charge_duration
+		var skill1_upgrade_result := game.try_purchase_skill1_for_peer(4)
+		_expect(
+			skill1_upgrade_result == Game.PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS,
+			"Owned skill1 transaction must upgrade skill1 on host."
+		)
+		_expect(peer_four.current_xirang == 25, "Skill1 upgrade must deduct the first 500 xirang cost.")
+		_expect(peer_four.skill1_upgrade_level == 1, "Skill1 upgrade must increment the player level.")
+		_expect(
+			is_equal_approx(peer_four.skill1_charge_duration, skill1_duration_before_upgrade - 2.0),
+			"Skill1 upgrade must reduce charge duration by 2 seconds."
+		)
+		mp_game.call(
+			"net_skill1_purchase_confirmed",
+			4,
+			777,
+			true,
+			Game.PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS,
+			2,
+			peer_four.skill1_charge_duration - 2.0
+		)
+		_expect(peer_four.current_xirang == 777, "Skill1 upgrade confirm must update xirang.")
+		_expect(peer_four.skill1_upgrade_level == 2, "Skill1 upgrade confirm must update upgrade level.")
+		_expect(
+			is_equal_approx(peer_four.skill1_charge_duration, skill1_duration_before_upgrade - 4.0),
+			"Skill1 upgrade confirm must update charge duration."
+		)
 		peer_four.skill1_charge_duration = 1.0
 		peer_four.skill1_charge = 0.0
 		game.call("_update_multiplayer_remote_player_passive_state", 0.5)
@@ -915,12 +943,17 @@ func _test_snapshot_round_trip() -> void:
 	player_state.velocity = Vector2(1.0, -2.0)
 	player_state.current_health = 42
 	player_state.max_health = 100
+	player_state.skill1_unlocked = true
+	player_state.skill1_charge = 3.0
+	player_state.skill1_charge_duration = 14.0
+	player_state.skill1_upgrade_level = 2
 	var player_data := snapshot_mgr.encode_all_player_snapshots([player_state])
 	var player_states := SnapshotManager.decode_all_player_snapshots(player_data)
 	_expect(player_states.size() == 1, "Player snapshot count mismatch.")
 	if player_states.size() == 1:
 		_expect(player_states[0].peer_id == 2, "Player snapshot peer_id mismatch.")
 		_expect(player_states[0].current_health == 42, "Player snapshot health mismatch.")
+		_expect(player_states[0].skill1_upgrade_level == 2, "Player snapshot skill1 upgrade level mismatch.")
 	var player_data_2 := snapshot_mgr.encode_all_player_snapshots([player_state])
 	var player_states_2 := SnapshotManager.decode_all_player_snapshots(player_data_2)
 	_expect(

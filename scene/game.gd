@@ -9,6 +9,8 @@ const PURCHASE_RESULT_SUCCESS := 0
 const PURCHASE_RESULT_ALREADY_OWNED := 1
 const PURCHASE_RESULT_INSUFFICIENT_XIRANG := 2
 const PURCHASE_RESULT_INVALID_PLAYER := 3
+const PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS := 4
+const PURCHASE_RESULT_SKILL1_UPGRADE_MAXED := 5
 
 signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
 signal multiplayer_enemy_removed(net_id: int)
@@ -207,7 +209,11 @@ func try_purchase_skill1_for_peer(peer_id: int) -> int:
 	if player_instance == null or not is_instance_valid(player_instance):
 		return PURCHASE_RESULT_INVALID_PLAYER
 	if player_instance.has_skill1():
-		return PURCHASE_RESULT_ALREADY_OWNED
+		if player_instance.is_skill1_upgrade_maxed():
+			return PURCHASE_RESULT_SKILL1_UPGRADE_MAXED
+		if not player_instance.try_upgrade_skill1():
+			return PURCHASE_RESULT_INSUFFICIENT_XIRANG
+		return PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS
 	if not player_instance.try_purchase_skill1(ZhuangfangyiMerchant.PURCHASE_COST):
 		return PURCHASE_RESULT_INSUFFICIENT_XIRANG
 	return PURCHASE_RESULT_SUCCESS
@@ -216,7 +222,9 @@ func try_purchase_skill1_for_peer(peer_id: int) -> int:
 func apply_skill1_purchase_state(
 	peer_id: int,
 	current_xirang: int,
-	skill1_unlocked: bool
+	skill1_unlocked: bool,
+	skill1_upgrade_level: int = -1,
+	skill1_charge_duration: float = -1.0
 ) -> void:
 	var player_instance := get_player_for_peer(peer_id)
 	if player_instance == null or not is_instance_valid(player_instance):
@@ -226,6 +234,11 @@ func apply_skill1_purchase_state(
 		player_instance.xirang_changed.emit(current_xirang, 0)
 	if skill1_unlocked and not player_instance.has_skill1():
 		player_instance.unlock_skill1()
+	if skill1_upgrade_level >= 0:
+		player_instance.apply_skill1_upgrade_state(
+			skill1_upgrade_level,
+			skill1_charge_duration
+		)
 
 
 func show_local_skill1_purchase_result(result_code: int) -> void:
@@ -897,6 +910,7 @@ func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 		state.skill1_unlocked = player_instance.skill1_unlocked
 		state.skill1_charge = player_instance.skill1_charge
 		state.skill1_charge_duration = player_instance.skill1_charge_duration
+		state.skill1_upgrade_level = player_instance.skill1_upgrade_level
 		state.form_mode = player_instance.current_form_mode
 		state.shot_pattern = player_instance.current_shot_pattern
 		states.append(state)

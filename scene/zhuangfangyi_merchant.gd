@@ -7,10 +7,15 @@ const DIALOGUE_LINES := [
 	"我可以使用息壤帮助你强化能力",
 	"是否要花费[color=#1a8a3e]200息壤[/color]购买 [img=22]res://resources/texture/weishidaier_skill1_icon.png[/img] ？",
 ]
+const SKILL1_ICON_BBCODE := "[img=22]res://resources/texture/weishidaier_skill1_icon.png[/img]"
+const SKILL1_UPGRADE_INTRO_LINE := "如果有足够的息壤，我可以为你提供全新的升级"
+const SKILL1_UPGRADE_OFFER_FORMAT := "是否要花费[color=#1a8a3e]%d息壤[/color]升级 %s ？"
 const PURCHASE_COST := 200
 const INSUFFICIENT_XIRANG_LINE := "息壤不足。"
 const ALREADY_PURCHASED_LINE := "你已经掌握这个技能了。"
 const PURCHASED_LINE := "交易完成，技能已经交给你了。"
+const UPGRADED_LINE := "升级完成，所需技力降低了。"
+const MAX_UPGRADED_LINE := "这个技能已经升级到最高等级了。"
 const PLAYER_COLLISION_MASK := 2
 const BODY_PUSH_QUERY_MAX_RESULTS := 16
 const BODY_PUSH_DISTANCE := 24.0
@@ -24,6 +29,7 @@ var nearby_players: Dictionary = {}
 var active_player: Player = null
 var dialogue_index: int = 0
 var purchase_result_visible: bool = false
+var dialogue_lines: Array = []
 
 
 func _ready() -> void:
@@ -66,7 +72,8 @@ func _start_dialogue(player: Player) -> void:
 	active_player = player
 	dialogue_index = 0
 	purchase_result_visible = false
-	dialogue_bubble.say(DIALOGUE_LINES[dialogue_index])
+	dialogue_lines = _build_dialogue_lines(player)
+	dialogue_bubble.say(dialogue_lines[dialogue_index])
 
 
 func _advance_dialogue() -> void:
@@ -75,13 +82,16 @@ func _advance_dialogue() -> void:
 		return
 
 	if purchase_result_visible:
-		dialogue_bubble.hide_bubble()
-		purchase_result_visible = false
+		_reset_dialogue_after_transaction()
 		return
 
-	if dialogue_index < DIALOGUE_LINES.size() - 1:
+	if not dialogue_bubble.visible:
+		_start_dialogue(active_player)
+		return
+
+	if dialogue_index < dialogue_lines.size() - 1:
 		dialogue_index += 1
-		dialogue_bubble.say(DIALOGUE_LINES[dialogue_index])
+		dialogue_bubble.say(dialogue_lines[dialogue_index])
 		return
 
 	_try_purchase_skill()
@@ -100,16 +110,24 @@ func _try_purchase_skill() -> void:
 	):
 		current_scene.call("request_multiplayer_skill1_purchase")
 		return
-	if active_player.has_skill1():
-		dialogue_bubble.say(ALREADY_PURCHASED_LINE)
+	if not active_player.has_skill1():
+		if not active_player.try_purchase_skill1(PURCHASE_COST):
+			dialogue_bubble.say(INSUFFICIENT_XIRANG_LINE)
+			purchase_result_visible = true
+			return
+		dialogue_bubble.say(PURCHASED_LINE)
 		purchase_result_visible = true
 		return
-	if not active_player.try_purchase_skill1(PURCHASE_COST):
+	if active_player.is_skill1_upgrade_maxed():
+		dialogue_bubble.say(MAX_UPGRADED_LINE)
+		purchase_result_visible = true
+		return
+	if not active_player.try_upgrade_skill1():
 		dialogue_bubble.say(INSUFFICIENT_XIRANG_LINE)
 		purchase_result_visible = true
 		return
 
-	dialogue_bubble.say(PURCHASED_LINE)
+	dialogue_bubble.say(UPGRADED_LINE)
 	purchase_result_visible = true
 
 
@@ -117,13 +135,38 @@ func show_purchase_result(result_code: int) -> void:
 	match result_code:
 		Game.PURCHASE_RESULT_SUCCESS:
 			dialogue_bubble.say(PURCHASED_LINE)
+		Game.PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS:
+			dialogue_bubble.say(UPGRADED_LINE)
 		Game.PURCHASE_RESULT_ALREADY_OWNED:
 			dialogue_bubble.say(ALREADY_PURCHASED_LINE)
+		Game.PURCHASE_RESULT_SKILL1_UPGRADE_MAXED:
+			dialogue_bubble.say(MAX_UPGRADED_LINE)
 		Game.PURCHASE_RESULT_INSUFFICIENT_XIRANG:
 			dialogue_bubble.say(INSUFFICIENT_XIRANG_LINE)
 		_:
 			dialogue_bubble.say(INSUFFICIENT_XIRANG_LINE)
 	purchase_result_visible = true
+
+
+func _build_dialogue_lines(player: Player) -> Array:
+	if player == null or not player.has_skill1():
+		return DIALOGUE_LINES.duplicate()
+	if player.is_skill1_upgrade_maxed():
+		return [MAX_UPGRADED_LINE]
+	return [
+		SKILL1_UPGRADE_INTRO_LINE,
+		SKILL1_UPGRADE_OFFER_FORMAT % [
+			player.get_skill1_upgrade_cost(),
+			SKILL1_ICON_BBCODE,
+		],
+	]
+
+
+func _reset_dialogue_after_transaction() -> void:
+	dialogue_bubble.hide_bubble()
+	purchase_result_visible = false
+	dialogue_index = 0
+	dialogue_lines = _build_dialogue_lines(active_player)
 
 
 func _on_interaction_area_body_entered(body: Node2D) -> void:
