@@ -44,6 +44,21 @@ func _run() -> void:
 			)
 			var cached_agent_grid := pathfinder.call("_get_or_create_agent_grid", TEST_AGENT_HALF_EXTENTS) as AStarGrid2D
 			_expect(cached_agent_grid == agent_grid, "Agent clearance grids must be cached by body size.")
+			var nearest_agent_cell := pathfinder.call("_get_closest_walkable_cell", adjacent_cell, agent_grid) as Vector2i
+			_expect(
+				nearest_agent_cell != Vector2i.MAX and nearest_agent_cell != adjacent_cell,
+				"Agent pathfinding must find a recovery cell when the current point cell is too close to an obstacle."
+			)
+			if nearest_agent_cell != Vector2i.MAX:
+				var from_global := pathfinder.call("_map_to_global", adjacent_cell) as Vector2
+				var nearest_global := pathfinder.call("_map_to_global", nearest_agent_cell) as Vector2
+				var recovery_path := pathfinder.get_global_path(from_global, nearest_global, TEST_AGENT_HALF_EXTENTS)
+				_expect(not recovery_path.is_empty(), "Agent pathfinding must include the nearest recovery cell when starting from a blocked-for-agent cell.")
+				if not recovery_path.is_empty():
+					_expect(
+						recovery_path[0].is_equal_approx(nearest_global),
+						"Agent pathfinding must not skip the recovery start cell when the original start cell is blocked for the enemy body."
+					)
 
 	_finish(game)
 

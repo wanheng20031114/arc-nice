@@ -80,14 +80,16 @@ func get_global_path(
 
 	var normalized_extents := _normalize_agent_half_extents(agent_half_extents)
 	var path_grid := _get_or_create_agent_grid(normalized_extents)
-	var from_cell := _get_closest_walkable_cell(_global_to_map(from_global_position), path_grid)
+	var original_from_cell := _global_to_map(from_global_position)
+	var from_cell := _get_closest_walkable_cell(original_from_cell, path_grid)
 	var to_cell := _get_closest_walkable_cell(_global_to_map(to_global_position), path_grid)
 	if from_cell == Vector2i.MAX or to_cell == Vector2i.MAX:
 		return PackedVector2Array()
 
 	var cell_path := path_grid.get_id_path(from_cell, to_cell, allow_partial_path)
 	var global_path := PackedVector2Array()
-	for cell_index in range(1, cell_path.size()):
+	var first_path_index := 1 if from_cell == original_from_cell else 0
+	for cell_index in range(first_path_index, cell_path.size()):
 		var cell := cell_path[cell_index]
 		global_path.append(_map_to_global(cell))
 

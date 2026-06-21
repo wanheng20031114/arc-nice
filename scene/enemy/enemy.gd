@@ -454,7 +454,9 @@ func _get_axis_aligned_waypoint_direction(waypoint: Vector2, arrival_distance: f
 
 func _choose_unblocked_axis_direction(primary_direction: Vector2, secondary_direction: Vector2 = Vector2.ZERO) -> Vector2:
 	if primary_direction == Vector2.ZERO:
-		return secondary_direction
+		if secondary_direction != Vector2.ZERO and not test_move(global_transform, secondary_direction * PATH_DIRECTION_PROBE_DISTANCE):
+			return secondary_direction
+		return Vector2.ZERO
 	if not test_move(global_transform, primary_direction * PATH_DIRECTION_PROBE_DISTANCE):
 		return primary_direction
 	if secondary_direction != Vector2.ZERO and not test_move(global_transform, secondary_direction * PATH_DIRECTION_PROBE_DISTANCE):

@@ -3,7 +3,6 @@ class_name YuanshiInsect
 
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
-const DIRECT_CHASE_WORLD_COLLISION_MASK := 1
 const MAX_XIRANG_ORBS_PER_ENEMY := 4
 
 # 寻路路径刷新间隔。多只敌人共享 GridPathfinder，但各自按这个节奏更新目标路径。
@@ -57,11 +56,14 @@ func _get_navigation_move_direction(delta: float) -> Vector2:
 	path_refresh_time_left = maxf(path_refresh_time_left - delta, 0.0)
 
 	if _should_direct_chase_target():
-		_clear_navigation_path()
-		return global_position.direction_to(target_player.global_position)
+		var direct_move_direction := _get_direct_target_move_direction()
+		if direct_move_direction != Vector2.ZERO:
+			_clear_navigation_path()
+			return direct_move_direction
+		path_refresh_time_left = minf(path_refresh_time_left, _get_navigation_retry_interval())
 
 	if pathfinder == null or not pathfinder.get("is_built"):
-		return global_position.direction_to(target_player.global_position)
+		return _get_direct_target_move_direction()
 
 	if path_refresh_time_left <= 0.0 or current_path.is_empty():
 		_refresh_navigation_path()
@@ -72,7 +74,12 @@ func _get_navigation_move_direction(delta: float) -> Vector2:
 	while current_path_index < current_path.size():
 		var waypoint := current_path[current_path_index]
 		if global_position.distance_to(waypoint) > waypoint_arrival_distance:
-			return _get_axis_aligned_waypoint_direction(waypoint, waypoint_arrival_distance)
+			var waypoint_direction := _get_axis_aligned_waypoint_direction(waypoint, waypoint_arrival_distance)
+			if waypoint_direction != Vector2.ZERO:
+				return waypoint_direction
+			current_path_index += 1
+			path_refresh_time_left = minf(path_refresh_time_left, _get_navigation_retry_interval())
+			continue
 		current_path_index += 1
 
 	return _get_navigation_fallback_move_direction()
@@ -112,9 +119,26 @@ func _clear_navigation_path() -> void:
 
 func _get_navigation_fallback_move_direction() -> Vector2:
 	if _has_clear_world_line_to_target():
-		return global_position.direction_to(target_player.global_position)
+		var direct_direction := _get_direct_target_move_direction()
+		if direct_direction != Vector2.ZERO:
+			return direct_direction
 	path_refresh_time_left = minf(path_refresh_time_left, _get_navigation_retry_interval())
 	return Vector2.ZERO
+
+
+func _get_direct_target_move_direction() -> Vector2:
+	if not is_instance_valid(target_player):
+		return Vector2.ZERO
+	var direct_direction := global_position.direction_to(target_player.global_position)
+	if direct_direction == Vector2.ZERO:
+		return Vector2.ZERO
+	if not test_move(global_transform, direct_direction * PATH_DIRECTION_PROBE_DISTANCE):
+		return direct_direction
+	var x_direction := Vector2(signf(direct_direction.x), 0.0)
+	var y_direction := Vector2(0.0, signf(direct_direction.y))
+	if absf(direct_direction.x) >= absf(direct_direction.y):
+		return _choose_unblocked_axis_direction(x_direction, y_direction)
+	return _choose_unblocked_axis_direction(y_direction, x_direction)
 
 
 func _should_direct_chase_target() -> bool:
@@ -128,15 +152,10 @@ func _has_clear_world_line_to_target() -> bool:
 	if not is_instance_valid(target_player):
 		return false
 
-	var query := PhysicsRayQueryParameters2D.create(
-		global_position,
-		target_player.global_position,
-		DIRECT_CHASE_WORLD_COLLISION_MASK,
-		[get_rid()]
-	)
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	return get_world_2d().direct_space_state.intersect_ray(query).is_empty()
+	var motion := target_player.global_position - global_position
+	if motion == Vector2.ZERO:
+		return true
+	return not test_move(global_transform, motion)
 
 
 func _get_body_extent_radius() -> float:
