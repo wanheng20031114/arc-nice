@@ -50,16 +50,16 @@ font_color = Color(0.02, 0.13, 0.06, 1)
 
 [node name="MerchantDialogueBubble" type="Node2D"]
 visible = false
-position = Vector2(-66, -98)
+position = Vector2(-75, -106)
 scale = Vector2(0.5, 0.5)
 script = ExtResource("1_script")
 
 [node name="BubblePanel" type="PanelContainer" parent="."]
-custom_minimum_size = Vector2(264, 88)
+custom_minimum_size = Vector2(300, 104)
 offset_left = 0.0
 offset_top = 34.0
-offset_right = 264.0
-offset_bottom = 122.0
+offset_right = 300.0
+offset_bottom = 138.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_bubble")
 
@@ -75,13 +75,13 @@ layout_mode = 2
 theme_override_constants/separation = 4
 
 [node name="Text" type="RichTextLabel" parent="BubblePanel/Margin/Content"]
-custom_minimum_size = Vector2(232, 35)
+custom_minimum_size = Vector2(268, 50)
 layout_mode = 2
 bbcode_enabled = true
 text = "你好，我是终末地的庄方宜"
 fit_content = true
 scroll_active = false
-autowrap_mode = 2
+autowrap_mode = 1
 visible_characters = -1
 theme_override_fonts/normal_font = ExtResource("2_font")
 theme_override_font_sizes/normal_font_size = 17

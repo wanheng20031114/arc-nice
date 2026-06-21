@@ -159,6 +159,27 @@ func show_damage_number(amount: int, impact_direction: Vector2 = Vector2.ZERO) -
 func play_multiplayer_damage_feedback(impact_direction: Vector2 = Vector2.ZERO) -> void:
 	_play_hit_particles(impact_direction)
 
+
+func play_multiplayer_death_sequence() -> void:
+	if is_dead:
+		return
+
+	is_dead = true
+	velocity = Vector2.ZERO
+	touched_player = null
+	hurt_blink_time_left = 0.0
+	proxy_action_animation_name_in_use = &""
+	proxy_action_restore_token += 1
+	_set_hurt_blink_enabled(false)
+	_set_collision_shapes_disabled(body_collision_shapes, true)
+	_set_collision_shapes_disabled(touch_damage_shapes, true)
+	if touch_damage_area != null:
+		touch_damage_area.set_deferred("monitoring", false)
+		touch_damage_area.set_deferred("monitorable", false)
+	if death_audio != null:
+		death_audio.play()
+	_start_death_sequence()
+
 func add_physical_defense_modifier(source_id: int, amount: int) -> void:
 	if source_id == 0:
 		return

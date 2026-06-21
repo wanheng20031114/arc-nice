@@ -1,6 +1,7 @@
 extends YuanshiInsect
 class_name YuanshiInsectExploder
 
+const EXPLOSION_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const EXPLOSION_QUERY_MAX_RESULTS := 16
 
 @onready var explosion_area: Area2D = $ExplosionArea
@@ -43,8 +44,9 @@ func _start_explosion_sequence() -> void:
 		return
 
 	animated_sprite.scale = Vector2.ONE * maxf(config.explosion_animation_scale, 0.1)
-	explosion_audio.play()
-	_try_apply_explosion_damage()
+	EXPLOSION_AUDIO_LIMITER.play(explosion_audio)
+	if not is_multiplayer_proxy:
+		_try_apply_explosion_damage()
 
 	if _play_death_sequence_animation(config.explosion_animation_name, DeathSequenceStage.EXPLOSION):
 		return

@@ -5,7 +5,7 @@ const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 
 ## 客户端实体插值器。
 ## 缓存最近若干帧的快照，在渲染时使用线性插值平滑过渡。
-## 渲染延迟 = INTERPOLATION_DELAY_FACTOR × snapshot_interval。
+## 渲染延迟 = delay_factor × snapshot_interval。
 
 ## 单帧缓存
 class FrameSnapshot:
@@ -28,9 +28,14 @@ var _last_position: Vector2 = Vector2.ZERO
 var _has_position: bool = false
 
 
-func _init(snapshot_interval: float = 0.05) -> void:
+func _init(snapshot_interval: float = 0.05, delay_factor: float = -1.0) -> void:
 	# 渲染延迟 = delay_factor × snapshot_interval
-	_render_delay = _NetConstants.INTERPOLATION_DELAY_FACTOR * snapshot_interval
+	var resolved_delay_factor := (
+		_NetConstants.INTERPOLATION_DELAY_FACTOR
+		if delay_factor < 0.0
+		else delay_factor
+	)
+	_render_delay = resolved_delay_factor * snapshot_interval
 
 
 ## 添加一帧快照到缓存

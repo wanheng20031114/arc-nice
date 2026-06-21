@@ -14,6 +14,7 @@ const INPUT_BUTTON_SKILL1 := 1
 const GAME_RUNTIME_HOST_AUTHORITY := 1
 const GAME_RUNTIME_CLIENT_VIEW := 2
 const STATE_DISCONNECTED := 0
+const STATE_IN_GAME := 5
 const HOST_TIME_OFFSET_SMOOTH_WEIGHT := 0.08
 const INPUT_CHANGE_EPSILON := 0.001
 const PLAYER_STATE_SNAP_DISTANCE := 128.0
@@ -60,6 +61,7 @@ var _input_frames_since_last_send: int = _NetConstants.INPUT_KEEPALIVE_INTERVAL_
 var _last_player_state_sequences: Dictionary = {}
 var _accepted_player_state_positions: Dictionary = {}
 var _accepted_player_state_times: Dictionary = {}
+var _host_latest_client_player_snapshot_states: Dictionary = {}
 var _next_projectile_id: int = 1
 var _known_projectiles: Dictionary = {}
 var _projectile_records: Dictionary = {}
@@ -78,6 +80,7 @@ var _xirang_revision: int = 0
 var _recent_event_prune_time_left: float = RECENT_EVENT_PRUNE_INTERVAL_SECONDS
 var _snapshot_packet_warn_time_left: float = 0.0
 var _host_startup_snapshot_grace_time_left: float = 0.0
+var _client_host_game_ready: bool = false
 var _max_player_snapshot_packet_bytes: int = 0
 var _max_enemy_snapshot_packet_bytes: int = 0
 var _large_player_snapshot_packet_count: int = 0
@@ -94,15 +97,16 @@ func _ready() -> void:
 	if net_manager.is_host():
 		_setup_game(GAME_RUNTIME_HOST_AUTHORITY)
 		_host_startup_snapshot_grace_time_left = HOST_STARTUP_SNAPSHOT_GRACE_SECONDS
+		_client_host_game_ready = true
 	elif net_manager.is_client():
 		_setup_game(GAME_RUNTIME_CLIENT_VIEW)
+		_client_host_game_ready = bool(net_manager.get("host_game_ready"))
 	else:
 		push_warning("MpGame 启动时没有有效的多人连接，返回大厅。")
 		call_deferred("_return_to_lobby")
 		return
-	net_manager.mark_in_game()
-	if net_manager.is_host() and net_manager.has_method("host_broadcast_start_game"):
-		net_manager.host_broadcast_start_game()
+	if net_manager.is_host() or _client_host_game_ready:
+		net_manager.mark_in_game()
 
 
 func _exit_tree() -> void:
@@ -167,6 +171,7 @@ func _setup_game(mode: int) -> void:
 
 	if net_manager.is_host():
 		game.multiplayer_enemy_spawned.connect(_on_host_enemy_spawned)
+		game.multiplayer_enemy_defeated.connect(_on_host_enemy_defeated)
 		game.multiplayer_enemy_removed.connect(_on_host_enemy_removed)
 		game.multiplayer_pickup_spawned.connect(_on_host_pickup_spawned)
 		game.multiplayer_pickup_collected.connect(_on_host_pickup_collected)
@@ -198,6 +203,7 @@ func _host_broadcast_player_snapshots() -> void:
 	var states: Array[SnapshotManager.PlayerState] = game.collect_player_snapshot_states()
 	if states.is_empty():
 		return
+	_apply_latest_client_player_snapshot_states(states)
 	_host_player_snapshot_sequence += 1
 	for state in states:
 		state.sequence = _host_player_snapshot_sequence
@@ -206,6 +212,24 @@ func _host_broadcast_player_snapshots() -> void:
 	var snapshot_time := _get_net_time()
 	for peer_id in _get_connected_client_peer_ids():
 		_rpc_receive_player_snapshot.rpc_id(peer_id, snapshot_time, data)
+
+
+func _apply_latest_client_player_snapshot_states(states: Array[SnapshotManager.PlayerState]) -> void:
+	if _host_latest_client_player_snapshot_states.is_empty():
+		return
+	for state in states:
+		if state == null or state.is_dead:
+			continue
+		var latest_variant: Variant = _host_latest_client_player_snapshot_states.get(state.peer_id)
+		if latest_variant == null:
+			continue
+		var latest := latest_variant as Dictionary
+		if latest.is_empty():
+			continue
+		state.position = latest["position"] as Vector2
+		state.velocity = latest["velocity"] as Vector2
+		state.facing = int(latest["facing"])
+		state.anim_state = int(latest["anim_state"])
 
 
 func _host_broadcast_enemy_snapshots() -> void:
@@ -275,7 +299,23 @@ func get_snapshot_packet_metrics() -> Dictionary:
 	}
 
 
+func _create_player_interpolator() -> NetInterpolator:
+	return NetInterpolator.new(
+		1.0 / float(_NetConstants.PLAYER_SNAPSHOT_HZ),
+		_NetConstants.PLAYER_INTERPOLATION_DELAY_FACTOR
+	)
+
+
+func _create_enemy_interpolator() -> NetInterpolator:
+	return NetInterpolator.new(
+		1.0 / float(_NetConstants.ENEMY_SNAPSHOT_HZ),
+		_NetConstants.ENEMY_INTERPOLATION_DELAY_FACTOR
+	)
+
+
 func _client_physics_tick(frame: int) -> void:
+	if not _client_host_game_ready:
+		return
 	_input_frames_since_last_send += 1
 	var buttons := 0
 	if frame % _NetConstants.INPUT_SEND_INTERVAL_FRAMES == 0 or buttons != 0:
@@ -392,9 +432,7 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 		if net_manager.is_client() and player_state.peer_id == _get_local_peer_id():
 			continue
 		if not player_interpolators.has(player_state.peer_id):
-			player_interpolators[player_state.peer_id] = NetInterpolator.new(
-				1.0 / float(_NetConstants.PLAYER_SNAPSHOT_HZ)
-			)
+			player_interpolators[player_state.peer_id] = _create_player_interpolator()
 		var interp := player_interpolators[player_state.peer_id] as NetInterpolator
 		interp.push_snapshot(
 			snapshot_time,
@@ -463,9 +501,7 @@ func _rpc_receive_enemy_snapshot(host_timestamp: float, data: PackedByteArray) -
 			continue
 		seen_enemy_ids[enemy_state.net_id] = true
 		if not enemy_interpolators.has(enemy_state.net_id):
-			enemy_interpolators[enemy_state.net_id] = NetInterpolator.new(
-				1.0 / float(_NetConstants.ENEMY_SNAPSHOT_HZ)
-			)
+			enemy_interpolators[enemy_state.net_id] = _create_enemy_interpolator()
 		var interp := enemy_interpolators[enemy_state.net_id] as NetInterpolator
 		interp.push_snapshot(
 			snapshot_time,
@@ -539,6 +575,13 @@ func _rpc_client_player_state(
 		player_node.current_form_mode,
 		player_node.current_shot_pattern
 	)
+	_remember_latest_client_player_snapshot_state(
+		sender_id,
+		reported_position,
+		reported_velocity,
+		player_node.get_multiplayer_facing_id(),
+		player_node.get_multiplayer_anim_state()
+	)
 	_push_player_interpolator_state(
 		sender_id,
 		_get_net_time(),
@@ -578,9 +621,7 @@ func _push_player_interpolator_state(
 	anim_state: int
 ) -> void:
 	if not player_interpolators.has(peer_id):
-		player_interpolators[peer_id] = NetInterpolator.new(
-			1.0 / float(_NetConstants.PLAYER_SNAPSHOT_HZ)
-		)
+		player_interpolators[peer_id] = _create_player_interpolator()
 	var interp: NetInterpolator = player_interpolators[peer_id] as NetInterpolator
 	interp.push_snapshot(
 		timestamp,
@@ -591,6 +632,24 @@ func _push_player_interpolator_state(
 		0,
 		false
 	)
+
+
+func _remember_latest_client_player_snapshot_state(
+	peer_id: int,
+	player_position: Vector2,
+	player_velocity: Vector2,
+	facing_id: int,
+	anim_state: int
+) -> void:
+	if not net_manager.is_host() or peer_id <= 0:
+		return
+	_host_latest_client_player_snapshot_states[peer_id] = {
+		"position": player_position,
+		"velocity": player_velocity,
+		"facing": facing_id,
+		"anim_state": anim_state,
+	}
+
 
 func _accept_client_player_state(
 	peer_id: int,
@@ -1455,6 +1514,7 @@ func _next_player_health_revision(peer_id: int) -> int:
 func _schedule_player_revive(peer_id: int) -> void:
 	if peer_id <= 0 or _dead_player_revive_times.has(peer_id):
 		return
+	_host_latest_client_player_snapshot_states.erase(peer_id)
 	_dead_player_revive_times[peer_id] = _get_net_time() + PLAYER_REVIVE_DELAY_SECONDS
 	_dead_player_revive_last_seconds[peer_id] = -1
 	net_player_revive_countdown.rpc(peer_id, int(ceil(PLAYER_REVIVE_DELAY_SECONDS)))
@@ -1508,6 +1568,14 @@ func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
 		player_node.max_health,
 		PLAYER_REVIVE_INVINCIBILITY_SECONDS
 	)
+	if peer_id != _get_host_peer_id():
+		_remember_latest_client_player_snapshot_state(
+			peer_id,
+			revive_position,
+			Vector2.ZERO,
+			player_node.get_multiplayer_facing_id(),
+			player_node.get_multiplayer_anim_state()
+		)
 	net_player_state_corrected.rpc_id(peer_id, revive_position, Vector2.ZERO)
 	net_player_revived.rpc(
 		peer_id,
@@ -1580,6 +1648,12 @@ func _on_host_enemy_spawned(
 	if enemy_config == null or not is_inside_tree() or not net_manager.is_host():
 		return
 	net_enemy_spawned.rpc(net_id, enemy_config.resource_path, spawn_position.x, spawn_position.y, _get_net_time())
+
+
+func _on_host_enemy_defeated(net_id: int, defeat_position: Vector2) -> void:
+	if not is_inside_tree() or not net_manager.is_host() or net_id <= 0:
+		return
+	net_enemy_defeated.rpc(net_id, defeat_position)
 
 
 func _on_host_enemy_removed(net_id: int) -> void:
@@ -1682,6 +1756,18 @@ func net_enemy_spawned(
 	enemy.set_meta("net_id", net_id)
 	enemy.tree_exited.connect(_on_client_enemy_tree_exited.bind(net_id, enemy))
 	_net_enemies[net_id] = enemy
+	game.play_remote_enemy_spawn_effect(spawn_position)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_enemy_defeated(net_id: int, defeat_position: Vector2) -> void:
+	if game == null or net_manager.is_host():
+		return
+	var enemy: Enemy = _get_valid_client_enemy_for_net_id(net_id)
+	if enemy == null or not is_instance_valid(enemy):
+		return
+	enemy.global_position = defeat_position
+	_remove_client_enemy(net_id, true)
 
 
 @rpc("authority", "call_remote", "reliable", 4)
@@ -1744,7 +1830,10 @@ func _remove_client_enemy(net_id: int, clear_interpolator: bool) -> void:
 	if enemy_variant != null and is_instance_valid(enemy_variant):
 		var enemy: Enemy = enemy_variant as Enemy
 		if enemy != null:
-			enemy.queue_free()
+			if clear_interpolator:
+				enemy.play_multiplayer_death_sequence()
+			else:
+				enemy.queue_free()
 	_net_enemies.erase(net_id)
 	_enemy_spawn_snapshot_times.erase(net_id)
 	if clear_interpolator:
@@ -2017,6 +2106,8 @@ func _map_host_timestamp_to_client_time(host_timestamp: float) -> float:
 func _on_connection_state_changed(new_state: int) -> void:
 	if new_state == STATE_DISCONNECTED:
 		_return_to_lobby()
+	elif new_state == STATE_IN_GAME and net_manager.is_client():
+		_client_host_game_ready = true
 
 
 func _on_net_player_left(peer_id: int) -> void:
@@ -2032,6 +2123,7 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_last_player_state_sequences.erase(peer_id)
 	_accepted_player_state_positions.erase(peer_id)
 	_accepted_player_state_times.erase(peer_id)
+	_host_latest_client_player_snapshot_states.erase(peer_id)
 	_player_health_revisions.erase(peer_id)
 	_dead_player_revive_times.erase(peer_id)
 	_dead_player_revive_last_seconds.erase(peer_id)

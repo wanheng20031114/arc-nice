@@ -27,6 +27,7 @@ var local_player_name: String = ""
 var lan_port: int = NetConstants.ENET_PORT_DEFAULT
 var connected_players: Dictionary = {}
 var host_peer_id: int = 1
+var host_game_ready: bool = false
 
 var _physics_frame_count: int = 0
 var _enet_peer: ENetMultiplayerPeer = null
@@ -138,6 +139,7 @@ func disconnect_from_game() -> void:
 	conn_mode = ConnMode.DIRECT
 	connected_players.clear()
 	host_peer_id = 1
+	host_game_ready = false
 	_physics_frame_count = 0
 	_set_connection_state(ConnectionState.DISCONNECTED)
 	player_list_changed.emit()
@@ -148,19 +150,25 @@ func disconnect_from_game() -> void:
 func host_start_game() -> void:
 	if not is_host():
 		return
+	host_game_ready = false
 	_set_connection_state(ConnectionState.LOADING_GAME)
+	_rpc_start_game.rpc()
 
 
 func host_broadcast_start_game() -> void:
 	if not is_host():
 		return
-	if connection_state < ConnectionState.LOADING_GAME:
+	if connection_state != ConnectionState.LOADING_GAME:
 		return
 	_rpc_start_game.rpc()
 
 
 func mark_in_game() -> void:
 	_set_connection_state(ConnectionState.IN_GAME)
+	if not is_host():
+		return
+	host_game_ready = true
+	_rpc_host_game_ready.rpc()
 
 
 func get_player_name_by_id(peer_id: int) -> String:
@@ -325,7 +333,17 @@ func _rpc_sync_player_list(player_list: Array, new_host_peer_id: int = 0) -> voi
 func _rpc_start_game() -> void:
 	if multiplayer.get_remote_sender_id() != get_host_peer_id():
 		return
+	host_game_ready = false
 	_set_connection_state(ConnectionState.LOADING_GAME)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _rpc_host_game_ready() -> void:
+	if multiplayer.get_remote_sender_id() != get_host_peer_id():
+		return
+	host_game_ready = true
+	if connection_state >= ConnectionState.LOADING_GAME:
+		_set_connection_state(ConnectionState.IN_GAME)
 
 
 func _build_player_list_array() -> Array:

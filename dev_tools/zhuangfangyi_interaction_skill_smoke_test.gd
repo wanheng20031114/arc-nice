@@ -3,6 +3,8 @@ extends SceneTree
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const MERCHANT_SCENE := preload("res://scene/zhuangfangyi_merchant.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
+const EXPLOSION_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
+const EXPLOSION_STREAM := preload("res://resources/audio/cowboy_explosion.wav")
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -25,6 +27,7 @@ func _run() -> void:
 	await _test_skill_charge_and_bomb_direction()
 	await _test_skill_charge_bar_hides_on_singleplayer_death()
 	await _test_cheat_xirang_action()
+	await _test_explosion_audio_limiter()
 	await _test_bomb_explosion_damage()
 
 	test_root.queue_free()
@@ -86,6 +89,14 @@ func _test_dialogue_purchase() -> void:
 	var bubble := merchant.get_node("MerchantDialogueBubble") as MerchantDialogueBubble
 	_expect(bubble.visible, "Dialogue bubble must appear when the player enters interaction range.")
 	_expect(bubble.text_label.text == "你好，我是终末地的庄方宜", "Dialogue did not start at the first line.")
+	_expect(
+		bubble.text_label.autowrap_mode == TextServer.AUTOWRAP_ARBITRARY,
+		"Dialogue text must wrap Chinese and BBCode icon lines inside the bubble."
+	)
+	_expect(
+		bubble.text_label.custom_minimum_size.x >= 268.0,
+		"Dialogue text area must be wide enough for merchant upgrade lines."
+	)
 
 	var event := InputEventAction.new()
 	event.action = "interact"
@@ -270,6 +281,33 @@ func _test_skill1_upgrade_costs_and_charge_duration() -> void:
 	)
 
 	player.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_explosion_audio_limiter() -> void:
+	var audio_root := Node2D.new()
+	test_root.add_child(audio_root)
+	var players: Array[AudioStreamPlayer2D] = []
+	for _index in range(EXPLOSION_AUDIO_LIMITER.MAX_SIMULTANEOUS_EXPLOSIONS + 1):
+		var audio_player := AudioStreamPlayer2D.new()
+		audio_player.stream = EXPLOSION_STREAM
+		audio_player.volume_db = -5.0
+		audio_root.add_child(audio_player)
+		players.append(audio_player)
+		EXPLOSION_AUDIO_LIMITER.play(audio_player)
+
+	_expect(players[0].playing, "First explosion audio must play.")
+	_expect(
+		players[1].volume_db < players[0].volume_db,
+		"Stacked explosion audio must be attenuated."
+	)
+	_expect(
+		not players[players.size() - 1].playing,
+		"Explosion audio above the simultaneous cap must be dropped."
+	)
+
+	audio_root.queue_free()
 	await process_frame
 	await physics_frame
 

@@ -45,7 +45,9 @@ const ENEMY_SNAPSHOT_INTERVAL_FRAMES := 2
 
 ## 插值
 const INTERPOLATION_BUFFER_SIZE := 6
-const INTERPOLATION_DELAY_FACTOR := 2.5   # 渲染延迟 = delay_factor × snapshot_interval
+const INTERPOLATION_DELAY_FACTOR := 2.5   # 默认渲染延迟 = delay_factor × snapshot_interval
+const PLAYER_INTERPOLATION_DELAY_FACTOR := 1.5
+const ENEMY_INTERPOLATION_DELAY_FACTOR := 2.5
 const MAX_EXTRAPOLATION_SECONDS := 0.12
 
 ## Relay 空闲超时（秒）

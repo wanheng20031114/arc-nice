@@ -17,6 +17,7 @@ enum LobbyView {
 @onready var username_panel: PanelContainer = $LobbyCenter/UsernamePanel
 @onready var username_input: LineEdit = $LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/UsernameInput
 @onready var username_confirm_btn: Button = $LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/ConfirmUsernameButton
+@onready var username_back_btn: Button = $LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/BackToMenuButton
 @onready var username_error_label: Label = $LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/UsernameErrorLabel
 @onready var room_browser_panel: PanelContainer = $LobbyCenter/RoomBrowserPanel
 @onready var room_wait_panel: PanelContainer = $LobbyCenter/RoomWaitPanel
@@ -43,6 +44,7 @@ func _ready() -> void:
 	_build_lan_direct_panel()
 	username_input.max_length = _NetConstants.MAX_PLAYER_NAME_LENGTH
 	username_confirm_btn.pressed.connect(_on_confirm_username)
+	username_back_btn.pressed.connect(_on_back_to_main_menu)
 	username_input.text_submitted.connect(_on_username_text_submitted)
 	host_button.pressed.connect(_on_host_lan_pressed)
 	join_button.pressed.connect(_on_join_lan_pressed)

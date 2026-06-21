@@ -121,7 +121,7 @@ anchor_bottom = 1.0
 ; ═══════════════════════════════════════════
 
 [node name="UsernamePanel" type="PanelContainer" parent="LobbyCenter"]
-custom_minimum_size = Vector2(380, 240)
+custom_minimum_size = Vector2(380, 300)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
@@ -177,6 +177,18 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
 theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
 text = "确认"
+
+[node name="BackToMenuButton" type="Button" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(280, 36)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
+text = "返回菜单"
 
 ; ═══════════════════════════════════════════
 ; 房间浏览面板

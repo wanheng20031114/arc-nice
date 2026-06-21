@@ -5,6 +5,7 @@ const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const GAME_SCENE := preload("res://scene/game.tscn")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
+const BOMBER_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_bomber.tres")
 const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres")
 const RPG_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
 const PICKUP_SPEED_CONFIG := preload("res://resources/config/pickups/pickup_speed.tres")
@@ -69,6 +70,13 @@ func _test_scene_instantiation() -> void:
 		_stop_audio_players(game)
 		game.free()
 
+	var player := PLAYER_SCENE.instantiate() as Player
+	_expect(player != null, "Player scene must instantiate for collision layer contract.")
+	if player != null:
+		_expect((player.collision_layer & 2) != 0, "Player body must live on the Player collision layer.")
+		_expect((player.collision_mask & 2) == 0, "Player body must not collide with other Player bodies.")
+		player.free()
+
 	var net_manager := root.get_node_or_null("NetManager")
 	_expect(net_manager != null, "NetManager autoload must be NetManagerStore.")
 	if net_manager != null:
@@ -89,6 +97,12 @@ func _test_net_manager_lan_lifecycle() -> void:
 	_expect(err == OK, "NetManager must create a LAN host on test port.")
 	_expect(net_manager.is_host(), "NetManager must enter host role.")
 	_expect(net_manager.connected_players.has(1), "Host peer must be registered.")
+	net_manager.host_start_game()
+	_expect(int(net_manager.connection_state) == 4, "Host start must enter loading state.")
+	_expect(not bool(net_manager.host_game_ready), "Host game ready must stay false until MpGame is ready.")
+	net_manager.mark_in_game()
+	_expect(int(net_manager.connection_state) == 5, "Host mark_in_game must enter in-game state.")
+	_expect(bool(net_manager.host_game_ready), "Host mark_in_game must publish host ready state.")
 	net_manager.disconnect_from_game()
 	_expect(not net_manager.is_multiplayer_active(), "NetManager must cleanly disconnect after LAN host smoke.")
 
@@ -712,22 +726,35 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 	if net_manager != null:
 		client_mp_game.set("net_manager", net_manager)
 
-	var client_enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
-	_expect(client_enemy != null, "Client enemy scene must instantiate for enemy removed test.")
+	var client_enemy := BOMBER_CONFIG.enemy_scene.instantiate() as Enemy
+	_expect(client_enemy != null, "Client bomber scene must instantiate for enemy removed test.")
 	if client_enemy != null:
 		client_game.enemy_container.add_child(client_enemy)
+		client_enemy.setup(BOMBER_CONFIG, client_game.player, client_game.grid_pathfinder)
+		client_enemy.configure_multiplayer_proxy()
 		client_enemy.set_meta("net_id", 77)
 		var client_net_enemies := client_mp_game.get("_net_enemies") as Dictionary
 		var spawn_times := client_mp_game.get("_enemy_spawn_snapshot_times") as Dictionary
 		client_net_enemies[77] = client_enemy
 		spawn_times[77] = 0.0
 		client_mp_game.enemy_interpolators[77] = NetInterpolator.new(0.1)
-		client_mp_game.call("net_enemy_removed", 77)
+		client_mp_game.call("net_enemy_defeated", 77, Vector2(44.0, 55.0))
 		await process_frame
-		_expect(not client_net_enemies.has(77), "Client enemy removed event must erase the enemy index.")
-		_expect(not spawn_times.has(77), "Client enemy removed event must erase spawn timing.")
-		_expect(not client_mp_game.enemy_interpolators.has(77), "Client enemy removed event must clear interpolation state.")
-		_expect(not is_instance_valid(client_enemy), "Client enemy removed event must free the enemy node.")
+		_expect(not client_net_enemies.has(77), "Client enemy defeated event must erase the enemy index.")
+		_expect(not spawn_times.has(77), "Client enemy defeated event must erase spawn timing.")
+		_expect(not client_mp_game.enemy_interpolators.has(77), "Client enemy defeated event must clear interpolation state.")
+		_expect(is_instance_valid(client_enemy), "Client enemy defeated event must keep the node long enough to play death visuals.")
+		_expect(client_enemy.global_position == Vector2(44.0, 55.0), "Client enemy defeated event must apply the authoritative death position.")
+		_expect(client_enemy.is_dead, "Client enemy defeated event must start the proxy death sequence.")
+		_expect(
+			client_enemy.death_sequence_stage == Enemy.DeathSequenceStage.DEATH,
+			"Client enemy defeated event must start with the death animation stage."
+		)
+		client_enemy.call("_finish_after_death_animation")
+		_expect(
+			client_enemy.death_sequence_stage == Enemy.DeathSequenceStage.EXPLOSION,
+			"Client bomber death visuals must continue into the explosion stage."
+		)
 
 	client_mp_game.call(
 		"net_pickup_spawned",

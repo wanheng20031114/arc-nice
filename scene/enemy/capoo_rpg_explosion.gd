@@ -1,6 +1,8 @@
 extends Node2D
 class_name CapooRPGExplosion
 
+const EXPLOSION_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
+
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var explosion_audio: AudioStreamPlayer2D = $ExplosionAudio
 
@@ -8,4 +10,4 @@ class_name CapooRPGExplosion
 func _ready() -> void:
 	animated_sprite.animation_finished.connect(queue_free)
 	animated_sprite.play(&"explode")
-	explosion_audio.play()
+	EXPLOSION_AUDIO_LIMITER.play(explosion_audio)

@@ -13,6 +13,7 @@ const PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS := 4
 const PURCHASE_RESULT_SKILL1_UPGRADE_MAXED := 5
 
 signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
+signal multiplayer_enemy_defeated(net_id: int, defeat_position: Vector2)
 signal multiplayer_enemy_removed(net_id: int)
 signal multiplayer_pickup_spawned(net_id: int, pickup_config: PickupConfig, spawn_position: Vector2)
 signal multiplayer_pickup_collected(
@@ -570,12 +571,24 @@ func _on_wave_enemy_defeated(enemy: Enemy) -> void:
 		return
 
 	current_wave_defeated = mini(current_wave_defeated + 1, current_wave_total)
+	_emit_multiplayer_enemy_defeated(enemy)
 	wave_hud.show_wave_progress(
 		current_wave_index + 1,
 		current_wave_defeated,
 		current_wave_total
 	)
 	_check_wave_completion()
+
+
+func _emit_multiplayer_enemy_defeated(enemy: Enemy) -> void:
+	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
+		return
+	if enemy == null:
+		return
+	var enemy_net_id := int(multiplayer_enemy_ids_by_instance.get(enemy.get_instance_id(), 0))
+	if enemy_net_id <= 0:
+		return
+	multiplayer_enemy_defeated.emit(enemy_net_id, enemy.global_position)
 
 
 func _on_wave_enemy_tree_exited(enemy_id: int) -> void:
@@ -1003,6 +1016,10 @@ func _spawn_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
 		return
 	add_child(effect)
 	effect.global_position = spawn_global_position
+
+
+func play_remote_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
+	_spawn_enemy_spawn_effect(spawn_global_position)
 
 
 func _play_countdown_tick() -> void:
