@@ -1,26 +1,24 @@
-[gd_resource type="Resource" script_class="CapooKnightConfig" format=3]
+[gd_resource type="Resource" script_class="CapooKnightConfig" format=3 uid="uid://vfkjlbk30xa2"]
 
 [ext_resource type="Script" uid="uid://bhv1077xeatxy" path="res://resources/config/enemies/capoo_knight_config.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://scene/enemy/capoo_knight_elite.tscn" id="2_scene"]
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="2_w76to"]
+[ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="3_15shx"]
+[ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="4_kwmrv"]
 [ext_resource type="PackedScene" path="res://scene/enemy/capoo_knight_slash_effect.tscn" id="4_slash"]
+[ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="5_k2ch7"]
+[ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="6_05xvq"]
+[ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="7_y4pg1"]
 
 [resource]
 script = ExtResource("1_script")
-attack_range = 48.0
-attack_windup = 0.35
 attack_interval = 2.0
-slash_outer_radius = 48.0
-slash_inner_radius = 6.5
-slash_angle_degrees = 60.0
-slash_damage_delay = 0.08
-slash_duration = 0.32
 slash_effect_scene = ExtResource("4_slash")
 display_name = "精英骑士猫猫虫"
 enemy_scene = ExtResource("2_scene")
 max_health = 350
 attack_damage = 28
 physical_defense = 15
-magic_defense = 0
 move_speed = 34.0
 xirang_drop_amount = 20
 pickup_drop_chance = 0.2

@@ -90,7 +90,6 @@ radius = 7.5
 
 [node name="Player" type="CharacterBody2D" unique_id=1640433019]
 collision_layer = 2
-collision_mask = 3
 script = ExtResource("1_onrkg")
 
 [node name="BodySprite" type="AnimatedSprite2D" parent="." unique_id=2014942495]
@@ -118,7 +117,7 @@ offset_bottom = -10.0
 offset_top = 10.0
 offset_bottom = 12.0
 
-[node name="NameLabel" type="Label" parent="."]
+[node name="NameLabel" type="Label" parent="." unique_id=1426447593]
 visible = false
 z_index = 6
 offset_left = -60.0
@@ -130,17 +129,16 @@ text = "Player"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="NameplateLayer" type="CanvasLayer" parent="."]
-visible = false
+[node name="NameplateLayer" type="CanvasLayer" parent="." unique_id=866796975]
 layer = 5
+visible = false
 
-[node name="NameplateLabel" type="Label" parent="NameplateLayer"]
+[node name="NameplateLabel" type="Label" parent="NameplateLayer" unique_id=1192738385]
 custom_minimum_size = Vector2(160, 24)
 offset_right = 160.0
 offset_bottom = 24.0
-mouse_filter = 2
-label_settings = ExtResource("13_name_settings")
 text = "Player"
+label_settings = ExtResource("13_name_settings")
 horizontal_alignment = 1
 vertical_alignment = 1
 

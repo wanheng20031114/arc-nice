@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="CapooKnightConfig" format=3 uid="uid://b361vcg4kkw13"]
 
 [ext_resource type="Script" uid="uid://bhv1077xeatxy" path="res://resources/config/enemies/capoo_knight_config.gd" id="1_script"]
-[ext_resource type="PackedScene" path="res://scene/enemy/capoo_knight.tscn" id="2_scene"]
+[ext_resource type="PackedScene" uid="uid://k61tbnsc10du" path="res://scene/enemy/capoo_knight.tscn" id="2_scene"]
 [ext_resource type="PackedScene" path="res://scene/enemy/capoo_knight_slash_effect.tscn" id="4_slash"]
 [ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="5_pickup_script"]
 [ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="6_speed"]
