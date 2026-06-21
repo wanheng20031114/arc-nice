@@ -113,6 +113,15 @@ func try_get_global_path(
 	return get_global_path(from_global_position, to_global_position, agent_half_extents)
 
 
+func prewarm_agent_grid(agent_half_extents: Vector2) -> void:
+	if not is_built:
+		return
+	var normalized_extents := _normalize_agent_half_extents(agent_half_extents)
+	if normalized_extents == Vector2.ZERO:
+		return
+	_get_or_create_agent_grid(normalized_extents)
+
+
 func _refresh_path_query_budget_frame() -> void:
 	var current_frame := Engine.get_physics_frames()
 	if current_frame == path_query_budget_frame:

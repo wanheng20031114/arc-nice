@@ -23,6 +23,10 @@ func _run() -> void:
 	if pathfinder == null or not pathfinder.is_built:
 		_finish(game)
 		return
+	_expect(
+		pathfinder.agent_grid_cache.size() > 0,
+		"Game startup must prewarm enemy agent clearance grids."
+	)
 
 	var adjacent_cell := _find_walkable_cell_adjacent_to_blocked(pathfinder)
 	_expect(adjacent_cell != Vector2i.MAX, "Map must contain a walkable cell adjacent to a blocked tile.")

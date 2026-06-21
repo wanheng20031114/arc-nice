@@ -80,6 +80,7 @@ enum WaveState {
 var random_generator := RandomNumberGenerator.new()
 var enemy_spawn_points: Array[Marker2D] = []
 var pending_enemy_configs: Array[EnemyConfig] = []
+var pending_enemy_config_index: int = 0
 var active_wave_enemy_ids: Dictionary = {}
 
 var wave_state: WaveState = WaveState.PRE_WAVE
@@ -108,6 +109,8 @@ func _ready() -> void:
 		run_state.ensure_run_started()
 	_collect_enemy_spawn_points()
 	_configure_timers()
+	if runtime_mode != RuntimeMode.CLIENT_VIEW:
+		_prewarm_enemy_navigation_grids()
 	if runtime_mode != RuntimeMode.SINGLEPLAYER:
 		run_state.ensure_run_started()
 		run_state.set_active_multiplayer_peer(multiplayer_local_peer_id)
@@ -269,6 +272,56 @@ func _configure_timers() -> void:
 		state_timer.timeout.connect(_on_state_timer_timeout)
 
 
+func _prewarm_enemy_navigation_grids() -> void:
+	if grid_pathfinder == null:
+		return
+	if not grid_pathfinder.has_method("prewarm_agent_grid"):
+		return
+	if not bool(grid_pathfinder.get("is_built")):
+		return
+
+	var seen_scene_keys: Dictionary = {}
+	var seen_extent_keys: Dictionary = {}
+	for wave_config in waves:
+		if wave_config == null:
+			continue
+		for entry in wave_config.enemy_entries:
+			if entry == null or entry.enemy_config == null:
+				continue
+			var enemy_config := entry.enemy_config
+			if enemy_config.enemy_scene == null:
+				continue
+			var scene_key := enemy_config.enemy_scene.resource_path
+			if scene_key.is_empty():
+				scene_key = enemy_config.resource_path
+			if seen_scene_keys.has(scene_key):
+				continue
+			seen_scene_keys[scene_key] = true
+
+			var body_half_extents := _get_enemy_scene_body_half_extents(enemy_config)
+			if body_half_extents == Vector2.ZERO:
+				continue
+			var extent_key := "%d:%d" % [ceili(body_half_extents.x), ceili(body_half_extents.y)]
+			if seen_extent_keys.has(extent_key):
+				continue
+			seen_extent_keys[extent_key] = true
+			grid_pathfinder.call("prewarm_agent_grid", body_half_extents)
+
+
+func _get_enemy_scene_body_half_extents(enemy_config: EnemyConfig) -> Vector2:
+	if enemy_config == null or enemy_config.enemy_scene == null:
+		return Vector2.ZERO
+	var instance := enemy_config.enemy_scene.instantiate()
+	var enemy_instance := instance as Enemy
+	if enemy_instance == null:
+		if instance != null:
+			instance.free()
+		return Vector2.ZERO
+	var body_half_extents := enemy_instance.get_configured_body_collision_half_extents()
+	enemy_instance.free()
+	return body_half_extents
+
+
 func _enter_pre_wave(wave_index: int) -> void:
 	if wave_index < 0 or wave_index >= waves.size():
 		_enter_victory()
@@ -349,12 +402,13 @@ func _begin_wave(wave_index: int) -> void:
 		return
 
 	_spawn_wave_batch()
-	if not pending_enemy_configs.is_empty():
+	if _has_pending_enemy_configs():
 		enemy_spawn_timer.start(maxf(wave_config.spawn_interval, 0.05))
 
 
 func _build_wave_spawn_queue(wave_config: WaveConfig) -> void:
 	pending_enemy_configs.clear()
+	pending_enemy_config_index = 0
 	for entry in wave_config.enemy_entries:
 		if entry == null or entry.enemy_config == null:
 			continue
@@ -429,22 +483,32 @@ func _spawn_wave_batch() -> void:
 		return
 
 	for _spawn_index in range(maxi(wave_config.spawn_count_per_tick, 1)):
-		if pending_enemy_configs.is_empty():
+		if not _has_pending_enemy_configs():
 			break
 		if active_wave_enemy_ids.size() >= maxi(wave_config.max_alive_enemies, 1):
 			break
 
-		var enemy_config := pending_enemy_configs[0]
+		var enemy_config := pending_enemy_configs[pending_enemy_config_index]
 		if not _try_spawn_enemy(enemy_config):
 			break
 
-		pending_enemy_configs.remove_at(0)
+		pending_enemy_config_index += 1
 		current_wave_spawned += 1
 
-	if pending_enemy_configs.is_empty():
+	if not _has_pending_enemy_configs():
 		enemy_spawn_timer.stop()
+		_clear_pending_enemy_spawn_queue()
 
 	_check_wave_completion()
+
+
+func _has_pending_enemy_configs() -> bool:
+	return pending_enemy_config_index < pending_enemy_configs.size()
+
+
+func _clear_pending_enemy_spawn_queue() -> void:
+	pending_enemy_configs.clear()
+	pending_enemy_config_index = 0
 
 
 func _try_spawn_enemy(enemy_config: EnemyConfig) -> bool:
@@ -522,7 +586,7 @@ func _mark_multiplayer_enemy_removed(enemy_id: int) -> void:
 func _check_wave_completion() -> void:
 	if wave_state != WaveState.WAVE_ACTIVE:
 		return
-	if not pending_enemy_configs.is_empty():
+	if _has_pending_enemy_configs():
 		return
 	if current_wave_spawned < current_wave_total:
 		return

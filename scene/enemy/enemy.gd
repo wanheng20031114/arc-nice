@@ -40,6 +40,8 @@ var is_multiplayer_proxy: bool = false
 var last_damage_taken: int = 0
 var body_collision_shapes: Array[CollisionShape2D] = []
 var touch_damage_shapes: Array[CollisionShape2D] = []
+var body_collision_extent_radius: float = 0.0
+var body_collision_half_extents: Vector2 = Vector2.ZERO
 var collision_shape_mirror_states: Dictionary = {}
 var facing_left: bool = false
 
@@ -217,6 +219,15 @@ func _refresh_collision_shape_cache() -> void:
 	touch_damage_shape = null
 	if not touch_damage_shapes.is_empty():
 		touch_damage_shape = touch_damage_shapes[0]
+	body_collision_extent_radius = _get_collision_shapes_extent_radius(body_collision_shapes)
+	body_collision_half_extents = _get_collision_shapes_half_extents(body_collision_shapes)
+
+
+func get_configured_body_collision_half_extents() -> Vector2:
+	var shape_nodes: Array[CollisionShape2D] = body_collision_shapes
+	if shape_nodes.is_empty():
+		shape_nodes = _collect_direct_collision_shapes(self)
+	return _get_collision_shapes_half_extents(shape_nodes)
 
 
 func _collect_direct_collision_shapes(parent_node: Node) -> Array[CollisionShape2D]:
@@ -299,11 +310,11 @@ func _apply_collision_shape_mirror(shape_node: CollisionShape2D, mirror_sign: fl
 
 
 func _get_body_collision_extent_radius() -> float:
-	return _get_collision_shapes_extent_radius(body_collision_shapes)
+	return body_collision_extent_radius
 
 
 func _get_body_collision_half_extents() -> Vector2:
-	return _get_collision_shapes_half_extents(body_collision_shapes)
+	return body_collision_half_extents
 
 
 func _get_collision_shapes_extent_radius(shape_nodes: Array[CollisionShape2D]) -> float:
