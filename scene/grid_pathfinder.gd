@@ -10,8 +10,8 @@ class_name GridPathfinder
 @export var max_nearest_cell_search_radius: int = 6
 # 每个物理帧允许的 A* 路径查询数量，用于避免大量敌人同帧刷新造成尖峰。
 @export_range(1, 128, 1, "or_greater") var max_path_queries_per_physics_frame: int = 12
-# 敌人体积寻路额外留出的像素余量，避免贴边路径在物理移动时卡住。
-@export var agent_clearance_padding: float = 1.0
+# 敌人体积寻路按实际碰撞外接尺寸计算；Godot 物理允许刚好接触但不重叠。
+@export var agent_clearance_padding: float = 0.0
 
 # 内部使用的 AStarGrid2D 对象，用于 A* 寻路计算
 var astar_grid: AStarGrid2D = AStarGrid2D.new()

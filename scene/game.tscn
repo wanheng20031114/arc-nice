@@ -195,7 +195,7 @@ shape = SubResource("SegmentShape2D_ryrav")
 [node name="EnemySpawnPoints" type="Node2D" parent="." unique_id=1509239636]
 
 [node name="Spawn1" type="Marker2D" parent="EnemySpawnPoints" unique_id=1332941577]
-position = Vector2(112, -20)
+position = Vector2(112, -18)
 
 [node name="Spawn2" type="Marker2D" parent="EnemySpawnPoints" unique_id=2023864982]
 position = Vector2(275, 144)

@@ -2,6 +2,7 @@ extends SceneTree
 
 const GAME_SCENE := preload("res://scene/game.tscn")
 const TEST_AGENT_HALF_EXTENTS := Vector2(9.0, 9.0)
+const TOUCHING_AGENT_HALF_EXTENTS := Vector2(8.0, 8.0)
 
 var failures: Array[String] = []
 
@@ -44,6 +45,13 @@ func _run() -> void:
 			)
 			var cached_agent_grid := pathfinder.call("_get_or_create_agent_grid", TEST_AGENT_HALF_EXTENTS) as AStarGrid2D
 			_expect(cached_agent_grid == agent_grid, "Agent clearance grids must be cached by body size.")
+			var touching_agent_grid := pathfinder.call("_get_or_create_agent_grid", TOUCHING_AGENT_HALF_EXTENTS) as AStarGrid2D
+			_expect(touching_agent_grid != null, "GridPathfinder must create an exact-touch clearance grid.")
+			if touching_agent_grid != null:
+				_expect(
+					not touching_agent_grid.is_point_solid(adjacent_cell),
+					"Agent clearance grid must allow cells where an enemy body only touches an obstacle edge without overlapping."
+				)
 			var nearest_agent_cell := pathfinder.call("_get_closest_walkable_cell", adjacent_cell, agent_grid) as Vector2i
 			_expect(
 				nearest_agent_cell != Vector2i.MAX and nearest_agent_cell != adjacent_cell,
