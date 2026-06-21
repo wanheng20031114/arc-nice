@@ -18,7 +18,9 @@ func _ready() -> void:
 
 func set_item(new_item: PickupConfig) -> void:
 	item = new_item
-	item_icon.texture = item.icon_texture if item != null else null
+	item_icon.texture = null
+	if item != null:
+		item_icon.texture = item.icon_texture
 	tooltip_text = _get_tooltip_text()
 
 

@@ -34,6 +34,6 @@ wave_name = "第二波 - 初潮涌动"
 enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic"), SubResource("WaveEnemyEntry_fast"), SubResource("WaveEnemyEntry_shell"), SubResource("Resource_pobrf")])
 spawn_interval = 0.2
 spawn_count_per_tick = 5
-max_alive_enemies = 55
+max_alive_enemies = 100
 rest_duration_after_wave = 25.0
 music = ExtResource("6_music")

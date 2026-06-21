@@ -35,6 +35,7 @@ func _run() -> void:
 	_test_default_wave_resources()
 	_test_game_scene_wave_list()
 	_test_merchant_asset()
+	await _test_grid_pathfinder_budget()
 	await _test_wave_state_flow()
 	await _test_defeat_stops_flow()
 	test_root.queue_free()
@@ -144,6 +145,47 @@ func _test_merchant_asset() -> void:
 				frame.get_pixelv(corner).a == 0.0,
 				"Merchant frame %d has a non-transparent corner." % frame_index
 			)
+
+
+func _test_grid_pathfinder_budget() -> void:
+	var game := _create_test_game()
+	test_root.add_child(game)
+	await process_frame
+	await physics_frame
+
+	var pathfinder := game.get_node("GridPathfinder") as GridPathfinder
+	var player := game.get_node("Player") as Player
+	_expect(pathfinder != null, "Game must provide GridPathfinder.")
+	_expect(player != null, "Game must provide Player for pathfinder budget test.")
+	if pathfinder == null or player == null:
+		game.queue_free()
+		await process_frame
+		return
+
+	pathfinder.max_path_queries_per_physics_frame = 1
+	var from_position := player.global_position
+	var first_result: Variant = pathfinder.try_get_global_path(
+		from_position,
+		from_position + Vector2(16.0, 0.0)
+	)
+	var second_result: Variant = pathfinder.try_get_global_path(
+		from_position,
+		from_position + Vector2(32.0, 0.0)
+	)
+	_expect(first_result != null, "Pathfinder first query in a frame must be allowed.")
+	_expect(second_result == null, "Pathfinder must reject queries after the per-frame budget is exhausted.")
+
+	await physics_frame
+	var third_result: Variant = pathfinder.try_get_global_path(
+		from_position,
+		from_position + Vector2(48.0, 0.0)
+	)
+	_expect(third_result != null, "Pathfinder budget must reset on the next physics frame.")
+
+	game.queue_free()
+	await process_frame
+	await physics_frame
+
 
 func _test_wave_state_flow() -> void:
 	var game := _create_test_game()

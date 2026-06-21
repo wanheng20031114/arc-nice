@@ -6,6 +6,7 @@ signal defeated(enemy: Enemy)
 const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
 const DAMAGE_NUMBER_SCRIPT := preload("res://scene/damage_number.gd")
 const DAMAGE_NUMBER_LIMIT := 80
+const PATH_DIRECTION_PROBE_DISTANCE := 1.0
 
 enum DeathSequenceStage {
 	NONE,
@@ -210,8 +211,12 @@ func _has_scene_animation(animation_name: StringName) -> bool:
 func _refresh_collision_shape_cache() -> void:
 	body_collision_shapes = _collect_direct_collision_shapes(self)
 	touch_damage_shapes = _collect_direct_collision_shapes(touch_damage_area)
-	collision_shape = body_collision_shapes[0] if not body_collision_shapes.is_empty() else null
-	touch_damage_shape = touch_damage_shapes[0] if not touch_damage_shapes.is_empty() else null
+	collision_shape = null
+	if not body_collision_shapes.is_empty():
+		collision_shape = body_collision_shapes[0]
+	touch_damage_shape = null
+	if not touch_damage_shapes.is_empty():
+		touch_damage_shape = touch_damage_shapes[0]
 
 
 func _collect_direct_collision_shapes(parent_node: Node) -> Array[CollisionShape2D]:
@@ -297,11 +302,24 @@ func _get_body_collision_extent_radius() -> float:
 	return _get_collision_shapes_extent_radius(body_collision_shapes)
 
 
+func _get_body_collision_half_extents() -> Vector2:
+	return _get_collision_shapes_half_extents(body_collision_shapes)
+
+
 func _get_collision_shapes_extent_radius(shape_nodes: Array[CollisionShape2D]) -> float:
 	var max_radius := 0.0
 	for shape_node in shape_nodes:
 		max_radius = maxf(max_radius, _get_collision_shape_extent_radius(shape_node))
 	return max_radius
+
+
+func _get_collision_shapes_half_extents(shape_nodes: Array[CollisionShape2D]) -> Vector2:
+	var half_extents := Vector2.ZERO
+	for shape_node in shape_nodes:
+		var shape_extents := _get_collision_shape_half_extents(shape_node)
+		half_extents.x = maxf(half_extents.x, shape_extents.x)
+		half_extents.y = maxf(half_extents.y, shape_extents.y)
+	return half_extents
 
 
 func _get_collision_shape_extent_radius(shape_node: CollisionShape2D) -> float:
@@ -320,6 +338,60 @@ func _get_collision_shape_extent_radius(shape_node: CollisionShape2D) -> float:
 	for corner in corners:
 		max_radius = maxf(max_radius, (local_transform * corner).length())
 	return max_radius
+
+
+func _get_collision_shape_half_extents(shape_node: CollisionShape2D) -> Vector2:
+	if shape_node == null or shape_node.shape == null:
+		return Vector2.ZERO
+
+	var shape_rect := shape_node.shape.get_rect()
+	var local_transform := shape_node.transform
+	var min_position := Vector2(INF, INF)
+	var max_position := Vector2(-INF, -INF)
+	var corners := [
+		shape_rect.position,
+		shape_rect.position + Vector2(shape_rect.size.x, 0.0),
+		shape_rect.position + Vector2(0.0, shape_rect.size.y),
+		shape_rect.position + shape_rect.size,
+	]
+	for corner in corners:
+		var transformed_corner: Vector2 = local_transform * (corner as Vector2)
+		min_position.x = minf(min_position.x, transformed_corner.x)
+		min_position.y = minf(min_position.y, transformed_corner.y)
+		max_position.x = maxf(max_position.x, transformed_corner.x)
+		max_position.y = maxf(max_position.y, transformed_corner.y)
+
+	return Vector2(
+		maxf(absf(min_position.x), absf(max_position.x)),
+		maxf(absf(min_position.y), absf(max_position.y))
+	)
+
+
+func _get_axis_aligned_waypoint_direction(waypoint: Vector2, arrival_distance: float) -> Vector2:
+	var offset := waypoint - global_position
+	if offset == Vector2.ZERO:
+		return Vector2.ZERO
+
+	var deadzone := maxf(arrival_distance, 0.0)
+	var abs_x := absf(offset.x)
+	var abs_y := absf(offset.y)
+	if abs_x <= deadzone and abs_y > deadzone:
+		return _choose_unblocked_axis_direction(Vector2(0.0, signf(offset.y)))
+	if abs_y <= deadzone and abs_x > deadzone:
+		return _choose_unblocked_axis_direction(Vector2(signf(offset.x), 0.0))
+	if abs_x >= abs_y:
+		return _choose_unblocked_axis_direction(Vector2(signf(offset.x), 0.0), Vector2(0.0, signf(offset.y)))
+	return _choose_unblocked_axis_direction(Vector2(0.0, signf(offset.y)), Vector2(signf(offset.x), 0.0))
+
+
+func _choose_unblocked_axis_direction(primary_direction: Vector2, secondary_direction: Vector2 = Vector2.ZERO) -> Vector2:
+	if primary_direction == Vector2.ZERO:
+		return secondary_direction
+	if not test_move(global_transform, primary_direction * PATH_DIRECTION_PROBE_DISTANCE):
+		return primary_direction
+	if secondary_direction != Vector2.ZERO and not test_move(global_transform, secondary_direction * PATH_DIRECTION_PROBE_DISTANCE):
+		return secondary_direction
+	return primary_direction
 
 
 func _on_touch_damage_area_body_entered(body: Node2D) -> void:

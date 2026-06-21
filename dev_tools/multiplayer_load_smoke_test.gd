@@ -3,6 +3,7 @@ extends SceneTree
 const LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const GAME_SCENE := preload("res://scene/game.tscn")
+const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 
 var failures: Array[String] = []
 
@@ -14,6 +15,8 @@ func _init() -> void:
 func _run() -> void:
 	_test_scene_instantiation()
 	_test_net_manager_lan_lifecycle()
+	_test_recent_event_cache()
+	_test_freed_pickup_index_cleanup()
 	await _test_game_runtime_modes()
 	_test_snapshot_round_trip()
 
@@ -68,9 +71,53 @@ func _test_net_manager_lan_lifecycle() -> void:
 	_expect(not net_manager.is_multiplayer_active(), "NetManager must cleanly disconnect after LAN host smoke.")
 
 
+func _test_recent_event_cache() -> void:
+	var mp_game := MP_GAME_SCENE.instantiate()
+	_expect(mp_game != null, "MpGame scene must instantiate for recent event cache test.")
+	if mp_game == null:
+		return
+
+	var cache := {}
+	mp_game.call("_remember_recent_event", cache, "hit-a", 30.0, 10.0)
+	_expect(
+		bool(mp_game.call("_is_recent_event_cached", cache, "hit-a", 39.0)),
+		"Recent event cache must keep entries inside the retention window."
+	)
+	_expect(
+		not bool(mp_game.call("_is_recent_event_cached", cache, "hit-a", 41.0)),
+		"Recent event cache must expire entries outside the retention window."
+	)
+	_expect(not cache.has("hit-a"), "Expired recent event cache entries must be erased on lookup.")
+
+	mp_game.call("_remember_recent_event", cache, "hit-b", 5.0, 10.0)
+	mp_game.call("_remember_recent_event", cache, "hit-c", 30.0, 10.0)
+	mp_game.call("_prune_recent_event_cache", cache, 20.0)
+	_expect(not cache.has("hit-b"), "Recent event prune must erase expired entries.")
+	_expect(cache.has("hit-c"), "Recent event prune must keep live entries.")
+	mp_game.free()
+
+
+func _test_freed_pickup_index_cleanup() -> void:
+	var game := Game.new()
+	_expect(game != null, "Game object must instantiate for pickup index cleanup test.")
+	if game == null:
+		return
+	var pickup := Pickup.new()
+	_expect(pickup != null, "Pickup object must instantiate for pickup index cleanup test.")
+	if pickup == null:
+		game.free()
+		return
+	game.multiplayer_pickups[77] = pickup
+	pickup.free()
+	_expect(game.get_pickup_for_net_id(77) == null, "Game must ignore freed pickup references by net id.")
+	_expect(not game.multiplayer_pickups.has(77), "Game must erase freed pickup references from the net id index.")
+	game.free()
+
+
 func _test_game_runtime_modes() -> void:
 	var host_game := GAME_SCENE.instantiate()
 	host_game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
+	host_game.set("auto_start_waves", false)
 	root.add_child(host_game)
 	await process_frame
 	_expect(host_game.peer_players.size() == 2, "Host authority game must create peer players.")
@@ -84,11 +131,20 @@ func _test_game_runtime_modes() -> void:
 		and host_player.nameplate_label.text == "Host",
 		"Multiplayer player scene nameplate must show the peer name."
 	)
+	_expect(host_game.call("_try_spawn_enemy", BASIC_CONFIG), "Host authority game must spawn an indexed enemy.")
+	var spawned_enemy: Enemy = host_game.get_enemy_for_net_id(1)
+	_expect(spawned_enemy != null, "Host authority game must index spawned enemies by net id.")
+	if spawned_enemy != null:
+		spawned_enemy.queue_free()
+		await process_frame
+		await physics_frame
+	_expect(host_game.get_enemy_for_net_id(1) == null, "Host authority game must remove enemy net id indexes on exit.")
 	host_game.queue_free()
 	await process_frame
 
 	var client_game := GAME_SCENE.instantiate()
 	client_game.configure_multiplayer(2, 2, {1: "Host", 2: "Client"})
+	client_game.set("auto_start_waves", false)
 	root.add_child(client_game)
 	await process_frame
 	_expect(client_game.peer_players.size() == 2, "Client view game must create visual peer players.")

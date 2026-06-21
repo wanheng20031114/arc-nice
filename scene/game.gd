@@ -94,6 +94,7 @@ var peer_players: Dictionary = {}
 var multiplayer_pickups: Dictionary = {}
 var removed_multiplayer_pickup_ids: Dictionary = {}
 var multiplayer_enemy_ids_by_instance: Dictionary = {}
+var multiplayer_enemies_by_net_id: Dictionary = {}
 var removed_multiplayer_enemy_ids: Dictionary = {}
 var enemy_retarget_time_left: float = 0.0
 var next_multiplayer_enemy_net_id: int = 1
@@ -138,11 +139,11 @@ func _physics_process(delta: float) -> void:
 
 
 func configure_multiplayer(
-	mode: RuntimeMode,
+	mode: int,
 	local_peer_id: int,
 	player_names: Dictionary
 ) -> void:
-	runtime_mode = mode
+	runtime_mode = mode as RuntimeMode
 	multiplayer_local_peer_id = local_peer_id
 	multiplayer_player_names = player_names.duplicate()
 
@@ -473,6 +474,7 @@ func _try_spawn_enemy(enemy_config: EnemyConfig) -> bool:
 		next_multiplayer_enemy_net_id += 1
 		enemy_instance.set_meta("net_id", enemy_net_id)
 		multiplayer_enemy_ids_by_instance[enemy_id] = enemy_net_id
+		multiplayer_enemies_by_net_id[enemy_net_id] = enemy_instance
 	active_wave_enemy_ids[enemy_id] = true
 	enemy_instance.defeated.connect(_on_wave_enemy_defeated)
 	enemy_instance.tree_exited.connect(_on_wave_enemy_tree_exited.bind(enemy_id))
@@ -509,6 +511,8 @@ func _mark_multiplayer_enemy_removed(enemy_id: int) -> void:
 		return
 	var enemy_net_id := int(multiplayer_enemy_ids_by_instance.get(enemy_id, 0))
 	multiplayer_enemy_ids_by_instance.erase(enemy_id)
+	if enemy_net_id > 0:
+		multiplayer_enemies_by_net_id.erase(enemy_net_id)
 	if enemy_net_id <= 0 or removed_multiplayer_enemy_ids.has(enemy_net_id):
 		return
 	removed_multiplayer_enemy_ids[enemy_net_id] = true
@@ -600,7 +604,9 @@ func _configure_multiplayer_players() -> void:
 	var base_position := player.global_position
 	for index in range(peer_ids.size()):
 		var peer_id := peer_ids[index]
-		var player_instance: Player = player if index == 0 else PLAYER_SCENE.instantiate() as Player
+		var player_instance: Player = player
+		if index > 0:
+			player_instance = PLAYER_SCENE.instantiate() as Player
 		if player_instance == null:
 			continue
 		if index > 0:
@@ -667,12 +673,34 @@ func get_player_for_peer(peer_id: int) -> Player:
 	return peer_players.get(peer_id) as Player
 
 
+func get_enemy_for_net_id(net_id: int) -> Enemy:
+	if not multiplayer_enemies_by_net_id.has(net_id):
+		return null
+	var enemy_variant: Variant = multiplayer_enemies_by_net_id.get(net_id)
+	if enemy_variant == null:
+		multiplayer_enemies_by_net_id.erase(net_id)
+		return null
+	if not is_instance_valid(enemy_variant):
+		multiplayer_enemies_by_net_id.erase(net_id)
+		return null
+	return enemy_variant as Enemy
+
+
 func get_multiplayer_revive_position() -> Vector2:
 	return map_camera.global_position
 
 
 func get_pickup_for_net_id(net_id: int) -> Pickup:
-	return multiplayer_pickups.get(net_id) as Pickup
+	if not multiplayer_pickups.has(net_id):
+		return null
+	var pickup_variant: Variant = multiplayer_pickups.get(net_id)
+	if pickup_variant == null:
+		multiplayer_pickups.erase(net_id)
+		return null
+	if not is_instance_valid(pickup_variant):
+		multiplayer_pickups.erase(net_id)
+		return null
+	return pickup_variant as Pickup
 
 
 func _register_static_multiplayer_pickups() -> void:

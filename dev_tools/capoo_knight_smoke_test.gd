@@ -24,10 +24,25 @@ class FakePathfinder:
 
 	var is_built := true
 	var requested_path := false
+	var budget_available := true
 	var path := PackedVector2Array()
 
-	func get_global_path(_from_global_position: Vector2, _to_global_position: Vector2) -> PackedVector2Array:
+	func get_global_path(
+		_from_global_position: Vector2,
+		_to_global_position: Vector2,
+		_agent_half_extents: Vector2 = Vector2.ZERO
+	) -> PackedVector2Array:
 		requested_path = true
+		return path
+
+	func try_get_global_path(
+		_from_global_position: Vector2,
+		_to_global_position: Vector2,
+		_agent_half_extents: Vector2 = Vector2.ZERO
+	) -> Variant:
+		requested_path = true
+		if not budget_available:
+			return null
 		return path
 
 
@@ -47,6 +62,8 @@ func _run() -> void:
 	await _test_death_interrupts_attack()
 	await _test_proxy_action_visuals()
 	await _test_swordsman_uses_path_when_corner_blocks_direct_chase()
+	await _test_path_waypoint_motion_does_not_cut_corners()
+	await _test_navigation_budget_retry_keeps_existing_path()
 
 	test_root.queue_free()
 	await process_frame
@@ -197,6 +214,56 @@ func _test_swordsman_uses_path_when_corner_blocks_direct_chase() -> void:
 
 	enemy.queue_free()
 	wall.queue_free()
+	pathfinder.queue_free()
+	player.queue_free()
+	await physics_frame
+
+
+func _test_path_waypoint_motion_does_not_cut_corners() -> void:
+	var player := _spawn_player(Vector2(128.0, 128.0))
+	var wall := _spawn_wall(Vector2(16.0, 0.0), Vector2(8.0, 64.0))
+	await physics_frame
+	var pathfinder := FakePathfinder.new()
+	test_root.add_child(pathfinder)
+	var enemy := _spawn_knight(Vector2.ZERO, player)
+	enemy.pathfinder = pathfinder
+	enemy.current_path = PackedVector2Array([Vector2(32.0, 32.0)])
+	enemy.current_path_index = 0
+	enemy.path_refresh_time_left = 10.0
+
+	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
+	_expect(is_zero_approx(move_direction.x) or is_zero_approx(move_direction.y), "Knight path following must not move diagonally into obstacle corners.")
+	_expect(move_direction != Vector2.ZERO, "Knight path following must keep moving toward a diagonal waypoint.")
+	_expect(is_zero_approx(move_direction.x) and move_direction.y > 0.0, "Knight path following must try the open axis when the primary axis is blocked.")
+
+	enemy.queue_free()
+	wall.queue_free()
+	pathfinder.queue_free()
+	player.queue_free()
+	await physics_frame
+
+
+func _test_navigation_budget_retry_keeps_existing_path() -> void:
+	var player := _spawn_player(Vector2(96.0, 0.0))
+	var pathfinder := FakePathfinder.new()
+	pathfinder.path = PackedVector2Array([Vector2(16.0, 0.0), Vector2(32.0, 0.0)])
+	test_root.add_child(pathfinder)
+	var enemy := _spawn_knight(Vector2.ZERO, player)
+	enemy.pathfinder = pathfinder
+	enemy.current_path = PackedVector2Array([Vector2(8.0, 0.0)])
+	enemy.current_path_index = 0
+
+	pathfinder.budget_available = false
+	enemy.call("_refresh_navigation_path")
+	_expect(enemy.current_path.size() == 1 and enemy.current_path[0] == Vector2(8.0, 0.0), "Knight must keep its current path when path budget is exhausted.")
+	_expect(enemy.path_refresh_time_left >= 0.03 and enemy.path_refresh_time_left <= 0.08, "Knight retry delay must be short when path budget is exhausted.")
+
+	pathfinder.budget_available = true
+	enemy.call("_refresh_navigation_path")
+	_expect(enemy.current_path.size() == 2 and enemy.current_path[0] == Vector2(16.0, 0.0), "Knight must update its path when path budget is available.")
+	_expect(enemy.path_refresh_time_left >= 0.1875 and enemy.path_refresh_time_left <= 0.3125, "Knight successful refresh delay must be jittered around the configured interval.")
+
+	enemy.queue_free()
 	pathfinder.queue_free()
 	player.queue_free()
 	await physics_frame

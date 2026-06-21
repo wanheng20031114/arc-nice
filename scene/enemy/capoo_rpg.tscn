@@ -14,11 +14,11 @@ shader_parameter/hidden_ratio = 0.5
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_nxw4i"]
 resource_local_to_scene = true
-size = Vector2(18, 21)
+size = Vector2(16, 21)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_3kp1b"]
 resource_local_to_scene = true
-size = Vector2(18, 21)
+size = Vector2(16, 21)
 
 [node name="CapooRPG" unique_id=1151509530 instance=ExtResource("1_base")]
 material = SubResource("ShaderMaterial_40ysn")
@@ -34,11 +34,11 @@ sprite_frames = ExtResource("4_frames")
 animation = &"move"
 
 [node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
-position = Vector2(-1, 1.5)
+position = Vector2(-2, 1.5)
 shape = SubResource("RectangleShape2D_nxw4i")
 
 [node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
-position = Vector2(-1, 1.5)
+position = Vector2(-2, 1.5)
 shape = SubResource("RectangleShape2D_3kp1b")
 
 [node name="MuzzleHeat" type="Polygon2D" parent="." index="6" unique_id=1067946547]

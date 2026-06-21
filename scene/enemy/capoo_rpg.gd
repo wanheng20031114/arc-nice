@@ -325,16 +325,36 @@ func _get_navigation_move_direction(delta: float) -> Vector2:
 	while current_path_index < current_path.size():
 		var waypoint := current_path[current_path_index]
 		if global_position.distance_to(waypoint) > waypoint_arrival_distance:
-			return global_position.direction_to(waypoint)
+			return _get_axis_aligned_waypoint_direction(waypoint, waypoint_arrival_distance)
 		current_path_index += 1
 
 	return global_position.direction_to(target_player.global_position)
 
 
 func _refresh_navigation_path() -> void:
-	path_refresh_time_left = maxf(path_refresh_interval, 0.05)
-	current_path = pathfinder.get_global_path(global_position, target_player.global_position)
+	if pathfinder.has_method("try_get_global_path"):
+		var path_result: Variant = pathfinder.call(
+			"try_get_global_path",
+			global_position,
+			target_player.global_position,
+			_get_body_collision_half_extents()
+		)
+		if path_result == null:
+			path_refresh_time_left = _get_navigation_retry_interval()
+			return
+		current_path = path_result
+	else:
+		current_path = pathfinder.get_global_path(global_position, target_player.global_position, _get_body_collision_half_extents())
+	path_refresh_time_left = _get_navigation_refresh_interval()
 	current_path_index = 0
+
+
+func _get_navigation_refresh_interval() -> float:
+	return maxf(path_refresh_interval, 0.05) * random_generator.randf_range(0.75, 1.25)
+
+
+func _get_navigation_retry_interval() -> float:
+	return random_generator.randf_range(0.03, 0.08)
 
 
 func _clear_navigation_path() -> void:
@@ -345,7 +365,9 @@ func _clear_navigation_path() -> void:
 
 func _should_direct_chase_target() -> bool:
 	var direct_chase_distance := _get_body_extent_radius() + _get_target_extent_radius() + direct_chase_extra_distance
-	return global_position.distance_to(target_player.global_position) <= direct_chase_distance
+	if global_position.distance_to(target_player.global_position) > direct_chase_distance:
+		return false
+	return _has_clear_world_line_to_target()
 
 
 func _get_body_extent_radius() -> float:

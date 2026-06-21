@@ -6,7 +6,7 @@
 [ext_resource type="SpriteFrames" uid="uid://b5wdos2x826w2" path="res://resources/animation/yuanshi_insect_bomber.tres" id="3_frames"]
 [ext_resource type="AudioStream" uid="uid://bogl46dtqkano" path="res://resources/audio/cowboy_explosion.wav" id="4_explosion_audio"]
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_513g0"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_qjjxk"]
 resource_local_to_scene = true
 shader = ExtResource("2_qjjxk")
 shader_parameter/blink_enabled = false
@@ -26,7 +26,7 @@ resource_local_to_scene = true
 radius = 30.0
 
 [node name="YuanshiInsectBomber" unique_id=1685334405 instance=ExtResource("1_base")]
-material = SubResource("ShaderMaterial_513g0")
+material = SubResource("ShaderMaterial_qjjxk")
 script = ExtResource("2_script")
 
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
@@ -48,7 +48,6 @@ collision_layer = 64
 collision_mask = 6
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="ExplosionArea" index="0" unique_id=1945204364]
-visible = false
 shape = SubResource("CircleShape2D_explosion")
 debug_color = Color(0.9764706, 0.6, 0.69803923, 0.41960785)
 
