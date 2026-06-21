@@ -891,8 +891,6 @@ func _register_multiplayer_projectile(
 func _update_skill1_charge_bar() -> void:
 	if skill1_charge_bar == null:
 		return
-	if skill1_unlocked:
-		_sync_skill1_charge_duration_to_upgrade_level()
 	skill1_charge_bar.set_unlocked(skill1_unlocked and not is_dead)
 	skill1_charge_bar.set_charge(
 		skill1_charge,
