@@ -70,6 +70,11 @@ const NAMEPLATE_SIZE := Vector2(160.0, 24.0)
 const NAMEPLATE_WORLD_OFFSET := Vector2(0.0, -19.0)
 	
 const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
+const DODGE_EFFECT_STRENGTH_SHADER_PARAMETER := &"dodge_effect_strength"
+const DODGE_SWEEP_SHADER_PARAMETER := &"dodge_sweep"
+const DODGE_EFFECT_DURATION := 0.28
+const ATTACK_SPEED_UPGRADE_INTERVAL_MULTIPLIER := 0.95
+const DODGE_UPGRADE_CHANCE_STEP := 0.02
 
 var facing_suffix: StringName = &"right"
 
@@ -97,6 +102,7 @@ var skill1_charge: float = 0.0
 var skill1_upgrade_level: int = 0
 var skill1_base_charge_duration: float = 0.0
 var last_attack_direction: Vector2 = Vector2.RIGHT
+var dodge_feedback_tween: Tween = null
 
 
 # 节点首次进入场景树时的初始化逻辑
@@ -289,7 +295,8 @@ func apply_damage(
 		return false
 
 	if dodge_chance > 0.0 and randf() < dodge_chance:
-		_start_invincibility()
+		_start_dodge_feedback()
+		_start_invincibility(false)
 		return false
 
 	var final_damage := _calculate_incoming_damage(amount, damage_type)
@@ -559,6 +566,7 @@ func apply_multiplayer_death_state() -> void:
 	current_health = 0
 	invincibility_time_left = 0.0
 	_set_hurt_blink_enabled(false)
+	_stop_dodge_feedback()
 	shooting_timer.stop()
 	armed_effect_sprite.visible = false
 	armed_effect_sprite.stop()
@@ -1107,12 +1115,13 @@ func _update_invincibility(delta: float) -> void:
 		return
 	
 	_set_hurt_blink_enabled(false)
+	_stop_dodge_feedback()
 
 
 # 开启玩家受伤后的无敌闪烁状态。
-func _start_invincibility() -> void:
+func _start_invincibility(show_hurt_blink: bool = true) -> void:
 	invincibility_time_left = maxf(invincibility_duration, 0.0)
-	_set_hurt_blink_enabled(invincibility_time_left > 0.0)
+	_set_hurt_blink_enabled(show_hurt_blink and invincibility_time_left > 0.0)
 
 
 # 统一设置玩家受击闪烁开关，便于后续与其他表现逻辑解耦。
@@ -1120,6 +1129,58 @@ func _set_hurt_blink_enabled(enabled: bool) -> void:
 	var sprite_material := body_sprite.material as ShaderMaterial
 	if sprite_material != null:
 		sprite_material.set_shader_parameter(BLINK_ENABLED_SHADER_PARAMETER, enabled)
+
+
+func _start_dodge_feedback() -> void:
+	var sprite_material := body_sprite.material as ShaderMaterial
+	if sprite_material == null:
+		return
+	_stop_dodge_feedback()
+	_set_dodge_effect_strength(1.0)
+	_set_dodge_sweep(-0.2)
+	dodge_feedback_tween = create_tween()
+	dodge_feedback_tween.set_parallel(true)
+	dodge_feedback_tween.tween_method(
+		_set_dodge_sweep,
+		-0.2,
+		1.2,
+		DODGE_EFFECT_DURATION
+	).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	dodge_feedback_tween.tween_method(
+		_set_dodge_effect_strength,
+		1.0,
+		0.0,
+		DODGE_EFFECT_DURATION
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	dodge_feedback_tween.finished.connect(_on_dodge_feedback_finished)
+
+
+func _stop_dodge_feedback() -> void:
+	if dodge_feedback_tween != null:
+		dodge_feedback_tween.kill()
+		dodge_feedback_tween = null
+	_set_dodge_effect_strength(0.0)
+	_set_dodge_sweep(0.0)
+
+
+func _on_dodge_feedback_finished() -> void:
+	dodge_feedback_tween = null
+	_set_dodge_effect_strength(0.0)
+
+
+func _set_dodge_effect_strength(strength: float) -> void:
+	var sprite_material := body_sprite.material as ShaderMaterial
+	if sprite_material != null:
+		sprite_material.set_shader_parameter(
+			DODGE_EFFECT_STRENGTH_SHADER_PARAMETER,
+			clampf(strength, 0.0, 1.0)
+		)
+
+
+func _set_dodge_sweep(progress: float) -> void:
+	var sprite_material := body_sprite.material as ShaderMaterial
+	if sprite_material != null:
+		sprite_material.set_shader_parameter(DODGE_SWEEP_SHADER_PARAMETER, progress)
 
 
 # 玩家生命值归零时进入死亡状态。
@@ -1132,6 +1193,7 @@ func _die() -> void:
 	velocity = Vector2.ZERO
 	invincibility_time_left = 0.0
 	_set_hurt_blink_enabled(false)
+	_stop_dodge_feedback()
 	shooting_timer.stop()
 	armed_effect_sprite.visible = false
 	armed_effect_sprite.stop()
@@ -1167,13 +1229,13 @@ func upgrade_max_health() -> void:
 	health_changed.emit(current_health, max_health)
 
 
-# 升级攻击速度，每级攻击间隔减少 8%
+# 升级攻击速度，每级攻击间隔减少 5%
 func upgrade_attack_speed() -> void:
-	fire_interval *= 0.92
+	fire_interval *= ATTACK_SPEED_UPGRADE_INTERVAL_MULTIPLIER
 	_refresh_shooting_timer_wait_time()
 
 
-# 升级闪避能力，每级闪避率 +4%
+# 升级闪避能力，每级闪避率 +2%
 func upgrade_dodge() -> void:
-	dodge_chance = minf(dodge_chance + 0.04, 1.0)
+	dodge_chance = minf(dodge_chance + DODGE_UPGRADE_CHANCE_STEP, 1.0)
 	dodge_changed.emit(dodge_chance)

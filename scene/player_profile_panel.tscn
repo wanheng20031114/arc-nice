@@ -1,4 +1,4 @@
-[gd_scene load_steps=20 format=3]
+[gd_scene load_steps=23 format=3]
 
 [ext_resource type="Script" path="res://scene/player_profile_panel.gd" id="1_panel"]
 [ext_resource type="Texture2D" path="res://resources/texture/player_profile_background.png" id="2_background"]
@@ -48,6 +48,27 @@ font = ExtResource("4_font")
 font_size = 20
 font_color = Color(0.45, 0.86, 0.73, 1)
 outline_size = 2
+outline_color = Color(0.07, 0.07, 0.065, 0.9)
+
+[sub_resource type="LabelSettings" id="LabelSettings_stat_small"]
+font = ExtResource("4_font")
+font_size = 15
+font_color = Color(0.78, 0.8, 0.75, 1)
+outline_size = 2
+outline_color = Color(0.07, 0.07, 0.065, 0.9)
+
+[sub_resource type="LabelSettings" id="LabelSettings_value_small"]
+font = ExtResource("4_font")
+font_size = 15
+font_color = Color(0.45, 0.86, 0.73, 1)
+outline_size = 2
+outline_color = Color(0.07, 0.07, 0.065, 0.9)
+
+[sub_resource type="LabelSettings" id="LabelSettings_skill_desc"]
+font = ExtResource("4_font")
+font_size = 12
+font_color = Color(0.72, 0.76, 0.7, 1)
+outline_size = 1
 outline_color = Color(0.07, 0.07, 0.065, 0.9)
 
 [sub_resource type="StyleBoxTexture" id="StyleBoxTexture_tab_unselected"]
@@ -151,91 +172,177 @@ theme_override_styles/focus = SubResource("StyleBoxFlat_close_hover")
 tooltip_text = "关闭"
 
 [node name="Portrait" type="AnimatedSprite2D" parent="Overlay/PanelRoot"]
-position = Vector2(150, 210)
-scale = Vector2(4, 4)
+position = Vector2(150, 178)
+scale = Vector2(3.4, 3.4)
 
 [node name="AttackLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 48.0
-offset_top = 327.0
+offset_top = 282.0
 offset_right = 150.0
-offset_bottom = 357.0
+offset_bottom = 306.0
 text = "攻击力"
-label_settings = SubResource("LabelSettings_stat")
+label_settings = SubResource("LabelSettings_stat_small")
 vertical_alignment = 1
 
 [node name="AttackValue" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
-offset_left = 168.0
-offset_top = 327.0
+offset_left = 142.0
+offset_top = 282.0
 offset_right = 248.0
-offset_bottom = 357.0
+offset_bottom = 306.0
 text = "1"
-label_settings = SubResource("LabelSettings_value")
+label_settings = SubResource("LabelSettings_value_small")
 horizontal_alignment = 2
 vertical_alignment = 1
 
 [node name="HealthLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 48.0
-offset_top = 363.0
+offset_top = 308.0
 offset_right = 150.0
-offset_bottom = 393.0
+offset_bottom = 332.0
 text = "生命值"
-label_settings = SubResource("LabelSettings_stat")
+label_settings = SubResource("LabelSettings_stat_small")
 vertical_alignment = 1
 
 [node name="HealthValue" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
-offset_left = 150.0
-offset_top = 363.0
+offset_left = 142.0
+offset_top = 308.0
 offset_right = 248.0
-offset_bottom = 393.0
+offset_bottom = 332.0
 text = "5 / 5"
-label_settings = SubResource("LabelSettings_value")
+label_settings = SubResource("LabelSettings_value_small")
 horizontal_alignment = 2
 vertical_alignment = 1
 
 [node name="AttackSpeedLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 48.0
-offset_top = 398.0
+offset_top = 334.0
 offset_right = 150.0
-offset_bottom = 428.0
+offset_bottom = 358.0
 text = "攻击速度"
-label_settings = SubResource("LabelSettings_stat")
+label_settings = SubResource("LabelSettings_stat_small")
 vertical_alignment = 1
 
 [node name="AttackSpeedValue" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
-offset_left = 150.0
-offset_top = 398.0
+offset_left = 142.0
+offset_top = 334.0
 offset_right = 248.0
-offset_bottom = 428.0
+offset_bottom = 358.0
 text = "5.56/s"
-label_settings = SubResource("LabelSettings_value")
+label_settings = SubResource("LabelSettings_value_small")
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="AttackIntervalLabel" type="Label" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 48.0
+offset_top = 360.0
+offset_right = 150.0
+offset_bottom = 384.0
+text = "攻击间隔"
+label_settings = SubResource("LabelSettings_stat_small")
+vertical_alignment = 1
+
+[node name="AttackIntervalValue" type="Label" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 142.0
+offset_top = 360.0
+offset_right = 248.0
+offset_bottom = 384.0
+text = "0.18s"
+label_settings = SubResource("LabelSettings_value_small")
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="DodgeLabel" type="Label" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 48.0
+offset_top = 386.0
+offset_right = 150.0
+offset_bottom = 410.0
+text = "闪避率"
+label_settings = SubResource("LabelSettings_stat_small")
+vertical_alignment = 1
+
+[node name="DodgeValue" type="Label" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 142.0
+offset_top = 386.0
+offset_right = 248.0
+offset_bottom = 410.0
+text = "0%"
+label_settings = SubResource("LabelSettings_value_small")
 horizontal_alignment = 2
 vertical_alignment = 1
 
 [node name="MethodLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 48.0
-offset_top = 434.0
+offset_top = 412.0
 offset_right = 150.0
-offset_bottom = 464.0
+offset_bottom = 436.0
 text = "攻击方式"
-label_settings = SubResource("LabelSettings_stat")
+label_settings = SubResource("LabelSettings_stat_small")
 vertical_alignment = 1
 
 [node name="MethodValue" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
-offset_left = 150.0
-offset_top = 434.0
+offset_left = 142.0
+offset_top = 412.0
 offset_right = 248.0
-offset_bottom = 464.0
+offset_bottom = 436.0
 text = "枪"
-label_settings = SubResource("LabelSettings_value")
+label_settings = SubResource("LabelSettings_value_small")
 horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="SkillInfo" type="Control" parent="Overlay/PanelRoot"]
+visible = false
+layout_mode = 0
+offset_left = 43.0
+offset_top = 446.0
+offset_right = 256.0
+offset_bottom = 526.0
+
+[node name="SkillName" type="Label" parent="Overlay/PanelRoot/SkillInfo"]
+layout_mode = 0
+offset_right = 213.0
+offset_bottom = 20.0
+text = "维什戴尔炸弹"
+label_settings = SubResource("LabelSettings_value_small")
+vertical_alignment = 1
+
+[node name="SkillDescription" type="Label" parent="Overlay/PanelRoot/SkillInfo"]
+layout_mode = 0
+offset_top = 20.0
+offset_right = 213.0
+offset_bottom = 50.0
+text = "投掷炸弹，爆炸造成攻击力 3.3 倍伤害。"
+label_settings = SubResource("LabelSettings_skill_desc")
+autowrap_mode = 1
+vertical_alignment = 1
+
+[node name="SkillCost" type="Label" parent="Overlay/PanelRoot/SkillInfo"]
+layout_mode = 0
+offset_top = 51.0
+offset_right = 213.0
+offset_bottom = 70.0
+text = "所需技力 18.0"
+label_settings = SubResource("LabelSettings_stat_small")
+vertical_alignment = 1
+
+[node name="SkillCharge" type="Label" parent="Overlay/PanelRoot/SkillInfo"]
+layout_mode = 0
+offset_top = 70.0
+offset_right = 213.0
+offset_bottom = 89.0
+text = "当前技力 0.0 / 18.0"
+label_settings = SubResource("LabelSettings_stat_small")
 vertical_alignment = 1
 
 [node name="TabBar" type="TabBar" parent="Overlay/PanelRoot"]
@@ -384,7 +491,7 @@ vertical_alignment = 1
 layout_mode = 2
 stat_name = "基础攻击力"
 stat_type = 0
-max_level = 5
+max_level = 10
 icon_texture = ExtResource("6_attack_icon")
 completed_color = Color(0.95, 0.22, 0.18, 1)
 
@@ -392,7 +499,7 @@ completed_color = Color(0.95, 0.22, 0.18, 1)
 layout_mode = 2
 stat_name = "生命值上限"
 stat_type = 1
-max_level = 5
+max_level = 10
 icon_texture = ExtResource("7_health_icon")
 completed_color = Color(0.24, 0.88, 0.42, 1)
 
@@ -400,7 +507,7 @@ completed_color = Color(0.24, 0.88, 0.42, 1)
 layout_mode = 2
 stat_name = "攻击速度"
 stat_type = 2
-max_level = 5
+max_level = 10
 icon_texture = ExtResource("8_speed_icon")
 completed_color = Color(0.2, 0.72, 1, 1)
 
@@ -408,6 +515,6 @@ completed_color = Color(0.2, 0.72, 1, 1)
 layout_mode = 2
 stat_name = "闪避能力"
 stat_type = 3
-max_level = 5
+max_level = 10
 icon_texture = ExtResource("9_dodge_icon")
 completed_color = Color(0.66, 0.92, 0.24, 1)

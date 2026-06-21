@@ -23,7 +23,9 @@ func _run() -> void:
 
 	player = game.get_node("Player") as Player
 	await _test_world_mouse_fire()
+	await _test_dodge_success_feedback()
 	await _test_profile_button_does_not_fire()
+	await _test_profile_upgrade_levels_and_skill_details()
 
 	_release_left_mouse(Vector2.ZERO)
 	_clear_player_bullets()
@@ -131,6 +133,118 @@ func _test_profile_button_does_not_fire() -> void:
 	)
 	_expect(player.controls_locked, "Opening the profile panel did not lock player controls.")
 	_expect(not player.mouse_fire_held, "Opening the profile panel left mouse firing active.")
+	profile_panel.close()
+
+
+func _test_dodge_success_feedback() -> void:
+	player.dodge_chance = 1.0
+	player.current_health = player.max_health
+	player.invincibility_time_left = 0.0
+	player.call("_set_hurt_blink_enabled", false)
+	player.call("_stop_dodge_feedback")
+
+	var health_before := player.current_health
+	var applied_damage := player.apply_damage(999)
+	var sprite_material := player.body_sprite.material as ShaderMaterial
+	_expect(not applied_damage, "Successful dodge must report that no damage was applied.")
+	_expect(player.current_health == health_before, "Successful dodge must not reduce health.")
+	_expect(player.invincibility_time_left > 0.0, "Successful dodge must start invincibility.")
+	if sprite_material != null:
+		_expect(
+			sprite_material.get_shader_parameter(&"blink_enabled") == false,
+			"Successful dodge must not enable hurt blink."
+		)
+		_expect(
+			float(sprite_material.get_shader_parameter(&"dodge_effect_strength")) > 0.0,
+			"Successful dodge must raise the dodge shader effect."
+		)
+
+	player.dodge_chance = 0.0
+	player.invincibility_time_left = 0.0
+	player.call("_set_hurt_blink_enabled", false)
+	player.call("_stop_dodge_feedback")
+
+
+func _test_profile_upgrade_levels_and_skill_details() -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	var profile_panel := game.get_node("PlayerProfilePanel") as PlayerProfilePanel
+	run_state.begin_new_run()
+	run_state.set_active_multiplayer_peer(0)
+	player.current_xirang = 100000
+
+	var attack_base := player.attack_damage
+	var health_base := player.max_health
+	var fire_interval_base := player.fire_interval
+	var dodge_base := player.dodge_chance
+	var attack_costs := [100, 300, 500, 800, 1200, 1800, 2500, 3300, 4200, 5200]
+	var shared_costs := [50, 75, 100, 200, 500, 800, 1200, 1700, 2300, 3000]
+
+	_expect(run_state.get_max_upgrade_level(RunStateStore.StatType.ATTACK) == 10, "Attack max upgrade level must be 10.")
+	_expect(run_state.get_max_upgrade_level(RunStateStore.StatType.HEALTH) == 10, "Health max upgrade level must be 10.")
+	_expect(run_state.get_max_upgrade_level(RunStateStore.StatType.ATTACK_SPEED) == 10, "Attack speed max upgrade level must be 10.")
+	_expect(run_state.get_max_upgrade_level(RunStateStore.StatType.DODGE) == 10, "Dodge max upgrade level must be 10.")
+
+	_upgrade_stat_to_max(run_state, RunStateStore.StatType.ATTACK, attack_costs)
+	_upgrade_stat_to_max(run_state, RunStateStore.StatType.HEALTH, shared_costs)
+	_upgrade_stat_to_max(run_state, RunStateStore.StatType.ATTACK_SPEED, shared_costs)
+	_upgrade_stat_to_max(run_state, RunStateStore.StatType.DODGE, shared_costs)
+
+	_expect(player.attack_damage == attack_base + 40, "Ten attack upgrades must add 40 attack.")
+	_expect(player.max_health == health_base + 50, "Ten health upgrades must add 50 max health.")
+	_expect(is_equal_approx(player.fire_interval, fire_interval_base * pow(0.95, 10.0)), "Ten speed upgrades must apply 0.95 multiplier each level.")
+	_expect(is_equal_approx(player.dodge_chance, dodge_base + 0.2), "Ten dodge upgrades must add 20 percentage points.")
+	_expect(not run_state.try_upgrade(RunStateStore.StatType.ATTACK, player), "Eleventh attack upgrade must fail.")
+
+	profile_panel.open()
+	await process_frame
+	var attack_row := profile_panel.get_node("Overlay/PanelRoot/UpgradePanel/AttackRow") as UpgradeRow
+	_expect(attack_row.progress_blocks.size() == 10, "Upgrade rows must expose ten progress blocks.")
+	_expect(attack_row.level_label.text == "10/10", "Upgrade row must show 10/10 at max level.")
+	_expect(attack_row.upgrade_button.disabled, "Maxed upgrade row button must be disabled.")
+	_expect(attack_row.upgrade_button.text == "已满", "Maxed upgrade row button must read 已满.")
+
+	var skill_info := profile_panel.get_node("Overlay/PanelRoot/SkillInfo") as Control
+	_expect(not skill_info.visible, "Skill details must stay hidden before skill1 is purchased.")
+
+	player.unlock_skill1()
+	player.skill1_charge = 4.0
+	await process_frame
+	_expect(skill_info.visible, "Skill details must show after skill1 is purchased.")
+	var skill_description := profile_panel.get_node("Overlay/PanelRoot/SkillInfo/SkillDescription") as Label
+	var skill_cost := profile_panel.get_node("Overlay/PanelRoot/SkillInfo/SkillCost") as Label
+	var skill_charge := profile_panel.get_node("Overlay/PanelRoot/SkillInfo/SkillCharge") as Label
+	_expect(
+		skill_description.text == "投掷炸弹，爆炸造成攻击力 3.3 倍伤害。",
+		"Skill details must show the expected skill description."
+	)
+	_expect(skill_cost.text.contains("18.0"), "Skill details must show the base required charge.")
+	_expect(skill_charge.text.contains("4.0 / 18.0"), "Skill details must show current charge.")
+
+	player.current_xirang = 500
+	_expect(player.try_upgrade_skill1(), "Skill1 first upgrade should succeed in profile smoke test.")
+	await process_frame
+	_expect(skill_cost.text.contains("16.0"), "Skill details must update required charge after skill1 upgrade.")
+	profile_panel.close()
+
+
+func _upgrade_stat_to_max(
+	run_state: RunStateStore,
+	stat_type: int,
+	expected_costs: Array
+) -> void:
+	for level_index in range(expected_costs.size()):
+		_expect(
+			run_state.get_upgrade_cost(stat_type) == expected_costs[level_index],
+			"Upgrade cost mismatch for stat %d at level %d." % [stat_type, level_index]
+		)
+		var xirang_before := player.current_xirang
+		_expect(run_state.try_upgrade(stat_type, player), "Upgrade should succeed for stat %d level %d." % [stat_type, level_index + 1])
+		_expect(
+			player.current_xirang == xirang_before - int(expected_costs[level_index]),
+			"Upgrade deducted the wrong cost for stat %d level %d." % [stat_type, level_index + 1]
+		)
+	_expect(run_state.get_upgrade_level(stat_type) == 10, "Stat %d must reach level 10." % stat_type)
+	_expect(run_state.get_upgrade_cost(stat_type) == -1, "Maxed stat %d must not expose another cost." % stat_type)
 
 
 func _press_left_mouse(position: Vector2) -> void:

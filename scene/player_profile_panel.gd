@@ -2,6 +2,8 @@ extends CanvasLayer
 class_name PlayerProfilePanel
 
 const DESIGN_SIZE := Vector2(724.0, 543.0)
+const SKILL1_DISPLAY_NAME := "维什戴尔炸弹"
+const SKILL1_DESCRIPTION := "投掷炸弹，爆炸造成攻击力 3.3 倍伤害。"
 
 @onready var overlay: Control = $Overlay
 @onready var panel_root: Control = $Overlay/PanelRoot
@@ -10,7 +12,14 @@ const DESIGN_SIZE := Vector2(724.0, 543.0)
 @onready var attack_value: Label = $Overlay/PanelRoot/AttackValue
 @onready var health_value: Label = $Overlay/PanelRoot/HealthValue
 @onready var attack_speed_value: Label = $Overlay/PanelRoot/AttackSpeedValue
+@onready var attack_interval_value: Label = $Overlay/PanelRoot/AttackIntervalValue
+@onready var dodge_value: Label = $Overlay/PanelRoot/DodgeValue
 @onready var method_value: Label = $Overlay/PanelRoot/MethodValue
+@onready var skill_info: Control = $Overlay/PanelRoot/SkillInfo
+@onready var skill_name_label: Label = $Overlay/PanelRoot/SkillInfo/SkillName
+@onready var skill_description_label: Label = $Overlay/PanelRoot/SkillInfo/SkillDescription
+@onready var skill_cost_label: Label = $Overlay/PanelRoot/SkillInfo/SkillCost
+@onready var skill_charge_label: Label = $Overlay/PanelRoot/SkillInfo/SkillCharge
 @onready var inventory_grid: GridContainer = $Overlay/PanelRoot/InventoryGrid
 @onready var upgrade_surface: NinePatchRect = $Overlay/PanelRoot/UpgradeSurface
 @onready var upgrade_panel: VBoxContainer = $Overlay/PanelRoot/UpgradePanel
@@ -30,6 +39,7 @@ var current_tab := 0  # 0 = 背包, 1 = 升级
 
 func _ready() -> void:
 	overlay.visible = false
+	set_process(false)
 	close_button.pressed.connect(close)
 	get_viewport().size_changed.connect(_update_panel_transform)
 	_collect_slots()
@@ -66,6 +76,8 @@ func bind_player(player: Player) -> void:
 			tracked_player.attack_speed_changed.disconnect(_on_attack_speed_changed)
 		if tracked_player.xirang_changed.is_connected(_on_xirang_changed):
 			tracked_player.xirang_changed.disconnect(_on_xirang_changed)
+		if tracked_player.dodge_changed.is_connected(_on_dodge_changed):
+			tracked_player.dodge_changed.disconnect(_on_dodge_changed)
 		if tracked_player.died.is_connected(_on_player_died):
 			tracked_player.died.disconnect(_on_player_died)
 
@@ -77,11 +89,15 @@ func bind_player(player: Player) -> void:
 	tracked_player.health_changed.connect(_on_health_changed)
 	tracked_player.attack_speed_changed.connect(_on_attack_speed_changed)
 	tracked_player.xirang_changed.connect(_on_xirang_changed)
+	tracked_player.dodge_changed.connect(_on_dodge_changed)
 	tracked_player.died.connect(_on_player_died)
+	skill_name_label.text = SKILL1_DISPLAY_NAME
+	skill_description_label.text = SKILL1_DESCRIPTION
 	portrait.sprite_frames = tracked_player.body_sprite.sprite_frames
 	portrait.play(&"normal_down")
 	attack_value.text = str(tracked_player.attack_damage)
 	_on_attack_speed_changed(tracked_player.get_attacks_per_second())
+	_on_dodge_changed(tracked_player.dodge_chance)
 	method_value.text = tracked_player.attack_method_name
 	_on_health_changed(tracked_player.current_health, tracked_player.max_health)
 	_refresh_inventory()
@@ -95,6 +111,7 @@ func open() -> void:
 		return
 
 	overlay.visible = true
+	set_process(true)
 	tracked_player.set_controls_locked(true)
 	_refresh_inventory()
 	_refresh_upgrades()
@@ -108,6 +125,7 @@ func close() -> void:
 		return
 
 	overlay.visible = false
+	set_process(false)
 	selected_slot_index = -1
 	get_viewport().gui_release_focus()
 	if tracked_player != null and not tracked_player.is_dead:
@@ -123,6 +141,11 @@ func toggle() -> void:
 
 func is_open() -> bool:
 	return overlay.visible
+
+
+func _process(_delta: float) -> void:
+	if overlay.visible:
+		_refresh_stat_display()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -183,6 +206,9 @@ func _refresh_stat_display() -> void:
 	attack_value.text = str(tracked_player.attack_damage)
 	_on_health_changed(tracked_player.current_health, tracked_player.max_health)
 	_on_attack_speed_changed(tracked_player.get_attacks_per_second())
+	_on_dodge_changed(tracked_player.dodge_chance)
+	method_value.text = tracked_player.attack_method_name
+	_refresh_skill_display()
 
 
 func _on_slot_selected(slot_index: int) -> void:
@@ -217,7 +243,27 @@ func _on_health_changed(current: int, maximum: int) -> void:
 
 
 func _on_attack_speed_changed(attacks_per_second: float) -> void:
-	attack_speed_value.text = "%.2f/s" % attacks_per_second
+	var safe_attacks_per_second := maxf(attacks_per_second, 0.01)
+	attack_speed_value.text = "%.2f/s" % safe_attacks_per_second
+	attack_interval_value.text = "%.2fs" % (1.0 / safe_attacks_per_second)
+
+
+func _on_dodge_changed(chance: float) -> void:
+	dodge_value.text = "%.0f%%" % (clampf(chance, 0.0, 1.0) * 100.0)
+
+
+func _refresh_skill_display() -> void:
+	if tracked_player == null:
+		skill_info.visible = false
+		return
+	var has_skill := tracked_player.has_skill1()
+	skill_info.visible = has_skill
+	if not has_skill:
+		return
+	var required_charge := maxf(tracked_player.skill1_charge_duration, 0.01)
+	var current_charge := clampf(tracked_player.skill1_charge, 0.0, required_charge)
+	skill_cost_label.text = "所需技力 %.1f" % required_charge
+	skill_charge_label.text = "当前技力 %.1f / %.1f" % [current_charge, required_charge]
 
 
 func _on_xirang_changed(_total: int, _added_amount: int) -> void:

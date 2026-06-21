@@ -121,7 +121,7 @@ theme_override_constants/separation = 7
 
 [node name="BlockContainer" type="HBoxContainer" parent="Margin/Content/InfoColumn/ProgressRow"]
 layout_mode = 2
-theme_override_constants/separation = 5
+theme_override_constants/separation = 2
 
 [node name="Block0" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer" instance=ExtResource("2_block")]
 layout_mode = 2
@@ -138,11 +138,26 @@ layout_mode = 2
 [node name="Block4" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer" instance=ExtResource("2_block")]
 layout_mode = 2
 
+[node name="Block5" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer" instance=ExtResource("2_block")]
+layout_mode = 2
+
+[node name="Block6" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer" instance=ExtResource("2_block")]
+layout_mode = 2
+
+[node name="Block7" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer" instance=ExtResource("2_block")]
+layout_mode = 2
+
+[node name="Block8" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer" instance=ExtResource("2_block")]
+layout_mode = 2
+
+[node name="Block9" parent="Margin/Content/InfoColumn/ProgressRow/BlockContainer" instance=ExtResource("2_block")]
+layout_mode = 2
+
 [node name="LevelLabel" type="Label" parent="Margin/Content/InfoColumn/ProgressRow"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.62, 0.64, 0.59, 1)
 theme_override_font_sizes/font_size = 13
-text = "0/5"
+text = "0/10"
 vertical_alignment = 1
 
 [node name="ActionColumn" type="VBoxContainer" parent="Margin/Content"]

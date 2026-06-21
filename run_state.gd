@@ -14,17 +14,17 @@ enum StatType {
 }
 
 const MAX_UPGRADE_LEVELS := {
-	StatType.ATTACK: 5,
-	StatType.HEALTH: 5,
-	StatType.ATTACK_SPEED: 5,
-	StatType.DODGE: 5,
+	StatType.ATTACK: 10,
+	StatType.HEALTH: 10,
+	StatType.ATTACK_SPEED: 10,
+	StatType.DODGE: 10,
 }
 
 const UPGRADE_COSTS := {
-	StatType.ATTACK: [100, 300, 500, 800, 1200],
-	StatType.HEALTH: [50, 75, 100, 200, 500],
-	StatType.ATTACK_SPEED: [50, 75, 100, 200, 500],
-	StatType.DODGE: [50, 75, 100, 200, 500],
+	StatType.ATTACK: [100, 300, 500, 800, 1200, 1800, 2500, 3300, 4200, 5200],
+	StatType.HEALTH: [50, 75, 100, 200, 500, 800, 1200, 1700, 2300, 3000],
+	StatType.ATTACK_SPEED: [50, 75, 100, 200, 500, 800, 1200, 1700, 2300, 3000],
+	StatType.DODGE: [50, 75, 100, 200, 500, 800, 1200, 1700, 2300, 3000],
 }
 
 var inventory: Array[PickupConfig] = []
