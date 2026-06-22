@@ -9,6 +9,11 @@ config/name="ArcNice Relay"
 run/main_scene="res://relay_server.tscn"
 config/features=PackedStringArray("4.6")
 
+[autoload]
+
+NetManager="*res://relay_net_manager_stub.gd"
+MpGame="*res://relay_mp_game_stub.gd"
+
 [rendering]
 
 renderer/rendering_method="gl_compatibility"

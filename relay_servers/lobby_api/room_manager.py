@@ -39,10 +39,11 @@ class RoomManager:
                 host_ip=host_ip,
                 port=port,
                 max_players=min(max(max_players, 2), config.MAX_PLAYERS_PER_ROOM),
+                status=RoomStatus.STARTING,
             )
 
             # Host 自身作为第一个玩家
-            room.players[host_name] = PlayerInfo(name=host_name, peer_id=1)
+            room.players[host_name] = PlayerInfo(name=host_name)
             self._rooms[room.id] = room
             return room
 
@@ -76,21 +77,23 @@ class RoomManager:
             room.touch()
             return room
 
-    def leave_room(self, room_id: str, player_name: str) -> bool:
+    def leave_room(self, room_id: str, player_name: str) -> Optional[RoomInfo]:
         with self._lock:
             room = self._rooms.get(room_id)
             if room is None:
-                return False
+                return None
 
+            was_host = player_name == room.host_name
             room.players.pop(player_name, None)
             room.touch()
 
-            # 如果房间空了，标记关闭
-            if room.player_count == 0:
+            # Host 离开或房间空了，关闭房间。
+            if was_host or room.player_count == 0:
                 room.status = RoomStatus.CLOSED
                 self._rooms.pop(room_id, None)
+                return room
 
-            return True
+            return None
 
     # ─── 状态更新 ─────────────────────────────────
 
@@ -124,9 +127,24 @@ class RoomManager:
                 return False
             room.relay_port = relay_port
             room.relay_pid = relay_pid
-            room.status = RoomStatus.RELAY
             room.touch()
             return True
+
+    def mark_host_ready(self, room_id: str, host_token: str, host_peer_id: int) -> Optional[RoomInfo]:
+        with self._lock:
+            room = self._rooms.get(room_id)
+            if room is None:
+                return None
+            if not host_token or host_token != room.host_token:
+                return None
+            if host_peer_id <= 0:
+                return None
+            room.host_peer_id = host_peer_id
+            room.status = RoomStatus.WAITING
+            if room.host_name in room.players:
+                room.players[room.host_name].peer_id = host_peer_id
+            room.touch()
+            return room
 
     # ─── 销毁 ────────────────────────────────────
 

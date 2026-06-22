@@ -25,6 +25,8 @@ var conn_mode: ConnMode = ConnMode.DIRECT
 var connection_state: ConnectionState = ConnectionState.DISCONNECTED
 var local_player_name: String = ""
 var lan_port: int = NetConstants.ENET_PORT_DEFAULT
+var relay_ip: String = ""
+var relay_port: int = 0
 var connected_players: Dictionary = {}
 var host_peer_id: int = 1
 var host_game_ready: bool = false
@@ -32,10 +34,13 @@ var host_game_ready: bool = false
 var _physics_frame_count: int = 0
 var _enet_peer: ENetMultiplayerPeer = null
 var _disconnect_in_progress: bool = false
+var _relay_register_pending: bool = false
 
 
 func _physics_process(_delta: float) -> void:
 	_physics_frame_count += 1
+	if _relay_register_pending:
+		_try_send_relay_registration()
 
 
 func get_physics_frame_count() -> int:
@@ -74,14 +79,15 @@ func host_create_lan_server(port: int = NetConstants.ENET_PORT_DEFAULT) -> Error
 		connection_failed.emit("创建局域网主机失败: %s" % error_string(err))
 		return err
 
-	multiplayer.multiplayer_peer = _enet_peer
 	_connect_multiplayer_signals(false)
+	multiplayer.multiplayer_peer = _enet_peer
 	net_role = NetRole.HOST
 	conn_mode = ConnMode.DIRECT
 	connected_players.clear()
 	host_peer_id = get_local_peer_id()
 	if host_peer_id <= 0:
 		host_peer_id = 1
+	set_multiplayer_authority(host_peer_id)
 	connected_players[host_peer_id] = _sanitize_player_name(local_player_name)
 	_physics_frame_count = 0
 	_set_connection_state(ConnectionState.HOSTING_LAN)
@@ -112,20 +118,95 @@ func client_connect_lan(host_ip: String, port: int = NetConstants.ENET_PORT_DEFA
 		connection_failed.emit("连接局域网主机失败: %s" % error_string(err))
 		return err
 
-	multiplayer.multiplayer_peer = _enet_peer
-	_connect_multiplayer_signals(true)
 	net_role = NetRole.CLIENT
 	conn_mode = ConnMode.DIRECT
 	connected_players.clear()
 	host_peer_id = 1
+	set_multiplayer_authority(host_peer_id)
 	_physics_frame_count = 0
 	_set_connection_state(ConnectionState.CONNECTING_LAN)
+	_connect_multiplayer_signals(true)
+	multiplayer.multiplayer_peer = _enet_peer
 	_debug_log("NetManager: Client 正在连接 LAN Host %s:%d" % [trimmed_ip, port])
 	return OK
 
 
 func client_connect_direct(host_ip: String, port: int = NetConstants.ENET_PORT_DEFAULT) -> Error:
 	return client_connect_lan(host_ip, port)
+
+
+func host_create_relay_room(target_relay_ip: String, target_relay_port: int) -> Error:
+	if _enet_peer != null:
+		disconnect_from_game()
+
+	var trimmed_ip := target_relay_ip.strip_edges()
+	if trimmed_ip.is_empty():
+		connection_failed.emit("Relay 地址不能为空")
+		return ERR_INVALID_PARAMETER
+	if target_relay_port <= 0:
+		connection_failed.emit("Relay 端口无效")
+		return ERR_INVALID_PARAMETER
+
+	relay_ip = trimmed_ip
+	relay_port = target_relay_port
+	_enet_peer = ENetMultiplayerPeer.new()
+	var err: Error = _enet_peer.create_client(trimmed_ip, target_relay_port, NetConstants.CHANNEL_COUNT)
+	if err != OK:
+		_enet_peer = null
+		connection_failed.emit("连接公网 Relay 失败: %s" % error_string(err))
+		return err
+
+	net_role = NetRole.HOST
+	conn_mode = ConnMode.RELAY
+	connected_players.clear()
+	host_peer_id = 0
+	set_multiplayer_authority(1)
+	_relay_register_pending = false
+	_physics_frame_count = 0
+	_set_connection_state(ConnectionState.CONNECTING_LAN)
+	_connect_multiplayer_signals(true)
+	multiplayer.multiplayer_peer = _enet_peer
+	_debug_log("NetManager: Host 正在连接 Relay %s:%d" % [trimmed_ip, target_relay_port])
+	return OK
+
+
+func client_join_relay_room(
+	target_relay_ip: String,
+	target_relay_port: int,
+	target_host_peer_id: int
+) -> Error:
+	if _enet_peer != null:
+		disconnect_from_game()
+
+	var trimmed_ip := target_relay_ip.strip_edges()
+	if trimmed_ip.is_empty():
+		connection_failed.emit("Relay 地址不能为空")
+		return ERR_INVALID_PARAMETER
+	if target_relay_port <= 0 or target_host_peer_id <= 0:
+		connection_failed.emit("Relay 房间信息无效")
+		return ERR_INVALID_PARAMETER
+
+	relay_ip = trimmed_ip
+	relay_port = target_relay_port
+	_enet_peer = ENetMultiplayerPeer.new()
+	var err: Error = _enet_peer.create_client(trimmed_ip, target_relay_port, NetConstants.CHANNEL_COUNT)
+	if err != OK:
+		_enet_peer = null
+		connection_failed.emit("连接公网 Relay 失败: %s" % error_string(err))
+		return err
+
+	net_role = NetRole.CLIENT
+	conn_mode = ConnMode.RELAY
+	connected_players.clear()
+	host_peer_id = target_host_peer_id
+	set_multiplayer_authority(host_peer_id)
+	_relay_register_pending = false
+	_physics_frame_count = 0
+	_set_connection_state(ConnectionState.CONNECTING_LAN)
+	_connect_multiplayer_signals(true)
+	multiplayer.multiplayer_peer = _enet_peer
+	_debug_log("NetManager: Client 正在连接 Relay %s:%d host=%d" % [trimmed_ip, target_relay_port, target_host_peer_id])
+	return OK
 
 
 func disconnect_from_game() -> void:
@@ -137,9 +218,13 @@ func disconnect_from_game() -> void:
 	_enet_peer = null
 	net_role = NetRole.NONE
 	conn_mode = ConnMode.DIRECT
+	relay_ip = ""
+	relay_port = 0
 	connected_players.clear()
 	host_peer_id = 1
+	set_multiplayer_authority(host_peer_id)
 	host_game_ready = false
+	_relay_register_pending = false
 	_physics_frame_count = 0
 	_set_connection_state(ConnectionState.DISCONNECTED)
 	player_list_changed.emit()
@@ -152,7 +237,7 @@ func host_start_game() -> void:
 		return
 	host_game_ready = false
 	_set_connection_state(ConnectionState.LOADING_GAME)
-	_rpc_start_game.rpc()
+	_send_start_game_to_clients()
 
 
 func host_broadcast_start_game() -> void:
@@ -160,7 +245,7 @@ func host_broadcast_start_game() -> void:
 		return
 	if connection_state != ConnectionState.LOADING_GAME:
 		return
-	_rpc_start_game.rpc()
+	_send_start_game_to_clients()
 
 
 func mark_in_game() -> void:
@@ -168,7 +253,7 @@ func mark_in_game() -> void:
 	if not is_host():
 		return
 	host_game_ready = true
-	_rpc_host_game_ready.rpc()
+	_send_host_game_ready_to_clients()
 
 
 func get_player_name_by_id(peer_id: int) -> String:
@@ -194,6 +279,8 @@ func is_peer_send_ready(peer_id: int) -> bool:
 		return false
 	if _enet_peer == null or not multiplayer.has_multiplayer_peer():
 		return false
+	if conn_mode == ConnMode.RELAY:
+		return connected_players.has(peer_id) or multiplayer.get_peers().has(peer_id)
 	var packet_peer := _enet_peer.get_peer(peer_id)
 	if packet_peer == null:
 		return false
@@ -238,6 +325,8 @@ func _cleanup_multiplayer_signals() -> void:
 
 func _on_peer_connected(peer_id: int) -> void:
 	_debug_log("NetManager: Peer 已连接, id=%d" % peer_id)
+	if _relay_register_pending:
+		_try_send_relay_registration()
 
 
 func _on_peer_disconnected(peer_id: int) -> void:
@@ -245,26 +334,64 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	connected_players.erase(peer_id)
 	player_left.emit(peer_id)
 	player_list_changed.emit()
+	if conn_mode == ConnMode.RELAY and net_role == NetRole.CLIENT and peer_id == get_host_peer_id():
+		connection_failed.emit("主机已断开")
+		disconnect_from_game()
+		return
 	if is_host() and connection_state != ConnectionState.IN_GAME:
 		call_deferred("_broadcast_player_list_to_clients")
 	_debug_log("NetManager: Peer 已断开, id=%d (%s)" % [peer_id, player_name])
 
 
 func _on_connected_to_server() -> void:
+	if conn_mode == ConnMode.RELAY and net_role == NetRole.HOST:
+		host_peer_id = get_local_peer_id()
+		if host_peer_id <= 0:
+			connection_failed.emit("Relay 未分配有效 Host Peer ID")
+			disconnect_from_game()
+			return
+		set_multiplayer_authority(host_peer_id)
+		connected_players.clear()
+		connected_players[host_peer_id] = _sanitize_player_name(local_player_name)
+		player_joined.emit(host_peer_id, connected_players[host_peer_id])
+		player_list_changed.emit()
+		_set_connection_state(ConnectionState.HOSTING_LAN)
+		_debug_log("NetManager: Host 已连接到 Relay, host_peer_id=%d" % host_peer_id)
+		return
+
 	connected_players.clear()
+	if conn_mode == ConnMode.RELAY:
+		_relay_register_pending = true
+		_try_send_relay_registration()
+		return
 	_rpc_register_player.rpc_id(get_host_peer_id(), _get_safe_local_name())
 	_set_connection_state(ConnectionState.CONNECTED_IN_LOBBY)
 	_debug_log("NetManager: 已连接到 LAN Host")
 
 
 func _on_connection_failed() -> void:
-	connection_failed.emit("连接局域网主机失败")
+	connection_failed.emit("连接公网 Relay 失败" if conn_mode == ConnMode.RELAY else "连接局域网主机失败")
 	disconnect_from_game()
 
 
 func _on_server_disconnected() -> void:
-	connection_failed.emit("主机已断开")
+	connection_failed.emit("Relay 已断开" if conn_mode == ConnMode.RELAY else "主机已断开")
 	disconnect_from_game()
+
+
+func _try_send_relay_registration() -> void:
+	if conn_mode != ConnMode.RELAY or net_role != NetRole.CLIENT:
+		_relay_register_pending = false
+		return
+	if not multiplayer.has_multiplayer_peer():
+		return
+	var target_host_id := get_host_peer_id()
+	if target_host_id <= 0 or not multiplayer.get_peers().has(target_host_id):
+		return
+	_relay_register_pending = false
+	_rpc_register_player.rpc_id(target_host_id, _get_safe_local_name())
+	_set_connection_state(ConnectionState.CONNECTED_IN_LOBBY)
+	_debug_log("NetManager: 已连接到 Relay Host %d" % target_host_id)
 
 
 @rpc("any_peer", "call_remote", "reliable", 0)
@@ -313,6 +440,7 @@ func _rpc_sync_player_list(player_list: Array, new_host_peer_id: int = 0) -> voi
 	if not synced_players.has(resolved_host_id):
 		return
 	host_peer_id = resolved_host_id
+	set_multiplayer_authority(host_peer_id)
 	connected_players = synced_players
 	for previous_peer_id_variant in previous_players:
 		var previous_peer_id := int(previous_peer_id_variant)
@@ -366,6 +494,28 @@ func _broadcast_player_list_to_clients() -> void:
 		if not is_peer_send_ready(peer_id):
 			continue
 		_rpc_sync_player_list.rpc_id(peer_id, player_list, host_id)
+
+
+func _send_start_game_to_clients() -> void:
+	var host_id := get_host_peer_id()
+	for peer_id_variant in connected_players:
+		var peer_id := int(peer_id_variant)
+		if peer_id <= 0 or peer_id == host_id:
+			continue
+		if not is_peer_send_ready(peer_id):
+			continue
+		_rpc_start_game.rpc_id(peer_id)
+
+
+func _send_host_game_ready_to_clients() -> void:
+	var host_id := get_host_peer_id()
+	for peer_id_variant in connected_players:
+		var peer_id := int(peer_id_variant)
+		if peer_id <= 0 or peer_id == host_id:
+			continue
+		if not is_peer_send_ready(peer_id):
+			continue
+		_rpc_host_game_ready.rpc_id(peer_id)
 
 
 func _set_connection_state(new_state: ConnectionState) -> void:

@@ -263,6 +263,13 @@ func _get_connected_client_peer_ids() -> Array[int]:
 	return result
 
 
+func _rpc_to_connected_clients(method_name: StringName, args: Array = []) -> void:
+	for peer_id in _get_connected_client_peer_ids():
+		var rpc_args: Array = [peer_id, method_name]
+		rpc_args.append_array(args)
+		callv("rpc_id", rpc_args)
+
+
 func _update_snapshot_packet_warning_timer(delta: float) -> void:
 	_snapshot_packet_warn_time_left = maxf(_snapshot_packet_warn_time_left - delta, 0.0)
 
@@ -695,15 +702,9 @@ func register_local_projectile(
 	_known_projectiles[projectile_id] = projectile
 	_remember_projectile_record(projectile_id, owner_peer_id, projectile_type, damage, lifetime)
 	if net_manager.is_host():
-		net_projectile_fired.rpc(
-			projectile_id,
-			String(projectile_type),
-			owner_peer_id,
-			spawn_position,
-			direction,
-			damage,
-			speed,
-			lifetime
+		_rpc_to_connected_clients(
+			&"net_projectile_fired",
+			[projectile_id, String(projectile_type), owner_peer_id, spawn_position, direction, damage, speed, lifetime]
 		)
 	else:
 		_rpc_projectile_fired_from_client.rpc_id(
@@ -757,15 +758,18 @@ func _rpc_projectile_fired_from_client(
 	var accepted_damage := int(accepted_parameters["damage"])
 	var accepted_speed := float(accepted_parameters["speed"])
 	var accepted_lifetime := float(accepted_parameters["lifetime"])
-	net_projectile_fired.rpc(
-		projectile_id,
-		projectile_type,
-		owner_peer_id,
-		spawn_position,
-		accepted_direction,
-		accepted_damage,
-		accepted_speed,
-		accepted_lifetime
+	_rpc_to_connected_clients(
+		&"net_projectile_fired",
+		[
+			projectile_id,
+			projectile_type,
+			owner_peer_id,
+			spawn_position,
+			accepted_direction,
+			accepted_damage,
+			accepted_speed,
+			accepted_lifetime,
+		]
 	)
 	net_projectile_fired(
 		projectile_id,
@@ -1157,12 +1161,9 @@ func _apply_enemy_hit_report(
 	_remember_recent_event(_processed_enemy_hit_ids, hit_key, HIT_DEDUP_RETENTION_SECONDS, now)
 	var confirmed_damage := enemy.last_damage_taken
 	if is_inside_tree():
-		net_enemy_damage_applied.rpc(
-			enemy_net_id,
-			enemy.current_health,
-			enemy.is_dead,
-			confirmed_damage,
-			impact_direction
+		_rpc_to_connected_clients(
+			&"net_enemy_damage_applied",
+			[enemy_net_id, enemy.current_health, enemy.is_dead, confirmed_damage, impact_direction]
 		)
 
 
@@ -1329,11 +1330,9 @@ func _apply_player_hit_report(
 	var health_revision := _next_player_health_revision(player_peer_id)
 	if confirmed_dead:
 		_schedule_player_revive(player_peer_id)
-	net_player_damage_applied.rpc(
-		player_peer_id,
-		player_node.current_health,
-		player_node.is_dead,
-		health_revision
+	_rpc_to_connected_clients(
+		&"net_player_damage_applied",
+		[player_peer_id, player_node.current_health, player_node.is_dead, health_revision]
 	)
 	net_player_damage_applied(
 		player_peer_id,
@@ -1369,7 +1368,7 @@ func register_xirang_orb(drop: XirangDrop, amount: int) -> void:
 	_next_xirang_orb_id += 1
 	drop.setup_multiplayer_orb(orb_id, amount, false)
 	_xirang_orbs[orb_id] = {"amount": amount, "drop": drop}
-	net_xirang_orb_spawned.rpc(orb_id, amount, drop.global_position)
+	_rpc_to_connected_clients(&"net_xirang_orb_spawned", [orb_id, amount, drop.global_position])
 
 
 @rpc("authority", "call_remote", "reliable", 4)
@@ -1421,7 +1420,7 @@ func _apply_xirang_orb_collected(orb_id: int, collector_peer_id: int) -> void:
 	var amount := int(orb_data.get("amount", 1))
 	var revision := _xirang_revision + 1
 	if is_inside_tree():
-		net_xirang_granted_all.rpc(orb_id, amount, revision)
+		_rpc_to_connected_clients(&"net_xirang_granted_all", [orb_id, amount, revision])
 	net_xirang_granted_all(orb_id, amount, revision)
 
 
@@ -1517,7 +1516,10 @@ func _schedule_player_revive(peer_id: int) -> void:
 	_host_latest_client_player_snapshot_states.erase(peer_id)
 	_dead_player_revive_times[peer_id] = _get_net_time() + PLAYER_REVIVE_DELAY_SECONDS
 	_dead_player_revive_last_seconds[peer_id] = -1
-	net_player_revive_countdown.rpc(peer_id, int(ceil(PLAYER_REVIVE_DELAY_SECONDS)))
+	_rpc_to_connected_clients(
+		&"net_player_revive_countdown",
+		[peer_id, int(ceil(PLAYER_REVIVE_DELAY_SECONDS))]
+	)
 	net_player_revive_countdown(peer_id, int(ceil(PLAYER_REVIVE_DELAY_SECONDS)))
 
 
@@ -1534,7 +1536,7 @@ func _host_update_player_revives() -> void:
 		var seconds_left := maxi(ceili(revive_at - now), 0)
 		if seconds_left != int(_dead_player_revive_last_seconds.get(peer_id, -1)):
 			_dead_player_revive_last_seconds[peer_id] = seconds_left
-			net_player_revive_countdown.rpc(peer_id, seconds_left)
+			_rpc_to_connected_clients(&"net_player_revive_countdown", [peer_id, seconds_left])
 			net_player_revive_countdown(peer_id, seconds_left)
 		if now >= revive_at:
 			due_peers.append(peer_id)
@@ -1577,12 +1579,15 @@ func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
 			player_node.get_multiplayer_anim_state()
 		)
 	net_player_state_corrected.rpc_id(peer_id, revive_position, Vector2.ZERO)
-	net_player_revived.rpc(
-		peer_id,
-		revive_position,
-		player_node.current_health,
-		PLAYER_REVIVE_INVINCIBILITY_SECONDS,
-		health_revision
+	_rpc_to_connected_clients(
+		&"net_player_revived",
+		[
+			peer_id,
+			revive_position,
+			player_node.current_health,
+			PLAYER_REVIVE_INVINCIBILITY_SECONDS,
+			health_revision,
+		]
 	)
 	net_player_revived(
 		peer_id,
@@ -1647,19 +1652,22 @@ func _on_host_enemy_spawned(
 ) -> void:
 	if enemy_config == null or not is_inside_tree() or not net_manager.is_host():
 		return
-	net_enemy_spawned.rpc(net_id, enemy_config.resource_path, spawn_position.x, spawn_position.y, _get_net_time())
+	_rpc_to_connected_clients(
+		&"net_enemy_spawned",
+		[net_id, enemy_config.resource_path, spawn_position.x, spawn_position.y, _get_net_time()]
+	)
 
 
 func _on_host_enemy_defeated(net_id: int, defeat_position: Vector2) -> void:
 	if not is_inside_tree() or not net_manager.is_host() or net_id <= 0:
 		return
-	net_enemy_defeated.rpc(net_id, defeat_position)
+	_rpc_to_connected_clients(&"net_enemy_defeated", [net_id, defeat_position])
 
 
 func _on_host_enemy_removed(net_id: int) -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
-	net_enemy_removed.rpc(net_id)
+	_rpc_to_connected_clients(&"net_enemy_removed", [net_id])
 
 
 func broadcast_enemy_action(
@@ -1671,13 +1679,16 @@ func broadcast_enemy_action(
 ) -> void:
 	if not net_manager.is_host() or net_id <= 0 or action_id <= 0:
 		return
-	net_enemy_action.rpc(net_id, String(action_name), direction, action_position, action_id)
+	_rpc_to_connected_clients(
+		&"net_enemy_action",
+		[net_id, String(action_name), direction, action_position, action_id]
+	)
 
 
 func _on_host_pickup_removed(net_id: int) -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
-	net_pickup_removed.rpc(net_id)
+	_rpc_to_connected_clients(&"net_pickup_removed", [net_id])
 
 
 func _on_host_pickup_spawned(
@@ -1687,7 +1698,10 @@ func _on_host_pickup_spawned(
 ) -> void:
 	if pickup_config == null or not is_inside_tree() or not net_manager.is_host():
 		return
-	net_pickup_spawned.rpc(net_id, pickup_config.resource_path, spawn_position.x, spawn_position.y)
+	_rpc_to_connected_clients(
+		&"net_pickup_spawned",
+		[net_id, pickup_config.resource_path, spawn_position.x, spawn_position.y]
+	)
 
 
 func _on_host_pickup_collected(
@@ -1699,25 +1713,28 @@ func _on_host_pickup_collected(
 	if not is_inside_tree() or not net_manager.is_host():
 		return
 	var config_path := pickup_config.resource_path if pickup_config != null else ""
-	net_pickup_collected.rpc(net_id, collector_peer_id, config_path, applied_immediately)
+	_rpc_to_connected_clients(
+		&"net_pickup_collected",
+		[net_id, collector_peer_id, config_path, applied_immediately]
+	)
 
 
 func _on_host_merchant_active_changed(active: bool) -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
-	net_merchant_active_changed.rpc(active)
+	_rpc_to_connected_clients(&"net_merchant_active_changed", [active])
 
 
 func _on_host_wave_started(wave_index: int) -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
-	net_wave_started.rpc(wave_index)
+	_rpc_to_connected_clients(&"net_wave_started", [wave_index])
 
 
 func _on_host_defeat_started() -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
-	net_game_defeated.rpc()
+	_rpc_to_connected_clients(&"net_game_defeated")
 
 
 func _on_game_return_to_lobby_requested() -> void:
@@ -2026,7 +2043,10 @@ func _apply_upgrade_for_peer(peer_id: int, stat_type: int) -> void:
 	var success := run_state.try_upgrade_for_peer(peer_id, stat_type, player_node)
 	var level := run_state.get_upgrade_level_for_peer(peer_id, stat_type)
 	var current_xirang := player_node.current_xirang
-	net_upgrade_confirmed.rpc(peer_id, stat_type, level, current_xirang, success)
+	_rpc_to_connected_clients(
+		&"net_upgrade_confirmed",
+		[peer_id, stat_type, level, current_xirang, success]
+	)
 	if peer_id == _get_local_peer_id():
 		net_upgrade_confirmed(peer_id, stat_type, level, current_xirang, success)
 
@@ -2042,13 +2062,16 @@ func _apply_skill1_purchase_for_peer(peer_id: int) -> void:
 	var skill1_unlocked := player_node.has_skill1()
 	var skill1_upgrade_level := player_node.skill1_upgrade_level
 	var skill1_charge_duration := player_node.skill1_charge_duration
-	net_skill1_purchase_confirmed.rpc(
-		peer_id,
-		current_xirang,
-		skill1_unlocked,
-		result_code,
-		skill1_upgrade_level,
-		skill1_charge_duration
+	_rpc_to_connected_clients(
+		&"net_skill1_purchase_confirmed",
+		[
+			peer_id,
+			current_xirang,
+			skill1_unlocked,
+			result_code,
+			skill1_upgrade_level,
+			skill1_charge_duration,
+		]
 	)
 	if peer_id == _get_local_peer_id():
 		net_skill1_purchase_confirmed(
@@ -2069,7 +2092,10 @@ func _apply_cheat_xirang_for_peer(peer_id: int) -> void:
 		return
 	if not player_node.grant_cheat_xirang(CHEAT_XIRANG_AMOUNT):
 		return
-	net_cheat_xirang_confirmed.rpc(peer_id, player_node.current_xirang, CHEAT_XIRANG_AMOUNT)
+	_rpc_to_connected_clients(
+		&"net_cheat_xirang_confirmed",
+		[peer_id, player_node.current_xirang, CHEAT_XIRANG_AMOUNT]
+	)
 
 
 func _get_host_peer_id() -> int:

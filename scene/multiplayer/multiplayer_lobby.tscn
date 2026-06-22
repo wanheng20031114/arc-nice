@@ -191,6 +191,80 @@ theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
 text = "返回菜单"
 
 ; ═══════════════════════════════════════════
+; 联机方式选择面板
+; ═══════════════════════════════════════════
+
+[node name="ModeSelectPanel" type="PanelContainer" parent="LobbyCenter"]
+visible = false
+custom_minimum_size = Vector2(380, 320)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="MarginContainer" type="MarginContainer" parent="LobbyCenter/ModeSelectPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 34
+theme_override_constants/margin_top = 34
+theme_override_constants/margin_right = 34
+theme_override_constants/margin_bottom = 34
+
+[node name="VBoxContainer" type="VBoxContainer" parent="LobbyCenter/ModeSelectPanel/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 14
+alignment = 1
+
+[node name="Title" type="Label" parent="LobbyCenter/ModeSelectPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.88, 0.62, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 26
+text = "选择联机方式"
+horizontal_alignment = 1
+
+[node name="PublicGameButton" type="Button" parent="LobbyCenter/ModeSelectPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(280, 42)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
+text = "公网游戏"
+
+[node name="LanGameButton" type="Button" parent="LobbyCenter/ModeSelectPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(280, 42)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
+text = "局域网游戏"
+
+[node name="ModeStatusLabel" type="Label" parent="LobbyCenter/ModeSelectPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.65, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="BackToMenuButton" type="Button" parent="LobbyCenter/ModeSelectPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(280, 36)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
+text = "返回菜单"
+
+; ═══════════════════════════════════════════
 ; 房间浏览面板
 ; ═══════════════════════════════════════════
 
@@ -409,3 +483,5 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
 theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
 text = "离开房间"
+
+[node name="PublicLobbyRequest" type="HTTPRequest" parent="."]

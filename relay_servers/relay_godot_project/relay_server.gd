@@ -6,11 +6,14 @@ extends Node
 
 const DEFAULT_PORT := 40001
 const IDLE_TIMEOUT_SEC := 300.0
+const EMPTY_AFTER_CONNECTION_TIMEOUT_SEC := 1.0
 const MAX_CLIENTS := 8
+const CHANNEL_COUNT := 5
 
 var _port: int = DEFAULT_PORT
 var _idle_timer: float = 0.0
 var _has_had_connections: bool = false
+var _host_peer_id: int = 0
 
 
 func _ready() -> void:
@@ -30,19 +33,18 @@ func _parse_command_line() -> void:
 
 func _start_server() -> void:
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_server(_port, MAX_CLIENTS)
+	var err := peer.create_server(_port, MAX_CLIENTS, CHANNEL_COUNT)
 	if err != OK:
 		push_error("[Relay] 创建服务器失败 (port=%d): %s" % [_port, error_string(err)])
 		get_tree().quit(1)
 		return
-
-	multiplayer.multiplayer_peer = peer
 
 	# 开启 server_relay：服务器自动转发客户端之间的 RPC 和包
 	multiplayer.server_relay = true
 
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+	multiplayer.multiplayer_peer = peer
 
 	print("[Relay] 服务器已启动, port=%d, server_relay=true" % _port)
 
@@ -67,8 +69,8 @@ func _process(delta: float) -> void:
 	var connected_peers := multiplayer.get_peers()
 	if connected_peers.is_empty():
 		_idle_timer += delta
-		if _idle_timer >= IDLE_TIMEOUT_SEC:
-			print("[Relay] 所有玩家已离开，空闲超时, 自动退出")
+		if _idle_timer >= EMPTY_AFTER_CONNECTION_TIMEOUT_SEC:
+			print("[Relay] 所有玩家已离开，自动退出")
 			get_tree().quit(0)
 	else:
 		_idle_timer = 0.0
@@ -77,6 +79,14 @@ func _process(delta: float) -> void:
 func _on_peer_connected(peer_id: int) -> void:
 	_has_had_connections = true
 	_idle_timer = 0.0
+	if _host_peer_id <= 0:
+		_host_peer_id = peer_id
+		var net_manager_stub := get_node_or_null("/root/NetManager")
+		if net_manager_stub != null:
+			net_manager_stub.set_multiplayer_authority(_host_peer_id)
+		var mp_game_stub := get_node_or_null("/root/MpGame")
+		if mp_game_stub != null:
+			mp_game_stub.set_multiplayer_authority(_host_peer_id)
 	var connected_count := multiplayer.get_peers().size()
 	print("[Relay] 玩家连接 peer_id=%d (当前 %d 人)" % [peer_id, connected_count])
 

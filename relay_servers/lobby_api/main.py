@@ -75,8 +75,35 @@ class HostTokenRequest(BaseModel):
     host_token: str
 
 
+class HostReadyRequest(BaseModel):
+    host_token: str
+    host_peer_id: int = Field(ge=1)
+
+
 class QuickMatchRequest(BaseModel):
     player_name: str
+
+
+async def _ensure_room_relay(room) -> dict:
+    """Start a relay for a newly-created room and attach its port."""
+    port = relay_launcher.allocate_port()
+    if port is None:
+        room_mgr.destroy_room(room.id, room.host_token)
+        raise HTTPException(status_code=503, detail="无可用 Relay 端口")
+
+    pid = relay_launcher.start_relay(port)
+    if pid is None:
+        room_mgr.destroy_room(room.id, room.host_token)
+        raise HTTPException(status_code=500, detail="启动 Relay 失败")
+
+    await asyncio.sleep(config.RELAY_STARTUP_GRACE_SECONDS)
+    if not relay_launcher.is_relay_running(port):
+        relay_launcher.stop_relay(port)
+        room_mgr.destroy_room(room.id, room.host_token)
+        raise HTTPException(status_code=500, detail="Relay 启动后异常退出")
+
+    room_mgr.set_relay_info(room.id, port, pid)
+    return room.to_join_dict(config.PUBLIC_IP, include_host_token=True)
 
 
 # ─── API 端点 ────────────────────────────────────
@@ -85,6 +112,7 @@ class QuickMatchRequest(BaseModel):
 async def health_check() -> dict:
     return {
         "status": "ok",
+        "public_ip": config.PUBLIC_IP,
         "active_relays": relay_launcher.get_active_count(),
     }
 
@@ -110,7 +138,7 @@ async def create_room(req: CreateRoomRequest) -> dict:
     if room is None:
         raise HTTPException(status_code=503, detail="房间已满，无法创建更多房间")
 
-    return room.to_join_dict(config.PUBLIC_IP, include_host_token=True)
+    return await _ensure_room_relay(room)
 
 
 @app.post("/rooms/{room_id}/join")
@@ -123,12 +151,24 @@ async def join_room(room_id: str, req: JoinRoomRequest) -> dict:
     return room.to_join_dict(config.PUBLIC_IP)
 
 
+@app.post("/rooms/{room_id}/host_ready")
+async def host_ready(room_id: str, req: HostReadyRequest) -> dict:
+    """房主已连接 Relay，登记真实 host peer id，并开放房间加入。"""
+    room = room_mgr.mark_host_ready(room_id, req.host_token, req.host_peer_id)
+    if room is None:
+        raise HTTPException(status_code=403, detail="房主令牌无效、房间不存在或 host peer id 无效")
+    return room.to_join_dict(config.PUBLIC_IP, include_host_token=True)
+
+
 @app.post("/rooms/{room_id}/leave")
 async def leave_room(room_id: str, req: JoinRoomRequest) -> dict:
     """离开指定房间。"""
-    success = room_mgr.leave_room(room_id, req.player_name)
-    if not success:
+    room = room_mgr.get_room(room_id)
+    if room is None:
         raise HTTPException(status_code=404, detail="房间不存在")
+    removed = room_mgr.leave_room(room_id, req.player_name)
+    if removed is not None and removed.relay_port > 0:
+        relay_launcher.stop_relay(removed.relay_port)
     return {"status": "ok"}
 
 
@@ -172,8 +212,8 @@ async def request_relay(room_id: str, req: HostTokenRequest) -> dict:
     if pid is None:
         raise HTTPException(status_code=500, detail="启动 Relay 失败")
 
-    # 等待 Relay 就绪（给 Godot 一点启动时间）
-    await asyncio.sleep(1.5)
+    # 等待 Relay 就绪（给 Godot/ENet 一点启动时间）
+    await asyncio.sleep(config.RELAY_STARTUP_GRACE_SECONDS)
 
     # 检查进程是否仍在运行
     if not relay_launcher.is_relay_running(port):
@@ -216,7 +256,7 @@ async def quick_match(req: QuickMatchRequest) -> dict:
         )
         if room is None:
             raise HTTPException(status_code=503, detail="无法创建房间")
-        return room.to_join_dict(config.PUBLIC_IP, include_host_token=True)
+        return await _ensure_room_relay(room)
 
     # 加入找到的房间
     joined = room_mgr.join_room(room.id, req.player_name)

@@ -4,11 +4,14 @@ const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 
+const STATE_HOSTING_LAN := 1
 const STATE_LOADING_GAME := 4
 const STATE_IN_GAME := 5
 const DEFAULT_TIMEOUT_SECONDS := 12.0
 const DEFAULT_RUN_SECONDS := 3.0
 const PROBE_XIRANG_AMOUNT := 7
+const PROBE_MODE_LAN := "lan"
+const PROBE_MODE_RELAY := "relay"
 const CLIENT2_PLAYER_NAME := "client2"
 const CLIENT4_PLAYER_NAME := "client4"
 const PROBE_SCENARIO_FULL := "full"
@@ -38,6 +41,8 @@ func _run() -> void:
 	var linger_seconds := float(options.get("linger_seconds", "0.0"))
 	var events_enabled := _parse_bool(str(options.get("events", "false")))
 	var host_ip := str(options.get("host", "127.0.0.1"))
+	var mode := str(options.get("mode", PROBE_MODE_LAN)).strip_edges().to_lower()
+	var relay_host_peer_id := int(options.get("relay_host_peer_id", "0"))
 	var player_name := str(options.get("name", "Probe%s" % role.capitalize()))
 	probe_scenario = str(options.get("scenario", PROBE_SCENARIO_FULL)).strip_edges().to_lower()
 	if probe_scenario.is_empty():
@@ -54,6 +59,8 @@ func _run() -> void:
 		"host":
 			await _run_host(
 				net_manager,
+				mode,
+				host_ip,
 				port,
 				expected_players,
 				timeout_seconds,
@@ -63,8 +70,10 @@ func _run() -> void:
 		"client":
 			await _run_client(
 				net_manager,
+				mode,
 				host_ip,
 				port,
+				relay_host_peer_id,
 				expected_players,
 				timeout_seconds,
 				run_seconds,
@@ -83,16 +92,32 @@ func _run() -> void:
 
 func _run_host(
 	net_manager: Node,
+	mode: String,
+	host_ip: String,
 	port: int,
 	expected_players: int,
 	timeout_seconds: float,
 	run_seconds: float,
 	linger_seconds: float
 ) -> void:
-	var err: Error = net_manager.host_create_lan_server(port)
+	var err: Error = OK
+	if mode == PROBE_MODE_RELAY:
+		err = net_manager.host_create_relay_room(host_ip, port)
+	else:
+		err = net_manager.host_create_lan_server(port)
 	if err != OK:
-		_fail("Host failed to create LAN server: %s" % error_string(err))
+		_fail("Host failed to create %s connection: %s" % [mode, error_string(err)])
 		return
+	if mode == PROBE_MODE_RELAY:
+		if not await _wait_for_exact_connection_state(net_manager, STATE_HOSTING_LAN, timeout_seconds):
+			_print_peer_debug("RELAY_PROBE_HOST_TIMEOUT", net_manager)
+			_fail("Relay host did not finish connecting to relay.")
+			return
+		var host_peer_id := int(net_manager.get_host_peer_id())
+		if host_peer_id <= 1:
+			_fail("Relay host peer id must be a real relay client id, saw %d." % host_peer_id)
+			return
+		print("RELAY_PROBE_HOST_READY host_peer_id=%d" % host_peer_id)
 	if not await _wait_for_player_count(net_manager, expected_players, timeout_seconds):
 		_fail(
 			"Host timed out waiting for %d players; saw %d."
@@ -108,17 +133,26 @@ func _run_host(
 
 func _run_client(
 	net_manager: Node,
+	mode: String,
 	host_ip: String,
 	port: int,
+	relay_host_peer_id: int,
 	expected_players: int,
 	timeout_seconds: float,
 	run_seconds: float,
 	linger_seconds: float,
 	events_enabled: bool
 ) -> void:
-	var err: Error = net_manager.client_connect_lan(host_ip, port)
+	var err: Error = OK
+	if mode == PROBE_MODE_RELAY:
+		if relay_host_peer_id <= 1:
+			_fail("Relay client missing valid host peer id.")
+			return
+		err = net_manager.client_join_relay_room(host_ip, port, relay_host_peer_id)
+	else:
+		err = net_manager.client_connect_lan(host_ip, port)
 	if err != OK:
-		_fail("Client failed to connect to LAN host: %s" % error_string(err))
+		_fail("Client failed to connect to %s host: %s" % [mode, error_string(err)])
 		return
 	if not await _wait_for_player_count(net_manager, expected_players, timeout_seconds):
 		_fail(
@@ -926,6 +960,19 @@ func _wait_for_connection_state(
 	return false
 
 
+func _wait_for_exact_connection_state(
+	net_manager: Node,
+	target_state: int,
+	timeout_seconds: float
+) -> bool:
+	var end_time := _now_seconds() + timeout_seconds
+	while _now_seconds() <= end_time:
+		if int(net_manager.get("connection_state")) == target_state:
+			return true
+		await process_frame
+	return false
+
+
 func _wait_seconds(seconds: float) -> void:
 	var end_time := _now_seconds() + maxf(seconds, 0.0)
 	while _now_seconds() <= end_time:
@@ -1035,6 +1082,23 @@ func _wait_cleanup_frames(frame_count: int) -> void:
 func _get_connected_player_count(net_manager: Node) -> int:
 	var connected_players := net_manager.get("connected_players") as Dictionary
 	return connected_players.size()
+
+
+func _print_peer_debug(prefix: String, net_manager: Node) -> void:
+	var peer := net_manager.multiplayer.multiplayer_peer
+	var status := -1
+	if peer != null:
+		status = int(peer.get_connection_status())
+	print(
+		"%s state=%d status=%d unique_id=%d peers=%s"
+		% [
+			prefix,
+			int(net_manager.get("connection_state")),
+			status,
+			int(net_manager.get_local_peer_id()),
+			str(net_manager.multiplayer.get_peers()),
+		]
+	)
 
 
 func _get_peer_id_by_name(net_manager: Node, player_name: String) -> int:

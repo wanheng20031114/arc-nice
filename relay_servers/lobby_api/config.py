@@ -32,6 +32,9 @@ ROOM_IDLE_TIMEOUT = int(os.getenv("ROOM_IDLE_TIMEOUT", "600"))
 # Relay 进程无连接超时（秒）
 RELAY_IDLE_TIMEOUT = int(os.getenv("RELAY_IDLE_TIMEOUT", "300"))
 
+# Relay 启动后给 Godot/ENet 完成监听的等待时间（秒）
+RELAY_STARTUP_GRACE_SECONDS = float(os.getenv("RELAY_STARTUP_GRACE_SECONDS", "5.0"))
+
 # ─── 限制 ────────────────────────────────────────
 MAX_ROOMS = int(os.getenv("MAX_ROOMS", "100"))
 MAX_PLAYERS_PER_ROOM = int(os.getenv("MAX_PLAYERS_PER_ROOM", "8"))

@@ -13,6 +13,7 @@ from typing import Optional
 
 
 class RoomStatus(str, Enum):
+    STARTING = "starting"     # Relay 已分配，等待房主连接
     WAITING = "waiting"       # 等待玩家加入
     DIRECT = "direct"         # 已直连开始游戏
     RELAY = "relay"           # 通过 Relay 中继
@@ -34,6 +35,7 @@ class RoomInfo:
     host_name: str = ""
     host_token: str = field(default_factory=lambda: secrets.token_urlsafe(24))
     host_ip: str = ""
+    host_peer_id: int = 0
     port: int = 29170
     max_players: int = 4
     status: RoomStatus = RoomStatus.WAITING
@@ -53,14 +55,21 @@ class RoomInfo:
 
     @property
     def is_joinable(self) -> bool:
-        return self.status == RoomStatus.WAITING and not self.is_full
+        return (
+            self.status == RoomStatus.WAITING
+            and self.relay_port > 0
+            and self.host_peer_id > 0
+            and not self.is_full
+        )
 
     def to_public_dict(self) -> dict:
         """返回可公开的房间信息（用于房间列表）。"""
         return {
             "id": self.id,
+            "room_id": self.id,
             "name": self.name,
             "host_name": self.host_name,
+            "host_peer_id": self.host_peer_id,
             "player_count": self.player_count,
             "max_players": self.max_players,
             "status": self.status.value,
@@ -70,7 +79,12 @@ class RoomInfo:
         """返回加入房间时所需的详细信息。"""
         result = self.to_public_dict()
         result["host_ip"] = self.host_ip
+        result["host_peer_id"] = self.host_peer_id
         result["port"] = self.port
+        result["players"] = [
+            {"name": player.name, "peer_id": player.peer_id}
+            for player in self.players.values()
+        ]
         if include_host_token:
             result["host_token"] = self.host_token
         if self.relay_port > 0:
