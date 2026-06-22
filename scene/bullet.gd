@@ -19,6 +19,8 @@ var remaining_lifetime : float = 0.0
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"player_bullet"
+var pierces_enemies: bool = false
+var hit_enemy_instance_ids: Dictionary = {}
 
 
 func _ready() -> void:
@@ -26,11 +28,16 @@ func _ready() -> void:
 
 
 # 外部生成子弹后调用，用来设置方向
-func setup(initial_direction: Vector2, initial_damage: int = 1) -> void:
+func setup(
+	initial_direction: Vector2,
+	initial_damage: int = 1,
+	initial_pierces_enemies: bool = false
+) -> void:
 	if initial_direction != Vector2.ZERO:
 		direction = initial_direction.normalized()
 		rotation = direction.angle()
 	damage = maxi(initial_damage, 0)
+	pierces_enemies = initial_pierces_enemies
 
 
 func setup_multiplayer(
@@ -93,14 +100,40 @@ func _on_area_entered(area: Area2D) -> void:
 func _on_body_entered(body: Node2D) -> void:
 	var enemy := body as Enemy
 	if enemy != null:
-		if _try_report_multiplayer_enemy_hit(enemy):
-			queue_free()
-			return
-		enemy.apply_damage(damage, -direction)
-		queue_free()
+		try_hit_enemy(enemy)
 		return
 
 	queue_free()
+
+
+func try_hit_enemy(enemy: Enemy) -> bool:
+	if is_queued_for_deletion():
+		return false
+	if enemy == null or not is_instance_valid(enemy):
+		return false
+	if not _try_mark_enemy_hit(enemy):
+		return false
+
+	var hit_registered := false
+	if _try_report_multiplayer_enemy_hit(enemy):
+		hit_registered = true
+	else:
+		hit_registered = enemy.apply_damage(damage, -direction)
+
+	if not hit_registered:
+		hit_enemy_instance_ids.erase(enemy.get_instance_id())
+		return false
+	if not pierces_enemies:
+		queue_free()
+	return true
+
+
+func _try_mark_enemy_hit(enemy: Enemy) -> bool:
+	var enemy_id := enemy.get_instance_id()
+	if hit_enemy_instance_ids.has(enemy_id):
+		return false
+	hit_enemy_instance_ids[enemy_id] = true
+	return true
 
 
 func _try_report_multiplayer_enemy_hit(enemy: Enemy) -> bool:

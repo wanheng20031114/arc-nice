@@ -11,6 +11,7 @@ const RPG_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
 const PICKUP_SPEED_CONFIG := preload("res://resources/config/pickups/pickup_speed.tres")
 const PICKUP_SPIRAL_CONFIG := preload("res://resources/config/pickups/pickup_spiral.tres")
 const XIRANG_DROP_CONFIG := preload("res://resources/config/xirang_drop.tres")
+const APPLE_COLLECTIBLE := preload("res://resources/config/pickups/collectible_apple.tres")
 
 var failures: Array[String] = []
 
@@ -798,6 +799,21 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			is_equal_approx(peer_four.skill1_charge_duration, skill1_duration_before_upgrade - 4.0),
 			"Skill1 upgrade confirm must update charge duration."
 		)
+		var luoxi_claim_result := game.try_claim_luoxi_collectible_for_peer(4, 1)
+		_expect(
+			luoxi_claim_result == LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS,
+			"Luoxi collectible claim must succeed for a valid peer."
+		)
+		_expect(
+			run_state.get_item_for_peer(4, 0) == APPLE_COLLECTIBLE,
+			"Luoxi collectible claim must add the apple to the selected peer inventory."
+		)
+		_expect(game.has_luoxi_collectible_claimed(4), "Luoxi claim must mark the selected peer as claimed.")
+		_expect(
+			game.try_claim_luoxi_collectible_for_peer(4, 0)
+			== LuoxiMerchant.COLLECTIBLE_RESULT_ALREADY_CLAIMED,
+			"Luoxi must reject a second collectible choice in the same run."
+		)
 		peer_four.skill1_charge_duration = 1.0
 		peer_four.skill1_charge = 0.0
 		game.call("_update_multiplayer_remote_player_passive_state", 0.5)
@@ -831,6 +847,21 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		mp_game.call("_grant_xirang_to_all_players", 12)
 		_expect(peer_two.current_xirang == peer_two_xirang + 12, "Xirang grant must update peer 2.")
 		_expect(peer_three.current_xirang == peer_three_xirang + 12, "Xirang grant must update peer 3.")
+		mp_game.call(
+			"net_luoxi_collectible_confirmed",
+			3,
+			0,
+			APPLE_COLLECTIBLE.resource_path,
+			LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS
+		)
+		_expect(
+			run_state.get_item_for_peer(3, 0) == APPLE_COLLECTIBLE,
+			"Luoxi collectible confirm must add apple to the confirmed peer inventory."
+		)
+		_expect(
+			game.has_luoxi_collectible_claimed(3),
+			"Luoxi collectible confirm must mark the confirmed peer as claimed."
+		)
 
 	mp_game.free()
 	_stop_audio_players(game)

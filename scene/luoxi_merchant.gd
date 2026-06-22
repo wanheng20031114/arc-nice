@@ -1,0 +1,332 @@
+extends Node2D
+class_name LuoxiMerchant
+
+const APPLE_COLLECTIBLE := preload("res://resources/config/pickups/collectible_apple.tres")
+const APPLE_ICON_BBCODE := "[img=18]res://resources/texture/apple_collectible.png[/img]"
+const DIALOGUE_LINES := [
+	"我是终末地的爪牙！",
+	"我能为你提供收藏品来强化自己",
+]
+const CHOICE_COUNT := 3
+const CLAIMED_LINE := "这个回合我已经把收藏品交给你了。"
+const SUCCESS_LINE := "拿好苹果，可别小看它。"
+const ALREADY_CLAIMED_LINE := "这个回合只能选择一次收藏品。"
+const INVENTORY_FULL_LINE := "你的背包已经满了。"
+const INVALID_PLAYER_LINE := "现在还不能把收藏品交给你。"
+const PLAYER_COLLISION_MASK := 2
+const BODY_PUSH_QUERY_MAX_RESULTS := 16
+const BODY_PUSH_DISTANCE := 22.0
+
+const COLLECTIBLE_RESULT_SUCCESS := 0
+const COLLECTIBLE_RESULT_ALREADY_CLAIMED := 1
+const COLLECTIBLE_RESULT_INVENTORY_FULL := 2
+const COLLECTIBLE_RESULT_INVALID_PLAYER := 3
+
+@onready var collision_shape: CollisionShape2D = $StaticBody2D/CollisionShape2D
+@onready var interaction_area: Area2D = $InteractionArea
+@onready var dialogue_bubble: MerchantDialogueBubble = $MerchantDialogueBubble
+
+var is_active: bool = false
+var nearby_players: Dictionary = {}
+var active_player: Player = null
+var dialogue_index: int = 0
+var selected_choice_index: int = 0
+var choice_visible: bool = false
+var result_visible: bool = false
+var dialogue_lines: Array = []
+var claimed_player_keys: Dictionary = {}
+
+
+static func get_choice_count() -> int:
+	return CHOICE_COUNT
+
+
+static func get_collectible_for_choice(choice_index: int) -> PickupConfig:
+	if choice_index < 0 or choice_index >= CHOICE_COUNT:
+		return null
+	return APPLE_COLLECTIBLE
+
+
+static func get_result_line(result_code: int) -> String:
+	match result_code:
+		COLLECTIBLE_RESULT_SUCCESS:
+			return SUCCESS_LINE
+		COLLECTIBLE_RESULT_ALREADY_CLAIMED:
+			return ALREADY_CLAIMED_LINE
+		COLLECTIBLE_RESULT_INVENTORY_FULL:
+			return INVENTORY_FULL_LINE
+		_:
+			return INVALID_PLAYER_LINE
+
+
+func _ready() -> void:
+	interaction_area.body_entered.connect(_on_interaction_area_body_entered)
+	interaction_area.body_exited.connect(_on_interaction_area_body_exited)
+	set_active(visible)
+
+
+func set_active(active: bool) -> void:
+	is_active = active
+	visible = active
+	interaction_area.set_deferred("monitoring", active)
+
+	if not active:
+		collision_shape.set_deferred("disabled", true)
+		nearby_players.clear()
+		active_player = null
+		choice_visible = false
+		result_visible = false
+		dialogue_bubble.hide_bubble()
+		return
+
+	collision_shape.set_deferred("disabled", false)
+	call_deferred("_push_overlapping_players_out")
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not is_active or active_player == null:
+		return
+
+	if choice_visible:
+		if _handle_choice_input(event):
+			get_viewport().set_input_as_handled()
+		return
+
+	if not event.is_action_pressed("interact"):
+		return
+
+	get_viewport().set_input_as_handled()
+	_advance_dialogue()
+
+
+func _start_dialogue(player: Player) -> void:
+	if not is_active or player == null:
+		return
+	active_player = player
+	dialogue_index = 0
+	selected_choice_index = 0
+	choice_visible = false
+	result_visible = false
+	dialogue_lines = _build_dialogue_lines(player)
+	dialogue_bubble.say(dialogue_lines[dialogue_index])
+
+
+func _advance_dialogue() -> void:
+	if dialogue_bubble.is_revealing:
+		dialogue_bubble.finish_line()
+		return
+
+	if result_visible:
+		_reset_dialogue_after_result()
+		return
+
+	if not dialogue_bubble.visible:
+		_start_dialogue(active_player)
+		return
+
+	if dialogue_index < dialogue_lines.size() - 1:
+		dialogue_index += 1
+		dialogue_bubble.say(dialogue_lines[dialogue_index])
+		return
+
+	if _is_player_claimed(active_player):
+		dialogue_bubble.hide_bubble()
+		return
+
+	_show_choice_offer()
+
+
+func show_collectible_result(result_code: int) -> void:
+	choice_visible = false
+	result_visible = true
+	if result_code == COLLECTIBLE_RESULT_SUCCESS and active_player != null:
+		claimed_player_keys[_get_player_claim_key(active_player)] = true
+	dialogue_bubble.say(get_result_line(result_code))
+
+
+func _show_choice_offer() -> void:
+	choice_visible = true
+	dialogue_bubble.say(_build_choice_text())
+
+
+func _handle_choice_input(event: InputEvent) -> bool:
+	if dialogue_bubble.is_revealing:
+		if event.is_action_pressed("interact"):
+			dialogue_bubble.finish_line()
+			return true
+		return false
+
+	if event.is_action_pressed("move_left") or event.is_action_pressed("shoot_left"):
+		_select_choice(selected_choice_index - 1)
+		return true
+	if event.is_action_pressed("move_right") or event.is_action_pressed("shoot_right"):
+		_select_choice(selected_choice_index + 1)
+		return true
+	if event.is_action_pressed("interact"):
+		_try_claim_selected_collectible()
+		return true
+
+	var key_event := event as InputEventKey
+	if key_event == null or not key_event.pressed or key_event.echo:
+		return false
+	match key_event.physical_keycode:
+		KEY_1:
+			selected_choice_index = 0
+			_try_claim_selected_collectible()
+			return true
+		KEY_2:
+			selected_choice_index = 1
+			_try_claim_selected_collectible()
+			return true
+		KEY_3:
+			selected_choice_index = 2
+			_try_claim_selected_collectible()
+			return true
+	return false
+
+
+func _select_choice(choice_index: int) -> void:
+	selected_choice_index = wrapi(choice_index, 0, CHOICE_COUNT)
+	dialogue_bubble.say(_build_choice_text())
+	dialogue_bubble.finish_line()
+
+
+func _try_claim_selected_collectible() -> void:
+	if active_player == null:
+		return
+	var current_scene := get_tree().current_scene
+	if current_scene != null and current_scene.has_method("request_luoxi_collectible_choice"):
+		current_scene.call("request_luoxi_collectible_choice", selected_choice_index)
+		return
+	show_collectible_result(_claim_local_collectible(active_player, selected_choice_index))
+
+
+func _claim_local_collectible(player: Player, choice_index: int) -> int:
+	if player == null:
+		return COLLECTIBLE_RESULT_INVALID_PLAYER
+	var player_key := _get_player_claim_key(player)
+	if claimed_player_keys.has(player_key):
+		return COLLECTIBLE_RESULT_ALREADY_CLAIMED
+	var item := get_collectible_for_choice(choice_index)
+	if item == null:
+		return COLLECTIBLE_RESULT_INVALID_PLAYER
+
+	var run_state := get_node_or_null("/root/RunState") as RunStateStore
+	if run_state == null:
+		return COLLECTIBLE_RESULT_INVALID_PLAYER
+	var stored := (
+		run_state.try_add_item_for_peer(player.peer_id, item)
+		if player.peer_id > 0
+		else run_state.try_add_item(item)
+	)
+	if not stored:
+		return COLLECTIBLE_RESULT_INVENTORY_FULL
+	claimed_player_keys[player_key] = true
+	return COLLECTIBLE_RESULT_SUCCESS
+
+
+func _build_dialogue_lines(player: Player) -> Array:
+	if _is_player_claimed(player):
+		return [CLAIMED_LINE]
+	return DIALOGUE_LINES.duplicate()
+
+
+func _build_choice_text() -> String:
+	var lines := ["选择一件收藏品："]
+	for choice_index in range(CHOICE_COUNT):
+		var line := "%d. %s 苹果" % [choice_index + 1, APPLE_ICON_BBCODE]
+		if choice_index == selected_choice_index:
+			line = "[color=#ff2332]> %s[/color]" % line
+		else:
+			line = "  %s" % line
+		lines.append(line)
+	lines.append("[color=#b51a22]%s[/color]" % APPLE_COLLECTIBLE.description)
+	lines.append("左右切换，F确认")
+	return "\n".join(lines)
+
+
+func _reset_dialogue_after_result() -> void:
+	dialogue_bubble.hide_bubble()
+	result_visible = false
+	choice_visible = false
+	dialogue_index = 0
+	dialogue_lines = _build_dialogue_lines(active_player)
+
+
+func _is_player_claimed(player: Player) -> bool:
+	if player == null:
+		return false
+	var player_key := _get_player_claim_key(player)
+	var current_scene := get_tree().current_scene
+	if current_scene != null and current_scene.has_method("has_luoxi_collectible_claimed"):
+		return bool(current_scene.call("has_luoxi_collectible_claimed", player_key))
+	return claimed_player_keys.has(player_key)
+
+
+func _get_player_claim_key(player: Player) -> int:
+	if player == null or player.peer_id <= 0:
+		return 0
+	return player.peer_id
+
+
+func _on_interaction_area_body_entered(body: Node2D) -> void:
+	var player := body as Player
+	if player == null:
+		return
+	if not player.uses_local_input:
+		return
+	nearby_players[player.get_instance_id()] = player
+	if active_player == null:
+		_start_dialogue(player)
+
+
+func _on_interaction_area_body_exited(body: Node2D) -> void:
+	var player := body as Player
+	if player == null:
+		return
+	nearby_players.erase(player.get_instance_id())
+	if player != active_player:
+		return
+
+	active_player = _pick_nearby_player()
+	if active_player == null:
+		dialogue_bubble.hide_bubble()
+		choice_visible = false
+		result_visible = false
+	else:
+		_start_dialogue(active_player)
+
+
+func _push_overlapping_players_out() -> void:
+	if not is_active:
+		return
+	var shape := collision_shape.shape
+	if shape == null:
+		return
+
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = shape
+	query.transform = collision_shape.global_transform
+	query.collision_mask = PLAYER_COLLISION_MASK
+	query.collide_with_bodies = true
+	query.collide_with_areas = false
+
+	var results := get_world_2d().direct_space_state.intersect_shape(
+		query,
+		BODY_PUSH_QUERY_MAX_RESULTS
+	)
+	for result in results:
+		var player := result.get("collider") as Player
+		if player == null:
+			continue
+		var push_direction := collision_shape.global_position.direction_to(player.global_position)
+		if push_direction == Vector2.ZERO:
+			push_direction = Vector2.DOWN
+		player.global_position = collision_shape.global_position + push_direction * BODY_PUSH_DISTANCE
+
+
+func _pick_nearby_player() -> Player:
+	for player in nearby_players.values():
+		if is_instance_valid(player):
+			return player as Player
+	return null

@@ -569,9 +569,7 @@ func _on_touch_damage_area_area_entered(area: Area2D) -> void:
 	if bullet == null:
 		return
 
-	var damaged := apply_damage(bullet.damage, -bullet.direction)
-	if damaged:
-		bullet.queue_free()
+	bullet.try_hit_enemy(self)
 
 
 func _update_touch_damage(delta: float) -> void:

@@ -18,6 +18,7 @@
 [ext_resource type="AudioStream" uid="uid://ds2eyww1uhhr8" path="res://resources/audio/ui/wave_start.wav" id="17_wave_start"]
 [ext_resource type="Script" uid="uid://i1yhvo6yryuc" path="res://scene/damage_number_pool.gd" id="18_damage_pool"]
 [ext_resource type="PackedScene" path="res://scene/settings/settings_panel.tscn" id="19_settings_panel"]
+[ext_resource type="PackedScene" path="res://scene/luoxi_merchant.tscn" id="20_luoxi"]
 
 [sub_resource type="TileMapPattern" id="TileMapPattern_33cqm"]
 tile_data = PackedInt32Array(0, 0, 0, 65536, 131072, 2, 1, 0, 0, 65537, 0, 0)
@@ -164,6 +165,9 @@ script = ExtResource("18_damage_pool")
 
 [node name="ZhuangfangyiMerchant" parent="." unique_id=112812860 instance=ExtResource("15_merchant")]
 position = Vector2(167, 94)
+
+[node name="LuoxiMerchant" parent="." instance=ExtResource("20_luoxi")]
+position = Vector2(232, 94)
 
 [node name="WorldBounds" type="Node2D" parent="." unique_id=905261702]
 

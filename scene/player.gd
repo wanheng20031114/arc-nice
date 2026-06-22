@@ -75,6 +75,7 @@ const DODGE_SWEEP_SHADER_PARAMETER := &"dodge_sweep"
 const DODGE_EFFECT_DURATION := 0.28
 const ATTACK_SPEED_UPGRADE_INTERVAL_MULTIPLIER := 0.95
 const DODGE_UPGRADE_CHANCE_STEP := 0.02
+const PIERCING_BULLET_TINT := Color(1.0, 0.36, 0.34, 1.0)
 
 var facing_suffix: StringName = &"right"
 
@@ -790,7 +791,10 @@ func _spawn_bullet(shoot_direction: Vector2, track_attack_direction: bool = true
 		return false
 
 	bullet.top_level = true
-	bullet.setup(shoot_direction, attack_damage)
+	var pierces_enemies := _should_fire_piercing_bullet()
+	bullet.setup(shoot_direction, attack_damage, pierces_enemies)
+	if pierces_enemies:
+		bullet.modulate = PIERCING_BULLET_TINT
 	spawn_parent.add_child(bullet)
 	bullet.global_position = global_position + shoot_direction * bullet_spawn_distance
 	_register_multiplayer_projectile(
@@ -800,7 +804,8 @@ func _spawn_bullet(shoot_direction: Vector2, track_attack_direction: bool = true
 		shoot_direction,
 		attack_damage,
 		bullet.speed,
-		bullet.max_lifetime
+		bullet.max_lifetime,
+		pierces_enemies
 	)
 	if track_attack_direction and shoot_direction != Vector2.ZERO:
 		last_attack_direction = shoot_direction.normalized()
@@ -877,7 +882,8 @@ func _register_multiplayer_projectile(
 	shoot_direction: Vector2,
 	projectile_damage: int,
 	projectile_speed: float,
-	projectile_lifetime: float
+	projectile_lifetime: float,
+	pierces_enemies: bool = false
 ) -> void:
 	if projectile == null:
 		return
@@ -893,8 +899,34 @@ func _register_multiplayer_projectile(
 		shoot_direction,
 		projectile_damage,
 		projectile_speed,
-		projectile_lifetime
+		projectile_lifetime,
+		pierces_enemies
 	)
+
+
+func _should_fire_piercing_bullet() -> bool:
+	var pierce_chance := _get_inventory_bullet_pierce_chance()
+	if pierce_chance <= 0.0:
+		return false
+	return randf() < pierce_chance
+
+
+func _get_inventory_bullet_pierce_chance() -> float:
+	var run_state := get_node_or_null("/root/RunState") as RunStateStore
+	if run_state == null:
+		return 0.0
+
+	var best_chance := 0.0
+	for slot_index in range(RunStateStore.INVENTORY_CAPACITY):
+		var item := (
+			run_state.get_item_for_peer(peer_id, slot_index)
+			if peer_id > 0
+			else run_state.get_item(slot_index)
+		)
+		if item == null:
+			continue
+		best_chance = maxf(best_chance, item.bullet_pierce_chance)
+	return clampf(best_chance, 0.0, 1.0)
 
 
 func _update_skill1_charge_bar() -> void:

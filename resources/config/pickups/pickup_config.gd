@@ -7,6 +7,7 @@ enum PickupType {
 	SPIRAL,
 	TENPURA,
 	HEALTH,
+	COLLECTIBLE,
 	
 }
 
@@ -51,3 +52,7 @@ enum ShotPattern {
 @export var player_form_mode: PlayerFormMode = PlayerFormMode.NORMAL
 # 玩家拾取后使用的弹幕模式。
 @export var shot_pattern: ShotPattern = ShotPattern.NORMAL
+
+@export_group("收藏品效果")
+# 玩家持有时，普通子弹变为穿透弹的概率。
+@export_range(0.0, 1.0, 0.01) var bullet_pierce_chance: float = 0.0

@@ -84,6 +84,7 @@ enum WaveState {
 @onready var player_profile_panel: PlayerProfilePanel = $PlayerProfilePanel
 @onready var settings_panel: SettingsPanel = $SettingsLayer/SettingsPanel
 @onready var merchant: ZhuangfangyiMerchant = $ZhuangfangyiMerchant
+@onready var luoxi_merchant: LuoxiMerchant = $LuoxiMerchant
 @onready var damage_number_pool: DamageNumberPool = $DamageNumberPool
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
@@ -114,6 +115,7 @@ var multiplayer_defeat_check_pending: bool = false
 var spawn_effect_budget_started_msec: int = 0
 var spawn_effects_this_second: int = 0
 var last_spawn_audio_msec: int = -100000
+var luoxi_collectible_claimed_peers: Dictionary = {}
 
 
 func _ready() -> void:
@@ -197,9 +199,7 @@ func _refresh_player_modal_ui_lock() -> void:
 
 
 func apply_remote_merchant_active(active: bool) -> void:
-	if merchant == null:
-		return
-	merchant.set_active(active)
+	_set_local_merchants_active(active)
 	if runtime_mode != RuntimeMode.CLIENT_VIEW:
 		return
 	if active:
@@ -300,6 +300,53 @@ func show_local_skill1_purchase_result(result_code: int) -> void:
 	merchant.show_purchase_result(result_code)
 
 
+func request_luoxi_collectible_choice(choice_index: int) -> void:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		return
+	var peer_id := multiplayer_local_peer_id if runtime_mode != RuntimeMode.SINGLEPLAYER else 0
+	var result_code := try_claim_luoxi_collectible_for_peer(peer_id, choice_index)
+	show_local_luoxi_collectible_result(result_code)
+
+
+func try_claim_luoxi_collectible_for_peer(peer_id: int, choice_index: int) -> int:
+	var player_instance := player if peer_id <= 0 else get_player_for_peer(peer_id)
+	if player_instance == null or not is_instance_valid(player_instance):
+		return LuoxiMerchant.COLLECTIBLE_RESULT_INVALID_PLAYER
+
+	var claim_key := maxi(peer_id, 0)
+	if luoxi_collectible_claimed_peers.has(claim_key):
+		return LuoxiMerchant.COLLECTIBLE_RESULT_ALREADY_CLAIMED
+
+	var item := LuoxiMerchant.get_collectible_for_choice(choice_index)
+	if item == null:
+		return LuoxiMerchant.COLLECTIBLE_RESULT_INVALID_PLAYER
+
+	var stored := (
+		run_state.try_add_item_for_peer(peer_id, item)
+		if peer_id > 0
+		else run_state.try_add_item(item)
+	)
+	if not stored:
+		return LuoxiMerchant.COLLECTIBLE_RESULT_INVENTORY_FULL
+
+	luoxi_collectible_claimed_peers[claim_key] = true
+	return LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS
+
+
+func has_luoxi_collectible_claimed(peer_id: int) -> bool:
+	return luoxi_collectible_claimed_peers.has(maxi(peer_id, 0))
+
+
+func mark_luoxi_collectible_claimed(peer_id: int) -> void:
+	luoxi_collectible_claimed_peers[maxi(peer_id, 0)] = true
+
+
+func show_local_luoxi_collectible_result(result_code: int) -> void:
+	if luoxi_merchant == null:
+		return
+	luoxi_merchant.show_collectible_result(result_code)
+
+
 func _on_wave_hud_return_to_lobby_requested() -> void:
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		get_tree().change_scene_to_file("res://scene/main_menu.tscn")
@@ -308,13 +355,22 @@ func _on_wave_hud_return_to_lobby_requested() -> void:
 
 
 func _set_merchant_active(active: bool) -> void:
-	if merchant == null:
+	var changed := _set_local_merchants_active(active)
+	if not changed:
 		return
-	if merchant.is_active == active:
-		return
-	merchant.set_active(active)
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_merchant_active_changed.emit(active)
+
+
+func _set_local_merchants_active(active: bool) -> bool:
+	var changed := false
+	if merchant != null and merchant.is_active != active:
+		merchant.set_active(active)
+		changed = true
+	if luoxi_merchant != null and luoxi_merchant.is_active != active:
+		luoxi_merchant.set_active(active)
+		changed = true
+	return changed
 
 
 func _collect_enemy_spawn_points() -> void:

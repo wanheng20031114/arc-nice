@@ -148,6 +148,19 @@ func request_multiplayer_skill1_purchase() -> void:
 		net_skill1_purchase_requested.rpc_id(_get_host_peer_id())
 
 
+func request_luoxi_collectible_choice(choice_index: int) -> void:
+	if net_manager.is_host():
+		_apply_luoxi_collectible_choice_for_peer(_get_local_peer_id(), choice_index)
+	else:
+		net_luoxi_collectible_choice_requested.rpc_id(_get_host_peer_id(), choice_index)
+
+
+func has_luoxi_collectible_claimed(peer_id: int) -> bool:
+	if game == null:
+		return false
+	return game.has_luoxi_collectible_claimed(peer_id)
+
+
 func request_multiplayer_cheat_xirang() -> void:
 	if net_manager.is_host():
 		_apply_cheat_xirang_for_peer(_get_local_peer_id())
@@ -702,7 +715,8 @@ func register_local_projectile(
 	direction: Vector2,
 	damage: int,
 	speed: float,
-	lifetime: float
+	lifetime: float,
+	pierces_enemies: bool = false
 ) -> void:
 	if projectile == null:
 		return
@@ -713,11 +727,28 @@ func register_local_projectile(
 	_next_projectile_id += 1
 	_setup_projectile_network_identity(projectile, projectile_id, owner_peer_id, projectile_type)
 	_known_projectiles[projectile_id] = projectile
-	_remember_projectile_record(projectile_id, owner_peer_id, projectile_type, damage, lifetime)
+	_remember_projectile_record(
+		projectile_id,
+		owner_peer_id,
+		projectile_type,
+		damage,
+		lifetime,
+		pierces_enemies
+	)
 	if net_manager.is_host():
 		_rpc_to_connected_clients(
 			&"net_projectile_fired",
-			[projectile_id, String(projectile_type), owner_peer_id, spawn_position, direction, damage, speed, lifetime]
+			[
+				projectile_id,
+				String(projectile_type),
+				owner_peer_id,
+				spawn_position,
+				direction,
+				damage,
+				speed,
+				lifetime,
+				pierces_enemies,
+			]
 		)
 	else:
 		_rpc_projectile_fired_from_client.rpc_id(
@@ -729,7 +760,8 @@ func register_local_projectile(
 			direction,
 			damage,
 			speed,
-			lifetime
+			lifetime,
+			pierces_enemies
 		)
 
 
@@ -742,7 +774,8 @@ func _rpc_projectile_fired_from_client(
 	direction: Vector2,
 	damage: int,
 	speed: float,
-	lifetime: float
+	lifetime: float,
+	pierces_enemies: bool = false
 ) -> void:
 	if not net_manager.is_host():
 		return
@@ -771,6 +804,10 @@ func _rpc_projectile_fired_from_client(
 	var accepted_damage := int(accepted_parameters["damage"])
 	var accepted_speed := float(accepted_parameters["speed"])
 	var accepted_lifetime := float(accepted_parameters["lifetime"])
+	var accepted_pierces_enemies := (
+		pierces_enemies
+		and bool(accepted_parameters.get("can_pierce_enemies", false))
+	)
 	_rpc_to_connected_clients(
 		&"net_projectile_fired",
 		[
@@ -782,6 +819,7 @@ func _rpc_projectile_fired_from_client(
 			accepted_damage,
 			accepted_speed,
 			accepted_lifetime,
+			accepted_pierces_enemies,
 		]
 	)
 	net_projectile_fired(
@@ -792,7 +830,8 @@ func _rpc_projectile_fired_from_client(
 		accepted_direction,
 		accepted_damage,
 		accepted_speed,
-		accepted_lifetime
+		accepted_lifetime,
+		accepted_pierces_enemies
 	)
 
 
@@ -805,7 +844,8 @@ func net_projectile_fired(
 	direction: Vector2,
 	damage: int,
 	speed: float,
-	lifetime: float
+	lifetime: float,
+	pierces_enemies: bool = false
 ) -> void:
 	if _known_projectiles.has(projectile_id):
 		return
@@ -817,7 +857,8 @@ func net_projectile_fired(
 		direction,
 		damage,
 		speed,
-		lifetime
+		lifetime,
+		pierces_enemies
 	)
 
 
@@ -829,14 +870,30 @@ func _spawn_network_projectile(
 	direction: Vector2,
 	damage: int,
 	speed: float,
-	lifetime: float
+	lifetime: float,
+	pierces_enemies: bool = false
 ) -> void:
-	var projectile := _instantiate_projectile(projectile_type, owner_peer_id, direction, damage, speed, lifetime)
+	var projectile := _instantiate_projectile(
+		projectile_type,
+		owner_peer_id,
+		direction,
+		damage,
+		speed,
+		lifetime,
+		pierces_enemies
+	)
 	if projectile == null:
 		return
 	_setup_projectile_network_identity(projectile, projectile_id, owner_peer_id, projectile_type)
 	_known_projectiles[projectile_id] = projectile
-	_remember_projectile_record(projectile_id, owner_peer_id, projectile_type, damage, lifetime)
+	_remember_projectile_record(
+		projectile_id,
+		owner_peer_id,
+		projectile_type,
+		damage,
+		lifetime,
+		pierces_enemies
+	)
 	add_child(projectile)
 	projectile.global_position = spawn_position
 
@@ -847,7 +904,8 @@ func _instantiate_projectile(
 	direction: Vector2,
 	damage: int,
 	speed: float,
-	lifetime: float
+	lifetime: float,
+	pierces_enemies: bool = false
 ) -> Node:
 	match projectile_type:
 		&"player_bullet":
@@ -855,7 +913,9 @@ func _instantiate_projectile(
 			if bullet == null:
 				return null
 			bullet.top_level = true
-			bullet.setup(direction, damage)
+			bullet.setup(direction, damage, pierces_enemies)
+			if pierces_enemies:
+				bullet.modulate = Player.PIERCING_BULLET_TINT
 			bullet.speed = speed
 			bullet.max_lifetime = lifetime
 			bullet.remaining_lifetime = lifetime
@@ -913,6 +973,7 @@ func _get_authoritative_client_projectile_parameters(
 				"damage": owner_player.attack_damage,
 				"speed": bullet.speed,
 				"lifetime": bullet.max_lifetime,
+				"can_pierce_enemies": owner_player._get_inventory_bullet_pierce_chance() > 0.0,
 			}
 			bullet.free()
 			return bullet_result
@@ -938,7 +999,8 @@ func _remember_projectile_record(
 	owner_peer_id: int,
 	projectile_type: StringName,
 	damage: int,
-	lifetime: float
+	lifetime: float,
+	pierces_enemies: bool = false
 ) -> void:
 	if projectile_id <= 0:
 		return
@@ -946,6 +1008,7 @@ func _remember_projectile_record(
 		"owner_peer_id": owner_peer_id,
 		"projectile_type": projectile_type,
 		"damage": maxi(damage, 0),
+		"pierces_enemies": pierces_enemies,
 		"expires_at": _get_net_time() + maxf(lifetime, 0.0) + PROJECTILE_RECORD_RETENTION_SECONDS,
 	}
 
@@ -1970,6 +2033,16 @@ func net_skill1_purchase_requested() -> void:
 
 
 @rpc("any_peer", "call_remote", "reliable", 4)
+func net_luoxi_collectible_choice_requested(choice_index: int) -> void:
+	if not net_manager.is_host():
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
+	_apply_luoxi_collectible_choice_for_peer(sender_id, choice_index)
+
+
+@rpc("any_peer", "call_remote", "reliable", 4)
 func net_cheat_xirang_requested() -> void:
 	if not net_manager.is_host():
 		return
@@ -2038,6 +2111,28 @@ func net_skill1_purchase_confirmed(
 
 
 @rpc("authority", "call_remote", "reliable", 4)
+func net_luoxi_collectible_confirmed(
+	peer_id: int,
+	choice_index: int,
+	config_path: String,
+	result_code: int
+) -> void:
+	if game == null:
+		return
+	if result_code == LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS and not config_path.is_empty():
+		game.mark_luoxi_collectible_claimed(peer_id)
+		var already_applied_on_host: bool = net_manager.is_host() and peer_id == _get_local_peer_id()
+		if not already_applied_on_host:
+			var item := load(config_path) as PickupConfig
+			if item != null:
+				run_state.try_add_item_for_peer(peer_id, item)
+	elif result_code == LuoxiMerchant.COLLECTIBLE_RESULT_ALREADY_CLAIMED:
+		game.mark_luoxi_collectible_claimed(peer_id)
+	if peer_id == _get_local_peer_id():
+		game.show_local_luoxi_collectible_result(result_code)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
 func net_cheat_xirang_confirmed(peer_id: int, current_xirang: int, added_amount: int) -> void:
 	if game == null:
 		return
@@ -2096,6 +2191,22 @@ func _apply_skill1_purchase_for_peer(peer_id: int) -> void:
 			skill1_upgrade_level,
 			skill1_charge_duration
 		)
+
+
+func _apply_luoxi_collectible_choice_for_peer(peer_id: int, choice_index: int) -> void:
+	if game == null or peer_id <= 0:
+		return
+	var result_code := game.try_claim_luoxi_collectible_for_peer(peer_id, choice_index)
+	var item := LuoxiMerchant.get_collectible_for_choice(choice_index)
+	var config_path := item.resource_path if item != null else ""
+	if result_code != LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS:
+		config_path = ""
+	_rpc_to_connected_clients(
+		&"net_luoxi_collectible_confirmed",
+		[peer_id, choice_index, config_path, result_code]
+	)
+	if peer_id == _get_local_peer_id():
+		net_luoxi_collectible_confirmed(peer_id, choice_index, config_path, result_code)
 
 
 func _apply_cheat_xirang_for_peer(peer_id: int) -> void:
