@@ -9,6 +9,7 @@ const BOMBER_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_bo
 const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres")
 const RPG_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
 const PICKUP_SPEED_CONFIG := preload("res://resources/config/pickups/pickup_speed.tres")
+const PICKUP_SPIRAL_CONFIG := preload("res://resources/config/pickups/pickup_spiral.tres")
 
 var failures: Array[String] = []
 
@@ -30,6 +31,8 @@ func _run() -> void:
 	await _test_multiplayer_peer_disconnect_cleanup()
 	await _test_player_snapshot_roster_reconcile()
 	await _test_enemy_snapshot_roster_requires_complete_batch()
+	await _test_enemy_snapshot_death_and_empty_roster_cleanup()
+	await _test_host_remote_player_form_buff_expires()
 	await _test_four_player_runtime_and_confirmed_events()
 	await _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm()
 	await _test_game_runtime_modes()
@@ -533,6 +536,152 @@ func _test_enemy_snapshot_roster_requires_complete_batch() -> void:
 
 	enemy_a.queue_free()
 	mp_game.free()
+	_stop_audio_players(game)
+	game.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_enemy_snapshot_death_and_empty_roster_cleanup() -> void:
+	var game := GAME_SCENE.instantiate() as Game
+	_expect(game != null, "Game scene must instantiate for enemy snapshot cleanup test.")
+	if game == null:
+		return
+	game.configure_multiplayer(2, 2, {1: "Host", 2: "Client"})
+	game.set("auto_start_waves", false)
+	root.add_child(game)
+	await process_frame
+
+	var enemy_dead := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
+	var enemy_stale := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
+	_expect(
+		enemy_dead != null and enemy_stale != null,
+		"Enemy snapshot cleanup test must instantiate enemies."
+	)
+	if enemy_dead == null or enemy_stale == null:
+		if enemy_dead != null:
+			enemy_dead.queue_free()
+		if enemy_stale != null:
+			enemy_stale.queue_free()
+		_stop_audio_players(game)
+		game.queue_free()
+		await process_frame
+		await physics_frame
+		return
+	game.enemy_container.add_child(enemy_dead)
+	game.enemy_container.add_child(enemy_stale)
+	enemy_dead.setup(BASIC_CONFIG, game.player, game.grid_pathfinder)
+	enemy_stale.setup(BASIC_CONFIG, game.player, game.grid_pathfinder)
+
+	var mp_game := MP_GAME_SCENE.instantiate()
+	_expect(mp_game != null, "MpGame scene must instantiate for enemy snapshot cleanup test.")
+	if mp_game == null:
+		enemy_dead.queue_free()
+		enemy_stale.queue_free()
+		_stop_audio_players(game)
+		game.queue_free()
+		await process_frame
+		await physics_frame
+		return
+	mp_game.set("game", game)
+	var net_enemies := mp_game.get("_net_enemies") as Dictionary
+	var enemy_spawn_times := mp_game.get("_enemy_spawn_snapshot_times") as Dictionary
+	net_enemies[21] = enemy_dead
+	net_enemies[22] = enemy_stale
+	enemy_spawn_times[21] = 0.0
+	enemy_spawn_times[22] = 0.0
+	mp_game.enemy_interpolators[21] = NetInterpolator.new(0.1)
+	mp_game.enemy_interpolators[22] = NetInterpolator.new(0.1)
+
+	var snapshot_mgr := SnapshotManager.new()
+	var dead_state := SnapshotManager.EnemyState.new()
+	dead_state.net_id = 21
+	dead_state.position = Vector2(12.0, 34.0)
+	dead_state.velocity = Vector2.ZERO
+	dead_state.health = 0
+	dead_state.is_dead = true
+	mp_game.call("_rpc_receive_enemy_snapshot", 1.0, snapshot_mgr.encode_all_enemy_snapshots([dead_state]))
+	await process_frame
+	_expect(not net_enemies.has(21), "Dead enemy snapshots must erase the client enemy index.")
+	_expect(not enemy_spawn_times.has(21), "Dead enemy snapshots must erase spawn timing.")
+	_expect(not mp_game.enemy_interpolators.has(21), "Dead enemy snapshots must clear interpolation state.")
+	_expect(enemy_dead.is_dead, "Dead enemy snapshots must start the proxy death state.")
+
+	mp_game.call("_rpc_receive_enemy_snapshot", 2.0, snapshot_mgr.encode_all_enemy_snapshots([]))
+	await process_frame
+	_expect(not net_enemies.has(22), "Empty complete enemy snapshots must reconcile stale enemies.")
+	_expect(not enemy_spawn_times.has(22), "Empty complete enemy snapshots must erase stale spawn timing.")
+	_expect(not mp_game.enemy_interpolators.has(22), "Empty complete enemy snapshots must clear stale interpolation.")
+
+	mp_game.free()
+	_stop_audio_players(game)
+	game.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_host_remote_player_form_buff_expires() -> void:
+	var game := GAME_SCENE.instantiate() as Game
+	_expect(game != null, "Game scene must instantiate for remote form buff test.")
+	if game == null:
+		return
+	game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
+	game.set("auto_start_waves", false)
+	root.add_child(game)
+	await process_frame
+
+	var remote_player := game.get_player_for_peer(2) as Player
+	_expect(remote_player != null, "Remote form buff test must create peer 2 player.")
+	if remote_player == null:
+		_stop_audio_players(game)
+		game.queue_free()
+		await process_frame
+		await physics_frame
+		return
+
+	_expect(remote_player.apply_pickup(PICKUP_SPIRAL_CONFIG), "Remote player must apply spiral pickup.")
+	remote_player.update_multiplayer_authority_passive_state(0.0)
+	_expect(
+		remote_player.current_form_mode == PickupConfig.PlayerFormMode.ARMED,
+		"Remote player must enter armed form after spiral pickup."
+	)
+	_expect(remote_player.armed_effect_sprite.visible, "Remote armed effect must become visible.")
+	var remaining_before_input := remote_player.form_buff_time_left
+	_expect(remaining_before_input > 0.0, "Remote form buff timer must start.")
+
+	var mp_game := MP_GAME_SCENE.instantiate()
+	_expect(mp_game != null, "MpGame scene must instantiate for remote form buff test.")
+	if mp_game != null:
+		var net_manager := root.get_node_or_null("NetManager")
+		if net_manager != null:
+			mp_game.set("net_manager", net_manager)
+		mp_game.set("game", game)
+		mp_game.call(
+			"_apply_accepted_client_player_state",
+			2,
+			remote_player,
+			remote_player.global_position,
+			Vector2.RIGHT,
+			Vector2.ZERO,
+			false
+		)
+		_expect(
+			remote_player.form_buff_time_left > 0.0,
+			"Accepted client state must not clear the Host-side form buff timer."
+		)
+		mp_game.free()
+
+	remote_player.update_multiplayer_authority_passive_state(PICKUP_SPIRAL_CONFIG.duration + 0.1)
+	_expect(
+		remote_player.current_form_mode == PickupConfig.PlayerFormMode.NORMAL,
+		"Remote form buff must expire on Host authority."
+	)
+	_expect(
+		remote_player.current_shot_pattern == PickupConfig.ShotPattern.NORMAL,
+		"Remote shot pattern must reset when the form buff expires."
+	)
+	_expect(not remote_player.armed_effect_sprite.visible, "Remote armed effect must hide after buff expiry.")
+
 	_stop_audio_players(game)
 	game.queue_free()
 	await process_frame

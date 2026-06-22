@@ -51,7 +51,6 @@ var input_sequence: int = 0
 var _net_time_origin: float = 0.0
 var _net_enemies: Dictionary = {}
 var _enemy_spawn_snapshot_times: Dictionary = {}
-var _host_had_enemies_last_snapshot: bool = false
 var _has_host_time_offset: bool = false
 var _host_to_client_time_offset: float = 0.0
 var _has_sent_input: bool = false
@@ -234,9 +233,6 @@ func _apply_latest_client_player_snapshot_states(states: Array[SnapshotManager.P
 
 func _host_broadcast_enemy_snapshots() -> void:
 	var states: Array[SnapshotManager.EnemyState] = game.collect_enemy_snapshot_states()
-	if states.is_empty() and not _host_had_enemies_last_snapshot:
-		return
-	_host_had_enemies_last_snapshot = not states.is_empty()
 	var data := snapshot_mgr.encode_all_enemy_snapshots(states)
 	_record_snapshot_packet_size(&"enemy", data.size(), states.size())
 	var snapshot_time := _get_net_time()
@@ -507,6 +503,13 @@ func _rpc_receive_enemy_snapshot(host_timestamp: float, data: PackedByteArray) -
 		if enemy_state.net_id <= 0:
 			continue
 		seen_enemy_ids[enemy_state.net_id] = true
+		if enemy_state.is_dead:
+			var dead_enemy: Enemy = _get_valid_client_enemy_for_net_id(enemy_state.net_id)
+			if dead_enemy != null and is_instance_valid(dead_enemy):
+				dead_enemy.global_position = enemy_state.position
+				dead_enemy.current_health = enemy_state.health
+			_remove_client_enemy(enemy_state.net_id, true)
+			continue
 		if not enemy_interpolators.has(enemy_state.net_id):
 			enemy_interpolators[enemy_state.net_id] = _create_enemy_interpolator()
 		var interp := enemy_interpolators[enemy_state.net_id] as NetInterpolator
@@ -569,19 +572,27 @@ func _rpc_client_player_state(
 		net_player_state_corrected.rpc_id(sender_id, player_node.global_position, player_node.velocity)
 		return
 	var use_skill1: bool = (buttons & INPUT_BUTTON_SKILL1) != 0
-	player_node.apply_remote_multiplayer_view_state(reported_velocity, shoot_input, use_skill1)
-	player_node.apply_multiplayer_realtime_state(
-		player_node.current_health,
-		player_node.max_health,
-		player_node.current_xirang,
-		player_node.is_dead,
-		player_node.invincibility_time_left,
-		player_node.skill1_unlocked,
-		player_node.skill1_charge,
-		player_node.skill1_charge_duration,
-		player_node.current_form_mode,
-		player_node.current_shot_pattern
+	_apply_accepted_client_player_state(
+		sender_id,
+		player_node,
+		reported_position,
+		reported_velocity,
+		shoot_input,
+		use_skill1
 	)
+
+
+func _apply_accepted_client_player_state(
+	sender_id: int,
+	player_node: Player,
+	reported_position: Vector2,
+	reported_velocity: Vector2,
+	shoot_input: Vector2,
+	use_skill1: bool
+) -> void:
+	if sender_id <= 0 or player_node == null or not is_instance_valid(player_node):
+		return
+	player_node.apply_remote_multiplayer_view_state(reported_velocity, shoot_input, use_skill1)
 	_remember_latest_client_player_snapshot_state(
 		sender_id,
 		reported_position,
