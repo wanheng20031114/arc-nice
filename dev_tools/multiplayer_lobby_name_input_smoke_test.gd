@@ -34,9 +34,13 @@ func _run() -> void:
 	var placeholder := lobby.get_node_or_null(
 		"LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/NamePlaceholder"
 	)
+	var caret := lobby.get_node_or_null(
+		"LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/UsernameCaret"
+	) as ColorRect
 
 	_expect(input != null, "Username LineEdit must remain available as the real input control.")
 	_expect(display != null, "BouncyNameDisplay must exist.")
+	_expect(caret != null, "UsernameCaret must exist as the visible input-state indicator.")
 	_expect(audio != null and audio.stream != null, "Typing blip audio must be wired.")
 	_expect(header == null, "Username card must not keep the HELLO header block.")
 	_expect(footer == null, "Username card must not keep the click-to-type footer block.")
@@ -46,6 +50,10 @@ func _run() -> void:
 		_expect(input.max_length == MAX_PLAYER_NAME_LENGTH, "Username input must keep the network name length limit.")
 		_expect(input.get_theme_color(&"font_color").a == 0.0, "Real LineEdit text must stay transparent behind the custom display.")
 		_expect(input.placeholder_text.is_empty(), "Real LineEdit placeholder must stay empty.")
+	if caret != null:
+		_expect(caret.custom_minimum_size == Vector2(2.0, 34.0), "Username caret must stay a narrow vertical line.")
+		_expect(caret.mouse_filter == Control.MOUSE_FILTER_IGNORE, "Username caret must not intercept input clicks.")
+		_expect(caret.color == Color(0.96, 0.88, 0.62, 1), "Username caret must use the lobby accent color.")
 	if audio != null:
 		_expect(audio.stream is AudioStreamRandomizer, "Typing blip audio must use AudioStreamRandomizer.")
 		_expect(audio.max_polyphony == 4, "Typing blip audio must allow overlapping quick keystrokes.")
@@ -59,10 +67,30 @@ func _run() -> void:
 			_expect(display.get_child(index).get_script() == BOUNCY_NAME_LETTER_SCRIPT, "Every name display child must be a BouncyNameLetter.")
 
 	if input != null and display != null:
+		var empty_caret_x := 0.0
+		if caret != null:
+			input.grab_focus()
+			lobby.call("_reset_username_caret_blink")
+			lobby.call("_refresh_username_caret")
+			await process_frame
+			empty_caret_x = caret.position.x
+			_expect(caret.visible, "Username caret must be visible when the username input has focus.")
+			lobby.call("_update_username_caret_blink", 0.5)
+			_expect(not caret.visible, "Username caret must blink off on a fixed interval.")
+			lobby.call("_update_username_caret_blink", 0.5)
+			_expect(caret.visible, "Username caret must blink back on a fixed interval.")
+			lobby.call("_reset_username_caret_blink")
+
 		input.text = "Christophe"
 		lobby.call("_on_username_text_changed", input.text)
 		await process_frame
 		_expect(str(display.call("get_displayed_text")) == "Christophe", "BouncyNameDisplay must mirror the current username.")
+		if caret != null:
+			lobby.call("_reset_username_caret_blink")
+			lobby.call("_refresh_username_caret")
+			await process_frame
+			_expect(caret.visible, "Username caret must stay visible immediately after typing.")
+			_expect(caret.position.x > empty_caret_x, "Username caret must move to the end of the displayed username.")
 		if audio != null:
 			_expect(audio.playing, "Typing blip audio must play after visible username input changes.")
 		_expect((display.get_child(0) as Label).text == "C", "First visible name label must contain the first typed letter.")
@@ -73,6 +101,10 @@ func _run() -> void:
 		lobby.call("_on_username_text_changed", input.text)
 		await process_frame
 		_expect(str(display.call("get_displayed_text")).is_empty(), "BouncyNameDisplay must clear when username input is empty.")
+		if caret != null:
+			input.release_focus()
+			await process_frame
+			_expect(not caret.visible, "Username caret must hide when the username input loses focus.")
 
 	if audio != null:
 		audio.stop()

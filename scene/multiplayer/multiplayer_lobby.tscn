@@ -408,6 +408,17 @@ theme_override_styles/read_only = SubResource("StyleBoxFlat_line_edit_clear")
 max_length = 12
 alignment = 1
 
+[node name="UsernameCaret" type="ColorRect" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer"]
+visible = false
+custom_minimum_size = Vector2(2, 34)
+layout_mode = 0
+offset_left = 159.0
+offset_top = 17.0
+offset_right = 161.0
+offset_bottom = 51.0
+mouse_filter = 2
+color = Color(0.96, 0.88, 0.62, 1)
+
 [node name="UsernameErrorLabel" type="Label" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer"]
 visible = false
 layout_mode = 2

@@ -3,6 +3,8 @@ extends Control
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const MULTIPLAYER_GAME_SCENE_PATH := "res://scene/multiplayer/mp_game.tscn"
 const PUBLIC_LOBBY_API_BASE_URL := "http://47.123.6.127:8000"
+const USERNAME_CARET_SIZE := Vector2(2.0, 34.0)
+const USERNAME_CARET_BLINK_INTERVAL := 0.48
 const STATE_DISCONNECTED := NetManagerStore.ConnectionState.DISCONNECTED
 const STATE_HOSTING_LAN := NetManagerStore.ConnectionState.HOSTING_LAN
 const STATE_CONNECTING_LAN := NetManagerStore.ConnectionState.CONNECTING_LAN
@@ -33,6 +35,7 @@ enum PublicRequest {
 @onready var username_panel: PanelContainer = $LobbyCenter/UsernamePanel
 @onready var username_input: LineEdit = $LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/UsernameInput
 @onready var username_name_display: HBoxContainer = $LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/BouncyNameDisplay
+@onready var username_caret: ColorRect = $LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/UsernameCaret
 @onready var username_type_audio: AudioStreamPlayer = $LobbyCenter/UsernamePanel/TypingBlipAudio
 @onready var username_confirm_btn: Button = $LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/ConfirmUsernameButton
 @onready var username_back_btn: Button = $LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/BackToMenuButton
@@ -81,6 +84,7 @@ var relay_host_ready_sent: bool = false
 var pending_start_after_public_status: bool = false
 var keep_room_view_after_connection_failure: bool = false
 var _username_panel_intro_tween: Tween
+var _username_caret_blink_elapsed := 0.0
 
 
 func _ready() -> void:
@@ -96,6 +100,8 @@ func _ready() -> void:
 	username_back_btn.pressed.connect(_on_back_to_main_menu)
 	username_input.text_changed.connect(_on_username_text_changed)
 	username_input.text_submitted.connect(_on_username_text_submitted)
+	username_input.focus_entered.connect(_on_username_input_focus_changed)
+	username_input.focus_exited.connect(_on_username_input_focus_changed)
 	public_mode_button.pressed.connect(_on_public_mode_pressed)
 	lan_mode_button.pressed.connect(_on_lan_mode_pressed)
 	mode_back_btn.pressed.connect(_on_back_to_main_menu)
@@ -113,10 +119,15 @@ func _ready() -> void:
 	_connect_net_manager_signals()
 	_show_view(LobbyView.USERNAME_INPUT)
 	username_input.grab_focus()
+	call_deferred("_refresh_username_caret")
 
 
 func _exit_tree() -> void:
 	_disconnect_net_manager_signals()
+
+
+func _process(delta: float) -> void:
+	_update_username_caret_blink(delta)
 
 
 func _connect_net_manager_signals() -> void:
@@ -212,6 +223,8 @@ func _show_view(view: LobbyView) -> void:
 	mode_select_panel.visible = view == LobbyView.MODE_SELECT
 	room_browser_panel.visible = view == LobbyView.PUBLIC_BROWSER or view == LobbyView.LAN_DIRECT
 	room_wait_panel.visible = view == LobbyView.ROOM_WAIT
+	if view != LobbyView.USERNAME_INPUT:
+		username_caret.visible = false
 	if view == LobbyView.PUBLIC_BROWSER:
 		_apply_public_browser_state()
 	elif view == LobbyView.LAN_DIRECT:
@@ -220,10 +233,72 @@ func _show_view(view: LobbyView) -> void:
 		mode_status_label.text = "欢迎，%s。请选择联机方式。" % net_manager.local_player_name
 	elif view == LobbyView.USERNAME_INPUT:
 		call_deferred("_animate_username_panel_intro")
+		call_deferred("_refresh_username_caret")
 
 
 func _update_username_display(new_text: String, play_sound: bool) -> void:
 	username_name_display.call("update_text", new_text, play_sound)
+	_reset_username_caret_blink()
+	call_deferred("_refresh_username_caret")
+
+
+func _on_username_input_focus_changed() -> void:
+	_reset_username_caret_blink()
+	call_deferred("_refresh_username_caret")
+
+
+func _refresh_username_caret() -> void:
+	_position_username_caret()
+	_update_username_caret_blink(0.0)
+
+
+func _is_username_caret_active() -> bool:
+	return (
+		current_view == LobbyView.USERNAME_INPUT
+		and username_panel.visible
+		and username_input.has_focus()
+	)
+
+
+func _reset_username_caret_blink() -> void:
+	_username_caret_blink_elapsed = 0.0
+	if _is_username_caret_active():
+		username_caret.visible = true
+
+
+func _update_username_caret_blink(delta: float) -> void:
+	if not _is_username_caret_active():
+		username_caret.visible = false
+		return
+
+	_position_username_caret()
+	_username_caret_blink_elapsed = fmod(
+		_username_caret_blink_elapsed + delta,
+		USERNAME_CARET_BLINK_INTERVAL * 2.0
+	)
+	username_caret.visible = _username_caret_blink_elapsed < USERNAME_CARET_BLINK_INTERVAL
+
+
+func _position_username_caret() -> void:
+	var display_text := str(username_name_display.call("get_displayed_text"))
+	var visible_letter_count := mini(display_text.length(), username_name_display.get_child_count())
+	var display_rect := username_name_display.get_rect()
+	var caret_x := display_rect.position.x + display_rect.size.x * 0.5
+	if visible_letter_count > 0:
+		var last_letter := username_name_display.get_child(visible_letter_count - 1) as Control
+		if last_letter != null:
+			var separation := float(username_name_display.get_theme_constant(&"separation"))
+			caret_x = display_rect.position.x + last_letter.position.x + last_letter.size.x + maxf(separation, 0.0) * 0.5
+
+	username_caret.size = USERNAME_CARET_SIZE
+	username_caret.position = Vector2(
+		clampf(
+			caret_x,
+			display_rect.position.x,
+			display_rect.end.x - USERNAME_CARET_SIZE.x
+		),
+		display_rect.position.y + (display_rect.size.y - USERNAME_CARET_SIZE.y) * 0.5 + 1.0
+	)
 
 
 func _animate_username_panel_intro() -> void:
