@@ -2,7 +2,7 @@
 
 [ext_resource type="PackedScene" uid="uid://ccvfm2ck2jkky" path="res://scene/enemy/yuanshi_insect.tscn" id="1_base"]
 [ext_resource type="Script" uid="uid://dfj2c0dhhldw1" path="res://scene/enemy/yuanshi_insect_aura.gd" id="2_script"]
-[ext_resource type="Shader" path="res://scene/enemy/guardian_glow.gdshader" id="2_guardian_glow"]
+[ext_resource type="Shader" uid="uid://dwlihaei8auo" path="res://scene/enemy/guardian_glow.gdshader" id="2_guardian_glow"]
 [ext_resource type="SpriteFrames" uid="uid://ct2ou77cymcl7" path="res://resources/animation/yuanshi_insect_guardian.tres" id="3_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_larbk"]
@@ -14,12 +14,11 @@ shader_parameter/hidden_ratio = 0.5
 shader_parameter/guardian_glow_enabled = true
 shader_parameter/guardian_glow_strength = 1.0
 shader_parameter/guardian_glow_center = Vector2(0.5, 0.44)
-shader_parameter/guardian_glow_outer_radius = 0.46
-shader_parameter/guardian_glow_mid_radius = 0.3
-shader_parameter/guardian_glow_core_radius = 0.13
+shader_parameter/guardian_glow_spread_pixels = 8.0
+shader_parameter/guardian_glow_center_fade_radius = 0.52
 shader_parameter/guardian_glow_core_color = Color(0.36, 0.96, 1, 0.92)
 shader_parameter/guardian_glow_edge_color = Color(0.05, 0.52, 1, 0.68)
-shader_parameter/guardian_body_light = 0.3
+shader_parameter/guardian_body_light = 0.38
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_qnsld"]
 radius = 6.0
