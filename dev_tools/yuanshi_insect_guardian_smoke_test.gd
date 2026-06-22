@@ -146,30 +146,56 @@ func _test_guardian_aura_visual_configuration() -> void:
 		_expect(is_equal_approx(aura_shape.radius, GUARDIAN_CONFIG.aura_radius), "Guardian aura radius ignored config.")
 	_expect(not guardian.aura_range_fill.visible, "Guardian aura range fill should be hidden.")
 	_expect(not guardian.aura_range_outline.visible, "Guardian aura range outline should be hidden.")
-	var guardian_material := guardian.animated_sprite.material as ShaderMaterial
-	_expect(guardian_material != null, "Guardian must use a shader material for blue glow.")
-	if guardian_material != null:
-		var guardian_shader := guardian_material.shader
-		var guardian_shader_code := guardian_shader.code if guardian_shader != null else ""
+	var guardian_light := guardian.get_node_or_null("GuardianLight") as PointLight2D
+	var guardian_halo := guardian.get_node_or_null("GuardianLightHalo") as Sprite2D
+	_expect(guardian_light != null, "Guardian must use a native PointLight2D for soft blue glow.")
+	_expect(guardian_halo != null, "Guardian must use a visible soft halo sprite for readable glow.")
+	_expect(guardian.animated_sprite.material == null, "Guardian body sprite must not draw the glow directly.")
+	_expect(not guardian.has_node("GuardianGlowSprite"), "Guardian must not use the previous baked glow sprite.")
+	if guardian_halo != null:
 		_expect(
-			guardian_material.get_shader_parameter(&"guardian_glow_enabled") == true,
-			"Guardian blue glow shader parameter is disabled."
+			guardian_halo.texture != null
+			and guardian_halo.texture.resource_path.ends_with("guardian_point_light.png"),
+			"Guardian halo sprite must use the same soft radial light texture."
 		)
 		_expect(
-			float(guardian_material.get_shader_parameter(&"guardian_glow_strength")) > 0.0,
-			"Guardian blue glow strength must be positive."
+			guardian_halo.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR,
+			"Guardian halo sprite must use linear filtering."
 		)
 		_expect(
-			not guardian_shader_code.contains("TIME"),
-			"Guardian glow shader must not animate over time."
+			guardian_halo.scale.x <= 1.0 and guardian_halo.scale.y <= 1.0,
+			"Guardian halo sprite must stay close to the body, not become a large background blob."
 		)
 		_expect(
-			not guardian_shader_code.contains("blink_enabled"),
-			"Guardian glow shader must not expose hurt blink."
+			guardian_halo.modulate.a > 0.0 and guardian_halo.modulate.a <= 0.8,
+			"Guardian halo sprite must stay subtle."
 		)
 		_expect(
-			not guardian_shader_code.contains("UV +"),
-			"Guardian glow shader must not build a pixelated outline by offset-sampling the sprite."
+			guardian_halo.z_index < guardian.animated_sprite.z_index,
+			"Guardian halo sprite must render behind the body."
+		)
+	if guardian_light != null:
+		_expect(
+			guardian_light.texture != null
+			and guardian_light.texture.resource_path.ends_with("guardian_point_light.png"),
+			"Guardian PointLight2D must use the soft radial light texture."
+		)
+		_expect(
+			guardian_light.color.b > guardian_light.color.r
+			and guardian_light.color.g > guardian_light.color.r,
+			"Guardian PointLight2D must be blue-cyan, not a dark sprite shadow."
+		)
+		_expect(
+			guardian_light.energy > 0.0 and guardian_light.energy <= 1.0,
+			"Guardian PointLight2D must stay weak and non-threatening."
+		)
+		_expect(
+			guardian_light.texture_scale > 0.0 and guardian_light.texture_scale <= 1.0,
+			"Guardian PointLight2D radius must stay close to the body."
+		)
+		_expect(
+			not guardian_light.shadow_enabled,
+			"Guardian PointLight2D must not cast shadows."
 		)
 	_expect(
 		is_equal_approx(guardian.hurt_blink_duration, 0.0),

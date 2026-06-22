@@ -2,20 +2,8 @@
 
 [ext_resource type="PackedScene" uid="uid://ccvfm2ck2jkky" path="res://scene/enemy/yuanshi_insect.tscn" id="1_base"]
 [ext_resource type="Script" uid="uid://dfj2c0dhhldw1" path="res://scene/enemy/yuanshi_insect_aura.gd" id="2_script"]
-[ext_resource type="Shader" path="res://scene/enemy/guardian_glow.gdshader" id="2_guardian_glow"]
 [ext_resource type="SpriteFrames" uid="uid://ct2ou77cymcl7" path="res://resources/animation/yuanshi_insect_guardian.tres" id="3_frames"]
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_larbk"]
-resource_local_to_scene = true
-shader = ExtResource("2_guardian_glow")
-shader_parameter/guardian_glow_enabled = true
-shader_parameter/guardian_glow_strength = 0.42
-shader_parameter/guardian_glow_center = Vector2(0.5, 0.46)
-shader_parameter/guardian_glow_radius = 0.46
-shader_parameter/guardian_glow_softness = 0.28
-shader_parameter/guardian_glow_core_color = Color(0.32, 0.88, 1, 0.42)
-shader_parameter/guardian_glow_edge_color = Color(0.04, 0.36, 0.78, 0)
-shader_parameter/guardian_body_light = 0.18
+[ext_resource type="Texture2D" path="res://resources/texture/guardian_point_light.png" id="4_guardian_light"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_qnsld"]
 radius = 6.0
@@ -46,14 +34,27 @@ resource_local_to_scene = true
 radius = 46.0
 
 [node name="YuanshiInsectGuardian" unique_id=359098456 instance=ExtResource("1_base")]
-material = SubResource("ShaderMaterial_larbk")
 script = ExtResource("2_script")
 hurt_blink_duration = 0.0
 
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
-material = SubResource("ShaderMaterial_larbk")
+z_index = 1
 sprite_frames = ExtResource("3_frames")
 animation = &"move"
+
+[node name="GuardianLightHalo" type="Sprite2D" parent="."]
+position = Vector2(0, -1)
+texture_filter = 2
+modulate = Color(0.2, 0.78, 1, 0.78)
+texture = ExtResource("4_guardian_light")
+scale = Vector2(0.95, 0.95)
+
+[node name="GuardianLight" type="PointLight2D" parent="."]
+position = Vector2(0, -1)
+color = Color(0.22, 0.72, 1, 1)
+energy = 1.0
+texture = ExtResource("4_guardian_light")
+texture_scale = 0.95
 
 [node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
 position = Vector2(1, 0)

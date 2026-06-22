@@ -2,6 +2,7 @@ extends Node2D
 class_name Game
 
 const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/enemy/yuanshi_insect_spawn_effect.tscn")
+const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/guardian_point_light.png")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const COUNTDOWN_FINAL_SECONDS := 3
 const MULTIPLAYER_DEFEAT_GRACE_SECONDS := 0.25
@@ -124,6 +125,7 @@ func _ready() -> void:
 		run_state.ensure_run_started()
 	_collect_enemy_spawn_points()
 	_configure_timers()
+	_prewarm_enemy_visual_resources()
 	if runtime_mode != RuntimeMode.CLIENT_VIEW:
 		_prewarm_enemy_navigation_grids()
 	if runtime_mode != RuntimeMode.SINGLEPLAYER:
@@ -377,6 +379,10 @@ func _prewarm_enemy_navigation_grids() -> void:
 					player.global_position,
 					body_half_extents
 				)
+
+
+func _prewarm_enemy_visual_resources() -> void:
+	GUARDIAN_POINT_LIGHT_TEXTURE.get_size()
 
 
 func _get_enemy_scene_body_half_extents(enemy_config: EnemyConfig) -> Vector2:
