@@ -1,0 +1,849 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://scene/settings/settings_panel.gd" id="1_script"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+bg_color = Color(0.09, 0.095, 0.105, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.72, 0.64, 0.42, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_normal"]
+content_margin_left = 10.0
+content_margin_top = 7.0
+content_margin_right = 10.0
+content_margin_bottom = 7.0
+bg_color = Color(0.18, 0.19, 0.2, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.58, 0.51, 0.34, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hover"]
+content_margin_left = 10.0
+content_margin_top = 7.0
+content_margin_right = 10.0
+content_margin_bottom = 7.0
+bg_color = Color(0.24, 0.23, 0.2, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.95, 0.82, 0.48, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_pressed"]
+content_margin_left = 10.0
+content_margin_top = 7.0
+content_margin_right = 10.0
+content_margin_bottom = 7.0
+bg_color = Color(0.14, 0.14, 0.15, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.95, 0.82, 0.48, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_field"]
+content_margin_left = 8.0
+content_margin_top = 6.0
+content_margin_right = 8.0
+content_margin_bottom = 6.0
+bg_color = Color(0.13, 0.14, 0.15, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.42, 0.38, 0.28, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_slider"]
+bg_color = Color(0.12, 0.13, 0.14, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.42, 0.38, 0.28, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_top = 5.0
+content_margin_bottom = 5.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_slider_fill"]
+bg_color = Color(0.72, 0.64, 0.42, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_top = 5.0
+content_margin_bottom = 5.0
+
+[node name="SettingsPanel" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+script = ExtResource("1_script")
+
+[node name="Overlay" type="ColorRect" parent="."]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 0
+color = Color(0, 0, 0, 0.58)
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Panel" type="PanelContainer" parent="Center"]
+custom_minimum_size = Vector2(880, 650)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="Margin" type="MarginContainer" parent="Center/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 24
+
+[node name="Layout" type="VBoxContainer" parent="Center/Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="Center/Panel/Margin/Layout"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.88, 0.62, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 28
+text = "设置"
+horizontal_alignment = 1
+
+[node name="Scroll" type="ScrollContainer" parent="Center/Panel/Margin/Layout"]
+custom_minimum_size = Vector2(820, 500)
+layout_mode = 2
+size_flags_vertical = 3
+follow_focus = true
+horizontal_scroll_mode = 0
+
+[node name="Content" type="VBoxContainer" parent="Center/Panel/Margin/Layout/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 14
+
+[node name="DisplaySection" type="VBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="DisplayTitle" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/DisplaySection"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.88, 0.62, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 20
+text = "显示"
+
+[node name="FullscreenRow" type="HBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/DisplaySection"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="FullscreenLabel" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/DisplaySection/FullscreenRow"]
+custom_minimum_size = Vector2(120, 36)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 16
+text = "全屏"
+vertical_alignment = 1
+
+[node name="FullscreenCheck" type="CheckButton" parent="Center/Panel/Margin/Layout/Scroll/Content/DisplaySection/FullscreenRow"]
+custom_minimum_size = Vector2(260, 36)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 15
+text = "使用当前屏幕分辨率"
+
+[node name="ResolutionRow" type="HBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/DisplaySection"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="ResolutionLabel" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/DisplaySection/ResolutionRow"]
+custom_minimum_size = Vector2(120, 36)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 16
+text = "分辨率"
+vertical_alignment = 1
+
+[node name="ResolutionOption" type="OptionButton" parent="Center/Panel/Margin/Layout/Scroll/Content/DisplaySection/ResolutionRow"]
+custom_minimum_size = Vector2(260, 36)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_field")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="ConfigPathLabel" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/DisplaySection"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.72, 0.72, 0.66, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 12
+text = "配置文件：user://settings.cfg。删除该文件会恢复默认设置。"
+autowrap_mode = 2
+
+[node name="AudioSection" type="VBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AudioTitle" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/AudioSection"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.88, 0.62, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 20
+text = "音量"
+
+[node name="MasterRow" type="HBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/AudioSection"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="MasterLabel" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/AudioSection/MasterRow"]
+custom_minimum_size = Vector2(120, 34)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 16
+text = "总音量"
+vertical_alignment = 1
+
+[node name="MasterSlider" type="HSlider" parent="Center/Panel/Margin/Layout/Scroll/Content/AudioSection/MasterRow"]
+custom_minimum_size = Vector2(390, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.0
+max_value = 100.0
+step = 1.0
+theme_override_styles/slider = SubResource("StyleBoxFlat_slider")
+theme_override_styles/grabber_area = SubResource("StyleBoxFlat_slider_fill")
+theme_override_styles/grabber_area_highlight = SubResource("StyleBoxFlat_slider_fill")
+
+[node name="MasterValue" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/AudioSection/MasterRow"]
+custom_minimum_size = Vector2(58, 34)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 15
+text = "100%"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="MusicRow" type="HBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/AudioSection"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="MusicLabel" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/AudioSection/MusicRow"]
+custom_minimum_size = Vector2(120, 34)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 16
+text = "背景音量"
+vertical_alignment = 1
+
+[node name="MusicSlider" type="HSlider" parent="Center/Panel/Margin/Layout/Scroll/Content/AudioSection/MusicRow"]
+custom_minimum_size = Vector2(390, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.0
+max_value = 100.0
+step = 1.0
+theme_override_styles/slider = SubResource("StyleBoxFlat_slider")
+theme_override_styles/grabber_area = SubResource("StyleBoxFlat_slider_fill")
+theme_override_styles/grabber_area_highlight = SubResource("StyleBoxFlat_slider_fill")
+
+[node name="MusicValue" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/AudioSection/MusicRow"]
+custom_minimum_size = Vector2(58, 34)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 15
+text = "100%"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="SfxRow" type="HBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/AudioSection"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="SfxLabel" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/AudioSection/SfxRow"]
+custom_minimum_size = Vector2(120, 34)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 16
+text = "效果音效"
+vertical_alignment = 1
+
+[node name="SfxSlider" type="HSlider" parent="Center/Panel/Margin/Layout/Scroll/Content/AudioSection/SfxRow"]
+custom_minimum_size = Vector2(390, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.0
+max_value = 100.0
+step = 1.0
+theme_override_styles/slider = SubResource("StyleBoxFlat_slider")
+theme_override_styles/grabber_area = SubResource("StyleBoxFlat_slider_fill")
+theme_override_styles/grabber_area_highlight = SubResource("StyleBoxFlat_slider_fill")
+
+[node name="SfxValue" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/AudioSection/SfxRow"]
+custom_minimum_size = Vector2(58, 34)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 15
+text = "100%"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="HotkeySection" type="VBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="HotkeyTitle" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.88, 0.62, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 20
+text = "热键"
+
+[node name="Hint" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.72, 0.72, 0.66, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+text = "点击一个槽位后按下键盘按键、手柄按钮或摇杆方向。Esc 取消，Backspace/Delete 清空。"
+autowrap_mode = 2
+
+[node name="Rows" type="VBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection"]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="MoveUpRow" type="HBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ActionLabel" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveUpRow"]
+custom_minimum_size = Vector2(100, 32)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 14
+text = "上移"
+vertical_alignment = 1
+
+[node name="Slot1" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveUpRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot2" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveUpRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot3" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveUpRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Reset" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveUpRow"]
+custom_minimum_size = Vector2(70, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+text = "重置"
+
+[node name="MoveDownRow" type="HBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ActionLabel" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveDownRow"]
+custom_minimum_size = Vector2(100, 32)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 14
+text = "下移"
+vertical_alignment = 1
+
+[node name="Slot1" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveDownRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot2" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveDownRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot3" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveDownRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Reset" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveDownRow"]
+custom_minimum_size = Vector2(70, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+text = "重置"
+
+[node name="MoveLeftRow" type="HBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ActionLabel" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveLeftRow"]
+custom_minimum_size = Vector2(100, 32)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 14
+text = "左移"
+vertical_alignment = 1
+
+[node name="Slot1" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveLeftRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot2" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveLeftRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot3" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveLeftRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Reset" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveLeftRow"]
+custom_minimum_size = Vector2(70, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+text = "重置"
+
+[node name="MoveRightRow" type="HBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ActionLabel" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveRightRow"]
+custom_minimum_size = Vector2(100, 32)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 14
+text = "右移"
+vertical_alignment = 1
+
+[node name="Slot1" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveRightRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot2" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveRightRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot3" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveRightRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Reset" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/MoveRightRow"]
+custom_minimum_size = Vector2(70, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+text = "重置"
+
+[node name="ShootUpRow" type="HBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ActionLabel" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootUpRow"]
+custom_minimum_size = Vector2(100, 32)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 14
+text = "向上射击"
+vertical_alignment = 1
+
+[node name="Slot1" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootUpRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot2" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootUpRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot3" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootUpRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Reset" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootUpRow"]
+custom_minimum_size = Vector2(70, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+text = "重置"
+
+[node name="ShootDownRow" type="HBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ActionLabel" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootDownRow"]
+custom_minimum_size = Vector2(100, 32)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 14
+text = "向下射击"
+vertical_alignment = 1
+
+[node name="Slot1" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootDownRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot2" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootDownRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot3" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootDownRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Reset" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootDownRow"]
+custom_minimum_size = Vector2(70, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+text = "重置"
+
+[node name="ShootLeftRow" type="HBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ActionLabel" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootLeftRow"]
+custom_minimum_size = Vector2(100, 32)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 14
+text = "向左射击"
+vertical_alignment = 1
+
+[node name="Slot1" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootLeftRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot2" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootLeftRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot3" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootLeftRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Reset" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootLeftRow"]
+custom_minimum_size = Vector2(70, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+text = "重置"
+
+[node name="ShootRightRow" type="HBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ActionLabel" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootRightRow"]
+custom_minimum_size = Vector2(100, 32)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 14
+text = "向右射击"
+vertical_alignment = 1
+
+[node name="Slot1" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootRightRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot2" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootRightRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot3" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootRightRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Reset" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShootRightRow"]
+custom_minimum_size = Vector2(70, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+text = "重置"
+
+[node name="Skill1Row" type="HBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ActionLabel" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/Skill1Row"]
+custom_minimum_size = Vector2(100, 32)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 14
+text = "技能"
+vertical_alignment = 1
+
+[node name="Slot1" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/Skill1Row"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot2" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/Skill1Row"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot3" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/Skill1Row"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Reset" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/Skill1Row"]
+custom_minimum_size = Vector2(70, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+text = "重置"
+
+[node name="Footer" type="HBoxContainer" parent="Center/Panel/Margin/Layout"]
+layout_mode = 2
+theme_override_constants/separation = 12
+alignment = 2
+
+[node name="ResetSettingsButton" type="Button" parent="Center/Panel/Margin/Layout/Footer"]
+custom_minimum_size = Vector2(150, 38)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+text = "恢复全部设置"
+
+[node name="ResetAllButton" type="Button" parent="Center/Panel/Margin/Layout/Footer"]
+custom_minimum_size = Vector2(150, 38)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+text = "恢复默认热键"
+
+[node name="CloseButton" type="Button" parent="Center/Panel/Margin/Layout/Footer"]
+custom_minimum_size = Vector2(110, 38)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+text = "关闭"

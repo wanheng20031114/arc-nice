@@ -116,6 +116,9 @@ var last_spawn_audio_msec: int = -100000
 
 func _ready() -> void:
 	random_generator.randomize()
+	var user_settings := get_node_or_null("/root/UserSettings")
+	if user_settings != null and user_settings.has_method("assign_audio_buses_to_tree"):
+		user_settings.call("assign_audio_buses_to_tree")
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		run_state.ensure_run_started()
 	_collect_enemy_spawn_points()

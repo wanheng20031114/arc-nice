@@ -21,12 +21,16 @@ driver/output_latency=50
 
 [autoload]
 
+UserSettings="*res://scene/settings/settings_manager.gd"
 RunState="*res://run_state.gd"
 NetManager="*res://scene/multiplayer/net_manager.gd"
 
 [display]
 
+window/size/viewport_width=1280
+window/size/viewport_height=720
 window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
 
 [dotnet]
 

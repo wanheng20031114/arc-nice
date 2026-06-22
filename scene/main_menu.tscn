@@ -3,6 +3,8 @@
 [ext_resource type="Script" uid="uid://c5lyhldap105w" path="res://scene/main_menu.gd" id="1_2fwvj"]
 [ext_resource type="Texture2D" uid="uid://cbrmpw5d481ci" path="res://resources/texture/瓦片.png" id="2_0iwki"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_sepwh"]
+[ext_resource type="Script" path="res://scene/settings/settings_gear_icon.gd" id="4_settings_icon"]
+[ext_resource type="PackedScene" path="res://scene/settings/settings_panel.tscn" id="5_settings_panel"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 bg_color = Color(0.09, 0.095, 0.105, 0.92)
@@ -184,6 +186,15 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
 text = "设置"
 
+[node name="GearIcon" type="Control" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack/Settings"]
+layout_mode = 0
+offset_left = 18.0
+offset_top = 8.0
+offset_right = 44.0
+offset_bottom = 34.0
+mouse_filter = 2
+script = ExtResource("4_settings_icon")
+
 [node name="Quit" type="Button" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack"]
 custom_minimum_size = Vector2(260, 42)
 layout_mode = 2
@@ -196,6 +207,8 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
 theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
 text = "结束游戏"
+
+[node name="SettingsPanel" parent="." instance=ExtResource("5_settings_panel")]
 
 [connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/SinglePlayer" to="." method="_on_singleplayer_pressed"]
 [connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/Multiplayer" to="." method="_on_multiplayer_pressed"]

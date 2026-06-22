@@ -2,6 +2,8 @@ extends Control
 
 const GAME_SCENE_PATH := "res://scene/game.tscn"
 
+@onready var settings_panel: Control = $SettingsPanel
+
 
 func _on_singleplayer_pressed() -> void:
 	var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
@@ -14,8 +16,8 @@ func _on_multiplayer_pressed() -> void:
 
 
 func _on_settings_pressed() -> void:
-	# 设置 - 暂未实现
-	pass
+	if settings_panel != null and settings_panel.has_method("open"):
+		settings_panel.call("open")
 
 
 func _on_quit_pressed() -> void:
