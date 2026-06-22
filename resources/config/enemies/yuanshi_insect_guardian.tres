@@ -9,12 +9,11 @@
 [ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="7_1fef3"]
 [ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="8_h0ajm"]
 [ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="9_em1je"]
-[ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect_guardian.tscn" id="enemy_scene"]
+[ext_resource type="PackedScene" uid="uid://cym06altmi20q" path="res://scene/enemy/yuanshi_insect_guardian.tscn" id="enemy_scene"]
 
 [resource]
 script = ExtResource("2_script")
 aura_radius = 46.0
-aura_physical_defense_bonus = 3
 aura_particles_enabled = false
 aura_fill_color = Color(0.1, 0.38, 1, 0.012)
 aura_outline_color = Color(0.36, 0.82, 1, 0.16)
@@ -22,6 +21,7 @@ variant = 7
 display_name = "守护者原石虫"
 enemy_scene = ExtResource("enemy_scene")
 max_health = 150
+attack_damage = 10
 physical_defense = 5
 move_speed = 20.0
 xirang_drop_amount = 10
