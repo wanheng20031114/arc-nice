@@ -10,6 +10,7 @@ const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres
 const RPG_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
 const PICKUP_SPEED_CONFIG := preload("res://resources/config/pickups/pickup_speed.tres")
 const PICKUP_SPIRAL_CONFIG := preload("res://resources/config/pickups/pickup_spiral.tres")
+const XIRANG_DROP_CONFIG := preload("res://resources/config/xirang_drop.tres")
 
 var failures: Array[String] = []
 
@@ -25,6 +26,7 @@ func _run() -> void:
 	_test_recent_event_cache()
 	_test_snapshot_packet_metrics()
 	_test_freed_pickup_index_cleanup()
+	_test_xirang_drop_attraction_radius()
 	await _test_enemy_proxy_action_animation_restore()
 	await _test_player_multiplayer_death_visual_state()
 	await _test_multiplayer_cheat_xirang_confirm()
@@ -230,6 +232,13 @@ func _test_freed_pickup_index_cleanup() -> void:
 	_expect(game.get_pickup_for_net_id(77) == null, "Game must ignore freed pickup references by net id.")
 	_expect(not game.multiplayer_pickups.has(77), "Game must erase freed pickup references from the net id index.")
 	game.free()
+
+
+func _test_xirang_drop_attraction_radius() -> void:
+	_expect(
+		XIRANG_DROP_CONFIG.attraction_radius >= 4096.0,
+		"Xirang drops must use a full-map attraction radius."
+	)
 
 
 func _test_multiplayer_peer_disconnect_cleanup() -> void:

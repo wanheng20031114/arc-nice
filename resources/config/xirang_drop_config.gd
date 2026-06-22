@@ -11,7 +11,7 @@ class_name XirangDropConfig
 @export_range(0.05, 1.0, 0.05) var spawn_scale_multiplier: float = 0.5
 
 @export_group("吸附参数")
-@export_range(1.0, 1024.0, 1.0, "or_greater") var attraction_radius: float = 140.0
+@export_range(1.0, 4096.0, 1.0, "or_greater") var attraction_radius: float = 4096.0
 @export_range(0.05, 1.0, 0.01) var scatter_duration: float = 0.22
 @export_range(0.05, 1.0, 0.01) var attraction_duration: float = 0.38
 

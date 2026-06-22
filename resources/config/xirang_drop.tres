@@ -6,3 +6,4 @@
 [resource]
 script = ExtResource("2_config")
 icon_texture = ExtResource("1_orb")
+attraction_radius = 4096.0
