@@ -149,7 +149,7 @@ func _test_config_file_reset() -> void:
 	settings.call("reset_all_settings")
 	_expect(not FileAccess.file_exists(config_path), "Reset all settings must remove settings config file.")
 	_expect(_float_close(float(settings.call("get_volume_percent", &"master")), 100.0), "Master volume must reset to default.")
-	_expect(_float_close(float(settings.call("get_volume_percent", &"music")), 100.0), "Music volume must reset to default.")
+	_expect(_float_close(float(settings.call("get_volume_percent", &"music")), 70.0), "Music volume must reset to default.")
 	_expect(_float_close(float(settings.call("get_volume_percent", &"sfx")), 100.0), "SFX volume must reset to default.")
 	_expect(not bool(settings.call("is_fullscreen_enabled")), "Fullscreen must reset to default.")
 
@@ -202,12 +202,24 @@ func _test_settings_panel_scene() -> void:
 		var config_path_label := panel.get_node_or_null(
 			"Center/Panel/Margin/Layout/Scroll/Content/DisplaySection/ConfigPathLabel"
 		) as Label
+		var music_slider := panel.get_node_or_null(
+			"Center/Panel/Margin/Layout/Scroll/Content/AudioSection/MusicRow/MusicSlider"
+		) as HSlider
+		var music_value := panel.get_node_or_null(
+			"Center/Panel/Margin/Layout/Scroll/Content/AudioSection/MusicRow/MusicValue"
+		) as Label
+		var hotkey_hint := panel.get_node_or_null(
+			"Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Hint"
+		) as Label
 		var reset_settings_button := panel.get_node_or_null(
 			"Center/Panel/Margin/Layout/Footer/ResetSettingsButton"
 		) as Button
 		_expect(fullscreen_check != null, "Fullscreen CheckButton must exist.")
 		_expect(resolution_option != null, "Resolution OptionButton must exist.")
 		_expect(config_path_label != null, "Settings panel must show config path label.")
+		_expect(music_slider != null, "Settings panel must expose MusicSlider.")
+		_expect(music_value != null, "Settings panel must expose MusicValue.")
+		_expect(hotkey_hint != null, "Settings panel must contain the hotkey hint label for transient capture messages.")
 		_expect(reset_settings_button != null, "Settings panel must expose full reset button.")
 		if fullscreen_check != null:
 			var checked_icon := fullscreen_check.get_theme_icon(&"checked")
@@ -235,6 +247,13 @@ func _test_settings_panel_scene() -> void:
 				config_path_label.text.contains("settings.cfg"),
 				"Config path label must mention settings.cfg."
 			)
+		if music_slider != null:
+			_expect(_float_close(float(music_slider.value), 70.0), "Music slider must default to 70%.")
+		if music_value != null:
+			_expect(music_value.text == "70%", "Music value label must default to 70%.")
+		if hotkey_hint != null:
+			_expect(not hotkey_hint.visible, "Hotkey hint must not occupy the settings panel by default.")
+			_expect(hotkey_hint.text.is_empty(), "Hotkey hint must start empty by default.")
 		panel.call("close")
 		_expect(not panel.visible, "Settings panel must hide after close().")
 

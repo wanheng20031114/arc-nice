@@ -78,4 +78,4 @@ animation = &"explode"
 
 [node name="ExplosionAudio" type="AudioStreamPlayer2D" parent="."]
 stream = ExtResource("3_audio")
-volume_db = -5.0
+volume_db = -9.0

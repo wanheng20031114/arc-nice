@@ -142,7 +142,7 @@ func _refresh_from_settings() -> void:
 	_update_volume_labels()
 	_refresh_hotkey_rows()
 	if not _is_capture_active():
-		hint_label.text = "点击一个槽位后按下键盘按键、手柄按钮或摇杆方向。Esc 取消，Backspace/Delete 清空。"
+		_set_hint("")
 
 
 func _set_slider_value(slider: HSlider, value: float) -> void:
@@ -153,6 +153,11 @@ func _update_volume_labels() -> void:
 	master_value.text = "%d%%" % int(round(master_slider.value))
 	music_value.text = "%d%%" % int(round(music_slider.value))
 	sfx_value.text = "%d%%" % int(round(sfx_slider.value))
+
+
+func _set_hint(text: String) -> void:
+	hint_label.text = text
+	hint_label.visible = not text.is_empty()
 
 
 func _refresh_hotkey_rows() -> void:
@@ -177,19 +182,18 @@ func _refresh_hotkey_rows() -> void:
 
 func _on_resolution_selected(index: int) -> void:
 	_settings().call("set_resolution_index", index)
-	hint_label.text = "分辨率已应用。"
+	_set_hint("")
 
 
 func _on_fullscreen_toggled(enabled: bool) -> void:
 	_settings().call("set_fullscreen_enabled", enabled)
 	resolution_option.disabled = enabled
 	if enabled:
-		var screen_size: Vector2i = _settings().call("get_current_screen_size")
-		hint_label.text = "已进入全屏：%d x %d。" % [screen_size.x, screen_size.y]
+		_set_hint("")
 	else:
 		_populate_resolution_options()
 		resolution_option.select(int(_settings().call("get_selected_resolution_index")))
-		hint_label.text = "已退出全屏，恢复窗口分辨率。"
+		_set_hint("")
 
 
 func _on_volume_changed(value: float, channel: StringName) -> void:
@@ -200,7 +204,7 @@ func _on_volume_changed(value: float, channel: StringName) -> void:
 func _on_bind_slot_pressed(action: String, slot_idx: int) -> void:
 	_capture_action = action
 	_capture_slot = slot_idx
-	hint_label.text = "正在设置“%s”，请按下新的按键或手柄输入。" % str(ACTION_DISPLAY_NAMES.get(action, action))
+	_set_hint("正在设置“%s”，请按下新的按键或手柄输入。Esc 取消，Backspace/Delete 清空。" % str(ACTION_DISPLAY_NAMES.get(action, action)))
 	_refresh_hotkey_rows()
 
 
@@ -208,21 +212,21 @@ func _on_reset_action_pressed(action: String) -> void:
 	_settings().call("reset_action", action)
 	_stop_capture()
 	_refresh_hotkey_rows()
-	hint_label.text = "“%s”已恢复默认。" % str(ACTION_DISPLAY_NAMES.get(action, action))
+	_set_hint("“%s”已恢复默认。" % str(ACTION_DISPLAY_NAMES.get(action, action)))
 
 
 func _on_reset_all_pressed() -> void:
 	_settings().call("reset_all_bindings")
 	_stop_capture()
 	_refresh_hotkey_rows()
-	hint_label.text = "所有热键已恢复默认。"
+	_set_hint("所有热键已恢复默认。")
 
 
 func _on_reset_settings_pressed() -> void:
 	_settings().call("reset_all_settings")
 	_stop_capture()
 	_refresh_from_settings()
-	hint_label.text = "配置文件已删除，所有设置已恢复默认。"
+	_set_hint("配置文件已删除，所有设置已恢复默认。")
 
 
 func _on_close_pressed() -> void:
@@ -250,14 +254,14 @@ func _handle_capture_input(event: InputEvent) -> void:
 			if key_event.physical_keycode == KEY_ESCAPE:
 				_stop_capture()
 				_refresh_hotkey_rows()
-				hint_label.text = "已取消按键设置。"
+				_set_hint("已取消按键设置。")
 				_mark_input_handled()
 				return
 			if key_event.physical_keycode == KEY_BACKSPACE or key_event.physical_keycode == KEY_DELETE:
 				_settings().call("clear_action_event", _capture_action, _capture_slot)
 				_stop_capture()
 				_refresh_hotkey_rows()
-				hint_label.text = "该槽位已清空。"
+				_set_hint("该槽位已清空。")
 				_mark_input_handled()
 				return
 	var settings := _settings()
@@ -266,13 +270,13 @@ func _handle_capture_input(event: InputEvent) -> void:
 		return
 	var owner_action := str(settings.call("find_event_owner", captured, _capture_action, _capture_slot))
 	if not owner_action.is_empty():
-		hint_label.text = "该输入已用于“%s”，请换一个。" % str(ACTION_DISPLAY_NAMES.get(owner_action, owner_action))
+		_set_hint("该输入已用于“%s”，请换一个。" % str(ACTION_DISPLAY_NAMES.get(owner_action, owner_action)))
 		_mark_input_handled()
 		return
 	settings.call("set_action_event", _capture_action, _capture_slot, captured)
 	_stop_capture()
 	_refresh_hotkey_rows()
-	hint_label.text = "热键已保存。"
+	_set_hint("热键已保存。")
 	_mark_input_handled()
 
 

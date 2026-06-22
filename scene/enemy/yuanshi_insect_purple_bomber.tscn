@@ -53,4 +53,4 @@ debug_color = Color(0.9764706, 0.6, 0.69803923, 0.41960785)
 
 [node name="ExplosionAudio" type="AudioStreamPlayer2D" parent="." index="7" unique_id=930058965]
 stream = ExtResource("4_explosion_audio")
-volume_db = -4.0
+volume_db = -9.0

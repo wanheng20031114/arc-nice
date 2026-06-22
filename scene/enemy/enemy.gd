@@ -6,6 +6,7 @@ signal defeated(enemy: Enemy)
 const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
 const PATH_DIRECTION_PROBE_DISTANCE := 1.0
 const FLOW_NAVIGATION_WAYPOINT_ARRIVAL_DISTANCE := 1.0
+const AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 
 enum DeathSequenceStage {
 	NONE,
@@ -134,7 +135,7 @@ func apply_damage(
 		_die()
 		return true
 
-	hit_audio.play()
+	AUDIO_LIMITER.play_enemy_hit(hit_audio)
 	_start_hurt_blink()
 	return true
 
@@ -171,7 +172,7 @@ func play_multiplayer_death_sequence() -> void:
 		touch_damage_area.set_deferred("monitoring", false)
 		touch_damage_area.set_deferred("monitorable", false)
 	if death_audio != null:
-		death_audio.play()
+		AUDIO_LIMITER.play_enemy_death(death_audio)
 	_start_death_sequence()
 
 func add_physical_defense_modifier(source_id: int, amount: int) -> void:
@@ -663,7 +664,7 @@ func _die() -> void:
 	_set_collision_shapes_disabled(touch_damage_shapes, true)
 	touch_damage_area.set_deferred("monitoring", false)
 	touch_damage_area.set_deferred("monitorable", false)
-	death_audio.play()
+	AUDIO_LIMITER.play_enemy_death(death_audio)
 	_start_death_sequence()
 
 

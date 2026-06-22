@@ -39,6 +39,6 @@ rotation = 1.5707964
 shape = SubResource("CapsuleShape2D_4u8mj")
 
 [node name="AttackAudio" type="AudioStreamPlayer2D" parent="." index="6" unique_id=496253293]
-volume_db = -7.0
+volume_db = -10.0
 max_distance = 240.0
 max_polyphony = 4

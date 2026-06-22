@@ -132,5 +132,5 @@ vertical_alignment = 1
 
 [node name="BlipAudio" type="AudioStreamPlayer2D" parent="."]
 stream = ExtResource("3_blip")
-volume_db = -14.0
+volume_db = 4.0
 max_polyphony = 4
