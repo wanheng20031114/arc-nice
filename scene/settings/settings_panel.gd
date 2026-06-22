@@ -3,6 +3,9 @@ class_name SettingsPanel
 
 const SETTINGS_MANAGER_SCRIPT := preload("res://scene/settings/settings_manager.gd")
 
+signal opened
+signal closed
+
 const ACTION_ROW_NAMES := {
 	"move_up": "MoveUpRow",
 	"move_down": "MoveDownRow",
@@ -61,16 +64,29 @@ func _ready() -> void:
 
 
 func open() -> void:
+	if visible:
+		return
 	_settings().call("apply_all")
 	_stop_capture()
 	_refresh_from_settings()
 	show()
+	opened.emit()
 	close_button.grab_focus()
 
 
 func close() -> void:
+	if not visible:
+		return
 	_stop_capture()
 	hide()
+	var viewport := get_viewport()
+	if viewport != null:
+		viewport.gui_release_focus()
+	closed.emit()
+
+
+func is_open() -> bool:
+	return visible
 
 
 func _connect_controls() -> void:
@@ -221,6 +237,9 @@ func _input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed("ui_cancel"):
 		close()
+		_mark_input_handled()
+		return
+	if event.is_action_pressed("bag"):
 		_mark_input_handled()
 
 

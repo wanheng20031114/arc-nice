@@ -56,7 +56,7 @@ func _test_resource_contract() -> void:
 	_expect(BASIC_CONFIG.enemy_scene != null, "Basic Yuanshi insect must use its own scene.")
 	_expect(GUARDIAN_CONFIG.enemy_scene != null, "Guardian must use its own scene.")
 	_expect(GUARDIAN_CONFIG.max_health >= 16, "Guardian health is not high enough.")
-	_expect(GUARDIAN_CONFIG.attack_damage == 1, "Guardian attack damage must be 1.")
+	_expect(GUARDIAN_CONFIG.attack_damage == 10, "Guardian attack damage must be 10.")
 	_expect(
 		is_equal_approx(GUARDIAN_CONFIG.move_speed, BASIC_CONFIG.move_speed),
 		"Guardian must keep normal Yuanshi insect movement speed."
@@ -149,6 +149,8 @@ func _test_guardian_aura_visual_configuration() -> void:
 	var guardian_material := guardian.animated_sprite.material as ShaderMaterial
 	_expect(guardian_material != null, "Guardian must use a shader material for blue glow.")
 	if guardian_material != null:
+		var guardian_shader := guardian_material.shader
+		var guardian_shader_code := guardian_shader.code if guardian_shader != null else ""
 		_expect(
 			guardian_material.get_shader_parameter(&"guardian_glow_enabled") == true,
 			"Guardian blue glow shader parameter is disabled."
@@ -157,6 +159,27 @@ func _test_guardian_aura_visual_configuration() -> void:
 			float(guardian_material.get_shader_parameter(&"guardian_glow_strength")) > 0.0,
 			"Guardian blue glow strength must be positive."
 		)
+		_expect(
+			not guardian_shader_code.contains("TIME"),
+			"Guardian glow shader must not animate over time."
+		)
+		_expect(
+			not guardian_shader_code.contains("blink_enabled"),
+			"Guardian glow shader must not expose hurt blink."
+		)
+		_expect(
+			not guardian_shader_code.contains("UV +"),
+			"Guardian glow shader must not build a pixelated outline by offset-sampling the sprite."
+		)
+	_expect(
+		is_equal_approx(guardian.hurt_blink_duration, 0.0),
+		"Guardian must disable hurt blink duration."
+	)
+	guardian.apply_damage(1, Vector2.ZERO, EnemyConfig.DamageType.MAGIC)
+	_expect(
+		is_equal_approx(guardian.hurt_blink_time_left, 0.0),
+		"Guardian must not start hurt blink when damaged."
+	)
 	_expect(
 		guardian.get_effective_physical_defense() == GUARDIAN_CONFIG.physical_defense,
 		"Guardian must not receive its own aura defense."

@@ -81,6 +81,7 @@ enum WaveState {
 @onready var currency_hud: CurrencyHUD = $CurrencyHUD
 @onready var wave_hud: WaveHUD = $WaveHUD
 @onready var player_profile_panel: PlayerProfilePanel = $PlayerProfilePanel
+@onready var settings_panel: SettingsPanel = $SettingsLayer/SettingsPanel
 @onready var merchant: ZhuangfangyiMerchant = $ZhuangfangyiMerchant
 @onready var damage_number_pool: DamageNumberPool = $DamageNumberPool
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
@@ -132,7 +133,9 @@ func _ready() -> void:
 		_register_static_multiplayer_pickups()
 	currency_hud.bind_player(player)
 	player_profile_panel.bind_player(player)
+	currency_hud.settings_requested.connect(_on_currency_hud_settings_requested)
 	currency_hud.profile_requested.connect(player_profile_panel.open)
+	settings_panel.closed.connect(_on_settings_panel_closed)
 	wave_hud.set_return_button_text("返回菜单" if runtime_mode == RuntimeMode.SINGLEPLAYER else "返回大厅")
 	if not wave_hud.return_to_lobby_requested.is_connected(_on_wave_hud_return_to_lobby_requested):
 		wave_hud.return_to_lobby_requested.connect(_on_wave_hud_return_to_lobby_requested)
@@ -164,6 +167,31 @@ func configure_multiplayer(
 	runtime_mode = mode as RuntimeMode
 	multiplayer_local_peer_id = local_peer_id
 	multiplayer_player_names = player_names.duplicate()
+
+
+func _on_currency_hud_settings_requested() -> void:
+	if player_profile_panel.is_open():
+		player_profile_panel.close()
+	settings_panel.open()
+	_lock_player_for_modal_ui()
+
+
+func _on_settings_panel_closed() -> void:
+	_refresh_player_modal_ui_lock()
+
+
+func _lock_player_for_modal_ui() -> void:
+	if player != null and not player.is_dead:
+		player.set_controls_locked(true)
+
+
+func _refresh_player_modal_ui_lock() -> void:
+	if player == null or player.is_dead:
+		return
+	if settings_panel.is_open() or player_profile_panel.is_open():
+		player.set_controls_locked(true)
+	else:
+		player.set_controls_locked(false)
 
 
 func apply_remote_merchant_active(active: bool) -> void:

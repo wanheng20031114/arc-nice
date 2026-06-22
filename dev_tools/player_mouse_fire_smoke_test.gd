@@ -25,6 +25,7 @@ func _run() -> void:
 	await _test_world_mouse_fire()
 	await _test_dodge_success_feedback()
 	await _test_profile_button_does_not_fire()
+	await _test_settings_button_opens_and_closes()
 	await _test_profile_upgrade_levels_and_skill_details()
 
 	_release_left_mouse(Vector2.ZERO)
@@ -134,6 +135,47 @@ func _test_profile_button_does_not_fire() -> void:
 	_expect(player.controls_locked, "Opening the profile panel did not lock player controls.")
 	_expect(not player.mouse_fire_held, "Opening the profile panel left mouse firing active.")
 	profile_panel.close()
+
+
+func _test_settings_button_opens_and_closes() -> void:
+	_clear_player_bullets()
+	player.set_controls_locked(false)
+	await process_frame
+
+	var settings_button := game.get_node("CurrencyHUD/TopLeftMargin/SettingsButton") as Button
+	var settings_panel := game.get_node("SettingsLayer/SettingsPanel") as SettingsPanel
+	var button_position := settings_button.get_global_rect().get_center()
+
+	_press_left_mouse(button_position)
+	await process_frame
+	await process_frame
+	await physics_frame
+	var hovered_control := root.gui_get_hovered_control()
+	_expect(
+		not player.mouse_fire_held,
+		"Clicking the settings button leaked into player firing. Button rect: %s, click: %s, hovered: %s."
+		% [settings_button.get_global_rect(), button_position, hovered_control]
+	)
+	_expect(
+		_get_player_bullet_count() == 0,
+		"Clicking the settings button spawned a player bullet."
+	)
+
+	_release_left_mouse(button_position)
+	await process_frame
+	await process_frame
+	await physics_frame
+	_expect(settings_panel.is_open(), "Settings button did not open the settings panel.")
+	_expect(player.controls_locked, "Opening settings did not lock player controls.")
+
+	_send_action(&"ui_cancel", true)
+	await process_frame
+	await process_frame
+	_send_action(&"ui_cancel", false)
+	await process_frame
+	await physics_frame
+	_expect(not settings_panel.is_open(), "ui_cancel did not close the in-game settings panel.")
+	_expect(not player.controls_locked, "Closing settings did not unlock player controls.")
 
 
 func _test_dodge_success_feedback() -> void:
@@ -282,6 +324,14 @@ func _send_mouse_motion(position: Vector2) -> void:
 	var event := InputEventMouseMotion.new()
 	event.position = position
 	event.global_position = position
+	root.push_input(event, true)
+
+
+func _send_action(action: StringName, pressed: bool) -> void:
+	var event := InputEventAction.new()
+	event.action = action
+	event.pressed = pressed
+	event.strength = 1.0 if pressed else 0.0
 	root.push_input(event, true)
 
 

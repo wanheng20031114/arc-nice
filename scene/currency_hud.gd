@@ -2,16 +2,19 @@ extends CanvasLayer
 class_name CurrencyHUD
 
 signal profile_requested
+signal settings_requested
 
 @onready var panel: PanelContainer = $TopRightMargin/Content/CurrencyPanel
 @onready var count_label: Label = $TopRightMargin/Content/CurrencyPanel/ContentMargin/Content/Count
 @onready var profile_button: Button = $TopRightMargin/Content/ProfileButton
+@onready var settings_button: Button = $TopLeftMargin/SettingsButton
 
 var tracked_player: Player = null
 var pulse_tween: Tween = null
 
 
 func _ready() -> void:
+	settings_button.pressed.connect(settings_requested.emit)
 	profile_button.pressed.connect(profile_requested.emit)
 
 

@@ -209,6 +209,17 @@ func _test_settings_panel_scene() -> void:
 		_expect(resolution_option != null, "Resolution OptionButton must exist.")
 		_expect(config_path_label != null, "Settings panel must show config path label.")
 		_expect(reset_settings_button != null, "Settings panel must expose full reset button.")
+		if fullscreen_check != null:
+			var checked_icon := fullscreen_check.get_theme_icon(&"checked")
+			var unchecked_icon := fullscreen_check.get_theme_icon(&"unchecked")
+			_expect(
+				checked_icon != null and checked_icon.resource_path.ends_with("settings_switch_checked.png"),
+				"Fullscreen CheckButton must use the high-contrast checked switch icon."
+			)
+			_expect(
+				unchecked_icon != null and unchecked_icon.resource_path.ends_with("settings_switch_unchecked.png"),
+				"Fullscreen CheckButton must use the high-contrast unchecked switch icon."
+			)
 		if resolution_option != null:
 			_expect(
 				resolution_option.item_count == SETTINGS_MANAGER_SCRIPT.RESOLUTION_OPTIONS.size(),

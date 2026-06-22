@@ -615,6 +615,10 @@ func _get_multiplayer_touch_source_id() -> int:
 	return maxi(net_id, 1) * 1000000 + tick
 
 func _start_hurt_blink() -> void:
+	if hurt_blink_duration <= 0.0:
+		hurt_blink_time_left = 0.0
+		_set_hurt_blink_enabled(false)
+		return
 	hurt_blink_time_left = hurt_blink_duration
 	_set_hurt_blink_enabled(true)
 

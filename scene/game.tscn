@@ -17,6 +17,7 @@
 [ext_resource type="AudioStream" uid="uid://dtds82oklhy8w" path="res://resources/audio/ui/countdown_tick.wav" id="16_countdown"]
 [ext_resource type="AudioStream" uid="uid://ds2eyww1uhhr8" path="res://resources/audio/ui/wave_start.wav" id="17_wave_start"]
 [ext_resource type="Script" uid="uid://i1yhvo6yryuc" path="res://scene/damage_number_pool.gd" id="18_damage_pool"]
+[ext_resource type="PackedScene" path="res://scene/settings/settings_panel.tscn" id="19_settings_panel"]
 
 [sub_resource type="TileMapPattern" id="TileMapPattern_33cqm"]
 tile_data = PackedInt32Array(0, 0, 0, 65536, 131072, 2, 1, 0, 0, 65537, 0, 0)
@@ -152,6 +153,11 @@ position = Vector2(39, 102)
 [node name="WaveHUD" parent="." unique_id=1126268867 instance=ExtResource("14_wave_hud")]
 
 [node name="PlayerProfilePanel" parent="." unique_id=1216528429 instance=ExtResource("13_profile_panel")]
+
+[node name="SettingsLayer" type="CanvasLayer" parent="."]
+layer = 30
+
+[node name="SettingsPanel" parent="SettingsLayer" instance=ExtResource("19_settings_panel")]
 
 [node name="DamageNumberPool" type="Node2D" parent="." unique_id=788052799]
 script = ExtResource("18_damage_pool")
