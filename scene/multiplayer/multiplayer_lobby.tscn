@@ -1,8 +1,11 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://scene/multiplayer/multiplayer_lobby.gd" id="1_lobby"]
 [ext_resource type="Texture2D" uid="uid://cbrmpw5d481ci" path="res://resources/texture/瓦片.png" id="2_tile"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_font"]
+[ext_resource type="AudioStream" uid="uid://dj8t5n12shb3l" path="res://resources/audio/ui/dialogue_blip.wav" id="4_blip"]
+[ext_resource type="Script" path="res://scene/multiplayer/bouncy_name_display.gd" id="5_name_display"]
+[ext_resource type="Script" path="res://scene/multiplayer/bouncy_name_letter.gd" id="6_name_letter"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 bg_color = Color(0.09, 0.095, 0.105, 0.92)
@@ -15,6 +18,79 @@ corner_radius_top_left = 6
 corner_radius_top_right = 6
 corner_radius_bottom_right = 6
 corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_username_panel"]
+bg_color = Color(0, 0, 0, 0)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_name_card"]
+content_margin_left = 10.0
+content_margin_top = 10.0
+content_margin_right = 10.0
+content_margin_bottom = 10.0
+bg_color = Color(0.105, 0.11, 0.115, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.58, 0.51, 0.34, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_name_input_surface"]
+bg_color = Color(0.15, 0.155, 0.16, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.34, 0.31, 0.23, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_line_edit_clear"]
+bg_color = Color(0, 0, 0, 0)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_name_primary_normal"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.18, 0.19, 0.2, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.68, 0.58, 0.36, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_name_primary_hover"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.24, 0.23, 0.2, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.95, 0.82, 0.48, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="AudioStreamRandomizer" id="AudioStreamRandomizer_typing"]
+random_pitch = 1.08
+random_volume_offset_db = 1.5
+streams_count = 1
+stream_0/stream = ExtResource("4_blip")
+stream_0/weight = 1.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_normal"]
 content_margin_left = 12.0
@@ -121,40 +197,214 @@ anchor_bottom = 1.0
 ; ═══════════════════════════════════════════
 
 [node name="UsernamePanel" type="PanelContainer" parent="LobbyCenter"]
-custom_minimum_size = Vector2(380, 300)
+custom_minimum_size = Vector2(430, 305)
 layout_mode = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+theme_override_styles/panel = SubResource("StyleBoxFlat_username_panel")
 
 [node name="MarginContainer" type="MarginContainer" parent="LobbyCenter/UsernamePanel"]
 layout_mode = 2
-theme_override_constants/margin_left = 34
-theme_override_constants/margin_top = 34
-theme_override_constants/margin_right = 34
-theme_override_constants/margin_bottom = 34
+theme_override_constants/margin_left = 22
+theme_override_constants/margin_top = 22
+theme_override_constants/margin_right = 22
+theme_override_constants/margin_bottom = 22
 
 [node name="VBoxContainer" type="VBoxContainer" parent="LobbyCenter/UsernamePanel/MarginContainer"]
 layout_mode = 2
-theme_override_constants/separation = 14
+theme_override_constants/separation = 16
 alignment = 1
 
 [node name="Title" type="Label" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.96, 0.88, 0.62, 1)
 theme_override_fonts/font = ExtResource("3_font")
-theme_override_font_sizes/font_size = 28
-text = "输入用户名"
+theme_override_font_sizes/font_size = 24
+text = "多人模式"
 horizontal_alignment = 1
 
-[node name="Spacer1" type="Control" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(1, 6)
+[node name="NameCard" type="PanelContainer" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(360, 98)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_name_card")
+
+[node name="CardVBox" type="VBoxContainer" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="InputSurface" type="PanelContainer" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox"]
+custom_minimum_size = Vector2(0, 76)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_name_input_surface")
+
+[node name="InputLayer" type="Control" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface"]
+custom_minimum_size = Vector2(320, 76)
 layout_mode = 2
 
-[node name="UsernameInput" type="LineEdit" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(280, 36)
+[node name="BouncyNameDisplay" type="HBoxContainer" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer"]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_right = -20.0
+offset_bottom = -8.0
+theme_override_constants/separation = 4
+alignment = 1
+script = ExtResource("5_name_display")
+
+[node name="Letter01" type="Label" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/BouncyNameDisplay"]
+visible = false
+custom_minimum_size = Vector2(14, 46)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.91, 0.72, 1)
 theme_override_fonts/font = ExtResource("3_font")
-theme_override_font_sizes/font_size = 16
-placeholder_text = "你的名字"
+theme_override_font_sizes/font_size = 28
+horizontal_alignment = 1
+vertical_alignment = 1
+script = ExtResource("6_name_letter")
+
+[node name="Letter02" type="Label" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/BouncyNameDisplay"]
+visible = false
+custom_minimum_size = Vector2(14, 46)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.91, 0.72, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 28
+horizontal_alignment = 1
+vertical_alignment = 1
+script = ExtResource("6_name_letter")
+
+[node name="Letter03" type="Label" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/BouncyNameDisplay"]
+visible = false
+custom_minimum_size = Vector2(14, 46)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.91, 0.72, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 28
+horizontal_alignment = 1
+vertical_alignment = 1
+script = ExtResource("6_name_letter")
+
+[node name="Letter04" type="Label" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/BouncyNameDisplay"]
+visible = false
+custom_minimum_size = Vector2(14, 46)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.91, 0.72, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 28
+horizontal_alignment = 1
+vertical_alignment = 1
+script = ExtResource("6_name_letter")
+
+[node name="Letter05" type="Label" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/BouncyNameDisplay"]
+visible = false
+custom_minimum_size = Vector2(14, 46)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.91, 0.72, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 28
+horizontal_alignment = 1
+vertical_alignment = 1
+script = ExtResource("6_name_letter")
+
+[node name="Letter06" type="Label" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/BouncyNameDisplay"]
+visible = false
+custom_minimum_size = Vector2(14, 46)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.91, 0.72, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 28
+horizontal_alignment = 1
+vertical_alignment = 1
+script = ExtResource("6_name_letter")
+
+[node name="Letter07" type="Label" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/BouncyNameDisplay"]
+visible = false
+custom_minimum_size = Vector2(14, 46)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.91, 0.72, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 28
+horizontal_alignment = 1
+vertical_alignment = 1
+script = ExtResource("6_name_letter")
+
+[node name="Letter08" type="Label" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/BouncyNameDisplay"]
+visible = false
+custom_minimum_size = Vector2(14, 46)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.91, 0.72, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 28
+horizontal_alignment = 1
+vertical_alignment = 1
+script = ExtResource("6_name_letter")
+
+[node name="Letter09" type="Label" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/BouncyNameDisplay"]
+visible = false
+custom_minimum_size = Vector2(14, 46)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.91, 0.72, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 28
+horizontal_alignment = 1
+vertical_alignment = 1
+script = ExtResource("6_name_letter")
+
+[node name="Letter10" type="Label" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/BouncyNameDisplay"]
+visible = false
+custom_minimum_size = Vector2(14, 46)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.91, 0.72, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 28
+horizontal_alignment = 1
+vertical_alignment = 1
+script = ExtResource("6_name_letter")
+
+[node name="Letter11" type="Label" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/BouncyNameDisplay"]
+visible = false
+custom_minimum_size = Vector2(14, 46)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.91, 0.72, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 28
+horizontal_alignment = 1
+vertical_alignment = 1
+script = ExtResource("6_name_letter")
+
+[node name="Letter12" type="Label" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/BouncyNameDisplay"]
+visible = false
+custom_minimum_size = Vector2(14, 46)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.91, 0.72, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 28
+horizontal_alignment = 1
+vertical_alignment = 1
+script = ExtResource("6_name_letter")
+
+[node name="Underline" type="ColorRect" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer"]
+layout_mode = 0
+anchor_left = 0.08
+anchor_top = 1.0
+anchor_right = 0.92
+anchor_bottom = 1.0
+offset_top = -16.0
+offset_bottom = -14.0
+color = Color(0.7, 0.62, 0.4, 1)
+
+[node name="UsernameInput" type="LineEdit" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer"]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme_override_colors/font_color = Color(0, 0, 0, 0)
+theme_override_colors/font_placeholder_color = Color(0, 0, 0, 0)
+theme_override_colors/caret_color = Color(0, 0, 0, 0)
+theme_override_colors/selection_color = Color(0, 0, 0, 0)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 28
+theme_override_styles/normal = SubResource("StyleBoxFlat_line_edit_clear")
+theme_override_styles/focus = SubResource("StyleBoxFlat_line_edit_clear")
+theme_override_styles/read_only = SubResource("StyleBoxFlat_line_edit_clear")
 max_length = 12
 alignment = 1
 
@@ -167,19 +417,19 @@ theme_override_font_sizes/font_size = 13
 horizontal_alignment = 1
 
 [node name="ConfirmUsernameButton" type="Button" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(280, 40)
+custom_minimum_size = Vector2(300, 40)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
 theme_override_fonts/font = ExtResource("3_font")
 theme_override_font_sizes/font_size = 18
-theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
-theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/normal = SubResource("StyleBoxFlat_name_primary_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_name_primary_hover")
+theme_override_styles/hover = SubResource("StyleBoxFlat_name_primary_hover")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
-text = "确认"
+text = "确认名字"
 
 [node name="BackToMenuButton" type="Button" parent="LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(280, 36)
+custom_minimum_size = Vector2(300, 36)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
 theme_override_fonts/font = ExtResource("3_font")
@@ -189,6 +439,12 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
 theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
 text = "返回菜单"
+
+[node name="TypingBlipAudio" type="AudioStreamPlayer" parent="LobbyCenter/UsernamePanel"]
+stream = SubResource("AudioStreamRandomizer_typing")
+volume_db = -5.0
+max_polyphony = 4
+bus = &"SFX"
 
 ; ═══════════════════════════════════════════
 ; 联机方式选择面板

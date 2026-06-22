@@ -31,7 +31,9 @@ enum PublicRequest {
 }
 
 @onready var username_panel: PanelContainer = $LobbyCenter/UsernamePanel
-@onready var username_input: LineEdit = $LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/UsernameInput
+@onready var username_input: LineEdit = $LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/UsernameInput
+@onready var username_name_display: HBoxContainer = $LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/BouncyNameDisplay
+@onready var username_type_audio: AudioStreamPlayer = $LobbyCenter/UsernamePanel/TypingBlipAudio
 @onready var username_confirm_btn: Button = $LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/ConfirmUsernameButton
 @onready var username_back_btn: Button = $LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/BackToMenuButton
 @onready var username_error_label: Label = $LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/UsernameErrorLabel
@@ -78,16 +80,21 @@ var current_public_is_host: bool = false
 var relay_host_ready_sent: bool = false
 var pending_start_after_public_status: bool = false
 var keep_room_view_after_connection_failure: bool = false
+var _username_panel_intro_tween: Tween
 
 
 func _ready() -> void:
 	_build_lan_direct_panel()
 	username_input.max_length = _NetConstants.MAX_PLAYER_NAME_LENGTH
+	username_name_display.set("max_length", _NetConstants.MAX_PLAYER_NAME_LENGTH)
+	username_name_display.set("input_audio", username_type_audio)
+	_update_username_display(username_input.text, false)
 	tab_container.set_tab_title(0, "房间列表")
 	tab_container.set_tab_title(1, "创建房间")
 	tab_container.set_tab_title(2, "快速匹配")
 	username_confirm_btn.pressed.connect(_on_confirm_username)
 	username_back_btn.pressed.connect(_on_back_to_main_menu)
+	username_input.text_changed.connect(_on_username_text_changed)
 	username_input.text_submitted.connect(_on_username_text_submitted)
 	public_mode_button.pressed.connect(_on_public_mode_pressed)
 	lan_mode_button.pressed.connect(_on_lan_mode_pressed)
@@ -211,6 +218,25 @@ func _show_view(view: LobbyView) -> void:
 		_apply_lan_browser_state()
 	elif view == LobbyView.MODE_SELECT:
 		mode_status_label.text = "欢迎，%s。请选择联机方式。" % net_manager.local_player_name
+	elif view == LobbyView.USERNAME_INPUT:
+		call_deferred("_animate_username_panel_intro")
+
+
+func _update_username_display(new_text: String, play_sound: bool) -> void:
+	username_name_display.call("update_text", new_text, play_sound)
+
+
+func _animate_username_panel_intro() -> void:
+	if not username_panel.visible:
+		return
+	if _username_panel_intro_tween != null:
+		_username_panel_intro_tween.kill()
+	username_panel.pivot_offset = username_panel.size * 0.5
+	username_panel.modulate.a = 0.0
+	username_panel.scale = Vector2(0.96, 0.92)
+	_username_panel_intro_tween = create_tween()
+	_username_panel_intro_tween.tween_property(username_panel, "modulate:a", 1.0, 0.14)
+	_username_panel_intro_tween.parallel().tween_property(username_panel, "scale", Vector2.ONE, 0.32).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
 func _apply_public_browser_state() -> void:
@@ -244,6 +270,11 @@ func _on_confirm_username() -> void:
 	username_error_label.visible = false
 	net_manager.local_player_name = raw_name
 	_show_view(LobbyView.MODE_SELECT)
+
+
+func _on_username_text_changed(new_text: String) -> void:
+	username_error_label.visible = false
+	_update_username_display(new_text, true)
 
 
 func _on_username_text_submitted(_text: String) -> void:
