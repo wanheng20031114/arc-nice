@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_jsr03")
 pickup_type = 2
-display_name = "雪狼道具"
+display_name = "雪狼破军"
 drop_weight = 0.5
 icon_texture = ExtResource("1_fvkqp")
 fire_rate_multiplier = 10.0
