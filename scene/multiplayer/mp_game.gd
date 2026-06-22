@@ -695,7 +695,9 @@ func register_local_projectile(
 ) -> void:
 	if projectile == null:
 		return
-	var projectile_namespace := owner_peer_id if owner_peer_id > 0 else 999999
+	var projectile_namespace: int = owner_peer_id
+	if projectile_namespace <= 0:
+		projectile_namespace = 999999
 	var projectile_id := projectile_namespace * 1000000 + _next_projectile_id
 	_next_projectile_id += 1
 	_setup_projectile_network_identity(projectile, projectile_id, owner_peer_id, projectile_type)
@@ -1578,7 +1580,8 @@ func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
 			player_node.get_multiplayer_facing_id(),
 			player_node.get_multiplayer_anim_state()
 		)
-	net_player_state_corrected.rpc_id(peer_id, revive_position, Vector2.ZERO)
+	if peer_id != _get_host_peer_id():
+		net_player_state_corrected.rpc_id(peer_id, revive_position, Vector2.ZERO)
 	_rpc_to_connected_clients(
 		&"net_player_revived",
 		[

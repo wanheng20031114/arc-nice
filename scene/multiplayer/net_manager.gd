@@ -397,11 +397,17 @@ func _handle_connected_to_server() -> void:
 
 
 func _on_connection_failed() -> void:
-	_fail_pending_connection("连接公网 Relay 失败" if conn_mode == ConnMode.RELAY else "连接局域网主机失败")
+	var reason := "连接局域网主机失败"
+	if conn_mode == ConnMode.RELAY:
+		reason = "连接公网 Relay 失败"
+	_fail_pending_connection(reason)
 
 
 func _on_server_disconnected() -> void:
-	connection_failed.emit("Relay 已断开" if conn_mode == ConnMode.RELAY else "主机已断开")
+	var reason := "主机已断开"
+	if conn_mode == ConnMode.RELAY:
+		reason = "Relay 已断开"
+	connection_failed.emit(reason)
 	disconnect_from_game()
 
 
@@ -424,8 +430,8 @@ func _poll_pending_connection() -> void:
 	if _enet_peer == null:
 		return
 
-	var status := _enet_peer.get_connection_status()
-	if status == MultiplayerPeer.CONNECTION_CONNECTED:
+	var status: int = int(_enet_peer.get_connection_status())
+	if status == int(MultiplayerPeer.CONNECTION_CONNECTED):
 		_handle_connected_to_server()
 		return
 

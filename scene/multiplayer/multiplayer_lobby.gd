@@ -3,11 +3,11 @@ extends Control
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const MULTIPLAYER_GAME_SCENE_PATH := "res://scene/multiplayer/mp_game.tscn"
 const PUBLIC_LOBBY_API_BASE_URL := "http://192.168.2.11:8000"
-const STATE_DISCONNECTED := 0
-const STATE_HOSTING_LAN := 1
-const STATE_CONNECTING_LAN := 2
-const STATE_CONNECTED_IN_LOBBY := 3
-const STATE_LOADING_GAME := 4
+const STATE_DISCONNECTED := NetManagerStore.ConnectionState.DISCONNECTED
+const STATE_HOSTING_LAN := NetManagerStore.ConnectionState.HOSTING_LAN
+const STATE_CONNECTING_LAN := NetManagerStore.ConnectionState.CONNECTING_LAN
+const STATE_CONNECTED_IN_LOBBY := NetManagerStore.ConnectionState.CONNECTED_IN_LOBBY
+const STATE_LOADING_GAME := NetManagerStore.ConnectionState.LOADING_GAME
 
 enum LobbyView {
 	USERNAME_INPUT,
@@ -417,7 +417,9 @@ func _on_public_lobby_request_completed(
 
 func _format_public_request_error(response_code: int, body_text: String) -> String:
 	var detail := body_text
-	var parsed: Variant = JSON.parse_string(body_text) if not body_text.is_empty() else null
+	var parsed: Variant = null
+	if not body_text.is_empty():
+		parsed = JSON.parse_string(body_text)
 	var parsed_dict := parsed as Dictionary
 	if parsed_dict != null and parsed_dict.has("detail"):
 		detail = str(parsed_dict["detail"])
@@ -600,7 +602,7 @@ func _on_net_connection_failed(reason: String) -> void:
 		lan_status_label.text = "连接失败: %s" % reason
 
 
-func _on_net_state_changed(new_state: int) -> void:
+func _on_net_state_changed(new_state: NetManagerStore.ConnectionState) -> void:
 	var is_relay := int(net_manager.get("conn_mode")) == 1
 	match new_state:
 		STATE_CONNECTING_LAN:
