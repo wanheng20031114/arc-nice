@@ -10,7 +10,7 @@ from PIL import Image
 
 FRAME_COUNT = 8
 OUTPUT_FRAME_SIZE = 32
-LUOXI_SOURCE_FRAME_SIZE = 320
+LUOXI_HIGH_RES_FRAME_SIZE = 384
 LUOXI_SUBJECT_HEIGHT = 30
 LUOXI_MAX_SUBJECT_WIDTH = 28
 LUOXI_FOOT_Y = 31
@@ -133,7 +133,7 @@ def _build_centered_luoxi_source(source: Image.Image) -> Image.Image:
     source = _solid_alpha(source)
     source_sheet = Image.new(
         "RGBA",
-        (LUOXI_SOURCE_FRAME_SIZE * FRAME_COUNT, LUOXI_SOURCE_FRAME_SIZE),
+        (LUOXI_HIGH_RES_FRAME_SIZE * FRAME_COUNT, LUOXI_HIGH_RES_FRAME_SIZE),
         (0, 0, 0, 0),
     )
 
@@ -145,11 +145,11 @@ def _build_centered_luoxi_source(source: Image.Image) -> Image.Image:
             raise ValueError(f"Luoxi source component {frame_index} contains no visible pixels.")
         subject = subject.crop(subject_bbox)
 
-        paste_x = (LUOXI_SOURCE_FRAME_SIZE - subject.width) // 2
-        paste_y = (LUOXI_SOURCE_FRAME_SIZE - subject.height) // 2
+        paste_x = (LUOXI_HIGH_RES_FRAME_SIZE - subject.width) // 2
+        paste_y = (LUOXI_HIGH_RES_FRAME_SIZE - subject.height) // 2
         source_sheet.alpha_composite(
             subject,
-            (frame_index * LUOXI_SOURCE_FRAME_SIZE + paste_x, paste_y),
+            (frame_index * LUOXI_HIGH_RES_FRAME_SIZE + paste_x, paste_y),
         )
 
     return source_sheet
@@ -181,14 +181,14 @@ def _fit_character_frame(frame: Image.Image) -> Image.Image:
     return result
 
 
-def build_luoxi_sheet(source_path: Path, centered_source_path: Path, output_path: Path) -> None:
+def build_luoxi_sheet(source_path: Path, high_res_output_path: Path, output_path: Path) -> None:
     source = Image.open(source_path).convert("RGBA")
     centered_source = _build_centered_luoxi_source(source)
-    centered_source_path.parent.mkdir(parents=True, exist_ok=True)
-    centered_source.save(centered_source_path)
+    high_res_output_path.parent.mkdir(parents=True, exist_ok=True)
+    centered_source.save(high_res_output_path)
     print(
-        "Luoxi centered source: "
-        f"{centered_source_path} ({centered_source.width}x{centered_source.height})"
+        "Luoxi high-res sheet: "
+        f"{high_res_output_path} ({centered_source.width}x{centered_source.height})"
     )
 
     sheet = Image.new(
@@ -198,8 +198,8 @@ def build_luoxi_sheet(source_path: Path, centered_source_path: Path, output_path
     )
 
     for frame_index in range(FRAME_COUNT):
-        left = frame_index * LUOXI_SOURCE_FRAME_SIZE
-        right = (frame_index + 1) * LUOXI_SOURCE_FRAME_SIZE
+        left = frame_index * LUOXI_HIGH_RES_FRAME_SIZE
+        right = (frame_index + 1) * LUOXI_HIGH_RES_FRAME_SIZE
         frame = centered_source.crop((left, 0, right, centered_source.height))
         sheet.alpha_composite(
             _fit_character_frame(frame),
@@ -240,8 +240,8 @@ def build_apple_icon(source_path: Path, output_path: Path) -> None:
 def main() -> None:
     root = Path(__file__).resolve().parents[1]
     build_luoxi_sheet(
-        root / "dev_assets/source_images/luoxi_generated_sheet_v2_alpha.png",
-        root / "dev_assets/source_images/luoxi_generated_sheet_v2_centered_alpha.png",
+        root / "dev_assets/source_images/luoxi_generated_sheet_alpha.png",
+        root / "resources/texture/luoxi_idle_hd.png",
         root / "resources/texture/luoxi_idle.png",
     )
     build_apple_icon(
