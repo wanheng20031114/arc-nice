@@ -2,7 +2,7 @@ extends Control
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const MULTIPLAYER_GAME_SCENE_PATH := "res://scene/multiplayer/mp_game.tscn"
-const PUBLIC_LOBBY_API_BASE_URL := "http://192.168.2.11:8000"
+const PUBLIC_LOBBY_API_BASE_URL := "http://47.123.6.127:8000"
 const STATE_DISCONNECTED := NetManagerStore.ConnectionState.DISCONNECTED
 const STATE_HOSTING_LAN := NetManagerStore.ConnectionState.HOSTING_LAN
 const STATE_CONNECTING_LAN := NetManagerStore.ConnectionState.CONNECTING_LAN
