@@ -216,7 +216,7 @@ func _update_animation() -> void:
 			return
 		animation_name = fallback_animation_name
 
-	if body_sprite.animation != animation_name:
+	if body_sprite.animation != animation_name or not body_sprite.is_playing():
 		body_sprite.play(animation_name)
 
 
@@ -402,6 +402,8 @@ func update_multiplayer_authority_passive_state(delta: float) -> void:
 	_update_invincibility(delta)
 	_update_pickup_effects(delta)
 	_update_skill1_charge(delta)
+	if is_dead:
+		return
 	_update_animation()
 	_update_armed_effect()
 
@@ -574,9 +576,8 @@ func apply_multiplayer_death_state() -> void:
 	health_bar.set_health(0, max_health)
 	health_bar.visible = false
 	_update_skill1_charge_bar()
-	body_sprite.visible = true
-	if not was_dead:
-		_play_death_animation()
+	body_sprite.visible = false
+	body_sprite.stop()
 	if collision_shape != null:
 		collision_shape.set_deferred("disabled", true)
 	health_changed.emit(current_health, max_health)

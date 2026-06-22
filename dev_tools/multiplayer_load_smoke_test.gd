@@ -874,10 +874,13 @@ func _test_player_multiplayer_death_visual_state() -> void:
 	player.apply_multiplayer_death_state()
 	await process_frame
 	_expect(player.is_dead, "Multiplayer player did not enter death state.")
-	_expect(player.body_sprite.visible, "Multiplayer death must keep the body sprite visible.")
-	_expect(player.body_sprite.animation == &"death", "Multiplayer death must play the death animation.")
+	_expect(not player.body_sprite.visible, "Multiplayer death must hide the body sprite.")
 	_expect(not player.health_bar.visible, "Multiplayer death must hide the health bar.")
 	_expect(not player.skill1_charge_bar.visible, "Multiplayer death must hide the skill1 charge bar.")
+	player.set_multiplayer_revive_countdown(7)
+	await process_frame
+	_expect(player.nameplate_layer.visible, "Multiplayer death countdown must keep the nameplate visible.")
+	_expect(player.nameplate_label.text == "Client 7s", "Multiplayer death countdown text is incorrect.")
 
 	player.revive_multiplayer(Vector2(8.0, 9.0), player.max_health, 0.0)
 	await process_frame
