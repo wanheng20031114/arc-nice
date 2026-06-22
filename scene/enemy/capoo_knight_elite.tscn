@@ -1,18 +1,23 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene format=3 uid="uid://spxkfxnaf3d1"]
 
 [ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy/enemy.tscn" id="1_base"]
 [ext_resource type="Script" uid="uid://uhpt1y6i75fj" path="res://scene/enemy/capoo_knight.gd" id="2_script"]
 [ext_resource type="Shader" uid="uid://b47uq42hh5vq1" path="res://scene/blink.gdshader" id="3_blink"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/capoo_knight_elite.tres" id="4_frames"]
+[ext_resource type="SpriteFrames" uid="uid://xdafsl0jue4g" path="res://resources/animation/capoo_knight_elite.tres" id="4_frames"]
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_tg75k"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_314m3"]
 resource_local_to_scene = true
 shader = ExtResource("3_blink")
 shader_parameter/blink_enabled = false
 shader_parameter/blink_speed = 12.0
 shader_parameter/hidden_ratio = 0.5
+shader_parameter/dodge_effect_strength = 0.0
+shader_parameter/dodge_sweep = 0.0
+shader_parameter/dodge_color = Color(0.42, 0.95, 1, 1)
+shader_parameter/dodge_flash_color = Color(1, 1, 1, 1)
+shader_parameter/dodge_outline_width = 3.0
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_l7sr7"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_wk10c"]
 resource_local_to_scene = true
 size = Vector2(15, 16)
 
@@ -20,7 +25,7 @@ size = Vector2(15, 16)
 resource_local_to_scene = true
 size = Vector2(20, 10)
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_ri1cu"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_pyt23"]
 resource_local_to_scene = true
 size = Vector2(15, 16)
 
@@ -29,12 +34,12 @@ resource_local_to_scene = true
 size = Vector2(20, 10)
 
 [node name="CapooKnightElite" unique_id=476925854 instance=ExtResource("1_base")]
-material = SubResource("ShaderMaterial_tg75k")
+material = SubResource("ShaderMaterial_314m3")
 script = ExtResource("2_script")
-sprite_faces_left_by_default = true
 path_refresh_interval = 0.25
 waypoint_arrival_distance = 6.0
 direct_chase_extra_distance = 2.0
+sprite_faces_left_by_default = true
 
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
 texture_filter = 2
@@ -44,16 +49,16 @@ animation = &"move"
 flip_h = true
 
 [node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
-position = Vector2(0.5, 3)
-shape = SubResource("RectangleShape2D_l7sr7")
+position = Vector2(-2, 3)
+shape = SubResource("RectangleShape2D_wk10c")
 
 [node name="CollisionShape2D2" type="CollisionShape2D" parent="." index="2" unique_id=1420263056]
 position = Vector2(2, 5)
 shape = SubResource("RectangleShape2D_jd8bp")
 
 [node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
-position = Vector2(0.5, 3)
-shape = SubResource("RectangleShape2D_ri1cu")
+position = Vector2(-2, 3)
+shape = SubResource("RectangleShape2D_pyt23")
 
 [node name="CollisionShape2D2" type="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="1" unique_id=1053694877]
 position = Vector2(2, 5)
