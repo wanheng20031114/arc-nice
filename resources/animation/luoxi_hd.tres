@@ -1,38 +1,38 @@
-[gd_resource type="SpriteFrames" format=3 uid="uid://b7qwm7cbmfaci"]
+[gd_resource type="SpriteFrames" format=3]
 
-[ext_resource type="Texture2D" uid="uid://2glo3b6pqisx" path="res://resources/texture/luoxi_idle.png" id="1_texture"]
+[ext_resource type="Texture2D" path="res://resources/texture/luoxi_idle_hd.png" id="1_texture"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_idle_0"]
 atlas = ExtResource("1_texture")
-region = Rect2(0, 0, 26, 34)
+region = Rect2(0, 0, 274, 395)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_idle_1"]
 atlas = ExtResource("1_texture")
-region = Rect2(26, 0, 24, 34)
+region = Rect2(274, 0, 256, 395)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_idle_2"]
 atlas = ExtResource("1_texture")
-region = Rect2(50, 0, 24, 34)
+region = Rect2(530, 0, 264, 395)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_idle_3"]
 atlas = ExtResource("1_texture")
-region = Rect2(74, 0, 24, 34)
+region = Rect2(794, 0, 254, 395)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_idle_4"]
 atlas = ExtResource("1_texture")
-region = Rect2(98, 0, 20, 34)
+region = Rect2(1048, 0, 222, 395)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_idle_5"]
 atlas = ExtResource("1_texture")
-region = Rect2(118, 0, 22, 34)
+region = Rect2(1270, 0, 236, 395)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_idle_6"]
 atlas = ExtResource("1_texture")
-region = Rect2(140, 0, 22, 34)
+region = Rect2(1506, 0, 226, 395)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_idle_7"]
 atlas = ExtResource("1_texture")
-region = Rect2(162, 0, 24, 34)
+region = Rect2(1732, 0, 272, 395)
 
 [resource]
 animations = [{
