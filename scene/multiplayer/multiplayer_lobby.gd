@@ -77,6 +77,7 @@ var current_public_room_name: String = ""
 var current_public_is_host: bool = false
 var relay_host_ready_sent: bool = false
 var pending_start_after_public_status: bool = false
+var keep_room_view_after_connection_failure: bool = false
 
 
 func _ready() -> void:
@@ -593,6 +594,7 @@ func _on_net_player_list_changed() -> void:
 
 func _on_net_connection_failed(reason: String) -> void:
 	if current_view == LobbyView.ROOM_WAIT:
+		keep_room_view_after_connection_failure = true
 		wait_status_label.text = "连接失败: %s" % reason
 	else:
 		lan_status_label.text = "连接失败: %s" % reason
@@ -617,6 +619,10 @@ func _on_net_state_changed(new_state: int) -> void:
 		STATE_LOADING_GAME:
 			_start_multiplayer_game()
 		STATE_DISCONNECTED:
+			if keep_room_view_after_connection_failure:
+				keep_room_view_after_connection_failure = false
+				_refresh_wait_player_list()
+				return
 			if current_view != LobbyView.USERNAME_INPUT and not is_starting_game:
 				_show_view(LobbyView.MODE_SELECT)
 		_:
@@ -693,6 +699,7 @@ func _clear_public_room_state() -> void:
 	current_public_is_host = false
 	relay_host_ready_sent = false
 	pending_start_after_public_status = false
+	keep_room_view_after_connection_failure = false
 
 
 func _get_public_room_id(room_data: Dictionary) -> String:

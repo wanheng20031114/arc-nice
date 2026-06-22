@@ -35,10 +35,15 @@ var _physics_frame_count: int = 0
 var _enet_peer: ENetMultiplayerPeer = null
 var _disconnect_in_progress: bool = false
 var _relay_register_pending: bool = false
+var _connect_started_msec: int = 0
+var _connect_timeout_ms: int = 0
+var _connect_target_description: String = ""
+var _connected_signal_handled: bool = false
 
 
 func _physics_process(_delta: float) -> void:
 	_physics_frame_count += 1
+	_poll_pending_connection()
 	if _relay_register_pending:
 		_try_send_relay_registration()
 
@@ -124,6 +129,10 @@ func client_connect_lan(host_ip: String, port: int = NetConstants.ENET_PORT_DEFA
 	host_peer_id = 1
 	set_multiplayer_authority(host_peer_id)
 	_physics_frame_count = 0
+	_begin_connection_attempt(
+		NetConstants.DIRECT_CONNECT_TIMEOUT_MS,
+		"局域网主机 %s:%d" % [trimmed_ip, port]
+	)
 	_set_connection_state(ConnectionState.CONNECTING_LAN)
 	_connect_multiplayer_signals(true)
 	multiplayer.multiplayer_peer = _enet_peer
@@ -163,6 +172,10 @@ func host_create_relay_room(target_relay_ip: String, target_relay_port: int) -> 
 	set_multiplayer_authority(1)
 	_relay_register_pending = false
 	_physics_frame_count = 0
+	_begin_connection_attempt(
+		NetConstants.RELAY_CONNECT_TIMEOUT_MS,
+		"公网 Relay %s:%d" % [trimmed_ip, target_relay_port]
+	)
 	_set_connection_state(ConnectionState.CONNECTING_LAN)
 	_connect_multiplayer_signals(true)
 	multiplayer.multiplayer_peer = _enet_peer
@@ -202,6 +215,10 @@ func client_join_relay_room(
 	set_multiplayer_authority(host_peer_id)
 	_relay_register_pending = false
 	_physics_frame_count = 0
+	_begin_connection_attempt(
+		NetConstants.RELAY_CONNECT_TIMEOUT_MS,
+		"公网 Relay %s:%d" % [trimmed_ip, target_relay_port]
+	)
 	_set_connection_state(ConnectionState.CONNECTING_LAN)
 	_connect_multiplayer_signals(true)
 	multiplayer.multiplayer_peer = _enet_peer
@@ -225,6 +242,7 @@ func disconnect_from_game() -> void:
 	set_multiplayer_authority(host_peer_id)
 	host_game_ready = false
 	_relay_register_pending = false
+	_clear_connection_attempt()
 	_physics_frame_count = 0
 	_set_connection_state(ConnectionState.DISCONNECTED)
 	player_list_changed.emit()
@@ -344,6 +362,15 @@ func _on_peer_disconnected(peer_id: int) -> void:
 
 
 func _on_connected_to_server() -> void:
+	_handle_connected_to_server()
+
+
+func _handle_connected_to_server() -> void:
+	if _connected_signal_handled:
+		return
+	_connected_signal_handled = true
+	_clear_connection_attempt()
+
 	if conn_mode == ConnMode.RELAY and net_role == NetRole.HOST:
 		host_peer_id = get_local_peer_id()
 		if host_peer_id <= 0:
@@ -370,12 +397,53 @@ func _on_connected_to_server() -> void:
 
 
 func _on_connection_failed() -> void:
-	connection_failed.emit("连接公网 Relay 失败" if conn_mode == ConnMode.RELAY else "连接局域网主机失败")
-	disconnect_from_game()
+	_fail_pending_connection("连接公网 Relay 失败" if conn_mode == ConnMode.RELAY else "连接局域网主机失败")
 
 
 func _on_server_disconnected() -> void:
 	connection_failed.emit("Relay 已断开" if conn_mode == ConnMode.RELAY else "主机已断开")
+	disconnect_from_game()
+
+
+func _begin_connection_attempt(timeout_ms: int, target_description: String) -> void:
+	_connect_started_msec = Time.get_ticks_msec()
+	_connect_timeout_ms = timeout_ms
+	_connect_target_description = target_description
+	_connected_signal_handled = false
+
+
+func _clear_connection_attempt() -> void:
+	_connect_started_msec = 0
+	_connect_timeout_ms = 0
+	_connect_target_description = ""
+
+
+func _poll_pending_connection() -> void:
+	if connection_state != ConnectionState.CONNECTING_LAN:
+		return
+	if _enet_peer == null:
+		return
+
+	var status := _enet_peer.get_connection_status()
+	if status == MultiplayerPeer.CONNECTION_CONNECTED:
+		_handle_connected_to_server()
+		return
+
+	if _connect_timeout_ms <= 0:
+		return
+
+	var elapsed_msec := Time.get_ticks_msec() - _connect_started_msec
+	if elapsed_msec < _connect_timeout_ms:
+		return
+
+	var target := _connect_target_description
+	if target.is_empty():
+		target = "目标服务器"
+	_fail_pending_connection("连接%s超时，请检查服务器 UDP 端口和防火墙" % target)
+
+
+func _fail_pending_connection(reason: String) -> void:
+	connection_failed.emit(reason)
 	disconnect_from_game()
 
 

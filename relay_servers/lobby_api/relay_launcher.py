@@ -9,7 +9,7 @@ import os
 import subprocess
 import threading
 import signal
-from typing import Optional
+from typing import IO, Optional
 
 from . import config
 
@@ -20,6 +20,7 @@ class RelayLauncher:
     def __init__(self) -> None:
         # relay_port → subprocess.Popen
         self._processes: dict[int, subprocess.Popen] = {}
+        self._log_files: dict[int, tuple[IO[str], IO[str]]] = {}
         self._lock = threading.Lock()
 
     def allocate_port(self) -> Optional[int]:
@@ -53,29 +54,46 @@ class RelayLauncher:
             "--", f"--port={port}",
         ]
 
+        log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        stdout_path = os.path.join(log_dir, f"relay_{port}.out.log")
+        stderr_path = os.path.join(log_dir, f"relay_{port}.err.log")
+        stdout_file = open(stdout_path, "a", encoding="utf-8", buffering=1)
+        stderr_file = open(stderr_path, "a", encoding="utf-8", buffering=1)
+
         try:
             proc = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=stdout_file,
+                stderr=stderr_file,
                 preexec_fn=os.setsid if hasattr(os, "setsid") else None,
             )
         except Exception as e:
+            stdout_file.close()
+            stderr_file.close()
             print(f"[RelayLauncher] 启动 Relay 失败 (port={port}): {e}")
             return None
 
         with self._lock:
             self._processes[port] = proc
+            self._log_files[port] = (stdout_file, stderr_file)
 
-        print(f"[RelayLauncher] Relay 已启动 port={port}, pid={proc.pid}")
+        print(
+            f"[RelayLauncher] Relay 已启动 port={port}, pid={proc.pid}, "
+            f"stdout={stdout_path}, stderr={stderr_path}"
+        )
         return proc.pid
 
     def stop_relay(self, port: int) -> bool:
         """停止指定端口的 Relay 进程。"""
         with self._lock:
             proc = self._processes.pop(port, None)
+            log_files = self._log_files.pop(port, None)
 
         if proc is None:
+            if log_files is not None:
+                for log_file in log_files:
+                    log_file.close()
             return False
 
         try:
@@ -90,6 +108,10 @@ class RelayLauncher:
                 proc.kill()
             except Exception:
                 pass
+        finally:
+            if log_files is not None:
+                for log_file in log_files:
+                    log_file.close()
 
         print(f"[RelayLauncher] Relay 已停止 port={port}")
         return True
