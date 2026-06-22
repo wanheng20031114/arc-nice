@@ -150,6 +150,7 @@ zoom = Vector2(2, 2)
 position = Vector2(39, 102)
 
 [node name="CurrencyHUD" parent="." unique_id=912718684 instance=ExtResource("12_currency_hud")]
+visible = false
 
 [node name="WaveHUD" parent="." unique_id=1126268867 instance=ExtResource("14_wave_hud")]
 
@@ -166,7 +167,7 @@ script = ExtResource("18_damage_pool")
 [node name="ZhuangfangyiMerchant" parent="." unique_id=112812860 instance=ExtResource("15_merchant")]
 position = Vector2(167, 94)
 
-[node name="LuoxiMerchant" parent="." instance=ExtResource("20_luoxi")]
+[node name="LuoxiMerchant" parent="." unique_id=146965342 instance=ExtResource("20_luoxi")]
 position = Vector2(232, 94)
 
 [node name="WorldBounds" type="Node2D" parent="." unique_id=905261702]

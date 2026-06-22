@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dqoadrluipbp8"
-path="res://.godot/imported/zhuangfangyi_idle.png-6449c1fa66999ad65e048090bbdfa905.ctex"
+uid="uid://b68uwwr7di6ja"
+path="res://.godot/imported/zhuangfangyi_idle_hd_v2.png-d3a8cec62a503597018bfbbeb94c32ca.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/texture/zhuangfangyi_idle.png"
-dest_files=["res://.godot/imported/zhuangfangyi_idle.png-6449c1fa66999ad65e048090bbdfa905.ctex"]
+source_file="res://resources/texture/zhuangfangyi_idle_hd_v2.png"
+dest_files=["res://.godot/imported/zhuangfangyi_idle_hd_v2.png-d3a8cec62a503597018bfbbeb94c32ca.ctex"]
 
 [params]
 

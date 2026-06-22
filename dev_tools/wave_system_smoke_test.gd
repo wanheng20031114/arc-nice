@@ -10,7 +10,7 @@ const DEFAULT_WAVES: Array[WaveConfig] = [
 	preload("res://resources/config/waves/wave_04.tres"),
 	preload("res://resources/config/waves/wave_05.tres"),
 ]
-const MERCHANT_FRAMES := preload("res://resources/animation/zhuangfangyi_v2.tres")
+const MERCHANT_FRAMES := preload("res://resources/animation/zhuangfangyi.tres")
 
 const STATE_PRE_WAVE := 0
 const STATE_WAVE_ACTIVE := 1
@@ -122,12 +122,12 @@ func _test_merchant_asset() -> void:
 		"Merchant idle animation must run at 6.5 FPS."
 	)
 
-	var texture := load("res://resources/texture/zhuangfangyi_idle_v2.png") as Texture2D
+	var texture := load("res://resources/texture/zhuangfangyi_idle.png") as Texture2D
 	var image := texture.get_image() if texture != null else null
 	_expect(image != null and not image.is_empty(), "Merchant runtime sprite sheet is missing.")
 	if image == null or image.is_empty():
 		return
-	_expect(image.get_size() == Vector2i(256, 32), "Merchant v2 sheet must be 256x32.")
+	_expect(image.get_size() == Vector2i(256, 32), "Merchant sheet must be 256x32.")
 	_expect(image.get_format() == Image.FORMAT_RGBA8, "Merchant sheet must use RGBA8.")
 	for frame_index in range(8):
 		var frame_rect := Rect2i(frame_index * 32, 0, 32, 32)
@@ -136,7 +136,7 @@ func _test_merchant_asset() -> void:
 		var frame_bbox := frame.get_used_rect()
 		_expect(
 			frame_bbox.size.y >= 29 and frame_bbox.size.y <= 30,
-			"Merchant v2 frame %d has an unexpected subject height." % frame_index
+			"Merchant frame %d has an unexpected subject height." % frame_index
 		)
 		for corner in [Vector2i(0, 0), Vector2i(31, 0), Vector2i(0, 31), Vector2i(31, 31)]:
 			_expect(
