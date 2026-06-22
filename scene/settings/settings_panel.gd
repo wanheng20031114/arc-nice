@@ -119,7 +119,7 @@ func _refresh_from_settings() -> void:
 	fullscreen_check.set_pressed_no_signal(bool(settings.call("is_fullscreen_enabled")))
 	resolution_option.disabled = fullscreen_check.button_pressed
 	resolution_option.select(int(settings.call("get_selected_resolution_index")))
-	config_path_label.text = "配置文件：%s。删除该文件会恢复默认设置。" % str(settings.call("get_config_path"))
+	config_path_label.text = "配置文件：%s。删除该文件会恢复默认设置。" % str(settings.call("get_config_file_system_path"))
 	_set_slider_value(master_slider, float(settings.call("get_volume_percent", &"master")))
 	_set_slider_value(music_slider, float(settings.call("get_volume_percent", &"music")))
 	_set_slider_value(sfx_slider, float(settings.call("get_volume_percent", &"sfx")))

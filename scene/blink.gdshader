@@ -10,17 +10,21 @@ uniform vec4 dodge_flash_color : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 uniform float dodge_outline_width : hint_range(1.0, 6.0) = 3.0;
 uniform bool guardian_glow_enabled = false;
 uniform float guardian_glow_strength : hint_range(0.0, 1.0) = 0.0;
-uniform float guardian_glow_outline_width : hint_range(1.0, 8.0) = 3.0;
-uniform vec4 guardian_glow_color : source_color = vec4(0.35, 0.78, 1.0, 1.0);
+uniform float guardian_glow_radius : hint_range(0.05, 0.75) = 0.52;
+uniform float guardian_glow_core_radius : hint_range(0.0, 0.5) = 0.08;
+uniform vec2 guardian_glow_center = vec2(0.5, 0.54);
+uniform vec4 guardian_glow_color : source_color = vec4(0.12, 0.75, 1.0, 0.78);
 
 void fragment() {
 	vec4 texture_color = texture(TEXTURE, UV);
 	vec4 color = texture_color * COLOR;
+	float sprite_visibility = 1.0;
 	 
-	if (blink_enabled && color.a >0.0) {
+	if (blink_enabled) {
 		float blink_phase = fract(TIME * blink_speed);
 		if (blink_phase < hidden_ratio) {
 			color.a = 0.0;
+			sprite_visibility = 0.0;
 		}
 	}
 
@@ -53,26 +57,24 @@ void fragment() {
 	}
 
 	if (guardian_glow_enabled && guardian_glow_strength > 0.0) {
-		vec2 glow_offset = TEXTURE_PIXEL_SIZE * guardian_glow_outline_width;
-		float neighbor_alpha = 0.0;
-		neighbor_alpha = max(neighbor_alpha, texture(TEXTURE, UV + vec2(glow_offset.x, 0.0)).a);
-		neighbor_alpha = max(neighbor_alpha, texture(TEXTURE, UV - vec2(glow_offset.x, 0.0)).a);
-		neighbor_alpha = max(neighbor_alpha, texture(TEXTURE, UV + vec2(0.0, glow_offset.y)).a);
-		neighbor_alpha = max(neighbor_alpha, texture(TEXTURE, UV - vec2(0.0, glow_offset.y)).a);
-		neighbor_alpha = max(neighbor_alpha, texture(TEXTURE, UV + glow_offset).a);
-		neighbor_alpha = max(neighbor_alpha, texture(TEXTURE, UV - glow_offset).a);
-		neighbor_alpha = max(neighbor_alpha, texture(TEXTURE, UV + vec2(glow_offset.x, -glow_offset.y)).a);
-		neighbor_alpha = max(neighbor_alpha, texture(TEXTURE, UV + vec2(-glow_offset.x, glow_offset.y)).a);
-		float pulse = 0.62 + 0.38 * sin(TIME * 5.5);
-		float glow = guardian_glow_strength * pulse;
-		float outline_mask = max(neighbor_alpha - texture_color.a, 0.0) * glow;
-		if (outline_mask > 0.0) {
-			color.rgb = mix(color.rgb, guardian_glow_color.rgb, outline_mask * 0.8);
-			color.a = max(color.a, outline_mask * 0.58);
+		vec2 center_delta = UV - guardian_glow_center;
+		center_delta.x *= TEXTURE_PIXEL_SIZE.y / TEXTURE_PIXEL_SIZE.x;
+		float distance_from_center = length(center_delta);
+		float radius = max(guardian_glow_radius, guardian_glow_core_radius + 0.001);
+		float pulse = 0.84 + 0.16 * sin(TIME * 3.2);
+		float radial_falloff = 1.0 - smoothstep(guardian_glow_core_radius, radius, distance_from_center);
+		float center_bloom = 1.0 - smoothstep(0.0, max(guardian_glow_core_radius, 0.001), distance_from_center);
+		float aura = clamp(pow(radial_falloff, 1.65) + center_bloom * 0.28, 0.0, 1.0);
+		aura *= guardian_glow_strength * pulse * sprite_visibility;
+		float background_glow = aura * (1.0 - texture_color.a) * guardian_glow_color.a;
+		if (background_glow > 0.0) {
+			color.rgb = mix(color.rgb, guardian_glow_color.rgb, background_glow);
+			color.a = max(color.a, background_glow * 0.72);
 		}
 		if (texture_color.a > 0.0) {
-			float body_mask = texture_color.a * glow * 0.28;
-			color.rgb = min(color.rgb + guardian_glow_color.rgb * body_mask, vec3(1.0));
+			float body_light = aura * texture_color.a * 0.16;
+			color.rgb = min(color.rgb + guardian_glow_color.rgb * body_light, vec3(1.0));
+			color.a = max(color.a, texture_color.a * COLOR.a * sprite_visibility);
 		}
 	}
 	

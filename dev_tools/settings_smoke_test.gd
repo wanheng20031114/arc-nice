@@ -70,20 +70,20 @@ func _restore_settings_config() -> void:
 			file.close()
 		return
 	if FileAccess.file_exists(config_path):
-		var dir := DirAccess.open("user://")
+		var dir := DirAccess.open(config_path.get_base_dir())
 		_expect(dir != null, "Settings config directory must be available for cleanup.")
 		if dir != null:
-			_expect(dir.remove("settings.cfg") == OK, "Temporary settings config must be removed.")
+			_expect(dir.remove(config_path.get_file()) == OK, "Temporary settings config must be removed.")
 
 
 func _test_project_resolution_defaults() -> void:
 	_expect(
-		int(ProjectSettings.get_setting("display/window/size/viewport_width")) == 1280,
-		"Project viewport width must default to 1280."
+		int(ProjectSettings.get_setting("display/window/size/viewport_width")) == 1152,
+		"Project viewport width must keep the original 1152 design size."
 	)
 	_expect(
-		int(ProjectSettings.get_setting("display/window/size/viewport_height")) == 720,
-		"Project viewport height must default to 720."
+		int(ProjectSettings.get_setting("display/window/size/viewport_height")) == 648,
+		"Project viewport height must keep the original 648 design size."
 	)
 	_expect(
 		str(ProjectSettings.get_setting("display/window/stretch/mode")) == "canvas_items",
@@ -131,6 +131,11 @@ func _test_user_settings_singleton() -> void:
 	_expect(settings.has_method("get_current_screen_size"), "Fullscreen target screen-size API must exist.")
 	_expect(settings.has_method("reset_all_settings"), "Full settings reset API must exist.")
 	_expect(str(settings.call("get_config_path")) == "user://settings.cfg", "Settings config path must be stable.")
+	_expect(settings.has_method("get_config_file_system_path"), "Settings file system path API must exist.")
+	_expect(
+		str(settings.call("get_config_file_system_path")).ends_with("settings.cfg"),
+		"Settings file system path must point to settings.cfg."
+	)
 	_test_resolution_scaling_behavior()
 
 
@@ -216,8 +221,8 @@ func _test_settings_panel_scene() -> void:
 			)
 		if config_path_label != null:
 			_expect(
-				config_path_label.text.contains("user://settings.cfg"),
-				"Config path label must mention user://settings.cfg."
+				config_path_label.text.contains("settings.cfg"),
+				"Config path label must mention settings.cfg."
 			)
 		panel.call("close")
 		_expect(not panel.visible, "Settings panel must hide after close().")
@@ -248,6 +253,14 @@ func _test_audio_bus_assignment() -> void:
 	_expect(gunshot != null, "Player GunshotAudio must exist.")
 	if gunshot != null:
 		_expect(gunshot.bus == "SFX", "Effect audio must route to SFX bus.")
+	var camera := game.get_node_or_null("Camera2D") as Camera2D
+	_expect(camera != null, "Game Camera2D must exist.")
+	if camera != null:
+		var visible_world_size := Vector2(root.content_scale_size) / camera.zoom
+		_expect(
+			visible_world_size.is_equal_approx(Vector2(576, 324)),
+			"Camera visible world size must stay aligned with the original project viewport."
+		)
 
 	game.queue_free()
 	await process_frame

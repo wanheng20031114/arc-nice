@@ -1,6 +1,7 @@
 extends Node
 
-const CONFIG_PATH := "user://settings.cfg"
+const CONFIG_FILE_NAME := "settings.cfg"
+const EDITOR_CONFIG_PATH := "user://settings.cfg"
 const SECTION_DISPLAY := "display"
 const SECTION_AUDIO := "audio"
 const SECTION_BINDINGS := "input_bindings"
@@ -10,7 +11,7 @@ const MUSIC_BUS := &"Music"
 const SFX_BUS := &"SFX"
 
 const DEFAULT_RESOLUTION_ID := "1280x720"
-const BASE_CONTENT_SCALE_SIZE := Vector2i(1280, 720)
+const BASE_CONTENT_SCALE_SIZE := Vector2i(1152, 648)
 const DEFAULT_MASTER_VOLUME := 100.0
 const DEFAULT_MUSIC_VOLUME := 100.0
 const DEFAULT_SFX_VOLUME := 100.0
@@ -70,7 +71,16 @@ func apply_all() -> void:
 
 
 func get_config_path() -> String:
-	return CONFIG_PATH
+	if OS.has_feature("editor"):
+		return EDITOR_CONFIG_PATH
+	return _get_exported_config_path()
+
+
+func get_config_file_system_path() -> String:
+	var config_path := get_config_path()
+	if _is_local_config_path(config_path):
+		return ProjectSettings.globalize_path(config_path)
+	return config_path
 
 
 func reset_all_settings() -> void:
@@ -304,24 +314,33 @@ func assign_audio_buses_to_tree() -> void:
 
 func _load_config() -> ConfigFile:
 	var config := ConfigFile.new()
-	config.load(CONFIG_PATH)
+	config.load(get_config_path())
 	return config
 
 
 func _save_config(config: ConfigFile) -> void:
-	config.save(CONFIG_PATH)
+	config.save(get_config_path())
 
 
 func _delete_config_file() -> void:
-	if not FileAccess.file_exists(CONFIG_PATH):
+	var config_path := get_config_path()
+	if not FileAccess.file_exists(config_path):
 		return
-	var dir := DirAccess.open("user://")
+	var dir := DirAccess.open(config_path.get_base_dir())
 	if dir == null:
-		push_warning("Unable to open user settings directory for reset.")
+		push_warning("Unable to open settings directory for reset.")
 		return
-	var error := dir.remove("settings.cfg")
+	var error := dir.remove(config_path.get_file())
 	if error != OK:
 		push_warning("Unable to remove settings config: %s" % error)
+
+
+func _get_exported_config_path() -> String:
+	return OS.get_executable_path().get_base_dir().path_join(CONFIG_FILE_NAME)
+
+
+func _is_local_config_path(path: String) -> bool:
+	return path.begins_with("user://") or path.begins_with("res://")
 
 
 func _apply_saved_resolution() -> void:
