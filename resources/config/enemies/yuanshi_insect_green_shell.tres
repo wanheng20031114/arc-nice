@@ -9,7 +9,7 @@
 [ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="7_3pf0l"]
 [ext_resource type="Texture2D" uid="uid://gpwpt2glrhpb" path="res://resources/texture/yuanshi_insect_green_aura_particle.tres" id="8_aura_particle"]
 [ext_resource type="Texture2D" uid="uid://04o6ofntabvg" path="res://resources/texture/yuanshi_insect_green_aura_colors.tres" id="9_aura_colors"]
-[ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect_green_shell.tscn" id="enemy_scene"]
+[ext_resource type="PackedScene" uid="uid://bsowy8xf3lvlm" path="res://scene/enemy/yuanshi_insect_green_shell.tscn" id="enemy_scene"]
 
 [resource]
 script = ExtResource("2_script")

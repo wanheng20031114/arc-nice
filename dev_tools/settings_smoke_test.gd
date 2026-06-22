@@ -211,9 +211,13 @@ func _test_settings_panel_scene() -> void:
 		var hotkey_hint := panel.get_node_or_null(
 			"Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Hint"
 		) as Label
+		var settings_panel := panel.get_node_or_null("Center/Panel") as PanelContainer
+		var settings_scroll := panel.get_node_or_null("Center/Panel/Margin/Layout/Scroll") as ScrollContainer
 		var reset_settings_button := panel.get_node_or_null(
 			"Center/Panel/Margin/Layout/Footer/ResetSettingsButton"
 		) as Button
+		_expect(settings_panel != null, "Settings panel outer container must exist.")
+		_expect(settings_scroll != null, "Settings panel scroll container must exist.")
 		_expect(fullscreen_check != null, "Fullscreen CheckButton must exist.")
 		_expect(resolution_option != null, "Resolution OptionButton must exist.")
 		_expect(config_path_label != null, "Settings panel must show config path label.")
@@ -221,6 +225,24 @@ func _test_settings_panel_scene() -> void:
 		_expect(music_value != null, "Settings panel must expose MusicValue.")
 		_expect(hotkey_hint != null, "Settings panel must contain the hotkey hint label for transient capture messages.")
 		_expect(reset_settings_button != null, "Settings panel must expose full reset button.")
+		if settings_panel != null:
+			var panel_rect := settings_panel.get_global_rect()
+			var viewport_size := Vector2(
+				float(ProjectSettings.get_setting("display/window/size/viewport_width")),
+				float(ProjectSettings.get_setting("display/window/size/viewport_height"))
+			)
+			_expect(
+				panel_rect.position.x >= 0.0
+					and panel_rect.position.y >= 0.0
+					and panel_rect.end.x <= viewport_size.x + 0.5
+					and panel_rect.end.y <= viewport_size.y + 0.5,
+				"Settings panel outer border must fit inside the design viewport."
+			)
+		if settings_scroll != null:
+			_expect(
+				settings_scroll.custom_minimum_size.y <= 454.0,
+				"Settings scroll area must leave room for the outer bottom border and footer."
+			)
 		if fullscreen_check != null:
 			var checked_icon := fullscreen_check.get_theme_icon(&"checked")
 			var unchecked_icon := fullscreen_check.get_theme_icon(&"unchecked")
