@@ -438,7 +438,7 @@ offset_left = 308.0
 offset_top = 108.0
 offset_right = 679.0
 offset_bottom = 459.0
-mouse_filter = 2
+mouse_filter = 0
 
 [node name="Slot00" parent="Overlay/PanelRoot/InventoryGrid" instance=ExtResource("3_slot")]
 layout_mode = 0

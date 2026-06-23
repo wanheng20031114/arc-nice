@@ -50,6 +50,7 @@ func _ready() -> void:
 	close_button.pressed.connect(close)
 	item_detail_use_button.pressed.connect(_on_detail_use_pressed)
 	item_detail_discard_button.pressed.connect(_on_detail_discard_pressed)
+	inventory_grid.gui_input.connect(_on_inventory_grid_gui_input)
 	get_viewport().size_changed.connect(_update_panel_transform)
 	_collect_slots()
 	_update_panel_transform()
@@ -122,11 +123,10 @@ func open() -> void:
 	overlay.visible = true
 	set_process(true)
 	tracked_player.set_controls_locked(true)
+	selected_slot_index = -1
 	_refresh_inventory()
 	_refresh_upgrades()
 	_refresh_stat_display()
-	if current_tab == 0:
-		_focus_first_available_slot()
 
 
 func close() -> void:
@@ -135,9 +135,7 @@ func close() -> void:
 
 	overlay.visible = false
 	set_process(false)
-	selected_slot_index = -1
-	_hide_item_detail()
-	get_viewport().gui_release_focus()
+	_clear_inventory_selection()
 	if tracked_player != null and not tracked_player.is_dead:
 		tracked_player.set_controls_locked(false)
 
@@ -223,6 +221,9 @@ func _refresh_stat_display() -> void:
 
 
 func _on_slot_selected(slot_index: int) -> void:
+	if slot_index < 0 or slot_index >= slots.size() or run_state.get_item(slot_index) == null:
+		_clear_inventory_selection()
+		return
 	selected_slot_index = slot_index
 	for slot in slots:
 		slot.set_selected(slot.slot_index == selected_slot_index)
@@ -230,6 +231,9 @@ func _on_slot_selected(slot_index: int) -> void:
 
 
 func _try_use_slot(slot_index: int) -> void:
+	if slot_index < 0 or slot_index >= slots.size() or run_state.get_item(slot_index) == null:
+		_clear_inventory_selection()
+		return
 	selected_slot_index = slot_index
 	if _request_multiplayer_inventory_item_use(slot_index):
 		return
@@ -240,18 +244,26 @@ func _try_use_slot(slot_index: int) -> void:
 		_refresh_item_detail()
 
 
-func _focus_first_available_slot() -> void:
-	for slot in slots:
-		if slot.item != null:
-			selected_slot_index = slot.slot_index
-			slot.grab_focus()
-			_refresh_inventory()
-			return
+func _on_inventory_grid_gui_input(event: InputEvent) -> void:
+	if not overlay.visible or current_tab != 0:
+		return
 
-	selected_slot_index = 0
-	if not slots.is_empty():
-		slots[0].grab_focus()
-		_refresh_inventory()
+	var mouse_event := event as InputEventMouseButton
+	if mouse_event == null:
+		return
+	if mouse_event.button_index != MOUSE_BUTTON_LEFT or not mouse_event.pressed:
+		return
+
+	_clear_inventory_selection()
+	inventory_grid.accept_event()
+
+
+func _clear_inventory_selection() -> void:
+	selected_slot_index = -1
+	for slot in slots:
+		slot.set_selected(false)
+	_hide_item_detail()
+	get_viewport().gui_release_focus()
 
 
 func _on_health_changed(current: int, maximum: int) -> void:
@@ -313,7 +325,7 @@ func _on_tab_changed(tab_index: int) -> void:
 	current_tab = tab_index
 	_apply_tab_state()
 	if current_tab == 0:
-		_focus_first_available_slot()
+		_clear_inventory_selection()
 	else:
 		_refresh_upgrades()
 
@@ -336,7 +348,7 @@ func _refresh_item_detail() -> void:
 
 	var item := run_state.get_item(selected_slot_index)
 	if item == null:
-		_hide_item_detail()
+		_clear_inventory_selection()
 		return
 
 	var is_consumable := _is_consumable_item(item)

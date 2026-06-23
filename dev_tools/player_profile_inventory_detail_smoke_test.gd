@@ -58,6 +58,12 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 
 	profile_panel.open()
 	await process_frame
+	_expect(profile_panel.selected_slot_index == -1, "Opening the inventory must not auto-select the first slot.")
+	_expect(not profile_panel.item_detail_panel.visible, "Opening the inventory must not show an item detail panel by default.")
+	_expect(not profile_panel.slots[0].button_pressed, "Opening the inventory must leave the first slot unselected.")
+
+	profile_panel.slots[0].emit_signal("pressed")
+	await process_frame
 	_expect(profile_panel.item_detail_panel.visible, "Selecting an occupied inventory slot must show the item detail panel.")
 	_expect(profile_panel.item_detail_title.text.contains("苹果"), "The item detail panel must show the collectible name.")
 	_expect(profile_panel.item_detail_title.text.contains("收藏品"), "The item detail panel must label apples as collectibles.")
@@ -68,6 +74,18 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	_expect(not profile_panel.item_detail_use_button.visible, "Collectibles must not show a use button.")
 	_expect(profile_panel.item_detail_discard_button.visible, "Collectibles must show a discard button.")
 
+	var blank_click := InputEventMouseButton.new()
+	blank_click.button_index = MOUSE_BUTTON_LEFT
+	blank_click.pressed = true
+	blank_click.position = Vector2(72.0, 86.0)
+	profile_panel.call("_on_inventory_grid_gui_input", blank_click)
+	await process_frame
+	_expect(profile_panel.selected_slot_index == -1, "Clicking blank inventory space must clear the selected slot.")
+	_expect(not profile_panel.item_detail_panel.visible, "Clicking blank inventory space must hide the item detail panel.")
+	_expect(not profile_panel.slots[0].button_pressed, "Clicking blank inventory space must remove the selected slot highlight.")
+
+	profile_panel.slots[0].emit_signal("pressed")
+	await process_frame
 	profile_panel.item_detail_discard_button.emit_signal("pressed")
 	await process_frame
 	_expect(run_state.get_item(0) == null, "Discarding a collectible from the detail panel must destroy it.")
@@ -77,6 +95,7 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 		"One remaining apple must keep the piercing chance at 50%."
 	)
 	_expect(not profile_panel.item_detail_panel.visible, "The item detail panel must hide when the selected slot becomes empty.")
+	_expect(profile_panel.selected_slot_index == -1, "Discarding the selected item must clear the selected slot.")
 
 	profile_panel.slots[2].emit_signal("pressed")
 	await process_frame

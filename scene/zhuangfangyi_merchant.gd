@@ -2,13 +2,13 @@ extends Node2D
 class_name ZhuangfangyiMerchant
 
 const DIALOGUE_LINES := [
-	"你好，我是终末地的庄方宜",
-	"终末地的鹈鹕已经被我发配到北部禁区",
-	"我可以使用息壤帮助你强化能力",
+	"你好，我是终末地的庄方宜。",
+	"终末地的鹈鹕已经被我发配到北部禁区。",
+	"我可以使用息壤帮助你强化能力。",
 	"是否要花费[color=#1a8a3e]200息壤[/color]购买 [img=22]res://resources/texture/weishidaier_skill1_icon.png[/img] ？",
 ]
 const SKILL1_ICON_BBCODE := "[img=22]res://resources/texture/weishidaier_skill1_icon.png[/img]"
-const SKILL1_UPGRADE_INTRO_LINE := "如果有足够的息壤，我可以为你提供全新的升级"
+const SKILL1_UPGRADE_INTRO_LINE := "如果有足够的息壤，我可以为你提供全新的升级。"
 const SKILL1_UPGRADE_OFFER_FORMAT := "是否要花费[color=#1a8a3e]%d息壤[/color]升级 %s ？"
 const PURCHASE_COST := 200
 const INSUFFICIENT_XIRANG_LINE := "息壤不足。"

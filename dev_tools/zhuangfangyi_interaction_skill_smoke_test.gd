@@ -88,7 +88,7 @@ func _test_dialogue_purchase() -> void:
 	merchant.call("_on_interaction_area_body_entered", player)
 	var bubble := merchant.get_node("MerchantDialogueBubble") as MerchantDialogueBubble
 	_expect(bubble.visible, "Dialogue bubble must appear when the player enters interaction range.")
-	_expect(bubble.text_label.text == "你好，我是终末地的庄方宜", "Dialogue did not start at the first line.")
+	_expect(_dialogue_text(bubble) == "你好，我是终末地的庄方宜。", "Dialogue did not start at the first line.")
 	_expect(
 		bubble.text_label.autowrap_mode == TextServer.AUTOWRAP_ARBITRARY,
 		"Dialogue text must wrap Chinese and BBCode icon lines inside the bubble."
@@ -140,7 +140,7 @@ func _test_dialogue_skill1_upgrade() -> void:
 	merchant.call("_on_interaction_area_body_entered", player)
 	var bubble := merchant.get_node("MerchantDialogueBubble") as MerchantDialogueBubble
 	_expect(
-		bubble.text_label.text == "如果有足够的息壤，我可以为你提供全新的升级",
+		_dialogue_text(bubble) == "如果有足够的息壤，我可以为你提供全新的升级。",
 		"Owned skill1 dialogue must start with the upgrade intro."
 	)
 
@@ -169,7 +169,7 @@ func _test_dialogue_skill1_upgrade() -> void:
 
 	merchant._unhandled_input(event)
 	_expect(
-		bubble.text_label.text == "如果有足够的息壤，我可以为你提供全新的升级",
+		_dialogue_text(bubble) == "如果有足够的息壤，我可以为你提供全新的升级。",
 		"Next interaction after closing upgrade result must restart the refreshed upgrade dialogue."
 	)
 	bubble.finish_line()
@@ -184,7 +184,7 @@ func _test_dialogue_skill1_upgrade() -> void:
 		is_equal_approx(player.skill1_charge_duration, duration_before_failed_upgrade),
 		"Failed skill1 upgrade must not change charge duration."
 	)
-	_expect(bubble.text_label.text == "息壤不足。", "Failed skill1 upgrade must show insufficient xirang.")
+	_expect(_dialogue_text(bubble) == "息壤不足。", "Failed skill1 upgrade must show insufficient xirang.")
 
 	merchant.queue_free()
 	player.queue_free()
@@ -439,3 +439,7 @@ func _test_bomb_explosion_damage() -> void:
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
+
+
+func _dialogue_text(bubble: MerchantDialogueBubble) -> String:
+	return bubble.text_label.text.replace(MerchantDialogueBubble.NO_BREAK_MARK, "")

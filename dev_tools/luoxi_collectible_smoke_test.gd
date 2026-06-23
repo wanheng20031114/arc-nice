@@ -87,7 +87,7 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	luoxi.call("_on_interaction_area_body_entered", player)
 	var bubble := luoxi.get_node("MerchantDialogueBubble") as MerchantDialogueBubble
 	_expect(bubble.visible, "Luoxi dialogue bubble must appear when the player enters range.")
-	_expect(bubble.text_label.text == "我是终末地的爪牙！", "Luoxi dialogue must start at the requested first line.")
+	_expect(_dialogue_text(bubble) == "我是终末地的爪牙！", "Luoxi dialogue must start at the requested first line.")
 
 	var bubble_panel := bubble.get_node("BubblePanel") as PanelContainer
 	var bubble_style := bubble_panel.get_theme_stylebox("panel") as StyleBoxFlat
@@ -106,7 +106,7 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	bubble.finish_line()
 	luoxi._unhandled_input(interact)
 	_expect(
-		bubble.text_label.text == "我能为你提供收藏品来强化自己",
+		_dialogue_text(bubble) == "我能为你提供收藏品来强化自己。",
 		"Luoxi dialogue must include the requested collectible intro line."
 	)
 
@@ -195,8 +195,12 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	luoxi._unhandled_input(interact)
 	luoxi._unhandled_input(interact)
 	_expect(
-		bubble.text_label.text == "这个回合我已经把收藏品交给你了。",
+		_dialogue_text(bubble) == "这个回合我已经把收藏品交给你了。",
 		"Luoxi must not offer another collectible after one choice in the same run."
+	)
+	_expect(
+		bubble.text_label.text.contains(MerchantDialogueBubble.NO_BREAK_MARK + "。"),
+		"Luoxi dialogue punctuation must stay attached to the preceding text when wrapped."
 	)
 	_expect(run_state.get_item(1) == null, "Luoxi must not add a second collectible in the same run.")
 
@@ -270,6 +274,10 @@ func _is_color_equal(color_a: Color, color_b: Color) -> bool:
 		and is_equal_approx(color_a.b, color_b.b)
 		and is_equal_approx(color_a.a, color_b.a)
 	)
+
+
+func _dialogue_text(bubble: MerchantDialogueBubble) -> String:
+	return bubble.text_label.text.replace(MerchantDialogueBubble.NO_BREAK_MARK, "")
 
 
 func _expect(condition: bool, message: String) -> void:

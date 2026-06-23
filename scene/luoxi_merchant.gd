@@ -5,7 +5,7 @@ const APPLE_COLLECTIBLE := preload("res://resources/config/pickups/collectible_a
 const APPLE_ICON_BBCODE := "[img=18]res://resources/texture/apple_collectible.png[/img]"
 const DIALOGUE_LINES := [
 	"我是终末地的爪牙！",
-	"我能为你提供收藏品来强化自己",
+	"我能为你提供收藏品来强化自己。",
 ]
 const CHOICE_COUNT := 3
 const CLAIMED_LINE := "这个回合我已经把收藏品交给你了。"
