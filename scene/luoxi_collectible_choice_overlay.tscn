@@ -32,14 +32,16 @@ corner_radius_top_right = 6
 corner_radius_bottom_right = 6
 corner_radius_bottom_left = 6
 
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_button_focus"]
+
 [sub_resource type="LabelSettings" id="LabelSettings_title"]
 font = ExtResource("2_font")
-font_size = 18
+font_size = 20
 font_color = Color(0.12, 0.08, 0.06, 1)
 
 [sub_resource type="LabelSettings" id="LabelSettings_hint"]
 font = ExtResource("2_font")
-font_size = 17
+font_size = 22
 font_color = Color(0.98, 0.96, 0.91, 1)
 
 [node name="LuoxiCollectibleChoiceOverlay" type="CanvasLayer"]
@@ -77,7 +79,7 @@ mouse_filter = 2
 
 [node name="Content" type="VBoxContainer" parent="Root/Center"]
 layout_mode = 2
-theme_override_constants/separation = 16
+theme_override_constants/separation = 18
 
 [node name="Hint" type="Label" parent="Root/Center/Content"]
 layout_mode = 2
@@ -87,27 +89,27 @@ horizontal_alignment = 1
 
 [node name="CardRow" type="HBoxContainer" parent="Root/Center/Content"]
 layout_mode = 2
-theme_override_constants/separation = 22
+theme_override_constants/separation = 24
 
 [node name="Card0" type="PanelContainer" parent="Root/Center/Content/CardRow"]
-custom_minimum_size = Vector2(178, 236)
+custom_minimum_size = Vector2(192, 255)
 layout_mode = 2
 mouse_filter = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")
 
 [node name="Margin" type="MarginContainer" parent="Root/Center/Content/CardRow/Card0"]
 layout_mode = 2
-theme_override_constants/margin_left = 14
-theme_override_constants/margin_top = 14
-theme_override_constants/margin_right = 14
-theme_override_constants/margin_bottom = 14
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 15
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 15
 
 [node name="Content" type="VBoxContainer" parent="Root/Center/Content/CardRow/Card0/Margin"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="Icon" type="TextureRect" parent="Root/Center/Content/CardRow/Card0/Margin/Content"]
-custom_minimum_size = Vector2(76, 76)
+custom_minimum_size = Vector2(82, 82)
 layout_mode = 2
 stretch_mode = 5
 
@@ -118,46 +120,47 @@ label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
 
 [node name="Description" type="RichTextLabel" parent="Root/Center/Content/CardRow/Card0/Margin/Content"]
-custom_minimum_size = Vector2(150, 72)
+custom_minimum_size = Vector2(162, 76)
 layout_mode = 2
 bbcode_enabled = true
 fit_content = false
 scroll_active = false
 autowrap_mode = 3
 theme_override_fonts/normal_font = ExtResource("2_font")
-theme_override_font_sizes/normal_font_size = 13
+theme_override_font_sizes/normal_font_size = 14
 theme_override_colors/default_color = Color(0.18, 0.13, 0.1, 1)
 
 [node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card0/Margin/Content"]
-custom_minimum_size = Vector2(140, 34)
+custom_minimum_size = Vector2(152, 38)
 layout_mode = 2
 text = "选择"
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 16
 theme_override_colors/font_color = Color(1, 0.97, 0.91, 1)
 theme_override_styles/normal = SubResource("StyleBoxFlat_button")
 theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_button_focus")
 
 [node name="Card1" type="PanelContainer" parent="Root/Center/Content/CardRow"]
-custom_minimum_size = Vector2(178, 236)
+custom_minimum_size = Vector2(192, 255)
 layout_mode = 2
 mouse_filter = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")
 
 [node name="Margin" type="MarginContainer" parent="Root/Center/Content/CardRow/Card1"]
 layout_mode = 2
-theme_override_constants/margin_left = 14
-theme_override_constants/margin_top = 14
-theme_override_constants/margin_right = 14
-theme_override_constants/margin_bottom = 14
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 15
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 15
 
 [node name="Content" type="VBoxContainer" parent="Root/Center/Content/CardRow/Card1/Margin"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="Icon" type="TextureRect" parent="Root/Center/Content/CardRow/Card1/Margin/Content"]
-custom_minimum_size = Vector2(76, 76)
+custom_minimum_size = Vector2(82, 82)
 layout_mode = 2
 stretch_mode = 5
 
@@ -168,46 +171,47 @@ label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
 
 [node name="Description" type="RichTextLabel" parent="Root/Center/Content/CardRow/Card1/Margin/Content"]
-custom_minimum_size = Vector2(150, 72)
+custom_minimum_size = Vector2(162, 76)
 layout_mode = 2
 bbcode_enabled = true
 fit_content = false
 scroll_active = false
 autowrap_mode = 3
 theme_override_fonts/normal_font = ExtResource("2_font")
-theme_override_font_sizes/normal_font_size = 13
+theme_override_font_sizes/normal_font_size = 14
 theme_override_colors/default_color = Color(0.18, 0.13, 0.1, 1)
 
 [node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card1/Margin/Content"]
-custom_minimum_size = Vector2(140, 34)
+custom_minimum_size = Vector2(152, 38)
 layout_mode = 2
 text = "选择"
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 16
 theme_override_colors/font_color = Color(1, 0.97, 0.91, 1)
 theme_override_styles/normal = SubResource("StyleBoxFlat_button")
 theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_button_focus")
 
 [node name="Card2" type="PanelContainer" parent="Root/Center/Content/CardRow"]
-custom_minimum_size = Vector2(178, 236)
+custom_minimum_size = Vector2(192, 255)
 layout_mode = 2
 mouse_filter = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")
 
 [node name="Margin" type="MarginContainer" parent="Root/Center/Content/CardRow/Card2"]
 layout_mode = 2
-theme_override_constants/margin_left = 14
-theme_override_constants/margin_top = 14
-theme_override_constants/margin_right = 14
-theme_override_constants/margin_bottom = 14
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 15
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 15
 
 [node name="Content" type="VBoxContainer" parent="Root/Center/Content/CardRow/Card2/Margin"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="Icon" type="TextureRect" parent="Root/Center/Content/CardRow/Card2/Margin/Content"]
-custom_minimum_size = Vector2(76, 76)
+custom_minimum_size = Vector2(82, 82)
 layout_mode = 2
 stretch_mode = 5
 
@@ -218,23 +222,24 @@ label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
 
 [node name="Description" type="RichTextLabel" parent="Root/Center/Content/CardRow/Card2/Margin/Content"]
-custom_minimum_size = Vector2(150, 72)
+custom_minimum_size = Vector2(162, 76)
 layout_mode = 2
 bbcode_enabled = true
 fit_content = false
 scroll_active = false
 autowrap_mode = 3
 theme_override_fonts/normal_font = ExtResource("2_font")
-theme_override_font_sizes/normal_font_size = 13
+theme_override_font_sizes/normal_font_size = 14
 theme_override_colors/default_color = Color(0.18, 0.13, 0.1, 1)
 
 [node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card2/Margin/Content"]
-custom_minimum_size = Vector2(140, 34)
+custom_minimum_size = Vector2(152, 38)
 layout_mode = 2
 text = "选择"
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 16
 theme_override_colors/font_color = Color(1, 0.97, 0.91, 1)
 theme_override_styles/normal = SubResource("StyleBoxFlat_button")
 theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_button_focus")

@@ -1,41 +1,41 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://cvh5s1gowuh0r"]
 
-[ext_resource type="SpriteFrames" path="res://resources/animation/luoxi.tres" id="1_frames"]
-[ext_resource type="Script" path="res://scene/luoxi_merchant.gd" id="2_script"]
+[ext_resource type="SpriteFrames" uid="uid://b7qwm7cbmfaci" path="res://resources/animation/luoxi.tres" id="1_frames"]
+[ext_resource type="Script" uid="uid://dc6mjf0t5oj41" path="res://scene/luoxi_merchant.gd" id="2_script"]
 [ext_resource type="PackedScene" path="res://scene/luoxi_dialogue_bubble.tscn" id="3_dialogue"]
 [ext_resource type="PackedScene" path="res://scene/luoxi_collectible_choice_overlay.tscn" id="4_choice_overlay"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_body"]
-radius = 7.0
-height = 22.0
+radius = 8.0
+height = 26.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_interaction"]
-radius = 24.0
+radius = 27.018513
 
-[node name="LuoxiMerchant" type="Node2D"]
+[node name="LuoxiMerchant" type="Node2D" unique_id=2097605434]
 z_index = 2
 script = ExtResource("2_script")
 
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=1812886950]
 sprite_frames = ExtResource("1_frames")
 animation = &"idle"
 autoplay = "idle"
 
-[node name="StaticBody2D" type="StaticBody2D" parent="."]
+[node name="StaticBody2D" type="StaticBody2D" parent="." unique_id=1432385626]
 collision_mask = 0
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="StaticBody2D"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="StaticBody2D" unique_id=2026809148]
 position = Vector2(0, 2)
 shape = SubResource("CapsuleShape2D_body")
 disabled = true
 
-[node name="InteractionArea" type="Area2D" parent="."]
+[node name="InteractionArea" type="Area2D" parent="." unique_id=407036522]
 collision_layer = 0
 collision_mask = 2
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea" unique_id=2093712740]
 shape = SubResource("CircleShape2D_interaction")
 
-[node name="MerchantDialogueBubble" parent="." instance=ExtResource("3_dialogue")]
+[node name="MerchantDialogueBubble" parent="." unique_id=120003080 instance=ExtResource("3_dialogue")]
 
-[node name="LuoxiCollectibleChoiceOverlay" parent="." instance=ExtResource("4_choice_overlay")]
+[node name="LuoxiCollectibleChoiceOverlay" parent="." unique_id=602010511 instance=ExtResource("4_choice_overlay")]

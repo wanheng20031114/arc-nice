@@ -118,17 +118,54 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	var first_title := choice_overlay.get_node("Root/Center/Content/CardRow/Card0/Margin/Content/Title") as Label
 	var first_description := choice_overlay.get_node("Root/Center/Content/CardRow/Card0/Margin/Content/Description") as RichTextLabel
 	var first_button := choice_overlay.get_node("Root/Center/Content/CardRow/Card0/Margin/Content/SelectButton") as Button
+	var first_card := choice_overlay.get_node("Root/Center/Content/CardRow/Card0") as PanelContainer
+	var first_front := choice_overlay.get_node("Root/Center/Content/CardRow/Card0/Margin") as Control
+	var hint := choice_overlay.get_node("Root/Center/Content/Hint") as Label
+	var card_row := choice_overlay.get_node("Root/Center/Content/CardRow") as HBoxContainer
 	_expect(first_title.text == "苹果", "Luoxi card chooser must show the collectible name.")
 	_expect(
 		first_description.text.contains(APPLE_COLLECTIBLE.description),
 		"Luoxi card chooser must show the apple description."
 	)
 	_expect(first_button.text == "选择", "Luoxi card chooser must expose a select button.")
+	_expect(hint.label_settings.font_size >= 22, "Luoxi card chooser heading must be easier to read.")
+	_expect(first_card.custom_minimum_size == Vector2(192, 255), "Luoxi card chooser cards must be slightly enlarged.")
+	_expect(card_row.get_theme_constant("separation") == 24, "Luoxi card chooser spacing must scale with the larger cards.")
+	for button_index in range(3):
+		var button := choice_overlay.get_node("Root/Center/Content/CardRow/Card%d/Margin/Content/SelectButton" % button_index) as Button
+		_expect(button.get_theme_stylebox("focus") is StyleBoxEmpty, "Luoxi card chooser select button %d must not show the default focus outline." % button_index)
+	_expect(not first_front.visible, "Luoxi card chooser must start with the card front hidden for the flip animation.")
+	await create_timer(0.18).timeout
+	_expect(first_front.visible, "Luoxi card chooser must reveal the card front during the flip animation.")
+	_expect(first_card.scale.x < 1.0, "Luoxi card chooser must still be visibly flipping after the front is revealed.")
+	await create_timer(0.5).timeout
+	for card_index in range(3):
+		var card := choice_overlay.get_node("Root/Center/Content/CardRow/Card%d" % card_index) as PanelContainer
+		var card_front := choice_overlay.get_node("Root/Center/Content/CardRow/Card%d/Margin" % card_index) as Control
+		_expect(card_front.visible, "Luoxi card chooser card %d front must be visible after opening." % card_index)
+		_expect(is_equal_approx(card.scale.x, 1.0), "Luoxi card chooser card %d must finish at full width." % card_index)
+		_expect(_is_color_equal(card.modulate, Color.WHITE), "Luoxi card chooser card %d must not be dimmed after opening." % card_index)
+		_expect(_is_color_equal(card.self_modulate, Color.WHITE), "Luoxi card chooser card %d face must be fully bright after opening." % card_index)
+
+	var second_card := choice_overlay.get_node("Root/Center/Content/CardRow/Card1") as PanelContainer
+	var second_base_style := second_card.get_theme_stylebox("panel") as StyleBoxFlat
+	choice_overlay._on_card_mouse_entered(1)
+	await create_timer(0.18).timeout
+	var second_hover_style := second_card.get_theme_stylebox("panel") as StyleBoxFlat
+	_expect(second_card.scale.x > 1.02 and second_card.scale.y > 1.02, "Luoxi card chooser hover must gently enlarge the hovered card.")
+	_expect(second_hover_style.shadow_size > second_base_style.shadow_size, "Luoxi card chooser hover must add a visible glow.")
+	_expect(second_hover_style.border_color.g > second_base_style.border_color.g, "Luoxi card chooser hover must brighten the red border.")
+	choice_overlay._on_card_mouse_exited(1)
+	await create_timer(0.18).timeout
+	_expect(is_equal_approx(second_card.scale.x, 1.0) and is_equal_approx(second_card.scale.y, 1.0), "Luoxi card chooser hover must restore the card scale.")
 
 	var move_right := _make_action("move_right")
 	bubble.finish_line()
 	luoxi._unhandled_input(move_right)
 	_expect(int(luoxi.get("selected_choice_index")) == 1, "Luoxi choice selection must move right.")
+	for card_index in range(3):
+		var card := choice_overlay.get_node("Root/Center/Content/CardRow/Card%d" % card_index) as PanelContainer
+		_expect(_is_color_equal(card.modulate, Color.WHITE), "Luoxi choice selection must not dim card %d." % card_index)
 
 	luoxi._unhandled_input(interact)
 	_expect(not choice_overlay.is_open(), "Luoxi card chooser must close after a selection.")
@@ -224,6 +261,15 @@ func _stop_audio_players(node: Node) -> void:
 		(node as AudioStreamPlayer2D).stop()
 	for child in node.get_children():
 		_stop_audio_players(child)
+
+
+func _is_color_equal(color_a: Color, color_b: Color) -> bool:
+	return (
+		is_equal_approx(color_a.r, color_b.r)
+		and is_equal_approx(color_a.g, color_b.g)
+		and is_equal_approx(color_a.b, color_b.b)
+		and is_equal_approx(color_a.a, color_b.a)
+	)
 
 
 func _expect(condition: bool, message: String) -> void:
