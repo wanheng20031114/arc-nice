@@ -5,17 +5,12 @@
 [ext_resource type="AudioStream" path="res://resources/audio/ui/dialogue_blip.wav" id="3_blip"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bubble"]
-bg_color = Color(1, 0.955, 0.925, 1)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(1, 0.13, 0.18, 0.92)
+bg_color = Color(0.98, 0.96, 0.91, 1)
 corner_radius_top_left = 8
 corner_radius_top_right = 8
 corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
-shadow_color = Color(0, 0, 0, 0.24)
+shadow_color = Color(0, 0, 0, 0.22)
 shadow_size = 5
 shadow_offset = Vector2(0, 2)
 
@@ -46,7 +41,7 @@ font_color = Color(1, 0.97, 0.91, 1)
 [sub_resource type="LabelSettings" id="LabelSettings_prompt"]
 font = ExtResource("2_font")
 font_size = 11
-font_color = Color(0.42, 0.19, 0.16, 1)
+font_color = Color(0.32, 0.28, 0.22, 1)
 
 [sub_resource type="LabelSettings" id="LabelSettings_button"]
 font = ExtResource("2_font")
@@ -55,32 +50,32 @@ font_color = Color(0.42, 0.04, 0.05, 1)
 
 [node name="MerchantDialogueBubble" type="Node2D"]
 visible = false
-position = Vector2(-86, -124)
+position = Vector2(-75, -106)
 scale = Vector2(0.5, 0.5)
 script = ExtResource("1_script")
 
 [node name="BubblePanel" type="PanelContainer" parent="."]
-custom_minimum_size = Vector2(344, 154)
+custom_minimum_size = Vector2(300, 104)
 offset_left = 0.0
 offset_top = 34.0
-offset_right = 344.0
-offset_bottom = 188.0
+offset_right = 300.0
+offset_bottom = 138.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_bubble")
 
 [node name="Margin" type="MarginContainer" parent="BubblePanel"]
 layout_mode = 2
 theme_override_constants/margin_left = 18
-theme_override_constants/margin_top = 18
+theme_override_constants/margin_top = 23
 theme_override_constants/margin_right = 14
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_bottom = 9
 
 [node name="Content" type="VBoxContainer" parent="BubblePanel/Margin"]
 layout_mode = 2
 theme_override_constants/separation = 4
 
 [node name="Text" type="RichTextLabel" parent="BubblePanel/Margin/Content"]
-custom_minimum_size = Vector2(312, 91)
+custom_minimum_size = Vector2(268, 50)
 layout_mode = 2
 bbcode_enabled = true
 text = "我是终末地的爪牙！"
@@ -89,8 +84,8 @@ scroll_active = false
 autowrap_mode = 1
 visible_characters = -1
 theme_override_fonts/normal_font = ExtResource("2_font")
-theme_override_font_sizes/normal_font_size = 16
-theme_override_colors/default_color = Color(0.1, 0.075, 0.065, 1)
+theme_override_font_sizes/normal_font_size = 17
+theme_override_colors/default_color = Color(0.08, 0.08, 0.075, 1)
 
 [node name="PromptRow" type="HBoxContainer" parent="BubblePanel/Margin/Content"]
 layout_mode = 2
@@ -120,10 +115,10 @@ text = "继续"
 label_settings = SubResource("LabelSettings_prompt")
 
 [node name="NamePlate" type="PanelContainer" parent="."]
-custom_minimum_size = Vector2(72, 28)
-offset_left = -8.0
+custom_minimum_size = Vector2(88, 28)
+offset_left = -10.0
 offset_top = 20.0
-offset_right = 64.0
+offset_right = 78.0
 offset_bottom = 48.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_name")

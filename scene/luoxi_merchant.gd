@@ -25,6 +25,7 @@ const COLLECTIBLE_RESULT_INVALID_PLAYER := 3
 @onready var collision_shape: CollisionShape2D = $StaticBody2D/CollisionShape2D
 @onready var interaction_area: Area2D = $InteractionArea
 @onready var dialogue_bubble: MerchantDialogueBubble = $MerchantDialogueBubble
+@onready var choice_overlay: LuoxiCollectibleChoiceOverlay = $LuoxiCollectibleChoiceOverlay
 
 var is_active: bool = false
 var nearby_players: Dictionary = {}
@@ -62,6 +63,8 @@ static func get_result_line(result_code: int) -> String:
 func _ready() -> void:
 	interaction_area.body_entered.connect(_on_interaction_area_body_entered)
 	interaction_area.body_exited.connect(_on_interaction_area_body_exited)
+	choice_overlay.choice_selected.connect(_on_choice_overlay_choice_selected)
+	choice_overlay.choice_closed.connect(_on_choice_overlay_choice_closed)
 	set_active(visible)
 
 
@@ -76,6 +79,7 @@ func set_active(active: bool) -> void:
 		active_player = null
 		choice_visible = false
 		result_visible = false
+		choice_overlay.hide_choices()
 		dialogue_bubble.hide_bubble()
 		return
 
@@ -107,6 +111,7 @@ func _start_dialogue(player: Player) -> void:
 	selected_choice_index = 0
 	choice_visible = false
 	result_visible = false
+	choice_overlay.hide_choices()
 	dialogue_lines = _build_dialogue_lines(player)
 	dialogue_bubble.say(dialogue_lines[dialogue_index])
 
@@ -139,6 +144,7 @@ func _advance_dialogue() -> void:
 func show_collectible_result(result_code: int) -> void:
 	choice_visible = false
 	result_visible = true
+	choice_overlay.hide_choices()
 	if result_code == COLLECTIBLE_RESULT_SUCCESS and active_player != null:
 		claimed_player_keys[_get_player_claim_key(active_player)] = true
 	dialogue_bubble.say(get_result_line(result_code))
@@ -146,24 +152,13 @@ func show_collectible_result(result_code: int) -> void:
 
 func _show_choice_offer() -> void:
 	choice_visible = true
-	dialogue_bubble.say(_build_choice_text())
+	dialogue_bubble.hide_bubble()
+	choice_overlay.show_choices(_build_collectible_choices(), selected_choice_index)
 
 
 func _handle_choice_input(event: InputEvent) -> bool:
-	if dialogue_bubble.is_revealing:
-		if event.is_action_pressed("interact"):
-			dialogue_bubble.finish_line()
-			return true
-		return false
-
-	if event.is_action_pressed("move_left") or event.is_action_pressed("shoot_left"):
-		_select_choice(selected_choice_index - 1)
-		return true
-	if event.is_action_pressed("move_right") or event.is_action_pressed("shoot_right"):
-		_select_choice(selected_choice_index + 1)
-		return true
-	if event.is_action_pressed("interact"):
-		_try_claim_selected_collectible()
+	if choice_overlay.handle_input(event):
+		selected_choice_index = choice_overlay.selected_index
 		return true
 
 	var key_event := event as InputEventKey
@@ -187,8 +182,7 @@ func _handle_choice_input(event: InputEvent) -> bool:
 
 func _select_choice(choice_index: int) -> void:
 	selected_choice_index = wrapi(choice_index, 0, CHOICE_COUNT)
-	dialogue_bubble.say(_build_choice_text())
-	dialogue_bubble.finish_line()
+	choice_overlay.select_choice(selected_choice_index)
 
 
 func _try_claim_selected_collectible() -> void:
@@ -231,24 +225,18 @@ func _build_dialogue_lines(player: Player) -> Array:
 	return DIALOGUE_LINES.duplicate()
 
 
-func _build_choice_text() -> String:
-	var lines := ["选择一件收藏品："]
+func _build_collectible_choices() -> Array:
+	var choices: Array = []
 	for choice_index in range(CHOICE_COUNT):
-		var line := "%d. %s 苹果" % [choice_index + 1, APPLE_ICON_BBCODE]
-		if choice_index == selected_choice_index:
-			line = "[color=#ff2332]> %s[/color]" % line
-		else:
-			line = "  %s" % line
-		lines.append(line)
-	lines.append("[color=#b51a22]%s[/color]" % APPLE_COLLECTIBLE.description)
-	lines.append("左右切换，F确认")
-	return "\n".join(lines)
+		choices.append(get_collectible_for_choice(choice_index))
+	return choices
 
 
 func _reset_dialogue_after_result() -> void:
 	dialogue_bubble.hide_bubble()
 	result_visible = false
 	choice_visible = false
+	choice_overlay.hide_choices()
 	dialogue_index = 0
 	dialogue_lines = _build_dialogue_lines(active_player)
 
@@ -293,6 +281,7 @@ func _on_interaction_area_body_exited(body: Node2D) -> void:
 		dialogue_bubble.hide_bubble()
 		choice_visible = false
 		result_visible = false
+		choice_overlay.hide_choices()
 	else:
 		_start_dialogue(active_player)
 
@@ -330,3 +319,19 @@ func _pick_nearby_player() -> Player:
 		if is_instance_valid(player):
 			return player as Player
 	return null
+
+
+func reset_round_collectible_claims() -> void:
+	claimed_player_keys.clear()
+	if choice_visible:
+		choice_visible = false
+		choice_overlay.hide_choices()
+
+
+func _on_choice_overlay_choice_selected(choice_index: int) -> void:
+	selected_choice_index = choice_index
+	_try_claim_selected_collectible()
+
+
+func _on_choice_overlay_choice_closed() -> void:
+	choice_visible = false

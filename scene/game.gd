@@ -368,6 +368,9 @@ func _set_local_merchants_active(active: bool) -> bool:
 		merchant.set_active(active)
 		changed = true
 	if luoxi_merchant != null and luoxi_merchant.is_active != active:
+		if active:
+			luoxi_collectible_claimed_peers.clear()
+			luoxi_merchant.reset_round_collectible_claims()
 		luoxi_merchant.set_active(active)
 		changed = true
 	return changed

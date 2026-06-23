@@ -92,8 +92,14 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	var bubble_panel := bubble.get_node("BubblePanel") as PanelContainer
 	var bubble_style := bubble_panel.get_theme_stylebox("panel") as StyleBoxFlat
 	_expect(
-		bubble_style != null and bubble_style.border_color.r > 0.9 and bubble_style.border_color.g < 0.25,
-		"Luoxi dialogue bubble must use a vivid red accent instead of Zhuangfangyi green."
+		bubble_style != null and is_equal_approx(bubble_style.bg_color.r, 0.98),
+		"Luoxi dialogue bubble must keep the same warm background as Zhuangfangyi."
+	)
+	var name_plate := bubble.get_node("NamePlate") as PanelContainer
+	var name_style := name_plate.get_theme_stylebox("panel") as StyleBoxFlat
+	_expect(
+		name_style != null and name_style.bg_color.r > 0.9 and name_style.bg_color.g < 0.25,
+		"Luoxi dialogue name plate must keep the vivid red accent."
 	)
 
 	var interact := _make_action("interact")
@@ -106,11 +112,18 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 
 	bubble.finish_line()
 	luoxi._unhandled_input(interact)
-	_expect(bubble.text_label.text.contains("苹果"), "Luoxi choice text must offer apples.")
+	var choice_overlay := luoxi.get_node("LuoxiCollectibleChoiceOverlay") as LuoxiCollectibleChoiceOverlay
+	_expect(choice_overlay != null and choice_overlay.is_open(), "Luoxi must open the collectible card chooser.")
+	_expect(not bubble.visible, "Luoxi card chooser must not be embedded inside the dialogue bubble.")
+	var first_title := choice_overlay.get_node("Root/Center/Content/CardRow/Card0/Margin/Content/Title") as Label
+	var first_description := choice_overlay.get_node("Root/Center/Content/CardRow/Card0/Margin/Content/Description") as RichTextLabel
+	var first_button := choice_overlay.get_node("Root/Center/Content/CardRow/Card0/Margin/Content/SelectButton") as Button
+	_expect(first_title.text == "苹果", "Luoxi card chooser must show the collectible name.")
 	_expect(
-		bubble.text_label.text.contains(APPLE_COLLECTIBLE.description),
-		"Luoxi choice text must show the apple description."
+		first_description.text.contains(APPLE_COLLECTIBLE.description),
+		"Luoxi card chooser must show the apple description."
 	)
+	_expect(first_button.text == "选择", "Luoxi card chooser must expose a select button.")
 
 	var move_right := _make_action("move_right")
 	bubble.finish_line()
@@ -118,6 +131,7 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	_expect(int(luoxi.get("selected_choice_index")) == 1, "Luoxi choice selection must move right.")
 
 	luoxi._unhandled_input(interact)
+	_expect(not choice_overlay.is_open(), "Luoxi card chooser must close after a selection.")
 	var item := run_state.get_item(0)
 	_expect(item == APPLE_COLLECTIBLE, "Luoxi must add the selected apple to the first inventory slot.")
 	_expect(
@@ -148,6 +162,12 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 		"Luoxi must not offer another collectible after one choice in the same run."
 	)
 	_expect(run_state.get_item(1) == null, "Luoxi must not add a second collectible in the same run.")
+
+	luoxi.reset_round_collectible_claims()
+	bubble.finish_line()
+	luoxi._unhandled_input(interact)
+	_expect(choice_overlay.is_open(), "Luoxi must allow a new collectible choice after round reset.")
+	choice_overlay.hide_choices()
 
 	luoxi.queue_free()
 	player.queue_free()

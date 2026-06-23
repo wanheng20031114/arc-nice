@@ -1,18 +1,16 @@
 [gd_scene format=3]
 
-[ext_resource type="SpriteFrames" path="res://resources/animation/luoxi.tres" id="1_frames"]
-[ext_resource type="Script" path="res://scene/luoxi_merchant.gd" id="2_script"]
-[ext_resource type="PackedScene" path="res://scene/luoxi_dialogue_bubble.tscn" id="3_dialogue"]
-[ext_resource type="PackedScene" path="res://scene/luoxi_collectible_choice_overlay.tscn" id="4_choice_overlay"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/linglan.tres" id="1_frames"]
+[ext_resource type="Script" path="res://scene/linglan_npc.gd" id="2_script"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_body"]
-radius = 7.0
-height = 22.0
+radius = 8.0
+height = 24.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_interaction"]
-radius = 24.0
+radius = 26.0
 
-[node name="LuoxiMerchant" type="Node2D"]
+[node name="LinglanNpc" type="Node2D"]
 z_index = 2
 script = ExtResource("2_script")
 
@@ -35,7 +33,3 @@ collision_mask = 2
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea"]
 shape = SubResource("CircleShape2D_interaction")
-
-[node name="MerchantDialogueBubble" parent="." instance=ExtResource("3_dialogue")]
-
-[node name="LuoxiCollectibleChoiceOverlay" parent="." instance=ExtResource("4_choice_overlay")]
