@@ -45,7 +45,7 @@ const CARD_HOVER_LIFT := 4.0
 const CARD_HOVER_DURATION := 0.12
 const DESCRIPTION_SCROLL_SPEED := 10.0
 const DESCRIPTION_SCROLL_TOP_PAUSE := 0.8
-const DESCRIPTION_SCROLL_BOTTOM_PAUSE := 1.2
+const DESCRIPTION_SCROLL_BOTTOM_PAUSE := 1.5
 
 var selected_index: int = 0
 var choices: Array = []
@@ -197,6 +197,7 @@ func _process_description_scrolls(delta: float) -> void:
 			description_scroll_offsets[index] = max_scroll
 			description_scroll_at_bottom[index] = true
 			description_scroll_pauses[index] = DESCRIPTION_SCROLL_BOTTOM_PAUSE
+		# Fractional scroll offsets soften dynamic font rendering while the text moves.
 		scroll_bar.value = minf(roundf(description_scroll_offsets[index]), max_scroll)
 
 

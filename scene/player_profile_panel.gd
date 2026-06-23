@@ -4,6 +4,8 @@ class_name PlayerProfilePanel
 const DESIGN_SIZE := Vector2(724.0, 543.0)
 const SKILL1_DISPLAY_NAME := "经典技能"
 const SKILL1_DESCRIPTION := "向上一次射击位置发射一枚炸弹造成攻击力330%的大范围伤害"
+const PORTRAIT_DEFAULT_POSITION := Vector2(150.0, 178.0)
+const PORTRAIT_WITH_SKILL_POSITION := Vector2(150.0, 147.0)
 const ITEM_DETAIL_SIZE := Vector2(254.0, 166.0)
 const ITEM_DETAIL_MARGIN := 14.0
 const ITEM_CATEGORY_COLLECTIBLE_TEXTURE := preload("res://resources/texture/item_category_badge_collectible.png")
@@ -21,6 +23,7 @@ const ITEM_CATEGORY_ITEM_TEXTURE := preload("res://resources/texture/item_catego
 @onready var physical_defense_value: Label = $Overlay/PanelRoot/PhysicalDefenseValue
 @onready var magic_defense_value: Label = $Overlay/PanelRoot/MagicDefenseValue
 @onready var skill_info: Control = $Overlay/PanelRoot/SkillInfo
+@onready var skill_icon: TextureRect = $Overlay/PanelRoot/SkillInfo/SkillIcon
 @onready var skill_name_label: Label = $Overlay/PanelRoot/SkillInfo/SkillName
 @onready var skill_description_label: Label = $Overlay/PanelRoot/SkillInfo/SkillDescription
 @onready var skill_cost_label: Label = $Overlay/PanelRoot/SkillInfo/SkillCost
@@ -98,6 +101,7 @@ func bind_player(player: Player) -> void:
 
 	tracked_player = player
 	if tracked_player == null:
+		portrait.position = PORTRAIT_DEFAULT_POSITION
 		close()
 		return
 
@@ -108,8 +112,10 @@ func bind_player(player: Player) -> void:
 	tracked_player.died.connect(_on_player_died)
 	skill_name_label.text = SKILL1_DISPLAY_NAME
 	skill_description_label.text = SKILL1_DESCRIPTION
+	_update_skill_tooltip()
 	portrait.sprite_frames = tracked_player.body_sprite.sprite_frames
 	portrait.play(&"normal_down")
+	portrait.position = PORTRAIT_DEFAULT_POSITION
 	attack_value.text = str(tracked_player.attack_damage)
 	_on_attack_speed_changed(tracked_player.get_attacks_per_second())
 	_on_dodge_changed(tracked_player.dodge_chance)
@@ -288,13 +294,22 @@ func _on_dodge_changed(chance: float) -> void:
 func _refresh_skill_display() -> void:
 	if tracked_player == null:
 		skill_info.visible = false
+		portrait.position = PORTRAIT_DEFAULT_POSITION
 		return
 	var has_skill := tracked_player.has_skill1()
 	skill_info.visible = has_skill
+	portrait.position = PORTRAIT_WITH_SKILL_POSITION if has_skill else PORTRAIT_DEFAULT_POSITION
 	if not has_skill:
 		return
 	var required_charge := maxf(tracked_player.skill1_charge_duration, 0.01)
-	skill_cost_label.text = "所需技力 %.1f" % required_charge
+	skill_cost_label.text = "技力 %.1f" % required_charge
+	_update_skill_tooltip()
+
+
+func _update_skill_tooltip() -> void:
+	var tooltip := "%s\n%s" % [SKILL1_DISPLAY_NAME, SKILL1_DESCRIPTION]
+	skill_info.tooltip_text = tooltip
+	skill_icon.tooltip_text = tooltip
 
 
 func _on_xirang_changed(_total: int, _added_amount: int) -> void:
