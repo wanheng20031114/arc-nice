@@ -2,7 +2,7 @@ extends SceneTree
 
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const PROFILE_PANEL_SCENE := preload("res://scene/player_profile_panel.tscn")
-const APPLE_COLLECTIBLE := preload("res://resources/config/pickups/collectible_apple.tres")
+const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
 const ITEM_DETAIL_PANEL_BG := preload("res://resources/texture/item_detail_panel_bg.png")
 const ITEM_CATEGORY_BADGE_COLLECTIBLE := preload("res://resources/texture/item_category_badge_collectible.png")

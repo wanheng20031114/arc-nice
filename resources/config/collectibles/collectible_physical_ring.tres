@@ -16,4 +16,4 @@ duration = 0.0
 collectible_effect_id = "physical_ring"
 collectible_physical_defense_bonus = 1
 collectible_physical_damage_bonus = 1
-metadata/_custom_type_script = "res://resources/config/pickups/pickup_config.gd"
+metadata/_custom_type_script = "uid://qucrregg4cq0"

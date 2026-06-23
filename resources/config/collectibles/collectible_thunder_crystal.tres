@@ -17,4 +17,4 @@ collectible_effect_id = "thunder_crystal"
 periodic_effect_id = "thunder"
 periodic_interval = 10.0
 periodic_damage = 50
-metadata/_custom_type_script = "res://resources/config/pickups/pickup_config.gd"
+metadata/_custom_type_script = "uid://qucrregg4cq0"

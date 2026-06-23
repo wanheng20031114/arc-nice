@@ -16,4 +16,4 @@ duration = 0.0
 collectible_effect_id = "amethyst"
 collectible_stacks_by_copy = true
 collectible_magic_defense_bonus = 1
-metadata/_custom_type_script = "res://resources/config/pickups/pickup_config.gd"
+metadata/_custom_type_script = "uid://qucrregg4cq0"

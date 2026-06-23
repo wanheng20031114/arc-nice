@@ -6,7 +6,7 @@ const LUOXI_SCENE := preload("res://scene/luoxi_merchant.tscn")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const INVENTORY_SLOT_SCENE := preload("res://scene/inventory_slot.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
-const APPLE_COLLECTIBLE := preload("res://resources/config/pickups/collectible_apple.tres")
+const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
 
 var failures: Array[String] = []

@@ -17,4 +17,4 @@ collectible_effect_id = "swift_crystal"
 skill_effect_id = "swift"
 skill_effect_duration = 3.0
 skill_move_speed_multiplier = 1.3
-metadata/_custom_type_script = "res://resources/config/pickups/pickup_config.gd"
+metadata/_custom_type_script = "uid://qucrregg4cq0"

@@ -15,4 +15,4 @@ icon_scale = Vector2(1, 1)
 duration = 0.0
 collectible_effect_id = "speed_ring"
 collectible_move_speed_bonus = 15.0
-metadata/_custom_type_script = "res://resources/config/pickups/pickup_config.gd"
+metadata/_custom_type_script = "uid://qucrregg4cq0"

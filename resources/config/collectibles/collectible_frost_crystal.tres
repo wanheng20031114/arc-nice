@@ -20,4 +20,4 @@ periodic_radius = 72.0
 periodic_damage = 10
 periodic_slow_multiplier = 0.5
 periodic_slow_duration = 2.0
-metadata/_custom_type_script = "res://resources/config/pickups/pickup_config.gd"
+metadata/_custom_type_script = "uid://qucrregg4cq0"

@@ -13,7 +13,7 @@ const PICKUP_SPIRAL_CONFIG := preload("res://resources/config/pickups/pickup_spi
 const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 const XIRANG_DROP_CONFIG := preload("res://resources/config/xirang_drop.tres")
-const APPLE_COLLECTIBLE := preload("res://resources/config/pickups/collectible_apple.tres")
+const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 
 var failures: Array[String] = []
 

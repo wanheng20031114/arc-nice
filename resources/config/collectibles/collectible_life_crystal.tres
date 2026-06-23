@@ -18,4 +18,4 @@ periodic_effect_id = "heal"
 periodic_interval = 15.0
 periodic_radius = 72.0
 periodic_heal = 20
-metadata/_custom_type_script = "res://resources/config/pickups/pickup_config.gd"
+metadata/_custom_type_script = "uid://qucrregg4cq0"

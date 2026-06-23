@@ -16,4 +16,4 @@ duration = 0.0
 collectible_effect_id = "gold_wine_cup"
 attack_speed_xirang_step = 100
 attack_speed_bonus_per_xirang_step = 1.0
-metadata/_custom_type_script = "res://resources/config/pickups/pickup_config.gd"
+metadata/_custom_type_script = "uid://qucrregg4cq0"

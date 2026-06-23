@@ -15,4 +15,4 @@ icon_scale = Vector2(1, 1)
 duration = 0.0
 collectible_effect_id = "life_ring"
 collectible_max_health_bonus = 20
-metadata/_custom_type_script = "res://resources/config/pickups/pickup_config.gd"
+metadata/_custom_type_script = "uid://qucrregg4cq0"

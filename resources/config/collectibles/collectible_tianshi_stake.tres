@@ -16,4 +16,4 @@ duration = 0.0
 collectible_effect_id = "tianshi_stake"
 defense_xirang_step = 1000
 defense_bonus_per_xirang_step = 1
-metadata/_custom_type_script = "res://resources/config/pickups/pickup_config.gd"
+metadata/_custom_type_script = "uid://qucrregg4cq0"
