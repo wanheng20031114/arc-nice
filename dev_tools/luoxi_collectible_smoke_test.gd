@@ -124,10 +124,18 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	var first_front := choice_overlay.get_node("Root/Center/Content/CardRow/Card0/Margin") as Control
 	var hint := choice_overlay.get_node("Root/Center/Content/Hint") as Label
 	var card_row := choice_overlay.get_node("Root/Center/Content/CardRow") as HBoxContainer
-	_expect(first_title.text == "苹果", "Luoxi card chooser must show the collectible name.")
+	var first_choice := luoxi.call("_get_current_choice_item", 0) as PickupConfig
+	var second_choice := luoxi.call("_get_current_choice_item", 1) as PickupConfig
+	_expect(first_choice != null, "Luoxi must build a first collectible choice.")
+	_expect(second_choice != null, "Luoxi must build a second collectible choice.")
 	_expect(
-		first_description.text.contains(APPLE_COLLECTIBLE.description),
-		"Luoxi card chooser must show the apple description."
+		first_choice != null and LuoxiMerchant.is_collectible_pool_path(first_choice.resource_path),
+		"Luoxi first choice must come from the collectible pool."
+	)
+	_expect(first_title.text == first_choice.display_name, "Luoxi card chooser must show the collectible name.")
+	_expect(
+		first_choice != null and first_description.text.contains(first_choice.description),
+		"Luoxi card chooser must show the collectible description."
 	)
 	_expect(first_button.text == "选择", "Luoxi card chooser must expose a select button.")
 	_expect(hint.label_settings.font_size >= 22, "Luoxi card chooser heading must be easier to read.")
@@ -172,24 +180,16 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	luoxi._unhandled_input(interact)
 	_expect(not choice_overlay.is_open(), "Luoxi card chooser must close after a selection.")
 	var item := run_state.get_item(0)
-	_expect(item == APPLE_COLLECTIBLE, "Luoxi must add the selected apple to the first inventory slot.")
-	_expect(
-		item != null and item.description == "玩家持有时发射子弹有50%概率发出可穿透敌人的子弹",
-		"Apple collectible must keep the requested description."
-	)
-	_expect(
-		is_equal_approx(player.call("_get_inventory_bullet_pierce_chance"), 0.5),
-		"Holding the apple must expose a 50% piercing bullet chance."
-	)
+	_expect(item == second_choice, "Luoxi must add the selected collectible to the first inventory slot.")
 
 	_expect(not run_state.try_use_item(0, player), "Apple collectible must not be consumable from inventory.")
-	_expect(run_state.get_item(0) == APPLE_COLLECTIBLE, "Apple collectible must remain in inventory after use attempt.")
+	_expect(run_state.get_item(0) == second_choice, "Collectibles must remain in inventory after use attempt.")
 	var slot := INVENTORY_SLOT_SCENE.instantiate() as InventorySlot
 	test_root.add_child(slot)
-	slot.set_item(APPLE_COLLECTIBLE)
+	slot.set_item(second_choice)
 	_expect(
-		slot.tooltip_text.contains(APPLE_COLLECTIBLE.description),
-		"Apple inventory tooltip must show its description."
+		second_choice != null and slot.tooltip_text.contains(second_choice.description),
+		"Collectible inventory tooltip must show its description."
 	)
 	slot.queue_free()
 
@@ -238,6 +238,7 @@ func _test_full_inventory_keeps_luoxi_choice_available() -> void:
 	var interact := _make_action("interact")
 	_open_luoxi_choice(luoxi, bubble, interact)
 	_expect(choice_overlay.is_open(), "Luoxi must still offer a collectible choice before the full inventory result.")
+	var first_choice := luoxi.call("_get_current_choice_item", 0) as PickupConfig
 
 	luoxi._unhandled_input(interact)
 	_expect(
@@ -252,9 +253,9 @@ func _test_full_inventory_keeps_luoxi_choice_available() -> void:
 	luoxi._unhandled_input(interact)
 	_open_luoxi_choice(luoxi, bubble, interact)
 	luoxi._unhandled_input(interact)
-	_expect(_dialogue_text(bubble) == "拿好苹果，可别小看它。", "Luoxi must allow the original choice after the player frees a slot.")
+	_expect(_dialogue_text(bubble) == "拿好收藏品，可别小看它。", "Luoxi must allow the original choice after the player frees a slot.")
 	_expect(bool(luoxi.call("_is_player_claimed", player)), "A successful retry must spend Luoxi's once-per-round choice.")
-	_expect(run_state.get_item(0) == APPLE_COLLECTIBLE, "The retried Luoxi choice must fill the freed inventory slot.")
+	_expect(run_state.get_item(0) == first_choice, "The retried Luoxi choice must fill the freed inventory slot.")
 
 	luoxi.queue_free()
 	player.queue_free()

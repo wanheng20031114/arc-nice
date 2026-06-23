@@ -222,10 +222,10 @@ func _test_profile_upgrade_levels_and_skill_details() -> void:
 	var health_base := player.max_health
 	var fire_interval_base := player.fire_interval
 	var dodge_base := player.dodge_chance
-	var attack_costs := [100, 270, 450, 720, 1080, 1620, 2250, 3000, 3800, 4700]
-	var health_costs := [40, 70, 90, 180, 450, 700, 1080, 1530, 2070, 2700]
-	var speed_costs := [40, 70, 90, 180, 450, 720, 1080, 1530, 2070, 2700]
-	var dodge_costs := [40, 70, 90, 180, 450, 700, 1080, 1530, 2070, 2700]
+	var attack_costs := [100, 200, 400, 700, 1000, 1600, 2200, 3000, 3800, 4700]
+	var health_costs := [40, 70, 90, 180, 450, 700, 1000, 1500, 2000, 2700]
+	var speed_costs := [40, 70, 90, 180, 450, 700, 1000, 1500, 2000, 2700]
+	var dodge_costs := [40, 70, 90, 180, 450, 700, 1000, 1500, 2000, 2700]
 
 	_expect(run_state.get_max_upgrade_level(RunStateStore.StatType.ATTACK) == 10, "Attack max upgrade level must be 10.")
 	_expect(run_state.get_max_upgrade_level(RunStateStore.StatType.HEALTH) == 10, "Health max upgrade level must be 10.")

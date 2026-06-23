@@ -38,6 +38,7 @@ var hurt_blink_time_left: float = 0.0
 var death_sequence_stage: DeathSequenceStage = DeathSequenceStage.NONE
 var death_animation_name_in_use: StringName = &""
 var physical_defense_modifiers: Dictionary = {}
+var move_speed_modifiers: Dictionary = {}
 var is_multiplayer_proxy: bool = false
 var last_damage_taken: int = 0
 var body_collision_shapes: Array[CollisionShape2D] = []
@@ -197,6 +198,27 @@ func get_effective_physical_defense() -> int:
 
 func get_effective_magic_defense() -> int:
 	return clampi(config.magic_defense if config != null else 0, 0, 100)
+
+
+func add_move_speed_modifier(source_id: int, multiplier: float) -> void:
+	if source_id == 0:
+		return
+	move_speed_modifiers[source_id] = maxf(multiplier, 0.0)
+	_clear_cached_navigation_move_direction()
+
+
+func remove_move_speed_modifier(source_id: int) -> void:
+	if not move_speed_modifiers.has(source_id):
+		return
+	move_speed_modifiers.erase(source_id)
+	_clear_cached_navigation_move_direction()
+
+
+func get_effective_move_speed() -> float:
+	var total := config.move_speed if config != null else 0.0
+	for modifier in move_speed_modifiers.values():
+		total *= maxf(float(modifier), 0.0)
+	return maxf(total, 0.0)
 
 
 func _calculate_incoming_damage(

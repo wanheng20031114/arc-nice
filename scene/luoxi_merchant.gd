@@ -3,13 +3,52 @@ class_name LuoxiMerchant
 
 const APPLE_COLLECTIBLE := preload("res://resources/config/pickups/collectible_apple.tres")
 const APPLE_ICON_BBCODE := "[img=18]res://resources/texture/apple_collectible.png[/img]"
+const GOLD_WINE_CUP_COLLECTIBLE := preload("res://resources/config/pickups/collectible_gold_wine_cup.tres")
+const TIANSHI_STAKE_COLLECTIBLE := preload("res://resources/config/pickups/collectible_tianshi_stake.tres")
+const RUBY_COLLECTIBLE := preload("res://resources/config/pickups/collectible_ruby.tres")
+const EMERALD_COLLECTIBLE := preload("res://resources/config/pickups/collectible_emerald.tres")
+const TOPAZ_COLLECTIBLE := preload("res://resources/config/pickups/collectible_topaz.tres")
+const GRAY_GEM_COLLECTIBLE := preload("res://resources/config/pickups/collectible_gray_gem.tres")
+const AMETHYST_COLLECTIBLE := preload("res://resources/config/pickups/collectible_amethyst.tres")
+const POWER_RING_COLLECTIBLE := preload("res://resources/config/pickups/collectible_power_ring.tres")
+const LIFE_RING_COLLECTIBLE := preload("res://resources/config/pickups/collectible_life_ring.tres")
+const SPEED_RING_COLLECTIBLE := preload("res://resources/config/pickups/collectible_speed_ring.tres")
+const PHYSICAL_RING_COLLECTIBLE := preload("res://resources/config/pickups/collectible_physical_ring.tres")
+const MAGIC_RING_COLLECTIBLE := preload("res://resources/config/pickups/collectible_magic_ring.tres")
+const MOON_AMULET_COLLECTIBLE := preload("res://resources/config/pickups/collectible_moon_amulet.tres")
+const THUNDER_CRYSTAL_COLLECTIBLE := preload("res://resources/config/pickups/collectible_thunder_crystal.tres")
+const FROST_CRYSTAL_COLLECTIBLE := preload("res://resources/config/pickups/collectible_frost_crystal.tres")
+const LIFE_CRYSTAL_COLLECTIBLE := preload("res://resources/config/pickups/collectible_life_crystal.tres")
+const SWIFT_CRYSTAL_COLLECTIBLE := preload("res://resources/config/pickups/collectible_swift_crystal.tres")
+const ADMIN_DOLL_COLLECTIBLE := preload("res://resources/config/pickups/collectible_admin_doll.tres")
+const COLLECTIBLE_POOL := [
+	APPLE_COLLECTIBLE,
+	GOLD_WINE_CUP_COLLECTIBLE,
+	TIANSHI_STAKE_COLLECTIBLE,
+	RUBY_COLLECTIBLE,
+	EMERALD_COLLECTIBLE,
+	TOPAZ_COLLECTIBLE,
+	GRAY_GEM_COLLECTIBLE,
+	AMETHYST_COLLECTIBLE,
+	POWER_RING_COLLECTIBLE,
+	LIFE_RING_COLLECTIBLE,
+	SPEED_RING_COLLECTIBLE,
+	PHYSICAL_RING_COLLECTIBLE,
+	MAGIC_RING_COLLECTIBLE,
+	MOON_AMULET_COLLECTIBLE,
+	THUNDER_CRYSTAL_COLLECTIBLE,
+	FROST_CRYSTAL_COLLECTIBLE,
+	LIFE_CRYSTAL_COLLECTIBLE,
+	SWIFT_CRYSTAL_COLLECTIBLE,
+	ADMIN_DOLL_COLLECTIBLE,
+]
 const DIALOGUE_LINES := [
 	"我是终末地的爪牙！",
 	"我能为你提供收藏品来强化自己。",
 ]
 const CHOICE_COUNT := 3
 const CLAIMED_LINE := "这个回合我已经把收藏品交给你了。"
-const SUCCESS_LINE := "拿好苹果，可别小看它。"
+const SUCCESS_LINE := "拿好收藏品，可别小看它。"
 const ALREADY_CLAIMED_LINE := "这个回合只能选择一次收藏品。"
 const INVENTORY_FULL_LINE := "背包已经满了，无法再继续获得收藏品。"
 const INVALID_PLAYER_LINE := "现在还不能把收藏品交给你。"
@@ -36,16 +75,35 @@ var choice_visible: bool = false
 var result_visible: bool = false
 var dialogue_lines: Array = []
 var claimed_player_keys: Dictionary = {}
+var pending_choices_by_player_key: Dictionary = {}
 
 
 static func get_choice_count() -> int:
 	return CHOICE_COUNT
 
 
+static func get_collectible_pool() -> Array:
+	return COLLECTIBLE_POOL.duplicate()
+
+
 static func get_collectible_for_choice(choice_index: int) -> PickupConfig:
-	if choice_index < 0 or choice_index >= CHOICE_COUNT:
+	if choice_index < 0 or choice_index >= COLLECTIBLE_POOL.size():
 		return null
-	return APPLE_COLLECTIBLE
+	return COLLECTIBLE_POOL[choice_index] as PickupConfig
+
+
+static func get_collectible_for_path(config_path: String) -> PickupConfig:
+	if config_path.is_empty():
+		return null
+	for item in COLLECTIBLE_POOL:
+		var config := item as PickupConfig
+		if config != null and config.resource_path == config_path:
+			return config
+	return null
+
+
+static func is_collectible_pool_path(config_path: String) -> bool:
+	return get_collectible_for_path(config_path) != null
 
 
 static func get_result_line(result_code: int) -> String:
@@ -146,7 +204,9 @@ func show_collectible_result(result_code: int) -> void:
 	result_visible = true
 	choice_overlay.hide_choices()
 	if result_code == COLLECTIBLE_RESULT_SUCCESS and active_player != null:
-		claimed_player_keys[_get_player_claim_key(active_player)] = true
+		var player_key := _get_player_claim_key(active_player)
+		claimed_player_keys[player_key] = true
+		pending_choices_by_player_key.erase(player_key)
 	dialogue_bubble.say(get_result_line(result_code))
 
 
@@ -188,20 +248,25 @@ func _select_choice(choice_index: int) -> void:
 func _try_claim_selected_collectible() -> void:
 	if active_player == null:
 		return
+	var selected_item := _get_current_choice_item(selected_choice_index)
+	if selected_item == null:
+		show_collectible_result(COLLECTIBLE_RESULT_INVALID_PLAYER)
+		return
+	var config_path := selected_item.resource_path
 	var current_scene := get_tree().current_scene
 	if current_scene != null and current_scene.has_method("request_luoxi_collectible_choice"):
-		current_scene.call("request_luoxi_collectible_choice", selected_choice_index)
+		current_scene.call("request_luoxi_collectible_choice", selected_choice_index, config_path)
 		return
-	show_collectible_result(_claim_local_collectible(active_player, selected_choice_index))
+	show_collectible_result(_claim_local_collectible(active_player, config_path))
 
 
-func _claim_local_collectible(player: Player, choice_index: int) -> int:
+func _claim_local_collectible(player: Player, config_path: String) -> int:
 	if player == null:
 		return COLLECTIBLE_RESULT_INVALID_PLAYER
 	var player_key := _get_player_claim_key(player)
 	if claimed_player_keys.has(player_key):
 		return COLLECTIBLE_RESULT_ALREADY_CLAIMED
-	var item := get_collectible_for_choice(choice_index)
+	var item := get_collectible_for_path(config_path)
 	if item == null:
 		return COLLECTIBLE_RESULT_INVALID_PLAYER
 
@@ -216,6 +281,7 @@ func _claim_local_collectible(player: Player, choice_index: int) -> int:
 	if not stored:
 		return COLLECTIBLE_RESULT_INVENTORY_FULL
 	claimed_player_keys[player_key] = true
+	pending_choices_by_player_key.erase(player_key)
 	return COLLECTIBLE_RESULT_SUCCESS
 
 
@@ -226,10 +292,34 @@ func _build_dialogue_lines(player: Player) -> Array:
 
 
 func _build_collectible_choices() -> Array:
+	var player_key := _get_player_claim_key(active_player)
+	if pending_choices_by_player_key.has(player_key):
+		return (pending_choices_by_player_key[player_key] as Array).duplicate()
+
+	var choices := _build_random_collectible_choices()
+	pending_choices_by_player_key[player_key] = choices
+	return choices.duplicate()
+
+
+func _build_random_collectible_choices() -> Array:
 	var choices: Array = []
-	for choice_index in range(CHOICE_COUNT):
-		choices.append(get_collectible_for_choice(choice_index))
+	var pool := COLLECTIBLE_POOL.duplicate()
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	for _choice_index in range(mini(CHOICE_COUNT, pool.size())):
+		var pool_index := rng.randi_range(0, pool.size() - 1)
+		choices.append(pool[pool_index])
+		pool.remove_at(pool_index)
 	return choices
+
+
+func _get_current_choice_item(choice_index: int) -> PickupConfig:
+	if choice_index < 0 or choice_index >= CHOICE_COUNT:
+		return null
+	var choices := _build_collectible_choices()
+	if choice_index >= choices.size():
+		return null
+	return choices[choice_index] as PickupConfig
 
 
 func _reset_dialogue_after_result() -> void:
@@ -323,6 +413,7 @@ func _pick_nearby_player() -> Player:
 
 func reset_round_collectible_claims() -> void:
 	claimed_player_keys.clear()
+	pending_choices_by_player_key.clear()
 	if choice_visible:
 		choice_visible = false
 		choice_overlay.hide_choices()

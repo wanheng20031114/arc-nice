@@ -264,7 +264,10 @@ func try_purchase_skill1_for_peer(peer_id: int) -> int:
 	if player_instance.has_skill1():
 		if player_instance.is_skill1_upgrade_maxed():
 			return PURCHASE_RESULT_SKILL1_UPGRADE_MAXED
-		if not player_instance.try_upgrade_skill1():
+		var free_upgrade := player_instance.has_collectible_effect(
+			PickupConfig.COLLECTIBLE_EFFECT_ADMIN_DOLL
+		)
+		if not player_instance.try_upgrade_skill1(free_upgrade):
 			return PURCHASE_RESULT_INSUFFICIENT_XIRANG
 		return PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS
 	if not player_instance.try_purchase_skill1(ZhuangfangyiMerchant.PURCHASE_COST):
@@ -300,15 +303,16 @@ func show_local_skill1_purchase_result(result_code: int) -> void:
 	merchant.show_purchase_result(result_code)
 
 
-func request_luoxi_collectible_choice(choice_index: int) -> void:
+func request_luoxi_collectible_choice(choice_index: int, config_path: String = "") -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		return
 	var peer_id := multiplayer_local_peer_id if runtime_mode != RuntimeMode.SINGLEPLAYER else 0
-	var result_code := try_claim_luoxi_collectible_for_peer(peer_id, choice_index)
+	var resolved_config_path := _resolve_luoxi_collectible_path(choice_index, config_path)
+	var result_code := try_claim_luoxi_collectible_for_peer(peer_id, resolved_config_path)
 	show_local_luoxi_collectible_result(result_code)
 
 
-func try_claim_luoxi_collectible_for_peer(peer_id: int, choice_index: int) -> int:
+func try_claim_luoxi_collectible_for_peer(peer_id: int, config_path_or_choice: Variant) -> int:
 	var player_instance := player if peer_id <= 0 else get_player_for_peer(peer_id)
 	if player_instance == null or not is_instance_valid(player_instance):
 		return LuoxiMerchant.COLLECTIBLE_RESULT_INVALID_PLAYER
@@ -317,7 +321,12 @@ func try_claim_luoxi_collectible_for_peer(peer_id: int, choice_index: int) -> in
 	if luoxi_collectible_claimed_peers.has(claim_key):
 		return LuoxiMerchant.COLLECTIBLE_RESULT_ALREADY_CLAIMED
 
-	var item := LuoxiMerchant.get_collectible_for_choice(choice_index)
+	var config_path := ""
+	if typeof(config_path_or_choice) == TYPE_INT:
+		config_path = _resolve_luoxi_collectible_path(int(config_path_or_choice), "")
+	else:
+		config_path = String(config_path_or_choice)
+	var item := LuoxiMerchant.get_collectible_for_path(config_path)
 	if item == null:
 		return LuoxiMerchant.COLLECTIBLE_RESULT_INVALID_PLAYER
 
@@ -331,6 +340,13 @@ func try_claim_luoxi_collectible_for_peer(peer_id: int, choice_index: int) -> in
 
 	luoxi_collectible_claimed_peers[claim_key] = true
 	return LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS
+
+
+func _resolve_luoxi_collectible_path(choice_index: int, config_path: String) -> String:
+	if not config_path.is_empty():
+		return config_path
+	var item := LuoxiMerchant.get_collectible_for_choice(choice_index)
+	return item.resource_path if item != null else ""
 
 
 func has_luoxi_collectible_claimed(peer_id: int) -> bool:

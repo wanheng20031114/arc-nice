@@ -16,9 +16,10 @@ const ITEM_CATEGORY_ITEM_TEXTURE := preload("res://resources/texture/item_catego
 @onready var attack_value: Label = $Overlay/PanelRoot/AttackValue
 @onready var health_value: Label = $Overlay/PanelRoot/HealthValue
 @onready var attack_speed_value: Label = $Overlay/PanelRoot/AttackSpeedValue
-@onready var attack_interval_value: Label = $Overlay/PanelRoot/AttackIntervalValue
+@onready var move_speed_value: Label = $Overlay/PanelRoot/MoveSpeedValue
 @onready var dodge_value: Label = $Overlay/PanelRoot/DodgeValue
-@onready var method_value: Label = $Overlay/PanelRoot/MethodValue
+@onready var physical_defense_value: Label = $Overlay/PanelRoot/PhysicalDefenseValue
+@onready var magic_defense_value: Label = $Overlay/PanelRoot/MagicDefenseValue
 @onready var skill_info: Control = $Overlay/PanelRoot/SkillInfo
 @onready var skill_name_label: Label = $Overlay/PanelRoot/SkillInfo/SkillName
 @onready var skill_description_label: Label = $Overlay/PanelRoot/SkillInfo/SkillDescription
@@ -112,7 +113,6 @@ func bind_player(player: Player) -> void:
 	attack_value.text = str(tracked_player.attack_damage)
 	_on_attack_speed_changed(tracked_player.get_attacks_per_second())
 	_on_dodge_changed(tracked_player.dodge_chance)
-	method_value.text = tracked_player.attack_method_name
 	_on_health_changed(tracked_player.current_health, tracked_player.max_health)
 	_refresh_inventory()
 	_refresh_upgrades()
@@ -220,7 +220,9 @@ func _refresh_stat_display() -> void:
 	_on_health_changed(tracked_player.current_health, tracked_player.max_health)
 	_on_attack_speed_changed(tracked_player.get_attacks_per_second())
 	_on_dodge_changed(tracked_player.dodge_chance)
-	method_value.text = tracked_player.attack_method_name
+	move_speed_value.text = str(roundi(tracked_player.move_speed))
+	physical_defense_value.text = str(tracked_player.physical_defense)
+	magic_defense_value.text = str(tracked_player.magic_defense)
 	_refresh_skill_display()
 
 
@@ -277,7 +279,6 @@ func _on_health_changed(current: int, maximum: int) -> void:
 func _on_attack_speed_changed(attacks_per_second: float) -> void:
 	var safe_attacks_per_second := maxf(attacks_per_second, 0.01)
 	attack_speed_value.text = "%.2f/s" % safe_attacks_per_second
-	attack_interval_value.text = "%.2fs" % (1.0 / safe_attacks_per_second)
 
 
 func _on_dodge_changed(chance: float) -> void:

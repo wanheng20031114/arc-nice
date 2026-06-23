@@ -47,9 +47,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _get_move_speed() -> float:
-	if config == null:
-		return 0.0
-	return config.move_speed
+	return get_effective_move_speed()
 
 
 func _get_navigation_move_direction(delta: float) -> Vector2:

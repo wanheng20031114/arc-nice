@@ -309,7 +309,7 @@ func _has_clear_world_line_to_target() -> bool:
 
 
 func _get_move_speed() -> float:
-	return config.move_speed if config != null else 0.0
+	return get_effective_move_speed()
 
 
 func _get_navigation_move_direction(delta: float) -> Vector2:

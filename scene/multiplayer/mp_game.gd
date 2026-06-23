@@ -5,6 +5,8 @@ const GAME_SCENE := preload("res://scene/game.tscn")
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const SKILL1_BOMB_SCENE := preload("res://scene/weishidaier_skill1_bomb.tscn")
+const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/collectible_area_effect.tscn")
+const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
 const CAPOO_AK47_BULLET_SCENE := preload("res://scene/enemy/capoo_ak47_bullet.tscn")
 const CAPOO_RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo_rpg_rocket.tscn")
 const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
@@ -162,17 +164,32 @@ func request_multiplayer_skill1_purchase() -> void:
 		net_skill1_purchase_requested.rpc_id(_get_host_peer_id())
 
 
-func request_luoxi_collectible_choice(choice_index: int) -> void:
+func request_luoxi_collectible_choice(choice_index: int, config_path: String = "") -> void:
 	if net_manager.is_host():
-		_apply_luoxi_collectible_choice_for_peer(_get_local_peer_id(), choice_index)
+		_apply_luoxi_collectible_choice_for_peer(_get_local_peer_id(), choice_index, config_path)
 	else:
-		net_luoxi_collectible_choice_requested.rpc_id(_get_host_peer_id(), choice_index)
+		net_luoxi_collectible_choice_requested.rpc_id(_get_host_peer_id(), choice_index, config_path)
 
 
 func has_luoxi_collectible_claimed(peer_id: int) -> bool:
 	if game == null:
 		return false
 	return game.has_luoxi_collectible_claimed(peer_id)
+
+
+func broadcast_collectible_visual_effect(
+	effect_type: StringName,
+	spawn_position: Vector2,
+	radius: float,
+	color: Color,
+	duration: float
+) -> void:
+	if net_manager == null or not net_manager.is_host():
+		return
+	_rpc_to_connected_clients(
+		&"net_collectible_visual_effect",
+		[String(effect_type), spawn_position, radius, color, duration]
+	)
 
 
 func request_multiplayer_cheat_xirang() -> void:
@@ -984,7 +1001,10 @@ func _get_authoritative_client_projectile_parameters(
 			if bullet == null:
 				return {}
 			var bullet_result := {
-				"damage": owner_player.attack_damage,
+				"damage": owner_player.get_outgoing_damage(
+					owner_player.attack_damage,
+					EnemyConfig.DamageType.PHYSICAL
+				),
 				"speed": bullet.speed,
 				"lifetime": bullet.max_lifetime,
 				"can_pierce_enemies": owner_player._get_inventory_bullet_pierce_chance() > 0.0,
@@ -994,11 +1014,12 @@ func _get_authoritative_client_projectile_parameters(
 		&"skill1_bomb":
 			if not owner_player.consume_multiplayer_skill1_charge():
 				return {}
+			owner_player.activate_collectible_skill_effects_from_multiplayer()
 			var bomb := SKILL1_BOMB_SCENE.instantiate() as WeishidaierSkill1Bomb
 			if bomb == null:
 				return {}
 			var bomb_result := {
-				"damage": floori(float(owner_player.attack_damage) * 3.3),
+				"damage": owner_player.get_skill1_bomb_damage(),
 				"speed": bomb.speed,
 				"lifetime": bomb.max_lifetime,
 			}
@@ -1053,11 +1074,14 @@ func _get_bounded_player_projectile_damage(owner_peer_id: int, reported_damage: 
 		owner_player = game.get_player_for_peer(owner_peer_id)
 	if owner_player == null or not is_instance_valid(owner_player):
 		return -1
-	var max_authoritative_damage := owner_player.attack_damage
+	var max_authoritative_damage := owner_player.get_outgoing_damage(
+		owner_player.attack_damage,
+		EnemyConfig.DamageType.PHYSICAL
+	)
 	if owner_player.has_skill1():
 		max_authoritative_damage = maxi(
 			max_authoritative_damage,
-			floori(float(owner_player.attack_damage) * 3.3)
+			owner_player.get_skill1_bomb_damage()
 		)
 	return clampi(reported_damage, 1, max_authoritative_damage)
 
@@ -2070,13 +2094,13 @@ func net_skill1_purchase_requested() -> void:
 
 
 @rpc("any_peer", "call_remote", "reliable", 4)
-func net_luoxi_collectible_choice_requested(choice_index: int) -> void:
+func net_luoxi_collectible_choice_requested(choice_index: int, config_path: String) -> void:
 	if not net_manager.is_host():
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id <= 0:
 		return
-	_apply_luoxi_collectible_choice_for_peer(sender_id, choice_index)
+	_apply_luoxi_collectible_choice_for_peer(sender_id, choice_index, config_path)
 
 
 @rpc("any_peer", "call_remote", "reliable", 4)
@@ -2204,6 +2228,17 @@ func net_luoxi_collectible_confirmed(
 
 
 @rpc("authority", "call_remote", "reliable", 4)
+func net_collectible_visual_effect(
+	effect_type: String,
+	spawn_position: Vector2,
+	radius: float,
+	color: Color,
+	duration: float
+) -> void:
+	_spawn_collectible_visual_effect(effect_type, spawn_position, radius, color, duration)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
 func net_cheat_xirang_confirmed(peer_id: int, current_xirang: int, added_amount: int) -> void:
 	if game == null:
 		return
@@ -2298,20 +2333,52 @@ func _apply_skill1_purchase_for_peer(peer_id: int) -> void:
 		)
 
 
-func _apply_luoxi_collectible_choice_for_peer(peer_id: int, choice_index: int) -> void:
+func _apply_luoxi_collectible_choice_for_peer(
+	peer_id: int,
+	choice_index: int,
+	config_path: String
+) -> void:
 	if game == null or peer_id <= 0:
 		return
-	var result_code := game.try_claim_luoxi_collectible_for_peer(peer_id, choice_index)
-	var item := LuoxiMerchant.get_collectible_for_choice(choice_index)
-	var config_path := item.resource_path if item != null else ""
+	var resolved_config_path := config_path
+	if resolved_config_path.is_empty():
+		var item := LuoxiMerchant.get_collectible_for_choice(choice_index)
+		resolved_config_path = item.resource_path if item != null else ""
+	var result_code := game.try_claim_luoxi_collectible_for_peer(peer_id, resolved_config_path)
 	if result_code != LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS:
-		config_path = ""
+		resolved_config_path = ""
 	_rpc_to_connected_clients(
 		&"net_luoxi_collectible_confirmed",
-		[peer_id, choice_index, config_path, result_code]
+		[peer_id, choice_index, resolved_config_path, result_code]
 	)
 	if peer_id == _get_local_peer_id():
-		net_luoxi_collectible_confirmed(peer_id, choice_index, config_path, result_code)
+		net_luoxi_collectible_confirmed(peer_id, choice_index, resolved_config_path, result_code)
+
+
+func _spawn_collectible_visual_effect(
+	effect_type: String,
+	spawn_position: Vector2,
+	radius: float,
+	color: Color,
+	duration: float
+) -> void:
+	match effect_type:
+		"lightning":
+			var lightning := COLLECTIBLE_LIGHTNING_EFFECT_SCENE.instantiate() as CollectibleLightningEffect
+			if lightning == null:
+				return
+			lightning.top_level = true
+			lightning.setup(duration)
+			add_child(lightning)
+			lightning.global_position = spawn_position
+		"area":
+			var area := COLLECTIBLE_AREA_EFFECT_SCENE.instantiate() as CollectibleAreaEffect
+			if area == null:
+				return
+			area.top_level = true
+			area.setup(radius, color, duration)
+			add_child(area)
+			area.global_position = spawn_position
 
 
 func _apply_cheat_xirang_for_peer(peer_id: int) -> void:

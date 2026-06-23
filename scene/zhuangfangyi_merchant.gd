@@ -10,6 +10,8 @@ const DIALOGUE_LINES := [
 const SKILL1_ICON_BBCODE := "[img=22]res://resources/texture/weishidaier_skill1_icon.png[/img]"
 const SKILL1_UPGRADE_INTRO_LINE := "如果有足够的息壤，我可以为你提供全新的升级。"
 const SKILL1_UPGRADE_OFFER_FORMAT := "是否要花费[color=#1a8a3e]%d息壤[/color]升级 %s ？"
+const ADMIN_DOLL_UPGRADE_INTRO_LINE := "听说你有管理员人偶，我可以帮你升级技能。"
+const ADMIN_DOLL_UPGRADE_OFFER_FORMAT := "是否要[color=#55e68a]免费[/color]升级 %s ？"
 const PURCHASE_COST := 200
 const INSUFFICIENT_XIRANG_LINE := "息壤不足。"
 const ALREADY_PURCHASED_LINE := "你已经掌握这个技能了。"
@@ -122,7 +124,8 @@ func _try_purchase_skill() -> void:
 		dialogue_bubble.say(MAX_UPGRADED_LINE)
 		purchase_result_visible = true
 		return
-	if not active_player.try_upgrade_skill1():
+	var has_admin_doll := active_player.has_collectible_effect(PickupConfig.COLLECTIBLE_EFFECT_ADMIN_DOLL)
+	if not active_player.try_upgrade_skill1(has_admin_doll):
 		dialogue_bubble.say(INSUFFICIENT_XIRANG_LINE)
 		purchase_result_visible = true
 		return
@@ -153,6 +156,11 @@ func _build_dialogue_lines(player: Player) -> Array:
 		return DIALOGUE_LINES.duplicate()
 	if player.is_skill1_upgrade_maxed():
 		return [MAX_UPGRADED_LINE]
+	if player.has_collectible_effect(PickupConfig.COLLECTIBLE_EFFECT_ADMIN_DOLL):
+		return [
+			ADMIN_DOLL_UPGRADE_INTRO_LINE,
+			ADMIN_DOLL_UPGRADE_OFFER_FORMAT % SKILL1_ICON_BBCODE,
+		]
 	return [
 		SKILL1_UPGRADE_INTRO_LINE,
 		SKILL1_UPGRADE_OFFER_FORMAT % [

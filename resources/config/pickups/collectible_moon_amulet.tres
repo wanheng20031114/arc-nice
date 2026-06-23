@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/collectibles/moon_amulet.png" id="1_icon"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 5
+display_name = "月亮护符"
+drop_weight = 0.0
+description = "开启技能时，以自身为中心生成持续8秒的圆形护盾，护盾内友方单位受到的伤害减半"
+can_store_in_inventory = true
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(1, 1)
+duration = 0.0
+collectible_effect_id = "moon_amulet"
+skill_effect_id = "moon_shield"
+skill_effect_radius = 96.0
+skill_effect_duration = 8.0
+metadata/_custom_type_script = "res://resources/config/pickups/pickup_config.gd"

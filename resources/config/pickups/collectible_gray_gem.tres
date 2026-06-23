@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/collectibles/gray_gem.png" id="1_icon"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 5
+display_name = "灰宝石"
+drop_weight = 0.0
+description = "持有时，物理防御+1"
+can_store_in_inventory = true
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(1, 1)
+duration = 0.0
+collectible_effect_id = "gray_gem"
+collectible_stacks_by_copy = true
+collectible_physical_defense_bonus = 1
+metadata/_custom_type_script = "res://resources/config/pickups/pickup_config.gd"

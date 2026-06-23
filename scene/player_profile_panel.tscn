@@ -298,23 +298,23 @@ label_settings = SubResource("LabelSettings_value_small")
 horizontal_alignment = 2
 vertical_alignment = 1
 
-[node name="AttackIntervalLabel" type="Label" parent="Overlay/PanelRoot"]
+[node name="MoveSpeedLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 48.0
 offset_top = 349.0
 offset_right = 150.0
 offset_bottom = 371.0
-text = "攻击间隔"
+text = "移动速度"
 label_settings = SubResource("LabelSettings_stat_small")
 vertical_alignment = 1
 
-[node name="AttackIntervalValue" type="Label" parent="Overlay/PanelRoot"]
+[node name="MoveSpeedValue" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 142.0
 offset_top = 349.0
 offset_right = 248.0
 offset_bottom = 371.0
-text = "0.18s"
+text = "120"
 label_settings = SubResource("LabelSettings_value_small")
 horizontal_alignment = 2
 vertical_alignment = 1
@@ -340,23 +340,44 @@ label_settings = SubResource("LabelSettings_value_small")
 horizontal_alignment = 2
 vertical_alignment = 1
 
-[node name="MethodLabel" type="Label" parent="Overlay/PanelRoot"]
+[node name="PhysicalDefenseLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 48.0
 offset_top = 395.0
 offset_right = 150.0
 offset_bottom = 417.0
-text = "攻击方式"
+text = "物理防御"
 label_settings = SubResource("LabelSettings_stat_small")
 vertical_alignment = 1
 
-[node name="MethodValue" type="Label" parent="Overlay/PanelRoot"]
+[node name="PhysicalDefenseValue" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 142.0
 offset_top = 395.0
 offset_right = 248.0
 offset_bottom = 417.0
-text = "枪"
+text = "0"
+label_settings = SubResource("LabelSettings_value_small")
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="MagicDefenseLabel" type="Label" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 48.0
+offset_top = 418.0
+offset_right = 150.0
+offset_bottom = 440.0
+text = "魔法防御"
+label_settings = SubResource("LabelSettings_stat_small")
+vertical_alignment = 1
+
+[node name="MagicDefenseValue" type="Label" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 142.0
+offset_top = 418.0
+offset_right = 248.0
+offset_bottom = 440.0
+text = "0"
 label_settings = SubResource("LabelSettings_value_small")
 horizontal_alignment = 2
 vertical_alignment = 1
@@ -365,9 +386,9 @@ vertical_alignment = 1
 visible = false
 layout_mode = 0
 offset_left = 39.0
-offset_top = 420.0
+offset_top = 443.0
 offset_right = 260.0
-offset_bottom = 513.0
+offset_bottom = 536.0
 
 [node name="SkillIcon" type="TextureRect" parent="Overlay/PanelRoot/SkillInfo"]
 layout_mode = 0

@@ -56,6 +56,9 @@ var client_movement_prediction_only: bool = false
 
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const SKILL1_BOMB_SCENE := preload("res://scene/weishidaier_skill1_bomb.tscn")
+const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/collectible_area_effect.tscn")
+const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
+const COLLECTIBLE_MOON_SHIELD_SCENE := preload("res://scene/collectible_moon_shield.tscn")
 const NORMAL_ANIMATION_PREFIX := &"normal"
 const ARMED_ANIMATION_PREFIX := &"armed"
 const DEFAULT_FIRE_RATE_MULTIPLIER := 1.0
@@ -76,6 +79,7 @@ const DODGE_EFFECT_DURATION := 0.28
 const ATTACK_SPEED_UPGRADE_INTERVAL_MULTIPLIER := 0.95
 const DODGE_UPGRADE_CHANCE_STEP := 0.02
 const PIERCING_BULLET_TINT := Color(1.0, 0.36, 0.34, 1.0)
+const DEFAULT_MAGIC_DEFENSE_LIMIT := 100
 
 var facing_suffix: StringName = &"right"
 
@@ -104,10 +108,27 @@ var skill1_upgrade_level: int = 0
 var skill1_base_charge_duration: float = 0.0
 var last_attack_direction: Vector2 = Vector2.RIGHT
 var dodge_feedback_tween: Tween = null
+var damage_reduction_modifiers: Dictionary = {}
+var collectible_periodic_cooldowns: Dictionary = {}
+var collectible_swift_time_left: float = 0.0
+var collectible_swift_move_speed_multiplier: float = 1.0
+var collectible_physical_damage_bonus: int = 0
+var collectible_magic_damage_bonus: int = 0
+var collectible_attack_speed_bonus: float = 0.0
+var _base_stats_initialized: bool = false
+var _base_move_speed: float = 0.0
+var _base_max_health: int = 0
+var _base_attack_damage: int = 0
+var _base_physical_defense: int = 0
+var _base_magic_defense: int = 0
+var _base_fire_interval: float = 0.0
 
 
 # 节点首次进入场景树时的初始化逻辑
 func _ready() -> void:
+	_initialize_base_stats()
+	_connect_collectible_refresh_signals()
+	_refresh_collectible_stats(false)
 	_ensure_skill1_base_charge_duration()
 	current_health = maxi(max_health, 1)
 	shooting_timer.one_shot = true
@@ -121,6 +142,26 @@ func _ready() -> void:
 	_update_armed_effect()
 	_update_skill1_charge_bar()
 	get_window().focus_exited.connect(_on_window_focus_exited)
+
+
+func _initialize_base_stats() -> void:
+	if _base_stats_initialized:
+		return
+	_base_move_speed = move_speed
+	_base_max_health = max_health
+	_base_attack_damage = attack_damage
+	_base_physical_defense = physical_defense
+	_base_magic_defense = magic_defense
+	_base_fire_interval = fire_interval
+	_base_stats_initialized = true
+
+
+func _connect_collectible_refresh_signals() -> void:
+	var run_state := get_node_or_null("/root/RunState") as RunStateStore
+	if run_state != null and not run_state.inventory_changed.is_connected(_on_collectible_inventory_changed):
+		run_state.inventory_changed.connect(_on_collectible_inventory_changed)
+	if not xirang_changed.is_connected(_on_collectible_xirang_changed):
+		xirang_changed.connect(_on_collectible_xirang_changed)
 
 
 func _process(_delta: float) -> void:
@@ -171,6 +212,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	_update_invincibility(delta)
 	_update_pickup_effects(delta)
+	_update_collectible_runtime_effects(delta)
 	_update_skill1_charge(delta)
 	
 	if is_dead:
@@ -319,9 +361,18 @@ func _calculate_incoming_damage(
 	match damage_type:
 		EnemyConfig.DamageType.MAGIC:
 			var defense_ratio := float(100 - clampi(magic_defense, 0, 100)) / 100.0
-			return maxi(floori(float(amount) * defense_ratio), 1)
+			return _apply_damage_reduction(maxi(floori(float(amount) * defense_ratio), 1))
 		_:
-			return maxi(amount - maxi(physical_defense, 0), 1)
+			return _apply_damage_reduction(maxi(amount - maxi(physical_defense, 0), 1))
+
+
+func _apply_damage_reduction(amount: int) -> int:
+	var strongest_reduction := 0.0
+	for reduction in damage_reduction_modifiers.values():
+		strongest_reduction = maxf(strongest_reduction, float(reduction))
+	if strongest_reduction <= 0.0:
+		return amount
+	return maxi(floori(float(amount) * (1.0 - clampf(strongest_reduction, 0.0, 0.95))), 1)
 	
 # 获取当前生命值
 func get_current_health() -> int:
@@ -330,6 +381,48 @@ func get_current_health() -> int:
 
 func get_attacks_per_second() -> float:
 	return 1.0 / _get_effective_fire_interval()
+
+
+func refresh_collectible_stats() -> void:
+	_refresh_collectible_stats()
+
+
+func has_collectible_effect(effect_id: String) -> bool:
+	if effect_id.is_empty():
+		return false
+	for item in _get_active_collectible_items():
+		if item.collectible_effect_id == effect_id:
+			return true
+	return false
+
+
+func get_outgoing_damage(
+	base_amount: int,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
+) -> int:
+	var bonus := (
+		collectible_magic_damage_bonus
+		if damage_type == EnemyConfig.DamageType.MAGIC
+		else collectible_physical_damage_bonus
+	)
+	return maxi(base_amount + bonus, 1)
+
+
+func get_skill1_bomb_damage() -> int:
+	return get_outgoing_damage(
+		floori(float(attack_damage) * 3.3),
+		EnemyConfig.DamageType.PHYSICAL
+	)
+
+
+func add_damage_reduction_modifier(source_id: int, reduction: float) -> void:
+	if source_id == 0:
+		return
+	damage_reduction_modifiers[source_id] = clampf(reduction, 0.0, 0.95)
+
+
+func remove_damage_reduction_modifier(source_id: int) -> void:
+	damage_reduction_modifiers.erase(source_id)
 
 
 func set_controls_locked(locked: bool) -> void:
@@ -402,6 +495,7 @@ func apply_remote_multiplayer_view_state(
 func update_multiplayer_authority_passive_state(delta: float) -> void:
 	_update_invincibility(delta)
 	_update_pickup_effects(delta)
+	_update_collectible_runtime_effects(delta)
 	_update_skill1_charge(delta)
 	if is_dead:
 		return
@@ -692,19 +786,26 @@ func is_skill1_upgrade_maxed() -> bool:
 	return skill1_upgrade_level >= SKILL1_MAX_UPGRADE_LEVEL
 
 
-func try_upgrade_skill1() -> bool:
+func try_upgrade_skill1(free: bool = false) -> bool:
 	if not skill1_unlocked:
 		return false
 	if is_skill1_upgrade_maxed():
 		return false
 	var upgrade_cost := get_skill1_upgrade_cost()
-	if upgrade_cost < 0 or current_xirang < upgrade_cost:
+	if upgrade_cost < 0:
 		return false
+	if not free:
+		if current_xirang < upgrade_cost:
+			return false
+		current_xirang -= upgrade_cost
+		xirang_changed.emit(current_xirang, -upgrade_cost)
 
-	current_xirang -= upgrade_cost
-	xirang_changed.emit(current_xirang, -upgrade_cost)
 	_apply_next_skill1_upgrade()
 	return true
+
+
+func try_upgrade_skill1_free() -> bool:
+	return try_upgrade_skill1(true)
 
 
 func apply_skill1_upgrade_state(upgrade_level: int, _charge_duration: float = -1.0) -> void:
@@ -792,7 +893,8 @@ func _spawn_bullet(shoot_direction: Vector2, track_attack_direction: bool = true
 
 	bullet.top_level = true
 	var pierces_enemies := _should_fire_piercing_bullet()
-	bullet.setup(shoot_direction, attack_damage, pierces_enemies)
+	var bullet_damage := get_outgoing_damage(attack_damage, EnemyConfig.DamageType.PHYSICAL)
+	bullet.setup(shoot_direction, bullet_damage, pierces_enemies)
 	if pierces_enemies:
 		bullet.modulate = PIERCING_BULLET_TINT
 	spawn_parent.add_child(bullet)
@@ -802,7 +904,7 @@ func _spawn_bullet(shoot_direction: Vector2, track_attack_direction: bool = true
 		&"player_bullet",
 		bullet.global_position,
 		shoot_direction,
-		attack_damage,
+		bullet_damage,
 		bullet.speed,
 		bullet.max_lifetime,
 		pierces_enemies
@@ -857,7 +959,8 @@ func _try_use_skill1() -> bool:
 
 	var shoot_direction := _get_skill1_direction()
 	bomb.top_level = true
-	bomb.setup(self, shoot_direction, floori(float(attack_damage) * 3.3))
+	var bomb_damage := get_skill1_bomb_damage()
+	bomb.setup(self, shoot_direction, bomb_damage)
 	spawn_parent.add_child(bomb)
 	bomb.global_position = global_position + shoot_direction * skill1_bomb_spawn_distance
 	_register_multiplayer_projectile(
@@ -865,12 +968,13 @@ func _try_use_skill1() -> bool:
 		&"skill1_bomb",
 		bomb.global_position,
 		shoot_direction,
-		floori(float(attack_damage) * 3.3),
+		bomb_damage,
 		bomb.speed,
 		bomb.max_lifetime
 	)
 	skill1_charge = 0.0
 	_update_skill1_charge_bar()
+	_activate_collectible_skill_effects()
 	gunload_audio.play()
 	return true
 
@@ -929,6 +1033,312 @@ func _get_inventory_bullet_pierce_chance() -> float:
 	return clampf(best_chance, 0.0, 1.0)
 
 
+func _on_collectible_inventory_changed() -> void:
+	_refresh_collectible_stats()
+
+
+func _on_collectible_xirang_changed(_total: int, _added_amount: int) -> void:
+	_refresh_collectible_stats()
+
+
+func _refresh_collectible_stats(emit_changes: bool = true) -> void:
+	_initialize_base_stats()
+
+	var attack_bonus := 0
+	var max_health_bonus := 0
+	var move_speed_bonus := 0.0
+	var physical_defense_bonus := 0
+	var magic_defense_bonus := 0
+	var physical_damage_bonus := 0
+	var magic_damage_bonus := 0
+	var attack_speed_bonus := 0.0
+	var active_periodic_keys: Dictionary = {}
+
+	for item in _get_active_collectible_items():
+		attack_bonus += item.collectible_attack_bonus
+		max_health_bonus += item.collectible_max_health_bonus
+		move_speed_bonus += item.collectible_move_speed_bonus
+		physical_defense_bonus += item.collectible_physical_defense_bonus
+		magic_defense_bonus += item.collectible_magic_defense_bonus
+		physical_damage_bonus += item.collectible_physical_damage_bonus
+		magic_damage_bonus += item.collectible_magic_damage_bonus
+		if item.attack_speed_xirang_step > 0:
+			attack_speed_bonus += (
+				floori(float(current_xirang) / float(item.attack_speed_xirang_step))
+				* item.attack_speed_bonus_per_xirang_step
+			)
+		if item.defense_xirang_step > 0:
+			var defense_steps := floori(float(current_xirang) / float(item.defense_xirang_step))
+			var dynamic_defense := defense_steps * item.defense_bonus_per_xirang_step
+			physical_defense_bonus += dynamic_defense
+			magic_defense_bonus += dynamic_defense
+		if not item.periodic_effect_id.is_empty():
+			active_periodic_keys[_get_collectible_runtime_key(item)] = true
+
+	var old_max_health := max_health
+	attack_damage = maxi(_base_attack_damage + attack_bonus, 1)
+	max_health = maxi(_base_max_health + max_health_bonus, 1)
+	move_speed = maxf(_base_move_speed + move_speed_bonus, 0.0)
+	physical_defense = maxi(_base_physical_defense + physical_defense_bonus, 0)
+	magic_defense = clampi(_base_magic_defense + magic_defense_bonus, 0, DEFAULT_MAGIC_DEFENSE_LIMIT)
+	fire_interval = maxf(_base_fire_interval, 0.01)
+	collectible_physical_damage_bonus = physical_damage_bonus
+	collectible_magic_damage_bonus = magic_damage_bonus
+	collectible_attack_speed_bonus = attack_speed_bonus
+
+	for cooldown_key in collectible_periodic_cooldowns.keys():
+		if not active_periodic_keys.has(cooldown_key):
+			collectible_periodic_cooldowns.erase(cooldown_key)
+
+	if old_max_health != max_health:
+		current_health = clampi(current_health, 0, max_health)
+		if health_bar != null:
+			health_bar.set_health(current_health, max_health)
+		if emit_changes:
+			health_changed.emit(current_health, max_health)
+	_refresh_shooting_timer_wait_time()
+
+
+func _get_active_collectible_items() -> Array[PickupConfig]:
+	var result: Array[PickupConfig] = []
+	var run_state := get_node_or_null("/root/RunState") as RunStateStore
+	if run_state == null:
+		return result
+
+	var seen_unique_effects: Dictionary = {}
+	for slot_index in range(RunStateStore.INVENTORY_CAPACITY):
+		var item := _get_inventory_item(run_state, slot_index)
+		if item == null:
+			continue
+		if item.pickup_type != PickupConfig.PickupType.COLLECTIBLE:
+			continue
+		if item.collectible_stacks_by_copy:
+			result.append(item)
+			continue
+		var effect_key := _get_collectible_runtime_key(item)
+		if seen_unique_effects.has(effect_key):
+			continue
+		seen_unique_effects[effect_key] = true
+		result.append(item)
+	return result
+
+
+func _get_inventory_item(run_state: RunStateStore, slot_index: int) -> PickupConfig:
+	if peer_id > 0:
+		return run_state.get_item_for_peer(peer_id, slot_index)
+	return run_state.get_item(slot_index)
+
+
+func _get_collectible_runtime_key(item: PickupConfig) -> String:
+	if item == null:
+		return ""
+	if not item.collectible_effect_id.is_empty():
+		return item.collectible_effect_id
+	return item.resource_path
+
+
+func _update_collectible_runtime_effects(delta: float) -> void:
+	if collectible_swift_time_left > 0.0:
+		collectible_swift_time_left = maxf(collectible_swift_time_left - delta, 0.0)
+		if collectible_swift_time_left <= 0.0:
+			collectible_swift_move_speed_multiplier = 1.0
+
+	if not _should_run_authoritative_collectible_effects():
+		return
+
+	for item in _get_active_collectible_items():
+		if item.periodic_effect_id.is_empty() or item.periodic_interval <= 0.0:
+			continue
+		var cooldown_key := _get_collectible_runtime_key(item)
+		var cooldown := float(
+			collectible_periodic_cooldowns.get(cooldown_key, item.periodic_interval)
+		)
+		cooldown -= delta
+		if cooldown > 0.0:
+			collectible_periodic_cooldowns[cooldown_key] = cooldown
+			continue
+		_trigger_collectible_periodic_effect(item)
+		collectible_periodic_cooldowns[cooldown_key] = maxf(item.periodic_interval, 0.1)
+
+
+func _trigger_collectible_periodic_effect(item: PickupConfig) -> void:
+	match item.periodic_effect_id:
+		PickupConfig.PERIODIC_EFFECT_THUNDER:
+			_trigger_thunder_crystal(item)
+		PickupConfig.PERIODIC_EFFECT_FROST:
+			_trigger_frost_crystal(item)
+		PickupConfig.PERIODIC_EFFECT_HEAL:
+			_trigger_life_crystal(item)
+
+
+func _trigger_thunder_crystal(item: PickupConfig) -> void:
+	var enemies := _collect_alive_enemies()
+	if enemies.is_empty():
+		return
+	var enemy := enemies[randi() % enemies.size()]
+	if enemy == null or not is_instance_valid(enemy):
+		return
+	var damage := get_outgoing_damage(item.periodic_damage, EnemyConfig.DamageType.MAGIC)
+	enemy.apply_damage(damage, Vector2.DOWN, EnemyConfig.DamageType.MAGIC)
+	_spawn_collectible_lightning_effect(enemy.global_position)
+
+
+func _trigger_frost_crystal(item: PickupConfig) -> void:
+	var radius := maxf(item.periodic_radius, 1.0)
+	var damage := get_outgoing_damage(item.periodic_damage, EnemyConfig.DamageType.MAGIC)
+	var slow_source_id := int(Time.get_ticks_msec() + get_instance_id())
+	for enemy in _collect_alive_enemies():
+		if enemy == null or not is_instance_valid(enemy):
+			continue
+		if global_position.distance_to(enemy.global_position) > radius:
+			continue
+		enemy.apply_damage(damage, enemy.global_position.direction_to(global_position), EnemyConfig.DamageType.MAGIC)
+		enemy.add_move_speed_modifier(slow_source_id, item.periodic_slow_multiplier)
+		if item.periodic_slow_duration > 0.0:
+			get_tree().create_timer(item.periodic_slow_duration).timeout.connect(
+				_remove_collectible_enemy_slow.bind(enemy, slow_source_id)
+			)
+	_spawn_collectible_area_effect(radius, Color(0.46, 0.86, 1.0, 0.48), 0.52)
+
+
+func _trigger_life_crystal(item: PickupConfig) -> void:
+	var radius := maxf(item.periodic_radius, 1.0)
+	for target_player in _collect_alive_players():
+		if target_player == null or not is_instance_valid(target_player):
+			continue
+		if global_position.distance_to(target_player.global_position) > radius:
+			continue
+		target_player._try_heal(item.periodic_heal)
+	_spawn_collectible_area_effect(radius, Color(0.45, 1.0, 0.58, 0.42), 0.52)
+
+
+func _remove_collectible_enemy_slow(enemy: Enemy, source_id: int) -> void:
+	if enemy == null or not is_instance_valid(enemy):
+		return
+	enemy.remove_move_speed_modifier(source_id)
+
+
+func _collect_alive_enemies() -> Array[Enemy]:
+	var result: Array[Enemy] = []
+	var root := get_tree().current_scene
+	if root == null:
+		return result
+	_collect_alive_enemies_recursive(root, result)
+	return result
+
+
+func _collect_alive_enemies_recursive(node: Node, result: Array[Enemy]) -> void:
+	var enemy := node as Enemy
+	if enemy != null and not enemy.is_dead:
+		result.append(enemy)
+	for child in node.get_children():
+		_collect_alive_enemies_recursive(child, result)
+
+
+func _collect_alive_players() -> Array[Player]:
+	var result: Array[Player] = []
+	var root := get_tree().current_scene
+	if root == null:
+		return result
+	_collect_alive_players_recursive(root, result)
+	return result
+
+
+func _collect_alive_players_recursive(node: Node, result: Array[Player]) -> void:
+	var player_node := node as Player
+	if player_node != null and not player_node.is_dead:
+		result.append(player_node)
+	for child in node.get_children():
+		_collect_alive_players_recursive(child, result)
+
+
+func _should_run_authoritative_collectible_effects() -> bool:
+	var net_manager := get_node_or_null("/root/NetManager")
+	if net_manager == null or not net_manager.has_method("is_multiplayer_active"):
+		return true
+	if not bool(net_manager.call("is_multiplayer_active")):
+		return true
+	return bool(net_manager.call("is_host"))
+
+
+func _spawn_collectible_area_effect(radius: float, color: Color, duration: float) -> void:
+	var effect := COLLECTIBLE_AREA_EFFECT_SCENE.instantiate() as CollectibleAreaEffect
+	if effect == null:
+		return
+	var spawn_parent := get_tree().current_scene
+	if spawn_parent == null:
+		return
+	effect.top_level = true
+	effect.setup(radius, color, duration)
+	spawn_parent.add_child(effect)
+	effect.global_position = global_position
+	_broadcast_collectible_visual(&"area", effect.global_position, radius, color, duration)
+
+
+func _spawn_collectible_lightning_effect(spawn_position: Vector2) -> void:
+	var effect := COLLECTIBLE_LIGHTNING_EFFECT_SCENE.instantiate() as CollectibleLightningEffect
+	if effect == null:
+		return
+	var spawn_parent := get_tree().current_scene
+	if spawn_parent == null:
+		return
+	effect.top_level = true
+	effect.setup()
+	spawn_parent.add_child(effect)
+	effect.global_position = spawn_position
+	_broadcast_collectible_visual(&"lightning", spawn_position, 0.0, Color(1.0, 0.88, 0.28, 1.0), 0.26)
+
+
+func _broadcast_collectible_visual(
+	effect_type: StringName,
+	spawn_position: Vector2,
+	radius: float,
+	color: Color,
+	duration: float
+) -> void:
+	var current_scene := get_tree().current_scene
+	if current_scene == null or not current_scene.has_method("broadcast_collectible_visual_effect"):
+		return
+	current_scene.call(
+		"broadcast_collectible_visual_effect",
+		effect_type,
+		spawn_position,
+		radius,
+		color,
+		duration
+	)
+
+
+func _activate_collectible_skill_effects() -> void:
+	for item in _get_active_collectible_items():
+		match item.skill_effect_id:
+			PickupConfig.SKILL_EFFECT_MOON_SHIELD:
+				_spawn_moon_shield(item.skill_effect_radius, item.skill_effect_duration)
+			PickupConfig.SKILL_EFFECT_SWIFT:
+				collectible_swift_time_left = maxf(item.skill_effect_duration, 0.0)
+				collectible_swift_move_speed_multiplier = maxf(item.skill_move_speed_multiplier, 1.0)
+
+
+func activate_collectible_skill_effects_from_multiplayer() -> void:
+	_activate_collectible_skill_effects()
+
+
+func _spawn_moon_shield(radius: float, duration: float) -> void:
+	var shield := COLLECTIBLE_MOON_SHIELD_SCENE.instantiate() as CollectibleMoonShield
+	if shield == null:
+		return
+	shield.setup(self, radius, duration)
+	add_child(shield)
+	shield.position = Vector2.ZERO
+	_broadcast_collectible_visual(
+		&"area",
+		global_position,
+		radius,
+		Color(0.28, 0.58, 1.0, 0.34),
+		duration
+	)
+
+
 func _update_skill1_charge_bar() -> void:
 	if skill1_charge_bar == null:
 		return
@@ -947,7 +1357,7 @@ func _get_skill1_direction() -> Vector2:
 
 # 获取当前实际移动速度（受移速加成影响）
 func _get_effective_move_speed() -> float:
-	return move_speed * current_move_speed_multiplier
+	return move_speed * current_move_speed_multiplier * collectible_swift_move_speed_multiplier
 
 
 func _get_mouse_shoot_direction() -> Vector2:
@@ -973,7 +1383,9 @@ func _on_window_focus_exited() -> void:
 
 # 获取当前实际射击间隔（受射速加成影响）
 func _get_effective_fire_interval() -> float:
-	return max(fire_interval / _get_effective_fire_rate_multiplier(), 0.01)
+	var base_attacks_per_second := (1.0 / maxf(fire_interval, 0.01)) + collectible_attack_speed_bonus
+	var effective_attacks_per_second := base_attacks_per_second * _get_effective_fire_rate_multiplier()
+	return maxf(1.0 / maxf(effective_attacks_per_second, 0.01), 0.01)
 
 
 # 获取当前实际射速倍率
@@ -994,6 +1406,8 @@ func _has_active_form_override() -> bool:
 # 刷新射击定时器的等待时间，响应射速 buff 变化
 func _refresh_shooting_timer_wait_time() -> void:
 	var new_interval := _get_effective_fire_interval()
+	if shooting_timer == null:
+		return
 	shooting_timer.wait_time = new_interval
 	attack_speed_changed.emit(1.0 / new_interval)
 	
@@ -1251,12 +1665,16 @@ func _on_shooting_timer_timeout() -> void:
 
 # 升级基础攻击力，每级 +4
 func upgrade_attack() -> void:
-	attack_damage += 4
+	_initialize_base_stats()
+	_base_attack_damage += 4
+	_refresh_collectible_stats()
 
 
 # 升级生命值上限，每级 +5，并同步回满当前生命
 func upgrade_max_health() -> void:
-	max_health += 5
+	_initialize_base_stats()
+	_base_max_health += 5
+	_refresh_collectible_stats(false)
 	current_health = max_health
 	health_bar.set_health(current_health, max_health)
 	health_changed.emit(current_health, max_health)
@@ -1264,7 +1682,9 @@ func upgrade_max_health() -> void:
 
 # 升级攻击速度，每级攻击间隔减少 5%
 func upgrade_attack_speed() -> void:
-	fire_interval *= ATTACK_SPEED_UPGRADE_INTERVAL_MULTIPLIER
+	_initialize_base_stats()
+	_base_fire_interval *= ATTACK_SPEED_UPGRADE_INTERVAL_MULTIPLIER
+	fire_interval = _base_fire_interval
 	_refresh_shooting_timer_wait_time()
 
 

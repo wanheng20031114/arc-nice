@@ -13,5 +13,6 @@ can_store_in_inventory = true
 icon_texture = ExtResource("1_icon")
 icon_scale = Vector2(1, 1)
 duration = 0.0
+collectible_effect_id = "apple"
 bullet_pierce_chance = 0.5
 metadata/_custom_type_script = "res://resources/config/pickups/pickup_config.gd"

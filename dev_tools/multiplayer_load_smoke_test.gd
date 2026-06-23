@@ -340,7 +340,7 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 			2
 		) as Dictionary
 		_expect(
-			int(charged_skill1_parameters.get("damage", 0)) == floori(float(remote_player.attack_damage) * 3.3),
+			int(charged_skill1_parameters.get("damage", 0)) == remote_player.get_skill1_bomb_damage(),
 			"Host must rebuild skill1 projectile damage from authoritative player attack."
 		)
 		_expect(
@@ -800,7 +800,7 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			is_equal_approx(peer_four.skill1_charge_duration, skill1_duration_before_upgrade - 4.0),
 			"Skill1 upgrade confirm must update charge duration."
 		)
-		var luoxi_claim_result := game.try_claim_luoxi_collectible_for_peer(4, 1)
+		var luoxi_claim_result := game.try_claim_luoxi_collectible_for_peer(4, APPLE_COLLECTIBLE.resource_path)
 		_expect(
 			luoxi_claim_result == LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS,
 			"Luoxi collectible claim must succeed for a valid peer."
@@ -815,13 +815,13 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		)
 		_expect(game.has_luoxi_collectible_claimed(4), "Luoxi claim must mark the selected peer as claimed.")
 		_expect(
-			game.try_claim_luoxi_collectible_for_peer(4, 0)
+			game.try_claim_luoxi_collectible_for_peer(4, APPLE_COLLECTIBLE.resource_path)
 			== LuoxiMerchant.COLLECTIBLE_RESULT_ALREADY_CLAIMED,
 			"Luoxi must reject a second collectible choice in the same run."
 		)
 		for _slot_index in range(RunStateStore.INVENTORY_CAPACITY):
 			_expect(run_state.try_add_item_for_peer(2, HEALTH_PICKUP), "Peer 2 inventory must fill before testing Luoxi's full bag result.")
-		var full_luoxi_claim_result := game.try_claim_luoxi_collectible_for_peer(2, 0)
+		var full_luoxi_claim_result := game.try_claim_luoxi_collectible_for_peer(2, APPLE_COLLECTIBLE.resource_path)
 		_expect(
 			full_luoxi_claim_result == LuoxiMerchant.COLLECTIBLE_RESULT_INVENTORY_FULL,
 			"Luoxi must reject collectible claims when the selected peer inventory is full."
@@ -832,7 +832,7 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		)
 		_expect(run_state.discard_item_for_peer(2, 0), "Peer 2 must be able to free one inventory slot after a full Luoxi claim.")
 		_expect(
-			game.try_claim_luoxi_collectible_for_peer(2, 0) == LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS,
+			game.try_claim_luoxi_collectible_for_peer(2, APPLE_COLLECTIBLE.resource_path) == LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS,
 			"Luoxi must allow the original peer choice after the peer frees an inventory slot."
 		)
 		_expect(game.has_luoxi_collectible_claimed(2), "A successful retry must mark the peer's Luoxi choice as claimed.")

@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/collectibles/frost_crystal.png" id="1_icon"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 5
+display_name = "寒霜水晶"
+drop_weight = 0.0
+description = "持有时，每间隔8秒以自身为中心造成小范围寒霜效果，范围内敌人受到10点伤害并在2秒内移动速度降低50%"
+can_store_in_inventory = true
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(1, 1)
+duration = 0.0
+collectible_effect_id = "frost_crystal"
+periodic_effect_id = "frost"
+periodic_interval = 8.0
+periodic_radius = 72.0
+periodic_damage = 10
+periodic_slow_multiplier = 0.5
+periodic_slow_duration = 2.0
+metadata/_custom_type_script = "res://resources/config/pickups/pickup_config.gd"

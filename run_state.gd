@@ -204,8 +204,7 @@ func try_add_item_for_peer(peer_id: int, item: PickupConfig) -> bool:
 	for slot_index in range(peer_inventory.size()):
 		if peer_inventory[slot_index] == null:
 			peer_inventory[slot_index] = item
-			if peer_id == active_multiplayer_peer_id:
-				inventory_changed.emit()
+			inventory_changed.emit()
 			return true
 
 	return false
@@ -226,8 +225,7 @@ func try_use_item_for_peer(peer_id: int, slot_index: int, player: Player) -> boo
 		return false
 
 	peer_inventory[slot_index] = null
-	if peer_id == active_multiplayer_peer_id:
-		inventory_changed.emit()
+	inventory_changed.emit()
 	return true
 
 
@@ -240,8 +238,7 @@ func discard_item_for_peer(peer_id: int, slot_index: int) -> bool:
 		return false
 
 	peer_inventory[slot_index] = null
-	if peer_id == active_multiplayer_peer_id:
-		inventory_changed.emit()
+	inventory_changed.emit()
 	return true
 
 
