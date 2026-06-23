@@ -272,7 +272,9 @@ func _test_profile_upgrade_levels_and_skill_details() -> void:
 		skill_description.text == "向上一次射击位置发射一枚炸弹造成攻击力330%的大范围伤害",
 		"Skill details must show the expected skill description."
 	)
+	_expect(skill_description.size.y >= 48.0, "Skill details description must have enough height for wrapped text.")
 	_expect(skill_cost.text.contains("18.0"), "Skill details must show the base required charge.")
+	_expect(skill_cost.size.y >= 24.0, "Skill details cost line must have enough height for outlined text.")
 
 	player.current_xirang = 500
 	_expect(player.try_upgrade_skill1(), "Skill1 first upgrade should succeed in profile smoke test.")

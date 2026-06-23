@@ -90,7 +90,7 @@ layout_mode = 2
 theme_override_constants/separation = 24
 
 [node name="Card0" type="PanelContainer" parent="Root/Center/Content/CardRow" unique_id=291548480]
-custom_minimum_size = Vector2(192, 255)
+custom_minimum_size = Vector2(204, 291)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")
 
@@ -103,30 +103,32 @@ theme_override_constants/margin_bottom = 15
 
 [node name="Content" type="VBoxContainer" parent="Root/Center/Content/CardRow/Card0/Margin" unique_id=1547430834]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 7
 
 [node name="Icon" type="TextureRect" parent="Root/Center/Content/CardRow/Card0/Margin/Content" unique_id=1126013106]
-custom_minimum_size = Vector2(82, 82)
+custom_minimum_size = Vector2(70, 70)
 layout_mode = 2
 stretch_mode = 5
 
 [node name="Title" type="Label" parent="Root/Center/Content/CardRow/Card0/Margin/Content" unique_id=826438005]
+custom_minimum_size = Vector2(0, 29)
 layout_mode = 2
 text = "苹果"
 label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="Description" type="RichTextLabel" parent="Root/Center/Content/CardRow/Card0/Margin/Content" unique_id=470103328]
-custom_minimum_size = Vector2(162, 76)
+custom_minimum_size = Vector2(174, 103)
 layout_mode = 2
 theme_override_colors/default_color = Color(0.18, 0.13, 0.1, 1)
 theme_override_fonts/normal_font = ExtResource("2_font")
 theme_override_font_sizes/normal_font_size = 14
 bbcode_enabled = true
-scroll_active = false
+scroll_active = true
 
 [node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card0/Margin/Content" unique_id=370601807]
-custom_minimum_size = Vector2(152, 38)
+custom_minimum_size = Vector2(164, 38)
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.97, 0.91, 1)
 theme_override_fonts/font = ExtResource("2_font")
@@ -138,7 +140,7 @@ theme_override_styles/focus = SubResource("StyleBoxEmpty_button_focus")
 text = "选择"
 
 [node name="Card1" type="PanelContainer" parent="Root/Center/Content/CardRow" unique_id=720937956]
-custom_minimum_size = Vector2(192, 255)
+custom_minimum_size = Vector2(204, 291)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")
 
@@ -151,30 +153,32 @@ theme_override_constants/margin_bottom = 15
 
 [node name="Content" type="VBoxContainer" parent="Root/Center/Content/CardRow/Card1/Margin" unique_id=1299720501]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 7
 
 [node name="Icon" type="TextureRect" parent="Root/Center/Content/CardRow/Card1/Margin/Content" unique_id=1599623077]
-custom_minimum_size = Vector2(82, 82)
+custom_minimum_size = Vector2(70, 70)
 layout_mode = 2
 stretch_mode = 5
 
 [node name="Title" type="Label" parent="Root/Center/Content/CardRow/Card1/Margin/Content" unique_id=1623936676]
+custom_minimum_size = Vector2(0, 29)
 layout_mode = 2
 text = "苹果"
 label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="Description" type="RichTextLabel" parent="Root/Center/Content/CardRow/Card1/Margin/Content" unique_id=105613967]
-custom_minimum_size = Vector2(162, 76)
+custom_minimum_size = Vector2(174, 103)
 layout_mode = 2
 theme_override_colors/default_color = Color(0.18, 0.13, 0.1, 1)
 theme_override_fonts/normal_font = ExtResource("2_font")
 theme_override_font_sizes/normal_font_size = 14
 bbcode_enabled = true
-scroll_active = false
+scroll_active = true
 
 [node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card1/Margin/Content" unique_id=1090403270]
-custom_minimum_size = Vector2(152, 38)
+custom_minimum_size = Vector2(164, 38)
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.97, 0.91, 1)
 theme_override_fonts/font = ExtResource("2_font")
@@ -186,7 +190,7 @@ theme_override_styles/focus = SubResource("StyleBoxEmpty_button_focus")
 text = "选择"
 
 [node name="Card2" type="PanelContainer" parent="Root/Center/Content/CardRow" unique_id=1836196567]
-custom_minimum_size = Vector2(192, 255)
+custom_minimum_size = Vector2(204, 291)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")
 
@@ -199,30 +203,32 @@ theme_override_constants/margin_bottom = 15
 
 [node name="Content" type="VBoxContainer" parent="Root/Center/Content/CardRow/Card2/Margin" unique_id=834209544]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 7
 
 [node name="Icon" type="TextureRect" parent="Root/Center/Content/CardRow/Card2/Margin/Content" unique_id=1216970820]
-custom_minimum_size = Vector2(82, 82)
+custom_minimum_size = Vector2(70, 70)
 layout_mode = 2
 stretch_mode = 5
 
 [node name="Title" type="Label" parent="Root/Center/Content/CardRow/Card2/Margin/Content" unique_id=1426775712]
+custom_minimum_size = Vector2(0, 29)
 layout_mode = 2
 text = "苹果"
 label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="Description" type="RichTextLabel" parent="Root/Center/Content/CardRow/Card2/Margin/Content" unique_id=1581851794]
-custom_minimum_size = Vector2(162, 76)
+custom_minimum_size = Vector2(174, 103)
 layout_mode = 2
 theme_override_colors/default_color = Color(0.18, 0.13, 0.1, 1)
 theme_override_fonts/normal_font = ExtResource("2_font")
 theme_override_font_sizes/normal_font_size = 14
 bbcode_enabled = true
-scroll_active = false
+scroll_active = true
 
 [node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card2/Margin/Content" unique_id=877759733]
-custom_minimum_size = Vector2(152, 38)
+custom_minimum_size = Vector2(164, 38)
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.97, 0.91, 1)
 theme_override_fonts/font = ExtResource("2_font")

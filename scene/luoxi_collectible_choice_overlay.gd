@@ -43,6 +43,8 @@ const CARD_FLIP_OUT_DURATION := 0.24
 const CARD_OPEN_STAGGER := 0.08
 const CARD_HOVER_SCALE := 1.035
 const CARD_HOVER_DURATION := 0.12
+const DESCRIPTION_SCROLL_SPEED := 10.0
+const DESCRIPTION_SCROLL_PAUSE := 1.0
 
 var selected_index: int = 0
 var choices: Array = []
@@ -50,17 +52,25 @@ var open_tween: Tween
 var hover_tweens: Array[Tween] = []
 var card_base_styles: Array[StyleBoxFlat] = []
 var card_hover_styles: Array[StyleBoxFlat] = []
+var description_scroll_offsets: Array[float] = []
+var description_scroll_pauses: Array[float] = []
 
 
 func _ready() -> void:
 	root_control.hide()
 	_build_card_hover_styles()
 	hover_tweens.resize(cards.size())
+	description_scroll_offsets.resize(descriptions.size())
+	description_scroll_pauses.resize(descriptions.size())
+	for description in descriptions:
+		description.scroll_active = true
+		description.scroll_following = false
 	for index in range(buttons.size()):
 		buttons[index].pressed.connect(_on_select_pressed.bind(index))
 	for index in range(cards.size()):
 		cards[index].mouse_entered.connect(_on_card_mouse_entered.bind(index))
 		cards[index].mouse_exited.connect(_on_card_mouse_exited.bind(index))
+	set_process(false)
 
 
 func show_choices(new_choices: Array, initial_index: int = 0) -> void:
@@ -68,7 +78,10 @@ func show_choices(new_choices: Array, initial_index: int = 0) -> void:
 	selected_index = clampi(initial_index, 0, maxi(choices.size() - 1, 0))
 	_update_cards()
 	_prepare_open_animation()
+	_reset_description_scrolls()
 	root_control.show()
+	set_process(true)
+	call_deferred("_reset_description_scrolls")
 	call_deferred("_play_open_animation")
 
 
@@ -83,10 +96,16 @@ func hide_choices() -> void:
 		cards[index].self_modulate = Color.WHITE
 		cards[index].modulate = Color.WHITE
 	root_control.hide()
+	set_process(false)
 
 
 func is_open() -> bool:
 	return root_control.visible
+
+
+func _process(delta: float) -> void:
+	if root_control.visible:
+		_process_description_scrolls(delta)
 
 
 func handle_input(event: InputEvent) -> bool:
@@ -126,7 +145,43 @@ func _update_cards() -> void:
 		titles[index].text = item.display_name if has_item else ""
 		descriptions[index].text = item.description if has_item else ""
 		buttons[index].disabled = not has_item
+		_reset_description_scroll(index)
 	_update_selection()
+
+
+func _reset_description_scrolls() -> void:
+	for index in range(descriptions.size()):
+		_reset_description_scroll(index)
+
+
+func _reset_description_scroll(index: int) -> void:
+	if index < 0 or index >= descriptions.size():
+		return
+	description_scroll_offsets[index] = 0.0
+	description_scroll_pauses[index] = DESCRIPTION_SCROLL_PAUSE
+	var scroll_bar := descriptions[index].get_v_scroll_bar()
+	if scroll_bar != null:
+		scroll_bar.value = 0.0
+
+
+func _process_description_scrolls(delta: float) -> void:
+	for index in range(descriptions.size()):
+		var scroll_bar := descriptions[index].get_v_scroll_bar()
+		if scroll_bar == null:
+			continue
+		var max_scroll := maxf(scroll_bar.max_value - scroll_bar.page, 0.0)
+		if max_scroll <= 0.5:
+			description_scroll_offsets[index] = 0.0
+			scroll_bar.value = 0.0
+			continue
+		if description_scroll_pauses[index] > 0.0:
+			description_scroll_pauses[index] = maxf(description_scroll_pauses[index] - delta, 0.0)
+			continue
+		description_scroll_offsets[index] += DESCRIPTION_SCROLL_SPEED * delta
+		if description_scroll_offsets[index] > max_scroll:
+			description_scroll_offsets[index] = 0.0
+			description_scroll_pauses[index] = DESCRIPTION_SCROLL_PAUSE
+		scroll_bar.value = description_scroll_offsets[index]
 
 
 func _update_selection() -> void:
