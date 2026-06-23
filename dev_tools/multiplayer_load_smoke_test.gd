@@ -10,6 +10,7 @@ const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres
 const RPG_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
 const PICKUP_SPEED_CONFIG := preload("res://resources/config/pickups/pickup_speed.tres")
 const PICKUP_SPIRAL_CONFIG := preload("res://resources/config/pickups/pickup_spiral.tres")
+const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
 const XIRANG_DROP_CONFIG := preload("res://resources/config/xirang_drop.tres")
 const APPLE_COLLECTIBLE := preload("res://resources/config/pickups/collectible_apple.tres")
 
@@ -808,11 +809,26 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			run_state.get_item_for_peer(4, 0) == APPLE_COLLECTIBLE,
 			"Luoxi collectible claim must add the apple to the selected peer inventory."
 		)
+		_expect(
+			is_equal_approx(peer_four.call("_get_inventory_bullet_pierce_chance"), 0.5),
+			"Peer 4 apple collectible must grant a 50% piercing chance."
+		)
 		_expect(game.has_luoxi_collectible_claimed(4), "Luoxi claim must mark the selected peer as claimed.")
 		_expect(
 			game.try_claim_luoxi_collectible_for_peer(4, 0)
 			== LuoxiMerchant.COLLECTIBLE_RESULT_ALREADY_CLAIMED,
 			"Luoxi must reject a second collectible choice in the same run."
+		)
+		_expect(run_state.try_add_item_for_peer(4, HEALTH_PICKUP), "Peer 4 health pickup must fit in inventory for use testing.")
+		peer_four.current_health = maxi(peer_four.max_health - HEALTH_PICKUP.heal_amount, 1)
+		mp_game.call("_apply_inventory_item_use_for_peer", 4, 1)
+		_expect(run_state.get_item_for_peer(4, 1) == null, "Host inventory use must remove the consumed peer item.")
+		_expect(peer_four.current_health == peer_four.max_health, "Host inventory use must apply the pickup effect to the selected peer.")
+		mp_game.call("_apply_inventory_item_discard_for_peer", 4, 0)
+		_expect(run_state.get_item_for_peer(4, 0) == null, "Host inventory discard must remove the selected peer item.")
+		_expect(
+			is_equal_approx(peer_four.call("_get_inventory_bullet_pierce_chance"), 0.0),
+			"Discarding peer 4's only apple must remove the piercing chance."
 		)
 		peer_four.skill1_charge_duration = 1.0
 		peer_four.skill1_charge = 0.0
@@ -847,6 +863,18 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		mp_game.call("_grant_xirang_to_all_players", 12)
 		_expect(peer_two.current_xirang == peer_two_xirang + 12, "Xirang grant must update peer 2.")
 		_expect(peer_three.current_xirang == peer_three_xirang + 12, "Xirang grant must update peer 3.")
+		_expect(run_state.try_add_item_for_peer(3, HEALTH_PICKUP), "Peer 3 health pickup must fit for inventory use confirmation testing.")
+		peer_three.current_health = maxi(peer_three.max_health - HEALTH_PICKUP.heal_amount, 1)
+		mp_game.call("net_inventory_item_used", 3, 0, HEALTH_PICKUP.resource_path, true)
+		_expect(run_state.get_item_for_peer(3, 0) == null, "Inventory use confirm must remove the confirmed peer item.")
+		_expect(peer_three.current_health == peer_three.max_health, "Inventory use confirm must apply the pickup effect to the confirmed peer.")
+		_expect(run_state.try_add_item_for_peer(3, APPLE_COLLECTIBLE), "Peer 3 apple must fit for inventory discard confirmation testing.")
+		mp_game.call("net_inventory_item_discarded", 3, 0, true)
+		_expect(run_state.get_item_for_peer(3, 0) == null, "Inventory discard confirm must remove the confirmed peer item.")
+		var peer_inventories := run_state.get("multiplayer_inventories") as Dictionary
+		mp_game.call("net_inventory_item_used", 99, 0, HEALTH_PICKUP.resource_path, true)
+		mp_game.call("net_inventory_item_discarded", 99, 0, true)
+		_expect(not peer_inventories.has(99), "Inventory confirms for missing peers must not create peer run state.")
 		mp_game.call(
 			"net_luoxi_collectible_confirmed",
 			3,
@@ -914,6 +942,11 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 	var net_manager := root.get_node_or_null("NetManager")
 	if net_manager != null:
 		client_mp_game.set("net_manager", net_manager)
+	var client_run_state := root.get_node_or_null("RunState") as RunStateStore
+	if client_run_state != null:
+		client_run_state.begin_new_run()
+		client_run_state.set_active_multiplayer_peer(2)
+		client_mp_game.set("run_state", client_run_state)
 
 	var client_enemy := BOMBER_CONFIG.enemy_scene.instantiate() as Enemy
 	_expect(client_enemy != null, "Client bomber scene must instantiate for enemy removed test.")
@@ -970,6 +1003,26 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 		_expect(
 			client_player.current_move_speed_multiplier > base_multiplier,
 			"Pickup collected event must apply immediate pickup effects to the collector."
+		)
+		client_mp_game.call(
+			"net_pickup_spawned",
+			9002,
+			HEALTH_PICKUP.resource_path,
+			45.0,
+			56.0
+		)
+		client_mp_game.call(
+			"net_pickup_collected",
+			9002,
+			2,
+			HEALTH_PICKUP.resource_path,
+			false
+		)
+		await process_frame
+		_expect(not client_game.multiplayer_pickups.has(9002), "Stored pickup confirm must erase pickup index.")
+		_expect(
+			client_run_state != null and client_run_state.get_item_for_peer(2, 0) == HEALTH_PICKUP,
+			"Stored pickup confirm must add the item to the collector inventory."
 		)
 	client_mp_game.free()
 	_stop_audio_players(client_game)

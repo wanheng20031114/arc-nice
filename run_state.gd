@@ -94,6 +94,19 @@ func try_use_item(slot_index: int, player: Player) -> bool:
 	return true
 
 
+func discard_item(slot_index: int) -> bool:
+	if active_multiplayer_peer_id > 0:
+		return discard_item_for_peer(active_multiplayer_peer_id, slot_index)
+	if slot_index < 0 or slot_index >= inventory.size():
+		return false
+	if inventory[slot_index] == null:
+		return false
+
+	inventory[slot_index] = null
+	inventory_changed.emit()
+	return true
+
+
 func get_item(slot_index: int) -> PickupConfig:
 	if active_multiplayer_peer_id > 0:
 		return get_item_for_peer(active_multiplayer_peer_id, slot_index)
@@ -210,6 +223,20 @@ func try_use_item_for_peer(peer_id: int, slot_index: int, player: Player) -> boo
 	if item == null:
 		return false
 	if not player.apply_pickup(item):
+		return false
+
+	peer_inventory[slot_index] = null
+	if peer_id == active_multiplayer_peer_id:
+		inventory_changed.emit()
+	return true
+
+
+func discard_item_for_peer(peer_id: int, slot_index: int) -> bool:
+	ensure_multiplayer_peer_state(peer_id)
+	var peer_inventory := multiplayer_inventories[peer_id] as Array
+	if slot_index < 0 or slot_index >= peer_inventory.size():
+		return false
+	if peer_inventory[slot_index] == null:
 		return false
 
 	peer_inventory[slot_index] = null

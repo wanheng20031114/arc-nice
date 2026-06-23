@@ -141,6 +141,20 @@ func request_multiplayer_upgrade(stat_type: int) -> void:
 		net_upgrade_selected.rpc_id(_get_host_peer_id(), stat_type)
 
 
+func request_multiplayer_inventory_item_use(slot_index: int) -> void:
+	if net_manager.is_host():
+		_apply_inventory_item_use_for_peer(_get_local_peer_id(), slot_index)
+	else:
+		net_inventory_item_use_requested.rpc_id(_get_host_peer_id(), slot_index)
+
+
+func request_multiplayer_inventory_item_discard(slot_index: int) -> void:
+	if net_manager.is_host():
+		_apply_inventory_item_discard_for_peer(_get_local_peer_id(), slot_index)
+	else:
+		net_inventory_item_discard_requested.rpc_id(_get_host_peer_id(), slot_index)
+
+
 func request_multiplayer_skill1_purchase() -> void:
 	if net_manager.is_host():
 		_apply_skill1_purchase_for_peer(_get_local_peer_id())
@@ -1979,7 +1993,7 @@ func net_pickup_collected(
 	if pickup != null and is_instance_valid(pickup):
 		game.multiplayer_pickups.erase(net_id)
 		pickup.queue_free()
-	if not applied_immediately or config_path.is_empty():
+	if config_path.is_empty():
 		return
 	var pickup_config := load(config_path) as PickupConfig
 	if pickup_config == null:
@@ -1987,7 +2001,10 @@ func net_pickup_collected(
 	var player_node: Player = game.get_player_for_peer(collector_peer_id)
 	if player_node == null or not is_instance_valid(player_node):
 		return
-	player_node.apply_pickup(pickup_config)
+	if applied_immediately:
+		player_node.apply_pickup(pickup_config)
+	else:
+		run_state.try_add_item_for_peer(collector_peer_id, pickup_config)
 
 
 @rpc("authority", "call_remote", "reliable", 4)
@@ -2020,6 +2037,26 @@ func net_upgrade_selected(stat_type: int) -> void:
 	if sender_id <= 0:
 		return
 	_apply_upgrade_for_peer(sender_id, stat_type)
+
+
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_inventory_item_use_requested(slot_index: int) -> void:
+	if not net_manager.is_host():
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
+	_apply_inventory_item_use_for_peer(sender_id, slot_index)
+
+
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_inventory_item_discard_requested(slot_index: int) -> void:
+	if not net_manager.is_host():
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
+	_apply_inventory_item_discard_for_peer(sender_id, slot_index)
 
 
 @rpc("any_peer", "call_remote", "reliable", 4)
@@ -2074,6 +2111,40 @@ func net_upgrade_confirmed(
 		_apply_confirmed_upgrade_to_player(player_node, stat_type)
 	player_node.current_xirang = current_xirang
 	player_node.xirang_changed.emit(current_xirang, 0)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_inventory_item_used(
+	peer_id: int,
+	slot_index: int,
+	config_path: String,
+	success: bool
+) -> void:
+	if not success:
+		return
+	if peer_id <= 0 or game == null:
+		return
+	var player_node: Player = game.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	var already_applied_on_host: bool = net_manager.is_host() and peer_id == _get_local_peer_id()
+	if not already_applied_on_host and not config_path.is_empty():
+		var item := load(config_path) as PickupConfig
+		if item != null:
+			player_node.apply_pickup(item)
+	run_state.discard_item_for_peer(peer_id, slot_index)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_inventory_item_discarded(peer_id: int, slot_index: int, success: bool) -> void:
+	if not success:
+		return
+	if peer_id <= 0 or game == null:
+		return
+	var player_node: Player = game.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	run_state.discard_item_for_peer(peer_id, slot_index)
 
 
 func _apply_confirmed_upgrade_to_player(player_node: Player, stat_type: int) -> void:
@@ -2158,6 +2229,40 @@ func _apply_upgrade_for_peer(peer_id: int, stat_type: int) -> void:
 	)
 	if peer_id == _get_local_peer_id():
 		net_upgrade_confirmed(peer_id, stat_type, level, current_xirang, success)
+
+
+func _apply_inventory_item_use_for_peer(peer_id: int, slot_index: int) -> void:
+	if game == null or peer_id <= 0:
+		return
+	var player_node: Player = game.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	var item := run_state.get_item_for_peer(peer_id, slot_index)
+	var config_path := item.resource_path if item != null else ""
+	var success := run_state.try_use_item_for_peer(peer_id, slot_index, player_node)
+	if not success:
+		config_path = ""
+	_rpc_to_connected_clients(
+		&"net_inventory_item_used",
+		[peer_id, slot_index, config_path, success]
+	)
+	if peer_id == _get_local_peer_id():
+		net_inventory_item_used(peer_id, slot_index, config_path, success)
+
+
+func _apply_inventory_item_discard_for_peer(peer_id: int, slot_index: int) -> void:
+	if game == null or peer_id <= 0:
+		return
+	var player_node: Player = game.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	var success := run_state.discard_item_for_peer(peer_id, slot_index)
+	_rpc_to_connected_clients(
+		&"net_inventory_item_discarded",
+		[peer_id, slot_index, success]
+	)
+	if peer_id == _get_local_peer_id():
+		net_inventory_item_discarded(peer_id, slot_index, success)
 
 
 func _apply_skill1_purchase_for_peer(peer_id: int) -> void:

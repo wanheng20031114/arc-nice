@@ -4,6 +4,8 @@ class_name PlayerProfilePanel
 const DESIGN_SIZE := Vector2(724.0, 543.0)
 const SKILL1_DISPLAY_NAME := "经典技能"
 const SKILL1_DESCRIPTION := "向上一次射击位置发射一枚炸弹造成攻击力330%的大范围伤害"
+const ITEM_DETAIL_SIZE := Vector2(242.0, 148.0)
+const ITEM_DETAIL_MARGIN := 14.0
 
 @onready var overlay: Control = $Overlay
 @onready var panel_root: Control = $Overlay/PanelRoot
@@ -20,6 +22,12 @@ const SKILL1_DESCRIPTION := "向上一次射击位置发射一枚炸弹造成攻
 @onready var skill_description_label: Label = $Overlay/PanelRoot/SkillInfo/SkillDescription
 @onready var skill_cost_label: Label = $Overlay/PanelRoot/SkillInfo/SkillCost
 @onready var inventory_grid: Control = $Overlay/PanelRoot/InventoryGrid
+@onready var item_detail_panel: PanelContainer = $Overlay/PanelRoot/ItemDetailPanel
+@onready var item_detail_title: Label = $Overlay/PanelRoot/ItemDetailPanel/Margin/Content/ItemTitle
+@onready var item_detail_description: RichTextLabel = $Overlay/PanelRoot/ItemDetailPanel/Margin/Content/ItemDescription
+@onready var item_detail_hint: Label = $Overlay/PanelRoot/ItemDetailPanel/Margin/Content/ItemHint
+@onready var item_detail_use_button: Button = $Overlay/PanelRoot/ItemDetailPanel/Margin/Content/ButtonRow/UseButton
+@onready var item_detail_discard_button: Button = $Overlay/PanelRoot/ItemDetailPanel/Margin/Content/ButtonRow/DiscardButton
 @onready var upgrade_surface: NinePatchRect = $Overlay/PanelRoot/UpgradeSurface
 @onready var upgrade_panel: VBoxContainer = $Overlay/PanelRoot/UpgradePanel
 @onready var tab_bar: TabBar = $Overlay/PanelRoot/TabBar
@@ -40,6 +48,8 @@ func _ready() -> void:
 	overlay.visible = false
 	set_process(false)
 	close_button.pressed.connect(close)
+	item_detail_use_button.pressed.connect(_on_detail_use_pressed)
+	item_detail_discard_button.pressed.connect(_on_detail_discard_pressed)
 	get_viewport().size_changed.connect(_update_panel_transform)
 	_collect_slots()
 	_update_panel_transform()
@@ -126,6 +136,7 @@ func close() -> void:
 	overlay.visible = false
 	set_process(false)
 	selected_slot_index = -1
+	_hide_item_detail()
 	get_viewport().gui_release_focus()
 	if tracked_player != null and not tracked_player.is_dead:
 		tracked_player.set_controls_locked(false)
@@ -179,6 +190,7 @@ func _refresh_inventory() -> void:
 	for slot_index in range(slots.size()):
 		slots[slot_index].set_item(run_state.get_item(slot_index))
 		slots[slot_index].set_selected(slot_index == selected_slot_index)
+	_refresh_item_detail()
 
 
 func _refresh_upgrades() -> void:
@@ -214,13 +226,18 @@ func _on_slot_selected(slot_index: int) -> void:
 	selected_slot_index = slot_index
 	for slot in slots:
 		slot.set_selected(slot.slot_index == selected_slot_index)
+	_refresh_item_detail()
 
 
 func _try_use_slot(slot_index: int) -> void:
 	selected_slot_index = slot_index
+	if _request_multiplayer_inventory_item_use(slot_index):
+		return
 	if run_state.try_use_item(slot_index, tracked_player):
 		_refresh_inventory()
 		_refresh_stat_display()
+	else:
+		_refresh_item_detail()
 
 
 func _focus_first_available_slot() -> void:
@@ -306,6 +323,99 @@ func _apply_tab_state() -> void:
 	upgrade_surface.visible = current_tab == 1
 	upgrade_panel.visible = current_tab == 1
 	tab_bar.current_tab = current_tab
+	if current_tab == 0:
+		_refresh_item_detail()
+	else:
+		_hide_item_detail()
+
+
+func _refresh_item_detail() -> void:
+	if current_tab != 0 or selected_slot_index < 0 or selected_slot_index >= slots.size():
+		_hide_item_detail()
+		return
+
+	var item := run_state.get_item(selected_slot_index)
+	if item == null:
+		_hide_item_detail()
+		return
+
+	var is_consumable := _is_consumable_item(item)
+	item_detail_title.text = "%s  ·  %s" % [item.display_name, _get_item_type_label(item)]
+	item_detail_description.text = item.description if not item.description.is_empty() else "暂无描述"
+	item_detail_hint.visible = is_consumable
+	item_detail_hint.text = "也可以双击槽位使用"
+	item_detail_use_button.visible = is_consumable
+	item_detail_discard_button.visible = true
+	item_detail_panel.visible = true
+	item_detail_panel.move_to_front()
+	_update_item_detail_position(slots[selected_slot_index])
+
+
+func _hide_item_detail() -> void:
+	item_detail_panel.visible = false
+
+
+func _update_item_detail_position(slot: InventorySlot) -> void:
+	if slot == null:
+		return
+	var slot_size := slot.size
+	if slot_size.x <= 0.0 or slot_size.y <= 0.0:
+		slot_size = slot.custom_minimum_size
+	var slot_position := inventory_grid.position + slot.position
+	var target_x := slot_position.x + slot_size.x + ITEM_DETAIL_MARGIN
+	if target_x + ITEM_DETAIL_SIZE.x > DESIGN_SIZE.x - ITEM_DETAIL_MARGIN:
+		target_x = slot_position.x - ITEM_DETAIL_MARGIN - ITEM_DETAIL_SIZE.x
+	target_x = clampf(target_x, ITEM_DETAIL_MARGIN, DESIGN_SIZE.x - ITEM_DETAIL_SIZE.x - ITEM_DETAIL_MARGIN)
+
+	var target_y := clampf(
+		slot_position.y,
+		ITEM_DETAIL_MARGIN,
+		DESIGN_SIZE.y - ITEM_DETAIL_SIZE.y - ITEM_DETAIL_MARGIN
+	)
+	item_detail_panel.position = Vector2(roundf(target_x), roundf(target_y))
+	item_detail_panel.size = ITEM_DETAIL_SIZE
+
+
+func _on_detail_use_pressed() -> void:
+	if selected_slot_index < 0:
+		return
+	_try_use_slot(selected_slot_index)
+
+
+func _on_detail_discard_pressed() -> void:
+	if selected_slot_index < 0:
+		return
+	if _request_multiplayer_inventory_item_discard(selected_slot_index):
+		return
+	if run_state.discard_item(selected_slot_index):
+		_refresh_inventory()
+		_refresh_stat_display()
+
+
+func _is_consumable_item(item: PickupConfig) -> bool:
+	return item != null and item.pickup_type != PickupConfig.PickupType.COLLECTIBLE
+
+
+func _get_item_type_label(item: PickupConfig) -> String:
+	if item != null and item.pickup_type == PickupConfig.PickupType.COLLECTIBLE:
+		return "收藏品"
+	return "道具"
+
+
+func _request_multiplayer_inventory_item_use(slot_index: int) -> bool:
+	var current_scene := get_tree().current_scene
+	if current_scene == null or not current_scene.has_method("request_multiplayer_inventory_item_use"):
+		return false
+	current_scene.call("request_multiplayer_inventory_item_use", slot_index)
+	return true
+
+
+func _request_multiplayer_inventory_item_discard(slot_index: int) -> bool:
+	var current_scene := get_tree().current_scene
+	if current_scene == null or not current_scene.has_method("request_multiplayer_inventory_item_discard"):
+		return false
+	current_scene.call("request_multiplayer_inventory_item_discard", slot_index)
+	return true
 
 
 func _update_panel_transform() -> void:

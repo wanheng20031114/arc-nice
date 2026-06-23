@@ -1,4 +1,4 @@
-[gd_scene load_steps=24 format=3]
+[gd_scene load_steps=33 format=3]
 
 [ext_resource type="Script" path="res://scene/player_profile_panel.gd" id="1_panel"]
 [ext_resource type="Texture2D" path="res://resources/texture/player_profile_background.png" id="2_background"]
@@ -29,6 +29,71 @@ corner_radius_top_left = 3
 corner_radius_top_right = 3
 corner_radius_bottom_right = 3
 corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_item_detail"]
+bg_color = Color(0.06, 0.07, 0.065, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.54, 0.48, 0.32, 0.95)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+shadow_color = Color(0, 0, 0, 0.45)
+shadow_size = 8
+shadow_offset = Vector2(0, 3)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_detail_use"]
+bg_color = Color(0.18, 0.5, 0.28, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.45, 0.9, 0.56, 0.85)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_detail_use_hover"]
+bg_color = Color(0.22, 0.62, 0.34, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.58, 1, 0.68, 0.95)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_detail_discard"]
+bg_color = Color(0.58, 0.12, 0.12, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.95, 0.34, 0.3, 0.85)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_detail_discard_hover"]
+bg_color = Color(0.74, 0.16, 0.16, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.45, 0.4, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_detail_button_focus"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_title"]
 font = ExtResource("4_font")
@@ -525,6 +590,84 @@ offset_top = 267.0
 offset_right = 371.0
 offset_bottom = 351.0
 slot_index = 19
+
+[node name="ItemDetailPanel" type="PanelContainer" parent="Overlay/PanelRoot"]
+visible = false
+layout_mode = 0
+offset_left = 466.0
+offset_top = 108.0
+offset_right = 708.0
+offset_bottom = 256.0
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_item_detail")
+
+[node name="Margin" type="MarginContainer" parent="Overlay/PanelRoot/ItemDetailPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 11
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 11
+theme_override_constants/margin_bottom = 10
+
+[node name="Content" type="VBoxContainer" parent="Overlay/PanelRoot/ItemDetailPanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="ItemTitle" type="Label" parent="Overlay/PanelRoot/ItemDetailPanel/Margin/Content"]
+custom_minimum_size = Vector2(218, 22)
+layout_mode = 2
+text = "物品名称"
+label_settings = SubResource("LabelSettings_value_small")
+vertical_alignment = 1
+
+[node name="ItemDescription" type="RichTextLabel" parent="Overlay/PanelRoot/ItemDetailPanel/Margin/Content"]
+custom_minimum_size = Vector2(218, 45)
+layout_mode = 2
+bbcode_enabled = true
+fit_content = false
+scroll_active = false
+autowrap_mode = 3
+theme_override_fonts/normal_font = ExtResource("4_font")
+theme_override_font_sizes/normal_font_size = 12
+theme_override_colors/default_color = Color(0.78, 0.8, 0.74, 1)
+
+[node name="ItemHint" type="Label" parent="Overlay/PanelRoot/ItemDetailPanel/Margin/Content"]
+custom_minimum_size = Vector2(218, 18)
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.62, 0.66, 0.6, 1)
+text = "双击槽位也可使用"
+vertical_alignment = 1
+
+[node name="ButtonRow" type="HBoxContainer" parent="Overlay/PanelRoot/ItemDetailPanel/Margin/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="UseButton" type="Button" parent="Overlay/PanelRoot/ItemDetailPanel/Margin/Content/ButtonRow"]
+custom_minimum_size = Vector2(105, 30)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+text = "使用"
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.94, 1, 0.92, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_detail_use")
+theme_override_styles/hover = SubResource("StyleBoxFlat_detail_use_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_detail_use_hover")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_detail_button_focus")
+
+[node name="DiscardButton" type="Button" parent="Overlay/PanelRoot/ItemDetailPanel/Margin/Content/ButtonRow"]
+custom_minimum_size = Vector2(105, 30)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+text = "丢弃"
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(1, 0.92, 0.9, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_detail_discard")
+theme_override_styles/hover = SubResource("StyleBoxFlat_detail_discard_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_detail_discard_hover")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_detail_button_focus")
 
 [node name="UpgradeSurface" type="NinePatchRect" parent="Overlay/PanelRoot"]
 visible = false
