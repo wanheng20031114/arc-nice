@@ -30,10 +30,10 @@ font_color = Color(0.12, 0.08, 0.06, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_description_padding"]
 bg_color = Color(0, 0, 0, 0)
-content_margin_left = 5.0
-content_margin_top = 4.0
-content_margin_right = 7.0
-content_margin_bottom = 6.0
+content_margin_left = 7.0
+content_margin_top = 5.0
+content_margin_right = 12.0
+content_margin_bottom = 10.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button"]
 bg_color = Color(1, 0.13, 0.18, 1)
@@ -135,6 +135,7 @@ theme_override_constants/line_separation = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_description_padding")
 bbcode_enabled = true
 scroll_active = true
+autowrap_mode = 1
 
 [node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card0/Margin/Content" unique_id=370601807]
 custom_minimum_size = Vector2(174, 38)
@@ -187,6 +188,7 @@ theme_override_constants/line_separation = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_description_padding")
 bbcode_enabled = true
 scroll_active = true
+autowrap_mode = 1
 
 [node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card1/Margin/Content" unique_id=1090403270]
 custom_minimum_size = Vector2(174, 38)
@@ -239,6 +241,7 @@ theme_override_constants/line_separation = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_description_padding")
 bbcode_enabled = true
 scroll_active = true
+autowrap_mode = 1
 
 [node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card2/Margin/Content" unique_id=877759733]
 custom_minimum_size = Vector2(174, 38)
