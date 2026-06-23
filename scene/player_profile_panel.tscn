@@ -1,4 +1,4 @@
-[gd_scene load_steps=34 format=3]
+[gd_scene load_steps=35 format=3]
 
 [ext_resource type="Script" path="res://scene/player_profile_panel.gd" id="1_panel"]
 [ext_resource type="Texture2D" path="res://resources/texture/player_profile_background.png" id="2_background"]
@@ -15,6 +15,8 @@
 [ext_resource type="Texture2D" path="res://resources/texture/profile_tab_hovered.png" id="13_tab_hovered"]
 [ext_resource type="Texture2D" path="res://resources/texture/profile_tab_selected.png" id="14_tab_selected"]
 [ext_resource type="Texture2D" path="res://resources/texture/weishidaier_skill1_icon.png" id="15_skill_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/item_detail_panel_bg.png" id="16_item_detail_bg"]
+[ext_resource type="Texture2D" path="res://resources/texture/item_category_badge_collectible.png" id="17_category_collectible"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_close"]
 
@@ -30,32 +32,12 @@ corner_radius_top_right = 3
 corner_radius_bottom_right = 3
 corner_radius_bottom_left = 3
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_item_detail"]
-bg_color = Color(0.06, 0.07, 0.065, 0.96)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.54, 0.48, 0.32, 0.95)
-corner_radius_top_left = 5
-corner_radius_top_right = 5
-corner_radius_bottom_right = 5
-corner_radius_bottom_left = 5
-shadow_color = Color(0, 0, 0, 0.45)
-shadow_size = 8
-shadow_offset = Vector2(0, 3)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_item_category"]
-bg_color = Color(0.09, 0.22, 0.2, 0.9)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.34, 0.82, 0.72, 0.85)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_item_detail"]
+texture = ExtResource("16_item_detail_bg")
+texture_margin_left = 24.0
+texture_margin_top = 24.0
+texture_margin_right = 24.0
+texture_margin_bottom = 24.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_detail_use"]
 bg_color = Color(0.18, 0.5, 0.28, 1)
@@ -605,13 +587,14 @@ slot_index = 19
 
 [node name="ItemDetailPanel" type="PanelContainer" parent="Overlay/PanelRoot"]
 visible = false
+texture_filter = 1
 layout_mode = 0
 offset_left = 466.0
 offset_top = 108.0
 offset_right = 708.0
 offset_bottom = 256.0
 mouse_filter = 0
-theme_override_styles/panel = SubResource("StyleBoxFlat_item_detail")
+theme_override_styles/panel = SubResource("StyleBoxTexture_item_detail")
 
 [node name="Margin" type="MarginContainer" parent="Overlay/PanelRoot/ItemDetailPanel"]
 layout_mode = 2
@@ -639,14 +622,20 @@ clip_text = true
 text_overrun_behavior = 3
 vertical_alignment = 1
 
-[node name="ItemCategory" type="PanelContainer" parent="Overlay/PanelRoot/ItemDetailPanel/Margin/Content/HeaderRow"]
+[node name="ItemCategory" type="TextureRect" parent="Overlay/PanelRoot/ItemDetailPanel/Margin/Content/HeaderRow"]
 custom_minimum_size = Vector2(58, 22)
 layout_mode = 2
 mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_item_category")
+texture = ExtResource("17_category_collectible")
+expand_mode = 1
 
 [node name="CategoryLabel" type="Label" parent="Overlay/PanelRoot/ItemDetailPanel/Margin/Content/HeaderRow/ItemCategory"]
-layout_mode = 2
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_font_sizes/font_size = 12
 theme_override_colors/font_color = Color(0.56, 0.96, 0.86, 1)

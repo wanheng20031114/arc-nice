@@ -6,6 +6,8 @@ const SKILL1_DISPLAY_NAME := "经典技能"
 const SKILL1_DESCRIPTION := "向上一次射击位置发射一枚炸弹造成攻击力330%的大范围伤害"
 const ITEM_DETAIL_SIZE := Vector2(242.0, 148.0)
 const ITEM_DETAIL_MARGIN := 14.0
+const ITEM_CATEGORY_COLLECTIBLE_TEXTURE := preload("res://resources/texture/item_category_badge_collectible.png")
+const ITEM_CATEGORY_ITEM_TEXTURE := preload("res://resources/texture/item_category_badge_item.png")
 
 @onready var overlay: Control = $Overlay
 @onready var panel_root: Control = $Overlay/PanelRoot
@@ -24,6 +26,7 @@ const ITEM_DETAIL_MARGIN := 14.0
 @onready var inventory_grid: Control = $Overlay/PanelRoot/InventoryGrid
 @onready var item_detail_panel: PanelContainer = $Overlay/PanelRoot/ItemDetailPanel
 @onready var item_detail_title: Label = $Overlay/PanelRoot/ItemDetailPanel/Margin/Content/HeaderRow/ItemTitle
+@onready var item_detail_category_backing: TextureRect = $Overlay/PanelRoot/ItemDetailPanel/Margin/Content/HeaderRow/ItemCategory
 @onready var item_detail_category_label: Label = $Overlay/PanelRoot/ItemDetailPanel/Margin/Content/HeaderRow/ItemCategory/CategoryLabel
 @onready var item_detail_description: RichTextLabel = $Overlay/PanelRoot/ItemDetailPanel/Margin/Content/ItemDescription
 @onready var item_detail_hint: Label = $Overlay/PanelRoot/ItemDetailPanel/Margin/Content/ItemHint
@@ -355,6 +358,7 @@ func _refresh_item_detail() -> void:
 	var is_consumable := _is_consumable_item(item)
 	item_detail_title.text = item.display_name
 	item_detail_category_label.text = _get_item_type_label(item)
+	item_detail_category_backing.texture = ITEM_CATEGORY_ITEM_TEXTURE if is_consumable else ITEM_CATEGORY_COLLECTIBLE_TEXTURE
 	item_detail_description.text = item.description if not item.description.is_empty() else "暂无描述"
 	item_detail_hint.visible = is_consumable
 	item_detail_hint.text = "也可以双击槽位使用"

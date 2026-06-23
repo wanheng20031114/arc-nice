@@ -4,6 +4,9 @@ const PLAYER_SCENE := preload("res://scene/player.tscn")
 const PROFILE_PANEL_SCENE := preload("res://scene/player_profile_panel.tscn")
 const APPLE_COLLECTIBLE := preload("res://resources/config/pickups/collectible_apple.tres")
 const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
+const ITEM_DETAIL_PANEL_BG := preload("res://resources/texture/item_detail_panel_bg.png")
+const ITEM_CATEGORY_BADGE_COLLECTIBLE := preload("res://resources/texture/item_category_badge_collectible.png")
+const ITEM_CATEGORY_BADGE_ITEM := preload("res://resources/texture/item_category_badge_item.png")
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -65,9 +68,12 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	profile_panel.slots[0].emit_signal("pressed")
 	await process_frame
 	_expect(profile_panel.item_detail_panel.visible, "Selecting an occupied inventory slot must show the item detail panel.")
+	var detail_style := profile_panel.item_detail_panel.get_theme_stylebox("panel") as StyleBoxTexture
+	_expect(detail_style != null and detail_style.texture == ITEM_DETAIL_PANEL_BG, "The item detail panel must use the generated background texture.")
 	_expect(profile_panel.item_detail_title.text == "苹果", "The item detail panel title must show only the item name.")
 	_expect(not profile_panel.item_detail_title.text.contains("收藏品"), "The item detail panel title must not append the item category.")
 	_expect(profile_panel.item_detail_category_label.text == "收藏品", "The item detail panel must show the collectible category in its own label.")
+	_expect(profile_panel.item_detail_category_backing.texture == ITEM_CATEGORY_BADGE_COLLECTIBLE, "Collectibles must use the generated collectible badge texture.")
 	_expect(
 		profile_panel.item_detail_description.text.contains(APPLE_COLLECTIBLE.description),
 		"The item detail panel must show the collectible description."
@@ -103,6 +109,7 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	_expect(profile_panel.item_detail_panel.visible, "Selecting a stored consumable must show the item detail panel.")
 	_expect(profile_panel.item_detail_title.text == "生命药瓶", "The item detail panel title must show only the consumable name.")
 	_expect(profile_panel.item_detail_category_label.text == "道具", "The item detail panel must show the consumable category in its own label.")
+	_expect(profile_panel.item_detail_category_backing.texture == ITEM_CATEGORY_BADGE_ITEM, "Consumables must use the generated item badge texture.")
 	_expect(profile_panel.item_detail_use_button.visible, "Consumable items must show a green use button.")
 	_expect(profile_panel.item_detail_discard_button.visible, "Consumable items must show a red discard button.")
 	_expect(profile_panel.item_detail_hint.visible, "Consumable items must show the double-click use hint.")
