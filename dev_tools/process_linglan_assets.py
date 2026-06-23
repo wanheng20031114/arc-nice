@@ -3,10 +3,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from collections import OrderedDict
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
+from scipy import ndimage
 
 from connected_background_remover import ConnectedBackgroundOptions, remove_connected_background
 
@@ -22,6 +25,10 @@ SOURCE_ROWS = 6
 BACKGROUND_TOLERANCE = 88
 BACKGROUND_HUE_TOLERANCE = 0.04
 BACKGROUND_EXPANSION_RADIUS = 10
+FRAME_GROUP_RADIUS = 4
+FRAME_PADDING = 12
+FRAME_SIZE_ALIGNMENT = 8
+MIN_FRAME_ALPHA_PIXELS = 1000
 
 ANIMATION_ROWS: OrderedDict[str, int] = OrderedDict(
 	[
@@ -45,41 +52,103 @@ IDLE_DIRECTIONS = {
 FrameRegion = tuple[int, int, int, int]
 
 
-def _grid_bounds(total: int, parts: int, index: int) -> tuple[int, int]:
-	start = round(index * total / float(parts))
-	end = round((index + 1) * total / float(parts))
-	return start, end
+@dataclass(frozen=True)
+class DetectedFrame:
+	source_bbox: tuple[int, int, int, int]
+	alpha_pixels: int
 
 
-def _extract_cell(image: Image.Image, column: int, row: int, frame_size: tuple[int, int]) -> Image.Image:
-	left, right = _grid_bounds(image.width, SOURCE_COLUMNS, column)
-	top, bottom = _grid_bounds(image.height, SOURCE_ROWS, row)
-	cell = image.crop((left, top, right, bottom))
+def _round_up(value: int, alignment: int) -> int:
+	return ((value + alignment - 1) // alignment) * alignment
+
+
+def _detect_source_frames(source: Image.Image) -> list[list[DetectedFrame]]:
+	alpha = np.array(source.getchannel("A"), dtype=np.uint8) > 0
+	group_mask = ndimage.binary_dilation(
+		alpha,
+		structure=np.ones((FRAME_GROUP_RADIUS * 2 + 1, FRAME_GROUP_RADIUS * 2 + 1), dtype=bool),
+	)
+	labels, _count = ndimage.label(group_mask)
+	detected: list[DetectedFrame] = []
+
+	for label_index, slices in enumerate(ndimage.find_objects(labels), start=1):
+		if slices is None:
+			continue
+		component_alpha = (labels[slices] == label_index) & alpha[slices]
+		alpha_pixels = int(component_alpha.sum())
+		if alpha_pixels < MIN_FRAME_ALPHA_PIXELS:
+			continue
+		local_y, local_x = np.nonzero(component_alpha)
+		top_offset = slices[0].start
+		left_offset = slices[1].start
+		left = int(local_x.min() + left_offset)
+		top = int(local_y.min() + top_offset)
+		right = int(local_x.max() + left_offset + 1)
+		bottom = int(local_y.max() + top_offset + 1)
+		detected.append(DetectedFrame((left, top, right, bottom), alpha_pixels))
+
+	expected_count = SOURCE_COLUMNS * SOURCE_ROWS
+	if len(detected) != expected_count:
+		raise ValueError(f"Expected {expected_count} Linglan frames, detected {len(detected)}.")
+
+	def center_y(frame: DetectedFrame) -> float:
+		_left, top, _right, bottom = frame.source_bbox
+		return (top + bottom) * 0.5
+
+	def center_x(frame: DetectedFrame) -> float:
+		left, _top, right, _bottom = frame.source_bbox
+		return (left + right) * 0.5
+
+	sorted_by_y = sorted(detected, key=center_y)
+	rows: list[list[DetectedFrame]] = []
+	for row_index in range(SOURCE_ROWS):
+		row = sorted(
+			sorted_by_y[row_index * SOURCE_COLUMNS : (row_index + 1) * SOURCE_COLUMNS],
+			key=center_x,
+		)
+		rows.append(row)
+	return rows
+
+
+def _compute_frame_size(rows: list[list[DetectedFrame]]) -> tuple[int, int]:
+	boxes = [frame.source_bbox for row in rows for frame in row]
+	max_width = max(right - left for left, _top, right, _bottom in boxes)
+	max_height = max(bottom - top for _left, top, _right, bottom in boxes)
+	return (
+		_round_up(max_width + FRAME_PADDING * 2, FRAME_SIZE_ALIGNMENT),
+		_round_up(max_height + FRAME_PADDING * 2, FRAME_SIZE_ALIGNMENT),
+	)
+
+
+def _extract_frame(image: Image.Image, frame: DetectedFrame, frame_size: tuple[int, int]) -> Image.Image:
+	cell = image.crop(frame.source_bbox)
 	result = Image.new("RGBA", frame_size, (0, 0, 0, 0))
 	result.alpha_composite(cell, ((frame_size[0] - cell.width) // 2, (frame_size[1] - cell.height) // 2))
 	return result
 
 
 def _collect_frames(source: Image.Image) -> tuple[list[tuple[str, Image.Image]], OrderedDict[str, list[str]]]:
-	cell_width = max(
-		_grid_bounds(source.width, SOURCE_COLUMNS, column)[1] - _grid_bounds(source.width, SOURCE_COLUMNS, column)[0]
-		for column in range(SOURCE_COLUMNS)
-	)
-	cell_height = max(
-		_grid_bounds(source.height, SOURCE_ROWS, row)[1] - _grid_bounds(source.height, SOURCE_ROWS, row)[0]
-		for row in range(SOURCE_ROWS)
-	)
-	frame_size = (cell_width, cell_height)
+	source_rows = _detect_source_frames(source)
+	frame_size = _compute_frame_size(source_rows)
 	frames: list[tuple[str, Image.Image]] = []
 	animations: OrderedDict[str, list[str]] = OrderedDict()
 
-	for animation_name, row in ANIMATION_ROWS.items():
+	for row_index, animation_name in enumerate(ANIMATION_ROWS.keys()):
 		frame_names: list[str] = []
 		for column in range(SOURCE_COLUMNS):
 			frame_name = f"{animation_name}_{column}"
-			frames.append((frame_name, _extract_cell(source, column, row, frame_size)))
+			source_frame = source_rows[row_index][column]
+			frames.append((frame_name, _extract_frame(source, source_frame, frame_size)))
 			frame_names.append(frame_name)
 		animations[animation_name] = frame_names
+		print(
+			"%s bboxes: %s"
+			% (
+				animation_name,
+				", ".join(str(frame.source_bbox) for frame in source_rows[row_index]),
+			)
+		)
+	print(f"Linglan frame canvas: {frame_size[0]}x{frame_size[1]}")
 
 	for animation_name, frame_name in IDLE_DIRECTIONS.items():
 		animations[animation_name] = [frame_name]
