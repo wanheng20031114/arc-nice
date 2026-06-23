@@ -2,23 +2,18 @@
 
 [ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="1_wave"]
 [ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="2_entry"]
-[ext_resource type="Resource" uid="uid://b6g77s6rrfiw8" path="res://resources/config/enemies/yuanshi_insect_guardian.tres" id="3_kj76l"]
 [ext_resource type="Resource" uid="uid://uaeho5a1060p" path="res://resources/config/enemies/capoo_rpg.tres" id="3_rpg"]
 [ext_resource type="AudioStream" uid="uid://cmfbw4cr7dde" path="res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3" id="4_music"]
 
-[sub_resource type="Resource" id="WaveEnemyEntry_rpg"]
-script = ExtResource("2_entry")
-enemy_config = ExtResource("3_rpg")
-
 [sub_resource type="Resource" id="Resource_e5yt6"]
 script = ExtResource("2_entry")
-enemy_config = ExtResource("3_kj76l")
+enemy_config = ExtResource("3_rpg")
 metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [resource]
 script = ExtResource("1_wave")
 wave_name = "第一波 - RPG猫猫虫"
-enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_rpg"), SubResource("Resource_e5yt6")])
+enemy_entries = Array[ExtResource("2_entry")]([SubResource("Resource_e5yt6")])
 spawn_interval = 0.2
 max_alive_enemies = 100
 rest_duration_after_wave = 25.0

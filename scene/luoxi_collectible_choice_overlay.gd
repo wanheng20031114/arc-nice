@@ -44,7 +44,8 @@ const CARD_OPEN_STAGGER := 0.08
 const CARD_HOVER_LIFT := 4.0
 const CARD_HOVER_DURATION := 0.12
 const DESCRIPTION_SCROLL_SPEED := 10.0
-const DESCRIPTION_SCROLL_PAUSE := 1.0
+const DESCRIPTION_SCROLL_TOP_PAUSE := 0.8
+const DESCRIPTION_SCROLL_BOTTOM_PAUSE := 1.2
 
 var selected_index: int = 0
 var choices: Array = []
@@ -56,6 +57,7 @@ var card_base_positions: Array[Vector2] = []
 var card_base_positions_captured := false
 var description_scroll_offsets: Array[float] = []
 var description_scroll_pauses: Array[float] = []
+var description_scroll_at_bottom: Array[bool] = []
 
 
 func _ready() -> void:
@@ -65,6 +67,7 @@ func _ready() -> void:
 	card_base_positions.resize(cards.size())
 	description_scroll_offsets.resize(descriptions.size())
 	description_scroll_pauses.resize(descriptions.size())
+	description_scroll_at_bottom.resize(descriptions.size())
 	for description in descriptions:
 		description.scroll_active = true
 		description.scroll_following = false
@@ -162,7 +165,8 @@ func _reset_description_scroll(index: int) -> void:
 	if index < 0 or index >= descriptions.size():
 		return
 	description_scroll_offsets[index] = 0.0
-	description_scroll_pauses[index] = DESCRIPTION_SCROLL_PAUSE
+	description_scroll_pauses[index] = DESCRIPTION_SCROLL_TOP_PAUSE
+	description_scroll_at_bottom[index] = false
 	var scroll_bar := descriptions[index].get_v_scroll_bar()
 	if scroll_bar != null:
 		scroll_bar.value = 0.0
@@ -173,19 +177,27 @@ func _process_description_scrolls(delta: float) -> void:
 		var scroll_bar := descriptions[index].get_v_scroll_bar()
 		if scroll_bar == null:
 			continue
-		var max_scroll := maxf(scroll_bar.max_value - scroll_bar.page, 0.0)
+		var max_scroll := floorf(maxf(scroll_bar.max_value - scroll_bar.page, 0.0))
 		if max_scroll <= 0.5:
 			description_scroll_offsets[index] = 0.0
+			description_scroll_at_bottom[index] = false
 			scroll_bar.value = 0.0
 			continue
 		if description_scroll_pauses[index] > 0.0:
 			description_scroll_pauses[index] = maxf(description_scroll_pauses[index] - delta, 0.0)
 			continue
-		description_scroll_offsets[index] += DESCRIPTION_SCROLL_SPEED * delta
-		if description_scroll_offsets[index] > max_scroll:
+		if description_scroll_at_bottom[index]:
 			description_scroll_offsets[index] = 0.0
-			description_scroll_pauses[index] = DESCRIPTION_SCROLL_PAUSE
-		scroll_bar.value = description_scroll_offsets[index]
+			description_scroll_at_bottom[index] = false
+			description_scroll_pauses[index] = DESCRIPTION_SCROLL_TOP_PAUSE
+			scroll_bar.value = 0.0
+			continue
+		description_scroll_offsets[index] += DESCRIPTION_SCROLL_SPEED * delta
+		if description_scroll_offsets[index] >= max_scroll:
+			description_scroll_offsets[index] = max_scroll
+			description_scroll_at_bottom[index] = true
+			description_scroll_pauses[index] = DESCRIPTION_SCROLL_BOTTOM_PAUSE
+		scroll_bar.value = minf(roundf(description_scroll_offsets[index]), max_scroll)
 
 
 func _update_selection() -> void:
