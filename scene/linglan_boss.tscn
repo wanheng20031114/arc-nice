@@ -1,16 +1,16 @@
 [gd_scene format=3]
 
 [ext_resource type="SpriteFrames" path="res://resources/animation/linglan.tres" id="1_frames"]
-[ext_resource type="Script" path="res://scene/linglan_npc.gd" id="2_script"]
+[ext_resource type="Script" path="res://scene/linglan_boss.gd" id="2_script"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_body"]
-radius = 8.0
-height = 24.0
+radius = 28.0
+height = 96.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_interaction"]
-radius = 26.0
+radius = 116.0
 
-[node name="LinglanNpc" type="Node2D"]
+[node name="LinglanBoss" type="Node2D"]
 z_index = 2
 script = ExtResource("2_script")
 
@@ -23,7 +23,7 @@ autoplay = "idle"
 collision_mask = 0
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="StaticBody2D"]
-position = Vector2(0, 2)
+position = Vector2(0, 44)
 shape = SubResource("CapsuleShape2D_body")
 disabled = true
 

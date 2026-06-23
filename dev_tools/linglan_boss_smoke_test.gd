@@ -1,7 +1,7 @@
 extends SceneTree
 
 const LINGLAN_FRAMES := preload("res://resources/animation/linglan.tres")
-const LINGLAN_SCENE := preload("res://scene/linglan_npc.tscn")
+const LINGLAN_SCENE := preload("res://scene/linglan_boss.tscn")
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -13,7 +13,7 @@ func _init() -> void:
 
 func _run() -> void:
 	test_root = Node2D.new()
-	test_root.name = "LinglanNpcSmokeTest"
+	test_root.name = "LinglanBossSmokeTest"
 	root.add_child(test_root)
 	current_scene = test_root
 
@@ -26,7 +26,7 @@ func _run() -> void:
 		await physics_frame
 
 	if failures.is_empty():
-		print("LINGLAN_NPC_SMOKE_TEST_OK")
+		print("LINGLAN_BOSS_SMOKE_TEST_OK")
 		quit()
 		return
 
@@ -37,7 +37,7 @@ func _run() -> void:
 
 func _test_animation_resource() -> void:
 	var expected_counts := {
-		&"idle": 1,
+		&"idle": 4,
 		&"idle_up": 1,
 		&"idle_down": 1,
 		&"idle_left": 1,
@@ -61,12 +61,15 @@ func _test_animation_resource() -> void:
 		)
 		var first_texture := LINGLAN_FRAMES.get_frame_texture(animation_name, 0)
 		_expect(first_texture != null, "Linglan animation %s must have a texture." % animation_name)
+		if first_texture != null:
+			var frame_size := first_texture.get_size()
+			_expect(frame_size.x >= 250.0 and frame_size.y >= 180.0, "Linglan boss frames must keep high-resolution pixel art detail.")
 	_expect(not LINGLAN_FRAMES.get_animation_loop(&"die"), "Linglan die animation must not loop.")
 
 
 func _test_scene_structure() -> void:
-	var linglan := LINGLAN_SCENE.instantiate() as LinglanNpc
-	_expect(linglan != null, "Linglan scene must instantiate as LinglanNpc.")
+	var linglan := LINGLAN_SCENE.instantiate() as LinglanBoss
+	_expect(linglan != null, "Linglan scene must instantiate as LinglanBoss.")
 	if linglan == null:
 		return
 	test_root.add_child(linglan)
@@ -86,6 +89,10 @@ func _test_scene_structure() -> void:
 		interaction_shape != null and interaction_shape.shape is CircleShape2D,
 		"Linglan must have a circular interaction area."
 	)
+	if body_shape != null and body_shape.shape is CapsuleShape2D:
+		_expect((body_shape.shape as CapsuleShape2D).radius >= 24.0, "Linglan boss body collision must not keep the small NPC radius.")
+	if interaction_shape != null and interaction_shape.shape is CircleShape2D:
+		_expect((interaction_shape.shape as CircleShape2D).radius >= 80.0, "Linglan boss interaction area must match the larger boss sprite.")
 
 	linglan.queue_free()
 	await process_frame

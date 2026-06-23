@@ -1,5 +1,5 @@
 extends Node2D
-class_name LinglanNpc
+class_name LinglanBoss
 
 @onready var collision_shape: CollisionShape2D = $StaticBody2D/CollisionShape2D
 @onready var interaction_area: Area2D = $InteractionArea
