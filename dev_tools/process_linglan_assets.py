@@ -19,6 +19,8 @@ ALPHA_SHEET = "dev_assets/source_images/linglan_boss_sheet_alpha.png"
 OUTPUT_TEXTURE = "resources/texture/linglan.png"
 OUTPUT_FRAMES = "resources/animation/linglan.tres"
 TEXTURE_RESOURCE = "res://resources/texture/linglan.png"
+SPRITE_FRAMES_UID = "uid://ub8py66qcmfq"
+TEXTURE_UID = "uid://dkt8l1h0rrh71"
 
 SOURCE_COLUMNS = 4
 SOURCE_ROWS = 6
@@ -190,9 +192,9 @@ def _write_animation_resource(
 	animations: OrderedDict[str, list[str]],
 ) -> None:
 	lines = [
-		'[gd_resource type="SpriteFrames" format=3]',
+		f'[gd_resource type="SpriteFrames" format=3 uid="{SPRITE_FRAMES_UID}"]',
 		"",
-		f'[ext_resource type="Texture2D" path="{texture_path}" id="1_texture"]',
+		f'[ext_resource type="Texture2D" uid="{TEXTURE_UID}" path="{texture_path}" id="1_texture"]',
 		"",
 	]
 	for frame_name, region in regions.items():

@@ -1,7 +1,12 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://c1ykm22bhdrww"]
 
-[ext_resource type="Script" path="res://scene/luoxi_collectible_choice_overlay.gd" id="1_script"]
-[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+[ext_resource type="Script" uid="uid://chqhyqkbrpo7d" path="res://scene/luoxi_collectible_choice_overlay.gd" id="1_script"]
+[ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_hint"]
+font = ExtResource("2_font")
+font_size = 22
+font_color = Color(0.98, 0.96, 0.91, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card"]
 bg_color = Color(0.98, 0.955, 0.915, 1)
@@ -17,6 +22,11 @@ corner_radius_bottom_left = 8
 shadow_color = Color(0, 0, 0, 0.28)
 shadow_size = 8
 shadow_offset = Vector2(0, 3)
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font = ExtResource("2_font")
+font_size = 20
+font_color = Color(0.12, 0.08, 0.06, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button"]
 bg_color = Color(1, 0.13, 0.18, 1)
@@ -34,21 +44,11 @@ corner_radius_bottom_left = 6
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_button_focus"]
 
-[sub_resource type="LabelSettings" id="LabelSettings_title"]
-font = ExtResource("2_font")
-font_size = 20
-font_color = Color(0.12, 0.08, 0.06, 1)
-
-[sub_resource type="LabelSettings" id="LabelSettings_hint"]
-font = ExtResource("2_font")
-font_size = 22
-font_color = Color(0.98, 0.96, 0.91, 1)
-
-[node name="LuoxiCollectibleChoiceOverlay" type="CanvasLayer"]
+[node name="LuoxiCollectibleChoiceOverlay" type="CanvasLayer" unique_id=806676433]
 layer = 24
 script = ExtResource("1_script")
 
-[node name="Root" type="Control" parent="."]
+[node name="Root" type="Control" parent="." unique_id=2004211365]
 visible = false
 layout_mode = 3
 anchors_preset = 15
@@ -56,19 +56,17 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-mouse_filter = 0
 
-[node name="Dim" type="ColorRect" parent="Root"]
+[node name="Dim" type="ColorRect" parent="Root" unique_id=390468018]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-mouse_filter = 0
 color = Color(0.02, 0.02, 0.024, 0.58)
 
-[node name="Center" type="CenterContainer" parent="Root"]
+[node name="Center" type="CenterContainer" parent="Root" unique_id=1517159410]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -77,169 +75,160 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="Content" type="VBoxContainer" parent="Root/Center"]
+[node name="Content" type="VBoxContainer" parent="Root/Center" unique_id=511263312]
 layout_mode = 2
 theme_override_constants/separation = 18
 
-[node name="Hint" type="Label" parent="Root/Center/Content"]
+[node name="Hint" type="Label" parent="Root/Center/Content" unique_id=1993063417]
 layout_mode = 2
 text = "选择一件收藏品"
 label_settings = SubResource("LabelSettings_hint")
 horizontal_alignment = 1
 
-[node name="CardRow" type="HBoxContainer" parent="Root/Center/Content"]
+[node name="CardRow" type="HBoxContainer" parent="Root/Center/Content" unique_id=150055867]
 layout_mode = 2
 theme_override_constants/separation = 24
 
-[node name="Card0" type="PanelContainer" parent="Root/Center/Content/CardRow"]
+[node name="Card0" type="PanelContainer" parent="Root/Center/Content/CardRow" unique_id=291548480]
 custom_minimum_size = Vector2(192, 255)
 layout_mode = 2
-mouse_filter = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")
 
-[node name="Margin" type="MarginContainer" parent="Root/Center/Content/CardRow/Card0"]
+[node name="Margin" type="MarginContainer" parent="Root/Center/Content/CardRow/Card0" unique_id=1477577521]
 layout_mode = 2
 theme_override_constants/margin_left = 15
 theme_override_constants/margin_top = 15
 theme_override_constants/margin_right = 15
 theme_override_constants/margin_bottom = 15
 
-[node name="Content" type="VBoxContainer" parent="Root/Center/Content/CardRow/Card0/Margin"]
+[node name="Content" type="VBoxContainer" parent="Root/Center/Content/CardRow/Card0/Margin" unique_id=1547430834]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Icon" type="TextureRect" parent="Root/Center/Content/CardRow/Card0/Margin/Content"]
+[node name="Icon" type="TextureRect" parent="Root/Center/Content/CardRow/Card0/Margin/Content" unique_id=1126013106]
 custom_minimum_size = Vector2(82, 82)
 layout_mode = 2
 stretch_mode = 5
 
-[node name="Title" type="Label" parent="Root/Center/Content/CardRow/Card0/Margin/Content"]
+[node name="Title" type="Label" parent="Root/Center/Content/CardRow/Card0/Margin/Content" unique_id=826438005]
 layout_mode = 2
 text = "苹果"
 label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
 
-[node name="Description" type="RichTextLabel" parent="Root/Center/Content/CardRow/Card0/Margin/Content"]
+[node name="Description" type="RichTextLabel" parent="Root/Center/Content/CardRow/Card0/Margin/Content" unique_id=470103328]
 custom_minimum_size = Vector2(162, 76)
 layout_mode = 2
-bbcode_enabled = true
-fit_content = false
-scroll_active = false
-autowrap_mode = 3
+theme_override_colors/default_color = Color(0.18, 0.13, 0.1, 1)
 theme_override_fonts/normal_font = ExtResource("2_font")
 theme_override_font_sizes/normal_font_size = 14
-theme_override_colors/default_color = Color(0.18, 0.13, 0.1, 1)
+bbcode_enabled = true
+scroll_active = false
 
-[node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card0/Margin/Content"]
+[node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card0/Margin/Content" unique_id=370601807]
 custom_minimum_size = Vector2(152, 38)
 layout_mode = 2
-text = "选择"
+theme_override_colors/font_color = Color(1, 0.97, 0.91, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 16
-theme_override_colors/font_color = Color(1, 0.97, 0.91, 1)
 theme_override_styles/normal = SubResource("StyleBoxFlat_button")
-theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_button_focus")
+text = "选择"
 
-[node name="Card1" type="PanelContainer" parent="Root/Center/Content/CardRow"]
+[node name="Card1" type="PanelContainer" parent="Root/Center/Content/CardRow" unique_id=720937956]
 custom_minimum_size = Vector2(192, 255)
 layout_mode = 2
-mouse_filter = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")
 
-[node name="Margin" type="MarginContainer" parent="Root/Center/Content/CardRow/Card1"]
+[node name="Margin" type="MarginContainer" parent="Root/Center/Content/CardRow/Card1" unique_id=509203194]
 layout_mode = 2
 theme_override_constants/margin_left = 15
 theme_override_constants/margin_top = 15
 theme_override_constants/margin_right = 15
 theme_override_constants/margin_bottom = 15
 
-[node name="Content" type="VBoxContainer" parent="Root/Center/Content/CardRow/Card1/Margin"]
+[node name="Content" type="VBoxContainer" parent="Root/Center/Content/CardRow/Card1/Margin" unique_id=1299720501]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Icon" type="TextureRect" parent="Root/Center/Content/CardRow/Card1/Margin/Content"]
+[node name="Icon" type="TextureRect" parent="Root/Center/Content/CardRow/Card1/Margin/Content" unique_id=1599623077]
 custom_minimum_size = Vector2(82, 82)
 layout_mode = 2
 stretch_mode = 5
 
-[node name="Title" type="Label" parent="Root/Center/Content/CardRow/Card1/Margin/Content"]
+[node name="Title" type="Label" parent="Root/Center/Content/CardRow/Card1/Margin/Content" unique_id=1623936676]
 layout_mode = 2
 text = "苹果"
 label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
 
-[node name="Description" type="RichTextLabel" parent="Root/Center/Content/CardRow/Card1/Margin/Content"]
+[node name="Description" type="RichTextLabel" parent="Root/Center/Content/CardRow/Card1/Margin/Content" unique_id=105613967]
 custom_minimum_size = Vector2(162, 76)
 layout_mode = 2
-bbcode_enabled = true
-fit_content = false
-scroll_active = false
-autowrap_mode = 3
+theme_override_colors/default_color = Color(0.18, 0.13, 0.1, 1)
 theme_override_fonts/normal_font = ExtResource("2_font")
 theme_override_font_sizes/normal_font_size = 14
-theme_override_colors/default_color = Color(0.18, 0.13, 0.1, 1)
+bbcode_enabled = true
+scroll_active = false
 
-[node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card1/Margin/Content"]
+[node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card1/Margin/Content" unique_id=1090403270]
 custom_minimum_size = Vector2(152, 38)
 layout_mode = 2
-text = "选择"
+theme_override_colors/font_color = Color(1, 0.97, 0.91, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 16
-theme_override_colors/font_color = Color(1, 0.97, 0.91, 1)
 theme_override_styles/normal = SubResource("StyleBoxFlat_button")
-theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_button_focus")
+text = "选择"
 
-[node name="Card2" type="PanelContainer" parent="Root/Center/Content/CardRow"]
+[node name="Card2" type="PanelContainer" parent="Root/Center/Content/CardRow" unique_id=1836196567]
 custom_minimum_size = Vector2(192, 255)
 layout_mode = 2
-mouse_filter = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")
 
-[node name="Margin" type="MarginContainer" parent="Root/Center/Content/CardRow/Card2"]
+[node name="Margin" type="MarginContainer" parent="Root/Center/Content/CardRow/Card2" unique_id=1945149136]
 layout_mode = 2
 theme_override_constants/margin_left = 15
 theme_override_constants/margin_top = 15
 theme_override_constants/margin_right = 15
 theme_override_constants/margin_bottom = 15
 
-[node name="Content" type="VBoxContainer" parent="Root/Center/Content/CardRow/Card2/Margin"]
+[node name="Content" type="VBoxContainer" parent="Root/Center/Content/CardRow/Card2/Margin" unique_id=834209544]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Icon" type="TextureRect" parent="Root/Center/Content/CardRow/Card2/Margin/Content"]
+[node name="Icon" type="TextureRect" parent="Root/Center/Content/CardRow/Card2/Margin/Content" unique_id=1216970820]
 custom_minimum_size = Vector2(82, 82)
 layout_mode = 2
 stretch_mode = 5
 
-[node name="Title" type="Label" parent="Root/Center/Content/CardRow/Card2/Margin/Content"]
+[node name="Title" type="Label" parent="Root/Center/Content/CardRow/Card2/Margin/Content" unique_id=1426775712]
 layout_mode = 2
 text = "苹果"
 label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
 
-[node name="Description" type="RichTextLabel" parent="Root/Center/Content/CardRow/Card2/Margin/Content"]
+[node name="Description" type="RichTextLabel" parent="Root/Center/Content/CardRow/Card2/Margin/Content" unique_id=1581851794]
 custom_minimum_size = Vector2(162, 76)
 layout_mode = 2
-bbcode_enabled = true
-fit_content = false
-scroll_active = false
-autowrap_mode = 3
+theme_override_colors/default_color = Color(0.18, 0.13, 0.1, 1)
 theme_override_fonts/normal_font = ExtResource("2_font")
 theme_override_font_sizes/normal_font_size = 14
-theme_override_colors/default_color = Color(0.18, 0.13, 0.1, 1)
+bbcode_enabled = true
+scroll_active = false
 
-[node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card2/Margin/Content"]
+[node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card2/Margin/Content" unique_id=877759733]
 custom_minimum_size = Vector2(152, 38)
 layout_mode = 2
-text = "选择"
+theme_override_colors/font_color = Color(1, 0.97, 0.91, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 16
-theme_override_colors/font_color = Color(1, 0.97, 0.91, 1)
 theme_override_styles/normal = SubResource("StyleBoxFlat_button")
-theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_button_focus")
+text = "选择"
