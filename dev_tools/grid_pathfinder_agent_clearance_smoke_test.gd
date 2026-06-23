@@ -2,7 +2,9 @@ extends SceneTree
 
 const GAME_SCENE := preload("res://scene/game.tscn")
 const TEST_AGENT_HALF_EXTENTS := Vector2(9.0, 9.0)
-const TOUCHING_AGENT_HALF_EXTENTS := Vector2(8.0, 8.0)
+const EXACT_TOUCH_AGENT_HALF_EXTENTS := Vector2(8.0, 8.0)
+const BASIC_INSECT_HALF_EXTENTS := Vector2(8.0, 4.0)
+const FAST_INSECT_HALF_EXTENTS := Vector2(6.0, 3.0)
 
 var failures: Array[String] = []
 
@@ -45,12 +47,31 @@ func _run() -> void:
 			)
 			var cached_agent_grid := pathfinder.call("_get_or_create_agent_grid", TEST_AGENT_HALF_EXTENTS) as AStarGrid2D
 			_expect(cached_agent_grid == agent_grid, "Agent clearance grids must be cached by body size.")
-			var touching_agent_grid := pathfinder.call("_get_or_create_agent_grid", TOUCHING_AGENT_HALF_EXTENTS) as AStarGrid2D
-			_expect(touching_agent_grid != null, "GridPathfinder must create an exact-touch clearance grid.")
-			if touching_agent_grid != null:
+			var exact_touch_agent_grid := pathfinder.call("_get_or_create_agent_grid", EXACT_TOUCH_AGENT_HALF_EXTENTS) as AStarGrid2D
+			_expect(exact_touch_agent_grid != null, "GridPathfinder must create an exact-touch clearance grid.")
+			if exact_touch_agent_grid != null:
 				_expect(
-					not touching_agent_grid.is_point_solid(adjacent_cell),
-					"Agent clearance grid must allow cells where an enemy body only touches an obstacle edge without overlapping."
+					exact_touch_agent_grid.is_point_solid(adjacent_cell),
+					"Agent clearance grid must block exact-touch cells because CharacterBody2D.safe_margin treats them as colliding."
+				)
+			var horizontal_adjacent_cell := _find_walkable_cell_adjacent_to_horizontal_blocked(pathfinder)
+			_expect(
+				horizontal_adjacent_cell != Vector2i.MAX,
+				"Map must contain a walkable cell with a left/right blocked neighbor for basic insect clearance testing."
+			)
+			var basic_insect_grid := pathfinder.call("_get_or_create_agent_grid", BASIC_INSECT_HALF_EXTENTS) as AStarGrid2D
+			_expect(basic_insect_grid != null, "GridPathfinder must create a basic insect clearance grid.")
+			if basic_insect_grid != null and horizontal_adjacent_cell != Vector2i.MAX:
+				_expect(
+					basic_insect_grid.is_point_solid(horizontal_adjacent_cell),
+					"Basic Yuanshi insect pathfinding must not route its 16px-wide body through exact-touch horizontal wall cells."
+				)
+			var fast_insect_grid := pathfinder.call("_get_or_create_agent_grid", FAST_INSECT_HALF_EXTENTS) as AStarGrid2D
+			_expect(fast_insect_grid != null, "GridPathfinder must create a fast insect clearance grid.")
+			if fast_insect_grid != null and horizontal_adjacent_cell != Vector2i.MAX:
+				_expect(
+					not fast_insect_grid.is_point_solid(horizontal_adjacent_cell),
+					"Fast Yuanshi insect pathfinding must still allow cells with real clearance for its smaller body."
 				)
 			var nearest_agent_cell := pathfinder.call("_get_closest_walkable_cell", adjacent_cell, agent_grid) as Vector2i
 			_expect(
@@ -78,6 +99,26 @@ func _find_walkable_cell_adjacent_to_blocked(pathfinder: GridPathfinder) -> Vect
 		Vector2i.LEFT,
 		Vector2i.DOWN,
 		Vector2i.UP,
+	]
+	for y in range(region.position.y, region.end.y):
+		for x in range(region.position.x, region.end.x):
+			var cell := Vector2i(x, y)
+			if not bool(pathfinder.call("_is_cell_walkable", cell)):
+				continue
+			for direction in directions:
+				var neighbor: Vector2i = cell + (direction as Vector2i)
+				if not pathfinder.astar_grid.is_in_boundsv(neighbor):
+					continue
+				if not bool(pathfinder.call("_is_cell_walkable", neighbor)):
+					return cell
+	return Vector2i.MAX
+
+
+func _find_walkable_cell_adjacent_to_horizontal_blocked(pathfinder: GridPathfinder) -> Vector2i:
+	var region := pathfinder.astar_grid.region
+	var directions := [
+		Vector2i.RIGHT,
+		Vector2i.LEFT,
 	]
 	for y in range(region.position.y, region.end.y):
 		for x in range(region.position.x, region.end.x):

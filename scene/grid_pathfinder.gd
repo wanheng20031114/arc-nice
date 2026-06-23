@@ -17,8 +17,9 @@ const FLOW_CARDINAL_DIRECTIONS: Array[Vector2i] = [
 @export var max_nearest_cell_search_radius: int = 6
 # 每个物理帧允许的 A* 路径查询数量，用于避免大量敌人同帧刷新造成尖峰。
 @export_range(1, 128, 1, "or_greater") var max_path_queries_per_physics_frame: int = 12
-# 敌人体积寻路按实际碰撞外接尺寸计算；Godot 物理允许刚好接触但不重叠。
-@export var agent_clearance_padding: float = 0.0
+# 敌人体积寻路按实际碰撞外接尺寸计算；需要覆盖 CharacterBody2D.safe_margin，
+# 否则刚好贴边的格子会被寻路视为可走，但 move_and_slide() 会在碰撞恢复中卡住。
+@export var agent_clearance_padding: float = 0.1
 # 每个物理帧最多新建多少张 flow field；已缓存的场会被所有敌人共享，不计入预算。
 @export_range(1, 128, 1, "or_greater") var max_flow_field_builds_per_physics_frame: int = 4
 # flow field 按“敌人体型 + 目标格”缓存，限制上限避免长局无限增长。
