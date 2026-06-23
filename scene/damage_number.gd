@@ -5,7 +5,7 @@ signal finished(number: DamageNumber)
 
 const DAMAGE_FONT := preload("res://resources/font/ResourceHanRoundedCN-Medium.ttf")
 const GROUP_NAME := &"damage_numbers"
-const BASE_SIZE := Vector2(32.0, 16.0)
+const BASE_SIZE := Vector2(38.0, 20.0)
 const LIFETIME := 0.72
 const FONT_SIZE := 9
 const FONT_COLOR := Color(1.0, 0.12, 0.09, 1.0)

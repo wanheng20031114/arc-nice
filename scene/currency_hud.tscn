@@ -96,7 +96,7 @@ script = ExtResource("4_settings_icon")
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -143.0
+offset_left = -160.0
 offset_top = 8.0
 offset_right = -8.0
 offset_bottom = 53.0
@@ -161,7 +161,7 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="Count" type="Label" parent="TopRightMargin/Content/CurrencyPanel/ContentMargin/Content"]
-custom_minimum_size = Vector2(32, 0)
+custom_minimum_size = Vector2(46, 24)
 layout_mode = 2
 text = "0"
 label_settings = SubResource("LabelSettings_count")

@@ -97,6 +97,10 @@ func _test_dialogue_purchase() -> void:
 		bubble.text_label.custom_minimum_size.x >= 268.0,
 		"Dialogue text area must be wide enough for merchant upgrade lines."
 	)
+	_expect(
+		bubble.text_label.custom_minimum_size.y >= 58.0,
+		"Dialogue text area must leave vertical room for wrapped merchant lines."
+	)
 
 	var event := InputEventAction.new()
 	event.action = "interact"

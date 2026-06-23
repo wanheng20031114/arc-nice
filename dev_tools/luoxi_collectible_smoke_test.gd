@@ -93,6 +93,7 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 
 	var bubble_panel := bubble.get_node("BubblePanel") as PanelContainer
 	var bubble_style := bubble_panel.get_theme_stylebox("panel") as StyleBoxFlat
+	_expect(bubble.text_label.custom_minimum_size.y >= 58.0, "Luoxi dialogue text area must leave vertical room for wrapped text.")
 	_expect(
 		bubble_style != null and is_equal_approx(bubble_style.bg_color.r, 0.98),
 		"Luoxi dialogue bubble must keep the same warm background as Zhuangfangyi."

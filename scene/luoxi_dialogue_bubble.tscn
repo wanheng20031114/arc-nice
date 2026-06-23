@@ -55,11 +55,11 @@ scale = Vector2(0.5, 0.5)
 script = ExtResource("1_script")
 
 [node name="BubblePanel" type="PanelContainer" parent="."]
-custom_minimum_size = Vector2(300, 104)
+custom_minimum_size = Vector2(300, 116)
 offset_left = 0.0
 offset_top = 34.0
 offset_right = 300.0
-offset_bottom = 138.0
+offset_bottom = 150.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_bubble")
 
@@ -75,7 +75,7 @@ layout_mode = 2
 theme_override_constants/separation = 4
 
 [node name="Text" type="RichTextLabel" parent="BubblePanel/Margin/Content"]
-custom_minimum_size = Vector2(268, 50)
+custom_minimum_size = Vector2(268, 58)
 layout_mode = 2
 bbcode_enabled = true
 text = "我是终末地的爪牙！"

@@ -11,6 +11,7 @@ const RPG_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
 const PICKUP_SPEED_CONFIG := preload("res://resources/config/pickups/pickup_speed.tres")
 const PICKUP_SPIRAL_CONFIG := preload("res://resources/config/pickups/pickup_spiral.tres")
 const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
+const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 const XIRANG_DROP_CONFIG := preload("res://resources/config/xirang_drop.tres")
 const APPLE_COLLECTIBLE := preload("res://resources/config/pickups/collectible_apple.tres")
 
@@ -241,6 +242,10 @@ func _test_xirang_drop_attraction_radius() -> void:
 		XIRANG_DROP_CONFIG.attraction_radius >= 4096.0,
 		"Xirang drops must use a full-map attraction radius."
 	)
+	var drop := XIRANG_DROP_SCENE.instantiate()
+	var amount_label := drop.get_node("AmountLabel") as Label
+	_expect(amount_label.size.y >= 20.0, "Xirang drop amount label must leave room for outlined text.")
+	drop.free()
 
 
 func _test_multiplayer_peer_disconnect_cleanup() -> void:
@@ -1201,6 +1206,7 @@ func _test_game_runtime_modes() -> void:
 		and host_player.nameplate_label.text == "Host",
 		"Multiplayer player scene nameplate must show the peer name."
 	)
+	_expect(host_player.nameplate_label.custom_minimum_size.y >= 30.0, "Multiplayer nameplate must leave room for outlined player names.")
 	_expect(host_game.call("_try_spawn_enemy", BASIC_CONFIG), "Host authority game must spawn an indexed enemy.")
 	var spawned_enemy: Enemy = host_game.get_enemy_for_net_id(1)
 	_expect(spawned_enemy != null, "Host authority game must index spawned enemies by net id.")

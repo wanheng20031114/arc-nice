@@ -53,6 +53,9 @@ func _run() -> void:
 	test_root.add_child(enemy)
 	enemy.global_position = Vector2(64.0, 64.0)
 	enemy.setup(ENEMY_CONFIG, null, null)
+	var enemy_hit_audio := enemy.get_node("HitAudio") as AudioStreamPlayer2D
+	if enemy_hit_audio != null:
+		enemy_hit_audio.stream = null
 
 	var before_count := get_nodes_in_group(&"damage_numbers").size()
 	var damaged := enemy.apply_damage(10, Vector2.RIGHT)
@@ -69,6 +72,7 @@ func _run() -> void:
 		await physics_frame
 		_test_damage_number_pool_budget(damage_number_pool)
 
+	_stop_audio_players(test_root)
 	current_scene = null
 	test_root.queue_free()
 	await process_frame
@@ -111,6 +115,8 @@ func _test_damage_number_style(damage_number: DamageNumber) -> void:
 		)
 	_expect(label.get_theme_font_size(&"font_size") == 9, "DamageNumber font should be half the previous size.")
 	_expect(label.get_theme_constant(&"outline_size") == 2, "DamageNumber outline should stay readable without oversized pixel bulk.")
+	_expect(label.size.y >= 20.0, "DamageNumber label box must leave vertical room for the outlined font.")
+	_expect(label.size.x >= 38.0, "DamageNumber label box must leave horizontal room for the outlined font.")
 	_expect(label.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR, "DamageNumber should use linear texture filtering.")
 	var font_color := label.get_theme_color(&"font_color")
 	_expect(font_color.r > 0.9 and font_color.g < 0.25 and font_color.b < 0.2, "DamageNumber should be red.")
@@ -132,3 +138,22 @@ func _test_damage_number_pool_budget(damage_number_pool: Node2D) -> void:
 			shown_count += 1
 	_expect(shown_count == max_per_frame, "DamageNumberPool should enforce the per-frame display budget.")
 	_expect(damage_number_pool.get_child_count() == child_count_before, "DamageNumberPool should reuse prewarmed nodes.")
+
+
+func _stop_audio_players(node: Node) -> void:
+	if node == null:
+		return
+	if node is AudioStreamPlayer:
+		var audio_player := node as AudioStreamPlayer
+		audio_player.stop()
+		audio_player.stream = null
+	elif node is AudioStreamPlayer2D:
+		var audio_player_2d := node as AudioStreamPlayer2D
+		audio_player_2d.stop()
+		audio_player_2d.stream = null
+	elif node is AudioStreamPlayer3D:
+		var audio_player_3d := node as AudioStreamPlayer3D
+		audio_player_3d.stop()
+		audio_player_3d.stream = null
+	for child in node.get_children():
+		_stop_audio_players(child)
