@@ -4,7 +4,7 @@ class_name PlayerProfilePanel
 const DESIGN_SIZE := Vector2(724.0, 543.0)
 const SKILL1_DISPLAY_NAME := "经典技能"
 const SKILL1_DESCRIPTION := "向上一次射击位置发射一枚炸弹造成攻击力330%的大范围伤害"
-const ITEM_DETAIL_SIZE := Vector2(242.0, 148.0)
+const ITEM_DETAIL_SIZE := Vector2(254.0, 166.0)
 const ITEM_DETAIL_MARGIN := 14.0
 const ITEM_CATEGORY_COLLECTIBLE_TEXTURE := preload("res://resources/texture/item_category_badge_collectible.png")
 const ITEM_CATEGORY_ITEM_TEXTURE := preload("res://resources/texture/item_category_badge_item.png")

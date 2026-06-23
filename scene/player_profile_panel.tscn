@@ -1,4 +1,4 @@
-[gd_scene load_steps=35 format=3]
+[gd_scene load_steps=36 format=3]
 
 [ext_resource type="Script" path="res://scene/player_profile_panel.gd" id="1_panel"]
 [ext_resource type="Texture2D" path="res://resources/texture/player_profile_background.png" id="2_background"]
@@ -38,6 +38,13 @@ texture_margin_left = 24.0
 texture_margin_top = 24.0
 texture_margin_right = 24.0
 texture_margin_bottom = 24.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_rich_text_padding"]
+bg_color = Color(0, 0, 0, 0)
+content_margin_left = 5.0
+content_margin_top = 3.0
+content_margin_right = 7.0
+content_margin_bottom = 5.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_detail_use"]
 bg_color = Color(0.18, 0.5, 0.28, 1)
@@ -629,12 +636,12 @@ layout_mode = 2
 theme_override_constants/separation = 7
 
 [node name="HeaderRow" type="HBoxContainer" parent="Overlay/PanelRoot/ItemDetailPanel/Margin/Content"]
-custom_minimum_size = Vector2(218, 24)
+custom_minimum_size = Vector2(230, 24)
 layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="ItemTitle" type="Label" parent="Overlay/PanelRoot/ItemDetailPanel/Margin/Content/HeaderRow"]
-custom_minimum_size = Vector2(145, 24)
+custom_minimum_size = Vector2(157, 24)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "物品名称"
@@ -664,7 +671,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="ItemDescription" type="RichTextLabel" parent="Overlay/PanelRoot/ItemDetailPanel/Margin/Content"]
-custom_minimum_size = Vector2(218, 45)
+custom_minimum_size = Vector2(230, 56)
 layout_mode = 2
 bbcode_enabled = true
 fit_content = false
@@ -672,10 +679,12 @@ scroll_active = true
 autowrap_mode = 3
 theme_override_fonts/normal_font = ExtResource("4_font")
 theme_override_font_sizes/normal_font_size = 12
+theme_override_constants/line_separation = 2
 theme_override_colors/default_color = Color(0.78, 0.8, 0.74, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_rich_text_padding")
 
 [node name="ItemHint" type="Label" parent="Overlay/PanelRoot/ItemDetailPanel/Margin/Content"]
-custom_minimum_size = Vector2(218, 18)
+custom_minimum_size = Vector2(230, 18)
 layout_mode = 2
 theme_override_font_sizes/font_size = 11
 theme_override_colors/font_color = Color(0.62, 0.66, 0.6, 1)

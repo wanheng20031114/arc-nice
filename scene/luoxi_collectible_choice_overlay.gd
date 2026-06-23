@@ -41,7 +41,7 @@ const CARD_EDGE_SCALE_X := 0.04
 const CARD_FLIP_IN_DURATION := 0.14
 const CARD_FLIP_OUT_DURATION := 0.24
 const CARD_OPEN_STAGGER := 0.08
-const CARD_HOVER_SCALE := 1.035
+const CARD_HOVER_LIFT := 4.0
 const CARD_HOVER_DURATION := 0.12
 const DESCRIPTION_SCROLL_SPEED := 10.0
 const DESCRIPTION_SCROLL_PAUSE := 1.0
@@ -52,6 +52,8 @@ var open_tween: Tween
 var hover_tweens: Array[Tween] = []
 var card_base_styles: Array[StyleBoxFlat] = []
 var card_hover_styles: Array[StyleBoxFlat] = []
+var card_base_positions: Array[Vector2] = []
+var card_base_positions_captured := false
 var description_scroll_offsets: Array[float] = []
 var description_scroll_pauses: Array[float] = []
 
@@ -60,6 +62,7 @@ func _ready() -> void:
 	root_control.hide()
 	_build_card_hover_styles()
 	hover_tweens.resize(cards.size())
+	card_base_positions.resize(cards.size())
 	description_scroll_offsets.resize(descriptions.size())
 	description_scroll_pauses.resize(descriptions.size())
 	for description in descriptions:
@@ -76,6 +79,7 @@ func _ready() -> void:
 func show_choices(new_choices: Array, initial_index: int = 0) -> void:
 	choices = new_choices.duplicate()
 	selected_index = clampi(initial_index, 0, maxi(choices.size() - 1, 0))
+	card_base_positions_captured = false
 	_update_cards()
 	_prepare_open_animation()
 	_reset_description_scrolls()
@@ -221,6 +225,7 @@ func _play_open_animation() -> void:
 		open_tween.tween_property(card, "scale:x", 1.0, CARD_FLIP_OUT_DURATION).set_delay(delay + CARD_FLIP_IN_DURATION).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	open_tween.finished.connect(func() -> void:
 		open_tween = null
+		_capture_card_base_positions()
 		_refresh_card_hover_from_mouse()
 	)
 
@@ -270,13 +275,14 @@ func _set_card_hovered(index: int, hovered: bool) -> void:
 	if open_tween != null:
 		return
 	var card := cards[index]
-	var target_scale := Vector2.ONE * (CARD_HOVER_SCALE if hovered else 1.0)
+	var base_position := _get_card_base_position(index)
+	var target_position := base_position + Vector2(0.0, -CARD_HOVER_LIFT if hovered else 0.0)
 	if hover_tweens[index] != null:
 		hover_tweens[index].kill()
 	card.pivot_offset = _get_card_visible_size(card) * 0.5
 	card.add_theme_stylebox_override("panel", card_hover_styles[index] if hovered else card_base_styles[index])
 	hover_tweens[index] = create_tween()
-	hover_tweens[index].tween_property(card, "scale", target_scale, CARD_HOVER_DURATION).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	hover_tweens[index].tween_property(card, "position", target_position, CARD_HOVER_DURATION).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	hover_tweens[index].finished.connect(func() -> void:
 		hover_tweens[index] = null
 	)
@@ -287,6 +293,7 @@ func _reset_card_hover(index: int) -> void:
 		hover_tweens[index].kill()
 		hover_tweens[index] = null
 	cards[index].scale = Vector2.ONE
+	cards[index].position = _get_card_base_position(index)
 	cards[index].add_theme_stylebox_override("panel", card_base_styles[index])
 
 
@@ -298,6 +305,19 @@ func _get_card_visible_size(card: Control) -> Vector2:
 	if card.size.x > 0.0 and card.size.y > 0.0:
 		return card.size
 	return card.custom_minimum_size
+
+
+func _capture_card_base_positions() -> void:
+	for index in range(cards.size()):
+		card_base_positions[index] = cards[index].position.round()
+		cards[index].position = card_base_positions[index]
+	card_base_positions_captured = true
+
+
+func _get_card_base_position(index: int) -> Vector2:
+	if card_base_positions_captured and index >= 0 and index < card_base_positions.size():
+		return card_base_positions[index]
+	return cards[index].position.round()
 
 
 func _on_select_pressed(choice_index: int) -> void:

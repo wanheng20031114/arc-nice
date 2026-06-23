@@ -81,6 +81,14 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 		profile_panel.item_detail_description.text.contains(APPLE_COLLECTIBLE.description),
 		"The item detail panel must show the collectible description."
 	)
+	_expect(profile_panel.item_detail_description.scroll_active, "The item detail panel description must scroll instead of clipping long text.")
+	var description_style := profile_panel.item_detail_description.get_theme_stylebox("normal") as StyleBoxFlat
+	_expect(
+		description_style != null
+		and description_style.get_content_margin(SIDE_LEFT) >= 5.0
+		and description_style.get_content_margin(SIDE_RIGHT) >= 7.0,
+		"The item detail panel description must leave horizontal glyph padding."
+	)
 	_expect(not profile_panel.item_detail_use_button.visible, "Collectibles must not show a use button.")
 	_expect(profile_panel.item_detail_discard_button.visible, "Collectibles must show a discard button.")
 

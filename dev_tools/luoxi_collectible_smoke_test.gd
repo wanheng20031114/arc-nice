@@ -140,9 +140,16 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	)
 	_expect(first_button.text == "选择", "Luoxi card chooser must expose a select button.")
 	_expect(hint.label_settings.font_size >= 22, "Luoxi card chooser heading must be easier to read.")
-	_expect(first_card.custom_minimum_size == Vector2(204, 291), "Luoxi card chooser cards must leave room for longer collectible text.")
+	_expect(first_card.custom_minimum_size == Vector2(216, 310), "Luoxi card chooser cards must leave room for longer collectible text.")
 	_expect(first_description.scroll_active, "Luoxi card chooser descriptions must scroll when text is too long.")
-	_expect(first_description.custom_minimum_size.y >= 96.0, "Luoxi card chooser descriptions must have enough visible text area.")
+	_expect(first_description.custom_minimum_size.y >= 108.0, "Luoxi card chooser descriptions must have enough visible text area.")
+	var description_style := first_description.get_theme_stylebox("normal") as StyleBoxFlat
+	_expect(
+		description_style != null
+		and description_style.get_content_margin(SIDE_LEFT) >= 5.0
+		and description_style.get_content_margin(SIDE_RIGHT) >= 7.0,
+		"Luoxi card chooser descriptions must leave horizontal glyph padding."
+	)
 	_expect(card_row.get_theme_constant("separation") == 24, "Luoxi card chooser spacing must scale with the larger cards.")
 	for button_index in range(3):
 		var button := choice_overlay.get_node("Root/Center/Content/CardRow/Card%d/Margin/Content/SelectButton" % button_index) as Button
@@ -162,15 +169,17 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 
 	var second_card := choice_overlay.get_node("Root/Center/Content/CardRow/Card1") as PanelContainer
 	var second_base_style := second_card.get_theme_stylebox("panel") as StyleBoxFlat
+	var second_base_position := second_card.position
 	choice_overlay._on_card_mouse_entered(1)
 	await create_timer(0.18).timeout
 	var second_hover_style := second_card.get_theme_stylebox("panel") as StyleBoxFlat
-	_expect(second_card.scale.x > 1.02 and second_card.scale.y > 1.02, "Luoxi card chooser hover must gently enlarge the hovered card.")
+	_expect(is_equal_approx(second_card.scale.x, 1.0) and is_equal_approx(second_card.scale.y, 1.0), "Luoxi card chooser hover must not scale card text.")
+	_expect(second_card.position.y < second_base_position.y, "Luoxi card chooser hover must gently lift the hovered card.")
 	_expect(second_hover_style.shadow_size > second_base_style.shadow_size, "Luoxi card chooser hover must add a visible glow.")
 	_expect(second_hover_style.border_color.g > second_base_style.border_color.g, "Luoxi card chooser hover must brighten the red border.")
 	choice_overlay._on_card_mouse_exited(1)
 	await create_timer(0.18).timeout
-	_expect(is_equal_approx(second_card.scale.x, 1.0) and is_equal_approx(second_card.scale.y, 1.0), "Luoxi card chooser hover must restore the card scale.")
+	_expect(is_equal_approx(second_card.position.y, second_base_position.y), "Luoxi card chooser hover must restore the card position.")
 
 	var move_right := _make_action("move_right")
 	bubble.finish_line()
