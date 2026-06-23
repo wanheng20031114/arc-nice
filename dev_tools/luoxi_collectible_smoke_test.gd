@@ -7,6 +7,7 @@ const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const INVENTORY_SLOT_SCENE := preload("res://scene/inventory_slot.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const APPLE_COLLECTIBLE := preload("res://resources/config/pickups/collectible_apple.tres")
+const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -24,6 +25,7 @@ func _run() -> void:
 
 	await _test_luoxi_game_scene_placement()
 	await _test_luoxi_dialogue_choice_and_inventory()
+	await _test_full_inventory_keeps_luoxi_choice_available()
 	await _test_apple_piercing_bullet_effect()
 
 	test_root.queue_free()
@@ -216,6 +218,50 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	await physics_frame
 
 
+func _test_full_inventory_keeps_luoxi_choice_available() -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run()
+	for _slot_index in range(RunStateStore.INVENTORY_CAPACITY):
+		_expect(run_state.try_add_item(HEALTH_PICKUP), "Inventory setup must fill every slot before testing Luoxi's full bag result.")
+
+	var luoxi := LUOXI_SCENE.instantiate() as LuoxiMerchant
+	var player := PLAYER_SCENE.instantiate() as Player
+	test_root.add_child(luoxi)
+	test_root.add_child(player)
+	luoxi.set_active(true)
+	await process_frame
+	await physics_frame
+
+	luoxi.call("_on_interaction_area_body_entered", player)
+	var bubble := luoxi.get_node("MerchantDialogueBubble") as MerchantDialogueBubble
+	var choice_overlay := luoxi.get_node("LuoxiCollectibleChoiceOverlay") as LuoxiCollectibleChoiceOverlay
+	var interact := _make_action("interact")
+	_open_luoxi_choice(luoxi, bubble, interact)
+	_expect(choice_overlay.is_open(), "Luoxi must still offer a collectible choice before the full inventory result.")
+
+	luoxi._unhandled_input(interact)
+	_expect(
+		_dialogue_text(bubble) == "背包已经满了，无法再继续获得收藏品。",
+		"Luoxi must clearly explain that a full inventory blocks collectible pickup."
+	)
+	_expect(not bool(luoxi.call("_is_player_claimed", player)), "A full inventory must not spend Luoxi's once-per-round choice.")
+	_expect(run_state.get_item(0) == HEALTH_PICKUP, "A failed Luoxi claim must not replace existing inventory items.")
+
+	_expect(run_state.discard_item(0), "Discarding one item must free a slot for the original Luoxi choice.")
+	bubble.finish_line()
+	luoxi._unhandled_input(interact)
+	_open_luoxi_choice(luoxi, bubble, interact)
+	luoxi._unhandled_input(interact)
+	_expect(_dialogue_text(bubble) == "拿好苹果，可别小看它。", "Luoxi must allow the original choice after the player frees a slot.")
+	_expect(bool(luoxi.call("_is_player_claimed", player)), "A successful retry must spend Luoxi's once-per-round choice.")
+	_expect(run_state.get_item(0) == APPLE_COLLECTIBLE, "The retried Luoxi choice must fill the freed inventory slot.")
+
+	luoxi.queue_free()
+	player.queue_free()
+	await process_frame
+	await physics_frame
+
+
 func _test_apple_piercing_bullet_effect() -> void:
 	var player := PLAYER_SCENE.instantiate() as Player
 	var enemy_a := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
@@ -256,6 +302,14 @@ func _make_action(action_name: StringName) -> InputEventAction:
 	event.action = action_name
 	event.pressed = true
 	return event
+
+
+func _open_luoxi_choice(luoxi: LuoxiMerchant, bubble: MerchantDialogueBubble, interact: InputEventAction) -> void:
+	if not bubble.visible:
+		luoxi._unhandled_input(interact)
+	for _line_index in range(2):
+		bubble.finish_line()
+		luoxi._unhandled_input(interact)
 
 
 func _stop_audio_players(node: Node) -> void:

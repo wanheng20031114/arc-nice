@@ -23,7 +23,8 @@ const ITEM_DETAIL_MARGIN := 14.0
 @onready var skill_cost_label: Label = $Overlay/PanelRoot/SkillInfo/SkillCost
 @onready var inventory_grid: Control = $Overlay/PanelRoot/InventoryGrid
 @onready var item_detail_panel: PanelContainer = $Overlay/PanelRoot/ItemDetailPanel
-@onready var item_detail_title: Label = $Overlay/PanelRoot/ItemDetailPanel/Margin/Content/ItemTitle
+@onready var item_detail_title: Label = $Overlay/PanelRoot/ItemDetailPanel/Margin/Content/HeaderRow/ItemTitle
+@onready var item_detail_category_label: Label = $Overlay/PanelRoot/ItemDetailPanel/Margin/Content/HeaderRow/ItemCategory/CategoryLabel
 @onready var item_detail_description: RichTextLabel = $Overlay/PanelRoot/ItemDetailPanel/Margin/Content/ItemDescription
 @onready var item_detail_hint: Label = $Overlay/PanelRoot/ItemDetailPanel/Margin/Content/ItemHint
 @onready var item_detail_use_button: Button = $Overlay/PanelRoot/ItemDetailPanel/Margin/Content/ButtonRow/UseButton
@@ -352,7 +353,8 @@ func _refresh_item_detail() -> void:
 		return
 
 	var is_consumable := _is_consumable_item(item)
-	item_detail_title.text = "%s  ·  %s" % [item.display_name, _get_item_type_label(item)]
+	item_detail_title.text = item.display_name
+	item_detail_category_label.text = _get_item_type_label(item)
 	item_detail_description.text = item.description if not item.description.is_empty() else "暂无描述"
 	item_detail_hint.visible = is_consumable
 	item_detail_hint.text = "也可以双击槽位使用"

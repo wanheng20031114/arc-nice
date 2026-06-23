@@ -819,6 +819,24 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			== LuoxiMerchant.COLLECTIBLE_RESULT_ALREADY_CLAIMED,
 			"Luoxi must reject a second collectible choice in the same run."
 		)
+		for _slot_index in range(RunStateStore.INVENTORY_CAPACITY):
+			_expect(run_state.try_add_item_for_peer(2, HEALTH_PICKUP), "Peer 2 inventory must fill before testing Luoxi's full bag result.")
+		var full_luoxi_claim_result := game.try_claim_luoxi_collectible_for_peer(2, 0)
+		_expect(
+			full_luoxi_claim_result == LuoxiMerchant.COLLECTIBLE_RESULT_INVENTORY_FULL,
+			"Luoxi must reject collectible claims when the selected peer inventory is full."
+		)
+		_expect(
+			not game.has_luoxi_collectible_claimed(2),
+			"A full peer inventory must not spend Luoxi's once-per-round collectible choice."
+		)
+		_expect(run_state.discard_item_for_peer(2, 0), "Peer 2 must be able to free one inventory slot after a full Luoxi claim.")
+		_expect(
+			game.try_claim_luoxi_collectible_for_peer(2, 0) == LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS,
+			"Luoxi must allow the original peer choice after the peer frees an inventory slot."
+		)
+		_expect(game.has_luoxi_collectible_claimed(2), "A successful retry must mark the peer's Luoxi choice as claimed.")
+		_expect(run_state.get_item_for_peer(2, 0) == APPLE_COLLECTIBLE, "The successful Luoxi retry must fill the freed peer inventory slot.")
 		_expect(run_state.try_add_item_for_peer(4, HEALTH_PICKUP), "Peer 4 health pickup must fit in inventory for use testing.")
 		peer_four.current_health = maxi(peer_four.max_health - HEALTH_PICKUP.heal_amount, 1)
 		mp_game.call("_apply_inventory_item_use_for_peer", 4, 1)

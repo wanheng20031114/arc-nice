@@ -65,8 +65,9 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	profile_panel.slots[0].emit_signal("pressed")
 	await process_frame
 	_expect(profile_panel.item_detail_panel.visible, "Selecting an occupied inventory slot must show the item detail panel.")
-	_expect(profile_panel.item_detail_title.text.contains("苹果"), "The item detail panel must show the collectible name.")
-	_expect(profile_panel.item_detail_title.text.contains("收藏品"), "The item detail panel must label apples as collectibles.")
+	_expect(profile_panel.item_detail_title.text == "苹果", "The item detail panel title must show only the item name.")
+	_expect(not profile_panel.item_detail_title.text.contains("收藏品"), "The item detail panel title must not append the item category.")
+	_expect(profile_panel.item_detail_category_label.text == "收藏品", "The item detail panel must show the collectible category in its own label.")
 	_expect(
 		profile_panel.item_detail_description.text.contains(APPLE_COLLECTIBLE.description),
 		"The item detail panel must show the collectible description."
@@ -100,8 +101,8 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	profile_panel.slots[2].emit_signal("pressed")
 	await process_frame
 	_expect(profile_panel.item_detail_panel.visible, "Selecting a stored consumable must show the item detail panel.")
-	_expect(profile_panel.item_detail_title.text.contains("生命药瓶"), "The item detail panel must show the consumable name.")
-	_expect(profile_panel.item_detail_title.text.contains("道具"), "The item detail panel must label health bottles as items.")
+	_expect(profile_panel.item_detail_title.text == "生命药瓶", "The item detail panel title must show only the consumable name.")
+	_expect(profile_panel.item_detail_category_label.text == "道具", "The item detail panel must show the consumable category in its own label.")
 	_expect(profile_panel.item_detail_use_button.visible, "Consumable items must show a green use button.")
 	_expect(profile_panel.item_detail_discard_button.visible, "Consumable items must show a red discard button.")
 	_expect(profile_panel.item_detail_hint.visible, "Consumable items must show the double-click use hint.")
