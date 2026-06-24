@@ -1,50 +1,61 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene format=3 uid="uid://bv3hadhgf8c88"]
 
-[ext_resource type="PackedScene" path="res://scene/enemy/enemy.tscn" id="1_base"]
-[ext_resource type="Script" path="res://scene/enemy/capoo_sniper.gd" id="2_script"]
-[ext_resource type="Shader" path="res://scene/entity_motion_status.gdshader" id="3_shader"]
+[ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy/enemy.tscn" id="1_base"]
+[ext_resource type="Script" uid="uid://bgi20oeg8oo75" path="res://scene/enemy/capoo_sniper.gd" id="2_script"]
+[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="3_shader"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/capoo_sniper.tres" id="4_frames"]
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_sniper"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_buikk"]
 resource_local_to_scene = true
 shader = ExtResource("3_shader")
+shader_parameter/blink_enabled = false
+shader_parameter/blink_speed = 12.0
+shader_parameter/hidden_ratio = 0.5
+shader_parameter/dodge_effect_strength = 0.0
+shader_parameter/dodge_sweep = 0.0
+shader_parameter/dodge_color = Color(0.42, 0.95, 1, 1)
+shader_parameter/dodge_flash_color = Color(1, 1, 1, 1)
+shader_parameter/dodge_outline_width = 3.0
+shader_parameter/slow_overlay_strength = 0.0
+shader_parameter/slow_overlay_color = Color(0.55, 0.86, 1, 1)
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_wc5ww"]
 resource_local_to_scene = true
-size = Vector2(18, 19)
+size = Vector2(15, 19)
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_touch"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_77wya"]
 resource_local_to_scene = true
-size = Vector2(18, 19)
+size = Vector2(15, 19)
 
-[node name="CapooSniper" instance=ExtResource("1_base")]
+[node name="CapooSniper" unique_id=1802724319 instance=ExtResource("1_base")]
 script = ExtResource("2_script")
 path_refresh_interval = 0.25
 waypoint_arrival_distance = 6.0
 direct_chase_extra_distance = 2.0
 
-[node name="AnimatedSprite2D" parent="." index="0"]
-material = SubResource("ShaderMaterial_sniper")
+[node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
 texture_filter = 2
+material = SubResource("ShaderMaterial_buikk")
+position = Vector2(3, 5.9604645e-08)
 scale = Vector2(0.31, 0.31)
 sprite_frames = ExtResource("4_frames")
-animation = &"move"
+animation = &"attack"
 
-[node name="CollisionShape2D" parent="." index="1"]
-position = Vector2(-1, 1.5)
-shape = SubResource("RectangleShape2D_body")
+[node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
+position = Vector2(-0.5, 0)
+shape = SubResource("RectangleShape2D_wc5ww")
 
-[node name="CollisionShape2D" parent="TouchDamageArea" index="0"]
-position = Vector2(-1, 1.5)
-shape = SubResource("RectangleShape2D_touch")
+[node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
+position = Vector2(-0.5, 0)
+shape = SubResource("RectangleShape2D_77wya")
 
-[node name="AimGlow" type="Polygon2D" parent="."]
+[node name="AimGlow" type="Polygon2D" parent="." index="7" unique_id=799485220]
 visible = false
 z_index = 3
 color = Color(1, 0.18, 0.1, 0.45)
 polygon = PackedVector2Array(0, -2, 7, 0, 0, 2)
 
-[node name="AttackAudio" type="AudioStreamPlayer2D" parent="."]
+[node name="AttackAudio" type="AudioStreamPlayer2D" parent="." index="8" unique_id=1685502790]
 volume_db = -8.0
 max_distance = 260.0
 max_polyphony = 2

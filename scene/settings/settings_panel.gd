@@ -74,6 +74,10 @@ func open() -> void:
 	close_button.grab_focus()
 
 
+func refresh_from_settings() -> void:
+	_refresh_from_settings()
+
+
 func close() -> void:
 	if not visible:
 		return

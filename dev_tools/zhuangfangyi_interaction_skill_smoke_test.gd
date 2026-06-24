@@ -371,14 +371,14 @@ func _test_skill_charge_bar_hides_on_singleplayer_death() -> void:
 
 
 func _test_cheat_xirang_action() -> void:
-	_expect(InputMap.has_action("cheat"), "Project input map must include the cheat action.")
+	_expect(InputMap.has_action("cheat_xirang"), "Project input map must include the cheat_xirang action.")
 	var player := PLAYER_SCENE.instantiate() as Player
 	test_root.add_child(player)
 	await process_frame
 	await physics_frame
 
 	var event := InputEventAction.new()
-	event.action = "cheat"
+	event.action = "cheat_xirang"
 	event.pressed = true
 	player._unhandled_input(event)
 	_expect(player.current_xirang == 1000, "Cheat action must grant 1000 xirang.")

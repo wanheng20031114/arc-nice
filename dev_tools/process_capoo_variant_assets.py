@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build generated Capoo variant sprites and effect frames."""
+"""Build Capoo variant sprites from chroma-keyed imagegen sources."""
 
 from __future__ import annotations
 
@@ -12,20 +12,27 @@ from scipy import ndimage
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CAPOO_SOURCE = ROOT / "dev_assets/source_images/capoo_variants_generated.png"
-EFFECT_SOURCE = ROOT / "dev_assets/source_images/capoo_special_effects_generated.png"
+CAPOO_SOURCE = ROOT / "dev_assets/source_images/capoo_variants_generated_v2.png"
+PROJECTILE_SOURCE = ROOT / "dev_assets/source_images/capoo_projectiles_generated_v2.png"
 
 TEXTURE_DIR = ROOT / "resources/texture"
 ANIMATION_DIR = ROOT / "resources/animation"
+DEBUG_DIR = ROOT / "tmp/capoo_variant_assets"
 
-CAPOO_COLUMNS = 12
-CAPOO_ROWS = 3
+CAPOO_SOURCE_COLUMNS = 12
+CAPOO_SOURCE_ROWS = 3
 CAPOO_FRAME_SIZE = 96
 CAPOO_VISIBLE_SIZE = 78
 
-EFFECT_COLUMNS = 6
-EFFECT_ROWS = 2
-EFFECT_FRAME_SIZE = 64
+FIREBALL_FRAME_SIZE = 64
+FIREBALL_VISIBLE_SIZE = 46
+FIREBALL_FRAME_COUNT = 6
+
+SMG_BULLET_FRAME_WIDTH = 16
+SMG_BULLET_FRAME_HEIGHT = 8
+SMG_BULLET_FRAME_COUNT = 3
+
+RETICLE_SIZE = 32
 
 CAPOO_VARIANTS = OrderedDict(
 	[
@@ -44,35 +51,65 @@ CAPOO_ANIMATION_ROWS = OrderedDict(
 	]
 )
 
-EFFECTS = OrderedDict(
-	[
-		("capoo_mage_fireball", 0),
-		("capoo_sniper_lock_reticle", 1),
-	]
-)
 
-
-def _remove_checker_background(image: Image.Image) -> Image.Image:
+def _remove_chroma_background(image: Image.Image, key: str) -> Image.Image:
 	array = np.array(image.convert("RGBA"), dtype=np.uint8)
 	rgb = array[:, :, :3].astype(np.int16)
-	min_channel = rgb.min(axis=2)
-	max_channel = rgb.max(axis=2)
-	bright_low_saturation = (min_channel >= 190) & ((max_channel - min_channel) <= 48)
+	red = rgb[:, :, 0]
+	green = rgb[:, :, 1]
+	blue = rgb[:, :, 2]
 
-	seeds = np.zeros(bright_low_saturation.shape, dtype=bool)
-	seeds[0, :] = bright_low_saturation[0, :]
-	seeds[-1, :] = bright_low_saturation[-1, :]
-	seeds[:, 0] = bright_low_saturation[:, 0]
-	seeds[:, -1] = bright_low_saturation[:, -1]
-	background = ndimage.binary_dilation(
+	if key == "magenta":
+		candidate = (
+			(red >= 130)
+			& (blue >= 130)
+			& (green <= 125)
+			& ((red - green) >= 55)
+			& ((blue - green) >= 55)
+		)
+	elif key == "green":
+		candidate = (
+			(green >= 120)
+			& ((green - red) >= 45)
+			& ((green - blue) >= 45)
+		)
+	else:
+		raise ValueError(f"Unsupported chroma key: {key}")
+
+	seeds = np.zeros(candidate.shape, dtype=bool)
+	seeds[0, :] = candidate[0, :]
+	seeds[-1, :] = candidate[-1, :]
+	seeds[:, 0] = candidate[:, 0]
+	seeds[:, -1] = candidate[:, -1]
+	background = ndimage.binary_propagation(
 		seeds,
-		structure=np.ones((9, 9), dtype=bool),
-		mask=bright_low_saturation,
-		iterations=-1,
+		structure=np.ones((5, 5), dtype=bool),
+		mask=candidate,
 	)
+
 	array[background] = (0, 0, 0, 0)
-	array[:, :, 3][~background] = 255
-	return Image.fromarray(array)
+	visible = ~background
+	array[:, :, 3][visible] = 255
+	array[:, :, :3][~visible] = 0
+	_despill(array, key, visible)
+	return Image.fromarray(array, mode="RGBA")
+
+
+def _despill(array: np.ndarray, key: str, visible: np.ndarray) -> None:
+	rgb = array[:, :, :3].astype(np.int16)
+	red = rgb[:, :, 0]
+	green = rgb[:, :, 1]
+	blue = rgb[:, :, 2]
+
+	if key == "green":
+		fringe = visible & (green > red + 18) & (green > blue + 18)
+		green_limit = np.maximum(red, blue) + 10
+		array[:, :, 1][fringe] = np.minimum(green[fringe], green_limit[fringe]).astype(np.uint8)
+	elif key == "magenta":
+		fringe = visible & (red > green + 32) & (blue > green + 32) & (red > 120) & (blue > 120)
+		limit = green + 90
+		array[:, :, 0][fringe] = np.minimum(red[fringe], limit[fringe]).astype(np.uint8)
+		array[:, :, 2][fringe] = np.minimum(blue[fringe], limit[fringe]).astype(np.uint8)
 
 
 def _crop_grid_cell(sheet: Image.Image, columns: int, rows: int, column: int, row: int) -> Image.Image:
@@ -85,92 +122,65 @@ def _crop_grid_cell(sheet: Image.Image, columns: int, rows: int, column: int, ro
 	return sheet.crop((left, top, right, bottom))
 
 
-def _fit_cell_to_frame(cell: Image.Image, frame_size: int, visible_size: int) -> Image.Image:
-	bbox = cell.getchannel("A").getbbox()
+def _subject_bbox(image: Image.Image) -> tuple[int, int, int, int] | None:
+	return image.convert("RGBA").getchannel("A").getbbox()
+
+
+def _fit_subject_to_frame(
+	cell: Image.Image,
+	frame_size: tuple[int, int],
+	visible_size: tuple[int, int],
+	anchor: tuple[float, float] | None = None,
+) -> Image.Image:
+	bbox = _subject_bbox(cell)
+	frame = Image.new("RGBA", frame_size, (0, 0, 0, 0))
 	if bbox is None:
-		return Image.new("RGBA", (frame_size, frame_size), (0, 0, 0, 0))
+		return frame
+
 	subject = cell.crop(bbox)
-	scale = min(visible_size / float(subject.width), visible_size / float(subject.height))
+	scale = min(
+		visible_size[0] / float(subject.width),
+		visible_size[1] / float(subject.height),
+		1.0,
+	)
 	output_size = (
 		max(1, round(subject.width * scale)),
 		max(1, round(subject.height * scale)),
 	)
-	resized = subject.resize(output_size, Image.Resampling.LANCZOS)
-	frame = Image.new("RGBA", (frame_size, frame_size), (0, 0, 0, 0))
-	frame.alpha_composite(
-		resized,
-		(
-			round((frame_size - output_size[0]) / 2.0),
-			round((frame_size - output_size[1]) / 2.0),
-		),
-	)
-	return frame
-
-
-def _extract_capoo_row_frames(source: Image.Image, source_row: int) -> list[Image.Image]:
-	alpha = np.array(source.getchannel("A"), dtype=np.uint8) > 0
-	top = round(source_row * source.height / float(CAPOO_ROWS))
-	bottom = round((source_row + 1) * source.height / float(CAPOO_ROWS))
-	row_alpha = alpha[top:bottom, :]
-
-	labels, _count = ndimage.label(row_alpha, structure=np.ones((3, 3), dtype=bool))
-	component_boxes: list[tuple[int, int, int, int, int]] = []
-	for label_index, slices in enumerate(ndimage.find_objects(labels), start=1):
-		if slices is None:
-			continue
-		component = labels[slices] == label_index
-		alpha_pixels = int(component.sum())
-		if alpha_pixels < 3000:
-			continue
-		local_y, local_x = np.nonzero(component)
-		left = int(local_x.min() + slices[1].start)
-		right = int(local_x.max() + slices[1].start + 1)
-		component_boxes.append(
-			(
-			left,
-			int(local_y.min() + slices[0].start + top),
-			right,
-			int(local_y.max() + slices[0].start + top + 1),
-			alpha_pixels,
-			)
+	resized = subject.resize(output_size, Image.Resampling.NEAREST)
+	if anchor == None:
+		paste_position = (
+			round((frame_size[0] - output_size[0]) / 2.0),
+			round((frame_size[1] - output_size[1]) / 2.0),
 		)
-
-	component_boxes.sort(key=lambda box: (box[0] + box[2]) * 0.5)
-	if not component_boxes:
-		return [
-			_crop_grid_cell(source, CAPOO_COLUMNS, CAPOO_ROWS, column, source_row)
-			for column in range(CAPOO_COLUMNS)
-		]
-
-	frames: list[Image.Image] = []
-	padding = 8
-	for box in component_boxes:
-		left = max(0, box[0] - padding)
-		top = max(0, box[1] - padding)
-		right = min(source.width, box[2] + padding)
-		bottom = min(source.height, box[3] + padding)
-		frames.append(source.crop((left, top, right, bottom)))
-	while len(frames) < CAPOO_COLUMNS:
-		frames.append(frames[-1].copy())
-	return frames[:CAPOO_COLUMNS]
-
-
-def _resize_cell_to_frame(cell: Image.Image, frame_size: int) -> Image.Image:
-	return cell.resize((frame_size, frame_size), Image.Resampling.LANCZOS)
+	else:
+		paste_position = (
+			round(anchor[0] - output_size[0] / 2.0),
+			round(anchor[1] - output_size[1] / 2.0),
+		)
+	frame.alpha_composite(resized, paste_position)
+	return frame
 
 
 def _build_capoo_sheet(source: Image.Image, source_row: int) -> Image.Image:
 	sheet = Image.new("RGBA", (CAPOO_FRAME_SIZE * 4, CAPOO_FRAME_SIZE * 4), (0, 0, 0, 0))
-	source_frames = _extract_capoo_row_frames(source, source_row)
-	for source_column in range(CAPOO_COLUMNS):
-		cell = source_frames[source_column]
-		frame = _fit_cell_to_frame(cell, CAPOO_FRAME_SIZE, CAPOO_VISIBLE_SIZE)
+	source_frames: list[Image.Image] = [
+		_crop_grid_cell(source, CAPOO_SOURCE_COLUMNS, CAPOO_SOURCE_ROWS, column, source_row)
+		for column in range(CAPOO_SOURCE_COLUMNS)
+	]
+
+	for source_column, cell in enumerate(source_frames):
+		frame = _fit_subject_to_frame(
+			cell,
+			(CAPOO_FRAME_SIZE, CAPOO_FRAME_SIZE),
+			(CAPOO_VISIBLE_SIZE, CAPOO_VISIBLE_SIZE),
+		)
 		output_row = 0 if source_column < 4 else (1 if source_column < 8 else 3)
 		output_column = source_column % 4
 		sheet.alpha_composite(frame, (output_column * CAPOO_FRAME_SIZE, output_row * CAPOO_FRAME_SIZE))
 
 	for output_column in range(4):
-		attack_frame = sheet.crop(
+		windup_frame = sheet.crop(
 			(
 				output_column * CAPOO_FRAME_SIZE,
 				CAPOO_FRAME_SIZE,
@@ -178,17 +188,86 @@ def _build_capoo_sheet(source: Image.Image, source_row: int) -> Image.Image:
 				CAPOO_FRAME_SIZE * 2,
 			)
 		)
-		sheet.alpha_composite(attack_frame, (output_column * CAPOO_FRAME_SIZE, CAPOO_FRAME_SIZE * 2))
+		sheet.alpha_composite(windup_frame, (output_column * CAPOO_FRAME_SIZE, CAPOO_FRAME_SIZE * 2))
 	return sheet
 
 
-def _build_effect_sheet(source: Image.Image, source_row: int) -> Image.Image:
-	sheet = Image.new("RGBA", (EFFECT_FRAME_SIZE * EFFECT_COLUMNS, EFFECT_FRAME_SIZE), (0, 0, 0, 0))
-	for column in range(EFFECT_COLUMNS):
-		cell = _crop_grid_cell(source, EFFECT_COLUMNS, EFFECT_ROWS, column, source_row)
-		frame = _resize_cell_to_frame(cell, EFFECT_FRAME_SIZE)
-		sheet.alpha_composite(frame, (column * EFFECT_FRAME_SIZE, 0))
+def _find_fireball_core_anchor(subject: Image.Image) -> tuple[float, float]:
+	array = np.array(subject.convert("RGBA"), dtype=np.uint8)
+	alpha = array[:, :, 3] > 0
+	red = array[:, :, 0].astype(np.int16)
+	green = array[:, :, 1].astype(np.int16)
+	blue = array[:, :, 2].astype(np.int16)
+	core = alpha & (red >= 220) & (green >= 145) & (blue <= 120)
+	if not core.any():
+		bbox = _subject_bbox(subject)
+		if bbox is None:
+			return (subject.width * 0.5, subject.height * 0.5)
+		return ((bbox[0] + bbox[2]) * 0.5, (bbox[1] + bbox[3]) * 0.5)
+	ys, xs = np.nonzero(core)
+	return (float(xs.mean()), float(ys.mean()))
+
+
+def _build_fireball_sheet(source: Image.Image) -> Image.Image:
+	cells = [
+		_crop_grid_cell(source, FIREBALL_FRAME_COUNT, 3, column, 0)
+		for column in range(FIREBALL_FRAME_COUNT)
+	]
+	subjects: list[Image.Image] = []
+	for cell in cells:
+		bbox = _subject_bbox(cell)
+		if bbox is None:
+			subjects.append(Image.new("RGBA", (1, 1), (0, 0, 0, 0)))
+		else:
+			subjects.append(cell.crop(bbox))
+
+	max_width = max(subject.width for subject in subjects)
+	max_height = max(subject.height for subject in subjects)
+	scale = min(
+		FIREBALL_VISIBLE_SIZE / float(max_width),
+		FIREBALL_VISIBLE_SIZE / float(max_height),
+		1.0,
+	)
+	sheet = Image.new("RGBA", (FIREBALL_FRAME_SIZE * FIREBALL_FRAME_COUNT, FIREBALL_FRAME_SIZE), (0, 0, 0, 0))
+	for index, subject in enumerate(subjects):
+		output_size = (
+			max(1, round(subject.width * scale)),
+			max(1, round(subject.height * scale)),
+		)
+		resized = subject.resize(output_size, Image.Resampling.NEAREST)
+		core_x, core_y = _find_fireball_core_anchor(resized)
+		frame = Image.new("RGBA", (FIREBALL_FRAME_SIZE, FIREBALL_FRAME_SIZE), (0, 0, 0, 0))
+		frame.alpha_composite(
+			resized,
+			(
+				round(38.0 - core_x),
+				round(32.0 - core_y),
+			),
+		)
+		sheet.alpha_composite(frame, (index * FIREBALL_FRAME_SIZE, 0))
 	return sheet
+
+
+def _build_smg_bullet_sheet(source: Image.Image) -> Image.Image:
+	sheet = Image.new("RGBA", (SMG_BULLET_FRAME_WIDTH * SMG_BULLET_FRAME_COUNT, SMG_BULLET_FRAME_HEIGHT), (0, 0, 0, 0))
+	for column in range(SMG_BULLET_FRAME_COUNT):
+		cell = _crop_grid_cell(source, SMG_BULLET_FRAME_COUNT, 3, column, 1)
+		frame = _fit_subject_to_frame(
+			cell,
+			(SMG_BULLET_FRAME_WIDTH, SMG_BULLET_FRAME_HEIGHT),
+			(SMG_BULLET_FRAME_WIDTH - 1, SMG_BULLET_FRAME_HEIGHT - 1),
+		)
+		sheet.alpha_composite(frame, (column * SMG_BULLET_FRAME_WIDTH, 0))
+	return sheet
+
+
+def _build_reticle_texture(source: Image.Image) -> Image.Image:
+	cell = _crop_grid_cell(source, 1, 3, 0, 2)
+	return _fit_subject_to_frame(
+		cell,
+		(RETICLE_SIZE, RETICLE_SIZE),
+		(RETICLE_SIZE - 2, RETICLE_SIZE - 2),
+	)
 
 
 def _write_capoo_frames(name: str) -> None:
@@ -240,29 +319,56 @@ def _write_capoo_frames(name: str) -> None:
 	(ANIMATION_DIR / f"{name}.tres").write_text("\n".join(lines), encoding="utf-8")
 
 
-def _write_effect_frames(name: str) -> None:
+def _write_fireball_frames() -> None:
+	_write_linear_frames(
+		"capoo_mage_fireball",
+		"fly",
+		FIREBALL_FRAME_COUNT,
+		FIREBALL_FRAME_SIZE,
+		FIREBALL_FRAME_SIZE,
+		12.0,
+	)
+
+
+def _write_smg_bullet_frames() -> None:
+	_write_linear_frames(
+		"capoo_smg_bullet",
+		"fly",
+		SMG_BULLET_FRAME_COUNT,
+		SMG_BULLET_FRAME_WIDTH,
+		SMG_BULLET_FRAME_HEIGHT,
+		18.0,
+	)
+
+
+def _write_linear_frames(
+	name: str,
+	animation_name: str,
+	frame_count: int,
+	frame_width: int,
+	frame_height: int,
+	speed: float,
+) -> None:
 	texture_path = f"res://resources/texture/{name}.png"
-	animation_name = "fly" if name == "capoo_mage_fireball" else "lock"
-	speed = 12.0 if name == "capoo_mage_fireball" else 6.0
 	lines = [
 		"[gd_resource type=\"SpriteFrames\" format=3]",
 		"",
 		f"[ext_resource type=\"Texture2D\" path=\"{texture_path}\" id=\"1_texture\"]",
 		"",
 	]
-	for column in range(EFFECT_COLUMNS):
+	for column in range(frame_count):
 		lines.extend(
 			[
 				f"[sub_resource type=\"AtlasTexture\" id=\"AtlasTexture_{animation_name}_{column}\"]",
 				"atlas = ExtResource(\"1_texture\")",
-				f"region = Rect2({column * EFFECT_FRAME_SIZE}, 0, {EFFECT_FRAME_SIZE}, {EFFECT_FRAME_SIZE})",
+				f"region = Rect2({column * frame_width}, 0, {frame_width}, {frame_height})",
 				"",
 			]
 		)
 	frame_entries = [
 		"{\n\"duration\": 1.0,\n"
 		f"\"texture\": SubResource(\"AtlasTexture_{animation_name}_{column}\")\n}}"
-		for column in range(EFFECT_COLUMNS)
+		for column in range(frame_count)
 	]
 	lines.append("[resource]")
 	lines.append(
@@ -277,25 +383,24 @@ def _write_effect_frames(name: str) -> None:
 	(ANIMATION_DIR / f"{name}.tres").write_text("\n".join(lines), encoding="utf-8")
 
 
-def _save_alpha_debug(name: str, image: Image.Image) -> None:
-	debug_dir = ROOT / "tmp/capoo_variant_assets"
-	debug_dir.mkdir(parents=True, exist_ok=True)
-	image.save(debug_dir / f"{name}.png")
+def _save_debug(name: str, image: Image.Image) -> None:
+	DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+	image.save(DEBUG_DIR / f"{name}.png")
 
 
 def main() -> None:
 	if not CAPOO_SOURCE.is_file():
 		raise FileNotFoundError(CAPOO_SOURCE)
-	if not EFFECT_SOURCE.is_file():
-		raise FileNotFoundError(EFFECT_SOURCE)
+	if not PROJECTILE_SOURCE.is_file():
+		raise FileNotFoundError(PROJECTILE_SOURCE)
 
 	TEXTURE_DIR.mkdir(parents=True, exist_ok=True)
 	ANIMATION_DIR.mkdir(parents=True, exist_ok=True)
 
-	capoo_source = _remove_checker_background(Image.open(CAPOO_SOURCE))
-	effect_source = _remove_checker_background(Image.open(EFFECT_SOURCE))
-	_save_alpha_debug("capoo_variants_alpha", capoo_source)
-	_save_alpha_debug("capoo_special_effects_alpha", effect_source)
+	capoo_source = _remove_chroma_background(Image.open(CAPOO_SOURCE), "magenta")
+	projectile_source = _remove_chroma_background(Image.open(PROJECTILE_SOURCE), "green")
+	_save_debug("capoo_variants_v2_alpha", capoo_source)
+	_save_debug("capoo_projectiles_v2_alpha", projectile_source)
 
 	for name, row in CAPOO_VARIANTS.items():
 		sheet = _build_capoo_sheet(capoo_source, row)
@@ -303,11 +408,19 @@ def main() -> None:
 		_write_capoo_frames(name)
 		print(f"{name}: {sheet.width}x{sheet.height}, bbox={sheet.getchannel('A').getbbox()}")
 
-	for name, row in EFFECTS.items():
-		sheet = _build_effect_sheet(effect_source, row)
-		sheet.save(TEXTURE_DIR / f"{name}.png")
-		_write_effect_frames(name)
-		print(f"{name}: {sheet.width}x{sheet.height}, bbox={sheet.getchannel('A').getbbox()}")
+	fireball_sheet = _build_fireball_sheet(projectile_source)
+	fireball_sheet.save(TEXTURE_DIR / "capoo_mage_fireball.png")
+	_write_fireball_frames()
+	print(f"capoo_mage_fireball: {fireball_sheet.width}x{fireball_sheet.height}, bbox={fireball_sheet.getchannel('A').getbbox()}")
+
+	smg_bullet_sheet = _build_smg_bullet_sheet(projectile_source)
+	smg_bullet_sheet.save(TEXTURE_DIR / "capoo_smg_bullet.png")
+	_write_smg_bullet_frames()
+	print(f"capoo_smg_bullet: {smg_bullet_sheet.width}x{smg_bullet_sheet.height}, bbox={smg_bullet_sheet.getchannel('A').getbbox()}")
+
+	reticle = _build_reticle_texture(projectile_source)
+	reticle.save(TEXTURE_DIR / "capoo_sniper_lock_reticle.png")
+	print(f"capoo_sniper_lock_reticle: {reticle.width}x{reticle.height}, bbox={reticle.getchannel('A').getbbox()}")
 
 
 if __name__ == "__main__":

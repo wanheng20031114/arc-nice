@@ -219,6 +219,13 @@ func request_multiplayer_cheat_xirang() -> void:
 		net_cheat_xirang_requested.rpc_id(_get_host_peer_id())
 
 
+func request_debug_collectible(config_path: String) -> void:
+	if net_manager.is_host():
+		_apply_debug_collectible_for_peer(_get_local_peer_id(), config_path)
+	else:
+		net_debug_collectible_requested.rpc_id(_get_host_peer_id(), config_path)
+
+
 func _setup_game(mode: int) -> void:
 	game = GAME_SCENE.instantiate() as Game
 	if game == null:
@@ -2186,6 +2193,16 @@ func net_cheat_xirang_requested() -> void:
 	_apply_cheat_xirang_for_peer(sender_id)
 
 
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_debug_collectible_requested(config_path: String) -> void:
+	if not net_manager.is_host():
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
+	_apply_debug_collectible_for_peer(sender_id, config_path)
+
+
 @rpc("authority", "call_remote", "reliable", 4)
 func net_upgrade_confirmed(
 	peer_id: int,
@@ -2330,6 +2347,22 @@ func net_cheat_xirang_confirmed(peer_id: int, current_xirang: int, added_amount:
 		return
 	player_node.current_xirang = maxi(current_xirang, 0)
 	player_node.xirang_changed.emit(player_node.current_xirang, maxi(added_amount, 0))
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_debug_collectible_granted(peer_id: int, config_path: String, success: bool) -> void:
+	if game == null:
+		return
+	if peer_id <= 0:
+		return
+	if success and not config_path.is_empty():
+		var already_applied_on_host: bool = net_manager != null and net_manager.is_host() and peer_id == _get_local_peer_id()
+		if not already_applied_on_host:
+			var item := LuoxiMerchant.get_collectible_for_path(config_path)
+			if item != null:
+				run_state.try_add_item_for_peer(peer_id, item)
+	if peer_id == _get_local_peer_id():
+		game.show_debug_collectible_grant_result(config_path, success)
 
 
 func _apply_upgrade_for_peer(peer_id: int, stat_type: int) -> void:
@@ -2507,6 +2540,21 @@ func _apply_cheat_xirang_for_peer(peer_id: int) -> void:
 		&"net_cheat_xirang_confirmed",
 		[peer_id, player_node.current_xirang, CHEAT_XIRANG_AMOUNT]
 	)
+
+
+func _apply_debug_collectible_for_peer(peer_id: int, config_path: String) -> void:
+	if game == null or peer_id <= 0:
+		return
+	var item := LuoxiMerchant.get_collectible_for_path(config_path)
+	var success := false
+	if item != null:
+		success = run_state.try_add_item_for_peer(peer_id, item)
+	_rpc_to_connected_clients(
+		&"net_debug_collectible_granted",
+		[peer_id, config_path, success]
+	)
+	if peer_id == _get_local_peer_id():
+		net_debug_collectible_granted(peer_id, config_path, success)
 
 
 func _get_host_peer_id() -> int:

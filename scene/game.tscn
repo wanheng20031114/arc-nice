@@ -19,6 +19,7 @@
 [ext_resource type="Script" uid="uid://i1yhvo6yryuc" path="res://scene/damage_number_pool.gd" id="18_damage_pool"]
 [ext_resource type="PackedScene" path="res://scene/settings/settings_panel.tscn" id="19_settings_panel"]
 [ext_resource type="PackedScene" path="res://scene/luoxi_merchant.tscn" id="20_luoxi"]
+[ext_resource type="PackedScene" path="res://scene/debug_collectible_window.tscn" id="21_debug_collectibles"]
 
 [sub_resource type="TileMapPattern" id="TileMapPattern_33cqm"]
 tile_data = PackedInt32Array(0, 0, 0, 65536, 131072, 2, 1, 0, 0, 65537, 0, 0)
@@ -160,6 +161,8 @@ visible = false
 layer = 30
 
 [node name="SettingsPanel" parent="SettingsLayer" unique_id=59132758 instance=ExtResource("19_settings_panel")]
+
+[node name="DebugCollectibleWindow" parent="SettingsLayer" instance=ExtResource("21_debug_collectibles")]
 
 [node name="DamageNumberPool" type="Node2D" parent="." unique_id=788052799]
 script = ExtResource("18_damage_pool")

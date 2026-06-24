@@ -1182,6 +1182,14 @@ func _test_multiplayer_cheat_xirang_confirm() -> void:
 		remote_player.current_xirang = 15
 		mp_game.call("net_cheat_xirang_confirmed", 2, 1015, 1000)
 		_expect(remote_player.current_xirang == 1015, "Cheat confirm must update the selected peer's xirang.")
+		var run_state := root.get_node("RunState") as RunStateStore
+		run_state.begin_new_run()
+		mp_game.set("run_state", run_state)
+		mp_game.call("net_debug_collectible_granted", 2, APPLE_COLLECTIBLE.resource_path, true)
+		_expect(
+			run_state.get_item_for_peer(2, 0) == APPLE_COLLECTIBLE,
+			"Debug collectible confirm must add the selected collectible to the selected peer inventory."
+		)
 
 	_stop_audio_players(host_game)
 	host_game.queue_free()

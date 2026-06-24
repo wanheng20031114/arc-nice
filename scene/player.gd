@@ -194,7 +194,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not uses_local_input:
 		return
 
-	if event.is_action_pressed("cheat"):
+	if event.is_action_pressed("cheat_xirang"):
 		_apply_cheat_xirang()
 		get_viewport().set_input_as_handled()
 		return

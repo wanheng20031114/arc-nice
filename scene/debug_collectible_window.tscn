@@ -1,0 +1,80 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scene/debug_collectible_window.gd" id="1_script"]
+
+[node name="DebugCollectibleWindow" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+script = ExtResource("1_script")
+
+[node name="Dim" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+color = Color(0, 0, 0, 0.45)
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="Center"]
+custom_minimum_size = Vector2(560, 460)
+layout_mode = 2
+
+[node name="Margin" type="MarginContainer" parent="Center/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 16
+
+[node name="Layout" type="VBoxContainer" parent="Center/Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Header" type="HBoxContainer" parent="Center/Panel/Margin/Layout"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="Center/Panel/Margin/Layout/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "调试收藏品"
+horizontal_alignment = 1
+
+[node name="CloseButton" type="Button" parent="Center/Panel/Margin/Layout/Header"]
+custom_minimum_size = Vector2(86, 34)
+layout_mode = 2
+text = "关闭"
+
+[node name="HintLabel" type="Label" parent="Center/Panel/Margin/Layout"]
+layout_mode = 2
+text = "点击任意收藏品后会直接加入当前玩家背包"
+horizontal_alignment = 1
+
+[node name="CollectibleList" type="ItemList" parent="Center/Panel/Margin/Layout"]
+custom_minimum_size = Vector2(510, 320)
+layout_mode = 2
+size_flags_vertical = 3
+allow_reselect = true
+fixed_icon_size = Vector2i(32, 32)
+
+[node name="StatusLabel" type="Label" parent="Center/Panel/Margin/Layout"]
+layout_mode = 2
+text = "点击一个收藏品后直接加入背包"
+horizontal_alignment = 1

@@ -83,6 +83,7 @@ enum WaveState {
 @onready var wave_hud: WaveHUD = $WaveHUD
 @onready var player_profile_panel: PlayerProfilePanel = $PlayerProfilePanel
 @onready var settings_panel: SettingsPanel = $SettingsLayer/SettingsPanel
+@onready var debug_collectible_window: DebugCollectibleWindow = $SettingsLayer/DebugCollectibleWindow
 @onready var merchant: ZhuangfangyiMerchant = $ZhuangfangyiMerchant
 @onready var luoxi_merchant: LuoxiMerchant = $LuoxiMerchant
 @onready var damage_number_pool: DamageNumberPool = $DamageNumberPool
@@ -140,6 +141,8 @@ func _ready() -> void:
 	currency_hud.settings_requested.connect(_on_currency_hud_settings_requested)
 	currency_hud.profile_requested.connect(player_profile_panel.open)
 	settings_panel.closed.connect(_on_settings_panel_closed)
+	debug_collectible_window.collectible_requested.connect(_on_debug_collectible_requested)
+	debug_collectible_window.closed.connect(_on_debug_collectible_window_closed)
 	wave_hud.set_return_button_text("返回菜单" if runtime_mode == RuntimeMode.SINGLEPLAYER else "返回大厅")
 	if not wave_hud.return_to_lobby_requested.is_connected(_on_wave_hud_return_to_lobby_requested):
 		wave_hud.return_to_lobby_requested.connect(_on_wave_hud_return_to_lobby_requested)
@@ -163,6 +166,17 @@ func _physics_process(delta: float) -> void:
 		_register_dynamic_multiplayer_pickups()
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("full_screen"):
+		_toggle_full_screen()
+		get_viewport().set_input_as_handled()
+		return
+
+	if event.is_action_pressed("cheat_collectibles"):
+		_toggle_debug_collectible_window()
+		get_viewport().set_input_as_handled()
+
+
 func configure_multiplayer(
 	mode: int,
 	local_peer_id: int,
@@ -184,6 +198,10 @@ func _on_settings_panel_closed() -> void:
 	_refresh_player_modal_ui_lock()
 
 
+func _on_debug_collectible_window_closed() -> void:
+	_refresh_player_modal_ui_lock()
+
+
 func _lock_player_for_modal_ui() -> void:
 	if player != null and not player.is_dead:
 		player.set_controls_locked(true)
@@ -192,10 +210,68 @@ func _lock_player_for_modal_ui() -> void:
 func _refresh_player_modal_ui_lock() -> void:
 	if player == null or player.is_dead:
 		return
-	if settings_panel.is_open() or player_profile_panel.is_open():
+	if settings_panel.is_open() or player_profile_panel.is_open() or debug_collectible_window.is_open():
 		player.set_controls_locked(true)
 	else:
 		player.set_controls_locked(false)
+
+
+func _toggle_full_screen() -> void:
+	var user_settings := get_node_or_null("/root/UserSettings")
+	if user_settings != null and user_settings.has_method("set_fullscreen_enabled"):
+		var next_fullscreen := not bool(user_settings.call("is_fullscreen_enabled"))
+		user_settings.call("set_fullscreen_enabled", next_fullscreen)
+		if settings_panel != null and settings_panel.has_method("refresh_from_settings"):
+			settings_panel.call("refresh_from_settings")
+		return
+
+	var current_mode := DisplayServer.window_get_mode()
+	var is_fullscreen := (
+		current_mode == DisplayServer.WINDOW_MODE_FULLSCREEN
+		or current_mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+	)
+	DisplayServer.window_set_mode(
+		DisplayServer.WINDOW_MODE_WINDOWED if is_fullscreen else DisplayServer.WINDOW_MODE_FULLSCREEN
+	)
+
+
+func _toggle_debug_collectible_window() -> void:
+	if debug_collectible_window == null:
+		return
+	debug_collectible_window.toggle()
+	if debug_collectible_window.is_open():
+		_lock_player_for_modal_ui()
+	else:
+		_refresh_player_modal_ui_lock()
+
+
+func _on_debug_collectible_requested(config_path: String) -> void:
+	if config_path.is_empty():
+		return
+	var current_scene := get_tree().current_scene
+	if (
+		runtime_mode != RuntimeMode.SINGLEPLAYER
+		and current_scene != null
+		and current_scene.has_method("request_debug_collectible")
+	):
+		current_scene.call("request_debug_collectible", config_path)
+		return
+	debug_collectible_window.show_grant_result(config_path, grant_debug_collectible(config_path))
+
+
+func grant_debug_collectible(config_path: String) -> bool:
+	var item := LuoxiMerchant.get_collectible_for_path(config_path)
+	if item == null:
+		return false
+	if runtime_mode != RuntimeMode.SINGLEPLAYER and multiplayer_local_peer_id > 0:
+		return run_state.try_add_item_for_peer(multiplayer_local_peer_id, item)
+	return run_state.try_add_item(item)
+
+
+func show_debug_collectible_grant_result(config_path: String, success: bool) -> void:
+	if debug_collectible_window == null:
+		return
+	debug_collectible_window.show_grant_result(config_path, success)
 
 
 func apply_remote_merchant_active(active: bool) -> void:
