@@ -1,10 +1,10 @@
 extends Node2D
 
 const MIN_DIRECTION_LENGTH_SQUARED := 0.001
-const TRAIL_STEP_DISTANCE := 5.0
+const TRAIL_STEP_DISTANCE := 7.0
 
-@export var base_length: float = 20.0
-@export var drift_speed: float = 2.8
+@export var base_length: float = 28.0
+@export var drift_speed: float = 3.6
 
 @onready var trail_lines: Array[Line2D] = [
 	$TrailLong,
@@ -50,9 +50,9 @@ func _redraw_lines() -> void:
 	var back_direction := -motion_direction
 	var side_direction := Vector2(-motion_direction.y, motion_direction.x)
 	var moving_offset := _phase * TRAIL_STEP_DISTANCE
-	var side_offsets: Array[float] = [-6.0, -1.5, 4.5, 8.0]
-	var start_offsets: Array[float] = [5.0, 9.0, 7.0, 13.0]
-	var lengths: Array[float] = [base_length, base_length * 0.68, base_length * 0.46, base_length * 0.34]
+	var side_offsets: Array[float] = [-7.0, -2.5, 4.0, 8.0]
+	var start_offsets: Array[float] = [4.0, 9.0, 6.0, 14.0]
+	var lengths: Array[float] = [base_length, base_length * 0.74, base_length * 0.56, base_length * 0.4]
 
 	for index in range(trail_lines.size()):
 		var line := trail_lines[index]

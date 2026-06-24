@@ -35,5 +35,5 @@ animations = [{
 }],
 "loop": false,
 "name": &"burst",
-"speed": 8.0
+"speed": 10.0
 }]

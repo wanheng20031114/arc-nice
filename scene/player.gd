@@ -1222,7 +1222,7 @@ func _trigger_frost_crystal(item: PickupConfig) -> void:
 			get_tree().create_timer(item.periodic_slow_duration).timeout.connect(
 				_remove_collectible_enemy_slow.bind(weakref(enemy), slow_source_id)
 			)
-	_spawn_collectible_frost_effect(radius, 0.72)
+	_spawn_collectible_frost_effect(radius, 0.4)
 
 
 func _trigger_life_crystal(item: PickupConfig) -> void:

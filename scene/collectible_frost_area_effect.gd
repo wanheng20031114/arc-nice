@@ -6,11 +6,11 @@ const VISUAL_BASE_RADIUS := 64.0
 @onready var visual: AnimatedSprite2D = $Visual
 
 var effect_radius: float = 72.0
-var lifetime: float = 0.72
+var lifetime: float = 0.4
 var age: float = 0.0
 
 
-func setup(radius: float, duration: float = 0.72) -> void:
+func setup(radius: float, duration: float = 0.4) -> void:
 	effect_radius = maxf(radius, 1.0)
 	lifetime = maxf(duration, 0.08)
 	age = 0.0
