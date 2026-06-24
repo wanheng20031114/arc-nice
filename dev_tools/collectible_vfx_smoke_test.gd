@@ -7,6 +7,7 @@ const LIGHTNING_SCENE := preload("res://scene/collectible_lightning_effect.tscn"
 const FROST_AREA_SCENE := preload("res://scene/collectible_frost_area_effect.tscn")
 const MOON_SHIELD_FRAMES := preload("res://resources/animation/moon_shield_vfx.tres")
 const LIGHTNING_FRAMES := preload("res://resources/animation/thunder_lightning_vfx.tres")
+const FROST_FRAMES := preload("res://resources/animation/frost_area_vfx.tres")
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -46,6 +47,9 @@ func _test_vfx_resources() -> void:
 	_expect(LIGHTNING_FRAMES.has_animation(&"strike"), "Lightning frames must expose the strike animation.")
 	_expect(LIGHTNING_FRAMES.get_frame_count(&"strike") == 6, "Lightning animation must contain six frames.")
 	_expect(not LIGHTNING_FRAMES.get_animation_loop(&"strike"), "Lightning animation must not loop.")
+	_expect(FROST_FRAMES.has_animation(&"burst"), "Frost area frames must expose the burst animation.")
+	_expect(FROST_FRAMES.get_frame_count(&"burst") == 4, "Frost area animation must contain four generated frames.")
+	_expect(not FROST_FRAMES.get_animation_loop(&"burst"), "Frost area animation must not loop.")
 
 	var shield := MOON_SHIELD_SCENE.instantiate() as CollectibleMoonShield
 	shield.setup(null, 64.0, 0.2)

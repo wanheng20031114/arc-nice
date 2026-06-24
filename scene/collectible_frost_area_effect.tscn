@@ -1,7 +1,13 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scene/collectible_frost_area_effect.gd" id="1_script"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/frost_area_vfx.tres" id="2_frames"]
 
 [node name="CollectibleFrostAreaEffect" type="Node2D"]
 z_index = 4
 script = ExtResource("1_script")
+
+[node name="Visual" type="AnimatedSprite2D" parent="."]
+sprite_frames = ExtResource("2_frames")
+animation = &"burst"
+autoplay = "burst"
