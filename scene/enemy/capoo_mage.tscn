@@ -5,6 +5,14 @@
 [ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="3_shader"]
 [ext_resource type="SpriteFrames" uid="uid://bynglissk1f1v" path="res://resources/animation/capoo_mage.tres" id="4_frames"]
 
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_sp816"]
+radius = 7.0
+height = 18.0
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_pij3q"]
+radius = 7.0
+height = 18.0
+
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_rrbks"]
 resource_local_to_scene = true
 shader = ExtResource("3_shader")
@@ -19,36 +27,29 @@ shader_parameter/dodge_outline_width = 3.0
 shader_parameter/slow_overlay_strength = 0.0
 shader_parameter/slow_overlay_color = Color(0.55, 0.86, 1, 1)
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_sp816"]
-resource_local_to_scene = true
-size = Vector2(14, 17)
-
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_pij3q"]
-resource_local_to_scene = true
-size = Vector2(14, 17)
-
 [node name="CapooMage" unique_id=1100322216 instance=ExtResource("1_base")]
 script = ExtResource("2_script")
 path_refresh_interval = 0.25
 waypoint_arrival_distance = 6.0
 direct_chase_extra_distance = 2.0
 
-[node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
+[node name="CollisionShape2D" parent="." index="0" unique_id=1687096047]
+z_index = 10
+position = Vector2(0, -1)
+shape = SubResource("CapsuleShape2D_sp816")
+
+[node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
+z_index = 10
+position = Vector2(0, -1)
+shape = SubResource("CapsuleShape2D_pij3q")
+
+[node name="AnimatedSprite2D" parent="." index="6" unique_id=1398407782]
 texture_filter = 2
 material = SubResource("ShaderMaterial_rrbks")
 position = Vector2(3, -1.9999996)
 scale = Vector2(0.1, 0.1)
 sprite_frames = ExtResource("4_frames")
-animation = &"attack"
-frame_progress = 0.60681885
-
-[node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
-position = Vector2(0, -0.5)
-shape = SubResource("RectangleShape2D_sp816")
-
-[node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
-position = Vector2(0, -0.5)
-shape = SubResource("RectangleShape2D_pij3q")
+animation = &"move"
 
 [node name="SpellGlow" type="Polygon2D" parent="." index="7" unique_id=2037823177]
 visible = false

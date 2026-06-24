@@ -1,7 +1,7 @@
-[gd_scene load_steps=14 format=3 uid="uid://b3bjc1o0cesxc"]
+[gd_scene format=3 uid="uid://b3bjc1o0cesxc"]
 
-[ext_resource type="Shader" path="res://scene/entity_motion_status.gdshader" id="1_h08p8"]
-[ext_resource type="Script" path="res://scene/enemy/enemy.gd" id="2_enemy"]
+[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="1_h08p8"]
+[ext_resource type="Script" uid="uid://b26kjgoph1aal" path="res://scene/enemy/enemy.gd" id="2_enemy"]
 [ext_resource type="AudioStream" uid="uid://4xnlqa7gq1qw" path="res://resources/audio/cowboy_monsterhit.wav" id="3_hit_audio"]
 [ext_resource type="AudioStream" uid="uid://dtcpsyjgcfb6m" path="res://resources/audio/cowboy_monsterdie.wav" id="4_death_audio"]
 [ext_resource type="Texture2D" uid="uid://bg46042bpug12" path="res://resources/texture/道具ui.png" id="5_hit_texture"]
@@ -10,6 +10,9 @@
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_enemy"]
 resource_local_to_scene = true
 shader = ExtResource("1_h08p8")
+shader_parameter/blink_enabled = false
+shader_parameter/blink_speed = 12.0
+shader_parameter/hidden_ratio = 0.5
 shader_parameter/dodge_effect_strength = 0.0
 shader_parameter/dodge_sweep = 0.0
 shader_parameter/dodge_color = Color(0.42, 0.95, 1, 1)
@@ -31,7 +34,6 @@ atlas = ExtResource("5_hit_texture")
 region = Rect2(22, 23, 4, 4)
 
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_hit"]
-direction = Vector3(1, 0, 0)
 spread = 32.0
 initial_velocity_min = 34.0
 initial_velocity_max = 58.0
@@ -62,11 +64,10 @@ shape = SubResource("CircleShape2D_touch")
 z_index = 2
 emitting = false
 amount = 5
+texture = SubResource("AtlasTexture_hit_particle")
 lifetime = 0.18
 one_shot = true
 explosiveness = 1.0
-local_coords = false
-texture = SubResource("AtlasTexture_hit_particle")
 process_material = SubResource("ParticleProcessMaterial_hit")
 
 [node name="HitAudio" type="AudioStreamPlayer2D" parent="." unique_id=782546985]
@@ -78,4 +79,4 @@ max_polyphony = 4
 stream = ExtResource("4_death_audio")
 volume_db = -5.0
 
-[node name="MoveSpeedTrailEffect" parent="." instance=ExtResource("6_speed_trail")]
+[node name="MoveSpeedTrailEffect" parent="." unique_id=739079668 instance=ExtResource("6_speed_trail")]
