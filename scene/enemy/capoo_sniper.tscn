@@ -3,7 +3,7 @@
 [ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy/enemy.tscn" id="1_base"]
 [ext_resource type="Script" uid="uid://bgi20oeg8oo75" path="res://scene/enemy/capoo_sniper.gd" id="2_script"]
 [ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="3_shader"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/capoo_sniper.tres" id="4_frames"]
+[ext_resource type="SpriteFrames" uid="uid://b0k8qc31gx3ei" path="res://resources/animation/capoo_sniper.tres" id="4_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_buikk"]
 resource_local_to_scene = true
@@ -39,7 +39,8 @@ material = SubResource("ShaderMaterial_buikk")
 position = Vector2(3, 5.9604645e-08)
 scale = Vector2(0.31, 0.31)
 sprite_frames = ExtResource("4_frames")
-animation = &"attack"
+animation = &"windup"
+frame_progress = 0.06092451
 
 [node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
 position = Vector2(-0.5, 0)

@@ -1,11 +1,16 @@
 extends Node2D
 class_name CapooSniperLockReticle
 
-@onready var visual: AnimatedSprite2D = $Visual
+const RING_RADIUS := 18.0
+const RING_WIDTH := 2.0
+const RING_POINTS := 56
+const RING_BACKGROUND := Color(0.24, 0.04, 0.02, 0.5)
+const RING_PROGRESS := Color(1.0, 0.2, 0.08, 0.9)
 
 var duration: float = 3.0
 var elapsed: float = 0.0
 var auto_progress: bool = false
+var progress_ratio: float = 0.0
 
 
 func _ready() -> void:
@@ -29,15 +34,8 @@ func stop() -> void:
 
 
 func set_progress(progress: float) -> void:
-	var frames := visual.sprite_frames
-	if frames == null or not frames.has_animation(&"lock"):
-		return
-	var frame_count := frames.get_frame_count(&"lock")
-	if frame_count <= 0:
-		return
-	visual.animation = &"lock"
-	visual.frame = clampi(floori(clampf(progress, 0.0, 1.0) * float(frame_count - 1)), 0, frame_count - 1)
-	visual.frame_progress = 0.0
+	progress_ratio = clampf(progress, 0.0, 1.0)
+	queue_redraw()
 
 
 func _process(delta: float) -> void:
@@ -45,3 +43,26 @@ func _process(delta: float) -> void:
 		return
 	elapsed = minf(elapsed + delta, duration)
 	set_progress(elapsed / duration)
+
+
+func _draw() -> void:
+	draw_arc(
+		Vector2.ZERO,
+		RING_RADIUS,
+		-PI * 0.5,
+		PI * 1.5,
+		RING_POINTS,
+		RING_BACKGROUND,
+		RING_WIDTH
+	)
+	if progress_ratio <= 0.0:
+		return
+	draw_arc(
+		Vector2.ZERO,
+		RING_RADIUS,
+		-PI * 0.5,
+		-PI * 0.5 + TAU * progress_ratio,
+		maxi(4, ceili(RING_POINTS * progress_ratio)),
+		RING_PROGRESS,
+		RING_WIDTH
+	)

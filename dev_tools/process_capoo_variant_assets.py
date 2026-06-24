@@ -23,6 +23,9 @@ CAPOO_SOURCE_COLUMNS = 12
 CAPOO_SOURCE_ROWS = 3
 CAPOO_FRAME_SIZE = 96
 CAPOO_VISIBLE_SIZE = 78
+CAPOO_MAJOR_COMPONENT_PIXELS = 3000
+CAPOO_COMPONENT_MIN_PIXELS = 45
+CAPOO_FRAME_PADDING = 8
 
 FIREBALL_FRAME_SIZE = 64
 FIREBALL_VISIBLE_SIZE = 46
@@ -41,6 +44,11 @@ CAPOO_VARIANTS = OrderedDict(
 		("capoo_smg", 2),
 	]
 )
+
+SPRITE_FRAME_UIDS = {
+	"capoo_mage": "uid://bynglissk1f1v",
+	"capoo_sniper": "uid://b0k8qc31gx3ei",
+}
 
 CAPOO_ANIMATION_ROWS = OrderedDict(
 	[
@@ -92,7 +100,7 @@ def _remove_chroma_background(image: Image.Image, key: str) -> Image.Image:
 	array[:, :, 3][visible] = 255
 	array[:, :, :3][~visible] = 0
 	_despill(array, key, visible)
-	return Image.fromarray(array, mode="RGBA")
+	return Image.fromarray(array)
 
 
 def _despill(array: np.ndarray, key: str, visible: np.ndarray) -> None:
@@ -162,12 +170,80 @@ def _fit_subject_to_frame(
 	return frame
 
 
+def _extract_capoo_row_frames(source: Image.Image, source_row: int) -> list[Image.Image]:
+	alpha = np.array(source.getchannel("A"), dtype=np.uint8) > 0
+	top = round(source_row * source.height / float(CAPOO_SOURCE_ROWS))
+	bottom = round((source_row + 1) * source.height / float(CAPOO_SOURCE_ROWS))
+	row_alpha = alpha[top:bottom, :]
+
+	labels, _count = ndimage.label(row_alpha, structure=np.ones((3, 3), dtype=bool))
+	components: list[tuple[int, int, int, int, int]] = []
+	for label_index, slices in enumerate(ndimage.find_objects(labels), start=1):
+		if slices is None:
+			continue
+		component = labels[slices] == label_index
+		alpha_pixels = int(component.sum())
+		if alpha_pixels < CAPOO_COMPONENT_MIN_PIXELS:
+			continue
+		local_y, local_x = np.nonzero(component)
+		left = int(local_x.min() + slices[1].start)
+		right = int(local_x.max() + slices[1].start + 1)
+		components.append(
+			(
+				alpha_pixels,
+				left,
+				int(local_y.min() + slices[0].start + top),
+				right,
+				int(local_y.max() + slices[0].start + top + 1),
+			)
+		)
+
+	major_components = [
+		component
+		for component in components
+		if component[0] >= CAPOO_MAJOR_COMPONENT_PIXELS
+	]
+	major_components.sort(key=lambda box: (box[1] + box[3]) * 0.5)
+	if not major_components:
+		return [
+			_crop_grid_cell(source, CAPOO_SOURCE_COLUMNS, CAPOO_SOURCE_ROWS, column, source_row)
+			for column in range(CAPOO_SOURCE_COLUMNS)
+		]
+
+	centers = [(box[1] + box[3]) * 0.5 for box in major_components]
+	boundaries = [0.0]
+	for left_center, right_center in zip(centers, centers[1:]):
+		boundaries.append((left_center + right_center) * 0.5)
+	boundaries.append(float(source.width))
+
+	grouped_boxes: list[list[tuple[int, int, int, int, int]]] = [
+		[component] for component in major_components
+	]
+	for component in components:
+		if component in major_components:
+			continue
+		center_x = (component[1] + component[3]) * 0.5
+		for index in range(len(major_components)):
+			if boundaries[index] <= center_x < boundaries[index + 1]:
+				grouped_boxes[index].append(component)
+				break
+
+	frames: list[Image.Image] = []
+	for group in grouped_boxes:
+		left = max(0, min(box[1] for box in group) - CAPOO_FRAME_PADDING)
+		top = max(0, min(box[2] for box in group) - CAPOO_FRAME_PADDING)
+		right = min(source.width, max(box[3] for box in group) + CAPOO_FRAME_PADDING)
+		bottom = min(source.height, max(box[4] for box in group) + CAPOO_FRAME_PADDING)
+		frames.append(source.crop((left, top, right, bottom)))
+
+	while len(frames) < CAPOO_SOURCE_COLUMNS:
+		frames.append(frames[-1].copy())
+	return frames[:CAPOO_SOURCE_COLUMNS]
+
+
 def _build_capoo_sheet(source: Image.Image, source_row: int) -> Image.Image:
 	sheet = Image.new("RGBA", (CAPOO_FRAME_SIZE * 4, CAPOO_FRAME_SIZE * 4), (0, 0, 0, 0))
-	source_frames: list[Image.Image] = [
-		_crop_grid_cell(source, CAPOO_SOURCE_COLUMNS, CAPOO_SOURCE_ROWS, column, source_row)
-		for column in range(CAPOO_SOURCE_COLUMNS)
-	]
+	source_frames = _extract_capoo_row_frames(source, source_row)
 
 	for source_column, cell in enumerate(source_frames):
 		frame = _fit_subject_to_frame(
@@ -270,10 +346,33 @@ def _build_reticle_texture(source: Image.Image) -> Image.Image:
 	)
 
 
+def _remove_magenta_residue(image: Image.Image) -> Image.Image:
+	array = np.array(image.convert("RGBA"), dtype=np.uint8)
+	alpha = array[:, :, 3] > 0
+	red = array[:, :, 0].astype(np.int16)
+	green = array[:, :, 1].astype(np.int16)
+	blue = array[:, :, 2].astype(np.int16)
+	residue = (
+		alpha
+		& (red >= 72)
+		& (blue >= 72)
+		& (green <= 118)
+		& ((red + blue - green * 2) >= 70)
+	)
+	array[residue] = (0, 0, 0, 0)
+	return Image.fromarray(array)
+
+
 def _write_capoo_frames(name: str) -> None:
 	texture_path = f"res://resources/texture/{name}.png"
+	resource_uid = SPRITE_FRAME_UIDS.get(name, "")
+	resource_header = (
+		f"[gd_resource type=\"SpriteFrames\" format=3 uid=\"{resource_uid}\"]"
+		if resource_uid
+		else "[gd_resource type=\"SpriteFrames\" format=3]"
+	)
 	lines = [
-		"[gd_resource type=\"SpriteFrames\" format=3]",
+		resource_header,
 		"",
 		f"[ext_resource type=\"Texture2D\" path=\"{texture_path}\" id=\"1_texture\"]",
 		"",
@@ -404,6 +503,8 @@ def main() -> None:
 
 	for name, row in CAPOO_VARIANTS.items():
 		sheet = _build_capoo_sheet(capoo_source, row)
+		if name in ("capoo_sniper", "capoo_smg"):
+			sheet = _remove_magenta_residue(sheet)
 		sheet.save(TEXTURE_DIR / f"{name}.png")
 		_write_capoo_frames(name)
 		print(f"{name}: {sheet.width}x{sheet.height}, bbox={sheet.getchannel('A').getbbox()}")

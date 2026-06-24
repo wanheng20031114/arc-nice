@@ -92,13 +92,15 @@ func _test_resource_contract() -> void:
 	_expect(_texture_size("res://resources/texture/capoo_sniper.png") == Vector2(384, 384), "Sniper sprite sheet size mismatch.")
 	_expect(_texture_size("res://resources/texture/capoo_smg.png") == Vector2(384, 384), "SMG sprite sheet size mismatch.")
 	_expect(_texture_size("res://resources/texture/capoo_mage_fireball.png") == Vector2(384, 64), "Fireball sheet size mismatch.")
-	_expect(_texture_size("res://resources/texture/capoo_sniper_lock_reticle.png") == Vector2(384, 64), "Sniper reticle sheet size mismatch.")
+	_expect(_texture_size("res://resources/texture/capoo_smg_bullet.png") == Vector2(48, 8), "SMG bullet sheet size mismatch.")
+	_expect(_texture_size("res://resources/texture/capoo_sniper_lock_reticle.png") == Vector2(32, 32), "Sniper reticle texture size mismatch.")
 
 	_expect(_has_capoo_frames(MAGE_CONFIG.enemy_scene, "Mage"), "Mage animation contract failed.")
 	_expect(_has_capoo_frames(SNIPER_CONFIG.enemy_scene, "Sniper"), "Sniper animation contract failed.")
 	_expect(_has_capoo_frames(SMG_CONFIG.enemy_scene, "SMG"), "SMG animation contract failed.")
 	_expect(_sprite_frames_count("res://resources/animation/capoo_mage_fireball.tres", &"fly") == 6, "Fireball frame count mismatch.")
-	_expect(_sprite_frames_count("res://resources/animation/capoo_sniper_lock_reticle.tres", &"lock") == 6, "Sniper reticle frame count mismatch.")
+	_expect(_sprite_frames_count("res://resources/animation/capoo_smg_bullet.tres", &"fly") == 3, "SMG bullet frame count mismatch.")
+	_expect(_has_reticle_scene_contract(), "Sniper reticle scene contract failed.")
 
 
 func _test_mage_windup_fireball_and_obstruction() -> void:
@@ -308,6 +310,18 @@ func _has_capoo_frames(scene: PackedScene, label: String) -> bool:
 		failures.append("%s scene animation frames are incomplete." % label)
 	instance.free()
 	return ok
+
+
+func _has_reticle_scene_contract() -> bool:
+	var instance := RETICLE_SCENE.instantiate() as CapooSniperLockReticle
+	if instance == null:
+		return false
+	var has_static_mark := instance.get_node_or_null("CenterMark") is Sprite2D
+	var has_old_animation := instance.get_node_or_null("Visual") is AnimatedSprite2D
+	instance.set_progress(0.5)
+	var has_progress := is_equal_approx(instance.progress_ratio, 0.5)
+	instance.free()
+	return has_static_mark and not has_old_animation and has_progress
 
 
 func _texture_size(path: String) -> Vector2:

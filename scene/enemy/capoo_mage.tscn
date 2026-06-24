@@ -3,7 +3,7 @@
 [ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy/enemy.tscn" id="1_base"]
 [ext_resource type="Script" uid="uid://co7r238f2qfo6" path="res://scene/enemy/capoo_mage.gd" id="2_script"]
 [ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="3_shader"]
-[ext_resource type="SpriteFrames" uid="uid://1e3rjx3didt8" path="res://resources/animation/capoo_mage.tres" id="4_frames"]
+[ext_resource type="SpriteFrames" uid="uid://bynglissk1f1v" path="res://resources/animation/capoo_mage.tres" id="4_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_rrbks"]
 resource_local_to_scene = true
@@ -36,10 +36,11 @@ direct_chase_extra_distance = 2.0
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
 texture_filter = 2
 material = SubResource("ShaderMaterial_rrbks")
+position = Vector2(-2.9999998, -1.9999999)
 scale = Vector2(0.31, 0.31)
 sprite_frames = ExtResource("4_frames")
-animation = &"move"
-frame_progress = 0.27389488
+animation = &"windup"
+frame_progress = 0.74582547
 
 [node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
 shape = SubResource("RectangleShape2D_sp816")
