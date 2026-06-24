@@ -65,12 +65,31 @@ func _test_player_movement_status_visuals() -> void:
 	var sprite := player.get_node("BodySprite") as AnimatedSprite2D
 	var sprite_material := sprite.material as ShaderMaterial
 	var speed_trail := player.get_node("MoveSpeedTrailEffect") as Node2D
+	var trail_particles := speed_trail.get_node_or_null("TrailParticles") as GPUParticles2D
+	var all_trail_particles := _collect_trail_particles(speed_trail)
 	_expect(sprite_material != null, "Player body sprite must use a ShaderMaterial.")
 	_expect(
 		sprite_material != null and sprite_material.shader.resource_path == MOTION_STATUS_SHADER_PATH,
 		"Player body sprite must use the motion status shader."
 	)
 	_expect(speed_trail != null, "Player must include a speed trail effect node.")
+	_expect(trail_particles != null, "Player speed trail must use particle speed lines.")
+	_expect(all_trail_particles.size() >= 4, "Player speed trail must use several staggered speed lines.")
+	_expect(
+		trail_particles != null and not trail_particles.local_coords,
+		"Player speed trail particles must remain in world space after emission."
+	)
+	_expect(
+		trail_particles != null
+		and trail_particles.texture != null
+		and trail_particles.texture.get_size().x <= 16.0
+		and trail_particles.texture.get_size().y >= 3.0,
+		"Player speed trail particle texture must stay short and visible."
+	)
+	_expect(
+		speed_trail.z_index >= 0 and sprite.z_index > speed_trail.z_index,
+		"Player speed trail must render above ground but behind the body sprite."
+	)
 
 	player.apply_pickup(SPEED_PICKUP)
 	player.velocity = Vector2.RIGHT * 120.0
@@ -105,6 +124,8 @@ func _test_enemy_movement_status_visuals() -> void:
 	var sprite := enemy.get_node("AnimatedSprite2D") as AnimatedSprite2D
 	var visual_material := sprite.material as ShaderMaterial
 	var speed_trail := enemy.get_node("MoveSpeedTrailEffect") as Node2D
+	var trail_particles := speed_trail.get_node_or_null("TrailParticles") as GPUParticles2D
+	var all_trail_particles := _collect_trail_particles(speed_trail)
 	_expect(enemy.material == null, "Enemy root must not hold the visual material.")
 	_expect(not sprite.use_parent_material, "Enemy sprite must not inherit a root material.")
 	_expect(visual_material != null, "Enemy sprite must use a ShaderMaterial.")
@@ -113,6 +134,23 @@ func _test_enemy_movement_status_visuals() -> void:
 		"Enemy sprite must use the motion status shader."
 	)
 	_expect(speed_trail != null, "Enemy must include a speed trail effect node.")
+	_expect(trail_particles != null, "Enemy speed trail must use particle speed lines.")
+	_expect(all_trail_particles.size() >= 4, "Enemy speed trail must use several staggered speed lines.")
+	_expect(
+		trail_particles != null and not trail_particles.local_coords,
+		"Enemy speed trail particles must remain in world space after emission."
+	)
+	_expect(
+		trail_particles != null
+		and trail_particles.texture != null
+		and trail_particles.texture.get_size().x <= 16.0
+		and trail_particles.texture.get_size().y >= 3.0,
+		"Enemy speed trail particle texture must stay short and visible."
+	)
+	_expect(
+		speed_trail.z_index >= 0 and sprite.z_index > speed_trail.z_index,
+		"Enemy speed trail must render above ground but behind the body sprite."
+	)
 
 	enemy.velocity = Vector2.LEFT * 60.0
 	enemy.add_move_speed_modifier(101, 0.5)
@@ -148,3 +186,12 @@ func _expect(condition: bool, message: String) -> void:
 	if condition:
 		return
 	failures.append(message)
+
+
+func _collect_trail_particles(speed_trail: Node) -> Array[GPUParticles2D]:
+	var result: Array[GPUParticles2D] = []
+	for child in speed_trail.get_children():
+		var particles := child as GPUParticles2D
+		if particles != null:
+			result.append(particles)
+	return result

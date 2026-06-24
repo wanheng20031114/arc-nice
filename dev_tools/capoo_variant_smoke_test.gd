@@ -88,7 +88,7 @@ func _test_resource_contract() -> void:
 	_expect(is_equal_approx(SMG_CONFIG.projectile_lifetime, 0.18), "SMG bullet lifetime must stay short.")
 	_expect(is_equal_approx(SMG_CONFIG.spread_angle_degrees, 20.0), "SMG spread angle mismatch.")
 
-	_expect(_texture_size("res://resources/texture/capoo_mage.png") == Vector2(384, 384), "Mage sprite sheet size mismatch.")
+	_expect(_texture_size("res://resources/texture/capoo_mage.png") == Vector2(1402, 1122), "Mage sprite sheet size mismatch.")
 	_expect(_texture_size("res://resources/texture/capoo_sniper.png") == Vector2(384, 384), "Sniper sprite sheet size mismatch.")
 	_expect(_texture_size("res://resources/texture/capoo_smg.png") == Vector2(384, 384), "SMG sprite sheet size mismatch.")
 	_expect(_texture_size("res://resources/texture/capoo_mage_fireball.png") == Vector2(384, 64), "Fireball sheet size mismatch.")
@@ -96,6 +96,8 @@ func _test_resource_contract() -> void:
 	_expect(_texture_size("res://resources/texture/capoo_sniper_lock_reticle.png") == Vector2(32, 32), "Sniper reticle texture size mismatch.")
 
 	_expect(_has_capoo_frames(MAGE_CONFIG.enemy_scene, "Mage"), "Mage animation contract failed.")
+	_expect(_has_mage_original_alpha_regions(), "Mage original alpha AtlasTexture regions failed.")
+	_expect(_has_mage_visual_alignment(), "Mage visual alignment contract failed.")
 	_expect(_has_capoo_frames(SNIPER_CONFIG.enemy_scene, "Sniper"), "Sniper animation contract failed.")
 	_expect(_has_capoo_frames(SMG_CONFIG.enemy_scene, "SMG"), "SMG animation contract failed.")
 	_expect(_sprite_frames_count("res://resources/animation/capoo_mage_fireball.tres", &"fly") == 6, "Fireball frame count mismatch.")
@@ -309,6 +311,41 @@ func _has_capoo_frames(scene: PackedScene, label: String) -> bool:
 	if not ok:
 		failures.append("%s scene animation frames are incomplete." % label)
 	instance.free()
+	return ok
+
+
+func _has_mage_visual_alignment() -> bool:
+	var instance := MAGE_SCENE.instantiate()
+	var animated_sprite := instance.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
+	var ok := animated_sprite != null
+	ok = ok and animated_sprite.position == Vector2(2.7, 0.1)
+	ok = ok and is_equal_approx(animated_sprite.scale.x, 0.1)
+	ok = ok and is_equal_approx(animated_sprite.scale.y, 0.1)
+	if not ok:
+		failures.append("Mage visual must keep the alpha-sheet body centered on its collision shape.")
+	instance.free()
+	return ok
+
+
+func _has_mage_original_alpha_regions() -> bool:
+	var frames := load("res://resources/animation/capoo_mage.tres") as SpriteFrames
+	var ok := frames != null
+	if frames == null:
+		failures.append("Mage original alpha SpriteFrames resource is missing.")
+		return false
+	for animation_name in [&"move", &"windup", &"attack", &"death"]:
+		for frame_index in range(4):
+			var atlas_texture := frames.get_frame_texture(animation_name, frame_index) as AtlasTexture
+			ok = ok and atlas_texture != null
+			if atlas_texture == null:
+				continue
+			var atlas_size := atlas_texture.atlas.get_size() if atlas_texture.atlas != null else Vector2.ZERO
+			var region := atlas_texture.region
+			ok = ok and atlas_texture.get_size() == Vector2(374.0, 300.0)
+			ok = ok and region.position.x >= 0.0 and region.position.y >= 0.0
+			ok = ok and region.end.x <= atlas_size.x and region.end.y <= atlas_size.y
+	if not ok:
+		failures.append("Mage must use margin-padded direct regions from capoo_mage_single_alpha.png without clipping.")
 	return ok
 
 

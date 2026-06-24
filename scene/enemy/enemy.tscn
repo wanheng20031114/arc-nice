@@ -45,6 +45,7 @@ collision_layer = 4
 script = ExtResource("2_enemy")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=1398407782]
+z_index = 1
 material = SubResource("ShaderMaterial_enemy")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1687096047]

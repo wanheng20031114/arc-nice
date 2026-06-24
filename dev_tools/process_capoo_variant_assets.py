@@ -50,6 +50,12 @@ SPRITE_FRAME_UIDS = {
 	"capoo_sniper": "uid://b0k8qc31gx3ei",
 }
 
+TEXTURE_UIDS = {
+	"capoo_mage": "uid://vsdfb65jljbp",
+	"capoo_sniper": "uid://cmwmkm7b0kdc7",
+	"capoo_smg": "uid://c3anlhqnkov42",
+}
+
 CAPOO_ANIMATION_ROWS = OrderedDict(
 	[
 		("move", 0),
@@ -366,15 +372,21 @@ def _remove_magenta_residue(image: Image.Image) -> Image.Image:
 def _write_capoo_frames(name: str) -> None:
 	texture_path = f"res://resources/texture/{name}.png"
 	resource_uid = SPRITE_FRAME_UIDS.get(name, "")
+	texture_uid = TEXTURE_UIDS.get(name, "")
 	resource_header = (
 		f"[gd_resource type=\"SpriteFrames\" format=3 uid=\"{resource_uid}\"]"
 		if resource_uid
 		else "[gd_resource type=\"SpriteFrames\" format=3]"
 	)
+	texture_ext_resource = (
+		f"[ext_resource type=\"Texture2D\" uid=\"{texture_uid}\" path=\"{texture_path}\" id=\"1_texture\"]"
+		if texture_uid
+		else f"[ext_resource type=\"Texture2D\" path=\"{texture_path}\" id=\"1_texture\"]"
+	)
 	lines = [
 		resource_header,
 		"",
-		f"[ext_resource type=\"Texture2D\" path=\"{texture_path}\" id=\"1_texture\"]",
+		texture_ext_resource,
 		"",
 	]
 

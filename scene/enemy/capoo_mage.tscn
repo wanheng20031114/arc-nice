@@ -36,7 +36,8 @@ direct_chase_extra_distance = 2.0
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
 texture_filter = 2
 material = SubResource("ShaderMaterial_rrbks")
-scale = Vector2(0.31, 0.31)
+position = Vector2(2.7, 0.1)
+scale = Vector2(0.1, 0.1)
 sprite_frames = ExtResource("4_frames")
 animation = &"move"
 
