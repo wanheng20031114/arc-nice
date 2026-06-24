@@ -1310,7 +1310,7 @@ func net_enemy_damage_applied(
 	if enemy == null or not is_instance_valid(enemy):
 		return
 	enemy.current_health = current_health
-	enemy.show_damage_number(confirmed_damage, impact_direction)
+	enemy.show_damage_number(confirmed_damage, impact_direction, EnemyConfig.DamageType.PHYSICAL)
 	if impact_direction != Vector2.ZERO:
 		enemy.play_multiplayer_damage_feedback(impact_direction)
 	if is_dead:

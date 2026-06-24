@@ -154,12 +154,15 @@ func _test_combat_effects() -> void:
 	run_state.begin_new_run()
 	var player := _spawn_player()
 	var enemy := _spawn_enemy(Vector2(40.0, 0.0), player)
+	var nearby_enemy := _spawn_enemy(Vector2(64.0, 0.0), player)
 	_expect(run_state.try_add_item(MAGIC_RING), "Magic ring must fit in inventory.")
 	_expect(run_state.try_add_item(THUNDER_CRYSTAL), "Thunder crystal must fit in inventory.")
 	await process_frame
 	enemy.current_health = 100
+	nearby_enemy.current_health = 100
 	player.call("_trigger_thunder_crystal", THUNDER_CRYSTAL)
 	_expect(enemy.last_damage_taken == 51, "Thunder crystal must use magic damage bonus.")
+	_expect(nearby_enemy.last_damage_taken == 51, "Thunder crystal must damage nearby enemies around the strike point.")
 
 	run_state.begin_new_run()
 	player.refresh_collectible_stats()
@@ -169,6 +172,9 @@ func _test_combat_effects() -> void:
 	player.call("_trigger_frost_crystal", FROST_CRYSTAL)
 	_expect(enemy.last_damage_taken == 10, "Frost crystal must damage enemies in its radius.")
 	_expect(enemy.move_speed_modifiers.size() > 0, "Frost crystal must slow enemies in its radius.")
+	enemy.queue_free()
+	await process_frame
+	await create_timer(FROST_CRYSTAL.periodic_slow_duration + 0.1).timeout
 
 	var ally := _spawn_player(Vector2(24.0, 0.0))
 	run_state.begin_new_run()
@@ -177,7 +183,7 @@ func _test_combat_effects() -> void:
 	await process_frame
 	ally.current_health = 5
 	player.call("_trigger_life_crystal", LIFE_CRYSTAL)
-	_expect(ally.current_health == 25, "Life crystal must heal nearby friendly players.")
+	_expect(ally.current_health == 15, "Life crystal must heal nearby friendly players for 10 health.")
 
 	run_state.begin_new_run()
 	player.refresh_collectible_stats()
@@ -200,6 +206,7 @@ func _test_combat_effects() -> void:
 	player.queue_free()
 	ally.queue_free()
 	enemy.queue_free()
+	nearby_enemy.queue_free()
 	await process_frame
 
 

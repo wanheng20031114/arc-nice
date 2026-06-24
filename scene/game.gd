@@ -250,11 +250,12 @@ func apply_remote_defeat() -> void:
 func show_damage_number(
 	amount: int,
 	spawn_position: Vector2,
-	impact_direction: Vector2 = Vector2.ZERO
+	impact_direction: Vector2 = Vector2.ZERO,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
 ) -> bool:
 	if damage_number_pool == null:
 		return false
-	return damage_number_pool.show_damage_number(amount, spawn_position, impact_direction)
+	return damage_number_pool.show_damage_number(amount, spawn_position, impact_direction, damage_type)
 
 
 func try_purchase_skill1_for_peer(peer_id: int) -> int:

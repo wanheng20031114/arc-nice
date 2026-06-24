@@ -13,11 +13,12 @@ class DamageNumberOwner:
 	func show_damage_number(
 		amount: int,
 		spawn_position: Vector2,
-		impact_direction: Vector2 = Vector2.ZERO
+		impact_direction: Vector2 = Vector2.ZERO,
+		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
 	) -> bool:
 		if damage_number_pool == null:
 			return false
-		return damage_number_pool.call("show_damage_number", amount, spawn_position, impact_direction) == true
+		return damage_number_pool.call("show_damage_number", amount, spawn_position, impact_direction, damage_type) == true
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -69,6 +70,21 @@ func _run() -> void:
 	if damage_number != null:
 		_test_damage_number_style(damage_number)
 	if damage_number_pool != null:
+		_expect(
+			damage_number_pool.call(
+				"show_damage_number",
+				7,
+				Vector2(92.0, 64.0),
+				Vector2.LEFT,
+				EnemyConfig.DamageType.MAGIC
+			) == true,
+			"DamageNumberPool should accept a magic damage type."
+		)
+		var magic_damage_number := _find_magic_damage_number()
+		_expect(magic_damage_number != null, "Magic damage number should be reachable.")
+		if magic_damage_number != null:
+			_test_magic_damage_number_style(magic_damage_number)
+	if damage_number_pool != null:
 		await physics_frame
 		_test_damage_number_pool_budget(damage_number_pool)
 
@@ -101,6 +117,17 @@ func _find_damage_number() -> DamageNumber:
 	return null
 
 
+func _find_magic_damage_number() -> DamageNumber:
+	for node in get_nodes_in_group(&"damage_numbers"):
+		var damage_number := node as DamageNumber
+		if damage_number == null or damage_number.label == null:
+			continue
+		var font_color := damage_number.label.get_theme_color(&"font_color")
+		if font_color.b > font_color.r and font_color.b > font_color.g:
+			return damage_number
+	return null
+
+
 func _test_damage_number_style(damage_number: DamageNumber) -> void:
 	var label := damage_number.label
 	_expect(label != null, "DamageNumber should own a Label.")
@@ -122,6 +149,17 @@ func _test_damage_number_style(damage_number: DamageNumber) -> void:
 	_expect(font_color.r > 0.9 and font_color.g < 0.25 and font_color.b < 0.2, "DamageNumber should be red.")
 	var outline_color := label.get_theme_color(&"font_outline_color")
 	_expect(outline_color.r > outline_color.g and outline_color.r > outline_color.b, "DamageNumber outline should be dark red.")
+
+
+func _test_magic_damage_number_style(damage_number: DamageNumber) -> void:
+	var label := damage_number.label
+	_expect(label != null, "Magic DamageNumber should own a Label.")
+	if label == null:
+		return
+	var font_color := label.get_theme_color(&"font_color")
+	_expect(font_color.b > 0.9 and font_color.r > 0.55 and font_color.g < 0.5, "Magic DamageNumber should be purple.")
+	var outline_color := label.get_theme_color(&"font_outline_color")
+	_expect(outline_color.b > outline_color.r and outline_color.b > outline_color.g, "Magic DamageNumber outline should be dark purple.")
 
 
 func _test_damage_number_pool_budget(damage_number_pool: Node2D) -> void:

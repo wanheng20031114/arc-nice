@@ -1182,9 +1182,19 @@ func _trigger_thunder_crystal(item: PickupConfig) -> void:
 	var enemy := enemies[randi() % enemies.size()]
 	if enemy == null or not is_instance_valid(enemy):
 		return
+	var impact_position := enemy.global_position
+	var radius := maxf(item.periodic_radius, 1.0)
 	var damage := get_outgoing_damage(item.periodic_damage, EnemyConfig.DamageType.MAGIC)
-	enemy.apply_damage(damage, Vector2.DOWN, EnemyConfig.DamageType.MAGIC)
-	_spawn_collectible_lightning_effect(enemy.global_position)
+	for target_enemy in enemies:
+		if target_enemy == null or not is_instance_valid(target_enemy):
+			continue
+		if target_enemy.global_position.distance_to(impact_position) > radius:
+			continue
+		var impact_direction := impact_position.direction_to(target_enemy.global_position)
+		if impact_direction == Vector2.ZERO:
+			impact_direction = Vector2.DOWN
+		target_enemy.apply_damage(damage, impact_direction, EnemyConfig.DamageType.MAGIC)
+	_spawn_collectible_lightning_effect(impact_position)
 
 
 func _trigger_frost_crystal(item: PickupConfig) -> void:
@@ -1200,7 +1210,7 @@ func _trigger_frost_crystal(item: PickupConfig) -> void:
 		enemy.add_move_speed_modifier(slow_source_id, item.periodic_slow_multiplier)
 		if item.periodic_slow_duration > 0.0:
 			get_tree().create_timer(item.periodic_slow_duration).timeout.connect(
-				_remove_collectible_enemy_slow.bind(enemy, slow_source_id)
+				_remove_collectible_enemy_slow.bind(weakref(enemy), slow_source_id)
 			)
 	_spawn_collectible_area_effect(radius, Color(0.46, 0.86, 1.0, 0.48), 0.52)
 
@@ -1216,7 +1226,10 @@ func _trigger_life_crystal(item: PickupConfig) -> void:
 	_spawn_collectible_area_effect(radius, Color(0.45, 1.0, 0.58, 0.42), 0.52)
 
 
-func _remove_collectible_enemy_slow(enemy: Enemy, source_id: int) -> void:
+func _remove_collectible_enemy_slow(enemy_ref: WeakRef, source_id: int) -> void:
+	var enemy: Enemy = null
+	if enemy_ref != null:
+		enemy = enemy_ref.get_ref() as Enemy
 	if enemy == null or not is_instance_valid(enemy):
 		return
 	enemy.remove_move_speed_modifier(source_id)

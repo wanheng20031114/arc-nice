@@ -10,6 +10,8 @@ const LIFETIME := 0.72
 const FONT_SIZE := 9
 const FONT_COLOR := Color(1.0, 0.12, 0.09, 1.0)
 const OUTLINE_COLOR := Color(0.28, 0.02, 0.02, 0.98)
+const MAGIC_FONT_COLOR := Color(0.74, 0.34, 1.0, 1.0)
+const MAGIC_OUTLINE_COLOR := Color(0.16, 0.04, 0.30, 0.98)
 const OUTLINE_SIZE := 2
 
 var label: Label = null
@@ -25,7 +27,12 @@ func _ready() -> void:
 	set_process(false)
 
 
-func setup(amount: int, spawn_position: Vector2, impact_direction: Vector2 = Vector2.ZERO) -> void:
+func setup(
+	amount: int,
+	spawn_position: Vector2,
+	impact_direction: Vector2 = Vector2.ZERO,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
+) -> void:
 	_ensure_label()
 	active = true
 	elapsed = 0.0
@@ -38,6 +45,7 @@ func setup(amount: int, spawn_position: Vector2, impact_direction: Vector2 = Vec
 	start_global_position = global_position
 	z_index = 100
 	label.text = str(maxi(amount, 0))
+	_apply_damage_type_style(damage_type)
 	modulate = Color.WHITE
 	scale = Vector2.ONE
 
@@ -47,6 +55,16 @@ func setup(amount: int, spawn_position: Vector2, impact_direction: Vector2 = Vec
 	else:
 		horizontal_sign = -1.0 if randf() < 0.5 else 1.0
 	float_offset = Vector2(horizontal_sign * randf_range(4.0, 8.0), -14.0)
+
+
+func _apply_damage_type_style(damage_type: EnemyConfig.DamageType) -> void:
+	match damage_type:
+		EnemyConfig.DamageType.MAGIC:
+			label.add_theme_color_override("font_color", MAGIC_FONT_COLOR)
+			label.add_theme_color_override("font_outline_color", MAGIC_OUTLINE_COLOR)
+		_:
+			label.add_theme_color_override("font_color", FONT_COLOR)
+			label.add_theme_color_override("font_outline_color", OUTLINE_COLOR)
 
 
 func is_active() -> bool:

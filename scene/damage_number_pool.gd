@@ -21,7 +21,8 @@ func _ready() -> void:
 func show_damage_number(
 	amount: int,
 	spawn_position: Vector2,
-	impact_direction: Vector2 = Vector2.ZERO
+	impact_direction: Vector2 = Vector2.ZERO,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
 ) -> bool:
 	if amount <= 0:
 		return false
@@ -32,7 +33,7 @@ func show_damage_number(
 	if number == null:
 		return false
 
-	number.setup(amount, spawn_position, impact_direction)
+	number.setup(amount, spawn_position, impact_direction, damage_type)
 	return true
 
 

@@ -129,7 +129,7 @@ func apply_damage(
 	var final_damage := _calculate_incoming_damage(amount, damage_type)
 	last_damage_taken = final_damage
 	current_health -= final_damage
-	show_damage_number(final_damage, impact_direction)
+	show_damage_number(final_damage, impact_direction, damage_type)
 	play_multiplayer_damage_feedback(impact_direction)
 
 	if current_health <= 0:
@@ -141,13 +141,17 @@ func apply_damage(
 	return true
 
 
-func show_damage_number(amount: int, impact_direction: Vector2 = Vector2.ZERO) -> void:
+func show_damage_number(
+	amount: int,
+	impact_direction: Vector2 = Vector2.ZERO,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
+) -> void:
 	if amount <= 0:
 		return
 	var damage_number_owner := get_parent()
 	while damage_number_owner != null:
 		if damage_number_owner.has_method("show_damage_number"):
-			damage_number_owner.call("show_damage_number", amount, global_position, impact_direction)
+			damage_number_owner.call("show_damage_number", amount, global_position, impact_direction, damage_type)
 			return
 		damage_number_owner = damage_number_owner.get_parent()
 
