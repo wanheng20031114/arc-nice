@@ -4,6 +4,7 @@ const MOON_AMULET := preload("res://resources/config/collectibles/collectible_mo
 const MOON_SHIELD_SCENE := preload("res://scene/collectible_moon_shield.tscn")
 const MOON_SHIELD_VISUAL_SCENE := preload("res://scene/collectible_moon_shield_visual.tscn")
 const LIGHTNING_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
+const FROST_AREA_SCENE := preload("res://scene/collectible_frost_area_effect.tscn")
 const MOON_SHIELD_FRAMES := preload("res://resources/animation/moon_shield_vfx.tres")
 const LIGHTNING_FRAMES := preload("res://resources/animation/thunder_lightning_vfx.tres")
 
@@ -95,6 +96,15 @@ func _test_vfx_resources() -> void:
 	lightning.queue_free()
 	await process_frame
 	await physics_frame
+
+	var frost_area := FROST_AREA_SCENE.instantiate()
+	frost_area.call("setup", 72.0, 0.12)
+	test_root.add_child(frost_area)
+	await process_frame
+	_expect(is_equal_approx(float(frost_area.get("effect_radius")), 72.0), "Frost area visual must keep the requested radius.")
+	_expect(is_equal_approx(float(frost_area.get("lifetime")), 0.12), "Frost area visual must keep the requested duration.")
+	await create_timer(0.18).timeout
+	_expect(not is_instance_valid(frost_area), "Frost area visual must free itself after its animation finishes.")
 
 
 func _expect(condition: bool, message: String) -> void:

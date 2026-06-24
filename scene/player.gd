@@ -58,6 +58,7 @@ var client_movement_prediction_only: bool = false
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const SKILL1_BOMB_SCENE := preload("res://scene/weishidaier_skill1_bomb.tscn")
 const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/collectible_area_effect.tscn")
+const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/collectible_frost_area_effect.tscn")
 const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
 const COLLECTIBLE_MOON_SHIELD_SCENE := preload("res://scene/collectible_moon_shield.tscn")
 const NORMAL_ANIMATION_PREFIX := &"normal"
@@ -1221,7 +1222,7 @@ func _trigger_frost_crystal(item: PickupConfig) -> void:
 			get_tree().create_timer(item.periodic_slow_duration).timeout.connect(
 				_remove_collectible_enemy_slow.bind(weakref(enemy), slow_source_id)
 			)
-	_spawn_collectible_area_effect(radius, Color(0.46, 0.86, 1.0, 0.48), 0.52)
+	_spawn_collectible_frost_effect(radius, 0.72)
 
 
 func _trigger_life_crystal(item: PickupConfig) -> void:
@@ -1299,6 +1300,20 @@ func _spawn_collectible_area_effect(radius: float, color: Color, duration: float
 	spawn_parent.add_child(effect)
 	effect.global_position = global_position
 	_broadcast_collectible_visual(&"area", effect.global_position, radius, color, duration)
+
+
+func _spawn_collectible_frost_effect(radius: float, duration: float) -> void:
+	var effect := COLLECTIBLE_FROST_AREA_EFFECT_SCENE.instantiate()
+	if effect == null:
+		return
+	var spawn_parent := get_tree().current_scene
+	if spawn_parent == null:
+		return
+	effect.top_level = true
+	effect.call("setup", radius, duration)
+	spawn_parent.add_child(effect)
+	effect.global_position = global_position
+	_broadcast_collectible_visual(&"frost_area", effect.global_position, radius, Color(0.66, 0.94, 1.0, 1.0), duration)
 
 
 func _spawn_collectible_lightning_effect(spawn_position: Vector2) -> void:

@@ -6,6 +6,7 @@ const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const SKILL1_BOMB_SCENE := preload("res://scene/weishidaier_skill1_bomb.tscn")
 const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/collectible_area_effect.tscn")
+const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/collectible_frost_area_effect.tscn")
 const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
 const COLLECTIBLE_MOON_SHIELD_VISUAL_SCENE := preload("res://scene/collectible_moon_shield_visual.tscn")
 const CAPOO_AK47_BULLET_SCENE := preload("res://scene/enemy/capoo_ak47_bullet.tscn")
@@ -2406,6 +2407,14 @@ func _spawn_collectible_visual_effect(
 			area.setup(radius, color, duration)
 			add_child(area)
 			area.global_position = spawn_position
+		"frost_area":
+			var frost_area := COLLECTIBLE_FROST_AREA_EFFECT_SCENE.instantiate()
+			if frost_area == null:
+				return
+			frost_area.top_level = true
+			frost_area.call("setup", radius, duration)
+			add_child(frost_area)
+			frost_area.global_position = spawn_position
 
 
 func _spawn_collectible_follow_visual_effect(
