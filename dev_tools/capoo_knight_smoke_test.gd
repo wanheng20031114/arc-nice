@@ -16,7 +16,7 @@ const WAVES := [
 	preload("res://resources/config/waves/wave_11.tres"),
 ]
 const EXPECTED_KNIGHT_COUNTS := [4, 6, 8, 10, 12, 14]
-const EXPECTED_WAVE_TOTALS := [140, 150, 160, 180, 195, 210]
+const EXPECTED_WAVE_TOTALS := [140, 150, 160, 192, 213, 234]
 var failures: Array[String] = []
 var test_root: Node2D
 

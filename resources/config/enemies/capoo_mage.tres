@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="CapooMageConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/enemies/capoo_mage_config.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/enemy/capoo_mage.tscn" id="2_scene"]
+[ext_resource type="PackedScene" path="res://scene/enemy/capoo_mage_fireball.tscn" id="3_fireball"]
+[ext_resource type="AudioStream" path="res://resources/audio/capoo_ak47_fire.wav" id="4_audio"]
+
+[resource]
+script = ExtResource("1_script")
+projectile_scene = ExtResource("3_fireball")
+attack_audio_stream = ExtResource("4_audio")
+display_name = "法师 Capoo"
+enemy_scene = ExtResource("2_scene")
+max_health = 200
+attack_damage = 75
+physical_defense = 0
+magic_defense = 0
+move_speed = 80.0
+xirang_drop_amount = 30
+pickup_drop_chance = 0.2

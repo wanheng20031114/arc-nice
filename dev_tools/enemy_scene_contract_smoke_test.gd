@@ -14,6 +14,9 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/capoo_knight_elite.tres"),
 	preload("res://resources/config/enemies/capoo_swordsman.tres"),
 	preload("res://resources/config/enemies/capoo_rpg.tres"),
+	preload("res://resources/config/enemies/capoo_mage.tres"),
+	preload("res://resources/config/enemies/capoo_sniper.tres"),
+	preload("res://resources/config/enemies/capoo_smg.tres"),
 ]
 const ENEMY_VISUAL_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
 

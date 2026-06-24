@@ -11,6 +11,8 @@ const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lig
 const COLLECTIBLE_MOON_SHIELD_VISUAL_SCENE := preload("res://scene/collectible_moon_shield_visual.tscn")
 const CAPOO_AK47_BULLET_SCENE := preload("res://scene/enemy/capoo_ak47_bullet.tscn")
 const CAPOO_RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo_rpg_rocket.tscn")
+const CAPOO_MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
+const CAPOO_SMG_BULLET_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
 const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 
@@ -993,6 +995,20 @@ func _instantiate_projectile(
 			rpg_rocket.top_level = true
 			rpg_rocket.setup(direction, damage, speed, lifetime)
 			return rpg_rocket
+		&"capoo_mage_fireball":
+			var fireball := CAPOO_MAGE_FIREBALL_SCENE.instantiate() as CapooMageFireball
+			if fireball == null:
+				return null
+			fireball.top_level = true
+			fireball.setup(direction, damage, speed, lifetime)
+			return fireball
+		&"capoo_smg_bullet":
+			var smg_bullet := CAPOO_SMG_BULLET_SCENE.instantiate() as CapooAK47Bullet
+			if smg_bullet == null:
+				return null
+			smg_bullet.top_level = true
+			smg_bullet.setup(direction, damage, speed, lifetime)
+			return smg_bullet
 		&"yuanshi_fire_projectile":
 			var fire_projectile := YUANSHI_FIRE_PROJECTILE_SCENE.instantiate() as YuanshiInsectFireProjectile
 			if fire_projectile == null:
@@ -1818,6 +1834,21 @@ func broadcast_enemy_action(
 	)
 
 
+func broadcast_enemy_target_action(
+	net_id: int,
+	action_name: StringName,
+	target_peer_id: int,
+	action_position: Vector2,
+	action_id: int
+) -> void:
+	if not net_manager.is_host() or net_id <= 0 or action_id <= 0:
+		return
+	_rpc_to_connected_clients(
+		&"net_enemy_target_action",
+		[net_id, String(action_name), target_peer_id, action_position, action_id]
+	)
+
+
 func _on_host_pickup_removed(net_id: int) -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
@@ -1941,6 +1972,30 @@ func net_enemy_action(
 	enemy.global_position = action_position
 	if enemy.has_method("play_multiplayer_enemy_action"):
 		enemy.call("play_multiplayer_enemy_action", StringName(action_name), direction, action_id)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_enemy_target_action(
+	net_id: int,
+	action_name: String,
+	target_peer_id: int,
+	action_position: Vector2,
+	action_id: int
+) -> void:
+	if game == null or net_manager.is_host():
+		return
+	var enemy: Enemy = _get_valid_client_enemy_for_net_id(net_id)
+	if enemy == null or not is_instance_valid(enemy):
+		return
+	enemy.global_position = action_position
+	var target := game.get_player_for_peer(target_peer_id)
+	if enemy.has_method("play_multiplayer_enemy_target_action"):
+		enemy.call(
+			"play_multiplayer_enemy_target_action",
+			StringName(action_name),
+			target,
+			action_id
+		)
 
 
 

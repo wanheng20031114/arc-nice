@@ -105,8 +105,8 @@ func _test_game_scene_wave_list() -> void:
 	if game_waves.size() >= 11:
 		var final_wave := game_waves[10] as WaveConfig
 		_expect(
-			final_wave != null and final_wave.get_total_enemy_count() == 210,
-			"Game final wave must preserve the old wave 10 content."
+			final_wave != null and final_wave.get_total_enemy_count() == 234,
+			"Game final wave must include the new Capoo variants."
 		)
 	game.queue_free()
 

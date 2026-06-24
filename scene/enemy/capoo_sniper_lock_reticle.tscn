@@ -1,0 +1,14 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scene/enemy/capoo_sniper_lock_reticle.gd" id="1_script"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/capoo_sniper_lock_reticle.tres" id="2_frames"]
+
+[node name="CapooSniperLockReticle" type="Node2D"]
+z_index = 8
+script = ExtResource("1_script")
+
+[node name="Visual" type="AnimatedSprite2D" parent="."]
+modulate = Color(1, 1, 1, 0.66)
+scale = Vector2(0.46, 0.46)
+sprite_frames = ExtResource("2_frames")
+animation = &"lock"
