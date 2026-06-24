@@ -4,7 +4,7 @@ class_name Player
 
 signal xirang_changed(total: int, added_amount: int)
 signal health_changed(current: int, maximum: int)
-signal attack_speed_changed(attacks_per_second: float)
+signal attack_speed_changed(attack_speed: float)
 signal dodge_changed(chance: float)
 signal died
 
@@ -381,6 +381,10 @@ func get_current_health() -> int:
 
 func get_attacks_per_second() -> float:
 	return 1.0 / _get_effective_fire_interval()
+
+
+func get_attack_speed() -> float:
+	return get_attacks_per_second() * 100.0
 
 
 func refresh_collectible_stats() -> void:
@@ -1286,7 +1290,7 @@ func _spawn_collectible_lightning_effect(spawn_position: Vector2) -> void:
 	effect.setup()
 	spawn_parent.add_child(effect)
 	effect.global_position = spawn_position
-	_broadcast_collectible_visual(&"lightning", spawn_position, 0.0, Color(1.0, 0.88, 0.28, 1.0), 0.26)
+	_broadcast_collectible_visual(&"lightning", spawn_position, 0.0, Color(1.0, 0.88, 0.28, 1.0), 0.24)
 
 
 func _broadcast_collectible_visual(
@@ -1305,6 +1309,24 @@ func _broadcast_collectible_visual(
 		spawn_position,
 		radius,
 		color,
+		duration
+	)
+
+
+func _broadcast_collectible_follow_visual(
+	effect_type: StringName,
+	owner_peer_id: int,
+	radius: float,
+	duration: float
+) -> void:
+	var current_scene := get_tree().current_scene
+	if current_scene == null or not current_scene.has_method("broadcast_collectible_follow_visual_effect"):
+		return
+	current_scene.call(
+		"broadcast_collectible_follow_visual_effect",
+		effect_type,
+		owner_peer_id,
+		radius,
 		duration
 	)
 
@@ -1330,11 +1352,10 @@ func _spawn_moon_shield(radius: float, duration: float) -> void:
 	shield.setup(self, radius, duration)
 	add_child(shield)
 	shield.position = Vector2.ZERO
-	_broadcast_collectible_visual(
-		&"area",
-		global_position,
+	_broadcast_collectible_follow_visual(
+		&"moon_shield",
+		peer_id,
 		radius,
-		Color(0.28, 0.58, 1.0, 0.34),
 		duration
 	)
 
@@ -1383,7 +1404,8 @@ func _on_window_focus_exited() -> void:
 
 # 获取当前实际射击间隔（受射速加成影响）
 func _get_effective_fire_interval() -> float:
-	var base_attacks_per_second := (1.0 / maxf(fire_interval, 0.01)) + collectible_attack_speed_bonus
+	var base_attack_speed := (100.0 / maxf(fire_interval, 0.01)) + collectible_attack_speed_bonus
+	var base_attacks_per_second := maxf(base_attack_speed, 1.0) / 100.0
 	var effective_attacks_per_second := base_attacks_per_second * _get_effective_fire_rate_multiplier()
 	return maxf(1.0 / maxf(effective_attacks_per_second, 0.01), 0.01)
 
@@ -1409,7 +1431,7 @@ func _refresh_shooting_timer_wait_time() -> void:
 	if shooting_timer == null:
 		return
 	shooting_timer.wait_time = new_interval
-	attack_speed_changed.emit(1.0 / new_interval)
+	attack_speed_changed.emit(get_attack_speed())
 	
 	if shooting_timer.is_stopped():
 		return

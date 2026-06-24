@@ -117,7 +117,7 @@ func bind_player(player: Player) -> void:
 	portrait.play(&"normal_down")
 	portrait.position = PORTRAIT_DEFAULT_POSITION
 	attack_value.text = str(tracked_player.attack_damage)
-	_on_attack_speed_changed(tracked_player.get_attacks_per_second())
+	_on_attack_speed_changed(tracked_player.get_attack_speed())
 	_on_dodge_changed(tracked_player.dodge_chance)
 	_on_health_changed(tracked_player.current_health, tracked_player.max_health)
 	_refresh_inventory()
@@ -224,7 +224,7 @@ func _refresh_stat_display() -> void:
 		return
 	attack_value.text = str(tracked_player.attack_damage)
 	_on_health_changed(tracked_player.current_health, tracked_player.max_health)
-	_on_attack_speed_changed(tracked_player.get_attacks_per_second())
+	_on_attack_speed_changed(tracked_player.get_attack_speed())
 	_on_dodge_changed(tracked_player.dodge_chance)
 	move_speed_value.text = str(roundi(tracked_player.move_speed))
 	physical_defense_value.text = str(tracked_player.physical_defense)
@@ -282,9 +282,8 @@ func _on_health_changed(current: int, maximum: int) -> void:
 	health_value.text = "%d / %d" % [current, maximum]
 
 
-func _on_attack_speed_changed(attacks_per_second: float) -> void:
-	var safe_attacks_per_second := maxf(attacks_per_second, 0.01)
-	attack_speed_value.text = "%.2f/s" % safe_attacks_per_second
+func _on_attack_speed_changed(attack_speed: float) -> void:
+	attack_speed_value.text = str(roundi(maxf(attack_speed, 1.0)))
 
 
 func _on_dodge_changed(chance: float) -> void:

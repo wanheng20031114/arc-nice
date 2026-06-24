@@ -113,8 +113,12 @@ func _test_xirang_dynamic_rules() -> void:
 	player.grant_cheat_xirang(250)
 	await process_frame
 	_expect(
-		is_equal_approx(player.get_attacks_per_second(), (1.0 / 0.18) + 2.0),
-		"Gold wine cup must add floor(xirang / 100) attacks per second."
+		is_equal_approx(player.get_attack_speed(), (100.0 / 0.18) + 2.0),
+		"Gold wine cup must add floor(xirang / 100) attack speed points."
+	)
+	_expect(
+		is_equal_approx(player.get_attacks_per_second(), ((100.0 / 0.18) + 2.0) / 100.0),
+		"100 attack speed must equal 1 attack per second."
 	)
 	player.queue_free()
 	await process_frame

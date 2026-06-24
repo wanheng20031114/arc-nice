@@ -1,15 +1,21 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scene/collectible_moon_shield.gd" id="1_script"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/moon_shield_vfx.tres" id="2_frames"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_moon"]
-radius = 96.0
+radius = 64.0
 
 [node name="CollectibleMoonShield" type="Area2D"]
 collision_layer = 0
 collision_mask = 2
 monitorable = false
 script = ExtResource("1_script")
+
+[node name="Visual" type="AnimatedSprite2D" parent="."]
+sprite_frames = ExtResource("2_frames")
+animation = &"pulse"
+autoplay = "pulse"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("CircleShape2D_moon")

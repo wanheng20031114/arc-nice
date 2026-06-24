@@ -1,6 +1,13 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scene/collectible_lightning_effect.gd" id="1_script"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/thunder_lightning_vfx.tres" id="2_frames"]
 
 [node name="CollectibleLightningEffect" type="Node2D"]
 script = ExtResource("1_script")
+
+[node name="Visual" type="AnimatedSprite2D" parent="."]
+position = Vector2(0, -80)
+sprite_frames = ExtResource("2_frames")
+animation = &"strike"
+autoplay = "strike"

@@ -15,6 +15,6 @@ icon_scale = Vector2(1, 1)
 duration = 0.0
 collectible_effect_id = "moon_amulet"
 skill_effect_id = "moon_shield"
-skill_effect_radius = 96.0
+skill_effect_radius = 64.0
 skill_effect_duration = 8.0
 metadata/_custom_type_script = "uid://qucrregg4cq0"

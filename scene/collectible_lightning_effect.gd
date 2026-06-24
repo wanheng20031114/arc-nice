@@ -1,17 +1,26 @@
 extends Node2D
 class_name CollectibleLightningEffect
 
-var lifetime: float = 0.26
+const VISUAL_BASE_HEIGHT := 160.0
+
+@onready var visual: AnimatedSprite2D = $Visual
+
+var lifetime: float = 0.24
 var age: float = 0.0
-var height: float = 96.0
-var strike_color: Color = Color(1.0, 0.88, 0.28, 1.0)
+var strike_height: float = 160.0
 
 
-func setup(duration: float = 0.26, strike_height: float = 96.0) -> void:
+func setup(duration: float = 0.24, height: float = 160.0) -> void:
 	lifetime = maxf(duration, 0.05)
-	height = maxf(strike_height, 16.0)
+	strike_height = maxf(height, 16.0)
 	age = 0.0
-	queue_redraw()
+	if is_node_ready():
+		_apply_visual_layout()
+
+
+func _ready() -> void:
+	_apply_visual_layout()
+	visual.play(&"strike")
 
 
 func _process(delta: float) -> void:
@@ -19,21 +28,9 @@ func _process(delta: float) -> void:
 	if age >= lifetime:
 		queue_free()
 		return
-	queue_redraw()
 
 
-func _draw() -> void:
-	var alpha := 1.0 - clampf(age / lifetime, 0.0, 1.0)
-	var points := PackedVector2Array([
-		Vector2(-5.0, -height * 0.5),
-		Vector2(4.0, -height * 0.22),
-		Vector2(-3.0, -height * 0.04),
-		Vector2(6.0, height * 0.18),
-		Vector2(0.0, height * 0.5),
-	])
-	var glow := strike_color
-	glow.a = 0.18 * alpha
-	draw_polyline(points, glow, 8.0, true)
-	var core := strike_color
-	core.a = alpha
-	draw_polyline(points, core, 3.0, true)
+func _apply_visual_layout() -> void:
+	var scale_factor := strike_height / VISUAL_BASE_HEIGHT
+	visual.scale = Vector2.ONE * scale_factor
+	visual.position = Vector2(0.0, -VISUAL_BASE_HEIGHT * 0.5 * scale_factor)

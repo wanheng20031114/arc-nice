@@ -7,6 +7,7 @@ const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const SKILL1_BOMB_SCENE := preload("res://scene/weishidaier_skill1_bomb.tscn")
 const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/collectible_area_effect.tscn")
 const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
+const COLLECTIBLE_MOON_SHIELD_VISUAL_SCENE := preload("res://scene/collectible_moon_shield_visual.tscn")
 const CAPOO_AK47_BULLET_SCENE := preload("res://scene/enemy/capoo_ak47_bullet.tscn")
 const CAPOO_RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo_rpg_rocket.tscn")
 const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
@@ -189,6 +190,22 @@ func broadcast_collectible_visual_effect(
 	_rpc_to_connected_clients(
 		&"net_collectible_visual_effect",
 		[String(effect_type), spawn_position, radius, color, duration]
+	)
+
+
+func broadcast_collectible_follow_visual_effect(
+	effect_type: StringName,
+	owner_peer_id: int,
+	radius: float,
+	duration: float
+) -> void:
+	if net_manager == null or not net_manager.is_host():
+		return
+	if owner_peer_id <= 0:
+		return
+	_rpc_to_connected_clients(
+		&"net_collectible_follow_visual_effect",
+		[String(effect_type), owner_peer_id, radius, duration]
 	)
 
 
@@ -2239,6 +2256,16 @@ func net_collectible_visual_effect(
 
 
 @rpc("authority", "call_remote", "reliable", 4)
+func net_collectible_follow_visual_effect(
+	effect_type: String,
+	owner_peer_id: int,
+	radius: float,
+	duration: float
+) -> void:
+	_spawn_collectible_follow_visual_effect(effect_type, owner_peer_id, radius, duration)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
 func net_cheat_xirang_confirmed(peer_id: int, current_xirang: int, added_amount: int) -> void:
 	if game == null:
 		return
@@ -2379,6 +2406,29 @@ func _spawn_collectible_visual_effect(
 			area.setup(radius, color, duration)
 			add_child(area)
 			area.global_position = spawn_position
+
+
+func _spawn_collectible_follow_visual_effect(
+	effect_type: String,
+	owner_peer_id: int,
+	radius: float,
+	duration: float
+) -> void:
+	if game == null or owner_peer_id <= 0:
+		return
+	if owner_peer_id == _get_local_peer_id():
+		return
+	var owner_player := game.get_player_for_peer(owner_peer_id)
+	if owner_player == null or not is_instance_valid(owner_player):
+		return
+	match effect_type:
+		"moon_shield":
+			var moon_shield := COLLECTIBLE_MOON_SHIELD_VISUAL_SCENE.instantiate() as CollectibleMoonShieldVisual
+			if moon_shield == null:
+				return
+			moon_shield.setup(radius, duration)
+			owner_player.add_child(moon_shield)
+			moon_shield.position = Vector2.ZERO
 
 
 func _apply_cheat_xirang_for_peer(peer_id: int) -> void:
