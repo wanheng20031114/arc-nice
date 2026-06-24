@@ -90,7 +90,7 @@ func _test_resource_contract() -> void:
 	_expect(is_equal_approx(SMG_CONFIG.spread_angle_degrees, 20.0), "SMG spread angle mismatch.")
 
 	_expect(_texture_size("res://resources/texture/capoo_mage.png") == Vector2(1402, 1122), "Mage sprite sheet size mismatch.")
-	_expect(_texture_size("res://resources/texture/capoo_sniper.png") == Vector2(384, 384), "Sniper sprite sheet size mismatch.")
+	_expect(_texture_size("res://resources/texture/capoo_sniper.png") == Vector2(512, 384), "Sniper sprite sheet size mismatch.")
 	_expect(_texture_size("res://resources/texture/capoo_smg.png") == Vector2(384, 384), "SMG sprite sheet size mismatch.")
 	_expect(_texture_size("res://resources/texture/capoo_mage_fireball.png") == Vector2(384, 128), "Fireball sheet size mismatch.")
 	_expect(_texture_size("res://resources/texture/capoo_smg_bullet.png") == Vector2(48, 8), "SMG bullet sheet size mismatch.")
@@ -99,8 +99,8 @@ func _test_resource_contract() -> void:
 	_expect(_has_capoo_frames(MAGE_CONFIG.enemy_scene, "Mage"), "Mage animation contract failed.")
 	_expect(_has_mage_original_alpha_regions(), "Mage original alpha AtlasTexture regions failed.")
 	_expect(_has_mage_visual_alignment(), "Mage visual alignment contract failed.")
-	_expect(_has_capoo_frames(SNIPER_CONFIG.enemy_scene, "Sniper"), "Sniper animation contract failed.")
-	_expect(_has_capoo_frames(SMG_CONFIG.enemy_scene, "SMG"), "SMG animation contract failed.")
+	_expect(_has_capoo_frames(SNIPER_CONFIG.enemy_scene, "Sniper", Vector2(128.0, 96.0)), "Sniper animation contract failed.")
+	_expect(_has_capoo_frames(SMG_CONFIG.enemy_scene, "SMG", Vector2(96.0, 96.0)), "SMG animation contract failed.")
 	_expect(_sprite_frames_count("res://resources/animation/capoo_mage_fireball.tres", &"fly") == 6, "Fireball frame count mismatch.")
 	_expect(_sprite_frames_count("res://resources/animation/capoo_mage_fireball.tres", &"impact") == 6, "Fireball impact frame count mismatch.")
 	_expect(_fireball_impact_animation_contract(), "Fireball impact animation contract failed.")
@@ -342,13 +342,25 @@ func _spawn_wall(position: Vector2, radius: float) -> StaticBody2D:
 	return wall
 
 
-func _has_capoo_frames(scene: PackedScene, label: String) -> bool:
+func _has_capoo_frames(scene: PackedScene, label: String, expected_frame_size := Vector2.ZERO) -> bool:
 	var instance := scene.instantiate()
 	var animated_sprite := instance.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
 	var frames := animated_sprite.sprite_frames if animated_sprite != null else null
 	var ok := frames != null
 	for animation_name in [&"move", &"windup", &"attack", &"death"]:
 		ok = ok and frames.has_animation(animation_name) and frames.get_frame_count(animation_name) == 4
+		if frames == null or not frames.has_animation(animation_name):
+			continue
+		for frame_index in range(frames.get_frame_count(animation_name)):
+			var atlas_texture := frames.get_frame_texture(animation_name, frame_index) as AtlasTexture
+			ok = ok and atlas_texture != null
+			if atlas_texture == null or expected_frame_size == Vector2.ZERO:
+				continue
+			var atlas_size := atlas_texture.atlas.get_size() if atlas_texture.atlas != null else Vector2.ZERO
+			var region := atlas_texture.region
+			ok = ok and atlas_texture.get_size() == expected_frame_size
+			ok = ok and region.position.x >= 0.0 and region.position.y >= 0.0
+			ok = ok and region.end.x <= atlas_size.x and region.end.y <= atlas_size.y
 	if not ok:
 		failures.append("%s scene animation frames are incomplete." % label)
 	instance.free()

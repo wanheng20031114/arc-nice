@@ -67,6 +67,7 @@ CAPOO_ANIMATION_ROWS = OrderedDict(
 		("death", 3),
 	]
 )
+CAPOO_ANIMATION_WRITE_ORDER = ("attack", "death", "move", "windup")
 
 
 def _remove_chroma_background(image: Image.Image, key: str) -> Image.Image:
@@ -431,7 +432,10 @@ def _remove_magenta_residue(image: Image.Image) -> Image.Image:
 	return Image.fromarray(array)
 
 
-def _write_capoo_frames(name: str) -> None:
+def _write_capoo_frames(name: str, frame_size: tuple[int, int] | None = None) -> None:
+	if frame_size == None:
+		frame_size = (CAPOO_FRAME_SIZE, CAPOO_FRAME_SIZE)
+	frame_width, frame_height = frame_size
 	texture_path = f"res://resources/texture/{name}.png"
 	resource_uid = SPRITE_FRAME_UIDS.get(name, "")
 	texture_uid = TEXTURE_UIDS.get(name, "")
@@ -452,13 +456,14 @@ def _write_capoo_frames(name: str) -> None:
 		"",
 	]
 
-	for animation_name, row in CAPOO_ANIMATION_ROWS.items():
+	for animation_name in CAPOO_ANIMATION_WRITE_ORDER:
+		row = CAPOO_ANIMATION_ROWS[animation_name]
 		for column in range(4):
 			lines.extend(
 				[
 					f"[sub_resource type=\"AtlasTexture\" id=\"AtlasTexture_{animation_name}_{column}\"]",
 					"atlas = ExtResource(\"1_texture\")",
-					f"region = Rect2({column * CAPOO_FRAME_SIZE}, {row * CAPOO_FRAME_SIZE}, {CAPOO_FRAME_SIZE}, {CAPOO_FRAME_SIZE})",
+					f"region = Rect2({column * frame_width}, {row * frame_height}, {frame_width}, {frame_height})",
 					"",
 				]
 			)
@@ -470,7 +475,7 @@ def _write_capoo_frames(name: str) -> None:
 		"death": 7.0,
 	}
 	entries: list[str] = []
-	for animation_name in CAPOO_ANIMATION_ROWS:
+	for animation_name in CAPOO_ANIMATION_WRITE_ORDER:
 		frame_entries: list[str] = []
 		for column in range(4):
 			frame_entries.append(
@@ -489,7 +494,7 @@ def _write_capoo_frames(name: str) -> None:
 	lines.append("[resource]")
 	lines.append(f"animations = [{', '.join(entries)}]")
 	lines.append("")
-	(ANIMATION_DIR / f"{name}.tres").write_text("\n".join(lines), encoding="utf-8")
+	(ANIMATION_DIR / f"{name}.tres").write_text("\n".join(lines), encoding="utf-8", newline="\n")
 
 
 def _write_fireball_frames() -> None:
@@ -529,7 +534,7 @@ def _write_fireball_frames() -> None:
 	lines.append("[resource]")
 	lines.append(f"animations = [{', '.join(entries)}]")
 	lines.append("")
-	(ANIMATION_DIR / "capoo_mage_fireball.tres").write_text("\n".join(lines), encoding="utf-8")
+	(ANIMATION_DIR / "capoo_mage_fireball.tres").write_text("\n".join(lines), encoding="utf-8", newline="\n")
 
 
 def _write_smg_bullet_frames() -> None:
@@ -582,7 +587,7 @@ def _write_linear_frames(
 		"}]"
 	)
 	lines.append("")
-	(ANIMATION_DIR / f"{name}.tres").write_text("\n".join(lines), encoding="utf-8")
+	(ANIMATION_DIR / f"{name}.tres").write_text("\n".join(lines), encoding="utf-8", newline="\n")
 
 
 def _save_debug(name: str, image: Image.Image) -> None:

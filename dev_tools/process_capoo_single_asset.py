@@ -12,6 +12,7 @@ from scipy import ndimage
 
 from process_capoo_variant_assets import (
 	ANIMATION_DIR,
+	CAPOO_ANIMATION_WRITE_ORDER,
 	CAPOO_ANIMATION_ROWS,
 	CAPOO_FRAME_SIZE,
 	DEBUG_DIR,
@@ -19,6 +20,7 @@ from process_capoo_variant_assets import (
 	TEXTURE_UIDS,
 	TEXTURE_DIR,
 	_remove_chroma_background,
+	_remove_magenta_residue,
 	_save_debug,
 	_subject_bbox,
 	_write_capoo_frames,
@@ -37,8 +39,11 @@ SINGLE_SOURCES = {
 		"direct_body_anchor": (160, 244),
 	},
 	"capoo_sniper": {
-		"path": ROOT / "dev_assets/source_images/capoo_sniper_generated_v3.png",
+		"path": ROOT / "dev_assets/source_images/capoo_sniper_generated_v4.png",
 		"key": "magenta",
+		"frame_size": (128, 96),
+		"body_anchor_target": (48.0, 67.0),
+		"component_row_slicing": True,
 	},
 }
 
@@ -47,6 +52,8 @@ GRID_ROWS = 4
 FRAME_MARGIN = 4
 BODY_TARGET_HEIGHT = 48.0
 BODY_ANCHOR_TARGET = (48.0, 67.0)
+DEFAULT_FRAME_SIZE = (CAPOO_FRAME_SIZE, CAPOO_FRAME_SIZE)
+COMPONENT_MIN_PIXELS = 12
 
 
 def _grid_cell_bounds(sheet: Image.Image, column: int, row: int) -> tuple[int, int, int, int]:
@@ -107,58 +114,180 @@ def _body_anchor_and_height(image: Image.Image) -> tuple[tuple[float, float], fl
 	return (((bbox[0] + bbox[2]) * 0.5, float(bbox[3])), max(1.0, float(bbox[3] - bbox[1])))
 
 
-def _fit_with_body_anchor(cell: Image.Image) -> Image.Image:
+def _fit_with_body_anchor(
+	cell: Image.Image,
+	frame_size: tuple[int, int],
+	body_anchor_target: tuple[float, float],
+) -> Image.Image:
 	bbox = _subject_bbox(cell)
-	frame = Image.new("RGBA", (CAPOO_FRAME_SIZE, CAPOO_FRAME_SIZE), (0, 0, 0, 0))
+	frame = Image.new("RGBA", frame_size, (0, 0, 0, 0))
 	if bbox == None:
 		return frame
 
 	subject = cell.crop(bbox)
 	(body_anchor_x, body_anchor_y), body_height = _body_anchor_and_height(subject)
 	scale = BODY_TARGET_HEIGHT / body_height
-	scale = min(scale, _max_scale_for_anchor(subject, body_anchor_x, body_anchor_y))
+	scale = min(scale, _max_scale_for_anchor(subject, body_anchor_x, body_anchor_y, frame_size, body_anchor_target))
 	output_size = (
 		max(1, round(subject.width * scale)),
 		max(1, round(subject.height * scale)),
 	)
 	resized = subject.resize(output_size, Image.Resampling.NEAREST)
 	paste_position = (
-		round(BODY_ANCHOR_TARGET[0] - body_anchor_x * scale),
-		round(BODY_ANCHOR_TARGET[1] - body_anchor_y * scale),
+		round(body_anchor_target[0] - body_anchor_x * scale),
+		round(body_anchor_target[1] - body_anchor_y * scale),
 	)
 	frame.alpha_composite(resized, paste_position)
 	return frame
 
 
-def _max_scale_for_anchor(subject: Image.Image, anchor_x: float, anchor_y: float) -> float:
+def _max_scale_for_anchor(
+	subject: Image.Image,
+	anchor_x: float,
+	anchor_y: float,
+	frame_size: tuple[int, int],
+	body_anchor_target: tuple[float, float],
+) -> float:
 	limits: list[float] = []
 	if anchor_x > 0.0:
-		limits.append((BODY_ANCHOR_TARGET[0] - FRAME_MARGIN) / anchor_x)
+		limits.append((body_anchor_target[0] - FRAME_MARGIN) / anchor_x)
 	if subject.width - anchor_x > 0.0:
-		limits.append((CAPOO_FRAME_SIZE - FRAME_MARGIN - BODY_ANCHOR_TARGET[0]) / (subject.width - anchor_x))
+		limits.append((frame_size[0] - FRAME_MARGIN - body_anchor_target[0]) / (subject.width - anchor_x))
 	if anchor_y > 0.0:
-		limits.append((BODY_ANCHOR_TARGET[1] - FRAME_MARGIN) / anchor_y)
+		limits.append((body_anchor_target[1] - FRAME_MARGIN) / anchor_y)
 	if subject.height - anchor_y > 0.0:
-		limits.append((CAPOO_FRAME_SIZE - FRAME_MARGIN - BODY_ANCHOR_TARGET[1]) / (subject.height - anchor_y))
+		limits.append((frame_size[1] - FRAME_MARGIN - body_anchor_target[1]) / (subject.height - anchor_y))
 	return max(0.1, min(limits)) if limits else 1.0
 
 
-def _build_single_capoo_sheet(source: Image.Image) -> Image.Image:
-	sheet = Image.new("RGBA", (CAPOO_FRAME_SIZE * GRID_COLUMNS, CAPOO_FRAME_SIZE * GRID_ROWS), (0, 0, 0, 0))
+def _build_single_capoo_sheet(
+	source: Image.Image,
+	frame_size: tuple[int, int],
+	body_anchor_target: tuple[float, float],
+	component_row_slicing: bool,
+) -> Image.Image:
+	sheet = Image.new("RGBA", (frame_size[0] * GRID_COLUMNS, frame_size[1] * GRID_ROWS), (0, 0, 0, 0))
 	for row in range(GRID_ROWS):
+		row_cells = _component_owned_row_cells(source, row) if component_row_slicing else None
 		for column in range(GRID_COLUMNS):
-			cell = _crop_grid_cell(source, column, row)
-			frame = _fit_with_body_anchor(cell)
-			frame = _realign_frame_body_anchor(frame)
-			sheet.alpha_composite(frame, (column * CAPOO_FRAME_SIZE, row * CAPOO_FRAME_SIZE))
+			cell = row_cells[column] if row_cells != None else _crop_grid_cell(source, column, row)
+			frame = _fit_with_body_anchor(cell, frame_size, body_anchor_target)
+			frame = _realign_frame_body_anchor(frame, body_anchor_target)
+			sheet.alpha_composite(frame, (column * frame_size[0], row * frame_size[1]))
 	return sheet
 
 
-def _realign_frame_body_anchor(frame: Image.Image) -> Image.Image:
+def _component_owned_row_cells(source: Image.Image, row: int) -> list[Image.Image]:
+	row_top = round(row * source.height / float(GRID_ROWS))
+	row_bottom = round((row + 1) * source.height / float(GRID_ROWS))
+	row_image = source.crop((0, row_top, source.width, row_bottom)).convert("RGBA")
+	row_array = np.array(row_image, dtype=np.uint8)
+	visible = row_array[:, :, 3] > 0
+	labels, _count = ndimage.label(visible, structure=np.ones((3, 3), dtype=bool))
+	components = _row_components(labels)
+	body_bboxes = _row_body_bboxes(source, row, row_top)
+
+	assignments: dict[int, int] = {}
+	primary_bboxes: list[tuple[int, int, int, int] | None] = [None] * GRID_COLUMNS
+	for label_index, _area, bbox in components:
+		overlaps = [_bbox_overlap_area(bbox, body_bbox) for body_bbox in body_bboxes]
+		best_column = int(np.argmax(overlaps))
+		if overlaps[best_column] <= 0:
+			continue
+		assignments[label_index] = best_column
+		primary_bboxes[best_column] = _bbox_union(primary_bboxes[best_column], bbox)
+
+	target_bboxes = [
+		primary_bboxes[column] if primary_bboxes[column] != None else body_bboxes[column]
+		for column in range(GRID_COLUMNS)
+	]
+	for label_index, _area, bbox in components:
+		if label_index in assignments:
+			continue
+		assignments[label_index] = min(
+			range(GRID_COLUMNS),
+			key=lambda column: _bbox_distance_squared(bbox, target_bboxes[column]),
+		)
+
+	cells: list[Image.Image] = []
+	for column in range(GRID_COLUMNS):
+		owned_labels = [label_index for label_index, owner in assignments.items() if owner == column]
+		owned_mask = np.isin(labels, owned_labels) if owned_labels else np.zeros(labels.shape, dtype=bool)
+		owned_array = np.zeros_like(row_array)
+		owned_array[owned_mask] = row_array[owned_mask]
+		cells.append(Image.fromarray(owned_array))
+	return cells
+
+
+def _row_components(labels: np.ndarray) -> list[tuple[int, int, tuple[int, int, int, int]]]:
+	components: list[tuple[int, int, tuple[int, int, int, int]]] = []
+	for label_index, slices in enumerate(ndimage.find_objects(labels), start=1):
+		if slices is None:
+			continue
+		component = labels[slices] == label_index
+		area = int(component.sum())
+		if area < COMPONENT_MIN_PIXELS:
+			continue
+		local_y, local_x = np.nonzero(component)
+		bbox = (
+			int(local_x.min() + slices[1].start),
+			int(local_y.min() + slices[0].start),
+			int(local_x.max() + slices[1].start + 1),
+			int(local_y.max() + slices[0].start + 1),
+		)
+		components.append((label_index, area, bbox))
+	return components
+
+
+def _row_body_bboxes(source: Image.Image, row: int, row_top: int) -> list[tuple[int, int, int, int]]:
+	body_bboxes: list[tuple[int, int, int, int]] = []
+	for column in range(GRID_COLUMNS):
+		left, top, right, bottom = _grid_cell_bounds(source, column, row)
+		cell = source.crop((left, top, right, bottom))
+		body_bbox = _largest_mask_bbox(_body_mask(cell))
+		if body_bbox == None:
+			body_bboxes.append((left, top - row_top, right, bottom - row_top))
+			continue
+		body_bboxes.append((
+			left + body_bbox[0],
+			top - row_top + body_bbox[1],
+			left + body_bbox[2],
+			top - row_top + body_bbox[3],
+		))
+	return body_bboxes
+
+
+def _bbox_overlap_area(
+	a: tuple[int, int, int, int],
+	b: tuple[int, int, int, int],
+) -> int:
+	left = max(a[0], b[0])
+	top = max(a[1], b[1])
+	right = min(a[2], b[2])
+	bottom = min(a[3], b[3])
+	return max(0, right - left) * max(0, bottom - top)
+
+
+def _bbox_union(
+	a: tuple[int, int, int, int] | None,
+	b: tuple[int, int, int, int],
+) -> tuple[int, int, int, int]:
+	if a == None:
+		return b
+	return (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
+
+
+def _bbox_distance_squared(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> int:
+	dx = max(b[0] - a[2], a[0] - b[2], 0)
+	dy = max(b[1] - a[3], a[1] - b[3], 0)
+	return dx * dx + dy * dy
+
+
+def _realign_frame_body_anchor(frame: Image.Image, body_anchor_target: tuple[float, float]) -> Image.Image:
 	anchor, _height = _body_anchor_and_height(frame)
 	offset = (
-		round(BODY_ANCHOR_TARGET[0] - anchor[0]),
-		round(BODY_ANCHOR_TARGET[1] - anchor[1]),
+		round(body_anchor_target[0] - anchor[0]),
+		round(body_anchor_target[1] - anchor[1]),
 	)
 	if offset == (0, 0):
 		return frame
@@ -167,16 +296,16 @@ def _realign_frame_body_anchor(frame: Image.Image) -> Image.Image:
 	return realigned
 
 
-def _audit_body_anchors(sheet: Image.Image, name: str) -> None:
+def _audit_body_anchors(sheet: Image.Image, name: str, frame_size: tuple[int, int]) -> None:
 	print(f"{name} body anchors:")
 	for row_name, row in [("move", 0), ("windup", 1), ("attack", 2), ("death", 3)]:
 		anchors: list[tuple[float, float]] = []
 		for column in range(GRID_COLUMNS):
 			frame = sheet.crop((
-				column * CAPOO_FRAME_SIZE,
-				row * CAPOO_FRAME_SIZE,
-				(column + 1) * CAPOO_FRAME_SIZE,
-				(row + 1) * CAPOO_FRAME_SIZE,
+				column * frame_size[0],
+				row * frame_size[1],
+				(column + 1) * frame_size[0],
+				(row + 1) * frame_size[1],
 			))
 			anchor, _height = _body_anchor_and_height(frame)
 			anchors.append((round(anchor[0], 2), round(anchor[1], 2)))
@@ -287,7 +416,7 @@ def _write_capoo_direct_alpha_frames(
 		"",
 	]
 
-	for animation_name in CAPOO_ANIMATION_ROWS:
+	for animation_name in CAPOO_ANIMATION_WRITE_ORDER:
 		for column, (region, margin) in enumerate(regions[animation_name]):
 			left, top, width, height = region
 			margin_left, margin_top, margin_width, margin_height = margin
@@ -309,7 +438,7 @@ def _write_capoo_direct_alpha_frames(
 		"death": 7.0,
 	}
 	entries: list[str] = []
-	for animation_name in CAPOO_ANIMATION_ROWS:
+	for animation_name in CAPOO_ANIMATION_WRITE_ORDER:
 		frame_entries: list[str] = []
 		for column in range(4):
 			frame_entries.append(
@@ -328,7 +457,7 @@ def _write_capoo_direct_alpha_frames(
 	lines.append("[resource]")
 	lines.append(f"animations = [{', '.join(entries)}]")
 	lines.append("")
-	(ANIMATION_DIR / f"{name}.tres").write_text("\n".join(lines), encoding="utf-8")
+	(ANIMATION_DIR / f"{name}.tres").write_text("\n".join(lines), encoding="utf-8", newline="\n")
 
 
 def _audit_direct_alpha_regions(
@@ -375,10 +504,15 @@ def process_capoo(name: str) -> None:
 		print(f"{name}: {alpha_source.width}x{alpha_source.height}, bbox={alpha_source.getchannel('A').getbbox()}")
 		return
 
-	sheet = _build_single_capoo_sheet(alpha_source)
+	frame_size = source_config.get("frame_size", DEFAULT_FRAME_SIZE)
+	body_anchor_target = source_config.get("body_anchor_target", BODY_ANCHOR_TARGET)
+	component_row_slicing = bool(source_config.get("component_row_slicing", False))
+	sheet = _build_single_capoo_sheet(alpha_source, frame_size, body_anchor_target, component_row_slicing)
+	if source_config["key"] == "magenta":
+		sheet = _remove_magenta_residue(sheet)
 	sheet.save(TEXTURE_DIR / f"{name}.png")
-	_write_capoo_frames(name)
-	_audit_body_anchors(sheet, name)
+	_write_capoo_frames(name, frame_size=frame_size)
+	_audit_body_anchors(sheet, name, frame_size)
 	print(f"{name}: {sheet.width}x{sheet.height}, bbox={sheet.getchannel('A').getbbox()}")
 
 
