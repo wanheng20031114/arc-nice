@@ -21,11 +21,11 @@ shader_parameter/slow_overlay_color = Color(0.55, 0.86, 1, 1)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_sp816"]
 resource_local_to_scene = true
-size = Vector2(18, 19)
+size = Vector2(14, 17)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_pij3q"]
 resource_local_to_scene = true
-size = Vector2(18, 19)
+size = Vector2(14, 17)
 
 [node name="CapooMage" unique_id=1100322216 instance=ExtResource("1_base")]
 script = ExtResource("2_script")
@@ -36,15 +36,18 @@ direct_chase_extra_distance = 2.0
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
 texture_filter = 2
 material = SubResource("ShaderMaterial_rrbks")
-position = Vector2(2.7, 0.1)
+position = Vector2(3, -1.9999996)
 scale = Vector2(0.1, 0.1)
 sprite_frames = ExtResource("4_frames")
-animation = &"move"
+animation = &"attack"
+frame_progress = 0.60681885
 
 [node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
+position = Vector2(0, -0.5)
 shape = SubResource("RectangleShape2D_sp816")
 
 [node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
+position = Vector2(0, -0.5)
 shape = SubResource("RectangleShape2D_pij3q")
 
 [node name="SpellGlow" type="Polygon2D" parent="." index="7" unique_id=2037823177]

@@ -2,54 +2,6 @@
 
 [ext_resource type="Texture2D" uid="uid://vsdfb65jljbp" path="res://resources/texture/capoo_mage.png" id="1_texture"]
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_0"]
-atlas = ExtResource("1_texture")
-region = Rect2(42, 7, 308, 273)
-margin = Rect2(0, 0, 66, 27)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_1"]
-atlas = ExtResource("1_texture")
-region = Rect2(376, 8, 325, 272)
-margin = Rect2(0, 0, 49, 28)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_2"]
-atlas = ExtResource("1_texture")
-region = Rect2(702, 7, 350, 273)
-margin = Rect2(0, 0, 24, 27)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_3"]
-atlas = ExtResource("1_texture")
-region = Rect2(1052, 7, 350, 273)
-margin = Rect2(24, 0, 24, 27)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_windup_0"]
-atlas = ExtResource("1_texture")
-region = Rect2(38, 291, 312, 270)
-margin = Rect2(0, 0, 62, 30)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_windup_1"]
-atlas = ExtResource("1_texture")
-region = Rect2(372, 291, 329, 270)
-margin = Rect2(0, 0, 45, 30)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_windup_2"]
-atlas = ExtResource("1_texture")
-region = Rect2(709, 291, 343, 270)
-margin = Rect2(0, 0, 31, 30)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_windup_3"]
-atlas = ExtResource("1_texture")
-region = Rect2(1052, 291, 346, 270)
-margin = Rect2(28, 0, 28, 30)
-filter_clip = true
-
 [sub_resource type="AtlasTexture" id="AtlasTexture_attack_0"]
 atlas = ExtResource("1_texture")
 region = Rect2(0, 561, 350, 281)
@@ -98,42 +50,56 @@ region = Rect2(1052, 842, 323, 262)
 margin = Rect2(51, 38, 51, 38)
 filter_clip = true
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_0"]
+atlas = ExtResource("1_texture")
+region = Rect2(42, 7, 308, 273)
+margin = Rect2(0, 0, 66, 27)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_1"]
+atlas = ExtResource("1_texture")
+region = Rect2(376, 8, 325, 272)
+margin = Rect2(0, 0, 49, 28)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_2"]
+atlas = ExtResource("1_texture")
+region = Rect2(702, 7, 350, 273)
+margin = Rect2(0, 0, 24, 27)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_3"]
+atlas = ExtResource("1_texture")
+region = Rect2(1052, 7, 350, 273)
+margin = Rect2(24, 0, 24, 27)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_windup_0"]
+atlas = ExtResource("1_texture")
+region = Rect2(38, 291, 312, 270)
+margin = Rect2(0, 0, 62, 30)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_windup_1"]
+atlas = ExtResource("1_texture")
+region = Rect2(372, 291, 329, 270)
+margin = Rect2(0, 0, 45, 30)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_windup_2"]
+atlas = ExtResource("1_texture")
+region = Rect2(709, 291, 343, 270)
+margin = Rect2(0, 0, 31, 30)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_windup_3"]
+atlas = ExtResource("1_texture")
+region = Rect2(1052, 291, 346, 270)
+margin = Rect2(28, 0, 28, 30)
+filter_clip = true
+
 [resource]
 animations = [{
-"frames": [{
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_move_0")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_move_1")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_move_2")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_move_3")
-}],
-"loop": true,
-"name": &"move",
-"speed": 6.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_windup_0")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_windup_1")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_windup_2")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_windup_3")
-}],
-"loop": true,
-"name": &"windup",
-"speed": 4.0
-}, {
 "frames": [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_attack_0")
@@ -167,4 +133,38 @@ animations = [{
 "loop": false,
 "name": &"death",
 "speed": 7.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_3")
+}],
+"loop": true,
+"name": &"move",
+"speed": 6.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_windup_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_windup_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_windup_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_windup_3")
+}],
+"loop": true,
+"name": &"windup",
+"speed": 4.0
 }]
