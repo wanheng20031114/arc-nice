@@ -4,7 +4,6 @@ class_name CapooMageFireball
 const WORLD_COLLISION_MASK := 1
 const PLAYER_COLLISION_MASK := 2
 const EXPLOSION_QUERY_MAX_RESULTS := 8
-const HIT_EFFECT_SCENE := preload("res://scene/bullet_hit_effect.tscn")
 
 @export var speed: float = 155.0
 @export var max_lifetime: float = 4.0
@@ -28,6 +27,7 @@ var source_type: StringName = &"capoo_mage_fireball"
 func _ready() -> void:
 	remaining_lifetime = maxf(max_lifetime, 0.01)
 	body_entered.connect(_on_body_entered)
+	animated_sprite.animation_finished.connect(_on_animation_finished)
 	_apply_radius()
 	if animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"fly"):
 		animated_sprite.play(&"fly")
@@ -119,9 +119,12 @@ func _explode() -> void:
 		return
 	has_exploded = true
 	set_deferred("monitoring", false)
+	set_deferred("monitorable", false)
+	collision_layer = 0
+	collision_mask = 0
+	collision_shape.set_deferred("disabled", true)
 	_apply_explosion_damage()
-	_spawn_hit_effect()
-	queue_free()
+	_play_impact_animation()
 
 
 func _apply_explosion_damage() -> void:
@@ -150,19 +153,18 @@ func _apply_explosion_damage() -> void:
 			player.apply_damage(damage)
 
 
-func _spawn_hit_effect() -> void:
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
-		spawn_parent = get_parent()
-	if spawn_parent == null:
+func _play_impact_animation() -> void:
+	rotation = 0.0
+	animated_sprite.position = Vector2.ZERO
+	if animated_sprite.sprite_frames == null or not animated_sprite.sprite_frames.has_animation(&"impact"):
+		queue_free()
 		return
-	var effect := HIT_EFFECT_SCENE.instantiate() as BulletHitEffect
-	if effect == null:
-		return
-	effect.top_level = true
-	effect.setup(direction)
-	spawn_parent.add_child(effect)
-	effect.global_position = global_position
+	animated_sprite.play(&"impact")
+
+
+func _on_animation_finished() -> void:
+	if has_exploded and animated_sprite.animation == &"impact":
+		queue_free()
 
 
 func _try_report_multiplayer_player_hit(player: Player) -> bool:

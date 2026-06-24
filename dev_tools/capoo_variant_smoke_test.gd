@@ -34,6 +34,7 @@ func _run() -> void:
 
 	_test_resource_contract()
 	await _test_mage_windup_fireball_and_obstruction()
+	await _test_fireball_impact_damage_and_release()
 	await _test_sniper_lock_cancel_and_damage()
 	await _test_smg_scatter_fire()
 	_test_multiplayer_projectile_registry()
@@ -91,7 +92,7 @@ func _test_resource_contract() -> void:
 	_expect(_texture_size("res://resources/texture/capoo_mage.png") == Vector2(1402, 1122), "Mage sprite sheet size mismatch.")
 	_expect(_texture_size("res://resources/texture/capoo_sniper.png") == Vector2(384, 384), "Sniper sprite sheet size mismatch.")
 	_expect(_texture_size("res://resources/texture/capoo_smg.png") == Vector2(384, 384), "SMG sprite sheet size mismatch.")
-	_expect(_texture_size("res://resources/texture/capoo_mage_fireball.png") == Vector2(384, 64), "Fireball sheet size mismatch.")
+	_expect(_texture_size("res://resources/texture/capoo_mage_fireball.png") == Vector2(384, 128), "Fireball sheet size mismatch.")
 	_expect(_texture_size("res://resources/texture/capoo_smg_bullet.png") == Vector2(48, 8), "SMG bullet sheet size mismatch.")
 	_expect(_texture_size("res://resources/texture/capoo_sniper_lock_reticle.png") == Vector2(32, 32), "Sniper reticle texture size mismatch.")
 
@@ -101,6 +102,8 @@ func _test_resource_contract() -> void:
 	_expect(_has_capoo_frames(SNIPER_CONFIG.enemy_scene, "Sniper"), "Sniper animation contract failed.")
 	_expect(_has_capoo_frames(SMG_CONFIG.enemy_scene, "SMG"), "SMG animation contract failed.")
 	_expect(_sprite_frames_count("res://resources/animation/capoo_mage_fireball.tres", &"fly") == 6, "Fireball frame count mismatch.")
+	_expect(_sprite_frames_count("res://resources/animation/capoo_mage_fireball.tres", &"impact") == 6, "Fireball impact frame count mismatch.")
+	_expect(_fireball_impact_animation_contract(), "Fireball impact animation contract failed.")
 	_expect(_sprite_frames_count("res://resources/animation/capoo_smg_bullet.tres", &"fly") == 3, "SMG bullet frame count mismatch.")
 	_expect(_has_reticle_scene_contract(), "Sniper reticle scene contract failed.")
 
@@ -139,6 +142,44 @@ func _test_mage_windup_fireball_and_obstruction() -> void:
 	spawned_fireballs.clear()
 	mage.queue_free()
 	player.queue_free()
+	await physics_frame
+
+
+func _test_fireball_impact_damage_and_release() -> void:
+	var near_player := _spawn_player(Vector2(5.0, 0.0), 100)
+	var far_player := _spawn_player(Vector2(48.0, 0.0), 100)
+	await physics_frame
+	var fireball := FIREBALL_SCENE.instantiate() as CapooMageFireball
+	test_root.add_child(fireball)
+	fireball.global_position = Vector2.ZERO
+	fireball.setup(Vector2.RIGHT, 75, 0.0, 3.0, MAGE_CONFIG.fireball_radius)
+	fireball.call("_explode")
+	await process_frame
+
+	_expect(near_player.current_health == 25, "Fireball impact did not damage the player inside radius.")
+	_expect(far_player.current_health == 100, "Fireball impact damaged a player outside radius.")
+	_expect(is_instance_valid(fireball), "Fireball must remain while impact animation plays.")
+	if is_instance_valid(fireball):
+		_expect(fireball.has_exploded, "Fireball did not enter exploded state.")
+		_expect(not fireball.monitoring, "Exploded fireball must stop monitoring.")
+		_expect(
+			fireball.collision_layer == 0 and fireball.collision_mask == 0,
+			"Exploded fireball collision layers must be disabled."
+		)
+		_expect(fireball.animated_sprite.animation == &"impact", "Fireball did not switch to impact animation.")
+		_expect(
+			fireball.animated_sprite.position == Vector2.ZERO,
+			"Fireball impact animation must be centered on hit position."
+		)
+	_expect(_count_bullet_hit_effects() == 0, "Mage fireball must not spawn the generic bullet hit effect.")
+
+	var release_guard_frames := 0
+	while is_instance_valid(fireball) and release_guard_frames < 60:
+		await process_frame
+		release_guard_frames += 1
+	_expect(not is_instance_valid(fireball), "Fireball impact animation did not release the projectile.")
+	near_player.queue_free()
+	far_player.queue_free()
 	await physics_frame
 
 
@@ -318,7 +359,7 @@ func _has_mage_visual_alignment() -> bool:
 	var instance := MAGE_SCENE.instantiate()
 	var animated_sprite := instance.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
 	var ok := animated_sprite != null
-	ok = ok and animated_sprite.position == Vector2(2.7, 0.1)
+	ok = ok and animated_sprite.position.is_equal_approx(Vector2(3.0, -2.0))
 	ok = ok and is_equal_approx(animated_sprite.scale.x, 0.1)
 	ok = ok and is_equal_approx(animated_sprite.scale.y, 0.1)
 	if not ok:
@@ -361,6 +402,26 @@ func _has_reticle_scene_contract() -> bool:
 	return has_static_mark and not has_old_animation and has_progress
 
 
+func _fireball_impact_animation_contract() -> bool:
+	var frames := load("res://resources/animation/capoo_mage_fireball.tres") as SpriteFrames
+	var ok := frames != null
+	if frames == null:
+		failures.append("Fireball SpriteFrames resource is missing.")
+		return false
+	ok = ok and frames.has_animation(&"impact")
+	ok = ok and not frames.get_animation_loop(&"impact")
+	ok = ok and frames.get_animation_speed(&"impact") >= 20.0
+	for frame_index in range(6):
+		var atlas_texture := frames.get_frame_texture(&"impact", frame_index) as AtlasTexture
+		ok = ok and atlas_texture != null
+		if atlas_texture == null:
+			continue
+		ok = ok and atlas_texture.region == Rect2(frame_index * 64.0, 64.0, 64.0, 64.0)
+	if not ok:
+		failures.append("Fireball impact animation must be a non-looping second-row AtlasTexture animation.")
+	return ok
+
+
 func _texture_size(path: String) -> Vector2:
 	var texture := load(path) as Texture2D
 	return texture.get_size() if texture != null else Vector2.ZERO
@@ -377,6 +438,14 @@ func _count_reticles(player: Player) -> int:
 	var total := 0
 	for child in player.get_children():
 		if child is CapooSniperLockReticle:
+			total += 1
+	return total
+
+
+func _count_bullet_hit_effects() -> int:
+	var total := 0
+	for child in test_root.get_children():
+		if child is BulletHitEffect:
 			total += 1
 	return total
 

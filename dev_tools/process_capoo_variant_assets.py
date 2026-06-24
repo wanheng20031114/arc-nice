@@ -14,6 +14,7 @@ from scipy import ndimage
 ROOT = Path(__file__).resolve().parents[1]
 CAPOO_SOURCE = ROOT / "dev_assets/source_images/capoo_variants_generated_v2.png"
 PROJECTILE_SOURCE = ROOT / "dev_assets/source_images/capoo_projectiles_generated_v2.png"
+FIREBALL_IMPACT_SOURCE = ROOT / "dev_assets/source_images/capoo_mage_fireball_impact_generated.png"
 
 TEXTURE_DIR = ROOT / "resources/texture"
 ANIMATION_DIR = ROOT / "resources/animation"
@@ -30,6 +31,9 @@ CAPOO_FRAME_PADDING = 8
 FIREBALL_FRAME_SIZE = 64
 FIREBALL_VISIBLE_SIZE = 46
 FIREBALL_FRAME_COUNT = 6
+FIREBALL_IMPACT_VISIBLE_SIZE = 44
+FIREBALL_SPRITE_FRAMES_UID = "uid://cemn3y2bgbhbs"
+FIREBALL_TEXTURE_UID = "uid://df4rkbjjnc1lc"
 
 SMG_BULLET_FRAME_WIDTH = 16
 SMG_BULLET_FRAME_HEIGHT = 8
@@ -39,7 +43,6 @@ RETICLE_SIZE = 32
 
 CAPOO_VARIANTS = OrderedDict(
 	[
-		("capoo_mage", 0),
 		("capoo_sniper", 1),
 		("capoo_smg", 2),
 	]
@@ -290,7 +293,25 @@ def _find_fireball_core_anchor(subject: Image.Image) -> tuple[float, float]:
 	return (float(xs.mean()), float(ys.mean()))
 
 
-def _build_fireball_sheet(source: Image.Image) -> Image.Image:
+def _remove_small_alpha_components(image: Image.Image, min_pixels: int) -> Image.Image:
+	array = np.array(image.convert("RGBA"), dtype=np.uint8)
+	alpha = array[:, :, 3] > 0
+	if not alpha.any():
+		return image
+	labels, _count = ndimage.label(alpha, structure=np.ones((3, 3), dtype=bool))
+	keep = np.zeros(alpha.shape, dtype=bool)
+	for label_index, slices in enumerate(ndimage.find_objects(labels), start=1):
+		if slices is None:
+			continue
+		component = labels[slices] == label_index
+		if int(component.sum()) < min_pixels:
+			continue
+		keep[slices] |= component
+	array[~keep] = (0, 0, 0, 0)
+	return Image.fromarray(array)
+
+
+def _build_fireball_fly_row(source: Image.Image) -> Image.Image:
 	cells = [
 		_crop_grid_cell(source, FIREBALL_FRAME_COUNT, 3, column, 0)
 		for column in range(FIREBALL_FRAME_COUNT)
@@ -301,7 +322,7 @@ def _build_fireball_sheet(source: Image.Image) -> Image.Image:
 		if bbox is None:
 			subjects.append(Image.new("RGBA", (1, 1), (0, 0, 0, 0)))
 		else:
-			subjects.append(cell.crop(bbox))
+			subjects.append(_remove_small_alpha_components(cell.crop(bbox), 30))
 
 	max_width = max(subject.width for subject in subjects)
 	max_height = max(subject.height for subject in subjects)
@@ -327,6 +348,47 @@ def _build_fireball_sheet(source: Image.Image) -> Image.Image:
 			),
 		)
 		sheet.alpha_composite(frame, (index * FIREBALL_FRAME_SIZE, 0))
+	return sheet
+
+
+def _build_fireball_impact_row(source: Image.Image) -> Image.Image:
+	sheet = Image.new("RGBA", (FIREBALL_FRAME_SIZE * FIREBALL_FRAME_COUNT, FIREBALL_FRAME_SIZE), (0, 0, 0, 0))
+	for column in range(FIREBALL_FRAME_COUNT):
+		cell = _crop_grid_cell(source, FIREBALL_FRAME_COUNT, 1, column, 0)
+		bbox = _subject_bbox(cell)
+		if bbox is None:
+			continue
+		subject = cell.crop(bbox)
+		scale = min(
+			FIREBALL_IMPACT_VISIBLE_SIZE / float(subject.width),
+			FIREBALL_IMPACT_VISIBLE_SIZE / float(subject.height),
+			1.0,
+		)
+		output_size = (
+			max(1, round(subject.width * scale)),
+			max(1, round(subject.height * scale)),
+		)
+		resized = subject.resize(output_size, Image.Resampling.NEAREST)
+		frame = Image.new("RGBA", (FIREBALL_FRAME_SIZE, FIREBALL_FRAME_SIZE), (0, 0, 0, 0))
+		frame.alpha_composite(
+			resized,
+			(
+				round((FIREBALL_FRAME_SIZE - output_size[0]) / 2.0),
+				round((FIREBALL_FRAME_SIZE - output_size[1]) / 2.0),
+			),
+		)
+		sheet.alpha_composite(frame, (column * FIREBALL_FRAME_SIZE, 0))
+	return sheet
+
+
+def _build_fireball_sheet(source: Image.Image, impact_source: Image.Image) -> Image.Image:
+	sheet = Image.new(
+		"RGBA",
+		(FIREBALL_FRAME_SIZE * FIREBALL_FRAME_COUNT, FIREBALL_FRAME_SIZE * 2),
+		(0, 0, 0, 0),
+	)
+	sheet.alpha_composite(_build_fireball_fly_row(source), (0, 0))
+	sheet.alpha_composite(_build_fireball_impact_row(impact_source), (0, FIREBALL_FRAME_SIZE))
 	return sheet
 
 
@@ -431,14 +493,43 @@ def _write_capoo_frames(name: str) -> None:
 
 
 def _write_fireball_frames() -> None:
-	_write_linear_frames(
-		"capoo_mage_fireball",
-		"fly",
-		FIREBALL_FRAME_COUNT,
-		FIREBALL_FRAME_SIZE,
-		FIREBALL_FRAME_SIZE,
-		12.0,
-	)
+	texture_path = "res://resources/texture/capoo_mage_fireball.png"
+	lines = [
+		f"[gd_resource type=\"SpriteFrames\" format=3 uid=\"{FIREBALL_SPRITE_FRAMES_UID}\"]",
+		"",
+		f"[ext_resource type=\"Texture2D\" uid=\"{FIREBALL_TEXTURE_UID}\" path=\"{texture_path}\" id=\"1_texture\"]",
+		"",
+	]
+	for animation_name, row in [("fly", 0), ("impact", 1)]:
+		for column in range(FIREBALL_FRAME_COUNT):
+			lines.extend(
+				[
+					f"[sub_resource type=\"AtlasTexture\" id=\"AtlasTexture_{animation_name}_{column}\"]",
+					"atlas = ExtResource(\"1_texture\")",
+					f"region = Rect2({column * FIREBALL_FRAME_SIZE}, {row * FIREBALL_FRAME_SIZE}, {FIREBALL_FRAME_SIZE}, {FIREBALL_FRAME_SIZE})",
+					"",
+				]
+			)
+
+	entries: list[str] = []
+	for animation_name, speed, loop in [("fly", 12.0, True), ("impact", 24.0, False)]:
+		frame_entries = [
+			"{\n\"duration\": 1.0,\n"
+			f"\"texture\": SubResource(\"AtlasTexture_{animation_name}_{column}\")\n}}"
+			for column in range(FIREBALL_FRAME_COUNT)
+		]
+		entries.append(
+			"{\n"
+			f"\"frames\": [{', '.join(frame_entries)}],\n"
+			f"\"loop\": {str(loop).lower()},\n"
+			f"\"name\": &\"{animation_name}\",\n"
+			f"\"speed\": {speed:.1f}\n"
+			"}"
+		)
+	lines.append("[resource]")
+	lines.append(f"animations = [{', '.join(entries)}]")
+	lines.append("")
+	(ANIMATION_DIR / "capoo_mage_fireball.tres").write_text("\n".join(lines), encoding="utf-8")
 
 
 def _write_smg_bullet_frames() -> None:
@@ -504,14 +595,18 @@ def main() -> None:
 		raise FileNotFoundError(CAPOO_SOURCE)
 	if not PROJECTILE_SOURCE.is_file():
 		raise FileNotFoundError(PROJECTILE_SOURCE)
+	if not FIREBALL_IMPACT_SOURCE.is_file():
+		raise FileNotFoundError(FIREBALL_IMPACT_SOURCE)
 
 	TEXTURE_DIR.mkdir(parents=True, exist_ok=True)
 	ANIMATION_DIR.mkdir(parents=True, exist_ok=True)
 
 	capoo_source = _remove_chroma_background(Image.open(CAPOO_SOURCE), "magenta")
 	projectile_source = _remove_chroma_background(Image.open(PROJECTILE_SOURCE), "green")
+	fireball_impact_source = _remove_chroma_background(Image.open(FIREBALL_IMPACT_SOURCE), "green")
 	_save_debug("capoo_variants_v2_alpha", capoo_source)
 	_save_debug("capoo_projectiles_v2_alpha", projectile_source)
+	_save_debug("capoo_mage_fireball_impact_alpha", fireball_impact_source)
 
 	for name, row in CAPOO_VARIANTS.items():
 		sheet = _build_capoo_sheet(capoo_source, row)
@@ -521,7 +616,7 @@ def main() -> None:
 		_write_capoo_frames(name)
 		print(f"{name}: {sheet.width}x{sheet.height}, bbox={sheet.getchannel('A').getbbox()}")
 
-	fireball_sheet = _build_fireball_sheet(projectile_source)
+	fireball_sheet = _build_fireball_sheet(projectile_source, fireball_impact_source)
 	fireball_sheet.save(TEXTURE_DIR / "capoo_mage_fireball.png")
 	_write_fireball_frames()
 	print(f"capoo_mage_fireball: {fireball_sheet.width}x{fireball_sheet.height}, bbox={fireball_sheet.getchannel('A').getbbox()}")
