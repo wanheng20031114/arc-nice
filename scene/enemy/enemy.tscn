@@ -51,6 +51,7 @@ z_index = 1
 material = SubResource("ShaderMaterial_enemy")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1687096047]
+z_index = 10
 shape = SubResource("CircleShape2D_body")
 
 [node name="TouchDamageArea" type="Area2D" parent="." unique_id=738698124]
@@ -58,6 +59,7 @@ collision_layer = 8
 collision_mask = 18
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="TouchDamageArea" unique_id=1983778379]
+z_index = 10
 shape = SubResource("CircleShape2D_touch")
 
 [node name="HitParticles" type="GPUParticles2D" parent="." unique_id=1261296879]
