@@ -46,6 +46,7 @@ const CARD_HOVER_DURATION := 0.12
 const DESCRIPTION_SCROLL_SPEED := 10.0
 const DESCRIPTION_SCROLL_TOP_PAUSE := 0.8
 const DESCRIPTION_SCROLL_BOTTOM_PAUSE := 1.5
+const CONFIRMATION_LOCK_DURATION := 1.0
 
 var selected_index: int = 0
 var choices: Array = []
@@ -58,6 +59,7 @@ var card_base_positions_captured := false
 var description_scroll_offsets: Array[float] = []
 var description_scroll_pauses: Array[float] = []
 var description_scroll_at_bottom: Array[bool] = []
+var confirmation_lock_time_left: float = 0.0
 
 
 func _ready() -> void:
@@ -82,6 +84,7 @@ func _ready() -> void:
 func show_choices(new_choices: Array, initial_index: int = 0) -> void:
 	choices = new_choices.duplicate()
 	selected_index = clampi(initial_index, 0, maxi(choices.size() - 1, 0))
+	confirmation_lock_time_left = CONFIRMATION_LOCK_DURATION
 	card_base_positions_captured = false
 	_update_cards()
 	_prepare_open_animation()
@@ -102,6 +105,7 @@ func hide_choices() -> void:
 		cards[index].scale = Vector2.ONE
 		cards[index].self_modulate = Color.WHITE
 		cards[index].modulate = Color.WHITE
+	confirmation_lock_time_left = 0.0
 	root_control.hide()
 	set_process(false)
 
@@ -112,6 +116,7 @@ func is_open() -> bool:
 
 func _process(delta: float) -> void:
 	if root_control.visible:
+		_process_confirmation_lock(delta)
 		_process_description_scrolls(delta)
 
 
@@ -125,6 +130,8 @@ func handle_input(event: InputEvent) -> bool:
 		select_choice(selected_index + 1)
 		return true
 	if event.is_action_pressed("interact"):
+		if is_confirmation_locked():
+			return true
 		_emit_current_choice()
 		return true
 	if event.is_action_pressed("ui_cancel"):
@@ -132,6 +139,10 @@ func handle_input(event: InputEvent) -> bool:
 		choice_closed.emit()
 		return true
 	return false
+
+
+func is_confirmation_locked() -> bool:
+	return confirmation_lock_time_left > 0.0
 
 
 func select_choice(choice_index: int) -> void:
@@ -152,6 +163,7 @@ func _update_cards() -> void:
 		titles[index].text = item.display_name if has_item else ""
 		descriptions[index].text = item.description if has_item else ""
 		buttons[index].disabled = not has_item
+		buttons[index].text = "选择"
 		_reset_description_scroll(index)
 	_update_selection()
 
@@ -199,6 +211,12 @@ func _process_description_scrolls(delta: float) -> void:
 			description_scroll_pauses[index] = DESCRIPTION_SCROLL_BOTTOM_PAUSE
 		# Fractional scroll offsets soften dynamic font rendering while the text moves.
 		scroll_bar.value = minf(roundf(description_scroll_offsets[index]), max_scroll)
+
+
+func _process_confirmation_lock(delta: float) -> void:
+	if confirmation_lock_time_left <= 0.0:
+		return
+	confirmation_lock_time_left = maxf(confirmation_lock_time_left - delta, 0.0)
 
 
 func _update_selection() -> void:
@@ -334,11 +352,15 @@ func _get_card_base_position(index: int) -> Vector2:
 
 
 func _on_select_pressed(choice_index: int) -> void:
+	if is_confirmation_locked():
+		return
 	selected_index = choice_index
 	_emit_current_choice()
 
 
 func _emit_current_choice() -> void:
+	if is_confirmation_locked():
+		return
 	if selected_index < 0 or selected_index >= choices.size():
 		return
 	choice_selected.emit(selected_index)

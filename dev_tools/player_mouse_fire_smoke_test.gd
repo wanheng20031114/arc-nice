@@ -1,6 +1,7 @@
 extends SceneTree
 
 const GAME_SCENE := preload("res://scene/game.tscn")
+const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 
 var failures: Array[String] = []
 var game: Node2D
@@ -26,6 +27,7 @@ func _run() -> void:
 	await _test_dodge_success_feedback()
 	await _test_profile_button_does_not_fire()
 	await _test_settings_button_opens_and_closes()
+	await _test_profile_inventory_blank_click_clears_selection()
 	await _test_profile_upgrade_levels_and_skill_details()
 
 	_release_left_mouse(Vector2.ZERO)
@@ -178,6 +180,36 @@ func _test_settings_button_opens_and_closes() -> void:
 	_expect(not player.controls_locked, "Closing settings did not unlock player controls.")
 
 
+func _test_profile_inventory_blank_click_clears_selection() -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	var profile_panel := game.get_node("PlayerProfilePanel") as PlayerProfilePanel
+	run_state.begin_new_run()
+	run_state.set_active_multiplayer_peer(0)
+	_expect(run_state.try_add_item(APPLE_COLLECTIBLE), "Profile blank-click test must place an inventory item.")
+
+	profile_panel.open()
+	await process_frame
+	profile_panel.call("_on_slot_selected", 0)
+	await process_frame
+
+	var first_slot := profile_panel.get_node("Overlay/PanelRoot/InventoryGrid/Slot00") as InventorySlot
+	var item_detail_panel := profile_panel.get_node("Overlay/PanelRoot/ItemDetailPanel") as PanelContainer
+	_expect(first_slot.button_pressed, "Selecting an inventory item must mark the slot selected.")
+	_expect(item_detail_panel.visible, "Selecting an inventory item must show the detail panel.")
+
+	var panel_root := profile_panel.get_node("Overlay/PanelRoot") as Control
+	var blank_position := panel_root.get_global_transform_with_canvas() * Vector2(150.0, 86.0)
+	_press_left_mouse(blank_position)
+	await process_frame
+	await process_frame
+	_release_left_mouse(blank_position)
+	await process_frame
+
+	_expect(not first_slot.button_pressed, "Clicking profile panel blank space must clear the selected inventory slot.")
+	_expect(not item_detail_panel.visible, "Clicking profile panel blank space must hide the item detail panel.")
+	profile_panel.close()
+
+
 func _test_dodge_success_feedback() -> void:
 	player.dodge_chance = 1.0
 	player.current_health = player.max_health
@@ -273,13 +305,13 @@ func _test_profile_upgrade_levels_and_skill_details() -> void:
 		"Skill details must show the expected skill description."
 	)
 	_expect(skill_description.size.y >= 48.0, "Skill details description must have enough height for wrapped text.")
-	_expect(skill_cost.text.contains("18.0"), "Skill details must show the base required charge.")
+	_expect(skill_cost.text == "技力需求18", "Skill details must show the base required charge.")
 	_expect(skill_cost.size.y >= 24.0, "Skill details cost line must have enough height for outlined text.")
 
 	player.current_xirang = 500
 	_expect(player.try_upgrade_skill1(), "Skill1 first upgrade should succeed in profile smoke test.")
 	await process_frame
-	_expect(skill_cost.text.contains("16.0"), "Skill details must update required charge after skill1 upgrade.")
+	_expect(skill_cost.text == "技力需求16", "Skill details must update required charge after skill1 upgrade.")
 	profile_panel.close()
 
 

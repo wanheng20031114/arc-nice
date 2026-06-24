@@ -58,6 +58,7 @@ func _ready() -> void:
 	close_button.pressed.connect(close)
 	item_detail_use_button.pressed.connect(_on_detail_use_pressed)
 	item_detail_discard_button.pressed.connect(_on_detail_discard_pressed)
+	panel_root.gui_input.connect(_on_panel_root_gui_input)
 	inventory_grid.gui_input.connect(_on_inventory_grid_gui_input)
 	get_viewport().size_changed.connect(_update_panel_transform)
 	_collect_slots()
@@ -270,6 +271,20 @@ func _on_inventory_grid_gui_input(event: InputEvent) -> void:
 	inventory_grid.accept_event()
 
 
+func _on_panel_root_gui_input(event: InputEvent) -> void:
+	if not overlay.visible or current_tab != 0 or selected_slot_index < 0:
+		return
+
+	var mouse_event := event as InputEventMouseButton
+	if mouse_event == null:
+		return
+	if mouse_event.button_index != MOUSE_BUTTON_LEFT or not mouse_event.pressed:
+		return
+
+	_clear_inventory_selection()
+	panel_root.accept_event()
+
+
 func _clear_inventory_selection() -> void:
 	selected_slot_index = -1
 	for slot in slots:
@@ -283,7 +298,7 @@ func _on_health_changed(current: int, maximum: int) -> void:
 
 
 func _on_attack_speed_changed(attack_speed: float) -> void:
-	attack_speed_value.text = str(roundi(maxf(attack_speed, 1.0)))
+	attack_speed_value.text = "%.2f/s" % (maxf(attack_speed, 1.0) / 100.0)
 
 
 func _on_dodge_changed(chance: float) -> void:
@@ -301,7 +316,7 @@ func _refresh_skill_display() -> void:
 	if not has_skill:
 		return
 	var required_charge := maxf(tracked_player.skill1_charge_duration, 0.01)
-	skill_cost_label.text = "技力 %.1f" % required_charge
+	skill_cost_label.text = "技力需求%d" % roundi(required_charge)
 	_update_skill_tooltip()
 
 

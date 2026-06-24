@@ -138,11 +138,20 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 		first_choice != null and first_description.text.contains(first_choice.description),
 		"Luoxi card chooser must show the collectible description."
 	)
-	_expect(first_button.text == "选择", "Luoxi card chooser must expose a select button.")
+	_expect(first_button.text == "选择", "Luoxi card chooser select button must not expose a visible waiting state.")
 	_expect(hint.label_settings.font_size >= 22, "Luoxi card chooser heading must be easier to read.")
 	_expect(first_card.custom_minimum_size == Vector2(216, 310), "Luoxi card chooser cards must leave room for longer collectible text.")
 	_expect(first_description.scroll_active, "Luoxi card chooser descriptions must scroll when text is too long.")
 	_expect(first_description.custom_minimum_size.y >= 108.0, "Luoxi card chooser descriptions must have enough visible text area.")
+	_expect(choice_overlay.is_confirmation_locked(), "Luoxi card chooser must lock confirmation immediately after opening.")
+	_expect(not choice_overlay.has_node("Root/Center/Content/ConfirmationLockLabel"), "Luoxi card chooser must not show a visible accidental input protection countdown.")
+	_expect(not first_button.disabled, "Luoxi card chooser select buttons must stay visually available during hidden accidental input protection.")
+	luoxi._unhandled_input(interact)
+	_expect(choice_overlay.is_open(), "Luoxi card chooser must ignore immediate interact confirmation after opening.")
+	_expect(run_state.get_item(0) == null, "Luoxi card chooser must not add an item during accidental input protection.")
+	luoxi._unhandled_input(_make_key(KEY_2))
+	_expect(choice_overlay.is_open(), "Luoxi card chooser must ignore immediate number-key confirmation after opening.")
+	_expect(run_state.get_item(0) == null, "Luoxi number-key shortcut must not add an item during accidental input protection.")
 	var description_style := first_description.get_theme_stylebox("normal") as StyleBoxFlat
 	_expect(
 		description_style != null
@@ -180,6 +189,10 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	choice_overlay._on_card_mouse_exited(1)
 	await create_timer(0.18).timeout
 	_expect(is_equal_approx(second_card.position.y, second_base_position.y), "Luoxi card chooser hover must restore the card position.")
+	await create_timer(0.7).timeout
+	_expect(not choice_overlay.is_confirmation_locked(), "Luoxi card chooser confirmation lock must expire after 1 second.")
+	_expect(not first_button.disabled, "Luoxi card chooser select buttons must remain enabled after accidental input protection expires.")
+	_expect(first_button.text == "选择", "Luoxi card chooser must expose a select button after accidental input protection expires.")
 
 	var move_right := _make_action("move_right")
 	bubble.finish_line()
@@ -253,6 +266,9 @@ func _test_full_inventory_keeps_luoxi_choice_available() -> void:
 	var first_choice := luoxi.call("_get_current_choice_item", 0) as PickupConfig
 
 	luoxi._unhandled_input(interact)
+	_expect(choice_overlay.is_open(), "Luoxi full-inventory choice must also ignore immediate interact confirmation after opening.")
+	await create_timer(1.1).timeout
+	luoxi._unhandled_input(interact)
 	_expect(
 		_dialogue_text(bubble) == "背包已经满了，无法再继续获得收藏品。",
 		"Luoxi must clearly explain that a full inventory blocks collectible pickup."
@@ -264,6 +280,7 @@ func _test_full_inventory_keeps_luoxi_choice_available() -> void:
 	bubble.finish_line()
 	luoxi._unhandled_input(interact)
 	_open_luoxi_choice(luoxi, bubble, interact)
+	await create_timer(1.1).timeout
 	luoxi._unhandled_input(interact)
 	_expect(_dialogue_text(bubble) == "拿好收藏品，可别小看它。", "Luoxi must allow the original choice after the player frees a slot.")
 	_expect(bool(luoxi.call("_is_player_claimed", player)), "A successful retry must spend Luoxi's once-per-round choice.")
@@ -313,6 +330,13 @@ func _test_apple_piercing_bullet_effect() -> void:
 func _make_action(action_name: StringName) -> InputEventAction:
 	var event := InputEventAction.new()
 	event.action = action_name
+	event.pressed = true
+	return event
+
+
+func _make_key(physical_keycode: Key) -> InputEventKey:
+	var event := InputEventKey.new()
+	event.physical_keycode = physical_keycode
 	event.pressed = true
 	return event
 

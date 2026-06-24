@@ -64,7 +64,7 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	_expect(profile_panel.selected_slot_index == -1, "Opening the inventory must not auto-select the first slot.")
 	_expect(not profile_panel.item_detail_panel.visible, "Opening the inventory must not show an item detail panel by default.")
 	_expect(not profile_panel.slots[0].button_pressed, "Opening the inventory must leave the first slot unselected.")
-	_expect(profile_panel.attack_speed_value.text == str(roundi(player.get_attack_speed())), "Profile panel must show attack speed points, not attacks per second.")
+	_expect(profile_panel.attack_speed_value.text == "%.2f/s" % player.get_attacks_per_second(), "Profile panel must show attacks per second.")
 	_expect(profile_panel.move_speed_value.text == str(roundi(player.move_speed)), "Profile panel must show current movement speed.")
 	_expect(profile_panel.physical_defense_value.text == str(player.physical_defense), "Profile panel must show current physical defense.")
 	_expect(profile_panel.magic_defense_value.text == str(player.magic_defense), "Profile panel must show current magic defense.")

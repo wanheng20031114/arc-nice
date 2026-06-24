@@ -14,5 +14,6 @@ icon_texture = ExtResource("1_icon")
 icon_scale = Vector2(1, 1)
 duration = 0.0
 collectible_effect_id = "life_ring"
+collectible_stacks_by_copy = true
 collectible_max_health_bonus = 20
 metadata/_custom_type_script = "uid://qucrregg4cq0"

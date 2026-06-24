@@ -226,14 +226,20 @@ func _handle_choice_input(event: InputEvent) -> bool:
 		return false
 	match key_event.physical_keycode:
 		KEY_1:
+			if choice_overlay.is_confirmation_locked():
+				return true
 			selected_choice_index = 0
 			_try_claim_selected_collectible()
 			return true
 		KEY_2:
+			if choice_overlay.is_confirmation_locked():
+				return true
 			selected_choice_index = 1
 			_try_claim_selected_collectible()
 			return true
 		KEY_3:
+			if choice_overlay.is_confirmation_locked():
+				return true
 			selected_choice_index = 2
 			_try_claim_selected_collectible()
 			return true

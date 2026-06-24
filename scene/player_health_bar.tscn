@@ -3,6 +3,8 @@
 [ext_resource type="Script" uid="uid://c76yrwk60qy0g" path="res://scene/player_health_bar.gd" id="1_qh2iq"]
 
 [node name="HealthBar" type="Control" unique_id=1169360038]
+z_index = 100
+z_as_relative = false
 layout_mode = 3
 anchors_preset = 0
 offset_left = -9.0

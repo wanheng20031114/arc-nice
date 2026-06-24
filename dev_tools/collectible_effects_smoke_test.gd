@@ -5,6 +5,9 @@ const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_bas
 const APPLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 const RUBY := preload("res://resources/config/collectibles/collectible_ruby.tres")
 const POWER_RING := preload("res://resources/config/collectibles/collectible_power_ring.tres")
+const LIFE_RING := preload("res://resources/config/collectibles/collectible_life_ring.tres")
+const SPEED_RING := preload("res://resources/config/collectibles/collectible_speed_ring.tres")
+const PHYSICAL_RING := preload("res://resources/config/collectibles/collectible_physical_ring.tres")
 const MAGIC_RING := preload("res://resources/config/collectibles/collectible_magic_ring.tres")
 const GOLD_WINE_CUP := preload("res://resources/config/collectibles/collectible_gold_wine_cup.tres")
 const TIANSHI_STAKE := preload("res://resources/config/collectibles/collectible_tianshi_stake.tres")
@@ -81,14 +84,44 @@ func _test_collectible_stat_rules() -> void:
 	_expect(run_state.try_add_item(POWER_RING), "First power ring must fit in inventory.")
 	_expect(run_state.try_add_item(POWER_RING), "Second power ring must fit in inventory.")
 	await process_frame
-	_expect(player.attack_damage == 21, "Two rubies must stack but duplicate power rings must only apply once.")
+	_expect(player.attack_damage == 26, "Two rubies and two power rings must all stack.")
 	_expect(
-		player.get_outgoing_damage(player.attack_damage, EnemyConfig.DamageType.PHYSICAL) == 21,
+		player.get_outgoing_damage(player.attack_damage, EnemyConfig.DamageType.PHYSICAL) == 26,
 		"Power ring must not add physical damage; it is a direct attack bonus only."
 	)
 	_expect(run_state.discard_item(0), "Discarding one ruby must succeed.")
 	await process_frame
-	_expect(player.attack_damage == 18, "Discarding one ruby must remove exactly one ruby bonus.")
+	_expect(player.attack_damage == 23, "Discarding one ruby must remove exactly one ruby bonus while both power rings remain active.")
+	player.queue_free()
+	await process_frame
+
+	run_state.begin_new_run()
+	player = _spawn_player()
+	var base_max_health := player.max_health
+	var base_move_speed := player.move_speed
+	var base_physical_defense := player.physical_defense
+	var base_magic_defense := player.magic_defense
+	_expect(run_state.try_add_item(LIFE_RING), "First life ring must fit in inventory.")
+	_expect(run_state.try_add_item(LIFE_RING), "Second life ring must fit in inventory.")
+	_expect(run_state.try_add_item(SPEED_RING), "First speed ring must fit in inventory.")
+	_expect(run_state.try_add_item(SPEED_RING), "Second speed ring must fit in inventory.")
+	_expect(run_state.try_add_item(PHYSICAL_RING), "First physical ring must fit in inventory.")
+	_expect(run_state.try_add_item(PHYSICAL_RING), "Second physical ring must fit in inventory.")
+	_expect(run_state.try_add_item(MAGIC_RING), "First magic ring must fit in inventory.")
+	_expect(run_state.try_add_item(MAGIC_RING), "Second magic ring must fit in inventory.")
+	await process_frame
+	_expect(player.max_health == base_max_health + 40, "Two life rings must stack max health.")
+	_expect(is_equal_approx(player.move_speed, base_move_speed + 30.0), "Two speed rings must stack move speed.")
+	_expect(player.physical_defense == base_physical_defense + 2, "Two physical rings must stack physical defense.")
+	_expect(player.magic_defense == base_magic_defense + 2, "Two magic rings must stack magic defense.")
+	_expect(
+		player.get_outgoing_damage(10, EnemyConfig.DamageType.PHYSICAL) == 12,
+		"Two physical rings must stack physical damage bonus."
+	)
+	_expect(
+		player.get_outgoing_damage(10, EnemyConfig.DamageType.MAGIC) == 12,
+		"Two magic rings must stack magic damage bonus."
+	)
 	player.queue_free()
 	await process_frame
 

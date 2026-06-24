@@ -81,7 +81,7 @@ const SKILL_EFFECT_SWIFT := "swift"
 @export var shot_pattern: ShotPattern = ShotPattern.NORMAL
 
 @export_group("收藏品效果")
-# 同名唯一生效的收藏品使用该 ID 去重；宝石类可打开 stacks_by_copy 让每件都生效。
+# 同名唯一生效的收藏品使用该 ID 去重；宝石和戒指可打开 stacks_by_copy 让每件都生效。
 @export var collectible_effect_id: String = ""
 @export var collectible_stacks_by_copy: bool = false
 # 玩家持有时，普通子弹变为穿透弹的概率。
