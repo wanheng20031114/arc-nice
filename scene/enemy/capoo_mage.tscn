@@ -36,11 +36,9 @@ direct_chase_extra_distance = 2.0
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
 texture_filter = 2
 material = SubResource("ShaderMaterial_rrbks")
-position = Vector2(-2.9999998, -1.9999999)
 scale = Vector2(0.31, 0.31)
 sprite_frames = ExtResource("4_frames")
-animation = &"windup"
-frame_progress = 0.74582547
+animation = &"move"
 
 [node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
 shape = SubResource("RectangleShape2D_sp816")
