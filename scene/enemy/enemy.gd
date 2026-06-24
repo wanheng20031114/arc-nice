@@ -3,7 +3,6 @@ class_name Enemy
 
 signal defeated(enemy: Enemy)
 
-const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
 const SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER := &"slow_overlay_strength"
 const PATH_DIRECTION_PROBE_DISTANCE := 1.0
 const FLOW_NAVIGATION_WAYPOINT_ARRIVAL_DISTANCE := 1.0
@@ -18,7 +17,6 @@ enum DeathSequenceStage {
 
 @export var config: EnemyConfig
 @export var touch_damage_interval: float = 0.5
-@export var hurt_blink_duration: float = 0.16
 @export var sprite_faces_left_by_default: bool = false
 @export_range(1, 8, 1, "or_greater") var navigation_update_interval_frames: int = 2
 
@@ -37,7 +35,6 @@ var current_health: int = 1
 var is_dead: bool = false
 var touch_damage_cooldown_left: float = 0.0
 var touched_player: Player = null
-var hurt_blink_time_left: float = 0.0
 var death_sequence_stage: DeathSequenceStage = DeathSequenceStage.NONE
 var death_animation_name_in_use: StringName = &""
 var physical_defense_modifiers: Dictionary = {}
@@ -176,10 +173,8 @@ func play_multiplayer_death_sequence() -> void:
 	velocity = Vector2.ZERO
 	_update_movement_status_visuals()
 	touched_player = null
-	hurt_blink_time_left = 0.0
 	proxy_action_animation_name_in_use = &""
 	proxy_action_restore_token += 1
-	_set_hurt_blink_enabled(false)
 	_set_collision_shapes_disabled(body_collision_shapes, true)
 	_set_collision_shapes_disabled(touch_damage_shapes, true)
 	if touch_damage_area != null:
@@ -668,6 +663,8 @@ func _update_touch_damage(delta: float) -> void:
 
 
 func _try_deal_touch_damage() -> void:
+	if is_dead:
+		return
 	if touched_player == null:
 		return
 	if config == null:
@@ -693,20 +690,6 @@ func _get_multiplayer_touch_source_id() -> int:
 	var tick := int(Time.get_ticks_msec())
 	return maxi(net_id, 1) * 1000000 + tick
 
-func _start_hurt_blink() -> void:
-	hurt_blink_time_left = 0.0
-	_set_hurt_blink_enabled(false)
-
-
-func _update_hurt_blink(_delta: float) -> void:
-	hurt_blink_time_left = 0.0
-	_set_hurt_blink_enabled(false)
-
-
-func _set_hurt_blink_enabled(enabled: bool) -> void:
-	_set_visual_shader_parameter(BLINK_ENABLED_SHADER_PARAMETER, enabled)
-
-
 func _play_hit_particles(impact_direction: Vector2) -> void:
 	if impact_direction == Vector2.ZERO:
 		return
@@ -725,8 +708,6 @@ func _die() -> void:
 	velocity = Vector2.ZERO
 	_update_movement_status_visuals()
 	touched_player = null
-	hurt_blink_time_left = 0.0
-	_set_hurt_blink_enabled(false)
 	_set_collision_shapes_disabled(body_collision_shapes, true)
 	_set_collision_shapes_disabled(touch_damage_shapes, true)
 	touch_damage_area.set_deferred("monitoring", false)

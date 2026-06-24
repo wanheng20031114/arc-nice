@@ -22,6 +22,7 @@ func _run() -> void:
 	root.add_child(test_root)
 	current_scene = test_root
 
+	_test_motion_status_shader_preserves_default_texture_color()
 	await _test_player_movement_status_visuals()
 	await _test_enemy_movement_status_visuals()
 
@@ -38,6 +39,22 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_motion_status_shader_preserves_default_texture_color() -> void:
+	var shader_file := FileAccess.open(MOTION_STATUS_SHADER_PATH, FileAccess.READ)
+	_expect(shader_file != null, "Motion status shader must be readable.")
+	if shader_file == null:
+		return
+	var shader_source := shader_file.get_as_text()
+	_expect(
+		shader_source.find("vec4 color = COLOR;") >= 0,
+		"Motion status shader must preserve Godot's default textured COLOR as its base."
+	)
+	_expect(
+		shader_source.find("texture_color * COLOR") < 0,
+		"Motion status shader must not multiply the sprite texture into COLOR a second time."
+	)
 
 
 func _test_player_movement_status_visuals() -> void:
@@ -118,7 +135,7 @@ func _test_enemy_movement_status_visuals() -> void:
 	enemy.apply_damage(1, Vector2.RIGHT)
 	_expect(enemy.current_health == health_before_hit - 1, "Enemy hit sanity check must apply damage.")
 	_expect(
-		not bool(visual_material.get_shader_parameter(BLINK_PARAMETER)),
+		visual_material.get_shader_parameter(BLINK_PARAMETER) != true,
 		"Enemy hit feedback must not enable hurt blink."
 	)
 

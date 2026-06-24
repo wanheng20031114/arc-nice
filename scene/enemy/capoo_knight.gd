@@ -43,13 +43,12 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	_update_hurt_blink(delta)
-	_update_touch_damage(delta)
-	_update_attack_cooldown(delta)
-
 	if is_dead:
 		velocity = Vector2.ZERO
 		return
+
+	_update_touch_damage(delta)
+	_update_attack_cooldown(delta)
 
 	match combat_state:
 		CombatState.WINDUP:
@@ -90,8 +89,7 @@ func _apply_config() -> void:
 
 
 func _die() -> void:
-	combat_state = CombatState.CHASE
-	_set_windup_warning(0.0, slash_direction)
+	_cancel_attack()
 	call_deferred("_drop_xirang")
 	_try_drop_pickup()
 	super._die()
@@ -174,6 +172,10 @@ func _start_slash(direction: Vector2) -> void:
 
 
 func _update_slash(delta: float) -> void:
+	if is_dead:
+		_cancel_attack()
+		return
+
 	var knight_config := config as CapooKnightConfigScript
 	if knight_config == null:
 		_cancel_attack()
@@ -192,6 +194,9 @@ func _update_slash(delta: float) -> void:
 
 
 func _apply_slash_damage() -> void:
+	if is_dead:
+		return
+
 	var knight_config := config as CapooKnightConfigScript
 	if knight_config == null:
 		return

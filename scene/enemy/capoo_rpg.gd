@@ -39,13 +39,12 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	_update_hurt_blink(delta)
-	_update_touch_damage(delta)
-	_update_attack_cooldown(delta)
-
 	if is_dead:
 		velocity = Vector2.ZERO
 		return
+
+	_update_touch_damage(delta)
+	_update_attack_cooldown(delta)
 
 	match combat_state:
 		CombatState.WINDUP:

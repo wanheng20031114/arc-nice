@@ -25,18 +25,20 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	_update_attack_cooldown(delta)
 
-	if is_dead or not is_instance_valid(target_player):
+	if is_dead:
+		velocity = Vector2.ZERO
+		return
+
+	if not is_instance_valid(target_player):
 		super._physics_process(delta)
 		return
 
 	if combat_state == CombatState.ATTACK:
-		_update_hurt_blink(delta)
 		_update_touch_damage(delta)
 		velocity = Vector2.ZERO
 		return
 
 	if _try_start_ranged_attack():
-		_update_hurt_blink(delta)
 		_update_touch_damage(delta)
 		velocity = Vector2.ZERO
 		return

@@ -8,9 +8,6 @@
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_tg75k"]
 resource_local_to_scene = true
 shader = ExtResource("3_blink")
-shader_parameter/blink_enabled = false
-shader_parameter/blink_speed = 12.0
-shader_parameter/hidden_ratio = 0.5
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_l7sr7"]
 resource_local_to_scene = true

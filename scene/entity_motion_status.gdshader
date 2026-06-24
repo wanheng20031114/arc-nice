@@ -13,7 +13,7 @@ uniform vec4 slow_overlay_color : source_color = vec4(0.55, 0.86, 1.0, 1.0);
 
 void fragment() {
 	vec4 texture_color = texture(TEXTURE, UV);
-	vec4 color = texture_color * COLOR;
+	vec4 color = COLOR;
 
 	if (blink_enabled && color.a > 0.0) {
 		float blink_phase = fract(TIME * blink_speed);
@@ -47,14 +47,14 @@ void fragment() {
 		float mask = clamp(sweep * 1.15 + rim * 0.75 + pulse * 0.18, 0.0, 1.0) * dodge_effect_strength;
 		color.rgb = mix(color.rgb, dodge_flash_color.rgb, mask * 0.42);
 		color.rgb = min(color.rgb + dodge_color.rgb * mask * 0.45, vec3(1.0));
-		color.a = max(color.a, texture_color.a * COLOR.a);
+		color.a = max(color.a, COLOR.a);
 	}
 
 	if (slow_overlay_strength > 0.0 && texture_color.a > 0.0) {
 		float mask = clamp(slow_overlay_strength * texture_color.a, 0.0, 1.0);
 		color.rgb = mix(color.rgb, slow_overlay_color.rgb, mask);
 		color.rgb = min(color.rgb + slow_overlay_color.rgb * mask * 0.08, vec3(1.0));
-		color.a = max(color.a, texture_color.a * COLOR.a);
+		color.a = max(color.a, COLOR.a);
 	}
 
 	COLOR = color;

@@ -381,8 +381,10 @@ func _spawn_player(position: Vector2) -> Player:
 	test_root.add_child(player)
 	player.invincibility_duration = 0.0
 	player.invincibility_time_left = 0.0
-	player.current_health = 100
+	player.set("_base_max_health", 100)
 	player.max_health = 100
+	player.current_health = 100
+	player.health_bar.setup(player.max_health, player.current_health)
 	return player
 
 

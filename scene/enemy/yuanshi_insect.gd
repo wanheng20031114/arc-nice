@@ -28,12 +28,11 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	_update_hurt_blink(delta)
-	_update_touch_damage(delta)
-
 	if is_dead:
 		velocity = Vector2.ZERO
 		return
+
+	_update_touch_damage(delta)
 
 	if not is_instance_valid(target_player):
 		velocity = Vector2.ZERO
