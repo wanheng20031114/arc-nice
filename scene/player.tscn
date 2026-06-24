@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://h7x0o8vhlixl"]
 
 [ext_resource type="Script" uid="uid://ge3xmvg4heea" path="res://scene/player.gd" id="1_onrkg"]
-[ext_resource type="Shader" uid="uid://b47uq42hh5vq1" path="res://scene/blink.gdshader" id="2_ct4mp"]
+[ext_resource type="Shader" path="res://scene/entity_motion_status.gdshader" id="2_ct4mp"]
 [ext_resource type="Texture2D" uid="uid://b5sr8ua78d4vj" path="res://resources/texture/浮游炮.png" id="3_i3pqv"]
 [ext_resource type="AudioStream" uid="uid://dmftmglw7yqwq" path="res://resources/audio/Cowboy_gunshot.wav" id="4_r4x4y"]
 [ext_resource type="AudioStream" uid="uid://cavje5drmqudf" path="res://resources/audio/cowboy_gunload.wav" id="5_6f8ak"]
@@ -13,6 +13,7 @@
 [ext_resource type="SpriteFrames" uid="uid://m5m6keukol1c" path="res://resources/animation/player.tres" id="11_player_frames"]
 [ext_resource type="PackedScene" uid="uid://db4l5h4j6dnqu" path="res://scene/skill1_charge_bar.tscn" id="12_skill1_bar"]
 [ext_resource type="LabelSettings" path="res://resources/ui/player_name_label_settings.tres" id="13_name_settings"]
+[ext_resource type="PackedScene" path="res://scene/move_speed_trail_effect.tscn" id="14_speed_trail"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_s4jxa"]
 resource_local_to_scene = true
@@ -25,6 +26,8 @@ shader_parameter/dodge_sweep = 0.0
 shader_parameter/dodge_color = Color(0.42, 0.95, 1, 1)
 shader_parameter/dodge_flash_color = Color(1, 1, 1, 1)
 shader_parameter/dodge_outline_width = 3.0
+shader_parameter/slow_overlay_strength = 0.0
+shader_parameter/slow_overlay_color = Color(0.55, 0.86, 1, 1)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_ny14h"]
 atlas = ExtResource("3_i3pqv")
@@ -107,6 +110,8 @@ autoplay = "normal_right"
 visible = false
 sprite_frames = SubResource("SpriteFrames_ieltc")
 frame_progress = 0.07989768
+
+[node name="MoveSpeedTrailEffect" parent="." instance=ExtResource("14_speed_trail")]
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=416011949]
 position = Vector2(0, 1)

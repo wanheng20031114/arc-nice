@@ -203,10 +203,9 @@ func _test_combat_effects() -> void:
 	player.apply_damage(10)
 	_expect(player.current_health == health_before - 5, "Moon amulet shield must halve incoming damage.")
 
-	player.queue_free()
-	ally.queue_free()
-	enemy.queue_free()
-	nearby_enemy.queue_free()
+	for node in [player, ally, enemy, nearby_enemy]:
+		if is_instance_valid(node):
+			node.queue_free()
 	await process_frame
 
 

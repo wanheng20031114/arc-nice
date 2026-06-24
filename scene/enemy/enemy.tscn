@@ -1,10 +1,11 @@
-[gd_scene load_steps=13 format=3 uid="uid://b3bjc1o0cesxc"]
+[gd_scene load_steps=14 format=3 uid="uid://b3bjc1o0cesxc"]
 
-[ext_resource type="Shader" uid="uid://b47uq42hh5vq1" path="res://scene/blink.gdshader" id="1_h08p8"]
+[ext_resource type="Shader" path="res://scene/entity_motion_status.gdshader" id="1_h08p8"]
 [ext_resource type="Script" path="res://scene/enemy/enemy.gd" id="2_enemy"]
 [ext_resource type="AudioStream" uid="uid://4xnlqa7gq1qw" path="res://resources/audio/cowboy_monsterhit.wav" id="3_hit_audio"]
 [ext_resource type="AudioStream" uid="uid://dtcpsyjgcfb6m" path="res://resources/audio/cowboy_monsterdie.wav" id="4_death_audio"]
 [ext_resource type="Texture2D" uid="uid://bg46042bpug12" path="res://resources/texture/道具ui.png" id="5_hit_texture"]
+[ext_resource type="PackedScene" path="res://scene/move_speed_trail_effect.tscn" id="6_speed_trail"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_enemy"]
 resource_local_to_scene = true
@@ -12,6 +13,13 @@ shader = ExtResource("1_h08p8")
 shader_parameter/blink_enabled = false
 shader_parameter/blink_speed = 12.0
 shader_parameter/hidden_ratio = 0.5
+shader_parameter/dodge_effect_strength = 0.0
+shader_parameter/dodge_sweep = 0.0
+shader_parameter/dodge_color = Color(0.42, 0.95, 1, 1)
+shader_parameter/dodge_flash_color = Color(1, 1, 1, 1)
+shader_parameter/dodge_outline_width = 3.0
+shader_parameter/slow_overlay_strength = 0.0
+shader_parameter/slow_overlay_color = Color(0.55, 0.86, 1, 1)
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_body"]
 resource_local_to_scene = true
@@ -36,11 +44,11 @@ scale_max = 0.55
 color = Color(0.92, 0.76, 0.38, 1)
 
 [node name="Enemy" type="CharacterBody2D" unique_id=2066499932]
-material = SubResource("ShaderMaterial_enemy")
 collision_layer = 4
 script = ExtResource("2_enemy")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=1398407782]
+material = SubResource("ShaderMaterial_enemy")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1687096047]
 shape = SubResource("CircleShape2D_body")
@@ -71,3 +79,5 @@ max_polyphony = 4
 [node name="DeathAudio" type="AudioStreamPlayer2D" parent="." unique_id=1329864117]
 stream = ExtResource("4_death_audio")
 volume_db = -5.0
+
+[node name="MoveSpeedTrailEffect" parent="." instance=ExtResource("6_speed_trail")]

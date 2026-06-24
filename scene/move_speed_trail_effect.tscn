@@ -1,0 +1,32 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scene/move_speed_trail_effect.gd" id="1_speed_trail"]
+
+[node name="MoveSpeedTrailEffect" type="Node2D"]
+show_behind_parent = true
+z_index = -2
+script = ExtResource("1_speed_trail")
+
+[node name="TrailLong" type="Line2D" parent="."]
+z_index = -2
+width = 2.0
+default_color = Color(0.72, 0.96, 1, 0.5)
+antialiased = false
+
+[node name="TrailMid" type="Line2D" parent="."]
+z_index = -2
+width = 1.5
+default_color = Color(0.88, 1, 1, 0.42)
+antialiased = false
+
+[node name="TrailShort" type="Line2D" parent="."]
+z_index = -2
+width = 1.2
+default_color = Color(0.62, 0.9, 1, 0.35)
+antialiased = false
+
+[node name="TrailFar" type="Line2D" parent="."]
+z_index = -2
+width = 1.0
+default_color = Color(0.92, 1, 1, 0.28)
+antialiased = false

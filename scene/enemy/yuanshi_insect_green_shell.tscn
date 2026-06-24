@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://bsowy8xf3lvlm"]
 
 [ext_resource type="PackedScene" uid="uid://ccvfm2ck2jkky" path="res://scene/enemy/yuanshi_insect.tscn" id="1_base"]
-[ext_resource type="Shader" uid="uid://b47uq42hh5vq1" path="res://scene/blink.gdshader" id="2_g7i4v"]
+[ext_resource type="Shader" path="res://scene/entity_motion_status.gdshader" id="2_g7i4v"]
 [ext_resource type="Script" uid="uid://dfj2c0dhhldw1" path="res://scene/enemy/yuanshi_insect_aura.gd" id="2_script"]
 [ext_resource type="SpriteFrames" uid="uid://p451nqj5gojm" path="res://resources/animation/yuanshi_insect_green_shell.tres" id="3_frames"]
 
@@ -41,10 +41,10 @@ resource_local_to_scene = true
 radius = 30.0
 
 [node name="YuanshiInsectGreenShell" unique_id=435097187 instance=ExtResource("1_base")]
-material = SubResource("ShaderMaterial_uutsh")
 script = ExtResource("2_script")
 
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
+material = SubResource("ShaderMaterial_uutsh")
 sprite_frames = ExtResource("3_frames")
 animation = &"move"
 

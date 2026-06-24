@@ -4,9 +4,11 @@ class_name Enemy
 signal defeated(enemy: Enemy)
 
 const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
+const SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER := &"slow_overlay_strength"
 const PATH_DIRECTION_PROBE_DISTANCE := 1.0
 const FLOW_NAVIGATION_WAYPOINT_ARRIVAL_DISTANCE := 1.0
 const AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
+const SLOW_OVERLAY_ACTIVE_STRENGTH := 0.36
 
 enum DeathSequenceStage {
 	NONE,
@@ -21,6 +23,7 @@ enum DeathSequenceStage {
 @export_range(1, 8, 1, "or_greater") var navigation_update_interval_frames: int = 2
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
+@onready var speed_trail_effect: Node2D = $MoveSpeedTrailEffect
 @onready var collision_shape: CollisionShape2D = null
 @onready var touch_damage_area: Area2D = $TouchDamageArea
 @onready var touch_damage_shape: CollisionShape2D = null
@@ -64,6 +67,11 @@ func _ready() -> void:
 	touch_damage_area.area_entered.connect(_on_touch_damage_area_area_entered)
 	animated_sprite.animation_finished.connect(_on_animated_sprite_animation_finished)
 	_apply_config()
+	_update_movement_status_visuals()
+
+
+func _process(_delta: float) -> void:
+	_update_movement_status_visuals()
 
 
 func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = null) -> void:
@@ -89,6 +97,7 @@ func configure_multiplayer_proxy() -> void:
 	touched_player = null
 	touch_damage_cooldown_left = 0.0
 	proxy_action_animation_name_in_use = &""
+	_update_movement_status_visuals()
 	set_physics_process(false)
 	set_process(false)
 	collision_layer = 4
@@ -137,7 +146,6 @@ func apply_damage(
 		return true
 
 	AUDIO_LIMITER.play_enemy_hit(hit_audio)
-	_start_hurt_blink()
 	return true
 
 
@@ -166,6 +174,7 @@ func play_multiplayer_death_sequence() -> void:
 
 	is_dead = true
 	velocity = Vector2.ZERO
+	_update_movement_status_visuals()
 	touched_player = null
 	hurt_blink_time_left = 0.0
 	proxy_action_animation_name_in_use = &""
@@ -209,6 +218,7 @@ func add_move_speed_modifier(source_id: int, multiplier: float) -> void:
 		return
 	move_speed_modifiers[source_id] = maxf(multiplier, 0.0)
 	_clear_cached_navigation_move_direction()
+	_update_movement_status_visuals()
 
 
 func remove_move_speed_modifier(source_id: int) -> void:
@@ -216,6 +226,7 @@ func remove_move_speed_modifier(source_id: int) -> void:
 		return
 	move_speed_modifiers.erase(source_id)
 	_clear_cached_navigation_move_direction()
+	_update_movement_status_visuals()
 
 
 func get_effective_move_speed() -> float:
@@ -223,6 +234,49 @@ func get_effective_move_speed() -> float:
 	for modifier in move_speed_modifiers.values():
 		total *= maxf(float(modifier), 0.0)
 	return maxf(total, 0.0)
+
+
+func _update_movement_status_visuals() -> void:
+	if is_dead:
+		_set_slow_overlay_strength(0.0)
+		speed_trail_effect.call("set_effect_active", false)
+		return
+
+	var is_slowed := _has_move_speed_modifier_below_default()
+	_set_slow_overlay_strength(SLOW_OVERLAY_ACTIVE_STRENGTH if is_slowed else 0.0)
+
+	var is_temporarily_hasted := _has_move_speed_modifier_above_default()
+	var is_moving := velocity.length_squared() > 0.001
+	speed_trail_effect.call("set_effect_active", is_temporarily_hasted and is_moving)
+	if is_moving:
+		speed_trail_effect.call("set_motion_direction", velocity)
+
+
+func _has_move_speed_modifier_below_default() -> bool:
+	for modifier in move_speed_modifiers.values():
+		if float(modifier) < 1.0:
+			return true
+	return false
+
+
+func _has_move_speed_modifier_above_default() -> bool:
+	for modifier in move_speed_modifiers.values():
+		if float(modifier) > 1.0:
+			return true
+	return false
+
+
+func _set_slow_overlay_strength(strength: float) -> void:
+	_set_visual_shader_parameter(
+		SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER,
+		clampf(strength, 0.0, 1.0)
+	)
+
+
+func _set_visual_shader_parameter(parameter_name: StringName, value: Variant) -> void:
+	var sprite_material := animated_sprite.material as ShaderMaterial
+	if sprite_material != null:
+		sprite_material.set_shader_parameter(parameter_name, value)
 
 
 func _calculate_incoming_damage(
@@ -640,29 +694,17 @@ func _get_multiplayer_touch_source_id() -> int:
 	return maxi(net_id, 1) * 1000000 + tick
 
 func _start_hurt_blink() -> void:
-	if hurt_blink_duration <= 0.0:
-		hurt_blink_time_left = 0.0
-		_set_hurt_blink_enabled(false)
-		return
-	hurt_blink_time_left = hurt_blink_duration
-	_set_hurt_blink_enabled(true)
+	hurt_blink_time_left = 0.0
+	_set_hurt_blink_enabled(false)
 
 
-func _update_hurt_blink(delta: float) -> void:
-	if hurt_blink_time_left <= 0.0:
-		return
-
-	hurt_blink_time_left = maxf(hurt_blink_time_left - delta, 0.0)
-	if hurt_blink_time_left > 0.0:
-		return
-
+func _update_hurt_blink(_delta: float) -> void:
+	hurt_blink_time_left = 0.0
 	_set_hurt_blink_enabled(false)
 
 
 func _set_hurt_blink_enabled(enabled: bool) -> void:
-	var sprite_material := animated_sprite.material as ShaderMaterial
-	if sprite_material != null:
-		sprite_material.set_shader_parameter(BLINK_ENABLED_SHADER_PARAMETER, enabled)
+	_set_visual_shader_parameter(BLINK_ENABLED_SHADER_PARAMETER, enabled)
 
 
 func _play_hit_particles(impact_direction: Vector2) -> void:
@@ -681,6 +723,7 @@ func _die() -> void:
 	is_dead = true
 	defeated.emit(self)
 	velocity = Vector2.ZERO
+	_update_movement_status_visuals()
 	touched_player = null
 	hurt_blink_time_left = 0.0
 	_set_hurt_blink_enabled(false)

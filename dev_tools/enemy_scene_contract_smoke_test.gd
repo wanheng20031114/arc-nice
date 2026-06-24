@@ -15,6 +15,7 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/capoo_swordsman.tres"),
 	preload("res://resources/config/enemies/capoo_rpg.tres"),
 ]
+const ENEMY_VISUAL_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -76,8 +77,16 @@ func _test_enemy_scene_contract(enemy_config: EnemyConfig) -> void:
 		return
 
 	var scene_frames := animated_sprite.sprite_frames
+	var sprite_material := animated_sprite.material as ShaderMaterial
 	var body_shapes := _get_shape_resources(body_shape_nodes)
 	var touch_shapes := _get_shape_resources(touch_shape_nodes)
+	_expect(enemy.material == null, "%s root node must not hold the enemy visual material." % enemy_config.resource_path)
+	_expect(not animated_sprite.use_parent_material, "%s sprite must not inherit a root material." % enemy_config.resource_path)
+	_expect(sprite_material != null, "%s sprite must own a ShaderMaterial." % enemy_config.resource_path)
+	_expect(
+		sprite_material != null and sprite_material.shader.resource_path == ENEMY_VISUAL_SHADER_PATH,
+		"%s sprite must use the enemy visual shader." % enemy_config.resource_path
+	)
 	_expect(scene_frames != null, "%s scene must own SpriteFrames." % enemy_config.resource_path)
 	if scene_frames != null:
 		_expect(scene_frames.has_animation(enemy_config.move_animation_name), "%s scene must include move animation." % enemy_config.resource_path)

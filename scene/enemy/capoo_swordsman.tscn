@@ -2,7 +2,7 @@
 
 [ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy/enemy.tscn" id="1_base"]
 [ext_resource type="Script" uid="uid://46aakmbjjqsp" path="res://scene/enemy/capoo_swordsman.gd" id="2_script"]
-[ext_resource type="Shader" uid="uid://b47uq42hh5vq1" path="res://scene/blink.gdshader" id="3_blink"]
+[ext_resource type="Shader" path="res://scene/entity_motion_status.gdshader" id="3_blink"]
 [ext_resource type="SpriteFrames" uid="uid://c6okmim07qy6i" path="res://resources/animation/capoo_swordsman.tres" id="4_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_8qkd7"]
@@ -31,13 +31,13 @@ a = Vector2(6, 10)
 b = Vector2(26, 4)
 
 [node name="CapooSwordsman" unique_id=1483813600 instance=ExtResource("1_base")]
-material = SubResource("ShaderMaterial_8qkd7")
 script = ExtResource("2_script")
 path_refresh_interval = 0.25
 waypoint_arrival_distance = 6.0
 direct_chase_extra_distance = 2.0
 
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
+material = SubResource("ShaderMaterial_8qkd7")
 texture_filter = 2
 scale = Vector2(0.31, 0.31)
 sprite_frames = ExtResource("4_frames")

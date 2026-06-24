@@ -39,6 +39,7 @@ var client_movement_prediction_only: bool = false
 
 @onready var body_sprite: AnimatedSprite2D = $BodySprite
 @onready var armed_effect_sprite: AnimatedSprite2D = $ArmedEffectSprite
+@onready var speed_trail_effect: Node2D = $MoveSpeedTrailEffect
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var shooting_timer: Timer = $ShootingTimer
 @onready var gunshot_audio: AudioStreamPlayer2D = $GunshotAudio
@@ -75,7 +76,9 @@ const NAMEPLATE_WORLD_OFFSET := Vector2(0.0, -19.0)
 const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
 const DODGE_EFFECT_STRENGTH_SHADER_PARAMETER := &"dodge_effect_strength"
 const DODGE_SWEEP_SHADER_PARAMETER := &"dodge_sweep"
+const SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER := &"slow_overlay_strength"
 const DODGE_EFFECT_DURATION := 0.28
+const SLOW_OVERLAY_ACTIVE_STRENGTH := 0.34
 const ATTACK_SPEED_UPGRADE_INTERVAL_MULTIPLIER := 0.95
 const DODGE_UPGRADE_CHANCE_STEP := 0.02
 const PIERCING_BULLET_TINT := Color(1.0, 0.36, 0.34, 1.0)
@@ -134,6 +137,7 @@ func _ready() -> void:
 	shooting_timer.one_shot = true
 	shooting_timer.wait_time = _get_effective_fire_interval()
 	_set_hurt_blink_enabled(false)
+	_update_movement_status_visuals(Vector2.ZERO)
 	health_bar.setup(max_health, current_health)
 	name_label.visible = false
 	nameplate_layer.visible = false
@@ -217,6 +221,7 @@ func _physics_process(delta: float) -> void:
 	
 	if is_dead:
 		velocity = Vector2.ZERO
+		_update_movement_status_visuals(Vector2.ZERO)
 		return
 
 	if controls_locked:
@@ -224,6 +229,7 @@ func _physics_process(delta: float) -> void:
 		_update_footstep_audio(delta, Vector2.ZERO)
 		_update_animation()
 		_update_armed_effect()
+		_update_movement_status_visuals(Vector2.ZERO)
 		return
 	
 	var move_input := _get_current_move_input()
@@ -236,6 +242,7 @@ func _physics_process(delta: float) -> void:
 
 	velocity = move_input * _get_effective_move_speed()
 	move_and_slide()
+	_update_movement_status_visuals(move_input)
 	_update_footstep_audio(delta, move_input)
 
 	if current_shot_pattern == PickupConfig.ShotPattern.SPIRAL:
@@ -630,6 +637,7 @@ func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invi
 	velocity = Vector2.ZERO
 	current_health = max_health if revived_health < 0 else clampi(revived_health, 1, max_health)
 	body_sprite.visible = true
+	_update_movement_status_visuals(Vector2.ZERO)
 	if collision_shape != null:
 		collision_shape.set_deferred("disabled", false)
 	health_bar.visible = true
@@ -664,6 +672,7 @@ func apply_multiplayer_death_state() -> void:
 	network_shoot_input = Vector2.ZERO
 	network_skill1_requested = false
 	velocity = Vector2.ZERO
+	_update_movement_status_visuals(Vector2.ZERO)
 	current_health = 0
 	invincibility_time_left = 0.0
 	_set_hurt_blink_enabled(false)
@@ -1502,6 +1511,43 @@ func _update_armed_effect() -> void:
 		armed_effect_sprite.play(&"default")
 
 
+# 更新临时移速增减的视觉反馈
+func _update_movement_status_visuals(move_direction: Vector2) -> void:
+	var is_slowed := (
+		speed_buff_time_left > 0.0
+		and current_move_speed_multiplier < DEFAULT_MOVE_SPEED_MULTIPLIER
+	)
+	_set_slow_overlay_strength(SLOW_OVERLAY_ACTIVE_STRENGTH if is_slowed else 0.0)
+
+	var is_temporarily_hasted := (
+		(
+			speed_buff_time_left > 0.0
+			and current_move_speed_multiplier > DEFAULT_MOVE_SPEED_MULTIPLIER
+		)
+		or (
+			collectible_swift_time_left > 0.0
+			and collectible_swift_move_speed_multiplier > 1.0
+		)
+	)
+	var visual_direction := move_direction
+	if visual_direction.length_squared() <= 0.001:
+		visual_direction = velocity
+	var is_moving := visual_direction.length_squared() > 0.001
+	speed_trail_effect.call("set_effect_active", is_temporarily_hasted and is_moving)
+	if is_moving:
+		speed_trail_effect.call("set_motion_direction", visual_direction)
+
+
+func _set_slow_overlay_strength(strength: float) -> void:
+	var sprite_material := body_sprite.material as ShaderMaterial
+	if sprite_material == null:
+		return
+	sprite_material.set_shader_parameter(
+		SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER,
+		clampf(strength, 0.0, 1.0)
+	)
+
+
 # 处理移动脚步声播放及间隔控制
 func _update_footstep_audio(delta: float, move_input: Vector2) -> void:
 	footstep_time_left = maxf(footstep_time_left - delta, 0.0)
@@ -1673,6 +1719,7 @@ func _die() -> void:
 	is_dead = true
 	mouse_fire_held = false
 	velocity = Vector2.ZERO
+	_update_movement_status_visuals(Vector2.ZERO)
 	invincibility_time_left = 0.0
 	_set_hurt_blink_enabled(false)
 	_stop_dodge_feedback()

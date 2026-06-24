@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://wxgwumoxoj6o"]
 
 [ext_resource type="PackedScene" uid="uid://ccvfm2ck2jkky" path="res://scene/enemy/yuanshi_insect.tscn" id="1_base"]
-[ext_resource type="Shader" uid="uid://b47uq42hh5vq1" path="res://scene/blink.gdshader" id="2_4bgxa"]
+[ext_resource type="Shader" path="res://scene/entity_motion_status.gdshader" id="2_4bgxa"]
 [ext_resource type="SpriteFrames" uid="uid://b8bbt6bw06ogo" path="res://resources/animation/yuanshi_insect_basic.tres" id="2_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_4bgxa"]
@@ -25,9 +25,9 @@ radius = 4.0
 height = 16.0
 
 [node name="YuanshiInsectBasic" unique_id=826794686 instance=ExtResource("1_base")]
-material = SubResource("ShaderMaterial_4bgxa")
 
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
+material = SubResource("ShaderMaterial_4bgxa")
 position = Vector2(0, -2)
 sprite_frames = ExtResource("2_frames")
 animation = &"move"
