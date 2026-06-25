@@ -13,6 +13,10 @@ class_name LinglanSkillConfig
 @export_range(0, 999, 1, "or_greater") var projectile_damage: int = 50
 @export_range(0.0, 128.0, 0.5, "or_greater") var projectile_spawn_distance: float = 18.0
 @export var projectile_scene: PackedScene
+@export_range(0.0, 10.0, 0.1, "or_greater") var warning_lead_time: float = 1.0
+@export_range(0.0, 256.0, 0.5, "or_greater") var warning_arrow_distance: float = 36.0
+@export_range(0.1, 8.0, 0.1, "or_greater") var warning_arrow_scale: float = 1.0
+@export var warning_arrow_scene: PackedScene
 
 
 func get_fire_interval() -> float:

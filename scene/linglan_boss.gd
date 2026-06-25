@@ -12,6 +12,7 @@ var is_active: bool = false
 var skill1_elapsed: float = 0.0
 var skill1_fire_time_left: float = 0.0
 var skill1_finished: bool = false
+var skill1_warning_arrows: Array[Node2D] = []
 
 
 func _ready() -> void:
@@ -88,6 +89,7 @@ func _reset_skill1_state() -> void:
 	skill1_elapsed = 0.0
 	skill1_fire_time_left = 0.0
 	skill1_finished = false
+	_clear_skill1_warning_arrows()
 
 
 func _update_skill1(delta: float) -> void:
@@ -99,7 +101,9 @@ func _update_skill1(delta: float) -> void:
 	var previous_elapsed := skill1_elapsed
 	skill1_elapsed += delta
 	if skill1_elapsed < skill1_config.start_delay:
+		_update_skill1_warning_arrows()
 		return
+	_clear_skill1_warning_arrows()
 
 	var skill_active_delta := delta
 	if previous_elapsed < skill1_config.start_delay:
@@ -161,3 +165,68 @@ func _spawn_skill1_projectile(direction: Vector2) -> void:
 	)
 	spawn_parent.add_child(projectile)
 	projectile.global_position = global_position + direction * skill1_config.projectile_spawn_distance
+
+
+func _update_skill1_warning_arrows() -> void:
+	if skill1_config.warning_arrow_scene == null:
+		return
+	var warning_start_elapsed := maxf(skill1_config.start_delay - skill1_config.warning_lead_time, 0.0)
+	if skill1_elapsed < warning_start_elapsed:
+		return
+	if skill1_warning_arrows.is_empty():
+		_spawn_skill1_warning_arrows()
+	_update_skill1_warning_arrow_transforms()
+
+
+func _spawn_skill1_warning_arrows() -> void:
+	var spawn_parent := get_tree().current_scene
+	if spawn_parent == null:
+		return
+
+	var direction_count := maxi(skill1_config.ring_direction_count, 1)
+	for index in range(direction_count):
+		var arrow := skill1_config.warning_arrow_scene.instantiate() as Node2D
+		if arrow == null:
+			continue
+		arrow.top_level = true
+		arrow.name = "LinglanSkill1WarningArrow%02d" % index
+		spawn_parent.add_child(arrow)
+		skill1_warning_arrows.append(arrow)
+
+
+func _update_skill1_warning_arrow_transforms() -> void:
+	var direction_count := skill1_warning_arrows.size()
+	if direction_count <= 0:
+		return
+
+	var angle_step := TAU / float(direction_count)
+	var warning_progress := _get_skill1_warning_progress()
+	var pulse_scale := skill1_config.warning_arrow_scale * (0.9 + 0.15 * warning_progress)
+	var arrow_alpha := lerpf(0.45, 0.92, warning_progress)
+	for index in range(direction_count):
+		var arrow := skill1_warning_arrows[index]
+		if not is_instance_valid(arrow):
+			continue
+		var direction := Vector2.RIGHT.rotated(angle_step * float(index))
+		arrow.global_position = global_position + direction * skill1_config.warning_arrow_distance
+		arrow.global_rotation = direction.angle()
+		arrow.scale = Vector2.ONE * pulse_scale
+		arrow.modulate.a = arrow_alpha
+
+
+func _get_skill1_warning_progress() -> float:
+	if skill1_config.warning_lead_time <= 0.0:
+		return 1.0
+	var warning_start_elapsed := maxf(skill1_config.start_delay - skill1_config.warning_lead_time, 0.0)
+	return clampf(
+		(skill1_elapsed - warning_start_elapsed) / skill1_config.warning_lead_time,
+		0.0,
+		1.0
+	)
+
+
+func _clear_skill1_warning_arrows() -> void:
+	for arrow in skill1_warning_arrows:
+		if is_instance_valid(arrow):
+			arrow.queue_free()
+	skill1_warning_arrows.clear()

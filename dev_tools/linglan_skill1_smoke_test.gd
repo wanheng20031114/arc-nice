@@ -3,6 +3,11 @@ extends SceneTree
 const LINGLAN_SCENE := preload("res://scene/linglan_boss.tscn")
 const LINGLAN_CONFIG := preload("res://resources/config/enemies/linglan_boss.tres")
 const SKILL1_CONFIG := preload("res://resources/config/bosses/linglan_skill1.tres")
+const SAKURA_BULLET_TEXTURE := preload("res://resources/texture/boss_linglan/skill1_sakura_bullet.png")
+const SAKURA_BULLET_SCENE := preload("res://scene/linglan_skill1_sakura_bullet.tscn")
+const WARNING_ARROW_SCENE := preload("res://scene/linglan_skill1_warning_arrow.tscn")
+const PLAYER_SCENE := preload("res://scene/player.tscn")
+const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -19,6 +24,7 @@ func _run() -> void:
 	current_scene = test_root
 
 	_test_skill1_config()
+	await _test_sakura_bullet_scene_contract()
 	await _test_skill1_fire_schedule()
 
 	test_root.queue_free()
@@ -38,11 +44,62 @@ func _test_skill1_config() -> void:
 	_expect(SKILL1_CONFIG.skill_name == &"linglan_skill1", "Skill1 name mismatch.")
 	_expect(is_equal_approx(SKILL1_CONFIG.start_delay, 5.0), "Skill1 start delay mismatch.")
 	_expect(SKILL1_CONFIG.ring_direction_count == 24, "Skill1 direction count mismatch.")
-	_expect(is_equal_approx(SKILL1_CONFIG.attack_speed, 800.0), "Skill1 attack speed mismatch.")
-	_expect(is_equal_approx(SKILL1_CONFIG.get_fire_interval(), 0.125), "Skill1 fire interval mismatch.")
+	_expect(is_equal_approx(SKILL1_CONFIG.attack_speed, 1800.0), "Skill1 attack speed mismatch.")
+	_expect(is_equal_approx(SKILL1_CONFIG.get_fire_interval(), 1.0 / 18.0), "Skill1 fire interval mismatch.")
 	_expect(is_equal_approx(SKILL1_CONFIG.projectile_speed, 300.0), "Skill1 projectile speed mismatch.")
 	_expect(SKILL1_CONFIG.projectile_damage == 50, "Skill1 projectile damage mismatch.")
 	_expect(SKILL1_CONFIG.projectile_scene != null, "Skill1 projectile scene missing.")
+	_expect(SKILL1_CONFIG.warning_arrow_scene == WARNING_ARROW_SCENE, "Skill1 warning arrow scene mismatch.")
+	_expect(is_equal_approx(SKILL1_CONFIG.warning_lead_time, 1.0), "Skill1 warning lead time mismatch.")
+	_expect(SAKURA_BULLET_TEXTURE.get_size().x > 0 and SAKURA_BULLET_TEXTURE.get_size().y > 0, "Sakura bullet texture missing.")
+
+
+func _test_sakura_bullet_scene_contract() -> void:
+	var bullet := SAKURA_BULLET_SCENE.instantiate() as LinglanSakuraBullet
+	_expect(bullet != null, "Sakura bullet scene did not instantiate as LinglanSakuraBullet.")
+	if bullet == null:
+		return
+	test_root.add_child(bullet)
+	await process_frame
+
+	var shape_node := bullet.get_node_or_null("CollisionShape2D") as CollisionShape2D
+	_expect(shape_node != null, "Sakura bullet must expose a direct CollisionShape2D for editor tuning.")
+	if shape_node != null:
+		var circle := shape_node.shape as CircleShape2D
+		_expect(circle != null, "Sakura bullet collision shape must be circular.")
+		if circle != null:
+			_expect(circle.radius > 0.0, "Sakura bullet collision radius must stay editor-tunable and positive.")
+	_expect(bullet.collision_mask & 4 == 0, "Sakura bullet collision mask must not include EnemyBody.")
+	_expect(bullet.collision_mask & 256 == 0, "Sakura bullet collision mask must not include BossBody.")
+
+	var player := PLAYER_SCENE.instantiate() as Player
+	player.max_health = 100
+	player.invincibility_duration = 0.0
+	test_root.add_child(player)
+	await process_frame
+	bullet.setup(Vector2.RIGHT, 50, 300.0, 2.0)
+	bullet.call("_on_body_entered", player)
+	_expect(player.current_health == 50, "Sakura bullet must deal 50 damage on hit.")
+	_expect(_count_sakura_hit_effects() == 1, "Sakura bullet must spawn one lightweight pink hit effect on a valid player hit.")
+
+	if is_instance_valid(bullet):
+		bullet.queue_free()
+	player.queue_free()
+	_clear_sakura_hit_effects()
+
+	var enemy := ENEMY_SCENE.instantiate() as Enemy
+	enemy.current_health = 100
+	test_root.add_child(enemy)
+	var enemy_safe_bullet := SAKURA_BULLET_SCENE.instantiate() as LinglanSakuraBullet
+	test_root.add_child(enemy_safe_bullet)
+	await process_frame
+	enemy_safe_bullet.call("_on_body_entered", enemy)
+	_expect(enemy.current_health == 100, "Sakura bullet must ignore Enemy bodies.")
+	_expect(is_instance_valid(enemy_safe_bullet) and not enemy_safe_bullet.has_hit, "Sakura bullet must not be consumed by Enemy bodies.")
+	_expect(_count_sakura_hit_effects() == 0, "Sakura bullet must not spawn hit effects on Enemy bodies.")
+	if is_instance_valid(enemy_safe_bullet):
+		enemy_safe_bullet.queue_free()
+	enemy.queue_free()
 
 
 func _test_skill1_fire_schedule() -> void:
@@ -55,12 +112,22 @@ func _test_skill1_fire_schedule() -> void:
 	boss.config = LINGLAN_CONFIG
 	boss.activate_boss(null, null)
 
-	boss.call("_physics_process", 4.99)
+	boss.call("_physics_process", SKILL1_CONFIG.start_delay - SKILL1_CONFIG.warning_lead_time - 0.01)
 	_expect(_get_sakura_bullets().is_empty(), "Skill1 fired before the 5 second delay.")
+	_expect(_get_warning_arrows().is_empty(), "Skill1 warning arrows appeared before the warning lead time.")
 
-	boss.call("_physics_process", 0.01)
+	boss.call("_physics_process", 0.02)
+	var warning_arrows := _get_warning_arrows()
+	_expect(warning_arrows.size() == 24, "Skill1 warning must show 24 arrows before firing, got %d." % warning_arrows.size())
+	if warning_arrows.size() == 24:
+		_expect(warning_arrows[0].global_position.distance_to(boss.global_position) > 30.0, "Skill1 warning arrows must sit outside Linglan's body.")
+		_expect(warning_arrows[0].global_rotation == Vector2.RIGHT.angle(), "Skill1 first warning arrow must point right.")
+
+	boss.call("_physics_process", SKILL1_CONFIG.warning_lead_time)
+	await process_frame
 	var first_ring := _get_sakura_bullets()
 	_expect(first_ring.size() == 24, "Skill1 first ring must spawn 24 projectiles.")
+	_expect(_get_warning_arrows().is_empty(), "Skill1 warning arrows must clear when firing starts.")
 	if first_ring.size() == 24:
 		var first_bullet := first_ring[0]
 		_expect(is_equal_approx(first_bullet.speed, 300.0), "Sakura bullet speed mismatch.")
@@ -102,6 +169,30 @@ func _get_sakura_bullets() -> Array[LinglanSakuraBullet]:
 func _clear_sakura_bullets() -> void:
 	for bullet in _get_sakura_bullets():
 		bullet.free()
+
+
+func _get_warning_arrows() -> Array[Node2D]:
+	var arrows: Array[Node2D] = []
+	for child in test_root.get_children():
+		if child.name.begins_with("LinglanSkill1WarningArrow"):
+			var arrow := child as Node2D
+			if arrow != null:
+				arrows.append(arrow)
+	return arrows
+
+
+func _count_sakura_hit_effects() -> int:
+	var count := 0
+	for child in test_root.get_children():
+		if child is LinglanSakuraHitEffect:
+			count += 1
+	return count
+
+
+func _clear_sakura_hit_effects() -> void:
+	for child in test_root.get_children():
+		if child is LinglanSakuraHitEffect:
+			child.free()
 
 
 func _expect(condition: bool, message: String) -> void:

@@ -1,0 +1,30 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scene/linglan_sakura_hit_effect.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://bg46042bpug12" path="res://resources/texture/道具ui.png" id="2_texture"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_particle"]
+atlas = ExtResource("2_texture")
+region = Rect2(22, 23, 4, 4)
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_sakura_hit"]
+direction = Vector3(1, 0, 0)
+spread = 44.0
+initial_velocity_min = 18.0
+initial_velocity_max = 36.0
+gravity = Vector3(0, 8, 0)
+scale_min = 0.24
+scale_max = 0.42
+color = Color(1, 0.45, 0.72, 1)
+
+[node name="LinglanSakuraHitEffect" type="GPUParticles2D"]
+z_index = 5
+emitting = false
+amount = 4
+lifetime = 0.16
+one_shot = true
+explosiveness = 1.0
+local_coords = false
+texture = SubResource("AtlasTexture_particle")
+process_material = SubResource("ParticleProcessMaterial_sakura_hit")
+script = ExtResource("1_script")

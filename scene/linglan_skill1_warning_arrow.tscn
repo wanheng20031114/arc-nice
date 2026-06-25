@@ -1,0 +1,16 @@
+[gd_scene format=3 uid="uid://d0wqnhsq4spw7"]
+
+[node name="LinglanSkill1WarningArrow" type="Node2D"]
+z_index = 3
+
+[node name="Outline" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(11, 0, 2, -7, 2, -3, -9, -3, -9, 3, 2, 3, 2, 7)
+color = Color(0.22, 0.03, 0.08, 0.82)
+
+[node name="Fill" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(8, 0, 1, -4.5, 1, -1.4, -6, -1.4, -6, 1.4, 1, 1.4, 1, 4.5)
+color = Color(1, 0.34, 0.58, 0.92)
+
+[node name="Core" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(4, 0, -0.8, -2, -0.8, 0.2, -3.8, 0.2, -3.8, 0.8, -0.8, 0.8, -0.8, 2)
+color = Color(1, 0.83, 0.9, 0.85)

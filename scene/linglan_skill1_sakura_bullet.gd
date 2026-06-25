@@ -2,6 +2,7 @@ extends Area2D
 class_name LinglanSakuraBullet
 
 const WORLD_COLLISION_MASK := 1
+const HIT_EFFECT_SCENE := preload("res://scene/linglan_sakura_hit_effect.tscn")
 
 @export var speed: float = 300.0
 @export var max_lifetime: float = 2.0
@@ -82,9 +83,17 @@ func _on_body_entered(body: Node2D) -> void:
 		return
 
 	var player := body as Player
-	if player != null and not player.is_dead:
-		if not _try_report_multiplayer_player_hit(player):
-			player.apply_damage(damage)
+	if player == null:
+		var collision_body := body as CollisionObject2D
+		if collision_body != null and (collision_body.collision_layer & WORLD_COLLISION_MASK) != 0:
+			_consume()
+		return
+	if not player.is_dead:
+		var hit_registered := _try_report_multiplayer_player_hit(player)
+		if not hit_registered:
+			hit_registered = player.apply_damage(damage)
+		if hit_registered:
+			_spawn_hit_effect()
 	_consume()
 
 
@@ -95,6 +104,21 @@ func _consume() -> void:
 	set_deferred("monitoring", false)
 	set_deferred("monitorable", false)
 	queue_free()
+
+
+func _spawn_hit_effect() -> void:
+	var spawn_parent := get_tree().current_scene
+	if spawn_parent == null:
+		return
+
+	var effect := HIT_EFFECT_SCENE.instantiate() as LinglanSakuraHitEffect
+	if effect == null:
+		return
+
+	effect.top_level = true
+	effect.setup(direction)
+	spawn_parent.add_child(effect)
+	effect.global_position = global_position
 
 
 func _try_report_multiplayer_player_hit(player: Player) -> bool:
