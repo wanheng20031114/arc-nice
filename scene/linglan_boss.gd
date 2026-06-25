@@ -4,15 +4,36 @@ class_name LinglanBoss
 signal health_changed(current_health: int, maximum_health: int)
 signal boss_defeated
 
+const SKILL2_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
+
 @export var starts_active: bool = false
 @export var boss_display_name: String = "铃兰"
 @export var skill1_config: LinglanSkillConfig
+@export var skill2_config: LinglanSkill2Config
+
+@onready var skill2_fire_audio: AudioStreamPlayer2D = get_node_or_null("Skill2FireAudio") as AudioStreamPlayer2D
+
+enum BossSkillPhase {
+	SKILL1,
+	MOVE_TO_SKILL2,
+	SKILL2,
+	DONE,
+}
 
 var is_active: bool = false
+var boss_skill_phase: BossSkillPhase = BossSkillPhase.SKILL1
 var skill1_elapsed: float = 0.0
 var skill1_fire_time_left: float = 0.0
 var skill1_finished: bool = false
 var skill1_warning_rays: Array[Node2D] = []
+var skill2_target_global_position := Vector2.ZERO
+var skill2_elapsed: float = 0.0
+var skill2_spawn_ticks_completed: int = 0
+var skill2_shots_fired: int = 0
+var skill2_warning_shot_index: int = -1
+var skill2_warning_arrow: Node2D = null
+var skill2_pending_direction := Vector2.RIGHT
+var skill2_pending_target_player: Player = null
 
 
 func _ready() -> void:
@@ -28,7 +49,8 @@ func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = 
 
 func activate_boss(player: Player, shared_pathfinder: Node = null) -> void:
 	setup(config, player, shared_pathfinder)
-	_reset_skill1_state()
+	_reset_skill_state()
+	boss_skill_phase = BossSkillPhase.SKILL1
 	set_active(true)
 	if animated_sprite != null and not is_dead:
 		animated_sprite.play(&"idle")
@@ -45,7 +67,7 @@ func set_active(active: bool) -> void:
 	_set_collision_shapes_disabled(body_collision_shapes, not active)
 	_set_collision_shapes_disabled(touch_damage_shapes, not active)
 	if not active:
-		_reset_skill1_state()
+		_reset_skill_state()
 
 
 func apply_damage(
@@ -64,15 +86,26 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 	_update_touch_damage(delta)
-	_update_skill1(delta)
-	velocity = Vector2.ZERO
+	match boss_skill_phase:
+		BossSkillPhase.SKILL1:
+			_update_skill1(delta)
+			velocity = Vector2.ZERO
+			if skill1_finished:
+				_begin_skill2_move()
+		BossSkillPhase.MOVE_TO_SKILL2:
+			_update_skill2_move(delta)
+		BossSkillPhase.SKILL2:
+			_update_skill2(delta)
+		_:
+			velocity = Vector2.ZERO
+			_play_idle_animation()
 
 
 func _die() -> void:
 	if is_dead:
 		return
 	boss_defeated.emit()
-	_reset_skill1_state()
+	_reset_skill_state()
 	super._die()
 	_emit_health_changed()
 
@@ -90,11 +123,28 @@ func apply_multiplayer_health_snapshot(new_current_health: int) -> void:
 	_emit_health_changed()
 
 
+func _reset_skill_state() -> void:
+	_reset_skill1_state()
+	_reset_skill2_state()
+	boss_skill_phase = BossSkillPhase.SKILL1
+
+
 func _reset_skill1_state() -> void:
 	skill1_elapsed = 0.0
 	skill1_fire_time_left = 0.0
 	skill1_finished = false
 	_clear_skill1_warning_rays()
+
+
+func _reset_skill2_state() -> void:
+	skill2_target_global_position = Vector2.ZERO
+	skill2_elapsed = 0.0
+	skill2_spawn_ticks_completed = 0
+	skill2_shots_fired = 0
+	skill2_warning_shot_index = -1
+	skill2_pending_direction = Vector2.RIGHT
+	skill2_pending_target_player = null
+	_clear_skill2_warning_arrow()
 
 
 func _update_skill1(delta: float) -> void:
@@ -274,3 +324,303 @@ func _clear_skill1_warning_rays() -> void:
 		if is_instance_valid(ray):
 			ray.queue_free()
 	skill1_warning_rays.clear()
+
+
+func _begin_skill2_move() -> void:
+	_clear_skill1_warning_rays()
+	if not _is_skill2_ready():
+		boss_skill_phase = BossSkillPhase.DONE
+		_play_idle_animation()
+		return
+	skill2_target_global_position = _resolve_skill2_target_global_position()
+	boss_skill_phase = BossSkillPhase.MOVE_TO_SKILL2
+	if animated_sprite != null and animated_sprite.sprite_frames != null:
+		if animated_sprite.sprite_frames.has_animation(&"move"):
+			animated_sprite.play(&"move")
+
+
+func _is_skill2_ready() -> bool:
+	return (
+		skill2_config != null
+		and skill2_config.rocket_scene != null
+		and skill2_config.warning_arrow_scene != null
+	)
+
+
+func _update_skill2_move(delta: float) -> void:
+	var offset := skill2_target_global_position - global_position
+	var distance := offset.length()
+	var move_speed := skill2_config.move_speed
+	var arrival_distance := maxf(skill2_config.arrival_distance, 0.0)
+	if distance <= maxf(arrival_distance, move_speed * delta):
+		global_position = skill2_target_global_position
+		velocity = Vector2.ZERO
+		_begin_skill2_attack()
+		return
+
+	var move_direction := offset / distance
+	_set_facing_from_direction(move_direction)
+	if animated_sprite != null and animated_sprite.animation != &"move":
+		_play_scene_animation(&"move")
+	velocity = move_direction * move_speed
+	move_and_slide()
+
+
+func _begin_skill2_attack() -> void:
+	boss_skill_phase = BossSkillPhase.SKILL2
+	skill2_elapsed = 0.0
+	skill2_spawn_ticks_completed = 0
+	skill2_shots_fired = 0
+	skill2_warning_shot_index = -1
+	velocity = Vector2.ZERO
+	_play_idle_animation()
+
+
+func _update_skill2(delta: float) -> void:
+	velocity = Vector2.ZERO
+	skill2_elapsed += maxf(delta, 0.0)
+	_play_idle_animation()
+	_update_skill2_spawn_ticks()
+	_update_skill2_warning_and_fire()
+	if (
+		skill2_elapsed >= skill2_config.get_total_duration()
+		and skill2_shots_fired >= maxi(skill2_config.attack_count, 1)
+	):
+		_clear_skill2_warning_arrow()
+		boss_skill_phase = BossSkillPhase.DONE
+
+
+func _update_skill2_spawn_ticks() -> void:
+	var attack_count := maxi(skill2_config.attack_count, 1)
+	var attack_interval := maxf(skill2_config.attack_interval, 0.05)
+	while skill2_spawn_ticks_completed < attack_count:
+		var spawn_time := float(skill2_spawn_ticks_completed) * attack_interval
+		if skill2_elapsed + 0.0001 < spawn_time:
+			return
+		_request_skill2_spawn_adds()
+		skill2_spawn_ticks_completed += 1
+
+
+func _update_skill2_warning_and_fire() -> void:
+	var attack_count := maxi(skill2_config.attack_count, 1)
+	if skill2_shots_fired >= attack_count:
+		return
+
+	var attack_interval := maxf(skill2_config.attack_interval, 0.05)
+	var shot_index := skill2_shots_fired
+	var warning_start_time := float(shot_index) * attack_interval
+	if skill2_elapsed + 0.0001 < warning_start_time:
+		return
+
+	if skill2_warning_shot_index != shot_index:
+		_spawn_skill2_warning_arrow(shot_index)
+	_update_skill2_warning_arrow()
+
+	var fire_time := warning_start_time + maxf(skill2_config.warning_lead_time, 0.0)
+	if skill2_elapsed + 0.0001 < fire_time:
+		return
+
+	_fire_skill2_rocket()
+	skill2_shots_fired += 1
+	_clear_skill2_warning_arrow()
+
+
+func _spawn_skill2_warning_arrow(shot_index: int) -> void:
+	_clear_skill2_warning_arrow()
+	var spawn_parent := _get_effect_spawn_parent()
+	if spawn_parent == null:
+		return
+	var arrow := skill2_config.warning_arrow_scene.instantiate() as Node2D
+	if arrow == null:
+		return
+	arrow.top_level = true
+	arrow.name = "LinglanSkill2WarningArrow%02d" % shot_index
+	_apply_skill2_warning_arrow_geometry(arrow)
+	spawn_parent.add_child(arrow)
+	skill2_warning_arrow = arrow
+	skill2_warning_shot_index = shot_index
+
+
+func _apply_skill2_warning_arrow_geometry(arrow: Node2D) -> void:
+	var start_distance := skill2_config.warning_arrow_start_distance
+	var end_distance := start_distance + skill2_config.warning_arrow_length
+	var line_points := PackedVector2Array([
+		Vector2(start_distance, 0.0),
+		Vector2(end_distance, 0.0)
+	])
+	for line_name in [&"Glow", &"Core", &"Center"]:
+		var line := arrow.get_node_or_null(NodePath(line_name)) as Line2D
+		if line != null:
+			line.points = line_points
+	var arrow_head := arrow.get_node_or_null("ArrowHead") as Polygon2D
+	if arrow_head != null:
+		arrow_head.polygon = PackedVector2Array([
+			Vector2(end_distance + 16.0, 0.0),
+			Vector2(end_distance - 10.0, -12.0),
+			Vector2(end_distance - 4.0, 0.0),
+			Vector2(end_distance - 10.0, 12.0),
+		])
+
+
+func _update_skill2_warning_arrow() -> void:
+	_update_skill2_pending_target()
+	if skill2_warning_arrow == null or not is_instance_valid(skill2_warning_arrow):
+		return
+	skill2_warning_arrow.global_position = global_position
+	skill2_warning_arrow.global_rotation = skill2_pending_direction.angle()
+	var warning_progress := _get_skill2_warning_progress()
+	skill2_warning_arrow.modulate.a = lerpf(0.42, 0.88, warning_progress)
+
+
+func _get_skill2_warning_progress() -> float:
+	if skill2_warning_shot_index < 0:
+		return 0.0
+	var lead_time := maxf(skill2_config.warning_lead_time, 0.001)
+	var warning_start_time := float(skill2_warning_shot_index) * maxf(skill2_config.attack_interval, 0.05)
+	return clampf((skill2_elapsed - warning_start_time) / lead_time, 0.0, 1.0)
+
+
+func _fire_skill2_rocket() -> void:
+	_update_skill2_pending_target()
+	var projectile := skill2_config.rocket_scene.instantiate() as LinglanSkill2SakuraRocket
+	if projectile == null:
+		return
+
+	var spawn_parent := _get_effect_spawn_parent()
+	if spawn_parent == null:
+		projectile.free()
+		return
+
+	var spawn_position := global_position + skill2_pending_direction * skill2_config.rocket_spawn_distance
+	projectile.top_level = true
+	projectile.setup(
+		skill2_pending_direction,
+		skill2_config.rocket_damage,
+		skill2_config.rocket_speed,
+		skill2_config.rocket_lifetime,
+		skill2_config.rocket_explosion_radius,
+		skill2_pending_target_player,
+		skill2_config.rocket_homing_turn_rate
+	)
+	spawn_parent.add_child(projectile)
+	projectile.global_position = spawn_position
+	_play_skill2_fire_audio()
+	_register_skill2_multiplayer_projectile(
+		projectile,
+		spawn_position,
+		skill2_pending_direction,
+		skill2_pending_target_player
+	)
+
+
+func _register_skill2_multiplayer_projectile(
+	projectile: LinglanSkill2SakuraRocket,
+	spawn_position: Vector2,
+	projectile_direction: Vector2,
+	projectile_target_player: Player
+) -> void:
+	var current_scene := get_tree().current_scene
+	if current_scene == null or not current_scene.has_method("register_local_projectile"):
+		return
+	var target_peer_id := projectile_target_player.peer_id if projectile_target_player != null else 0
+	current_scene.call(
+		"register_local_projectile",
+		projectile,
+		&"linglan_skill2_rocket",
+		get_multiplayer_authority(),
+		spawn_position,
+		projectile_direction,
+		skill2_config.rocket_damage,
+		skill2_config.rocket_speed,
+		skill2_config.rocket_lifetime,
+		false,
+		target_peer_id
+	)
+
+
+func _update_skill2_pending_target() -> void:
+	skill2_pending_target_player = _pick_skill2_target_player()
+	var target_position := (
+		skill2_pending_target_player.global_position
+		if skill2_pending_target_player != null and is_instance_valid(skill2_pending_target_player)
+		else global_position + skill2_pending_direction
+	)
+	var next_direction := global_position.direction_to(target_position)
+	if next_direction == Vector2.ZERO:
+		next_direction = skill2_pending_direction
+	if next_direction == Vector2.ZERO:
+		next_direction = Vector2.RIGHT
+	skill2_pending_direction = next_direction.normalized()
+
+
+func _pick_skill2_target_player() -> Player:
+	var host := _find_parent_with_method(&"get_linglan_skill2_target_player")
+	if host != null:
+		return host.call("get_linglan_skill2_target_player", global_position) as Player
+	if target_player != null and is_instance_valid(target_player) and not target_player.is_dead:
+		return target_player
+	return null
+
+
+func _request_skill2_spawn_adds() -> void:
+	var host := _find_parent_with_method(&"spawn_linglan_skill2_enemies")
+	if host == null:
+		return
+	host.call(
+		"spawn_linglan_skill2_enemies",
+		skill2_config.spawn_enemy_config,
+		skill2_config.spawn_marker_names
+	)
+
+
+func _resolve_skill2_target_global_position() -> Vector2:
+	var host := _find_parent_with_method(&"get_linglan_skill2_target_global_position")
+	if host != null:
+		return host.call(
+			"get_linglan_skill2_target_global_position",
+			skill2_config.target_cell
+		) as Vector2
+	return global_position
+
+
+func _find_parent_with_method(method_name: StringName) -> Node:
+	var current: Node = self
+	while current != null:
+		if current.has_method(method_name):
+			return current
+		current = current.get_parent()
+	var current_scene := get_tree().current_scene
+	if current_scene != null and current_scene.has_method(method_name):
+		return current_scene
+	return null
+
+
+func _get_effect_spawn_parent() -> Node:
+	var current_scene := get_tree().current_scene
+	if current_scene != null:
+		return current_scene
+	return get_parent()
+
+
+func _play_skill2_fire_audio() -> void:
+	if skill2_fire_audio == null:
+		return
+	if skill2_fire_audio.stream == null:
+		return
+	SKILL2_AUDIO_LIMITER.play(skill2_fire_audio)
+
+
+func _play_idle_animation() -> void:
+	if animated_sprite == null:
+		return
+	if animated_sprite.animation == &"idle" and animated_sprite.is_playing():
+		return
+	if animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"idle"):
+		animated_sprite.play(&"idle")
+
+
+func _clear_skill2_warning_arrow() -> void:
+	if skill2_warning_arrow != null and is_instance_valid(skill2_warning_arrow):
+		skill2_warning_arrow.queue_free()
+	skill2_warning_arrow = null
+	skill2_warning_shot_index = -1

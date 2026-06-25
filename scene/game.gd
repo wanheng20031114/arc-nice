@@ -1194,6 +1194,50 @@ func _try_spawn_enemy(enemy_config: EnemyConfig) -> bool:
 	return true
 
 
+func spawn_linglan_skill2_enemies(
+	enemy_config: EnemyConfig,
+	marker_names: Array[StringName]
+) -> void:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		return
+	if enemy_config == null:
+		return
+	for marker_name in marker_names:
+		_try_spawn_boss_add_at_marker(enemy_config, marker_name)
+
+
+func _try_spawn_boss_add_at_marker(enemy_config: EnemyConfig, marker_name: StringName) -> bool:
+	if enemy_config == null:
+		return false
+	if enemy_container == null or player == null:
+		return false
+	var spawn_marker := _get_enemy_spawn_marker(marker_name)
+	if spawn_marker == null:
+		return false
+
+	var spawn_scene := enemy_config.enemy_scene
+	if spawn_scene == null:
+		push_warning("Boss 召唤敌人配置 %s 缺少 enemy_scene。" % enemy_config.resource_path)
+		return false
+	var enemy_instance := spawn_scene.instantiate() as Enemy
+	if enemy_instance == null:
+		push_warning("Boss 召唤敌人场景实例化失败。")
+		return false
+
+	enemy_container.add_child(enemy_instance)
+	enemy_instance.global_position = spawn_marker.global_position
+	enemy_instance.setup(enemy_config, _pick_enemy_target(spawn_marker.global_position), grid_pathfinder)
+	var enemy_id := enemy_instance.get_instance_id()
+	if not enemy_instance.defeated.is_connected(_on_boss_add_defeated):
+		enemy_instance.defeated.connect(_on_boss_add_defeated)
+	if not enemy_instance.tree_exited.is_connected(_on_boss_enemy_tree_exited.bind(enemy_id)):
+		enemy_instance.tree_exited.connect(_on_boss_enemy_tree_exited.bind(enemy_id))
+	_register_multiplayer_enemy_instance(enemy_instance, enemy_config, enemy_instance.global_position)
+	_spawn_enemy_spawn_effect(spawn_marker.global_position)
+	_try_play_enemy_spawn_audio()
+	return true
+
+
 func _register_multiplayer_enemy_instance(
 	enemy_instance: Enemy,
 	enemy_config: EnemyConfig,
@@ -1396,6 +1440,10 @@ func _activate_linglan_boss() -> void:
 func _on_boss_enemy_tree_exited(enemy_id: int) -> void:
 	active_wave_enemy_ids.erase(enemy_id)
 	_mark_multiplayer_enemy_removed(enemy_id)
+
+
+func _on_boss_add_defeated(enemy: Enemy) -> void:
+	_emit_multiplayer_enemy_defeated(enemy)
 
 
 func _rebroadcast_linglan_boss_started_after_sync_window(
@@ -1783,6 +1831,30 @@ func _pick_enemy_target(from_position: Vector2) -> Player:
 			best_distance = distance
 			best_player = candidate
 	return best_player if best_player != null else player
+
+
+func get_linglan_skill2_target_global_position(target_cell: Vector2i) -> Vector2:
+	if ground_tile_map_layer != null:
+		return ground_tile_map_layer.to_global(ground_tile_map_layer.map_to_local(target_cell))
+	if active_boss_config != null:
+		return _get_boss_arena_center(active_boss_config)
+	return Vector2.ZERO
+
+
+func get_linglan_skill2_target_player(from_position: Vector2) -> Player:
+	return _pick_enemy_target(from_position)
+
+
+func _get_enemy_spawn_marker(marker_name: StringName) -> Marker2D:
+	if marker_name == &"":
+		return null
+	for marker in enemy_spawn_points:
+		if marker != null and marker.name == String(marker_name):
+			return marker
+	if enemy_spawn_points_root == null:
+		return null
+	var node := enemy_spawn_points_root.get_node_or_null(NodePath(String(marker_name)))
+	return node as Marker2D
 
 
 func _is_wave_system_ready() -> bool:

@@ -15,6 +15,7 @@ const CAPOO_MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_firebal
 const CAPOO_SMG_BULLET_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
 const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
 const LINGLAN_SAKURA_BULLET_SCENE := preload("res://scene/linglan_skill1_sakura_bullet.tscn")
+const LINGLAN_SKILL2_ROCKET_SCENE := preload("res://scene/linglan_skill2_sakura_rocket.tscn")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 
 const INPUT_BUTTON_SKILL1 := 1
@@ -793,7 +794,8 @@ func register_local_projectile(
 	damage: int,
 	speed: float,
 	lifetime: float,
-	pierces_enemies: bool = false
+	pierces_enemies: bool = false,
+	target_peer_id: int = 0
 ) -> void:
 	if projectile == null:
 		return
@@ -827,6 +829,7 @@ func register_local_projectile(
 				speed,
 				lifetime,
 				pierces_enemies,
+				target_peer_id,
 			]
 		)
 	else:
@@ -840,7 +843,8 @@ func register_local_projectile(
 			damage,
 			speed,
 			lifetime,
-			pierces_enemies
+			pierces_enemies,
+			target_peer_id
 		)
 
 
@@ -854,7 +858,8 @@ func _rpc_projectile_fired_from_client(
 	damage: int,
 	speed: float,
 	lifetime: float,
-	pierces_enemies: bool = false
+	pierces_enemies: bool = false,
+	target_peer_id: int = 0
 ) -> void:
 	if not net_manager.is_host():
 		return
@@ -899,6 +904,7 @@ func _rpc_projectile_fired_from_client(
 			accepted_speed,
 			accepted_lifetime,
 			accepted_pierces_enemies,
+			target_peer_id,
 		]
 	)
 	net_projectile_fired(
@@ -910,7 +916,8 @@ func _rpc_projectile_fired_from_client(
 		accepted_damage,
 		accepted_speed,
 		accepted_lifetime,
-		accepted_pierces_enemies
+		accepted_pierces_enemies,
+		target_peer_id
 	)
 
 
@@ -924,7 +931,8 @@ func net_projectile_fired(
 	damage: int,
 	speed: float,
 	lifetime: float,
-	pierces_enemies: bool = false
+	pierces_enemies: bool = false,
+	target_peer_id: int = 0
 ) -> void:
 	if _known_projectiles.has(projectile_id):
 		return
@@ -937,7 +945,8 @@ func net_projectile_fired(
 		damage,
 		speed,
 		lifetime,
-		pierces_enemies
+		pierces_enemies,
+		target_peer_id
 	)
 
 
@@ -950,7 +959,8 @@ func _spawn_network_projectile(
 	damage: int,
 	speed: float,
 	lifetime: float,
-	pierces_enemies: bool = false
+	pierces_enemies: bool = false,
+	target_peer_id: int = 0
 ) -> void:
 	var projectile := _instantiate_projectile(
 		projectile_type,
@@ -959,7 +969,8 @@ func _spawn_network_projectile(
 		damage,
 		speed,
 		lifetime,
-		pierces_enemies
+		pierces_enemies,
+		target_peer_id
 	)
 	if projectile == null:
 		return
@@ -984,7 +995,8 @@ func _instantiate_projectile(
 	damage: int,
 	speed: float,
 	lifetime: float,
-	pierces_enemies: bool = false
+	pierces_enemies: bool = false,
+	target_peer_id: int = 0
 ) -> Node:
 	match projectile_type:
 		&"player_bullet":
@@ -1051,6 +1063,24 @@ func _instantiate_projectile(
 			sakura_bullet.top_level = true
 			sakura_bullet.setup(direction, damage, speed, lifetime)
 			return sakura_bullet
+		&"linglan_skill2_rocket":
+			var sakura_rocket := LINGLAN_SKILL2_ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
+			if sakura_rocket == null:
+				return null
+			sakura_rocket.top_level = true
+			var rocket_target: Player = null
+			if game != null and target_peer_id > 0:
+				rocket_target = game.get_player_for_peer(target_peer_id)
+			sakura_rocket.setup(
+				direction,
+				damage,
+				speed,
+				lifetime,
+				sakura_rocket.explosion_radius,
+				rocket_target,
+				sakura_rocket.homing_turn_rate
+			)
+			return sakura_rocket
 		_:
 			return null
 

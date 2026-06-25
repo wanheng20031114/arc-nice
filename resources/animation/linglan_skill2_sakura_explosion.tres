@@ -1,0 +1,123 @@
+[gd_resource type="SpriteFrames" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/boss_linglan/skill2_sakura_explosion.png" id="1_texture"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_0"]
+atlas = ExtResource("1_texture")
+region = Rect2(0, 0, 256, 256)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_1"]
+atlas = ExtResource("1_texture")
+region = Rect2(256, 0, 256, 256)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_2"]
+atlas = ExtResource("1_texture")
+region = Rect2(512, 0, 256, 256)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_3"]
+atlas = ExtResource("1_texture")
+region = Rect2(768, 0, 256, 256)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_4"]
+atlas = ExtResource("1_texture")
+region = Rect2(0, 256, 256, 256)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_5"]
+atlas = ExtResource("1_texture")
+region = Rect2(256, 256, 256, 256)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_6"]
+atlas = ExtResource("1_texture")
+region = Rect2(512, 256, 256, 256)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_7"]
+atlas = ExtResource("1_texture")
+region = Rect2(768, 256, 256, 256)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_8"]
+atlas = ExtResource("1_texture")
+region = Rect2(0, 512, 256, 256)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_9"]
+atlas = ExtResource("1_texture")
+region = Rect2(256, 512, 256, 256)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_10"]
+atlas = ExtResource("1_texture")
+region = Rect2(512, 512, 256, 256)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_11"]
+atlas = ExtResource("1_texture")
+region = Rect2(768, 512, 256, 256)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_12"]
+atlas = ExtResource("1_texture")
+region = Rect2(0, 768, 256, 256)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_13"]
+atlas = ExtResource("1_texture")
+region = Rect2(256, 768, 256, 256)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_14"]
+atlas = ExtResource("1_texture")
+region = Rect2(512, 768, 256, 256)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_explode_15"]
+atlas = ExtResource("1_texture")
+region = Rect2(768, 768, 256, 256)
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_3")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_4")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_5")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_7")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_8")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_9")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_10")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_11")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_12")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_13")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_14")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_explode_15")
+}],
+"loop": false,
+"name": &"explode",
+"speed": 18.0
+}]

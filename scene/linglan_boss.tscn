@@ -5,6 +5,8 @@
 [ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="3_shader"]
 [ext_resource type="SpriteFrames" uid="uid://ub8py66qcmfq" path="res://resources/animation/linglan.tres" id="4_frames"]
 [ext_resource type="Resource" path="res://resources/config/bosses/linglan_skill1.tres" id="5_skill1"]
+[ext_resource type="Resource" path="res://resources/config/bosses/linglan_skill2.tres" id="6_skill2"]
+[ext_resource type="AudioStream" path="res://resources/audio/capoo_mage_fireball_cast.wav" id="7_skill2_fire_audio"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_hd8t5"]
 resource_local_to_scene = true
@@ -35,6 +37,7 @@ script = ExtResource("2_script")
 starts_active = false
 boss_display_name = "铃兰"
 skill1_config = ExtResource("5_skill1")
+skill2_config = ExtResource("6_skill2")
 
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
 texture_filter = 2
@@ -54,3 +57,9 @@ disabled = true
 position = Vector2(0, -4)
 shape = SubResource("CapsuleShape2D_touch")
 disabled = true
+
+[node name="Skill2FireAudio" type="AudioStreamPlayer2D" parent="." index="5"]
+stream = ExtResource("7_skill2_fire_audio")
+volume_db = -7.0
+max_distance = 260.0
+max_polyphony = 3

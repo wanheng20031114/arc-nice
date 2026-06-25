@@ -31,6 +31,10 @@ HUD_SOURCE = "dev_assets/source_images/boss_linglan/hud_imagegen_green.png"
 HUD_ALPHA = "dev_assets/source_images/boss_linglan/hud_alpha.png"
 VFX_SOURCE = "dev_assets/source_images/boss_linglan/sakura_vfx_imagegen_green.png"
 VFX_ALPHA = "dev_assets/source_images/boss_linglan/sakura_vfx_alpha.png"
+SKILL2_ROCKET_SOURCE = "dev_assets/source_images/boss_linglan/skill2_sakura_rocket_imagegen_green.png"
+SKILL2_ROCKET_ALPHA = "dev_assets/source_images/boss_linglan/skill2_sakura_rocket_alpha.png"
+SKILL2_EXPLOSION_SOURCE = "dev_assets/source_images/boss_linglan/skill2_sakura_explosion_imagegen_green.png"
+SKILL2_EXPLOSION_ALPHA = "dev_assets/source_images/boss_linglan/skill2_sakura_explosion_alpha.png"
 
 OUTPUT_TEXTURE_DIR = "resources/texture/boss_linglan"
 OUTPUT_FRAMES = "resources/animation/linglan.tres"
@@ -40,12 +44,23 @@ OUTPUT_HEALTH_FILL = "resources/texture/boss_linglan/health_fill.png"
 OUTPUT_PETAL = "resources/texture/boss_linglan/sakura_petal.png"
 OUTPUT_CONVERGENCE = "resources/texture/boss_linglan/sakura_convergence.png"
 OUTPUT_CONVERGENCE_FRAMES = "resources/animation/linglan_sakura_convergence.tres"
+OUTPUT_SKILL2_ROCKET = "resources/texture/boss_linglan/skill2_sakura_rocket.png"
+OUTPUT_SKILL2_ROCKET_FRAMES = "resources/animation/linglan_skill2_sakura_rocket.tres"
+OUTPUT_SKILL2_EXPLOSION = "resources/texture/boss_linglan/skill2_sakura_explosion.png"
+OUTPUT_SKILL2_EXPLOSION_FRAMES = "resources/animation/linglan_skill2_sakura_explosion.tres"
 
 CONVERGENCE_TEXTURE_RESOURCE = "res://resources/texture/boss_linglan/sakura_convergence.png"
+SKILL2_ROCKET_TEXTURE_RESOURCE = "res://resources/texture/boss_linglan/skill2_sakura_rocket.png"
+SKILL2_EXPLOSION_TEXTURE_RESOURCE = "res://resources/texture/boss_linglan/skill2_sakura_explosion.png"
 SPRITE_FRAMES_UID = "uid://ub8py66qcmfq"
 
 SOURCE_COLUMNS = 8
 SOURCE_ROWS = 1
+SKILL2_EXPLOSION_COLUMNS = 4
+SKILL2_EXPLOSION_ROWS = 4
+SKILL2_ROCKET_FRAME_SIZE = (192, 96)
+SKILL2_ROCKET_MAX_FOREGROUND_SIZE = (166, 66)
+SKILL2_EXPLOSION_FRAME_SIZE = (256, 256)
 FRAME_PADDING = 32
 FRAME_SIZE_ALIGNMENT = 8
 MIN_COMPONENT_ALPHA_PIXELS = 120
@@ -135,6 +150,25 @@ def _remove_global_green_background(image: Image.Image) -> Image.Image:
 	array[mask | chroma_green] = (0, 0, 0, 0)
 	visible_pixels = array[:, :, 3] > 0
 	array[:, :, 3][visible_pixels] = 255
+	return Image.fromarray(array)
+
+
+def _despill_chroma_green(image: Image.Image) -> Image.Image:
+	array = np.array(image.convert("RGBA"), dtype=np.uint8)
+	alpha = array[:, :, 3] > 0
+	red = array[:, :, 0].astype(np.int16)
+	green = array[:, :, 1].astype(np.int16)
+	blue = array[:, :, 2].astype(np.int16)
+	strong_green = alpha & (green >= 150) & (red <= 115) & (blue <= 115) & (green >= red + 45)
+	array[strong_green] = (0, 0, 0, 0)
+
+	remaining_alpha = array[:, :, 3] > 0
+	red = array[:, :, 0].astype(np.int16)
+	green = array[:, :, 1].astype(np.int16)
+	blue = array[:, :, 2].astype(np.int16)
+	green_bias = remaining_alpha & (green > red + 14) & (green > blue + 14)
+	clamped_green = np.maximum(red, blue) + 10
+	array[:, :, 1][green_bias] = np.minimum(array[:, :, 1][green_bias], clamped_green[green_bias]).astype(np.uint8)
 	return Image.fromarray(array)
 
 
@@ -444,13 +478,17 @@ def _build_animation_strip(frames: list[tuple[str, Image.Image]]) -> tuple[Image
 def _animation_speed(animation_name: str) -> float:
 	if animation_name.startswith("idle"):
 		return 6.0
+	if animation_name == "fly":
+		return 10.0
+	if animation_name == "explode":
+		return 18.0
 	if animation_name == "die":
 		return 8.0
 	return 9.0
 
 
 def _animation_loop(animation_name: str) -> bool:
-	return animation_name != "die"
+	return animation_name not in ("die", "explode")
 
 
 def _write_spriteframes(
@@ -776,11 +814,120 @@ def _process_linglan_sprite(root: Path) -> None:
 	)
 
 
+def _fit_foreground_on_canvas(
+	image: Image.Image,
+	canvas_size: tuple[int, int],
+	max_foreground_size: tuple[int, int],
+	padding: int = 0,
+	resampling: Image.Resampling = Image.Resampling.LANCZOS,
+) -> Image.Image:
+	left, top, right, bottom = _foreground_bbox(image, padding)
+	crop = image.crop((left, top, right, bottom))
+	scale = min(
+		max_foreground_size[0] / max(crop.width, 1),
+		max_foreground_size[1] / max(crop.height, 1),
+	)
+	new_size = (
+		max(1, int(round(crop.width * scale))),
+		max(1, int(round(crop.height * scale))),
+	)
+	resized = crop.resize(new_size, resampling)
+	result = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
+	result.alpha_composite(
+		resized,
+		(
+			(canvas_size[0] - resized.width) // 2,
+			(canvas_size[1] - resized.height) // 2,
+		),
+	)
+	return result
+
+
+def _process_skill2_rocket(root: Path) -> None:
+	source = Image.open(root / SKILL2_ROCKET_SOURCE)
+	alpha = _despill_chroma_green(_remove_global_green_background(source))
+	alpha_path = root / SKILL2_ROCKET_ALPHA
+	alpha_path.parent.mkdir(parents=True, exist_ok=True)
+	alpha.save(alpha_path)
+
+	rocket = _fit_foreground_on_canvas(
+		alpha,
+		SKILL2_ROCKET_FRAME_SIZE,
+		SKILL2_ROCKET_MAX_FOREGROUND_SIZE,
+		8,
+		Image.Resampling.LANCZOS,
+	)
+	rocket = _despill_chroma_green(rocket)
+	rocket_path = root / OUTPUT_SKILL2_ROCKET
+	rocket_path.parent.mkdir(parents=True, exist_ok=True)
+	rocket.save(rocket_path)
+
+	regions = {"fly_0": (0, 0, rocket.width, rocket.height)}
+	_write_spriteframes(
+		root / OUTPUT_SKILL2_ROCKET_FRAMES,
+		SKILL2_ROCKET_TEXTURE_RESOURCE,
+		regions,
+		OrderedDict([("fly", ["fly_0"])]),
+	)
+	print(f"Skill2 rocket: {rocket_path} ({rocket.width}x{rocket.height})")
+
+
+def _process_skill2_explosion(root: Path) -> None:
+	source = Image.open(root / SKILL2_EXPLOSION_SOURCE)
+	alpha = _despill_chroma_green(_remove_global_green_background(source))
+	alpha_path = root / SKILL2_EXPLOSION_ALPHA
+	alpha_path.parent.mkdir(parents=True, exist_ok=True)
+	alpha.save(alpha_path)
+
+	frame_width, frame_height = SKILL2_EXPLOSION_FRAME_SIZE
+	sheet = Image.new(
+		"RGBA",
+		(frame_width * SKILL2_EXPLOSION_COLUMNS, frame_height * SKILL2_EXPLOSION_ROWS),
+		(0, 0, 0, 0),
+	)
+	regions: dict[str, FrameRegion] = {}
+	frame_names: list[str] = []
+	for row in range(SKILL2_EXPLOSION_ROWS):
+		cell_top = round(row * alpha.height / SKILL2_EXPLOSION_ROWS)
+		cell_bottom = round((row + 1) * alpha.height / SKILL2_EXPLOSION_ROWS)
+		for column in range(SKILL2_EXPLOSION_COLUMNS):
+			cell_left = round(column * alpha.width / SKILL2_EXPLOSION_COLUMNS)
+			cell_right = round((column + 1) * alpha.width / SKILL2_EXPLOSION_COLUMNS)
+			cell = alpha.crop((cell_left, cell_top, cell_right, cell_bottom))
+			if cell.getchannel("A").getbbox() is None:
+				raise ValueError(f"Skill2 explosion cell {column},{row} has no foreground.")
+			frame = cell.resize(SKILL2_EXPLOSION_FRAME_SIZE, Image.Resampling.LANCZOS)
+			frame = _despill_chroma_green(frame)
+			frame_index = row * SKILL2_EXPLOSION_COLUMNS + column
+			frame_name = f"explode_{frame_index}"
+			x = column * frame_width
+			y = row * frame_height
+			sheet.alpha_composite(frame, (x, y))
+			regions[frame_name] = (x, y, frame_width, frame_height)
+			frame_names.append(frame_name)
+
+	explosion_path = root / OUTPUT_SKILL2_EXPLOSION
+	explosion_path.parent.mkdir(parents=True, exist_ok=True)
+	sheet.save(explosion_path)
+	_write_spriteframes(
+		root / OUTPUT_SKILL2_EXPLOSION_FRAMES,
+		SKILL2_EXPLOSION_TEXTURE_RESOURCE,
+		regions,
+		OrderedDict([("explode", frame_names)]),
+	)
+	print(f"Skill2 explosion: {explosion_path} ({sheet.width}x{sheet.height})")
+
+
+def _process_skill2(root: Path) -> None:
+	_process_skill2_rocket(root)
+	_process_skill2_explosion(root)
+
+
 def main() -> None:
 	parser = argparse.ArgumentParser(description="Build Linglan boss raster assets.")
 	parser.add_argument(
 		"--only",
-		choices=("all", "sprite", "hud", "vfx"),
+		choices=("all", "sprite", "hud", "vfx", "skill2"),
 		default="all",
 		help="Limit processing to one asset group.",
 	)
@@ -793,6 +940,8 @@ def main() -> None:
 		_process_hud(root)
 	if args.only in ("all", "vfx"):
 		_process_vfx(root)
+	if args.only in ("all", "skill2"):
+		_process_skill2(root)
 
 
 if __name__ == "__main__":

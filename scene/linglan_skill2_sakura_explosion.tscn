@@ -1,0 +1,20 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scene/linglan_skill2_sakura_explosion.gd" id="1_script"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/linglan_skill2_sakura_explosion.tres" id="2_frames"]
+[ext_resource type="AudioStream" path="res://resources/audio/cowboy_explosion.wav" id="3_audio"]
+
+[node name="LinglanSkill2SakuraExplosion" type="Node2D"]
+z_index = 5
+script = ExtResource("1_script")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+texture_filter = 2
+sprite_frames = ExtResource("2_frames")
+animation = &"explode"
+
+[node name="ExplosionAudio" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("3_audio")
+volume_db = -8.0
+max_distance = 360.0
+max_polyphony = 2
