@@ -45,6 +45,11 @@ SINGLE_SOURCES = {
 		"body_anchor_target": (48.0, 67.0),
 		"component_row_slicing": True,
 	},
+	"capoo_smg": {
+		"path": ROOT / "dev_assets/source_images/capoo_smg_generated_v1.png",
+		"key": "magenta",
+		"component_row_slicing": True,
+	},
 }
 
 GRID_COLUMNS = 4

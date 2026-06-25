@@ -51,6 +51,7 @@ CAPOO_VARIANTS = OrderedDict(
 SPRITE_FRAME_UIDS = {
 	"capoo_mage": "uid://bynglissk1f1v",
 	"capoo_sniper": "uid://b0k8qc31gx3ei",
+	"capoo_smg": "uid://bjqyhx872ip4x",
 }
 
 TEXTURE_UIDS = {

@@ -19,13 +19,13 @@ shader_parameter/dodge_outline_width = 3.0
 shader_parameter/slow_overlay_strength = 0.0
 shader_parameter/slow_overlay_color = Color(0.55, 0.86, 1, 1)
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_wc5ww"]
-resource_local_to_scene = true
-size = Vector2(15, 18.5)
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_buikk"]
+radius = 7.0
+height = 18.0
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_77wya"]
-resource_local_to_scene = true
-size = Vector2(15, 18.5)
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_wc5ww"]
+radius = 7.0
+height = 18.0
 
 [node name="CapooSniper" unique_id=1802724319 instance=ExtResource("1_base")]
 script = ExtResource("2_script")
@@ -43,12 +43,10 @@ animation = &"move"
 frame_progress = 0.43525958
 
 [node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
-position = Vector2(-0.5, -0.25)
-shape = SubResource("RectangleShape2D_wc5ww")
+shape = SubResource("CapsuleShape2D_buikk")
 
 [node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
-position = Vector2(-0.5, -0.25)
-shape = SubResource("RectangleShape2D_77wya")
+shape = SubResource("CapsuleShape2D_wc5ww")
 
 [node name="AimGlow" type="Polygon2D" parent="." index="7" unique_id=799485220]
 visible = false
