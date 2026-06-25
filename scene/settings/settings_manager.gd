@@ -399,8 +399,8 @@ func _center_window(window: Window) -> void:
 	var screen := DisplayServer.window_get_current_screen()
 	var usable_rect := DisplayServer.screen_get_usable_rect(screen)
 	var centered := usable_rect.position + Vector2i(
-		maxi((usable_rect.size.x - window.size.x) / 2, 0),
-		maxi((usable_rect.size.y - window.size.y) / 2, 0)
+		maxi(floori(float(usable_rect.size.x - window.size.x) / 2.0), 0),
+		maxi(floori(float(usable_rect.size.y - window.size.y) / 2.0), 0)
 	)
 	window.position = centered
 

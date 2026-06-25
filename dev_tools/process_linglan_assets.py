@@ -14,13 +14,14 @@ from scipy import ndimage
 
 from connected_background_remover import (
 	ConnectedBackgroundOptions,
+	_rgb_to_hsv_arrays,
 	build_sample_background_mask,
 	remove_connected_background,
 )
 
 
-SOURCE_SHEET = "dev_assets/source_images/linglan_boss_sheet_v3_imagegen_green.png"
-ALPHA_SHEET = "dev_assets/source_images/linglan_boss_sheet_v3_alpha.png"
+SOURCE_SHEET = "dev_assets/source_images/linglan_boss_sheet_v4_purple.png"
+ALPHA_SHEET = "dev_assets/source_images/linglan_boss_sheet_v4_alpha.png"
 HUD_SOURCE = "dev_assets/source_images/linglan_boss_hud_imagegen_green.png"
 HUD_ALPHA = "dev_assets/source_images/linglan_boss_hud_alpha.png"
 VFX_SOURCE = "dev_assets/source_images/linglan_sakura_vfx_imagegen_green.png"
@@ -42,7 +43,7 @@ TEXTURE_UID = "uid://dkt8l1h0rrh71"
 
 SOURCE_COLUMNS = 8
 SOURCE_ROWS = 3
-FRAME_PADDING = 18
+FRAME_PADDING = 32
 FRAME_SIZE_ALIGNMENT = 8
 MIN_COMPONENT_ALPHA_PIXELS = 120
 FRAME_GROUP_RADIUS = 8
@@ -93,6 +94,32 @@ def _remove_green_background(image: Image.Image) -> Image.Image:
 			green_ratio_limit=0.84,
 		),
 	)
+
+
+def _remove_linglan_sprite_background(image: Image.Image) -> Image.Image:
+	result = remove_connected_background(
+		image,
+		ConnectedBackgroundOptions(
+			rgb_tolerance=88,
+			hue_tolerance=0.085,
+			expansion_radius=18,
+			min_hue_saturation=0.30,
+			green_ratio_limit=1.15,
+		),
+	)
+	array = np.array(result.convert("RGBA"), dtype=np.uint8)
+	rgb_float = array[:, :, :3].astype(np.float32) / 255.0
+	hue, saturation, value = _rgb_to_hsv_arrays(rgb_float)
+	purple_background = (
+		(saturation >= 0.28)
+		& (value >= 0.14)
+		& (hue >= 0.66)
+		& (hue <= 0.80)
+	)
+	array[purple_background] = (0, 0, 0, 0)
+	visible_pixels = array[:, :, 3] > 0
+	array[:, :, 3][visible_pixels] = 255
+	return Image.fromarray(array)
 
 
 def _remove_global_green_background(image: Image.Image) -> Image.Image:
@@ -537,7 +564,7 @@ def _process_vfx(root: Path) -> None:
 
 def _process_linglan_sprite(root: Path) -> None:
 	source = Image.open(root / SOURCE_SHEET)
-	alpha_source = _remove_green_background(source)
+	alpha_source = _remove_linglan_sprite_background(source)
 	alpha_path = root / ALPHA_SHEET
 	alpha_path.parent.mkdir(parents=True, exist_ok=True)
 	alpha_source.save(alpha_path)

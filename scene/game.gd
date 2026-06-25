@@ -4,6 +4,8 @@ class_name Game
 const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/enemy/yuanshi_insect_spawn_effect.tscn")
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/guardian_point_light.png")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
+const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := "res://scene/linglan_boss_intro_vfx.tscn"
+const BOSS_HEALTH_HUD_SCENE_PATH := "res://scene/boss_health_hud.tscn"
 const COUNTDOWN_FINAL_SECONDS := 3
 const MULTIPLAYER_DEFEAT_GRACE_SECONDS := 0.25
 const PURCHASE_RESULT_SUCCESS := 0
@@ -96,9 +98,7 @@ enum WaveState {
 @onready var debug_collectible_window: DebugCollectibleWindow = $SettingsLayer/DebugCollectibleWindow
 @onready var merchant: ZhuangfangyiMerchant = $ZhuangfangyiMerchant
 @onready var luoxi_merchant: LuoxiMerchant = $LuoxiMerchant
-@onready var linglan_boss: LinglanBoss = $BossContainer/LinglanBoss
-@onready var linglan_boss_intro_vfx: LinglanBossIntroVFX = $LinglanBossIntroVFX
-@onready var boss_health_hud: BossHealthHUD = $BossHealthHUD
+@onready var boss_container: Node2D = $BossContainer
 @onready var damage_number_pool: DamageNumberPool = $DamageNumberPool
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
@@ -132,6 +132,12 @@ var last_spawn_audio_msec: int = -100000
 var luoxi_collectible_claimed_peers: Dictionary = {}
 var linglan_boss_started: bool = false
 var active_boss_config: Resource
+var linglan_boss: LinglanBoss = null
+var linglan_boss_intro_vfx: LinglanBossIntroVFX = null
+var boss_health_hud: BossHealthHUD = null
+var boss_runtime_scene_loads_requested: bool = false
+var navigation_prewarm_requested: bool = false
+var navigation_prewarmed: bool = false
 
 
 func _ready() -> void:
@@ -144,8 +150,6 @@ func _ready() -> void:
 	_collect_enemy_spawn_points()
 	_configure_timers()
 	_prewarm_enemy_visual_resources()
-	if runtime_mode != RuntimeMode.CLIENT_VIEW:
-		_prewarm_enemy_navigation_grids()
 	if runtime_mode != RuntimeMode.SINGLEPLAYER:
 		run_state.ensure_run_started()
 		run_state.set_active_multiplayer_peer(multiplayer_local_peer_id)
@@ -165,6 +169,7 @@ func _ready() -> void:
 		player.died.connect(_on_player_died)
 	_set_merchant_active(false)
 	_configure_linglan_boss()
+	call_deferred("_deferred_request_boss_runtime_scene_loads")
 
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		auto_start_waves = false
@@ -503,6 +508,32 @@ func _configure_linglan_boss() -> void:
 		boss_health_hud.hide_all()
 
 
+func _request_boss_runtime_scene_loads() -> void:
+	if boss_runtime_scene_loads_requested:
+		return
+	if not linglan_boss_enabled:
+		return
+	boss_runtime_scene_loads_requested = true
+	for boss_config in bosses:
+		if not _boss_config_has_required_data(boss_config):
+			continue
+		var enemy_config_path := _get_boss_enemy_config_path(boss_config)
+		if not enemy_config_path.is_empty():
+			ResourceLoader.load_threaded_request(enemy_config_path)
+	ResourceLoader.load_threaded_request(LINGLAN_BOSS_INTRO_VFX_SCENE_PATH)
+	ResourceLoader.load_threaded_request(BOSS_HEALTH_HUD_SCENE_PATH)
+
+
+func _deferred_request_boss_runtime_scene_loads() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if not is_inside_tree():
+		return
+	_request_boss_runtime_scene_loads()
+
+
 func _get_first_boss_config() -> Resource:
 	for boss_config in bosses:
 		if _boss_config_has_required_data(boss_config):
@@ -517,8 +548,6 @@ func _get_pending_boss_config_after_current_wave() -> Resource:
 		return null
 	if linglan_boss_started:
 		return null
-	if linglan_boss == null or not is_instance_valid(linglan_boss):
-		return null
 	for boss_config in bosses:
 		if not _boss_config_has_required_data(boss_config):
 			continue
@@ -528,11 +557,40 @@ func _get_pending_boss_config_after_current_wave() -> Resource:
 
 
 func _boss_config_has_required_data(boss_config: Resource) -> bool:
-	return boss_config != null and _get_boss_enemy_config(boss_config) != null and _get_boss_start_wave_number(boss_config) > 0
+	if boss_config == null:
+		return false
+	if boss_config.has_method("has_required_data"):
+		return bool(boss_config.call("has_required_data"))
+	return (
+		(_get_boss_enemy_config(boss_config) != null or not _get_boss_enemy_config_path(boss_config).is_empty())
+		and _get_boss_start_wave_number(boss_config) > 0
+	)
 
 
 func _get_boss_enemy_config(boss_config: Resource) -> EnemyConfig:
-	return boss_config.get("enemy_config") as EnemyConfig
+	if boss_config == null:
+		return null
+	if boss_config.has_method("get_enemy_config"):
+		return boss_config.call("get_enemy_config") as EnemyConfig
+	var enemy_config := boss_config.get("enemy_config") as EnemyConfig
+	if enemy_config != null:
+		return enemy_config
+	var enemy_config_path := _get_boss_enemy_config_path(boss_config)
+	if enemy_config_path.is_empty():
+		return null
+	return _load_threaded_or_direct(enemy_config_path) as EnemyConfig
+
+
+func _get_boss_enemy_config_path(boss_config: Resource) -> String:
+	if boss_config == null:
+		return ""
+	var path_value: Variant = boss_config.get("enemy_config_path")
+	if typeof(path_value) == TYPE_STRING and not String(path_value).is_empty():
+		return String(path_value)
+	var enemy_config := boss_config.get("enemy_config") as EnemyConfig
+	if enemy_config != null:
+		return enemy_config.resource_path
+	return ""
 
 
 func _get_boss_start_wave_number(boss_config: Resource) -> int:
@@ -560,13 +618,78 @@ func _should_clear_boss_inner_overlay_cells(boss_config: Resource) -> bool:
 
 
 func _get_boss_display_name(boss_config: Resource) -> String:
-	var boss_name := str(boss_config.get("boss_name"))
-	if not boss_name.is_empty():
-		return boss_name
+	var boss_name_value: Variant = boss_config.get("boss_name")
+	if typeof(boss_name_value) == TYPE_STRING and not String(boss_name_value).is_empty():
+		return String(boss_name_value)
 	var enemy_config := _get_boss_enemy_config(boss_config)
 	if enemy_config != null and not enemy_config.display_name.is_empty():
 		return enemy_config.display_name
 	return "Boss"
+
+
+func _ensure_linglan_boss_runtime_nodes(boss_config: Resource) -> bool:
+	if boss_container == null:
+		return false
+	var enemy_config := _get_boss_enemy_config(boss_config)
+	if enemy_config == null or enemy_config.enemy_scene == null:
+		push_error("Boss 配置缺少可实例化的 EnemyConfig 或 enemy_scene。")
+		return false
+
+	if linglan_boss == null or not is_instance_valid(linglan_boss):
+		var boss_instance := enemy_config.enemy_scene.instantiate()
+		linglan_boss = boss_instance as LinglanBoss
+		if linglan_boss == null:
+			if boss_instance != null:
+				boss_instance.free()
+			push_error("Boss enemy_scene 必须实例化为 LinglanBoss。")
+			return false
+		linglan_boss.config = enemy_config
+		linglan_boss.name = "LinglanBoss"
+		boss_container.add_child(linglan_boss)
+
+	if linglan_boss_intro_vfx == null or not is_instance_valid(linglan_boss_intro_vfx):
+		var intro_scene := _load_threaded_or_direct(LINGLAN_BOSS_INTRO_VFX_SCENE_PATH) as PackedScene
+		if intro_scene == null:
+			push_error("无法加载铃兰 Boss 入场 VFX 场景。")
+			return false
+		var intro_instance := intro_scene.instantiate()
+		linglan_boss_intro_vfx = intro_instance as LinglanBossIntroVFX
+		if linglan_boss_intro_vfx == null:
+			if intro_instance != null:
+				intro_instance.free()
+			push_error("铃兰 Boss 入场 VFX 场景类型不正确。")
+			return false
+		linglan_boss_intro_vfx.name = "LinglanBossIntroVFX"
+		add_child(linglan_boss_intro_vfx)
+
+	if boss_health_hud == null or not is_instance_valid(boss_health_hud):
+		var hud_scene := _load_threaded_or_direct(BOSS_HEALTH_HUD_SCENE_PATH) as PackedScene
+		if hud_scene == null:
+			push_error("无法加载 Boss 大 HUD 场景。")
+			return false
+		var hud_instance := hud_scene.instantiate()
+		boss_health_hud = hud_instance as BossHealthHUD
+		if boss_health_hud == null:
+			if hud_instance != null:
+				hud_instance.free()
+			push_error("Boss 大 HUD 场景类型不正确。")
+			return false
+		boss_health_hud.name = "BossHealthHUD"
+		add_child(boss_health_hud)
+
+	_configure_linglan_boss()
+	return true
+
+
+func _load_threaded_or_direct(path: String) -> Resource:
+	if path.is_empty():
+		return null
+	var status := ResourceLoader.load_threaded_get_status(path)
+	if status == ResourceLoader.THREAD_LOAD_LOADED:
+		return ResourceLoader.load_threaded_get(path)
+	if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+		return ResourceLoader.load_threaded_get(path)
+	return load(path)
 
 
 func _collect_enemy_spawn_points() -> void:
@@ -633,6 +756,27 @@ func _prewarm_enemy_navigation_grids() -> void:
 				)
 
 
+func _schedule_enemy_navigation_prewarm() -> void:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		return
+	if navigation_prewarmed or navigation_prewarm_requested:
+		return
+	navigation_prewarm_requested = true
+	call_deferred("_run_scheduled_enemy_navigation_prewarm")
+
+
+func _run_scheduled_enemy_navigation_prewarm() -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if not is_inside_tree():
+		return
+	navigation_prewarm_requested = false
+	if navigation_prewarmed:
+		return
+	_prewarm_enemy_navigation_grids()
+	navigation_prewarmed = true
+
+
 func _prewarm_enemy_visual_resources() -> void:
 	GUARDIAN_POINT_LIGHT_TEXTURE.get_size()
 
@@ -659,11 +803,10 @@ func _enter_pre_wave(wave_index: int) -> void:
 	wave_state = WaveState.PRE_WAVE
 	current_wave_index = wave_index
 	enemy_spawn_timer.stop()
-	if runtime_mode != RuntimeMode.CLIENT_VIEW:
-		_prewarm_enemy_navigation_grids()
 	_set_merchant_active(false)
 	countdown_seconds = maxi(ceili(pre_wave_duration), 0)
 	wave_hud.show_countdown(countdown_seconds)
+	_schedule_enemy_navigation_prewarm()
 
 	if countdown_seconds <= 0:
 		_begin_wave(current_wave_index)
@@ -708,6 +851,9 @@ func _begin_wave(wave_index: int) -> void:
 		push_error("波次 %d 缺少 WaveConfig。" % (wave_index + 1))
 		_enter_defeat()
 		return
+	if runtime_mode != RuntimeMode.CLIENT_VIEW and not navigation_prewarmed:
+		_prewarm_enemy_navigation_grids()
+		navigation_prewarmed = true
 
 	wave_state = WaveState.WAVE_ACTIVE
 	current_wave_index = wave_index
@@ -779,7 +925,7 @@ func _on_enemy_spawn_timer_timeout() -> void:
 	_spawn_wave_batch()
 
 
-func _start_client_wave_countdown(state: int, wave_index: int, seconds: int) -> void:
+func _start_client_wave_countdown(state: WaveState, wave_index: int, seconds: int) -> void:
 	wave_state = state
 	current_wave_index = clampi(wave_index, 0, maxi(waves.size() - 1, 0))
 	countdown_seconds = maxi(seconds, 0)
@@ -990,6 +1136,9 @@ func _begin_linglan_boss_intro() -> void:
 	if boss_config == null:
 		_enter_victory()
 		return
+	if not _ensure_linglan_boss_runtime_nodes(boss_config):
+		_enter_victory()
+		return
 	active_boss_config = boss_config
 	linglan_boss_started = true
 	wave_state = WaveState.BOSS_INTRO
@@ -1022,8 +1171,9 @@ func _on_linglan_boss_intro_finished() -> void:
 
 func _activate_linglan_boss() -> void:
 	if linglan_boss == null or not is_instance_valid(linglan_boss):
-		_enter_victory()
-		return
+		if not _ensure_linglan_boss_runtime_nodes(active_boss_config):
+			_enter_victory()
+			return
 	var boss_config := active_boss_config
 	if not _boss_config_has_required_data(boss_config):
 		_enter_victory()

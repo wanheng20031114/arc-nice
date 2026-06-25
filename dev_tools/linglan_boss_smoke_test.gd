@@ -81,7 +81,9 @@ func _test_animation_resource() -> void:
 func _test_boss_entry_resource() -> void:
 	_expect(LINGLAN_BOSS_ENTRY.get_script() == BOSS_CONFIG_SCRIPT, "Linglan boss entry must use the BossConfig script.")
 	_expect(LINGLAN_BOSS_ENTRY.boss_name == "铃兰", "Linglan boss entry must expose the display name.")
-	_expect(LINGLAN_BOSS_ENTRY.enemy_config == LINGLAN_CONFIG, "Linglan boss entry must point to the Linglan enemy config.")
+	_expect(LINGLAN_BOSS_ENTRY.enemy_config == null, "Linglan boss entry must keep Linglan config lazy-loaded.")
+	_expect(LINGLAN_BOSS_ENTRY.enemy_config_path == "res://resources/config/enemies/linglan_boss.tres", "Linglan boss entry must point to the Linglan enemy config path.")
+	_expect(LINGLAN_BOSS_ENTRY.get_enemy_config() == LINGLAN_CONFIG, "Linglan boss entry must resolve the Linglan enemy config on demand.")
 	_expect(LINGLAN_BOSS_ENTRY.starts_after_wave_number == 1, "Linglan boss entry must start after wave 1 for debugging.")
 	_expect(LINGLAN_BOSS_ENTRY.arena_center == Vector2(128, 128), "Linglan boss entry must keep the center spawn point.")
 	_expect(LINGLAN_BOSS_ENTRY.arena_floor_rect == Rect2i(-3, -1, 22, 18), "Linglan boss entry must only floor the requested arena rectangle.")
@@ -108,7 +110,7 @@ func _test_boss_scene_contract() -> void:
 	if sprite != null:
 		_expect(sprite.sprite_frames == LINGLAN_FRAMES, "Linglan sprite must use linglan.tres.")
 		_expect(sprite.animation == &"idle", "Linglan scene must default to idle.")
-		_expect(is_equal_approx(sprite.scale.x, 0.318), "Linglan visual scale must be close to twice the player height.")
+		_expect(is_equal_approx(sprite.scale.x, 0.348), "Linglan visual scale must be close to twice the player height.")
 		_expect(sprite.scale.y == sprite.scale.x, "Linglan visual scale must stay uniform.")
 
 	var body_shape := linglan.get_node_or_null("CollisionShape2D") as CollisionShape2D
@@ -194,6 +196,9 @@ func _test_game_boss_opening_flow() -> void:
 	_expect(game.bosses.size() == 1, "Game must load the Linglan boss entry.")
 	if game.bosses.size() >= 1:
 		_expect(game.bosses[0] == LINGLAN_BOSS_ENTRY, "Game boss list must use boss_01_linglan.")
+	_expect(game.get_node_or_null("BossContainer/LinglanBoss") == null, "Game must lazy-instantiate Linglan instead of loading boss art on scene entry.")
+	_expect(game.get_node_or_null("BossHealthHUD") == null, "Game must lazy-instantiate the boss HUD instead of loading it on scene entry.")
+	_expect(game.get_node_or_null("LinglanBossIntroVFX") == null, "Game must lazy-instantiate the boss intro VFX instead of loading it on scene entry.")
 
 	var ground_layer := game.get_node("GroundTileMapLayer") as TileMapLayer
 	var overlay_layer := game.get_node("OverlayTileMapLayer") as TileMapLayer

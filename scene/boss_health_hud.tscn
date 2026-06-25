@@ -60,12 +60,13 @@ offset_bottom = 127.600006
 mouse_filter = 2
 texture = ExtResource("2_frame")
 expand_mode = 1
+metadata/_edit_group_ = true
 
 [node name="HealthBar" type="ProgressBar" parent="Root" unique_id=688085363]
 layout_mode = 0
 offset_left = 270.0
 offset_top = 48.0
-offset_right = 883.0
+offset_right = 882.0
 offset_bottom = 88.0
 mouse_filter = 2
 theme_override_styles/background = SubResource("StyleBoxFlat_health_bg")
@@ -91,9 +92,9 @@ vertical_alignment = 1
 
 [node name="Nameplate" type="TextureRect" parent="Root" unique_id=2097219329]
 layout_mode = 0
-offset_left = 576.0
+offset_left = 512.0
 offset_top = 96.0
-offset_right = 836.0
+offset_right = 772.0
 offset_bottom = 175.4
 scale = Vector2(0.5, 0.5)
 mouse_filter = 2

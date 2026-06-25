@@ -4,6 +4,7 @@ class_name BossConfig
 @export_group("Boss内容")
 @export var boss_name: String = "Boss"
 @export var enemy_config: EnemyConfig
+@export_file("*.tres") var enemy_config_path: String = ""
 
 @export_group("流程入口")
 @export_range(1, 999, 1, "or_greater") var starts_after_wave_number: int = 1
@@ -17,7 +18,7 @@ class_name BossConfig
 
 
 func has_required_data() -> bool:
-	return enemy_config != null and starts_after_wave_number > 0
+	return (enemy_config != null or not enemy_config_path.is_empty()) and starts_after_wave_number > 0
 
 
 func get_display_name() -> String:
@@ -26,3 +27,12 @@ func get_display_name() -> String:
 	if enemy_config != null and not enemy_config.display_name.is_empty():
 		return enemy_config.display_name
 	return "Boss"
+
+
+func get_enemy_config() -> EnemyConfig:
+	if enemy_config != null:
+		return enemy_config
+	if enemy_config_path.is_empty():
+		return null
+	enemy_config = load(enemy_config_path) as EnemyConfig
+	return enemy_config
