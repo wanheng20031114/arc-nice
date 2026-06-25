@@ -33,6 +33,7 @@ func _run() -> void:
 	test_root.child_entered_tree.connect(_on_child_entered_tree)
 
 	_test_resource_contract()
+	await _test_reticle_highest_progress_priority()
 	await _test_mage_windup_fireball_and_obstruction()
 	await _test_fireball_impact_damage_and_release()
 	await _test_sniper_lock_cancel_and_damage()
@@ -67,6 +68,14 @@ func _test_resource_contract() -> void:
 	_expect(MAGE_CONFIG.projectile_scene == FIREBALL_SCENE, "Mage Capoo must use the generated fireball scene.")
 	_expect(SNIPER_CONFIG.lock_reticle_scene == RETICLE_SCENE, "Sniper Capoo must use the generated reticle scene.")
 	_expect(SMG_CONFIG.projectile_scene == SMG_BULLET_SCENE, "SMG Capoo must use its short-lived bullet scene.")
+	_expect(
+		_resource_path(MAGE_CONFIG.attack_audio_stream).ends_with("capoo_mage_fireball_cast.wav"),
+		"Mage Capoo must use the fireball cast audio stream."
+	)
+	_expect(
+		_resource_path(SNIPER_CONFIG.attack_audio_stream).ends_with("capoo_sniper_fire.wav"),
+		"Sniper Capoo must use the sniper fire audio stream."
+	)
 
 	_expect(MAGE_CONFIG.max_health == 200, "Mage health mismatch.")
 	_expect(MAGE_CONFIG.attack_damage == 75, "Mage damage mismatch.")
@@ -105,8 +114,33 @@ func _test_resource_contract() -> void:
 	_expect(_sprite_frames_count("res://resources/animation/capoo_mage_fireball.tres", &"fly") == 6, "Fireball frame count mismatch.")
 	_expect(_sprite_frames_count("res://resources/animation/capoo_mage_fireball.tres", &"impact") == 6, "Fireball impact frame count mismatch.")
 	_expect(_fireball_impact_animation_contract(), "Fireball impact animation contract failed.")
+	_expect(_has_fireball_impact_audio(), "Fireball impact audio contract failed.")
 	_expect(_sprite_frames_count("res://resources/animation/capoo_smg_bullet.tres", &"fly") == 3, "SMG bullet frame count mismatch.")
 	_expect(_has_reticle_scene_contract(), "Sniper reticle scene contract failed.")
+
+
+func _test_reticle_highest_progress_priority() -> void:
+	var player := _spawn_player(Vector2.ZERO, 100)
+	var slow_reticle := RETICLE_SCENE.instantiate() as CapooSniperLockReticle
+	var urgent_reticle := RETICLE_SCENE.instantiate() as CapooSniperLockReticle
+	player.add_child(slow_reticle)
+	player.add_child(urgent_reticle)
+	await process_frame
+
+	slow_reticle.set_progress(0.35)
+	urgent_reticle.set_progress(0.75)
+	await process_frame
+	_expect(not slow_reticle.is_progress_display_active(), "Lower sniper reticle progress must stay hidden.")
+	_expect(urgent_reticle.is_progress_display_active(), "Highest sniper reticle progress must be visible.")
+
+	urgent_reticle.set_progress(0.2)
+	slow_reticle.set_progress(0.6)
+	await process_frame
+	_expect(slow_reticle.is_progress_display_active(), "Reticle priority did not move to the new highest progress.")
+	_expect(not urgent_reticle.is_progress_display_active(), "Reticle with lower updated progress remained visible.")
+
+	player.queue_free()
+	await process_frame
 
 
 func _test_mage_windup_fireball_and_obstruction() -> void:
@@ -175,10 +209,10 @@ func _test_fireball_impact_damage_and_release() -> void:
 	_expect(_count_bullet_hit_effects() == 0, "Mage fireball must not spawn the generic bullet hit effect.")
 
 	var release_guard_frames := 0
-	while is_instance_valid(fireball) and release_guard_frames < 60:
+	while is_instance_valid(fireball) and release_guard_frames < 180:
 		await process_frame
 		release_guard_frames += 1
-	_expect(not is_instance_valid(fireball), "Fireball impact animation did not release the projectile.")
+	_expect(not is_instance_valid(fireball), "Fireball impact animation/audio did not release the projectile.")
 	near_player.queue_free()
 	far_player.queue_free()
 	await physics_frame
@@ -471,9 +505,29 @@ func _fireball_impact_animation_contract() -> bool:
 	return ok
 
 
+func _has_fireball_impact_audio() -> bool:
+	var instance := FIREBALL_SCENE.instantiate() as CapooMageFireball
+	if instance == null:
+		return false
+	var impact_audio := instance.get_node_or_null("ImpactAudio") as AudioStreamPlayer2D
+	var ok := impact_audio != null
+	ok = ok and impact_audio.stream != null
+	ok = ok and _resource_path(impact_audio.stream).ends_with("capoo_mage_fireball_impact.wav")
+	ok = ok and impact_audio.volume_db <= -6.0
+	ok = ok and impact_audio.max_polyphony <= 2
+	if not ok:
+		failures.append("Fireball scene must include a restrained ImpactAudio player.")
+	instance.free()
+	return ok
+
+
 func _texture_size(path: String) -> Vector2:
 	var texture := load(path) as Texture2D
 	return texture.get_size() if texture != null else Vector2.ZERO
+
+
+func _resource_path(resource: Resource) -> String:
+	return resource.resource_path if resource != null else ""
 
 
 func _sprite_frames_count(path: String, animation_name: StringName) -> int:

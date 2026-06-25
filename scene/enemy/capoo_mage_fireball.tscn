@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://ccha4077fsi1c" path="res://scene/enemy/capoo_mage_fireball.gd" id="1_script"]
 [ext_resource type="SpriteFrames" uid="uid://cemn3y2bgbhbs" path="res://resources/animation/capoo_mage_fireball.tres" id="2_frames"]
+[ext_resource type="AudioStream" path="res://resources/audio/capoo_mage_fireball_impact.wav" id="3_impact_audio"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_body"]
 radius = 4.0
@@ -30,3 +31,9 @@ shape = SubResource("CircleShape2D_body")
 visible = false
 shape = SubResource("CircleShape2D_explosion")
 disabled = true
+
+[node name="ImpactAudio" type="AudioStreamPlayer2D" parent="." unique_id=914086731]
+stream = ExtResource("3_impact_audio")
+volume_db = -7.0
+max_distance = 220.0
+max_polyphony = 2
