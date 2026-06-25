@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cniixdganu2sd"
-path="res://.godot/imported/linglan_boss_nameplate.png-babd3af7c78a73e628140e0ba65d71aa.ctex"
+path="res://.godot/imported/nameplate.png-456509878f016de24f24ea5c54463cc4.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/texture/linglan_boss_nameplate.png"
-dest_files=["res://.godot/imported/linglan_boss_nameplate.png-babd3af7c78a73e628140e0ba65d71aa.ctex"]
+source_file="res://resources/texture/boss_linglan/nameplate.png"
+dest_files=["res://.godot/imported/nameplate.png-456509878f016de24f24ea5c54463cc4.ctex"]
 
 [params]
 

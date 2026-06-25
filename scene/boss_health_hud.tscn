@@ -1,8 +1,8 @@
 [gd_scene format=3 uid="uid://d2lump2x0op3h"]
 
 [ext_resource type="Script" uid="uid://c665ogrx2oj3x" path="res://scene/boss_health_hud.gd" id="1_script"]
-[ext_resource type="Texture2D" uid="uid://r8j7imp0smk5" path="res://resources/texture/linglan_boss_health_frame.png" id="2_frame"]
-[ext_resource type="Texture2D" uid="uid://cniixdganu2sd" path="res://resources/texture/linglan_boss_nameplate.png" id="3_nameplate"]
+[ext_resource type="Texture2D" uid="uid://r8j7imp0smk5" path="res://resources/texture/boss_linglan/health_frame.png" id="2_frame"]
+[ext_resource type="Texture2D" uid="uid://cniixdganu2sd" path="res://resources/texture/boss_linglan/nameplate.png" id="3_nameplate"]
 [ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_health_bg"]

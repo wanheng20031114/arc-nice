@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bg4c1y7dyobpv"
-path="res://.godot/imported/linglan_boss_move_v3_anchor_preview.png-e625fd32c0715e6c3eabb7145e743b1d.ctex"
+uid="uid://c5c85r1wfluct"
+path="res://.godot/imported/move.png-f9e765273e9832ab51e3bced72a92013.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://tmp/linglan_boss_move_v3_anchor_preview.png"
-dest_files=["res://.godot/imported/linglan_boss_move_v3_anchor_preview.png-e625fd32c0715e6c3eabb7145e743b1d.ctex"]
+source_file="res://resources/texture/boss_linglan/move.png"
+dest_files=["res://.godot/imported/move.png-f9e765273e9832ab51e3bced72a92013.ctex"]
 
 [params]
 

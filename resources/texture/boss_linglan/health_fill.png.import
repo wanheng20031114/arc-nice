@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c3bywje5d0f47"
-path="res://.godot/imported/linglan_boss_health_fill.png-b1f374a6059b06237a6fd7d4ff9f08de.ctex"
+path="res://.godot/imported/health_fill.png-eae70d49ce08c36765dfa94b3bb00770.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/texture/linglan_boss_health_fill.png"
-dest_files=["res://.godot/imported/linglan_boss_health_fill.png-b1f374a6059b06237a6fd7d4ff9f08de.ctex"]
+source_file="res://resources/texture/boss_linglan/health_fill.png"
+dest_files=["res://.godot/imported/health_fill.png-eae70d49ce08c36765dfa94b3bb00770.ctex"]
 
 [params]
 

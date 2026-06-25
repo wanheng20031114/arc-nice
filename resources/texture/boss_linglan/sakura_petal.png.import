@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b81g5t6pw85s0"
-path="res://.godot/imported/linglan_sakura_petal.png-5ff8b000ffa5dc539b96a86875607b89.ctex"
+path="res://.godot/imported/sakura_petal.png-853965f17def7b26b11f3064a0a8ec25.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/texture/linglan_sakura_petal.png"
-dest_files=["res://.godot/imported/linglan_sakura_petal.png-5ff8b000ffa5dc539b96a86875607b89.ctex"]
+source_file="res://resources/texture/boss_linglan/sakura_petal.png"
+dest_files=["res://.godot/imported/sakura_petal.png-853965f17def7b26b11f3064a0a8ec25.ctex"]
 
 [params]
 

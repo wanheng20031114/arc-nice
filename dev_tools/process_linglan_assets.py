@@ -21,52 +21,45 @@ from connected_background_remover import (
 )
 
 
-SOURCE_SHEET = "dev_assets/source_images/linglan_boss_sheet_v7_magenta.png"
-ALPHA_SHEET = "dev_assets/source_images/linglan_boss_sheet_v7_alpha.png"
-HUD_SOURCE = "dev_assets/source_images/linglan_boss_hud_imagegen_green.png"
-HUD_ALPHA = "dev_assets/source_images/linglan_boss_hud_alpha.png"
-VFX_SOURCE = "dev_assets/source_images/linglan_sakura_vfx_imagegen_green.png"
-VFX_ALPHA = "dev_assets/source_images/linglan_sakura_vfx_alpha.png"
+LINGLAN_ANIMATION_STRIPS: OrderedDict[str, str] = OrderedDict(
+	[
+		("idle", "dev_assets/source_images/boss_linglan/idle_v1_alpha.png"),
+		("move", "dev_assets/source_images/boss_linglan/move_v3_alpha.png"),
+	]
+)
+HUD_SOURCE = "dev_assets/source_images/boss_linglan/hud_imagegen_green.png"
+HUD_ALPHA = "dev_assets/source_images/boss_linglan/hud_alpha.png"
+VFX_SOURCE = "dev_assets/source_images/boss_linglan/sakura_vfx_imagegen_green.png"
+VFX_ALPHA = "dev_assets/source_images/boss_linglan/sakura_vfx_alpha.png"
 
-OUTPUT_TEXTURE = "resources/texture/linglan.png"
+OUTPUT_TEXTURE_DIR = "resources/texture/boss_linglan"
 OUTPUT_FRAMES = "resources/animation/linglan.tres"
-OUTPUT_HEALTH_FRAME = "resources/texture/linglan_boss_health_frame.png"
-OUTPUT_NAMEPLATE = "resources/texture/linglan_boss_nameplate.png"
-OUTPUT_HEALTH_FILL = "resources/texture/linglan_boss_health_fill.png"
-OUTPUT_PETAL = "resources/texture/linglan_sakura_petal.png"
-OUTPUT_CONVERGENCE = "resources/texture/linglan_sakura_convergence.png"
+OUTPUT_HEALTH_FRAME = "resources/texture/boss_linglan/health_frame.png"
+OUTPUT_NAMEPLATE = "resources/texture/boss_linglan/nameplate.png"
+OUTPUT_HEALTH_FILL = "resources/texture/boss_linglan/health_fill.png"
+OUTPUT_PETAL = "resources/texture/boss_linglan/sakura_petal.png"
+OUTPUT_CONVERGENCE = "resources/texture/boss_linglan/sakura_convergence.png"
 OUTPUT_CONVERGENCE_FRAMES = "resources/animation/linglan_sakura_convergence.tres"
 
-LINGLAN_TEXTURE_RESOURCE = "res://resources/texture/linglan.png"
-CONVERGENCE_TEXTURE_RESOURCE = "res://resources/texture/linglan_sakura_convergence.png"
+CONVERGENCE_TEXTURE_RESOURCE = "res://resources/texture/boss_linglan/sakura_convergence.png"
 SPRITE_FRAMES_UID = "uid://ub8py66qcmfq"
-TEXTURE_UID = "uid://dkt8l1h0rrh71"
 
 SOURCE_COLUMNS = 8
-SOURCE_ROWS = 3
+SOURCE_ROWS = 1
 FRAME_PADDING = 32
 FRAME_SIZE_ALIGNMENT = 8
 MIN_COMPONENT_ALPHA_PIXELS = 120
 FRAME_GROUP_RADIUS = 8
 
-ANIMATION_ROWS: OrderedDict[str, int] = OrderedDict(
-	[
-		("idle", 0),
-		("move", 1),
-		("move_up", 2),
-	]
-)
+LINGLAN_TEXTURE_UIDS: dict[str, str] = {
+	"idle": "uid://bvv7p5if14s8v",
+	"move": "uid://c5c85r1wfluct",
+}
 
-ANIMATION_ALIASES: OrderedDict[str, list[str]] = OrderedDict(
+LINGLAN_TEXTURE_RESOURCES: OrderedDict[str, str] = OrderedDict(
 	[
-		("move_down", [f"move_{index}" for index in range(SOURCE_COLUMNS)]),
-		("move_left", [f"move_{index}" for index in range(SOURCE_COLUMNS)]),
-		("move_right", [f"move_{index}" for index in range(SOURCE_COLUMNS)]),
-		("idle_down", ["idle_0"]),
-		("idle_left", ["idle_0"]),
-		("idle_right", ["idle_0"]),
-		("idle_up", ["idle_0"]),
-		("die", [f"idle_{index}" for index in range(SOURCE_COLUMNS)]),
+		("idle", "res://resources/texture/boss_linglan/idle.png"),
+		("move", "res://resources/texture/boss_linglan/move.png"),
 	]
 )
 
@@ -369,62 +362,80 @@ def _remove_tall_edge_fragments(image: Image.Image) -> Image.Image:
 	return Image.fromarray(array)
 
 
-def _collect_linglan_frames(source: Image.Image) -> tuple[list[tuple[str, Image.Image]], OrderedDict[str, list[str]]]:
+def _detect_animation_strip_source_frames(source: Image.Image, animation_name: str) -> list[DetectedFrame]:
+	alpha = np.array(source.getchannel("A"), dtype=np.uint8) > 0
+	frames: list[DetectedFrame] = []
+	for column in range(SOURCE_COLUMNS):
+		cell_left = round(column * source.width / SOURCE_COLUMNS)
+		cell_right = round((column + 1) * source.width / SOURCE_COLUMNS)
+		cell_alpha = alpha[:, cell_left:cell_right]
+		if not cell_alpha.any():
+			raise ValueError(f"Linglan {animation_name} frame {column} contains no visible pixels.")
+		local_y, local_x = np.nonzero(cell_alpha)
+		left = int(local_x.min() + cell_left)
+		top = int(local_y.min())
+		right = int(local_x.max() + cell_left + 1)
+		bottom = int(local_y.max() + 1)
+		alpha_pixels = int(cell_alpha.sum())
+		if alpha_pixels < MIN_COMPONENT_ALPHA_PIXELS:
+			raise ValueError(f"Linglan {animation_name} frame {column} contains too little foreground alpha.")
+		frames.append(DetectedFrame((left, top, right, bottom), alpha_pixels))
+	return frames
+
+
+def _collect_linglan_frames(
+	sources_by_animation: OrderedDict[str, Image.Image],
+) -> tuple[OrderedDict[str, list[tuple[str, Image.Image]]], OrderedDict[str, list[str]]]:
 	detected_by_name: OrderedDict[str, DetectedFrame] = OrderedDict()
-	source_rows = _detect_grid_source_frames(source)
-	for animation_name, row in ANIMATION_ROWS.items():
+	source_by_name: dict[str, Image.Image] = {}
+	for animation_name, source in sources_by_animation.items():
+		source_frames = _detect_animation_strip_source_frames(source, animation_name)
 		for column in range(SOURCE_COLUMNS):
 			frame_name = f"{animation_name}_{column}"
-			detected_by_name[frame_name] = source_rows[row][column]
+			detected_by_name[frame_name] = source_frames[column]
+			source_by_name[frame_name] = source
 
 	for frame_name, detected in detected_by_name.items():
 		if detected.alpha_pixels < MIN_COMPONENT_ALPHA_PIXELS:
 			raise ValueError("%s contains too little foreground alpha." % frame_name)
 
 	anchors_by_name = {
-		frame_name: _detect_linglan_body_anchor(source, detected)
+		frame_name: _detect_linglan_body_anchor(source_by_name[frame_name], detected)
 		for frame_name, detected in detected_by_name.items()
 	}
 	frame_size, target_anchor = _compute_frame_layout(detected_by_name, anchors_by_name)
-	frames: list[tuple[str, Image.Image]] = []
+	frames_by_animation: OrderedDict[str, list[tuple[str, Image.Image]]] = OrderedDict()
 	animations: OrderedDict[str, list[str]] = OrderedDict()
 
-	for animation_name in ANIMATION_ROWS.keys():
+	for animation_name, source in sources_by_animation.items():
+		frames_by_animation[animation_name] = []
 		frame_names: list[str] = []
 		for column in range(SOURCE_COLUMNS):
 			frame_name = f"{animation_name}_{column}"
 			frame_image = _extract_frame(
-				source,
+				source_by_name[frame_name],
 				detected_by_name[frame_name],
 				frame_size,
 				anchors_by_name[frame_name],
 				target_anchor,
 			)
-			if animation_name != "die":
-				frame_image = _remove_tiny_alpha_components(frame_image)
-			else:
-				frame_image = _remove_tall_edge_fragments(frame_image)
-			frames.append((frame_name, frame_image))
+			frame_image = _remove_tiny_alpha_components(frame_image)
+			frames_by_animation[animation_name].append((frame_name, frame_image))
 			frame_names.append(frame_name)
 		animations[animation_name] = frame_names
 
-	for animation_name, frame_names in ANIMATION_ALIASES.items():
-		animations[animation_name] = frame_names
-
 	print(f"Linglan frame canvas: {frame_size[0]}x{frame_size[1]}")
-	return frames, animations
+	return frames_by_animation, animations
 
 
-def _build_sheet(frames: list[tuple[str, Image.Image]]) -> tuple[Image.Image, dict[str, FrameRegion]]:
+def _build_animation_strip(frames: list[tuple[str, Image.Image]]) -> tuple[Image.Image, dict[str, FrameRegion]]:
 	frame_width = frames[0][1].width
 	frame_height = frames[0][1].height
-	sheet = Image.new("RGBA", (frame_width * SOURCE_COLUMNS, frame_height * SOURCE_ROWS), (0, 0, 0, 0))
+	sheet = Image.new("RGBA", (frame_width * len(frames), frame_height), (0, 0, 0, 0))
 	regions: dict[str, FrameRegion] = {}
 	for index, (frame_name, frame) in enumerate(frames):
-		column = index % SOURCE_COLUMNS
-		row = index // SOURCE_COLUMNS
-		x = column * frame_width
-		y = row * frame_height
+		x = index * frame_width
+		y = 0
 		sheet.alpha_composite(frame, (x, y))
 		regions[frame_name] = (x, y, frame_width, frame_height)
 	return sheet, regions
@@ -493,6 +504,68 @@ def _write_spriteframes(
 	lines.append("")
 	output_path.write_text("\n".join(lines), encoding="utf-8")
 	print(f"SpriteFrames: {output_path} ({len(animations)} animations)")
+
+
+def _write_spriteframes_for_animation_strips(
+	output_path: Path,
+	texture_resources: OrderedDict[str, str],
+	regions_by_animation: OrderedDict[str, dict[str, FrameRegion]],
+	animations: OrderedDict[str, list[str]],
+	frames_uid: str | None = None,
+) -> None:
+	header = (
+		f'[gd_resource type="SpriteFrames" format=3 uid="{frames_uid}"]'
+		if frames_uid
+		else '[gd_resource type="SpriteFrames" format=3]'
+	)
+	lines = [header, ""]
+
+	for animation_name, texture_resource in texture_resources.items():
+		texture_uid = LINGLAN_TEXTURE_UIDS.get(animation_name)
+		texture_id = f"{animation_name}_texture"
+		if texture_uid:
+			lines.append(
+				f'[ext_resource type="Texture2D" uid="{texture_uid}" '
+				f'path="{texture_resource}" id="{texture_id}"]'
+			)
+		else:
+			lines.append(f'[ext_resource type="Texture2D" path="{texture_resource}" id="{texture_id}"]')
+	lines.append("")
+
+	for animation_name, regions in regions_by_animation.items():
+		texture_id = f"{animation_name}_texture"
+		for frame_name, region in regions.items():
+			lines.extend(
+				[
+					f'[sub_resource type="AtlasTexture" id="AtlasTexture_{frame_name}"]',
+					f'atlas = ExtResource("{texture_id}")',
+					f"region = Rect2({region[0]}, {region[1]}, {region[2]}, {region[3]})",
+					"",
+				]
+			)
+
+	animation_entries: list[str] = []
+	for animation_name, frame_names in animations.items():
+		frame_entries = []
+		for frame_name in frame_names:
+			frame_entries.append(
+				'{\n"duration": 1.0,\n'
+				f'"texture": SubResource("AtlasTexture_{frame_name}")\n}}'
+			)
+		animation_entries.append(
+			'{\n'
+			f'"frames": [{", ".join(frame_entries)}],\n'
+			f'"loop": {str(_animation_loop(animation_name)).lower()},\n'
+			f'"name": &"{animation_name}",\n'
+			f'"speed": {_animation_speed(animation_name):.1f}\n'
+			'}'
+		)
+
+	lines.append("[resource]")
+	lines.append(f"animations = [{', '.join(animation_entries)}]")
+	lines.append("")
+	output_path.write_text("\n".join(lines), encoding="utf-8")
+	print(f"SpriteFrames: {output_path} ({len(animations)} animations, {len(texture_resources)} textures)")
 
 
 def _foreground_bbox(image: Image.Image, padding: int = 0) -> tuple[int, int, int, int]:
@@ -674,27 +747,31 @@ def _process_vfx(root: Path) -> None:
 
 
 def _process_linglan_sprite(root: Path) -> None:
-	source = Image.open(root / SOURCE_SHEET)
-	alpha_source = _remove_linglan_sprite_background(source)
-	alpha_path = root / ALPHA_SHEET
-	alpha_path.parent.mkdir(parents=True, exist_ok=True)
-	alpha_source.save(alpha_path)
-	print(f"Linglan alpha source: {alpha_path} ({alpha_source.width}x{alpha_source.height})")
+	sources_by_animation: OrderedDict[str, Image.Image] = OrderedDict()
+	for animation_name, source_path in LINGLAN_ANIMATION_STRIPS.items():
+		source = Image.open(root / source_path).convert("RGBA")
+		if source.getchannel("A").getextrema()[0] == 255:
+			source = _remove_linglan_sprite_background(source)
+		sources_by_animation[animation_name] = source
+		print(f"Linglan {animation_name} source: {root / source_path} ({source.width}x{source.height})")
 
-	frames, animations = _collect_linglan_frames(alpha_source)
-	sheet, regions = _build_sheet(frames)
+	frames_by_animation, animations = _collect_linglan_frames(sources_by_animation)
 
-	sheet_path = root / OUTPUT_TEXTURE
-	sheet_path.parent.mkdir(parents=True, exist_ok=True)
-	sheet.save(sheet_path)
-	print(f"Linglan sheet: {sheet_path} ({sheet.width}x{sheet.height})")
+	output_dir = root / OUTPUT_TEXTURE_DIR
+	output_dir.mkdir(parents=True, exist_ok=True)
+	regions_by_animation: OrderedDict[str, dict[str, FrameRegion]] = OrderedDict()
+	for animation_name, frames in frames_by_animation.items():
+		strip, regions = _build_animation_strip(frames)
+		strip_path = output_dir / f"{animation_name}.png"
+		strip.save(strip_path)
+		regions_by_animation[animation_name] = regions
+		print(f"Linglan {animation_name} strip: {strip_path} ({strip.width}x{strip.height})")
 
-	_write_spriteframes(
+	_write_spriteframes_for_animation_strips(
 		root / OUTPUT_FRAMES,
-		LINGLAN_TEXTURE_RESOURCE,
-		regions,
+		LINGLAN_TEXTURE_RESOURCES,
+		regions_by_animation,
 		animations,
-		TEXTURE_UID,
 		SPRITE_FRAMES_UID,
 	)
 
