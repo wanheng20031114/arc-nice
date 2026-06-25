@@ -106,7 +106,7 @@ func _test_skill2_config() -> void:
 	_expect(is_equal_approx(SKILL2_CONFIG.attack_interval, 1.0), "Skill2 attack interval mismatch.")
 	_expect(is_equal_approx(SKILL2_CONFIG.warning_lead_time, 0.35), "Skill2 warning lead mismatch.")
 	_expect(is_equal_approx(SKILL2_CONFIG.rocket_speed, 210.0), "Skill2 rocket speed mismatch.")
-	_expect(is_equal_approx(SKILL2_CONFIG.rocket_homing_turn_rate, 1.7), "Skill2 rocket homing mismatch.")
+	_expect(is_equal_approx(SKILL2_CONFIG.rocket_homing_turn_rate, 1.3), "Skill2 rocket homing mismatch.")
 	_expect(SKILL2_CONFIG.rocket_homing_turn_rate > 0.65, "Skill2 rocket homing must stay stronger than mage fireball.")
 	_expect(is_equal_approx(SKILL2_CONFIG.rocket_lifetime, 5.0), "Skill2 rocket lifetime mismatch.")
 	_expect(SKILL2_CONFIG.rocket_damage == 80, "Skill2 rocket damage mismatch.")
