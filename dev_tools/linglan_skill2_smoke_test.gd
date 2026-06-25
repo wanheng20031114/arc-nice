@@ -259,10 +259,15 @@ func _test_boss_skill2_schedule() -> void:
 
 	for _step in range(660):
 		boss.call("_physics_process", 1.0 / 60.0)
+		if boss.boss_skill_phase == LinglanBoss.BossSkillPhase.MOVE_TO_SKILL3:
+			break
 
 	_expect(host.projectile_records.size() == 10, "Skill2 must fire exactly 10 rockets.")
 	_expect(host.spawn_marker_calls.size() == 20, "Skill2 must request 20 total boss add spawns.")
-	_expect(boss.boss_skill_phase == LinglanBoss.BossSkillPhase.DONE, "Skill2 must enter DONE after the 10 second cycle.")
+	_expect(
+		boss.boss_skill_phase == LinglanBoss.BossSkillPhase.MOVE_TO_SKILL3,
+		"Skill2 must hand off to Skill3 movement after the 10 second cycle."
+	)
 	for record in host.projectile_records:
 		_expect(record.get("projectile_type") == &"linglan_skill2_rocket", "Skill2 registered wrong projectile type.")
 		_expect(int(record.get("damage", 0)) == 80, "Skill2 registered wrong rocket damage.")

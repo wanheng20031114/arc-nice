@@ -7,6 +7,7 @@
 [ext_resource type="Resource" path="res://resources/config/bosses/linglan_skill1.tres" id="5_skill1"]
 [ext_resource type="Resource" path="res://resources/config/bosses/linglan_skill2.tres" id="6_skill2"]
 [ext_resource type="AudioStream" path="res://resources/audio/capoo_mage_fireball_cast.wav" id="7_skill2_fire_audio"]
+[ext_resource type="Resource" path="res://resources/config/bosses/linglan_skill3.tres" id="8_skill3"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_hd8t5"]
 resource_local_to_scene = true
@@ -38,6 +39,7 @@ starts_active = false
 boss_display_name = "铃兰"
 skill1_config = ExtResource("5_skill1")
 skill2_config = ExtResource("6_skill2")
+skill3_config = ExtResource("8_skill3")
 
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
 texture_filter = 2

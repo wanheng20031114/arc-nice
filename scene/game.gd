@@ -1849,6 +1849,14 @@ func get_linglan_skill2_target_global_position(target_cell: Vector2i) -> Vector2
 	return Vector2.ZERO
 
 
+func get_linglan_skill3_target_global_position(target_cell: Vector2i) -> Vector2:
+	if ground_tile_map_layer != null:
+		return ground_tile_map_layer.to_global(ground_tile_map_layer.map_to_local(target_cell))
+	if active_boss_config != null:
+		return _get_boss_arena_center(active_boss_config)
+	return Vector2.ZERO
+
+
 func get_linglan_skill2_target_player(from_position: Vector2) -> Player:
 	return _pick_enemy_target(from_position)
 

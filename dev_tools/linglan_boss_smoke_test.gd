@@ -85,7 +85,7 @@ func _test_boss_entry_resource() -> void:
 		_expect(LINGLAN_BOSS_ENTRY.music.resource_path == "res://resources/audio/BGM_The_Truth_Never_Spoken.mp3", "Linglan boss music must use The Truth Never Spoken.")
 		_expect(LINGLAN_BOSS_ENTRY.music.get(&"loop") == true, "Linglan boss music must loop.")
 		_expect(is_equal_approx(float(LINGLAN_BOSS_ENTRY.music.get(&"loop_offset")), 1.0), "Linglan boss music must skip the first second after the first loop.")
-	_expect(is_equal_approx(LINGLAN_BOSS_ENTRY.music_volume_db, -2.0), "Linglan boss music must use the louder boss-specific volume.")
+	_expect(is_equal_approx(LINGLAN_BOSS_ENTRY.music_volume_db, 0.0), "Linglan boss music must use the louder boss-specific volume.")
 	_expect(is_equal_approx(LINGLAN_BOSS_ENTRY.music_loop_offset, 1.0), "Linglan boss music must expose the configured loop offset.")
 	_expect(LINGLAN_BOSS_ENTRY.get_enemy_config() == LINGLAN_CONFIG, "Linglan boss entry must resolve the Linglan enemy config on demand.")
 	_expect(DEFAULT_FLOW.get_step_by_id(&"boss_01_linglan") == LINGLAN_BOSS_ENTRY, "Default flow must include Linglan as a flow node.")

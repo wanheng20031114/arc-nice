@@ -10,6 +10,7 @@ const SKILL2_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 @export var boss_display_name: String = "铃兰"
 @export var skill1_config: LinglanSkillConfig
 @export var skill2_config: LinglanSkill2Config
+@export var skill3_config: LinglanSkill3Config
 
 @onready var skill2_fire_audio: AudioStreamPlayer2D = get_node_or_null("Skill2FireAudio") as AudioStreamPlayer2D
 
@@ -17,10 +18,13 @@ enum BossSkillPhase {
 	SKILL1,
 	MOVE_TO_SKILL2,
 	SKILL2,
+	MOVE_TO_SKILL3,
+	SKILL3,
 	DONE,
 }
 
 var is_active: bool = false
+var skill3_random := RandomNumberGenerator.new()
 var boss_skill_phase: BossSkillPhase = BossSkillPhase.SKILL1
 var skill1_elapsed: float = 0.0
 var skill1_fire_time_left: float = 0.0
@@ -34,10 +38,14 @@ var skill2_warning_shot_index: int = -1
 var skill2_warning_arrow: Node2D = null
 var skill2_pending_direction := Vector2.RIGHT
 var skill2_pending_target_player: Player = null
+var skill3_target_global_position := Vector2.ZERO
+var skill3_elapsed: float = 0.0
+var skill3_shots_fired: int = 0
 
 
 func _ready() -> void:
 	super._ready()
+	skill3_random.randomize()
 	set_active(starts_active)
 	_emit_health_changed()
 
@@ -96,6 +104,10 @@ func _physics_process(delta: float) -> void:
 			_update_skill2_move(delta)
 		BossSkillPhase.SKILL2:
 			_update_skill2(delta)
+		BossSkillPhase.MOVE_TO_SKILL3:
+			_update_skill3_move(delta)
+		BossSkillPhase.SKILL3:
+			_update_skill3(delta)
 		_:
 			velocity = Vector2.ZERO
 			_play_idle_animation()
@@ -126,6 +138,7 @@ func apply_multiplayer_health_snapshot(new_current_health: int) -> void:
 func _reset_skill_state() -> void:
 	_reset_skill1_state()
 	_reset_skill2_state()
+	_reset_skill3_state()
 	boss_skill_phase = BossSkillPhase.SKILL1
 
 
@@ -145,6 +158,12 @@ func _reset_skill2_state() -> void:
 	skill2_pending_direction = Vector2.RIGHT
 	skill2_pending_target_player = null
 	_clear_skill2_warning_arrow()
+
+
+func _reset_skill3_state() -> void:
+	skill3_target_global_position = Vector2.ZERO
+	skill3_elapsed = 0.0
+	skill3_shots_fired = 0
 
 
 func _update_skill1(delta: float) -> void:
@@ -387,7 +406,7 @@ func _update_skill2(delta: float) -> void:
 		and skill2_shots_fired >= maxi(skill2_config.attack_count, 1)
 	):
 		_clear_skill2_warning_arrow()
-		boss_skill_phase = BossSkillPhase.DONE
+		_begin_skill3_move()
 
 
 func _update_skill2_spawn_ticks() -> void:
@@ -592,6 +611,136 @@ func _resolve_skill2_target_global_position() -> Vector2:
 		return host.call(
 			"get_linglan_skill2_target_global_position",
 			skill2_config.target_cell
+		) as Vector2
+	return global_position
+
+
+func _begin_skill3_move() -> void:
+	_clear_skill2_warning_arrow()
+	if not _is_skill3_ready():
+		boss_skill_phase = BossSkillPhase.DONE
+		_play_idle_animation()
+		return
+	skill3_target_global_position = _resolve_skill3_target_global_position()
+	boss_skill_phase = BossSkillPhase.MOVE_TO_SKILL3
+	if animated_sprite != null and animated_sprite.sprite_frames != null:
+		if animated_sprite.sprite_frames.has_animation(&"move"):
+			animated_sprite.play(&"move")
+
+
+func _is_skill3_ready() -> bool:
+	return skill3_config != null and skill3_config.orb_scene != null
+
+
+func _update_skill3_move(delta: float) -> void:
+	var offset := skill3_target_global_position - global_position
+	var distance := offset.length()
+	var move_speed := skill3_config.move_speed
+	var arrival_distance := maxf(skill3_config.arrival_distance, 0.0)
+	if distance <= maxf(arrival_distance, move_speed * delta):
+		global_position = skill3_target_global_position
+		velocity = Vector2.ZERO
+		_begin_skill3_attack()
+		return
+
+	var move_direction := offset / distance
+	_set_facing_from_direction(move_direction)
+	if animated_sprite != null and animated_sprite.animation != &"move":
+		_play_scene_animation(&"move")
+	velocity = move_direction * move_speed
+	move_and_slide()
+
+
+func _begin_skill3_attack() -> void:
+	boss_skill_phase = BossSkillPhase.SKILL3
+	skill3_elapsed = 0.0
+	skill3_shots_fired = 0
+	velocity = Vector2.ZERO
+	_play_idle_animation()
+
+
+func _update_skill3(delta: float) -> void:
+	velocity = Vector2.ZERO
+	skill3_elapsed += maxf(delta, 0.0)
+	_play_idle_animation()
+	_update_skill3_fire()
+	if skill3_elapsed >= skill3_config.duration and skill3_shots_fired >= skill3_config.get_shot_count():
+		boss_skill_phase = BossSkillPhase.DONE
+
+
+func _update_skill3_fire() -> void:
+	var shot_count := skill3_config.get_shot_count()
+	var fire_interval := maxf(skill3_config.fire_interval, 0.05)
+	while skill3_shots_fired < shot_count:
+		var shot_time := float(skill3_shots_fired) * fire_interval
+		if skill3_elapsed + 0.0001 < shot_time:
+			return
+		_fire_skill3_orb()
+		skill3_shots_fired += 1
+
+
+func _fire_skill3_orb() -> void:
+	var orb := skill3_config.orb_scene.instantiate() as LinglanSkill3LightOrb
+	if orb == null:
+		return
+	var spawn_parent := _get_effect_spawn_parent()
+	if spawn_parent == null:
+		orb.free()
+		return
+
+	var direction := _get_random_skill3_direction()
+	var grow_delay := skill3_config.get_random_grow_delay(skill3_random)
+	orb.top_level = true
+	orb.setup(
+		direction,
+		skill3_config.orb_damage,
+		skill3_config.orb_speed,
+		grow_delay,
+		skill3_config.orb_base_radius,
+		skill3_config.orb_grow_scale,
+		skill3_config.orb_expanded_hold_duration,
+		skill3_config.orb_flash_lead_time
+	)
+	spawn_parent.add_child(orb)
+	orb.global_position = global_position
+	_register_skill3_multiplayer_projectile(orb, global_position, direction, grow_delay)
+
+
+func _get_random_skill3_direction() -> Vector2:
+	var minimum := minf(skill3_config.direction_min_degrees, skill3_config.direction_max_degrees)
+	var maximum := maxf(skill3_config.direction_min_degrees, skill3_config.direction_max_degrees)
+	return Vector2.RIGHT.rotated(deg_to_rad(skill3_random.randf_range(minimum, maximum))).normalized()
+
+
+func _register_skill3_multiplayer_projectile(
+	projectile: LinglanSkill3LightOrb,
+	spawn_position: Vector2,
+	projectile_direction: Vector2,
+	grow_delay: float
+) -> void:
+	var current_scene := get_tree().current_scene
+	if current_scene == null or not current_scene.has_method("register_local_projectile"):
+		return
+	current_scene.call(
+		"register_local_projectile",
+		projectile,
+		&"linglan_skill3_orb",
+		get_multiplayer_authority(),
+		spawn_position,
+		projectile_direction,
+		skill3_config.orb_damage,
+		skill3_config.orb_speed,
+		grow_delay,
+		false
+	)
+
+
+func _resolve_skill3_target_global_position() -> Vector2:
+	var host := _find_parent_with_method(&"get_linglan_skill3_target_global_position")
+	if host != null:
+		return host.call(
+			"get_linglan_skill3_target_global_position",
+			skill3_config.target_cell
 		) as Vector2
 	return global_position
 

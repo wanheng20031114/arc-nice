@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="LinglanSkill3Config" format=3]
+
+[ext_resource type="Script" path="res://resources/config/bosses/linglan_skill3_config.gd" id="1_config"]
+[ext_resource type="PackedScene" path="res://scene/linglan_skill3_light_orb.tscn" id="2_orb"]
+
+[resource]
+script = ExtResource("1_config")
+orb_scene = ExtResource("2_orb")

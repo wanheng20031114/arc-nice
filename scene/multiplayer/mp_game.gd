@@ -16,6 +16,7 @@ const CAPOO_SMG_BULLET_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn
 const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
 const LINGLAN_SAKURA_BULLET_SCENE := preload("res://scene/linglan_skill1_sakura_bullet.tscn")
 const LINGLAN_SKILL2_ROCKET_SCENE := preload("res://scene/linglan_skill2_sakura_rocket.tscn")
+const LINGLAN_SKILL3_ORB_SCENE := preload("res://scene/linglan_skill3_light_orb.tscn")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 
 const INPUT_BUTTON_SKILL1 := 1
@@ -1081,6 +1082,13 @@ func _instantiate_projectile(
 				sakura_rocket.homing_turn_rate
 			)
 			return sakura_rocket
+		&"linglan_skill3_orb":
+			var light_orb := LINGLAN_SKILL3_ORB_SCENE.instantiate() as LinglanSkill3LightOrb
+			if light_orb == null:
+				return null
+			light_orb.top_level = true
+			light_orb.setup(direction, damage, speed, lifetime)
+			return light_orb
 		_:
 			return null
 
