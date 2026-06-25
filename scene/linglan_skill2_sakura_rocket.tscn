@@ -8,7 +8,7 @@ radius = 5.0
 height = 28.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_explosion"]
-radius = 110.0
+radius = 82.5
 
 [node name="LinglanSkill2SakuraRocket" type="Area2D"]
 z_index = 4

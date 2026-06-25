@@ -106,10 +106,11 @@ func _test_skill2_config() -> void:
 	_expect(is_equal_approx(SKILL2_CONFIG.attack_interval, 1.0), "Skill2 attack interval mismatch.")
 	_expect(is_equal_approx(SKILL2_CONFIG.warning_lead_time, 0.35), "Skill2 warning lead mismatch.")
 	_expect(is_equal_approx(SKILL2_CONFIG.rocket_speed, 210.0), "Skill2 rocket speed mismatch.")
-	_expect(SKILL2_CONFIG.rocket_homing_turn_rate > 0.65, "Skill2 rocket homing must be stronger than mage fireball.")
+	_expect(is_equal_approx(SKILL2_CONFIG.rocket_homing_turn_rate, 1.7), "Skill2 rocket homing mismatch.")
+	_expect(SKILL2_CONFIG.rocket_homing_turn_rate > 0.65, "Skill2 rocket homing must stay stronger than mage fireball.")
 	_expect(is_equal_approx(SKILL2_CONFIG.rocket_lifetime, 5.0), "Skill2 rocket lifetime mismatch.")
 	_expect(SKILL2_CONFIG.rocket_damage == 80, "Skill2 rocket damage mismatch.")
-	_expect(is_equal_approx(SKILL2_CONFIG.rocket_explosion_radius, 110.0), "Skill2 explosion radius mismatch.")
+	_expect(is_equal_approx(SKILL2_CONFIG.rocket_explosion_radius, 82.5), "Skill2 explosion radius mismatch.")
 	_expect(SKILL2_CONFIG.rocket_scene == ROCKET_SCENE, "Skill2 rocket scene mismatch.")
 	_expect(SKILL2_CONFIG.warning_arrow_scene == WARNING_ARROW_SCENE, "Skill2 warning arrow scene mismatch.")
 	_expect(SKILL2_CONFIG.spawn_enemy_config != null, "Skill2 spawn enemy config missing.")
@@ -133,7 +134,7 @@ func _test_skill2_scene_contract() -> void:
 	_expect(explosion_shape != null and explosion_shape.shape is CircleShape2D, "Skill2 rocket must expose an explosion circle shape.")
 	if explosion_shape != null and explosion_shape.shape is CircleShape2D:
 		var circle := explosion_shape.shape as CircleShape2D
-		_expect(is_equal_approx(circle.radius, 110.0), "Skill2 explosion shape radius must be 110.")
+		_expect(is_equal_approx(circle.radius, 82.5), "Skill2 explosion shape radius must be 82.5.")
 	rocket.queue_free()
 
 	var warning_arrow := WARNING_ARROW_SCENE.instantiate() as Node2D
@@ -161,6 +162,8 @@ func _test_skill2_scene_contract() -> void:
 		await process_frame
 		var sprite := explosion.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
 		_expect(sprite != null and sprite.sprite_frames == EXPLOSION_FRAMES, "Skill2 explosion scene must use generated SpriteFrames.")
+		if sprite != null:
+			_expect(is_equal_approx(sprite.scale.x, 0.75), "Skill2 explosion visual scale must shrink with the damage radius.")
 		explosion.queue_free()
 
 
@@ -275,7 +278,7 @@ func _test_rocket_homing_and_explosion_damage() -> void:
 	await process_frame
 	rocket.global_position = Vector2.ZERO
 	fireball.global_position = Vector2.ZERO
-	rocket.setup(Vector2.RIGHT, 80, 210.0, 5.0, 110.0, homing_target, SKILL2_CONFIG.rocket_homing_turn_rate)
+	rocket.setup(Vector2.RIGHT, 80, 210.0, 5.0, 82.5, homing_target, SKILL2_CONFIG.rocket_homing_turn_rate)
 	fireball.setup(Vector2.RIGHT, 1, 155.0, 4.0, 10.5, homing_target, fireball.homing_turn_rate)
 	rocket.call("_update_homing", 0.25)
 	fireball.call("_update_homing", 0.25)
@@ -325,7 +328,7 @@ func _test_rocket_homing_and_explosion_damage() -> void:
 	var explosion_rocket := ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
 	test_root.add_child(explosion_rocket)
 	explosion_rocket.global_position = Vector2.ZERO
-	explosion_rocket.setup(Vector2.RIGHT, 80, 210.0, 5.0, 110.0, player, SKILL2_CONFIG.rocket_homing_turn_rate)
+	explosion_rocket.setup(Vector2.RIGHT, 80, 210.0, 5.0, 82.5, player, SKILL2_CONFIG.rocket_homing_turn_rate)
 	explosion_rocket.call("_explode")
 	await process_frame
 

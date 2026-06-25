@@ -21,8 +21,8 @@ const EXPLOSION_QUERY_MAX_RESULTS := 96
 
 @export var speed: float = 210.0
 @export var max_lifetime: float = 5.0
-@export var explosion_radius: float = 110.0
-@export var homing_turn_rate: float = 2.4
+@export var explosion_radius: float = 82.5
+@export var homing_turn_rate: float = 1.7
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
@@ -51,9 +51,9 @@ func setup(
 	initial_damage: int,
 	initial_speed: float,
 	initial_lifetime: float,
-	initial_explosion_radius: float = 110.0,
+	initial_explosion_radius: float = 82.5,
 	initial_target_player: Player = null,
-	initial_homing_turn_rate: float = 2.4
+	initial_homing_turn_rate: float = 1.7
 ) -> void:
 	if initial_direction != Vector2.ZERO:
 		direction = initial_direction.normalized()
@@ -209,6 +209,8 @@ func _spawn_explosion_effect() -> void:
 	if explosion == null:
 		return
 	explosion.top_level = true
+	if explosion.has_method("setup"):
+		explosion.call("setup", explosion_radius)
 	spawn_parent.add_child(explosion)
 	explosion.global_position = global_position
 
