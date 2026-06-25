@@ -40,7 +40,8 @@ position = Vector2(2.3841858e-07, -4.7683716e-07)
 scale = Vector2(0.348, 0.348)
 sprite_frames = ExtResource("4_frames")
 animation = &"idle"
-frame_progress = 0.9210572
+frame = 5
+frame_progress = 0.55631095
 
 [node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
 position = Vector2(0, -4)

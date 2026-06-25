@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,8 +21,8 @@ from connected_background_remover import (
 )
 
 
-SOURCE_SHEET = "dev_assets/source_images/linglan_boss_sheet_v4_purple.png"
-ALPHA_SHEET = "dev_assets/source_images/linglan_boss_sheet_v4_alpha.png"
+SOURCE_SHEET = "dev_assets/source_images/linglan_boss_sheet_v7_magenta.png"
+ALPHA_SHEET = "dev_assets/source_images/linglan_boss_sheet_v7_alpha.png"
 HUD_SOURCE = "dev_assets/source_images/linglan_boss_hud_imagegen_green.png"
 HUD_ALPHA = "dev_assets/source_images/linglan_boss_hud_alpha.png"
 VFX_SOURCE = "dev_assets/source_images/linglan_sakura_vfx_imagegen_green.png"
@@ -52,7 +53,7 @@ ANIMATION_ROWS: OrderedDict[str, int] = OrderedDict(
 	[
 		("idle", 0),
 		("move", 1),
-		("die", 2),
+		("move_up", 2),
 	]
 )
 
@@ -61,11 +62,11 @@ ANIMATION_ALIASES: OrderedDict[str, list[str]] = OrderedDict(
 		("move_down", [f"move_{index}" for index in range(SOURCE_COLUMNS)]),
 		("move_left", [f"move_{index}" for index in range(SOURCE_COLUMNS)]),
 		("move_right", [f"move_{index}" for index in range(SOURCE_COLUMNS)]),
-		("move_up", [f"move_{index}" for index in range(SOURCE_COLUMNS)]),
 		("idle_down", ["idle_0"]),
 		("idle_left", ["idle_0"]),
 		("idle_right", ["idle_0"]),
 		("idle_up", ["idle_0"]),
+		("die", [f"idle_{index}" for index in range(SOURCE_COLUMNS)]),
 	]
 )
 
@@ -110,13 +111,13 @@ def _remove_linglan_sprite_background(image: Image.Image) -> Image.Image:
 	array = np.array(result.convert("RGBA"), dtype=np.uint8)
 	rgb_float = array[:, :, :3].astype(np.float32) / 255.0
 	hue, saturation, value = _rgb_to_hsv_arrays(rgb_float)
-	purple_background = (
+	magenta_background = (
 		(saturation >= 0.28)
 		& (value >= 0.14)
-		& (hue >= 0.66)
-		& (hue <= 0.80)
+		& (hue >= 0.76)
+		& (hue <= 0.94)
 	)
-	array[purple_background] = (0, 0, 0, 0)
+	array[magenta_background] = (0, 0, 0, 0)
 	visible_pixels = array[:, :, 3] > 0
 	array[:, :, 3][visible_pixels] = 255
 	return Image.fromarray(array)
@@ -218,19 +219,105 @@ def _detect_grid_source_frames(source: Image.Image) -> list[list[DetectedFrame]]
 	return rows
 
 
-def _compute_frame_size(frames: list[DetectedFrame]) -> tuple[int, int]:
-	max_width = max(right - left for left, _top, right, _bottom in [frame.source_bbox for frame in frames])
-	max_height = max(bottom - top for _left, top, _right, bottom in [frame.source_bbox for frame in frames])
-	return (
-		_round_up(max_width + FRAME_PADDING * 2, FRAME_SIZE_ALIGNMENT),
-		_round_up(max_height + FRAME_PADDING * 2, FRAME_SIZE_ALIGNMENT),
+def _largest_mask_component_bbox(mask: np.ndarray) -> tuple[int, int, int, int] | None:
+	labels, count = ndimage.label(mask)
+	if count <= 0:
+		return None
+	component_sizes = ndimage.sum(mask, labels, index=range(1, count + 1))
+	largest_label = int(np.argmax(component_sizes)) + 1
+	component = labels == largest_label
+	y, x = np.nonzero(component)
+	if x.size == 0 or y.size == 0:
+		return None
+	return int(x.min()), int(y.min()), int(x.max() + 1), int(y.max() + 1)
+
+
+def _detect_linglan_body_anchor(source: Image.Image, frame: DetectedFrame) -> tuple[float, float]:
+	left, top, right, bottom = frame.source_bbox
+	cell = np.array(source.crop(frame.source_bbox).convert("RGBA"), dtype=np.uint8)
+	alpha = cell[:, :, 3] > 0
+	if not alpha.any():
+		return ((left + right) * 0.5, float(bottom))
+
+	red = cell[:, :, 0].astype(np.int16)
+	green = cell[:, :, 1].astype(np.int16)
+	blue = cell[:, :, 2].astype(np.int16)
+	teal_skirt = (
+		alpha
+		& (red <= 190)
+		& (green >= 80)
+		& (blue >= 70)
+		& (green >= red + 8)
+		& (blue >= red + 4)
+		& (np.abs(green - blue) <= 95)
 	)
+	body_bbox = _largest_mask_component_bbox(teal_skirt)
+	if body_bbox is not None:
+		body_left, _body_top, body_right, _body_bottom = body_bbox
+		anchor_x = left + (body_left + body_right) * 0.5
+	else:
+		anchor_x = (left + right) * 0.5
+
+	width = right - left
+	local_anchor_x = anchor_x - left
+	band_half_width = max(14, int(width * 0.22))
+	band_left = max(0, int(round(local_anchor_x - band_half_width)))
+	band_right = min(width, int(round(local_anchor_x + band_half_width + 1)))
+	central_alpha = alpha[:, band_left:band_right]
+	central_y, _central_x = np.nonzero(central_alpha)
+	anchor_y = float(top + int(central_y.max()) + 1) if central_y.size > 0 else float(bottom)
+	return anchor_x, anchor_y
 
 
-def _extract_frame(image: Image.Image, frame: DetectedFrame, frame_size: tuple[int, int]) -> Image.Image:
+def _compute_frame_layout(
+	frames_by_name: OrderedDict[str, DetectedFrame],
+	anchors_by_name: dict[str, tuple[float, float]],
+) -> tuple[tuple[int, int], tuple[int, int]]:
+	max_left_extent = 0.0
+	max_right_extent = 0.0
+	max_top_extent = 0.0
+	max_bottom_extent = 0.0
+	for frame_name, frame in frames_by_name.items():
+		left, top, right, bottom = frame.source_bbox
+		anchor_x, anchor_y = anchors_by_name[frame_name]
+		max_left_extent = max(max_left_extent, anchor_x - left)
+		max_right_extent = max(max_right_extent, right - anchor_x)
+		max_top_extent = max(max_top_extent, anchor_y - top)
+		max_bottom_extent = max(max_bottom_extent, bottom - anchor_y)
+
+	horizontal_extent = max(max_left_extent, max_right_extent)
+	frame_width = _round_up(int(math.ceil(horizontal_extent * 2 + FRAME_PADDING * 2)), FRAME_SIZE_ALIGNMENT)
+	frame_height = _round_up(
+		int(math.ceil(max_top_extent + max_bottom_extent + FRAME_PADDING * 2)),
+		FRAME_SIZE_ALIGNMENT,
+	)
+	target_anchor = (
+		frame_width // 2,
+		FRAME_PADDING + int(math.ceil(max_top_extent)),
+	)
+	return (frame_width, frame_height), target_anchor
+
+
+def _extract_frame(
+	image: Image.Image,
+	frame: DetectedFrame,
+	frame_size: tuple[int, int],
+	source_anchor: tuple[float, float],
+	target_anchor: tuple[int, int],
+) -> Image.Image:
+	left, top, right, bottom = frame.source_bbox
 	cell = image.crop(frame.source_bbox)
 	result = Image.new("RGBA", frame_size, (0, 0, 0, 0))
-	result.alpha_composite(cell, ((frame_size[0] - cell.width) // 2, (frame_size[1] - cell.height) // 2))
+	local_anchor_x = source_anchor[0] - left
+	local_anchor_y = source_anchor[1] - top
+	x = int(round(target_anchor[0] - local_anchor_x))
+	y = int(round(target_anchor[1] - local_anchor_y))
+	if x < 0 or y < 0 or x + cell.width > frame_size[0] or y + cell.height > frame_size[1]:
+		raise ValueError(
+			"Linglan frame does not fit anchored canvas: "
+			f"bbox={frame.source_bbox}, canvas={frame_size}, offset=({x}, {y})."
+		)
+	result.alpha_composite(cell, (x, y))
 	return result
 
 
@@ -243,6 +330,20 @@ def _keep_largest_alpha_component(image: Image.Image) -> Image.Image:
 	component_sizes = ndimage.sum(alpha, labels, index=range(1, count + 1))
 	largest_label = int(np.argmax(component_sizes)) + 1
 	array[labels != largest_label] = (0, 0, 0, 0)
+	return Image.fromarray(array)
+
+
+def _remove_tiny_alpha_components(image: Image.Image, min_alpha_pixels: int = 24) -> Image.Image:
+	array = np.array(image.convert("RGBA"), dtype=np.uint8)
+	alpha = array[:, :, 3] > 0
+	labels, count = ndimage.label(alpha)
+	if count <= 1:
+		return image
+	for label_index, slices in enumerate(ndimage.find_objects(labels), start=1):
+		if slices is None:
+			continue
+		if int((labels[slices] == label_index).sum()) < min_alpha_pixels:
+			array[labels == label_index] = (0, 0, 0, 0)
 	return Image.fromarray(array)
 
 
@@ -280,7 +381,11 @@ def _collect_linglan_frames(source: Image.Image) -> tuple[list[tuple[str, Image.
 		if detected.alpha_pixels < MIN_COMPONENT_ALPHA_PIXELS:
 			raise ValueError("%s contains too little foreground alpha." % frame_name)
 
-	frame_size = _compute_frame_size(list(detected_by_name.values()))
+	anchors_by_name = {
+		frame_name: _detect_linglan_body_anchor(source, detected)
+		for frame_name, detected in detected_by_name.items()
+	}
+	frame_size, target_anchor = _compute_frame_layout(detected_by_name, anchors_by_name)
 	frames: list[tuple[str, Image.Image]] = []
 	animations: OrderedDict[str, list[str]] = OrderedDict()
 
@@ -288,9 +393,15 @@ def _collect_linglan_frames(source: Image.Image) -> tuple[list[tuple[str, Image.
 		frame_names: list[str] = []
 		for column in range(SOURCE_COLUMNS):
 			frame_name = f"{animation_name}_{column}"
-			frame_image = _extract_frame(source, detected_by_name[frame_name], frame_size)
+			frame_image = _extract_frame(
+				source,
+				detected_by_name[frame_name],
+				frame_size,
+				anchors_by_name[frame_name],
+				target_anchor,
+			)
 			if animation_name != "die":
-				frame_image = _keep_largest_alpha_component(frame_image)
+				frame_image = _remove_tiny_alpha_components(frame_image)
 			else:
 				frame_image = _remove_tall_edge_fragments(frame_image)
 			frames.append((frame_name, frame_image))

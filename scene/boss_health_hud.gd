@@ -1,17 +1,9 @@
 extends CanvasLayer
 class_name BossHealthHUD
 
-const BAR_ASPECT := 1674.0 / 281.0
-const NAMEPLATE_ASPECT := 838.0 / 256.0
-const MAX_FRAME_WIDTH := 760.0
-const MIN_FRAME_WIDTH := 420.0
-const TOP_MARGIN := 8.0
-
 @onready var root_control: Control = $Root
-@onready var frame: TextureRect = $Root/Frame
-@onready var health_bar: ProgressBar = $Root/HealthBar
-@onready var health_text: Label = $Root/HealthBar/HealthText
-@onready var nameplate: TextureRect = $Root/Nameplate
+@onready var health_bar: ProgressBar = $HealthBar
+@onready var health_text: Label = $HealthBar/HealthText
 @onready var name_label: Label = $Root/Nameplate/Name
 
 var bound_boss: LinglanBoss = null
@@ -19,8 +11,6 @@ var reveal_tween: Tween = null
 
 
 func _ready() -> void:
-	get_viewport().size_changed.connect(_layout_for_viewport)
-	_layout_for_viewport()
 	hide_all()
 
 
@@ -42,7 +32,9 @@ func show_for_boss(boss: LinglanBoss, boss_name: String = "") -> void:
 	name_label.text = display_name
 
 	root_control.visible = true
+	health_bar.visible = true
 	root_control.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	health_bar.modulate = Color(1.0, 1.0, 1.0, 0.0)
 	_on_boss_health_changed(bound_boss.current_health, bound_boss.get_max_health())
 	_play_reveal()
 
@@ -50,6 +42,7 @@ func show_for_boss(boss: LinglanBoss, boss_name: String = "") -> void:
 func hide_all() -> void:
 	_stop_reveal_tween()
 	root_control.visible = false
+	health_bar.visible = false
 	_unbind_boss()
 
 
@@ -66,37 +59,12 @@ func _on_boss_defeated(enemy: Enemy) -> void:
 	_on_boss_health_changed(0, bound_boss.get_max_health())
 
 
-func _layout_for_viewport() -> void:
-	if root_control == null:
-		return
-	var viewport_size := get_viewport().get_visible_rect().size
-	var frame_width := clampf(viewport_size.x - 128.0, MIN_FRAME_WIDTH, MAX_FRAME_WIDTH)
-	var frame_height := frame_width / BAR_ASPECT
-	var frame_position := Vector2((viewport_size.x - frame_width) * 0.5, TOP_MARGIN)
-	frame.position = frame_position
-	frame.size = Vector2(frame_width, frame_height)
-
-	var bar_width := frame_width * 0.58
-	var bar_height := maxf(frame_height * 0.16, 14.0)
-	health_bar.position = Vector2(
-		frame_position.x + (frame_width - bar_width) * 0.5,
-		frame_position.y + frame_height * 0.62
-	)
-	health_bar.size = Vector2(bar_width, bar_height)
-
-	var name_width := clampf(frame_width * 0.34, 220.0, 300.0)
-	var name_height := name_width / NAMEPLATE_ASPECT
-	nameplate.position = Vector2(
-		frame_position.x + (frame_width - name_width) * 0.5,
-		frame_position.y + frame_height * 0.22
-	)
-	nameplate.size = Vector2(name_width, name_height)
-
-
 func _play_reveal() -> void:
 	_stop_reveal_tween()
 	reveal_tween = create_tween()
+	reveal_tween.set_parallel(true)
 	reveal_tween.tween_property(root_control, "modulate", Color.WHITE, 0.35).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	reveal_tween.tween_property(health_bar, "modulate", Color.WHITE, 0.35).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 
 func _stop_reveal_tween() -> void:

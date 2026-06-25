@@ -141,6 +141,15 @@ func _test_boss_hud_binding() -> void:
 		return
 	var authored_hud_root := hud.get_node_or_null("Root") as Control
 	_expect(authored_hud_root != null and authored_hud_root.visible, "Boss HUD root must stay visible in the authored scene for editor tuning.")
+	var authored_frame := hud.get_node_or_null("Root/Frame") as TextureRect
+	var authored_health_bar := hud.get_node_or_null("HealthBar") as ProgressBar
+	var authored_nameplate := hud.get_node_or_null("Root/Nameplate") as TextureRect
+	var authored_frame_position := authored_frame.position if authored_frame != null else Vector2.ZERO
+	var authored_frame_size := authored_frame.size if authored_frame != null else Vector2.ZERO
+	var authored_health_bar_position := authored_health_bar.position if authored_health_bar != null else Vector2.ZERO
+	var authored_health_bar_size := authored_health_bar.size if authored_health_bar != null else Vector2.ZERO
+	var authored_nameplate_position := authored_nameplate.position if authored_nameplate != null else Vector2.ZERO
+	var authored_nameplate_size := authored_nameplate.size if authored_nameplate != null else Vector2.ZERO
 	test_root.add_child(linglan)
 	test_root.add_child(hud)
 	await process_frame
@@ -151,11 +160,23 @@ func _test_boss_hud_binding() -> void:
 
 	var root_control := hud.get_node_or_null("Root") as Control
 	var frame := hud.get_node_or_null("Root/Frame") as TextureRect
-	var health_bar := hud.get_node_or_null("Root/HealthBar") as ProgressBar
+	var health_bar := hud.get_node_or_null("HealthBar") as ProgressBar
+	var nameplate := hud.get_node_or_null("Root/Nameplate") as TextureRect
 	var name_label := hud.get_node_or_null("Root/Nameplate/Name") as Label
 	var max_health := LINGLAN_CONFIG.max_health
 	_expect(root_control != null and root_control.visible, "Boss HUD root must become visible.")
-	_expect(frame != null and frame.size.x <= 760.0 and frame.size.y <= 130.0, "Boss HUD frame must stay within the designed top bar size.")
+	_expect(
+		frame != null and frame.position == authored_frame_position and frame.size == authored_frame_size,
+		"Boss HUD frame must keep the authored scene layout after runtime loading."
+	)
+	_expect(
+		health_bar != null and health_bar.position == authored_health_bar_position and health_bar.size == authored_health_bar_size,
+		"Boss HUD health bar must keep the authored scene layout after runtime loading."
+	)
+	_expect(
+		nameplate != null and nameplate.position == authored_nameplate_position and nameplate.size == authored_nameplate_size,
+		"Boss HUD nameplate must keep the authored scene layout after runtime loading."
+	)
 	_expect(health_bar != null and health_bar.max_value == float(max_health), "Boss HUD must use Linglan max health.")
 	_expect(name_label != null and name_label.text == "铃兰", "Boss HUD must show Linglan's Chinese name.")
 	linglan.apply_damage(500)
@@ -238,7 +259,8 @@ func _test_game_boss_opening_flow() -> void:
 	_expect(hud != null and (hud.get_node("Root") as Control).visible, "Top boss HUD must appear after Linglan activates.")
 	if hud != null:
 		var hud_frame := hud.get_node_or_null("Root/Frame") as TextureRect
-		_expect(hud_frame != null and hud_frame.size.x <= 760.0 and hud_frame.size.y <= 130.0, "Top boss HUD must stay inside its bounded layout.")
+		var hud_health_bar := hud.get_node_or_null("HealthBar") as ProgressBar
+		_expect(hud_frame != null and hud_health_bar != null and hud_health_bar.visible, "Top boss HUD must use the authored large HUD nodes.")
 	_expect(boss == null or boss.get_node_or_null("OverheadHUD") == null, "Linglan must not show a mini overhead HUD.")
 
 	game.queue_free()
