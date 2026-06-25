@@ -30,6 +30,7 @@ script = ExtResource("2_script")
 path_refresh_interval = 0.25
 waypoint_arrival_distance = 6.0
 direct_chase_extra_distance = 2.0
+sprite_faces_left_by_default = true
 
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
 material = SubResource("ShaderMaterial_tg75k")
@@ -37,6 +38,7 @@ texture_filter = 2
 scale = Vector2(0.31, 0.31)
 sprite_frames = ExtResource("4_frames")
 animation = &"move"
+flip_h = true
 
 [node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
 position = Vector2(0.5, 3)

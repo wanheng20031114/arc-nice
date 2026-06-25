@@ -60,6 +60,7 @@ func _run() -> void:
 
 	_test_resource_contract()
 	_test_elite_resource_contract()
+	await _test_knight_runtime_facing()
 	await _test_elite_runtime_facing()
 	await _test_slash_geometry()
 	await _test_windup_delays_damage()
@@ -110,6 +111,8 @@ func _test_resource_contract() -> void:
 	var body_shapes := _collect_direct_collision_shapes(knight_instance)
 	var touch_shapes := _collect_direct_collision_shapes(knight_instance.get_node("TouchDamageArea"))
 	_expect(animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"move"), "Knight scene must own its move animation.")
+	_expect(knight_instance.sprite_faces_left_by_default, "Knight sprite sheet faces left by default and must declare that.")
+	_expect(animated_sprite.flip_h, "Knight editor preview must face right by flipping its left-facing sheet.")
 	_expect(body_shapes.size() == 2, "Knight body collision should use both configured CollisionShape2D nodes.")
 	_expect(touch_shapes.size() == 2, "Knight touch damage should use both configured CollisionShape2D nodes.")
 	for body_shape in body_shapes:
@@ -189,6 +192,28 @@ func _test_elite_resource_contract() -> void:
 
 	elite_instance.free()
 	knight_instance.free()
+
+
+func _test_knight_runtime_facing() -> void:
+	var knight_instance := KNIGHT_SCENE.instantiate() as CapooKnight
+	_expect(knight_instance != null, "Knight runtime facing test must instantiate CapooKnight.")
+	if knight_instance == null:
+		return
+
+	test_root.add_child(knight_instance)
+	await process_frame
+	var animated_sprite := knight_instance.get_node("AnimatedSprite2D") as AnimatedSprite2D
+	var body_shapes := _collect_direct_collision_shapes(knight_instance)
+	_expect(knight_instance.sprite_faces_left_by_default, "Knight sprite sheet faces left by default and must declare that.")
+	knight_instance.call("_set_facing_left", false)
+	_expect(animated_sprite.flip_h, "Knight must face right when moving right.")
+	var right_body_shape_x := body_shapes[1].position.x if body_shapes.size() > 1 else 0.0
+	knight_instance.call("_set_facing_left", true)
+	_expect(not animated_sprite.flip_h, "Knight must face left when moving left.")
+	if body_shapes.size() > 1:
+		_expect(is_equal_approx(body_shapes[1].position.x, -right_body_shape_x), "Knight off-center collision shape must mirror with facing.")
+	knight_instance.queue_free()
+	await process_frame
 
 
 func _test_elite_runtime_facing() -> void:

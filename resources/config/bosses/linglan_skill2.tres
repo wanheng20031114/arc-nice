@@ -7,6 +7,8 @@
 
 [resource]
 script = ExtResource("1_config")
+rocket_homing_turn_rate = 1.2
+rocket_explosion_radius = 78.0
 rocket_scene = ExtResource("2_rocket")
 warning_arrow_scene = ExtResource("3_warning")
 spawn_enemy_config = ExtResource("4_enemy")

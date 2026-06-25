@@ -9,10 +9,10 @@ class_name LinglanSkill2Config
 @export_range(0.05, 60.0, 0.05, "or_greater") var attack_interval: float = 1.0
 @export_range(0.0, 10.0, 0.05, "or_greater") var warning_lead_time: float = 0.35
 @export_range(0.0, 2000.0, 1.0, "or_greater") var rocket_speed: float = 210.0
-@export_range(0.0, 20.0, 0.05, "or_greater") var rocket_homing_turn_rate: float = 1.7
+@export_range(0.0, 20.0, 0.05, "or_greater") var rocket_homing_turn_rate: float = 1.2
 @export_range(0.01, 30.0, 0.05, "or_greater") var rocket_lifetime: float = 5.0
 @export_range(0, 999, 1, "or_greater") var rocket_damage: int = 80
-@export_range(0.0, 512.0, 0.5, "or_greater") var rocket_explosion_radius: float = 82.5
+@export_range(0.0, 512.0, 0.5, "or_greater") var rocket_explosion_radius: float = 78.0
 @export_range(0.0, 128.0, 0.5, "or_greater") var rocket_spawn_distance: float = 28.0
 @export_range(0.0, 128.0, 0.5, "or_greater") var warning_arrow_start_distance: float = 18.0
 @export_range(16.0, 512.0, 1.0, "or_greater") var warning_arrow_length: float = 168.0
