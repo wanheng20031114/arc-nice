@@ -1,23 +1,12 @@
-[gd_resource type="Resource" script_class="LinglanSkillConfig" format=3]
+[gd_resource type="Resource" script_class="LinglanSkillConfig" format=3 uid="uid://bp31l5cc7cbv4"]
 
-[ext_resource type="Script" path="res://resources/config/bosses/linglan_skill_config.gd" id="1_config"]
-[ext_resource type="PackedScene" path="res://scene/linglan_skill1_sakura_bullet.tscn" id="2_projectile"]
-[ext_resource type="PackedScene" path="res://scene/linglan_skill1_warning_ray.tscn" id="3_warning_ray"]
+[ext_resource type="Script" uid="uid://d2536k0i7ayfn" path="res://resources/config/bosses/linglan_skill_config.gd" id="1_config"]
+[ext_resource type="PackedScene" uid="uid://dissedmiob1qs" path="res://scene/linglan_skill1_sakura_bullet.tscn" id="2_projectile"]
+[ext_resource type="PackedScene" uid="uid://d0wqnhsq4spw7" path="res://scene/linglan_skill1_warning_ray.tscn" id="3_warning_ray"]
 
 [resource]
 script = ExtResource("1_config")
-skill_name = &"linglan_skill1"
-start_delay = 5.0
-ring_direction_count = 20
 attack_speed = 1800.0
-fixed_fire_duration = 2.0
-rotating_fire_duration = 15.0
-rotation_speed_degrees_per_second = 6.0
-projectile_speed = 300.0
-projectile_lifetime = 2.0
-projectile_damage = 50
-projectile_spawn_distance = 18.0
 projectile_scene = ExtResource("2_projectile")
-warning_lead_time = 1.0
 warning_ray_width_scale = 0.6
 warning_ray_scene = ExtResource("3_warning_ray")

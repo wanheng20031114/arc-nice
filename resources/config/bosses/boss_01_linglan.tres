@@ -2,11 +2,15 @@
 
 [ext_resource type="Script" uid="uid://br75amn54iwkd" path="res://resources/config/bosses/boss_config.gd" id="1_boss"]
 [ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="1_gxswq"]
+[ext_resource type="AudioStream" uid="uid://3dj2ustdhxuu" path="res://resources/audio/BGM_The_Truth_Never_Spoken.mp3" id="2_music"]
 
 [resource]
 script = ExtResource("1_boss")
 boss_name = "铃兰"
 enemy_config_path = "res://resources/config/enemies/linglan_boss.tres"
+music = ExtResource("2_music")
+music_volume_db = -6.0
+music_loop_offset = 1.0
 step_id = &"boss_01_linglan"
 display_name = "铃兰"
 editor_position = Vector2(560, 120)

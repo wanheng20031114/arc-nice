@@ -18,6 +18,7 @@ const MIN_WAVE_SPAWN_INTERVAL_SECONDS := 0.1
 const MAX_WAVE_SPAWN_COUNT_PER_TICK := 4
 const SPAWN_EFFECTS_PER_SECOND_LIMIT := 24
 const SPAWN_AUDIO_MIN_INTERVAL_SECONDS := 0.08
+const DEFAULT_MUSIC_VOLUME_DB := -6.0
 
 signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
 signal multiplayer_enemy_defeated(net_id: int, defeat_position: Vector2)
@@ -342,6 +343,7 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 			var boss_config := flow_step as BossConfig
 			if boss_config != null:
 				active_boss_config = boss_config
+				_update_boss_music(boss_config)
 				_prepare_linglan_boss_arena(boss_config)
 				_play_remote_boss_intro(boss_config)
 		WaveState.BOSS_ACTIVE:
@@ -349,6 +351,10 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 			wave_state = WaveState.BOSS_ACTIVE
 			_set_local_merchants_active(false)
 			wave_hud.hide_all()
+			var active_config := flow_step as BossConfig
+			if active_config != null:
+				active_boss_config = active_config
+				_update_boss_music(active_config)
 		WaveState.VICTORY:
 			apply_remote_victory()
 		WaveState.DEFEAT:
@@ -378,6 +384,7 @@ func apply_remote_boss_started(net_id: int, boss_config: BossConfig, spawn_posit
 	state_timer.stop()
 	wave_hud.hide_all()
 	_set_local_merchants_active(false)
+	_update_boss_music(boss_config)
 
 	var boss_enemy := get_enemy_for_net_id(net_id) as LinglanBoss
 	if boss_enemy == null or not is_instance_valid(boss_enemy):
@@ -1388,6 +1395,7 @@ func _begin_linglan_boss_intro(boss_config: BossConfig = null) -> void:
 	current_wave_defeated = 0
 	_set_merchant_active(false)
 	wave_hud.hide_all()
+	_update_boss_music(boss_config)
 	_prepare_linglan_boss_arena(boss_config)
 	linglan_boss.config = _get_boss_enemy_config(boss_config)
 	linglan_boss.global_position = _get_boss_arena_center(boss_config)
@@ -2034,7 +2042,37 @@ func _play_countdown_tick() -> void:
 func _update_wave_music(wave_config: WaveConfig) -> void:
 	if wave_config.music == null:
 		return
-	if music_player.stream == wave_config.music and music_player.playing:
+	_play_music_stream(wave_config.music, DEFAULT_MUSIC_VOLUME_DB, 0.0)
+
+
+func _update_boss_music(boss_config: BossConfig) -> void:
+	if boss_config == null or boss_config.music == null:
 		return
-	music_player.stream = wave_config.music
+	_play_music_stream(boss_config.music, boss_config.music_volume_db, boss_config.music_loop_offset)
+
+
+func _play_music_stream(stream: AudioStream, volume_db: float, loop_offset: float = 0.0) -> void:
+	if stream == null:
+		return
+	_configure_music_loop(stream, loop_offset)
+	music_player.volume_db = volume_db
+	if music_player.stream == stream and music_player.playing:
+		return
+	music_player.stream = stream
 	music_player.play()
+
+
+func _configure_music_loop(stream: AudioStream, loop_offset: float) -> void:
+	if stream == null:
+		return
+	if _audio_stream_has_property(stream, &"loop"):
+		stream.set(&"loop", true)
+	if _audio_stream_has_property(stream, &"loop_offset"):
+		stream.set(&"loop_offset", maxf(loop_offset, 0.0))
+
+
+func _audio_stream_has_property(stream: AudioStream, property_name: StringName) -> bool:
+	for property in stream.get_property_list():
+		if property.get("name") == property_name:
+			return true
+	return false

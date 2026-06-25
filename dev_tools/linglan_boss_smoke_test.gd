@@ -80,6 +80,13 @@ func _test_boss_entry_resource() -> void:
 	_expect(LINGLAN_BOSS_ENTRY.enemy_config_path == "res://resources/config/enemies/linglan_boss.tres", "Linglan boss entry must point to the Linglan enemy config path.")
 	_expect(LINGLAN_BOSS_ENTRY.intro_vfx_scene_path == "res://scene/linglan_boss_intro_vfx.tscn", "Linglan boss entry must point to the configured intro VFX scene.")
 	_expect(LINGLAN_BOSS_ENTRY.boss_hud_scene_path == "res://scene/boss_health_hud.tscn", "Linglan boss entry must point to the configured boss HUD scene.")
+	_expect(LINGLAN_BOSS_ENTRY.music != null, "Linglan boss entry must configure a boss music stream.")
+	if LINGLAN_BOSS_ENTRY.music != null:
+		_expect(LINGLAN_BOSS_ENTRY.music.resource_path == "res://resources/audio/BGM_The_Truth_Never_Spoken.mp3", "Linglan boss music must use The Truth Never Spoken.")
+		_expect(LINGLAN_BOSS_ENTRY.music.get(&"loop") == true, "Linglan boss music must loop.")
+		_expect(is_equal_approx(float(LINGLAN_BOSS_ENTRY.music.get(&"loop_offset")), 1.0), "Linglan boss music must skip the first second after the first loop.")
+	_expect(is_equal_approx(LINGLAN_BOSS_ENTRY.music_volume_db, -6.0), "Linglan boss music must use the balanced music player volume.")
+	_expect(is_equal_approx(LINGLAN_BOSS_ENTRY.music_loop_offset, 1.0), "Linglan boss music must expose the configured loop offset.")
 	_expect(LINGLAN_BOSS_ENTRY.get_enemy_config() == LINGLAN_CONFIG, "Linglan boss entry must resolve the Linglan enemy config on demand.")
 	_expect(DEFAULT_FLOW.get_step_by_id(&"boss_01_linglan") == LINGLAN_BOSS_ENTRY, "Default flow must include Linglan as a flow node.")
 	_expect(LINGLAN_BOSS_ENTRY.arena_center == Vector2(128, 128), "Linglan boss entry must keep the center spawn point.")
@@ -230,6 +237,10 @@ func _test_game_boss_opening_flow() -> void:
 	game.call("_begin_linglan_boss_intro", LINGLAN_BOSS_ENTRY)
 	await process_frame
 	_expect(game.wave_state == Game.WaveState.BOSS_INTRO, "Game must enter Linglan boss intro state.")
+	var music_player := game.get_node("MusicPlayer") as AudioStreamPlayer
+	_expect(music_player.stream == LINGLAN_BOSS_ENTRY.music, "Game must switch to Linglan boss music when the intro starts.")
+	_expect(is_equal_approx(music_player.volume_db, LINGLAN_BOSS_ENTRY.music_volume_db), "Game must apply the Linglan boss music volume.")
+	_expect(is_equal_approx(float(music_player.stream.get(&"loop_offset")), LINGLAN_BOSS_ENTRY.music_loop_offset), "Game must apply the Linglan boss music loop offset.")
 	var boss := game.get_node_or_null("BossContainer/LinglanBoss") as LinglanBoss
 	_expect(boss != null and not boss.visible, "Linglan must stay hidden during petal convergence.")
 

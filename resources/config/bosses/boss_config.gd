@@ -9,6 +9,11 @@ class_name BossConfig
 @export_file("*.tscn") var intro_vfx_scene_path: String = "res://scene/linglan_boss_intro_vfx.tscn"
 @export_file("*.tscn") var boss_hud_scene_path: String = "res://scene/boss_health_hud.tscn"
 
+@export_group("Boss音乐")
+@export var music: AudioStream
+@export_range(-40.0, 12.0, 0.5) var music_volume_db: float = -6.0
+@export_range(0.0, 30.0, 0.05, "or_greater") var music_loop_offset: float = 0.0
+
 @export_group("入场场地")
 @export var arena_center: Vector2 = Vector2(128.0, 128.0)
 @export var arena_floor_rect: Rect2i = Rect2i(Vector2i(-3, -1), Vector2i(22, 18))
