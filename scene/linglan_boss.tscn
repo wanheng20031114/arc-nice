@@ -4,6 +4,7 @@
 [ext_resource type="Script" uid="uid://bt4sg5m7jw8g7" path="res://scene/linglan_boss.gd" id="2_script"]
 [ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="3_shader"]
 [ext_resource type="SpriteFrames" uid="uid://ub8py66qcmfq" path="res://resources/animation/linglan.tres" id="4_frames"]
+[ext_resource type="Resource" path="res://resources/config/bosses/linglan_skill1.tres" id="5_skill1"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_hd8t5"]
 resource_local_to_scene = true
@@ -29,9 +30,11 @@ height = 42.0
 
 [node name="LinglanBoss" unique_id=674623717 instance=ExtResource("1_base")]
 z_index = 2
+collision_layer = 260
 script = ExtResource("2_script")
 starts_active = false
 boss_display_name = "铃兰"
+skill1_config = ExtResource("5_skill1")
 
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
 texture_filter = 2

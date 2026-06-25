@@ -146,6 +146,7 @@ full_screen={
 2d_physics/layer_6="Pickup"
 2d_physics/layer_7="Explosion"
 2d_physics/layer_8="EnemyProjectile"
+2d_physics/layer_9="BossBody"
 
 [physics]
 

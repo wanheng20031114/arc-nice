@@ -1,0 +1,18 @@
+[gd_resource type="SpriteFrames" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/boss_linglan/skill1_sakura_bullet.png" id="1_texture"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_fly_0"]
+atlas = ExtResource("1_texture")
+region = Rect2(0, 0, 24, 24)
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_fly_0")
+}],
+"loop": true,
+"name": &"fly",
+"speed": 8.0
+}]
