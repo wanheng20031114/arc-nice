@@ -24,6 +24,6 @@ max_alive_enemies = 100
 music = ExtResource("4_music")
 step_id = &"wave_01"
 display_name = "第一波 - RPG猫猫虫"
-post_clear_rest_duration = 25.0
+post_clear_rest_duration = 5.0
 exits = Array[ExtResource("3_flow_exit")]([SubResource("Resource_default_exit")])
 editor_position = Vector2(460, -120)

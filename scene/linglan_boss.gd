@@ -12,7 +12,7 @@ var is_active: bool = false
 var skill1_elapsed: float = 0.0
 var skill1_fire_time_left: float = 0.0
 var skill1_finished: bool = false
-var skill1_warning_arrows: Array[Node2D] = []
+var skill1_warning_rays: Array[Node2D] = []
 
 
 func _ready() -> void:
@@ -94,7 +94,7 @@ func _reset_skill1_state() -> void:
 	skill1_elapsed = 0.0
 	skill1_fire_time_left = 0.0
 	skill1_finished = false
-	_clear_skill1_warning_arrows()
+	_clear_skill1_warning_rays()
 
 
 func _update_skill1(delta: float) -> void:
@@ -106,9 +106,9 @@ func _update_skill1(delta: float) -> void:
 	var previous_elapsed := skill1_elapsed
 	skill1_elapsed += delta
 	if skill1_elapsed < skill1_config.start_delay:
-		_update_skill1_warning_arrows()
+		_update_skill1_warning_rays()
 		return
-	_clear_skill1_warning_arrows()
+	_clear_skill1_warning_rays()
 
 	var skill_active_delta := delta
 	if previous_elapsed < skill1_config.start_delay:
@@ -195,51 +195,67 @@ func _register_multiplayer_projectile(
 	)
 
 
-func _update_skill1_warning_arrows() -> void:
-	if skill1_config.warning_arrow_scene == null:
+func _update_skill1_warning_rays() -> void:
+	if skill1_config.warning_ray_scene == null:
 		return
 	var warning_start_elapsed := maxf(skill1_config.start_delay - skill1_config.warning_lead_time, 0.0)
 	if skill1_elapsed < warning_start_elapsed:
 		return
-	if skill1_warning_arrows.is_empty():
-		_spawn_skill1_warning_arrows()
-	_update_skill1_warning_arrow_transforms()
+	if skill1_warning_rays.is_empty():
+		_spawn_skill1_warning_rays()
+	_update_skill1_warning_ray_transforms()
 
 
-func _spawn_skill1_warning_arrows() -> void:
+func _spawn_skill1_warning_rays() -> void:
 	var spawn_parent := get_tree().current_scene
 	if spawn_parent == null:
 		return
 
 	var direction_count := maxi(skill1_config.ring_direction_count, 1)
 	for index in range(direction_count):
-		var arrow := skill1_config.warning_arrow_scene.instantiate() as Node2D
-		if arrow == null:
+		var ray := skill1_config.warning_ray_scene.instantiate() as Node2D
+		if ray == null:
 			continue
-		arrow.top_level = true
-		arrow.name = "LinglanSkill1WarningArrow%02d" % index
-		spawn_parent.add_child(arrow)
-		skill1_warning_arrows.append(arrow)
+		ray.top_level = true
+		ray.name = "LinglanSkill1WarningRay%02d" % index
+		_apply_skill1_warning_ray_geometry(ray)
+		spawn_parent.add_child(ray)
+		skill1_warning_rays.append(ray)
 
 
-func _update_skill1_warning_arrow_transforms() -> void:
-	var direction_count := skill1_warning_arrows.size()
+func _apply_skill1_warning_ray_geometry(ray: Node2D) -> void:
+	var start_distance := skill1_config.projectile_spawn_distance
+	var end_distance := start_distance + skill1_config.get_projectile_travel_distance()
+	var ray_points := PackedVector2Array([
+		Vector2(start_distance, 0.0),
+		Vector2(end_distance, 0.0)
+	])
+	var glow := ray.get_node("Glow") as Line2D
+	var core := ray.get_node("Core") as Line2D
+	var center := ray.get_node("Center") as Line2D
+	glow.points = ray_points
+	core.points = ray_points
+	center.points = ray_points
+
+
+func _update_skill1_warning_ray_transforms() -> void:
+	var direction_count := skill1_warning_rays.size()
 	if direction_count <= 0:
 		return
 
 	var angle_step := TAU / float(direction_count)
 	var warning_progress := _get_skill1_warning_progress()
-	var pulse_scale := skill1_config.warning_arrow_scale * (0.9 + 0.15 * warning_progress)
-	var arrow_alpha := lerpf(0.45, 0.92, warning_progress)
+	var width_scale := skill1_config.warning_ray_width_scale * (0.85 + 0.2 * warning_progress)
+	var ray_alpha := lerpf(0.35, 0.82, warning_progress)
 	for index in range(direction_count):
-		var arrow := skill1_warning_arrows[index]
-		if not is_instance_valid(arrow):
+		var ray := skill1_warning_rays[index]
+		if not is_instance_valid(ray):
 			continue
 		var direction := Vector2.RIGHT.rotated(angle_step * float(index))
-		arrow.global_position = global_position + direction * skill1_config.warning_arrow_distance
-		arrow.global_rotation = direction.angle()
-		arrow.scale = Vector2.ONE * pulse_scale
-		arrow.modulate.a = arrow_alpha
+		ray.global_position = global_position
+		ray.global_rotation = direction.angle()
+		ray.scale = Vector2(1.0, width_scale)
+		ray.modulate.a = ray_alpha
 
 
 func _get_skill1_warning_progress() -> float:
@@ -253,8 +269,8 @@ func _get_skill1_warning_progress() -> float:
 	)
 
 
-func _clear_skill1_warning_arrows() -> void:
-	for arrow in skill1_warning_arrows:
-		if is_instance_valid(arrow):
-			arrow.queue_free()
-	skill1_warning_arrows.clear()
+func _clear_skill1_warning_rays() -> void:
+	for ray in skill1_warning_rays:
+		if is_instance_valid(ray):
+			ray.queue_free()
+	skill1_warning_rays.clear()

@@ -97,6 +97,6 @@ max_alive_enemies = 140
 music = ExtResource("12_music")
 step_id = &"wave_10"
 display_name = "第十波 - 末日虫潮"
-post_clear_rest_duration = 10.0
+post_clear_rest_duration = 20.0
 exits = Array[ExtResource("17_flow_exit")]([SubResource("Resource_default_exit")])
 editor_position = Vector2(1520, 400)

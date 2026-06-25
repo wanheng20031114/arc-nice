@@ -5,7 +5,7 @@ const LINGLAN_CONFIG := preload("res://resources/config/enemies/linglan_boss.tre
 const SKILL1_CONFIG := preload("res://resources/config/bosses/linglan_skill1.tres")
 const SAKURA_BULLET_TEXTURE := preload("res://resources/texture/boss_linglan/skill1_sakura_bullet.png")
 const SAKURA_BULLET_SCENE := preload("res://scene/linglan_skill1_sakura_bullet.tscn")
-const WARNING_ARROW_SCENE := preload("res://scene/linglan_skill1_warning_arrow.tscn")
+const WARNING_RAY_SCENE := preload("res://scene/linglan_skill1_warning_ray.tscn")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 
@@ -43,13 +43,14 @@ func _run() -> void:
 func _test_skill1_config() -> void:
 	_expect(SKILL1_CONFIG.skill_name == &"linglan_skill1", "Skill1 name mismatch.")
 	_expect(is_equal_approx(SKILL1_CONFIG.start_delay, 5.0), "Skill1 start delay mismatch.")
-	_expect(SKILL1_CONFIG.ring_direction_count == 24, "Skill1 direction count mismatch.")
+	_expect(SKILL1_CONFIG.ring_direction_count == 20, "Skill1 direction count mismatch.")
 	_expect(is_equal_approx(SKILL1_CONFIG.attack_speed, 1800.0), "Skill1 attack speed mismatch.")
 	_expect(is_equal_approx(SKILL1_CONFIG.get_fire_interval(), 1.0 / 18.0), "Skill1 fire interval mismatch.")
 	_expect(is_equal_approx(SKILL1_CONFIG.projectile_speed, 300.0), "Skill1 projectile speed mismatch.")
+	_expect(is_equal_approx(SKILL1_CONFIG.get_projectile_travel_distance(), 600.0), "Skill1 projectile travel distance mismatch.")
 	_expect(SKILL1_CONFIG.projectile_damage == 50, "Skill1 projectile damage mismatch.")
 	_expect(SKILL1_CONFIG.projectile_scene != null, "Skill1 projectile scene missing.")
-	_expect(SKILL1_CONFIG.warning_arrow_scene == WARNING_ARROW_SCENE, "Skill1 warning arrow scene mismatch.")
+	_expect(SKILL1_CONFIG.warning_ray_scene == WARNING_RAY_SCENE, "Skill1 warning ray scene mismatch.")
 	_expect(is_equal_approx(SKILL1_CONFIG.warning_lead_time, 1.0), "Skill1 warning lead time mismatch.")
 	_expect(SAKURA_BULLET_TEXTURE.get_size().x > 0 and SAKURA_BULLET_TEXTURE.get_size().y > 0, "Sakura bullet texture missing.")
 
@@ -114,21 +115,35 @@ func _test_skill1_fire_schedule() -> void:
 
 	boss.call("_physics_process", SKILL1_CONFIG.start_delay - SKILL1_CONFIG.warning_lead_time - 0.01)
 	_expect(_get_sakura_bullets().is_empty(), "Skill1 fired before the 5 second delay.")
-	_expect(_get_warning_arrows().is_empty(), "Skill1 warning arrows appeared before the warning lead time.")
+	_expect(_get_warning_rays().is_empty(), "Skill1 warning rays appeared before the warning lead time.")
 
 	boss.call("_physics_process", 0.02)
-	var warning_arrows := _get_warning_arrows()
-	_expect(warning_arrows.size() == 24, "Skill1 warning must show 24 arrows before firing, got %d." % warning_arrows.size())
-	if warning_arrows.size() == 24:
-		_expect(warning_arrows[0].global_position.distance_to(boss.global_position) > 30.0, "Skill1 warning arrows must sit outside Linglan's body.")
-		_expect(warning_arrows[0].global_rotation == Vector2.RIGHT.angle(), "Skill1 first warning arrow must point right.")
+	var warning_rays := _get_warning_rays()
+	_expect(warning_rays.size() == 20, "Skill1 warning must show 20 rays before firing, got %d." % warning_rays.size())
+	if warning_rays.size() == 20:
+		var first_ray := warning_rays[0]
+		var first_ray_core := first_ray.get_node_or_null("Core") as Line2D
+		_expect(first_ray.global_position.distance_to(boss.global_position) <= 0.01, "Skill1 warning rays must rotate around Linglan.")
+		_expect(first_ray.global_rotation == Vector2.RIGHT.angle(), "Skill1 first warning ray must point right.")
+		_expect(first_ray_core != null, "Skill1 warning ray must expose a Core Line2D.")
+		if first_ray_core != null:
+			_expect(first_ray_core.points.size() == 2, "Skill1 warning ray must be a single segment.")
+			if first_ray_core.points.size() == 2:
+				_expect(is_equal_approx(first_ray_core.points[0].x, SKILL1_CONFIG.projectile_spawn_distance), "Skill1 warning ray must start at the projectile spawn distance.")
+				_expect(
+					is_equal_approx(
+						first_ray_core.points[1].x,
+						SKILL1_CONFIG.projectile_spawn_distance + SKILL1_CONFIG.get_projectile_travel_distance()
+					),
+					"Skill1 warning ray must preview the full projectile path."
+				)
 
 	boss.call("_physics_process", SKILL1_CONFIG.warning_lead_time)
 	await process_frame
 	var first_ring := _get_sakura_bullets()
-	_expect(first_ring.size() == 24, "Skill1 first ring must spawn 24 projectiles.")
-	_expect(_get_warning_arrows().is_empty(), "Skill1 warning arrows must clear when firing starts.")
-	if first_ring.size() == 24:
+	_expect(first_ring.size() == 20, "Skill1 first ring must spawn 20 projectiles.")
+	_expect(_get_warning_rays().is_empty(), "Skill1 warning rays must clear when firing starts.")
+	if first_ring.size() == 20:
 		var first_bullet := first_ring[0]
 		_expect(is_equal_approx(first_bullet.speed, 300.0), "Sakura bullet speed mismatch.")
 		_expect(first_bullet.damage == 50, "Sakura bullet damage mismatch.")
@@ -138,9 +153,9 @@ func _test_skill1_fire_schedule() -> void:
 
 	boss.call("_physics_process", 2.25)
 	var rotated_bullets := _get_sakura_bullets()
-	_expect(rotated_bullets.size() > 24, "Skill1 must keep firing during the rotating phase.")
-	if rotated_bullets.size() >= 24:
-		var last_ring_first_bullet := rotated_bullets[rotated_bullets.size() - 24]
+	_expect(rotated_bullets.size() > 20, "Skill1 must keep firing during the rotating phase.")
+	if rotated_bullets.size() >= 20:
+		var last_ring_first_bullet := rotated_bullets[rotated_bullets.size() - 20]
 		_expect(
 			last_ring_first_bullet.direction.angle() > 0.001,
 			"Skill1 ring direction must rotate after the first 2 seconds."
@@ -171,14 +186,14 @@ func _clear_sakura_bullets() -> void:
 		bullet.free()
 
 
-func _get_warning_arrows() -> Array[Node2D]:
-	var arrows: Array[Node2D] = []
+func _get_warning_rays() -> Array[Node2D]:
+	var rays: Array[Node2D] = []
 	for child in test_root.get_children():
-		if child.name.begins_with("LinglanSkill1WarningArrow"):
-			var arrow := child as Node2D
-			if arrow != null:
-				arrows.append(arrow)
-	return arrows
+		if child.name.begins_with("LinglanSkill1WarningRay"):
+			var ray := child as Node2D
+			if ray != null:
+				rays.append(ray)
+	return rays
 
 
 func _count_sakura_hit_effects() -> int:

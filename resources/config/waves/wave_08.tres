@@ -79,6 +79,6 @@ max_alive_enemies = 115
 music = ExtResource("12_music")
 step_id = &"wave_08"
 display_name = "第八波 - 翠壳壁垒"
-post_clear_rest_duration = 15.0
+post_clear_rest_duration = 20.0
 exits = Array[ExtResource("14_flow_exit")]([SubResource("Resource_default_exit")])
 editor_position = Vector2(1560, 180)

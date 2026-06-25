@@ -1,0 +1,19 @@
+[gd_scene format=3 uid="uid://d0wqnhsq4spw7"]
+
+[node name="LinglanSkill1WarningRay" type="Node2D"]
+z_index = 3
+
+[node name="Glow" type="Line2D" parent="."]
+points = PackedVector2Array(18, 0, 618, 0)
+width = 9.0
+default_color = Color(0.22, 0.03, 0.08, 0.52)
+
+[node name="Core" type="Line2D" parent="."]
+points = PackedVector2Array(18, 0, 618, 0)
+width = 4.0
+default_color = Color(1, 0.28, 0.54, 0.72)
+
+[node name="Center" type="Line2D" parent="."]
+points = PackedVector2Array(18, 0, 618, 0)
+width = 1.35
+default_color = Color(1, 0.82, 0.91, 0.92)

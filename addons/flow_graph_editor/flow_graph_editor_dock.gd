@@ -285,6 +285,7 @@ func _add_graph_node(node_name: StringName, step: FlowStepConfig, index: int) ->
 		terminal_label.text = "terminal"
 		graph_node.add_child(terminal_label)
 		graph_node.set_slot(0, true, PORT_TYPE_FLOW, INPUT_PORT_COLOR, false, PORT_TYPE_FLOW, OUTPUT_PORT_COLOR)
+		_add_node_rest_editor(graph_node, step)
 		return
 
 	for exit_index in range(exit_count):
@@ -301,6 +302,27 @@ func _add_graph_node(node_name: StringName, step: FlowStepConfig, index: int) ->
 			PORT_TYPE_FLOW,
 			OUTPUT_PORT_COLOR
 		)
+	_add_node_rest_editor(graph_node, step)
+
+
+func _add_node_rest_editor(graph_node: GraphNode, step: FlowStepConfig) -> void:
+	var rest_row := HBoxContainer.new()
+	rest_row.name = "RestEditor"
+	graph_node.add_child(rest_row)
+
+	var rest_label := Label.new()
+	rest_label.text = "Rest"
+	rest_row.add_child(rest_label)
+
+	var rest_spin := SpinBox.new()
+	rest_spin.name = "RestSpin"
+	rest_spin.min_value = 0.0
+	rest_spin.max_value = 600.0
+	rest_spin.step = 1.0
+	rest_spin.value = step.post_clear_rest_duration
+	rest_spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rest_spin.value_changed.connect(_on_node_rest_value_changed.bind(step))
+	rest_row.add_child(rest_spin)
 
 
 func _on_graph_node_gui_input(event: InputEvent, node_name: StringName) -> void:
@@ -344,6 +366,30 @@ func _on_rest_value_changed(value: float) -> void:
 	if _selected_step == null:
 		return
 	_selected_step.post_clear_rest_duration = value
+	_sync_node_rest_spin(_selected_step)
+
+
+func _on_node_rest_value_changed(value: float, step: FlowStepConfig) -> void:
+	if step == null:
+		return
+	step.post_clear_rest_duration = value
+	if step == _selected_step:
+		_rest_spin.value = value
+	_show_status("%s rest = %d" % [step.get_flow_display_name(), int(value)])
+
+
+func _sync_node_rest_spin(step: FlowStepConfig) -> void:
+	if step == null or _graph_edit == null:
+		return
+	var node_name := StringName(str(_node_name_by_step.get(step, "")))
+	if node_name == &"":
+		return
+	var graph_node := _graph_edit.get_node_or_null(NodePath(String(node_name))) as GraphNode
+	if graph_node == null:
+		return
+	var rest_spin := graph_node.get_node_or_null("RestEditor/RestSpin") as SpinBox
+	if rest_spin != null:
+		rest_spin.value = step.post_clear_rest_duration
 
 
 func _on_exit_selected(index: int) -> void:
