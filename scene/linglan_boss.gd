@@ -12,7 +12,7 @@ var is_active: bool = false
 
 func _ready() -> void:
 	super._ready()
-	set_active(starts_active or visible)
+	set_active(starts_active)
 	_emit_health_changed()
 
 

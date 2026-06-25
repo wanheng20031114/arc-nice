@@ -179,11 +179,14 @@ position = Vector2(232, 94)
 [node name="BossContainer" type="Node2D" parent="." unique_id=1704115178]
 
 [node name="LinglanBoss" parent="BossContainer" unique_id=1198908395 instance=ExtResource("22_linglan_boss")]
+visible = false
 position = Vector2(128, 128)
 
 [node name="LinglanBossIntroVFX" parent="." unique_id=1630199372 instance=ExtResource("23_linglan_intro_vfx")]
+visible = false
 
 [node name="BossHealthHUD" parent="." unique_id=1420456457 instance=ExtResource("24_boss_health_hud")]
+visible = false
 
 [node name="WorldBounds" type="Node2D" parent="." unique_id=905261702]
 

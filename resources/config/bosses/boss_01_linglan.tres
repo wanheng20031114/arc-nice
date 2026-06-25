@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="BossConfig" format=3 uid="uid://cind5qjo33b70"]
+
+[ext_resource type="Script" uid="uid://br75amn54iwkd" path="res://resources/config/bosses/boss_config.gd" id="1_boss"]
+[ext_resource type="Resource" uid="uid://bpfxyg81jxkd6" path="res://resources/config/enemies/linglan_boss.tres" id="2_linglan"]
+
+[resource]
+script = ExtResource("1_boss")
+boss_name = "铃兰"
+enemy_config = ExtResource("2_linglan")

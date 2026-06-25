@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,8 +19,8 @@ from connected_background_remover import (
 )
 
 
-SOURCE_SHEET = "dev_assets/source_images/linglan_boss_sheet_v2_imagegen_green.png"
-ALPHA_SHEET = "dev_assets/source_images/linglan_boss_sheet_v2_alpha.png"
+SOURCE_SHEET = "dev_assets/source_images/linglan_boss_sheet_v3_imagegen_green.png"
+ALPHA_SHEET = "dev_assets/source_images/linglan_boss_sheet_v3_alpha.png"
 HUD_SOURCE = "dev_assets/source_images/linglan_boss_hud_imagegen_green.png"
 HUD_ALPHA = "dev_assets/source_images/linglan_boss_hud_alpha.png"
 VFX_SOURCE = "dev_assets/source_images/linglan_sakura_vfx_imagegen_green.png"
@@ -164,6 +165,32 @@ def _detect_source_frames(source: Image.Image) -> list[list[DetectedFrame]]:
 	return rows
 
 
+def _detect_grid_source_frames(source: Image.Image) -> list[list[DetectedFrame]]:
+	alpha = np.array(source.getchannel("A"), dtype=np.uint8) > 0
+	rows: list[list[DetectedFrame]] = []
+	for row_index in range(SOURCE_ROWS):
+		row: list[DetectedFrame] = []
+		cell_top = round(row_index * source.height / SOURCE_ROWS)
+		cell_bottom = round((row_index + 1) * source.height / SOURCE_ROWS)
+		for column in range(SOURCE_COLUMNS):
+			cell_left = round(column * source.width / SOURCE_COLUMNS)
+			cell_right = round((column + 1) * source.width / SOURCE_COLUMNS)
+			cell_alpha = alpha[cell_top:cell_bottom, cell_left:cell_right]
+			if not cell_alpha.any():
+				raise ValueError("Linglan grid cell %d,%d contains no visible pixels." % (column, row_index))
+			local_y, local_x = np.nonzero(cell_alpha)
+			left = int(local_x.min() + cell_left)
+			top = int(local_y.min() + cell_top)
+			right = int(local_x.max() + cell_left + 1)
+			bottom = int(local_y.max() + cell_top + 1)
+			alpha_pixels = int(cell_alpha.sum())
+			if alpha_pixels < MIN_COMPONENT_ALPHA_PIXELS:
+				raise ValueError("Linglan grid cell %d,%d contains too little foreground alpha." % (column, row_index))
+			row.append(DetectedFrame((left, top, right, bottom), alpha_pixels))
+		rows.append(row)
+	return rows
+
+
 def _compute_frame_size(frames: list[DetectedFrame]) -> tuple[int, int]:
 	max_width = max(right - left for left, _top, right, _bottom in [frame.source_bbox for frame in frames])
 	max_height = max(bottom - top for _left, top, _right, bottom in [frame.source_bbox for frame in frames])
@@ -180,9 +207,43 @@ def _extract_frame(image: Image.Image, frame: DetectedFrame, frame_size: tuple[i
 	return result
 
 
+def _keep_largest_alpha_component(image: Image.Image) -> Image.Image:
+	array = np.array(image.convert("RGBA"), dtype=np.uint8)
+	alpha = array[:, :, 3] > 0
+	labels, count = ndimage.label(alpha)
+	if count <= 1:
+		return image
+	component_sizes = ndimage.sum(alpha, labels, index=range(1, count + 1))
+	largest_label = int(np.argmax(component_sizes)) + 1
+	array[labels != largest_label] = (0, 0, 0, 0)
+	return Image.fromarray(array)
+
+
+def _remove_tall_edge_fragments(image: Image.Image) -> Image.Image:
+	array = np.array(image.convert("RGBA"), dtype=np.uint8)
+	alpha = array[:, :, 3] > 0
+	labels, count = ndimage.label(alpha)
+	if count <= 1:
+		return image
+	edge_margin = 36
+	for label_index, slices in enumerate(ndimage.find_objects(labels), start=1):
+		if slices is None:
+			continue
+		left = int(slices[1].start)
+		right = int(slices[1].stop)
+		top = int(slices[0].start)
+		bottom = int(slices[0].stop)
+		width = right - left
+		height = bottom - top
+		touches_edge = left < edge_margin or right > image.width - edge_margin
+		if touches_edge and width <= 10 and height >= 28:
+			array[labels == label_index] = (0, 0, 0, 0)
+	return Image.fromarray(array)
+
+
 def _collect_linglan_frames(source: Image.Image) -> tuple[list[tuple[str, Image.Image]], OrderedDict[str, list[str]]]:
 	detected_by_name: OrderedDict[str, DetectedFrame] = OrderedDict()
-	source_rows = _detect_source_frames(source)
+	source_rows = _detect_grid_source_frames(source)
 	for animation_name, row in ANIMATION_ROWS.items():
 		for column in range(SOURCE_COLUMNS):
 			frame_name = f"{animation_name}_{column}"
@@ -200,7 +261,12 @@ def _collect_linglan_frames(source: Image.Image) -> tuple[list[tuple[str, Image.
 		frame_names: list[str] = []
 		for column in range(SOURCE_COLUMNS):
 			frame_name = f"{animation_name}_{column}"
-			frames.append((frame_name, _extract_frame(source, detected_by_name[frame_name], frame_size)))
+			frame_image = _extract_frame(source, detected_by_name[frame_name], frame_size)
+			if animation_name != "die":
+				frame_image = _keep_largest_alpha_component(frame_image)
+			else:
+				frame_image = _remove_tall_edge_fragments(frame_image)
+			frames.append((frame_name, frame_image))
 			frame_names.append(frame_name)
 		animations[animation_name] = frame_names
 
@@ -496,10 +562,22 @@ def _process_linglan_sprite(root: Path) -> None:
 
 
 def main() -> None:
+	parser = argparse.ArgumentParser(description="Build Linglan boss raster assets.")
+	parser.add_argument(
+		"--only",
+		choices=("all", "sprite", "hud", "vfx"),
+		default="all",
+		help="Limit processing to one asset group.",
+	)
+	args = parser.parse_args()
+
 	root = Path(__file__).resolve().parents[1]
-	_process_linglan_sprite(root)
-	_process_hud(root)
-	_process_vfx(root)
+	if args.only in ("all", "sprite"):
+		_process_linglan_sprite(root)
+	if args.only in ("all", "hud"):
+		_process_hud(root)
+	if args.only in ("all", "vfx"):
+		_process_vfx(root)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,6 @@ class_name Game
 const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/enemy/yuanshi_insect_spawn_effect.tscn")
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/guardian_point_light.png")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
-const LINGLAN_BOSS_CONFIG := preload("res://resources/config/enemies/linglan_boss.tres")
 const COUNTDOWN_FINAL_SECONDS := 3
 const MULTIPLAYER_DEFEAT_GRACE_SECONDS := 0.25
 const PURCHASE_RESULT_SUCCESS := 0
@@ -17,9 +16,6 @@ const MIN_WAVE_SPAWN_INTERVAL_SECONDS := 0.1
 const MAX_WAVE_SPAWN_COUNT_PER_TICK := 4
 const SPAWN_EFFECTS_PER_SECOND_LIMIT := 24
 const SPAWN_AUDIO_MIN_INTERVAL_SECONDS := 0.08
-const LINGLAN_BOSS_CENTER := Vector2(128.0, 128.0)
-const LINGLAN_BOSS_FLOOR_SOURCE_ID := 0
-const LINGLAN_BOSS_FLOOR_ATLAS_COORDS := Vector2i(0, 0)
 
 signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
 signal multiplayer_enemy_defeated(net_id: int, defeat_position: Vector2)
@@ -67,6 +63,11 @@ enum WaveState {
 	preload("res://resources/config/waves/wave_09.tres"),
 	preload("res://resources/config/waves/wave_10.tres"),
 	preload("res://resources/config/waves/wave_11.tres"),
+]
+
+@export_group("Boss资源")
+@export var bosses: Array[Resource] = [
+	preload("res://resources/config/bosses/boss_01_linglan.tres"),
 ]
 
 @export_group("波次流程")
@@ -130,6 +131,7 @@ var spawn_effects_this_second: int = 0
 var last_spawn_audio_msec: int = -100000
 var luoxi_collectible_claimed_peers: Dictionary = {}
 var linglan_boss_started: bool = false
+var active_boss_config: Resource
 
 
 func _ready() -> void:
@@ -486,8 +488,10 @@ func _set_local_merchants_active(active: bool) -> bool:
 func _configure_linglan_boss() -> void:
 	if linglan_boss == null:
 		return
-	linglan_boss.config = LINGLAN_BOSS_CONFIG
-	linglan_boss.global_position = LINGLAN_BOSS_CENTER
+	var boss_config := _get_first_boss_config()
+	if boss_config != null:
+		linglan_boss.config = _get_boss_enemy_config(boss_config)
+		linglan_boss.global_position = _get_boss_arena_center(boss_config)
 	linglan_boss.set_active(false)
 	if not linglan_boss.defeated.is_connected(_on_linglan_boss_defeated):
 		linglan_boss.defeated.connect(_on_linglan_boss_defeated)
@@ -497,6 +501,72 @@ func _configure_linglan_boss() -> void:
 			linglan_boss_intro_vfx.intro_finished.connect(_on_linglan_boss_intro_finished)
 	if boss_health_hud != null:
 		boss_health_hud.hide_all()
+
+
+func _get_first_boss_config() -> Resource:
+	for boss_config in bosses:
+		if _boss_config_has_required_data(boss_config):
+			return boss_config
+	return null
+
+
+func _get_pending_boss_config_after_current_wave() -> Resource:
+	if not linglan_boss_enabled:
+		return null
+	if runtime_mode != RuntimeMode.SINGLEPLAYER:
+		return null
+	if linglan_boss_started:
+		return null
+	if linglan_boss == null or not is_instance_valid(linglan_boss):
+		return null
+	for boss_config in bosses:
+		if not _boss_config_has_required_data(boss_config):
+			continue
+		if current_wave_index + 1 >= _get_boss_start_wave_number(boss_config):
+			return boss_config
+	return null
+
+
+func _boss_config_has_required_data(boss_config: Resource) -> bool:
+	return boss_config != null and _get_boss_enemy_config(boss_config) != null and _get_boss_start_wave_number(boss_config) > 0
+
+
+func _get_boss_enemy_config(boss_config: Resource) -> EnemyConfig:
+	return boss_config.get("enemy_config") as EnemyConfig
+
+
+func _get_boss_start_wave_number(boss_config: Resource) -> int:
+	return int(boss_config.get("starts_after_wave_number"))
+
+
+func _get_boss_arena_center(boss_config: Resource) -> Vector2:
+	return boss_config.get("arena_center")
+
+
+func _get_boss_arena_floor_rect(boss_config: Resource) -> Rect2i:
+	return boss_config.get("arena_floor_rect")
+
+
+func _get_boss_floor_source_id(boss_config: Resource) -> int:
+	return int(boss_config.get("floor_source_id"))
+
+
+func _get_boss_floor_atlas_coords(boss_config: Resource) -> Vector2i:
+	return boss_config.get("floor_atlas_coords")
+
+
+func _should_clear_boss_inner_overlay_cells(boss_config: Resource) -> bool:
+	return bool(boss_config.get("clear_inner_overlay_cells"))
+
+
+func _get_boss_display_name(boss_config: Resource) -> String:
+	var boss_name := str(boss_config.get("boss_name"))
+	if not boss_name.is_empty():
+		return boss_name
+	var enemy_config := _get_boss_enemy_config(boss_config)
+	if enemy_config != null and not enemy_config.display_name.is_empty():
+		return enemy_config.display_name
+	return "Boss"
 
 
 func _collect_enemy_spawn_points() -> void:
@@ -912,21 +982,15 @@ func _enter_defeat() -> void:
 
 
 func _should_enter_linglan_boss_after_current_wave() -> bool:
-	return (
-		linglan_boss_enabled
-		and runtime_mode == RuntimeMode.SINGLEPLAYER
-		and waves.size() >= 11
-		and current_wave_index >= waves.size() - 1
-		and linglan_boss != null
-		and is_instance_valid(linglan_boss)
-		and not linglan_boss_started
-	)
+	return _get_pending_boss_config_after_current_wave() != null
 
 
 func _begin_linglan_boss_intro() -> void:
-	if not _should_enter_linglan_boss_after_current_wave():
+	var boss_config := _get_pending_boss_config_after_current_wave()
+	if boss_config == null:
 		_enter_victory()
 		return
+	active_boss_config = boss_config
 	linglan_boss_started = true
 	wave_state = WaveState.BOSS_INTRO
 	enemy_spawn_timer.stop()
@@ -938,14 +1002,14 @@ func _begin_linglan_boss_intro() -> void:
 	current_wave_defeated = 0
 	_set_merchant_active(false)
 	wave_hud.hide_all()
-	_prepare_linglan_boss_arena()
-	linglan_boss.config = LINGLAN_BOSS_CONFIG
-	linglan_boss.global_position = LINGLAN_BOSS_CENTER
+	_prepare_linglan_boss_arena(boss_config)
+	linglan_boss.config = _get_boss_enemy_config(boss_config)
+	linglan_boss.global_position = _get_boss_arena_center(boss_config)
 	linglan_boss.set_active(false)
 	if boss_health_hud != null:
 		boss_health_hud.hide_all()
 	if linglan_boss_intro_vfx != null:
-		linglan_boss_intro_vfx.play_intro(LINGLAN_BOSS_CENTER)
+		linglan_boss_intro_vfx.play_intro(_get_boss_arena_center(boss_config))
 	else:
 		_on_linglan_boss_intro_finished()
 
@@ -960,13 +1024,17 @@ func _activate_linglan_boss() -> void:
 	if linglan_boss == null or not is_instance_valid(linglan_boss):
 		_enter_victory()
 		return
+	var boss_config := active_boss_config
+	if not _boss_config_has_required_data(boss_config):
+		_enter_victory()
+		return
 	wave_state = WaveState.BOSS_ACTIVE
-	linglan_boss.config = LINGLAN_BOSS_CONFIG
-	linglan_boss.global_position = LINGLAN_BOSS_CENTER
+	linglan_boss.config = _get_boss_enemy_config(boss_config)
+	linglan_boss.global_position = _get_boss_arena_center(boss_config)
 	linglan_boss.activate_boss(player, grid_pathfinder)
 	active_wave_enemy_ids[linglan_boss.get_instance_id()] = true
 	if boss_health_hud != null:
-		boss_health_hud.show_for_boss(linglan_boss, LINGLAN_BOSS_CONFIG.display_name)
+		boss_health_hud.show_for_boss(linglan_boss, _get_boss_display_name(boss_config))
 
 
 func _on_linglan_boss_defeated(enemy: Enemy) -> void:
@@ -986,36 +1054,28 @@ func _enter_victory_after_linglan_boss() -> void:
 	_enter_victory()
 
 
-func _prepare_linglan_boss_arena() -> void:
+func _prepare_linglan_boss_arena(boss_config: Resource) -> void:
+	if boss_config == null:
+		return
 	if ground_tile_map_layer == null:
 		return
-	var arena_rect := ground_tile_map_layer.get_used_rect()
-	if arena_rect.size.x <= 2 or arena_rect.size.y <= 2:
+	var arena_rect := _get_boss_arena_floor_rect(boss_config)
+	if arena_rect.size.x <= 0 or arena_rect.size.y <= 0:
 		return
-	for cell in ground_tile_map_layer.get_used_cells():
-		if not _is_inner_arena_cell(cell, arena_rect):
-			continue
-		ground_tile_map_layer.set_cell(
-			cell,
-			LINGLAN_BOSS_FLOOR_SOURCE_ID,
-			LINGLAN_BOSS_FLOOR_ATLAS_COORDS,
-			0
-		)
-	if overlay_tile_map_layer != null:
+	for cell_x in range(arena_rect.position.x, arena_rect.position.x + arena_rect.size.x):
+		for cell_y in range(arena_rect.position.y, arena_rect.position.y + arena_rect.size.y):
+			ground_tile_map_layer.set_cell(
+				Vector2i(cell_x, cell_y),
+				_get_boss_floor_source_id(boss_config),
+				_get_boss_floor_atlas_coords(boss_config),
+				0
+			)
+	if _should_clear_boss_inner_overlay_cells(boss_config) and overlay_tile_map_layer != null:
 		for cell in overlay_tile_map_layer.get_used_cells():
-			if _is_inner_arena_cell(cell, arena_rect):
+			if arena_rect.has_point(cell):
 				overlay_tile_map_layer.erase_cell(cell)
 	if grid_pathfinder != null and grid_pathfinder.has_method("rebuild"):
 		grid_pathfinder.call("rebuild")
-
-
-func _is_inner_arena_cell(cell: Vector2i, arena_rect: Rect2i) -> bool:
-	return (
-		cell.x > arena_rect.position.x
-		and cell.x < arena_rect.end.x - 1
-		and cell.y > arena_rect.position.y
-		and cell.y < arena_rect.end.y - 1
-	)
 
 
 func _on_player_died() -> void:

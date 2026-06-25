@@ -3,11 +3,13 @@ class_name BossHealthHUD
 
 const BAR_ASPECT := 1674.0 / 281.0
 const NAMEPLATE_ASPECT := 838.0 / 256.0
-const MAX_BAR_WIDTH := 760.0
-const MIN_BAR_WIDTH := 360.0
+const MAX_FRAME_WIDTH := 760.0
+const MIN_FRAME_WIDTH := 420.0
+const TOP_MARGIN := 8.0
 
 @onready var root_control: Control = $Root
-@onready var health_bar: TextureProgressBar = $Root/HealthBar
+@onready var frame: TextureRect = $Root/Frame
+@onready var health_bar: ProgressBar = $Root/HealthBar
 @onready var health_text: Label = $Root/HealthBar/HealthText
 @onready var nameplate: TextureRect = $Root/Nameplate
 @onready var name_label: Label = $Root/Nameplate/Name
@@ -68,15 +70,26 @@ func _layout_for_viewport() -> void:
 	if root_control == null:
 		return
 	var viewport_size := get_viewport().get_visible_rect().size
-	var bar_width := clampf(viewport_size.x - 96.0, MIN_BAR_WIDTH, MAX_BAR_WIDTH)
-	var bar_height := bar_width / BAR_ASPECT
-	var bar_position := Vector2((viewport_size.x - bar_width) * 0.5, 8.0)
-	health_bar.position = bar_position
+	var frame_width := clampf(viewport_size.x - 128.0, MIN_FRAME_WIDTH, MAX_FRAME_WIDTH)
+	var frame_height := frame_width / BAR_ASPECT
+	var frame_position := Vector2((viewport_size.x - frame_width) * 0.5, TOP_MARGIN)
+	frame.position = frame_position
+	frame.size = Vector2(frame_width, frame_height)
+
+	var bar_width := frame_width * 0.58
+	var bar_height := maxf(frame_height * 0.16, 14.0)
+	health_bar.position = Vector2(
+		frame_position.x + (frame_width - bar_width) * 0.5,
+		frame_position.y + frame_height * 0.62
+	)
 	health_bar.size = Vector2(bar_width, bar_height)
 
-	var name_width := clampf(bar_width * 0.38, 230.0, 320.0)
+	var name_width := clampf(frame_width * 0.34, 220.0, 300.0)
 	var name_height := name_width / NAMEPLATE_ASPECT
-	nameplate.position = Vector2((viewport_size.x - name_width) * 0.5, bar_position.y + bar_height - 22.0)
+	nameplate.position = Vector2(
+		frame_position.x + (frame_width - name_width) * 0.5,
+		frame_position.y + frame_height * 0.22
+	)
 	nameplate.size = Vector2(name_width, name_height)
 
 
