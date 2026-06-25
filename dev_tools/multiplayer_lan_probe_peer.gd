@@ -2,6 +2,7 @@ extends SceneTree
 
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
+const LINGLAN_BOSS_ENTRY := preload("res://resources/config/bosses/boss_01_linglan.tres")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 
 const STATE_HOSTING_LAN := 1
@@ -17,6 +18,7 @@ const CLIENT4_PLAYER_NAME := "client4"
 const PROBE_SCENARIO_FULL := "full"
 const PROBE_SCENARIO_LEAVE := "leave"
 const PROBE_SCENARIO_WAVE := "wave"
+const PROBE_SCENARIO_BOSS := "boss"
 const PROBE_OWNED_ROOT_NODE_NAMES := {
 	"MpGame": true,
 	"Game": true,
@@ -212,6 +214,11 @@ func _run_mp_game_probe(
 		_detach_probe_scene_disconnect_handlers(net_manager, mp_game, game)
 		await _cleanup_probe_game(net_manager, mp_game)
 		return
+	if probe_scenario == PROBE_SCENARIO_BOSS:
+		await _run_boss_probe(mp_game, game, is_host_probe)
+		_detach_probe_scene_disconnect_handlers(net_manager, mp_game, game)
+		await _cleanup_probe_game(net_manager, mp_game)
+		return
 	await _wait_seconds(1.5)
 	if is_host_probe:
 		await _run_host_replication_probe(net_manager, mp_game, game)
@@ -300,6 +307,15 @@ func _run_wave_probe(
 		await _run_client_wave_probe(mp_game, game)
 
 
+func _run_boss_probe(mp_game: Node, game: Game, is_host_probe: bool) -> void:
+	_configure_probe_boss_flow(game)
+	await _wait_seconds(1.0)
+	if is_host_probe:
+		await _run_host_boss_probe(game)
+	else:
+		await _run_client_boss_probe(mp_game, game)
+
+
 func _run_host_wave_probe(game: Game) -> void:
 	game.call("_begin_wave", 0)
 	if not await _wait_for_game_wave_state(game, Game.WaveState.WAVE_ACTIVE, 3.0):
@@ -355,7 +371,85 @@ func _run_client_wave_probe(mp_game: Node, game: Game) -> void:
 	await _wait_seconds(4.0)
 
 
-func _cleanup_probe_game(net_manager: Node, mp_game: Node) -> void:
+func _run_host_boss_probe(game: Game) -> void:
+	game.multiplayer_enemy_spawned.connect(
+		func(net_id: int, enemy_config: EnemyConfig, _spawn_position: Vector2) -> void:
+			var config_path := enemy_config.resource_path if enemy_config != null else ""
+			print("LAN_PROBE_EVENT host_boss_enemy_spawn_signal net_id=%d config=%s" % [net_id, config_path])
+	)
+	game.multiplayer_boss_started.connect(
+		func(net_id: int, boss_config: BossConfig, _spawn_position: Vector2) -> void:
+			var config_path := boss_config.resource_path if boss_config != null else ""
+			print("LAN_PROBE_EVENT host_boss_started_signal net_id=%d config=%s" % [net_id, config_path])
+	)
+	game.call("_enter_pre_flow_step", LINGLAN_BOSS_ENTRY)
+	await _wait_frames(2)
+	if not await _wait_for_game_wave_state(game, Game.WaveState.BOSS_INTRO, 4.0):
+		_fail("Host boss probe did not enter boss intro.")
+		return
+	print("LAN_PROBE_EVENT host_boss_intro_confirmed")
+	game.call("_on_linglan_boss_intro_finished")
+	if not await _wait_for_game_wave_state(game, Game.WaveState.BOSS_ACTIVE, 4.0):
+		_fail("Host boss probe did not activate boss.")
+		return
+	var boss_id := await _wait_for_first_host_enemy_net_id(game, 4.0)
+	if boss_id <= 0:
+		_fail("Host boss probe did not register a networked boss.")
+		return
+	var boss := game.get_enemy_for_net_id(boss_id) as LinglanBoss
+	if boss == null or not is_instance_valid(boss):
+		_fail("Host boss probe missing Linglan boss instance.")
+		return
+	print("LAN_PROBE_EVENT host_boss_active net_id=%d" % boss_id)
+	await _wait_seconds(2.0)
+
+	var previous_health := boss.current_health
+	boss.apply_damage(maxi(previous_health / 4, 1))
+	if not await _wait_for_enemy_health_below(boss, previous_health, 2.0):
+		_fail("Host boss probe did not apply partial boss damage.")
+		return
+	await _wait_seconds(3.0)
+
+	if boss != null and is_instance_valid(boss):
+		boss.apply_damage(boss.current_health)
+	if not await _wait_for_game_wave_state(game, Game.WaveState.VICTORY, 6.0):
+		_fail("Host boss probe did not enter victory after boss defeat.")
+		return
+	print("LAN_PROBE_EVENT host_boss_victory_confirmed")
+
+
+func _run_client_boss_probe(mp_game: Node, game: Game) -> void:
+	if not await _wait_for_game_wave_state(game, Game.WaveState.BOSS_INTRO, 6.0):
+		_fail("Client boss probe did not receive boss intro.")
+		return
+	print("LAN_PROBE_EVENT client_boss_intro_confirmed")
+	if not await _wait_for_game_wave_state(game, Game.WaveState.BOSS_ACTIVE, 8.0):
+		_fail("Client boss probe did not receive boss active state.")
+		return
+	var boss_id := await _wait_for_first_client_enemy_id(mp_game, 8.0)
+	if boss_id <= 0:
+		_fail("Client boss probe did not receive boss spawn.")
+		return
+	var boss := game.linglan_boss
+	if boss == null or not is_instance_valid(boss):
+		_fail("Client boss probe did not bind Linglan boss proxy.")
+		return
+	print("LAN_PROBE_EVENT client_boss_active net_id=%d" % boss_id)
+
+	var previous_health := boss.current_health
+	if not await _wait_for_boss_health_below(game, previous_health, 8.0):
+		_fail("Client boss probe did not receive boss health sync.")
+		return
+	print("LAN_PROBE_EVENT client_boss_health_confirmed")
+
+	if not await _wait_for_game_wave_state(game, Game.WaveState.VICTORY, 10.0):
+		_fail("Client boss probe did not receive victory after boss defeat.")
+		return
+	print("LAN_PROBE_EVENT client_boss_victory_confirmed")
+	await _wait_seconds(2.0)
+
+
+func _cleanup_probe_game(net_manager: Node, mp_game) -> void:
 	_release_probe_input_actions()
 	if failures.is_empty() and net_manager.has_method("disconnect_from_game"):
 		net_manager.disconnect_from_game()
@@ -796,6 +890,18 @@ func _wait_for_enemy_health_below(enemy: Enemy, previous_health: int, timeout_se
 	return false
 
 
+func _wait_for_boss_health_below(game: Game, previous_health: int, timeout_seconds: float) -> bool:
+	var end_time := _now_seconds() + timeout_seconds
+	while _now_seconds() <= end_time:
+		if game == null or not is_instance_valid(game):
+			return false
+		var boss := game.linglan_boss
+		if boss != null and is_instance_valid(boss) and boss.current_health < previous_health:
+			return true
+		await process_frame
+	return false
+
+
 func _wait_for_first_host_enemy_net_id(game: Game, timeout_seconds: float) -> int:
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
@@ -1021,7 +1127,34 @@ func _disable_probe_wave_flow(game: Game) -> void:
 func _configure_probe_wave_flow(game: Game) -> void:
 	_disable_probe_wave_flow(game)
 	game.waves = _create_probe_waves()
+	var flow_graph := FlowGraphConfig.new()
+	flow_graph.graph_name = "Probe Flow"
+	for wave_config in game.waves:
+		flow_graph.steps.append(wave_config)
+	if not flow_graph.steps.is_empty():
+		flow_graph.start_step = flow_graph.steps[0]
+	game.flow_graph = flow_graph
 	game.pre_wave_duration = 0.0
+	game.current_wave_index = 0
+	game.current_wave_total = 0
+	game.current_wave_spawned = 0
+	game.current_wave_defeated = 0
+
+
+func _configure_probe_boss_flow(game: Game) -> void:
+	_disable_probe_wave_flow(game)
+	var boss_resources: Array[Resource] = [LINGLAN_BOSS_ENTRY]
+	game.bosses = boss_resources
+	var flow_graph := FlowGraphConfig.new()
+	flow_graph.graph_name = "Probe Boss Flow"
+	flow_graph.start_step = LINGLAN_BOSS_ENTRY
+	var flow_steps: Array[FlowStepConfig] = [LINGLAN_BOSS_ENTRY]
+	flow_graph.steps = flow_steps
+	game.flow_graph = flow_graph
+	game.pre_wave_duration = 0.0
+	game.current_flow_step = null
+	game.next_flow_step_after_rest = null
+	game.linglan_boss_started = false
 	game.current_wave_index = 0
 	game.current_wave_total = 0
 	game.current_wave_spawned = 0
@@ -1035,24 +1168,32 @@ func _create_probe_waves() -> Array[WaveConfig]:
 		entry.enemy_config = BASIC_ENEMY_CONFIG
 		entry.count = 1
 		var wave_config := WaveConfig.new()
+		wave_config.step_id = StringName("probe_wave_%02d" % (wave_index + 1))
 		wave_config.wave_name = "Probe Wave %d" % (wave_index + 1)
 		wave_config.enemy_entries = [entry]
 		wave_config.spawn_interval = 60.0
 		wave_config.spawn_count_per_tick = 1
 		wave_config.max_alive_enemies = 1
-		wave_config.rest_duration_after_wave = 30.0
+		wave_config.post_clear_rest_duration = 30.0
 		result.append(wave_config)
+	for wave_index in range(result.size() - 1):
+		var flow_exit := FlowExitConfig.new()
+		flow_exit.exit_name = FlowExitConfig.DEFAULT_EXIT_NAME
+		flow_exit.target_step_id = result[wave_index + 1].step_id
+		result[wave_index].exits = [flow_exit]
 	return result
 
 
-func _detach_probe_scene_disconnect_handlers(net_manager: Node, mp_game: Node, game: Game) -> void:
+func _detach_probe_scene_disconnect_handlers(net_manager: Node, mp_game, game) -> void:
+	if not is_instance_valid(mp_game):
+		return
 	var connection_callable := Callable(mp_game, "_on_connection_state_changed")
 	if net_manager.connection_state_changed.is_connected(connection_callable):
 		net_manager.connection_state_changed.disconnect(connection_callable)
 	var player_left_callable := Callable(mp_game, "_on_net_player_left")
 	if net_manager.player_left.is_connected(player_left_callable):
 		net_manager.player_left.disconnect(player_left_callable)
-	if game != null and is_instance_valid(game):
+	if is_instance_valid(game):
 		var lobby_callable := Callable(mp_game, "_on_game_return_to_lobby_requested")
 		if game.return_to_lobby_requested.is_connected(lobby_callable):
 			game.return_to_lobby_requested.disconnect(lobby_callable)

@@ -32,7 +32,10 @@ signal multiplayer_pickup_collected(
 signal multiplayer_pickup_removed(net_id: int)
 signal multiplayer_merchant_active_changed(active: bool)
 signal multiplayer_wave_started(wave_index: int)
+signal multiplayer_flow_state_changed(step_id: StringName, state: int, countdown_seconds: int)
+signal multiplayer_boss_started(net_id: int, boss_config: BossConfig, spawn_position: Vector2)
 signal multiplayer_defeat_started
+signal multiplayer_victory_started
 signal multiplayer_revive_all_requested
 signal return_to_lobby_requested
 
@@ -72,7 +75,8 @@ enum WaveState {
 	preload("res://resources/config/bosses/boss_01_linglan.tres"),
 ]
 
-@export_group("波次流程")
+@export_group("战斗流程")
+@export var flow_graph: FlowGraphConfig = preload("res://resources/config/flow/default_combat_flow.tres")
 @export_range(0.0, 60.0, 1.0, "or_greater") var pre_wave_duration: float = 5.0
 @export var auto_start_waves: bool = true
 @export var runtime_mode: RuntimeMode = RuntimeMode.SINGLEPLAYER
@@ -114,6 +118,8 @@ var current_wave_total: int = 0
 var current_wave_spawned: int = 0
 var current_wave_defeated: int = 0
 var countdown_seconds: int = 0
+var current_flow_step: FlowStepConfig = null
+var next_flow_step_after_rest: FlowStepConfig = null
 var multiplayer_local_peer_id: int = 0
 var multiplayer_player_names: Dictionary = {}
 var peer_players: Dictionary = {}
@@ -173,9 +179,13 @@ func _ready() -> void:
 
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		auto_start_waves = false
-		_start_client_wave_countdown(WaveState.PRE_WAVE, 0, maxi(ceili(pre_wave_duration), 0))
-	elif auto_start_waves and _is_wave_system_ready():
-		_enter_pre_wave(0)
+		_start_client_flow_countdown(
+			WaveState.PRE_WAVE,
+			_get_flow_step_id(_get_start_flow_step()),
+			maxi(ceili(pre_wave_duration), 0)
+		)
+	elif auto_start_waves and _is_flow_system_ready():
+		_enter_pre_flow_step(_get_start_flow_step())
 	else:
 		wave_hud.hide_all()
 
@@ -299,14 +309,50 @@ func apply_remote_merchant_active(active: bool) -> void:
 	_set_local_merchants_active(active)
 	if runtime_mode != RuntimeMode.CLIENT_VIEW:
 		return
-	if active:
-		var wave_config := _get_current_wave()
-		var countdown := 0
-		if wave_config != null:
-			countdown = maxi(ceili(wave_config.rest_duration_after_wave), 0)
-		_start_client_wave_countdown(WaveState.INTERMISSION, current_wave_index, countdown)
-	elif wave_state == WaveState.PRE_WAVE or wave_state == WaveState.INTERMISSION:
+	if not active and (wave_state == WaveState.PRE_WAVE or wave_state == WaveState.INTERMISSION):
 		state_timer.stop()
+
+
+func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> void:
+	if runtime_mode != RuntimeMode.CLIENT_VIEW:
+		return
+	var flow_step := _get_flow_step_by_id(step_id)
+	if flow_step != null:
+		current_flow_step = flow_step
+		if flow_step is WaveConfig:
+			current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
+	var typed_state := state as WaveState
+	match typed_state:
+		WaveState.PRE_WAVE, WaveState.INTERMISSION:
+			_start_client_flow_countdown(typed_state, step_id, seconds)
+		WaveState.WAVE_ACTIVE:
+			state_timer.stop()
+			wave_state = WaveState.WAVE_ACTIVE
+			_set_local_merchants_active(false)
+			var wave_config := flow_step as WaveConfig
+			if wave_config != null:
+				_update_wave_music(wave_config)
+			wave_hud.show_enemy_count(maxi(current_wave_index + 1, 1), 0)
+			wave_start_audio.play()
+		WaveState.BOSS_INTRO:
+			state_timer.stop()
+			wave_state = WaveState.BOSS_INTRO
+			_set_local_merchants_active(false)
+			wave_hud.hide_all()
+			var boss_config := flow_step as BossConfig
+			if boss_config != null:
+				active_boss_config = boss_config
+				_prepare_linglan_boss_arena(boss_config)
+				_play_remote_boss_intro(boss_config)
+		WaveState.BOSS_ACTIVE:
+			state_timer.stop()
+			wave_state = WaveState.BOSS_ACTIVE
+			_set_local_merchants_active(false)
+			wave_hud.hide_all()
+		WaveState.VICTORY:
+			apply_remote_victory()
+		WaveState.DEFEAT:
+			apply_remote_defeat()
 
 
 func apply_remote_wave_started(wave_index: int) -> void:
@@ -321,6 +367,61 @@ func apply_remote_wave_started(wave_index: int) -> void:
 	_update_wave_music(wave_config)
 	wave_hud.show_enemy_count(current_wave_index + 1, 0)
 	wave_start_audio.play()
+
+
+func apply_remote_boss_started(net_id: int, boss_config: BossConfig, spawn_position: Vector2) -> void:
+	if runtime_mode != RuntimeMode.CLIENT_VIEW or boss_config == null:
+		return
+	active_boss_config = boss_config
+	current_flow_step = boss_config
+	wave_state = WaveState.BOSS_ACTIVE
+	state_timer.stop()
+	wave_hud.hide_all()
+	_set_local_merchants_active(false)
+
+	var boss_enemy := get_enemy_for_net_id(net_id) as LinglanBoss
+	if boss_enemy == null or not is_instance_valid(boss_enemy):
+		boss_enemy = _instantiate_remote_linglan_boss_proxy(net_id, boss_config, spawn_position)
+	if boss_enemy != null and is_instance_valid(boss_enemy):
+		linglan_boss = boss_enemy
+		if boss_container != null and linglan_boss.get_parent() != boss_container:
+			linglan_boss.reparent(boss_container, true)
+		linglan_boss.global_position = spawn_position
+		linglan_boss.visible = true
+		if linglan_boss.animated_sprite != null and not linglan_boss.is_dead:
+			linglan_boss.animated_sprite.play(&"idle")
+		_ensure_boss_health_hud_runtime_node(boss_config)
+		if boss_health_hud != null:
+			boss_health_hud.show_for_boss(linglan_boss, _get_boss_display_name(boss_config))
+
+
+func _instantiate_remote_linglan_boss_proxy(
+	net_id: int,
+	boss_config: BossConfig,
+	spawn_position: Vector2
+) -> LinglanBoss:
+	if net_id <= 0 or boss_config == null:
+		return null
+	var enemy_config := _get_boss_enemy_config(boss_config)
+	if enemy_config == null or enemy_config.enemy_scene == null:
+		return null
+	var boss_enemy := enemy_config.enemy_scene.instantiate() as LinglanBoss
+	if boss_enemy == null:
+		return null
+	boss_container.add_child(boss_enemy)
+	boss_enemy.global_position = spawn_position
+	boss_enemy.setup(enemy_config, player, grid_pathfinder)
+	boss_enemy.configure_multiplayer_proxy()
+	boss_enemy.set_meta("net_id", net_id)
+	multiplayer_enemies_by_net_id[net_id] = boss_enemy
+	multiplayer_enemy_ids_by_instance[boss_enemy.get_instance_id()] = net_id
+	return boss_enemy
+
+
+func apply_remote_victory() -> void:
+	if runtime_mode != RuntimeMode.CLIENT_VIEW:
+		return
+	_enter_victory(false)
 
 
 func apply_remote_enemy_count(alive_count: int) -> void:
@@ -493,7 +594,7 @@ func _set_local_merchants_active(active: bool) -> bool:
 func _configure_linglan_boss() -> void:
 	if linglan_boss == null:
 		return
-	var boss_config := _get_first_boss_config()
+	var boss_config := active_boss_config if active_boss_config != null else _get_first_boss_config()
 	if boss_config != null:
 		linglan_boss.config = _get_boss_enemy_config(boss_config)
 		linglan_boss.global_position = _get_boss_arena_center(boss_config)
@@ -514,14 +615,18 @@ func _request_boss_runtime_scene_loads() -> void:
 	if not linglan_boss_enabled:
 		return
 	boss_runtime_scene_loads_requested = true
-	for boss_config in bosses:
+	for boss_config in _get_configured_bosses():
 		if not _boss_config_has_required_data(boss_config):
 			continue
 		var enemy_config_path := _get_boss_enemy_config_path(boss_config)
 		if not enemy_config_path.is_empty():
 			ResourceLoader.load_threaded_request(enemy_config_path)
-	ResourceLoader.load_threaded_request(LINGLAN_BOSS_INTRO_VFX_SCENE_PATH)
-	ResourceLoader.load_threaded_request(BOSS_HEALTH_HUD_SCENE_PATH)
+		var intro_path := _get_boss_intro_vfx_scene_path(boss_config)
+		if not intro_path.is_empty():
+			ResourceLoader.load_threaded_request(intro_path)
+		var hud_path := _get_boss_hud_scene_path(boss_config)
+		if not hud_path.is_empty():
+			ResourceLoader.load_threaded_request(hud_path)
 
 
 func _deferred_request_boss_runtime_scene_loads() -> void:
@@ -535,25 +640,25 @@ func _deferred_request_boss_runtime_scene_loads() -> void:
 
 
 func _get_first_boss_config() -> Resource:
-	for boss_config in bosses:
+	for boss_config in _get_configured_bosses():
 		if _boss_config_has_required_data(boss_config):
 			return boss_config
 	return null
 
 
-func _get_pending_boss_config_after_current_wave() -> Resource:
-	if not linglan_boss_enabled:
-		return null
-	if runtime_mode != RuntimeMode.SINGLEPLAYER:
-		return null
-	if linglan_boss_started:
-		return null
-	for boss_config in bosses:
-		if not _boss_config_has_required_data(boss_config):
-			continue
-		if current_wave_index + 1 >= _get_boss_start_wave_number(boss_config):
-			return boss_config
-	return null
+func _get_configured_bosses() -> Array[BossConfig]:
+	var result: Array[BossConfig] = []
+	if flow_graph != null:
+		for step in flow_graph.steps:
+			var boss_step := step as BossConfig
+			if boss_step != null:
+				result.append(boss_step)
+	if result.is_empty():
+		for boss_resource in bosses:
+			var boss_config := boss_resource as BossConfig
+			if boss_config != null:
+				result.append(boss_config)
+	return result
 
 
 func _boss_config_has_required_data(boss_config: Resource) -> bool:
@@ -563,7 +668,6 @@ func _boss_config_has_required_data(boss_config: Resource) -> bool:
 		return bool(boss_config.call("has_required_data"))
 	return (
 		(_get_boss_enemy_config(boss_config) != null or not _get_boss_enemy_config_path(boss_config).is_empty())
-		and _get_boss_start_wave_number(boss_config) > 0
 	)
 
 
@@ -591,10 +695,6 @@ func _get_boss_enemy_config_path(boss_config: Resource) -> String:
 	if enemy_config != null:
 		return enemy_config.resource_path
 	return ""
-
-
-func _get_boss_start_wave_number(boss_config: Resource) -> int:
-	return int(boss_config.get("starts_after_wave_number"))
 
 
 func _get_boss_arena_center(boss_config: Resource) -> Vector2:
@@ -627,6 +727,24 @@ func _get_boss_display_name(boss_config: Resource) -> String:
 	return "Boss"
 
 
+func _get_boss_intro_vfx_scene_path(boss_config: Resource) -> String:
+	if boss_config == null:
+		return LINGLAN_BOSS_INTRO_VFX_SCENE_PATH
+	var path_value: Variant = boss_config.get("intro_vfx_scene_path")
+	if typeof(path_value) == TYPE_STRING and not String(path_value).is_empty():
+		return String(path_value)
+	return LINGLAN_BOSS_INTRO_VFX_SCENE_PATH
+
+
+func _get_boss_hud_scene_path(boss_config: Resource) -> String:
+	if boss_config == null:
+		return BOSS_HEALTH_HUD_SCENE_PATH
+	var path_value: Variant = boss_config.get("boss_hud_scene_path")
+	if typeof(path_value) == TYPE_STRING and not String(path_value).is_empty():
+		return String(path_value)
+	return BOSS_HEALTH_HUD_SCENE_PATH
+
+
 func _ensure_linglan_boss_runtime_nodes(boss_config: Resource) -> bool:
 	if boss_container == null:
 		return false
@@ -648,7 +766,7 @@ func _ensure_linglan_boss_runtime_nodes(boss_config: Resource) -> bool:
 		boss_container.add_child(linglan_boss)
 
 	if linglan_boss_intro_vfx == null or not is_instance_valid(linglan_boss_intro_vfx):
-		var intro_scene := _load_threaded_or_direct(LINGLAN_BOSS_INTRO_VFX_SCENE_PATH) as PackedScene
+		var intro_scene := _load_threaded_or_direct(_get_boss_intro_vfx_scene_path(boss_config)) as PackedScene
 		if intro_scene == null:
 			push_error("无法加载铃兰 Boss 入场 VFX 场景。")
 			return false
@@ -662,22 +780,29 @@ func _ensure_linglan_boss_runtime_nodes(boss_config: Resource) -> bool:
 		linglan_boss_intro_vfx.name = "LinglanBossIntroVFX"
 		add_child(linglan_boss_intro_vfx)
 
-	if boss_health_hud == null or not is_instance_valid(boss_health_hud):
-		var hud_scene := _load_threaded_or_direct(BOSS_HEALTH_HUD_SCENE_PATH) as PackedScene
-		if hud_scene == null:
-			push_error("无法加载 Boss 大 HUD 场景。")
-			return false
-		var hud_instance := hud_scene.instantiate()
-		boss_health_hud = hud_instance as BossHealthHUD
-		if boss_health_hud == null:
-			if hud_instance != null:
-				hud_instance.free()
-			push_error("Boss 大 HUD 场景类型不正确。")
-			return false
-		boss_health_hud.name = "BossHealthHUD"
-		add_child(boss_health_hud)
+	if not _ensure_boss_health_hud_runtime_node(boss_config):
+		return false
 
 	_configure_linglan_boss()
+	return true
+
+
+func _ensure_boss_health_hud_runtime_node(boss_config: Resource) -> bool:
+	if boss_health_hud != null and is_instance_valid(boss_health_hud):
+		return true
+	var hud_scene := _load_threaded_or_direct(_get_boss_hud_scene_path(boss_config)) as PackedScene
+	if hud_scene == null:
+		push_error("无法加载 Boss 大 HUD 场景。")
+		return false
+	var hud_instance := hud_scene.instantiate()
+	boss_health_hud = hud_instance as BossHealthHUD
+	if boss_health_hud == null:
+		if hud_instance != null:
+			hud_instance.free()
+		push_error("Boss 大 HUD 场景类型不正确。")
+		return false
+	boss_health_hud.name = "BossHealthHUD"
+	add_child(boss_health_hud)
 	return true
 
 
@@ -799,17 +924,27 @@ func _enter_pre_wave(wave_index: int) -> void:
 	if wave_index < 0 or wave_index >= waves.size():
 		_enter_victory()
 		return
+	_enter_pre_flow_step(waves[wave_index])
 
+
+func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
+	if flow_step == null:
+		_enter_victory()
+		return
 	wave_state = WaveState.PRE_WAVE
-	current_wave_index = wave_index
+	current_flow_step = flow_step
+	next_flow_step_after_rest = flow_step
+	if flow_step is WaveConfig:
+		current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
 	enemy_spawn_timer.stop()
 	_set_merchant_active(false)
 	countdown_seconds = maxi(ceili(pre_wave_duration), 0)
 	wave_hud.show_countdown(countdown_seconds)
 	_schedule_enemy_navigation_prewarm()
+	_emit_multiplayer_flow_state(WaveState.PRE_WAVE)
 
 	if countdown_seconds <= 0:
-		_begin_wave(current_wave_index)
+		_begin_flow_step(current_flow_step)
 		return
 
 	if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
@@ -817,23 +952,23 @@ func _enter_pre_wave(wave_index: int) -> void:
 	state_timer.start(1.0)
 
 
-func _enter_intermission() -> void:
+func _enter_intermission(next_step: FlowStepConfig = null) -> void:
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_revive_all_requested.emit()
 	wave_state = WaveState.INTERMISSION
 	enemy_spawn_timer.stop()
 	_set_merchant_active(true)
-
-	var wave_config := _get_current_wave()
+	next_flow_step_after_rest = next_step
 	countdown_seconds = (
-		maxi(ceili(wave_config.rest_duration_after_wave), 0)
-		if wave_config != null
+		maxi(ceili(current_flow_step.post_clear_rest_duration), 0)
+		if current_flow_step != null
 		else 0
 	)
 	wave_hud.show_countdown(countdown_seconds)
+	_emit_multiplayer_flow_state(WaveState.INTERMISSION)
 
 	if countdown_seconds <= 0:
-		_begin_wave(current_wave_index + 1)
+		_begin_flow_step(next_flow_step_after_rest)
 		return
 
 	if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
@@ -847,8 +982,29 @@ func _begin_wave(wave_index: int) -> void:
 		return
 
 	var wave_config := waves[wave_index]
+	current_flow_step = wave_config
+	next_flow_step_after_rest = null
+	_begin_wave_config(wave_config)
+
+
+func _begin_flow_step(flow_step: FlowStepConfig) -> void:
+	if flow_step == null:
+		_enter_victory()
+		return
+	current_flow_step = flow_step
+	next_flow_step_after_rest = null
+	if flow_step is WaveConfig:
+		_begin_wave_config(flow_step as WaveConfig)
+	elif flow_step is BossConfig:
+		_begin_linglan_boss_intro(flow_step as BossConfig)
+	else:
+		push_error("流程节点 %s 类型不支持。" % flow_step.get_flow_display_name())
+		_enter_defeat()
+
+
+func _begin_wave_config(wave_config: WaveConfig) -> void:
 	if wave_config == null:
-		push_error("波次 %d 缺少 WaveConfig。" % (wave_index + 1))
+		push_error("流程节点缺少 WaveConfig。")
 		_enter_defeat()
 		return
 	if runtime_mode != RuntimeMode.CLIENT_VIEW and not navigation_prewarmed:
@@ -856,7 +1012,7 @@ func _begin_wave(wave_index: int) -> void:
 		navigation_prewarmed = true
 
 	wave_state = WaveState.WAVE_ACTIVE
-	current_wave_index = wave_index
+	current_wave_index = _get_wave_number_for_step(wave_config) - 1
 	state_timer.stop()
 	_set_merchant_active(false)
 	current_wave_spawned = 0
@@ -873,6 +1029,7 @@ func _begin_wave(wave_index: int) -> void:
 	wave_start_audio.play()
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_wave_started.emit(current_wave_index)
+	_emit_multiplayer_flow_state(WaveState.WAVE_ACTIVE)
 
 	if current_wave_total <= 0:
 		_check_wave_completion()
@@ -901,7 +1058,7 @@ func _build_wave_spawn_queue(wave_config: WaveConfig) -> void:
 
 func _on_state_timer_timeout() -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		_update_client_wave_countdown()
+		_update_client_flow_countdown()
 		return
 	if wave_state != WaveState.PRE_WAVE and wave_state != WaveState.INTERMISSION:
 		state_timer.stop()
@@ -916,9 +1073,9 @@ func _on_state_timer_timeout() -> void:
 
 	state_timer.stop()
 	if wave_state == WaveState.PRE_WAVE:
-		_begin_wave(current_wave_index)
+		_begin_flow_step(current_flow_step)
 	else:
-		_begin_wave(current_wave_index + 1)
+		_begin_flow_step(next_flow_step_after_rest)
 
 
 func _on_enemy_spawn_timer_timeout() -> void:
@@ -936,7 +1093,22 @@ func _start_client_wave_countdown(state: WaveState, wave_index: int, seconds: in
 	state_timer.start(1.0)
 
 
-func _update_client_wave_countdown() -> void:
+func _start_client_flow_countdown(state: WaveState, step_id: StringName, seconds: int) -> void:
+	wave_state = state
+	var flow_step := _get_flow_step_by_id(step_id)
+	if flow_step != null:
+		current_flow_step = flow_step
+		if flow_step is WaveConfig:
+			current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
+	countdown_seconds = maxi(seconds, 0)
+	wave_hud.show_countdown(countdown_seconds)
+	if countdown_seconds <= 0:
+		state_timer.stop()
+		return
+	state_timer.start(1.0)
+
+
+func _update_client_flow_countdown() -> void:
 	if wave_state != WaveState.PRE_WAVE and wave_state != WaveState.INTERMISSION:
 		state_timer.stop()
 		return
@@ -1013,21 +1185,35 @@ func _try_spawn_enemy(enemy_config: EnemyConfig) -> bool:
 	enemy_instance.global_position = spawn_point.global_position
 	enemy_instance.setup(enemy_config, _pick_enemy_target(spawn_point.global_position), grid_pathfinder)
 	var enemy_id := enemy_instance.get_instance_id()
-	var enemy_net_id := 0
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		enemy_net_id = next_multiplayer_enemy_net_id
-		next_multiplayer_enemy_net_id += 1
-		enemy_instance.set_meta("net_id", enemy_net_id)
-		multiplayer_enemy_ids_by_instance[enemy_id] = enemy_net_id
-		multiplayer_enemies_by_net_id[enemy_net_id] = enemy_instance
 	active_wave_enemy_ids[enemy_id] = true
 	enemy_instance.defeated.connect(_on_wave_enemy_defeated)
 	enemy_instance.tree_exited.connect(_on_wave_enemy_tree_exited.bind(enemy_id))
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_enemy_spawned.emit(enemy_net_id, enemy_config, enemy_instance.global_position)
+	_register_multiplayer_enemy_instance(enemy_instance, enemy_config, enemy_instance.global_position)
 	_spawn_enemy_spawn_effect(spawn_point.global_position)
 	_try_play_enemy_spawn_audio()
 	return true
+
+
+func _register_multiplayer_enemy_instance(
+	enemy_instance: Enemy,
+	enemy_config: EnemyConfig,
+	spawn_position: Vector2
+) -> int:
+	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
+		return 0
+	if enemy_instance == null or enemy_config == null:
+		return 0
+	var enemy_id := enemy_instance.get_instance_id()
+	var existing_net_id := int(multiplayer_enemy_ids_by_instance.get(enemy_id, 0))
+	if existing_net_id > 0:
+		return existing_net_id
+	var enemy_net_id := next_multiplayer_enemy_net_id
+	next_multiplayer_enemy_net_id += 1
+	enemy_instance.set_meta("net_id", enemy_net_id)
+	multiplayer_enemy_ids_by_instance[enemy_id] = enemy_net_id
+	multiplayer_enemies_by_net_id[enemy_net_id] = enemy_instance
+	multiplayer_enemy_spawned.emit(enemy_net_id, enemy_config, spawn_position)
+	return enemy_net_id
 
 
 func _on_wave_enemy_defeated(enemy: Enemy) -> void:
@@ -1089,16 +1275,22 @@ func _check_wave_completion() -> void:
 		return
 
 	enemy_spawn_timer.stop()
-	if _should_enter_linglan_boss_after_current_wave():
-		_begin_linglan_boss_intro()
-	elif current_wave_index >= waves.size() - 1:
+	_complete_current_step()
+
+
+func _complete_current_step() -> void:
+	var next_step := _get_default_next_flow_step(current_flow_step)
+	if next_step == null:
 		_enter_victory()
-	else:
-		_enter_intermission()
+		return
+	if current_flow_step != null and current_flow_step.post_clear_rest_duration > 0.0:
+		_enter_intermission(next_step)
+		return
+	_begin_flow_step(next_step)
 
 
-func _enter_victory() -> void:
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
+func _enter_victory(emit_multiplayer: bool = true) -> void:
+	if emit_multiplayer and runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_revive_all_requested.emit()
 	wave_state = WaveState.VICTORY
 	enemy_spawn_timer.stop()
@@ -1109,6 +1301,9 @@ func _enter_victory() -> void:
 	if boss_health_hud != null:
 		boss_health_hud.hide_all()
 	wave_hud.show_victory()
+	if emit_multiplayer and runtime_mode == RuntimeMode.HOST_AUTHORITY:
+		multiplayer_victory_started.emit()
+		_emit_multiplayer_flow_state(WaveState.VICTORY)
 
 
 func _enter_defeat() -> void:
@@ -1127,12 +1322,9 @@ func _enter_defeat() -> void:
 		multiplayer_defeat_started.emit()
 
 
-func _should_enter_linglan_boss_after_current_wave() -> bool:
-	return _get_pending_boss_config_after_current_wave() != null
-
-
-func _begin_linglan_boss_intro() -> void:
-	var boss_config := _get_pending_boss_config_after_current_wave()
+func _begin_linglan_boss_intro(boss_config: BossConfig = null) -> void:
+	if boss_config == null:
+		boss_config = current_flow_step as BossConfig
 	if boss_config == null:
 		_enter_victory()
 		return
@@ -1141,6 +1333,7 @@ func _begin_linglan_boss_intro() -> void:
 		return
 	active_boss_config = boss_config
 	linglan_boss_started = true
+	current_flow_step = boss_config
 	wave_state = WaveState.BOSS_INTRO
 	enemy_spawn_timer.stop()
 	state_timer.stop()
@@ -1157,6 +1350,7 @@ func _begin_linglan_boss_intro() -> void:
 	linglan_boss.set_active(false)
 	if boss_health_hud != null:
 		boss_health_hud.hide_all()
+	_emit_multiplayer_flow_state(WaveState.BOSS_INTRO)
 	if linglan_boss_intro_vfx != null:
 		linglan_boss_intro_vfx.play_intro(_get_boss_arena_center(boss_config))
 	else:
@@ -1182,9 +1376,42 @@ func _activate_linglan_boss() -> void:
 	linglan_boss.config = _get_boss_enemy_config(boss_config)
 	linglan_boss.global_position = _get_boss_arena_center(boss_config)
 	linglan_boss.activate_boss(player, grid_pathfinder)
-	active_wave_enemy_ids[linglan_boss.get_instance_id()] = true
+	var boss_instance_id := linglan_boss.get_instance_id()
+	active_wave_enemy_ids[boss_instance_id] = true
+	if not linglan_boss.tree_exited.is_connected(_on_boss_enemy_tree_exited.bind(boss_instance_id)):
+		linglan_boss.tree_exited.connect(_on_boss_enemy_tree_exited.bind(boss_instance_id))
+	var boss_net_id := _register_multiplayer_enemy_instance(
+		linglan_boss,
+		_get_boss_enemy_config(boss_config),
+		linglan_boss.global_position
+	)
 	if boss_health_hud != null:
 		boss_health_hud.show_for_boss(linglan_boss, _get_boss_display_name(boss_config))
+	_emit_multiplayer_flow_state(WaveState.BOSS_ACTIVE)
+	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
+		multiplayer_boss_started.emit(boss_net_id, boss_config, linglan_boss.global_position)
+		_rebroadcast_linglan_boss_started_after_sync_window(boss_net_id, boss_config)
+
+
+func _on_boss_enemy_tree_exited(enemy_id: int) -> void:
+	active_wave_enemy_ids.erase(enemy_id)
+	_mark_multiplayer_enemy_removed(enemy_id)
+
+
+func _rebroadcast_linglan_boss_started_after_sync_window(
+	boss_net_id: int,
+	boss_config: BossConfig
+) -> void:
+	if boss_net_id <= 0 or boss_config == null:
+		return
+	await get_tree().create_timer(0.75).timeout
+	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
+		return
+	if wave_state != WaveState.BOSS_ACTIVE:
+		return
+	if linglan_boss == null or not is_instance_valid(linglan_boss):
+		return
+	multiplayer_boss_started.emit(boss_net_id, boss_config, linglan_boss.global_position)
 
 
 func _on_linglan_boss_defeated(enemy: Enemy) -> void:
@@ -1194,14 +1421,15 @@ func _on_linglan_boss_defeated(enemy: Enemy) -> void:
 		return
 	active_wave_enemy_ids.erase(enemy.get_instance_id())
 	current_wave_defeated = 1
+	_emit_multiplayer_enemy_defeated(enemy)
 	var victory_timer := get_tree().create_timer(1.3)
-	victory_timer.timeout.connect(_enter_victory_after_linglan_boss)
+	victory_timer.timeout.connect(_complete_linglan_boss_after_delay)
 
 
-func _enter_victory_after_linglan_boss() -> void:
+func _complete_linglan_boss_after_delay() -> void:
 	if wave_state != WaveState.BOSS_ACTIVE:
 		return
-	_enter_victory()
+	_complete_current_step()
 
 
 func _prepare_linglan_boss_arena(boss_config: Resource) -> void:
@@ -1509,7 +1737,18 @@ func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 
 func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
 	var states: Array[SnapshotManager.EnemyState] = []
-	for child in enemy_container.get_children():
+	_collect_enemy_snapshot_states_from_container(enemy_container, states)
+	_collect_enemy_snapshot_states_from_container(boss_container, states)
+	return states
+
+
+func _collect_enemy_snapshot_states_from_container(
+	container: Node,
+	states: Array[SnapshotManager.EnemyState]
+) -> void:
+	if container == null:
+		return
+	for child in container.get_children():
 		var enemy := child as Enemy
 		if enemy == null or not is_instance_valid(enemy):
 			continue
@@ -1520,7 +1759,6 @@ func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
 		state.health = enemy.current_health
 		state.is_dead = enemy.is_dead
 		states.append(state)
-	return states
 
 
 func _update_multiplayer_enemy_targets(delta: float) -> void:
@@ -1564,6 +1802,101 @@ func _is_wave_system_ready() -> bool:
 	return true
 
 
+func _is_flow_system_ready() -> bool:
+	if flow_graph == null:
+		push_warning("Game 场景没有配置 FlowGraphConfig。")
+		return _is_wave_system_ready()
+	if not _is_spawn_system_ready():
+		return false
+	var errors := flow_graph.validate_graph()
+	for error in errors:
+		push_warning(error)
+	if not errors.is_empty():
+		return false
+	return _get_start_flow_step() != null
+
+
+func _get_start_flow_step() -> FlowStepConfig:
+	if flow_graph != null and flow_graph.start_step != null:
+		return flow_graph.start_step
+	if not waves.is_empty():
+		return waves[0]
+	return null
+
+
+func _get_flow_step_by_id(step_id: StringName) -> FlowStepConfig:
+	if step_id == &"":
+		return null
+	if flow_graph != null:
+		var flow_step := flow_graph.get_step_by_id(step_id)
+		if flow_step != null:
+			return flow_step
+	for wave_config in waves:
+		if wave_config != null and wave_config.step_id == step_id:
+			return wave_config
+	for boss_resource in bosses:
+		var boss_config := boss_resource as BossConfig
+		if boss_config != null and boss_config.step_id == step_id:
+			return boss_config
+	return null
+
+
+func _get_flow_step_id(flow_step: FlowStepConfig) -> StringName:
+	return flow_step.step_id if flow_step != null else &""
+
+
+func _get_default_next_flow_step(flow_step: FlowStepConfig) -> FlowStepConfig:
+	if flow_step == null:
+		return null
+	if flow_graph != null and flow_graph.get_step_index(flow_step) >= 0:
+		return flow_graph.get_default_next_step(flow_step)
+	var default_exit := flow_step.get_default_exit()
+	if default_exit == null:
+		return null
+	if default_exit.target_step != null:
+		return default_exit.target_step
+	return _get_flow_step_by_id(default_exit.target_step_id)
+
+
+func _get_wave_number_for_step(wave_config: WaveConfig) -> int:
+	if wave_config == null:
+		return current_wave_index + 1
+	var wave_index := waves.find(wave_config)
+	if wave_index >= 0:
+		return wave_index + 1
+	if flow_graph != null:
+		var wave_number := 0
+		for step in flow_graph.steps:
+			if step is WaveConfig:
+				wave_number += 1
+			if step == wave_config:
+				return maxi(wave_number, 1)
+	return current_wave_index + 1
+
+
+func _emit_multiplayer_flow_state(state: WaveState) -> void:
+	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
+		return
+	multiplayer_flow_state_changed.emit(
+		_get_flow_step_id(current_flow_step),
+		int(state),
+		countdown_seconds
+	)
+
+
+func _play_remote_boss_intro(boss_config: BossConfig) -> void:
+	var intro_scene := _load_threaded_or_direct(_get_boss_intro_vfx_scene_path(boss_config)) as PackedScene
+	if intro_scene == null:
+		return
+	if linglan_boss_intro_vfx == null or not is_instance_valid(linglan_boss_intro_vfx):
+		linglan_boss_intro_vfx = intro_scene.instantiate() as LinglanBossIntroVFX
+		if linglan_boss_intro_vfx == null:
+			return
+		linglan_boss_intro_vfx.name = "LinglanBossIntroVFX"
+		add_child(linglan_boss_intro_vfx)
+	linglan_boss_intro_vfx.play_intro(_get_boss_arena_center(boss_config))
+
+
 func _is_spawn_system_ready() -> bool:
 	return (
 		player != null
@@ -1574,6 +1907,9 @@ func _is_spawn_system_ready() -> bool:
 
 
 func _get_current_wave() -> WaveConfig:
+	var flow_wave := current_flow_step as WaveConfig
+	if flow_wave != null:
+		return flow_wave
 	if current_wave_index < 0 or current_wave_index >= waves.size():
 		return null
 	return waves[current_wave_index]

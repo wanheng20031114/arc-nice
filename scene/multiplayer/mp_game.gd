@@ -14,6 +14,7 @@ const CAPOO_RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo_rpg_rocket.tscn
 const CAPOO_MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
 const CAPOO_SMG_BULLET_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
 const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
+const LINGLAN_SAKURA_BULLET_SCENE := preload("res://scene/linglan_skill1_sakura_bullet.tscn")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 
 const INPUT_BUTTON_SKILL1 := 1
@@ -226,6 +227,10 @@ func request_debug_collectible(config_path: String) -> void:
 		net_debug_collectible_requested.rpc_id(_get_host_peer_id(), config_path)
 
 
+func is_client_view_runtime() -> bool:
+	return net_manager != null and net_manager.is_client()
+
+
 func _setup_game(mode: int) -> void:
 	game = GAME_SCENE.instantiate() as Game
 	if game == null:
@@ -248,7 +253,10 @@ func _setup_game(mode: int) -> void:
 		game.multiplayer_pickup_removed.connect(_on_host_pickup_removed)
 		game.multiplayer_merchant_active_changed.connect(_on_host_merchant_active_changed)
 		game.multiplayer_wave_started.connect(_on_host_wave_started)
+		game.multiplayer_flow_state_changed.connect(_on_host_flow_state_changed)
+		game.multiplayer_boss_started.connect(_on_host_boss_started)
 		game.multiplayer_defeat_started.connect(_on_host_defeat_started)
+		game.multiplayer_victory_started.connect(_on_host_victory_started)
 		game.multiplayer_revive_all_requested.connect(_on_host_revive_all_requested)
 	game.return_to_lobby_requested.connect(_on_game_return_to_lobby_requested)
 
@@ -578,7 +586,7 @@ func _rpc_receive_enemy_snapshot(host_timestamp: float, data: PackedByteArray) -
 			var dead_enemy: Enemy = _get_valid_client_enemy_for_net_id(enemy_state.net_id)
 			if dead_enemy != null and is_instance_valid(dead_enemy):
 				dead_enemy.global_position = enemy_state.position
-				dead_enemy.current_health = enemy_state.health
+				_apply_enemy_network_health(dead_enemy, enemy_state.health)
 			_remove_client_enemy(enemy_state.net_id, true)
 			continue
 		if not enemy_interpolators.has(enemy_state.net_id):
@@ -595,7 +603,7 @@ func _rpc_receive_enemy_snapshot(host_timestamp: float, data: PackedByteArray) -
 		)
 		var enemy_node: Enemy = _get_valid_client_enemy_for_net_id(enemy_state.net_id)
 		if enemy_node != null and is_instance_valid(enemy_node):
-			enemy_node.current_health = enemy_state.health
+			_apply_enemy_network_health(enemy_node, enemy_state.health)
 			enemy_node.is_dead = enemy_state.is_dead
 	if snapshot_has_full_roster:
 		_reconcile_enemy_roster(seen_enemy_ids, snapshot_time)
@@ -608,6 +616,15 @@ func _is_complete_enemy_snapshot_batch(data: PackedByteArray, decoded_count: int
 	stream.data_array = data
 	var expected_count := stream.get_u16()
 	return decoded_count == expected_count
+
+
+func _apply_enemy_network_health(enemy_node: Enemy, current_health: int) -> void:
+	if enemy_node == null:
+		return
+	if enemy_node.has_method("apply_multiplayer_health_snapshot"):
+		enemy_node.call("apply_multiplayer_health_snapshot", current_health)
+	else:
+		enemy_node.current_health = current_health
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)
@@ -777,6 +794,8 @@ func register_local_projectile(
 	pierces_enemies: bool = false
 ) -> void:
 	if projectile == null:
+		return
+	if net_manager == null or not net_manager.is_multiplayer_active():
 		return
 	var projectile_namespace: int = owner_peer_id
 	if projectile_namespace <= 0:
@@ -1023,6 +1042,13 @@ func _instantiate_projectile(
 			fire_projectile.top_level = true
 			fire_projectile.setup(direction, damage, speed, lifetime)
 			return fire_projectile
+		&"linglan_skill1":
+			var sakura_bullet := LINGLAN_SAKURA_BULLET_SCENE.instantiate() as LinglanSakuraBullet
+			if sakura_bullet == null:
+				return null
+			sakura_bullet.top_level = true
+			sakura_bullet.setup(direction, damage, speed, lifetime)
+			return sakura_bullet
 		_:
 			return null
 
@@ -1333,7 +1359,7 @@ func net_enemy_damage_applied(
 	var enemy := _get_client_enemy_for_net_id(enemy_net_id)
 	if enemy == null or not is_instance_valid(enemy):
 		return
-	enemy.current_health = current_health
+	_apply_enemy_network_health(enemy, current_health)
 	enemy.show_damage_number(confirmed_damage, impact_direction, EnemyConfig.DamageType.PHYSICAL)
 	if impact_direction != Vector2.ZERO:
 		enemy.play_multiplayer_damage_feedback(impact_direction)
@@ -1902,10 +1928,35 @@ func _on_host_wave_started(wave_index: int) -> void:
 	_rpc_to_connected_clients(&"net_wave_started", [wave_index])
 
 
+func _on_host_flow_state_changed(step_id: StringName, state: int, countdown_seconds: int) -> void:
+	if not is_inside_tree() or not net_manager.is_host():
+		return
+	_rpc_to_connected_clients(&"net_flow_state_changed", [String(step_id), state, countdown_seconds])
+
+
+func _on_host_boss_started(
+	net_id: int,
+	boss_config: BossConfig,
+	spawn_position: Vector2
+) -> void:
+	if not is_inside_tree() or not net_manager.is_host() or boss_config == null:
+		return
+	_rpc_to_connected_clients(
+		&"net_boss_started",
+		[net_id, boss_config.resource_path, spawn_position]
+	)
+
+
 func _on_host_defeat_started() -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
 	_rpc_to_connected_clients(&"net_game_defeated")
+
+
+func _on_host_victory_started() -> void:
+	if not is_inside_tree() or not net_manager.is_host():
+		return
+	_rpc_to_connected_clients(&"net_game_victory")
 
 
 func _on_game_return_to_lobby_requested() -> void:
@@ -1944,6 +1995,8 @@ func net_enemy_spawned(
 	enemy.set_meta("net_id", net_id)
 	enemy.tree_exited.connect(_on_client_enemy_tree_exited.bind(net_id, enemy))
 	_net_enemies[net_id] = enemy
+	game.multiplayer_enemies_by_net_id[net_id] = enemy
+	game.multiplayer_enemy_ids_by_instance[enemy.get_instance_id()] = net_id
 	game.play_remote_enemy_spawn_effect(spawn_position)
 
 
@@ -2015,6 +2068,9 @@ func _on_client_enemy_tree_exited(net_id: int, exiting_enemy: Enemy) -> void:
 	_net_enemies.erase(net_id)
 	_enemy_spawn_snapshot_times.erase(net_id)
 	enemy_interpolators.erase(net_id)
+	if game != null:
+		game.multiplayer_enemies_by_net_id.erase(net_id)
+		game.multiplayer_enemy_ids_by_instance.erase(exiting_enemy.get_instance_id())
 
 func _get_buffered_enemy_position(net_id: int, fallback_position: Vector2) -> Vector2:
 	var interp: NetInterpolator = enemy_interpolators.get(net_id) as NetInterpolator
@@ -2048,6 +2104,12 @@ func _remove_client_enemy(net_id: int, clear_interpolator: bool) -> void:
 				enemy.queue_free()
 	_net_enemies.erase(net_id)
 	_enemy_spawn_snapshot_times.erase(net_id)
+	if game != null:
+		game.multiplayer_enemies_by_net_id.erase(net_id)
+		if enemy_variant != null and is_instance_valid(enemy_variant):
+			var enemy_for_instance := enemy_variant as Enemy
+			if enemy_for_instance != null:
+				game.multiplayer_enemy_ids_by_instance.erase(enemy_for_instance.get_instance_id())
 	if clear_interpolator:
 		enemy_interpolators.erase(net_id)
 
@@ -2127,10 +2189,39 @@ func net_wave_started(wave_index: int) -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 4)
+func net_flow_state_changed(step_id: String, state: int, countdown_seconds: int) -> void:
+	if game == null or net_manager.is_host():
+		return
+	game.apply_remote_flow_state(StringName(step_id), state, countdown_seconds)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_boss_started(net_id: int, boss_config_path: String, spawn_position: Vector2) -> void:
+	if game == null or net_manager.is_host():
+		return
+	var boss_config := load(boss_config_path) as BossConfig
+	if boss_config == null:
+		return
+	game.apply_remote_boss_started(net_id, boss_config, spawn_position)
+	var boss_enemy := game.get_enemy_for_net_id(net_id) as Enemy
+	if boss_enemy != null and is_instance_valid(boss_enemy):
+		_net_enemies[net_id] = boss_enemy
+		if not boss_enemy.tree_exited.is_connected(_on_client_enemy_tree_exited.bind(net_id, boss_enemy)):
+			boss_enemy.tree_exited.connect(_on_client_enemy_tree_exited.bind(net_id, boss_enemy))
+
+
+@rpc("authority", "call_remote", "reliable", 4)
 func net_game_defeated() -> void:
 	if game == null or net_manager.is_host():
 		return
 	game.apply_remote_defeat()
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_game_victory() -> void:
+	if game == null or net_manager.is_host():
+		return
+	game.apply_remote_victory()
 
 
 @rpc("any_peer", "call_remote", "reliable", 4)

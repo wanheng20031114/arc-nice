@@ -34,6 +34,10 @@ window/stretch/aspect="expand"
 
 project/assembly_name="arc-nice"
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/flow_graph_editor/plugin.cfg")
+
 [gui]
 
 theme/custom_font="res://resources/font/ResourceHanRoundedCN-Medium.ttf"

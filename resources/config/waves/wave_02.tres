@@ -7,6 +7,7 @@
 [ext_resource type="Resource" uid="uid://57jdvc0bd7r8" path="res://resources/config/enemies/capoo_swordsman.tres" id="5_hbu7x"]
 [ext_resource type="Resource" uid="uid://chktgvo5mcaul" path="res://resources/config/enemies/yuanshi_insect_shell.tres" id="5_shell"]
 [ext_resource type="AudioStream" uid="uid://cmfbw4cr7dde" path="res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3" id="6_music"]
+[ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="7_flow_exit"]
 
 [sub_resource type="Resource" id="WaveEnemyEntry_basic"]
 script = ExtResource("2_entry")
@@ -28,6 +29,10 @@ script = ExtResource("2_entry")
 enemy_config = ExtResource("5_hbu7x")
 metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
+[sub_resource type="Resource" id="Resource_default_exit"]
+script = ExtResource("7_flow_exit")
+target_step_id = &"wave_03"
+
 [resource]
 script = ExtResource("1_wave")
 wave_name = "第二波 - 初潮涌动"
@@ -35,5 +40,9 @@ enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic
 spawn_interval = 0.2
 spawn_count_per_tick = 4
 max_alive_enemies = 100
-rest_duration_after_wave = 25.0
 music = ExtResource("6_music")
+step_id = &"wave_02"
+display_name = "第二波 - 初潮涌动"
+post_clear_rest_duration = 25.0
+exits = Array[ExtResource("7_flow_exit")]([SubResource("Resource_default_exit")])
+editor_position = Vector2(480, 0)

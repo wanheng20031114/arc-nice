@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="FlowGraphConfig" format=3 uid="uid://bh2omqpfdy8pc"]
+
+[ext_resource type="Script" uid="uid://behn2jijtub3x" path="res://resources/config/flow/flow_graph_config.gd" id="1_graph"]
+[ext_resource type="Script" uid="uid://gxc7u74nabp2" path="res://resources/config/flow/flow_step_config.gd" id="1_step"]
+[ext_resource type="Resource" uid="uid://xrkfmbbbucok" path="res://resources/config/waves/wave_01.tres" id="2_wave_01"]
+[ext_resource type="Resource" uid="uid://b4dxnwumwsnb8" path="res://resources/config/waves/wave_02.tres" id="3_wave_02"]
+[ext_resource type="Resource" uid="uid://dbevtsjqluthm" path="res://resources/config/waves/wave_03.tres" id="4_wave_03"]
+[ext_resource type="Resource" uid="uid://cmbdi36lk7bf4" path="res://resources/config/waves/wave_04.tres" id="5_wave_04"]
+[ext_resource type="Resource" uid="uid://dgw2a00imx1o7" path="res://resources/config/waves/wave_05.tres" id="6_wave_05"]
+[ext_resource type="Resource" uid="uid://bk31fx88lq2a7" path="res://resources/config/waves/wave_06.tres" id="7_wave_06"]
+[ext_resource type="Resource" uid="uid://cl42g0bamr3b8" path="res://resources/config/waves/wave_07.tres" id="8_wave_07"]
+[ext_resource type="Resource" uid="uid://dm53h000ns4da" path="res://resources/config/waves/wave_08.tres" id="9_wave_08"]
+[ext_resource type="Resource" uid="uid://sr8v74r4nal8" path="res://resources/config/waves/wave_09.tres" id="10_wave_09"]
+[ext_resource type="Resource" uid="uid://bttaw85s5obna" path="res://resources/config/waves/wave_10.tres" id="11_wave_10"]
+[ext_resource type="Resource" uid="uid://bqqwah5vdlkeb" path="res://resources/config/waves/wave_11.tres" id="12_wave_11"]
+[ext_resource type="Resource" uid="uid://cind5qjo33b70" path="res://resources/config/bosses/boss_01_linglan.tres" id="13_boss_01"]
+
+[resource]
+script = ExtResource("1_graph")
+graph_name = "默认战斗流程"
+start_step = ExtResource("2_wave_01")
+steps = Array[ExtResource("1_step")]([ExtResource("2_wave_01"), ExtResource("3_wave_02"), ExtResource("4_wave_03"), ExtResource("5_wave_04"), ExtResource("6_wave_05"), ExtResource("7_wave_06"), ExtResource("8_wave_07"), ExtResource("9_wave_08"), ExtResource("10_wave_09"), ExtResource("11_wave_10"), ExtResource("12_wave_11"), ExtResource("13_boss_01")])

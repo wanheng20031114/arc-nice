@@ -3,7 +3,7 @@
 [ext_resource type="SpriteFrames" uid="uid://b7qwm7cbmfaci" path="res://resources/animation/luoxi.tres" id="1_frames"]
 [ext_resource type="Script" uid="uid://dc6mjf0t5oj41" path="res://scene/luoxi_merchant.gd" id="2_script"]
 [ext_resource type="PackedScene" path="res://scene/luoxi_dialogue_bubble.tscn" id="3_dialogue"]
-[ext_resource type="PackedScene" path="res://scene/luoxi_collectible_choice_overlay.tscn" id="4_choice_overlay"]
+[ext_resource type="PackedScene" uid="uid://c1ykm22bhdrww" path="res://scene/luoxi_collectible_choice_overlay.tscn" id="4_choice_overlay"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_body"]
 radius = 8.0

@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="1_wave"]
 [ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="2_entry"]
 [ext_resource type="Resource" path="res://resources/config/enemies/capoo_smg.tres" id="2_sla18"]
+[ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="3_flow_exit"]
 [ext_resource type="AudioStream" uid="uid://cmfbw4cr7dde" path="res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3" id="4_music"]
 
 [sub_resource type="Resource" id="Resource_kj76l"]
@@ -10,11 +11,19 @@ script = ExtResource("2_entry")
 enemy_config = ExtResource("2_sla18")
 metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
+[sub_resource type="Resource" id="Resource_default_exit"]
+script = ExtResource("3_flow_exit")
+target_step_id = &"wave_02"
+
 [resource]
 script = ExtResource("1_wave")
 wave_name = "第一波 - RPG猫猫虫"
 enemy_entries = Array[ExtResource("2_entry")]([SubResource("Resource_kj76l")])
 spawn_interval = 0.2
 max_alive_enemies = 100
-rest_duration_after_wave = 25.0
 music = ExtResource("4_music")
+step_id = &"wave_01"
+display_name = "第一波 - RPG猫猫虫"
+post_clear_rest_duration = 25.0
+exits = Array[ExtResource("3_flow_exit")]([SubResource("Resource_default_exit")])
+editor_position = Vector2(460, -120)

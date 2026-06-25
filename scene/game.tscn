@@ -113,6 +113,7 @@ a = Vector2(1060, 960)
 b = Vector2(1060, -106.666664)
 
 [node name="Game" type="Node2D" unique_id=20737211]
+position = Vector2(1, 0)
 script = ExtResource("1_17rxn")
 
 [node name="MusicPlayer" type="AudioStreamPlayer" parent="." unique_id=707834306]

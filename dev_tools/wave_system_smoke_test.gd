@@ -2,7 +2,6 @@ extends SceneTree
 
 const GAME_SCENE := preload("res://scene/game.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
-const RPG_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
 const DEFAULT_WAVES: Array[WaveConfig] = [
 	preload("res://resources/config/waves/wave_01.tres"),
 	preload("res://resources/config/waves/wave_02.tres"),
@@ -68,7 +67,7 @@ func _test_default_wave_resources() -> void:
 		)
 		_expect(
 			is_equal_approx(
-				wave_config.rest_duration_after_wave,
+				wave_config.post_clear_rest_duration,
 				expected_rests[wave_index]
 			),
 			"Wave %d rest duration is incorrect." % (wave_index + 1)
@@ -90,18 +89,18 @@ func _test_default_wave_resources() -> void:
 func _test_game_scene_wave_list() -> void:
 	var game := GAME_SCENE.instantiate() as Node2D
 	var game_waves: Array = game.get("waves")
-	_expect(game_waves.size() == 11, "Game scene must load 11 waves after the RPG opener.")
+	var flow_graph := game.get("flow_graph") as FlowGraphConfig
+	_expect(game_waves.size() == 11, "Game scene must load 11 waves.")
+	_expect(flow_graph != null, "Game scene must load the default flow graph.")
+	if flow_graph != null:
+		_expect(flow_graph.start_step == game_waves[0], "Default flow must start at the first wave.")
+		_expect(flow_graph.steps.size() >= game_waves.size() + 1, "Default flow must include waves plus the boss node.")
+		_expect(flow_graph.get_step_by_id(&"boss_01_linglan") is BossConfig, "Default flow must include the Linglan boss node.")
 	if game_waves.size() >= 1:
 		var first_wave := game_waves[0] as WaveConfig
 		_expect(first_wave != null, "Game first wave resource is missing.")
 		if first_wave != null:
 			_expect(first_wave.get_total_enemy_count() > 0, "Game first wave must contain enemies.")
-			var contains_rpg := false
-			for entry in first_wave.enemy_entries:
-				if entry != null and entry.enemy_config == RPG_CONFIG:
-					contains_rpg = true
-					break
-			_expect(contains_rpg, "Game first wave must include RPG Capoo.")
 	if game_waves.size() >= 11:
 		var final_wave := game_waves[10] as WaveConfig
 		_expect(
@@ -320,12 +319,18 @@ func _create_test_waves(wave_count: int) -> Array[WaveConfig]:
 		entry.enemy_config = BASIC_CONFIG
 		entry.count = 1
 		var wave_config := WaveConfig.new()
+		wave_config.step_id = StringName("test_wave_%02d" % (wave_index + 1))
 		wave_config.wave_name = "测试波次 %d" % (wave_index + 1)
 		wave_config.enemy_entries = [entry]
 		wave_config.spawn_interval = 60.0
 		wave_config.max_alive_enemies = 1
-		wave_config.rest_duration_after_wave = 30.0
+		wave_config.post_clear_rest_duration = 30.0
 		result.append(wave_config)
+	for wave_index in range(result.size() - 1):
+		var flow_exit := FlowExitConfig.new()
+		flow_exit.exit_name = FlowExitConfig.DEFAULT_EXIT_NAME
+		flow_exit.target_step_id = result[wave_index + 1].step_id
+		result[wave_index].exits = [flow_exit]
 	return result
 
 

@@ -16,6 +16,7 @@
 [ext_resource type="Resource" path="res://resources/config/enemies/capoo_mage.tres" id="14_mage"]
 [ext_resource type="Resource" path="res://resources/config/enemies/capoo_sniper.tres" id="15_sniper"]
 [ext_resource type="Resource" path="res://resources/config/enemies/capoo_smg.tres" id="16_smg"]
+[ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="17_flow_exit"]
 
 [sub_resource type="Resource" id="WaveEnemyEntry_basic"]
 script = ExtResource("2_entry")
@@ -82,6 +83,10 @@ script = ExtResource("2_entry")
 enemy_config = ExtResource("16_smg")
 count = 10
 
+[sub_resource type="Resource" id="Resource_default_exit"]
+script = ExtResource("17_flow_exit")
+target_step_id = &"boss_01_linglan"
+
 [resource]
 script = ExtResource("1_wave")
 wave_name = "第十一波 - 终焉"
@@ -89,5 +94,9 @@ enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic
 spawn_interval = 0.1
 spawn_count_per_tick = 4
 max_alive_enemies = 160
-rest_duration_after_wave = 0.0
 music = ExtResource("12_music")
+step_id = &"wave_11"
+display_name = "第十一波 - 终焉"
+post_clear_rest_duration = 0.0
+exits = Array[ExtResource("17_flow_exit")]([SubResource("Resource_default_exit")])
+editor_position = Vector2(1700, 200)

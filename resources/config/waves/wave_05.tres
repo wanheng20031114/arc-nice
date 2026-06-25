@@ -11,6 +11,7 @@
 [ext_resource type="Resource" uid="uid://yefrqmv7b306" path="res://resources/config/enemies/yuanshi_insect_green_shell.tres" id="9_green"]
 [ext_resource type="Resource" uid="uid://b6g77s6rrfiw8" path="res://resources/config/enemies/yuanshi_insect_guardian.tres" id="10_guardian"]
 [ext_resource type="AudioStream" uid="uid://dvxl8ixgmll4p" path="res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3" id="11_music"]
+[ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="12_flow_exit"]
 
 [sub_resource type="Resource" id="WaveEnemyEntry_basic"]
 script = ExtResource("2_entry")
@@ -52,6 +53,10 @@ script = ExtResource("2_entry")
 enemy_config = ExtResource("10_guardian")
 count = 5
 
+[sub_resource type="Resource" id="Resource_default_exit"]
+script = ExtResource("12_flow_exit")
+target_step_id = &"wave_06"
+
 [resource]
 script = ExtResource("1_wave")
 wave_name = "第五波 - 紫焰风暴"
@@ -59,5 +64,9 @@ enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic
 spawn_interval = 0.14
 spawn_count_per_tick = 4
 max_alive_enemies = 85
-rest_duration_after_wave = 20.0
 music = ExtResource("11_music")
+step_id = &"wave_05"
+display_name = "第五波 - 紫焰风暴"
+post_clear_rest_duration = 20.0
+exits = Array[ExtResource("12_flow_exit")]([SubResource("Resource_default_exit")])
+editor_position = Vector2(1060, 360)

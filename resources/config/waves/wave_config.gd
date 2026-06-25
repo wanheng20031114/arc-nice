@@ -1,4 +1,5 @@
-extends Resource
+@tool
+extends FlowStepConfig
 class_name WaveConfig
 
 @export_group("波次内容")
@@ -10,8 +11,6 @@ class_name WaveConfig
 @export_range(1, 4, 1) var spawn_count_per_tick: int = 1
 @export_range(1, 200, 1, "or_greater") var max_alive_enemies: int = 10
 
-@export_group("波次衔接")
-@export_range(0.0, 600.0, 1.0, "or_greater") var rest_duration_after_wave: float = 30.0
 @export var music: AudioStream
 
 
@@ -21,3 +20,11 @@ func get_total_enemy_count() -> int:
 		if entry != null and entry.enemy_config != null:
 			total += maxi(entry.count, 0)
 	return total
+
+
+func get_flow_display_name() -> String:
+	if not display_name.strip_edges().is_empty():
+		return display_name
+	if not wave_name.strip_edges().is_empty():
+		return wave_name
+	return super.get_flow_display_name()

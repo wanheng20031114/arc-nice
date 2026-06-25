@@ -13,6 +13,7 @@
 [ext_resource type="Resource" uid="uid://bwc31dxuxgnhs" path="res://resources/config/enemies/capoo_ak47.tres" id="11_capoo"]
 [ext_resource type="AudioStream" uid="uid://diw1565kbaa50" path="res://resources/audio/1-29 Journey of the Prairie King (Final Boss & Ending).mp3" id="12_music"]
 [ext_resource type="Resource" uid="uid://b361vcg4kkw13" path="res://resources/config/enemies/capoo_knight.tres" id="13_knight"]
+[ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="14_flow_exit"]
 
 [sub_resource type="Resource" id="WaveEnemyEntry_basic"]
 script = ExtResource("2_entry")
@@ -64,6 +65,10 @@ script = ExtResource("2_entry")
 enemy_config = ExtResource("13_knight")
 count = 4
 
+[sub_resource type="Resource" id="Resource_default_exit"]
+script = ExtResource("14_flow_exit")
+target_step_id = &"wave_07"
+
 [resource]
 script = ExtResource("1_wave")
 wave_name = "第六波 - 守护之壁"
@@ -71,5 +76,9 @@ enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic
 spawn_interval = 0.12
 spawn_count_per_tick = 4
 max_alive_enemies = 95
-rest_duration_after_wave = 18.0
 music = ExtResource("12_music")
+step_id = &"wave_06"
+display_name = "第六波 - 守护之壁"
+post_clear_rest_duration = 18.0
+exits = Array[ExtResource("14_flow_exit")]([SubResource("Resource_default_exit")])
+editor_position = Vector2(1180, 160)

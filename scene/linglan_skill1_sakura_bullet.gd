@@ -127,6 +127,12 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 	var current_scene := get_tree().current_scene
 	if current_scene == null or not current_scene.has_method("request_multiplayer_player_damage"):
 		return false
+	if (
+		source_type == &"linglan_skill1"
+		and current_scene.has_method("is_client_view_runtime")
+		and bool(current_scene.call("is_client_view_runtime"))
+	):
+		return true
 	return bool(current_scene.call(
 		"request_multiplayer_player_damage",
 		projectile_id,

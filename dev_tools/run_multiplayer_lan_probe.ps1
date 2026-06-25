@@ -2,7 +2,7 @@ param(
     [string]$GodotExe = "C:\Users\wh\Downloads\Godot_v4.6.3-stable_win64.exe\Godot_v4.6.3-stable_win64_console.exe",
     [int]$Port = 29270,
     [int]$TimeoutSeconds = 65,
-    [ValidateSet("full", "leave", "wave")]
+    [ValidateSet("full", "leave", "wave", "boss")]
     [string]$Scenario = "full",
     [switch]$GodotVerbose
 )

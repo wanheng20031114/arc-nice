@@ -85,6 +85,11 @@ func _emit_health_changed() -> void:
 	health_changed.emit(maxi(current_health, 0), get_max_health())
 
 
+func apply_multiplayer_health_snapshot(new_current_health: int) -> void:
+	current_health = maxi(new_current_health, 0)
+	_emit_health_changed()
+
+
 func _reset_skill1_state() -> void:
 	skill1_elapsed = 0.0
 	skill1_fire_time_left = 0.0
@@ -165,6 +170,29 @@ func _spawn_skill1_projectile(direction: Vector2) -> void:
 	)
 	spawn_parent.add_child(projectile)
 	projectile.global_position = global_position + direction * skill1_config.projectile_spawn_distance
+	_register_multiplayer_projectile(projectile, projectile.global_position, direction)
+
+
+func _register_multiplayer_projectile(
+	projectile: LinglanSakuraBullet,
+	spawn_position: Vector2,
+	projectile_direction: Vector2
+) -> void:
+	var current_scene := get_tree().current_scene
+	if current_scene == null or not current_scene.has_method("register_local_projectile"):
+		return
+	current_scene.call(
+		"register_local_projectile",
+		projectile,
+		&"linglan_skill1",
+		get_multiplayer_authority(),
+		spawn_position,
+		projectile_direction,
+		skill1_config.projectile_damage,
+		skill1_config.projectile_speed,
+		skill1_config.projectile_lifetime,
+		false
+	)
 
 
 func _update_skill1_warning_arrows() -> void:
