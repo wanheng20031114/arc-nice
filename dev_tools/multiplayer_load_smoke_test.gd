@@ -32,6 +32,7 @@ func _run() -> void:
 	_test_xirang_drop_attraction_radius()
 	await _test_enemy_proxy_action_animation_restore()
 	await _test_player_multiplayer_death_visual_state()
+	await _test_multiplayer_revive_position_uses_living_players()
 	await _test_multiplayer_cheat_xirang_confirm()
 	await _test_multiplayer_peer_disconnect_cleanup()
 	await _test_player_snapshot_roster_reconcile()
@@ -1155,6 +1156,56 @@ func _test_player_multiplayer_death_visual_state() -> void:
 	_expect(player.skill1_charge_bar.visible, "Multiplayer revive must restore unlocked skill1 charge bar.")
 
 	player.queue_free()
+	await process_frame
+
+
+func _test_multiplayer_revive_position_uses_living_players() -> void:
+	var game := GAME_SCENE.instantiate() as Game
+	_expect(game != null, "Game scene must instantiate for revive position test.")
+	if game == null:
+		return
+	game.configure_multiplayer(1, 1, {1: "Host", 2: "Dead", 3: "RemoteAlive"})
+	game.set("auto_start_waves", false)
+	root.add_child(game)
+	await process_frame
+
+	var mp_game := MP_GAME_SCENE.instantiate()
+	_expect(mp_game != null, "MpGame scene must instantiate for revive position test.")
+	if mp_game == null:
+		_stop_audio_players(game)
+		game.queue_free()
+		await process_frame
+		return
+	mp_game.set("game", game)
+
+	var host_player := game.get_player_for_peer(1) as Player
+	var dead_player := game.get_player_for_peer(2) as Player
+	var remote_alive_player := game.get_player_for_peer(3) as Player
+	_expect(host_player != null and dead_player != null and remote_alive_player != null, "Revive position test must have host, dead, and remote alive players.")
+	if host_player != null and dead_player != null and remote_alive_player != null:
+		host_player.global_position = Vector2(12.0, 34.0)
+		dead_player.global_position = Vector2(90.0, 90.0)
+		remote_alive_player.global_position = Vector2(-20.0, -30.0)
+		dead_player.is_dead = true
+		var accepted_positions := mp_game.get("_accepted_player_state_positions") as Dictionary
+		var accepted_remote_position := Vector2(240.0, 320.0)
+		accepted_positions[3] = accepted_remote_position
+
+		var revive_positions := mp_game.call("_collect_living_player_revive_positions") as Array
+		_expect(revive_positions.size() == 2, "Revive anchors must include only living players.")
+		_expect(revive_positions.has(host_player.global_position), "Revive anchors must include the living host position.")
+		_expect(revive_positions.has(accepted_remote_position), "Revive anchors must use accepted remote player positions.")
+		_expect(not revive_positions.has(dead_player.global_position), "Revive anchors must exclude dead players.")
+
+		var picked_position := mp_game.call("_pick_multiplayer_revive_position", revive_positions) as Vector2
+		_expect(
+			picked_position == host_player.global_position or picked_position == accepted_remote_position,
+			"Random revive position must be selected from living player anchors."
+		)
+
+	mp_game.free()
+	_stop_audio_players(game)
+	game.queue_free()
 	await process_frame
 
 

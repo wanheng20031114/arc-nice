@@ -1605,10 +1605,6 @@ func get_enemy_for_net_id(net_id: int) -> Enemy:
 	return enemy_variant as Enemy
 
 
-func get_multiplayer_revive_position() -> Vector2:
-	return map_camera.global_position
-
-
 func get_pickup_for_net_id(net_id: int) -> Pickup:
 	if not multiplayer_pickups.has(net_id):
 		return null

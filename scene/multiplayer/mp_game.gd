@@ -91,10 +91,12 @@ var _max_player_snapshot_packet_bytes: int = 0
 var _max_enemy_snapshot_packet_bytes: int = 0
 var _large_player_snapshot_packet_count: int = 0
 var _large_enemy_snapshot_packet_count: int = 0
+var _revive_random_generator := RandomNumberGenerator.new()
 
 
 func _ready() -> void:
 	_net_time_origin = Time.get_ticks_msec() / 1000.0
+	_revive_random_generator.randomize()
 	set_multiplayer_authority(_get_host_peer_id())
 	if not net_manager.connection_state_changed.is_connected(_on_connection_state_changed):
 		net_manager.connection_state_changed.connect(_on_connection_state_changed)
@@ -1721,14 +1723,38 @@ func _host_update_player_revives() -> void:
 			net_player_revive_countdown(peer_id, seconds_left)
 		if now >= revive_at:
 			due_peers.append(peer_id)
+	if due_peers.is_empty():
+		return
+	var revive_positions := _collect_living_player_revive_positions()
+	if revive_positions.is_empty():
+		return
 	for peer_id in due_peers:
-		_revive_player_peer(peer_id, _get_multiplayer_revive_position())
+		_revive_player_peer(peer_id, _pick_multiplayer_revive_position(revive_positions))
 
 
-func _get_multiplayer_revive_position() -> Vector2:
+func _collect_living_player_revive_positions() -> Array[Vector2]:
+	var positions: Array[Vector2] = []
 	if game == null:
+		return positions
+	for peer_id_variant in game.peer_players:
+		var peer_id := int(peer_id_variant)
+		var player_node := game.peer_players[peer_id_variant] as Player
+		if player_node == null or not is_instance_valid(player_node) or player_node.is_dead:
+			continue
+		positions.append(_get_multiplayer_player_revive_anchor_position(peer_id, player_node))
+	return positions
+
+
+func _get_multiplayer_player_revive_anchor_position(peer_id: int, player_node: Player) -> Vector2:
+	if peer_id != _get_host_peer_id() and _accepted_player_state_positions.has(peer_id):
+		return _accepted_player_state_positions[peer_id] as Vector2
+	return player_node.global_position
+
+
+func _pick_multiplayer_revive_position(revive_positions: Array) -> Vector2:
+	if revive_positions.is_empty():
 		return Vector2.ZERO
-	return game.get_multiplayer_revive_position()
+	return revive_positions[_revive_random_generator.randi_range(0, revive_positions.size() - 1)]
 
 
 func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
@@ -1783,13 +1809,15 @@ func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
 func _on_host_revive_all_requested() -> void:
 	if not net_manager.is_host() or game == null:
 		return
-	var revive_position := _get_multiplayer_revive_position()
+	var revive_positions := _collect_living_player_revive_positions()
+	if revive_positions.is_empty():
+		return
 	for peer_id_variant in game.peer_players:
 		var peer_id := int(peer_id_variant)
 		var player_node := game.peer_players[peer_id_variant] as Player
 		if player_node == null or not is_instance_valid(player_node) or not player_node.is_dead:
 			continue
-		_revive_player_peer(peer_id, revive_position)
+		_revive_player_peer(peer_id, _pick_multiplayer_revive_position(revive_positions))
 
 
 @rpc("authority", "call_remote", "reliable", 4)
