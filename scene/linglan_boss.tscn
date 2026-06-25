@@ -36,12 +36,11 @@ boss_display_name = "铃兰"
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
 texture_filter = 2
 material = SubResource("ShaderMaterial_hd8t5")
-position = Vector2(2.3841858e-07, -4.7683716e-07)
-scale = Vector2(0.348, 0.348)
+position = Vector2(0, -8)
+scale = Vector2(0.148, 0.148)
 sprite_frames = ExtResource("4_frames")
 animation = &"idle"
-frame = 5
-frame_progress = 0.55631095
+frame_progress = 0.11186367
 
 [node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
 position = Vector2(0, -4)
