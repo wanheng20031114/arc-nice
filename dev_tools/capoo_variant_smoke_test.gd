@@ -91,7 +91,7 @@ func _test_resource_contract() -> void:
 
 	_expect(_texture_size("res://resources/texture/capoo_mage.png") == Vector2(1402, 1122), "Mage sprite sheet size mismatch.")
 	_expect(_texture_size("res://resources/texture/capoo_sniper.png") == Vector2(512, 384), "Sniper sprite sheet size mismatch.")
-	_expect(_texture_size("res://resources/texture/capoo_smg.png") == Vector2(384, 384), "SMG sprite sheet size mismatch.")
+	_expect(_texture_size("res://resources/texture/capoo_smg.png") == Vector2(640, 512), "SMG sprite sheet size mismatch.")
 	_expect(_texture_size("res://resources/texture/capoo_mage_fireball.png") == Vector2(384, 128), "Fireball sheet size mismatch.")
 	_expect(_texture_size("res://resources/texture/capoo_smg_bullet.png") == Vector2(48, 8), "SMG bullet sheet size mismatch.")
 	_expect(_texture_size("res://resources/texture/capoo_sniper_lock_reticle.png") == Vector2(32, 32), "Sniper reticle texture size mismatch.")
@@ -100,7 +100,8 @@ func _test_resource_contract() -> void:
 	_expect(_has_mage_original_alpha_regions(), "Mage original alpha AtlasTexture regions failed.")
 	_expect(_has_mage_visual_alignment(), "Mage visual alignment contract failed.")
 	_expect(_has_capoo_frames(SNIPER_CONFIG.enemy_scene, "Sniper", Vector2(128.0, 96.0)), "Sniper animation contract failed.")
-	_expect(_has_capoo_frames(SMG_CONFIG.enemy_scene, "SMG", Vector2(96.0, 96.0)), "SMG animation contract failed.")
+	_expect(_has_capoo_frames(SMG_CONFIG.enemy_scene, "SMG", Vector2(160.0, 128.0)), "SMG animation contract failed.")
+	_expect(_has_smg_visual_alignment(), "SMG visual alignment contract failed.")
 	_expect(_sprite_frames_count("res://resources/animation/capoo_mage_fireball.tres", &"fly") == 6, "Fireball frame count mismatch.")
 	_expect(_sprite_frames_count("res://resources/animation/capoo_mage_fireball.tres", &"impact") == 6, "Fireball impact frame count mismatch.")
 	_expect(_fireball_impact_animation_contract(), "Fireball impact animation contract failed.")
@@ -376,6 +377,19 @@ func _has_mage_visual_alignment() -> bool:
 	ok = ok and is_equal_approx(animated_sprite.scale.y, 0.1)
 	if not ok:
 		failures.append("Mage visual must keep the alpha-sheet body centered on its collision shape.")
+	instance.free()
+	return ok
+
+
+func _has_smg_visual_alignment() -> bool:
+	var instance := SMG_SCENE.instantiate()
+	var animated_sprite := instance.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
+	var ok := animated_sprite != null
+	ok = ok and animated_sprite.position.is_equal_approx(Vector2(8.92, -0.48))
+	ok = ok and is_equal_approx(animated_sprite.scale.x, 0.31)
+	ok = ok and is_equal_approx(animated_sprite.scale.y, 0.31)
+	if not ok:
+		failures.append("SMG visual must keep the MP5-SD body centered on its collision shape.")
 	instance.free()
 	return ok
 

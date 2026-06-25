@@ -48,6 +48,8 @@ SINGLE_SOURCES = {
 	"capoo_smg": {
 		"path": ROOT / "dev_assets/source_images/capoo_smg_generated_v1.png",
 		"key": "magenta",
+		"frame_size": (160, 128),
+		"body_anchor_target": (48.0, 91.0),
 		"component_row_slicing": True,
 	},
 }
