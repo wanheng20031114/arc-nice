@@ -133,6 +133,11 @@ func _build_ui() -> void:
 	add_exit_button.pressed.connect(_on_add_exit_pressed)
 	exit_row.add_child(add_exit_button)
 
+	var delete_exit_button := Button.new()
+	delete_exit_button.text = "Delete Exit"
+	delete_exit_button.pressed.connect(_on_delete_exit_pressed)
+	exit_row.add_child(delete_exit_button)
+
 	_status_label = Label.new()
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	root.add_child(_status_label)
@@ -382,6 +387,17 @@ func _on_add_exit_pressed() -> void:
 	var new_exit := FlowExitConfig.new()
 	new_exit.exit_name = exit_name
 	_selected_step.exits.append(new_exit)
+	_render_graph()
+	_select_step(_selected_step)
+
+
+func _on_delete_exit_pressed() -> void:
+	if _selected_step == null:
+		return
+	var index := _exit_selector.get_selected()
+	if index < 0 or index >= _selected_step.exits.size():
+		return
+	_selected_step.exits.remove_at(index)
 	_render_graph()
 	_select_step(_selected_step)
 

@@ -81,4 +81,4 @@ step_id = &"wave_06"
 display_name = "第六波 - 守护之壁"
 post_clear_rest_duration = 18.0
 exits = Array[ExtResource("14_flow_exit")]([SubResource("Resource_default_exit")])
-editor_position = Vector2(1180, 160)
+editor_position = Vector2(1560, -20)

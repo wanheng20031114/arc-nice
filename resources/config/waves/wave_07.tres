@@ -81,4 +81,4 @@ step_id = &"wave_07"
 display_name = "第七波 - 子弹地狱"
 post_clear_rest_duration = 15.0
 exits = Array[ExtResource("14_flow_exit")]([SubResource("Resource_default_exit")])
-editor_position = Vector2(1300, 0)
+editor_position = Vector2(1560, 80)
