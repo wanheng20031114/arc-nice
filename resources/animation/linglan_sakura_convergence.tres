@@ -1,0 +1,39 @@
+[gd_resource type="SpriteFrames" format=3 uid="uid://bu5a0u44onarv"]
+
+[ext_resource type="Texture2D" uid="uid://06jpu4tjo2ah" path="res://resources/texture/linglan_sakura_convergence.png" id="1_texture"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_converge_0"]
+atlas = ExtResource("1_texture")
+region = Rect2(0, 0, 384, 376)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_converge_1"]
+atlas = ExtResource("1_texture")
+region = Rect2(384, 0, 384, 376)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_converge_2"]
+atlas = ExtResource("1_texture")
+region = Rect2(768, 0, 384, 376)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_converge_3"]
+atlas = ExtResource("1_texture")
+region = Rect2(1152, 0, 384, 376)
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_converge_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_converge_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_converge_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_converge_3")
+}],
+"loop": true,
+"name": &"converge",
+"speed": 9.0
+}]

@@ -20,6 +20,9 @@
 [ext_resource type="PackedScene" path="res://scene/settings/settings_panel.tscn" id="19_settings_panel"]
 [ext_resource type="PackedScene" uid="uid://cvh5s1gowuh0r" path="res://scene/luoxi_merchant.tscn" id="20_luoxi"]
 [ext_resource type="PackedScene" path="res://scene/debug_collectible_window.tscn" id="21_debug_collectibles"]
+[ext_resource type="PackedScene" uid="uid://t8eqp4206kti" path="res://scene/linglan_boss.tscn" id="22_linglan_boss"]
+[ext_resource type="PackedScene" uid="uid://cm3f2fy3vx8ge" path="res://scene/linglan_boss_intro_vfx.tscn" id="23_linglan_intro_vfx"]
+[ext_resource type="PackedScene" uid="uid://d2lump2x0op3h" path="res://scene/boss_health_hud.tscn" id="24_boss_health_hud"]
 
 [sub_resource type="TileMapPattern" id="TileMapPattern_33cqm"]
 tile_data = PackedInt32Array(0, 0, 0, 65536, 131072, 2, 1, 0, 0, 65537, 0, 0)
@@ -172,6 +175,15 @@ position = Vector2(167, 94)
 
 [node name="LuoxiMerchant" parent="." unique_id=146965342 instance=ExtResource("20_luoxi")]
 position = Vector2(232, 94)
+
+[node name="BossContainer" type="Node2D" parent="." unique_id=1704115178]
+
+[node name="LinglanBoss" parent="BossContainer" unique_id=1198908395 instance=ExtResource("22_linglan_boss")]
+position = Vector2(128, 128)
+
+[node name="LinglanBossIntroVFX" parent="." unique_id=1630199372 instance=ExtResource("23_linglan_intro_vfx")]
+
+[node name="BossHealthHUD" parent="." unique_id=1420456457 instance=ExtResource("24_boss_health_hud")]
 
 [node name="WorldBounds" type="Node2D" parent="." unique_id=905261702]
 
