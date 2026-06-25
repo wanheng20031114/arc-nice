@@ -5,6 +5,8 @@
 
 [resource]
 script = ExtResource("1_config")
+orb_speed = 90.0
 orb_base_radius = 15.0
-orb_grow_scale = 2.0
+orb_grow_scale = 4.0
+orb_grow_delay_max = 3.4
 orb_scene = ExtResource("2_orb")

@@ -13,7 +13,7 @@
 script = ExtResource("1_config")
 display_name = "铃兰"
 enemy_scene = ExtResource("2_scene")
-max_health = 5000
+max_health = 50000
 attack_damage = 0
 move_speed = 0.0
 move_animation_name = &"idle"

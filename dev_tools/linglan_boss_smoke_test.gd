@@ -88,6 +88,7 @@ func _test_boss_entry_resource() -> void:
 	_expect(is_equal_approx(LINGLAN_BOSS_ENTRY.music_volume_db, 0.0), "Linglan boss music must use the louder boss-specific volume.")
 	_expect(is_equal_approx(LINGLAN_BOSS_ENTRY.music_loop_offset, 1.0), "Linglan boss music must expose the configured loop offset.")
 	_expect(LINGLAN_BOSS_ENTRY.get_enemy_config() == LINGLAN_CONFIG, "Linglan boss entry must resolve the Linglan enemy config on demand.")
+	_expect(LINGLAN_CONFIG.max_health == 50000, "Linglan boss health must be configured to 50000.")
 	_expect(DEFAULT_FLOW.get_step_by_id(&"boss_01_linglan") == LINGLAN_BOSS_ENTRY, "Default flow must include Linglan as a flow node.")
 	_expect(LINGLAN_BOSS_ENTRY.arena_center == Vector2(128, 128), "Linglan boss entry must keep the center spawn point.")
 	_expect(LINGLAN_BOSS_ENTRY.arena_floor_rect == Rect2i(-3, -1, 22, 18), "Linglan boss entry must only floor the requested arena rectangle.")

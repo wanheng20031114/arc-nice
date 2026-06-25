@@ -3,7 +3,6 @@ class_name LinglanSkill3LightOrb
 
 const PLAYER_COLLISION_MASK := 2
 const DAMAGE_QUERY_MAX_RESULTS := 16
-const VISUAL_EXPANDED_SCALE := 2.0
 const FLASH_PULSE_MIN := 0.72
 const FLASH_PULSE_MAX := 1.18
 const EXPANDED_PULSE := 1.08
@@ -13,10 +12,10 @@ enum OrbState {
 	EXPANDED,
 }
 
-@export var speed: float = 70.0
+@export var speed: float = 90.0
 @export var damage: int = 50
 @export var base_radius: float = 15.0
-@export var grow_scale: float = 2.0
+@export var grow_scale: float = 4.0
 @export var grow_delay: float = 2.2
 @export var expanded_hold_duration: float = 0.7
 @export var flash_lead_time: float = 2.0
@@ -48,7 +47,7 @@ func setup(
 	initial_speed: float,
 	initial_grow_delay: float,
 	initial_base_radius: float = 15.0,
-	initial_grow_scale: float = 2.0,
+	initial_grow_scale: float = 4.0,
 	initial_expanded_hold_duration: float = 0.7,
 	initial_flash_lead_time: float = 2.0
 ) -> void:
@@ -125,7 +124,7 @@ func _apply_current_radius() -> void:
 		if circle_shape != null:
 			circle_shape.radius = get_current_radius()
 	if visual_root != null:
-		visual_root.scale = Vector2.ONE * (VISUAL_EXPANDED_SCALE if is_expanded() else 1.0)
+		visual_root.scale = Vector2.ONE * (grow_scale if is_expanded() else 1.0)
 
 
 func _update_visual_pulse() -> void:
