@@ -142,11 +142,12 @@ func _test_skill2_scene_contract() -> void:
 	if warning_arrow != null:
 		test_root.add_child(warning_arrow)
 		await process_frame
-		for node_name in ["Glow", "Core", "Center", "ArrowHead"]:
+		for node_name in ["GlowArrow", "CoreArrow", "HighlightArrow"]:
 			_expect(
 				warning_arrow.get_node_or_null(node_name) != null,
 				"Skill2 warning arrow missing %s." % node_name
 			)
+		_expect(_count_line_nodes(warning_arrow) == 0, "Skill2 warning must use pink arrow polygons instead of Line2D lines.")
 		_expect(_count_collision_nodes(warning_arrow) == 0, "Skill2 warning arrow must not own collision nodes.")
 		warning_arrow.queue_free()
 
@@ -368,6 +369,15 @@ func _count_collision_nodes(node: Node) -> int:
 		count += 1
 	for child in node.get_children():
 		count += _count_collision_nodes(child)
+	return count
+
+
+func _count_line_nodes(node: Node) -> int:
+	var count := 0
+	if node is Line2D:
+		count += 1
+	for child in node.get_children():
+		count += _count_line_nodes(child)
 	return count
 
 

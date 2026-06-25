@@ -1,28 +1,12 @@
-[gd_resource type="Resource" script_class="LinglanSkill2Config" format=3]
+[gd_resource type="Resource" script_class="LinglanSkill2Config" format=3 uid="uid://c4r1ucwkkde62"]
 
-[ext_resource type="Script" path="res://resources/config/bosses/linglan_skill2_config.gd" id="1_config"]
-[ext_resource type="PackedScene" path="res://scene/linglan_skill2_sakura_rocket.tscn" id="2_rocket"]
+[ext_resource type="Script" uid="uid://djdce8adq14b4" path="res://resources/config/bosses/linglan_skill2_config.gd" id="1_config"]
+[ext_resource type="PackedScene" uid="uid://dc77yahheqevd" path="res://scene/linglan_skill2_sakura_rocket.tscn" id="2_rocket"]
 [ext_resource type="PackedScene" path="res://scene/linglan_skill2_warning_arrow.tscn" id="3_warning"]
-[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_green_shell.tres" id="4_enemy"]
+[ext_resource type="Resource" uid="uid://yefrqmv7b306" path="res://resources/config/enemies/yuanshi_insect_green_shell.tres" id="4_enemy"]
 
 [resource]
 script = ExtResource("1_config")
-skill_name = &"linglan_skill2"
-target_cell = Vector2i(15, 2)
-move_speed = 120.0
-arrival_distance = 2.0
-attack_count = 10
-attack_interval = 1.0
-warning_lead_time = 0.35
-rocket_speed = 210.0
-rocket_homing_turn_rate = 1.7
-rocket_lifetime = 5.0
-rocket_damage = 80
-rocket_explosion_radius = 82.5
-rocket_spawn_distance = 28.0
-warning_arrow_start_distance = 18.0
-warning_arrow_length = 168.0
 rocket_scene = ExtResource("2_rocket")
 warning_arrow_scene = ExtResource("3_warning")
 spawn_enemy_config = ExtResource("4_enemy")
-spawn_marker_names = Array[StringName]([&"Spawn4", &"Spawn5"])

@@ -444,22 +444,35 @@ func _spawn_skill2_warning_arrow(shot_index: int) -> void:
 func _apply_skill2_warning_arrow_geometry(arrow: Node2D) -> void:
 	var start_distance := skill2_config.warning_arrow_start_distance
 	var end_distance := start_distance + skill2_config.warning_arrow_length
-	var line_points := PackedVector2Array([
-		Vector2(start_distance, 0.0),
-		Vector2(end_distance, 0.0)
+	_set_skill2_arrow_polygon(arrow, "GlowArrow", start_distance, end_distance, 11.0, 22.0, 38.0, 18.0)
+	_set_skill2_arrow_polygon(arrow, "CoreArrow", start_distance, end_distance, 6.0, 15.0, 32.0, 14.0)
+	_set_skill2_arrow_polygon(arrow, "HighlightArrow", start_distance + 7.0, end_distance, 2.0, 6.0, 34.0, 10.0)
+
+
+func _set_skill2_arrow_polygon(
+	arrow: Node2D,
+	node_name: String,
+	tail_x: float,
+	end_x: float,
+	body_half_height: float,
+	head_half_height: float,
+	head_length: float,
+	tip_extra_length: float
+) -> void:
+	var polygon_node := arrow.get_node_or_null(node_name) as Polygon2D
+	if polygon_node == null:
+		return
+	var shoulder_x := maxf(tail_x, end_x - head_length)
+	var tip_x := end_x + tip_extra_length
+	polygon_node.polygon = PackedVector2Array([
+		Vector2(tail_x, -body_half_height),
+		Vector2(shoulder_x, -body_half_height),
+		Vector2(shoulder_x, -head_half_height),
+		Vector2(tip_x, 0.0),
+		Vector2(shoulder_x, head_half_height),
+		Vector2(shoulder_x, body_half_height),
+		Vector2(tail_x, body_half_height),
 	])
-	for line_name in [&"Glow", &"Core", &"Center"]:
-		var line := arrow.get_node_or_null(NodePath(line_name)) as Line2D
-		if line != null:
-			line.points = line_points
-	var arrow_head := arrow.get_node_or_null("ArrowHead") as Polygon2D
-	if arrow_head != null:
-		arrow_head.polygon = PackedVector2Array([
-			Vector2(end_distance + 16.0, 0.0),
-			Vector2(end_distance - 10.0, -12.0),
-			Vector2(end_distance - 4.0, 0.0),
-			Vector2(end_distance - 10.0, 12.0),
-		])
 
 
 func _update_skill2_warning_arrow() -> void:

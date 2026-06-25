@@ -52,6 +52,7 @@ func _test_skill1_config() -> void:
 	_expect(SKILL1_CONFIG.projectile_scene != null, "Skill1 projectile scene missing.")
 	_expect(SKILL1_CONFIG.warning_ray_scene == WARNING_RAY_SCENE, "Skill1 warning ray scene mismatch.")
 	_expect(is_equal_approx(SKILL1_CONFIG.warning_lead_time, 1.0), "Skill1 warning lead time mismatch.")
+	_expect(is_equal_approx(SKILL1_CONFIG.warning_ray_width_scale, 0.6), "Skill1 warning ray width scale mismatch.")
 	_expect(SAKURA_BULLET_TEXTURE.get_size().x > 0 and SAKURA_BULLET_TEXTURE.get_size().y > 0, "Sakura bullet texture missing.")
 
 
