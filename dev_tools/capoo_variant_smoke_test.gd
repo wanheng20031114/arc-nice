@@ -190,6 +190,7 @@ func _test_sniper_lock_cancel_and_damage() -> void:
 	await _wait_physics_frames(3)
 	_expect(sniper.combat_state == CapooSniper.CombatState.LOCK, "Sniper Capoo did not enter lock state.")
 	_expect(_count_reticles(blocked_player) == 1, "Sniper lock did not attach one reticle to the player.")
+	_expect(_has_sniper_aim_line(sniper), "Sniper lock must show a thin source-to-target aim line.")
 	var wall := _spawn_wall(Vector2(180.0, 0.0), 12.0)
 	await _wait_physics_frames(6)
 	_expect(sniper.combat_state == CapooSniper.CombatState.CHASE, "Sniper Capoo did not cancel lock when LOS was blocked.")
@@ -207,6 +208,7 @@ func _test_sniper_lock_cancel_and_damage() -> void:
 	var firing_sniper := _spawn_sniper(Vector2.ZERO, player)
 	await _wait_physics_frames(3)
 	_expect(firing_sniper.combat_state == CapooSniper.CombatState.LOCK, "Sniper Capoo did not lock before damage test.")
+	_expect(_has_sniper_aim_line(firing_sniper), "Sniper damage lock must show a thin source-to-target aim line.")
 	var sniper_guard_frames := 0
 	while player.current_health != expected_health_after_shot and sniper_guard_frames < 230:
 		await physics_frame
@@ -385,13 +387,34 @@ func _has_smg_visual_alignment() -> bool:
 	var instance := SMG_SCENE.instantiate()
 	var animated_sprite := instance.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
 	var ok := animated_sprite != null
-	ok = ok and animated_sprite.position.is_equal_approx(Vector2(8.92, -0.48))
+	ok = ok and animated_sprite.position.is_equal_approx(Vector2(9.0, 3.0))
 	ok = ok and is_equal_approx(animated_sprite.scale.x, 0.31)
 	ok = ok and is_equal_approx(animated_sprite.scale.y, 0.31)
 	if not ok:
 		failures.append("SMG visual must keep the MP5-SD body centered on its collision shape.")
 	instance.free()
 	return ok
+
+
+func _has_sniper_aim_line(sniper: CapooSniper) -> bool:
+	var aim_line := sniper.get_node_or_null("AimGlow") as Polygon2D
+	if aim_line == null or not aim_line.visible:
+		return false
+	var points := aim_line.polygon
+	if points.size() != 4:
+		return false
+	var min_x := points[0].x
+	var max_x := points[0].x
+	var min_y := points[0].y
+	var max_y := points[0].y
+	for point in points:
+		min_x = minf(min_x, point.x)
+		max_x = maxf(max_x, point.x)
+		min_y = minf(min_y, point.y)
+		max_y = maxf(max_y, point.y)
+	var width := max_x - min_x
+	var height := max_y - min_y
+	return width >= 220.0 and height <= 4.0 and aim_line.color.a > 0.1 and aim_line.color.a < 0.5
 
 
 func _has_mage_original_alpha_regions() -> bool:

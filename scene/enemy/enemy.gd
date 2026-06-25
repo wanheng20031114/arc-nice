@@ -51,12 +51,15 @@ var proxy_action_animation_name_in_use: StringName = &""
 var proxy_action_restore_token: int = 0
 var navigation_update_frame_offset: int = 0
 var cached_navigation_move_direction := Vector2.ZERO
+var animated_sprite_base_position := Vector2.ZERO
 
 
 func _ready() -> void:
 	navigation_update_frame_offset = int(get_instance_id()) % maxi(navigation_update_interval_frames, 1)
 	_refresh_collision_shape_cache()
 	_cache_collision_shape_mirror_states()
+	if animated_sprite != null:
+		animated_sprite_base_position = animated_sprite.position
 	_apply_sprite_facing()
 	_apply_facing_mirror()
 	touch_damage_area.body_entered.connect(_on_touch_damage_area_body_entered)
@@ -431,6 +434,10 @@ func _apply_sprite_facing() -> void:
 	if animated_sprite == null:
 		return
 	animated_sprite.flip_h = facing_left != sprite_faces_left_by_default
+	# Enemy scenes are authored around their local x=0 axis. Mirror any visual offset
+	# around the entity origin so wide logical frames do not drift from collision shapes.
+	var mirror_sign := -1.0 if facing_left else 1.0
+	animated_sprite.position = Vector2(animated_sprite_base_position.x * mirror_sign, animated_sprite_base_position.y)
 
 
 func _apply_facing_mirror() -> void:

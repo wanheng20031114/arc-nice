@@ -2,6 +2,9 @@ extends "res://scene/enemy/capoo_ranged_enemy.gd"
 class_name CapooSniper
 
 const SniperConfig := preload("res://resources/config/enemies/capoo_sniper_config.gd")
+const AIM_LINE_START_DISTANCE := 10.0
+const AIM_LINE_TARGET_PADDING := 10.0
+const AIM_LINE_MIN_LENGTH := 8.0
 
 enum CombatState {
 	CHASE,
@@ -21,7 +24,7 @@ var latest_proxy_target_action_id: int = 0
 
 func _ready() -> void:
 	super._ready()
-	_set_aim_glow(0.0, Vector2.RIGHT)
+	_set_aim_glow(0.0, global_position + Vector2.RIGHT)
 
 
 func _physics_process(delta: float) -> void:
@@ -93,7 +96,7 @@ func _try_start_lock() -> bool:
 	_update_facing(global_position.direction_to(locked_player.global_position))
 	_play_config_animation(sniper_config.aim_animation_name)
 	_show_lock_reticle(locked_player, sniper_config.lock_duration)
-	_set_aim_glow(0.35, global_position.direction_to(locked_player.global_position))
+	_set_aim_glow(0.35, locked_player.global_position)
 	_broadcast_enemy_target_action(&"sniper_lock_start", locked_player.peer_id)
 	return true
 
@@ -111,7 +114,7 @@ func _update_lock(delta: float) -> void:
 	_update_facing(direction)
 	lock_time_left = maxf(lock_time_left - delta, 0.0)
 	var progress := 1.0 - lock_time_left / maxf(sniper_config.lock_duration, 0.01)
-	_set_aim_glow(progress, direction)
+	_set_aim_glow(progress, locked_player.global_position)
 	if lock_reticle != null and is_instance_valid(lock_reticle):
 		lock_reticle.set_progress(progress)
 
@@ -156,7 +159,7 @@ func _fire_locked_shot(direction: Vector2) -> void:
 	_clear_lock_reticle()
 	locked_player = null
 	combat_state = CombatState.CHASE
-	_set_aim_glow(0.0, direction)
+	_set_aim_glow(0.0, global_position + direction)
 	_play_config_animation(sniper_config.move_animation_name)
 
 
@@ -167,7 +170,7 @@ func _cancel_lock() -> void:
 	lock_time_left = 0.0
 	locked_player = null
 	_clear_lock_reticle()
-	_set_aim_glow(0.0, Vector2.RIGHT)
+	_set_aim_glow(0.0, global_position + Vector2.RIGHT)
 	var sniper_config := config as SniperConfig
 	if sniper_config != null:
 		_play_config_animation(sniper_config.move_animation_name)
@@ -210,17 +213,34 @@ func play_multiplayer_enemy_target_action(
 			_play_multiplayer_proxy_action_animation(sniper_config.aim_animation_name, sniper_config.lock_duration + 0.15)
 			if target != null and is_instance_valid(target):
 				_show_lock_reticle(target, sniper_config.lock_duration)
+				_set_aim_glow(0.35, target.global_position)
 	elif action_name == &"sniper_lock_cancel" or action_name == &"sniper_lock_fire":
 		_clear_lock_reticle()
+		_set_aim_glow(0.0, global_position + Vector2.RIGHT)
 
 
-func _set_aim_glow(progress: float, direction: Vector2) -> void:
+func _set_aim_glow(progress: float, target_global_position: Vector2) -> void:
 	var clamped_progress := clampf(progress, 0.0, 1.0)
 	aim_glow.visible = clamped_progress > 0.0
 	if not aim_glow.visible:
 		return
-	var safe_direction := direction.normalized() if direction != Vector2.ZERO else Vector2.RIGHT
-	aim_glow.position = safe_direction * 14.0
-	aim_glow.rotation = safe_direction.angle()
-	aim_glow.scale = Vector2.ONE * lerpf(0.75, 1.45, clamped_progress)
-	aim_glow.color = Color(1.0, 0.18, 0.10, lerpf(0.16, 0.62, clamped_progress))
+	var target_local_position := to_local(target_global_position)
+	var target_distance := target_local_position.length()
+	if target_distance <= AIM_LINE_MIN_LENGTH:
+		target_local_position = Vector2.RIGHT * AIM_LINE_MIN_LENGTH
+		target_distance = AIM_LINE_MIN_LENGTH
+	var safe_direction := target_local_position / target_distance
+	var start_position := safe_direction * minf(AIM_LINE_START_DISTANCE, target_distance * 0.35)
+	var end_position := target_local_position - safe_direction * minf(AIM_LINE_TARGET_PADDING, target_distance * 0.25)
+	var half_width := lerpf(0.45, 0.9, clamped_progress)
+	var perpendicular := safe_direction.orthogonal() * half_width
+	aim_glow.position = Vector2.ZERO
+	aim_glow.rotation = 0.0
+	aim_glow.scale = Vector2.ONE
+	aim_glow.polygon = PackedVector2Array([
+		start_position + perpendicular,
+		end_position + perpendicular,
+		end_position - perpendicular,
+		start_position - perpendicular,
+	])
+	aim_glow.color = Color(1.0, 0.05, 0.03, lerpf(0.14, 0.38, clamped_progress))
