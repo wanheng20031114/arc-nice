@@ -3,6 +3,10 @@ class_name LinglanSkill3LightOrb
 
 const PLAYER_COLLISION_MASK := 2
 const DAMAGE_QUERY_MAX_RESULTS := 16
+const VISUAL_EXPANDED_SCALE := 2.0
+const FLASH_PULSE_MIN := 0.72
+const FLASH_PULSE_MAX := 1.18
+const EXPANDED_PULSE := 1.08
 
 enum OrbState {
 	FLYING,
@@ -11,8 +15,8 @@ enum OrbState {
 
 @export var speed: float = 70.0
 @export var damage: int = 50
-@export var base_radius: float = 5.0
-@export var grow_scale: float = 7.0
+@export var base_radius: float = 15.0
+@export var grow_scale: float = 2.0
 @export var grow_delay: float = 2.2
 @export var expanded_hold_duration: float = 0.7
 @export var flash_lead_time: float = 2.0
@@ -43,8 +47,8 @@ func setup(
 	initial_damage: int,
 	initial_speed: float,
 	initial_grow_delay: float,
-	initial_base_radius: float = 5.0,
-	initial_grow_scale: float = 7.0,
+	initial_base_radius: float = 15.0,
+	initial_grow_scale: float = 2.0,
 	initial_expanded_hold_duration: float = 0.7,
 	initial_flash_lead_time: float = 2.0
 ) -> void:
@@ -84,6 +88,10 @@ func get_current_radius() -> float:
 	return base_radius * (grow_scale if is_expanded() else 1.0)
 
 
+func get_visual_scale() -> Vector2:
+	return visual_root.scale if visual_root != null else Vector2.ZERO
+
+
 func _physics_process(delta: float) -> void:
 	var safe_delta := maxf(delta, 0.0)
 	if orb_state == OrbState.FLYING:
@@ -112,22 +120,21 @@ func _grow() -> void:
 
 
 func _apply_current_radius() -> void:
-	if collision_shape == null:
-		return
-	var circle_shape := collision_shape.shape as CircleShape2D
-	if circle_shape != null:
-		circle_shape.radius = get_current_radius()
+	if collision_shape != null:
+		var circle_shape := collision_shape.shape as CircleShape2D
+		if circle_shape != null:
+			circle_shape.radius = get_current_radius()
 	if visual_root != null:
-		visual_root.scale = Vector2.ONE * (grow_scale if is_expanded() else 1.0)
+		visual_root.scale = Vector2.ONE * (VISUAL_EXPANDED_SCALE if is_expanded() else 1.0)
 
 
 func _update_visual_pulse() -> void:
 	var pulse := 1.0
 	if is_flashing():
 		var wave := (sin(elapsed * TAU * flash_frequency) + 1.0) * 0.5
-		pulse = lerpf(0.48, 1.62, wave)
+		pulse = lerpf(FLASH_PULSE_MIN, FLASH_PULSE_MAX, wave)
 	elif is_expanded():
-		pulse = 1.32
+		pulse = EXPANDED_PULSE
 	_set_visual_pulse(pulse)
 
 

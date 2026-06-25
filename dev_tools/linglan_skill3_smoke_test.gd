@@ -96,8 +96,8 @@ func _test_skill3_config() -> void:
 	_expect(is_equal_approx(SKILL3_CONFIG.direction_max_degrees, 90.0), "Skill3 direction max mismatch.")
 	_expect(is_equal_approx(SKILL3_CONFIG.orb_speed, 70.0), "Skill3 orb speed mismatch.")
 	_expect(SKILL3_CONFIG.orb_damage == 50, "Skill3 orb damage mismatch.")
-	_expect(is_equal_approx(SKILL3_CONFIG.orb_base_radius, 5.0), "Skill3 orb base radius mismatch.")
-	_expect(is_equal_approx(SKILL3_CONFIG.orb_grow_scale, 7.0), "Skill3 orb grow scale mismatch.")
+	_expect(is_equal_approx(SKILL3_CONFIG.orb_base_radius, 15.0), "Skill3 orb base radius mismatch.")
+	_expect(is_equal_approx(SKILL3_CONFIG.orb_grow_scale, 2.0), "Skill3 orb grow scale mismatch.")
 	_expect(is_equal_approx(SKILL3_CONFIG.orb_expanded_hold_duration, 0.7), "Skill3 expanded hold mismatch.")
 	_expect(is_equal_approx(SKILL3_CONFIG.orb_flash_lead_time, 2.0), "Skill3 flash lead mismatch.")
 	_expect(is_equal_approx(SKILL3_CONFIG.orb_grow_delay_min, 2.2), "Skill3 grow delay min mismatch.")
@@ -124,15 +124,19 @@ func _test_skill3_scene_contract() -> void:
 	var shape := orb.get_node_or_null("CollisionShape2D") as CollisionShape2D
 	_expect(shape != null and shape.shape is CircleShape2D, "Skill3 orb must expose a circle collision shape.")
 	if shape != null and shape.shape is CircleShape2D:
-		_expect(is_equal_approx((shape.shape as CircleShape2D).radius, 5.0), "Skill3 orb collision radius must start at 5.")
+		_expect(is_equal_approx((shape.shape as CircleShape2D).radius, 15.0), "Skill3 orb collision radius must start at 15.")
 	var visual_root := orb.get_node_or_null("VisualRoot") as Node2D
 	_expect(visual_root != null, "Skill3 orb must have an editable VisualRoot.")
 	if visual_root != null:
-		for node_name in ["OuterHalo", "InnerHalo", "Core"]:
+		for node_name in ["OuterHalo", "MidHalo", "InnerHalo", "Core"]:
 			var polygon := visual_root.get_node_or_null(node_name) as Polygon2D
 			_expect(polygon != null, "Skill3 orb visual missing %s." % node_name)
 			_expect(polygon == null or polygon.material is ShaderMaterial, "Skill3 orb %s must use shader glow material." % node_name)
-	_expect(orb.get_current_radius() == 5.0, "Skill3 orb current radius must start at base radius.")
+		var outer_halo := visual_root.get_node_or_null("OuterHalo") as Polygon2D
+		var core := visual_root.get_node_or_null("Core") as Polygon2D
+		_expect(outer_halo == null or outer_halo.scale.x <= 50.0, "Skill3 orb outer halo must stay visually restrained.")
+		_expect(core == null or is_equal_approx(core.scale.x, 15.0), "Skill3 orb core must match its 15px base radius.")
+	_expect(orb.get_current_radius() == 15.0, "Skill3 orb current radius must start at base radius.")
 	orb.queue_free()
 	await process_frame
 
@@ -201,11 +205,15 @@ func _test_orb_lifecycle_and_damage() -> void:
 	_expect(not grow_orb.is_flashing(), "Skill3 orb must not flash before grow_delay - flash_lead_time.")
 	grow_orb.call("_physics_process", 0.25)
 	_expect(grow_orb.is_flashing(), "Skill3 orb must flash during the final two seconds before growth.")
-	_expect(far_player.current_health == 200, "Small Skill3 orb must not damage a player outside 5px.")
+	_expect(far_player.current_health == 200, "Small Skill3 orb must not damage a player outside 15px.")
 	grow_orb.call("_grow")
 	await physics_frame
 	_expect(grow_orb.is_expanded(), "Skill3 orb must enter expanded state.")
-	_expect(is_equal_approx(grow_orb.get_current_radius(), 35.0), "Skill3 orb expanded radius must be 35.")
+	_expect(is_equal_approx(grow_orb.get_current_radius(), 30.0), "Skill3 orb expanded radius must be 30.")
+	var grow_shape := grow_orb.get_node_or_null("CollisionShape2D") as CollisionShape2D
+	if grow_shape != null and grow_shape.shape is CircleShape2D:
+		_expect(is_equal_approx((grow_shape.shape as CircleShape2D).radius, 30.0), "Skill3 orb expanded collision shape must be 30.")
+	_expect(is_equal_approx(grow_orb.get_visual_scale().x, 2.0), "Skill3 orb visual expansion must double at growth.")
 	_expect(far_player.current_health == 150, "Expanded Skill3 orb must deal 50 damage.")
 	_expect(enemy.current_health == 200, "Skill3 orb must not damage normal enemies.")
 	_expect(linglan.current_health == 500, "Skill3 orb must not damage Linglan.")
