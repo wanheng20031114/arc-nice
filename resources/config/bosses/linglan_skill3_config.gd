@@ -12,11 +12,11 @@ class_name LinglanSkill3Config
 @export_range(0.0, 2000.0, 1.0, "or_greater") var orb_speed: float = 90.0
 @export_range(0, 999, 1, "or_greater") var orb_damage: int = 50
 @export_range(1.0, 128.0, 0.5, "or_greater") var orb_base_radius: float = 15.0
-@export_range(1.0, 32.0, 0.5, "or_greater") var orb_grow_scale: float = 4.0
-@export_range(0.0, 10.0, 0.05, "or_greater") var orb_expanded_hold_duration: float = 0.7
+@export_range(1.0, 32.0, 0.5, "or_greater") var orb_grow_scale: float = 3.0
+@export_range(0.0, 10.0, 0.05, "or_greater") var orb_expanded_hold_duration: float = 0.5
 @export_range(0.0, 10.0, 0.05, "or_greater") var orb_flash_lead_time: float = 2.0
 @export_range(0.01, 30.0, 0.05, "or_greater") var orb_grow_delay_min: float = 2.2
-@export_range(0.01, 30.0, 0.05, "or_greater") var orb_grow_delay_max: float = 3.4
+@export_range(0.01, 30.0, 0.05, "or_greater") var orb_grow_delay_max: float = 3.6
 @export var orb_scene: PackedScene
 
 

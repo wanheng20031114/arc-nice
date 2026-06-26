@@ -97,22 +97,18 @@ func _test_skill3_config() -> void:
 	_expect(is_equal_approx(SKILL3_CONFIG.orb_speed, 90.0), "Skill3 orb speed mismatch.")
 	_expect(SKILL3_CONFIG.orb_damage == 50, "Skill3 orb damage mismatch.")
 	_expect(is_equal_approx(SKILL3_CONFIG.orb_base_radius, 15.0), "Skill3 orb base radius mismatch.")
-	_expect(is_equal_approx(SKILL3_CONFIG.orb_grow_scale, 4.0), "Skill3 orb grow scale mismatch.")
-	_expect(is_equal_approx(SKILL3_CONFIG.orb_expanded_hold_duration, 0.7), "Skill3 expanded hold mismatch.")
+	_expect(is_equal_approx(SKILL3_CONFIG.orb_grow_scale, 3.0), "Skill3 orb grow scale mismatch.")
+	_expect(is_equal_approx(SKILL3_CONFIG.orb_expanded_hold_duration, 0.5), "Skill3 expanded hold mismatch.")
 	_expect(is_equal_approx(SKILL3_CONFIG.orb_flash_lead_time, 2.0), "Skill3 flash lead mismatch.")
 	_expect(is_equal_approx(SKILL3_CONFIG.orb_grow_delay_min, 2.2), "Skill3 grow delay min mismatch.")
-	_expect(is_equal_approx(SKILL3_CONFIG.orb_grow_delay_max, 3.4), "Skill3 grow delay max mismatch.")
+	_expect(is_equal_approx(SKILL3_CONFIG.orb_grow_delay_max, 3.6), "Skill3 grow delay max mismatch.")
 	_expect(SKILL3_CONFIG.orb_scene == ORB_SCENE, "Skill3 orb scene mismatch.")
-	_expect(
-		SKILL3_CONFIG.orb_base_radius * SKILL3_CONFIG.orb_grow_scale > 56.0,
-		"Skill3 expanded orb radius must be slightly larger than life crystal's 56px healing radius."
-	)
 
 	var random_generator := RandomNumberGenerator.new()
 	random_generator.seed = 12345
 	for _index in range(32):
 		var grow_delay := SKILL3_CONFIG.get_random_grow_delay(random_generator)
-		_expect(grow_delay >= 2.2 and grow_delay <= 3.4, "Skill3 grow delay must stay inside configured range.")
+		_expect(grow_delay >= 2.2 and grow_delay <= 3.6, "Skill3 grow delay must stay inside configured range.")
 
 
 func _test_skill3_scene_contract() -> void:
@@ -136,12 +132,23 @@ func _test_skill3_scene_contract() -> void:
 			var polygon := visual_root.get_node_or_null(node_name) as Polygon2D
 			_expect(polygon != null, "Skill3 orb visual missing %s." % node_name)
 			_expect(polygon == null or polygon.material is ShaderMaterial, "Skill3 orb %s must use shader glow material." % node_name)
+			_expect(polygon == null or polygon.polygon.size() >= 32, "Skill3 orb %s must use a smooth enough circle polygon." % node_name)
 		var outer_halo := visual_root.get_node_or_null("OuterHalo") as Polygon2D
 		var boundary_edge := visual_root.get_node_or_null("BoundaryEdge") as Polygon2D
 		var core := visual_root.get_node_or_null("Core") as Polygon2D
-		_expect(outer_halo == null or outer_halo.scale.x <= 24.0, "Skill3 orb outer halo must stay visually restrained.")
+		_expect(outer_halo == null or outer_halo.scale.x >= 30.0, "Skill3 orb outer halo must extend beyond the collision core.")
+		_expect(outer_halo == null or outer_halo.scale.x <= 34.0, "Skill3 orb outer halo must stay visually restrained.")
 		_expect(boundary_edge == null or is_equal_approx(boundary_edge.scale.x, 15.0), "Skill3 orb boundary edge must match the base collision radius.")
 		_expect(core == null or is_equal_approx(core.scale.x, 15.0), "Skill3 orb core must match its 15px base radius.")
+		if core != null and core.material is ShaderMaterial:
+			var core_material := core.material as ShaderMaterial
+			var core_tint: Color = core_material.get_shader_parameter(&"tint")
+			_expect(core_tint.a >= 0.5, "Skill3 orb core must be a high-density fill inside the collision radius.")
+			_expect(float(core_material.get_shader_parameter(&"inner_radius")) >= 0.75, "Skill3 orb core must keep most of the collision radius densely lit.")
+		if outer_halo != null and outer_halo.material is ShaderMaterial:
+			var outer_material := outer_halo.material as ShaderMaterial
+			var outer_tint: Color = outer_material.get_shader_parameter(&"tint")
+			_expect(outer_tint.a >= 0.08, "Skill3 orb outer halo must be visible outside the collision radius.")
 	_expect(orb.get_current_radius() == 15.0, "Skill3 orb current radius must start at base radius.")
 	orb.queue_free()
 	await process_frame
@@ -215,15 +222,15 @@ func _test_orb_lifecycle_and_damage() -> void:
 	grow_orb.call("_grow")
 	await physics_frame
 	_expect(grow_orb.is_expanded(), "Skill3 orb must enter expanded state.")
-	_expect(is_equal_approx(grow_orb.get_current_radius(), 60.0), "Skill3 orb expanded radius must be 60.")
+	_expect(is_equal_approx(grow_orb.get_current_radius(), 45.0), "Skill3 orb expanded radius must be 45.")
 	var grow_shape := grow_orb.get_node_or_null("CollisionShape2D") as CollisionShape2D
 	if grow_shape != null and grow_shape.shape is CircleShape2D:
-		_expect(is_equal_approx((grow_shape.shape as CircleShape2D).radius, 60.0), "Skill3 orb expanded collision shape must be 60.")
-	_expect(is_equal_approx(grow_orb.get_visual_scale().x, 4.0), "Skill3 orb visual expansion must quadruple at growth.")
+		_expect(is_equal_approx((grow_shape.shape as CircleShape2D).radius, 45.0), "Skill3 orb expanded collision shape must be 45.")
+	_expect(is_equal_approx(grow_orb.get_visual_scale().x, 3.0), "Skill3 orb visual expansion must triple at growth.")
 	_expect(far_player.current_health == 150, "Expanded Skill3 orb must deal 50 damage.")
 	_expect(enemy.current_health == 200, "Skill3 orb must not damage normal enemies.")
 	_expect(linglan.current_health == 500, "Skill3 orb must not damage Linglan.")
-	grow_orb.call("_physics_process", 0.71)
+	grow_orb.call("_physics_process", 0.51)
 	await process_frame
 	_expect(not is_instance_valid(grow_orb), "Skill3 orb must disappear after expanded hold duration.")
 
@@ -286,7 +293,7 @@ func _test_boss_skill3_schedule() -> void:
 		_expect(record.get("projectile_type") == &"linglan_skill3_orb", "Skill3 registered wrong projectile type.")
 		_expect(int(record.get("damage", 0)) == 50, "Skill3 registered wrong orb damage.")
 		_expect(is_equal_approx(float(record.get("speed", 0.0)), 90.0), "Skill3 registered wrong orb speed.")
-		_expect(float(record.get("lifetime", 0.0)) >= 2.2 and float(record.get("lifetime", 0.0)) <= 3.4, "Skill3 registered grow delay outside range.")
+		_expect(float(record.get("lifetime", 0.0)) >= 2.2 and float(record.get("lifetime", 0.0)) <= 3.6, "Skill3 registered grow delay outside range.")
 		_expect(direction.length() > 0.99 and direction.x >= -0.001 and direction.y >= -0.001, "Skill3 orb direction must stay in right-to-down quadrant.")
 
 	host.queue_free()

@@ -15,9 +15,9 @@ enum OrbState {
 @export var speed: float = 90.0
 @export var damage: int = 50
 @export var base_radius: float = 15.0
-@export var grow_scale: float = 4.0
+@export var grow_scale: float = 3.0
 @export var grow_delay: float = 2.2
-@export var expanded_hold_duration: float = 0.7
+@export var expanded_hold_duration: float = 0.5
 @export var flash_lead_time: float = 2.0
 @export var flash_frequency: float = 9.0
 
@@ -47,8 +47,8 @@ func setup(
 	initial_speed: float,
 	initial_grow_delay: float,
 	initial_base_radius: float = 15.0,
-	initial_grow_scale: float = 4.0,
-	initial_expanded_hold_duration: float = 0.7,
+	initial_grow_scale: float = 3.0,
+	initial_expanded_hold_duration: float = 0.5,
 	initial_flash_lead_time: float = 2.0
 ) -> void:
 	direction = initial_direction.normalized() if initial_direction != Vector2.ZERO else Vector2.RIGHT
