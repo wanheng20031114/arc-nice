@@ -51,6 +51,7 @@ func _test_animation_resource() -> void:
 	var expected_counts := {
 		&"idle": 8,
 		&"move": 8,
+		&"die": 8,
 	}
 	for animation_name in expected_counts.keys():
 		_expect(
@@ -68,6 +69,9 @@ func _test_animation_resource() -> void:
 		if first_texture != null:
 			var frame_size := first_texture.get_size()
 			_expect(frame_size.x >= 220.0 and frame_size.y >= 220.0, "Linglan boss frames must keep high-resolution pixel art detail.")
+		if animation_name == &"die":
+			_expect(not LINGLAN_FRAMES.get_animation_loop(animation_name), "Linglan die animation must not loop.")
+			_expect(is_equal_approx(LINGLAN_FRAMES.get_animation_speed(animation_name), 8.0), "Linglan die animation speed must match the authored dissolve timing.")
 
 
 func _test_boss_entry_resource() -> void:
@@ -89,6 +93,7 @@ func _test_boss_entry_resource() -> void:
 	_expect(is_equal_approx(LINGLAN_BOSS_ENTRY.music_loop_offset, 1.0), "Linglan boss music must expose the configured loop offset.")
 	_expect(LINGLAN_BOSS_ENTRY.get_enemy_config() == LINGLAN_CONFIG, "Linglan boss entry must resolve the Linglan enemy config on demand.")
 	_expect(LINGLAN_CONFIG.max_health == 1000, "Linglan boss health must be configured to 1000.")
+	_expect(LINGLAN_CONFIG.death_animation_name == &"die", "Linglan boss must play the sakura dissolve die animation on death.")
 	_expect(DEFAULT_FLOW.get_step_by_id(&"boss_01_linglan") == LINGLAN_BOSS_ENTRY, "Default flow must include Linglan as a flow node.")
 	_expect(LINGLAN_BOSS_ENTRY.arena_center == Vector2(128, 128), "Linglan boss entry must keep the center spawn point.")
 	_expect(LINGLAN_BOSS_ENTRY.arena_floor_rect == Rect2i(-3, -1, 22, 18), "Linglan boss entry must only floor the requested arena rectangle.")

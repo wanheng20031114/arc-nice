@@ -35,6 +35,8 @@ SKILL2_ROCKET_SOURCE = "dev_assets/source_images/boss_linglan/skill2_sakura_rock
 SKILL2_ROCKET_ALPHA = "dev_assets/source_images/boss_linglan/skill2_sakura_rocket_alpha.png"
 SKILL2_EXPLOSION_SOURCE = "dev_assets/source_images/boss_linglan/skill2_sakura_explosion_imagegen_green.png"
 SKILL2_EXPLOSION_ALPHA = "dev_assets/source_images/boss_linglan/skill2_sakura_explosion_alpha.png"
+DIE_SOURCE = "dev_assets/source_images/boss_linglan/die_imagegen_green_v2.png"
+DIE_ALPHA = "dev_assets/source_images/boss_linglan/die_v2_alpha.png"
 
 OUTPUT_TEXTURE_DIR = "resources/texture/boss_linglan"
 OUTPUT_FRAMES = "resources/animation/linglan.tres"
@@ -48,6 +50,7 @@ OUTPUT_SKILL2_ROCKET = "resources/texture/boss_linglan/skill2_sakura_rocket.png"
 OUTPUT_SKILL2_ROCKET_FRAMES = "resources/animation/linglan_skill2_sakura_rocket.tres"
 OUTPUT_SKILL2_EXPLOSION = "resources/texture/boss_linglan/skill2_sakura_explosion.png"
 OUTPUT_SKILL2_EXPLOSION_FRAMES = "resources/animation/linglan_skill2_sakura_explosion.tres"
+OUTPUT_DIE = "resources/texture/boss_linglan/die.png"
 
 CONVERGENCE_TEXTURE_RESOURCE = "res://resources/texture/boss_linglan/sakura_convergence.png"
 SKILL2_ROCKET_TEXTURE_RESOURCE = "res://resources/texture/boss_linglan/skill2_sakura_rocket.png"
@@ -65,16 +68,22 @@ FRAME_PADDING = 32
 FRAME_SIZE_ALIGNMENT = 8
 MIN_COMPONENT_ALPHA_PIXELS = 120
 FRAME_GROUP_RADIUS = 8
+LINGLAN_AUTHORED_FRAME_SIZE = (368, 400)
+LINGLAN_DIE_TARGET_ANCHOR = (184, 380)
+LINGLAN_DIE_BASE_SCALE = 1.22
+LINGLAN_DIE_BAND_GAP = 30
 
 LINGLAN_TEXTURE_UIDS: dict[str, str] = {
 	"idle": "uid://bvv7p5if14s8v",
 	"move": "uid://c5c85r1wfluct",
+	"die": "uid://2ku0adg2fswq",
 }
 
 LINGLAN_TEXTURE_RESOURCES: OrderedDict[str, str] = OrderedDict(
 	[
 		("idle", "res://resources/texture/boss_linglan/idle.png"),
 		("move", "res://resources/texture/boss_linglan/move.png"),
+		("die", "res://resources/texture/boss_linglan/die.png"),
 	]
 )
 
@@ -784,27 +793,159 @@ def _process_vfx(root: Path) -> None:
 	print(f"Sakura convergence: {convergence_path} ({sheet.width}x{sheet.height})")
 
 
-def _process_linglan_sprite(root: Path) -> None:
-	sources_by_animation: OrderedDict[str, Image.Image] = OrderedDict()
-	for animation_name, source_path in LINGLAN_ANIMATION_STRIPS.items():
-		source = Image.open(root / source_path).convert("RGBA")
-		if source.getchannel("A").getextrema()[0] == 255:
-			source = _remove_linglan_sprite_background(source)
-		sources_by_animation[animation_name] = source
-		print(f"Linglan {animation_name} source: {root / source_path} ({source.width}x{source.height})")
+def _detect_visible_x_bands(image: Image.Image, expected_count: int) -> list[tuple[int, int]]:
+	alpha = np.array(image.getchannel("A"), dtype=np.uint8) > 0
+	occupied_columns = np.where(alpha.any(axis=0))[0]
+	if occupied_columns.size == 0:
+		raise ValueError("Linglan die source has no visible pixels after background removal.")
 
-	frames_by_animation, animations = _collect_linglan_frames(sources_by_animation)
+	bands: list[tuple[int, int]] = []
+	start = int(occupied_columns[0])
+	previous = int(occupied_columns[0])
+	for column in occupied_columns[1:]:
+		column = int(column)
+		if column - previous > LINGLAN_DIE_BAND_GAP:
+			bands.append((start, previous + 1))
+			start = column
+		previous = column
+	bands.append((start, previous + 1))
 
-	output_dir = root / OUTPUT_TEXTURE_DIR
-	output_dir.mkdir(parents=True, exist_ok=True)
+	if len(bands) != expected_count:
+		raise ValueError(f"Expected {expected_count} Linglan die bands, detected {len(bands)}: {bands}.")
+	return bands
+
+
+def _paste_clipped(target: Image.Image, source: Image.Image, offset: tuple[int, int]) -> None:
+	x, y = offset
+	source_left = max(0, -x)
+	source_top = max(0, -y)
+	target_x = max(0, x)
+	target_y = max(0, y)
+	width = min(source.width - source_left, target.width - target_x)
+	height = min(source.height - source_top, target.height - target_y)
+	if width <= 0 or height <= 0:
+		return
+	target.alpha_composite(
+		source.crop((source_left, source_top, source_left + width, source_top + height)),
+		(target_x, target_y),
+	)
+
+
+def _process_linglan_die(root: Path) -> tuple[dict[str, FrameRegion], list[str]]:
+	source = Image.open(root / DIE_SOURCE).convert("RGBA")
+	alpha = _despill_chroma_green(_remove_global_green_background(source))
+	alpha = _remove_tiny_alpha_components(alpha, 12)
+	alpha_path = root / DIE_ALPHA
+	alpha_path.parent.mkdir(parents=True, exist_ok=True)
+	alpha.save(alpha_path)
+
+	bands = _detect_visible_x_bands(alpha, SOURCE_COLUMNS)
+	frame_width, frame_height = LINGLAN_AUTHORED_FRAME_SIZE
+	sheet = Image.new("RGBA", (frame_width * SOURCE_COLUMNS, frame_height), (0, 0, 0, 0))
+	regions: dict[str, FrameRegion] = {}
+	frame_names: list[str] = []
+	last_body_anchor_x: float | None = None
+
+	for index, (band_left, band_right) in enumerate(bands):
+		band = alpha.crop((band_left, 0, band_right, alpha.height))
+		band = _remove_tiny_alpha_components(band, 12)
+		bbox = _foreground_bbox(band)
+		alpha_pixels = int((np.array(band.getchannel("A"), dtype=np.uint8) > 0).sum())
+		source_anchor_x, source_anchor_y = _detect_linglan_body_anchor(
+			band,
+			DetectedFrame(bbox, alpha_pixels),
+		)
+		if index <= 4:
+			last_body_anchor_x = source_anchor_x
+
+		crop = band.crop(bbox)
+		if index <= 5:
+			scale = min(
+				LINGLAN_DIE_BASE_SCALE,
+				(frame_width - 12) / max(crop.width, 1),
+				(frame_height - 6) / max(crop.height, 1),
+			)
+			anchor_x = source_anchor_x if index <= 4 else (last_body_anchor_x or source_anchor_x)
+			anchor_y = source_anchor_y
+			new_size = (
+				max(1, int(round(crop.width * scale))),
+				max(1, int(round(crop.height * scale))),
+			)
+			resized = crop.resize(new_size, Image.Resampling.LANCZOS)
+			local_anchor = (
+				(anchor_x - bbox[0]) * scale,
+				(anchor_y - bbox[1]) * scale,
+			)
+			offset = (
+				int(round(LINGLAN_DIE_TARGET_ANCHOR[0] - local_anchor[0])),
+				int(round(LINGLAN_DIE_TARGET_ANCHOR[1] - local_anchor[1])),
+			)
+		else:
+			scale = min(
+				LINGLAN_DIE_BASE_SCALE,
+				(frame_width - 40) / max(crop.width, 1),
+				(frame_height - 36) / max(crop.height, 1),
+			)
+			new_size = (
+				max(1, int(round(crop.width * scale))),
+				max(1, int(round(crop.height * scale))),
+			)
+			resized = crop.resize(new_size, Image.Resampling.LANCZOS)
+			offset_y = int(round(208 - new_size[1] * 0.5))
+			offset_y = max(12, min(offset_y, frame_height - 12 - new_size[1]))
+			offset = (
+				int(round(frame_width * 0.5 - new_size[0] * 0.5)),
+				offset_y,
+			)
+
+		frame = Image.new("RGBA", LINGLAN_AUTHORED_FRAME_SIZE, (0, 0, 0, 0))
+		_paste_clipped(frame, resized, offset)
+		frame_name = f"die_{index}"
+		x = index * frame_width
+		sheet.alpha_composite(frame, (x, 0))
+		regions[frame_name] = (x, 0, frame_width, frame_height)
+		frame_names.append(frame_name)
+
+	die_path = root / OUTPUT_DIE
+	die_path.parent.mkdir(parents=True, exist_ok=True)
+	sheet.save(die_path)
+	print(f"Linglan die alpha: {alpha_path} ({alpha.width}x{alpha.height})")
+	print(f"Linglan die strip: {die_path} ({sheet.width}x{sheet.height})")
+	return regions, frame_names
+
+
+def _collect_linglan_output_strip_regions(
+	root: Path,
+) -> tuple[OrderedDict[str, dict[str, FrameRegion]], OrderedDict[str, list[str]]]:
 	regions_by_animation: OrderedDict[str, dict[str, FrameRegion]] = OrderedDict()
-	for animation_name, frames in frames_by_animation.items():
-		strip, regions = _build_animation_strip(frames)
-		strip_path = output_dir / f"{animation_name}.png"
-		strip.save(strip_path)
-		regions_by_animation[animation_name] = regions
-		print(f"Linglan {animation_name} strip: {strip_path} ({strip.width}x{strip.height})")
+	animations: OrderedDict[str, list[str]] = OrderedDict()
+	for animation_name, texture_resource in LINGLAN_TEXTURE_RESOURCES.items():
+		texture_path = root / texture_resource.removeprefix("res://")
+		image = Image.open(texture_path)
+		if image.width % SOURCE_COLUMNS != 0:
+			raise ValueError(f"{texture_path} width must divide into {SOURCE_COLUMNS} Linglan frames.")
+		frame_width = image.width // SOURCE_COLUMNS
+		frame_height = image.height
+		if (frame_width, frame_height) != LINGLAN_AUTHORED_FRAME_SIZE:
+			raise ValueError(
+				f"{texture_path} must use authored Linglan frame size "
+				f"{LINGLAN_AUTHORED_FRAME_SIZE}, got {(frame_width, frame_height)}."
+			)
 
+		regions: dict[str, FrameRegion] = {}
+		frame_names: list[str] = []
+		for frame_index in range(SOURCE_COLUMNS):
+			frame_name = f"{animation_name}_{frame_index}"
+			regions[frame_name] = (frame_index * frame_width, 0, frame_width, frame_height)
+			frame_names.append(frame_name)
+		regions_by_animation[animation_name] = regions
+		animations[animation_name] = frame_names
+	return regions_by_animation, animations
+
+
+def _process_linglan_sprite(root: Path) -> None:
+	_process_linglan_die(root)
+	regions_by_animation, animations = _collect_linglan_output_strip_regions(root)
 	_write_spriteframes_for_animation_strips(
 		root / OUTPUT_FRAMES,
 		LINGLAN_TEXTURE_RESOURCES,
