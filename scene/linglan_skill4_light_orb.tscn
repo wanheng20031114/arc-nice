@@ -1,11 +1,11 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://x0d2h6ec3sx7"]
 
-[ext_resource type="Script" path="res://scene/linglan_skill4_light_orb.gd" id="1_script"]
-[ext_resource type="Shader" path="res://scene/linglan_skill3_light_orb.gdshader" id="2_shader"]
+[ext_resource type="Script" uid="uid://kx03y7dm3tnq" path="res://scene/linglan_skill4_light_orb.gd" id="1_script"]
+[ext_resource type="Shader" uid="uid://xhgqfhkeyak1" path="res://scene/linglan_skill3_light_orb.gdshader" id="2_shader"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_orb"]
 resource_local_to_scene = true
-radius = 8.0
+radius = 6.0
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_outer"]
 resource_local_to_scene = true
@@ -67,38 +67,38 @@ shader_parameter/ring_radius = 0.99
 shader_parameter/ring_width = 0.08
 shader_parameter/ring_strength = 1.0
 
-[node name="LinglanSkill4LightOrb" type="Area2D"]
+[node name="LinglanSkill4LightOrb" type="Area2D" unique_id=1207984493]
 z_index = 5
 collision_layer = 128
 collision_mask = 2
 script = ExtResource("1_script")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1631554308]
 shape = SubResource("CircleShape2D_orb")
 
-[node name="VisualRoot" type="Node2D" parent="."]
+[node name="VisualRoot" type="Node2D" parent="." unique_id=1910039610]
 
-[node name="OuterHalo" type="Polygon2D" parent="VisualRoot"]
+[node name="OuterHalo" type="Polygon2D" parent="VisualRoot" unique_id=428966967]
 material = SubResource("ShaderMaterial_outer")
 scale = Vector2(18, 18)
 polygon = PackedVector2Array(1, 0, 0.980785, 0.19509, 0.92388, 0.382683, 0.83147, 0.55557, 0.707107, 0.707107, 0.55557, 0.83147, 0.382683, 0.92388, 0.19509, 0.980785, 0, 1, -0.19509, 0.980785, -0.382683, 0.92388, -0.55557, 0.83147, -0.707107, 0.707107, -0.83147, 0.55557, -0.92388, 0.382683, -0.980785, 0.19509, -1, 0, -0.980785, -0.19509, -0.92388, -0.382683, -0.83147, -0.55557, -0.707107, -0.707107, -0.55557, -0.83147, -0.382683, -0.92388, -0.19509, -0.980785, 0, -1, 0.19509, -0.980785, 0.382683, -0.92388, 0.55557, -0.83147, 0.707107, -0.707107, 0.83147, -0.55557, 0.92388, -0.382683, 0.980785, -0.19509)
 
-[node name="MidHalo" type="Polygon2D" parent="VisualRoot"]
+[node name="MidHalo" type="Polygon2D" parent="VisualRoot" unique_id=65207562]
 material = SubResource("ShaderMaterial_mid")
 scale = Vector2(14, 14)
 polygon = PackedVector2Array(1, 0, 0.980785, 0.19509, 0.92388, 0.382683, 0.83147, 0.55557, 0.707107, 0.707107, 0.55557, 0.83147, 0.382683, 0.92388, 0.19509, 0.980785, 0, 1, -0.19509, 0.980785, -0.382683, 0.92388, -0.55557, 0.83147, -0.707107, 0.707107, -0.83147, 0.55557, -0.92388, 0.382683, -0.980785, 0.19509, -1, 0, -0.980785, -0.19509, -0.92388, -0.382683, -0.83147, -0.55557, -0.707107, -0.707107, -0.55557, -0.83147, -0.382683, -0.92388, -0.19509, -0.980785, 0, -1, 0.19509, -0.980785, 0.382683, -0.92388, 0.55557, -0.83147, 0.707107, -0.707107, 0.83147, -0.55557, 0.92388, -0.382683, 0.980785, -0.19509)
 
-[node name="InnerHalo" type="Polygon2D" parent="VisualRoot"]
+[node name="InnerHalo" type="Polygon2D" parent="VisualRoot" unique_id=1657430994]
 material = SubResource("ShaderMaterial_inner")
 scale = Vector2(10, 10)
 polygon = PackedVector2Array(1, 0, 0.980785, 0.19509, 0.92388, 0.382683, 0.83147, 0.55557, 0.707107, 0.707107, 0.55557, 0.83147, 0.382683, 0.92388, 0.19509, 0.980785, 0, 1, -0.19509, 0.980785, -0.382683, 0.92388, -0.55557, 0.83147, -0.707107, 0.707107, -0.83147, 0.55557, -0.92388, 0.382683, -0.980785, 0.19509, -1, 0, -0.980785, -0.19509, -0.92388, -0.382683, -0.83147, -0.55557, -0.707107, -0.707107, -0.55557, -0.83147, -0.382683, -0.92388, -0.19509, -0.980785, 0, -1, 0.19509, -0.980785, 0.382683, -0.92388, 0.55557, -0.83147, 0.707107, -0.707107, 0.83147, -0.55557, 0.92388, -0.382683, 0.980785, -0.19509)
 
-[node name="Core" type="Polygon2D" parent="VisualRoot"]
+[node name="Core" type="Polygon2D" parent="VisualRoot" unique_id=1880390060]
 material = SubResource("ShaderMaterial_core")
 scale = Vector2(8, 8)
 polygon = PackedVector2Array(1, 0, 0.980785, 0.19509, 0.92388, 0.382683, 0.83147, 0.55557, 0.707107, 0.707107, 0.55557, 0.83147, 0.382683, 0.92388, 0.19509, 0.980785, 0, 1, -0.19509, 0.980785, -0.382683, 0.92388, -0.55557, 0.83147, -0.707107, 0.707107, -0.83147, 0.55557, -0.92388, 0.382683, -0.980785, 0.19509, -1, 0, -0.980785, -0.19509, -0.92388, -0.382683, -0.83147, -0.55557, -0.707107, -0.707107, -0.55557, -0.83147, -0.382683, -0.92388, -0.19509, -0.980785, 0, -1, 0.19509, -0.980785, 0.382683, -0.92388, 0.55557, -0.83147, 0.707107, -0.707107, 0.83147, -0.55557, 0.92388, -0.382683, 0.980785, -0.19509)
 
-[node name="BoundaryEdge" type="Polygon2D" parent="VisualRoot"]
+[node name="BoundaryEdge" type="Polygon2D" parent="VisualRoot" unique_id=616701217]
 material = SubResource("ShaderMaterial_boundary")
 scale = Vector2(8, 8)
 polygon = PackedVector2Array(1, 0, 0.980785, 0.19509, 0.92388, 0.382683, 0.83147, 0.55557, 0.707107, 0.707107, 0.55557, 0.83147, 0.382683, 0.92388, 0.19509, 0.980785, 0, 1, -0.19509, 0.980785, -0.382683, 0.92388, -0.55557, 0.83147, -0.707107, 0.707107, -0.83147, 0.55557, -0.92388, 0.382683, -0.980785, 0.19509, -1, 0, -0.980785, -0.19509, -0.92388, -0.382683, -0.83147, -0.55557, -0.707107, -0.707107, -0.55557, -0.83147, -0.382683, -0.92388, -0.19509, -0.980785, 0, -1, 0.19509, -0.980785, 0.382683, -0.92388, 0.55557, -0.83147, 0.707107, -0.707107, 0.83147, -0.55557, 0.92388, -0.382683, 0.980785, -0.19509)
