@@ -39,6 +39,7 @@ const PROJECTILE_ID_NAMESPACE_SIZE := 1000000
 const CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE := 224.0
 const CLIENT_PROJECTILE_DIRECTION_MIN_LENGTH := 0.2
 const CLIENT_PROJECTILE_DIRECTION_MAX_LENGTH := 1.5
+const PROJECTILE_TIME_COMPENSATION_MAX_SECONDS := 0.25
 const SNAPSHOT_PACKET_WARN_BYTES := 1200
 const SNAPSHOT_PACKET_WARN_INTERVAL_SECONDS := 5.0
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
@@ -684,7 +685,12 @@ func _apply_accepted_client_player_state(
 ) -> void:
 	if sender_id <= 0 or player_node == null or not is_instance_valid(player_node):
 		return
-	player_node.apply_remote_multiplayer_view_state(reported_velocity, shoot_input, use_skill1)
+	player_node.apply_remote_multiplayer_state(
+		reported_position,
+		reported_velocity,
+		shoot_input,
+		use_skill1
+	)
 	_remember_latest_client_player_snapshot_state(
 		sender_id,
 		reported_position,
@@ -809,6 +815,7 @@ func register_local_projectile(
 	_next_projectile_id += 1
 	_setup_projectile_network_identity(projectile, projectile_id, owner_peer_id, projectile_type)
 	_known_projectiles[projectile_id] = projectile
+	var host_fire_timestamp := _get_net_time()
 	_remember_projectile_record(
 		projectile_id,
 		owner_peer_id,
@@ -831,6 +838,7 @@ func register_local_projectile(
 				lifetime,
 				pierces_enemies,
 				target_peer_id,
+				host_fire_timestamp,
 			]
 		)
 	else:
@@ -845,7 +853,8 @@ func register_local_projectile(
 			speed,
 			lifetime,
 			pierces_enemies,
-			target_peer_id
+			target_peer_id,
+			host_fire_timestamp
 		)
 
 
@@ -860,7 +869,8 @@ func _rpc_projectile_fired_from_client(
 	speed: float,
 	lifetime: float,
 	pierces_enemies: bool = false,
-	target_peer_id: int = 0
+	target_peer_id: int = 0,
+	_client_fire_timestamp: float = -1.0
 ) -> void:
 	if not net_manager.is_host():
 		return
@@ -893,6 +903,7 @@ func _rpc_projectile_fired_from_client(
 		pierces_enemies
 		and bool(accepted_parameters.get("can_pierce_enemies", false))
 	)
+	var host_fire_timestamp := _get_net_time()
 	_rpc_to_connected_clients(
 		&"net_projectile_fired",
 		[
@@ -906,6 +917,7 @@ func _rpc_projectile_fired_from_client(
 			accepted_lifetime,
 			accepted_pierces_enemies,
 			target_peer_id,
+			host_fire_timestamp,
 		]
 	)
 	net_projectile_fired(
@@ -918,7 +930,8 @@ func _rpc_projectile_fired_from_client(
 		accepted_speed,
 		accepted_lifetime,
 		accepted_pierces_enemies,
-		target_peer_id
+		target_peer_id,
+		host_fire_timestamp
 	)
 
 
@@ -933,7 +946,8 @@ func net_projectile_fired(
 	speed: float,
 	lifetime: float,
 	pierces_enemies: bool = false,
-	target_peer_id: int = 0
+	target_peer_id: int = 0,
+	host_fire_timestamp: float = -1.0
 ) -> void:
 	if _known_projectiles.has(projectile_id):
 		return
@@ -947,7 +961,8 @@ func net_projectile_fired(
 		speed,
 		lifetime,
 		pierces_enemies,
-		target_peer_id
+		target_peer_id,
+		host_fire_timestamp
 	)
 
 
@@ -961,7 +976,8 @@ func _spawn_network_projectile(
 	speed: float,
 	lifetime: float,
 	pierces_enemies: bool = false,
-	target_peer_id: int = 0
+	target_peer_id: int = 0,
+	host_fire_timestamp: float = -1.0
 ) -> void:
 	var projectile := _instantiate_projectile(
 		projectile_type,
@@ -977,6 +993,7 @@ func _spawn_network_projectile(
 		return
 	_setup_projectile_network_identity(projectile, projectile_id, owner_peer_id, projectile_type)
 	_known_projectiles[projectile_id] = projectile
+	var compensation_age := _get_projectile_time_compensation_age(host_fire_timestamp, lifetime)
 	_remember_projectile_record(
 		projectile_id,
 		owner_peer_id,
@@ -986,7 +1003,63 @@ func _spawn_network_projectile(
 		pierces_enemies
 	)
 	add_child(projectile)
-	projectile.global_position = spawn_position
+	projectile.global_position = (
+		spawn_position
+		+ direction.normalized() * maxf(speed, 0.0) * compensation_age
+	)
+	_apply_projectile_lifetime_compensation(projectile, lifetime, compensation_age)
+
+
+func _get_projectile_time_compensation_age(host_fire_timestamp: float, lifetime: float) -> float:
+	if host_fire_timestamp < 0.0:
+		return 0.0
+	var mapped_fire_time := host_fire_timestamp
+	if net_manager == null or not net_manager.is_host():
+		mapped_fire_time = _map_host_timestamp_to_client_time(host_fire_timestamp)
+	var age := _get_net_time() - mapped_fire_time
+	return clampf(age, 0.0, minf(PROJECTILE_TIME_COMPENSATION_MAX_SECONDS, maxf(lifetime, 0.0)))
+
+
+func _apply_projectile_lifetime_compensation(
+	projectile: Node,
+	lifetime: float,
+	compensation_age: float
+) -> void:
+	if projectile == null or compensation_age <= 0.0:
+		return
+	var remaining := maxf(lifetime - compensation_age, 0.05)
+	var bullet := projectile as Bullet
+	if bullet != null:
+		bullet.remaining_lifetime = remaining
+		return
+	var bomb := projectile as WeishidaierSkill1Bomb
+	if bomb != null:
+		bomb.remaining_lifetime = remaining
+		return
+	var capoo_bullet := projectile as CapooAK47Bullet
+	if capoo_bullet != null:
+		capoo_bullet.remaining_lifetime = remaining
+		return
+	var rpg_rocket := projectile as CapooRPGRocket
+	if rpg_rocket != null:
+		rpg_rocket.remaining_lifetime = remaining
+		return
+	var fireball := projectile as CapooMageFireball
+	if fireball != null:
+		fireball.remaining_lifetime = remaining
+		return
+	var fire_projectile := projectile as YuanshiInsectFireProjectile
+	if fire_projectile != null:
+		fire_projectile.remaining_lifetime = remaining
+		return
+	var sakura_bullet := projectile as LinglanSakuraBullet
+	if sakura_bullet != null:
+		sakura_bullet.remaining_lifetime = remaining
+		return
+	var sakura_rocket := projectile as LinglanSkill2SakuraRocket
+	if sakura_rocket != null:
+		sakura_rocket.remaining_lifetime = remaining
+		return
 
 
 func _instantiate_projectile(
@@ -1929,7 +2002,7 @@ func broadcast_enemy_action(
 		return
 	_rpc_to_connected_clients(
 		&"net_enemy_action",
-		[net_id, String(action_name), direction, action_position, action_id]
+		[net_id, String(action_name), direction, action_position, action_id, _get_net_time()]
 	)
 
 
@@ -1944,7 +2017,7 @@ func broadcast_enemy_target_action(
 		return
 	_rpc_to_connected_clients(
 		&"net_enemy_target_action",
-		[net_id, String(action_name), target_peer_id, action_position, action_id]
+		[net_id, String(action_name), target_peer_id, action_position, action_id, _get_net_time()]
 	)
 
 
@@ -2088,14 +2161,21 @@ func net_enemy_action(
 	action_name: String,
 	direction: Vector2,
 	action_position: Vector2,
-	action_id: int
+	action_id: int,
+	host_action_timestamp: float = -1.0
 ) -> void:
 	if game == null or net_manager.is_host():
 		return
 	var enemy: Enemy = _get_valid_client_enemy_for_net_id(net_id)
 	if enemy == null or not is_instance_valid(enemy):
 		return
-	enemy.global_position = action_position
+	var action_sample := _push_enemy_action_interpolator_sample(
+		net_id,
+		action_position,
+		host_action_timestamp
+	)
+	if action_sample.get("apply_direct_position", false):
+		enemy.global_position = action_position
 	if enemy.has_method("play_multiplayer_enemy_action"):
 		enemy.call("play_multiplayer_enemy_action", StringName(action_name), direction, action_id)
 
@@ -2106,14 +2186,21 @@ func net_enemy_target_action(
 	action_name: String,
 	target_peer_id: int,
 	action_position: Vector2,
-	action_id: int
+	action_id: int,
+	host_action_timestamp: float = -1.0
 ) -> void:
 	if game == null or net_manager.is_host():
 		return
 	var enemy: Enemy = _get_valid_client_enemy_for_net_id(net_id)
 	if enemy == null or not is_instance_valid(enemy):
 		return
-	enemy.global_position = action_position
+	var action_sample := _push_enemy_action_interpolator_sample(
+		net_id,
+		action_position,
+		host_action_timestamp
+	)
+	if action_sample.get("apply_direct_position", false):
+		enemy.global_position = action_position
 	var target := game.get_player_for_peer(target_peer_id)
 	if enemy.has_method("play_multiplayer_enemy_target_action"):
 		enemy.call(
@@ -2122,6 +2209,29 @@ func net_enemy_target_action(
 			target,
 			action_id
 		)
+
+
+func _push_enemy_action_interpolator_sample(
+	net_id: int,
+	action_position: Vector2,
+	host_action_timestamp: float
+) -> Dictionary:
+	if net_id <= 0:
+		return {}
+	var action_time := _get_net_time()
+	if host_action_timestamp >= 0.0:
+		action_time = _map_host_timestamp_to_client_time(host_action_timestamp)
+	var interp := enemy_interpolators.get(net_id) as NetInterpolator
+	var had_interpolator_samples := interp != null and interp.get_buffer_size() > 0
+	if interp != null:
+		var latest_timestamp := interp.get_latest_timestamp()
+		if latest_timestamp > 0.0 and action_time < latest_timestamp:
+			return {"accepted": false, "apply_direct_position": false}
+	else:
+		interp = _create_enemy_interpolator()
+		enemy_interpolators[net_id] = interp
+	interp.push_snapshot(action_time, action_position, Vector2.ZERO)
+	return {"accepted": true, "apply_direct_position": not had_interpolator_samples}
 
 
 

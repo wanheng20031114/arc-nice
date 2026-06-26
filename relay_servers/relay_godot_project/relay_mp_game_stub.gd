@@ -48,7 +48,10 @@ func _rpc_projectile_fired_from_client(
 	direction: Vector2,
 	damage: int,
 	speed: float,
-	lifetime: float
+	lifetime: float,
+	pierces_enemies: bool = false,
+	target_peer_id: int = 0,
+	_client_fire_timestamp: float = -1.0
 ) -> void:
 	pass
 
@@ -62,7 +65,10 @@ func net_projectile_fired(
 	direction: Vector2,
 	damage: int,
 	speed: float,
-	lifetime: float
+	lifetime: float,
+	pierces_enemies: bool = false,
+	target_peer_id: int = 0,
+	host_fire_timestamp: float = -1.0
 ) -> void:
 	pass
 
@@ -175,7 +181,20 @@ func net_enemy_action(
 	action_name: String,
 	direction: Vector2,
 	action_position: Vector2,
-	action_id: int
+	action_id: int,
+	host_action_timestamp: float = -1.0
+) -> void:
+	pass
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_enemy_target_action(
+	net_id: int,
+	action_name: String,
+	target_peer_id: int,
+	action_position: Vector2,
+	action_id: int,
+	host_action_timestamp: float = -1.0
 ) -> void:
 	pass
 

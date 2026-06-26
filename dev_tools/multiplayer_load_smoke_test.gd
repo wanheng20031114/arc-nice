@@ -38,6 +38,9 @@ func _run() -> void:
 	await _test_player_snapshot_roster_reconcile()
 	await _test_enemy_snapshot_roster_requires_complete_batch()
 	await _test_enemy_snapshot_death_and_empty_roster_cleanup()
+	await _test_host_remote_player_position_writeback()
+	_test_projectile_time_compensation()
+	await _test_enemy_action_uses_snapshot_timeline()
 	await _test_host_remote_player_form_buff_expires()
 	await _test_four_player_runtime_and_confirmed_events()
 	await _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm()
@@ -633,6 +636,147 @@ func _test_enemy_snapshot_death_and_empty_roster_cleanup() -> void:
 	mp_game.free()
 	_stop_audio_players(game)
 	game.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_host_remote_player_position_writeback() -> void:
+	var host_game := GAME_SCENE.instantiate() as Game
+	_expect(host_game != null, "Game scene must instantiate for remote player writeback test.")
+	if host_game == null:
+		return
+	host_game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
+	host_game.set("auto_start_waves", false)
+	root.add_child(host_game)
+	await process_frame
+	var remote_player := host_game.get_player_for_peer(2) as Player
+	_expect(remote_player != null, "Remote player writeback test must create peer 2.")
+	if remote_player != null:
+		var net_manager := root.get_node_or_null("NetManager")
+		var previous_role := 0
+		if net_manager != null:
+			previous_role = int(net_manager.get("net_role"))
+			net_manager.set("net_role", 1)
+		var mp_game := MP_GAME_SCENE.instantiate()
+		mp_game.set("game", host_game)
+		if net_manager != null:
+			mp_game.set("net_manager", net_manager)
+		var accepted_position := remote_player.global_position + Vector2(96.0, 24.0)
+		var accepted_velocity := Vector2(120.0, 0.0)
+		mp_game.call(
+			"_apply_accepted_client_player_state",
+			2,
+			remote_player,
+			accepted_position,
+			accepted_velocity,
+			Vector2.RIGHT,
+			false
+		)
+		_expect(
+			remote_player.global_position.is_equal_approx(accepted_position),
+			"Host must write accepted client position back to the remote player node."
+		)
+		_expect(
+			remote_player.velocity.is_equal_approx(accepted_velocity),
+			"Host must write accepted client velocity back to the remote player node."
+		)
+		if net_manager != null:
+			net_manager.set("net_role", previous_role)
+		mp_game.free()
+	_stop_audio_players(host_game)
+	host_game.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_projectile_time_compensation() -> void:
+	var mp_game := MP_GAME_SCENE.instantiate()
+	_expect(mp_game != null, "MpGame scene must instantiate for projectile compensation test.")
+	if mp_game == null:
+		return
+	var now_origin := Time.get_ticks_msec() / 1000.0 - 10.0
+	mp_game.set("_net_time_origin", now_origin)
+	mp_game.set("_has_host_time_offset", true)
+	mp_game.set("_host_to_client_time_offset", 0.0)
+	var now := float(mp_game.call("_get_net_time"))
+	var spawn_position := Vector2(10.0, 20.0)
+	var direction := Vector2.RIGHT
+	var speed := 100.0
+	var lifetime := 2.0
+	mp_game.call(
+		"_spawn_network_projectile",
+		2000001,
+		&"player_bullet",
+		2,
+		spawn_position,
+		direction,
+		7,
+		speed,
+		lifetime,
+		false,
+		0,
+		now - 0.12
+	)
+	var known_projectiles := mp_game.get("_known_projectiles") as Dictionary
+	var projectile := known_projectiles.get(2000001) as Bullet
+	_expect(projectile != null, "Projectile compensation test must spawn a bullet.")
+	if projectile != null:
+		_expect(
+			projectile.global_position.is_equal_approx(spawn_position + Vector2(12.0, 0.0)),
+			"Client projectile visuals must advance by network age."
+		)
+		_expect(
+			is_equal_approx(projectile.remaining_lifetime, lifetime - 0.12),
+			"Client projectile visuals must reduce remaining lifetime by network age."
+		)
+		projectile.free()
+	mp_game.free()
+
+
+func _test_enemy_action_uses_snapshot_timeline() -> void:
+	var client_game := GAME_SCENE.instantiate() as Game
+	_expect(client_game != null, "Game scene must instantiate for enemy action timeline test.")
+	if client_game == null:
+		return
+	client_game.configure_multiplayer(2, 2, {1: "Host", 2: "Client"})
+	client_game.set("auto_start_waves", false)
+	root.add_child(client_game)
+	await process_frame
+	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
+	_expect(enemy != null, "Enemy action timeline test must instantiate an enemy.")
+	if enemy != null:
+		client_game.enemy_container.add_child(enemy)
+		enemy.setup(BASIC_CONFIG, client_game.player, client_game.grid_pathfinder)
+		enemy.configure_multiplayer_proxy()
+		enemy.set_meta("net_id", 42)
+		enemy.global_position = Vector2(5.0, 5.0)
+		var mp_game := MP_GAME_SCENE.instantiate()
+		mp_game.set("game", client_game)
+		var net_manager := root.get_node_or_null("NetManager")
+		if net_manager != null:
+			mp_game.set("net_manager", net_manager)
+		mp_game.set("_net_time_origin", Time.get_ticks_msec() / 1000.0 - 10.0)
+		mp_game.set("_has_host_time_offset", true)
+		mp_game.set("_host_to_client_time_offset", 0.0)
+		var net_enemies := mp_game.get("_net_enemies") as Dictionary
+		net_enemies[42] = enemy
+		var interp := NetInterpolator.new(0.05, 0.0)
+		interp.push_snapshot(9.5, Vector2(5.0, 5.0), Vector2.ZERO)
+		mp_game.enemy_interpolators[42] = interp
+		mp_game.call("net_enemy_action", 42, "windup", Vector2.RIGHT, Vector2(100.0, 100.0), 1, 9.0)
+		_expect(
+			enemy.global_position.is_equal_approx(Vector2(5.0, 5.0)),
+			"Stale enemy action events must not pull proxy position off the snapshot timeline."
+		)
+		mp_game.call("net_enemy_action", 42, "windup", Vector2.RIGHT, Vector2(20.0, 5.0), 2, 10.0)
+		var latest_timestamp := (mp_game.enemy_interpolators[42] as NetInterpolator).get_latest_timestamp()
+		_expect(
+			is_equal_approx(latest_timestamp, 10.0),
+			"Fresh enemy action events must enter the enemy interpolation timeline."
+		)
+		mp_game.free()
+	_stop_audio_players(client_game)
+	client_game.queue_free()
 	await process_frame
 	await physics_frame
 
