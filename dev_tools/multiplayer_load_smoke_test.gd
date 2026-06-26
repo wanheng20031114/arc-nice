@@ -656,6 +656,10 @@ func _test_host_remote_player_position_writeback() -> void:
 	var remote_player := host_game.get_player_for_peer(2) as Player
 	_expect(remote_player != null, "Remote player writeback test must create peer 2.")
 	if remote_player != null:
+		_expect(
+			remote_player.is_multiplayer_visual_smoothing_enabled(),
+			"Host remote players must smooth visual nodes without delaying gameplay position."
+		)
 		var net_manager := root.get_node_or_null("NetManager")
 		var previous_role := 0
 		if net_manager != null:
@@ -665,7 +669,8 @@ func _test_host_remote_player_position_writeback() -> void:
 		mp_game.set("game", host_game)
 		if net_manager != null:
 			mp_game.set("net_manager", net_manager)
-		var accepted_position := remote_player.global_position + Vector2(96.0, 24.0)
+		var previous_visual_position := remote_player.get_multiplayer_visual_global_position()
+		var accepted_position := remote_player.global_position + Vector2(24.0, 8.0)
 		var accepted_velocity := Vector2(120.0, 0.0)
 		mp_game.call(
 			"_apply_accepted_client_player_state",
@@ -683,6 +688,20 @@ func _test_host_remote_player_position_writeback() -> void:
 		_expect(
 			remote_player.velocity.is_equal_approx(accepted_velocity),
 			"Host must write accepted client velocity back to the remote player node."
+		)
+		_expect(
+			remote_player.get_multiplayer_visual_global_position().is_equal_approx(previous_visual_position),
+			"Host remote player visuals must hold the previous rendered position when gameplay position advances."
+		)
+		var previous_visual_distance := previous_visual_position.distance_to(accepted_position)
+		remote_player.call("_update_multiplayer_visual_smoothing", 1.0 / 60.0)
+		_expect(
+			remote_player.get_multiplayer_visual_global_position().distance_to(accepted_position) < previous_visual_distance,
+			"Host remote player visual smoothing must move rendered position toward gameplay position."
+		)
+		_expect(
+			remote_player.global_position.is_equal_approx(accepted_position),
+			"Host remote player visual smoothing must not move gameplay position."
 		)
 		_expect(
 			not mp_game.player_visual_interpolators.has(2),

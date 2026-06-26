@@ -73,6 +73,9 @@ const SKILL1_UPGRADE_COSTS := [500, 750, 1000, 2000]
 const MAX_MULTIPLAYER_NAME_LENGTH := 12
 const NAMEPLATE_SIZE := Vector2(160.0, 30.0)
 const NAMEPLATE_WORLD_OFFSET := Vector2(0.0, -19.0)
+const MULTIPLAYER_VISUAL_OFFSET_LERP_RATE := 18.0
+const MULTIPLAYER_VISUAL_OFFSET_EPSILON := 0.05
+const MULTIPLAYER_VISUAL_SNAP_DISTANCE := 96.0
 	
 const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
 const DODGE_EFFECT_STRENGTH_SHADER_PARAMETER := &"dodge_effect_strength"
@@ -126,6 +129,14 @@ var _base_attack_damage: int = 0
 var _base_physical_defense: int = 0
 var _base_magic_defense: int = 0
 var _base_fire_interval: float = 0.0
+var multiplayer_visual_smoothing_enabled: bool = false
+var multiplayer_visual_offset: Vector2 = Vector2.ZERO
+var _body_sprite_base_position: Vector2 = Vector2.ZERO
+var _armed_effect_sprite_base_position: Vector2 = Vector2.ZERO
+var _speed_trail_effect_base_position: Vector2 = Vector2.ZERO
+var _health_bar_base_position: Vector2 = Vector2.ZERO
+var _skill1_charge_bar_base_position: Vector2 = Vector2.ZERO
+var _name_label_base_position: Vector2 = Vector2.ZERO
 
 
 # 节点首次进入场景树时的初始化逻辑
@@ -139,6 +150,7 @@ func _ready() -> void:
 	shooting_timer.wait_time = _get_effective_fire_interval()
 	_set_hurt_blink_enabled(false)
 	_update_movement_status_visuals(Vector2.ZERO)
+	_cache_multiplayer_visual_base_positions()
 	health_bar.setup(max_health, current_health)
 	name_label.visible = false
 	nameplate_layer.visible = false
@@ -170,6 +182,7 @@ func _connect_collectible_refresh_signals() -> void:
 
 
 func _process(_delta: float) -> void:
+	_update_multiplayer_visual_smoothing(_delta)
 	_update_nameplate_position()
 
 
@@ -470,6 +483,62 @@ func configure_multiplayer_control(
 		controls_locked = false
 
 
+func set_multiplayer_visual_smoothing_enabled(enabled: bool) -> void:
+	multiplayer_visual_smoothing_enabled = enabled
+	if not enabled:
+		_set_multiplayer_visual_offset(Vector2.ZERO)
+
+
+func is_multiplayer_visual_smoothing_enabled() -> bool:
+	return multiplayer_visual_smoothing_enabled
+
+
+func get_multiplayer_visual_global_position() -> Vector2:
+	return global_position + multiplayer_visual_offset
+
+
+func _cache_multiplayer_visual_base_positions() -> void:
+	_body_sprite_base_position = body_sprite.position
+	_armed_effect_sprite_base_position = armed_effect_sprite.position
+	_speed_trail_effect_base_position = speed_trail_effect.position
+	_health_bar_base_position = health_bar.position
+	_skill1_charge_bar_base_position = skill1_charge_bar.position
+	_name_label_base_position = name_label.position
+
+
+func _get_multiplayer_visual_offset_after_position_change(next_position: Vector2) -> Vector2:
+	if not multiplayer_visual_smoothing_enabled:
+		return Vector2.ZERO
+	var next_offset := get_multiplayer_visual_global_position() - next_position
+	if next_offset.length_squared() > MULTIPLAYER_VISUAL_SNAP_DISTANCE * MULTIPLAYER_VISUAL_SNAP_DISTANCE:
+		return Vector2.ZERO
+	return next_offset
+
+
+func _update_multiplayer_visual_smoothing(delta: float) -> void:
+	if not multiplayer_visual_smoothing_enabled:
+		return
+	if multiplayer_visual_offset.length_squared() <= MULTIPLAYER_VISUAL_OFFSET_EPSILON * MULTIPLAYER_VISUAL_OFFSET_EPSILON:
+		if multiplayer_visual_offset != Vector2.ZERO:
+			_set_multiplayer_visual_offset(Vector2.ZERO)
+		return
+	var blend := clampf(delta * MULTIPLAYER_VISUAL_OFFSET_LERP_RATE, 0.0, 1.0)
+	_set_multiplayer_visual_offset(multiplayer_visual_offset.lerp(Vector2.ZERO, blend))
+
+
+func _set_multiplayer_visual_offset(offset: Vector2) -> void:
+	multiplayer_visual_offset = offset
+	if body_sprite == null:
+		return
+	body_sprite.position = _body_sprite_base_position + offset
+	armed_effect_sprite.position = _armed_effect_sprite_base_position + offset
+	speed_trail_effect.position = _speed_trail_effect_base_position + offset
+	health_bar.position = _health_bar_base_position + offset
+	skill1_charge_bar.position = _skill1_charge_bar_base_position + offset
+	name_label.position = _name_label_base_position + offset
+	_update_nameplate_position()
+
+
 func apply_network_input(
 	move_input: Vector2,
 	shoot_input: Vector2,
@@ -486,7 +555,10 @@ func apply_remote_multiplayer_state(
 	shoot_input: Vector2,
 	use_skill1: bool = false
 ) -> void:
+	var next_visual_offset := _get_multiplayer_visual_offset_after_position_change(remote_position)
 	global_position = remote_position
+	if multiplayer_visual_smoothing_enabled:
+		_set_multiplayer_visual_offset(next_visual_offset)
 	apply_remote_multiplayer_view_state(remote_velocity, shoot_input, use_skill1)
 
 
@@ -610,7 +682,7 @@ func apply_multiplayer_realtime_state(
 func _update_nameplate_position() -> void:
 	if not nameplate_layer.visible:
 		return
-	var anchor := get_global_transform_with_canvas() * NAMEPLATE_WORLD_OFFSET
+	var anchor := get_global_transform_with_canvas() * (NAMEPLATE_WORLD_OFFSET + multiplayer_visual_offset)
 	nameplate_label.position = (anchor - Vector2(NAMEPLATE_SIZE.x * 0.5, NAMEPLATE_SIZE.y)).round()
 
 
@@ -632,6 +704,7 @@ func set_multiplayer_health_state(new_health: int, new_is_dead: bool) -> void:
 
 func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invincible_seconds: float = 0.0) -> void:
 	global_position = revive_position
+	_set_multiplayer_visual_offset(Vector2.ZERO)
 	is_dead = false
 	controls_locked = false
 	mouse_fire_held = false
@@ -666,6 +739,7 @@ func set_multiplayer_revive_countdown(seconds_left: int) -> void:
 
 func apply_multiplayer_death_state() -> void:
 	var was_dead := is_dead
+	_set_multiplayer_visual_offset(Vector2.ZERO)
 	is_dead = true
 	controls_locked = true
 	mouse_fire_held = false

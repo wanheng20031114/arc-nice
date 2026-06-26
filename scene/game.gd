@@ -1590,6 +1590,10 @@ func _configure_multiplayer_players() -> void:
 			display_name,
 			predicts_local_movement
 		)
+		player_instance.set_multiplayer_visual_smoothing_enabled(
+			runtime_mode == RuntimeMode.HOST_AUTHORITY
+			and peer_id != multiplayer_local_peer_id
+		)
 		if (
 			(runtime_mode == RuntimeMode.CLIENT_VIEW and not predicts_local_movement)
 			or (runtime_mode == RuntimeMode.HOST_AUTHORITY and peer_id != multiplayer_local_peer_id)
