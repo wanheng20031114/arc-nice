@@ -24,11 +24,16 @@ var _buffer_max_size: int = _NetConstants.INTERPOLATION_BUFFER_SIZE * 3
 
 ## 当前的插值渲染延迟（秒）
 var _render_delay: float = 0.1
+var _max_extrapolation_seconds: float = _NetConstants.MAX_EXTRAPOLATION_SECONDS
 var _last_position: Vector2 = Vector2.ZERO
 var _has_position: bool = false
 
 
-func _init(snapshot_interval: float = 0.05, delay_factor: float = -1.0) -> void:
+func _init(
+	snapshot_interval: float = 0.05,
+	delay_factor: float = -1.0,
+	max_extrapolation_seconds: float = -1.0
+) -> void:
 	# 渲染延迟 = delay_factor × snapshot_interval
 	var resolved_delay_factor := (
 		_NetConstants.INTERPOLATION_DELAY_FACTOR
@@ -36,6 +41,11 @@ func _init(snapshot_interval: float = 0.05, delay_factor: float = -1.0) -> void:
 		else delay_factor
 	)
 	_render_delay = resolved_delay_factor * snapshot_interval
+	_max_extrapolation_seconds = (
+		_NetConstants.MAX_EXTRAPOLATION_SECONDS
+		if max_extrapolation_seconds < 0.0
+		else maxf(max_extrapolation_seconds, 0.0)
+	)
 
 
 ## 添加一帧快照到缓存
@@ -190,6 +200,6 @@ func _extrapolate_latest_position(render_time: float) -> Vector2:
 	var extrapolation_time := clampf(
 		render_time - latest.timestamp,
 		0.0,
-		_NetConstants.MAX_EXTRAPOLATION_SECONDS
+		_max_extrapolation_seconds
 	)
 	return latest.position + latest.velocity * extrapolation_time

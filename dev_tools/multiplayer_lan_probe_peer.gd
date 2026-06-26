@@ -233,10 +233,10 @@ func _run_mp_game_probe(
 				% [expected_players, states.size()]
 			)
 	else:
-		var interpolators := mp_game.get("player_interpolators") as Dictionary
+		var interpolators := mp_game.get("player_visual_interpolators") as Dictionary
 		if interpolators.size() < expected_players - 1:
 			_fail(
-				"Client expected at least %d remote player interpolators, saw %d."
+				"Client expected at least %d remote player visual interpolators, saw %d."
 				% [expected_players - 1, interpolators.size()]
 			)
 	if events_enabled and not is_host_probe:

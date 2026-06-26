@@ -26,8 +26,7 @@ const STATE_DISCONNECTED := 0
 const STATE_IN_GAME := 5
 const HOST_TIME_OFFSET_SMOOTH_WEIGHT := 0.08
 const INPUT_CHANGE_EPSILON := 0.001
-const PLAYER_STATE_SNAP_DISTANCE := 128.0
-const PLAYER_STATE_SPEED_SLACK := 96.0
+const PLAYER_STATE_MAX_ACCEPTED_JUMP_DISTANCE := 2048.0
 const PLAYER_REVIVE_DELAY_SECONDS := 10.0
 const PLAYER_REVIVE_INVINCIBILITY_SECONDS := 3.0
 const CHEAT_XIRANG_AMOUNT := 1000
@@ -54,7 +53,8 @@ const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
 var snapshot_mgr := SnapshotManager.new()
-var player_interpolators: Dictionary = {}
+# Client-view only: remote player visual timeline. Host gameplay never reads this.
+var player_visual_interpolators: Dictionary = {}
 var enemy_interpolators: Dictionary = {}
 var game: Game = null
 var input_sequence: int = 0
@@ -233,6 +233,8 @@ func request_debug_collectible(config_path: String) -> void:
 
 
 func is_client_view_runtime() -> bool:
+	if game != null:
+		return int(game.runtime_mode) == GAME_RUNTIME_CLIENT_VIEW
 	return net_manager != null and net_manager.is_client()
 
 
@@ -389,14 +391,16 @@ func get_snapshot_packet_metrics() -> Dictionary:
 func _create_player_interpolator() -> NetInterpolator:
 	return NetInterpolator.new(
 		1.0 / float(_NetConstants.PLAYER_SNAPSHOT_HZ),
-		_NetConstants.PLAYER_INTERPOLATION_DELAY_FACTOR
+		_NetConstants.PLAYER_INTERPOLATION_DELAY_FACTOR,
+		_NetConstants.PLAYER_MAX_EXTRAPOLATION_SECONDS
 	)
 
 
 func _create_enemy_interpolator() -> NetInterpolator:
 	return NetInterpolator.new(
 		1.0 / float(_NetConstants.ENEMY_SNAPSHOT_HZ),
-		_NetConstants.ENEMY_INTERPOLATION_DELAY_FACTOR
+		_NetConstants.ENEMY_INTERPOLATION_DELAY_FACTOR,
+		_NetConstants.ENEMY_MAX_EXTRAPOLATION_SECONDS
 	)
 
 
@@ -476,21 +480,22 @@ func _client_interpolate_entities() -> void:
 	if game == null:
 		return
 	var current_time := _get_net_time()
-	var local_peer_id: int = _get_local_peer_id()
-	for peer_id_variant in player_interpolators.keys():
-		var peer_id := int(peer_id_variant)
-		if peer_id == local_peer_id:
-			continue
-		var interp := player_interpolators[peer_id] as NetInterpolator
-		var player_node: Player = game.get_player_for_peer(peer_id)
-		if interp != null and player_node != null and is_instance_valid(player_node):
-			var frame_state: NetInterpolator.FrameSnapshot = interp.get_current_state(current_time)
-			player_node.apply_multiplayer_snapshot_motion(
-				interp.get_interpolated_position(current_time),
-				interp.get_interpolated_velocity(current_time),
-				frame_state.facing,
-				frame_state.anim_state
-			)
+	var local_peer_id: int = _get_client_view_local_peer_id()
+	if is_client_view_runtime():
+		for peer_id_variant in player_visual_interpolators.keys():
+			var peer_id := int(peer_id_variant)
+			if peer_id == local_peer_id:
+				continue
+			var interp := player_visual_interpolators[peer_id] as NetInterpolator
+			var player_node: Player = game.get_player_for_peer(peer_id)
+			if interp != null and player_node != null and is_instance_valid(player_node):
+				var frame_state: NetInterpolator.FrameSnapshot = interp.get_current_state(current_time)
+				player_node.apply_multiplayer_snapshot_motion(
+					interp.get_interpolated_position(current_time),
+					interp.get_interpolated_velocity(current_time),
+					frame_state.facing,
+					frame_state.anim_state
+				)
 	for net_id_variant in enemy_interpolators.keys():
 		var net_id := int(net_id_variant)
 		var enemy_interp := enemy_interpolators[net_id] as NetInterpolator
@@ -505,6 +510,8 @@ func _client_interpolate_entities() -> void:
 func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) -> void:
 	if game == null:
 		return
+	if not is_client_view_runtime():
+		return
 	var snapshot_time := _map_host_timestamp_to_client_time(host_timestamp)
 	var states := SnapshotManager.decode_all_player_snapshots(data)
 	var snapshot_has_full_roster := _is_complete_player_snapshot_batch(data, states.size())
@@ -516,11 +523,11 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 		if player_state.peer_id <= 0:
 			continue
 		seen_player_ids[player_state.peer_id] = true
-		if net_manager.is_client() and player_state.peer_id == _get_local_peer_id():
+		if is_client_view_runtime() and player_state.peer_id == _get_client_view_local_peer_id():
 			continue
-		if not player_interpolators.has(player_state.peer_id):
-			player_interpolators[player_state.peer_id] = _create_player_interpolator()
-		var interp := player_interpolators[player_state.peer_id] as NetInterpolator
+		if not player_visual_interpolators.has(player_state.peer_id):
+			player_visual_interpolators[player_state.peer_id] = _create_player_interpolator()
+		var interp := player_visual_interpolators[player_state.peer_id] as NetInterpolator
 		interp.push_snapshot(
 			snapshot_time,
 			player_state.position,
@@ -701,14 +708,6 @@ func _apply_accepted_client_player_state(
 		player_node.get_multiplayer_facing_id(),
 		player_node.get_multiplayer_anim_state()
 	)
-	_push_player_interpolator_state(
-		sender_id,
-		_get_net_time(),
-		reported_position,
-		reported_velocity,
-		player_node.get_multiplayer_facing_id(),
-		player_node.get_multiplayer_anim_state()
-	)
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_player_state_corrected(corrected_position: Vector2, corrected_velocity: Vector2) -> void:
@@ -716,51 +715,9 @@ func net_player_state_corrected(corrected_position: Vector2, corrected_velocity:
 		return
 	game.player.global_position = corrected_position
 	game.player.velocity = corrected_velocity
-	_reset_player_interpolator_to_state(
-		game.player.peer_id,
-		corrected_position,
-		corrected_velocity,
-		game.player.get_multiplayer_facing_id(),
-		game.player.get_multiplayer_anim_state()
-	)
 
 
-func _push_player_interpolator_snapshot(peer_id: int, timestamp: float, player_node: Player) -> void:
-	if player_node == null or not is_instance_valid(player_node):
-		return
-	_push_player_interpolator_state(
-		peer_id,
-		timestamp,
-		player_node.global_position,
-		player_node.velocity,
-		player_node.get_multiplayer_facing_id(),
-		player_node.get_multiplayer_anim_state()
-	)
-
-
-func _push_player_interpolator_state(
-	peer_id: int,
-	timestamp: float,
-	player_position: Vector2,
-	player_velocity: Vector2,
-	facing_id: int,
-	anim_state: int
-) -> void:
-	if not player_interpolators.has(peer_id):
-		player_interpolators[peer_id] = _create_player_interpolator()
-	var interp: NetInterpolator = player_interpolators[peer_id] as NetInterpolator
-	interp.push_snapshot(
-		timestamp,
-		player_position,
-		player_velocity,
-		facing_id,
-		anim_state,
-		0,
-		false
-	)
-
-
-func _reset_player_interpolator_to_state(
+func _reset_player_visual_interpolator_to_state(
 	peer_id: int,
 	player_position: Vector2,
 	player_velocity: Vector2,
@@ -769,9 +726,9 @@ func _reset_player_interpolator_to_state(
 ) -> void:
 	if peer_id <= 0:
 		return
-	if not player_interpolators.has(peer_id):
-		player_interpolators[peer_id] = _create_player_interpolator()
-	var interp: NetInterpolator = player_interpolators[peer_id] as NetInterpolator
+	if not player_visual_interpolators.has(peer_id):
+		player_visual_interpolators[peer_id] = _create_player_interpolator()
+	var interp: NetInterpolator = player_visual_interpolators[peer_id] as NetInterpolator
 	if interp == null:
 		return
 	interp.clear()
@@ -813,16 +770,15 @@ func _accept_client_player_state(
 	if sequence <= last_sequence:
 		return false
 	_last_player_state_sequences[peer_id] = sequence
+	if not _is_finite_vector2(reported_position) or not _is_finite_vector2(reported_velocity):
+		return false
 	var now := _get_net_time()
 	if not _accepted_player_state_positions.has(peer_id):
 		_accepted_player_state_positions[peer_id] = reported_position
 		_accepted_player_state_times[peer_id] = now
 		return true
 	var previous_position := _accepted_player_state_positions[peer_id] as Vector2
-	var previous_time := float(_accepted_player_state_times.get(peer_id, now))
-	var elapsed := maxf(now - previous_time, 1.0 / 60.0)
-	var max_distance := reported_velocity.length() * elapsed + PLAYER_STATE_SPEED_SLACK
-	if previous_position.distance_to(reported_position) > maxf(max_distance, PLAYER_STATE_SNAP_DISTANCE):
+	if previous_position.distance_to(reported_position) > PLAYER_STATE_MAX_ACCEPTED_JUMP_DISTANCE:
 		return false
 	_accepted_player_state_positions[peer_id] = reported_position
 	_accepted_player_state_times[peer_id] = now
@@ -1975,13 +1931,6 @@ func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
 		player_node.max_health,
 		PLAYER_REVIVE_INVINCIBILITY_SECONDS
 	)
-	_reset_player_interpolator_to_state(
-		peer_id,
-		revive_position,
-		Vector2.ZERO,
-		player_node.get_multiplayer_facing_id(),
-		player_node.get_multiplayer_anim_state()
-	)
 	if peer_id != _get_host_peer_id():
 		_remember_latest_client_player_snapshot_state(
 			peer_id,
@@ -2056,13 +2005,14 @@ func net_player_revived(
 	_dead_player_revive_times.erase(peer_id)
 	_dead_player_revive_last_seconds.erase(peer_id)
 	player_node.revive_multiplayer(revive_position, current_health, invincible_seconds)
-	_reset_player_interpolator_to_state(
-		peer_id,
-		revive_position,
-		Vector2.ZERO,
-		player_node.get_multiplayer_facing_id(),
-		player_node.get_multiplayer_anim_state()
-	)
+	if is_client_view_runtime() and peer_id != _get_client_view_local_peer_id():
+		_reset_player_visual_interpolator_to_state(
+			peer_id,
+			revive_position,
+			Vector2.ZERO,
+			player_node.get_multiplayer_facing_id(),
+			player_node.get_multiplayer_anim_state()
+		)
 
 func _on_host_enemy_spawned(
 	net_id: int,
@@ -2934,6 +2884,15 @@ func _get_local_peer_id() -> int:
 	return int(net_manager.get_local_peer_id())
 
 
+func _get_client_view_local_peer_id() -> int:
+	var local_peer_id := _get_local_peer_id()
+	if local_peer_id > 0:
+		return local_peer_id
+	if game != null:
+		return int(game.multiplayer_local_peer_id)
+	return 0
+
+
 func _get_net_time() -> float:
 	return Time.get_ticks_msec() / 1000.0 - _net_time_origin
 
@@ -2973,7 +2932,7 @@ func _on_net_player_left(peer_id: int) -> void:
 
 
 func _clear_peer_network_state(peer_id: int) -> void:
-	player_interpolators.erase(peer_id)
+	player_visual_interpolators.erase(peer_id)
 	_last_player_state_sequences.erase(peer_id)
 	_accepted_player_state_positions.erase(peer_id)
 	_accepted_player_state_times.erase(peer_id)

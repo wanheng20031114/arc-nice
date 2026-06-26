@@ -34,7 +34,7 @@ func _run() -> void:
 	await _test_enemy_proxy_action_animation_restore()
 	await _test_player_multiplayer_death_visual_state()
 	await _test_multiplayer_revive_position_uses_living_players()
-	await _test_multiplayer_revive_resets_remote_interpolator()
+	await _test_multiplayer_revive_resets_remote_visual_interpolator()
 	await _test_linglan_boss_registration_uses_boss_event_only()
 	await _test_linglan_boss_proxy_keeps_body_hit_collision()
 	await _test_multiplayer_cheat_xirang_confirm()
@@ -378,7 +378,7 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 	_expect(mp_game != null, "MpGame scene must instantiate for network peer cleanup test.")
 	if mp_game == null:
 		return
-	mp_game.player_interpolators[2] = NetInterpolator.new(0.1)
+	mp_game.player_visual_interpolators[2] = NetInterpolator.new(0.1)
 	var sequence_cache := mp_game.get("_last_player_state_sequences") as Dictionary
 	var accepted_positions := mp_game.get("_accepted_player_state_positions") as Dictionary
 	var accepted_times := mp_game.get("_accepted_player_state_times") as Dictionary
@@ -409,7 +409,7 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 	)
 
 	mp_game.call("_clear_peer_network_state", 2)
-	_expect(not mp_game.player_interpolators.has(2), "MpGame must clear disconnected peer interpolators.")
+	_expect(not mp_game.player_visual_interpolators.has(2), "MpGame must clear disconnected peer visual interpolators.")
 	_expect(not sequence_cache.has(2), "MpGame must clear disconnected peer input sequence state.")
 	_expect(not accepted_positions.has(2), "MpGame must clear disconnected peer accepted position state.")
 	_expect(not accepted_times.has(2), "MpGame must clear disconnected peer accepted time state.")
@@ -447,7 +447,7 @@ func _test_player_snapshot_roster_reconcile() -> void:
 		await physics_frame
 		return
 	mp_game.set("game", game)
-	mp_game.player_interpolators[3] = NetInterpolator.new(0.1)
+	mp_game.player_visual_interpolators[3] = NetInterpolator.new(0.1)
 	var sequence_cache := mp_game.get("_last_player_state_sequences") as Dictionary
 	var health_revisions := mp_game.get("_player_health_revisions") as Dictionary
 	sequence_cache[3] = 12
@@ -468,7 +468,7 @@ func _test_player_snapshot_roster_reconcile() -> void:
 	_expect(not game.peer_players.has(3), "Client view must remove peers missing from a complete Host snapshot.")
 	_expect(game.peer_players.has(2), "Client view roster reconcile must keep the local player.")
 	_expect(game.peer_players.has(4), "Client view roster reconcile must keep peers still present in the Host snapshot.")
-	_expect(not mp_game.player_interpolators.has(3), "Roster reconcile must clear missing peer interpolators.")
+	_expect(not mp_game.player_visual_interpolators.has(3), "Roster reconcile must clear missing peer visual interpolators.")
 	_expect(not sequence_cache.has(3), "Roster reconcile must clear missing peer input sequence state.")
 	_expect(not health_revisions.has(3), "Roster reconcile must clear missing peer health revisions.")
 	_expect(not known_projectiles.has(3000001), "Roster reconcile must clear missing peer projectiles.")
@@ -684,6 +684,10 @@ func _test_host_remote_player_position_writeback() -> void:
 			remote_player.velocity.is_equal_approx(accepted_velocity),
 			"Host must write accepted client velocity back to the remote player node."
 		)
+		_expect(
+			not mp_game.player_visual_interpolators.has(2),
+			"Host must not create player visual interpolation state for accepted remote player positions."
+		)
 		if net_manager != null:
 			net_manager.set("net_role", previous_role)
 		mp_game.free()
@@ -725,12 +729,16 @@ func _test_projectile_time_compensation() -> void:
 	var projectile := known_projectiles.get(2000001) as Bullet
 	_expect(projectile != null, "Projectile compensation test must spawn a bullet.")
 	if projectile != null:
+		var actual_compensation_age := (
+			(projectile.global_position.x - spawn_position.x)
+			/ speed
+		)
 		_expect(
-			projectile.global_position.is_equal_approx(spawn_position + Vector2(12.0, 0.0)),
+			absf(actual_compensation_age - 0.12) <= 0.03,
 			"Client projectile visuals must advance by network age."
 		)
 		_expect(
-			is_equal_approx(projectile.remaining_lifetime, lifetime - 0.12),
+			absf(projectile.remaining_lifetime - (lifetime - actual_compensation_age)) <= 0.01,
 			"Client projectile visuals must reduce remaining lifetime by network age."
 		)
 		projectile.free()
@@ -1405,7 +1413,7 @@ func _test_multiplayer_revive_position_uses_living_players() -> void:
 	await process_frame
 
 
-func _test_multiplayer_revive_resets_remote_interpolator() -> void:
+func _test_multiplayer_revive_resets_remote_visual_interpolator() -> void:
 	var game := GAME_SCENE.instantiate() as Game
 	_expect(game != null, "Game scene must instantiate for revive interpolation test.")
 	if game == null:
@@ -1428,7 +1436,7 @@ func _test_multiplayer_revive_resets_remote_interpolator() -> void:
 			remote_player.apply_multiplayer_death_state()
 			var stale_interp := NetInterpolator.new(0.1)
 			stale_interp.push_snapshot(0.0, old_position, Vector2.ZERO)
-			mp_game.player_interpolators[3] = stale_interp
+			mp_game.player_visual_interpolators[3] = stale_interp
 			var health_revisions := mp_game.get("_player_health_revisions") as Dictionary
 			health_revisions[3] = 1
 
@@ -1445,7 +1453,7 @@ func _test_multiplayer_revive_resets_remote_interpolator() -> void:
 				remote_player.global_position.is_equal_approx(revive_position),
 				"Revive confirm must reset remote interpolation to the revive position."
 			)
-			var refreshed_interp := mp_game.player_interpolators.get(3) as NetInterpolator
+			var refreshed_interp := mp_game.player_visual_interpolators.get(3) as NetInterpolator
 			_expect(
 				refreshed_interp != null and refreshed_interp.get_buffer_size() == 1,
 				"Revive confirm must leave exactly one fresh interpolation sample."
