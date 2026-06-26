@@ -1,14 +1,8 @@
-[gd_resource type="Resource" script_class="LinglanSkill3Config" format=3]
+[gd_resource type="Resource" script_class="LinglanSkill3Config" format=3 uid="uid://bf6ge3snl6cq4"]
 
-[ext_resource type="Script" path="res://resources/config/bosses/linglan_skill3_config.gd" id="1_config"]
-[ext_resource type="PackedScene" path="res://scene/linglan_skill3_light_orb.tscn" id="2_orb"]
+[ext_resource type="Script" uid="uid://4d8jbsrckp2p" path="res://resources/config/bosses/linglan_skill3_config.gd" id="1_config"]
+[ext_resource type="PackedScene" uid="uid://c0jfkg6abrhs4" path="res://scene/linglan_skill3_light_orb.tscn" id="2_orb"]
 
 [resource]
 script = ExtResource("1_config")
-fire_interval = 0.2
-orb_speed = 90.0
-orb_base_radius = 15.0
-orb_grow_scale = 3.0
-orb_expanded_hold_duration = 0.5
-orb_grow_delay_max = 3.6
 orb_scene = ExtResource("2_orb")

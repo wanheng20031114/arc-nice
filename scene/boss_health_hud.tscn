@@ -44,9 +44,9 @@ script = ExtResource("1_script")
 
 [node name="HealthBar" type="ProgressBar" parent="." unique_id=688085363]
 offset_left = 270.0
-offset_top = 48.0
+offset_top = 28.0
 offset_right = 882.0
-offset_bottom = 88.0
+offset_bottom = 68.0
 mouse_filter = 2
 theme_override_styles/background = SubResource("StyleBoxFlat_health_bg")
 theme_override_styles/fill = SubResource("StyleBoxFlat_health_fill")
@@ -75,6 +75,8 @@ layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_top = -20.0
+offset_bottom = -20.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
@@ -92,9 +94,9 @@ metadata/_edit_group_ = true
 [node name="Nameplate" type="TextureRect" parent="Root" unique_id=2097219329]
 layout_mode = 0
 offset_left = 512.0
-offset_top = 96.0
+offset_top = 90.0
 offset_right = 772.0
-offset_bottom = 175.4
+offset_bottom = 169.4
 scale = Vector2(0.5, 0.5)
 mouse_filter = 2
 texture = ExtResource("3_nameplate")

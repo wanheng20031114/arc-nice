@@ -14,6 +14,7 @@ const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tre
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 const XIRANG_DROP_CONFIG := preload("res://resources/config/xirang_drop.tres")
 const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
+const LINGLAN_BOSS_CONFIG := preload("res://resources/config/bosses/boss_01_linglan.tres")
 
 var failures: Array[String] = []
 
@@ -33,6 +34,8 @@ func _run() -> void:
 	await _test_enemy_proxy_action_animation_restore()
 	await _test_player_multiplayer_death_visual_state()
 	await _test_multiplayer_revive_position_uses_living_players()
+	await _test_multiplayer_revive_resets_remote_interpolator()
+	await _test_linglan_boss_registration_uses_boss_event_only()
 	await _test_multiplayer_cheat_xirang_confirm()
 	await _test_multiplayer_peer_disconnect_cleanup()
 	await _test_player_snapshot_roster_reconcile()
@@ -1351,6 +1354,102 @@ func _test_multiplayer_revive_position_uses_living_players() -> void:
 	_stop_audio_players(game)
 	game.queue_free()
 	await process_frame
+
+
+func _test_multiplayer_revive_resets_remote_interpolator() -> void:
+	var game := GAME_SCENE.instantiate() as Game
+	_expect(game != null, "Game scene must instantiate for revive interpolation test.")
+	if game == null:
+		return
+	game.configure_multiplayer(2, 2, {1: "Host", 2: "Local", 3: "Remote"})
+	game.set("auto_start_waves", false)
+	root.add_child(game)
+	await process_frame
+
+	var remote_player := game.get_player_for_peer(3) as Player
+	_expect(remote_player != null, "Revive interpolation test must create remote peer 3.")
+	if remote_player != null:
+		var mp_game := MP_GAME_SCENE.instantiate()
+		_expect(mp_game != null, "MpGame scene must instantiate for revive interpolation test.")
+		if mp_game != null:
+			mp_game.set("game", game)
+			var old_position := Vector2(-400.0, -300.0)
+			var revive_position := Vector2(96.0, 144.0)
+			remote_player.global_position = old_position
+			remote_player.apply_multiplayer_death_state()
+			var stale_interp := NetInterpolator.new(0.1)
+			stale_interp.push_snapshot(0.0, old_position, Vector2.ZERO)
+			mp_game.player_interpolators[3] = stale_interp
+			var health_revisions := mp_game.get("_player_health_revisions") as Dictionary
+			health_revisions[3] = 1
+
+			mp_game.call(
+				"net_player_revived",
+				3,
+				revive_position,
+				remote_player.max_health,
+				0.5,
+				2
+			)
+			mp_game.call("_client_interpolate_entities")
+			_expect(
+				remote_player.global_position.is_equal_approx(revive_position),
+				"Revive confirm must reset remote interpolation to the revive position."
+			)
+			var refreshed_interp := mp_game.player_interpolators.get(3) as NetInterpolator
+			_expect(
+				refreshed_interp != null and refreshed_interp.get_buffer_size() == 1,
+				"Revive confirm must leave exactly one fresh interpolation sample."
+			)
+			mp_game.free()
+	_stop_audio_players(game)
+	game.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_linglan_boss_registration_uses_boss_event_only() -> void:
+	var game := GAME_SCENE.instantiate() as Game
+	_expect(game != null, "Game scene must instantiate for Linglan boss registration test.")
+	if game == null:
+		return
+	game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
+	game.set("auto_start_waves", false)
+	root.add_child(game)
+	await process_frame
+
+	var boss_enemy_config := LINGLAN_BOSS_CONFIG.call("get_enemy_config") as EnemyConfig
+	_expect(boss_enemy_config != null, "Linglan boss config must resolve its enemy config.")
+	var boss_enemy: LinglanBoss = null
+	if boss_enemy_config != null and boss_enemy_config.enemy_scene != null:
+		boss_enemy = boss_enemy_config.enemy_scene.instantiate() as LinglanBoss
+	_expect(boss_enemy != null, "Linglan boss scene must instantiate as LinglanBoss.")
+	if boss_enemy != null:
+		game.boss_container.add_child(boss_enemy)
+		boss_enemy.setup(boss_enemy_config, game.player, game.grid_pathfinder)
+		var spawn_events: Array[int] = []
+		var spawn_callback := func(net_id: int, _enemy_config: EnemyConfig, _spawn_position: Vector2) -> void:
+			spawn_events.append(net_id)
+		game.multiplayer_enemy_spawned.connect(spawn_callback)
+		var net_id := int(game.call(
+			"_register_multiplayer_enemy_instance",
+			boss_enemy,
+			boss_enemy_config,
+			Vector2(42.0, 64.0),
+			false
+		))
+		game.multiplayer_enemy_spawned.disconnect(spawn_callback)
+		_expect(net_id > 0, "Linglan boss registration must allocate a net id.")
+		_expect(spawn_events.is_empty(), "Linglan boss registration must not emit generic enemy spawn.")
+		_expect(
+			game.get_enemy_for_net_id(net_id) == boss_enemy,
+			"Linglan boss registration must still index the boss by net id."
+		)
+
+	_stop_audio_players(game)
+	game.queue_free()
+	await process_frame
+	await physics_frame
 
 
 func _test_multiplayer_cheat_xirang_confirm() -> void:

@@ -661,6 +661,9 @@ func _rpc_client_player_state(
 	if player_node.is_dead or player_node.controls_locked:
 		net_player_state_corrected.rpc_id(sender_id, player_node.global_position, player_node.velocity)
 		return
+	if is_dead or current_health <= 0:
+		net_player_state_corrected.rpc_id(sender_id, player_node.global_position, player_node.velocity)
+		return
 	if not _accept_client_player_state(sender_id, sequence, reported_position, reported_velocity):
 		net_player_state_corrected.rpc_id(sender_id, player_node.global_position, player_node.velocity)
 		return
@@ -713,6 +716,13 @@ func net_player_state_corrected(corrected_position: Vector2, corrected_velocity:
 		return
 	game.player.global_position = corrected_position
 	game.player.velocity = corrected_velocity
+	_reset_player_interpolator_to_state(
+		game.player.peer_id,
+		corrected_position,
+		corrected_velocity,
+		game.player.get_multiplayer_facing_id(),
+		game.player.get_multiplayer_anim_state()
+	)
 
 
 func _push_player_interpolator_snapshot(peer_id: int, timestamp: float, player_node: Player) -> void:
@@ -741,6 +751,32 @@ func _push_player_interpolator_state(
 	var interp: NetInterpolator = player_interpolators[peer_id] as NetInterpolator
 	interp.push_snapshot(
 		timestamp,
+		player_position,
+		player_velocity,
+		facing_id,
+		anim_state,
+		0,
+		false
+	)
+
+
+func _reset_player_interpolator_to_state(
+	peer_id: int,
+	player_position: Vector2,
+	player_velocity: Vector2,
+	facing_id: int,
+	anim_state: int
+) -> void:
+	if peer_id <= 0:
+		return
+	if not player_interpolators.has(peer_id):
+		player_interpolators[peer_id] = _create_player_interpolator()
+	var interp: NetInterpolator = player_interpolators[peer_id] as NetInterpolator
+	if interp == null:
+		return
+	interp.clear()
+	interp.push_snapshot(
+		_get_net_time(),
 		player_position,
 		player_velocity,
 		facing_id,
@@ -1015,7 +1051,7 @@ func _get_projectile_time_compensation_age(host_fire_timestamp: float, lifetime:
 		return 0.0
 	var mapped_fire_time := host_fire_timestamp
 	if net_manager == null or not net_manager.is_host():
-		mapped_fire_time = _map_host_timestamp_to_client_time(host_fire_timestamp)
+		mapped_fire_time = _map_host_timestamp_to_client_time(host_fire_timestamp, false)
 	var age := _get_net_time() - mapped_fire_time
 	return clampf(age, 0.0, minf(PROJECTILE_TIME_COMPENSATION_MAX_SECONDS, maxf(lifetime, 0.0)))
 
@@ -1879,14 +1915,18 @@ func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
 	var now: float = _get_net_time()
 	_accepted_player_state_positions[peer_id] = revive_position
 	_accepted_player_state_times[peer_id] = now
-	var player_interp: NetInterpolator = player_interpolators.get(peer_id) as NetInterpolator
-	if player_interp != null:
-		player_interp.clear()
 	var health_revision := _next_player_health_revision(peer_id)
 	player_node.revive_multiplayer(
 		revive_position,
 		player_node.max_health,
 		PLAYER_REVIVE_INVINCIBILITY_SECONDS
+	)
+	_reset_player_interpolator_to_state(
+		peer_id,
+		revive_position,
+		Vector2.ZERO,
+		player_node.get_multiplayer_facing_id(),
+		player_node.get_multiplayer_anim_state()
 	)
 	if peer_id != _get_host_peer_id():
 		_remember_latest_client_player_snapshot_state(
@@ -1961,10 +2001,14 @@ func net_player_revived(
 	_player_health_revisions[peer_id] = health_revision
 	_dead_player_revive_times.erase(peer_id)
 	_dead_player_revive_last_seconds.erase(peer_id)
-	var player_interp: NetInterpolator = player_interpolators.get(peer_id) as NetInterpolator
-	if player_interp != null:
-		player_interp.clear()
 	player_node.revive_multiplayer(revive_position, current_health, invincible_seconds)
+	_reset_player_interpolator_to_state(
+		peer_id,
+		revive_position,
+		Vector2.ZERO,
+		player_node.get_multiplayer_facing_id(),
+		player_node.get_multiplayer_anim_state()
+	)
 
 func _on_host_enemy_spawned(
 	net_id: int,
@@ -2126,7 +2170,7 @@ func net_enemy_spawned(
 		return
 	game.enemy_container.add_child(enemy)
 	var spawn_position: Vector2 = Vector2(pos_x, pos_y)
-	var mapped_spawn_time: float = _map_host_timestamp_to_client_time(host_spawn_timestamp)
+	var mapped_spawn_time: float = _map_host_timestamp_to_client_time(host_spawn_timestamp, false)
 	_enemy_spawn_snapshot_times[net_id] = mapped_spawn_time
 	enemy.global_position = _get_buffered_enemy_position(net_id, spawn_position)
 	enemy.setup(enemy_config, game.player, game.grid_pathfinder)
@@ -2220,7 +2264,7 @@ func _push_enemy_action_interpolator_sample(
 		return {}
 	var action_time := _get_net_time()
 	if host_action_timestamp >= 0.0:
-		action_time = _map_host_timestamp_to_client_time(host_action_timestamp)
+		action_time = _map_host_timestamp_to_client_time(host_action_timestamp, false)
 	var interp := enemy_interpolators.get(net_id) as NetInterpolator
 	var had_interpolator_samples := interp != null and interp.get_buffer_size() > 0
 	if interp != null:
@@ -2840,9 +2884,13 @@ func _get_net_time() -> float:
 	return Time.get_ticks_msec() / 1000.0 - _net_time_origin
 
 
-func _map_host_timestamp_to_client_time(host_timestamp: float) -> float:
+func _map_host_timestamp_to_client_time(host_timestamp: float, update_offset: bool = true) -> float:
 	var receive_time := _get_net_time()
 	var sampled_offset := receive_time - host_timestamp
+	if not update_offset:
+		if _has_host_time_offset:
+			return host_timestamp + _host_to_client_time_offset
+		return receive_time
 	if not _has_host_time_offset:
 		_host_to_client_time_offset = sampled_offset
 		_has_host_time_offset = true

@@ -351,6 +351,8 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 			wave_state = WaveState.BOSS_ACTIVE
 			_set_local_merchants_active(false)
 			wave_hud.hide_all()
+			if linglan_boss_intro_vfx != null:
+				linglan_boss_intro_vfx.stop_intro()
 			var active_config := flow_step as BossConfig
 			if active_config != null:
 				active_boss_config = active_config
@@ -378,6 +380,8 @@ func apply_remote_wave_started(wave_index: int) -> void:
 func apply_remote_boss_started(net_id: int, boss_config: BossConfig, spawn_position: Vector2) -> void:
 	if runtime_mode != RuntimeMode.CLIENT_VIEW or boss_config == null:
 		return
+	if linglan_boss_intro_vfx != null:
+		linglan_boss_intro_vfx.stop_intro()
 	active_boss_config = boss_config
 	current_flow_step = boss_config
 	wave_state = WaveState.BOSS_ACTIVE
@@ -1248,7 +1252,8 @@ func _try_spawn_boss_add_at_marker(enemy_config: EnemyConfig, marker_name: Strin
 func _register_multiplayer_enemy_instance(
 	enemy_instance: Enemy,
 	enemy_config: EnemyConfig,
-	spawn_position: Vector2
+	spawn_position: Vector2,
+	broadcast_spawn: bool = true
 ) -> int:
 	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
 		return 0
@@ -1263,7 +1268,8 @@ func _register_multiplayer_enemy_instance(
 	enemy_instance.set_meta("net_id", enemy_net_id)
 	multiplayer_enemy_ids_by_instance[enemy_id] = enemy_net_id
 	multiplayer_enemies_by_net_id[enemy_net_id] = enemy_instance
-	multiplayer_enemy_spawned.emit(enemy_net_id, enemy_config, spawn_position)
+	if broadcast_spawn:
+		multiplayer_enemy_spawned.emit(enemy_net_id, enemy_config, spawn_position)
 	return enemy_net_id
 
 
@@ -1435,7 +1441,8 @@ func _activate_linglan_boss() -> void:
 	var boss_net_id := _register_multiplayer_enemy_instance(
 		linglan_boss,
 		_get_boss_enemy_config(boss_config),
-		linglan_boss.global_position
+		linglan_boss.global_position,
+		false
 	)
 	if boss_health_hud != null:
 		boss_health_hud.show_for_boss(linglan_boss, _get_boss_display_name(boss_config))
