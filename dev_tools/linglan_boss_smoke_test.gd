@@ -51,6 +51,7 @@ func _test_animation_resource() -> void:
 	var expected_counts := {
 		&"idle": 8,
 		&"move": 8,
+		&"attack": 8,
 		&"die": 8,
 	}
 	for animation_name in expected_counts.keys():
@@ -72,6 +73,9 @@ func _test_animation_resource() -> void:
 		if animation_name == &"die":
 			_expect(not LINGLAN_FRAMES.get_animation_loop(animation_name), "Linglan die animation must not loop.")
 			_expect(is_equal_approx(LINGLAN_FRAMES.get_animation_speed(animation_name), 8.0), "Linglan die animation speed must match the authored dissolve timing.")
+		if animation_name == &"attack":
+			_expect(LINGLAN_FRAMES.get_animation_loop(animation_name), "Linglan attack animation must loop during boss casting phases.")
+			_expect(is_equal_approx(LINGLAN_FRAMES.get_animation_speed(animation_name), 9.0), "Linglan attack animation speed mismatch.")
 
 
 func _test_boss_entry_resource() -> void:

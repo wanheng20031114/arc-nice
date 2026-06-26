@@ -37,6 +37,8 @@ SKILL2_EXPLOSION_SOURCE = "dev_assets/source_images/boss_linglan/skill2_sakura_e
 SKILL2_EXPLOSION_ALPHA = "dev_assets/source_images/boss_linglan/skill2_sakura_explosion_alpha.png"
 DIE_SOURCE = "dev_assets/source_images/boss_linglan/die_imagegen_green_v2.png"
 DIE_ALPHA = "dev_assets/source_images/boss_linglan/die_v2_alpha.png"
+ATTACK_SOURCE = "dev_assets/source_images/boss_linglan/attack_imagegen_green_v2.png"
+ATTACK_ALPHA = "dev_assets/source_images/boss_linglan/attack_v2_alpha.png"
 
 OUTPUT_TEXTURE_DIR = "resources/texture/boss_linglan"
 OUTPUT_FRAMES = "resources/animation/linglan.tres"
@@ -51,6 +53,7 @@ OUTPUT_SKILL2_ROCKET_FRAMES = "resources/animation/linglan_skill2_sakura_rocket.
 OUTPUT_SKILL2_EXPLOSION = "resources/texture/boss_linglan/skill2_sakura_explosion.png"
 OUTPUT_SKILL2_EXPLOSION_FRAMES = "resources/animation/linglan_skill2_sakura_explosion.tres"
 OUTPUT_DIE = "resources/texture/boss_linglan/die.png"
+OUTPUT_ATTACK = "resources/texture/boss_linglan/attack.png"
 
 CONVERGENCE_TEXTURE_RESOURCE = "res://resources/texture/boss_linglan/sakura_convergence.png"
 SKILL2_ROCKET_TEXTURE_RESOURCE = "res://resources/texture/boss_linglan/skill2_sakura_rocket.png"
@@ -76,6 +79,7 @@ LINGLAN_DIE_BAND_GAP = 30
 LINGLAN_TEXTURE_UIDS: dict[str, str] = {
 	"idle": "uid://bvv7p5if14s8v",
 	"move": "uid://c5c85r1wfluct",
+	"attack": "uid://ci145785u7vgf",
 	"die": "uid://2ku0adg2fswq",
 }
 
@@ -83,6 +87,7 @@ LINGLAN_TEXTURE_RESOURCES: OrderedDict[str, str] = OrderedDict(
 	[
 		("idle", "res://resources/texture/boss_linglan/idle.png"),
 		("move", "res://resources/texture/boss_linglan/move.png"),
+		("attack", "res://resources/texture/boss_linglan/attack.png"),
 		("die", "res://resources/texture/boss_linglan/die.png"),
 	]
 )
@@ -914,6 +919,35 @@ def _process_linglan_die(root: Path) -> tuple[dict[str, FrameRegion], list[str]]
 	return regions, frame_names
 
 
+def _process_linglan_attack(root: Path) -> None:
+	source = Image.open(root / ATTACK_SOURCE).convert("RGBA")
+	alpha = _despill_chroma_green(_remove_linglan_sprite_background(source))
+	alpha_path = root / ATTACK_ALPHA
+	alpha_path.parent.mkdir(parents=True, exist_ok=True)
+	alpha.save(alpha_path)
+
+	detected_frames = _detect_animation_strip_source_frames(alpha, "attack")
+	frames: list[tuple[str, Image.Image]] = []
+	for frame_index, detected in enumerate(detected_frames):
+		frame_name = f"attack_{frame_index}"
+		frame = _extract_frame(
+			alpha,
+			detected,
+			LINGLAN_AUTHORED_FRAME_SIZE,
+			_detect_linglan_body_anchor(alpha, detected),
+			LINGLAN_DIE_TARGET_ANCHOR,
+		)
+		frame = _despill_chroma_green(_remove_tiny_alpha_components(_remove_tall_edge_fragments(frame)))
+		frames.append((frame_name, frame))
+
+	sheet, _regions = _build_animation_strip(frames)
+	attack_path = root / OUTPUT_ATTACK
+	attack_path.parent.mkdir(parents=True, exist_ok=True)
+	sheet.save(attack_path)
+	print(f"Linglan attack alpha: {alpha_path} ({alpha.width}x{alpha.height})")
+	print(f"Linglan attack strip: {attack_path} ({sheet.width}x{sheet.height})")
+
+
 def _collect_linglan_output_strip_regions(
 	root: Path,
 ) -> tuple[OrderedDict[str, dict[str, FrameRegion]], OrderedDict[str, list[str]]]:
@@ -945,6 +979,7 @@ def _collect_linglan_output_strip_regions(
 
 def _process_linglan_sprite(root: Path) -> None:
 	_process_linglan_die(root)
+	_process_linglan_attack(root)
 	regions_by_animation, animations = _collect_linglan_output_strip_regions(root)
 	_write_spriteframes_for_animation_strips(
 		root / OUTPUT_FRAMES,

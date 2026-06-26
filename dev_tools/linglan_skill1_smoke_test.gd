@@ -144,6 +144,8 @@ func _test_skill1_fire_schedule() -> void:
 	var first_ring := _get_sakura_bullets()
 	_expect(first_ring.size() == 20, "Skill1 first ring must spawn 20 projectiles.")
 	_expect(_get_warning_rays().is_empty(), "Skill1 warning rays must clear when firing starts.")
+	var sprite := boss.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
+	_expect(sprite != null and sprite.animation == &"attack", "Skill1 firing phase must play Linglan attack animation.")
 	if first_ring.size() == 20:
 		var first_bullet := first_ring[0]
 		_expect(is_equal_approx(first_bullet.speed, 300.0), "Sakura bullet speed mismatch.")

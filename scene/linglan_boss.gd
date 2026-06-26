@@ -189,6 +189,7 @@ func _update_skill1(delta: float) -> void:
 		skill1_finished = true
 		return
 
+	_play_attack_animation()
 	skill1_fire_time_left -= maxf(skill_active_delta, 0.0)
 	var fire_interval := skill1_config.get_fire_interval()
 	while skill1_fire_time_left <= 0.0 and not skill1_finished:
@@ -392,13 +393,13 @@ func _begin_skill2_attack() -> void:
 	skill2_shots_fired = 0
 	skill2_warning_shot_index = -1
 	velocity = Vector2.ZERO
-	_play_idle_animation()
+	_play_attack_animation()
 
 
 func _update_skill2(delta: float) -> void:
 	velocity = Vector2.ZERO
 	skill2_elapsed += maxf(delta, 0.0)
-	_play_idle_animation()
+	_play_attack_animation()
 	_update_skill2_spawn_ticks()
 	_update_skill2_warning_and_fire()
 	if (
@@ -656,13 +657,13 @@ func _begin_skill3_attack() -> void:
 	skill3_elapsed = 0.0
 	skill3_shots_fired = 0
 	velocity = Vector2.ZERO
-	_play_idle_animation()
+	_play_attack_animation()
 
 
 func _update_skill3(delta: float) -> void:
 	velocity = Vector2.ZERO
 	skill3_elapsed += maxf(delta, 0.0)
-	_play_idle_animation()
+	_play_attack_animation()
 	_update_skill3_fire()
 	if skill3_elapsed >= skill3_config.duration and skill3_shots_fired >= skill3_config.get_shot_count():
 		boss_skill_phase = BossSkillPhase.DONE
@@ -779,6 +780,14 @@ func _play_idle_animation() -> void:
 		return
 	if animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"idle"):
 		animated_sprite.play(&"idle")
+
+
+func _play_attack_animation() -> void:
+	if animated_sprite == null:
+		return
+	if animated_sprite.animation == &"attack" and animated_sprite.is_playing():
+		return
+	_play_scene_animation(&"attack")
 
 
 func _clear_skill2_warning_arrow() -> void:

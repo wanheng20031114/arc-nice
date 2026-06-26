@@ -283,6 +283,8 @@ func _test_boss_skill3_schedule() -> void:
 		_expect(sprite.flip_h, "Leftward Skill3 movement must mirror Linglan move sprite.")
 
 	boss.call("_physics_process", 0.01)
+	if sprite != null:
+		_expect(sprite.animation == &"attack", "Skill3 attack phase must play Linglan attack animation.")
 	_expect(host.projectile_records.size() == 1, "Skill3 must fire immediately after attack starts.")
 	for _step in range(660):
 		boss.call("_physics_process", 1.0 / 60.0)

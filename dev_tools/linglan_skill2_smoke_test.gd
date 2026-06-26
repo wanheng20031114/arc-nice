@@ -254,6 +254,8 @@ func _test_boss_skill2_schedule() -> void:
 		_expect(not sprite.flip_h, "Linglan facing must restore after turning right.")
 
 	boss.call("_physics_process", 0.01)
+	if sprite != null:
+		_expect(sprite.animation == &"attack", "Skill2 attack phase must play Linglan attack animation.")
 	_expect(host.spawn_marker_calls.size() == 2, "Skill2 must request Spawn4 and Spawn5 immediately at attack start.")
 	_expect(host.spawn_marker_calls.slice(0, 2) == [&"Spawn4", &"Spawn5"], "Skill2 first spawn request must target Spawn4/Spawn5.")
 	_expect(_count_skill2_warning_arrows(host) == 1, "Skill2 must show warning arrow before the first rocket.")
