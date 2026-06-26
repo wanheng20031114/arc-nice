@@ -11,6 +11,7 @@ class_name LinglanSkill4Config
 @export var laser_start_top_cell_y: int = -1
 @export var laser_start_bottom_cell_y: int = 16
 @export_range(0, 32, 1, "or_greater") var laser_inward_cell_distance: int = 5
+@export_range(0.0, 10.0, 0.05, "or_greater") var laser_warning_duration: float = 1.0
 @export_range(0.01, 30.0, 0.05, "or_greater") var laser_shrink_duration: float = 3.0
 @export_range(0.0, 10.0, 0.05, "or_greater") var orb_start_delay_after_laser: float = 0.5
 @export_range(1.0, 64.0, 0.5, "or_greater") var laser_core_width: float = 6.0
@@ -29,7 +30,11 @@ class_name LinglanSkill4Config
 
 
 func get_orb_start_time() -> float:
-	return maxf(laser_shrink_duration, 0.0) + maxf(orb_start_delay_after_laser, 0.0)
+	return (
+		maxf(laser_warning_duration, 0.0)
+		+ maxf(laser_shrink_duration, 0.0)
+		+ maxf(orb_start_delay_after_laser, 0.0)
+	)
 
 
 func get_total_duration() -> float:

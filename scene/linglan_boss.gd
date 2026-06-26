@@ -959,6 +959,7 @@ func _spawn_skill4_laser_field(enable_damage: bool) -> void:
 		config4.laser_damage,
 		config4.laser_core_width,
 		config4.laser_shrink_duration,
+		config4.laser_warning_duration,
 		enable_damage
 	)
 	if not enable_damage:
