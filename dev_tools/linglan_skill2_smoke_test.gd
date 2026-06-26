@@ -139,6 +139,19 @@ func _test_skill2_scene_contract() -> void:
 	if explosion_shape != null and explosion_shape.shape is CircleShape2D:
 		var circle := explosion_shape.shape as CircleShape2D
 		_expect(is_equal_approx(circle.radius, EXPECTED_ROCKET_EXPLOSION_RADIUS), "Skill2 explosion shape radius mismatch.")
+	_expect(is_equal_approx(rocket.flash_lead_time, 1.2), "Skill2 rocket must start flashing 1.2 seconds before lifetime explosion.")
+	rocket.remaining_lifetime = rocket.flash_lead_time + 0.1
+	rocket.call("_update_flash_visual")
+	_expect(
+		is_equal_approx(rocket.animated_sprite.modulate.a, 1.0),
+		"Skill2 rocket must not flash before the final 1.2 seconds."
+	)
+	rocket.remaining_lifetime = rocket.flash_lead_time - 0.05
+	rocket.call("_update_flash_visual")
+	_expect(
+		rocket.animated_sprite.modulate.a < 0.99,
+		"Skill2 rocket must flash during the final 1.2 seconds."
+	)
 	rocket.queue_free()
 
 	var warning_arrow := WARNING_ARROW_SCENE.instantiate() as Node2D

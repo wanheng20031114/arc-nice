@@ -1,6 +1,7 @@
 extends Area2D
 class_name CapooMageFireball
 
+const IMPACT_SCENE := preload("res://scene/enemy/capoo_mage_fireball_impact.tscn")
 const WORLD_COLLISION_MASK := 1
 const PLAYER_COLLISION_MASK := 2
 const EXPLOSION_QUERY_MAX_RESULTS := 8
@@ -13,15 +14,12 @@ const EXPLOSION_QUERY_MAX_RESULTS := 8
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var explosion_shape: CollisionShape2D = $ExplosionShape
-@onready var impact_audio: AudioStreamPlayer2D = $ImpactAudio
 
 var direction := Vector2.RIGHT
 var target_player: Player = null
 var damage: int = 1
 var remaining_lifetime: float = 0.0
 var has_exploded: bool = false
-var impact_animation_finished: bool = false
-var impact_release_time_left: float = 0.0
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"capoo_mage_fireball"
@@ -30,7 +28,6 @@ var source_type: StringName = &"capoo_mage_fireball"
 func _ready() -> void:
 	remaining_lifetime = maxf(max_lifetime, 0.01)
 	body_entered.connect(_on_body_entered)
-	animated_sprite.animation_finished.connect(_on_animation_finished)
 	_apply_radius()
 	if animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"fly"):
 		animated_sprite.play(&"fly")
@@ -66,14 +63,6 @@ func setup_multiplayer(
 	projectile_id = maxi(new_projectile_id, 0)
 	owner_peer_id = new_owner_peer_id
 	source_type = new_source_type
-
-
-func _process(delta: float) -> void:
-	if not has_exploded:
-		return
-	if impact_release_time_left > 0.0:
-		impact_release_time_left = maxf(impact_release_time_left - delta, 0.0)
-	_queue_free_when_impact_finished()
 
 
 func _physics_process(delta: float) -> void:
@@ -129,16 +118,14 @@ func _explode() -> void:
 	if has_exploded:
 		return
 	has_exploded = true
-	impact_animation_finished = false
-	impact_release_time_left = 0.0
 	set_deferred("monitoring", false)
 	set_deferred("monitorable", false)
 	collision_layer = 0
 	collision_mask = 0
 	collision_shape.set_deferred("disabled", true)
 	_apply_explosion_damage()
-	_play_impact_audio()
-	_play_impact_animation()
+	_spawn_impact_effect()
+	queue_free()
 
 
 func _apply_explosion_damage() -> void:
@@ -167,35 +154,18 @@ func _apply_explosion_damage() -> void:
 			player.apply_damage(damage)
 
 
-func _play_impact_animation() -> void:
-	rotation = 0.0
-	animated_sprite.position = Vector2.ZERO
-	if animated_sprite.sprite_frames == null or not animated_sprite.sprite_frames.has_animation(&"impact"):
-		impact_animation_finished = true
-		_queue_free_when_impact_finished()
+func _spawn_impact_effect() -> void:
+	var spawn_parent := get_tree().current_scene
+	if spawn_parent == null:
+		spawn_parent = get_parent()
+	if spawn_parent == null:
 		return
-	animated_sprite.play(&"impact")
-
-
-func _play_impact_audio() -> void:
-	if impact_audio.stream == null:
+	var impact := IMPACT_SCENE.instantiate() as Node2D
+	if impact == null:
 		return
-	impact_release_time_left = maxf(impact_release_time_left, impact_audio.stream.get_length())
-	impact_audio.play()
-
-
-func _on_animation_finished() -> void:
-	if has_exploded and animated_sprite.animation == &"impact":
-		impact_animation_finished = true
-		_queue_free_when_impact_finished()
-
-
-func _queue_free_when_impact_finished() -> void:
-	if not impact_animation_finished:
-		return
-	if impact_release_time_left > 0.0:
-		return
-	queue_free()
+	impact.top_level = true
+	spawn_parent.add_child(impact)
+	impact.global_position = global_position
 
 
 func _try_report_multiplayer_player_hit(player: Player) -> bool:

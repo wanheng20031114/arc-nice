@@ -1,0 +1,20 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scene/enemy/capoo_mage_fireball_impact.gd" id="1_script"]
+[ext_resource type="SpriteFrames" uid="uid://cemn3y2bgbhbs" path="res://resources/animation/capoo_mage_fireball.tres" id="2_frames"]
+[ext_resource type="AudioStream" uid="uid://5suma26l7o3s" path="res://resources/audio/capoo_mage_fireball_impact.wav" id="3_impact_audio"]
+
+[node name="CapooMageFireballImpact" type="Node2D"]
+z_index = 4
+script = ExtResource("1_script")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+scale = Vector2(0.46, 0.46)
+sprite_frames = ExtResource("2_frames")
+animation = &"impact"
+
+[node name="ImpactAudio" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("3_impact_audio")
+volume_db = -7.0
+max_distance = 220.0
+max_polyphony = 2

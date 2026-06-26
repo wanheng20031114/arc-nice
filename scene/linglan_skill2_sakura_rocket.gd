@@ -23,6 +23,8 @@ const EXPLOSION_QUERY_MAX_RESULTS := 96
 @export var max_lifetime: float = 5.0
 @export var explosion_radius: float = 78.0
 @export var homing_turn_rate: float = 1.2
+@export_range(0.0, 10.0, 0.05, "or_greater") var flash_lead_time: float = 1.2
+@export_range(1.0, 30.0, 0.1, "or_greater") var flash_frequency: float = 9.0
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
@@ -36,14 +38,17 @@ var has_exploded: bool = false
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"linglan_skill2_rocket"
+var base_sprite_modulate: Color = Color.WHITE
 
 
 func _ready() -> void:
 	remaining_lifetime = maxf(max_lifetime, 0.01)
 	body_entered.connect(_on_body_entered)
 	_apply_explosion_radius()
+	base_sprite_modulate = animated_sprite.modulate
 	if animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"fly"):
 		animated_sprite.play(&"fly")
+	_update_flash_visual()
 
 
 func setup(
@@ -66,6 +71,8 @@ func setup(
 	target_player = initial_target_player
 	homing_turn_rate = maxf(initial_homing_turn_rate, 0.0)
 	_apply_explosion_radius()
+	if is_node_ready():
+		_update_flash_visual()
 
 
 func setup_multiplayer(
@@ -95,6 +102,8 @@ func _physics_process(delta: float) -> void:
 	remaining_lifetime = maxf(remaining_lifetime - delta, 0.0)
 	if remaining_lifetime <= 0.0:
 		_explode()
+		return
+	_update_flash_visual()
 
 
 func _update_homing(delta: float) -> void:
@@ -137,9 +146,24 @@ func _explode() -> void:
 	collision_mask = 0
 	if collision_shape != null:
 		collision_shape.set_deferred("disabled", true)
+	animated_sprite.modulate = base_sprite_modulate
 	_apply_explosion_damage()
 	_spawn_explosion_effect()
 	queue_free()
+
+
+func _update_flash_visual() -> void:
+	if animated_sprite == null:
+		return
+	var lead_time := maxf(flash_lead_time, 0.0)
+	if lead_time <= 0.0 or remaining_lifetime > lead_time:
+		animated_sprite.modulate = base_sprite_modulate
+		return
+	var flash_elapsed := lead_time - remaining_lifetime
+	var wave := (sin(flash_elapsed * TAU * maxf(flash_frequency, 1.0)) + 1.0) * 0.5
+	var next_modulate := base_sprite_modulate
+	next_modulate.a *= lerpf(0.25, 1.0, wave)
+	animated_sprite.modulate = next_modulate
 
 
 func _apply_explosion_damage() -> void:

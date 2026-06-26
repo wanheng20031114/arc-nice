@@ -4,6 +4,7 @@ const MAGE_SCENE := preload("res://scene/enemy/capoo_mage.tscn")
 const SNIPER_SCENE := preload("res://scene/enemy/capoo_sniper.tscn")
 const SMG_SCENE := preload("res://scene/enemy/capoo_smg.tscn")
 const FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
+const FIREBALL_IMPACT_SCENE := preload("res://scene/enemy/capoo_mage_fireball_impact.tscn")
 const RETICLE_SCENE := preload("res://scene/enemy/capoo_sniper_lock_reticle.tscn")
 const SMG_BULLET_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
@@ -193,26 +194,26 @@ func _test_fireball_impact_damage_and_release() -> void:
 
 	_expect(near_player.current_health == 25, "Fireball impact did not damage the player inside radius.")
 	_expect(far_player.current_health == 100, "Fireball impact damaged a player outside radius.")
-	_expect(is_instance_valid(fireball), "Fireball must remain while impact animation plays.")
-	if is_instance_valid(fireball):
-		_expect(fireball.has_exploded, "Fireball did not enter exploded state.")
-		_expect(not fireball.monitoring, "Exploded fireball must stop monitoring.")
+	_expect(not is_instance_valid(fireball), "Fireball projectile must release immediately after impact damage.")
+	var impact := _find_fireball_impact_effect()
+	_expect(impact != null, "Fireball impact must spawn a separate visual effect.")
+	if impact != null:
+		var impact_sprite := impact.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
 		_expect(
-			fireball.collision_layer == 0 and fireball.collision_mask == 0,
-			"Exploded fireball collision layers must be disabled."
+			impact_sprite != null and impact_sprite.animation == &"impact",
+			"Fireball impact effect must play the impact animation."
 		)
-		_expect(fireball.animated_sprite.animation == &"impact", "Fireball did not switch to impact animation.")
 		_expect(
-			fireball.animated_sprite.position == Vector2.ZERO,
-			"Fireball impact animation must be centered on hit position."
+			impact.global_position.is_equal_approx(Vector2.ZERO),
+			"Fireball impact effect must stay centered on hit position."
 		)
 	_expect(_count_bullet_hit_effects() == 0, "Mage fireball must not spawn the generic bullet hit effect.")
 
 	var release_guard_frames := 0
-	while is_instance_valid(fireball) and release_guard_frames < 180:
+	while impact != null and is_instance_valid(impact) and release_guard_frames < 180:
 		await process_frame
 		release_guard_frames += 1
-	_expect(not is_instance_valid(fireball), "Fireball impact animation/audio did not release the projectile.")
+	_expect(impact == null or not is_instance_valid(impact), "Fireball impact visual/audio did not release.")
 	near_player.queue_free()
 	far_player.queue_free()
 	await physics_frame
@@ -506,7 +507,7 @@ func _fireball_impact_animation_contract() -> bool:
 
 
 func _has_fireball_impact_audio() -> bool:
-	var instance := FIREBALL_SCENE.instantiate() as CapooMageFireball
+	var instance := FIREBALL_IMPACT_SCENE.instantiate() as Node2D
 	if instance == null:
 		return false
 	var impact_audio := instance.get_node_or_null("ImpactAudio") as AudioStreamPlayer2D
@@ -516,7 +517,7 @@ func _has_fireball_impact_audio() -> bool:
 	ok = ok and impact_audio.volume_db <= -6.0
 	ok = ok and impact_audio.max_polyphony <= 2
 	if not ok:
-		failures.append("Fireball scene must include a restrained ImpactAudio player.")
+		failures.append("Fireball impact scene must include a restrained ImpactAudio player.")
 	instance.free()
 	return ok
 
@@ -551,6 +552,13 @@ func _count_bullet_hit_effects() -> int:
 		if child is BulletHitEffect:
 			total += 1
 	return total
+
+
+func _find_fireball_impact_effect() -> Node2D:
+	for child in test_root.get_children():
+		if child.name == "CapooMageFireballImpact":
+			return child as Node2D
+	return null
 
 
 func _count_wave_entries_for_config(wave_config: WaveConfig, enemy_config: EnemyConfig) -> int:

@@ -36,7 +36,7 @@
 - 4 人自动覆盖：`multiplayer_load_smoke_test.gd` 现在覆盖 4 peer Host runtime、4 人 player snapshot、升级确认、技能购买确认、死亡/过期 revision/复活确认、远端 skill1 被动充能、全员息壤分发。
 - 事件覆盖：`multiplayer_load_smoke_test.gd` 现在直接覆盖敌人命中去重、客户端 enemy removed 清理、客户端 pickup spawn/collect 确认和即时拾取效果应用。
 - Snapshot 边界：玩家/敌人的 position 和 velocity 在 int16 打包前显式饱和到协议可表示范围，避免大地图或异常速度导致二进制回绕。
-- Snapshot 监控：`MpGame` 记录玩家/敌人快照最大包大小和超阈值次数；超过 `1200 bytes` 时低频 warning，给 4 人 LAN 与高延迟/丢包手测提供带宽压力信号，不改变同步协议。
+- Snapshot 监控：`MpGame` 记录玩家/敌人快照最大包大小和超阈值次数；应用层 payload 超过 `1200 bytes` 时低频 warning，给 4 人 LAN 与高延迟/丢包手测提供带宽压力信号，不改变同步协议。
 - 测试覆盖：`multiplayer_load_smoke_test.gd` 增加玩家/敌人截断快照、只有 count 无 payload、snapshot int16 饱和、断线 peer 清理、Host projectile 参数重建、owner/namespace 校验、spawn 位置/方向校验、skill1 充能消耗、敌人 despawn、拾取确认和命中去重断言。
 
 ## 剩余高优先级风险
