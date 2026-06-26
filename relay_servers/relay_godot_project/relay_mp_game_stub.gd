@@ -90,7 +90,8 @@ func net_enemy_damage_applied(
 	current_health: int,
 	is_dead: bool,
 	confirmed_damage: int,
-	impact_direction: Vector2
+	impact_direction: Vector2,
+	damage_type: int = 0
 ) -> void:
 	pass
 

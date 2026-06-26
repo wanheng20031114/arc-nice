@@ -7,6 +7,7 @@ const GREEN_SHELL_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_green_shell.tres"
 )
 const AURA_SCRIPT := preload("res://scene/enemy/yuanshi_insect_aura.gd")
+const ENEMY_VISUAL_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -148,9 +149,17 @@ func _test_guardian_aura_visual_configuration() -> void:
 	_expect(not guardian.aura_range_outline.visible, "Guardian aura range outline should be hidden.")
 	var guardian_light := guardian.get_node_or_null("GuardianLight") as PointLight2D
 	var guardian_halo := guardian.get_node_or_null("GuardianLightHalo") as Sprite2D
+	var guardian_body_material := guardian.animated_sprite.material as ShaderMaterial
 	_expect(guardian_light != null, "Guardian must use a native PointLight2D for soft blue glow.")
 	_expect(guardian_halo != null, "Guardian must use a visible soft halo sprite for readable glow.")
-	_expect(guardian.animated_sprite.material == null, "Guardian body sprite must not draw the glow directly.")
+	_expect(
+		guardian_body_material == null
+		or (
+			guardian_body_material.shader != null
+			and guardian_body_material.shader.resource_path == ENEMY_VISUAL_SHADER_PATH
+		),
+		"Guardian body sprite must not draw the glow directly."
+	)
 	_expect(not guardian.has_node("GuardianGlowSprite"), "Guardian must not use the previous baked glow sprite.")
 	if guardian_halo != null:
 		_expect(
@@ -197,15 +206,12 @@ func _test_guardian_aura_visual_configuration() -> void:
 			not guardian_light.shadow_enabled,
 			"Guardian PointLight2D must not cast shadows."
 		)
-	_expect(
-		is_equal_approx(guardian.hurt_blink_duration, 0.0),
-		"Guardian must disable hurt blink duration."
-	)
 	guardian.apply_damage(1, Vector2.ZERO, EnemyConfig.DamageType.MAGIC)
-	_expect(
-		is_equal_approx(guardian.hurt_blink_time_left, 0.0),
-		"Guardian must not start hurt blink when damaged."
-	)
+	if guardian_body_material != null:
+		_expect(
+			guardian_body_material.get_shader_parameter(&"blink_enabled") != true,
+			"Guardian must not start hurt blink when damaged."
+		)
 	_expect(
 		guardian.get_effective_physical_defense() == GUARDIAN_CONFIG.physical_defense,
 		"Guardian must not receive its own aura defense."

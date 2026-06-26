@@ -39,8 +39,9 @@ material = SubResource("ShaderMaterial_rvexm")
 position = Vector2(9.000001, 2.9999998)
 scale = Vector2(0.31, 0.31)
 sprite_frames = ExtResource("4_frames")
-animation = &"windup"
-frame_progress = 0.9845481
+animation = &"move"
+frame = 0
+frame_progress = 0.0
 
 [node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
 shape = SubResource("CapsuleShape2D_7e71s")

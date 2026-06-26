@@ -1203,7 +1203,12 @@ func _trigger_thunder_crystal(item: PickupConfig) -> void:
 		var impact_direction := impact_position.direction_to(target_enemy.global_position)
 		if impact_direction == Vector2.ZERO:
 			impact_direction = Vector2.DOWN
-		target_enemy.apply_damage(damage, impact_direction, EnemyConfig.DamageType.MAGIC)
+		_apply_authoritative_collectible_enemy_damage(
+			target_enemy,
+			damage,
+			impact_direction,
+			EnemyConfig.DamageType.MAGIC
+		)
 	_spawn_collectible_lightning_effect(impact_position)
 
 
@@ -1216,7 +1221,12 @@ func _trigger_frost_crystal(item: PickupConfig) -> void:
 			continue
 		if global_position.distance_to(enemy.global_position) > radius:
 			continue
-		enemy.apply_damage(damage, enemy.global_position.direction_to(global_position), EnemyConfig.DamageType.MAGIC)
+		_apply_authoritative_collectible_enemy_damage(
+			enemy,
+			damage,
+			enemy.global_position.direction_to(global_position),
+			EnemyConfig.DamageType.MAGIC
+		)
 		enemy.add_move_speed_modifier(slow_source_id, item.periodic_slow_multiplier)
 		if item.periodic_slow_duration > 0.0:
 			get_tree().create_timer(item.periodic_slow_duration).timeout.connect(
@@ -1243,6 +1253,29 @@ func _remove_collectible_enemy_slow(enemy_ref: WeakRef, source_id: int) -> void:
 	if enemy == null or not is_instance_valid(enemy):
 		return
 	enemy.remove_move_speed_modifier(source_id)
+
+
+func _apply_authoritative_collectible_enemy_damage(
+	enemy: Enemy,
+	damage: int,
+	impact_direction: Vector2,
+	damage_type: EnemyConfig.DamageType
+) -> bool:
+	if enemy == null or not is_instance_valid(enemy):
+		return false
+	var current_scene := get_tree().current_scene
+	if (
+		current_scene != null
+		and current_scene.has_method("apply_multiplayer_collectible_enemy_damage")
+	):
+		return bool(current_scene.call(
+			"apply_multiplayer_collectible_enemy_damage",
+			enemy,
+			damage,
+			impact_direction,
+			int(damage_type)
+		))
+	return enemy.apply_damage(damage, impact_direction, damage_type)
 
 
 func _collect_alive_enemies() -> Array[Enemy]:

@@ -55,6 +55,16 @@ func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = 
 	_emit_health_changed()
 
 
+func configure_multiplayer_proxy() -> void:
+	super.configure_multiplayer_proxy()
+	visible = true
+	_set_collision_shapes_disabled(body_collision_shapes, false)
+	_set_collision_shapes_disabled(touch_damage_shapes, true)
+	if touch_damage_area != null:
+		touch_damage_area.set_deferred("monitoring", false)
+		touch_damage_area.set_deferred("monitorable", false)
+
+
 func activate_boss(player: Player, shared_pathfinder: Node = null) -> void:
 	setup(config, player, shared_pathfinder)
 	_reset_skill_state()

@@ -36,6 +36,7 @@ func _run() -> void:
 	await _test_multiplayer_revive_position_uses_living_players()
 	await _test_multiplayer_revive_resets_remote_interpolator()
 	await _test_linglan_boss_registration_uses_boss_event_only()
+	await _test_linglan_boss_proxy_keeps_body_hit_collision()
 	await _test_multiplayer_cheat_xirang_confirm()
 	await _test_multiplayer_peer_disconnect_cleanup()
 	await _test_player_snapshot_roster_reconcile()
@@ -1084,6 +1085,12 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 	if host_enemy != null:
 		var mp_game := MP_GAME_SCENE.instantiate()
 		mp_game.set("game", host_game)
+		var host_net_manager := root.get_node_or_null("NetManager")
+		var previous_role := 0
+		if host_net_manager != null:
+			previous_role = int(host_net_manager.get("net_role"))
+			host_net_manager.set("net_role", 1)
+			mp_game.set("net_manager", host_net_manager)
 		mp_game.call("_remember_projectile_record", 2000001, 2, &"player_bullet", 11, 2.0)
 		var health_before_hit := host_enemy.current_health
 		mp_game.call("_apply_enemy_hit_report", 2000001, 2, 1, 999, Vector2.LEFT)
@@ -1094,6 +1101,21 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			host_enemy.current_health == health_after_first_hit,
 			"Duplicate enemy hit reports for the same projectile/enemy pair must be ignored."
 		)
+		var health_before_collectible := host_enemy.current_health
+		var collectible_result := bool(mp_game.call(
+			"apply_multiplayer_collectible_enemy_damage",
+			host_enemy,
+			7,
+			Vector2.RIGHT,
+			int(EnemyConfig.DamageType.MAGIC)
+		))
+		_expect(collectible_result, "Host collectible enemy damage must use the multiplayer confirmation path.")
+		_expect(
+			host_enemy.current_health < health_before_collectible,
+			"Host collectible enemy damage must reduce enemy health."
+		)
+		if host_net_manager != null:
+			host_net_manager.set("net_role", previous_role)
 		mp_game.free()
 	_stop_audio_players(host_game)
 	host_game.queue_free()
@@ -1143,6 +1165,33 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			client_enemy.death_sequence_stage == Enemy.DeathSequenceStage.DEATH,
 			"Client enemy defeated event must start with the death animation stage."
 		)
+
+	var magic_enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
+	_expect(magic_enemy != null, "Client magic damage test must instantiate an enemy.")
+	if magic_enemy != null:
+		client_game.enemy_container.add_child(magic_enemy)
+		magic_enemy.setup(BASIC_CONFIG, client_game.player, client_game.grid_pathfinder)
+		magic_enemy.configure_multiplayer_proxy()
+		magic_enemy.set_meta("net_id", 78)
+		magic_enemy.global_position = Vector2(88.0, 99.0)
+		var client_net_enemies := client_mp_game.get("_net_enemies") as Dictionary
+		client_net_enemies[78] = magic_enemy
+		var health_after_magic := maxi(magic_enemy.current_health - 5, 1)
+		client_mp_game.call(
+			"net_enemy_damage_applied",
+			78,
+			health_after_magic,
+			false,
+			5,
+			Vector2.LEFT,
+			int(EnemyConfig.DamageType.MAGIC)
+		)
+		_expect(magic_enemy.current_health == health_after_magic, "Client magic damage confirm must update enemy health.")
+		_expect(
+			_has_active_damage_number_text(client_game, "5"),
+			"Client magic damage confirm must spawn a damage number effect."
+		)
+		magic_enemy.queue_free()
 		client_enemy.call("_finish_after_death_animation")
 		_expect(
 			client_enemy.death_sequence_stage == Enemy.DeathSequenceStage.EXPLOSION,
@@ -1452,6 +1501,41 @@ func _test_linglan_boss_registration_uses_boss_event_only() -> void:
 	await physics_frame
 
 
+func _test_linglan_boss_proxy_keeps_body_hit_collision() -> void:
+	var boss_enemy_config := LINGLAN_BOSS_CONFIG.call("get_enemy_config") as EnemyConfig
+	_expect(boss_enemy_config != null, "Linglan proxy collision test must resolve enemy config.")
+	if boss_enemy_config == null or boss_enemy_config.enemy_scene == null:
+		return
+	var boss_enemy := boss_enemy_config.enemy_scene.instantiate() as LinglanBoss
+	_expect(boss_enemy != null, "Linglan proxy collision test must instantiate Linglan boss.")
+	if boss_enemy == null:
+		return
+	root.add_child(boss_enemy)
+	await process_frame
+	boss_enemy.setup(boss_enemy_config, null, null)
+	boss_enemy.configure_multiplayer_proxy()
+	await process_frame
+	await physics_frame
+
+	_expect(boss_enemy.visible, "Linglan proxy must be visible after multiplayer proxy configuration.")
+	_expect(
+		boss_enemy.collision_shape != null and not boss_enemy.collision_shape.disabled,
+		"Linglan proxy must keep body collision enabled so client bullets can hit it."
+	)
+	_expect(
+		boss_enemy.touch_damage_shape != null and boss_enemy.touch_damage_shape.disabled,
+		"Linglan proxy must keep touch damage collision disabled."
+	)
+	_expect(
+		boss_enemy.touch_damage_area == null or not boss_enemy.touch_damage_area.monitoring,
+		"Linglan proxy touch damage area must not monitor players."
+	)
+
+	boss_enemy.queue_free()
+	await process_frame
+	await physics_frame
+
+
 func _test_multiplayer_cheat_xirang_confirm() -> void:
 	var mp_game := MP_GAME_SCENE.instantiate()
 	_expect(mp_game != null, "MpGame scene must instantiate for cheat xirang confirm test.")
@@ -1627,6 +1711,18 @@ func _test_snapshot_round_trip() -> void:
 	count_only_enemy_stream.put_u16(1)
 	var count_only_enemy_states := SnapshotManager.decode_all_enemy_snapshots(count_only_enemy_stream.data_array)
 	_expect(count_only_enemy_states.is_empty(), "Enemy snapshot count without payload must decode to no states.")
+
+
+func _has_active_damage_number_text(game: Game, expected_text: String) -> bool:
+	if game == null or game.damage_number_pool == null:
+		return false
+	for number in game.damage_number_pool.pooled_numbers:
+		var damage_number := number as DamageNumber
+		if damage_number == null or not damage_number.is_active():
+			continue
+		if damage_number.label != null and damage_number.label.text == expected_text:
+			return true
+	return false
 
 
 func _expect(condition: bool, message: String) -> void:

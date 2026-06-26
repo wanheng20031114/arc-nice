@@ -1445,6 +1445,28 @@ func request_enemy_hit_report(
 		)
 
 
+func apply_multiplayer_collectible_enemy_damage(
+	enemy: Enemy,
+	damage: int,
+	impact_direction: Vector2,
+	damage_type: int = EnemyConfig.DamageType.MAGIC
+) -> bool:
+	if net_manager == null or not net_manager.is_host():
+		return false
+	if enemy == null or not is_instance_valid(enemy):
+		return false
+	var enemy_net_id := int(enemy.get_meta("net_id", 0))
+	if enemy_net_id <= 0:
+		return enemy.apply_damage(damage, impact_direction, damage_type as EnemyConfig.DamageType)
+	return _apply_confirmed_enemy_damage(
+		enemy_net_id,
+		enemy,
+		damage,
+		impact_direction,
+		damage_type as EnemyConfig.DamageType
+	)
+
+
 @rpc("any_peer", "call_remote", "reliable", 4)
 func _rpc_enemy_hit_report(
 	projectile_id: int,
@@ -1486,15 +1508,42 @@ func _apply_enemy_hit_report(
 	var enemy := _get_host_enemy_for_net_id(enemy_net_id)
 	if enemy == null or not is_instance_valid(enemy):
 		return
-	if not enemy.apply_damage(authoritative_damage, impact_direction):
+	if not _apply_confirmed_enemy_damage(
+		enemy_net_id,
+		enemy,
+		authoritative_damage,
+		impact_direction,
+		EnemyConfig.DamageType.PHYSICAL
+	):
 		return
 	_remember_recent_event(_processed_enemy_hit_ids, hit_key, HIT_DEDUP_RETENTION_SECONDS, now)
+
+
+func _apply_confirmed_enemy_damage(
+	enemy_net_id: int,
+	enemy: Enemy,
+	damage: int,
+	impact_direction: Vector2,
+	damage_type: EnemyConfig.DamageType
+) -> bool:
+	if enemy_net_id <= 0 or enemy == null or not is_instance_valid(enemy):
+		return false
+	if not enemy.apply_damage(damage, impact_direction, damage_type):
+		return false
 	var confirmed_damage := enemy.last_damage_taken
 	if is_inside_tree():
 		_rpc_to_connected_clients(
 			&"net_enemy_damage_applied",
-			[enemy_net_id, enemy.current_health, enemy.is_dead, confirmed_damage, impact_direction]
+			[
+				enemy_net_id,
+				enemy.current_health,
+				enemy.is_dead,
+				confirmed_damage,
+				impact_direction,
+				int(damage_type),
+			]
 		)
+	return true
 
 
 @rpc("authority", "call_remote", "reliable", 4)
@@ -1503,13 +1552,18 @@ func net_enemy_damage_applied(
 	current_health: int,
 	is_dead: bool,
 	confirmed_damage: int,
-	impact_direction: Vector2
+	impact_direction: Vector2,
+	damage_type: int = EnemyConfig.DamageType.PHYSICAL
 ) -> void:
 	var enemy := _get_client_enemy_for_net_id(enemy_net_id)
 	if enemy == null or not is_instance_valid(enemy):
 		return
 	_apply_enemy_network_health(enemy, current_health)
-	enemy.show_damage_number(confirmed_damage, impact_direction, EnemyConfig.DamageType.PHYSICAL)
+	enemy.show_damage_number(
+		confirmed_damage,
+		impact_direction,
+		damage_type as EnemyConfig.DamageType
+	)
 	if impact_direction != Vector2.ZERO:
 		enemy.play_multiplayer_damage_feedback(impact_direction)
 	if is_dead:
