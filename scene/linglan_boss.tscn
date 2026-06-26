@@ -4,12 +4,12 @@
 [ext_resource type="Script" uid="uid://bt4sg5m7jw8g7" path="res://scene/linglan_boss.gd" id="2_script"]
 [ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="3_shader"]
 [ext_resource type="SpriteFrames" uid="uid://ub8py66qcmfq" path="res://resources/animation/linglan.tres" id="4_frames"]
-[ext_resource type="Resource" path="res://resources/config/bosses/linglan_skill1.tres" id="5_skill1"]
-[ext_resource type="Resource" path="res://resources/config/bosses/linglan_skill2.tres" id="6_skill2"]
-[ext_resource type="AudioStream" path="res://resources/audio/capoo_mage_fireball_cast.wav" id="7_skill2_fire_audio"]
-[ext_resource type="Resource" path="res://resources/config/bosses/linglan_skill3.tres" id="8_skill3"]
+[ext_resource type="Resource" uid="uid://bp31l5cc7cbv4" path="res://resources/config/bosses/linglan_skill1.tres" id="5_skill1"]
+[ext_resource type="Resource" uid="uid://c4r1ucwkkde62" path="res://resources/config/bosses/linglan_skill2.tres" id="6_skill2"]
+[ext_resource type="AudioStream" uid="uid://b7nccthuxqu6b" path="res://resources/audio/capoo_mage_fireball_cast.wav" id="7_skill2_fire_audio"]
+[ext_resource type="Resource" uid="uid://bf6ge3snl6cq4" path="res://resources/config/bosses/linglan_skill3.tres" id="8_skill3"]
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_hd8t5"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_2mw5u"]
 resource_local_to_scene = true
 shader = ExtResource("3_shader")
 shader_parameter/blink_enabled = false
@@ -43,12 +43,11 @@ skill3_config = ExtResource("8_skill3")
 
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
 texture_filter = 2
-material = SubResource("ShaderMaterial_hd8t5")
+material = SubResource("ShaderMaterial_2mw5u")
 position = Vector2(0, -8)
 scale = Vector2(0.148, 0.148)
 sprite_frames = ExtResource("4_frames")
 animation = &"idle"
-frame_progress = 0.11186367
 
 [node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
 position = Vector2(0, -4)
@@ -60,7 +59,7 @@ position = Vector2(0, -4)
 shape = SubResource("CapsuleShape2D_touch")
 disabled = true
 
-[node name="Skill2FireAudio" type="AudioStreamPlayer2D" parent="." index="5"]
+[node name="Skill2FireAudio" type="AudioStreamPlayer2D" parent="." index="5" unique_id=266141881]
 stream = ExtResource("7_skill2_fire_audio")
 volume_db = -7.0
 max_distance = 260.0
