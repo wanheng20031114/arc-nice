@@ -37,8 +37,8 @@ SKILL2_EXPLOSION_SOURCE = "dev_assets/source_images/boss_linglan/skill2_sakura_e
 SKILL2_EXPLOSION_ALPHA = "dev_assets/source_images/boss_linglan/skill2_sakura_explosion_alpha.png"
 DIE_SOURCE = "dev_assets/source_images/boss_linglan/die_imagegen_green_v2.png"
 DIE_ALPHA = "dev_assets/source_images/boss_linglan/die_v2_alpha.png"
-ATTACK_SOURCE = "dev_assets/source_images/boss_linglan/attack_imagegen_green_v7.png"
-ATTACK_ALPHA = "dev_assets/source_images/boss_linglan/attack_v7_alpha.png"
+ATTACK_SOURCE = "dev_assets/source_images/boss_linglan/attack_imagegen_green_v11a_grid_3x2.png"
+ATTACK_ALPHA = "dev_assets/source_images/boss_linglan/attack_v11a_grid_3x2_alpha.png"
 
 OUTPUT_TEXTURE_DIR = "resources/texture/boss_linglan"
 OUTPUT_FRAMES = "resources/animation/linglan.tres"
@@ -62,6 +62,8 @@ SPRITE_FRAMES_UID = "uid://ub8py66qcmfq"
 
 SOURCE_COLUMNS = 8
 SOURCE_ROWS = 1
+ATTACK_SOURCE_COLUMNS = 3
+ATTACK_SOURCE_ROWS = 2
 SKILL2_EXPLOSION_COLUMNS = 4
 SKILL2_EXPLOSION_ROWS = 4
 SKILL2_ROCKET_FRAME_SIZE = (192, 96)
@@ -430,6 +432,57 @@ def _detect_animation_strip_source_frames(source: Image.Image, animation_name: s
 			raise ValueError(f"Linglan {animation_name} frame {column} contains too little foreground alpha.")
 		frames.append(DetectedFrame((left, top, right, bottom), alpha_pixels))
 	return frames
+
+
+def _detect_grid_cell_frame(
+	cell: Image.Image,
+	animation_name: str,
+	frame_index: int,
+) -> DetectedFrame:
+	alpha = np.array(cell.getchannel("A"), dtype=np.uint8) > 0
+	if not alpha.any():
+		raise ValueError(f"Linglan {animation_name} frame {frame_index} contains no visible pixels.")
+	local_y, local_x = np.nonzero(alpha)
+	alpha_pixels = int(alpha.sum())
+	if alpha_pixels < MIN_COMPONENT_ALPHA_PIXELS:
+		raise ValueError(f"Linglan {animation_name} frame {frame_index} contains too little foreground alpha.")
+	return DetectedFrame(
+		(
+			int(local_x.min()),
+			int(local_y.min()),
+			int(local_x.max() + 1),
+			int(local_y.max() + 1),
+		),
+		alpha_pixels,
+	)
+
+
+def _detect_linglan_attack_body_anchor(source: Image.Image, frame: DetectedFrame) -> tuple[float, float]:
+	left, top, right, bottom = frame.source_bbox
+	cell = np.array(source.crop(frame.source_bbox).convert("RGBA"), dtype=np.uint8)
+	alpha = cell[:, :, 3] > 0
+	if not alpha.any():
+		return ((left + right) * 0.5, float(bottom))
+
+	red = cell[:, :, 0].astype(np.int16)
+	green = cell[:, :, 1].astype(np.int16)
+	blue = cell[:, :, 2].astype(np.int16)
+	green_body = alpha & (green > 80) & (green > red + 20) & (green > blue + 5)
+	body_y, body_x = np.nonzero(green_body)
+	if body_x.size >= 80:
+		anchor_x = left + float(np.median(body_x))
+	else:
+		anchor_x, _anchor_y = _detect_linglan_body_anchor(source, frame)
+
+	width = right - left
+	local_anchor_x = anchor_x - left
+	band_half_width = max(40, int(width * 0.18))
+	band_left = max(0, int(round(local_anchor_x - band_half_width)))
+	band_right = min(width, int(round(local_anchor_x + band_half_width + 1)))
+	central_alpha = alpha[:, band_left:band_right]
+	central_y, _central_x = np.nonzero(central_alpha)
+	anchor_y = float(top + int(central_y.max()) + 1) if central_y.size > 0 else float(bottom)
+	return anchor_x, anchor_y
 
 
 def _collect_linglan_frames(
@@ -977,25 +1030,40 @@ def _process_linglan_attack(root: Path) -> None:
 	alpha_path.parent.mkdir(parents=True, exist_ok=True)
 	alpha.save(alpha_path)
 
-	detected_frames = _detect_animation_strip_source_frames(alpha, "attack")
+	middle_frame_count = ATTACK_SOURCE_COLUMNS * ATTACK_SOURCE_ROWS
+	if middle_frame_count != SOURCE_COLUMNS - 2:
+		raise ValueError(
+			"Linglan attack source grid must provide exactly the middle frames: "
+			f"{middle_frame_count} source frames for {SOURCE_COLUMNS} output frames."
+		)
+
 	frames: list[tuple[str, Image.Image]] = []
-	for frame_index, detected in enumerate(detected_frames):
-		frame_name = f"attack_{frame_index}"
-		if frame_index == 0:
-			frame = _copy_linglan_output_strip_frame(root, LINGLAN_TEXTURE_RESOURCES["idle"], 0)
-		elif frame_index == SOURCE_COLUMNS - 1:
-			frame = _copy_linglan_output_strip_frame(root, LINGLAN_TEXTURE_RESOURCES["idle"], 1)
-		else:
+	frames.append(("attack_0", _copy_linglan_output_strip_frame(root, LINGLAN_TEXTURE_RESOURCES["idle"], 0)))
+
+	frame_index = 1
+	for row in range(ATTACK_SOURCE_ROWS):
+		cell_top = round(row * alpha.height / ATTACK_SOURCE_ROWS)
+		cell_bottom = round((row + 1) * alpha.height / ATTACK_SOURCE_ROWS)
+		for column in range(ATTACK_SOURCE_COLUMNS):
+			cell_left = round(column * alpha.width / ATTACK_SOURCE_COLUMNS)
+			cell_right = round((column + 1) * alpha.width / ATTACK_SOURCE_COLUMNS)
+			cell = alpha.crop((cell_left, cell_top, cell_right, cell_bottom))
+			detected = _detect_grid_cell_frame(cell, "attack", frame_index)
 			frame = _extract_frame_clipped(
-				alpha,
+				cell,
 				detected,
 				LINGLAN_AUTHORED_FRAME_SIZE,
-				_detect_linglan_body_anchor(alpha, detected),
+				_detect_linglan_attack_body_anchor(cell, detected),
 				LINGLAN_STANDING_TARGET_ANCHOR,
 			)
 			frame = _remove_attack_edge_artifacts(frame)
 			frame = _despill_chroma_green(_remove_tiny_alpha_components(_remove_tall_edge_fragments(frame)))
-		frames.append((frame_name, frame))
+			frames.append((f"attack_{frame_index}", frame))
+			frame_index += 1
+
+	frames.append((f"attack_{frame_index}", _copy_linglan_output_strip_frame(root, LINGLAN_TEXTURE_RESOURCES["idle"], 1)))
+	if len(frames) != SOURCE_COLUMNS:
+		raise ValueError(f"Linglan attack output must have {SOURCE_COLUMNS} frames, got {len(frames)}.")
 
 	sheet, _regions = _build_animation_strip(frames)
 	attack_path = root / OUTPUT_ATTACK
