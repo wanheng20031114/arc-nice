@@ -5,12 +5,16 @@ signal health_changed(current_health: int, maximum_health: int)
 signal boss_defeated
 
 const SKILL2_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
+const LinglanSkill4ConfigScript := preload("res://resources/config/bosses/linglan_skill4_config.gd")
+const LinglanSkill4LaserFieldScript := preload("res://scene/linglan_skill4_laser_field.gd")
+const LinglanSkill4LightOrbScript := preload("res://scene/linglan_skill4_light_orb.gd")
 
 @export var starts_active: bool = false
 @export var boss_display_name: String = "铃兰"
 @export var skill1_config: LinglanSkillConfig
 @export var skill2_config: LinglanSkill2Config
 @export var skill3_config: LinglanSkill3Config
+@export var skill4_config: Resource
 
 @onready var skill2_fire_audio: AudioStreamPlayer2D = get_node_or_null("Skill2FireAudio") as AudioStreamPlayer2D
 
@@ -20,11 +24,16 @@ enum BossSkillPhase {
 	SKILL2,
 	MOVE_TO_SKILL3,
 	SKILL3,
+	MOVE_TO_SKILL4,
+	SKILL4,
 	DONE,
 }
 
 var is_active: bool = false
 var skill3_random := RandomNumberGenerator.new()
+var skill4_random := RandomNumberGenerator.new()
+var action_sequence: int = 0
+var latest_proxy_action_id: int = 0
 var boss_skill_phase: BossSkillPhase = BossSkillPhase.SKILL1
 var skill1_elapsed: float = 0.0
 var skill1_fire_time_left: float = 0.0
@@ -41,11 +50,16 @@ var skill2_pending_target_player: Player = null
 var skill3_target_global_position := Vector2.ZERO
 var skill3_elapsed: float = 0.0
 var skill3_shots_fired: int = 0
+var skill4_target_global_position := Vector2.ZERO
+var skill4_elapsed: float = 0.0
+var skill4_orb_spawn_ticks_completed: int = 0
+var skill4_laser_field: Node = null
 
 
 func _ready() -> void:
 	super._ready()
 	skill3_random.randomize()
+	skill4_random.randomize()
 	set_active(starts_active)
 	_emit_health_changed()
 
@@ -118,6 +132,10 @@ func _physics_process(delta: float) -> void:
 			_update_skill3_move(delta)
 		BossSkillPhase.SKILL3:
 			_update_skill3(delta)
+		BossSkillPhase.MOVE_TO_SKILL4:
+			_update_skill4_move(delta)
+		BossSkillPhase.SKILL4:
+			_update_skill4(delta)
 		_:
 			velocity = Vector2.ZERO
 			_play_idle_animation()
@@ -146,9 +164,12 @@ func apply_multiplayer_health_snapshot(new_current_health: int) -> void:
 
 
 func _reset_skill_state() -> void:
+	action_sequence = 0
+	latest_proxy_action_id = 0
 	_reset_skill1_state()
 	_reset_skill2_state()
 	_reset_skill3_state()
+	_reset_skill4_state()
 	boss_skill_phase = BossSkillPhase.SKILL1
 
 
@@ -174,6 +195,13 @@ func _reset_skill3_state() -> void:
 	skill3_target_global_position = Vector2.ZERO
 	skill3_elapsed = 0.0
 	skill3_shots_fired = 0
+
+
+func _reset_skill4_state() -> void:
+	skill4_target_global_position = Vector2.ZERO
+	skill4_elapsed = 0.0
+	skill4_orb_spawn_ticks_completed = 0
+	_clear_skill4_laser_field()
 
 
 func _update_skill1(delta: float) -> void:
@@ -676,7 +704,7 @@ func _update_skill3(delta: float) -> void:
 	_play_attack_animation()
 	_update_skill3_fire()
 	if skill3_elapsed >= skill3_config.duration and skill3_shots_fired >= skill3_config.get_shot_count():
-		boss_skill_phase = BossSkillPhase.DONE
+		_begin_skill4_move()
 
 
 func _update_skill3_fire() -> void:
@@ -754,6 +782,280 @@ func _resolve_skill3_target_global_position() -> Vector2:
 			skill3_config.target_cell
 		) as Vector2
 	return global_position
+
+
+func _get_skill4_config() -> LinglanSkill4ConfigScript:
+	return skill4_config as LinglanSkill4ConfigScript
+
+
+func _begin_skill4_move() -> void:
+	if not _is_skill4_ready():
+		boss_skill_phase = BossSkillPhase.DONE
+		_play_idle_animation()
+		return
+	skill4_target_global_position = _resolve_skill4_target_global_position()
+	boss_skill_phase = BossSkillPhase.MOVE_TO_SKILL4
+	if animated_sprite != null and animated_sprite.sprite_frames != null:
+		if animated_sprite.sprite_frames.has_animation(&"move"):
+			animated_sprite.play(&"move")
+
+
+func _is_skill4_ready() -> bool:
+	var config4 := _get_skill4_config()
+	return (
+		config4 != null
+		and config4.laser_field_scene != null
+		and config4.orb_scene != null
+	)
+
+
+func _update_skill4_move(delta: float) -> void:
+	var config4 := _get_skill4_config()
+	if config4 == null:
+		boss_skill_phase = BossSkillPhase.DONE
+		return
+	var offset := skill4_target_global_position - global_position
+	var distance := offset.length()
+	var move_speed: float = config4.move_speed
+	var arrival_distance := maxf(config4.arrival_distance, 0.0)
+	if distance <= maxf(arrival_distance, move_speed * delta):
+		global_position = skill4_target_global_position
+		velocity = Vector2.ZERO
+		_begin_skill4_attack()
+		return
+
+	var move_direction := offset / distance
+	_set_facing_from_direction(move_direction)
+	if animated_sprite != null and animated_sprite.animation != &"move":
+		_play_scene_animation(&"move")
+	velocity = move_direction * move_speed
+	move_and_slide()
+
+
+func _begin_skill4_attack() -> void:
+	boss_skill_phase = BossSkillPhase.SKILL4
+	skill4_elapsed = 0.0
+	skill4_orb_spawn_ticks_completed = 0
+	velocity = Vector2.ZERO
+	_play_attack_animation()
+	_spawn_skill4_laser_field(true)
+	_broadcast_enemy_action(&"linglan_skill4_start", Vector2.ZERO)
+
+
+func _update_skill4(delta: float) -> void:
+	var config4 := _get_skill4_config()
+	if config4 == null:
+		boss_skill_phase = BossSkillPhase.DONE
+		return
+	velocity = Vector2.ZERO
+	skill4_elapsed += maxf(delta, 0.0)
+	_play_attack_animation()
+	_update_skill4_orb_spawns()
+	if (
+		skill4_elapsed >= config4.get_total_duration()
+		and skill4_orb_spawn_ticks_completed >= config4.get_orb_wave_count()
+	):
+		_clear_skill4_laser_field()
+		boss_skill_phase = BossSkillPhase.DONE
+
+
+func _update_skill4_orb_spawns() -> void:
+	var config4 := _get_skill4_config()
+	if config4 == null:
+		return
+	var wave_count: int = config4.get_orb_wave_count()
+	var fire_interval := maxf(config4.orb_spawn_interval, 0.05)
+	var orb_start_time: float = config4.get_orb_start_time()
+	while skill4_orb_spawn_ticks_completed < wave_count:
+		var wave_time: float = orb_start_time + float(skill4_orb_spawn_ticks_completed) * fire_interval
+		if skill4_elapsed + 0.0001 < wave_time:
+			return
+		_fire_skill4_orb_wave()
+		skill4_orb_spawn_ticks_completed += 1
+
+
+func _fire_skill4_orb_wave() -> void:
+	var config4 := _get_skill4_config()
+	if config4 == null:
+		return
+	var rows: Array[int] = config4.get_random_orb_rows(skill4_random)
+	for row in rows:
+		_spawn_skill4_orb(true, row)
+		_spawn_skill4_orb(false, row)
+
+
+func _spawn_skill4_orb(spawn_from_left: bool, y_cell: int) -> void:
+	var config4 := _get_skill4_config()
+	if config4 == null:
+		return
+	var orb := config4.orb_scene.instantiate() as LinglanSkill4LightOrbScript
+	if orb == null:
+		return
+	var spawn_parent := _get_effect_spawn_parent()
+	if spawn_parent == null:
+		orb.free()
+		return
+
+	var direction := Vector2.RIGHT if spawn_from_left else Vector2.LEFT
+	var spawn_position := _resolve_skill4_orb_spawn_global_position(spawn_from_left, y_cell)
+	orb.top_level = true
+	orb.setup(
+		direction,
+		config4.orb_damage,
+		config4.orb_speed,
+		config4.orb_lifetime,
+		config4.orb_radius
+	)
+	spawn_parent.add_child(orb)
+	orb.global_position = spawn_position
+	_register_skill4_multiplayer_projectile(orb, spawn_position, direction)
+
+
+func _register_skill4_multiplayer_projectile(
+	projectile: Node,
+	spawn_position: Vector2,
+	projectile_direction: Vector2
+) -> void:
+	var config4 := _get_skill4_config()
+	if config4 == null:
+		return
+	var current_scene := get_tree().current_scene
+	if current_scene == null or not current_scene.has_method("register_local_projectile"):
+		return
+	current_scene.call(
+		"register_local_projectile",
+		projectile,
+		&"linglan_skill4_orb",
+		get_multiplayer_authority(),
+		spawn_position,
+		projectile_direction,
+		config4.orb_damage,
+		config4.orb_speed,
+		config4.orb_lifetime,
+		false
+	)
+
+
+func _spawn_skill4_laser_field(enable_damage: bool) -> void:
+	_clear_skill4_laser_field()
+	var config4 := _get_skill4_config()
+	if config4 == null or config4.laser_field_scene == null:
+		return
+	var spawn_parent := _get_effect_spawn_parent()
+	if spawn_parent == null:
+		return
+	var bounds := _resolve_skill4_laser_bounds()
+	var field := config4.laser_field_scene.instantiate() as LinglanSkill4LaserFieldScript
+	if field == null:
+		return
+	field.top_level = true
+	spawn_parent.add_child(field)
+	field.global_position = Vector2.ZERO
+	field.setup(
+		bounds.get("start_min", global_position) as Vector2,
+		bounds.get("start_max", global_position) as Vector2,
+		bounds.get("final_min", global_position) as Vector2,
+		bounds.get("final_max", global_position) as Vector2,
+		config4.laser_damage,
+		config4.laser_core_width,
+		config4.laser_shrink_duration,
+		enable_damage
+	)
+	if not enable_damage:
+		field.setup_multiplayer_visual_only()
+	skill4_laser_field = field
+
+
+func _clear_skill4_laser_field() -> void:
+	if skill4_laser_field != null and is_instance_valid(skill4_laser_field):
+		skill4_laser_field.queue_free()
+	skill4_laser_field = null
+
+
+func _resolve_skill4_target_global_position() -> Vector2:
+	var config4 := _get_skill4_config()
+	if config4 == null:
+		return global_position
+	var host := _find_parent_with_method(&"get_linglan_skill4_target_global_position")
+	if host != null:
+		return host.call(
+			"get_linglan_skill4_target_global_position",
+			config4.target_cell_a,
+			config4.target_cell_b
+		) as Vector2
+	return global_position
+
+
+func _resolve_skill4_laser_bounds() -> Dictionary:
+	var config4 := _get_skill4_config()
+	if config4 == null:
+		return {
+			"start_min": global_position,
+			"start_max": global_position,
+			"final_min": global_position,
+			"final_max": global_position,
+		}
+	var host := _find_parent_with_method(&"get_linglan_skill4_laser_bounds")
+	if host != null:
+		return host.call(
+			"get_linglan_skill4_laser_bounds",
+			config4.laser_start_left_cell_x,
+			config4.laser_start_right_cell_x,
+			config4.laser_start_top_cell_y,
+			config4.laser_start_bottom_cell_y,
+			config4.laser_inward_cell_distance
+		) as Dictionary
+	return {
+		"start_min": global_position,
+		"start_max": global_position,
+		"final_min": global_position,
+		"final_max": global_position,
+	}
+
+
+func _resolve_skill4_orb_spawn_global_position(spawn_from_left: bool, y_cell: int) -> Vector2:
+	var config4 := _get_skill4_config()
+	if config4 == null:
+		return global_position
+	var host := _find_parent_with_method(&"get_linglan_skill4_orb_spawn_global_position")
+	var x_cell: int = (
+		config4.laser_start_left_cell_x
+		if spawn_from_left
+		else config4.laser_start_right_cell_x
+	)
+	if host != null:
+		return host.call(
+			"get_linglan_skill4_orb_spawn_global_position",
+			x_cell,
+			y_cell
+		) as Vector2
+	return global_position
+
+
+func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, action_id: int) -> void:
+	if action_id <= latest_proxy_action_id:
+		return
+	latest_proxy_action_id = action_id
+	if action_name == &"linglan_skill4_start":
+		var config4 := _get_skill4_config()
+		if config4 != null:
+			_play_multiplayer_proxy_action_animation(&"attack", config4.get_total_duration())
+			_spawn_skill4_laser_field(false)
+		_set_facing_from_direction(direction)
+
+
+func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> void:
+	action_sequence += 1
+	var current_scene := get_tree().current_scene
+	if current_scene != null and current_scene.has_method("broadcast_enemy_action"):
+		current_scene.call(
+			"broadcast_enemy_action",
+			int(get_meta("net_id", 0)),
+			action_name,
+			direction,
+			global_position,
+			action_sequence
+		)
 
 
 func _find_parent_with_method(method_name: StringName) -> Node:

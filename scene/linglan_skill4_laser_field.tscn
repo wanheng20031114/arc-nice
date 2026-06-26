@@ -1,0 +1,103 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scene/linglan_skill4_laser_field.gd" id="1_script"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_top"]
+resource_local_to_scene = true
+size = Vector2(336, 6)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_bottom"]
+resource_local_to_scene = true
+size = Vector2(336, 6)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_left"]
+resource_local_to_scene = true
+size = Vector2(6, 272)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_right"]
+resource_local_to_scene = true
+size = Vector2(6, 272)
+
+[node name="LinglanSkill4LaserField" type="Area2D"]
+z_index = 5
+collision_layer = 128
+collision_mask = 2
+script = ExtResource("1_script")
+
+[node name="TopShape" type="CollisionShape2D" parent="."]
+position = Vector2(120, -16)
+shape = SubResource("RectangleShape2D_top")
+
+[node name="BottomShape" type="CollisionShape2D" parent="."]
+position = Vector2(120, 256)
+shape = SubResource("RectangleShape2D_bottom")
+
+[node name="LeftShape" type="CollisionShape2D" parent="."]
+position = Vector2(-48, 120)
+shape = SubResource("RectangleShape2D_left")
+
+[node name="RightShape" type="CollisionShape2D" parent="."]
+position = Vector2(288, 120)
+shape = SubResource("RectangleShape2D_right")
+
+[node name="VisualRoot" type="Node2D" parent="."]
+
+[node name="TopGlow" type="Line2D" parent="VisualRoot"]
+points = PackedVector2Array(-48, -16, 288, -16)
+width = 18.0
+default_color = Color(0.24, 0.86, 1, 0.18)
+
+[node name="TopCore" type="Line2D" parent="VisualRoot"]
+points = PackedVector2Array(-48, -16, 288, -16)
+width = 6.0
+default_color = Color(0.45, 0.92, 1, 0.7)
+
+[node name="TopCenter" type="Line2D" parent="VisualRoot"]
+points = PackedVector2Array(-48, -16, 288, -16)
+width = 2.0
+default_color = Color(0.88, 0.98, 1, 0.92)
+
+[node name="BottomGlow" type="Line2D" parent="VisualRoot"]
+points = PackedVector2Array(-48, 256, 288, 256)
+width = 18.0
+default_color = Color(0.24, 0.86, 1, 0.18)
+
+[node name="BottomCore" type="Line2D" parent="VisualRoot"]
+points = PackedVector2Array(-48, 256, 288, 256)
+width = 6.0
+default_color = Color(0.45, 0.92, 1, 0.7)
+
+[node name="BottomCenter" type="Line2D" parent="VisualRoot"]
+points = PackedVector2Array(-48, 256, 288, 256)
+width = 2.0
+default_color = Color(0.88, 0.98, 1, 0.92)
+
+[node name="LeftGlow" type="Line2D" parent="VisualRoot"]
+points = PackedVector2Array(-48, -16, -48, 256)
+width = 18.0
+default_color = Color(0.24, 0.86, 1, 0.18)
+
+[node name="LeftCore" type="Line2D" parent="VisualRoot"]
+points = PackedVector2Array(-48, -16, -48, 256)
+width = 6.0
+default_color = Color(0.45, 0.92, 1, 0.7)
+
+[node name="LeftCenter" type="Line2D" parent="VisualRoot"]
+points = PackedVector2Array(-48, -16, -48, 256)
+width = 2.0
+default_color = Color(0.88, 0.98, 1, 0.92)
+
+[node name="RightGlow" type="Line2D" parent="VisualRoot"]
+points = PackedVector2Array(288, -16, 288, 256)
+width = 18.0
+default_color = Color(0.24, 0.86, 1, 0.18)
+
+[node name="RightCore" type="Line2D" parent="VisualRoot"]
+points = PackedVector2Array(288, -16, 288, 256)
+width = 6.0
+default_color = Color(0.45, 0.92, 1, 0.7)
+
+[node name="RightCenter" type="Line2D" parent="VisualRoot"]
+points = PackedVector2Array(288, -16, 288, 256)
+width = 2.0
+default_color = Color(0.88, 0.98, 1, 0.92)
