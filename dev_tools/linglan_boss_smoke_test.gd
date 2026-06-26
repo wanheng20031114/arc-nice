@@ -76,6 +76,13 @@ func _test_animation_resource() -> void:
 		if animation_name == &"attack":
 			_expect(LINGLAN_FRAMES.get_animation_loop(animation_name), "Linglan attack animation must loop during boss casting phases.")
 			_expect(is_equal_approx(LINGLAN_FRAMES.get_animation_speed(animation_name), 9.0), "Linglan attack animation speed mismatch.")
+			for frame_index in range(LINGLAN_FRAMES.get_frame_count(animation_name)):
+				var visible_rect := _get_texture_visible_rect(LINGLAN_FRAMES.get_frame_texture(animation_name, frame_index))
+				var visible_bottom := visible_rect.position.y + visible_rect.size.y
+				_expect(visible_bottom >= 364 and visible_bottom <= 366, "Linglan attack frame %d must keep the idle foot baseline." % frame_index)
+				if frame_index == 0 or frame_index == LINGLAN_FRAMES.get_frame_count(animation_name) - 1:
+					_expect(visible_rect.position.y <= 50, "Linglan attack endpoint frame %d must not shrink below idle height." % frame_index)
+					_expect(visible_rect.size.y >= 315, "Linglan attack endpoint frame %d must keep idle-scale body height." % frame_index)
 
 
 func _test_boss_entry_resource() -> void:
@@ -370,3 +377,26 @@ func _test_host_boss_multiplayer_flow_signals() -> void:
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
+
+
+func _get_texture_visible_rect(texture: Texture2D) -> Rect2i:
+	if texture == null:
+		return Rect2i()
+	var image := texture.get_image()
+	if image == null:
+		return Rect2i()
+	var min_x := image.get_width()
+	var min_y := image.get_height()
+	var max_x := -1
+	var max_y := -1
+	for y in range(image.get_height()):
+		for x in range(image.get_width()):
+			if image.get_pixel(x, y).a <= 0.01:
+				continue
+			min_x = mini(min_x, x)
+			min_y = mini(min_y, y)
+			max_x = maxi(max_x, x)
+			max_y = maxi(max_y, y)
+	if max_x < min_x or max_y < min_y:
+		return Rect2i()
+	return Rect2i(min_x, min_y, max_x - min_x + 1, max_y - min_y + 1)

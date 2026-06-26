@@ -37,8 +37,8 @@ SKILL2_EXPLOSION_SOURCE = "dev_assets/source_images/boss_linglan/skill2_sakura_e
 SKILL2_EXPLOSION_ALPHA = "dev_assets/source_images/boss_linglan/skill2_sakura_explosion_alpha.png"
 DIE_SOURCE = "dev_assets/source_images/boss_linglan/die_imagegen_green_v2.png"
 DIE_ALPHA = "dev_assets/source_images/boss_linglan/die_v2_alpha.png"
-ATTACK_SOURCE = "dev_assets/source_images/boss_linglan/attack_imagegen_green_v2.png"
-ATTACK_ALPHA = "dev_assets/source_images/boss_linglan/attack_v2_alpha.png"
+ATTACK_SOURCE = "dev_assets/source_images/boss_linglan/attack_imagegen_green_v7.png"
+ATTACK_ALPHA = "dev_assets/source_images/boss_linglan/attack_v7_alpha.png"
 
 OUTPUT_TEXTURE_DIR = "resources/texture/boss_linglan"
 OUTPUT_FRAMES = "resources/animation/linglan.tres"
@@ -72,6 +72,7 @@ FRAME_SIZE_ALIGNMENT = 8
 MIN_COMPONENT_ALPHA_PIXELS = 120
 FRAME_GROUP_RADIUS = 8
 LINGLAN_AUTHORED_FRAME_SIZE = (368, 400)
+LINGLAN_STANDING_TARGET_ANCHOR = (184, 365)
 LINGLAN_DIE_TARGET_ANCHOR = (184, 380)
 LINGLAN_DIE_BASE_SCALE = 1.22
 LINGLAN_DIE_BAND_GAP = 30
@@ -919,6 +920,56 @@ def _process_linglan_die(root: Path) -> tuple[dict[str, FrameRegion], list[str]]
 	return regions, frame_names
 
 
+def _extract_frame_clipped(
+	image: Image.Image,
+	frame: DetectedFrame,
+	frame_size: tuple[int, int],
+	source_anchor: tuple[float, float],
+	target_anchor: tuple[int, int],
+) -> Image.Image:
+	left, top, _right, _bottom = frame.source_bbox
+	cell = image.crop(frame.source_bbox)
+	result = Image.new("RGBA", frame_size, (0, 0, 0, 0))
+	local_anchor_x = source_anchor[0] - left
+	local_anchor_y = source_anchor[1] - top
+	offset = (
+		int(round(target_anchor[0] - local_anchor_x)),
+		int(round(target_anchor[1] - local_anchor_y)),
+	)
+	_paste_clipped(result, cell, offset)
+	return result
+
+
+def _copy_linglan_output_strip_frame(root: Path, texture_resource: str, frame_index: int) -> Image.Image:
+	texture_path = root / texture_resource.removeprefix("res://")
+	image = Image.open(texture_path).convert("RGBA")
+	frame_width = image.width // SOURCE_COLUMNS
+	return image.crop((frame_index * frame_width, 0, (frame_index + 1) * frame_width, image.height))
+
+
+def _remove_attack_edge_artifacts(image: Image.Image) -> Image.Image:
+	array = np.array(image.convert("RGBA"), dtype=np.uint8)
+	alpha = array[:, :, 3] > 0
+	labels, count = ndimage.label(alpha)
+	if count <= 1:
+		return image
+	edge_margin = 72
+	for label_index, slices in enumerate(ndimage.find_objects(labels), start=1):
+		if slices is None:
+			continue
+		component = labels[slices] == label_index
+		area = int(component.sum())
+		left = int(slices[1].start)
+		right = int(slices[1].stop)
+		bottom = int(slices[0].stop)
+		width = right - left
+		touches_side_edge = left < edge_margin or right > image.width - edge_margin
+		lower_edge_sliver = touches_side_edge and bottom > image.height * 0.62 and (area <= 400 or width <= 18)
+		if touches_side_edge and (area <= 180 or width <= 10 or lower_edge_sliver):
+			array[labels == label_index] = (0, 0, 0, 0)
+	return Image.fromarray(array)
+
+
 def _process_linglan_attack(root: Path) -> None:
 	source = Image.open(root / ATTACK_SOURCE).convert("RGBA")
 	alpha = _despill_chroma_green(_remove_linglan_sprite_background(source))
@@ -930,14 +981,20 @@ def _process_linglan_attack(root: Path) -> None:
 	frames: list[tuple[str, Image.Image]] = []
 	for frame_index, detected in enumerate(detected_frames):
 		frame_name = f"attack_{frame_index}"
-		frame = _extract_frame(
-			alpha,
-			detected,
-			LINGLAN_AUTHORED_FRAME_SIZE,
-			_detect_linglan_body_anchor(alpha, detected),
-			LINGLAN_DIE_TARGET_ANCHOR,
-		)
-		frame = _despill_chroma_green(_remove_tiny_alpha_components(_remove_tall_edge_fragments(frame)))
+		if frame_index == 0:
+			frame = _copy_linglan_output_strip_frame(root, LINGLAN_TEXTURE_RESOURCES["idle"], 0)
+		elif frame_index == SOURCE_COLUMNS - 1:
+			frame = _copy_linglan_output_strip_frame(root, LINGLAN_TEXTURE_RESOURCES["idle"], 1)
+		else:
+			frame = _extract_frame_clipped(
+				alpha,
+				detected,
+				LINGLAN_AUTHORED_FRAME_SIZE,
+				_detect_linglan_body_anchor(alpha, detected),
+				LINGLAN_STANDING_TARGET_ANCHOR,
+			)
+			frame = _remove_attack_edge_artifacts(frame)
+			frame = _despill_chroma_green(_remove_tiny_alpha_components(_remove_tall_edge_fragments(frame)))
 		frames.append((frame_name, frame))
 
 	sheet, _regions = _build_animation_strip(frames)
