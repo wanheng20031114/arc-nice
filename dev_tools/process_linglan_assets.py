@@ -37,8 +37,8 @@ SKILL2_EXPLOSION_SOURCE = "dev_assets/source_images/boss_linglan/skill2_sakura_e
 SKILL2_EXPLOSION_ALPHA = "dev_assets/source_images/boss_linglan/skill2_sakura_explosion_alpha.png"
 DIE_SOURCE = "dev_assets/source_images/boss_linglan/die_imagegen_green_v2.png"
 DIE_ALPHA = "dev_assets/source_images/boss_linglan/die_v2_alpha.png"
-ATTACK_SOURCE = "dev_assets/source_images/boss_linglan/attack_imagegen_green_v11a_grid_3x2.png"
-ATTACK_ALPHA = "dev_assets/source_images/boss_linglan/attack_v11a_grid_3x2_alpha.png"
+ATTACK_SOURCE = "dev_assets/source_images/boss_linglan/attack_imagegen_green_v12b_bodylock_3x2.png"
+ATTACK_ALPHA = "dev_assets/source_images/boss_linglan/attack_v12b_bodylock_alpha.png"
 
 OUTPUT_TEXTURE_DIR = "resources/texture/boss_linglan"
 OUTPUT_FRAMES = "resources/animation/linglan.tres"
