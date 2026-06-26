@@ -5,6 +5,7 @@
 
 [resource]
 script = ExtResource("1_config")
+fire_interval = 0.2
 orb_speed = 90.0
 orb_base_radius = 15.0
 orb_grow_scale = 3.0

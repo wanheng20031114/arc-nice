@@ -90,8 +90,8 @@ func _test_skill3_config() -> void:
 	_expect(SKILL3_CONFIG.target_cell == Vector2i(0, 1), "Skill3 target cell mismatch.")
 	_expect(is_equal_approx(SKILL3_CONFIG.move_speed, 120.0), "Skill3 move speed mismatch.")
 	_expect(is_equal_approx(SKILL3_CONFIG.duration, 10.0), "Skill3 duration mismatch.")
-	_expect(is_equal_approx(SKILL3_CONFIG.fire_interval, 0.25), "Skill3 fire interval mismatch.")
-	_expect(SKILL3_CONFIG.get_shot_count() == 40, "Skill3 must fire 40 orbs.")
+	_expect(is_equal_approx(SKILL3_CONFIG.fire_interval, 0.2), "Skill3 fire interval mismatch.")
+	_expect(SKILL3_CONFIG.get_shot_count() == 50, "Skill3 must fire 50 orbs.")
 	_expect(is_equal_approx(SKILL3_CONFIG.direction_min_degrees, 0.0), "Skill3 direction min mismatch.")
 	_expect(is_equal_approx(SKILL3_CONFIG.direction_max_degrees, 90.0), "Skill3 direction max mismatch.")
 	_expect(is_equal_approx(SKILL3_CONFIG.orb_speed, 90.0), "Skill3 orb speed mismatch.")
@@ -286,7 +286,7 @@ func _test_boss_skill3_schedule() -> void:
 	_expect(host.projectile_records.size() == 1, "Skill3 must fire immediately after attack starts.")
 	for _step in range(660):
 		boss.call("_physics_process", 1.0 / 60.0)
-	_expect(host.projectile_records.size() == 40, "Skill3 must fire exactly 40 orbs.")
+	_expect(host.projectile_records.size() == 50, "Skill3 must fire exactly 50 orbs.")
 	_expect(boss.boss_skill_phase == LinglanBoss.BossSkillPhase.DONE, "Skill3 must enter DONE after the 10 second cycle.")
 	for record in host.projectile_records:
 		var direction: Vector2 = record.get("direction", Vector2.ZERO)

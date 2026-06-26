@@ -6,7 +6,7 @@ class_name LinglanSkill3Config
 @export_range(0.0, 1000.0, 1.0, "or_greater") var move_speed: float = 120.0
 @export_range(0.0, 32.0, 0.1, "or_greater") var arrival_distance: float = 2.0
 @export_range(0.05, 60.0, 0.05, "or_greater") var duration: float = 10.0
-@export_range(0.05, 10.0, 0.05, "or_greater") var fire_interval: float = 0.25
+@export_range(0.05, 10.0, 0.05, "or_greater") var fire_interval: float = 0.2
 @export_range(0.0, 360.0, 0.5) var direction_min_degrees: float = 0.0
 @export_range(0.0, 360.0, 0.5) var direction_max_degrees: float = 90.0
 @export_range(0.0, 2000.0, 1.0, "or_greater") var orb_speed: float = 90.0
