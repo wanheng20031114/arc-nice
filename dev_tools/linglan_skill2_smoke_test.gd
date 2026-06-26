@@ -114,6 +114,7 @@ func _test_skill2_config() -> void:
 	_expect(is_equal_approx(SKILL2_CONFIG.rocket_lifetime, 5.0), "Skill2 rocket lifetime mismatch.")
 	_expect(SKILL2_CONFIG.rocket_damage == 80, "Skill2 rocket damage mismatch.")
 	_expect(is_equal_approx(SKILL2_CONFIG.rocket_explosion_radius, EXPECTED_ROCKET_EXPLOSION_RADIUS), "Skill2 explosion radius mismatch.")
+	_expect(is_equal_approx(SKILL2_CONFIG.warning_arrow_length, 56.0), "Skill2 warning arrow length mismatch.")
 	_expect(SKILL2_CONFIG.rocket_scene == ROCKET_SCENE, "Skill2 rocket scene mismatch.")
 	_expect(SKILL2_CONFIG.warning_arrow_scene == WARNING_ARROW_SCENE, "Skill2 warning arrow scene mismatch.")
 	_expect(SKILL2_CONFIG.spawn_enemy_config != null, "Skill2 spawn enemy config missing.")
@@ -150,6 +151,7 @@ func _test_skill2_scene_contract() -> void:
 				warning_arrow.get_node_or_null(node_name) != null,
 				"Skill2 warning arrow missing %s." % node_name
 			)
+		_expect(_get_polygon_max_x(warning_arrow, "GlowArrow") <= 82.0, "Skill2 warning arrow must stay short, not reach toward the player.")
 		_expect(_count_line_nodes(warning_arrow) == 0, "Skill2 warning must use pink arrow polygons instead of Line2D lines.")
 		_expect(_count_collision_nodes(warning_arrow) == 0, "Skill2 warning arrow must not own collision nodes.")
 		warning_arrow.queue_free()
@@ -432,6 +434,16 @@ func _count_skill2_warning_arrows(parent: Node) -> int:
 		if child.name.begins_with("LinglanSkill2WarningArrow"):
 			count += 1
 	return count
+
+
+func _get_polygon_max_x(root_node: Node, node_name: String) -> float:
+	var polygon_node := root_node.get_node_or_null(node_name) as Polygon2D
+	if polygon_node == null:
+		return -1000000.0
+	var max_x := -1000000.0
+	for point in polygon_node.polygon:
+		max_x = maxf(max_x, point.x)
+	return max_x
 
 
 func _count_skill2_explosions(parent: Node) -> int:

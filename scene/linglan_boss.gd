@@ -463,9 +463,9 @@ func _spawn_skill2_warning_arrow(shot_index: int) -> void:
 func _apply_skill2_warning_arrow_geometry(arrow: Node2D) -> void:
 	var start_distance := skill2_config.warning_arrow_start_distance
 	var end_distance := start_distance + skill2_config.warning_arrow_length
-	_set_skill2_arrow_polygon(arrow, "GlowArrow", start_distance, end_distance, 11.0, 22.0, 38.0, 18.0)
-	_set_skill2_arrow_polygon(arrow, "CoreArrow", start_distance, end_distance, 6.0, 15.0, 32.0, 14.0)
-	_set_skill2_arrow_polygon(arrow, "HighlightArrow", start_distance + 7.0, end_distance, 2.0, 6.0, 34.0, 10.0)
+	_set_skill2_arrow_polygon(arrow, "GlowArrow", start_distance, end_distance, 6.0, 12.0, 18.0, 6.0)
+	_set_skill2_arrow_polygon(arrow, "CoreArrow", start_distance, end_distance, 3.5, 8.0, 14.0, 5.0)
+	_set_skill2_arrow_polygon(arrow, "HighlightArrow", start_distance + 5.0, end_distance, 1.4, 3.6, 12.0, 4.0)
 
 
 func _set_skill2_arrow_polygon(

@@ -15,7 +15,7 @@ class_name LinglanSkill2Config
 @export_range(0.0, 512.0, 0.5, "or_greater") var rocket_explosion_radius: float = 78.0
 @export_range(0.0, 128.0, 0.5, "or_greater") var rocket_spawn_distance: float = 28.0
 @export_range(0.0, 128.0, 0.5, "or_greater") var warning_arrow_start_distance: float = 18.0
-@export_range(16.0, 512.0, 1.0, "or_greater") var warning_arrow_length: float = 168.0
+@export_range(16.0, 512.0, 1.0, "or_greater") var warning_arrow_length: float = 56.0
 @export var rocket_scene: PackedScene
 @export var warning_arrow_scene: PackedScene
 @export var spawn_enemy_config: EnemyConfig
