@@ -1868,6 +1868,65 @@ func get_linglan_skill3_target_global_position(target_cell: Vector2i) -> Vector2
 	return Vector2.ZERO
 
 
+func get_linglan_skill4_target_global_position(
+	target_cell_a: Vector2i,
+	target_cell_b: Vector2i
+) -> Vector2:
+	if ground_tile_map_layer != null:
+		return (
+			_get_tile_cell_global_position(target_cell_a)
+			+ _get_tile_cell_global_position(target_cell_b)
+		) * 0.5
+	if active_boss_config != null:
+		return _get_boss_arena_center(active_boss_config)
+	return Vector2.ZERO
+
+
+func get_linglan_skill4_laser_bounds(
+	left_cell_x: int,
+	right_cell_x: int,
+	top_cell_y: int,
+	bottom_cell_y: int,
+	inward_cell_distance: int
+) -> Dictionary:
+	if ground_tile_map_layer == null:
+		var fallback_center := _get_boss_arena_center(active_boss_config) if active_boss_config != null else Vector2.ZERO
+		return {
+			"start_min": fallback_center,
+			"start_max": fallback_center,
+			"final_min": fallback_center,
+			"final_max": fallback_center,
+		}
+	var start_a := _get_tile_cell_global_position(Vector2i(left_cell_x, top_cell_y))
+	var start_b := _get_tile_cell_global_position(Vector2i(right_cell_x, bottom_cell_y))
+	var final_a := _get_tile_cell_global_position(Vector2i(
+		left_cell_x + inward_cell_distance,
+		top_cell_y + inward_cell_distance
+	))
+	var final_b := _get_tile_cell_global_position(Vector2i(
+		right_cell_x - inward_cell_distance,
+		bottom_cell_y - inward_cell_distance
+	))
+	return {
+		"start_min": Vector2(minf(start_a.x, start_b.x), minf(start_a.y, start_b.y)),
+		"start_max": Vector2(maxf(start_a.x, start_b.x), maxf(start_a.y, start_b.y)),
+		"final_min": Vector2(minf(final_a.x, final_b.x), minf(final_a.y, final_b.y)),
+		"final_max": Vector2(maxf(final_a.x, final_b.x), maxf(final_a.y, final_b.y)),
+	}
+
+
+func get_linglan_skill4_orb_spawn_global_position(x_cell: int, y_cell: int) -> Vector2:
+	if ground_tile_map_layer != null:
+		return _get_tile_cell_global_position(Vector2i(x_cell, y_cell))
+	if active_boss_config != null:
+		return _get_boss_arena_center(active_boss_config)
+	return Vector2.ZERO
+
+
+func _get_tile_cell_global_position(cell: Vector2i) -> Vector2:
+	return ground_tile_map_layer.to_global(ground_tile_map_layer.map_to_local(cell))
+
+
 func get_linglan_skill2_target_player(from_position: Vector2) -> Player:
 	return _pick_enemy_target(from_position)
 

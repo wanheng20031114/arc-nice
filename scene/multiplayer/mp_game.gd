@@ -17,6 +17,8 @@ const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect
 const LINGLAN_SAKURA_BULLET_SCENE := preload("res://scene/linglan_skill1_sakura_bullet.tscn")
 const LINGLAN_SKILL2_ROCKET_SCENE := preload("res://scene/linglan_skill2_sakura_rocket.tscn")
 const LINGLAN_SKILL3_ORB_SCENE := preload("res://scene/linglan_skill3_light_orb.tscn")
+const LINGLAN_SKILL4_ORB_SCENE := preload("res://scene/linglan_skill4_light_orb.tscn")
+const LINGLAN_SKILL4_ORB_SCRIPT := preload("res://scene/linglan_skill4_light_orb.gd")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 
 const INPUT_BUTTON_SKILL1 := 1
@@ -1053,6 +1055,9 @@ func _apply_projectile_lifetime_compensation(
 	if sakura_rocket != null:
 		sakura_rocket.remaining_lifetime = remaining
 		return
+	if projectile != null and projectile.get_script() == LINGLAN_SKILL4_ORB_SCRIPT:
+		projectile.set("remaining_lifetime", remaining)
+		return
 
 
 func _instantiate_projectile(
@@ -1155,6 +1160,13 @@ func _instantiate_projectile(
 			light_orb.top_level = true
 			light_orb.setup(direction, damage, speed, lifetime)
 			return light_orb
+		&"linglan_skill4_orb":
+			var skill4_orb := LINGLAN_SKILL4_ORB_SCENE.instantiate() as Node2D
+			if skill4_orb == null:
+				return null
+			skill4_orb.top_level = true
+			skill4_orb.call("setup", direction, damage, speed, lifetime)
+			return skill4_orb
 		_:
 			return null
 

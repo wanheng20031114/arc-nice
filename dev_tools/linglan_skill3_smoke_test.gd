@@ -289,7 +289,11 @@ func _test_boss_skill3_schedule() -> void:
 	for _step in range(660):
 		boss.call("_physics_process", 1.0 / 60.0)
 	_expect(host.projectile_records.size() == 50, "Skill3 must fire exactly 50 orbs.")
-	_expect(boss.boss_skill_phase == LinglanBoss.BossSkillPhase.DONE, "Skill3 must enter DONE after the 10 second cycle.")
+	_expect(
+		boss.boss_skill_phase == LinglanBoss.BossSkillPhase.MOVE_TO_SKILL4
+		or boss.boss_skill_phase == LinglanBoss.BossSkillPhase.SKILL4,
+		"Skill3 must hand off to Skill4 movement after the 10 second cycle."
+	)
 	for record in host.projectile_records:
 		var direction: Vector2 = record.get("direction", Vector2.ZERO)
 		_expect(record.get("projectile_type") == &"linglan_skill3_orb", "Skill3 registered wrong projectile type.")
