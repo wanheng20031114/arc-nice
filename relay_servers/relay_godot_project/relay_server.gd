@@ -5,12 +5,13 @@ extends Node
 ## 命令行参数: --port=40001
 
 const DEFAULT_PORT := 40001
-const IDLE_TIMEOUT_SEC := 300.0
+const DEFAULT_IDLE_TIMEOUT_SEC := 10.0 * 60.0 * 60.0
 const EMPTY_AFTER_CONNECTION_TIMEOUT_SEC := 1.0
 const MAX_CLIENTS := 8
 const CHANNEL_COUNT := 5
 
 var _port: int = DEFAULT_PORT
+var _idle_timeout_sec: float = DEFAULT_IDLE_TIMEOUT_SEC
 var _idle_timer: float = 0.0
 var _has_had_connections: bool = false
 var _host_peer_id: int = 0
@@ -29,6 +30,11 @@ func _parse_command_line() -> void:
 			if port_str.is_valid_int():
 				_port = port_str.to_int()
 				print("[Relay] 端口参数: %d" % _port)
+		elif arg.begins_with("--idle-timeout="):
+			var timeout_str := arg.substr(15)
+			if timeout_str.is_valid_float():
+				_idle_timeout_sec = maxf(timeout_str.to_float(), DEFAULT_IDLE_TIMEOUT_SEC)
+				print("[Relay] 空闲超时参数: %d 秒" % int(_idle_timeout_sec))
 
 
 func _start_server() -> void:
@@ -53,8 +59,8 @@ func _process(delta: float) -> void:
 	# 空闲超时检测
 	if not _has_had_connections:
 		_idle_timer += delta
-		if _idle_timer >= IDLE_TIMEOUT_SEC:
-			print("[Relay] 空闲超时 (%d 秒), 自动退出" % int(IDLE_TIMEOUT_SEC))
+		if _idle_timer >= _idle_timeout_sec:
+			print("[Relay] 空闲超时 (%d 秒), 自动退出" % int(_idle_timeout_sec))
 			get_tree().quit(0)
 		return
 

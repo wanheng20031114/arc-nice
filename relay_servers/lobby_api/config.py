@@ -26,11 +26,20 @@ RELAY_PROJECT_PATH = os.getenv(
 )
 
 # ─── 房间超时 ────────────────────────────────────
+# 一局游戏最长保留 10 小时。旧部署生成的 .env 可能仍是 600/300 秒，
+# 这里把更短的配置抬到 10 小时，避免游戏中途被清理任务回收。
+GAME_MAX_DURATION_SECONDS = 10 * 60 * 60
+
+
+def _session_timeout(name: str) -> int:
+    return max(int(os.getenv(name, str(GAME_MAX_DURATION_SECONDS))), GAME_MAX_DURATION_SECONDS)
+
+
 # 房间空闲超时（秒），超时后自动销毁
-ROOM_IDLE_TIMEOUT = int(os.getenv("ROOM_IDLE_TIMEOUT", "600"))
+ROOM_IDLE_TIMEOUT = _session_timeout("ROOM_IDLE_TIMEOUT")
 
 # Relay 进程无连接超时（秒）
-RELAY_IDLE_TIMEOUT = int(os.getenv("RELAY_IDLE_TIMEOUT", "300"))
+RELAY_IDLE_TIMEOUT = _session_timeout("RELAY_IDLE_TIMEOUT")
 
 # Relay 启动后给 Godot/ENet 完成监听的等待时间（秒）
 RELAY_STARTUP_GRACE_SECONDS = float(os.getenv("RELAY_STARTUP_GRACE_SECONDS", "5.0"))

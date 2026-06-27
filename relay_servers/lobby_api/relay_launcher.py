@@ -51,7 +51,9 @@ class RelayLauncher:
             godot_path,
             "--headless",
             "--path", project_path,
-            "--", f"--port={port}",
+            "--",
+            f"--port={port}",
+            f"--idle-timeout={config.RELAY_IDLE_TIMEOUT}",
         ]
 
         log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
