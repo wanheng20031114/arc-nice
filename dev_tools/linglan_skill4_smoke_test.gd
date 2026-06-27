@@ -144,6 +144,7 @@ func _test_skill4_config() -> void:
 	_expect(SKILL4_CONFIG.laser_start_top_cell_y == -1, "Skill4 top laser cell mismatch.")
 	_expect(SKILL4_CONFIG.laser_start_bottom_cell_y == 16, "Skill4 bottom laser cell mismatch.")
 	_expect(SKILL4_CONFIG.laser_inward_cell_distance == 5, "Skill4 inward distance mismatch.")
+	_expect(is_equal_approx(SKILL4_CONFIG.laser_warning_duration, 1.0), "Skill4 laser warning duration mismatch.")
 	_expect(is_equal_approx(SKILL4_CONFIG.laser_shrink_duration, 3.0), "Skill4 laser shrink duration mismatch.")
 	_expect(is_equal_approx(SKILL4_CONFIG.orb_start_delay_after_laser, 0.5), "Skill4 orb delay mismatch.")
 	_expect(is_equal_approx(SKILL4_CONFIG.laser_core_width, 6.0), "Skill4 laser core width mismatch.")
@@ -154,8 +155,8 @@ func _test_skill4_config() -> void:
 	_expect(is_equal_approx(SKILL4_CONFIG.orb_spawn_interval, 2.0), "Skill4 orb interval mismatch.")
 	_expect(is_equal_approx(SKILL4_CONFIG.orb_spawn_duration, 14.0), "Skill4 orb duration mismatch.")
 	_expect(SKILL4_CONFIG.get_orb_wave_count() == 7, "Skill4 must spawn seven orb waves.")
-	_expect(is_equal_approx(SKILL4_CONFIG.get_orb_start_time(), 3.5), "Skill4 orb phase start mismatch.")
-	_expect(is_equal_approx(SKILL4_CONFIG.get_total_duration(), 17.5), "Skill4 total duration mismatch.")
+	_expect(is_equal_approx(SKILL4_CONFIG.get_orb_start_time(), 4.5), "Skill4 orb phase start mismatch.")
+	_expect(is_equal_approx(SKILL4_CONFIG.get_total_duration(), 18.5), "Skill4 total duration mismatch.")
 	_expect(is_equal_approx(SKILL4_CONFIG.orb_speed, 40.0), "Skill4 orb speed mismatch.")
 	_expect(is_equal_approx(SKILL4_CONFIG.orb_lifetime, 10.0), "Skill4 orb lifetime mismatch.")
 	_expect(SKILL4_CONFIG.orb_damage == 50, "Skill4 orb damage mismatch.")
@@ -194,19 +195,30 @@ func _test_skill4_scene_contract() -> void:
 	_expect(field.collision_layer == 128, "Skill4 laser must use EnemyProjectile collision layer.")
 	_expect(field.collision_mask == 2, "Skill4 laser must only collide with Player.")
 	_expect(is_equal_approx(field.get_laser_progress(), 0.0), "Skill4 laser progress must start at zero.")
+	_expect(field.is_warning_active(), "Skill4 laser must start in warning mode.")
 	var top_shape := field.get_node_or_null("TopShape") as CollisionShape2D
 	var left_shape := field.get_node_or_null("LeftShape") as CollisionShape2D
 	_expect(top_shape != null and top_shape.shape is RectangleShape2D, "Skill4 top laser must use a rectangle core.")
 	_expect(left_shape != null and left_shape.shape is RectangleShape2D, "Skill4 left laser must use a rectangle core.")
 	if top_shape != null and top_shape.shape is RectangleShape2D:
-		_expect(is_equal_approx((top_shape.shape as RectangleShape2D).size.y, 6.0), "Skill4 horizontal laser core must be 6px high.")
+		_expect(is_equal_approx((top_shape.shape as RectangleShape2D).size.y, 1.5), "Skill4 warning horizontal laser core must be thin.")
 	if left_shape != null and left_shape.shape is RectangleShape2D:
-		_expect(is_equal_approx((left_shape.shape as RectangleShape2D).size.x, 6.0), "Skill4 vertical laser core must be 6px wide.")
+		_expect(is_equal_approx((left_shape.shape as RectangleShape2D).size.x, 1.5), "Skill4 warning vertical laser core must be thin.")
 	for node_name in ["TopGlow", "TopCore", "TopCenter", "LeftGlow", "LeftCore", "LeftCenter"]:
 		var line := field.get_node_or_null("VisualRoot/%s" % node_name) as Line2D
 		_expect(line != null, "Skill4 laser visual missing %s." % node_name)
 		if node_name.ends_with("Core") and line != null:
-			_expect(is_equal_approx(line.width, 6.0), "Skill4 core visual width must match collision width.")
+			_expect(line.width < 6.0, "Skill4 warning core visual must be thinner than active laser.")
+	field.call("_physics_process", 0.5)
+	var warning_bounds := field.get_current_bounds()
+	_expect(warning_bounds.position.is_equal_approx(Vector2(-48.0, -16.0)), "Skill4 warning min bounds must stay at start.")
+	_expect(warning_bounds.end.is_equal_approx(Vector2(288.0, 256.0)), "Skill4 warning max bounds must stay at start.")
+	field.call("_physics_process", 0.5)
+	_expect(not field.is_warning_active(), "Skill4 laser warning must end before shrink starts.")
+	if top_shape != null and top_shape.shape is RectangleShape2D:
+		_expect(is_equal_approx((top_shape.shape as RectangleShape2D).size.y, 6.0), "Skill4 active horizontal laser core must be 6px high.")
+	if left_shape != null and left_shape.shape is RectangleShape2D:
+		_expect(is_equal_approx((left_shape.shape as RectangleShape2D).size.x, 6.0), "Skill4 active vertical laser core must be 6px wide.")
 	field.call("_physics_process", 1.5)
 	var mid_bounds := field.get_current_bounds()
 	_expect(mid_bounds.position.is_equal_approx(Vector2(-8.0, 24.0)), "Skill4 laser midpoint min bounds mismatch.")
@@ -257,6 +269,12 @@ func _test_laser_and_orb_damage() -> void:
 	field.set_physics_process(false)
 	await process_frame
 	await physics_frame
+	field.call("_physics_process", 0.5)
+	_expect(
+		laser_player.current_health == 200,
+		"Skill4 laser warning must not deal damage, health=%d." % laser_player.current_health
+	)
+	field.call("_physics_process", 0.5)
 	field.call("_physics_process", 0.016)
 	_expect(
 		laser_player.current_health == 150,
@@ -385,8 +403,8 @@ func _test_boss_skill4_schedule() -> void:
 	if sprite != null:
 		_expect(sprite.animation == &"attack", "Skill4 attack phase must play Linglan attack animation.")
 
-	boss.call("_physics_process", 3.49)
-	_expect(host.projectile_records.is_empty(), "Skill4 must wait for shrink plus 0.5s before orb waves.")
+	boss.call("_physics_process", 4.49)
+	_expect(host.projectile_records.is_empty(), "Skill4 must wait for warning, shrink, and 0.5s before orb waves.")
 	boss.call("_physics_process", 0.02)
 	_expect(host.projectile_records.size() == 14, "Skill4 first wave must spawn 7 orbs per side.")
 	_expect(_first_wave_rows_are_unique_per_side(host), "Skill4 first wave rows must be unique per side.")
@@ -394,8 +412,8 @@ func _test_boss_skill4_schedule() -> void:
 		boss.call("_physics_process", 1.0 / 60.0)
 		if boss.boss_skill_phase == LinglanBoss.BossSkillPhase.POST_SKILL_IDLE:
 			break
-	_expect(host.projectile_records.size() == 98, "Skill4 must spawn exactly seven reduced two-sided waves.")
-	_expect(boss.boss_skill_phase == LinglanBoss.BossSkillPhase.POST_SKILL_IDLE, "Skill4 must enter the 2s post-skill idle after its 17.5s cycle.")
+	_expect(host.projectile_records.size() == 168, "Skill4 must spawn exactly seven two-sided waves.")
+	_expect(boss.boss_skill_phase == LinglanBoss.BossSkillPhase.DONE, "Skill4 must enter DONE after its 18.5s cycle.")
 	_expect(boss.skill4_laser_field == null, "Skill4 must clear the laser field when the skill ends.")
 	for record in host.projectile_records:
 		_expect(record.get("projectile_type") == &"linglan_skill4_orb", "Skill4 registered wrong projectile type.")

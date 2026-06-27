@@ -6,6 +6,8 @@ const DAMAGE_QUERY_MAX_RESULTS := 32
 
 @export var damage: int = 50
 @export var core_width: float = 6.0
+@export var warning_core_width: float = 1.5
+@export var warning_duration: float = 1.0
 @export var shrink_duration: float = 3.0
 @export var damage_enabled: bool = true
 
@@ -50,6 +52,7 @@ func setup(
 	initial_damage: int,
 	initial_core_width: float,
 	initial_shrink_duration: float,
+	initial_warning_duration: float = 1.0,
 	initial_damage_enabled: bool = true
 ) -> void:
 	start_min = _normalized_min(initial_start_min, initial_start_max)
@@ -59,6 +62,7 @@ func setup(
 	damage = maxi(initial_damage, 0)
 	core_width = maxf(initial_core_width, 1.0)
 	shrink_duration = maxf(initial_shrink_duration, 0.01)
+	warning_duration = maxf(initial_warning_duration, 0.0)
 	damage_enabled = initial_damage_enabled
 	elapsed = 0.0
 	damaged_player_ids.clear()
@@ -83,7 +87,12 @@ func _set_damage_collision_enabled(enabled: bool) -> void:
 
 
 func get_laser_progress() -> float:
-	return clampf(elapsed / maxf(shrink_duration, 0.01), 0.0, 1.0)
+	var active_elapsed := maxf(elapsed - warning_duration, 0.0)
+	return clampf(active_elapsed / maxf(shrink_duration, 0.01), 0.0, 1.0)
+
+
+func is_warning_active() -> bool:
+	return elapsed < warning_duration
 
 
 func get_current_bounds() -> Rect2:
@@ -94,9 +103,9 @@ func get_current_bounds() -> Rect2:
 
 
 func _physics_process(delta: float) -> void:
-	elapsed = minf(elapsed + maxf(delta, 0.0), shrink_duration)
+	elapsed = minf(elapsed + maxf(delta, 0.0), warning_duration + shrink_duration)
 	_apply_current_geometry()
-	if damage_enabled:
+	if damage_enabled and not is_warning_active():
 		_apply_overlap_damage()
 
 
@@ -126,28 +135,51 @@ func _apply_current_geometry() -> void:
 	_set_line_points(right_core, right_a, right_b)
 	_set_line_points(right_center, right_a, right_b)
 
-	var horizontal_length := maxf(absf(max_position.x - min_position.x), core_width)
-	var vertical_length := maxf(absf(max_position.y - min_position.y), core_width)
+	var active_core_width := _get_active_core_width()
+	_apply_current_line_widths(active_core_width)
+
+	var horizontal_length := maxf(absf(max_position.x - min_position.x), active_core_width)
+	var vertical_length := maxf(absf(max_position.y - min_position.y), active_core_width)
 	_set_rectangle_shape(
 		top_shape,
 		Vector2((min_position.x + max_position.x) * 0.5, min_position.y),
-		Vector2(horizontal_length, core_width)
+		Vector2(horizontal_length, active_core_width)
 	)
 	_set_rectangle_shape(
 		bottom_shape,
 		Vector2((min_position.x + max_position.x) * 0.5, max_position.y),
-		Vector2(horizontal_length, core_width)
+		Vector2(horizontal_length, active_core_width)
 	)
 	_set_rectangle_shape(
 		left_shape,
 		Vector2(min_position.x, (min_position.y + max_position.y) * 0.5),
-		Vector2(core_width, vertical_length)
+		Vector2(active_core_width, vertical_length)
 	)
 	_set_rectangle_shape(
 		right_shape,
 		Vector2(max_position.x, (min_position.y + max_position.y) * 0.5),
-		Vector2(core_width, vertical_length)
+		Vector2(active_core_width, vertical_length)
 	)
+
+
+func _get_active_core_width() -> float:
+	if is_warning_active():
+		return maxf(warning_core_width, 1.0)
+	return core_width
+
+
+func _apply_current_line_widths(active_core_width: float) -> void:
+	var glow_width := active_core_width * (4.0 if is_warning_active() else 3.0)
+	var center_width := maxf(active_core_width * (0.5 if is_warning_active() else 0.3333), 1.0)
+	for line in [top_glow, bottom_glow, left_glow, right_glow]:
+		if line != null:
+			line.width = glow_width
+	for line in [top_core, bottom_core, left_core, right_core]:
+		if line != null:
+			line.width = active_core_width
+	for line in [top_center, bottom_center, left_center, right_center]:
+		if line != null:
+			line.width = center_width
 
 
 func _set_line_points(line: Line2D, start_point: Vector2, end_point: Vector2) -> void:
@@ -167,7 +199,7 @@ func _set_rectangle_shape(shape_node: CollisionShape2D, center: Vector2, size: V
 
 
 func _on_body_entered(body: Node2D) -> void:
-	if damage_enabled:
+	if damage_enabled and not is_warning_active():
 		_apply_player_damage(body as Player)
 
 
