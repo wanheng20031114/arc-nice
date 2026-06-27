@@ -190,6 +190,7 @@ def _frame_data(
 	rows: int,
 	virtual_size: tuple[int, int] | None,
 	body_anchor: tuple[int, int] | None,
+	safe_padding: int,
 ) -> list[dict[str, object]]:
 	frames: list[dict[str, object]] = []
 	for row in range(rows):
@@ -219,6 +220,22 @@ def _frame_data(
 				"body_anchor_in_cell": list(anchor),
 				"body_anchor_global": list(global_anchor),
 			}
+			if alpha_bbox is not None:
+				padding = {
+					"left": int(alpha_bbox[0]),
+					"top": int(alpha_bbox[1]),
+					"right": int((right - left) - alpha_bbox[2]),
+					"bottom": int((bottom - top) - alpha_bbox[3]),
+				}
+				frame["cell_safety_padding"] = padding
+				frame["cell_safety_padding_min"] = min(padding.values())
+				frame["cell_safety_ok"] = min(padding.values()) >= safe_padding
+			if body_bbox is not None:
+				frame["body_size"] = [int(body_bbox[2] - body_bbox[0]), int(body_bbox[3] - body_bbox[1])]
+				frame["body_center_in_cell"] = [
+					round((body_bbox[0] + body_bbox[2]) * 0.5, 2),
+					round((body_bbox[1] + body_bbox[3]) * 0.5, 2),
+				]
 			if virtual_size is not None and body_anchor is not None:
 				target = (
 					round(global_anchor[0] - body_anchor[0]),
@@ -241,6 +258,54 @@ def _frame_data(
 	return frames
 
 
+def _range_summary(values: list[float]) -> dict[str, float] | None:
+	if not values:
+		return None
+	return {
+		"min": round(min(values), 2),
+		"max": round(max(values), 2),
+		"range": round(max(values) - min(values), 2),
+	}
+
+
+def _summarize_frames(frames: list[dict[str, object]], safe_padding: int) -> dict[str, object]:
+	body_widths: list[float] = []
+	body_heights: list[float] = []
+	anchor_x: list[float] = []
+	anchor_y: list[float] = []
+	safety_minimums: list[float] = []
+	safety_violations: list[dict[str, object]] = []
+	for frame in frames:
+		body_size = frame.get("body_size")
+		if isinstance(body_size, list) and len(body_size) == 2:
+			body_widths.append(float(body_size[0]))
+			body_heights.append(float(body_size[1]))
+		anchor = frame.get("body_anchor_in_cell")
+		if isinstance(anchor, list) and len(anchor) == 2:
+			anchor_x.append(float(anchor[0]))
+			anchor_y.append(float(anchor[1]))
+		safety_min = frame.get("cell_safety_padding_min")
+		if isinstance(safety_min, (int, float)):
+			safety_minimums.append(float(safety_min))
+			if float(safety_min) < safe_padding:
+				safety_violations.append(
+					{
+						"row": frame.get("row"),
+						"column": frame.get("column"),
+						"minimum_padding": safety_min,
+					}
+				)
+	return {
+		"body_width": _range_summary(body_widths),
+		"body_height": _range_summary(body_heights),
+		"body_anchor_x": _range_summary(anchor_x),
+		"body_anchor_y": _range_summary(anchor_y),
+		"minimum_cell_safety_padding": _range_summary(safety_minimums),
+		"required_safe_padding": safe_padding,
+		"safety_violations": safety_violations,
+	}
+
+
 def _rect_from_tuple(rect: tuple[int, int, int, int]) -> dict[str, int]:
 	return {"x": rect[0], "y": rect[1], "width": rect[2], "height": rect[3]}
 
@@ -254,12 +319,13 @@ def _load_image(path: Path) -> Image.Image:
 def main() -> None:
 	parser = argparse.ArgumentParser(description="Analyze an enemy sprite sheet for color contrast and anchor slicing.")
 	parser.add_argument("image", type=Path)
-	parser.add_argument("--grid", type=_parse_size, default=(4, 4), help="Sheet grid as COLUMNSxROWS. Default: 4x4")
+	parser.add_argument("--grid", type=_parse_size, required=True, help="Actual sheet grid as COLUMNSxROWS. Pass the real frame layout for this asset.")
 	parser.add_argument("--body-rgb", type=_parse_color, default=None, help="Stable body color as R,G,B or #RRGGBB.")
 	parser.add_argument("--body-threshold", type=float, default=70.0, help="RGB distance threshold for body mask.")
 	parser.add_argument("--virtual-size", type=_parse_size, default=None, help="Logical AtlasTexture size as WIDTHxHEIGHT.")
 	parser.add_argument("--body-anchor", type=_parse_size, default=None, help="Body anchor inside logical frame as XxY.")
 	parser.add_argument("--edge-key-threshold", type=float, default=35.0, help="Opaque edge background exclusion threshold.")
+	parser.add_argument("--safe-padding", type=int, default=8, help="Required empty pixels around visible bbox inside each grid cell.")
 	parser.add_argument("--dominant-colors", type=int, default=10)
 	args = parser.parse_args()
 
@@ -267,21 +333,24 @@ def main() -> None:
 	visible = _visible_mask(image, args.edge_key_threshold)
 	body = _body_mask(image, visible, args.body_rgb, args.body_threshold)
 	sheet_bbox = _mask_bbox(visible)
+	frames = _frame_data(
+		image,
+		visible,
+		body,
+		args.grid[0],
+		args.grid[1],
+		args.virtual_size,
+		args.body_anchor,
+		args.safe_padding,
+	)
 	result = {
 		"image": str(args.image),
 		"size": [image.width, image.height],
 		"visible_bbox": _rect_from_bbox(sheet_bbox),
 		"dominant_colors": _dominant_colors(image, visible, args.dominant_colors),
 		"background_recommendations": _score_backgrounds(image, visible),
-		"frames": _frame_data(
-			image,
-			visible,
-			body,
-			args.grid[0],
-			args.grid[1],
-			args.virtual_size,
-			args.body_anchor,
-		),
+		"summary": _summarize_frames(frames, args.safe_padding),
+		"frames": frames,
 	}
 	print(json.dumps(result, ensure_ascii=False, indent=2))
 

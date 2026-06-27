@@ -80,6 +80,10 @@ LINGLAN_STANDING_TARGET_ANCHOR = (184, 365)
 LINGLAN_DIE_TARGET_ANCHOR = (184, 380)
 LINGLAN_DIE_BASE_SCALE = 1.22
 LINGLAN_DIE_BAND_GAP = 30
+LINGLAN_SOURCE_CELL_SAFE_PADDING = 12
+LINGLAN_OUTPUT_SAFE_PADDING = 4
+LINGLAN_BODY_SIZE_WARN_RATIO = 0.08
+LINGLAN_ANCHOR_WARN_PIXELS = 4.0
 
 LINGLAN_TEXTURE_UIDS: dict[str, str] = {
 	"idle": "uid://bvv7p5if14s8v",
@@ -482,6 +486,110 @@ def _detect_grid_cell_frame(
 	)
 
 
+def _safe_padding_from_bbox(
+	bbox: tuple[int, int, int, int],
+	size: tuple[int, int],
+) -> dict[str, int]:
+	return {
+		"left": int(bbox[0]),
+		"top": int(bbox[1]),
+		"right": int(size[0] - bbox[2]),
+		"bottom": int(size[1] - bbox[3]),
+	}
+
+
+def _warn_low_safe_padding(
+	label: str,
+	bbox: tuple[int, int, int, int],
+	size: tuple[int, int],
+	min_padding: int,
+) -> None:
+	padding = _safe_padding_from_bbox(bbox, size)
+	if min(padding.values()) >= min_padding:
+		return
+	print(
+		"WARNING: %s has tight safe frame padding %s; "
+		"future image_gen sources should keep tail/staff/VFX fully inside a larger cell."
+		% (label, padding)
+	)
+
+
+def _frame_alpha_pixel_count(image: Image.Image) -> int:
+	return int((np.array(image.getchannel("A"), dtype=np.uint8) > 0).sum())
+
+
+def _report_linglan_frame_consistency(
+	animation_name: str,
+	frames: list[tuple[str, Image.Image]],
+) -> None:
+	body_widths: list[float] = []
+	body_heights: list[float] = []
+	anchor_x_values: list[float] = []
+	anchor_y_values: list[float] = []
+	alpha_pixels: list[int] = []
+	for frame_name, frame in frames:
+		bbox = frame.getchannel("A").getbbox()
+		if bbox is None:
+			continue
+		_warn_low_safe_padding(
+			f"Linglan {animation_name} output {frame_name}",
+			bbox,
+			frame.size,
+			LINGLAN_OUTPUT_SAFE_PADDING,
+		)
+		detected = DetectedFrame(bbox, _frame_alpha_pixel_count(frame))
+		anchor_x, anchor_y = (
+			_detect_linglan_attack_body_anchor(frame, detected)
+			if animation_name == "attack"
+			else _detect_linglan_body_anchor(frame, detected)
+		)
+		body_widths.append(float(bbox[2] - bbox[0]))
+		body_heights.append(float(bbox[3] - bbox[1]))
+		anchor_x_values.append(anchor_x)
+		anchor_y_values.append(anchor_y)
+		alpha_pixels.append(detected.alpha_pixels)
+
+	if not body_widths:
+		return
+
+	def _range(values: list[float]) -> float:
+		return max(values) - min(values)
+
+	print(
+		"Linglan %s consistency: body_bbox_width_range=%.1f, "
+		"body_bbox_height_range=%.1f, anchor_x_range=%.1f, anchor_y_range=%.1f, "
+		"alpha_pixels_range=%d"
+		% (
+			animation_name,
+			_range(body_widths),
+			_range(body_heights),
+			_range(anchor_x_values),
+			_range(anchor_y_values),
+			max(alpha_pixels) - min(alpha_pixels),
+		)
+	)
+	median_height = float(np.median(body_heights))
+	median_width = float(np.median(body_widths))
+	if median_height > 0 and _range(body_heights) / median_height > LINGLAN_BODY_SIZE_WARN_RATIO:
+		print(
+			"WARNING: Linglan %s body visible height varies more than %.0f%%; "
+			"future prompts should require identical subject pixel height."
+			% (animation_name, LINGLAN_BODY_SIZE_WARN_RATIO * 100.0)
+		)
+	if median_width > 0 and _range(body_widths) / median_width > LINGLAN_BODY_SIZE_WARN_RATIO:
+		print(
+			"WARNING: Linglan %s body visible width varies more than %.0f%%; "
+			"check whether props/VFX are skewing bbox measurements."
+			% (animation_name, LINGLAN_BODY_SIZE_WARN_RATIO * 100.0)
+		)
+	if _range(anchor_x_values) > LINGLAN_ANCHOR_WARN_PIXELS or _range(anchor_y_values) > LINGLAN_ANCHOR_WARN_PIXELS:
+		print(
+			"WARNING: Linglan %s body anchor drift exceeds %.1fpx; "
+			"verify center/foot anchor consistency before accepting the source."
+			% (animation_name, LINGLAN_ANCHOR_WARN_PIXELS)
+		)
+
+
 def _detect_linglan_attack_body_anchor(source: Image.Image, frame: DetectedFrame) -> tuple[float, float]:
 	left, top, right, bottom = frame.source_bbox
 	cell = np.array(source.crop(frame.source_bbox).convert("RGBA"), dtype=np.uint8)
@@ -550,6 +658,7 @@ def _collect_linglan_frames(
 			frames_by_animation[animation_name].append((frame_name, frame_image))
 			frame_names.append(frame_name)
 		animations[animation_name] = frame_names
+		_report_linglan_frame_consistency(animation_name, frames_by_animation[animation_name])
 
 	print(f"Linglan frame canvas: {frame_size[0]}x{frame_size[1]}")
 	return frames_by_animation, animations
@@ -1066,6 +1175,12 @@ def _process_linglan_attack(root: Path) -> None:
 			cell_right = round((column + 1) * alpha.width / ATTACK_SOURCE_COLUMNS)
 			cell = alpha.crop((cell_left, cell_top, cell_right, cell_bottom))
 			detected = _detect_grid_cell_frame(cell, "attack", frame_index)
+			_warn_low_safe_padding(
+				f"Linglan attack source cell {frame_index}",
+				detected.source_bbox,
+				cell.size,
+				LINGLAN_SOURCE_CELL_SAFE_PADDING,
+			)
 			frame = _extract_frame_clipped(
 				cell,
 				detected,
@@ -1081,6 +1196,7 @@ def _process_linglan_attack(root: Path) -> None:
 
 	if len(frames) != ATTACK_FRAME_COUNT:
 		raise ValueError(f"Linglan attack output must have {ATTACK_FRAME_COUNT} frames, got {len(frames)}.")
+	_report_linglan_frame_consistency("attack", frames)
 
 	sheet, _regions = _build_animation_strip(frames)
 	attack_path = root / OUTPUT_ATTACK
