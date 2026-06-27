@@ -701,6 +701,10 @@ func _reconcile_player_roster(seen_player_ids: Dictionary) -> void:
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
 func _rpc_receive_enemy_snapshot(host_timestamp: float, data: PackedByteArray) -> void:
+	if game == null:
+		return
+	if not is_client_view_runtime():
+		return
 	var snapshot_time := _map_host_timestamp_to_client_time(host_timestamp)
 	var states := snapshot_mgr.decode_enemy_snapshots_with_baseline(data)
 	var snapshot_has_full_roster := _is_complete_enemy_snapshot_batch(data, states.size())
@@ -2387,6 +2391,8 @@ func net_enemy_action(
 		action_position,
 		host_action_timestamp
 	)
+	if not bool(action_sample.get("accepted", false)):
+		return
 	if action_sample.get("apply_direct_position", false):
 		enemy.global_position = action_position
 	if enemy.has_method("play_multiplayer_enemy_action"):
@@ -2412,6 +2418,8 @@ func net_enemy_target_action(
 		action_position,
 		host_action_timestamp
 	)
+	if not bool(action_sample.get("accepted", false)):
+		return
 	if action_sample.get("apply_direct_position", false):
 		enemy.global_position = action_position
 	var target := game.get_player_for_peer(target_peer_id)

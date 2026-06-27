@@ -8,16 +8,25 @@ const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_bas
 const BOMBER_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_bomber.tres")
 const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres")
 const RPG_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
+const SNIPER_CONFIG := preload("res://resources/config/enemies/capoo_sniper.tres")
 const PICKUP_SPEED_CONFIG := preload("res://resources/config/pickups/pickup_speed.tres")
 const PICKUP_SPIRAL_CONFIG := preload("res://resources/config/pickups/pickup_spiral.tres")
 const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 const XIRANG_DROP_CONFIG := preload("res://resources/config/xirang_drop.tres")
+const LINGLAN_SKILL2_ROCKET_SCENE := preload("res://scene/linglan_skill2_sakura_rocket.tscn")
 const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 const LIFE_CRYSTAL := preload("res://resources/config/collectibles/collectible_life_crystal.tres")
 const LINGLAN_BOSS_CONFIG := preload("res://resources/config/bosses/boss_01_linglan.tres")
 
 var failures: Array[String] = []
+
+
+class ClientViewRuntimeStub:
+	extends Node
+
+	func is_client_view_runtime() -> bool:
+		return true
 
 
 func _init() -> void:
@@ -40,6 +49,7 @@ func _run() -> void:
 	await _test_multiplayer_revive_resets_remote_visual_interpolator()
 	await _test_linglan_boss_registration_uses_boss_event_only()
 	await _test_linglan_boss_proxy_keeps_body_hit_collision()
+	await _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy()
 	await _test_multiplayer_cheat_xirang_confirm()
 	await _test_multiplayer_peer_disconnect_cleanup()
 	await _test_player_snapshot_roster_reconcile()
@@ -853,14 +863,16 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 	client_game.set("auto_start_waves", false)
 	root.add_child(client_game)
 	await process_frame
-	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
+	var enemy := KNIGHT_CONFIG.enemy_scene.instantiate() as Enemy
 	_expect(enemy != null, "Enemy action timeline test must instantiate an enemy.")
 	if enemy != null:
 		client_game.enemy_container.add_child(enemy)
-		enemy.setup(BASIC_CONFIG, client_game.player, client_game.grid_pathfinder)
+		enemy.setup(KNIGHT_CONFIG, client_game.player, client_game.grid_pathfinder)
 		enemy.configure_multiplayer_proxy()
 		enemy.set_meta("net_id", 42)
 		enemy.global_position = Vector2(5.0, 5.0)
+		var sprite := enemy.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
+		_expect(sprite != null, "Enemy action timeline test must find the proxy sprite.")
 		var mp_game := MP_GAME_SCENE.instantiate()
 		mp_game.set("game", client_game)
 		var net_manager := root.get_node_or_null("NetManager")
@@ -879,12 +891,67 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 			enemy.global_position.is_equal_approx(Vector2(5.0, 5.0)),
 			"Stale enemy action events must not pull proxy position off the snapshot timeline."
 		)
+		if sprite != null:
+			_expect(
+				sprite.animation == KNIGHT_CONFIG.move_animation_name,
+				"Stale enemy action events must not replay outdated proxy action animation."
+			)
 		mp_game.call("net_enemy_action", 42, "windup", Vector2.RIGHT, Vector2(20.0, 5.0), 2, 10.0)
 		var latest_timestamp := (mp_game.enemy_interpolators[42] as NetInterpolator).get_latest_timestamp()
 		_expect(
 			is_equal_approx(latest_timestamp, 10.0),
 			"Fresh enemy action events must enter the enemy interpolation timeline."
 		)
+		if sprite != null:
+			_expect(
+				sprite.animation == KNIGHT_CONFIG.windup_animation_name,
+				"Fresh enemy action events must still play the proxy action animation."
+			)
+
+		var sniper := SNIPER_CONFIG.enemy_scene.instantiate() as CapooSniper
+		_expect(sniper != null, "Enemy target action timeline test must instantiate a sniper.")
+		if sniper != null:
+			client_game.enemy_container.add_child(sniper)
+			sniper.setup(SNIPER_CONFIG, client_game.player, client_game.grid_pathfinder)
+			sniper.configure_multiplayer_proxy()
+			sniper.set_meta("net_id", 43)
+			sniper.global_position = Vector2(12.0, 8.0)
+			var sniper_interp := NetInterpolator.new(0.05, 0.0)
+			sniper_interp.push_snapshot(9.5, sniper.global_position, Vector2.ZERO)
+			mp_game.enemy_interpolators[43] = sniper_interp
+			var aim_glow := sniper.get_node_or_null("AimGlow") as Polygon2D
+			var net_enemies_for_target_action := mp_game.get("_net_enemies") as Dictionary
+			net_enemies_for_target_action[43] = sniper
+			mp_game.call(
+				"net_enemy_target_action",
+				43,
+				"sniper_lock_start",
+				2,
+				Vector2(100.0, 100.0),
+				1,
+				9.0
+			)
+			_expect(
+				sniper.global_position.is_equal_approx(Vector2(12.0, 8.0)),
+				"Stale enemy target action events must not pull proxy position off the snapshot timeline."
+			)
+			_expect(
+				sniper.lock_reticle == null and (aim_glow == null or not aim_glow.visible),
+				"Stale enemy target action events must not start outdated target lock visuals."
+			)
+			mp_game.call(
+				"net_enemy_target_action",
+				43,
+				"sniper_lock_start",
+				2,
+				Vector2(20.0, 8.0),
+				2,
+				10.0
+			)
+			_expect(
+				sniper.lock_reticle != null and aim_glow != null and aim_glow.visible,
+				"Fresh enemy target action events must still start target lock visuals."
+			)
 		mp_game.free()
 	_stop_audio_players(client_game)
 	client_game.queue_free()
@@ -1658,6 +1725,46 @@ func _test_linglan_boss_proxy_keeps_body_hit_collision() -> void:
 	)
 
 	boss_enemy.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
+	var previous_scene := current_scene
+	var client_runtime_stub := ClientViewRuntimeStub.new()
+	root.add_child(client_runtime_stub)
+	current_scene = client_runtime_stub
+
+	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
+	var rocket := LINGLAN_SKILL2_ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
+	_expect(enemy != null and rocket != null, "Linglan skill2 client proxy damage test must instantiate enemy and rocket.")
+	if enemy != null and rocket != null:
+		root.add_child(enemy)
+		root.add_child(rocket)
+		await process_frame
+		enemy.setup(BASIC_CONFIG, null, null)
+		enemy.configure_multiplayer_proxy()
+		var health_before_client_proxy_hit := enemy.current_health
+		rocket.damage = 1
+		rocket.call("_apply_enemy_damage", enemy)
+		_expect(
+			enemy.current_health == health_before_client_proxy_hit,
+			"Client-view Linglan skill2 rocket must not apply local damage to enemy proxies."
+		)
+
+		current_scene = previous_scene
+		rocket.call("_apply_enemy_damage", enemy)
+		_expect(
+			enemy.current_health == health_before_client_proxy_hit - 1,
+			"Linglan skill2 rocket must still damage enemies outside client-view proxy runtime."
+		)
+
+	if rocket != null:
+		rocket.queue_free()
+	if enemy != null:
+		enemy.queue_free()
+	client_runtime_stub.queue_free()
+	current_scene = previous_scene
 	await process_frame
 	await physics_frame
 
