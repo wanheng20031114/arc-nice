@@ -146,6 +146,16 @@ class RoomManager:
             room.touch()
             return room
 
+    def keep_room_alive(self, room_id: str, host_token: str) -> Optional[RoomInfo]:
+        with self._lock:
+            room = self._rooms.get(room_id)
+            if room is None:
+                return None
+            if not host_token or host_token != room.host_token:
+                return None
+            room.touch()
+            return room
+
     # ─── 销毁 ────────────────────────────────────
 
     def destroy_room(self, room_id: str, host_token: str) -> Optional[RoomInfo]:

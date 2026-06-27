@@ -2,7 +2,7 @@ extends Control
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const MULTIPLAYER_GAME_SCENE_PATH := "res://scene/multiplayer/mp_game.tscn"
-const PUBLIC_LOBBY_API_BASE_URL := "http://47.123.6.127:8000"
+const PUBLIC_LOBBY_API_BASE_URL := _NetConstants.PUBLIC_LOBBY_API_BASE_URL
 const USERNAME_CARET_SIZE := Vector2(2.0, 34.0)
 const USERNAME_CARET_BLINK_INTERVAL := 0.48
 const STATE_DISCONNECTED := NetManagerStore.ConnectionState.DISCONNECTED
@@ -596,8 +596,10 @@ func _begin_public_host_room(data: Dictionary) -> void:
 
 	var err: Error = net_manager.host_create_relay_room(relay_ip, relay_port)
 	if err != OK:
+		net_manager.clear_public_room_context()
 		_show_public_error("连接 Relay 失败: %s" % error_string(err))
 		return
+	net_manager.set_public_room_context(room_id, host_token, true)
 	_enter_room_wait(data)
 	wait_status_label.text = "正在连接公网 Relay..."
 
@@ -622,8 +624,10 @@ func _begin_public_client_room(data: Dictionary) -> void:
 
 	var err: Error = net_manager.client_join_relay_room(relay_ip, relay_port, host_peer_id)
 	if err != OK:
+		net_manager.clear_public_room_context()
 		_show_public_error("连接 Relay 失败: %s" % error_string(err))
 		return
+	net_manager.set_public_room_context(room_id, "", false)
 	_enter_room_wait(data)
 	wait_status_label.text = "正在连接公网 Relay..."
 
@@ -808,6 +812,8 @@ func _clear_public_room_state() -> void:
 	relay_host_ready_sent = false
 	pending_start_after_public_status = false
 	keep_room_view_after_connection_failure = false
+	if net_manager != null:
+		net_manager.clear_public_room_context()
 
 
 func _get_public_room_id(room_data: Dictionary) -> String:

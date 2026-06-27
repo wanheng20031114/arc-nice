@@ -4,3 +4,6 @@
 
 [node name="MpGame" type="Node2D"]
 script = ExtResource("1_mpgame")
+
+[node name="PublicRoomKeepaliveRequest" type="HTTPRequest" parent="."]
+timeout = 10.0

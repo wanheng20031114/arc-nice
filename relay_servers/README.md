@@ -61,6 +61,8 @@ chmod +x scripts/*.sh
 | `GET` | `/rooms` | 获取可加入房间列表 |
 | `POST` | `/rooms` | 创建新房间 |
 | `POST` | `/rooms/{id}/join` | 加入房间 |
+| `POST` | `/rooms/{id}/host_ready` | 房主登记 Relay peer id 并开放加入 |
+| `POST` | `/rooms/{id}/keepalive` | 房主续租房间，避免游戏中被空闲清理 |
 | `POST` | `/rooms/{id}/leave` | 离开房间 |
 | `PATCH` | `/rooms/{id}` | 更新房间状态 |
 | `POST` | `/rooms/{id}/request_relay` | 请求 Relay 中继 |
@@ -71,6 +73,8 @@ chmod +x scripts/*.sh
 
 以下房主操作必须在 JSON 请求体中携带 `host_token`：
 - `PATCH /rooms/{id}`
+- `POST /rooms/{id}/host_ready`
+- `POST /rooms/{id}/keepalive`
 - `POST /rooms/{id}/request_relay`
 - `DELETE /rooms/{id}`
 

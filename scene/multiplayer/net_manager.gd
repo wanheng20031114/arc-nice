@@ -30,6 +30,9 @@ var relay_port: int = 0
 var connected_players: Dictionary = {}
 var host_peer_id: int = 1
 var host_game_ready: bool = false
+var public_room_id: String = ""
+var public_host_token: String = ""
+var public_is_host: bool = false
 
 var _physics_frame_count: int = 0
 var _enet_peer: ENetMultiplayerPeer = null
@@ -50,6 +53,18 @@ func _physics_process(_delta: float) -> void:
 
 func get_physics_frame_count() -> int:
 	return _physics_frame_count
+
+
+func set_public_room_context(room_id: String, host_token: String, is_public_host: bool) -> void:
+	public_room_id = room_id.strip_edges()
+	public_host_token = host_token.strip_edges()
+	public_is_host = is_public_host
+
+
+func clear_public_room_context() -> void:
+	public_room_id = ""
+	public_host_token = ""
+	public_is_host = false
 
 
 func is_multiplayer_active() -> bool:
@@ -241,6 +256,7 @@ func disconnect_from_game() -> void:
 	host_peer_id = 1
 	set_multiplayer_authority(host_peer_id)
 	host_game_ready = false
+	clear_public_room_context()
 	_relay_register_pending = false
 	_clear_connection_attempt()
 	_physics_frame_count = 0

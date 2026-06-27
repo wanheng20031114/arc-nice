@@ -54,6 +54,7 @@ const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 
 @onready var net_manager: Node = get_node("/root/NetManager")
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
+@onready var public_room_keepalive_request: HTTPRequest = $PublicRoomKeepaliveRequest
 
 var snapshot_mgr := SnapshotManager.new()
 # Client-view only: remote player visual timeline. Host gameplay never reads this.
@@ -97,6 +98,8 @@ var _max_player_snapshot_packet_bytes: int = 0
 var _max_enemy_snapshot_packet_bytes: int = 0
 var _large_player_snapshot_packet_count: int = 0
 var _large_enemy_snapshot_packet_count: int = 0
+var _public_room_keepalive_time_left: float = 0.0
+var _public_room_keepalive_in_flight: bool = false
 var _revive_random_generator := RandomNumberGenerator.new()
 
 
@@ -108,6 +111,8 @@ func _ready() -> void:
 		net_manager.connection_state_changed.connect(_on_connection_state_changed)
 	if not net_manager.player_left.is_connected(_on_net_player_left):
 		net_manager.player_left.connect(_on_net_player_left)
+	if not public_room_keepalive_request.request_completed.is_connected(_on_public_room_keepalive_completed):
+		public_room_keepalive_request.request_completed.connect(_on_public_room_keepalive_completed)
 	if net_manager.is_host():
 		_setup_game(GAME_RUNTIME_HOST_AUTHORITY)
 		_host_startup_snapshot_grace_time_left = HOST_STARTUP_SNAPSHOT_GRACE_SECONDS
@@ -130,6 +135,12 @@ func _exit_tree() -> void:
 		net_manager.player_left.disconnect(_on_net_player_left)
 	if game != null and game.return_to_lobby_requested.is_connected(_on_game_return_to_lobby_requested):
 		game.return_to_lobby_requested.disconnect(_on_game_return_to_lobby_requested)
+	if public_room_keepalive_request != null:
+		if public_room_keepalive_request.request_completed.is_connected(_on_public_room_keepalive_completed):
+			public_room_keepalive_request.request_completed.disconnect(_on_public_room_keepalive_completed)
+		if public_room_keepalive_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+			public_room_keepalive_request.cancel_request()
+	_public_room_keepalive_in_flight = false
 
 
 func _physics_process(delta: float) -> void:
@@ -142,7 +153,8 @@ func _physics_process(delta: float) -> void:
 		_client_physics_tick(frame)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_update_public_room_keepalive(delta)
 	if net_manager.is_client() or net_manager.is_host():
 		_client_interpolate_entities()
 	if net_manager.is_client() and game != null:
@@ -389,6 +401,80 @@ func get_snapshot_packet_metrics() -> Dictionary:
 		"large_player_snapshot_packet_count": _large_player_snapshot_packet_count,
 		"large_enemy_snapshot_packet_count": _large_enemy_snapshot_packet_count,
 	}
+
+
+func _update_public_room_keepalive(delta: float) -> void:
+	if not _should_send_public_room_keepalive():
+		_public_room_keepalive_time_left = 0.0
+		return
+	if _public_room_keepalive_in_flight:
+		return
+	_public_room_keepalive_time_left -= delta
+	if _public_room_keepalive_time_left > 0.0:
+		return
+	_send_public_room_keepalive()
+
+
+func _should_send_public_room_keepalive() -> bool:
+	if public_room_keepalive_request == null or net_manager == null:
+		return false
+	if not net_manager.is_host():
+		return false
+	if int(net_manager.get("conn_mode")) != int(NetManagerStore.ConnMode.RELAY):
+		return false
+	if not bool(net_manager.get("public_is_host")):
+		return false
+	return (
+		not str(net_manager.get("public_room_id")).strip_edges().is_empty()
+		and not str(net_manager.get("public_host_token")).strip_edges().is_empty()
+	)
+
+
+func _send_public_room_keepalive() -> void:
+	var room_id := str(net_manager.get("public_room_id")).strip_edges()
+	var host_token := str(net_manager.get("public_host_token")).strip_edges()
+	if room_id.is_empty() or host_token.is_empty():
+		return
+	var body := JSON.stringify({"host_token": host_token})
+	var headers := PackedStringArray(["Content-Type: application/json"])
+	var err := public_room_keepalive_request.request(
+		"%s/rooms/%s/keepalive" % [_NetConstants.PUBLIC_LOBBY_API_BASE_URL, room_id],
+		headers,
+		HTTPClient.METHOD_POST,
+		body
+	)
+	if err != OK:
+		_public_room_keepalive_time_left = _NetConstants.PUBLIC_ROOM_KEEPALIVE_INTERVAL_SECONDS
+		push_warning("MpGame: 公网房间续租请求启动失败: %s" % error_string(err))
+		return
+	_public_room_keepalive_in_flight = true
+
+
+func _on_public_room_keepalive_completed(
+	result: int,
+	response_code: int,
+	_headers: PackedStringArray,
+	body: PackedByteArray
+) -> void:
+	_public_room_keepalive_in_flight = false
+	_public_room_keepalive_time_left = _NetConstants.PUBLIC_ROOM_KEEPALIVE_INTERVAL_SECONDS
+	if not _should_send_public_room_keepalive():
+		return
+	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300:
+		var error_body_text := body.get_string_from_utf8()
+		push_warning(
+			"MpGame: 公网房间续租失败 result=%d status=%d body=%s"
+			% [result, response_code, error_body_text.left(160)]
+		)
+		return
+
+	var parsed: Variant = null
+	var response_body_text := body.get_string_from_utf8()
+	if not response_body_text.is_empty():
+		parsed = JSON.parse_string(response_body_text)
+	var parsed_dict := parsed as Dictionary
+	if parsed_dict != null and parsed_dict.has("relay_running") and not bool(parsed_dict["relay_running"]):
+		push_warning("MpGame: 公网房间续租成功，但云端 Relay 进程已不在运行。")
 
 
 func _create_player_interpolator() -> NetInterpolator:

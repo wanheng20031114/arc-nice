@@ -27,6 +27,7 @@ func _init() -> void:
 func _run() -> void:
 	await _test_scene_instantiation()
 	_test_net_manager_lan_lifecycle()
+	_test_public_room_context_lifecycle()
 	_test_net_manager_player_list_sync_diff()
 	_test_recent_event_cache()
 	_test_snapshot_packet_metrics()
@@ -78,6 +79,10 @@ func _test_scene_instantiation() -> void:
 	var mp_game := MP_GAME_SCENE.instantiate()
 	_expect(mp_game != null, "mp_game.tscn must instantiate.")
 	if mp_game != null:
+		_expect(
+			mp_game.get_node_or_null("PublicRoomKeepaliveRequest") is HTTPRequest,
+			"MpGame must keep a native HTTPRequest node for public room keepalive."
+		)
 		mp_game.free()
 
 	var game := GAME_SCENE.instantiate()
@@ -122,6 +127,29 @@ func _test_net_manager_lan_lifecycle() -> void:
 	_expect(bool(net_manager.host_game_ready), "Host mark_in_game must publish host ready state.")
 	net_manager.disconnect_from_game()
 	_expect(not net_manager.is_multiplayer_active(), "NetManager must cleanly disconnect after LAN host smoke.")
+
+
+func _test_public_room_context_lifecycle() -> void:
+	var net_manager := root.get_node_or_null("NetManager")
+	_expect(net_manager != null, "NetManager autoload is missing for public room context test.")
+	if net_manager == null:
+		return
+
+	net_manager.disconnect_from_game()
+	net_manager.set_public_room_context(" room-a ", " token-a ", true)
+	_expect(
+		str(net_manager.get("public_room_id")) == "room-a",
+		"NetManager must trim and store public room id."
+	)
+	_expect(
+		str(net_manager.get("public_host_token")) == "token-a",
+		"NetManager must trim and store public host token."
+	)
+	_expect(bool(net_manager.get("public_is_host")), "NetManager must store public host role.")
+	net_manager.disconnect_from_game()
+	_expect(str(net_manager.get("public_room_id")).is_empty(), "Disconnect must clear public room id.")
+	_expect(str(net_manager.get("public_host_token")).is_empty(), "Disconnect must clear public host token.")
+	_expect(not bool(net_manager.get("public_is_host")), "Disconnect must clear public host role.")
 
 
 func _test_net_manager_player_list_sync_diff() -> void:

@@ -160,6 +160,23 @@ async def host_ready(room_id: str, req: HostReadyRequest) -> dict:
     return room.to_join_dict(config.PUBLIC_IP, include_host_token=True)
 
 
+@app.post("/rooms/{room_id}/keepalive")
+async def keep_room_alive(room_id: str, req: HostTokenRequest) -> dict:
+    """房主续租房间，防止游戏中被空闲清理任务回收。"""
+    room = room_mgr.keep_room_alive(room_id, req.host_token)
+    if room is None:
+        raise HTTPException(status_code=403, detail="房主令牌无效或房间不存在")
+
+    relay_running = (
+        room.relay_port > 0
+        and relay_launcher.is_relay_running(room.relay_port)
+    )
+    return {
+        "status": "ok",
+        "relay_running": relay_running,
+    }
+
+
 @app.post("/rooms/{room_id}/leave")
 async def leave_room(room_id: str, req: JoinRoomRequest) -> dict:
     """离开指定房间。"""
