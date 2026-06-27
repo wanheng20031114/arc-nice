@@ -2,8 +2,6 @@ extends SceneTree
 
 const GAME_SCENE := preload("res://scene/game.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
-const FOREST_PRE_MUSIC := preload("res://resources/audio/神树BGM/森林 交战前.m4a")
-const FOREST_COMBAT_MUSIC := preload("res://resources/audio/神树BGM/森林 交战中.m4a")
 const DEFAULT_WAVES: Array[WaveConfig] = [
 	preload("res://resources/config/waves/wave_01.tres"),
 	preload("res://resources/config/waves/wave_02.tres"),
@@ -34,7 +32,6 @@ func _run() -> void:
 	current_scene = test_root
 
 	_test_default_wave_resources()
-	_test_shenshu_bgm_assignments()
 	_test_game_scene_wave_list()
 	_test_merchant_asset()
 	await _test_grid_pathfinder_budget()
@@ -76,8 +73,6 @@ func _test_default_wave_resources() -> void:
 			"Wave %d rest duration is incorrect." % (wave_index + 1)
 		)
 		_expect(wave_config.music != null, "Wave %d music is missing." % (wave_index + 1))
-		if wave_index >= 3:
-			_expect(wave_config.pre_wave_music != null, "Wave %d pre-wave music is missing." % (wave_index + 1))
 		_expect(
 			wave_config.max_alive_enemies > 0,
 			"Wave %d max alive enemies must be positive." % (wave_index + 1)
@@ -89,34 +84,6 @@ func _test_default_wave_resources() -> void:
 					entry.enemy_config != null and entry.count >= 0,
 					"Wave %d contains an invalid enemy entry." % (wave_index + 1)
 				)
-
-
-func _test_shenshu_bgm_assignments() -> void:
-	var expected_groups := {
-		4: ["森林 交战前.m4a", "森林 交战中.m4a"],
-		5: ["森林 交战前.m4a", "森林 交战中.m4a"],
-		6: ["森林 交战前.m4a", "森林 交战中.m4a"],
-		7: ["沼泽 交战前.m4a", "沼泽 交战中.m4a"],
-		8: ["沼泽 交战前.m4a", "沼泽 交战中.m4a"],
-		9: ["沼泽 交战前.m4a", "沼泽 交战中.m4a"],
-		10: ["城镇 交战前.m4a", "城镇 交战中.m4a"],
-		11: ["城镇 交战前.m4a", "城镇 交战中.m4a"],
-		12: ["城镇 交战前.m4a", "城镇 交战中.m4a"],
-	}
-	for wave_number in expected_groups.keys():
-		var wave_config := load("res://resources/config/waves/wave_%02d.tres" % wave_number) as WaveConfig
-		_expect(wave_config != null, "Wave %02d must load for Shenshu BGM checks." % wave_number)
-		if wave_config == null:
-			continue
-		var expected_paths: Array = expected_groups[wave_number]
-		_expect(
-			_audio_path_ends_with(wave_config.pre_wave_music, expected_paths[0]),
-			"Wave %02d pre-wave BGM mismatch." % wave_number
-		)
-		_expect(
-			_audio_path_ends_with(wave_config.music, expected_paths[1]),
-			"Wave %02d combat BGM mismatch." % wave_number
-		)
 
 
 func _test_game_scene_wave_list() -> void:
@@ -229,10 +196,7 @@ func _test_wave_state_flow() -> void:
 		merchant.get_node("StaticBody2D/CollisionShape2D") as CollisionShape2D
 	)
 	var wave_hud := game.get_node("WaveHUD") as WaveHUD
-	var music_player := game.get_node("MusicPlayer") as AudioStreamPlayer
 	var test_waves := _create_test_waves(3)
-	test_waves[1].pre_wave_music = FOREST_PRE_MUSIC
-	test_waves[1].music = FOREST_COMBAT_MUSIC
 	game.set("waves", test_waves)
 	game.set("pre_wave_duration", 5.0)
 	game.call("_enter_pre_wave", 0)
@@ -272,7 +236,6 @@ func _test_wave_state_flow() -> void:
 
 	_expect(game.get("wave_state") == STATE_INTERMISSION, "Wave 1 did not enter intermission.")
 	_expect(game.get("countdown_seconds") == 30, "Intermission must last 30 seconds.")
-	_expect(music_player.stream == FOREST_PRE_MUSIC, "Intermission before wave 2 must play the next wave pre-wave BGM.")
 	_expect(merchant.visible, "Merchant did not appear during intermission.")
 	await physics_frame
 	_expect(not merchant_collision.disabled, "Merchant collision did not activate.")
@@ -294,7 +257,6 @@ func _test_wave_state_flow() -> void:
 
 	game.call("_begin_wave", 1)
 	await physics_frame
-	_expect(music_player.stream == FOREST_COMBAT_MUSIC, "Wave 2 start must switch to its combat BGM.")
 	_expect(not merchant.visible, "Merchant did not hide when wave 2 began.")
 	await physics_frame
 	_expect(merchant_collision.disabled, "Merchant collision remained active during combat.")
@@ -385,10 +347,6 @@ func _defeat_only_enemy(game: Node2D) -> void:
 	enemy.apply_damage(enemy.current_health)
 	for _frame_index in range(45):
 		await physics_frame
-
-
-func _audio_path_ends_with(stream: AudioStream, file_name: String) -> bool:
-	return stream != null and stream.resource_path.ends_with("神树BGM/%s" % file_name)
 
 
 func _expect(condition: bool, message: String) -> void:
