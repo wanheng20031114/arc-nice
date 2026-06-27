@@ -13,4 +13,4 @@ music_volume_db = 0.0
 music_loop_offset = 1.0
 step_id = &"boss_01_linglan"
 display_name = "铃兰"
-editor_position = Vector2(1520, -280)
+editor_position = Vector2(1640, -220)
