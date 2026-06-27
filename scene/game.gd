@@ -19,6 +19,7 @@ const MAX_WAVE_SPAWN_COUNT_PER_TICK := 4
 const SPAWN_EFFECTS_PER_SECOND_LIMIT := 24
 const SPAWN_AUDIO_MIN_INTERVAL_SECONDS := 0.08
 const DEFAULT_MUSIC_VOLUME_DB := -6.0
+const INITIAL_PLAYER_XIRANG := 1000
 
 signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
 signal multiplayer_enemy_defeated(net_id: int, defeat_position: Vector2)
@@ -163,6 +164,7 @@ func _ready() -> void:
 		run_state.set_active_multiplayer_peer(multiplayer_local_peer_id)
 		_configure_multiplayer_players()
 		_register_static_multiplayer_pickups()
+	_apply_initial_player_xirang()
 	currency_hud.bind_player(player)
 	player_profile_panel.bind_player(player)
 	currency_hud.settings_requested.connect(_on_currency_hud_settings_requested)
@@ -218,6 +220,23 @@ func configure_multiplayer(
 	runtime_mode = mode as RuntimeMode
 	multiplayer_local_peer_id = local_peer_id
 	multiplayer_player_names = player_names.duplicate()
+
+
+func _apply_initial_player_xirang() -> void:
+	var players: Array[Player] = []
+	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		if player != null:
+			players.append(player)
+	else:
+		for peer_id_variant in peer_players:
+			var player_instance := peer_players[peer_id_variant] as Player
+			if player_instance != null and is_instance_valid(player_instance):
+				players.append(player_instance)
+	for player_instance in players:
+		if player_instance.current_xirang == INITIAL_PLAYER_XIRANG:
+			continue
+		player_instance.current_xirang = INITIAL_PLAYER_XIRANG
+		player_instance.xirang_changed.emit(player_instance.current_xirang, 0)
 
 
 func _on_currency_hud_settings_requested() -> void:

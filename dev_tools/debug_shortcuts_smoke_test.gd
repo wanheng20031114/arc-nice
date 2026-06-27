@@ -69,6 +69,7 @@ func _test_debug_collectible_window() -> void:
 	test_root.add_child(game)
 	await process_frame
 	await physics_frame
+	_expect(game.player.current_xirang == Game.INITIAL_PLAYER_XIRANG, "Game player must start with initial xirang.")
 
 	var window := game.get_node_or_null("SettingsLayer/DebugCollectibleWindow") as DebugCollectibleWindow
 	_expect(window != null, "Game must include DebugCollectibleWindow under SettingsLayer.")

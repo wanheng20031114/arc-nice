@@ -1,9 +1,15 @@
-[gd_resource type="Resource" script_class="CapooMageConfig" format=3]
+[gd_resource type="Resource" script_class="CapooMageConfig" format=3 uid="uid://c8fsbfbwadt63"]
 
-[ext_resource type="Script" path="res://resources/config/enemies/capoo_mage_config.gd" id="1_script"]
-[ext_resource type="PackedScene" path="res://scene/enemy/capoo_mage.tscn" id="2_scene"]
-[ext_resource type="PackedScene" path="res://scene/enemy/capoo_mage_fireball.tscn" id="3_fireball"]
-[ext_resource type="AudioStream" path="res://resources/audio/capoo_mage_fireball_cast.wav" id="4_audio"]
+[ext_resource type="Script" uid="uid://fcic52l0ldt0" path="res://resources/config/enemies/capoo_mage_config.gd" id="1_script"]
+[ext_resource type="PackedScene" uid="uid://rfjopgip4r4e" path="res://scene/enemy/capoo_mage.tscn" id="2_scene"]
+[ext_resource type="PackedScene" uid="uid://383rhmjfwlu1" path="res://scene/enemy/capoo_mage_fireball.tscn" id="3_fireball"]
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="3_xles1"]
+[ext_resource type="AudioStream" uid="uid://b7nccthuxqu6b" path="res://resources/audio/capoo_mage_fireball_cast.wav" id="4_audio"]
+[ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="4_dti4k"]
+[ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="5_3ero1"]
+[ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="6_trda5"]
+[ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="7_mk3ho"]
+[ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="8_ikg8c"]
 
 [resource]
 script = ExtResource("1_script")
@@ -12,9 +18,7 @@ attack_audio_stream = ExtResource("4_audio")
 display_name = "法师 Capoo"
 enemy_scene = ExtResource("2_scene")
 max_health = 200
-attack_damage = 75
-physical_defense = 0
-magic_defense = 0
-move_speed = 80.0
+attack_damage = 35
+move_speed = 24.0
 xirang_drop_amount = 30
 pickup_drop_chance = 0.2

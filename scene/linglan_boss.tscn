@@ -8,7 +8,7 @@
 [ext_resource type="Resource" uid="uid://c4r1ucwkkde62" path="res://resources/config/bosses/linglan_skill2.tres" id="6_skill2"]
 [ext_resource type="AudioStream" uid="uid://b7nccthuxqu6b" path="res://resources/audio/capoo_mage_fireball_cast.wav" id="7_skill2_fire_audio"]
 [ext_resource type="Resource" uid="uid://bf6ge3snl6cq4" path="res://resources/config/bosses/linglan_skill3.tres" id="8_skill3"]
-[ext_resource type="Resource" path="res://resources/config/bosses/linglan_skill4.tres" id="9_skill4"]
+[ext_resource type="Resource" uid="uid://h2qvnyhs1x73" path="res://resources/config/bosses/linglan_skill4.tres" id="9_skill4"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_hsfkk"]
 resource_local_to_scene = true

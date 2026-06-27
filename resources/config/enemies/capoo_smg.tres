@@ -1,9 +1,15 @@
-[gd_resource type="Resource" script_class="CapooSMGConfig" format=3]
+[gd_resource type="Resource" script_class="CapooSMGConfig" format=3 uid="uid://drv4a8xgl4k2c"]
 
-[ext_resource type="Script" path="res://resources/config/enemies/capoo_smg_config.gd" id="1_script"]
-[ext_resource type="PackedScene" path="res://scene/enemy/capoo_smg.tscn" id="2_scene"]
+[ext_resource type="Script" uid="uid://bb2yp4r3i2pqk" path="res://resources/config/enemies/capoo_smg_config.gd" id="1_script"]
+[ext_resource type="PackedScene" uid="uid://d1ay6xqbtf0w6" path="res://scene/enemy/capoo_smg.tscn" id="2_scene"]
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="3_av5yf"]
 [ext_resource type="PackedScene" path="res://scene/enemy/capoo_smg_bullet.tscn" id="3_bullet"]
-[ext_resource type="AudioStream" path="res://resources/audio/capoo_ak47_fire.wav" id="4_audio"]
+[ext_resource type="AudioStream" uid="uid://clmf0o5otxr8x" path="res://resources/audio/capoo_ak47_fire.wav" id="4_audio"]
+[ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="4_dpmen"]
+[ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="5_uvkw2"]
+[ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="6_om6yr"]
+[ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="7_sw5dr"]
+[ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="8_n4uy7"]
 
 [resource]
 script = ExtResource("1_script")
@@ -12,9 +18,7 @@ attack_audio_stream = ExtResource("4_audio")
 display_name = "冲锋枪 Capoo"
 enemy_scene = ExtResource("2_scene")
 max_health = 200
-attack_damage = 40
-physical_defense = 0
-magic_defense = 0
-move_speed = 120.0
+attack_damage = 30
+move_speed = 100.0
 xirang_drop_amount = 25
 pickup_drop_chance = 0.2

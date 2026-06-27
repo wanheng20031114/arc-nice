@@ -120,6 +120,11 @@ func net_player_damage_applied(
 
 
 @rpc("authority", "call_remote", "reliable", 4)
+func net_player_healed(peer_id: int, current_health: int, health_revision: int) -> void:
+	pass
+
+
+@rpc("authority", "call_remote", "reliable", 4)
 func net_xirang_orb_spawned(orb_id: int, amount: int, spawn_position: Vector2) -> void:
 	pass
 

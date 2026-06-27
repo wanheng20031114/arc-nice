@@ -14,6 +14,7 @@ const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tre
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 const XIRANG_DROP_CONFIG := preload("res://resources/config/xirang_drop.tres")
 const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
+const LIFE_CRYSTAL := preload("res://resources/config/collectibles/collectible_life_crystal.tres")
 const LINGLAN_BOSS_CONFIG := preload("res://resources/config/bosses/boss_01_linglan.tres")
 
 var failures: Array[String] = []
@@ -1141,6 +1142,25 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			host_enemy.current_health < health_before_collectible,
 			"Host collectible enemy damage must reduce enemy health."
 		)
+		var peer_two := host_game.get_player_for_peer(2) as Player
+		if peer_two != null:
+			peer_two.current_health = 5
+			var heal_result := bool(mp_game.call(
+				"apply_multiplayer_collectible_player_heal",
+				peer_two,
+				LIFE_CRYSTAL.periodic_heal
+			))
+			_expect(heal_result, "Host collectible player heal must use the multiplayer confirmation path.")
+			_expect(peer_two.current_health == 15, "Host collectible player heal must restore health.")
+			var health_revisions := mp_game.get("_player_health_revisions") as Dictionary
+			var heal_revision := int(health_revisions.get(2, 0))
+			_expect(heal_revision > 0, "Host collectible player heal must allocate a health revision.")
+			peer_two.current_health = 5
+			health_revisions.erase(2)
+			mp_game.call("net_player_healed", 2, 15, 1)
+			_expect(peer_two.current_health == 15, "Heal confirm must update the selected peer's health.")
+			mp_game.call("net_player_healed", 2, 35, 1)
+			_expect(peer_two.current_health == 15, "Stale heal revisions must be ignored.")
 		if host_net_manager != null:
 			host_net_manager.set("net_role", previous_role)
 		mp_game.free()
@@ -1620,6 +1640,7 @@ func _test_game_runtime_modes() -> void:
 		"Multiplayer player scene nameplate must show the peer name."
 	)
 	_expect(host_player.nameplate_label.custom_minimum_size.y >= 30.0, "Multiplayer nameplate must leave room for outlined player names.")
+	_expect(host_player.current_xirang == Game.INITIAL_PLAYER_XIRANG, "Host player must start with initial xirang.")
 	_expect(
 		host_player.nameplate_label.label_settings.font_color.is_equal_approx(Player.LOCAL_NAMEPLATE_FONT_COLOR),
 		"Local host nameplate text must be green."
@@ -1656,6 +1677,11 @@ func _test_game_runtime_modes() -> void:
 		client_local_player != null
 		and client_local_player.nameplate_label.label_settings.font_color.is_equal_approx(Player.LOCAL_NAMEPLATE_FONT_COLOR),
 		"Local client nameplate text must be green."
+	)
+	_expect(
+		client_local_player != null
+		and client_local_player.current_xirang == Game.INITIAL_PLAYER_XIRANG,
+		"Client local player must start with initial xirang."
 	)
 	_expect(
 		client_remote_player != null

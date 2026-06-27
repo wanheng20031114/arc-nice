@@ -79,9 +79,9 @@ func _test_resource_contract() -> void:
 	)
 
 	_expect(MAGE_CONFIG.max_health == 200, "Mage health mismatch.")
-	_expect(MAGE_CONFIG.attack_damage == 75, "Mage damage mismatch.")
+	_expect(MAGE_CONFIG.attack_damage == 35, "Mage damage mismatch.")
 	_expect(MAGE_CONFIG.physical_defense == 0 and MAGE_CONFIG.magic_defense == 0, "Mage defense mismatch.")
-	_expect(is_equal_approx(MAGE_CONFIG.move_speed, 80.0), "Mage move speed mismatch.")
+	_expect(is_equal_approx(MAGE_CONFIG.move_speed, 24.0), "Mage move speed mismatch.")
 	_expect(is_equal_approx(MAGE_CONFIG.attack_windup, 1.0), "Mage windup mismatch.")
 	_expect(is_equal_approx(MAGE_CONFIG.fireball_radius, 10.5), "Mage fireball radius mismatch.")
 	_expect(MAGE_CONFIG.fireball_radius > 8.0, "Mage fireball should be slightly larger than a player body.")
@@ -188,11 +188,11 @@ func _test_fireball_impact_damage_and_release() -> void:
 	var fireball := FIREBALL_SCENE.instantiate() as CapooMageFireball
 	test_root.add_child(fireball)
 	fireball.global_position = Vector2.ZERO
-	fireball.setup(Vector2.RIGHT, 75, 0.0, 3.0, MAGE_CONFIG.fireball_radius)
+	fireball.setup(Vector2.RIGHT, MAGE_CONFIG.attack_damage, 0.0, 3.0, MAGE_CONFIG.fireball_radius)
 	fireball.call("_explode")
 	await process_frame
 
-	_expect(near_player.current_health == 25, "Fireball impact did not damage the player inside radius.")
+	_expect(near_player.current_health == 65, "Fireball impact did not damage the player inside radius.")
 	_expect(far_player.current_health == 100, "Fireball impact damaged a player outside radius.")
 	_expect(not is_instance_valid(fireball), "Fireball projectile must release immediately after impact damage.")
 	var impact := _find_fireball_impact_effect()
@@ -291,13 +291,13 @@ func _test_multiplayer_projectile_registry() -> void:
 		&"capoo_mage_fireball",
 		0,
 		Vector2.RIGHT,
-		75,
+		MAGE_CONFIG.attack_damage,
 		MAGE_CONFIG.projectile_speed,
 		MAGE_CONFIG.projectile_lifetime
 	) as CapooMageFireball
 	_expect(fireball != null, "Multiplayer registry did not instantiate capoo_mage_fireball.")
 	if fireball != null:
-		_expect(fireball.damage == 75, "Registry mage fireball damage mismatch.")
+		_expect(fireball.damage == MAGE_CONFIG.attack_damage, "Registry mage fireball damage mismatch.")
 		_expect(is_equal_approx(fireball.speed, MAGE_CONFIG.projectile_speed), "Registry mage fireball speed mismatch.")
 		fireball.free()
 

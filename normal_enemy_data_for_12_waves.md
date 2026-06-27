@@ -53,7 +53,7 @@
 | 剑客猫猫虫 | `capoo_swordsman.tres` | 大范围近战压迫 | 400 | 28 | 5 | 0 | 38 | 20 | 0.20 | `scene/enemy/capoo_swordsman.tscn` |
 | 冲锋枪 Capoo | `capoo_smg.tres` | 高速移动散射 | 200 | 40 | 0 | 0 | 120 | 25 | 0.20 | `scene/enemy/capoo_smg.tscn` |
 | RPG猫猫虫 | `capoo_rpg.tres` | 远程火箭爆炸 | 200 | 20 | 0 | 0 | 16 | 24 | 0.20 | `scene/enemy/capoo_rpg.tscn` |
-| 法师 Capoo | `capoo_mage.tres` | 远距离追踪火球 | 200 | 75 | 0 | 0 | 80 | 30 | 0.20 | `scene/enemy/capoo_mage.tscn` |
+| 法师 Capoo | `capoo_mage.tres` | 远距离追踪火球 | 200 | 35 | 0 | 0 | 24 | 30 | 0.20 | `scene/enemy/capoo_mage.tscn` |
 | 狙击手 Capoo | `capoo_sniper.tres` | 超远锁定秒杀威胁 | 100 | 200 | 20 | 0 | 80 | 35 | 0.20 | `scene/enemy/capoo_sniper.tscn` |
 
 ## 特殊行为数据

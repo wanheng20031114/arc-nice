@@ -1346,7 +1346,7 @@ func _trigger_life_crystal(item: PickupConfig) -> void:
 			continue
 		if global_position.distance_to(target_player.global_position) > radius:
 			continue
-		target_player._try_heal(item.periodic_heal)
+		_apply_authoritative_collectible_player_heal(target_player, item.periodic_heal)
 	_spawn_collectible_area_effect(radius, Color(0.45, 1.0, 0.58, 0.42), 0.52)
 
 
@@ -1380,6 +1380,22 @@ func _apply_authoritative_collectible_enemy_damage(
 			int(damage_type)
 		))
 	return enemy.apply_damage(damage, impact_direction, damage_type)
+
+
+func _apply_authoritative_collectible_player_heal(target_player: Player, heal_amount: int) -> bool:
+	if target_player == null or not is_instance_valid(target_player):
+		return false
+	var current_scene := get_tree().current_scene
+	if (
+		current_scene != null
+		and current_scene.has_method("apply_multiplayer_collectible_player_heal")
+	):
+		return bool(current_scene.call(
+			"apply_multiplayer_collectible_player_heal",
+			target_player,
+			heal_amount
+		))
+	return target_player._try_heal(heal_amount)
 
 
 func _collect_alive_enemies() -> Array[Enemy]:

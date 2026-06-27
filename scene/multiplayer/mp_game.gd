@@ -1714,6 +1714,42 @@ func net_player_damage_applied(
 	_player_health_revisions[player_peer_id] = health_revision
 	player_node.set_multiplayer_health_state(current_health, is_dead)
 
+
+func apply_multiplayer_collectible_player_heal(target_player: Player, heal_amount: int) -> bool:
+	if not net_manager.is_host():
+		return false
+	if target_player == null or not is_instance_valid(target_player):
+		return false
+	if heal_amount <= 0 or target_player.peer_id <= 0:
+		return false
+	if not target_player._try_heal(heal_amount):
+		return false
+	var health_revision := _next_player_health_revision(target_player.peer_id)
+	_rpc_to_connected_clients(
+		&"net_player_healed",
+		[target_player.peer_id, target_player.current_health, health_revision]
+	)
+	net_player_healed(target_player.peer_id, target_player.current_health, health_revision)
+	return true
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_player_healed(peer_id: int, current_health: int, health_revision: int) -> void:
+	if peer_id <= 0:
+		return
+	var player_node: Player = null
+	if game != null:
+		player_node = game.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	if health_revision <= int(_player_health_revisions.get(peer_id, 0)):
+		return
+	if player_node.is_dead:
+		return
+	_player_health_revisions[peer_id] = health_revision
+	player_node.set_multiplayer_health_state(current_health, false)
+
+
 func register_xirang_orb(drop: XirangDrop, amount: int) -> void:
 	if drop == null or not net_manager.is_host():
 		return
