@@ -150,7 +150,7 @@ func _test_skill4_config() -> void:
 	_expect(SKILL4_CONFIG.laser_damage == 50, "Skill4 laser damage mismatch.")
 	_expect(SKILL4_CONFIG.orb_candidate_min_y == 0, "Skill4 orb min row mismatch.")
 	_expect(SKILL4_CONFIG.orb_candidate_max_y == 15, "Skill4 orb max row mismatch.")
-	_expect(SKILL4_CONFIG.orb_count_per_side == 12, "Skill4 orb count mismatch.")
+	_expect(SKILL4_CONFIG.orb_count_per_side == 7, "Skill4 orb count mismatch.")
 	_expect(is_equal_approx(SKILL4_CONFIG.orb_spawn_interval, 2.0), "Skill4 orb interval mismatch.")
 	_expect(is_equal_approx(SKILL4_CONFIG.orb_spawn_duration, 14.0), "Skill4 orb duration mismatch.")
 	_expect(SKILL4_CONFIG.get_orb_wave_count() == 7, "Skill4 must spawn seven orb waves.")
@@ -166,7 +166,7 @@ func _test_skill4_config() -> void:
 	var random_generator := RandomNumberGenerator.new()
 	random_generator.seed = 2468
 	var rows := SKILL4_CONFIG.get_random_orb_rows(random_generator)
-	_expect(rows.size() == 12, "Skill4 must pick 12 orb rows.")
+	_expect(rows.size() == 7, "Skill4 must pick 7 orb rows.")
 	var seen_rows: Dictionary = {}
 	for row in rows:
 		_expect(row >= 0 and row <= 15, "Skill4 picked an orb row outside 0..15.")
@@ -357,7 +357,12 @@ func _test_boss_skill4_schedule() -> void:
 	boss.skill3_elapsed = SKILL3_CONFIG.duration
 	boss.skill3_shots_fired = SKILL3_CONFIG.get_shot_count()
 	boss.call("_physics_process", 0.016)
-	_expect(boss.boss_skill_phase == LinglanBoss.BossSkillPhase.MOVE_TO_SKILL4, "Skill3 completion must enter MOVE_TO_SKILL4.")
+	_expect(
+		boss.boss_skill_phase == LinglanBoss.BossSkillPhase.POST_SKILL_IDLE,
+		"Skill3 completion must enter the 2s post-skill idle."
+	)
+	boss.call("_physics_process", 2.01)
+	_expect(boss.boss_skill_phase == LinglanBoss.BossSkillPhase.MOVE_TO_SKILL4, "Post-skill idle must hand off to MOVE_TO_SKILL4.")
 	_expect(
 		host.requested_target_cells == [[SKILL4_CONFIG.target_cell_a, SKILL4_CONFIG.target_cell_b]],
 		"Skill4 move must request target cells (6,2)/(7,2)."
@@ -383,14 +388,14 @@ func _test_boss_skill4_schedule() -> void:
 	boss.call("_physics_process", 3.49)
 	_expect(host.projectile_records.is_empty(), "Skill4 must wait for shrink plus 0.5s before orb waves.")
 	boss.call("_physics_process", 0.02)
-	_expect(host.projectile_records.size() == 24, "Skill4 first wave must spawn 12 orbs per side.")
+	_expect(host.projectile_records.size() == 14, "Skill4 first wave must spawn 7 orbs per side.")
 	_expect(_first_wave_rows_are_unique_per_side(host), "Skill4 first wave rows must be unique per side.")
 	for _step in range(900):
 		boss.call("_physics_process", 1.0 / 60.0)
-		if boss.boss_skill_phase == LinglanBoss.BossSkillPhase.DONE:
+		if boss.boss_skill_phase == LinglanBoss.BossSkillPhase.POST_SKILL_IDLE:
 			break
-	_expect(host.projectile_records.size() == 168, "Skill4 must spawn exactly seven two-sided waves.")
-	_expect(boss.boss_skill_phase == LinglanBoss.BossSkillPhase.DONE, "Skill4 must enter DONE after its 17.5s cycle.")
+	_expect(host.projectile_records.size() == 98, "Skill4 must spawn exactly seven reduced two-sided waves.")
+	_expect(boss.boss_skill_phase == LinglanBoss.BossSkillPhase.POST_SKILL_IDLE, "Skill4 must enter the 2s post-skill idle after its 17.5s cycle.")
 	_expect(boss.skill4_laser_field == null, "Skill4 must clear the laser field when the skill ends.")
 	for record in host.projectile_records:
 		_expect(record.get("projectile_type") == &"linglan_skill4_orb", "Skill4 registered wrong projectile type.")
@@ -454,11 +459,11 @@ func _count_skill4_laser_fields(parent: Node) -> int:
 
 
 func _first_wave_rows_are_unique_per_side(host: Skill4Host) -> bool:
-	if host.orb_spawn_calls.size() < 24:
+	if host.orb_spawn_calls.size() < 14:
 		return false
 	var left_rows: Dictionary = {}
 	var right_rows: Dictionary = {}
-	for index in range(24):
+	for index in range(14):
 		var call := host.orb_spawn_calls[index]
 		var x_cell := int(call.get("x_cell", 0))
 		var y_cell := int(call.get("y_cell", -999))
@@ -470,7 +475,7 @@ func _first_wave_rows_are_unique_per_side(host: Skill4Host) -> bool:
 			if right_rows.has(y_cell):
 				return false
 			right_rows[y_cell] = true
-	return left_rows.size() == 12 and right_rows.size() == 12
+	return left_rows.size() == 7 and right_rows.size() == 7
 
 
 func _expect(condition: bool, message: String) -> void:

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c08g1bvc8mehn"
-path="res://.godot/imported/linglan_attack_v12b_alpha_preview.png-a209be7c2366ca832d3c9573e36a2ccc.ctex"
+uid="uid://b6ub365eb27ws"
+path="res://.godot/imported/linglan_idle_reference_frame0.png-c443d6039f698b8ceaefaf871becdce1.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://tmp/linglan_attack_v12b_alpha_preview.png"
-dest_files=["res://.godot/imported/linglan_attack_v12b_alpha_preview.png-a209be7c2366ca832d3c9573e36a2ccc.ctex"]
+source_file="res://tmp/linglan_idle_reference_frame0.png"
+dest_files=["res://.godot/imported/linglan_idle_reference_frame0.png-c443d6039f698b8ceaefaf871becdce1.ctex"]
 
 [params]
 

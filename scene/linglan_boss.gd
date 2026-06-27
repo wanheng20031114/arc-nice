@@ -8,6 +8,15 @@ const SKILL2_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const LinglanSkill4ConfigScript := preload("res://resources/config/bosses/linglan_skill4_config.gd")
 const LinglanSkill4LaserFieldScript := preload("res://scene/linglan_skill4_laser_field.gd")
 const LinglanSkill4LightOrbScript := preload("res://scene/linglan_skill4_light_orb.gd")
+const ENRAGE_SNIPER_CONFIG := preload("res://resources/config/enemies/capoo_sniper.tres")
+const AIRDROP_WARNING_SCENE := preload("res://scene/linglan_airdrop_warning_marker.tscn")
+const OPENING_SKILL_ORDER := [1, 2, 3, 4]
+const POST_SKILL_IDLE_DURATION := 2.0
+const ENRAGE_SNIPER_HEALTH_RATIO := 0.5
+const ENRAGE_SNIPER_INTERVAL := 10.0
+const ENRAGE_SNIPER_WARNING_DURATION := 1.2
+const ENRAGE_SNIPER_DROP_HEIGHT := 180.0
+const ENRAGE_SNIPER_DROP_DURATION := 0.5
 
 @export var starts_active: bool = false
 @export var boss_display_name: String = "铃兰"
@@ -26,15 +35,22 @@ enum BossSkillPhase {
 	SKILL3,
 	MOVE_TO_SKILL4,
 	SKILL4,
+	POST_SKILL_IDLE,
 	DONE,
 }
 
 var is_active: bool = false
 var skill3_random := RandomNumberGenerator.new()
 var skill4_random := RandomNumberGenerator.new()
+var skill_order_random := RandomNumberGenerator.new()
 var action_sequence: int = 0
 var latest_proxy_action_id: int = 0
 var boss_skill_phase: BossSkillPhase = BossSkillPhase.SKILL1
+var opening_skill_order_index: int = 0
+var queued_skill_number: int = 0
+var post_skill_idle_elapsed: float = 0.0
+var enrage_sniper_active: bool = false
+var enrage_sniper_timer: float = ENRAGE_SNIPER_INTERVAL
 var skill1_elapsed: float = 0.0
 var skill1_fire_time_left: float = 0.0
 var skill1_finished: bool = false
@@ -60,6 +76,7 @@ func _ready() -> void:
 	super._ready()
 	skill3_random.randomize()
 	skill4_random.randomize()
+	skill_order_random.randomize()
 	set_active(starts_active)
 	_emit_health_changed()
 
@@ -82,10 +99,8 @@ func configure_multiplayer_proxy() -> void:
 func activate_boss(player: Player, shared_pathfinder: Node = null) -> void:
 	setup(config, player, shared_pathfinder)
 	_reset_skill_state()
-	boss_skill_phase = BossSkillPhase.SKILL1
 	set_active(true)
-	if animated_sprite != null and not is_dead:
-		animated_sprite.play(&"idle")
+	_begin_skill_number(1)
 
 
 func set_active(active: bool) -> void:
@@ -118,12 +133,13 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 	_update_touch_damage(delta)
+	_update_enrage_sniper_airdrops(delta)
 	match boss_skill_phase:
 		BossSkillPhase.SKILL1:
 			_update_skill1(delta)
 			velocity = Vector2.ZERO
 			if skill1_finished:
-				_begin_skill2_move()
+				_finish_skill(1)
 		BossSkillPhase.MOVE_TO_SKILL2:
 			_update_skill2_move(delta)
 		BossSkillPhase.SKILL2:
@@ -136,6 +152,8 @@ func _physics_process(delta: float) -> void:
 			_update_skill4_move(delta)
 		BossSkillPhase.SKILL4:
 			_update_skill4(delta)
+		BossSkillPhase.POST_SKILL_IDLE:
+			_update_post_skill_idle(delta)
 		_:
 			velocity = Vector2.ZERO
 			_play_idle_animation()
@@ -166,11 +184,132 @@ func apply_multiplayer_health_snapshot(new_current_health: int) -> void:
 func _reset_skill_state() -> void:
 	action_sequence = 0
 	latest_proxy_action_id = 0
+	opening_skill_order_index = 0
+	queued_skill_number = 0
+	post_skill_idle_elapsed = 0.0
+	enrage_sniper_active = false
+	enrage_sniper_timer = ENRAGE_SNIPER_INTERVAL
 	_reset_skill1_state()
 	_reset_skill2_state()
 	_reset_skill3_state()
 	_reset_skill4_state()
 	boss_skill_phase = BossSkillPhase.SKILL1
+
+
+func _begin_skill_number(skill_number: int) -> void:
+	match skill_number:
+		1:
+			_begin_skill1_attack()
+		2:
+			_begin_skill2_move()
+		3:
+			_begin_skill3_move()
+		4:
+			_begin_skill4_move()
+		_:
+			boss_skill_phase = BossSkillPhase.DONE
+			_play_idle_animation()
+
+
+func _begin_skill1_attack() -> void:
+	_reset_skill1_state()
+	if not _is_skill1_ready():
+		boss_skill_phase = BossSkillPhase.DONE
+		_play_idle_animation()
+		return
+	boss_skill_phase = BossSkillPhase.SKILL1
+	velocity = Vector2.ZERO
+	_play_idle_animation()
+
+
+func _finish_skill(skill_number: int) -> void:
+	match skill_number:
+		1:
+			_clear_skill1_warning_rays()
+		2:
+			_clear_skill2_warning_arrow()
+		4:
+			_clear_skill4_laser_field()
+
+	queued_skill_number = _get_next_skill_number(skill_number)
+	post_skill_idle_elapsed = 0.0
+	velocity = Vector2.ZERO
+	_play_idle_animation()
+	if queued_skill_number <= 0:
+		boss_skill_phase = BossSkillPhase.DONE
+		return
+	boss_skill_phase = BossSkillPhase.POST_SKILL_IDLE
+
+
+func _get_next_skill_number(completed_skill_number: int) -> int:
+	var completed_opening_index := OPENING_SKILL_ORDER.find(completed_skill_number)
+	if (
+		completed_opening_index >= 0
+		and completed_opening_index >= opening_skill_order_index
+	):
+		opening_skill_order_index = completed_opening_index + 1
+
+	if opening_skill_order_index < OPENING_SKILL_ORDER.size():
+		return int(OPENING_SKILL_ORDER[opening_skill_order_index])
+
+	return _pick_random_ready_skill_number()
+
+
+func _pick_random_ready_skill_number() -> int:
+	var ready_skills: Array[int] = []
+	if _is_skill1_ready():
+		ready_skills.append(1)
+	if _is_skill2_ready():
+		ready_skills.append(2)
+	if _is_skill3_ready():
+		ready_skills.append(3)
+	if _is_skill4_ready():
+		ready_skills.append(4)
+	if ready_skills.is_empty():
+		return 0
+	return ready_skills[skill_order_random.randi_range(0, ready_skills.size() - 1)]
+
+
+func _update_post_skill_idle(delta: float) -> void:
+	velocity = Vector2.ZERO
+	_play_idle_animation()
+	post_skill_idle_elapsed += maxf(delta, 0.0)
+	if post_skill_idle_elapsed < POST_SKILL_IDLE_DURATION:
+		return
+	var next_skill := queued_skill_number
+	queued_skill_number = 0
+	_begin_skill_number(next_skill)
+
+
+func _update_enrage_sniper_airdrops(delta: float) -> void:
+	var maximum_health := get_max_health()
+	if maximum_health <= 0:
+		return
+	if float(current_health) > float(maximum_health) * ENRAGE_SNIPER_HEALTH_RATIO:
+		return
+	if not enrage_sniper_active:
+		enrage_sniper_active = true
+		enrage_sniper_timer = ENRAGE_SNIPER_INTERVAL
+
+	enrage_sniper_timer -= maxf(delta, 0.0)
+	if enrage_sniper_timer > 0.0:
+		return
+	enrage_sniper_timer += ENRAGE_SNIPER_INTERVAL
+	_request_enrage_sniper_airdrop()
+
+
+func _request_enrage_sniper_airdrop() -> void:
+	var host := _find_parent_with_method(&"spawn_linglan_airdrop_sniper")
+	if host == null:
+		return
+	host.call(
+		"spawn_linglan_airdrop_sniper",
+		ENRAGE_SNIPER_CONFIG,
+		AIRDROP_WARNING_SCENE,
+		ENRAGE_SNIPER_WARNING_DURATION,
+		ENRAGE_SNIPER_DROP_HEIGHT,
+		ENRAGE_SNIPER_DROP_DURATION
+	)
 
 
 func _reset_skill1_state() -> void:
@@ -202,6 +341,10 @@ func _reset_skill4_state() -> void:
 	skill4_elapsed = 0.0
 	skill4_orb_spawn_ticks_completed = 0
 	_clear_skill4_laser_field()
+
+
+func _is_skill1_ready() -> bool:
+	return skill1_config != null and skill1_config.projectile_scene != null
 
 
 func _update_skill1(delta: float) -> void:
@@ -386,6 +529,7 @@ func _clear_skill1_warning_rays() -> void:
 
 func _begin_skill2_move() -> void:
 	_clear_skill1_warning_rays()
+	_reset_skill2_state()
 	if not _is_skill2_ready():
 		boss_skill_phase = BossSkillPhase.DONE
 		_play_idle_animation()
@@ -444,8 +588,7 @@ func _update_skill2(delta: float) -> void:
 		skill2_elapsed >= skill2_config.get_total_duration()
 		and skill2_shots_fired >= maxi(skill2_config.attack_count, 1)
 	):
-		_clear_skill2_warning_arrow()
-		_begin_skill3_move()
+		_finish_skill(2)
 
 
 func _update_skill2_spawn_ticks() -> void:
@@ -656,6 +799,7 @@ func _resolve_skill2_target_global_position() -> Vector2:
 
 func _begin_skill3_move() -> void:
 	_clear_skill2_warning_arrow()
+	_reset_skill3_state()
 	if not _is_skill3_ready():
 		boss_skill_phase = BossSkillPhase.DONE
 		_play_idle_animation()
@@ -704,7 +848,7 @@ func _update_skill3(delta: float) -> void:
 	_play_attack_animation()
 	_update_skill3_fire()
 	if skill3_elapsed >= skill3_config.duration and skill3_shots_fired >= skill3_config.get_shot_count():
-		_begin_skill4_move()
+		_finish_skill(3)
 
 
 func _update_skill3_fire() -> void:
@@ -789,6 +933,7 @@ func _get_skill4_config() -> LinglanSkill4ConfigScript:
 
 
 func _begin_skill4_move() -> void:
+	_reset_skill4_state()
 	if not _is_skill4_ready():
 		boss_skill_phase = BossSkillPhase.DONE
 		_play_idle_animation()
@@ -855,8 +1000,7 @@ func _update_skill4(delta: float) -> void:
 		skill4_elapsed >= config4.get_total_duration()
 		and skill4_orb_spawn_ticks_completed >= config4.get_orb_wave_count()
 	):
-		_clear_skill4_laser_field()
-		boss_skill_phase = BossSkillPhase.DONE
+		_finish_skill(4)
 
 
 func _update_skill4_orb_spawns() -> void:

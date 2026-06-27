@@ -37,8 +37,9 @@ SKILL2_EXPLOSION_SOURCE = "dev_assets/source_images/boss_linglan/skill2_sakura_e
 SKILL2_EXPLOSION_ALPHA = "dev_assets/source_images/boss_linglan/skill2_sakura_explosion_alpha.png"
 DIE_SOURCE = "dev_assets/source_images/boss_linglan/die_imagegen_green_v2.png"
 DIE_ALPHA = "dev_assets/source_images/boss_linglan/die_v2_alpha.png"
-ATTACK_SOURCE = "dev_assets/source_images/boss_linglan/attack_imagegen_green_v12b_bodylock_3x2.png"
-ATTACK_ALPHA = "dev_assets/source_images/boss_linglan/attack_v12b_bodylock_alpha.png"
+ATTACK_SOURCE = "dev_assets/source_images/boss_linglan/attack_manual_v16_alpha_3x2.png"
+ATTACK_ALPHA = ATTACK_SOURCE
+ATTACK_SOURCE_IS_ALPHA = True
 
 OUTPUT_TEXTURE_DIR = "resources/texture/boss_linglan"
 OUTPUT_FRAMES = "resources/animation/linglan.tres"
@@ -64,6 +65,7 @@ SOURCE_COLUMNS = 8
 SOURCE_ROWS = 1
 ATTACK_SOURCE_COLUMNS = 3
 ATTACK_SOURCE_ROWS = 2
+ATTACK_FRAME_COUNT = ATTACK_SOURCE_COLUMNS * ATTACK_SOURCE_ROWS
 SKILL2_EXPLOSION_COLUMNS = 4
 SKILL2_EXPLOSION_ROWS = 4
 SKILL2_ROCKET_FRAME_SIZE = (192, 96)
@@ -143,6 +145,29 @@ def _remove_linglan_sprite_background(image: Image.Image) -> Image.Image:
 		& (hue <= 0.94)
 	)
 	array[magenta_background] = (0, 0, 0, 0)
+	visible_pixels = array[:, :, 3] > 0
+	array[:, :, 3][visible_pixels] = 255
+	return Image.fromarray(array)
+
+
+def _remove_linglan_attack_background(image: Image.Image) -> Image.Image:
+	result = remove_connected_background(
+		image,
+		ConnectedBackgroundOptions(
+			rgb_tolerance=72,
+			hue_tolerance=0.07,
+			expansion_radius=18,
+			min_hue_saturation=0.24,
+			green_ratio_limit=1.15,
+		),
+	)
+	array = np.array(result.convert("RGBA"), dtype=np.uint8)
+	alpha = array[:, :, 3] > 0
+	red = array[:, :, 0].astype(np.int16)
+	green = array[:, :, 1].astype(np.int16)
+	blue = array[:, :, 2].astype(np.int16)
+	chroma_blue = alpha & (blue >= 80) & (red <= 55) & (green <= 75) & (blue >= red + 35) & (blue >= green + 25)
+	array[chroma_blue] = (0, 0, 0, 0)
 	visible_pixels = array[:, :, 3] > 0
 	array[:, :, 3][visible_pixels] = 255
 	return Image.fromarray(array)
@@ -1025,22 +1050,14 @@ def _remove_attack_edge_artifacts(image: Image.Image) -> Image.Image:
 
 def _process_linglan_attack(root: Path) -> None:
 	source = Image.open(root / ATTACK_SOURCE).convert("RGBA")
-	alpha = _despill_chroma_green(_remove_linglan_sprite_background(source))
+	alpha = source.copy() if ATTACK_SOURCE_IS_ALPHA else _despill_chroma_green(_remove_linglan_sprite_background(source))
 	alpha_path = root / ATTACK_ALPHA
-	alpha_path.parent.mkdir(parents=True, exist_ok=True)
-	alpha.save(alpha_path)
-
-	middle_frame_count = ATTACK_SOURCE_COLUMNS * ATTACK_SOURCE_ROWS
-	if middle_frame_count != SOURCE_COLUMNS - 2:
-		raise ValueError(
-			"Linglan attack source grid must provide exactly the middle frames: "
-			f"{middle_frame_count} source frames for {SOURCE_COLUMNS} output frames."
-		)
+	if alpha_path != root / ATTACK_SOURCE:
+		alpha_path.parent.mkdir(parents=True, exist_ok=True)
+		alpha.save(alpha_path)
 
 	frames: list[tuple[str, Image.Image]] = []
-	frames.append(("attack_0", _copy_linglan_output_strip_frame(root, LINGLAN_TEXTURE_RESOURCES["idle"], 0)))
-
-	frame_index = 1
+	frame_index = 0
 	for row in range(ATTACK_SOURCE_ROWS):
 		cell_top = round(row * alpha.height / ATTACK_SOURCE_ROWS)
 		cell_bottom = round((row + 1) * alpha.height / ATTACK_SOURCE_ROWS)
@@ -1056,14 +1073,14 @@ def _process_linglan_attack(root: Path) -> None:
 				_detect_linglan_attack_body_anchor(cell, detected),
 				LINGLAN_STANDING_TARGET_ANCHOR,
 			)
-			frame = _remove_attack_edge_artifacts(frame)
-			frame = _despill_chroma_green(_remove_tiny_alpha_components(_remove_tall_edge_fragments(frame)))
+			if not ATTACK_SOURCE_IS_ALPHA:
+				frame = _remove_attack_edge_artifacts(frame)
+				frame = _remove_tiny_alpha_components(_remove_tall_edge_fragments(frame))
 			frames.append((f"attack_{frame_index}", frame))
 			frame_index += 1
 
-	frames.append((f"attack_{frame_index}", _copy_linglan_output_strip_frame(root, LINGLAN_TEXTURE_RESOURCES["idle"], 1)))
-	if len(frames) != SOURCE_COLUMNS:
-		raise ValueError(f"Linglan attack output must have {SOURCE_COLUMNS} frames, got {len(frames)}.")
+	if len(frames) != ATTACK_FRAME_COUNT:
+		raise ValueError(f"Linglan attack output must have {ATTACK_FRAME_COUNT} frames, got {len(frames)}.")
 
 	sheet, _regions = _build_animation_strip(frames)
 	attack_path = root / OUTPUT_ATTACK
@@ -1081,19 +1098,23 @@ def _collect_linglan_output_strip_regions(
 	for animation_name, texture_resource in LINGLAN_TEXTURE_RESOURCES.items():
 		texture_path = root / texture_resource.removeprefix("res://")
 		image = Image.open(texture_path)
-		if image.width % SOURCE_COLUMNS != 0:
-			raise ValueError(f"{texture_path} width must divide into {SOURCE_COLUMNS} Linglan frames.")
-		frame_width = image.width // SOURCE_COLUMNS
-		frame_height = image.height
-		if (frame_width, frame_height) != LINGLAN_AUTHORED_FRAME_SIZE:
+		frame_width, frame_height = LINGLAN_AUTHORED_FRAME_SIZE
+		if image.width % frame_width != 0:
+			raise ValueError(f"{texture_path} width must divide into {frame_width}px Linglan frames.")
+		if image.height != frame_height:
 			raise ValueError(
-				f"{texture_path} must use authored Linglan frame size "
-				f"{LINGLAN_AUTHORED_FRAME_SIZE}, got {(frame_width, frame_height)}."
+				f"{texture_path} must use authored Linglan frame height {frame_height}, got {image.height}."
+			)
+		frame_count = image.width // frame_width
+		expected_frame_count = ATTACK_FRAME_COUNT if animation_name == "attack" else SOURCE_COLUMNS
+		if frame_count != expected_frame_count:
+			raise ValueError(
+				f"{texture_path} must provide {expected_frame_count} {animation_name} frames, got {frame_count}."
 			)
 
 		regions: dict[str, FrameRegion] = {}
 		frame_names: list[str] = []
-		for frame_index in range(SOURCE_COLUMNS):
+		for frame_index in range(frame_count):
 			frame_name = f"{animation_name}_{frame_index}"
 			regions[frame_name] = (frame_index * frame_width, 0, frame_width, frame_height)
 			frame_names.append(frame_name)

@@ -1,6 +1,6 @@
 [gd_resource type="SpriteFrames" format=3 uid="uid://ub8py66qcmfq"]
 
-[ext_resource type="Texture2D" uid="uid://ci145785u7vgf" path="res://resources/texture/boss_linglan/attack.png" id="attack_texture"]
+[ext_resource type="Texture2D" uid="uid://cll5q1pctp0jt" path="res://resources/texture/boss_linglan/attack.png" id="attack_texture"]
 [ext_resource type="Texture2D" uid="uid://2ku0adg2fswq" path="res://resources/texture/boss_linglan/die.png" id="die_texture"]
 [ext_resource type="Texture2D" uid="uid://bvv7p5if14s8v" path="res://resources/texture/boss_linglan/idle.png" id="idle_texture"]
 [ext_resource type="Texture2D" uid="uid://c5c85r1wfluct" path="res://resources/texture/boss_linglan/move.png" id="move_texture"]
@@ -28,14 +28,6 @@ region = Rect2(1472, 0, 368, 400)
 [sub_resource type="AtlasTexture" id="AtlasTexture_attack_5"]
 atlas = ExtResource("attack_texture")
 region = Rect2(1840, 0, 368, 400)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_attack_6"]
-atlas = ExtResource("attack_texture")
-region = Rect2(2208, 0, 368, 400)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_attack_7"]
-atlas = ExtResource("attack_texture")
-region = Rect2(2576, 0, 368, 400)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_die_0"]
 atlas = ExtResource("die_texture")
@@ -153,12 +145,6 @@ animations = [{
 }, {
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_attack_5")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_attack_6")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_attack_7")
 }],
 "loop": true,
 "name": &"attack",

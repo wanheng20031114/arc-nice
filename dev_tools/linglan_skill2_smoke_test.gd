@@ -245,7 +245,12 @@ func _test_boss_skill2_schedule() -> void:
 	boss.skill1_finished = true
 	boss.boss_skill_phase = LinglanBoss.BossSkillPhase.SKILL1
 	boss.call("_physics_process", 0.016)
-	_expect(boss.boss_skill_phase == LinglanBoss.BossSkillPhase.MOVE_TO_SKILL2, "Skill1 completion must enter MOVE_TO_SKILL2.")
+	_expect(
+		boss.boss_skill_phase == LinglanBoss.BossSkillPhase.POST_SKILL_IDLE,
+		"Skill1 completion must enter the 2s post-skill idle."
+	)
+	boss.call("_physics_process", 2.01)
+	_expect(boss.boss_skill_phase == LinglanBoss.BossSkillPhase.MOVE_TO_SKILL2, "Post-skill idle must hand off to MOVE_TO_SKILL2.")
 	_expect(host.requested_target_cells == [SKILL2_CONFIG.target_cell], "Skill2 move must request target cell (15,2).")
 
 	var sprite := boss.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
@@ -276,15 +281,17 @@ func _test_boss_skill2_schedule() -> void:
 
 	for _step in range(660):
 		boss.call("_physics_process", 1.0 / 60.0)
-		if boss.boss_skill_phase == LinglanBoss.BossSkillPhase.MOVE_TO_SKILL3:
+		if boss.boss_skill_phase == LinglanBoss.BossSkillPhase.POST_SKILL_IDLE:
 			break
 
 	_expect(host.projectile_records.size() == 10, "Skill2 must fire exactly 10 rockets.")
 	_expect(host.spawn_marker_calls.size() == 20, "Skill2 must request 20 total boss add spawns.")
 	_expect(
-		boss.boss_skill_phase == LinglanBoss.BossSkillPhase.MOVE_TO_SKILL3,
-		"Skill2 must hand off to Skill3 movement after the 10 second cycle."
+		boss.boss_skill_phase == LinglanBoss.BossSkillPhase.POST_SKILL_IDLE,
+		"Skill2 must enter the 2s post-skill idle after the 10 second cycle."
 	)
+	boss.call("_physics_process", 2.01)
+	_expect(boss.boss_skill_phase == LinglanBoss.BossSkillPhase.MOVE_TO_SKILL3, "Post-skill idle must hand off to Skill3 movement.")
 	for record in host.projectile_records:
 		_expect(record.get("projectile_type") == &"linglan_skill2_rocket", "Skill2 registered wrong projectile type.")
 		_expect(int(record.get("damage", 0)) == 80, "Skill2 registered wrong rocket damage.")

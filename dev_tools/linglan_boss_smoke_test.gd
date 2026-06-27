@@ -51,7 +51,7 @@ func _test_animation_resource() -> void:
 	var expected_counts := {
 		&"idle": 8,
 		&"move": 8,
-		&"attack": 8,
+		&"attack": 6,
 		&"die": 8,
 	}
 	for animation_name in expected_counts.keys():
@@ -81,8 +81,8 @@ func _test_animation_resource() -> void:
 				var visible_bottom := visible_rect.position.y + visible_rect.size.y
 				_expect(visible_bottom >= 364 and visible_bottom <= 366, "Linglan attack frame %d must keep the idle foot baseline." % frame_index)
 				if frame_index == 0 or frame_index == LINGLAN_FRAMES.get_frame_count(animation_name) - 1:
-					_expect(visible_rect.position.y <= 50, "Linglan attack endpoint frame %d must not shrink below idle height." % frame_index)
-					_expect(visible_rect.size.y >= 315, "Linglan attack endpoint frame %d must keep idle-scale body height." % frame_index)
+					_expect(visible_rect.position.y <= 80, "Linglan attack endpoint frame %d must keep the authored body height." % frame_index)
+					_expect(visible_rect.size.y >= 285, "Linglan attack endpoint frame %d must keep idle-scale body height." % frame_index)
 
 
 func _test_boss_entry_resource() -> void:

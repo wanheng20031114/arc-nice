@@ -6,5 +6,6 @@
 
 [resource]
 script = ExtResource("1_config")
+orb_count_per_side = 7
 laser_field_scene = ExtResource("2_laser")
 orb_scene = ExtResource("3_orb")

@@ -69,6 +69,7 @@ enum WaveState {
 	preload("res://resources/config/waves/wave_09.tres"),
 	preload("res://resources/config/waves/wave_10.tres"),
 	preload("res://resources/config/waves/wave_11.tres"),
+	preload("res://resources/config/waves/wave_12.tres"),
 ]
 
 @export_group("Boss资源")
@@ -1215,6 +1216,134 @@ func spawn_linglan_skill2_enemies(
 		return
 	for marker_name in marker_names:
 		_try_spawn_boss_add_at_marker(enemy_config, marker_name)
+
+
+func spawn_linglan_airdrop_sniper(
+	enemy_config: EnemyConfig,
+	warning_scene: PackedScene,
+	warning_duration: float,
+	drop_height: float,
+	drop_duration: float
+) -> void:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		return
+	if wave_state != WaveState.BOSS_ACTIVE:
+		return
+	if enemy_config == null or enemy_config.enemy_scene == null:
+		return
+	var landing_position := _get_random_linglan_boss_arena_position()
+	_spawn_linglan_airdrop_warning(warning_scene, landing_position, warning_duration)
+	_finish_linglan_airdrop_sniper_spawn(
+		enemy_config,
+		landing_position,
+		maxf(warning_duration, 0.0),
+		maxf(drop_height, 0.0),
+		maxf(drop_duration, 0.01)
+	)
+
+
+func _spawn_linglan_airdrop_warning(
+	warning_scene: PackedScene,
+	landing_position: Vector2,
+	warning_duration: float
+) -> void:
+	if warning_scene == null:
+		return
+	var warning := warning_scene.instantiate() as Node2D
+	if warning == null:
+		return
+	add_child(warning)
+	warning.top_level = true
+	warning.global_position = landing_position
+	if warning.has_method("start"):
+		warning.call("start", warning_duration)
+
+
+func _finish_linglan_airdrop_sniper_spawn(
+	enemy_config: EnemyConfig,
+	landing_position: Vector2,
+	warning_duration: float,
+	drop_height: float,
+	drop_duration: float
+) -> void:
+	if warning_duration > 0.0:
+		await get_tree().create_timer(warning_duration).timeout
+	if wave_state != WaveState.BOSS_ACTIVE:
+		return
+	if enemy_container == null or player == null:
+		return
+
+	var spawn_scene := enemy_config.enemy_scene
+	var enemy_instance := spawn_scene.instantiate() as Enemy
+	if enemy_instance == null:
+		push_warning("Linglan 空降狙击手场景实例化失败。")
+		return
+
+	enemy_container.add_child(enemy_instance)
+	enemy_instance.global_position = landing_position + Vector2(0.0, -drop_height)
+	enemy_instance.setup(enemy_config, _pick_enemy_target(landing_position), grid_pathfinder)
+	enemy_instance.velocity = Vector2.ZERO
+	enemy_instance.set_process(false)
+	enemy_instance.set_physics_process(false)
+	_set_enemy_collision_shapes_disabled_recursive(enemy_instance, true)
+
+	var tween := enemy_instance.create_tween()
+	tween.set_trans(Tween.TRANS_CUBIC)
+	tween.set_ease(Tween.EASE_IN)
+	tween.tween_property(enemy_instance, "global_position", landing_position, drop_duration)
+	await tween.finished
+
+	if not is_instance_valid(enemy_instance):
+		return
+	if wave_state != WaveState.BOSS_ACTIVE:
+		enemy_instance.queue_free()
+		return
+
+	enemy_instance.global_position = landing_position
+	enemy_instance.set_process(true)
+	enemy_instance.set_physics_process(true)
+	_set_enemy_collision_shapes_disabled_recursive(enemy_instance, false)
+	var enemy_id := enemy_instance.get_instance_id()
+	if not enemy_instance.defeated.is_connected(_on_boss_add_defeated):
+		enemy_instance.defeated.connect(_on_boss_add_defeated)
+	if not enemy_instance.tree_exited.is_connected(_on_boss_enemy_tree_exited.bind(enemy_id)):
+		enemy_instance.tree_exited.connect(_on_boss_enemy_tree_exited.bind(enemy_id))
+	_register_multiplayer_enemy_instance(enemy_instance, enemy_config, landing_position)
+	_spawn_enemy_spawn_effect(landing_position)
+	_try_play_enemy_spawn_audio()
+
+
+func _set_enemy_collision_shapes_disabled_recursive(root: Node, disabled: bool) -> void:
+	if root == null:
+		return
+	for child in root.get_children():
+		var shape := child as CollisionShape2D
+		if shape != null:
+			shape.set_deferred("disabled", disabled)
+		_set_enemy_collision_shapes_disabled_recursive(child, disabled)
+
+
+func _get_random_linglan_boss_arena_position() -> Vector2:
+	if active_boss_config == null or ground_tile_map_layer == null:
+		return linglan_boss.global_position if linglan_boss != null else Vector2.ZERO
+	var arena_rect := _get_boss_arena_floor_rect(active_boss_config)
+	if arena_rect.size.x <= 0 or arena_rect.size.y <= 0:
+		return _get_boss_arena_center(active_boss_config)
+	var min_cell_x := arena_rect.position.x
+	var max_cell_x := arena_rect.position.x + arena_rect.size.x - 1
+	var min_cell_y := arena_rect.position.y
+	var max_cell_y := arena_rect.position.y + arena_rect.size.y - 1
+	if arena_rect.size.x > 2:
+		min_cell_x += 1
+		max_cell_x -= 1
+	if arena_rect.size.y > 2:
+		min_cell_y += 1
+		max_cell_y -= 1
+	var target_cell := Vector2i(
+		random_generator.randi_range(min_cell_x, max_cell_x),
+		random_generator.randi_range(min_cell_y, max_cell_y)
+	)
+	return _get_tile_cell_global_position(target_cell)
 
 
 func _try_spawn_boss_add_at_marker(enemy_config: EnemyConfig, marker_name: StringName) -> bool:

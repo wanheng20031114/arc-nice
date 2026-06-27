@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dyjjno2753gmv"
-path="res://.godot/imported/linglan_attack_v13_processed_preview.png-8ea130b213b458ff76e37a78442cf193.ctex"
+uid="uid://dpgfhaaem0ucm"
+path="res://.godot/imported/test_virtual_singer_swimsuit.png-491a24368648865521b506426a996f45.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://tmp/linglan_attack_v13_processed_preview.png"
-dest_files=["res://.godot/imported/linglan_attack_v13_processed_preview.png-8ea130b213b458ff76e37a78442cf193.ctex"]
+source_file="res://test_virtual_singer_swimsuit.png"
+dest_files=["res://.godot/imported/test_virtual_singer_swimsuit.png-491a24368648865521b506426a996f45.ctex"]
 
 [params]
 

@@ -6,6 +6,7 @@
 
 [resource]
 script = ExtResource("1_config")
+ring_direction_count = 24
 attack_speed = 1800.0
 projectile_scene = ExtResource("2_projectile")
 warning_ray_width_scale = 0.6

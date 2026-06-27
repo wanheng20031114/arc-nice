@@ -2,101 +2,101 @@
 
 [ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="1_wave"]
 [ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="2_entry"]
-[ext_resource type="Resource" uid="uid://d31hbyrmfh543" path="res://resources/config/enemies/yuanshi_insect_basic.tres" id="3_basic"]
+[ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="3_flow_exit"]
 [ext_resource type="Resource" uid="uid://drqobuvr21y71" path="res://resources/config/enemies/yuanshi_insect_fast.tres" id="4_fast"]
 [ext_resource type="Resource" uid="uid://chktgvo5mcaul" path="res://resources/config/enemies/yuanshi_insect_shell.tres" id="5_shell"]
-[ext_resource type="Resource" uid="uid://gh81or2m6c2t" path="res://resources/config/enemies/yuanshi_insect_bomber.tres" id="6_bomber"]
-[ext_resource type="Resource" uid="uid://cpjc7spicocg8" path="res://resources/config/enemies/yuanshi_insect_purple_bomber.tres" id="7_purple"]
-[ext_resource type="Resource" uid="uid://c6unlgwoqktx5" path="res://resources/config/enemies/yuanshi_insect_fire_ranged.tres" id="8_fire"]
-[ext_resource type="Resource" uid="uid://yefrqmv7b306" path="res://resources/config/enemies/yuanshi_insect_green_shell.tres" id="9_green"]
-[ext_resource type="Resource" uid="uid://b6g77s6rrfiw8" path="res://resources/config/enemies/yuanshi_insect_guardian.tres" id="10_guardian"]
-[ext_resource type="Resource" uid="uid://bwc31dxuxgnhs" path="res://resources/config/enemies/capoo_ak47.tres" id="11_capoo"]
-[ext_resource type="AudioStream" uid="uid://diw1565kbaa50" path="res://resources/audio/1-29 Journey of the Prairie King (Final Boss & Ending).mp3" id="12_music"]
-[ext_resource type="Resource" uid="uid://b361vcg4kkw13" path="res://resources/config/enemies/capoo_knight.tres" id="13_knight"]
-[ext_resource type="Resource" path="res://resources/config/enemies/capoo_mage.tres" id="14_mage"]
-[ext_resource type="Resource" path="res://resources/config/enemies/capoo_sniper.tres" id="15_sniper"]
-[ext_resource type="Resource" path="res://resources/config/enemies/capoo_smg.tres" id="16_smg"]
-[ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="17_flow_exit"]
-
-[sub_resource type="Resource" id="WaveEnemyEntry_basic"]
-script = ExtResource("2_entry")
-enemy_config = ExtResource("3_basic")
-count = 0
+[ext_resource type="Resource" uid="uid://cpjc7spicocg8" path="res://resources/config/enemies/yuanshi_insect_purple_bomber.tres" id="6_purple"]
+[ext_resource type="Resource" uid="uid://b6g77s6rrfiw8" path="res://resources/config/enemies/yuanshi_insect_guardian.tres" id="7_guardian"]
+[ext_resource type="Resource" uid="uid://bwc31dxuxgnhs" path="res://resources/config/enemies/capoo_ak47.tres" id="8_ak47"]
+[ext_resource type="Resource" uid="uid://b361vcg4kkw13" path="res://resources/config/enemies/capoo_knight.tres" id="9_knight"]
+[ext_resource type="Resource" uid="uid://vfkjlbk30xa2" path="res://resources/config/enemies/capoo_knight_elite.tres" id="10_elite_knight"]
+[ext_resource type="Resource" uid="uid://57jdvc0bd7r8" path="res://resources/config/enemies/capoo_swordsman.tres" id="11_swordsman"]
+[ext_resource type="Resource" uid="uid://uaeho5a1060p" path="res://resources/config/enemies/capoo_rpg.tres" id="12_rpg"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_mage.tres" id="13_mage"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_sniper.tres" id="14_sniper"]
+[ext_resource type="AudioStream" uid="uid://diw1565kbaa50" path="res://resources/audio/1-29 Journey of the Prairie King (Final Boss & Ending).mp3" id="15_music"]
 
 [sub_resource type="Resource" id="WaveEnemyEntry_fast"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("4_fast")
-count = 16
+count = 50
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [sub_resource type="Resource" id="WaveEnemyEntry_shell"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("5_shell")
-count = 16
-
-[sub_resource type="Resource" id="WaveEnemyEntry_bomber"]
-script = ExtResource("2_entry")
-enemy_config = ExtResource("6_bomber")
-count = 24
+count = 120
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [sub_resource type="Resource" id="WaveEnemyEntry_purple"]
 script = ExtResource("2_entry")
-enemy_config = ExtResource("7_purple")
-count = 26
-
-[sub_resource type="Resource" id="WaveEnemyEntry_fire"]
-script = ExtResource("2_entry")
-enemy_config = ExtResource("8_fire")
-count = 28
-
-[sub_resource type="Resource" id="WaveEnemyEntry_green"]
-script = ExtResource("2_entry")
-enemy_config = ExtResource("9_green")
-count = 22
+enemy_config = ExtResource("6_purple")
+count = 60
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [sub_resource type="Resource" id="WaveEnemyEntry_guardian"]
 script = ExtResource("2_entry")
-enemy_config = ExtResource("10_guardian")
-count = 26
+enemy_config = ExtResource("7_guardian")
+count = 50
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
-[sub_resource type="Resource" id="WaveEnemyEntry_capoo"]
+[sub_resource type="Resource" id="WaveEnemyEntry_ak47"]
 script = ExtResource("2_entry")
-enemy_config = ExtResource("11_capoo")
-count = 25
+enemy_config = ExtResource("8_ak47")
+count = 20
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [sub_resource type="Resource" id="WaveEnemyEntry_knight"]
 script = ExtResource("2_entry")
-enemy_config = ExtResource("13_knight")
-count = 12
+enemy_config = ExtResource("9_knight")
+count = 20
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="WaveEnemyEntry_elite_knight"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("10_elite_knight")
+count = 20
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="WaveEnemyEntry_swordsman"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("11_swordsman")
+count = 80
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="WaveEnemyEntry_rpg"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("12_rpg")
+count = 10
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [sub_resource type="Resource" id="WaveEnemyEntry_mage"]
 script = ExtResource("2_entry")
-enemy_config = ExtResource("14_mage")
-count = 6
+enemy_config = ExtResource("13_mage")
+count = 15
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [sub_resource type="Resource" id="WaveEnemyEntry_sniper"]
 script = ExtResource("2_entry")
-enemy_config = ExtResource("15_sniper")
-count = 4
-
-[sub_resource type="Resource" id="WaveEnemyEntry_smg"]
-script = ExtResource("2_entry")
-enemy_config = ExtResource("16_smg")
-count = 8
+enemy_config = ExtResource("14_sniper")
+count = 20
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [sub_resource type="Resource" id="Resource_default_exit"]
-script = ExtResource("17_flow_exit")
+script = ExtResource("3_flow_exit")
 target_step_id = &"wave_11"
+metadata/_custom_type_script = "uid://blcjxtu575ki5"
 
 [resource]
 script = ExtResource("1_wave")
-wave_name = "第十波 - 末日虫潮"
-enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic"), SubResource("WaveEnemyEntry_fast"), SubResource("WaveEnemyEntry_shell"), SubResource("WaveEnemyEntry_bomber"), SubResource("WaveEnemyEntry_purple"), SubResource("WaveEnemyEntry_fire"), SubResource("WaveEnemyEntry_green"), SubResource("WaveEnemyEntry_guardian"), SubResource("WaveEnemyEntry_capoo"), SubResource("WaveEnemyEntry_knight"), SubResource("WaveEnemyEntry_mage"), SubResource("WaveEnemyEntry_sniper"), SubResource("WaveEnemyEntry_smg")])
-spawn_interval = 0.1
-spawn_count_per_tick = 4
-max_alive_enemies = 140
-music = ExtResource("12_music")
+wave_name = "第10波"
+enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_fast"), SubResource("WaveEnemyEntry_shell"), SubResource("WaveEnemyEntry_purple"), SubResource("WaveEnemyEntry_guardian"), SubResource("WaveEnemyEntry_ak47"), SubResource("WaveEnemyEntry_knight"), SubResource("WaveEnemyEntry_elite_knight"), SubResource("WaveEnemyEntry_swordsman"), SubResource("WaveEnemyEntry_rpg"), SubResource("WaveEnemyEntry_mage"), SubResource("WaveEnemyEntry_sniper")])
+spawn_interval = 0.142857
+spawn_count_per_tick = 2
+max_alive_enemies = 180
+music = ExtResource("15_music")
 step_id = &"wave_10"
-display_name = "第十波 - 末日虫潮"
-post_clear_rest_duration = 20.0
-exits = Array[ExtResource("17_flow_exit")]([SubResource("Resource_default_exit")])
-editor_position = Vector2(1520, 400)
+display_name = "第10波"
+post_clear_rest_duration = 30.0
+exits = Array[ExtResource("3_flow_exit")]([SubResource("Resource_default_exit")])
+editor_position = Vector2(480, 320)

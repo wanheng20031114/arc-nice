@@ -2,53 +2,58 @@
 
 [ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="1_wave"]
 [ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="2_entry"]
-[ext_resource type="Resource" uid="uid://d31hbyrmfh543" path="res://resources/config/enemies/yuanshi_insect_basic.tres" id="3_basic"]
-[ext_resource type="Resource" uid="uid://drqobuvr21y71" path="res://resources/config/enemies/yuanshi_insect_fast.tres" id="4_fast"]
-[ext_resource type="Resource" uid="uid://chktgvo5mcaul" path="res://resources/config/enemies/yuanshi_insect_shell.tres" id="5_shell"]
+[ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="3_flow_exit"]
+[ext_resource type="Resource" uid="uid://d31hbyrmfh543" path="res://resources/config/enemies/yuanshi_insect_basic.tres" id="4_basic"]
+[ext_resource type="Resource" uid="uid://drqobuvr21y71" path="res://resources/config/enemies/yuanshi_insect_fast.tres" id="5_fast"]
 [ext_resource type="Resource" uid="uid://gh81or2m6c2t" path="res://resources/config/enemies/yuanshi_insect_bomber.tres" id="6_bomber"]
-[ext_resource type="Resource" uid="uid://c6unlgwoqktx5" path="res://resources/config/enemies/yuanshi_insect_fire_ranged.tres" id="7_fire"]
-[ext_resource type="AudioStream" uid="uid://dvxl8ixgmll4p" path="res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3" id="8_music"]
-[ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="9_flow_exit"]
+[ext_resource type="Resource" uid="uid://cpjc7spicocg8" path="res://resources/config/enemies/yuanshi_insect_purple_bomber.tres" id="7_purple"]
+[ext_resource type="Resource" uid="uid://c6unlgwoqktx5" path="res://resources/config/enemies/yuanshi_insect_fire_ranged.tres" id="8_fire"]
+[ext_resource type="AudioStream" uid="uid://cmfbw4cr7dde" path="res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3" id="9_music"]
 
 [sub_resource type="Resource" id="WaveEnemyEntry_basic"]
 script = ExtResource("2_entry")
-enemy_config = ExtResource("3_basic")
-count = 35
+enemy_config = ExtResource("4_basic")
+count = 240
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [sub_resource type="Resource" id="WaveEnemyEntry_fast"]
 script = ExtResource("2_entry")
-enemy_config = ExtResource("4_fast")
-count = 30
-
-[sub_resource type="Resource" id="WaveEnemyEntry_shell"]
-script = ExtResource("2_entry")
-enemy_config = ExtResource("5_shell")
-count = 25
+enemy_config = ExtResource("5_fast")
+count = 20
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [sub_resource type="Resource" id="WaveEnemyEntry_bomber"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("6_bomber")
-count = 15
+count = 10
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="WaveEnemyEntry_purple"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("7_purple")
+count = 10
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [sub_resource type="Resource" id="WaveEnemyEntry_fire"]
 script = ExtResource("2_entry")
-enemy_config = ExtResource("7_fire")
-count = 5
+enemy_config = ExtResource("8_fire")
+count = 50
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [sub_resource type="Resource" id="Resource_default_exit"]
-script = ExtResource("9_flow_exit")
+script = ExtResource("3_flow_exit")
 target_step_id = &"wave_04"
+metadata/_custom_type_script = "uid://blcjxtu575ki5"
 
 [resource]
 script = ExtResource("1_wave")
-wave_name = "第三波 - 甲壳集结"
-enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic"), SubResource("WaveEnemyEntry_fast"), SubResource("WaveEnemyEntry_shell"), SubResource("WaveEnemyEntry_bomber"), SubResource("WaveEnemyEntry_fire")])
-spawn_interval = 0.18
-spawn_count_per_tick = 4
-max_alive_enemies = 100
-music = ExtResource("8_music")
+wave_name = "第3波"
+enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic"), SubResource("WaveEnemyEntry_fast"), SubResource("WaveEnemyEntry_bomber"), SubResource("WaveEnemyEntry_purple"), SubResource("WaveEnemyEntry_fire")])
+spawn_interval = 0.1
+max_alive_enemies = 110
+music = ExtResource("9_music")
 step_id = &"wave_03"
-display_name = "第三波 - 甲壳集结"
-post_clear_rest_duration = 20.0
-exits = Array[ExtResource("9_flow_exit")]([SubResource("Resource_default_exit")])
-editor_position = Vector2(1080, -120)
+display_name = "第3波"
+post_clear_rest_duration = 30.0
+exits = Array[ExtResource("3_flow_exit")]([SubResource("Resource_default_exit")])
+editor_position = Vector2(840, -120)

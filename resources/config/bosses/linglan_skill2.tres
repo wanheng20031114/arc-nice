@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://djdce8adq14b4" path="res://resources/config/bosses/linglan_skill2_config.gd" id="1_config"]
 [ext_resource type="PackedScene" uid="uid://dc77yahheqevd" path="res://scene/linglan_skill2_sakura_rocket.tscn" id="2_rocket"]
 [ext_resource type="PackedScene" path="res://scene/linglan_skill2_warning_arrow.tscn" id="3_warning"]
-[ext_resource type="Resource" uid="uid://yefrqmv7b306" path="res://resources/config/enemies/yuanshi_insect_green_shell.tres" id="4_enemy"]
+[ext_resource type="Resource" uid="uid://chktgvo5mcaul" path="res://resources/config/enemies/yuanshi_insect_shell.tres" id="4_enemy"]
 
 [resource]
 script = ExtResource("1_config")

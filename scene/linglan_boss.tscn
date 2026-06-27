@@ -10,7 +10,7 @@
 [ext_resource type="Resource" uid="uid://bf6ge3snl6cq4" path="res://resources/config/bosses/linglan_skill3.tres" id="8_skill3"]
 [ext_resource type="Resource" path="res://resources/config/bosses/linglan_skill4.tres" id="9_skill4"]
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_2mw5u"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_hsfkk"]
 resource_local_to_scene = true
 shader = ExtResource("3_shader")
 shader_parameter/blink_enabled = false
@@ -45,7 +45,7 @@ skill4_config = ExtResource("9_skill4")
 
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
 texture_filter = 2
-material = SubResource("ShaderMaterial_2mw5u")
+material = SubResource("ShaderMaterial_hsfkk")
 position = Vector2(0, -8)
 scale = Vector2(0.148, 0.148)
 sprite_frames = ExtResource("4_frames")

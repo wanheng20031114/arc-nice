@@ -265,7 +265,12 @@ func _test_boss_skill3_schedule() -> void:
 	boss.skill2_elapsed = SKILL2_CONFIG.get_total_duration()
 	boss.skill2_shots_fired = SKILL2_CONFIG.attack_count
 	boss.call("_physics_process", 0.016)
-	_expect(boss.boss_skill_phase == LinglanBoss.BossSkillPhase.MOVE_TO_SKILL3, "Skill2 completion must enter MOVE_TO_SKILL3.")
+	_expect(
+		boss.boss_skill_phase == LinglanBoss.BossSkillPhase.POST_SKILL_IDLE,
+		"Skill2 completion must enter the 2s post-skill idle."
+	)
+	boss.call("_physics_process", 2.01)
+	_expect(boss.boss_skill_phase == LinglanBoss.BossSkillPhase.MOVE_TO_SKILL3, "Post-skill idle must hand off to MOVE_TO_SKILL3.")
 	_expect(host.requested_target_cells == [SKILL3_CONFIG.target_cell], "Skill3 move must request target cell (0,1).")
 
 	var sprite := boss.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
@@ -290,9 +295,14 @@ func _test_boss_skill3_schedule() -> void:
 		boss.call("_physics_process", 1.0 / 60.0)
 	_expect(host.projectile_records.size() == 50, "Skill3 must fire exactly 50 orbs.")
 	_expect(
+		boss.boss_skill_phase == LinglanBoss.BossSkillPhase.POST_SKILL_IDLE,
+		"Skill3 must enter the 2s post-skill idle after the 10 second cycle."
+	)
+	boss.call("_physics_process", 2.01)
+	_expect(
 		boss.boss_skill_phase == LinglanBoss.BossSkillPhase.MOVE_TO_SKILL4
 		or boss.boss_skill_phase == LinglanBoss.BossSkillPhase.SKILL4,
-		"Skill3 must hand off to Skill4 movement after the 10 second cycle."
+		"Post-skill idle must hand off to Skill4 movement."
 	)
 	for record in host.projectile_records:
 		var direction: Vector2 = record.get("direction", Vector2.ZERO)

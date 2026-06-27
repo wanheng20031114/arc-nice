@@ -13,10 +13,11 @@
 [ext_resource type="Resource" uid="uid://sr8v74r4nal8" path="res://resources/config/waves/wave_09.tres" id="10_wave_09"]
 [ext_resource type="Resource" uid="uid://bttaw85s5obna" path="res://resources/config/waves/wave_10.tres" id="11_wave_10"]
 [ext_resource type="Resource" uid="uid://bqqwah5vdlkeb" path="res://resources/config/waves/wave_11.tres" id="12_wave_11"]
-[ext_resource type="Resource" uid="uid://cind5qjo33b70" path="res://resources/config/bosses/boss_01_linglan.tres" id="13_boss_01"]
+[ext_resource type="Resource" path="res://resources/config/waves/wave_12.tres" id="13_wave_12"]
+[ext_resource type="Resource" uid="uid://cind5qjo33b70" path="res://resources/config/bosses/boss_01_linglan.tres" id="14_boss_01"]
 
 [resource]
 script = ExtResource("1_graph")
 graph_name = "默认战斗流程"
 start_step = ExtResource("2_wave_01")
-steps = Array[ExtResource("1_step")]([ExtResource("2_wave_01"), ExtResource("3_wave_02"), ExtResource("4_wave_03"), ExtResource("5_wave_04"), ExtResource("6_wave_05"), ExtResource("7_wave_06"), ExtResource("8_wave_07"), ExtResource("9_wave_08"), ExtResource("10_wave_09"), ExtResource("11_wave_10"), ExtResource("12_wave_11"), ExtResource("13_boss_01")])
+steps = Array[ExtResource("1_step")]([ExtResource("2_wave_01"), ExtResource("3_wave_02"), ExtResource("4_wave_03"), ExtResource("5_wave_04"), ExtResource("6_wave_05"), ExtResource("7_wave_06"), ExtResource("8_wave_07"), ExtResource("9_wave_08"), ExtResource("10_wave_09"), ExtResource("11_wave_10"), ExtResource("12_wave_11"), ExtResource("13_wave_12"), ExtResource("14_boss_01")])
