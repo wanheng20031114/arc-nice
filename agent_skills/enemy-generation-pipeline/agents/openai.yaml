@@ -1,4 +1,4 @@
 interface:
-  display_name: "Enemy Generation Pipeline"
-  short_description: "Generate high-quality Godot enemy sprite pipelines"
-  default_prompt: "Use $enemy-generation-pipeline to generate and integrate a new Godot enemy sprite pipeline."
+  display_name: "敌人生成 Pipeline"
+  short_description: "生成并接入 Godot 敌人像素动画素材"
+  default_prompt: "使用 $enemy-generation-pipeline 通过内置 image_gen 生成并接入新的 Godot 敌人像素动画资源。"
