@@ -50,8 +50,8 @@ chmod +x scripts/*.sh
 | `GODOT_SERVER_PATH` | `/opt/godot/Godot_v4.6-stable_linux.x86_64` | Godot 可执行文件路径 |
 | `RELAY_PROJECT_PATH` | `./relay_godot_project` | Relay 项目路径 |
 | `MAX_ROOMS` | `100` | 最大房间数 |
-| `ROOM_IDLE_TIMEOUT` | `600` | 房间空闲超时(秒) |
-| `RELAY_IDLE_TIMEOUT` | `300` | Relay 空闲超时(秒) |
+| `ROOM_IDLE_TIMEOUT` | `36000` | 房间空闲超时(秒)，低于 10 小时会按 10 小时处理 |
+| `RELAY_IDLE_TIMEOUT` | `36000` | Relay 空闲超时(秒)，低于 10 小时会按 10 小时处理 |
 
 ## API 端点
 
