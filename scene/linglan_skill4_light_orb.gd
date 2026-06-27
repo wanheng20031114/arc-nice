@@ -9,6 +9,7 @@ const PULSE_MAX := 1.12
 @export var speed: float = 40.0
 @export var damage: int = 50
 @export var orb_radius: float = 8.0
+@export var damage_radius: float = 6.0
 @export var max_lifetime: float = 10.0
 
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
@@ -35,7 +36,8 @@ func setup(
 	initial_damage: int,
 	initial_speed: float,
 	initial_lifetime: float,
-	initial_radius: float = 8.0
+	initial_radius: float = 8.0,
+	initial_damage_radius: float = 6.0
 ) -> void:
 	direction = initial_direction.normalized() if initial_direction != Vector2.ZERO else Vector2.RIGHT
 	damage = maxi(initial_damage, 0)
@@ -43,6 +45,7 @@ func setup(
 	max_lifetime = maxf(initial_lifetime, 0.01)
 	remaining_lifetime = max_lifetime
 	orb_radius = maxf(initial_radius, 1.0)
+	damage_radius = clampf(initial_damage_radius, 1.0, orb_radius)
 	rotation = direction.angle()
 	if is_node_ready():
 		_apply_current_radius()
@@ -63,6 +66,10 @@ func get_current_radius() -> float:
 	return orb_radius
 
 
+func get_damage_radius() -> float:
+	return damage_radius
+
+
 func _physics_process(delta: float) -> void:
 	var safe_delta := maxf(delta, 0.0)
 	elapsed += safe_delta
@@ -80,7 +87,7 @@ func _apply_current_radius() -> void:
 		return
 	var circle_shape := collision_shape.shape as CircleShape2D
 	if circle_shape != null:
-		circle_shape.radius = orb_radius
+		circle_shape.radius = damage_radius
 
 
 func _update_visual_pulse() -> void:

@@ -287,6 +287,12 @@ func _test_game_boss_opening_flow() -> void:
 		var hud_health_bar := hud.get_node_or_null("HealthBar") as ProgressBar
 		_expect(hud_frame != null and hud_health_bar != null and hud_health_bar.visible, "Top boss HUD must use the authored large HUD nodes.")
 	_expect(boss == null or boss.get_node_or_null("OverheadHUD") == null, "Linglan must not show a mini overhead HUD.")
+	if boss != null:
+		_expect(music_player.playing, "Linglan boss music must be playing before boss death.")
+		music_player.stream_paused = false
+		boss.apply_damage(boss.current_health)
+		await process_frame
+		_expect(music_player.stream_paused, "Linglan death must pause the active background music immediately.")
 
 	game.queue_free()
 	await process_frame

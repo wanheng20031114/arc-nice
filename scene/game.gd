@@ -2258,11 +2258,16 @@ func _update_boss_music(boss_config: BossConfig) -> void:
 	_play_music_stream(boss_config.music, boss_config.music_volume_db, boss_config.music_loop_offset)
 
 
+func pause_all_background_music() -> void:
+	_pause_background_music_players(self)
+
+
 func _play_music_stream(stream: AudioStream, volume_db: float, loop_offset: float = 0.0) -> void:
 	if stream == null:
 		return
 	_configure_music_loop(stream, loop_offset)
 	music_player.volume_db = volume_db
+	music_player.stream_paused = false
 	if music_player.stream == stream and music_player.playing:
 		return
 	music_player.stream = stream
@@ -2283,3 +2288,26 @@ func _audio_stream_has_property(stream: AudioStream, property_name: StringName) 
 		if property.get("name") == property_name:
 			return true
 	return false
+
+
+func _pause_background_music_players(root_node: Node) -> void:
+	if root_node == null:
+		return
+	if _is_background_music_player(root_node):
+		root_node.set(&"stream_paused", true)
+	for child in root_node.get_children():
+		_pause_background_music_players(child)
+
+
+func _is_background_music_player(node: Node) -> bool:
+	if not (
+		node is AudioStreamPlayer
+		or node is AudioStreamPlayer2D
+		or node is AudioStreamPlayer3D
+	):
+		return false
+	if not bool(node.get(&"playing")):
+		return false
+	var bus_name := String(node.get(&"bus")).to_lower()
+	var node_name := String(node.name).to_lower()
+	return bus_name == "music" or node_name.contains("music") or node_name.contains("bgm")

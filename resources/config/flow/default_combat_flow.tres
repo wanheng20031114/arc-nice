@@ -13,7 +13,7 @@
 [ext_resource type="Resource" uid="uid://sr8v74r4nal8" path="res://resources/config/waves/wave_09.tres" id="10_wave_09"]
 [ext_resource type="Resource" uid="uid://bttaw85s5obna" path="res://resources/config/waves/wave_10.tres" id="11_wave_10"]
 [ext_resource type="Resource" uid="uid://bqqwah5vdlkeb" path="res://resources/config/waves/wave_11.tres" id="12_wave_11"]
-[ext_resource type="Resource" path="res://resources/config/waves/wave_12.tres" id="13_wave_12"]
+[ext_resource type="Resource" uid="uid://vcox64637fk4" path="res://resources/config/waves/wave_12.tres" id="13_wave_12"]
 [ext_resource type="Resource" uid="uid://cind5qjo33b70" path="res://resources/config/bosses/boss_01_linglan.tres" id="14_boss_01"]
 
 [resource]

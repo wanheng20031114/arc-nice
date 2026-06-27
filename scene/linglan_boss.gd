@@ -49,6 +49,7 @@ var boss_skill_phase: BossSkillPhase = BossSkillPhase.SKILL1
 var opening_skill_order_index: int = 0
 var queued_skill_number: int = 0
 var post_skill_idle_elapsed: float = 0.0
+var random_skill_use_counts: Dictionary = {}
 var enrage_sniper_active: bool = false
 var enrage_sniper_timer: float = ENRAGE_SNIPER_INTERVAL
 var skill1_elapsed: float = 0.0
@@ -162,6 +163,7 @@ func _physics_process(delta: float) -> void:
 func _die() -> void:
 	if is_dead:
 		return
+	_pause_background_music_for_death()
 	boss_defeated.emit()
 	_reset_skill_state()
 	super._die()
@@ -181,12 +183,19 @@ func apply_multiplayer_health_snapshot(new_current_health: int) -> void:
 	_emit_health_changed()
 
 
+func _pause_background_music_for_death() -> void:
+	var host := _find_parent_with_method(&"pause_all_background_music")
+	if host != null:
+		host.call("pause_all_background_music")
+
+
 func _reset_skill_state() -> void:
 	action_sequence = 0
 	latest_proxy_action_id = 0
 	opening_skill_order_index = 0
 	queued_skill_number = 0
 	post_skill_idle_elapsed = 0.0
+	_reset_random_skill_use_counts()
 	enrage_sniper_active = false
 	enrage_sniper_timer = ENRAGE_SNIPER_INTERVAL
 	_reset_skill1_state()
@@ -252,10 +261,34 @@ func _get_next_skill_number(completed_skill_number: int) -> int:
 	if opening_skill_order_index < OPENING_SKILL_ORDER.size():
 		return int(OPENING_SKILL_ORDER[opening_skill_order_index])
 
-	return _pick_random_ready_skill_number()
+	return _pick_random_ready_skill_number(completed_skill_number)
 
 
-func _pick_random_ready_skill_number() -> int:
+func _pick_random_ready_skill_number(previous_skill_number: int) -> int:
+	var ready_skills := _get_ready_skill_numbers()
+	var candidate_skills: Array[int] = []
+	for skill_number in ready_skills:
+		if skill_number != previous_skill_number:
+			candidate_skills.append(skill_number)
+	if candidate_skills.is_empty():
+		return 0
+
+	var least_used_skills: Array[int] = []
+	var least_use_count := 2147483647
+	for skill_number in candidate_skills:
+		var use_count := int(random_skill_use_counts.get(skill_number, 0))
+		if use_count < least_use_count:
+			least_use_count = use_count
+			least_used_skills = [skill_number]
+		elif use_count == least_use_count:
+			least_used_skills.append(skill_number)
+
+	var selected_skill: int = least_used_skills[skill_order_random.randi_range(0, least_used_skills.size() - 1)]
+	random_skill_use_counts[selected_skill] = int(random_skill_use_counts.get(selected_skill, 0)) + 1
+	return selected_skill
+
+
+func _get_ready_skill_numbers() -> Array[int]:
 	var ready_skills: Array[int] = []
 	if _is_skill1_ready():
 		ready_skills.append(1)
@@ -265,9 +298,13 @@ func _pick_random_ready_skill_number() -> int:
 		ready_skills.append(3)
 	if _is_skill4_ready():
 		ready_skills.append(4)
-	if ready_skills.is_empty():
-		return 0
-	return ready_skills[skill_order_random.randi_range(0, ready_skills.size() - 1)]
+	return ready_skills
+
+
+func _reset_random_skill_use_counts() -> void:
+	random_skill_use_counts.clear()
+	for skill_number in OPENING_SKILL_ORDER:
+		random_skill_use_counts[int(skill_number)] = 0
 
 
 func _update_post_skill_idle(delta: float) -> void:
@@ -1048,7 +1085,8 @@ func _spawn_skill4_orb(spawn_from_left: bool, y_cell: int) -> void:
 		config4.orb_damage,
 		config4.orb_speed,
 		config4.orb_lifetime,
-		config4.orb_radius
+		config4.orb_radius,
+		config4.orb_damage_radius
 	)
 	spawn_parent.add_child(orb)
 	orb.global_position = spawn_position

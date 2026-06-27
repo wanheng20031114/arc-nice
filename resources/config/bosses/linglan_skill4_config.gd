@@ -11,7 +11,7 @@ class_name LinglanSkill4Config
 @export var laser_start_top_cell_y: int = -1
 @export var laser_start_bottom_cell_y: int = 16
 @export_range(0, 32, 1, "or_greater") var laser_inward_cell_distance: int = 5
-@export_range(0.0, 10.0, 0.05, "or_greater") var laser_warning_duration: float = 1.0
+@export_range(0.0, 10.0, 0.05, "or_greater") var laser_warning_duration: float = 1.6
 @export_range(0.01, 30.0, 0.05, "or_greater") var laser_shrink_duration: float = 3.0
 @export_range(0.0, 10.0, 0.05, "or_greater") var orb_start_delay_after_laser: float = 0.5
 @export_range(1.0, 64.0, 0.5, "or_greater") var laser_core_width: float = 6.0
@@ -25,6 +25,7 @@ class_name LinglanSkill4Config
 @export_range(0.01, 30.0, 0.05, "or_greater") var orb_lifetime: float = 10.0
 @export_range(0, 999, 1, "or_greater") var orb_damage: int = 50
 @export_range(1.0, 128.0, 0.5, "or_greater") var orb_radius: float = 8.0
+@export_range(1.0, 128.0, 0.5, "or_greater") var orb_damage_radius: float = 6.0
 @export var laser_field_scene: PackedScene
 @export var orb_scene: PackedScene
 

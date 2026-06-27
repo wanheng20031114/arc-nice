@@ -7,8 +7,9 @@ const DAMAGE_QUERY_MAX_RESULTS := 32
 @export var damage: int = 50
 @export var core_width: float = 6.0
 @export var warning_core_width: float = 1.5
-@export var warning_duration: float = 1.0
+@export var warning_duration: float = 1.6
 @export var shrink_duration: float = 3.0
+@export var contact_damage_interval: float = 0.5
 @export var damage_enabled: bool = true
 
 @onready var top_shape: CollisionShape2D = $TopShape
@@ -33,7 +34,7 @@ var start_max := Vector2(288.0, 256.0)
 var final_min := Vector2(32.0, 64.0)
 var final_max := Vector2(208.0, 176.0)
 var elapsed: float = 0.0
-var damaged_player_ids: Dictionary = {}
+var player_damage_cooldowns: Dictionary = {}
 var field_id: int = 0
 var source_type: StringName = &"linglan_skill4_laser"
 
@@ -52,7 +53,7 @@ func setup(
 	initial_damage: int,
 	initial_core_width: float,
 	initial_shrink_duration: float,
-	initial_warning_duration: float = 1.0,
+	initial_warning_duration: float = 1.6,
 	initial_damage_enabled: bool = true
 ) -> void:
 	start_min = _normalized_min(initial_start_min, initial_start_max)
@@ -65,7 +66,7 @@ func setup(
 	warning_duration = maxf(initial_warning_duration, 0.0)
 	damage_enabled = initial_damage_enabled
 	elapsed = 0.0
-	damaged_player_ids.clear()
+	player_damage_cooldowns.clear()
 	if is_node_ready():
 		_apply_current_geometry()
 		_set_damage_collision_enabled(damage_enabled)
@@ -103,9 +104,11 @@ func get_current_bounds() -> Rect2:
 
 
 func _physics_process(delta: float) -> void:
-	elapsed = minf(elapsed + maxf(delta, 0.0), warning_duration + shrink_duration)
+	var safe_delta := maxf(delta, 0.0)
+	elapsed = minf(elapsed + safe_delta, warning_duration + shrink_duration)
+	_tick_player_damage_cooldowns(safe_delta)
 	_apply_current_geometry()
-	if damage_enabled and not is_warning_active():
+	if damage_enabled:
 		_apply_overlap_damage()
 
 
@@ -199,7 +202,7 @@ func _set_rectangle_shape(shape_node: CollisionShape2D, center: Vector2, size: V
 
 
 func _on_body_entered(body: Node2D) -> void:
-	if damage_enabled and not is_warning_active():
+	if damage_enabled:
 		_apply_player_damage(body as Player)
 
 
@@ -231,12 +234,27 @@ func _apply_player_damage(player: Player) -> void:
 	if player == null or player.is_dead:
 		return
 	var player_id := player.get_instance_id()
-	if damaged_player_ids.has(player_id):
+	if float(player_damage_cooldowns.get(player_id, 0.0)) > 0.0:
 		return
-	damaged_player_ids[player_id] = true
 	if _try_report_multiplayer_player_hit(player):
+		player_damage_cooldowns[player_id] = contact_damage_interval
 		return
-	player.apply_damage(damage)
+	if player.apply_damage(damage):
+		player_damage_cooldowns[player_id] = contact_damage_interval
+
+
+func _tick_player_damage_cooldowns(delta: float) -> void:
+	if player_damage_cooldowns.is_empty():
+		return
+	var expired_player_ids: Array[int] = []
+	for player_id in player_damage_cooldowns:
+		var remaining := maxf(float(player_damage_cooldowns[player_id]) - delta, 0.0)
+		if remaining <= 0.0:
+			expired_player_ids.append(player_id)
+		else:
+			player_damage_cooldowns[player_id] = remaining
+	for player_id in expired_player_ids:
+		player_damage_cooldowns.erase(player_id)
 
 
 func _try_report_multiplayer_player_hit(player: Player) -> bool:
