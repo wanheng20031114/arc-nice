@@ -24,6 +24,7 @@ const ENEMY_SNAPSHOT_HEADER_BYTES := 5
 const PACKED_VECTOR2_BYTES := 4
 const PACKED_U8_BYTES := 1
 const PACKED_U16_BYTES := 2
+const PACKED_U32_BYTES := 4
 const PLAYER_META_BYTES := 25
 const PACKED_I16_MIN := -32768
 const PACKED_I16_MAX := 32767
@@ -245,7 +246,7 @@ static func encode_enemy_snapshot(
 		buf.put_16(_pack_scaled_i16(current.velocity.x, VELOCITY_SCALE))
 		buf.put_16(_pack_scaled_i16(current.velocity.y, VELOCITY_SCALE))
 	if mask & MASK_HEALTH:
-		buf.put_16(current.health)
+		buf.put_32(current.health)
 	if mask & MASK_IS_DEAD:
 		buf.put_u8(1 if current.is_dead else 0)
 
@@ -275,7 +276,7 @@ static func decode_enemy_snapshot(
 		target.velocity.x = buf.get_16() / VELOCITY_SCALE
 		target.velocity.y = buf.get_16() / VELOCITY_SCALE
 	if mask & MASK_HEALTH:
-		target.health = buf.get_16()
+		target.health = buf.get_32()
 	if mask & MASK_IS_DEAD:
 		target.is_dead = buf.get_u8() != 0
 
@@ -292,7 +293,7 @@ static func _get_enemy_snapshot_size(data: PackedByteArray, offset: int) -> int:
 	if mask & MASK_VELOCITY:
 		size += PACKED_VECTOR2_BYTES
 	if mask & MASK_HEALTH:
-		size += PACKED_U16_BYTES
+		size += PACKED_U32_BYTES
 	if mask & MASK_IS_DEAD:
 		size += PACKED_U8_BYTES
 	return size
