@@ -104,7 +104,7 @@ func _build_ui() -> void:
 
 	_rest_spin = SpinBox.new()
 	_rest_spin.min_value = 0.0
-	_rest_spin.max_value = 600.0
+	_rest_spin.max_value = 3600.0
 	_rest_spin.step = 1.0
 	_rest_spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_rest_spin.value_changed.connect(_on_rest_value_changed)
@@ -317,7 +317,7 @@ func _add_node_rest_editor(graph_node: GraphNode, step: FlowStepConfig) -> void:
 	var rest_spin := SpinBox.new()
 	rest_spin.name = "RestSpin"
 	rest_spin.min_value = 0.0
-	rest_spin.max_value = 600.0
+	rest_spin.max_value = 3600.0
 	rest_spin.step = 1.0
 	rest_spin.value = step.post_clear_rest_duration
 	rest_spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL

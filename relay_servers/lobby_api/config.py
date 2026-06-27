@@ -26,9 +26,9 @@ RELAY_PROJECT_PATH = os.getenv(
 )
 
 # ─── 房间超时 ────────────────────────────────────
-# 一局游戏最长保留 10 小时。旧部署生成的 .env 可能仍是 600/300 秒，
+# 一局游戏最长保留 10 小时。旧部署生成的 .env 可能仍是较短超时，
 # 这里把更短的配置抬到 10 小时，避免游戏中途被清理任务回收。
-GAME_MAX_DURATION_SECONDS = 10 * 60 * 60
+GAME_MAX_DURATION_SECONDS = 36000
 
 
 def _session_timeout(name: str) -> int:

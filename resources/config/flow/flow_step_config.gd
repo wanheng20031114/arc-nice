@@ -7,7 +7,7 @@ const DEFAULT_EXIT_NAME := FlowExitConfig.DEFAULT_EXIT_NAME
 @export_group("流程节点")
 @export var step_id: StringName = &""
 @export var display_name: String = ""
-@export_range(0.0, 600.0, 1.0, "or_greater") var post_clear_rest_duration: float = 0.0
+@export_range(0.0, 3600.0, 1.0, "or_greater") var post_clear_rest_duration: float = 0.0
 @export var exits: Array[FlowExitConfig] = []
 @export var editor_position: Vector2 = Vector2.ZERO
 
