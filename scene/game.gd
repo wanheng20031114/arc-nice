@@ -951,6 +951,7 @@ func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
 	enemy_spawn_timer.stop()
 	_set_merchant_active(false)
 	countdown_seconds = maxi(ceili(pre_wave_duration), 0)
+	_update_pre_wave_music(flow_step)
 	wave_hud.show_countdown(countdown_seconds)
 	_schedule_enemy_navigation_prewarm()
 	_emit_multiplayer_flow_state(WaveState.PRE_WAVE)
@@ -976,6 +977,7 @@ func _enter_intermission(next_step: FlowStepConfig = null) -> void:
 		if current_flow_step != null
 		else 0
 	)
+	_update_pre_wave_music(next_step)
 	wave_hud.show_countdown(countdown_seconds)
 	_emit_multiplayer_flow_state(WaveState.INTERMISSION)
 
@@ -1097,6 +1099,8 @@ func _on_enemy_spawn_timer_timeout() -> void:
 func _start_client_wave_countdown(state: WaveState, wave_index: int, seconds: int) -> void:
 	wave_state = state
 	current_wave_index = clampi(wave_index, 0, maxi(waves.size() - 1, 0))
+	if current_wave_index >= 0 and current_wave_index < waves.size():
+		_update_pre_wave_music(waves[current_wave_index])
 	countdown_seconds = maxi(seconds, 0)
 	wave_hud.show_countdown(countdown_seconds)
 	if countdown_seconds <= 0:
@@ -1112,6 +1116,10 @@ func _start_client_flow_countdown(state: WaveState, step_id: StringName, seconds
 		current_flow_step = flow_step
 		if flow_step is WaveConfig:
 			current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
+	var music_flow_step := flow_step
+	if state == WaveState.INTERMISSION:
+		music_flow_step = _get_default_next_flow_step(flow_step)
+	_update_pre_wave_music(music_flow_step)
 	countdown_seconds = maxi(seconds, 0)
 	wave_hud.show_countdown(countdown_seconds)
 	if countdown_seconds <= 0:
@@ -2250,6 +2258,13 @@ func _update_wave_music(wave_config: WaveConfig) -> void:
 	if wave_config.music == null:
 		return
 	_play_music_stream(wave_config.music, DEFAULT_MUSIC_VOLUME_DB, 0.0)
+
+
+func _update_pre_wave_music(flow_step: FlowStepConfig) -> void:
+	var wave_config := flow_step as WaveConfig
+	if wave_config == null or wave_config.pre_wave_music == null:
+		return
+	_play_music_stream(wave_config.pre_wave_music, DEFAULT_MUSIC_VOLUME_DB, 0.0)
 
 
 func _update_boss_music(boss_config: BossConfig) -> void:

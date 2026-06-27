@@ -9,7 +9,8 @@
 [ext_resource type="Resource" uid="uid://cpjc7spicocg8" path="res://resources/config/enemies/yuanshi_insect_purple_bomber.tres" id="7_purple"]
 [ext_resource type="Resource" uid="uid://c6unlgwoqktx5" path="res://resources/config/enemies/yuanshi_insect_fire_ranged.tres" id="8_fire"]
 [ext_resource type="Resource" uid="uid://yefrqmv7b306" path="res://resources/config/enemies/yuanshi_insect_green_shell.tres" id="9_green"]
-[ext_resource type="AudioStream" uid="uid://cmfbw4cr7dde" path="res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3" id="10_music"]
+[ext_resource type="AudioStream" path="res://resources/audio/神树BGM/森林 交战中.m4a" id="10_music"]
+[ext_resource type="AudioStream" path="res://resources/audio/神树BGM/森林 交战前.m4a" id="11_pre_music"]
 
 [sub_resource type="Resource" id="WaveEnemyEntry_basic"]
 script = ExtResource("2_entry")
@@ -59,6 +60,7 @@ enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic
 spawn_interval = 0.166667
 spawn_count_per_tick = 2
 max_alive_enemies = 110
+pre_wave_music = ExtResource("11_pre_music")
 music = ExtResource("10_music")
 step_id = &"wave_04"
 display_name = "第4波"

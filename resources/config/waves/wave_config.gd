@@ -11,6 +11,8 @@ class_name WaveConfig
 @export_range(1, 4, 1) var spawn_count_per_tick: int = 1
 @export_range(1, 200, 1, "or_greater") var max_alive_enemies: int = 10
 
+@export_group("音乐")
+@export var pre_wave_music: AudioStream
 @export var music: AudioStream
 
 
