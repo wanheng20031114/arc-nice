@@ -1,168 +1,155 @@
-# Enemy Sprite Pipeline Reference
+# 敌人精灵 Pipeline 参考
 
-## Success Pattern From Capoo Mage
+## 目录
 
-The Capoo mage replacement worked because the asset pipeline stopped treating the sheet as a generic 4x4 grid and started treating each frame as a body anchored sprite:
+- 成功模式
+- 设计阶段
+- 主体锚点策略
+- 背景色选择
+- 动画 Sheet Prompt 契约
+- Linglan Attack Prompt 复盘
+- 安全框契约
+- 切图策略
+- 缩放与居中
+- 压缩与导入
+- Godot 接入 Checklist
+- 什么时候重生图
 
-- The source alpha sheet was kept as the canonical texture instead of downscaling too early.
-- Each frame was measured independently.
-- The body foot anchor was extracted from the main body color component, not from the weapon, hat, projectile, or VFX.
-- All frames used a consistent logical frame size.
-- Actual source regions were clipped to their own source cells, then `AtlasTexture.margin` restored a stable logical frame.
-- The `AnimatedSprite2D` scale and position were recalculated from the logical frame anchor.
-- A preview with anchor crosshairs caught frame contamination before final tests.
+## 成功模式
 
-This is the preferred pattern for future enemy sprite replacements.
+Capoo mage 替换成功的关键，是不再把整张图当成普通固定网格，而是把每一帧当成“由主体锚点控制的 sprite”：
 
-## Design Phase
+- 保留干净 alpha 源图作为 canonical texture，不要过早缩小。
+- 每帧独立测量。
+- 从稳定主体部位提取脚底/身体锚点，不从武器、帽子、投射物或 VFX 提取。
+- 所有帧使用一致的逻辑帧尺寸。
+- 源图区域限制在当前源格子内，再用 `AtlasTexture.margin` 补回稳定逻辑帧。
+- 根据逻辑帧锚点重新计算 `AnimatedSprite2D` 的 scale 和 position。
+- 用带锚点十字线的预览图先发现串帧、裁切和主体漂移。
 
-Start with a single high-quality sample. Validate:
+这是后续敌人和 boss 精灵替换的默认模式。
 
-- The enemy reads clearly at expected game scale.
-- The silhouette is not dependent on fine details.
-- Body color is separable from outfit, weapon, glow, and background.
-- Weapons, hats, robes, backpacks, spell circles, or other attachments are visually allowed to extend, but the body remains the size reference.
-- The design has enough pose range for movement, windup, attack, and death rows.
+## 设计阶段
 
-Do not accept a weak sample because the sheet is already generated. Regenerate early.
+先生成一个高质量单帧样例，再生成动画 sheet。检查：
 
-## Body Color And Anchor Strategy
+- 敌人在游戏实际缩放下是否可读。
+- 轮廓是否足够清楚，不依赖过细细节。
+- 主体颜色是否能和服装、武器、发光、投射物、背景分离。
+- 武器、帽子、背包、法杖、尾巴、法阵等可以伸出 idle 外形，但主体必须作为尺寸基准。
+- 当前设计是否支持需要的动作幅度，例如移动、蓄力、攻击、受击、死亡。
 
-Use the most stable body part as the anchor source. For Capoo-style enemies, the blue body is better than:
+单帧样例弱时直接重生图，不要因为已经有 sheet 就勉强进入处理阶段。
 
-- Hat top, because it bends and rises.
-- Weapon, because it extends left/right and may disappear in death.
-- Spell/projectile VFX, because it changes size and may be detached.
-- Full alpha bbox, because attack effects and staffs skew the center.
+## 主体锚点策略
 
-Preferred anchor order:
+用最稳定的身体部位做锚点来源。不要直接用整帧 alpha bbox，因为攻击特效、法杖、尾巴会拉偏中心。
 
-1. Largest connected component matching the known body color range.
-2. Largest connected alpha component if the body color cannot be isolated.
-3. Full visible alpha bbox only as a fallback.
+推荐顺序：
 
-For foot-aligned enemies, anchor x should be the body component horizontal center, and anchor y should be the body component bottom.
+1. 已知主体颜色范围内的最大连通块。
+2. 无法稳定分离主体颜色时，使用最大 alpha 连通块。
+3. 只有在没有更好方案时，才 fallback 到整帧可见 alpha bbox。
 
-## Background Color Selection
+对脚底对齐的敌人，锚点 x 使用主体连通块水平中心，锚点 y 使用主体连通块底部。主体锚点和身体中心应该在每个逻辑帧中的相对位置一致。
 
-Use alpha whenever possible. If image generation cannot provide clean alpha, use a pure flat chroma background.
+## 背景色选择
 
-Choose the chroma color by distance from the actual sprite palette:
+优先要求内置 `image_gen` 输出透明 alpha。必须使用纯色 chroma 背景时，先根据样例图测量主体调色板，再选和主体、描边、武器、VFX、服装、眼睛距离最远的颜色。
 
-- Inspect the accepted single sample first.
-- Collect dominant body, outline, weapon, VFX, and clothing colors.
-- Test candidate backgrounds such as magenta, green, cyan, red, yellow, and blue.
-- Pick the candidate with the largest minimum RGB distance from important sprite colors.
-- Avoid colors that appear in glow, outlines, magic effects, eyes, weapons, or UI-like markings.
+常见风险：
 
-Practical guidance:
+- 绿色不适合绿色眼睛、毒、草木、绿色魔法。
+- 洋红不适合粉色/紫色魔法、花瓣、红蓝高光。
+- 青色不适合蓝色主体、冰、浅色魔法。
+- 黄色不适合金边、火焰、闪电。
+- 红色不适合火焰、红眼、危险 VFX。
 
-- Green works poorly for green enemies, poison effects, or foliage-like weapons.
-- Magenta works poorly for purple magic, pink VFX, or red-blue highlights.
-- Cyan works poorly for blue bodies, ice effects, or pale magic.
-- Yellow works poorly for gold trims, fire highlights, and lightning.
-- Red works poorly for fire, blood, danger VFX, or red eyes.
-
-Prompt for a flat background explicitly:
-
-```text
-pure flat chroma [color] background, no gradient, no shadow, no contact shadow,
-no glow on the background, no texture, no text, no border
-```
-
-When removing chroma:
-
-- Flood fill or propagate from the image border through pixels near the key color.
-- Do not delete every matching pixel globally.
-- Despill only visible fringe pixels near the removed background.
-- Save an alpha debug image before slicing.
-
-## Animation Sheet Prompt Contract
-
-Ask for a sheet only after sample quality is good. Specify:
-
-- Exact grid size, usually 4 columns x 4 rows for this enemy family.
-- Row names and meanings.
-- Stable camera, stable body size, same body center, same body pixel height/width, same pivot/feet position.
-- One full character per cell.
-- No overlap between cells.
-- Enough empty padding / safety margin for weapons, tails, hats, staffs, props, and VFX.
-- Transparent alpha or pure flat chosen chroma background.
-
-Example:
+纯色背景 prompt 要明确：
 
 ```text
-Create a pixel art enemy sprite sheet for the accepted design.
-4 columns x 4 rows.
-Row 1: move cycle.
-Row 2: attack windup / spell charging.
-Row 3: attack release.
-Row 4: death / defeated.
-Keep the body exactly the same size in every frame.
-Keep the feet/body anchor in the same relative position in every cell.
-Weapons, hat, and magic effects may move, but must not change the body scale.
-Use pure flat [chosen chroma color] background with no shadows or gradients.
-No text, no labels, no frame borders.
+纯平 [背景色] 背景，无渐变、无阴影、无接触阴影、无背景发光、无纹理、无文字、无边框。
 ```
 
-Chinese prompts are allowed and often better for this project because character names, boss actions, and prop descriptions are already authored in Chinese. Keep the same contract:
+抠背景时只移除从图像边缘连通到背景色的像素，不要全局删除所有相似颜色；否则会误伤眼睛、装饰和特效内部颜色。
+
+## 动画 Sheet Prompt 契约
+
+只有单帧样例通过后才生成动画 sheet。帧数、行列、每行动作都由当前资源需求决定，不存在通用固定帧数，也不存在固定 `2x3`、`3x2`、`4x4`。例如某个 attack 可以是 6 帧，某个 idle 可以是 8 帧，某个技能也可以更多；关键是动作连贯、可循环或能自然结束。
+
+必须写清楚：
+
+- 实际需要的网格行列，例如 `[列数]列 x [行数]行`。
+- 实际动作名和行/列语义，例如 `idle`、`move`、`attack`、`death`，或中文 `站立`、`横向移动`、`举杖攻击`、`死亡`。
+- 每格一个完整帧，帧之间不重叠、不串格。
+- 同一镜头距离，同一主体人物像素大小，同一身体高度和宽度。
+- 主体脚底锚点和身体中心在每格中的相对位置一致。
+- 武器、尾巴、帽子、法杖、道具、VFX 可以移动或扩大，但不能改变主体缩放。
+- 每格必须给所有可见元素留安全框，不能裁掉尾巴、法杖、帽子、武器或特效。
+- 透明 alpha，或测量后选择的纯平 chroma 背景。
+
+通用中文模板：
 
 ```text
 使用内置 image_gen 生成像素风敌人动画源图。
-6列 x 1行，每格一个完整帧，透明 alpha 或纯平深蓝色背景。
-动作：举起法杖，然后向下/向侧面挥动法杖释放攻击。
-主体人物必须保持同一像素大小、同一身体高度、同一身体宽度。
-主体脚底锚点和身体中心在每个格子的相对位置必须一致，不要漂移。
-法杖、尾巴、帽子、攻击弧光和花瓣特效可以移动并扩大，但必须完整留在当前格子的安全框里，不得被裁切。
+[列数]列 x [行数]行，每格一个完整帧，透明 alpha 或纯平 [背景色] 背景。
+动作：[描述本次需要的动作节奏和每帧变化]。
+所有帧使用同一镜头距离，同一主体人物像素大小，同一身体高度和身体宽度。
+主体脚底锚点和身体中心在每个格子的相对位置必须一致，不要主体漂移。
+武器、法杖、尾巴、帽子、道具和技能特效可以移动并扩大，但必须完整留在当前格子的安全框里，不得被裁切。
 每格周围保留足够空白安全边距，帧之间不重叠、不串格。
-硬边像素、无阴影、无文字、无边框。
+硬边像素、无背景阴影、无渐变背景、无文字、无边框。
 ```
 
-### Prompt Retrospective From Linglan Attack
+如果必须使用英文 prompt，也要保留等价约束：`same body pixel size`, `same body center`, `same feet/body anchor`, `large safe padding inside every cell`, `props and VFX fully inside the cell`, `no cropped tail/staff/effects`。
 
-The usable Linglan attack source succeeded on style because it specified a chibi pixel-art fox-girl boss, staff raise, staff swing, and a consistent 3x2/6-frame action sheet. The failures came from missing or weak constraints:
+## Linglan Attack Prompt 复盘
 
-- It used a green chroma background while the character eyes also contain green, causing over-keying risk.
-- It emphasized the full visible bbox but not the body-only anchor, so wide staff/VFX frames could skew center detection.
-- It did not explicitly require identical body pixel height/width per frame.
-- It did not explicitly require a per-cell safety frame around tail, staff, and swing VFX.
+Linglan attack 源图风格可用，是因为 prompt 成功约束了 Q 版像素风狐娘 boss、举起法杖、挥动法杖、攻击动作节奏，以及相对一致的角色设计。这里采用 6 帧只是因为这次“举杖到挥杖”的动作适合 6 个关键姿势，不应写成通用规则。
 
-For future boss actions, phrase the prompt as body-locked animation: the body is the invariant; props/VFX are allowed to move around it inside a larger safe frame.
+暴露的问题：
 
-## Safety Frame Contract
+- 使用绿色 chroma 背景，而角色眼睛也有绿色，增加了过度抠图风险。
+- 约束了整帧可见范围，但没有足够强调 body-only anchor，导致法杖和 VFX 容易拉偏 bbox。
+- 没有明确要求每帧主体身体高度/宽度一致。
+- 没有明确要求每个源格子给尾巴、法杖、挥击弧光、花瓣特效留安全框。
 
-Safety frame means the current source cell or logical frame has intentional empty space around every visible part. It is separate from body centering:
+以后 boss 动作应使用“主体锁定”的表达：主体是尺寸和锚点不变量，道具和特效围绕主体运动，并被更大的安全框完整容纳。
 
-- Body center and foot anchor stay stable.
-- Body pixel size stays stable.
-- Props, tails, weapons, hats, and VFX may expand beyond idle size.
-- Expanded elements must still be fully inside the current cell.
-- If action props touch the cell edge, regenerate with a larger cell/safety frame or increase the logical frame size.
+## 安全框契约
 
-Measure at least:
+安全框是当前源格子或逻辑帧中刻意保留的空白边距，它和主体居中是两件事：
 
-- `body_anchor_in_cell` drift across frames.
-- `body_bbox` width/height drift across frames.
-- `alpha_bbox` distance to cell edges.
-- Full visible pixel count and body component pixel count.
+- 主体中心和脚底锚点保持稳定。
+- 主体像素大小保持稳定。
+- 道具、尾巴、武器、帽子、VFX 可以超出 idle 外形。
+- 扩展元素仍必须完整位于当前格子内。
+- 如果动作道具碰到格子边缘，应重生图、扩大源格子，或扩大最终逻辑帧。
 
-Warnings near an edge are not automatically fatal for an already accepted manual alpha sheet, but they are a strong signal to regenerate generated sheets before integration.
+至少测量：
 
-## Slicing Strategy
+- `body_anchor_in_cell` 的帧间漂移。
+- `body_bbox` 宽高的帧间变化。
+- `alpha_bbox` 到源格子边缘的距离。
+- 整帧可见像素量和主体连通块像素量。
 
-Do not assume equal grid cells are enough. Use them only as rough source-cell bounds.
+边缘警告不一定让已经手工确认的 alpha sheet 作废，但对新生成素材来说，通常应该先重生图再接入。
 
-For each cell:
+## 切图策略
 
-1. Crop the rough grid cell.
-2. Find the visible alpha bbox.
-3. Find the body component bbox.
-4. Compute global body anchor.
-5. Create a target logical frame around the anchor.
-6. Validate that the target logical frame contains the current cell's visible bbox.
-7. If the logical frame crosses into a neighboring source cell, intersect the actual AtlasTexture `region` with the current cell and use `margin` to preserve the logical size.
+不要相信粗网格本身已经足够；粗网格只负责给出每帧的大致源格子。
 
-Use this pattern in `.tres` files:
+每格处理顺序：
+
+1. 按粗网格裁出当前源格子。
+2. 找可见 alpha bbox。
+3. 找主体连通块 bbox。
+4. 计算全局主体锚点。
+5. 围绕锚点创建目标逻辑帧。
+6. 验证目标逻辑帧能包含当前格子的所有可见像素。
+7. 如果逻辑帧跨到相邻源格子，就把实际 `AtlasTexture.region` 限制在当前源格子内，再用 `margin` 还原统一逻辑尺寸。
+
+`.tres` 推荐模式：
 
 ```text
 [sub_resource type="AtlasTexture" id="AtlasTexture_move_0"]
@@ -172,80 +159,73 @@ margin = Rect2(offset_x_inside_logical_frame, offset_y_inside_logical_frame, mis
 filter_clip = true
 ```
 
-`region.size + margin.size` should equal the logical frame size for every frame.
+所有帧的 `region.size + margin.size` 应等于统一逻辑帧尺寸。
 
-## Scaling And Centering
+## 缩放与居中
 
-After slicing, calculate the scene transform from the logical frame.
+切图后，从逻辑帧计算 Godot 场景里的 transform。
 
-Definitions:
+定义：
 
-- `logical_frame_size`: the AtlasTexture `get_size()` result, including margin.
-- `body_anchor`: the stable anchor inside that logical frame.
-- `sprite_scale`: the chosen Godot `AnimatedSprite2D.scale`.
-- `desired_world_anchor`: where the body anchor should land in the enemy scene.
+- `logical_frame_size`：`AtlasTexture.get_size()` 的结果，包含 margin。
+- `body_anchor`：逻辑帧里的稳定主体锚点。
+- `sprite_scale`：Godot 里的 `AnimatedSprite2D.scale`。
+- `desired_world_anchor`：主体锚点应该落到的场景局部位置。
 
-Formula:
+公式：
 
 ```text
 local_anchor_offset = (body_anchor - logical_frame_size / 2) * sprite_scale
 sprite_position = desired_world_anchor - local_anchor_offset
 ```
 
-If the collision shape is centered and its bottom is the foot location, `desired_world_anchor.y` is usually close to `collision_shape_height / 2`.
+如果碰撞体居中且下沿是脚底，`desired_world_anchor.y` 通常接近碰撞体半高。最终用锚点十字预览和 Godot smoke test 验证。
 
-Always verify this with a preview:
+## 压缩与导入
 
-- Draw every frame into its logical frame.
-- Draw a crosshair at `body_anchor`.
-- Check that the body stays steady while hats, weapons, and VFX move around it.
-- Check for neighboring-frame fragments.
+像素图规则：
 
-## Compression And Import
+- 只使用无损或 nearest-neighbor 操作。
+- 不要在最终切图策略确定前缩放源图。
+- 干净 alpha 源图优先作为 canonical texture。
+- 只做无损 PNG 优化。
+- 除非人工检查过，否则不要做会改变 alpha 边缘的 palette conversion。
+- Godot 小像素精灵默认关闭 mipmaps，除非项目有明确缩放 pipeline。
+- 沿用项目既有 `texture_filter` 约定。
 
-Pixel art rules:
+## Godot 接入 Checklist
 
-- Use nearest-neighbor scaling only.
-- Avoid resizing before the final slicing strategy is known.
-- Prefer keeping the original alpha source as the canonical texture when it is clean.
-- Use lossless PNG optimization only.
-- Avoid lossy compression or palette conversion that changes alpha edges unless visually inspected.
-- In Godot, keep mipmaps off for small pixel sprites unless there is a deliberate zoom pipeline.
-- Use `texture_filter = 2` or the project's established pixel filtering convention.
+每次替换敌人或 boss 资源时：
 
-## Godot Integration Checklist
+- 保留已有 `Texture2D` 和 `SpriteFrames` UID。
+- 动画名必须和配置、场景脚本一致；不要从示例里照搬固定动画名。
+- 优先直接编辑 `.tscn` / `.tres`，不要把视觉节点动态生成塞进运行时代码。
+- PNG 改动后重新导入 Godot。
+- 跑聚焦 smoke test。
+- 根据影响面检查：
+  - texture size；
+  - animation names；
+  - frame counts；
+  - `AtlasTexture` logical frame size；
+  - region 是否在 atlas 内；
+  - `AnimatedSprite2D.position`；
+  - `AnimatedSprite2D.scale`。
+- 最后检查并清理验证用 Godot 进程，尤其是 `--headless`、`--check-only`、`--import`。
 
-For each enemy replacement:
+## 什么时候重生图
 
-- Preserve `Texture2D` and `SpriteFrames` UIDs when replacing existing resources.
-- Keep animation names matching configs, usually `move`, `windup`, `attack`, `death`.
-- Update the enemy `.tscn` directly rather than adding dynamic setup code.
-- Reimport changed PNGs with Godot.
-- Run focused smoke tests.
-- Add or update smoke assertions for:
-  - texture size;
-  - animation names;
-  - frame counts;
-  - AtlasTexture logical frame size;
-  - region bounds inside atlas;
-  - scene `AnimatedSprite2D.position`;
-  - scene `AnimatedSprite2D.scale`.
-- Check for and clean up headless/import Godot processes before final reporting.
+这些情况优先重生图：
 
-## When To Regenerate Instead Of Fix
+- 主体缩放在帧间明显变化。
+- 多帧道具或特效被裁切。
+- 背景严重污染描边。
+- chroma 色出现在眼睛、主体细节或关键特效里。
+- 同一格里出现多个姿势重叠。
+- 游戏实际缩放下不可读。
 
-Regenerate when:
+这些情况适合代码处理：
 
-- Body scale differs per row.
-- Props are cropped in several frames.
-- Background bleeds into sprite outlines too heavily.
-- Chroma color appears inside key sprite details.
-- Multiple poses overlap within a cell.
-- The design is unreadable at game scale.
-
-Use code processing when:
-
-- The art is good but cells are uneven.
-- The body anchor is stable but the grid is imprecise.
-- Background is removable with edge-connected chroma removal.
-- Minor despill or alpha cleanup is sufficient.
+- 美术质量好，但格子位置不均匀。
+- 主体锚点稳定，但粗网格不准。
+- 背景能用边缘连通 chroma 移除。
+- 只需要轻微 despill 或 alpha 清理。
