@@ -54,6 +54,6 @@ max_alive_enemies = 100
 music = ExtResource("9_music")
 step_id = &"wave_02"
 display_name = "第2波"
-post_clear_rest_duration = 30.0
+post_clear_rest_duration = 20.0
 exits = Array[ExtResource("3_flow_exit")]([SubResource("Resource_default_exit")])
 editor_position = Vector2(480, -80)
