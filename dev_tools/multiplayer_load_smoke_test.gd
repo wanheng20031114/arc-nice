@@ -1621,13 +1621,14 @@ func _test_game_runtime_modes() -> void:
 	)
 	_expect(host_player.nameplate_label.custom_minimum_size.y >= 30.0, "Multiplayer nameplate must leave room for outlined player names.")
 	_expect(
-		host_player.nameplate_label.get_theme_color(&"font_color").is_equal_approx(Player.LOCAL_NAMEPLATE_FONT_COLOR),
+		host_player.nameplate_label.label_settings.font_color.is_equal_approx(Player.LOCAL_NAMEPLATE_FONT_COLOR),
 		"Local host nameplate text must be green."
 	)
 	var host_remote_player := host_game.get_player_for_peer(2) as Player
 	_expect(
 		host_remote_player != null
-		and not host_remote_player.nameplate_label.has_theme_color_override(&"font_color"),
+		and host_remote_player.nameplate_label.label_settings.font_color.is_equal_approx(Player.DEFAULT_NAMEPLATE_FONT_COLOR)
+		and host_remote_player.nameplate_label.label_settings != host_player.nameplate_label.label_settings,
 		"Remote player nameplate must keep the normal color on the host."
 	)
 	_expect(host_game.call("_try_spawn_enemy", BASIC_CONFIG), "Host authority game must spawn an indexed enemy.")
@@ -1653,12 +1654,13 @@ func _test_game_runtime_modes() -> void:
 	var client_remote_player := client_game.get_player_for_peer(1) as Player
 	_expect(
 		client_local_player != null
-		and client_local_player.nameplate_label.get_theme_color(&"font_color").is_equal_approx(Player.LOCAL_NAMEPLATE_FONT_COLOR),
+		and client_local_player.nameplate_label.label_settings.font_color.is_equal_approx(Player.LOCAL_NAMEPLATE_FONT_COLOR),
 		"Local client nameplate text must be green."
 	)
 	_expect(
 		client_remote_player != null
-		and not client_remote_player.nameplate_label.has_theme_color_override(&"font_color"),
+		and client_remote_player.nameplate_label.label_settings.font_color.is_equal_approx(Player.DEFAULT_NAMEPLATE_FONT_COLOR)
+		and client_remote_player.nameplate_label.label_settings != client_local_player.nameplate_label.label_settings,
 		"Remote host nameplate must keep the normal color on the client."
 	)
 	_stop_audio_players(client_game)

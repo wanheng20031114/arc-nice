@@ -73,6 +73,7 @@ const SKILL1_UPGRADE_COSTS := [500, 750, 1000, 2000]
 const MAX_MULTIPLAYER_NAME_LENGTH := 12
 const NAMEPLATE_SIZE := Vector2(160.0, 30.0)
 const NAMEPLATE_WORLD_OFFSET := Vector2(0.0, -19.0)
+const DEFAULT_NAMEPLATE_FONT_COLOR := Color(0.96, 0.98, 1.0, 1.0)
 const LOCAL_NAMEPLATE_FONT_COLOR := Color(0.38, 1.0, 0.42, 1.0)
 const MULTIPLAYER_VISUAL_OFFSET_LERP_RATE := 36.0
 const MULTIPLAYER_VISUAL_OFFSET_EPSILON := 0.05
@@ -138,6 +139,8 @@ var _speed_trail_effect_base_position: Vector2 = Vector2.ZERO
 var _health_bar_base_position: Vector2 = Vector2.ZERO
 var _skill1_charge_bar_base_position: Vector2 = Vector2.ZERO
 var _name_label_base_position: Vector2 = Vector2.ZERO
+var _nameplate_label_settings: LabelSettings = null
+var _nameplate_default_font_color: Color = DEFAULT_NAMEPLATE_FONT_COLOR
 
 
 # 节点首次进入场景树时的初始化逻辑
@@ -152,6 +155,7 @@ func _ready() -> void:
 	_set_hurt_blink_enabled(false)
 	_update_movement_status_visuals(Vector2.ZERO)
 	_cache_multiplayer_visual_base_positions()
+	_initialize_nameplate_label_settings()
 	health_bar.setup(max_health, current_health)
 	name_label.visible = false
 	nameplate_layer.visible = false
@@ -487,10 +491,26 @@ func configure_multiplayer_control(
 
 
 func _set_nameplate_local_highlight(enabled: bool) -> void:
+	if _nameplate_label_settings == null:
+		_initialize_nameplate_label_settings()
+	if _nameplate_label_settings == null:
+		return
+	nameplate_label.remove_theme_color_override(&"font_color")
 	if enabled:
-		nameplate_label.add_theme_color_override(&"font_color", LOCAL_NAMEPLATE_FONT_COLOR)
+		_nameplate_label_settings.font_color = LOCAL_NAMEPLATE_FONT_COLOR
 	else:
-		nameplate_label.remove_theme_color_override(&"font_color")
+		_nameplate_label_settings.font_color = _nameplate_default_font_color
+
+
+func _initialize_nameplate_label_settings() -> void:
+	if nameplate_label == null:
+		return
+	var authored_settings := nameplate_label.label_settings
+	if authored_settings == null:
+		return
+	_nameplate_default_font_color = authored_settings.font_color
+	_nameplate_label_settings = authored_settings.duplicate() as LabelSettings
+	nameplate_label.label_settings = _nameplate_label_settings
 
 
 func set_multiplayer_visual_smoothing_enabled(enabled: bool) -> void:
