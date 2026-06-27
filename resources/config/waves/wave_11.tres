@@ -12,7 +12,7 @@
 [ext_resource type="Resource" uid="uid://b361vcg4kkw13" path="res://resources/config/enemies/capoo_knight.tres" id="10_knight"]
 [ext_resource type="Resource" uid="uid://vfkjlbk30xa2" path="res://resources/config/enemies/capoo_knight_elite.tres" id="11_elite_knight"]
 [ext_resource type="Resource" uid="uid://57jdvc0bd7r8" path="res://resources/config/enemies/capoo_swordsman.tres" id="12_swordsman"]
-[ext_resource type="Resource" path="res://resources/config/enemies/capoo_smg.tres" id="13_smg"]
+[ext_resource type="Resource" uid="uid://drv4a8xgl4k2c" path="res://resources/config/enemies/capoo_smg.tres" id="13_smg"]
 [ext_resource type="Resource" uid="uid://uaeho5a1060p" path="res://resources/config/enemies/capoo_rpg.tres" id="14_rpg"]
 [ext_resource type="Resource" uid="uid://c8fsbfbwadt63" path="res://resources/config/enemies/capoo_mage.tres" id="15_mage"]
 [ext_resource type="Resource" path="res://resources/config/enemies/capoo_sniper.tres" id="16_sniper"]
@@ -107,7 +107,7 @@ wave_name = "第11波"
 enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic"), SubResource("WaveEnemyEntry_fast"), SubResource("WaveEnemyEntry_shell"), SubResource("WaveEnemyEntry_purple"), SubResource("WaveEnemyEntry_guardian"), SubResource("WaveEnemyEntry_ak47"), SubResource("WaveEnemyEntry_knight"), SubResource("WaveEnemyEntry_elite_knight"), SubResource("WaveEnemyEntry_swordsman"), SubResource("WaveEnemyEntry_smg"), SubResource("WaveEnemyEntry_rpg"), SubResource("WaveEnemyEntry_mage"), SubResource("WaveEnemyEntry_sniper")])
 spawn_interval = 0.125
 spawn_count_per_tick = 2
-max_alive_enemies = 200
+max_alive_enemies = 120
 music = ExtResource("17_music")
 step_id = &"wave_11"
 display_name = "第11波"
