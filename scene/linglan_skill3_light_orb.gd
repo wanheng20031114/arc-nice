@@ -188,7 +188,7 @@ func _apply_player_damage(player: Player) -> void:
 	damaged_player_ids[player_id] = true
 	if _try_report_multiplayer_player_hit(player):
 		return
-	player.apply_damage(damage)
+	player.apply_damage(damage, EnemyConfig.DamageType.MAGIC)
 
 
 func _try_report_multiplayer_player_hit(player: Player) -> bool:
@@ -203,7 +203,8 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 		source_id,
 		player.peer_id,
 		damage,
-		source_type
+		source_type,
+		EnemyConfig.DamageType.MAGIC
 	))
 
 

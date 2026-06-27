@@ -9,6 +9,7 @@ const SMGConfig := preload("res://resources/config/enemies/capoo_smg_config.gd")
 var fire_time_left: float = 0.0
 var last_move_direction := Vector2.RIGHT
 var muzzle_flash_time_left: float = 0.0
+var latest_proxy_action_id: int = 0
 
 
 func _ready() -> void:
@@ -71,6 +72,7 @@ func _try_fire_scatter(base_direction: Vector2) -> bool:
 	muzzle_flash_time_left = 0.05
 	_set_muzzle_flash(1.0, shot_direction)
 	_play_config_animation(smg_config.attack_animation_name)
+	_broadcast_enemy_action(&"fire", shot_direction)
 	if smg_config.attack_audio_stream != null and random_generator.randi_range(0, 1) == 0:
 		attack_audio.pitch_scale = random_generator.randf_range(0.98, 1.04)
 		attack_audio.play()
@@ -111,6 +113,28 @@ func _fire_bullet(shoot_direction: Vector2) -> bool:
 			smg_config.projectile_lifetime
 		)
 	return true
+
+
+func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, action_id: int) -> void:
+	if action_id <= latest_proxy_action_id:
+		return
+	latest_proxy_action_id = action_id
+	if action_name != &"fire":
+		return
+	var safe_direction := direction.normalized() if direction != Vector2.ZERO else Vector2.RIGHT
+	var smg_config := config as SMGConfig
+	if smg_config != null:
+		_play_multiplayer_proxy_action_animation(smg_config.attack_animation_name, 0.14)
+	_update_facing(safe_direction)
+	_set_muzzle_flash(1.0, safe_direction)
+	var tween := create_tween()
+	tween.tween_method(
+		func(progress: float) -> void:
+			_set_muzzle_flash(progress, safe_direction),
+		1.0,
+		0.0,
+		0.08
+	)
 
 
 func _set_muzzle_flash(progress: float, direction: Vector2) -> void:

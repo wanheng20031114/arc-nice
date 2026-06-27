@@ -78,12 +78,22 @@ const LOCAL_NAMEPLATE_FONT_COLOR := Color(0.38, 1.0, 0.42, 1.0)
 const MULTIPLAYER_VISUAL_OFFSET_LERP_RATE := 36.0
 const MULTIPLAYER_VISUAL_OFFSET_EPSILON := 0.05
 const MULTIPLAYER_VISUAL_SNAP_DISTANCE := 96.0
+const WORLD_COLLISION_MASK := 1
+const WALL_ESCAPE_MAX_STEP_DISTANCE := 3.0
+const WALL_ESCAPE_MIN_OUTWARD_DOT := 0.12
+const WALL_ESCAPE_QUERY_MAX_RESULTS := 8
 	
 const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
 const DODGE_EFFECT_STRENGTH_SHADER_PARAMETER := &"dodge_effect_strength"
 const DODGE_SWEEP_SHADER_PARAMETER := &"dodge_sweep"
 const SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER := &"slow_overlay_strength"
+const REVIVE_GLOW_STRENGTH_SHADER_PARAMETER := &"revive_glow_strength"
+const REVIVE_GLOW_COLOR_SHADER_PARAMETER := &"revive_glow_color"
+const REVIVE_GLOW_OUTLINE_WIDTH_SHADER_PARAMETER := &"revive_glow_outline_width"
 const DODGE_EFFECT_DURATION := 0.28
+const REVIVE_GLOW_DURATION := 0.82
+const REVIVE_GLOW_OUTLINE_WIDTH := 4.5
+const REVIVE_GLOW_COLOR := Color(3.2, 3.2, 3.2, 1.0)
 const SLOW_OVERLAY_ACTIVE_STRENGTH := 0.34
 const ATTACK_SPEED_UPGRADE_INTERVAL_MULTIPLIER := 0.95
 const DODGE_UPGRADE_CHANCE_STEP := 0.02
@@ -117,6 +127,7 @@ var skill1_upgrade_level: int = 0
 var skill1_base_charge_duration: float = 0.0
 var last_attack_direction: Vector2 = Vector2.RIGHT
 var dodge_feedback_tween: Tween = null
+var revive_glow_tween: Tween = null
 var damage_reduction_modifiers: Dictionary = {}
 var collectible_periodic_cooldowns: Dictionary = {}
 var collectible_swift_time_left: float = 0.0
@@ -153,6 +164,7 @@ func _ready() -> void:
 	shooting_timer.one_shot = true
 	shooting_timer.wait_time = _get_effective_fire_interval()
 	_set_hurt_blink_enabled(false)
+	_set_revive_glow_strength(0.0)
 	_update_movement_status_visuals(Vector2.ZERO)
 	_cache_multiplayer_visual_base_positions()
 	_initialize_nameplate_label_settings()
@@ -260,7 +272,8 @@ func _physics_process(delta: float) -> void:
 		_try_use_skill1()
 
 	velocity = move_input * _get_effective_move_speed()
-	move_and_slide()
+	if not _try_apply_wall_overlap_escape(move_input, delta):
+		move_and_slide()
 	_update_movement_status_visuals(move_input)
 	_update_footstep_audio(delta, move_input)
 
@@ -733,6 +746,7 @@ func set_multiplayer_health_state(new_health: int, new_is_dead: bool) -> void:
 
 
 func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invincible_seconds: float = 0.0) -> void:
+	var was_dead := is_dead
 	global_position = revive_position
 	_set_multiplayer_visual_offset(Vector2.ZERO)
 	is_dead = false
@@ -756,6 +770,8 @@ func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invi
 	else:
 		invincibility_time_left = 0.0
 		_set_hurt_blink_enabled(false)
+	if was_dead and uses_local_input:
+		_start_local_revive_glow_effect()
 
 
 func start_multiplayer_invincibility(seconds: float) -> void:
@@ -782,6 +798,7 @@ func apply_multiplayer_death_state() -> void:
 	invincibility_time_left = 0.0
 	_set_hurt_blink_enabled(false)
 	_stop_dodge_feedback()
+	_stop_revive_glow_effect()
 	shooting_timer.stop()
 	armed_effect_sprite.visible = false
 	armed_effect_sprite.stop()
@@ -1716,6 +1733,64 @@ func _set_slow_overlay_strength(strength: float) -> void:
 	)
 
 
+func _try_apply_wall_overlap_escape(move_input: Vector2, delta: float) -> bool:
+	if move_input == Vector2.ZERO:
+		return false
+	if collision_shape == null or collision_shape.shape == null:
+		return false
+	var rest_normal := _get_world_overlap_rest_normal(collision_shape.global_transform)
+	if rest_normal == Vector2.ZERO:
+		return false
+	var move_direction := move_input.normalized()
+	if move_direction.dot(rest_normal) < WALL_ESCAPE_MIN_OUTWARD_DOT:
+		return false
+	var current_overlap_count := _count_world_shape_overlaps(collision_shape.global_transform)
+	if current_overlap_count <= 0:
+		return false
+	var step_distance := minf(
+		_get_effective_move_speed() * maxf(delta, 0.0),
+		WALL_ESCAPE_MAX_STEP_DISTANCE
+	)
+	if step_distance <= 0.0:
+		return false
+	var step := move_direction * step_distance
+	var next_transform := collision_shape.global_transform
+	next_transform.origin += step
+	if _count_world_shape_overlaps(next_transform) > current_overlap_count:
+		return false
+	global_position += step
+	return true
+
+
+func _get_world_overlap_rest_normal(shape_transform: Transform2D) -> Vector2:
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = collision_shape.shape
+	query.transform = shape_transform
+	query.collision_mask = WORLD_COLLISION_MASK
+	query.collide_with_bodies = true
+	query.collide_with_areas = false
+	query.exclude = [get_rid()]
+	var result := get_world_2d().direct_space_state.get_rest_info(query)
+	if result.is_empty():
+		return Vector2.ZERO
+	var normal := result.get("normal", Vector2.ZERO) as Vector2
+	return normal.normalized() if normal != Vector2.ZERO else Vector2.ZERO
+
+
+func _count_world_shape_overlaps(shape_transform: Transform2D) -> int:
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = collision_shape.shape
+	query.transform = shape_transform
+	query.collision_mask = WORLD_COLLISION_MASK
+	query.collide_with_bodies = true
+	query.collide_with_areas = false
+	query.exclude = [get_rid()]
+	return get_world_2d().direct_space_state.intersect_shape(
+		query,
+		WALL_ESCAPE_QUERY_MAX_RESULTS
+	).size()
+
+
 # 处理移动脚步声播放及间隔控制
 func _update_footstep_audio(delta: float, move_input: Vector2) -> void:
 	footstep_time_left = maxf(footstep_time_left - delta, 0.0)
@@ -1827,6 +1902,45 @@ func _set_hurt_blink_enabled(enabled: bool) -> void:
 		sprite_material.set_shader_parameter(BLINK_ENABLED_SHADER_PARAMETER, enabled)
 
 
+func _start_local_revive_glow_effect() -> void:
+	var sprite_material := body_sprite.material as ShaderMaterial
+	if sprite_material == null:
+		return
+	_stop_revive_glow_effect()
+	sprite_material.set_shader_parameter(REVIVE_GLOW_COLOR_SHADER_PARAMETER, REVIVE_GLOW_COLOR)
+	sprite_material.set_shader_parameter(REVIVE_GLOW_OUTLINE_WIDTH_SHADER_PARAMETER, REVIVE_GLOW_OUTLINE_WIDTH)
+	_set_revive_glow_strength(1.0)
+	revive_glow_tween = create_tween()
+	revive_glow_tween.tween_method(
+		_set_revive_glow_strength,
+		1.0,
+		0.0,
+		REVIVE_GLOW_DURATION
+	).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	revive_glow_tween.finished.connect(_on_revive_glow_finished)
+
+
+func _stop_revive_glow_effect() -> void:
+	if revive_glow_tween != null:
+		revive_glow_tween.kill()
+		revive_glow_tween = null
+	_set_revive_glow_strength(0.0)
+
+
+func _on_revive_glow_finished() -> void:
+	revive_glow_tween = null
+	_set_revive_glow_strength(0.0)
+
+
+func _set_revive_glow_strength(strength: float) -> void:
+	var sprite_material := body_sprite.material as ShaderMaterial
+	if sprite_material != null:
+		sprite_material.set_shader_parameter(
+			REVIVE_GLOW_STRENGTH_SHADER_PARAMETER,
+			clampf(strength, 0.0, 1.0)
+		)
+
+
 func _start_dodge_feedback() -> void:
 	var sprite_material := body_sprite.material as ShaderMaterial
 	if sprite_material == null:
@@ -1891,6 +2005,7 @@ func _die() -> void:
 	invincibility_time_left = 0.0
 	_set_hurt_blink_enabled(false)
 	_stop_dodge_feedback()
+	_stop_revive_glow_effect()
 	shooting_timer.stop()
 	armed_effect_sprite.visible = false
 	armed_effect_sprite.stop()

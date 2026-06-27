@@ -1634,7 +1634,8 @@ func request_multiplayer_player_damage(
 	source_id: int,
 	target_peer_id: int,
 	damage: int,
-	source_type: StringName
+	source_type: StringName,
+	damage_type: int = EnemyConfig.DamageType.PHYSICAL
 ) -> bool:
 	if source_id <= 0 or target_peer_id <= 0 or damage <= 0:
 		return false
@@ -1652,7 +1653,7 @@ func request_multiplayer_player_damage(
 			return true
 		if player_node.is_dead:
 			return true
-		if player_node.apply_damage(damage):
+		if player_node.apply_damage(damage, damage_type as EnemyConfig.DamageType):
 			_remember_recent_event(_processed_player_hit_ids, hit_key, HIT_DEDUP_RETENTION_SECONDS, now)
 			request_player_hit_report(
 				source_id,
@@ -1666,7 +1667,7 @@ func request_multiplayer_player_damage(
 	if net_manager.is_host():
 		if player_node.is_dead:
 			return true
-		if player_node.apply_damage(damage):
+		if player_node.apply_damage(damage, damage_type as EnemyConfig.DamageType):
 			_apply_player_hit_report(
 				source_id,
 				target_peer_id,

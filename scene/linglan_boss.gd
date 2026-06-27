@@ -55,6 +55,7 @@ var enrage_sniper_timer: float = ENRAGE_SNIPER_INTERVAL
 var skill1_elapsed: float = 0.0
 var skill1_fire_time_left: float = 0.0
 var skill1_finished: bool = false
+var skill1_attack_broadcast_sent: bool = false
 var skill1_warning_rays: Array[Node2D] = []
 var skill2_target_global_position := Vector2.ZERO
 var skill2_elapsed: float = 0.0
@@ -95,6 +96,13 @@ func configure_multiplayer_proxy() -> void:
 	if touch_damage_area != null:
 		touch_damage_area.set_deferred("monitoring", false)
 		touch_damage_area.set_deferred("monitorable", false)
+
+
+func apply_multiplayer_proxy_motion(proxy_position: Vector2, proxy_velocity: Vector2) -> void:
+	global_position = proxy_position
+	velocity = proxy_velocity
+	_set_facing_from_direction(proxy_velocity)
+	_play_proxy_locomotion_animation()
 
 
 func activate_boss(player: Player, shared_pathfinder: Node = null) -> void:
@@ -353,6 +361,7 @@ func _reset_skill1_state() -> void:
 	skill1_elapsed = 0.0
 	skill1_fire_time_left = 0.0
 	skill1_finished = false
+	skill1_attack_broadcast_sent = false
 	_clear_skill1_warning_rays()
 
 
@@ -401,6 +410,9 @@ func _update_skill1(delta: float) -> void:
 	if previous_elapsed < skill1_config.start_delay:
 		skill_active_delta = skill1_elapsed - skill1_config.start_delay
 		skill1_fire_time_left = 0.0
+		if not skill1_attack_broadcast_sent:
+			skill1_attack_broadcast_sent = true
+			_broadcast_enemy_action(&"linglan_skill1_attack", Vector2.ZERO)
 
 	var skill_elapsed := skill1_elapsed - skill1_config.start_delay
 	if skill_elapsed >= skill1_config.get_total_duration():
@@ -613,6 +625,7 @@ func _begin_skill2_attack() -> void:
 	skill2_warning_shot_index = -1
 	velocity = Vector2.ZERO
 	_play_attack_animation()
+	_broadcast_enemy_action(&"linglan_skill2_attack", Vector2.ZERO)
 
 
 func _update_skill2(delta: float) -> void:
@@ -877,6 +890,7 @@ func _begin_skill3_attack() -> void:
 	skill3_shots_fired = 0
 	velocity = Vector2.ZERO
 	_play_attack_animation()
+	_broadcast_enemy_action(&"linglan_skill3_attack", Vector2.ZERO)
 
 
 func _update_skill3(delta: float) -> void:
@@ -1219,12 +1233,44 @@ func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, 
 	if action_id <= latest_proxy_action_id:
 		return
 	latest_proxy_action_id = action_id
+	var action_duration := _get_multiplayer_action_duration(action_name)
+	if action_duration > 0.0:
+		_play_multiplayer_proxy_action_animation(&"attack", action_duration)
 	if action_name == &"linglan_skill4_start":
 		var config4 := _get_skill4_config()
 		if config4 != null:
-			_play_multiplayer_proxy_action_animation(&"attack", config4.get_total_duration())
 			_spawn_skill4_laser_field(false)
 		_set_facing_from_direction(direction)
+	elif String(action_name).begins_with("linglan_skill"):
+		_set_facing_from_direction(direction)
+
+
+func _get_multiplayer_action_duration(action_name: StringName) -> float:
+	match action_name:
+		&"linglan_skill1_attack":
+			return skill1_config.get_total_duration() if skill1_config != null else 0.0
+		&"linglan_skill2_attack":
+			return skill2_config.get_total_duration() if skill2_config != null else 0.0
+		&"linglan_skill3_attack":
+			return skill3_config.duration if skill3_config != null else 0.0
+		&"linglan_skill4_start":
+			var config4 := _get_skill4_config()
+			return config4.get_total_duration() if config4 != null else 0.0
+		_:
+			return 0.0
+
+
+func _play_proxy_locomotion_animation() -> void:
+	if not is_multiplayer_proxy:
+		return
+	if is_dead or animated_sprite == null:
+		return
+	if proxy_action_animation_name_in_use != &"":
+		return
+	if velocity.length_squared() > 1.0 and _has_scene_animation(&"move"):
+		_play_scene_animation(&"move")
+		return
+	_play_idle_animation()
 
 
 func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> void:

@@ -104,6 +104,8 @@ func _test_boss_entry_resource() -> void:
 	_expect(is_equal_approx(LINGLAN_BOSS_ENTRY.music_loop_offset, 1.0), "Linglan boss music must expose the configured loop offset.")
 	_expect(LINGLAN_BOSS_ENTRY.get_enemy_config() == LINGLAN_CONFIG, "Linglan boss entry must resolve the Linglan enemy config on demand.")
 	_expect(LINGLAN_CONFIG.max_health == 100000, "Linglan boss health must be configured to 100000.")
+	_expect(LINGLAN_CONFIG.physical_defense == 20, "Linglan boss physical defense must be configured to 20.")
+	_expect(LINGLAN_CONFIG.magic_defense == 50, "Linglan boss magic defense must be configured to 50.")
 	_expect(LINGLAN_CONFIG.death_animation_name == &"die", "Linglan boss must play the sakura dissolve die animation on death.")
 	_expect(DEFAULT_FLOW.get_step_by_id(&"boss_01_linglan") == LINGLAN_BOSS_ENTRY, "Default flow must include Linglan as a flow node.")
 	_expect(LINGLAN_BOSS_ENTRY.arena_center == Vector2(128, 128), "Linglan boss entry must keep the center spawn point.")
@@ -148,7 +150,7 @@ func _test_boss_scene_contract() -> void:
 	var max_health := LINGLAN_CONFIG.max_health
 	_expect(linglan.current_health == max_health, "Linglan must start with its configured max health.")
 	_expect(linglan.apply_damage(125, Vector2.RIGHT), "Linglan must accept player-style damage.")
-	_expect(linglan.current_health == max_health - 125, "Linglan health did not decrease after damage.")
+	_expect(linglan.current_health == max_health - 105, "Linglan health did not decrease after physical defense.")
 	_expect(linglan.get_node_or_null("OverheadHUD") == null, "Linglan must not use an overhead mini HUD.")
 	linglan.queue_free()
 	await process_frame
@@ -202,7 +204,7 @@ func _test_boss_hud_binding() -> void:
 	_expect(name_label != null and name_label.text == "铃兰", "Boss HUD must show Linglan's Chinese name.")
 	linglan.apply_damage(500)
 	await process_frame
-	_expect(health_bar != null and health_bar.value == float(max_health - 500), "Boss HUD must track Linglan damage.")
+	_expect(health_bar != null and health_bar.value == float(max_health - 480), "Boss HUD must track Linglan damage after physical defense.")
 
 	hud.queue_free()
 	linglan.queue_free()
@@ -290,7 +292,7 @@ func _test_game_boss_opening_flow() -> void:
 	if boss != null:
 		_expect(music_player.playing, "Linglan boss music must be playing before boss death.")
 		music_player.stream_paused = false
-		boss.apply_damage(boss.current_health)
+		boss.apply_damage(boss.current_health + LINGLAN_CONFIG.physical_defense)
 		await process_frame
 		_expect(music_player.stream_paused, "Linglan death must pause the active background music immediately.")
 
@@ -369,7 +371,7 @@ func _test_host_boss_multiplayer_flow_signals() -> void:
 	var boss := game.linglan_boss
 	_expect(boss != null and is_instance_valid(boss), "Host must keep a Linglan boss instance.")
 	if boss != null and is_instance_valid(boss):
-		boss.apply_damage(boss.current_health)
+		boss.apply_damage(boss.current_health + LINGLAN_CONFIG.physical_defense)
 		await create_timer(1.5).timeout
 		await process_frame
 		_expect(game.wave_state == Game.WaveState.VICTORY, "Host boss defeat must advance the flow to victory.")
