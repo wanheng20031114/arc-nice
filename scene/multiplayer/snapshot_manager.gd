@@ -28,6 +28,14 @@ const PACKED_U32_BYTES := 4
 const PLAYER_META_BYTES := 25
 const PACKED_I16_MIN := -32768
 const PACKED_I16_MAX := 32767
+const FULL_PLAYER_MASK := (
+	MASK_POSITION
+	| MASK_VELOCITY
+	| MASK_FACING
+	| MASK_ANIM_STATE
+	| MASK_PLAYER_META
+)
+const FULL_ENEMY_MASK := MASK_POSITION | MASK_VELOCITY | MASK_HEALTH | MASK_IS_DEAD
 
 
 # ─────────────────────────────────────────────
@@ -55,11 +63,17 @@ class PlayerState:
 	var shot_pattern: int = 0
 
 
-## 上一帧发送的玩家状态缓存（用于增量比较）
-var _prev_player_states: Dictionary = {}   # peer_id → PlayerState
+## 每个接收端独立维护发送基线，避免丢包/晚加入导致不同客户端共用错误基准。
+var player_send_baselines_by_peer: Dictionary = {}
 
-## 上一帧发送的敌人状态缓存
-var _prev_enemy_states: Dictionary = {}    # net_id → EnemyState
+## 每个接收端独立维护敌人发送基线。
+var enemy_send_baselines_by_peer: Dictionary = {}
+
+## Client 接收端玩家还原基线，用于把 delta 快照恢复为完整状态。
+var player_receive_baselines: Dictionary = {}
+
+## Client 接收端敌人还原基线。
+var enemy_receive_baselines: Dictionary = {}
 
 
 ## 构建玩家快照的二进制数据包
@@ -77,13 +91,7 @@ static func encode_player_snapshot(
 	# 2) 计算变化掩码
 	var mask := 0
 	if previous == null:
-		mask = (
-			MASK_POSITION
-			| MASK_VELOCITY
-			| MASK_FACING
-			| MASK_ANIM_STATE
-			| MASK_PLAYER_META
-		)
+		mask = FULL_PLAYER_MASK
 	else:
 		if not current.position.is_equal_approx(previous.position):
 			mask |= MASK_POSITION
@@ -226,7 +234,7 @@ static func encode_enemy_snapshot(
 
 	var mask := 0
 	if previous == null:
-		mask = MASK_POSITION | MASK_VELOCITY | MASK_HEALTH | MASK_IS_DEAD
+		mask = FULL_ENEMY_MASK
 	else:
 		if not current.position.is_equal_approx(previous.position):
 			mask |= MASK_POSITION
@@ -303,6 +311,120 @@ static func _pack_scaled_i16(value: float, scale: float) -> int:
 	return clampi(roundi(value * scale), PACKED_I16_MIN, PACKED_I16_MAX)
 
 
+static func _copy_player_state(source: PlayerState) -> PlayerState:
+	var copy := PlayerState.new()
+	if source == null:
+		return copy
+	copy.peer_id = source.peer_id
+	copy.sequence = source.sequence
+	copy.position = source.position
+	copy.velocity = source.velocity
+	copy.facing = source.facing
+	copy.anim_state = source.anim_state
+	copy.current_health = source.current_health
+	copy.max_health = source.max_health
+	copy.current_xirang = source.current_xirang
+	copy.is_dead = source.is_dead
+	copy.invincibility_time_left = source.invincibility_time_left
+	copy.skill1_unlocked = source.skill1_unlocked
+	copy.skill1_charge = source.skill1_charge
+	copy.skill1_charge_duration = source.skill1_charge_duration
+	copy.skill1_upgrade_level = source.skill1_upgrade_level
+	copy.form_mode = source.form_mode
+	copy.shot_pattern = source.shot_pattern
+	return copy
+
+
+static func _copy_enemy_state(source: EnemyState) -> EnemyState:
+	var copy := EnemyState.new()
+	if source == null:
+		return copy
+	copy.net_id = source.net_id
+	copy.position = source.position
+	copy.velocity = source.velocity
+	copy.health = source.health
+	copy.is_dead = source.is_dead
+	return copy
+
+
+static func _apply_player_delta(target: PlayerState, delta: PlayerState, mask: int) -> void:
+	target.peer_id = delta.peer_id
+	target.sequence = delta.sequence
+	if mask & MASK_POSITION:
+		target.position = delta.position
+	if mask & MASK_VELOCITY:
+		target.velocity = delta.velocity
+	if mask & MASK_FACING:
+		target.facing = delta.facing
+	if mask & MASK_ANIM_STATE:
+		target.anim_state = delta.anim_state
+	if mask & MASK_PLAYER_META:
+		target.current_health = delta.current_health
+		target.max_health = delta.max_health
+		target.current_xirang = delta.current_xirang
+		target.is_dead = delta.is_dead
+		target.invincibility_time_left = delta.invincibility_time_left
+		target.skill1_unlocked = delta.skill1_unlocked
+		target.skill1_charge = delta.skill1_charge
+		target.skill1_charge_duration = delta.skill1_charge_duration
+		target.skill1_upgrade_level = delta.skill1_upgrade_level
+		target.form_mode = delta.form_mode
+		target.shot_pattern = delta.shot_pattern
+
+
+static func _apply_enemy_delta(target: EnemyState, delta: EnemyState, mask: int) -> void:
+	target.net_id = delta.net_id
+	if mask & MASK_POSITION:
+		target.position = delta.position
+	if mask & MASK_VELOCITY:
+		target.velocity = delta.velocity
+	if mask & MASK_HEALTH:
+		target.health = delta.health
+	if mask & MASK_IS_DEAD:
+		target.is_dead = delta.is_dead
+
+
+static func _is_full_player_mask(mask: int) -> bool:
+	return (mask & FULL_PLAYER_MASK) == FULL_PLAYER_MASK
+
+
+static func _is_full_enemy_mask(mask: int) -> bool:
+	return (mask & FULL_ENEMY_MASK) == FULL_ENEMY_MASK
+
+
+static func _get_player_snapshot_mask(data: PackedByteArray, offset: int) -> int:
+	if offset < 0 or offset + PLAYER_SNAPSHOT_HEADER_BYTES > data.size():
+		return -1
+	return int(data[offset + PLAYER_SNAPSHOT_HEADER_BYTES - 1])
+
+
+static func _get_enemy_snapshot_mask(data: PackedByteArray, offset: int) -> int:
+	if offset < 0 or offset + ENEMY_SNAPSHOT_HEADER_BYTES > data.size():
+		return -1
+	return int(data[offset + ENEMY_SNAPSHOT_HEADER_BYTES - 1])
+
+
+static func _prune_dictionary_to_ids(target: Dictionary, live_ids: Dictionary) -> void:
+	var stale_ids: Array = []
+	for id_variant in target.keys():
+		if not live_ids.has(id_variant):
+			stale_ids.append(id_variant)
+	for id_variant in stale_ids:
+		target.erase(id_variant)
+
+
+func _get_player_send_baseline(receiver_peer_id: int) -> Dictionary:
+	if not player_send_baselines_by_peer.has(receiver_peer_id):
+		player_send_baselines_by_peer[receiver_peer_id] = {}
+	return player_send_baselines_by_peer[receiver_peer_id] as Dictionary
+
+
+func _get_enemy_send_baseline(receiver_peer_id: int) -> Dictionary:
+	if not enemy_send_baselines_by_peer.has(receiver_peer_id):
+		enemy_send_baselines_by_peer[receiver_peer_id] = {}
+	return enemy_send_baselines_by_peer[receiver_peer_id] as Dictionary
+
+
 # ─────────────────────────────────────────────
 # 批量编码/解码 — 将多个快照打包为一条消息
 # ─────────────────────────────────────────────
@@ -313,7 +435,27 @@ func encode_all_player_snapshots(players: Array[PlayerState]) -> PackedByteArray
 	buf.append(players.size())
 	for player_state: PlayerState in players:
 		buf.append_array(encode_player_snapshot(player_state, null))
-		_prev_player_states[player_state.peer_id] = player_state
+	return buf
+
+
+## 按接收端编码玩家快照。force_keyframe=true 时全部实体写 full。
+func encode_player_snapshots_for_peer(
+	receiver_peer_id: int,
+	players: Array[PlayerState],
+	force_keyframe: bool = false
+) -> PackedByteArray:
+	var buf := PackedByteArray()
+	buf.append(players.size())
+	var baseline := _get_player_send_baseline(receiver_peer_id)
+	var live_ids: Dictionary = {}
+	for player_state: PlayerState in players:
+		live_ids[player_state.peer_id] = true
+		var previous: PlayerState = null
+		if not force_keyframe:
+			previous = baseline.get(player_state.peer_id) as PlayerState
+		buf.append_array(encode_player_snapshot(player_state, previous))
+		baseline[player_state.peer_id] = _copy_player_state(player_state)
+	_prune_dictionary_to_ids(baseline, live_ids)
 	return buf
 
 
@@ -338,6 +480,45 @@ static func decode_all_player_snapshots(data: PackedByteArray) -> Array[PlayerSt
 	return result
 
 
+## 使用接收端基线解码 delta 玩家快照；缺失基线的 delta 实体会被跳过。
+func decode_player_snapshots_with_baseline(data: PackedByteArray) -> Array[PlayerState]:
+	var result: Array[PlayerState] = []
+	if data.is_empty():
+		return result
+
+	var count: int = data[0]
+	var offset := 1
+	var live_ids: Dictionary = {}
+	var can_prune := true
+	for _i in range(count):
+		var snapshot_size := _get_player_snapshot_size(data, offset)
+		if snapshot_size < 0 or offset + snapshot_size > data.size():
+			can_prune = false
+			break
+		var mask := _get_player_snapshot_mask(data, offset)
+		var delta := PlayerState.new()
+		var next_offset := decode_player_snapshot(data, offset, delta)
+		if next_offset <= offset or next_offset > data.size():
+			can_prune = false
+			break
+		offset = next_offset
+
+		var previous := player_receive_baselines.get(delta.peer_id) as PlayerState
+		if previous == null and not _is_full_player_mask(mask):
+			can_prune = false
+			continue
+
+		var restored := _copy_player_state(previous)
+		_apply_player_delta(restored, delta, mask)
+		player_receive_baselines[restored.peer_id] = _copy_player_state(restored)
+		live_ids[restored.peer_id] = true
+		result.append(restored)
+
+	if can_prune and offset == data.size():
+		_prune_dictionary_to_ids(player_receive_baselines, live_ids)
+	return result
+
+
 ## 编码一批敌人快照
 func encode_all_enemy_snapshots(enemies: Array[EnemyState]) -> PackedByteArray:
 	var buf := PackedByteArray()
@@ -348,7 +529,30 @@ func encode_all_enemy_snapshots(enemies: Array[EnemyState]) -> PackedByteArray:
 
 	for enemy_state: EnemyState in enemies:
 		buf.append_array(encode_enemy_snapshot(enemy_state, null))
-		_prev_enemy_states[enemy_state.net_id] = enemy_state
+	return buf
+
+
+## 按接收端编码敌人快照。force_keyframe=true 时全部实体写 full。
+func encode_enemy_snapshots_for_peer(
+	receiver_peer_id: int,
+	enemies: Array[EnemyState],
+	force_keyframe: bool = false
+) -> PackedByteArray:
+	var buf := PackedByteArray()
+	var stream := StreamPeerBuffer.new()
+	stream.put_u16(enemies.size())
+	buf.append_array(stream.data_array)
+
+	var baseline := _get_enemy_send_baseline(receiver_peer_id)
+	var live_ids: Dictionary = {}
+	for enemy_state: EnemyState in enemies:
+		live_ids[enemy_state.net_id] = true
+		var previous: EnemyState = null
+		if not force_keyframe:
+			previous = baseline.get(enemy_state.net_id) as EnemyState
+		buf.append_array(encode_enemy_snapshot(enemy_state, previous))
+		baseline[enemy_state.net_id] = _copy_enemy_state(enemy_state)
+	_prune_dictionary_to_ids(baseline, live_ids)
 	return buf
 
 
@@ -375,7 +579,60 @@ static func decode_all_enemy_snapshots(data: PackedByteArray) -> Array[EnemyStat
 	return result
 
 
+## 使用接收端基线解码 delta 敌人快照；缺失基线的 delta 实体会被跳过。
+func decode_enemy_snapshots_with_baseline(data: PackedByteArray) -> Array[EnemyState]:
+	var result: Array[EnemyState] = []
+	if data.size() < 2:
+		return result
+
+	var stream := StreamPeerBuffer.new()
+	stream.data_array = data
+	var count: int = stream.get_u16()
+	var offset := 2
+	var live_ids: Dictionary = {}
+	var can_prune := true
+	for _i in range(count):
+		var snapshot_size := _get_enemy_snapshot_size(data, offset)
+		if snapshot_size < 0 or offset + snapshot_size > data.size():
+			can_prune = false
+			break
+		var mask := _get_enemy_snapshot_mask(data, offset)
+		var delta := EnemyState.new()
+		var next_offset := decode_enemy_snapshot(data, offset, delta)
+		if next_offset <= offset or next_offset > data.size():
+			can_prune = false
+			break
+		offset = next_offset
+
+		var previous := enemy_receive_baselines.get(delta.net_id) as EnemyState
+		if previous == null and not _is_full_enemy_mask(mask):
+			can_prune = false
+			continue
+
+		var restored := _copy_enemy_state(previous)
+		_apply_enemy_delta(restored, delta, mask)
+		enemy_receive_baselines[restored.net_id] = _copy_enemy_state(restored)
+		live_ids[restored.net_id] = true
+		result.append(restored)
+
+	if can_prune and offset == data.size():
+		_prune_dictionary_to_ids(enemy_receive_baselines, live_ids)
+	return result
+
+
+func clear_peer_delta_cache(peer_id: int) -> void:
+	player_send_baselines_by_peer.erase(peer_id)
+	enemy_send_baselines_by_peer.erase(peer_id)
+	player_receive_baselines.erase(peer_id)
+	for receiver_peer_id in player_send_baselines_by_peer.keys():
+		var player_baseline := player_send_baselines_by_peer[receiver_peer_id] as Dictionary
+		if player_baseline != null:
+			player_baseline.erase(peer_id)
+
+
 ## 清除增量缓存（新一轮游戏或重连时调用）
 func reset_delta_cache() -> void:
-	_prev_player_states.clear()
-	_prev_enemy_states.clear()
+	player_send_baselines_by_peer.clear()
+	enemy_send_baselines_by_peer.clear()
+	player_receive_baselines.clear()
+	enemy_receive_baselines.clear()

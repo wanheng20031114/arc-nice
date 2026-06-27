@@ -45,6 +45,8 @@ const PROJECTILE_TIME_COMPENSATION_MAX_SECONDS := 0.25
 const SNAPSHOT_PACKET_WARN_BYTES := 1200
 const SNAPSHOT_PACKET_WARN_INTERVAL_SECONDS := 5.0
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
+const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
+const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 # Multiplayer protocol map:
 # - CH_INPUT unreliable_ordered: client player pose/input to host.
 # - CH_STATE unreliable_ordered: host player/enemy snapshots to clients.
@@ -98,6 +100,8 @@ var _max_player_snapshot_packet_bytes: int = 0
 var _max_enemy_snapshot_packet_bytes: int = 0
 var _large_player_snapshot_packet_count: int = 0
 var _large_enemy_snapshot_packet_count: int = 0
+var _last_player_keyframe_time_by_peer: Dictionary = {}
+var _last_enemy_keyframe_time_by_peer: Dictionary = {}
 var _public_room_keepalive_time_left: float = 0.0
 var _public_room_keepalive_in_flight: bool = false
 var _revive_random_generator := RandomNumberGenerator.new()
@@ -140,6 +144,7 @@ func _exit_tree() -> void:
 			public_room_keepalive_request.request_completed.disconnect(_on_public_room_keepalive_completed)
 		if public_room_keepalive_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
 			public_room_keepalive_request.cancel_request()
+	snapshot_mgr.reset_delta_cache()
 	_public_room_keepalive_in_flight = false
 
 
@@ -307,10 +312,13 @@ func _host_broadcast_player_snapshots() -> void:
 	_host_player_snapshot_sequence += 1
 	for state in states:
 		state.sequence = _host_player_snapshot_sequence
-	var data := snapshot_mgr.encode_all_player_snapshots(states)
-	_record_snapshot_packet_size(&"player", data.size(), states.size())
 	var snapshot_time := _get_net_time()
 	for peer_id in _get_connected_client_peer_ids():
+		var force_keyframe := _should_force_player_delta_keyframe(peer_id, snapshot_time)
+		var data := snapshot_mgr.encode_player_snapshots_for_peer(peer_id, states, force_keyframe)
+		if force_keyframe:
+			_last_player_keyframe_time_by_peer[peer_id] = snapshot_time
+		_record_snapshot_packet_size(&"player", data.size(), states.size())
 		_rpc_receive_player_snapshot.rpc_id(peer_id, snapshot_time, data)
 
 
@@ -334,11 +342,32 @@ func _apply_latest_client_player_snapshot_states(states: Array[SnapshotManager.P
 
 func _host_broadcast_enemy_snapshots() -> void:
 	var states: Array[SnapshotManager.EnemyState] = game.collect_enemy_snapshot_states()
-	var data := snapshot_mgr.encode_all_enemy_snapshots(states)
-	_record_snapshot_packet_size(&"enemy", data.size(), states.size())
 	var snapshot_time := _get_net_time()
 	for peer_id in _get_connected_client_peer_ids():
+		var force_keyframe := _should_force_enemy_delta_keyframe(peer_id, snapshot_time)
+		var data := snapshot_mgr.encode_enemy_snapshots_for_peer(peer_id, states, force_keyframe)
+		if force_keyframe:
+			_last_enemy_keyframe_time_by_peer[peer_id] = snapshot_time
+		_record_snapshot_packet_size(&"enemy", data.size(), states.size())
 		_rpc_receive_enemy_snapshot.rpc_id(peer_id, snapshot_time, data)
+
+
+func _should_force_player_delta_keyframe(peer_id: int, snapshot_time: float) -> bool:
+	if peer_id <= 0:
+		return true
+	if not _last_player_keyframe_time_by_peer.has(peer_id):
+		return true
+	var last_keyframe_time := float(_last_player_keyframe_time_by_peer.get(peer_id, -INF))
+	return snapshot_time - last_keyframe_time >= PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS
+
+
+func _should_force_enemy_delta_keyframe(peer_id: int, snapshot_time: float) -> bool:
+	if peer_id <= 0:
+		return true
+	if not _last_enemy_keyframe_time_by_peer.has(peer_id):
+		return true
+	var last_keyframe_time := float(_last_enemy_keyframe_time_by_peer.get(peer_id, -INF))
+	return snapshot_time - last_keyframe_time >= ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS
 
 
 func _get_connected_client_peer_ids() -> Array[int]:
@@ -602,7 +631,7 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 	if not is_client_view_runtime():
 		return
 	var snapshot_time := _map_host_timestamp_to_client_time(host_timestamp)
-	var states := SnapshotManager.decode_all_player_snapshots(data)
+	var states := snapshot_mgr.decode_player_snapshots_with_baseline(data)
 	var snapshot_has_full_roster := _is_complete_player_snapshot_batch(data, states.size())
 	var seen_player_ids: Dictionary = {}
 	for state in states:
@@ -673,7 +702,7 @@ func _reconcile_player_roster(seen_player_ids: Dictionary) -> void:
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
 func _rpc_receive_enemy_snapshot(host_timestamp: float, data: PackedByteArray) -> void:
 	var snapshot_time := _map_host_timestamp_to_client_time(host_timestamp)
-	var states := SnapshotManager.decode_all_enemy_snapshots(data)
+	var states := snapshot_mgr.decode_enemy_snapshots_with_baseline(data)
 	var snapshot_has_full_roster := _is_complete_enemy_snapshot_batch(data, states.size())
 	var seen_enemy_ids: Dictionary = {}
 	for state in states:
@@ -3068,6 +3097,9 @@ func _on_net_player_left(peer_id: int) -> void:
 
 
 func _clear_peer_network_state(peer_id: int) -> void:
+	snapshot_mgr.clear_peer_delta_cache(peer_id)
+	_last_player_keyframe_time_by_peer.erase(peer_id)
+	_last_enemy_keyframe_time_by_peer.erase(peer_id)
 	player_visual_interpolators.erase(peer_id)
 	_last_player_state_sequences.erase(peer_id)
 	_accepted_player_state_positions.erase(peer_id)
@@ -3116,6 +3148,9 @@ func _clear_projectile_records_for_peer(peer_id: int) -> void:
 
 
 func _return_to_lobby() -> void:
+	snapshot_mgr.reset_delta_cache()
+	_last_player_keyframe_time_by_peer.clear()
+	_last_enemy_keyframe_time_by_peer.clear()
 	var tree: SceneTree = get_tree()
 	if tree == null:
 		return
