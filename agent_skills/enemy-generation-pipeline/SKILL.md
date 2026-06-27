@@ -1,6 +1,6 @@
 ---
 name: enemy-generation-pipeline
-description: 生成、处理、切分并接入高质量 Godot 敌人精灵资源。Use for image generation, enemy sprite sheets, Capoo-style variants, alpha/chroma-key cleanup, SpriteFrames, AtlasTexture slicing, AnimatedSprite2D centering, and Godot enemy scene visual integration.
+description: 生成、处理、切分并接入高质量 Godot 敌人精灵资源。Use for Chinese or English image-generation prompts, built-in image_gen sprite sources, enemy sprite sheets, boss/enemy animations, alpha/chroma-key cleanup, SpriteFrames, AtlasTexture slicing, AnimatedSprite2D centering, frame safety margins, and Godot enemy scene visual integration.
 ---
 
 # 敌人生成 Pipeline
@@ -9,7 +9,7 @@ description: 生成、处理、切分并接入高质量 Godot 敌人精灵资源
 
 把敌人美术当成可复现的资源 pipeline，而不是一次性的图片修补。优先使用多轮生图、可测量的大图分析、明确的每帧主体锚点，以及 Godot 原生的 `SpriteFrames` / `AtlasTexture` / `AnimatedSprite2D` 资源结构。
 
-动手前先读项目根目录的 `AGENTS.md`。需要新的位图敌人素材时，优先使用 `imagegen` 生图工具。处理像素图、裁空白、分析网格时，优先考虑项目已有工具，例如 `dev_tools/pixel_crop_tool.py`、`dev_tools/pixel_grid_analyzer.py`，以及本 skill 的 `scripts/analyze_enemy_sheet.py`。
+动手前先读项目根目录的 `AGENTS.md`。需要新的整套位图敌人或 boss 动画素材时，源图必须优先由内置 `image_gen` 生图工具生成；允许用代码处理、切分、抠图、对齐和接入，但不要用代码替代生图创作主体图。处理像素图、裁空白、分析网格时，优先考虑项目已有工具，例如 `dev_tools/pixel_crop_tool.py`、`dev_tools/pixel_grid_analyzer.py`，以及本 skill 的 `scripts/analyze_enemy_sheet.py`。
 
 ## 工作流
 
@@ -27,11 +27,11 @@ description: 生成、处理、切分并接入高质量 Godot 敌人精灵资源
 
 4. 单样例成立后再生成动画大图。
 
-   生图 prompt 要明确网格行列、稳定镜头、稳定主体大小、每格完整角色、纯平背景、背景无阴影、格子之间不重叠。行语义要直接写清楚，例如 `move`、`windup`、`attack`、`death`。
+   生图 prompt 可以使用中文，也可以使用英文；本项目角色名、动作名、道具名用中文更清楚时就直接用中文。Prompt 要明确网格行列、稳定镜头、稳定主体大小、主体中心/脚底锚点一致、每格完整角色、每格安全框、纯平背景、背景无阴影、格子之间不重叠。行语义要直接写清楚，例如 `idle`、`move`、`attack`、`death`，或者中文 `站立`、`横向移动`、`举杖攻击`、`死亡`。
 
 5. 切分前先分析。
 
-   运行 `scripts/analyze_enemy_sheet.py` 或项目内专用分析脚本。检查整图尺寸、alpha/chroma bbox、每格 bbox、主色、主体锚点，以及固定切片区域是否会裁掉当前帧或吃到相邻帧。
+   运行 `scripts/analyze_enemy_sheet.py` 或项目内专用分析脚本。检查整图尺寸、alpha/chroma bbox、每格 bbox、主色、主体锚点、主体像素高度/宽度范围、主体中心漂移、每格安全框，以及固定切片区域是否会裁掉当前帧或吃到相邻帧。
 
 6. 按主体锚点切分，不要只信粗网格。
 
@@ -39,13 +39,17 @@ description: 生成、处理、切分并接入高质量 Godot 敌人精灵资源
 
 7. 保持主体大小一致。
 
-   除非动画设计本身需要变大变小，否则每帧的主体大小应一致。帽子、武器、法杖、披风、攻击特效可以围绕主体移动或扩展，但主体本身不应在帧之间缩放。
+   除非动画设计本身需要变大变小，否则每帧的主体人物像素量、身体高度、身体宽度和身体中心应一致。帽子、武器、法杖、尾巴、披风、攻击特效可以围绕主体移动或扩展，也可以让当前帧需要更大的安全框，但主体本身不应在帧之间缩放或漂移。
 
-8. 紧密大图使用 `AtlasTexture.margin`。
+8. 安全框优先于紧裁。
+
+   Prompt 和切图都要把安全框当成资源契约：每个格子必须完整容纳主体、尾巴、武器、道具和 VFX，不允许切掉尾巴、法杖、帽子或特效。攻击帧、技能帧、死亡帧可以使用比 idle/move 更大的源格子或逻辑帧；最终接入 Godot 时再用主体锚点把角色对齐，而不是为了统一外框强行裁掉动作物品。
+
+9. 紧密大图使用 `AtlasTexture.margin`。
 
    如果固定 `region` 会吃到相邻格子的像素，就把实际 `region` 裁到当前源格子内部，再用 `AtlasTexture.margin` 补回统一逻辑帧尺寸，并设置 `filter_clip = true`。这样能避免串帧碎片，同时保持 `AnimatedSprite2D` 的中心稳定。
 
-9. 显式计算 `AnimatedSprite2D` 中心点。
+10. 显式计算 `AnimatedSprite2D` 中心点。
 
    对居中的 `AnimatedSprite2D`，使用：
 
@@ -56,7 +60,7 @@ description: 生成、处理、切分并接入高质量 Godot 敌人精灵资源
 
    小体型敌人的 `desired_world_anchor` 通常是碰撞框下沿中心附近。最终要用带十字锚点的预览图和 Godot smoke test 验证。
 
-10. 在 Godot 中验证并清理。
+11. 在 Godot 中验证并清理。
 
    PNG 变化后要重新导入，运行聚焦 smoke test。结束前检查验证用 Godot 进程是否残留，尤其是带 `--headless`、`--check-only`、`--import` 参数的进程；不要误关用户正常打开的编辑器。
 
@@ -69,15 +73,20 @@ description: 生成、处理、切分并接入高质量 Godot 敌人精灵资源
 - 第 3 轮：样例认可后，再生成完整动画 sheet。
 - 后续轮次：坏行、坏姿势、坏变体优先重生，不要过度修补失败素材。
 
-动画 sheet prompt 可使用类似约束：
+动画 sheet prompt 可使用中文。建议把“主体”和“动作物品/VFX”分开描述：
 
 ```text
-pixel art enemy sprite sheet, transparent alpha or pure flat [chosen color] background,
-4 columns x 4 rows, rows are move / windup / attack / death,
-same camera distance, same body scale, body centered consistently in each cell,
-complete character in every cell, no cropped props, no overlap between cells,
-clean hard pixel edges, no background shadows, no text
+使用内置 image_gen 生成一张像素风敌人动画源图。
+[列数]列 x [行数]行，每格一个完整帧，透明 alpha 或纯平 [背景色] 背景。
+第1行：[动作名]；第2行：[动作名]；...
+所有帧使用同一镜头距离，同一主体人物像素大小，同一身体高度和宽度。
+主体脚底锚点和身体中心在每个格子的相对位置必须一致，不要主体漂移。
+尾巴、法杖、武器、帽子、道具和技能特效可以运动并扩展，但必须完整留在当前格子的安全框内，不得被裁切。
+每格周围保留清晰透明/纯色安全边距，帧与帧之间不重叠、不串格。
+清晰硬边像素、无背景阴影、无渐变背景、无文字、无边框。
 ```
+
+如果使用英文 prompt，也要保留这些等价约束：`same body pixel size`, `same body center`, `same feet/body anchor`, `large safe padding inside every cell`, `props and VFX fully inside the cell`, `no cropped tail/staff/effects`。
 
 ## 图像处理要点
 

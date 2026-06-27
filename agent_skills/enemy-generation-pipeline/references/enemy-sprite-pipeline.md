@@ -83,10 +83,10 @@ Ask for a sheet only after sample quality is good. Specify:
 
 - Exact grid size, usually 4 columns x 4 rows for this enemy family.
 - Row names and meanings.
-- Stable camera, stable body size, same pivot/feet position.
+- Stable camera, stable body size, same body center, same body pixel height/width, same pivot/feet position.
 - One full character per cell.
 - No overlap between cells.
-- Enough empty padding for weapons and VFX.
+- Enough empty padding / safety margin for weapons, tails, hats, staffs, props, and VFX.
 - Transparent alpha or pure flat chosen chroma background.
 
 Example:
@@ -104,6 +104,49 @@ Weapons, hat, and magic effects may move, but must not change the body scale.
 Use pure flat [chosen chroma color] background with no shadows or gradients.
 No text, no labels, no frame borders.
 ```
+
+Chinese prompts are allowed and often better for this project because character names, boss actions, and prop descriptions are already authored in Chinese. Keep the same contract:
+
+```text
+使用内置 image_gen 生成像素风敌人动画源图。
+6列 x 1行，每格一个完整帧，透明 alpha 或纯平深蓝色背景。
+动作：举起法杖，然后向下/向侧面挥动法杖释放攻击。
+主体人物必须保持同一像素大小、同一身体高度、同一身体宽度。
+主体脚底锚点和身体中心在每个格子的相对位置必须一致，不要漂移。
+法杖、尾巴、帽子、攻击弧光和花瓣特效可以移动并扩大，但必须完整留在当前格子的安全框里，不得被裁切。
+每格周围保留足够空白安全边距，帧之间不重叠、不串格。
+硬边像素、无阴影、无文字、无边框。
+```
+
+### Prompt Retrospective From Linglan Attack
+
+The usable Linglan attack source succeeded on style because it specified a chibi pixel-art fox-girl boss, staff raise, staff swing, and a consistent 3x2/6-frame action sheet. The failures came from missing or weak constraints:
+
+- It used a green chroma background while the character eyes also contain green, causing over-keying risk.
+- It emphasized the full visible bbox but not the body-only anchor, so wide staff/VFX frames could skew center detection.
+- It did not explicitly require identical body pixel height/width per frame.
+- It did not explicitly require a per-cell safety frame around tail, staff, and swing VFX.
+
+For future boss actions, phrase the prompt as body-locked animation: the body is the invariant; props/VFX are allowed to move around it inside a larger safe frame.
+
+## Safety Frame Contract
+
+Safety frame means the current source cell or logical frame has intentional empty space around every visible part. It is separate from body centering:
+
+- Body center and foot anchor stay stable.
+- Body pixel size stays stable.
+- Props, tails, weapons, hats, and VFX may expand beyond idle size.
+- Expanded elements must still be fully inside the current cell.
+- If action props touch the cell edge, regenerate with a larger cell/safety frame or increase the logical frame size.
+
+Measure at least:
+
+- `body_anchor_in_cell` drift across frames.
+- `body_bbox` width/height drift across frames.
+- `alpha_bbox` distance to cell edges.
+- Full visible pixel count and body component pixel count.
+
+Warnings near an edge are not automatically fatal for an already accepted manual alpha sheet, but they are a strong signal to regenerate generated sheets before integration.
 
 ## Slicing Strategy
 
