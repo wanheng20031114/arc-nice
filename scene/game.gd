@@ -1725,7 +1725,8 @@ func _configure_multiplayer_players() -> void:
 			peer_id,
 			accepts_local_input,
 			display_name,
-			predicts_local_movement
+			predicts_local_movement,
+			peer_id == multiplayer_local_peer_id
 		)
 		player_instance.set_multiplayer_visual_smoothing_enabled(
 			runtime_mode == RuntimeMode.HOST_AUTHORITY

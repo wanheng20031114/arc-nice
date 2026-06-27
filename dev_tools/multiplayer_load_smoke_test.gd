@@ -1620,6 +1620,16 @@ func _test_game_runtime_modes() -> void:
 		"Multiplayer player scene nameplate must show the peer name."
 	)
 	_expect(host_player.nameplate_label.custom_minimum_size.y >= 30.0, "Multiplayer nameplate must leave room for outlined player names.")
+	_expect(
+		host_player.nameplate_label.get_theme_color(&"font_color").is_equal_approx(Player.LOCAL_NAMEPLATE_FONT_COLOR),
+		"Local host nameplate text must be green."
+	)
+	var host_remote_player := host_game.get_player_for_peer(2) as Player
+	_expect(
+		host_remote_player != null
+		and not host_remote_player.nameplate_label.has_theme_color_override(&"font_color"),
+		"Remote player nameplate must keep the normal color on the host."
+	)
 	_expect(host_game.call("_try_spawn_enemy", BASIC_CONFIG), "Host authority game must spawn an indexed enemy.")
 	var spawned_enemy: Enemy = host_game.get_enemy_for_net_id(1)
 	_expect(spawned_enemy != null, "Host authority game must index spawned enemies by net id.")
@@ -1639,6 +1649,18 @@ func _test_game_runtime_modes() -> void:
 	await process_frame
 	_expect(client_game.peer_players.size() == 2, "Client view game must create visual peer players.")
 	_expect(not client_game.auto_start_waves, "Client view must not start local waves.")
+	var client_local_player := client_game.get_player_for_peer(2) as Player
+	var client_remote_player := client_game.get_player_for_peer(1) as Player
+	_expect(
+		client_local_player != null
+		and client_local_player.nameplate_label.get_theme_color(&"font_color").is_equal_approx(Player.LOCAL_NAMEPLATE_FONT_COLOR),
+		"Local client nameplate text must be green."
+	)
+	_expect(
+		client_remote_player != null
+		and not client_remote_player.nameplate_label.has_theme_color_override(&"font_color"),
+		"Remote host nameplate must keep the normal color on the client."
+	)
 	_stop_audio_players(client_game)
 	client_game.queue_free()
 	await process_frame

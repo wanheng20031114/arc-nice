@@ -73,6 +73,7 @@ const SKILL1_UPGRADE_COSTS := [500, 750, 1000, 2000]
 const MAX_MULTIPLAYER_NAME_LENGTH := 12
 const NAMEPLATE_SIZE := Vector2(160.0, 30.0)
 const NAMEPLATE_WORLD_OFFSET := Vector2(0.0, -19.0)
+const LOCAL_NAMEPLATE_FONT_COLOR := Color(0.38, 1.0, 0.42, 1.0)
 const MULTIPLAYER_VISUAL_OFFSET_LERP_RATE := 36.0
 const MULTIPLAYER_VISUAL_OFFSET_EPSILON := 0.05
 const MULTIPLAYER_VISUAL_SNAP_DISTANCE := 96.0
@@ -462,7 +463,8 @@ func configure_multiplayer_control(
 	new_peer_id: int,
 	use_local_input: bool,
 	display_name: String = "",
-	predict_movement_only: bool = false
+	predict_movement_only: bool = false,
+	highlight_as_local_player: bool = false
 ) -> void:
 	peer_id = new_peer_id
 	uses_local_input = use_local_input
@@ -477,10 +479,18 @@ func configure_multiplayer_control(
 	multiplayer_display_name = safe_display_name
 	name_label.visible = false
 	nameplate_label.text = safe_display_name
+	_set_nameplate_local_highlight(highlight_as_local_player)
 	nameplate_layer.visible = not safe_display_name.is_empty()
 	_update_nameplate_position()
 	if not uses_local_input:
 		controls_locked = false
+
+
+func _set_nameplate_local_highlight(enabled: bool) -> void:
+	if enabled:
+		nameplate_label.add_theme_color_override(&"font_color", LOCAL_NAMEPLATE_FONT_COLOR)
+	else:
+		nameplate_label.remove_theme_color_override(&"font_color")
 
 
 func set_multiplayer_visual_smoothing_enabled(enabled: bool) -> void:
