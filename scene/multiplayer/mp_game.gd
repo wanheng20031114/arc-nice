@@ -17,8 +17,11 @@ const CAPOO_MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_firebal
 const CAPOO_SMG_BULLET_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
 const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
 const LINGLAN_SAKURA_BULLET_SCENE := preload("res://scene/linglan_skill1_sakura_bullet.tscn")
+const DEFAULT_LINGLAN_SKILL2_CONFIG := preload("res://resources/config/bosses/linglan_skill2.tres")
 const LINGLAN_SKILL2_ROCKET_SCENE := preload("res://scene/linglan_skill2_sakura_rocket.tscn")
+const DEFAULT_LINGLAN_SKILL3_CONFIG := preload("res://resources/config/bosses/linglan_skill3.tres")
 const LINGLAN_SKILL3_ORB_SCENE := preload("res://scene/linglan_skill3_light_orb.tscn")
+const DEFAULT_LINGLAN_SKILL4_CONFIG := preload("res://resources/config/bosses/linglan_skill4.tres")
 const LINGLAN_SKILL4_ORB_SCENE := preload("res://scene/linglan_skill4_light_orb.tscn")
 const LINGLAN_SKILL4_ORB_SCRIPT := preload("res://scene/linglan_skill4_light_orb.gd")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
@@ -49,6 +52,7 @@ const SNAPSHOT_PACKET_WARN_INTERVAL_SECONDS := 5.0
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
+const ENEMY_ACTION_SNAPSHOT_REORDER_TOLERANCE_SECONDS := 0.075
 # Multiplayer protocol map:
 # - CH_INPUT unreliable_ordered: client player pose/input to host.
 # - CH_STATE unreliable_ordered: host player/enemy snapshots to clients.
@@ -61,6 +65,9 @@ const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 @onready var public_room_keepalive_request: HTTPRequest = $PublicRoomKeepaliveRequest
 
 var snapshot_mgr := SnapshotManager.new()
+var _linglan_skill2_config: LinglanSkill2Config = DEFAULT_LINGLAN_SKILL2_CONFIG
+var _linglan_skill3_config: LinglanSkill3Config = DEFAULT_LINGLAN_SKILL3_CONFIG
+var _linglan_skill4_config: LinglanSkill4Config = DEFAULT_LINGLAN_SKILL4_CONFIG
 # Client-view only: remote player visual timeline. Host gameplay never reads this.
 var player_visual_interpolators: Dictionary = {}
 var enemy_interpolators: Dictionary = {}
@@ -1282,9 +1289,9 @@ func _instantiate_projectile(
 				damage,
 				speed,
 				lifetime,
-				sakura_rocket.explosion_radius,
+				_linglan_skill2_config.rocket_explosion_radius,
 				rocket_target,
-				sakura_rocket.homing_turn_rate
+				_linglan_skill2_config.rocket_homing_turn_rate
 			)
 			return sakura_rocket
 		&"linglan_skill3_orb":
@@ -1292,14 +1299,31 @@ func _instantiate_projectile(
 			if light_orb == null:
 				return null
 			light_orb.top_level = true
-			light_orb.setup(direction, damage, speed, lifetime)
+			light_orb.setup(
+				direction,
+				damage,
+				speed,
+				lifetime,
+				_linglan_skill3_config.orb_base_radius,
+				_linglan_skill3_config.orb_grow_scale,
+				_linglan_skill3_config.orb_expanded_hold_duration,
+				_linglan_skill3_config.orb_flash_lead_time
+			)
 			return light_orb
 		&"linglan_skill4_orb":
 			var skill4_orb := LINGLAN_SKILL4_ORB_SCENE.instantiate() as Node2D
 			if skill4_orb == null:
 				return null
 			skill4_orb.top_level = true
-			skill4_orb.call("setup", direction, damage, speed, lifetime)
+			skill4_orb.call(
+				"setup",
+				direction,
+				damage,
+				speed,
+				lifetime,
+				_linglan_skill4_config.orb_radius,
+				_linglan_skill4_config.orb_damage_radius
+			)
 			return skill4_orb
 		_:
 			return null
@@ -1873,6 +1897,13 @@ func net_player_damage_applied(
 		return
 	_player_health_revisions[player_peer_id] = health_revision
 	player_node.set_multiplayer_health_state(current_health, is_dead)
+	if (
+		is_client_view_runtime()
+		and player_peer_id == _get_client_view_local_peer_id()
+		and not player_node.is_dead
+		and player_node.current_health < player_node.max_health
+	):
+		player_node.start_multiplayer_invincibility(player_node.invincibility_duration)
 
 
 func apply_multiplayer_collectible_player_heal(target_player: Player, heal_amount: int) -> bool:
@@ -2487,7 +2518,9 @@ func _push_enemy_action_interpolator_sample(
 	if interp != null:
 		var latest_timestamp := interp.get_latest_timestamp()
 		if latest_timestamp > 0.0 and action_time < latest_timestamp:
-			return {"accepted": false, "apply_direct_position": false}
+			if latest_timestamp - action_time > ENEMY_ACTION_SNAPSHOT_REORDER_TOLERANCE_SECONDS:
+				return {"accepted": false, "apply_direct_position": false}
+			return {"accepted": true, "apply_direct_position": false}
 	else:
 		interp = _create_enemy_interpolator()
 		enemy_interpolators[net_id] = interp

@@ -66,6 +66,10 @@ func _test_world_mouse_fire() -> void:
 	)
 	if first_bullet != null:
 		_expect(
+			first_bullet.z_index >= 4,
+			"Mouse-fired player bullets must render above player and enemy body sprites."
+		)
+		_expect(
 			first_bullet.direction.dot(Vector2.RIGHT) > 0.99,
 			"Mouse-fired bullet did not travel toward the cursor. Direction: %s, mouse world: %s, target viewport: %s."
 			% [

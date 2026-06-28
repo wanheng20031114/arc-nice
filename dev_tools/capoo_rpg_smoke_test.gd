@@ -250,6 +250,16 @@ func _test_proxy_action_visuals() -> void:
 	await process_frame
 	_expect(enemy.muzzle_heat.visible, "Proxy RPG fire muzzle heat did not appear.")
 	_expect(enemy.animated_sprite.animation == CAPOO_CONFIG.attack_animation_name, "Proxy RPG did not play fire animation.")
+	enemy.play_multiplayer_enemy_action(&"windup", Vector2.RIGHT, 3)
+	enemy.play_multiplayer_enemy_action(&"fire", Vector2.LEFT, 4)
+	await process_frame
+	_expect(
+		Vector2.RIGHT.rotated(enemy.muzzle_heat.rotation).dot(Vector2.LEFT) > 0.99,
+		"Stale proxy RPG windup tween must not override newer fire direction."
+	)
+	enemy.play_multiplayer_death_sequence()
+	await process_frame
+	_expect(not enemy.muzzle_heat.visible, "Proxy RPG death must clear muzzle heat.")
 	enemy.queue_free()
 	player.queue_free()
 	await physics_frame

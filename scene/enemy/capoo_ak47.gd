@@ -92,6 +92,12 @@ func _die() -> void:
 	super._die()
 
 
+func play_multiplayer_death_sequence() -> void:
+	latest_proxy_action_id += 1
+	_set_muzzle_heat(0.0, burst_shot_direction)
+	super.play_multiplayer_death_sequence()
+
+
 func _update_attack_cooldown(delta: float) -> void:
 	if attack_cooldown_left <= 0.0:
 		return
@@ -258,7 +264,7 @@ func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, 
 				capoo_config.windup_animation_name,
 				capoo_config.attack_windup + 0.15
 			)
-			_play_proxy_muzzle_heat(safe_direction, capoo_config.attack_windup)
+			_play_proxy_muzzle_heat(safe_direction, capoo_config.attack_windup, action_id)
 		_update_facing(safe_direction)
 	elif action_name == &"burst":
 		if capoo_config != null:
@@ -268,9 +274,12 @@ func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, 
 			)
 		_update_facing(safe_direction)
 		_set_muzzle_heat(1.0, safe_direction)
+		var burst_action_id := action_id
 		var tween := create_tween()
 		tween.tween_method(
 			func(progress: float) -> void:
+				if burst_action_id != latest_proxy_action_id:
+					return
 				_set_muzzle_heat(progress, safe_direction),
 			1.0,
 			0.0,
@@ -278,11 +287,13 @@ func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, 
 		)
 
 
-func _play_proxy_muzzle_heat(direction: Vector2, duration: float) -> void:
+func _play_proxy_muzzle_heat(direction: Vector2, duration: float, action_id: int) -> void:
 	_set_muzzle_heat(0.12, direction)
 	var tween := create_tween()
 	tween.tween_method(
 		func(progress: float) -> void:
+			if action_id != latest_proxy_action_id:
+				return
 			_set_muzzle_heat(progress, direction),
 		0.12,
 		1.0,

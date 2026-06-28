@@ -17,6 +17,7 @@ var attack_cooldown_left: float = 0.0
 var windup_time_left: float = 0.0
 var fire_time_left: float = 0.0
 var fire_direction := Vector2.RIGHT
+var latest_proxy_action_id: int = 0
 
 
 func _ready() -> void:
@@ -60,6 +61,7 @@ func _apply_config() -> void:
 	attack_cooldown_left = 0.0
 	windup_time_left = 0.0
 	fire_time_left = 0.0
+	latest_proxy_action_id = 0
 	var mage_config := config as MageConfig
 	if mage_config != null:
 		attack_audio.stream = mage_config.attack_audio_stream
@@ -69,6 +71,12 @@ func _die() -> void:
 	combat_state = CombatState.CHASE
 	_set_spell_glow(0.0, fire_direction)
 	super._die()
+
+
+func play_multiplayer_death_sequence() -> void:
+	latest_proxy_action_id += 1
+	_set_spell_glow(0.0, fire_direction)
+	super.play_multiplayer_death_sequence()
 
 
 func _update_attack_cooldown(delta: float) -> void:
@@ -216,24 +224,27 @@ func _cancel_attack() -> void:
 
 
 func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, action_id: int) -> void:
-	if action_id <= action_sequence:
+	if action_id <= latest_proxy_action_id:
 		return
-	action_sequence = action_id
+	latest_proxy_action_id = action_id
 	var safe_direction := direction.normalized() if direction != Vector2.ZERO else Vector2.RIGHT
 	var mage_config := config as MageConfig
 	if action_name == &"windup":
 		if mage_config != null:
 			_play_multiplayer_proxy_action_animation(mage_config.windup_animation_name, mage_config.attack_windup + 0.15)
-			_play_proxy_spell_glow(safe_direction, mage_config.attack_windup)
+			_play_proxy_spell_glow(safe_direction, mage_config.attack_windup, action_id)
 		_update_facing(safe_direction)
 	elif action_name == &"fire":
 		if mage_config != null:
 			_play_multiplayer_proxy_action_animation(mage_config.attack_animation_name, 0.23)
 		_update_facing(safe_direction)
 		_set_spell_glow(1.0, safe_direction)
+		var fire_action_id := action_id
 		var tween := create_tween()
 		tween.tween_method(
 			func(progress: float) -> void:
+				if fire_action_id != latest_proxy_action_id:
+					return
 				_set_spell_glow(progress, safe_direction),
 			1.0,
 			0.0,
@@ -241,11 +252,13 @@ func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, 
 		)
 
 
-func _play_proxy_spell_glow(direction: Vector2, duration: float) -> void:
+func _play_proxy_spell_glow(direction: Vector2, duration: float, action_id: int) -> void:
 	_set_spell_glow(0.15, direction)
 	var tween := create_tween()
 	tween.tween_method(
 		func(progress: float) -> void:
+			if action_id != latest_proxy_action_id:
+				return
 			_set_spell_glow(progress, direction),
 		0.15,
 		1.0,

@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://dio7oncn1mu5a"]
 
 [ext_resource type="Script" uid="uid://c5lyhldap105w" path="res://scene/main_menu.gd" id="1_2fwvj"]
-[ext_resource type="Texture2D" uid="uid://cbrmpw5d481ci" path="res://resources/texture/瓦片.png" id="2_0iwki"]
+[ext_resource type="Texture2D" uid="uid://q1v73vx6yokg" path="res://resources/texture/ui/menu_rooftop_garden_background.png" id="2_0iwki"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_sepwh"]
 [ext_resource type="Script" path="res://scene/settings/settings_gear_icon.gd" id="4_settings_icon"]
 [ext_resource type="PackedScene" path="res://scene/settings/settings_panel.tscn" id="5_settings_panel"]
@@ -98,20 +98,20 @@ anchor_bottom = 1.0
 color = Color(0.055, 0.06, 0.07, 1)
 
 [node name="TilePattern" type="TextureRect" parent="."]
-modulate = Color(1, 1, 1, 0.16)
+modulate = Color(1, 1, 1, 1)
 texture_filter = 1
-texture_repeat = 2
+texture_repeat = 1
 layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 texture = ExtResource("2_0iwki")
-stretch_mode = 1
+stretch_mode = 6
 
 [node name="Shade" type="ColorRect" parent="."]
 layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0, 0, 0, 0.36)
+color = Color(0, 0, 0, 0.18)
 
 [node name="MenuCenter" type="CenterContainer" parent="."]
 layout_mode = 0

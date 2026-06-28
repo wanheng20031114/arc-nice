@@ -336,6 +336,7 @@ func _test_skill_charge_and_bomb_direction() -> void:
 			break
 	_expect(bomb != null, "Skill1 did not spawn a bomb.")
 	if bomb != null:
+		_expect(bomb.z_index >= 4, "Skill1 bomb must render above player and enemy body sprites while flying.")
 		_expect(bomb.direction.dot(Vector2.UP) > 0.99, "Skill1 bomb did not use the last attack direction.")
 		bomb.queue_free()
 
@@ -402,6 +403,7 @@ func _test_bomb_explosion_damage() -> void:
 	var explosion_circle := explosion_shape.shape as CircleShape2D
 	_expect(bomb.has_node("AnimatedSprite2D"), "Skill1 bomb must use an animated projectile sprite.")
 	_expect(not bomb.has_node("Sprite2D"), "Skill1 bomb must not reuse the square skill icon sprite.")
+	_expect(bomb.z_index >= 4, "Skill1 bomb scene must stay above player and enemy body sprites.")
 	_expect(
 		explosion_circle != null and is_equal_approx(explosion_circle.radius, 44.0),
 		"Skill1 explosion visual and damage radius must be 44 pixels."

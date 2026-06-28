@@ -56,6 +56,7 @@ var skill1_elapsed: float = 0.0
 var skill1_fire_time_left: float = 0.0
 var skill1_finished: bool = false
 var skill1_attack_broadcast_sent: bool = false
+var skill1_warning_broadcast_sent: bool = false
 var skill1_warning_rays: Array[Node2D] = []
 var skill2_target_global_position := Vector2.ZERO
 var skill2_elapsed: float = 0.0
@@ -102,6 +103,8 @@ func apply_multiplayer_proxy_motion(proxy_position: Vector2, proxy_velocity: Vec
 	global_position = proxy_position
 	velocity = proxy_velocity
 	_set_facing_from_direction(proxy_velocity)
+	if not skill1_warning_rays.is_empty():
+		_update_skill1_warning_ray_transforms()
 	_play_proxy_locomotion_animation()
 
 
@@ -176,6 +179,14 @@ func _die() -> void:
 	_reset_skill_state()
 	super._die()
 	_emit_health_changed()
+
+
+func play_multiplayer_death_sequence() -> void:
+	latest_proxy_action_id += 1
+	_clear_skill1_warning_rays()
+	_clear_skill2_warning_arrow()
+	_clear_skill4_laser_field()
+	super.play_multiplayer_death_sequence()
 
 
 func get_max_health() -> int:
@@ -362,6 +373,7 @@ func _reset_skill1_state() -> void:
 	skill1_fire_time_left = 0.0
 	skill1_finished = false
 	skill1_attack_broadcast_sent = false
+	skill1_warning_broadcast_sent = false
 	_clear_skill1_warning_rays()
 
 
@@ -503,6 +515,9 @@ func _update_skill1_warning_rays() -> void:
 		return
 	if skill1_warning_rays.is_empty():
 		_spawn_skill1_warning_rays()
+		if not skill1_warning_rays.is_empty() and not skill1_warning_broadcast_sent:
+			skill1_warning_broadcast_sent = true
+			_broadcast_enemy_action(&"linglan_skill1_warning", Vector2.ZERO)
 	_update_skill1_warning_ray_transforms()
 
 
@@ -1156,7 +1171,8 @@ func _spawn_skill4_laser_field(enable_damage: bool) -> void:
 		config4.laser_core_width,
 		config4.laser_shrink_duration,
 		config4.laser_warning_duration,
-		enable_damage
+		enable_damage,
+		config4.get_total_duration()
 	)
 	if not enable_damage:
 		field.setup_multiplayer_visual_only()
@@ -1165,7 +1181,10 @@ func _spawn_skill4_laser_field(enable_damage: bool) -> void:
 
 func _clear_skill4_laser_field() -> void:
 	if skill4_laser_field != null and is_instance_valid(skill4_laser_field):
-		skill4_laser_field.queue_free()
+		if skill4_laser_field.has_method("finish"):
+			skill4_laser_field.call("finish")
+		else:
+			skill4_laser_field.queue_free()
 	skill4_laser_field = null
 
 
@@ -1236,13 +1255,43 @@ func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, 
 	var action_duration := _get_multiplayer_action_duration(action_name)
 	if action_duration > 0.0:
 		_play_multiplayer_proxy_action_animation(&"attack", action_duration)
-	if action_name == &"linglan_skill4_start":
+	if action_name == &"linglan_skill1_warning":
+		_play_skill1_warning_proxy_action(action_id)
+	elif action_name == &"linglan_skill1_attack":
+		_clear_skill1_warning_rays()
+		_set_facing_from_direction(direction)
+	elif action_name == &"linglan_skill4_start":
 		var config4 := _get_skill4_config()
 		if config4 != null:
 			_spawn_skill4_laser_field(false)
 		_set_facing_from_direction(direction)
 	elif String(action_name).begins_with("linglan_skill"):
 		_set_facing_from_direction(direction)
+
+
+func _play_skill1_warning_proxy_action(action_id: int) -> void:
+	if skill1_config == null or skill1_config.warning_ray_scene == null:
+		return
+	_clear_skill1_warning_rays()
+	var warning_start_elapsed := maxf(skill1_config.start_delay - skill1_config.warning_lead_time, 0.0)
+	var warning_duration := maxf(skill1_config.warning_lead_time, 0.0)
+	skill1_elapsed = warning_start_elapsed
+	_spawn_skill1_warning_rays()
+	_update_skill1_warning_ray_transforms()
+	if warning_duration <= 0.0 or not is_inside_tree():
+		return
+	var warning_action_id := action_id
+	var tween := create_tween()
+	var update_warning := func(progress: float) -> void:
+		if latest_proxy_action_id != warning_action_id:
+			return
+		skill1_elapsed = warning_start_elapsed + warning_duration * progress
+		_update_skill1_warning_ray_transforms()
+	var clear_warning := func() -> void:
+		if latest_proxy_action_id == warning_action_id:
+			_clear_skill1_warning_rays()
+	tween.tween_method(update_warning, 0.0, 1.0, warning_duration)
+	tween.tween_callback(clear_warning)
 
 
 func _get_multiplayer_action_duration(action_name: StringName) -> float:

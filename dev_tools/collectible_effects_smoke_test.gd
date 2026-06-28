@@ -138,6 +138,7 @@ func _test_new_collectible_rules() -> void:
 	for child in test_root.get_children():
 		if child.get_script() == COLLECTIBLE_ARROW_PROJECTILE_SCRIPT:
 			arrow_count += 1
+			_expect(child.z_index >= 4, "Archer arrows must render above player and enemy body sprites.")
 			_expect(int(child.get("damage")) == player.attack_damage * 2, "Archer arrows must deal 200% of the player's attack damage.")
 	_expect(arrow_count == 3, "Archer must fire at the nearest three enemies.")
 	for child in test_root.get_children():

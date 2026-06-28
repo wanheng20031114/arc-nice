@@ -8,6 +8,7 @@ const WARNING_ARROW_SCENE := preload("res://scene/linglan_skill2_warning_arrow.t
 const EXPLOSION_SCENE := preload("res://scene/linglan_skill2_sakura_explosion.tscn")
 const EXPLOSION_FRAMES := preload("res://resources/animation/linglan_skill2_sakura_explosion.tres")
 const GAME_SCENE := preload("res://scene/game.tscn")
+const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
@@ -83,6 +84,8 @@ func _run() -> void:
 	await _test_skill2_scene_contract()
 	await _test_game_target_and_spawn_entry()
 	await _test_boss_skill2_schedule()
+	await _test_boss_death_clears_warning_arrow()
+	_test_multiplayer_projectile_instantiation()
 	await _test_rocket_homing_and_explosion_damage()
 
 	test_root.queue_free()
@@ -302,6 +305,62 @@ func _test_boss_skill2_schedule() -> void:
 	current_scene = test_root
 	await process_frame
 	await physics_frame
+
+
+func _test_boss_death_clears_warning_arrow() -> void:
+	current_scene = test_root
+	var boss := LINGLAN_SCENE.instantiate() as LinglanBoss
+	_expect(boss != null, "Linglan scene must instantiate for Skill2 death cleanup.")
+	if boss == null:
+		return
+	test_root.add_child(boss)
+	await process_frame
+	boss.config = LINGLAN_CONFIG
+	boss.activate_boss(null, null)
+	boss.call("_begin_skill2_attack")
+	boss.call("_physics_process", 0.01)
+	_expect(_count_skill2_warning_arrows(test_root) == 1, "Skill2 death cleanup test must spawn one warning arrow first.")
+
+	boss.call("_die")
+	await process_frame
+	_expect(_count_skill2_warning_arrows(test_root) == 0, "Skill2 boss death must clear the warning arrow.")
+
+	if is_instance_valid(boss):
+		boss.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_multiplayer_projectile_instantiation() -> void:
+	var mp_game := MP_GAME_SCENE.instantiate()
+	_expect(mp_game != null, "MP game scene must instantiate for Skill2 projectile registry.")
+	if mp_game == null:
+		return
+	var registry_config := SKILL2_CONFIG.duplicate(true) as LinglanSkill2Config
+	registry_config.rocket_explosion_radius = 91.0
+	registry_config.rocket_homing_turn_rate = 2.4
+	mp_game.set("_linglan_skill2_config", registry_config)
+	var projectile := mp_game.call(
+		"_instantiate_projectile",
+		&"linglan_skill2_rocket",
+		999999,
+		Vector2.DOWN,
+		80,
+		210.0,
+		5.0,
+		false,
+		0
+	) as LinglanSkill2SakuraRocket
+	_expect(projectile != null, "Multiplayer registry must instantiate linglan_skill2_rocket.")
+	if projectile != null:
+		_expect(projectile.direction.is_equal_approx(Vector2.DOWN), "Registry Skill2 rocket direction mismatch.")
+		_expect(projectile.damage == 80, "Registry Skill2 rocket damage mismatch.")
+		_expect(is_equal_approx(projectile.speed, 210.0), "Registry Skill2 rocket speed mismatch.")
+		_expect(is_equal_approx(projectile.remaining_lifetime, 5.0), "Registry Skill2 rocket lifetime mismatch.")
+		_expect(is_equal_approx(projectile.explosion_radius, 91.0), "Registry Skill2 rocket must read explosion radius from config.")
+		_expect(is_equal_approx(projectile.homing_turn_rate, 2.4), "Registry Skill2 rocket must read homing turn rate from config.")
+		projectile.free()
+	mp_game.free()
 
 
 func _test_rocket_homing_and_explosion_damage() -> void:

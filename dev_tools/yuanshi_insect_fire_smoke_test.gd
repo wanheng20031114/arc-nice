@@ -95,6 +95,21 @@ func _test_legacy_bomber_unchanged() -> void:
 	_expect(BOMBER_CONFIG.explode_on_death, "Bomber lost its self-destruct behavior.")
 
 	var player := _spawn_player(Vector2(100, 0))
+	var visual_bomber := BOMBER_CONFIG.enemy_scene.instantiate() as YuanshiInsect
+	_expect(visual_bomber != null, "Bomber visual contract scene must instantiate YuanshiInsect.")
+	if visual_bomber != null:
+		test_root.add_child(visual_bomber)
+		visual_bomber.global_position = Vector2.ZERO
+		visual_bomber.setup(BOMBER_CONFIG, player)
+		await process_frame
+		visual_bomber.call("_start_explosion_sequence")
+		_expect(
+			visual_bomber.animated_sprite.z_index >= 8,
+			"Bomber explosion animation must render above enemy body sprites."
+		)
+		visual_bomber.queue_free()
+		await process_frame
+
 	var bomber := BOMBER_CONFIG.enemy_scene.instantiate() as YuanshiInsect
 	_expect(bomber != null, "Bomber scene must instantiate YuanshiInsect.")
 	if bomber == null:
