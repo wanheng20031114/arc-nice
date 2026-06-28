@@ -1204,8 +1204,8 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			"Luoxi collectible claim must add the apple to the selected peer inventory."
 		)
 		_expect(
-			is_equal_approx(peer_four.call("_get_inventory_bullet_pierce_chance"), 0.5),
-			"Peer 4 apple collectible must grant a 50% piercing chance."
+			is_equal_approx(peer_four.call("_get_inventory_bullet_pierce_chance"), 0.2),
+			"Peer 4 apple collectible must grant a 20% piercing chance."
 		)
 		_expect(game.has_luoxi_collectible_claimed(4), "Luoxi claim must mark the selected peer as claimed.")
 		_expect(

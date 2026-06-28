@@ -55,8 +55,8 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	_expect(run_state.try_add_item(APPLE_COLLECTIBLE), "The second apple collectible must fit in inventory.")
 	_expect(run_state.try_add_item(HEALTH_PICKUP), "The health pickup must fit in inventory.")
 	_expect(
-		is_equal_approx(player.call("_get_inventory_bullet_pierce_chance"), 0.5),
-		"Owning multiple apples must still grant only the single 50% piercing chance."
+		is_equal_approx(player.call("_get_inventory_bullet_pierce_chance"), 0.2),
+		"Owning multiple apples must still grant only the single 20% piercing chance."
 	)
 
 	profile_panel.open()
@@ -110,8 +110,8 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	_expect(run_state.get_item(0) == null, "Discarding a collectible from the detail panel must destroy it.")
 	_expect(run_state.get_item(1) == APPLE_COLLECTIBLE, "Discarding one apple must not remove another apple.")
 	_expect(
-		is_equal_approx(player.call("_get_inventory_bullet_pierce_chance"), 0.5),
-		"One remaining apple must keep the piercing chance at 50%."
+		is_equal_approx(player.call("_get_inventory_bullet_pierce_chance"), 0.2),
+		"One remaining apple must keep the piercing chance at 20%."
 	)
 	_expect(not profile_panel.item_detail_panel.visible, "The item detail panel must hide when the selected slot becomes empty.")
 	_expect(profile_panel.selected_slot_index == -1, "Discarding the selected item must clear the selected slot.")

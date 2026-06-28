@@ -250,8 +250,8 @@ func _test_collectible_stat_rules() -> void:
 	_expect(run_state.try_add_item(APPLE), "Second apple must fit in inventory.")
 	await process_frame
 	_expect(
-		is_equal_approx(player.call("_get_inventory_bullet_pierce_chance"), 0.5),
-		"Multiple apples must still only expose a 50% max pierce chance."
+		is_equal_approx(player.call("_get_inventory_bullet_pierce_chance"), 0.2),
+		"Multiple apples must still only expose a 20% max pierce chance."
 	)
 	player.queue_free()
 	await process_frame
