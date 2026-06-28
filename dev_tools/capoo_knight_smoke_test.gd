@@ -15,8 +15,9 @@ const WAVES := [
 	preload("res://resources/config/waves/wave_10.tres"),
 	preload("res://resources/config/waves/wave_11.tres"),
 ]
-const EXPECTED_KNIGHT_COUNTS := [4, 6, 8, 10, 12, 14]
-const EXPECTED_WAVE_TOTALS := [140, 150, 160, 192, 213, 234]
+const EXPECTED_KNIGHT_COUNTS := [60, 50, 0, 20, 20, 10]
+const EXPECTED_ELITE_KNIGHT_COUNTS := [0, 0, 0, 20, 20, 60]
+const EXPECTED_WAVE_TOTALS := [470, 440, 420, 400, 465, 480]
 var failures: Array[String] = []
 var test_root: Node2D
 
@@ -125,8 +126,8 @@ func _test_resource_contract() -> void:
 	for index in range(WAVES.size()):
 		_expect(_count_wave_entries(WAVES[index]) == EXPECTED_KNIGHT_COUNTS[index], "Knight wave count mismatch.")
 		_expect(
-			_count_wave_entries_for_config(WAVES[index], ELITE_KNIGHT_CONFIG) == 0,
-			"Elite knight must not be inserted into existing waves."
+			_count_wave_entries_for_config(WAVES[index], ELITE_KNIGHT_CONFIG) == EXPECTED_ELITE_KNIGHT_COUNTS[index],
+			"Elite knight wave count mismatch."
 		)
 		_expect(_count_total_wave_entries(WAVES[index]) == EXPECTED_WAVE_TOTALS[index], "Wave total changed unexpectedly.")
 
@@ -292,8 +293,24 @@ func _test_proxy_action_visuals() -> void:
 	_expect(enemy.windup_warning.visible, "Proxy windup warning did not appear.")
 	enemy.play_multiplayer_enemy_action(&"slash", Vector2.RIGHT, 2)
 	await process_frame
-	_expect(_count_slash_effects() > 0, "Proxy slash effect did not spawn.")
+	var slash_effect_count := _count_slash_effects()
+	_expect(slash_effect_count > 0, "Proxy slash effect did not spawn.")
+	await process_frame
+	_expect(not enemy.windup_warning.visible, "Stale proxy windup tween must not re-show warning after slash.")
 	enemy.queue_free()
+
+	var death_enemy := _spawn_knight(Vector2.ZERO, player)
+	death_enemy.configure_multiplayer_proxy()
+	death_enemy.play_multiplayer_enemy_action(&"windup", Vector2.RIGHT, 1)
+	await process_frame
+	_expect(death_enemy.windup_warning.visible, "Proxy death test windup warning did not appear.")
+	death_enemy.play_multiplayer_death_sequence()
+	await process_frame
+	_expect(not death_enemy.windup_warning.visible, "Proxy knight death must clear windup warning.")
+	death_enemy.play_multiplayer_enemy_action(&"slash", Vector2.RIGHT, 2)
+	await process_frame
+	_expect(_count_slash_effects() == slash_effect_count, "Dead proxy knight must not spawn slash effects.")
+	death_enemy.queue_free()
 	player.queue_free()
 	await physics_frame
 

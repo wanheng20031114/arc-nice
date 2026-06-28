@@ -953,6 +953,44 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 				sniper.lock_reticle != null and aim_glow != null and aim_glow.visible,
 				"Fresh enemy target action events must still start target lock visuals."
 			)
+
+		var boss_enemy_config := LINGLAN_BOSS_CONFIG.call("get_enemy_config") as EnemyConfig
+		var linglan := boss_enemy_config.enemy_scene.instantiate() as LinglanBoss
+		_expect(linglan != null, "Enemy action timeline test must instantiate Linglan.")
+		if linglan != null:
+			client_game.enemy_container.add_child(linglan)
+			linglan.setup(boss_enemy_config, client_game.player, client_game.grid_pathfinder)
+			linglan.configure_multiplayer_proxy()
+			linglan.set_meta("net_id", 44)
+			linglan.global_position = Vector2(18.0, 18.0)
+			var linglan_interp := NetInterpolator.new(0.05, 0.0)
+			linglan_interp.push_snapshot(9.5, linglan.global_position, Vector2.ZERO)
+			mp_game.enemy_interpolators[44] = linglan_interp
+			var net_enemies_for_linglan_action := mp_game.get("_net_enemies") as Dictionary
+			net_enemies_for_linglan_action[44] = linglan
+			current_scene = client_game
+			mp_game.call(
+				"net_enemy_action",
+				44,
+				"linglan_skill1_warning",
+				Vector2.ZERO,
+				Vector2(180.0, 180.0),
+				1,
+				9.46
+			)
+			_expect(
+				linglan.global_position.is_equal_approx(Vector2(18.0, 18.0)),
+				"Slightly reordered enemy action events must not pull proxy position off the snapshot timeline."
+			)
+			var expected_warning_ray_count := (
+				linglan.skill1_config.ring_direction_count
+				if linglan.skill1_config != null
+				else 0
+			)
+			_expect(
+				_count_linglan_skill1_warning_rays(client_game) == expected_warning_ray_count,
+				"Slightly reordered Linglan Skill1 warning action must still spawn warning rays."
+			)
 		mp_game.free()
 	_stop_audio_players(client_game)
 	client_game.queue_free()
@@ -1458,6 +1496,15 @@ func _stop_audio_players(node: Node) -> void:
 		_stop_audio_players(child)
 
 
+func _count_linglan_skill1_warning_rays(node: Node) -> int:
+	var count := 0
+	for child in node.get_children():
+		if child.name.begins_with("LinglanSkill1WarningRay"):
+			count += 1
+		count += _count_linglan_skill1_warning_rays(child)
+	return count
+
+
 func _test_enemy_proxy_action_animation_restore() -> void:
 	await _expect_proxy_action_restores_to_move(
 		KNIGHT_CONFIG,
@@ -1683,6 +1730,19 @@ func _test_client_local_damage_confirm_starts_hurt_blink() -> void:
 				_expect(
 					bool(sprite_material.get_shader_parameter(&"blink_enabled")),
 					"Local damage confirm must enable hurt blink on the local player."
+				)
+
+			local_player.invincibility_time_left = 0.0
+			local_player.call("_set_hurt_blink_enabled", false)
+			mp_game.call("net_player_damage_applied", 2, local_player.current_health, false, 2)
+			_expect(
+				local_player.invincibility_time_left > 0.0,
+				"Local damage confirm must restore blink even when predicted health already matches."
+			)
+			if sprite_material != null:
+				_expect(
+					bool(sprite_material.get_shader_parameter(&"blink_enabled")),
+					"Local same-health damage confirm must enable hurt blink on the local player."
 				)
 
 			local_player.invincibility_time_left = 0.0
@@ -1969,6 +2029,27 @@ func _test_snapshot_round_trip() -> void:
 	if repeated_player_states.size() == 1:
 		_expect(repeated_player_states[0].current_health == 42, "Player delta must preserve health through baseline.")
 		_expect(repeated_player_states[0].skill1_upgrade_level == 2, "Player delta must preserve skill upgrade through baseline.")
+	var player_copy_sender := SnapshotManager.new()
+	var player_copy_receiver := SnapshotManager.new()
+	var reused_player_state := SnapshotManager.PlayerState.new()
+	reused_player_state.peer_id = 6
+	reused_player_state.position = Vector2(4.0, 5.0)
+	reused_player_state.velocity = Vector2.ZERO
+	reused_player_state.current_health = 70
+	reused_player_state.max_health = 100
+	player_copy_receiver.decode_player_snapshots_with_baseline(
+		player_copy_sender.encode_player_snapshots_for_peer(30, [reused_player_state], true)
+	)
+	reused_player_state.position = Vector2(44.0, 55.0)
+	reused_player_state.velocity = Vector2(6.0, 7.0)
+	var reused_player_delta := player_copy_sender.encode_player_snapshots_for_peer(30, [reused_player_state], false)
+	var reused_player_states := player_copy_receiver.decode_player_snapshots_with_baseline(reused_player_delta)
+	_expect(
+		reused_player_states.size() == 1
+		and reused_player_states[0].position.distance_to(reused_player_state.position) < 0.12
+		and reused_player_states[0].velocity.distance_to(reused_player_state.velocity) < 0.12,
+		"Player send baselines must store state copies, not references to reused state objects."
+	)
 	var moved_player_state := SnapshotManager.PlayerState.new()
 	moved_player_state.peer_id = 2
 	moved_player_state.sequence = 2
@@ -2060,6 +2141,28 @@ func _test_snapshot_round_trip() -> void:
 	_expect(repeated_enemy_states.size() == 1, "Repeated enemy delta must decode through baseline.")
 	if repeated_enemy_states.size() == 1:
 		_expect(repeated_enemy_states[0].health == 3, "Enemy delta must preserve health through baseline.")
+	var enemy_copy_sender := SnapshotManager.new()
+	var enemy_copy_receiver := SnapshotManager.new()
+	var reused_enemy_state := SnapshotManager.EnemyState.new()
+	reused_enemy_state.net_id = 19
+	reused_enemy_state.position = Vector2(7.0, 8.0)
+	reused_enemy_state.velocity = Vector2.ZERO
+	reused_enemy_state.health = 12
+	enemy_copy_receiver.decode_enemy_snapshots_with_baseline(
+		enemy_copy_sender.encode_enemy_snapshots_for_peer(40, [reused_enemy_state], true)
+	)
+	reused_enemy_state.position = Vector2(27.0, 38.0)
+	reused_enemy_state.velocity = Vector2(-3.0, 2.0)
+	reused_enemy_state.health = 9
+	var reused_enemy_delta := enemy_copy_sender.encode_enemy_snapshots_for_peer(40, [reused_enemy_state], false)
+	var reused_enemy_states := enemy_copy_receiver.decode_enemy_snapshots_with_baseline(reused_enemy_delta)
+	_expect(
+		reused_enemy_states.size() == 1
+		and reused_enemy_states[0].position.distance_to(reused_enemy_state.position) < 0.12
+		and reused_enemy_states[0].velocity.distance_to(reused_enemy_state.velocity) < 0.12
+		and reused_enemy_states[0].health == 9,
+		"Enemy send baselines must store state copies, not references to reused state objects."
+	)
 	var moved_enemy_state := SnapshotManager.EnemyState.new()
 	moved_enemy_state.net_id = 7
 	moved_enemy_state.position = Vector2(91.0, 100.0)

@@ -176,15 +176,17 @@ func _test_game_target_entry() -> void:
 func _test_orb_lifecycle_and_damage() -> void:
 	current_scene = test_root
 	var near_player := _spawn_player(test_root, Vector2(4.0, 0.0), 1, 200)
+	near_player.physical_defense = 0
+	near_player.magic_defense = 50
 	var orb := ORB_SCENE.instantiate() as LinglanSkill3LightOrb
 	test_root.add_child(orb)
 	orb.global_position = Vector2.ZERO
 	orb.setup(Vector2.RIGHT, 50, 0.0, 2.2)
 	await process_frame
 	orb.call("_physics_process", 0.016)
-	_expect(near_player.current_health == 150, "Small Skill3 orb must deal 50 damage on contact.")
+	_expect(near_player.current_health == 175, "Small Skill3 orb must use magic damage and respect 50 magic defense.")
 	orb.call("_physics_process", 0.016)
-	_expect(near_player.current_health == 150, "Skill3 orb must not damage the same player twice.")
+	_expect(near_player.current_health == 175, "Skill3 orb must not damage the same player twice.")
 	near_player.queue_free()
 	orb.queue_free()
 	await process_frame
@@ -323,6 +325,12 @@ func _test_multiplayer_projectile_instantiation() -> void:
 	_expect(mp_game != null, "MP game scene must instantiate for Skill3 projectile registry.")
 	if mp_game == null:
 		return
+	var registry_config := SKILL3_CONFIG.duplicate(true) as LinglanSkill3Config
+	registry_config.orb_base_radius = 19.0
+	registry_config.orb_grow_scale = 2.25
+	registry_config.orb_expanded_hold_duration = 0.85
+	registry_config.orb_flash_lead_time = 1.35
+	mp_game.set("_linglan_skill3_config", registry_config)
 	var projectile := mp_game.call(
 		"_instantiate_projectile",
 		&"linglan_skill3_orb",
@@ -340,6 +348,10 @@ func _test_multiplayer_projectile_instantiation() -> void:
 		_expect(projectile.damage == 50, "Registry Skill3 orb damage mismatch.")
 		_expect(is_equal_approx(projectile.speed, 90.0), "Registry Skill3 orb speed mismatch.")
 		_expect(is_equal_approx(projectile.grow_delay, 2.4), "Registry Skill3 orb grow delay mismatch.")
+		_expect(is_equal_approx(projectile.base_radius, 19.0), "Registry Skill3 orb must read base radius from config.")
+		_expect(is_equal_approx(projectile.grow_scale, 2.25), "Registry Skill3 orb must read grow scale from config.")
+		_expect(is_equal_approx(projectile.expanded_hold_duration, 0.85), "Registry Skill3 orb must read hold duration from config.")
+		_expect(is_equal_approx(projectile.flash_lead_time, 1.35), "Registry Skill3 orb must read flash lead time from config.")
 		projectile.free()
 	mp_game.free()
 

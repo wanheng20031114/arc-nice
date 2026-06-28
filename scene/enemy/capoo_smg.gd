@@ -55,6 +55,12 @@ func _die() -> void:
 	super._die()
 
 
+func play_multiplayer_death_sequence() -> void:
+	latest_proxy_action_id += 1
+	_set_muzzle_flash(0.0, last_move_direction)
+	super.play_multiplayer_death_sequence()
+
+
 func _try_fire_scatter(base_direction: Vector2) -> bool:
 	var smg_config := config as SMGConfig
 	if smg_config == null or smg_config.projectile_scene == null:
@@ -127,9 +133,12 @@ func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, 
 		_play_multiplayer_proxy_action_animation(smg_config.attack_animation_name, 0.14)
 	_update_facing(safe_direction)
 	_set_muzzle_flash(1.0, safe_direction)
+	var fire_action_id := action_id
 	var tween := create_tween()
 	tween.tween_method(
 		func(progress: float) -> void:
+			if fire_action_id != latest_proxy_action_id:
+				return
 			_set_muzzle_flash(progress, safe_direction),
 		1.0,
 		0.0,

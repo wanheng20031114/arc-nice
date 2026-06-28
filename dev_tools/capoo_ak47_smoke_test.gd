@@ -27,6 +27,7 @@ func _run() -> void:
 	await _test_windup_and_locked_burst()
 	await _test_projectile_damage_and_world_collision()
 	await _test_death_interrupts_attack()
+	await _test_proxy_action_visuals()
 
 	test_root.queue_free()
 	await process_frame
@@ -68,8 +69,8 @@ func _test_resource_contract() -> void:
 	_expect(touch_shape.shape is RectangleShape2D, "AK touch collision must be scene-owned rectangle.")
 	_expect(body_shape.shape != touch_shape.shape, "AK body and touch shapes must be independently editable.")
 	capoo_scene_instance.free()
-	_expect(_count_wave_entries(WAVE_06) == 9, "Wave 6 must introduce 9 AK Capoos.")
-	_expect(_count_wave_entries(WAVE_07) == 16, "Wave 7 must contain 16 AK Capoos.")
+	_expect(_count_wave_entries(WAVE_06) == 0, "Wave 6 must not spawn AK Capoos.")
+	_expect(_count_wave_entries(WAVE_07) == 80, "Wave 7 must contain 80 AK Capoos.")
 
 	var texture := load("res://resources/texture/capoo_ak47.png") as Texture2D
 	var bullet_texture := load("res://resources/texture/capoo_ak47_bullet.png") as Texture2D
@@ -157,6 +158,28 @@ func _test_death_interrupts_attack() -> void:
 
 	if is_instance_valid(enemy):
 		enemy.queue_free()
+	player.queue_free()
+	await physics_frame
+
+
+func _test_proxy_action_visuals() -> void:
+	var player := _spawn_player(Vector2(120.0, 0.0))
+	var enemy := _spawn_capoo(Vector2.ZERO, player)
+	enemy.configure_multiplayer_proxy()
+	enemy.play_multiplayer_enemy_action(&"windup", Vector2.RIGHT, 1)
+	await process_frame
+	_expect(enemy.muzzle_heat.visible, "Proxy AK windup muzzle heat did not appear.")
+	enemy.play_multiplayer_enemy_action(&"burst", Vector2.LEFT, 2)
+	await process_frame
+	_expect(enemy.muzzle_heat.visible, "Proxy AK burst muzzle heat did not appear.")
+	_expect(
+		Vector2.RIGHT.rotated(enemy.muzzle_heat.rotation).dot(Vector2.LEFT) > 0.99,
+		"Stale proxy AK windup tween must not override newer burst direction."
+	)
+	enemy.play_multiplayer_death_sequence()
+	await process_frame
+	_expect(not enemy.muzzle_heat.visible, "Proxy AK death must clear muzzle heat.")
+	enemy.queue_free()
 	player.queue_free()
 	await physics_frame
 

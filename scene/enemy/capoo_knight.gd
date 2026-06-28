@@ -95,6 +95,12 @@ func _die() -> void:
 	super._die()
 
 
+func play_multiplayer_death_sequence() -> void:
+	latest_proxy_action_id += 1
+	_set_windup_warning(0.0, slash_direction)
+	super.play_multiplayer_death_sequence()
+
+
 func _update_attack_cooldown(delta: float) -> void:
 	if attack_cooldown_left <= 0.0:
 		return
@@ -263,7 +269,7 @@ func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, 
 				knight_config.windup_animation_name,
 				knight_config.attack_windup + 0.15
 			)
-			_play_proxy_windup_warning(safe_direction, knight_config.attack_windup)
+			_play_proxy_windup_warning(safe_direction, knight_config.attack_windup, action_id)
 		_update_facing(safe_direction)
 	elif action_name == &"slash":
 		if knight_config != null:
@@ -276,17 +282,23 @@ func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, 
 		_play_slash_effect(safe_direction)
 
 
-func _play_proxy_windup_warning(direction: Vector2, duration: float) -> void:
+func _play_proxy_windup_warning(direction: Vector2, duration: float, action_id: int) -> void:
 	_set_windup_warning(0.2, direction)
 	var tween := create_tween()
 	tween.tween_method(
 		func(progress: float) -> void:
+			if action_id != latest_proxy_action_id:
+				return
 			_set_windup_warning(progress, direction),
 		0.2,
 		1.0,
 		maxf(duration, 0.01)
 	)
-	tween.tween_callback(func() -> void: _set_windup_warning(0.0, direction))
+	tween.tween_callback(
+		func() -> void:
+			if action_id == latest_proxy_action_id:
+				_set_windup_warning(0.0, direction)
+	)
 
 
 func _play_slash_effect(direction: Vector2) -> void:

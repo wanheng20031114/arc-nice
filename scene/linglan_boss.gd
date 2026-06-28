@@ -181,6 +181,14 @@ func _die() -> void:
 	_emit_health_changed()
 
 
+func play_multiplayer_death_sequence() -> void:
+	latest_proxy_action_id += 1
+	_clear_skill1_warning_rays()
+	_clear_skill2_warning_arrow()
+	_clear_skill4_laser_field()
+	super.play_multiplayer_death_sequence()
+
+
 func get_max_health() -> int:
 	return config.max_health if config != null else 0
 

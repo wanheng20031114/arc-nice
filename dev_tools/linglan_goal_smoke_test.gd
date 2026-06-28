@@ -65,8 +65,9 @@ func _run() -> void:
 
 
 func _test_skill_configs() -> void:
-	_expect(SKILL1_CONFIG.ring_direction_count == 24, "Skill1 must keep 24 directions.")
+	_expect(SKILL1_CONFIG.ring_direction_count == 20, "Skill1 must keep 20 simultaneous directions.")
 	_expect(is_equal_approx(SKILL1_CONFIG.attack_speed, 1800.0), "Skill1 attack speed must be 1800.")
+	_expect(is_equal_approx(SKILL1_CONFIG.get_fire_interval(), 1.0 / 18.0), "Skill1 must fire 18 rings per second.")
 	_expect(
 		SKILL2_CONFIG.spawn_enemy_config != null
 		and SKILL2_CONFIG.spawn_enemy_config.resource_path == "res://resources/config/enemies/yuanshi_insect_shell.tres",
@@ -89,15 +90,19 @@ func _test_default_flow_and_waves() -> void:
 		_expect(wave != null, "Wave %02d must load." % wave_number)
 		if wave == null:
 			continue
-		_expect(wave.post_clear_rest_duration == 30.0, "Wave %02d rest duration must be 30s." % wave_number)
+		var expected_rest_duration := 20.0 if wave_number <= 5 else 30.0
+		_expect(
+			wave.post_clear_rest_duration == expected_rest_duration,
+			"Wave %02d rest duration mismatch." % wave_number
+		)
 		var expected_next := &"boss_01_linglan" if wave_number == 12 else StringName("wave_%02d" % (wave_number + 1))
 		var default_exit := wave.get_default_exit()
 		_expect(default_exit != null, "Wave %02d must have a default exit." % wave_number)
 		if default_exit != null:
 			_expect(default_exit.get_target_step_id() == expected_next, "Wave %02d default exit mismatch." % wave_number)
 
-	_expect(_get_wave_total(1) == 270, "Wave 01 total count mismatch.")
-	_expect(_get_wave_total(8) == 150, "Wave 08 total count mismatch.")
+	_expect(_get_wave_total(1) == 273, "Wave 01 total count mismatch.")
+	_expect(_get_wave_total(8) == 420, "Wave 08 total count mismatch.")
 	_expect(_get_wave_total(12) == 560, "Wave 12 total count mismatch.")
 
 

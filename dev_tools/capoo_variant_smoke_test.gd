@@ -39,6 +39,7 @@ func _run() -> void:
 	await _test_fireball_impact_damage_and_release()
 	await _test_sniper_lock_cancel_and_damage()
 	await _test_smg_scatter_fire()
+	await _test_proxy_action_visuals()
 	_test_multiplayer_projectile_registry()
 	_test_wave_entries()
 
@@ -93,8 +94,8 @@ func _test_resource_contract() -> void:
 	_expect(is_equal_approx(SNIPER_CONFIG.lock_duration, 3.0), "Sniper lock duration mismatch.")
 
 	_expect(SMG_CONFIG.max_health == 200, "SMG health mismatch.")
-	_expect(SMG_CONFIG.attack_damage == 40, "SMG damage mismatch.")
-	_expect(is_equal_approx(SMG_CONFIG.move_speed, 120.0), "SMG move speed mismatch.")
+	_expect(SMG_CONFIG.attack_damage == 30, "SMG damage mismatch.")
+	_expect(is_equal_approx(SMG_CONFIG.move_speed, 100.0), "SMG move speed mismatch.")
 	_expect(is_equal_approx(SMG_CONFIG.fire_interval, 0.1), "SMG fire interval must represent 600 attack speed.")
 	_expect(is_equal_approx(SMG_CONFIG.projectile_lifetime, 0.18), "SMG bullet lifetime must stay short.")
 	_expect(is_equal_approx(SMG_CONFIG.spread_angle_degrees, 20.0), "SMG spread angle mismatch.")
@@ -284,6 +285,83 @@ func _test_smg_scatter_fire() -> void:
 	await physics_frame
 
 
+func _test_proxy_action_visuals() -> void:
+	var mage_player := _spawn_player(Vector2(240.0, 0.0), 200)
+	var mage := _spawn_mage(Vector2.ZERO, mage_player)
+	mage.configure_multiplayer_proxy()
+	mage.play_multiplayer_enemy_action(&"windup", Vector2.RIGHT, 1)
+	await process_frame
+	_expect(mage.spell_glow.visible, "Proxy mage windup spell glow did not appear.")
+	mage.play_multiplayer_enemy_action(&"fire", Vector2.LEFT, 2)
+	await process_frame
+	_expect(mage.spell_glow.visible, "Proxy mage fire spell glow did not appear.")
+	_expect(
+		Vector2.RIGHT.rotated(mage.spell_glow.rotation).dot(Vector2.LEFT) > 0.99,
+		"Stale proxy mage windup tween must not override newer fire direction."
+	)
+	mage.play_multiplayer_death_sequence()
+	await process_frame
+	_expect(not mage.spell_glow.visible, "Proxy mage death must clear spell glow.")
+	mage.queue_free()
+	mage_player.queue_free()
+	await physics_frame
+
+	var smg_player := _spawn_player(Vector2(140.0, 0.0), 200)
+	var smg := _spawn_smg(Vector2.ZERO, smg_player)
+	smg.configure_multiplayer_proxy()
+	smg.play_multiplayer_enemy_action(&"fire", Vector2.RIGHT, 1)
+	await process_frame
+	_expect(smg.muzzle_flash.visible, "Proxy SMG muzzle flash did not appear.")
+	smg.play_multiplayer_enemy_action(&"fire", Vector2.LEFT, 2)
+	await process_frame
+	_expect(
+		Vector2.RIGHT.rotated(smg.muzzle_flash.rotation).dot(Vector2.LEFT) > 0.99,
+		"Stale proxy SMG fire tween must not override newer fire direction."
+	)
+	smg.play_multiplayer_death_sequence()
+	await process_frame
+	_expect(not smg.muzzle_flash.visible, "Proxy SMG death must clear muzzle flash.")
+	smg.queue_free()
+	smg_player.queue_free()
+	await physics_frame
+
+	var sniper_player := _spawn_player(Vector2(240.0, 0.0), 200)
+	var sniper := _spawn_sniper(Vector2.ZERO, sniper_player)
+	sniper.configure_multiplayer_proxy()
+	sniper.play_multiplayer_enemy_target_action(&"sniper_lock_start", sniper_player, 1)
+	sniper.call("_process", 0.2)
+	_expect(sniper.lock_reticle != null, "Proxy sniper lock start must attach a reticle.")
+	_expect(_count_reticles(sniper_player) == 1, "Proxy sniper lock start must add exactly one player reticle.")
+	_expect(_has_sniper_aim_line(sniper), "Proxy sniper lock start must show an aim line.")
+
+	sniper_player.global_position = Vector2(120.0, 180.0)
+	sniper.call("_process", 0.2)
+	_expect(
+		_sniper_aim_line_points_toward(sniper, sniper_player.global_position),
+		"Proxy sniper aim line must keep following a moving target player."
+	)
+	sniper.play_multiplayer_enemy_target_action(&"sniper_lock_cancel", sniper_player, 2)
+	await process_frame
+	_expect(sniper.lock_reticle == null, "Proxy sniper cancel must clear the lock reticle.")
+	_expect(_count_reticles(sniper_player) == 0, "Proxy sniper cancel must remove the player reticle.")
+	var aim_glow := sniper.get_node_or_null("AimGlow") as Polygon2D
+	_expect(aim_glow == null or not aim_glow.visible, "Proxy sniper cancel must hide the aim line.")
+
+	sniper.play_multiplayer_enemy_target_action(&"sniper_lock_start", sniper_player, 3)
+	sniper.call("_process", 0.2)
+	_expect(_count_reticles(sniper_player) == 1, "Proxy sniper death cleanup test must attach a reticle first.")
+	sniper.play_multiplayer_death_sequence()
+	await process_frame
+	_expect(sniper.lock_reticle == null, "Proxy sniper death must clear the lock reticle.")
+	_expect(_count_reticles(sniper_player) == 0, "Proxy sniper death must remove the player reticle.")
+	aim_glow = sniper.get_node_or_null("AimGlow") as Polygon2D
+	_expect(aim_glow == null or not aim_glow.visible, "Proxy sniper death must hide the aim line.")
+	if is_instance_valid(sniper):
+		sniper.queue_free()
+	sniper_player.queue_free()
+	await physics_frame
+
+
 func _test_multiplayer_projectile_registry() -> void:
 	var mp_game := MP_GAME_SCRIPT.new()
 	var fireball := mp_game.call(
@@ -319,15 +397,15 @@ func _test_multiplayer_projectile_registry() -> void:
 
 
 func _test_wave_entries() -> void:
-	_expect(_count_wave_entries_for_config(WAVE_09, MAGE_CONFIG) == 4, "Wave 9 mage count mismatch.")
-	_expect(_count_wave_entries_for_config(WAVE_09, SNIPER_CONFIG) == 2, "Wave 9 sniper count mismatch.")
-	_expect(_count_wave_entries_for_config(WAVE_09, SMG_CONFIG) == 6, "Wave 9 SMG count mismatch.")
-	_expect(_count_wave_entries_for_config(WAVE_10, MAGE_CONFIG) == 6, "Wave 10 mage count mismatch.")
-	_expect(_count_wave_entries_for_config(WAVE_10, SNIPER_CONFIG) == 4, "Wave 10 sniper count mismatch.")
-	_expect(_count_wave_entries_for_config(WAVE_10, SMG_CONFIG) == 8, "Wave 10 SMG count mismatch.")
-	_expect(_count_wave_entries_for_config(WAVE_11, MAGE_CONFIG) == 8, "Wave 11 mage count mismatch.")
-	_expect(_count_wave_entries_for_config(WAVE_11, SNIPER_CONFIG) == 6, "Wave 11 sniper count mismatch.")
-	_expect(_count_wave_entries_for_config(WAVE_11, SMG_CONFIG) == 10, "Wave 11 SMG count mismatch.")
+	_expect(_count_wave_entries_for_config(WAVE_09, MAGE_CONFIG) == 60, "Wave 9 mage count mismatch.")
+	_expect(_count_wave_entries_for_config(WAVE_09, SNIPER_CONFIG) == 0, "Wave 9 sniper count mismatch.")
+	_expect(_count_wave_entries_for_config(WAVE_09, SMG_CONFIG) == 0, "Wave 9 SMG count mismatch.")
+	_expect(_count_wave_entries_for_config(WAVE_10, MAGE_CONFIG) == 15, "Wave 10 mage count mismatch.")
+	_expect(_count_wave_entries_for_config(WAVE_10, SNIPER_CONFIG) == 20, "Wave 10 sniper count mismatch.")
+	_expect(_count_wave_entries_for_config(WAVE_10, SMG_CONFIG) == 0, "Wave 10 SMG count mismatch.")
+	_expect(_count_wave_entries_for_config(WAVE_11, MAGE_CONFIG) == 30, "Wave 11 mage count mismatch.")
+	_expect(_count_wave_entries_for_config(WAVE_11, SNIPER_CONFIG) == 20, "Wave 11 sniper count mismatch.")
+	_expect(_count_wave_entries_for_config(WAVE_11, SMG_CONFIG) == 50, "Wave 11 SMG count mismatch.")
 
 
 func _spawn_player(position: Vector2, health: int) -> Player:
@@ -450,6 +528,22 @@ func _has_sniper_aim_line(sniper: CapooSniper) -> bool:
 	var width := max_x - min_x
 	var height := max_y - min_y
 	return width >= 220.0 and height <= 4.0 and aim_line.color.a > 0.1 and aim_line.color.a < 0.5
+
+
+func _sniper_aim_line_points_toward(sniper: CapooSniper, target_global_position: Vector2) -> bool:
+	var aim_line := sniper.get_node_or_null("AimGlow") as Polygon2D
+	if aim_line == null or not aim_line.visible:
+		return false
+	var points := aim_line.polygon
+	if points.size() != 4:
+		return false
+	var target_local := sniper.to_local(target_global_position)
+	if target_local.length() <= 0.01:
+		return false
+	var end_center := (points[1] + points[2]) * 0.5
+	if end_center.length() <= 0.01:
+		return false
+	return end_center.normalized().dot(target_local.normalized()) > 0.98
 
 
 func _has_mage_original_alpha_regions() -> bool:

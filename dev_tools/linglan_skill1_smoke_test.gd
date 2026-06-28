@@ -221,6 +221,29 @@ func _test_multiplayer_proxy_warning_action() -> void:
 	boss.queue_free()
 	await process_frame
 
+	var death_boss := LINGLAN_SCENE.instantiate() as LinglanBoss
+	_expect(death_boss != null, "Linglan scene did not instantiate for proxy warning death cleanup.")
+	if death_boss == null:
+		return
+	test_root.add_child(death_boss)
+	await process_frame
+	death_boss.global_position = Vector2(-32.0, 18.0)
+	death_boss.configure_multiplayer_proxy()
+
+	death_boss.play_multiplayer_enemy_action(&"linglan_skill1_warning", Vector2.ZERO, 1)
+	await process_frame
+	_expect(
+		_get_warning_rays().size() == SKILL1_CONFIG.ring_direction_count,
+		"Proxy Skill1 death cleanup test must spawn warning rays first."
+	)
+	death_boss.play_multiplayer_death_sequence()
+	await process_frame
+	_expect(_get_warning_rays().is_empty(), "Proxy Skill1 death must clear warning rays.")
+
+	if is_instance_valid(death_boss):
+		death_boss.queue_free()
+	await process_frame
+
 
 func _get_sakura_bullets() -> Array[LinglanSakuraBullet]:
 	var bullets: Array[LinglanSakuraBullet] = []
