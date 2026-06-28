@@ -44,7 +44,7 @@ func _run() -> void:
 func _test_skill1_config() -> void:
 	_expect(SKILL1_CONFIG.skill_name == &"linglan_skill1", "Skill1 name mismatch.")
 	_expect(is_equal_approx(SKILL1_CONFIG.start_delay, 5.0), "Skill1 start delay mismatch.")
-	_expect(SKILL1_CONFIG.ring_direction_count == 24, "Skill1 direction count mismatch.")
+	_expect(SKILL1_CONFIG.ring_direction_count == 20, "Skill1 direction count mismatch.")
 	_expect(is_equal_approx(SKILL1_CONFIG.attack_speed, 1800.0), "Skill1 attack speed mismatch.")
 	_expect(is_equal_approx(SKILL1_CONFIG.get_fire_interval(), 1.0 / 18.0), "Skill1 fire interval mismatch.")
 	_expect(is_equal_approx(SKILL1_CONFIG.projectile_speed, 300.0), "Skill1 projectile speed mismatch.")
