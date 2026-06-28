@@ -10,7 +10,8 @@
 [ext_resource type="Resource" uid="uid://b6g77s6rrfiw8" path="res://resources/config/enemies/yuanshi_insect_guardian.tres" id="8_guardian"]
 [ext_resource type="Resource" uid="uid://bwc31dxuxgnhs" path="res://resources/config/enemies/capoo_ak47.tres" id="9_ak47"]
 [ext_resource type="Resource" uid="uid://b361vcg4kkw13" path="res://resources/config/enemies/capoo_knight.tres" id="10_knight"]
-[ext_resource type="AudioStream" uid="uid://dvxl8ixgmll4p" path="res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3" id="11_music"]
+[ext_resource type="AudioStream" uid="uid://cb5ob71nfh3oo" path="res://resources/audio/shenmu_swamp_combat.ogg" id="11_music"]
+[ext_resource type="AudioStream" uid="uid://c6kupff1mmga0" path="res://resources/audio/shenmu_swamp_intermission.ogg" id="12_post_music"]
 
 [sub_resource type="Resource" id="WaveEnemyEntry_basic"]
 script = ExtResource("2_entry")
@@ -67,6 +68,7 @@ spawn_interval = 0.166667
 spawn_count_per_tick = 2
 max_alive_enemies = 150
 music = ExtResource("11_music")
+post_wave_music = ExtResource("12_post_music")
 step_id = &"wave_07"
 display_name = "第7波"
 post_clear_rest_duration = 30.0

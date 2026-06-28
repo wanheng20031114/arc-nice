@@ -19,6 +19,8 @@ const MAX_WAVE_SPAWN_COUNT_PER_TICK := 4
 const SPAWN_EFFECTS_PER_SECOND_LIMIT := 24
 const SPAWN_AUDIO_MIN_INTERVAL_SECONDS := 0.08
 const DEFAULT_MUSIC_VOLUME_DB := -6.0
+const MUSIC_FADE_IN_SECONDS := 3.0
+const MUSIC_FADE_IN_START_VOLUME_DB := -60.0
 const INITIAL_PLAYER_XIRANG := 1000
 
 signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
@@ -123,6 +125,7 @@ var current_wave_defeated: int = 0
 var countdown_seconds: int = 0
 var current_flow_step: FlowStepConfig = null
 var next_flow_step_after_rest: FlowStepConfig = null
+var music_fade_tween: Tween = null
 var multiplayer_local_peer_id: int = 0
 var multiplayer_player_names: Dictionary = {}
 var peer_players: Dictionary = {}
@@ -970,7 +973,6 @@ func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
 	enemy_spawn_timer.stop()
 	_set_merchant_active(false)
 	countdown_seconds = maxi(ceili(pre_wave_duration), 0)
-	_update_pre_wave_music(flow_step)
 	wave_hud.show_countdown(countdown_seconds)
 	_schedule_enemy_navigation_prewarm()
 	_emit_multiplayer_flow_state(WaveState.PRE_WAVE)
@@ -996,7 +998,7 @@ func _enter_intermission(next_step: FlowStepConfig = null) -> void:
 		if current_flow_step != null
 		else 0
 	)
-	_update_pre_wave_music(next_step)
+	_update_post_wave_music(current_flow_step)
 	wave_hud.show_countdown(countdown_seconds)
 	_emit_multiplayer_flow_state(WaveState.INTERMISSION)
 
@@ -1118,8 +1120,8 @@ func _on_enemy_spawn_timer_timeout() -> void:
 func _start_client_wave_countdown(state: WaveState, wave_index: int, seconds: int) -> void:
 	wave_state = state
 	current_wave_index = clampi(wave_index, 0, maxi(waves.size() - 1, 0))
-	if current_wave_index >= 0 and current_wave_index < waves.size():
-		_update_pre_wave_music(waves[current_wave_index])
+	if state == WaveState.INTERMISSION and current_wave_index >= 0 and current_wave_index < waves.size():
+		_update_post_wave_music(waves[current_wave_index])
 	countdown_seconds = maxi(seconds, 0)
 	wave_hud.show_countdown(countdown_seconds)
 	if countdown_seconds <= 0:
@@ -1135,10 +1137,8 @@ func _start_client_flow_countdown(state: WaveState, step_id: StringName, seconds
 		current_flow_step = flow_step
 		if flow_step is WaveConfig:
 			current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
-	var music_flow_step := flow_step
 	if state == WaveState.INTERMISSION:
-		music_flow_step = _get_default_next_flow_step(flow_step)
-	_update_pre_wave_music(music_flow_step)
+		_update_post_wave_music(flow_step)
 	countdown_seconds = maxi(seconds, 0)
 	wave_hud.show_countdown(countdown_seconds)
 	if countdown_seconds <= 0:
@@ -2277,36 +2277,64 @@ func _play_countdown_tick() -> void:
 func _update_wave_music(wave_config: WaveConfig) -> void:
 	if wave_config.music == null:
 		return
-	_play_music_stream(wave_config.music, DEFAULT_MUSIC_VOLUME_DB, 0.0)
+	_play_music_stream(wave_config.music, DEFAULT_MUSIC_VOLUME_DB, 0.0, true)
 
 
-func _update_pre_wave_music(flow_step: FlowStepConfig) -> void:
+func _update_post_wave_music(flow_step: FlowStepConfig) -> void:
 	var wave_config := flow_step as WaveConfig
-	if wave_config == null or wave_config.pre_wave_music == null:
+	if wave_config == null or wave_config.post_wave_music == null:
 		return
-	_play_music_stream(wave_config.pre_wave_music, DEFAULT_MUSIC_VOLUME_DB, 0.0)
+	_play_music_stream(wave_config.post_wave_music, DEFAULT_MUSIC_VOLUME_DB, 0.0, true)
 
 
 func _update_boss_music(boss_config: BossConfig) -> void:
 	if boss_config == null or boss_config.music == null:
 		return
-	_play_music_stream(boss_config.music, boss_config.music_volume_db, boss_config.music_loop_offset)
+	_play_music_stream(boss_config.music, boss_config.music_volume_db, boss_config.music_loop_offset, false)
 
 
 func pause_all_background_music() -> void:
+	_stop_music_fade_tween()
 	_pause_background_music_players(self)
 
 
-func _play_music_stream(stream: AudioStream, volume_db: float, loop_offset: float = 0.0) -> void:
+func _play_music_stream(
+	stream: AudioStream,
+	volume_db: float,
+	loop_offset: float = 0.0,
+	fade_in: bool = false
+) -> void:
 	if stream == null:
 		return
 	_configure_music_loop(stream, loop_offset)
-	music_player.volume_db = volume_db
 	music_player.stream_paused = false
 	if music_player.stream == stream and music_player.playing:
 		return
+	_stop_music_fade_tween()
 	music_player.stream = stream
+	music_player.volume_db = MUSIC_FADE_IN_START_VOLUME_DB if fade_in else volume_db
 	music_player.play()
+	if fade_in:
+		var fade_tween := create_tween()
+		music_fade_tween = fade_tween
+		fade_tween.tween_property(
+			music_player,
+			"volume_db",
+			volume_db,
+			MUSIC_FADE_IN_SECONDS
+		)
+		fade_tween.finished.connect(
+			func() -> void:
+				if music_fade_tween == fade_tween:
+					music_fade_tween = null
+		)
+
+
+func _stop_music_fade_tween() -> void:
+	if music_fade_tween == null:
+		return
+	music_fade_tween.kill()
+	music_fade_tween = null
 
 
 func _configure_music_loop(stream: AudioStream, loop_offset: float) -> void:
