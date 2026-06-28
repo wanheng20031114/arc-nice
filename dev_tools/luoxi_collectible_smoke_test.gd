@@ -220,16 +220,29 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 
 	bubble.finish_line()
 	luoxi._unhandled_input(interact)
+	_open_luoxi_choice(luoxi, bubble, interact)
+	_expect(choice_overlay.is_open(), "Luoxi must offer a second collectible choice in the same intermission.")
+	await create_timer(1.1).timeout
+	var second_round_choice := luoxi.call("_get_current_choice_item", 0) as PickupConfig
+	luoxi._unhandled_input(interact)
+	_expect(not choice_overlay.is_open(), "Luoxi card chooser must close after the second selection.")
+	_expect(
+		run_state.get_item(1) == second_round_choice,
+		"Luoxi must add the second selected collectible to the next inventory slot."
+	)
+
+	bubble.finish_line()
+	luoxi._unhandled_input(interact)
 	luoxi._unhandled_input(interact)
 	_expect(
-		_dialogue_text(bubble) == "这个回合我已经把收藏品交给你了。",
-		"Luoxi must not offer another collectible after one choice in the same run."
+		_dialogue_text(bubble) == "这段场间时间已经选择过两次收藏品。",
+		"Luoxi must not offer another collectible after two choices in the same intermission."
 	)
 	_expect(
 		bubble.text_label.text.contains(MerchantDialogueBubble.NO_BREAK_MARK + "。"),
 		"Luoxi dialogue punctuation must stay attached to the preceding text when wrapped."
 	)
-	_expect(run_state.get_item(1) == null, "Luoxi must not add a second collectible in the same run.")
+	_expect(run_state.get_item(2) == null, "Luoxi must not add a third collectible in the same intermission.")
 
 	luoxi.reset_round_collectible_claims()
 	bubble.finish_line()
@@ -273,7 +286,7 @@ func _test_full_inventory_keeps_luoxi_choice_available() -> void:
 		_dialogue_text(bubble) == "背包已经满了，无法再继续获得收藏品。",
 		"Luoxi must clearly explain that a full inventory blocks collectible pickup."
 	)
-	_expect(not bool(luoxi.call("_is_player_claimed", player)), "A full inventory must not spend Luoxi's once-per-round choice.")
+	_expect(not bool(luoxi.call("_is_player_claimed", player)), "A full inventory must not spend Luoxi's collectible choices.")
 	_expect(run_state.get_item(0) == HEALTH_PICKUP, "A failed Luoxi claim must not replace existing inventory items.")
 
 	_expect(run_state.discard_item(0), "Discarding one item must free a slot for the original Luoxi choice.")
@@ -283,8 +296,18 @@ func _test_full_inventory_keeps_luoxi_choice_available() -> void:
 	await create_timer(1.1).timeout
 	luoxi._unhandled_input(interact)
 	_expect(_dialogue_text(bubble) == "拿好收藏品，可别小看它。", "Luoxi must allow the original choice after the player frees a slot.")
-	_expect(bool(luoxi.call("_is_player_claimed", player)), "A successful retry must spend Luoxi's once-per-round choice.")
+	_expect(not bool(luoxi.call("_is_player_claimed", player)), "The first successful retry must leave one Luoxi choice available.")
 	_expect(run_state.get_item(0) == first_choice, "The retried Luoxi choice must fill the freed inventory slot.")
+
+	_expect(run_state.discard_item(1), "Discarding another item must free a slot for the second Luoxi choice.")
+	bubble.finish_line()
+	luoxi._unhandled_input(interact)
+	_open_luoxi_choice(luoxi, bubble, interact)
+	await create_timer(1.1).timeout
+	var second_choice := luoxi.call("_get_current_choice_item", 0) as PickupConfig
+	luoxi._unhandled_input(interact)
+	_expect(bool(luoxi.call("_is_player_claimed", player)), "A second successful retry must spend Luoxi's intermission choices.")
+	_expect(run_state.get_item(1) == second_choice, "The second retried Luoxi choice must fill the newly freed inventory slot.")
 
 	luoxi.queue_free()
 	player.queue_free()

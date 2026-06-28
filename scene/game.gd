@@ -138,7 +138,7 @@ var next_multiplayer_pickup_net_id: int = 1000
 var multiplayer_defeat_check_pending: bool = false
 var spawn_effect_budget_started_msec: int = 0
 var spawn_effects_this_second: int = 0
-var luoxi_collectible_claimed_peers: Dictionary = {}
+var luoxi_collectible_claim_counts: Dictionary = {}
 var linglan_boss_started: bool = false
 var active_boss_config: Resource
 var linglan_boss: LinglanBoss = null
@@ -548,7 +548,7 @@ func try_claim_luoxi_collectible_for_peer(peer_id: int, config_path_or_choice: V
 		return LuoxiMerchant.COLLECTIBLE_RESULT_INVALID_PLAYER
 
 	var claim_key := maxi(peer_id, 0)
-	if luoxi_collectible_claimed_peers.has(claim_key):
+	if get_luoxi_collectible_claim_count(claim_key) >= LuoxiMerchant.COLLECTIBLE_CLAIMS_PER_ROUND:
 		return LuoxiMerchant.COLLECTIBLE_RESULT_ALREADY_CLAIMED
 
 	var config_path := ""
@@ -568,7 +568,7 @@ func try_claim_luoxi_collectible_for_peer(peer_id: int, config_path_or_choice: V
 	if not stored:
 		return LuoxiMerchant.COLLECTIBLE_RESULT_INVENTORY_FULL
 
-	luoxi_collectible_claimed_peers[claim_key] = true
+	record_luoxi_collectible_claim(claim_key)
 	return LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS
 
 
@@ -580,11 +580,23 @@ func _resolve_luoxi_collectible_path(choice_index: int, config_path: String) -> 
 
 
 func has_luoxi_collectible_claimed(peer_id: int) -> bool:
-	return luoxi_collectible_claimed_peers.has(maxi(peer_id, 0))
+	return get_luoxi_collectible_claim_count(peer_id) >= LuoxiMerchant.COLLECTIBLE_CLAIMS_PER_ROUND
+
+
+func get_luoxi_collectible_claim_count(peer_id: int) -> int:
+	return int(luoxi_collectible_claim_counts.get(maxi(peer_id, 0), 0))
+
+
+func record_luoxi_collectible_claim(peer_id: int) -> void:
+	var claim_key := maxi(peer_id, 0)
+	luoxi_collectible_claim_counts[claim_key] = mini(
+		get_luoxi_collectible_claim_count(claim_key) + 1,
+		LuoxiMerchant.COLLECTIBLE_CLAIMS_PER_ROUND
+	)
 
 
 func mark_luoxi_collectible_claimed(peer_id: int) -> void:
-	luoxi_collectible_claimed_peers[maxi(peer_id, 0)] = true
+	luoxi_collectible_claim_counts[maxi(peer_id, 0)] = LuoxiMerchant.COLLECTIBLE_CLAIMS_PER_ROUND
 
 
 func show_local_luoxi_collectible_result(result_code: int) -> void:
@@ -615,7 +627,7 @@ func _set_local_merchants_active(active: bool) -> bool:
 		changed = true
 	if luoxi_merchant != null and luoxi_merchant.is_active != active:
 		if active:
-			luoxi_collectible_claimed_peers.clear()
+			luoxi_collectible_claim_counts.clear()
 			luoxi_merchant.reset_round_collectible_claims()
 		luoxi_merchant.set_active(active)
 		changed = true

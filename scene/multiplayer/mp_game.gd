@@ -2908,9 +2908,9 @@ func net_luoxi_collectible_confirmed(
 	if game == null:
 		return
 	if result_code == LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS and not config_path.is_empty():
-		game.mark_luoxi_collectible_claimed(peer_id)
 		var already_applied_on_host: bool = net_manager.is_host() and peer_id == _get_local_peer_id()
 		if not already_applied_on_host:
+			game.record_luoxi_collectible_claim(peer_id)
 			var item := load(config_path) as PickupConfig
 			if item != null:
 				run_state.try_add_item_for_peer(peer_id, item)

@@ -57,9 +57,10 @@ const DIALOGUE_LINES := [
 	"我能为你提供收藏品来强化自己。",
 ]
 const CHOICE_COUNT := 3
-const CLAIMED_LINE := "这个回合我已经把收藏品交给你了。"
+const COLLECTIBLE_CLAIMS_PER_ROUND := 2
+const CLAIMED_LINE := "这段场间时间已经选择过两次收藏品。"
 const SUCCESS_LINE := "拿好收藏品，可别小看它。"
-const ALREADY_CLAIMED_LINE := "这个回合只能选择一次收藏品。"
+const ALREADY_CLAIMED_LINE := "这段场间时间已经选择过两次收藏品。"
 const INVENTORY_FULL_LINE := "背包已经满了，无法再继续获得收藏品。"
 const INVALID_PLAYER_LINE := "现在还不能把收藏品交给你。"
 const PLAYER_COLLISION_MASK := 2
@@ -84,7 +85,7 @@ var selected_choice_index: int = 0
 var choice_visible: bool = false
 var result_visible: bool = false
 var dialogue_lines: Array = []
-var claimed_player_keys: Dictionary = {}
+var claim_counts_by_player_key: Dictionary = {}
 var pending_choices_by_player_key: Dictionary = {}
 
 
@@ -215,7 +216,6 @@ func show_collectible_result(result_code: int) -> void:
 	choice_overlay.hide_choices()
 	if result_code == COLLECTIBLE_RESULT_SUCCESS and active_player != null:
 		var player_key := _get_player_claim_key(active_player)
-		claimed_player_keys[player_key] = true
 		pending_choices_by_player_key.erase(player_key)
 	dialogue_bubble.say(get_result_line(result_code))
 
@@ -280,7 +280,7 @@ func _claim_local_collectible(player: Player, config_path: String) -> int:
 	if player == null:
 		return COLLECTIBLE_RESULT_INVALID_PLAYER
 	var player_key := _get_player_claim_key(player)
-	if claimed_player_keys.has(player_key):
+	if _get_player_claim_count(player_key) >= COLLECTIBLE_CLAIMS_PER_ROUND:
 		return COLLECTIBLE_RESULT_ALREADY_CLAIMED
 	var item := get_collectible_for_path(config_path)
 	if item == null:
@@ -296,7 +296,7 @@ func _claim_local_collectible(player: Player, config_path: String) -> int:
 	)
 	if not stored:
 		return COLLECTIBLE_RESULT_INVENTORY_FULL
-	claimed_player_keys[player_key] = true
+	_record_player_claim(player_key)
 	pending_choices_by_player_key.erase(player_key)
 	return COLLECTIBLE_RESULT_SUCCESS
 
@@ -354,7 +354,18 @@ func _is_player_claimed(player: Player) -> bool:
 	var current_scene := get_tree().current_scene
 	if current_scene != null and current_scene.has_method("has_luoxi_collectible_claimed"):
 		return bool(current_scene.call("has_luoxi_collectible_claimed", player_key))
-	return claimed_player_keys.has(player_key)
+	return _get_player_claim_count(player_key) >= COLLECTIBLE_CLAIMS_PER_ROUND
+
+
+func _get_player_claim_count(player_key: int) -> int:
+	return int(claim_counts_by_player_key.get(player_key, 0))
+
+
+func _record_player_claim(player_key: int) -> void:
+	claim_counts_by_player_key[player_key] = mini(
+		_get_player_claim_count(player_key) + 1,
+		COLLECTIBLE_CLAIMS_PER_ROUND
+	)
 
 
 func _get_player_claim_key(player: Player) -> int:
@@ -428,7 +439,7 @@ func _pick_nearby_player() -> Player:
 
 
 func reset_round_collectible_claims() -> void:
-	claimed_player_keys.clear()
+	claim_counts_by_player_key.clear()
 	pending_choices_by_player_key.clear()
 	if choice_visible:
 		choice_visible = false
