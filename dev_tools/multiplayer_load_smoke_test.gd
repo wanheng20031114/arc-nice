@@ -47,6 +47,7 @@ func _run() -> void:
 	await _test_player_multiplayer_death_visual_state()
 	await _test_multiplayer_revive_position_uses_living_players()
 	await _test_multiplayer_revive_resets_remote_visual_interpolator()
+	await _test_client_local_damage_confirm_starts_hurt_blink()
 	await _test_linglan_boss_registration_uses_boss_event_only()
 	await _test_linglan_boss_proxy_keeps_body_hit_collision()
 	await _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy()
@@ -1643,6 +1644,55 @@ func _test_multiplayer_revive_resets_remote_visual_interpolator() -> void:
 				refreshed_interp != null and refreshed_interp.get_buffer_size() == 1,
 				"Revive confirm must leave exactly one fresh interpolation sample."
 			)
+			mp_game.free()
+	_stop_audio_players(game)
+	game.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_client_local_damage_confirm_starts_hurt_blink() -> void:
+	var game := GAME_SCENE.instantiate() as Game
+	_expect(game != null, "Game scene must instantiate for client damage confirm blink test.")
+	if game == null:
+		return
+	game.configure_multiplayer(2, 2, {1: "Host", 2: "Local"})
+	game.set("auto_start_waves", false)
+	root.add_child(game)
+	await process_frame
+
+	var local_player := game.get_player_for_peer(2) as Player
+	var host_player := game.get_player_for_peer(1) as Player
+	_expect(local_player != null, "Client damage confirm blink test must create the local player.")
+	_expect(host_player != null, "Client damage confirm blink test must create the host player.")
+	if local_player != null and host_player != null:
+		var mp_game := MP_GAME_SCENE.instantiate()
+		_expect(mp_game != null, "MpGame scene must instantiate for client damage confirm blink test.")
+		if mp_game != null:
+			mp_game.set("game", game)
+			local_player.current_health = local_player.max_health
+			local_player.invincibility_time_left = 0.0
+			local_player.call("_set_hurt_blink_enabled", false)
+			var sprite_material := local_player.body_sprite.material as ShaderMaterial
+			_expect(sprite_material != null, "Local player body sprite must use a ShaderMaterial.")
+
+			mp_game.call("net_player_damage_applied", 2, local_player.max_health - 7, false, 1)
+			_expect(local_player.current_health == local_player.max_health - 7, "Local damage confirm must update health.")
+			_expect(local_player.invincibility_time_left > 0.0, "Local damage confirm must start local blink time.")
+			if sprite_material != null:
+				_expect(
+					bool(sprite_material.get_shader_parameter(&"blink_enabled")),
+					"Local damage confirm must enable hurt blink on the local player."
+				)
+
+			local_player.invincibility_time_left = 0.0
+			local_player.call("_set_hurt_blink_enabled", false)
+			mp_game.call("net_player_damage_applied", 1, host_player.max_health - 5, false, 2)
+			if sprite_material != null:
+				_expect(
+					not bool(sprite_material.get_shader_parameter(&"blink_enabled")),
+					"Remote damage confirms must not enable hurt blink on the local player."
+				)
 			mp_game.free()
 	_stop_audio_players(game)
 	game.queue_free()

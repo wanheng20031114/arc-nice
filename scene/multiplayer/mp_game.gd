@@ -1872,7 +1872,15 @@ func net_player_damage_applied(
 	if health_revision <= int(_player_health_revisions.get(player_peer_id, 0)):
 		return
 	_player_health_revisions[player_peer_id] = health_revision
+	var previous_health := player_node.current_health
 	player_node.set_multiplayer_health_state(current_health, is_dead)
+	if (
+		is_client_view_runtime()
+		and player_peer_id == _get_client_view_local_peer_id()
+		and not player_node.is_dead
+		and player_node.current_health < previous_health
+	):
+		player_node.start_multiplayer_invincibility(player_node.invincibility_duration)
 
 
 func apply_multiplayer_collectible_player_heal(target_player: Player, heal_amount: int) -> bool:

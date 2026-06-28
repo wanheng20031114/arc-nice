@@ -117,6 +117,7 @@ func _run() -> void:
 	await _test_game_helpers()
 	await _test_skill_rotation_policy()
 	await _test_boss_skill4_schedule()
+	await _test_multiplayer_proxy_skill4_laser_cleanup()
 	_test_multiplayer_projectile_instantiation()
 
 	test_root.queue_free()
@@ -492,6 +493,35 @@ func _test_boss_skill4_schedule() -> void:
 	await physics_frame
 
 
+func _test_multiplayer_proxy_skill4_laser_cleanup() -> void:
+	current_scene = test_root
+	var boss := LINGLAN_SCENE.instantiate() as LinglanBoss
+	_expect(boss != null, "Linglan scene did not instantiate for proxy Skill4 cleanup.")
+	if boss == null:
+		return
+	test_root.add_child(boss)
+	await process_frame
+	boss.configure_multiplayer_proxy()
+
+	boss.play_multiplayer_enemy_action(&"linglan_skill4_start", Vector2.ZERO, 1)
+	await process_frame
+	var laser_fields := _get_skill4_laser_fields(test_root)
+	_expect(laser_fields.size() == 1, "Proxy Skill4 start must spawn one visual laser field.")
+	if not laser_fields.is_empty():
+		var field := laser_fields[0] as LASER_FIELD_SCRIPT
+		_expect(field != null and field.damage_enabled == false, "Proxy Skill4 laser must be visual-only.")
+		field.call("_physics_process", SKILL4_CONFIG.get_total_duration() + 0.1)
+		await process_frame
+		_expect(
+			_get_skill4_laser_fields(test_root).is_empty(),
+			"Proxy Skill4 laser field must auto-clean after the skill duration."
+		)
+
+	boss.queue_free()
+	await process_frame
+	await physics_frame
+
+
 func _test_multiplayer_projectile_instantiation() -> void:
 	var mp_game := MP_GAME_SCENE.instantiate()
 	_expect(mp_game != null, "MP game scene must instantiate for Skill4 projectile registry.")
@@ -535,11 +565,15 @@ func _spawn_player(parent: Node, position: Vector2, peer_id: int, health: int) -
 
 
 func _count_skill4_laser_fields(parent: Node) -> int:
-	var count := 0
+	return _get_skill4_laser_fields(parent).size()
+
+
+func _get_skill4_laser_fields(parent: Node) -> Array[Node]:
+	var fields: Array[Node] = []
 	for child in parent.get_children():
 		if child.get_script() == LASER_FIELD_SCRIPT:
-			count += 1
-	return count
+			fields.append(child)
+	return fields
 
 
 func _first_wave_rows_are_unique_per_side(host: Skill4Host) -> bool:

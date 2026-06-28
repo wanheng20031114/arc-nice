@@ -11,6 +11,7 @@ const DAMAGE_QUERY_MAX_RESULTS := 32
 @export var shrink_duration: float = 3.0
 @export var contact_damage_interval: float = 0.5
 @export var damage_enabled: bool = true
+@export var lifetime_duration: float = 0.0
 
 @onready var top_shape: CollisionShape2D = $TopShape
 @onready var bottom_shape: CollisionShape2D = $BottomShape
@@ -37,6 +38,7 @@ var elapsed: float = 0.0
 var player_damage_cooldowns: Dictionary = {}
 var field_id: int = 0
 var source_type: StringName = &"linglan_skill4_laser"
+var field_finished: bool = false
 
 
 func _ready() -> void:
@@ -54,7 +56,8 @@ func setup(
 	initial_core_width: float,
 	initial_shrink_duration: float,
 	initial_warning_duration: float = 1.6,
-	initial_damage_enabled: bool = true
+	initial_damage_enabled: bool = true,
+	initial_lifetime_duration: float = 0.0
 ) -> void:
 	start_min = _normalized_min(initial_start_min, initial_start_max)
 	start_max = _normalized_max(initial_start_min, initial_start_max)
@@ -65,7 +68,9 @@ func setup(
 	shrink_duration = maxf(initial_shrink_duration, 0.01)
 	warning_duration = maxf(initial_warning_duration, 0.0)
 	damage_enabled = initial_damage_enabled
+	lifetime_duration = maxf(initial_lifetime_duration, 0.0)
 	elapsed = 0.0
+	field_finished = false
 	player_damage_cooldowns.clear()
 	if is_node_ready():
 		_apply_current_geometry()
@@ -104,12 +109,25 @@ func get_current_bounds() -> Rect2:
 
 
 func _physics_process(delta: float) -> void:
+	if field_finished:
+		return
 	var safe_delta := maxf(delta, 0.0)
-	elapsed = minf(elapsed + safe_delta, warning_duration + shrink_duration)
+	elapsed += safe_delta
 	_tick_player_damage_cooldowns(safe_delta)
 	_apply_current_geometry()
 	if damage_enabled:
 		_apply_overlap_damage()
+	if lifetime_duration > 0.0 and elapsed >= lifetime_duration:
+		finish()
+
+
+func finish() -> void:
+	if field_finished:
+		return
+	field_finished = true
+	_set_damage_collision_enabled(false)
+	set_physics_process(false)
+	queue_free()
 
 
 func _apply_current_geometry() -> void:

@@ -1,7 +1,7 @@
 [gd_scene load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://scene/multiplayer/multiplayer_lobby.gd" id="1_lobby"]
-[ext_resource type="Texture2D" uid="uid://cbrmpw5d481ci" path="res://resources/texture/瓦片.png" id="2_tile"]
+[ext_resource type="Texture2D" uid="uid://q1v73vx6yokg" path="res://resources/texture/ui/menu_rooftop_garden_background.png" id="2_tile"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_font"]
 [ext_resource type="AudioStream" uid="uid://dj8t5n12shb3l" path="res://resources/audio/ui/dialogue_blip.wav" id="4_blip"]
 [ext_resource type="Script" path="res://scene/multiplayer/bouncy_name_display.gd" id="5_name_display"]
@@ -172,20 +172,20 @@ anchor_bottom = 1.0
 color = Color(0.055, 0.06, 0.07, 1)
 
 [node name="TilePattern" type="TextureRect" parent="."]
-modulate = Color(1, 1, 1, 0.16)
+modulate = Color(1, 1, 1, 1)
 texture_filter = 1
-texture_repeat = 2
+texture_repeat = 1
 layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 texture = ExtResource("2_tile")
-stretch_mode = 1
+stretch_mode = 6
 
 [node name="Shade" type="ColorRect" parent="."]
 layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0, 0, 0, 0.36)
+color = Color(0, 0, 0, 0.18)
 
 [node name="LobbyCenter" type="CenterContainer" parent="."]
 layout_mode = 0
