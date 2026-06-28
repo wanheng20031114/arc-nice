@@ -239,7 +239,7 @@ func _apply_player_damage(player: Player) -> void:
 	if _try_report_multiplayer_player_hit(player):
 		player_damage_cooldowns[player_id] = contact_damage_interval
 		return
-	if player.apply_damage(damage):
+	if player.apply_damage(damage, EnemyConfig.DamageType.MAGIC):
 		player_damage_cooldowns[player_id] = contact_damage_interval
 
 
@@ -269,7 +269,8 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 		source_id,
 		player.peer_id,
 		damage,
-		source_type
+		source_type,
+		EnemyConfig.DamageType.MAGIC
 	))
 
 

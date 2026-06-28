@@ -14,6 +14,8 @@ enum CombatState {
 var combat_state: CombatState = CombatState.CHASE
 var attack_cooldown_left: float = 0.0
 var attack_has_fired: bool = false
+var action_sequence: int = 0
+var latest_proxy_action_id: int = 0
 
 
 func _ready() -> void:
@@ -92,6 +94,7 @@ func _try_start_ranged_attack() -> bool:
 	_clear_navigation_path()
 	_update_facing(global_position.direction_to(target_player.global_position))
 	_play_scene_animation(fire_config.attack_animation_name)
+	_broadcast_enemy_action(&"attack", global_position.direction_to(target_player.global_position))
 	return true
 
 
@@ -193,3 +196,34 @@ func _on_attack_animation_frame_changed() -> void:
 
 	attack_has_fired = true
 	_try_fire_ranged_projectile()
+
+
+func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, action_id: int) -> void:
+	if action_id <= latest_proxy_action_id:
+		return
+	latest_proxy_action_id = action_id
+	if action_name != &"attack":
+		return
+	var fire_config := config as FireConfig
+	if fire_config == null:
+		return
+	var safe_direction := direction.normalized() if direction != Vector2.ZERO else Vector2.RIGHT
+	_update_facing(safe_direction)
+	_play_multiplayer_proxy_action_animation(
+		fire_config.attack_animation_name,
+		_get_scene_animation_duration(fire_config.attack_animation_name) + 0.05
+	)
+
+
+func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> void:
+	action_sequence += 1
+	var current_scene := get_tree().current_scene
+	if current_scene != null and current_scene.has_method("broadcast_enemy_action"):
+		current_scene.call(
+			"broadcast_enemy_action",
+			int(get_meta("net_id", 0)),
+			action_name,
+			direction,
+			global_position,
+			action_sequence
+		)

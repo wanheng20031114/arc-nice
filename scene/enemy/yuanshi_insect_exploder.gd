@@ -44,6 +44,7 @@ func _start_explosion_sequence() -> void:
 		return
 
 	animated_sprite.scale = Vector2.ONE * maxf(config.explosion_animation_scale, 0.1)
+	animated_sprite.z_index = 8
 	EXPLOSION_AUDIO_LIMITER.play(explosion_audio)
 	if not is_multiplayer_proxy:
 		_try_apply_explosion_damage()

@@ -411,7 +411,7 @@ func _run_host_boss_probe(game: Game) -> void:
 	await _wait_seconds(3.0)
 
 	if boss != null and is_instance_valid(boss):
-		boss.apply_damage(boss.current_health)
+		boss.apply_damage(boss.current_health + boss.get_effective_physical_defense())
 	if not await _wait_for_game_wave_state(game, Game.WaveState.VICTORY, 6.0):
 		_fail("Host boss probe did not enter victory after boss defeat.")
 		return

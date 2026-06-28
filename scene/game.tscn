@@ -96,6 +96,12 @@ texture_region_size = Vector2i(16, 32)
 [sub_resource type="TileSet" id="TileSet_7jktm"]
 sources/0 = SubResource("TileSetAtlasSource_fc0e3")
 
+[sub_resource type="Environment" id="Environment_revive_glow"]
+glow_enabled = true
+glow_bloom = 0.08
+glow_hdr_threshold = 1.0
+glow_hdr_scale = 1.6
+
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_feb5d"]
 a = Vector2(-213.33333, -106.666664)
 b = Vector2(1066.6666, -106.666664)
@@ -115,6 +121,9 @@ b = Vector2(1060, -106.666664)
 [node name="Game" type="Node2D" unique_id=20737211]
 position = Vector2(1, 0)
 script = ExtResource("1_17rxn")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2059488462]
+environment = SubResource("Environment_revive_glow")
 
 [node name="MusicPlayer" type="AudioStreamPlayer" parent="." unique_id=707834306]
 stream = ExtResource("10_swtgm")

@@ -8,16 +8,25 @@ const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_bas
 const BOMBER_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_bomber.tres")
 const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres")
 const RPG_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
+const SNIPER_CONFIG := preload("res://resources/config/enemies/capoo_sniper.tres")
 const PICKUP_SPEED_CONFIG := preload("res://resources/config/pickups/pickup_speed.tres")
 const PICKUP_SPIRAL_CONFIG := preload("res://resources/config/pickups/pickup_spiral.tres")
 const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 const XIRANG_DROP_CONFIG := preload("res://resources/config/xirang_drop.tres")
+const LINGLAN_SKILL2_ROCKET_SCENE := preload("res://scene/linglan_skill2_sakura_rocket.tscn")
 const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 const LIFE_CRYSTAL := preload("res://resources/config/collectibles/collectible_life_crystal.tres")
 const LINGLAN_BOSS_CONFIG := preload("res://resources/config/bosses/boss_01_linglan.tres")
 
 var failures: Array[String] = []
+
+
+class ClientViewRuntimeStub:
+	extends Node
+
+	func is_client_view_runtime() -> bool:
+		return true
 
 
 func _init() -> void:
@@ -31,6 +40,7 @@ func _run() -> void:
 	_test_net_manager_player_list_sync_diff()
 	_test_recent_event_cache()
 	_test_snapshot_packet_metrics()
+	_test_delta_snapshot_peer_cache_cleanup()
 	_test_freed_pickup_index_cleanup()
 	_test_xirang_drop_attraction_radius()
 	await _test_enemy_proxy_action_animation_restore()
@@ -39,6 +49,7 @@ func _run() -> void:
 	await _test_multiplayer_revive_resets_remote_visual_interpolator()
 	await _test_linglan_boss_registration_uses_boss_event_only()
 	await _test_linglan_boss_proxy_keeps_body_hit_collision()
+	await _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy()
 	await _test_multiplayer_cheat_xirang_confirm()
 	await _test_multiplayer_peer_disconnect_cleanup()
 	await _test_player_snapshot_roster_reconcile()
@@ -253,6 +264,56 @@ func _test_snapshot_packet_metrics() -> void:
 	_expect(
 		int(metrics.get("large_enemy_snapshot_packet_count", 0)) == 2,
 		"Snapshot metrics must keep counting large packets after warning cooldown."
+	)
+	mp_game.free()
+
+
+func _test_delta_snapshot_peer_cache_cleanup() -> void:
+	var mp_game := MP_GAME_SCENE.instantiate()
+	_expect(mp_game != null, "MpGame scene must instantiate for delta snapshot cache test.")
+	if mp_game == null:
+		return
+	var snapshot_mgr := mp_game.get("snapshot_mgr") as SnapshotManager
+	_expect(snapshot_mgr != null, "MpGame must own a SnapshotManager for delta snapshot cache test.")
+	if snapshot_mgr != null:
+		var state := SnapshotManager.PlayerState.new()
+		state.peer_id = 11
+		state.position = Vector2(10.0, 20.0)
+		state.velocity = Vector2.RIGHT
+		state.current_health = 9
+		state.max_health = 10
+		snapshot_mgr.encode_player_snapshots_for_peer(11, [state], true)
+		snapshot_mgr.encode_player_snapshots_for_peer(12, [state], true)
+		_expect(
+			snapshot_mgr.player_send_baselines_by_peer.has(11),
+			"Delta snapshot cache test must create receiver peer baseline."
+		)
+		mp_game.call("_clear_peer_network_state", 11)
+		_expect(
+			not snapshot_mgr.player_send_baselines_by_peer.has(11),
+			"Peer cleanup must clear the departed peer receiver baseline."
+		)
+		var peer_12_baseline := snapshot_mgr.player_send_baselines_by_peer.get(12) as Dictionary
+		_expect(
+			peer_12_baseline == null or not peer_12_baseline.has(11),
+			"Peer cleanup must remove the departed peer from other player send baselines."
+		)
+	_expect(
+		bool(mp_game.call("_should_force_player_delta_keyframe", 12, 0.0)),
+		"Unknown player snapshot receiver must force a keyframe."
+	)
+	mp_game.set("_last_player_keyframe_time_by_peer", {12: 0.0})
+	_expect(
+		not bool(mp_game.call("_should_force_player_delta_keyframe", 12, 0.25)),
+		"Player delta keyframe interval must not fire early."
+	)
+	_expect(
+		bool(mp_game.call("_should_force_player_delta_keyframe", 12, 0.5)),
+		"Player delta keyframe interval must force a full snapshot at 0.5 seconds."
+	)
+	_expect(
+		bool(mp_game.call("_should_force_enemy_delta_keyframe", 12, 0.0)),
+		"Unknown enemy snapshot receiver must force a keyframe."
 	)
 	mp_game.free()
 
@@ -802,14 +863,16 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 	client_game.set("auto_start_waves", false)
 	root.add_child(client_game)
 	await process_frame
-	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
+	var enemy := KNIGHT_CONFIG.enemy_scene.instantiate() as Enemy
 	_expect(enemy != null, "Enemy action timeline test must instantiate an enemy.")
 	if enemy != null:
 		client_game.enemy_container.add_child(enemy)
-		enemy.setup(BASIC_CONFIG, client_game.player, client_game.grid_pathfinder)
+		enemy.setup(KNIGHT_CONFIG, client_game.player, client_game.grid_pathfinder)
 		enemy.configure_multiplayer_proxy()
 		enemy.set_meta("net_id", 42)
 		enemy.global_position = Vector2(5.0, 5.0)
+		var sprite := enemy.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
+		_expect(sprite != null, "Enemy action timeline test must find the proxy sprite.")
 		var mp_game := MP_GAME_SCENE.instantiate()
 		mp_game.set("game", client_game)
 		var net_manager := root.get_node_or_null("NetManager")
@@ -828,12 +891,67 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 			enemy.global_position.is_equal_approx(Vector2(5.0, 5.0)),
 			"Stale enemy action events must not pull proxy position off the snapshot timeline."
 		)
+		if sprite != null:
+			_expect(
+				sprite.animation == KNIGHT_CONFIG.move_animation_name,
+				"Stale enemy action events must not replay outdated proxy action animation."
+			)
 		mp_game.call("net_enemy_action", 42, "windup", Vector2.RIGHT, Vector2(20.0, 5.0), 2, 10.0)
 		var latest_timestamp := (mp_game.enemy_interpolators[42] as NetInterpolator).get_latest_timestamp()
 		_expect(
 			is_equal_approx(latest_timestamp, 10.0),
 			"Fresh enemy action events must enter the enemy interpolation timeline."
 		)
+		if sprite != null:
+			_expect(
+				sprite.animation == KNIGHT_CONFIG.windup_animation_name,
+				"Fresh enemy action events must still play the proxy action animation."
+			)
+
+		var sniper := SNIPER_CONFIG.enemy_scene.instantiate() as CapooSniper
+		_expect(sniper != null, "Enemy target action timeline test must instantiate a sniper.")
+		if sniper != null:
+			client_game.enemy_container.add_child(sniper)
+			sniper.setup(SNIPER_CONFIG, client_game.player, client_game.grid_pathfinder)
+			sniper.configure_multiplayer_proxy()
+			sniper.set_meta("net_id", 43)
+			sniper.global_position = Vector2(12.0, 8.0)
+			var sniper_interp := NetInterpolator.new(0.05, 0.0)
+			sniper_interp.push_snapshot(9.5, sniper.global_position, Vector2.ZERO)
+			mp_game.enemy_interpolators[43] = sniper_interp
+			var aim_glow := sniper.get_node_or_null("AimGlow") as Polygon2D
+			var net_enemies_for_target_action := mp_game.get("_net_enemies") as Dictionary
+			net_enemies_for_target_action[43] = sniper
+			mp_game.call(
+				"net_enemy_target_action",
+				43,
+				"sniper_lock_start",
+				2,
+				Vector2(100.0, 100.0),
+				1,
+				9.0
+			)
+			_expect(
+				sniper.global_position.is_equal_approx(Vector2(12.0, 8.0)),
+				"Stale enemy target action events must not pull proxy position off the snapshot timeline."
+			)
+			_expect(
+				sniper.lock_reticle == null and (aim_glow == null or not aim_glow.visible),
+				"Stale enemy target action events must not start outdated target lock visuals."
+			)
+			mp_game.call(
+				"net_enemy_target_action",
+				43,
+				"sniper_lock_start",
+				2,
+				Vector2(20.0, 8.0),
+				2,
+				10.0
+			)
+			_expect(
+				sniper.lock_reticle != null and aim_glow != null and aim_glow.visible,
+				"Fresh enemy target action events must still start target lock visuals."
+			)
 		mp_game.free()
 	_stop_audio_players(client_game)
 	client_game.queue_free()
@@ -1611,6 +1729,46 @@ func _test_linglan_boss_proxy_keeps_body_hit_collision() -> void:
 	await physics_frame
 
 
+func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
+	var previous_scene := current_scene
+	var client_runtime_stub := ClientViewRuntimeStub.new()
+	root.add_child(client_runtime_stub)
+	current_scene = client_runtime_stub
+
+	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
+	var rocket := LINGLAN_SKILL2_ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
+	_expect(enemy != null and rocket != null, "Linglan skill2 client proxy damage test must instantiate enemy and rocket.")
+	if enemy != null and rocket != null:
+		root.add_child(enemy)
+		root.add_child(rocket)
+		await process_frame
+		enemy.setup(BASIC_CONFIG, null, null)
+		enemy.configure_multiplayer_proxy()
+		var health_before_client_proxy_hit := enemy.current_health
+		rocket.damage = 1
+		rocket.call("_apply_enemy_damage", enemy)
+		_expect(
+			enemy.current_health == health_before_client_proxy_hit,
+			"Client-view Linglan skill2 rocket must not apply local damage to enemy proxies."
+		)
+
+		current_scene = previous_scene
+		rocket.call("_apply_enemy_damage", enemy)
+		_expect(
+			enemy.current_health == health_before_client_proxy_hit - 1,
+			"Linglan skill2 rocket must still damage enemies outside client-view proxy runtime."
+		)
+
+	if rocket != null:
+		rocket.queue_free()
+	if enemy != null:
+		enemy.queue_free()
+	client_runtime_stub.queue_free()
+	current_scene = previous_scene
+	await process_frame
+	await physics_frame
+
+
 func _test_multiplayer_cheat_xirang_confirm() -> void:
 	var mp_game := MP_GAME_SCENE.instantiate()
 	_expect(mp_game != null, "MpGame scene must instantiate for cheat xirang confirm test.")
@@ -1745,8 +1903,57 @@ func _test_snapshot_round_trip() -> void:
 	var player_states_2 := SnapshotManager.decode_all_player_snapshots(player_data_2)
 	_expect(
 		player_states_2.size() == 1 and player_states_2[0].position.distance_to(player_state.position) < 0.12,
-		"Repeated player snapshots must remain full snapshots."
+		"Legacy repeated player snapshots must remain full snapshots."
 	)
+	var delta_player_mgr := SnapshotManager.new()
+	var player_keyframe := delta_player_mgr.encode_player_snapshots_for_peer(10, [player_state], true)
+	var received_player_keyframe := delta_player_mgr.decode_player_snapshots_with_baseline(player_keyframe)
+	_expect(received_player_keyframe.size() == 1, "Player keyframe delta path must decode one state.")
+	var repeated_player_delta := delta_player_mgr.encode_player_snapshots_for_peer(10, [player_state], false)
+	_expect(
+		repeated_player_delta.size() < player_keyframe.size(),
+		"Repeated per-peer player snapshots must encode as a smaller delta."
+	)
+	var repeated_player_states := delta_player_mgr.decode_player_snapshots_with_baseline(repeated_player_delta)
+	_expect(repeated_player_states.size() == 1, "Repeated player delta must decode through baseline.")
+	if repeated_player_states.size() == 1:
+		_expect(repeated_player_states[0].current_health == 42, "Player delta must preserve health through baseline.")
+		_expect(repeated_player_states[0].skill1_upgrade_level == 2, "Player delta must preserve skill upgrade through baseline.")
+	var moved_player_state := SnapshotManager.PlayerState.new()
+	moved_player_state.peer_id = 2
+	moved_player_state.sequence = 2
+	moved_player_state.position = Vector2(20.5, 30.25)
+	moved_player_state.velocity = Vector2(3.0, -4.0)
+	moved_player_state.current_health = 42
+	moved_player_state.max_health = 100
+	moved_player_state.skill1_unlocked = true
+	moved_player_state.skill1_charge = 3.0
+	moved_player_state.skill1_charge_duration = 14.0
+	moved_player_state.skill1_upgrade_level = 2
+	var moved_player_delta := delta_player_mgr.encode_player_snapshots_for_peer(10, [moved_player_state], false)
+	_expect(
+		moved_player_delta.size() < player_keyframe.size(),
+		"Moved player snapshot must still be smaller than a keyframe."
+	)
+	var moved_player_states := delta_player_mgr.decode_player_snapshots_with_baseline(moved_player_delta)
+	_expect(moved_player_states.size() == 1, "Moved player delta must decode through baseline.")
+	if moved_player_states.size() == 1:
+		_expect(
+			moved_player_states[0].position.distance_to(moved_player_state.position) < 0.12,
+			"Moved player delta must update position."
+		)
+		_expect(moved_player_states[0].current_health == 42, "Moved player delta must preserve unchanged health.")
+		_expect(moved_player_states[0].skill1_upgrade_level == 2, "Moved player delta must preserve unchanged skill state.")
+	var peer_11_player_data := delta_player_mgr.encode_player_snapshots_for_peer(11, [moved_player_state], false)
+	_expect(
+		peer_11_player_data.size() == player_keyframe.size(),
+		"A different receiver peer must get a player keyframe until it has its own baseline."
+	)
+	var missing_player_baseline_mgr := SnapshotManager.new()
+	var skipped_player_delta := missing_player_baseline_mgr.decode_player_snapshots_with_baseline(moved_player_delta)
+	_expect(skipped_player_delta.is_empty(), "Player delta without receive baseline must be skipped.")
+	var recovered_player_keyframe := missing_player_baseline_mgr.decode_player_snapshots_with_baseline(player_keyframe)
+	_expect(recovered_player_keyframe.size() == 1, "Player keyframe must recover after a skipped delta.")
 	var distant_player_state := SnapshotManager.PlayerState.new()
 	distant_player_state.peer_id = 3
 	distant_player_state.position = Vector2(99999.0, -99999.0)
@@ -1788,8 +1995,48 @@ func _test_snapshot_round_trip() -> void:
 	var enemy_states_2 := SnapshotManager.decode_all_enemy_snapshots(enemy_data_2)
 	_expect(
 		enemy_states_2.size() == 1 and enemy_states_2[0].position.distance_to(enemy_state.position) < 0.12,
-		"Repeated enemy snapshots must remain full snapshots."
+		"Legacy repeated enemy snapshots must remain full snapshots."
 	)
+	var delta_enemy_mgr := SnapshotManager.new()
+	var enemy_keyframe := delta_enemy_mgr.encode_enemy_snapshots_for_peer(20, [enemy_state], true)
+	var received_enemy_keyframe := delta_enemy_mgr.decode_enemy_snapshots_with_baseline(enemy_keyframe)
+	_expect(received_enemy_keyframe.size() == 1, "Enemy keyframe delta path must decode one state.")
+	var repeated_enemy_delta := delta_enemy_mgr.encode_enemy_snapshots_for_peer(20, [enemy_state], false)
+	_expect(
+		repeated_enemy_delta.size() < enemy_keyframe.size(),
+		"Repeated per-peer enemy snapshots must encode as a smaller delta."
+	)
+	var repeated_enemy_states := delta_enemy_mgr.decode_enemy_snapshots_with_baseline(repeated_enemy_delta)
+	_expect(repeated_enemy_states.size() == 1, "Repeated enemy delta must decode through baseline.")
+	if repeated_enemy_states.size() == 1:
+		_expect(repeated_enemy_states[0].health == 3, "Enemy delta must preserve health through baseline.")
+	var moved_enemy_state := SnapshotManager.EnemyState.new()
+	moved_enemy_state.net_id = 7
+	moved_enemy_state.position = Vector2(91.0, 100.0)
+	moved_enemy_state.velocity = Vector2.RIGHT
+	moved_enemy_state.health = 3
+	var moved_enemy_delta := delta_enemy_mgr.encode_enemy_snapshots_for_peer(20, [moved_enemy_state], false)
+	_expect(
+		moved_enemy_delta.size() < enemy_keyframe.size(),
+		"Moved enemy snapshot must still be smaller than a keyframe."
+	)
+	var moved_enemy_states := delta_enemy_mgr.decode_enemy_snapshots_with_baseline(moved_enemy_delta)
+	_expect(moved_enemy_states.size() == 1, "Moved enemy delta must decode through baseline.")
+	if moved_enemy_states.size() == 1:
+		_expect(
+			moved_enemy_states[0].position.distance_to(moved_enemy_state.position) < 0.12,
+			"Moved enemy delta must update position."
+		)
+		_expect(moved_enemy_states[0].health == 3, "Moved enemy delta must preserve unchanged health.")
+	var missing_enemy_baseline_mgr := SnapshotManager.new()
+	var skipped_enemy_delta := missing_enemy_baseline_mgr.decode_enemy_snapshots_with_baseline(moved_enemy_delta)
+	_expect(skipped_enemy_delta.is_empty(), "Enemy delta without receive baseline must be skipped.")
+	var recovered_enemy_keyframe := missing_enemy_baseline_mgr.decode_enemy_snapshots_with_baseline(enemy_keyframe)
+	_expect(recovered_enemy_keyframe.size() == 1, "Enemy keyframe must recover after a skipped delta.")
+	var empty_enemy_keyframe := delta_enemy_mgr.encode_enemy_snapshots_for_peer(20, [], true)
+	var empty_enemy_states := delta_enemy_mgr.decode_enemy_snapshots_with_baseline(empty_enemy_keyframe)
+	_expect(empty_enemy_states.is_empty(), "Empty enemy keyframe must decode as an empty roster.")
+	_expect(delta_enemy_mgr.enemy_receive_baselines.is_empty(), "Empty enemy keyframe must prune receive baselines.")
 	var distant_enemy_state := SnapshotManager.EnemyState.new()
 	distant_enemy_state.net_id = 8
 	distant_enemy_state.position = Vector2(-99999.0, 99999.0)

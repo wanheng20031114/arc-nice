@@ -30,6 +30,8 @@ var burst_audio_step: int = 0
 var current_path: PackedVector2Array = PackedVector2Array()
 var current_path_index: int = 0
 var path_refresh_time_left: float = 0.0
+var action_sequence: int = 0
+var latest_proxy_action_id: int = 0
 
 
 func _ready() -> void:
@@ -118,6 +120,7 @@ func _try_start_windup() -> bool:
 	_update_facing(global_position.direction_to(target_player.global_position))
 	_play_config_animation(capoo_config.windup_animation_name)
 	_set_muzzle_heat(0.0, global_position.direction_to(target_player.global_position))
+	_broadcast_enemy_action(&"windup", global_position.direction_to(target_player.global_position))
 	return true
 
 
@@ -158,6 +161,7 @@ func _start_burst(shoot_direction: Vector2) -> void:
 	_update_facing(burst_shot_direction)
 	_play_config_animation(capoo_config.attack_animation_name)
 	_set_muzzle_heat(1.0, burst_shot_direction)
+	_broadcast_enemy_action(&"burst", burst_shot_direction)
 
 
 func _update_burst(delta: float) -> void:
@@ -240,6 +244,50 @@ func _cancel_attack() -> void:
 	burst_fire_time_left = 0.0
 	burst_audio_step = 0
 	_set_muzzle_heat(0.0, burst_shot_direction)
+
+
+func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, action_id: int) -> void:
+	if action_id <= latest_proxy_action_id:
+		return
+	latest_proxy_action_id = action_id
+	var safe_direction := direction.normalized() if direction != Vector2.ZERO else Vector2.RIGHT
+	var capoo_config := config as CapooConfig
+	if action_name == &"windup":
+		if capoo_config != null:
+			_play_multiplayer_proxy_action_animation(
+				capoo_config.windup_animation_name,
+				capoo_config.attack_windup + 0.15
+			)
+			_play_proxy_muzzle_heat(safe_direction, capoo_config.attack_windup)
+		_update_facing(safe_direction)
+	elif action_name == &"burst":
+		if capoo_config != null:
+			_play_multiplayer_proxy_action_animation(
+				capoo_config.attack_animation_name,
+				0.28
+			)
+		_update_facing(safe_direction)
+		_set_muzzle_heat(1.0, safe_direction)
+		var tween := create_tween()
+		tween.tween_method(
+			func(progress: float) -> void:
+				_set_muzzle_heat(progress, safe_direction),
+			1.0,
+			0.0,
+			0.22
+		)
+
+
+func _play_proxy_muzzle_heat(direction: Vector2, duration: float) -> void:
+	_set_muzzle_heat(0.12, direction)
+	var tween := create_tween()
+	tween.tween_method(
+		func(progress: float) -> void:
+			_set_muzzle_heat(progress, direction),
+		0.12,
+		1.0,
+		maxf(duration, 0.01)
+	)
 
 
 func _has_clear_world_line_to_target() -> bool:
@@ -365,6 +413,20 @@ func _update_facing(move_direction: Vector2) -> void:
 
 func _play_config_animation(animation_name: StringName) -> void:
 	_play_scene_animation(animation_name)
+
+
+func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> void:
+	action_sequence += 1
+	var current_scene := get_tree().current_scene
+	if current_scene != null and current_scene.has_method("broadcast_enemy_action"):
+		current_scene.call(
+			"broadcast_enemy_action",
+			int(get_meta("net_id", 0)),
+			action_name,
+			direction,
+			global_position,
+			action_sequence
+		)
 
 
 func _set_muzzle_heat(progress: float, direction: Vector2) -> void:

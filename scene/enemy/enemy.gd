@@ -364,6 +364,19 @@ func _has_scene_animation(animation_name: StringName) -> bool:
 	return animated_sprite.sprite_frames.has_animation(animation_name)
 
 
+func _get_scene_animation_duration(animation_name: StringName) -> float:
+	if not _has_scene_animation(animation_name):
+		return 0.0
+	var frame_count := animated_sprite.sprite_frames.get_frame_count(animation_name)
+	var animation_speed := animated_sprite.sprite_frames.get_animation_speed(animation_name)
+	if frame_count <= 0 or animation_speed <= 0.0:
+		return 0.0
+	var duration := 0.0
+	for frame_index in range(frame_count):
+		duration += animated_sprite.sprite_frames.get_frame_duration(animation_name, frame_index)
+	return duration / animation_speed
+
+
 func _refresh_collision_shape_cache() -> void:
 	body_collision_shapes = _collect_direct_collision_shapes(self)
 	touch_damage_shapes = _collect_direct_collision_shapes(touch_damage_area)

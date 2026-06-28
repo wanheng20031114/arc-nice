@@ -218,6 +218,13 @@ func _apply_player_damage(player: Player) -> void:
 func _apply_enemy_damage(enemy: Enemy) -> void:
 	if enemy.is_dead:
 		return
+	var current_scene := get_tree().current_scene
+	if (
+		current_scene != null
+		and current_scene.has_method("is_client_view_runtime")
+		and bool(current_scene.call("is_client_view_runtime"))
+	):
+		return
 	var impact_direction := global_position.direction_to(enemy.global_position)
 	if impact_direction == Vector2.ZERO:
 		impact_direction = direction

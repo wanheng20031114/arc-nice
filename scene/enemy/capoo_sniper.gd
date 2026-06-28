@@ -20,6 +20,9 @@ var lock_time_left: float = 0.0
 var locked_player: Player = null
 var lock_reticle: CapooSniperLockReticle = null
 var latest_proxy_target_action_id: int = 0
+var proxy_locked_player: Player = null
+var proxy_lock_duration: float = 0.0
+var proxy_lock_elapsed: float = 0.0
 
 
 func _ready() -> void:
@@ -53,6 +56,17 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 
+func _process(delta: float) -> void:
+	super._process(delta)
+	if is_multiplayer_proxy:
+		_update_proxy_lock_visual(delta)
+
+
+func configure_multiplayer_proxy() -> void:
+	super.configure_multiplayer_proxy()
+	set_process(true)
+
+
 func _apply_config() -> void:
 	super._apply_config()
 	combat_state = CombatState.CHASE
@@ -60,6 +74,7 @@ func _apply_config() -> void:
 	lock_time_left = 0.0
 	locked_player = null
 	_clear_lock_reticle()
+	_clear_proxy_lock_visual()
 	var sniper_config := config as SniperConfig
 	if sniper_config != null:
 		attack_audio.stream = sniper_config.attack_audio_stream
@@ -68,6 +83,11 @@ func _apply_config() -> void:
 func _die() -> void:
 	_cancel_lock()
 	super._die()
+
+
+func play_multiplayer_death_sequence() -> void:
+	_clear_proxy_lock_visual()
+	super.play_multiplayer_death_sequence()
 
 
 func _update_attack_cooldown(delta: float) -> void:
@@ -221,11 +241,41 @@ func play_multiplayer_enemy_target_action(
 		if sniper_config != null:
 			_play_multiplayer_proxy_action_animation(sniper_config.aim_animation_name, sniper_config.lock_duration + 0.15)
 			if target != null and is_instance_valid(target):
+				proxy_locked_player = target
+				proxy_lock_duration = maxf(sniper_config.lock_duration, 0.01)
+				proxy_lock_elapsed = 0.0
 				_show_lock_reticle(target, sniper_config.lock_duration)
 				_set_aim_glow(0.35, target.global_position)
 	elif action_name == &"sniper_lock_cancel" or action_name == &"sniper_lock_fire":
-		_clear_lock_reticle()
-		_set_aim_glow(0.0, global_position + Vector2.RIGHT)
+		_clear_proxy_lock_visual()
+
+
+func _update_proxy_lock_visual(delta: float) -> void:
+	if proxy_locked_player == null or not is_instance_valid(proxy_locked_player):
+		_clear_proxy_lock_visual()
+		return
+	var sniper_config := config as SniperConfig
+	if sniper_config == null:
+		_clear_proxy_lock_visual()
+		return
+	proxy_lock_duration = maxf(proxy_lock_duration, 0.01)
+	proxy_lock_elapsed = minf(proxy_lock_elapsed + maxf(delta, 0.0), proxy_lock_duration)
+	var progress := clampf(proxy_lock_elapsed / proxy_lock_duration, 0.0, 1.0)
+	var direction := global_position.direction_to(proxy_locked_player.global_position)
+	if direction == Vector2.ZERO:
+		direction = Vector2.RIGHT
+	_update_facing(direction)
+	_set_aim_glow(progress, proxy_locked_player.global_position)
+	if lock_reticle != null and is_instance_valid(lock_reticle):
+		lock_reticle.set_progress(progress)
+
+
+func _clear_proxy_lock_visual() -> void:
+	proxy_locked_player = null
+	proxy_lock_duration = 0.0
+	proxy_lock_elapsed = 0.0
+	_clear_lock_reticle()
+	_set_aim_glow(0.0, global_position + Vector2.RIGHT)
 
 
 func _set_aim_glow(progress: float, target_global_position: Vector2) -> void:
