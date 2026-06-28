@@ -13,7 +13,6 @@ uniform vec4 slow_overlay_color : source_color = vec4(0.55, 0.86, 1.0, 1.0);
 uniform float revive_glow_strength : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 revive_glow_color : source_color = vec4(3.2, 3.2, 3.2, 1.0);
 uniform float revive_glow_outline_width : hint_range(1.0, 8.0) = 4.5;
-uniform float revive_glow_body_boost : hint_range(0.0, 2.0) = 0.85;
 
 void fragment() {
 	vec4 texture_color = texture(TEXTURE, UV);
@@ -61,6 +60,7 @@ void fragment() {
 		color.a = max(color.a, COLOR.a);
 	}
 
+	vec4 pre_revive_color = color;
 	if (revive_glow_strength > 0.0) {
 		float pulse = 0.92 + 0.08 * sin(TIME * 18.0);
 		vec2 outline_offset = TEXTURE_PIXEL_SIZE * revive_glow_outline_width * pulse;
@@ -83,15 +83,12 @@ void fragment() {
 		neighbor_alpha = max(neighbor_alpha, texture(TEXTURE, UV + vec2(inner_offset.x, -inner_offset.y)).a);
 		neighbor_alpha = max(neighbor_alpha, texture(TEXTURE, UV + vec2(-inner_offset.x, inner_offset.y)).a);
 		float outline_mask = max(neighbor_alpha - texture_color.a, 0.0) * revive_glow_strength;
-		float body_mask = texture_color.a * revive_glow_strength;
 		if (outline_mask > 0.0) {
 			color.rgb += revive_glow_color.rgb * outline_mask;
 			color.a = max(color.a, outline_mask * revive_glow_color.a);
 		}
-		if (body_mask > 0.0) {
-			color.rgb = mix(color.rgb, revive_glow_color.rgb, body_mask * 0.62);
-			color.rgb += revive_glow_color.rgb * body_mask * revive_glow_body_boost;
-			color.a = max(color.a, texture_color.a);
+		if (texture_color.a > 0.0) {
+			color = pre_revive_color;
 		}
 	}
 
