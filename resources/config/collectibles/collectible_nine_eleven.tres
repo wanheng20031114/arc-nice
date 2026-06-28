@@ -1,7 +1,7 @@
-[gd_resource type="Resource" script_class="PickupConfig" format=3]
+[gd_resource type="Resource" script_class="PickupConfig" format=3 uid="uid://drlkfwpxi6at1"]
 
 [ext_resource type="Texture2D" uid="uid://y515i17ohipc" path="res://resources/texture/collectibles/nine_eleven.png" id="1_icon"]
-[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
 
 [resource]
 script = ExtResource("2_script")
@@ -11,7 +11,6 @@ drop_weight = 0.0
 description = "受到来自正面的远程攻击伤害+30%；受到来自背后的远程攻击伤害-50%。"
 can_store_in_inventory = true
 icon_texture = ExtResource("1_icon")
-icon_scale = Vector2(1, 1)
 duration = 0.0
 collectible_effect_id = "nine_eleven"
 incoming_ranged_front_damage_multiplier = 1.3
