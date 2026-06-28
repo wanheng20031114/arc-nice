@@ -17,6 +17,12 @@ const LIFE_CRYSTAL := preload("res://resources/config/collectibles/collectible_l
 const MOON_AMULET := preload("res://resources/config/collectibles/collectible_moon_amulet.tres")
 const SWIFT_CRYSTAL := preload("res://resources/config/collectibles/collectible_swift_crystal.tres")
 const ADMIN_DOLL := preload("res://resources/config/collectibles/collectible_admin_doll.tres")
+const ARCHER := preload("res://resources/config/collectibles/collectible_archer.tres")
+const NINE_ELEVEN := preload("res://resources/config/collectibles/collectible_nine_eleven.tres")
+const CHARGED_JADE_PENDANT := preload("res://resources/config/collectibles/collectible_charged_jade_pendant.tres")
+const LUCKY_GEM := preload("res://resources/config/collectibles/collectible_lucky_gem.tres")
+const MEDIEVAL_SHIELD := preload("res://resources/config/collectibles/collectible_medieval_shield.tres")
+const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/collectible_arrow_projectile.gd")
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -35,6 +41,7 @@ func _run() -> void:
 	await _test_collectible_resources()
 	await _test_collectible_stat_rules()
 	await _test_xirang_dynamic_rules()
+	await _test_new_collectible_rules()
 	await _test_admin_doll_free_upgrade()
 	await _test_combat_effects()
 
@@ -55,7 +62,7 @@ func _run() -> void:
 
 func _test_collectible_resources() -> void:
 	var pool := LuoxiMerchant.get_collectible_pool()
-	_expect(pool.size() == 19, "Luoxi collectible pool must include apple plus 18 new collectibles.")
+	_expect(pool.size() == 24, "Luoxi collectible pool must include apple plus 23 collectibles.")
 	var seen_paths: Dictionary = {}
 	for item in pool:
 		var config := item as PickupConfig
@@ -73,6 +80,74 @@ func _test_collectible_resources() -> void:
 			_expect(config.icon_texture.get_width() <= 32, "%s icon width must be <= 32." % config.display_name)
 			_expect(config.icon_texture.get_height() <= 32, "%s icon height must be <= 32." % config.display_name)
 	_expect(APPLE.icon_texture.get_width() == 32 and APPLE.icon_texture.get_height() == 32, "Apple icon must remain 32x32.")
+
+
+func _test_new_collectible_rules() -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run()
+	var player := _spawn_player()
+	_expect(run_state.try_add_item(CHARGED_JADE_PENDANT), "First charged jade pendant must fit in inventory.")
+	_expect(run_state.try_add_item(CHARGED_JADE_PENDANT), "Second charged jade pendant must fit in inventory.")
+	await process_frame
+	_expect(
+		is_equal_approx(float(player.get("collectible_skill_charge_bonus_per_second")), 1.0),
+		"Charged jade pendants must stack their +0.5 skill charge per second bonus."
+	)
+	player.queue_free()
+	await process_frame
+
+	run_state.begin_new_run()
+	player = _spawn_player()
+	_expect(run_state.try_add_item(NINE_ELEVEN), "911 must fit in inventory.")
+	await process_frame
+	player.call("_set_multiplayer_facing_id", 0)
+	player.current_health = player.max_health
+	_expect(player.apply_damage(10, EnemyConfig.DamageType.PHYSICAL, {"is_ranged": true, "source_direction": Vector2.RIGHT}), "911 front hit must apply damage.")
+	_expect(player.current_health == player.max_health - 13, "911 must increase front ranged damage by 30%.")
+	player.invincibility_time_left = 0.0
+	_expect(player.apply_damage(10, EnemyConfig.DamageType.PHYSICAL, {"is_ranged": true, "source_direction": Vector2.LEFT}), "911 back hit must apply damage.")
+	_expect(player.current_health == player.max_health - 18, "911 must reduce back ranged damage by 50%.")
+	player.queue_free()
+	await process_frame
+
+	run_state.begin_new_run()
+	player = _spawn_player()
+	_expect(run_state.try_add_item(LUCKY_GEM), "Lucky gem must fit in inventory.")
+	_expect(run_state.try_add_item(MEDIEVAL_SHIELD), "Medieval shield must fit in inventory.")
+	await process_frame
+	_expect(
+		is_equal_approx(float(player.get("collectible_base_upgrade_free_chance")), 0.2),
+		"Lucky gem must expose a 20% free base upgrade chance."
+	)
+	_expect(
+		is_equal_approx(float(player.get("collectible_ranged_dodge_chance")), 0.2),
+		"Medieval shield must expose a 20% independent ranged dodge chance."
+	)
+	_expect(player.get_node_or_null("LuckyUpgradeAudio") != null, "Player scene must contain LuckyUpgradeAudio.")
+	player.queue_free()
+	await process_frame
+
+	run_state.begin_new_run()
+	player = _spawn_player()
+	var enemies: Array[Enemy] = []
+	for enemy_index in range(4):
+		enemies.append(_spawn_enemy(Vector2(48.0 + enemy_index * 24.0, 0.0), player))
+	await process_frame
+	player.call("_trigger_archer", ARCHER)
+	var arrow_count := 0
+	for child in test_root.get_children():
+		if child.get_script() == COLLECTIBLE_ARROW_PROJECTILE_SCRIPT:
+			arrow_count += 1
+			_expect(int(child.get("damage")) == player.attack_damage * 2, "Archer arrows must deal 200% of the player's attack damage.")
+	_expect(arrow_count == 3, "Archer must fire at the nearest three enemies.")
+	for child in test_root.get_children():
+		if child.get_script() == COLLECTIBLE_ARROW_PROJECTILE_SCRIPT:
+			child.queue_free()
+	for enemy in enemies:
+		if is_instance_valid(enemy):
+			enemy.queue_free()
+	player.queue_free()
+	await process_frame
 
 
 func _test_collectible_stat_rules() -> void:

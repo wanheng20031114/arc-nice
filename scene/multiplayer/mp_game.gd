@@ -4,6 +4,8 @@ const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const GAME_SCENE := preload("res://scene/game.tscn")
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
+const COLLECTIBLE_ARROW_PROJECTILE_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
+const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/collectible_arrow_projectile.gd")
 const SKILL1_BOMB_SCENE := preload("res://scene/weishidaier_skill1_bomb.tscn")
 const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/collectible_area_effect.tscn")
 const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/collectible_frost_area_effect.tscn")
@@ -1113,6 +1115,9 @@ func _apply_projectile_lifetime_compensation(
 	if bullet != null:
 		bullet.remaining_lifetime = remaining
 		return
+	if projectile != null and projectile.get_script() == COLLECTIBLE_ARROW_PROJECTILE_SCRIPT:
+		projectile.set("remaining_lifetime", remaining)
+		return
 	var bomb := projectile as WeishidaierSkill1Bomb
 	if bomb != null:
 		bomb.remaining_lifetime = remaining
@@ -1169,6 +1174,16 @@ func _instantiate_projectile(
 			bullet.max_lifetime = lifetime
 			bullet.remaining_lifetime = lifetime
 			return bullet
+		&"collectible_arrow":
+			var collectible_arrow := COLLECTIBLE_ARROW_PROJECTILE_SCENE.instantiate()
+			if collectible_arrow == null:
+				return null
+			collectible_arrow.top_level = true
+			collectible_arrow.call("setup", direction, damage)
+			collectible_arrow.set("speed", speed)
+			collectible_arrow.set("max_lifetime", lifetime)
+			collectible_arrow.set("remaining_lifetime", lifetime)
+			return collectible_arrow
 		&"skill1_bomb":
 			var bomb := SKILL1_BOMB_SCENE.instantiate() as WeishidaierSkill1Bomb
 			if bomb == null:
@@ -1634,7 +1649,9 @@ func request_multiplayer_player_damage(
 	source_id: int,
 	target_peer_id: int,
 	damage: int,
-	source_type: StringName
+	source_type: StringName,
+	source_direction: Vector2 = Vector2.ZERO,
+	is_ranged: bool = false
 ) -> bool:
 	if source_id <= 0 or target_peer_id <= 0 or damage <= 0:
 		return false
@@ -1652,7 +1669,11 @@ func request_multiplayer_player_damage(
 			return true
 		if player_node.is_dead:
 			return true
-		if player_node.apply_damage(damage):
+		if player_node.apply_damage(
+			damage,
+			EnemyConfig.DamageType.PHYSICAL,
+			_build_player_damage_context(source_direction, is_ranged)
+		):
 			_remember_recent_event(_processed_player_hit_ids, hit_key, HIT_DEDUP_RETENTION_SECONDS, now)
 			request_player_hit_report(
 				source_id,
@@ -1666,7 +1687,11 @@ func request_multiplayer_player_damage(
 	if net_manager.is_host():
 		if player_node.is_dead:
 			return true
-		if player_node.apply_damage(damage):
+		if player_node.apply_damage(
+			damage,
+			EnemyConfig.DamageType.PHYSICAL,
+			_build_player_damage_context(source_direction, is_ranged)
+		):
 			_apply_player_hit_report(
 				source_id,
 				target_peer_id,
@@ -1678,6 +1703,15 @@ func request_multiplayer_player_damage(
 			)
 		return true
 	return false
+
+
+func _build_player_damage_context(source_direction: Vector2, is_ranged: bool) -> Dictionary:
+	if not is_ranged:
+		return {}
+	return {
+		"is_ranged": true,
+		"source_direction": source_direction.normalized() if source_direction != Vector2.ZERO else Vector2.ZERO,
+	}
 
 
 func request_player_hit_report(
@@ -2659,7 +2693,8 @@ func net_upgrade_confirmed(
 	stat_type: int,
 	level: int,
 	current_xirang: int,
-	success: bool
+	success: bool,
+	free_upgrade: bool = false
 ) -> void:
 	if not success:
 		return
@@ -2675,6 +2710,8 @@ func net_upgrade_confirmed(
 		_apply_confirmed_upgrade_to_player(player_node, stat_type)
 	player_node.current_xirang = current_xirang
 	player_node.xirang_changed.emit(current_xirang, 0)
+	if free_upgrade and not already_applied_on_host:
+		player_node.play_lucky_upgrade_feedback()
 
 
 @rpc("authority", "call_remote", "reliable", 4)
@@ -2822,14 +2859,15 @@ func _apply_upgrade_for_peer(peer_id: int, stat_type: int) -> void:
 	if player_node == null or not is_instance_valid(player_node):
 		return
 	var success := run_state.try_upgrade_for_peer(peer_id, stat_type, player_node)
+	var free_upgrade := success and player_node.consume_last_base_upgrade_free_flag()
 	var level := run_state.get_upgrade_level_for_peer(peer_id, stat_type)
 	var current_xirang := player_node.current_xirang
 	_rpc_to_connected_clients(
 		&"net_upgrade_confirmed",
-		[peer_id, stat_type, level, current_xirang, success]
+		[peer_id, stat_type, level, current_xirang, success, free_upgrade]
 	)
 	if peer_id == _get_local_peer_id():
-		net_upgrade_confirmed(peer_id, stat_type, level, current_xirang, success)
+		net_upgrade_confirmed(peer_id, stat_type, level, current_xirang, success, free_upgrade)
 
 
 func _apply_inventory_item_use_for_peer(peer_id: int, slot_index: int) -> void:

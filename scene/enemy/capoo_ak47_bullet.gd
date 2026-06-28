@@ -84,7 +84,11 @@ func _on_body_entered(body: Node2D) -> void:
 	var player := body as Player
 	if player != null:
 		if not _try_report_multiplayer_player_hit(player):
-			player.apply_damage(damage)
+			player.apply_damage(
+				damage,
+				EnemyConfig.DamageType.PHYSICAL,
+				_get_player_damage_context()
+			)
 	_consume()
 
 
@@ -123,5 +127,14 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 		projectile_id,
 		player.peer_id,
 		damage,
-		source_type
+		source_type,
+		-direction,
+		true
 	))
+
+
+func _get_player_damage_context() -> Dictionary:
+	return {
+		"is_ranged": true,
+		"source_direction": -direction,
+	}

@@ -1,38 +1,30 @@
 extends Area2D
-class_name YuanshiInsectFireProjectile
+class_name CollectibleArrowProjectile
 
 const WORLD_COLLISION_MASK := 1
 
-@export var speed: float = 142.5
-@export var max_lifetime: float = 2.0
+@export var speed: float = 360.0
+@export var max_lifetime: float = 1.8
 
 var direction := Vector2.RIGHT
 var damage: int = 1
 var remaining_lifetime: float = 0.0
-var has_hit: bool = false
 var projectile_id: int = 0
 var owner_peer_id: int = 0
-var source_type: StringName = &"yuanshi_fire_projectile"
+var source_type: StringName = &"collectible_arrow"
+var has_hit: bool = false
 
 
 func _ready() -> void:
 	remaining_lifetime = maxf(max_lifetime, 0.01)
-	body_entered.connect(_on_body_entered)
 
 
-func setup(
-	initial_direction: Vector2,
-	initial_damage: int,
-	initial_speed: float,
-	initial_lifetime: float
-) -> void:
+func setup(initial_direction: Vector2, initial_damage: int = 1) -> void:
 	if initial_direction != Vector2.ZERO:
 		direction = initial_direction.normalized()
 		rotation = direction.angle()
 	damage = maxi(initial_damage, 0)
-	speed = maxf(initial_speed, 0.0)
-	max_lifetime = maxf(initial_lifetime, 0.01)
-	remaining_lifetime = max_lifetime
+	remaining_lifetime = maxf(max_lifetime, 0.01)
 
 
 func setup_multiplayer(
@@ -48,15 +40,13 @@ func setup_multiplayer(
 func _physics_process(delta: float) -> void:
 	if has_hit:
 		return
-
 	var current_position := global_position
 	var next_position := current_position + direction * speed * delta
 	if _will_hit_world(current_position, next_position):
 		_consume()
 		return
-
 	global_position = next_position
-	remaining_lifetime -= delta
+	remaining_lifetime = maxf(remaining_lifetime - delta, 0.0)
 	if remaining_lifetime <= 0.0:
 		_consume()
 
@@ -65,7 +55,8 @@ func _will_hit_world(from_position: Vector2, to_position: Vector2) -> bool:
 	var query := PhysicsRayQueryParameters2D.create(
 		from_position,
 		to_position,
-		WORLD_COLLISION_MASK
+		WORLD_COLLISION_MASK,
+		[get_rid()]
 	)
 	query.collide_with_bodies = true
 	query.collide_with_areas = false
@@ -75,16 +66,35 @@ func _will_hit_world(from_position: Vector2, to_position: Vector2) -> bool:
 func _on_body_entered(body: Node2D) -> void:
 	if has_hit:
 		return
-
-	var player := body as Player
-	if player != null:
-		if not _try_report_multiplayer_player_hit(player):
-			player.apply_damage(
-				damage,
-				EnemyConfig.DamageType.PHYSICAL,
-				_get_player_damage_context()
-			)
+	var enemy := body as Enemy
+	if enemy != null:
+		var hit_registered := _try_report_multiplayer_enemy_hit(enemy)
+		if not hit_registered:
+			hit_registered = enemy.apply_damage(damage, -direction, EnemyConfig.DamageType.PHYSICAL)
+		if hit_registered:
+			_consume()
+		return
 	_consume()
+
+
+func _try_report_multiplayer_enemy_hit(enemy: Enemy) -> bool:
+	if projectile_id <= 0:
+		return false
+	var current_scene := get_tree().current_scene
+	if current_scene == null or not current_scene.has_method("request_enemy_hit_report"):
+		return false
+	var enemy_net_id := int(enemy.get_meta("net_id", 0))
+	if enemy_net_id <= 0:
+		return false
+	current_scene.call(
+		"request_enemy_hit_report",
+		projectile_id,
+		owner_peer_id,
+		enemy_net_id,
+		damage,
+		-enemy.global_position.direction_to(global_position)
+	)
+	return true
 
 
 func _consume() -> void:
@@ -93,27 +103,3 @@ func _consume() -> void:
 	has_hit = true
 	set_deferred("monitoring", false)
 	queue_free()
-
-
-func _try_report_multiplayer_player_hit(player: Player) -> bool:
-	if projectile_id <= 0:
-		return false
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("request_multiplayer_player_damage"):
-		return false
-	return bool(current_scene.call(
-		"request_multiplayer_player_damage",
-		projectile_id,
-		player.peer_id,
-		damage,
-		source_type,
-		-direction,
-		true
-	))
-
-
-func _get_player_damage_context() -> Dictionary:
-	return {
-		"is_ranged": true,
-		"source_direction": -direction,
-	}

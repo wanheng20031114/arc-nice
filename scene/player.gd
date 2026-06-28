@@ -49,6 +49,7 @@ var client_movement_prediction_only: bool = false
 @onready var powerup_audio: AudioStreamPlayer2D = $PowerupAudio
 @onready var secret_audio: AudioStreamPlayer2D = $SecretAudio
 @onready var xirang_pickup_audio: AudioStreamPlayer2D = $XirangPickupAudio
+@onready var lucky_upgrade_audio: AudioStreamPlayer2D = $LuckyUpgradeAudio
 @onready var health_bar: Control = $HealthBar
 @onready var skill1_charge_bar: Skill1ChargeBar = $Skill1ChargeBar
 @onready var name_label: Label = $NameLabel
@@ -61,6 +62,7 @@ const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/collectible_area_eff
 const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/collectible_frost_area_effect.tscn")
 const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
 const COLLECTIBLE_MOON_SHIELD_SCENE := preload("res://scene/collectible_moon_shield.tscn")
+const COLLECTIBLE_ARROW_PROJECTILE_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
 const NORMAL_ANIMATION_PREFIX := &"normal"
 const ARMED_ANIMATION_PREFIX := &"armed"
 const DEFAULT_FIRE_RATE_MULTIPLIER := 1.0
@@ -89,6 +91,7 @@ const ATTACK_SPEED_UPGRADE_INTERVAL_MULTIPLIER := 0.95
 const DODGE_UPGRADE_CHANCE_STEP := 0.02
 const PIERCING_BULLET_TINT := Color(1.0, 0.36, 0.34, 1.0)
 const DEFAULT_MAGIC_DEFENSE_LIMIT := 100
+const RANGED_DIRECTION_SIDE_THRESHOLD := 0.35
 
 var facing_suffix: StringName = &"right"
 
@@ -124,6 +127,12 @@ var collectible_swift_move_speed_multiplier: float = 1.0
 var collectible_physical_damage_bonus: int = 0
 var collectible_magic_damage_bonus: int = 0
 var collectible_attack_speed_bonus: float = 0.0
+var collectible_skill_charge_bonus_per_second: float = 0.0
+var collectible_base_upgrade_free_chance: float = 0.0
+var collectible_ranged_front_damage_multiplier: float = 1.0
+var collectible_ranged_back_damage_multiplier: float = 1.0
+var collectible_ranged_dodge_chance: float = 0.0
+var last_base_upgrade_was_free: bool = false
 var _base_stats_initialized: bool = false
 var _base_move_speed: float = 0.0
 var _base_max_health: int = 0
@@ -352,7 +361,8 @@ func apply_pickup(config: PickupConfig) -> bool:
 # 敌人或其他伤害来源统一通过这个入口让玩家受伤。
 func apply_damage(
 	amount: int,
-	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+	damage_context: Dictionary = {}
 ) -> bool:
 	if is_dead:
 		return false
@@ -368,7 +378,13 @@ func apply_damage(
 		_start_invincibility(false)
 		return false
 
-	var final_damage := _calculate_incoming_damage(amount, damage_type)
+	if _try_collectible_ranged_dodge(damage_context):
+		_start_dodge_feedback()
+		_start_invincibility(false)
+		return false
+
+	var adjusted_amount := _apply_collectible_ranged_damage_multiplier(amount, damage_context)
+	var final_damage := _calculate_incoming_damage(adjusted_amount, damage_type)
 	current_health = maxi(current_health - final_damage, 0)
 	health_bar.set_health(current_health, max_health)
 	health_changed.emit(current_health, max_health)
@@ -378,6 +394,48 @@ func apply_damage(
 
 	_start_invincibility()
 	return true
+
+
+func _try_collectible_ranged_dodge(damage_context: Dictionary) -> bool:
+	if collectible_ranged_dodge_chance <= 0.0:
+		return false
+	if not _is_ranged_damage_context(damage_context):
+		return false
+	return randf() < collectible_ranged_dodge_chance
+
+
+func _apply_collectible_ranged_damage_multiplier(
+	amount: int,
+	damage_context: Dictionary
+) -> int:
+	if amount <= 0 or not _is_ranged_damage_context(damage_context):
+		return amount
+	var source_side := _get_damage_source_side_direction(damage_context)
+	if source_side == Vector2.ZERO:
+		return amount
+	var facing_direction := _facing_suffix_to_vector(facing_suffix)
+	var side_dot := facing_direction.dot(source_side.normalized())
+	var multiplier := 1.0
+	if side_dot >= RANGED_DIRECTION_SIDE_THRESHOLD:
+		multiplier = collectible_ranged_front_damage_multiplier
+	elif side_dot <= -RANGED_DIRECTION_SIDE_THRESHOLD:
+		multiplier = collectible_ranged_back_damage_multiplier
+	if is_equal_approx(multiplier, 1.0):
+		return amount
+	return maxi(roundi(float(amount) * maxf(multiplier, 0.0)), 1)
+
+
+func _is_ranged_damage_context(damage_context: Dictionary) -> bool:
+	return bool(damage_context.get("is_ranged", false))
+
+
+func _get_damage_source_side_direction(damage_context: Dictionary) -> Vector2:
+	var source_direction_variant: Variant = damage_context.get("source_direction", Vector2.ZERO)
+	if source_direction_variant is Vector2:
+		var source_direction := source_direction_variant as Vector2
+		if source_direction.length_squared() > 0.001:
+			return source_direction.normalized()
+	return Vector2.ZERO
 
 
 func _calculate_incoming_damage(
@@ -436,6 +494,31 @@ func get_outgoing_damage(
 		else collectible_physical_damage_bonus
 	)
 	return maxi(base_amount + bonus, 1)
+
+
+func try_trigger_free_base_upgrade() -> bool:
+	last_base_upgrade_was_free = false
+	if collectible_base_upgrade_free_chance <= 0.0:
+		return false
+	if randf() >= collectible_base_upgrade_free_chance:
+		return false
+	last_base_upgrade_was_free = true
+	if uses_local_input:
+		play_lucky_upgrade_feedback()
+	return true
+
+
+func consume_last_base_upgrade_free_flag() -> bool:
+	var was_free := last_base_upgrade_was_free
+	last_base_upgrade_was_free = false
+	return was_free
+
+
+func play_lucky_upgrade_feedback() -> void:
+	if lucky_upgrade_audio == null:
+		return
+	lucky_upgrade_audio.pitch_scale = 1.0
+	lucky_upgrade_audio.play()
 
 
 func get_skill1_bomb_damage() -> int:
@@ -1054,7 +1137,8 @@ func _update_skill1_charge(delta: float) -> void:
 	if skill1_charge >= skill1_charge_duration:
 		return
 
-	skill1_charge = minf(skill1_charge + delta, skill1_charge_duration)
+	var charge_rate := 1.0 + maxf(collectible_skill_charge_bonus_per_second, 0.0)
+	skill1_charge = minf(skill1_charge + delta * charge_rate, skill1_charge_duration)
 	_update_skill1_charge_bar()
 
 
@@ -1170,6 +1254,11 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	var physical_damage_bonus := 0
 	var magic_damage_bonus := 0
 	var attack_speed_bonus := 0.0
+	var skill_charge_bonus := 0.0
+	var base_upgrade_free_chance := 0.0
+	var ranged_front_damage_multiplier := 1.0
+	var ranged_back_damage_multiplier := 1.0
+	var ranged_dodge_chance := 0.0
 	var active_periodic_keys: Dictionary = {}
 
 	for item in _get_active_collectible_items():
@@ -1180,6 +1269,17 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 		magic_defense_bonus += item.collectible_magic_defense_bonus
 		physical_damage_bonus += item.collectible_physical_damage_bonus
 		magic_damage_bonus += item.collectible_magic_damage_bonus
+		skill_charge_bonus += item.collectible_skill_charge_bonus_per_second
+		base_upgrade_free_chance = maxf(base_upgrade_free_chance, item.base_upgrade_free_chance)
+		ranged_front_damage_multiplier = maxf(
+			ranged_front_damage_multiplier,
+			item.incoming_ranged_front_damage_multiplier
+		)
+		ranged_back_damage_multiplier = minf(
+			ranged_back_damage_multiplier,
+			item.incoming_ranged_back_damage_multiplier
+		)
+		ranged_dodge_chance = maxf(ranged_dodge_chance, item.incoming_ranged_dodge_chance)
 		if item.attack_speed_xirang_step > 0:
 			attack_speed_bonus += (
 				floori(float(current_xirang) / float(item.attack_speed_xirang_step))
@@ -1203,6 +1303,11 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	collectible_physical_damage_bonus = physical_damage_bonus
 	collectible_magic_damage_bonus = magic_damage_bonus
 	collectible_attack_speed_bonus = attack_speed_bonus
+	collectible_skill_charge_bonus_per_second = skill_charge_bonus
+	collectible_base_upgrade_free_chance = clampf(base_upgrade_free_chance, 0.0, 1.0)
+	collectible_ranged_front_damage_multiplier = maxf(ranged_front_damage_multiplier, 0.0)
+	collectible_ranged_back_damage_multiplier = maxf(ranged_back_damage_multiplier, 0.0)
+	collectible_ranged_dodge_chance = clampf(ranged_dodge_chance, 0.0, 1.0)
 
 	for cooldown_key in collectible_periodic_cooldowns.keys():
 		if not active_periodic_keys.has(cooldown_key):
@@ -1287,6 +1392,8 @@ func _trigger_collectible_periodic_effect(item: PickupConfig) -> void:
 			_trigger_frost_crystal(item)
 		PickupConfig.PERIODIC_EFFECT_HEAL:
 			_trigger_life_crystal(item)
+		PickupConfig.PERIODIC_EFFECT_ARCHER:
+			_trigger_archer(item)
 
 
 func _trigger_thunder_crystal(item: PickupConfig) -> void:
@@ -1348,6 +1455,81 @@ func _trigger_life_crystal(item: PickupConfig) -> void:
 			continue
 		_apply_authoritative_collectible_player_heal(target_player, item.periodic_heal)
 	_spawn_collectible_area_effect(radius, Color(0.45, 1.0, 0.58, 0.42), 0.52)
+
+
+func _trigger_archer(item: PickupConfig) -> void:
+	var targets := _collect_nearest_alive_enemies(
+		maxi(item.periodic_target_count, 1),
+		maxf(item.periodic_radius, 0.0)
+	)
+	if targets.is_empty():
+		return
+	var damage_multiplier := maxf(item.periodic_attack_damage_multiplier, 0.0)
+	if damage_multiplier <= 0.0:
+		damage_multiplier = 1.0
+	var arrow_damage := get_outgoing_damage(
+		maxi(roundi(float(attack_damage) * damage_multiplier), 1),
+		EnemyConfig.DamageType.PHYSICAL
+	)
+	for enemy in targets:
+		_spawn_collectible_arrow(enemy, arrow_damage)
+
+
+func _collect_nearest_alive_enemies(max_count: int, radius: float) -> Array[Enemy]:
+	var enemies := _collect_alive_enemies()
+	if enemies.is_empty():
+		return []
+	var max_distance_squared := radius * radius
+	var filtered: Array[Enemy] = []
+	for enemy in enemies:
+		if enemy == null or not is_instance_valid(enemy):
+			continue
+		if radius > 0.0 and global_position.distance_squared_to(enemy.global_position) > max_distance_squared:
+			continue
+		filtered.append(enemy)
+	filtered.sort_custom(_sort_enemies_by_distance_to_self)
+	if filtered.size() > max_count:
+		filtered.resize(max_count)
+	return filtered
+
+
+func _sort_enemies_by_distance_to_self(a: Enemy, b: Enemy) -> bool:
+	if a == null:
+		return false
+	if b == null:
+		return true
+	return (
+		global_position.distance_squared_to(a.global_position)
+		< global_position.distance_squared_to(b.global_position)
+	)
+
+
+func _spawn_collectible_arrow(target_enemy: Enemy, arrow_damage: int) -> bool:
+	if target_enemy == null or not is_instance_valid(target_enemy) or target_enemy.is_dead:
+		return false
+	var spawn_parent := get_tree().current_scene
+	if spawn_parent == null:
+		return false
+	var shoot_direction := global_position.direction_to(target_enemy.global_position)
+	if shoot_direction == Vector2.ZERO:
+		shoot_direction = _facing_suffix_to_vector(facing_suffix)
+	var arrow := COLLECTIBLE_ARROW_PROJECTILE_SCENE.instantiate()
+	if arrow == null:
+		return false
+	arrow.top_level = true
+	arrow.call("setup", shoot_direction, arrow_damage)
+	spawn_parent.add_child(arrow)
+	arrow.global_position = global_position + shoot_direction * bullet_spawn_distance
+	_register_multiplayer_projectile(
+		arrow,
+		&"collectible_arrow",
+		arrow.global_position,
+		shoot_direction,
+		arrow_damage,
+		float(arrow.get("speed")),
+		float(arrow.get("max_lifetime"))
+	)
+	return true
 
 
 func _remove_collectible_enemy_slow(enemy_ref: WeakRef, source_id: int) -> void:

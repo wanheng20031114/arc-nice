@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3]
+
+[ext_resource type="Texture2D" uid="uid://bdc4uc8sx0rut" path="res://resources/texture/collectibles/archer.png" id="1_icon"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 5
+display_name = "弓箭手"
+drop_weight = 0.0
+description = "持有时，每8秒向附近最近的3个敌人射出弓箭，每支弓箭造成玩家攻击力200%的物理伤害。"
+can_store_in_inventory = true
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(1, 1)
+duration = 0.0
+collectible_effect_id = "archer"
+periodic_effect_id = "archer"
+periodic_interval = 8.0
+periodic_radius = 360.0
+periodic_attack_damage_multiplier = 2.0
+periodic_target_count = 3
+metadata/_custom_type_script = "uid://qucrregg4cq0"

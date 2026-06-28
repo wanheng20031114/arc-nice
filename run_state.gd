@@ -120,6 +120,7 @@ func try_upgrade(stat_type: int, player: Player) -> bool:
 		return try_upgrade_for_peer(active_multiplayer_peer_id, stat_type, player)
 	if player == null:
 		return false
+	player.consume_last_base_upgrade_free_flag()
 	if not upgrade_levels.has(stat_type):
 		return false
 
@@ -131,8 +132,10 @@ func try_upgrade(stat_type: int, player: Player) -> bool:
 	if upgrade_cost < 0 or player.current_xirang < upgrade_cost:
 		return false
 
-	player.current_xirang -= upgrade_cost
-	player.xirang_changed.emit(player.current_xirang, -upgrade_cost)
+	var free_upgrade := player.try_trigger_free_base_upgrade()
+	if not free_upgrade:
+		player.current_xirang -= upgrade_cost
+		player.xirang_changed.emit(player.current_xirang, -upgrade_cost)
 	upgrade_levels[stat_type] = current_level + 1
 
 	match stat_type:
@@ -254,6 +257,7 @@ func try_upgrade_for_peer(peer_id: int, stat_type: int, player: Player) -> bool:
 	ensure_multiplayer_peer_state(peer_id)
 	if player == null:
 		return false
+	player.consume_last_base_upgrade_free_flag()
 
 	var peer_levels := multiplayer_upgrade_levels[peer_id] as Dictionary
 	if not peer_levels.has(stat_type):
@@ -267,8 +271,10 @@ func try_upgrade_for_peer(peer_id: int, stat_type: int, player: Player) -> bool:
 	if upgrade_cost < 0 or player.current_xirang < upgrade_cost:
 		return false
 
-	player.current_xirang -= upgrade_cost
-	player.xirang_changed.emit(player.current_xirang, -upgrade_cost)
+	var free_upgrade := player.try_trigger_free_base_upgrade()
+	if not free_upgrade:
+		player.current_xirang -= upgrade_cost
+		player.xirang_changed.emit(player.current_xirang, -upgrade_cost)
 	peer_levels[stat_type] = current_level + 1
 
 	match stat_type:

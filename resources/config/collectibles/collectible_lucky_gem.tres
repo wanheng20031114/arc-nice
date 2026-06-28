@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3]
+
+[ext_resource type="Texture2D" uid="uid://deusv4vg6phu7" path="res://resources/texture/collectibles/lucky_gem.png" id="1_icon"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 5
+display_name = "幸运宝石"
+drop_weight = 0.0
+description = "持有时，升级基础数值有20%概率不消耗熙攘；触发时播放三声由低到高的音效。"
+can_store_in_inventory = true
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(1, 1)
+duration = 0.0
+collectible_effect_id = "lucky_gem"
+base_upgrade_free_chance = 0.2
+metadata/_custom_type_script = "uid://qucrregg4cq0"

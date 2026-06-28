@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3]
+
+[ext_resource type="Texture2D" uid="uid://bdudcvtcevhah" path="res://resources/texture/collectibles/medieval_shield.png" id="1_icon"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 5
+display_name = "中世纪盾牌"
+drop_weight = 0.0
+description = "持有时，被远程攻击命中时，在全局闪避失败后有20%概率独立触发闪避。"
+can_store_in_inventory = true
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(1, 1)
+duration = 0.0
+collectible_effect_id = "medieval_shield"
+incoming_ranged_dodge_chance = 0.2
+metadata/_custom_type_script = "uid://qucrregg4cq0"

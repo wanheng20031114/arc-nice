@@ -148,10 +148,19 @@ func _fire_locked_shot(direction: Vector2) -> void:
 			hit_source_id,
 			locked_player.peer_id,
 			sniper_config.attack_damage,
-			&"capoo_sniper_lock"
+			&"capoo_sniper_lock",
+			-direction,
+			true
 		))
 	if not reported:
-		locked_player.apply_damage(sniper_config.attack_damage)
+		locked_player.apply_damage(
+			sniper_config.attack_damage,
+			EnemyConfig.DamageType.PHYSICAL,
+			{
+				"is_ranged": true,
+				"source_direction": -direction,
+			}
+		)
 	if sniper_config.attack_audio_stream != null:
 		attack_audio.pitch_scale = random_generator.randf_range(0.96, 1.03)
 		attack_audio.play()

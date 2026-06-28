@@ -21,6 +21,11 @@ const FROST_CRYSTAL_COLLECTIBLE := preload("res://resources/config/collectibles/
 const LIFE_CRYSTAL_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_life_crystal.tres")
 const SWIFT_CRYSTAL_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_swift_crystal.tres")
 const ADMIN_DOLL_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_admin_doll.tres")
+const ARCHER_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_archer.tres")
+const NINE_ELEVEN_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_nine_eleven.tres")
+const CHARGED_JADE_PENDANT_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_charged_jade_pendant.tres")
+const LUCKY_GEM_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_lucky_gem.tres")
+const MEDIEVAL_SHIELD_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_medieval_shield.tres")
 const COLLECTIBLE_POOL := [
 	APPLE_COLLECTIBLE,
 	GOLD_WINE_CUP_COLLECTIBLE,
@@ -41,6 +46,11 @@ const COLLECTIBLE_POOL := [
 	LIFE_CRYSTAL_COLLECTIBLE,
 	SWIFT_CRYSTAL_COLLECTIBLE,
 	ADMIN_DOLL_COLLECTIBLE,
+	ARCHER_COLLECTIBLE,
+	NINE_ELEVEN_COLLECTIBLE,
+	CHARGED_JADE_PENDANT_COLLECTIBLE,
+	LUCKY_GEM_COLLECTIBLE,
+	MEDIEVAL_SHIELD_COLLECTIBLE,
 ]
 const DIALOGUE_LINES := [
 	"我是终末地的爪牙！",

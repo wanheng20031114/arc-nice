@@ -14,6 +14,7 @@
 [ext_resource type="PackedScene" uid="uid://db4l5h4j6dnqu" path="res://scene/skill1_charge_bar.tscn" id="12_skill1_bar"]
 [ext_resource type="LabelSettings" path="res://resources/ui/player_name_label_settings.tres" id="13_name_settings"]
 [ext_resource type="PackedScene" path="res://scene/move_speed_trail_effect.tscn" id="14_speed_trail"]
+[ext_resource type="AudioStream" uid="uid://44ucsbesth8r" path="res://resources/audio/lucky_gem_upgrade_triad.wav" id="15_lucky_audio"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_s4jxa"]
 resource_local_to_scene = true
@@ -185,5 +186,10 @@ volume_db = -1.0
 stream = ExtResource("8_rhcc0")
 volume_db = -4.0
 max_polyphony = 6
+
+[node name="LuckyUpgradeAudio" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("15_lucky_audio")
+volume_db = 2.0
+max_polyphony = 2
 
 [connection signal="timeout" from="ShootingTimer" to="." method="_on_shooting_timer_timeout"]

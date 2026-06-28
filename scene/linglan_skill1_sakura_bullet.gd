@@ -91,7 +91,14 @@ func _on_body_entered(body: Node2D) -> void:
 	if not player.is_dead:
 		var hit_registered := _try_report_multiplayer_player_hit(player)
 		if not hit_registered:
-			hit_registered = player.apply_damage(damage)
+			hit_registered = player.apply_damage(
+				damage,
+				EnemyConfig.DamageType.PHYSICAL,
+				{
+					"is_ranged": true,
+					"source_direction": -direction,
+				}
+			)
 		if hit_registered:
 			_spawn_hit_effect()
 	_consume()
@@ -138,5 +145,7 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 		projectile_id,
 		player.peer_id,
 		damage,
-		source_type
+		source_type,
+		-direction,
+		true
 	))
