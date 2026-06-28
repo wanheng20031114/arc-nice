@@ -188,7 +188,11 @@ func _apply_player_damage(player: Player) -> void:
 	damaged_player_ids[player_id] = true
 	if _try_report_multiplayer_player_hit(player):
 		return
-	player.apply_damage(damage)
+	player.apply_damage(
+		damage,
+		EnemyConfig.DamageType.MAGIC,
+		_get_player_damage_context(player)
+	)
 
 
 func _try_report_multiplayer_player_hit(player: Player) -> bool:
@@ -203,8 +207,24 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 		source_id,
 		player.peer_id,
 		damage,
-		source_type
+		source_type,
+		EnemyConfig.DamageType.MAGIC,
+		_get_source_direction_to_player(player),
+		true
 	))
+
+
+func _get_player_damage_context(player: Player) -> Dictionary:
+	return {
+		"is_ranged": true,
+		"source_direction": _get_source_direction_to_player(player),
+	}
+
+
+func _get_source_direction_to_player(player: Player) -> Vector2:
+	if player == null:
+		return Vector2.ZERO
+	return player.global_position.direction_to(global_position)
 
 
 func _get_damage_source_id() -> int:

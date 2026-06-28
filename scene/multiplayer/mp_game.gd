@@ -1683,10 +1683,26 @@ func request_multiplayer_player_damage(
 	target_peer_id: int,
 	damage: int,
 	source_type: StringName,
-	damage_type: int = EnemyConfig.DamageType.PHYSICAL
+	damage_type_or_source_direction: Variant = EnemyConfig.DamageType.PHYSICAL,
+	source_direction_or_is_ranged: Variant = Vector2.ZERO,
+	is_ranged: bool = false
 ) -> bool:
 	if source_id <= 0 or target_peer_id <= 0 or damage <= 0:
 		return false
+	var resolved_damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
+	var source_direction := Vector2.ZERO
+	var resolved_is_ranged := is_ranged
+	if damage_type_or_source_direction is Vector2:
+		source_direction = damage_type_or_source_direction as Vector2
+		if source_direction_or_is_ranged is bool:
+			resolved_is_ranged = bool(source_direction_or_is_ranged)
+	elif damage_type_or_source_direction is int:
+		resolved_damage_type = int(damage_type_or_source_direction) as EnemyConfig.DamageType
+		if source_direction_or_is_ranged is Vector2:
+			source_direction = source_direction_or_is_ranged as Vector2
+		elif source_direction_or_is_ranged is bool:
+			resolved_is_ranged = bool(source_direction_or_is_ranged)
+	var damage_context := _build_player_damage_context(source_direction, resolved_is_ranged)
 	var hit_key := "%d:%d:%s" % [source_id, target_peer_id, String(source_type)]
 	var now := _get_net_time()
 	var player_node: Player = null
@@ -1701,7 +1717,7 @@ func request_multiplayer_player_damage(
 			return true
 		if player_node.is_dead:
 			return true
-		if player_node.apply_damage(damage):
+		if player_node.apply_damage(damage, resolved_damage_type, damage_context):
 			_remember_recent_event(_processed_player_hit_ids, hit_key, HIT_DEDUP_RETENTION_SECONDS, now)
 			request_player_hit_report(
 				source_id,
@@ -1715,7 +1731,7 @@ func request_multiplayer_player_damage(
 	if net_manager.is_host():
 		if player_node.is_dead:
 			return true
-		if player_node.apply_damage(damage):
+		if player_node.apply_damage(damage, resolved_damage_type, damage_context):
 			_apply_player_hit_report(
 				source_id,
 				target_peer_id,
