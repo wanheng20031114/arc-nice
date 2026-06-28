@@ -17,10 +17,9 @@ const PURCHASE_RESULT_SKILL1_UPGRADE_MAXED := 5
 const MIN_WAVE_SPAWN_INTERVAL_SECONDS := 0.1
 const MAX_WAVE_SPAWN_COUNT_PER_TICK := 4
 const SPAWN_EFFECTS_PER_SECOND_LIMIT := 24
-const SPAWN_AUDIO_MIN_INTERVAL_SECONDS := 0.08
 const DEFAULT_MUSIC_VOLUME_DB := -6.0
 const MUSIC_FADE_IN_SECONDS := 3.0
-const MUSIC_FADE_IN_START_VOLUME_DB := -60.0
+const MUSIC_FADE_IN_START_VOLUME_DB := -12.0
 const INITIAL_PLAYER_XIRANG := 1000
 
 signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
@@ -97,7 +96,6 @@ enum WaveState {
 @onready var map_camera: Camera2D = $Camera2D
 @onready var grid_pathfinder: Node = $GridPathfinder
 @onready var music_player: AudioStreamPlayer = $MusicPlayer
-@onready var enemy_spawn_audio: AudioStreamPlayer = $EnemySpawnAudio
 @onready var countdown_audio: AudioStreamPlayer = $CountdownAudio
 @onready var wave_start_audio: AudioStreamPlayer = $WaveStartAudio
 @onready var currency_hud: CurrencyHUD = $CurrencyHUD
@@ -140,7 +138,6 @@ var next_multiplayer_pickup_net_id: int = 1000
 var multiplayer_defeat_check_pending: bool = false
 var spawn_effect_budget_started_msec: int = 0
 var spawn_effects_this_second: int = 0
-var last_spawn_audio_msec: int = -100000
 var luoxi_collectible_claimed_peers: Dictionary = {}
 var linglan_boss_started: bool = false
 var active_boss_config: Resource
@@ -1229,7 +1226,6 @@ func _try_spawn_enemy(enemy_config: EnemyConfig) -> bool:
 	enemy_instance.tree_exited.connect(_on_wave_enemy_tree_exited.bind(enemy_id))
 	_register_multiplayer_enemy_instance(enemy_instance, enemy_config, enemy_instance.global_position)
 	_spawn_enemy_spawn_effect(spawn_point.global_position)
-	_try_play_enemy_spawn_audio()
 	return true
 
 
@@ -1337,7 +1333,6 @@ func _finish_linglan_airdrop_sniper_spawn(
 		enemy_instance.tree_exited.connect(_on_boss_enemy_tree_exited.bind(enemy_id))
 	_register_multiplayer_enemy_instance(enemy_instance, enemy_config, landing_position)
 	_spawn_enemy_spawn_effect(landing_position)
-	_try_play_enemy_spawn_audio()
 
 
 func _set_enemy_collision_shapes_disabled_recursive(root: Node, disabled: bool) -> void:
@@ -1401,7 +1396,6 @@ func _try_spawn_boss_add_at_marker(enemy_config: EnemyConfig, marker_name: Strin
 		enemy_instance.tree_exited.connect(_on_boss_enemy_tree_exited.bind(enemy_id))
 	_register_multiplayer_enemy_instance(enemy_instance, enemy_config, enemy_instance.global_position)
 	_spawn_enemy_spawn_effect(spawn_marker.global_position)
-	_try_play_enemy_spawn_audio()
 	return true
 
 
@@ -2257,16 +2251,6 @@ func _consume_spawn_effect_budget() -> bool:
 		return false
 	spawn_effects_this_second += 1
 	return true
-
-
-func _try_play_enemy_spawn_audio() -> void:
-	if enemy_spawn_audio == null:
-		return
-	var now := Time.get_ticks_msec()
-	if float(now - last_spawn_audio_msec) * 0.001 < SPAWN_AUDIO_MIN_INTERVAL_SECONDS:
-		return
-	last_spawn_audio_msec = now
-	enemy_spawn_audio.play()
 
 
 func _play_countdown_tick() -> void:

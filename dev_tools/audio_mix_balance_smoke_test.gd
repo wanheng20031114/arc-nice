@@ -54,7 +54,7 @@ func _test_game_mix() -> void:
 	await process_frame
 
 	_expect_volume(game, "MusicPlayer", -6.0, "Music bed must sit above the old under-mixed level.")
-	_expect_volume(game, "EnemySpawnAudio", -8.0, "Spawn cue must be audible without jumping forward.")
+	_expect(game.get_node_or_null("EnemySpawnAudio") == null, "Enemy spawn audio cue must stay removed.")
 	_expect_volume(game, "CountdownAudio", -13.0, "Countdown tick must not overpower combat SFX.")
 	_expect_volume(game, "WaveStartAudio", -12.0, "Wave start cue must sit below explosion peaks.")
 

@@ -16,6 +16,7 @@ const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 const XIRANG_DROP_CONFIG := preload("res://resources/config/xirang_drop.tres")
 const LINGLAN_SKILL2_ROCKET_SCENE := preload("res://scene/linglan_skill2_sakura_rocket.tscn")
 const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
+const ARCHER_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_archer.tres")
 const LIFE_CRYSTAL := preload("res://resources/config/collectibles/collectible_life_crystal.tres")
 const LINGLAN_BOSS_CONFIG := preload("res://resources/config/bosses/boss_01_linglan.tres")
 
@@ -357,6 +358,9 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 	root.add_child(game)
 	await process_frame
 	_expect(game.peer_players.has(2), "Game must create peer player 2 before cleanup.")
+	var run_state := root.get_node_or_null("RunState") as RunStateStore
+	if run_state != null:
+		run_state.begin_new_run()
 	var remote_player := game.peer_players.get(2) as Player
 	if remote_player != null:
 		remote_player.attack_damage = 37
@@ -374,6 +378,29 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 	_expect(
 		not accepted_parameters.is_empty() and float(accepted_parameters.get("speed", 0.0)) > 0.0,
 		"Host must rebuild client player bullet speed from the scene default."
+	)
+	if run_state != null:
+		_expect(run_state.try_add_item_for_peer(2, ARCHER_COLLECTIBLE), "Peer 2 archer collectible must fit before projectile validation.")
+	if remote_player != null:
+		remote_player.attack_damage = 37
+	var accepted_arrow_parameters := parameter_mp_game.call(
+		"_get_authoritative_client_projectile_parameters",
+		&"collectible_arrow",
+		2
+	) as Dictionary
+	_expect(
+		not accepted_arrow_parameters.is_empty(),
+		"Host must accept client archer collectible arrow projectiles."
+	)
+	var expected_arrow_damage := remote_player.attack_damage * 2 if remote_player != null else 0
+	_expect(
+		int(accepted_arrow_parameters.get("damage", 0)) == expected_arrow_damage,
+		"Host must rebuild archer arrow damage from the authoritative player and collectible."
+	)
+	_expect(
+		float(accepted_arrow_parameters.get("speed", 0.0)) > 0.0
+		and float(accepted_arrow_parameters.get("lifetime", 0.0)) > 0.0,
+		"Host must rebuild archer arrow motion parameters from the scene default."
 	)
 	var rejected_parameters := parameter_mp_game.call(
 		"_get_authoritative_client_projectile_parameters",

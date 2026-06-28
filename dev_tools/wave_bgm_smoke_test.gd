@@ -104,7 +104,7 @@ func _test_wave_music_fade() -> void:
 	_expect(music_player.playing, "Wave combat BGM player must be playing.")
 	_expect(
 		_float_close(music_player.volume_db, Game.MUSIC_FADE_IN_START_VOLUME_DB, 0.05),
-		"Wave combat BGM must start at the fade-in floor."
+		"Wave combat BGM must start at an audible fade-in volume."
 	)
 	await _finish_music_fade(game)
 	_expect(
@@ -136,7 +136,7 @@ func _test_intermission_music_owner_and_fade() -> void:
 	_expect(music_player.playing, "Intermission BGM player must be playing.")
 	_expect(
 		_float_close(music_player.volume_db, Game.MUSIC_FADE_IN_START_VOLUME_DB, 0.05),
-		"Intermission BGM must start at the fade-in floor."
+		"Intermission BGM must start at an audible fade-in volume."
 	)
 	await _finish_music_fade(game)
 	_expect(

@@ -23,9 +23,31 @@ const CHARGED_JADE_PENDANT := preload("res://resources/config/collectibles/colle
 const LUCKY_GEM := preload("res://resources/config/collectibles/collectible_lucky_gem.tres")
 const MEDIEVAL_SHIELD := preload("res://resources/config/collectibles/collectible_medieval_shield.tres")
 const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/collectible_arrow_projectile.gd")
+const DAMAGE_NUMBER_POOL_SCRIPT := preload("res://scene/damage_number_pool.gd")
+
+class DamageNumberTestRoot:
+	extends Node2D
+
+	var damage_number_pool: DamageNumberPool = null
+
+	func show_damage_number(
+		amount: int,
+		spawn_position: Vector2,
+		impact_direction: Vector2 = Vector2.ZERO,
+		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
+	) -> bool:
+		if damage_number_pool == null:
+			return false
+		return damage_number_pool.show_damage_number(
+			amount,
+			spawn_position,
+			impact_direction,
+			damage_type
+		)
+
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: DamageNumberTestRoot
 
 
 func _init() -> void:
@@ -33,10 +55,18 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = DamageNumberTestRoot.new()
 	test_root.name = "CollectibleEffectsSmokeTest"
 	root.add_child(test_root)
 	current_scene = test_root
+
+	var damage_number_pool := DAMAGE_NUMBER_POOL_SCRIPT.new() as DamageNumberPool
+	_expect(damage_number_pool != null, "DamageNumberPool must instantiate for collectible damage display checks.")
+	if damage_number_pool != null:
+		damage_number_pool.name = "DamageNumberPool"
+		test_root.add_child(damage_number_pool)
+		test_root.damage_number_pool = damage_number_pool
+	await process_frame
 
 	await _test_collectible_resources()
 	await _test_collectible_stat_rules()
@@ -135,12 +165,25 @@ func _test_new_collectible_rules() -> void:
 	await process_frame
 	player.call("_trigger_archer", ARCHER)
 	var arrow_count := 0
+	var first_arrow: Node = null
 	for child in test_root.get_children():
 		if child.get_script() == COLLECTIBLE_ARROW_PROJECTILE_SCRIPT:
+			if first_arrow == null:
+				first_arrow = child
 			arrow_count += 1
 			_expect(child.z_index >= 4, "Archer arrows must render above player and enemy body sprites.")
 			_expect(int(child.get("damage")) == player.attack_damage * 2, "Archer arrows must deal 200% of the player's attack damage.")
 	_expect(arrow_count == 3, "Archer must fire at the nearest three enemies.")
+	_expect(first_arrow != null, "Archer must create a hittable arrow projectile.")
+	if first_arrow != null and not enemies.is_empty():
+		var damage_numbers_before := _count_active_damage_numbers()
+		first_arrow.call("_on_body_entered", enemies[0])
+		await process_frame
+		_expect(enemies[0].last_damage_taken > 0, "Archer arrow hit must apply enemy damage.")
+		_expect(
+			_count_active_damage_numbers() == damage_numbers_before + 1,
+			"Archer arrow enemy damage must show a damage number."
+		)
 	for child in test_root.get_children():
 		if child.get_script() == COLLECTIBLE_ARROW_PROJECTILE_SCRIPT:
 			child.queue_free()
@@ -269,17 +312,29 @@ func _test_combat_effects() -> void:
 	await process_frame
 	enemy.current_health = 100
 	nearby_enemy.current_health = 100
+	var thunder_damage_numbers_before := _count_active_damage_numbers()
 	player.call("_trigger_thunder_crystal", THUNDER_CRYSTAL)
+	await process_frame
 	_expect(enemy.last_damage_taken == 51, "Thunder crystal must use magic damage bonus.")
 	_expect(nearby_enemy.last_damage_taken == 51, "Thunder crystal must damage nearby enemies around the strike point.")
+	_expect(
+		_count_active_damage_numbers() >= thunder_damage_numbers_before + 2,
+		"Thunder crystal enemy damage must show damage numbers."
+	)
 
 	run_state.begin_new_run()
 	player.refresh_collectible_stats()
 	_expect(run_state.try_add_item(FROST_CRYSTAL), "Frost crystal must fit in inventory.")
 	await process_frame
 	enemy.current_health = 100
+	var frost_damage_numbers_before := _count_active_damage_numbers()
 	player.call("_trigger_frost_crystal", FROST_CRYSTAL)
+	await process_frame
 	_expect(enemy.last_damage_taken == 10, "Frost crystal must damage enemies in its radius.")
+	_expect(
+		_count_active_damage_numbers() >= frost_damage_numbers_before + 1,
+		"Frost crystal enemy damage must show a damage number."
+	)
 	_expect(enemy.move_speed_modifiers.size() > 0, "Frost crystal must slow enemies in its radius.")
 	enemy.queue_free()
 	await process_frame
@@ -331,6 +386,10 @@ func _spawn_enemy(position: Vector2, player: Player) -> Enemy:
 	enemy.global_position = position
 	enemy.setup(BASIC_CONFIG, player, null)
 	return enemy
+
+
+func _count_active_damage_numbers() -> int:
+	return get_nodes_in_group(&"damage_numbers").size()
 
 
 func _expect(condition: bool, message: String) -> void:

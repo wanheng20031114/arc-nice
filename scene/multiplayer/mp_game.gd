@@ -1368,8 +1368,47 @@ func _get_authoritative_client_projectile_parameters(
 			}
 			bomb.free()
 			return bomb_result
+		&"collectible_arrow":
+			var arrow_damage := _get_authoritative_collectible_arrow_damage(owner_player)
+			if arrow_damage <= 0:
+				return {}
+			var arrow := COLLECTIBLE_ARROW_PROJECTILE_SCENE.instantiate()
+			if arrow == null:
+				return {}
+			var arrow_result := {
+				"damage": arrow_damage,
+				"speed": float(arrow.get("speed")),
+				"lifetime": float(arrow.get("max_lifetime")),
+			}
+			arrow.free()
+			return arrow_result
 		_:
 			return {}
+
+
+func _get_authoritative_collectible_arrow_damage(owner_player: Player) -> int:
+	if owner_player == null or not is_instance_valid(owner_player):
+		return -1
+	var active_items_variant: Variant = owner_player.call("_get_active_collectible_items")
+	if not (active_items_variant is Array):
+		return -1
+
+	var best_damage := -1
+	for item_variant in active_items_variant:
+		var item := item_variant as PickupConfig
+		if item == null:
+			continue
+		if item.periodic_effect_id != PickupConfig.PERIODIC_EFFECT_ARCHER:
+			continue
+		var damage_multiplier := maxf(item.periodic_attack_damage_multiplier, 0.0)
+		if damage_multiplier <= 0.0:
+			damage_multiplier = 1.0
+		var arrow_damage := owner_player.get_outgoing_damage(
+			maxi(roundi(float(owner_player.attack_damage) * damage_multiplier), 1),
+			EnemyConfig.DamageType.PHYSICAL
+		)
+		best_damage = maxi(best_damage, arrow_damage)
+	return best_damage
 
 
 func _remember_projectile_record(

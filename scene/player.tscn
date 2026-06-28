@@ -191,7 +191,7 @@ stream = ExtResource("8_rhcc0")
 volume_db = -4.0
 max_polyphony = 6
 
-[node name="LuckyUpgradeAudio" type="AudioStreamPlayer2D" parent="."]
+[node name="LuckyUpgradeAudio" type="AudioStreamPlayer2D" parent="." unique_id=519526497]
 stream = ExtResource("15_lucky_audio")
 volume_db = 2.0
 max_polyphony = 2

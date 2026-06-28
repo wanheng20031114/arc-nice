@@ -9,7 +9,6 @@
 [ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="8_rrr3j"]
 [ext_resource type="Script" uid="uid://dd4fk5ef1owl" path="res://scene/grid_pathfinder.gd" id="9_5wjd4"]
 [ext_resource type="AudioStream" uid="uid://cmfbw4cr7dde" path="res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3" id="10_swtgm"]
-[ext_resource type="AudioStream" uid="uid://bmifvvnjfqsuv" path="res://resources/audio/cowboy_gopher.wav" id="11_26owc"]
 [ext_resource type="PackedScene" path="res://scene/currency_hud.tscn" id="12_currency_hud"]
 [ext_resource type="PackedScene" path="res://scene/player_profile_panel.tscn" id="13_profile_panel"]
 [ext_resource type="PackedScene" uid="uid://bybgq7nbb2dgy" path="res://scene/wave_hud.tscn" id="14_wave_hud"]
@@ -128,11 +127,6 @@ environment = SubResource("Environment_revive_glow")
 [node name="MusicPlayer" type="AudioStreamPlayer" parent="." unique_id=707834306]
 stream = ExtResource("10_swtgm")
 volume_db = -6.0
-
-[node name="EnemySpawnAudio" type="AudioStreamPlayer" parent="." unique_id=1067691072]
-stream = ExtResource("11_26owc")
-volume_db = -8.0
-max_polyphony = 8
 
 [node name="CountdownAudio" type="AudioStreamPlayer" parent="." unique_id=382140993]
 stream = ExtResource("16_countdown")
