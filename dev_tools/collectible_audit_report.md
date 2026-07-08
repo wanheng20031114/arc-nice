@@ -19,11 +19,11 @@
 | resources/config/collectibles/collectible_blue_mushroom.tres | 蓝蘑菇 | 普通 | 命中:chill | 寒冷命中：普通子弹有概率减速敌人。 | 23x24 | 305 | OK |
 | resources/config/collectibles/collectible_blue_quartz.tres | 蓝石英 | 普通 | 技力/s+0.15 | 技能充能：每秒技能充能+0.15。 | 25x26 | 463 | OK |
 | resources/config/collectibles/collectible_bone_needle.tres | 骨针 | 普通 | 命中:bleed | 流血命中：普通子弹有概率造成更久流血。 | 22x23 | 136 | OK |
-| resources/config/collectibles/collectible_campfire_coal.tres | 篝火余烬 | 普通 | 命中:burn | 灼烧命中：普通子弹有概率造成灼烧。 | 23x22 | 336 | OK |
-| resources/config/collectibles/collectible_candle_stub.tres | 蜡烛头 | 普通 | 命中:burn | 烛火命中：普通子弹有概率附着短火。 | 11x26 | 252 | OK |
+| resources/config/collectibles/collectible_campfire_coal.tres | 篝火余烬 | 稀有 | 命中:burn | 灼烧命中：普通子弹有概率造成每秒10点伤害的灼烧。 | 23x22 | 336 | OK |
+| resources/config/collectibles/collectible_candle_stub.tres | 蜡烛头 | 普通 | 命中:burn | 烛火命中：普通子弹有概率附着每秒5点伤害的短火。 | 11x26 | 252 | OK |
 | resources/config/collectibles/collectible_celestial_ring.tres | 星界戒指 | 史诗 | 击杀:charge | 击杀充能：击败敌人时补充0.55秒技能充能。 | 24x25 | 295 | OK |
 | resources/config/collectibles/collectible_charged_jade_pendant.tres | 充能玉佩 | 稀有 | 技力/s+0.5 |  | 14x28 | 257 | OK |
-| resources/config/collectibles/collectible_chipped_ruby.tres | 裂纹红玉 | 普通 | 命中:burn | 火星命中：普通子弹有概率点燃敌人。 | 23x26 | 426 | OK |
+| resources/config/collectibles/collectible_chipped_ruby.tres | 裂纹红玉 | 普通 | 命中:burn | 火星命中：普通子弹有概率施加每秒5点伤害的燃烧，持续稍久。 | 23x26 | 426 | OK |
 | resources/config/collectibles/collectible_clay_totem.tres | 陶土小像 | 普通 | 条件:health_below | 低血护体：生命不高于40%时，物理防御+2。 | 17x25 | 349 | OK |
 | resources/config/collectibles/collectible_copper_gear.tres | 铜齿轮 | 普通 | 每600息壤攻速+1.0 | 息壤攻速：每持有600息壤，攻击速度+1。 | 27x27 | 336 | OK |
 | resources/config/collectibles/collectible_copper_sword.tres | 铜短剑 | 普通 | 攻击+1 | 基础攻击：攻击力+1。 | 17x29 | 299 | OK |
@@ -31,7 +31,7 @@
 | resources/config/collectibles/collectible_dragon_heart.tres | 龙心 | 史诗 | 击杀:burst | 击杀爆裂：击败敌人时在其位置引发火焰爆裂。 | 24x25 | 333 | OK |
 | resources/config/collectibles/collectible_echo_drum.tres | 回声小鼓 | 稀有 | 每800息壤攻速+1.0 | 息壤攻速：每持有800息壤，攻击速度+1。 | 20x25 | 364 | OK |
 | resources/config/collectibles/collectible_eclipse_amulet.tres | 蚀月护符 | 史诗 | 技能:moon_shield | 技能月盾：使用技能时生成较大的月盾。 | 24x25 | 347 | OK |
-| resources/config/collectibles/collectible_ember_leaf.tres | 余烬叶 | 普通 | 命中:burn | 灰叶火种：普通子弹有概率点燃敌人。 | 22x25 | 264 | OK |
+| resources/config/collectibles/collectible_ember_leaf.tres | 余烬叶 | 普通 | 命中:burn | 灰叶火种：普通子弹有概率施加每秒10点伤害的短燃烧。 | 22x25 | 264 | OK |
 | resources/config/collectibles/collectible_emerald.tres | 绿宝石 | 普通 | 生命+10 |  | 15x26 | 278 | OK |
 | resources/config/collectibles/collectible_fox_coin.tres | 狐纹铜币 | 普通 | 免费升级率+0.05 | 免费升级：升级基础属性时有5%概率不消耗息壤。 | 21x21 | 349 | OK |
 | resources/config/collectibles/collectible_frost_crystal.tres | 寒霜水晶 | 史诗 | 周期:frost |  | 18x26 | 299 | OK |
@@ -62,7 +62,7 @@
 | resources/config/collectibles/collectible_moss_agate.tres | 苔纹玛瑙 | 普通 | 生命+8 | 生命上限：生命上限+8。 | 23x26 | 426 | OK |
 | resources/config/collectibles/collectible_nine_eleven.tres | 911 | 传说 | 正面远程伤害x1.3；背面远程伤害x0.5 |  | 29x12 | 234 | OK |
 | resources/config/collectibles/collectible_obsidian_key.tres | 黑曜钥匙 | 稀有 | 命中:execute | 低血处决：普通子弹有概率处决低生命敌人。 | 24x26 | 179 | OK |
-| resources/config/collectibles/collectible_oil_lamp.tres | 油灯 | 普通 | 命中:burn | 油火命中：普通子弹有概率造成较久灼烧。 | 15x22 | 246 | OK |
+| resources/config/collectibles/collectible_oil_lamp.tres | 油灯 | 稀有 | 命中:burn | 油火命中：普通子弹有概率造成每秒15点伤害的油火灼烧。 | 15x22 | 246 | OK |
 | resources/config/collectibles/collectible_oracle_cube.tres | 先知方块 | 传说 | 命中:mark | 先知标记：普通子弹有概率施加高额易伤标记。 | 25x25 | 452 | OK |
 | resources/config/collectibles/collectible_pebble_shield.tres | 卵石小盾 | 普通 | 物防+1 | 物理防御：物理防御+1。 | 23x27 | 429 | OK |
 | resources/config/collectibles/collectible_philosopher_stone.tres | 贤者石 | 史诗 | 免费升级率+0.25 | 免费升级：升级基础属性时有25%概率不消耗息壤。 | 24x26 | 436 | OK |

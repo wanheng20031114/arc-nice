@@ -10,6 +10,7 @@ const FLOW_NAVIGATION_WAYPOINT_ARRIVAL_DISTANCE := 1.0
 const AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const SLOW_OVERLAY_ACTIVE_STRENGTH := 0.36
 const BURN_OVERLAY_ACTIVE_STRENGTH := 0.26
+const BURN_STATUS_TICK_INTERVAL := 1.0
 
 enum DeathSequenceStage {
 	NONE,
@@ -349,14 +350,17 @@ func apply_collectible_status(
 	if is_dead or source_id == 0 or status_id == &"":
 		return
 	var normalized_duration := maxf(duration, 0.05)
+	var normalized_tick_interval := maxf(tick_interval, 0.1)
+	if status_id == &"burn":
+		normalized_tick_interval = BURN_STATUS_TICK_INTERVAL
 	var effect_key := "%s:%s" % [source_id, status_id]
 	var status := {
 		"status_id": status_id,
 		"source_id": source_id,
 		"time_left": normalized_duration,
 		"tick_damage": maxi(tick_damage, 0),
-		"tick_interval": maxf(tick_interval, 0.1),
-		"tick_time_left": maxf(tick_interval, 0.1),
+		"tick_interval": normalized_tick_interval,
+		"tick_time_left": normalized_tick_interval,
 		"damage_type": int(damage_type),
 		"slow_source_id": 0,
 		"physical_defense_source_id": 0,
@@ -381,6 +385,7 @@ func apply_collectible_status(
 func _update_collectible_status_effects(delta: float) -> void:
 	if collectible_status_effects.is_empty():
 		return
+	var active_burn_damage_key: Variant = _get_highest_damage_status_key(&"burn")
 	for effect_key in collectible_status_effects.keys():
 		var status: Dictionary = collectible_status_effects.get(effect_key, {})
 		if status.is_empty():
@@ -393,6 +398,9 @@ func _update_collectible_status_effects(delta: float) -> void:
 		status["time_left"] = time_left
 		var tick_damage := int(status.get("tick_damage", 0))
 		if tick_damage > 0:
+			if StringName(status.get("status_id", &"")) == &"burn" and effect_key != active_burn_damage_key:
+				collectible_status_effects[effect_key] = status
+				continue
 			var tick_time_left := float(status.get("tick_time_left", 0.1)) - delta
 			while tick_time_left <= 0.0 and tick_damage > 0 and not is_dead:
 				tick_time_left += float(status.get("tick_interval", 0.5))
@@ -406,6 +414,24 @@ func _update_collectible_status_effects(delta: float) -> void:
 				)
 			status["tick_time_left"] = tick_time_left
 		collectible_status_effects[effect_key] = status
+
+
+func _get_highest_damage_status_key(status_id: StringName) -> Variant:
+	var strongest_key: Variant = null
+	var strongest_damage := -1
+	for effect_key in collectible_status_effects.keys():
+		var status: Dictionary = collectible_status_effects.get(effect_key, {})
+		if status.is_empty():
+			continue
+		if StringName(status.get("status_id", &"")) != status_id:
+			continue
+		if float(status.get("time_left", 0.0)) <= 0.0:
+			continue
+		var tick_damage := int(status.get("tick_damage", 0))
+		if tick_damage > strongest_damage:
+			strongest_damage = tick_damage
+			strongest_key = effect_key
+	return strongest_key
 
 
 func _remove_collectible_status(effect_key: Variant, status: Dictionary) -> void:

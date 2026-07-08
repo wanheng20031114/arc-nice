@@ -27,6 +27,11 @@ const FOX_COIN := preload("res://resources/config/collectibles/collectible_fox_c
 const MEDIEVAL_SHIELD := preload("res://resources/config/collectibles/collectible_medieval_shield.tres")
 const WOODEN_BUCKLER := preload("res://resources/config/collectibles/collectible_wooden_buckler.tres")
 const SILVER_MASK := preload("res://resources/config/collectibles/collectible_silver_mask.tres")
+const CANDLE_STUB := preload("res://resources/config/collectibles/collectible_candle_stub.tres")
+const CHIPPED_RUBY := preload("res://resources/config/collectibles/collectible_chipped_ruby.tres")
+const EMBER_LEAF := preload("res://resources/config/collectibles/collectible_ember_leaf.tres")
+const CAMPFIRE_COAL := preload("res://resources/config/collectibles/collectible_campfire_coal.tres")
+const OIL_LAMP := preload("res://resources/config/collectibles/collectible_oil_lamp.tres")
 const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/collectible_arrow_projectile.gd")
 const DAMAGE_NUMBER_POOL_SCRIPT := preload("res://scene/damage_number_pool.gd")
 
@@ -74,6 +79,7 @@ func _run() -> void:
 	await process_frame
 
 	await _test_collectible_resources()
+	_test_burn_collectible_tiers()
 	await _test_collectible_stat_rules()
 	await _test_xirang_dynamic_rules()
 	await _test_new_collectible_rules()
@@ -132,6 +138,31 @@ func _test_collectible_resources() -> void:
 			int(rarity_counts.get(int(rarity), 0)) > 0,
 			"Luoxi collectible pool must contain %s rarity items." % PickupConfig.get_collectible_rarity_label(rarity)
 		)
+
+
+func _test_burn_collectible_tiers() -> void:
+	var expected_rows: Array = [
+		[CANDLE_STUB, PickupConfig.CollectibleRarity.COMMON, 5, 0.12, 1.5],
+		[CHIPPED_RUBY, PickupConfig.CollectibleRarity.COMMON, 5, 0.14, 2.2],
+		[EMBER_LEAF, PickupConfig.CollectibleRarity.COMMON, 10, 0.12, 1.6],
+		[CAMPFIRE_COAL, PickupConfig.CollectibleRarity.RARE, 10, 0.16, 2.4],
+		[OIL_LAMP, PickupConfig.CollectibleRarity.RARE, 15, 0.14, 2.6],
+	]
+	for row in expected_rows:
+		var item: PickupConfig = row[0] as PickupConfig
+		var expected_rarity: int = int(row[1])
+		var expected_burn_damage: int = int(row[2])
+		var expected_chance: float = float(row[3])
+		var expected_duration: float = float(row[4])
+		_expect(item != null, "Burn collectible tier row must load.")
+		if item == null:
+			continue
+		_expect(item.on_hit_effect_id == PickupConfig.HIT_EFFECT_BURN, "%s must remain a burn item." % item.display_name)
+		_expect(int(item.collectible_rarity) == expected_rarity, "%s burn rarity mismatch." % item.display_name)
+		_expect(item.on_hit_damage == expected_burn_damage, "%s burn damage mismatch." % item.display_name)
+		_expect(is_equal_approx(item.on_hit_chance, expected_chance), "%s burn chance mismatch." % item.display_name)
+		_expect(is_equal_approx(item.on_hit_duration, expected_duration), "%s burn duration mismatch." % item.display_name)
+		_expect(is_equal_approx(item.on_hit_tick_interval, 1.0), "%s burn tick interval must display one-second burn ticks." % item.display_name)
 
 
 func _test_new_collectible_rules() -> void:
@@ -418,11 +449,33 @@ func _test_combat_effects() -> void:
 		"Burn overlay must clear after the burn status expires."
 	)
 
+	var burn_stack_enemy := _spawn_enemy(Vector2(112.0, 0.0), player)
+	burn_stack_enemy.current_health = 100
+	burn_stack_enemy.apply_collectible_status(&"burn", 911, 3.0, 5, 0.2)
+	burn_stack_enemy.apply_collectible_status(&"burn", 912, 1.2, 15, 0.2)
+	burn_stack_enemy.call("_update_collectible_status_effects", 1.01)
+	_expect(
+		burn_stack_enemy.current_health == 85,
+		"Burn must deal only the highest active burn damage once per second."
+	)
+	burn_stack_enemy.call("_update_collectible_status_effects", 0.25)
+	_expect(
+		burn_stack_enemy.current_health == 85,
+		"Lower burn damage must not tick during the same second when a stronger burn expires."
+	)
+	burn_stack_enemy.call("_update_collectible_status_effects", 1.0)
+	_expect(
+		burn_stack_enemy.current_health == 80,
+		"Lower burn damage must resume after the stronger burn expires."
+	)
+
 	for node in [player, ally, enemy, nearby_enemy]:
 		if is_instance_valid(node):
 			node.queue_free()
 	if is_instance_valid(burn_enemy):
 		burn_enemy.queue_free()
+	if is_instance_valid(burn_stack_enemy):
+		burn_stack_enemy.queue_free()
 	await process_frame
 
 
