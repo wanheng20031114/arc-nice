@@ -8,6 +8,13 @@ const DEFAULT_WAVES: Array[WaveConfig] = [
 	preload("res://resources/config/waves/wave_03.tres"),
 	preload("res://resources/config/waves/wave_04.tres"),
 	preload("res://resources/config/waves/wave_05.tres"),
+	preload("res://resources/config/waves/wave_06.tres"),
+	preload("res://resources/config/waves/wave_07.tres"),
+	preload("res://resources/config/waves/wave_08.tres"),
+	preload("res://resources/config/waves/wave_09.tres"),
+	preload("res://resources/config/waves/wave_10.tres"),
+	preload("res://resources/config/waves/wave_11.tres"),
+	preload("res://resources/config/waves/wave_12.tres"),
 ]
 const MERCHANT_FRAMES := preload("res://resources/animation/zhuangfangyi.tres")
 
@@ -55,7 +62,7 @@ func _run() -> void:
 
 
 func _test_default_wave_resources() -> void:
-	var expected_rests := [25.0, 25.0, 25.0, 20.0, 20.0]
+	var expected_rests := [20.0, 20.0, 20.0, 20.0, 20.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0]
 	for wave_index in range(DEFAULT_WAVES.size()):
 		var wave_config := DEFAULT_WAVES[wave_index]
 		_expect(wave_config != null, "Wave %d resource is missing." % (wave_index + 1))
@@ -90,7 +97,7 @@ func _test_game_scene_wave_list() -> void:
 	var game := GAME_SCENE.instantiate() as Node2D
 	var game_waves: Array = game.get("waves")
 	var flow_graph := game.get("flow_graph") as FlowGraphConfig
-	_expect(game_waves.size() == 11, "Game scene must load 11 waves.")
+	_expect(game_waves.size() == 12, "Game scene must load 12 waves.")
 	_expect(flow_graph != null, "Game scene must load the default flow graph.")
 	if flow_graph != null:
 		_expect(flow_graph.start_step == game_waves[0], "Default flow must start at the first wave.")
@@ -101,11 +108,11 @@ func _test_game_scene_wave_list() -> void:
 		_expect(first_wave != null, "Game first wave resource is missing.")
 		if first_wave != null:
 			_expect(first_wave.get_total_enemy_count() > 0, "Game first wave must contain enemies.")
-	if game_waves.size() >= 11:
-		var final_wave := game_waves[10] as WaveConfig
+	if game_waves.size() >= 12:
+		var final_wave := game_waves[11] as WaveConfig
 		_expect(
-			final_wave != null and final_wave.get_total_enemy_count() == 234,
-			"Game final wave must include the new Capoo variants."
+			final_wave != null and final_wave.get_total_enemy_count() == 560,
+			"Game final normal wave must include the late-game enemy set."
 		)
 	game.queue_free()
 

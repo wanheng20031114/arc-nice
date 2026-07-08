@@ -101,7 +101,7 @@ func _test_default_flow_and_waves() -> void:
 		if default_exit != null:
 			_expect(default_exit.get_target_step_id() == expected_next, "Wave %02d default exit mismatch." % wave_number)
 
-	_expect(_get_wave_total(1) == 273, "Wave 01 total count mismatch.")
+	_expect(_get_wave_total(1) == 6, "Wave 01 audio test total count mismatch.")
 	_expect(_get_wave_total(8) == 420, "Wave 08 total count mismatch.")
 	_expect(_get_wave_total(12) == 560, "Wave 12 total count mismatch.")
 

@@ -18,6 +18,7 @@ const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres
 const ELITE_KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight_elite.tres")
 const SWORDSMAN_CONFIG := preload("res://resources/config/enemies/capoo_swordsman.tres")
 const FIRE_RANGED_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres")
+const WAVE_01 := preload("res://resources/config/waves/wave_01.tres")
 const AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const ENEMY_HIT_STREAM := preload("res://resources/audio/cowboy_monsterhit.wav")
 const ENEMY_DEATH_STREAM := preload("res://resources/audio/cowboy_monsterdie.wav")
@@ -37,6 +38,7 @@ func _run() -> void:
 	await _test_ui_mix()
 	await _test_ui_click_audio()
 	_test_attack_stream_contracts()
+	_test_first_wave_audio_test_contract()
 	await _drain_cleanup_frames()
 
 	if failures.is_empty():
@@ -211,6 +213,26 @@ func _test_attack_stream_contracts() -> void:
 	_expect(FIRE_RANGED_CONFIG.attack_audio_stream != null, "Yuanshi fire attack stream must remain configured.")
 
 
+func _test_first_wave_audio_test_contract() -> void:
+	var expected_configs := [SWORDSMAN_CONFIG, KNIGHT_CONFIG, ELITE_KNIGHT_CONFIG, SMG_CONFIG, RPG_CONFIG, AK_CONFIG]
+	_expect(WAVE_01.display_name == "第1波 音效测试", "Wave 01 must be marked as the audio test wave.")
+	_expect(WAVE_01.get_total_enemy_count() == expected_configs.size(), "Wave 01 audio test wave must spawn one of each target enemy.")
+	_expect(WAVE_01.enemy_entries.size() == expected_configs.size(), "Wave 01 audio test wave must not include extra enemy entries.")
+	for enemy_config in expected_configs:
+		_expect(
+			_count_wave_entries_for_config(WAVE_01, enemy_config) == 1,
+			"Wave 01 audio test wave must include exactly one %s." % enemy_config.display_name
+		)
+	for entry in WAVE_01.enemy_entries:
+		if entry == null or entry.enemy_config == null:
+			_expect(false, "Wave 01 audio test wave must not include empty entries.")
+			continue
+		_expect(
+			expected_configs.has(entry.enemy_config),
+			"Wave 01 audio test wave contains an unexpected enemy: %s." % _resource_path(entry.enemy_config)
+		)
+
+
 func _expect_scene_audio_volume(scene: PackedScene, node_path: NodePath, expected_volume: float, message: String) -> void:
 	var instance := scene.instantiate()
 	_expect(instance != null, "%s must instantiate for audio mix test." % scene.resource_path)
@@ -258,6 +280,14 @@ func _count_playing(players: Array[AudioStreamPlayer2D]) -> int:
 		if player.playing:
 			playing_count += 1
 	return playing_count
+
+
+func _count_wave_entries_for_config(wave_config: WaveConfig, enemy_config: EnemyConfig) -> int:
+	var total := 0
+	for entry in wave_config.enemy_entries:
+		if entry != null and entry.enemy_config == enemy_config:
+			total += entry.count
+	return total
 
 
 func _expect(condition: bool, message: String) -> void:
