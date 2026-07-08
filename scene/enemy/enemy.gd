@@ -8,7 +8,6 @@ const PATH_DIRECTION_PROBE_DISTANCE := 1.0
 const FLOW_NAVIGATION_WAYPOINT_ARRIVAL_DISTANCE := 1.0
 const AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const SLOW_OVERLAY_ACTIVE_STRENGTH := 0.36
-const PLAYER_CORE_COLLISION_MASK := 1 << 9
 
 enum DeathSequenceStage {
 	NONE,
@@ -60,7 +59,6 @@ var animated_sprite_base_position := Vector2.ZERO
 
 func _ready() -> void:
 	navigation_update_frame_offset = int(get_instance_id()) % maxi(navigation_update_interval_frames, 1)
-	collision_mask |= PLAYER_CORE_COLLISION_MASK
 	_refresh_collision_shape_cache()
 	_cache_collision_shape_mirror_states()
 	if animated_sprite != null:

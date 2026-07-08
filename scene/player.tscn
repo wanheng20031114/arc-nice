@@ -101,7 +101,7 @@ animations = [{
 radius = 7.5
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_no_entry_core"]
-radius = 12.0
+radius = 5.0
 
 [node name="Player" type="CharacterBody2D" unique_id=1640433019]
 collision_layer = 2
@@ -127,12 +127,15 @@ frame_progress = 0.07989768
 position = Vector2(0, 1)
 shape = SubResource("CircleShape2D_sh265")
 
-[node name="NoEnteyCore" type="AnimatableBody2D" parent="."]
+[node name="NoEnteyCore" type="AnimatableBody2D" parent="." unique_id=817147934]
 collision_layer = 512
 collision_mask = 0
+sync_to_physics = false
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="NoEnteyCore"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="NoEnteyCore" unique_id=167394046]
+position = Vector2(0, 1)
 shape = SubResource("CircleShape2D_no_entry_core")
+debug_color = Color(0.7556723, 0.6626576, 0.2962067, 0.41960785)
 
 [node name="ShootingTimer" type="Timer" parent="." unique_id=1653986996]
 

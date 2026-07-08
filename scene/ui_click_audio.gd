@@ -1,5 +1,7 @@
 extends Node
 
+const SKIP_CLICK_AUDIO_META := &"skip_ui_click_audio"
+
 @onready var click_audio: AudioStreamPlayer = $ClickAudio
 
 var _connected_button_ids: Dictionary = {}
@@ -36,6 +38,8 @@ func _try_connect_button(node: Node) -> void:
 
 func _on_button_pressed(button: BaseButton) -> void:
 	if button == null or button.disabled:
+		return
+	if bool(button.get_meta(SKIP_CLICK_AUDIO_META, false)):
 		return
 	click_audio.pitch_scale = _random.randf_range(0.992, 1.008)
 	click_audio.play()

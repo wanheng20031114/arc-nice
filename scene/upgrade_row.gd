@@ -21,6 +21,7 @@ var progress_blocks: Array[UpgradeProgressBlock] = []
 
 
 func _ready() -> void:
+	upgrade_button.set_meta(&"skip_ui_click_audio", true)
 	name_label.text = stat_name
 	if icon_texture != null:
 		icon.texture = icon_texture

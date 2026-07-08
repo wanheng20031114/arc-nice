@@ -14,37 +14,31 @@
 [sub_resource type="Resource" id="WaveEnemyEntry_swordsman"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("4_swordsman")
-count = 1
 metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [sub_resource type="Resource" id="WaveEnemyEntry_knight"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("5_knight")
-count = 1
 metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [sub_resource type="Resource" id="WaveEnemyEntry_elite"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("6_elite")
-count = 1
 metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [sub_resource type="Resource" id="WaveEnemyEntry_smg"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("7_smg")
-count = 1
 metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [sub_resource type="Resource" id="WaveEnemyEntry_rpg"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("8_rpg")
-count = 1
 metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [sub_resource type="Resource" id="WaveEnemyEntry_ak47"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("9_ak47")
-count = 1
 metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [sub_resource type="Resource" id="Resource_default_exit"]

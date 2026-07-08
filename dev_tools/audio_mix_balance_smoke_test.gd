@@ -10,6 +10,7 @@ const RPG_EXPLOSION_SCENE := preload("res://scene/enemy/capoo_rpg_explosion.tscn
 const SKILL1_EXPLOSION_SCENE := preload("res://scene/weishidaier_skill1_explosion.tscn")
 const MERCHANT_BUBBLE_SCENE := preload("res://scene/merchant_dialogue_bubble.tscn")
 const MULTIPLAYER_LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
+const UPGRADE_ROW_SCENE := preload("res://scene/upgrade_row.tscn")
 
 const AK_CONFIG := preload("res://resources/config/enemies/capoo_ak47.tres")
 const RPG_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
@@ -199,6 +200,26 @@ func _test_ui_click_audio() -> void:
 	_expect(click_audio.playing, "Button press did not trigger UI click audio.")
 	click_audio.stop()
 	button.queue_free()
+
+	var skipped_button := Button.new()
+	skipped_button.set_meta(&"skip_ui_click_audio", true)
+	root.add_child(skipped_button)
+	await process_frame
+	skipped_button.pressed.emit()
+	await process_frame
+	_expect(not click_audio.playing, "Opt-out button must not trigger UI click audio.")
+	skipped_button.queue_free()
+
+	var upgrade_row := UPGRADE_ROW_SCENE.instantiate() as UpgradeRow
+	_expect(upgrade_row != null, "Upgrade row scene must instantiate for UI click opt-out test.")
+	if upgrade_row != null:
+		root.add_child(upgrade_row)
+		await process_frame
+		upgrade_row.set_upgrade_state(0, 100, true)
+		upgrade_row.upgrade_button.pressed.emit()
+		await process_frame
+		_expect(not click_audio.playing, "Upgrade buttons must not trigger UI click audio over the upgrade success cue.")
+		upgrade_row.queue_free()
 	await _drain_cleanup_frames()
 
 
