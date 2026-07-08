@@ -400,9 +400,29 @@ func _test_combat_effects() -> void:
 	player.apply_damage(10)
 	_expect(player.current_health == health_before - 5, "Moon amulet shield must halve incoming damage.")
 
+	var burn_enemy := _spawn_enemy(Vector2(88.0, 0.0), player)
+	_expect(
+		is_zero_approx(_get_enemy_shader_parameter_float(burn_enemy, &"burn_overlay_strength")),
+		"Enemy burn overlay must start disabled."
+	)
+	burn_enemy.apply_collectible_status(&"burn", 901, 0.12, 0)
+	await process_frame
+	_expect(
+		_get_enemy_shader_parameter_float(burn_enemy, &"burn_overlay_strength") > 0.0,
+		"Burning enemies must enable the red burn overlay."
+	)
+	await create_timer(0.18).timeout
+	await process_frame
+	_expect(
+		is_zero_approx(_get_enemy_shader_parameter_float(burn_enemy, &"burn_overlay_strength")),
+		"Burn overlay must clear after the burn status expires."
+	)
+
 	for node in [player, ally, enemy, nearby_enemy]:
 		if is_instance_valid(node):
 			node.queue_free()
+	if is_instance_valid(burn_enemy):
+		burn_enemy.queue_free()
 	await process_frame
 
 
@@ -423,6 +443,15 @@ func _spawn_enemy(position: Vector2, player: Player) -> Enemy:
 
 func _count_active_damage_numbers() -> int:
 	return get_nodes_in_group(&"damage_numbers").size()
+
+
+func _get_enemy_shader_parameter_float(enemy: Enemy, parameter_name: StringName) -> float:
+	if enemy == null or enemy.animated_sprite == null:
+		return 0.0
+	var sprite_material := enemy.animated_sprite.material as ShaderMaterial
+	if sprite_material == null:
+		return 0.0
+	return float(sprite_material.get_shader_parameter(parameter_name))
 
 
 func _expect(condition: bool, message: String) -> void:

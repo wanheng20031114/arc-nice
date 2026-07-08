@@ -10,6 +10,8 @@ uniform vec4 dodge_flash_color : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 uniform float dodge_outline_width : hint_range(1.0, 6.0) = 3.0;
 uniform float slow_overlay_strength : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 slow_overlay_color : source_color = vec4(0.55, 0.86, 1.0, 1.0);
+uniform float burn_overlay_strength : hint_range(0.0, 1.0) = 0.0;
+uniform vec4 burn_overlay_color : source_color = vec4(1.0, 0.26, 0.12, 1.0);
 uniform float revive_glow_strength : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 revive_glow_color : source_color = vec4(3.2, 3.2, 3.2, 1.0);
 uniform float revive_glow_outline_width : hint_range(1.0, 8.0) = 4.5;
@@ -57,6 +59,14 @@ void fragment() {
 		float mask = clamp(slow_overlay_strength * texture_color.a, 0.0, 1.0);
 		color.rgb = mix(color.rgb, slow_overlay_color.rgb, mask);
 		color.rgb = min(color.rgb + slow_overlay_color.rgb * mask * 0.08, vec3(1.0));
+		color.a = max(color.a, COLOR.a);
+	}
+
+	if (burn_overlay_strength > 0.0 && texture_color.a > 0.0) {
+		float flicker = 0.82 + 0.18 * sin(TIME * 16.0 + UV.y * 18.0);
+		float mask = clamp(burn_overlay_strength * flicker * texture_color.a, 0.0, 1.0);
+		color.rgb = mix(color.rgb, burn_overlay_color.rgb, mask);
+		color.rgb = min(color.rgb + burn_overlay_color.rgb * mask * 0.1, vec3(1.0));
 		color.a = max(color.a, COLOR.a);
 	}
 
