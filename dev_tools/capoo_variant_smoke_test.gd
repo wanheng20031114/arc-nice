@@ -78,6 +78,10 @@ func _test_resource_contract() -> void:
 		_resource_path(SNIPER_CONFIG.attack_audio_stream).ends_with("capoo_sniper_fire.wav"),
 		"Sniper Capoo must use the sniper fire audio stream."
 	)
+	_expect(
+		_resource_path(SMG_CONFIG.attack_audio_stream).ends_with("capoo_smg_fire.wav"),
+		"SMG Capoo must use its short dedicated fire audio stream."
+	)
 
 	_expect(MAGE_CONFIG.max_health == 200, "Mage health mismatch.")
 	_expect(MAGE_CONFIG.attack_damage == 35, "Mage damage mismatch.")
@@ -238,8 +242,10 @@ func _test_sniper_lock_cancel_and_damage() -> void:
 
 	var player := _spawn_player(Vector2(360.0, 0.0), 300)
 	await process_frame
+	player.set("_base_max_health", 300)
 	player.max_health = 300
 	player.current_health = 300
+	player.health_bar.setup(player.max_health, player.current_health)
 	var expected_health_after_shot := player.current_health - SNIPER_CONFIG.attack_damage
 	var firing_sniper := _spawn_sniper(Vector2.ZERO, player)
 	await _wait_physics_frames(3)
@@ -415,8 +421,10 @@ func _spawn_player(position: Vector2, health: int) -> Player:
 	player.collision_layer = 2
 	player.invincibility_duration = 0.0
 	player.invincibility_time_left = 0.0
+	player.set("_base_max_health", health)
 	player.max_health = health
 	player.current_health = health
+	player.health_bar.setup(player.max_health, player.current_health)
 	return player
 
 

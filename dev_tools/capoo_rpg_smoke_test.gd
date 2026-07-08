@@ -55,6 +55,7 @@ func _test_resource_contract() -> void:
 	_expect(CAPOO_CONFIG.enemy_scene == CAPOO_SCENE, "RPG Capoo must use its own scene.")
 	_expect(CAPOO_CONFIG.projectile_scene == ROCKET_SCENE, "RPG Capoo must use its rocket scene.")
 	_expect(CAPOO_CONFIG.attack_audio_stream != null, "RPG fire audio is missing.")
+	_expect(_resource_path(CAPOO_CONFIG.attack_audio_stream).ends_with("capoo_rpg_launch.wav"), "RPG must use its dedicated launch audio.")
 	_expect(CAPOO_CONFIG.max_health == 200, "RPG health mismatch.")
 	_expect(CAPOO_CONFIG.attack_damage == 20, "RPG damage mismatch.")
 	_expect(CAPOO_CONFIG.physical_defense == 0, "RPG physical defense mismatch.")
@@ -189,6 +190,7 @@ func _test_rocket_explosion_paths() -> void:
 	var player := _spawn_player(Vector2.ZERO, 100)
 	await physics_frame
 	var direct_rocket := _spawn_rocket(Vector2.ZERO, Vector2.RIGHT, 20, 0.0, 3.0)
+	await physics_frame
 	direct_rocket.call("_on_body_entered", player)
 	await physics_frame
 	_expect(player.current_health == 80, "Direct rocket hit did not deal exactly one explosion damage packet.")
@@ -291,8 +293,10 @@ func _spawn_player(position: Vector2, health: int) -> Player:
 	player.collision_layer = 2
 	player.invincibility_duration = 0.0
 	player.invincibility_time_left = 0.0
+	player.set("_base_max_health", health)
 	player.max_health = health
 	player.current_health = health
+	player.health_bar.setup(player.max_health, player.current_health)
 	return player
 
 
@@ -349,3 +353,7 @@ func _wait_physics_frames(frame_count: int) -> void:
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
+
+
+func _resource_path(resource: Resource) -> String:
+	return resource.resource_path if resource != null else ""

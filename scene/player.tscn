@@ -100,6 +100,9 @@ animations = [{
 [sub_resource type="CircleShape2D" id="CircleShape2D_sh265"]
 radius = 7.5
 
+[sub_resource type="CircleShape2D" id="CircleShape2D_no_entry_core"]
+radius = 12.0
+
 [node name="Player" type="CharacterBody2D" unique_id=1640433019]
 collision_layer = 2
 collision_mask = 257
@@ -109,7 +112,7 @@ script = ExtResource("1_onrkg")
 z_index = 1
 material = SubResource("ShaderMaterial_s4jxa")
 sprite_frames = ExtResource("11_player_frames")
-animation = &"armed_down"
+animation = &"armed_left"
 autoplay = "normal_right"
 
 [node name="ArmedEffectSprite" type="AnimatedSprite2D" parent="." unique_id=1363416270]
@@ -123,6 +126,13 @@ frame_progress = 0.07989768
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=416011949]
 position = Vector2(0, 1)
 shape = SubResource("CircleShape2D_sh265")
+
+[node name="NoEnteyCore" type="AnimatableBody2D" parent="."]
+collision_layer = 512
+collision_mask = 0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="NoEnteyCore"]
+shape = SubResource("CircleShape2D_no_entry_core")
 
 [node name="ShootingTimer" type="Timer" parent="." unique_id=1653986996]
 

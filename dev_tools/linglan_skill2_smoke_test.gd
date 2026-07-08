@@ -448,6 +448,7 @@ func _spawn_player(parent: Node, position: Vector2, peer_id: int, health: int) -
 	parent.add_child(player)
 	player.global_position = position
 	player.peer_id = peer_id
+	player.set("_base_max_health", health)
 	player.max_health = health
 	player.current_health = health
 	player.invincibility_duration = 0.0

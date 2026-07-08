@@ -8,6 +8,7 @@
 [ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="7_rapid"]
 [ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="8_spiral"]
 [ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="10_health"]
+[ext_resource type="AudioStream" uid="uid://druowpv8vg1x0" path="res://resources/audio/capoo_sword_slash_light.wav" id="11_slash_audio"]
 
 [resource]
 script = ExtResource("1_script")
@@ -16,6 +17,7 @@ attack_interval = 3.0
 slash_outer_radius = 64.0
 slash_angle_degrees = 80.0
 slash_effect_scene = ExtResource("4_slash")
+attack_audio_stream = ExtResource("11_slash_audio")
 display_name = "剑客猫猫虫"
 enemy_scene = ExtResource("2_scene")
 max_health = 400

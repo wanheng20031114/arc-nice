@@ -9,11 +9,13 @@
 [ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="5_k2ch7"]
 [ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="6_05xvq"]
 [ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="7_y4pg1"]
+[ext_resource type="AudioStream" uid="uid://cag0ma8vmfwx7" path="res://resources/audio/capoo_sword_slash_heavy.wav" id="8_slash_audio"]
 
 [resource]
 script = ExtResource("1_script")
 attack_interval = 2.0
 slash_effect_scene = ExtResource("4_slash")
+attack_audio_stream = ExtResource("8_slash_audio")
 display_name = "精英骑士猫猫虫"
 enemy_scene = ExtResource("2_scene")
 max_health = 350

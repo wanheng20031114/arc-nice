@@ -24,6 +24,7 @@ driver/output_latency=50
 UserSettings="*res://scene/settings/settings_manager.gd"
 RunState="*res://run_state.gd"
 NetManager="*res://scene/multiplayer/net_manager.gd"
+UIAudio="*res://scene/ui_click_audio.tscn"
 
 [display]
 
@@ -151,6 +152,8 @@ full_screen={
 2d_physics/layer_7="Explosion"
 2d_physics/layer_8="EnemyProjectile"
 2d_physics/layer_9="BossBody"
+2d_physics/layer_10="PlayerCore"
+2d_physics/layer_11="TowerCore"
 
 [physics]
 

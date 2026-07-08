@@ -13,6 +13,10 @@ const MULTIPLAYER_LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lo
 
 const AK_CONFIG := preload("res://resources/config/enemies/capoo_ak47.tres")
 const RPG_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
+const SMG_CONFIG := preload("res://resources/config/enemies/capoo_smg.tres")
+const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres")
+const ELITE_KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight_elite.tres")
+const SWORDSMAN_CONFIG := preload("res://resources/config/enemies/capoo_swordsman.tres")
 const FIRE_RANGED_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres")
 const AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const ENEMY_HIT_STREAM := preload("res://resources/audio/cowboy_monsterhit.wav")
@@ -31,6 +35,7 @@ func _run() -> void:
 	await _test_enemy_mix()
 	await _test_combat_audio_limiter()
 	await _test_ui_mix()
+	await _test_ui_click_audio()
 	_test_attack_stream_contracts()
 	await _drain_cleanup_frames()
 
@@ -170,9 +175,39 @@ func _test_ui_mix() -> void:
 	await _drain_cleanup_frames()
 
 
+func _test_ui_click_audio() -> void:
+	var ui_audio := root.get_node_or_null("UIAudio")
+	_expect(ui_audio != null, "UIAudio autoload must exist for global button clicks.")
+	if ui_audio == null:
+		return
+	var click_audio := ui_audio.get_node_or_null("ClickAudio") as AudioStreamPlayer
+	_expect(click_audio != null, "UIAudio must own one ClickAudio player.")
+	if click_audio == null:
+		return
+	_expect(_resource_path(click_audio.stream).ends_with("resources/audio/ui/ui_click.wav"), "UI click stream mismatch.")
+	_expect(_float_close(click_audio.volume_db, -8.0), "UI click must stay below main interaction SFX.")
+	_expect(click_audio.max_polyphony == 6, "UI click must allow quick repeated button presses.")
+	_expect(click_audio.bus == "SFX", "UI click must route to the SFX bus.")
+
+	var button := Button.new()
+	root.add_child(button)
+	await process_frame
+	button.pressed.emit()
+	await process_frame
+	_expect(click_audio.playing, "Button press did not trigger UI click audio.")
+	click_audio.stop()
+	button.queue_free()
+	await _drain_cleanup_frames()
+
+
 func _test_attack_stream_contracts() -> void:
 	_expect(AK_CONFIG.attack_audio_stream != null, "AK attack stream must remain configured.")
-	_expect(RPG_CONFIG.attack_audio_stream != null, "RPG attack stream must remain configured.")
+	_expect(_resource_path(AK_CONFIG.attack_audio_stream).ends_with("capoo_ak47_fire.wav"), "AK must keep its established fire cue.")
+	_expect(_resource_path(RPG_CONFIG.attack_audio_stream).ends_with("capoo_rpg_launch.wav"), "RPG must use a dedicated launch cue instead of reusing AK fire.")
+	_expect(_resource_path(SMG_CONFIG.attack_audio_stream).ends_with("capoo_smg_fire.wav"), "SMG must use a short dedicated fire cue instead of reusing AK fire.")
+	_expect(_resource_path(KNIGHT_CONFIG.attack_audio_stream).ends_with("capoo_sword_slash_heavy.wav"), "Knight must use a heavy slash cue.")
+	_expect(_resource_path(ELITE_KNIGHT_CONFIG.attack_audio_stream).ends_with("capoo_sword_slash_heavy.wav"), "Elite knight must use the heavy slash cue.")
+	_expect(_resource_path(SWORDSMAN_CONFIG.attack_audio_stream).ends_with("capoo_sword_slash_light.wav"), "Swordsman must use a light slash cue.")
 	_expect(FIRE_RANGED_CONFIG.attack_audio_stream != null, "Yuanshi fire attack stream must remain configured.")
 
 
@@ -232,3 +267,7 @@ func _expect(condition: bool, message: String) -> void:
 
 func _float_close(a: float, b: float) -> bool:
 	return absf(a - b) <= 0.001
+
+
+func _resource_path(resource: Resource) -> String:
+	return resource.resource_path if resource != null else ""

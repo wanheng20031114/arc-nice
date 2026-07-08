@@ -4,7 +4,7 @@
 [ext_resource type="PackedScene" uid="uid://d1ay6xqbtf0w6" path="res://scene/enemy/capoo_smg.tscn" id="2_scene"]
 [ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="3_av5yf"]
 [ext_resource type="PackedScene" path="res://scene/enemy/capoo_smg_bullet.tscn" id="3_bullet"]
-[ext_resource type="AudioStream" uid="uid://clmf0o5otxr8x" path="res://resources/audio/capoo_ak47_fire.wav" id="4_audio"]
+[ext_resource type="AudioStream" uid="uid://chx8qq8m532lm" path="res://resources/audio/capoo_smg_fire.wav" id="4_audio"]
 [ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="4_dpmen"]
 [ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="5_uvkw2"]
 [ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="6_om6yr"]
