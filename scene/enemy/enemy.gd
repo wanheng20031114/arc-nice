@@ -39,6 +39,9 @@ var death_sequence_stage: DeathSequenceStage = DeathSequenceStage.NONE
 var death_animation_name_in_use: StringName = &""
 var physical_defense_modifiers: Dictionary = {}
 var move_speed_modifiers: Dictionary = {}
+var damage_taken_multiplier_modifiers: Dictionary = {}
+var collectible_status_effects: Dictionary = {}
+var collectible_status_tween: Tween = null
 var is_multiplayer_proxy: bool = false
 var last_damage_taken: int = 0
 var body_collision_shapes: Array[CollisionShape2D] = []
@@ -71,6 +74,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	_update_collectible_status_effects(_delta)
 	_update_movement_status_visuals()
 
 
@@ -190,7 +194,7 @@ func play_multiplayer_death_sequence() -> void:
 func add_physical_defense_modifier(source_id: int, amount: int) -> void:
 	if source_id == 0:
 		return
-	if amount <= 0:
+	if amount == 0:
 		return
 
 	physical_defense_modifiers[source_id] = amount
@@ -209,6 +213,25 @@ func get_effective_physical_defense() -> int:
 
 func get_effective_magic_defense() -> int:
 	return clampi(config.magic_defense if config != null else 0, 0, 100)
+
+
+func add_damage_taken_multiplier_modifier(source_id: int, multiplier: float) -> void:
+	if source_id == 0:
+		return
+	if multiplier <= 0.0 or is_equal_approx(multiplier, 1.0):
+		return
+	damage_taken_multiplier_modifiers[source_id] = multiplier
+
+
+func remove_damage_taken_multiplier_modifier(source_id: int) -> void:
+	damage_taken_multiplier_modifiers.erase(source_id)
+
+
+func get_damage_taken_multiplier() -> float:
+	var total := 1.0
+	for multiplier in damage_taken_multiplier_modifiers.values():
+		total *= maxf(float(multiplier), 0.0)
+	return maxf(total, 0.0)
 
 
 func add_move_speed_modifier(source_id: int, multiplier: float) -> void:
@@ -281,12 +304,122 @@ func _calculate_incoming_damage(
 	amount: int,
 	damage_type: EnemyConfig.DamageType
 ) -> int:
+	var mitigated_damage := 1
 	match damage_type:
 		EnemyConfig.DamageType.MAGIC:
 			var defense_ratio := float(100 - get_effective_magic_defense()) / 100.0
-			return maxi(floori(float(amount) * defense_ratio), 1)
+			mitigated_damage = maxi(floori(float(amount) * defense_ratio), 1)
 		_:
-			return maxi(amount - get_effective_physical_defense(), 1)
+			mitigated_damage = maxi(amount - get_effective_physical_defense(), 1)
+	return maxi(roundi(float(mitigated_damage) * get_damage_taken_multiplier()), 1)
+
+
+func apply_collectible_status(
+	status_id: StringName,
+	source_id: int,
+	duration: float,
+	tick_damage: int = 0,
+	tick_interval: float = 0.5,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.MAGIC,
+	slow_multiplier: float = 1.0,
+	physical_defense_modifier: int = 0,
+	damage_taken_multiplier: float = 1.0
+) -> void:
+	if is_dead or source_id == 0 or status_id == &"":
+		return
+	var normalized_duration := maxf(duration, 0.05)
+	var effect_key := "%s:%s" % [source_id, status_id]
+	var status := {
+		"status_id": status_id,
+		"source_id": source_id,
+		"time_left": normalized_duration,
+		"tick_damage": maxi(tick_damage, 0),
+		"tick_interval": maxf(tick_interval, 0.1),
+		"tick_time_left": maxf(tick_interval, 0.1),
+		"damage_type": int(damage_type),
+		"slow_source_id": 0,
+		"physical_defense_source_id": 0,
+		"damage_multiplier_source_id": 0,
+	}
+	if slow_multiplier < 1.0:
+		var slow_source_id := source_id + absi(String(status_id).hash()) % 100000
+		status["slow_source_id"] = slow_source_id
+		add_move_speed_modifier(slow_source_id, slow_multiplier)
+	if physical_defense_modifier != 0:
+		var defense_source_id := source_id + 200000 + absi(String(status_id).hash()) % 100000
+		status["physical_defense_source_id"] = defense_source_id
+		add_physical_defense_modifier(defense_source_id, physical_defense_modifier)
+	if not is_equal_approx(damage_taken_multiplier, 1.0):
+		var multiplier_source_id := source_id + 400000 + absi(String(status_id).hash()) % 100000
+		status["damage_multiplier_source_id"] = multiplier_source_id
+		add_damage_taken_multiplier_modifier(multiplier_source_id, damage_taken_multiplier)
+	collectible_status_effects[effect_key] = status
+	_play_collectible_status_feedback(status_id)
+
+
+func _update_collectible_status_effects(delta: float) -> void:
+	if collectible_status_effects.is_empty():
+		return
+	for effect_key in collectible_status_effects.keys():
+		var status: Dictionary = collectible_status_effects.get(effect_key, {})
+		if status.is_empty():
+			collectible_status_effects.erase(effect_key)
+			continue
+		var time_left := float(status.get("time_left", 0.0)) - delta
+		if time_left <= 0.0 or is_dead:
+			_remove_collectible_status(effect_key, status)
+			continue
+		status["time_left"] = time_left
+		var tick_damage := int(status.get("tick_damage", 0))
+		if tick_damage > 0:
+			var tick_time_left := float(status.get("tick_time_left", 0.1)) - delta
+			while tick_time_left <= 0.0 and tick_damage > 0 and not is_dead:
+				tick_time_left += float(status.get("tick_interval", 0.5))
+				var tick_damage_type := EnemyConfig.DamageType.MAGIC
+				if int(status.get("damage_type", EnemyConfig.DamageType.MAGIC)) == int(EnemyConfig.DamageType.PHYSICAL):
+					tick_damage_type = EnemyConfig.DamageType.PHYSICAL
+				apply_damage(
+					tick_damage,
+					Vector2.ZERO,
+					tick_damage_type
+				)
+			status["tick_time_left"] = tick_time_left
+		collectible_status_effects[effect_key] = status
+
+
+func _remove_collectible_status(effect_key: Variant, status: Dictionary) -> void:
+	var slow_source_id := int(status.get("slow_source_id", 0))
+	if slow_source_id != 0:
+		remove_move_speed_modifier(slow_source_id)
+	var defense_source_id := int(status.get("physical_defense_source_id", 0))
+	if defense_source_id != 0:
+		remove_physical_defense_modifier(defense_source_id)
+	var multiplier_source_id := int(status.get("damage_multiplier_source_id", 0))
+	if multiplier_source_id != 0:
+		remove_damage_taken_multiplier_modifier(multiplier_source_id)
+	collectible_status_effects.erase(effect_key)
+
+
+func _play_collectible_status_feedback(status_id: StringName) -> void:
+	if animated_sprite == null:
+		return
+	var flash_color := Color(1.0, 1.0, 1.0, 1.0)
+	match status_id:
+		&"burn":
+			flash_color = Color(1.45, 0.7, 0.34, 1.0)
+		&"bleed":
+			flash_color = Color(1.35, 0.22, 0.25, 1.0)
+		&"chill":
+			flash_color = Color(0.65, 0.95, 1.35, 1.0)
+		&"mark":
+			flash_color = Color(1.2, 0.8, 1.6, 1.0)
+		&"crack":
+			flash_color = Color(1.35, 1.22, 0.72, 1.0)
+	if collectible_status_tween != null:
+		collectible_status_tween.kill()
+	collectible_status_tween = create_tween()
+	animated_sprite.modulate = flash_color
+	collectible_status_tween.tween_property(animated_sprite, "modulate", Color.WHITE, 0.24)
 
 
 func _apply_config() -> void:

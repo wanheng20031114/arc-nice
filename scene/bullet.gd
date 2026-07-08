@@ -21,6 +21,7 @@ var owner_peer_id: int = 0
 var source_type: StringName = &"player_bullet"
 var pierces_enemies: bool = false
 var hit_enemy_instance_ids: Dictionary = {}
+var collectible_owner: Player = null
 
 
 func _ready() -> void:
@@ -48,6 +49,10 @@ func setup_multiplayer(
 	projectile_id = maxi(new_projectile_id, 0)
 	owner_peer_id = new_owner_peer_id
 	source_type = new_source_type
+
+
+func setup_collectible_owner(owner: Player) -> void:
+	collectible_owner = owner
 
 
 # 物理帧更新逻辑，处理子弹移动和碰撞检测
@@ -123,6 +128,8 @@ func try_hit_enemy(enemy: Enemy) -> bool:
 	if not hit_registered:
 		hit_enemy_instance_ids.erase(enemy.get_instance_id())
 		return false
+	if collectible_owner != null and is_instance_valid(collectible_owner):
+		collectible_owner.apply_collectible_bullet_hit_effects(enemy, damage)
 	if not pierces_enemies:
 		queue_free()
 	return true

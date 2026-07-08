@@ -14,6 +14,7 @@ icon_texture = ExtResource("1_icon")
 icon_scale = Vector2(1, 1)
 duration = 0.0
 collectible_effect_id = "thunder_crystal"
+collectible_rarity = 2
 periodic_effect_id = "thunder"
 periodic_interval = 10.0
 periodic_radius = 48.0

@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/collectibles/red_mushroom.png" id="1_icon"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 5
+display_name = "红蘑菇"
+drop_weight = 0.0
+description = "普通子弹有概率治疗自己。"
+can_store_in_inventory = true
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(1, 1)
+duration = 0.0
+collectible_effect_id = "red_mushroom"
+collectible_rarity = 0
+collectible_design_id = "red_mushroom"
+collectible_design_note = "命中吸血：普通子弹有概率治疗自己。"
+on_hit_effect_id = "leech"
+on_hit_chance = 0.1
+on_hit_cooldown = 0.8
+on_hit_heal = 2
+metadata/_custom_type_script = "uid://qucrregg4cq0"

@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/collectibles/battle_standard.png" id="1_icon"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 5
+display_name = "战旗"
+drop_weight = 0.0
+description = "击败敌人后短暂提速推进。"
+can_store_in_inventory = true
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(1, 1)
+duration = 0.0
+collectible_effect_id = "battle_standard"
+collectible_rarity = 1
+collectible_design_id = "battle_standard"
+collectible_design_note = "击杀加速：击败敌人后短暂提速推进。"
+kill_effect_id = "haste"
+kill_cooldown = 0.7
+kill_duration = 1.3
+kill_move_speed_multiplier = 1.2
+metadata/_custom_type_script = "uid://qucrregg4cq0"

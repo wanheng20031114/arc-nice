@@ -14,6 +14,7 @@ icon_texture = ExtResource("1_icon")
 icon_scale = Vector2(1, 1)
 duration = 0.0
 collectible_effect_id = "frost_crystal"
+collectible_rarity = 2
 periodic_effect_id = "frost"
 periodic_interval = 8.0
 periodic_radius = 72.0

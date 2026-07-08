@@ -13,6 +13,7 @@ can_store_in_inventory = true
 icon_texture = ExtResource("1_icon")
 duration = 0.0
 collectible_effect_id = "archer"
+collectible_rarity = 2
 periodic_effect_id = "archer"
 periodic_interval = 8.0
 periodic_radius = 360.0

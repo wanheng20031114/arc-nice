@@ -161,11 +161,23 @@ func _update_cards() -> void:
 		var has_item := item != null
 		icons[index].texture = item.icon_texture if has_item else null
 		titles[index].text = item.display_name if has_item else ""
-		descriptions[index].text = item.description if has_item else ""
+		descriptions[index].text = _build_description_text(item) if has_item else ""
 		buttons[index].disabled = not has_item
 		buttons[index].text = "选择"
 		_reset_description_scroll(index)
 	_update_selection()
+
+
+func _build_description_text(item: PickupConfig) -> String:
+	if item == null:
+		return ""
+	var rarity_label := PickupConfig.get_collectible_rarity_label(item.collectible_rarity)
+	var rarity_color := PickupConfig.get_collectible_rarity_bbcode_color(item.collectible_rarity)
+	return "[color=%s]稀有度：%s[/color]\n%s" % [
+		rarity_color,
+		rarity_label,
+		item.description,
+	]
 
 
 func _reset_description_scrolls() -> void:

@@ -13,5 +13,6 @@ can_store_in_inventory = true
 icon_texture = ExtResource("1_icon")
 duration = 0.0
 collectible_effect_id = "medieval_shield"
+collectible_rarity = 1
 incoming_ranged_dodge_chance = 0.2
 metadata/_custom_type_script = "uid://qucrregg4cq0"

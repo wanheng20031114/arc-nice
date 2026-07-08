@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/collectibles/void_crown.png" id="1_icon"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 5
+display_name = "虚空王冠"
+drop_weight = 0.0
+description = "普通子弹有概率处决低生命敌人。"
+can_store_in_inventory = true
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(1, 1)
+duration = 0.0
+collectible_effect_id = "void_crown"
+collectible_rarity = 3
+collectible_design_id = "void_crown"
+collectible_design_note = "虚空处决：普通子弹有概率处决低生命敌人。"
+on_hit_effect_id = "execute"
+on_hit_chance = 0.22
+on_hit_cooldown = 0.6
+on_hit_execute_health_ratio = 0.22
+metadata/_custom_type_script = "uid://qucrregg4cq0"

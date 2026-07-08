@@ -14,6 +14,7 @@ icon_texture = ExtResource("1_icon")
 icon_scale = Vector2(1, 1)
 duration = 0.0
 collectible_effect_id = "swift_crystal"
+collectible_rarity = 2
 skill_effect_id = "swift"
 skill_effect_duration = 3.0
 skill_move_speed_multiplier = 1.3

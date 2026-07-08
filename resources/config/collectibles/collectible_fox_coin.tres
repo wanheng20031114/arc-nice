@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/collectibles/fox_coin.png" id="1_icon"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 5
+display_name = "狐纹铜币"
+drop_weight = 0.0
+description = "升级基础属性时有5%概率不消耗息壤。"
+can_store_in_inventory = true
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(1, 1)
+duration = 0.0
+collectible_effect_id = "fox_coin"
+collectible_rarity = 0
+collectible_design_id = "fox_coin"
+collectible_design_note = "免费升级：升级基础属性时有5%概率不消耗息壤。"
+base_upgrade_free_chance = 0.05
+metadata/_custom_type_script = "uid://qucrregg4cq0"

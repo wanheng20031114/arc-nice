@@ -1,0 +1,526 @@
+extends SceneTree
+
+const PLAYER_SCENE := preload("res://scene/player.tscn")
+const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
+const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/collectible_arrow_projectile.gd")
+
+var failures: Array[String] = []
+var test_root: Node2D
+
+
+func _init() -> void:
+	call_deferred("_run")
+
+
+func _run() -> void:
+	test_root = Node2D.new()
+	test_root.name = "CollectibleRuntimeAuditSmokeTest"
+	root.add_child(test_root)
+	current_scene = test_root
+
+	await _test_every_collectible_runtime_effect()
+
+	test_root.queue_free()
+	for _cleanup_frame in range(8):
+		await process_frame
+		await physics_frame
+
+	if failures.is_empty():
+		print("COLLECTIBLE_RUNTIME_AUDIT_SMOKE_TEST_OK")
+		quit()
+		return
+
+	for failure in failures:
+		push_error(failure)
+	quit(1)
+
+
+func _test_every_collectible_runtime_effect() -> void:
+	var pool := LuoxiMerchant.get_collectible_pool()
+	_expect(pool.size() == 104, "Runtime audit must load 104 collectibles from Luoxi pool.")
+	var seen_paths: Dictionary = {}
+	for item_variant in pool:
+		var item := item_variant as PickupConfig
+		_expect(item != null, "Collectible pool entry must be a PickupConfig.")
+		if item == null:
+			continue
+		_expect(not seen_paths.has(item.resource_path), "%s must not appear twice in Luoxi pool." % item.resource_path)
+		seen_paths[item.resource_path] = true
+		await _audit_single_collectible(item)
+
+
+func _audit_single_collectible(item: PickupConfig) -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run()
+	var player := _spawn_player()
+	await process_frame
+
+	var base_attack := player.attack_damage
+	var base_max_health := player.max_health
+	var base_move_speed := player.move_speed
+	var base_physical_defense := player.physical_defense
+	var base_magic_defense := player.magic_defense
+	var base_attack_speed := player.get_attack_speed()
+
+	_expect(run_state.try_add_item(item), "%s must fit into an empty inventory." % item.display_name)
+	var dynamic_xirang := maxi(item.attack_speed_xirang_step, item.defense_xirang_step)
+	if dynamic_xirang > 0:
+		player.grant_cheat_xirang(dynamic_xirang)
+	await process_frame
+
+	var dynamic_attack_speed_bonus := 0.0
+	if item.attack_speed_xirang_step > 0:
+		dynamic_attack_speed_bonus = (
+			floori(float(player.current_xirang) / float(item.attack_speed_xirang_step))
+			* item.attack_speed_bonus_per_xirang_step
+		)
+	var dynamic_defense_bonus := 0
+	if item.defense_xirang_step > 0:
+		dynamic_defense_bonus = (
+			floori(float(player.current_xirang) / float(item.defense_xirang_step))
+			* item.defense_bonus_per_xirang_step
+		)
+	var condition_active := bool(player.call("_is_collectible_condition_active", item))
+	var conditional_attack_bonus := item.conditional_attack_bonus if condition_active else 0
+	var conditional_max_health_bonus := item.conditional_max_health_bonus if condition_active else 0
+	var conditional_move_speed_bonus := item.conditional_move_speed_bonus if condition_active else 0.0
+	var conditional_physical_defense_bonus := item.conditional_physical_defense_bonus if condition_active else 0
+	var conditional_magic_defense_bonus := item.conditional_magic_defense_bonus if condition_active else 0
+	var conditional_physical_damage_bonus := item.conditional_physical_damage_bonus if condition_active else 0
+	var conditional_magic_damage_bonus := item.conditional_magic_damage_bonus if condition_active else 0
+	var conditional_skill_charge_bonus := item.conditional_skill_charge_bonus_per_second if condition_active else 0.0
+	var conditional_bullet_pierce_chance := item.conditional_bullet_pierce_chance if condition_active else 0.0
+
+	_expect(
+		player.attack_damage == base_attack + item.collectible_attack_bonus + conditional_attack_bonus,
+		"%s attack bonus must apply." % item.display_name
+	)
+	_expect(
+		player.max_health == base_max_health + item.collectible_max_health_bonus + conditional_max_health_bonus,
+		"%s max health bonus must apply." % item.display_name
+	)
+	_expect(
+		is_equal_approx(player.move_speed, base_move_speed + item.collectible_move_speed_bonus + conditional_move_speed_bonus),
+		"%s move speed bonus must apply." % item.display_name
+	)
+	_expect(
+		player.physical_defense == base_physical_defense + item.collectible_physical_defense_bonus + dynamic_defense_bonus + conditional_physical_defense_bonus,
+		"%s physical defense bonus must apply." % item.display_name
+	)
+	_expect(
+		player.magic_defense == clampi(base_magic_defense + item.collectible_magic_defense_bonus + dynamic_defense_bonus + conditional_magic_defense_bonus, 0, 100),
+		"%s magic defense bonus must apply." % item.display_name
+	)
+	_expect(
+		player.get_outgoing_damage(10, EnemyConfig.DamageType.PHYSICAL) == 10 + item.collectible_physical_damage_bonus + conditional_physical_damage_bonus,
+		"%s physical outgoing damage bonus must apply." % item.display_name
+	)
+	_expect(
+		player.get_outgoing_damage(10, EnemyConfig.DamageType.MAGIC) == 10 + item.collectible_magic_damage_bonus + conditional_magic_damage_bonus,
+		"%s magic outgoing damage bonus must apply." % item.display_name
+	)
+	_expect(
+		is_equal_approx(
+			float(player.get("collectible_skill_charge_bonus_per_second")),
+			item.collectible_skill_charge_bonus_per_second + conditional_skill_charge_bonus
+		),
+		"%s skill charge bonus must apply." % item.display_name
+	)
+	_expect(
+		is_equal_approx(float(player.get("collectible_base_upgrade_free_chance")), item.base_upgrade_free_chance),
+		"%s free base upgrade chance must apply." % item.display_name
+	)
+	_expect(
+		is_equal_approx(
+			float(player.get("collectible_ranged_front_damage_multiplier")),
+			maxf(item.incoming_ranged_front_damage_multiplier, 1.0)
+		),
+		"%s front ranged damage multiplier must apply." % item.display_name
+	)
+	_expect(
+		is_equal_approx(
+			float(player.get("collectible_ranged_back_damage_multiplier")),
+			minf(item.incoming_ranged_back_damage_multiplier, 1.0)
+		),
+		"%s back ranged damage multiplier must apply." % item.display_name
+	)
+	_expect(
+		is_equal_approx(float(player.get("collectible_ranged_dodge_chance")), item.incoming_ranged_dodge_chance),
+		"%s ranged dodge chance must apply." % item.display_name
+	)
+	_expect(
+		is_equal_approx(
+			player.call("_get_inventory_bullet_pierce_chance"),
+			clampf(item.bullet_pierce_chance + conditional_bullet_pierce_chance, 0.0, 1.0)
+		),
+		"%s bullet pierce chance must apply." % item.display_name
+	)
+	_expect(
+		is_equal_approx(player.get_attack_speed(), base_attack_speed + dynamic_attack_speed_bonus),
+		"%s dynamic attack speed bonus must apply." % item.display_name
+	)
+
+	if item.collectible_effect_id == PickupConfig.COLLECTIBLE_EFFECT_ADMIN_DOLL:
+		_expect(
+			player.has_collectible_effect(PickupConfig.COLLECTIBLE_EFFECT_ADMIN_DOLL),
+			"Admin doll special effect id must be visible to merchant logic."
+		)
+	if not item.conditional_effect_id.is_empty():
+		await _audit_conditional_effect(player, item)
+	if not item.trigger_effect_id.is_empty():
+		await _audit_trigger_effect(player, item)
+	if not item.on_hit_effect_id.is_empty():
+		await _audit_on_hit_effect(player, item)
+	if not item.kill_effect_id.is_empty():
+		await _audit_kill_effect(player, item)
+	if not item.periodic_effect_id.is_empty():
+		await _audit_periodic_effect(player, item)
+	if not item.skill_effect_id.is_empty():
+		await _audit_skill_effect(player, item)
+
+	player.queue_free()
+	await process_frame
+	await physics_frame
+	_cleanup_test_children()
+
+
+func _audit_conditional_effect(player: Player, item: PickupConfig) -> void:
+	_force_condition_inactive(player, item)
+	await process_frame
+	var before_attack := player.attack_damage
+	var before_max_health := player.max_health
+	var before_move_speed := player.move_speed
+	var before_physical_defense := player.physical_defense
+	var before_magic_defense := player.magic_defense
+	var before_physical_damage := player.get_outgoing_damage(10, EnemyConfig.DamageType.PHYSICAL)
+	var before_magic_damage := player.get_outgoing_damage(10, EnemyConfig.DamageType.MAGIC)
+	var before_charge_bonus := float(player.get("collectible_skill_charge_bonus_per_second"))
+	var before_pierce_chance := float(player.call("_get_inventory_bullet_pierce_chance"))
+
+	_force_condition_active(player, item)
+	await process_frame
+	_expect(
+		bool(player.call("_is_collectible_condition_active", item)),
+		"%s conditional design must become active under its configured condition." % item.display_name
+	)
+	if item.conditional_attack_bonus > 0:
+		_expect(player.attack_damage >= before_attack + item.conditional_attack_bonus, "%s conditional attack bonus must apply." % item.display_name)
+	if item.conditional_max_health_bonus > 0:
+		_expect(player.max_health >= before_max_health + item.conditional_max_health_bonus, "%s conditional max health bonus must apply." % item.display_name)
+	if item.conditional_move_speed_bonus > 0.0:
+		_expect(player.move_speed >= before_move_speed + item.conditional_move_speed_bonus, "%s conditional move speed bonus must apply." % item.display_name)
+	if item.conditional_physical_defense_bonus > 0:
+		_expect(player.physical_defense >= before_physical_defense + item.conditional_physical_defense_bonus, "%s conditional physical defense bonus must apply." % item.display_name)
+	if item.conditional_magic_defense_bonus > 0:
+		_expect(player.magic_defense >= before_magic_defense + item.conditional_magic_defense_bonus, "%s conditional magic defense bonus must apply." % item.display_name)
+	if item.conditional_physical_damage_bonus > 0:
+		_expect(player.get_outgoing_damage(10, EnemyConfig.DamageType.PHYSICAL) >= before_physical_damage + item.conditional_physical_damage_bonus, "%s conditional physical damage bonus must apply." % item.display_name)
+	if item.conditional_magic_damage_bonus > 0:
+		_expect(player.get_outgoing_damage(10, EnemyConfig.DamageType.MAGIC) >= before_magic_damage + item.conditional_magic_damage_bonus, "%s conditional magic damage bonus must apply." % item.display_name)
+	if item.conditional_skill_charge_bonus_per_second > 0.0:
+		_expect(
+			float(player.get("collectible_skill_charge_bonus_per_second")) >= before_charge_bonus + item.conditional_skill_charge_bonus_per_second,
+			"%s conditional skill charge bonus must apply." % item.display_name
+		)
+	if item.conditional_bullet_pierce_chance > 0.0:
+		_expect(
+			is_equal_approx(
+				float(player.call("_get_inventory_bullet_pierce_chance")),
+				clampf(before_pierce_chance + item.conditional_bullet_pierce_chance, 0.0, 1.0)
+			),
+			"%s conditional bullet pierce chance must apply." % item.display_name
+		)
+
+
+func _force_condition_inactive(player: Player, item: PickupConfig) -> void:
+	match item.conditional_effect_id:
+		PickupConfig.CONDITION_HEALTH_BELOW:
+			player.current_health = player.max_health
+		PickupConfig.CONDITION_XIRANG_AT_LEAST:
+			player.current_xirang = 0
+		PickupConfig.CONDITION_SKILL_UNLOCKED:
+			pass
+	player.call("_refresh_collectible_stats", false)
+
+
+func _force_condition_active(player: Player, item: PickupConfig) -> void:
+	match item.conditional_effect_id:
+		PickupConfig.CONDITION_HEALTH_BELOW:
+			var threshold_health := floori(float(player.max_health) * item.conditional_health_ratio_threshold)
+			player.current_health = maxi(threshold_health - 1, 1)
+			player.call("_refresh_collectible_stats", false)
+		PickupConfig.CONDITION_XIRANG_AT_LEAST:
+			player.current_xirang = maxi(item.conditional_xirang_threshold, 1)
+			player.call("_refresh_collectible_stats", false)
+		PickupConfig.CONDITION_SKILL_UNLOCKED:
+			player.unlock_skill1()
+		_:
+			player.call("_refresh_collectible_stats", false)
+
+
+func _audit_trigger_effect(player: Player, item: PickupConfig) -> void:
+	var trigger := item.trigger_effect_id
+	var health_before := player.current_health
+	var xirang_before := player.current_xirang
+	var charge_before := player.skill1_charge
+	var enemy: Enemy = null
+
+	if trigger.ends_with("_heal"):
+		player.current_health = maxi(player.max_health - item.trigger_heal - 5, 1)
+		health_before = player.current_health
+	if trigger.ends_with("_xirang"):
+		xirang_before = player.current_xirang
+	if trigger.ends_with("_charge"):
+		if not player.skill1_unlocked:
+			player.unlock_skill1()
+		player.skill1_charge = 0.0
+		player.call("_update_skill1_charge_bar")
+		charge_before = player.skill1_charge
+	if trigger.ends_with("_thunder"):
+		enemy = _spawn_enemy(Vector2(48.0, 0.0), player)
+		enemy.current_health = 500
+	if trigger.ends_with("_frost"):
+		enemy = _spawn_enemy(Vector2(24.0, 0.0), player)
+		enemy.current_health = 500
+
+	await _activate_trigger_event(player, item)
+	await process_frame
+
+	if trigger.ends_with("_heal"):
+		_expect(player.current_health > health_before, "%s trigger design must heal." % item.display_name)
+	if trigger.ends_with("_xirang"):
+		_expect(player.current_xirang > xirang_before, "%s trigger design must grant xirang." % item.display_name)
+	if trigger.ends_with("_charge"):
+		_expect(player.skill1_charge > charge_before, "%s trigger design must restore skill charge." % item.display_name)
+	if trigger.ends_with("_thunder"):
+		_expect(enemy != null and enemy.last_damage_taken > 0, "%s trigger thunder design must damage an enemy." % item.display_name)
+	if trigger.ends_with("_frost"):
+		_expect(enemy != null and enemy.last_damage_taken > 0, "%s trigger frost design must damage an enemy." % item.display_name)
+		_expect(enemy != null and enemy.move_speed_modifiers.size() > 0, "%s trigger frost design must slow an enemy." % item.display_name)
+
+
+func _activate_trigger_event(player: Player, item: PickupConfig) -> void:
+	if item.trigger_effect_id.begins_with("shot_"):
+		for _shot_index in range(maxi(item.trigger_shot_interval, 1)):
+			player.call("_trigger_collectible_shot_effects")
+	elif item.trigger_effect_id.begins_with("hurt_"):
+		player.call("_trigger_collectible_hurt_effects")
+	elif item.trigger_effect_id.begins_with("skill_"):
+		if not player.skill1_unlocked:
+			player.unlock_skill1()
+		player.call("_activate_collectible_skill_effects")
+
+
+func _audit_on_hit_effect(player: Player, item: PickupConfig) -> void:
+	var enemy := _spawn_enemy(Vector2(40.0, 0.0), player)
+	enemy.current_health = 500
+	var ally: Player = null
+	match item.on_hit_effect_id:
+		PickupConfig.HIT_EFFECT_LEECH:
+			player.current_health = maxi(player.max_health - item.on_hit_heal - 5, 1)
+		PickupConfig.HIT_EFFECT_SIPHON:
+			if not player.skill1_unlocked:
+				player.unlock_skill1()
+			player.skill1_charge = 0.0
+			player.call("_update_skill1_charge_bar")
+		PickupConfig.HIT_EFFECT_EXECUTE:
+			var max_enemy_health := enemy.config.max_health if enemy.config != null else 500
+			enemy.current_health = maxi(floori(float(max_enemy_health) * item.on_hit_execute_health_ratio) - 1, 1)
+		PickupConfig.HIT_EFFECT_BLOOM:
+			ally = _spawn_player(Vector2(44.0, 0.0))
+	if ally != null:
+		await process_frame
+		ally.current_health = maxi(ally.max_health - item.on_hit_heal - 5, 1)
+	var health_before := player.current_health
+	var charge_before := player.skill1_charge
+	var xirang_before := player.current_xirang
+	var ally_health_before := ally.current_health if ally != null else 0
+	var shock_enemy: Enemy = null
+	if item.on_hit_effect_id == PickupConfig.HIT_EFFECT_SHOCK:
+		shock_enemy = _spawn_enemy(Vector2(52.0, 0.0), player)
+		shock_enemy.current_health = 500
+
+	for _attempt in range(240):
+		var cooldown_key := str(player.call("_get_collectible_aux_key", item, "hit:%s" % item.on_hit_effect_id))
+		player.collectible_trigger_cooldowns.erase(cooldown_key)
+		player.call("_apply_collectible_on_hit_effect", item, enemy, 10)
+		await process_frame
+		if _has_on_hit_effect_result(player, item, enemy, shock_enemy, ally, health_before, charge_before, xirang_before, ally_health_before):
+			return
+	_expect(false, "%s on-hit effect must produce its configured result." % item.display_name)
+
+
+func _has_on_hit_effect_result(
+	player: Player,
+	item: PickupConfig,
+	enemy: Enemy,
+	shock_enemy: Enemy,
+	ally: Player,
+	health_before: int,
+	charge_before: float,
+	xirang_before: int,
+	ally_health_before: int
+) -> bool:
+	match item.on_hit_effect_id:
+		PickupConfig.HIT_EFFECT_BURN, PickupConfig.HIT_EFFECT_BLEED:
+			return enemy.collectible_status_effects.size() > 0
+		PickupConfig.HIT_EFFECT_CHILL:
+			return enemy.move_speed_modifiers.size() > 0
+		PickupConfig.HIT_EFFECT_SHOCK:
+			return shock_enemy != null and shock_enemy.last_damage_taken > 0
+		PickupConfig.HIT_EFFECT_MARK:
+			return enemy.damage_taken_multiplier_modifiers.size() > 0
+		PickupConfig.HIT_EFFECT_CRACK:
+			return enemy.physical_defense_modifiers.size() > 0
+		PickupConfig.HIT_EFFECT_LEECH:
+			return player.current_health > health_before
+		PickupConfig.HIT_EFFECT_SIPHON:
+			return player.skill1_charge > charge_before
+		PickupConfig.HIT_EFFECT_EXECUTE:
+			return enemy.is_dead
+		PickupConfig.HIT_EFFECT_BLOOM:
+			return ally != null and ally.current_health > ally_health_before
+		PickupConfig.HIT_EFFECT_XIRANG:
+			return player.current_xirang > xirang_before
+	return false
+
+
+func _audit_kill_effect(player: Player, item: PickupConfig) -> void:
+	var enemy := _spawn_enemy(Vector2(40.0, 0.0), player)
+	enemy.current_health = 0
+	enemy.is_dead = true
+	var ally: Player = null
+	var area_enemy: Enemy = null
+	match item.kill_effect_id:
+		PickupConfig.KILL_EFFECT_HEAL:
+			player.current_health = maxi(player.max_health - item.kill_heal - 5, 1)
+		PickupConfig.KILL_EFFECT_CHARGE:
+			if not player.skill1_unlocked:
+				player.unlock_skill1()
+			player.skill1_charge = 0.0
+			player.call("_update_skill1_charge_bar")
+		PickupConfig.KILL_EFFECT_THUNDER, PickupConfig.KILL_EFFECT_FROST, PickupConfig.KILL_EFFECT_BURST:
+			area_enemy = _spawn_enemy(Vector2(48.0, 0.0), player)
+			area_enemy.current_health = 500
+		PickupConfig.KILL_EFFECT_BLOOM:
+			ally = _spawn_player(Vector2(44.0, 0.0))
+	if ally != null:
+		await process_frame
+		ally.current_health = maxi(ally.max_health - item.kill_heal - 5, 1)
+	var health_before := player.current_health
+	var xirang_before := player.current_xirang
+	var charge_before := player.skill1_charge
+	var effective_speed_before := float(player.call("_get_effective_move_speed"))
+	var ally_health_before := ally.current_health if ally != null else 0
+
+	player.call("_apply_collectible_kill_effect", item, enemy)
+	await process_frame
+
+	match item.kill_effect_id:
+		PickupConfig.KILL_EFFECT_HEAL:
+			_expect(player.current_health > health_before, "%s kill effect must heal." % item.display_name)
+		PickupConfig.KILL_EFFECT_XIRANG:
+			_expect(player.current_xirang > xirang_before, "%s kill effect must grant xirang." % item.display_name)
+		PickupConfig.KILL_EFFECT_CHARGE:
+			_expect(player.skill1_charge > charge_before, "%s kill effect must restore skill charge." % item.display_name)
+		PickupConfig.KILL_EFFECT_THUNDER, PickupConfig.KILL_EFFECT_BURST:
+			_expect(area_enemy != null and area_enemy.last_damage_taken > 0, "%s kill effect must damage nearby enemies." % item.display_name)
+		PickupConfig.KILL_EFFECT_FROST:
+			_expect(area_enemy != null and area_enemy.last_damage_taken > 0, "%s kill frost effect must damage nearby enemies." % item.display_name)
+			_expect(area_enemy != null and area_enemy.move_speed_modifiers.size() > 0, "%s kill frost effect must slow nearby enemies." % item.display_name)
+		PickupConfig.KILL_EFFECT_HASTE:
+			_expect(float(player.call("_get_effective_move_speed")) > effective_speed_before, "%s kill haste effect must increase movement speed." % item.display_name)
+		PickupConfig.KILL_EFFECT_BLOOM:
+			_expect(ally != null and ally.current_health > ally_health_before, "%s kill bloom effect must heal nearby allies." % item.display_name)
+		_:
+			_expect(false, "%s uses an unknown kill effect id." % item.display_name)
+
+
+func _audit_periodic_effect(player: Player, item: PickupConfig) -> void:
+	match item.periodic_effect_id:
+		PickupConfig.PERIODIC_EFFECT_THUNDER:
+			var enemy := _spawn_enemy(Vector2(48.0, 0.0), player)
+			enemy.current_health = 500
+			player.call("_trigger_thunder_crystal", item)
+			await process_frame
+			_expect(enemy.last_damage_taken > 0, "%s thunder periodic effect must damage an enemy." % item.display_name)
+		PickupConfig.PERIODIC_EFFECT_FROST:
+			var enemy := _spawn_enemy(Vector2(32.0, 0.0), player)
+			enemy.current_health = 500
+			player.call("_trigger_frost_crystal", item)
+			await process_frame
+			_expect(enemy.last_damage_taken > 0, "%s frost periodic effect must damage an enemy." % item.display_name)
+			_expect(enemy.move_speed_modifiers.size() > 0, "%s frost periodic effect must slow an enemy." % item.display_name)
+		PickupConfig.PERIODIC_EFFECT_HEAL:
+			var ally := _spawn_player(Vector2(24.0, 0.0))
+			ally.current_health = maxi(ally.max_health - item.periodic_heal - 5, 1)
+			var health_before := ally.current_health
+			player.call("_trigger_life_crystal", item)
+			await process_frame
+			_expect(ally.current_health > health_before, "%s heal periodic effect must heal an ally." % item.display_name)
+		PickupConfig.PERIODIC_EFFECT_ARCHER:
+			var enemy_count := maxi(item.periodic_target_count, 1)
+			for enemy_index in range(enemy_count):
+				_spawn_enemy(Vector2(48.0 + enemy_index * 20.0, 0.0), player)
+			player.call("_trigger_archer", item)
+			await process_frame
+			var arrow_count := 0
+			for child in test_root.get_children():
+				if child.get_script() == COLLECTIBLE_ARROW_PROJECTILE_SCRIPT:
+					arrow_count += 1
+			_expect(arrow_count == enemy_count, "%s archer periodic effect must spawn the configured arrows." % item.display_name)
+		_:
+			_expect(false, "%s uses an unknown periodic effect id." % item.display_name)
+
+
+func _audit_skill_effect(player: Player, item: PickupConfig) -> void:
+	match item.skill_effect_id:
+		PickupConfig.SKILL_EFFECT_MOON_SHIELD:
+			var existing_shield := player.get_node_or_null("CollectibleMoonShield")
+			if existing_shield != null:
+				existing_shield.queue_free()
+				await process_frame
+			player.call("_activate_collectible_skill_effects")
+			await process_frame
+			_expect(
+				player.get_node_or_null("CollectibleMoonShield") != null,
+				"%s skill effect must spawn a moon shield." % item.display_name
+			)
+		PickupConfig.SKILL_EFFECT_SWIFT:
+			player.set("collectible_swift_time_left", 0.0)
+			player.set("collectible_swift_move_speed_multiplier", 1.0)
+			var base_speed := float(player.call("_get_effective_move_speed"))
+			player.call("_activate_collectible_skill_effects")
+			await process_frame
+			_expect(
+				float(player.call("_get_effective_move_speed")) > base_speed,
+				"%s skill effect must increase movement speed." % item.display_name
+			)
+		_:
+			_expect(false, "%s uses an unknown skill effect id." % item.display_name)
+
+
+func _spawn_player(position: Vector2 = Vector2.ZERO) -> Player:
+	var player := PLAYER_SCENE.instantiate() as Player
+	test_root.add_child(player)
+	player.global_position = position
+	return player
+
+
+func _spawn_enemy(position: Vector2, player: Player) -> Enemy:
+	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
+	test_root.add_child(enemy)
+	enemy.global_position = position
+	enemy.setup(BASIC_CONFIG, player, null)
+	return enemy
+
+
+func _cleanup_test_children() -> void:
+	for child in test_root.get_children():
+		if is_instance_valid(child):
+			child.queue_free()
+
+
+func _expect(condition: bool, message: String) -> void:
+	if not condition:
+		failures.append(message)

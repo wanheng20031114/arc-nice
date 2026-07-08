@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/collectibles/wool_charm.png" id="1_icon"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 5
+display_name = "羊毛护符"
+drop_weight = 0.0
+description = "受伤后回复4点生命，有冷却。"
+can_store_in_inventory = true
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(1, 1)
+duration = 0.0
+collectible_effect_id = "wool_charm"
+collectible_rarity = 0
+collectible_design_id = "wool_charm"
+collectible_design_note = "受伤回血：受伤后回复4点生命，有冷却。"
+trigger_effect_id = "hurt_heal"
+trigger_cooldown = 10.0
+trigger_heal = 4
+metadata/_custom_type_script = "uid://qucrregg4cq0"

@@ -133,6 +133,8 @@ var dodge_feedback_tween: Tween = null
 var revive_glow_tween: Tween = null
 var damage_reduction_modifiers: Dictionary = {}
 var collectible_periodic_cooldowns: Dictionary = {}
+var collectible_shot_counters: Dictionary = {}
+var collectible_trigger_cooldowns: Dictionary = {}
 var collectible_swift_time_left: float = 0.0
 var collectible_swift_move_speed_multiplier: float = 1.0
 var collectible_physical_damage_bonus: int = 0
@@ -401,10 +403,12 @@ func apply_damage(
 	current_health = maxi(current_health - final_damage, 0)
 	health_bar.set_health(current_health, max_health)
 	health_changed.emit(current_health, max_health)
+	_refresh_collectible_stats(false)
 	if current_health <= 0:
 		_die()
 		return true
 
+	_trigger_collectible_hurt_effects()
 	_start_invincibility()
 	return true
 
@@ -988,6 +992,7 @@ func unlock_skill1() -> bool:
 	skill1_charge = 0.0
 	_sync_skill1_charge_duration_to_upgrade_level()
 	_update_skill1_charge_bar()
+	_refresh_collectible_stats(false)
 	gunload_audio.play()
 	return true
 
@@ -1084,6 +1089,7 @@ func _try_heal(amount: int) -> bool:
 	current_health = mini(current_health + amount, max_health)
 	health_bar.set_health(current_health, max_health)
 	health_changed.emit(current_health, max_health)
+	_refresh_collectible_stats(false)
 	return true
 	
 # 根据射击模式和方向发射子弹，返回是否成功发射
@@ -1113,6 +1119,7 @@ func _spawn_bullet(shoot_direction: Vector2, track_attack_direction: bool = true
 	var pierces_enemies := _should_fire_piercing_bullet()
 	var bullet_damage := get_outgoing_damage(attack_damage, EnemyConfig.DamageType.PHYSICAL)
 	bullet.setup(shoot_direction, bullet_damage, pierces_enemies)
+	bullet.setup_collectible_owner(self)
 	if pierces_enemies:
 		bullet.modulate = PIERCING_BULLET_TINT
 	spawn_parent.add_child(bullet)
@@ -1130,6 +1137,7 @@ func _spawn_bullet(shoot_direction: Vector2, track_attack_direction: bool = true
 	if track_attack_direction and shoot_direction != Vector2.ZERO:
 		last_attack_direction = shoot_direction.normalized()
 	gunshot_audio.play()
+	_trigger_collectible_shot_effects()
 	return true
 
 
@@ -1239,17 +1247,12 @@ func _get_inventory_bullet_pierce_chance() -> float:
 	if run_state == null:
 		return 0.0
 
-	var best_chance := 0.0
-	for slot_index in range(RunStateStore.INVENTORY_CAPACITY):
-		var item := (
-			run_state.get_item_for_peer(peer_id, slot_index)
-			if peer_id > 0
-			else run_state.get_item(slot_index)
-		)
-		if item == null:
-			continue
-		best_chance = maxf(best_chance, item.bullet_pierce_chance)
-	return clampf(best_chance, 0.0, 1.0)
+	var total_chance := 0.0
+	for item in _get_active_collectible_items():
+		total_chance += item.bullet_pierce_chance
+		if _is_collectible_condition_active(item):
+			total_chance += item.conditional_bullet_pierce_chance
+	return clampf(total_chance, 0.0, 1.0)
 
 
 func _on_collectible_inventory_changed() -> void:
@@ -1287,16 +1290,10 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 		physical_damage_bonus += item.collectible_physical_damage_bonus
 		magic_damage_bonus += item.collectible_magic_damage_bonus
 		skill_charge_bonus += item.collectible_skill_charge_bonus_per_second
-		base_upgrade_free_chance = maxf(base_upgrade_free_chance, item.base_upgrade_free_chance)
-		ranged_front_damage_multiplier = maxf(
-			ranged_front_damage_multiplier,
-			item.incoming_ranged_front_damage_multiplier
-		)
-		ranged_back_damage_multiplier = minf(
-			ranged_back_damage_multiplier,
-			item.incoming_ranged_back_damage_multiplier
-		)
-		ranged_dodge_chance = maxf(ranged_dodge_chance, item.incoming_ranged_dodge_chance)
+		base_upgrade_free_chance += item.base_upgrade_free_chance
+		ranged_front_damage_multiplier *= item.incoming_ranged_front_damage_multiplier
+		ranged_back_damage_multiplier *= item.incoming_ranged_back_damage_multiplier
+		ranged_dodge_chance += item.incoming_ranged_dodge_chance
 		if item.attack_speed_xirang_step > 0:
 			attack_speed_bonus += (
 				floori(float(current_xirang) / float(item.attack_speed_xirang_step))
@@ -1307,7 +1304,20 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 			var dynamic_defense := defense_steps * item.defense_bonus_per_xirang_step
 			physical_defense_bonus += dynamic_defense
 			magic_defense_bonus += dynamic_defense
+		if _is_collectible_condition_active(item):
+			attack_bonus += item.conditional_attack_bonus
+			max_health_bonus += item.conditional_max_health_bonus
+			move_speed_bonus += item.conditional_move_speed_bonus
+			physical_defense_bonus += item.conditional_physical_defense_bonus
+			magic_defense_bonus += item.conditional_magic_defense_bonus
+			physical_damage_bonus += item.conditional_physical_damage_bonus
+			magic_damage_bonus += item.conditional_magic_damage_bonus
+			skill_charge_bonus += item.conditional_skill_charge_bonus_per_second
 		if not item.periodic_effect_id.is_empty():
+			active_periodic_keys[_get_collectible_runtime_key(item)] = true
+		if _has_collectible_trigger(item):
+			active_periodic_keys[_get_collectible_runtime_key(item)] = true
+		if _has_collectible_bullet_or_kill_effect(item):
 			active_periodic_keys[_get_collectible_runtime_key(item)] = true
 
 	var old_max_health := max_health
@@ -1329,6 +1339,12 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	for cooldown_key in collectible_periodic_cooldowns.keys():
 		if not active_periodic_keys.has(cooldown_key):
 			collectible_periodic_cooldowns.erase(cooldown_key)
+	for counter_key in collectible_shot_counters.keys():
+		if not active_periodic_keys.has(counter_key):
+			collectible_shot_counters.erase(counter_key)
+	for trigger_key in collectible_trigger_cooldowns.keys():
+		if not active_periodic_keys.has(_get_collectible_trigger_owner_key(trigger_key)):
+			collectible_trigger_cooldowns.erase(trigger_key)
 
 	if old_max_health != max_health:
 		current_health = clampi(current_health, 0, max_health)
@@ -1377,11 +1393,331 @@ func _get_collectible_runtime_key(item: PickupConfig) -> String:
 	return item.resource_path
 
 
+func _is_collectible_condition_active(item: PickupConfig) -> bool:
+	if item == null or item.conditional_effect_id.is_empty():
+		return false
+	match item.conditional_effect_id:
+		PickupConfig.CONDITION_HEALTH_BELOW:
+			if max_health <= 0:
+				return false
+			return float(current_health) / float(max_health) <= item.conditional_health_ratio_threshold
+		PickupConfig.CONDITION_HEALTH_ABOVE:
+			if max_health <= 0:
+				return false
+			return float(current_health) / float(max_health) >= item.conditional_health_ratio_threshold
+		PickupConfig.CONDITION_XIRANG_AT_LEAST:
+			return current_xirang >= item.conditional_xirang_threshold
+		PickupConfig.CONDITION_XIRANG_BELOW:
+			return current_xirang < item.conditional_xirang_threshold
+		PickupConfig.CONDITION_SKILL_UNLOCKED:
+			return skill1_unlocked
+		PickupConfig.CONDITION_SKILL_LOCKED:
+			return not skill1_unlocked
+		_:
+			return false
+
+
+func _has_collectible_trigger(item: PickupConfig) -> bool:
+	return item != null and not item.trigger_effect_id.is_empty()
+
+
+func _has_collectible_bullet_or_kill_effect(item: PickupConfig) -> bool:
+	return item != null and (not item.on_hit_effect_id.is_empty() or not item.kill_effect_id.is_empty())
+
+
+func _get_collectible_trigger_key(item: PickupConfig) -> String:
+	if item == null:
+		return ""
+	return "%s::%s" % [_get_collectible_runtime_key(item), item.trigger_effect_id]
+
+
+func _get_collectible_aux_key(item: PickupConfig, suffix: String) -> String:
+	if item == null:
+		return ""
+	return "%s::%s" % [_get_collectible_runtime_key(item), suffix]
+
+
+func _get_collectible_trigger_owner_key(trigger_key: Variant) -> String:
+	var key_text := str(trigger_key)
+	var separator_index := key_text.find("::")
+	if separator_index < 0:
+		return key_text
+	return key_text.substr(0, separator_index)
+
+
+func _trigger_collectible_shot_effects() -> void:
+	for item in _get_active_collectible_items():
+		if not _is_collectible_trigger_event(item, &"shot"):
+			continue
+		var runtime_key := _get_collectible_runtime_key(item)
+		var shot_interval := maxi(item.trigger_shot_interval, 1)
+		var shot_count := int(collectible_shot_counters.get(runtime_key, 0)) + 1
+		if shot_count < shot_interval:
+			collectible_shot_counters[runtime_key] = shot_count
+			continue
+		collectible_shot_counters[runtime_key] = 0
+		_apply_collectible_trigger_effect(item)
+
+
+func _trigger_collectible_hurt_effects() -> void:
+	for item in _get_active_collectible_items():
+		if _is_collectible_trigger_event(item, &"hurt"):
+			_apply_collectible_trigger_effect(item)
+
+
+func _is_collectible_trigger_event(item: PickupConfig, event_id: StringName) -> bool:
+	if item == null or item.trigger_effect_id.is_empty():
+		return false
+	match event_id:
+		&"shot":
+			return item.trigger_effect_id in [
+				PickupConfig.TRIGGER_SHOT_HEAL,
+				PickupConfig.TRIGGER_SHOT_XIRANG,
+				PickupConfig.TRIGGER_SHOT_CHARGE,
+				PickupConfig.TRIGGER_SHOT_THUNDER,
+				PickupConfig.TRIGGER_SHOT_FROST,
+			]
+		&"hurt":
+			return item.trigger_effect_id in [
+				PickupConfig.TRIGGER_HURT_HEAL,
+				PickupConfig.TRIGGER_HURT_XIRANG,
+				PickupConfig.TRIGGER_HURT_THUNDER,
+				PickupConfig.TRIGGER_HURT_FROST,
+			]
+		&"skill":
+			return item.trigger_effect_id in [
+				PickupConfig.TRIGGER_SKILL_HEAL,
+				PickupConfig.TRIGGER_SKILL_XIRANG,
+				PickupConfig.TRIGGER_SKILL_CHARGE,
+				PickupConfig.TRIGGER_SKILL_THUNDER,
+				PickupConfig.TRIGGER_SKILL_FROST,
+			]
+	return false
+
+
+func _apply_collectible_trigger_effect(item: PickupConfig) -> void:
+	if not _try_start_collectible_trigger_cooldown(item):
+		return
+	match item.trigger_effect_id:
+		PickupConfig.TRIGGER_SHOT_HEAL, PickupConfig.TRIGGER_HURT_HEAL, PickupConfig.TRIGGER_SKILL_HEAL:
+			_try_heal(item.trigger_heal)
+		PickupConfig.TRIGGER_SHOT_XIRANG, PickupConfig.TRIGGER_HURT_XIRANG, PickupConfig.TRIGGER_SKILL_XIRANG:
+			_grant_xirang_unrestricted(item.trigger_xirang)
+		PickupConfig.TRIGGER_SHOT_CHARGE, PickupConfig.TRIGGER_SKILL_CHARGE:
+			_add_collectible_skill_charge(item.trigger_skill_charge)
+		PickupConfig.TRIGGER_SHOT_THUNDER, PickupConfig.TRIGGER_HURT_THUNDER, PickupConfig.TRIGGER_SKILL_THUNDER:
+			_trigger_collectible_custom_thunder(item)
+		PickupConfig.TRIGGER_SHOT_FROST, PickupConfig.TRIGGER_HURT_FROST, PickupConfig.TRIGGER_SKILL_FROST:
+			_trigger_collectible_custom_frost(item)
+
+
+func _try_start_collectible_trigger_cooldown(item: PickupConfig) -> bool:
+	if item.trigger_cooldown <= 0.0:
+		return true
+	var trigger_key := _get_collectible_trigger_key(item)
+	if float(collectible_trigger_cooldowns.get(trigger_key, 0.0)) > 0.0:
+		return false
+	collectible_trigger_cooldowns[trigger_key] = item.trigger_cooldown
+	return true
+
+
+func _try_start_collectible_aux_cooldown(item: PickupConfig, suffix: String, cooldown: float) -> bool:
+	if cooldown <= 0.0:
+		return true
+	var trigger_key := _get_collectible_aux_key(item, suffix)
+	if float(collectible_trigger_cooldowns.get(trigger_key, 0.0)) > 0.0:
+		return false
+	collectible_trigger_cooldowns[trigger_key] = cooldown
+	return true
+
+
+func _add_collectible_skill_charge(amount: float) -> bool:
+	if amount <= 0.0 or not skill1_unlocked or is_dead:
+		return false
+	_sync_skill1_charge_duration_to_upgrade_level()
+	if skill1_charge >= skill1_charge_duration:
+		return false
+	skill1_charge = minf(skill1_charge + amount, skill1_charge_duration)
+	_update_skill1_charge_bar()
+	return true
+
+
+func apply_collectible_bullet_hit_effects(enemy: Enemy, hit_damage: int) -> void:
+	if enemy == null or not is_instance_valid(enemy):
+		return
+	var was_dead_after_hit := enemy.is_dead
+	if not was_dead_after_hit:
+		for item in _get_active_collectible_items():
+			if item.on_hit_effect_id.is_empty():
+				continue
+			_apply_collectible_on_hit_effect(item, enemy, hit_damage)
+			if enemy.is_dead:
+				break
+	if enemy.is_dead:
+		for item in _get_active_collectible_items():
+			if item.kill_effect_id.is_empty():
+				continue
+			_apply_collectible_kill_effect(item, enemy)
+
+
+func _apply_collectible_on_hit_effect(item: PickupConfig, enemy: Enemy, hit_damage: int) -> void:
+	if item == null or enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+		return
+	var on_hit_chance := clampf(item.on_hit_chance, 0.0, 1.0)
+	if on_hit_chance <= 0.0 or randf() > on_hit_chance:
+		return
+	if not _try_start_collectible_aux_cooldown(item, "hit:%s" % item.on_hit_effect_id, item.on_hit_cooldown):
+		return
+	var source_id := _get_collectible_effect_source_id(item, 11000)
+	match item.on_hit_effect_id:
+		PickupConfig.HIT_EFFECT_BURN:
+			enemy.apply_collectible_status(
+				&"burn",
+				source_id,
+				item.on_hit_duration,
+				item.on_hit_damage,
+				item.on_hit_tick_interval,
+				EnemyConfig.DamageType.MAGIC
+			)
+			_spawn_collectible_area_at(enemy.global_position, 18.0, Color(1.0, 0.46, 0.18, 0.45), 0.28)
+		PickupConfig.HIT_EFFECT_BLEED:
+			enemy.apply_collectible_status(
+				&"bleed",
+				source_id,
+				item.on_hit_duration,
+				item.on_hit_damage,
+				item.on_hit_tick_interval,
+				EnemyConfig.DamageType.PHYSICAL
+			)
+			_spawn_collectible_area_at(enemy.global_position, 14.0, Color(1.0, 0.08, 0.12, 0.38), 0.22)
+		PickupConfig.HIT_EFFECT_CHILL:
+			enemy.apply_collectible_status(
+				&"chill",
+				source_id,
+				item.on_hit_duration,
+				item.on_hit_damage,
+				item.on_hit_tick_interval,
+				EnemyConfig.DamageType.MAGIC,
+				item.on_hit_slow_multiplier
+			)
+			_spawn_collectible_area_at(enemy.global_position, maxf(item.on_hit_radius, 18.0), Color(0.52, 0.9, 1.0, 0.38), 0.28)
+		PickupConfig.HIT_EFFECT_SHOCK:
+			_apply_collectible_area_damage(
+				enemy.global_position,
+				maxf(item.on_hit_radius, 24.0),
+				maxi(item.on_hit_damage, 1),
+				EnemyConfig.DamageType.MAGIC
+			)
+			_spawn_collectible_lightning_effect(enemy.global_position)
+		PickupConfig.HIT_EFFECT_MARK:
+			enemy.apply_collectible_status(
+				&"mark",
+				source_id,
+				item.on_hit_duration,
+				0,
+				item.on_hit_tick_interval,
+				EnemyConfig.DamageType.MAGIC,
+				1.0,
+				0,
+				maxf(item.on_hit_damage_taken_multiplier, 1.0)
+			)
+			_spawn_collectible_area_at(enemy.global_position, 16.0, Color(0.84, 0.46, 1.0, 0.36), 0.24)
+		PickupConfig.HIT_EFFECT_CRACK:
+			enemy.apply_collectible_status(
+				&"crack",
+				source_id,
+				item.on_hit_duration,
+				0,
+				item.on_hit_tick_interval,
+				EnemyConfig.DamageType.PHYSICAL,
+				1.0,
+				item.on_hit_physical_defense_modifier
+			)
+			_spawn_collectible_area_at(enemy.global_position, 16.0, Color(1.0, 0.82, 0.28, 0.36), 0.24)
+		PickupConfig.HIT_EFFECT_LEECH:
+			_try_heal(item.on_hit_heal)
+			_spawn_collectible_area_at(global_position, 18.0, Color(0.45, 1.0, 0.58, 0.36), 0.22)
+		PickupConfig.HIT_EFFECT_SIPHON:
+			_add_collectible_skill_charge(item.on_hit_skill_charge)
+			_spawn_collectible_area_at(global_position, 18.0, Color(0.42, 0.88, 1.0, 0.32), 0.22)
+		PickupConfig.HIT_EFFECT_EXECUTE:
+			var max_enemy_health := enemy.config.max_health if enemy.config != null else enemy.current_health
+			var threshold := float(max_enemy_health) * item.on_hit_execute_health_ratio
+			if threshold > 0.0 and float(enemy.current_health) <= threshold:
+				_apply_authoritative_collectible_enemy_damage(
+					enemy,
+					enemy.current_health + max_enemy_health,
+					enemy.global_position.direction_to(global_position),
+					EnemyConfig.DamageType.PHYSICAL
+				)
+				_spawn_collectible_area_at(enemy.global_position, 20.0, Color(1.0, 0.16, 0.16, 0.42), 0.26)
+		PickupConfig.HIT_EFFECT_BLOOM:
+			_apply_collectible_area_heal(enemy.global_position, maxf(item.on_hit_radius, 36.0), item.on_hit_heal)
+		PickupConfig.HIT_EFFECT_XIRANG:
+			_grant_xirang_unrestricted(item.on_hit_xirang)
+			_spawn_collectible_area_at(enemy.global_position, 12.0, Color(0.96, 0.76, 0.32, 0.36), 0.2)
+
+
+func _apply_collectible_kill_effect(item: PickupConfig, enemy: Enemy) -> void:
+	if item == null or enemy == null or not is_instance_valid(enemy):
+		return
+	if not _try_start_collectible_aux_cooldown(item, "kill:%s" % item.kill_effect_id, item.kill_cooldown):
+		return
+	match item.kill_effect_id:
+		PickupConfig.KILL_EFFECT_HEAL:
+			_try_heal(item.kill_heal)
+			_spawn_collectible_area_at(global_position, 22.0, Color(0.45, 1.0, 0.58, 0.38), 0.26)
+		PickupConfig.KILL_EFFECT_XIRANG:
+			_grant_xirang_unrestricted(item.kill_xirang)
+			_spawn_collectible_area_at(enemy.global_position, 18.0, Color(0.96, 0.76, 0.32, 0.36), 0.24)
+		PickupConfig.KILL_EFFECT_CHARGE:
+			_add_collectible_skill_charge(item.kill_skill_charge)
+			_spawn_collectible_area_at(global_position, 22.0, Color(0.42, 0.88, 1.0, 0.32), 0.26)
+		PickupConfig.KILL_EFFECT_THUNDER:
+			_apply_collectible_area_damage(
+				enemy.global_position,
+				maxf(item.kill_radius, 28.0),
+				maxi(item.kill_damage, 1),
+				EnemyConfig.DamageType.MAGIC
+			)
+			_spawn_collectible_lightning_effect(enemy.global_position)
+		PickupConfig.KILL_EFFECT_FROST:
+			_apply_collectible_area_frost(
+				enemy.global_position,
+				maxf(item.kill_radius, 28.0),
+				maxi(item.kill_damage, 1),
+				item.kill_slow_multiplier,
+				item.kill_duration
+			)
+		PickupConfig.KILL_EFFECT_HASTE:
+			collectible_swift_time_left = maxf(item.kill_duration, 0.0)
+			collectible_swift_move_speed_multiplier = maxf(item.kill_move_speed_multiplier, 1.0)
+			_spawn_collectible_area_at(global_position, 22.0, Color(0.5, 1.0, 0.86, 0.34), 0.26)
+		PickupConfig.KILL_EFFECT_BLOOM:
+			_apply_collectible_area_heal(enemy.global_position, maxf(item.kill_radius, 36.0), item.kill_heal)
+		PickupConfig.KILL_EFFECT_BURST:
+			_apply_collectible_area_damage(
+				enemy.global_position,
+				maxf(item.kill_radius, 32.0),
+				maxi(item.kill_damage, 1),
+				EnemyConfig.DamageType.PHYSICAL
+			)
+			_spawn_collectible_area_at(enemy.global_position, maxf(item.kill_radius, 32.0), Color(1.0, 0.5, 0.28, 0.38), 0.28)
+
+
 func _update_collectible_runtime_effects(delta: float) -> void:
 	if collectible_swift_time_left > 0.0:
 		collectible_swift_time_left = maxf(collectible_swift_time_left - delta, 0.0)
 		if collectible_swift_time_left <= 0.0:
 			collectible_swift_move_speed_multiplier = 1.0
+
+	for trigger_key in collectible_trigger_cooldowns.keys():
+		var cooldown := float(collectible_trigger_cooldowns.get(trigger_key, 0.0))
+		cooldown = maxf(cooldown - delta, 0.0)
+		if cooldown <= 0.0:
+			collectible_trigger_cooldowns.erase(trigger_key)
+		else:
+			collectible_trigger_cooldowns[trigger_key] = cooldown
 
 	if not _should_run_authoritative_collectible_effects():
 		return
@@ -1459,7 +1795,58 @@ func _trigger_frost_crystal(item: PickupConfig) -> void:
 		if item.periodic_slow_duration > 0.0:
 			get_tree().create_timer(item.periodic_slow_duration).timeout.connect(
 				_remove_collectible_enemy_slow.bind(weakref(enemy), slow_source_id)
-			)
+		)
+	_spawn_collectible_frost_effect(radius, 0.4)
+
+
+func _trigger_collectible_custom_thunder(item: PickupConfig) -> void:
+	var enemies := _collect_alive_enemies()
+	if enemies.is_empty():
+		return
+	var enemy := enemies[randi() % enemies.size()]
+	if enemy == null or not is_instance_valid(enemy):
+		return
+	var impact_position := enemy.global_position
+	var radius := maxf(item.trigger_radius, 1.0)
+	var damage := get_outgoing_damage(item.trigger_damage, EnemyConfig.DamageType.MAGIC)
+	for target_enemy in enemies:
+		if target_enemy == null or not is_instance_valid(target_enemy):
+			continue
+		if target_enemy.global_position.distance_to(impact_position) > radius:
+			continue
+		var impact_direction := impact_position.direction_to(target_enemy.global_position)
+		if impact_direction == Vector2.ZERO:
+			impact_direction = Vector2.DOWN
+		_apply_authoritative_collectible_enemy_damage(
+			target_enemy,
+			damage,
+			impact_direction,
+			EnemyConfig.DamageType.MAGIC
+		)
+	_spawn_collectible_lightning_effect(impact_position)
+
+
+func _trigger_collectible_custom_frost(item: PickupConfig) -> void:
+	var radius := maxf(item.trigger_radius, 1.0)
+	var damage := get_outgoing_damage(item.trigger_damage, EnemyConfig.DamageType.MAGIC)
+	var slow_source_id := int(Time.get_ticks_msec() + get_instance_id())
+	for enemy in _collect_alive_enemies():
+		if enemy == null or not is_instance_valid(enemy):
+			continue
+		if global_position.distance_to(enemy.global_position) > radius:
+			continue
+		_apply_authoritative_collectible_enemy_damage(
+			enemy,
+			damage,
+			enemy.global_position.direction_to(global_position),
+			EnemyConfig.DamageType.MAGIC
+		)
+		if item.trigger_slow_multiplier < 1.0:
+			enemy.add_move_speed_modifier(slow_source_id, item.trigger_slow_multiplier)
+			if item.trigger_slow_duration > 0.0:
+				get_tree().create_timer(item.trigger_slow_duration).timeout.connect(
+					_remove_collectible_enemy_slow.bind(weakref(enemy), slow_source_id)
+				)
 	_spawn_collectible_frost_effect(radius, 0.4)
 
 
@@ -1597,6 +1984,78 @@ func _apply_authoritative_collectible_player_heal(target_player: Player, heal_am
 	return target_player._try_heal(heal_amount)
 
 
+func _get_collectible_effect_source_id(item: PickupConfig, salt: int) -> int:
+	var key_text := _get_collectible_runtime_key(item)
+	return absi(key_text.hash()) + salt + get_instance_id()
+
+
+func _apply_collectible_area_damage(
+	center_position: Vector2,
+	radius: float,
+	damage: int,
+	damage_type: EnemyConfig.DamageType
+) -> void:
+	var effective_radius := maxf(radius, 1.0)
+	var effective_damage := get_outgoing_damage(maxi(damage, 1), damage_type)
+	for enemy in _collect_alive_enemies():
+		if enemy == null or not is_instance_valid(enemy):
+			continue
+		if enemy.global_position.distance_to(center_position) > effective_radius:
+			continue
+		var impact_direction := center_position.direction_to(enemy.global_position)
+		if impact_direction == Vector2.ZERO:
+			impact_direction = Vector2.DOWN
+		_apply_authoritative_collectible_enemy_damage(
+			enemy,
+			effective_damage,
+			impact_direction,
+			damage_type
+		)
+
+
+func _apply_collectible_area_heal(center_position: Vector2, radius: float, heal_amount: int) -> void:
+	if heal_amount <= 0:
+		return
+	var effective_radius := maxf(radius, 1.0)
+	for target_player in _collect_alive_players():
+		if target_player == null or not is_instance_valid(target_player):
+			continue
+		if target_player.global_position.distance_to(center_position) > effective_radius:
+			continue
+		_apply_authoritative_collectible_player_heal(target_player, heal_amount)
+	_spawn_collectible_area_at(center_position, effective_radius, Color(0.45, 1.0, 0.58, 0.36), 0.32)
+
+
+func _apply_collectible_area_frost(
+	center_position: Vector2,
+	radius: float,
+	damage: int,
+	slow_multiplier: float,
+	slow_duration: float
+) -> void:
+	var effective_radius := maxf(radius, 1.0)
+	var effective_damage := get_outgoing_damage(maxi(damage, 1), EnemyConfig.DamageType.MAGIC)
+	var slow_source_id := int(Time.get_ticks_msec() + get_instance_id())
+	for enemy in _collect_alive_enemies():
+		if enemy == null or not is_instance_valid(enemy):
+			continue
+		if enemy.global_position.distance_to(center_position) > effective_radius:
+			continue
+		_apply_authoritative_collectible_enemy_damage(
+			enemy,
+			effective_damage,
+			center_position.direction_to(enemy.global_position),
+			EnemyConfig.DamageType.MAGIC
+		)
+		if slow_multiplier < 1.0:
+			enemy.add_move_speed_modifier(slow_source_id, slow_multiplier)
+			if slow_duration > 0.0:
+				get_tree().create_timer(slow_duration).timeout.connect(
+					_remove_collectible_enemy_slow.bind(weakref(enemy), slow_source_id)
+				)
+	_spawn_collectible_frost_effect_at(center_position, effective_radius, 0.4)
+
+
 func _collect_alive_enemies() -> Array[Enemy]:
 	var result: Array[Enemy] = []
 	var root := get_tree().current_scene
@@ -1641,6 +2100,15 @@ func _should_run_authoritative_collectible_effects() -> bool:
 
 
 func _spawn_collectible_area_effect(radius: float, color: Color, duration: float) -> void:
+	_spawn_collectible_area_at(global_position, radius, color, duration)
+
+
+func _spawn_collectible_area_at(
+	spawn_position: Vector2,
+	radius: float,
+	color: Color,
+	duration: float
+) -> void:
 	var effect := COLLECTIBLE_AREA_EFFECT_SCENE.instantiate() as CollectibleAreaEffect
 	if effect == null:
 		return
@@ -1650,11 +2118,15 @@ func _spawn_collectible_area_effect(radius: float, color: Color, duration: float
 	effect.top_level = true
 	effect.setup(radius, color, duration)
 	spawn_parent.add_child(effect)
-	effect.global_position = global_position
+	effect.global_position = spawn_position
 	_broadcast_collectible_visual(&"area", effect.global_position, radius, color, duration)
 
 
 func _spawn_collectible_frost_effect(radius: float, duration: float) -> void:
+	_spawn_collectible_frost_effect_at(global_position, radius, duration)
+
+
+func _spawn_collectible_frost_effect_at(spawn_position: Vector2, radius: float, duration: float) -> void:
 	var effect := COLLECTIBLE_FROST_AREA_EFFECT_SCENE.instantiate()
 	if effect == null:
 		return
@@ -1664,7 +2136,7 @@ func _spawn_collectible_frost_effect(radius: float, duration: float) -> void:
 	effect.top_level = true
 	effect.call("setup", radius, duration)
 	spawn_parent.add_child(effect)
-	effect.global_position = global_position
+	effect.global_position = spawn_position
 	_broadcast_collectible_visual(&"frost_area", effect.global_position, radius, Color(0.66, 0.94, 1.0, 1.0), duration)
 
 
@@ -1728,6 +2200,8 @@ func _activate_collectible_skill_effects() -> void:
 			PickupConfig.SKILL_EFFECT_SWIFT:
 				collectible_swift_time_left = maxf(item.skill_effect_duration, 0.0)
 				collectible_swift_move_speed_multiplier = maxf(item.skill_move_speed_multiplier, 1.0)
+		if _is_collectible_trigger_event(item, &"skill"):
+			_apply_collectible_trigger_effect(item)
 
 
 func activate_collectible_skill_effects_from_multiplayer() -> void:

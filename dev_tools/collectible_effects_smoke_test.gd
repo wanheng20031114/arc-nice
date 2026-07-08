@@ -4,6 +4,7 @@ const PLAYER_SCENE := preload("res://scene/player.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const APPLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 const RUBY := preload("res://resources/config/collectibles/collectible_ruby.tres")
+const GLASS_MARBLE := preload("res://resources/config/collectibles/collectible_glass_marble.tres")
 const POWER_RING := preload("res://resources/config/collectibles/collectible_power_ring.tres")
 const LIFE_RING := preload("res://resources/config/collectibles/collectible_life_ring.tres")
 const SPEED_RING := preload("res://resources/config/collectibles/collectible_speed_ring.tres")
@@ -21,7 +22,11 @@ const ARCHER := preload("res://resources/config/collectibles/collectible_archer.
 const NINE_ELEVEN := preload("res://resources/config/collectibles/collectible_nine_eleven.tres")
 const CHARGED_JADE_PENDANT := preload("res://resources/config/collectibles/collectible_charged_jade_pendant.tres")
 const LUCKY_GEM := preload("res://resources/config/collectibles/collectible_lucky_gem.tres")
+const ALCHEMIST_VIAL := preload("res://resources/config/collectibles/collectible_alchemist_vial.tres")
+const FOX_COIN := preload("res://resources/config/collectibles/collectible_fox_coin.tres")
 const MEDIEVAL_SHIELD := preload("res://resources/config/collectibles/collectible_medieval_shield.tres")
+const WOODEN_BUCKLER := preload("res://resources/config/collectibles/collectible_wooden_buckler.tres")
+const SILVER_MASK := preload("res://resources/config/collectibles/collectible_silver_mask.tres")
 const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/collectible_arrow_projectile.gd")
 const DAMAGE_NUMBER_POOL_SCRIPT := preload("res://scene/damage_number_pool.gd")
 
@@ -92,8 +97,9 @@ func _run() -> void:
 
 func _test_collectible_resources() -> void:
 	var pool := LuoxiMerchant.get_collectible_pool()
-	_expect(pool.size() == 24, "Luoxi collectible pool must include apple plus 23 collectibles.")
+	_expect(pool.size() == 104, "Luoxi collectible pool must include the original 24 collectibles plus 80 new collectibles.")
 	var seen_paths: Dictionary = {}
+	var rarity_counts: Dictionary = {}
 	for item in pool:
 		var config := item as PickupConfig
 		_expect(config != null, "Collectible pool entry must load.")
@@ -106,10 +112,26 @@ func _test_collectible_resources() -> void:
 		_expect(config.pickup_type == PickupConfig.PickupType.COLLECTIBLE, "%s must use collectible pickup type." % config.display_name)
 		_expect(not config.description.is_empty(), "%s must have a visible description." % config.display_name)
 		_expect(config.icon_texture != null, "%s must have an icon texture." % config.display_name)
+		_expect(
+			config.collectible_rarity >= PickupConfig.CollectibleRarity.COMMON
+			and config.collectible_rarity <= PickupConfig.CollectibleRarity.LEGENDARY,
+			"%s must use a valid collectible rarity." % config.display_name
+		)
+		rarity_counts[int(config.collectible_rarity)] = int(rarity_counts.get(int(config.collectible_rarity), 0)) + 1
 		if config.icon_texture != null:
 			_expect(config.icon_texture.get_width() <= 32, "%s icon width must be <= 32." % config.display_name)
 			_expect(config.icon_texture.get_height() <= 32, "%s icon height must be <= 32." % config.display_name)
 	_expect(APPLE.icon_texture.get_width() == 32 and APPLE.icon_texture.get_height() == 32, "Apple icon must remain 32x32.")
+	for rarity in [
+		PickupConfig.CollectibleRarity.COMMON,
+		PickupConfig.CollectibleRarity.RARE,
+		PickupConfig.CollectibleRarity.EPIC,
+		PickupConfig.CollectibleRarity.LEGENDARY,
+	]:
+		_expect(
+			int(rarity_counts.get(int(rarity), 0)) > 0,
+			"Luoxi collectible pool must contain %s rarity items." % PickupConfig.get_collectible_rarity_label(rarity)
+		)
 
 
 func _test_new_collectible_rules() -> void:
@@ -129,6 +151,7 @@ func _test_new_collectible_rules() -> void:
 	run_state.begin_new_run()
 	player = _spawn_player()
 	_expect(run_state.try_add_item(NINE_ELEVEN), "911 must fit in inventory.")
+	_expect(run_state.try_add_item(SILVER_MASK), "Silver mask must fit in inventory.")
 	await process_frame
 	player.call("_set_multiplayer_facing_id", 0)
 	player.current_health = player.max_health
@@ -136,22 +159,26 @@ func _test_new_collectible_rules() -> void:
 	_expect(player.current_health == player.max_health - 13, "911 must increase front ranged damage by 30%.")
 	player.invincibility_time_left = 0.0
 	_expect(player.apply_damage(10, EnemyConfig.DamageType.PHYSICAL, {"is_ranged": true, "source_direction": Vector2.LEFT}), "911 back hit must apply damage.")
-	_expect(player.current_health == player.max_health - 18, "911 must reduce back ranged damage by 50%.")
+	_expect(player.current_health == player.max_health - 17, "911 and silver mask must stack back ranged damage multipliers.")
 	player.queue_free()
 	await process_frame
 
 	run_state.begin_new_run()
 	player = _spawn_player()
 	_expect(run_state.try_add_item(LUCKY_GEM), "Lucky gem must fit in inventory.")
+	_expect(run_state.try_add_item(LUCKY_GEM), "Duplicate lucky gem must fit in inventory.")
+	_expect(run_state.try_add_item(ALCHEMIST_VIAL), "Alchemist vial must fit in inventory.")
+	_expect(run_state.try_add_item(FOX_COIN), "Fox coin must fit in inventory.")
 	_expect(run_state.try_add_item(MEDIEVAL_SHIELD), "Medieval shield must fit in inventory.")
+	_expect(run_state.try_add_item(WOODEN_BUCKLER), "Wooden buckler must fit in inventory.")
 	await process_frame
 	_expect(
-		is_equal_approx(float(player.get("collectible_base_upgrade_free_chance")), 0.2),
-		"Lucky gem must expose a 20% free base upgrade chance."
+		is_equal_approx(float(player.get("collectible_base_upgrade_free_chance")), 0.33),
+		"Different free-upgrade collectibles must stack while duplicate lucky gems stay single-effect."
 	)
 	_expect(
-		is_equal_approx(float(player.get("collectible_ranged_dodge_chance")), 0.2),
-		"Medieval shield must expose a 20% independent ranged dodge chance."
+		is_equal_approx(float(player.get("collectible_ranged_dodge_chance")), 0.25),
+		"Different ranged dodge collectibles must stack."
 	)
 	_expect(player.get_node_or_null("LuckyUpgradeAudio") != null, "Player scene must contain LuckyUpgradeAudio.")
 	player.queue_free()
@@ -253,6 +280,12 @@ func _test_collectible_stat_rules() -> void:
 		is_equal_approx(player.call("_get_inventory_bullet_pierce_chance"), 0.2),
 		"Multiple apples must still only expose a 20% max pierce chance."
 	)
+	_expect(run_state.try_add_item(GLASS_MARBLE), "Glass marble must fit in inventory with apples.")
+	await process_frame
+	_expect(
+		is_equal_approx(player.call("_get_inventory_bullet_pierce_chance"), 0.26),
+		"Different piercing collectibles must stack their pierce chance."
+	)
 	player.queue_free()
 	await process_frame
 
@@ -262,14 +295,14 @@ func _test_xirang_dynamic_rules() -> void:
 	run_state.begin_new_run()
 	var player := _spawn_player()
 	_expect(run_state.try_add_item(GOLD_WINE_CUP), "Gold wine cup must fit in inventory.")
-	player.grant_cheat_xirang(250)
+	player.grant_cheat_xirang(2500)
 	await process_frame
 	_expect(
-		is_equal_approx(player.get_attack_speed(), (100.0 / 0.18) + 12.0),
-		"Gold wine cup must add 6 attack speed points per 100 xirang."
+		is_equal_approx(player.get_attack_speed(), (100.0 / 0.18) + 10.0),
+		"Gold wine cup must add 5 attack speed points per 1000 xirang."
 	)
 	_expect(
-		is_equal_approx(player.get_attacks_per_second(), ((100.0 / 0.18) + 12.0) / 100.0),
+		is_equal_approx(player.get_attacks_per_second(), ((100.0 / 0.18) + 10.0) / 100.0),
 		"100 attack speed must equal 1 attack per second."
 	)
 	player.queue_free()
@@ -278,10 +311,10 @@ func _test_xirang_dynamic_rules() -> void:
 	run_state.begin_new_run()
 	player = _spawn_player()
 	_expect(run_state.try_add_item(TIANSHI_STAKE), "Tianshi stake must fit in inventory.")
-	player.grant_cheat_xirang(2100)
+	player.grant_cheat_xirang(4100)
 	await process_frame
-	_expect(player.physical_defense == 2, "Tianshi stake must add physical defense per 1000 xirang.")
-	_expect(player.magic_defense == 2, "Tianshi stake must add magic defense per 1000 xirang.")
+	_expect(player.physical_defense == 2, "Tianshi stake must add physical defense per 2000 xirang.")
+	_expect(player.magic_defense == 2, "Tianshi stake must add magic defense per 2000 xirang.")
 	player.queue_free()
 	await process_frame
 

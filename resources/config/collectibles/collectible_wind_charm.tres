@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/collectibles/wind_charm.png" id="1_icon"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 5
+display_name = "风行符"
+drop_weight = 0.0
+description = "使用技能后短暂提速。"
+can_store_in_inventory = true
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(1, 1)
+duration = 0.0
+collectible_effect_id = "wind_charm"
+collectible_rarity = 1
+collectible_design_id = "wind_charm"
+collectible_design_note = "技能疾行：使用技能后短暂提速。"
+skill_effect_id = "swift"
+skill_effect_duration = 3.0
+skill_move_speed_multiplier = 1.2
+metadata/_custom_type_script = "uid://qucrregg4cq0"

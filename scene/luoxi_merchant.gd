@@ -1,57 +1,8 @@
 extends Node2D
 class_name LuoxiMerchant
 
-const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
-const APPLE_ICON_BBCODE := "[img=18]res://resources/texture/apple_collectible.png[/img]"
-const GOLD_WINE_CUP_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_gold_wine_cup.tres")
-const TIANSHI_STAKE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_tianshi_stake.tres")
-const RUBY_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_ruby.tres")
-const EMERALD_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_emerald.tres")
-const TOPAZ_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_topaz.tres")
-const GRAY_GEM_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_gray_gem.tres")
-const AMETHYST_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_amethyst.tres")
-const POWER_RING_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_power_ring.tres")
-const LIFE_RING_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_life_ring.tres")
-const SPEED_RING_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_speed_ring.tres")
-const PHYSICAL_RING_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_physical_ring.tres")
-const MAGIC_RING_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_magic_ring.tres")
-const MOON_AMULET_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_moon_amulet.tres")
-const THUNDER_CRYSTAL_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_thunder_crystal.tres")
-const FROST_CRYSTAL_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_frost_crystal.tres")
-const LIFE_CRYSTAL_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_life_crystal.tres")
-const SWIFT_CRYSTAL_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_swift_crystal.tres")
-const ADMIN_DOLL_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_admin_doll.tres")
-const ARCHER_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_archer.tres")
-const NINE_ELEVEN_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_nine_eleven.tres")
-const CHARGED_JADE_PENDANT_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_charged_jade_pendant.tres")
-const LUCKY_GEM_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_lucky_gem.tres")
-const MEDIEVAL_SHIELD_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_medieval_shield.tres")
-const COLLECTIBLE_POOL := [
-	APPLE_COLLECTIBLE,
-	GOLD_WINE_CUP_COLLECTIBLE,
-	TIANSHI_STAKE_COLLECTIBLE,
-	RUBY_COLLECTIBLE,
-	EMERALD_COLLECTIBLE,
-	TOPAZ_COLLECTIBLE,
-	GRAY_GEM_COLLECTIBLE,
-	AMETHYST_COLLECTIBLE,
-	POWER_RING_COLLECTIBLE,
-	LIFE_RING_COLLECTIBLE,
-	SPEED_RING_COLLECTIBLE,
-	PHYSICAL_RING_COLLECTIBLE,
-	MAGIC_RING_COLLECTIBLE,
-	MOON_AMULET_COLLECTIBLE,
-	THUNDER_CRYSTAL_COLLECTIBLE,
-	FROST_CRYSTAL_COLLECTIBLE,
-	LIFE_CRYSTAL_COLLECTIBLE,
-	SWIFT_CRYSTAL_COLLECTIBLE,
-	ADMIN_DOLL_COLLECTIBLE,
-	ARCHER_COLLECTIBLE,
-	NINE_ELEVEN_COLLECTIBLE,
-	CHARGED_JADE_PENDANT_COLLECTIBLE,
-	LUCKY_GEM_COLLECTIBLE,
-	MEDIEVAL_SHIELD_COLLECTIBLE,
-]
+const COLLECTIBLE_CONFIG_DIR := "res://resources/config/collectibles"
+const COLLECTIBLE_CONFIG_PREFIX := "collectible_"
 const DIALOGUE_LINES := [
 	"我是终末地的爪牙！",
 	"我能为你提供收藏品来强化自己。",
@@ -94,19 +45,25 @@ static func get_choice_count() -> int:
 
 
 static func get_collectible_pool() -> Array:
-	return COLLECTIBLE_POOL.duplicate()
+	var pool: Array = []
+	for config_path in _get_collectible_config_paths():
+		var item := load(config_path) as PickupConfig
+		if item != null:
+			pool.append(item)
+	return pool
 
 
 static func get_collectible_for_choice(choice_index: int) -> PickupConfig:
-	if choice_index < 0 or choice_index >= COLLECTIBLE_POOL.size():
+	var pool := get_collectible_pool()
+	if choice_index < 0 or choice_index >= pool.size():
 		return null
-	return COLLECTIBLE_POOL[choice_index] as PickupConfig
+	return pool[choice_index] as PickupConfig
 
 
 static func get_collectible_for_path(config_path: String) -> PickupConfig:
 	if config_path.is_empty():
 		return null
-	for item in COLLECTIBLE_POOL:
+	for item in get_collectible_pool():
 		var config := item as PickupConfig
 		if config != null and config.resource_path == config_path:
 			return config
@@ -115,6 +72,60 @@ static func get_collectible_for_path(config_path: String) -> PickupConfig:
 
 static func is_collectible_pool_path(config_path: String) -> bool:
 	return get_collectible_for_path(config_path) != null
+
+
+static func get_collectible_effect_key(item: PickupConfig) -> String:
+	if item == null:
+		return ""
+	if not item.collectible_effect_id.is_empty():
+		return item.collectible_effect_id
+	return item.resource_path
+
+
+static func can_collectible_repeat_effect(item: PickupConfig) -> bool:
+	return item != null and item.collectible_stacks_by_copy
+
+
+static func is_collectible_available_for_inventory(
+	item: PickupConfig,
+	run_state: RunStateStore,
+	peer_id: int = 0
+) -> bool:
+	if item == null:
+		return false
+	if can_collectible_repeat_effect(item):
+		return true
+	if run_state == null:
+		return true
+
+	var effect_key := get_collectible_effect_key(item)
+	if effect_key.is_empty():
+		return true
+	for slot_index in range(RunStateStore.INVENTORY_CAPACITY):
+		var stored_item := (
+			run_state.get_item_for_peer(peer_id, slot_index)
+			if peer_id > 0
+			else run_state.get_item(slot_index)
+		)
+		if stored_item == null or stored_item.pickup_type != PickupConfig.PickupType.COLLECTIBLE:
+			continue
+		if get_collectible_effect_key(stored_item) == effect_key:
+			return false
+	return true
+
+
+static func get_collectible_rarity_roll_weight(rarity: int) -> float:
+	match rarity:
+		PickupConfig.CollectibleRarity.COMMON:
+			return 58.0
+		PickupConfig.CollectibleRarity.RARE:
+			return 28.0
+		PickupConfig.CollectibleRarity.EPIC:
+			return 11.0
+		PickupConfig.CollectibleRarity.LEGENDARY:
+			return 3.0
+		_:
+			return 58.0
 
 
 static func get_result_line(result_code: int) -> String:
@@ -289,6 +300,8 @@ func _claim_local_collectible(player: Player, config_path: String) -> int:
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if run_state == null:
 		return COLLECTIBLE_RESULT_INVALID_PLAYER
+	if not is_collectible_available_for_inventory(item, run_state, player.peer_id):
+		return COLLECTIBLE_RESULT_INVALID_PLAYER
 	var stored := (
 		run_state.try_add_item_for_peer(player.peer_id, item)
 		if player.peer_id > 0
@@ -310,7 +323,10 @@ func _build_dialogue_lines(player: Player) -> Array:
 func _build_collectible_choices() -> Array:
 	var player_key := _get_player_claim_key(active_player)
 	if pending_choices_by_player_key.has(player_key):
-		return (pending_choices_by_player_key[player_key] as Array).duplicate()
+		var pending_choices := pending_choices_by_player_key[player_key] as Array
+		if _are_collectible_choices_available_for_player(pending_choices, active_player):
+			return pending_choices.duplicate()
+		pending_choices_by_player_key.erase(player_key)
 
 	var choices := _build_random_collectible_choices()
 	pending_choices_by_player_key[player_key] = choices
@@ -319,14 +335,98 @@ func _build_collectible_choices() -> Array:
 
 func _build_random_collectible_choices() -> Array:
 	var choices: Array = []
-	var pool := COLLECTIBLE_POOL.duplicate()
+	var pool := _get_collectible_pool_for_player(active_player)
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
 	for _choice_index in range(mini(CHOICE_COUNT, pool.size())):
-		var pool_index := rng.randi_range(0, pool.size() - 1)
+		var pool_index := _pick_weighted_collectible_index(pool, rng)
 		choices.append(pool[pool_index])
 		pool.remove_at(pool_index)
 	return choices
+
+
+func _pick_weighted_collectible_index(pool: Array, rng: RandomNumberGenerator) -> int:
+	var available_rarities := _get_available_rarities(pool)
+	if available_rarities.is_empty():
+		return rng.randi_range(0, pool.size() - 1)
+
+	var total_weight := 0.0
+	for rarity in available_rarities:
+		total_weight += get_collectible_rarity_roll_weight(int(rarity))
+
+	var roll := rng.randf_range(0.0, total_weight)
+	var chosen_rarity := int(available_rarities[available_rarities.size() - 1])
+	for rarity in available_rarities:
+		roll -= get_collectible_rarity_roll_weight(int(rarity))
+		if roll <= 0.0:
+			chosen_rarity = int(rarity)
+			break
+
+	var matching_indices: Array[int] = []
+	for index in range(pool.size()):
+		var item := pool[index] as PickupConfig
+		if item != null and item.collectible_rarity == chosen_rarity:
+			matching_indices.append(index)
+	if matching_indices.is_empty():
+		return rng.randi_range(0, pool.size() - 1)
+	return matching_indices[rng.randi_range(0, matching_indices.size() - 1)]
+
+
+func _get_available_rarities(pool: Array) -> Array[int]:
+	var seen: Dictionary = {}
+	for item_variant in pool:
+		var item := item_variant as PickupConfig
+		if item == null:
+			continue
+		seen[int(item.collectible_rarity)] = true
+
+	var result: Array[int] = []
+	for rarity in [
+		PickupConfig.CollectibleRarity.COMMON,
+		PickupConfig.CollectibleRarity.RARE,
+		PickupConfig.CollectibleRarity.EPIC,
+		PickupConfig.CollectibleRarity.LEGENDARY,
+	]:
+		if seen.has(int(rarity)):
+			result.append(int(rarity))
+	return result
+
+
+func _get_collectible_pool_for_player(player: Player) -> Array:
+	var pool := get_collectible_pool()
+	var run_state := get_node_or_null("/root/RunState") as RunStateStore
+	if player == null or run_state == null:
+		return pool
+
+	var filtered_pool: Array = []
+	for item_variant in pool:
+		var item := item_variant as PickupConfig
+		if is_collectible_available_for_inventory(item, run_state, player.peer_id):
+			filtered_pool.append(item)
+	return filtered_pool
+
+
+func _are_collectible_choices_available_for_player(choices: Array, player: Player) -> bool:
+	var run_state := get_node_or_null("/root/RunState") as RunStateStore
+	if player == null or run_state == null:
+		return true
+	for item_variant in choices:
+		var item := item_variant as PickupConfig
+		if not is_collectible_available_for_inventory(item, run_state, player.peer_id):
+			return false
+	return true
+
+
+static func _get_collectible_config_paths() -> Array[String]:
+	var paths: Array[String] = []
+	for file_name in DirAccess.get_files_at(COLLECTIBLE_CONFIG_DIR):
+		if file_name.get_extension() != "tres":
+			continue
+		if not file_name.begins_with(COLLECTIBLE_CONFIG_PREFIX):
+			continue
+		paths.append("%s/%s" % [COLLECTIBLE_CONFIG_DIR, file_name])
+	paths.sort()
+	return paths
 
 
 func _get_current_choice_item(choice_index: int) -> PickupConfig:

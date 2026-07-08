@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/collectibles/guardian_badge.png" id="1_icon"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 5
+display_name = "守卫徽章"
+drop_weight = 0.0
+description = "受伤后小范围反击落雷。"
+can_store_in_inventory = true
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(1, 1)
+duration = 0.0
+collectible_effect_id = "guardian_badge"
+collectible_rarity = 1
+collectible_design_id = "guardian_badge"
+collectible_design_note = "受伤反击：受伤后小范围反击落雷。"
+trigger_effect_id = "hurt_thunder"
+trigger_cooldown = 8.0
+trigger_damage = 16
+trigger_radius = 36.0
+metadata/_custom_type_script = "uid://qucrregg4cq0"

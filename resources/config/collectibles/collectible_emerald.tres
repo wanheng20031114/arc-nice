@@ -13,6 +13,7 @@ can_store_in_inventory = true
 icon_texture = ExtResource("1_icon")
 duration = 0.0
 collectible_effect_id = "emerald"
+collectible_rarity = 0
 collectible_stacks_by_copy = true
 collectible_max_health_bonus = 10
 metadata/_custom_type_script = "uid://qucrregg4cq0"

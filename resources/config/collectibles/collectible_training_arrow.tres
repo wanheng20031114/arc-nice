@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/collectibles/training_arrow.png" id="1_icon"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 5
+display_name = "练习箭"
+drop_weight = 0.0
+description = "普通子弹有概率标记敌人。"
+can_store_in_inventory = true
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(1, 1)
+duration = 0.0
+collectible_effect_id = "training_arrow"
+collectible_rarity = 0
+collectible_design_id = "training_arrow"
+collectible_design_note = "易伤标记：普通子弹有概率标记敌人。"
+on_hit_effect_id = "mark"
+on_hit_chance = 0.12
+on_hit_duration = 1.6
+on_hit_damage_taken_multiplier = 1.1
+metadata/_custom_type_script = "uid://qucrregg4cq0"
