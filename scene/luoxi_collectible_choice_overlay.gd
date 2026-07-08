@@ -171,13 +171,7 @@ func _update_cards() -> void:
 func _build_description_text(item: PickupConfig) -> String:
 	if item == null:
 		return ""
-	var rarity_label := PickupConfig.get_collectible_rarity_label(item.collectible_rarity)
-	var rarity_color := PickupConfig.get_collectible_rarity_bbcode_color(item.collectible_rarity)
-	return "[color=%s]稀有度：%s[/color]\n%s" % [
-		rarity_color,
-		rarity_label,
-		item.description,
-	]
+	return item.description
 
 
 func _reset_description_scrolls() -> void:

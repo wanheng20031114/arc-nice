@@ -20,6 +20,11 @@
 [ext_resource type="PackedScene" uid="uid://cvh5s1gowuh0r" path="res://scene/luoxi_merchant.tscn" id="20_luoxi"]
 [ext_resource type="PackedScene" path="res://scene/debug_collectible_window.tscn" id="21_debug_collectibles"]
 
+[sub_resource type="Environment" id="Environment_revive_glow"]
+glow_enabled = true
+glow_bloom = 0.08
+glow_hdr_scale = 1.6
+
 [sub_resource type="TileMapPattern" id="TileMapPattern_33cqm"]
 tile_data = PackedInt32Array(0, 0, 0, 65536, 131072, 2, 1, 0, 0, 65537, 0, 0)
 
@@ -94,12 +99,6 @@ texture_region_size = Vector2i(16, 32)
 
 [sub_resource type="TileSet" id="TileSet_7jktm"]
 sources/0 = SubResource("TileSetAtlasSource_fc0e3")
-
-[sub_resource type="Environment" id="Environment_revive_glow"]
-glow_enabled = true
-glow_bloom = 0.08
-glow_hdr_threshold = 1.0
-glow_hdr_scale = 1.6
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_feb5d"]
 a = Vector2(-213.33333, -106.666664)
