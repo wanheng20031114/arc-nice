@@ -15,7 +15,7 @@
 [ext_resource type="LabelSettings" path="res://resources/ui/player_name_label_settings.tres" id="13_name_settings"]
 [ext_resource type="PackedScene" path="res://scene/move_speed_trail_effect.tscn" id="14_speed_trail"]
 [ext_resource type="AudioStream" uid="uid://44ucsbesth8r" path="res://resources/audio/lucky_gem_upgrade_triad.wav" id="15_lucky_audio"]
-[ext_resource type="PackedScene" path="res://scene/player_ammo_bar.tscn" id="16_ammo_bar"]
+[ext_resource type="PackedScene" uid="uid://d10vpuylyb4ty" path="res://scene/player_ammo_bar.tscn" id="16_ammo_bar"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_s4jxa"]
 resource_local_to_scene = true
@@ -142,17 +142,16 @@ debug_color = Color(0.7556723, 0.6626576, 0.2962067, 0.41960785)
 
 [node name="ShootingTimer" type="Timer" parent="." unique_id=1653986996]
 
+[node name="AmmoBar" parent="." unique_id=1608733861 instance=ExtResource("16_ammo_bar")]
+ammo_color = Color(1, 0.56078434, 0.078431375, 0.98039216)
+
 [node name="HealthBar" parent="." unique_id=1666344635 instance=ExtResource("10_owf57")]
 offset_top = -15.0
 offset_bottom = -10.0
 
-[node name="AmmoBar" parent="." unique_id=118854316 instance=ExtResource("16_ammo_bar")]
-offset_top = 8.0
-offset_bottom = 11.0
-
 [node name="Skill1ChargeBar" parent="." unique_id=1477372087 instance=ExtResource("12_skill1_bar")]
-offset_top = 10.0
-offset_bottom = 12.0
+offset_top = 11.0
+offset_bottom = 13.0
 
 [node name="NameLabel" type="Label" parent="." unique_id=1426447593]
 visible = false

@@ -51,8 +51,8 @@ func setup_multiplayer(
 	source_type = new_source_type
 
 
-func setup_collectible_owner(owner: Player) -> void:
-	collectible_owner = owner
+func setup_collectible_owner(owner_player: Player) -> void:
+	collectible_owner = owner_player
 
 
 # 物理帧更新逻辑，处理子弹移动和碰撞检测

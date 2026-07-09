@@ -277,6 +277,13 @@ func _test_new_collectible_rules() -> void:
 		_expect(sakura_rocket.enemies_only, "Sakura rocket must be enemy-only.")
 		_expect(sakura_rocket.damage_type == EnemyConfig.DamageType.MAGIC, "Sakura rocket must deal magic damage.")
 		_expect(sakura_rocket.damage == 100, "Sakura rocket must use 100 base magic damage.")
+		_expect(
+			is_equal_approx(
+				sakura_rocket.explosion_radius,
+				LinglanSkill2SakuraRocket.COLLECTIBLE_SAKURA_EXPLOSION_RADIUS
+			),
+			"Sakura rocket explosion radius must be Weishidaier Skill1 radius plus 3."
+		)
 	for child in test_root.get_children():
 		if child.get_script() == LINGLAN_SKILL2_ROCKET_SCRIPT:
 			child.queue_free()

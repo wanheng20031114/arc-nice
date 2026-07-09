@@ -2,10 +2,9 @@
 extends Control
 class_name PlayerAmmoBar
 
-@export var frame_color: Color = Color(0.18, 0.2, 0.19, 0.96)
 @export var slot_color: Color = Color(0.04, 0.045, 0.04, 0.9)
-@export var ammo_color: Color = Color(0.46, 0.9, 0.35, 0.96)
-@export var separator_color: Color = Color(0.02, 0.025, 0.02, 0.72)
+@export var ammo_color: Color = Color(1.0, 0.56, 0.08, 0.98)
+@export var separator_color: Color = Color(0.16, 0.07, 0.015, 0.82)
 @export var reload_color: Color = Color(0.98, 0.78, 0.18, 0.98)
 
 var current_ammo: int = 0
@@ -34,15 +33,11 @@ func set_ammo_state(
 
 
 func _draw() -> void:
-	var frame_rect := Rect2(Vector2.ZERO, size)
-	var slot_rect := frame_rect.grow(-1.0)
-	if frame_rect.size.x <= 0.0 or frame_rect.size.y <= 0.0:
+	if size.x <= 0.0 or size.y <= 0.0:
 		return
+	var slot_rect := Rect2(Vector2.ZERO, Vector2(size.x, minf(size.y, 2.0)))
 
-	draw_rect(frame_rect, frame_color)
 	draw_rect(slot_rect, slot_color)
-	if slot_rect.size.x <= 0.0 or slot_rect.size.y <= 0.0:
-		return
 
 	if is_reloading:
 		var reload_rect := slot_rect
@@ -52,19 +47,25 @@ func _draw() -> void:
 		return
 
 	var cell_width := slot_rect.size.x / float(max_ammo)
-	for ammo_index in range(max_ammo):
-		var cell_rect := Rect2(
-			Vector2(slot_rect.position.x + float(ammo_index) * cell_width, slot_rect.position.y),
-			Vector2(cell_width, slot_rect.size.y)
+	var ammo_width := slot_rect.size.x * (float(current_ammo) / float(max_ammo))
+	if ammo_width <= 0.0:
+		return
+	if cell_width < 2.0:
+		draw_rect(
+			Rect2(slot_rect.position, Vector2(ammo_width, slot_rect.size.y)),
+			ammo_color
 		)
-		if ammo_index < current_ammo:
-			draw_rect(cell_rect, ammo_color)
-		if ammo_index > 0 and cell_width >= 0.6:
-			var line_x := slot_rect.position.x + float(ammo_index) * cell_width
-			draw_line(
-				Vector2(line_x, slot_rect.position.y),
-				Vector2(line_x, slot_rect.position.y + slot_rect.size.y),
-				separator_color,
-				1.0,
-				false
-			)
+		return
+
+	for ammo_index in range(current_ammo):
+		var cell_x := floorf(slot_rect.position.x + float(ammo_index) * cell_width)
+		var next_cell_x := floorf(slot_rect.position.x + float(ammo_index + 1) * cell_width)
+		var cell_pixel_width := maxf(next_cell_x - cell_x, 1.0)
+		var fill_width := maxf(cell_pixel_width - 1.0, 1.0)
+		draw_rect(
+			Rect2(
+				Vector2(cell_x, slot_rect.position.y),
+				Vector2(fill_width, slot_rect.size.y)
+			),
+			ammo_color
+		)

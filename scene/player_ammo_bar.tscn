@@ -1,14 +1,14 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://d10vpuylyb4ty"]
 
-[ext_resource type="Script" path="res://scene/player_ammo_bar.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://dl2om3ppb0att" path="res://scene/player_ammo_bar.gd" id="1_script"]
 
-[node name="PlayerAmmoBar" type="Control"]
-custom_minimum_size = Vector2(20, 3)
+[node name="PlayerAmmoBar" type="Control" unique_id=1608733861]
+custom_minimum_size = Vector2(20, 2)
 layout_mode = 3
 anchors_preset = 0
 offset_left = -10.0
-offset_top = 6.0
+offset_top = 9.0
 offset_right = 10.0
-offset_bottom = 9.0
+offset_bottom = 11.0
 mouse_filter = 2
 script = ExtResource("1_script")

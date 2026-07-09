@@ -6,6 +6,7 @@ const SKILL2_CONFIG := preload("res://resources/config/bosses/linglan_skill2.tre
 const ROCKET_SCENE := preload("res://scene/linglan_skill2_sakura_rocket.tscn")
 const WARNING_ARROW_SCENE := preload("res://scene/linglan_skill2_warning_arrow.tscn")
 const EXPLOSION_SCENE := preload("res://scene/linglan_skill2_sakura_explosion.tscn")
+const COLLECTIBLE_SAKURA_EXPLOSION_SCRIPT := preload("res://scene/collectible_sakura_explosion.gd")
 const EXPLOSION_FRAMES := preload("res://resources/animation/linglan_skill2_sakura_explosion.tres")
 const GAME_SCENE := preload("res://scene/game.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
@@ -379,7 +380,13 @@ func _test_multiplayer_projectile_instantiation() -> void:
 		_expect(collectible_projectile.damage == 100, "Registry Sakura rocket damage mismatch.")
 		_expect(collectible_projectile.enemies_only, "Registry Sakura rocket must be enemy-only.")
 		_expect(collectible_projectile.damage_type == EnemyConfig.DamageType.MAGIC, "Registry Sakura rocket must be magic damage.")
-		_expect(is_equal_approx(collectible_projectile.explosion_radius, 91.0), "Registry Sakura rocket must read explosion radius from config.")
+		_expect(
+			is_equal_approx(
+				collectible_projectile.explosion_radius,
+				LinglanSkill2SakuraRocket.COLLECTIBLE_SAKURA_EXPLOSION_RADIUS
+			),
+			"Registry Sakura rocket must use the collectible Sakura explosion radius."
+		)
 		_expect(is_equal_approx(collectible_projectile.homing_turn_rate, 2.4), "Registry Sakura rocket must read homing turn rate from config.")
 		collectible_projectile.free()
 	mp_game.free()
@@ -466,6 +473,14 @@ func _test_rocket_homing_and_explosion_damage() -> void:
 	player.current_health = 200
 	enemy.current_health = 200
 	linglan.current_health = 500
+	enemy.global_position = Vector2(32.0, 0.0)
+	linglan.global_position = Vector2(16.0, 0.0)
+	linglan.collision_layer = LinglanSkill2SakuraRocket.BOSS_BODY_COLLISION_MASK
+	for shape_node in linglan.body_collision_shapes:
+		if shape_node != null:
+			shape_node.disabled = false
+	await _wait_process_and_physics_frames(3)
+	player.current_health = 200
 	var sakura_mode_rocket := ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
 	test_root.add_child(sakura_mode_rocket)
 	sakura_mode_rocket.global_position = Vector2.ZERO
@@ -474,7 +489,7 @@ func _test_rocket_homing_and_explosion_damage() -> void:
 		100,
 		210.0,
 		5.0,
-		EXPECTED_ROCKET_EXPLOSION_RADIUS,
+		LinglanSkill2SakuraRocket.COLLECTIBLE_SAKURA_EXPLOSION_RADIUS,
 		null,
 		SKILL2_CONFIG.rocket_homing_turn_rate,
 		enemy,
@@ -484,6 +499,10 @@ func _test_rocket_homing_and_explosion_damage() -> void:
 	_expect(sakura_mode_rocket.target_node == enemy, "Sakura-mode rocket must track the enemy target node.")
 	_expect(sakura_mode_rocket.enemies_only, "Sakura-mode rocket must be enemy-only.")
 	_expect(sakura_mode_rocket.damage_type == EnemyConfig.DamageType.MAGIC, "Sakura-mode rocket must be magic damage.")
+	_expect(
+		is_equal_approx(sakura_mode_rocket.explosion_radius, 47.0),
+		"Sakura-mode rocket explosion radius must be Weishidaier Skill1 radius plus 3."
+	)
 	_expect(sakura_mode_rocket.collision_mask == LinglanSkill2SakuraRocket.ENEMY_ONLY_HIT_COLLISION_MASK, "Sakura-mode rocket must ignore player collision.")
 	sakura_mode_rocket.call("_explode")
 	await process_frame
@@ -491,6 +510,8 @@ func _test_rocket_homing_and_explosion_damage() -> void:
 	_expect(player.current_health == 200, "Sakura-mode rocket must not damage players.")
 	_expect(enemy.current_health == 100, "Sakura-mode rocket must deal 100 magic damage to enemies.")
 	_expect(linglan.current_health == 400, "Sakura-mode rocket must deal 100 magic damage to Linglan.")
+	_expect(_count_collectible_sakura_explosions(test_root) == 1, "Sakura-mode rocket must spawn the collectible Sakura explosion effect.")
+	_clear_collectible_sakura_explosions(test_root)
 	_clear_skill2_explosions(test_root)
 
 	player.queue_free()
@@ -593,9 +614,23 @@ func _count_skill2_explosions(parent: Node) -> int:
 	return count
 
 
+func _count_collectible_sakura_explosions(parent: Node) -> int:
+	var count := 0
+	for child in parent.get_children():
+		if child.get_script() == COLLECTIBLE_SAKURA_EXPLOSION_SCRIPT:
+			count += 1
+	return count
+
+
 func _clear_skill2_explosions(parent: Node) -> void:
 	for child in parent.get_children():
 		if child.get_script() == preload("res://scene/linglan_skill2_sakura_explosion.gd"):
+			child.queue_free()
+
+
+func _clear_collectible_sakura_explosions(parent: Node) -> void:
+	for child in parent.get_children():
+		if child.get_script() == COLLECTIBLE_SAKURA_EXPLOSION_SCRIPT:
 			child.queue_free()
 
 

@@ -1330,7 +1330,7 @@ func _instantiate_projectile(
 				damage,
 				speed,
 				lifetime,
-				_linglan_skill2_config.rocket_explosion_radius,
+				LinglanSkill2SakuraRocket.COLLECTIBLE_SAKURA_EXPLOSION_RADIUS,
 				null,
 				_linglan_skill2_config.rocket_homing_turn_rate,
 				target_enemy,

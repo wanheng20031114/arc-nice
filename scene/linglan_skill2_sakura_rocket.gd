@@ -2,10 +2,13 @@ extends Area2D
 class_name LinglanSkill2SakuraRocket
 
 const EXPLOSION_SCENE := preload("res://scene/linglan_skill2_sakura_explosion.tscn")
+const COLLECTIBLE_SAKURA_EXPLOSION_SCENE := preload("res://scene/collectible_sakura_explosion.tscn")
 const WORLD_COLLISION_MASK := 1
 const PLAYER_COLLISION_MASK := 2
 const ENEMY_BODY_COLLISION_MASK := 4
 const BOSS_BODY_COLLISION_MASK := 256
+const WEISHIDAIER_SKILL1_EXPLOSION_RADIUS := 44.0
+const COLLECTIBLE_SAKURA_EXPLOSION_RADIUS := WEISHIDAIER_SKILL1_EXPLOSION_RADIUS + 3.0
 const HIT_COLLISION_MASK := (
 	WORLD_COLLISION_MASK
 	| PLAYER_COLLISION_MASK
@@ -85,7 +88,10 @@ func setup(
 	remaining_lifetime = max_lifetime
 	explosion_radius = maxf(initial_explosion_radius, 0.0)
 	target_player = initial_target_player
-	target_node = initial_target_node if initial_target_node != null else initial_target_player
+	if initial_target_node != null:
+		target_node = initial_target_node
+	else:
+		target_node = initial_target_player
 	homing_turn_rate = maxf(initial_homing_turn_rate, 0.0)
 	enemies_only = initial_enemies_only
 	damage_type = initial_damage_type
@@ -264,7 +270,10 @@ func _spawn_explosion_effect() -> void:
 	if spawn_parent == null:
 		return
 
-	var explosion := EXPLOSION_SCENE.instantiate() as Node2D
+	var explosion_scene := EXPLOSION_SCENE
+	if enemies_only:
+		explosion_scene = COLLECTIBLE_SAKURA_EXPLOSION_SCENE
+	var explosion := explosion_scene.instantiate() as Node2D
 	if explosion == null:
 		return
 	explosion.top_level = true

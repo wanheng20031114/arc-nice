@@ -490,6 +490,13 @@ func _audit_periodic_effect(player: Player, item: PickupConfig) -> void:
 				_expect(rocket.enemies_only, "%s sakura rocket must be enemy-only." % item.display_name)
 				_expect(rocket.damage_type == EnemyConfig.DamageType.MAGIC, "%s sakura rocket must deal magic damage." % item.display_name)
 				_expect(
+					is_equal_approx(
+						rocket.explosion_radius,
+						LinglanSkill2SakuraRocket.COLLECTIBLE_SAKURA_EXPLOSION_RADIUS
+					),
+					"%s sakura rocket explosion radius must be Weishidaier Skill1 radius plus 3." % item.display_name
+				)
+				_expect(
 					rocket.damage == player.get_outgoing_damage(item.periodic_damage, EnemyConfig.DamageType.MAGIC),
 					"%s sakura rocket damage must use configured magic periodic damage." % item.display_name
 				)

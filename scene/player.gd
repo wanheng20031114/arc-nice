@@ -1732,7 +1732,7 @@ func apply_collectible_bullet_hit_effects(enemy: Enemy, hit_damage: int) -> void
 			_apply_collectible_kill_effect(item, enemy)
 
 
-func _apply_collectible_on_hit_effect(item: PickupConfig, enemy: Enemy, hit_damage: int) -> void:
+func _apply_collectible_on_hit_effect(item: PickupConfig, enemy: Enemy, _hit_damage: int) -> void:
 	if item == null or enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
 		return
 	var on_hit_chance := clampf(item.on_hit_chance, 0.0, 1.0)
@@ -2152,7 +2152,7 @@ func _spawn_collectible_sakura_rocket(target_enemy: Enemy, rocket_damage: int) -
 		rocket_damage,
 		skill2_config.rocket_speed,
 		skill2_config.rocket_lifetime,
-		skill2_config.rocket_explosion_radius,
+		LinglanSkill2SakuraRocket.COLLECTIBLE_SAKURA_EXPLOSION_RADIUS,
 		null,
 		skill2_config.rocket_homing_turn_rate,
 		target_enemy,

@@ -2038,6 +2038,13 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 			_expect(spawned_rocket.target_node == target_enemy, "Sakura rocket network spawn must resolve target_enemy_net_id.")
 			_expect(spawned_rocket.enemies_only, "Sakura rocket network spawn must be enemy-only.")
 			_expect(spawned_rocket.damage_type == EnemyConfig.DamageType.MAGIC, "Sakura rocket network spawn must use magic damage.")
+			_expect(
+				is_equal_approx(
+					spawned_rocket.explosion_radius,
+					LinglanSkill2SakuraRocket.COLLECTIBLE_SAKURA_EXPLOSION_RADIUS
+				),
+				"Sakura rocket network spawn must use the collectible Sakura explosion radius."
+			)
 		var health_before := target_enemy.current_health
 		var applied := bool(mp_game.call(
 			"apply_multiplayer_collectible_enemy_damage",
