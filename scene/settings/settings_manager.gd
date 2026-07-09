@@ -29,6 +29,7 @@ const BINDABLE_ACTIONS: Array[String] = [
 	"shoot_left",
 	"shoot_right",
 	"skill1",
+	"reload",
 ]
 
 const RESOLUTION_OPTIONS: Array[Dictionary] = [

@@ -359,6 +359,17 @@ func _test_hotkey_defaults_and_event_helpers() -> void:
 	_expect(has_keyboard_w, "move_up default binding must include W.")
 	_expect(has_joy_motion, "move_up default binding must include gamepad up motion.")
 
+	var reload_events: Array = settings.call("get_supported_events", "reload")
+	var has_keyboard_r := false
+	var has_joy_reload := false
+	for event in reload_events:
+		if event is InputEventKey:
+			has_keyboard_r = has_keyboard_r or (event as InputEventKey).physical_keycode == KEY_R
+		if event is InputEventJoypadButton:
+			has_joy_reload = has_joy_reload or (event as InputEventJoypadButton).button_index == 10
+	_expect(has_keyboard_r, "reload default binding must include R.")
+	_expect(has_joy_reload, "reload default binding must include gamepad button 10.")
+
 	var captured_key := InputEventKey.new()
 	captured_key.pressed = true
 	captured_key.physical_keycode = KEY_Z

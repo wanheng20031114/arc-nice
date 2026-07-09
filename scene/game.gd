@@ -1789,12 +1789,13 @@ func apply_network_input_for_peer(
 	peer_id: int,
 	move_input: Vector2,
 	shoot_input: Vector2,
-	use_skill1: bool
+	use_skill1: bool,
+	use_reload: bool = false
 ) -> void:
 	var player_instance: Player = peer_players.get(peer_id) as Player
 	if player_instance == null or not is_instance_valid(player_instance):
 		return
-	player_instance.apply_network_input(move_input, shoot_input, use_skill1)
+	player_instance.apply_network_input(move_input, shoot_input, use_skill1, use_reload)
 
 
 func _update_multiplayer_remote_player_passive_state(delta: float) -> void:
@@ -1959,6 +1960,10 @@ func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 		state.skill1_upgrade_level = player_instance.skill1_upgrade_level
 		state.form_mode = player_instance.current_form_mode
 		state.shot_pattern = player_instance.current_shot_pattern
+		state.ammo_capacity = player_instance.get_ammo_capacity()
+		state.current_ammo = player_instance.current_ammo
+		state.is_reloading = player_instance.is_reloading
+		state.reload_progress = player_instance.get_reload_progress_ratio()
 		states.append(state)
 	return states
 

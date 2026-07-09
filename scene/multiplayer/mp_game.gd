@@ -27,6 +27,7 @@ const LINGLAN_SKILL4_ORB_SCRIPT := preload("res://scene/linglan_skill4_light_orb
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 
 const INPUT_BUTTON_SKILL1 := 1
+const INPUT_BUTTON_RELOAD := 2
 const GAME_RUNTIME_HOST_AUTHORITY := 1
 const GAME_RUNTIME_CLIENT_VIEW := 2
 const STATE_DISCONNECTED := 0
@@ -536,6 +537,8 @@ func _client_physics_tick(frame: int) -> void:
 		return
 	_input_frames_since_last_send += 1
 	var buttons := 0
+	if Input.is_action_just_pressed("reload"):
+		buttons |= INPUT_BUTTON_RELOAD
 	if frame % _NetConstants.INPUT_SEND_INTERVAL_FRAMES == 0 or buttons != 0:
 		_client_send_input_if_needed(buttons)
 
@@ -564,6 +567,7 @@ func _client_send_input_if_needed(buttons: int) -> void:
 		or player_node.invincibility_time_left > 0.0
 		or player_node.current_form_mode != PickupConfig.PlayerFormMode.NORMAL
 		or player_node.current_shot_pattern != PickupConfig.ShotPattern.NORMAL
+		or player_node.is_reloading
 	)
 	if not input_changed and not keepalive_due and buttons == 0 and not active_realtime_state:
 		return
@@ -677,7 +681,11 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 				player_state.skill1_charge_duration,
 				player_state.form_mode,
 				player_state.shot_pattern,
-				player_state.skill1_upgrade_level
+				player_state.skill1_upgrade_level,
+				player_state.ammo_capacity,
+				player_state.current_ammo,
+				player_state.is_reloading,
+				player_state.reload_progress
 			)
 	if snapshot_has_full_roster:
 		_reconcile_player_roster(seen_player_ids)
@@ -806,13 +814,15 @@ func _rpc_client_player_state(
 		net_player_state_corrected.rpc_id(sender_id, player_node.global_position, player_node.velocity)
 		return
 	var use_skill1: bool = (buttons & INPUT_BUTTON_SKILL1) != 0
+	var use_reload: bool = (buttons & INPUT_BUTTON_RELOAD) != 0
 	_apply_accepted_client_player_state(
 		sender_id,
 		player_node,
 		reported_position,
 		reported_velocity,
 		shoot_input,
-		use_skill1
+		use_skill1,
+		use_reload
 	)
 
 
@@ -822,7 +832,8 @@ func _apply_accepted_client_player_state(
 	reported_position: Vector2,
 	reported_velocity: Vector2,
 	shoot_input: Vector2,
-	use_skill1: bool
+	use_skill1: bool,
+	use_reload: bool = false
 ) -> void:
 	if sender_id <= 0 or player_node == null or not is_instance_valid(player_node):
 		return
@@ -830,7 +841,8 @@ func _apply_accepted_client_player_state(
 		reported_position,
 		reported_velocity,
 		shoot_input,
-		use_skill1
+		use_skill1,
+		use_reload
 	)
 	_remember_latest_client_player_snapshot_state(
 		sender_id,
@@ -1340,6 +1352,8 @@ func _get_authoritative_client_projectile_parameters(
 		return {}
 	match projectile_type:
 		&"player_bullet":
+			if not owner_player.try_consume_authoritative_player_bullet_ammo():
+				return {}
 			var bullet := BULLET_SCENE.instantiate() as Bullet
 			if bullet == null:
 				return {}

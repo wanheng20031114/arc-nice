@@ -16,6 +16,7 @@ const ACTION_ROW_NAMES := {
 	"shoot_left": "ShootLeftRow",
 	"shoot_right": "ShootRightRow",
 	"skill1": "Skill1Row",
+	"reload": "ReloadRow",
 }
 
 const ACTION_DISPLAY_NAMES := {
@@ -28,6 +29,7 @@ const ACTION_DISPLAY_NAMES := {
 	"shoot_left": "向左射击",
 	"shoot_right": "向右射击",
 	"skill1": "技能",
+	"reload": "换弹",
 }
 
 @onready var resolution_option: OptionButton = $Center/Panel/Margin/Layout/Scroll/Content/DisplaySection/ResolutionRow/ResolutionOption

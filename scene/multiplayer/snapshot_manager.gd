@@ -25,7 +25,7 @@ const PACKED_VECTOR2_BYTES := 4
 const PACKED_U8_BYTES := 1
 const PACKED_U16_BYTES := 2
 const PACKED_U32_BYTES := 4
-const PLAYER_META_BYTES := 25
+const PLAYER_META_BYTES := 34
 const PACKED_I16_MIN := -32768
 const PACKED_I16_MAX := 32767
 const FULL_PLAYER_MASK := (
@@ -61,6 +61,10 @@ class PlayerState:
 	var skill1_upgrade_level: int = 0
 	var form_mode: int = 0
 	var shot_pattern: int = 0
+	var ammo_capacity: int = 1
+	var current_ammo: int = 0
+	var is_reloading: bool = false
+	var reload_progress: float = 0.0
 
 
 ## 每个接收端独立维护发送基线，避免丢包/晚加入导致不同客户端共用错误基准。
@@ -130,6 +134,10 @@ static func encode_player_snapshot(
 		buf.put_u8(clampi(current.skill1_upgrade_level, 0, 255))
 		buf.put_u8(current.form_mode)
 		buf.put_u8(current.shot_pattern)
+		buf.put_16(clampi(current.ammo_capacity, 1, 65535))
+		buf.put_16(clampi(current.current_ammo, 0, 65535))
+		buf.put_u8(1 if current.is_reloading else 0)
+		buf.put_float(clampf(current.reload_progress, 0.0, 1.0))
 
 	return buf.data_array
 
@@ -149,6 +157,10 @@ static func _player_meta_changed(current: PlayerState, previous: PlayerState) ->
 		or current.skill1_upgrade_level != previous.skill1_upgrade_level
 		or current.form_mode != previous.form_mode
 		or current.shot_pattern != previous.shot_pattern
+		or current.ammo_capacity != previous.ammo_capacity
+		or current.current_ammo != previous.current_ammo
+		or current.is_reloading != previous.is_reloading
+		or not is_equal_approx(current.reload_progress, previous.reload_progress)
 	)
 
 static func decode_player_snapshot(
@@ -189,6 +201,10 @@ static func decode_player_snapshot(
 		target.skill1_upgrade_level = buf.get_u8()
 		target.form_mode = buf.get_u8()
 		target.shot_pattern = buf.get_u8()
+		target.ammo_capacity = buf.get_u16()
+		target.current_ammo = buf.get_u16()
+		target.is_reloading = buf.get_u8() != 0
+		target.reload_progress = buf.get_float()
 
 	return buf.get_position()
 
@@ -332,6 +348,10 @@ static func _copy_player_state(source: PlayerState) -> PlayerState:
 	copy.skill1_upgrade_level = source.skill1_upgrade_level
 	copy.form_mode = source.form_mode
 	copy.shot_pattern = source.shot_pattern
+	copy.ammo_capacity = source.ammo_capacity
+	copy.current_ammo = source.current_ammo
+	copy.is_reloading = source.is_reloading
+	copy.reload_progress = source.reload_progress
 	return copy
 
 
@@ -370,6 +390,10 @@ static func _apply_player_delta(target: PlayerState, delta: PlayerState, mask: i
 		target.skill1_upgrade_level = delta.skill1_upgrade_level
 		target.form_mode = delta.form_mode
 		target.shot_pattern = delta.shot_pattern
+		target.ammo_capacity = delta.ammo_capacity
+		target.current_ammo = delta.current_ammo
+		target.is_reloading = delta.is_reloading
+		target.reload_progress = delta.reload_progress
 
 
 static func _apply_enemy_delta(target: EnemyState, delta: EnemyState, mask: int) -> void:

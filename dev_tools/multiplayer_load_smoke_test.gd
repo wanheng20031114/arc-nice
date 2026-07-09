@@ -364,6 +364,7 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 	var remote_player := game.peer_players.get(2) as Player
 	if remote_player != null:
 		remote_player.attack_damage = 37
+		remote_player.apply_multiplayer_ammo_state(remote_player.get_ammo_capacity(), 2, false, 0.0)
 	var parameter_mp_game := MP_GAME_SCENE.instantiate()
 	parameter_mp_game.set("game", game)
 	var accepted_parameters := parameter_mp_game.call(
@@ -379,6 +380,49 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 		not accepted_parameters.is_empty() and float(accepted_parameters.get("speed", 0.0)) > 0.0,
 		"Host must rebuild client player bullet speed from the scene default."
 	)
+	if remote_player != null:
+		_expect(
+			remote_player.current_ammo == 1,
+			"Host must consume authoritative ammo when accepting a client player bullet."
+		)
+		remote_player.apply_multiplayer_ammo_state(remote_player.get_ammo_capacity(), 0, false, 0.0)
+		var empty_ammo_parameters := parameter_mp_game.call(
+			"_get_authoritative_client_projectile_parameters",
+			&"player_bullet",
+			2
+		) as Dictionary
+		_expect(
+			empty_ammo_parameters.is_empty(),
+			"Host must reject client player bullets when authoritative ammo is empty."
+		)
+		_expect(remote_player.is_reloading, "Host empty-ammo rejection must start authoritative reload.")
+		remote_player.apply_multiplayer_ammo_state(remote_player.get_ammo_capacity(), 1, true, 0.25)
+		var reloading_parameters := parameter_mp_game.call(
+			"_get_authoritative_client_projectile_parameters",
+			&"player_bullet",
+			2
+		) as Dictionary
+		_expect(
+			reloading_parameters.is_empty(),
+			"Host must reject client player bullets during authoritative reload."
+		)
+		remote_player.current_shot_pattern = PickupConfig.ShotPattern.SPIRAL
+		var spiral_parameters := parameter_mp_game.call(
+			"_get_authoritative_client_projectile_parameters",
+			&"player_bullet",
+			2
+		) as Dictionary
+		_expect(
+			not spiral_parameters.is_empty(),
+			"Host must allow spiral player bullets without ammo even during reload."
+		)
+		_expect(
+			remote_player.current_ammo == 1 and remote_player.is_reloading,
+			"Host spiral validation must not consume ammo or cancel reload."
+		)
+		remote_player.current_shot_pattern = PickupConfig.ShotPattern.NORMAL
+		remote_player.current_form_mode = PickupConfig.PlayerFormMode.NORMAL
+		remote_player.apply_multiplayer_ammo_state(remote_player.get_ammo_capacity(), remote_player.get_ammo_capacity(), false, 0.0)
 	if run_state != null:
 		_expect(run_state.try_add_item_for_peer(2, ARCHER_COLLECTIBLE), "Peer 2 archer collectible must fit before projectile validation.")
 	if remote_player != null:
@@ -1209,11 +1253,11 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		)
 		_expect(not game.has_luoxi_collectible_claimed(4), "The first Luoxi claim must leave one peer choice available.")
 		_expect(
-			game.try_claim_luoxi_collectible_for_peer(4, APPLE_COLLECTIBLE.resource_path) == LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS,
+			game.try_claim_luoxi_collectible_for_peer(4, ARCHER_COLLECTIBLE.resource_path) == LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS,
 			"Luoxi must allow a second collectible choice in the same intermission."
 		)
 		_expect(
-			run_state.get_item_for_peer(4, 1) == APPLE_COLLECTIBLE,
+			run_state.get_item_for_peer(4, 1) == ARCHER_COLLECTIBLE,
 			"Luoxi second collectible claim must add another item to the selected peer inventory."
 		)
 		_expect(game.has_luoxi_collectible_claimed(4), "Two Luoxi claims must exhaust the selected peer's intermission choices.")
@@ -1242,11 +1286,11 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		_expect(run_state.get_item_for_peer(2, 0) == APPLE_COLLECTIBLE, "The successful Luoxi retry must fill the freed peer inventory slot.")
 		_expect(run_state.discard_item_for_peer(2, 1), "Peer 2 must be able to free another inventory slot for the second Luoxi choice.")
 		_expect(
-			game.try_claim_luoxi_collectible_for_peer(2, APPLE_COLLECTIBLE.resource_path) == LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS,
+			game.try_claim_luoxi_collectible_for_peer(2, ARCHER_COLLECTIBLE.resource_path) == LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS,
 			"Luoxi must allow the second peer choice after the peer frees another inventory slot."
 		)
 		_expect(game.has_luoxi_collectible_claimed(2), "Two successful retries must exhaust the peer's Luoxi choices.")
-		_expect(run_state.get_item_for_peer(2, 1) == APPLE_COLLECTIBLE, "The second successful Luoxi retry must fill the second freed peer inventory slot.")
+		_expect(run_state.get_item_for_peer(2, 1) == ARCHER_COLLECTIBLE, "The second successful Luoxi retry must fill the second freed peer inventory slot.")
 		_expect(run_state.try_add_item_for_peer(4, HEALTH_PICKUP), "Peer 4 health pickup must fit in inventory for use testing.")
 		peer_four.current_health = maxi(peer_four.max_health - HEALTH_PICKUP.heal_amount, 1)
 		mp_game.call("_apply_inventory_item_use_for_peer", 4, 1)
@@ -2060,6 +2104,10 @@ func _test_snapshot_round_trip() -> void:
 	player_state.skill1_charge = 3.0
 	player_state.skill1_charge_duration = 14.0
 	player_state.skill1_upgrade_level = 2
+	player_state.ammo_capacity = 30
+	player_state.current_ammo = 17
+	player_state.is_reloading = true
+	player_state.reload_progress = 0.4
 	var player_data := snapshot_mgr.encode_all_player_snapshots([player_state])
 	var player_states := SnapshotManager.decode_all_player_snapshots(player_data)
 	_expect(player_states.size() == 1, "Player snapshot count mismatch.")
@@ -2067,6 +2115,10 @@ func _test_snapshot_round_trip() -> void:
 		_expect(player_states[0].peer_id == 2, "Player snapshot peer_id mismatch.")
 		_expect(player_states[0].current_health == 42, "Player snapshot health mismatch.")
 		_expect(player_states[0].skill1_upgrade_level == 2, "Player snapshot skill1 upgrade level mismatch.")
+		_expect(player_states[0].ammo_capacity == 30, "Player snapshot ammo capacity mismatch.")
+		_expect(player_states[0].current_ammo == 17, "Player snapshot current ammo mismatch.")
+		_expect(player_states[0].is_reloading, "Player snapshot reload state mismatch.")
+		_expect(is_equal_approx(player_states[0].reload_progress, 0.4), "Player snapshot reload progress mismatch.")
 	var player_data_2 := snapshot_mgr.encode_all_player_snapshots([player_state])
 	var player_states_2 := SnapshotManager.decode_all_player_snapshots(player_data_2)
 	_expect(
@@ -2087,6 +2139,10 @@ func _test_snapshot_round_trip() -> void:
 	if repeated_player_states.size() == 1:
 		_expect(repeated_player_states[0].current_health == 42, "Player delta must preserve health through baseline.")
 		_expect(repeated_player_states[0].skill1_upgrade_level == 2, "Player delta must preserve skill upgrade through baseline.")
+		_expect(repeated_player_states[0].ammo_capacity == 30, "Player delta must preserve ammo capacity through baseline.")
+		_expect(repeated_player_states[0].current_ammo == 17, "Player delta must preserve current ammo through baseline.")
+		_expect(repeated_player_states[0].is_reloading, "Player delta must preserve reload state through baseline.")
+		_expect(is_equal_approx(repeated_player_states[0].reload_progress, 0.4), "Player delta must preserve reload progress through baseline.")
 	var player_copy_sender := SnapshotManager.new()
 	var player_copy_receiver := SnapshotManager.new()
 	var reused_player_state := SnapshotManager.PlayerState.new()
@@ -2095,6 +2151,10 @@ func _test_snapshot_round_trip() -> void:
 	reused_player_state.velocity = Vector2.ZERO
 	reused_player_state.current_health = 70
 	reused_player_state.max_health = 100
+	reused_player_state.ammo_capacity = 30
+	reused_player_state.current_ammo = 12
+	reused_player_state.is_reloading = true
+	reused_player_state.reload_progress = 0.25
 	player_copy_receiver.decode_player_snapshots_with_baseline(
 		player_copy_sender.encode_player_snapshots_for_peer(30, [reused_player_state], true)
 	)
@@ -2119,6 +2179,10 @@ func _test_snapshot_round_trip() -> void:
 	moved_player_state.skill1_charge = 3.0
 	moved_player_state.skill1_charge_duration = 14.0
 	moved_player_state.skill1_upgrade_level = 2
+	moved_player_state.ammo_capacity = 30
+	moved_player_state.current_ammo = 17
+	moved_player_state.is_reloading = true
+	moved_player_state.reload_progress = 0.4
 	var moved_player_delta := delta_player_mgr.encode_player_snapshots_for_peer(10, [moved_player_state], false)
 	_expect(
 		moved_player_delta.size() < player_keyframe.size(),
@@ -2133,6 +2197,7 @@ func _test_snapshot_round_trip() -> void:
 		)
 		_expect(moved_player_states[0].current_health == 42, "Moved player delta must preserve unchanged health.")
 		_expect(moved_player_states[0].skill1_upgrade_level == 2, "Moved player delta must preserve unchanged skill state.")
+		_expect(moved_player_states[0].current_ammo == 17, "Moved player delta must preserve unchanged ammo state.")
 	var peer_11_player_data := delta_player_mgr.encode_player_snapshots_for_peer(11, [moved_player_state], false)
 	_expect(
 		peer_11_player_data.size() == player_keyframe.size(),

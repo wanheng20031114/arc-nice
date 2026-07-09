@@ -15,9 +15,15 @@ signal died
 @export var physical_defense: int = 0
 @export var magic_defense: int = 0
 @export var attack_method_name: String = "枪"
+@export var ammo_capacity: int = 30
+@export var reload_duration: float = 1.5
+@export var ammo_free_shot_chance_percent: float = 0.0
 
 var current_health: int = 0
 var current_xirang: int = 0
+var current_ammo: int = 0
+var is_reloading: bool = false
+var reload_progress: float = 0.0
 var invincibility_time_left: float = 0.0
 var is_dead: bool = false
 var controls_locked: bool = false
@@ -26,6 +32,7 @@ var uses_local_input: bool = true
 var network_move_input: Vector2 = Vector2.ZERO
 var network_shoot_input: Vector2 = Vector2.ZERO
 var network_skill1_requested: bool = false
+var network_reload_requested: bool = false
 var mouse_fire_held: bool = false
 var mouse_viewport_position: Vector2 = Vector2.ZERO
 var multiplayer_display_name: String = ""
@@ -51,6 +58,7 @@ var client_movement_prediction_only: bool = false
 @onready var xirang_pickup_audio: AudioStreamPlayer2D = $XirangPickupAudio
 @onready var lucky_upgrade_audio: AudioStreamPlayer2D = $LuckyUpgradeAudio
 @onready var health_bar: Control = $HealthBar
+@onready var ammo_bar: Control = $AmmoBar
 @onready var skill1_charge_bar: Skill1ChargeBar = $Skill1ChargeBar
 @onready var name_label: Label = $NameLabel
 @onready var nameplate_layer: CanvasLayer = $NameplateLayer
@@ -159,6 +167,7 @@ var _body_sprite_base_position: Vector2 = Vector2.ZERO
 var _armed_effect_sprite_base_position: Vector2 = Vector2.ZERO
 var _speed_trail_effect_base_position: Vector2 = Vector2.ZERO
 var _health_bar_base_position: Vector2 = Vector2.ZERO
+var _ammo_bar_base_position: Vector2 = Vector2.ZERO
 var _skill1_charge_bar_base_position: Vector2 = Vector2.ZERO
 var _name_label_base_position: Vector2 = Vector2.ZERO
 var _nameplate_label_settings: LabelSettings = null
@@ -172,6 +181,7 @@ func _ready() -> void:
 	_refresh_collectible_stats(false)
 	_ensure_skill1_base_charge_duration()
 	current_health = maxi(max_health, 1)
+	_reset_ammo_to_full()
 	shooting_timer.one_shot = true
 	shooting_timer.wait_time = _get_effective_fire_interval()
 	_set_hurt_blink_enabled(false)
@@ -245,6 +255,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		return
 
+	if event.is_action_pressed("reload"):
+		if _try_start_reload():
+			get_viewport().set_input_as_handled()
+		return
+
 	var mouse_event := event as InputEventMouseButton
 	if mouse_event == null or mouse_event.button_index != MOUSE_BUTTON_LEFT:
 		return
@@ -260,6 +275,7 @@ func _physics_process(delta: float) -> void:
 	_update_pickup_effects(delta)
 	_update_collectible_runtime_effects(delta)
 	_update_skill1_charge(delta)
+	_update_reload(delta)
 	
 	if is_dead:
 		velocity = Vector2.ZERO
@@ -281,6 +297,9 @@ func _physics_process(delta: float) -> void:
 	if not uses_local_input and network_skill1_requested:
 		network_skill1_requested = false
 		_try_use_skill1()
+	if not uses_local_input and network_reload_requested:
+		network_reload_requested = false
+		_try_start_reload()
 
 	velocity = move_input * _get_effective_move_speed()
 	if not _try_apply_wall_overlap_escape(move_input, delta):
@@ -317,11 +336,14 @@ func _update_animation() -> void:
 func _try_shoot(shoot_input: Vector2) -> void:
 	if not shooting_timer.is_stopped():
 		return
+	if not _can_fire_ammo_consuming_shot():
+		return
 
 	var shoot_direction := shoot_input.normalized()
 	var has_spawned_bullet := _fire_bullets(shoot_direction)
 
 	if has_spawned_bullet:
+		_consume_ammo_after_successful_shot()
 		shooting_timer.start(_get_effective_fire_interval())
 
 # 应用道具效果，更新玩家形态、射速、移速等增益状态
@@ -577,6 +599,7 @@ func configure_multiplayer_control(
 	network_move_input = Vector2.ZERO
 	network_shoot_input = Vector2.ZERO
 	network_skill1_requested = false
+	network_reload_requested = false
 	var safe_display_name := display_name.strip_edges()
 	if safe_display_name.length() > MAX_MULTIPLAYER_NAME_LENGTH:
 		safe_display_name = safe_display_name.left(MAX_MULTIPLAYER_NAME_LENGTH)
@@ -632,6 +655,7 @@ func _cache_multiplayer_visual_base_positions() -> void:
 	_armed_effect_sprite_base_position = armed_effect_sprite.position
 	_speed_trail_effect_base_position = speed_trail_effect.position
 	_health_bar_base_position = health_bar.position
+	_ammo_bar_base_position = ammo_bar.position
 	_skill1_charge_bar_base_position = skill1_charge_bar.position
 	_name_label_base_position = name_label.position
 
@@ -664,6 +688,7 @@ func _set_multiplayer_visual_offset(offset: Vector2) -> void:
 	armed_effect_sprite.position = _armed_effect_sprite_base_position + offset
 	speed_trail_effect.position = _speed_trail_effect_base_position + offset
 	health_bar.position = _health_bar_base_position + offset
+	ammo_bar.position = _ammo_bar_base_position + offset
 	skill1_charge_bar.position = _skill1_charge_bar_base_position + offset
 	name_label.position = _name_label_base_position + offset
 	_update_nameplate_position()
@@ -672,35 +697,41 @@ func _set_multiplayer_visual_offset(offset: Vector2) -> void:
 func apply_network_input(
 	move_input: Vector2,
 	shoot_input: Vector2,
-	use_skill1: bool = false
+	use_skill1: bool = false,
+	use_reload: bool = false
 ) -> void:
 	network_move_input = move_input.limit_length(1.0)
 	network_shoot_input = shoot_input.limit_length(1.0)
 	network_skill1_requested = network_skill1_requested or use_skill1
+	network_reload_requested = network_reload_requested or use_reload
 
 
 func apply_remote_multiplayer_state(
 	remote_position: Vector2,
 	remote_velocity: Vector2,
 	shoot_input: Vector2,
-	use_skill1: bool = false
+	use_skill1: bool = false,
+	use_reload: bool = false
 ) -> void:
 	var next_visual_offset := _get_multiplayer_visual_offset_after_position_change(remote_position)
 	global_position = remote_position
 	if multiplayer_visual_smoothing_enabled:
 		_set_multiplayer_visual_offset(next_visual_offset)
-	apply_remote_multiplayer_view_state(remote_velocity, shoot_input, use_skill1)
+	apply_remote_multiplayer_view_state(remote_velocity, shoot_input, use_skill1, use_reload)
 
 
 func apply_remote_multiplayer_view_state(
 	remote_velocity: Vector2,
 	shoot_input: Vector2,
-	use_skill1: bool = false
+	use_skill1: bool = false,
+	use_reload: bool = false
 ) -> void:
 	velocity = remote_velocity
 	network_shoot_input = shoot_input.limit_length(1.0)
 	if use_skill1:
 		_try_use_skill1()
+	if use_reload:
+		_try_start_reload()
 	_update_facing(remote_velocity, network_shoot_input)
 	_update_animation()
 	_update_armed_effect()
@@ -711,6 +742,7 @@ func update_multiplayer_authority_passive_state(delta: float) -> void:
 	_update_pickup_effects(delta)
 	_update_collectible_runtime_effects(delta)
 	_update_skill1_charge(delta)
+	_update_reload(delta)
 	if is_dead:
 		return
 	_update_animation()
@@ -760,11 +792,22 @@ func apply_multiplayer_realtime_state(
 	new_skill1_charge_duration: float,
 	new_form_mode: int,
 	new_shot_pattern: int,
-	new_skill1_upgrade_level: int = -1
+	new_skill1_upgrade_level: int = -1,
+	new_ammo_capacity: int = -1,
+	new_current_ammo: int = -1,
+	new_is_reloading: bool = false,
+	new_reload_progress: float = 0.0
 ) -> void:
 	max_health = maxi(new_max_health, 1)
 	current_xirang = maxi(new_current_xirang, 0)
 	xirang_changed.emit(current_xirang, 0)
+	if new_ammo_capacity > 0 and new_current_ammo >= 0:
+		apply_multiplayer_ammo_state(
+			new_ammo_capacity,
+			new_current_ammo,
+			new_is_reloading,
+			new_reload_progress
+		)
 	skill1_unlocked = new_skill1_unlocked
 	if not skill1_unlocked:
 		skill1_upgrade_level = 0
@@ -848,6 +891,7 @@ func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invi
 	health_bar.visible = true
 	health_bar.set_health(current_health, max_health)
 	health_changed.emit(current_health, max_health)
+	_reset_ammo_to_full()
 	_update_multiplayer_nameplate_text(-1)
 	_update_skill1_charge_bar()
 	_update_animation()
@@ -879,6 +923,7 @@ func apply_multiplayer_death_state() -> void:
 	network_move_input = Vector2.ZERO
 	network_shoot_input = Vector2.ZERO
 	network_skill1_requested = false
+	network_reload_requested = false
 	velocity = Vector2.ZERO
 	_update_movement_status_visuals(Vector2.ZERO)
 	current_health = 0
@@ -892,6 +937,7 @@ func apply_multiplayer_death_state() -> void:
 	footstep_audio.stop()
 	health_bar.set_health(0, max_health)
 	health_bar.visible = false
+	_update_ammo_bar()
 	_update_skill1_charge_bar()
 	body_sprite.visible = false
 	body_sprite.stop()
@@ -1091,6 +1137,125 @@ func _try_heal(amount: int) -> bool:
 	health_changed.emit(current_health, max_health)
 	_refresh_collectible_stats(false)
 	return true
+
+
+func get_ammo_capacity() -> int:
+	return maxi(ammo_capacity, 1)
+
+
+func get_reload_progress_ratio() -> float:
+	return reload_progress if is_reloading else 0.0
+
+
+func try_consume_authoritative_player_bullet_ammo() -> bool:
+	if current_shot_pattern == PickupConfig.ShotPattern.SPIRAL:
+		return true
+	if not _can_fire_ammo_consuming_shot():
+		return false
+	_consume_ammo_after_successful_shot()
+	return true
+
+
+func apply_multiplayer_ammo_state(
+	new_ammo_capacity: int,
+	new_current_ammo: int,
+	new_is_reloading: bool,
+	new_reload_progress: float
+) -> void:
+	ammo_capacity = maxi(new_ammo_capacity, 1)
+	current_ammo = clampi(new_current_ammo, 0, get_ammo_capacity())
+	is_reloading = new_is_reloading
+	reload_progress = clampf(new_reload_progress, 0.0, 1.0)
+	_update_ammo_bar()
+
+
+func _reset_ammo_to_full() -> void:
+	current_ammo = get_ammo_capacity()
+	is_reloading = false
+	reload_progress = 0.0
+	_update_ammo_bar()
+
+
+func _can_fire_ammo_consuming_shot() -> bool:
+	if current_shot_pattern == PickupConfig.ShotPattern.SPIRAL:
+		return true
+	if is_reloading:
+		return false
+	if current_ammo <= 0:
+		_try_start_reload()
+		return false
+	return true
+
+
+func _consume_ammo_after_successful_shot() -> void:
+	if current_shot_pattern == PickupConfig.ShotPattern.SPIRAL:
+		return
+	if not _should_consume_ammo_for_shot():
+		_update_ammo_bar()
+		return
+	current_ammo = maxi(current_ammo - 1, 0)
+	if current_ammo <= 0:
+		_try_start_reload()
+	else:
+		_update_ammo_bar()
+
+
+func _should_consume_ammo_for_shot() -> bool:
+	var free_chance := clampf(ammo_free_shot_chance_percent, 0.0, 100.0)
+	if free_chance <= 0.0:
+		return true
+	if free_chance >= 100.0:
+		return false
+	return randf() * 100.0 >= free_chance
+
+
+func _try_start_reload() -> bool:
+	if is_dead or controls_locked:
+		return false
+	if is_reloading:
+		return false
+	if current_ammo >= get_ammo_capacity():
+		return false
+	current_ammo = 0
+	is_reloading = true
+	reload_progress = 0.0
+	_update_ammo_bar()
+	if gunload_audio != null:
+		gunload_audio.play()
+	return true
+
+
+func _update_reload(delta: float) -> void:
+	if not is_reloading:
+		return
+	var safe_duration := maxf(reload_duration, 0.01)
+	reload_progress = clampf(reload_progress + maxf(delta, 0.0) / safe_duration, 0.0, 1.0)
+	if reload_progress >= 1.0:
+		_complete_reload()
+	else:
+		_update_ammo_bar()
+
+
+func _complete_reload() -> void:
+	current_ammo = get_ammo_capacity()
+	is_reloading = false
+	reload_progress = 0.0
+	_update_ammo_bar()
+
+
+func _update_ammo_bar() -> void:
+	if ammo_bar == null:
+		return
+	ammo_bar.visible = not is_dead
+	if is_dead:
+		return
+	ammo_bar.call(
+		"set_ammo_state",
+		current_ammo,
+		get_ammo_capacity(),
+		is_reloading,
+		get_reload_progress_ratio()
+	)
 	
 # 根据射击模式和方向发射子弹，返回是否成功发射
 func _fire_bullets(base_direction: Vector2) -> bool:
@@ -2669,6 +2834,7 @@ func _die() -> void:
 	death_audio.play()
 	health_bar.set_health(0, max_health)
 	health_bar.visible = false
+	_update_ammo_bar()
 	_update_skill1_charge_bar()
 	_play_death_animation()
 	died.emit()
