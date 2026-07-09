@@ -490,6 +490,24 @@ func _test_combat_effects() -> void:
 		"Burn overlay must clear after the burn status expires."
 	)
 
+	var bleed_enemy := _spawn_enemy(Vector2(100.0, 0.0), player)
+	_expect(
+		is_zero_approx(_get_enemy_shader_parameter_float(bleed_enemy, &"bleed_overlay_strength")),
+		"Enemy bleed overlay must start disabled."
+	)
+	bleed_enemy.apply_collectible_status(&"bleed", 907, 0.18, 0)
+	await process_frame
+	_expect(
+		_get_enemy_shader_parameter_float(bleed_enemy, &"bleed_overlay_strength") > 0.0,
+		"Bleeding enemies must enable the translucent red edge overlay."
+	)
+	await create_timer(0.24).timeout
+	await process_frame
+	_expect(
+		is_zero_approx(_get_enemy_shader_parameter_float(bleed_enemy, &"bleed_overlay_strength")),
+		"Bleed overlay must clear after the bleed status expires."
+	)
+
 	var burn_stack_enemy := _spawn_enemy(Vector2(112.0, 0.0), player)
 	burn_stack_enemy.current_health = 100
 	burn_stack_enemy.apply_collectible_status(&"burn", 911, 3.0, 5, 0.2)
@@ -515,6 +533,8 @@ func _test_combat_effects() -> void:
 			node.queue_free()
 	if is_instance_valid(burn_enemy):
 		burn_enemy.queue_free()
+	if is_instance_valid(bleed_enemy):
+		bleed_enemy.queue_free()
 	if is_instance_valid(burn_stack_enemy):
 		burn_stack_enemy.queue_free()
 	await process_frame

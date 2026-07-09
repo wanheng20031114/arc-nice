@@ -55,6 +55,51 @@ func _test_motion_status_shader_preserves_default_texture_color() -> void:
 		shader_source.find("texture_color * COLOR") < 0,
 		"Motion status shader must not multiply the sprite texture into COLOR a second time."
 	)
+	_expect(
+		shader_source.find("bleed_overlay_strength") >= 0,
+		"Motion status shader must expose a dedicated bleed overlay parameter."
+	)
+	_expect(
+		shader_source.find("burn_overlay_color : source_color = vec4(1.0, 0.56, 0.18, 0.46)") >= 0,
+		"Burn overlay default color must be translucent light orange."
+	)
+	var burn_block_start := shader_source.find("if (burn_overlay_strength")
+	var bleed_block_start := shader_source.find("if (bleed_overlay_strength")
+	var revive_block_start := shader_source.find("vec4 pre_revive_color")
+	_expect(burn_block_start >= 0, "Motion status shader must include a burn overlay block.")
+	_expect(bleed_block_start > burn_block_start, "Bleed overlay block must remain separate from burn overlay.")
+	if burn_block_start >= 0 and bleed_block_start > burn_block_start:
+		var burn_block := shader_source.substr(burn_block_start, bleed_block_start - burn_block_start)
+		_expect(
+			burn_block.find("texture_color.a > 0.0") >= 0,
+			"Burn overlay must only render inside existing sprite pixels."
+		)
+		_expect(
+			burn_block.find("neighbor_alpha - texture_color.a") < 0,
+			"Burn overlay must not use an outward outline mask."
+		)
+		_expect(
+			burn_block.find("burn_overlay_color.a") >= 0,
+			"Burn overlay must use the configured transparent orange alpha."
+		)
+		_expect(
+			burn_block.find("TIME *") >= 0 and burn_block.find("UV.y") >= 0,
+			"Burn overlay must keep a cyclic gradient over the sprite."
+		)
+	if bleed_block_start >= 0 and revive_block_start > bleed_block_start:
+		var bleed_block := shader_source.substr(bleed_block_start, revive_block_start - bleed_block_start)
+		_expect(
+			bleed_block.find("vec2 inner_edge_offset = TEXTURE_PIXEL_SIZE;") >= 0,
+			"Bleed interior tint must use a narrow one-pixel inner edge mask."
+		)
+		_expect(
+			bleed_block.find("inner_min_alpha") >= 0,
+			"Bleed interior tint must be limited by immediate neighboring alpha."
+		)
+		_expect(
+			bleed_block.find("bleed_overlay_strength * 0.22") >= 0,
+			"Bleed interior tint must stay subtle so sprite centers remain unaffected."
+		)
 
 
 func _test_player_movement_status_visuals() -> void:

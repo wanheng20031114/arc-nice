@@ -5,11 +5,13 @@ signal defeated(enemy: Enemy)
 
 const SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER := &"slow_overlay_strength"
 const BURN_OVERLAY_STRENGTH_SHADER_PARAMETER := &"burn_overlay_strength"
+const BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER := &"bleed_overlay_strength"
 const PATH_DIRECTION_PROBE_DISTANCE := 1.0
 const FLOW_NAVIGATION_WAYPOINT_ARRIVAL_DISTANCE := 1.0
 const AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const SLOW_OVERLAY_ACTIVE_STRENGTH := 0.36
 const BURN_OVERLAY_ACTIVE_STRENGTH := 0.26
+const BLEED_OVERLAY_ACTIVE_STRENGTH := 0.42
 const BURN_STATUS_TICK_INTERVAL := 1.0
 
 enum DeathSequenceStage {
@@ -264,12 +266,14 @@ func _update_movement_status_visuals() -> void:
 	if is_dead:
 		_set_slow_overlay_strength(0.0)
 		_set_burn_overlay_strength(0.0)
+		_set_bleed_overlay_strength(0.0)
 		speed_trail_effect.call("set_effect_active", false)
 		return
 
 	var is_slowed := _has_move_speed_modifier_below_default()
 	_set_slow_overlay_strength(SLOW_OVERLAY_ACTIVE_STRENGTH if is_slowed else 0.0)
 	_set_burn_overlay_strength(BURN_OVERLAY_ACTIVE_STRENGTH if _has_collectible_status(&"burn") else 0.0)
+	_set_bleed_overlay_strength(BLEED_OVERLAY_ACTIVE_STRENGTH if _has_collectible_status(&"bleed") else 0.0)
 
 	var is_temporarily_hasted := _has_move_speed_modifier_above_default()
 	var is_moving := velocity.length_squared() > 0.001
@@ -302,6 +306,13 @@ func _set_slow_overlay_strength(strength: float) -> void:
 func _set_burn_overlay_strength(strength: float) -> void:
 	_set_visual_shader_parameter(
 		BURN_OVERLAY_STRENGTH_SHADER_PARAMETER,
+		clampf(strength, 0.0, 1.0)
+	)
+
+
+func _set_bleed_overlay_strength(strength: float) -> void:
+	_set_visual_shader_parameter(
+		BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER,
 		clampf(strength, 0.0, 1.0)
 	)
 
