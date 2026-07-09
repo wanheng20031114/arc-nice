@@ -830,6 +830,83 @@ func _choose_unblocked_axis_direction(primary_direction: Vector2, secondary_dire
 	return Vector2.ZERO
 
 
+func _move_with_player_core_limit(delta: float) -> void:
+	_limit_velocity_against_target_player_core(delta)
+	move_and_slide()
+
+
+func _limit_velocity_against_target_player_core(delta: float) -> void:
+	if delta <= 0.0 or velocity == Vector2.ZERO:
+		return
+	if not is_instance_valid(target_player):
+		return
+	var core_shape := target_player.get_node_or_null("NoEnteyCore/CollisionShape2D") as CollisionShape2D
+	if core_shape == null:
+		return
+	var core_radius := _get_player_core_radius(core_shape)
+	var blocking_radius := _get_player_core_blocking_radius()
+	if core_radius <= 0.0 or blocking_radius <= 0.0:
+		return
+
+	var body_center := _get_player_core_blocking_center()
+	var core_center := core_shape.global_position
+	var core_to_body := body_center - core_center
+	var current_distance := core_to_body.length()
+	if current_distance <= 0.001:
+		velocity = Vector2.ZERO
+		return
+
+	var outward_direction := core_to_body / current_distance
+	var inward_speed := -velocity.dot(outward_direction)
+	if inward_speed <= 0.0:
+		return
+
+	var minimum_distance := core_radius + blocking_radius
+	var allowed_inward_speed := maxf(current_distance - minimum_distance, 0.0) / maxf(delta, 0.0001)
+	if inward_speed <= allowed_inward_speed:
+		return
+
+	velocity += outward_direction * (inward_speed - allowed_inward_speed)
+	if velocity.length_squared() < 0.0001:
+		velocity = Vector2.ZERO
+
+
+func _get_player_core_blocking_center() -> Vector2:
+	if touch_damage_area != null:
+		return touch_damage_area.global_position
+	if collision_shape != null:
+		return collision_shape.global_position
+	return global_position
+
+
+func _get_player_core_blocking_radius() -> float:
+	var touch_radius := _get_collision_shapes_inner_radius(touch_damage_shapes)
+	if touch_radius > 0.0:
+		return touch_radius
+	return _get_body_collision_extent_radius()
+
+
+func _get_collision_shapes_inner_radius(shape_nodes: Array[CollisionShape2D]) -> float:
+	var max_radius := 0.0
+	for shape_node in shape_nodes:
+		var half_extents := _get_collision_shape_half_extents(shape_node)
+		var inner_radius := minf(half_extents.x, half_extents.y)
+		max_radius = maxf(max_radius, inner_radius)
+	return max_radius
+
+
+func _get_player_core_radius(core_shape: CollisionShape2D) -> float:
+	if core_shape == null or core_shape.shape == null:
+		return 0.0
+	var circle := core_shape.shape as CircleShape2D
+	if circle != null:
+		var scale := core_shape.global_transform.get_scale()
+		return circle.radius * maxf(absf(scale.x), absf(scale.y))
+	var shape_rect := core_shape.shape.get_rect()
+	var scale := core_shape.global_transform.get_scale()
+	return maxf(absf(shape_rect.size.x * scale.x), absf(shape_rect.size.y * scale.y)) * 0.5
+
+
 func _on_touch_damage_area_body_entered(body: Node2D) -> void:
 	if is_dead:
 		return

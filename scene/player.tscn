@@ -32,6 +32,10 @@ shader_parameter/slow_overlay_strength = 0.0
 shader_parameter/slow_overlay_color = Color(0.55, 0.86, 1, 1)
 shader_parameter/burn_overlay_strength = 0.0
 shader_parameter/burn_overlay_color = Color(1, 0.56, 0.18, 0.46)
+shader_parameter/burn_edge_width = 2.0
+shader_parameter/bleed_overlay_strength = 0.0
+shader_parameter/bleed_overlay_color = Color(0.95, 0.02, 0.08, 0.58)
+shader_parameter/bleed_outline_width = 2.0
 shader_parameter/revive_glow_strength = 0.0
 shader_parameter/revive_glow_color = Color(3.2, 3.2, 3.2, 1)
 shader_parameter/revive_glow_outline_width = 4.5
@@ -131,7 +135,7 @@ position = Vector2(0, 1)
 shape = SubResource("CircleShape2D_sh265")
 
 [node name="NoEnteyCore" type="AnimatableBody2D" parent="." unique_id=817147934]
-collision_layer = 512
+collision_layer = 0
 collision_mask = 0
 sync_to_physics = false
 

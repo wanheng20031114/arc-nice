@@ -58,7 +58,7 @@ func _physics_process(delta: float) -> void:
 
 	if not is_instance_valid(target_player):
 		velocity = Vector2.ZERO
-		move_and_slide()
+		_move_with_player_core_limit(delta)
 		return
 
 	if _try_start_windup():
@@ -67,7 +67,7 @@ func _physics_process(delta: float) -> void:
 	var move_direction := _get_navigation_move_direction(delta)
 	_update_facing(move_direction)
 	velocity = move_direction * _get_move_speed()
-	move_and_slide()
+	_move_with_player_core_limit(delta)
 
 
 func _apply_config() -> void:

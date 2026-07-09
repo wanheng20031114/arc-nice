@@ -29,7 +29,7 @@ func _physics_process(delta: float) -> void:
 
 	if not is_instance_valid(target_player):
 		velocity = Vector2.ZERO
-		move_and_slide()
+		_move_with_player_core_limit(delta)
 		return
 
 	var move_direction := _get_navigation_move_direction(delta)
@@ -37,7 +37,7 @@ func _physics_process(delta: float) -> void:
 		last_move_direction = move_direction.normalized()
 	_update_facing(move_direction)
 	velocity = move_direction * _get_move_speed()
-	move_and_slide()
+	_move_with_player_core_limit(delta)
 	_try_fire_scatter(last_move_direction if move_direction != Vector2.ZERO else Vector2.ZERO)
 
 
