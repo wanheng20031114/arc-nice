@@ -6,6 +6,7 @@
 [resource]
 script = ExtResource("1_nmo2k")
 drop_weight = 2.0
+description = "5秒内移动速度+25%。"
 icon_texture = ExtResource("1_52uoa")
 move_speed_multiplier = 1.25
 metadata/_custom_type_script = "uid://qucrregg4cq0"

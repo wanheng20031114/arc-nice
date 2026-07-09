@@ -8,6 +8,7 @@ script = ExtResource("1_3ahmi")
 pickup_type = 1
 display_name = "射速道具"
 drop_weight = 2.0
+description = "5秒内射速x2。"
 icon_texture = ExtResource("1_uel68")
 fire_rate_multiplier = 2.0
 metadata/_custom_type_script = "uid://qucrregg4cq0"

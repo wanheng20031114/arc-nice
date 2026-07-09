@@ -8,6 +8,7 @@ script = ExtResource("1_ay5fc")
 pickup_type = 3
 display_name = "天妇罗道具"
 drop_weight = 0.2
+description = "5秒内移动速度变为20%。"
 icon_texture = ExtResource("1_ktyjb")
 icon_scale = Vector2(0.625, 0.625)
 move_speed_multiplier = 0.2
