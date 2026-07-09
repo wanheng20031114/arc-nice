@@ -55,11 +55,13 @@ const COLLECTIBLE_EFFECT_NINE_ELEVEN := "nine_eleven"
 const COLLECTIBLE_EFFECT_CHARGED_JADE_PENDANT := "charged_jade_pendant"
 const COLLECTIBLE_EFFECT_LUCKY_GEM := "lucky_gem"
 const COLLECTIBLE_EFFECT_MEDIEVAL_SHIELD := "medieval_shield"
+const COLLECTIBLE_EFFECT_SAKURA := "sakura"
 
 const PERIODIC_EFFECT_THUNDER := "thunder"
 const PERIODIC_EFFECT_FROST := "frost"
 const PERIODIC_EFFECT_HEAL := "heal"
 const PERIODIC_EFFECT_ARCHER := "archer"
+const PERIODIC_EFFECT_SAKURA_ROCKET := "sakura_rocket"
 
 const SKILL_EFFECT_MOON_SHIELD := "moon_shield"
 const SKILL_EFFECT_SWIFT := "swift"

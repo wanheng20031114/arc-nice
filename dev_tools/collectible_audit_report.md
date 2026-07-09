@@ -1,9 +1,9 @@
 # 收藏品逐项审计报告
 
-- 配置总数: 104
-- 新增收藏品数: 80
+- 配置总数: 105
+- 新增收藏品数: 81
 - 问题总数: 0
-- 稀有度分布: 普通 41，稀有 33，史诗 22，传说 8
+- 稀有度分布: 普通 39，稀有 35，史诗 23，传说 8
 
 | 文件 | 名称 | 稀有度 | 效果摘要 | 设计说明 | 图标主体 | 图标像素 | 问题 |
 | --- | --- | --- | --- | --- | --- | ---: | --- |
@@ -80,6 +80,7 @@
 | resources/config/collectibles/collectible_ruby_crown.tres | 红玉小冠 | 稀有 | 攻击+5 | 基础攻击：攻击力+5。 | 23x24 | 392 | OK |
 | resources/config/collectibles/collectible_runed_book.tres | 符文书 | 稀有 | 技力/s+0.5 | 技能充能：每秒技能充能+0.5。 | 20x24 | 396 | OK |
 | resources/config/collectibles/collectible_rusty_helm.tres | 生锈头盔 | 普通 | 物防+2 | 物理防御：物理防御+2。 | 21x20 | 358 | OK |
+| resources/config/collectibles/collectible_sakura.tres | 樱花 | 史诗 | 周期:sakura_rocket | 追踪导弹：每10秒朝最近敌人发射凌兰樱花导弹，造成100点法术爆炸伤害。 | 26x25 | 423 | OK |
 | resources/config/collectibles/collectible_salt_charm.tres | 盐晶符 | 普通 | 命中:mark | 易伤标记：普通子弹有概率标记敌人，使其短时承受更多伤害。 | 19x22 | 308 | OK |
 | resources/config/collectibles/collectible_sapphire_ring.tres | 蓝宝石戒指 | 稀有 | 命中:chill | 寒冷命中：普通子弹有概率施加寒冷。 | 22x25 | 290 | OK |
 | resources/config/collectibles/collectible_silver_mask.tres | 银面具 | 稀有 | 背面远程伤害x0.75 | 背面减伤：受到背面远程伤害变为75%。 | 25x24 | 413 | OK |

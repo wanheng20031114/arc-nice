@@ -937,7 +937,8 @@ func register_local_projectile(
 	speed: float,
 	lifetime: float,
 	pierces_enemies: bool = false,
-	target_peer_id: int = 0
+	target_peer_id: int = 0,
+	target_enemy_net_id: int = 0
 ) -> void:
 	if projectile == null:
 		return
@@ -974,6 +975,7 @@ func register_local_projectile(
 				pierces_enemies,
 				target_peer_id,
 				host_fire_timestamp,
+				target_enemy_net_id,
 			]
 		)
 	else:
@@ -989,7 +991,8 @@ func register_local_projectile(
 			lifetime,
 			pierces_enemies,
 			target_peer_id,
-			host_fire_timestamp
+			host_fire_timestamp,
+			target_enemy_net_id
 		)
 
 
@@ -1005,7 +1008,8 @@ func _rpc_projectile_fired_from_client(
 	lifetime: float,
 	pierces_enemies: bool = false,
 	target_peer_id: int = 0,
-	_client_fire_timestamp: float = -1.0
+	_client_fire_timestamp: float = -1.0,
+	target_enemy_net_id: int = 0
 ) -> void:
 	if not net_manager.is_host():
 		return
@@ -1053,6 +1057,7 @@ func _rpc_projectile_fired_from_client(
 			accepted_pierces_enemies,
 			target_peer_id,
 			host_fire_timestamp,
+			target_enemy_net_id,
 		]
 	)
 	net_projectile_fired(
@@ -1066,7 +1071,8 @@ func _rpc_projectile_fired_from_client(
 		accepted_lifetime,
 		accepted_pierces_enemies,
 		target_peer_id,
-		host_fire_timestamp
+		host_fire_timestamp,
+		target_enemy_net_id
 	)
 
 
@@ -1082,7 +1088,8 @@ func net_projectile_fired(
 	lifetime: float,
 	pierces_enemies: bool = false,
 	target_peer_id: int = 0,
-	host_fire_timestamp: float = -1.0
+	host_fire_timestamp: float = -1.0,
+	target_enemy_net_id: int = 0
 ) -> void:
 	if _known_projectiles.has(projectile_id):
 		return
@@ -1097,7 +1104,8 @@ func net_projectile_fired(
 		lifetime,
 		pierces_enemies,
 		target_peer_id,
-		host_fire_timestamp
+		host_fire_timestamp,
+		target_enemy_net_id
 	)
 
 
@@ -1112,7 +1120,8 @@ func _spawn_network_projectile(
 	lifetime: float,
 	pierces_enemies: bool = false,
 	target_peer_id: int = 0,
-	host_fire_timestamp: float = -1.0
+	host_fire_timestamp: float = -1.0,
+	target_enemy_net_id: int = 0
 ) -> void:
 	var projectile := _instantiate_projectile(
 		projectile_type,
@@ -1122,7 +1131,8 @@ func _spawn_network_projectile(
 		speed,
 		lifetime,
 		pierces_enemies,
-		target_peer_id
+		target_peer_id,
+		target_enemy_net_id
 	)
 	if projectile == null:
 		return
@@ -1211,7 +1221,8 @@ func _instantiate_projectile(
 	speed: float,
 	lifetime: float,
 	pierces_enemies: bool = false,
-	target_peer_id: int = 0
+	target_peer_id: int = 0,
+	target_enemy_net_id: int = 0
 ) -> Node:
 	match projectile_type:
 		&"player_bullet":
@@ -1306,6 +1317,27 @@ func _instantiate_projectile(
 				_linglan_skill2_config.rocket_homing_turn_rate
 			)
 			return sakura_rocket
+		&"collectible_sakura_rocket":
+			var collectible_sakura_rocket := LINGLAN_SKILL2_ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
+			if collectible_sakura_rocket == null:
+				return null
+			collectible_sakura_rocket.top_level = true
+			var target_enemy: Enemy = null
+			if game != null and target_enemy_net_id > 0:
+				target_enemy = game.get_enemy_for_net_id(target_enemy_net_id)
+			collectible_sakura_rocket.setup(
+				direction,
+				damage,
+				speed,
+				lifetime,
+				_linglan_skill2_config.rocket_explosion_radius,
+				null,
+				_linglan_skill2_config.rocket_homing_turn_rate,
+				target_enemy,
+				true,
+				EnemyConfig.DamageType.MAGIC
+			)
+			return collectible_sakura_rocket
 		&"linglan_skill3_orb":
 			var light_orb := LINGLAN_SKILL3_ORB_SCENE.instantiate() as LinglanSkill3LightOrb
 			if light_orb == null:

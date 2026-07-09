@@ -1980,6 +1980,83 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 	await process_frame
 	await physics_frame
 
+	var game := GAME_SCENE.instantiate() as Game
+	_expect(game != null, "Sakura rocket multiplayer test must instantiate Game.")
+	if game == null:
+		return
+	game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
+	game.set("auto_start_waves", false)
+	root.add_child(game)
+	await process_frame
+	var mp_game := MP_GAME_SCENE.instantiate()
+	_expect(mp_game != null, "Sakura rocket multiplayer test must instantiate MpGame.")
+	if mp_game == null:
+		_stop_audio_players(game)
+		game.queue_free()
+		await process_frame
+		return
+	mp_game.set("game", game)
+	var net_manager := root.get_node_or_null("NetManager")
+	var previous_role := 0
+	if net_manager != null:
+		previous_role = int(net_manager.get("net_role"))
+		net_manager.set("net_role", 1)
+		mp_game.set("net_manager", net_manager)
+
+	var target_enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
+	_expect(target_enemy != null, "Sakura rocket multiplayer test must instantiate target enemy.")
+	if target_enemy != null:
+		var enemy_config := BASIC_CONFIG.duplicate(true) as EnemyConfig
+		enemy_config.max_health = 500
+		enemy_config.magic_defense = 0
+		game.enemy_container.add_child(target_enemy)
+		target_enemy.global_position = Vector2(64.0, 0.0)
+		target_enemy.setup(enemy_config, game.player, game.grid_pathfinder)
+		target_enemy.set_meta("net_id", 501)
+		game.multiplayer_enemies_by_net_id[501] = target_enemy
+
+		mp_game.call(
+			"net_projectile_fired",
+			2000009,
+			"collectible_sakura_rocket",
+			2,
+			Vector2.ZERO,
+			Vector2.RIGHT,
+			100,
+			210.0,
+			5.0,
+			false,
+			0,
+			-1.0,
+			501
+		)
+		await process_frame
+		var known_projectiles := mp_game.get("_known_projectiles") as Dictionary
+		var spawned_rocket := known_projectiles.get(2000009) as LinglanSkill2SakuraRocket
+		_expect(spawned_rocket != null, "Sakura rocket network spawn must create a tracked projectile.")
+		if spawned_rocket != null:
+			_expect(spawned_rocket.target_node == target_enemy, "Sakura rocket network spawn must resolve target_enemy_net_id.")
+			_expect(spawned_rocket.enemies_only, "Sakura rocket network spawn must be enemy-only.")
+			_expect(spawned_rocket.damage_type == EnemyConfig.DamageType.MAGIC, "Sakura rocket network spawn must use magic damage.")
+		var health_before := target_enemy.current_health
+		var applied := bool(mp_game.call(
+			"apply_multiplayer_collectible_enemy_damage",
+			target_enemy,
+			100,
+			Vector2.RIGHT,
+			int(EnemyConfig.DamageType.MAGIC)
+		))
+		_expect(applied, "Host must accept Sakura collectible enemy damage confirmation.")
+		_expect(target_enemy.current_health == health_before - 100, "Sakura collectible enemy damage must apply as magic damage.")
+
+	if net_manager != null:
+		net_manager.set("net_role", previous_role)
+	mp_game.free()
+	_stop_audio_players(game)
+	game.queue_free()
+	await process_frame
+	await physics_frame
+
 
 func _test_multiplayer_cheat_xirang_confirm() -> void:
 	var mp_game := MP_GAME_SCENE.instantiate()

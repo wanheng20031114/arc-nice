@@ -32,7 +32,9 @@ const CHIPPED_RUBY := preload("res://resources/config/collectibles/collectible_c
 const EMBER_LEAF := preload("res://resources/config/collectibles/collectible_ember_leaf.tres")
 const CAMPFIRE_COAL := preload("res://resources/config/collectibles/collectible_campfire_coal.tres")
 const OIL_LAMP := preload("res://resources/config/collectibles/collectible_oil_lamp.tres")
+const SAKURA := preload("res://resources/config/collectibles/collectible_sakura.tres")
 const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/collectible_arrow_projectile.gd")
+const LINGLAN_SKILL2_ROCKET_SCRIPT := preload("res://scene/linglan_skill2_sakura_rocket.gd")
 const DAMAGE_NUMBER_POOL_SCRIPT := preload("res://scene/damage_number_pool.gd")
 
 class DamageNumberTestRoot:
@@ -103,7 +105,7 @@ func _run() -> void:
 
 func _test_collectible_resources() -> void:
 	var pool := LuoxiMerchant.get_collectible_pool()
-	_expect(pool.size() == 104, "Luoxi collectible pool must include the original 24 collectibles plus 80 new collectibles.")
+	_expect(pool.size() == 105, "Luoxi collectible pool must include the original 24 collectibles plus 81 new collectibles.")
 	var seen_paths: Dictionary = {}
 	var rarity_counts: Dictionary = {}
 	for item in pool:
@@ -138,6 +140,13 @@ func _test_collectible_resources() -> void:
 			int(rarity_counts.get(int(rarity), 0)) > 0,
 			"Luoxi collectible pool must contain %s rarity items." % PickupConfig.get_collectible_rarity_label(rarity)
 		)
+	_expect(SAKURA.display_name == "樱花", "Sakura collectible display name must be 樱花.")
+	_expect(SAKURA.collectible_effect_id == PickupConfig.COLLECTIBLE_EFFECT_SAKURA, "Sakura collectible effect id mismatch.")
+	_expect(SAKURA.periodic_effect_id == PickupConfig.PERIODIC_EFFECT_SAKURA_ROCKET, "Sakura periodic effect id mismatch.")
+	_expect(is_equal_approx(SAKURA.periodic_interval, 10.0), "Sakura periodic interval must be 10 seconds.")
+	_expect(SAKURA.periodic_damage == 100, "Sakura periodic damage must be 100.")
+	_expect(SAKURA.periodic_target_count == 1, "Sakura must target one nearest enemy.")
+	_expect(SAKURA.collectible_rarity == PickupConfig.CollectibleRarity.EPIC, "Sakura must be epic rarity.")
 
 
 func _test_burn_collectible_tiers() -> void:
@@ -248,6 +257,31 @@ func _test_new_collectible_rules() -> void:
 	for enemy in enemies:
 		if is_instance_valid(enemy):
 			enemy.queue_free()
+
+	var near_enemy := _spawn_enemy(Vector2(36.0, 0.0), player)
+	var far_enemy := _spawn_enemy(Vector2(128.0, 0.0), player)
+	near_enemy.current_health = 500
+	far_enemy.current_health = 500
+	player.call("_trigger_sakura_rocket", SAKURA)
+	await process_frame
+	var rocket_count := 0
+	var sakura_rocket: LinglanSkill2SakuraRocket = null
+	for child in test_root.get_children():
+		if child.get_script() == LINGLAN_SKILL2_ROCKET_SCRIPT:
+			rocket_count += 1
+			if sakura_rocket == null:
+				sakura_rocket = child as LinglanSkill2SakuraRocket
+	_expect(rocket_count == 1, "Sakura must fire one rocket at the nearest enemy.")
+	if sakura_rocket != null:
+		_expect(sakura_rocket.target_node == near_enemy, "Sakura rocket must track the nearest enemy.")
+		_expect(sakura_rocket.enemies_only, "Sakura rocket must be enemy-only.")
+		_expect(sakura_rocket.damage_type == EnemyConfig.DamageType.MAGIC, "Sakura rocket must deal magic damage.")
+		_expect(sakura_rocket.damage == 100, "Sakura rocket must use 100 base magic damage.")
+	for child in test_root.get_children():
+		if child.get_script() == LINGLAN_SKILL2_ROCKET_SCRIPT:
+			child.queue_free()
+	near_enemy.queue_free()
+	far_enemy.queue_free()
 	player.queue_free()
 	await process_frame
 

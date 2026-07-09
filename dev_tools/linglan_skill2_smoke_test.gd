@@ -355,11 +355,33 @@ func _test_multiplayer_projectile_instantiation() -> void:
 	if projectile != null:
 		_expect(projectile.direction.is_equal_approx(Vector2.DOWN), "Registry Skill2 rocket direction mismatch.")
 		_expect(projectile.damage == 80, "Registry Skill2 rocket damage mismatch.")
+		_expect(not projectile.enemies_only, "Registry Skill2 rocket must keep default player-damaging mode.")
+		_expect(projectile.damage_type == EnemyConfig.DamageType.PHYSICAL, "Registry Skill2 rocket must keep default physical damage.")
 		_expect(is_equal_approx(projectile.speed, 210.0), "Registry Skill2 rocket speed mismatch.")
 		_expect(is_equal_approx(projectile.remaining_lifetime, 5.0), "Registry Skill2 rocket lifetime mismatch.")
 		_expect(is_equal_approx(projectile.explosion_radius, 91.0), "Registry Skill2 rocket must read explosion radius from config.")
 		_expect(is_equal_approx(projectile.homing_turn_rate, 2.4), "Registry Skill2 rocket must read homing turn rate from config.")
 		projectile.free()
+	var collectible_projectile := mp_game.call(
+		"_instantiate_projectile",
+		&"collectible_sakura_rocket",
+		999999,
+		Vector2.RIGHT,
+		100,
+		210.0,
+		5.0,
+		false,
+		0,
+		0
+	) as LinglanSkill2SakuraRocket
+	_expect(collectible_projectile != null, "Multiplayer registry must instantiate collectible_sakura_rocket.")
+	if collectible_projectile != null:
+		_expect(collectible_projectile.damage == 100, "Registry Sakura rocket damage mismatch.")
+		_expect(collectible_projectile.enemies_only, "Registry Sakura rocket must be enemy-only.")
+		_expect(collectible_projectile.damage_type == EnemyConfig.DamageType.MAGIC, "Registry Sakura rocket must be magic damage.")
+		_expect(is_equal_approx(collectible_projectile.explosion_radius, 91.0), "Registry Sakura rocket must read explosion radius from config.")
+		_expect(is_equal_approx(collectible_projectile.homing_turn_rate, 2.4), "Registry Sakura rocket must read homing turn rate from config.")
+		collectible_projectile.free()
 	mp_game.free()
 
 
@@ -392,6 +414,7 @@ func _test_rocket_homing_and_explosion_damage() -> void:
 	var test_enemy_config := BASIC_ENEMY_CONFIG.duplicate(true) as EnemyConfig
 	test_enemy_config.max_health = 200
 	test_enemy_config.physical_defense = 0
+	test_enemy_config.magic_defense = 0
 	var enemy := test_enemy_config.enemy_scene.instantiate() as Enemy
 	_expect(enemy != null, "Basic enemy scene must instantiate for Skill2 explosion damage.")
 	if enemy == null:
@@ -404,6 +427,7 @@ func _test_rocket_homing_and_explosion_damage() -> void:
 	var linglan_config := LINGLAN_CONFIG.duplicate(true) as EnemyConfig
 	linglan_config.max_health = 500
 	linglan_config.physical_defense = 0
+	linglan_config.magic_defense = 0
 	var linglan := LINGLAN_SCENE.instantiate() as LinglanBoss
 	_expect(linglan != null, "Linglan scene must instantiate for self-damage check.")
 	if linglan == null:
@@ -424,6 +448,9 @@ func _test_rocket_homing_and_explosion_damage() -> void:
 	test_root.add_child(explosion_rocket)
 	explosion_rocket.global_position = Vector2.ZERO
 	explosion_rocket.setup(Vector2.RIGHT, 80, 210.0, 5.0, EXPECTED_ROCKET_EXPLOSION_RADIUS, player, SKILL2_CONFIG.rocket_homing_turn_rate)
+	_expect(explosion_rocket.target_node == player, "Skill2 rocket default homing target must remain the target player.")
+	_expect(not explosion_rocket.enemies_only, "Skill2 rocket default setup must not be enemy-only.")
+	_expect(explosion_rocket.damage_type == EnemyConfig.DamageType.PHYSICAL, "Skill2 rocket default setup must stay physical damage.")
 	explosion_rocket.call("_explode")
 	await process_frame
 
@@ -434,6 +461,36 @@ func _test_rocket_homing_and_explosion_damage() -> void:
 		"Skill2 explosion must also damage Linglan, health is %d." % linglan.current_health
 	)
 	_expect(_count_skill2_explosions(test_root) == 1, "Skill2 rocket must spawn one explosion effect.")
+	_clear_skill2_explosions(test_root)
+
+	player.current_health = 200
+	enemy.current_health = 200
+	linglan.current_health = 500
+	var sakura_mode_rocket := ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
+	test_root.add_child(sakura_mode_rocket)
+	sakura_mode_rocket.global_position = Vector2.ZERO
+	sakura_mode_rocket.setup(
+		Vector2.RIGHT,
+		100,
+		210.0,
+		5.0,
+		EXPECTED_ROCKET_EXPLOSION_RADIUS,
+		null,
+		SKILL2_CONFIG.rocket_homing_turn_rate,
+		enemy,
+		true,
+		EnemyConfig.DamageType.MAGIC
+	)
+	_expect(sakura_mode_rocket.target_node == enemy, "Sakura-mode rocket must track the enemy target node.")
+	_expect(sakura_mode_rocket.enemies_only, "Sakura-mode rocket must be enemy-only.")
+	_expect(sakura_mode_rocket.damage_type == EnemyConfig.DamageType.MAGIC, "Sakura-mode rocket must be magic damage.")
+	_expect(sakura_mode_rocket.collision_mask == LinglanSkill2SakuraRocket.ENEMY_ONLY_HIT_COLLISION_MASK, "Sakura-mode rocket must ignore player collision.")
+	sakura_mode_rocket.call("_explode")
+	await process_frame
+
+	_expect(player.current_health == 200, "Sakura-mode rocket must not damage players.")
+	_expect(enemy.current_health == 100, "Sakura-mode rocket must deal 100 magic damage to enemies.")
+	_expect(linglan.current_health == 400, "Sakura-mode rocket must deal 100 magic damage to Linglan.")
 	_clear_skill2_explosions(test_root)
 
 	player.queue_free()

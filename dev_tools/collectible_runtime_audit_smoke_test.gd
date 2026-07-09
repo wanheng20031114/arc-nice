@@ -3,6 +3,7 @@ extends SceneTree
 const PLAYER_SCENE := preload("res://scene/player.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/collectible_arrow_projectile.gd")
+const LINGLAN_SKILL2_ROCKET_SCRIPT := preload("res://scene/linglan_skill2_sakura_rocket.gd")
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -37,7 +38,7 @@ func _run() -> void:
 
 func _test_every_collectible_runtime_effect() -> void:
 	var pool := LuoxiMerchant.get_collectible_pool()
-	_expect(pool.size() == 104, "Runtime audit must load 104 collectibles from Luoxi pool.")
+	_expect(pool.size() == 105, "Runtime audit must load 105 collectibles from Luoxi pool.")
 	var seen_paths: Dictionary = {}
 	for item_variant in pool:
 		var item := item_variant as PickupConfig
@@ -469,6 +470,29 @@ func _audit_periodic_effect(player: Player, item: PickupConfig) -> void:
 				if child.get_script() == COLLECTIBLE_ARROW_PROJECTILE_SCRIPT:
 					arrow_count += 1
 			_expect(arrow_count == enemy_count, "%s archer periodic effect must spawn the configured arrows." % item.display_name)
+		PickupConfig.PERIODIC_EFFECT_SAKURA_ROCKET:
+			var near_enemy := _spawn_enemy(Vector2(42.0, 0.0), player)
+			near_enemy.current_health = 500
+			var far_enemy := _spawn_enemy(Vector2(120.0, 0.0), player)
+			far_enemy.current_health = 500
+			player.call("_trigger_sakura_rocket", item)
+			await process_frame
+			var rocket_count := 0
+			var rocket: LinglanSkill2SakuraRocket = null
+			for child in test_root.get_children():
+				if child.get_script() == LINGLAN_SKILL2_ROCKET_SCRIPT:
+					rocket_count += 1
+					if rocket == null:
+						rocket = child as LinglanSkill2SakuraRocket
+			_expect(rocket_count == 1, "%s sakura periodic effect must spawn one rocket." % item.display_name)
+			if rocket != null:
+				_expect(rocket.target_node == near_enemy, "%s sakura rocket must target the nearest enemy." % item.display_name)
+				_expect(rocket.enemies_only, "%s sakura rocket must be enemy-only." % item.display_name)
+				_expect(rocket.damage_type == EnemyConfig.DamageType.MAGIC, "%s sakura rocket must deal magic damage." % item.display_name)
+				_expect(
+					rocket.damage == player.get_outgoing_damage(item.periodic_damage, EnemyConfig.DamageType.MAGIC),
+					"%s sakura rocket damage must use configured magic periodic damage." % item.display_name
+				)
 		_:
 			_expect(false, "%s uses an unknown periodic effect id." % item.display_name)
 

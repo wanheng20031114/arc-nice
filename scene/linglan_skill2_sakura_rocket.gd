@@ -17,6 +17,15 @@ const EXPLOSION_DAMAGE_MASK := (
 	| ENEMY_BODY_COLLISION_MASK
 	| BOSS_BODY_COLLISION_MASK
 )
+const ENEMY_ONLY_HIT_COLLISION_MASK := (
+	WORLD_COLLISION_MASK
+	| ENEMY_BODY_COLLISION_MASK
+	| BOSS_BODY_COLLISION_MASK
+)
+const ENEMY_ONLY_EXPLOSION_DAMAGE_MASK := (
+	ENEMY_BODY_COLLISION_MASK
+	| BOSS_BODY_COLLISION_MASK
+)
 const EXPLOSION_QUERY_MAX_RESULTS := 96
 
 @export var speed: float = 210.0
@@ -32,9 +41,12 @@ const EXPLOSION_QUERY_MAX_RESULTS := 96
 
 var direction := Vector2.RIGHT
 var target_player: Player = null
+var target_node: Node2D = null
 var damage: int = 80
+var damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
 var remaining_lifetime: float = 0.0
 var has_exploded: bool = false
+var enemies_only: bool = false
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"linglan_skill2_rocket"
@@ -44,6 +56,7 @@ var base_sprite_modulate: Color = Color.WHITE
 func _ready() -> void:
 	remaining_lifetime = maxf(max_lifetime, 0.01)
 	body_entered.connect(_on_body_entered)
+	_apply_collision_masks()
 	_apply_explosion_radius()
 	base_sprite_modulate = animated_sprite.modulate
 	if animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"fly"):
@@ -58,7 +71,10 @@ func setup(
 	initial_lifetime: float,
 	initial_explosion_radius: float = 78.0,
 	initial_target_player: Player = null,
-	initial_homing_turn_rate: float = 1.2
+	initial_homing_turn_rate: float = 1.2,
+	initial_target_node: Node2D = null,
+	initial_enemies_only: bool = false,
+	initial_damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
 ) -> void:
 	if initial_direction != Vector2.ZERO:
 		direction = initial_direction.normalized()
@@ -69,7 +85,11 @@ func setup(
 	remaining_lifetime = max_lifetime
 	explosion_radius = maxf(initial_explosion_radius, 0.0)
 	target_player = initial_target_player
+	target_node = initial_target_node if initial_target_node != null else initial_target_player
 	homing_turn_rate = maxf(initial_homing_turn_rate, 0.0)
+	enemies_only = initial_enemies_only
+	damage_type = initial_damage_type
+	_apply_collision_masks()
 	_apply_explosion_radius()
 	if is_node_ready():
 		_update_flash_visual()
@@ -109,9 +129,9 @@ func _physics_process(delta: float) -> void:
 func _update_homing(delta: float) -> void:
 	if homing_turn_rate <= 0.0:
 		return
-	if target_player == null or not is_instance_valid(target_player) or target_player.is_dead:
+	if not _is_homing_target_valid():
 		return
-	var desired_direction := global_position.direction_to(target_player.global_position)
+	var desired_direction := global_position.direction_to(target_node.global_position)
 	if desired_direction == Vector2.ZERO:
 		return
 	var angle_delta := direction.angle_to(desired_direction)
@@ -124,7 +144,7 @@ func _get_hit(from_position: Vector2, to_position: Vector2) -> Dictionary:
 	var query := PhysicsRayQueryParameters2D.create(
 		from_position,
 		to_position,
-		HIT_COLLISION_MASK,
+		_get_hit_collision_mask(),
 		[get_rid()]
 	)
 	query.collide_with_bodies = true
@@ -174,7 +194,7 @@ func _apply_explosion_damage() -> void:
 	var query := PhysicsShapeQueryParameters2D.new()
 	query.shape = circle_shape
 	query.transform = Transform2D(0.0, global_position)
-	query.collision_mask = EXPLOSION_DAMAGE_MASK
+	query.collision_mask = _get_explosion_damage_mask()
 	query.collide_with_bodies = true
 	query.collide_with_areas = false
 	query.exclude = [get_rid()]
@@ -195,6 +215,8 @@ func _apply_explosion_damage() -> void:
 
 		var player := collider as Player
 		if player != null:
+			if enemies_only:
+				continue
 			_apply_player_damage(player)
 			continue
 
@@ -210,7 +232,7 @@ func _apply_player_damage(player: Player) -> void:
 		return
 	player.apply_damage(
 		damage,
-		EnemyConfig.DamageType.PHYSICAL,
+		damage_type,
 		_get_player_damage_context(player)
 	)
 
@@ -228,9 +250,11 @@ func _apply_enemy_damage(enemy: Enemy) -> void:
 	var impact_direction := global_position.direction_to(enemy.global_position)
 	if impact_direction == Vector2.ZERO:
 		impact_direction = direction
+	if enemies_only and _try_apply_multiplayer_collectible_enemy_damage(enemy, impact_direction):
+		return
 	if _try_report_multiplayer_enemy_hit(enemy, impact_direction):
 		return
-	enemy.apply_damage(damage, impact_direction)
+	enemy.apply_damage(damage, impact_direction, damage_type)
 
 
 func _spawn_explosion_effect() -> void:
@@ -301,6 +325,19 @@ func _try_report_multiplayer_enemy_hit(enemy: Enemy, impact_direction: Vector2) 
 	return true
 
 
+func _try_apply_multiplayer_collectible_enemy_damage(enemy: Enemy, impact_direction: Vector2) -> bool:
+	var current_scene := get_tree().current_scene
+	if current_scene == null or not current_scene.has_method("apply_multiplayer_collectible_enemy_damage"):
+		return false
+	return bool(current_scene.call(
+		"apply_multiplayer_collectible_enemy_damage",
+		enemy,
+		damage,
+		impact_direction,
+		int(damage_type)
+	))
+
+
 func _get_damage_source_id() -> int:
 	if projectile_id > 0:
 		return projectile_id
@@ -313,3 +350,27 @@ func _apply_explosion_radius() -> void:
 	var circle_shape := explosion_shape.shape as CircleShape2D
 	if circle_shape != null:
 		circle_shape.radius = maxf(explosion_radius, 0.0)
+
+
+func _apply_collision_masks() -> void:
+	collision_mask = ENEMY_ONLY_HIT_COLLISION_MASK if enemies_only else HIT_COLLISION_MASK
+
+
+func _get_hit_collision_mask() -> int:
+	return ENEMY_ONLY_HIT_COLLISION_MASK if enemies_only else HIT_COLLISION_MASK
+
+
+func _get_explosion_damage_mask() -> int:
+	return ENEMY_ONLY_EXPLOSION_DAMAGE_MASK if enemies_only else EXPLOSION_DAMAGE_MASK
+
+
+func _is_homing_target_valid() -> bool:
+	if target_node == null or not is_instance_valid(target_node):
+		return false
+	var player := target_node as Player
+	if player != null:
+		return not player.is_dead
+	var enemy := target_node as Enemy
+	if enemy != null:
+		return not enemy.is_dead
+	return true

@@ -71,6 +71,8 @@ const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/collectible_fr
 const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
 const COLLECTIBLE_MOON_SHIELD_SCENE := preload("res://scene/collectible_moon_shield.tscn")
 const COLLECTIBLE_ARROW_PROJECTILE_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
+const LINGLAN_SKILL2_CONFIG_PATH := "res://resources/config/bosses/linglan_skill2.tres"
+const LINGLAN_SKILL2_ROCKET_SCENE := preload("res://scene/linglan_skill2_sakura_rocket.tscn")
 const NORMAL_ANIMATION_PREFIX := &"normal"
 const ARMED_ANIMATION_PREFIX := &"armed"
 const DEFAULT_FIRE_RATE_MULTIPLIER := 1.0
@@ -153,6 +155,7 @@ var collectible_base_upgrade_free_chance: float = 0.0
 var collectible_ranged_front_damage_multiplier: float = 1.0
 var collectible_ranged_back_damage_multiplier: float = 1.0
 var collectible_ranged_dodge_chance: float = 0.0
+var linglan_skill2_config_cache: LinglanSkill2Config = null
 var last_base_upgrade_was_free: bool = false
 var _base_stats_initialized: bool = false
 var _base_move_speed: float = 0.0
@@ -1379,7 +1382,9 @@ func _register_multiplayer_projectile(
 	projectile_damage: int,
 	projectile_speed: float,
 	projectile_lifetime: float,
-	pierces_enemies: bool = false
+	pierces_enemies: bool = false,
+	target_peer_id: int = 0,
+	target_enemy_net_id: int = 0
 ) -> void:
 	if projectile == null:
 		return
@@ -1396,7 +1401,9 @@ func _register_multiplayer_projectile(
 		projectile_damage,
 		projectile_speed,
 		projectile_lifetime,
-		pierces_enemies
+		pierces_enemies,
+		target_peer_id,
+		target_enemy_net_id
 	)
 
 
@@ -1912,6 +1919,8 @@ func _trigger_collectible_periodic_effect(item: PickupConfig) -> void:
 			_trigger_life_crystal(item)
 		PickupConfig.PERIODIC_EFFECT_ARCHER:
 			_trigger_archer(item)
+		PickupConfig.PERIODIC_EFFECT_SAKURA_ROCKET:
+			_trigger_sakura_rocket(item)
 
 
 func _trigger_thunder_crystal(item: PickupConfig) -> void:
@@ -2044,6 +2053,20 @@ func _trigger_archer(item: PickupConfig) -> void:
 		_spawn_collectible_arrow(enemy, arrow_damage)
 
 
+func _trigger_sakura_rocket(item: PickupConfig) -> void:
+	var targets := _collect_nearest_alive_enemies(
+		maxi(item.periodic_target_count, 1),
+		maxf(item.periodic_radius, 0.0)
+	)
+	if targets.is_empty():
+		return
+	var rocket_damage := get_outgoing_damage(
+		maxi(item.periodic_damage, 1),
+		EnemyConfig.DamageType.MAGIC
+	)
+	_spawn_collectible_sakura_rocket(targets[0], rocket_damage)
+
+
 func _collect_nearest_alive_enemies(max_count: int, radius: float) -> Array[Enemy]:
 	var enemies := _collect_alive_enemies()
 	if enemies.is_empty():
@@ -2097,6 +2120,59 @@ func _spawn_collectible_arrow(target_enemy: Enemy, arrow_damage: int) -> bool:
 		arrow_damage,
 		float(arrow.get("speed")),
 		float(arrow.get("max_lifetime"))
+	)
+	return true
+
+
+func _get_linglan_skill2_config() -> LinglanSkill2Config:
+	if linglan_skill2_config_cache != null:
+		return linglan_skill2_config_cache
+	linglan_skill2_config_cache = load(LINGLAN_SKILL2_CONFIG_PATH) as LinglanSkill2Config
+	return linglan_skill2_config_cache
+
+
+func _spawn_collectible_sakura_rocket(target_enemy: Enemy, rocket_damage: int) -> bool:
+	if target_enemy == null or not is_instance_valid(target_enemy) or target_enemy.is_dead:
+		return false
+	var spawn_parent := get_tree().current_scene
+	if spawn_parent == null:
+		return false
+	var skill2_config := _get_linglan_skill2_config()
+	if skill2_config == null:
+		return false
+	var shoot_direction := global_position.direction_to(target_enemy.global_position)
+	if shoot_direction == Vector2.ZERO:
+		shoot_direction = _facing_suffix_to_vector(facing_suffix)
+	var rocket := LINGLAN_SKILL2_ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
+	if rocket == null:
+		return false
+	rocket.top_level = true
+	rocket.setup(
+		shoot_direction,
+		rocket_damage,
+		skill2_config.rocket_speed,
+		skill2_config.rocket_lifetime,
+		skill2_config.rocket_explosion_radius,
+		null,
+		skill2_config.rocket_homing_turn_rate,
+		target_enemy,
+		true,
+		EnemyConfig.DamageType.MAGIC
+	)
+	spawn_parent.add_child(rocket)
+	rocket.global_position = global_position + shoot_direction * bullet_spawn_distance
+	var target_enemy_net_id := int(target_enemy.get_meta("net_id", 0))
+	_register_multiplayer_projectile(
+		rocket,
+		&"collectible_sakura_rocket",
+		rocket.global_position,
+		shoot_direction,
+		rocket_damage,
+		rocket.speed,
+		rocket.max_lifetime,
+		false,
+		0,
+		target_enemy_net_id
 	)
 	return true
 

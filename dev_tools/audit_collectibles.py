@@ -119,7 +119,7 @@ GAMEPLAY_EFFECT_FIELDS = tuple(
     if field != "collectible_stacks_by_copy" and field not in DESIGN_METADATA_FIELDS
 )
 SPECIAL_EFFECT_IDS = {"admin_doll"}
-VALID_PERIODIC_EFFECTS = {"thunder", "frost", "heal", "archer"}
+VALID_PERIODIC_EFFECTS = {"thunder", "frost", "heal", "archer", "sakura_rocket"}
 VALID_SKILL_EFFECTS = {"moon_shield", "swift"}
 VALID_CONDITIONAL_EFFECTS = {"health_below", "health_above", "xirang_at_least", "xirang_below", "skill_unlocked", "skill_locked"}
 VALID_TRIGGER_EFFECTS = {
@@ -213,8 +213,8 @@ DESIGN_PROFILE_FIELDS = (
     "defense_xirang_step",
     "defense_bonus_per_xirang_step",
 )
-NEW_COLLECTIBLE_COUNT = 80
-EXPECTED_TOTAL_COUNT = 104
+NEW_COLLECTIBLE_COUNT = 81
+EXPECTED_TOTAL_COUNT = 105
 STATIC_STAT_FIELDS = (
     "collectible_attack_bonus",
     "collectible_max_health_bonus",
@@ -681,7 +681,7 @@ def validate_logic_fields(data: dict[str, Any], issues: list[str], config_name: 
             issues.append(f"未知周期效果: {periodic}")
         if data.get("periodic_interval", 0.0) <= 0.0:
             issues.append("周期效果缺少正数 interval")
-        if data.get("periodic_radius", 0.0) <= 0.0:
+        if periodic != "sakura_rocket" and data.get("periodic_radius", 0.0) <= 0.0:
             issues.append("周期效果缺少正数 radius")
         if periodic == "thunder" and data.get("periodic_damage", 0) <= 0:
             issues.append("闪电周期效果缺少伤害")
@@ -699,6 +699,11 @@ def validate_logic_fields(data: dict[str, Any], issues: list[str], config_name: 
                 issues.append("弓箭周期效果缺少攻击倍率")
             if data.get("periodic_target_count", 0) <= 0:
                 issues.append("弓箭周期效果缺少目标数量")
+        if periodic == "sakura_rocket":
+            if data.get("periodic_damage", 0) <= 0:
+                issues.append("樱花导弹周期效果缺少伤害")
+            if data.get("periodic_target_count", 0) <= 0:
+                issues.append("樱花导弹周期效果缺少目标数量")
 
     skill = data.get("skill_effect_id", "")
     if skill:
