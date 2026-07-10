@@ -1,6 +1,6 @@
 extends SceneTree
 
-const PLAYER_SCENE := preload("res://scene/player.tscn")
+const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const APPLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 const RUBY := preload("res://resources/config/collectibles/collectible_ruby.tres")

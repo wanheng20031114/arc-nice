@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cuhl66udomc3t"
-path="res://.godot/imported/weishidaier_skill1_icon.png-e9ded84e410b62d26f64b2bb224646f6.ctex"
+uid="uid://cyu541jlkic6t"
+path="res://.godot/imported/whirlwind_icon.png-acce15e46ee6a0498780b07df1cadd9c.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/texture/weishidaier_skill1_icon.png"
-dest_files=["res://.godot/imported/weishidaier_skill1_icon.png-e9ded84e410b62d26f64b2bb224646f6.ctex"]
+source_file="res://resources/texture/player/hoe_cat/whirlwind_icon.png"
+dest_files=["res://.godot/imported/whirlwind_icon.png-acce15e46ee6a0498780b07df1cadd9c.ctex"]
 
 [params]
 

@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://cg8cmw0vq1trc"]
 
 [ext_resource type="Script" path="res://scene/weishidaier_skill1_explosion.gd" id="1_script"]
-[ext_resource type="Texture2D" path="res://resources/texture/weishidaier_skill1_explosion.png" id="2_texture"]
+[ext_resource type="Texture2D" path="res://resources/texture/player/weishidaier/skill1_explosion.png" id="2_texture"]
 [ext_resource type="AudioStream" path="res://resources/audio/cowboy_explosion.wav" id="3_audio"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_0"]

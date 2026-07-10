@@ -28,6 +28,8 @@ const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 
 const INPUT_BUTTON_SKILL1 := 1
 const INPUT_BUTTON_RELOAD := 2
+const HOE_ACTION_PRIMARY := &"primary"
+const HOE_ACTION_WHIRLWIND := &"whirlwind"
 const GAME_RUNTIME_HOST_AUTHORITY := 1
 const GAME_RUNTIME_CLIENT_VIEW := 2
 const STATE_DISCONNECTED := 0
@@ -84,6 +86,8 @@ var _last_sent_move_input: Vector2 = Vector2.ZERO
 var _last_sent_shoot_input: Vector2 = Vector2.ZERO
 var _input_frames_since_last_send: int = _NetConstants.INPUT_KEEPALIVE_INTERVAL_FRAMES
 var _last_player_state_sequences: Dictionary = {}
+var _player_character_mismatch_warnings: Dictionary = {}
+var _hoe_action_sequences_by_peer: Dictionary = {}
 var _accepted_player_state_positions: Dictionary = {}
 var _accepted_player_state_times: Dictionary = {}
 var _host_latest_client_player_snapshot_states: Dictionary = {}
@@ -204,6 +208,37 @@ func request_multiplayer_skill1_purchase() -> void:
 		net_skill1_purchase_requested.rpc_id(_get_host_peer_id())
 
 
+func request_hoe_primary_attack(direction: Vector2) -> bool:
+	if game == null or not _client_host_game_ready:
+		return false
+	var peer_id := _get_local_peer_id()
+	var player_node := game.get_player_for_peer(peer_id)
+	if not _is_valid_hoe_cat_player(player_node):
+		return false
+	var safe_direction := _sanitize_hoe_action_direction(player_node, direction)
+	if net_manager.is_host():
+		return _apply_authoritative_hoe_action(peer_id, HOE_ACTION_PRIMARY, safe_direction)
+	if not net_manager.is_client():
+		return false
+	net_hoe_primary_attack_requested.rpc_id(_get_host_peer_id(), safe_direction)
+	return true
+
+
+func request_hoe_whirlwind() -> bool:
+	if game == null or not _client_host_game_ready:
+		return false
+	var peer_id := _get_local_peer_id()
+	var player_node := game.get_player_for_peer(peer_id)
+	if not _is_valid_hoe_cat_player(player_node):
+		return false
+	if net_manager.is_host():
+		return _apply_authoritative_hoe_action(peer_id, HOE_ACTION_WHIRLWIND, Vector2.ZERO)
+	if not net_manager.is_client():
+		return false
+	net_hoe_whirlwind_requested.rpc_id(_get_host_peer_id())
+	return true
+
+
 func request_luoxi_collectible_choice(choice_index: int, config_path: String = "") -> void:
 	if net_manager.is_host():
 		_apply_luoxi_collectible_choice_for_peer(_get_local_peer_id(), choice_index, config_path)
@@ -277,7 +312,12 @@ func _setup_game(mode: int) -> void:
 	var local_peer_id: int = _get_local_peer_id()
 	if local_peer_id <= 0 and net_manager.is_host():
 		local_peer_id = _get_host_peer_id()
-	game.configure_multiplayer(mode, local_peer_id, net_manager.connected_players)
+	game.configure_multiplayer(
+		mode,
+		local_peer_id,
+		net_manager.connected_players,
+		net_manager.call("get_player_character_map") as Dictionary
+	)
 	add_child(game)
 	run_state.set_active_multiplayer_peer(local_peer_id)
 
@@ -654,7 +694,21 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 		if player_state.peer_id <= 0:
 			continue
 		seen_player_ids[player_state.peer_id] = true
+		var player_node: Player = game.get_player_for_peer(player_state.peer_id)
+		if player_node != null and is_instance_valid(player_node):
+			if player_node.get_character_id() != player_state.character_id:
+				_warn_player_character_snapshot_mismatch(
+					player_state.peer_id,
+					player_node.get_character_id(),
+					player_state.character_id
+				)
+				continue
+			_apply_player_primary_cooldown_ratio(
+				player_node,
+				player_state.primary_cooldown_ratio
+			)
 		if is_client_view_runtime() and player_state.peer_id == _get_client_view_local_peer_id():
+			_apply_player_realtime_snapshot(player_node, player_state)
 			continue
 		if not player_visual_interpolators.has(player_state.peer_id):
 			player_visual_interpolators[player_state.peer_id] = _create_player_interpolator()
@@ -668,27 +722,55 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 			0,
 			false
 		)
-		var player_node: Player = game.get_player_for_peer(player_state.peer_id)
 		if player_node != null and is_instance_valid(player_node):
-			player_node.apply_multiplayer_realtime_state(
-				player_state.current_health,
-				player_state.max_health,
-				player_state.current_xirang,
-				player_state.is_dead,
-				player_state.invincibility_time_left,
-				player_state.skill1_unlocked,
-				player_state.skill1_charge,
-				player_state.skill1_charge_duration,
-				player_state.form_mode,
-				player_state.shot_pattern,
-				player_state.skill1_upgrade_level,
-				player_state.ammo_capacity,
-				player_state.current_ammo,
-				player_state.is_reloading,
-				player_state.reload_progress
-			)
+			_apply_player_realtime_snapshot(player_node, player_state)
 	if snapshot_has_full_roster:
 		_reconcile_player_roster(seen_player_ids)
+
+
+func _apply_player_primary_cooldown_ratio(player_node: Player, ratio: float) -> void:
+	if player_node == null or not player_node.has_method("apply_multiplayer_primary_cooldown_ratio"):
+		return
+	player_node.call("apply_multiplayer_primary_cooldown_ratio", clampf(ratio, 0.0, 1.0))
+
+
+func _apply_player_realtime_snapshot(
+	player_node: Player,
+	player_state: SnapshotManager.PlayerState
+) -> void:
+	if player_node == null or player_state == null or not is_instance_valid(player_node):
+		return
+	player_node.apply_multiplayer_realtime_state(
+		player_state.current_health,
+		player_state.max_health,
+		player_state.current_xirang,
+		player_state.is_dead,
+		player_state.invincibility_time_left,
+		player_state.skill1_unlocked,
+		player_state.skill1_charge,
+		player_state.skill1_charge_duration,
+		player_state.form_mode,
+		player_state.shot_pattern,
+		player_state.skill1_upgrade_level,
+		player_state.ammo_capacity,
+		player_state.current_ammo,
+		player_state.is_reloading,
+		player_state.reload_progress
+	)
+
+
+func _warn_player_character_snapshot_mismatch(
+	peer_id: int,
+	local_character_id: StringName,
+	host_character_id: StringName
+) -> void:
+	if _player_character_mismatch_warnings.has(peer_id):
+		return
+	_player_character_mismatch_warnings[peer_id] = true
+	push_warning(
+		"MpGame: peer %d 角色不一致 local=%s host=%s，忽略该角色快照。"
+		% [peer_id, local_character_id, host_character_id]
+	)
 
 
 func _is_complete_player_snapshot_batch(data: PackedByteArray, decoded_count: int) -> bool:
@@ -851,6 +933,108 @@ func _apply_accepted_client_player_state(
 		player_node.get_multiplayer_facing_id(),
 		player_node.get_multiplayer_anim_state()
 	)
+
+
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_hoe_primary_attack_requested(direction: Vector2) -> void:
+	if not net_manager.is_host() or game == null:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
+	_apply_authoritative_hoe_action(sender_id, HOE_ACTION_PRIMARY, direction)
+
+
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_hoe_whirlwind_requested() -> void:
+	if not net_manager.is_host() or game == null:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
+	_apply_authoritative_hoe_action(sender_id, HOE_ACTION_WHIRLWIND, Vector2.ZERO)
+
+
+func _apply_authoritative_hoe_action(
+	peer_id: int,
+	action_kind: StringName,
+	direction: Vector2
+) -> bool:
+	if not net_manager.is_host() or game == null or peer_id <= 0:
+		return false
+	var player_node := game.get_player_for_peer(peer_id)
+	if not _is_valid_hoe_cat_player(player_node):
+		return false
+	var safe_direction := _sanitize_hoe_action_direction(player_node, direction)
+	var succeeded := false
+	match action_kind:
+		HOE_ACTION_PRIMARY:
+			succeeded = bool(
+				player_node.call("try_authoritative_hoe_primary_attack", safe_direction)
+			)
+		HOE_ACTION_WHIRLWIND:
+			succeeded = bool(player_node.call("try_authoritative_hoe_whirlwind"))
+		_:
+			return false
+	if not succeeded:
+		return false
+	var action_sequence := int(_hoe_action_sequences_by_peer.get(peer_id, 0)) + 1
+	_hoe_action_sequences_by_peer[peer_id] = action_sequence
+	_rpc_to_connected_clients(
+		&"net_hoe_action_confirmed",
+		[peer_id, String(action_kind), safe_direction, action_sequence]
+	)
+	return true
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_hoe_action_confirmed(
+	peer_id: int,
+	action_kind_text: String,
+	direction: Vector2,
+	action_sequence: int
+) -> void:
+	if game == null or multiplayer.get_remote_sender_id() != _get_host_peer_id():
+		return
+	if peer_id <= 0 or action_sequence <= 0:
+		return
+	var action_kind := StringName(action_kind_text)
+	if action_kind != HOE_ACTION_PRIMARY and action_kind != HOE_ACTION_WHIRLWIND:
+		return
+	var player_node := game.get_player_for_peer(peer_id)
+	if not _is_valid_hoe_cat_player(player_node):
+		return
+	player_node.call(
+		"play_remote_hoe_action",
+		action_kind,
+		_sanitize_hoe_action_direction(player_node, direction),
+		action_sequence
+	)
+
+
+func _is_valid_hoe_cat_player(player_node: Player) -> bool:
+	return (
+		player_node != null
+		and is_instance_valid(player_node)
+		and player_node.has_method("is_hoe_cat")
+		and bool(player_node.call("is_hoe_cat"))
+	)
+
+
+func _sanitize_hoe_action_direction(player_node: Player, direction: Vector2) -> Vector2:
+	if is_finite(direction.x) and is_finite(direction.y) and direction.length_squared() > 0.0001:
+		return direction.normalized()
+	if player_node == null:
+		return Vector2.RIGHT
+	match player_node.get_multiplayer_facing_id():
+		1:
+			return Vector2.LEFT
+		2:
+			return Vector2.UP
+		3:
+			return Vector2.DOWN
+		_:
+			return Vector2.RIGHT
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_player_state_corrected(corrected_position: Vector2, corrected_velocity: Vector2) -> void:
@@ -1991,7 +2175,7 @@ func net_player_damage_applied(
 		player_node.start_multiplayer_invincibility(player_node.invincibility_duration)
 
 
-func apply_multiplayer_collectible_player_heal(target_player: Player, heal_amount: int) -> bool:
+func apply_multiplayer_player_heal(target_player: Player, heal_amount: int) -> bool:
 	if not net_manager.is_host():
 		return false
 	if target_player == null or not is_instance_valid(target_player):
@@ -2007,6 +2191,10 @@ func apply_multiplayer_collectible_player_heal(target_player: Player, heal_amoun
 	)
 	net_player_healed(target_player.peer_id, target_player.current_health, health_revision)
 	return true
+
+
+func apply_multiplayer_collectible_player_heal(target_player: Player, heal_amount: int) -> bool:
+	return apply_multiplayer_player_heal(target_player, heal_amount)
 
 
 @rpc("authority", "call_remote", "reliable", 4)
@@ -3272,6 +3460,8 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_last_enemy_keyframe_time_by_peer.erase(peer_id)
 	player_visual_interpolators.erase(peer_id)
 	_last_player_state_sequences.erase(peer_id)
+	_player_character_mismatch_warnings.erase(peer_id)
+	_hoe_action_sequences_by_peer.erase(peer_id)
 	_accepted_player_state_positions.erase(peer_id)
 	_accepted_player_state_times.erase(peer_id)
 	_host_latest_client_player_snapshot_states.erase(peer_id)
@@ -3321,6 +3511,8 @@ func _return_to_lobby() -> void:
 	snapshot_mgr.reset_delta_cache()
 	_last_player_keyframe_time_by_peer.clear()
 	_last_enemy_keyframe_time_by_peer.clear()
+	_player_character_mismatch_warnings.clear()
+	_hoe_action_sequences_by_peer.clear()
 	var tree: SceneTree = get_tree()
 	if tree == null:
 		return

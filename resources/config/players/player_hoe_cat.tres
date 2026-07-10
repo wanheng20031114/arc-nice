@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="PlayerCharacterConfig" format=3 uid="uid://be3v53dosff4y"]
+
+[ext_resource type="Script" uid="uid://by2j147pm6q40" path="res://resources/config/players/player_character_config.gd" id="1_config"]
+
+[resource]
+script = ExtResource("1_config")
+character_id = &"hoe_cat"
+display_name = "锄头猫猫"
+english_name = "Hoe Cat"
+title = "田垄守望者"
+description = "贴近敌阵挥动锄头，以短促扇形斩击和旋风斩守住身边的土地。"
+playstyle = "近战 · 持续恢复"
+player_scene = "res://scene/player_hoe_cat.tscn"
+portrait_texture = "res://resources/texture/player/hoe_cat/portrait.png"
+skill_display_name = "旋风斩"
+skill_description = "以自身为中心进行半径15的360度斩击，造成攻击力280%的物理伤害并恢复3点生命值。"
+skill_icon_texture = "res://resources/texture/player/hoe_cat/whirlwind_icon.png"
+starting_max_health = 80
+starting_attack_damage = 15
+attack_speed_units_per_attack = 200.0
+card_background_color = Color(0.137, 0.125, 0.082, 0.98)
+card_edge_color = Color(0.827, 0.608, 0.259, 1)
+card_hover_edge_color = Color(0.949, 0.82, 0.482, 1)
+card_accent_color = Color(0.949, 0.82, 0.482, 1)
+card_button_color = Color(0.427, 0.553, 0.275, 1)
+card_text_color = Color(0.95, 0.98, 0.86, 1)

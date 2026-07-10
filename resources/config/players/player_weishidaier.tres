@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="PlayerCharacterConfig" format=3 uid="uid://dxhgs8j0kldnf"]
+
+[ext_resource type="Script" uid="uid://by2j147pm6q40" path="res://resources/config/players/player_character_config.gd" id="1_config"]
+
+[resource]
+script = ExtResource("1_config")
+character_id = &"weishidaier"
+display_name = "维什戴尔"
+english_name = "Weishidaier"
+title = "目光呆滞"
+description = "以浮游炮压制远处的敌人，并用高爆炸弹清理密集目标。"
+playstyle = "远程 · 火力覆盖"
+player_scene = "res://scene/player_weishidaier.tscn"
+portrait_texture = "res://resources/texture/player/weishidaier/portrait.png"
+skill_display_name = "经典技能"
+skill_description = "向上一次射击位置发射一枚炸弹造成攻击力330%的大范围伤害"
+skill_icon_texture = "res://resources/texture/player/weishidaier/skill1_icon.png"
+starting_attack_speed = 555.56
+card_background_color = Color(0.075, 0.095, 0.125, 0.98)
+card_edge_color = Color(0.36, 0.68, 0.92, 1)
+card_hover_edge_color = Color(0.62, 0.86, 1, 1)
+card_accent_color = Color(0.62, 0.86, 1, 1)
+card_button_color = Color(0.16, 0.42, 0.66, 1)
+card_text_color = Color(0.91, 0.96, 1, 1)

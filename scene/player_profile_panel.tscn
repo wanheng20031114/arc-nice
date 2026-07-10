@@ -1,4 +1,4 @@
-[gd_scene load_steps=36 format=3]
+[gd_scene load_steps=35 format=3]
 
 [ext_resource type="Script" path="res://scene/player_profile_panel.gd" id="1_panel"]
 [ext_resource type="Texture2D" path="res://resources/texture/player_profile_background.png" id="2_background"]
@@ -14,7 +14,6 @@
 [ext_resource type="Texture2D" path="res://resources/texture/profile_tab_unselected.png" id="12_tab_unselected"]
 [ext_resource type="Texture2D" path="res://resources/texture/profile_tab_hovered.png" id="13_tab_hovered"]
 [ext_resource type="Texture2D" path="res://resources/texture/profile_tab_selected.png" id="14_tab_selected"]
-[ext_resource type="Texture2D" path="res://resources/texture/weishidaier_skill1_icon.png" id="15_skill_icon"]
 [ext_resource type="Texture2D" path="res://resources/texture/item_detail_panel_bg.png" id="16_item_detail_bg"]
 [ext_resource type="Texture2D" path="res://resources/texture/item_category_badge_collectible.png" id="17_category_collectible"]
 
@@ -238,9 +237,10 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_close_hover")
 theme_override_styles/focus = SubResource("StyleBoxFlat_close_hover")
 tooltip_text = "关闭"
 
-[node name="Portrait" type="AnimatedSprite2D" parent="Overlay/PanelRoot"]
+[node name="Portrait" type="Sprite2D" parent="Overlay/PanelRoot"]
+texture_filter = 1
 position = Vector2(150, 178)
-scale = Vector2(3.4, 3.4)
+scale = Vector2(0.85, 0.85)
 
 [node name="AttackLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
@@ -396,17 +396,12 @@ offset_left = 76.0
 offset_top = 211.0
 offset_right = 244.0
 offset_bottom = 251.0
-tooltip_text = "经典技能
-向上一次射击位置发射一枚炸弹造成攻击力330%的大范围伤害"
 
 [node name="SkillIcon" type="TextureRect" parent="Overlay/PanelRoot/SkillInfo"]
 layout_mode = 0
 offset_right = 38.0
 offset_bottom = 38.0
 mouse_default_cursor_shape = 2
-tooltip_text = "经典技能
-向上一次射击位置发射一枚炸弹造成攻击力330%的大范围伤害"
-texture = ExtResource("15_skill_icon")
 expand_mode = 1
 stretch_mode = 5
 
@@ -417,7 +412,7 @@ offset_left = 0.0
 offset_top = 44.0
 offset_right = 148.0
 offset_bottom = 68.0
-text = "经典技能"
+text = "技能"
 label_settings = SubResource("LabelSettings_value_small")
 vertical_alignment = 1
 
@@ -427,7 +422,6 @@ layout_mode = 0
 offset_top = 70.0
 offset_right = 221.0
 offset_bottom = 118.0
-text = "向上一次射击位置发射一枚炸弹造成攻击力330%的大范围伤害"
 label_settings = SubResource("LabelSettings_skill_desc")
 autowrap_mode = 1
 vertical_alignment = 0

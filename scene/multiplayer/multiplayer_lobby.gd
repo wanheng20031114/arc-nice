@@ -59,11 +59,14 @@ enum PublicRequest {
 @onready var room_wait_panel: PanelContainer = $LobbyCenter/RoomWaitPanel
 @onready var room_code_label: Label = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomCodeLabel
 @onready var wait_player_list_vbox: VBoxContainer = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/PlayerListScroll/PlayerListVBox
+@onready var choose_character_btn: Button = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/ChooseCharacterButton
 @onready var start_game_btn: Button = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/StartGameButton
 @onready var leave_room_btn: Button = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/LeaveButton
 @onready var wait_status_label: Label = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/WaitStatusLabel
 @onready var public_lobby_request: HTTPRequest = $PublicLobbyRequest
+@onready var character_choice_overlay: PlayerCharacterChoiceOverlay = $PlayerCharacterChoiceOverlay
 @onready var net_manager: Node = get_node("/root/NetManager")
+@onready var run_state: Node = get_node_or_null("/root/RunState")
 
 var current_view: LobbyView = LobbyView.USERNAME_INPUT
 var lan_panel: VBoxContainer
@@ -88,6 +91,7 @@ var _username_caret_blink_elapsed := 0.0
 
 
 func _ready() -> void:
+	_sync_local_character_selection()
 	_build_lan_direct_panel()
 	username_input.max_length = _NetConstants.MAX_PLAYER_NAME_LENGTH
 	username_name_display.set("max_length", _NetConstants.MAX_PLAYER_NAME_LENGTH)
@@ -112,8 +116,11 @@ func _ready() -> void:
 	create_room_button.pressed.connect(_on_create_public_room_pressed)
 	quick_match_button.pressed.connect(_on_quick_match_pressed)
 	browser_back_button.pressed.connect(_on_back_to_mode_select)
+	choose_character_btn.pressed.connect(_on_choose_character_pressed)
 	start_game_btn.pressed.connect(_on_start_game)
 	leave_room_btn.pressed.connect(_on_leave_room)
+	character_choice_overlay.character_confirmed.connect(_on_character_confirmed)
+	character_choice_overlay.selection_closed.connect(_on_character_selection_closed)
 	public_lobby_request.request_completed.connect(_on_public_lobby_request_completed)
 
 	_connect_net_manager_signals()
@@ -511,7 +518,10 @@ func _on_public_lobby_request_completed(
 			if pending_start_after_public_status:
 				pending_start_after_public_status = false
 				net_manager.host_start_game()
-				_start_multiplayer_game()
+				if int(net_manager.connection_state) == int(STATE_LOADING_GAME):
+					_start_multiplayer_game()
+				else:
+					wait_status_label.text = "开局已取消：仍有玩家尚未确认角色。"
 		PublicRequest.LEAVE_ROOM, PublicRequest.DESTROY_ROOM:
 			_clear_public_room_state()
 			if current_view != LobbyView.USERNAME_INPUT:
@@ -677,6 +687,7 @@ func _enter_room_wait(room_data: Dictionary) -> void:
 	start_game_btn.visible = net_manager.is_host()
 	wait_status_label.text = "等待玩家加入..."
 	_refresh_wait_player_list()
+	call_deferred("_open_character_choice_if_needed")
 
 
 func _refresh_wait_player_list() -> void:
@@ -686,17 +697,74 @@ func _refresh_wait_player_list() -> void:
 	for peer_id_variant in net_manager.connected_players:
 		var peer_id: int = int(peer_id_variant)
 		var player_name: String = str(net_manager.connected_players[peer_id])
+		var character_id := StringName(net_manager.call("get_player_character_id", peer_id))
+		var character_name := _get_character_display_name(character_id)
+		var character_confirmed := bool(net_manager.call("is_player_character_confirmed", peer_id))
 		var label := Label.new()
 		var is_host_marker := " (Host)" if peer_id == net_manager.get_host_peer_id() else ""
 		var is_local_marker: String = " <- 你" if peer_id == net_manager.get_local_peer_id() else ""
-		label.text = "%s%s%s" % [player_name, is_host_marker, is_local_marker]
+		var confirmation_marker := " ✓" if character_confirmed else "（角色未确认）"
+		label.text = "%s · %s%s%s%s" % [
+			player_name,
+			character_name,
+			confirmation_marker,
+			is_host_marker,
+			is_local_marker,
+		]
 		wait_player_list_vbox.add_child(label)
 
 	if net_manager.is_host():
 		start_game_btn.disabled = (
 			net_manager.connected_players.size() < 2
+			or not bool(net_manager.call("are_all_player_characters_confirmed"))
 			or (current_public_is_host and not relay_host_ready_sent)
 		)
+	_update_choose_character_button()
+
+
+func _open_character_choice_if_needed() -> void:
+	if current_view != LobbyView.ROOM_WAIT:
+		return
+	var local_peer_id := int(net_manager.call("get_local_peer_id"))
+	if local_peer_id > 0 and bool(net_manager.call("is_player_character_confirmed", local_peer_id)):
+		return
+	_on_choose_character_pressed()
+
+
+func _on_choose_character_pressed() -> void:
+	var selected_character_id := _get_local_selected_character_id()
+	character_choice_overlay.open(selected_character_id)
+
+
+func _on_character_confirmed(character_id: StringName) -> void:
+	if not PlayerCharacterRegistry.is_valid_character_id(character_id):
+		return
+	if run_state != null and run_state.has_method("set_selected_character"):
+		run_state.call("set_selected_character", character_id)
+	net_manager.call("set_local_character_id", character_id, true)
+	character_choice_overlay.close()
+	_refresh_wait_player_list()
+	wait_status_label.text = "角色已确认，等待其他玩家。"
+
+
+func _on_character_selection_closed() -> void:
+	if current_view == LobbyView.ROOM_WAIT:
+		choose_character_btn.grab_focus()
+
+
+func _update_choose_character_button() -> void:
+	var character_id := _get_local_selected_character_id()
+	var character_name := _get_character_display_name(character_id)
+	var local_peer_id := int(net_manager.call("get_local_peer_id"))
+	var confirmed := (
+		local_peer_id > 0
+		and bool(net_manager.call("is_player_character_confirmed", local_peer_id))
+	)
+	choose_character_btn.text = (
+		"更换角色：%s（已确认）" % character_name
+		if confirmed
+		else "选择并确认角色：%s" % character_name
+	)
 
 
 func _on_net_player_list_changed() -> void:
@@ -744,6 +812,10 @@ func _on_net_state_changed(new_state: NetManagerStore.ConnectionState) -> void:
 func _on_start_game() -> void:
 	if not net_manager.is_host():
 		return
+	if not bool(net_manager.call("are_all_player_characters_confirmed")):
+		wait_status_label.text = "请等待所有玩家确认角色。"
+		_refresh_wait_player_list()
+		return
 	if current_public_is_host and not current_public_room_id.is_empty():
 		pending_start_after_public_status = true
 		wait_status_label.text = "正在通知公网大厅开始游戏..."
@@ -752,7 +824,8 @@ func _on_start_game() -> void:
 			pending_start_after_public_status = false
 		return
 	net_manager.host_start_game()
-	_start_multiplayer_game()
+	if int(net_manager.connection_state) == int(STATE_LOADING_GAME):
+		_start_multiplayer_game()
 
 
 func _start_multiplayer_game() -> void:
@@ -821,3 +894,26 @@ func _get_public_room_id(room_data: Dictionary) -> String:
 	if room_id.is_empty():
 		room_id = str(room_data.get("id", ""))
 	return room_id
+
+
+func _sync_local_character_selection() -> void:
+	net_manager.call("set_local_character_id", _get_local_selected_character_id(), false)
+
+
+func _get_local_selected_character_id() -> StringName:
+	var selected_character_id := PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
+	if run_state != null:
+		if run_state.has_method("get_selected_character_id"):
+			selected_character_id = StringName(run_state.call("get_selected_character_id"))
+		else:
+			selected_character_id = StringName(run_state.get("selected_character_id"))
+	if not PlayerCharacterRegistry.is_valid_character_id(selected_character_id):
+		selected_character_id = PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
+	return selected_character_id
+
+
+func _get_character_display_name(character_id: StringName) -> String:
+	var config: PlayerCharacterConfig = PlayerCharacterRegistry.get_config(character_id)
+	if config != null and not config.display_name.is_empty():
+		return config.display_name
+	return "锄头猫猫" if character_id == &"hoe_cat" else "维什戴尔"

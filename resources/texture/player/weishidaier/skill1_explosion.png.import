@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cp6q7gqybqs6b"
-path="res://.godot/imported/weishidaier_skill1_projectile.png-1c8f0971c8c5b7a8a507590836452e56.ctex"
+uid="uid://dqku418onyauy"
+path="res://.godot/imported/skill1_explosion.png-9b15624b3a87df0d7934284630e5db98.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/texture/weishidaier_skill1_projectile.png"
-dest_files=["res://.godot/imported/weishidaier_skill1_projectile.png-1c8f0971c8c5b7a8a507590836452e56.ctex"]
+source_file="res://resources/texture/player/weishidaier/skill1_explosion.png"
+dest_files=["res://.godot/imported/skill1_explosion.png-9b15624b3a87df0d7934284630e5db98.ctex"]
 
 [params]
 

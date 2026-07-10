@@ -6,7 +6,7 @@ const SKILL1_CONFIG := preload("res://resources/config/bosses/linglan_skill1.tre
 const SAKURA_BULLET_TEXTURE := preload("res://resources/texture/boss_linglan/skill1_sakura_bullet.png")
 const SAKURA_BULLET_SCENE := preload("res://scene/linglan_skill1_sakura_bullet.tscn")
 const WARNING_RAY_SCENE := preload("res://scene/linglan_skill1_warning_ray.tscn")
-const PLAYER_SCENE := preload("res://scene/player.tscn")
+const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
 const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 
 var failures: Array[String] = []

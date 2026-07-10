@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b5sr8ua78d4vj"
-path="res://.godot/imported/浮游炮.png-a0fa8200cc1092fcee8840f7dc63bcec.ctex"
+uid="uid://cmearluyh35cs"
+path="res://.godot/imported/hoe_cat_move.png-f0b7d0d5db5c9d6e95ed083fc9662e47.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/texture/浮游炮.png"
-dest_files=["res://.godot/imported/浮游炮.png-a0fa8200cc1092fcee8840f7dc63bcec.ctex"]
+source_file="res://resources/texture/player/hoe_cat/hoe_cat_move.png"
+dest_files=["res://.godot/imported/hoe_cat_move.png-f0b7d0d5db5c9d6e95ed083fc9662e47.ctex"]
 
 [params]
 

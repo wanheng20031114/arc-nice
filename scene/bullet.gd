@@ -129,7 +129,7 @@ func try_hit_enemy(enemy: Enemy) -> bool:
 		hit_enemy_instance_ids.erase(enemy.get_instance_id())
 		return false
 	if collectible_owner != null and is_instance_valid(collectible_owner):
-		collectible_owner.apply_collectible_bullet_hit_effects(enemy, damage)
+		collectible_owner.apply_collectible_attack_hit_effects(enemy, damage)
 	if not pierces_enemies:
 		queue_free()
 	return true

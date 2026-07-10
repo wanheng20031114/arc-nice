@@ -1,6 +1,6 @@
 extends SceneTree
 
-const PLAYER_SCENE := preload("res://scene/player.tscn")
+const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
 const FAST_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_fast.tres")
 
 var failures: Array[String] = []

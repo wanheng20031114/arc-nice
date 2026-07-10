@@ -7,7 +7,10 @@ signal connection_state_changed(new_state: ConnectionState)
 signal player_joined(peer_id: int, player_name: String)
 signal player_left(peer_id: int)
 signal player_list_changed
+signal player_character_changed(peer_id: int, character_id: StringName, confirmed: bool)
 signal connection_failed(reason: String)
+
+const DEFAULT_CHARACTER_ID := &"weishidaier"
 
 enum NetRole { NONE, HOST, CLIENT }
 enum ConnMode { DIRECT, RELAY }
@@ -24,10 +27,14 @@ var net_role: NetRole = NetRole.NONE
 var conn_mode: ConnMode = ConnMode.DIRECT
 var connection_state: ConnectionState = ConnectionState.DISCONNECTED
 var local_player_name: String = ""
+var local_character_id: StringName = DEFAULT_CHARACTER_ID
+var local_character_confirmed: bool = true
 var lan_port: int = NetConstants.ENET_PORT_DEFAULT
 var relay_ip: String = ""
 var relay_port: int = 0
 var connected_players: Dictionary = {}
+var connected_player_characters: Dictionary = {}
+var confirmed_character_peers: Dictionary = {}
 var host_peer_id: int = 1
 var host_game_ready: bool = false
 var public_room_id: String = ""
@@ -104,11 +111,15 @@ func host_create_lan_server(port: int = NetConstants.ENET_PORT_DEFAULT) -> Error
 	net_role = NetRole.HOST
 	conn_mode = ConnMode.DIRECT
 	connected_players.clear()
+	connected_player_characters.clear()
+	confirmed_character_peers.clear()
 	host_peer_id = get_local_peer_id()
 	if host_peer_id <= 0:
 		host_peer_id = 1
 	set_multiplayer_authority(host_peer_id)
 	connected_players[host_peer_id] = _sanitize_player_name(local_player_name)
+	connected_player_characters[host_peer_id] = _sanitize_character_id(local_character_id)
+	confirmed_character_peers[host_peer_id] = local_character_confirmed
 	_physics_frame_count = 0
 	_set_connection_state(ConnectionState.HOSTING_LAN)
 	player_joined.emit(host_peer_id, connected_players[host_peer_id])
@@ -141,6 +152,8 @@ func client_connect_lan(host_ip: String, port: int = NetConstants.ENET_PORT_DEFA
 	net_role = NetRole.CLIENT
 	conn_mode = ConnMode.DIRECT
 	connected_players.clear()
+	connected_player_characters.clear()
+	confirmed_character_peers.clear()
 	host_peer_id = 1
 	set_multiplayer_authority(host_peer_id)
 	_physics_frame_count = 0
@@ -183,6 +196,8 @@ func host_create_relay_room(target_relay_ip: String, target_relay_port: int) -> 
 	net_role = NetRole.HOST
 	conn_mode = ConnMode.RELAY
 	connected_players.clear()
+	connected_player_characters.clear()
+	confirmed_character_peers.clear()
 	host_peer_id = 0
 	set_multiplayer_authority(1)
 	_relay_register_pending = false
@@ -226,6 +241,8 @@ func client_join_relay_room(
 	net_role = NetRole.CLIENT
 	conn_mode = ConnMode.RELAY
 	connected_players.clear()
+	connected_player_characters.clear()
+	confirmed_character_peers.clear()
 	host_peer_id = target_host_peer_id
 	set_multiplayer_authority(host_peer_id)
 	_relay_register_pending = false
@@ -253,6 +270,8 @@ func disconnect_from_game() -> void:
 	relay_ip = ""
 	relay_port = 0
 	connected_players.clear()
+	connected_player_characters.clear()
+	confirmed_character_peers.clear()
 	host_peer_id = 1
 	set_multiplayer_authority(host_peer_id)
 	host_game_ready = false
@@ -268,6 +287,9 @@ func disconnect_from_game() -> void:
 
 func host_start_game() -> void:
 	if not is_host():
+		return
+	if not are_all_player_characters_confirmed():
+		connection_failed.emit("仍有玩家尚未确认角色")
 		return
 	host_game_ready = false
 	_set_connection_state(ConnectionState.LOADING_GAME)
@@ -288,6 +310,59 @@ func mark_in_game() -> void:
 		return
 	host_game_ready = true
 	_send_host_game_ready_to_clients()
+
+
+func set_local_character_id(character_id: StringName, confirmed: bool = true) -> bool:
+	if is_multiplayer_active() and connection_state >= ConnectionState.LOADING_GAME:
+		return false
+	var resolved_character_id := _sanitize_character_id(character_id)
+	if resolved_character_id != character_id:
+		return false
+	local_character_id = resolved_character_id
+	local_character_confirmed = confirmed
+	var local_peer_id := get_local_peer_id()
+	if local_peer_id <= 0 or not is_multiplayer_active():
+		return true
+	if is_host():
+		_set_peer_character(local_peer_id, resolved_character_id, confirmed)
+		_broadcast_player_list_to_clients()
+	elif connection_state >= ConnectionState.CONNECTED_IN_LOBBY:
+		_rpc_set_player_character.rpc_id(
+			get_host_peer_id(),
+			String(resolved_character_id),
+			confirmed
+		)
+	return true
+
+
+func confirm_local_character() -> void:
+	set_local_character_id(local_character_id, true)
+
+
+func get_player_character_id(peer_id: int) -> StringName:
+	return StringName(connected_player_characters.get(peer_id, DEFAULT_CHARACTER_ID))
+
+
+func get_player_character_map() -> Dictionary:
+	return connected_player_characters.duplicate()
+
+
+func is_player_character_confirmed(peer_id: int) -> bool:
+	return bool(confirmed_character_peers.get(peer_id, false))
+
+
+func are_all_player_characters_confirmed() -> bool:
+	if connected_players.is_empty():
+		return false
+	for peer_id_variant in connected_players:
+		var peer_id := int(peer_id_variant)
+		if not connected_player_characters.has(peer_id):
+			return false
+		if not PlayerCharacterRegistry.is_valid_character_id(get_player_character_id(peer_id)):
+			return false
+		if not is_player_character_confirmed(peer_id):
+			return false
+	return true
 
 
 func get_player_name_by_id(peer_id: int) -> String:
@@ -366,6 +441,8 @@ func _on_peer_connected(peer_id: int) -> void:
 func _on_peer_disconnected(peer_id: int) -> void:
 	var player_name: String = connected_players.get(peer_id, "Unknown")
 	connected_players.erase(peer_id)
+	connected_player_characters.erase(peer_id)
+	confirmed_character_peers.erase(peer_id)
 	player_left.emit(peer_id)
 	player_list_changed.emit()
 	if conn_mode == ConnMode.RELAY and net_role == NetRole.CLIENT and peer_id == get_host_peer_id():
@@ -395,7 +472,11 @@ func _handle_connected_to_server() -> void:
 			return
 		set_multiplayer_authority(host_peer_id)
 		connected_players.clear()
+		connected_player_characters.clear()
+		confirmed_character_peers.clear()
 		connected_players[host_peer_id] = _sanitize_player_name(local_player_name)
+		connected_player_characters[host_peer_id] = _sanitize_character_id(local_character_id)
+		confirmed_character_peers[host_peer_id] = local_character_confirmed
 		player_joined.emit(host_peer_id, connected_players[host_peer_id])
 		player_list_changed.emit()
 		_set_connection_state(ConnectionState.HOSTING_LAN)
@@ -407,7 +488,12 @@ func _handle_connected_to_server() -> void:
 		_relay_register_pending = true
 		_try_send_relay_registration()
 		return
-	_rpc_register_player.rpc_id(get_host_peer_id(), _get_safe_local_name())
+	_rpc_register_player.rpc_id(
+		get_host_peer_id(),
+		_get_safe_local_name(),
+		String(local_character_id),
+		local_character_confirmed
+	)
 	_set_connection_state(ConnectionState.CONNECTED_IN_LOBBY)
 	_debug_log("NetManager: 已连接到 LAN Host")
 
@@ -479,13 +565,22 @@ func _try_send_relay_registration() -> void:
 	if target_host_id <= 0 or not multiplayer.get_peers().has(target_host_id):
 		return
 	_relay_register_pending = false
-	_rpc_register_player.rpc_id(target_host_id, _get_safe_local_name())
+	_rpc_register_player.rpc_id(
+		target_host_id,
+		_get_safe_local_name(),
+		String(local_character_id),
+		local_character_confirmed
+	)
 	_set_connection_state(ConnectionState.CONNECTED_IN_LOBBY)
 	_debug_log("NetManager: 已连接到 Relay Host %d" % target_host_id)
 
 
 @rpc("any_peer", "call_remote", "reliable", 0)
-func _rpc_register_player(player_name: String) -> void:
+func _rpc_register_player(
+	player_name: String,
+	character_id: String = "weishidaier",
+	character_confirmed: bool = true
+) -> void:
 	if not is_host():
 		return
 
@@ -498,10 +593,33 @@ func _rpc_register_player(player_name: String) -> void:
 		return
 
 	connected_players[sender_id] = _sanitize_player_name(player_name)
+	var requested_character_id := StringName(character_id)
+	var character_is_valid := PlayerCharacterRegistry.is_valid_character_id(requested_character_id)
+	_set_peer_character(
+		sender_id,
+		requested_character_id if character_is_valid else DEFAULT_CHARACTER_ID,
+		character_confirmed and character_is_valid
+	)
 	player_joined.emit(sender_id, connected_players[sender_id])
 	player_list_changed.emit()
 	_broadcast_player_list_to_clients()
 	_debug_log("NetManager: 玩家注册, id=%d, name=%s" % [sender_id, connected_players[sender_id]])
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func _rpc_set_player_character(character_id: String, confirmed: bool) -> void:
+	if not is_host():
+		return
+	if connection_state >= ConnectionState.LOADING_GAME:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0 or not connected_players.has(sender_id):
+		return
+	var requested_id := StringName(character_id)
+	if not PlayerCharacterRegistry.is_valid_character_id(requested_id):
+		return
+	_set_peer_character(sender_id, requested_id, confirmed)
+	_broadcast_player_list_to_clients()
 
 
 @rpc("authority", "call_remote", "reliable", 0)
@@ -517,7 +635,11 @@ func _rpc_sync_player_list(player_list: Array, new_host_peer_id: int = 0) -> voi
 	if sender_id > 0 and resolved_host_id > 0 and sender_id != resolved_host_id:
 		return
 	var previous_players := connected_players.duplicate()
+	var previous_characters := connected_player_characters.duplicate()
+	var previous_confirmations := confirmed_character_peers.duplicate()
 	var synced_players: Dictionary = {}
+	var synced_characters: Dictionary = {}
+	var synced_confirmations: Dictionary = {}
 	for entry_variant in player_list:
 		var entry := entry_variant as Dictionary
 		if entry == null:
@@ -527,11 +649,21 @@ func _rpc_sync_player_list(player_list: Array, new_host_peer_id: int = 0) -> voi
 		if peer_id <= 0:
 			continue
 		synced_players[peer_id] = player_name
+		synced_characters[peer_id] = _sanitize_character_id(
+			StringName(entry.get("character_id", DEFAULT_CHARACTER_ID))
+		)
+		synced_confirmations[peer_id] = bool(entry.get("character_confirmed", false))
 	if not synced_players.has(resolved_host_id):
 		return
 	host_peer_id = resolved_host_id
 	set_multiplayer_authority(host_peer_id)
 	connected_players = synced_players
+	connected_player_characters = synced_characters
+	confirmed_character_peers = synced_confirmations
+	var local_peer_id := get_local_peer_id()
+	if local_peer_id > 0 and connected_player_characters.has(local_peer_id):
+		local_character_id = get_player_character_id(local_peer_id)
+		local_character_confirmed = is_player_character_confirmed(local_peer_id)
 	for previous_peer_id_variant in previous_players:
 		var previous_peer_id := int(previous_peer_id_variant)
 		if not connected_players.has(previous_peer_id):
@@ -544,6 +676,14 @@ func _rpc_sync_player_list(player_list: Array, new_host_peer_id: int = 0) -> voi
 			or str(previous_players.get(peer_id, "")) != player_name
 		):
 			player_joined.emit(peer_id, player_name)
+		var character_id := get_player_character_id(peer_id)
+		var character_confirmed := is_player_character_confirmed(peer_id)
+		if (
+			not previous_characters.has(peer_id)
+			or StringName(previous_characters.get(peer_id, DEFAULT_CHARACTER_ID)) != character_id
+			or bool(previous_confirmations.get(peer_id, false)) != character_confirmed
+		):
+			player_character_changed.emit(peer_id, character_id, character_confirmed)
 	player_list_changed.emit()
 
 
@@ -568,7 +708,12 @@ func _build_player_list_array() -> Array:
 	var result: Array = []
 	for peer_id_variant in connected_players:
 		var peer_id: int = int(peer_id_variant)
-		result.append({"id": peer_id, "name": connected_players[peer_id]})
+		result.append({
+			"id": peer_id,
+			"name": connected_players[peer_id],
+			"character_id": String(get_player_character_id(peer_id)),
+			"character_confirmed": is_player_character_confirmed(peer_id),
+		})
 	return result
 
 
@@ -617,6 +762,28 @@ func _set_connection_state(new_state: ConnectionState) -> void:
 
 func _get_safe_local_name() -> String:
 	return _sanitize_player_name(local_player_name)
+
+
+func _set_peer_character(peer_id: int, character_id: StringName, confirmed: bool) -> void:
+	if peer_id <= 0:
+		return
+	var resolved_character_id := _sanitize_character_id(character_id)
+	var changed := (
+		StringName(connected_player_characters.get(peer_id, DEFAULT_CHARACTER_ID))
+		!= resolved_character_id
+		or bool(confirmed_character_peers.get(peer_id, false)) != confirmed
+	)
+	connected_player_characters[peer_id] = resolved_character_id
+	confirmed_character_peers[peer_id] = confirmed
+	if changed:
+		player_character_changed.emit(peer_id, resolved_character_id, confirmed)
+		player_list_changed.emit()
+
+
+func _sanitize_character_id(character_id: StringName) -> StringName:
+	if PlayerCharacterRegistry.is_valid_character_id(character_id):
+		return character_id
+	return DEFAULT_CHARACTER_ID
 
 
 func _sanitize_player_name(raw_name: String) -> String:

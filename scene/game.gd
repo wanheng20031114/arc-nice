@@ -3,7 +3,7 @@ class_name Game
 
 const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/enemy/yuanshi_insect_spawn_effect.tscn")
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/guardian_point_light.png")
-const PLAYER_SCENE := preload("res://scene/player.tscn")
+const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
 const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := "res://scene/linglan_boss_intro_vfx.tscn"
 const BOSS_HEALTH_HUD_SCENE_PATH := "res://scene/boss_health_hud.tscn"
 const COUNTDOWN_FINAL_SECONDS := 3
@@ -86,7 +86,8 @@ enum WaveState {
 @export var runtime_mode: RuntimeMode = RuntimeMode.SINGLEPLAYER
 @export var linglan_boss_enabled: bool = true
 
-@onready var player: Player = $Player
+var player: Player = null
+@onready var player_spawn: Marker2D = $PlayerSpawn
 @onready var ground_tile_map_layer: TileMapLayer = $GroundTileMapLayer
 @onready var overlay_tile_map_layer: TileMapLayer = $OverlayTileMapLayer
 @onready var enemy_container: Node2D = $EnemyContainer
@@ -126,6 +127,7 @@ var next_flow_step_after_rest: FlowStepConfig = null
 var music_fade_tween: Tween = null
 var multiplayer_local_peer_id: int = 0
 var multiplayer_player_names: Dictionary = {}
+var multiplayer_player_character_ids: Dictionary = {}
 var peer_players: Dictionary = {}
 var multiplayer_pickups: Dictionary = {}
 var removed_multiplayer_pickup_ids: Dictionary = {}
@@ -156,6 +158,7 @@ func _ready() -> void:
 		user_settings.call("assign_audio_buses_to_tree")
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		run_state.ensure_run_started()
+		_configure_singleplayer_player()
 	_collect_enemy_spawn_points()
 	_configure_timers()
 	_prewarm_enemy_visual_resources()
@@ -164,6 +167,11 @@ func _ready() -> void:
 		run_state.set_active_multiplayer_peer(multiplayer_local_peer_id)
 		_configure_multiplayer_players()
 		_register_static_multiplayer_pickups()
+	if player == null:
+		push_error("Game: 无法创建当前角色，停止初始化。")
+		set_process(false)
+		set_physics_process(false)
+		return
 	_apply_initial_player_xirang()
 	currency_hud.bind_player(player)
 	player_profile_panel.bind_player(player)
@@ -215,11 +223,46 @@ func _unhandled_input(event: InputEvent) -> void:
 func configure_multiplayer(
 	mode: int,
 	local_peer_id: int,
-	player_names: Dictionary
+	player_names: Dictionary,
+	player_character_ids: Dictionary = {}
 ) -> void:
 	runtime_mode = mode as RuntimeMode
 	multiplayer_local_peer_id = local_peer_id
 	multiplayer_player_names = player_names.duplicate()
+	multiplayer_player_character_ids = player_character_ids.duplicate()
+
+
+func _configure_singleplayer_player() -> void:
+	var character_id := _get_selected_singleplayer_character_id()
+	var player_instance := _instantiate_player_character(character_id)
+	if player_instance == null:
+		return
+	player_instance.name = "Player"
+	player_instance.position = player_spawn.position
+	add_child(player_instance)
+	player = player_instance
+
+
+func _get_selected_singleplayer_character_id() -> StringName:
+	var character_id := DEFAULT_PLAYER_CHARACTER_ID
+	if run_state != null:
+		if run_state.has_method("get_selected_character_id"):
+			character_id = StringName(run_state.call("get_selected_character_id"))
+		else:
+			character_id = StringName(run_state.get("selected_character_id"))
+	if not PlayerCharacterRegistry.is_valid_character_id(character_id):
+		return DEFAULT_PLAYER_CHARACTER_ID
+	return character_id
+
+
+func _instantiate_player_character(character_id: StringName) -> Player:
+	var resolved_id := character_id
+	if not PlayerCharacterRegistry.is_valid_character_id(resolved_id):
+		resolved_id = DEFAULT_PLAYER_CHARACTER_ID
+	var instance := PlayerCharacterRegistry.instantiate_character(resolved_id) as Player
+	if instance == null:
+		push_error("Game: 无法实例化角色 %s" % resolved_id)
+	return instance
 
 
 func _apply_initial_player_xirang() -> void:
@@ -1715,6 +1758,7 @@ func _check_multiplayer_defeat_after_grace() -> void:
 
 
 func _configure_multiplayer_players() -> void:
+	player = null
 	peer_players.clear()
 	if multiplayer_player_names.is_empty():
 		multiplayer_player_names[multiplayer_local_peer_id if multiplayer_local_peer_id > 0 else 1] = "Player"
@@ -1724,18 +1768,16 @@ func _configure_multiplayer_players() -> void:
 		peer_ids.append(int(peer_id_variant))
 	peer_ids.sort()
 
-	var base_position := player.global_position
+	var base_position := player_spawn.position
 	for index in range(peer_ids.size()):
 		var peer_id := peer_ids[index]
-		var player_instance: Player = player
-		if index > 0:
-			player_instance = PLAYER_SCENE.instantiate() as Player
+		var character_id := _get_multiplayer_character_id(peer_id)
+		var player_instance := _instantiate_player_character(character_id)
 		if player_instance == null:
 			continue
-		if index > 0:
-			add_child(player_instance)
 		player_instance.name = "Player_%d" % peer_id
-		player_instance.global_position = base_position + _get_multiplayer_spawn_offset(index)
+		player_instance.position = base_position + _get_multiplayer_spawn_offset(index)
+		add_child(player_instance)
 		var accepts_local_input := (
 			peer_id == multiplayer_local_peer_id
 			and (
@@ -1769,6 +1811,17 @@ func _configure_multiplayer_players() -> void:
 		peer_players[peer_id] = player_instance
 		if peer_id == multiplayer_local_peer_id:
 			player = player_instance
+	if player == null and not peer_ids.is_empty():
+		player = peer_players.get(peer_ids[0]) as Player
+
+
+func _get_multiplayer_character_id(peer_id: int) -> StringName:
+	var character_id := StringName(
+		multiplayer_player_character_ids.get(peer_id, DEFAULT_PLAYER_CHARACTER_ID)
+	)
+	if not PlayerCharacterRegistry.is_valid_character_id(character_id):
+		return DEFAULT_PLAYER_CHARACTER_ID
+	return character_id
 
 
 func _get_multiplayer_spawn_offset(index: int) -> Vector2:
@@ -1815,6 +1868,7 @@ func remove_multiplayer_player(peer_id: int) -> void:
 	var player_instance := peer_players.get(peer_id) as Player
 	peer_players.erase(peer_id)
 	multiplayer_player_names.erase(peer_id)
+	multiplayer_player_character_ids.erase(peer_id)
 	if player_instance != null and is_instance_valid(player_instance):
 		player_instance.queue_free()
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
@@ -1945,6 +1999,7 @@ func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 			continue
 		var state := SnapshotManager.PlayerState.new()
 		state.peer_id = peer_id
+		state.character_id = player_instance.get_character_id()
 		state.position = player_instance.global_position
 		state.velocity = player_instance.velocity
 		state.facing = player_instance.get_multiplayer_facing_id()
@@ -1964,8 +2019,19 @@ func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 		state.current_ammo = player_instance.current_ammo
 		state.is_reloading = player_instance.is_reloading
 		state.reload_progress = player_instance.get_reload_progress_ratio()
+		state.primary_cooldown_ratio = _get_player_primary_cooldown_ratio(player_instance)
 		states.append(state)
 	return states
+
+
+func _get_player_primary_cooldown_ratio(player_instance: Player) -> float:
+	if player_instance == null:
+		return 0.0
+	if player_instance.has_method("get_primary_cooldown_ratio"):
+		return clampf(float(player_instance.call("get_primary_cooldown_ratio")), 0.0, 1.0)
+	if player_instance.has_method("get_primary_attack_cooldown_ratio"):
+		return clampf(float(player_instance.call("get_primary_attack_cooldown_ratio")), 0.0, 1.0)
+	return 0.0
 
 
 func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:

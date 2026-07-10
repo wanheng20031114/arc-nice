@@ -3,7 +3,6 @@
 [ext_resource type="Script" uid="uid://7lyj58pu4nvs" path="res://scene/game.gd" id="1_17rxn"]
 [ext_resource type="Texture2D" uid="uid://cbrmpw5d481ci" path="res://resources/texture/瓦片.png" id="1_80nbo"]
 [ext_resource type="Texture2D" uid="uid://ciwwo78eluybc" path="res://resources/texture/动态瓦片.png" id="2_e2o6t"]
-[ext_resource type="PackedScene" uid="uid://h7x0o8vhlixl" path="res://scene/player.tscn" id="3_feb5d"]
 [ext_resource type="PackedScene" uid="uid://c3l67vm8hu25t" path="res://scene/pickup.tscn" id="4_qpk70"]
 [ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="7_yq8tf"]
 [ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="8_rrr3j"]
@@ -150,7 +149,7 @@ tile_set = SubResource("TileSet_7jktm")
 position = Vector2(128, 128)
 zoom = Vector2(2, 2)
 
-[node name="Player" parent="." unique_id=1640433019 instance=ExtResource("3_feb5d")]
+[node name="PlayerSpawn" type="Marker2D" parent="." unique_id=1640433019]
 position = Vector2(39, 102)
 
 [node name="CurrencyHUD" parent="." unique_id=912718684 instance=ExtResource("12_currency_hud")]

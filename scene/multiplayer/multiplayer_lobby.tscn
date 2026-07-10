@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3]
+[gd_scene load_steps=19 format=3]
 
 [ext_resource type="Script" path="res://scene/multiplayer/multiplayer_lobby.gd" id="1_lobby"]
 [ext_resource type="Texture2D" uid="uid://q1v73vx6yokg" path="res://resources/texture/ui/menu_rooftop_garden_background.png" id="2_tile"]
@@ -6,6 +6,7 @@
 [ext_resource type="AudioStream" uid="uid://dj8t5n12shb3l" path="res://resources/audio/ui/dialogue_blip.wav" id="4_blip"]
 [ext_resource type="Script" path="res://scene/multiplayer/bouncy_name_display.gd" id="5_name_display"]
 [ext_resource type="Script" path="res://scene/multiplayer/bouncy_name_letter.gd" id="6_name_letter"]
+[ext_resource type="PackedScene" path="res://scene/character_selection/player_character_choice_overlay.tscn" id="7_character_choice"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 bg_color = Color(0.09, 0.095, 0.105, 0.92)
@@ -727,6 +728,18 @@ theme_override_font_sizes/font_size = 13
 text = "等待中…"
 horizontal_alignment = 1
 
+[node name="ChooseCharacterButton" type="Button" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
+text = "选择并确认角色"
+
 [node name="StartGameButton" type="Button" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer"]
 visible = false
 custom_minimum_size = Vector2(0, 40)
@@ -752,3 +765,5 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
 text = "离开房间"
 
 [node name="PublicLobbyRequest" type="HTTPRequest" parent="."]
+
+[node name="PlayerCharacterChoiceOverlay" parent="." instance=ExtResource("7_character_choice")]

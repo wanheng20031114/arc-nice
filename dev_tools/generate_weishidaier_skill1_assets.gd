@@ -1,7 +1,7 @@
 extends SceneTree
 
-const PROJECTILE_OUTPUT_PATH := "res://resources/texture/weishidaier_skill1_projectile.png"
-const EXPLOSION_OUTPUT_PATH := "res://resources/texture/weishidaier_skill1_explosion.png"
+const PROJECTILE_OUTPUT_PATH := "res://resources/texture/player/weishidaier/skill1_projectile.png"
+const EXPLOSION_OUTPUT_PATH := "res://resources/texture/player/weishidaier/skill1_explosion.png"
 
 const PROJECTILE_FRAME_SIZE := Vector2i(16, 12)
 const PROJECTILE_FRAME_COUNT := 4

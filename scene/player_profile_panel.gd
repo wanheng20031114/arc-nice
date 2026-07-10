@@ -2,8 +2,6 @@ extends CanvasLayer
 class_name PlayerProfilePanel
 
 const DESIGN_SIZE := Vector2(724.0, 543.0)
-const SKILL1_DISPLAY_NAME := "经典技能"
-const SKILL1_DESCRIPTION := "向上一次射击位置发射一枚炸弹造成攻击力330%的大范围伤害"
 const PORTRAIT_DEFAULT_POSITION := Vector2(150.0, 178.0)
 const PORTRAIT_WITH_SKILL_POSITION := Vector2(150.0, 147.0)
 const ITEM_DETAIL_SIZE := Vector2(254.0, 166.0)
@@ -14,7 +12,7 @@ const ITEM_CATEGORY_ITEM_TEXTURE := preload("res://resources/texture/item_catego
 @onready var overlay: Control = $Overlay
 @onready var panel_root: Control = $Overlay/PanelRoot
 @onready var close_button: Button = $Overlay/PanelRoot/CloseButton
-@onready var portrait: AnimatedSprite2D = $Overlay/PanelRoot/Portrait
+@onready var portrait: Sprite2D = $Overlay/PanelRoot/Portrait
 @onready var attack_value: Label = $Overlay/PanelRoot/AttackValue
 @onready var health_value: Label = $Overlay/PanelRoot/HealthValue
 @onready var attack_speed_value: Label = $Overlay/PanelRoot/AttackSpeedValue
@@ -111,11 +109,9 @@ func bind_player(player: Player) -> void:
 	tracked_player.xirang_changed.connect(_on_xirang_changed)
 	tracked_player.dodge_changed.connect(_on_dodge_changed)
 	tracked_player.died.connect(_on_player_died)
-	skill_name_label.text = SKILL1_DISPLAY_NAME
-	skill_description_label.text = SKILL1_DESCRIPTION
+	_refresh_skill_presentation()
 	_update_skill_tooltip()
-	portrait.sprite_frames = tracked_player.body_sprite.sprite_frames
-	portrait.play(&"normal_down")
+	_refresh_character_portrait()
 	portrait.position = PORTRAIT_DEFAULT_POSITION
 	attack_value.text = str(tracked_player.attack_damage)
 	_on_attack_speed_changed(tracked_player.get_attack_speed())
@@ -123,6 +119,16 @@ func bind_player(player: Player) -> void:
 	_on_health_changed(tracked_player.current_health, tracked_player.max_health)
 	_refresh_inventory()
 	_refresh_upgrades()
+
+
+func _refresh_character_portrait() -> void:
+	portrait.texture = null
+	if tracked_player == null:
+		return
+	var config := tracked_player.get_character_config()
+	if config == null or config.portrait_texture.is_empty():
+		return
+	portrait.texture = load(config.portrait_texture) as Texture2D
 
 
 func open() -> void:
@@ -298,6 +304,18 @@ func _on_health_changed(current: int, maximum: int) -> void:
 
 
 func _on_attack_speed_changed(attack_speed: float) -> void:
+	if tracked_player != null:
+		var rounded_speed := roundf(attack_speed)
+		var speed_text := (
+			str(roundi(rounded_speed))
+			if is_equal_approx(attack_speed, rounded_speed)
+			else "%.2f" % attack_speed
+		)
+		attack_speed_value.text = "%s（%.2f次/秒）" % [
+			speed_text,
+			tracked_player.get_attacks_per_second(),
+		]
+		return
 	attack_speed_value.text = "%.2f/s" % (maxf(attack_speed, 1.0) / 100.0)
 
 
@@ -313,6 +331,7 @@ func _refresh_skill_display() -> void:
 	var has_skill := tracked_player.has_skill1()
 	skill_info.visible = has_skill
 	portrait.position = PORTRAIT_WITH_SKILL_POSITION if has_skill else PORTRAIT_DEFAULT_POSITION
+	_refresh_skill_presentation()
 	if not has_skill:
 		return
 	var required_charge := maxf(tracked_player.skill1_charge_duration, 0.01)
@@ -321,9 +340,22 @@ func _refresh_skill_display() -> void:
 
 
 func _update_skill_tooltip() -> void:
-	var tooltip := "%s\n%s" % [SKILL1_DISPLAY_NAME, SKILL1_DESCRIPTION]
+	if tracked_player == null:
+		return
+	var tooltip := "%s\n%s" % [
+		tracked_player.get_skill1_display_name(),
+		tracked_player.get_skill1_description(),
+	]
 	skill_info.tooltip_text = tooltip
 	skill_icon.tooltip_text = tooltip
+
+
+func _refresh_skill_presentation() -> void:
+	if tracked_player == null:
+		return
+	skill_name_label.text = tracked_player.get_skill1_display_name()
+	skill_description_label.text = tracked_player.get_skill1_description()
+	skill_icon.texture = tracked_player.get_skill1_icon()
 
 
 func _on_xirang_changed(_total: int, _added_amount: int) -> void:

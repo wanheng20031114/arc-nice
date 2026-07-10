@@ -3,6 +3,7 @@ class_name RunStateStore
 
 signal inventory_changed
 signal upgrade_changed
+signal selected_character_changed(character_id: StringName)
 
 const INVENTORY_CAPACITY := 20
 
@@ -38,9 +39,31 @@ var upgrade_levels := {
 var active_multiplayer_peer_id: int = 0
 var multiplayer_inventories: Dictionary = {}
 var multiplayer_upgrade_levels: Dictionary = {}
+var selected_character_id: StringName = PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
 
 
-func begin_new_run() -> void:
+func set_selected_character(character_id: StringName) -> bool:
+	if not PlayerCharacterRegistry.is_valid_character_id(character_id):
+		return false
+	if selected_character_id == character_id:
+		return true
+	selected_character_id = character_id
+	selected_character_changed.emit(selected_character_id)
+	return true
+
+
+func get_selected_character_id() -> StringName:
+	return selected_character_id
+
+
+func get_selected_character_config() -> PlayerCharacterConfig:
+	return PlayerCharacterRegistry.get_config(selected_character_id)
+
+
+func begin_new_run(character_id: StringName = &"weishidaier") -> void:
+	if not set_selected_character(character_id):
+		push_error("RunState rejected invalid character id: %s" % character_id)
+		return
 	inventory.clear()
 	inventory.resize(INVENTORY_CAPACITY)
 	for stat_type: int in upgrade_levels:
@@ -56,7 +79,7 @@ func begin_new_run() -> void:
 func ensure_run_started() -> void:
 	if run_started:
 		return
-	begin_new_run()
+	begin_new_run(selected_character_id)
 
 
 func try_add_item(item: PickupConfig) -> bool:

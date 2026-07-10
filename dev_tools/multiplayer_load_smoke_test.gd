@@ -3,7 +3,7 @@ extends SceneTree
 const LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const GAME_SCENE := preload("res://scene/game.tscn")
-const PLAYER_SCENE := preload("res://scene/player.tscn")
+const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const BOMBER_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_bomber.tres")
 const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres")
@@ -62,6 +62,8 @@ func _run() -> void:
 	await _test_enemy_action_uses_snapshot_timeline()
 	await _test_host_remote_player_form_buff_expires()
 	await _test_four_player_runtime_and_confirmed_events()
+	await _test_multiplayer_character_scene_registry()
+	await _test_host_authoritative_hoe_actions()
 	await _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm()
 	await _test_game_runtime_modes()
 	_test_snapshot_round_trip()
@@ -128,10 +130,23 @@ func _test_net_manager_lan_lifecycle() -> void:
 		return
 
 	net_manager.local_player_name = "SmokeHost"
+	net_manager.set_local_character_id(&"weishidaier", true)
 	var err: Error = net_manager.host_create_lan_server(29171)
 	_expect(err == OK, "NetManager must create a LAN host on test port.")
 	_expect(net_manager.is_host(), "NetManager must enter host role.")
 	_expect(net_manager.connected_players.has(1), "Host peer must be registered.")
+	_expect(
+		net_manager.get_player_character_id(1) == &"weishidaier"
+		and net_manager.is_player_character_confirmed(1),
+		"Host character id and confirmation must be registered with the host roster."
+	)
+	net_manager.set_local_character_id(&"weishidaier", false)
+	net_manager.host_start_game()
+	_expect(
+		int(net_manager.connection_state) == 1,
+		"Host start must wait until every peer confirms a valid character."
+	)
+	net_manager.set_local_character_id(&"weishidaier", true)
 	net_manager.host_start_game()
 	_expect(int(net_manager.connection_state) == 4, "Host start must enter loading state.")
 	_expect(not bool(net_manager.host_game_ready), "Host game ready must stay false until MpGame is ready.")
@@ -177,6 +192,16 @@ func _test_net_manager_player_list_sync_diff() -> void:
 	connected_players[1] = "Host"
 	connected_players[2] = "Client"
 	connected_players[3] = "Leaving"
+	var connected_characters := net_manager.get("connected_player_characters") as Dictionary
+	connected_characters.clear()
+	connected_characters[1] = &"weishidaier"
+	connected_characters[2] = &"weishidaier"
+	connected_characters[3] = &"hoe_cat"
+	var confirmed_characters := net_manager.get("confirmed_character_peers") as Dictionary
+	confirmed_characters.clear()
+	confirmed_characters[1] = true
+	confirmed_characters[2] = true
+	confirmed_characters[3] = true
 
 	var left_events: Array[int] = []
 	var joined_events: Array[int] = []
@@ -189,9 +214,9 @@ func _test_net_manager_player_list_sync_diff() -> void:
 	net_manager.call(
 		"_rpc_sync_player_list",
 		[
-			{"id": 1, "name": "Host"},
-			{"id": 2, "name": "Renamed"},
-			{"id": 4, "name": "New"},
+			{"id": 1, "name": "Host", "character_id": "weishidaier", "character_confirmed": true},
+			{"id": 2, "name": "Renamed", "character_id": "hoe_cat", "character_confirmed": true},
+			{"id": 4, "name": "New", "character_id": "hoe_cat", "character_confirmed": false},
 		],
 		1
 	)
@@ -206,6 +231,16 @@ func _test_net_manager_player_list_sync_diff() -> void:
 	_expect(not left_events.has(2), "Player list sync must not emit player_left for retained peers.")
 	_expect(joined_events.has(4), "Player list sync must emit player_joined for new peers.")
 	_expect(joined_events.has(2), "Player list sync must emit player_joined for renamed peers.")
+	_expect(
+		net_manager.get_player_character_id(2) == &"hoe_cat"
+		and net_manager.is_player_character_confirmed(2),
+		"Player list sync must update a retained peer's confirmed character id."
+	)
+	_expect(
+		net_manager.get_player_character_id(4) == &"hoe_cat"
+		and not net_manager.is_player_character_confirmed(4),
+		"Player list sync must preserve an unconfirmed character choice."
+	)
 	net_manager.disconnect_from_game()
 
 
@@ -1385,6 +1420,115 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 	await physics_frame
 
 
+func _test_multiplayer_character_scene_registry() -> void:
+	var game := GAME_SCENE.instantiate() as Game
+	_expect(game != null, "Game must instantiate for multiplayer character registry test.")
+	if game == null:
+		return
+	game.configure_multiplayer(
+		2,
+		2,
+		{1: "Host", 2: "Client"},
+		{1: &"weishidaier", 2: &"hoe_cat"}
+	)
+	_stop_audio_players(game)
+	root.add_child(game)
+	await process_frame
+	var host_player := game.get_player_for_peer(1)
+	var local_player := game.get_player_for_peer(2)
+	_expect(
+		host_player != null and host_player.get_character_id() == &"weishidaier",
+		"Game must instantiate the registered Weishidaier scene for the host peer."
+	)
+	_expect(
+		local_player != null and local_player.get_character_id() == &"hoe_cat",
+		"Game must instantiate the registered Hoe Cat scene for the client peer."
+	)
+	_expect(
+		game.player == local_player,
+		"Game.player must reference the local peer even when the host sorts first."
+	)
+	_stop_audio_players(game)
+	game.queue_free()
+	await process_frame
+
+
+func _test_host_authoritative_hoe_actions() -> void:
+	var host_game := GAME_SCENE.instantiate() as Game
+	_expect(host_game != null, "Game must instantiate for authoritative Hoe Cat action coverage.")
+	if host_game == null:
+		return
+	host_game.configure_multiplayer(
+		1,
+		1,
+		{1: "Host"},
+		{1: &"hoe_cat"}
+	)
+	host_game.set("auto_start_waves", false)
+	_stop_audio_players(host_game)
+	root.add_child(host_game)
+	await process_frame
+	var hoe_player := host_game.get_player_for_peer(1) as PlayerHoeCat
+	_expect(hoe_player != null, "Host roster must instantiate Hoe Cat for authoritative action coverage.")
+	if hoe_player == null:
+		host_game.queue_free()
+		await process_frame
+		return
+
+	var mp_game := MP_GAME_SCENE.instantiate()
+	var net_manager := root.get_node_or_null("NetManager")
+	_expect(net_manager != null, "NetManager must exist for authoritative Hoe Cat action coverage.")
+	if net_manager == null:
+		mp_game.free()
+		host_game.queue_free()
+		await process_frame
+		return
+	var previous_role := int(net_manager.get("net_role"))
+	var connected_players := net_manager.get("connected_players") as Dictionary
+	var previous_players := connected_players.duplicate()
+	net_manager.set("net_role", 1)
+	connected_players.clear()
+	connected_players[1] = "Host"
+	mp_game.set("game", host_game)
+	mp_game.set("net_manager", net_manager)
+
+	hoe_player.shooting_timer.stop()
+	_expect(
+		bool(mp_game.call("_apply_authoritative_hoe_action", 1, &"primary", Vector2.RIGHT)),
+		"Host must accept a valid Hoe Cat primary attack request."
+	)
+	var action_sequences := mp_game.get("_hoe_action_sequences_by_peer") as Dictionary
+	_expect(int(action_sequences.get(1, 0)) == 1, "Host must assign an increasing sequence to an accepted Hoe Cat attack.")
+	_expect(
+		not bool(mp_game.call("_apply_authoritative_hoe_action", 1, &"primary", Vector2.RIGHT)),
+		"Host must reject a Hoe Cat primary request inside the minimum attack interval."
+	)
+	_expect(int(action_sequences.get(1, 0)) == 1, "Rejected Hoe Cat attacks must not advance the action sequence.")
+
+	hoe_player.unlock_skill1()
+	hoe_player.skill1_charge = hoe_player.skill1_charge_duration
+	hoe_player.current_health = 70
+	_expect(
+		bool(mp_game.call("_apply_authoritative_hoe_action", 1, &"whirlwind", Vector2.ZERO)),
+		"Host must accept a fully charged Hoe Cat whirlwind request."
+	)
+	_expect(int(action_sequences.get(1, 0)) == 2, "Accepted whirlwind must advance the authoritative action sequence.")
+	_expect(hoe_player.current_health == 73, "Host-authoritative whirlwind must heal exactly 3 health.")
+	_expect(
+		not bool(mp_game.call("_apply_authoritative_hoe_action", 1, &"primary", Vector2.RIGHT)),
+		"Host must reject primary attacks during the whirlwind action lock."
+	)
+
+	connected_players.clear()
+	connected_players.merge(previous_players, true)
+	net_manager.set("net_role", previous_role)
+	mp_game.free()
+	_stop_audio_players(host_game)
+	host_game.queue_free()
+	await process_frame
+	await physics_frame
+
+
 func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 	var host_game := GAME_SCENE.instantiate() as Game
 	_expect(host_game != null, "Game scene must instantiate for enemy hit dedupe test.")
@@ -1433,15 +1577,15 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 		if peer_two != null:
 			peer_two.current_health = 5
 			var heal_result := bool(mp_game.call(
-				"apply_multiplayer_collectible_player_heal",
+				"apply_multiplayer_player_heal",
 				peer_two,
 				LIFE_CRYSTAL.periodic_heal
 			))
-			_expect(heal_result, "Host collectible player heal must use the multiplayer confirmation path.")
-			_expect(peer_two.current_health == 15, "Host collectible player heal must restore health.")
+			_expect(heal_result, "Host-authoritative player heal must use the reliable multiplayer confirmation path.")
+			_expect(peer_two.current_health == 15, "Host-authoritative player heal must restore health.")
 			var health_revisions := mp_game.get("_player_health_revisions") as Dictionary
 			var heal_revision := int(health_revisions.get(2, 0))
-			_expect(heal_revision > 0, "Host collectible player heal must allocate a health revision.")
+			_expect(heal_revision > 0, "Host-authoritative player heal must allocate a health revision.")
 			peer_two.current_health = 5
 			health_revisions.erase(2)
 			mp_game.call("net_player_healed", 2, 15, 1)
@@ -2180,6 +2324,7 @@ func _test_snapshot_round_trip() -> void:
 	var snapshot_mgr := SnapshotManager.new()
 	var player_state := SnapshotManager.PlayerState.new()
 	player_state.peer_id = 2
+	player_state.character_id = &"hoe_cat"
 	player_state.position = Vector2(11.5, 23.25)
 	player_state.velocity = Vector2(1.0, -2.0)
 	player_state.current_health = 42
@@ -2192,6 +2337,7 @@ func _test_snapshot_round_trip() -> void:
 	player_state.current_ammo = 17
 	player_state.is_reloading = true
 	player_state.reload_progress = 0.4
+	player_state.primary_cooldown_ratio = 0.37
 	var player_data := snapshot_mgr.encode_all_player_snapshots([player_state])
 	var player_states := SnapshotManager.decode_all_player_snapshots(player_data)
 	_expect(player_states.size() == 1, "Player snapshot count mismatch.")
@@ -2203,6 +2349,11 @@ func _test_snapshot_round_trip() -> void:
 		_expect(player_states[0].current_ammo == 17, "Player snapshot current ammo mismatch.")
 		_expect(player_states[0].is_reloading, "Player snapshot reload state mismatch.")
 		_expect(is_equal_approx(player_states[0].reload_progress, 0.4), "Player snapshot reload progress mismatch.")
+		_expect(player_states[0].character_id == &"hoe_cat", "Player snapshot character id mismatch.")
+		_expect(
+			absf(player_states[0].primary_cooldown_ratio - 0.37) <= 1.0 / 255.0,
+			"Player snapshot primary cooldown ratio mismatch."
+		)
 	var player_data_2 := snapshot_mgr.encode_all_player_snapshots([player_state])
 	var player_states_2 := SnapshotManager.decode_all_player_snapshots(player_data_2)
 	_expect(
@@ -2227,6 +2378,11 @@ func _test_snapshot_round_trip() -> void:
 		_expect(repeated_player_states[0].current_ammo == 17, "Player delta must preserve current ammo through baseline.")
 		_expect(repeated_player_states[0].is_reloading, "Player delta must preserve reload state through baseline.")
 		_expect(is_equal_approx(repeated_player_states[0].reload_progress, 0.4), "Player delta must preserve reload progress through baseline.")
+		_expect(repeated_player_states[0].character_id == &"hoe_cat", "Player delta must preserve character id through baseline.")
+		_expect(
+			absf(repeated_player_states[0].primary_cooldown_ratio - 0.37) <= 1.0 / 255.0,
+			"Player delta must preserve primary cooldown through baseline."
+		)
 	var player_copy_sender := SnapshotManager.new()
 	var player_copy_receiver := SnapshotManager.new()
 	var reused_player_state := SnapshotManager.PlayerState.new()
@@ -2255,6 +2411,7 @@ func _test_snapshot_round_trip() -> void:
 	var moved_player_state := SnapshotManager.PlayerState.new()
 	moved_player_state.peer_id = 2
 	moved_player_state.sequence = 2
+	moved_player_state.character_id = &"hoe_cat"
 	moved_player_state.position = Vector2(20.5, 30.25)
 	moved_player_state.velocity = Vector2(3.0, -4.0)
 	moved_player_state.current_health = 42
@@ -2267,6 +2424,7 @@ func _test_snapshot_round_trip() -> void:
 	moved_player_state.current_ammo = 17
 	moved_player_state.is_reloading = true
 	moved_player_state.reload_progress = 0.4
+	moved_player_state.primary_cooldown_ratio = 0.37
 	var moved_player_delta := delta_player_mgr.encode_player_snapshots_for_peer(10, [moved_player_state], false)
 	_expect(
 		moved_player_delta.size() < player_keyframe.size(),

@@ -1,0 +1,246 @@
+[gd_scene format=3 uid="uid://e1gkpbspya8j"]
+
+[ext_resource type="Script" uid="uid://bac7je0inhfub" path="res://scene/player_hoe_cat.gd" id="1_script"]
+[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="2_shader"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/player_hoe_cat.tres" id="3_frames"]
+[ext_resource type="AudioStream" uid="uid://brmwioaechoqc" path="res://resources/audio/Cowboy_Footstep.wav" id="4_footstep"]
+[ext_resource type="AudioStream" uid="uid://cutwkun6hroo5" path="res://resources/audio/cowboy_dead.wav" id="5_death"]
+[ext_resource type="AudioStream" uid="uid://vc2m1l0d1rov" path="res://resources/audio/cowboy_powerup.wav" id="6_powerup"]
+[ext_resource type="AudioStream" uid="uid://by1qh436lhf54" path="res://resources/audio/Cowboy_Secret.wav" id="7_secret"]
+[ext_resource type="PackedScene" uid="uid://bcopug355gqjb" path="res://scene/player_health_bar.tscn" id="8_health_bar"]
+[ext_resource type="PackedScene" uid="uid://db4l5h4j6dnqu" path="res://scene/skill1_charge_bar.tscn" id="9_skill_bar"]
+[ext_resource type="LabelSettings" path="res://resources/ui/player_name_label_settings.tres" id="10_name_settings"]
+[ext_resource type="PackedScene" path="res://scene/move_speed_trail_effect.tscn" id="11_speed_trail"]
+[ext_resource type="AudioStream" uid="uid://44ucsbesth8r" path="res://resources/audio/lucky_gem_upgrade_triad.wav" id="12_lucky_audio"]
+[ext_resource type="PackedScene" uid="uid://d10vpuylyb4ty" path="res://scene/player_ammo_bar.tscn" id="13_ammo_bar"]
+[ext_resource type="PackedScene" path="res://scene/player_attack_interval_bar.tscn" id="14_interval_bar"]
+[ext_resource type="Texture2D" uid="uid://htv7owl47pn" path="res://resources/texture/player/hoe_cat/hoe.png" id="15_hoe"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/player_hoe_cat_basic_slash_vfx.tres" id="16_basic_slash_frames"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/player_hoe_cat_whirlwind_vfx.tres" id="17_whirlwind_frames"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/player_hoe_cat_whirlwind_body.tres" id="18_whirlwind_body_frames"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_basic_attack"]
+radius = 8.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_whirlwind"]
+radius = 15.0
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_hoe_cat"]
+resource_local_to_scene = true
+shader = ExtResource("2_shader")
+shader_parameter/blink_enabled = false
+shader_parameter/blink_speed = 12.0
+shader_parameter/hidden_ratio = 0.5
+shader_parameter/dodge_effect_strength = 0.0
+shader_parameter/dodge_sweep = 0.0
+shader_parameter/dodge_color = Color(0.42, 0.95, 1, 1)
+shader_parameter/dodge_flash_color = Color(1, 1, 1, 1)
+shader_parameter/dodge_outline_width = 3.0
+shader_parameter/slow_overlay_strength = 0.0
+shader_parameter/slow_overlay_color = Color(0.55, 0.86, 1, 1)
+shader_parameter/burn_overlay_strength = 0.0
+shader_parameter/burn_overlay_color = Color(1, 0.56, 0.18, 0.46)
+shader_parameter/burn_edge_width = 2.0
+shader_parameter/bleed_overlay_strength = 0.0
+shader_parameter/bleed_overlay_color = Color(0.95, 0.02, 0.08, 0.58)
+shader_parameter/bleed_outline_width = 2.0
+shader_parameter/revive_glow_strength = 0.0
+shader_parameter/revive_glow_color = Color(3.2, 3.2, 3.2, 1)
+shader_parameter/revive_glow_outline_width = 4.5
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_empty_armed"]
+
+[sub_resource type="Animation" id="Animation_basic_slash"]
+resource_name = "basic_slash"
+length = 0.25
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("BasicSlashEffect:scale")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.25),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [Vector2(0.82, 0.82), Vector2(1.08, 1.08)]
+}
+
+[sub_resource type="Animation" id="Animation_whirlwind"]
+resource_name = "whirlwind"
+length = 0.5
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("WhirlwindRangeEffect:scale")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.5),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [Vector2(0.74, 0.74), Vector2(1, 1)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("WhirlwindBodyEffect:scale")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.5),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [Vector2(0.9, 0.9), Vector2(1, 1)]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_actions"]
+_data = {
+&"basic_slash": SubResource("Animation_basic_slash"),
+&"whirlwind": SubResource("Animation_whirlwind")
+}
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_body"]
+radius = 7.5
+
+[node name="Player" type="CharacterBody2D" unique_id=1471282758]
+collision_layer = 2
+collision_mask = 257
+script = ExtResource("1_script")
+basic_attack_query_shape = SubResource("CircleShape2D_basic_attack")
+whirlwind_query_shape = SubResource("CircleShape2D_whirlwind")
+character_id = &"hoe_cat"
+max_health = 80
+attack_damage = 15
+attack_method_name = "锄头"
+ammo_capacity = 1
+fire_interval = 0.5
+attack_speed_units_per_attack = 200.0
+
+[node name="BodySprite" type="AnimatedSprite2D" parent="." unique_id=1137619000]
+z_index = 1
+texture_filter = 1
+material = SubResource("ShaderMaterial_hoe_cat")
+sprite_frames = ExtResource("3_frames")
+animation = &"normal_left"
+autoplay = "normal_down"
+frame_progress = 0.7944783
+
+[node name="HoeSprite" type="Sprite2D" parent="BodySprite" unique_id=2049848748]
+z_index = 1
+texture_filter = 1
+position = Vector2(5, 1)
+rotation = 0.78
+texture = ExtResource("15_hoe")
+
+[node name="ArmedEffectSprite" type="AnimatedSprite2D" parent="." unique_id=1224248483]
+visible = false
+z_index = 2
+sprite_frames = SubResource("SpriteFrames_empty_armed")
+
+[node name="BasicSlashEffect" type="AnimatedSprite2D" parent="." unique_id=649061775]
+visible = false
+z_index = 6
+texture_filter = 1
+scale = Vector2(0.82, 0.82)
+sprite_frames = ExtResource("16_basic_slash_frames")
+animation = &"slash"
+
+[node name="WhirlwindRangeEffect" type="AnimatedSprite2D" parent="." unique_id=1450243077]
+visible = false
+z_index = 6
+texture_filter = 1
+sprite_frames = ExtResource("17_whirlwind_frames")
+animation = &"whirlwind"
+
+[node name="WhirlwindBodyEffect" type="AnimatedSprite2D" parent="." unique_id=1289906438]
+visible = false
+z_index = 2
+texture_filter = 1
+sprite_frames = ExtResource("18_whirlwind_body_frames")
+animation = &"whirlwind"
+
+[node name="ActionAnimationPlayer" type="AnimationPlayer" parent="." unique_id=2022616504]
+libraries/ = SubResource("AnimationLibrary_actions")
+
+[node name="MoveSpeedTrailEffect" parent="." unique_id=168713375 instance=ExtResource("11_speed_trail")]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=376251274]
+position = Vector2(0, 1)
+shape = SubResource("CircleShape2D_body")
+
+[node name="ShootingTimer" type="Timer" parent="." unique_id=1203038612]
+
+[node name="AmmoBar" parent="." unique_id=217647379 instance=ExtResource("13_ammo_bar")]
+visible = false
+
+[node name="AttackIntervalBar" parent="." unique_id=387439191 instance=ExtResource("14_interval_bar")]
+
+[node name="HealthBar" parent="." unique_id=1240371904 instance=ExtResource("8_health_bar")]
+offset_top = -15.0
+offset_bottom = -10.0
+
+[node name="Skill1ChargeBar" parent="." unique_id=990901659 instance=ExtResource("9_skill_bar")]
+offset_top = 11.0
+offset_bottom = 13.0
+
+[node name="NameLabel" type="Label" parent="." unique_id=296170636]
+visible = false
+z_index = 6
+offset_left = -60.0
+offset_top = -38.0
+offset_right = 60.0
+offset_bottom = -22.0
+theme_override_font_sizes/font_size = 9
+text = "Player"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="NameplateLayer" type="CanvasLayer" parent="." unique_id=1764835222]
+layer = 5
+visible = false
+
+[node name="NameplateLabel" type="Label" parent="NameplateLayer" unique_id=1645858699]
+custom_minimum_size = Vector2(160, 30)
+offset_right = 160.0
+offset_bottom = 30.0
+text = "Player"
+label_settings = ExtResource("10_name_settings")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="GunshotAudio" type="AudioStreamPlayer2D" parent="." unique_id=2062294008]
+volume_db = -2.0
+max_polyphony = 8
+
+[node name="GunloadAudio" type="AudioStreamPlayer2D" parent="." unique_id=1430587860]
+volume_db = -8.0
+
+[node name="FootstepAudio" type="AudioStreamPlayer2D" parent="." unique_id=765457380]
+stream = ExtResource("4_footstep")
+volume_db = 6.0
+max_distance = 256.0
+
+[node name="DeathAudio" type="AudioStreamPlayer2D" parent="." unique_id=964792940]
+stream = ExtResource("5_death")
+volume_db = -4.0
+
+[node name="PowerupAudio" type="AudioStreamPlayer2D" parent="." unique_id=330686363]
+stream = ExtResource("6_powerup")
+volume_db = 6.0
+
+[node name="SecretAudio" type="AudioStreamPlayer2D" parent="." unique_id=114934271]
+stream = ExtResource("7_secret")
+volume_db = -1.0
+
+[node name="XirangPickupAudio" type="AudioStreamPlayer2D" parent="." unique_id=1069942312]
+stream = ExtResource("6_powerup")
+volume_db = -4.0
+max_polyphony = 6
+
+[node name="LuckyUpgradeAudio" type="AudioStreamPlayer2D" parent="." unique_id=1259170660]
+stream = ExtResource("12_lucky_audio")
+volume_db = 2.0
+max_polyphony = 2
+
+[connection signal="timeout" from="ShootingTimer" to="." method="_on_shooting_timer_timeout"]

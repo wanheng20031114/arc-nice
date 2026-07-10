@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ci6jpnrkj4gwd"
-path="res://.godot/imported/W.png-7036e35ad509cea79e04954ea2ee1b88.ctex"
+uid="uid://b3vvkokg4hkvc"
+path="res://.godot/imported/hoe_cat_attack.png-f6d29e8c2e23091c93573cf260cd88a6.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/texture/W.png"
-dest_files=["res://.godot/imported/W.png-7036e35ad509cea79e04954ea2ee1b88.ctex"]
+source_file="res://resources/texture/player/hoe_cat/hoe_cat_attack.png"
+dest_files=["res://.godot/imported/hoe_cat_attack.png-f6d29e8c2e23091c93573cf260cd88a6.ctex"]
 
 [params]
 

@@ -5,6 +5,7 @@
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_sepwh"]
 [ext_resource type="Script" path="res://scene/settings/settings_gear_icon.gd" id="4_settings_icon"]
 [ext_resource type="PackedScene" path="res://scene/settings/settings_panel.tscn" id="5_settings_panel"]
+[ext_resource type="PackedScene" path="res://scene/character_selection/player_character_choice_overlay.tscn" id="6_character_choice"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 bg_color = Color(0.09, 0.095, 0.105, 0.92)
@@ -209,6 +210,8 @@ theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
 text = "结束游戏"
 
 [node name="SettingsPanel" parent="." instance=ExtResource("5_settings_panel")]
+
+[node name="PlayerCharacterChoiceOverlay" parent="." instance=ExtResource("6_character_choice")]
 
 [connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/SinglePlayer" to="." method="_on_singleplayer_pressed"]
 [connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/Multiplayer" to="." method="_on_multiplayer_pressed"]

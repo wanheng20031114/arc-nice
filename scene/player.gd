@@ -8,6 +8,7 @@ signal attack_speed_changed(attack_speed: float)
 signal dodge_changed(chance: float)
 signal died
 
+@export var character_id: StringName = &"weishidaier"
 @export var move_speed: float = 120.0
 @export var max_health: int = 50
 @export var invincibility_duration: float = 1.0
@@ -39,6 +40,7 @@ var multiplayer_display_name: String = ""
 var client_movement_prediction_only: bool = false
 
 @export var fire_interval: float = 0.18
+@export_range(1.0, 1000.0, 1.0, "or_greater") var attack_speed_units_per_attack: float = 100.0
 @export var bullet_spawn_distance: float = 12.0
 @export var footstep_interval: float = 0.28
 @export var skill1_charge_duration: float = 18.0
@@ -60,12 +62,14 @@ var client_movement_prediction_only: bool = false
 @onready var health_bar: Control = $HealthBar
 @onready var ammo_bar: Control = $AmmoBar
 @onready var skill1_charge_bar: Skill1ChargeBar = $Skill1ChargeBar
+@onready var attack_interval_bar: Control = get_node_or_null("AttackIntervalBar") as Control
 @onready var name_label: Label = $NameLabel
 @onready var nameplate_layer: CanvasLayer = $NameplateLayer
 @onready var nameplate_label: Label = $NameplateLayer/NameplateLabel
 
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const SKILL1_BOMB_SCENE := preload("res://scene/weishidaier_skill1_bomb.tscn")
+const DEFAULT_SKILL1_ICON := preload("res://resources/texture/player/weishidaier/skill1_icon.png")
 const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/collectible_area_effect.tscn")
 const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/collectible_frost_area_effect.tscn")
 const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
@@ -112,6 +116,8 @@ const DODGE_UPGRADE_CHANCE_STEP := 0.02
 const PIERCING_BULLET_TINT := Color(1.0, 0.36, 0.34, 1.0)
 const DEFAULT_MAGIC_DEFENSE_LIMIT := 100
 const RANGED_DIRECTION_SIDE_THRESHOLD := 0.35
+const DEFAULT_SKILL1_DISPLAY_NAME := "经典技能"
+const DEFAULT_SKILL1_DESCRIPTION := "向上一次射击位置发射一枚炸弹造成攻击力330%的大范围伤害"
 
 var facing_suffix: StringName = &"right"
 
@@ -199,6 +205,7 @@ func _ready() -> void:
 	_update_animation()
 	_update_armed_effect()
 	_update_skill1_charge_bar()
+	_update_attack_interval_bar()
 	get_window().focus_exited.connect(_on_window_focus_exited)
 
 
@@ -225,6 +232,7 @@ func _connect_collectible_refresh_signals() -> void:
 func _process(_delta: float) -> void:
 	_update_multiplayer_visual_smoothing(_delta)
 	_update_nameplate_position()
+	_update_character_combat_state(_delta)
 
 
 func _input(event: InputEvent) -> void:
@@ -279,6 +287,7 @@ func _physics_process(delta: float) -> void:
 	_update_collectible_runtime_effects(delta)
 	_update_skill1_charge(delta)
 	_update_reload(delta)
+	_update_attack_interval_bar()
 	
 	if is_dead:
 		velocity = Vector2.ZERO
@@ -320,6 +329,10 @@ func _physics_process(delta: float) -> void:
 	_update_armed_effect()
 
 
+func _update_character_combat_state(_delta: float) -> void:
+	pass
+
+
 # 根据玩家当前形态和朝向更新基础动画序列
 func _update_animation() -> void:
 	var animation_name := StringName("%s_%s" % [_get_animation_prefix(), facing_suffix])
@@ -339,15 +352,38 @@ func _update_animation() -> void:
 func _try_shoot(shoot_input: Vector2) -> void:
 	if not shooting_timer.is_stopped():
 		return
-	if not _can_fire_ammo_consuming_shot():
+	if uses_ammunition() and not _can_fire_ammo_consuming_shot():
 		return
 
 	var shoot_direction := shoot_input.normalized()
-	var has_spawned_bullet := _fire_bullets(shoot_direction)
+	var attack_performed := _perform_primary_attack(shoot_direction)
 
-	if has_spawned_bullet:
-		_consume_ammo_after_successful_shot()
-		shooting_timer.start(_get_effective_fire_interval())
+	if attack_performed:
+		if uses_ammunition():
+			_consume_ammo_after_successful_shot()
+		if shooting_timer.is_stopped():
+			shooting_timer.start(_get_effective_fire_interval())
+		_update_attack_interval_bar()
+
+
+func _perform_primary_attack(attack_direction: Vector2) -> bool:
+	return _fire_bullets(attack_direction)
+
+
+func uses_ammunition() -> bool:
+	return true
+
+
+func supports_projectile_attack_patterns() -> bool:
+	return true
+
+
+func uses_attack_interval_bar() -> bool:
+	return false
+
+
+func notify_primary_attack_performed() -> void:
+	_trigger_collectible_primary_attack_effects()
 
 # 应用道具效果，更新玩家形态、射速、移速等增益状态
 func apply_pickup(config: PickupConfig) -> bool:
@@ -357,10 +393,11 @@ func apply_pickup(config: PickupConfig) -> bool:
 	var applied := false
 	var should_refresh_shooting_timer := false
 	var buff_duration := maxf(config.duration, 0.0)
-	var has_form_override := (
+	var requests_projectile_form_override := (
 		config.player_form_mode != PickupConfig.PlayerFormMode.NORMAL
 		or config.shot_pattern != PickupConfig.ShotPattern.NORMAL
 	)
+	var has_form_override := requests_projectile_form_override and supports_projectile_attack_patterns()
 
 	var has_fire_rate_override := not is_equal_approx(
 		config.fire_rate_multiplier,
@@ -376,7 +413,7 @@ func apply_pickup(config: PickupConfig) -> bool:
 		applied = _try_heal(config.heal_amount) or applied
 
 	# 普通射速道具与形态专属射速提升维护，避免螺旋形态的射速被其他 Buff 状态覆盖。
-	if has_fire_rate_override and not has_form_override:
+	if has_fire_rate_override and not requests_projectile_form_override:
 		rapid_fire_rate_multiplier = config.fire_rate_multiplier
 		rapid_buff_time_left = buff_duration
 		should_refresh_shooting_timer = true
@@ -505,12 +542,46 @@ func get_current_health() -> int:
 	return current_health
 
 
+func get_character_id() -> StringName:
+	return character_id
+
+
+func get_character_config() -> PlayerCharacterConfig:
+	return PlayerCharacterRegistry.get_config(character_id)
+
+
+func get_skill1_display_name() -> String:
+	var config := get_character_config()
+	if config != null and not config.skill_display_name.is_empty():
+		return config.skill_display_name
+	return DEFAULT_SKILL1_DISPLAY_NAME
+
+
+func get_skill1_description() -> String:
+	var config := get_character_config()
+	if config != null and not config.skill_description.is_empty():
+		return config.skill_description
+	return DEFAULT_SKILL1_DESCRIPTION
+
+
+func get_skill1_icon() -> Texture2D:
+	var config := get_character_config()
+	if config != null and not config.skill_icon_texture.is_empty():
+		return load(config.skill_icon_texture) as Texture2D
+	return DEFAULT_SKILL1_ICON
+
+
+func get_skill1_icon_path() -> String:
+	var icon := get_skill1_icon()
+	return icon.resource_path if icon != null else ""
+
+
 func get_attacks_per_second() -> float:
 	return 1.0 / _get_effective_fire_interval()
 
 
 func get_attack_speed() -> float:
-	return get_attacks_per_second() * 100.0
+	return get_attacks_per_second() * maxf(attack_speed_units_per_attack, 1.0)
 
 
 func refresh_collectible_stats() -> void:
@@ -746,6 +817,7 @@ func update_multiplayer_authority_passive_state(delta: float) -> void:
 	_update_collectible_runtime_effects(delta)
 	_update_skill1_charge(delta)
 	_update_reload(delta)
+	_update_attack_interval_bar()
 	if is_dead:
 		return
 	_update_animation()
@@ -1151,6 +1223,8 @@ func get_reload_progress_ratio() -> float:
 
 
 func try_consume_authoritative_player_bullet_ammo() -> bool:
+	if not uses_ammunition() or not supports_projectile_attack_patterns():
+		return false
 	if current_shot_pattern == PickupConfig.ShotPattern.SPIRAL:
 		return true
 	if not _can_fire_ammo_consuming_shot():
@@ -1213,6 +1287,8 @@ func _should_consume_ammo_for_shot() -> bool:
 
 
 func _try_start_reload() -> bool:
+	if not uses_ammunition():
+		return false
 	if is_dead or controls_locked:
 		return false
 	if is_reloading:
@@ -1249,6 +1325,9 @@ func _complete_reload() -> void:
 func _update_ammo_bar() -> void:
 	if ammo_bar == null:
 		return
+	if uses_attack_interval_bar():
+		_update_attack_interval_bar()
+		return
 	ammo_bar.visible = not is_dead
 	if is_dead:
 		return
@@ -1268,9 +1347,15 @@ func _fire_bullets(base_direction: Vector2) -> bool:
 		var has_spawned_forward_bullet := _spawn_bullet(base_direction, false)
 		var has_spawned_backward_bullet := _spawn_bullet(base_direction.rotated(PI), false)
 		spiral_phase = wrapf(spiral_phase + SPIRAL_PHASE_STEP, 0.0, TAU)
-		return has_spawned_forward_bullet or has_spawned_backward_bullet
+		var has_spawned_bullet := has_spawned_forward_bullet or has_spawned_backward_bullet
+		if has_spawned_bullet:
+			notify_primary_attack_performed()
+		return has_spawned_bullet
 
-	return _spawn_bullet(base_direction)
+	var has_spawned_bullet := _spawn_bullet(base_direction)
+	if has_spawned_bullet:
+		notify_primary_attack_performed()
+	return has_spawned_bullet
 
 
 # 在指定方向上生成单颗子弹
@@ -1305,12 +1390,13 @@ func _spawn_bullet(shoot_direction: Vector2, track_attack_direction: bool = true
 	if track_attack_direction and shoot_direction != Vector2.ZERO:
 		last_attack_direction = shoot_direction.normalized()
 	gunshot_audio.play()
-	_trigger_collectible_shot_effects()
 	return true
 
 
 # 螺旋射击模式下，自动根据相位角度发射子弹
 func _try_auto_spiral_shoot() -> void:
+	if not supports_projectile_attack_patterns():
+		return
 	if not shooting_timer.is_stopped():
 		return
 
@@ -1415,6 +1501,8 @@ func _should_fire_piercing_bullet() -> bool:
 
 
 func _get_inventory_bullet_pierce_chance() -> float:
+	if not supports_projectile_attack_patterns():
+		return 0.0
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if run_state == null:
 		return 0.0
@@ -1617,9 +1705,9 @@ func _get_collectible_trigger_owner_key(trigger_key: Variant) -> String:
 	return key_text.substr(0, separator_index)
 
 
-func _trigger_collectible_shot_effects() -> void:
+func _trigger_collectible_primary_attack_effects() -> void:
 	for item in _get_active_collectible_items():
-		if not _is_collectible_trigger_event(item, &"shot"):
+		if not _is_collectible_trigger_event(item, &"primary_attack"):
 			continue
 		var runtime_key := _get_collectible_runtime_key(item)
 		var shot_interval := maxi(item.trigger_shot_interval, 1)
@@ -1629,6 +1717,11 @@ func _trigger_collectible_shot_effects() -> void:
 			continue
 		collectible_shot_counters[runtime_key] = 0
 		_apply_collectible_trigger_effect(item)
+
+
+# 旧测试工具和外部脚本仍可调用原入口；生产战斗链统一走 primary attack。
+func _trigger_collectible_shot_effects() -> void:
+	_trigger_collectible_primary_attack_effects()
 
 
 func _trigger_collectible_hurt_effects() -> void:
@@ -1641,7 +1734,7 @@ func _is_collectible_trigger_event(item: PickupConfig, event_id: StringName) -> 
 	if item == null or item.trigger_effect_id.is_empty():
 		return false
 	match event_id:
-		&"shot":
+		&"primary_attack", &"shot":
 			return item.trigger_effect_id in [
 				PickupConfig.TRIGGER_SHOT_HEAL,
 				PickupConfig.TRIGGER_SHOT_XIRANG,
@@ -1714,7 +1807,7 @@ func _add_collectible_skill_charge(amount: float) -> bool:
 	return true
 
 
-func apply_collectible_bullet_hit_effects(enemy: Enemy, hit_damage: int) -> void:
+func apply_collectible_attack_hit_effects(enemy: Enemy, hit_damage: int) -> void:
 	if enemy == null or not is_instance_valid(enemy):
 		return
 	var was_dead_after_hit := enemy.is_dead
@@ -1730,6 +1823,10 @@ func apply_collectible_bullet_hit_effects(enemy: Enemy, hit_damage: int) -> void
 			if item.kill_effect_id.is_empty():
 				continue
 			_apply_collectible_kill_effect(item, enemy)
+
+
+func apply_collectible_bullet_hit_effects(enemy: Enemy, hit_damage: int) -> void:
+	apply_collectible_attack_hit_effects(enemy, hit_damage)
 
 
 func _apply_collectible_on_hit_effect(item: PickupConfig, enemy: Enemy, _hit_damage: int) -> void:
@@ -2209,20 +2306,24 @@ func _apply_authoritative_collectible_enemy_damage(
 	return enemy.apply_damage(damage, impact_direction, damage_type)
 
 
-func _apply_authoritative_collectible_player_heal(target_player: Player, heal_amount: int) -> bool:
+func _apply_authoritative_player_heal(target_player: Player, heal_amount: int) -> bool:
 	if target_player == null or not is_instance_valid(target_player):
 		return false
 	var current_scene := get_tree().current_scene
 	if (
 		current_scene != null
-		and current_scene.has_method("apply_multiplayer_collectible_player_heal")
+		and current_scene.has_method("apply_multiplayer_player_heal")
 	):
 		return bool(current_scene.call(
-			"apply_multiplayer_collectible_player_heal",
+			"apply_multiplayer_player_heal",
 			target_player,
 			heal_amount
 		))
 	return target_player._try_heal(heal_amount)
+
+
+func _apply_authoritative_collectible_player_heal(target_player: Player, heal_amount: int) -> bool:
+	return _apply_authoritative_player_heal(target_player, heal_amount)
 
 
 func _get_collectible_effect_source_id(item: PickupConfig, salt: int) -> int:
@@ -2508,8 +2609,9 @@ func _on_window_focus_exited() -> void:
 
 # 获取当前实际射击间隔（受射速加成影响）
 func _get_effective_fire_interval() -> float:
-	var base_attack_speed := (100.0 / maxf(fire_interval, 0.01)) + collectible_attack_speed_bonus
-	var base_attacks_per_second := maxf(base_attack_speed, 1.0) / 100.0
+	var speed_units := maxf(attack_speed_units_per_attack, 1.0)
+	var base_attack_speed := (speed_units / maxf(fire_interval, 0.01)) + collectible_attack_speed_bonus
+	var base_attacks_per_second := maxf(base_attack_speed, 1.0) / speed_units
 	var effective_attacks_per_second := base_attacks_per_second * _get_effective_fire_rate_multiplier()
 	return maxf(1.0 / maxf(effective_attacks_per_second, 0.01), 0.01)
 
@@ -2543,6 +2645,52 @@ func _refresh_shooting_timer_wait_time() -> void:
 		return
 		
 	shooting_timer.start(new_interval)
+
+
+func get_primary_attack_cooldown_ratio() -> float:
+	if shooting_timer == null or shooting_timer.is_stopped():
+		return 1.0
+	var active_interval := maxf(shooting_timer.wait_time, 0.01)
+	return clampf(1.0 - shooting_timer.time_left / active_interval, 0.0, 1.0)
+
+
+func get_primary_cooldown_ratio() -> float:
+	return get_primary_attack_cooldown_ratio()
+
+
+func apply_multiplayer_primary_cooldown_ratio(ratio: float) -> void:
+	if not uses_attack_interval_bar():
+		return
+	_set_attack_interval_bar_progress(clampf(ratio, 0.0, 1.0))
+
+
+func _update_attack_interval_bar() -> void:
+	if not uses_attack_interval_bar():
+		if attack_interval_bar != null:
+			attack_interval_bar.visible = false
+		return
+	_set_attack_interval_bar_progress(get_primary_attack_cooldown_ratio())
+
+
+func _set_attack_interval_bar_progress(ratio: float) -> void:
+	var clamped_ratio := clampf(ratio, 0.0, 1.0)
+	var is_ready := clamped_ratio >= 0.999
+	if attack_interval_bar != null:
+		attack_interval_bar.visible = not is_dead
+		if attack_interval_bar.has_method("set_cooldown_progress"):
+			attack_interval_bar.call("set_cooldown_progress", clamped_ratio, is_ready)
+		if ammo_bar != null:
+			ammo_bar.visible = false
+		return
+	if ammo_bar == null:
+		return
+	ammo_bar.visible = not is_dead
+	if is_dead:
+		return
+	if is_ready:
+		ammo_bar.call("set_ammo_state", 1, 1, false, 0.0)
+	else:
+		ammo_bar.call("set_ammo_state", 0, 1, true, clamped_ratio)
 
 # 每帧更新道具 Buff 剩余时间，并在到期后恢复默认状态。
 func _update_pickup_effects(delta: float) -> void:

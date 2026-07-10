@@ -25,7 +25,11 @@ const PACKED_VECTOR2_BYTES := 4
 const PACKED_U8_BYTES := 1
 const PACKED_U16_BYTES := 2
 const PACKED_U32_BYTES := 4
-const PLAYER_META_BYTES := 34
+const PLAYER_META_BYTES := 36
+const DEFAULT_CHARACTER_ID := &"weishidaier"
+const HOE_CAT_CHARACTER_ID := &"hoe_cat"
+const CHARACTER_CODE_WEISHIDAIER := 0
+const CHARACTER_CODE_HOE_CAT := 1
 const PACKED_I16_MIN := -32768
 const PACKED_I16_MAX := 32767
 const FULL_PLAYER_MASK := (
@@ -46,6 +50,7 @@ const FULL_ENEMY_MASK := MASK_POSITION | MASK_VELOCITY | MASK_HEALTH | MASK_IS_D
 class PlayerState:
 	var peer_id: int = 0
 	var sequence: int = 0
+	var character_id: StringName = DEFAULT_CHARACTER_ID
 	var position: Vector2 = Vector2.ZERO
 	var velocity: Vector2 = Vector2.ZERO
 	var facing: int = 0       # 0=right, 1=left, 2=up, 3=down
@@ -65,6 +70,7 @@ class PlayerState:
 	var current_ammo: int = 0
 	var is_reloading: bool = false
 	var reload_progress: float = 0.0
+	var primary_cooldown_ratio: float = 0.0
 
 
 ## 每个接收端独立维护发送基线，避免丢包/晚加入导致不同客户端共用错误基准。
@@ -138,6 +144,8 @@ static func encode_player_snapshot(
 		buf.put_16(clampi(current.current_ammo, 0, 65535))
 		buf.put_u8(1 if current.is_reloading else 0)
 		buf.put_float(clampf(current.reload_progress, 0.0, 1.0))
+		buf.put_u8(_encode_character_id(current.character_id))
+		buf.put_u8(_pack_ratio_u8(current.primary_cooldown_ratio))
 
 	return buf.data_array
 
@@ -161,6 +169,9 @@ static func _player_meta_changed(current: PlayerState, previous: PlayerState) ->
 		or current.current_ammo != previous.current_ammo
 		or current.is_reloading != previous.is_reloading
 		or not is_equal_approx(current.reload_progress, previous.reload_progress)
+		or current.character_id != previous.character_id
+		or _pack_ratio_u8(current.primary_cooldown_ratio)
+		!= _pack_ratio_u8(previous.primary_cooldown_ratio)
 	)
 
 static func decode_player_snapshot(
@@ -205,6 +216,8 @@ static func decode_player_snapshot(
 		target.current_ammo = buf.get_u16()
 		target.is_reloading = buf.get_u8() != 0
 		target.reload_progress = buf.get_float()
+		target.character_id = _decode_character_id(buf.get_u8())
+		target.primary_cooldown_ratio = float(buf.get_u8()) / 255.0
 
 	return buf.get_position()
 
@@ -323,6 +336,18 @@ static func _get_enemy_snapshot_size(data: PackedByteArray, offset: int) -> int:
 	return size
 
 
+static func _encode_character_id(character_id: StringName) -> int:
+	return CHARACTER_CODE_HOE_CAT if character_id == HOE_CAT_CHARACTER_ID else CHARACTER_CODE_WEISHIDAIER
+
+
+static func _decode_character_id(character_code: int) -> StringName:
+	return HOE_CAT_CHARACTER_ID if character_code == CHARACTER_CODE_HOE_CAT else DEFAULT_CHARACTER_ID
+
+
+static func _pack_ratio_u8(value: float) -> int:
+	return clampi(roundi(clampf(value, 0.0, 1.0) * 255.0), 0, 255)
+
+
 static func _pack_scaled_i16(value: float, scale: float) -> int:
 	return clampi(roundi(value * scale), PACKED_I16_MIN, PACKED_I16_MAX)
 
@@ -333,6 +358,7 @@ static func _copy_player_state(source: PlayerState) -> PlayerState:
 		return copy
 	copy.peer_id = source.peer_id
 	copy.sequence = source.sequence
+	copy.character_id = source.character_id
 	copy.position = source.position
 	copy.velocity = source.velocity
 	copy.facing = source.facing
@@ -352,6 +378,7 @@ static func _copy_player_state(source: PlayerState) -> PlayerState:
 	copy.current_ammo = source.current_ammo
 	copy.is_reloading = source.is_reloading
 	copy.reload_progress = source.reload_progress
+	copy.primary_cooldown_ratio = source.primary_cooldown_ratio
 	return copy
 
 
@@ -394,6 +421,8 @@ static func _apply_player_delta(target: PlayerState, delta: PlayerState, mask: i
 		target.current_ammo = delta.current_ammo
 		target.is_reloading = delta.is_reloading
 		target.reload_progress = delta.reload_progress
+		target.character_id = delta.character_id
+		target.primary_cooldown_ratio = delta.primary_cooldown_ratio
 
 
 static func _apply_enemy_delta(target: EnemyState, delta: EnemyState, mask: int) -> void:

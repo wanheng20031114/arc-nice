@@ -1,7 +1,7 @@
 extends SceneTree
 
 const GAME_SCENE := preload("res://scene/game.tscn")
-const PLAYER_SCENE := preload("res://scene/player.tscn")
+const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
 const ENEMY_BASE_SCENE := preload("res://scene/enemy/enemy.tscn")
 const YUANSHI_BOMBER_SCENE := preload("res://scene/enemy/yuanshi_insect_bomber.tscn")
 const YUANSHI_PURPLE_BOMBER_SCENE := preload("res://scene/enemy/yuanshi_insect_purple_bomber.tscn")

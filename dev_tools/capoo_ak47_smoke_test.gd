@@ -2,7 +2,7 @@ extends SceneTree
 
 const CAPOO_SCENE := preload("res://scene/enemy/capoo_ak47.tscn")
 const BULLET_SCENE := preload("res://scene/enemy/capoo_ak47_bullet.tscn")
-const PLAYER_SCENE := preload("res://scene/player.tscn")
+const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
 const CAPOO_CONFIG := preload("res://resources/config/enemies/capoo_ak47.tres")
 const WAVE_06 := preload("res://resources/config/waves/wave_06.tres")
 const WAVE_07 := preload("res://resources/config/waves/wave_07.tres")

@@ -3,7 +3,7 @@ extends SceneTree
 const KNIGHT_SCENE := preload("res://scene/enemy/capoo_knight.tscn")
 const ELITE_KNIGHT_SCENE := preload("res://scene/enemy/capoo_knight_elite.tscn")
 const SWORDSMAN_SCENE := preload("res://scene/enemy/capoo_swordsman.tscn")
-const PLAYER_SCENE := preload("res://scene/player.tscn")
+const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
 const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres")
 const ELITE_KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight_elite.tres")
 const SWORDSMAN_CONFIG := preload("res://resources/config/enemies/capoo_swordsman.tres")
