@@ -26,7 +26,6 @@ const LINGLAN_SKILL4_ORB_SCENE := preload("res://scene/linglan_skill4_light_orb.
 const LINGLAN_SKILL4_ORB_SCRIPT := preload("res://scene/linglan_skill4_light_orb.gd")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 
-const INPUT_BUTTON_SKILL1 := 1
 const INPUT_BUTTON_RELOAD := 2
 const HOE_ACTION_PRIMARY := &"primary"
 const HOE_ACTION_WHIRLWIND := &"whirlwind"
@@ -59,8 +58,10 @@ const ENEMY_ACTION_SNAPSHOT_REORDER_TOLERANCE_SECONDS := 0.075
 # Multiplayer protocol map:
 # - CH_INPUT unreliable_ordered: client player pose/input to host.
 # - CH_STATE unreliable_ordered: host player/enemy snapshots to clients.
-# - CH_PROJECTILE unreliable_ordered: projectile visual spawn events.
-# - CH_EVENT reliable: damage, death, revive, spawn/despawn, pickups, upgrades, wave/HUD events.
+# - CH_PROJECTILE mixed: client spawn/hit reports are reliable and ordered;
+#   host-to-client visual projectile replicas remain unreliable_ordered.
+# - CH_EVENT reliable: damage, death, revive, spawn/despawn, pickups, upgrades,
+#   and wave/HUD events.
 # Host owns enemy AI, player damage confirmation, death, revive, pickups, upgrades, and wave lifecycle.
 
 @onready var net_manager: Node = get_node("/root/NetManager")
@@ -895,7 +896,6 @@ func _rpc_client_player_state(
 	if not _accept_client_player_state(sender_id, sequence, reported_position, reported_velocity):
 		net_player_state_corrected.rpc_id(sender_id, player_node.global_position, player_node.velocity)
 		return
-	var use_skill1: bool = (buttons & INPUT_BUTTON_SKILL1) != 0
 	var use_reload: bool = (buttons & INPUT_BUTTON_RELOAD) != 0
 	_apply_accepted_client_player_state(
 		sender_id,
@@ -903,7 +903,7 @@ func _rpc_client_player_state(
 		reported_position,
 		reported_velocity,
 		shoot_input,
-		use_skill1,
+		false,
 		use_reload
 	)
 
@@ -1180,7 +1180,7 @@ func register_local_projectile(
 		)
 
 
-@rpc("any_peer", "call_remote", "unreliable_ordered", 3)
+@rpc("any_peer", "call_remote", "reliable", 3)
 func _rpc_projectile_fired_from_client(
 	projectile_id: int,
 	projectile_type: String,
@@ -1226,6 +1226,13 @@ func _rpc_projectile_fired_from_client(
 		pierces_enemies
 		and bool(accepted_parameters.get("can_pierce_enemies", false))
 	)
+	var accepted_target_enemy_net_id := _validate_client_homing_target(
+		StringName(projectile_type),
+		spawn_position,
+		accepted_direction,
+		target_enemy_net_id,
+		bool(accepted_parameters.get("can_home", false))
+	)
 	var host_fire_timestamp := _get_net_time()
 	_rpc_to_connected_clients(
 		&"net_projectile_fired",
@@ -1241,7 +1248,7 @@ func _rpc_projectile_fired_from_client(
 			accepted_pierces_enemies,
 			target_peer_id,
 			host_fire_timestamp,
-			target_enemy_net_id,
+			accepted_target_enemy_net_id,
 		]
 	)
 	net_projectile_fired(
@@ -1256,7 +1263,7 @@ func _rpc_projectile_fired_from_client(
 		accepted_pierces_enemies,
 		target_peer_id,
 		host_fire_timestamp,
-		target_enemy_net_id
+		accepted_target_enemy_net_id
 	)
 
 
@@ -1415,8 +1422,8 @@ func _instantiate_projectile(
 				return null
 			bullet.top_level = true
 			bullet.setup(direction, damage, pierces_enemies)
-			if pierces_enemies:
-				bullet.modulate = Player.PIERCING_BULLET_TINT
+			if game != null and target_enemy_net_id > 0:
+				bullet.setup_homing(game.get_enemy_for_net_id(target_enemy_net_id))
 			bullet.speed = speed
 			bullet.max_lifetime = lifetime
 			bullet.remaining_lifetime = lifetime
@@ -1581,6 +1588,7 @@ func _get_authoritative_client_projectile_parameters(
 				"speed": bullet.speed,
 				"lifetime": bullet.max_lifetime,
 				"can_pierce_enemies": owner_player._get_inventory_bullet_pierce_chance() > 0.0,
+				"can_home": owner_player._get_inventory_bullet_homing_chance() > 0.0,
 			}
 			bullet.free()
 			return bullet_result
@@ -1656,6 +1664,7 @@ func _remember_projectile_record(
 		"projectile_type": projectile_type,
 		"damage": maxi(damage, 0),
 		"pierces_enemies": pierces_enemies,
+		"confirmed_hit_consumed": false,
 		"expires_at": _get_net_time() + maxf(lifetime, 0.0) + PROJECTILE_RECORD_RETENTION_SECONDS,
 	}
 
@@ -1715,6 +1724,29 @@ func _get_valid_client_projectile_direction(direction: Vector2) -> Vector2:
 	):
 		return Vector2.ZERO
 	return direction / direction_length
+
+
+func _validate_client_homing_target(
+	projectile_type: StringName,
+	spawn_position: Vector2,
+	direction: Vector2,
+	target_enemy_net_id: int,
+	can_home: bool
+) -> int:
+	if projectile_type != &"player_bullet" or not can_home or target_enemy_net_id <= 0:
+		return 0
+	var enemy := _get_host_enemy_for_net_id(target_enemy_net_id)
+	if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+		return 0
+	var target_offset := enemy.global_position - spawn_position
+	if (
+		target_offset.length_squared() <= 0.001
+		or target_offset.length() > Player.HOMING_TARGET_RADIUS + 16.0
+	):
+		return 0
+	if abs(direction.angle_to(target_offset.normalized())) > Player.HOMING_TARGET_HALF_ANGLE:
+		return 0
+	return target_enemy_net_id
 
 
 func _is_client_projectile_spawn_position_allowed(
@@ -1870,7 +1902,7 @@ func apply_multiplayer_collectible_enemy_damage(
 	)
 
 
-@rpc("any_peer", "call_remote", "reliable", 4)
+@rpc("any_peer", "call_remote", "reliable", 3)
 func _rpc_enemy_hit_report(
 	projectile_id: int,
 	owner_peer_id: int,
@@ -1897,6 +1929,19 @@ func _apply_enemy_hit_report(
 		return
 	if not _is_projectile_id_valid_for_owner(projectile_id, owner_peer_id):
 		return
+	var projectile_record_variant: Variant = _projectile_records.get(projectile_id)
+	if not (projectile_record_variant is Dictionary):
+		return
+	var projectile_record := projectile_record_variant as Dictionary
+	if projectile_record.is_empty():
+		return
+	var projectile_type := StringName(projectile_record.get("projectile_type", &""))
+	var consumes_first_confirmed_hit := (
+		projectile_type == &"player_bullet"
+		and not bool(projectile_record.get("pierces_enemies", false))
+	)
+	if consumes_first_confirmed_hit and bool(projectile_record.get("confirmed_hit_consumed", false)):
+		return
 	var authoritative_damage := _get_authoritative_projectile_damage(
 		projectile_id,
 		owner_peer_id,
@@ -1911,6 +1956,18 @@ func _apply_enemy_hit_report(
 	var enemy := _get_host_enemy_for_net_id(enemy_net_id)
 	if enemy == null or not is_instance_valid(enemy):
 		return
+	var owner_player: Player = null
+	if game != null:
+		owner_player = game.get_player_for_peer(owner_peer_id)
+	if (
+		owner_player != null
+		and is_instance_valid(owner_player)
+		and (projectile_type == &"player_bullet" or projectile_type == &"skill1_bomb")
+	):
+		authoritative_damage = owner_player.resolve_attack_damage_against_enemy(
+			authoritative_damage,
+			enemy
+		)
 	if not _apply_confirmed_enemy_damage(
 		enemy_net_id,
 		enemy,
@@ -1919,7 +1976,16 @@ func _apply_enemy_hit_report(
 		EnemyConfig.DamageType.PHYSICAL
 	):
 		return
+	if consumes_first_confirmed_hit:
+		projectile_record["confirmed_hit_consumed"] = true
+		_projectile_records[projectile_id] = projectile_record
 	_remember_recent_event(_processed_enemy_hit_ids, hit_key, HIT_DEDUP_RETENTION_SECONDS, now)
+	if (
+		projectile_type == &"player_bullet"
+		and owner_player != null
+		and is_instance_valid(owner_player)
+	):
+		owner_player.apply_collectible_attack_hit_effects(enemy, authoritative_damage)
 
 
 func _apply_confirmed_enemy_damage(

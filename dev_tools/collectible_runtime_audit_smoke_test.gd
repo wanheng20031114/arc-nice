@@ -4,6 +4,13 @@ const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/collectible_arrow_projectile.gd")
 const LINGLAN_SKILL2_ROCKET_SCRIPT := preload("res://scene/linglan_skill2_sakura_rocket.gd")
+const REQUIRED_NEW_COLLECTIBLE_EFFECT_IDS := [
+	&"banana",
+	&"orange",
+	&"blood_trident",
+	&"flame_trident",
+	&"pure_charge_crystal",
+]
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -38,8 +45,9 @@ func _run() -> void:
 
 func _test_every_collectible_runtime_effect() -> void:
 	var pool := LuoxiMerchant.get_collectible_pool()
-	_expect(pool.size() == 105, "Runtime audit must load 105 collectibles from Luoxi pool.")
+	_expect(pool.size() == 110, "Runtime audit must load 110 collectibles from Luoxi pool.")
 	var seen_paths: Dictionary = {}
+	var seen_effect_ids: Dictionary = {}
 	for item_variant in pool:
 		var item := item_variant as PickupConfig
 		_expect(item != null, "Collectible pool entry must be a PickupConfig.")
@@ -47,7 +55,13 @@ func _test_every_collectible_runtime_effect() -> void:
 			continue
 		_expect(not seen_paths.has(item.resource_path), "%s must not appear twice in Luoxi pool." % item.resource_path)
 		seen_paths[item.resource_path] = true
+		seen_effect_ids[StringName(item.collectible_effect_id)] = true
 		await _audit_single_collectible(item)
+	for effect_id in REQUIRED_NEW_COLLECTIBLE_EFFECT_IDS:
+		_expect(
+			seen_effect_ids.has(effect_id),
+			"Runtime audit must include the new %s collectible." % effect_id
+		)
 
 
 func _audit_single_collectible(item: PickupConfig) -> void:
@@ -64,6 +78,11 @@ func _audit_single_collectible(item: PickupConfig) -> void:
 	var base_attack_speed := player.get_attack_speed()
 
 	_expect(run_state.try_add_item(item), "%s must fit into an empty inventory." % item.display_name)
+	_expect(item.collectible_max_copies >= 0, "%s copy limit must not be negative." % item.display_name)
+	_expect(
+		item.collectible_max_copies == 0 or item.collectible_stacks_by_copy,
+		"%s must allow copy stacking when it defines a copy limit." % item.display_name
+	)
 	var dynamic_xirang := maxi(item.attack_speed_xirang_step, item.defense_xirang_step)
 	if dynamic_xirang > 0:
 		player.grant_cheat_xirang(dynamic_xirang)
@@ -133,6 +152,27 @@ func _audit_single_collectible(item: PickupConfig) -> void:
 	)
 	_expect(
 		is_equal_approx(
+			float(player.get("collectible_skill_charge_preserve_chance")),
+			clampf(item.skill_charge_preserve_chance, 0.0, 1.0)
+		),
+		"%s skill charge preserve chance must apply." % item.display_name
+	)
+	_expect(
+		is_equal_approx(
+			float(player.get("collectible_damage_against_burning_multiplier")),
+			maxf(item.damage_against_burning_multiplier, 0.0)
+		),
+		"%s burning-target damage multiplier must apply." % item.display_name
+	)
+	_expect(
+		is_equal_approx(
+			float(player.get("collectible_damage_against_bleeding_multiplier")),
+			maxf(item.damage_against_bleeding_multiplier, 0.0)
+		),
+		"%s bleeding-target damage multiplier must apply." % item.display_name
+	)
+	_expect(
+		is_equal_approx(
 			float(player.get("collectible_ranged_front_damage_multiplier")),
 			maxf(item.incoming_ranged_front_damage_multiplier, 1.0)
 		),
@@ -157,9 +197,28 @@ func _audit_single_collectible(item: PickupConfig) -> void:
 		"%s bullet pierce chance must apply." % item.display_name
 	)
 	_expect(
+		is_equal_approx(
+			player.call("_get_inventory_bullet_homing_chance"),
+			clampf(item.bullet_homing_chance, 0.0, 1.0)
+		),
+		"%s bullet homing chance must apply." % item.display_name
+	)
+	_expect(
+		is_equal_approx(
+			player.call("_get_inventory_ammo_free_shot_chance"),
+			clampf(item.ammo_free_shot_chance, 0.0, 1.0)
+		),
+		"%s ammo-free shot chance must apply." % item.display_name
+	)
+	_expect(
 		is_equal_approx(player.get_attack_speed(), base_attack_speed + dynamic_attack_speed_bonus),
 		"%s dynamic attack speed bonus must apply." % item.display_name
 	)
+	if (
+		item.damage_against_burning_multiplier > 1.0
+		or item.damage_against_bleeding_multiplier > 1.0
+	):
+		_audit_status_target_damage(player, item)
 
 	if item.collectible_effect_id == PickupConfig.COLLECTIBLE_EFFECT_ADMIN_DOLL:
 		_expect(
@@ -183,6 +242,34 @@ func _audit_single_collectible(item: PickupConfig) -> void:
 	await process_frame
 	await physics_frame
 	_cleanup_test_children()
+
+
+func _audit_status_target_damage(player: Player, item: PickupConfig) -> void:
+	var enemy := _spawn_enemy(Vector2(40.0, 0.0), player)
+	_expect(
+		player.resolve_attack_damage_against_enemy(100, enemy) == 100,
+		"%s status multiplier must not affect an unmarked enemy." % item.display_name
+	)
+	if item.damage_against_burning_multiplier > 1.0:
+		enemy.collectible_status_effects[&"audit_burn"] = {
+			"status_id": &"burn",
+			"time_left": 1.0,
+		}
+	if item.damage_against_bleeding_multiplier > 1.0:
+		enemy.collectible_status_effects[&"audit_bleed"] = {
+			"status_id": &"bleed",
+			"time_left": 1.0,
+		}
+	var expected_damage := roundi(
+		100.0
+		* item.damage_against_burning_multiplier
+		* item.damage_against_bleeding_multiplier
+	)
+	_expect(
+		player.resolve_attack_damage_against_enemy(100, enemy) == expected_damage,
+		"%s status-target damage multiplier must affect matching enemies." % item.display_name
+	)
+	enemy.queue_free()
 
 
 func _audit_conditional_effect(player: Player, item: PickupConfig) -> void:

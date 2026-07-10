@@ -93,14 +93,13 @@ static func is_collectible_available_for_inventory(
 ) -> bool:
 	if item == null:
 		return false
-	if can_collectible_repeat_effect(item):
-		return true
 	if run_state == null:
 		return true
 
 	var effect_key := get_collectible_effect_key(item)
 	if effect_key.is_empty():
 		return true
+	var matching_copy_count := 0
 	for slot_index in range(RunStateStore.INVENTORY_CAPACITY):
 		var stored_item := (
 			run_state.get_item_for_peer(peer_id, slot_index)
@@ -109,9 +108,12 @@ static func is_collectible_available_for_inventory(
 		)
 		if stored_item == null or stored_item.pickup_type != PickupConfig.PickupType.COLLECTIBLE:
 			continue
-		if get_collectible_effect_key(stored_item) == effect_key:
+		if get_collectible_effect_key(stored_item) != effect_key:
+			continue
+		if not can_collectible_repeat_effect(item):
 			return false
-	return true
+		matching_copy_count += 1
+	return item.collectible_max_copies <= 0 or matching_copy_count < item.collectible_max_copies
 
 
 static func get_collectible_rarity_roll_weight(rarity: int) -> float:

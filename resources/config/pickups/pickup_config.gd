@@ -144,6 +144,8 @@ const KILL_EFFECT_BURST := "burst"
 @export var collectible_effect_id: String = ""
 @export var collectible_rarity: CollectibleRarity = CollectibleRarity.COMMON
 @export var collectible_stacks_by_copy: bool = false
+# 仅对可逐份叠加的收藏品生效；0 表示不限制份数。
+@export_range(0, 99, 1, "or_greater") var collectible_max_copies: int = 0
 
 @export_group("收藏品兼容性")
 # 需要玩家的普通攻击能够生成投射物；近战角色不应获得此类收藏品。
@@ -152,6 +154,15 @@ const KILL_EFFECT_BURST := "burst"
 @export_group("收藏品数值")
 # 玩家持有时，普通子弹变为穿透弹的概率。
 @export_range(0.0, 1.0, 0.01) var bullet_pierce_chance: float = 0.0
+# 玩家持有时，普通子弹获得追踪能力的概率。
+@export_range(0.0, 1.0, 0.01) var bullet_homing_chance: float = 0.0
+# 玩家持有时，普通射击不消耗弹药的概率。
+@export_range(0.0, 1.0, 0.01) var ammo_free_shot_chance: float = 0.0
+# 使用技能时保留全部技力的概率。
+@export_range(0.0, 1.0, 0.01) var skill_charge_preserve_chance: float = 0.0
+# 攻击处于对应状态的敌人时使用两个相互独立的伤害乘区。
+@export_range(1.0, 5.0, 0.05, "or_greater") var damage_against_burning_multiplier: float = 1.0
+@export_range(1.0, 5.0, 0.05, "or_greater") var damage_against_bleeding_multiplier: float = 1.0
 @export_range(0, 999, 1, "or_greater") var collectible_attack_bonus: int = 0
 @export_range(0, 999, 1, "or_greater") var collectible_max_health_bonus: int = 0
 @export_range(0.0, 999.0, 1.0, "or_greater") var collectible_move_speed_bonus: float = 0.0

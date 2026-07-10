@@ -34,6 +34,12 @@ const EMBER_LEAF := preload("res://resources/config/collectibles/collectible_emb
 const CAMPFIRE_COAL := preload("res://resources/config/collectibles/collectible_campfire_coal.tres")
 const OIL_LAMP := preload("res://resources/config/collectibles/collectible_oil_lamp.tres")
 const SAKURA := preload("res://resources/config/collectibles/collectible_sakura.tres")
+const PURE_CHARGE_CRYSTAL := preload("res://resources/config/collectibles/collectible_pure_charge_crystal.tres")
+const FLAME_TRIDENT := preload("res://resources/config/collectibles/collectible_flame_trident.tres")
+const BLOOD_TRIDENT := preload("res://resources/config/collectibles/collectible_blood_trident.tres")
+const BANANA := preload("res://resources/config/collectibles/collectible_banana.tres")
+const ORANGE := preload("res://resources/config/collectibles/collectible_orange.tres")
+const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/collectible_arrow_projectile.gd")
 const LINGLAN_SKILL2_ROCKET_SCRIPT := preload("res://scene/linglan_skill2_sakura_rocket.gd")
 const DAMAGE_NUMBER_POOL_SCRIPT := preload("res://scene/damage_number_pool.gd")
@@ -86,6 +92,8 @@ func _run() -> void:
 	await _test_collectible_stat_rules()
 	await _test_xirang_dynamic_rules()
 	await _test_new_collectible_rules()
+	await _test_new_stack_and_skill_rules()
+	await _test_trident_and_bullet_rules()
 	await _test_admin_doll_free_upgrade()
 	await _test_combat_effects()
 
@@ -106,7 +114,7 @@ func _run() -> void:
 
 func _test_collectible_resources() -> void:
 	var pool := LuoxiMerchant.get_collectible_pool()
-	_expect(pool.size() == 105, "Luoxi collectible pool must include the original 24 collectibles plus 81 new collectibles.")
+	_expect(pool.size() == 110, "Luoxi collectible pool must include all 110 collectible resources.")
 	var seen_paths: Dictionary = {}
 	var rarity_counts: Dictionary = {}
 	var projectile_requirement_count := 0
@@ -140,8 +148,50 @@ func _test_collectible_resources() -> void:
 		if config.icon_texture != null:
 			_expect(config.icon_texture.get_width() <= 32, "%s icon width must be <= 32." % config.display_name)
 			_expect(config.icon_texture.get_height() <= 32, "%s icon height must be <= 32." % config.display_name)
-	_expect(projectile_requirement_count == 3, "Exactly three collectibles must require projectile primary attacks.")
+	_expect(projectile_requirement_count == 8, "Exactly eight collectibles must require projectile primary attacks.")
 	_expect(APPLE.icon_texture.get_width() == 32 and APPLE.icon_texture.get_height() == 32, "Apple icon must remain 32x32.")
+	_expect(APPLE.collectible_stacks_by_copy and APPLE.collectible_max_copies == 5, "Apple must stack by copy up to five copies.")
+	_expect(APPLE.description.contains("最高100%"), "Apple description must state its 100% pierce cap.")
+	_expect(
+		PURE_CHARGE_CRYSTAL.collectible_rarity == PickupConfig.CollectibleRarity.LEGENDARY
+		and PURE_CHARGE_CRYSTAL.collectible_stacks_by_copy
+		and PURE_CHARGE_CRYSTAL.collectible_max_copies == 5
+		and is_equal_approx(PURE_CHARGE_CRYSTAL.skill_charge_preserve_chance, 0.2),
+		"Pure charge crystal must be a five-copy legendary with 20% charge preservation per copy."
+	)
+	_expect(
+		FLAME_TRIDENT.collectible_rarity == PickupConfig.CollectibleRarity.RARE
+		and not FLAME_TRIDENT.collectible_stacks_by_copy
+		and is_equal_approx(FLAME_TRIDENT.damage_against_burning_multiplier, 1.2),
+		"Flame trident must be a unique rare 1.2x burning-target multiplier."
+	)
+	_expect(
+		BLOOD_TRIDENT.collectible_rarity == PickupConfig.CollectibleRarity.RARE
+		and not BLOOD_TRIDENT.collectible_stacks_by_copy
+		and is_equal_approx(BLOOD_TRIDENT.damage_against_bleeding_multiplier, 1.2),
+		"Blood trident must be a unique rare 1.2x bleeding-target multiplier."
+	)
+	_expect(
+		BANANA.collectible_rarity == PickupConfig.CollectibleRarity.COMMON
+		and BANANA.collectible_stacks_by_copy
+		and BANANA.collectible_max_copies == 4
+		and is_equal_approx(BANANA.bullet_homing_chance, 0.3),
+		"Banana must be a four-copy common with 30% homing per copy."
+	)
+	_expect(
+		ORANGE.collectible_rarity == PickupConfig.CollectibleRarity.COMMON
+		and ORANGE.collectible_stacks_by_copy
+		and ORANGE.collectible_max_copies == 10
+		and is_equal_approx(ORANGE.ammo_free_shot_chance, 0.1),
+		"Orange must be a ten-copy common with 10% ammo preservation per copy."
+	)
+	for projectile_item_variant in [PURE_CHARGE_CRYSTAL, FLAME_TRIDENT, BLOOD_TRIDENT, BANANA, ORANGE]:
+		var projectile_item := projectile_item_variant as PickupConfig
+		_expect(
+			projectile_item != null and projectile_item.requires_projectile_primary_attack,
+			"%s must remain restricted to projectile-ammunition characters."
+			% (projectile_item.display_name if projectile_item != null else "Unknown")
+		)
 	for rarity in [
 		PickupConfig.CollectibleRarity.COMMON,
 		PickupConfig.CollectibleRarity.RARE,
@@ -357,19 +407,212 @@ func _test_collectible_stat_rules() -> void:
 
 	run_state.begin_new_run()
 	player = _spawn_player()
-	_expect(run_state.try_add_item(APPLE), "First apple must fit in inventory.")
-	_expect(run_state.try_add_item(APPLE), "Second apple must fit in inventory.")
+	for copy_index in range(5):
+		_expect(
+			LuoxiMerchant.is_collectible_available_for_inventory(APPLE, run_state),
+			"Apple copy %d must remain available before reaching its cap." % (copy_index + 1)
+		)
+		_expect(run_state.try_add_item(APPLE), "Apple copy %d must fit in inventory." % (copy_index + 1))
 	await process_frame
 	_expect(
-		is_equal_approx(player.call("_get_inventory_bullet_pierce_chance"), 0.2),
-		"Multiple apples must still only expose a 20% max pierce chance."
+		is_equal_approx(player.call("_get_inventory_bullet_pierce_chance"), 1.0),
+		"Five apples must stack their pierce chance to the 100% cap."
+	)
+	_expect(
+		not LuoxiMerchant.is_collectible_available_for_inventory(APPLE, run_state),
+		"Apple must stop appearing after five owned copies."
 	)
 	_expect(run_state.try_add_item(GLASS_MARBLE), "Glass marble must fit in inventory with apples.")
 	await process_frame
 	_expect(
-		is_equal_approx(player.call("_get_inventory_bullet_pierce_chance"), 0.26),
-		"Different piercing collectibles must stack their pierce chance."
+		is_equal_approx(player.call("_get_inventory_bullet_pierce_chance"), 1.0),
+		"Additional piercing effects must stay clamped at 100%."
 	)
+	player.queue_free()
+	await process_frame
+
+
+func _test_new_stack_and_skill_rules() -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run()
+	var player := _spawn_player()
+	for copy_index in range(4):
+		_expect(
+			LuoxiMerchant.is_collectible_available_for_inventory(BANANA, run_state),
+			"Banana copy %d must remain available before reaching its cap." % (copy_index + 1)
+		)
+		_expect(run_state.try_add_item(BANANA), "Banana copy %d must fit in inventory." % (copy_index + 1))
+	await process_frame
+	_expect(
+		is_equal_approx(player.call("_get_inventory_bullet_homing_chance"), 1.0),
+		"Four bananas must clamp their combined homing chance to 100%."
+	)
+	_expect(
+		not LuoxiMerchant.is_collectible_available_for_inventory(BANANA, run_state),
+		"Banana must stop appearing after four owned copies."
+	)
+	player.queue_free()
+	await process_frame
+
+	run_state.begin_new_run()
+	player = _spawn_player()
+	for copy_index in range(10):
+		_expect(
+			LuoxiMerchant.is_collectible_available_for_inventory(ORANGE, run_state),
+			"Orange copy %d must remain available before reaching its cap." % (copy_index + 1)
+		)
+		_expect(run_state.try_add_item(ORANGE), "Orange copy %d must fit in inventory." % (copy_index + 1))
+	await process_frame
+	_expect(
+		is_equal_approx(player.call("_get_inventory_ammo_free_shot_chance"), 1.0),
+		"Ten oranges must stack their ammo preservation chance to 100%."
+	)
+	_expect(
+		not bool(player.call("_should_consume_ammo_for_shot")),
+		"A 100% orange stack must deterministically preserve ammunition."
+	)
+	var ammo_before := player.current_ammo
+	player.call("_consume_ammo_after_successful_shot")
+	_expect(player.current_ammo == ammo_before, "A full orange stack must not reduce current ammunition.")
+	_expect(
+		not LuoxiMerchant.is_collectible_available_for_inventory(ORANGE, run_state),
+		"Orange must stop appearing after ten owned copies."
+	)
+	player.queue_free()
+	await process_frame
+
+	run_state.begin_new_run()
+	player = _spawn_player()
+	for copy_index in range(5):
+		_expect(
+			LuoxiMerchant.is_collectible_available_for_inventory(PURE_CHARGE_CRYSTAL, run_state),
+			"Pure charge crystal copy %d must remain available before reaching its cap."
+			% (copy_index + 1)
+		)
+		_expect(
+			run_state.try_add_item(PURE_CHARGE_CRYSTAL),
+			"Pure charge crystal copy %d must fit in inventory." % (copy_index + 1)
+		)
+	await process_frame
+	_expect(
+		is_equal_approx(float(player.get("collectible_skill_charge_preserve_chance")), 1.0),
+		"Five pure charge crystals must stack their skill charge preservation to 100%."
+	)
+	_expect(
+		not LuoxiMerchant.is_collectible_available_for_inventory(PURE_CHARGE_CRYSTAL, run_state),
+		"Pure charge crystal must stop appearing after five owned copies."
+	)
+	_expect(
+		Player.MIN_SKILL_ACTIVATION_INTERVAL_MSEC == 100,
+		"Every player skill must share a 0.1-second minimum activation interval."
+	)
+	player.unlock_skill1()
+	player.skill1_charge = player.skill1_charge_duration
+	var bombs_before := _count_skill1_bombs()
+	_expect(bool(player.call("_try_use_skill1")), "A fully charged 100% preserve skill must activate.")
+	_expect(
+		is_equal_approx(player.skill1_charge, player.skill1_charge_duration),
+		"A 100% pure charge crystal stack must preserve all skill charge."
+	)
+	_expect(
+		not bool(player.call("_try_use_skill1")),
+		"A second skill activation inside 0.1 seconds must be rejected even when charge is preserved."
+	)
+	_expect(
+		_count_skill1_bombs() == bombs_before + 1,
+		"The rejected rapid skill activation must not create another skill projectile."
+	)
+	player.set(
+		"_last_skill_activation_msec",
+		Time.get_ticks_msec() - Player.MIN_SKILL_ACTIVATION_INTERVAL_MSEC
+	)
+	_expect(bool(player.call("_try_use_skill1")), "The preserved skill must reactivate after 0.1 seconds.")
+	_expect(
+		_count_skill1_bombs() == bombs_before + 2,
+		"Exactly one more skill projectile must appear after the minimum interval."
+	)
+	_expect(
+		is_equal_approx(player.skill1_charge, player.skill1_charge_duration),
+		"Repeated accepted activations at 100% preservation must keep skill charge full."
+	)
+	_queue_free_skill1_bombs()
+	player.queue_free()
+	await process_frame
+
+
+func _test_trident_and_bullet_rules() -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run()
+	var player := _spawn_player()
+	_expect(run_state.try_add_item(FLAME_TRIDENT), "Flame trident must fit in inventory.")
+	_expect(run_state.try_add_item(BLOOD_TRIDENT), "Blood trident must fit in inventory.")
+	await process_frame
+	_expect(
+		not LuoxiMerchant.is_collectible_available_for_inventory(FLAME_TRIDENT, run_state)
+		and not LuoxiMerchant.is_collectible_available_for_inventory(BLOOD_TRIDENT, run_state),
+		"Both tridents must remain unique after their first copy."
+	)
+	var burning_enemy := _spawn_enemy(Vector2(44.0, 0.0), player)
+	var bleeding_enemy := _spawn_enemy(Vector2(56.0, 0.0), player)
+	var dual_status_enemy := _spawn_enemy(Vector2(68.0, 0.0), player)
+	burning_enemy.apply_collectible_status(&"burn", 1201, 3.0)
+	bleeding_enemy.apply_collectible_status(&"bleed", 1202, 3.0)
+	dual_status_enemy.apply_collectible_status(&"burn", 1203, 3.0)
+	dual_status_enemy.apply_collectible_status(&"bleed", 1204, 3.0)
+	_expect(
+		player.resolve_attack_damage_against_enemy(100, burning_enemy) == 120,
+		"Flame trident must multiply damage against a burning target by 1.2."
+	)
+	_expect(
+		player.resolve_attack_damage_against_enemy(100, bleeding_enemy) == 120,
+		"Blood trident must multiply damage against a bleeding target by 1.2."
+	)
+	_expect(
+		player.resolve_attack_damage_against_enemy(100, dual_status_enemy) == 144,
+		"Flame and blood tridents must multiply together to 1.44 against both statuses."
+	)
+	for enemy in [burning_enemy, bleeding_enemy, dual_status_enemy]:
+		enemy.queue_free()
+	player.queue_free()
+	await process_frame
+
+	run_state.begin_new_run()
+	player = _spawn_player()
+	for _copy_index in range(5):
+		_expect(run_state.try_add_item(APPLE), "Apple must fit for piercing-homing compatibility coverage.")
+	for _copy_index in range(4):
+		_expect(run_state.try_add_item(BANANA), "Banana must fit for piercing-homing compatibility coverage.")
+	await process_frame
+	_expect(
+		bool(player.call("_should_fire_piercing_bullet"))
+		and bool(player.call("_should_fire_homing_bullet")),
+		"Full apple and banana stacks must allow piercing and homing on the same shot."
+	)
+	var homing_target := _spawn_enemy(Vector2(48.0, 12.0), player)
+	homing_target.current_health = 500
+	var bullet := BULLET_SCENE.instantiate() as Bullet
+	_expect(bullet != null, "Bullet scene must instantiate for combined piercing-homing coverage.")
+	if bullet != null:
+		bullet.setup(Vector2.RIGHT, 10, true)
+		bullet.setup_homing(homing_target)
+		bullet.setup_collectible_owner(player)
+		test_root.add_child(bullet)
+		_expect(
+			bullet.pierces_enemies and bullet.is_homing,
+			"One Bullet must be able to hold piercing and homing simultaneously."
+		)
+		_expect(
+			bullet.modulate.is_equal_approx(Bullet.PIERCING_HOMING_TINT),
+			"A combined piercing-homing Bullet must use its dedicated combined tint."
+		)
+		_expect(bullet.try_hit_enemy(homing_target), "The combined Bullet must register its homing target hit.")
+		_expect(
+			not bullet.is_queued_for_deletion() and bullet.pierces_enemies,
+			"The combined Bullet must survive its first enemy hit because piercing remains active."
+		)
+		_expect(not bullet.is_homing, "Homing must end after the selected target is hit without disabling piercing.")
+		bullet.queue_free()
+	homing_target.queue_free()
 	player.queue_free()
 	await process_frame
 
@@ -594,6 +837,18 @@ func _spawn_enemy(position: Vector2, player: Player) -> Enemy:
 
 func _count_active_damage_numbers() -> int:
 	return get_nodes_in_group(&"damage_numbers").size()
+
+
+func _count_skill1_bombs() -> int:
+	return test_root.get_children().filter(
+		func(child: Node) -> bool: return child is WeishidaierSkill1Bomb
+	).size()
+
+
+func _queue_free_skill1_bombs() -> void:
+	for child in test_root.get_children():
+		if child is WeishidaierSkill1Bomb:
+			child.queue_free()
 
 
 func _get_enemy_shader_parameter_float(enemy: Enemy, parameter_name: StringName) -> float:

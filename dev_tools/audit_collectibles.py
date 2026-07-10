@@ -32,7 +32,13 @@ RARITY_LABELS = {
 
 FIELD_DEFAULTS: dict[str, Any] = {
     "collectible_stacks_by_copy": False,
+    "collectible_max_copies": 0,
     "bullet_pierce_chance": 0.0,
+    "bullet_homing_chance": 0.0,
+    "ammo_free_shot_chance": 0.0,
+    "skill_charge_preserve_chance": 0.0,
+    "damage_against_burning_multiplier": 1.0,
+    "damage_against_bleeding_multiplier": 1.0,
     "collectible_attack_bonus": 0,
     "collectible_max_health_bonus": 0,
     "collectible_move_speed_bonus": 0.0,
@@ -113,10 +119,11 @@ FIELD_DEFAULTS: dict[str, Any] = {
 }
 
 DESIGN_METADATA_FIELDS = {"collectible_design_id", "collectible_design_note"}
+STACKING_METADATA_FIELDS = {"collectible_stacks_by_copy", "collectible_max_copies"}
 GAMEPLAY_EFFECT_FIELDS = tuple(
     field
     for field in FIELD_DEFAULTS.keys()
-    if field != "collectible_stacks_by_copy" and field not in DESIGN_METADATA_FIELDS
+    if field not in STACKING_METADATA_FIELDS and field not in DESIGN_METADATA_FIELDS
 )
 SPECIAL_EFFECT_IDS = {"admin_doll"}
 VALID_PERIODIC_EFFECTS = {"thunder", "frost", "heal", "archer", "sakura_rocket"}
@@ -204,6 +211,11 @@ DESIGN_PROFILE_FIELDS = (
     "skill_effect_duration",
     "skill_move_speed_multiplier",
     "bullet_pierce_chance",
+    "bullet_homing_chance",
+    "ammo_free_shot_chance",
+    "skill_charge_preserve_chance",
+    "damage_against_burning_multiplier",
+    "damage_against_bleeding_multiplier",
     "base_upgrade_free_chance",
     "incoming_ranged_front_damage_multiplier",
     "incoming_ranged_back_damage_multiplier",
@@ -213,8 +225,8 @@ DESIGN_PROFILE_FIELDS = (
     "defense_xirang_step",
     "defense_bonus_per_xirang_step",
 )
-NEW_COLLECTIBLE_COUNT = 81
-EXPECTED_TOTAL_COUNT = 105
+NEW_COLLECTIBLE_COUNT = 86
+EXPECTED_TOTAL_COUNT = 110
 STATIC_STAT_FIELDS = (
     "collectible_attack_bonus",
     "collectible_max_health_bonus",
@@ -228,6 +240,18 @@ STATIC_STAT_FIELDS = (
 RANGED_DEFENSE_FIELDS = (
     "incoming_ranged_front_damage_multiplier",
     "incoming_ranged_back_damage_multiplier",
+    "incoming_ranged_dodge_chance",
+)
+STATUS_TARGET_DAMAGE_FIELDS = (
+    "damage_against_burning_multiplier",
+    "damage_against_bleeding_multiplier",
+)
+PROBABILITY_EFFECT_FIELDS = (
+    "bullet_pierce_chance",
+    "bullet_homing_chance",
+    "ammo_free_shot_chance",
+    "skill_charge_preserve_chance",
+    "base_upgrade_free_chance",
     "incoming_ranged_dodge_chance",
 )
 XIRANG_DYNAMIC_FIELDS = (
@@ -351,6 +375,9 @@ def summarize_effect(data: dict[str, Any]) -> str:
         ("collectible_magic_damage_bonus", "法伤"),
         ("collectible_skill_charge_bonus_per_second", "技力/s"),
         ("bullet_pierce_chance", "穿透率"),
+        ("bullet_homing_chance", "追踪率"),
+        ("ammo_free_shot_chance", "免耗弹率"),
+        ("skill_charge_preserve_chance", "技能免耗率"),
         ("base_upgrade_free_chance", "免费升级率"),
         ("incoming_ranged_dodge_chance", "远程闪避率"),
     ]
@@ -363,6 +390,10 @@ def summarize_effect(data: dict[str, Any]) -> str:
         parts.append(f"正面远程伤害x{data['incoming_ranged_front_damage_multiplier']}")
     if data.get("incoming_ranged_back_damage_multiplier", 1.0) != 1.0:
         parts.append(f"背面远程伤害x{data['incoming_ranged_back_damage_multiplier']}")
+    if data.get("damage_against_burning_multiplier", 1.0) != 1.0:
+        parts.append(f"燃烧目标伤害x{data['damage_against_burning_multiplier']}")
+    if data.get("damage_against_bleeding_multiplier", 1.0) != 1.0:
+        parts.append(f"流血目标伤害x{data['damage_against_bleeding_multiplier']}")
     if data.get("attack_speed_xirang_step", 0):
         parts.append(f"每{data['attack_speed_xirang_step']}息壤攻速+{data.get('attack_speed_bonus_per_xirang_step', 0)}")
     if data.get("defense_xirang_step", 0):
@@ -393,6 +424,14 @@ def primary_affix_categories(data: dict[str, Any]) -> list[str]:
         categories.append("基础数值")
     if data.get("bullet_pierce_chance", 0.0) != 0.0:
         categories.append("穿透")
+    if data.get("bullet_homing_chance", 0.0) != 0.0:
+        categories.append("追踪")
+    if data.get("ammo_free_shot_chance", 0.0) != 0.0:
+        categories.append("弹药免耗")
+    if data.get("skill_charge_preserve_chance", 0.0) != 0.0:
+        categories.append("技能免耗")
+    if _has_non_default(data, STATUS_TARGET_DAMAGE_FIELDS):
+        categories.append("状态增伤")
     if data.get("base_upgrade_free_chance", 0.0) != 0.0:
         categories.append("免费升级")
     if _has_non_default(data, RANGED_DEFENSE_FIELDS):
@@ -666,6 +705,19 @@ def validate_logic_fields(data: dict[str, Any], issues: list[str], config_name: 
         issues.append("缺少描述")
     if not str(data.get("collectible_effect_id", "")).strip():
         issues.append("缺少 collectible_effect_id")
+
+    max_copies = int(data.get("collectible_max_copies", 0))
+    if max_copies < 0:
+        issues.append("collectible_max_copies 不能为负数")
+    if max_copies > 0 and data.get("collectible_stacks_by_copy") is not True:
+        issues.append("设置 collectible_max_copies 时必须允许逐份叠加")
+    for field in PROBABILITY_EFFECT_FIELDS:
+        value = float(data.get(field, FIELD_DEFAULTS[field]))
+        if value < 0.0 or value > 1.0:
+            issues.append(f"{field} 必须位于 0-1 之间")
+    for field in STATUS_TARGET_DAMAGE_FIELDS:
+        if float(data.get(field, FIELD_DEFAULTS[field])) < 1.0:
+            issues.append(f"{field} 不能低于 1.0")
 
     rarity = data.get("collectible_rarity")
     if rarity not in RARITY_LABELS:

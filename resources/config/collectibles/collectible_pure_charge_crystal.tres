@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/collectibles/pure_charge_crystal.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 5
+display_name = "纯净充能水晶"
+drop_weight = 0.0
+description = "使用技能时有20%概率不消耗技力（可叠加，最高100%）；技能最短发动间隔为0.1秒。"
+can_store_in_inventory = true
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(1, 1)
+duration = 0.0
+collectible_effect_id = "pure_charge_crystal"
+collectible_rarity = 3
+collectible_design_id = "pure_charge_crystal"
+collectible_design_note = "纯净回响：每份提供20%技能免耗概率，最多5份、最高100%。"
+collectible_stacks_by_copy = true
+collectible_max_copies = 5
+requires_projectile_primary_attack = true
+skill_charge_preserve_chance = 0.2
+metadata/_custom_type_script = "uid://qucrregg4cq0"

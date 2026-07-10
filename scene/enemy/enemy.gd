@@ -345,9 +345,16 @@ func _has_collectible_status(status_id: StringName) -> bool:
 		var status_data := status as Dictionary
 		if status_data.is_empty():
 			continue
-		if StringName(status_data.get("status_id", &"")) == status_id:
+		if (
+			StringName(status_data.get("status_id", &"")) == status_id
+			and float(status_data.get("time_left", 0.0)) > 0.0
+		):
 			return true
 	return false
+
+
+func has_collectible_status(status_id: StringName) -> bool:
+	return _has_collectible_status(status_id)
 
 
 func _set_visual_shader_parameter(parameter_name: StringName, value: Variant) -> void:

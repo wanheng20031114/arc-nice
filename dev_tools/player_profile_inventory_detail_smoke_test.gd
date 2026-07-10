@@ -55,8 +55,8 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	_expect(run_state.try_add_item(APPLE_COLLECTIBLE), "The second apple collectible must fit in inventory.")
 	_expect(run_state.try_add_item(HEALTH_PICKUP), "The health pickup must fit in inventory.")
 	_expect(
-		is_equal_approx(player.call("_get_inventory_bullet_pierce_chance"), 0.2),
-		"Owning multiple apples must still grant only the single 20% piercing chance."
+		is_equal_approx(player.call("_get_inventory_bullet_pierce_chance"), 0.4),
+		"Two apples must stack to a 40% piercing chance."
 	)
 
 	profile_panel.open()
@@ -64,15 +64,16 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	_expect(profile_panel.selected_slot_index == -1, "Opening the inventory must not auto-select the first slot.")
 	_expect(not profile_panel.item_detail_panel.visible, "Opening the inventory must not show an item detail panel by default.")
 	_expect(not profile_panel.slots[0].button_pressed, "Opening the inventory must leave the first slot unselected.")
+	var raw_attack_speed := player.get_attack_speed()
+	var rounded_attack_speed := roundf(raw_attack_speed)
+	var expected_attack_speed_text := (
+		str(roundi(rounded_attack_speed))
+		if is_equal_approx(raw_attack_speed, rounded_attack_speed)
+		else "%.2f" % raw_attack_speed
+	)
 	_expect(
-		profile_panel.attack_speed_value.text.contains("%.2f" % player.get_attack_speed())
-		and profile_panel.attack_speed_value.text.contains("%.2f" % player.get_attacks_per_second()),
-		"Profile panel must show raw attack speed and attacks per second. Actual: %s, raw: %.2f, aps: %.2f"
-		% [
-			profile_panel.attack_speed_value.text,
-			player.get_attack_speed(),
-			player.get_attacks_per_second(),
-		]
+		profile_panel.attack_speed_value.text == expected_attack_speed_text,
+		"Profile panel must show only raw attack speed without attacks-per-second text."
 	)
 	_expect(profile_panel.move_speed_value.text == str(roundi(player.move_speed)), "Profile panel must show current movement speed.")
 	_expect(profile_panel.physical_defense_value.text == str(player.physical_defense), "Profile panel must show current physical defense.")

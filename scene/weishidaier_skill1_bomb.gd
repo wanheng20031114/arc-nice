@@ -107,7 +107,10 @@ func _apply_explosion_damage() -> void:
 		damaged_ids[enemy_id] = true
 		if _try_report_multiplayer_enemy_hit(enemy):
 			continue
-		enemy.apply_damage(damage, enemy.global_position.direction_to(global_position))
+		var resolved_damage := damage
+		if owner_player != null and is_instance_valid(owner_player):
+			resolved_damage = owner_player.resolve_attack_damage_against_enemy(damage, enemy)
+		enemy.apply_damage(resolved_damage, enemy.global_position.direction_to(global_position))
 
 
 func _spawn_explosion_effect() -> void:

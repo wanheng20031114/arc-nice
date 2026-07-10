@@ -4,6 +4,10 @@ class_name Bullet
 
 # 世界碰撞层的掩码
 const WORLD_COLLISION_MASK := 1
+const HOMING_TURN_SPEED := 5.5
+const PIERCING_TINT := Color(1.0, 0.36, 0.34, 1.0)
+const HOMING_TINT := Color(0.48, 1.0, 0.62, 1.0)
+const PIERCING_HOMING_TINT := Color(1.0, 0.72, 0.26, 1.0)
 
 # 子弹飞行速度
 @export var speed:float = 320.0
@@ -22,6 +26,8 @@ var source_type: StringName = &"player_bullet"
 var pierces_enemies: bool = false
 var hit_enemy_instance_ids: Dictionary = {}
 var collectible_owner: Player = null
+var homing_target: Enemy = null
+var is_homing: bool = false
 
 
 func _ready() -> void:
@@ -39,6 +45,13 @@ func setup(
 		rotation = direction.angle()
 	damage = maxi(initial_damage, 0)
 	pierces_enemies = initial_pierces_enemies
+	_update_collectible_tint()
+
+
+func setup_homing(target: Enemy) -> void:
+	homing_target = target if target != null and is_instance_valid(target) and not target.is_dead else null
+	is_homing = homing_target != null
+	_update_collectible_tint()
 
 
 func setup_multiplayer(
@@ -57,6 +70,7 @@ func setup_collectible_owner(owner_player: Player) -> void:
 
 # 物理帧更新逻辑，处理子弹移动和碰撞检测
 func _physics_process(delta: float) -> void:
+	_update_homing(delta)
 	var current_position: Vector2 = global_position
 	var next_position: Vector2 = current_position + direction * speed * delta
 	
@@ -71,6 +85,38 @@ func _physics_process(delta: float) -> void:
 	remaining_lifetime -= delta
 	if remaining_lifetime <= 0.0:
 		queue_free()
+
+
+func _update_homing(delta: float) -> void:
+	if not is_homing:
+		return
+	if homing_target == null or not is_instance_valid(homing_target) or homing_target.is_dead:
+		_stop_homing()
+		return
+	var desired_direction := global_position.direction_to(homing_target.global_position)
+	if desired_direction == Vector2.ZERO:
+		return
+	var turn_limit := HOMING_TURN_SPEED * maxf(delta, 0.0)
+	var turn_angle := clampf(direction.angle_to(desired_direction), -turn_limit, turn_limit)
+	direction = direction.rotated(turn_angle).normalized()
+	rotation = direction.angle()
+
+
+func _stop_homing() -> void:
+	is_homing = false
+	homing_target = null
+	_update_collectible_tint()
+
+
+func _update_collectible_tint() -> void:
+	if pierces_enemies and is_homing:
+		modulate = PIERCING_HOMING_TINT
+	elif pierces_enemies:
+		modulate = PIERCING_TINT
+	elif is_homing:
+		modulate = HOMING_TINT
+	else:
+		modulate = Color.WHITE
 
 
 # 检测从当前位置到下一位置之间是否撞到墙体/世界
@@ -119,17 +165,23 @@ func try_hit_enemy(enemy: Enemy) -> bool:
 	if not _try_mark_enemy_hit(enemy):
 		return false
 
+	var reported_multiplayer_hit := _try_report_multiplayer_enemy_hit(enemy)
 	var hit_registered := false
-	if _try_report_multiplayer_enemy_hit(enemy):
+	var resolved_damage := damage
+	if collectible_owner != null and is_instance_valid(collectible_owner):
+		resolved_damage = collectible_owner.resolve_attack_damage_against_enemy(damage, enemy)
+	if reported_multiplayer_hit:
 		hit_registered = true
 	else:
-		hit_registered = enemy.apply_damage(damage, -direction)
+		hit_registered = enemy.apply_damage(resolved_damage, -direction)
 
 	if not hit_registered:
 		hit_enemy_instance_ids.erase(enemy.get_instance_id())
 		return false
-	if collectible_owner != null and is_instance_valid(collectible_owner):
-		collectible_owner.apply_collectible_attack_hit_effects(enemy, damage)
+	if not reported_multiplayer_hit and collectible_owner != null and is_instance_valid(collectible_owner):
+		collectible_owner.apply_collectible_attack_hit_effects(enemy, resolved_damage)
+	if is_homing and enemy == homing_target:
+		_stop_homing()
 	if not pierces_enemies:
 		queue_free()
 	return true

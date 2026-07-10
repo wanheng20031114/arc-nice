@@ -14,9 +14,9 @@
 
 ## 当前协议地图
 
-- `CH_INPUT` / unreliable ordered：Client -> Host，玩家位置、速度、射击方向、技能按钮和实时状态。
+- `CH_INPUT` / unreliable ordered：Client -> Host，玩家位置、速度、射击方向、重载按钮和实时状态。
 - `CH_STATE` / unreliable ordered：Host -> Client，玩家与敌人快照，客户端用 `NetInterpolator` 插值。
-- `CH_PROJECTILE` / unreliable ordered：投射物视觉生成事件，Host 负责广播，客户端发射会先上报 Host。
+- `CH_PROJECTILE` / mixed：Client -> Host 的投射物生成与命中报告使用同一 reliable 顺序通道；Host -> Client 的视觉副本仍用 unreliable ordered。
 - `CH_EVENT` / reliable：伤害确认、死亡/复活、敌人生成/移除、掉落、息壤、升级、技能购买、波次和 HUD 事件。
 
 ## 权威边界
@@ -30,7 +30,7 @@
 - 快照解码边界：`SnapshotManager` 在解析玩家/敌人快照前先计算单条快照长度，截断包会停止解码，不再读取部分状态。
 - 插值缓存遍历：`MpGame._client_interpolate_entities()` 改为遍历 `Dictionary.keys()` 快照，避免插值过程中清理敌人缓存导致遍历状态被修改。
 - 断线清理：`NetManager.player_left` 进入 `MpGame` 后会清理对应 peer 的插值器、输入序列、接受位置、血量 revision、复活倒计时和本地 projectile 索引；`Game` 显式移除远端玩家节点和名字索引。
-- 投射物参数：Client -> Host 的玩家 projectile spawn 不再使用客户端上报的 `damage/speed/lifetime`，Host 按玩家权威属性和 projectile 场景默认值重建；敌人命中确认优先使用 Host projectile record 中的 damage 和 owner 校验，若不可靠 spawn 包丢失或跨 channel 乱序导致 record 缺失，则按 Host 侧玩家攻击力做上限裁剪；projectile id 必须落在 owner peer 的 namespace。
+- 投射物参数：Client -> Host 的玩家 projectile spawn 不再使用客户端上报的 `damage/speed/lifetime`，Host 按玩家权威属性和 projectile 场景默认值重建；生成与命中报告在同一 reliable 通道保持顺序，敌人命中必须具有 Host projectile record，并使用其中的 damage、owner 与穿透属性；projectile id 必须落在 owner peer 的 namespace。
 - 投射物 spawn 边界：Client projectile 的方向必须是有限且长度合理的向量，Host 会规范化后广播；spawn 位置必须靠近 Host 当前或最近接受的玩家位置，容忍窗口为高延迟/速度 buff 留余量。
 - 远端玩家权威状态：Host 现在会被动 tick 远端玩家的无敌、buff 和 skill1 充能；`_rpc_client_player_state` 保留协议字段但不再用客户端上报覆盖 Host 的 invincibility、skill charge、form 和 shot pattern；Host 接受 `skill1_bomb` 时要求并消耗 Host 侧 skill1 充能。
 - 4 人自动覆盖：`multiplayer_load_smoke_test.gd` 现在覆盖 4 peer Host runtime、4 人 player snapshot、升级确认、技能购买确认、死亡/过期 revision/复活确认、远端 skill1 被动充能、全员息壤分发。
@@ -42,7 +42,7 @@
 ## 剩余高优先级风险
 
 - 客户端玩家实时状态已改为 Host 保有权威值；`100ms-2`、`200ms-2`、`200ms-5` 的 4 进程 clumsy 自动矩阵已覆盖 cheat、升级、技能购买、死亡/复活和远端死亡视图。剩余风险是实际真人键鼠操作下 skill1 充能、释放反馈与客户端预测的一致性还需要手动确认。
-- 玩家 projectile 参数已改为 Host 重建，record 缺失时也会按 Host 玩家属性封顶，projectile id namespace、spawn 位置和方向已校验；`100ms-2`、`200ms-2`、`200ms-5` 自动矩阵已覆盖客户端移动上报和基础敌人/掉落事件。剩余风险是高延迟真人连续射击时的位置容忍窗口是否需要调参。
+- 玩家 projectile 参数已改为 Host 重建，无 record 的命中报告会被拒绝，projectile id namespace、spawn 位置和方向已校验；`100ms-2`、`200ms-2`、`200ms-5` 自动矩阵已覆盖客户端移动上报和基础敌人/掉落事件。剩余风险是高延迟真人连续射击时的位置容忍窗口是否需要调参。
 - 游戏中断线清理已补第一层本地状态释放，但还需要 1 host + 3 client 手动验证：客户端断开后其他客户端的 HUD/镜头/敌人目标是否自然恢复，host 断开后客户端是否稳定回大厅。
 - `_apply_enemy_hit_report()` 在工具/测试直接调用且节点未入树时不会再尝试 RPC，避免无网络树上下文下的 `ERR_UNCONFIGURED`。
 - 升级、技能购买和 cheat 的 Host 入口会拒绝无效 sender；内部 `_apply_upgrade_for_peer()` / `_apply_skill1_purchase_for_peer()` 也会拒绝 `peer_id <= 0` 或已离开的 peer，避免迟到事件污染 run state。

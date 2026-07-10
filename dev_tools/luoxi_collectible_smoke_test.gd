@@ -9,6 +9,7 @@ const INVENTORY_SLOT_SCENE := preload("res://scene/inventory_slot.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 const RUBY_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_ruby.tres")
+const ARCHER_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_archer.tres")
 const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
 
 var failures: Array[String] = []
@@ -57,7 +58,7 @@ func _test_hoe_cat_collectible_compatibility_filter() -> void:
 	await process_frame
 
 	var filtered_pool := luoxi.call("_get_collectible_pool_for_player", hoe_cat) as Array
-	_expect(filtered_pool.size() == 102, "Hoe Cat pool must exclude exactly three projectile-only collectibles.")
+	_expect(filtered_pool.size() == 102, "Hoe Cat pool must exclude all eight ammo-character-only collectibles.")
 	for item_variant in filtered_pool:
 		var item := item_variant as PickupConfig
 		_expect(
@@ -296,6 +297,7 @@ func _test_luoxi_filters_owned_non_repeating_collectibles() -> void:
 	run_state.begin_new_run()
 	_expect(run_state.try_add_item(APPLE_COLLECTIBLE), "Owned apple setup must fit in inventory.")
 	_expect(run_state.try_add_item(RUBY_COLLECTIBLE), "Owned ruby setup must fit in inventory.")
+	_expect(run_state.try_add_item(ARCHER_COLLECTIBLE), "Owned archer setup must fit in inventory.")
 
 	var luoxi := LUOXI_SCENE.instantiate() as LuoxiMerchant
 	var player := PLAYER_SCENE.instantiate() as Player
@@ -307,12 +309,23 @@ func _test_luoxi_filters_owned_non_repeating_collectibles() -> void:
 
 	var filtered_pool := luoxi.call("_get_collectible_pool_for_player", player) as Array
 	_expect(
-		not _pool_contains_collectible(filtered_pool, APPLE_COLLECTIBLE),
-		"Luoxi must not offer an already-owned non-repeating collectible."
+		_pool_contains_collectible(filtered_pool, APPLE_COLLECTIBLE),
+		"Luoxi must continue offering apple until its five-copy cap is reached."
 	)
 	_expect(
 		_pool_contains_collectible(filtered_pool, RUBY_COLLECTIBLE),
 		"Luoxi must still offer an already-owned collectible whose copies stack."
+	)
+	_expect(
+		not _pool_contains_collectible(filtered_pool, ARCHER_COLLECTIBLE),
+		"Luoxi must not offer an already-owned non-repeating collectible."
+	)
+	for _copy_index in range(4):
+		_expect(run_state.try_add_item(APPLE_COLLECTIBLE), "Apple copy-cap setup must fit in inventory.")
+	filtered_pool = luoxi.call("_get_collectible_pool_for_player", player) as Array
+	_expect(
+		not _pool_contains_collectible(filtered_pool, APPLE_COLLECTIBLE),
+		"Luoxi must stop offering apple after five copies reach 100% piercing."
 	)
 
 	luoxi.queue_free()

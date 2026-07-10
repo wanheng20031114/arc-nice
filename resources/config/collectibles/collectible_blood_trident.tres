@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/collectibles/blood_trident.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 5
+display_name = "血色三叉戟"
+drop_weight = 0.0
+description = "攻击流血状态下的敌人时，造成的伤害提高20%。"
+can_store_in_inventory = true
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(1, 1)
+duration = 0.0
+collectible_effect_id = "blood_trident"
+collectible_rarity = 1
+collectible_design_id = "blood_trident"
+collectible_design_note = "流血追猎：对正在流血的敌人造成伤害x1.2。"
+requires_projectile_primary_attack = true
+damage_against_bleeding_multiplier = 1.2
+metadata/_custom_type_script = "uid://qucrregg4cq0"

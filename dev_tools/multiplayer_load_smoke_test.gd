@@ -19,6 +19,7 @@ const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collecti
 const ARCHER_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_archer.tres")
 const LIFE_CRYSTAL := preload("res://resources/config/collectibles/collectible_life_crystal.tres")
 const LINGLAN_BOSS_CONFIG := preload("res://resources/config/bosses/boss_01_linglan.tres")
+const PROJECTILE_EVENTS_ONLY_ARG := "--projectile-events-only"
 
 var failures: Array[String] = []
 
@@ -35,6 +36,14 @@ func _init() -> void:
 
 
 func _run() -> void:
+	if OS.get_cmdline_user_args().has(PROJECTILE_EVENTS_ONLY_ARG):
+		await _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm()
+		for _cleanup_frame in range(4):
+			await process_frame
+			await physics_frame
+		_finish_test_run()
+		return
+
 	await _test_scene_instantiation()
 	_test_net_manager_lan_lifecycle()
 	_test_public_room_context_lifecycle()
@@ -70,6 +79,10 @@ func _run() -> void:
 	for _cleanup_frame in range(4):
 		await process_frame
 		await physics_frame
+	_finish_test_run()
+
+
+func _finish_test_run() -> void:
 
 	if failures.is_empty():
 		print("MULTIPLAYER_LOAD_SMOKE_TEST_OK")
@@ -1606,9 +1619,12 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 	root.add_child(host_game)
 	await process_frame
 	_expect(host_game.call("_try_spawn_enemy", BASIC_CONFIG), "Host must spawn an enemy for hit dedupe test.")
+	_expect(host_game.call("_try_spawn_enemy", BASIC_CONFIG), "Host must spawn a second enemy for projectile hit-limit tests.")
 	var host_enemy := host_game.get_enemy_for_net_id(1)
+	var second_host_enemy := host_game.get_enemy_for_net_id(2)
 	_expect(host_enemy != null, "Host spawned enemy must be indexed by net id for hit dedupe test.")
-	if host_enemy != null:
+	_expect(second_host_enemy != null, "Second host enemy must be indexed for projectile hit-limit tests.")
+	if host_enemy != null and second_host_enemy != null:
 		var mp_game := MP_GAME_SCENE.instantiate()
 		mp_game.set("game", host_game)
 		var host_net_manager := root.get_node_or_null("NetManager")
@@ -1626,6 +1642,28 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 		_expect(
 			host_enemy.current_health == health_after_first_hit,
 			"Duplicate enemy hit reports for the same projectile/enemy pair must be ignored."
+		)
+		var second_health_before_non_piercing_hit := second_host_enemy.current_health
+		mp_game.call("_apply_enemy_hit_report", 2000001, 2, 2, 999, Vector2.LEFT)
+		_expect(
+			second_host_enemy.current_health == second_health_before_non_piercing_hit,
+			"One non-piercing player bullet must accept only its first authoritative enemy hit."
+		)
+		var projectile_records := mp_game.get("_projectile_records") as Dictionary
+		var non_piercing_record := projectile_records.get(2000001, {}) as Dictionary
+		_expect(
+			bool(non_piercing_record.get("confirmed_hit_consumed", false)),
+			"A confirmed non-piercing bullet hit must consume its projectile record hit."
+		)
+		mp_game.call("_remember_projectile_record", 2000002, 2, &"player_bullet", 1, 2.0, true)
+		var first_health_before_piercing_hit := host_enemy.current_health
+		var second_health_before_piercing_hit := second_host_enemy.current_health
+		mp_game.call("_apply_enemy_hit_report", 2000002, 2, 1, 999, Vector2.LEFT)
+		mp_game.call("_apply_enemy_hit_report", 2000002, 2, 2, 999, Vector2.LEFT)
+		_expect(
+			host_enemy.current_health < first_health_before_piercing_hit
+			and second_host_enemy.current_health < second_health_before_piercing_hit,
+			"A piercing player bullet must retain independent hits against different enemies."
 		)
 		var health_before_collectible := host_enemy.current_health
 		var collectible_result := bool(mp_game.call(

@@ -23,7 +23,7 @@ const PUBLIC_ROOM_KEEPALIVE_INTERVAL_SECONDS := 60.0
 ## 0: 认证、加载、完整状态恢复 — reliable
 ## 1: 玩家状态上报 — unreliable_ordered
 ## 2: 玩家/敌人状态快照 — unreliable_ordered
-## 3: 投射物/技能事件 — unreliable_ordered
+## 3: 投射物事件 — Client→Host 生成/命中 reliable；Host→Client 视觉副本 unreliable_ordered
 ## 4: 伤害、死亡、生成、掉落、升级事件 — reliable
 const CH_AUTH := 0
 const CH_INPUT := 1

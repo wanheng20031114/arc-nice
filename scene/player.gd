@@ -32,7 +32,6 @@ var peer_id: int = 0
 var uses_local_input: bool = true
 var network_move_input: Vector2 = Vector2.ZERO
 var network_shoot_input: Vector2 = Vector2.ZERO
-var network_skill1_requested: bool = false
 var network_reload_requested: bool = false
 var mouse_fire_held: bool = false
 var mouse_viewport_position: Vector2 = Vector2.ZERO
@@ -91,6 +90,11 @@ const NAMEPLATE_SIZE := Vector2(160.0, 30.0)
 const NAMEPLATE_WORLD_OFFSET := Vector2(0.0, -19.0)
 const DEFAULT_NAMEPLATE_FONT_COLOR := Color(0.96, 0.98, 1.0, 1.0)
 const LOCAL_NAMEPLATE_FONT_COLOR := Color(0.38, 1.0, 0.42, 1.0)
+const HOMING_ENEMY_BODY_MASK := 4
+const HOMING_TARGET_RADIUS := 256.0
+const HOMING_TARGET_HALF_ANGLE := PI / 3.0
+const HOMING_QUERY_MAX_RESULTS := 64
+const MIN_SKILL_ACTIVATION_INTERVAL_MSEC := 100
 const MULTIPLAYER_VISUAL_OFFSET_LERP_RATE := 36.0
 const MULTIPLAYER_VISUAL_OFFSET_EPSILON := 0.05
 const MULTIPLAYER_VISUAL_SNAP_DISTANCE := 96.0
@@ -113,7 +117,6 @@ const REVIVE_GLOW_COLOR := Color(3.2, 3.2, 3.2, 1.0)
 const SLOW_OVERLAY_ACTIVE_STRENGTH := 0.34
 const ATTACK_SPEED_UPGRADE_INTERVAL_MULTIPLIER := 0.95
 const DODGE_UPGRADE_CHANCE_STEP := 0.02
-const PIERCING_BULLET_TINT := Color(1.0, 0.36, 0.34, 1.0)
 const DEFAULT_MAGIC_DEFENSE_LIMIT := 100
 const RANGED_DIRECTION_SIDE_THRESHOLD := 0.35
 const DEFAULT_SKILL1_DISPLAY_NAME := "经典技能"
@@ -157,12 +160,16 @@ var collectible_physical_damage_bonus: int = 0
 var collectible_magic_damage_bonus: int = 0
 var collectible_attack_speed_bonus: float = 0.0
 var collectible_skill_charge_bonus_per_second: float = 0.0
+var collectible_skill_charge_preserve_chance: float = 0.0
 var collectible_base_upgrade_free_chance: float = 0.0
+var collectible_damage_against_burning_multiplier: float = 1.0
+var collectible_damage_against_bleeding_multiplier: float = 1.0
 var collectible_ranged_front_damage_multiplier: float = 1.0
 var collectible_ranged_back_damage_multiplier: float = 1.0
 var collectible_ranged_dodge_chance: float = 0.0
 var linglan_skill2_config_cache: LinglanSkill2Config = null
 var last_base_upgrade_was_free: bool = false
+var _last_skill_activation_msec: int = -MIN_SKILL_ACTIVATION_INTERVAL_MSEC
 var _base_stats_initialized: bool = false
 var _base_move_speed: float = 0.0
 var _base_max_health: int = 0
@@ -307,9 +314,6 @@ func _physics_process(delta: float) -> void:
 	var shoot_input := _get_current_shoot_input()
 	if uses_local_input and mouse_fire_held:
 		shoot_input = _get_mouse_shoot_direction()
-	if not uses_local_input and network_skill1_requested:
-		network_skill1_requested = false
-		_try_use_skill1()
 	if not uses_local_input and network_reload_requested:
 		network_reload_requested = false
 		_try_start_reload()
@@ -622,6 +626,19 @@ func get_outgoing_damage(
 	return maxi(base_amount + bonus, 1)
 
 
+func resolve_attack_damage_against_enemy(base_damage: int, enemy: Enemy) -> int:
+	if base_damage <= 0:
+		return 0
+	if enemy == null or not is_instance_valid(enemy):
+		return base_damage
+	var target_multiplier := 1.0
+	if enemy.has_collectible_status(&"burn"):
+		target_multiplier *= collectible_damage_against_burning_multiplier
+	if enemy.has_collectible_status(&"bleed"):
+		target_multiplier *= collectible_damage_against_bleeding_multiplier
+	return maxi(roundi(float(base_damage) * maxf(target_multiplier, 0.0)), 1)
+
+
 func get_collectible_outgoing_damage(
 	base_amount: int,
 	damage_type: EnemyConfig.DamageType
@@ -694,7 +711,6 @@ func configure_multiplayer_control(
 	mouse_fire_held = false
 	network_move_input = Vector2.ZERO
 	network_shoot_input = Vector2.ZERO
-	network_skill1_requested = false
 	network_reload_requested = false
 	var safe_display_name := display_name.strip_edges()
 	if safe_display_name.length() > MAX_MULTIPLAYER_NAME_LENGTH:
@@ -797,12 +813,11 @@ func _set_multiplayer_visual_offset(offset: Vector2) -> void:
 func apply_network_input(
 	move_input: Vector2,
 	shoot_input: Vector2,
-	use_skill1: bool = false,
+	_use_skill1: bool = false,
 	use_reload: bool = false
 ) -> void:
 	network_move_input = move_input.limit_length(1.0)
 	network_shoot_input = shoot_input.limit_length(1.0)
-	network_skill1_requested = network_skill1_requested or use_skill1
 	network_reload_requested = network_reload_requested or use_reload
 
 
@@ -823,13 +838,11 @@ func apply_remote_multiplayer_state(
 func apply_remote_multiplayer_view_state(
 	remote_velocity: Vector2,
 	shoot_input: Vector2,
-	use_skill1: bool = false,
+	_use_skill1: bool = false,
 	use_reload: bool = false
 ) -> void:
 	velocity = remote_velocity
 	network_shoot_input = shoot_input.limit_length(1.0)
-	if use_skill1:
-		_try_use_skill1()
 	if use_reload:
 		_try_start_reload()
 	_update_facing(remote_velocity, network_shoot_input)
@@ -851,6 +864,10 @@ func update_multiplayer_authority_passive_state(delta: float) -> void:
 
 
 func consume_multiplayer_skill1_charge() -> bool:
+	return try_begin_skill1_activation(true)
+
+
+func try_begin_skill1_activation(authoritative_preserve_roll: bool = true) -> bool:
 	if not skill1_unlocked:
 		return false
 	if is_dead or controls_locked:
@@ -858,9 +875,27 @@ func consume_multiplayer_skill1_charge() -> bool:
 	_sync_skill1_charge_duration_to_upgrade_level()
 	if skill1_charge < skill1_charge_duration:
 		return false
-	skill1_charge = 0.0
+	var now_msec := Time.get_ticks_msec()
+	if now_msec - _last_skill_activation_msec < MIN_SKILL_ACTIVATION_INTERVAL_MSEC:
+		return false
+	_last_skill_activation_msec = now_msec
+	if not _should_preserve_skill1_charge(authoritative_preserve_roll):
+		skill1_charge = 0.0
 	_update_skill1_charge_bar()
 	return true
+
+
+func _should_preserve_skill1_charge(authoritative_roll: bool) -> bool:
+	var preserve_chance := clampf(collectible_skill_charge_preserve_chance, 0.0, 1.0)
+	if preserve_chance >= 1.0:
+		return true
+	if preserve_chance <= 0.0 or not authoritative_roll:
+		return false
+	return randf() < preserve_chance
+
+
+func _uses_authoritative_skill_preserve_roll() -> bool:
+	return not multiplayer.has_multiplayer_peer() or multiplayer.is_server()
 
 
 func apply_multiplayer_snapshot_motion(
@@ -1023,7 +1058,6 @@ func apply_multiplayer_death_state() -> void:
 	mouse_fire_held = false
 	network_move_input = Vector2.ZERO
 	network_shoot_input = Vector2.ZERO
-	network_skill1_requested = false
 	network_reload_requested = false
 	velocity = Vector2.ZERO
 	_update_movement_status_visuals(Vector2.ZERO)
@@ -1308,12 +1342,25 @@ func _consume_ammo_after_successful_shot() -> void:
 
 
 func _should_consume_ammo_for_shot() -> bool:
-	var free_chance := clampf(ammo_free_shot_chance_percent, 0.0, 100.0)
+	var free_chance := clampf(
+		ammo_free_shot_chance_percent / 100.0 + _get_inventory_ammo_free_shot_chance(),
+		0.0,
+		1.0
+	)
 	if free_chance <= 0.0:
 		return true
-	if free_chance >= 100.0:
+	if free_chance >= 1.0:
 		return false
-	return randf() * 100.0 >= free_chance
+	return randf() >= free_chance
+
+
+func _get_inventory_ammo_free_shot_chance() -> float:
+	if not uses_ammunition() or not supports_projectile_attack_patterns():
+		return 0.0
+	var total_chance := 0.0
+	for item in _get_active_collectible_items():
+		total_chance += item.ammo_free_shot_chance
+	return clampf(total_chance, 0.0, 1.0)
 
 
 func _try_start_reload() -> bool:
@@ -1400,13 +1447,18 @@ func _spawn_bullet(shoot_direction: Vector2, track_attack_direction: bool = true
 
 	bullet.top_level = true
 	var pierces_enemies := _should_fire_piercing_bullet()
+	var homing_target: Enemy = null
+	if _should_fire_homing_bullet():
+		homing_target = _find_homing_bullet_target(shoot_direction)
 	var bullet_damage := get_outgoing_damage(attack_damage, EnemyConfig.DamageType.PHYSICAL)
 	bullet.setup(shoot_direction, bullet_damage, pierces_enemies)
+	bullet.setup_homing(homing_target)
 	bullet.setup_collectible_owner(self)
-	if pierces_enemies:
-		bullet.modulate = PIERCING_BULLET_TINT
 	spawn_parent.add_child(bullet)
 	bullet.global_position = global_position + shoot_direction * bullet_spawn_distance
+	var target_enemy_net_id := 0
+	if homing_target != null and is_instance_valid(homing_target):
+		target_enemy_net_id = int(homing_target.get_meta("net_id", 0))
 	_register_multiplayer_projectile(
 		bullet,
 		&"player_bullet",
@@ -1415,7 +1467,9 @@ func _spawn_bullet(shoot_direction: Vector2, track_attack_direction: bool = true
 		bullet_damage,
 		bullet.speed,
 		bullet.max_lifetime,
-		pierces_enemies
+		pierces_enemies,
+		0,
+		target_enemy_net_id
 	)
 	if track_attack_direction and shoot_direction != Vector2.ZERO:
 		last_attack_direction = shoot_direction.normalized()
@@ -1472,6 +1526,9 @@ func _try_use_skill1() -> bool:
 	bomb.top_level = true
 	var bomb_damage := get_skill1_bomb_damage()
 	bomb.setup(self, shoot_direction, bomb_damage)
+	if not try_begin_skill1_activation(_uses_authoritative_skill_preserve_roll()):
+		bomb.free()
+		return false
 	spawn_parent.add_child(bomb)
 	bomb.global_position = global_position + shoot_direction * skill1_bomb_spawn_distance
 	_register_multiplayer_projectile(
@@ -1483,8 +1540,6 @@ func _try_use_skill1() -> bool:
 		bomb.speed,
 		bomb.max_lifetime
 	)
-	skill1_charge = 0.0
-	_update_skill1_charge_bar()
 	_activate_collectible_skill_effects()
 	gunload_audio.play()
 	return true
@@ -1530,6 +1585,13 @@ func _should_fire_piercing_bullet() -> bool:
 	return randf() < pierce_chance
 
 
+func _should_fire_homing_bullet() -> bool:
+	var homing_chance := _get_inventory_bullet_homing_chance()
+	if homing_chance <= 0.0:
+		return false
+	return randf() < homing_chance
+
+
 func _get_inventory_bullet_pierce_chance() -> float:
 	if not supports_projectile_attack_patterns():
 		return 0.0
@@ -1543,6 +1605,49 @@ func _get_inventory_bullet_pierce_chance() -> float:
 		if _is_collectible_condition_active(item):
 			total_chance += item.conditional_bullet_pierce_chance
 	return clampf(total_chance, 0.0, 1.0)
+
+
+func _get_inventory_bullet_homing_chance() -> float:
+	if not supports_projectile_attack_patterns():
+		return 0.0
+	var total_chance := 0.0
+	for item in _get_active_collectible_items():
+		total_chance += item.bullet_homing_chance
+	return clampf(total_chance, 0.0, 1.0)
+
+
+func _find_homing_bullet_target(shoot_direction: Vector2) -> Enemy:
+	if shoot_direction == Vector2.ZERO:
+		return null
+	var space_state := get_world_2d().direct_space_state
+	if space_state == null:
+		return null
+	var target_shape := CircleShape2D.new()
+	target_shape.radius = HOMING_TARGET_RADIUS
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = target_shape
+	query.transform = Transform2D(0.0, global_position)
+	query.collision_mask = HOMING_ENEMY_BODY_MASK
+	query.collide_with_bodies = true
+	query.collide_with_areas = false
+	var normalized_direction := shoot_direction.normalized()
+	var best_target: Enemy = null
+	var best_distance_squared := INF
+	for result in space_state.intersect_shape(query, HOMING_QUERY_MAX_RESULTS):
+		var enemy := result.get("collider") as Enemy
+		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+			continue
+		var offset := enemy.global_position - global_position
+		if offset.length_squared() <= 0.001:
+			continue
+		if abs(normalized_direction.angle_to(offset.normalized())) > HOMING_TARGET_HALF_ANGLE:
+			continue
+		var distance_squared := offset.length_squared()
+		if distance_squared >= best_distance_squared:
+			continue
+		best_distance_squared = distance_squared
+		best_target = enemy
+	return best_target
 
 
 func _on_collectible_inventory_changed() -> void:
@@ -1565,7 +1670,10 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	var magic_damage_bonus := 0
 	var attack_speed_bonus := 0.0
 	var skill_charge_bonus := 0.0
+	var skill_charge_preserve_chance := 0.0
 	var base_upgrade_free_chance := 0.0
+	var damage_against_burning_multiplier := 1.0
+	var damage_against_bleeding_multiplier := 1.0
 	var ranged_front_damage_multiplier := 1.0
 	var ranged_back_damage_multiplier := 1.0
 	var ranged_dodge_chance := 0.0
@@ -1580,7 +1688,10 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 		physical_damage_bonus += item.collectible_physical_damage_bonus
 		magic_damage_bonus += item.collectible_magic_damage_bonus
 		skill_charge_bonus += item.collectible_skill_charge_bonus_per_second
+		skill_charge_preserve_chance += item.skill_charge_preserve_chance
 		base_upgrade_free_chance += item.base_upgrade_free_chance
+		damage_against_burning_multiplier *= item.damage_against_burning_multiplier
+		damage_against_bleeding_multiplier *= item.damage_against_bleeding_multiplier
 		ranged_front_damage_multiplier *= item.incoming_ranged_front_damage_multiplier
 		ranged_back_damage_multiplier *= item.incoming_ranged_back_damage_multiplier
 		ranged_dodge_chance += item.incoming_ranged_dodge_chance
@@ -1621,7 +1732,10 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	collectible_magic_damage_bonus = magic_damage_bonus
 	collectible_attack_speed_bonus = attack_speed_bonus
 	collectible_skill_charge_bonus_per_second = skill_charge_bonus
+	collectible_skill_charge_preserve_chance = clampf(skill_charge_preserve_chance, 0.0, 1.0)
 	collectible_base_upgrade_free_chance = clampf(base_upgrade_free_chance, 0.0, 1.0)
+	collectible_damage_against_burning_multiplier = maxf(damage_against_burning_multiplier, 0.0)
+	collectible_damage_against_bleeding_multiplier = maxf(damage_against_bleeding_multiplier, 0.0)
 	collectible_ranged_front_damage_multiplier = maxf(ranged_front_damage_multiplier, 0.0)
 	collectible_ranged_back_damage_multiplier = maxf(ranged_back_damage_multiplier, 0.0)
 	collectible_ranged_dodge_chance = clampf(ranged_dodge_chance, 0.0, 1.0)
