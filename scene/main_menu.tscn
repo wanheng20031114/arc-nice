@@ -120,7 +120,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 
 [node name="MenuPanel" type="PanelContainer" parent="MenuCenter"]
-custom_minimum_size = Vector2(360, 380)
+custom_minimum_size = Vector2(360, 440)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
@@ -160,6 +160,19 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
 theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
 text = "单人模式"
+
+[node name="TowerDefense" type="Button" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack"]
+custom_minimum_size = Vector2(260, 42)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_colors/font_disabled_color = Color(0.42, 0.42, 0.42, 1)
+theme_override_fonts/font = ExtResource("3_sepwh")
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
+text = "塔防模式"
 
 [node name="Multiplayer" type="Button" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack"]
 custom_minimum_size = Vector2(260, 42)
@@ -214,6 +227,7 @@ text = "结束游戏"
 [node name="PlayerCharacterChoiceOverlay" parent="." instance=ExtResource("6_character_choice")]
 
 [connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/SinglePlayer" to="." method="_on_singleplayer_pressed"]
+[connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/TowerDefense" to="." method="_on_tower_defense_pressed"]
 [connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/Multiplayer" to="." method="_on_multiplayer_pressed"]
 [connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/Settings" to="." method="_on_settings_pressed"]
 [connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/Quit" to="." method="_on_quit_pressed"]

@@ -1,6 +1,7 @@
 extends Control
 
 const GAME_SCENE_PATH := "res://scene/game.tscn"
+const GAME_TOWER_DEFENSE_SCENE_PATH := "res://scene/game_tower_defense.tscn"
 
 @onready var settings_panel: Control = $SettingsPanel
 @onready var singleplayer_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/SinglePlayer
@@ -15,6 +16,12 @@ func _ready() -> void:
 func _on_singleplayer_pressed() -> void:
 	var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 	character_choice_overlay.open(run_state.get_selected_character_id())
+
+
+func _on_tower_defense_pressed() -> void:
+	var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
+	run_state.begin_new_run()
+	get_tree().change_scene_to_file(GAME_TOWER_DEFENSE_SCENE_PATH)
 
 
 func _on_character_confirmed(character_id: StringName) -> void:
