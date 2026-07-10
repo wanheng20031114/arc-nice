@@ -126,6 +126,7 @@ func set_active(active: bool) -> void:
 	_set_collision_shapes_disabled(body_collision_shapes, not active)
 	_set_collision_shapes_disabled(touch_damage_shapes, not active)
 	if not active:
+		_clear_touching_players()
 		_reset_skill_state()
 
 
@@ -614,6 +615,9 @@ func _is_skill2_ready() -> bool:
 
 
 func _update_skill2_move(delta: float) -> void:
+	if _has_player_contact():
+		velocity = Vector2.ZERO
+		return
 	var offset := skill2_target_global_position - global_position
 	var distance := offset.length()
 	var move_speed := skill2_config.move_speed
@@ -629,7 +633,7 @@ func _update_skill2_move(delta: float) -> void:
 	if animated_sprite != null and animated_sprite.animation != &"move":
 		_play_scene_animation(&"move")
 	velocity = move_direction * move_speed
-	move_and_slide()
+	_move_until_player_contact()
 
 
 func _begin_skill2_attack() -> void:
@@ -881,6 +885,9 @@ func _is_skill3_ready() -> bool:
 
 
 func _update_skill3_move(delta: float) -> void:
+	if _has_player_contact():
+		velocity = Vector2.ZERO
+		return
 	var offset := skill3_target_global_position - global_position
 	var distance := offset.length()
 	var move_speed := skill3_config.move_speed
@@ -896,7 +903,7 @@ func _update_skill3_move(delta: float) -> void:
 	if animated_sprite != null and animated_sprite.animation != &"move":
 		_play_scene_animation(&"move")
 	velocity = move_direction * move_speed
-	move_and_slide()
+	_move_until_player_contact()
 
 
 func _begin_skill3_attack() -> void:
@@ -1025,6 +1032,9 @@ func _update_skill4_move(delta: float) -> void:
 	if config4 == null:
 		boss_skill_phase = BossSkillPhase.DONE
 		return
+	if _has_player_contact():
+		velocity = Vector2.ZERO
+		return
 	var offset := skill4_target_global_position - global_position
 	var distance := offset.length()
 	var move_speed: float = config4.move_speed
@@ -1040,7 +1050,7 @@ func _update_skill4_move(delta: float) -> void:
 	if animated_sprite != null and animated_sprite.animation != &"move":
 		_play_scene_animation(&"move")
 	velocity = move_direction * move_speed
-	move_and_slide()
+	_move_until_player_contact()
 
 
 func _begin_skill4_attack() -> void:

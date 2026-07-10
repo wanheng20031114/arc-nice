@@ -36,13 +36,16 @@ func _physics_process(delta: float) -> void:
 
 	if not is_instance_valid(target_player):
 		velocity = Vector2.ZERO
-		_move_with_player_core_limit(delta)
+		_move_until_player_contact()
+		return
+	if _has_player_contact():
+		velocity = Vector2.ZERO
 		return
 
 	var move_direction := _get_navigation_move_direction(delta)
 	_update_facing(move_direction)
 	velocity = move_direction * _get_move_speed()
-	_move_with_player_core_limit(delta)
+	_move_until_player_contact()
 
 
 func _get_move_speed() -> float:

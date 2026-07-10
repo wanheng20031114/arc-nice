@@ -158,7 +158,6 @@ reload={
 2d_physics/layer_7="Explosion"
 2d_physics/layer_8="EnemyProjectile"
 2d_physics/layer_9="BossBody"
-2d_physics/layer_10="PlayerCore"
 2d_physics/layer_11="TowerCore"
 
 [physics]

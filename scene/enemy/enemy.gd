@@ -40,6 +40,7 @@ var current_health: int = 1
 var is_dead: bool = false
 var touch_damage_cooldown_left: float = 0.0
 var touched_player: Player = null
+var touching_players: Dictionary[int, Player] = {}
 var death_sequence_stage: DeathSequenceStage = DeathSequenceStage.NONE
 var death_animation_name_in_use: StringName = &""
 var physical_defense_modifiers: Dictionary = {}
@@ -76,11 +77,23 @@ func _ready() -> void:
 	animated_sprite.animation_finished.connect(_on_animated_sprite_animation_finished)
 	_apply_config()
 	_update_movement_status_visuals()
+	_refresh_status_process_enabled()
 
 
-func _process(_delta: float) -> void:
-	_update_collectible_status_effects(_delta)
+func _process(delta: float) -> void:
+	if collectible_status_effects.is_empty() and move_speed_modifiers.is_empty():
+		return
+	_update_collectible_status_effects(delta)
 	_update_movement_status_visuals()
+
+
+func _refresh_status_process_enabled() -> void:
+	if is_dead:
+		set_process(false)
+		return
+	if is_multiplayer_proxy:
+		return
+	set_process(not collectible_status_effects.is_empty() or not move_speed_modifiers.is_empty())
 
 
 func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = null) -> void:
@@ -104,6 +117,7 @@ func configure_multiplayer_proxy() -> void:
 	target_player = null
 	pathfinder = null
 	touched_player = null
+	touching_players.clear()
 	touch_damage_cooldown_left = 0.0
 	proxy_action_animation_name_in_use = &""
 	_update_movement_status_visuals()
@@ -184,7 +198,9 @@ func play_multiplayer_death_sequence() -> void:
 	is_dead = true
 	velocity = Vector2.ZERO
 	_update_movement_status_visuals()
+	set_process(false)
 	touched_player = null
+	touching_players.clear()
 	proxy_action_animation_name_in_use = &""
 	proxy_action_restore_token += 1
 	_set_collision_shapes_disabled(body_collision_shapes, true)
@@ -245,6 +261,7 @@ func add_move_speed_modifier(source_id: int, multiplier: float) -> void:
 	move_speed_modifiers[source_id] = maxf(multiplier, 0.0)
 	_clear_cached_navigation_move_direction()
 	_update_movement_status_visuals()
+	_refresh_status_process_enabled()
 
 
 func remove_move_speed_modifier(source_id: int) -> void:
@@ -253,6 +270,7 @@ func remove_move_speed_modifier(source_id: int) -> void:
 	move_speed_modifiers.erase(source_id)
 	_clear_cached_navigation_move_direction()
 	_update_movement_status_visuals()
+	_refresh_status_process_enabled()
 
 
 func get_effective_move_speed() -> float:
@@ -391,6 +409,7 @@ func apply_collectible_status(
 		add_damage_taken_multiplier_modifier(multiplier_source_id, damage_taken_multiplier)
 	collectible_status_effects[effect_key] = status
 	_play_collectible_status_feedback(status_id)
+	_refresh_status_process_enabled()
 
 
 func _update_collectible_status_effects(delta: float) -> void:
@@ -456,6 +475,7 @@ func _remove_collectible_status(effect_key: Variant, status: Dictionary) -> void
 	if multiplier_source_id != 0:
 		remove_damage_taken_multiplier_modifier(multiplier_source_id)
 	collectible_status_effects.erase(effect_key)
+	_refresh_status_process_enabled()
 
 
 func _play_collectible_status_feedback(status_id: StringName) -> void:
@@ -629,6 +649,8 @@ func _set_facing_from_direction(direction: Vector2) -> void:
 
 
 func _set_facing_left(new_facing_left: bool) -> void:
+	if facing_left == new_facing_left:
+		return
 	facing_left = new_facing_left
 	_apply_sprite_facing()
 	_apply_facing_mirror()
@@ -830,81 +852,20 @@ func _choose_unblocked_axis_direction(primary_direction: Vector2, secondary_dire
 	return Vector2.ZERO
 
 
-func _move_with_player_core_limit(delta: float) -> void:
-	_limit_velocity_against_target_player_core(delta)
+func _move_until_player_contact() -> void:
+	if not touching_players.is_empty():
+		velocity = Vector2.ZERO
+		return
 	move_and_slide()
 
 
-func _limit_velocity_against_target_player_core(delta: float) -> void:
-	if delta <= 0.0 or velocity == Vector2.ZERO:
-		return
-	if not is_instance_valid(target_player):
-		return
-	var core_shape := target_player.get_node_or_null("NoEnteyCore/CollisionShape2D") as CollisionShape2D
-	if core_shape == null:
-		return
-	var core_radius := _get_player_core_radius(core_shape)
-	var blocking_radius := _get_player_core_blocking_radius()
-	if core_radius <= 0.0 or blocking_radius <= 0.0:
-		return
-
-	var body_center := _get_player_core_blocking_center()
-	var core_center := core_shape.global_position
-	var core_to_body := body_center - core_center
-	var current_distance := core_to_body.length()
-	if current_distance <= 0.001:
-		velocity = Vector2.ZERO
-		return
-
-	var outward_direction := core_to_body / current_distance
-	var inward_speed := -velocity.dot(outward_direction)
-	if inward_speed <= 0.0:
-		return
-
-	var minimum_distance := core_radius + blocking_radius
-	var allowed_inward_speed := maxf(current_distance - minimum_distance, 0.0) / maxf(delta, 0.0001)
-	if inward_speed <= allowed_inward_speed:
-		return
-
-	velocity += outward_direction * (inward_speed - allowed_inward_speed)
-	if velocity.length_squared() < 0.0001:
-		velocity = Vector2.ZERO
+func _has_player_contact() -> bool:
+	return not touching_players.is_empty()
 
 
-func _get_player_core_blocking_center() -> Vector2:
-	if touch_damage_area != null:
-		return touch_damage_area.global_position
-	if collision_shape != null:
-		return collision_shape.global_position
-	return global_position
-
-
-func _get_player_core_blocking_radius() -> float:
-	var touch_radius := _get_collision_shapes_inner_radius(touch_damage_shapes)
-	if touch_radius > 0.0:
-		return touch_radius
-	return _get_body_collision_extent_radius()
-
-
-func _get_collision_shapes_inner_radius(shape_nodes: Array[CollisionShape2D]) -> float:
-	var max_radius := 0.0
-	for shape_node in shape_nodes:
-		var half_extents := _get_collision_shape_half_extents(shape_node)
-		var inner_radius := minf(half_extents.x, half_extents.y)
-		max_radius = maxf(max_radius, inner_radius)
-	return max_radius
-
-
-func _get_player_core_radius(core_shape: CollisionShape2D) -> float:
-	if core_shape == null or core_shape.shape == null:
-		return 0.0
-	var circle := core_shape.shape as CircleShape2D
-	if circle != null:
-		var scale := core_shape.global_transform.get_scale()
-		return circle.radius * maxf(absf(scale.x), absf(scale.y))
-	var shape_rect := core_shape.shape.get_rect()
-	var scale := core_shape.global_transform.get_scale()
-	return maxf(absf(shape_rect.size.x * scale.x), absf(shape_rect.size.y * scale.y)) * 0.5
+func _clear_touching_players() -> void:
+	touching_players.clear()
+	touched_player = null
 
 
 func _on_touch_damage_area_body_entered(body: Node2D) -> void:
@@ -915,13 +876,27 @@ func _on_touch_damage_area_body_entered(body: Node2D) -> void:
 	if player == null:
 		return
 
+	touching_players[player.get_instance_id()] = player
 	touched_player = player
 	_try_deal_touch_damage()
 
 
 func _on_touch_damage_area_body_exited(body: Node2D) -> void:
-	if body == touched_player:
-		touched_player = null
+	var player := body as Player
+	if player == null:
+		return
+	touching_players.erase(player.get_instance_id())
+	if player == touched_player:
+		touched_player = _select_touching_player()
+
+
+func _select_touching_player() -> Player:
+	for instance_id in touching_players:
+		var player := touching_players[instance_id] as Player
+		if is_instance_valid(player):
+			return player
+	touching_players.clear()
+	return null
 
 
 func _on_touch_damage_area_area_entered(area: Area2D) -> void:
@@ -940,10 +915,13 @@ func _update_touch_damage(delta: float) -> void:
 		touch_damage_cooldown_left = maxf(touch_damage_cooldown_left - delta, 0.0)
 
 	if touched_player == null:
-		return
+		touched_player = _select_touching_player()
+		if touched_player == null:
+			return
 	if not is_instance_valid(touched_player):
-		touched_player = null
-		return
+		touched_player = _select_touching_player()
+		if touched_player == null:
+			return
 	if touch_damage_cooldown_left > 0.0:
 		return
 
@@ -995,7 +973,9 @@ func _die() -> void:
 	defeated.emit(self)
 	velocity = Vector2.ZERO
 	_update_movement_status_visuals()
+	set_process(false)
 	touched_player = null
+	touching_players.clear()
 	_set_collision_shapes_disabled(body_collision_shapes, true)
 	_set_collision_shapes_disabled(touch_damage_shapes, true)
 	touch_damage_area.set_deferred("monitoring", false)

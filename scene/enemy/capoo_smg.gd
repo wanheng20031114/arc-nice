@@ -29,7 +29,15 @@ func _physics_process(delta: float) -> void:
 
 	if not is_instance_valid(target_player):
 		velocity = Vector2.ZERO
-		_move_with_player_core_limit(delta)
+		_move_until_player_contact()
+		return
+	if _has_player_contact():
+		var contact_aim_direction := global_position.direction_to(target_player.global_position)
+		if contact_aim_direction != Vector2.ZERO:
+			last_move_direction = contact_aim_direction
+		_update_facing(contact_aim_direction)
+		velocity = Vector2.ZERO
+		_try_fire_scatter(last_move_direction)
 		return
 
 	var move_direction := _get_navigation_move_direction(delta)
@@ -37,7 +45,7 @@ func _physics_process(delta: float) -> void:
 		last_move_direction = move_direction.normalized()
 	_update_facing(move_direction)
 	velocity = move_direction * _get_move_speed()
-	_move_with_player_core_limit(delta)
+	_move_until_player_contact()
 	_try_fire_scatter(last_move_direction if move_direction != Vector2.ZERO else Vector2.ZERO)
 
 

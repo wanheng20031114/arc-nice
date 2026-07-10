@@ -404,7 +404,6 @@ func _test_navigation_budget_retry_keeps_existing_path() -> void:
 
 func _expect_slash_result(player_position: Vector2, should_hit: bool, message: String) -> void:
 	var player := _spawn_player(player_position)
-	_disable_player_core(player)
 	var enemy := _spawn_knight(Vector2.ZERO, player)
 	enemy.touch_damage_area.monitoring = false
 	enemy.touch_damage_area.monitorable = false
@@ -418,12 +417,6 @@ func _expect_slash_result(player_position: Vector2, should_hit: bool, message: S
 	enemy.queue_free()
 	player.queue_free()
 	await physics_frame
-
-
-func _disable_player_core(player: Player) -> void:
-	var core_shape := player.get_node_or_null("NoEnteyCore/CollisionShape2D") as CollisionShape2D
-	if core_shape != null:
-		core_shape.disabled = true
 
 
 func _spawn_player(position: Vector2) -> Player:
