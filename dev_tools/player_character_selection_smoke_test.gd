@@ -169,6 +169,51 @@ func _test_choice_overlay() -> void:
 				not first_style.border_color.is_equal_approx(second_style.border_color),
 				"Character cards must use different character-specific edge colors."
 			)
+			_expect(
+				is_zero_approx(first_style.get_content_margin(SIDE_TOP))
+				and is_zero_approx(second_style.get_content_margin(SIDE_TOP)),
+				"Character card border state must not alter its content margins."
+			)
+		_expect(
+			overlay.cards[0].size.is_equal_approx(overlay.cards[1].size),
+			"Selected and unselected character cards must keep identical layout dimensions."
+		)
+		for card in overlay.cards:
+			var title_label := card.get_node("Margin/Content/Title") as Label
+			var name_label := card.get_node("Margin/Content/Name") as Label
+			var portrait := card.get_node("Margin/Content/PortraitFrame/Portrait") as TextureRect
+			var title_font := title_label.get_theme_font(&"font")
+			var name_font := name_label.get_theme_font(&"font")
+			_expect(
+				title_label.custom_minimum_size.y >= title_font.get_height(
+					title_label.get_theme_font_size(&"font_size")
+				) + 2.0,
+				"Character card titles must leave vertical breathing room around CJK glyphs."
+			)
+			_expect(
+				name_label.custom_minimum_size.y >= name_font.get_height(
+					name_label.get_theme_font_size(&"font_size")
+				) + 4.0,
+				"Character names must leave vertical breathing room around large CJK glyphs."
+			)
+			_expect(
+				title_label.vertical_alignment == VERTICAL_ALIGNMENT_CENTER
+				and name_label.vertical_alignment == VERTICAL_ALIGNMENT_CENTER,
+				"Character card CJK labels must center glyphs inside their safe line boxes."
+			)
+			_expect(
+				portrait.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+				and portrait.stretch_mode == TextureRect.STRETCH_KEEP_CENTERED,
+				"Pixel-art portraits must remain nearest-filtered at their native scale."
+			)
+		var hovered_card := overlay.cards[1]
+		hovered_card.call("_on_mouse_entered")
+		await create_timer(0.15).timeout
+		_expect(
+			hovered_card.scale.is_equal_approx(Vector2.ONE),
+			"Hover feedback must keep character-card fonts at native scale."
+		)
+		hovered_card.call("_on_mouse_exited")
 
 	var confirmation := {"character_id": &""}
 	overlay.character_confirmed.connect(func(character_id: StringName) -> void:

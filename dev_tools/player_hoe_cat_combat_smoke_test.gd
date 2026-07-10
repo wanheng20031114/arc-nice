@@ -13,6 +13,9 @@ class TestEnemy:
 	func _ready() -> void:
 		pass
 
+	func _physics_process(_delta: float) -> void:
+		pass
+
 	func apply_damage(
 		amount: int,
 		_impact_direction: Vector2 = Vector2.ZERO,
@@ -76,8 +79,10 @@ func _run() -> void:
 	outside_angle_enemy = _spawn_test_enemy(Vector2.RIGHT.rotated(deg_to_rad(30.5)) * 7.0)
 	negative_angle_boundary_enemy = _spawn_test_enemy(Vector2.RIGHT.rotated(deg_to_rad(-30.0)) * 7.0)
 	negative_outside_angle_enemy = _spawn_test_enemy(Vector2.RIGHT.rotated(deg_to_rad(-30.5)) * 7.0)
-	radius_boundary_enemy = _spawn_test_enemy(Vector2(8.0, 0.0))
-	outside_radius_enemy = _spawn_test_enemy(Vector2(8.05, 0.0))
+	# The query radius is measured to the target collision shape, so a radius-1
+	# target overlaps up to a centre distance of nine pixels.
+	radius_boundary_enemy = _spawn_test_enemy(Vector2(8.95, 0.0))
+	outside_radius_enemy = _spawn_test_enemy(Vector2(9.05, 0.0))
 	for index in range(70):
 		var angle := lerpf(-25.0, 25.0, float(index) / 69.0)
 		var radius := 3.0 + float(index % 5) * 0.7
@@ -90,10 +95,12 @@ func _run() -> void:
 
 	_test_starting_stats_and_attack_speed_contract()
 	_test_projectile_only_pickup_is_rejected()
+	_test_cardinal_attack_quantization()
 	await _test_generic_collectible_hooks_for_both_characters()
-	_test_primary_cone_attack()
+	await _test_primary_cone_attack()
 	_test_skill_purchase_and_upgrades()
-	_test_whirlwind_damage_and_heal()
+	await _test_whirlwind_damage_and_heal()
+	await _test_primary_attack_through_real_input()
 	await _test_dynamic_skill_profile()
 
 	await _finish()
@@ -118,7 +125,12 @@ func _test_starting_stats_and_attack_speed_contract() -> void:
 	_expect(player.get_node_or_null("BasicSlashEffect") is AnimatedSprite2D, "Basic slash VFX must be prebuilt in the Hoe Cat scene.")
 	_expect(player.get_node_or_null("WhirlwindRangeEffect") is AnimatedSprite2D, "Whirlwind range VFX must be prebuilt in the Hoe Cat scene.")
 	_expect(player.get_node_or_null("WhirlwindBodyEffect") is AnimatedSprite2D, "Whirlwind body rotation must be prebuilt in the Hoe Cat scene.")
-	_expect(player.get_node_or_null("ActionAnimationPlayer") is AnimationPlayer, "Hoe Cat action motion must use a scene-native AnimationPlayer.")
+	_expect(player.get_node_or_null("BodySprite/HoeSprite") == null, "Hoe Cat body frames must include the hoe without a runtime-rotated HoeSprite.")
+	_expect(player.get_node_or_null("ActionAnimationPlayer") == null, "The obsolete scale-only ActionAnimationPlayer must stay removed.")
+	_expect(player.get_node_or_null("PrimaryImpactTimer") is Timer, "PrimaryImpactTimer must be prebuilt in the Hoe Cat scene.")
+	_expect(player.get_node_or_null("WhirlwindImpactTimer") is Timer, "WhirlwindImpactTimer must be prebuilt in the Hoe Cat scene.")
+	_expect(player.primary_impact_timer.one_shot, "PrimaryImpactTimer must be one-shot.")
+	_expect(player.whirlwind_impact_timer.one_shot, "WhirlwindImpactTimer must be one-shot.")
 	_expect(player.apply_pickup(RAPID_PICKUP), "Pure Rapid attack-speed pickup must apply to Hoe Cat.")
 	_expect(is_equal_approx(float(player.call("_get_effective_fire_interval")), 0.25), "Rapid x2 must reduce Hoe Cat's 0.5-second interval to 0.25 seconds.")
 	player.call("_update_pickup_effects", RAPID_PICKUP.duration + 0.1)
@@ -135,6 +147,26 @@ func _test_projectile_only_pickup_is_rejected() -> void:
 		player.current_shot_pattern == PickupConfig.ShotPattern.NORMAL,
 		"Rejected projectile pickup must not change Hoe Cat shot pattern."
 	)
+
+
+func _test_cardinal_attack_quantization() -> void:
+	var direction_cases := {
+		Vector2(1.0, 0.75): Vector2.RIGHT,
+		Vector2(-1.0, 0.75): Vector2.LEFT,
+		Vector2(0.75, 1.0): Vector2.DOWN,
+		Vector2(0.75, -1.0): Vector2.UP,
+	}
+	for requested_direction: Vector2 in direction_cases:
+		var expected_direction := direction_cases[requested_direction] as Vector2
+		var cardinal_direction := player.call(
+			"_get_cardinal_attack_direction",
+			requested_direction
+		) as Vector2
+		_expect(
+			cardinal_direction == expected_direction,
+			"Attack direction %s must quantize to %s."
+			% [requested_direction, expected_direction]
+		)
 
 
 func _test_generic_collectible_hooks_for_both_characters() -> void:
@@ -187,8 +219,35 @@ func _test_generic_collectible_hooks_for_both_characters() -> void:
 
 func _test_primary_cone_attack() -> void:
 	player.shooting_timer.stop()
-	var attacked := player.try_authoritative_hoe_primary_attack(Vector2.RIGHT)
+	var diagonal_request := Vector2.RIGHT.rotated(deg_to_rad(20.0))
+	var attacked := player.try_authoritative_hoe_primary_attack(diagonal_request)
 	_expect(attacked, "Hoe Cat primary attack must execute when its timer is ready.")
+	_expect(
+		player.last_attack_direction == Vector2.RIGHT,
+		"A right-dominant diagonal primary request must quantize to the right cardinal direction."
+	)
+	_expect(player.body_sprite.animation == &"attack_right", "Quantized primary direction must drive the matching body animation.")
+	_expect(is_zero_approx(player.basic_slash_effect.rotation), "Quantized primary direction must drive the matching slash rotation.")
+	_expect(front_enemy.total_damage_taken == 0, "Primary damage must not resolve before the 0.1125-second impact timer.")
+	_expect(second_front_enemy.total_damage_taken == 0, "Every target must remain undamaged during primary anticipation.")
+	_expect(not player.primary_impact_timer.is_stopped(), "Primary attack must arm its impact timer.")
+	_expect(
+		player.primary_impact_timer.time_left > 0.0
+		and player.primary_impact_timer.time_left <= 0.1125 + 0.001,
+		"Primary impact timer must be scheduled for 0.1125 seconds."
+	)
+	_expect(
+		player.get_primary_attack_cooldown_ratio() < 0.1,
+		"Primary attack interval indicator must restart near zero when anticipation begins."
+	)
+	_expect(
+		not player.try_authoritative_hoe_primary_attack(Vector2.RIGHT),
+		"A pending primary impact must reject another swing."
+	)
+	await player.primary_impact_timer.timeout
+	await process_frame
+	_expect(player.primary_impact_timer.is_stopped(), "PrimaryImpactTimer must stop after its one-shot impact.")
+	_expect(not bool(player.get("_pending_primary_attack")), "Primary pending state must clear at impact.")
 	_expect(front_enemy.total_damage_taken == 15, "60-degree primary cone must deal 15 physical damage to the front target.")
 	_expect(second_front_enemy.total_damage_taken == 15, "One swing must damage every distinct enemy inside the cone once.")
 	_expect(back_enemy.total_damage_taken == 0, "60-degree primary cone must not hit a target behind the player.")
@@ -196,8 +255,8 @@ func _test_primary_cone_attack() -> void:
 	_expect(outside_angle_enemy.total_damage_taken == 0, "A target beyond +30 degrees must be excluded.")
 	_expect(negative_angle_boundary_enemy.total_damage_taken == 15, "The -30-degree cone boundary must be included.")
 	_expect(negative_outside_angle_enemy.total_damage_taken == 0, "A target beyond -30 degrees must be excluded.")
-	_expect(radius_boundary_enemy.total_damage_taken == 15, "The radius-8 boundary must be included.")
-	_expect(outside_radius_enemy.total_damage_taken == 0, "A target with its center beyond radius 8 must be excluded.")
+	_expect(radius_boundary_enemy.total_damage_taken == 15, "A collider touching the radius-8 query must be included.")
+	_expect(outside_radius_enemy.total_damage_taken == 0, "A collider beyond the radius-8 query must be excluded.")
 	_expect(
 		dense_cone_enemies.all(func(enemy: TestEnemy) -> bool: return enemy.total_damage_taken == 15),
 		"A dense cone with more than one physics-query batch must still hit every enemy exactly once."
@@ -206,14 +265,72 @@ func _test_primary_cone_attack() -> void:
 		test_root.get_children().filter(func(child: Node) -> bool: return child is Bullet).is_empty(),
 		"Hoe Cat primary attack must not generate a Bullet node."
 	)
+	player.call("_update_character_combat_state", 1.0)
+
+
+func _test_primary_attack_through_real_input() -> void:
+	# Normal radius-8 enemy geometry can overlap the authored attack shape while
+	# its centre is well beyond 8 px. Exercise input -> physics -> attack end to end.
+	player.call("_finish_whirlwind_visual")
+	var contact_enemy := _spawn_test_enemy(Vector2(15.6, 0.0), 8.0)
+	var beyond_contact_enemy := _spawn_test_enemy(Vector2(18.0, 0.0), 8.0)
+	await process_frame
+	await physics_frame
+	player.shooting_timer.stop()
+	player.mouse_fire_held = false
+	Input.action_press("shoot_right")
+	await physics_frame
+	await process_frame
+	Input.action_release("shoot_right")
 	_expect(
-		player.get_primary_attack_cooldown_ratio() < 0.1,
-		"Primary attack interval indicator must restart near zero after a swing."
+		contact_enemy.total_damage_taken == 0,
+		"A real shoot-right input must not deal damage before its authored impact frame."
 	)
 	_expect(
-		not player.try_authoritative_hoe_primary_attack(Vector2.RIGHT),
-		"Primary attack must reject another swing during the 0.5 second interval."
+		beyond_contact_enemy.total_damage_taken == 0,
+		"The radius-8 query must not hit a normal enemy beyond shape-overlap range."
 	)
+	_expect(
+		player.body_sprite.animation == &"attack_right" and player.body_sprite.is_playing(),
+		"A real shoot-right input must start the directional body attack animation."
+	)
+	_expect(
+		player.basic_slash_effect.visible
+		and player.basic_slash_effect.animation == &"slash"
+		and player.basic_slash_effect.is_playing(),
+		"A real shoot-right input must start the basic slash effect."
+	)
+	player.call("_update_facing", Vector2.UP, Vector2.ZERO)
+	player.call("_update_animation")
+	_expect(
+		player.body_sprite.animation == &"attack_right",
+		"Movement input during a swing must not switch the authored attack direction mid-animation."
+	)
+	await player.primary_impact_timer.timeout
+	await process_frame
+	_expect(
+		contact_enemy.total_damage_taken == 15,
+		"A real shoot-right input must damage a normal radius-8 enemy when PrimaryImpactTimer expires."
+	)
+	_expect(
+		beyond_contact_enemy.total_damage_taken == 0,
+		"The delayed radius-8 impact must still exclude a normal enemy beyond shape-overlap range."
+	)
+	player.body_sprite.frame = 4
+	player.body_sprite.stop()
+	var completed_attack_frame := player.body_sprite.frame
+	player.call("_update_animation")
+	_expect(
+		not player.body_sprite.is_playing()
+		and player.body_sprite.frame == completed_attack_frame,
+		"A completed non-looping attack must not restart while its visual lock is still active."
+	)
+	player.shooting_timer.stop()
+	player.call("_update_character_combat_state", 1.0)
+	player.call("_update_animation")
+	contact_enemy.queue_free()
+	beyond_contact_enemy.queue_free()
+	await process_frame
 
 
 func _test_skill_purchase_and_upgrades() -> void:
@@ -240,11 +357,17 @@ func _test_whirlwind_damage_and_heal() -> void:
 	player.current_health = 50
 	var used_skill := player.try_authoritative_hoe_whirlwind()
 	_expect(used_skill, "Fully charged Hoe Cat whirlwind must execute.")
-	_expect(front_enemy.total_damage_taken == 57, "Whirlwind must add 42 physical damage to the front target.")
-	_expect(back_enemy.total_damage_taken == 42, "Radius-15 whirlwind must hit the target behind the player for 42 damage.")
-	_expect(player.current_health == 53, "Whirlwind must restore exactly 3 health.")
+	_expect(front_enemy.total_damage_taken == 15, "Whirlwind must not damage the front target before its 0.125-second impact.")
+	_expect(back_enemy.total_damage_taken == 0, "Whirlwind must not damage the rear target during anticipation.")
+	_expect(player.current_health == 50, "Whirlwind healing must wait for the authored impact frame.")
 	_expect(is_equal_approx(player.skill1_charge, 0.0), "Whirlwind must consume all skill charge.")
 	_expect(not player.controls_locked, "Whirlwind must keep movement controls available during its animation.")
+	_expect(not player.whirlwind_impact_timer.is_stopped(), "Whirlwind must arm its impact timer.")
+	_expect(
+		player.whirlwind_impact_timer.time_left > 0.0
+		and player.whirlwind_impact_timer.time_left <= 0.125 + 0.001,
+		"Whirlwind impact timer must be scheduled for 0.125 seconds."
+	)
 	player.shooting_timer.stop()
 	_expect(
 		not player.try_authoritative_hoe_primary_attack(Vector2.RIGHT),
@@ -255,10 +378,21 @@ func _test_whirlwind_damage_and_heal() -> void:
 		not player.try_authoritative_hoe_whirlwind(),
 		"Whirlwind animation must block another skill cast for its 0.5-second duration."
 	)
+	await player.whirlwind_impact_timer.timeout
+	await process_frame
+	_expect(player.whirlwind_impact_timer.is_stopped(), "WhirlwindImpactTimer must stop after its one-shot impact.")
+	_expect(not bool(player.get("_pending_whirlwind_attack")), "Whirlwind pending state must clear at impact.")
+	_expect(front_enemy.total_damage_taken == 57, "Whirlwind impact must add 42 physical damage to the front target.")
+	_expect(back_enemy.total_damage_taken == 42, "Radius-15 whirlwind impact must hit the target behind the player for 42 damage.")
+	_expect(player.current_health == 53, "Whirlwind impact must restore exactly 3 health.")
 	player.call("_finish_whirlwind_visual")
 	player.current_health = 79
 	_expect(player.try_authoritative_hoe_whirlwind(), "Whirlwind must become usable again after its action lock ends.")
-	_expect(player.current_health == 80, "Whirlwind healing must not exceed maximum health.")
+	_expect(player.current_health == 79, "The second whirlwind must also defer healing until impact.")
+	await player.whirlwind_impact_timer.timeout
+	await process_frame
+	_expect(player.current_health == 80, "Whirlwind impact healing must not exceed maximum health.")
+	player.call("_finish_whirlwind_visual")
 
 
 func _test_dynamic_skill_profile() -> void:
@@ -312,7 +446,7 @@ func _test_dynamic_skill_profile() -> void:
 	await process_frame
 
 
-func _spawn_test_enemy(spawn_position: Vector2) -> TestEnemy:
+func _spawn_test_enemy(spawn_position: Vector2, collision_radius: float = 1.0) -> TestEnemy:
 	var enemy := TestEnemy.new()
 	enemy.current_health = 1000
 	enemy.collision_layer = 4
@@ -325,7 +459,7 @@ func _spawn_test_enemy(spawn_position: Vector2) -> TestEnemy:
 	enemy.add_child(speed_trail)
 	var shape_node := CollisionShape2D.new()
 	var shape := CircleShape2D.new()
-	shape.radius = 1.0
+	shape.radius = collision_radius
 	shape_node.shape = shape
 	enemy.add_child(shape_node)
 	var touch_area := Area2D.new()

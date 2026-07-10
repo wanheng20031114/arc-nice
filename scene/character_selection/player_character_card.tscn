@@ -31,16 +31,17 @@ theme_override_constants/margin_bottom = 17
 
 [node name="Content" type="VBoxContainer" parent="Margin"]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 7
 
 [node name="Title" type="Label" parent="Margin/Content"]
-custom_minimum_size = Vector2(0, 22)
+custom_minimum_size = Vector2(0, 24)
 layout_mode = 2
 mouse_filter = 2
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 14
 text = "角色定位"
 horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="PortraitFrame" type="PanelContainer" parent="Margin/Content"]
 custom_minimum_size = Vector2(242, 174)
@@ -51,8 +52,9 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_portrait")
 [node name="Portrait" type="TextureRect" parent="Margin/Content/PortraitFrame"]
 layout_mode = 2
 mouse_filter = 2
+texture_filter = 1
 expand_mode = 1
-stretch_mode = 5
+stretch_mode = 3
 
 [node name="PortraitPlaceholder" type="Label" parent="Margin/Content/PortraitFrame"]
 layout_mode = 2
@@ -64,7 +66,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="Name" type="Label" parent="Margin/Content"]
-custom_minimum_size = Vector2(0, 36)
+custom_minimum_size = Vector2(0, 41)
 layout_mode = 2
 mouse_filter = 2
 theme_override_fonts/font = ExtResource("2_font")
@@ -92,15 +94,17 @@ theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 12
 text = "生命 50  ·  攻击 10  ·  攻速 556"
 horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="Playstyle" type="Label" parent="Margin/Content"]
-custom_minimum_size = Vector2(0, 23)
+custom_minimum_size = Vector2(0, 24)
 layout_mode = 2
 mouse_filter = 2
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 13
 text = "远程 · 火力覆盖"
 horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="SelectButton" type="Button" parent="Margin/Content"]
 custom_minimum_size = Vector2(0, 37)

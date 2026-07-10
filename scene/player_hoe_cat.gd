@@ -8,18 +8,26 @@ const BASIC_ATTACK_ANGLE_DEGREES := 60.0
 const WHIRLWIND_RADIUS := 15.0
 const WHIRLWIND_DAMAGE_MULTIPLIER := 2.8
 const WHIRLWIND_HEAL_AMOUNT := 3
-const PRIMARY_VISUAL_DURATION := 0.25
+const PRIMARY_VISUAL_DURATION := 0.3125
+const PRIMARY_IMPACT_DELAY := 0.1125
 const WHIRLWIND_VISUAL_DURATION := 0.5
+const WHIRLWIND_IMPACT_DELAY := 0.125
 
 @export var basic_attack_query_shape: CircleShape2D
 @export var whirlwind_query_shape: CircleShape2D
-@onready var hoe_sprite: Sprite2D = $BodySprite/HoeSprite
 @onready var basic_slash_effect: AnimatedSprite2D = $BasicSlashEffect
 @onready var whirlwind_range_effect: AnimatedSprite2D = $WhirlwindRangeEffect
 @onready var whirlwind_body_effect: AnimatedSprite2D = $WhirlwindBodyEffect
-@onready var action_animation_player: AnimationPlayer = $ActionAnimationPlayer
+@onready var primary_impact_timer: Timer = $PrimaryImpactTimer
+@onready var whirlwind_impact_timer: Timer = $WhirlwindImpactTimer
 var _primary_visual_time_left: float = 0.0
+var _primary_visual_facing_suffix: StringName = &""
 var _whirlwind_visual_time_left: float = 0.0
+var _pending_primary_attack: bool = false
+var _pending_primary_direction: Vector2 = Vector2.ZERO
+var _pending_primary_damage: int = 0
+var _pending_whirlwind_attack: bool = false
+var _pending_whirlwind_damage: int = 0
 var _latest_remote_action_sequence: int = 0
 
 
@@ -62,42 +70,50 @@ func get_hoe_whirlwind_damage() -> int:
 
 
 func _perform_primary_attack(attack_direction: Vector2) -> bool:
-	if _whirlwind_visual_time_left > 0.0:
+	if _whirlwind_visual_time_left > 0.0 or _pending_whirlwind_attack:
 		return false
-	var safe_direction := _get_safe_attack_direction(attack_direction)
-	last_attack_direction = safe_direction
+	var cardinal_direction := _get_cardinal_attack_direction(attack_direction)
+	last_attack_direction = cardinal_direction
 	var current_scene := get_tree().current_scene
 	if current_scene != null and current_scene.has_method("request_hoe_primary_attack"):
-		return bool(current_scene.call("request_hoe_primary_attack", safe_direction))
-	return try_authoritative_hoe_primary_attack(safe_direction)
+		return bool(current_scene.call("request_hoe_primary_attack", cardinal_direction))
+	return try_authoritative_hoe_primary_attack(cardinal_direction)
 
 
 func try_authoritative_hoe_primary_attack(attack_direction: Vector2) -> bool:
-	if is_dead or controls_locked or _whirlwind_visual_time_left > 0.0:
+	if (
+		is_dead
+		or controls_locked
+		or _whirlwind_visual_time_left > 0.0
+		or _pending_whirlwind_attack
+		or _pending_primary_attack
+	):
 		return false
 	if shooting_timer == null or not shooting_timer.is_stopped():
 		return false
-	var safe_direction := _get_safe_attack_direction(attack_direction)
-	last_attack_direction = safe_direction
-	_apply_hoe_attack_damage(
-		basic_attack_query_shape,
-		BASIC_ATTACK_RADIUS,
-		safe_direction,
-		deg_to_rad(BASIC_ATTACK_ANGLE_DEGREES * 0.5),
-		get_hoe_primary_attack_damage()
-	)
+	var cardinal_direction := _get_cardinal_attack_direction(attack_direction)
+	last_attack_direction = cardinal_direction
+	_pending_primary_attack = true
+	_pending_primary_direction = cardinal_direction
+	_pending_primary_damage = get_hoe_primary_attack_damage()
 	notify_primary_attack_performed()
 	shooting_timer.start(_get_effective_fire_interval())
 	_update_attack_interval_bar()
-	_play_primary_attack_visual(safe_direction)
-	_play_primary_attack_audio()
+	_play_primary_attack_visual(cardinal_direction)
 	return true
 
 
 func _try_use_skill1() -> bool:
 	if not skill1_unlocked:
 		return false
-	if is_dead or controls_locked or _whirlwind_visual_time_left > 0.0:
+	if (
+		is_dead
+		or controls_locked
+		or _primary_visual_time_left > 0.0
+		or _pending_primary_attack
+		or _whirlwind_visual_time_left > 0.0
+		or _pending_whirlwind_attack
+	):
 		return false
 	_sync_skill1_charge_duration_to_upgrade_level()
 	if skill1_charge < skill1_charge_duration:
@@ -109,21 +125,20 @@ func _try_use_skill1() -> bool:
 
 
 func try_authoritative_hoe_whirlwind() -> bool:
-	if _whirlwind_visual_time_left > 0.0:
+	if (
+		is_dead
+		or controls_locked
+		or _primary_visual_time_left > 0.0
+		or _pending_primary_attack
+		or _whirlwind_visual_time_left > 0.0
+		or _pending_whirlwind_attack
+	):
 		return false
 	if not consume_multiplayer_skill1_charge():
 		return false
-	_apply_hoe_attack_damage(
-		whirlwind_query_shape,
-		WHIRLWIND_RADIUS,
-		Vector2.ZERO,
-		PI,
-		get_hoe_whirlwind_damage()
-	)
-	_apply_authoritative_player_heal(self, WHIRLWIND_HEAL_AMOUNT)
-	_activate_collectible_skill_effects()
+	_pending_whirlwind_attack = true
+	_pending_whirlwind_damage = get_hoe_whirlwind_damage()
 	_play_whirlwind_visual()
-	_play_whirlwind_audio()
 	return true
 
 
@@ -137,13 +152,11 @@ func play_remote_hoe_action(
 	_latest_remote_action_sequence = sequence
 	match action_kind:
 		&"primary":
-			var safe_direction := _get_safe_attack_direction(attack_direction)
-			last_attack_direction = safe_direction
-			_play_primary_attack_visual(safe_direction)
-			_play_primary_attack_audio()
+			var cardinal_direction := _get_cardinal_attack_direction(attack_direction)
+			last_attack_direction = cardinal_direction
+			_play_primary_attack_visual(cardinal_direction)
 		&"whirlwind":
 			_play_whirlwind_visual()
-			_play_whirlwind_audio()
 
 
 func _apply_hoe_attack_damage(
@@ -154,7 +167,13 @@ func _apply_hoe_attack_damage(
 	damage: int
 ) -> int:
 	var space_state := get_world_2d().direct_space_state
-	if space_state == null or query_shape == null or damage <= 0:
+	if space_state == null or query_shape == null or damage <= 0 or attack_radius <= 0.0:
+		return 0
+	if not is_equal_approx(query_shape.radius, attack_radius):
+		push_error(
+			"Hoe Cat attack query radius mismatch: scene=%s, combat=%s"
+			% [query_shape.radius, attack_radius]
+		)
 		return 0
 	var query := PhysicsShapeQueryParameters2D.new()
 	query.shape = query_shape
@@ -184,7 +203,6 @@ func _apply_hoe_attack_damage(
 			break
 	var hit_enemy_ids: Dictionary = {}
 	var hit_count := 0
-	var attack_radius_squared := attack_radius * attack_radius
 	for result in results:
 		var enemy := result.get("collider") as Enemy
 		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
@@ -194,8 +212,10 @@ func _apply_hoe_attack_damage(
 			continue
 		var offset := enemy.global_position - global_position
 		var offset_length_squared := offset.length_squared()
-		if offset_length_squared > attack_radius_squared:
-			continue
+		# The CircleShape2D query already enforces the authored radius against the
+		# enemy collision shape. A second centre-distance test made the radius-8
+		# swing unusable: normal enemies stop on touch while their centres are still
+		# roughly 11.5-13.5 pixels apart. Keep only the centre-based cone test.
 		if (
 			attack_direction != Vector2.ZERO
 			and offset_length_squared > 0.001
@@ -229,13 +249,18 @@ func _get_safe_attack_direction(attack_direction: Vector2) -> Vector2:
 	return facing_direction if facing_direction != Vector2.ZERO else Vector2.RIGHT
 
 
+func _get_cardinal_attack_direction(attack_direction: Vector2) -> Vector2:
+	var safe_direction := _get_safe_attack_direction(attack_direction)
+	return _facing_suffix_to_vector(_vector_to_facing_suffix(safe_direction))
+
+
 func _update_character_combat_state(delta: float) -> void:
 	var had_primary_visual := _primary_visual_time_left > 0.0
 	_primary_visual_time_left = maxf(_primary_visual_time_left - maxf(delta, 0.0), 0.0)
 	if had_primary_visual and _primary_visual_time_left <= 0.0:
+		_primary_visual_facing_suffix = &""
 		basic_slash_effect.hide()
 		basic_slash_effect.stop()
-	_update_hoe_sprite()
 	if _whirlwind_visual_time_left <= 0.0:
 		return
 	_whirlwind_visual_time_left = maxf(_whirlwind_visual_time_left - maxf(delta, 0.0), 0.0)
@@ -247,34 +272,51 @@ func _update_animation() -> void:
 	if _whirlwind_visual_time_left > 0.0:
 		return
 	if _primary_visual_time_left > 0.0:
-		var directional_attack := StringName("attack_%s" % facing_suffix)
-		if body_sprite.sprite_frames.has_animation(directional_attack):
-			if body_sprite.animation != directional_attack or not body_sprite.is_playing():
-				body_sprite.play(directional_attack)
-			return
-		if body_sprite.sprite_frames.has_animation(&"attack"):
-			if body_sprite.animation != &"attack" or not body_sprite.is_playing():
-				body_sprite.play(&"attack")
+		_play_primary_attack_body_animation(false)
+		return
+	if velocity.length_squared() <= 0.01:
+		var idle_animation := StringName("idle_%s" % facing_suffix)
+		if body_sprite.sprite_frames.has_animation(idle_animation):
+			if body_sprite.animation != idle_animation or not body_sprite.is_playing():
+				body_sprite.play(idle_animation)
 			return
 	super._update_animation()
-	_update_hoe_sprite()
 
 
 func _play_primary_attack_visual(attack_direction: Vector2) -> void:
 	_primary_visual_time_left = PRIMARY_VISUAL_DURATION
-	_update_hoe_sprite()
 	_update_facing(Vector2.ZERO, attack_direction)
-	_update_animation()
+	_primary_visual_facing_suffix = facing_suffix
+	_play_primary_attack_body_animation(true)
 	basic_slash_effect.rotation = attack_direction.angle()
 	basic_slash_effect.frame = 0
 	basic_slash_effect.show()
 	basic_slash_effect.play(&"slash")
-	action_animation_player.play(&"basic_slash")
+	primary_impact_timer.start(PRIMARY_IMPACT_DELAY)
+
+
+func _play_primary_attack_body_animation(restart: bool) -> void:
+	var locked_facing := (
+		_primary_visual_facing_suffix
+		if not _primary_visual_facing_suffix.is_empty()
+		else facing_suffix
+	)
+	var animation_name := StringName("attack_%s" % locked_facing)
+	if not body_sprite.sprite_frames.has_animation(animation_name):
+		animation_name = &"attack"
+	if not body_sprite.sprite_frames.has_animation(animation_name):
+		return
+	# A non-looping attack that reaches its final frame must remain there until
+	# the visual lock expires. Restarting it from _update_animation made one swing
+	# look like overlapping/repeated frames. A new attack explicitly restarts it.
+	if restart or body_sprite.animation != animation_name:
+		body_sprite.play(animation_name)
 
 
 func _play_whirlwind_visual() -> void:
 	_finish_whirlwind_visual()
 	_primary_visual_time_left = 0.0
+	_primary_visual_facing_suffix = &""
 	basic_slash_effect.hide()
 	basic_slash_effect.stop()
 	_whirlwind_visual_time_left = WHIRLWIND_VISUAL_DURATION
@@ -285,7 +327,7 @@ func _play_whirlwind_visual() -> void:
 	whirlwind_range_effect.frame = 0
 	whirlwind_range_effect.show()
 	whirlwind_range_effect.play(&"whirlwind")
-	action_animation_player.play(&"whirlwind")
+	whirlwind_impact_timer.start(WHIRLWIND_IMPACT_DELAY)
 
 
 func _finish_whirlwind_visual() -> void:
@@ -298,36 +340,46 @@ func _finish_whirlwind_visual() -> void:
 		whirlwind_range_effect.stop()
 	if body_sprite != null:
 		body_sprite.visible = true
-	_update_hoe_sprite()
 
 
-func _update_hoe_sprite() -> void:
-	if hoe_sprite == null:
+func _on_primary_impact_timer_timeout() -> void:
+	_play_primary_attack_audio()
+	if not _pending_primary_attack:
 		return
-	hoe_sprite.visible = (
-		not is_dead
-		and _primary_visual_time_left <= 0.0
-		and _whirlwind_visual_time_left <= 0.0
+	var impact_direction := _pending_primary_direction
+	var impact_damage := _pending_primary_damage
+	_pending_primary_attack = false
+	_pending_primary_direction = Vector2.ZERO
+	_pending_primary_damage = 0
+	if is_dead or controls_locked:
+		return
+	_apply_hoe_attack_damage(
+		basic_attack_query_shape,
+		BASIC_ATTACK_RADIUS,
+		impact_direction,
+		deg_to_rad(BASIC_ATTACK_ANGLE_DEGREES * 0.5),
+		impact_damage
 	)
-	if not hoe_sprite.visible:
+
+
+func _on_whirlwind_impact_timer_timeout() -> void:
+	_play_whirlwind_audio()
+	if not _pending_whirlwind_attack:
 		return
-	match facing_suffix:
-		&"up":
-			hoe_sprite.position = Vector2(-5.0, -2.0)
-			hoe_sprite.rotation = -0.68
-			hoe_sprite.z_index = -1
-		&"left":
-			hoe_sprite.position = Vector2(-6.0, 0.0)
-			hoe_sprite.rotation = -1.2
-			hoe_sprite.z_index = 1
-		&"right":
-			hoe_sprite.position = Vector2(6.0, 0.0)
-			hoe_sprite.rotation = 0.38
-			hoe_sprite.z_index = 1
-		_:
-			hoe_sprite.position = Vector2(5.0, 1.0)
-			hoe_sprite.rotation = 0.78
-			hoe_sprite.z_index = 1
+	var impact_damage := _pending_whirlwind_damage
+	_pending_whirlwind_attack = false
+	_pending_whirlwind_damage = 0
+	if is_dead or controls_locked:
+		return
+	_apply_hoe_attack_damage(
+		whirlwind_query_shape,
+		WHIRLWIND_RADIUS,
+		Vector2.ZERO,
+		PI,
+		impact_damage
+	)
+	_apply_authoritative_player_heal(self, WHIRLWIND_HEAL_AMOUNT)
+	_activate_collectible_skill_effects()
 
 
 func _play_primary_attack_audio() -> void:

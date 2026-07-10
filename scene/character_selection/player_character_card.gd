@@ -4,9 +4,6 @@ class_name PlayerCharacterCard
 signal character_selected(character_id: StringName)
 signal character_focused(character_id: StringName)
 
-const HOVER_SCALE := Vector2(1.025, 1.025)
-const HOVER_DURATION := 0.12
-
 @onready var portrait: TextureRect = $Margin/Content/PortraitFrame/Portrait
 @onready var portrait_placeholder: Label = $Margin/Content/PortraitFrame/PortraitPlaceholder
 @onready var title_label: Label = $Margin/Content/Title
@@ -19,7 +16,6 @@ const HOVER_DURATION := 0.12
 var character_config: PlayerCharacterConfig
 var is_selected := false
 var is_hovered := false
-var hover_tween: Tween
 
 
 func _ready() -> void:
@@ -58,12 +54,10 @@ func set_selected(selected: bool) -> void:
 
 
 func play_confirmation() -> Tween:
-	if hover_tween != null:
-		hover_tween.kill()
-		hover_tween = null
+	scale = Vector2.ONE
 	var tween := create_tween()
-	tween.tween_property(self, "scale", Vector2(1.055, 1.055), 0.09).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	tween.tween_property(self, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(self, "self_modulate:a", 0.72, 0.08).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_property(self, "self_modulate:a", 1.0, 0.13).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	return tween
 
 
@@ -119,6 +113,13 @@ func _refresh_card_style() -> void:
 	style.border_width_right = 4 if is_selected else 2
 	style.border_width_bottom = 4 if is_selected else 2
 	style.border_color = edge_color
+	# Border thickness is visual state only. Letting StyleBoxFlat infer its
+	# content margins from the border would resize the card and move every
+	# glyph whenever selection changes.
+	style.content_margin_left = 0.0
+	style.content_margin_top = 0.0
+	style.content_margin_right = 0.0
+	style.content_margin_bottom = 0.0
 	style.corner_radius_top_left = 10
 	style.corner_radius_top_right = 10
 	style.corner_radius_bottom_right = 10
@@ -141,7 +142,6 @@ func _on_mouse_entered() -> void:
 	is_hovered = true
 	_refresh_card_style()
 	character_focused.emit(character_config.character_id)
-	_tween_scale(HOVER_SCALE)
 
 
 func _on_mouse_exited() -> void:
@@ -149,7 +149,6 @@ func _on_mouse_exited() -> void:
 		return
 	is_hovered = false
 	_refresh_card_style()
-	_tween_scale(Vector2.ONE)
 
 
 func _on_gui_input(event: InputEvent) -> void:
@@ -167,16 +166,6 @@ func _emit_character_selected() -> void:
 	if character_config == null:
 		return
 	character_selected.emit(character_config.character_id)
-
-
-func _tween_scale(target_scale: Vector2) -> void:
-	if hover_tween != null:
-		hover_tween.kill()
-	hover_tween = create_tween()
-	hover_tween.tween_property(self, "scale", target_scale, HOVER_DURATION).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	hover_tween.finished.connect(func() -> void:
-		hover_tween = null
-	)
 
 
 func _update_pivot() -> void:

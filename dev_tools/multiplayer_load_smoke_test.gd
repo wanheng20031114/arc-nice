@@ -1492,11 +1492,34 @@ func _test_host_authoritative_hoe_actions() -> void:
 	mp_game.set("game", host_game)
 	mp_game.set("net_manager", net_manager)
 
+	var contact_enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
+	_expect(contact_enemy != null, "Host Hoe Cat coverage must instantiate a real enemy target.")
+	var contact_enemy_health_before := 0
+	if contact_enemy != null:
+		host_game.enemy_container.add_child(contact_enemy)
+		contact_enemy.setup(BASIC_CONFIG, hoe_player, host_game.grid_pathfinder)
+		contact_enemy.set_physics_process(false)
+		contact_enemy.global_position = hoe_player.global_position + Vector2(11.6, 0.0)
+		contact_enemy_health_before = contact_enemy.current_health
+		await process_frame
+		await physics_frame
+
 	hoe_player.shooting_timer.stop()
 	_expect(
 		bool(mp_game.call("_apply_authoritative_hoe_action", 1, &"primary", Vector2.RIGHT)),
 		"Host must accept a valid Hoe Cat primary attack request."
 	)
+	if contact_enemy != null:
+		_expect(
+			contact_enemy.current_health == contact_enemy_health_before,
+			"Host-authoritative Hoe Cat damage must wait for the authored impact frame."
+		)
+	await hoe_player.primary_impact_timer.timeout
+	if contact_enemy != null:
+		_expect(
+			contact_enemy.current_health == contact_enemy_health_before - 15,
+			"Host-authoritative Hoe Cat impact frame must damage a real contact-range enemy."
+		)
 	var action_sequences := mp_game.get("_hoe_action_sequences_by_peer") as Dictionary
 	_expect(int(action_sequences.get(1, 0)) == 1, "Host must assign an increasing sequence to an accepted Hoe Cat attack.")
 	_expect(
@@ -1505,6 +1528,8 @@ func _test_host_authoritative_hoe_actions() -> void:
 	)
 	_expect(int(action_sequences.get(1, 0)) == 1, "Rejected Hoe Cat attacks must not advance the action sequence.")
 
+	while float(hoe_player.get("_primary_visual_time_left")) > 0.0:
+		await process_frame
 	hoe_player.unlock_skill1()
 	hoe_player.skill1_charge = hoe_player.skill1_charge_duration
 	hoe_player.current_health = 70
@@ -1513,11 +1538,13 @@ func _test_host_authoritative_hoe_actions() -> void:
 		"Host must accept a fully charged Hoe Cat whirlwind request."
 	)
 	_expect(int(action_sequences.get(1, 0)) == 2, "Accepted whirlwind must advance the authoritative action sequence.")
-	_expect(hoe_player.current_health == 73, "Host-authoritative whirlwind must heal exactly 3 health.")
+	_expect(hoe_player.current_health == 70, "Whirlwind healing must wait for its impact frame.")
 	_expect(
 		not bool(mp_game.call("_apply_authoritative_hoe_action", 1, &"primary", Vector2.RIGHT)),
 		"Host must reject primary attacks during the whirlwind action lock."
 	)
+	await hoe_player.whirlwind_impact_timer.timeout
+	_expect(hoe_player.current_health == 73, "Host-authoritative whirlwind impact must heal exactly 3 health.")
 
 	connected_players.clear()
 	connected_players.merge(previous_players, true)
