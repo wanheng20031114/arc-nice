@@ -198,8 +198,16 @@ func _test_choice_overlay() -> void:
 			_expect(
 				title_label.custom_minimum_size.y >= title_font.get_height(
 					title_label.get_theme_font_size(&"font_size")
-				) + 2.0,
+				) + 6.0,
 				"Character card titles must leave vertical breathing room around CJK glyphs."
+			)
+			_expect(
+				title_label.size.y >= title_label.custom_minimum_size.y,
+				"Character card title layout must preserve its authored safe height."
+			)
+			_expect(
+				title_label.position.y + title_label.size.y <= portrait_frame.position.y,
+				"Character card titles must not overlap their portrait frames."
 			)
 			_expect(
 				name_label.custom_minimum_size.y >= name_font.get_height(
