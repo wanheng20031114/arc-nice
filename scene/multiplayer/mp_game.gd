@@ -1845,7 +1845,8 @@ func apply_multiplayer_collectible_enemy_damage(
 	enemy: Enemy,
 	damage: int,
 	impact_direction: Vector2,
-	damage_type: int = EnemyConfig.DamageType.MAGIC
+	damage_type: int = EnemyConfig.DamageType.MAGIC,
+	show_hit_particles: bool = true
 ) -> bool:
 	if net_manager == null or not net_manager.is_host():
 		return false
@@ -1853,13 +1854,19 @@ func apply_multiplayer_collectible_enemy_damage(
 		return false
 	var enemy_net_id := int(enemy.get_meta("net_id", 0))
 	if enemy_net_id <= 0:
-		return enemy.apply_damage(damage, impact_direction, damage_type as EnemyConfig.DamageType)
+		return enemy.apply_damage(
+			damage,
+			impact_direction,
+			damage_type as EnemyConfig.DamageType,
+			show_hit_particles
+		)
 	return _apply_confirmed_enemy_damage(
 		enemy_net_id,
 		enemy,
 		damage,
 		impact_direction,
-		damage_type as EnemyConfig.DamageType
+		damage_type as EnemyConfig.DamageType,
+		show_hit_particles
 	)
 
 
@@ -1920,11 +1927,12 @@ func _apply_confirmed_enemy_damage(
 	enemy: Enemy,
 	damage: int,
 	impact_direction: Vector2,
-	damage_type: EnemyConfig.DamageType
+	damage_type: EnemyConfig.DamageType,
+	show_hit_particles: bool = true
 ) -> bool:
 	if enemy_net_id <= 0 or enemy == null or not is_instance_valid(enemy):
 		return false
-	if not enemy.apply_damage(damage, impact_direction, damage_type):
+	if not enemy.apply_damage(damage, impact_direction, damage_type, show_hit_particles):
 		return false
 	var confirmed_damage := enemy.last_damage_taken
 	if is_inside_tree():
@@ -1937,6 +1945,7 @@ func _apply_confirmed_enemy_damage(
 				confirmed_damage,
 				impact_direction,
 				int(damage_type),
+				show_hit_particles,
 			]
 		)
 	return true
@@ -1949,7 +1958,8 @@ func net_enemy_damage_applied(
 	is_dead: bool,
 	confirmed_damage: int,
 	impact_direction: Vector2,
-	damage_type: int = EnemyConfig.DamageType.PHYSICAL
+	damage_type: int = EnemyConfig.DamageType.PHYSICAL,
+	show_hit_particles: bool = true
 ) -> void:
 	var enemy := _get_client_enemy_for_net_id(enemy_net_id)
 	if enemy == null or not is_instance_valid(enemy):
@@ -1961,7 +1971,7 @@ func net_enemy_damage_applied(
 		damage_type as EnemyConfig.DamageType
 	)
 	if impact_direction != Vector2.ZERO:
-		enemy.play_multiplayer_damage_feedback(impact_direction)
+		enemy.play_multiplayer_damage_feedback(impact_direction, show_hit_particles)
 	if is_dead:
 		_remove_client_enemy(enemy_net_id, true)
 

@@ -133,9 +133,15 @@ func set_active(active: bool) -> void:
 func apply_damage(
 	amount: int,
 	impact_direction: Vector2 = Vector2.ZERO,
-	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+	show_hit_particles: bool = true
 ) -> bool:
-	var accepted := super.apply_damage(amount, impact_direction, damage_type)
+	var accepted := super.apply_damage(
+		amount,
+		impact_direction,
+		damage_type,
+		show_hit_particles
+	)
 	if accepted:
 		_emit_health_changed()
 	return accepted

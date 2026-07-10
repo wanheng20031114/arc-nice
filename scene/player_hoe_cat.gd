@@ -256,11 +256,14 @@ func _apply_hoe_attack_damage(
 		var impact_direction := global_position.direction_to(enemy.global_position)
 		if impact_direction == Vector2.ZERO:
 			impact_direction = attack_direction if attack_direction != Vector2.ZERO else Vector2.DOWN
+		# Hoe swings already have dedicated slash VFX, so they should not reuse
+		# the firearm-style enemy hit particles.
 		if not _apply_authoritative_collectible_enemy_damage(
 			enemy,
 			damage,
 			impact_direction,
-			EnemyConfig.DamageType.PHYSICAL
+			EnemyConfig.DamageType.PHYSICAL,
+			false
 		):
 			continue
 		hit_count += 1

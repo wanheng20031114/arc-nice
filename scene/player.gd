@@ -2338,7 +2338,8 @@ func _apply_authoritative_collectible_enemy_damage(
 	enemy: Enemy,
 	damage: int,
 	impact_direction: Vector2,
-	damage_type: EnemyConfig.DamageType
+	damage_type: EnemyConfig.DamageType,
+	show_hit_particles: bool = true
 ) -> bool:
 	if enemy == null or not is_instance_valid(enemy):
 		return false
@@ -2352,9 +2353,10 @@ func _apply_authoritative_collectible_enemy_damage(
 			enemy,
 			damage,
 			impact_direction,
-			int(damage_type)
+			int(damage_type),
+			show_hit_particles
 		))
-	return enemy.apply_damage(damage, impact_direction, damage_type)
+	return enemy.apply_damage(damage, impact_direction, damage_type, show_hit_particles)
 
 
 func _apply_authoritative_player_heal(target_player: Player, heal_amount: int) -> bool:

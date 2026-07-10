@@ -184,12 +184,12 @@ vertical_alignment = 1
 
 [node name="GunshotAudio" type="AudioStreamPlayer2D" parent="." unique_id=2062294008]
 stream = ExtResource("15_primary_audio")
-volume_db = -5.0
+volume_db = -10.0
 max_polyphony = 8
 
 [node name="GunloadAudio" type="AudioStreamPlayer2D" parent="." unique_id=1430587860]
 stream = ExtResource("19_whirlwind_audio")
-volume_db = -4.0
+volume_db = -9.0
 
 [node name="FootstepAudio" type="AudioStreamPlayer2D" parent="." unique_id=765457380]
 stream = ExtResource("4_footstep")

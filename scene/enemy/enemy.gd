@@ -150,7 +150,8 @@ func _disable_proxy_area_collisions(root: Node) -> void:
 func apply_damage(
 	amount: int,
 	impact_direction: Vector2 = Vector2.ZERO,
-	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+	show_hit_particles: bool = true
 ) -> bool:
 	last_damage_taken = 0
 	if is_dead:
@@ -162,7 +163,7 @@ func apply_damage(
 	last_damage_taken = final_damage
 	current_health -= final_damage
 	show_damage_number(final_damage, impact_direction, damage_type)
-	play_multiplayer_damage_feedback(impact_direction)
+	play_multiplayer_damage_feedback(impact_direction, show_hit_particles)
 
 	if current_health <= 0:
 		_die()
@@ -187,8 +188,12 @@ func show_damage_number(
 		damage_number_owner = damage_number_owner.get_parent()
 
 
-func play_multiplayer_damage_feedback(impact_direction: Vector2 = Vector2.ZERO) -> void:
-	_play_hit_particles(impact_direction)
+func play_multiplayer_damage_feedback(
+	impact_direction: Vector2 = Vector2.ZERO,
+	show_hit_particles: bool = true
+) -> void:
+	if show_hit_particles:
+		_play_hit_particles(impact_direction)
 
 
 func play_multiplayer_death_sequence() -> void:
