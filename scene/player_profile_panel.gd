@@ -304,19 +304,12 @@ func _on_health_changed(current: int, maximum: int) -> void:
 
 
 func _on_attack_speed_changed(attack_speed: float) -> void:
-	if tracked_player != null:
-		var rounded_speed := roundf(attack_speed)
-		var speed_text := (
-			str(roundi(rounded_speed))
-			if is_equal_approx(attack_speed, rounded_speed)
-			else "%.2f" % attack_speed
-		)
-		attack_speed_value.text = "%s（%.2f次/秒）" % [
-			speed_text,
-			tracked_player.get_attacks_per_second(),
-		]
-		return
-	attack_speed_value.text = "%.2f/s" % (maxf(attack_speed, 1.0) / 100.0)
+	var rounded_speed := roundf(attack_speed)
+	attack_speed_value.text = (
+		str(roundi(rounded_speed))
+		if is_equal_approx(attack_speed, rounded_speed)
+		else "%.2f" % attack_speed
+	)
 
 
 func _on_dodge_changed(chance: float) -> void:

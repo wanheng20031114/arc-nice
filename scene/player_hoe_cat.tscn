@@ -13,10 +13,10 @@
 [ext_resource type="PackedScene" path="res://scene/move_speed_trail_effect.tscn" id="11_speed_trail"]
 [ext_resource type="AudioStream" uid="uid://44ucsbesth8r" path="res://resources/audio/lucky_gem_upgrade_triad.wav" id="12_lucky_audio"]
 [ext_resource type="PackedScene" uid="uid://d10vpuylyb4ty" path="res://scene/player_ammo_bar.tscn" id="13_ammo_bar"]
-[ext_resource type="PackedScene" path="res://scene/player_attack_interval_bar.tscn" id="14_interval_bar"]
+[ext_resource type="PackedScene" uid="uid://cmvetmpkqnxk4" path="res://scene/player_attack_interval_bar.tscn" id="14_interval_bar"]
 [ext_resource type="AudioStream" uid="uid://druowpv8vg1x0" path="res://resources/audio/capoo_sword_slash_light.wav" id="15_primary_audio"]
 [ext_resource type="SpriteFrames" uid="uid://cqwau0piadpjk" path="res://resources/animation/player_hoe_cat_basic_slash_vfx.tres" id="16_basic_slash_frames"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/player_hoe_cat_whirlwind_slash_v2.tres" id="17_whirlwind_frames"]
+[ext_resource type="SpriteFrames" uid="uid://b706hwb4n4w7v" path="res://resources/animation/player_hoe_cat_whirlwind_slash_v2.tres" id="17_whirlwind_frames"]
 [ext_resource type="SpriteFrames" uid="uid://c7uyrnjg41b12" path="res://resources/animation/player_hoe_cat_whirlwind_body.tres" id="18_whirlwind_body_frames"]
 [ext_resource type="AudioStream" uid="uid://cag0ma8vmfwx7" path="res://resources/audio/capoo_sword_slash_heavy.wav" id="19_whirlwind_audio"]
 [ext_resource type="Shader" uid="uid://cci1u78jt4lto" path="res://scene/player_hoe_cat_basic_slash_glow.gdshader" id="20_basic_slash_glow"]
@@ -50,6 +50,8 @@ shader_parameter/revive_glow_strength = 0.0
 shader_parameter/revive_glow_color = Color(3.2, 3.2, 3.2, 1)
 shader_parameter/revive_glow_outline_width = 4.5
 
+[sub_resource type="SpriteFrames" id="SpriteFrames_empty_armed"]
+
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_basic_slash_glow"]
 resource_local_to_scene = true
 shader = ExtResource("20_basic_slash_glow")
@@ -67,8 +69,6 @@ shader_parameter/hdr_energy = 2.45
 shader_parameter/tint_mix = 0.22
 shader_parameter/core_alpha_start = 0.38
 shader_parameter/core_alpha_end = 0.82
-
-[sub_resource type="SpriteFrames" id="SpriteFrames_empty_armed"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_body"]
 radius = 7.5
@@ -92,9 +92,8 @@ z_index = 1
 texture_filter = 1
 material = SubResource("ShaderMaterial_hoe_cat")
 sprite_frames = ExtResource("3_frames")
-animation = &"normal_up"
-autoplay = "idle_right"
-frame_progress = 0.70356286
+animation = &"idle_down"
+autoplay = "idle_down"
 
 [node name="ArmedEffectSprite" type="AnimatedSprite2D" parent="." unique_id=1224248483]
 visible = false
