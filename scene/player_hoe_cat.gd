@@ -3,7 +3,7 @@ class_name PlayerHoeCat
 
 const ENEMY_BODY_MASK := 4
 const ATTACK_QUERY_BATCH_SIZE := 64
-const BASIC_ATTACK_RADIUS := 10.0
+const BASIC_ATTACK_RADIUS := 48.0
 const BASIC_ATTACK_ANGLE_DEGREES := 60.0
 const WHIRLWIND_RADIUS := 15.0
 const WHIRLWIND_DAMAGE_MULTIPLIER := 2.8
@@ -99,12 +99,12 @@ func get_hoe_whirlwind_damage() -> int:
 func _perform_primary_attack(attack_direction: Vector2) -> bool:
 	if _whirlwind_visual_time_left > 0.0 or _pending_whirlwind_attack:
 		return false
-	var cardinal_direction := _get_cardinal_attack_direction(attack_direction)
-	last_attack_direction = cardinal_direction
+	var safe_direction := _get_safe_attack_direction(attack_direction)
+	last_attack_direction = safe_direction
 	var current_scene := get_tree().current_scene
 	if current_scene != null and current_scene.has_method("request_hoe_primary_attack"):
-		return bool(current_scene.call("request_hoe_primary_attack", cardinal_direction))
-	return try_authoritative_hoe_primary_attack(cardinal_direction)
+		return bool(current_scene.call("request_hoe_primary_attack", safe_direction))
+	return try_authoritative_hoe_primary_attack(safe_direction)
 
 
 func try_authoritative_hoe_primary_attack(attack_direction: Vector2) -> bool:
@@ -118,15 +118,15 @@ func try_authoritative_hoe_primary_attack(attack_direction: Vector2) -> bool:
 		return false
 	if shooting_timer == null or not shooting_timer.is_stopped():
 		return false
-	var cardinal_direction := _get_cardinal_attack_direction(attack_direction)
-	last_attack_direction = cardinal_direction
+	var safe_direction := _get_safe_attack_direction(attack_direction)
+	last_attack_direction = safe_direction
 	_pending_primary_attack = true
-	_pending_primary_direction = cardinal_direction
+	_pending_primary_direction = safe_direction
 	_pending_primary_damage = get_hoe_primary_attack_damage()
 	notify_primary_attack_performed()
 	shooting_timer.start(_get_effective_fire_interval())
 	_update_attack_interval_bar()
-	_play_primary_attack_visual(cardinal_direction)
+	_play_primary_attack_visual(safe_direction)
 	return true
 
 
@@ -181,9 +181,9 @@ func play_remote_hoe_action(
 		return
 	match action_kind:
 		&"primary":
-			var cardinal_direction := _get_cardinal_attack_direction(attack_direction)
-			last_attack_direction = cardinal_direction
-			_play_primary_attack_visual(cardinal_direction)
+			var safe_direction := _get_safe_attack_direction(attack_direction)
+			last_attack_direction = safe_direction
+			_play_primary_attack_visual(safe_direction)
 		&"whirlwind":
 			_play_whirlwind_visual()
 
@@ -242,9 +242,9 @@ func _apply_hoe_attack_damage(
 		var offset := enemy.global_position - global_position
 		var offset_length_squared := offset.length_squared()
 		# The CircleShape2D query already enforces the authored radius against the
-		# enemy collision shape. A second centre-distance test made the radius-8
-		# swing unusable: normal enemies stop on touch while their centres are still
-		# roughly 11.5-13.5 pixels apart. Keep only the centre-based cone test.
+		# enemy collision shape. A second centre-distance test would shorten the
+		# usable reach by the target's collision radius. Keep only the centre-based
+		# cone test here.
 		if (
 			attack_direction != Vector2.ZERO
 			and offset_length_squared > 0.001
@@ -276,11 +276,6 @@ func _get_safe_attack_direction(attack_direction: Vector2) -> Vector2:
 		return attack_direction.normalized()
 	var facing_direction := _facing_suffix_to_vector(facing_suffix)
 	return facing_direction if facing_direction != Vector2.ZERO else Vector2.RIGHT
-
-
-func _get_cardinal_attack_direction(attack_direction: Vector2) -> Vector2:
-	var safe_direction := _get_safe_attack_direction(attack_direction)
-	return _facing_suffix_to_vector(_vector_to_facing_suffix(safe_direction))
 
 
 func _update_character_combat_state(delta: float) -> void:

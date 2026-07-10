@@ -3,6 +3,7 @@ extends SceneTree
 const HOE_CAT_SCENE_PATH := "res://scene/player_hoe_cat.tscn"
 const SPIRAL_PICKUP := preload("res://resources/config/pickups/pickup_spiral.tres")
 const RAPID_PICKUP := preload("res://resources/config/pickups/pickup_rapid.tres")
+const TEST_PRIMARY_DIRECTION := Vector2(0.9396926, 0.34202015)
 
 
 class TestEnemy:
@@ -66,31 +67,40 @@ func _run() -> void:
 		await _finish()
 		return
 	test_root.add_child(player)
-	front_enemy = _spawn_test_enemy(Vector2(6.0, 0.0))
+	front_enemy = _spawn_test_enemy(TEST_PRIMARY_DIRECTION * 6.0)
 	var duplicate_collision_shape := CollisionShape2D.new()
 	var duplicate_circle := CircleShape2D.new()
 	duplicate_circle.radius = 0.6
 	duplicate_collision_shape.position = Vector2(0.4, 0.0)
 	duplicate_collision_shape.shape = duplicate_circle
 	front_enemy.add_child(duplicate_collision_shape)
-	back_enemy = _spawn_test_enemy(Vector2(-6.0, 0.0))
-	second_front_enemy = _spawn_test_enemy(Vector2(4.0, 1.0))
-	# Exercise the 60-degree cone in the newly added reach band: radius-1 targets
-	# at centre distance 10.5 overlap a radius-10 query, but did not overlap the
-	# old radius-8 query.
-	angle_boundary_enemy = _spawn_test_enemy(Vector2.RIGHT.rotated(deg_to_rad(30.0)) * 10.5)
-	outside_angle_enemy = _spawn_test_enemy(Vector2.RIGHT.rotated(deg_to_rad(30.5)) * 10.5)
-	negative_angle_boundary_enemy = _spawn_test_enemy(Vector2.RIGHT.rotated(deg_to_rad(-30.0)) * 10.5)
-	negative_outside_angle_enemy = _spawn_test_enemy(Vector2.RIGHT.rotated(deg_to_rad(-30.5)) * 10.5)
+	back_enemy = _spawn_test_enemy(-TEST_PRIMARY_DIRECTION * 6.0)
+	second_front_enemy = _spawn_test_enemy(
+		TEST_PRIMARY_DIRECTION.rotated(deg_to_rad(5.0)) * 4.2
+	)
+	# Exercise the 60-degree cone at the outer edge of the radius-48 reach.
+	# Radius-1 targets at centre distance 48.5 still overlap the query shape.
+	angle_boundary_enemy = _spawn_test_enemy(
+		TEST_PRIMARY_DIRECTION.rotated(deg_to_rad(30.0)) * 48.5
+	)
+	outside_angle_enemy = _spawn_test_enemy(
+		TEST_PRIMARY_DIRECTION.rotated(deg_to_rad(30.5)) * 48.5
+	)
+	negative_angle_boundary_enemy = _spawn_test_enemy(
+		TEST_PRIMARY_DIRECTION.rotated(deg_to_rad(-30.0)) * 48.5
+	)
+	negative_outside_angle_enemy = _spawn_test_enemy(
+		TEST_PRIMARY_DIRECTION.rotated(deg_to_rad(-30.5)) * 48.5
+	)
 	# The query radius is measured to the target collision shape, so a radius-1
-	# target overlaps up to a centre distance of eleven pixels.
-	radius_boundary_enemy = _spawn_test_enemy(Vector2(10.95, 0.0))
-	outside_radius_enemy = _spawn_test_enemy(Vector2(11.05, 0.0))
+	# target overlaps up to a centre distance of forty-nine pixels.
+	radius_boundary_enemy = _spawn_test_enemy(TEST_PRIMARY_DIRECTION * 48.95)
+	outside_radius_enemy = _spawn_test_enemy(TEST_PRIMARY_DIRECTION * 49.05)
 	for index in range(70):
 		var angle := lerpf(-25.0, 25.0, float(index) / 69.0)
 		var radius := 3.0 + float(index % 5) * 0.7
 		dense_cone_enemies.append(
-			_spawn_test_enemy(Vector2.RIGHT.rotated(deg_to_rad(angle)) * radius)
+			_spawn_test_enemy(TEST_PRIMARY_DIRECTION.rotated(deg_to_rad(angle)) * radius)
 		)
 	await process_frame
 	await physics_frame
@@ -98,7 +108,7 @@ func _run() -> void:
 
 	_test_starting_stats_and_attack_speed_contract()
 	_test_projectile_only_pickup_is_rejected()
-	_test_cardinal_attack_quantization()
+	_test_free_attack_direction_preservation()
 	await _test_generic_collectible_hooks_for_both_characters()
 	await _test_primary_cone_attack()
 	_test_skill_purchase_and_upgrades()
@@ -127,8 +137,8 @@ func _test_starting_stats_and_attack_speed_contract() -> void:
 	_expect(player.uses_attack_interval_bar(), "Hoe Cat must expose the attack interval bar.")
 	_expect(
 		player.basic_attack_query_shape != null
-		and is_equal_approx(player.basic_attack_query_shape.radius, 10.0),
-		"Hoe Cat primary attack query must use the authored radius of 10."
+		and is_equal_approx(player.basic_attack_query_shape.radius, 48.0),
+		"Hoe Cat primary attack query must use the authored radius of 48."
 	)
 	_expect(player.get_node_or_null("BasicSlashEffect") is AnimatedSprite2D, "Basic slash VFX must be prebuilt in the Hoe Cat scene.")
 	_expect(player.get_node_or_null("WhirlwindRangeEffect") is AnimatedSprite2D, "Whirlwind range VFX must be prebuilt in the Hoe Cat scene.")
@@ -157,22 +167,22 @@ func _test_projectile_only_pickup_is_rejected() -> void:
 	)
 
 
-func _test_cardinal_attack_quantization() -> void:
-	var direction_cases := {
-		Vector2(1.0, 0.75): Vector2.RIGHT,
-		Vector2(-1.0, 0.75): Vector2.LEFT,
-		Vector2(0.75, 1.0): Vector2.DOWN,
-		Vector2(0.75, -1.0): Vector2.UP,
-	}
-	for requested_direction: Vector2 in direction_cases:
-		var expected_direction := direction_cases[requested_direction] as Vector2
-		var cardinal_direction := player.call(
-			"_get_cardinal_attack_direction",
+func _test_free_attack_direction_preservation() -> void:
+	var direction_cases: Array[Vector2] = [
+		Vector2(1.0, 0.75),
+		Vector2(-1.0, 0.75),
+		Vector2(0.75, 1.0),
+		Vector2(0.75, -1.0),
+	]
+	for requested_direction in direction_cases:
+		var expected_direction := requested_direction.normalized()
+		var safe_direction := player.call(
+			"_get_safe_attack_direction",
 			requested_direction
 		) as Vector2
 		_expect(
-			cardinal_direction == expected_direction,
-			"Attack direction %s must quantize to %s."
+			safe_direction.is_equal_approx(expected_direction),
+			"Attack direction %s must preserve its normalized free-aim vector %s."
 			% [requested_direction, expected_direction]
 		)
 
@@ -227,15 +237,22 @@ func _test_generic_collectible_hooks_for_both_characters() -> void:
 
 func _test_primary_cone_attack() -> void:
 	player.shooting_timer.stop()
-	var diagonal_request := Vector2.RIGHT.rotated(deg_to_rad(20.0))
+	var diagonal_request := TEST_PRIMARY_DIRECTION
 	var attacked := player.try_authoritative_hoe_primary_attack(diagonal_request)
 	_expect(attacked, "Hoe Cat primary attack must execute when its timer is ready.")
 	_expect(
-		player.last_attack_direction == Vector2.RIGHT,
-		"A right-dominant diagonal primary request must quantize to the right cardinal direction."
+		player.last_attack_direction.is_equal_approx(diagonal_request),
+		"A diagonal primary request must remain the exact free-aim attack axis."
 	)
-	_expect(player.body_sprite.animation == &"attack_right", "Quantized primary direction must drive the matching body animation.")
-	_expect(is_zero_approx(player.basic_slash_effect.rotation), "Quantized primary direction must drive the matching slash rotation.")
+	_expect(player.body_sprite.animation == &"attack_right", "Free aim must retain the nearest matching body animation row.")
+	_expect(
+		is_equal_approx(player.basic_slash_effect.rotation, deg_to_rad(20.0)),
+		"Slash VFX must rotate to the exact 20-degree attack axis."
+	)
+	_expect(
+		(player.get("_pending_primary_direction") as Vector2).is_equal_approx(diagonal_request),
+		"Delayed damage must preserve the same exact 20-degree attack axis."
+	)
 	_expect(front_enemy.total_damage_taken == 0, "Primary damage must not resolve before the 0.1125-second impact timer.")
 	_expect(second_front_enemy.total_damage_taken == 0, "Every target must remain undamaged during primary anticipation.")
 	_expect(not player.primary_impact_timer.is_stopped(), "Primary attack must arm its impact timer.")
@@ -259,12 +276,12 @@ func _test_primary_cone_attack() -> void:
 	_expect(front_enemy.total_damage_taken == 15, "60-degree primary cone must deal 15 physical damage to the front target.")
 	_expect(second_front_enemy.total_damage_taken == 15, "One swing must damage every distinct enemy inside the cone once.")
 	_expect(back_enemy.total_damage_taken == 0, "60-degree primary cone must not hit a target behind the player.")
-	_expect(angle_boundary_enemy.total_damage_taken == 15, "The +30-degree cone boundary must be included at radius 10.")
-	_expect(outside_angle_enemy.total_damage_taken == 0, "A target beyond +30 degrees must be excluded even inside the radius-10 query.")
-	_expect(negative_angle_boundary_enemy.total_damage_taken == 15, "The -30-degree cone boundary must be included at radius 10.")
-	_expect(negative_outside_angle_enemy.total_damage_taken == 0, "A target beyond -30 degrees must be excluded even inside the radius-10 query.")
-	_expect(radius_boundary_enemy.total_damage_taken == 15, "A collider touching the radius-10 query must be included.")
-	_expect(outside_radius_enemy.total_damage_taken == 0, "A collider beyond the radius-10 query must be excluded.")
+	_expect(angle_boundary_enemy.total_damage_taken == 15, "The +30-degree cone boundary must be included at radius 48.")
+	_expect(outside_angle_enemy.total_damage_taken == 0, "A target beyond +30 degrees must be excluded even inside the radius-48 query.")
+	_expect(negative_angle_boundary_enemy.total_damage_taken == 15, "The -30-degree cone boundary must be included at radius 48.")
+	_expect(negative_outside_angle_enemy.total_damage_taken == 0, "A target beyond -30 degrees must be excluded even inside the radius-48 query.")
+	_expect(radius_boundary_enemy.total_damage_taken == 15, "A collider touching the radius-48 query must be included.")
+	_expect(outside_radius_enemy.total_damage_taken == 0, "A collider beyond the radius-48 query must be excluded.")
 	_expect(
 		dense_cone_enemies.all(func(enemy: TestEnemy) -> bool: return enemy.total_damage_taken == 15),
 		"A dense cone with more than one physics-query batch must still hit every enemy exactly once."
@@ -277,37 +294,45 @@ func _test_primary_cone_attack() -> void:
 
 
 func _test_primary_attack_through_real_input() -> void:
-	# Normal radius-8 enemy geometry can overlap the authored radius-10 attack
-	# shape while its centre is well beyond 10 px. Exercise input -> physics ->
+	# Normal radius-8 enemy geometry can overlap the authored radius-48 attack
+	# shape while its centre is well beyond 48 px. Exercise input -> physics ->
 	# attack end to end at the expanded boundary.
 	player.call("_finish_whirlwind_visual")
-	var contact_enemy := _spawn_test_enemy(Vector2(17.6, 0.0), 8.0)
-	var beyond_contact_enemy := _spawn_test_enemy(Vector2(18.4, 0.0), 8.0)
+	var input_direction := Vector2.ONE.normalized()
+	var contact_enemy := _spawn_test_enemy(input_direction * 55.6, 8.0)
+	var beyond_contact_enemy := _spawn_test_enemy(input_direction * 56.4, 8.0)
 	await process_frame
 	await physics_frame
 	player.shooting_timer.stop()
 	player.mouse_fire_held = false
 	Input.action_press("shoot_right")
+	Input.action_press("shoot_down")
 	await physics_frame
 	await process_frame
 	Input.action_release("shoot_right")
+	Input.action_release("shoot_down")
 	_expect(
 		contact_enemy.total_damage_taken == 0,
-		"A real shoot-right input must not deal damage before its authored impact frame."
+		"A real diagonal input must not deal damage before its authored impact frame."
 	)
 	_expect(
 		beyond_contact_enemy.total_damage_taken == 0,
-		"The radius-10 query must not hit a normal enemy beyond shape-overlap range."
+		"The radius-48 query must not hit a normal enemy beyond shape-overlap range."
 	)
 	_expect(
 		player.body_sprite.animation == &"attack_right" and player.body_sprite.is_playing(),
-		"A real shoot-right input must start the directional body attack animation."
+		"A 45-degree input must select the nearest directional body attack animation."
+	)
+	_expect(
+		player.last_attack_direction.is_equal_approx(input_direction)
+		and is_equal_approx(player.basic_slash_effect.rotation, PI * 0.25),
+		"Real diagonal input must preserve a 45-degree damage axis and VFX rotation."
 	)
 	_expect(
 		player.basic_slash_effect.visible
 		and player.basic_slash_effect.animation == &"slash"
 		and player.basic_slash_effect.is_playing(),
-		"A real shoot-right input must start the basic slash effect."
+		"A real diagonal input must start the freely rotated basic slash effect."
 	)
 	player.call("_update_facing", Vector2.UP, Vector2.ZERO)
 	player.call("_update_animation")
@@ -319,11 +344,11 @@ func _test_primary_attack_through_real_input() -> void:
 	await process_frame
 	_expect(
 		contact_enemy.total_damage_taken == 15,
-		"A real shoot-right input must damage a normal radius-8 enemy at the expanded radius-10 boundary when PrimaryImpactTimer expires."
+		"A real diagonal input must damage a normal radius-8 enemy at the radius-48 boundary when PrimaryImpactTimer expires."
 	)
 	_expect(
 		beyond_contact_enemy.total_damage_taken == 0,
-		"The delayed radius-10 impact must still exclude a normal enemy beyond shape-overlap range."
+		"The delayed radius-48 impact must still exclude a normal enemy beyond shape-overlap range."
 	)
 	player.body_sprite.frame = 4
 	player.body_sprite.stop()

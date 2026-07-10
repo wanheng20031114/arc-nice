@@ -13,7 +13,8 @@ const DIRECTION_ROWS := {
 	&"right": 2,
 	&"left": 3,
 }
-const PRIMARY_FRAME_DURATIONS := [0.8, 1.0, 0.6, 1.2, 1.4]
+const PRIMARY_BODY_FRAME_DURATIONS := [0.8, 1.0, 0.6, 1.2, 1.4]
+const PRIMARY_VFX_FRAME_DURATIONS := [0.6, 0.7, 0.8, 0.6, 0.7, 1.3, 2.0, 0.8]
 const PRIMARY_ANIMATION_DURATION := 0.3125
 const PRIMARY_IMPACT_TIME := 0.1125
 const WHIRLWIND_ANIMATION_DURATION := 0.5
@@ -43,6 +44,7 @@ func _run() -> void:
 
 	_test_pixel_render_settings()
 	_test_directional_body_atlases()
+	_test_free_aim_visual_rotation()
 	_test_effect_atlases()
 	_test_scene_action_node_contract()
 	_test_visual_offset_and_bar_contract()
@@ -55,7 +57,6 @@ func _run() -> void:
 func _test_pixel_render_settings() -> void:
 	for node_path in [
 		NodePath("BodySprite"),
-		NodePath("BasicSlashEffect"),
 		NodePath("WhirlwindRangeEffect"),
 		NodePath("WhirlwindBodyEffect"),
 	]:
@@ -70,6 +71,17 @@ func _test_pixel_render_settings() -> void:
 		_expect(
 			sprite.scale.is_equal_approx(Vector2.ONE),
 			"%s must render at a stable 1x logical scale." % node_path
+		)
+	var slash := player.get_node("BasicSlashEffect") as AnimatedSprite2D
+	_expect(slash != null, "BasicSlashEffect must be an AnimatedSprite2D.")
+	if slash != null:
+		_expect(
+			slash.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR,
+			"BasicSlashEffect must use linear filtering for clean free-aim rotation."
+		)
+		_expect(
+			slash.scale.is_equal_approx(Vector2.ONE),
+			"BasicSlashEffect must render at a stable 1x logical scale."
 		)
 
 
@@ -125,7 +137,7 @@ func _test_directional_body_atlases() -> void:
 		_validate_frame_durations(
 			frames,
 			StringName("attack_%s" % suffix),
-			PRIMARY_FRAME_DURATIONS,
+			PRIMARY_BODY_FRAME_DURATIONS,
 			PRIMARY_ANIMATION_DURATION
 		)
 		_expect(
@@ -160,22 +172,65 @@ func _test_directional_body_atlases() -> void:
 		player.velocity = Vector2.ZERO
 
 
+func _test_free_aim_visual_rotation() -> void:
+	var body := player.get_node("BodySprite") as AnimatedSprite2D
+	var slash := player.get_node("BasicSlashEffect") as AnimatedSprite2D
+	var direction_cases := [
+		{
+			"angle": 20.0,
+			"animation": &"attack_right",
+		},
+		{
+			"angle": 50.0,
+			"animation": &"attack_down",
+		},
+	]
+	for direction_case in direction_cases:
+		var angle_degrees := float(direction_case["angle"])
+		var direction := Vector2.RIGHT.rotated(deg_to_rad(angle_degrees))
+		player.call("_play_primary_attack_visual", direction)
+		_expect(
+			body.animation == direction_case["animation"],
+			"Free aim at %.1f degrees must use nearest body row %s."
+			% [angle_degrees, direction_case["animation"]]
+		)
+		_expect(
+			is_equal_approx(slash.rotation, deg_to_rad(angle_degrees)),
+			"Slash VFX must preserve the exact %.1f-degree attack direction."
+			% angle_degrees
+		)
+		player.primary_impact_timer.stop()
+		player.call("_update_character_combat_state", 1.0)
+	var remote_direction := Vector2.RIGHT.rotated(deg_to_rad(135.0))
+	player.play_remote_hoe_action(&"primary", remote_direction, 1)
+	_expect(
+		body.animation == &"attack_left",
+		"Remote free aim must keep the nearest four-direction body animation."
+	)
+	_expect(
+		is_equal_approx(slash.rotation, remote_direction.angle()),
+		"Remote action confirmation must preserve its exact non-cardinal rotation."
+	)
+	player.primary_impact_timer.stop()
+	player.call("_update_character_combat_state", 1.0)
+
+
 func _test_effect_atlases() -> void:
 	var slash := player.get_node("BasicSlashEffect") as AnimatedSprite2D
 	var whirlwind_range := player.get_node("WhirlwindRangeEffect") as AnimatedSprite2D
 	var whirlwind_body := player.get_node("WhirlwindBodyEffect") as AnimatedSprite2D
 	_validate_atlas_animation(
-		slash.sprite_frames, &"slash", 5, Vector2i(240, 48), Vector2i(48, 48), 0, 16.0, false
+		slash.sprite_frames, &"slash", 8, Vector2i(896, 112), Vector2i(112, 112), 0, 24.0, false
 	)
 	_validate_frame_durations(
 		slash.sprite_frames,
 		&"slash",
-		PRIMARY_FRAME_DURATIONS,
+		PRIMARY_VFX_FRAME_DURATIONS,
 		PRIMARY_ANIMATION_DURATION
 	)
 	_expect(
 		is_equal_approx(
-			_animation_time_through_frame(slash.sprite_frames, &"slash", 1),
+			_animation_time_through_frame(slash.sprite_frames, &"slash", 3),
 			PRIMARY_IMPACT_TIME
 		),
 		"Primary slash must reach its impact frame at 0.1125 seconds."
@@ -345,7 +400,7 @@ func _test_death_animation_contract() -> void:
 		body.animation == &"death" and body.frame == 4,
 		"Death must retain its final authored frame (got frame %d, playing=%s)." % [body.frame, body.is_playing()]
 	)
-	player.play_remote_hoe_action(&"whirlwind", Vector2.RIGHT, 1)
+	player.play_remote_hoe_action(&"whirlwind", Vector2.RIGHT, 2)
 	_expect(
 		body.visible and body.animation == &"death" and body.frame == 4,
 		"An in-flight remote action confirmation must not overwrite death."
