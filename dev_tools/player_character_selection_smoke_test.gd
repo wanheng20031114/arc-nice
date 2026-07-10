@@ -120,6 +120,13 @@ func _test_registry_and_run_state() -> void:
 		and is_equal_approx(PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.WEISHIDAIER_ID).attack_speed_units_per_attack, 100.0),
 		"Character configs must expose each character's attack-speed conversion scale."
 	)
+	_expect(
+		PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.HOE_CAT_ID).title
+		== "会耕地的はじみ"
+		and PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.HOE_CAT_ID).portrait_offset
+		== Vector2(8.0, 0.0),
+		"Hoe Cat selection copy and portrait offset must match the authored card layout."
+	)
 
 	var run_state := root.get_node("RunState") as RunStateStore
 	_expect(run_state != null, "RunState autoload must be available to character selection.")
@@ -181,9 +188,13 @@ func _test_choice_overlay() -> void:
 		for card in overlay.cards:
 			var title_label := card.get_node("Margin/Content/Title") as Label
 			var name_label := card.get_node("Margin/Content/Name") as Label
-			var portrait := card.get_node("Margin/Content/PortraitFrame/Portrait") as TextureRect
+			var portrait_frame := card.get_node("Margin/Content/PortraitFrame") as PanelContainer
+			var portrait := card.get_node(
+				"Margin/Content/PortraitFrame/PortraitLayer/Portrait"
+			) as TextureRect
 			var title_font := title_label.get_theme_font(&"font")
 			var name_font := name_label.get_theme_font(&"font")
+			var portrait_style := portrait_frame.get_theme_stylebox(&"panel") as StyleBoxFlat
 			_expect(
 				title_label.custom_minimum_size.y >= title_font.get_height(
 					title_label.get_theme_font_size(&"font_size")
@@ -205,6 +216,14 @@ func _test_choice_overlay() -> void:
 				portrait.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
 				and portrait.stretch_mode == TextureRect.STRETCH_KEEP_CENTERED,
 				"Pixel-art portraits must remain nearest-filtered at their native scale."
+			)
+			_expect(
+				portrait_style != null and portrait_style.bg_color.a < 0.5,
+				"Character portraits must use a translucent backdrop."
+			)
+			_expect(
+				portrait.position.is_equal_approx(card.character_config.portrait_offset),
+				"Character portrait controls must preserve their configured offsets."
 			)
 		var hovered_card := overlay.cards[1]
 		hovered_card.call("_on_mouse_entered")

@@ -4,7 +4,7 @@ class_name PlayerCharacterCard
 signal character_selected(character_id: StringName)
 signal character_focused(character_id: StringName)
 
-@onready var portrait: TextureRect = $Margin/Content/PortraitFrame/Portrait
+@onready var portrait: TextureRect = $Margin/Content/PortraitFrame/PortraitLayer/Portrait
 @onready var portrait_placeholder: Label = $Margin/Content/PortraitFrame/PortraitPlaceholder
 @onready var title_label: Label = $Margin/Content/Title
 @onready var name_label: Label = $Margin/Content/Name
@@ -63,6 +63,7 @@ func play_confirmation() -> Tween:
 
 func _apply_portrait() -> void:
 	portrait.texture = null
+	portrait.position = character_config.portrait_offset
 	portrait_placeholder.visible = true
 	portrait_placeholder.text = character_config.display_name.left(1)
 	portrait_placeholder.modulate = character_config.card_accent_color

@@ -20,7 +20,8 @@ class TestEnemy:
 	func apply_damage(
 		amount: int,
 		_impact_direction: Vector2 = Vector2.ZERO,
-		_damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
+		_damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+		_show_hit_particles: bool = true
 	) -> bool:
 		if is_dead or amount <= 0:
 			return false
@@ -435,10 +436,10 @@ func _test_whirlwind_damage_and_heal() -> void:
 	await process_frame
 	_expect(player.whirlwind_impact_timer.is_stopped(), "WhirlwindImpactTimer must stop after its one-shot impact.")
 	_expect(not bool(player.get("_pending_whirlwind_attack")), "Whirlwind pending state must clear at impact.")
-	_expect(front_enemy.total_damage_taken == 57, "Whirlwind impact must add 42 physical damage to the front target.")
-	_expect(back_enemy.total_damage_taken == 42, "Radius-62.4 whirlwind impact must hit the target behind the player for 42 damage.")
+	_expect(front_enemy.total_damage_taken == 60, "Whirlwind impact must add 45 physical damage to the front target.")
+	_expect(back_enemy.total_damage_taken == 45, "Radius-62.4 whirlwind impact must hit the target behind the player for 45 damage.")
 	_expect(
-		whirlwind_radius_boundary_enemy.total_damage_taken == 42,
+		whirlwind_radius_boundary_enemy.total_damage_taken == 45,
 		"Whirlwind must hit a radius-1 target whose centre is 63.35 pixels away."
 	)
 	_expect(
@@ -470,8 +471,8 @@ func _test_dynamic_skill_profile() -> void:
 	_expect(profile_panel.skill_info.visible, "Unlocked Hoe Cat whirlwind must appear in the profile panel.")
 	_expect(profile_panel.skill_name_label.text == "旋风斩", "Profile panel must use Hoe Cat's dynamic skill name.")
 	_expect(
-		profile_panel.skill_description_label.text.contains("1.3倍")
-		and profile_panel.skill_description_label.text.contains("280%")
+		profile_panel.skill_description_label.text.contains("半径62.4")
+		and profile_panel.skill_description_label.text.contains("300%")
 		and profile_panel.skill_description_label.text.contains("5点"),
 		"Profile panel must use Hoe Cat's dynamic whirlwind description."
 	)
@@ -487,9 +488,8 @@ func _test_dynamic_skill_profile() -> void:
 		"Profile panel must read Hoe Cat's portrait from the character config."
 	)
 	_expect(
-		profile_panel.attack_speed_value.text.contains("400")
-		and profile_panel.attack_speed_value.text.contains("2.00"),
-		"Profile panel must show both 400 attack speed and 2.00 attacks per second."
+		profile_panel.attack_speed_value.text == "400",
+		"Profile panel must show only the 400 attack-speed value."
 	)
 	var merchant_scene := load("res://scene/zhuangfangyi_merchant.tscn") as PackedScene
 	var merchant := merchant_scene.instantiate() as ZhuangfangyiMerchant if merchant_scene != null else null

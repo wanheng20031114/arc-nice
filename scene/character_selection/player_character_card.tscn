@@ -4,7 +4,7 @@
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_portrait"]
-bg_color = Color(0.025, 0.03, 0.038, 0.92)
+bg_color = Color(0.025, 0.03, 0.038, 0.32)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
@@ -49,8 +49,18 @@ layout_mode = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_portrait")
 
-[node name="Portrait" type="TextureRect" parent="Margin/Content/PortraitFrame"]
+[node name="PortraitLayer" type="Control" parent="Margin/Content/PortraitFrame"]
 layout_mode = 2
+mouse_filter = 2
+clip_contents = true
+
+[node name="Portrait" type="TextureRect" parent="Margin/Content/PortraitFrame/PortraitLayer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 2
 texture_filter = 1
 expand_mode = 1
