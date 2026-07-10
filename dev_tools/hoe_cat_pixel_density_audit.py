@@ -375,6 +375,18 @@ def _assert_vfx(
         peak_bbox = slash_frames[peak_index].getchannel("A").getbbox()
         if peak_bbox[2] - peak_bbox[0] < 45 or peak_bbox[3] - peak_bbox[1] < 45:
             raise AssertionError(f"Slash impact frame {peak_index} is too small: {peak_bbox}")
+        peak_alpha = [
+            pixel[3]
+            for pixel in slash_frames[peak_index].getdata()
+            if pixel[3] > 0
+        ]
+        partial_ratio = sum(alpha < 255 for alpha in peak_alpha) / len(peak_alpha)
+        strong_core_ratio = sum(alpha >= 240 for alpha in peak_alpha) / len(peak_alpha)
+        if partial_ratio > 0.35 or strong_core_ratio < 0.65:
+            raise AssertionError(
+                f"Slash impact frame {peak_index} lost its crisp alpha core: "
+                f"partial={partial_ratio:.3f}, strong={strong_core_ratio:.3f}"
+            )
 
     pivot = 56.0
     maximum_radii: list[float] = []

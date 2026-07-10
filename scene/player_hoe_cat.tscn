@@ -19,6 +19,7 @@
 [ext_resource type="SpriteFrames" uid="uid://b4bsfhf72y5o1" path="res://resources/animation/player_hoe_cat_whirlwind_vfx.tres" id="17_whirlwind_frames"]
 [ext_resource type="SpriteFrames" uid="uid://c7uyrnjg41b12" path="res://resources/animation/player_hoe_cat_whirlwind_body.tres" id="18_whirlwind_body_frames"]
 [ext_resource type="AudioStream" uid="uid://cag0ma8vmfwx7" path="res://resources/audio/capoo_sword_slash_heavy.wav" id="19_whirlwind_audio"]
+[ext_resource type="Shader" uid="uid://cci1u78jt4lto" path="res://scene/player_hoe_cat_basic_slash_glow.gdshader" id="20_basic_slash_glow"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_basic_attack"]
 radius = 48.0
@@ -48,6 +49,15 @@ shader_parameter/bleed_outline_width = 2.0
 shader_parameter/revive_glow_strength = 0.0
 shader_parameter/revive_glow_color = Color(3.2, 3.2, 3.2, 1)
 shader_parameter/revive_glow_outline_width = 4.5
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_basic_slash_glow"]
+resource_local_to_scene = true
+shader = ExtResource("20_basic_slash_glow")
+shader_parameter/glow_tint = Color(1, 0.88, 0.52, 1)
+shader_parameter/hdr_energy = 2.15
+shader_parameter/tint_mix = 0.18
+shader_parameter/core_alpha_start = 0.42
+shader_parameter/core_alpha_end = 0.88
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_empty_armed"]
 
@@ -86,6 +96,7 @@ sprite_frames = SubResource("SpriteFrames_empty_armed")
 visible = false
 z_index = 6
 texture_filter = 2
+material = SubResource("ShaderMaterial_basic_slash_glow")
 sprite_frames = ExtResource("16_basic_slash_frames")
 animation = &"slash"
 frame = 4

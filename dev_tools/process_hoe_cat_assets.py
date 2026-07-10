@@ -47,6 +47,8 @@ SLASH_ATTACK_RADIUS = 48.0
 # tapered, like the Swordsman Cat slash reference.
 SLASH_CROSS_AXIS_SCALE = 0.78
 SLASH_ALPHA_FLOOR = 2
+SLASH_ALPHA_TRANSPARENT_POINT = 24
+SLASH_ALPHA_OPAQUE_POINT = 216
 WHIRLWIND_VFX_FRAME_SIZE = 48
 WHIRLWIND_ICON_SIZE = 128
 WHIRLWIND_ICON_SUBJECT_SIZE = 112
@@ -112,6 +114,32 @@ def _load_soft_source(name: str) -> Image.Image:
             red, green, blue, alpha = pixels[x, y]
             if alpha <= SLASH_ALPHA_FLOOR:
                 pixels[x, y] = (0, 0, 0, 0)
+    return rgba
+
+
+def _harden_slash_alpha(image: Image.Image) -> Image.Image:
+    """Restore a crisp cutting core while retaining one soft antialias band."""
+    rgba = image.convert("RGBA")
+    pixels = rgba.load()
+    alpha_range = float(
+        SLASH_ALPHA_OPAQUE_POINT - SLASH_ALPHA_TRANSPARENT_POINT
+    )
+    for y in range(rgba.height):
+        for x in range(rgba.width):
+            red, green, blue, alpha = pixels[x, y]
+            normalized = min(
+                max(
+                    (alpha - SLASH_ALPHA_TRANSPARENT_POINT) / alpha_range,
+                    0.0,
+                ),
+                1.0,
+            )
+            smooth_alpha = normalized * normalized * (3.0 - 2.0 * normalized)
+            hardened_alpha = round(smooth_alpha * 255.0)
+            if hardened_alpha <= SLASH_ALPHA_FLOOR:
+                pixels[x, y] = (0, 0, 0, 0)
+            else:
+                pixels[x, y] = (red, green, blue, hardened_alpha)
     return rgba
 
 
@@ -614,6 +642,7 @@ def _build_basic_slash_sheet() -> Image.Image:
             f"authored_radius={authored_radius:.2f} "
             f"radial_scale={radial_scale:.4f} cross_scale={cross_axis_scale:.4f}"
         )
+    slash = _harden_slash_alpha(slash)
     return _map_to_palette_preserve_alpha(slash, SLASH_PALETTE)
 
 

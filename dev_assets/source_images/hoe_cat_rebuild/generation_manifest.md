@@ -64,7 +64,10 @@ motion.
      It deliberately does not sector-clip the artwork: the bright body stays
      close to the 60-degree hit cone while tapered tips and soft motes may extend
      slightly beyond it. Runtime cells remain 112x112 with transparent safety
-     padding and retain soft alpha for clean free-aim rotation.
+     padding. After Lanczos reduction, a smooth 24-to-216 alpha remap restores a
+     crisp cutting core while retaining one antialiased edge band for clean
+     free-aim rotation. The runtime node adds pale-yellow overbright colour with
+     a dedicated HDR 2D shader; the shared game Environment supplies the glow.
 
 7. `whirlwind_vfx_source.png`
    - Exactly 4 columns x 2 rows, read row-major, for 48x48 logical cells.

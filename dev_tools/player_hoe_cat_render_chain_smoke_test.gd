@@ -83,6 +83,20 @@ func _test_pixel_render_settings() -> void:
 			slash.scale.is_equal_approx(Vector2.ONE),
 			"BasicSlashEffect must render at a stable 1x logical scale."
 		)
+		var slash_material := slash.material as ShaderMaterial
+		_expect(
+			slash_material != null and slash_material.shader != null,
+			"BasicSlashEffect must use its dedicated HDR glow shader."
+		)
+		if slash_material != null:
+			_expect(
+				float(slash_material.get_shader_parameter(&"hdr_energy")) > 1.0,
+				"BasicSlashEffect glow must output overbright HDR colour."
+			)
+	_expect(
+		bool(ProjectSettings.get_setting("rendering/viewport/hdr_2d", false)),
+		"The project must keep HDR 2D enabled for the slash glow."
+	)
 
 
 func _test_directional_body_atlases() -> void:
