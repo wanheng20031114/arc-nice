@@ -14,5 +14,7 @@ icon_texture = ExtResource("1_icon")
 duration = 0.0
 collectible_effect_id = "medieval_shield"
 collectible_rarity = 1
+collectible_design_id = "medieval_shield"
+collectible_design_note = "远程闪避：受到远程攻击时额外获得20%闪避概率。"
 incoming_ranged_dodge_chance = 0.2
 metadata/_custom_type_script = "uid://qucrregg4cq0"

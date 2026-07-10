@@ -28,6 +28,7 @@ const MEDIEVAL_SHIELD := preload("res://resources/config/collectibles/collectibl
 const WOODEN_BUCKLER := preload("res://resources/config/collectibles/collectible_wooden_buckler.tres")
 const SILVER_MASK := preload("res://resources/config/collectibles/collectible_silver_mask.tres")
 const CANDLE_STUB := preload("res://resources/config/collectibles/collectible_candle_stub.tres")
+const BONE_NEEDLE := preload("res://resources/config/collectibles/collectible_bone_needle.tres")
 const CHIPPED_RUBY := preload("res://resources/config/collectibles/collectible_chipped_ruby.tres")
 const EMBER_LEAF := preload("res://resources/config/collectibles/collectible_ember_leaf.tres")
 const CAMPFIRE_COAL := preload("res://resources/config/collectibles/collectible_campfire_coal.tres")
@@ -108,6 +109,7 @@ func _test_collectible_resources() -> void:
 	_expect(pool.size() == 105, "Luoxi collectible pool must include the original 24 collectibles plus 81 new collectibles.")
 	var seen_paths: Dictionary = {}
 	var rarity_counts: Dictionary = {}
+	var projectile_requirement_count := 0
 	for item in pool:
 		var config := item as PickupConfig
 		_expect(config != null, "Collectible pool entry must load.")
@@ -119,6 +121,15 @@ func _test_collectible_resources() -> void:
 		_expect(config.can_store_in_inventory, "%s must be storable in inventory." % config.display_name)
 		_expect(config.pickup_type == PickupConfig.PickupType.COLLECTIBLE, "%s must use collectible pickup type." % config.display_name)
 		_expect(not config.description.is_empty(), "%s must have a visible description." % config.display_name)
+		_expect(not config.collectible_design_id.is_empty(), "%s must have a design id." % config.display_name)
+		_expect(not config.collectible_design_note.is_empty(), "%s must have a design note." % config.display_name)
+		if not config.on_hit_effect_id.is_empty():
+			_expect(
+				config.description.begins_with("攻击命中时"),
+				"%s on-hit description must use the generic attack wording." % config.display_name
+			)
+		if config.requires_projectile_primary_attack:
+			projectile_requirement_count += 1
 		_expect(config.icon_texture != null, "%s must have an icon texture." % config.display_name)
 		_expect(
 			config.collectible_rarity >= PickupConfig.CollectibleRarity.COMMON
@@ -129,6 +140,7 @@ func _test_collectible_resources() -> void:
 		if config.icon_texture != null:
 			_expect(config.icon_texture.get_width() <= 32, "%s icon width must be <= 32." % config.display_name)
 			_expect(config.icon_texture.get_height() <= 32, "%s icon height must be <= 32." % config.display_name)
+	_expect(projectile_requirement_count == 3, "Exactly three collectibles must require projectile primary attacks.")
 	_expect(APPLE.icon_texture.get_width() == 32 and APPLE.icon_texture.get_height() == 32, "Apple icon must remain 32x32.")
 	for rarity in [
 		PickupConfig.CollectibleRarity.COMMON,
@@ -418,6 +430,14 @@ func _test_combat_effects() -> void:
 	enemy.current_health = 100
 	nearby_enemy.current_health = 100
 	var thunder_damage_numbers_before := _count_active_damage_numbers()
+	var guaranteed_burn := CANDLE_STUB.duplicate() as PickupConfig
+	guaranteed_burn.on_hit_chance = 1.0
+	var burn_bonus_enemy := _spawn_enemy(Vector2(76.0, 0.0), player)
+	player.call("_apply_collectible_on_hit_effect", guaranteed_burn, burn_bonus_enemy, 1)
+	_expect(
+		_get_collectible_status_tick_damage(burn_bonus_enemy, &"burn") == 6,
+		"Burn tick damage must include the Magic Ring damage bonus."
+	)
 	player.call("_trigger_thunder_crystal", THUNDER_CRYSTAL)
 	await process_frame
 	_expect(enemy.last_damage_taken == 51, "Thunder crystal must use magic damage bonus.")
@@ -425,6 +445,19 @@ func _test_combat_effects() -> void:
 	_expect(
 		_count_active_damage_numbers() >= thunder_damage_numbers_before + 2,
 		"Thunder crystal enemy damage must show damage numbers."
+	)
+
+	run_state.begin_new_run()
+	player.refresh_collectible_stats()
+	_expect(run_state.try_add_item(PHYSICAL_RING), "Physical ring must fit for bleed scaling coverage.")
+	await process_frame
+	var guaranteed_bleed := BONE_NEEDLE.duplicate() as PickupConfig
+	guaranteed_bleed.on_hit_chance = 1.0
+	var bleed_bonus_enemy := _spawn_enemy(Vector2(82.0, 0.0), player)
+	player.call("_apply_collectible_on_hit_effect", guaranteed_bleed, bleed_bonus_enemy, 1)
+	_expect(
+		_get_collectible_status_tick_damage(bleed_bonus_enemy, &"bleed") == 2,
+		"Bleed tick damage must include the Physical Ring damage bonus."
 	)
 
 	run_state.begin_new_run()
@@ -537,6 +570,10 @@ func _test_combat_effects() -> void:
 		bleed_enemy.queue_free()
 	if is_instance_valid(burn_stack_enemy):
 		burn_stack_enemy.queue_free()
+	if is_instance_valid(burn_bonus_enemy):
+		burn_bonus_enemy.queue_free()
+	if is_instance_valid(bleed_bonus_enemy):
+		bleed_bonus_enemy.queue_free()
 	await process_frame
 
 
@@ -566,6 +603,14 @@ func _get_enemy_shader_parameter_float(enemy: Enemy, parameter_name: StringName)
 	if sprite_material == null:
 		return 0.0
 	return float(sprite_material.get_shader_parameter(parameter_name))
+
+
+func _get_collectible_status_tick_damage(enemy: Enemy, status_id: StringName) -> int:
+	for status_variant in enemy.collectible_status_effects.values():
+		var status := status_variant as Dictionary
+		if StringName(status.get("status_id", &"")) == status_id:
+			return int(status.get("tick_damage", 0))
+	return 0
 
 
 func _expect(condition: bool, message: String) -> void:

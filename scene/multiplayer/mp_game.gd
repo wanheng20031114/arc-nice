@@ -1633,7 +1633,7 @@ func _get_authoritative_collectible_arrow_damage(owner_player: Player) -> int:
 		var damage_multiplier := maxf(item.periodic_attack_damage_multiplier, 0.0)
 		if damage_multiplier <= 0.0:
 			damage_multiplier = 1.0
-		var arrow_damage := owner_player.get_outgoing_damage(
+		var arrow_damage := owner_player.get_collectible_outgoing_damage(
 			maxi(roundi(float(owner_player.attack_damage) * damage_multiplier), 1),
 			EnemyConfig.DamageType.PHYSICAL
 		)

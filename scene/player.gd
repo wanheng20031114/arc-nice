@@ -379,6 +379,14 @@ func supports_projectile_attack_patterns() -> bool:
 	return true
 
 
+func is_collectible_compatible(item: PickupConfig) -> bool:
+	if item == null:
+		return false
+	if item.requires_projectile_primary_attack and not supports_projectile_attack_patterns():
+		return false
+	return true
+
+
 func uses_attack_interval_bar() -> bool:
 	return false
 
@@ -612,6 +620,15 @@ func get_outgoing_damage(
 		else collectible_physical_damage_bonus
 	)
 	return maxi(base_amount + bonus, 1)
+
+
+func get_collectible_outgoing_damage(
+	base_amount: int,
+	damage_type: EnemyConfig.DamageType
+) -> int:
+	if base_amount <= 0:
+		return 0
+	return get_outgoing_damage(base_amount, damage_type)
 
 
 func try_trigger_free_base_upgrade() -> bool:
@@ -1857,7 +1874,10 @@ func _apply_collectible_on_hit_effect(item: PickupConfig, enemy: Enemy, _hit_dam
 				&"burn",
 				source_id,
 				item.on_hit_duration,
-				item.on_hit_damage,
+				get_collectible_outgoing_damage(
+					item.on_hit_damage,
+					EnemyConfig.DamageType.MAGIC
+				),
 				item.on_hit_tick_interval,
 				EnemyConfig.DamageType.MAGIC
 			)
@@ -1867,7 +1887,10 @@ func _apply_collectible_on_hit_effect(item: PickupConfig, enemy: Enemy, _hit_dam
 				&"bleed",
 				source_id,
 				item.on_hit_duration,
-				item.on_hit_damage,
+				get_collectible_outgoing_damage(
+					item.on_hit_damage,
+					EnemyConfig.DamageType.PHYSICAL
+				),
 				item.on_hit_tick_interval,
 				EnemyConfig.DamageType.PHYSICAL
 			)
@@ -1877,7 +1900,10 @@ func _apply_collectible_on_hit_effect(item: PickupConfig, enemy: Enemy, _hit_dam
 				&"chill",
 				source_id,
 				item.on_hit_duration,
-				item.on_hit_damage,
+				get_collectible_outgoing_damage(
+					item.on_hit_damage,
+					EnemyConfig.DamageType.MAGIC
+				),
 				item.on_hit_tick_interval,
 				EnemyConfig.DamageType.MAGIC,
 				item.on_hit_slow_multiplier
@@ -2042,7 +2068,10 @@ func _trigger_thunder_crystal(item: PickupConfig) -> void:
 		return
 	var impact_position := enemy.global_position
 	var radius := maxf(item.periodic_radius, 1.0)
-	var damage := get_outgoing_damage(item.periodic_damage, EnemyConfig.DamageType.MAGIC)
+	var damage := get_collectible_outgoing_damage(
+		item.periodic_damage,
+		EnemyConfig.DamageType.MAGIC
+	)
 	for target_enemy in enemies:
 		if target_enemy == null or not is_instance_valid(target_enemy):
 			continue
@@ -2062,7 +2091,10 @@ func _trigger_thunder_crystal(item: PickupConfig) -> void:
 
 func _trigger_frost_crystal(item: PickupConfig) -> void:
 	var radius := maxf(item.periodic_radius, 1.0)
-	var damage := get_outgoing_damage(item.periodic_damage, EnemyConfig.DamageType.MAGIC)
+	var damage := get_collectible_outgoing_damage(
+		item.periodic_damage,
+		EnemyConfig.DamageType.MAGIC
+	)
 	var slow_source_id := int(Time.get_ticks_msec() + get_instance_id())
 	for enemy in _collect_alive_enemies():
 		if enemy == null or not is_instance_valid(enemy):
@@ -2092,7 +2124,10 @@ func _trigger_collectible_custom_thunder(item: PickupConfig) -> void:
 		return
 	var impact_position := enemy.global_position
 	var radius := maxf(item.trigger_radius, 1.0)
-	var damage := get_outgoing_damage(item.trigger_damage, EnemyConfig.DamageType.MAGIC)
+	var damage := get_collectible_outgoing_damage(
+		item.trigger_damage,
+		EnemyConfig.DamageType.MAGIC
+	)
 	for target_enemy in enemies:
 		if target_enemy == null or not is_instance_valid(target_enemy):
 			continue
@@ -2112,7 +2147,10 @@ func _trigger_collectible_custom_thunder(item: PickupConfig) -> void:
 
 func _trigger_collectible_custom_frost(item: PickupConfig) -> void:
 	var radius := maxf(item.trigger_radius, 1.0)
-	var damage := get_outgoing_damage(item.trigger_damage, EnemyConfig.DamageType.MAGIC)
+	var damage := get_collectible_outgoing_damage(
+		item.trigger_damage,
+		EnemyConfig.DamageType.MAGIC
+	)
 	var slow_source_id := int(Time.get_ticks_msec() + get_instance_id())
 	for enemy in _collect_alive_enemies():
 		if enemy == null or not is_instance_valid(enemy):
@@ -2155,7 +2193,7 @@ func _trigger_archer(item: PickupConfig) -> void:
 	var damage_multiplier := maxf(item.periodic_attack_damage_multiplier, 0.0)
 	if damage_multiplier <= 0.0:
 		damage_multiplier = 1.0
-	var arrow_damage := get_outgoing_damage(
+	var arrow_damage := get_collectible_outgoing_damage(
 		maxi(roundi(float(attack_damage) * damage_multiplier), 1),
 		EnemyConfig.DamageType.PHYSICAL
 	)
@@ -2170,7 +2208,7 @@ func _trigger_sakura_rocket(item: PickupConfig) -> void:
 	)
 	if targets.is_empty():
 		return
-	var rocket_damage := get_outgoing_damage(
+	var rocket_damage := get_collectible_outgoing_damage(
 		maxi(item.periodic_damage, 1),
 		EnemyConfig.DamageType.MAGIC
 	)
@@ -2351,7 +2389,7 @@ func _apply_collectible_area_damage(
 	damage_type: EnemyConfig.DamageType
 ) -> void:
 	var effective_radius := maxf(radius, 1.0)
-	var effective_damage := get_outgoing_damage(maxi(damage, 1), damage_type)
+	var effective_damage := get_collectible_outgoing_damage(maxi(damage, 1), damage_type)
 	for enemy in _collect_alive_enemies():
 		if enemy == null or not is_instance_valid(enemy):
 			continue
@@ -2389,7 +2427,10 @@ func _apply_collectible_area_frost(
 	slow_duration: float
 ) -> void:
 	var effective_radius := maxf(radius, 1.0)
-	var effective_damage := get_outgoing_damage(maxi(damage, 1), EnemyConfig.DamageType.MAGIC)
+	var effective_damage := get_collectible_outgoing_damage(
+		maxi(damage, 1),
+		EnemyConfig.DamageType.MAGIC
+	)
 	var slow_source_id := int(Time.get_ticks_msec() + get_instance_id())
 	for enemy in _collect_alive_enemies():
 		if enemy == null or not is_instance_valid(enemy):

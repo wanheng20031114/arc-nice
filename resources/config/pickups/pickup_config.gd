@@ -144,6 +144,12 @@ const KILL_EFFECT_BURST := "burst"
 @export var collectible_effect_id: String = ""
 @export var collectible_rarity: CollectibleRarity = CollectibleRarity.COMMON
 @export var collectible_stacks_by_copy: bool = false
+
+@export_group("收藏品兼容性")
+# 需要玩家的普通攻击能够生成投射物；近战角色不应获得此类收藏品。
+@export var requires_projectile_primary_attack: bool = false
+
+@export_group("收藏品数值")
 # 玩家持有时，普通子弹变为穿透弹的概率。
 @export_range(0.0, 1.0, 0.01) var bullet_pierce_chance: float = 0.0
 @export_range(0, 999, 1, "or_greater") var collectible_attack_bonus: int = 0

@@ -14,5 +14,7 @@ icon_texture = ExtResource("1_icon")
 duration = 0.0
 collectible_effect_id = "lucky_gem"
 collectible_rarity = 1
+collectible_design_id = "lucky_gem"
+collectible_design_note = "基础升级返还：升级基础属性时有20%概率不消耗息壤。"
 base_upgrade_free_chance = 0.2
 metadata/_custom_type_script = "uid://qucrregg4cq0"

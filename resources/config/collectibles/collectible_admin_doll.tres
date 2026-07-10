@@ -15,4 +15,6 @@ icon_scale = Vector2(1, 1)
 duration = 0.0
 collectible_effect_id = "admin_doll"
 collectible_rarity = 3
+collectible_design_id = "admin_doll"
+collectible_design_note = "技能升级免费：已解锁技能的后续升级不消耗息壤。"
 metadata/_custom_type_script = "uid://qucrregg4cq0"

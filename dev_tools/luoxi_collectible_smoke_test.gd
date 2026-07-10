@@ -1,6 +1,7 @@
 extends SceneTree
 
 const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
+const HOE_CAT_SCENE := preload("res://scene/player_hoe_cat.tscn")
 const GAME_SCENE := preload("res://scene/game.tscn")
 const LUOXI_SCENE := preload("res://scene/luoxi_merchant.tscn")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
@@ -27,6 +28,7 @@ func _run() -> void:
 	await _test_luoxi_game_scene_placement()
 	await _test_luoxi_dialogue_choice_and_inventory()
 	await _test_luoxi_filters_owned_non_repeating_collectibles()
+	await _test_hoe_cat_collectible_compatibility_filter()
 	await _test_full_inventory_keeps_luoxi_choice_available()
 	await _test_apple_piercing_bullet_effect()
 
@@ -43,6 +45,37 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_hoe_cat_collectible_compatibility_filter() -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"hoe_cat")
+	var luoxi := LUOXI_SCENE.instantiate() as LuoxiMerchant
+	var hoe_cat := HOE_CAT_SCENE.instantiate() as PlayerHoeCat
+	test_root.add_child(luoxi)
+	test_root.add_child(hoe_cat)
+	await process_frame
+
+	var filtered_pool := luoxi.call("_get_collectible_pool_for_player", hoe_cat) as Array
+	_expect(filtered_pool.size() == 102, "Hoe Cat pool must exclude exactly three projectile-only collectibles.")
+	for item_variant in filtered_pool:
+		var item := item_variant as PickupConfig
+		_expect(
+			item != null and not item.requires_projectile_primary_attack,
+			"Hoe Cat pool must not contain projectile-only collectibles."
+		)
+	_expect(not hoe_cat.is_collectible_compatible(APPLE_COLLECTIBLE), "Apple must be incompatible with Hoe Cat.")
+	_expect(
+		int(luoxi.call("_claim_local_collectible", hoe_cat, APPLE_COLLECTIBLE.resource_path))
+		== LuoxiMerchant.COLLECTIBLE_RESULT_INVALID_PLAYER,
+		"Hoe Cat must not be able to claim a projectile-only collectible by path."
+	)
+	_expect(run_state.get_item(0) == null, "Rejected projectile-only collectible must not enter Hoe Cat inventory.")
+
+	_stop_audio_players(hoe_cat)
+	luoxi.queue_free()
+	hoe_cat.queue_free()
+	await process_frame
 
 
 func _test_luoxi_game_scene_placement() -> void:

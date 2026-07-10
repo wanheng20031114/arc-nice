@@ -602,6 +602,8 @@ func try_claim_luoxi_collectible_for_peer(peer_id: int, config_path_or_choice: V
 	var item := LuoxiMerchant.get_collectible_for_path(config_path)
 	if item == null:
 		return LuoxiMerchant.COLLECTIBLE_RESULT_INVALID_PLAYER
+	if not player_instance.is_collectible_compatible(item):
+		return LuoxiMerchant.COLLECTIBLE_RESULT_INVALID_PLAYER
 	if not LuoxiMerchant.is_collectible_available_for_inventory(item, run_state, peer_id):
 		return LuoxiMerchant.COLLECTIBLE_RESULT_INVALID_PLAYER
 

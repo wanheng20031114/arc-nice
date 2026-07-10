@@ -17,5 +17,6 @@ collectible_effect_id = "glass_marble"
 collectible_rarity = 0
 collectible_design_id = "glass_marble"
 collectible_design_note = "穿透弹：普通子弹有6%概率变为穿透弹。"
+requires_projectile_primary_attack = true
 bullet_pierce_chance = 0.06
 metadata/_custom_type_script = "uid://qucrregg4cq0"

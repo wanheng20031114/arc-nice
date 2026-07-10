@@ -296,6 +296,8 @@ func _claim_local_collectible(player: Player, config_path: String) -> int:
 	var item := get_collectible_for_path(config_path)
 	if item == null:
 		return COLLECTIBLE_RESULT_INVALID_PLAYER
+	if not player.is_collectible_compatible(item):
+		return COLLECTIBLE_RESULT_INVALID_PLAYER
 
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if run_state == null:
@@ -401,7 +403,10 @@ func _get_collectible_pool_for_player(player: Player) -> Array:
 	var filtered_pool: Array = []
 	for item_variant in pool:
 		var item := item_variant as PickupConfig
-		if is_collectible_available_for_inventory(item, run_state, player.peer_id):
+		if (
+			player.is_collectible_compatible(item)
+			and is_collectible_available_for_inventory(item, run_state, player.peer_id)
+		):
 			filtered_pool.append(item)
 	return filtered_pool
 
@@ -412,7 +417,10 @@ func _are_collectible_choices_available_for_player(choices: Array, player: Playe
 		return true
 	for item_variant in choices:
 		var item := item_variant as PickupConfig
-		if not is_collectible_available_for_inventory(item, run_state, player.peer_id):
+		if (
+			not player.is_collectible_compatible(item)
+			or not is_collectible_available_for_inventory(item, run_state, player.peer_id)
+		):
 			return false
 	return true
 
