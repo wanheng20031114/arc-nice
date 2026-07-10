@@ -46,23 +46,18 @@ SLASH_ATTACK_RADIUS = 48.0
 # body stays close to gameplay while the authored tips remain naturally
 # tapered, like the Swordsman Cat slash reference.
 SLASH_CROSS_AXIS_SCALE = 0.78
-SLASH_ALPHA_FLOOR = 2
-SLASH_ALPHA_TRANSPARENT_POINT = 24
-SLASH_ALPHA_OPAQUE_POINT = 216
-WHIRLWIND_VFX_FRAME_SIZE = 48
+VFX_ALPHA_FLOOR = 2
+VFX_ALPHA_TRANSPARENT_POINT = 24
+VFX_ALPHA_OPAQUE_POINT = 216
+WHIRLWIND_VFX_FRAME_SIZE = 160
+WHIRLWIND_VFX_FRAME_COUNT = 8
+WHIRLWIND_SOURCE_COLUMNS = 4
+WHIRLWIND_SOURCE_ROWS = 2
+WHIRLWIND_PEAK_FRAME_INDICES = (3, 4)
+WHIRLWIND_ATTACK_RADIUS = 62.4
 WHIRLWIND_ICON_SIZE = 128
 WHIRLWIND_ICON_SUBJECT_SIZE = 112
 ALPHA_THRESHOLD = 56
-VFX_PALETTE = [
-    (60, 31, 18),
-    (107, 51, 26),
-    (161, 98, 59),
-    (227, 160, 91),
-    (239, 185, 107),
-    (244, 204, 131),
-    (248, 219, 151),
-    (253, 234, 161),
-]
 SLASH_PALETTE = [
     (111, 74, 18),
     (169, 104, 25),
@@ -112,31 +107,31 @@ def _load_soft_source(name: str) -> Image.Image:
     for y in range(rgba.height):
         for x in range(rgba.width):
             red, green, blue, alpha = pixels[x, y]
-            if alpha <= SLASH_ALPHA_FLOOR:
+            if alpha <= VFX_ALPHA_FLOOR:
                 pixels[x, y] = (0, 0, 0, 0)
     return rgba
 
 
-def _harden_slash_alpha(image: Image.Image) -> Image.Image:
-    """Restore a crisp cutting core while retaining one soft antialias band."""
+def _harden_vfx_alpha(image: Image.Image) -> Image.Image:
+    """Restore a crisp VFX core while retaining one soft antialias band."""
     rgba = image.convert("RGBA")
     pixels = rgba.load()
     alpha_range = float(
-        SLASH_ALPHA_OPAQUE_POINT - SLASH_ALPHA_TRANSPARENT_POINT
+        VFX_ALPHA_OPAQUE_POINT - VFX_ALPHA_TRANSPARENT_POINT
     )
     for y in range(rgba.height):
         for x in range(rgba.width):
             red, green, blue, alpha = pixels[x, y]
             normalized = min(
                 max(
-                    (alpha - SLASH_ALPHA_TRANSPARENT_POINT) / alpha_range,
+                    (alpha - VFX_ALPHA_TRANSPARENT_POINT) / alpha_range,
                     0.0,
                 ),
                 1.0,
             )
             smooth_alpha = normalized * normalized * (3.0 - 2.0 * normalized)
             hardened_alpha = round(smooth_alpha * 255.0)
-            if hardened_alpha <= SLASH_ALPHA_FLOOR:
+            if hardened_alpha <= VFX_ALPHA_FLOOR:
                 pixels[x, y] = (0, 0, 0, 0)
             else:
                 pixels[x, y] = (red, green, blue, hardened_alpha)
@@ -595,6 +590,26 @@ def _forward_radius_percentile(
     return radii[index]
 
 
+def _radial_percentile(
+    panel: Image.Image,
+    pivot: tuple[float, float],
+    percentile: float = 0.99,
+) -> float:
+    pivot_x, pivot_y = pivot
+    radii: list[float] = []
+    alpha = panel.convert("RGBA").getchannel("A")
+    for y in range(panel.height):
+        for x in range(panel.width):
+            if alpha.getpixel((x, y)) <= ALPHA_THRESHOLD:
+                continue
+            radii.append(math.hypot((x + 0.5) - pivot_x, (y + 0.5) - pivot_y))
+    if not radii:
+        raise AssertionError("Authored radial VFX panel is empty")
+    radii.sort()
+    index = round((len(radii) - 1) * percentile)
+    return radii[index]
+
+
 def _build_basic_slash_sheet() -> Image.Image:
     slash_source = _load_soft_source("basic_slash_vfx_flow_v3_alpha.png")
     panels = _split_uniform_source_grid(
@@ -642,7 +657,7 @@ def _build_basic_slash_sheet() -> Image.Image:
             f"authored_radius={authored_radius:.2f} "
             f"radial_scale={radial_scale:.4f} cross_scale={cross_axis_scale:.4f}"
         )
-    slash = _harden_slash_alpha(slash)
+    slash = _harden_vfx_alpha(slash)
     return _map_to_palette_preserve_alpha(slash, SLASH_PALETTE)
 
 
@@ -682,43 +697,69 @@ def _build_whirlwind_icon() -> Image.Image:
 
 
 def _build_whirlwind_vfx_sheet() -> Image.Image:
-    whirlwind_source = _load_source("whirlwind_vfx_alpha.png")
-
+    whirlwind_source = _load_soft_source("whirlwind_slash_radius62_v2_alpha.png")
+    panels = _split_uniform_source_grid(
+        whirlwind_source,
+        WHIRLWIND_SOURCE_COLUMNS,
+        WHIRLWIND_SOURCE_ROWS,
+    )
+    if len(panels) != WHIRLWIND_VFX_FRAME_COUNT:
+        raise AssertionError(f"Expected {WHIRLWIND_VFX_FRAME_COUNT} whirlwind panels")
+    authored_radius = max(
+        _radial_percentile(
+            panels[index],
+            (panels[index].width * 0.5, panels[index].height * 0.5),
+        )
+        for index in WHIRLWIND_PEAK_FRAME_INDICES
+    )
+    common_scale = WHIRLWIND_ATTACK_RADIUS / authored_radius
     whirlwind = Image.new(
         "RGBA",
-        (8 * WHIRLWIND_VFX_FRAME_SIZE, WHIRLWIND_VFX_FRAME_SIZE),
+        (
+            WHIRLWIND_VFX_FRAME_COUNT * WHIRLWIND_VFX_FRAME_SIZE,
+            WHIRLWIND_VFX_FRAME_SIZE,
+        ),
         (0, 0, 0, 0),
     )
-    source_cell_width = whirlwind_source.width / 4.0
-    source_row_centers = (294.0, 720.0)
-    for row in range(2):
-        for column in range(4):
-            left = round(column * source_cell_width)
-            right = round((column + 1) * source_cell_width)
-            row_top = 0 if row == 0 else round((source_row_centers[0] + source_row_centers[1]) * 0.5)
-            row_bottom = round((source_row_centers[0] + source_row_centers[1]) * 0.5) if row == 0 else whirlwind_source.height
-            square = _crop_centered_square(
-                whirlwind_source,
-                (left + right) * 0.5,
-                source_row_centers[row],
-                336,
-                (left, row_top, right, row_bottom),
-            )
-            frame = _binary_alpha(
-                square.resize(
-                    (WHIRLWIND_VFX_FRAME_SIZE, WHIRLWIND_VFX_FRAME_SIZE),
-                    Image.Resampling.BOX,
-                )
-            )
-            _paste_frame(
-                whirlwind,
-                frame,
-                row * 4 + column,
-                0,
-                WHIRLWIND_VFX_FRAME_SIZE,
-            )
-
-    return _map_to_palette(whirlwind, VFX_PALETTE)
+    for frame_index, panel in enumerate(panels):
+        resized = panel.resize(
+            (
+                max(1, round(panel.width * common_scale)),
+                max(1, round(panel.height * common_scale)),
+            ),
+            Image.Resampling.LANCZOS,
+        )
+        frame = Image.new(
+            "RGBA",
+            (WHIRLWIND_VFX_FRAME_SIZE, WHIRLWIND_VFX_FRAME_SIZE),
+            (0, 0, 0, 0),
+        )
+        frame.alpha_composite(
+            resized,
+            (
+                round(
+                    WHIRLWIND_VFX_FRAME_SIZE * 0.5
+                    - panel.width * 0.5 * common_scale
+                ),
+                round(
+                    WHIRLWIND_VFX_FRAME_SIZE * 0.5
+                    - panel.height * 0.5 * common_scale
+                ),
+            ),
+        )
+        _paste_frame(
+            whirlwind,
+            frame,
+            frame_index,
+            0,
+            WHIRLWIND_VFX_FRAME_SIZE,
+        )
+        print(
+            f"Whirlwind frame {frame_index}: authored_radius={authored_radius:.2f} "
+            f"scale={common_scale:.4f}"
+        )
+    whirlwind = _harden_vfx_alpha(whirlwind)
+    return _map_to_palette_preserve_alpha(whirlwind, SLASH_PALETTE)
 
 
 def _build_vfx_sheets() -> tuple[Image.Image, Image.Image]:
@@ -786,7 +827,7 @@ def _map_to_palette_preserve_alpha(
     for y in range(rgba.height):
         for x in range(rgba.width):
             red, green, blue, alpha = pixels[x, y]
-            if alpha <= SLASH_ALPHA_FLOOR:
+            if alpha <= VFX_ALPHA_FLOOR:
                 pixels[x, y] = (0, 0, 0, 0)
                 continue
             source_color = (red, green, blue)
@@ -931,6 +972,14 @@ def main_slash_only() -> None:
     _report_grid("hoe_cat_basic_slash_vfx.png", slash)
 
 
+def main_whirlwind_only() -> None:
+    """Rebuild only the 360-degree skill VFX without touching body sheets."""
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    whirlwind = _build_whirlwind_vfx_sheet()
+    whirlwind.save(OUTPUT_DIR / "hoe_cat_whirlwind_vfx.png", optimize=True)
+    _report_grid("hoe_cat_whirlwind_vfx.png", whirlwind)
+
+
 def main_portrait_only() -> None:
     """Rebuild the UI portrait from the current runtime movement sheet."""
     movement_path = OUTPUT_DIR / "hoe_cat_move.png"
@@ -952,6 +1001,8 @@ if __name__ == "__main__":
     requested_mode = sys.argv[1] if len(sys.argv) > 1 else "--all"
     if requested_mode == "--slash-only":
         main_slash_only()
+    elif requested_mode == "--whirlwind-only":
+        main_whirlwind_only()
     elif requested_mode == "--portrait-only":
         main_portrait_only()
     elif requested_mode == "--icon-only":
@@ -961,5 +1012,5 @@ if __name__ == "__main__":
     else:
         raise SystemExit(
             "Usage: process_hoe_cat_assets.py "
-            "[--all|--slash-only|--portrait-only|--icon-only]"
+            "[--all|--slash-only|--whirlwind-only|--portrait-only|--icon-only]"
         )

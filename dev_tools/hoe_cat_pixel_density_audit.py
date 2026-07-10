@@ -456,18 +456,91 @@ def _assert_vfx(
     if any(ratio < 0.65 for ratio in overlap_ratios):
         raise AssertionError(f"Adjacent slash silhouettes jump abruptly: {overlap_ratios}")
 
-    whirlwind_counts = [
-        sum(1 for pixel in frame.getdata() if pixel[3] > 0)
+    whirlwind_alpha_areas = [
+        sum(pixel[3] for pixel in frame.getdata()) / 255.0
         for frame in whirlwind_frames
     ]
-    if not (
-        whirlwind_counts[0] < whirlwind_counts[1] < whirlwind_counts[2] < whirlwind_counts[3]
-        and whirlwind_counts[3] > whirlwind_counts[4] > whirlwind_counts[5]
-        > whirlwind_counts[6] > whirlwind_counts[7]
-        and max(whirlwind_counts) <= 250
+    expected_whirlwind_area_ranges = (
+        (700.0, 1100.0),
+        (2500.0, 3200.0),
+        (4200.0, 5000.0),
+        (5800.0, 6800.0),
+        (4300.0, 5200.0),
+        (2200.0, 3000.0),
+        (1300.0, 1900.0),
+        (200.0, 450.0),
+    )
+    if any(
+        not minimum <= area <= maximum
+        for area, (minimum, maximum) in zip(
+            whirlwind_alpha_areas,
+            expected_whirlwind_area_ranges,
+        )
+    ) or not (
+        whirlwind_alpha_areas[0] < whirlwind_alpha_areas[1]
+        < whirlwind_alpha_areas[2] < whirlwind_alpha_areas[3]
+        and whirlwind_alpha_areas[3] > whirlwind_alpha_areas[4]
+        > whirlwind_alpha_areas[5] > whirlwind_alpha_areas[6]
+        > whirlwind_alpha_areas[7]
     ):
         raise AssertionError(
-            f"Whirlwind VFX must be a sparse build-impact-dissipate arc: {whirlwind_counts}"
+            "Whirlwind VFX must read as a strong build-impact-dissipate ring: "
+            f"{whirlwind_alpha_areas}"
+        )
+    whirlwind_pivot = 80.0
+    maximum_whirlwind_radius = 0.0
+    for frame_index, frame in enumerate(whirlwind_frames):
+        bbox = frame.getchannel("A").getbbox()
+        if (
+            bbox is None
+            or bbox[0] < 10
+            or bbox[1] < 10
+            or bbox[2] > 150
+            or bbox[3] > 150
+        ):
+            raise AssertionError(
+                f"Whirlwind frame {frame_index} lost its 10px safety margin: {bbox}"
+            )
+        center_alpha_area = 0.0
+        radii: list[float] = []
+        covered_angle_bins: set[int] = set()
+        for y in range(frame.height):
+            for x in range(frame.width):
+                alpha = frame.getpixel((x, y))[3]
+                if alpha == 0:
+                    continue
+                delta_x = (x + 0.5) - whirlwind_pivot
+                delta_y = (y + 0.5) - whirlwind_pivot
+                radius = math.hypot(delta_x, delta_y)
+                radii.append(radius)
+                maximum_whirlwind_radius = max(maximum_whirlwind_radius, radius)
+                if radius < 20.0:
+                    center_alpha_area += alpha / 255.0
+                if 48.0 <= radius <= 64.0 and alpha >= 160:
+                    angle = math.degrees(math.atan2(delta_y, delta_x)) % 360.0
+                    covered_angle_bins.add(int(angle / 5.0))
+        if center_alpha_area > 5.0:
+            raise AssertionError(
+                f"Whirlwind frame {frame_index} obscures its player opening: "
+                f"{center_alpha_area:.2f}"
+            )
+        if frame_index in (2, 3):
+            angular_coverage = len(covered_angle_bins) / 72.0
+            if angular_coverage < 0.95:
+                raise AssertionError(
+                    f"Whirlwind impact frame {frame_index} is not a true 360 ring: "
+                    f"coverage={angular_coverage:.3f}"
+                )
+            radii.sort()
+            radius_99 = radii[round((len(radii) - 1) * 0.99)]
+            if frame_index == 3 and not 60.0 <= radius_99 <= 64.0:
+                raise AssertionError(
+                    f"Whirlwind peak no longer matches radius 62.4: r99={radius_99:.2f}"
+                )
+    if maximum_whirlwind_radius > 70.0:
+        raise AssertionError(
+            f"Whirlwind tips exceed the radius-70 visual envelope: "
+            f"{maximum_whirlwind_radius:.2f}"
         )
 
 
@@ -485,20 +558,20 @@ def main() -> None:
         attack_path,
         spin_path,
         death_path,
-        whirlwind_path,
         whirlwind_icon_path,
         portrait_path,
     )
     for path in binary_output_paths:
         _assert_binary_alpha(path)
     _assert_soft_alpha(slash_path)
+    _assert_soft_alpha(whirlwind_path)
 
     movement_frames = _split(movement_path, 4, 4, 32)
     attack_frames = _split(attack_path, 5, 4, 32)
     spin_frames = _split(spin_path, 8, 1, 32)
     death_frames = _split(death_path, 5, 1, 32)
     slash_frames = _split(slash_path, 8, 1, 112)
-    whirlwind_frames = _split(whirlwind_path, 8, 1, 48)
+    whirlwind_frames = _split(whirlwind_path, 8, 1, 160)
     movement_metrics = [_metrics(frame) for frame in movement_frames]
     attack_metrics = [_metrics(frame) for frame in attack_frames]
     spin_metrics = [_metrics(frame) for frame in spin_frames]

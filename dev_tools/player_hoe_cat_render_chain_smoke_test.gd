@@ -76,8 +76,8 @@ func _test_pixel_render_settings() -> void:
 	_expect(slash != null, "BasicSlashEffect must be an AnimatedSprite2D.")
 	if slash != null:
 		_expect(
-			slash.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR,
-			"BasicSlashEffect must use linear filtering for clean free-aim rotation."
+			slash.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
+			"BasicSlashEffect must use nearest-neighbour filtering for crisp pixel art."
 		)
 		_expect(
 			slash.scale.is_equal_approx(Vector2.ONE),
@@ -96,6 +96,13 @@ func _test_pixel_render_settings() -> void:
 	_expect(
 		bool(ProjectSettings.get_setting("rendering/viewport/hdr_2d", false)),
 		"The project must keep HDR 2D enabled for the slash glow."
+	)
+	_expect(
+		int(ProjectSettings.get_setting(
+			"rendering/textures/canvas_textures/default_texture_filter",
+			-1
+		)) == 0,
+		"In-game CanvasItem textures must inherit nearest-neighbour filtering."
 	)
 
 
@@ -253,8 +260,8 @@ func _test_effect_atlases() -> void:
 		whirlwind_range.sprite_frames,
 		&"whirlwind",
 		8,
-		Vector2i(384, 48),
-		Vector2i(48, 48),
+		Vector2i(1280, 160),
+		Vector2i(160, 160),
 		0,
 		16.0,
 		false
@@ -273,6 +280,16 @@ func _test_effect_atlases() -> void:
 		),
 		"Whirlwind range must reach its impact frame at 0.125 seconds."
 	)
+	var whirlwind_material := whirlwind_range.material as ShaderMaterial
+	_expect(
+		whirlwind_material != null and whirlwind_material.shader != null,
+		"Whirlwind range must use the shared pale-yellow HDR slash shader."
+	)
+	if whirlwind_material != null:
+		_expect(
+			float(whirlwind_material.get_shader_parameter(&"hdr_energy")) > 2.15,
+			"Whirlwind HDR energy must read stronger than the basic slash."
+		)
 	_validate_atlas_animation(
 		whirlwind_body.sprite_frames,
 		&"whirlwind",

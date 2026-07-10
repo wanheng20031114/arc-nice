@@ -1584,7 +1584,7 @@ func _test_host_authoritative_hoe_actions() -> void:
 		"Host must reject primary attacks during the whirlwind action lock."
 	)
 	await hoe_player.whirlwind_impact_timer.timeout
-	_expect(hoe_player.current_health == 73, "Host-authoritative whirlwind impact must heal exactly 3 health.")
+	_expect(hoe_player.current_health == 75, "Host-authoritative whirlwind impact must heal exactly 5 health.")
 
 	connected_players.clear()
 	connected_players.merge(previous_players, true)

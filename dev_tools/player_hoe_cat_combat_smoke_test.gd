@@ -43,6 +43,8 @@ var negative_angle_boundary_enemy: TestEnemy = null
 var negative_outside_angle_enemy: TestEnemy = null
 var radius_boundary_enemy: TestEnemy = null
 var outside_radius_enemy: TestEnemy = null
+var whirlwind_radius_boundary_enemy: TestEnemy = null
+var whirlwind_outside_radius_enemy: TestEnemy = null
 var dense_cone_enemies: Array[TestEnemy] = []
 
 
@@ -96,6 +98,14 @@ func _run() -> void:
 	# target overlaps up to a centre distance of forty-nine pixels.
 	radius_boundary_enemy = _spawn_test_enemy(TEST_PRIMARY_DIRECTION * 48.95)
 	outside_radius_enemy = _spawn_test_enemy(TEST_PRIMARY_DIRECTION * 49.05)
+	# The 360-degree skill uses a 62.4 radius. Radius-1 targets therefore
+	# overlap until their centres reach 63.4 pixels, including behind the player.
+	whirlwind_radius_boundary_enemy = _spawn_test_enemy(
+		-TEST_PRIMARY_DIRECTION * 63.35
+	)
+	whirlwind_outside_radius_enemy = _spawn_test_enemy(
+		-TEST_PRIMARY_DIRECTION * 63.45
+	)
 	for index in range(70):
 		var angle := lerpf(-25.0, 25.0, float(index) / 69.0)
 		var radius := 3.0 + float(index % 5) * 0.7
@@ -139,6 +149,15 @@ func _test_starting_stats_and_attack_speed_contract() -> void:
 		player.basic_attack_query_shape != null
 		and is_equal_approx(player.basic_attack_query_shape.radius, 48.0),
 		"Hoe Cat primary attack query must use the authored radius of 48."
+	)
+	_expect(
+		player.whirlwind_query_shape != null
+		and is_equal_approx(player.whirlwind_query_shape.radius, 62.4)
+		and is_equal_approx(
+			player.whirlwind_query_shape.radius,
+			player.basic_attack_query_shape.radius * 1.3
+		),
+		"Whirlwind query radius must be exactly 1.3 times the primary radius."
 	)
 	_expect(player.get_node_or_null("BasicSlashEffect") is AnimatedSprite2D, "Basic slash VFX must be prebuilt in the Hoe Cat scene.")
 	_expect(player.get_node_or_null("WhirlwindRangeEffect") is AnimatedSprite2D, "Whirlwind range VFX must be prebuilt in the Hoe Cat scene.")
@@ -417,8 +436,16 @@ func _test_whirlwind_damage_and_heal() -> void:
 	_expect(player.whirlwind_impact_timer.is_stopped(), "WhirlwindImpactTimer must stop after its one-shot impact.")
 	_expect(not bool(player.get("_pending_whirlwind_attack")), "Whirlwind pending state must clear at impact.")
 	_expect(front_enemy.total_damage_taken == 57, "Whirlwind impact must add 42 physical damage to the front target.")
-	_expect(back_enemy.total_damage_taken == 42, "Radius-15 whirlwind impact must hit the target behind the player for 42 damage.")
-	_expect(player.current_health == 53, "Whirlwind impact must restore exactly 3 health.")
+	_expect(back_enemy.total_damage_taken == 42, "Radius-62.4 whirlwind impact must hit the target behind the player for 42 damage.")
+	_expect(
+		whirlwind_radius_boundary_enemy.total_damage_taken == 42,
+		"Whirlwind must hit a radius-1 target whose centre is 63.35 pixels away."
+	)
+	_expect(
+		whirlwind_outside_radius_enemy.total_damage_taken == 0,
+		"Whirlwind must reject a radius-1 target whose centre is 63.45 pixels away."
+	)
+	_expect(player.current_health == 55, "Whirlwind impact must restore exactly 5 health.")
 	player.call("_finish_whirlwind_visual")
 	player.current_health = 79
 	_expect(player.try_authoritative_hoe_whirlwind(), "Whirlwind must become usable again after its action lock ends.")
@@ -443,7 +470,9 @@ func _test_dynamic_skill_profile() -> void:
 	_expect(profile_panel.skill_info.visible, "Unlocked Hoe Cat whirlwind must appear in the profile panel.")
 	_expect(profile_panel.skill_name_label.text == "旋风斩", "Profile panel must use Hoe Cat's dynamic skill name.")
 	_expect(
-		profile_panel.skill_description_label.text.contains("280%"),
+		profile_panel.skill_description_label.text.contains("1.3倍")
+		and profile_panel.skill_description_label.text.contains("280%")
+		and profile_panel.skill_description_label.text.contains("5点"),
 		"Profile panel must use Hoe Cat's dynamic whirlwind description."
 	)
 	_expect(

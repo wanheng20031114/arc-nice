@@ -2,7 +2,7 @@
 
 Generation mode: built-in `imagegen` tool, followed by background-key removal
 (flat magenta for the character boards; auto-keyed green border for the new
-pale swing aura and skill icon) and the native-grid pipeline in
+pale attack/skill auras and skill icon) and the native-grid pipeline in
 `dev_tools/process_hoe_cat_assets.py`.
 
 Copyright boundary: the generated artwork uses only the generic idea of a
@@ -69,10 +69,19 @@ motion.
      free-aim rotation. The runtime node adds pale-yellow overbright colour with
      a dedicated HDR 2D shader; the shared game Environment supplies the glow.
 
-7. `whirlwind_vfx_source.png`
-   - Exactly 4 columns x 2 rows, read row-major, for 48x48 logical cells.
-   - Two broken rotating crescents with an open center and square soil chips.
-   - Build through frame 4, then fragment and dissipate; never a solid donut.
+7. `whirlwind_slash_radius62_v2_source.png`
+   - Exactly 4 columns x 2 rows, read row-major as ignition, opposing sweeps,
+     near-complete damage ring, double-layer peak, follow-through echo, three
+     breaking arcs, four quadrant fragments, and fading motes.
+   - Reuses the approved basic slash's pale-yellow ribbon, ivory cutting core,
+     warm-gold contour, crisp alpha core, natural tapered ends, and restrained
+     square sparks while reading as a substantially stronger 360-degree attack.
+   - Processing registers every frame to the cell center, scales peak-frame
+     radius p99 to the 62.4 px gameplay radius, preserves an empty radius-20
+     player opening, permits only sparse tips out to radius 70, and outputs
+     160x160 runtime cells with Nearest sampling and stronger HDR energy.
+   - Peak frames cover at least 95% of the full circumference; the design is
+     never a solid disk, uniform donut, front-facing crescent, or soil cloud.
 
 8. `whirlwind_icon_v2_source.png`
    - One centered 360-degree pale-yellow whirlwind emblem around a compact
