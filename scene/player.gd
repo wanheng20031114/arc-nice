@@ -177,6 +177,7 @@ var _armed_effect_sprite_base_position: Vector2 = Vector2.ZERO
 var _speed_trail_effect_base_position: Vector2 = Vector2.ZERO
 var _health_bar_base_position: Vector2 = Vector2.ZERO
 var _ammo_bar_base_position: Vector2 = Vector2.ZERO
+var _attack_interval_bar_base_position: Vector2 = Vector2.ZERO
 var _skill1_charge_bar_base_position: Vector2 = Vector2.ZERO
 var _name_label_base_position: Vector2 = Vector2.ZERO
 var _nameplate_label_settings: LabelSettings = null
@@ -379,6 +380,10 @@ func supports_projectile_attack_patterns() -> bool:
 
 
 func uses_attack_interval_bar() -> bool:
+	return false
+
+
+func plays_multiplayer_death_animation() -> bool:
 	return false
 
 
@@ -730,6 +735,8 @@ func _cache_multiplayer_visual_base_positions() -> void:
 	_speed_trail_effect_base_position = speed_trail_effect.position
 	_health_bar_base_position = health_bar.position
 	_ammo_bar_base_position = ammo_bar.position
+	if attack_interval_bar != null:
+		_attack_interval_bar_base_position = attack_interval_bar.position
 	_skill1_charge_bar_base_position = skill1_charge_bar.position
 	_name_label_base_position = name_label.position
 
@@ -763,6 +770,8 @@ func _set_multiplayer_visual_offset(offset: Vector2) -> void:
 	speed_trail_effect.position = _speed_trail_effect_base_position + offset
 	health_bar.position = _health_bar_base_position + offset
 	ammo_bar.position = _ammo_bar_base_position + offset
+	if attack_interval_bar != null:
+		attack_interval_bar.position = _attack_interval_bar_base_position + offset
 	skill1_charge_bar.position = _skill1_charge_bar_base_position + offset
 	name_label.position = _name_label_base_position + offset
 	_update_nameplate_position()
@@ -1014,8 +1023,12 @@ func apply_multiplayer_death_state() -> void:
 	health_bar.visible = false
 	_update_ammo_bar()
 	_update_skill1_charge_bar()
-	body_sprite.visible = false
-	body_sprite.stop()
+	if plays_multiplayer_death_animation():
+		if not was_dead or not body_sprite.visible or body_sprite.animation != &"death":
+			_play_death_animation()
+	else:
+		body_sprite.visible = false
+		body_sprite.stop()
 	if collision_shape != null:
 		collision_shape.set_deferred("disabled", true)
 	health_changed.emit(current_health, max_health)

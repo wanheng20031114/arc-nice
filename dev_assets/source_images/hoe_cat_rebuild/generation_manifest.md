@@ -43,13 +43,21 @@ motion.
    - One planted 360-degree rotation with stable center and baseline.
    - Feet pivot; scarf and tail trail angular motion; no magic ring.
 
-5. `basic_slash_vfx_source.png`
-   - Exactly 5 horizontal effects around a centered player pivot.
-   - Compressed straw pixels / broken crescent / impact / soil fragments /
-     sparse dissipation.
-   - Six-to-eight colors; no sword slash, glow, fire, or complete circle.
+5. `death_source.png`
+   - Exactly 5 horizontal phases: hit/compress, loss of balance, collapse,
+     ground contact, and a settled final pose.
+   - Uses the rebuilt cat and hoe boards as identity references, then shares
+     the runtime character palette, outline treatment, scale, and foot line.
+   - No gore; the non-looping animation deliberately retains its final frame.
 
-6. `whirlwind_vfx_source.png`
+6. `basic_slash_vfx_radius10_source.png`
+   - Exactly 5 horizontal build / swing / impact / follow-through / settle
+     phases around a centered player pivot.
+   - Built for 48x48 cells with a larger 2-3 px soil-and-straw impact arc.
+   - Processing translates it to the right and geometrically clips every
+     visible pixel to the gameplay's exact +/-30 degree sector.
+
+7. `whirlwind_vfx_source.png`
    - Exactly 4 columns x 2 rows, read row-major, for 48x48 logical cells.
    - Two broken rotating crescents with an open center and square soil chips.
    - Build through frame 4, then fragment and dissipate; never a solid donut.

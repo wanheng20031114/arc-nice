@@ -3,7 +3,7 @@ class_name PlayerHoeCat
 
 const ENEMY_BODY_MASK := 4
 const ATTACK_QUERY_BATCH_SIZE := 64
-const BASIC_ATTACK_RADIUS := 8.0
+const BASIC_ATTACK_RADIUS := 10.0
 const BASIC_ATTACK_ANGLE_DEGREES := 60.0
 const WHIRLWIND_RADIUS := 15.0
 const WHIRLWIND_DAMAGE_MULTIPLIER := 2.8
@@ -29,6 +29,9 @@ var _pending_primary_damage: int = 0
 var _pending_whirlwind_attack: bool = false
 var _pending_whirlwind_damage: int = 0
 var _latest_remote_action_sequence: int = 0
+var _basic_slash_effect_base_position: Vector2 = Vector2.ZERO
+var _whirlwind_range_effect_base_position: Vector2 = Vector2.ZERO
+var _whirlwind_body_effect_base_position: Vector2 = Vector2.ZERO
 
 
 func _init() -> void:
@@ -54,8 +57,32 @@ func uses_attack_interval_bar() -> bool:
 	return true
 
 
+func plays_multiplayer_death_animation() -> bool:
+	return true
+
+
 func is_hoe_cat() -> bool:
 	return true
+
+
+func _cache_multiplayer_visual_base_positions() -> void:
+	super._cache_multiplayer_visual_base_positions()
+	if basic_slash_effect != null:
+		_basic_slash_effect_base_position = basic_slash_effect.position
+	if whirlwind_range_effect != null:
+		_whirlwind_range_effect_base_position = whirlwind_range_effect.position
+	if whirlwind_body_effect != null:
+		_whirlwind_body_effect_base_position = whirlwind_body_effect.position
+
+
+func _set_multiplayer_visual_offset(offset: Vector2) -> void:
+	super._set_multiplayer_visual_offset(offset)
+	if basic_slash_effect != null:
+		basic_slash_effect.position = _basic_slash_effect_base_position + offset
+	if whirlwind_range_effect != null:
+		whirlwind_range_effect.position = _whirlwind_range_effect_base_position + offset
+	if whirlwind_body_effect != null:
+		whirlwind_body_effect.position = _whirlwind_body_effect_base_position + offset
 
 
 func get_hoe_primary_attack_damage() -> int:
@@ -150,6 +177,8 @@ func play_remote_hoe_action(
 	if sequence <= _latest_remote_action_sequence:
 		return
 	_latest_remote_action_sequence = sequence
+	if is_dead or controls_locked:
+		return
 	match action_kind:
 		&"primary":
 			var cardinal_direction := _get_cardinal_attack_direction(attack_direction)
@@ -266,6 +295,32 @@ func _update_character_combat_state(delta: float) -> void:
 	_whirlwind_visual_time_left = maxf(_whirlwind_visual_time_left - maxf(delta, 0.0), 0.0)
 	if _whirlwind_visual_time_left <= 0.0:
 		_finish_whirlwind_visual()
+
+
+func _play_death_animation() -> void:
+	_primary_visual_time_left = 0.0
+	_primary_visual_facing_suffix = &""
+	_whirlwind_visual_time_left = 0.0
+	_pending_primary_attack = false
+	_pending_primary_direction = Vector2.ZERO
+	_pending_primary_damage = 0
+	_pending_whirlwind_attack = false
+	_pending_whirlwind_damage = 0
+	if primary_impact_timer != null:
+		primary_impact_timer.stop()
+	if whirlwind_impact_timer != null:
+		whirlwind_impact_timer.stop()
+	if basic_slash_effect != null:
+		basic_slash_effect.hide()
+		basic_slash_effect.stop()
+	if whirlwind_range_effect != null:
+		whirlwind_range_effect.hide()
+		whirlwind_range_effect.stop()
+	if whirlwind_body_effect != null:
+		whirlwind_body_effect.hide()
+		whirlwind_body_effect.stop()
+	body_sprite.show()
+	super._play_death_animation()
 
 
 func _update_animation() -> void:

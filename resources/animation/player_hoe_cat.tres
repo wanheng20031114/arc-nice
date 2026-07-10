@@ -2,6 +2,7 @@
 
 [ext_resource type="Texture2D" uid="uid://cmearluyh35cs" path="res://resources/texture/player/hoe_cat/hoe_cat_move.png" id="1_move"]
 [ext_resource type="Texture2D" uid="uid://b3vvkokg4hkvc" path="res://resources/texture/player/hoe_cat/hoe_cat_attack.png" id="2_attack"]
+[ext_resource type="Texture2D" uid="uid://dmxjja0pm654f" path="res://resources/texture/player/hoe_cat/hoe_cat_death.png" id="3_death"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_attack_down_0"]
 atlas = ExtResource("2_attack")
@@ -147,6 +148,26 @@ region = Rect2(64, 32, 32, 32)
 atlas = ExtResource("1_move")
 region = Rect2(96, 32, 32, 32)
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_death_0"]
+atlas = ExtResource("3_death")
+region = Rect2(0, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_death_1"]
+atlas = ExtResource("3_death")
+region = Rect2(32, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_death_2"]
+atlas = ExtResource("3_death")
+region = Rect2(64, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_death_3"]
+atlas = ExtResource("3_death")
+region = Rect2(96, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_death_4"]
+atlas = ExtResource("3_death")
+region = Rect2(128, 0, 32, 32)
+
 [resource]
 animations = [{
 "frames": [{
@@ -228,6 +249,26 @@ animations = [{
 "loop": false,
 "name": &"attack_up",
 "speed": 16.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_death_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_death_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_death_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_death_3")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_death_4")
+}],
+"loop": false,
+"name": &"death",
+"speed": 10.0
 }, {
 "frames": [{
 "duration": 1.0,

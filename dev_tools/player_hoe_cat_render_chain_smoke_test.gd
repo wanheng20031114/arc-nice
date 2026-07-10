@@ -45,7 +45,9 @@ func _run() -> void:
 	_test_directional_body_atlases()
 	_test_effect_atlases()
 	_test_scene_action_node_contract()
+	_test_visual_offset_and_bar_contract()
 	_test_action_visibility_contract()
+	await _test_death_animation_contract()
 
 	_finish()
 
@@ -78,6 +80,16 @@ func _test_directional_body_atlases() -> void:
 		return
 	var frames := body.sprite_frames
 	_expect(body.animation == &"idle_right", "Hoe Cat must enter the scene in its right-facing idle animation.")
+	_validate_atlas_animation(
+		frames,
+		&"death",
+		5,
+		Vector2i(160, 32),
+		Vector2i(32, 32),
+		0,
+		10.0,
+		false
+	)
 	for suffix: StringName in CARDINAL_DIRECTIONS:
 		var row := int(DIRECTION_ROWS[suffix])
 		_validate_atlas_animation(
@@ -153,7 +165,7 @@ func _test_effect_atlases() -> void:
 	var whirlwind_range := player.get_node("WhirlwindRangeEffect") as AnimatedSprite2D
 	var whirlwind_body := player.get_node("WhirlwindBodyEffect") as AnimatedSprite2D
 	_validate_atlas_animation(
-		slash.sprite_frames, &"slash", 5, Vector2i(160, 32), Vector2i(32, 32), 0, 16.0, false
+		slash.sprite_frames, &"slash", 5, Vector2i(240, 48), Vector2i(48, 48), 0, 16.0, false
 	)
 	_validate_frame_durations(
 		slash.sprite_frames,
@@ -239,6 +251,49 @@ func _test_scene_action_node_contract() -> void:
 		_expect(whirlwind_timer.is_stopped(), "WhirlwindImpactTimer must start inactive.")
 
 
+func _test_visual_offset_and_bar_contract() -> void:
+	var tracked_paths: Array[NodePath] = [
+		NodePath("BodySprite"),
+		NodePath("AttackIntervalBar"),
+		NodePath("BasicSlashEffect"),
+		NodePath("WhirlwindRangeEffect"),
+		NodePath("WhirlwindBodyEffect"),
+	]
+	var base_positions: Dictionary = {}
+	player.call("_cache_multiplayer_visual_base_positions")
+	for node_path in tracked_paths:
+		var visual_node := player.get_node(node_path)
+		base_positions[node_path] = visual_node.get("position")
+	var offset := Vector2(7.0, -3.0)
+	player.call("_set_multiplayer_visual_offset", offset)
+	for node_path in tracked_paths:
+		var visual_node := player.get_node(node_path)
+		var actual_position: Vector2 = visual_node.get("position")
+		var expected_position: Vector2 = base_positions[node_path] + offset
+		_expect(
+			actual_position.is_equal_approx(expected_position),
+			"%s must follow the same multiplayer visual smoothing offset." % node_path
+		)
+	player.call("_set_multiplayer_visual_offset", Vector2.ZERO)
+
+	var attack_bar := player.get_node("AttackIntervalBar") as Control
+	var skill_bar := player.get_node("Skill1ChargeBar") as Control
+	var slash := player.get_node("BasicSlashEffect") as CanvasItem
+	_expect(
+		is_equal_approx(attack_bar.offset_top, 13.0)
+		and is_equal_approx(attack_bar.offset_bottom, 15.0),
+		"Attack recovery bar must stay below the raised Hoe Cat body."
+	)
+	_expect(
+		attack_bar.offset_bottom <= skill_bar.offset_top,
+		"Attack recovery and skill charge bars must not overlap."
+	)
+	_expect(
+		attack_bar.z_index > slash.z_index and skill_bar.z_index > slash.z_index,
+		"Hoe Cat bars must remain readable above the enlarged attack VFX."
+	)
+
+
 func _test_action_visibility_contract() -> void:
 	var body := player.get_node("BodySprite") as AnimatedSprite2D
 	var slash := player.get_node("BasicSlashEffect") as AnimatedSprite2D
@@ -263,6 +318,49 @@ func _test_action_visibility_contract() -> void:
 	player.primary_impact_timer.stop()
 	player.whirlwind_impact_timer.stop()
 	player.call("_update_character_combat_state", 1.0)
+
+
+func _test_death_animation_contract() -> void:
+	var body := player.get_node("BodySprite") as AnimatedSprite2D
+	var slash := player.get_node("BasicSlashEffect") as AnimatedSprite2D
+	var whirlwind_range := player.get_node("WhirlwindRangeEffect") as AnimatedSprite2D
+	var whirlwind_body := player.get_node("WhirlwindBodyEffect") as AnimatedSprite2D
+
+	player.call("_play_whirlwind_visual")
+	player.primary_impact_timer.start(1.0)
+	_expect(not body.visible, "Whirlwind setup must hide the base body before the death transition test.")
+	# The audio path is covered elsewhere; omit it here so the headless process
+	# can exit immediately without retaining a transient playback resource.
+	player.death_audio.stream = null
+	player.apply_multiplayer_death_state()
+	_expect(player.is_dead and player.controls_locked, "Multiplayer death must enter the locked dead state.")
+	_expect(body.visible, "Death must keep the body visible instead of freezing or disappearing.")
+	_expect(body.animation == &"death" and body.is_playing(), "Death must start the authored non-looping animation.")
+	_expect(not slash.visible and not whirlwind_range.visible and not whirlwind_body.visible, "Death must clear every attack VFX layer.")
+	_expect(player.primary_impact_timer.is_stopped(), "Death must cancel a pending primary impact.")
+	_expect(player.whirlwind_impact_timer.is_stopped(), "Death must cancel a pending whirlwind impact.")
+	await create_timer(0.65).timeout
+	_expect(body.visible, "The settled death pose must remain visible.")
+	_expect(
+		body.animation == &"death" and body.frame == 4,
+		"Death must retain its final authored frame (got frame %d, playing=%s)." % [body.frame, body.is_playing()]
+	)
+	player.play_remote_hoe_action(&"whirlwind", Vector2.RIGHT, 1)
+	_expect(
+		body.visible and body.animation == &"death" and body.frame == 4,
+		"An in-flight remote action confirmation must not overwrite death."
+	)
+	_expect(
+		not whirlwind_range.visible and not whirlwind_body.visible,
+		"An in-flight remote action confirmation must not restore attack VFX after death."
+	)
+	body.hide()
+	body.play(&"attack_right")
+	player.apply_multiplayer_death_state()
+	_expect(
+		body.visible and body.animation == &"death" and body.is_playing(),
+		"A repeated authoritative death state must repair an overwritten death visual."
+	)
 
 
 func _validate_atlas_animation(
@@ -352,8 +450,13 @@ func _expect(condition: bool, message: String) -> void:
 
 
 func _finish() -> void:
+	if is_instance_valid(player) and player.death_audio != null:
+		player.death_audio.stop()
+		player.death_audio.stream = null
 	if is_instance_valid(test_root):
-		test_root.queue_free()
+		test_root.free()
+	player = null
+	test_root = null
 	if failures.is_empty():
 		print("PLAYER_HOE_CAT_RENDER_CHAIN_SMOKE_TEST_OK")
 		quit(0)

@@ -1499,8 +1499,30 @@ func _test_host_authoritative_hoe_actions() -> void:
 		host_game.enemy_container.add_child(contact_enemy)
 		contact_enemy.setup(BASIC_CONFIG, hoe_player, host_game.grid_pathfinder)
 		contact_enemy.set_physics_process(false)
-		contact_enemy.global_position = hoe_player.global_position + Vector2(11.6, 0.0)
+		# The horizontal capsule extends eight pixels. A centre distance of 17.6
+		# is inside the radius-10 query but outside the old radius-8 query.
+		contact_enemy.global_position = hoe_player.global_position + Vector2(17.6, 0.0)
 		contact_enemy_health_before = contact_enemy.current_health
+		await process_frame
+		await physics_frame
+	var outside_cone_enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
+	_expect(
+		outside_cone_enemy != null,
+		"Host Hoe Cat coverage must instantiate a real enemy outside the 60-degree cone."
+	)
+	var outside_cone_enemy_health_before := 0
+	if outside_cone_enemy != null:
+		host_game.enemy_container.add_child(outside_cone_enemy)
+		outside_cone_enemy.setup(BASIC_CONFIG, hoe_player, host_game.grid_pathfinder)
+		outside_cone_enemy.set_physics_process(false)
+		# Twelve pixels is safely inside the radius-10 query once the real insect
+		# collision shape is considered, so exclusion must come from its 31-degree
+		# direction rather than from range.
+		outside_cone_enemy.global_position = (
+			hoe_player.global_position
+			+ Vector2.RIGHT.rotated(deg_to_rad(31.0)) * 12.0
+		)
+		outside_cone_enemy_health_before = outside_cone_enemy.current_health
 		await process_frame
 		await physics_frame
 
@@ -1518,7 +1540,12 @@ func _test_host_authoritative_hoe_actions() -> void:
 	if contact_enemy != null:
 		_expect(
 			contact_enemy.current_health == contact_enemy_health_before - 15,
-			"Host-authoritative Hoe Cat impact frame must damage a real contact-range enemy."
+			"Host-authoritative Hoe Cat impact frame must damage a real insect at the expanded radius-10 boundary."
+		)
+	if outside_cone_enemy != null:
+		_expect(
+			outside_cone_enemy.current_health == outside_cone_enemy_health_before,
+			"Host-authoritative Hoe Cat impact must exclude a real insect beyond the 60-degree cone."
 		)
 	var action_sequences := mp_game.get("_hoe_action_sequences_by_peer") as Dictionary
 	_expect(int(action_sequences.get(1, 0)) == 1, "Host must assign an increasing sequence to an accepted Hoe Cat attack.")

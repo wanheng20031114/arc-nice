@@ -11,6 +11,7 @@ registers the result on a native 32 px logical grid.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from pathlib import Path
 import sys
 
@@ -32,8 +33,9 @@ MOVE_COLUMNS = 4
 MOVE_ROWS = 4
 ATTACK_COLUMNS = 5
 ATTACK_ROWS = 4
+DEATH_COLUMNS = 5
 FRAME_SIZE = 32
-SLASH_FRAME_SIZE = 32
+SLASH_FRAME_SIZE = 48
 WHIRLWIND_VFX_FRAME_SIZE = 48
 ALPHA_THRESHOLD = 56
 
@@ -168,6 +170,89 @@ def _binary_alpha(image: Image.Image, threshold: int = 52) -> Image.Image:
     return rgba
 
 
+def _remove_neutral_frame_lines(image: Image.Image) -> Image.Image:
+    """Discard the white panel dividers occasionally added by imagegen.
+
+    Pale dust remains because it is warm/yellow rather than neutral white.
+    """
+    rgba = image.convert("RGBA")
+    pixels = rgba.load()
+    for y in range(rgba.height):
+        for x in range(rgba.width):
+            red, green, blue, alpha = pixels[x, y]
+            if alpha == 0:
+                continue
+            if min(red, green, blue) >= 232 and max(red, green, blue) - min(red, green, blue) <= 18:
+                pixels[x, y] = (0, 0, 0, 0)
+    return rgba
+
+
+def _place_centered_on_baseline(
+    frame: Image.Image,
+    baseline: int,
+    canvas_size: int = FRAME_SIZE,
+) -> Image.Image:
+    canvas = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
+    offset_x = round((canvas_size - frame.width) * 0.5)
+    offset_y = baseline - frame.height + 1
+    canvas.alpha_composite(frame, (offset_x, offset_y))
+    return canvas
+
+
+def _horizontal_authored_groups(
+    image: Image.Image,
+    count: int,
+    minimum_main_size: int,
+) -> list[Image.Image]:
+    """Split a one-row board using its largest subject in each authored panel."""
+    main_components = [
+        component
+        for component in _connected_components(image, ALPHA_THRESHOLD)
+        if component.size >= minimum_main_size
+    ]
+    if len(main_components) != count:
+        raise AssertionError(
+            f"Expected {count} main authored groups, found {len(main_components)}"
+        )
+    main_components.sort(key=lambda component: component.center_x)
+    boundaries = [0]
+    boundaries.extend(
+        round((left.center_x + right.center_x) * 0.5)
+        for left, right in zip(main_components, main_components[1:])
+    )
+    boundaries.append(image.width)
+
+    groups: list[Image.Image] = []
+    for index in range(count):
+        panel = image.crop((boundaries[index], 0, boundaries[index + 1], image.height))
+        bbox = panel.getchannel("A").getbbox()
+        if bbox is None:
+            raise AssertionError(f"Authored group {index} is empty")
+        groups.append(panel.crop(bbox))
+    return groups
+
+
+def _mask_right_attack_sector(
+    frame: Image.Image,
+    half_angle_degrees: float = 30.0,
+) -> Image.Image:
+    """Keep the default right-facing VFX inside the gameplay's 60 degree cone."""
+    rgba = frame.convert("RGBA")
+    pixels = rgba.load()
+    pivot_x = rgba.width * 0.5
+    pivot_y = rgba.height * 0.5
+    for y in range(rgba.height):
+        for x in range(rgba.width):
+            if pixels[x, y][3] == 0:
+                continue
+            delta_x = (x + 0.5) - pivot_x
+            delta_y = (y + 0.5) - pivot_y
+            angle = abs(math.degrees(math.atan2(delta_y, delta_x)))
+            if delta_x <= 0.0 or angle > half_angle_degrees:
+                pixels[x, y] = (0, 0, 0, 0)
+    return rgba
+
+
 def _light_head_center(image: Image.Image) -> tuple[float, float]:
     rgba = image.convert("RGBA")
     mask = Image.new("L", rgba.size, 0)
@@ -245,10 +330,11 @@ def _paste_frame(
     sheet.alpha_composite(frame, (column * frame_size, row * frame_size))
 
 
-def _build_character_sheets() -> tuple[Image.Image, Image.Image, Image.Image]:
+def _build_character_sheets() -> tuple[Image.Image, Image.Image, Image.Image, Image.Image]:
     movement_source = _load_source("movement_alpha.png")
     attack_source = _load_source("attack_alpha.png")
     spin_source = _load_source("whirlwind_body_alpha.png")
+    death_source = _load_source("death_alpha.png")
     movement_grid = _character_grid(movement_source, 4, 3)
     attack_grid = _character_grid(attack_source, 5, 3)
     spin_grid = _character_grid(spin_source, 4, 2)
@@ -266,7 +352,9 @@ def _build_character_sheets() -> tuple[Image.Image, Image.Image, Image.Image]:
         (0, 0, 0, 0),
     )
     neutral_head_targets: list[tuple[float, float]] = []
-    baselines = (27, 25, 25)
+    # The authored root is the player's feet. Keep the body above the UI bars
+    # and retain the one-pixel directional posture difference.
+    baselines = (25, 24, 24)
     source_order = (0, 1, 0, 3)
     placed_right_frames: list[Image.Image] = []
 
@@ -330,12 +418,32 @@ def _build_character_sheets() -> tuple[Image.Image, Image.Image, Image.Image]:
         )
         _paste_frame(spin, placed, index, 0, FRAME_SIZE)
 
+    death = Image.new(
+        "RGBA",
+        (DEATH_COLUMNS * FRAME_SIZE, FRAME_SIZE),
+        (0, 0, 0, 0),
+    )
+    # This board was authored at a larger presentation scale than the motion
+    # boards. One shared correction preserves the cat's mass across all five
+    # collapse poses instead of normalizing each pose independently.
+    death_scale = common_scale * 0.80
+    death_groups = _horizontal_authored_groups(
+        death_source,
+        DEATH_COLUMNS,
+        minimum_main_size=30000,
+    )
+    for column, group in enumerate(death_groups):
+        resized = _resize_component(group, death_scale)
+        placed = _place_centered_on_baseline(resized, baseline=25)
+        _paste_frame(death, placed, column, 0, FRAME_SIZE)
+
     palette = _build_palette([movement], 16)
-    movement = _map_to_palette(movement, palette)
-    attack = _map_to_palette(attack, palette)
-    spin = _map_to_palette(spin, palette)
+    movement = _reinforce_character_edges(_map_to_palette(movement, palette), palette)
+    attack = _reinforce_character_edges(_map_to_palette(attack, palette), palette)
+    spin = _reinforce_character_edges(_map_to_palette(spin, palette), palette)
+    death = _reinforce_character_edges(_map_to_palette(death, palette), palette)
     print(f"Character source common scale: {common_scale:.5f}")
-    return movement, attack, spin
+    return movement, attack, spin, death
 
 
 def _crop_centered_square(
@@ -361,7 +469,9 @@ def _crop_centered_square(
 
 
 def _build_vfx_sheets() -> tuple[Image.Image, Image.Image]:
-    slash_source = _load_source("basic_slash_vfx_alpha.png")
+    slash_source = _remove_neutral_frame_lines(
+        _load_source("basic_slash_vfx_radius10_alpha.png")
+    )
     whirlwind_source = _load_source("whirlwind_vfx_alpha.png")
 
     slash = Image.new(
@@ -369,16 +479,24 @@ def _build_vfx_sheets() -> tuple[Image.Image, Image.Image]:
         (5 * SLASH_FRAME_SIZE, SLASH_FRAME_SIZE),
         (0, 0, 0, 0),
     )
-    slash_cell_width = slash_source.width / 5.0
-    for column in range(5):
-        left = round(column * slash_cell_width)
-        right = round((column + 1) * slash_cell_width)
+    # The generated board contains five deliberately distinct panels but its
+    # presentation dividers are not uniformly spaced. These authored centers
+    # register the effects, after which a geometric mask enforces gameplay's
+    # exact right-facing 60-degree sector.
+    slash_centers = (224.0, 569.0, 1049.0, 1500.0, 1928.0)
+    slash_boundaries = (0, 397, 809, 1275, 1714, slash_source.width)
+    for column, center_x in enumerate(slash_centers):
         square = _crop_centered_square(
             slash_source,
-            (left + right) * 0.5,
-            slash_source.height * 0.5,
-            384,
-            (left, 0, right, slash_source.height),
+            center_x,
+            362.0,
+            480,
+            (
+                slash_boundaries[column],
+                0,
+                slash_boundaries[column + 1],
+                slash_source.height,
+            ),
         )
         frame = _binary_alpha(
             square.resize(
@@ -386,16 +504,15 @@ def _build_vfx_sheets() -> tuple[Image.Image, Image.Image]:
                 Image.Resampling.BOX,
             )
         )
-        # The generated crescent is centered around its own circular guide.
-        # Runtime rotates the texture around the player, so translate the authored
-        # trail into the forward/right half of the logical cell before rotation.
+        # Runtime rotates this default-right sheet around the player. Translate
+        # the authored arc forward, then clip every visible pixel to +/-30 deg.
         forward_frame = Image.new(
             "RGBA",
             (SLASH_FRAME_SIZE, SLASH_FRAME_SIZE),
             (0, 0, 0, 0),
         )
-        forward_frame.alpha_composite(frame, (7, 0))
-        frame = forward_frame
+        forward_frame.alpha_composite(frame, (8, 0))
+        frame = _mask_right_attack_sector(forward_frame)
         _paste_frame(slash, frame, column, 0, SLASH_FRAME_SIZE)
 
     whirlwind = Image.new(
@@ -486,6 +603,43 @@ def _map_to_palette(
     return rgba
 
 
+def _reinforce_character_edges(
+    image: Image.Image,
+    palette: list[tuple[int, int, int]],
+) -> Image.Image:
+    """Give the downscaled body a native one-pixel outline and crisp dark details."""
+    rgba = image.convert("RGBA")
+    source = rgba.copy()
+    source_pixels = source.load()
+    target_pixels = rgba.load()
+    darkest = min(
+        palette,
+        key=lambda color: 0.2126 * color[0] + 0.7152 * color[1] + 0.0722 * color[2],
+    )
+    neighbors = (
+        (-1, -1), (0, -1), (1, -1),
+        (-1, 0), (1, 0),
+        (-1, 1), (0, 1), (1, 1),
+    )
+    for y in range(rgba.height):
+        for x in range(rgba.width):
+            red, green, blue, alpha = source_pixels[x, y]
+            if alpha == 0:
+                continue
+            is_boundary = any(
+                x + delta_x < 0
+                or x + delta_x >= rgba.width
+                or y + delta_y < 0
+                or y + delta_y >= rgba.height
+                or source_pixels[x + delta_x, y + delta_y][3] == 0
+                for delta_x, delta_y in neighbors
+            )
+            luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+            if is_boundary or luminance <= 68.0:
+                target_pixels[x, y] = (*darkest, 255)
+    return rgba
+
+
 def _save_portrait(movement: Image.Image) -> None:
     front = movement.crop((0, 0, FRAME_SIZE, FRAME_SIZE))
     portrait = front.resize((128, 128), Image.Resampling.NEAREST)
@@ -530,12 +684,13 @@ def _report_grid(name: str, image: Image.Image) -> None:
 
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    movement, attack, spin = _build_character_sheets()
+    movement, attack, spin, death = _build_character_sheets()
     slash, whirlwind = _build_vfx_sheets()
     outputs = {
         "hoe_cat_move.png": movement,
         "hoe_cat_attack.png": attack,
         "hoe_cat_whirlwind_body.png": spin,
+        "hoe_cat_death.png": death,
         "hoe_cat_basic_slash_vfx.png": slash,
         "hoe_cat_whirlwind_vfx.png": whirlwind,
     }
@@ -543,7 +698,7 @@ def main() -> None:
         image.save(OUTPUT_DIR / name, optimize=True)
         _report_grid(name, image)
     _save_portrait(movement)
-    _save_preview([movement, attack, spin, slash, whirlwind])
+    _save_preview([movement, attack, spin, death, slash, whirlwind])
     print(f"Saved preview: {PREVIEW_PATH}")
 
 

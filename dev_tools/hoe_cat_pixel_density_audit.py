@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from statistics import median
 
@@ -93,6 +94,71 @@ def _assert_mirror(right: Image.Image, left: Image.Image, label: str) -> None:
     _assert_exact_frame(mirrored, left, label)
 
 
+def _edge_dark_fraction(frame: Image.Image) -> float:
+    rgba = frame.convert("RGBA")
+    pixels = rgba.load()
+    opaque = {
+        (x, y)
+        for y in range(rgba.height)
+        for x in range(rgba.width)
+        if pixels[x, y][3] > 0
+    }
+    edge = [
+        (x, y)
+        for x, y in opaque
+        if any(
+            (x + delta_x, y + delta_y) not in opaque
+            for delta_x, delta_y in ((-1, 0), (1, 0), (0, -1), (0, 1))
+        )
+    ]
+    if not edge:
+        raise AssertionError("Cannot measure the edge of an empty frame")
+    dark = sum(
+        0.2126 * pixels[x, y][0]
+        + 0.7152 * pixels[x, y][1]
+        + 0.0722 * pixels[x, y][2]
+        <= 70.0
+        for x, y in edge
+    )
+    return dark / len(edge)
+
+
+def _assert_crisp_character_edges(frames: list[Image.Image], label: str) -> None:
+    fractions = [_edge_dark_fraction(frame) for frame in frames]
+    if min(fractions) < 0.85:
+        raise AssertionError(
+            f"{label} outline has soft gaps: minimum dark edge {min(fractions):.3f}"
+        )
+
+
+def _assert_front_eyes(frames: list[Image.Image]) -> None:
+    for index, frame in enumerate(frames[:4]):
+        rgba = frame.convert("RGBA")
+        pixels = rgba.load()
+        bbox = rgba.getchannel("A").getbbox()
+        if bbox is None:
+            raise AssertionError(f"Front frame {index} is empty")
+        center_x = (bbox[0] + bbox[2] - 1) * 0.5
+        face_top = bbox[1] + 4
+        face_bottom = min(bbox[1] + 10, bbox[3])
+        dark_interior: list[tuple[int, int]] = []
+        for y in range(face_top, face_bottom):
+            for x in range(bbox[0] + 1, bbox[2] - 1):
+                red, green, blue, alpha = pixels[x, y]
+                luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+                if alpha > 0 and luminance <= 70.0 and all(
+                    pixels[x + delta_x, y + delta_y][3] > 0
+                    for delta_x, delta_y in ((-1, 0), (1, 0), (0, -1), (0, 1))
+                ):
+                    dark_interior.append((x, y))
+        has_left_eye = any(x <= center_x - 1 for x, _y in dark_interior)
+        has_right_eye = any(x >= center_x + 1 for x, _y in dark_interior)
+        if not has_left_eye or not has_right_eye:
+            raise AssertionError(
+                f"Front frame {index} lost its two-sided dark eye read: {dark_interior}"
+            )
+
+
 def _weish_normal_frames() -> list[Image.Image]:
     image = Image.open(WEISH_PATH).convert("RGBA")
     return [
@@ -145,7 +211,7 @@ def _assert_movement(
         ):
             raise AssertionError(f"Movement frame {index} escaped native scale: {metric}")
 
-    expected_bottoms = (28, 26, 26, 26)
+    expected_bottoms = (26, 25, 25, 25)
     for row in range(4):
         row_frames = frames[row * 4 : row * 4 + 4]
         row_metrics = metrics[row * 4 : row * 4 + 4]
@@ -176,7 +242,7 @@ def _assert_attack(frames: list[Image.Image], metrics: list[dict]) -> None:
             and 18 <= int(metric["height"]) <= 28
             and 185 <= int(metric["opaque"]) <= 250
             and bbox[0] >= 2
-            and bbox[1] >= 2
+            and bbox[1] >= 1
             and bbox[2] <= 30
             and bbox[3] <= 30
         ):
@@ -204,6 +270,24 @@ def _assert_spin(metrics: list[dict]) -> None:
             raise AssertionError(f"Whirlwind body frame {index} escaped native scale: {metric}")
 
 
+def _assert_death(metrics: list[dict]) -> None:
+    for index, metric in enumerate(metrics):
+        bbox = metric["bbox"]
+        if not (
+            14 <= int(metric["width"]) <= 28
+            and 12 <= int(metric["height"]) <= 25
+            and 220 <= int(metric["opaque"]) <= 310
+            and bbox[0] >= 2
+            and bbox[1] >= 2
+            and bbox[2] <= 30
+            and bbox[3] == 26
+        ):
+            raise AssertionError(f"Death frame {index} is clipped or changes scale: {metric}")
+    heights = [int(metric["height"]) for metric in metrics]
+    if not (heights[0] < heights[1] and heights[1] > heights[2] > heights[3] > heights[4]):
+        raise AssertionError(f"Death silhouette does not collapse progressively: {heights}")
+
+
 def _assert_vfx(
     slash_frames: list[Image.Image],
     whirlwind_frames: list[Image.Image],
@@ -215,9 +299,23 @@ def _assert_vfx(
     if not (
         slash_counts[0] < slash_counts[1] < slash_counts[2]
         and slash_counts[2] > slash_counts[3] > slash_counts[4]
-        and max(slash_counts) <= 90
+        and 180 <= slash_counts[2] <= 280
     ):
         raise AssertionError(f"Slash arc does not read build-impact-dissipate: {slash_counts}")
+
+    peak_bbox = slash_frames[2].getchannel("A").getbbox()
+    if peak_bbox is None or peak_bbox[2] - peak_bbox[0] < 17 or peak_bbox[3] - peak_bbox[1] < 20:
+        raise AssertionError(f"Slash impact is still too small: {peak_bbox}")
+    for frame_index, frame in enumerate(slash_frames):
+        for y in range(frame.height):
+            for x in range(frame.width):
+                if frame.getpixel((x, y))[3] == 0:
+                    continue
+                angle = abs(math.degrees(math.atan2((y + 0.5) - 24.0, (x + 0.5) - 24.0)))
+                if x + 0.5 <= 24.0 or angle > 30.01:
+                    raise AssertionError(
+                        f"Slash frame {frame_index} escaped the 60 degree sector at {(x, y)}"
+                    )
 
     whirlwind_counts = [
         sum(1 for pixel in frame.getdata() if pixel[3] > 0)
@@ -238,6 +336,7 @@ def main() -> None:
     movement_path = HOE_DIR / "hoe_cat_move.png"
     attack_path = HOE_DIR / "hoe_cat_attack.png"
     spin_path = HOE_DIR / "hoe_cat_whirlwind_body.png"
+    death_path = HOE_DIR / "hoe_cat_death.png"
     slash_path = HOE_DIR / "hoe_cat_basic_slash_vfx.png"
     whirlwind_path = HOE_DIR / "hoe_cat_whirlwind_vfx.png"
     portrait_path = HOE_DIR / "portrait.png"
@@ -245,6 +344,7 @@ def main() -> None:
         movement_path,
         attack_path,
         spin_path,
+        death_path,
         slash_path,
         whirlwind_path,
         portrait_path,
@@ -255,18 +355,26 @@ def main() -> None:
     movement_frames = _split(movement_path, 4, 4, 32)
     attack_frames = _split(attack_path, 5, 4, 32)
     spin_frames = _split(spin_path, 8, 1, 32)
-    slash_frames = _split(slash_path, 5, 1, 32)
+    death_frames = _split(death_path, 5, 1, 32)
+    slash_frames = _split(slash_path, 5, 1, 48)
     whirlwind_frames = _split(whirlwind_path, 8, 1, 48)
     movement_metrics = [_metrics(frame) for frame in movement_frames]
     attack_metrics = [_metrics(frame) for frame in attack_frames]
     spin_metrics = [_metrics(frame) for frame in spin_frames]
+    death_metrics = [_metrics(frame) for frame in death_frames]
     weish_metrics = [_metrics(frame) for frame in _weish_normal_frames()]
 
     _assert_character_scale(movement_metrics, weish_metrics)
     _assert_movement(movement_frames, movement_metrics)
     _assert_attack(attack_frames, attack_metrics)
     _assert_spin(spin_metrics)
+    _assert_death(death_metrics)
     _assert_vfx(slash_frames, whirlwind_frames)
+    _assert_crisp_character_edges(movement_frames, "Movement")
+    _assert_crisp_character_edges(attack_frames, "Attack")
+    _assert_crisp_character_edges(spin_frames, "Whirlwind body")
+    _assert_crisp_character_edges(death_frames, "Death")
+    _assert_front_eyes(movement_frames)
 
     character_palette = _palette(movement_path)
     if len(character_palette) > 16:
@@ -275,6 +383,8 @@ def main() -> None:
         raise AssertionError("Attack palette drifted from the shared character palette")
     if not _palette(spin_path).issubset(character_palette):
         raise AssertionError("Whirlwind body palette drifted from the shared character palette")
+    if not _palette(death_path).issubset(character_palette):
+        raise AssertionError("Death palette drifted from the shared character palette")
     if len(_palette(slash_path) | _palette(whirlwind_path)) > 8:
         raise AssertionError("Hoe VFX palette exceeds eight shared colors")
 
