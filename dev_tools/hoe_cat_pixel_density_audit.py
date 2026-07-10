@@ -80,6 +80,13 @@ def _assert_binary_alpha(path: Path) -> None:
         raise AssertionError(f"{path.name}: alpha is not binary: {sorted(values)}")
 
 
+def _assert_soft_alpha(path: Path) -> None:
+    alpha = Image.open(path).convert("RGBA").getchannel("A")
+    values = set(alpha.getdata())
+    if 0 not in values or 255 not in values or not any(0 < value < 255 for value in values):
+        raise AssertionError(f"{path.name}: VFX must retain transparent, soft, and opaque alpha")
+
+
 def _opaque_mask(frame: Image.Image) -> tuple[bool, ...]:
     return tuple(pixel[3] > 0 for pixel in frame.convert("RGBA").getdata())
 
@@ -211,7 +218,7 @@ def _assert_movement(
         ):
             raise AssertionError(f"Movement frame {index} escaped native scale: {metric}")
 
-    expected_bottoms = (26, 25, 25, 25)
+    expected_bottoms = (25, 25, 25, 25)
     for row in range(4):
         row_frames = frames[row * 4 : row * 4 + 4]
         row_metrics = metrics[row * 4 : row * 4 + 4]
@@ -288,34 +295,166 @@ def _assert_death(metrics: list[dict]) -> None:
         raise AssertionError(f"Death silhouette does not collapse progressively: {heights}")
 
 
+def _nearby_overlap_ratio(
+    first: Image.Image,
+    second: Image.Image,
+    radius: int = 2,
+) -> float:
+    first_pixels = {
+        (x, y)
+        for y in range(first.height)
+        for x in range(first.width)
+        if first.getpixel((x, y))[3] > 0
+    }
+    second_pixels = {
+        (x, y)
+        for y in range(second.height)
+        for x in range(second.width)
+        if second.getpixel((x, y))[3] > 0
+    }
+    smaller, larger = (
+        (first_pixels, second_pixels)
+        if len(first_pixels) <= len(second_pixels)
+        else (second_pixels, first_pixels)
+    )
+    if not smaller:
+        return 0.0
+    expanded_larger = {
+        (x + offset_x, y + offset_y)
+        for x, y in larger
+        for offset_x in range(-radius, radius + 1)
+        for offset_y in range(-radius, radius + 1)
+    }
+    return len(smaller & expanded_larger) / len(smaller)
+
+
 def _assert_vfx(
     slash_frames: list[Image.Image],
     whirlwind_frames: list[Image.Image],
 ) -> None:
-    slash_counts = [
-        sum(1 for pixel in frame.getdata() if pixel[3] > 0)
+    slash_alpha_areas = [
+        sum(pixel[3] for pixel in frame.getdata()) / 255.0
         for frame in slash_frames
     ]
-    if not (
-        slash_counts[0] < slash_counts[1] < slash_counts[2]
-        and slash_counts[2] > slash_counts[3] > slash_counts[4]
-        and 180 <= slash_counts[2] <= 280
+    expected_area_ranges = (
+        (10.0, 40.0),
+        (110.0, 220.0),
+        (400.0, 600.0),
+        (750.0, 1000.0),
+        (580.0, 800.0),
+        (150.0, 300.0),
+        (40.0, 110.0),
+        (3.0, 20.0),
+    )
+    if len(slash_alpha_areas) != len(expected_area_ranges) or any(
+        not minimum <= area <= maximum
+        for area, (minimum, maximum) in zip(slash_alpha_areas, expected_area_ranges)
     ):
-        raise AssertionError(f"Slash arc does not read build-impact-dissipate: {slash_counts}")
+        raise AssertionError(
+            f"Slash arc does not read build-impact-dissipate: {slash_alpha_areas}"
+        )
+    if not (
+        slash_alpha_areas[0] < slash_alpha_areas[1]
+        < slash_alpha_areas[2] < slash_alpha_areas[3]
+        and slash_alpha_areas[3] > slash_alpha_areas[4]
+        > slash_alpha_areas[5] > slash_alpha_areas[6] > slash_alpha_areas[7]
+    ):
+        raise AssertionError(
+            f"Slash density progression is not fluid: {slash_alpha_areas}"
+        )
 
-    peak_bbox = slash_frames[2].getchannel("A").getbbox()
-    if peak_bbox is None or peak_bbox[2] - peak_bbox[0] < 17 or peak_bbox[3] - peak_bbox[1] < 20:
-        raise AssertionError(f"Slash impact is still too small: {peak_bbox}")
     for frame_index, frame in enumerate(slash_frames):
+        bbox = frame.getchannel("A").getbbox()
+        if bbox is None:
+            raise AssertionError(f"Slash frame {frame_index} is empty")
+        if bbox[0] < 4 or bbox[1] < 4 or bbox[2] > 108 or bbox[3] > 108:
+            raise AssertionError(
+                f"Slash frame {frame_index} lost its transparent safety padding: {bbox}"
+            )
+    for peak_index in (3, 4):
+        peak_bbox = slash_frames[peak_index].getchannel("A").getbbox()
+        if peak_bbox[2] - peak_bbox[0] < 45 or peak_bbox[3] - peak_bbox[1] < 45:
+            raise AssertionError(f"Slash impact frame {peak_index} is too small: {peak_bbox}")
+        peak_alpha = [
+            pixel[3]
+            for pixel in slash_frames[peak_index].getdata()
+            if pixel[3] > 0
+        ]
+        partial_ratio = sum(alpha < 255 for alpha in peak_alpha) / len(peak_alpha)
+        strong_core_ratio = sum(alpha >= 240 for alpha in peak_alpha) / len(peak_alpha)
+        if partial_ratio > 0.35 or strong_core_ratio < 0.65:
+            raise AssertionError(
+                f"Slash impact frame {peak_index} lost its crisp alpha core: "
+                f"partial={partial_ratio:.3f}, strong={strong_core_ratio:.3f}"
+            )
+
+    pivot = 56.0
+    maximum_radii: list[float] = []
+    core_maximum_radii: list[float] = []
+    strict_outside_alpha_ratios: list[float] = []
+    far_outside_alpha_ratios: list[float] = []
+    for frame_index, frame in enumerate(slash_frames):
+        maximum_radius = 0.0
+        core_maximum_radius = 0.0
+        alpha_total = 0
+        strict_outside_alpha = 0
+        far_outside_alpha = 0
         for y in range(frame.height):
             for x in range(frame.width):
-                if frame.getpixel((x, y))[3] == 0:
+                alpha = frame.getpixel((x, y))[3]
+                if alpha == 0:
                     continue
-                angle = abs(math.degrees(math.atan2((y + 0.5) - 24.0, (x + 0.5) - 24.0)))
-                if x + 0.5 <= 24.0 or angle > 30.01:
-                    raise AssertionError(
-                        f"Slash frame {frame_index} escaped the 60 degree sector at {(x, y)}"
-                    )
+                delta_x = (x + 0.5) - pivot
+                delta_y = (y + 0.5) - pivot
+                radius = math.hypot(delta_x, delta_y)
+                maximum_radius = max(maximum_radius, radius)
+                angle = abs(math.degrees(math.atan2(delta_y, delta_x)))
+                if alpha >= 160:
+                    core_maximum_radius = max(core_maximum_radius, radius)
+                alpha_total += alpha
+                if delta_x <= 0.0 or angle > 30.0 or radius > 48.0:
+                    strict_outside_alpha += alpha
+                # Near-pivot tapered ends may sweep wider. At meaningful reach,
+                # however, even faint pixels must stay close to the authored
+                # 80-degree visual envelope and the radius-48 hit range.
+                if radius >= 28.0 and (
+                    delta_x <= 0.0 or angle > 40.0 or radius > 53.0
+                ):
+                    far_outside_alpha += alpha
+        maximum_radii.append(maximum_radius)
+        core_maximum_radii.append(core_maximum_radius)
+        strict_outside_alpha_ratios.append(strict_outside_alpha / alpha_total)
+        far_outside_alpha_ratios.append(far_outside_alpha / alpha_total)
+
+    if not all(45.0 <= core_maximum_radii[index] <= 50.5 for index in (3, 4)):
+        raise AssertionError(
+            f"Slash impact core no longer hugs the radius-48 reach: {core_maximum_radii}"
+        )
+    if not 49.0 <= max(maximum_radii[3:5]) <= 53.0:
+        raise AssertionError(
+            f"Slash tips must extend only slightly beyond radius 48: {maximum_radii}"
+        )
+    if any(far_outside_alpha_ratios[index] > 0.06 for index in (3, 4)):
+        raise AssertionError(
+            f"Slash peak escaped its relaxed 80-degree/radius-53 envelope: "
+            f"{far_outside_alpha_ratios}"
+        )
+    if any(
+        not 0.12 <= strict_outside_alpha_ratios[index] <= 0.45
+        for index in (3, 4)
+    ):
+        raise AssertionError(
+            "Slash peak must keep natural tapered pixels outside the exact hit mask "
+            f"without overwhelming it: {strict_outside_alpha_ratios}"
+        )
+    if not maximum_radii[4] > maximum_radii[5] > maximum_radii[6] > maximum_radii[7]:
+        raise AssertionError(f"Slash dissipation reach is not progressive: {maximum_radii}")
+    overlap_ratios = [
+        _nearby_overlap_ratio(first, second)
+        for first, second in zip(slash_frames, slash_frames[1:])
+    ]
+    if any(ratio < 0.65 for ratio in overlap_ratios):
+        raise AssertionError(f"Adjacent slash silhouettes jump abruptly: {overlap_ratios}")
 
     whirlwind_counts = [
         sum(1 for pixel in frame.getdata() if pixel[3] > 0)
@@ -339,24 +478,26 @@ def main() -> None:
     death_path = HOE_DIR / "hoe_cat_death.png"
     slash_path = HOE_DIR / "hoe_cat_basic_slash_vfx.png"
     whirlwind_path = HOE_DIR / "hoe_cat_whirlwind_vfx.png"
+    whirlwind_icon_path = HOE_DIR / "whirlwind_icon.png"
     portrait_path = HOE_DIR / "portrait.png"
-    output_paths = (
+    binary_output_paths = (
         movement_path,
         attack_path,
         spin_path,
         death_path,
-        slash_path,
         whirlwind_path,
+        whirlwind_icon_path,
         portrait_path,
     )
-    for path in output_paths:
+    for path in binary_output_paths:
         _assert_binary_alpha(path)
+    _assert_soft_alpha(slash_path)
 
     movement_frames = _split(movement_path, 4, 4, 32)
     attack_frames = _split(attack_path, 5, 4, 32)
     spin_frames = _split(spin_path, 8, 1, 32)
     death_frames = _split(death_path, 5, 1, 32)
-    slash_frames = _split(slash_path, 5, 1, 48)
+    slash_frames = _split(slash_path, 8, 1, 112)
     whirlwind_frames = _split(whirlwind_path, 8, 1, 48)
     movement_metrics = [_metrics(frame) for frame in movement_frames]
     attack_metrics = [_metrics(frame) for frame in attack_frames]
@@ -379,18 +520,44 @@ def main() -> None:
     character_palette = _palette(movement_path)
     if len(character_palette) > 16:
         raise AssertionError(f"Movement palette has {len(character_palette)} colors")
-    if not _palette(attack_path).issubset(character_palette):
-        raise AssertionError("Attack palette drifted from the shared character palette")
+    attack_extra_colors = _palette(attack_path) - character_palette
+    if attack_extra_colors - {(0, 0, 0)}:
+        raise AssertionError(
+            f"Attack palette drifted from the shared character palette: {attack_extra_colors}"
+        )
     if not _palette(spin_path).issubset(character_palette):
         raise AssertionError("Whirlwind body palette drifted from the shared character palette")
     if not _palette(death_path).issubset(character_palette):
         raise AssertionError("Death palette drifted from the shared character palette")
-    if len(_palette(slash_path) | _palette(whirlwind_path)) > 8:
-        raise AssertionError("Hoe VFX palette exceeds eight shared colors")
+    if len(_palette(slash_path)) > 8:
+        raise AssertionError("Pale-yellow slash VFX palette exceeds eight colors")
+    if len(_palette(whirlwind_path)) > 8:
+        raise AssertionError("Whirlwind VFX palette exceeds eight colors")
+    whirlwind_icon = Image.open(whirlwind_icon_path).convert("RGBA")
+    if whirlwind_icon.size != (128, 128):
+        raise AssertionError(f"Whirlwind icon must be 128x128: {whirlwind_icon.size}")
+    if len(_palette(whirlwind_icon_path)) > 14:
+        raise AssertionError("Whirlwind icon palette exceeds fourteen colors")
 
     portrait = Image.open(portrait_path).convert("RGBA")
-    expected_portrait = movement_frames[0].resize((128, 128), Image.Resampling.NEAREST)
-    _assert_exact_frame(portrait, expected_portrait, "portrait native upscale")
+    front_bbox = movement_frames[0].getchannel("A").getbbox()
+    if front_bbox is None:
+        raise AssertionError("Front movement frame is empty")
+    front_subject = movement_frames[0].crop(front_bbox)
+    enlarged_subject = front_subject.resize(
+        (front_subject.width * 6, front_subject.height * 6),
+        Image.Resampling.NEAREST,
+    )
+    expected_portrait = Image.new("RGBA", (128, 128), (0, 0, 0, 0))
+    expected_portrait.alpha_composite(
+        enlarged_subject,
+        ((128 - enlarged_subject.width) // 2, (128 - enlarged_subject.height) // 2),
+    )
+    _assert_exact_frame(portrait, expected_portrait, "portrait cropped native upscale")
+    if portrait.getchannel("A").getbbox() != (13, 10, 115, 118):
+        raise AssertionError(
+            f"Portrait scale or centering drifted: {portrait.getchannel('A').getbbox()}"
+        )
 
     movement_opaque = [int(metric["opaque"]) for metric in movement_metrics]
     print(

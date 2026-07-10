@@ -1491,6 +1491,7 @@ func _test_host_authoritative_hoe_actions() -> void:
 	connected_players[1] = "Host"
 	mp_game.set("game", host_game)
 	mp_game.set("net_manager", net_manager)
+	var free_aim_direction := Vector2(2.0, 1.0).normalized()
 
 	var contact_enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
 	_expect(contact_enemy != null, "Host Hoe Cat coverage must instantiate a real enemy target.")
@@ -1499,9 +1500,12 @@ func _test_host_authoritative_hoe_actions() -> void:
 		host_game.enemy_container.add_child(contact_enemy)
 		contact_enemy.setup(BASIC_CONFIG, hoe_player, host_game.grid_pathfinder)
 		contact_enemy.set_physics_process(false)
-		# The horizontal capsule extends eight pixels. A centre distance of 17.6
-		# is inside the radius-10 query but outside the old radius-8 query.
-		contact_enemy.global_position = hoe_player.global_position + Vector2(17.6, 0.0)
+		# The horizontal capsule has less support along a diagonal than on the X
+		# axis. A centre distance of 54 remains near the radius-48 outer edge while
+		# still overlapping for this non-cardinal attack direction.
+		contact_enemy.global_position = (
+			hoe_player.global_position + free_aim_direction * 54.0
+		)
 		contact_enemy_health_before = contact_enemy.current_health
 		await process_frame
 		await physics_frame
@@ -1515,12 +1519,12 @@ func _test_host_authoritative_hoe_actions() -> void:
 		host_game.enemy_container.add_child(outside_cone_enemy)
 		outside_cone_enemy.setup(BASIC_CONFIG, hoe_player, host_game.grid_pathfinder)
 		outside_cone_enemy.set_physics_process(false)
-		# Twelve pixels is safely inside the radius-10 query once the real insect
+		# Fifty pixels still overlaps the radius-48 query once the real insect
 		# collision shape is considered, so exclusion must come from its 31-degree
 		# direction rather than from range.
 		outside_cone_enemy.global_position = (
 			hoe_player.global_position
-			+ Vector2.RIGHT.rotated(deg_to_rad(31.0)) * 12.0
+			+ free_aim_direction.rotated(deg_to_rad(31.0)) * 50.0
 		)
 		outside_cone_enemy_health_before = outside_cone_enemy.current_health
 		await process_frame
@@ -1528,8 +1532,17 @@ func _test_host_authoritative_hoe_actions() -> void:
 
 	hoe_player.shooting_timer.stop()
 	_expect(
-		bool(mp_game.call("_apply_authoritative_hoe_action", 1, &"primary", Vector2.RIGHT)),
+		bool(mp_game.call("_apply_authoritative_hoe_action", 1, &"primary", Vector2(2.0, 1.0))),
 		"Host must accept a valid Hoe Cat primary attack request."
+	)
+	_expect(
+		hoe_player.last_attack_direction.is_equal_approx(free_aim_direction)
+		and (hoe_player.get("_pending_primary_direction") as Vector2).is_equal_approx(free_aim_direction),
+		"Host authority must preserve the normalized non-cardinal attack direction."
+	)
+	_expect(
+		is_equal_approx(hoe_player.basic_slash_effect.rotation, free_aim_direction.angle()),
+		"Host-authoritative slash VFX must rotate to the exact free-aim direction."
 	)
 	if contact_enemy != null:
 		_expect(
@@ -1540,7 +1553,7 @@ func _test_host_authoritative_hoe_actions() -> void:
 	if contact_enemy != null:
 		_expect(
 			contact_enemy.current_health == contact_enemy_health_before - 15,
-			"Host-authoritative Hoe Cat impact frame must damage a real insect at the expanded radius-10 boundary."
+			"Host-authoritative Hoe Cat impact frame must damage a real insect at the expanded radius-48 boundary."
 		)
 	if outside_cone_enemy != null:
 		_expect(
@@ -1550,7 +1563,7 @@ func _test_host_authoritative_hoe_actions() -> void:
 	var action_sequences := mp_game.get("_hoe_action_sequences_by_peer") as Dictionary
 	_expect(int(action_sequences.get(1, 0)) == 1, "Host must assign an increasing sequence to an accepted Hoe Cat attack.")
 	_expect(
-		not bool(mp_game.call("_apply_authoritative_hoe_action", 1, &"primary", Vector2.RIGHT)),
+		not bool(mp_game.call("_apply_authoritative_hoe_action", 1, &"primary", free_aim_direction)),
 		"Host must reject a Hoe Cat primary request inside the minimum attack interval."
 	)
 	_expect(int(action_sequences.get(1, 0)) == 1, "Rejected Hoe Cat attacks must not advance the action sequence.")
@@ -1567,7 +1580,7 @@ func _test_host_authoritative_hoe_actions() -> void:
 	_expect(int(action_sequences.get(1, 0)) == 2, "Accepted whirlwind must advance the authoritative action sequence.")
 	_expect(hoe_player.current_health == 70, "Whirlwind healing must wait for its impact frame.")
 	_expect(
-		not bool(mp_game.call("_apply_authoritative_hoe_action", 1, &"primary", Vector2.RIGHT)),
+		not bool(mp_game.call("_apply_authoritative_hoe_action", 1, &"primary", free_aim_direction)),
 		"Host must reject primary attacks during the whirlwind action lock."
 	)
 	await hoe_player.whirlwind_impact_timer.timeout

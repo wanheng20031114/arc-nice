@@ -35,9 +35,53 @@ ATTACK_COLUMNS = 5
 ATTACK_ROWS = 4
 DEATH_COLUMNS = 5
 FRAME_SIZE = 32
-SLASH_FRAME_SIZE = 48
+SLASH_FRAME_SIZE = 112
+SLASH_FRAME_COUNT = 8
+SLASH_SOURCE_COLUMNS = 4
+SLASH_SOURCE_ROWS = 2
+SLASH_PEAK_FRAME_INDICES = (3, 4)
+SLASH_ATTACK_RADIUS = 48.0
+# The generated brush arc is intentionally wider than the hit cone. Compress
+# its cross-axis motion instead of cutting it with a sector mask: the bright
+# body stays close to gameplay while the authored tips remain naturally
+# tapered, like the Swordsman Cat slash reference.
+SLASH_CROSS_AXIS_SCALE = 0.78
+SLASH_ALPHA_FLOOR = 2
+SLASH_ALPHA_TRANSPARENT_POINT = 24
+SLASH_ALPHA_OPAQUE_POINT = 216
 WHIRLWIND_VFX_FRAME_SIZE = 48
+WHIRLWIND_ICON_SIZE = 128
+WHIRLWIND_ICON_SUBJECT_SIZE = 112
 ALPHA_THRESHOLD = 56
+VFX_PALETTE = [
+    (60, 31, 18),
+    (107, 51, 26),
+    (161, 98, 59),
+    (227, 160, 91),
+    (239, 185, 107),
+    (244, 204, 131),
+    (248, 219, 151),
+    (253, 234, 161),
+]
+SLASH_PALETTE = [
+    (111, 74, 18),
+    (169, 104, 25),
+    (216, 151, 40),
+    (240, 200, 74),
+    (255, 228, 119),
+    (255, 241, 166),
+    (255, 248, 215),
+    (255, 255, 240),
+]
+WHIRLWIND_ICON_PALETTE = [
+    (33, 17, 13),
+    (73, 40, 24),
+    (117, 61, 32),
+    (165, 91, 46),
+    (104, 99, 84),
+    (218, 208, 177),
+    *SLASH_PALETTE,
+]
 
 
 @dataclass(frozen=True)
@@ -56,6 +100,47 @@ def _load_source(name: str) -> Image.Image:
         Image.open(path),
         alpha_threshold=ALPHA_THRESHOLD,
     )
+
+
+def _load_soft_source(name: str) -> Image.Image:
+    """Load a VFX source without destroying its authored translucent edge."""
+    path = SOURCE_DIR / name
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    rgba = Image.open(path).convert("RGBA")
+    pixels = rgba.load()
+    for y in range(rgba.height):
+        for x in range(rgba.width):
+            red, green, blue, alpha = pixels[x, y]
+            if alpha <= SLASH_ALPHA_FLOOR:
+                pixels[x, y] = (0, 0, 0, 0)
+    return rgba
+
+
+def _harden_slash_alpha(image: Image.Image) -> Image.Image:
+    """Restore a crisp cutting core while retaining one soft antialias band."""
+    rgba = image.convert("RGBA")
+    pixels = rgba.load()
+    alpha_range = float(
+        SLASH_ALPHA_OPAQUE_POINT - SLASH_ALPHA_TRANSPARENT_POINT
+    )
+    for y in range(rgba.height):
+        for x in range(rgba.width):
+            red, green, blue, alpha = pixels[x, y]
+            normalized = min(
+                max(
+                    (alpha - SLASH_ALPHA_TRANSPARENT_POINT) / alpha_range,
+                    0.0,
+                ),
+                1.0,
+            )
+            smooth_alpha = normalized * normalized * (3.0 - 2.0 * normalized)
+            hardened_alpha = round(smooth_alpha * 255.0)
+            if hardened_alpha <= SLASH_ALPHA_FLOOR:
+                pixels[x, y] = (0, 0, 0, 0)
+            else:
+                pixels[x, y] = (red, green, blue, hardened_alpha)
+    return rgba
 
 
 def _connected_components(
@@ -230,27 +315,6 @@ def _horizontal_authored_groups(
             raise AssertionError(f"Authored group {index} is empty")
         groups.append(panel.crop(bbox))
     return groups
-
-
-def _mask_right_attack_sector(
-    frame: Image.Image,
-    half_angle_degrees: float = 30.0,
-) -> Image.Image:
-    """Keep the default right-facing VFX inside the gameplay's 60 degree cone."""
-    rgba = frame.convert("RGBA")
-    pixels = rgba.load()
-    pivot_x = rgba.width * 0.5
-    pivot_y = rgba.height * 0.5
-    for y in range(rgba.height):
-        for x in range(rgba.width):
-            if pixels[x, y][3] == 0:
-                continue
-            delta_x = (x + 0.5) - pivot_x
-            delta_y = (y + 0.5) - pivot_y
-            angle = abs(math.degrees(math.atan2(delta_y, delta_x)))
-            if delta_x <= 0.0 or angle > half_angle_degrees:
-                pixels[x, y] = (0, 0, 0, 0)
-    return rgba
 
 
 def _light_head_center(image: Image.Image) -> tuple[float, float]:
@@ -468,52 +532,157 @@ def _crop_centered_square(
     return output
 
 
-def _build_vfx_sheets() -> tuple[Image.Image, Image.Image]:
-    slash_source = _remove_neutral_frame_lines(
-        _load_source("basic_slash_vfx_radius10_alpha.png")
-    )
-    whirlwind_source = _load_source("whirlwind_vfx_alpha.png")
+def _split_uniform_source_grid(
+    source: Image.Image,
+    columns: int,
+    rows: int,
+) -> list[Image.Image]:
+    panels: list[Image.Image] = []
+    for row in range(rows):
+        top = round(row * source.height / rows)
+        bottom = round((row + 1) * source.height / rows)
+        for column in range(columns):
+            left = round(column * source.width / columns)
+            right = round((column + 1) * source.width / columns)
+            panels.append(source.crop((left, top, right, bottom)))
+    return panels
 
+
+def _detect_shared_sector_pivot(
+    panels: list[Image.Image],
+    peak_indices: tuple[int, ...],
+) -> tuple[float, float]:
+    """Register every frame to one stable pivot from the two full crescents."""
+    pivot_x_values: list[float] = []
+    pivot_y_values: list[float] = []
+    for index in peak_indices:
+        components = _connected_components(panels[index], ALPHA_THRESHOLD)
+        if not components:
+            raise AssertionError(f"Slash peak panel {index} is empty")
+        main_component = components[0]
+        left, top, _right, bottom = main_component.bbox
+        pivot_x_values.append(float(left))
+        pivot_y_values.append((top + bottom - 1) * 0.5)
+    return (
+        sum(pivot_x_values) / len(pivot_x_values),
+        sum(pivot_y_values) / len(pivot_y_values),
+    )
+
+
+def _forward_radius_percentile(
+    panel: Image.Image,
+    pivot: tuple[float, float],
+    percentile: float = 0.99,
+) -> float:
+    pivot_x, pivot_y = pivot
+    radii: list[float] = []
+    alpha = panel.convert("RGBA").getchannel("A")
+    for y in range(panel.height):
+        for x in range(panel.width):
+            if alpha.getpixel((x, y)) <= ALPHA_THRESHOLD:
+                continue
+            delta_x = (x + 0.5) - pivot_x
+            delta_y = (y + 0.5) - pivot_y
+            if delta_x <= 0.0:
+                continue
+            angle = abs(math.degrees(math.atan2(delta_y, delta_x)))
+            if angle <= 30.0:
+                radii.append(math.hypot(delta_x, delta_y))
+    if not radii:
+        raise AssertionError("Authored slash panel has no pixels in the forward sector")
+    radii.sort()
+    index = round((len(radii) - 1) * percentile)
+    return radii[index]
+
+
+def _build_basic_slash_sheet() -> Image.Image:
+    slash_source = _load_soft_source("basic_slash_vfx_flow_v3_alpha.png")
+    panels = _split_uniform_source_grid(
+        slash_source,
+        SLASH_SOURCE_COLUMNS,
+        SLASH_SOURCE_ROWS,
+    )
+    if len(panels) != SLASH_FRAME_COUNT:
+        raise AssertionError(f"Expected {SLASH_FRAME_COUNT} slash panels")
+    pivot = _detect_shared_sector_pivot(panels, SLASH_PEAK_FRAME_INDICES)
+    authored_radius = max(
+        _forward_radius_percentile(panels[index], pivot)
+        for index in SLASH_PEAK_FRAME_INDICES
+    )
+    radial_scale = SLASH_ATTACK_RADIUS / authored_radius
+    cross_axis_scale = radial_scale * SLASH_CROSS_AXIS_SCALE
     slash = Image.new(
         "RGBA",
-        (5 * SLASH_FRAME_SIZE, SLASH_FRAME_SIZE),
+        (SLASH_FRAME_COUNT * SLASH_FRAME_SIZE, SLASH_FRAME_SIZE),
         (0, 0, 0, 0),
     )
-    # The generated board contains five deliberately distinct panels but its
-    # presentation dividers are not uniformly spaced. These authored centers
-    # register the effects, after which a geometric mask enforces gameplay's
-    # exact right-facing 60-degree sector.
-    slash_centers = (224.0, 569.0, 1049.0, 1500.0, 1928.0)
-    slash_boundaries = (0, 397, 809, 1275, 1714, slash_source.width)
-    for column, center_x in enumerate(slash_centers):
-        square = _crop_centered_square(
-            slash_source,
-            center_x,
-            362.0,
-            480,
+    for frame_index, panel in enumerate(panels):
+        resized = panel.resize(
             (
-                slash_boundaries[column],
-                0,
-                slash_boundaries[column + 1],
-                slash_source.height,
+                max(1, round(panel.width * radial_scale)),
+                max(1, round(panel.height * cross_axis_scale)),
             ),
+            Image.Resampling.LANCZOS,
         )
-        frame = _binary_alpha(
-            square.resize(
-                (SLASH_FRAME_SIZE, SLASH_FRAME_SIZE),
-                Image.Resampling.BOX,
-            )
-        )
-        # Runtime rotates this default-right sheet around the player. Translate
-        # the authored arc forward, then clip every visible pixel to +/-30 deg.
-        forward_frame = Image.new(
+        frame = Image.new(
             "RGBA",
             (SLASH_FRAME_SIZE, SLASH_FRAME_SIZE),
             (0, 0, 0, 0),
         )
-        forward_frame.alpha_composite(frame, (8, 0))
-        frame = _mask_right_attack_sector(forward_frame)
-        _paste_frame(slash, frame, column, 0, SLASH_FRAME_SIZE)
+        frame.alpha_composite(
+            resized,
+            (
+                round(SLASH_FRAME_SIZE * 0.5 - pivot[0] * radial_scale),
+                round(SLASH_FRAME_SIZE * 0.5 - pivot[1] * cross_axis_scale),
+            ),
+        )
+        _paste_frame(slash, frame, frame_index, 0, SLASH_FRAME_SIZE)
+        print(
+            f"Slash frame {frame_index}: pivot=({pivot[0]:.2f},{pivot[1]:.2f}) "
+            f"authored_radius={authored_radius:.2f} "
+            f"radial_scale={radial_scale:.4f} cross_scale={cross_axis_scale:.4f}"
+        )
+    slash = _harden_slash_alpha(slash)
+    return _map_to_palette_preserve_alpha(slash, SLASH_PALETTE)
+
+
+def _build_whirlwind_icon() -> Image.Image:
+    source = _load_source("whirlwind_icon_v2_alpha.png")
+    bbox = source.getchannel("A").getbbox()
+    if bbox is None:
+        raise AssertionError("Whirlwind icon source is empty")
+    subject = source.crop(bbox)
+    scale = min(
+        WHIRLWIND_ICON_SUBJECT_SIZE / subject.width,
+        WHIRLWIND_ICON_SUBJECT_SIZE / subject.height,
+    )
+    resized = _binary_alpha(
+        subject.resize(
+            (
+                max(1, round(subject.width * scale)),
+                max(1, round(subject.height * scale)),
+            ),
+            Image.Resampling.BOX,
+        ),
+        threshold=16,
+    )
+    icon = Image.new(
+        "RGBA",
+        (WHIRLWIND_ICON_SIZE, WHIRLWIND_ICON_SIZE),
+        (0, 0, 0, 0),
+    )
+    icon.alpha_composite(
+        resized,
+        (
+            (WHIRLWIND_ICON_SIZE - resized.width) // 2,
+            (WHIRLWIND_ICON_SIZE - resized.height) // 2,
+        ),
+    )
+    return _map_to_palette(icon, WHIRLWIND_ICON_PALETTE)
+
+
+def _build_whirlwind_vfx_sheet() -> Image.Image:
+    whirlwind_source = _load_source("whirlwind_vfx_alpha.png")
 
     whirlwind = Image.new(
         "RGBA",
@@ -549,8 +718,11 @@ def _build_vfx_sheets() -> tuple[Image.Image, Image.Image]:
                 WHIRLWIND_VFX_FRAME_SIZE,
             )
 
-    palette = _build_palette([slash, whirlwind], 8)
-    return _map_to_palette(slash, palette), _map_to_palette(whirlwind, palette)
+    return _map_to_palette(whirlwind, VFX_PALETTE)
+
+
+def _build_vfx_sheets() -> tuple[Image.Image, Image.Image]:
+    return _build_basic_slash_sheet(), _build_whirlwind_vfx_sheet()
 
 
 def _build_palette(images: list[Image.Image], colors: int) -> list[tuple[int, int, int]]:
@@ -603,6 +775,36 @@ def _map_to_palette(
     return rgba
 
 
+def _map_to_palette_preserve_alpha(
+    image: Image.Image,
+    palette: list[tuple[int, int, int]],
+) -> Image.Image:
+    """Quantize VFX colour while retaining its soft authored silhouette."""
+    rgba = image.convert("RGBA")
+    pixels = rgba.load()
+    cache: dict[tuple[int, int, int], tuple[int, int, int]] = {}
+    for y in range(rgba.height):
+        for x in range(rgba.width):
+            red, green, blue, alpha = pixels[x, y]
+            if alpha <= SLASH_ALPHA_FLOOR:
+                pixels[x, y] = (0, 0, 0, 0)
+                continue
+            source_color = (red, green, blue)
+            mapped = cache.get(source_color)
+            if mapped is None:
+                mapped = min(
+                    palette,
+                    key=lambda color: (
+                        (source_color[0] - color[0]) ** 2
+                        + (source_color[1] - color[1]) ** 2
+                        + (source_color[2] - color[2]) ** 2
+                    ),
+                )
+                cache[source_color] = mapped
+            pixels[x, y] = (*mapped, alpha)
+    return rgba
+
+
 def _reinforce_character_edges(
     image: Image.Image,
     palette: list[tuple[int, int, int]],
@@ -642,7 +844,24 @@ def _reinforce_character_edges(
 
 def _save_portrait(movement: Image.Image) -> None:
     front = movement.crop((0, 0, FRAME_SIZE, FRAME_SIZE))
-    portrait = front.resize((128, 128), Image.Resampling.NEAREST)
+    bbox = front.getchannel("A").getbbox()
+    if bbox is None:
+        raise AssertionError("Cannot create a portrait from an empty front frame")
+    subject = front.crop(bbox)
+    portrait_scale = 6
+    enlarged = subject.resize(
+        (subject.width * portrait_scale, subject.height * portrait_scale),
+        Image.Resampling.NEAREST,
+    )
+    if enlarged.width > 128 or enlarged.height > 128:
+        raise AssertionError(
+            f"Portrait subject {enlarged.size} exceeds the 128x128 canvas"
+        )
+    portrait = Image.new("RGBA", (128, 128), (0, 0, 0, 0))
+    portrait.alpha_composite(
+        enlarged,
+        ((128 - enlarged.width) // 2, (128 - enlarged.height) // 2),
+    )
     portrait.save(OUTPUT_DIR / "portrait.png", optimize=True)
 
 
@@ -686,6 +905,7 @@ def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     movement, attack, spin, death = _build_character_sheets()
     slash, whirlwind = _build_vfx_sheets()
+    whirlwind_icon = _build_whirlwind_icon()
     outputs = {
         "hoe_cat_move.png": movement,
         "hoe_cat_attack.png": attack,
@@ -693,14 +913,53 @@ def main() -> None:
         "hoe_cat_death.png": death,
         "hoe_cat_basic_slash_vfx.png": slash,
         "hoe_cat_whirlwind_vfx.png": whirlwind,
+        "whirlwind_icon.png": whirlwind_icon,
     }
     for name, image in outputs.items():
         image.save(OUTPUT_DIR / name, optimize=True)
         _report_grid(name, image)
     _save_portrait(movement)
-    _save_preview([movement, attack, spin, death, slash, whirlwind])
+    _save_preview([movement, attack, spin, death, slash, whirlwind, whirlwind_icon])
     print(f"Saved preview: {PREVIEW_PATH}")
 
 
+def main_slash_only() -> None:
+    """Rebuild only the primary slash without touching user-edited body sheets."""
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    slash = _build_basic_slash_sheet()
+    slash.save(OUTPUT_DIR / "hoe_cat_basic_slash_vfx.png", optimize=True)
+    _report_grid("hoe_cat_basic_slash_vfx.png", slash)
+
+
+def main_portrait_only() -> None:
+    """Rebuild the UI portrait from the current runtime movement sheet."""
+    movement_path = OUTPUT_DIR / "hoe_cat_move.png"
+    if not movement_path.is_file():
+        raise FileNotFoundError(movement_path)
+    _save_portrait(Image.open(movement_path).convert("RGBA"))
+    _report_grid("portrait.png", Image.open(OUTPUT_DIR / "portrait.png"))
+
+
+def main_icon_only() -> None:
+    """Rebuild only the missing skill icon without touching body sheets."""
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    icon = _build_whirlwind_icon()
+    icon.save(OUTPUT_DIR / "whirlwind_icon.png", optimize=True)
+    _report_grid("whirlwind_icon.png", icon)
+
+
 if __name__ == "__main__":
-    main()
+    requested_mode = sys.argv[1] if len(sys.argv) > 1 else "--all"
+    if requested_mode == "--slash-only":
+        main_slash_only()
+    elif requested_mode == "--portrait-only":
+        main_portrait_only()
+    elif requested_mode == "--icon-only":
+        main_icon_only()
+    elif requested_mode == "--all":
+        main()
+    else:
+        raise SystemExit(
+            "Usage: process_hoe_cat_assets.py "
+            "[--all|--slash-only|--portrait-only|--icon-only]"
+        )
