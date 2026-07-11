@@ -41,6 +41,8 @@ var is_dead: bool = false
 var touch_damage_cooldown_left: float = 0.0
 var touched_player: Player = null
 var touching_players: Dictionary[int, Player] = {}
+var touched_plant: PlantDefense = null
+var touching_plants: Dictionary[int, PlantDefense] = {}
 var death_sequence_stage: DeathSequenceStage = DeathSequenceStage.NONE
 var death_animation_name_in_use: StringName = &""
 var physical_defense_modifiers: Dictionary = {}
@@ -118,6 +120,8 @@ func configure_multiplayer_proxy() -> void:
 	pathfinder = null
 	touched_player = null
 	touching_players.clear()
+	touched_plant = null
+	touching_plants.clear()
 	touch_damage_cooldown_left = 0.0
 	proxy_action_animation_name_in_use = &""
 	_update_movement_status_visuals()
@@ -206,6 +210,8 @@ func play_multiplayer_death_sequence() -> void:
 	set_process(false)
 	touched_player = null
 	touching_players.clear()
+	touched_plant = null
+	touching_plants.clear()
 	proxy_action_animation_name_in_use = &""
 	proxy_action_restore_token += 1
 	_set_collision_shapes_disabled(body_collision_shapes, true)
@@ -865,23 +871,37 @@ func _choose_unblocked_axis_direction(primary_direction: Vector2, secondary_dire
 
 
 func _move_until_player_contact() -> void:
-	if not touching_players.is_empty():
+	if _has_player_contact():
 		velocity = Vector2.ZERO
 		return
 	move_and_slide()
 
 
 func _has_player_contact() -> bool:
-	return not touching_players.is_empty()
+	return not touching_plants.is_empty() or not touching_players.is_empty()
 
 
 func _clear_touching_players() -> void:
 	touching_players.clear()
 	touched_player = null
+	touching_plants.clear()
+	touched_plant = null
 
 
 func _on_touch_damage_area_body_entered(body: Node2D) -> void:
 	if is_dead:
+		return
+
+	var plant := body as PlantDefense
+	if plant != null:
+		if plant.is_dead:
+			return
+		touching_plants[plant.get_instance_id()] = plant
+		touched_plant = plant
+		var died_callback := _on_touched_plant_died.bind(plant)
+		if not plant.died.is_connected(died_callback):
+			plant.died.connect(died_callback, CONNECT_ONE_SHOT)
+		_try_deal_touch_damage()
 		return
 
 	var player := body as Player
@@ -894,6 +914,13 @@ func _on_touch_damage_area_body_entered(body: Node2D) -> void:
 
 
 func _on_touch_damage_area_body_exited(body: Node2D) -> void:
+	var plant := body as PlantDefense
+	if plant != null:
+		touching_plants.erase(plant.get_instance_id())
+		if plant == touched_plant:
+			touched_plant = _select_touching_plant()
+		return
+
 	var player := body as Player
 	if player == null:
 		return
@@ -911,6 +938,23 @@ func _select_touching_player() -> Player:
 	return null
 
 
+func _select_touching_plant() -> PlantDefense:
+	for instance_id in touching_plants.keys():
+		var plant := touching_plants[instance_id] as PlantDefense
+		if is_instance_valid(plant) and not plant.is_dead:
+			return plant
+		touching_plants.erase(instance_id)
+	return null
+
+
+func _on_touched_plant_died(plant: PlantDefense) -> void:
+	if plant == null:
+		return
+	touching_plants.erase(plant.get_instance_id())
+	if touched_plant == plant:
+		touched_plant = _select_touching_plant()
+
+
 func _on_touch_damage_area_area_entered(area: Area2D) -> void:
 	if is_dead:
 		return
@@ -925,6 +969,13 @@ func _on_touch_damage_area_area_entered(area: Area2D) -> void:
 func _update_touch_damage(delta: float) -> void:
 	if touch_damage_cooldown_left > 0.0:
 		touch_damage_cooldown_left = maxf(touch_damage_cooldown_left - delta, 0.0)
+
+	if touched_plant == null or not is_instance_valid(touched_plant) or touched_plant.is_dead:
+		touched_plant = _select_touching_plant()
+	if touched_plant != null:
+		if touch_damage_cooldown_left <= 0.0:
+			_try_deal_touch_damage()
+		return
 
 	if touched_player == null:
 		touched_player = _select_touching_player()
@@ -943,9 +994,21 @@ func _update_touch_damage(delta: float) -> void:
 func _try_deal_touch_damage() -> void:
 	if is_dead:
 		return
-	if touched_player == null:
+	if touch_damage_cooldown_left > 0.0:
 		return
 	if config == null:
+		return
+	if touched_plant != null and is_instance_valid(touched_plant) and not touched_plant.is_dead:
+		var impact_direction := global_position.direction_to(touched_plant.global_position)
+		if touched_plant.receive_damage(
+			config.attack_damage,
+			self,
+			impact_direction,
+			EnemyConfig.DamageType.PHYSICAL
+		):
+			touch_damage_cooldown_left = touch_damage_interval
+		return
+	if touched_player == null:
 		return
 
 	var current_scene := get_tree().current_scene
@@ -988,6 +1051,8 @@ func _die() -> void:
 	set_process(false)
 	touched_player = null
 	touching_players.clear()
+	touched_plant = null
+	touching_plants.clear()
 	_set_collision_shapes_disabled(body_collision_shapes, true)
 	_set_collision_shapes_disabled(touch_damage_shapes, true)
 	touch_damage_area.set_deferred("monitoring", false)

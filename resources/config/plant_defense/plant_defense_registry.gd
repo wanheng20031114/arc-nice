@@ -1,0 +1,42 @@
+extends RefCounted
+class_name PlantDefenseRegistry
+
+const AGAVE_CANNON_ID: StringName = &"agave_cannon"
+
+const AGAVE_CANNON_CONFIG: PlantDefenseConfig = preload(
+	"res://resources/config/plant_defense/agave_cannon.tres"
+)
+
+const PLANT_CONFIGS := {
+	AGAVE_CANNON_ID: AGAVE_CANNON_CONFIG,
+}
+
+
+static func get_config(plant_id: StringName) -> PlantDefenseConfig:
+	return PLANT_CONFIGS.get(plant_id) as PlantDefenseConfig
+
+
+static func get_all_configs() -> Array[PlantDefenseConfig]:
+	return [AGAVE_CANNON_CONFIG]
+
+
+static func is_valid_plant_id(plant_id: StringName) -> bool:
+	var config := get_config(plant_id)
+	return config != null and config.is_valid()
+
+
+static func instantiate_plant(plant_id: StringName) -> PlantDefense:
+	var config := get_config(plant_id)
+	if config == null:
+		push_error("Unknown plant defense id: %s" % plant_id)
+		return null
+	if not config.is_valid():
+		push_error("Plant defense config is invalid: %s" % plant_id)
+		return null
+
+	var instance := config.plant_scene.instantiate()
+	var plant := instance as PlantDefense
+	if plant == null:
+		push_error("Plant defense scene root must inherit PlantDefense: %s" % plant_id)
+		instance.free()
+	return plant

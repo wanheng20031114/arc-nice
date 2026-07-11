@@ -1,0 +1,42 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/agave_cannonball.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/agave_cannon/agave_cannonball.png" id="2_texture"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_flight"]
+resource_local_to_scene = true
+radius = 4.5
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_explosion"]
+resource_local_to_scene = true
+radius = 18.0
+
+[node name="AgaveCannonball" type="Node2D"]
+z_index = 4
+script = ExtResource("1_script")
+
+[node name="CannonballSprite" type="Sprite2D" parent="."]
+texture_filter = 1
+texture = ExtResource("2_texture")
+
+[node name="FlightCast" type="ShapeCast2D" parent="."]
+target_position = Vector2(1, 0)
+shape = SubResource("CircleShape2D_flight")
+collision_mask = 5
+max_results = 8
+collide_with_areas = false
+
+[node name="ExplosionQueryArea" type="Area2D" parent="."]
+collision_layer = 0
+collision_mask = 4
+monitoring = false
+monitorable = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ExplosionQueryArea"]
+shape = SubResource("CircleShape2D_explosion")
+
+[node name="ImpactAudio" type="AudioStreamPlayer2D" parent="."]
+volume_db = -12.0
+max_polyphony = 2
+
+[connection signal="finished" from="ImpactAudio" to="." method="_on_impact_audio_finished"]

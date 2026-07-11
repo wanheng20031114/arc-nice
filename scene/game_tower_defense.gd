@@ -107,6 +107,9 @@ var player: Player = null
 @onready var merchant: ZhuangfangyiMerchant = $ZhuangfangyiMerchant
 @onready var luoxi_merchant: LuoxiMerchant = $LuoxiMerchant
 @onready var boss_container: Node2D = $BossContainer
+@onready var plant_container: Node2D = $PlantContainer
+@onready var plant_system: PlantSystem = $PlantSystem
+@onready var plant_placement_controller: PlantPlacementController = $PlantPlacementController
 @onready var damage_number_pool: DamageNumberPool = $DamageNumberPool
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
@@ -172,12 +175,16 @@ func _ready() -> void:
 		set_process(false)
 		set_physics_process(false)
 		return
+	_configure_plant_defense_system()
 	_apply_initial_player_xirang()
 	currency_hud.bind_player(player)
 	player_profile_panel.bind_player(player)
 	currency_hud.settings_requested.connect(_on_currency_hud_settings_requested)
-	currency_hud.profile_requested.connect(player_profile_panel.open)
+	currency_hud.profile_requested.connect(_on_currency_hud_profile_requested)
+	settings_panel.opened.connect(_on_exclusive_modal_opened)
 	settings_panel.closed.connect(_on_settings_panel_closed)
+	player_profile_panel.opened.connect(_on_exclusive_modal_opened)
+	player_profile_panel.closed.connect(_on_player_profile_panel_closed)
 	debug_collectible_window.collectible_requested.connect(_on_debug_collectible_requested)
 	debug_collectible_window.closed.connect(_on_debug_collectible_window_closed)
 	wave_hud.set_return_button_text("返回菜单" if runtime_mode == RuntimeMode.SINGLEPLAYER else "返回大厅")
@@ -243,6 +250,83 @@ func _configure_singleplayer_player() -> void:
 	player = player_instance
 
 
+func _configure_plant_defense_system() -> void:
+	if plant_system == null or plant_placement_controller == null or plant_container == null:
+		push_error("GameTowerDefense: 植物防御塔节点不完整，已禁用放置功能。")
+		return
+	if runtime_mode != RuntimeMode.SINGLEPLAYER:
+		plant_placement_controller.set_process_unhandled_input(false)
+		return
+
+	var placement_rect := PlantSystem.DEFAULT_PLACEMENT_AREA
+	if not bosses.is_empty():
+		var first_boss_config := bosses[0]
+		if first_boss_config != null:
+			var configured_rect := _get_boss_arena_floor_rect(first_boss_config)
+			if configured_rect.size.x > 0 and configured_rect.size.y > 0:
+				placement_rect = configured_rect
+
+	plant_system.setup(
+		ground_tile_map_layer,
+		player,
+		plant_container,
+		placement_rect
+	)
+	plant_system.clear_reserved_cells()
+	plant_system.reserve_world_position(player_spawn.global_position)
+	for spawn_point in enemy_spawn_points:
+		plant_system.reserve_world_position(spawn_point.global_position, 1)
+	if merchant != null:
+		plant_system.reserve_world_position(merchant.global_position)
+	if luoxi_merchant != null:
+		plant_system.reserve_world_position(luoxi_merchant.global_position)
+
+	plant_placement_controller.setup(plant_system, player)
+	plant_placement_controller.player_lock_requested.connect(
+		_on_plant_player_lock_requested
+	)
+	plant_placement_controller.placement_mode_changed.connect(
+		_on_plant_placement_mode_changed
+	)
+	_update_plant_placement_input_state()
+
+
+func _on_plant_player_lock_requested(_locked: bool) -> void:
+	_refresh_player_modal_ui_lock()
+
+
+func _on_plant_placement_mode_changed(active: bool) -> void:
+	if active and _has_exclusive_modal_open():
+		plant_placement_controller.cancel_placement()
+		return
+	_refresh_player_modal_ui_lock()
+
+
+func _has_exclusive_modal_open() -> bool:
+	return (
+		settings_panel.is_open()
+		or player_profile_panel.is_open()
+		or debug_collectible_window.is_open()
+	)
+
+
+func _update_plant_placement_input_state() -> void:
+	if plant_placement_controller == null:
+		return
+	var input_enabled := (
+		runtime_mode == RuntimeMode.SINGLEPLAYER
+		and player != null
+		and not player.is_dead
+		and not _has_exclusive_modal_open()
+	)
+	plant_placement_controller.set_process_unhandled_input(input_enabled)
+
+
+func _cancel_plant_placement() -> void:
+	if plant_placement_controller != null and plant_placement_controller.is_active():
+		plant_placement_controller.cancel_placement()
+
+
 func _get_selected_singleplayer_character_id() -> StringName:
 	var character_id := DEFAULT_PLAYER_CHARACTER_ID
 	if run_state != null:
@@ -283,18 +367,40 @@ func _apply_initial_player_xirang() -> void:
 
 
 func _on_currency_hud_settings_requested() -> void:
+	_cancel_plant_placement()
 	if player_profile_panel.is_open():
 		player_profile_panel.close()
 	settings_panel.open()
 	_lock_player_for_modal_ui()
+	_update_plant_placement_input_state()
+
+
+func _on_currency_hud_profile_requested() -> void:
+	_cancel_plant_placement()
+	if settings_panel.is_open():
+		settings_panel.close()
+	player_profile_panel.open()
+	_update_plant_placement_input_state()
+
+
+func _on_exclusive_modal_opened() -> void:
+	_cancel_plant_placement()
+	_update_plant_placement_input_state()
 
 
 func _on_settings_panel_closed() -> void:
 	_refresh_player_modal_ui_lock()
+	_update_plant_placement_input_state()
+
+
+func _on_player_profile_panel_closed() -> void:
+	_refresh_player_modal_ui_lock()
+	_update_plant_placement_input_state()
 
 
 func _on_debug_collectible_window_closed() -> void:
 	_refresh_player_modal_ui_lock()
+	_update_plant_placement_input_state()
 
 
 func _lock_player_for_modal_ui() -> void:
@@ -305,7 +411,15 @@ func _lock_player_for_modal_ui() -> void:
 func _refresh_player_modal_ui_lock() -> void:
 	if player == null or player.is_dead:
 		return
-	if settings_panel.is_open() or player_profile_panel.is_open() or debug_collectible_window.is_open():
+	if (
+		settings_panel.is_open()
+		or player_profile_panel.is_open()
+		or debug_collectible_window.is_open()
+		or (
+			plant_placement_controller != null
+			and plant_placement_controller.is_active()
+		)
+	):
 		player.set_controls_locked(true)
 	else:
 		player.set_controls_locked(false)
@@ -333,11 +447,14 @@ func _toggle_full_screen() -> void:
 func _toggle_debug_collectible_window() -> void:
 	if debug_collectible_window == null:
 		return
+	if not debug_collectible_window.is_open():
+		_cancel_plant_placement()
 	debug_collectible_window.toggle()
 	if debug_collectible_window.is_open():
 		_lock_player_for_modal_ui()
 	else:
 		_refresh_player_modal_ui_lock()
+	_update_plant_placement_input_state()
 
 
 func _on_debug_collectible_requested(config_path: String) -> void:
@@ -654,6 +771,7 @@ func show_local_luoxi_collectible_result(result_code: int) -> void:
 
 func _on_wave_hud_return_to_lobby_requested() -> void:
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		_cancel_plant_placement()
 		get_tree().change_scene_to_file("res://scene/main_menu.tscn")
 		return
 	return_to_lobby_requested.emit()
@@ -1556,6 +1674,7 @@ func _complete_current_step() -> void:
 
 
 func _enter_victory(emit_multiplayer: bool = true) -> void:
+	_cancel_plant_placement()
 	if emit_multiplayer and runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_revive_all_requested.emit()
 	wave_state = WaveState.VICTORY
@@ -1575,6 +1694,7 @@ func _enter_victory(emit_multiplayer: bool = true) -> void:
 func _enter_defeat() -> void:
 	if wave_state == WaveState.DEFEAT:
 		return
+	_cancel_plant_placement()
 	wave_state = WaveState.DEFEAT
 	enemy_spawn_timer.stop()
 	state_timer.stop()
@@ -1729,6 +1849,8 @@ func _prepare_linglan_boss_arena(boss_config: Resource) -> void:
 
 
 func _on_player_died() -> void:
+	_cancel_plant_placement()
+	_update_plant_placement_input_state()
 	if wave_state == WaveState.VICTORY:
 		return
 	_enter_defeat()

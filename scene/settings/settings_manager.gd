@@ -18,6 +18,8 @@ const DEFAULT_SFX_VOLUME := 100.0
 const DEFAULT_FULLSCREEN := false
 const MAX_BINDINGS_PER_ACTION := 3
 const JOYPAD_MOTION_THRESHOLD := 0.55
+const PLANT_ACTION := "plant"
+const PLANT_DEFAULT_PHYSICAL_KEYCODE := KEY_T
 
 const BINDABLE_ACTIONS: Array[String] = [
 	"move_up",
@@ -29,6 +31,7 @@ const BINDABLE_ACTIONS: Array[String] = [
 	"shoot_left",
 	"shoot_right",
 	"skill1",
+	"plant",
 	"reload",
 ]
 
@@ -51,6 +54,7 @@ var _audio_scan_elapsed: float = 0.0
 
 func _ready() -> void:
 	_ensure_audio_buses()
+	_ensure_builtin_action_defaults()
 	_capture_default_bindings()
 	apply_all()
 	set_process(true)
@@ -512,6 +516,23 @@ func _capture_default_bindings() -> void:
 	for action in BINDABLE_ACTIONS:
 		_default_events_by_action[action] = _clone_events(get_supported_events(action))
 	_defaults_captured = true
+
+
+func _ensure_builtin_action_defaults() -> void:
+	if not InputMap.has_action(PLANT_ACTION):
+		InputMap.add_action(PLANT_ACTION)
+	var has_default_plant_key := false
+	for event in InputMap.action_get_events(PLANT_ACTION):
+		if event is InputEventKey:
+			has_default_plant_key = (
+				has_default_plant_key
+				or (event as InputEventKey).physical_keycode == PLANT_DEFAULT_PHYSICAL_KEYCODE
+			)
+	if has_default_plant_key:
+		return
+	var default_event := InputEventKey.new()
+	default_event.physical_keycode = PLANT_DEFAULT_PHYSICAL_KEYCODE
+	_apply_action_events(PLANT_ACTION, [default_event])
 
 
 func _apply_saved_bindings() -> void:

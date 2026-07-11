@@ -88,6 +88,34 @@ func _test_main_menu_entry() -> void:
 			current_scene.scene_file_path == "res://scene/game_tower_defense.tscn",
 			"Current scene path must be game_tower_defense.tscn."
 		)
+	var tower_game := current_scene as GameTowerDefense
+	if tower_game != null:
+		var placement_controller := tower_game.get_node_or_null(
+			"PlantPlacementController"
+		) as PlantPlacementController
+		_expect(placement_controller != null, "Tower-defense game must expose PlantPlacementController.")
+		if placement_controller != null:
+			_expect(
+				placement_controller.is_processing_unhandled_input(),
+				"PlantPlacementController must receive unhandled input in single-player tower defense."
+			)
+			var plant_press := InputEventAction.new()
+			plant_press.action = &"plant"
+			plant_press.pressed = true
+			Input.parse_input_event(plant_press)
+			for _input_frame in range(2):
+				await process_frame
+			_expect(placement_controller.is_selecting(), "plant action must enter SELECTING state.")
+			_expect(
+				placement_controller.selection_hud.is_open(),
+				"plant action must visibly open the plant selection HUD."
+			)
+			var plant_release := InputEventAction.new()
+			plant_release.action = &"plant"
+			plant_release.pressed = false
+			Input.parse_input_event(plant_release)
+			Input.flush_buffered_events()
+			placement_controller.cancel_placement()
 
 
 func _expect(condition: bool, message: String) -> void:

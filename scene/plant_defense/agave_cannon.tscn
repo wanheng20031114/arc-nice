@@ -1,0 +1,69 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/agave_cannon.gd" id="1_script"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/plant_defense/agave_body_sprite_frames.tres" id="2_body_frames"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/plant_defense/agave_cannon_sprite_frames.tres" id="3_cannon_frames"]
+[ext_resource type="PackedScene" path="res://scene/player_health_bar.tscn" id="4_health_bar"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+resource_local_to_scene = true
+size = Vector2(28, 28)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_targeting"]
+resource_local_to_scene = true
+radius = 160.0
+
+[node name="AgaveCannon" type="StaticBody2D"]
+collision_layer = 512
+collision_mask = 0
+script = ExtResource("1_script")
+
+[node name="BodySprite" type="AnimatedSprite2D" parent="."]
+texture_filter = 1
+z_index = 1
+sprite_frames = ExtResource("2_body_frames")
+animation = &"idle"
+autoplay = "idle"
+
+[node name="CannonPivot" type="Node2D" parent="."]
+position = Vector2(4, -8)
+z_index = 2
+
+[node name="CannonSprite" type="AnimatedSprite2D" parent="CannonPivot"]
+texture_filter = 1
+sprite_frames = ExtResource("3_cannon_frames")
+animation = &"idle"
+autoplay = "idle"
+
+[node name="Muzzle" type="Marker2D" parent="CannonPivot"]
+position = Vector2(13, 0)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_body")
+
+[node name="TargetingArea" type="Area2D" parent="."]
+collision_layer = 0
+collision_mask = 4
+monitorable = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="TargetingArea"]
+shape = SubResource("CircleShape2D_targeting")
+
+[node name="AttackTimer" type="Timer" parent="."]
+wait_time = 2.0
+
+[node name="HealthBar" parent="." instance=ExtResource("4_health_bar")]
+offset_left = -12.0
+offset_top = -38.0
+offset_right = 12.0
+offset_bottom = -33.0
+
+[node name="FireAudio" type="AudioStreamPlayer2D" parent="."]
+volume_db = -10.0
+max_polyphony = 3
+
+[connection signal="animation_finished" from="CannonPivot/CannonSprite" to="." method="_on_cannon_sprite_animation_finished"]
+[connection signal="frame_changed" from="CannonPivot/CannonSprite" to="." method="_on_cannon_sprite_frame_changed"]
+[connection signal="body_entered" from="TargetingArea" to="." method="_on_targeting_area_body_entered"]
+[connection signal="body_exited" from="TargetingArea" to="." method="_on_targeting_area_body_exited"]
+[connection signal="timeout" from="AttackTimer" to="." method="_on_attack_timer_timeout"]

@@ -1,0 +1,39 @@
+[gd_resource type="SpriteFrames" load_steps=7 format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/agave_cannon/agave_cannon_idle_0.png" id="1_idle"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/agave_cannon/agave_cannon_fire_0.png" id="2_fire_0"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/agave_cannon/agave_cannon_fire_1.png" id="3_fire_1"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/agave_cannon/agave_cannon_fire_2.png" id="4_fire_2"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/agave_cannon/agave_cannon_fire_3.png" id="5_fire_3"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/agave_cannon/agave_cannon_fire_4.png" id="6_fire_4"]
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("2_fire_0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_fire_1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_fire_2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_fire_3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("6_fire_4")
+}],
+"loop": false,
+"name": &"fire",
+"speed": 12.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("1_idle")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 1.0
+}]

@@ -18,6 +18,8 @@
 [ext_resource type="PackedScene" path="res://scene/settings/settings_panel.tscn" id="19_settings_panel"]
 [ext_resource type="PackedScene" uid="uid://cvh5s1gowuh0r" path="res://scene/luoxi_merchant.tscn" id="20_luoxi"]
 [ext_resource type="PackedScene" path="res://scene/debug_collectible_window.tscn" id="21_debug_collectibles"]
+[ext_resource type="Script" path="res://scene/plant_defense/plant_system.gd" id="22_plant_system"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/plant_placement_controller.tscn" id="23_plant_placement"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -176,6 +178,13 @@ position = Vector2(167, 94)
 position = Vector2(232, 94)
 
 [node name="BossContainer" type="Node2D" parent="." unique_id=1704115178]
+
+[node name="PlantContainer" type="Node2D" parent="."]
+
+[node name="PlantSystem" type="Node" parent="."]
+script = ExtResource("22_plant_system")
+
+[node name="PlantPlacementController" parent="." instance=ExtResource("23_plant_placement")]
 
 [node name="WorldBounds" type="Node2D" parent="." unique_id=905261702]
 

@@ -1,6 +1,9 @@
 extends CanvasLayer
 class_name PlayerProfilePanel
 
+signal opened
+signal closed
+
 const DESIGN_SIZE := Vector2(724.0, 543.0)
 const PORTRAIT_DEFAULT_POSITION := Vector2(150.0, 178.0)
 const PORTRAIT_WITH_SKILL_POSITION := Vector2(150.0, 147.0)
@@ -140,6 +143,7 @@ func open() -> void:
 	overlay.visible = true
 	set_process(true)
 	tracked_player.set_controls_locked(true)
+	opened.emit()
 	selected_slot_index = -1
 	_refresh_inventory()
 	_refresh_upgrades()
@@ -155,6 +159,7 @@ func close() -> void:
 	_clear_inventory_selection()
 	if tracked_player != null and not tracked_player.is_dead:
 		tracked_player.set_controls_locked(false)
+	closed.emit()
 
 
 func toggle() -> void:

@@ -370,6 +370,16 @@ func _test_hotkey_defaults_and_event_helpers() -> void:
 	_expect(has_keyboard_r, "reload default binding must include R.")
 	_expect(has_joy_reload, "reload default binding must include gamepad button 10.")
 
+	var plant_events: Array = settings.call("get_supported_events", "plant")
+	var has_keyboard_t := false
+	for event in plant_events:
+		if event is InputEventKey:
+			has_keyboard_t = (
+				has_keyboard_t
+				or (event as InputEventKey).physical_keycode == KEY_T
+			)
+	_expect(has_keyboard_t, "plant default binding must include T.")
+
 	var captured_key := InputEventKey.new()
 	captured_key.pressed = true
 	captured_key.physical_keycode = KEY_Z

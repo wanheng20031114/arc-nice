@@ -1,0 +1,74 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/plant_placement_controller.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/plant_placement_preview.tscn" id="2_preview"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/plant_selection_hud.tscn" id="3_hud"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hint"]
+bg_color = Color(0.018, 0.05, 0.03, 0.94)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.42, 0.84, 0.46, 0.88)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+shadow_color = Color(0, 0, 0, 0.38)
+shadow_size = 6
+shadow_offset = Vector2(0, 2)
+
+[node name="PlantPlacementController" type="Node2D"]
+script = ExtResource("1_script")
+
+[node name="MarkerContainer" type="Node2D" parent="."]
+
+[node name="PlantPlacementPreview" parent="." instance=ExtResource("2_preview")]
+
+[node name="PlantSelectionHUD" parent="." instance=ExtResource("3_hud")]
+
+[node name="PlacementInstructions" type="CanvasLayer" parent="."]
+layer = 31
+
+[node name="Root" type="Control" parent="PlacementInstructions"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Bottom" type="CenterContainer" parent="PlacementInstructions/Root"]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -54.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="PlacementInstructions/Root/Bottom"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_hint")
+
+[node name="Margin" type="MarginContainer" parent="PlacementInstructions/Root/Bottom/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 13
+theme_override_constants/margin_top = 7
+theme_override_constants/margin_right = 13
+theme_override_constants/margin_bottom = 7
+
+[node name="HintLabel" type="Label" parent="PlacementInstructions/Root/Bottom/Panel/Margin"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.82, 1, 0.78, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 12
+text = "绿色交点均为可放置位置  ·  左键放置  ·  右键 / Esc / 植物键取消"
+horizontal_alignment = 1
