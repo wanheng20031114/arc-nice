@@ -1,11 +1,12 @@
 [gd_scene format=3 uid="uid://h7x0o8vhlixl"]
 
-[ext_resource type="Script" path="res://scene/player/weishidaier/player_weishidaier.gd" id="1_onrkg"]
+[ext_resource type="Script" uid="uid://d2l5e2o1funnd" path="res://scene/player/weishidaier/player_weishidaier.gd" id="1_onrkg"]
 [ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="2_ct4mp"]
 [ext_resource type="Texture2D" uid="uid://b5sr8ua78d4vj" path="res://resources/texture/player/weishidaier/armed_effect.png" id="3_i3pqv"]
 [ext_resource type="AudioStream" uid="uid://dmftmglw7yqwq" path="res://resources/audio/Cowboy_gunshot.wav" id="4_r4x4y"]
 [ext_resource type="AudioStream" uid="uid://cavje5drmqudf" path="res://resources/audio/cowboy_gunload.wav" id="5_6f8ak"]
 [ext_resource type="AudioStream" uid="uid://brmwioaechoqc" path="res://resources/audio/Cowboy_Footstep.wav" id="6_n4ivg"]
+[ext_resource type="Shader" uid="uid://d3dvdthptsr0k" path="res://scene/player/effects/dash_ready_glow.gdshader" id="7_3jebs"]
 [ext_resource type="AudioStream" uid="uid://cutwkun6hroo5" path="res://resources/audio/cowboy_dead.wav" id="7_splgi"]
 [ext_resource type="AudioStream" uid="uid://vc2m1l0d1rov" path="res://resources/audio/cowboy_powerup.wav" id="8_rhcc0"]
 [ext_resource type="AudioStream" uid="uid://by1qh436lhf54" path="res://resources/audio/Cowboy_Secret.wav" id="9_6vinx"]
@@ -109,6 +110,15 @@ animations = [{
 "speed": 8.0
 }]
 
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_l0nxm"]
+resource_local_to_scene = true
+shader = ExtResource("7_3jebs")
+shader_parameter/ready_strength = 1.0
+shader_parameter/glow_color = Color(0.08, 1.55, 1.35, 1)
+shader_parameter/glow_opacity = 0.18
+shader_parameter/pulse_speed = 2.2
+shader_parameter/pulse_amount = 0.1
+
 [sub_resource type="CircleShape2D" id="CircleShape2D_sh265"]
 radius = 7.5
 
@@ -133,7 +143,10 @@ frame_progress = 0.07989768
 
 [node name="MoveSpeedTrailEffect" parent="." unique_id=255299608 instance=ExtResource("14_speed_trail")]
 
-[node name="DashReadyIndicator" parent="." instance=ExtResource("17_dash_ready")]
+[node name="DashReadyIndicator" parent="." unique_id=651272184 instance=ExtResource("17_dash_ready")]
+material = SubResource("ShaderMaterial_l0nxm")
+offset_top = 3.0
+offset_bottom = 11.0
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=416011949]
 position = Vector2(0, 1)
@@ -141,7 +154,7 @@ shape = SubResource("CircleShape2D_sh265")
 
 [node name="ShootingTimer" type="Timer" parent="." unique_id=1653986996]
 
-[node name="DashCooldownTimer" type="Timer" parent="."]
+[node name="DashCooldownTimer" type="Timer" parent="." unique_id=1546025839]
 process_callback = 0
 wait_time = 5.0
 one_shot = true
