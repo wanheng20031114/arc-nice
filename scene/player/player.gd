@@ -170,7 +170,7 @@ var _last_skill_activation_msec: int = -MIN_SKILL_ACTIVATION_INTERVAL_MSEC
 var _base_stats_initialized: bool = false
 var _base_move_speed: float = 0.0
 var _base_max_health: int = 0
-var _base_attack_damage: int = 0
+var _base_attack_damage: float = 0.0
 var _base_physical_defense: int = 0
 var _base_magic_defense: int = 0
 var _base_fire_interval: float = 0.0
@@ -1615,7 +1615,8 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 			active_periodic_keys[_get_collectible_runtime_key(item)] = true
 
 	var old_max_health := max_health
-	attack_damage = maxi(_base_attack_damage + attack_bonus, 1)
+	# 允许角色以半点为单位配置成长，但对外战斗伤害始终保持整数。
+	attack_damage = maxi(roundi(_base_attack_damage) + attack_bonus, 1)
 	max_health = maxi(_base_max_health + max_health_bonus, 1)
 	move_speed = maxf(_base_move_speed + move_speed_bonus, 0.0)
 	physical_defense = maxi(_base_physical_defense + physical_defense_bonus, 0)

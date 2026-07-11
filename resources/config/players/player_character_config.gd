@@ -26,7 +26,7 @@ class_name PlayerCharacterConfig
 @export_range(0.0, 9999.0, 1.0, "or_greater") var starting_move_speed: float = 120.0
 
 @export_group("Upgrade Stats")
-@export_range(1, 9999, 1, "or_greater") var attack_damage_per_upgrade: int = 4
+@export_range(0.5, 9999.0, 0.5, "or_greater") var attack_damage_per_upgrade: float = 4.0
 
 @export_group("Card Palette")
 @export var card_background_color: Color = Color(0.09, 0.10, 0.12, 0.98)

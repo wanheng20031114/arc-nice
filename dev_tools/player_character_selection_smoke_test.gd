@@ -118,8 +118,12 @@ func _test_registry_and_run_state() -> void:
 		"Hoe Cat config must expose 80 starting health."
 	)
 	_expect(
-		PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.HOE_CAT_ID).starting_attack_damage == 15,
-		"Hoe Cat config must expose 15 starting attack damage."
+		PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.HOE_CAT_ID).starting_attack_damage == 15
+		and is_equal_approx(
+			PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.HOE_CAT_ID).attack_damage_per_upgrade,
+			5.5
+		),
+		"Hoe Cat config must expose 15 starting attack damage and 5.5 attack per upgrade."
 	)
 	_expect(
 		PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.HOE_CAT_ID).english_name == "Hoe Cat"

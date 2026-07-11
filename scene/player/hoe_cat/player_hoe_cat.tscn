@@ -92,6 +92,7 @@ script = ExtResource("1_script")
 basic_attack_query_shape = SubResource("CircleShape2D_basic_attack")
 whirlwind_query_shape = SubResource("CircleShape2D_whirlwind")
 character_id = &"hoe_cat"
+dash_cooldown = 4.0
 
 [node name="BodySprite" type="AnimatedSprite2D" parent="." unique_id=1137619000]
 z_index = 1
@@ -143,7 +144,7 @@ shape = SubResource("CircleShape2D_body")
 
 [node name="DashCooldownTimer" type="Timer" parent="." unique_id=1942992223]
 process_callback = 0
-wait_time = 5.0
+wait_time = 4.0
 one_shot = true
 
 [node name="PrimaryImpactTimer" type="Timer" parent="." unique_id=1531114160]

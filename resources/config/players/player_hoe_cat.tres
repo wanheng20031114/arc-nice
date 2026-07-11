@@ -19,6 +19,7 @@ skill_icon_texture = "res://resources/texture/player/hoe_cat/whirlwind_icon.png"
 starting_max_health = 80
 starting_attack_damage = 15
 attack_speed_units_per_attack = 200.0
+attack_damage_per_upgrade = 5.5
 card_background_color = Color(0.137, 0.125, 0.082, 0.98)
 card_edge_color = Color(0.827, 0.608, 0.259, 1)
 card_hover_edge_color = Color(0.949, 0.82, 0.482, 1)

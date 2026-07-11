@@ -44,9 +44,9 @@ func _run() -> void:
 	_test_shader_contracts()
 	_test_character_dash_override_contract()
 	await _test_collectible_dash_modifiers()
-	await _test_player_scene(WEISHIDAIER_SCENE, "Weishidaier")
-	await _test_player_scene(HOE_CAT_SCENE, "Hoe Cat")
-	await _test_player_scene(TIYI_SCENE, "Tiyi")
+	await _test_player_scene(WEISHIDAIER_SCENE, "Weishidaier", 35.0, 5.0)
+	await _test_player_scene(HOE_CAT_SCENE, "Hoe Cat", 35.0, 4.0)
+	await _test_player_scene(TIYI_SCENE, "Tiyi", 35.0, 5.0)
 	await _test_dash_wall_collision()
 	await _test_dash_preserves_existing_invincibility()
 	await _test_multiplayer_dash_protection()
@@ -190,7 +190,12 @@ func _test_collectible_dash_modifiers() -> void:
 	run_state.begin_new_run()
 
 
-func _test_player_scene(player_scene: PackedScene, label: String) -> void:
+func _test_player_scene(
+	player_scene: PackedScene,
+	label: String,
+	expected_dash_distance: float,
+	expected_dash_cooldown: float
+) -> void:
 	var player := player_scene.instantiate() as Player
 	_expect(player != null, "%s scene must instantiate as Player." % label)
 	if player == null:
@@ -208,21 +213,34 @@ func _test_player_scene(player_scene: PackedScene, label: String) -> void:
 		ready_material = ready_indicator.material as ShaderMaterial
 
 	_expect(
-		is_equal_approx(player.get_dash_distance(), 35.0),
-		"%s default dash distance must be 35 pixels." % label
+		is_equal_approx(player.get_dash_distance(), expected_dash_distance),
+		"%s default dash distance must be %.1f pixels."
+		% [label, expected_dash_distance]
 	)
 	_expect(
-		is_equal_approx(player.get_dash_cooldown(), 5.0),
-		"%s default dash cooldown must be 5 seconds." % label
+		is_equal_approx(player.get_dash_cooldown(), expected_dash_cooldown),
+		"%s default dash cooldown must be %.1f seconds."
+		% [label, expected_dash_cooldown]
 	)
 	_expect(cooldown_timer != null, "%s must author a DashCooldownTimer node." % label)
 	_expect(
 		cooldown_timer != null
 		and cooldown_timer.one_shot
 		and cooldown_timer.process_callback == Timer.TIMER_PROCESS_PHYSICS
-		and is_equal_approx(cooldown_timer.wait_time, 5.0),
-		"%s dash cooldown must be a five-second one-shot physics Timer." % label
+		and is_equal_approx(cooldown_timer.wait_time, expected_dash_cooldown),
+		"%s dash cooldown Timer must match its %.1f-second character baseline."
+		% [label, expected_dash_cooldown]
 	)
+	player.collectible_dash_cooldown_reduction = 2.0
+	_expect(
+		is_equal_approx(
+			player.get_dash_cooldown(),
+			maxf(expected_dash_cooldown - 2.0, 0.0)
+		),
+		"%s must apply dash cooldown collectibles relative to its own baseline."
+		% label
+	)
+	player.collectible_dash_cooldown_reduction = 0.0
 	_expect(ready_indicator != null, "%s must author a DashReadyIndicator node." % label)
 	_expect(ready_indicator != null and ready_indicator.visible, "%s local ready glow must start visible." % label)
 	_expect(
@@ -278,7 +296,7 @@ func _test_player_scene(player_scene: PackedScene, label: String) -> void:
 	_expect(cooldown_timer != null and cooldown_timer.is_stopped(), "%s rejected dash must not consume cooldown." % label)
 
 	var start_position := player.global_position
-	var expected_dash_distance := player.get_dash_distance()
+	var captured_dash_distance := player.get_dash_distance()
 	var started := bool(player.call("_try_start_dash", Vector2.ONE))
 	_expect(started, "%s must dash while movement input is non-zero." % label)
 	_expect(player.is_dashing(), "%s must enter dash state immediately." % label)
@@ -313,9 +331,9 @@ func _test_player_scene(player_scene: PackedScene, label: String) -> void:
 	)
 	var displacement := player.global_position - start_position
 	_expect(
-		absf(displacement.length() - expected_dash_distance) <= 0.75,
+		absf(displacement.length() - captured_dash_distance) <= 0.75,
 		"%s unobstructed dash must travel about %.1f px (actual %.3f)."
-		% [label, expected_dash_distance, displacement.length()]
+		% [label, captured_dash_distance, displacement.length()]
 	)
 	_expect(
 		absf(absf(displacement.x) - absf(displacement.y)) <= 0.5,

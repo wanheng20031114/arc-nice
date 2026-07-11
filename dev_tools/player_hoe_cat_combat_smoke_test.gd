@@ -118,6 +118,7 @@ func _run() -> void:
 	_stop_audio_players(player)
 
 	_test_starting_stats_and_attack_speed_contract()
+	await _test_attack_upgrade_progression()
 	_test_projectile_only_pickup_is_rejected()
 	_test_free_attack_direction_preservation()
 	await _test_generic_collectible_hooks_for_both_characters()
@@ -179,6 +180,31 @@ func _test_starting_stats_and_attack_speed_contract() -> void:
 	_expect(is_equal_approx(float(player.call("_get_effective_fire_interval")), 0.5), "Hoe Cat attack interval must return to 0.5 seconds after Rapid expires.")
 	_expect(not bool(player.call("_try_start_reload")), "Hoe Cat must reject reload because it has no ammunition resource.")
 	_expect(not player.get_multiplayer_is_reloading(), "Hoe Cat must never enter the reload state.")
+
+
+func _test_attack_upgrade_progression() -> void:
+	var packed_scene := load(HOE_CAT_SCENE_PATH) as PackedScene
+	var upgrade_player := packed_scene.instantiate() as PlayerHoeCat
+	_expect(upgrade_player != null, "Hoe Cat must instantiate for attack progression testing.")
+	if upgrade_player == null:
+		return
+	test_root.add_child(upgrade_player)
+	await process_frame
+	_stop_audio_players(upgrade_player)
+	var expected_attack_damage := [21, 26, 32, 37, 43, 48, 54, 59, 65, 70]
+	for upgrade_index in range(expected_attack_damage.size()):
+		upgrade_player.upgrade_attack()
+		_expect(
+			upgrade_player.attack_damage == expected_attack_damage[upgrade_index],
+			"Hoe Cat attack upgrade level %d must reach %d attack damage."
+			% [upgrade_index + 1, expected_attack_damage[upgrade_index]]
+		)
+	_expect(
+		upgrade_player.attack_damage == 70,
+		"Ten Hoe Cat attack upgrades must raise attack damage from 15 to 70."
+	)
+	upgrade_player.queue_free()
+	await process_frame
 
 
 func _test_projectile_only_pickup_is_rejected() -> void:
