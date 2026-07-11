@@ -77,11 +77,55 @@ func _test_main_menu_entry() -> void:
 
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.run_started = false
+	run_state.set_selected_character(PlayerCharacterRegistry.WEISHIDAIER_ID)
 	tower_defense_button.pressed.emit()
+	await process_frame
+
+	var character_overlay := main_menu.get_node_or_null(
+		"PlayerCharacterChoiceOverlay"
+	) as PlayerCharacterChoiceOverlay
+	_expect(
+		character_overlay != null and character_overlay.is_open(),
+		"Tower-defense entry must open character selection before starting the run."
+	)
+	_expect(
+		character_overlay != null
+		and character_overlay.selected_character_id == PlayerCharacterRegistry.WEISHIDAIER_ID,
+		"Tower-defense selection must open on the character currently stored in RunState."
+	)
+	_expect(not run_state.run_started, "Opening tower-defense selection must not start the run yet.")
+	_expect(current_scene == main_menu, "Tower-defense selection must remain on the main menu.")
+	if character_overlay == null:
+		return
+
+	character_overlay.close()
+	await process_frame
+	_expect(
+		tower_defense_button.has_focus(),
+		"Closing tower-defense character selection must restore focus to its entry button."
+	)
+	_expect(not run_state.run_started, "Cancelling tower-defense selection must not start a run.")
+
+	tower_defense_button.pressed.emit()
+	await process_frame
+	_expect(character_overlay.is_open(), "Tower-defense character selection must reopen after cancellation.")
+	character_overlay.call("_select_character", PlayerCharacterRegistry.HOE_CAT_ID)
+	_expect(
+		run_state.get_selected_character_id() == PlayerCharacterRegistry.WEISHIDAIER_ID
+		and not run_state.run_started,
+		"Browsing tower-defense characters must not mutate RunState before confirmation."
+	)
+	character_overlay.confirmation_lock_time_left = 0.0
+	character_overlay.call("_confirm_selection")
+	await create_timer(0.4).timeout
 	for _frame in range(3):
 		await process_frame
 
 	_expect(run_state.run_started, "Tower-defense entry must begin a new single-player run.")
+	_expect(
+		run_state.get_selected_character_id() == PlayerCharacterRegistry.HOE_CAT_ID,
+		"Tower-defense entry must persist the character confirmed in the shared selection flow."
+	)
 	_expect(current_scene is GameTowerDefense, "Tower-defense entry must load game_tower_defense.tscn.")
 	if current_scene != null:
 		_expect(
@@ -90,6 +134,11 @@ func _test_main_menu_entry() -> void:
 		)
 	var tower_game := current_scene as GameTowerDefense
 	if tower_game != null:
+		_expect(
+			tower_game.player != null
+			and tower_game.player.get_character_id() == PlayerCharacterRegistry.HOE_CAT_ID,
+			"Tower-defense game must instantiate the selected character just like standard single-player."
+		)
 		var placement_controller := tower_game.get_node_or_null(
 			"PlantPlacementController"
 		) as PlantPlacementController

@@ -3,9 +3,17 @@ extends Control
 const GAME_SCENE_PATH := "res://scene/game.tscn"
 const GAME_TOWER_DEFENSE_SCENE_PATH := "res://scene/game_tower_defense.tscn"
 
+enum SingleplayerDestination {
+	STANDARD,
+	TOWER_DEFENSE,
+}
+
 @onready var settings_panel: Control = $SettingsPanel
 @onready var singleplayer_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/SinglePlayer
+@onready var tower_defense_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/TowerDefense
 @onready var character_choice_overlay: PlayerCharacterChoiceOverlay = $PlayerCharacterChoiceOverlay
+
+var pending_singleplayer_destination := SingleplayerDestination.STANDARD
 
 
 func _ready() -> void:
@@ -14,14 +22,17 @@ func _ready() -> void:
 
 
 func _on_singleplayer_pressed() -> void:
-	var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
-	character_choice_overlay.open(run_state.get_selected_character_id())
+	_open_singleplayer_character_selection(SingleplayerDestination.STANDARD)
 
 
 func _on_tower_defense_pressed() -> void:
+	_open_singleplayer_character_selection(SingleplayerDestination.TOWER_DEFENSE)
+
+
+func _open_singleplayer_character_selection(destination: SingleplayerDestination) -> void:
+	pending_singleplayer_destination = destination
 	var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
-	run_state.begin_new_run()
-	get_tree().change_scene_to_file(GAME_TOWER_DEFENSE_SCENE_PATH)
+	character_choice_overlay.open(run_state.get_selected_character_id())
 
 
 func _on_character_confirmed(character_id: StringName) -> void:
@@ -30,11 +41,20 @@ func _on_character_confirmed(character_id: StringName) -> void:
 		push_error("Main menu received an invalid character selection: %s" % character_id)
 		return
 	run_state.begin_new_run(character_id)
-	get_tree().change_scene_to_file(GAME_SCENE_PATH)
+	get_tree().change_scene_to_file(_get_pending_singleplayer_scene_path())
+
+
+func _get_pending_singleplayer_scene_path() -> String:
+	if pending_singleplayer_destination == SingleplayerDestination.TOWER_DEFENSE:
+		return GAME_TOWER_DEFENSE_SCENE_PATH
+	return GAME_SCENE_PATH
 
 
 func _on_character_selection_closed() -> void:
-	singleplayer_button.grab_focus()
+	if pending_singleplayer_destination == SingleplayerDestination.TOWER_DEFENSE:
+		tower_defense_button.grab_focus()
+	else:
+		singleplayer_button.grab_focus()
 
 
 func _on_multiplayer_pressed() -> void:
