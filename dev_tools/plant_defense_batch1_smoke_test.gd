@@ -1,7 +1,7 @@
 extends SceneTree
 
 const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
-const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
+const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const PLANT_SYSTEM_SCRIPT := preload("res://scene/plant_defense/plant_system.gd")
 const PLACEMENT_CONTROLLER_SCENE := preload(
 	"res://scene/plant_defense/plant_placement_controller.tscn"

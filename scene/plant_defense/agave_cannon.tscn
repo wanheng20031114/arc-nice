@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scene/plant_defense/agave_cannon.gd" id="1_script"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/plant_defense/agave_body_sprite_frames.tres" id="2_body_frames"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/plant_defense/agave_cannon_sprite_frames.tres" id="3_cannon_frames"]
-[ext_resource type="PackedScene" path="res://scene/player_health_bar.tscn" id="4_health_bar"]
+[ext_resource type="PackedScene" path="res://scene/player/ui/player_health_bar.tscn" id="4_health_bar"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 resource_local_to_scene = true
