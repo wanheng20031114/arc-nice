@@ -305,6 +305,11 @@ func request_tiyi_high_noon() -> bool:
 	var player_node := game.get_player_for_peer(peer_id)
 	if not _is_valid_tiyi_player(player_node):
 		return false
+	if (
+		bool(player_node.call("is_high_noon_active"))
+		or _active_tiyi_activations_by_peer.has(peer_id)
+	):
+		return false
 	if net_manager.is_host():
 		var activation_id := int(_tiyi_activation_sequences_by_peer.get(peer_id, 0)) + 1
 		return _apply_authoritative_tiyi_high_noon_request(peer_id, activation_id)
@@ -375,19 +380,13 @@ func resolve_tiyi_high_noon(
 		&"net_tiyi_high_noon_finished",
 		[peer_id, activation_id, resolved_ids, resolved_positions]
 	)
-	var base_damage := floori(float(player_node.attack_damage) * 4.0)
-	var outgoing_damage := player_node.get_outgoing_damage(
-		base_damage,
-		EnemyConfig.DamageType.PHYSICAL
-	)
 	for target_index in range(resolved_enemies.size()):
 		var enemy := resolved_enemies[target_index]
 		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
 			continue
 		var enemy_net_id := int(resolved_ids[target_index])
-		var resolved_damage := player_node.resolve_attack_damage_against_enemy(
-			outgoing_damage,
-			enemy
+		var resolved_damage := int(
+			player_node.call("get_high_noon_damage_against_enemy", enemy)
 		)
 		var impact_direction := -player_node.global_position.direction_to(enemy.global_position)
 		_apply_confirmed_enemy_damage(
@@ -395,7 +394,7 @@ func resolve_tiyi_high_noon(
 			enemy,
 			resolved_damage,
 			impact_direction,
-			EnemyConfig.DamageType.PHYSICAL,
+			EnemyConfig.DamageType.MAGIC,
 			false
 		)
 
@@ -1350,10 +1349,14 @@ func net_tiyi_high_noon_started(peer_id: int, activation_id: int) -> void:
 	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id > 0 and sender_id != _get_host_peer_id():
 		return
+	if _active_tiyi_activations_by_peer.has(peer_id):
+		return
 	if activation_id <= int(_last_tiyi_activation_seen_by_peer.get(peer_id, 0)):
 		return
 	var player_node := game.get_player_for_peer(peer_id)
 	if not _is_valid_tiyi_player(player_node):
+		return
+	if bool(player_node.call("is_high_noon_active")):
 		return
 	_last_tiyi_activation_seen_by_peer[peer_id] = activation_id
 	_active_tiyi_activations_by_peer[peer_id] = activation_id
@@ -2120,7 +2123,7 @@ func _get_authoritative_client_projectile_parameters(
 			var sniper_result := {
 				"damage": owner_player.get_outgoing_damage(
 					owner_player.attack_damage,
-					EnemyConfig.DamageType.PHYSICAL
+					EnemyConfig.DamageType.MAGIC
 				),
 				"speed": sniper_bullet.speed,
 				"lifetime": sniper_bullet.max_lifetime,
@@ -2211,7 +2214,8 @@ func _remember_projectile_record(
 func _get_authoritative_projectile_damage(
 	projectile_id: int,
 	owner_peer_id: int,
-	reported_damage: int
+	reported_damage: int,
+	projectile_type: StringName = &"player_bullet"
 ) -> int:
 	if not _is_projectile_id_valid_for_owner(projectile_id, owner_peer_id):
 		return -1
@@ -2223,10 +2227,18 @@ func _get_authoritative_projectile_damage(
 		if int(record.get("owner_peer_id", 0)) != owner_peer_id:
 			return -1
 		return int(record.get("damage", -1))
-	return _get_bounded_player_projectile_damage(owner_peer_id, reported_damage)
+	return _get_bounded_player_projectile_damage(
+		owner_peer_id,
+		reported_damage,
+		projectile_type
+	)
 
 
-func _get_bounded_player_projectile_damage(owner_peer_id: int, reported_damage: int) -> int:
+func _get_bounded_player_projectile_damage(
+	owner_peer_id: int,
+	reported_damage: int,
+	projectile_type: StringName = &"player_bullet"
+) -> int:
 	if reported_damage <= 0:
 		return -1
 	var owner_player: Player = null
@@ -2236,7 +2248,7 @@ func _get_bounded_player_projectile_damage(owner_peer_id: int, reported_damage: 
 		return -1
 	var max_authoritative_damage := owner_player.get_outgoing_damage(
 		owner_player.attack_damage,
-		EnemyConfig.DamageType.PHYSICAL
+		_get_player_projectile_damage_type(projectile_type)
 	)
 	if owner_player.has_skill1():
 		max_authoritative_damage = maxi(
@@ -2244,6 +2256,14 @@ func _get_bounded_player_projectile_damage(owner_peer_id: int, reported_damage: 
 			owner_player.get_skill1_projectile_damage()
 		)
 	return clampi(reported_damage, 1, max_authoritative_damage)
+
+
+func _get_player_projectile_damage_type(
+	projectile_type: StringName
+) -> EnemyConfig.DamageType:
+	if projectile_type == TIYI_SNIPER_PROJECTILE_TYPE:
+		return EnemyConfig.DamageType.MAGIC
+	return EnemyConfig.DamageType.PHYSICAL
 
 
 func _is_projectile_id_valid_for_owner(projectile_id: int, owner_peer_id: int) -> bool:
@@ -2520,7 +2540,8 @@ func _apply_enemy_hit_report(
 	var authoritative_damage := _get_authoritative_projectile_damage(
 		projectile_id,
 		owner_peer_id,
-		reported_damage
+		reported_damage,
+		projectile_type
 	)
 	if authoritative_damage <= 0:
 		return
@@ -2552,7 +2573,7 @@ func _apply_enemy_hit_report(
 		enemy,
 		authoritative_damage,
 		impact_direction,
-		EnemyConfig.DamageType.PHYSICAL
+		_get_player_projectile_damage_type(projectile_type)
 	):
 		return
 	if consumes_first_confirmed_hit:

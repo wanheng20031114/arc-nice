@@ -7,13 +7,13 @@ const SNIPER_BULLET_SCENE := preload(
 const SNIPER_HIT_EFFECT_SCENE := preload(
 	"res://scene/player/tiyi/tiyi_sniper_hit_effect.tscn"
 )
-const HIGH_NOON_DURATION := 5.0
+const HIGH_NOON_DURATION := 4.0
 const HIGH_NOON_LOCK_INTERVAL := 0.25
-const HIGH_NOON_LAST_LOCK_TIME := 4.75
-const HIGH_NOON_RANGE := 200.0
+const HIGH_NOON_LAST_LOCK_TIME := HIGH_NOON_DURATION - HIGH_NOON_LOCK_INTERVAL
+const HIGH_NOON_RANGE := 350.0
 const HIGH_NOON_RANGE_SQUARED := HIGH_NOON_RANGE * HIGH_NOON_RANGE
 const HIGH_NOON_MAX_TARGETS := 20
-const HIGH_NOON_DAMAGE_MULTIPLIER := 4.0
+const HIGH_NOON_DAMAGE_MULTIPLIER := 3.5
 const HIGH_NOON_WORLD_MASK := 1
 
 @onready var high_noon_lock_lines: TiyiHighNoonLockLines = $HighNoonLockLines
@@ -48,6 +48,10 @@ func _get_primary_projectile_type() -> StringName:
 
 func _get_muzzle_distance() -> float:
 	return bullet_spawn_distance
+
+
+func _get_primary_attack_damage_type() -> EnemyConfig.DamageType:
+	return EnemyConfig.DamageType.MAGIC
 
 
 func plays_multiplayer_death_animation() -> bool:
@@ -137,9 +141,8 @@ func sync_authoritative_high_noon_targets() -> void:
 
 
 func play_remote_high_noon_started(activation_id: int) -> void:
-	if activation_id <= _high_noon_last_seen_activation_id:
+	if _high_noon_active or activation_id <= _high_noon_last_seen_activation_id:
 		return
-	_clear_high_noon_state()
 	_begin_high_noon(activation_id, false)
 
 
@@ -200,7 +203,7 @@ func cancel_remote_high_noon(activation_id: int) -> void:
 func get_high_noon_damage_against_enemy(enemy: Enemy) -> int:
 	var outgoing_damage := get_outgoing_damage(
 		floori(float(attack_damage) * HIGH_NOON_DAMAGE_MULTIPLIER),
-		EnemyConfig.DamageType.PHYSICAL
+		EnemyConfig.DamageType.MAGIC
 	)
 	return resolve_attack_damage_against_enemy(outgoing_damage, enemy)
 
@@ -397,7 +400,7 @@ func _finish_high_noon() -> void:
 			target.apply_damage(
 				get_high_noon_damage_against_enemy(target),
 				impact_direction,
-				EnemyConfig.DamageType.PHYSICAL,
+				EnemyConfig.DamageType.MAGIC,
 				false
 			)
 	_clear_high_noon_state()

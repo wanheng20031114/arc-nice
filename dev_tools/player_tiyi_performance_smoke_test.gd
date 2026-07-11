@@ -80,13 +80,99 @@ func _run() -> void:
 		"res://scene/player/tiyi/tiyi_high_noon_lock_lines.gd"
 	)
 	_expect(
-		lock_line_source.count("draw_multiline(") == 2,
-		"High Noon lock rendering must remain exactly two batched draw_multiline calls."
+		lock_line_source.count("draw_multiline_colors(") == 2,
+		"High Noon lock rendering must remain exactly two batched draw_multiline_colors calls."
 	)
+	_expect(
+		lock_line_source.count("draw_multiline(") == 0,
+		"High Noon lock rendering must not regress to uniform draw_multiline calls."
+	)
+	_test_lock_line_batches()
 
 	var elapsed_msec := float(Time.get_ticks_usec() - started_usec) / 1000.0
 	print("TIYI_PERFORMANCE_SMOKE_METRIC_MS=%.3f" % elapsed_msec)
 	await _finish()
+
+
+func _test_lock_line_batches() -> void:
+	var lock_lines := TiyiHighNoonLockLines.new()
+
+	var near_batches := lock_lines.call(
+		"_build_line_batches", PackedVector2Array([Vector2(7.5, 0.0)])
+	) as Dictionary
+	var near_segments: PackedVector2Array = near_batches[&"segments"]
+	var near_glow_colors: PackedColorArray = near_batches[&"glow_colors"]
+	var near_core_colors: PackedColorArray = near_batches[&"core_colors"]
+	_expect(
+		near_segments.size() == 2
+		and near_glow_colors.size() == 1
+		and near_core_colors.size() == 1,
+		"A target inside Tiyi's collision area must remain one bounded fade segment."
+	)
+	_expect(
+		near_segments.size() == 2
+		and near_segments[0].is_equal_approx(Vector2.ZERO)
+		and near_segments[1].is_equal_approx(Vector2(7.5, 0.0)),
+		"The collision-area fade segment must preserve its exact endpoints."
+	)
+	_expect(
+		near_glow_colors.size() == 1
+		and near_core_colors.size() == 1
+		and is_equal_approx(near_glow_colors[0].a, 0.008)
+		and is_equal_approx(near_core_colors[0].a, 0.015),
+		"Lock lines inside Tiyi's collision area must use the highly transparent near alpha."
+	)
+
+	var far_target := Vector2(350.0, 0.0)
+	var far_batches := lock_lines.call(
+		"_build_line_batches", PackedVector2Array([far_target])
+	) as Dictionary
+	var far_segments: PackedVector2Array = far_batches[&"segments"]
+	var far_glow_colors: PackedColorArray = far_batches[&"glow_colors"]
+	var far_core_colors: PackedColorArray = far_batches[&"core_colors"]
+	_expect(
+		far_segments.size() == 34
+		and far_glow_colors.size() == 17
+		and far_core_colors.size() == 17,
+		"A maximum-range lock line must use one near fade plus sixteen gradient segments."
+	)
+	_expect(
+		far_segments.size() == 34
+		and far_segments[0].is_equal_approx(Vector2.ZERO)
+		and far_segments[far_segments.size() - 1].is_equal_approx(far_target),
+		"A maximum-range lock line must preserve its exact source and target endpoints."
+	)
+	_expect(
+		far_glow_colors.size() == 17
+		and far_core_colors.size() == 17
+		and far_glow_colors[0].a < far_glow_colors[far_glow_colors.size() - 1].a
+		and far_core_colors[0].a < far_core_colors[far_core_colors.size() - 1].a,
+		"Lock-line glow and core opacity must both increase from Tiyi toward the enemy."
+	)
+	_expect(
+		far_glow_colors.size() == 17
+		and far_core_colors.size() == 17
+		and far_glow_colors[far_glow_colors.size() - 1].a <= 0.140001
+		and far_core_colors[far_core_colors.size() - 1].a <= 0.420001,
+		"Maximum-range lock-line alpha must remain within its authored transparent bounds."
+	)
+
+	var twenty_targets := PackedVector2Array()
+	for target_index in range(20):
+		twenty_targets.append(
+			Vector2.RIGHT.rotated(float(target_index) / 20.0 * TAU) * 350.0
+		)
+	var twenty_batches := lock_lines.call("_build_line_batches", twenty_targets) as Dictionary
+	var twenty_segments: PackedVector2Array = twenty_batches[&"segments"]
+	var twenty_glow_colors: PackedColorArray = twenty_batches[&"glow_colors"]
+	var twenty_core_colors: PackedColorArray = twenty_batches[&"core_colors"]
+	_expect(
+		twenty_segments.size() == 680
+		and twenty_glow_colors.size() == 340
+		and twenty_core_colors.size() == 340,
+		"Twenty lock targets must remain bounded to 340 batched segments per draw pass."
+	)
+	lock_lines.free()
 
 
 func _count_transient_tiyi_nodes(node: Node) -> int:

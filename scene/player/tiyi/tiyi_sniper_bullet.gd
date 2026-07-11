@@ -19,6 +19,10 @@ func _ready() -> void:
 		bullet_sprite.play(&"fly")
 
 
+func get_damage_type() -> EnemyConfig.DamageType:
+	return EnemyConfig.DamageType.MAGIC
+
+
 func _physics_process(delta: float) -> void:
 	if remaining_lifetime <= 0.0:
 		queue_free()

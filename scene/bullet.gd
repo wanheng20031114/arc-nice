@@ -68,6 +68,10 @@ func setup_collectible_owner(owner_player: Player) -> void:
 	collectible_owner = owner_player
 
 
+func get_damage_type() -> EnemyConfig.DamageType:
+	return EnemyConfig.DamageType.PHYSICAL
+
+
 # 物理帧更新逻辑，处理子弹移动和碰撞检测
 func _physics_process(delta: float) -> void:
 	_update_homing(delta)
@@ -173,7 +177,11 @@ func try_hit_enemy(enemy: Enemy) -> bool:
 	if reported_multiplayer_hit:
 		hit_registered = true
 	else:
-		hit_registered = enemy.apply_damage(resolved_damage, -direction)
+		hit_registered = enemy.apply_damage(
+			resolved_damage,
+			-direction,
+			get_damage_type()
+		)
 
 	if not hit_registered:
 		hit_enemy_instance_ids.erase(enemy.get_instance_id())

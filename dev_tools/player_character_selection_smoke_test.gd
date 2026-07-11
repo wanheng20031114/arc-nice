@@ -146,11 +146,12 @@ func _test_registry_and_run_state() -> void:
 		tiyi_config.title == "呼呼呼"
 		and tiyi_config.description == "以五发弹仓的重型狙击枪处决强敌，并在「午时已到」中锁定多个目标。"
 		and tiyi_config.playstyle == "远程 · 单点爆发"
-		and tiyi_config.skill_description.contains("5秒")
-		and tiyi_config.skill_description.contains("200范围")
+		and tiyi_config.skill_description.contains("4秒")
+		and tiyi_config.skill_description.contains("350范围")
 		and tiyi_config.skill_description.contains("每0.25秒")
 		and tiyi_config.skill_description.contains("最多20名")
-		and tiyi_config.skill_description.contains("400%"),
+		and tiyi_config.skill_description.contains("350%")
+		and tiyi_config.skill_description.contains("法术伤害"),
 		"Tiyi card copy and skill text must preserve the authored content."
 	)
 	_expect(

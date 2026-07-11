@@ -306,6 +306,10 @@ func _get_muzzle_distance() -> float:
 	return bullet_spawn_distance
 
 
+func _get_primary_attack_damage_type() -> EnemyConfig.DamageType:
+	return EnemyConfig.DamageType.PHYSICAL
+
+
 func _fire_bullets(base_direction: Vector2) -> bool:
 	if current_shot_pattern == PickupConfig.ShotPattern.SPIRAL:
 		if base_direction != Vector2.ZERO:
@@ -347,7 +351,7 @@ func _spawn_bullet(shoot_direction: Vector2, track_attack_direction: bool = true
 		homing_target = _find_homing_bullet_target(normalized_direction)
 	var bullet_damage := get_outgoing_damage(
 		attack_damage,
-		EnemyConfig.DamageType.PHYSICAL
+		_get_primary_attack_damage_type()
 	)
 	bullet.setup(normalized_direction, bullet_damage, pierces_enemies)
 	bullet.setup_homing(homing_target)

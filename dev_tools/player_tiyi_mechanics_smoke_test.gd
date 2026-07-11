@@ -44,6 +44,15 @@ func _test_stats_ammo_and_animation() -> void:
 	_expect(is_equal_approx(player.move_speed, 120.0), "Tiyi must start at 120 move speed.")
 	_expect(player.attack_damage == 100, "Tiyi must start at 100 attack damage.")
 	_expect(player.get_ammo_capacity() == 5 and player.current_ammo == 5, "Tiyi must start at 5/5 ammo.")
+	_expect(
+		is_equal_approx(player.skill1_charge_duration, 28.0),
+		"Tiyi High Noon must require 28 charge at upgrade level zero."
+	)
+	_expect(
+		int(player.call("_get_primary_attack_damage_type"))
+		== EnemyConfig.DamageType.MAGIC,
+		"Tiyi ordinary sniper fire must use magic damage."
+	)
 	_expect(is_equal_approx(player.get_attacks_per_second(), 1.0), "250 attack speed must equal one shot per second for Tiyi.")
 	player.collectible_attack_speed_bonus = 125.0
 	_expect(is_equal_approx(player.get_attacks_per_second(), 1.5), "375 attack speed must equal 1.5 shots per second for Tiyi.")
@@ -99,10 +108,19 @@ func _test_stats_ammo_and_animation() -> void:
 func _test_sniper_sweep() -> void:
 	var near_enemy := _spawn_enemy(Vector2(30.0, 0.0))
 	var far_enemy := _spawn_enemy(Vector2(62.0, 0.0))
+	near_enemy.config.physical_defense = 999
+	near_enemy.config.magic_defense = 25
 	await physics_frame
 	var bullet := _spawn_test_bullet(Vector2.ZERO)
+	_expect(
+		bullet.get_damage_type() == EnemyConfig.DamageType.MAGIC,
+		"The Tiyi sniper bullet must report magic as its damage type."
+	)
 	bullet.call("_physics_process", 0.05)
-	_expect(near_enemy.current_health == 900, "A non-piercing sniper shot must damage the nearest enemy.")
+	_expect(
+		near_enemy.current_health == 925,
+		"A non-piercing sniper shot must use percentage magic defense, not fixed physical defense."
+	)
 	_expect(far_enemy.current_health == 1000, "A non-piercing sniper shot must not damage a later enemy.")
 	_expect(bullet.is_queued_for_deletion(), "A non-piercing sniper shot must retire after its first enemy.")
 	near_enemy.queue_free()
@@ -242,6 +260,19 @@ func _test_sniper_sweep() -> void:
 
 
 func _test_high_noon() -> void:
+	var expected_charge_durations := [28.0, 26.0, 24.0, 22.0, 20.0]
+	for upgrade_level in range(expected_charge_durations.size()):
+		player.apply_skill1_upgrade_state(upgrade_level)
+		_expect(
+			is_equal_approx(
+				player.skill1_charge_duration,
+				float(expected_charge_durations[upgrade_level])
+			),
+			"High Noon charge must remain 28 minus two per upgrade level (level %d)."
+			% upgrade_level
+		)
+	player.apply_skill1_upgrade_state(0)
+
 	var enemies: Array[Enemy] = []
 	for enemy_index in range(21):
 		enemies.append(_spawn_enemy(Vector2(20.0 + float(enemy_index) * 7.0, -10.0)))
@@ -251,6 +282,18 @@ func _test_high_noon() -> void:
 	_expect(bool(player.call("_try_use_skill1")), "A fully charged Tiyi must start High Noon.")
 	_expect(player.is_high_noon_active(), "High Noon must become active immediately.")
 	_expect(player.get_high_noon_target_count() == 1, "High Noon must acquire its first target at t=0.")
+	var first_activation_id := player.get_high_noon_activation_id()
+	player.skill1_charge = player.skill1_charge_duration
+	player.set("_last_skill_activation_msec", Time.get_ticks_msec() - 1000)
+	_expect(
+		not bool(player.call("_try_use_skill1")),
+		"An active High Noon must reject a second activation even when charge and cooldown are ready."
+	)
+	_expect(
+		player.get_high_noon_activation_id() == first_activation_id
+		and player.get_high_noon_target_count() == 1,
+		"A rejected reactivation must not replace or reset the active High Noon round."
+	)
 
 	player.current_ammo = player.get_ammo_capacity()
 	player.is_reloading = false
@@ -279,20 +322,43 @@ func _test_high_noon() -> void:
 	player.call("_finish_dash")
 	player.dash_cooldown_timer.stop()
 
-	enemies[0].global_position = Vector2(320.0, 0.0)
-	player.call("_update_high_noon", 4.75)
-	_expect(player.get_high_noon_target_count() == 20, "Twenty lock beats must cap High Noon at 20 targets.")
+	enemies[0].global_position = Vector2(420.0, 0.0)
+	player.call("_update_high_noon", 3.75)
+	_expect(
+		player.get_high_noon_target_count() == 16,
+		"A four-second round with one t=0 lock and 0.25-second beats must naturally acquire 16 targets."
+	)
 	_expect(
 		enemies.all(func(enemy: Enemy) -> bool: return enemy.current_health == 1000),
-		"High Noon must deal zero damage before the five-second finish."
+		"High Noon must deal zero damage before the four-second finish."
 	)
 	player.call("_update_high_noon", 0.25)
-	_expect(not player.is_high_noon_active(), "High Noon must finish at five seconds.")
-	_expect(enemies[0].current_health == 600, "A locked target must still be hit after leaving the 200 range.")
-	_expect(enemies[19].current_health == 600, "Each of the nearest twenty targets must take one 400% hit.")
-	_expect(enemies[20].current_health == 1000, "The twenty-first target must remain unhit.")
+	_expect(not player.is_high_noon_active(), "High Noon must finish at four seconds.")
+	_expect(enemies[0].current_health == 650, "A locked target must still be hit after leaving the 350 range.")
+	_expect(enemies[15].current_health == 650, "Each naturally locked target must take one 350% hit.")
+	_expect(enemies[16].current_health == 1000, "Targets beyond the natural sixteen lock beats must remain unhit.")
 
 	for enemy in enemies:
+		if enemy != null and is_instance_valid(enemy):
+			enemy.queue_free()
+	await process_frame
+	await physics_frame
+
+	var cap_enemies: Array[Enemy] = []
+	for enemy_index in range(21):
+		cap_enemies.append(_spawn_enemy(Vector2(20.0 + float(enemy_index) * 7.0, -10.0)))
+	await physics_frame
+	player.set("_last_skill_activation_msec", Time.get_ticks_msec() - 1000)
+	player.skill1_charge = player.skill1_charge_duration
+	_expect(bool(player.call("_try_use_skill1")), "High Noon must restart for hard-cap coverage.")
+	for _lock_attempt in range(30):
+		player.call("_acquire_next_high_noon_target")
+	_expect(
+		player.get_high_noon_target_count() == 20,
+		"Direct lock attempts must never exceed the explicit 20-target hard cap."
+	)
+	player.call("_cancel_high_noon", false)
+	for enemy in cap_enemies:
 		if enemy != null and is_instance_valid(enemy):
 			enemy.queue_free()
 	await process_frame
@@ -310,9 +376,10 @@ func _test_high_noon() -> void:
 	test_root.add_child(los_wall)
 	var visible_enemy := _spawn_enemy(Vector2(30.0, 34.0))
 	var blocked_enemy := _spawn_enemy(Vector2(86.0, 0.0))
-	var outside_enemy := _spawn_enemy(Vector2(220.0, 80.0))
+	var outside_enemy := _spawn_enemy(Vector2(360.0, 80.0))
 	await physics_frame
-	visible_enemy.config.physical_defense = 50
+	visible_enemy.config.physical_defense = 999
+	visible_enemy.config.magic_defense = 50
 	visible_enemy.collectible_status_effects[&"test_burn"] = {
 		"status_id": &"burn",
 		"time_left": 10.0,
@@ -330,8 +397,8 @@ func _test_high_noon() -> void:
 		player.get_high_noon_target_count() == 1,
 		"Initial acquisition must exclude a wall-blocked and an out-of-range enemy."
 	)
-	visible_enemy.global_position = Vector2(260.0, 0.0)
-	player.call("_update_high_noon", 4.75)
+	visible_enemy.global_position = Vector2(420.0, 0.0)
+	player.call("_update_high_noon", 3.75)
 	_expect(
 		player.get_high_noon_target_count() == 1
 		and visible_enemy.current_health == 1000
@@ -341,10 +408,10 @@ func _test_high_noon() -> void:
 	)
 	player.call("_update_high_noon", 0.25)
 	_expect(
-		visible_enemy.current_health == 450
+		visible_enemy.current_health == 738
 		and blocked_enemy.current_health == 1000
 		and outside_enemy.current_health == 1000,
-		"The finish hit must apply burn/bleed multipliers and then physical defense only to the acquired target."
+		"The 350% finish hit must apply burn/bleed multipliers and percentage magic defense only to the acquired target."
 	)
 	player.collectible_damage_against_burning_multiplier = 1.0
 	player.collectible_damage_against_bleeding_multiplier = 1.0
@@ -385,6 +452,15 @@ func _test_high_noon() -> void:
 	_expect(residual_bullet.is_queued_for_deletion(), "Tiyi death must clear its residual sniper bullets.")
 	player.revive_multiplayer(Vector2.ZERO, player.max_health, 0.0)
 	_expect(player.current_ammo == 5 and player.ammo_bar.visible, "Tiyi revive must restore 5/5 ammo and its bar.")
+	var remote_activation_id := int(player.get("_high_noon_last_seen_activation_id")) + 1
+	player.play_remote_high_noon_started(remote_activation_id)
+	player.play_remote_high_noon_started(remote_activation_id + 1)
+	_expect(
+		player.is_high_noon_active()
+		and player.get_high_noon_activation_id() == remote_activation_id,
+		"A newer remote start event must not replace an unfinished High Noon activation."
+	)
+	player.cancel_remote_high_noon(remote_activation_id)
 
 	released_enemy.queue_free()
 	replacement_enemy.queue_free()
@@ -396,6 +472,7 @@ func _spawn_enemy(spawn_position: Vector2) -> Enemy:
 	var config := EnemyConfig.new()
 	config.max_health = 1000
 	config.physical_defense = 0
+	config.magic_defense = 0
 	enemy.config = config
 	test_root.add_child(enemy)
 	enemy.global_position = spawn_position

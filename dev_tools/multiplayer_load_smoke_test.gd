@@ -1509,6 +1509,20 @@ func _test_multiplayer_character_scene_registry() -> void:
 	if tiyi_player != null:
 		var mp_game := MP_GAME_SCENE.instantiate()
 		mp_game.set("game", game)
+		_expect(
+			int(mp_game.call(
+				"_get_player_projectile_damage_type",
+				&"tiyi_sniper_bullet"
+			)) == EnemyConfig.DamageType.MAGIC,
+			"Host must derive Tiyi sniper bullets as magic damage."
+		)
+		_expect(
+			int(mp_game.call(
+				"_get_player_projectile_damage_type",
+				&"player_bullet"
+			)) == EnemyConfig.DamageType.PHYSICAL,
+			"Host must preserve ordinary player bullets as physical damage."
+		)
 		var authoritative_direction := Vector2(3.0, 4.0).normalized()
 		var authoritative_spawn := mp_game.call(
 			"_get_authoritative_client_projectile_spawn_position",
@@ -1777,6 +1791,10 @@ func _test_host_authoritative_tiyi_protocol() -> void:
 	mp_game.set("game", host_game)
 	mp_game.set("net_manager", net_manager)
 
+	_expect(
+		is_equal_approx(tiyi_player.skill1_charge_duration, 28.0),
+		"Tiyi must enter multiplayer with a default skill charge requirement of 28."
+	)
 	tiyi_player.unlock_skill1()
 	tiyi_player.skill1_charge = tiyi_player.skill1_charge_duration
 	_expect(
@@ -1791,9 +1809,20 @@ func _test_host_authoritative_tiyi_protocol() -> void:
 		and tiyi_player.is_high_noon_active(),
 		"Accepted high noon must register the authoritative monotonic activation."
 	)
+	var active_id_before_repeat := int(active_activations.get(1, 0))
+	var sequence_before_repeat := int(activation_sequences.get(1, 0))
+	var player_activation_before_repeat := tiyi_player.get_high_noon_activation_id()
+	tiyi_player.skill1_charge = tiyi_player.skill1_charge_duration
 	_expect(
 		not bool(mp_game.call("_apply_authoritative_tiyi_high_noon_request", 1, 2)),
-		"Host must reject a second high-noon request while one is active."
+		"Host must reject a fully recharged second high-noon request while one is active."
+	)
+	_expect(
+		int(active_activations.get(1, 0)) == active_id_before_repeat
+		and int(activation_sequences.get(1, 0)) == sequence_before_repeat
+		and tiyi_player.get_high_noon_activation_id() == player_activation_before_repeat
+		and tiyi_player.is_high_noon_active(),
+		"Rejected active high noon must not replace the current activation or advance its sequence."
 	)
 	mp_game.call("cancel_tiyi_high_noon", 1, 1)
 	tiyi_player.cancel_remote_high_noon(1)
@@ -1812,8 +1841,12 @@ func _test_host_authoritative_tiyi_protocol() -> void:
 		bool(mp_game.call("_apply_authoritative_tiyi_high_noon_request", 1, 2)),
 		"Host must accept the next monotonic high-noon activation id."
 	)
+	var high_noon_target_config := BASIC_CONFIG.duplicate(true) as EnemyConfig
+	high_noon_target_config.max_health = 1000
+	high_noon_target_config.physical_defense = 999
+	high_noon_target_config.magic_defense = 25
 	_expect(
-		host_game.call("_try_spawn_enemy", BASIC_CONFIG),
+		host_game.call("_try_spawn_enemy", high_noon_target_config),
 		"Host must spawn a target for high-noon resolution coverage."
 	)
 	var target_enemy := host_game.get_enemy_for_net_id(1)
@@ -1821,6 +1854,9 @@ func _test_host_authoritative_tiyi_protocol() -> void:
 	if target_enemy != null:
 		target_enemy.set_physics_process(false)
 		var target_health_before := target_enemy.current_health
+		var expected_magic_damage := floori(
+			float(floori(float(tiyi_player.attack_damage) * 3.5)) * 0.75
+		)
 		mp_game.call(
 			"notify_tiyi_high_noon_targets_changed",
 			1,
@@ -1835,8 +1871,9 @@ func _test_host_authoritative_tiyi_protocol() -> void:
 			PackedVector2Array([target_enemy.global_position])
 		)
 		_expect(
-			target_enemy.current_health < target_health_before,
-			"Host high-noon completion must apply authoritative 400% physical damage."
+			target_enemy.last_damage_taken == expected_magic_damage
+			and target_enemy.current_health == target_health_before - expected_magic_damage,
+			"Host high-noon completion must apply authoritative 350% magic damage using only magic defense."
 		)
 	_expect(
 		not active_activations.has(1) and int(activation_sequences.get(1, 0)) == 2,
