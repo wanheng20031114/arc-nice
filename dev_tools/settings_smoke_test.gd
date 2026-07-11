@@ -299,12 +299,12 @@ func _test_audio_bus_assignment() -> void:
 	if music_player != null:
 		_expect(music_player.bus == "Music", "MusicPlayer must route to Music bus.")
 	var player := game.get_node_or_null("Player")
-	var gunshot: AudioStreamPlayer2D = null
+	var primary_attack_audio: AudioStreamPlayer2D = null
 	if player != null:
-		gunshot = player.get_node_or_null("GunshotAudio") as AudioStreamPlayer2D
-	_expect(gunshot != null, "Player GunshotAudio must exist.")
-	if gunshot != null:
-		_expect(gunshot.bus == "SFX", "Effect audio must route to SFX bus.")
+		primary_attack_audio = player.get_node_or_null("PrimaryAttackAudio") as AudioStreamPlayer2D
+	_expect(primary_attack_audio != null, "Player PrimaryAttackAudio must exist.")
+	if primary_attack_audio != null:
+		_expect(primary_attack_audio.bus == "SFX", "Effect audio must route to SFX bus.")
 	var camera := game.get_node_or_null("Camera2D") as Camera2D
 	_expect(camera != null, "Game Camera2D must exist.")
 	if camera != null:

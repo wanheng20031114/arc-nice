@@ -9,7 +9,7 @@
 [ext_resource type="Script" uid="uid://dd4fk5ef1owl" path="res://scene/grid_pathfinder.gd" id="9_5wjd4"]
 [ext_resource type="AudioStream" uid="uid://cmfbw4cr7dde" path="res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3" id="10_swtgm"]
 [ext_resource type="PackedScene" path="res://scene/currency_hud.tscn" id="12_currency_hud"]
-[ext_resource type="PackedScene" path="res://scene/player_profile_panel.tscn" id="13_profile_panel"]
+[ext_resource type="PackedScene" path="res://scene/player/ui/player_profile_panel.tscn" id="13_profile_panel"]
 [ext_resource type="PackedScene" uid="uid://bybgq7nbb2dgy" path="res://scene/wave_hud.tscn" id="14_wave_hud"]
 [ext_resource type="PackedScene" uid="uid://dvti0j6pehsi8" path="res://scene/zhuangfangyi_merchant.tscn" id="15_merchant"]
 [ext_resource type="AudioStream" uid="uid://dtds82oklhy8w" path="res://resources/audio/ui/countdown_tick.wav" id="16_countdown"]

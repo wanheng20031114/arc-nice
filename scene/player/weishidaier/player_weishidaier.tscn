@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://h7x0o8vhlixl"]
 
-[ext_resource type="Script" path="res://scene/player_weishidaier.gd" id="1_onrkg"]
+[ext_resource type="Script" path="res://scene/player/weishidaier/player_weishidaier.gd" id="1_onrkg"]
 [ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="2_ct4mp"]
 [ext_resource type="Texture2D" uid="uid://b5sr8ua78d4vj" path="res://resources/texture/player/weishidaier/armed_effect.png" id="3_i3pqv"]
 [ext_resource type="AudioStream" uid="uid://dmftmglw7yqwq" path="res://resources/audio/Cowboy_gunshot.wav" id="4_r4x4y"]
@@ -9,13 +9,14 @@
 [ext_resource type="AudioStream" uid="uid://cutwkun6hroo5" path="res://resources/audio/cowboy_dead.wav" id="7_splgi"]
 [ext_resource type="AudioStream" uid="uid://vc2m1l0d1rov" path="res://resources/audio/cowboy_powerup.wav" id="8_rhcc0"]
 [ext_resource type="AudioStream" uid="uid://by1qh436lhf54" path="res://resources/audio/Cowboy_Secret.wav" id="9_6vinx"]
-[ext_resource type="PackedScene" uid="uid://bcopug355gqjb" path="res://scene/player_health_bar.tscn" id="10_owf57"]
+[ext_resource type="PackedScene" uid="uid://bcopug355gqjb" path="res://scene/player/ui/player_health_bar.tscn" id="10_owf57"]
 [ext_resource type="SpriteFrames" uid="uid://m5m6keukol1c" path="res://resources/animation/player_weishidaier.tres" id="11_player_frames"]
-[ext_resource type="PackedScene" uid="uid://db4l5h4j6dnqu" path="res://scene/skill1_charge_bar.tscn" id="12_skill1_bar"]
+[ext_resource type="PackedScene" uid="uid://db4l5h4j6dnqu" path="res://scene/player/ui/skill1_charge_bar.tscn" id="12_skill1_bar"]
 [ext_resource type="LabelSettings" path="res://resources/ui/player_name_label_settings.tres" id="13_name_settings"]
 [ext_resource type="PackedScene" path="res://scene/move_speed_trail_effect.tscn" id="14_speed_trail"]
 [ext_resource type="AudioStream" uid="uid://44ucsbesth8r" path="res://resources/audio/lucky_gem_upgrade_triad.wav" id="15_lucky_audio"]
-[ext_resource type="PackedScene" uid="uid://d10vpuylyb4ty" path="res://scene/player_ammo_bar.tscn" id="16_ammo_bar"]
+[ext_resource type="PackedScene" uid="uid://d10vpuylyb4ty" path="res://scene/player/ui/player_ammo_bar.tscn" id="16_ammo_bar"]
+[ext_resource type="PackedScene" path="res://scene/player/effects/dash_ready_indicator.tscn" id="17_dash_ready"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_s4jxa"]
 resource_local_to_scene = true
@@ -28,6 +29,10 @@ shader_parameter/dodge_sweep = 0.0
 shader_parameter/dodge_color = Color(0.42, 0.95, 1, 1)
 shader_parameter/dodge_flash_color = Color(1, 1, 1, 1)
 shader_parameter/dodge_outline_width = 3.0
+shader_parameter/dash_effect_strength = 0.0
+shader_parameter/dash_direction = Vector2(1, 0)
+shader_parameter/dash_color = Color(0.12, 1.45, 1.3, 1)
+shader_parameter/dash_trail_pixels = 4.0
 shader_parameter/slow_overlay_strength = 0.0
 shader_parameter/slow_overlay_color = Color(0.55, 0.86, 1, 1)
 shader_parameter/burn_overlay_strength = 0.0
@@ -112,7 +117,6 @@ collision_layer = 2
 collision_mask = 257
 script = ExtResource("1_onrkg")
 character_id = &"weishidaier"
-attack_speed_units_per_attack = 100.0
 
 [node name="BodySprite" type="AnimatedSprite2D" parent="." unique_id=2014942495]
 z_index = 1
@@ -129,11 +133,18 @@ frame_progress = 0.07989768
 
 [node name="MoveSpeedTrailEffect" parent="." unique_id=255299608 instance=ExtResource("14_speed_trail")]
 
+[node name="DashReadyIndicator" parent="." instance=ExtResource("17_dash_ready")]
+
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=416011949]
 position = Vector2(0, 1)
 shape = SubResource("CircleShape2D_sh265")
 
 [node name="ShootingTimer" type="Timer" parent="." unique_id=1653986996]
+
+[node name="DashCooldownTimer" type="Timer" parent="."]
+process_callback = 0
+wait_time = 5.0
+one_shot = true
 
 [node name="AmmoBar" parent="." unique_id=1608733861 instance=ExtResource("16_ammo_bar")]
 ammo_color = Color(1, 0.56078434, 0.078431375, 0.98039216)
@@ -171,12 +182,12 @@ label_settings = ExtResource("13_name_settings")
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="GunshotAudio" type="AudioStreamPlayer2D" parent="." unique_id=1132200383]
+[node name="PrimaryAttackAudio" type="AudioStreamPlayer2D" parent="." unique_id=1132200383]
 stream = ExtResource("4_r4x4y")
 volume_db = -2.0
 max_polyphony = 8
 
-[node name="GunloadAudio" type="AudioStreamPlayer2D" parent="." unique_id=260980079]
+[node name="ReloadAudio" type="AudioStreamPlayer2D" parent="." unique_id=260980079]
 stream = ExtResource("5_6f8ak")
 volume_db = -8.0
 
@@ -207,4 +218,4 @@ stream = ExtResource("15_lucky_audio")
 volume_db = 2.0
 max_polyphony = 2
 
-[connection signal="timeout" from="ShootingTimer" to="." method="_on_shooting_timer_timeout"]
+[connection signal="timeout" from="DashCooldownTimer" to="." method="_on_dash_cooldown_timer_timeout"]

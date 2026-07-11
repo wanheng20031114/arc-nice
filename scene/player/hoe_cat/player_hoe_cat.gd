@@ -21,6 +21,8 @@ const WHIRLWIND_IMPACT_DELAY := 0.125
 @onready var whirlwind_body_effect: AnimatedSprite2D = $WhirlwindBodyEffect
 @onready var primary_impact_timer: Timer = $PrimaryImpactTimer
 @onready var whirlwind_impact_timer: Timer = $WhirlwindImpactTimer
+@onready var primary_attack_audio: AudioStreamPlayer2D = $PrimaryAttackAudio
+@onready var skill1_audio: AudioStreamPlayer2D = $Skill1Audio
 var _primary_visual_time_left: float = 0.0
 var _primary_visual_facing_suffix: StringName = &""
 var _whirlwind_visual_time_left: float = 0.0
@@ -37,21 +39,6 @@ var _whirlwind_body_effect_base_position: Vector2 = Vector2.ZERO
 
 func _init() -> void:
 	character_id = &"hoe_cat"
-	move_speed = 120.0
-	max_health = 80
-	attack_damage = 15
-	attack_method_name = "锄头"
-	fire_interval = 0.5
-	attack_speed_units_per_attack = 200.0
-	ammo_capacity = 1
-
-
-func uses_ammunition() -> bool:
-	return false
-
-
-func supports_projectile_attack_patterns() -> bool:
-	return false
 
 
 func uses_attack_interval_bar() -> bool:
@@ -66,8 +53,7 @@ func is_hoe_cat() -> bool:
 	return true
 
 
-func _cache_multiplayer_visual_base_positions() -> void:
-	super._cache_multiplayer_visual_base_positions()
+func _cache_character_visual_base_positions() -> void:
 	if basic_slash_effect != null:
 		_basic_slash_effect_base_position = basic_slash_effect.position
 	if whirlwind_range_effect != null:
@@ -76,8 +62,7 @@ func _cache_multiplayer_visual_base_positions() -> void:
 		_whirlwind_body_effect_base_position = whirlwind_body_effect.position
 
 
-func _set_multiplayer_visual_offset(offset: Vector2) -> void:
-	super._set_multiplayer_visual_offset(offset)
+func _set_character_visual_offset(offset: Vector2) -> void:
 	if basic_slash_effect != null:
 		basic_slash_effect.position = _basic_slash_effect_base_position + offset
 	if whirlwind_range_effect != null:
@@ -296,7 +281,8 @@ func _update_character_combat_state(delta: float) -> void:
 		_finish_whirlwind_visual()
 
 
-func _play_death_animation() -> void:
+func _cleanup_character_combat_on_death() -> void:
+	super._cleanup_character_combat_on_death()
 	_primary_visual_time_left = 0.0
 	_primary_visual_facing_suffix = &""
 	_whirlwind_visual_time_left = 0.0
@@ -318,6 +304,9 @@ func _play_death_animation() -> void:
 	if whirlwind_body_effect != null:
 		whirlwind_body_effect.hide()
 		whirlwind_body_effect.stop()
+
+
+func _play_death_animation() -> void:
 	body_sprite.show()
 	super._play_death_animation()
 
@@ -437,12 +426,12 @@ func _on_whirlwind_impact_timer_timeout() -> void:
 
 
 func _play_primary_attack_audio() -> void:
-	if gunshot_audio != null and gunshot_audio.stream != null:
-		gunshot_audio.pitch_scale = randf_range(0.96, 1.04)
-		gunshot_audio.play()
+	if primary_attack_audio != null and primary_attack_audio.stream != null:
+		primary_attack_audio.pitch_scale = randf_range(0.96, 1.04)
+		primary_attack_audio.play()
 
 
 func _play_whirlwind_audio() -> void:
-	if gunload_audio != null and gunload_audio.stream != null:
-		gunload_audio.pitch_scale = randf_range(0.96, 1.04)
-		gunload_audio.play()
+	if skill1_audio != null and skill1_audio.stream != null:
+		skill1_audio.pitch_scale = randf_range(0.96, 1.04)
+		skill1_audio.play()

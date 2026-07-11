@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://bhhfet8yl66f3"]
 
-[ext_resource type="Script" uid="uid://dscknhg4tjsdp" path="res://scene/weishidaier_skill1_bomb.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://dscknhg4tjsdp" path="res://scene/player/weishidaier/weishidaier_skill1_bomb.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/player/weishidaier/skill1_projectile.png" id="2_projectile"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_projectile_0"]

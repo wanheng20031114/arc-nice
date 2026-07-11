@@ -7,7 +7,7 @@ const SKILL3_CONFIG := preload("res://resources/config/bosses/linglan_skill3.tre
 const ORB_SCENE := preload("res://scene/linglan_skill3_light_orb.tscn")
 const GAME_SCENE := preload("res://scene/game.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
-const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
+const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 
 

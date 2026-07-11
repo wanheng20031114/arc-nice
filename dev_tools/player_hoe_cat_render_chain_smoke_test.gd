@@ -1,6 +1,6 @@
 extends SceneTree
 
-const HOE_CAT_SCENE := preload("res://scene/player_hoe_cat.tscn")
+const HOE_CAT_SCENE := preload("res://scene/player/hoe_cat/player_hoe_cat.tscn")
 const CARDINAL_DIRECTIONS := {
 	&"down": Vector2.DOWN,
 	&"up": Vector2.UP,

@@ -2137,12 +2137,12 @@ func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 		state.skill1_charge = player_instance.skill1_charge
 		state.skill1_charge_duration = player_instance.skill1_charge_duration
 		state.skill1_upgrade_level = player_instance.skill1_upgrade_level
-		state.form_mode = player_instance.current_form_mode
-		state.shot_pattern = player_instance.current_shot_pattern
-		state.ammo_capacity = player_instance.get_ammo_capacity()
-		state.current_ammo = player_instance.current_ammo
-		state.is_reloading = player_instance.is_reloading
-		state.reload_progress = player_instance.get_reload_progress_ratio()
+		state.form_mode = player_instance.get_multiplayer_form_mode()
+		state.shot_pattern = player_instance.get_multiplayer_shot_pattern()
+		state.ammo_capacity = player_instance.get_multiplayer_ammo_capacity()
+		state.current_ammo = player_instance.get_multiplayer_current_ammo()
+		state.is_reloading = player_instance.get_multiplayer_is_reloading()
+		state.reload_progress = player_instance.get_multiplayer_reload_progress()
 		state.primary_cooldown_ratio = _get_player_primary_cooldown_ratio(player_instance)
 		states.append(state)
 	return states

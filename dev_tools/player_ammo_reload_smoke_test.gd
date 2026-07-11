@@ -1,10 +1,10 @@
 extends SceneTree
 
-const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
+const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 
 var failures: Array[String] = []
 var test_root: Node2D
-var player: Player
+var player: PlayerWeishidaier
 
 
 func _init() -> void:
@@ -17,7 +17,7 @@ func _run() -> void:
 	root.add_child(test_root)
 	current_scene = test_root
 
-	player = PLAYER_SCENE.instantiate() as Player
+	player = PLAYER_SCENE.instantiate() as PlayerWeishidaier
 	_expect(player != null, "Player scene must instantiate for ammo reload smoke test.")
 	if player == null:
 		await _finish()
@@ -59,6 +59,13 @@ func _finish() -> void:
 
 
 func _test_initial_ammo_state() -> void:
+	_expect(player.get_character_id() == &"weishidaier", "Weishidaier must keep its explicit character id.")
+	_expect(player.uses_ammunition(), "Weishidaier must own the ammunition capability.")
+	_expect(player.supports_projectile_attack_patterns(), "Weishidaier must own projectile attack patterns.")
+	_expect(player.get_node_or_null("ArmedEffectSprite") is AnimatedSprite2D, "Weishidaier must author its armed effect in the character scene.")
+	_expect(player.get_node_or_null("AmmoBar") is PlayerAmmoBar, "Weishidaier must author its ammunition bar in the character scene.")
+	_expect(player.get_node_or_null("PrimaryAttackAudio") is AudioStreamPlayer2D, "Weishidaier primary audio must use a character-neutral node name.")
+	_expect(player.get_node_or_null("ReloadAudio") is AudioStreamPlayer2D, "Weishidaier reload audio must be character-owned.")
 	_expect(player.get_ammo_capacity() == 30, "Player default ammo capacity must be 30.")
 	_expect(player.current_ammo == 30, "Player must start with full 30/30 ammo.")
 	_expect(not player.is_reloading, "Player must not start in reload state.")

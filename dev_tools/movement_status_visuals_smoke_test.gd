@@ -1,6 +1,6 @@
 extends SceneTree
 
-const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
+const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const SPEED_PICKUP := preload("res://resources/config/pickups/pickup_speed.tres")
 const TENPURA_PICKUP := preload("res://resources/config/pickups/pickup_tenpura.tres")

@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://cmvetmpkqnxk4"]
 
-[ext_resource type="Script" uid="uid://rc6khukb74bl" path="res://scene/player_attack_interval_bar.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://rc6khukb74bl" path="res://scene/player/ui/player_attack_interval_bar.gd" id="1_script"]
 
 [node name="AttackIntervalBar" type="Control" unique_id=1348048826]
 custom_minimum_size = Vector2(20, 2)

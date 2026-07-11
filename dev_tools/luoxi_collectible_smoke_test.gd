@@ -1,7 +1,7 @@
 extends SceneTree
 
-const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
-const HOE_CAT_SCENE := preload("res://scene/player_hoe_cat.tscn")
+const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
+const HOE_CAT_SCENE := preload("res://scene/player/hoe_cat/player_hoe_cat.tscn")
 const GAME_SCENE := preload("res://scene/game.tscn")
 const LUOXI_SCENE := preload("res://scene/luoxi_merchant.tscn")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")

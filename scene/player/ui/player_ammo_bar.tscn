@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://d10vpuylyb4ty"]
 
-[ext_resource type="Script" uid="uid://dl2om3ppb0att" path="res://scene/player_ammo_bar.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://dl2om3ppb0att" path="res://scene/player/ui/player_ammo_bar.gd" id="1_script"]
 
 [node name="PlayerAmmoBar" type="Control" unique_id=1608733861]
 custom_minimum_size = Vector2(20, 2)

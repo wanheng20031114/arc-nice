@@ -1,7 +1,7 @@
 extends SceneTree
 
-const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
-const PROFILE_PANEL_SCENE := preload("res://scene/player_profile_panel.tscn")
+const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
+const PROFILE_PANEL_SCENE := preload("res://scene/player/ui/player_profile_panel.tscn")
 const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
 const ITEM_DETAIL_PANEL_BG := preload("res://resources/texture/item_detail_panel_bg.png")
