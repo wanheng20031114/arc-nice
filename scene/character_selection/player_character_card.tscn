@@ -1,4 +1,4 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scene/character_selection/player_character_card.gd" id="1_script"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
@@ -14,6 +14,10 @@ corner_radius_top_left = 6
 corner_radius_top_right = 6
 corner_radius_bottom_right = 6
 corner_radius_bottom_left = 6
+
+[sub_resource type="FontVariation" id="FontVariation_card_title"]
+base_font = ExtResource("2_font")
+spacing_top = 2
 
 [node name="PlayerCharacterCard" type="PanelContainer"]
 custom_minimum_size = Vector2(276, 432)
@@ -34,10 +38,10 @@ layout_mode = 2
 theme_override_constants/separation = 7
 
 [node name="Title" type="Label" parent="Margin/Content"]
-custom_minimum_size = Vector2(0, 28)
+custom_minimum_size = Vector2(0, 34)
 layout_mode = 2
 mouse_filter = 2
-theme_override_fonts/font = ExtResource("2_font")
+theme_override_fonts/font = SubResource("FontVariation_card_title")
 theme_override_font_sizes/font_size = 14
 text = "角色定位"
 horizontal_alignment = 1

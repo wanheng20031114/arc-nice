@@ -180,38 +180,6 @@ animations = [{
 "frames": [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_r0c0")
-}],
-"loop": false,
-"name": &"idle_down",
-"speed": 1.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_r3c0")
-}],
-"loop": false,
-"name": &"idle_left",
-"speed": 1.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_r2c0")
-}],
-"loop": false,
-"name": &"idle_right",
-"speed": 1.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_r1c0")
-}],
-"loop": false,
-"name": &"idle_up",
-"speed": 1.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_r0c0")
 }, {
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_r0c1")

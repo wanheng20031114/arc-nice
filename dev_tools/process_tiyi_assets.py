@@ -26,7 +26,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "dev_assets" / "source_images" / "player_tiyi"
 OUTPUT_DIR = ROOT / "resources" / "texture" / "player" / "tiyi"
 ANIMATION_PATH = ROOT / "resources" / "animation" / "player_tiyi.tres"
-APPROVED_MOVEMENT_PATH = SOURCE_DIR / "movement_logical_lossless.png"
+APPROVED_MOVEMENT_PATH = SOURCE_DIR / "movement_scale1_20px_candidate.png"
+APPROVED_MOVEMENT_REPORT_PATH = APPROVED_MOVEMENT_PATH.with_suffix(".json")
 WEISH_ARMED_EFFECT = (
     ROOT / "resources" / "texture" / "player" / "weishidaier" / "armed_effect.png"
 )
@@ -386,10 +387,14 @@ def _build_hit() -> Image.Image:
 
 def _build_portrait_and_icon() -> tuple[Image.Image, Image.Image]:
     panels = _split_uniform_grid(_load_alpha("icon"), 2, 1)
-    portrait = panels[0].resize((128, 128), Image.Resampling.NEAREST)
+    movement = Image.open(APPROVED_MOVEMENT_PATH).convert("RGBA")
+    portrait = movement.crop((0, 0, FRAME_SIZE, FRAME_SIZE)).resize(
+        (128, 128),
+        Image.Resampling.NEAREST,
+    )
     skill_icon = panels[1].resize((128, 128), Image.Resampling.NEAREST)
     return (
-        _map_to_palette(portrait, UI_PALETTE),
+        _binary_alpha(portrait, threshold=1),
         _map_to_palette(skill_icon, UI_PALETTE),
     )
 
@@ -445,8 +450,6 @@ def _animation_resource() -> str:
                 (prefix + "_" + direction, 8.0, True, [(rows[direction], column) for column in range(4)])
             )
     animations.append(("death", 10.0, False, [(4, column) for column in range(5)]))
-    for direction in ("down", "left", "right", "up"):
-        animations.append(("idle_" + direction, 1.0, False, [(rows[direction], 0)]))
     for direction in ("down", "left", "right", "up"):
         animations.append(
             ("normal_" + direction, 8.0, True, [(rows[direction], column) for column in range(4)])
@@ -569,7 +572,34 @@ def _validate_runtime(
     validation["approved_movement_animation"] = _validate_approved_movement_animation(
         outputs["movement"]
     )
+    validation["ui_portrait_source"] = _validate_ui_portrait(
+        outputs["portrait"], outputs["movement"]
+    )
     return validation
+
+
+def _validate_ui_portrait(portrait_path: Path, movement_path: Path) -> dict[str, object]:
+    movement = Image.open(movement_path).convert("RGBA")
+    expected = movement.crop((0, 0, FRAME_SIZE, FRAME_SIZE)).resize(
+        (128, 128),
+        Image.Resampling.NEAREST,
+    )
+    expected = _binary_alpha(expected, threshold=1)
+    portrait = Image.open(portrait_path).convert("RGBA")
+    if not np.array_equal(
+        np.array(portrait, dtype=np.uint8),
+        np.array(expected, dtype=np.uint8),
+    ):
+        raise AssertionError(
+            "portrait must be normal_down frame 0 enlarged exactly 4x with nearest-neighbor"
+        )
+    return {
+        "source_animation": "normal_down",
+        "source_frame": 0,
+        "source_region": [0, 0, FRAME_SIZE, FRAME_SIZE],
+        "integer_scale": 4,
+        "rgba_byte_identical_to_scaled_source": True,
+    }
 
 
 def _validate_approved_movement_animation(movement_path: Path) -> dict[str, object]:
@@ -579,10 +609,25 @@ def _validate_approved_movement_animation(movement_path: Path) -> dict[str, obje
     foot_baselines: list[list[int]] = []
     alpha_centroids: list[list[list[float]]] = []
     visible_pixels: list[list[int]] = []
+    body_sizes: list[list[list[int]]] = []
+    body_x_ranges = ((5, 25), (7, 27), (5, 25), (7, 27))
+    expected_baselines = (
+        (24, 23, 24, 23),
+        (24, 23, 24, 23),
+        (23, 23, 23, 23),
+        (23, 23, 23, 23),
+    )
+    bob_rhythms = (
+        (0, -1, 0, -1),
+        (0, -1, 0, -1),
+        (0, 0, 1, -1),
+        (0, 0, 1, -1),
+    )
     for row in range(4):
         row_baselines: list[int] = []
         row_centroids: list[list[float]] = []
         row_visible_pixels: list[int] = []
+        row_body_sizes: list[list[int]] = []
         for column in range(4):
             frame = movement.crop(
                 (
@@ -597,31 +642,48 @@ def _validate_approved_movement_animation(movement_path: Path) -> dict[str, obje
             if len(visible_x) == 0:
                 raise AssertionError(f"approved movement row {row} frame {column} is empty")
             baseline = int(visible_y.max())
-            expected_baseline = 26 if row < 2 else 25
+            expected_baseline = expected_baselines[row][column]
             if baseline != expected_baseline:
                 raise AssertionError(
                     f"approved movement row {row} frame {column} baseline "
                     f"{baseline} != {expected_baseline}"
                 )
             centroid = [float(visible_x.mean()), float(visible_y.mean())]
-            if not 15.0 <= centroid[0] <= 16.0 or not 15.3 <= centroid[1] <= 15.8:
+            if not 15.0 <= centroid[0] <= 16.0 or not 14.3 <= centroid[1] <= 16.3:
                 raise AssertionError(
                     f"approved movement row {row} frame {column} centroid {centroid} is unstable"
+                )
+            body_left, body_right = body_x_ranges[row]
+            body_y, body_x = np.where(alpha[:, body_left:body_right])
+            if len(body_x) == 0:
+                raise AssertionError(
+                    f"approved movement row {row} frame {column} body is empty"
+                )
+            body_size = [
+                int(body_x.max() - body_x.min() + 1),
+                int(body_y.max() - body_y.min() + 1),
+            ]
+            if body_size[0] > 20 or body_size[1] > 20:
+                raise AssertionError(
+                    f"approved movement row {row} frame {column} body "
+                    f"{body_size} exceeds 20x20"
                 )
             row_baselines.append(baseline)
             row_centroids.append([round(value, 3) for value in centroid])
             row_visible_pixels.append(int(len(visible_x)))
+            row_body_sizes.append(body_size)
         if max(value[0] for value in row_centroids) - min(
             value[0] for value in row_centroids
         ) > 0.9:
             raise AssertionError(f"approved movement row {row} horizontal center drift exceeds 0.9px")
         if max(value[1] for value in row_centroids) - min(
             value[1] for value in row_centroids
-        ) > 0.35:
-            raise AssertionError(f"approved movement row {row} vertical center drift exceeds 0.35px")
+        ) > 1.25:
+            raise AssertionError(f"approved movement row {row} vertical center drift exceeds 1.25px")
         foot_baselines.append(row_baselines)
         alpha_centroids.append(row_centroids)
         visible_pixels.append(row_visible_pixels)
+        body_sizes.append(row_body_sizes)
     return {
         "canonical_source": APPROVED_MOVEMENT_PATH.relative_to(ROOT).as_posix(),
         "canonical_source_sha256": _sha256(APPROVED_MOVEMENT_PATH),
@@ -630,6 +692,8 @@ def _validate_approved_movement_animation(movement_path: Path) -> dict[str, obje
             APPROVED_MOVEMENT_PATH.read_bytes() == movement_path.read_bytes()
         ),
         "foot_baselines": foot_baselines,
+        "bob_rhythms": [list(rhythm) for rhythm in bob_rhythms],
+        "body_sizes_excluding_rifle_extension": body_sizes,
         "alpha_centroids": alpha_centroids,
         "visible_pixels": visible_pixels,
     }
@@ -775,9 +839,10 @@ def _write_readme() -> None:
 
 维什戴尔图集看起来在移动，关键并不是频繁改脸，而是稳定的视觉轴、交替的腿脚
 接触点，以及很克制的身体起伏。`movement_alpha.png` 已经正确作者化了提伊的四拍
-动作；它的四个方向分别共享稳定脚底线，人物中心也稳定。因此处理器完整保留每一帧，
-不会复制中立帧覆盖上半身，也不会额外制造上下位移。维什戴尔只用于核对 32×32
-像素密度与 8 FPS 四拍节奏，不用于强迫两个不同轮廓拥有相同的外包框尺寸。
+动作。人工监修母版 `movement_logical_lossless.png` 再经过结构化逐行收拢，得到已批准的
+`movement_scale1_20px_candidate.png`：主体排除枪支延伸后不超过 20×20，完整面部块
+逐 RGBA 保留，且没有插值或新增颜色。最终四拍按维什戴尔的节奏加入整数像素起伏；
+正背面为 `0,-1,0,-1px`，侧面上半身为 `0,0,+1,-1px`，腿脚接地点保持稳定。
 
 ## 精确逻辑像素解码
 
@@ -795,14 +860,17 @@ def _write_readme() -> None:
 
 ## 运行时布局
 
-- `movement.png`: 128×128，直接复制已经人工监修通过的 4×4 移动帧；运行时
-  四方向动画以此文件为唯一权威素材，不重新压缩、不调色。
+- `movement.png`: 128×128，逐字节复制已经批准的
+  `movement_scale1_20px_candidate.png`；运行时四方向动画以此文件为唯一权威素材，
+  不重新压缩、不调色，场景使用整数 `scale=1`。
 - `body.png`: 160×160，保留生成管线与最后一行五帧紫色死亡特效；运行时死亡
   动画只读取其第五行。
 - `sniper_bullet.png`: 64×8，两帧 32×8。
 - `sniper_hit.png`: 288×48，六帧 48×48。
 - `armed_effect.png`: 384×32，八帧 48×32，复用维什戴尔几何并确定性改为紫色阶。
-- `portrait.png` 与 `skill1_icon.png`: 各 128×128。
+- `portrait.png`: 取 `normal_down` 第 0 帧的完整 32×32 单元，以最近邻严格放大
+  4 倍至 128×128，供角色选择卡牌与背包左侧个人数据共同使用。
+- `skill1_icon.png`: 128×128，继续使用独立技能图标源。
 
 运行时 PNG 只含 0/255 Alpha，透明像素 RGB 清零；移动人物不经过缩放，其他需要
 适配固定画布的图集才使用最近邻。死亡和武装特效固定使用
@@ -820,8 +888,9 @@ def main() -> None:
             path = SOURCE_DIR / f"{name}_{suffix}.png"
             if not path.is_file():
                 raise FileNotFoundError(path)
-    if not APPROVED_MOVEMENT_PATH.is_file():
-        raise FileNotFoundError(APPROVED_MOVEMENT_PATH)
+    for approved_path in (APPROVED_MOVEMENT_PATH, APPROVED_MOVEMENT_REPORT_PATH):
+        if not approved_path.is_file():
+            raise FileNotFoundError(approved_path)
 
     analyses, crop_logs = _run_pixel_tools()
     body, movement_diagnostics = _build_body()
@@ -891,6 +960,7 @@ def main() -> None:
                 "--padding 0 --alpha-threshold 127"
             ),
             "processor": "python dev_tools/process_tiyi_assets.py",
+            "movement_20px_builder": "python dev_tools/process_tiyi_20px_candidate.py",
         },
         "runtime": validation,
         "movement_logical_decode": {
@@ -907,7 +977,14 @@ def main() -> None:
             "death_grid": "body.png row 4: 5 columns, 32x32 cells",
             "runtime_uses_approved_movement": True,
             "normal": {"directions": ["down", "up", "right", "left"], "frames": 4, "fps": 8, "loop": True},
-            "idle": {"directions": ["down", "up", "right", "left"], "frames": 1, "fps": 1, "loop": False},
+            "standing_animation": "reuses the active 8 FPS normal/armed directional loop",
+            "ui_portrait": {
+                "animation": "normal_down",
+                "frame": 0,
+                "region": [0, 0, 32, 32],
+                "integer_scale": 4,
+                "consumers": ["character selection card", "player profile inventory panel"],
+            },
             "armed": {"directions": ["down", "up", "right", "left"], "frames": 4, "fps": 8, "loop": True},
             "death": {"frames": 5, "fps": 10, "loop": False, "last_frame_fully_transparent": True},
             "authored_movement_frames_preserved": True,
@@ -919,6 +996,11 @@ def main() -> None:
         "provenance": {
             "approved_movement_source": APPROVED_MOVEMENT_PATH.relative_to(ROOT).as_posix(),
             "approved_movement_source_sha256": _sha256(APPROVED_MOVEMENT_PATH),
+            "approved_movement_report": APPROVED_MOVEMENT_REPORT_PATH.relative_to(ROOT).as_posix(),
+            "approved_movement_report_sha256": _sha256(APPROVED_MOVEMENT_REPORT_PATH),
+            "portrait_source": APPROVED_MOVEMENT_PATH.relative_to(ROOT).as_posix(),
+            "portrait_source_region": [0, 0, 32, 32],
+            "portrait_integer_scale": 4,
             "approved_movement_runtime_path": approved_movement_output.relative_to(ROOT).as_posix(),
             "approved_movement_runtime_byte_identical": (
                 APPROVED_MOVEMENT_PATH.read_bytes() == approved_movement_output.read_bytes()

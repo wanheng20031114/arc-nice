@@ -67,7 +67,10 @@ func _test_stats_ammo_and_animation() -> void:
 	)
 	player.velocity = Vector2.ZERO
 	player.call("_update_animation")
-	_expect(body_sprite.animation == &"idle_right" and not body_sprite.is_playing(), "Tiyi idle must freeze on the authored neutral frame.")
+	_expect(
+		body_sprite.animation == &"normal_right" and body_sprite.is_playing(),
+		"Tiyi must keep its directional four-frame loop playing while standing still."
+	)
 	player.velocity = Vector2.RIGHT
 	player.call("_update_animation")
 	_expect(body_sprite.animation == &"normal_right" and body_sprite.is_playing(), "Tiyi movement must play the directional four-frame gait.")

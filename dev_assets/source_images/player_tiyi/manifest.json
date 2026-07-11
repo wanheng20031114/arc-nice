@@ -203,7 +203,8 @@
     "remove_chroma_key": "python C:/Users/wh/.codex/skills/.system/imagegen/scripts/remove_chroma_key.py --input <name>_source.png --out <name>_alpha.png --auto-key border --soft-matte --transparent-threshold 12 --opaque-threshold 220 --despill --force",
     "pixel_grid_analyzer": "python dev_tools/pixel_grid_analyzer.py <name>_alpha.png --json",
     "pixel_crop_tool": "python dev_tools/pixel_crop_tool.py <name>_alpha.png <name>_crop_tool.png --padding 0 --alpha-threshold 127",
-    "processor": "python dev_tools/process_tiyi_assets.py"
+    "processor": "python dev_tools/process_tiyi_assets.py",
+    "movement_20px_builder": "python dev_tools/process_tiyi_20px_candidate.py"
   },
   "runtime": {
     "body": {
@@ -227,8 +228,8 @@
         0,
         255
       ],
-      "visible_palette_size": 27,
-      "sha256": "6698faef134f38200684fd11dfe9def32635e3b5c36c063a2c0aac98e91a8275"
+      "visible_palette_size": 215,
+      "sha256": "7c85e772dbbd56daf3a4d0699d0f51e16d9632517c895d8d79dc20a91928b8f1"
     },
     "skill1_icon": {
       "size": [
@@ -287,8 +288,8 @@
         0,
         255
       ],
-      "visible_palette_size": 1300,
-      "sha256": "86f823ee8e481697a310406aceefbd204a4427e47403bbfa58de146fd6848c94"
+      "visible_palette_size": 1026,
+      "sha256": "f30b08f4bd0a2bf0db9f7c6ae6cd934cb416b951d83d07e1b20ca5bcf4a6b746"
     },
     "body_animation": {
       "decode_method": "per-frame 8/9px integer lattice, central 60% palette mode",
@@ -485,136 +486,248 @@
       ]
     },
     "approved_movement_animation": {
-      "canonical_source": "dev_assets/source_images/player_tiyi/movement_logical_lossless.png",
-      "canonical_source_sha256": "86f823ee8e481697a310406aceefbd204a4427e47403bbfa58de146fd6848c94",
-      "runtime_copy_sha256": "86f823ee8e481697a310406aceefbd204a4427e47403bbfa58de146fd6848c94",
+      "canonical_source": "dev_assets/source_images/player_tiyi/movement_scale1_20px_candidate.png",
+      "canonical_source_sha256": "f30b08f4bd0a2bf0db9f7c6ae6cd934cb416b951d83d07e1b20ca5bcf4a6b746",
+      "runtime_copy_sha256": "f30b08f4bd0a2bf0db9f7c6ae6cd934cb416b951d83d07e1b20ca5bcf4a6b746",
       "byte_identical_to_canonical": true,
       "foot_baselines": [
         [
-          26,
-          26,
-          26,
-          26
+          24,
+          23,
+          24,
+          23
         ],
         [
-          26,
-          26,
-          26,
-          26
+          24,
+          23,
+          24,
+          23
         ],
         [
-          25,
-          25,
-          25,
-          25
+          23,
+          23,
+          23,
+          23
         ],
         [
-          25,
-          25,
-          25,
-          25
+          23,
+          23,
+          23,
+          23
+        ]
+      ],
+      "bob_rhythms": [
+        [
+          0,
+          -1,
+          0,
+          -1
+        ],
+        [
+          0,
+          -1,
+          0,
+          -1
+        ],
+        [
+          0,
+          0,
+          1,
+          -1
+        ],
+        [
+          0,
+          0,
+          1,
+          -1
+        ]
+      ],
+      "body_sizes_excluding_rifle_extension": [
+        [
+          [
+            20,
+            20
+          ],
+          [
+            20,
+            20
+          ],
+          [
+            20,
+            20
+          ],
+          [
+            20,
+            20
+          ]
+        ],
+        [
+          [
+            20,
+            20
+          ],
+          [
+            20,
+            20
+          ],
+          [
+            20,
+            20
+          ],
+          [
+            20,
+            20
+          ]
+        ],
+        [
+          [
+            20,
+            19
+          ],
+          [
+            20,
+            19
+          ],
+          [
+            20,
+            18
+          ],
+          [
+            20,
+            20
+          ]
+        ],
+        [
+          [
+            20,
+            19
+          ],
+          [
+            20,
+            19
+          ],
+          [
+            20,
+            18
+          ],
+          [
+            20,
+            20
+          ]
         ]
       ],
       "alpha_centroids": [
         [
           [
-            15.577,
-            15.656
+            15.625,
+            15.551
           ],
           [
-            15.563,
-            15.627
+            15.608,
+            14.522
           ],
           [
-            15.556,
-            15.53
+            15.599,
+            15.425
           ],
           [
-            15.571,
-            15.594
+            15.618,
+            14.488
           ]
         ],
         [
           [
-            15.423,
-            15.69
+            15.35,
+            15.572
           ],
           [
-            15.422,
-            15.722
+            15.349,
+            14.605
           ],
           [
-            15.391,
-            15.612
+            15.31,
+            15.494
           ],
           [
-            15.368,
-            15.723
+            15.282,
+            14.606
           ]
         ],
         [
           [
-            15.437,
-            15.595
+            15.387,
+            15.583
           ],
           [
-            15.118,
-            15.568
+            15.066,
+            15.531
           ],
           [
-            15.406,
-            15.505
+            15.407,
+            16.144
           ],
           [
-            15.294,
-            15.585
+            15.178,
+            14.992
           ]
         ],
         [
           [
-            15.563,
-            15.595
+            15.613,
+            15.583
           ],
           [
-            15.697,
-            15.644
+            15.704,
+            15.609
           ],
           [
-            15.856,
-            15.473
+            15.818,
+            16.126
           ],
           [
-            15.854,
-            15.568
+            15.95,
+            14.996
           ]
         ]
       ],
       "visible_pixels": [
         [
-          317,
-          316,
-          313,
-          315
+          256,
+          255,
+          252,
+          254
         ],
         [
-          319,
-          320,
-          317,
-          321
+          257,
+          258,
+          255,
+          259
         ],
         [
-          284,
-          280,
-          281,
-          282
+          230,
+          226,
+          216,
+          242
         ],
         [
-          284,
-          284,
-          277,
-          280
+          230,
+          230,
+          214,
+          241
         ]
       ]
+    },
+    "ui_portrait_source": {
+      "source_animation": "normal_down",
+      "source_frame": 0,
+      "source_region": [
+        0,
+        0,
+        32,
+        32
+      ],
+      "integer_scale": 4,
+      "rgba_byte_identical_to_scaled_source": true
     }
   },
   "movement_logical_decode": {
@@ -1362,16 +1475,21 @@
       "fps": 8,
       "loop": true
     },
-    "idle": {
-      "directions": [
-        "down",
-        "up",
-        "right",
-        "left"
+    "standing_animation": "reuses the active 8 FPS normal/armed directional loop",
+    "ui_portrait": {
+      "animation": "normal_down",
+      "frame": 0,
+      "region": [
+        0,
+        0,
+        32,
+        32
       ],
-      "frames": 1,
-      "fps": 1,
-      "loop": false
+      "integer_scale": 4,
+      "consumers": [
+        "character selection card",
+        "player profile inventory panel"
+      ]
     },
     "armed": {
       "directions": [
@@ -1405,8 +1523,18 @@
     ]
   },
   "provenance": {
-    "approved_movement_source": "dev_assets/source_images/player_tiyi/movement_logical_lossless.png",
-    "approved_movement_source_sha256": "86f823ee8e481697a310406aceefbd204a4427e47403bbfa58de146fd6848c94",
+    "approved_movement_source": "dev_assets/source_images/player_tiyi/movement_scale1_20px_candidate.png",
+    "approved_movement_source_sha256": "f30b08f4bd0a2bf0db9f7c6ae6cd934cb416b951d83d07e1b20ca5bcf4a6b746",
+    "approved_movement_report": "dev_assets/source_images/player_tiyi/movement_scale1_20px_candidate.json",
+    "approved_movement_report_sha256": "71c9814bdf79825286b217736aea8c90e4c39e99ecf161546bf21e93f9fbd55a",
+    "portrait_source": "dev_assets/source_images/player_tiyi/movement_scale1_20px_candidate.png",
+    "portrait_source_region": [
+      0,
+      0,
+      32,
+      32
+    ],
+    "portrait_integer_scale": 4,
     "approved_movement_runtime_path": "resources/texture/player/tiyi/movement.png",
     "approved_movement_runtime_byte_identical": true,
     "armed_effect_geometry": "resources/texture/player/weishidaier/armed_effect.png",

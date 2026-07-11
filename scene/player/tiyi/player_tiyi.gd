@@ -82,29 +82,6 @@ func _exit_tree() -> void:
 	_clear_owned_sniper_bullets()
 
 
-func _update_animation() -> void:
-	if is_dead:
-		return
-	if velocity.length_squared() > 0.01:
-		super._update_animation()
-		return
-
-	var idle_animation := StringName("idle_%s" % facing_suffix)
-	if body_sprite.sprite_frames.has_animation(idle_animation):
-		if body_sprite.animation != idle_animation:
-			body_sprite.play(idle_animation)
-		body_sprite.stop()
-		body_sprite.frame = 0
-		return
-
-	var neutral_animation := StringName("normal_%s" % facing_suffix)
-	if body_sprite.sprite_frames.has_animation(neutral_animation):
-		if body_sprite.animation != neutral_animation:
-			body_sprite.play(neutral_animation)
-		body_sprite.stop()
-		body_sprite.frame = 0
-
-
 func _cache_character_visual_base_positions() -> void:
 	super._cache_character_visual_base_positions()
 	_high_noon_lock_lines_base_position = high_noon_lock_lines.position

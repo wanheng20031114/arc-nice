@@ -143,14 +143,15 @@ func _test_registry_and_run_state() -> void:
 		"Tiyi config must expose the authored 50/120/100/250 starting stats and attack-speed scale."
 	)
 	_expect(
-		tiyi_config.title == "紫色死线"
+		tiyi_config.title == "呼呼呼"
+		and tiyi_config.description == "以五发弹仓的重型狙击枪处决强敌，并在「午时已到」中锁定多个目标。"
 		and tiyi_config.playstyle == "远程 · 单点爆发"
 		and tiyi_config.skill_description.contains("5秒")
 		and tiyi_config.skill_description.contains("200范围")
 		and tiyi_config.skill_description.contains("每0.25秒")
 		and tiyi_config.skill_description.contains("最多20名")
 		and tiyi_config.skill_description.contains("400%"),
-		"Tiyi card and skill copy must preserve all authored high-noon limits."
+		"Tiyi card copy and skill text must preserve the authored content."
 	)
 	_expect(
 		PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.HOE_CAT_ID).title
@@ -237,18 +238,24 @@ func _test_choice_overlay() -> void:
 		for card in overlay.cards:
 			var title_label := card.get_node("Margin/Content/Title") as Label
 			var name_label := card.get_node("Margin/Content/Name") as Label
+			var description_label := card.get_node("Margin/Content/Description") as RichTextLabel
 			var portrait_frame := card.get_node("Margin/Content/PortraitFrame") as PanelContainer
 			var portrait := card.get_node(
 				"Margin/Content/PortraitFrame/PortraitLayer/Portrait"
 			) as TextureRect
 			var title_font := title_label.get_theme_font(&"font")
+			var title_font_variation := title_font as FontVariation
 			var name_font := name_label.get_theme_font(&"font")
 			var portrait_style := portrait_frame.get_theme_stylebox(&"panel") as StyleBoxFlat
 			_expect(
 				title_label.custom_minimum_size.y >= title_font.get_height(
 					title_label.get_theme_font_size(&"font_size")
-				) + 6.0,
-				"Character card titles must leave vertical breathing room around CJK glyphs."
+				) + 10.0,
+				"Character card titles must keep enough top and bottom safety around CJK glyphs."
+			)
+			_expect(
+				title_font_variation != null and title_font_variation.spacing_top >= 2,
+				"Character card title fonts must reserve glyph space above the text line."
 			)
 			_expect(
 				title_label.size.y >= title_label.custom_minimum_size.y,
@@ -282,6 +289,13 @@ func _test_choice_overlay() -> void:
 				portrait.position.is_equal_approx(card.character_config.portrait_offset),
 				"Character portrait controls must preserve their configured offsets."
 			)
+			if card.character_config.character_id == PlayerCharacterRegistry.TIYI_ID:
+				_expect(
+					title_label.text == "呼呼呼"
+					and description_label.text
+					== "以五发弹仓的重型狙击枪处决强敌，并在「午时已到」中锁定多个目标。",
+					"Tiyi's character card must display the authored title and description."
+				)
 		var hovered_card := overlay.cards[1]
 		hovered_card.call("_on_mouse_entered")
 		await create_timer(0.15).timeout

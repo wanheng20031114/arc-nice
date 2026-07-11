@@ -33,7 +33,7 @@ shader_parameter/dodge_flash_color = Color(1, 1, 1, 1)
 shader_parameter/dodge_outline_width = 3.0
 shader_parameter/dash_effect_strength = 0.0
 shader_parameter/dash_direction = Vector2(1, 0)
-shader_parameter/dash_color = Color(0.69, 0.35, 1.32, 1)
+shader_parameter/dash_color = Color(0.12, 1.45, 1.3, 1)
 shader_parameter/dash_trail_pixels = 4.0
 shader_parameter/slow_overlay_strength = 0.0
 shader_parameter/slow_overlay_color = Color(0.55, 0.86, 1, 1)
@@ -115,7 +115,7 @@ animations = [{
 resource_local_to_scene = true
 shader = ExtResource("8_dash_shader")
 shader_parameter/ready_strength = 0.0
-shader_parameter/glow_color = Color(0.69, 0.35, 1.32, 1)
+shader_parameter/glow_color = Color(0.08, 1.55, 1.35, 1)
 shader_parameter/glow_opacity = 0.18
 shader_parameter/pulse_speed = 2.2
 shader_parameter/pulse_amount = 0.1
@@ -134,17 +134,16 @@ character_id = &"tiyi"
 [node name="BodySprite" type="AnimatedSprite2D" parent="." unique_id=809921260]
 z_index = 1
 material = SubResource("ShaderMaterial_status")
-scale = Vector2(0.8, 0.8)
 sprite_frames = ExtResource("12_player_frames")
 animation = &"normal_down"
-autoplay = "idle_down"
-frame_progress = 0.6656376
+autoplay = "normal_down"
 
 [node name="ArmedEffectSprite" type="AnimatedSprite2D" parent="." unique_id=609654268]
+visible = false
 z_index = 2
-scale = Vector2(0.8, 0.8)
 sprite_frames = SubResource("SpriteFrames_armed")
-frame_progress = 0.70323116
+frame = 3
+frame_progress = 0.5145778
 
 [node name="HighNoonLockLines" parent="." unique_id=1732621824 instance=ExtResource("19_lock_lines")]
 

@@ -2,6 +2,7 @@ extends SceneTree
 
 const WEISHIDAIER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const HOE_CAT_SCENE := preload("res://scene/player/hoe_cat/player_hoe_cat.tscn")
+const TIYI_SCENE := preload("res://scene/player/tiyi/player_tiyi.tscn")
 const ROLLER_SKATES := preload("res://resources/config/collectibles/collectible_roller_skates.tres")
 const POWER_WHEEL := preload("res://resources/config/collectibles/collectible_power_wheel.tres")
 const DASH_READY_SHADER_PATH := "res://scene/player/effects/dash_ready_glow.gdshader"
@@ -9,6 +10,10 @@ const MOTION_STATUS_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
 const MULTIPLAYER_GAME_SCRIPT_PATH := "res://scene/multiplayer/mp_game.gd"
 const READY_STRENGTH_PARAMETER := &"ready_strength"
 const DASH_STRENGTH_PARAMETER := &"dash_effect_strength"
+const DASH_COLOR_PARAMETER := &"dash_color"
+const READY_GLOW_COLOR_PARAMETER := &"glow_color"
+const SHARED_DASH_COLOR := Color(0.12, 1.45, 1.3, 1.0)
+const SHARED_READY_GLOW_COLOR := Color(0.08, 1.55, 1.35, 1.0)
 
 
 class DashOverridePlayer:
@@ -41,6 +46,7 @@ func _run() -> void:
 	await _test_collectible_dash_modifiers()
 	await _test_player_scene(WEISHIDAIER_SCENE, "Weishidaier")
 	await _test_player_scene(HOE_CAT_SCENE, "Hoe Cat")
+	await _test_player_scene(TIYI_SCENE, "Tiyi")
 	await _test_dash_wall_collision()
 	await _test_dash_preserves_existing_invincibility()
 	await _test_multiplayer_dash_protection()
@@ -192,6 +198,7 @@ func _test_player_scene(player_scene: PackedScene, label: String) -> void:
 	test_root.add_child(player)
 	var cooldown_timer := player.get_node_or_null("DashCooldownTimer") as Timer
 	var ready_indicator := player.get_node_or_null("DashReadyIndicator") as Control
+	var speed_trail := player.get_node_or_null("MoveSpeedTrailEffect") as Node2D
 	var body_sprite := player.get_node_or_null("BodySprite") as AnimatedSprite2D
 	var body_material: ShaderMaterial = null
 	if body_sprite != null:
@@ -231,6 +238,22 @@ func _test_player_scene(player_scene: PackedScene, label: String) -> void:
 		body_material != null and body_material.shader.resource_path == MOTION_STATUS_SHADER_PATH,
 		"%s body must keep the shared motion status shader." % label
 	)
+	_expect(speed_trail != null, "%s must author the shared movement trail node." % label)
+	if label == "Tiyi":
+		_expect(
+			body_material != null
+			and (body_material.get_shader_parameter(DASH_COLOR_PARAMETER) as Color).is_equal_approx(
+				SHARED_DASH_COLOR
+			),
+			"Tiyi dash shader must use the visible shared pale-blue color."
+		)
+		_expect(
+			ready_material != null
+			and (ready_material.get_shader_parameter(READY_GLOW_COLOR_PARAMETER) as Color).is_equal_approx(
+				SHARED_READY_GLOW_COLOR
+			),
+			"Tiyi foot-level dash-ready glow must use the shared pale-blue color."
+		)
 	await create_timer(0.1, true, true).timeout
 	var initial_mid_strength := float(
 		ready_material.get_shader_parameter(READY_STRENGTH_PARAMETER)
@@ -264,6 +287,10 @@ func _test_player_scene(player_scene: PackedScene, label: String) -> void:
 		"%s dash must activate the body shader effect." % label
 	)
 	_expect(
+		speed_trail != null and speed_trail.visible and _all_trail_emitters_match(speed_trail, true),
+		"%s dash must activate every pale-blue movement trail emitter." % label
+	)
+	_expect(
 		ready_material != null and is_zero_approx(float(ready_material.get_shader_parameter(READY_STRENGTH_PARAMETER))),
 		"%s ready glow must switch off when dash starts." % label
 	)
@@ -280,6 +307,10 @@ func _test_player_scene(player_scene: PackedScene, label: String) -> void:
 		if not player.is_dashing():
 			break
 	_expect(not player.is_dashing(), "%s dash must finish in a short bounded duration." % label)
+	_expect(
+		speed_trail != null and not speed_trail.visible and _all_trail_emitters_match(speed_trail, false),
+		"%s movement trail must stop after dash completion." % label
+	)
 	var displacement := player.global_position - start_position
 	_expect(
 		absf(displacement.length() - expected_dash_distance) <= 0.75,
@@ -329,6 +360,18 @@ func _test_player_scene(player_scene: PackedScene, label: String) -> void:
 
 	player.queue_free()
 	await process_frame
+
+
+func _all_trail_emitters_match(speed_trail: Node, expected_emitting: bool) -> bool:
+	var found_emitter := false
+	for child in speed_trail.get_children():
+		var particles := child as GPUParticles2D
+		if particles == null:
+			continue
+		found_emitter = true
+		if particles.emitting != expected_emitting:
+			return false
+	return found_emitter
 
 
 func _test_multiplayer_dash_protection() -> void:
