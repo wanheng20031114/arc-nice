@@ -1,0 +1,105 @@
+[gd_scene format=3 uid="uid://cwu78hjnhx2c5"]
+
+[ext_resource type="Script" uid="uid://ks2jmj4oq4v2" path="res://scene/player/tiyi/tiyi_sniper_hit_effect.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://dfl56fa0ctgsf" path="res://resources/texture/player/tiyi/sniper_hit.png" id="2_texture"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_hit_0"]
+atlas = ExtResource("2_texture")
+region = Rect2(0, 0, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_hit_1"]
+atlas = ExtResource("2_texture")
+region = Rect2(48, 0, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_hit_2"]
+atlas = ExtResource("2_texture")
+region = Rect2(96, 0, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_hit_3"]
+atlas = ExtResource("2_texture")
+region = Rect2(144, 0, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_hit_4"]
+atlas = ExtResource("2_texture")
+region = Rect2(192, 0, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_hit_5"]
+atlas = ExtResource("2_texture")
+region = Rect2(240, 0, 48, 48)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_hit"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_hit_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_hit_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_hit_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_hit_3")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_hit_4")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_hit_5")
+}],
+"loop": false,
+"name": &"hit",
+"speed": 24.0
+}]
+
+[sub_resource type="Gradient" id="Gradient_fragment_texture"]
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_fragment"]
+gradient = SubResource("Gradient_fragment_texture")
+width = 2
+height = 2
+fill_from = Vector2(0, 0.5)
+fill_to = Vector2(1, 0.5)
+
+[sub_resource type="Gradient" id="Gradient_fragment_color"]
+offsets = PackedFloat32Array(0, 0.45, 1)
+colors = PackedColorArray(0.91, 0.71, 1, 1, 0.69, 0.35, 0.87, 0.94, 0.23, 0.11, 0.31, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_fragment_color"]
+gradient = SubResource("Gradient_fragment_color")
+width = 16
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_fragments"]
+emission_shape = 1
+emission_sphere_radius = 2.0
+spread = 180.0
+initial_velocity_min = 34.0
+initial_velocity_max = 68.0
+gravity = Vector3(0, 0, 0)
+scale_min = 0.65
+scale_max = 1.15
+color_ramp = SubResource("GradientTexture1D_fragment_color")
+
+[node name="TiyiSniperHitEffect" type="Node2D" unique_id=222558033]
+z_index = 6
+script = ExtResource("1_script")
+
+[node name="HitSprite" type="AnimatedSprite2D" parent="." unique_id=1438657468]
+sprite_frames = SubResource("SpriteFrames_hit")
+animation = &"hit"
+frame = 5
+frame_progress = 1.0
+
+[node name="FragmentParticles" type="GPUParticles2D" parent="." unique_id=226229886]
+emitting = false
+texture = SubResource("GradientTexture2D_fragment")
+lifetime = 0.24
+one_shot = true
+explosiveness = 0.92
+randomness = 0.35
+visibility_rect = Rect2(-48, -48, 96, 96)
+process_material = SubResource("ParticleProcessMaterial_fragments")
+
+[connection signal="animation_finished" from="HitSprite" to="." method="_on_hit_sprite_animation_finished"]

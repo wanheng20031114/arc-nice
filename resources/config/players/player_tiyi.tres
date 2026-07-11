@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="PlayerCharacterConfig" format=3]
+
+[ext_resource type="Script" uid="uid://by2j147pm6q40" path="res://resources/config/players/player_character_config.gd" id="1_config"]
+
+[resource]
+script = ExtResource("1_config")
+character_id = &"tiyi"
+display_name = "提伊"
+english_name = "Tiyi"
+title = "紫色死线"
+description = "以五发弹仓的重型狙击枪处决强敌，并在「午时已到」中锁定多个目标。"
+playstyle = "远程 · 单点爆发"
+player_scene = "res://scene/player/tiyi/player_tiyi.tscn"
+portrait_texture = "res://resources/texture/player/tiyi/portrait.png"
+skill_display_name = "午时已到"
+skill_description = "持续5秒，在200范围内每0.25秒锁定一名可见敌人，最多20名；结束时对每名存活目标造成攻击力400%的物理伤害。"
+skill_icon_texture = "res://resources/texture/player/tiyi/skill1_icon.png"
+starting_max_health = 50
+starting_attack_damage = 100
+starting_attack_speed = 250.0
+attack_speed_units_per_attack = 250.0
+starting_move_speed = 120.0
+card_background_color = Color(0.11, 0.075, 0.16, 0.98)
+card_edge_color = Color(0.62, 0.38, 0.82, 1)
+card_hover_edge_color = Color(0.82, 0.58, 1, 1)
+card_accent_color = Color(0.69, 0.35, 0.87, 1)
+card_button_color = Color(0.35, 0.18, 0.52, 1)
+card_text_color = Color(0.94, 0.88, 1, 1)

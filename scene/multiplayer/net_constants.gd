@@ -1,7 +1,7 @@
 extends RefCounted
 
 ## 协议与版本
-const PROTOCOL_VERSION := 1
+const PROTOCOL_VERSION := 2
 
 ## 玩家限制
 const MAX_PLAYERS := 8
@@ -24,7 +24,7 @@ const PUBLIC_ROOM_KEEPALIVE_INTERVAL_SECONDS := 60.0
 ## 1: 玩家状态上报 — unreliable_ordered
 ## 2: 玩家/敌人状态快照 — unreliable_ordered
 ## 3: 投射物事件 — Client→Host 生成/命中 reliable；Host→Client 视觉副本 unreliable_ordered
-## 4: 伤害、死亡、生成、掉落、升级事件 — reliable
+## 4: 伤害、死亡、生成、掉落、升级与角色技能事件 — reliable
 const CH_AUTH := 0
 const CH_INPUT := 1
 const CH_STATE := 2

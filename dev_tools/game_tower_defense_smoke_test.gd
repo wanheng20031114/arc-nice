@@ -109,7 +109,7 @@ func _test_main_menu_entry() -> void:
 	tower_defense_button.pressed.emit()
 	await process_frame
 	_expect(character_overlay.is_open(), "Tower-defense character selection must reopen after cancellation.")
-	character_overlay.call("_select_character", PlayerCharacterRegistry.HOE_CAT_ID)
+	character_overlay.call("_select_character", PlayerCharacterRegistry.TIYI_ID)
 	_expect(
 		run_state.get_selected_character_id() == PlayerCharacterRegistry.WEISHIDAIER_ID
 		and not run_state.run_started,
@@ -123,7 +123,7 @@ func _test_main_menu_entry() -> void:
 
 	_expect(run_state.run_started, "Tower-defense entry must begin a new single-player run.")
 	_expect(
-		run_state.get_selected_character_id() == PlayerCharacterRegistry.HOE_CAT_ID,
+		run_state.get_selected_character_id() == PlayerCharacterRegistry.TIYI_ID,
 		"Tower-defense entry must persist the character confirmed in the shared selection flow."
 	)
 	_expect(current_scene is GameTowerDefense, "Tower-defense entry must load game_tower_defense.tscn.")
@@ -136,8 +136,13 @@ func _test_main_menu_entry() -> void:
 	if tower_game != null:
 		_expect(
 			tower_game.player != null
-			and tower_game.player.get_character_id() == PlayerCharacterRegistry.HOE_CAT_ID,
-			"Tower-defense game must instantiate the selected character just like standard single-player."
+			and tower_game.player.get_character_id() == PlayerCharacterRegistry.TIYI_ID,
+			"Tower-defense game must instantiate Tiyi through the shared single-player character flow."
+		)
+		_expect(
+			tower_game.player is PlayerTiyi
+			and (tower_game.player as PlayerTiyi).get_ammo_capacity() == 5,
+			"Tower-defense Tiyi must keep the authored five-round sniper magazine."
 		)
 		var placement_controller := tower_game.get_node_or_null(
 			"PlantPlacementController"

@@ -28,8 +28,10 @@ const PACKED_U32_BYTES := 4
 const PLAYER_META_BYTES := 36
 const DEFAULT_CHARACTER_ID := &"weishidaier"
 const HOE_CAT_CHARACTER_ID := &"hoe_cat"
+const TIYI_CHARACTER_ID := &"tiyi"
 const CHARACTER_CODE_WEISHIDAIER := 0
 const CHARACTER_CODE_HOE_CAT := 1
+const CHARACTER_CODE_TIYI := 2
 const PACKED_I16_MIN := -32768
 const PACKED_I16_MAX := 32767
 const FULL_PLAYER_MASK := (
@@ -337,11 +339,23 @@ static func _get_enemy_snapshot_size(data: PackedByteArray, offset: int) -> int:
 
 
 static func _encode_character_id(character_id: StringName) -> int:
-	return CHARACTER_CODE_HOE_CAT if character_id == HOE_CAT_CHARACTER_ID else CHARACTER_CODE_WEISHIDAIER
+	match character_id:
+		HOE_CAT_CHARACTER_ID:
+			return CHARACTER_CODE_HOE_CAT
+		TIYI_CHARACTER_ID:
+			return CHARACTER_CODE_TIYI
+		_:
+			return CHARACTER_CODE_WEISHIDAIER
 
 
 static func _decode_character_id(character_code: int) -> StringName:
-	return HOE_CAT_CHARACTER_ID if character_code == CHARACTER_CODE_HOE_CAT else DEFAULT_CHARACTER_ID
+	match character_code:
+		CHARACTER_CODE_HOE_CAT:
+			return HOE_CAT_CHARACTER_ID
+		CHARACTER_CODE_TIYI:
+			return TIYI_CHARACTER_ID
+		_:
+			return DEFAULT_CHARACTER_ID
 
 
 static func _pack_ratio_u8(value: float) -> int:

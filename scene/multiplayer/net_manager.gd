@@ -492,7 +492,8 @@ func _handle_connected_to_server() -> void:
 		get_host_peer_id(),
 		_get_safe_local_name(),
 		String(local_character_id),
-		local_character_confirmed
+		local_character_confirmed,
+		NetConstants.PROTOCOL_VERSION
 	)
 	_set_connection_state(ConnectionState.CONNECTED_IN_LOBBY)
 	_debug_log("NetManager: 已连接到 LAN Host")
@@ -569,7 +570,8 @@ func _try_send_relay_registration() -> void:
 		target_host_id,
 		_get_safe_local_name(),
 		String(local_character_id),
-		local_character_confirmed
+		local_character_confirmed,
+		NetConstants.PROTOCOL_VERSION
 	)
 	_set_connection_state(ConnectionState.CONNECTED_IN_LOBBY)
 	_debug_log("NetManager: 已连接到 Relay Host %d" % target_host_id)
@@ -579,13 +581,22 @@ func _try_send_relay_registration() -> void:
 func _rpc_register_player(
 	player_name: String,
 	character_id: String = "weishidaier",
-	character_confirmed: bool = true
+	character_confirmed: bool = true,
+	protocol_version: int = -1
 ) -> void:
 	if not is_host():
 		return
 
 	var sender_id: int = multiplayer.get_remote_sender_id()
 	if sender_id <= 0:
+		return
+	if not _is_protocol_version_compatible(protocol_version):
+		push_warning(
+			"NetManager: 拒绝 peer %d 的协议版本 %d，当前版本为 %d。"
+			% [sender_id, protocol_version, NetConstants.PROTOCOL_VERSION]
+		)
+		_rpc_protocol_rejected.rpc_id(sender_id, NetConstants.PROTOCOL_VERSION)
+		call_deferred("_disconnect_incompatible_peer", sender_id)
 		return
 	if connected_players.size() >= NetConstants.MAX_PLAYERS:
 		if _enet_peer != null:
@@ -604,6 +615,32 @@ func _rpc_register_player(
 	player_list_changed.emit()
 	_broadcast_player_list_to_clients()
 	_debug_log("NetManager: 玩家注册, id=%d, name=%s" % [sender_id, connected_players[sender_id]])
+
+
+func _is_protocol_version_compatible(protocol_version: int) -> bool:
+	return protocol_version == NetConstants.PROTOCOL_VERSION
+
+
+func _disconnect_incompatible_peer(peer_id: int) -> void:
+	if _enet_peer == null or peer_id <= 0:
+		return
+	await get_tree().create_timer(0.1).timeout
+	if _enet_peer == null:
+		return
+	var packet_peer := _enet_peer.get_peer(peer_id)
+	if packet_peer != null:
+		packet_peer.peer_disconnect()
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _rpc_protocol_rejected(expected_protocol_version: int) -> void:
+	if is_host():
+		return
+	connection_failed.emit(
+		"联机协议版本不匹配：需要版本 %d，请使用相同构建。"
+		% expected_protocol_version
+	)
+	disconnect_from_game()
 
 
 @rpc("any_peer", "call_remote", "reliable", 0)

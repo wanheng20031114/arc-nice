@@ -1,17 +1,15 @@
 extends Node
 
 ## RPC surface stub for /root/MpGame while this project runs as a pure relay.
-## The methods intentionally do nothing; they only mirror the game RPC table.
+## Methods intentionally do nothing; annotations and signatures mirror the game RPC table.
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
 func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) -> void:
 	pass
 
-
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
 func _rpc_receive_enemy_snapshot(host_timestamp: float, data: PackedByteArray) -> void:
 	pass
-
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)
 func _rpc_client_player_state(
@@ -37,12 +35,6 @@ func _rpc_client_player_state(
 ) -> void:
 	pass
 
-
-@rpc("authority", "call_remote", "reliable", 4)
-func net_player_state_corrected(corrected_position: Vector2, corrected_velocity: Vector2) -> void:
-	pass
-
-
 @rpc("any_peer", "call_remote", "reliable", 4)
 func net_player_dash_requested(
 	dash_request_sequence: int,
@@ -50,7 +42,6 @@ func net_player_dash_requested(
 	start_move_input: Vector2
 ) -> void:
 	pass
-
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_player_dash_confirmed(
@@ -60,8 +51,57 @@ func net_player_dash_confirmed(
 ) -> void:
 	pass
 
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_hoe_primary_attack_requested(direction: Vector2) -> void:
+	pass
 
-@rpc("any_peer", "call_remote", "unreliable_ordered", 3)
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_hoe_whirlwind_requested() -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_hoe_action_confirmed(
+	peer_id: int,
+	action_kind_text: String,
+	direction: Vector2,
+	action_sequence: int
+) -> void:
+	pass
+
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_tiyi_high_noon_requested(activation_id: int) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_tiyi_high_noon_started(peer_id: int, activation_id: int) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_tiyi_high_noon_targets(
+	peer_id: int,
+	activation_id: int,
+	target_ids: PackedInt32Array
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_tiyi_high_noon_finished(
+	peer_id: int,
+	activation_id: int,
+	target_ids: PackedInt32Array,
+	hit_positions: PackedVector2Array
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_tiyi_high_noon_cancelled(peer_id: int, activation_id: int) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_player_state_corrected(corrected_position: Vector2, corrected_velocity: Vector2) -> void:
+	pass
+
+@rpc("any_peer", "call_remote", "reliable", 3)
 func _rpc_projectile_fired_from_client(
 	projectile_id: int,
 	projectile_type: String,
@@ -73,10 +113,10 @@ func _rpc_projectile_fired_from_client(
 	lifetime: float,
 	pierces_enemies: bool = false,
 	target_peer_id: int = 0,
-	_client_fire_timestamp: float = -1.0
+	_client_fire_timestamp: float = -1.0,
+	target_enemy_net_id: int = 0
 ) -> void:
 	pass
-
 
 @rpc("authority", "call_remote", "unreliable_ordered", 3)
 func net_projectile_fired(
@@ -90,12 +130,12 @@ func net_projectile_fired(
 	lifetime: float,
 	pierces_enemies: bool = false,
 	target_peer_id: int = 0,
-	host_fire_timestamp: float = -1.0
+	host_fire_timestamp: float = -1.0,
+	target_enemy_net_id: int = 0
 ) -> void:
 	pass
 
-
-@rpc("any_peer", "call_remote", "reliable", 4)
+@rpc("any_peer", "call_remote", "reliable", 3)
 func _rpc_enemy_hit_report(
 	projectile_id: int,
 	owner_peer_id: int,
@@ -105,6 +145,15 @@ func _rpc_enemy_hit_report(
 ) -> void:
 	pass
 
+@rpc("authority", "call_remote", "reliable", 3)
+func net_tiyi_sniper_hit_confirmed(
+	projectile_id: int,
+	enemy_net_id: int,
+	hit_position: Vector2,
+	direction: Vector2,
+	continues_piercing: bool
+) -> void:
+	pass
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_enemy_damage_applied(
@@ -113,10 +162,10 @@ func net_enemy_damage_applied(
 	is_dead: bool,
 	confirmed_damage: int,
 	impact_direction: Vector2,
-	damage_type: int = 0
+	damage_type: int = 0,
+	show_hit_particles: bool = true
 ) -> void:
 	pass
-
 
 @rpc("any_peer", "call_remote", "reliable", 4)
 func _rpc_player_hit_report(
@@ -130,7 +179,6 @@ func _rpc_player_hit_report(
 ) -> void:
 	pass
 
-
 @rpc("authority", "call_remote", "reliable", 4)
 func net_player_damage_applied(
 	player_peer_id: int,
@@ -140,36 +188,29 @@ func net_player_damage_applied(
 ) -> void:
 	pass
 
-
 @rpc("authority", "call_remote", "reliable", 4)
 func net_player_healed(peer_id: int, current_health: int, health_revision: int) -> void:
 	pass
-
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_xirang_orb_spawned(orb_id: int, amount: int, spawn_position: Vector2) -> void:
 	pass
 
-
 @rpc("any_peer", "call_remote", "reliable", 4)
 func _rpc_xirang_orb_collected(orb_id: int) -> void:
 	pass
-
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_xirang_granted_all(orb_id: int, amount: int, revision: int) -> void:
 	pass
 
-
 @rpc("authority", "call_remote", "reliable", 4)
 func net_xirang_orb_removed(orb_id: int) -> void:
 	pass
 
-
 @rpc("authority", "call_remote", "reliable", 4)
 func net_player_revive_countdown(peer_id: int, seconds_left: int) -> void:
 	pass
-
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_player_revived(
@@ -181,7 +222,6 @@ func net_player_revived(
 ) -> void:
 	pass
 
-
 @rpc("authority", "call_remote", "reliable", 4)
 func net_enemy_spawned(
 	net_id: int,
@@ -192,16 +232,13 @@ func net_enemy_spawned(
 ) -> void:
 	pass
 
-
 @rpc("authority", "call_remote", "reliable", 4)
 func net_enemy_defeated(net_id: int, defeat_position: Vector2) -> void:
 	pass
 
-
 @rpc("authority", "call_remote", "reliable", 4)
 func net_enemy_removed(net_id: int) -> void:
 	pass
-
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_enemy_action(
@@ -214,7 +251,6 @@ func net_enemy_action(
 ) -> void:
 	pass
 
-
 @rpc("authority", "call_remote", "reliable", 4)
 func net_enemy_target_action(
 	net_id: int,
@@ -226,16 +262,13 @@ func net_enemy_target_action(
 ) -> void:
 	pass
 
-
 @rpc("authority", "call_remote", "reliable", 4)
 func net_pickup_removed(net_id: int) -> void:
 	pass
 
-
 @rpc("authority", "call_remote", "reliable", 4)
 func net_pickup_spawned(net_id: int, config_path: String, pos_x: float, pos_y: float) -> void:
 	pass
-
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_pickup_collected(
@@ -246,36 +279,57 @@ func net_pickup_collected(
 ) -> void:
 	pass
 
-
 @rpc("authority", "call_remote", "reliable", 4)
 func net_merchant_active_changed(active: bool) -> void:
 	pass
-
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_wave_started(wave_index: int) -> void:
 	pass
 
+@rpc("authority", "call_remote", "reliable", 4)
+func net_flow_state_changed(step_id: String, state: int, countdown_seconds: int) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_boss_started(net_id: int, boss_config_path: String, spawn_position: Vector2) -> void:
+	pass
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_game_defeated() -> void:
 	pass
 
+@rpc("authority", "call_remote", "reliable", 4)
+func net_game_victory() -> void:
+	pass
 
 @rpc("any_peer", "call_remote", "reliable", 4)
 func net_upgrade_selected(stat_type: int) -> void:
 	pass
 
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_inventory_item_use_requested(slot_index: int) -> void:
+	pass
+
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_inventory_item_discard_requested(slot_index: int) -> void:
+	pass
 
 @rpc("any_peer", "call_remote", "reliable", 4)
 func net_skill1_purchase_requested() -> void:
 	pass
 
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_luoxi_collectible_choice_requested(choice_index: int, config_path: String) -> void:
+	pass
 
 @rpc("any_peer", "call_remote", "reliable", 4)
 func net_cheat_xirang_requested() -> void:
 	pass
 
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_debug_collectible_requested(config_path: String) -> void:
+	pass
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_upgrade_confirmed(
@@ -283,10 +337,23 @@ func net_upgrade_confirmed(
 	stat_type: int,
 	level: int,
 	current_xirang: int,
+	success: bool,
+	free_upgrade: bool = false
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_inventory_item_used(
+	peer_id: int,
+	slot_index: int,
+	config_path: String,
 	success: bool
 ) -> void:
 	pass
 
+@rpc("authority", "call_remote", "reliable", 4)
+func net_inventory_item_discarded(peer_id: int, slot_index: int, success: bool) -> void:
+	pass
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_skill1_purchase_confirmed(
@@ -299,7 +366,38 @@ func net_skill1_purchase_confirmed(
 ) -> void:
 	pass
 
+@rpc("authority", "call_remote", "reliable", 4)
+func net_luoxi_collectible_confirmed(
+	peer_id: int,
+	choice_index: int,
+	config_path: String,
+	result_code: int
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_collectible_visual_effect(
+	effect_type: String,
+	spawn_position: Vector2,
+	radius: float,
+	color: Color,
+	duration: float
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_collectible_follow_visual_effect(
+	effect_type: String,
+	owner_peer_id: int,
+	radius: float,
+	duration: float
+) -> void:
+	pass
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_cheat_xirang_confirmed(peer_id: int, current_xirang: int, added_amount: int) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_debug_collectible_granted(peer_id: int, config_path: String, success: bool) -> void:
 	pass

@@ -19,6 +19,7 @@ const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collecti
 const ARCHER_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_archer.tres")
 const LIFE_CRYSTAL := preload("res://resources/config/collectibles/collectible_life_crystal.tres")
 const LINGLAN_BOSS_CONFIG := preload("res://resources/config/bosses/boss_01_linglan.tres")
+const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const PROJECTILE_EVENTS_ONLY_ARG := "--projectile-events-only"
 
 var failures: Array[String] = []
@@ -45,6 +46,7 @@ func _run() -> void:
 		return
 
 	await _test_scene_instantiation()
+	_test_net_manager_protocol_version_gate()
 	_test_net_manager_lan_lifecycle()
 	_test_public_room_context_lifecycle()
 	_test_net_manager_player_list_sync_diff()
@@ -73,6 +75,7 @@ func _run() -> void:
 	await _test_four_player_runtime_and_confirmed_events()
 	await _test_multiplayer_character_scene_registry()
 	await _test_host_authoritative_hoe_actions()
+	await _test_host_authoritative_tiyi_protocol()
 	await _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm()
 	await _test_game_runtime_modes()
 	_test_snapshot_round_trip()
@@ -168,6 +171,44 @@ func _test_net_manager_lan_lifecycle() -> void:
 	_expect(bool(net_manager.host_game_ready), "Host mark_in_game must publish host ready state.")
 	net_manager.disconnect_from_game()
 	_expect(not net_manager.is_multiplayer_active(), "NetManager must cleanly disconnect after LAN host smoke.")
+
+
+func _test_net_manager_protocol_version_gate() -> void:
+	var net_manager := root.get_node_or_null("NetManager")
+	_expect(net_manager != null, "NetManager autoload is missing for protocol version coverage.")
+	if net_manager == null:
+		return
+
+	net_manager.disconnect_from_game()
+	_expect(NetConstants.PROTOCOL_VERSION == 2, "The multiplayer protocol version must be 2.")
+	_expect(
+		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
+		"NetManager must accept the current protocol version."
+	)
+	_expect(
+		not bool(net_manager.call("_is_protocol_version_compatible", 1))
+		and not bool(net_manager.call("_is_protocol_version_compatible", -1)),
+		"NetManager must reject version 1 and legacy registrations with no version."
+	)
+
+	var rejection_reasons: Array[String] = []
+	var rejection_callback := func(reason: String) -> void:
+		rejection_reasons.append(reason)
+	net_manager.connection_failed.connect(rejection_callback)
+	net_manager.set("net_role", NetManagerStore.NetRole.CLIENT)
+	net_manager.set("connection_state", NetManagerStore.ConnectionState.CONNECTED_IN_LOBBY)
+	net_manager.call("_rpc_protocol_rejected", NetConstants.PROTOCOL_VERSION)
+	net_manager.connection_failed.disconnect(rejection_callback)
+	_expect(
+		rejection_reasons.size() == 1
+		and rejection_reasons[0].contains("版本 %d" % NetConstants.PROTOCOL_VERSION),
+		"A rejected client must receive a same-build protocol mismatch reason."
+	)
+	_expect(
+		not net_manager.is_multiplayer_active()
+		and int(net_manager.connection_state) == NetManagerStore.ConnectionState.DISCONNECTED,
+		"A protocol-rejected client must fully leave multiplayer state."
+	)
 
 
 func _test_public_room_context_lifecycle() -> void:
@@ -433,6 +474,11 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 			remote_player.get_multiplayer_current_ammo() == 1,
 			"Host must consume authoritative ammo when accepting a client player bullet."
 		)
+		_expect(
+			not remote_player.shooting_timer.is_stopped(),
+			"Host must start the authoritative Weishidaier firing cooldown atomically."
+		)
+		remote_player.shooting_timer.stop()
 		remote_player.apply_multiplayer_ammo_state(remote_player.get_ammo_capacity(), 0, false, 0.0)
 		var empty_ammo_parameters := parameter_mp_game.call(
 			"_get_authoritative_client_projectile_parameters",
@@ -447,6 +493,7 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 			remote_player.get_multiplayer_is_reloading(),
 			"Host empty-ammo rejection must start authoritative reload."
 		)
+		remote_player.shooting_timer.stop()
 		remote_player.apply_multiplayer_ammo_state(remote_player.get_ammo_capacity(), 1, true, 0.25)
 		var reloading_parameters := parameter_mp_game.call(
 			"_get_authoritative_client_projectile_parameters",
@@ -457,6 +504,7 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 			reloading_parameters.is_empty(),
 			"Host must reject client player bullets during authoritative reload."
 		)
+		remote_player.shooting_timer.stop()
 		remote_player.current_shot_pattern = PickupConfig.ShotPattern.SPIRAL
 		var spiral_parameters := parameter_mp_game.call(
 			"_get_authoritative_client_projectile_parameters",
@@ -1450,14 +1498,15 @@ func _test_multiplayer_character_scene_registry() -> void:
 	game.configure_multiplayer(
 		2,
 		2,
-		{1: "Host", 2: "Client"},
-		{1: &"weishidaier", 2: &"hoe_cat"}
+		{1: "Host", 2: "Client", 3: "Tiyi"},
+		{1: &"weishidaier", 2: &"hoe_cat", 3: &"tiyi"}
 	)
 	_stop_audio_players(game)
 	root.add_child(game)
 	await process_frame
 	var host_player := game.get_player_for_peer(1)
 	var local_player := game.get_player_for_peer(2)
+	var tiyi_player := game.get_player_for_peer(3) as PlayerTiyi
 	_expect(
 		host_player != null and host_player.get_character_id() == &"weishidaier",
 		"Game must instantiate the registered Weishidaier scene for the host peer."
@@ -1466,6 +1515,74 @@ func _test_multiplayer_character_scene_registry() -> void:
 		local_player != null and local_player.get_character_id() == &"hoe_cat",
 		"Game must instantiate the registered Hoe Cat scene for the client peer."
 	)
+	_expect(
+		tiyi_player != null and tiyi_player.get_character_id() == &"tiyi",
+		"Game must instantiate the registered Tiyi scene for a standard multiplayer peer."
+	)
+	if tiyi_player != null:
+		var mp_game := MP_GAME_SCENE.instantiate()
+		mp_game.set("game", game)
+		var authoritative_direction := Vector2(3.0, 4.0).normalized()
+		var authoritative_spawn := mp_game.call(
+			"_get_authoritative_client_projectile_spawn_position",
+			&"tiyi_sniper_bullet",
+			3,
+			Vector2(99999.0, -99999.0),
+			authoritative_direction
+		) as Vector2
+		_expect(
+			authoritative_spawn.is_equal_approx(
+				tiyi_player.global_position + authoritative_direction * 16.0
+			),
+			"Host must ignore a client-reported Tiyi spawn point and rebuild it from the muzzle."
+		)
+		var ammo_before := tiyi_player.current_ammo
+		var sniper_parameters := mp_game.call(
+			"_get_authoritative_client_projectile_parameters",
+			&"tiyi_sniper_bullet",
+			3
+		) as Dictionary
+		_expect(
+			int(sniper_parameters.get("damage", 0)) == 100
+			and is_equal_approx(float(sniper_parameters.get("speed", 0.0)), 1920.0)
+			and is_equal_approx(float(sniper_parameters.get("lifetime", 0.0)), 0.35),
+			"Host must replace client-reported Tiyi sniper stats with authoritative values."
+		)
+		_expect(
+			tiyi_player.current_ammo == ammo_before - 1
+			and not tiyi_player.shooting_timer.is_stopped(),
+			"Host must atomically consume one Tiyi round and start the authoritative cooldown."
+		)
+		_expect(
+			(mp_game.call(
+				"_get_authoritative_client_projectile_parameters",
+				&"tiyi_sniper_bullet",
+				3
+			) as Dictionary).is_empty()
+			and tiyi_player.current_ammo == ammo_before - 1,
+			"Host must reject a repeated Tiyi shot during cooldown without consuming ammo."
+		)
+		_expect(
+			(mp_game.call(
+				"_get_authoritative_client_projectile_parameters",
+				&"player_bullet",
+				3
+			) as Dictionary).is_empty(),
+			"Tiyi must not be able to forge another character's projectile type."
+		)
+		tiyi_player.shooting_timer.stop()
+		tiyi_player.set_controls_locked(true)
+		_expect(
+			(mp_game.call(
+				"_get_authoritative_client_projectile_parameters",
+				&"tiyi_sniper_bullet",
+				3
+			) as Dictionary).is_empty()
+			and tiyi_player.current_ammo == ammo_before - 1,
+			"Host must reject Tiyi shots while controls are locked without consuming ammo."
+		)
+		tiyi_player.set_controls_locked(false)
+		mp_game.free()
 	_expect(
 		game.player == local_player,
 		"Game.player must reference the local peer even when the host sorts first."
@@ -1634,6 +1751,122 @@ func _test_host_authoritative_hoe_actions() -> void:
 	await physics_frame
 
 
+func _test_host_authoritative_tiyi_protocol() -> void:
+	var host_game := GAME_SCENE.instantiate() as Game
+	_expect(host_game != null, "Game must instantiate for authoritative Tiyi protocol coverage.")
+	if host_game == null:
+		return
+	host_game.configure_multiplayer(
+		1,
+		1,
+		{1: "Host"},
+		{1: &"tiyi"}
+	)
+	host_game.set("auto_start_waves", false)
+	_stop_audio_players(host_game)
+	root.add_child(host_game)
+	await process_frame
+	var tiyi_player := host_game.get_player_for_peer(1) as PlayerTiyi
+	_expect(tiyi_player != null, "Host roster must instantiate Tiyi for protocol coverage.")
+	if tiyi_player == null:
+		host_game.queue_free()
+		await process_frame
+		return
+
+	var mp_game := MP_GAME_SCENE.instantiate()
+	var net_manager := root.get_node_or_null("NetManager")
+	_expect(net_manager != null, "NetManager must exist for authoritative Tiyi protocol coverage.")
+	if net_manager == null:
+		mp_game.free()
+		host_game.queue_free()
+		await process_frame
+		return
+	var previous_role := int(net_manager.get("net_role"))
+	var connected_players := net_manager.get("connected_players") as Dictionary
+	var previous_players := connected_players.duplicate()
+	net_manager.set("net_role", 1)
+	connected_players.clear()
+	connected_players[1] = "Host"
+	mp_game.set("game", host_game)
+	mp_game.set("net_manager", net_manager)
+
+	tiyi_player.unlock_skill1()
+	tiyi_player.skill1_charge = tiyi_player.skill1_charge_duration
+	_expect(
+		bool(mp_game.call("_apply_authoritative_tiyi_high_noon_request", 1, 1)),
+		"Host must accept a charged Tiyi high-noon request with activation id 1."
+	)
+	var active_activations := mp_game.get("_active_tiyi_activations_by_peer") as Dictionary
+	var activation_sequences := mp_game.get("_tiyi_activation_sequences_by_peer") as Dictionary
+	_expect(
+		int(active_activations.get(1, 0)) == 1
+		and int(activation_sequences.get(1, 0)) == 1
+		and tiyi_player.is_high_noon_active(),
+		"Accepted high noon must register the authoritative monotonic activation."
+	)
+	_expect(
+		not bool(mp_game.call("_apply_authoritative_tiyi_high_noon_request", 1, 2)),
+		"Host must reject a second high-noon request while one is active."
+	)
+	mp_game.call("cancel_tiyi_high_noon", 1, 1)
+	tiyi_player.cancel_remote_high_noon(1)
+	_expect(
+		not active_activations.has(1),
+		"Cancelling high noon must clear its authoritative active state."
+	)
+
+	tiyi_player.set("_last_skill_activation_msec", Time.get_ticks_msec() - 1000)
+	tiyi_player.skill1_charge = tiyi_player.skill1_charge_duration
+	_expect(
+		not bool(mp_game.call("_apply_authoritative_tiyi_high_noon_request", 1, 1)),
+		"Host must ignore a replayed high-noon activation id."
+	)
+	_expect(
+		bool(mp_game.call("_apply_authoritative_tiyi_high_noon_request", 1, 2)),
+		"Host must accept the next monotonic high-noon activation id."
+	)
+	_expect(
+		host_game.call("_try_spawn_enemy", BASIC_CONFIG),
+		"Host must spawn a target for high-noon resolution coverage."
+	)
+	var target_enemy := host_game.get_enemy_for_net_id(1)
+	_expect(target_enemy != null, "High-noon target must have a Host net id.")
+	if target_enemy != null:
+		target_enemy.set_physics_process(false)
+		var target_health_before := target_enemy.current_health
+		mp_game.call(
+			"notify_tiyi_high_noon_targets_changed",
+			1,
+			2,
+			PackedInt32Array([1])
+		)
+		mp_game.call(
+			"resolve_tiyi_high_noon",
+			1,
+			2,
+			PackedInt32Array([1]),
+			PackedVector2Array([target_enemy.global_position])
+		)
+		_expect(
+			target_enemy.current_health < target_health_before,
+			"Host high-noon completion must apply authoritative 400% physical damage."
+		)
+	_expect(
+		not active_activations.has(1) and int(activation_sequences.get(1, 0)) == 2,
+		"High-noon completion must clear active state without rewinding its sequence."
+	)
+	tiyi_player.cancel_remote_high_noon(2)
+
+	connected_players.clear()
+	connected_players.merge(previous_players, true)
+	net_manager.set("net_role", previous_role)
+	mp_game.free()
+	_stop_audio_players(host_game)
+	host_game.queue_free()
+	await process_frame
+	await physics_frame
+
+
 func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 	var host_game := GAME_SCENE.instantiate() as Game
 	_expect(host_game != null, "Game scene must instantiate for enemy hit dedupe test.")
@@ -1679,6 +1912,38 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 		_expect(
 			bool(non_piercing_record.get("confirmed_hit_consumed", false)),
 			"A confirmed non-piercing bullet hit must consume its projectile record hit."
+		)
+		mp_game.call(
+			"_remember_projectile_record",
+			2000003,
+			2,
+			&"tiyi_sniper_bullet",
+			1,
+			0.35
+		)
+		var health_before_forged_sniper_hit := second_host_enemy.current_health
+		var forged_sniper_hit_allowed := bool(mp_game.call(
+			"_is_client_enemy_hit_report_allowed",
+			2000003,
+			2,
+			2
+		))
+		_expect(
+			not forged_sniper_hit_allowed
+			and second_host_enemy.current_health == health_before_forged_sniper_hit,
+			"Client-style hit reports must never settle Tiyi sniper damage."
+		)
+		mp_game.call(
+			"_apply_enemy_hit_report",
+			2000003,
+			2,
+			2,
+			999,
+			Vector2.LEFT
+		)
+		_expect(
+			second_host_enemy.current_health < health_before_forged_sniper_hit,
+			"Host-simulated Tiyi sniper hits must use the authoritative projectile record."
 		)
 		mp_game.call("_remember_projectile_record", 2000002, 2, &"player_bullet", 1, 2.0, true)
 		var first_health_before_piercing_hit := host_enemy.current_health
@@ -2452,6 +2717,12 @@ func _test_game_runtime_modes() -> void:
 
 func _test_snapshot_round_trip() -> void:
 	var snapshot_mgr := SnapshotManager.new()
+	_expect(
+		SnapshotManager._encode_character_id(&"weishidaier") == 0
+		and SnapshotManager._encode_character_id(&"hoe_cat") == 1
+		and SnapshotManager._encode_character_id(&"tiyi") == 2,
+		"Snapshot character codes must preserve 0/1 and assign 2 to Tiyi."
+	)
 	var player_state := SnapshotManager.PlayerState.new()
 	player_state.peer_id = 2
 	player_state.character_id = &"hoe_cat"
@@ -2484,6 +2755,23 @@ func _test_snapshot_round_trip() -> void:
 			absf(player_states[0].primary_cooldown_ratio - 0.37) <= 1.0 / 255.0,
 			"Player snapshot primary cooldown ratio mismatch."
 		)
+	var tiyi_state := SnapshotManager.PlayerState.new()
+	tiyi_state.peer_id = 3
+	tiyi_state.character_id = &"tiyi"
+	tiyi_state.current_health = 50
+	tiyi_state.max_health = 50
+	tiyi_state.ammo_capacity = 5
+	tiyi_state.current_ammo = 4
+	var tiyi_data := snapshot_mgr.encode_all_player_snapshots([tiyi_state])
+	var tiyi_states := snapshot_mgr.decode_all_player_snapshots(tiyi_data)
+	_expect(
+		tiyi_states.size() == 1
+		and tiyi_states[0].peer_id == 3
+		and tiyi_states[0].character_id == &"tiyi"
+		and tiyi_states[0].ammo_capacity == 5
+		and tiyi_states[0].current_ammo == 4,
+		"Player snapshot character code 2 must round-trip Tiyi without changing legacy codes."
+	)
 	var player_data_2 := snapshot_mgr.encode_all_player_snapshots([player_state])
 	var player_states_2 := SnapshotManager.decode_all_player_snapshots(player_data_2)
 	_expect(

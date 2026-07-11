@@ -4,6 +4,10 @@ const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const GAME_SCENE := preload("res://scene/game.tscn")
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
+const TIYI_SNIPER_BULLET_SCENE := preload("res://scene/player/tiyi/tiyi_sniper_bullet.tscn")
+const TIYI_SNIPER_HIT_EFFECT_SCENE := preload(
+	"res://scene/player/tiyi/tiyi_sniper_hit_effect.tscn"
+)
 const COLLECTIBLE_ARROW_PROJECTILE_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
 const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/collectible_arrow_projectile.gd")
 const SKILL1_BOMB_SCENE := preload("res://scene/player/weishidaier/weishidaier_skill1_bomb.tscn")
@@ -51,6 +55,8 @@ const CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE := 224.0
 const CLIENT_PROJECTILE_DIRECTION_MIN_LENGTH := 0.2
 const CLIENT_PROJECTILE_DIRECTION_MAX_LENGTH := 1.5
 const PROJECTILE_TIME_COMPENSATION_MAX_SECONDS := 0.25
+const TIYI_SNIPER_PROJECTILE_TYPE: StringName = &"tiyi_sniper_bullet"
+const TIYI_HIGH_NOON_MAX_TARGETS := 20
 # Application payload budget. Keep room for Godot RPC, ENet, UDP/IP headers before MTU pressure.
 const SNAPSHOT_PACKET_WARN_BYTES := 1200
 const SNAPSHOT_PACKET_WARN_INTERVAL_SECONDS := 5.0
@@ -94,12 +100,17 @@ var _pending_dash_request_sequence: int = 0
 var _pending_dash_direction: Vector2 = Vector2.ZERO
 var _pending_dash_start_move_input: Vector2 = Vector2.ZERO
 var _pending_dash_input_packets: int = 0
+var _local_tiyi_activation_request_id: int = 0
 var _last_player_state_sequences: Dictionary = {}
 var _last_dash_request_sequences: Dictionary = {}
 var _last_dash_confirmed_sequences: Dictionary = {}
 var _last_dash_accepted_times: Dictionary = {}
 var _player_character_mismatch_warnings: Dictionary = {}
 var _hoe_action_sequences_by_peer: Dictionary = {}
+var _tiyi_activation_sequences_by_peer: Dictionary = {}
+var _active_tiyi_activations_by_peer: Dictionary = {}
+var _tiyi_target_ids_by_peer: Dictionary = {}
+var _last_tiyi_activation_seen_by_peer: Dictionary = {}
 var _accepted_player_state_positions: Dictionary = {}
 var _accepted_player_state_times: Dictionary = {}
 var _host_latest_client_player_snapshot_states: Dictionary = {}
@@ -285,6 +296,112 @@ func request_hoe_whirlwind() -> bool:
 		return false
 	net_hoe_whirlwind_requested.rpc_id(_get_host_peer_id())
 	return true
+
+
+func request_tiyi_high_noon() -> bool:
+	if game == null or not _client_host_game_ready:
+		return false
+	var peer_id := _get_local_peer_id()
+	var player_node := game.get_player_for_peer(peer_id)
+	if not _is_valid_tiyi_player(player_node):
+		return false
+	if net_manager.is_host():
+		var activation_id := int(_tiyi_activation_sequences_by_peer.get(peer_id, 0)) + 1
+		return _apply_authoritative_tiyi_high_noon_request(peer_id, activation_id)
+	if not net_manager.is_client():
+		return false
+	_local_tiyi_activation_request_id += 1
+	net_tiyi_high_noon_requested.rpc_id(
+		_get_host_peer_id(),
+		_local_tiyi_activation_request_id
+	)
+	return true
+
+
+func notify_tiyi_high_noon_targets_changed(
+	peer_id: int,
+	activation_id: int,
+	target_ids: PackedInt32Array
+) -> void:
+	if not net_manager.is_host() or game == null:
+		return
+	if int(_active_tiyi_activations_by_peer.get(peer_id, 0)) != activation_id:
+		return
+	var sanitized_target_ids := _sanitize_tiyi_target_ids(target_ids)
+	_tiyi_target_ids_by_peer[peer_id] = sanitized_target_ids
+	_rpc_to_connected_clients(
+		&"net_tiyi_high_noon_targets",
+		[peer_id, activation_id, sanitized_target_ids]
+	)
+
+
+func resolve_tiyi_high_noon(
+	peer_id: int,
+	activation_id: int,
+	target_ids: PackedInt32Array,
+	_hit_positions: PackedVector2Array
+) -> void:
+	if not net_manager.is_host() or game == null:
+		return
+	if int(_active_tiyi_activations_by_peer.get(peer_id, 0)) != activation_id:
+		return
+	var player_node := game.get_player_for_peer(peer_id)
+	if not _is_valid_tiyi_player(player_node):
+		_cancel_authoritative_tiyi_high_noon(peer_id, activation_id, true)
+		return
+	var locked_ids := _tiyi_target_ids_by_peer.get(peer_id, PackedInt32Array()) as PackedInt32Array
+	var locked_lookup: Dictionary = {}
+	for locked_id in locked_ids:
+		locked_lookup[int(locked_id)] = true
+	var resolved_ids := PackedInt32Array()
+	var resolved_positions := PackedVector2Array()
+	var resolved_enemies: Array[Enemy] = []
+	var seen_ids: Dictionary = {}
+	for target_index in range(mini(target_ids.size(), TIYI_HIGH_NOON_MAX_TARGETS)):
+		var enemy_net_id := int(target_ids[target_index])
+		if enemy_net_id <= 0 or seen_ids.has(enemy_net_id) or not locked_lookup.has(enemy_net_id):
+			continue
+		var enemy := _get_host_enemy_for_net_id(enemy_net_id)
+		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+			continue
+		seen_ids[enemy_net_id] = true
+		resolved_ids.append(enemy_net_id)
+		# Host gameplay state is authoritative; callback positions are only a visual hint.
+		resolved_positions.append(enemy.global_position)
+		resolved_enemies.append(enemy)
+	_active_tiyi_activations_by_peer.erase(peer_id)
+	_tiyi_target_ids_by_peer.erase(peer_id)
+	_rpc_to_connected_clients(
+		&"net_tiyi_high_noon_finished",
+		[peer_id, activation_id, resolved_ids, resolved_positions]
+	)
+	var base_damage := floori(float(player_node.attack_damage) * 4.0)
+	var outgoing_damage := player_node.get_outgoing_damage(
+		base_damage,
+		EnemyConfig.DamageType.PHYSICAL
+	)
+	for target_index in range(resolved_enemies.size()):
+		var enemy := resolved_enemies[target_index]
+		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+			continue
+		var enemy_net_id := int(resolved_ids[target_index])
+		var resolved_damage := player_node.resolve_attack_damage_against_enemy(
+			outgoing_damage,
+			enemy
+		)
+		var impact_direction := -player_node.global_position.direction_to(enemy.global_position)
+		_apply_confirmed_enemy_damage(
+			enemy_net_id,
+			enemy,
+			resolved_damage,
+			impact_direction,
+			EnemyConfig.DamageType.PHYSICAL,
+			false
+		)
+
+
+func cancel_tiyi_high_noon(peer_id: int, activation_id: int) -> void:
+	_cancel_authoritative_tiyi_high_noon(peer_id, activation_id, true)
 
 
 func request_luoxi_collectible_choice(choice_index: int, config_path: String = "") -> void:
@@ -1182,6 +1299,188 @@ func net_hoe_action_confirmed(
 	)
 
 
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_tiyi_high_noon_requested(activation_id: int) -> void:
+	if not net_manager.is_host() or game == null:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0 or activation_id <= 0:
+		return
+	_apply_authoritative_tiyi_high_noon_request(sender_id, activation_id)
+
+
+func _apply_authoritative_tiyi_high_noon_request(
+	peer_id: int,
+	activation_id: int
+) -> bool:
+	if not net_manager.is_host() or game == null or peer_id <= 0 or activation_id <= 0:
+		return false
+	var player_node := game.get_player_for_peer(peer_id)
+	if not _is_valid_tiyi_player(player_node):
+		return false
+	if _active_tiyi_activations_by_peer.has(peer_id):
+		return false
+	if activation_id <= int(_tiyi_activation_sequences_by_peer.get(peer_id, 0)):
+		return false
+	if not bool(player_node.call("try_start_authoritative_high_noon", activation_id)):
+		return false
+	_tiyi_activation_sequences_by_peer[peer_id] = activation_id
+	_active_tiyi_activations_by_peer[peer_id] = activation_id
+	_tiyi_target_ids_by_peer[peer_id] = PackedInt32Array()
+	_rpc_to_connected_clients(
+		&"net_tiyi_high_noon_started",
+		[peer_id, activation_id]
+	)
+	if player_node.has_method("sync_authoritative_high_noon_targets"):
+		player_node.call("sync_authoritative_high_noon_targets")
+	return true
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_tiyi_high_noon_started(peer_id: int, activation_id: int) -> void:
+	if game == null or activation_id <= 0:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id > 0 and sender_id != _get_host_peer_id():
+		return
+	if activation_id <= int(_last_tiyi_activation_seen_by_peer.get(peer_id, 0)):
+		return
+	var player_node := game.get_player_for_peer(peer_id)
+	if not _is_valid_tiyi_player(player_node):
+		return
+	_last_tiyi_activation_seen_by_peer[peer_id] = activation_id
+	_active_tiyi_activations_by_peer[peer_id] = activation_id
+	_tiyi_target_ids_by_peer[peer_id] = PackedInt32Array()
+	player_node.call("play_remote_high_noon_started", activation_id)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_tiyi_high_noon_targets(
+	peer_id: int,
+	activation_id: int,
+	target_ids: PackedInt32Array
+) -> void:
+	if game == null or activation_id <= 0:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id > 0 and sender_id != _get_host_peer_id():
+		return
+	if int(_active_tiyi_activations_by_peer.get(peer_id, 0)) != activation_id:
+		return
+	var player_node := game.get_player_for_peer(peer_id)
+	if not _is_valid_tiyi_player(player_node):
+		return
+	var sanitized_target_ids := _sanitize_tiyi_target_ids(target_ids, false)
+	_tiyi_target_ids_by_peer[peer_id] = sanitized_target_ids
+	player_node.call("apply_remote_high_noon_targets", activation_id, sanitized_target_ids)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_tiyi_high_noon_finished(
+	peer_id: int,
+	activation_id: int,
+	target_ids: PackedInt32Array,
+	hit_positions: PackedVector2Array
+) -> void:
+	if game == null or activation_id <= 0:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id > 0 and sender_id != _get_host_peer_id():
+		return
+	if int(_active_tiyi_activations_by_peer.get(peer_id, 0)) != activation_id:
+		return
+	var player_node := game.get_player_for_peer(peer_id)
+	if not _is_valid_tiyi_player(player_node):
+		return
+	var target_count := mini(
+		mini(target_ids.size(), hit_positions.size()),
+		TIYI_HIGH_NOON_MAX_TARGETS
+	)
+	var sanitized_target_ids := PackedInt32Array()
+	var sanitized_hit_positions := PackedVector2Array()
+	var seen_ids: Dictionary = {}
+	for target_index in range(target_count):
+		var enemy_net_id := int(target_ids[target_index])
+		var hit_position := hit_positions[target_index]
+		if enemy_net_id <= 0 or seen_ids.has(enemy_net_id) or not _is_finite_vector2(hit_position):
+			continue
+		seen_ids[enemy_net_id] = true
+		sanitized_target_ids.append(enemy_net_id)
+		sanitized_hit_positions.append(hit_position)
+	_active_tiyi_activations_by_peer.erase(peer_id)
+	_tiyi_target_ids_by_peer.erase(peer_id)
+	player_node.call(
+		"play_remote_high_noon_finished",
+		activation_id,
+		sanitized_target_ids,
+		sanitized_hit_positions
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_tiyi_high_noon_cancelled(peer_id: int, activation_id: int) -> void:
+	if game == null or activation_id <= 0:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id > 0 and sender_id != _get_host_peer_id():
+		return
+	if int(_active_tiyi_activations_by_peer.get(peer_id, 0)) != activation_id:
+		return
+	_active_tiyi_activations_by_peer.erase(peer_id)
+	_tiyi_target_ids_by_peer.erase(peer_id)
+	var player_node := game.get_player_for_peer(peer_id)
+	if _is_valid_tiyi_player(player_node):
+		player_node.call("cancel_remote_high_noon", activation_id)
+
+
+func _cancel_authoritative_tiyi_high_noon(
+	peer_id: int,
+	activation_id: int,
+	broadcast_cancel: bool
+) -> void:
+	if not net_manager.is_host() or activation_id <= 0:
+		return
+	if int(_active_tiyi_activations_by_peer.get(peer_id, 0)) != activation_id:
+		return
+	_active_tiyi_activations_by_peer.erase(peer_id)
+	_tiyi_target_ids_by_peer.erase(peer_id)
+	if broadcast_cancel:
+		_rpc_to_connected_clients(
+			&"net_tiyi_high_noon_cancelled",
+			[peer_id, activation_id]
+		)
+
+
+func _sanitize_tiyi_target_ids(
+	target_ids: PackedInt32Array,
+	require_host_enemy: bool = true
+) -> PackedInt32Array:
+	var sanitized_ids := PackedInt32Array()
+	var seen_ids: Dictionary = {}
+	for target_id_variant in target_ids:
+		if sanitized_ids.size() >= TIYI_HIGH_NOON_MAX_TARGETS:
+			break
+		var enemy_net_id := int(target_id_variant)
+		if enemy_net_id <= 0 or seen_ids.has(enemy_net_id):
+			continue
+		if require_host_enemy:
+			var enemy := _get_host_enemy_for_net_id(enemy_net_id)
+			if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+				continue
+		seen_ids[enemy_net_id] = true
+		sanitized_ids.append(enemy_net_id)
+	return sanitized_ids
+
+
+func _is_valid_tiyi_player(player_node: Player) -> bool:
+	return (
+		player_node != null
+		and is_instance_valid(player_node)
+		and player_node.has_method("is_tiyi")
+		and bool(player_node.call("is_tiyi"))
+	)
+
+
 func _is_valid_hoe_cat_player(player_node: Player) -> bool:
 	return (
 		player_node != null
@@ -1370,24 +1669,36 @@ func _rpc_projectile_fired_from_client(
 	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id <= 0 or owner_peer_id != sender_id:
 		return
-	if _known_projectiles.has(projectile_id):
+	if _known_projectiles.has(projectile_id) or _projectile_records.has(projectile_id):
 		return
 	if not _is_projectile_id_valid_for_owner(projectile_id, owner_peer_id):
 		return
 	var accepted_direction := _get_valid_client_projectile_direction(direction)
 	if accepted_direction == Vector2.ZERO:
 		return
-	if not _is_client_projectile_spawn_position_allowed(
-		StringName(projectile_type),
-		owner_peer_id,
-		spawn_position
+	var accepted_projectile_type := StringName(projectile_type)
+	if (
+		accepted_projectile_type != TIYI_SNIPER_PROJECTILE_TYPE
+		and not _is_client_projectile_spawn_position_allowed(
+			accepted_projectile_type,
+			owner_peer_id,
+			spawn_position
+		)
 	):
 		return
 	var accepted_parameters := _get_authoritative_client_projectile_parameters(
-		StringName(projectile_type),
+		accepted_projectile_type,
 		owner_peer_id
 	)
 	if accepted_parameters.is_empty():
+		return
+	var accepted_spawn_position := _get_authoritative_client_projectile_spawn_position(
+		accepted_projectile_type,
+		owner_peer_id,
+		spawn_position,
+		accepted_direction
+	)
+	if not _is_finite_vector2(accepted_spawn_position):
 		return
 	var accepted_damage := int(accepted_parameters["damage"])
 	var accepted_speed := float(accepted_parameters["speed"])
@@ -1397,8 +1708,8 @@ func _rpc_projectile_fired_from_client(
 		and bool(accepted_parameters.get("can_pierce_enemies", false))
 	)
 	var accepted_target_enemy_net_id := _validate_client_homing_target(
-		StringName(projectile_type),
-		spawn_position,
+		accepted_projectile_type,
+		accepted_spawn_position,
 		accepted_direction,
 		target_enemy_net_id,
 		bool(accepted_parameters.get("can_home", false))
@@ -1410,7 +1721,7 @@ func _rpc_projectile_fired_from_client(
 			projectile_id,
 			projectile_type,
 			owner_peer_id,
-			spawn_position,
+			accepted_spawn_position,
 			accepted_direction,
 			accepted_damage,
 			accepted_speed,
@@ -1425,7 +1736,7 @@ func _rpc_projectile_fired_from_client(
 		projectile_id,
 		projectile_type,
 		owner_peer_id,
-		spawn_position,
+		accepted_spawn_position,
 		accepted_direction,
 		accepted_damage,
 		accepted_speed,
@@ -1452,7 +1763,7 @@ func net_projectile_fired(
 	host_fire_timestamp: float = -1.0,
 	target_enemy_net_id: int = 0
 ) -> void:
-	if _known_projectiles.has(projectile_id):
+	if _known_projectiles.has(projectile_id) or _projectile_records.has(projectile_id):
 		return
 	_spawn_network_projectile(
 		projectile_id,
@@ -1509,10 +1820,13 @@ func _spawn_network_projectile(
 		pierces_enemies
 	)
 	add_child(projectile)
-	projectile.global_position = (
-		spawn_position
-		+ direction.normalized() * maxf(speed, 0.0) * compensation_age
-	)
+	projectile.global_position = spawn_position
+	if compensation_age > 0.0 and projectile.has_method("simulate_compensated_motion"):
+		projectile.call("simulate_compensated_motion", compensation_age)
+	else:
+		projectile.global_position += (
+			direction.normalized() * maxf(speed, 0.0) * compensation_age
+		)
 	_apply_projectile_lifetime_compensation(projectile, lifetime, compensation_age)
 
 
@@ -1598,6 +1912,18 @@ func _instantiate_projectile(
 			bullet.max_lifetime = lifetime
 			bullet.remaining_lifetime = lifetime
 			return bullet
+		TIYI_SNIPER_PROJECTILE_TYPE:
+			var sniper_bullet := TIYI_SNIPER_BULLET_SCENE.instantiate() as Bullet
+			if sniper_bullet == null:
+				return null
+			sniper_bullet.top_level = true
+			sniper_bullet.setup(direction, damage, pierces_enemies)
+			if game != null and target_enemy_net_id > 0:
+				sniper_bullet.setup_homing(game.get_enemy_for_net_id(target_enemy_net_id))
+			sniper_bullet.speed = speed
+			sniper_bullet.max_lifetime = lifetime
+			sniper_bullet.remaining_lifetime = lifetime
+			return sniper_bullet
 		&"collectible_arrow":
 			var collectible_arrow := COLLECTIBLE_ARROW_PROJECTILE_SCENE.instantiate()
 			if collectible_arrow == null:
@@ -1747,7 +2073,13 @@ func _get_authoritative_client_projectile_parameters(
 		&"player_bullet":
 			if not owner_player.can_request_multiplayer_projectile(projectile_type):
 				return {}
-			if not owner_player.try_consume_authoritative_player_bullet_ammo():
+			if owner_player.has_method("try_accept_authoritative_primary_shot"):
+				if not bool(owner_player.call(
+					"try_accept_authoritative_primary_shot",
+					projectile_type
+				)):
+					return {}
+			elif not owner_player.try_consume_authoritative_player_bullet_ammo():
 				return {}
 			var bullet := BULLET_SCENE.instantiate() as Bullet
 			if bullet == null:
@@ -1764,6 +2096,32 @@ func _get_authoritative_client_projectile_parameters(
 			}
 			bullet.free()
 			return bullet_result
+		TIYI_SNIPER_PROJECTILE_TYPE:
+			if not _is_valid_tiyi_player(owner_player):
+				return {}
+			if not owner_player.can_request_multiplayer_projectile(projectile_type):
+				return {}
+			if not owner_player.has_method("try_accept_authoritative_primary_shot"):
+				return {}
+			if not bool(
+				owner_player.call("try_accept_authoritative_primary_shot", projectile_type)
+			):
+				return {}
+			var sniper_bullet := TIYI_SNIPER_BULLET_SCENE.instantiate() as Bullet
+			if sniper_bullet == null:
+				return {}
+			var sniper_result := {
+				"damage": owner_player.get_outgoing_damage(
+					owner_player.attack_damage,
+					EnemyConfig.DamageType.PHYSICAL
+				),
+				"speed": sniper_bullet.speed,
+				"lifetime": sniper_bullet.max_lifetime,
+				"can_pierce_enemies": owner_player.get_inventory_bullet_pierce_chance() > 0.0,
+				"can_home": owner_player._get_inventory_bullet_homing_chance() > 0.0,
+			}
+			sniper_bullet.free()
+			return sniper_result
 		&"skill1_bomb":
 			if not owner_player.can_request_multiplayer_projectile(projectile_type):
 				return {}
@@ -1907,7 +2265,10 @@ func _validate_client_homing_target(
 	target_enemy_net_id: int,
 	can_home: bool
 ) -> int:
-	if projectile_type != &"player_bullet" or not can_home or target_enemy_net_id <= 0:
+	if (
+		projectile_type != &"player_bullet"
+		and projectile_type != TIYI_SNIPER_PROJECTILE_TYPE
+	) or not can_home or target_enemy_net_id <= 0:
 		return 0
 	var enemy := _get_host_enemy_for_net_id(target_enemy_net_id)
 	if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
@@ -1950,6 +2311,23 @@ func _is_client_projectile_spawn_position_allowed(
 		if accepted_position.distance_to(spawn_position) <= allowed_distance:
 			return true
 	return false
+
+
+func _get_authoritative_client_projectile_spawn_position(
+	projectile_type: StringName,
+	owner_peer_id: int,
+	reported_spawn_position: Vector2,
+	accepted_direction: Vector2
+) -> Vector2:
+	if projectile_type != TIYI_SNIPER_PROJECTILE_TYPE:
+		return reported_spawn_position
+	var owner_player := game.get_player_for_peer(owner_peer_id) if game != null else null
+	if not _is_valid_tiyi_player(owner_player) or accepted_direction == Vector2.ZERO:
+		return Vector2(INF, INF)
+	var muzzle_distance := owner_player.get_multiplayer_projectile_spawn_distance(projectile_type)
+	if muzzle_distance <= 0.0:
+		return Vector2(INF, INF)
+	return owner_player.global_position + accepted_direction * muzzle_distance
 
 
 func _is_finite_vector2(value: Vector2) -> bool:
@@ -2087,9 +2465,25 @@ func _rpc_enemy_hit_report(
 	if not net_manager.is_host():
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id > 0 and owner_peer_id != sender_id:
+	if not _is_client_enemy_hit_report_allowed(projectile_id, owner_peer_id, sender_id):
 		return
 	_apply_enemy_hit_report(projectile_id, owner_peer_id, enemy_net_id, damage, impact_direction)
+
+
+func _is_client_enemy_hit_report_allowed(
+	projectile_id: int,
+	owner_peer_id: int,
+	sender_id: int
+) -> bool:
+	if sender_id > 0 and owner_peer_id != sender_id:
+		return false
+	var projectile_record_variant: Variant = _projectile_records.get(projectile_id)
+	if projectile_record_variant is Dictionary:
+		var projectile_record := projectile_record_variant as Dictionary
+		if StringName(projectile_record.get("projectile_type", &"")) == TIYI_SNIPER_PROJECTILE_TYPE:
+			# Tiyi's swept ShapeCast is simulated by Host. Clients cannot claim sniper hits.
+			return false
+	return true
 
 
 func _apply_enemy_hit_report(
@@ -2111,7 +2505,7 @@ func _apply_enemy_hit_report(
 		return
 	var projectile_type := StringName(projectile_record.get("projectile_type", &""))
 	var consumes_first_confirmed_hit := (
-		projectile_type == &"player_bullet"
+		(projectile_type == &"player_bullet" or projectile_type == TIYI_SNIPER_PROJECTILE_TYPE)
 		and not bool(projectile_record.get("pierces_enemies", false))
 	)
 	if consumes_first_confirmed_hit and bool(projectile_record.get("confirmed_hit_consumed", false)):
@@ -2136,7 +2530,11 @@ func _apply_enemy_hit_report(
 	if (
 		owner_player != null
 		and is_instance_valid(owner_player)
-		and (projectile_type == &"player_bullet" or projectile_type == &"skill1_bomb")
+		and (
+			projectile_type == &"player_bullet"
+			or projectile_type == TIYI_SNIPER_PROJECTILE_TYPE
+			or projectile_type == &"skill1_bomb"
+		)
 	):
 		authoritative_damage = owner_player.resolve_attack_damage_against_enemy(
 			authoritative_damage,
@@ -2154,12 +2552,82 @@ func _apply_enemy_hit_report(
 		projectile_record["confirmed_hit_consumed"] = true
 		_projectile_records[projectile_id] = projectile_record
 	_remember_recent_event(_processed_enemy_hit_ids, hit_key, HIT_DEDUP_RETENTION_SECONDS, now)
+	if projectile_type == TIYI_SNIPER_PROJECTILE_TYPE:
+		var authoritative_hit_position := enemy.global_position
+		var authoritative_direction := _get_valid_client_projectile_direction(-impact_direction)
+		var projectile_variant: Variant = _known_projectiles.get(projectile_id)
+		if projectile_variant != null and is_instance_valid(projectile_variant):
+			var projectile_node := projectile_variant as Node2D
+			if projectile_node != null:
+				authoritative_hit_position = projectile_node.global_position
+				var projectile_direction_variant: Variant = projectile_node.get("direction")
+				if projectile_direction_variant is Vector2:
+					var projectile_direction := _get_valid_client_projectile_direction(
+						projectile_direction_variant as Vector2
+					)
+					if projectile_direction != Vector2.ZERO:
+						authoritative_direction = projectile_direction
+		if authoritative_direction == Vector2.ZERO:
+			authoritative_direction = Vector2.RIGHT
+		_rpc_to_connected_clients(
+			&"net_tiyi_sniper_hit_confirmed",
+			[
+				projectile_id,
+				enemy_net_id,
+				authoritative_hit_position,
+				authoritative_direction,
+				bool(projectile_record.get("pierces_enemies", false)),
+			]
+		)
 	if (
-		projectile_type == &"player_bullet"
+		(
+			projectile_type == &"player_bullet"
+			or projectile_type == TIYI_SNIPER_PROJECTILE_TYPE
+		)
 		and owner_player != null
 		and is_instance_valid(owner_player)
 	):
 		owner_player.apply_collectible_attack_hit_effects(enemy, authoritative_damage)
+
+
+@rpc("authority", "call_remote", "reliable", 3)
+func net_tiyi_sniper_hit_confirmed(
+	projectile_id: int,
+	enemy_net_id: int,
+	hit_position: Vector2,
+	direction: Vector2,
+	continues_piercing: bool
+) -> void:
+	if projectile_id <= 0 or enemy_net_id <= 0 or not _is_finite_vector2(hit_position):
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id > 0 and sender_id != _get_host_peer_id():
+		return
+	var safe_direction := _get_valid_client_projectile_direction(direction)
+	if safe_direction == Vector2.ZERO:
+		safe_direction = Vector2.RIGHT
+	var projectile_variant: Variant = _known_projectiles.get(projectile_id)
+	if projectile_variant != null and is_instance_valid(projectile_variant):
+		var projectile_node := projectile_variant as Node2D
+		if projectile_node != null and projectile_node.has_method(
+			"apply_authoritative_hit_confirmation"
+		):
+			projectile_node.call(
+				"apply_authoritative_hit_confirmation",
+				enemy_net_id,
+				hit_position,
+				safe_direction,
+				continues_piercing
+			)
+			return
+	var hit_effect := TIYI_SNIPER_HIT_EFFECT_SCENE.instantiate() as Node2D
+	if hit_effect == null:
+		return
+	hit_effect.top_level = true
+	if hit_effect.has_method("setup"):
+		hit_effect.call("setup", safe_direction)
+	add_child(hit_effect)
+	hit_effect.global_position = hit_position
 
 
 func _apply_confirmed_enemy_damage(
@@ -2383,6 +2851,9 @@ func _apply_player_hit_report(
 		confirmed_health = mini(confirmed_health, player_node.current_health)
 	var confirmed_dead := reported_is_dead or confirmed_health <= 0
 	player_node.set_multiplayer_health_state(confirmed_health, confirmed_dead)
+	if confirmed_dead and _is_valid_tiyi_player(player_node):
+		_clear_projectiles_for_peer(player_peer_id)
+		_clear_projectile_records_for_peer(player_peer_id)
 	var health_revision := _next_player_health_revision(player_peer_id)
 	if confirmed_dead:
 		_schedule_player_revive(player_peer_id)
@@ -2416,6 +2887,11 @@ func net_player_damage_applied(
 		return
 	_player_health_revisions[player_peer_id] = health_revision
 	player_node.set_multiplayer_health_state(current_health, is_dead)
+	if is_dead and _is_valid_tiyi_player(player_node):
+		_active_tiyi_activations_by_peer.erase(player_peer_id)
+		_tiyi_target_ids_by_peer.erase(player_peer_id)
+		_clear_projectiles_for_peer(player_peer_id)
+		_clear_projectile_records_for_peer(player_peer_id)
 	if (
 		is_client_view_runtime()
 		and player_peer_id == _get_client_view_local_peer_id()
@@ -2683,6 +3159,9 @@ func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
 		player_node = game.get_player_for_peer(peer_id)
 	if player_node == null or not is_instance_valid(player_node):
 		return
+	var active_tiyi_activation_id := int(_active_tiyi_activations_by_peer.get(peer_id, 0))
+	if active_tiyi_activation_id > 0:
+		_cancel_authoritative_tiyi_high_noon(peer_id, active_tiyi_activation_id, true)
 	_dead_player_revive_times.erase(peer_id)
 	_dead_player_revive_last_seconds.erase(peer_id)
 	var now: float = _get_net_time()
@@ -2767,6 +3246,8 @@ func net_player_revived(
 	_player_health_revisions[peer_id] = health_revision
 	_dead_player_revive_times.erase(peer_id)
 	_dead_player_revive_last_seconds.erase(peer_id)
+	_active_tiyi_activations_by_peer.erase(peer_id)
+	_tiyi_target_ids_by_peer.erase(peer_id)
 	player_node.revive_multiplayer(revive_position, current_health, invincible_seconds)
 	if is_client_view_runtime() and peer_id != _get_client_view_local_peer_id():
 		_reset_player_visual_interpolator_to_state(
@@ -3705,6 +4186,9 @@ func _on_net_player_left(peer_id: int) -> void:
 
 
 func _clear_peer_network_state(peer_id: int) -> void:
+	var active_tiyi_activation_id := int(_active_tiyi_activations_by_peer.get(peer_id, 0))
+	if active_tiyi_activation_id > 0 and net_manager != null and net_manager.is_host():
+		_cancel_authoritative_tiyi_high_noon(peer_id, active_tiyi_activation_id, true)
 	snapshot_mgr.clear_peer_delta_cache(peer_id)
 	_last_player_keyframe_time_by_peer.erase(peer_id)
 	_last_enemy_keyframe_time_by_peer.erase(peer_id)
@@ -3715,6 +4199,10 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_last_dash_accepted_times.erase(peer_id)
 	_player_character_mismatch_warnings.erase(peer_id)
 	_hoe_action_sequences_by_peer.erase(peer_id)
+	_tiyi_activation_sequences_by_peer.erase(peer_id)
+	_active_tiyi_activations_by_peer.erase(peer_id)
+	_tiyi_target_ids_by_peer.erase(peer_id)
+	_last_tiyi_activation_seen_by_peer.erase(peer_id)
 	_accepted_player_state_positions.erase(peer_id)
 	_accepted_player_state_times.erase(peer_id)
 	_host_latest_client_player_snapshot_states.erase(peer_id)

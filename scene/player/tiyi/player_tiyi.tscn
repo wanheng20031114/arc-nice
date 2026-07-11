@@ -1,0 +1,242 @@
+[gd_scene format=3 uid="uid://534heges86gj"]
+
+[ext_resource type="Script" uid="uid://cxkfbcop327sh" path="res://scene/player/tiyi/player_tiyi.gd" id="1_script"]
+[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="2_status_shader"]
+[ext_resource type="Texture2D" uid="uid://bo2xetk4m2i8o" path="res://resources/texture/player/tiyi/armed_effect.png" id="3_armed_texture"]
+[ext_resource type="AudioStream" uid="uid://b0nwiuq3akcvc" path="res://resources/audio/capoo_sniper_fire.wav" id="4_fire_audio"]
+[ext_resource type="AudioStream" uid="uid://cavje5drmqudf" path="res://resources/audio/cowboy_gunload.wav" id="5_reload_audio"]
+[ext_resource type="AudioStream" uid="uid://brmwioaechoqc" path="res://resources/audio/Cowboy_Footstep.wav" id="6_footstep_audio"]
+[ext_resource type="AudioStream" uid="uid://cutwkun6hroo5" path="res://resources/audio/cowboy_dead.wav" id="7_death_audio"]
+[ext_resource type="Shader" uid="uid://d3dvdthptsr0k" path="res://scene/player/effects/dash_ready_glow.gdshader" id="8_dash_shader"]
+[ext_resource type="AudioStream" uid="uid://vc2m1l0d1rov" path="res://resources/audio/cowboy_powerup.wav" id="9_powerup_audio"]
+[ext_resource type="AudioStream" uid="uid://by1qh436lhf54" path="res://resources/audio/Cowboy_Secret.wav" id="10_secret_audio"]
+[ext_resource type="PackedScene" uid="uid://bcopug355gqjb" path="res://scene/player/ui/player_health_bar.tscn" id="11_health_bar"]
+[ext_resource type="SpriteFrames" uid="uid://dxmeyfyr1jyoj" path="res://resources/animation/player_tiyi.tres" id="12_player_frames"]
+[ext_resource type="PackedScene" uid="uid://db4l5h4j6dnqu" path="res://scene/player/ui/skill1_charge_bar.tscn" id="13_skill_bar"]
+[ext_resource type="LabelSettings" path="res://resources/ui/player_name_label_settings.tres" id="14_name_settings"]
+[ext_resource type="PackedScene" path="res://scene/move_speed_trail_effect.tscn" id="15_speed_trail"]
+[ext_resource type="AudioStream" uid="uid://44ucsbesth8r" path="res://resources/audio/lucky_gem_upgrade_triad.wav" id="16_lucky_audio"]
+[ext_resource type="PackedScene" uid="uid://d10vpuylyb4ty" path="res://scene/player/ui/player_ammo_bar.tscn" id="17_ammo_bar"]
+[ext_resource type="PackedScene" path="res://scene/player/effects/dash_ready_indicator.tscn" id="18_dash_ready"]
+[ext_resource type="PackedScene" path="res://scene/player/tiyi/tiyi_high_noon_lock_lines.tscn" id="19_lock_lines"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_status"]
+resource_local_to_scene = true
+shader = ExtResource("2_status_shader")
+shader_parameter/blink_enabled = false
+shader_parameter/blink_speed = 12.0
+shader_parameter/hidden_ratio = 0.5
+shader_parameter/dodge_effect_strength = 0.0
+shader_parameter/dodge_sweep = 0.0
+shader_parameter/dodge_color = Color(0.69, 0.35, 0.87, 1)
+shader_parameter/dodge_flash_color = Color(1, 1, 1, 1)
+shader_parameter/dodge_outline_width = 3.0
+shader_parameter/dash_effect_strength = 0.0
+shader_parameter/dash_direction = Vector2(1, 0)
+shader_parameter/dash_color = Color(0.69, 0.35, 1.32, 1)
+shader_parameter/dash_trail_pixels = 4.0
+shader_parameter/slow_overlay_strength = 0.0
+shader_parameter/slow_overlay_color = Color(0.55, 0.86, 1, 1)
+shader_parameter/burn_overlay_strength = 0.0
+shader_parameter/burn_overlay_color = Color(1, 0.56, 0.18, 0.46)
+shader_parameter/burn_edge_width = 2.0
+shader_parameter/bleed_overlay_strength = 0.0
+shader_parameter/bleed_overlay_color = Color(0.95, 0.02, 0.08, 0.58)
+shader_parameter/bleed_outline_width = 2.0
+shader_parameter/revive_glow_strength = 0.0
+shader_parameter/revive_glow_color = Color(3.2, 3.2, 3.2, 1)
+shader_parameter/revive_glow_outline_width = 4.5
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_armed_0"]
+atlas = ExtResource("3_armed_texture")
+region = Rect2(0, 0, 48, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_armed_1"]
+atlas = ExtResource("3_armed_texture")
+region = Rect2(48, 0, 48, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_armed_2"]
+atlas = ExtResource("3_armed_texture")
+region = Rect2(96, 0, 48, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_armed_3"]
+atlas = ExtResource("3_armed_texture")
+region = Rect2(144, 0, 48, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_armed_4"]
+atlas = ExtResource("3_armed_texture")
+region = Rect2(192, 0, 48, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_armed_5"]
+atlas = ExtResource("3_armed_texture")
+region = Rect2(240, 0, 48, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_armed_6"]
+atlas = ExtResource("3_armed_texture")
+region = Rect2(288, 0, 48, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_armed_7"]
+atlas = ExtResource("3_armed_texture")
+region = Rect2(336, 0, 48, 32)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_armed"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_armed_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_armed_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_armed_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_armed_3")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_armed_4")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_armed_5")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_armed_6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_armed_7")
+}],
+"loop": true,
+"name": &"default",
+"speed": 8.0
+}]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_rlbav"]
+resource_local_to_scene = true
+shader = ExtResource("8_dash_shader")
+shader_parameter/ready_strength = 0.0
+shader_parameter/glow_color = Color(0.69, 0.35, 1.32, 1)
+shader_parameter/glow_opacity = 0.18
+shader_parameter/pulse_speed = 2.2
+shader_parameter/pulse_amount = 0.1
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_player"]
+radius = 7.5
+
+[node name="Player" type="CharacterBody2D" unique_id=2046249308]
+collision_layer = 2
+collision_mask = 257
+script = ExtResource("1_script")
+ammo_capacity = 5
+bullet_spawn_distance = 16.0
+character_id = &"tiyi"
+
+[node name="BodySprite" type="AnimatedSprite2D" parent="." unique_id=809921260]
+z_index = 1
+material = SubResource("ShaderMaterial_status")
+scale = Vector2(0.8, 0.8)
+sprite_frames = ExtResource("12_player_frames")
+animation = &"normal_down"
+autoplay = "idle_down"
+frame_progress = 0.6656376
+
+[node name="ArmedEffectSprite" type="AnimatedSprite2D" parent="." unique_id=609654268]
+z_index = 2
+scale = Vector2(0.8, 0.8)
+sprite_frames = SubResource("SpriteFrames_armed")
+frame_progress = 0.70323116
+
+[node name="HighNoonLockLines" parent="." unique_id=1732621824 instance=ExtResource("19_lock_lines")]
+
+[node name="MoveSpeedTrailEffect" parent="." unique_id=683397269 instance=ExtResource("15_speed_trail")]
+
+[node name="DashReadyIndicator" parent="." unique_id=602955586 instance=ExtResource("18_dash_ready")]
+material = SubResource("ShaderMaterial_rlbav")
+offset_top = 3.0
+offset_bottom = 11.0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1668928880]
+position = Vector2(0, 1)
+shape = SubResource("CircleShape2D_player")
+
+[node name="ShootingTimer" type="Timer" parent="." unique_id=1471221364]
+
+[node name="DashCooldownTimer" type="Timer" parent="." unique_id=730821778]
+process_callback = 0
+wait_time = 5.0
+one_shot = true
+
+[node name="AmmoBar" parent="." unique_id=1268786487 instance=ExtResource("17_ammo_bar")]
+ammo_color = Color(0.690196, 0.352941, 0.866667, 0.980392)
+reload_color = Color(0.98039216, 0.78039217, 0.18039216, 0.98039216)
+
+[node name="HealthBar" parent="." unique_id=1017062110 instance=ExtResource("11_health_bar")]
+offset_top = -15.0
+offset_bottom = -10.0
+
+[node name="Skill1ChargeBar" parent="." unique_id=812875383 instance=ExtResource("13_skill_bar")]
+offset_top = 11.0
+offset_bottom = 13.0
+
+[node name="NameLabel" type="Label" parent="." unique_id=2050808814]
+visible = false
+z_index = 6
+offset_left = -60.0
+offset_top = -38.0
+offset_right = 60.0
+offset_bottom = -22.0
+theme_override_font_sizes/font_size = 9
+text = "Player"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="NameplateLayer" type="CanvasLayer" parent="." unique_id=1181126939]
+layer = 5
+visible = false
+
+[node name="NameplateLabel" type="Label" parent="NameplateLayer" unique_id=892598601]
+custom_minimum_size = Vector2(160, 30)
+offset_right = 160.0
+offset_bottom = 30.0
+text = "Player"
+label_settings = ExtResource("14_name_settings")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="PrimaryAttackAudio" type="AudioStreamPlayer2D" parent="." unique_id=1223799019]
+stream = ExtResource("4_fire_audio")
+volume_db = -2.0
+max_polyphony = 8
+
+[node name="ReloadAudio" type="AudioStreamPlayer2D" parent="." unique_id=122964451]
+stream = ExtResource("5_reload_audio")
+volume_db = -8.0
+
+[node name="FootstepAudio" type="AudioStreamPlayer2D" parent="." unique_id=1121962648]
+stream = ExtResource("6_footstep_audio")
+volume_db = 6.0
+max_distance = 256.0
+
+[node name="DeathAudio" type="AudioStreamPlayer2D" parent="." unique_id=1149498189]
+stream = ExtResource("7_death_audio")
+volume_db = -4.0
+
+[node name="PowerupAudio" type="AudioStreamPlayer2D" parent="." unique_id=85058039]
+stream = ExtResource("9_powerup_audio")
+volume_db = 6.0
+
+[node name="SecretAudio" type="AudioStreamPlayer2D" parent="." unique_id=732073822]
+stream = ExtResource("10_secret_audio")
+volume_db = -1.0
+
+[node name="XirangPickupAudio" type="AudioStreamPlayer2D" parent="." unique_id=1691860648]
+stream = ExtResource("9_powerup_audio")
+volume_db = -4.0
+max_polyphony = 6
+
+[node name="LuckyUpgradeAudio" type="AudioStreamPlayer2D" parent="." unique_id=2036070425]
+stream = ExtResource("16_lucky_audio")
+volume_db = 2.0
+max_polyphony = 2
+
+[connection signal="timeout" from="DashCooldownTimer" to="." method="_on_dash_cooldown_timer_timeout"]
