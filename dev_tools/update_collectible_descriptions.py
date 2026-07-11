@@ -67,6 +67,7 @@ def stat_parts(data: dict[str, Any], prefix: str = "") -> list[str]:
         ("attack_bonus", "攻击力"),
         ("max_health_bonus", "生命上限"),
         ("move_speed_bonus", "移动速度"),
+        ("attack_speed_bonus", "攻击速度"),
         ("physical_defense_bonus", "物理防御"),
         ("magic_defense_bonus", "魔法防御"),
         ("physical_damage_bonus", "物理伤害"),
@@ -221,9 +222,10 @@ def describe_on_hit(data: dict[str, Any]) -> str:
             f"范围敌人造成{damage}法术伤害{cooldown}"
         )
     if effect_id == "mark":
+        extra_damage = float(data.get("on_hit_damage_taken_multiplier", 1.0)) - 1.0
         return (
             f"普通子弹命中时，{chance}概率标记敌人{duration}秒，"
-            f"使其受到伤害x{fmt_num(data.get('on_hit_damage_taken_multiplier', 1.0))}{cooldown}"
+            f"使其额外受到{percent(extra_damage)}伤害{cooldown}"
         )
     if effect_id == "crack":
         return (
@@ -308,16 +310,16 @@ def generate_description(data: dict[str, Any]) -> str:
     front_multiplier = float(data.get("incoming_ranged_front_damage_multiplier", 1.0))
     if front_multiplier != 1.0:
         if front_multiplier > 1.0:
-            parts.append(f"正面远程伤害+{percent(front_multiplier - 1.0)}")
+            parts.append(f"受到的正面远程伤害提高{percent(front_multiplier - 1.0)}")
         else:
-            parts.append(f"正面远程伤害-{percent(1.0 - front_multiplier)}")
+            parts.append(f"受到的正面远程伤害降低{percent(1.0 - front_multiplier)}")
 
     back_multiplier = float(data.get("incoming_ranged_back_damage_multiplier", 1.0))
     if back_multiplier != 1.0:
         if back_multiplier > 1.0:
-            parts.append(f"背面远程伤害+{percent(back_multiplier - 1.0)}")
+            parts.append(f"受到的背面远程伤害提高{percent(back_multiplier - 1.0)}")
         else:
-            parts.append(f"背面远程伤害-{percent(1.0 - back_multiplier)}")
+            parts.append(f"受到的背面远程伤害降低{percent(1.0 - back_multiplier)}")
 
     ranged_dodge = float(data.get("incoming_ranged_dodge_chance", 0.0))
     if ranged_dodge:

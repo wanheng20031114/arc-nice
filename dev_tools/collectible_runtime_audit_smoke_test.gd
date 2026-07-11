@@ -226,7 +226,10 @@ func _audit_single_collectible(item: PickupConfig) -> void:
 		"%s ammo-free shot chance must apply." % item.display_name
 	)
 	_expect(
-		is_equal_approx(player.get_attack_speed(), base_attack_speed + dynamic_attack_speed_bonus),
+		is_equal_approx(
+			player.get_attack_speed(),
+			base_attack_speed + item.collectible_attack_speed_bonus + dynamic_attack_speed_bonus
+		),
 		"%s dynamic attack speed bonus must apply." % item.display_name
 	)
 	if (

@@ -1556,6 +1556,7 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 		attack_bonus += item.collectible_attack_bonus
 		max_health_bonus += item.collectible_max_health_bonus
 		move_speed_bonus += item.collectible_move_speed_bonus
+		attack_speed_bonus += item.collectible_attack_speed_bonus
 		physical_defense_bonus += item.collectible_physical_defense_bonus
 		magic_defense_bonus += item.collectible_magic_defense_bonus
 		physical_damage_bonus += item.collectible_physical_damage_bonus

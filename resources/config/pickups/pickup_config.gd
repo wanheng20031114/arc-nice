@@ -166,6 +166,7 @@ const KILL_EFFECT_BURST := "burst"
 @export_range(0, 999, 1, "or_greater") var collectible_attack_bonus: int = 0
 @export_range(0, 999, 1, "or_greater") var collectible_max_health_bonus: int = 0
 @export_range(0.0, 999.0, 1.0, "or_greater") var collectible_move_speed_bonus: float = 0.0
+@export_range(0.0, 999.0, 0.1, "or_greater") var collectible_attack_speed_bonus: float = 0.0
 @export_range(0.0, 999.0, 1.0, "or_greater") var collectible_dash_distance_bonus: float = 0.0
 @export_range(0.0, 30.0, 0.1, "or_greater") var collectible_dash_cooldown_reduction: float = 0.0
 @export_range(0, 999, 1, "or_greater") var collectible_physical_defense_bonus: int = 0

@@ -46,6 +46,7 @@ FIELD_DEFAULTS: dict[str, Any] = {
     "collectible_attack_bonus": 0,
     "collectible_max_health_bonus": 0,
     "collectible_move_speed_bonus": 0.0,
+    "collectible_attack_speed_bonus": 0.0,
     "collectible_dash_distance_bonus": 0.0,
     "collectible_dash_cooldown_reduction": 0.0,
     "collectible_physical_defense_bonus": 0,
@@ -237,6 +238,7 @@ STATIC_STAT_FIELDS = (
     "collectible_attack_bonus",
     "collectible_max_health_bonus",
     "collectible_move_speed_bonus",
+    "collectible_attack_speed_bonus",
     "collectible_dash_distance_bonus",
     "collectible_dash_cooldown_reduction",
     "collectible_physical_defense_bonus",
@@ -431,6 +433,7 @@ def summarize_effect(data: dict[str, Any]) -> str:
         ("collectible_attack_bonus", "攻击"),
         ("collectible_max_health_bonus", "生命"),
         ("collectible_move_speed_bonus", "移速"),
+        ("collectible_attack_speed_bonus", "攻速"),
         ("collectible_dash_distance_bonus", "冲刺距离"),
         ("collectible_dash_cooldown_reduction", "冲刺冷却减免"),
         ("collectible_physical_defense_bonus", "物防"),
@@ -450,14 +453,19 @@ def summarize_effect(data: dict[str, Any]) -> str:
         if value != FIELD_DEFAULTS[field]:
             parts.append(f"{label}+{value}")
 
+    def percentage_phrase(subject: str, multiplier: float) -> str:
+        percentage = round(abs(multiplier - 1.0) * 100)
+        direction = "提高" if multiplier > 1.0 else "降低"
+        return f"{subject}{direction}{percentage}%"
+
     if data.get("incoming_ranged_front_damage_multiplier", 1.0) != 1.0:
-        parts.append(f"正面远程伤害x{data['incoming_ranged_front_damage_multiplier']}")
+        parts.append(percentage_phrase("受到的正面远程伤害", data["incoming_ranged_front_damage_multiplier"]))
     if data.get("incoming_ranged_back_damage_multiplier", 1.0) != 1.0:
-        parts.append(f"背面远程伤害x{data['incoming_ranged_back_damage_multiplier']}")
+        parts.append(percentage_phrase("受到的背面远程伤害", data["incoming_ranged_back_damage_multiplier"]))
     if data.get("damage_against_burning_multiplier", 1.0) != 1.0:
-        parts.append(f"燃烧目标伤害x{data['damage_against_burning_multiplier']}")
+        parts.append(percentage_phrase("对燃烧敌人的伤害", data["damage_against_burning_multiplier"]))
     if data.get("damage_against_bleeding_multiplier", 1.0) != 1.0:
-        parts.append(f"流血目标伤害x{data['damage_against_bleeding_multiplier']}")
+        parts.append(percentage_phrase("对流血敌人的伤害", data["damage_against_bleeding_multiplier"]))
     if data.get("attack_speed_xirang_step", 0):
         parts.append(f"每{data['attack_speed_xirang_step']}息壤攻速+{data.get('attack_speed_bonus_per_xirang_step', 0)}")
     if data.get("defense_xirang_step", 0):
