@@ -3326,10 +3326,12 @@ func _play_death_animation() -> void:
 		body_sprite.play(&"death")
 
 
-# 升级基础攻击力，每级 +4
+# 按当前角色的平衡配置升级基础攻击力。
 func upgrade_attack() -> void:
 	_initialize_base_stats()
-	_base_attack_damage += 4
+	var character_config := get_character_config()
+	assert(character_config != null, "Missing PlayerCharacterConfig for '%s'." % character_id)
+	_base_attack_damage += character_config.attack_damage_per_upgrade
 	_refresh_collectible_stats()
 
 

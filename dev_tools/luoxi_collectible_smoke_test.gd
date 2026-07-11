@@ -201,8 +201,10 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	_expect(
 		description_style != null
 		and description_style.get_content_margin(SIDE_LEFT) >= 5.0
-		and description_style.get_content_margin(SIDE_RIGHT) >= 7.0,
-		"Luoxi card chooser descriptions must leave horizontal glyph padding."
+		and description_style.get_content_margin(SIDE_TOP) >= 8.0
+		and description_style.get_content_margin(SIDE_RIGHT) >= 7.0
+		and description_style.get_content_margin(SIDE_BOTTOM) >= 7.0,
+		"Luoxi card chooser descriptions must leave enough glyph padding on every edge."
 	)
 	_expect(card_row.get_theme_constant("separation") == 24, "Luoxi card chooser spacing must scale with the larger cards.")
 	for button_index in range(3):

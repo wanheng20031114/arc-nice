@@ -8,15 +8,19 @@ const SNIPER_HIT_EFFECT_SCENE := preload(
 	"res://scene/player/tiyi/tiyi_sniper_hit_effect.tscn"
 )
 const HIGH_NOON_DURATION := 4.0
-const HIGH_NOON_LOCK_INTERVAL := 0.25
+const HIGH_NOON_MAX_TARGETS := 25
+const HIGH_NOON_IDEAL_FULL_LOCK_TIME := 2.0
+const HIGH_NOON_LOCK_INTERVAL := (
+	HIGH_NOON_IDEAL_FULL_LOCK_TIME / HIGH_NOON_MAX_TARGETS
+)
 const HIGH_NOON_LAST_LOCK_TIME := HIGH_NOON_DURATION - HIGH_NOON_LOCK_INTERVAL
-const HIGH_NOON_RANGE := 350.0
+const HIGH_NOON_RANGE := 400.0
 const HIGH_NOON_RANGE_SQUARED := HIGH_NOON_RANGE * HIGH_NOON_RANGE
-const HIGH_NOON_MAX_TARGETS := 20
 const HIGH_NOON_DAMAGE_MULTIPLIER := 3.5
 const HIGH_NOON_WORLD_MASK := 1
 
 @onready var high_noon_lock_lines: TiyiHighNoonLockLines = $HighNoonLockLines
+@onready var high_noon_cast_effect_sprite: AnimatedSprite2D = $HighNoonCastEffectSprite
 
 var _high_noon_active: bool = false
 var _high_noon_authoritative: bool = false
@@ -28,6 +32,7 @@ var _high_noon_target_refs: Array[WeakRef] = []
 var _high_noon_locked_instance_ids: Dictionary = {}
 var _high_noon_remote_target_ids := PackedInt32Array()
 var _high_noon_lock_lines_base_position: Vector2 = Vector2.ZERO
+var _high_noon_cast_effect_sprite_base_position: Vector2 = Vector2.ZERO
 
 
 func _init() -> void:
@@ -89,11 +94,15 @@ func _exit_tree() -> void:
 func _cache_character_visual_base_positions() -> void:
 	super._cache_character_visual_base_positions()
 	_high_noon_lock_lines_base_position = high_noon_lock_lines.position
+	_high_noon_cast_effect_sprite_base_position = high_noon_cast_effect_sprite.position
 
 
 func _set_character_visual_offset(offset: Vector2) -> void:
 	super._set_character_visual_offset(offset)
 	high_noon_lock_lines.position = _high_noon_lock_lines_base_position + offset
+	high_noon_cast_effect_sprite.position = (
+		_high_noon_cast_effect_sprite_base_position + offset
+	)
 
 
 func _try_use_skill1() -> bool:
@@ -233,6 +242,10 @@ func _begin_high_noon(activation_id: int, authoritative: bool) -> void:
 	_high_noon_target_refs.clear()
 	_high_noon_locked_instance_ids.clear()
 	_high_noon_remote_target_ids.clear()
+	high_noon_cast_effect_sprite.frame = 0
+	high_noon_cast_effect_sprite.frame_progress = 0.0
+	high_noon_cast_effect_sprite.show()
+	high_noon_cast_effect_sprite.play(&"default")
 	_refresh_high_noon_lock_lines()
 
 
@@ -444,6 +457,8 @@ func _clear_high_noon_state() -> void:
 	_high_noon_target_refs.clear()
 	_high_noon_locked_instance_ids.clear()
 	_high_noon_remote_target_ids.clear()
+	high_noon_cast_effect_sprite.stop()
+	high_noon_cast_effect_sprite.hide()
 	if high_noon_lock_lines != null and is_instance_valid(high_noon_lock_lines):
 		high_noon_lock_lines.clear_targets()
 

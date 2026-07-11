@@ -1,9 +1,10 @@
 # 提伊像素素材源与处理说明
 
-本目录保留五张内置 imagegen 生成的 `*_source.png` 原图、官方色键脚本生成的
+本目录保留内置 imagegen 生成的 `*_source.png` 原图、官方色键脚本生成的
 `*_alpha.png`，以及项目 `pixel_crop_tool.py` 的可复核裁切结果。运行
-`python dev_tools/process_tiyi_assets.py` 可确定性重建全部运行时图集、动画资源与
-`manifest.json`。
+`python dev_tools/process_tiyi_assets.py` 可确定性重建角色主体运行时图集、动画资源与
+`manifest.json`；运行 `python dev_tools/process_tiyi_high_noon_cast.py` 可从独立生图源
+重建「午时已到」的环绕施术动画。
 
 ## 动画设计依据
 
@@ -38,6 +39,8 @@
 - `sniper_bullet.png`: 64×8，两帧 32×8。
 - `sniper_hit.png`: 288×48，六帧 48×48。
 - `armed_effect.png`: 384×32，八帧 48×32，复用维什戴尔几何并确定性改为紫色阶。
+- `high_noon_cast.png`: 448×48，七帧 64×48；五枚紫色施术单元沿径向外移 8px，
+  以 14 FPS 环绕旋转，半秒完成一轮，四秒锁定期正好播放八轮。
 - `portrait.png`: 取 `normal_down` 第 0 帧的完整 32×32 单元，以最近邻严格放大
   4 倍至 128×128，供角色选择卡牌与背包左侧个人数据共同使用。
 - `skill1_icon.png`: 128×128，继续使用独立技能图标源。

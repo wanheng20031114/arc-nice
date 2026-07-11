@@ -19,6 +19,7 @@
 [ext_resource type="PackedScene" uid="uid://d10vpuylyb4ty" path="res://scene/player/ui/player_ammo_bar.tscn" id="17_ammo_bar"]
 [ext_resource type="PackedScene" path="res://scene/player/effects/dash_ready_indicator.tscn" id="18_dash_ready"]
 [ext_resource type="PackedScene" path="res://scene/player/tiyi/tiyi_high_noon_lock_lines.tscn" id="19_lock_lines"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/player_tiyi_high_noon_cast.tres" id="20_high_noon_cast"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_status"]
 resource_local_to_scene = true
@@ -145,6 +146,11 @@ z_index = 2
 sprite_frames = SubResource("SpriteFrames_armed")
 frame = 3
 frame_progress = 0.5145778
+
+[node name="HighNoonCastEffectSprite" type="AnimatedSprite2D" parent="."]
+visible = false
+z_index = 2
+sprite_frames = ExtResource("20_high_noon_cast")
 
 [node name="HighNoonLockLines" parent="." unique_id=1732621824 instance=ExtResource("19_lock_lines")]
 

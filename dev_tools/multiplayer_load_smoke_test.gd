@@ -1790,6 +1790,20 @@ func _test_host_authoritative_tiyi_protocol() -> void:
 	connected_players[1] = "Host"
 	mp_game.set("game", host_game)
 	mp_game.set("net_manager", net_manager)
+	var oversized_target_ids := PackedInt32Array()
+	for enemy_net_id in range(1, 28):
+		oversized_target_ids.append(enemy_net_id)
+	var sanitized_target_ids := mp_game.call(
+		"_sanitize_tiyi_target_ids",
+		oversized_target_ids,
+		false
+	) as PackedInt32Array
+	_expect(
+		sanitized_target_ids.size() == 25
+		and sanitized_target_ids[0] == 1
+		and sanitized_target_ids[24] == 25,
+		"Tiyi multiplayer target sanitization must preserve the new 25-target hard cap."
+	)
 
 	_expect(
 		is_equal_approx(tiyi_player.skill1_charge_duration, 28.0),

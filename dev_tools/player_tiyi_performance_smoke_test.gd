@@ -58,10 +58,10 @@ func _run() -> void:
 		minimum_steady_nodes = mini(minimum_steady_nodes, current_nodes)
 		maximum_steady_nodes = maxi(maximum_steady_nodes, current_nodes)
 
-	# One twenty-target finish burst uses the same dedicated hit effect as bullets.
-	for effect_index in range(20):
+	# One twenty-five-target finish burst uses the same dedicated hit effect as bullets.
+	for effect_index in range(25):
 		var effect := HIT_EFFECT_SCENE.instantiate() as TiyiSniperHitEffect
-		effect.setup(Vector2.RIGHT.rotated(float(effect_index) / 20.0 * TAU))
+		effect.setup(Vector2.RIGHT.rotated(float(effect_index) / 25.0 * TAU))
 		test_root.add_child(effect)
 		effect.global_position = Vector2(effect_index * 4.0, 0.0)
 	await create_timer(0.5).timeout
@@ -70,7 +70,7 @@ func _run() -> void:
 		await physics_frame
 	_expect(
 		_count_transient_tiyi_nodes(test_root) == 0,
-		"Sniper bullets and twenty-target hit effects must be gone within one second."
+		"Sniper bullets and twenty-five-target hit effects must be gone within one second."
 	)
 	_expect(
 		maximum_steady_nodes - minimum_steady_nodes <= 8,
@@ -123,7 +123,7 @@ func _test_lock_line_batches() -> void:
 		"Lock lines inside Tiyi's collision area must use the highly transparent near alpha."
 	)
 
-	var far_target := Vector2(350.0, 0.0)
+	var far_target := Vector2(400.0, 0.0)
 	var far_batches := lock_lines.call(
 		"_build_line_batches", PackedVector2Array([far_target])
 	) as Dictionary
@@ -157,20 +157,23 @@ func _test_lock_line_batches() -> void:
 		"Maximum-range lock-line alpha must remain within its authored transparent bounds."
 	)
 
-	var twenty_targets := PackedVector2Array()
-	for target_index in range(20):
-		twenty_targets.append(
-			Vector2.RIGHT.rotated(float(target_index) / 20.0 * TAU) * 350.0
+	var twenty_five_targets := PackedVector2Array()
+	for target_index in range(25):
+		twenty_five_targets.append(
+			Vector2.RIGHT.rotated(float(target_index) / 25.0 * TAU) * 400.0
 		)
-	var twenty_batches := lock_lines.call("_build_line_batches", twenty_targets) as Dictionary
-	var twenty_segments: PackedVector2Array = twenty_batches[&"segments"]
-	var twenty_glow_colors: PackedColorArray = twenty_batches[&"glow_colors"]
-	var twenty_core_colors: PackedColorArray = twenty_batches[&"core_colors"]
+	var twenty_five_batches := lock_lines.call(
+		"_build_line_batches",
+		twenty_five_targets
+	) as Dictionary
+	var twenty_five_segments: PackedVector2Array = twenty_five_batches[&"segments"]
+	var twenty_five_glow_colors: PackedColorArray = twenty_five_batches[&"glow_colors"]
+	var twenty_five_core_colors: PackedColorArray = twenty_five_batches[&"core_colors"]
 	_expect(
-		twenty_segments.size() == 680
-		and twenty_glow_colors.size() == 340
-		and twenty_core_colors.size() == 340,
-		"Twenty lock targets must remain bounded to 340 batched segments per draw pass."
+		twenty_five_segments.size() == 850
+		and twenty_five_glow_colors.size() == 425
+		and twenty_five_core_colors.size() == 425,
+		"Twenty-five lock targets must remain bounded to 425 batched segments per draw pass."
 	)
 	lock_lines.free()
 

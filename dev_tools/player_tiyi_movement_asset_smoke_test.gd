@@ -7,6 +7,7 @@ const CANONICAL_PATH := "res://dev_assets/source_images/player_tiyi/movement_sca
 const RUNTIME_PATH := "res://resources/texture/player/tiyi/movement.png"
 const PORTRAIT_PATH := "res://resources/texture/player/tiyi/portrait.png"
 const DEATH_PATH := "res://resources/texture/player/tiyi/body.png"
+const HIGH_NOON_CAST_PATH := "res://resources/texture/player/tiyi/high_noon_cast.png"
 
 var failures: Array[String] = []
 
@@ -49,6 +50,25 @@ func _run() -> void:
 		and _images_match_authored_pixels(portrait_image, imported_portrait_image),
 		"Godot's imported Tiyi UI portrait must preserve the authored frame-0 pixels."
 	)
+	var high_noon_cast_image := Image.load_from_file(
+		ProjectSettings.globalize_path(HIGH_NOON_CAST_PATH)
+	)
+	var imported_high_noon_cast_texture := load(HIGH_NOON_CAST_PATH) as Texture2D
+	var imported_high_noon_cast_image := (
+		imported_high_noon_cast_texture.get_image()
+		if imported_high_noon_cast_texture != null
+		else null
+	)
+	_expect(
+		high_noon_cast_image != null
+		and high_noon_cast_image.get_size() == Vector2i(448, 48)
+		and imported_high_noon_cast_image != null
+		and _images_match_authored_pixels(
+			high_noon_cast_image,
+			imported_high_noon_cast_image
+		),
+		"Tiyi's imported seven-frame High Noon cast sheet must preserve its authored pixels."
+	)
 
 	var player := PLAYER_SCENE.instantiate() as PlayerTiyi
 	_expect(player != null, "Tiyi must instantiate for movement asset validation.")
@@ -89,6 +109,25 @@ func _run() -> void:
 			armed_effect != null and armed_effect.scale == Vector2.ONE,
 			"Tiyi's armed effect must use the same integer scale as the body."
 		)
+		var high_noon_cast_effect := player.get_node(
+			"HighNoonCastEffectSprite"
+		) as AnimatedSprite2D
+		_expect(
+			high_noon_cast_effect != null
+			and high_noon_cast_effect.scale == Vector2.ONE
+			and high_noon_cast_effect.sprite_frames.get_frame_count(&"default") == 7
+			and is_equal_approx(
+				high_noon_cast_effect.sprite_frames.get_animation_speed(&"default"),
+				14.0
+			),
+			"Tiyi's High Noon cast effect must keep seven native frames at 14 FPS."
+		)
+		if high_noon_cast_effect != null:
+			_assert_animation_uses_texture(
+				high_noon_cast_effect.sprite_frames,
+				&"default",
+				HIGH_NOON_CAST_PATH
+			)
 		var character_config := player.get_character_config()
 		_expect(
 			character_config != null and character_config.portrait_texture == PORTRAIT_PATH,

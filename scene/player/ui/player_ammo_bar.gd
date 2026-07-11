@@ -2,6 +2,12 @@
 extends Control
 class_name PlayerAmmoBar
 
+const AMMO_FILL_PIXEL_WIDTH := 1
+const AMMO_SEPARATOR_PIXEL_WIDTH := 1
+const MIN_SEGMENTED_ROUND_PIXEL_WIDTH := (
+	AMMO_FILL_PIXEL_WIDTH + AMMO_SEPARATOR_PIXEL_WIDTH
+)
+
 @export var slot_color: Color = Color(0.04, 0.045, 0.04, 0.9)
 @export var ammo_color: Color = Color(1.0, 0.56, 0.08, 0.98)
 @export var separator_color: Color = Color(0.16, 0.07, 0.015, 0.82)
@@ -50,7 +56,7 @@ func _draw() -> void:
 	var ammo_width := slot_rect.size.x * (float(current_ammo) / float(max_ammo))
 	if ammo_width <= 0.0:
 		return
-	if cell_width < 2.0:
+	if not _has_room_for_ammo_separators(slot_rect.size.x, max_ammo):
 		draw_rect(
 			Rect2(slot_rect.position, Vector2(ammo_width, slot_rect.size.y)),
 			ammo_color
@@ -60,8 +66,14 @@ func _draw() -> void:
 	for ammo_index in range(current_ammo):
 		var cell_x := floorf(slot_rect.position.x + float(ammo_index) * cell_width)
 		var next_cell_x := floorf(slot_rect.position.x + float(ammo_index + 1) * cell_width)
-		var cell_pixel_width := maxf(next_cell_x - cell_x, 1.0)
-		var fill_width := maxf(cell_pixel_width - 1.0, 1.0)
+		var cell_pixel_width := maxf(
+			next_cell_x - cell_x,
+			float(AMMO_FILL_PIXEL_WIDTH)
+		)
+		var fill_width := maxf(
+			cell_pixel_width - float(AMMO_SEPARATOR_PIXEL_WIDTH),
+			float(AMMO_FILL_PIXEL_WIDTH)
+		)
 		draw_rect(
 			Rect2(
 				Vector2(cell_x, slot_rect.position.y),
@@ -69,3 +81,11 @@ func _draw() -> void:
 			),
 			ammo_color
 		)
+
+
+func _has_room_for_ammo_separators(bar_width: float, ammo_capacity: int) -> bool:
+	var available_pixel_width := floori(maxf(bar_width, 0.0))
+	return (
+		available_pixel_width
+		>= maxi(ammo_capacity, 1) * MIN_SEGMENTED_ROUND_PIXEL_WIDTH
+	)

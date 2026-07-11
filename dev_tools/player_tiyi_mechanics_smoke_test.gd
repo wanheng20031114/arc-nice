@@ -35,6 +35,7 @@ func _run() -> void:
 	_test_stats_ammo_and_animation()
 	await _test_sniper_sweep()
 	await _test_high_noon()
+	_test_attack_upgrade_progression()
 	await _finish()
 
 
@@ -74,6 +75,20 @@ func _test_stats_ammo_and_animation() -> void:
 		and death_frame.atlas.resource_path == "res://resources/texture/player/tiyi/body.png",
 		"Tiyi death animation must remain on the separate purple death strip."
 	)
+	var cast_effect := player.high_noon_cast_effect_sprite
+	_expect(
+		cast_effect != null
+		and not cast_effect.visible
+		and not cast_effect.is_playing(),
+		"Tiyi's authored High Noon cast effect must start hidden and stopped."
+	)
+	var cast_effect_base_position := cast_effect.position
+	player.call("_set_multiplayer_visual_offset", Vector2(3.0, -2.0))
+	_expect(
+		cast_effect.position == cast_effect_base_position + Vector2(3.0, -2.0),
+		"High Noon cast pixels must follow the multiplayer visual smoothing offset."
+	)
+	player.call("_set_multiplayer_visual_offset", Vector2.ZERO)
 	player.velocity = Vector2.ZERO
 	player.call("_update_animation")
 	_expect(
@@ -103,6 +118,16 @@ func _test_stats_ammo_and_animation() -> void:
 	player.call("_update_reload", player.reload_duration)
 	_expect(player.current_ammo == 5 and not player.is_reloading, "A 1.5 second reload must refill to 5/5.")
 	player.shooting_timer.stop()
+
+
+func _test_attack_upgrade_progression() -> void:
+	for upgrade_level in range(1, 11):
+		player.upgrade_attack()
+		_expect(
+			player.attack_damage == 100 + upgrade_level * 20,
+			"Tiyi attack upgrade level %d must add exactly 20 attack damage." % upgrade_level
+		)
+	_expect(player.attack_damage == 300, "Ten Tiyi attack upgrades must raise attack damage from 100 to 300.")
 
 
 func _test_sniper_sweep() -> void:
@@ -274,14 +299,19 @@ func _test_high_noon() -> void:
 	player.apply_skill1_upgrade_state(0)
 
 	var enemies: Array[Enemy] = []
-	for enemy_index in range(21):
-		enemies.append(_spawn_enemy(Vector2(20.0 + float(enemy_index) * 7.0, -10.0)))
+	for enemy_index in range(26):
+		enemies.append(_spawn_enemy(Vector2(20.0 + float(enemy_index) * 15.0, -10.0)))
 	await physics_frame
 	player.unlock_skill1()
 	player.skill1_charge = player.skill1_charge_duration
 	_expect(bool(player.call("_try_use_skill1")), "A fully charged Tiyi must start High Noon.")
 	_expect(player.is_high_noon_active(), "High Noon must become active immediately.")
 	_expect(player.get_high_noon_target_count() == 1, "High Noon must acquire its first target at t=0.")
+	_expect(
+		player.high_noon_cast_effect_sprite.visible
+		and player.high_noon_cast_effect_sprite.is_playing(),
+		"High Noon must show and play its rotating casting units for the full lock phase."
+	)
 	var first_activation_id := player.get_high_noon_activation_id()
 	player.skill1_charge = player.skill1_charge_duration
 	player.set("_last_skill_activation_msec", Time.get_ticks_msec() - 1000)
@@ -323,20 +353,36 @@ func _test_high_noon() -> void:
 	player.dash_cooldown_timer.stop()
 
 	enemies[0].global_position = Vector2(420.0, 0.0)
-	player.call("_update_high_noon", 3.75)
+	player.call("_update_high_noon", 1.92)
 	_expect(
-		player.get_high_noon_target_count() == 16,
-		"A four-second round with one t=0 lock and 0.25-second beats must naturally acquire 16 targets."
+		player.is_high_noon_active()
+		and player.get_high_noon_target_count() == 25
+		and player.high_noon_cast_effect_sprite.visible
+		and player.high_noon_cast_effect_sprite.is_playing(),
+		"One t=0 lock plus 0.08-second beats must lock all 25 targets by 1.92 seconds."
 	)
 	_expect(
 		enemies.all(func(enemy: Enemy) -> bool: return enemy.current_health == 1000),
-		"High Noon must deal zero damage before the four-second finish."
+		"Locking all 25 targets early must not deal damage before the four-second finish."
 	)
-	player.call("_update_high_noon", 0.25)
+	player.call("_update_high_noon", 2.07)
+	_expect(
+		player.is_high_noon_active()
+		and enemies.all(func(enemy: Enemy) -> bool: return enemy.current_health == 1000)
+		and player.high_noon_cast_effect_sprite.visible
+		and player.high_noon_cast_effect_sprite.is_playing(),
+		"High Noon must keep all locks without resolving before four seconds."
+	)
+	player.call("_update_high_noon", 0.02)
 	_expect(not player.is_high_noon_active(), "High Noon must finish at four seconds.")
-	_expect(enemies[0].current_health == 650, "A locked target must still be hit after leaving the 350 range.")
-	_expect(enemies[15].current_health == 650, "Each naturally locked target must take one 350% hit.")
-	_expect(enemies[16].current_health == 1000, "Targets beyond the natural sixteen lock beats must remain unhit.")
+	_expect(
+		not player.high_noon_cast_effect_sprite.visible
+		and not player.high_noon_cast_effect_sprite.is_playing(),
+		"High Noon must stop and hide its casting units after the four-second finish."
+	)
+	_expect(enemies[0].current_health == 650, "A locked target must still be hit after leaving the 400 range.")
+	_expect(enemies[24].current_health == 650, "The extended 400 range must include and damage a target beyond 350.")
+	_expect(enemies[25].current_health == 1000, "The twenty-sixth target must remain unhit beyond the 25-target cap.")
 
 	for enemy in enemies:
 		if enemy != null and is_instance_valid(enemy):
@@ -345,8 +391,8 @@ func _test_high_noon() -> void:
 	await physics_frame
 
 	var cap_enemies: Array[Enemy] = []
-	for enemy_index in range(21):
-		cap_enemies.append(_spawn_enemy(Vector2(20.0 + float(enemy_index) * 7.0, -10.0)))
+	for enemy_index in range(26):
+		cap_enemies.append(_spawn_enemy(Vector2(20.0 + float(enemy_index) * 15.0, -10.0)))
 	await physics_frame
 	player.set("_last_skill_activation_msec", Time.get_ticks_msec() - 1000)
 	player.skill1_charge = player.skill1_charge_duration
@@ -354,10 +400,15 @@ func _test_high_noon() -> void:
 	for _lock_attempt in range(30):
 		player.call("_acquire_next_high_noon_target")
 	_expect(
-		player.get_high_noon_target_count() == 20,
-		"Direct lock attempts must never exceed the explicit 20-target hard cap."
+		player.get_high_noon_target_count() == 25,
+		"Direct lock attempts must never exceed the explicit 25-target hard cap."
 	)
 	player.call("_cancel_high_noon", false)
+	_expect(
+		not player.high_noon_cast_effect_sprite.visible
+		and not player.high_noon_cast_effect_sprite.is_playing(),
+		"Cancelling High Noon must stop and hide its casting units."
+	)
 	for enemy in cap_enemies:
 		if enemy != null and is_instance_valid(enemy):
 			enemy.queue_free()
@@ -376,7 +427,7 @@ func _test_high_noon() -> void:
 	test_root.add_child(los_wall)
 	var visible_enemy := _spawn_enemy(Vector2(30.0, 34.0))
 	var blocked_enemy := _spawn_enemy(Vector2(86.0, 0.0))
-	var outside_enemy := _spawn_enemy(Vector2(360.0, 80.0))
+	var outside_enemy := _spawn_enemy(Vector2(410.0, 80.0))
 	await physics_frame
 	visible_enemy.config.physical_defense = 999
 	visible_enemy.config.magic_defense = 50
@@ -430,7 +481,7 @@ func _test_high_noon() -> void:
 	player.skill1_charge = player.skill1_charge_duration
 	_expect(bool(player.call("_try_use_skill1")), "A recharged High Noon must start for replacement testing.")
 	released_enemy.is_dead = true
-	player.call("_update_high_noon", 0.25)
+	player.call("_update_high_noon", 0.08)
 	_expect(
 		player.get_high_noon_target_count() == 1,
 		"A dead locked target must release its slot for replacement on the next beat."
@@ -438,6 +489,11 @@ func _test_high_noon() -> void:
 	var health_before_cancel := replacement_enemy.current_health
 	player.set_controls_locked(true)
 	_expect(not player.is_high_noon_active(), "An external controls lock must cancel High Noon immediately.")
+	_expect(
+		not player.high_noon_cast_effect_sprite.visible
+		and not player.high_noon_cast_effect_sprite.is_playing(),
+		"A controls lock must also clear the High Noon casting animation."
+	)
 	player.call("_update_high_noon", 5.0)
 	_expect(replacement_enemy.current_health == health_before_cancel, "A cancelled High Noon must deal no delayed damage.")
 	player.set_controls_locked(false)
@@ -449,6 +505,11 @@ func _test_high_noon() -> void:
 		"Tiyi must play the authored purple death animation for multiplayer death."
 	)
 	_expect(not player.ammo_bar.visible, "Tiyi death must hide the ammunition bar.")
+	_expect(
+		not player.high_noon_cast_effect_sprite.visible
+		and not player.high_noon_cast_effect_sprite.is_playing(),
+		"Tiyi death must leave the High Noon casting animation stopped."
+	)
 	_expect(residual_bullet.is_queued_for_deletion(), "Tiyi death must clear its residual sniper bullets.")
 	player.revive_multiplayer(Vector2.ZERO, player.max_health, 0.0)
 	_expect(player.current_ammo == 5 and player.ammo_bar.visible, "Tiyi revive must restore 5/5 ammo and its bar.")
@@ -457,10 +518,17 @@ func _test_high_noon() -> void:
 	player.play_remote_high_noon_started(remote_activation_id + 1)
 	_expect(
 		player.is_high_noon_active()
-		and player.get_high_noon_activation_id() == remote_activation_id,
+		and player.get_high_noon_activation_id() == remote_activation_id
+		and player.high_noon_cast_effect_sprite.visible
+		and player.high_noon_cast_effect_sprite.is_playing(),
 		"A newer remote start event must not replace an unfinished High Noon activation."
 	)
 	player.cancel_remote_high_noon(remote_activation_id)
+	_expect(
+		not player.high_noon_cast_effect_sprite.visible
+		and not player.high_noon_cast_effect_sprite.is_playing(),
+		"A matching remote cancellation must stop the High Noon casting animation."
+	)
 
 	released_enemy.queue_free()
 	replacement_enemy.queue_free()

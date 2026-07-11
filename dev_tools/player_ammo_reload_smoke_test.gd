@@ -28,6 +28,7 @@ func _run() -> void:
 	_stop_audio_players(player)
 
 	_test_initial_ammo_state()
+	_test_ammo_bar_separator_threshold()
 	_test_normal_shot_consumes_ammo()
 	_test_empty_ammo_starts_reload_and_completes()
 	_test_manual_reload_starts_from_empty()
@@ -73,6 +74,23 @@ func _test_initial_ammo_state() -> void:
 	_expect(player.ammo_bar.visible, "Ammo bar must be visible while player is alive.")
 	_expect(int(player.ammo_bar.get("max_ammo")) == 30, "Ammo bar must receive the player ammo capacity.")
 	_expect(int(player.ammo_bar.get("current_ammo")) == 30, "Ammo bar must receive current ammo.")
+
+
+func _test_ammo_bar_separator_threshold() -> void:
+	var bar_width := player.ammo_bar.size.x
+	_expect(floori(bar_width) == 20, "Ammo bar must keep its authored 20-pixel width.")
+	_expect(
+		bool(player.ammo_bar.call("_has_room_for_ammo_separators", bar_width, 10)),
+		"A 20-pixel ammo bar must retain one-pixel fills and separators at 10 rounds."
+	)
+	_expect(
+		not bool(player.ammo_bar.call("_has_room_for_ammo_separators", bar_width, 11)),
+		"A 20-pixel ammo bar must switch to a solid fill starting at 11 rounds."
+	)
+	_expect(
+		not bool(player.ammo_bar.call("_has_room_for_ammo_separators", bar_width, 30)),
+		"Weishidaier's 30-round ammo bar must remain a solid proportional fill."
+	)
 
 
 func _test_normal_shot_consumes_ammo() -> void:
