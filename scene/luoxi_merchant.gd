@@ -8,10 +8,11 @@ const DIALOGUE_LINES := [
 	"我能为你提供收藏品来强化自己。",
 ]
 const CHOICE_COUNT := 3
-const COLLECTIBLE_CLAIMS_PER_ROUND := 2
-const CLAIMED_LINE := "这段场间时间已经选择过两次收藏品。"
+const COLLECTIBLE_CLAIMS_PER_ROUND := 1
+const REFRESH_COSTS := [100, 200, 500, 1000]
+const CLAIMED_LINE := "这段场间时间已经选择过一件收藏品。"
 const SUCCESS_LINE := "拿好收藏品，可别小看它。"
-const ALREADY_CLAIMED_LINE := "这段场间时间已经选择过两次收藏品。"
+const ALREADY_CLAIMED_LINE := "这段场间时间已经选择过一件收藏品。"
 const INVENTORY_FULL_LINE := "背包已经满了，无法再继续获得收藏品。"
 const INVALID_PLAYER_LINE := "现在还不能把收藏品交给你。"
 const PLAYER_COLLISION_MASK := 2
@@ -22,6 +23,11 @@ const COLLECTIBLE_RESULT_SUCCESS := 0
 const COLLECTIBLE_RESULT_ALREADY_CLAIMED := 1
 const COLLECTIBLE_RESULT_INVENTORY_FULL := 2
 const COLLECTIBLE_RESULT_INVALID_PLAYER := 3
+
+const REFRESH_RESULT_SUCCESS := 0
+const REFRESH_RESULT_LIMIT_REACHED := 1
+const REFRESH_RESULT_INSUFFICIENT_XIRANG := 2
+const REFRESH_RESULT_INVALID_PLAYER := 3
 
 @onready var collision_shape: CollisionShape2D = $StaticBody2D/CollisionShape2D
 @onready var interaction_area: Area2D = $InteractionArea
@@ -37,11 +43,22 @@ var choice_visible: bool = false
 var result_visible: bool = false
 var dialogue_lines: Array = []
 var claim_counts_by_player_key: Dictionary = {}
+var refresh_counts_by_player_key: Dictionary = {}
 var pending_choices_by_player_key: Dictionary = {}
 
 
 static func get_choice_count() -> int:
 	return CHOICE_COUNT
+
+
+static func get_refresh_limit() -> int:
+	return REFRESH_COSTS.size()
+
+
+static func get_refresh_cost(refresh_count: int) -> int:
+	if refresh_count < 0 or refresh_count >= REFRESH_COSTS.size():
+		return 0
+	return int(REFRESH_COSTS[refresh_count])
 
 
 static func get_collectible_pool() -> Array:
@@ -147,6 +164,7 @@ func _ready() -> void:
 	interaction_area.body_exited.connect(_on_interaction_area_body_exited)
 	choice_overlay.choice_selected.connect(_on_choice_overlay_choice_selected)
 	choice_overlay.choice_closed.connect(_on_choice_overlay_choice_closed)
+	choice_overlay.refresh_requested.connect(_on_choice_overlay_refresh_requested)
 	set_active(visible)
 
 
@@ -233,9 +251,63 @@ func show_collectible_result(result_code: int) -> void:
 	dialogue_bubble.say(get_result_line(result_code))
 
 
+func try_purchase_refresh_for_player(player: Player) -> int:
+	if not is_active or player == null or not is_instance_valid(player):
+		return REFRESH_RESULT_INVALID_PLAYER
+	var player_key := _get_player_claim_key(player)
+	if _get_player_claim_count(player_key) >= COLLECTIBLE_CLAIMS_PER_ROUND:
+		return REFRESH_RESULT_INVALID_PLAYER
+	var refresh_count := get_player_refresh_count(player_key)
+	if refresh_count >= get_refresh_limit():
+		return REFRESH_RESULT_LIMIT_REACHED
+	var cost := get_refresh_cost(refresh_count)
+	if cost <= 0:
+		return REFRESH_RESULT_LIMIT_REACHED
+	if player.current_xirang < cost:
+		return REFRESH_RESULT_INSUFFICIENT_XIRANG
+	player.current_xirang -= cost
+	player.xirang_changed.emit(player.current_xirang, -cost)
+	refresh_counts_by_player_key[player_key] = refresh_count + 1
+	return REFRESH_RESULT_SUCCESS
+
+
+func get_player_refresh_count(player_key: int) -> int:
+	return int(refresh_counts_by_player_key.get(maxi(player_key, 0), 0))
+
+
+func show_refresh_result(
+	result_code: int,
+	confirmed_refresh_count: int = -1,
+	confirmed_current_xirang: int = -1
+) -> void:
+	if active_player == null:
+		return
+	var player_key := _get_player_claim_key(active_player)
+	if confirmed_refresh_count >= 0:
+		refresh_counts_by_player_key[player_key] = mini(
+			confirmed_refresh_count,
+			get_refresh_limit()
+		)
+	if confirmed_current_xirang >= 0 and active_player.current_xirang != confirmed_current_xirang:
+		var xirang_delta := confirmed_current_xirang - active_player.current_xirang
+		active_player.current_xirang = confirmed_current_xirang
+		active_player.xirang_changed.emit(active_player.current_xirang, xirang_delta)
+	if result_code == REFRESH_RESULT_SUCCESS:
+		_replace_current_choices_after_refresh(player_key)
+		return
+	var status := "现在无法刷新"
+	match result_code:
+		REFRESH_RESULT_LIMIT_REACHED:
+			status = "刷新次数已用尽，下次休整期重置"
+		REFRESH_RESULT_INSUFFICIENT_XIRANG:
+			status = "息壤不足，无法支付本次刷新费用"
+	_update_refresh_ui(status)
+
+
 func _show_choice_offer() -> void:
 	choice_visible = true
 	dialogue_bubble.hide_bubble()
+	_update_refresh_ui()
 	choice_overlay.show_choices(_build_collectible_choices(), selected_choice_index)
 
 
@@ -337,9 +409,17 @@ func _build_collectible_choices() -> Array:
 	return choices.duplicate()
 
 
-func _build_random_collectible_choices() -> Array:
+func _build_random_collectible_choices(excluded_paths: Array[String] = []) -> Array:
 	var choices: Array = []
 	var pool := _get_collectible_pool_for_player(active_player)
+	if not excluded_paths.is_empty():
+		var filtered_pool: Array = []
+		for item_variant in pool:
+			var item := item_variant as PickupConfig
+			if item != null and not excluded_paths.has(item.resource_path):
+				filtered_pool.append(item)
+		if filtered_pool.size() >= mini(CHOICE_COUNT, pool.size()):
+			pool = filtered_pool
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
 	for _choice_index in range(mini(CHOICE_COUNT, pool.size())):
@@ -347,6 +427,50 @@ func _build_random_collectible_choices() -> Array:
 		choices.append(pool[pool_index])
 		pool.remove_at(pool_index)
 	return choices
+
+
+func _replace_current_choices_after_refresh(player_key: int) -> void:
+	var previous_paths: Array[String] = []
+	if pending_choices_by_player_key.has(player_key):
+		var previous_choices := pending_choices_by_player_key[player_key] as Array
+		for item_variant in previous_choices:
+			var previous_item := item_variant as PickupConfig
+			if previous_item != null:
+				previous_paths.append(previous_item.resource_path)
+	var choices := _build_random_collectible_choices(previous_paths)
+	pending_choices_by_player_key[player_key] = choices
+	selected_choice_index = clampi(selected_choice_index, 0, maxi(choices.size() - 1, 0))
+	_update_refresh_ui("刷新成功 · 新的收藏品已经出现")
+	choice_overlay.show_choices(choices, selected_choice_index)
+
+
+func _update_refresh_ui(status_override: String = "") -> void:
+	if active_player == null:
+		return
+	var refresh_count := get_player_refresh_count(_get_player_claim_key(active_player))
+	choice_overlay.set_refresh_state(
+		refresh_count,
+		get_refresh_limit(),
+		get_refresh_cost(refresh_count),
+		active_player.current_xirang,
+		status_override
+	)
+
+
+func _request_collectible_refresh() -> void:
+	if active_player == null or not choice_visible:
+		return
+	var current_scene := get_tree().current_scene
+	if current_scene != null and current_scene.has_method("request_luoxi_collectible_refresh"):
+		choice_overlay.set_refresh_pending(true)
+		current_scene.call("request_luoxi_collectible_refresh")
+		return
+	var result_code := try_purchase_refresh_for_player(active_player)
+	show_refresh_result(
+		result_code,
+		get_player_refresh_count(_get_player_claim_key(active_player)),
+		active_player.current_xirang
+	)
 
 
 func _pick_weighted_collectible_index(pool: Array, rng: RandomNumberGenerator) -> int:
@@ -548,12 +672,17 @@ func _pick_nearby_player() -> Player:
 	return null
 
 
-func reset_round_collectible_claims() -> void:
+func reset_intermission_state() -> void:
 	claim_counts_by_player_key.clear()
+	refresh_counts_by_player_key.clear()
 	pending_choices_by_player_key.clear()
 	if choice_visible:
 		choice_visible = false
 		choice_overlay.hide_choices()
+
+
+func reset_round_collectible_claims() -> void:
+	reset_intermission_state()
 
 
 func _on_choice_overlay_choice_selected(choice_index: int) -> void:
@@ -563,3 +692,7 @@ func _on_choice_overlay_choice_selected(choice_index: int) -> void:
 
 func _on_choice_overlay_choice_closed() -> void:
 	choice_visible = false
+
+
+func _on_choice_overlay_refresh_requested() -> void:
+	_request_collectible_refresh()

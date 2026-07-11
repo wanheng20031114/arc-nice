@@ -120,6 +120,7 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	var player := PLAYER_SCENE.instantiate() as Player
 	test_root.add_child(luoxi)
 	test_root.add_child(player)
+	player.grant_cheat_xirang(1800)
 	luoxi.set_active(true)
 	await process_frame
 	await physics_frame
@@ -163,6 +164,9 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	var first_front := choice_overlay.get_node("Root/Center/Content/CardRow/Card0/Margin") as Control
 	var hint := choice_overlay.get_node("Root/Center/Content/Hint") as Label
 	var card_row := choice_overlay.get_node("Root/Center/Content/CardRow") as HBoxContainer
+	var refresh_button := choice_overlay.get_node("Root/Center/Content/RefreshPanel/Margin/Layout/RefreshButton") as Button
+	var refresh_status := choice_overlay.get_node("Root/Center/Content/RefreshPanel/Margin/Layout/Info/RefreshStatus") as Label
+	var refresh_progress := choice_overlay.get_node("Root/Center/Content/RefreshPanel/Margin/Layout/Info/RefreshProgress") as Label
 	var first_choice := luoxi.call("_get_current_choice_item", 0) as PickupConfig
 	var second_choice := luoxi.call("_get_current_choice_item", 1) as PickupConfig
 	_expect(first_choice != null, "Luoxi must build a first collectible choice.")
@@ -177,6 +181,9 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 		"Luoxi card chooser must show the collectible description."
 	)
 	_expect(first_button.text == "选择", "Luoxi card chooser select button must not expose a visible waiting state.")
+	_expect(refresh_button.text.contains("100") and refresh_button.text.contains("R") and refresh_button.text.contains("RB"), "Luoxi refresh button must show its first cost and keyboard/gamepad shortcuts.")
+	_expect(not refresh_button.disabled, "Luoxi refresh button must start enabled.")
+	_expect(refresh_progress.text.contains("0/4"), "Luoxi refresh progress must start at zero of four.")
 	_expect(hint.label_settings.font_size >= 22, "Luoxi card chooser heading must be easier to read.")
 	_expect(first_card.custom_minimum_size == Vector2(216, 310), "Luoxi card chooser cards must leave room for longer collectible text.")
 	_expect(first_description.scroll_active, "Luoxi card chooser descriptions must scroll when text is too long.")
@@ -232,6 +239,30 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	_expect(not first_button.disabled, "Luoxi card chooser select buttons must remain enabled after accidental input protection expires.")
 	_expect(first_button.text == "选择", "Luoxi card chooser must expose a select button after accidental input protection expires.")
 
+	var refresh_costs := [100, 200, 500, 1000]
+	for refresh_index in range(refresh_costs.size()):
+		var previous_paths: Array[String] = []
+		for choice_variant in choice_overlay.choices:
+			var previous_choice := choice_variant as PickupConfig
+			previous_paths.append(previous_choice.resource_path)
+		var xirang_before := player.current_xirang
+		luoxi._unhandled_input(_make_action("luoxi_refresh"))
+		_expect(player.current_xirang == xirang_before - refresh_costs[refresh_index], "Luoxi refresh %d must spend the configured cost." % refresh_index)
+		_expect(luoxi.get_player_refresh_count(0) == refresh_index + 1, "Luoxi refresh count must advance after a successful refresh.")
+		for choice_variant in choice_overlay.choices:
+			var refreshed_choice := choice_variant as PickupConfig
+			_expect(not previous_paths.has(refreshed_choice.resource_path), "A refresh must replace all three visible cards when the pool is large enough.")
+		await create_timer(0.55).timeout
+	_expect(refresh_button.disabled, "Luoxi refresh button must disable after four refreshes.")
+	_expect(refresh_button.text.contains("无法刷新"), "Exhausted Luoxi refresh button must explain that refreshing is unavailable.")
+	_expect(refresh_progress.text.contains("4/4"), "Luoxi refresh progress must show four of four after exhaustion.")
+	_expect(refresh_status.text.contains("下次休整期重置"), "Luoxi exhausted state must explain when refreshes reset.")
+	var xirang_after_four_refreshes := player.current_xirang
+	luoxi._unhandled_input(_make_action("luoxi_refresh"))
+	_expect(player.current_xirang == xirang_after_four_refreshes, "A fifth Luoxi refresh attempt must not spend xirang.")
+	await create_timer(1.1).timeout
+	second_choice = luoxi.call("_get_current_choice_item", 1) as PickupConfig
+
 	var move_right := _make_action("move_right")
 	bubble.finish_line()
 	luoxi._unhandled_input(move_right)
@@ -258,34 +289,23 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 
 	bubble.finish_line()
 	luoxi._unhandled_input(interact)
-	_open_luoxi_choice(luoxi, bubble, interact)
-	_expect(choice_overlay.is_open(), "Luoxi must offer a second collectible choice in the same intermission.")
-	await create_timer(1.1).timeout
-	var second_round_choice := luoxi.call("_get_current_choice_item", 0) as PickupConfig
-	luoxi._unhandled_input(interact)
-	_expect(not choice_overlay.is_open(), "Luoxi card chooser must close after the second selection.")
-	_expect(
-		run_state.get_item(1) == second_round_choice,
-		"Luoxi must add the second selected collectible to the next inventory slot."
-	)
-
-	bubble.finish_line()
-	luoxi._unhandled_input(interact)
 	luoxi._unhandled_input(interact)
 	_expect(
-		_dialogue_text(bubble) == "这段场间时间已经选择过两次收藏品。",
-		"Luoxi must not offer another collectible after two choices in the same intermission."
+		_dialogue_text(bubble) == "这段场间时间已经选择过一件收藏品。",
+		"Luoxi must not offer another collectible after one choice in the same intermission."
 	)
 	_expect(
 		bubble.text_label.text.contains(MerchantDialogueBubble.NO_BREAK_MARK + "。"),
 		"Luoxi dialogue punctuation must stay attached to the preceding text when wrapped."
 	)
-	_expect(run_state.get_item(2) == null, "Luoxi must not add a third collectible in the same intermission.")
+	_expect(run_state.get_item(1) == null, "Luoxi must not add a second collectible in the same intermission.")
 
-	luoxi.reset_round_collectible_claims()
+	luoxi.reset_intermission_state()
 	bubble.finish_line()
 	luoxi._unhandled_input(interact)
 	_expect(choice_overlay.is_open(), "Luoxi must allow a new collectible choice after round reset.")
+	_expect(luoxi.get_player_refresh_count(0) == 0, "Luoxi intermission reset must restore all four refreshes.")
+	_expect(refresh_button.text.contains("100") and not refresh_button.disabled, "Luoxi reset must restore the first refresh cost and enabled state.")
 	choice_overlay.hide_choices()
 
 	luoxi.queue_free()
@@ -383,18 +403,8 @@ func _test_full_inventory_keeps_luoxi_choice_available() -> void:
 	await create_timer(1.1).timeout
 	luoxi._unhandled_input(interact)
 	_expect(_dialogue_text(bubble) == "拿好收藏品，可别小看它。", "Luoxi must allow the original choice after the player frees a slot.")
-	_expect(not bool(luoxi.call("_is_player_claimed", player)), "The first successful retry must leave one Luoxi choice available.")
+	_expect(bool(luoxi.call("_is_player_claimed", player)), "The first successful retry must spend the only Luoxi choice.")
 	_expect(run_state.get_item(0) == first_choice, "The retried Luoxi choice must fill the freed inventory slot.")
-
-	_expect(run_state.discard_item(1), "Discarding another item must free a slot for the second Luoxi choice.")
-	bubble.finish_line()
-	luoxi._unhandled_input(interact)
-	_open_luoxi_choice(luoxi, bubble, interact)
-	await create_timer(1.1).timeout
-	var second_choice := luoxi.call("_get_current_choice_item", 0) as PickupConfig
-	luoxi._unhandled_input(interact)
-	_expect(bool(luoxi.call("_is_player_claimed", player)), "A second successful retry must spend Luoxi's intermission choices.")
-	_expect(run_state.get_item(1) == second_choice, "The second retried Luoxi choice must fill the newly freed inventory slot.")
 
 	luoxi.queue_free()
 	player.queue_free()

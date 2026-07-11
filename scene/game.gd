@@ -585,6 +585,34 @@ func request_luoxi_collectible_choice(choice_index: int, config_path: String = "
 	show_local_luoxi_collectible_result(result_code)
 
 
+func request_luoxi_collectible_refresh() -> void:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		return
+	var peer_id := multiplayer_local_peer_id if runtime_mode != RuntimeMode.SINGLEPLAYER else 0
+	var player_instance := player if peer_id <= 0 else get_player_for_peer(peer_id)
+	var result_code := try_refresh_luoxi_collectibles_for_peer(peer_id)
+	show_local_luoxi_refresh_result(
+		result_code,
+		get_luoxi_collectible_refresh_count(peer_id),
+		player_instance.current_xirang if player_instance != null else 0
+	)
+
+
+func try_refresh_luoxi_collectibles_for_peer(peer_id: int) -> int:
+	var player_instance := player if peer_id <= 0 else get_player_for_peer(peer_id)
+	if player_instance == null or not is_instance_valid(player_instance) or luoxi_merchant == null:
+		return LuoxiMerchant.REFRESH_RESULT_INVALID_PLAYER
+	if has_luoxi_collectible_claimed(peer_id):
+		return LuoxiMerchant.REFRESH_RESULT_INVALID_PLAYER
+	return luoxi_merchant.try_purchase_refresh_for_player(player_instance)
+
+
+func get_luoxi_collectible_refresh_count(peer_id: int) -> int:
+	if luoxi_merchant == null:
+		return 0
+	return luoxi_merchant.get_player_refresh_count(maxi(peer_id, 0))
+
+
 func try_claim_luoxi_collectible_for_peer(peer_id: int, config_path_or_choice: Variant) -> int:
 	var player_instance := player if peer_id <= 0 else get_player_for_peer(peer_id)
 	if player_instance == null or not is_instance_valid(player_instance):
@@ -652,6 +680,16 @@ func show_local_luoxi_collectible_result(result_code: int) -> void:
 	luoxi_merchant.show_collectible_result(result_code)
 
 
+func show_local_luoxi_refresh_result(
+	result_code: int,
+	refresh_count: int,
+	current_xirang: int
+) -> void:
+	if luoxi_merchant == null:
+		return
+	luoxi_merchant.show_refresh_result(result_code, refresh_count, current_xirang)
+
+
 func _on_wave_hud_return_to_lobby_requested() -> void:
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		get_tree().change_scene_to_file("res://scene/main_menu.tscn")
@@ -675,7 +713,7 @@ func _set_local_merchants_active(active: bool) -> bool:
 	if luoxi_merchant != null and luoxi_merchant.is_active != active:
 		if active:
 			luoxi_collectible_claim_counts.clear()
-			luoxi_merchant.reset_round_collectible_claims()
+			luoxi_merchant.reset_intermission_state()
 		luoxi_merchant.set_active(active)
 		changed = true
 	return changed

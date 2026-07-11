@@ -294,6 +294,13 @@ func request_luoxi_collectible_choice(choice_index: int, config_path: String = "
 		net_luoxi_collectible_choice_requested.rpc_id(_get_host_peer_id(), choice_index, config_path)
 
 
+func request_luoxi_collectible_refresh() -> void:
+	if net_manager.is_host():
+		_apply_luoxi_collectible_refresh_for_peer(_get_local_peer_id())
+	else:
+		net_luoxi_collectible_refresh_requested.rpc_id(_get_host_peer_id())
+
+
 func has_luoxi_collectible_claimed(peer_id: int) -> bool:
 	if game == null:
 		return false
@@ -3268,6 +3275,16 @@ func net_luoxi_collectible_choice_requested(choice_index: int, config_path: Stri
 
 
 @rpc("any_peer", "call_remote", "reliable", 4)
+func net_luoxi_collectible_refresh_requested() -> void:
+	if not net_manager.is_host():
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
+	_apply_luoxi_collectible_refresh_for_peer(sender_id)
+
+
+@rpc("any_peer", "call_remote", "reliable", 4)
 func net_cheat_xirang_requested() -> void:
 	if not net_manager.is_host():
 		return
@@ -3402,6 +3419,26 @@ func net_luoxi_collectible_confirmed(
 		game.mark_luoxi_collectible_claimed(peer_id)
 	if peer_id == _get_local_peer_id():
 		game.show_local_luoxi_collectible_result(result_code)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_luoxi_collectible_refresh_confirmed(
+	peer_id: int,
+	result_code: int,
+	refresh_count: int,
+	current_xirang: int
+) -> void:
+	if game == null:
+		return
+	var player_node: Player = game.get_player_for_peer(peer_id)
+	if player_node != null and is_instance_valid(player_node):
+		var already_applied_on_host: bool = net_manager.is_host() and peer_id == _get_local_peer_id()
+		if not already_applied_on_host:
+			var xirang_delta := current_xirang - player_node.current_xirang
+			player_node.current_xirang = maxi(current_xirang, 0)
+			player_node.xirang_changed.emit(player_node.current_xirang, xirang_delta)
+	if peer_id == _get_local_peer_id():
+		game.show_local_luoxi_refresh_result(result_code, refresh_count, current_xirang)
 
 
 @rpc("authority", "call_remote", "reliable", 4)
@@ -3557,6 +3594,28 @@ func _apply_luoxi_collectible_choice_for_peer(
 	)
 	if peer_id == _get_local_peer_id():
 		net_luoxi_collectible_confirmed(peer_id, choice_index, resolved_config_path, result_code)
+
+
+func _apply_luoxi_collectible_refresh_for_peer(peer_id: int) -> void:
+	if game == null or peer_id <= 0:
+		return
+	var player_node: Player = game.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	var result_code := game.try_refresh_luoxi_collectibles_for_peer(peer_id)
+	var refresh_count := game.get_luoxi_collectible_refresh_count(peer_id)
+	var current_xirang := player_node.current_xirang
+	_rpc_to_connected_clients(
+		&"net_luoxi_collectible_refresh_confirmed",
+		[peer_id, result_code, refresh_count, current_xirang]
+	)
+	if peer_id == _get_local_peer_id():
+		net_luoxi_collectible_refresh_confirmed(
+			peer_id,
+			result_code,
+			refresh_count,
+			current_xirang
+		)
 
 
 func _spawn_collectible_visual_effect(
