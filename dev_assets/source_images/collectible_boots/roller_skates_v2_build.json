@@ -1,0 +1,45 @@
+{
+  "input": "dev_assets\\source_images\\collectible_boots\\roller_skates_v2_alpha.png",
+  "output": "resources\\texture\\collectibles\\roller_skates.png",
+  "input_sha256": "d7a8442eff62061ca79a05180a772503d5e984b641b948b6c3904a24564ec181",
+  "output_sha256": "6fcffecc45a65e9da86e046315710facbfb81b64d67dfa4c17e3c5a1a1521029",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_bbox": [
+    168,
+    132,
+    1071,
+    1095
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 41.0,
+  "grid_cell_height": 42.45,
+  "confidence": 0.828,
+  "subject_grid_size": [
+    22,
+    23
+  ],
+  "logical_grid_size": [
+    22,
+    23
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    22,
+    23
+  ],
+  "cell_alpha_coverage": 0.25,
+  "final_subject_size": [
+    22,
+    23
+  ],
+  "final_bbox": [
+    5,
+    4,
+    27,
+    27
+  ]
+}

@@ -39,6 +39,8 @@ const FLAME_TRIDENT := preload("res://resources/config/collectibles/collectible_
 const BLOOD_TRIDENT := preload("res://resources/config/collectibles/collectible_blood_trident.tres")
 const BANANA := preload("res://resources/config/collectibles/collectible_banana.tres")
 const ORANGE := preload("res://resources/config/collectibles/collectible_orange.tres")
+const ROLLER_SKATES := preload("res://resources/config/collectibles/collectible_roller_skates.tres")
+const POWER_WHEEL := preload("res://resources/config/collectibles/collectible_power_wheel.tres")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/collectible_arrow_projectile.gd")
 const LINGLAN_SKILL2_ROCKET_SCRIPT := preload("res://scene/boss/linglan/linglan_skill2_sakura_rocket.gd")
@@ -114,7 +116,7 @@ func _run() -> void:
 
 func _test_collectible_resources() -> void:
 	var pool := LuoxiMerchant.get_collectible_pool()
-	_expect(pool.size() == 110, "Luoxi collectible pool must include all 110 collectible resources.")
+	_expect(pool.size() == 112, "Luoxi collectible pool must include all 112 collectible resources.")
 	var seen_paths: Dictionary = {}
 	var rarity_counts: Dictionary = {}
 	var projectile_requirement_count := 0
@@ -184,6 +186,18 @@ func _test_collectible_resources() -> void:
 		and ORANGE.collectible_max_copies == 10
 		and is_equal_approx(ORANGE.ammo_free_shot_chance, 0.1),
 		"Orange must be a ten-copy common with 10% ammo preservation per copy."
+	)
+	_expect(
+		ROLLER_SKATES.collectible_rarity == PickupConfig.CollectibleRarity.RARE
+		and not ROLLER_SKATES.collectible_stacks_by_copy
+		and is_equal_approx(ROLLER_SKATES.collectible_dash_distance_bonus, 10.0),
+		"Roller skates must be a unique rare collectible with +10 dash distance."
+	)
+	_expect(
+		POWER_WHEEL.collectible_rarity == PickupConfig.CollectibleRarity.EPIC
+		and not POWER_WHEEL.collectible_stacks_by_copy
+		and is_equal_approx(POWER_WHEEL.collectible_dash_cooldown_reduction, 2.0),
+		"Power wheel must be a unique epic collectible with 2 seconds of dash cooldown reduction."
 	)
 	for projectile_item_variant in [PURE_CHARGE_CRYSTAL, FLAME_TRIDENT, BLOOD_TRIDENT, BANANA, ORANGE]:
 		var projectile_item := projectile_item_variant as PickupConfig

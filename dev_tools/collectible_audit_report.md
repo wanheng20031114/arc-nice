@@ -1,9 +1,9 @@
 # 收藏品逐项审计报告
 
-- 配置总数: 110
-- 新增收藏品数: 86
+- 配置总数: 112
+- 新增收藏品数: 88
 - 问题总数: 0
-- 稀有度分布: 普通 41，稀有 37，史诗 23，传说 9
+- 稀有度分布: 普通 41，稀有 38，史诗 24，传说 9
 
 | 文件 | 名称 | 稀有度 | 效果摘要 | 设计说明 | 图标主体 | 图标像素 | 问题 |
 | --- | --- | --- | --- | --- | --- | ---: | --- |
@@ -74,12 +74,14 @@
 | resources/config/collectibles/collectible_physical_ring.tres | 物理戒指 | 稀有 | 物防+1；物伤+1 | 物理成长：每份使物理防御和物理伤害各+1。 | 21x22 | 325 | OK |
 | resources/config/collectibles/collectible_pocket_anvil.tres | 口袋铁砧 | 普通 | 命中:crack | 破甲命中：攻击命中时有概率短暂降低敌人物防。 | 22x19 | 273 | OK |
 | resources/config/collectibles/collectible_power_ring.tres | 力量戒指 | 稀有 | 攻击+5 | 攻击成长：每份使攻击力+5。 | 19x20 | 262 | OK |
+| resources/config/collectibles/collectible_power_wheel.tres | 加力轮子 | 史诗 | 冲刺冷却减免+2.0 | 冲刺加速：冲刺冷却减少2秒。 | 24x17 | 280 | OK |
 | resources/config/collectibles/collectible_prism_lens.tres | 棱镜镜片 | 稀有 | 穿透率+0.15 | 穿透弹：普通子弹有15%概率变为穿透弹。 | 24x26 | 315 | OK |
 | resources/config/collectibles/collectible_pure_charge_crystal.tres | 纯净充能水晶 | 传说 | 技能免耗率+0.2 | 纯净回响：每份提供20%技能免耗概率，最多5份、最高100%。 | 12x26 | 224 | OK |
 | resources/config/collectibles/collectible_quick_feather.tres | 轻羽 | 普通 | 移速+6.0 | 移动速度：移动速度+6。 | 19x25 | 218 | OK |
 | resources/config/collectibles/collectible_rain_bead.tres | 雨珠 | 普通 | 命中:chill | 雨气缓速：攻击命中时有概率让敌人被雨气减速。 | 19x19 | 277 | OK |
 | resources/config/collectibles/collectible_red_mushroom.tres | 红蘑菇 | 普通 | 命中:leech | 命中吸血：攻击命中时有概率治疗自己。 | 23x24 | 305 | OK |
 | resources/config/collectibles/collectible_river_shell.tres | 河贝壳 | 普通 | 法防+1 | 魔法防御：魔法防御+1。 | 21x22 | 372 | OK |
+| resources/config/collectibles/collectible_roller_skates.tres | 轮滑鞋 | 稀有 | 冲刺距离+10.0 | 冲刺增程：冲刺距离+10。 | 22x23 | 315 | OK |
 | resources/config/collectibles/collectible_royal_goblet.tres | 王家圣杯 | 史诗 | 每1000息壤攻速+2.0 | 息壤攻速：每持有1000息壤，攻击速度+2。 | 24x26 | 320 | OK |
 | resources/config/collectibles/collectible_ruby.tres | 红宝石 | 普通 | 攻击+3 | 攻击成长：每份使攻击力+3。 | 15x26 | 278 | OK |
 | resources/config/collectibles/collectible_ruby_crown.tres | 红玉小冠 | 稀有 | 攻击+5 | 基础攻击：攻击力+5。 | 23x24 | 392 | OK |

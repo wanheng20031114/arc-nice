@@ -2,6 +2,8 @@ extends SceneTree
 
 const WEISHIDAIER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const HOE_CAT_SCENE := preload("res://scene/player/hoe_cat/player_hoe_cat.tscn")
+const ROLLER_SKATES := preload("res://resources/config/collectibles/collectible_roller_skates.tres")
+const POWER_WHEEL := preload("res://resources/config/collectibles/collectible_power_wheel.tres")
 const DASH_READY_SHADER_PATH := "res://scene/player/effects/dash_ready_glow.gdshader"
 const MOTION_STATUS_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
 const MULTIPLAYER_GAME_SCRIPT_PATH := "res://scene/multiplayer/mp_game.gd"
@@ -36,6 +38,7 @@ func _run() -> void:
 	_expect(InputMap.has_action(&"dash"), "Project input map must define the dash action.")
 	_test_shader_contracts()
 	_test_character_dash_override_contract()
+	await _test_collectible_dash_modifiers()
 	await _test_player_scene(WEISHIDAIER_SCENE, "Weishidaier")
 	await _test_player_scene(HOE_CAT_SCENE, "Hoe Cat")
 	await _test_dash_wall_collision()
@@ -128,7 +131,57 @@ func _test_character_dash_override_contract() -> void:
 		is_equal_approx(player.get_dash_cooldown(), 1.75),
 		"Player subclasses must be able to override dash cooldown through the character hook."
 	)
+	player.collectible_dash_distance_bonus = 10.0
+	player.collectible_dash_cooldown_reduction = 0.75
+	_expect(
+		is_equal_approx(player.get_dash_distance(), 58.0),
+		"Collectible dash distance must add on top of the character override."
+	)
+	_expect(
+		is_equal_approx(player.get_dash_cooldown(), 1.0),
+		"Collectible dash cooldown reduction must subtract from the character override."
+	)
 	player.free()
+
+
+func _test_collectible_dash_modifiers() -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run()
+	var player := WEISHIDAIER_SCENE.instantiate() as Player
+	test_root.add_child(player)
+	await process_frame
+
+	_expect(run_state.try_add_item(ROLLER_SKATES), "First roller skates copy must fit in inventory.")
+	_expect(run_state.try_add_item(ROLLER_SKATES), "Duplicate roller skates setup must fit in inventory.")
+	await process_frame
+	_expect(is_equal_approx(player.get_dash_distance(), 45.0), "Duplicate roller skates must grant dash distance only once.")
+	_expect(is_equal_approx(player.get_dash_cooldown(), 5.0), "Roller skates must not change dash cooldown.")
+
+	_expect(run_state.try_add_item(POWER_WHEEL), "First power wheel copy must fit in inventory.")
+	_expect(run_state.try_add_item(POWER_WHEEL), "Duplicate power wheel setup must fit in inventory.")
+	await process_frame
+	_expect(is_equal_approx(player.get_dash_distance(), 45.0), "Both boot collectibles must preserve the +10 dash distance.")
+	_expect(is_equal_approx(player.get_dash_cooldown(), 3.0), "Duplicate power wheels must reduce dash cooldown only once.")
+	var cooldown_timer := player.get_node("DashCooldownTimer") as Timer
+	_expect(bool(player.call("_try_start_dash", Vector2.RIGHT)), "Boot collectible dash must start.")
+	_expect(is_equal_approx(player.dash_distance_left, 45.0), "Boot collectible dash must capture 45 pixels of travel.")
+	_expect(
+		cooldown_timer != null and is_equal_approx(cooldown_timer.wait_time, 3.0),
+		"Boot collectible dash must start a three-second cooldown."
+	)
+	player.call("_finish_dash")
+	if cooldown_timer != null:
+		cooldown_timer.stop()
+
+	_expect(run_state.discard_item(0) and run_state.discard_item(1), "Both roller skates copies must be discardable.")
+	_expect(run_state.discard_item(2) and run_state.discard_item(3), "Both power wheel copies must be discardable.")
+	await process_frame
+	_expect(is_equal_approx(player.get_dash_distance(), 35.0), "Discarding roller skates must restore base dash distance.")
+	_expect(is_equal_approx(player.get_dash_cooldown(), 5.0), "Discarding power wheel must restore base dash cooldown.")
+
+	player.queue_free()
+	await process_frame
+	run_state.begin_new_run()
 
 
 func _test_player_scene(player_scene: PackedScene, label: String) -> void:

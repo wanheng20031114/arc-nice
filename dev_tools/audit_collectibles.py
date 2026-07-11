@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+import hashlib
 import json
 from math import floor
 from pathlib import Path
@@ -22,6 +23,9 @@ from PIL import Image
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_DIR = PROJECT_ROOT / "resources" / "config" / "collectibles"
 REPORT_PATH = PROJECT_ROOT / "dev_tools" / "collectible_audit_report.md"
+SOURCE_IMAGE_ROOT = PROJECT_ROOT / "dev_assets" / "source_images"
+MIN_SOURCE_GRID_CONFIDENCE = 0.65
+MAX_SOURCE_LOGICAL_SUBJECT_SIZE = 26
 
 RARITY_LABELS = {
     0: "普通",
@@ -42,6 +46,8 @@ FIELD_DEFAULTS: dict[str, Any] = {
     "collectible_attack_bonus": 0,
     "collectible_max_health_bonus": 0,
     "collectible_move_speed_bonus": 0.0,
+    "collectible_dash_distance_bonus": 0.0,
+    "collectible_dash_cooldown_reduction": 0.0,
     "collectible_physical_defense_bonus": 0,
     "collectible_magic_defense_bonus": 0,
     "collectible_physical_damage_bonus": 0,
@@ -225,12 +231,14 @@ DESIGN_PROFILE_FIELDS = (
     "defense_xirang_step",
     "defense_bonus_per_xirang_step",
 )
-NEW_COLLECTIBLE_COUNT = 86
-EXPECTED_TOTAL_COUNT = 110
+NEW_COLLECTIBLE_COUNT = 88
+EXPECTED_TOTAL_COUNT = 112
 STATIC_STAT_FIELDS = (
     "collectible_attack_bonus",
     "collectible_max_health_bonus",
     "collectible_move_speed_bonus",
+    "collectible_dash_distance_bonus",
+    "collectible_dash_cooldown_reduction",
     "collectible_physical_defense_bonus",
     "collectible_magic_defense_bonus",
     "collectible_physical_damage_bonus",
@@ -333,6 +341,60 @@ def resolve_res_path(res_path: str) -> Path:
     return PROJECT_ROOT / res_path.removeprefix("res://")
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source_file:
+        for chunk in iter(lambda: source_file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def audit_icon_build_manifest(icon_path: Path, issues: list[str]) -> None:
+    if not SOURCE_IMAGE_ROOT.is_dir():
+        return
+    manifests = sorted(SOURCE_IMAGE_ROOT.rglob(f"{icon_path.stem}_v*_build.json"))
+    if not manifests:
+        return
+    manifest_path = manifests[-1]
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001 - audit should report malformed provenance.
+        issues.append(f"图标构建清单无法读取: {manifest_path.relative_to(PROJECT_ROOT)} ({exc})")
+        return
+
+    expected_output = icon_path.relative_to(PROJECT_ROOT).as_posix()
+    manifest_output = str(manifest.get("output", "")).replace("\\", "/")
+    if manifest_output != expected_output:
+        issues.append(f"图标构建清单输出不匹配: {manifest_output or '空'}")
+
+    input_value = str(manifest.get("input", "")).replace("\\", "/")
+    input_path = PROJECT_ROOT / input_value
+    if not input_value or not input_path.is_file():
+        issues.append(f"图标构建清单源 Alpha 不存在: {input_value or '空'}")
+    elif manifest.get("input_sha256") != _sha256(input_path):
+        issues.append("图标构建清单源 Alpha 哈希不匹配")
+
+    if manifest.get("output_sha256") != _sha256(icon_path):
+        issues.append("图标构建清单最终 PNG 哈希不匹配")
+    if manifest.get("detection_mode") not in {"exact_integer", "approximate"}:
+        issues.append(f"图标源逻辑网格不可识别: {manifest.get('detection_mode', '空')}")
+    try:
+        source_confidence = float(manifest.get("confidence", 0.0))
+    except (TypeError, ValueError):
+        source_confidence = 0.0
+    if source_confidence < MIN_SOURCE_GRID_CONFIDENCE:
+        issues.append(f"图标源逻辑网格置信度不足: {manifest.get('confidence', 0.0)}")
+    subject_grid_size = manifest.get("subject_grid_size", [])
+    grid_dimensions: list[int] = []
+    if isinstance(subject_grid_size, list) and len(subject_grid_size) == 2:
+        try:
+            grid_dimensions = [int(value) for value in subject_grid_size]
+        except (TypeError, ValueError):
+            grid_dimensions = []
+    if not grid_dimensions or max(grid_dimensions) > MAX_SOURCE_LOGICAL_SUBJECT_SIZE:
+        issues.append(f"图标源逻辑主体超出预算: {subject_grid_size}")
+
+
 def non_default_effect_fields(data: dict[str, Any]) -> tuple[tuple[str, Any], ...]:
     result: list[tuple[str, Any]] = []
     for field, default in FIELD_DEFAULTS.items():
@@ -369,6 +431,8 @@ def summarize_effect(data: dict[str, Any]) -> str:
         ("collectible_attack_bonus", "攻击"),
         ("collectible_max_health_bonus", "生命"),
         ("collectible_move_speed_bonus", "移速"),
+        ("collectible_dash_distance_bonus", "冲刺距离"),
+        ("collectible_dash_cooldown_reduction", "冲刺冷却减免"),
         ("collectible_physical_defense_bonus", "物防"),
         ("collectible_magic_defense_bonus", "法防"),
         ("collectible_physical_damage_bonus", "物伤"),
@@ -478,6 +542,8 @@ def audit_icon(data: dict[str, Any], issues: list[str]) -> tuple[Path | None, tu
 
     if image.size != (32, 32):
         issues.append(f"图标尺寸不是 32x32: {image.size[0]}x{image.size[1]}")
+
+    audit_icon_build_manifest(icon_path, issues)
 
     alpha = image.getchannel("A")
     bbox = alpha.getbbox()

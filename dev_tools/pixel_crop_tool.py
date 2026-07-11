@@ -13,6 +13,9 @@
   python pixel_crop_tool.py INPUT OUTPUT --align-grid
   python pixel_crop_tool.py INPUT OUTPUT --compress-grid
   python pixel_crop_tool.py INPUT OUTPUT --compress-grid --logical-size 37
+
+当网格检测结果未知或置信度不足时，压缩默认失败。只有在已经人工核对源图、
+并明确接受细节损失风险时，才可追加 --allow-unsafe-grid-compression。
 """
 
 from __future__ import annotations
@@ -24,6 +27,10 @@ from pathlib import Path
 from PIL import Image
 
 from pixel_grid_analyzer import analyze_image, find_subject_bbox
+
+
+MIN_SAFE_GRID_CONFIDENCE = 0.65
+NATIVE_PIXEL_CANVAS_LIMIT = 32
 
 
 def normalize_transparency(
@@ -85,11 +92,59 @@ def crop_to_square(
     return canvas
 
 
+def _validate_grid_compression_safety(
+    image: Image.Image,
+    analysis: dict,
+    logical_size: int | None,
+    allow_unsafe_grid_compression: bool,
+) -> None:
+    detection_is_unreliable = (
+        analysis["detection_mode"] == "native_or_unknown"
+        or float(analysis["confidence"]) < MIN_SAFE_GRID_CONFIDENCE
+    )
+    bbox = analysis["subject_bbox"]
+    subject_width = int(bbox["right"]) - int(bbox["left"])
+    subject_height = int(bbox["bottom"]) - int(bbox["top"])
+    native_sized_nondestructive = (
+        image.width <= NATIVE_PIXEL_CANVAS_LIMIT
+        and image.height <= NATIVE_PIXEL_CANVAS_LIMIT
+        and (
+            logical_size is None
+            or (
+                logical_size >= subject_width
+                and logical_size >= subject_height
+            )
+        )
+    )
+    if (
+        detection_is_unreliable
+        and not native_sized_nondestructive
+        and not allow_unsafe_grid_compression
+    ):
+        raise ValueError(
+            "拒绝不可靠的逻辑网格压缩："
+            f"检测模式为 {analysis['detection_mode']}，"
+            f"置信度为 {analysis['confidence']:.3f}，"
+            f"估算格距为 {analysis['grid_cell_width']}x"
+            f"{analysis['grid_cell_height']}。"
+            "这通常表示源图是高分辨率插画或其逻辑像素网格无法可靠识别；"
+            "请重新生成或逐格重绘。若已人工核对并明确接受细节损失风险，"
+            "可显式使用 --allow-unsafe-grid-compression。"
+        )
+
+
 def compress_to_logical_grid(
     image: Image.Image,
     logical_size: int | None = None,
+    allow_unsafe_grid_compression: bool = False,
 ) -> tuple[Image.Image, dict]:
     analysis = analyze_image(image)
+    _validate_grid_compression_safety(
+        image,
+        analysis,
+        logical_size,
+        allow_unsafe_grid_compression,
+    )
 
     if logical_size is None:
         if image.width == image.height:
@@ -143,6 +198,14 @@ def main() -> None:
         default=None,
         help="显式指定最终正方形逻辑尺寸，例如 37",
     )
+    parser.add_argument(
+        "--allow-unsafe-grid-compression",
+        action="store_true",
+        help=(
+            "危险覆盖：即使网格未知或置信度不足也继续压缩；"
+            "仅用于已经人工核对且明确接受细节损失的源图"
+        ),
+    )
     args = parser.parse_args()
 
     input_path = Path(args.input_path)
@@ -161,6 +224,13 @@ def main() -> None:
         alpha_threshold=max(0, min(args.alpha_threshold, 255)),
     )
     original_analysis = analyze_image(image)
+    if args.compress_grid or args.logical_size is not None:
+        _validate_grid_compression_safety(
+            image,
+            original_analysis,
+            args.logical_size,
+            args.allow_unsafe_grid_compression,
+        )
     result = crop_to_square(
         image,
         padding=max(args.padding, 0),
@@ -172,6 +242,7 @@ def main() -> None:
         result, compression_analysis = compress_to_logical_grid(
             result,
             logical_size=args.logical_size,
+            allow_unsafe_grid_compression=args.allow_unsafe_grid_compression,
         )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

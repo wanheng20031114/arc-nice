@@ -150,6 +150,8 @@ var collectible_swift_time_left: float = 0.0
 var collectible_swift_move_speed_multiplier: float = 1.0
 var collectible_physical_damage_bonus: int = 0
 var collectible_magic_damage_bonus: int = 0
+var collectible_dash_distance_bonus: float = 0.0
+var collectible_dash_cooldown_reduction: float = 0.0
 var collectible_attack_speed_bonus: float = 0.0
 var collectible_skill_charge_bonus_per_second: float = 0.0
 var collectible_skill_charge_preserve_chance: float = 0.0
@@ -1537,6 +1539,8 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	var magic_defense_bonus := 0
 	var physical_damage_bonus := 0
 	var magic_damage_bonus := 0
+	var dash_distance_bonus := 0.0
+	var dash_cooldown_reduction := 0.0
 	var attack_speed_bonus := 0.0
 	var skill_charge_bonus := 0.0
 	var skill_charge_preserve_chance := 0.0
@@ -1556,6 +1560,8 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 		magic_defense_bonus += item.collectible_magic_defense_bonus
 		physical_damage_bonus += item.collectible_physical_damage_bonus
 		magic_damage_bonus += item.collectible_magic_damage_bonus
+		dash_distance_bonus += item.collectible_dash_distance_bonus
+		dash_cooldown_reduction += item.collectible_dash_cooldown_reduction
 		skill_charge_bonus += item.collectible_skill_charge_bonus_per_second
 		skill_charge_preserve_chance += item.skill_charge_preserve_chance
 		base_upgrade_free_chance += item.base_upgrade_free_chance
@@ -1599,6 +1605,8 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	fire_interval = maxf(_base_fire_interval, 0.01)
 	collectible_physical_damage_bonus = physical_damage_bonus
 	collectible_magic_damage_bonus = magic_damage_bonus
+	collectible_dash_distance_bonus = dash_distance_bonus
+	collectible_dash_cooldown_reduction = dash_cooldown_reduction
 	collectible_attack_speed_bonus = attack_speed_bonus
 	collectible_skill_charge_bonus_per_second = skill_charge_bonus
 	collectible_skill_charge_preserve_chance = clampf(skill_charge_preserve_chance, 0.0, 1.0)
@@ -2617,11 +2625,11 @@ func _update_skill1_charge_bar() -> void:
 
 # 具体角色可覆写对应的 _get_character_* 钩子，自定义自身冲刺参数。
 func get_dash_distance() -> float:
-	return maxf(_get_character_dash_distance(), 0.0)
+	return maxf(_get_character_dash_distance() + collectible_dash_distance_bonus, 0.0)
 
 
 func get_dash_cooldown() -> float:
-	return maxf(_get_character_dash_cooldown(), 0.0)
+	return maxf(_get_character_dash_cooldown() - collectible_dash_cooldown_reduction, 0.0)
 
 
 func _get_character_dash_distance() -> float:

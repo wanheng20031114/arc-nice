@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 from collections import deque
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -23,6 +24,15 @@ from pixel_grid_analyzer import analyze_image
 
 CANVAS_SIZE = 32
 DEFAULT_CELL_ALPHA_COVERAGE = 0.25
+MIN_SAFE_GRID_CONFIDENCE = 0.65
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source_file:
+        for chunk in iter(lambda: source_file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _alpha_normalized(image: Image.Image, alpha_threshold: int) -> Image.Image:
@@ -206,6 +216,25 @@ def build_icon(
         raise ValueError(f"No visible subject found in {input_path}")
 
     analysis = analyze_image(analysis_source)
+    source_is_high_resolution = (
+        source.width > CANVAS_SIZE or source.height > CANVAS_SIZE
+    )
+    grid_is_unresolved = (
+        analysis["detection_mode"] == "native_or_unknown"
+        or float(analysis["confidence"]) < MIN_SAFE_GRID_CONFIDENCE
+        or float(analysis["grid_cell_width"]) <= 1.0
+        or float(analysis["grid_cell_height"]) <= 1.0
+    )
+    if source_is_high_resolution and grid_is_unresolved:
+        raise ValueError(
+            "Refusing high-resolution source with an unresolved or low-confidence logical grid: "
+            f"source is {source.width}x{source.height}, detection mode is "
+            f"{analysis['detection_mode']}, confidence is "
+            f"{analysis['confidence']:.3f}, and estimated grid spacing is "
+            f"{analysis['grid_cell_width']}x{analysis['grid_cell_height']}. "
+            "Provide a reliably gridded pixel source or redraw it at target "
+            "resolution instead of pre-downscaling an illustration."
+        )
     bbox_data = analysis["subject_bbox"]
     bbox = (
         int(bbox_data["left"]),
@@ -270,8 +299,11 @@ def build_icon(
     return {
         "input": str(input_path),
         "output": str(output_path),
+        "input_sha256": _sha256(input_path),
+        "output_sha256": _sha256(output_path),
         "source_size": [source.width, source.height],
         "source_bbox": bbox,
+        "detection_mode": analysis["detection_mode"],
         "grid_cell_width": analysis["grid_cell_width"],
         "grid_cell_height": analysis["grid_cell_height"],
         "confidence": analysis["confidence"],
@@ -320,6 +352,12 @@ def main() -> None:
         default=DEFAULT_CELL_ALPHA_COVERAGE,
         help="minimum alpha-weighted coverage required to keep a logical grid cell",
     )
+    parser.add_argument(
+        "--manifest-path",
+        type=Path,
+        default=None,
+        help="optional JSON path for preserving the source-grid analysis and build result",
+    )
     args = parser.parse_args()
 
     try:
@@ -335,7 +373,11 @@ def main() -> None:
         print(f"error: {error}", file=sys.stderr)
         raise SystemExit(1)
 
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    serialized_result = json.dumps(result, ensure_ascii=False, indent=2)
+    if args.manifest_path is not None:
+        args.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        args.manifest_path.write_text(serialized_result + "\n", encoding="utf-8")
+    print(serialized_result)
 
 
 if __name__ == "__main__":

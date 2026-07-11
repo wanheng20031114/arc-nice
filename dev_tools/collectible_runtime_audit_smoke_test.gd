@@ -10,6 +10,8 @@ const REQUIRED_NEW_COLLECTIBLE_EFFECT_IDS := [
 	&"blood_trident",
 	&"flame_trident",
 	&"pure_charge_crystal",
+	&"roller_skates",
+	&"power_wheel",
 ]
 
 var failures: Array[String] = []
@@ -45,7 +47,7 @@ func _run() -> void:
 
 func _test_every_collectible_runtime_effect() -> void:
 	var pool := LuoxiMerchant.get_collectible_pool()
-	_expect(pool.size() == 110, "Runtime audit must load 110 collectibles from Luoxi pool.")
+	_expect(pool.size() == 112, "Runtime audit must load 112 collectibles from Luoxi pool.")
 	var seen_paths: Dictionary = {}
 	var seen_effect_ids: Dictionary = {}
 	for item_variant in pool:
@@ -76,6 +78,8 @@ func _audit_single_collectible(item: PickupConfig) -> void:
 	var base_physical_defense := player.physical_defense
 	var base_magic_defense := player.magic_defense
 	var base_attack_speed := player.get_attack_speed()
+	var base_dash_distance := player.get_dash_distance()
+	var base_dash_cooldown := player.get_dash_cooldown()
 
 	_expect(run_state.try_add_item(item), "%s must fit into an empty inventory." % item.display_name)
 	_expect(item.collectible_max_copies >= 0, "%s copy limit must not be negative." % item.display_name)
@@ -122,6 +126,17 @@ func _audit_single_collectible(item: PickupConfig) -> void:
 	_expect(
 		is_equal_approx(player.move_speed, base_move_speed + item.collectible_move_speed_bonus + conditional_move_speed_bonus),
 		"%s move speed bonus must apply." % item.display_name
+	)
+	_expect(
+		is_equal_approx(player.get_dash_distance(), base_dash_distance + item.collectible_dash_distance_bonus),
+		"%s dash distance bonus must apply." % item.display_name
+	)
+	_expect(
+		is_equal_approx(
+			player.get_dash_cooldown(),
+			maxf(base_dash_cooldown - item.collectible_dash_cooldown_reduction, 0.0)
+		),
+		"%s dash cooldown reduction must apply." % item.display_name
 	)
 	_expect(
 		player.physical_defense == base_physical_defense + item.collectible_physical_defense_bonus + dynamic_defense_bonus + conditional_physical_defense_bonus,

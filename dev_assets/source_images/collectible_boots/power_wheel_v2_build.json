@@ -1,0 +1,45 @@
+{
+  "input": "dev_assets\\source_images\\collectible_boots\\power_wheel_v2_alpha.png",
+  "output": "resources\\texture\\collectibles\\power_wheel.png",
+  "input_sha256": "c5afb428a7f1090650d3b52862651a07bd581cf59f281b2c0eb209de9bb01fb7",
+  "output_sha256": "b406045387e4111d5b77cd0efa042ad05777c9ae2ae674a14c4042390c7d7569",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_bbox": [
+    254,
+    346,
+    1030,
+    902
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 32.25,
+  "grid_cell_height": 32.6,
+  "confidence": 0.991,
+  "subject_grid_size": [
+    24,
+    17
+  ],
+  "logical_grid_size": [
+    24,
+    17
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    24,
+    17
+  ],
+  "cell_alpha_coverage": 0.25,
+  "final_subject_size": [
+    24,
+    17
+  ],
+  "final_bbox": [
+    4,
+    7,
+    28,
+    24
+  ]
+}
