@@ -170,11 +170,10 @@ func _prepare_open_animation() -> void:
 		open_tween = null
 	dim.modulate = Color(1.0, 1.0, 1.0, 0.0)
 	heading.modulate = Color(1.0, 1.0, 1.0, 0.0)
-	heading.scale = Vector2(0.97, 0.97)
-	heading.pivot_offset = heading.size * 0.5
+	heading.scale = Vector2.ONE
 	for card in cards:
-		card.scale = Vector2(0.04, 1.0)
-		card.self_modulate = Color(1.0, 1.0, 1.0, 0.0)
+		card.scale = Vector2.ONE
+		card.modulate = Color(1.0, 1.0, 1.0, 0.0)
 
 
 func _play_open_animation() -> void:
@@ -184,11 +183,9 @@ func _play_open_animation() -> void:
 	open_tween.set_parallel(true)
 	open_tween.tween_property(dim, "modulate", Color.WHITE, 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	open_tween.tween_property(heading, "modulate", Color.WHITE, 0.2).set_delay(0.04)
-	open_tween.tween_property(heading, "scale", Vector2.ONE, 0.22).set_delay(0.04).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	for index in range(cards.size()):
 		var delay := 0.08 + float(index) * CARD_OPEN_STAGGER
-		open_tween.tween_property(cards[index], "self_modulate", Color.WHITE, 0.12).set_delay(delay)
-		open_tween.tween_property(cards[index], "scale", Vector2.ONE, 0.28).set_delay(delay).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		open_tween.tween_property(cards[index], "modulate", Color.WHITE, 0.12).set_delay(delay)
 	open_tween.finished.connect(func() -> void:
 		open_tween = null
 		var selected_index := _get_selected_card_index()

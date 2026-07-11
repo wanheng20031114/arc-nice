@@ -207,6 +207,15 @@ func _test_choice_overlay() -> void:
 	_expect(overlay.is_open(), "Character choice overlay must become visible when opened.")
 	_expect(overlay.cards.size() == 3, "Character choice overlay must build three character cards.")
 	_expect(
+		overlay.root_control.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR,
+		"Character choice text must use linear filtering instead of the pixel-art default."
+	)
+	var backdrop := overlay.get_node("Root/Backdrop") as TextureRect
+	_expect(
+		backdrop.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
+		"The pixel-art character-choice backdrop must remain nearest-filtered."
+	)
+	_expect(
 		overlay.selected_character_id == PlayerCharacterRegistry.HOE_CAT_ID,
 		"Character choice overlay must honor the initial character id."
 	)
@@ -281,6 +290,14 @@ func _test_choice_overlay() -> void:
 				title_label.vertical_alignment == VERTICAL_ALIGNMENT_CENTER
 				and name_label.vertical_alignment == VERTICAL_ALIGNMENT_CENTER,
 				"Character card CJK labels must center glyphs inside their safe line boxes."
+			)
+			_expect(
+				card.scale.is_equal_approx(Vector2.ONE),
+				"Character-card opening feedback must not scale its text."
+			)
+			_expect(
+				card.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR,
+				"Reusable character-card text must remain linear-filtered."
 			)
 			_expect(
 				portrait.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST

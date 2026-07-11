@@ -21,6 +21,7 @@ spacing_top = 2
 
 [node name="PlayerCharacterCard" type="PanelContainer"]
 custom_minimum_size = Vector2(276, 432)
+texture_filter = 2
 layout_mode = 2
 focus_mode = 2
 mouse_filter = 0
