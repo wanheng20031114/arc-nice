@@ -1,9 +1,9 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://b43m8ktg7sfho"]
 
-[ext_resource type="Script" path="res://scene/plant_defense/plant_placement_controller.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://mcdxuw28lbrs" path="res://scene/plant_defense/plant_placement_controller.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/plant_placement_preview.tscn" id="2_preview"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/plant_selection_hud.tscn" id="3_hud"]
-[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
+[ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hint"]
 bg_color = Color(0.018, 0.05, 0.03, 0.94)
@@ -20,19 +20,22 @@ shadow_color = Color(0, 0, 0, 0.38)
 shadow_size = 6
 shadow_offset = Vector2(0, 2)
 
-[node name="PlantPlacementController" type="Node2D"]
+[node name="PlantPlacementController" type="Node2D" unique_id=21536722]
 script = ExtResource("1_script")
 
-[node name="MarkerContainer" type="Node2D" parent="."]
+[node name="MarkerContainer" type="Node2D" parent="." unique_id=951686161]
 
-[node name="PlantPlacementPreview" parent="." instance=ExtResource("2_preview")]
+[node name="PlantPlacementPreview" parent="." unique_id=619075123 instance=ExtResource("2_preview")]
+visible = false
 
-[node name="PlantSelectionHUD" parent="." instance=ExtResource("3_hud")]
+[node name="PlantSelectionHUD" parent="." unique_id=1475230950 instance=ExtResource("3_hud")]
+visible = false
 
-[node name="PlacementInstructions" type="CanvasLayer" parent="."]
+[node name="PlacementInstructions" type="CanvasLayer" parent="." unique_id=699609250]
 layer = 31
+visible = false
 
-[node name="Root" type="Control" parent="PlacementInstructions"]
+[node name="Root" type="Control" parent="PlacementInstructions" unique_id=1941121028]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -41,7 +44,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="Bottom" type="CenterContainer" parent="PlacementInstructions/Root"]
+[node name="Bottom" type="CenterContainer" parent="PlacementInstructions/Root" unique_id=183790469]
 layout_mode = 1
 anchors_preset = 12
 anchor_top = 1.0
@@ -53,20 +56,19 @@ grow_horizontal = 2
 grow_vertical = 0
 mouse_filter = 2
 
-[node name="Panel" type="PanelContainer" parent="PlacementInstructions/Root/Bottom"]
+[node name="Panel" type="PanelContainer" parent="PlacementInstructions/Root/Bottom" unique_id=1953404463]
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_hint")
 
-[node name="Margin" type="MarginContainer" parent="PlacementInstructions/Root/Bottom/Panel"]
+[node name="Margin" type="MarginContainer" parent="PlacementInstructions/Root/Bottom/Panel" unique_id=1609833736]
 layout_mode = 2
 theme_override_constants/margin_left = 13
 theme_override_constants/margin_top = 7
 theme_override_constants/margin_right = 13
 theme_override_constants/margin_bottom = 7
 
-[node name="HintLabel" type="Label" parent="PlacementInstructions/Root/Bottom/Panel/Margin"]
+[node name="HintLabel" type="Label" parent="PlacementInstructions/Root/Bottom/Panel/Margin" unique_id=1011869561]
 layout_mode = 2
-mouse_filter = 2
 theme_override_colors/font_color = Color(0.82, 1, 0.78, 1)
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_font_sizes/font_size = 12

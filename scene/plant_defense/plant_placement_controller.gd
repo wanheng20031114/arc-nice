@@ -24,6 +24,7 @@ const PLACEMENT_MARKER_SCENE := preload(
 @onready var marker_container: Node2D = $MarkerContainer
 @onready var preview: PlantPlacementPreview = $PlantPlacementPreview
 @onready var selection_hud: PlantSelectionHUD = $PlantSelectionHUD
+@onready var placement_hint_layer: CanvasLayer = $PlacementInstructions
 @onready var placement_hint_root: Control = $PlacementInstructions/Root
 @onready var placement_hint_label: Label = $PlacementInstructions/Root/Bottom/Panel/Margin/HintLabel
 
@@ -41,6 +42,7 @@ var marker_refresh_time_left := 0.0
 func _ready() -> void:
 	selection_hud.selection_confirmed.connect(_begin_placing)
 	selection_hud.cancel_requested.connect(cancel_placement)
+	placement_hint_layer.hide()
 	placement_hint_root.hide()
 	preview.hide_preview()
 	set_process(false)
@@ -159,6 +161,7 @@ func _begin_placing(config: PlantDefenseConfig) -> void:
 	selection_hud.close()
 	_set_placement_state(PlacementState.PLACING)
 	preview.configure(selected_config)
+	placement_hint_layer.show()
 	placement_hint_root.show()
 	marker_refresh_time_left = 0.0
 	set_process(true)
@@ -252,6 +255,7 @@ func _try_place_hovered() -> void:
 func _clear_world_preview() -> void:
 	set_process(false)
 	placement_hint_root.hide()
+	placement_hint_layer.hide()
 	preview.hide_preview()
 	_clear_markers()
 

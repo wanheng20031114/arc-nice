@@ -73,6 +73,7 @@ enum TerrainType {
 @export var dirt_placeholder_atlas_coords := Vector2i(1, 0)
 @export var water_placeholder_atlas_coords := Vector2i(2, 0)
 @export var metal_placeholder_atlas_coords := Vector2i(3, 0)
+@export var base_dirt_fill_origin := Vector2i.ZERO
 @export var base_dirt_fill_cells := Vector2i.ZERO
 @export var base_dirt_source_id := TerrainType.DIRT
 @export var base_dirt_atlas_coords := Vector2i(2, 1)
@@ -82,6 +83,8 @@ enum TerrainType {
 @export var grass_detail_source_id := 5
 @export var dirt_detail_source_id := 6
 @export_range(1, 32, 1) var detail_variant_count := 6
+
+var _base_dirt_generation_key: Array = []
 
 
 func _ready() -> void:
@@ -199,10 +202,33 @@ func _refresh_base_dirt_layer() -> void:
 	if base_dirt_map_layer == null or base_dirt_fill_cells.x <= 0 or base_dirt_fill_cells.y <= 0:
 		return
 
+	var fill_rect := Rect2i(base_dirt_fill_origin, base_dirt_fill_cells)
+	var generation_key := [
+		base_dirt_map_layer.get_instance_id(),
+		base_dirt_fill_origin,
+		base_dirt_fill_cells,
+		base_dirt_source_id,
+		base_dirt_atlas_coords,
+	]
+	if _base_dirt_generation_key == generation_key and _base_dirt_layer_matches(fill_rect):
+		return
+
 	base_dirt_map_layer.clear()
-	for y in range(base_dirt_fill_cells.y):
-		for x in range(base_dirt_fill_cells.x):
+	for y in range(fill_rect.position.y, fill_rect.end.y):
+		for x in range(fill_rect.position.x, fill_rect.end.x):
 			base_dirt_map_layer.set_cell(Vector2i(x, y), base_dirt_source_id, base_dirt_atlas_coords)
+	_base_dirt_generation_key = generation_key
+
+
+func _base_dirt_layer_matches(fill_rect: Rect2i) -> bool:
+	if base_dirt_map_layer.get_used_rect() != fill_rect:
+		return false
+	for coords in [fill_rect.position, fill_rect.end - Vector2i.ONE]:
+		if base_dirt_map_layer.get_cell_source_id(coords) != base_dirt_source_id:
+			return false
+		if base_dirt_map_layer.get_cell_atlas_coords(coords) != base_dirt_atlas_coords:
+			return false
+	return true
 
 
 func _calculate_display_tile_atlas_coords(coords: Vector2i, terrain_type: int) -> Vector2i:

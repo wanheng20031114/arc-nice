@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="PlayerCharacterConfig" format=3]
+[gd_resource type="Resource" script_class="PlayerCharacterConfig" format=3 uid="uid://dm7b6di22j85n"]
 
 [ext_resource type="Script" uid="uid://by2j147pm6q40" path="res://resources/config/players/player_character_config.gd" id="1_config"]
 
@@ -15,12 +15,10 @@ portrait_texture = "res://resources/texture/player/tiyi/portrait.png"
 skill_display_name = "午时已到"
 skill_description = "持续4秒，在400范围内每0.08秒锁定一名可见敌人，最多25名；结束时对每名存活目标造成攻击力350%的法术伤害。"
 skill_icon_texture = "res://resources/texture/player/tiyi/skill1_icon.png"
-starting_max_health = 50
 starting_attack_damage = 100
 starting_attack_speed = 250.0
 attack_speed_units_per_attack = 250.0
-starting_move_speed = 120.0
-attack_damage_per_upgrade = 20
+attack_damage_per_upgrade = 20.0
 card_background_color = Color(0.11, 0.075, 0.16, 0.98)
 card_edge_color = Color(0.62, 0.38, 0.82, 1)
 card_hover_edge_color = Color(0.82, 0.58, 1, 1)

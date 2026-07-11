@@ -90,6 +90,7 @@ var player: Player = null
 @onready var player_spawn: Marker2D = $PlayerSpawn
 @onready var ground_tile_map_layer: TileMapLayer = $GroundTileMapLayer
 @onready var overlay_tile_map_layer: TileMapLayer = $OverlayTileMapLayer
+@onready var dual_grid_terrain: DualGridTilemap = $DualGridTerrain
 @onready var enemy_container: Node2D = $EnemyContainer
 @onready var enemy_spawn_points_root: Node2D = $EnemySpawnPoints
 @onready var enemy_spawn_timer: Timer = $EnemySpawnTimer

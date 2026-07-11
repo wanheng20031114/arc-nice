@@ -143,8 +143,9 @@ func _test_registry_and_run_state() -> void:
 		and tiyi_config.starting_attack_damage == 100
 		and is_equal_approx(tiyi_config.starting_attack_speed, 250.0)
 		and is_equal_approx(tiyi_config.attack_speed_units_per_attack, 250.0)
-		and is_equal_approx(tiyi_config.starting_move_speed, 120.0),
-		"Tiyi config must expose the authored 50/120/100/250 starting stats and attack-speed scale."
+		and is_equal_approx(tiyi_config.starting_move_speed, 120.0)
+		and is_equal_approx(tiyi_config.attack_damage_per_upgrade, 20.0),
+		"Tiyi config must expose its starting stats and 20 attack per upgrade."
 	)
 	_expect(
 		tiyi_config.title == "呼呼呼"

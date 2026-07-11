@@ -121,13 +121,30 @@ func _test_stats_ammo_and_animation() -> void:
 
 
 func _test_attack_upgrade_progression() -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	_expect(run_state != null, "RunState must exist for Tiyi upgrade progression testing.")
+	if run_state == null:
+		return
+	run_state.begin_new_run(PlayerCharacterRegistry.TIYI_ID)
+	player.current_xirang = 100000
 	for upgrade_level in range(1, 11):
-		player.upgrade_attack()
+		_expect(
+			run_state.try_upgrade(RunStateStore.StatType.ATTACK, player),
+			"Tiyi attack upgrade level %d must be purchasable." % upgrade_level
+		)
 		_expect(
 			player.attack_damage == 100 + upgrade_level * 20,
 			"Tiyi attack upgrade level %d must add exactly 20 attack damage." % upgrade_level
 		)
+		_expect(
+			run_state.get_upgrade_level(RunStateStore.StatType.ATTACK) == upgrade_level,
+			"RunState must record Tiyi attack upgrade level %d." % upgrade_level
+		)
 	_expect(player.attack_damage == 300, "Ten Tiyi attack upgrades must raise attack damage from 100 to 300.")
+	_expect(
+		not run_state.try_upgrade(RunStateStore.StatType.ATTACK, player),
+		"An eleventh Tiyi attack upgrade must be rejected at 300 attack."
+	)
 
 
 func _test_sniper_sweep() -> void:

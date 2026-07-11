@@ -18,6 +18,7 @@ var selected_config: PlantDefenseConfig
 
 
 func _ready() -> void:
+	hide()
 	root_control.hide()
 	confirm_button.pressed.connect(_confirm_selection)
 	cancel_button.pressed.connect(_request_cancel)
@@ -33,6 +34,7 @@ func open(configs: Array[PlantDefenseConfig]) -> bool:
 	_build_cards()
 	selected_config = available_configs[0]
 	_refresh_selection()
+	show()
 	root_control.show()
 	set_process_unhandled_input(true)
 	call_deferred("_focus_selected_card")
@@ -41,6 +43,7 @@ func open(configs: Array[PlantDefenseConfig]) -> bool:
 
 func close() -> void:
 	root_control.hide()
+	hide()
 	set_process_unhandled_input(false)
 
 
