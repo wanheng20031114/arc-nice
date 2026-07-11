@@ -12,7 +12,7 @@ signal died
 @export var move_speed: float = 120.0
 @export var max_health: int = 1
 @export var invincibility_duration: float = 1.0
-@export_range(1.0, 200.0, 1.0, "or_greater") var dash_distance: float = 25.0
+@export_range(1.0, 200.0, 1.0, "or_greater") var dash_distance: float = 35.0
 @export_range(0.05, 1.0, 0.01, "or_greater") var dash_duration: float = 0.12
 @export_range(0.0, 30.0, 0.1, "or_greater") var dash_cooldown: float = 5.0
 @export var attack_damage: int = 1
@@ -25,6 +25,7 @@ var invincibility_time_left: float = 0.0
 var dash_time_left: float = 0.0
 var dash_distance_left: float = 0.0
 var dash_direction: Vector2 = Vector2.ZERO
+var _active_dash_distance: float = 0.0
 var multiplayer_dash_protection_time_left: float = 0.0
 var remote_dash_visual_time_left: float = 0.0
 var is_dead: bool = false
@@ -109,6 +110,7 @@ const REVIVE_GLOW_OUTLINE_WIDTH_SHADER_PARAMETER := &"revive_glow_outline_width"
 const DODGE_EFFECT_DURATION := 0.28
 const DASH_INPUT_MIN_LENGTH_SQUARED := 0.001
 const DASH_VISUAL_FADE_DURATION := 0.06
+const DASH_READY_REVEAL_DURATION := 0.2
 const MULTIPLAYER_DASH_COOLDOWN_GRACE := 0.35
 const REVIVE_GLOW_DURATION := 0.82
 const REVIVE_GLOW_OUTLINE_WIDTH := 4.5
@@ -138,6 +140,8 @@ var skill1_base_charge_duration: float = 0.0
 var last_attack_direction: Vector2 = Vector2.RIGHT
 var dodge_feedback_tween: Tween = null
 var revive_glow_tween: Tween = null
+var dash_ready_reveal_tween: Tween = null
+var _dash_ready_visual_is_ready: bool = false
 var damage_reduction_modifiers: Dictionary = {}
 var collectible_periodic_cooldowns: Dictionary = {}
 var collectible_shot_counters: Dictionary = {}
@@ -2611,6 +2615,23 @@ func _update_skill1_charge_bar() -> void:
 	)
 
 
+# 具体角色可覆写对应的 _get_character_* 钩子，自定义自身冲刺参数。
+func get_dash_distance() -> float:
+	return maxf(_get_character_dash_distance(), 0.0)
+
+
+func get_dash_cooldown() -> float:
+	return maxf(_get_character_dash_cooldown(), 0.0)
+
+
+func _get_character_dash_distance() -> float:
+	return dash_distance
+
+
+func _get_character_dash_cooldown() -> float:
+	return dash_cooldown
+
+
 func is_dashing() -> bool:
 	return dash_time_left > 0.0 and dash_distance_left > 0.0
 
@@ -2639,6 +2660,8 @@ func get_dash_cooldown_ratio() -> float:
 func _try_start_dash(move_direction: Vector2) -> bool:
 	if move_direction.length_squared() < DASH_INPUT_MIN_LENGTH_SQUARED:
 		return false
+	if get_dash_distance() <= 0.0:
+		return false
 	if not is_dash_ready():
 		return false
 
@@ -2650,9 +2673,11 @@ func _try_start_dash(move_direction: Vector2) -> bool:
 func _begin_dash(direction: Vector2) -> void:
 	dash_direction = direction.normalized()
 	dash_time_left = maxf(dash_duration, 0.001)
-	dash_distance_left = maxf(dash_distance, 0.0)
-	if dash_cooldown > 0.0:
-		dash_cooldown_timer.start(dash_cooldown)
+	_active_dash_distance = get_dash_distance()
+	dash_distance_left = _active_dash_distance
+	var effective_dash_cooldown := get_dash_cooldown()
+	if effective_dash_cooldown > 0.0:
+		dash_cooldown_timer.start(effective_dash_cooldown)
 	_set_dash_effect_direction(dash_direction)
 	_set_dash_effect_strength(1.0)
 	speed_trail_effect.call("set_motion_direction", dash_direction)
@@ -2664,7 +2689,7 @@ func _perform_dash_movement(delta: float) -> void:
 	if not is_dashing():
 		return
 	var physics_delta := maxf(delta, 0.000001)
-	var dash_speed := dash_distance / maxf(dash_duration, 0.001)
+	var dash_speed := _active_dash_distance / maxf(dash_duration, 0.001)
 	var step_distance := minf(dash_distance_left, dash_speed * physics_delta)
 	var position_before_dash_step := global_position
 	velocity = dash_direction * (step_distance / physics_delta)
@@ -2682,6 +2707,7 @@ func _finish_dash() -> void:
 	dash_time_left = 0.0
 	dash_distance_left = 0.0
 	dash_direction = Vector2.ZERO
+	_active_dash_distance = 0.0
 	_set_dash_effect_strength(0.0)
 	_refresh_dash_ready_visual()
 
@@ -2698,14 +2724,17 @@ func start_multiplayer_dash_protection(direction: Vector2) -> bool:
 		return false
 	if direction.length_squared() < DASH_INPUT_MIN_LENGTH_SQUARED:
 		return false
+	if get_dash_distance() <= 0.0:
+		return false
 	if dash_cooldown_timer == null:
 		return false
 	if not dash_cooldown_timer.is_stopped():
 		if dash_cooldown_timer.time_left > MULTIPLAYER_DASH_COOLDOWN_GRACE:
 			return false
 		dash_cooldown_timer.stop()
-	if dash_cooldown > 0.0:
-		dash_cooldown_timer.start(dash_cooldown)
+	var effective_dash_cooldown := get_dash_cooldown()
+	if effective_dash_cooldown > 0.0:
+		dash_cooldown_timer.start(effective_dash_cooldown)
 	multiplayer_dash_protection_time_left = maxf(dash_duration, 0.001)
 	play_remote_dash_visual(direction)
 	return true
@@ -2767,12 +2796,53 @@ func _refresh_dash_ready_visual() -> void:
 		return
 	var can_show_indicator := uses_local_input and not is_dead and not controls_locked
 	dash_ready_indicator.visible = can_show_indicator
+	var should_show_ready := can_show_indicator and is_dash_ready()
+	if should_show_ready == _dash_ready_visual_is_ready:
+		if not should_show_ready:
+			_set_dash_ready_strength(0.0)
+		return
+	_dash_ready_visual_is_ready = should_show_ready
+	if not should_show_ready:
+		_stop_dash_ready_reveal()
+		_set_dash_ready_strength(0.0)
+		return
+	_start_dash_ready_reveal()
+
+
+func _start_dash_ready_reveal() -> void:
+	_stop_dash_ready_reveal()
+	_set_dash_ready_strength(0.0)
+	dash_ready_reveal_tween = create_tween()
+	dash_ready_reveal_tween.set_process_mode(Tween.TWEEN_PROCESS_PHYSICS)
+	dash_ready_reveal_tween.tween_method(
+		_set_dash_ready_strength,
+		0.0,
+		1.0,
+		DASH_READY_REVEAL_DURATION
+	).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	dash_ready_reveal_tween.finished.connect(_on_dash_ready_reveal_finished)
+
+
+func _stop_dash_ready_reveal() -> void:
+	if dash_ready_reveal_tween == null:
+		return
+	dash_ready_reveal_tween.kill()
+	dash_ready_reveal_tween = null
+
+
+func _on_dash_ready_reveal_finished() -> void:
+	dash_ready_reveal_tween = null
+	if _dash_ready_visual_is_ready:
+		_set_dash_ready_strength(1.0)
+
+
+func _set_dash_ready_strength(strength: float) -> void:
 	var indicator_material := dash_ready_indicator.material as ShaderMaterial
 	if indicator_material == null:
 		return
 	indicator_material.set_shader_parameter(
 		DASH_READY_STRENGTH_SHADER_PARAMETER,
-		1.0 if can_show_indicator and is_dash_ready() else 0.0
+		clampf(strength, 0.0, 1.0)
 	)
 
 

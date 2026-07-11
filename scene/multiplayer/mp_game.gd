@@ -1053,7 +1053,7 @@ func _try_accept_client_dash_request(
 		return false
 	var accepted_at := _get_net_time()
 	var minimum_dash_interval := maxf(
-		player_node.dash_cooldown - DASH_COOLDOWN_NETWORK_TOLERANCE_SECONDS,
+		player_node.get_dash_cooldown() - DASH_COOLDOWN_NETWORK_TOLERANCE_SECONDS,
 		0.0
 	)
 	if _last_dash_accepted_times.has(peer_id):
