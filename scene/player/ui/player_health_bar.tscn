@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://bcopug355gqjb"]
 
-[ext_resource type="Script" uid="uid://c76yrwk60qy0g" path="res://scene/player_health_bar.gd" id="1_qh2iq"]
+[ext_resource type="Script" uid="uid://c76yrwk60qy0g" path="res://scene/player/ui/player_health_bar.gd" id="1_qh2iq"]
 
 [node name="HealthBar" type="Control" unique_id=1169360038]
 z_index = 100

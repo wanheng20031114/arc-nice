@@ -8,6 +8,10 @@ uniform float dodge_sweep : hint_range(-0.4, 1.4) = 0.0;
 uniform vec4 dodge_color : source_color = vec4(0.42, 0.95, 1.0, 1.0);
 uniform vec4 dodge_flash_color : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 uniform float dodge_outline_width : hint_range(1.0, 6.0) = 3.0;
+uniform float dash_effect_strength : hint_range(0.0, 1.0) = 0.0;
+uniform vec2 dash_direction = vec2(1.0, 0.0);
+uniform vec4 dash_color : source_color = vec4(0.12, 1.45, 1.3, 1.0);
+uniform float dash_trail_pixels : hint_range(1.0, 8.0) = 4.0;
 uniform float slow_overlay_strength : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 slow_overlay_color : source_color = vec4(0.55, 0.86, 1.0, 1.0);
 uniform float burn_overlay_strength : hint_range(0.0, 1.0) = 0.0;
@@ -57,6 +61,34 @@ void fragment() {
 		color.rgb = mix(color.rgb, dodge_flash_color.rgb, mask * 0.42);
 		color.rgb = min(color.rgb + dodge_color.rgb * mask * 0.45, vec3(1.0));
 		color.a = max(color.a, COLOR.a);
+	}
+
+	if (dash_effect_strength > 0.0) {
+		vec2 direction = dash_direction;
+		if (length(direction) < 0.001) {
+			direction = vec2(1.0, 0.0);
+		} else {
+			direction = normalize(direction);
+		}
+		vec2 trail_offset = direction * TEXTURE_PIXEL_SIZE * dash_trail_pixels;
+		float trail_alpha = 0.0;
+		trail_alpha = max(trail_alpha, texture(TEXTURE, clamp(UV + trail_offset * 0.45, vec2(0.0), vec2(1.0))).a * 0.9);
+		trail_alpha = max(trail_alpha, texture(TEXTURE, clamp(UV + trail_offset * 0.9, vec2(0.0), vec2(1.0))).a * 0.62);
+		trail_alpha = max(trail_alpha, texture(TEXTURE, clamp(UV + trail_offset * 1.35, vec2(0.0), vec2(1.0))).a * 0.36);
+		float trail_mask = max(trail_alpha - texture_color.a, 0.0) * dash_effect_strength;
+		if (trail_mask > 0.0) {
+			color.rgb = mix(color.rgb, dash_color.rgb, min(trail_mask * 1.2, 1.0));
+			color.a = max(color.a, trail_mask * 0.76);
+		}
+		if (texture_color.a > 0.0) {
+			vec2 perpendicular = vec2(-direction.y, direction.x);
+			float scan = 0.5 + 0.5 * sin(dot(UV - vec2(0.5), perpendicular) * 72.0 - TIME * 54.0);
+			float leading_edge = clamp(dot(UV - vec2(0.5), direction) + 0.58, 0.0, 1.0);
+			float body_mask = dash_effect_strength * texture_color.a * (0.22 + scan * 0.16 + leading_edge * 0.24);
+			color.rgb = mix(color.rgb, dash_color.rgb, min(body_mask * 0.5, 1.0));
+			color.rgb += dash_color.rgb * body_mask * 0.34;
+			color.a = max(color.a, COLOR.a);
+		}
 	}
 
 	if (slow_overlay_strength > 0.0 && texture_color.a > 0.0) {

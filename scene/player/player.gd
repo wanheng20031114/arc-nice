@@ -8,24 +8,25 @@ signal attack_speed_changed(attack_speed: float)
 signal dodge_changed(chance: float)
 signal died
 
-@export var character_id: StringName = &"weishidaier"
+@export var character_id: StringName = &""
 @export var move_speed: float = 120.0
-@export var max_health: int = 50
+@export var max_health: int = 1
 @export var invincibility_duration: float = 1.0
-@export var attack_damage: int = 10
+@export_range(1.0, 200.0, 1.0, "or_greater") var dash_distance: float = 25.0
+@export_range(0.05, 1.0, 0.01, "or_greater") var dash_duration: float = 0.12
+@export_range(0.0, 30.0, 0.1, "or_greater") var dash_cooldown: float = 5.0
+@export var attack_damage: int = 1
 @export var physical_defense: int = 0
 @export var magic_defense: int = 0
-@export var attack_method_name: String = "枪"
-@export var ammo_capacity: int = 30
-@export var reload_duration: float = 1.5
-@export var ammo_free_shot_chance_percent: float = 0.0
 
 var current_health: int = 0
 var current_xirang: int = 0
-var current_ammo: int = 0
-var is_reloading: bool = false
-var reload_progress: float = 0.0
 var invincibility_time_left: float = 0.0
+var dash_time_left: float = 0.0
+var dash_distance_left: float = 0.0
+var dash_direction: Vector2 = Vector2.ZERO
+var multiplayer_dash_protection_time_left: float = 0.0
+var remote_dash_visual_time_left: float = 0.0
 var is_dead: bool = false
 var controls_locked: bool = false
 var peer_id: int = 0
@@ -38,20 +39,18 @@ var mouse_viewport_position: Vector2 = Vector2.ZERO
 var multiplayer_display_name: String = ""
 var client_movement_prediction_only: bool = false
 
-@export var fire_interval: float = 0.18
+@export var fire_interval: float = 1.0
 @export_range(1.0, 1000.0, 1.0, "or_greater") var attack_speed_units_per_attack: float = 100.0
-@export var bullet_spawn_distance: float = 12.0
+@export var auxiliary_projectile_spawn_distance: float = 12.0
 @export var footstep_interval: float = 0.28
 @export var skill1_charge_duration: float = 18.0
-@export var skill1_bomb_spawn_distance: float = 18.0
 
 @onready var body_sprite: AnimatedSprite2D = $BodySprite
-@onready var armed_effect_sprite: AnimatedSprite2D = $ArmedEffectSprite
 @onready var speed_trail_effect: Node2D = $MoveSpeedTrailEffect
+@onready var dash_ready_indicator: Control = $DashReadyIndicator
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var shooting_timer: Timer = $ShootingTimer
-@onready var gunshot_audio: AudioStreamPlayer2D = $GunshotAudio
-@onready var gunload_audio: AudioStreamPlayer2D = $GunloadAudio
+@onready var dash_cooldown_timer: Timer = $DashCooldownTimer
 @onready var footstep_audio: AudioStreamPlayer2D = $FootstepAudio
 @onready var death_audio: AudioStreamPlayer2D = $DeathAudio
 @onready var powerup_audio: AudioStreamPlayer2D = $PowerupAudio
@@ -59,16 +58,12 @@ var client_movement_prediction_only: bool = false
 @onready var xirang_pickup_audio: AudioStreamPlayer2D = $XirangPickupAudio
 @onready var lucky_upgrade_audio: AudioStreamPlayer2D = $LuckyUpgradeAudio
 @onready var health_bar: Control = $HealthBar
-@onready var ammo_bar: Control = $AmmoBar
 @onready var skill1_charge_bar: Skill1ChargeBar = $Skill1ChargeBar
 @onready var attack_interval_bar: Control = get_node_or_null("AttackIntervalBar") as Control
 @onready var name_label: Label = $NameLabel
 @onready var nameplate_layer: CanvasLayer = $NameplateLayer
 @onready var nameplate_label: Label = $NameplateLayer/NameplateLabel
 
-const BULLET_SCENE := preload("res://scene/bullet.tscn")
-const SKILL1_BOMB_SCENE := preload("res://scene/weishidaier_skill1_bomb.tscn")
-const DEFAULT_SKILL1_ICON := preload("res://resources/texture/player/weishidaier/skill1_icon.png")
 const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/collectible_area_effect.tscn")
 const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/collectible_frost_area_effect.tscn")
 const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
@@ -77,10 +72,8 @@ const COLLECTIBLE_ARROW_PROJECTILE_SCENE := preload("res://scene/collectible_arr
 const LINGLAN_SKILL2_CONFIG_PATH := "res://resources/config/bosses/linglan_skill2.tres"
 const LINGLAN_SKILL2_ROCKET_SCENE := preload("res://scene/linglan_skill2_sakura_rocket.tscn")
 const NORMAL_ANIMATION_PREFIX := &"normal"
-const ARMED_ANIMATION_PREFIX := &"armed"
 const DEFAULT_FIRE_RATE_MULTIPLIER := 1.0
 const DEFAULT_MOVE_SPEED_MULTIPLIER := 1.0
-const SPIRAL_PHASE_STEP := PI / 12
 const CHEAT_XIRANG_AMOUNT := 1000
 const SKILL1_MAX_UPGRADE_LEVEL := 4
 const SKILL1_UPGRADE_CHARGE_REDUCTION := 2.0
@@ -106,11 +99,17 @@ const WALL_ESCAPE_QUERY_MAX_RESULTS := 8
 const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
 const DODGE_EFFECT_STRENGTH_SHADER_PARAMETER := &"dodge_effect_strength"
 const DODGE_SWEEP_SHADER_PARAMETER := &"dodge_sweep"
+const DASH_EFFECT_STRENGTH_SHADER_PARAMETER := &"dash_effect_strength"
+const DASH_DIRECTION_SHADER_PARAMETER := &"dash_direction"
+const DASH_READY_STRENGTH_SHADER_PARAMETER := &"ready_strength"
 const SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER := &"slow_overlay_strength"
 const REVIVE_GLOW_STRENGTH_SHADER_PARAMETER := &"revive_glow_strength"
 const REVIVE_GLOW_COLOR_SHADER_PARAMETER := &"revive_glow_color"
 const REVIVE_GLOW_OUTLINE_WIDTH_SHADER_PARAMETER := &"revive_glow_outline_width"
 const DODGE_EFFECT_DURATION := 0.28
+const DASH_INPUT_MIN_LENGTH_SQUARED := 0.001
+const DASH_VISUAL_FADE_DURATION := 0.06
+const MULTIPLAYER_DASH_COOLDOWN_GRACE := 0.35
 const REVIVE_GLOW_DURATION := 0.82
 const REVIVE_GLOW_OUTLINE_WIDTH := 4.5
 const REVIVE_GLOW_COLOR := Color(3.2, 3.2, 3.2, 1.0)
@@ -119,8 +118,7 @@ const ATTACK_SPEED_UPGRADE_INTERVAL_MULTIPLIER := 0.95
 const DODGE_UPGRADE_CHANCE_STEP := 0.02
 const DEFAULT_MAGIC_DEFENSE_LIMIT := 100
 const RANGED_DIRECTION_SIDE_THRESHOLD := 0.35
-const DEFAULT_SKILL1_DISPLAY_NAME := "经典技能"
-const DEFAULT_SKILL1_DESCRIPTION := "向上一次射击位置发射一枚炸弹造成攻击力330%的大范围伤害"
+const DEFAULT_SKILL1_DISPLAY_NAME := "技能"
 
 var facing_suffix: StringName = &"right"
 
@@ -128,19 +126,9 @@ var facing_suffix: StringName = &"right"
 var current_move_speed_multiplier: float = DEFAULT_MOVE_SPEED_MULTIPLIER
 # 当前射速道具提供的射速倍率。
 var rapid_fire_rate_multiplier: float = DEFAULT_FIRE_RATE_MULTIPLIER
-# 形态道具提供的专属射速倍率，例如螺旋强化形态。
-var form_fire_rate_multiplier: float = DEFAULT_FIRE_RATE_MULTIPLIER
-# 当前玩家形态，决定使用 normal 还是 armed 动画。
-var current_form_mode: int = PickupConfig.PlayerFormMode.NORMAL
-# 当前弹幕模式，决定普通射击还是螺旋弹幕。
-var current_shot_pattern: int = PickupConfig.ShotPattern.NORMAL
-
-# 三类 Buff 分别维护剩余持续时间，避免互相覆盖。
+# 通用临时增益分别维护剩余持续时间，避免互相覆盖。
 var speed_buff_time_left: float = 0.0
 var rapid_buff_time_left: float = 0.0
-var form_buff_time_left: float = 0.0
-# 螺旋弹幕的相位，用来让连续射击形成旋转感。
-var spiral_phase: float = 0.0
 var footstep_time_left: float = 0.0
 var dodge_chance: float = 0.0
 var skill1_unlocked: bool = false
@@ -180,10 +168,9 @@ var _base_fire_interval: float = 0.0
 var multiplayer_visual_smoothing_enabled: bool = false
 var multiplayer_visual_offset: Vector2 = Vector2.ZERO
 var _body_sprite_base_position: Vector2 = Vector2.ZERO
-var _armed_effect_sprite_base_position: Vector2 = Vector2.ZERO
 var _speed_trail_effect_base_position: Vector2 = Vector2.ZERO
+var _dash_ready_indicator_base_position: Vector2 = Vector2.ZERO
 var _health_bar_base_position: Vector2 = Vector2.ZERO
-var _ammo_bar_base_position: Vector2 = Vector2.ZERO
 var _attack_interval_bar_base_position: Vector2 = Vector2.ZERO
 var _skill1_charge_bar_base_position: Vector2 = Vector2.ZERO
 var _name_label_base_position: Vector2 = Vector2.ZERO
@@ -198,20 +185,22 @@ func _ready() -> void:
 	_refresh_collectible_stats(false)
 	_ensure_skill1_base_charge_duration()
 	current_health = maxi(max_health, 1)
-	_reset_ammo_to_full()
+	_initialize_character_resources()
 	shooting_timer.one_shot = true
 	shooting_timer.wait_time = _get_effective_fire_interval()
 	_set_hurt_blink_enabled(false)
+	_set_dash_effect_strength(0.0)
 	_set_revive_glow_strength(0.0)
 	_update_movement_status_visuals(Vector2.ZERO)
 	_cache_multiplayer_visual_base_positions()
+	_refresh_dash_ready_visual()
 	_initialize_nameplate_label_settings()
 	health_bar.setup(max_health, current_health)
 	name_label.visible = false
 	nameplate_layer.visible = false
 	health_changed.emit(current_health, max_health)
 	_update_animation()
-	_update_armed_effect()
+	_update_character_visual_state()
 	_update_skill1_charge_bar()
 	_update_attack_interval_bar()
 	get_window().focus_exited.connect(_on_window_focus_exited)
@@ -220,6 +209,17 @@ func _ready() -> void:
 func _initialize_base_stats() -> void:
 	if _base_stats_initialized:
 		return
+	assert(character_id != &"", "Player subclasses must define a non-empty character_id.")
+	var character_config := get_character_config()
+	assert(character_config != null, "Missing PlayerCharacterConfig for '%s'." % character_id)
+	move_speed = character_config.starting_move_speed
+	max_health = character_config.starting_max_health
+	attack_damage = character_config.starting_attack_damage
+	attack_speed_units_per_attack = character_config.attack_speed_units_per_attack
+	fire_interval = (
+		attack_speed_units_per_attack
+		/ maxf(character_config.starting_attack_speed, 1.0)
+	)
 	_base_move_speed = move_speed
 	_base_max_health = max_health
 	_base_attack_damage = attack_damage
@@ -238,6 +238,7 @@ func _connect_collectible_refresh_signals() -> void:
 
 
 func _process(_delta: float) -> void:
+	_update_remote_dash_visual(_delta)
 	_update_multiplayer_visual_smoothing(_delta)
 	_update_nameplate_position()
 	_update_character_combat_state(_delta)
@@ -294,7 +295,7 @@ func _physics_process(delta: float) -> void:
 	_update_pickup_effects(delta)
 	_update_collectible_runtime_effects(delta)
 	_update_skill1_charge(delta)
-	_update_reload(delta)
+	_update_character_resources(delta)
 	_update_attack_interval_bar()
 	
 	if is_dead:
@@ -306,36 +307,57 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		_update_footstep_audio(delta, Vector2.ZERO)
 		_update_animation()
-		_update_armed_effect()
+		_update_character_visual_state()
 		_update_movement_status_visuals(Vector2.ZERO)
 		return
 	
 	var move_input := _get_current_move_input()
 	var shoot_input := _get_current_shoot_input()
+	if uses_local_input and Input.is_action_just_pressed(&"dash"):
+		_try_start_dash(move_input)
 	if uses_local_input and mouse_fire_held:
 		shoot_input = _get_mouse_shoot_direction()
 	if not uses_local_input and network_reload_requested:
 		network_reload_requested = false
 		_try_start_reload()
 
-	velocity = move_input * _get_effective_move_speed()
-	if not _try_apply_wall_overlap_escape(move_input, delta):
-		move_and_slide()
-	_update_movement_status_visuals(move_input)
-	_update_footstep_audio(delta, move_input)
+	var dash_was_active := is_dashing()
+	var movement_visual_direction := dash_direction if dash_was_active else move_input
+	if dash_was_active:
+		_perform_dash_movement(delta)
+	else:
+		velocity = move_input * _get_effective_move_speed()
+		if not _try_apply_wall_overlap_escape(move_input, delta):
+			move_and_slide()
+	_update_movement_status_visuals(movement_visual_direction)
+	_update_footstep_audio(delta, Vector2.ZERO if dash_was_active else move_input)
 
-	if current_shot_pattern == PickupConfig.ShotPattern.SPIRAL:
-		_try_auto_spiral_shoot()
-	elif shoot_input != Vector2.ZERO:
-		_try_shoot(shoot_input)
+	_handle_primary_attack_input(shoot_input)
 
-	_update_facing(move_input, shoot_input)
+	_update_facing(movement_visual_direction, shoot_input)
 	_update_animation()
-	_update_armed_effect()
+	_update_character_visual_state()
 
 
 func _update_character_combat_state(_delta: float) -> void:
 	pass
+
+
+func _initialize_character_resources() -> void:
+	pass
+
+
+func _update_character_resources(_delta: float) -> void:
+	pass
+
+
+func _update_character_visual_state() -> void:
+	pass
+
+
+func _handle_primary_attack_input(shoot_input: Vector2) -> void:
+	if shoot_input != Vector2.ZERO:
+		_try_shoot(shoot_input)
 
 
 # 根据玩家当前形态和朝向更新基础动画序列
@@ -357,30 +379,37 @@ func _update_animation() -> void:
 func _try_shoot(shoot_input: Vector2) -> void:
 	if not shooting_timer.is_stopped():
 		return
-	if uses_ammunition() and not _can_fire_ammo_consuming_shot():
+	if not _can_perform_primary_attack():
 		return
 
 	var shoot_direction := shoot_input.normalized()
 	var attack_performed := _perform_primary_attack(shoot_direction)
 
 	if attack_performed:
-		if uses_ammunition():
-			_consume_ammo_after_successful_shot()
+		_consume_primary_attack_resource()
 		if shooting_timer.is_stopped():
 			shooting_timer.start(_get_effective_fire_interval())
 		_update_attack_interval_bar()
 
 
-func _perform_primary_attack(attack_direction: Vector2) -> bool:
-	return _fire_bullets(attack_direction)
+func _perform_primary_attack(_attack_direction: Vector2) -> bool:
+	return false
+
+
+func _can_perform_primary_attack() -> bool:
+	return true
+
+
+func _consume_primary_attack_resource() -> void:
+	pass
 
 
 func uses_ammunition() -> bool:
-	return true
+	return false
 
 
 func supports_projectile_attack_patterns() -> bool:
-	return true
+	return false
 
 
 func is_collectible_compatible(item: PickupConfig) -> bool:
@@ -436,21 +465,19 @@ func apply_pickup(config: PickupConfig) -> bool:
 		should_refresh_shooting_timer = true
 		applied = true
 	if has_form_override:
-		current_form_mode = config.player_form_mode
-		current_shot_pattern = config.shot_pattern
-		form_fire_rate_multiplier = (
-			config.fire_rate_multiplier if has_fire_rate_override else DEFAULT_FIRE_RATE_MULTIPLIER
-	)
-		form_buff_time_left = buff_duration
-		spiral_phase = 0.0
-		should_refresh_shooting_timer = true
-		applied = true
+		var character_pickup_applied := _apply_character_pickup(config, buff_duration)
+		should_refresh_shooting_timer = character_pickup_applied
+		applied = character_pickup_applied or applied
 
 	if should_refresh_shooting_timer:
 		_refresh_shooting_timer_wait_time()
 	if applied:
 		_play_pickup_audio(config, has_form_override)
 	return applied
+
+
+func _apply_character_pickup(_config: PickupConfig, _buff_duration: float) -> bool:
+	return false
 	
 # 敌人或其他伤害来源统一通过这个入口让玩家受伤。
 func apply_damage(
@@ -464,7 +491,7 @@ func apply_damage(
 	if amount <= 0:
 		return false
 
-	if invincibility_time_left > 0.0:
+	if is_dash_invulnerable() or invincibility_time_left > 0.0:
 		return false
 
 	if dodge_chance > 0.0 and randf() < dodge_chance:
@@ -578,14 +605,14 @@ func get_skill1_description() -> String:
 	var config := get_character_config()
 	if config != null and not config.skill_description.is_empty():
 		return config.skill_description
-	return DEFAULT_SKILL1_DESCRIPTION
+	return ""
 
 
 func get_skill1_icon() -> Texture2D:
 	var config := get_character_config()
 	if config != null and not config.skill_icon_texture.is_empty():
 		return load(config.skill_icon_texture) as Texture2D
-	return DEFAULT_SKILL1_ICON
+	return null
 
 
 func get_skill1_icon_path() -> String:
@@ -673,11 +700,8 @@ func play_lucky_upgrade_feedback() -> void:
 	lucky_upgrade_audio.play()
 
 
-func get_skill1_bomb_damage() -> int:
-	return get_outgoing_damage(
-		floori(float(attack_damage) * 3.3),
-		EnemyConfig.DamageType.PHYSICAL
-	)
+func get_skill1_projectile_damage() -> int:
+	return 0
 
 
 func add_damage_reduction_modifier(source_id: int, reduction: float) -> void:
@@ -693,9 +717,11 @@ func remove_damage_reduction_modifier(source_id: int) -> void:
 func set_controls_locked(locked: bool) -> void:
 	controls_locked = locked
 	if controls_locked:
+		_finish_dash()
 		mouse_fire_held = false
 		velocity = Vector2.ZERO
 		footstep_audio.stop()
+	_refresh_dash_ready_visual()
 
 
 func configure_multiplayer_control(
@@ -712,6 +738,10 @@ func configure_multiplayer_control(
 	network_move_input = Vector2.ZERO
 	network_shoot_input = Vector2.ZERO
 	network_reload_requested = false
+	_finish_dash()
+	_stop_remote_dash_visual()
+	multiplayer_dash_protection_time_left = 0.0
+	dash_cooldown_timer.stop()
 	var safe_display_name := display_name.strip_edges()
 	if safe_display_name.length() > MAX_MULTIPLAYER_NAME_LENGTH:
 		safe_display_name = safe_display_name.left(MAX_MULTIPLAYER_NAME_LENGTH)
@@ -723,6 +753,7 @@ func configure_multiplayer_control(
 	_update_nameplate_position()
 	if not uses_local_input:
 		controls_locked = false
+	_refresh_dash_ready_visual()
 
 
 func _set_nameplate_local_highlight(enabled: bool) -> void:
@@ -764,14 +795,18 @@ func get_multiplayer_visual_global_position() -> Vector2:
 
 func _cache_multiplayer_visual_base_positions() -> void:
 	_body_sprite_base_position = body_sprite.position
-	_armed_effect_sprite_base_position = armed_effect_sprite.position
 	_speed_trail_effect_base_position = speed_trail_effect.position
+	_dash_ready_indicator_base_position = dash_ready_indicator.position
 	_health_bar_base_position = health_bar.position
-	_ammo_bar_base_position = ammo_bar.position
 	if attack_interval_bar != null:
 		_attack_interval_bar_base_position = attack_interval_bar.position
 	_skill1_charge_bar_base_position = skill1_charge_bar.position
 	_name_label_base_position = name_label.position
+	_cache_character_visual_base_positions()
+
+
+func _cache_character_visual_base_positions() -> void:
+	pass
 
 
 func _get_multiplayer_visual_offset_after_position_change(next_position: Vector2) -> Vector2:
@@ -799,15 +834,19 @@ func _set_multiplayer_visual_offset(offset: Vector2) -> void:
 	if body_sprite == null:
 		return
 	body_sprite.position = _body_sprite_base_position + offset
-	armed_effect_sprite.position = _armed_effect_sprite_base_position + offset
 	speed_trail_effect.position = _speed_trail_effect_base_position + offset
+	dash_ready_indicator.position = _dash_ready_indicator_base_position + offset
 	health_bar.position = _health_bar_base_position + offset
-	ammo_bar.position = _ammo_bar_base_position + offset
 	if attack_interval_bar != null:
 		attack_interval_bar.position = _attack_interval_bar_base_position + offset
 	skill1_charge_bar.position = _skill1_charge_bar_base_position + offset
 	name_label.position = _name_label_base_position + offset
+	_set_character_visual_offset(offset)
 	_update_nameplate_position()
+
+
+func _set_character_visual_offset(_offset: Vector2) -> void:
+	pass
 
 
 func apply_network_input(
@@ -847,20 +886,21 @@ func apply_remote_multiplayer_view_state(
 		_try_start_reload()
 	_update_facing(remote_velocity, network_shoot_input)
 	_update_animation()
-	_update_armed_effect()
+	_update_character_visual_state()
 
 
 func update_multiplayer_authority_passive_state(delta: float) -> void:
 	_update_invincibility(delta)
+	_update_multiplayer_dash_protection(delta)
 	_update_pickup_effects(delta)
 	_update_collectible_runtime_effects(delta)
 	_update_skill1_charge(delta)
-	_update_reload(delta)
+	_update_character_resources(delta)
 	_update_attack_interval_bar()
 	if is_dead:
 		return
 	_update_animation()
-	_update_armed_effect()
+	_update_character_visual_state()
 
 
 func consume_multiplayer_skill1_charge() -> bool:
@@ -909,12 +949,9 @@ func apply_multiplayer_snapshot_motion(
 	if is_dead:
 		return
 	_set_multiplayer_facing_id(facing_id)
-	if anim_state == 1:
-		current_form_mode = PickupConfig.PlayerFormMode.ARMED
-	else:
-		current_form_mode = PickupConfig.PlayerFormMode.NORMAL
+	_apply_multiplayer_character_anim_state(anim_state)
 	_update_animation()
-	_update_armed_effect()
+	_update_character_visual_state()
 
 
 func apply_multiplayer_realtime_state(
@@ -937,13 +974,14 @@ func apply_multiplayer_realtime_state(
 	max_health = maxi(new_max_health, 1)
 	current_xirang = maxi(new_current_xirang, 0)
 	xirang_changed.emit(current_xirang, 0)
-	if new_ammo_capacity > 0 and new_current_ammo >= 0:
-		apply_multiplayer_ammo_state(
-			new_ammo_capacity,
-			new_current_ammo,
-			new_is_reloading,
-			new_reload_progress
-		)
+	_apply_multiplayer_character_realtime_state(
+		new_form_mode,
+		new_shot_pattern,
+		new_ammo_capacity,
+		new_current_ammo,
+		new_is_reloading,
+		new_reload_progress
+	)
 	skill1_unlocked = new_skill1_unlocked
 	if not skill1_unlocked:
 		skill1_upgrade_level = 0
@@ -963,16 +1001,13 @@ func apply_multiplayer_realtime_state(
 		_ensure_skill1_base_charge_duration()
 	_sync_skill1_charge_duration_to_upgrade_level()
 	skill1_charge = clampf(new_skill1_charge, 0.0, skill1_charge_duration)
-	current_form_mode = new_form_mode
-	current_shot_pattern = new_shot_pattern
-	form_buff_time_left = 0.0
 	rapid_buff_time_left = 0.0
 	speed_buff_time_left = 0.0
 	var clamped_health: int = clampi(new_current_health, 0, max_health)
 	if new_is_dead or clamped_health <= 0:
 		apply_multiplayer_death_state()
 		_update_skill1_charge_bar()
-		_update_armed_effect()
+		_update_character_visual_state()
 		return
 	if is_dead:
 		revive_multiplayer(global_position, clamped_health, new_invincibility_time_left)
@@ -986,7 +1021,50 @@ func apply_multiplayer_realtime_state(
 	_refresh_shooting_timer_wait_time()
 	_update_skill1_charge_bar()
 	_update_animation()
-	_update_armed_effect()
+	_update_character_visual_state()
+
+
+func _apply_multiplayer_character_anim_state(_anim_state: int) -> void:
+	pass
+
+
+func _apply_multiplayer_character_realtime_state(
+	_form_mode: int,
+	_shot_pattern: int,
+	_ammo_capacity: int,
+	_current_ammo: int,
+	_is_reloading: bool,
+	_reload_progress: float
+) -> void:
+	pass
+
+
+func has_active_multiplayer_character_state() -> bool:
+	return false
+
+
+func get_multiplayer_form_mode() -> int:
+	return PickupConfig.PlayerFormMode.NORMAL
+
+
+func get_multiplayer_shot_pattern() -> int:
+	return PickupConfig.ShotPattern.NORMAL
+
+
+func get_multiplayer_ammo_capacity() -> int:
+	return 1
+
+
+func get_multiplayer_current_ammo() -> int:
+	return 0
+
+
+func get_multiplayer_is_reloading() -> bool:
+	return false
+
+
+func get_multiplayer_reload_progress() -> float:
+	return 0.0
 
 func _update_nameplate_position() -> void:
 	if not nameplate_layer.visible:
@@ -1027,16 +1105,17 @@ func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invi
 	health_bar.visible = true
 	health_bar.set_health(current_health, max_health)
 	health_changed.emit(current_health, max_health)
-	_reset_ammo_to_full()
+	_reset_character_resources_on_revive()
 	_update_multiplayer_nameplate_text(-1)
 	_update_skill1_charge_bar()
 	_update_animation()
-	_update_armed_effect()
+	_update_character_visual_state()
 	if invincible_seconds > 0.0:
 		start_multiplayer_invincibility(invincible_seconds)
 	else:
 		invincibility_time_left = 0.0
 		_set_hurt_blink_enabled(false)
+	_refresh_dash_ready_visual()
 	if was_dead and uses_local_input:
 		_start_local_revive_glow_effect()
 
@@ -1055,6 +1134,9 @@ func apply_multiplayer_death_state() -> void:
 	_set_multiplayer_visual_offset(Vector2.ZERO)
 	is_dead = true
 	controls_locked = true
+	_finish_dash()
+	_stop_remote_dash_visual()
+	multiplayer_dash_protection_time_left = 0.0
 	mouse_fire_held = false
 	network_move_input = Vector2.ZERO
 	network_shoot_input = Vector2.ZERO
@@ -1067,12 +1149,10 @@ func apply_multiplayer_death_state() -> void:
 	_stop_dodge_feedback()
 	_stop_revive_glow_effect()
 	shooting_timer.stop()
-	armed_effect_sprite.visible = false
-	armed_effect_sprite.stop()
+	_cleanup_character_combat_on_death()
 	footstep_audio.stop()
 	health_bar.set_health(0, max_health)
 	health_bar.visible = false
-	_update_ammo_bar()
 	_update_skill1_charge_bar()
 	if plays_multiplayer_death_animation():
 		if not was_dead or not body_sprite.visible or body_sprite.animation != &"death":
@@ -1082,10 +1162,19 @@ func apply_multiplayer_death_state() -> void:
 		body_sprite.stop()
 	if collision_shape != null:
 		collision_shape.set_deferred("disabled", true)
+	_refresh_dash_ready_visual()
 	health_changed.emit(current_health, max_health)
 	if not was_dead:
 		death_audio.play()
 		died.emit()
+
+
+func _reset_character_resources_on_revive() -> void:
+	pass
+
+
+func _cleanup_character_combat_on_death() -> void:
+	pass
 
 
 func grant_multiplayer_xirang(amount: int) -> bool:
@@ -1178,7 +1267,7 @@ func unlock_skill1() -> bool:
 	_sync_skill1_charge_duration_to_upgrade_level()
 	_update_skill1_charge_bar()
 	_refresh_collectible_stats(false)
-	gunload_audio.play()
+	_play_skill_progress_feedback()
 	return true
 
 
@@ -1228,7 +1317,12 @@ func _apply_next_skill1_upgrade() -> void:
 	skill1_upgrade_level = mini(skill1_upgrade_level + 1, SKILL1_MAX_UPGRADE_LEVEL)
 	_sync_skill1_charge_duration_to_upgrade_level()
 	_update_skill1_charge_bar()
-	gunload_audio.play()
+	_play_skill_progress_feedback()
+
+
+func _play_skill_progress_feedback() -> void:
+	if powerup_audio != null:
+		powerup_audio.play()
 
 
 func _ensure_skill1_base_charge_duration() -> void:
@@ -1278,217 +1372,12 @@ func _try_heal(amount: int) -> bool:
 	return true
 
 
-func get_ammo_capacity() -> int:
-	return maxi(ammo_capacity, 1)
-
-
-func get_reload_progress_ratio() -> float:
-	return reload_progress if is_reloading else 0.0
-
-
 func try_consume_authoritative_player_bullet_ammo() -> bool:
-	if not uses_ammunition() or not supports_projectile_attack_patterns():
-		return false
-	if current_shot_pattern == PickupConfig.ShotPattern.SPIRAL:
-		return true
-	if not _can_fire_ammo_consuming_shot():
-		return false
-	_consume_ammo_after_successful_shot()
-	return true
-
-
-func apply_multiplayer_ammo_state(
-	new_ammo_capacity: int,
-	new_current_ammo: int,
-	new_is_reloading: bool,
-	new_reload_progress: float
-) -> void:
-	ammo_capacity = maxi(new_ammo_capacity, 1)
-	current_ammo = clampi(new_current_ammo, 0, get_ammo_capacity())
-	is_reloading = new_is_reloading
-	reload_progress = clampf(new_reload_progress, 0.0, 1.0)
-	_update_ammo_bar()
-
-
-func _reset_ammo_to_full() -> void:
-	current_ammo = get_ammo_capacity()
-	is_reloading = false
-	reload_progress = 0.0
-	_update_ammo_bar()
-
-
-func _can_fire_ammo_consuming_shot() -> bool:
-	if current_shot_pattern == PickupConfig.ShotPattern.SPIRAL:
-		return true
-	if is_reloading:
-		return false
-	if current_ammo <= 0:
-		_try_start_reload()
-		return false
-	return true
-
-
-func _consume_ammo_after_successful_shot() -> void:
-	if current_shot_pattern == PickupConfig.ShotPattern.SPIRAL:
-		return
-	if not _should_consume_ammo_for_shot():
-		_update_ammo_bar()
-		return
-	current_ammo = maxi(current_ammo - 1, 0)
-	if current_ammo <= 0:
-		_try_start_reload()
-	else:
-		_update_ammo_bar()
-
-
-func _should_consume_ammo_for_shot() -> bool:
-	var free_chance := clampf(
-		ammo_free_shot_chance_percent / 100.0 + _get_inventory_ammo_free_shot_chance(),
-		0.0,
-		1.0
-	)
-	if free_chance <= 0.0:
-		return true
-	if free_chance >= 1.0:
-		return false
-	return randf() >= free_chance
-
-
-func _get_inventory_ammo_free_shot_chance() -> float:
-	if not uses_ammunition() or not supports_projectile_attack_patterns():
-		return 0.0
-	var total_chance := 0.0
-	for item in _get_active_collectible_items():
-		total_chance += item.ammo_free_shot_chance
-	return clampf(total_chance, 0.0, 1.0)
+	return false
 
 
 func _try_start_reload() -> bool:
-	if not uses_ammunition():
-		return false
-	if is_dead or controls_locked:
-		return false
-	if is_reloading:
-		return false
-	if current_ammo >= get_ammo_capacity():
-		return false
-	current_ammo = 0
-	is_reloading = true
-	reload_progress = 0.0
-	_update_ammo_bar()
-	if gunload_audio != null:
-		gunload_audio.play()
-	return true
-
-
-func _update_reload(delta: float) -> void:
-	if not is_reloading:
-		return
-	var safe_duration := maxf(reload_duration, 0.01)
-	reload_progress = clampf(reload_progress + maxf(delta, 0.0) / safe_duration, 0.0, 1.0)
-	if reload_progress >= 1.0:
-		_complete_reload()
-	else:
-		_update_ammo_bar()
-
-
-func _complete_reload() -> void:
-	current_ammo = get_ammo_capacity()
-	is_reloading = false
-	reload_progress = 0.0
-	_update_ammo_bar()
-
-
-func _update_ammo_bar() -> void:
-	if ammo_bar == null:
-		return
-	if uses_attack_interval_bar():
-		_update_attack_interval_bar()
-		return
-	ammo_bar.visible = not is_dead
-	if is_dead:
-		return
-	ammo_bar.call(
-		"set_ammo_state",
-		current_ammo,
-		get_ammo_capacity(),
-		is_reloading,
-		get_reload_progress_ratio()
-	)
-	
-# 根据射击模式和方向发射子弹，返回是否成功发射
-func _fire_bullets(base_direction: Vector2) -> bool:
-	if current_shot_pattern == PickupConfig.ShotPattern.SPIRAL:
-		if base_direction != Vector2.ZERO:
-			last_attack_direction = base_direction.normalized()
-		var has_spawned_forward_bullet := _spawn_bullet(base_direction, false)
-		var has_spawned_backward_bullet := _spawn_bullet(base_direction.rotated(PI), false)
-		spiral_phase = wrapf(spiral_phase + SPIRAL_PHASE_STEP, 0.0, TAU)
-		var has_spawned_bullet := has_spawned_forward_bullet or has_spawned_backward_bullet
-		if has_spawned_bullet:
-			notify_primary_attack_performed()
-		return has_spawned_bullet
-
-	var has_spawned_bullet := _spawn_bullet(base_direction)
-	if has_spawned_bullet:
-		notify_primary_attack_performed()
-	return has_spawned_bullet
-
-
-# 在指定方向上生成单颗子弹
-func _spawn_bullet(shoot_direction: Vector2, track_attack_direction: bool = true) -> bool:
-	var bullet := BULLET_SCENE.instantiate() as Bullet
-	if bullet == null:
-		return false
-
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
-		return false
-
-	bullet.top_level = true
-	var pierces_enemies := _should_fire_piercing_bullet()
-	var homing_target: Enemy = null
-	if _should_fire_homing_bullet():
-		homing_target = _find_homing_bullet_target(shoot_direction)
-	var bullet_damage := get_outgoing_damage(attack_damage, EnemyConfig.DamageType.PHYSICAL)
-	bullet.setup(shoot_direction, bullet_damage, pierces_enemies)
-	bullet.setup_homing(homing_target)
-	bullet.setup_collectible_owner(self)
-	spawn_parent.add_child(bullet)
-	bullet.global_position = global_position + shoot_direction * bullet_spawn_distance
-	var target_enemy_net_id := 0
-	if homing_target != null and is_instance_valid(homing_target):
-		target_enemy_net_id = int(homing_target.get_meta("net_id", 0))
-	_register_multiplayer_projectile(
-		bullet,
-		&"player_bullet",
-		bullet.global_position,
-		shoot_direction,
-		bullet_damage,
-		bullet.speed,
-		bullet.max_lifetime,
-		pierces_enemies,
-		0,
-		target_enemy_net_id
-	)
-	if track_attack_direction and shoot_direction != Vector2.ZERO:
-		last_attack_direction = shoot_direction.normalized()
-	gunshot_audio.play()
-	return true
-
-
-# 螺旋射击模式下，自动根据相位角度发射子弹
-func _try_auto_spiral_shoot() -> void:
-	if not supports_projectile_attack_patterns():
-		return
-	if not shooting_timer.is_stopped():
-		return
-
-	var spiral_direction := Vector2.RIGHT.rotated(spiral_phase)
-	var has_spawned_bullet := _fire_bullets(spiral_direction)
-
-	if has_spawned_bullet:
-		shooting_timer.start(_get_effective_fire_interval())
+	return false
 
 
 func _update_skill1_charge(delta: float) -> void:
@@ -1506,43 +1395,15 @@ func _update_skill1_charge(delta: float) -> void:
 
 
 func _try_use_skill1() -> bool:
-	if not skill1_unlocked:
-		return false
-	if is_dead or controls_locked:
-		return false
-	_sync_skill1_charge_duration_to_upgrade_level()
-	if skill1_charge < skill1_charge_duration:
-		return false
+	return false
 
-	var bomb := SKILL1_BOMB_SCENE.instantiate() as WeishidaierSkill1Bomb
-	if bomb == null:
-		return false
 
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
-		return false
+func can_request_multiplayer_projectile(_projectile_type: StringName) -> bool:
+	return false
 
-	var shoot_direction := _get_skill1_direction()
-	bomb.top_level = true
-	var bomb_damage := get_skill1_bomb_damage()
-	bomb.setup(self, shoot_direction, bomb_damage)
-	if not try_begin_skill1_activation(_uses_authoritative_skill_preserve_roll()):
-		bomb.free()
-		return false
-	spawn_parent.add_child(bomb)
-	bomb.global_position = global_position + shoot_direction * skill1_bomb_spawn_distance
-	_register_multiplayer_projectile(
-		bomb,
-		&"skill1_bomb",
-		bomb.global_position,
-		shoot_direction,
-		bomb_damage,
-		bomb.speed,
-		bomb.max_lifetime
-	)
-	_activate_collectible_skill_effects()
-	gunload_audio.play()
-	return true
+
+func get_multiplayer_projectile_spawn_distance(_projectile_type: StringName) -> float:
+	return 0.0
 
 
 func _register_multiplayer_projectile(
@@ -1605,6 +1466,10 @@ func _get_inventory_bullet_pierce_chance() -> float:
 		if _is_collectible_condition_active(item):
 			total_chance += item.conditional_bullet_pierce_chance
 	return clampf(total_chance, 0.0, 1.0)
+
+
+func get_inventory_bullet_pierce_chance() -> float:
+	return _get_inventory_bullet_pierce_chance()
 
 
 func _get_inventory_bullet_homing_chance() -> float:
@@ -2373,7 +2238,7 @@ func _spawn_collectible_arrow(target_enemy: Enemy, arrow_damage: int) -> bool:
 	arrow.top_level = true
 	arrow.call("setup", shoot_direction, arrow_damage)
 	spawn_parent.add_child(arrow)
-	arrow.global_position = global_position + shoot_direction * bullet_spawn_distance
+	arrow.global_position = global_position + shoot_direction * auxiliary_projectile_spawn_distance
 	_register_multiplayer_projectile(
 		arrow,
 		&"collectible_arrow",
@@ -2422,7 +2287,7 @@ func _spawn_collectible_sakura_rocket(target_enemy: Enemy, rocket_damage: int) -
 		EnemyConfig.DamageType.MAGIC
 	)
 	spawn_parent.add_child(rocket)
-	rocket.global_position = global_position + shoot_direction * bullet_spawn_distance
+	rocket.global_position = global_position + shoot_direction * auxiliary_projectile_spawn_distance
 	var target_enemy_net_id := int(target_enemy.get_meta("net_id", 0))
 	_register_multiplayer_projectile(
 		rocket,
@@ -2746,10 +2611,173 @@ func _update_skill1_charge_bar() -> void:
 	)
 
 
-func _get_skill1_direction() -> Vector2:
-	if last_attack_direction != Vector2.ZERO:
-		return last_attack_direction.normalized()
-	return _facing_suffix_to_vector(facing_suffix)
+func is_dashing() -> bool:
+	return dash_time_left > 0.0 and dash_distance_left > 0.0
+
+
+func is_dash_invulnerable() -> bool:
+	return is_dashing() or multiplayer_dash_protection_time_left > 0.0
+
+
+func is_dash_ready() -> bool:
+	return (
+		dash_cooldown_timer != null
+		and dash_cooldown_timer.is_stopped()
+		and not is_dashing()
+		and not is_dead
+		and not controls_locked
+	)
+
+
+func get_dash_cooldown_ratio() -> float:
+	if dash_cooldown_timer == null or dash_cooldown_timer.is_stopped():
+		return 1.0
+	var cooldown_duration := maxf(dash_cooldown_timer.wait_time, 0.001)
+	return clampf(1.0 - dash_cooldown_timer.time_left / cooldown_duration, 0.0, 1.0)
+
+
+func _try_start_dash(move_direction: Vector2) -> bool:
+	if move_direction.length_squared() < DASH_INPUT_MIN_LENGTH_SQUARED:
+		return false
+	if not is_dash_ready():
+		return false
+
+	_begin_dash(move_direction.normalized())
+	_notify_multiplayer_dash_started(dash_direction, move_direction.limit_length(1.0))
+	return true
+
+
+func _begin_dash(direction: Vector2) -> void:
+	dash_direction = direction.normalized()
+	dash_time_left = maxf(dash_duration, 0.001)
+	dash_distance_left = maxf(dash_distance, 0.0)
+	if dash_cooldown > 0.0:
+		dash_cooldown_timer.start(dash_cooldown)
+	_set_dash_effect_direction(dash_direction)
+	_set_dash_effect_strength(1.0)
+	speed_trail_effect.call("set_motion_direction", dash_direction)
+	speed_trail_effect.call("set_effect_active", true)
+	_refresh_dash_ready_visual()
+
+
+func _perform_dash_movement(delta: float) -> void:
+	if not is_dashing():
+		return
+	var physics_delta := maxf(delta, 0.000001)
+	var dash_speed := dash_distance / maxf(dash_duration, 0.001)
+	var step_distance := minf(dash_distance_left, dash_speed * physics_delta)
+	var position_before_dash_step := global_position
+	velocity = dash_direction * (step_distance / physics_delta)
+	move_and_slide()
+	var traveled_distance := minf(position_before_dash_step.distance_to(global_position), step_distance)
+	dash_distance_left = maxf(dash_distance_left - traveled_distance, 0.0)
+	dash_time_left = maxf(dash_time_left - physics_delta, 0.0)
+	var fade_duration := minf(DASH_VISUAL_FADE_DURATION, maxf(dash_duration, 0.001))
+	_set_dash_effect_strength(clampf(dash_time_left / fade_duration, 0.0, 1.0))
+	if dash_time_left <= 0.0 or dash_distance_left <= 0.0:
+		_finish_dash()
+
+
+func _finish_dash() -> void:
+	dash_time_left = 0.0
+	dash_distance_left = 0.0
+	dash_direction = Vector2.ZERO
+	_set_dash_effect_strength(0.0)
+	_refresh_dash_ready_visual()
+
+
+func _notify_multiplayer_dash_started(direction: Vector2, start_move_input: Vector2) -> void:
+	var current_scene := get_tree().current_scene
+	if current_scene == null or not current_scene.has_method("notify_local_player_dash_started"):
+		return
+	current_scene.call("notify_local_player_dash_started", direction, start_move_input)
+
+
+func start_multiplayer_dash_protection(direction: Vector2) -> bool:
+	if is_dead or controls_locked:
+		return false
+	if direction.length_squared() < DASH_INPUT_MIN_LENGTH_SQUARED:
+		return false
+	if dash_cooldown_timer == null:
+		return false
+	if not dash_cooldown_timer.is_stopped():
+		if dash_cooldown_timer.time_left > MULTIPLAYER_DASH_COOLDOWN_GRACE:
+			return false
+		dash_cooldown_timer.stop()
+	if dash_cooldown > 0.0:
+		dash_cooldown_timer.start(dash_cooldown)
+	multiplayer_dash_protection_time_left = maxf(dash_duration, 0.001)
+	play_remote_dash_visual(direction)
+	return true
+
+
+func _update_multiplayer_dash_protection(delta: float) -> void:
+	if multiplayer_dash_protection_time_left <= 0.0:
+		return
+	multiplayer_dash_protection_time_left = maxf(
+		multiplayer_dash_protection_time_left - maxf(delta, 0.0),
+		0.0
+	)
+
+
+func play_remote_dash_visual(direction: Vector2) -> void:
+	if direction.length_squared() < DASH_INPUT_MIN_LENGTH_SQUARED:
+		return
+	remote_dash_visual_time_left = maxf(dash_duration, 0.001)
+	_set_dash_effect_direction(direction.normalized())
+	_set_dash_effect_strength(1.0)
+	speed_trail_effect.call("set_motion_direction", direction)
+	speed_trail_effect.call("set_effect_active", true)
+
+
+func _update_remote_dash_visual(delta: float) -> void:
+	if uses_local_input or remote_dash_visual_time_left <= 0.0:
+		return
+	remote_dash_visual_time_left = maxf(remote_dash_visual_time_left - maxf(delta, 0.0), 0.0)
+	var fade_duration := minf(DASH_VISUAL_FADE_DURATION, maxf(dash_duration, 0.001))
+	_set_dash_effect_strength(clampf(remote_dash_visual_time_left / fade_duration, 0.0, 1.0))
+	if remote_dash_visual_time_left <= 0.0:
+		_stop_remote_dash_visual()
+
+
+func _stop_remote_dash_visual() -> void:
+	remote_dash_visual_time_left = 0.0
+	_set_dash_effect_strength(0.0)
+	if speed_trail_effect != null:
+		speed_trail_effect.call("set_effect_active", false)
+
+
+func _set_dash_effect_direction(direction: Vector2) -> void:
+	var sprite_material := body_sprite.material as ShaderMaterial
+	if sprite_material != null:
+		sprite_material.set_shader_parameter(DASH_DIRECTION_SHADER_PARAMETER, direction.normalized())
+
+
+func _set_dash_effect_strength(strength: float) -> void:
+	var sprite_material := body_sprite.material as ShaderMaterial
+	if sprite_material != null:
+		sprite_material.set_shader_parameter(
+			DASH_EFFECT_STRENGTH_SHADER_PARAMETER,
+			clampf(strength, 0.0, 1.0)
+		)
+
+
+func _refresh_dash_ready_visual() -> void:
+	if dash_ready_indicator == null:
+		return
+	var can_show_indicator := uses_local_input and not is_dead and not controls_locked
+	dash_ready_indicator.visible = can_show_indicator
+	var indicator_material := dash_ready_indicator.material as ShaderMaterial
+	if indicator_material == null:
+		return
+	indicator_material.set_shader_parameter(
+		DASH_READY_STRENGTH_SHADER_PARAMETER,
+		1.0 if can_show_indicator and is_dash_ready() else 0.0
+	)
+
+
+func _on_dash_cooldown_timer_timeout() -> void:
+	_refresh_dash_ready_visual()
 
 # 获取当前实际移动速度（受移速加成影响）
 func _get_effective_move_speed() -> float:
@@ -2788,18 +2816,11 @@ func _get_effective_fire_interval() -> float:
 
 # 获取当前实际射速倍率
 func _get_effective_fire_rate_multiplier() -> float:
-	if _has_active_form_override():
-		return max(form_fire_rate_multiplier, 0.01)
-
-	return max(rapid_fire_rate_multiplier, 0.01)
+	return maxf(_get_character_fire_rate_multiplier(), 0.01)
 
 
-# 判断是否处于特殊的形态或弹幕模式下
-func _has_active_form_override() -> bool:
-	return (
-		current_form_mode != PickupConfig.PlayerFormMode.NORMAL
-		or current_shot_pattern != PickupConfig.ShotPattern.NORMAL
-	)
+func _get_character_fire_rate_multiplier() -> float:
+	return maxf(rapid_fire_rate_multiplier, 0.01)
 
 # 刷新射击定时器的等待时间，响应射速 buff 变化
 func _refresh_shooting_timer_wait_time() -> void:
@@ -2843,24 +2864,13 @@ func _update_attack_interval_bar() -> void:
 
 
 func _set_attack_interval_bar_progress(ratio: float) -> void:
+	if attack_interval_bar == null:
+		return
 	var clamped_ratio := clampf(ratio, 0.0, 1.0)
 	var is_ready := clamped_ratio >= 0.999
-	if attack_interval_bar != null:
-		attack_interval_bar.visible = not is_dead
-		if attack_interval_bar.has_method("set_cooldown_progress"):
-			attack_interval_bar.call("set_cooldown_progress", clamped_ratio, is_ready)
-		if ammo_bar != null:
-			ammo_bar.visible = false
-		return
-	if ammo_bar == null:
-		return
-	ammo_bar.visible = not is_dead
-	if is_dead:
-		return
-	if is_ready:
-		ammo_bar.call("set_ammo_state", 1, 1, false, 0.0)
-	else:
-		ammo_bar.call("set_ammo_state", 0, 1, true, clamped_ratio)
+	attack_interval_bar.visible = not is_dead
+	if attack_interval_bar.has_method("set_cooldown_progress"):
+		attack_interval_bar.call("set_cooldown_progress", clamped_ratio, is_ready)
 
 # 每帧更新道具 Buff 剩余时间，并在到期后恢复默认状态。
 func _update_pickup_effects(delta: float) -> void:
@@ -2874,41 +2884,11 @@ func _update_pickup_effects(delta: float) -> void:
 		if rapid_buff_time_left <= 0.0:
 			rapid_fire_rate_multiplier = DEFAULT_FIRE_RATE_MULTIPLIER
 			_refresh_shooting_timer_wait_time()
+	_update_character_pickup_effects(delta)
 
-	if form_buff_time_left > 0.0:
-		form_buff_time_left = maxf(form_buff_time_left - delta, 0.0)
-		if form_buff_time_left <= 0.0:
-			current_form_mode = PickupConfig.PlayerFormMode.NORMAL
-			current_shot_pattern = PickupConfig.ShotPattern.NORMAL
-			form_fire_rate_multiplier = DEFAULT_FIRE_RATE_MULTIPLIER
-			spiral_phase = 0.0
-			_refresh_shooting_timer_wait_time()
 
-# 更新武装状态特效动画表现
-func _update_armed_effect() -> void:
-	if is_dead:
-		if armed_effect_sprite.visible:
-			armed_effect_sprite.visible = false
-		if armed_effect_sprite.is_playing():
-			armed_effect_sprite.stop()
-		return
-	var is_armed := current_form_mode == PickupConfig.PlayerFormMode.ARMED
-
-	if not is_armed:
-		if armed_effect_sprite.visible:
-			armed_effect_sprite.visible = false
-		if armed_effect_sprite.is_playing():
-			armed_effect_sprite.stop()
-		return
-
-	if not armed_effect_sprite.visible:
-		armed_effect_sprite.visible = true
-	if armed_effect_sprite.is_playing():
-		return
-	if armed_effect_sprite.sprite_frames == null:
-		return
-	if armed_effect_sprite.sprite_frames.has_animation(&"default"):
-		armed_effect_sprite.play(&"default")
+func _update_character_pickup_effects(_delta: float) -> void:
+	pass
 
 
 # 更新临时移速增减的视觉反馈
@@ -2933,7 +2913,7 @@ func _update_movement_status_visuals(move_direction: Vector2) -> void:
 	if visual_direction.length_squared() <= 0.001:
 		visual_direction = velocity
 	var is_moving := visual_direction.length_squared() > 0.001
-	speed_trail_effect.call("set_effect_active", is_temporarily_hasted and is_moving)
+	speed_trail_effect.call("set_effect_active", (is_temporarily_hasted or is_dashing()) and is_moving)
 	if is_moving:
 		speed_trail_effect.call("set_motion_direction", visual_direction)
 
@@ -3027,14 +3007,14 @@ func _play_pickup_audio(config: PickupConfig, has_form_override: bool) -> void:
 		powerup_audio.play()
 
 	if has_form_override:
-		gunload_audio.play()
+		_play_character_pickup_feedback()
 
 
-# 根据当前形态获取动画前缀
+func _play_character_pickup_feedback() -> void:
+	pass
+
+
 func _get_animation_prefix() -> StringName:
-	if current_form_mode == PickupConfig.PlayerFormMode.ARMED:
-		return ARMED_ANIMATION_PREFIX
-
 	return NORMAL_ANIMATION_PREFIX
 
 
@@ -3066,7 +3046,7 @@ func get_multiplayer_facing_id() -> int:
 
 
 func get_multiplayer_anim_state() -> int:
-	return 1 if current_form_mode == PickupConfig.PlayerFormMode.ARMED else 0
+	return 0
 
 
 func _set_multiplayer_facing_id(facing_id: int) -> void:
@@ -3214,6 +3194,9 @@ func _die() -> void:
 		apply_multiplayer_death_state()
 		return
 	is_dead = true
+	_finish_dash()
+	_stop_remote_dash_visual()
+	multiplayer_dash_protection_time_left = 0.0
 	mouse_fire_held = false
 	velocity = Vector2.ZERO
 	_update_movement_status_visuals(Vector2.ZERO)
@@ -3222,14 +3205,13 @@ func _die() -> void:
 	_stop_dodge_feedback()
 	_stop_revive_glow_effect()
 	shooting_timer.stop()
-	armed_effect_sprite.visible = false
-	armed_effect_sprite.stop()
+	_cleanup_character_combat_on_death()
 	footstep_audio.stop()
 	death_audio.play()
 	health_bar.set_health(0, max_health)
 	health_bar.visible = false
-	_update_ammo_bar()
 	_update_skill1_charge_bar()
+	_refresh_dash_ready_visual()
 	_play_death_animation()
 	died.emit()
 
@@ -3238,10 +3220,6 @@ func _play_death_animation() -> void:
 	body_sprite.visible = true
 	if body_sprite.sprite_frames != null and body_sprite.sprite_frames.has_animation(&"death"):
 		body_sprite.play(&"death")
-
-
-func _on_shooting_timer_timeout() -> void:
-	pass
 
 
 # 升级基础攻击力，每级 +4

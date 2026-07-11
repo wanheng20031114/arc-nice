@@ -1,6 +1,6 @@
 extends SceneTree
 
-const HOE_CAT_SCENE_PATH := "res://scene/player_hoe_cat.tscn"
+const HOE_CAT_SCENE_PATH := "res://scene/player/hoe_cat/player_hoe_cat.tscn"
 const SPIRAL_PICKUP := preload("res://resources/config/pickups/pickup_spiral.tres")
 const RAPID_PICKUP := preload("res://resources/config/pickups/pickup_rapid.tres")
 const TEST_PRIMARY_DIRECTION := Vector2(0.9396926, 0.34202015)
@@ -146,6 +146,10 @@ func _test_starting_stats_and_attack_speed_contract() -> void:
 	_expect(not player.uses_ammunition(), "Hoe Cat primary attack must not consume ammunition.")
 	_expect(not player.supports_projectile_attack_patterns(), "Hoe Cat must reject projectile-only shot patterns.")
 	_expect(player.uses_attack_interval_bar(), "Hoe Cat must expose the attack interval bar.")
+	_expect(player.get_node_or_null("ArmedEffectSprite") == null, "Hoe Cat must not carry Weishidaier's armed-effect placeholder.")
+	_expect(player.get_node_or_null("AmmoBar") == null, "Hoe Cat must not carry a hidden ammunition bar.")
+	_expect(player.get_node_or_null("PrimaryAttackAudio") is AudioStreamPlayer2D, "Hoe Cat primary audio must use a character-neutral node name.")
+	_expect(player.get_node_or_null("Skill1Audio") is AudioStreamPlayer2D, "Hoe Cat skill audio must use a character-neutral node name.")
 	_expect(
 		player.basic_attack_query_shape != null
 		and is_equal_approx(player.basic_attack_query_shape.radius, 48.0),
@@ -173,16 +177,15 @@ func _test_starting_stats_and_attack_speed_contract() -> void:
 	_expect(is_equal_approx(float(player.call("_get_effective_fire_interval")), 0.25), "Rapid x2 must reduce Hoe Cat's 0.5-second interval to 0.25 seconds.")
 	player.call("_update_pickup_effects", RAPID_PICKUP.duration + 0.1)
 	_expect(is_equal_approx(float(player.call("_get_effective_fire_interval")), 0.5), "Hoe Cat attack interval must return to 0.5 seconds after Rapid expires.")
-	player.current_ammo = 0
-	_expect(not bool(player.call("_try_start_reload")), "Hoe Cat must reject reload even if its inherited ammo value is empty.")
-	_expect(not player.is_reloading, "Hoe Cat must never enter the reload state.")
+	_expect(not bool(player.call("_try_start_reload")), "Hoe Cat must reject reload because it has no ammunition resource.")
+	_expect(not player.get_multiplayer_is_reloading(), "Hoe Cat must never enter the reload state.")
 
 
 func _test_projectile_only_pickup_is_rejected() -> void:
 	var applied := player.apply_pickup(SPIRAL_PICKUP)
 	_expect(not applied, "Pure projectile spiral pickup must not apply to Hoe Cat.")
 	_expect(
-		player.current_shot_pattern == PickupConfig.ShotPattern.NORMAL,
+		player.get_multiplayer_shot_pattern() == PickupConfig.ShotPattern.NORMAL,
 		"Rejected projectile pickup must not change Hoe Cat shot pattern."
 	)
 
@@ -239,7 +242,7 @@ func _test_generic_collectible_hooks_for_both_characters() -> void:
 	_expect(player.current_xirang == 31, "Hoe Cat primary-attack kill must trigger the existing kill hook.")
 	_expect(is_zero_approx(float(player.call("_get_inventory_bullet_pierce_chance"))), "Projectile piercing must remain silently inactive for Hoe Cat.")
 
-	var weishidaier_scene := load("res://scene/player_weishidaier.tscn") as PackedScene
+	var weishidaier_scene := load("res://scene/player/weishidaier/player_weishidaier.tscn") as PackedScene
 	var weishidaier := weishidaier_scene.instantiate() as Player if weishidaier_scene != null else null
 	_expect(weishidaier != null, "Weishidaier must instantiate for shared generic-hook regression coverage.")
 	if weishidaier == null:
@@ -458,7 +461,7 @@ func _test_whirlwind_damage_and_heal() -> void:
 
 
 func _test_dynamic_skill_profile() -> void:
-	var panel_scene := load("res://scene/player_profile_panel.tscn") as PackedScene
+	var panel_scene := load("res://scene/player/ui/player_profile_panel.tscn") as PackedScene
 	var profile_panel := panel_scene.instantiate() as PlayerProfilePanel if panel_scene != null else null
 	_expect(profile_panel != null, "Player profile panel must instantiate for Hoe Cat presentation.")
 	if profile_panel == null:

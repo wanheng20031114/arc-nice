@@ -1,0 +1,21 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Shader" path="res://scene/player/effects/dash_ready_glow.gdshader" id="1_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_dash_ready"]
+resource_local_to_scene = true
+shader = ExtResource("1_shader")
+shader_parameter/ready_strength = 1.0
+shader_parameter/glow_color = Color(0.08, 1.55, 1.35, 1)
+shader_parameter/glow_opacity = 0.18
+shader_parameter/pulse_speed = 2.2
+shader_parameter/pulse_amount = 0.1
+
+[node name="DashReadyIndicator" type="ColorRect"]
+z_index = 0
+offset_left = -14.0
+offset_top = 6.0
+offset_right = 14.0
+offset_bottom = 14.0
+mouse_filter = 2
+material = SubResource("ShaderMaterial_dash_ready")

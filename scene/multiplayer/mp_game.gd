@@ -6,7 +6,7 @@ const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const COLLECTIBLE_ARROW_PROJECTILE_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
 const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/collectible_arrow_projectile.gd")
-const SKILL1_BOMB_SCENE := preload("res://scene/weishidaier_skill1_bomb.tscn")
+const SKILL1_BOMB_SCENE := preload("res://scene/player/weishidaier/weishidaier_skill1_bomb.tscn")
 const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/collectible_area_effect.tscn")
 const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/collectible_frost_area_effect.tscn")
 const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
@@ -27,6 +27,9 @@ const LINGLAN_SKILL4_ORB_SCRIPT := preload("res://scene/linglan_skill4_light_orb
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 
 const INPUT_BUTTON_RELOAD := 2
+const INPUT_BUTTON_DASH := 4
+const DASH_INPUT_REDUNDANCY_PACKETS := 3
+const DASH_COOLDOWN_NETWORK_TOLERANCE_SECONDS := 0.35
 const HOE_ACTION_PRIMARY := &"primary"
 const HOE_ACTION_WHIRLWIND := &"whirlwind"
 const GAME_RUNTIME_HOST_AUTHORITY := 1
@@ -56,12 +59,12 @@ const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_ACTION_SNAPSHOT_REORDER_TOLERANCE_SECONDS := 0.075
 # Multiplayer protocol map:
-# - CH_INPUT unreliable_ordered: client player pose/input to host.
+# - CH_INPUT unreliable_ordered: client player pose/input and redundant dash requests to host.
 # - CH_STATE unreliable_ordered: host player/enemy snapshots to clients.
 # - CH_PROJECTILE mixed: client spawn/hit reports are reliable and ordered;
 #   host-to-client visual projectile replicas remain unreliable_ordered.
-# - CH_EVENT reliable: damage, death, revive, spawn/despawn, pickups, upgrades,
-#   and wave/HUD events.
+# - CH_EVENT reliable: dash confirmation, damage, death, revive, spawn/despawn,
+#   pickups, upgrades, and wave/HUD events.
 # Host owns enemy AI, player damage confirmation, death, revive, pickups, upgrades, and wave lifecycle.
 
 @onready var net_manager: Node = get_node("/root/NetManager")
@@ -86,7 +89,15 @@ var _has_sent_input: bool = false
 var _last_sent_move_input: Vector2 = Vector2.ZERO
 var _last_sent_shoot_input: Vector2 = Vector2.ZERO
 var _input_frames_since_last_send: int = _NetConstants.INPUT_KEEPALIVE_INTERVAL_FRAMES
+var _local_dash_request_sequence: int = 0
+var _pending_dash_request_sequence: int = 0
+var _pending_dash_direction: Vector2 = Vector2.ZERO
+var _pending_dash_start_move_input: Vector2 = Vector2.ZERO
+var _pending_dash_input_packets: int = 0
 var _last_player_state_sequences: Dictionary = {}
+var _last_dash_request_sequences: Dictionary = {}
+var _last_dash_confirmed_sequences: Dictionary = {}
+var _last_dash_accepted_times: Dictionary = {}
 var _player_character_mismatch_warnings: Dictionary = {}
 var _hoe_action_sequences_by_peer: Dictionary = {}
 var _accepted_player_state_positions: Dictionary = {}
@@ -207,6 +218,42 @@ func request_multiplayer_skill1_purchase() -> void:
 		_apply_skill1_purchase_for_peer(_get_local_peer_id())
 	else:
 		net_skill1_purchase_requested.rpc_id(_get_host_peer_id())
+
+
+func notify_local_player_dash_started(direction: Vector2, start_move_input: Vector2) -> void:
+	if game == null or not _client_host_game_ready:
+		return
+	if not _is_finite_vector2(direction) or not _is_finite_vector2(start_move_input):
+		return
+	if direction.length_squared() <= 0.001 or start_move_input.length_squared() <= 0.001:
+		return
+	var peer_id := _get_local_peer_id()
+	var player_node := game.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node) or not player_node.is_dashing():
+		return
+	var safe_direction := direction.normalized()
+	var safe_start_move_input := start_move_input.limit_length(1.0)
+	if safe_direction.dot(safe_start_move_input.normalized()) < 0.8:
+		return
+	_local_dash_request_sequence += 1
+	_pending_dash_request_sequence = _local_dash_request_sequence
+	_pending_dash_direction = safe_direction
+	_pending_dash_start_move_input = safe_start_move_input
+	_pending_dash_input_packets = DASH_INPUT_REDUNDANCY_PACKETS
+	if net_manager.is_host():
+		_pending_dash_input_packets = 0
+		_broadcast_player_dash_confirmed(
+			peer_id,
+			safe_direction,
+			_pending_dash_request_sequence
+		)
+	elif net_manager.is_client():
+		net_player_dash_requested.rpc_id(
+			_get_host_peer_id(),
+			_pending_dash_request_sequence,
+			safe_direction,
+			safe_start_move_input
+		)
 
 
 func request_hoe_primary_attack(direction: Vector2) -> bool:
@@ -580,8 +627,16 @@ func _client_physics_tick(frame: int) -> void:
 	var buttons := 0
 	if Input.is_action_just_pressed("reload"):
 		buttons |= INPUT_BUTTON_RELOAD
+	if _pending_dash_input_packets > 0:
+		buttons |= INPUT_BUTTON_DASH
 	if frame % _NetConstants.INPUT_SEND_INTERVAL_FRAMES == 0 or buttons != 0:
 		_client_send_input_if_needed(buttons)
+		if (buttons & INPUT_BUTTON_DASH) != 0:
+			_pending_dash_input_packets -= 1
+			if _pending_dash_input_packets <= 0:
+				_pending_dash_request_sequence = 0
+				_pending_dash_direction = Vector2.ZERO
+				_pending_dash_start_move_input = Vector2.ZERO
 
 
 func _client_send_input_if_needed(buttons: int) -> void:
@@ -606,9 +661,7 @@ func _client_send_input_if_needed(buttons: int) -> void:
 		or player_node.velocity.length_squared() > INPUT_CHANGE_EPSILON
 		or player_node.skill1_unlocked
 		or player_node.invincibility_time_left > 0.0
-		or player_node.current_form_mode != PickupConfig.PlayerFormMode.NORMAL
-		or player_node.current_shot_pattern != PickupConfig.ShotPattern.NORMAL
-		or player_node.is_reloading
+		or player_node.has_active_multiplayer_character_state()
 	)
 	if not input_changed and not keepalive_due and buttons == 0 and not active_realtime_state:
 		return
@@ -622,8 +675,12 @@ func _client_send_input_if_needed(buttons: int) -> void:
 		input_sequence,
 		player_node.global_position,
 		player_node.velocity,
+		move_input,
 		shoot_input,
 		buttons,
+		_pending_dash_request_sequence,
+		_pending_dash_direction,
+		_pending_dash_start_move_input,
 		player_node.current_health,
 		player_node.max_health,
 		player_node.current_xirang,
@@ -632,8 +689,8 @@ func _client_send_input_if_needed(buttons: int) -> void:
 		player_node.skill1_unlocked,
 		player_node.skill1_charge,
 		player_node.skill1_charge_duration,
-		player_node.current_form_mode,
-		player_node.current_shot_pattern
+		player_node.get_multiplayer_form_mode(),
+		player_node.get_multiplayer_shot_pattern()
 	)
 
 
@@ -866,8 +923,12 @@ func _rpc_client_player_state(
 	sequence: int,
 	reported_position: Vector2,
 	reported_velocity: Vector2,
+	move_input: Vector2,
 	shoot_input: Vector2,
 	buttons: int,
+	dash_request_sequence: int,
+	dash_direction: Vector2,
+	dash_start_move_input: Vector2,
 	current_health: int,
 	max_health: int,
 	current_xirang: int,
@@ -897,6 +958,20 @@ func _rpc_client_player_state(
 		net_player_state_corrected.rpc_id(sender_id, player_node.global_position, player_node.velocity)
 		return
 	var use_reload: bool = (buttons & INPUT_BUTTON_RELOAD) != 0
+	var use_dash: bool = (buttons & INPUT_BUTTON_DASH) != 0
+	if use_dash:
+		var dash_movement_evidence := dash_start_move_input
+		if dash_movement_evidence.length_squared() <= 0.001:
+			dash_movement_evidence = move_input
+		if dash_movement_evidence.length_squared() <= 0.001:
+			dash_movement_evidence = reported_velocity
+		_try_accept_client_dash_request(
+			sender_id,
+			player_node,
+			dash_request_sequence,
+			dash_direction,
+			dash_movement_evidence
+		)
 	_apply_accepted_client_player_state(
 		sender_id,
 		player_node,
@@ -933,6 +1008,101 @@ func _apply_accepted_client_player_state(
 		player_node.get_multiplayer_facing_id(),
 		player_node.get_multiplayer_anim_state()
 	)
+
+
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_player_dash_requested(
+	dash_request_sequence: int,
+	direction: Vector2,
+	start_move_input: Vector2
+) -> void:
+	if not net_manager.is_host() or game == null:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
+	var player_node := game.get_player_for_peer(sender_id)
+	_try_accept_client_dash_request(
+		sender_id,
+		player_node,
+		dash_request_sequence,
+		direction,
+		start_move_input
+	)
+
+
+func _try_accept_client_dash_request(
+	peer_id: int,
+	player_node: Player,
+	dash_request_sequence: int,
+	direction: Vector2,
+	movement_evidence: Vector2
+) -> bool:
+	if peer_id <= 0 or dash_request_sequence <= 0:
+		return false
+	if player_node == null or not is_instance_valid(player_node):
+		return false
+	if dash_request_sequence <= int(_last_dash_request_sequences.get(peer_id, 0)):
+		return false
+	if not _is_finite_vector2(direction) or not _is_finite_vector2(movement_evidence):
+		return false
+	if direction.length_squared() <= 0.001 or movement_evidence.length_squared() <= 0.001:
+		return false
+	var safe_direction := direction.normalized()
+	if safe_direction.dot(movement_evidence.normalized()) < 0.8:
+		return false
+	var accepted_at := _get_net_time()
+	var minimum_dash_interval := maxf(
+		player_node.dash_cooldown - DASH_COOLDOWN_NETWORK_TOLERANCE_SECONDS,
+		0.0
+	)
+	if _last_dash_accepted_times.has(peer_id):
+		var last_accepted_at := float(_last_dash_accepted_times[peer_id])
+		if accepted_at - last_accepted_at < minimum_dash_interval:
+			return false
+	if not player_node.start_multiplayer_dash_protection(safe_direction):
+		return false
+	_last_dash_request_sequences[peer_id] = dash_request_sequence
+	_last_dash_accepted_times[peer_id] = accepted_at
+	_broadcast_player_dash_confirmed(peer_id, safe_direction, dash_request_sequence)
+	return true
+
+
+func _broadcast_player_dash_confirmed(
+	peer_id: int,
+	direction: Vector2,
+	dash_request_sequence: int
+) -> void:
+	if not net_manager.is_host() or peer_id <= 0 or dash_request_sequence <= 0:
+		return
+	_rpc_to_connected_clients(
+		&"net_player_dash_confirmed",
+		[peer_id, direction.normalized(), dash_request_sequence]
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_player_dash_confirmed(
+	player_peer_id: int,
+	direction: Vector2,
+	dash_request_sequence: int
+) -> void:
+	if game == null or not is_client_view_runtime():
+		return
+	if player_peer_id == _get_client_view_local_peer_id():
+		if dash_request_sequence == _pending_dash_request_sequence:
+			_pending_dash_input_packets = 0
+			_pending_dash_request_sequence = 0
+			_pending_dash_direction = Vector2.ZERO
+			_pending_dash_start_move_input = Vector2.ZERO
+		return
+	if dash_request_sequence <= int(_last_dash_confirmed_sequences.get(player_peer_id, 0)):
+		return
+	var player_node := game.get_player_for_peer(player_peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	_last_dash_confirmed_sequences[player_peer_id] = dash_request_sequence
+	player_node.play_remote_dash_visual(direction)
 
 
 @rpc("any_peer", "call_remote", "reliable", 4)
@@ -1575,6 +1745,8 @@ func _get_authoritative_client_projectile_parameters(
 		return {}
 	match projectile_type:
 		&"player_bullet":
+			if not owner_player.can_request_multiplayer_projectile(projectile_type):
+				return {}
 			if not owner_player.try_consume_authoritative_player_bullet_ammo():
 				return {}
 			var bullet := BULLET_SCENE.instantiate() as Bullet
@@ -1587,12 +1759,14 @@ func _get_authoritative_client_projectile_parameters(
 				),
 				"speed": bullet.speed,
 				"lifetime": bullet.max_lifetime,
-				"can_pierce_enemies": owner_player._get_inventory_bullet_pierce_chance() > 0.0,
+				"can_pierce_enemies": owner_player.get_inventory_bullet_pierce_chance() > 0.0,
 				"can_home": owner_player._get_inventory_bullet_homing_chance() > 0.0,
 			}
 			bullet.free()
 			return bullet_result
 		&"skill1_bomb":
+			if not owner_player.can_request_multiplayer_projectile(projectile_type):
+				return {}
 			if not owner_player.consume_multiplayer_skill1_charge():
 				return {}
 			owner_player.activate_collectible_skill_effects_from_multiplayer()
@@ -1600,7 +1774,7 @@ func _get_authoritative_client_projectile_parameters(
 			if bomb == null:
 				return {}
 			var bomb_result := {
-				"damage": owner_player.get_skill1_bomb_damage(),
+				"damage": owner_player.get_skill1_projectile_damage(),
 				"speed": bomb.speed,
 				"lifetime": bomb.max_lifetime,
 			}
@@ -1702,7 +1876,7 @@ func _get_bounded_player_projectile_damage(owner_peer_id: int, reported_damage: 
 	if owner_player.has_skill1():
 		max_authoritative_damage = maxi(
 			max_authoritative_damage,
-			owner_player.get_skill1_bomb_damage()
+			owner_player.get_skill1_projectile_damage()
 		)
 	return clampi(reported_damage, 1, max_authoritative_damage)
 
@@ -1761,14 +1935,14 @@ func _is_client_projectile_spawn_position_allowed(
 		owner_player = game.get_player_for_peer(owner_peer_id)
 	if owner_player == null or not is_instance_valid(owner_player):
 		return false
-	var allowed_distance := CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE
-	match projectile_type:
-		&"player_bullet":
-			allowed_distance += owner_player.bullet_spawn_distance
-		&"skill1_bomb":
-			allowed_distance += owner_player.skill1_bomb_spawn_distance
-		_:
-			return false
+	var projectile_spawn_distance := (
+		owner_player.get_multiplayer_projectile_spawn_distance(projectile_type)
+	)
+	if projectile_spawn_distance <= 0.0:
+		return false
+	var allowed_distance := (
+		CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE + projectile_spawn_distance
+	)
 	if owner_player.global_position.distance_to(spawn_position) <= allowed_distance:
 		return true
 	if _accepted_player_state_positions.has(owner_peer_id):
@@ -3536,6 +3710,9 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_last_enemy_keyframe_time_by_peer.erase(peer_id)
 	player_visual_interpolators.erase(peer_id)
 	_last_player_state_sequences.erase(peer_id)
+	_last_dash_request_sequences.erase(peer_id)
+	_last_dash_confirmed_sequences.erase(peer_id)
+	_last_dash_accepted_times.erase(peer_id)
 	_player_character_mismatch_warnings.erase(peer_id)
 	_hoe_action_sequences_by_peer.erase(peer_id)
 	_accepted_player_state_positions.erase(peer_id)

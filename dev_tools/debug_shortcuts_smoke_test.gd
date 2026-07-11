@@ -1,7 +1,7 @@
 extends SceneTree
 
 const GAME_SCENE := preload("res://scene/game.tscn")
-const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
+const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 
 var failures: Array[String] = []

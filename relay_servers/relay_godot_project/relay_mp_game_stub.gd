@@ -18,8 +18,12 @@ func _rpc_client_player_state(
 	sequence: int,
 	reported_position: Vector2,
 	reported_velocity: Vector2,
+	move_input: Vector2,
 	shoot_input: Vector2,
 	buttons: int,
+	dash_request_sequence: int,
+	dash_direction: Vector2,
+	dash_start_move_input: Vector2,
 	current_health: int,
 	max_health: int,
 	current_xirang: int,
@@ -36,6 +40,24 @@ func _rpc_client_player_state(
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_player_state_corrected(corrected_position: Vector2, corrected_velocity: Vector2) -> void:
+	pass
+
+
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_player_dash_requested(
+	dash_request_sequence: int,
+	direction: Vector2,
+	start_move_input: Vector2
+) -> void:
+	pass
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_player_dash_confirmed(
+	player_peer_id: int,
+	direction: Vector2,
+	dash_request_sequence: int
+) -> void:
 	pass
 
 

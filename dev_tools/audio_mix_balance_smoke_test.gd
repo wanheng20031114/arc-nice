@@ -1,13 +1,13 @@
 extends SceneTree
 
 const GAME_SCENE := preload("res://scene/game.tscn")
-const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
+const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const ENEMY_BASE_SCENE := preload("res://scene/enemy/enemy.tscn")
 const YUANSHI_BOMBER_SCENE := preload("res://scene/enemy/yuanshi_insect_bomber.tscn")
 const YUANSHI_PURPLE_BOMBER_SCENE := preload("res://scene/enemy/yuanshi_insect_purple_bomber.tscn")
 const YUANSHI_FIRE_RANGED_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_ranged.tscn")
 const RPG_EXPLOSION_SCENE := preload("res://scene/enemy/capoo_rpg_explosion.tscn")
-const SKILL1_EXPLOSION_SCENE := preload("res://scene/weishidaier_skill1_explosion.tscn")
+const SKILL1_EXPLOSION_SCENE := preload("res://scene/player/weishidaier/weishidaier_skill1_explosion.tscn")
 const MERCHANT_BUBBLE_SCENE := preload("res://scene/merchant_dialogue_bubble.tscn")
 const MULTIPLAYER_LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const UPGRADE_ROW_SCENE := preload("res://scene/upgrade_row.tscn")
@@ -79,8 +79,8 @@ func _test_player_mix() -> void:
 	root.add_child(player)
 	await process_frame
 
-	_expect_volume(player, "GunshotAudio", -2.0, "Primary gunshot mix must stay clear for repeated fire.")
-	_expect_volume(player, "GunloadAudio", -8.0, "Gunload cue must sit behind gunfire.")
+	_expect_volume(player, "PrimaryAttackAudio", -2.0, "Primary gunshot mix must stay clear for repeated fire.")
+	_expect_volume(player, "ReloadAudio", -8.0, "Reload cue must sit behind gunfire.")
 	_expect_volume(player, "FootstepAudio", 6.0, "Footsteps need gain because the source file is very quiet.")
 	_expect_volume(player, "DeathAudio", -4.0, "Player death cue must remain prominent but not spike.")
 	_expect_volume(player, "PowerupAudio", 6.0, "Powerup cue needs gain because the source file is very quiet.")

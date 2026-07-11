@@ -1,6 +1,6 @@
 extends SceneTree
 
-const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
+const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const MERCHANT_SCENE := preload("res://scene/zhuangfangyi_merchant.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const EXPLOSION_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
@@ -254,8 +254,8 @@ func _test_skill1_upgrade_costs_and_charge_duration() -> void:
 		true,
 		0.0,
 		18.0,
-		player.current_form_mode,
-		player.current_shot_pattern,
+		player.get_multiplayer_form_mode(),
+		player.get_multiplayer_shot_pattern(),
 		4
 	)
 	_expect(
@@ -276,8 +276,8 @@ func _test_skill1_upgrade_costs_and_charge_duration() -> void:
 		true,
 		0.0,
 		18.0,
-		player.current_form_mode,
-		player.current_shot_pattern
+		player.get_multiplayer_form_mode(),
+		player.get_multiplayer_shot_pattern()
 	)
 	_expect(
 		is_equal_approx(player.skill1_charge_duration, 10.0),
@@ -398,7 +398,7 @@ func _test_bomb_explosion_damage() -> void:
 	var player := PLAYER_SCENE.instantiate() as Player
 	var other_player := PLAYER_SCENE.instantiate() as Player
 	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as YuanshiInsect
-	var bomb := preload("res://scene/weishidaier_skill1_bomb.tscn").instantiate() as WeishidaierSkill1Bomb
+	var bomb := preload("res://scene/player/weishidaier/weishidaier_skill1_bomb.tscn").instantiate() as WeishidaierSkill1Bomb
 	var explosion_shape := bomb.get_node("ExplosionShape") as CollisionShape2D
 	var explosion_circle := explosion_shape.shape as CircleShape2D
 	_expect(bomb.has_node("AnimatedSprite2D"), "Skill1 bomb must use an animated projectile sprite.")

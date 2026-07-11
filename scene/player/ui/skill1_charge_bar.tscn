@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://db4l5h4j6dnqu"]
 
-[ext_resource type="Script" uid="uid://bvtrntnbvkxcp" path="res://scene/skill1_charge_bar.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://bvtrntnbvkxcp" path="res://scene/player/ui/skill1_charge_bar.gd" id="1_script"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bg"]
 bg_color = Color(0.02, 0.06, 0.08, 0.78)

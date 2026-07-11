@@ -10,7 +10,7 @@ const LASER_FIELD_SCRIPT := preload("res://scene/linglan_skill4_laser_field.gd")
 const ORB_SCRIPT := preload("res://scene/linglan_skill4_light_orb.gd")
 const GAME_SCENE := preload("res://scene/game.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
-const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
+const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 
 
 class Skill4Host:

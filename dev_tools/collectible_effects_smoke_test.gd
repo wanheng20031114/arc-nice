@@ -1,6 +1,6 @@
 extends SceneTree
 
-const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
+const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const APPLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 const RUBY := preload("res://resources/config/collectibles/collectible_ruby.tres")
@@ -471,9 +471,12 @@ func _test_new_stack_and_skill_rules() -> void:
 		not bool(player.call("_should_consume_ammo_for_shot")),
 		"A 100% orange stack must deterministically preserve ammunition."
 	)
-	var ammo_before := player.current_ammo
+	var ammo_before := player.get_multiplayer_current_ammo()
 	player.call("_consume_ammo_after_successful_shot")
-	_expect(player.current_ammo == ammo_before, "A full orange stack must not reduce current ammunition.")
+	_expect(
+		player.get_multiplayer_current_ammo() == ammo_before,
+		"A full orange stack must not reduce current ammunition."
+	)
 	_expect(
 		not LuoxiMerchant.is_collectible_available_for_inventory(ORANGE, run_state),
 		"Orange must stop appearing after ten owned copies."

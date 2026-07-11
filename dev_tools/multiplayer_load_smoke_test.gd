@@ -3,7 +3,7 @@ extends SceneTree
 const LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const GAME_SCENE := preload("res://scene/game.tscn")
-const PLAYER_SCENE := preload("res://scene/player_weishidaier.tscn")
+const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const BOMBER_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_bomber.tres")
 const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres")
@@ -409,7 +409,7 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 	var run_state := root.get_node_or_null("RunState") as RunStateStore
 	if run_state != null:
 		run_state.begin_new_run()
-	var remote_player := game.peer_players.get(2) as Player
+	var remote_player := game.peer_players.get(2) as PlayerWeishidaier
 	if remote_player != null:
 		remote_player.attack_damage = 37
 		remote_player.apply_multiplayer_ammo_state(remote_player.get_ammo_capacity(), 2, false, 0.0)
@@ -430,7 +430,7 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 	)
 	if remote_player != null:
 		_expect(
-			remote_player.current_ammo == 1,
+			remote_player.get_multiplayer_current_ammo() == 1,
 			"Host must consume authoritative ammo when accepting a client player bullet."
 		)
 		remote_player.apply_multiplayer_ammo_state(remote_player.get_ammo_capacity(), 0, false, 0.0)
@@ -443,7 +443,10 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 			empty_ammo_parameters.is_empty(),
 			"Host must reject client player bullets when authoritative ammo is empty."
 		)
-		_expect(remote_player.is_reloading, "Host empty-ammo rejection must start authoritative reload.")
+		_expect(
+			remote_player.get_multiplayer_is_reloading(),
+			"Host empty-ammo rejection must start authoritative reload."
+		)
 		remote_player.apply_multiplayer_ammo_state(remote_player.get_ammo_capacity(), 1, true, 0.25)
 		var reloading_parameters := parameter_mp_game.call(
 			"_get_authoritative_client_projectile_parameters",
@@ -465,7 +468,8 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 			"Host must allow spiral player bullets without ammo even during reload."
 		)
 		_expect(
-			remote_player.current_ammo == 1 and remote_player.is_reloading,
+			remote_player.get_multiplayer_current_ammo() == 1
+			and remote_player.get_multiplayer_is_reloading(),
 			"Host spiral validation must not consume ammo or cancel reload."
 		)
 		remote_player.current_shot_pattern = PickupConfig.ShotPattern.NORMAL
@@ -518,7 +522,11 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 		Vector2.ZERO
 	) as Vector2
 	_expect(invalid_direction == Vector2.ZERO, "Client projectile direction must reject zero vectors.")
-	var near_spawn := remote_player.global_position + Vector2.RIGHT * remote_player.bullet_spawn_distance
+	var near_spawn := (
+		remote_player.global_position
+		+ Vector2.RIGHT
+		* remote_player.get_multiplayer_projectile_spawn_distance(&"player_bullet")
+	)
 	var far_spawn := remote_player.global_position + Vector2(1024.0, 0.0)
 	_expect(
 		bool(parameter_mp_game.call(
@@ -563,7 +571,8 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 			2
 		) as Dictionary
 		_expect(
-			int(charged_skill1_parameters.get("damage", 0)) == remote_player.get_skill1_bomb_damage(),
+			int(charged_skill1_parameters.get("damage", 0))
+			== remote_player.get_skill1_projectile_damage(),
 			"Host must rebuild skill1 projectile damage from authoritative player attack."
 		)
 		_expect(
@@ -1127,7 +1136,7 @@ func _test_host_remote_player_form_buff_expires() -> void:
 	root.add_child(game)
 	await process_frame
 
-	var remote_player := game.get_player_for_peer(2) as Player
+	var remote_player := game.get_player_for_peer(2) as PlayerWeishidaier
 	_expect(remote_player != null, "Remote form buff test must create peer 2 player.")
 	if remote_player == null:
 		_stop_audio_players(game)
@@ -1139,7 +1148,7 @@ func _test_host_remote_player_form_buff_expires() -> void:
 	_expect(remote_player.apply_pickup(PICKUP_SPIRAL_CONFIG), "Remote player must apply spiral pickup.")
 	remote_player.update_multiplayer_authority_passive_state(0.0)
 	_expect(
-		remote_player.current_form_mode == PickupConfig.PlayerFormMode.ARMED,
+		remote_player.get_multiplayer_form_mode() == PickupConfig.PlayerFormMode.ARMED,
 		"Remote player must enter armed form after spiral pickup."
 	)
 	_expect(remote_player.armed_effect_sprite.visible, "Remote armed effect must become visible.")
@@ -1170,11 +1179,11 @@ func _test_host_remote_player_form_buff_expires() -> void:
 
 	remote_player.update_multiplayer_authority_passive_state(PICKUP_SPIRAL_CONFIG.duration + 0.1)
 	_expect(
-		remote_player.current_form_mode == PickupConfig.PlayerFormMode.NORMAL,
+		remote_player.get_multiplayer_form_mode() == PickupConfig.PlayerFormMode.NORMAL,
 		"Remote form buff must expire on Host authority."
 	)
 	_expect(
-		remote_player.current_shot_pattern == PickupConfig.ShotPattern.NORMAL,
+		remote_player.get_multiplayer_shot_pattern() == PickupConfig.ShotPattern.NORMAL,
 		"Remote shot pattern must reset when the form buff expires."
 	)
 	_expect(not remote_player.armed_effect_sprite.visible, "Remote armed effect must hide after buff expiry.")
@@ -1505,6 +1514,22 @@ func _test_host_authoritative_hoe_actions() -> void:
 	mp_game.set("game", host_game)
 	mp_game.set("net_manager", net_manager)
 	var free_aim_direction := Vector2(2.0, 1.0).normalized()
+	_expect(
+		(mp_game.call(
+			"_get_authoritative_client_projectile_parameters",
+			&"player_bullet",
+			1
+		) as Dictionary).is_empty(),
+		"Hoe Cat must not be able to forge Weishidaier player bullets."
+	)
+	_expect(
+		(mp_game.call(
+			"_get_authoritative_client_projectile_parameters",
+			&"skill1_bomb",
+			1
+		) as Dictionary).is_empty(),
+		"Hoe Cat must not be able to forge Weishidaier skill bombs."
+	)
 
 	var contact_enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
 	_expect(contact_enemy != null, "Host Hoe Cat coverage must instantiate a real enemy target.")
