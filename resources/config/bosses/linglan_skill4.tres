@@ -1,8 +1,8 @@
 [gd_resource type="Resource" script_class="LinglanSkill4Config" format=3 uid="uid://h2qvnyhs1x73"]
 
 [ext_resource type="Script" uid="uid://d1a2guuvl2xef" path="res://resources/config/bosses/linglan_skill4_config.gd" id="1_config"]
-[ext_resource type="PackedScene" path="res://scene/linglan_skill4_laser_field.tscn" id="2_laser"]
-[ext_resource type="PackedScene" uid="uid://x0d2h6ec3sx7" path="res://scene/linglan_skill4_light_orb.tscn" id="3_orb"]
+[ext_resource type="PackedScene" path="res://scene/boss/linglan/linglan_skill4_laser_field.tscn" id="2_laser"]
+[ext_resource type="PackedScene" uid="uid://x0d2h6ec3sx7" path="res://scene/boss/linglan/linglan_skill4_light_orb.tscn" id="3_orb"]
 
 [resource]
 script = ExtResource("1_config")

@@ -1,11 +1,11 @@
 extends SceneTree
 
-const LINGLAN_SCENE := preload("res://scene/linglan_boss.tscn")
+const LINGLAN_SCENE := preload("res://scene/boss/linglan/linglan_boss.tscn")
 const LINGLAN_CONFIG := preload("res://resources/config/enemies/linglan_boss.tres")
 const SKILL1_CONFIG := preload("res://resources/config/bosses/linglan_skill1.tres")
 const SAKURA_BULLET_TEXTURE := preload("res://resources/texture/boss_linglan/skill1_sakura_bullet.png")
-const SAKURA_BULLET_SCENE := preload("res://scene/linglan_skill1_sakura_bullet.tscn")
-const WARNING_RAY_SCENE := preload("res://scene/linglan_skill1_warning_ray.tscn")
+const SAKURA_BULLET_SCENE := preload("res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn")
+const WARNING_RAY_SCENE := preload("res://scene/boss/linglan/linglan_skill1_warning_ray.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 
@@ -76,10 +76,13 @@ func _test_sakura_bullet_scene_contract() -> void:
 	_expect(bullet.collision_mask & 256 == 0, "Sakura bullet collision mask must not include BossBody.")
 
 	var player := PLAYER_SCENE.instantiate() as Player
-	player.max_health = 100
 	player.invincibility_duration = 0.0
 	test_root.add_child(player)
 	await process_frame
+	player._base_max_health = 100
+	player.max_health = 100
+	player.current_health = 100
+	player.health_bar.setup(player.max_health, player.current_health)
 	bullet.setup(Vector2.RIGHT, 50, 300.0, 2.0)
 	bullet.call("_on_body_entered", player)
 	_expect(player.current_health == 50, "Sakura bullet must deal 50 damage on hit.")

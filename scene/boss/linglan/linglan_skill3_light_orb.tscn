@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://c0jfkg6abrhs4"]
 
-[ext_resource type="Script" uid="uid://bufh3ucm2fw1a" path="res://scene/linglan_skill3_light_orb.gd" id="1_script"]
-[ext_resource type="Shader" uid="uid://xhgqfhkeyak1" path="res://scene/linglan_skill3_light_orb.gdshader" id="2_shader"]
+[ext_resource type="Script" uid="uid://bufh3ucm2fw1a" path="res://scene/boss/linglan/linglan_skill3_light_orb.gd" id="1_script"]
+[ext_resource type="Shader" uid="uid://xhgqfhkeyak1" path="res://scene/boss/linglan/linglan_skill3_light_orb.gdshader" id="2_shader"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_orb"]
 resource_local_to_scene = true

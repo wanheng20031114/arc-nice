@@ -4,8 +4,8 @@ class_name Game
 const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/enemy/yuanshi_insect_spawn_effect.tscn")
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/guardian_point_light.png")
 const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
-const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := "res://scene/linglan_boss_intro_vfx.tscn"
-const BOSS_HEALTH_HUD_SCENE_PATH := "res://scene/boss_health_hud.tscn"
+const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := "res://scene/boss/linglan/linglan_boss_intro_vfx.tscn"
+const BOSS_HEALTH_HUD_SCENE_PATH := "res://scene/boss/linglan/boss_health_hud.tscn"
 const COUNTDOWN_FINAL_SECONDS := 3
 const MULTIPLAYER_DEFEAT_GRACE_SECONDS := 0.25
 const PURCHASE_RESULT_SUCCESS := 0

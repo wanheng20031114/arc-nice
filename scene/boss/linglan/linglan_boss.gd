@@ -6,10 +6,10 @@ signal boss_defeated
 
 const SKILL2_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const LinglanSkill4ConfigScript := preload("res://resources/config/bosses/linglan_skill4_config.gd")
-const LinglanSkill4LaserFieldScript := preload("res://scene/linglan_skill4_laser_field.gd")
-const LinglanSkill4LightOrbScript := preload("res://scene/linglan_skill4_light_orb.gd")
+const LinglanSkill4LaserFieldScript := preload("res://scene/boss/linglan/linglan_skill4_laser_field.gd")
+const LinglanSkill4LightOrbScript := preload("res://scene/boss/linglan/linglan_skill4_light_orb.gd")
 const ENRAGE_SNIPER_CONFIG := preload("res://resources/config/enemies/capoo_sniper.tres")
-const AIRDROP_WARNING_SCENE := preload("res://scene/linglan_airdrop_warning_marker.tscn")
+const AIRDROP_WARNING_SCENE := preload("res://scene/boss/linglan/linglan_airdrop_warning_marker.tscn")
 const OPENING_SKILL_ORDER := [1, 2, 3, 4]
 const POST_SKILL_IDLE_DURATION := 2.0
 const ENRAGE_SNIPER_HEALTH_RATIO := 0.5

@@ -6,8 +6,8 @@ class_name BossConfig
 @export var boss_name: String = "Boss"
 @export var enemy_config: EnemyConfig
 @export_file("*.tres") var enemy_config_path: String = ""
-@export_file("*.tscn") var intro_vfx_scene_path: String = "res://scene/linglan_boss_intro_vfx.tscn"
-@export_file("*.tscn") var boss_hud_scene_path: String = "res://scene/boss_health_hud.tscn"
+@export_file("*.tscn") var intro_vfx_scene_path: String = ""
+@export_file("*.tscn") var boss_hud_scene_path: String = ""
 
 @export_group("Boss音乐")
 @export var music: AudioStream

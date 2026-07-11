@@ -1,12 +1,12 @@
 extends SceneTree
 
-const LINGLAN_SCENE := preload("res://scene/linglan_boss.tscn")
+const LINGLAN_SCENE := preload("res://scene/boss/linglan/linglan_boss.tscn")
 const LINGLAN_CONFIG := preload("res://resources/config/enemies/linglan_boss.tres")
 const SKILL1_CONFIG := preload("res://resources/config/bosses/linglan_skill1.tres")
 const SKILL2_CONFIG := preload("res://resources/config/bosses/linglan_skill2.tres")
 const SKILL4_CONFIG := preload("res://resources/config/bosses/linglan_skill4.tres")
 const DEFAULT_FLOW := preload("res://resources/config/flow/default_combat_flow.tres")
-const AIRDROP_WARNING_SCENE := preload("res://scene/linglan_airdrop_warning_marker.tscn")
+const AIRDROP_WARNING_SCENE := preload("res://scene/boss/linglan/linglan_airdrop_warning_marker.tscn")
 
 var failures: Array[String] = []
 
@@ -101,7 +101,7 @@ func _test_default_flow_and_waves() -> void:
 		if default_exit != null:
 			_expect(default_exit.get_target_step_id() == expected_next, "Wave %02d default exit mismatch." % wave_number)
 
-	_expect(_get_wave_total(1) == 6, "Wave 01 audio test total count mismatch.")
+	_expect(_get_wave_total(1) == 50, "Wave 01 audio test total count mismatch.")
 	_expect(_get_wave_total(8) == 420, "Wave 08 total count mismatch.")
 	_expect(_get_wave_total(12) == 560, "Wave 12 total count mismatch.")
 

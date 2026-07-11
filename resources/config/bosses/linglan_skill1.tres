@@ -1,8 +1,8 @@
 [gd_resource type="Resource" script_class="LinglanSkillConfig" format=3 uid="uid://bp31l5cc7cbv4"]
 
 [ext_resource type="Script" uid="uid://d2536k0i7ayfn" path="res://resources/config/bosses/linglan_skill_config.gd" id="1_config"]
-[ext_resource type="PackedScene" uid="uid://dissedmiob1qs" path="res://scene/linglan_skill1_sakura_bullet.tscn" id="2_projectile"]
-[ext_resource type="PackedScene" uid="uid://d0wqnhsq4spw7" path="res://scene/linglan_skill1_warning_ray.tscn" id="3_warning_ray"]
+[ext_resource type="PackedScene" uid="uid://dissedmiob1qs" path="res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn" id="2_projectile"]
+[ext_resource type="PackedScene" uid="uid://d0wqnhsq4spw7" path="res://scene/boss/linglan/linglan_skill1_warning_ray.tscn" id="3_warning_ray"]
 
 [resource]
 script = ExtResource("1_config")

@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://cm3f2fy3vx8ge"]
 
-[ext_resource type="Script" uid="uid://dquvod3lsmmaw" path="res://scene/linglan_boss_intro_vfx.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://dquvod3lsmmaw" path="res://scene/boss/linglan/linglan_boss_intro_vfx.gd" id="1_script"]
 [ext_resource type="SpriteFrames" uid="uid://bu5a0u44onarv" path="res://resources/animation/linglan_sakura_convergence.tres" id="2_convergence_frames"]
 [ext_resource type="Texture2D" uid="uid://b81g5t6pw85s0" path="res://resources/texture/boss_linglan/sakura_petal.png" id="3_petal"]
 

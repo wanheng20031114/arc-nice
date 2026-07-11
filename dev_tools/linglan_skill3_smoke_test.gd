@@ -1,10 +1,10 @@
 extends SceneTree
 
-const LINGLAN_SCENE := preload("res://scene/linglan_boss.tscn")
+const LINGLAN_SCENE := preload("res://scene/boss/linglan/linglan_boss.tscn")
 const LINGLAN_CONFIG := preload("res://resources/config/enemies/linglan_boss.tres")
 const SKILL2_CONFIG := preload("res://resources/config/bosses/linglan_skill2.tres")
 const SKILL3_CONFIG := preload("res://resources/config/bosses/linglan_skill3.tres")
-const ORB_SCENE := preload("res://scene/linglan_skill3_light_orb.tscn")
+const ORB_SCENE := preload("res://scene/boss/linglan/linglan_skill3_light_orb.tscn")
 const GAME_SCENE := preload("res://scene/game.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
@@ -178,15 +178,24 @@ func _test_orb_lifecycle_and_damage() -> void:
 	var near_player := _spawn_player(test_root, Vector2(4.0, 0.0), 1, 200)
 	near_player.physical_defense = 0
 	near_player.magic_defense = 50
+	near_player._base_magic_defense = 50
 	var orb := ORB_SCENE.instantiate() as LinglanSkill3LightOrb
 	test_root.add_child(orb)
 	orb.global_position = Vector2.ZERO
 	orb.setup(Vector2.RIGHT, 50, 0.0, 2.2)
 	await process_frame
 	orb.call("_physics_process", 0.016)
-	_expect(near_player.current_health == 175, "Small Skill3 orb must use magic damage and respect 50 magic defense.")
+	_expect(
+		near_player.current_health == 175,
+		"Small Skill3 orb must use magic damage and respect 50 magic defense (actual %d)."
+		% near_player.current_health
+	)
 	orb.call("_physics_process", 0.016)
-	_expect(near_player.current_health == 175, "Skill3 orb must not damage the same player twice.")
+	_expect(
+		near_player.current_health == 175,
+		"Skill3 orb must not damage the same player twice (actual %d)."
+		% near_player.current_health
+	)
 	near_player.queue_free()
 	orb.queue_free()
 	await process_frame
@@ -229,7 +238,10 @@ func _test_orb_lifecycle_and_damage() -> void:
 	if grow_shape != null and grow_shape.shape is CircleShape2D:
 		_expect(is_equal_approx((grow_shape.shape as CircleShape2D).radius, 45.0), "Skill3 orb expanded collision shape must be 45.")
 	_expect(is_equal_approx(grow_orb.get_visual_scale().x, 3.0), "Skill3 orb visual expansion must triple at growth.")
-	_expect(far_player.current_health == 150, "Expanded Skill3 orb must deal 50 damage.")
+	_expect(
+		far_player.current_health == 150,
+		"Expanded Skill3 orb must deal 50 damage (actual %d)." % far_player.current_health
+	)
 	_expect(enemy.current_health == 200, "Skill3 orb must not damage normal enemies.")
 	_expect(linglan.current_health == 500, "Skill3 orb must not damage Linglan.")
 	grow_orb.call("_physics_process", 0.51)
@@ -361,6 +373,7 @@ func _spawn_player(parent: Node, position: Vector2, peer_id: int, health: int) -
 	parent.add_child(player)
 	player.global_position = position
 	player.peer_id = peer_id
+	player._base_max_health = health
 	player.max_health = health
 	player.current_health = health
 	player.invincibility_duration = 0.0

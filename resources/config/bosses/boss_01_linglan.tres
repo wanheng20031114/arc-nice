@@ -8,6 +8,8 @@
 script = ExtResource("1_boss")
 boss_name = "铃兰"
 enemy_config_path = "res://resources/config/enemies/linglan_boss.tres"
+intro_vfx_scene_path = "res://scene/boss/linglan/linglan_boss_intro_vfx.tscn"
+boss_hud_scene_path = "res://scene/boss/linglan/boss_health_hud.tscn"
 music = ExtResource("2_music")
 music_volume_db = 0.0
 music_loop_offset = 1.0

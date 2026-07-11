@@ -1,11 +1,11 @@
 extends SceneTree
 
-const LINGLAN_SCENE := preload("res://scene/linglan_boss.tscn")
+const LINGLAN_SCENE := preload("res://scene/boss/linglan/linglan_boss.tscn")
 const LINGLAN_CONFIG := preload("res://resources/config/enemies/linglan_boss.tres")
 const SKILL2_CONFIG := preload("res://resources/config/bosses/linglan_skill2.tres")
-const ROCKET_SCENE := preload("res://scene/linglan_skill2_sakura_rocket.tscn")
-const WARNING_ARROW_SCENE := preload("res://scene/linglan_skill2_warning_arrow.tscn")
-const EXPLOSION_SCENE := preload("res://scene/linglan_skill2_sakura_explosion.tscn")
+const ROCKET_SCENE := preload("res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn")
+const WARNING_ARROW_SCENE := preload("res://scene/boss/linglan/linglan_skill2_warning_arrow.tscn")
+const EXPLOSION_SCENE := preload("res://scene/boss/linglan/linglan_skill2_sakura_explosion.tscn")
 const COLLECTIBLE_SAKURA_EXPLOSION_SCRIPT := preload("res://scene/collectible_sakura_explosion.gd")
 const EXPLOSION_FRAMES := preload("res://resources/animation/linglan_skill2_sakura_explosion.tres")
 const GAME_SCENE := preload("res://scene/game.tscn")
@@ -609,7 +609,7 @@ func _get_polygon_max_x(root_node: Node, node_name: String) -> float:
 func _count_skill2_explosions(parent: Node) -> int:
 	var count := 0
 	for child in parent.get_children():
-		if child.get_script() == preload("res://scene/linglan_skill2_sakura_explosion.gd"):
+		if child.get_script() == preload("res://scene/boss/linglan/linglan_skill2_sakura_explosion.gd"):
 			count += 1
 	return count
 
@@ -624,7 +624,7 @@ func _count_collectible_sakura_explosions(parent: Node) -> int:
 
 func _clear_skill2_explosions(parent: Node) -> void:
 	for child in parent.get_children():
-		if child.get_script() == preload("res://scene/linglan_skill2_sakura_explosion.gd"):
+		if child.get_script() == preload("res://scene/boss/linglan/linglan_skill2_sakura_explosion.gd"):
 			child.queue_free()
 
 

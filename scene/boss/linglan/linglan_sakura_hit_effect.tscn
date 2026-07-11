@@ -1,6 +1,6 @@
 [gd_scene load_steps=4 format=3]
 
-[ext_resource type="Script" path="res://scene/linglan_sakura_hit_effect.gd" id="1_script"]
+[ext_resource type="Script" path="res://scene/boss/linglan/linglan_sakura_hit_effect.gd" id="1_script"]
 [ext_resource type="Texture2D" uid="uid://bg46042bpug12" path="res://resources/texture/道具ui.png" id="2_texture"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_particle"]

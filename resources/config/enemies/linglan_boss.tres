@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="EnemyConfig" format=3 uid="uid://bpfxyg81jxkd6"]
 
 [ext_resource type="Script" uid="uid://c78u5cgfpcfcy" path="res://resources/config/enemies/enemy_config.gd" id="1_config"]
-[ext_resource type="PackedScene" uid="uid://t8eqp4206kti" path="res://scene/linglan_boss.tscn" id="2_scene"]
+[ext_resource type="PackedScene" uid="uid://t8eqp4206kti" path="res://scene/boss/linglan/linglan_boss.tscn" id="2_scene"]
 [ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="2_vljs4"]
 [ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="3_bygwk"]
 [ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="4_ip1qw"]

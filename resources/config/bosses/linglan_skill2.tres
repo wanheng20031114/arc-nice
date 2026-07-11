@@ -1,8 +1,8 @@
 [gd_resource type="Resource" script_class="LinglanSkill2Config" format=3 uid="uid://c4r1ucwkkde62"]
 
 [ext_resource type="Script" uid="uid://djdce8adq14b4" path="res://resources/config/bosses/linglan_skill2_config.gd" id="1_config"]
-[ext_resource type="PackedScene" uid="uid://dc77yahheqevd" path="res://scene/linglan_skill2_sakura_rocket.tscn" id="2_rocket"]
-[ext_resource type="PackedScene" path="res://scene/linglan_skill2_warning_arrow.tscn" id="3_warning"]
+[ext_resource type="PackedScene" uid="uid://dc77yahheqevd" path="res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn" id="2_rocket"]
+[ext_resource type="PackedScene" path="res://scene/boss/linglan/linglan_skill2_warning_arrow.tscn" id="3_warning"]
 [ext_resource type="Resource" uid="uid://chktgvo5mcaul" path="res://resources/config/enemies/yuanshi_insect_shell.tres" id="4_enemy"]
 
 [resource]

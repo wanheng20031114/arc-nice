@@ -41,7 +41,7 @@ const BANANA := preload("res://resources/config/collectibles/collectible_banana.
 const ORANGE := preload("res://resources/config/collectibles/collectible_orange.tres")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/collectible_arrow_projectile.gd")
-const LINGLAN_SKILL2_ROCKET_SCRIPT := preload("res://scene/linglan_skill2_sakura_rocket.gd")
+const LINGLAN_SKILL2_ROCKET_SCRIPT := preload("res://scene/boss/linglan/linglan_skill2_sakura_rocket.gd")
 const DAMAGE_NUMBER_POOL_SCRIPT := preload("res://scene/damage_number_pool.gd")
 
 class DamageNumberTestRoot:

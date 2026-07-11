@@ -1,13 +1,13 @@
 extends SceneTree
 
-const LINGLAN_SCENE := preload("res://scene/linglan_boss.tscn")
+const LINGLAN_SCENE := preload("res://scene/boss/linglan/linglan_boss.tscn")
 const LINGLAN_CONFIG := preload("res://resources/config/enemies/linglan_boss.tres")
 const SKILL3_CONFIG := preload("res://resources/config/bosses/linglan_skill3.tres")
 const SKILL4_CONFIG := preload("res://resources/config/bosses/linglan_skill4.tres")
-const LASER_FIELD_SCENE := preload("res://scene/linglan_skill4_laser_field.tscn")
-const ORB_SCENE := preload("res://scene/linglan_skill4_light_orb.tscn")
-const LASER_FIELD_SCRIPT := preload("res://scene/linglan_skill4_laser_field.gd")
-const ORB_SCRIPT := preload("res://scene/linglan_skill4_light_orb.gd")
+const LASER_FIELD_SCENE := preload("res://scene/boss/linglan/linglan_skill4_laser_field.tscn")
+const ORB_SCENE := preload("res://scene/boss/linglan/linglan_skill4_light_orb.tscn")
+const LASER_FIELD_SCRIPT := preload("res://scene/boss/linglan/linglan_skill4_laser_field.gd")
+const ORB_SCRIPT := preload("res://scene/boss/linglan/linglan_skill4_light_orb.gd")
 const GAME_SCENE := preload("res://scene/game.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
@@ -260,6 +260,7 @@ func _test_laser_and_orb_damage() -> void:
 	var laser_player := _spawn_player(test_root, Vector2(0.0, -16.0), 1, 200)
 	laser_player.physical_defense = 0
 	laser_player.magic_defense = 50
+	laser_player._base_magic_defense = 50
 	var field := LASER_FIELD_SCENE.instantiate() as LASER_FIELD_SCRIPT
 	test_root.add_child(field)
 	field.setup(
@@ -296,6 +297,7 @@ func _test_laser_and_orb_damage() -> void:
 	var orb_player := _spawn_player(test_root, Vector2(4.0, 0.0), 2, 200)
 	orb_player.physical_defense = 0
 	orb_player.magic_defense = 50
+	orb_player._base_magic_defense = 50
 	var orb := ORB_SCENE.instantiate() as ORB_SCRIPT
 	test_root.add_child(orb)
 	orb.global_position = Vector2.ZERO
@@ -586,6 +588,7 @@ func _spawn_player(parent: Node, position: Vector2, peer_id: int, health: int) -
 	parent.add_child(player)
 	player.global_position = position
 	player.peer_id = peer_id
+	player._base_max_health = health
 	player.max_health = health
 	player.current_health = health
 	player.invincibility_duration = 0.0

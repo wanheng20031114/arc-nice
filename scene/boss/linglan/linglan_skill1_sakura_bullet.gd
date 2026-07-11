@@ -2,7 +2,7 @@ extends Area2D
 class_name LinglanSakuraBullet
 
 const WORLD_COLLISION_MASK := 1
-const HIT_EFFECT_SCENE := preload("res://scene/linglan_sakura_hit_effect.tscn")
+const HIT_EFFECT_SCENE := preload("res://scene/boss/linglan/linglan_sakura_hit_effect.tscn")
 
 @export var speed: float = 300.0
 @export var max_lifetime: float = 2.0

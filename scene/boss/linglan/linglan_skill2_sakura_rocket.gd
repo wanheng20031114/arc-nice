@@ -1,7 +1,7 @@
 extends Area2D
 class_name LinglanSkill2SakuraRocket
 
-const EXPLOSION_SCENE := preload("res://scene/linglan_skill2_sakura_explosion.tscn")
+const EXPLOSION_SCENE := preload("res://scene/boss/linglan/linglan_skill2_sakura_explosion.tscn")
 const COLLECTIBLE_SAKURA_EXPLOSION_SCENE := preload("res://scene/collectible_sakura_explosion.tscn")
 const WORLD_COLLISION_MASK := 1
 const PLAYER_COLLISION_MASK := 2
