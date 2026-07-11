@@ -44,6 +44,7 @@ BASE_DEFAULTS: dict[str, Any] = {
     "player_form_mode": 0,
     "shot_pattern": 0,
     "requires_projectile_primary_attack": False,
+    "requires_ammunition": False,
     "collectible_rarity": 0,
 }
 
@@ -53,8 +54,12 @@ FIELD_LABELS = {
     "icon_texture": "图标资源引用", "icon_scale": "图标缩放", "duration": "普通效果时长",
     "collectible_effect_id": "收藏品效果ID", "collectible_rarity": "稀有度枚举",
     "collectible_stacks_by_copy": "逐份生效", "collectible_max_copies": "最大份数",
-    "requires_projectile_primary_attack": "要求投射物普攻", "bullet_pierce_chance": "子弹穿透概率",
+    "requires_projectile_primary_attack": "要求投射物普攻", "requires_ammunition": "要求弹药机制",
+    "bullet_pierce_chance": "子弹穿透概率",
     "bullet_homing_chance": "子弹追踪概率", "ammo_free_shot_chance": "射击不耗弹概率",
+    "collectible_ammo_capacity_additive_bonus": "弹匣容量加算值",
+    "collectible_ammo_capacity_bonus_ratio": "弹匣容量提高比例",
+    "collectible_reload_time_reduction": "换弹时间缩短比例",
     "skill_charge_preserve_chance": "技能不耗技力概率", "damage_against_burning_multiplier": "对燃烧目标伤害倍率",
     "damage_against_bleeding_multiplier": "对流血目标伤害倍率", "collectible_attack_bonus": "攻击力加值",
     "collectible_max_health_bonus": "生命上限加值", "collectible_move_speed_bonus": "移动速度加值",
@@ -107,6 +112,10 @@ FIELD_NOTES = {
     "periodic_slow_multiplier": "0.5表示目标剩余50%移动速度，即降低50%。",
     "on_hit_slow_multiplier": "0.78表示目标剩余78%移动速度，即降低22%。",
     "requires_projectile_primary_attack": "为true时，锄头猫等非投射物普攻角色不会在洛曦选项中看到该收藏品。",
+    "requires_ammunition": "为true时，锄头猫等没有弹药/换弹机制的角色不会在洛曦选项中看到该收藏品。",
+    "collectible_ammo_capacity_additive_bonus": "逐份求和；每种加算弹匣最多5份；在百分比容量乘算前生效。",
+    "collectible_ammo_capacity_bonus_ratio": "同类只取背包中的最高值；最终容量=floor((基础容量+加算总和)×(1+最高比例))。",
+    "collectible_reload_time_reduction": "同类只取背包中的最高值；有效换弹时间=基础换弹时间×(1-最高缩短比例)。",
 }
 
 RUNTIME_HANDLERS = {
@@ -114,6 +123,9 @@ RUNTIME_HANDLERS = {
     "穿透": "Player._should_fire_piercing_bullet / Bullet",
     "追踪": "Player._should_fire_homing_bullet / Bullet",
     "弹药免耗": "Player普通射击耗弹判定",
+    "弹匣容量加算": "Player._refresh_collectible_stats / AmmoRangedPlayer.get_ammo_capacity",
+    "弹匣容量乘算": "Player._refresh_collectible_stats / AmmoRangedPlayer.get_ammo_capacity",
+    "换弹缩短": "Player._refresh_collectible_stats / AmmoRangedPlayer.get_effective_reload_duration",
     "技能免耗": "Player技能发动与技力保留判定",
     "状态增伤": "Player.resolve_attack_damage_against_enemy",
     "免费升级": "Player/庄方宜基础升级消费判定",
@@ -257,7 +269,7 @@ def main() -> None:
     ws["D3"] = "工作表"; ws["E3"] = "内容"
     sheet_notes = [
         ("收藏品总表", "一行一件，适合筛选、策划审阅和横向比较。"), ("全参数矩阵", "所有配置字段的有效值，包含未显式写出的默认值。"),
-        ("图标图鉴", "112件图标、名称、ID、稀有度的可视化总览。"), ("审计与资源", "配置/图标/导入文件状态、像素包围盒、文件大小、SHA-256。"),
+        ("图标图鉴", "123件图标、名称、ID、稀有度的可视化总览。"), ("审计与资源", "配置/图标/导入文件状态、像素包围盒、文件大小、SHA-256。"),
         ("统计分析", "稀有度、机制类别、叠加规则、角色兼容性统计。"), ("系统与运行时", "获取、去重、叠加、背包、处理函数和联网实现说明。"),
         ("字段字典", "字段中文名、分组、默认值、单位/语义提示。"), ("测试与引用", "逐件的全量运行时覆盖与专项测试引用。"),
         ("文案改写记录", "本次倍率文案自然语言化的前后对照，底层数值未改。"),
@@ -269,7 +281,7 @@ def main() -> None:
         for cell in row: cell.alignment = Alignment(vertical="top", wrap_text=True)
 
     ws = wb.create_sheet("收藏品总表")
-    headers = ["序号", "世代", "名称", "稀有度", "稀有度权重", "效果ID", "玩家可见描述", "效果摘要", "主机制类别", "运行时处理入口", "逐份生效", "配置最大份数", "单背包实际最多份数", "重复获取规则", "要求投射物普攻", "兼容锄头猫", "显式配置字段数", "非默认效果字段", "设计ID", "设计说明", "配置路径", "图标路径", "专项测试引用", "审计结论"]
+    headers = ["序号", "世代", "名称", "稀有度", "稀有度权重", "效果ID", "玩家可见描述", "效果摘要", "主机制类别", "运行时处理入口", "逐份生效", "配置最大份数", "单背包实际最多份数", "重复获取规则", "要求投射物普攻", "要求弹药机制", "兼容锄头猫", "兼容维什戴尔", "兼容缇伊", "显式配置字段数", "非默认效果字段", "设计ID", "设计说明", "配置路径", "图标路径", "专项测试引用", "审计结论"]
     rows = []
     for index, item in enumerate(audits, 1):
         data = item.data; rarity = int(data["collectible_rarity"]); stacks = bool(data.get("collectible_stacks_by_copy", False)); cap = int(data.get("collectible_max_copies", 0))
@@ -277,12 +289,14 @@ def main() -> None:
         categories = audit.primary_affix_categories(data) or (["特殊"] if data.get("collectible_effect_id") == "admin_doll" else [])
         handlers = sorted({RUNTIME_HANDLERS.get(c, "专用逻辑") for c in categories})
         refs = specific_test_refs(item.path.name)
-        rows.append([index, "原有" if item.path.name in audit.ORIGINAL_CONFIG_NAMES else "扩展", data["display_name"], audit.RARITY_LABELS[rarity], RARITY_WEIGHTS[rarity], data["collectible_effect_id"], data["description"], item.effect_summary, "；".join(categories), "；".join(handlers), stacks, cap if stacks else 1, actual_cap, "可重复至上限" if stacks else "同效果ID仅一份", bool(data.get("requires_projectile_primary_attack", False)), not bool(data.get("requires_projectile_primary_attack", False)), len(explicit_by_name[item.path.name]), json.dumps(dict(item.effect_signature), ensure_ascii=False), data.get("collectible_design_id", ""), data.get("collectible_design_note", ""), "res://" + item.path.relative_to(PROJECT_ROOT).as_posix(), "res://" + item.icon_path.relative_to(PROJECT_ROOT).as_posix(), "；".join(refs) or "无单件预载专项；由全量运行时审计覆盖", "通过" if not item.issues else "；".join(item.issues)])
+        requires_projectile = bool(data.get("requires_projectile_primary_attack", False))
+        requires_ammunition = bool(data.get("requires_ammunition", False))
+        rows.append([index, "原有" if item.path.name in audit.ORIGINAL_CONFIG_NAMES else "扩展", data["display_name"], audit.RARITY_LABELS[rarity], RARITY_WEIGHTS[rarity], data["collectible_effect_id"], data["description"], item.effect_summary, "；".join(categories), "；".join(handlers), stacks, cap if stacks else 1, actual_cap, "可重复至上限" if stacks else "同效果ID仅一份", requires_projectile, requires_ammunition, not (requires_projectile or requires_ammunition), True, True, len(explicit_by_name[item.path.name]), json.dumps(dict(item.effect_signature), ensure_ascii=False), data.get("collectible_design_id", ""), data.get("collectible_design_note", ""), "res://" + item.path.relative_to(PROJECT_ROOT).as_posix(), "res://" + item.icon_path.relative_to(PROJECT_ROOT).as_posix(), "；".join(refs) or "无单件预载专项；由全量运行时审计覆盖", "通过" if not item.issues else "；".join(item.issues)])
     write_rows(ws, headers, rows); style_sheet(ws); add_table(ws, "CollectiblesSummary"); autosize(ws, 52)
-    ws.column_dimensions["G"].width = 58; ws.column_dimensions["H"].width = 44; ws.column_dimensions["R"].width = 52; ws.column_dimensions["T"].width = 46
+    ws.column_dimensions["G"].width = 58; ws.column_dimensions["H"].width = 44; ws.column_dimensions["U"].width = 52; ws.column_dimensions["W"].width = 46
     for row in range(2, ws.max_row + 1):
         rarity = int(audits[row - 2].data["collectible_rarity"]); ws.cell(row, 4).fill = PatternFill("solid", fgColor=RARITY_COLORS[rarity])
-        for col in [7, 8, 9, 10, 18, 20, 23, 24]: ws.cell(row, col).alignment = Alignment(vertical="top", wrap_text=True)
+        for col in [7, 8, 9, 10, 21, 23, 26, 27]: ws.cell(row, col).alignment = Alignment(vertical="top", wrap_text=True)
 
     ws = wb.create_sheet("全参数矩阵")
     matrix_headers = ["序号", "名称", "稀有度", "配置文件", "显式字段列表"] + [f"{FIELD_LABELS.get(f, f)}\n[{f}]" for f in all_fields]
@@ -336,7 +350,12 @@ def main() -> None:
     for idx, pair in enumerate(rule_counts.items(), 2): ws.cell(idx, 8, pair[0]); ws.cell(idx, 9, pair[1])
     ws.cell(8, 8, "兼容性"); ws.cell(8, 9, "数量")
     projectile_count = sum(bool(i.data.get("requires_projectile_primary_attack", False)) for i in audits)
-    ws.cell(9, 8, "要求投射物普攻"); ws.cell(9, 9, projectile_count); ws.cell(10, 8, "兼容所有普攻形态"); ws.cell(10, 9, len(audits) - projectile_count)
+    ammunition_count = sum(bool(i.data.get("requires_ammunition", False)) for i in audits)
+    hoe_cat_count = sum(not bool(i.data.get("requires_projectile_primary_attack", False) or i.data.get("requires_ammunition", False)) for i in audits)
+    ws.cell(9, 8, "要求投射物普攻"); ws.cell(9, 9, projectile_count)
+    ws.cell(10, 8, "要求弹药机制"); ws.cell(10, 9, ammunition_count)
+    ws.cell(11, 8, "兼容锄头猫"); ws.cell(11, 9, hoe_cat_count)
+    ws.cell(12, 8, "兼容维什戴尔/缇伊"); ws.cell(12, 9, len(audits))
     for cell in [ws["A1"], ws["B1"], ws["C1"], ws["D1"], ws["E1"], ws["A8"], ws["B8"], ws["H1"], ws["I1"], ws["H8"], ws["I8"]]: cell.fill = PatternFill("solid", fgColor="26364A"); cell.font = Font(color="FFFFFF", bold=True)
     ws.column_dimensions["A"].width = 24; ws.column_dimensions["B"].width = 20; ws.column_dimensions["E"].width = 32; ws.column_dimensions["H"].width = 28
 
@@ -351,11 +370,14 @@ def main() -> None:
         ("背包", "RunStateStore.INVENTORY_CAPACITY", "每名玩家20格；收藏品必须can_store_in_inventory=true。"),
         ("唯一效果", "LuoxiMerchant.is_collectible_available_for_inventory", "stacks_by_copy=false时，同effect_id已有一份就不会再次提供。"),
         ("叠加效果", "collectible_stacks_by_copy / collectible_max_copies", "逐份生效；max_copies=0代表配置不限，实际仍受20格背包限制。"),
-        ("角色兼容", "Player.is_collectible_compatible", "requires_projectile_primary_attack=true时，仅普攻可生成投射物的角色可获得。"),
-        ("全量刷新", "Player._refresh_collectible_stats", "从背包聚合静态、条件、息壤动态、概率和防御倍率等效果。"),
-        ("联网", "MpGame收藏品RPC/广播路径", "领取由主机确认；投射物、范围效果、闪电、寒霜、月盾视觉均有多人同步实现。"),
+        ("角色兼容", "Player.is_collectible_compatible", "requires_projectile_primary_attack和requires_ammunition分别过滤非投射物普攻、无弹药机制角色；本批弹药收藏品与橙子不会提供给锄头猫。"),
+        ("弹匣容量", "AmmoRangedPlayer.get_ammo_capacity", "固定按floor((基础容量+所有加算容量)×(1+最高百分比容量加成))计算；百分比同类只取最高。"),
+        ("换弹缩短", "AmmoRangedPlayer.get_effective_reload_duration", "有效换弹时间=基础换弹时间×(1-最高缩短比例)；同类只取最高。"),
+        ("弹数迁移", "AmmoRangedPlayer._on_collectible_ammunition_stats_refreshed", "原本满弹时扩容同步补满；未满保持当前弹数；降容夹紧到新上限。"),
+        ("全量刷新", "Player._refresh_collectible_stats", "从背包一次性聚合并缓存静态、条件、息壤动态、概率、弹药和防御倍率等效果。"),
+        ("联网", "MpGame收藏品RPC/广播路径", "同步有效容量、当前弹数与换弹进度；有效容量不会覆盖角色基础ammo_capacity，避免重复乘算。"),
         ("通用运行时审计", "dev_tools/collectible_runtime_audit_smoke_test.gd", "遍历全部收藏品，验证字段、聚合属性、触发、命中、击杀、周期和技能效果。"),
-        ("静态审计", "dev_tools/audit_collectibles.py", "检查112件数量、字段逻辑、唯一性、效果组合、图标尺寸/像素/导入文件和设计元数据。"),
+        ("静态审计", "dev_tools/audit_collectibles.py", "检查123件数量、字段逻辑、唯一性、效果组合、图标尺寸/像素/导入文件和设计元数据。"),
     ]
     write_rows(ws, ["主题", "代码入口/常量", "详细说明"], rules); style_sheet(ws); add_table(ws, "RuntimeRules"); autosize(ws, 80)
     ws.column_dimensions["A"].width = 22; ws.column_dimensions["B"].width = 52; ws.column_dimensions["C"].width = 88
@@ -402,7 +424,7 @@ def main() -> None:
 
     wb.save(OUTPUT_PATH)
     check = load_workbook(OUTPUT_PATH, read_only=False, data_only=False)
-    expected = {"收藏品总表": 113, "全参数矩阵": 113, "审计与资源": 113, "测试与引用": 113, "文案改写记录": 7}
+    expected = {"收藏品总表": 124, "全参数矩阵": 124, "审计与资源": 124, "测试与引用": 124, "文案改写记录": 7}
     for name, rows in expected.items():
         if check[name].max_row != rows: raise RuntimeError(f"{name} row count mismatch: {check[name].max_row}")
     if len(check.sheetnames) != 10: raise RuntimeError(f"Expected 10 sheets, found {len(check.sheetnames)}")

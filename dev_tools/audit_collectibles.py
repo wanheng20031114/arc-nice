@@ -40,6 +40,9 @@ FIELD_DEFAULTS: dict[str, Any] = {
     "bullet_pierce_chance": 0.0,
     "bullet_homing_chance": 0.0,
     "ammo_free_shot_chance": 0.0,
+    "collectible_ammo_capacity_additive_bonus": 0,
+    "collectible_ammo_capacity_bonus_ratio": 0.0,
+    "collectible_reload_time_reduction": 0.0,
     "skill_charge_preserve_chance": 0.0,
     "damage_against_burning_multiplier": 1.0,
     "damage_against_bleeding_multiplier": 1.0,
@@ -220,6 +223,9 @@ DESIGN_PROFILE_FIELDS = (
     "bullet_pierce_chance",
     "bullet_homing_chance",
     "ammo_free_shot_chance",
+    "collectible_ammo_capacity_additive_bonus",
+    "collectible_ammo_capacity_bonus_ratio",
+    "collectible_reload_time_reduction",
     "skill_charge_preserve_chance",
     "damage_against_burning_multiplier",
     "damage_against_bleeding_multiplier",
@@ -232,8 +238,8 @@ DESIGN_PROFILE_FIELDS = (
     "defense_xirang_step",
     "defense_bonus_per_xirang_step",
 )
-NEW_COLLECTIBLE_COUNT = 88
-EXPECTED_TOTAL_COUNT = 112
+NEW_COLLECTIBLE_COUNT = 99
+EXPECTED_TOTAL_COUNT = 123
 STATIC_STAT_FIELDS = (
     "collectible_attack_bonus",
     "collectible_max_health_bonus",
@@ -444,6 +450,7 @@ def summarize_effect(data: dict[str, Any]) -> str:
         ("bullet_pierce_chance", "穿透率"),
         ("bullet_homing_chance", "追踪率"),
         ("ammo_free_shot_chance", "免耗弹率"),
+        ("collectible_ammo_capacity_additive_bonus", "弹匣容量"),
         ("skill_charge_preserve_chance", "技能免耗率"),
         ("base_upgrade_free_chance", "免费升级率"),
         ("incoming_ranged_dodge_chance", "远程闪避率"),
@@ -452,6 +459,13 @@ def summarize_effect(data: dict[str, Any]) -> str:
         value = data.get(field, FIELD_DEFAULTS[field])
         if value != FIELD_DEFAULTS[field]:
             parts.append(f"{label}+{value}")
+
+    ammo_capacity_ratio = float(data.get("collectible_ammo_capacity_bonus_ratio", 0.0))
+    if ammo_capacity_ratio > 0.0:
+        parts.append(f"弹匣容量提高{round(ammo_capacity_ratio * 100)}%（取最高）")
+    reload_reduction = float(data.get("collectible_reload_time_reduction", 0.0))
+    if reload_reduction > 0.0:
+        parts.append(f"换弹时间缩短{round(reload_reduction * 100)}%（取最高）")
 
     def percentage_phrase(subject: str, multiplier: float) -> str:
         percentage = round(abs(multiplier - 1.0) * 100)
@@ -500,6 +514,12 @@ def primary_affix_categories(data: dict[str, Any]) -> list[str]:
         categories.append("追踪")
     if data.get("ammo_free_shot_chance", 0.0) != 0.0:
         categories.append("弹药免耗")
+    if data.get("collectible_ammo_capacity_additive_bonus", 0) != 0:
+        categories.append("弹匣容量加算")
+    if data.get("collectible_ammo_capacity_bonus_ratio", 0.0) != 0.0:
+        categories.append("弹匣容量乘算")
+    if data.get("collectible_reload_time_reduction", 0.0) != 0.0:
+        categories.append("换弹缩短")
     if data.get("skill_charge_preserve_chance", 0.0) != 0.0:
         categories.append("技能免耗")
     if _has_non_default(data, STATUS_TARGET_DAMAGE_FIELDS):
@@ -792,6 +812,21 @@ def validate_logic_fields(data: dict[str, Any], issues: list[str], config_name: 
     for field in STATUS_TARGET_DAMAGE_FIELDS:
         if float(data.get(field, FIELD_DEFAULTS[field])) < 1.0:
             issues.append(f"{field} 不能低于 1.0")
+
+    ammo_additive = int(data.get("collectible_ammo_capacity_additive_bonus", 0))
+    ammo_ratio = float(data.get("collectible_ammo_capacity_bonus_ratio", 0.0))
+    reload_reduction = float(data.get("collectible_reload_time_reduction", 0.0))
+    if ammo_additive < 0:
+        issues.append("collectible_ammo_capacity_additive_bonus 不能为负数")
+    if ammo_ratio < 0.0:
+        issues.append("collectible_ammo_capacity_bonus_ratio 不能为负数")
+    if reload_reduction < 0.0 or reload_reduction > 0.95:
+        issues.append("collectible_reload_time_reduction 必须位于 0-0.95 之间")
+    has_ammunition_effect = ammo_additive > 0 or ammo_ratio > 0.0 or reload_reduction > 0.0
+    if has_ammunition_effect and data.get("requires_ammunition") is not True:
+        issues.append("弹药容量或换弹收藏品必须设置 requires_ammunition=true")
+    if data.get("collectible_effect_id") == "orange" and data.get("requires_ammunition") is not True:
+        issues.append("橙子必须设置 requires_ammunition=true")
 
     rarity = data.get("collectible_rarity")
     if rarity not in RARITY_LABELS:

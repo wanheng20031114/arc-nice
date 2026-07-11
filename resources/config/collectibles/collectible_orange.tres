@@ -20,5 +20,6 @@ collectible_design_note = "鲜甜储弹：每份提供10%不耗弹概率，最�
 collectible_stacks_by_copy = true
 collectible_max_copies = 10
 requires_projectile_primary_attack = true
+requires_ammunition = true
 ammo_free_shot_chance = 0.1
 metadata/_custom_type_script = "uid://qucrregg4cq0"

@@ -116,7 +116,7 @@ func _run() -> void:
 
 func _test_collectible_resources() -> void:
 	var pool := LuoxiMerchant.get_collectible_pool()
-	_expect(pool.size() == 112, "Luoxi collectible pool must include all 112 collectible resources.")
+	_expect(pool.size() == 123, "Luoxi collectible pool must include all 123 collectible resources.")
 	var seen_paths: Dictionary = {}
 	var rarity_counts: Dictionary = {}
 	var projectile_requirement_count := 0

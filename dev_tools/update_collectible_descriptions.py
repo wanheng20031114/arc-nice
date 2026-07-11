@@ -297,6 +297,20 @@ def generate_description(data: dict[str, Any]) -> str:
         return "庄方宜为你升级技能时不消耗息壤。"
 
     parts: list[str] = []
+    ammo_additive = int(data.get("collectible_ammo_capacity_additive_bonus", 0))
+    if ammo_additive:
+        max_copies = int(data.get("collectible_max_copies", 0))
+        copy_text = f"，最多{max_copies}份" if max_copies > 0 else ""
+        parts.append(f"弹匣容量+{ammo_additive}（可叠加{copy_text}；先加算再乘算）")
+
+    ammo_ratio = float(data.get("collectible_ammo_capacity_bonus_ratio", 0.0))
+    if ammo_ratio:
+        parts.append(f"弹匣容量提高{percent(ammo_ratio)}（向下取整；同类效果只取最高值）")
+
+    reload_reduction = float(data.get("collectible_reload_time_reduction", 0.0))
+    if reload_reduction:
+        parts.append(f"换弹时间缩短{percent(reload_reduction)}（同类效果只取最高值）")
+
     parts.extend(stat_parts(data, "collectible_"))
 
     pierce_chance = float(data.get("bullet_pierce_chance", 0.0))
@@ -355,7 +369,7 @@ def generate_description(data: dict[str, Any]) -> str:
         return str(data.get("description", ""))
 
     description = "；".join(parts)
-    if bool(data.get("collectible_stacks_by_copy", False)):
+    if bool(data.get("collectible_stacks_by_copy", False)) and ammo_additive == 0:
         description += "（可叠加）"
     return description + "。"
 

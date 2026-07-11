@@ -1,28 +1,30 @@
 # 收藏品逐项审计报告
 
-- 配置总数: 112
-- 新增收藏品数: 88
+- 配置总数: 123
+- 新增收藏品数: 99
 - 问题总数: 0
-- 稀有度分布: 普通 41，稀有 38，史诗 24，传说 9
+- 稀有度分布: 普通 41，稀有 44，史诗 25，传说 13
 
 | 文件 | 名称 | 稀有度 | 效果摘要 | 设计说明 | 图标主体 | 图标像素 | 问题 |
 | --- | --- | --- | --- | --- | --- | ---: | --- |
 | resources/config/collectibles/collectible_admin_doll.tres | 管理员人偶 | 传说 | 庄方宜后续技能升级免费 | 技能升级免费：已解锁技能的后续升级不消耗息壤。 | 20x28 | 429 | OK |
 | resources/config/collectibles/collectible_alchemist_vial.tres | 炼金小瓶 | 稀有 | 免费升级率+0.08 | 免费升级：升级基础属性时有8%概率不消耗息壤。 | 22x23 | 325 | OK |
 | resources/config/collectibles/collectible_amethyst.tres | 紫宝石 | 稀有 | 法防+1 | 魔法防御成长：每份使魔法防御+1。 | 16x26 | 304 | OK |
-| resources/config/collectibles/collectible_apple.tres | 苹果 | 普通 | 穿透率+0.2 | 穿透弹：每份提供20%穿透概率，最多5份、最高100%。 | 23x24 | 422 | OK |
+| resources/config/collectibles/collectible_apple.tres | 苹果 | 稀有 | 穿透率+0.2 | 穿透弹：每份提供20%穿透概率，最多5份、最高100%。 | 23x24 | 422 | OK |
 | resources/config/collectibles/collectible_apprentice_scroll.tres | 学徒卷轴 | 普通 | 技力/s+0.2 | 技能充能：每秒技能充能+0.2。 | 21x23 | 371 | OK |
 | resources/config/collectibles/collectible_archer.tres | 弓箭手 | 史诗 | 周期:archer | 周期弓箭：定时向附近多个敌人发射攻击力倍率箭矢。 | 22x28 | 430 | OK |
 | resources/config/collectibles/collectible_archer_sigil.tres | 神射徽记 | 史诗 | 周期:archer | 周期箭雨：每7秒向最多4名敌人射箭。 | 24x23 | 359 | OK |
-| resources/config/collectibles/collectible_banana.tres | 香蕉 | 普通 | 追踪率+0.3 | 弯弧弹道：每份提供30%子弹追踪概率，最多4份、最高100%。 | 23x20 | 215 | OK |
+| resources/config/collectibles/collectible_auto_loader.tres | 自动装填器 | 史诗 | 换弹时间缩短30%（取最高） | 换弹缩短：换弹时间缩短30%，同类只取最高值。 | 22x26 | 383 | OK |
+| resources/config/collectibles/collectible_banana.tres | 香蕉 | 稀有 | 追踪率+0.3 | 弯弧弹道：每份提供30%子弹追踪概率，最多4份、最高100%。 | 23x20 | 215 | OK |
 | resources/config/collectibles/collectible_battle_standard.tres | 战旗 | 稀有 | 击杀:haste | 击杀加速：击败敌人后短暂提速推进。 | 21x27 | 252 | OK |
 | resources/config/collectibles/collectible_blink_crystal.tres | 闪现水晶 | 史诗 | 技能:swift | 技能疾行：使用技能后强力加速。 | 25x26 | 468 | OK |
-| resources/config/collectibles/collectible_blood_trident.tres | 血色三叉戟 | 稀有 | 流血目标伤害x1.2 | 流血追猎：对正在流血的敌人造成伤害x1.2。 | 15x25 | 190 | OK |
+| resources/config/collectibles/collectible_blood_trident.tres | 血色三叉戟 | 稀有 | 对流血敌人的伤害提高20% | 流血追猎：对正在流血的敌人造成伤害x1.2。 | 15x25 | 190 | OK |
 | resources/config/collectibles/collectible_blue_mushroom.tres | 蓝蘑菇 | 普通 | 命中:chill | 寒冷命中：攻击命中时有概率减速敌人。 | 23x24 | 305 | OK |
 | resources/config/collectibles/collectible_blue_quartz.tres | 蓝石英 | 普通 | 技力/s+0.15 | 技能充能：每秒技能充能+0.15。 | 25x26 | 463 | OK |
 | resources/config/collectibles/collectible_bone_needle.tres | 骨针 | 普通 | 命中:bleed | 流血命中：攻击命中时有概率造成更久流血。 | 22x23 | 136 | OK |
 | resources/config/collectibles/collectible_campfire_coal.tres | 篝火余烬 | 稀有 | 命中:burn | 灼烧命中：攻击命中时有概率造成每秒10点伤害的灼烧。 | 23x22 | 336 | OK |
 | resources/config/collectibles/collectible_candle_stub.tres | 蜡烛头 | 普通 | 命中:burn | 烛火命中：攻击命中时有概率附着每秒5点伤害的短火。 | 11x26 | 252 | OK |
+| resources/config/collectibles/collectible_capacity_spring.tres | 扩容弹簧 | 普通 | 弹匣容量提高20%（取最高） | 百分比弹匣容量：加算容量完成后提高20%，同类只取最高值。 | 14x26 | 285 | OK |
 | resources/config/collectibles/collectible_celestial_ring.tres | 星界戒指 | 史诗 | 击杀:charge | 击杀充能：击败敌人时补充0.55秒技能充能。 | 24x25 | 295 | OK |
 | resources/config/collectibles/collectible_charged_jade_pendant.tres | 充能玉佩 | 稀有 | 技力/s+0.5 | 技力充能成长：每秒额外补充0.5秒技力。 | 14x28 | 257 | OK |
 | resources/config/collectibles/collectible_chipped_ruby.tres | 裂纹红玉 | 普通 | 命中:burn | 火星命中：攻击命中时有概率施加每秒5点伤害的燃烧，持续稍久。 | 23x26 | 426 | OK |
@@ -31,11 +33,15 @@
 | resources/config/collectibles/collectible_copper_sword.tres | 铜短剑 | 普通 | 攻击+1 | 基础攻击：攻击力+1。 | 17x29 | 299 | OK |
 | resources/config/collectibles/collectible_crystal_compass.tres | 水晶罗盘 | 稀有 | 命中:xirang | 命中息壤：攻击命中时有概率从目标身上定位息壤。 | 23x24 | 418 | OK |
 | resources/config/collectibles/collectible_dragon_heart.tres | 龙心 | 史诗 | 击杀:burst | 击杀爆裂：击败敌人时在其位置引发火焰爆裂。 | 24x25 | 333 | OK |
+| resources/config/collectibles/collectible_drum_magazine.tres | 鼓式弹匣 | 史诗 | 弹匣容量+5 | 加算弹匣容量：每份容量+5，最多5份。 | 24x26 | 459 | OK |
+| resources/config/collectibles/collectible_dual_ammo_chamber.tres | 双联弹仓 | 史诗 | 弹匣容量提高100%（取最高） | 百分比弹匣容量：加算容量完成后提高100%，同类只取最高值。 | 22x26 | 495 | OK |
+| resources/config/collectibles/collectible_dual_row_feeder.tres | 双排供弹器 | 稀有 | 弹匣容量提高50%（取最高） | 百分比弹匣容量：加算容量完成后提高50%，同类只取最高值。 | 26x24 | 435 | OK |
 | resources/config/collectibles/collectible_echo_drum.tres | 回声小鼓 | 稀有 | 每800息壤攻速+1.0 | 息壤攻速：每持有800息壤，攻击速度+1。 | 20x25 | 364 | OK |
 | resources/config/collectibles/collectible_eclipse_amulet.tres | 蚀月护符 | 史诗 | 技能:moon_shield | 技能月盾：使用技能时生成较大的月盾。 | 24x25 | 347 | OK |
 | resources/config/collectibles/collectible_ember_leaf.tres | 余烬叶 | 普通 | 命中:burn | 灰叶火种：攻击命中时有概率施加每秒10点伤害的短燃烧。 | 22x25 | 264 | OK |
 | resources/config/collectibles/collectible_emerald.tres | 绿宝石 | 普通 | 生命+10 | 生命成长：每份使生命上限+10。 | 15x26 | 278 | OK |
-| resources/config/collectibles/collectible_flame_trident.tres | 火焰三叉戟 | 稀有 | 燃烧目标伤害x1.2 | 燃烧处决：对正在燃烧的敌人造成伤害x1.2。 | 14x24 | 179 | OK |
+| resources/config/collectibles/collectible_extended_magazine.tres | 加长弹匣 | 稀有 | 弹匣容量+3 | 加算弹匣容量：每份容量+3，最多5份。 | 16x26 | 191 | OK |
+| resources/config/collectibles/collectible_flame_trident.tres | 火焰三叉戟 | 稀有 | 对燃烧敌人的伤害提高20% | 燃烧处决：对正在燃烧的敌人造成伤害x1.2。 | 14x24 | 179 | OK |
 | resources/config/collectibles/collectible_fox_coin.tres | 狐纹铜币 | 普通 | 免费升级率+0.05 | 免费升级：升级基础属性时有5%概率不消耗息壤。 | 21x21 | 349 | OK |
 | resources/config/collectibles/collectible_frost_crystal.tres | 寒霜水晶 | 史诗 | 周期:frost | 周期寒霜：定时对附近敌人造成法术伤害并减速。 | 18x26 | 299 | OK |
 | resources/config/collectibles/collectible_frost_totem.tres | 寒霜图腾 | 稀有 | 周期:frost | 周期寒霜：每13秒释放寒霜，伤害并减速范围内敌人。 | 20x25 | 354 | OK |
@@ -43,11 +49,13 @@
 | resources/config/collectibles/collectible_glass_marble.tres | 玻璃弹珠 | 普通 | 穿透率+0.06 | 穿透弹：普通子弹有6%概率变为穿透弹。 | 19x19 | 277 | OK |
 | resources/config/collectibles/collectible_goat_horn.tres | 山羊角 | 普通 | 命中:execute | 低血处决：攻击命中时有概率处决低生命敌人。 | 20x22 | 206 | OK |
 | resources/config/collectibles/collectible_gold_apple.tres | 金苹果 | 稀有 | 击杀:heal | 击杀回血：击败敌人时回复7点生命。 | 21x25 | 328 | OK |
-| resources/config/collectibles/collectible_gold_wine_cup.tres | 金酒之杯 | 史诗 | 每1000息壤攻速+5.0 | 息壤攻速：每持有1000息壤获得5点攻击速度。 | 19x26 | 317 | OK |
+| resources/config/collectibles/collectible_gold_wine_cup.tres | 金酒之杯 | 传说 | 每1000息壤攻速+5.0 | 息壤攻速：每持有1000息壤获得5点攻击速度。 | 19x26 | 317 | OK |
 | resources/config/collectibles/collectible_gray_gem.tres | 灰宝石 | 普通 | 物防+1 | 物理防御成长：每份使物理防御+1。 | 15x26 | 278 | OK |
 | resources/config/collectibles/collectible_guardian_badge.tres | 守卫徽章 | 稀有 | 触发:hurt_thunder | 受伤反击：受伤后小范围反击落雷。 | 20x24 | 304 | OK |
+| resources/config/collectibles/collectible_gun_oil.tres | 润滑枪油 | 普通 | 换弹时间缩短10%（取最高） | 换弹缩短：换弹时间缩短10%，同类只取最高值。 | 10x26 | 184 | OK |
 | resources/config/collectibles/collectible_heavy_gauntlet.tres | 重拳套 | 稀有 | 物伤+2 | 物理伤害：造成物理伤害+2。 | 20x25 | 339 | OK |
 | resources/config/collectibles/collectible_herbal_bundle.tres | 草药束 | 普通 | 命中:bloom | 命中治疗花：攻击命中时有概率在命中位置治疗附近友方。 | 22x25 | 264 | OK |
+| resources/config/collectibles/collectible_high_speed_loader.tres | 高速装填器 | 传说 | 换弹时间缩短50%（取最高） | 换弹缩短：换弹时间缩短50%，同类只取最高值。 | 26x24 | 434 | OK |
 | resources/config/collectibles/collectible_hunters_bow.tres | 猎人短弓 | 稀有 | 周期:archer | 周期射箭：每12秒向近处2名敌人射箭。 | 21x27 | 181 | OK |
 | resources/config/collectibles/collectible_iron_dagger.tres | 铁匕首 | 普通 | 命中:bleed | 流血命中：攻击命中时有概率造成短时流血。 | 19x27 | 239 | OK |
 | resources/config/collectibles/collectible_ironwood_seed.tres | 铁木种子 | 稀有 | 生命+25 | 生命上限：生命上限+25。 | 20x25 | 319 | OK |
@@ -63,11 +71,11 @@
 | resources/config/collectibles/collectible_moon_amulet.tres | 月亮护符 | 史诗 | 技能:moon_shield | 技能月盾：使用技能时生成保护附近友方的减伤区域。 | 21x26 | 359 | OK |
 | resources/config/collectibles/collectible_moon_pin.tres | 月纹胸针 | 稀有 | 技能:moon_shield | 技能月盾：使用技能时生成小月盾。 | 20x26 | 242 | OK |
 | resources/config/collectibles/collectible_moss_agate.tres | 苔纹玛瑙 | 普通 | 生命+8 | 生命上限：生命上限+8。 | 23x26 | 426 | OK |
-| resources/config/collectibles/collectible_nine_eleven.tres | 911 | 传说 | 正面远程伤害x1.3；背面远程伤害x0.5 | 远程受击方向：增加正面远程伤害，显著降低背面远程伤害。 | 29x12 | 234 | OK |
+| resources/config/collectibles/collectible_nine_eleven.tres | 911 | 传说 | 受到的正面远程伤害提高30%；受到的背面远程伤害降低50% | 远程受击方向：增加正面远程伤害，显著降低背面远程伤害。 | 29x12 | 234 | OK |
 | resources/config/collectibles/collectible_obsidian_key.tres | 黑曜钥匙 | 稀有 | 命中:execute | 低血处决：攻击命中时有概率处决低生命敌人。 | 24x26 | 179 | OK |
 | resources/config/collectibles/collectible_oil_lamp.tres | 油灯 | 稀有 | 命中:burn | 油火命中：攻击命中时有概率造成每秒15点伤害的油火灼烧。 | 15x22 | 246 | OK |
 | resources/config/collectibles/collectible_oracle_cube.tres | 先知方块 | 传说 | 命中:mark | 先知标记：攻击命中时有概率施加高额易伤标记。 | 25x25 | 452 | OK |
-| resources/config/collectibles/collectible_orange.tres | 橙子 | 普通 | 免耗弹率+0.1 | 鲜甜储弹：每份提供10%不耗弹概率，最多10份、最高100%。 | 18x22 | 283 | OK |
+| resources/config/collectibles/collectible_orange.tres | 橙子 | 稀有 | 免耗弹率+0.1 | 鲜甜储弹：每份提供10%不耗弹概率，最多10份、最高100%。 | 18x22 | 283 | OK |
 | resources/config/collectibles/collectible_pebble_shield.tres | 卵石小盾 | 普通 | 物防+1 | 物理防御：物理防御+1。 | 23x27 | 429 | OK |
 | resources/config/collectibles/collectible_philosopher_stone.tres | 贤者石 | 史诗 | 免费升级率+0.25 | 免费升级：升级基础属性时有25%概率不消耗息壤。 | 24x26 | 436 | OK |
 | resources/config/collectibles/collectible_phoenix_feather.tres | 凤凰羽 | 史诗 | 周期:heal | 周期治疗：每15秒治疗附近友方。 | 24x25 | 228 | OK |
@@ -78,19 +86,21 @@
 | resources/config/collectibles/collectible_prism_lens.tres | 棱镜镜片 | 稀有 | 穿透率+0.15 | 穿透弹：普通子弹有15%概率变为穿透弹。 | 24x26 | 315 | OK |
 | resources/config/collectibles/collectible_pure_charge_crystal.tres | 纯净充能水晶 | 传说 | 技能免耗率+0.2 | 纯净回响：每份提供20%技能免耗概率，最多5份、最高100%。 | 12x26 | 224 | OK |
 | resources/config/collectibles/collectible_quick_feather.tres | 轻羽 | 普通 | 移速+6.0 | 移动速度：移动速度+6。 | 19x25 | 218 | OK |
+| resources/config/collectibles/collectible_quick_load_belt.tres | 快装弹带 | 稀有 | 换弹时间缩短20%（取最高） | 换弹缩短：换弹时间缩短20%，同类只取最高值。 | 26x16 | 263 | OK |
 | resources/config/collectibles/collectible_rain_bead.tres | 雨珠 | 普通 | 命中:chill | 雨气缓速：攻击命中时有概率让敌人被雨气减速。 | 19x19 | 277 | OK |
 | resources/config/collectibles/collectible_red_mushroom.tres | 红蘑菇 | 普通 | 命中:leech | 命中吸血：攻击命中时有概率治疗自己。 | 23x24 | 305 | OK |
 | resources/config/collectibles/collectible_river_shell.tres | 河贝壳 | 普通 | 法防+1 | 魔法防御：魔法防御+1。 | 21x22 | 372 | OK |
 | resources/config/collectibles/collectible_roller_skates.tres | 轮滑鞋 | 稀有 | 冲刺距离+10.0 | 冲刺增程：冲刺距离+10。 | 22x23 | 315 | OK |
 | resources/config/collectibles/collectible_royal_goblet.tres | 王家圣杯 | 史诗 | 每1000息壤攻速+2.0 | 息壤攻速：每持有1000息壤，攻击速度+2。 | 24x26 | 320 | OK |
 | resources/config/collectibles/collectible_ruby.tres | 红宝石 | 普通 | 攻击+3 | 攻击成长：每份使攻击力+3。 | 15x26 | 278 | OK |
-| resources/config/collectibles/collectible_ruby_crown.tres | 红玉小冠 | 稀有 | 攻击+5 | 基础攻击：攻击力+5。 | 23x24 | 392 | OK |
+| resources/config/collectibles/collectible_ruby_crown.tres | 红玉小冠 | 稀有 | 攻击+4；攻速+10.0 | 攻势强化：攻击力+4，攻击速度+10。 | 23x24 | 392 | OK |
 | resources/config/collectibles/collectible_runed_book.tres | 符文书 | 稀有 | 技力/s+0.5 | 技能充能：每秒技能充能+0.5。 | 20x24 | 396 | OK |
 | resources/config/collectibles/collectible_rusty_helm.tres | 生锈头盔 | 普通 | 物防+2 | 物理防御：物理防御+2。 | 21x20 | 358 | OK |
-| resources/config/collectibles/collectible_sakura.tres | 樱花 | 史诗 | 周期:sakura_rocket | 追踪导弹：每10秒朝最近敌人发射凌兰樱花导弹，造成100点法术爆炸伤害。 | 26x25 | 423 | OK |
+| resources/config/collectibles/collectible_sakura.tres | 樱花 | 传说 | 周期:sakura_rocket | 追踪导弹：每10秒朝最近敌人发射凌兰樱花导弹，造成100点法术爆炸伤害。 | 26x25 | 423 | OK |
 | resources/config/collectibles/collectible_salt_charm.tres | 盐晶符 | 普通 | 命中:mark | 易伤标记：攻击命中时有概率标记敌人，使其短时承受更多伤害。 | 19x22 | 308 | OK |
 | resources/config/collectibles/collectible_sapphire_ring.tres | 蓝宝石戒指 | 稀有 | 命中:chill | 寒冷命中：攻击命中时有概率施加寒冷。 | 22x25 | 290 | OK |
-| resources/config/collectibles/collectible_silver_mask.tres | 银面具 | 稀有 | 背面远程伤害x0.75 | 背面减伤：受到背面远程伤害变为75%。 | 25x24 | 413 | OK |
+| resources/config/collectibles/collectible_silver_mask.tres | 银面具 | 稀有 | 受到的背面远程伤害降低25% | 背面减伤：受到背面远程伤害变为75%。 | 25x24 | 413 | OK |
+| resources/config/collectibles/collectible_simple_magazine.tres | 简易弹匣 | 普通 | 弹匣容量+1 | 加算弹匣容量：每份容量+1，最多5份。 | 14x26 | 290 | OK |
 | resources/config/collectibles/collectible_spark_bottle.tres | 电火瓶 | 稀有 | 周期:thunder | 周期落雷：每16秒引落闪电。 | 22x23 | 325 | OK |
 | resources/config/collectibles/collectible_speed_ring.tres | 速度戒指 | 稀有 | 移速+15.0 | 移动成长：每份使移动速度+15。 | 21x22 | 304 | OK |
 | resources/config/collectibles/collectible_spellblade.tres | 咒刃 | 史诗 | 命中:mark | 易伤标记：攻击命中时有概率施加更强易伤标记。 | 24x29 | 329 | OK |
@@ -113,6 +123,7 @@
 | resources/config/collectibles/collectible_topaz.tres | 黄宝石 | 普通 | 移速+8.0 | 移动成长：每份使移动速度+8。 | 15x26 | 278 | OK |
 | resources/config/collectibles/collectible_topaz_chip.tres | 黄玉碎片 | 普通 | 移速+7.0 | 移动速度：移动速度+7。 | 23x26 | 426 | OK |
 | resources/config/collectibles/collectible_training_arrow.tres | 练习箭 | 普通 | 命中:mark | 易伤标记：攻击命中时有概率标记敌人。 | 24x21 | 118 | OK |
+| resources/config/collectibles/collectible_triple_ammo_chamber.tres | 三联弹仓 | 传说 | 弹匣容量提高200%（取最高） | 百分比弹匣容量：加算容量完成后提高200%，同类只取最高值。 | 24x26 | 385 | OK |
 | resources/config/collectibles/collectible_void_crown.tres | 虚空王冠 | 传说 | 命中:execute | 虚空处决：攻击命中时有概率处决低生命敌人。 | 25x24 | 400 | OK |
 | resources/config/collectibles/collectible_warm_bread.tres | 烤面包 | 普通 | 击杀:heal | 击杀回血：击败敌人时回复2点生命。 | 23x16 | 308 | OK |
 | resources/config/collectibles/collectible_wind_charm.tres | 风行符 | 稀有 | 技能:swift | 技能疾行：使用技能后短暂提速。 | 21x24 | 313 | OK |

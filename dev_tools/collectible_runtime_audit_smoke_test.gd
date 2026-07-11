@@ -12,6 +12,17 @@ const REQUIRED_NEW_COLLECTIBLE_EFFECT_IDS := [
 	&"pure_charge_crystal",
 	&"roller_skates",
 	&"power_wheel",
+	&"capacity_spring",
+	&"dual_row_feeder",
+	&"dual_ammo_chamber",
+	&"triple_ammo_chamber",
+	&"gun_oil",
+	&"quick_load_belt",
+	&"auto_loader",
+	&"high_speed_loader",
+	&"simple_magazine",
+	&"extended_magazine",
+	&"drum_magazine",
 ]
 
 var failures: Array[String] = []
@@ -47,7 +58,7 @@ func _run() -> void:
 
 func _test_every_collectible_runtime_effect() -> void:
 	var pool := LuoxiMerchant.get_collectible_pool()
-	_expect(pool.size() == 112, "Runtime audit must load 112 collectibles from Luoxi pool.")
+	_expect(pool.size() == 123, "Runtime audit must load 123 collectibles from Luoxi pool.")
 	var seen_paths: Dictionary = {}
 	var seen_effect_ids: Dictionary = {}
 	for item_variant in pool:
@@ -71,6 +82,7 @@ func _audit_single_collectible(item: PickupConfig) -> void:
 	run_state.begin_new_run()
 	var player := _spawn_player()
 	await process_frame
+	var ammo_player := player as AmmoRangedPlayer
 
 	var base_attack := player.attack_damage
 	var base_max_health := player.max_health
@@ -80,6 +92,8 @@ func _audit_single_collectible(item: PickupConfig) -> void:
 	var base_attack_speed := player.get_attack_speed()
 	var base_dash_distance := player.get_dash_distance()
 	var base_dash_cooldown := player.get_dash_cooldown()
+	var base_ammo_capacity := ammo_player.get_ammo_capacity()
+	var base_reload_duration := ammo_player.get_effective_reload_duration()
 
 	_expect(run_state.try_add_item(item), "%s must fit into an empty inventory." % item.display_name)
 	_expect(item.collectible_max_copies >= 0, "%s copy limit must not be negative." % item.display_name)
@@ -231,6 +245,21 @@ func _audit_single_collectible(item: PickupConfig) -> void:
 			base_attack_speed + item.collectible_attack_speed_bonus + dynamic_attack_speed_bonus
 		),
 		"%s dynamic attack speed bonus must apply." % item.display_name
+	)
+	var expected_ammo_capacity := floori(
+		float(base_ammo_capacity + item.collectible_ammo_capacity_additive_bonus)
+		* (1.0 + item.collectible_ammo_capacity_bonus_ratio)
+	)
+	_expect(
+		ammo_player.get_ammo_capacity() == expected_ammo_capacity,
+		"%s effective ammo capacity must apply additive capacity before the percentage multiplier." % item.display_name
+	)
+	_expect(
+		is_equal_approx(
+			ammo_player.get_effective_reload_duration(),
+			base_reload_duration * (1.0 - item.collectible_reload_time_reduction)
+		),
+		"%s effective reload reduction must apply." % item.display_name
 	)
 	if (
 		item.damage_against_burning_multiplier > 1.0

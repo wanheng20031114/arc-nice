@@ -21,6 +21,9 @@ const SPIRAL_PHASE_STEP := PI / 12.0
 var current_ammo: int = 0
 var is_reloading: bool = false
 var reload_progress: float = 0.0
+var _ammo_resources_initialized := false
+var _last_effective_ammo_capacity: int = 1
+var _network_ammo_capacity_override: int = 0
 
 var form_fire_rate_multiplier: float = DEFAULT_FIRE_RATE_MULTIPLIER
 var current_form_mode: int = PickupConfig.PlayerFormMode.NORMAL
@@ -43,6 +46,8 @@ func supports_projectile_attack_patterns() -> bool:
 
 
 func _initialize_character_resources() -> void:
+	_ammo_resources_initialized = true
+	_last_effective_ammo_capacity = get_ammo_capacity()
 	_reset_ammo_to_full()
 
 
@@ -130,7 +135,37 @@ func _has_active_form_override() -> bool:
 
 
 func get_ammo_capacity() -> int:
-	return maxi(ammo_capacity, 1)
+	if _network_ammo_capacity_override > 0 and not uses_local_input:
+		return _network_ammo_capacity_override
+	var additive_capacity := maxi(
+		ammo_capacity + collectible_ammo_capacity_additive_bonus,
+		1
+	)
+	return maxi(
+		floori(
+			float(additive_capacity)
+			* (1.0 + maxf(collectible_ammo_capacity_bonus_ratio, 0.0))
+		),
+		1
+	)
+
+
+func get_effective_reload_duration() -> float:
+	return maxf(
+		reload_duration * (1.0 - clampf(collectible_reload_time_reduction, 0.0, 0.95)),
+		0.01
+	)
+
+
+func _on_collectible_ammunition_stats_refreshed() -> void:
+	var new_capacity := get_ammo_capacity()
+	if not _ammo_resources_initialized:
+		_last_effective_ammo_capacity = new_capacity
+		return
+	var was_full := current_ammo >= _last_effective_ammo_capacity
+	current_ammo = new_capacity if was_full else mini(current_ammo, new_capacity)
+	_last_effective_ammo_capacity = new_capacity
+	_update_ammo_bar()
 
 
 func get_reload_progress_ratio() -> float:
@@ -179,15 +214,18 @@ func apply_multiplayer_ammo_state(
 	new_is_reloading: bool,
 	new_reload_progress: float
 ) -> void:
-	ammo_capacity = maxi(new_ammo_capacity, 1)
+	_network_ammo_capacity_override = maxi(new_ammo_capacity, 1)
 	current_ammo = clampi(new_current_ammo, 0, get_ammo_capacity())
+	_last_effective_ammo_capacity = get_ammo_capacity()
 	is_reloading = new_is_reloading
 	reload_progress = clampf(new_reload_progress, 0.0, 1.0)
 	_update_ammo_bar()
 
 
 func _reset_ammo_to_full() -> void:
-	current_ammo = get_ammo_capacity()
+	var effective_capacity := get_ammo_capacity()
+	current_ammo = effective_capacity
+	_last_effective_ammo_capacity = effective_capacity
 	is_reloading = false
 	reload_progress = 0.0
 	_authoritative_spiral_partner_pending = false
@@ -256,7 +294,7 @@ func _try_start_reload() -> bool:
 func _update_reload(delta: float) -> void:
 	if not is_reloading:
 		return
-	var safe_duration := maxf(reload_duration, 0.01)
+	var safe_duration := get_effective_reload_duration()
 	reload_progress = clampf(
 		reload_progress + maxf(delta, 0.0) / safe_duration,
 		0.0,
@@ -455,7 +493,7 @@ func get_multiplayer_shot_pattern() -> int:
 
 
 func get_multiplayer_ammo_capacity() -> int:
-	return maxi(ammo_capacity, 1)
+	return get_ammo_capacity()
 
 
 func get_multiplayer_current_ammo() -> int:

@@ -153,6 +153,9 @@ var collectible_magic_damage_bonus: int = 0
 var collectible_dash_distance_bonus: float = 0.0
 var collectible_dash_cooldown_reduction: float = 0.0
 var collectible_attack_speed_bonus: float = 0.0
+var collectible_ammo_capacity_additive_bonus: int = 0
+var collectible_ammo_capacity_bonus_ratio: float = 0.0
+var collectible_reload_time_reduction: float = 0.0
 var collectible_skill_charge_bonus_per_second: float = 0.0
 var collectible_skill_charge_preserve_chance: float = 0.0
 var collectible_base_upgrade_free_chance: float = 0.0
@@ -422,6 +425,8 @@ func is_collectible_compatible(item: PickupConfig) -> bool:
 	if item == null:
 		return false
 	if item.requires_projectile_primary_attack and not supports_projectile_attack_patterns():
+		return false
+	if item.requires_ammunition and not uses_ammunition():
 		return false
 	return true
 
@@ -1542,6 +1547,9 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	var dash_distance_bonus := 0.0
 	var dash_cooldown_reduction := 0.0
 	var attack_speed_bonus := 0.0
+	var ammo_capacity_additive_bonus := 0
+	var ammo_capacity_bonus_ratio := 0.0
+	var reload_time_reduction := 0.0
 	var skill_charge_bonus := 0.0
 	var skill_charge_preserve_chance := 0.0
 	var base_upgrade_free_chance := 0.0
@@ -1557,6 +1565,15 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 		max_health_bonus += item.collectible_max_health_bonus
 		move_speed_bonus += item.collectible_move_speed_bonus
 		attack_speed_bonus += item.collectible_attack_speed_bonus
+		ammo_capacity_additive_bonus += item.collectible_ammo_capacity_additive_bonus
+		ammo_capacity_bonus_ratio = maxf(
+			ammo_capacity_bonus_ratio,
+			item.collectible_ammo_capacity_bonus_ratio
+		)
+		reload_time_reduction = maxf(
+			reload_time_reduction,
+			item.collectible_reload_time_reduction
+		)
 		physical_defense_bonus += item.collectible_physical_defense_bonus
 		magic_defense_bonus += item.collectible_magic_defense_bonus
 		physical_damage_bonus += item.collectible_physical_damage_bonus
@@ -1609,6 +1626,9 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	collectible_dash_distance_bonus = dash_distance_bonus
 	collectible_dash_cooldown_reduction = dash_cooldown_reduction
 	collectible_attack_speed_bonus = attack_speed_bonus
+	collectible_ammo_capacity_additive_bonus = maxi(ammo_capacity_additive_bonus, 0)
+	collectible_ammo_capacity_bonus_ratio = maxf(ammo_capacity_bonus_ratio, 0.0)
+	collectible_reload_time_reduction = clampf(reload_time_reduction, 0.0, 0.95)
 	collectible_skill_charge_bonus_per_second = skill_charge_bonus
 	collectible_skill_charge_preserve_chance = clampf(skill_charge_preserve_chance, 0.0, 1.0)
 	collectible_base_upgrade_free_chance = clampf(base_upgrade_free_chance, 0.0, 1.0)
@@ -1634,7 +1654,12 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 			health_bar.set_health(current_health, max_health)
 		if emit_changes:
 			health_changed.emit(current_health, max_health)
+	_on_collectible_ammunition_stats_refreshed()
 	_refresh_shooting_timer_wait_time()
+
+
+func _on_collectible_ammunition_stats_refreshed() -> void:
+	pass
 
 
 func _get_active_collectible_items() -> Array[PickupConfig]:

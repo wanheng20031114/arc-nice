@@ -150,6 +150,8 @@ const KILL_EFFECT_BURST := "burst"
 @export_group("收藏品兼容性")
 # 需要玩家的普通攻击能够生成投射物；近战角色不应获得此类收藏品。
 @export var requires_projectile_primary_attack: bool = false
+# 需要玩家拥有弹药与换弹机制；无弹药角色不应获得此类收藏品。
+@export var requires_ammunition: bool = false
 
 @export_group("收藏品数值")
 # 玩家持有时，普通子弹变为穿透弹的概率。
@@ -158,6 +160,12 @@ const KILL_EFFECT_BURST := "burst"
 @export_range(0.0, 1.0, 0.01) var bullet_homing_chance: float = 0.0
 # 玩家持有时，普通射击不消耗弹药的概率。
 @export_range(0.0, 1.0, 0.01) var ammo_free_shot_chance: float = 0.0
+# 所有加算弹匣逐份累加，随后再参与百分比容量乘算。
+@export_range(0, 9999, 1, "or_greater") var collectible_ammo_capacity_additive_bonus: int = 0
+# 同类百分比容量只取持有中的最高值；2.0 表示提高 200%。
+@export_range(0.0, 10.0, 0.05, "or_greater") var collectible_ammo_capacity_bonus_ratio: float = 0.0
+# 同类换弹缩短只取持有中的最高值；0.5 表示缩短 50%。
+@export_range(0.0, 0.95, 0.05) var collectible_reload_time_reduction: float = 0.0
 # 使用技能时保留全部技力的概率。
 @export_range(0.0, 1.0, 0.01) var skill_charge_preserve_chance: float = 0.0
 # 攻击处于对应状态的敌人时使用两个相互独立的伤害乘区。

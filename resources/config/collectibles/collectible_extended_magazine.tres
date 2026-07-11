@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/collectibles/extended_magazine.png" id="1_icon"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 5
+display_name = "加长弹匣"
+drop_weight = 0.0
+description = "弹匣容量+3（可叠加，最多5份；先加算再乘算）。"
+can_store_in_inventory = true
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(1, 1)
+duration = 0.0
+collectible_effect_id = "extended_magazine"
+collectible_rarity = 1
+collectible_design_id = "extended_magazine"
+collectible_design_note = "加算弹匣容量：每份容量+3，最多5份。"
+collectible_stacks_by_copy = true
+collectible_max_copies = 5
+requires_ammunition = true
+collectible_ammo_capacity_additive_bonus = 3
+metadata/_custom_type_script = "uid://qucrregg4cq0"
