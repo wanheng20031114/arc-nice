@@ -1,12 +1,12 @@
-[gd_resource type="Resource" script_class="WaveConfig" format=3]
+[gd_resource type="Resource" script_class="WaveConfig" format=3 uid="uid://jw71lqgmuick"]
 
-[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_w7ck4"]
-[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_shell.tres" id="2_fjxe2"]
-[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_purple_bomber.tres" id="3_mgufy"]
-[ext_resource type="Script" path="res://resources/config/flow/flow_exit_config.gd" id="4_n8hte"]
-[ext_resource type="AudioStream" path="res://resources/audio/shenmu_swamp_combat.ogg" id="5_dkxs1"]
-[ext_resource type="AudioStream" path="res://resources/audio/shenmu_swamp_intermission.ogg" id="6_uj65i"]
-[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="7_uugj8"]
+[ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_w7ck4"]
+[ext_resource type="Resource" uid="uid://chktgvo5mcaul" path="res://resources/config/enemies/yuanshi_insect_shell.tres" id="2_fjxe2"]
+[ext_resource type="Resource" uid="uid://cpjc7spicocg8" path="res://resources/config/enemies/yuanshi_insect_purple_bomber.tres" id="3_mgufy"]
+[ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="4_n8hte"]
+[ext_resource type="AudioStream" uid="uid://cb5ob71nfh3oo" path="res://resources/audio/shenmu_swamp_combat.ogg" id="5_dkxs1"]
+[ext_resource type="AudioStream" uid="uid://c6kupff1mmga0" path="res://resources/audio/shenmu_swamp_intermission.ogg" id="6_uj65i"]
+[ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="7_uugj8"]
 
 [sub_resource type="Resource" id="Resource_ojb4e"]
 script = ExtResource("1_w7ck4")

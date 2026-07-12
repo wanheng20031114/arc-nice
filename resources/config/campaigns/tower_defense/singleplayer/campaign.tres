@@ -1,7 +1,7 @@
-[gd_resource type="Resource" script_class="WaveCampaignConfig" format=3]
+[gd_resource type="Resource" script_class="WaveCampaignConfig" format=3 uid="uid://cm65a6d1hdi16"]
 
-[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/singleplayer/flow.tres" id="1_dbfbn"]
-[ext_resource type="Script" path="res://resources/config/waves/wave_campaign_config.gd" id="2_jqkiw"]
+[ext_resource type="Resource" uid="uid://rywlya20qqu5" path="res://resources/config/campaigns/tower_defense/singleplayer/flow.tres" id="1_dbfbn"]
+[ext_resource type="Script" uid="uid://cflmpanxahs20" path="res://resources/config/waves/wave_campaign_config.gd" id="2_jqkiw"]
 
 [resource]
 script = ExtResource("2_jqkiw")

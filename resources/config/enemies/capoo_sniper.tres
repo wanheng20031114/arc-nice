@@ -3,7 +3,13 @@
 [ext_resource type="Script" uid="uid://cc7ac136dc8l8" path="res://resources/config/enemies/capoo_sniper_config.gd" id="1_script"]
 [ext_resource type="PackedScene" uid="uid://bv3hadhgf8c88" path="res://scene/enemy/capoo_sniper.tscn" id="2_scene"]
 [ext_resource type="PackedScene" path="res://scene/enemy/capoo_sniper_lock_reticle.tscn" id="3_reticle"]
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="4_4l3y5"]
 [ext_resource type="AudioStream" uid="uid://b0nwiuq3akcvc" path="res://resources/audio/capoo_sniper_fire.wav" id="4_audio"]
+[ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="5_yxd7q"]
+[ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="6_oooyo"]
+[ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="7_uhhfw"]
+[ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="8_ogw5j"]
+[ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="9_lorul"]
 
 [resource]
 script = ExtResource("1_script")
@@ -14,7 +20,6 @@ enemy_scene = ExtResource("2_scene")
 max_health = 100
 attack_damage = 200
 physical_defense = 20
-magic_defense = 0
 move_speed = 80.0
 home_damage = 2
 xirang_drop_amount = 35

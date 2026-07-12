@@ -1,7 +1,7 @@
-[gd_resource type="Resource" script_class="WaveCampaignConfig" format=3]
+[gd_resource type="Resource" script_class="WaveCampaignConfig" format=3 uid="uid://8txwgcmksy6y"]
 
-[ext_resource type="Resource" path="res://resources/config/campaigns/standard/singleplayer/flow.tres" id="1_uawly"]
-[ext_resource type="Script" path="res://resources/config/waves/wave_campaign_config.gd" id="2_w55gn"]
+[ext_resource type="Resource" uid="uid://fpbvs5xot8wc" path="res://resources/config/campaigns/standard/singleplayer/flow.tres" id="1_uawly"]
+[ext_resource type="Script" uid="uid://cflmpanxahs20" path="res://resources/config/waves/wave_campaign_config.gd" id="2_w55gn"]
 
 [resource]
 script = ExtResource("2_w55gn")
