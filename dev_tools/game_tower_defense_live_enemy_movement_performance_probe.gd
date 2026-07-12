@@ -212,6 +212,9 @@ func _spawn_live_enemies() -> void:
 			continue
 		game.enemy_container.add_child(enemy)
 		enemy.setup(enemy_config, game.player, pathfinder)
+		enemy.set_near_moving_target_direct_distance(
+			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS
+		)
 		enemy.global_position = candidate_positions[enemy_index]
 		enemy.velocity = Vector2.ZERO
 		enemy.set_physics_process(false)
@@ -419,8 +422,10 @@ func _reset_phase(
 
 	game.player.global_position = FIXTURE_CENTER
 	game.player.velocity = Vector2.ZERO
-	game.player.controls_locked = false
-	game.player.uses_local_input = true
+	# A real-window benchmark can otherwise absorb unrelated keyboard input while
+	# its stationary control phase is running in the background.
+	game.player.controls_locked = not should_move
+	game.player.uses_local_input = should_move
 	game.player.is_dead = false
 	game.player.current_health = game.player.max_health
 	game.player.reset_physics_interpolation()

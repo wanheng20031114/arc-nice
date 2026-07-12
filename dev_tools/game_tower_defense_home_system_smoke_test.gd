@@ -3,6 +3,7 @@ extends SceneTree
 const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const FIRE_RANGED_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres")
+const RETARGET_STRESS_ENEMY_COUNT := 300
 const EXPECTED_HOME_CELLS: Array[Vector2i] = [
 	Vector2i(2, 22),
 	Vector2i(3, 22),
@@ -273,35 +274,67 @@ func _verify_target_selection(game: GameTowerDefense) -> void:
 	_expect(
 		is_equal_approx(
 			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS / logical_tile_width,
-			12.5
+			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS
 		),
-		"The 200-world-pixel player aggro radius must equal 12.5 logical tiles."
+		"The player aggro radius must equal 16 logical tiles."
 	)
 	_expect(
 		is_equal_approx(
 			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS * game.map_camera.zoom.x,
-			400.0
+			512.0
 		),
-		"At tower-defense zoom 2, the player aggro radius must appear as 400 screen pixels."
+		"At tower-defense zoom 2, the player aggro radius must appear as 512 screen pixels."
 	)
 	var gate := targets[0]
-	game.player.global_position = gate.global_position - Vector2(160.0, 0.0)
 	var near_gate := gate.global_position + Vector2(-2.0, 0.0)
+	game.player.global_position = near_gate + Vector2(logical_tile_width * 16.01, 0.0)
 	var picked_gate: Node2D = game.call("_pick_enemy_objective", near_gate, game.player) as Node2D
-	_expect(picked_gate == gate, "Enemy objective selection must choose the nearer home gate.")
-	var midpoint := (gate.global_position + game.player.global_position) * 0.5
-	var tie_target: Node2D = game.call("_pick_enemy_objective", midpoint, game.player) as Node2D
-	_expect(tie_target == gate, "Exact objective-distance ties must keep Home as the objective.")
-	var near_player := game.player.global_position + Vector2(2.0, 0.0)
+	_expect(picked_gate == gate, "Without a nearby plant or player, enemies must choose Home.")
+
+	game.player.global_position = near_gate + Vector2(logical_tile_width * 16.0, 0.0)
 	_expect(
-		game.call("_pick_enemy_objective", near_player, game.player) == game.player,
-		"A player inside 200px and closer than Home must become the movement objective."
+		game.call("_pick_enemy_objective", near_gate, game.player) == game.player,
+		"A player exactly 16 tiles away must outrank even a much closer Home gate."
 	)
-	var outside_player_aggro := game.player.global_position - Vector2(201.0, 0.0)
+
+	var boundary_plant := _register_target_probe_plant(
+		game,
+		near_gate + Vector2(logical_tile_width * 8.0, 0.0)
+	)
+	var nearer_plant := _register_target_probe_plant(
+		game,
+		near_gate + Vector2(logical_tile_width * 3.0, 0.0)
+	)
 	_expect(
-		game.call("_pick_enemy_objective", outside_player_aggro, game.player) == gate,
-		"A player farther than 200px must not pull an enemy away from Home."
+		game.call("_pick_enemy_objective", near_gate, game.player) == nearer_plant,
+		"The nearest living plant inside eight tiles must be the highest-priority objective."
 	)
+	nearer_plant.is_dead = true
+	_expect(
+		game.call("_pick_enemy_objective", near_gate, game.player) == boundary_plant,
+		"A dead plant must be ignored and the exact eight-tile boundary must remain inclusive."
+	)
+	boundary_plant.is_dead = true
+	_expect(
+		game.call("_pick_enemy_objective", near_gate, game.player) == game.player,
+		"The player must become the objective after all nearby plants die."
+	)
+	game.enemy_retarget_time_left = 1.0
+	_release_target_probe_plant(game, nearer_plant)
+	_release_target_probe_plant(game, boundary_plant)
+	_expect(
+		is_zero_approx(game.enemy_retarget_time_left),
+		"Removing a plant objective must request a fresh budgeted retarget sweep."
+	)
+
+	game.player.global_position = near_gate + Vector2(logical_tile_width * 16.01, 0.0)
+	_expect(
+		game.call("_pick_enemy_objective", near_gate, game.player) == gate,
+		"A player beyond 16 tiles must not pull an enemy away from Home."
+	)
+	# Leave enough margin for the retarget probe itself, which starts four world
+	# pixels to the other side of near_gate.
+	game.player.global_position = gate.global_position + Vector2(logical_tile_width * 17.0, 0.0)
 
 	var retarget_enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
 	_expect(retarget_enemy != null, "Basic enemy must instantiate for timed retarget verification.")
@@ -317,6 +350,13 @@ func _verify_target_selection(game: GameTowerDefense) -> void:
 	_expect(
 		retarget_enemy.objective_target == gate,
 		"The authoritative retarget loop must move an enemy toward its nearest Home gate."
+	)
+	_expect(
+		is_equal_approx(
+			retarget_enemy.near_moving_target_direct_distance,
+			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS
+		),
+		"Tower defense must scope its 16-tile direct-player tier without changing other modes."
 	)
 	retarget_enemy.global_position = game.player.global_position + Vector2(2.0, 0.0)
 	game.call("_update_tower_defense_enemy_targets", 0.1)
@@ -342,9 +382,37 @@ func _verify_target_selection(game: GameTowerDefense) -> void:
 	_verify_retarget_budget(game, gate)
 
 
+func _register_target_probe_plant(
+	game: GameTowerDefense,
+	global_position: Vector2
+) -> PlantDefense:
+	var plant := PlantDefense.new()
+	game.plant_container.add_child(plant)
+	plant.global_position = global_position
+	var cell := game.ground_tile_map_layer.local_to_map(
+		game.ground_tile_map_layer.to_local(global_position)
+	)
+	var footprint: Array[Vector2i] = [cell]
+	game.plant_system.call("_register_plant_footprint", plant, footprint)
+	return plant
+
+
+func _release_target_probe_plant(game: GameTowerDefense, plant: PlantDefense) -> void:
+	if plant == null or not is_instance_valid(plant):
+		return
+	game.plant_system.call("_release_plant_footprint", plant)
+	plant.free()
+
+
 func _verify_retarget_budget(game: GameTowerDefense, gate: Node2D) -> void:
+	# Keep the spatial index non-empty while all 300 enemies are outside plant
+	# aggro. This exercises the bounded 8-tile query instead of its empty fast path.
+	var far_plant := _register_target_probe_plant(
+		game,
+		gate.global_position + Vector2(512.0, 512.0)
+	)
 	var enemies: Array[Enemy] = []
-	for index in range(GameTowerDefense.ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME + 1):
+	for index in range(RETARGET_STRESS_ENEMY_COUNT):
 		var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
 		if enemy == null:
 			continue
@@ -358,27 +426,30 @@ func _verify_retarget_budget(game: GameTowerDefense, gate: Node2D) -> void:
 	game.enemy_retarget_cursor = 0
 	game.enemy_retarget_sweep_remaining = 0
 	game.enemy_retarget_time_left = 0.0
-	game.call("_update_tower_defense_enemy_targets", 0.0)
 	var gate_target_count := 0
-	for enemy in enemies:
-		if enemy.objective_target == gate:
-			gate_target_count += 1
-	_expect(
-		gate_target_count == GameTowerDefense.ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME,
-		"A retarget sweep must honor its per-physics-frame enemy budget."
+	var required_budget_frames := ceili(
+		float(enemies.size())
+		/ float(GameTowerDefense.ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME)
 	)
-
-	game.call("_update_tower_defense_enemy_targets", 0.0)
-	gate_target_count = 0
-	for enemy in enemies:
-		if enemy.objective_target == gate:
-			gate_target_count += 1
+	for _budget_frame in range(required_budget_frames):
+		var previous_gate_target_count := gate_target_count
+		game.call("_update_tower_defense_enemy_targets", 0.0)
+		gate_target_count = 0
+		for enemy in enemies:
+			if enemy.objective_target == gate:
+				gate_target_count += 1
+		_expect(
+			gate_target_count - previous_gate_target_count
+				<= GameTowerDefense.ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME,
+			"A 300-enemy retarget sweep must preserve its per-frame budget."
+		)
 	_expect(
 		gate_target_count == enemies.size(),
-		"A budgeted retarget sweep must resume from its cursor on the next frame."
+		"A budgeted 300-enemy retarget sweep must eventually visit every enemy."
 	)
 	for enemy in enemies:
 		enemy.free()
+	_release_target_probe_plant(game, far_plant)
 
 
 func _verify_enemy_contract(game: GameTowerDefense) -> void:
