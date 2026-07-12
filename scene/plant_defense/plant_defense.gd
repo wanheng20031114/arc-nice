@@ -3,6 +3,7 @@ class_name PlantDefense
 
 signal health_changed(current_health: int, maximum_health: int)
 signal died
+signal modal_ui_visibility_changed(is_open: bool)
 
 var config: PlantDefenseConfig = null
 var owner_player: Player = null
@@ -68,6 +69,10 @@ func get_health_ratio() -> float:
 	if max_health <= 0:
 		return 0.0
 	return float(current_health) / float(max_health)
+
+
+func is_modal_ui_open() -> bool:
+	return false
 
 
 func _begin_death() -> void:

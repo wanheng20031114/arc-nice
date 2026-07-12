@@ -2,13 +2,18 @@ extends RefCounted
 class_name PlantDefenseRegistry
 
 const AGAVE_CANNON_ID: StringName = &"agave_cannon"
+const OAK_WAREHOUSE_ID: StringName = &"oak_warehouse"
 
 const AGAVE_CANNON_CONFIG: PlantDefenseConfig = preload(
 	"res://resources/config/plant_defense/agave_cannon.tres"
 )
+const OAK_WAREHOUSE_CONFIG: PlantDefenseConfig = preload(
+	"res://resources/config/plant_defense/oak_warehouse.tres"
+)
 
 const PLANT_CONFIGS := {
 	AGAVE_CANNON_ID: AGAVE_CANNON_CONFIG,
+	OAK_WAREHOUSE_ID: OAK_WAREHOUSE_CONFIG,
 }
 
 
@@ -17,7 +22,7 @@ static func get_config(plant_id: StringName) -> PlantDefenseConfig:
 
 
 static func get_all_configs() -> Array[PlantDefenseConfig]:
-	return [AGAVE_CANNON_CONFIG]
+	return [AGAVE_CANNON_CONFIG, OAK_WAREHOUSE_CONFIG]
 
 
 static func is_valid_plant_id(plant_id: StringName) -> bool:

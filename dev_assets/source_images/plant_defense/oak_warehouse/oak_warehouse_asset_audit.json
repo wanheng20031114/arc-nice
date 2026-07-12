@@ -1,0 +1,18 @@
+{
+  "pipeline": "built-in imagegen -> chroma key -> pixel crop/grid representative compression -> limited palette -> Godot import",
+  "building": {
+    "path": "resources/texture/plant_defense/oak_warehouse/oak_warehouse.png",
+    "canvas_size": [64, 64],
+    "subject_bbox": [7, 3, 57, 61],
+    "subject_size": [50, 58],
+    "binary_alpha": true,
+    "palette_entries_including_transparency": 40
+  },
+  "interface_background": {
+    "path": "resources/texture/plant_defense/oak_warehouse/oak_warehouse_panel_background.png",
+    "source_size": [1448, 1086],
+    "final_size": [724, 543],
+    "integer_scale_ratio": 2,
+    "resampling": "nearest"
+  }
+}

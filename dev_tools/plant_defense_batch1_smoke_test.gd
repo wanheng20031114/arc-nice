@@ -86,7 +86,7 @@ func _test_config_and_scene_contracts() -> void:
 	_expect(agave_config != null and agave_config.is_valid(), "龙舌兰配置必须有效。")
 	if agave_config == null:
 		return
-	_expect(PlantDefenseRegistry.get_all_configs().size() == 1, "第一批注册表只能公开龙舌兰。")
+	_expect(PlantDefenseRegistry.get_all_configs().size() == 2, "植物注册表必须公开龙舌兰与橡木仓库。")
 	_expect(agave_config.max_health == 200, "龙舌兰生命值必须为200。")
 	_expect(agave_config.attack_damage == 10, "龙舌兰攻击力必须为10。")
 	_expect(is_equal_approx(agave_config.attack_speed, 50.0), "龙舌兰攻速必须为50。")

@@ -290,6 +290,8 @@ func _configure_plant_defense_system() -> void:
 	plant_placement_controller.placement_mode_changed.connect(
 		_on_plant_placement_mode_changed
 	)
+	if not plant_system.plant_placed.is_connected(_on_runtime_plant_placed):
+		plant_system.plant_placed.connect(_on_runtime_plant_placed)
 	_update_plant_placement_input_state()
 
 
@@ -304,12 +306,35 @@ func _on_plant_placement_mode_changed(active: bool) -> void:
 	_refresh_player_modal_ui_lock()
 
 
+func _on_runtime_plant_placed(plant: PlantDefense) -> void:
+	if plant == null:
+		return
+	if not plant.modal_ui_visibility_changed.is_connected(_on_plant_modal_ui_visibility_changed):
+		plant.modal_ui_visibility_changed.connect(_on_plant_modal_ui_visibility_changed)
+
+
+func _on_plant_modal_ui_visibility_changed(is_open: bool) -> void:
+	if is_open:
+		_cancel_plant_placement()
+	_refresh_player_modal_ui_lock()
+	_update_plant_placement_input_state()
+
+
 func _has_exclusive_modal_open() -> bool:
 	return (
 		settings_panel.is_open()
 		or player_profile_panel.is_open()
 		or debug_collectible_window.is_open()
+		or _has_open_plant_modal_ui()
 	)
+
+
+func _has_open_plant_modal_ui() -> bool:
+	for node in get_tree().get_nodes_in_group(&"plant_defense"):
+		var plant := node as PlantDefense
+		if plant != null and plant.is_modal_ui_open():
+			return true
+	return false
 
 
 func _update_plant_placement_input_state() -> void:
@@ -414,9 +439,7 @@ func _refresh_player_modal_ui_lock() -> void:
 	if player == null or player.is_dead:
 		return
 	if (
-		settings_panel.is_open()
-		or player_profile_panel.is_open()
-		or debug_collectible_window.is_open()
+		_has_exclusive_modal_open()
 		or (
 			plant_placement_controller != null
 			and plant_placement_controller.is_active()

@@ -1,0 +1,384 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/oak_warehouse_panel.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/oak_warehouse/oak_warehouse_panel_background.png" id="2_background"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/oak_warehouse_inventory_slot.tscn" id="3_slot"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button"]
+bg_color = Color(0.13, 0.075, 0.04, 0.82)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.78, 0.52, 0.2, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_hover"]
+bg_color = Color(0.24, 0.19, 0.07, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.98, 0.78, 0.31, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_disabled"]
+bg_color = Color(0.12, 0.1, 0.08, 0.56)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.35, 0.3, 0.24, 0.7)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font = ExtResource("4_font")
+font_size = 21
+font_color = Color(1, 0.84, 0.45, 1)
+outline_size = 5
+outline_color = Color(0.12, 0.055, 0.025, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_detail_title"]
+font = ExtResource("4_font")
+font_size = 15
+font_color = Color(1, 0.88, 0.57, 1)
+outline_size = 3
+outline_color = Color(0.08, 0.035, 0.02, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_small"]
+font = ExtResource("4_font")
+font_size = 11
+font_color = Color(0.82, 0.75, 0.62, 1)
+outline_size = 2
+outline_color = Color(0.08, 0.035, 0.02, 1)
+
+[node name="OakWarehousePanel" type="CanvasLayer"]
+layer = 70
+script = ExtResource("1_script")
+
+[node name="Overlay" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Dim" type="ColorRect" parent="Overlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.015, 0.01, 0.008, 0.7)
+
+[node name="PanelRoot" type="Control" parent="Overlay"]
+texture_filter = 1
+layout_mode = 0
+offset_right = 724.0
+offset_bottom = 543.0
+
+[node name="Background" type="TextureRect" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_right = 724.0
+offset_bottom = 543.0
+mouse_filter = 2
+texture = ExtResource("2_background")
+
+[node name="StorageTitle" type="Label" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 45.0
+offset_top = 75.0
+offset_right = 330.0
+offset_bottom = 105.0
+text = "橡木仓库"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+
+[node name="PlayerTitle" type="Label" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 394.0
+offset_top = 75.0
+offset_right = 679.0
+offset_bottom = 105.0
+text = "玩家背包"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+
+[node name="StorageGrid" type="GridContainer" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 47.0
+offset_top = 111.0
+offset_right = 327.0
+offset_bottom = 363.0
+theme_override_constants/h_separation = 5
+theme_override_constants/v_separation = 5
+columns = 5
+
+[node name="StorageSlot00" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 0
+[node name="StorageSlot01" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 1
+[node name="StorageSlot02" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 2
+[node name="StorageSlot03" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 3
+[node name="StorageSlot04" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 4
+[node name="StorageSlot05" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 5
+[node name="StorageSlot06" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 6
+[node name="StorageSlot07" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 7
+[node name="StorageSlot08" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 8
+[node name="StorageSlot09" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 9
+[node name="StorageSlot10" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 10
+[node name="StorageSlot11" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 11
+[node name="StorageSlot12" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 12
+[node name="StorageSlot13" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 13
+[node name="StorageSlot14" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 14
+[node name="StorageSlot15" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 15
+[node name="StorageSlot16" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 16
+[node name="StorageSlot17" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 17
+[node name="StorageSlot18" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 18
+[node name="StorageSlot19" parent="Overlay/PanelRoot/StorageGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 19
+
+[node name="PlayerGrid" type="GridContainer" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 397.0
+offset_top = 111.0
+offset_right = 677.0
+offset_bottom = 363.0
+theme_override_constants/h_separation = 5
+theme_override_constants/v_separation = 5
+columns = 5
+
+[node name="PlayerSlot00" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 0
+[node name="PlayerSlot01" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 1
+[node name="PlayerSlot02" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 2
+[node name="PlayerSlot03" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 3
+[node name="PlayerSlot04" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 4
+[node name="PlayerSlot05" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 5
+[node name="PlayerSlot06" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 6
+[node name="PlayerSlot07" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 7
+[node name="PlayerSlot08" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 8
+[node name="PlayerSlot09" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 9
+[node name="PlayerSlot10" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 10
+[node name="PlayerSlot11" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 11
+[node name="PlayerSlot12" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 12
+[node name="PlayerSlot13" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 13
+[node name="PlayerSlot14" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 14
+[node name="PlayerSlot15" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 15
+[node name="PlayerSlot16" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 16
+[node name="PlayerSlot17" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 17
+[node name="PlayerSlot18" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 18
+[node name="PlayerSlot19" parent="Overlay/PanelRoot/PlayerGrid" instance=ExtResource("3_slot")]
+layout_mode = 2
+slot_index = 19
+
+[node name="ItemDetail" type="Control" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 220.0
+offset_top = 420.0
+offset_right = 514.0
+offset_bottom = 495.0
+
+[node name="ItemTitle" type="Label" parent="Overlay/PanelRoot/ItemDetail"]
+layout_mode = 0
+offset_left = 5.0
+offset_top = 2.0
+offset_right = 206.0
+offset_bottom = 25.0
+text = "选择一个物品查看详情"
+label_settings = SubResource("LabelSettings_detail_title")
+text_overrun_behavior = 3
+
+[node name="ItemCategory" type="Label" parent="Overlay/PanelRoot/ItemDetail"]
+layout_mode = 0
+offset_left = 196.0
+offset_top = 5.0
+offset_right = 289.0
+offset_bottom = 23.0
+text = "物资 · 仓库"
+label_settings = SubResource("LabelSettings_small")
+horizontal_alignment = 2
+
+[node name="ItemDescription" type="RichTextLabel" parent="Overlay/PanelRoot/ItemDetail"]
+layout_mode = 0
+offset_left = 5.0
+offset_top = 27.0
+offset_right = 289.0
+offset_bottom = 72.0
+mouse_filter = 2
+bbcode_enabled = true
+text = "在左侧仓库与右侧背包之间移动物品。"
+fit_content = false
+scroll_active = true
+autowrap_mode = 2
+theme_override_colors/default_color = Color(0.86, 0.79, 0.66, 1)
+theme_override_fonts/normal_font = ExtResource("4_font")
+theme_override_font_sizes/normal_font_size = 11
+
+[node name="StatusLabel" type="Label" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 220.0
+offset_top = 496.0
+offset_right = 514.0
+offset_bottom = 516.0
+text = ""
+label_settings = SubResource("LabelSettings_small")
+horizontal_alignment = 1
+
+[node name="UseButton" type="Button" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 50.0
+offset_top = 421.0
+offset_right = 111.0
+offset_bottom = 480.0
+mouse_default_cursor_shape = 2
+text = "使用"
+theme_override_colors/font_color = Color(1, 0.88, 0.57, 1)
+theme_override_colors/font_disabled_color = Color(0.48, 0.43, 0.36, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_button_disabled")
+
+[node name="MoveButton" type="Button" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 117.0
+offset_top = 421.0
+offset_right = 178.0
+offset_bottom = 480.0
+mouse_default_cursor_shape = 2
+text = "移动"
+theme_override_colors/font_color = Color(1, 0.88, 0.57, 1)
+theme_override_colors/font_disabled_color = Color(0.48, 0.43, 0.36, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_button_disabled")
+
+[node name="DiscardButton" type="Button" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 545.0
+offset_top = 421.0
+offset_right = 606.0
+offset_bottom = 480.0
+mouse_default_cursor_shape = 2
+text = "丢弃"
+theme_override_colors/font_color = Color(1, 0.72, 0.52, 1)
+theme_override_colors/font_disabled_color = Color(0.48, 0.43, 0.36, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_button_disabled")
+
+[node name="CloseButton" type="Button" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 612.0
+offset_top = 421.0
+offset_right = 673.0
+offset_bottom = 480.0
+mouse_default_cursor_shape = 2
+text = "关闭"
+theme_override_colors/font_color = Color(1, 0.88, 0.57, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_button_hover")

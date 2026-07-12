@@ -1,0 +1,18 @@
+{
+  "mode": "generate",
+  "assets": [
+    {
+      "name": "oak_warehouse_building",
+      "prompt": "Create a single game-ready pixel-art sprite for a fantasy plant building called “Oak Warehouse”. SUBJECT: one compact oak-tree warehouse, clearly a living plant building rather than a normal house. A stout warm-brown oak trunk forms the central storage body; a rounded leafy green crown sits above; a small arched wooden storage door and two subtle brass hinges are visible on the front; a few acorns and tied wooden bands reinforce the storage theme. Silhouette must read clearly at tiny scale and occupy no more than a square 64×64 logical-pixel canvas after cleanup. COMPOSITION: one centered object only, straight-on three-quarter game view matching a top-down action game, with the base centered and no cast shadow extending outside the footprint. STYLE: handcrafted crisp pixel art, chunky deliberate pixel clusters, consistent 1-logical-pixel outline, limited palette, strong readable silhouette, similar quality to polished indie tower-defense sprites. Avoid excessive micro-detail. BACKGROUND: solid flat pure magenta #FF00FF only for chroma key removal, no gradient, no shadow, no glow. CONSTRAINTS: no text, no UI, no ground tile, no soil patch, no extra objects, no multiple variants, no watermark. The final sprite will be cropped and normalized to 64×64, so keep every important feature well inside the frame.",
+      "raw_source": "dev_assets/source_images/plant_defense/oak_warehouse/oak_warehouse_imagegen_magenta.png",
+      "processed_source": "dev_assets/source_images/plant_defense/oak_warehouse/oak_warehouse_logical60.png",
+      "final_asset": "resources/texture/plant_defense/oak_warehouse/oak_warehouse.png"
+    },
+    {
+      "name": "oak_warehouse_inventory_background",
+      "prompt": "Create one complete text-free pixel-art UI background plate for an in-game “Oak Warehouse” inventory transfer screen. FORMAT: a clean 4:3 landscape panel, front-facing, symmetric, designed to hold two equal 5-column by 4-row item grids side by side. LEFT half is the warehouse storage area; RIGHT half is the player backpack area. Each half must contain one large dark recessed rectangular field with generous clean space for exactly 20 overlaid item-slot controls; do NOT draw the individual slots themselves, because crisp native UI slots will be overlaid later. Add a narrow central wooden divider with a small carved bidirectional arrow motif, and a bottom information/action strip for item description and buttons. STYLE: high-quality crisp pixel art matching a polished fantasy nature/wood-and-brass game interface; dark oak boards, warm bronze corners, subtle green leaf and acorn accents, strong contrast, limited palette, deliberate pixel clusters, clean borders. The two grid fields must be visually distinct and very readable. COMPOSITION: full-bleed rectangular panel with a strong outer frame, equal left/right hierarchy, no perspective distortion, no characters, no items. LIGHTING: even UI lighting, dark interiors behind grids, brighter amber borders. CONSTRAINTS: absolutely no words, letters, numbers, icons that resemble text, no watermark, no photographic texture, no blur, no transparency. This image will be cropped to 4:3 and used directly behind authored Godot controls, so keep the layout perfectly centered and leave safe margins around both grid fields.",
+      "raw_source": "dev_assets/source_images/plant_defense/oak_warehouse/oak_warehouse_ui_imagegen.png",
+      "final_asset": "resources/texture/plant_defense/oak_warehouse/oak_warehouse_panel_background.png"
+    }
+  ]
+}
