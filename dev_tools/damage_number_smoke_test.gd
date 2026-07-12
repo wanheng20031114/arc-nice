@@ -145,6 +145,10 @@ func _test_damage_number_style(damage_number: DamageNumber) -> void:
 	_expect(label.size.y >= 20.0, "DamageNumber label box must leave vertical room for the outlined font.")
 	_expect(label.size.x >= 38.0, "DamageNumber label box must leave horizontal room for the outlined font.")
 	_expect(label.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR, "DamageNumber should use linear texture filtering.")
+	_expect(
+		damage_number.scale.is_equal_approx(Vector2.ONE),
+		"DamageNumber feedback must not scale its dynamic font."
+	)
 	var font_color := label.get_theme_color(&"font_color")
 	_expect(font_color.r > 0.9 and font_color.g < 0.25 and font_color.b < 0.2, "DamageNumber should be red.")
 	var outline_color := label.get_theme_color(&"font_outline_color")

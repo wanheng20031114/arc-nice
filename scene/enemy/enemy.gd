@@ -13,6 +13,7 @@ const SLOW_OVERLAY_ACTIVE_STRENGTH := 0.36
 const BURN_OVERLAY_ACTIVE_STRENGTH := 0.26
 const BLEED_OVERLAY_ACTIVE_STRENGTH := 0.42
 const BURN_STATUS_TICK_INTERVAL := 1.0
+const WATER_TERRAIN_COLLISION_LAYER := 1 << 11
 
 enum DeathSequenceStage {
 	NONE,
@@ -24,6 +25,7 @@ enum DeathSequenceStage {
 @export var touch_damage_interval: float = 0.5
 @export var sprite_faces_left_by_default: bool = false
 @export_range(1, 8, 1, "or_greater") var navigation_update_interval_frames: int = 2
+@export_flags("Land", "Water") var terrain_traversal_types: int = DualGridTilemap.TraversalType.LAND
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var speed_trail_effect: Node2D = $MoveSpeedTrailEffect
@@ -66,6 +68,7 @@ var animated_sprite_base_position := Vector2.ZERO
 
 
 func _ready() -> void:
+	_apply_terrain_collision_profile()
 	navigation_update_frame_offset = int(get_instance_id()) % maxi(navigation_update_interval_frames, 1)
 	_refresh_collision_shape_cache()
 	_cache_collision_shape_mirror_states()
@@ -80,6 +83,16 @@ func _ready() -> void:
 	_apply_config()
 	_update_movement_status_visuals()
 	_refresh_status_process_enabled()
+
+
+func _apply_terrain_collision_profile() -> void:
+	var can_traverse_water := (
+		terrain_traversal_types & DualGridTilemap.TraversalType.WATER
+	) != 0
+	if can_traverse_water:
+		collision_mask &= ~WATER_TERRAIN_COLLISION_LAYER
+	else:
+		collision_mask |= WATER_TERRAIN_COLLISION_LAYER
 
 
 func _process(delta: float) -> void:
@@ -522,6 +535,8 @@ func _apply_config() -> void:
 	if config == null:
 		return
 
+	terrain_traversal_types = config.terrain_traversal_types
+	_apply_terrain_collision_profile()
 	current_health = config.max_health
 	_play_scene_animation(config.move_animation_name)
 
@@ -816,7 +831,8 @@ func _get_shared_flow_navigation_direction(target_node: Node2D, shared_pathfinde
 		"try_get_flow_navigation_waypoint",
 		global_position,
 		target_node.global_position,
-		_get_body_collision_half_extents()
+		_get_body_collision_half_extents(),
+		terrain_traversal_types
 	)
 	if waypoint_result == null:
 		return Vector2.ZERO

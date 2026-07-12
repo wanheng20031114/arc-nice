@@ -46,6 +46,7 @@ func setup(
 	z_index = 100
 	label.text = str(maxi(amount, 0))
 	_apply_damage_type_style(damage_type)
+	label.modulate = Color.WHITE
 	modulate = Color.WHITE
 	scale = Vector2.ONE
 
@@ -83,14 +84,21 @@ func _process(delta: float) -> void:
 	var progress := clampf(elapsed / LIFETIME, 0.0, 1.0)
 	global_position = start_global_position + float_offset * _ease_out_circ(progress)
 
+	scale = Vector2.ONE
 	if elapsed < 0.12:
 		var pop_progress := clampf(elapsed / 0.12, 0.0, 1.0)
-		scale = Vector2.ONE.lerp(Vector2(1.08, 1.08), _ease_out_back(pop_progress))
+		label.modulate = Color.WHITE.lerp(
+			Color(1.35, 1.35, 1.35, 1.0),
+			_ease_out_back(pop_progress)
+		)
 	elif elapsed < 0.34:
 		var settle_progress := clampf((elapsed - 0.12) / 0.22, 0.0, 1.0)
-		scale = Vector2(1.08, 1.08).lerp(Vector2.ONE, _ease_out_sine(settle_progress))
+		label.modulate = Color(1.35, 1.35, 1.35, 1.0).lerp(
+			Color.WHITE,
+			_ease_out_sine(settle_progress)
+		)
 	else:
-		scale = Vector2.ONE
+		label.modulate = Color.WHITE
 
 	if elapsed > 0.5:
 		var fade_progress := clampf((elapsed - 0.5) / 0.22, 0.0, 1.0)

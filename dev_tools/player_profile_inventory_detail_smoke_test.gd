@@ -49,6 +49,26 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	test_root.add_child(profile_panel)
 	await process_frame
 	await physics_frame
+	var panel_root := profile_panel.get_node("Overlay/PanelRoot") as Control
+	var viewport_size := Vector2(root.get_visible_rect().size)
+	var expected_scale := 1.0
+	if viewport_size.x < 724.0 or viewport_size.y < 543.0:
+		expected_scale = minf(viewport_size.x / 724.0, viewport_size.y / 543.0) * 0.94
+		expected_scale = minf(expected_scale, 1.0)
+	_expect(
+		panel_root.scale.is_equal_approx(Vector2.ONE * expected_scale),
+		"Profile panel must remain native-sized when it fits and scale uniformly only on smaller viewports."
+	)
+	_expect(
+		panel_root.position.is_equal_approx(panel_root.position.round()),
+		"Profile PanelRoot must stay on integer canvas coordinates."
+	)
+	_expect(
+		panel_root.position.x >= 0.0 and panel_root.position.y >= 0.0
+		and panel_root.position.x + 724.0 * expected_scale <= viewport_size.x + 1.0
+		and panel_root.position.y + 543.0 * expected_scale <= viewport_size.y + 1.0,
+		"Profile panel must stay fully inside the viewport after its responsive transform."
+	)
 
 	profile_panel.bind_player(player)
 	_expect(run_state.try_add_item(APPLE_COLLECTIBLE), "The first apple collectible must fit in inventory.")

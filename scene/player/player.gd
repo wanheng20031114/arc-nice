@@ -18,6 +18,7 @@ signal died
 @export var attack_damage: int = 1
 @export var physical_defense: int = 0
 @export var magic_defense: int = 0
+@export_flags("Land", "Water") var terrain_traversal_types: int = DualGridTilemap.TraversalType.LAND
 
 var current_health: int = 0
 var current_xirang: int = 0
@@ -93,6 +94,7 @@ const MULTIPLAYER_VISUAL_OFFSET_LERP_RATE := 36.0
 const MULTIPLAYER_VISUAL_OFFSET_EPSILON := 0.05
 const MULTIPLAYER_VISUAL_SNAP_DISTANCE := 96.0
 const WORLD_COLLISION_MASK := 1
+const WATER_TERRAIN_COLLISION_LAYER := 1 << 11
 const WALL_ESCAPE_MAX_STEP_DISTANCE := 3.0
 const WALL_ESCAPE_MIN_OUTWARD_DOT := 0.12
 const WALL_ESCAPE_QUERY_MAX_RESULTS := 8
@@ -189,6 +191,7 @@ var _nameplate_default_font_color: Color = DEFAULT_NAMEPLATE_FONT_COLOR
 
 # 节点首次进入场景树时的初始化逻辑
 func _ready() -> void:
+	_apply_terrain_collision_profile()
 	_initialize_base_stats()
 	_connect_collectible_refresh_signals()
 	_refresh_collectible_stats(false)
@@ -213,6 +216,16 @@ func _ready() -> void:
 	_update_skill1_charge_bar()
 	_update_attack_interval_bar()
 	get_window().focus_exited.connect(_on_window_focus_exited)
+
+
+func _apply_terrain_collision_profile() -> void:
+	var can_traverse_water := (
+		terrain_traversal_types & DualGridTilemap.TraversalType.WATER
+	) != 0
+	if can_traverse_water:
+		collision_mask &= ~WATER_TERRAIN_COLLISION_LAYER
+	else:
+		collision_mask |= WATER_TERRAIN_COLLISION_LAYER
 
 
 func _initialize_base_stats() -> void:

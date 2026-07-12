@@ -87,7 +87,7 @@ radius = 7.5
 
 [node name="Player" type="CharacterBody2D" unique_id=1471282758]
 collision_layer = 2
-collision_mask = 257
+collision_mask = 2305
 script = ExtResource("1_script")
 basic_attack_query_shape = SubResource("CircleShape2D_basic_attack")
 whirlwind_query_shape = SubResource("CircleShape2D_whirlwind")

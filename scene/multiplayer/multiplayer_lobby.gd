@@ -87,6 +87,8 @@ var relay_host_ready_sent: bool = false
 var pending_start_after_public_status: bool = false
 var keep_room_view_after_connection_failure: bool = false
 var _username_panel_intro_tween: Tween
+var _username_panel_intro_target_position := Vector2.ZERO
+var _username_panel_intro_active := false
 var _username_caret_blink_elapsed := 0.0
 
 
@@ -313,12 +315,33 @@ func _animate_username_panel_intro() -> void:
 		return
 	if _username_panel_intro_tween != null:
 		_username_panel_intro_tween.kill()
-	username_panel.pivot_offset = username_panel.size * 0.5
+	if _username_panel_intro_active:
+		username_panel.position = _username_panel_intro_target_position
+	_username_panel_intro_target_position = username_panel.position.round()
+	_username_panel_intro_active = true
+	username_panel.scale = Vector2.ONE
 	username_panel.modulate.a = 0.0
-	username_panel.scale = Vector2(0.96, 0.92)
+	_apply_username_panel_intro_offset(8.0)
 	_username_panel_intro_tween = create_tween()
-	_username_panel_intro_tween.tween_property(username_panel, "modulate:a", 1.0, 0.14)
-	_username_panel_intro_tween.parallel().tween_property(username_panel, "scale", Vector2.ONE, 0.32).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_username_panel_intro_tween.tween_property(username_panel, "modulate:a", 1.0, 0.16)
+	_username_panel_intro_tween.parallel().tween_method(
+		_apply_username_panel_intro_offset,
+		8.0,
+		0.0,
+		0.2
+	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_username_panel_intro_tween.finished.connect(_finish_username_panel_intro)
+
+
+func _apply_username_panel_intro_offset(offset_y: float) -> void:
+	username_panel.position = _username_panel_intro_target_position + Vector2(0.0, roundf(offset_y))
+
+
+func _finish_username_panel_intro() -> void:
+	username_panel.position = _username_panel_intro_target_position
+	username_panel.modulate.a = 1.0
+	username_panel.scale = Vector2.ONE
+	_username_panel_intro_active = false
 
 
 func _apply_public_browser_state() -> void:

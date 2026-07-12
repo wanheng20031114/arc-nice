@@ -29,6 +29,7 @@ const CARDINAL_DIRECTIONS: Array[Vector2] = [
 	Vector2.UP,
 ]
 const WORLD_LAYER := 1 << 0
+const WATER_TERRAIN_LAYER := 1 << 11
 const PLAYER_LAYER := 1 << 1
 
 
@@ -43,7 +44,8 @@ class CountingPathfinder:
 	func try_get_flow_navigation_waypoint(
 		from_global_position: Vector2,
 		to_global_position: Vector2,
-		_agent_half_extents: Vector2 = Vector2.ZERO
+		_agent_half_extents: Vector2 = Vector2.ZERO,
+		_traversal_types: int = DualGridTilemap.TraversalType.LAND
 	) -> Variant:
 		flow_queries += 1
 		var direction := from_global_position.direction_to(to_global_position)
@@ -53,7 +55,8 @@ class CountingPathfinder:
 	func try_get_global_path(
 		_from_global_position: Vector2,
 		to_global_position: Vector2,
-		_agent_half_extents: Vector2 = Vector2.ZERO
+		_agent_half_extents: Vector2 = Vector2.ZERO,
+		_traversal_types: int = DualGridTilemap.TraversalType.LAND
 	) -> Variant:
 		path_queries += 1
 		return PackedVector2Array([to_global_position])
@@ -133,7 +136,10 @@ func _test_enemy_collision_contract() -> void:
 	await process_frame
 	await physics_frame
 
-	_expect(enemy.collision_mask == WORLD_LAYER, "Enemy bodies must only scan World; player contact belongs to TouchDamageArea.")
+	_expect(
+		enemy.collision_mask == (WORLD_LAYER | WATER_TERRAIN_LAYER),
+		"Land enemies must scan World and WaterTerrain; player contact belongs to TouchDamageArea."
+	)
 	_expect(not enemy.has_method("_limit_velocity_against_target_player_core"), "Legacy per-frame player-core geometry limiter must be removed.")
 	_expect(not enemy.has_method("_get_player_core_blocking_radius"), "Legacy player-core radius calculation must be removed.")
 	_expect(enemy.has_method("_move_until_player_contact"), "Enemy base must expose contact-aware movement.")

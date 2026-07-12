@@ -24,6 +24,10 @@ enum DamageType {
 # 移动速度，单位通常为像素/秒。
 @export_range(0.0, 1000.0, 1.0, "or_greater") var move_speed: float = 60.0
 
+@export_group("地形移动")
+# 角色可以通过的地形类型。默认仅陆地；两栖单位使用 Land | Water。
+@export_flags("Land", "Water") var terrain_traversal_types: int = DualGridTilemap.TraversalType.LAND
+
 
 @export_group("动画名称")
 # 敌人正常移动时默认播放的动画名。

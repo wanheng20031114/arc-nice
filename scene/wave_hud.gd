@@ -99,8 +99,7 @@ func _play_result_sequence(title: String, subtitle: String, title_color: Color) 
 	result_backdrop.modulate = Color(1.0, 1.0, 1.0, 0.0)
 	result_shade.color = Color(0.0, 0.0, 0.0, 0.0)
 	result_panel.modulate = Color(1.0, 1.0, 1.0, 0.0)
-	result_panel.scale = Vector2(0.96, 0.96)
-	result_panel.pivot_offset = result_panel.size * 0.5
+	result_panel.scale = Vector2.ONE
 
 	result_tween = create_tween()
 	result_tween.set_parallel(true)
@@ -108,7 +107,6 @@ func _play_result_sequence(title: String, subtitle: String, title_color: Color) 
 	result_tween.tween_property(result_backdrop, "modulate", Color(1.0, 1.0, 1.0, 0.48), 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	result_tween.tween_property(result_title, "modulate", title_color, 0.34).set_delay(0.62).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	result_tween.tween_property(result_panel, "modulate", Color.WHITE, 0.36).set_delay(1.02).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	result_tween.tween_property(result_panel, "scale", Vector2.ONE, 0.36).set_delay(1.02).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	result_tween.tween_property(result_subtitle, "modulate", Color(0.88, 0.95, 0.86, 0.94), 0.26).set_delay(1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	result_tween.tween_callback(_show_result_button).set_delay(1.45)
 
@@ -131,9 +129,9 @@ func _stop_result_tween() -> void:
 func _pulse_top_bar() -> void:
 	if pulse_tween != null:
 		pulse_tween.kill()
-	top_bar.pivot_offset = top_bar.size * 0.5
 	top_bar.scale = Vector2.ONE
+	top_bar.self_modulate = Color.WHITE
 	pulse_tween = create_tween()
-	pulse_tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	pulse_tween.tween_property(top_bar, "scale", Vector2(1.06, 1.06), 0.08)
-	pulse_tween.tween_property(top_bar, "scale", Vector2.ONE, 0.12)
+	pulse_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	pulse_tween.tween_property(top_bar, "self_modulate", Color(1.2, 1.1, 0.78, 1.0), 0.08)
+	pulse_tween.tween_property(top_bar, "self_modulate", Color.WHITE, 0.12)

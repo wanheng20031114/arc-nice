@@ -200,6 +200,17 @@ func _test_boss_hud_binding() -> void:
 		nameplate != null and nameplate.position == authored_nameplate_position and nameplate.size == authored_nameplate_size,
 		"Boss HUD nameplate must keep the authored scene layout after runtime loading."
 	)
+	_expect(
+		root_control != null and root_control.scale.is_equal_approx(Vector2.ONE)
+		and nameplate != null and nameplate.scale.is_equal_approx(Vector2(0.5, 0.5)),
+		"Boss HUD nameplate must retain its authored high-resolution half-scale rendering."
+	)
+	_expect(
+		name_label != null and name_label.label_settings != null
+		and name_label.label_settings.font_size == 22
+		and name_label.label_settings.outline_size == 4,
+		"Boss name must render from the authored 22 px glyphs with a 4 px outline before half-scaling."
+	)
 	_expect(health_bar != null and health_bar.max_value == float(max_health), "Boss HUD must use Linglan max health.")
 	_expect(name_label != null and name_label.text == "铃兰", "Boss HUD must show Linglan's Chinese name.")
 	linglan.apply_damage(500)

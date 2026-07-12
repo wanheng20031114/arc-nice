@@ -132,7 +132,10 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 
 	var bubble_panel := bubble.get_node("BubblePanel") as PanelContainer
 	var bubble_style := bubble_panel.get_theme_stylebox("panel") as StyleBoxFlat
+	_expect(bubble.scale.is_equal_approx(Vector2(0.5, 0.5)), "Luoxi dialogue bubble must retain its high-resolution half-scale rendering root.")
+	_expect(bubble_panel.size.is_equal_approx(Vector2(300.0, 116.0)), "Luoxi dialogue bubble must retain its doubled internal geometry.")
 	_expect(bubble.text_label.custom_minimum_size.y >= 58.0, "Luoxi dialogue text area must leave vertical room for wrapped text.")
+	_expect(bubble.text_label.get_theme_font_size("normal_font_size") == 17, "Luoxi dialogue body text must render at the high-resolution 17px size.")
 	_expect(
 		bubble_style != null and is_equal_approx(bubble_style.bg_color.r, 0.98),
 		"Luoxi dialogue bubble must keep the same warm background as Zhuangfangyi."
@@ -258,7 +261,10 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	_expect(refresh_button.disabled, "Luoxi refresh button must disable after four refreshes.")
 	_expect(refresh_button.text.contains("无法刷新"), "Exhausted Luoxi refresh button must explain that refreshing is unavailable.")
 	_expect(refresh_progress.text.contains("4/4"), "Luoxi refresh progress must show four of four after exhaustion.")
-	_expect(refresh_status.text.contains("下次休整期重置"), "Luoxi exhausted state must explain when refreshes reset.")
+	_expect(
+		refresh_button.tooltip_text.contains("下一个休整期恢复"),
+		"Luoxi exhausted state must explain in its tooltip when refreshes reset."
+	)
 	var xirang_after_four_refreshes := player.current_xirang
 	luoxi._unhandled_input(_make_action("luoxi_refresh"))
 	_expect(player.current_xirang == xirang_after_four_refreshes, "A fifth Luoxi refresh attempt must not spend xirang.")

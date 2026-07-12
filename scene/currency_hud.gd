@@ -38,9 +38,12 @@ func _on_xirang_changed(total: int, _added_amount: int) -> void:
 	if pulse_tween != null:
 		pulse_tween.kill()
 
-	panel.pivot_offset = panel.size * 0.5
 	panel.scale = Vector2.ONE
+	panel.self_modulate = Color.WHITE
+	count_label.modulate = Color.WHITE
 	pulse_tween = create_tween()
-	pulse_tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	pulse_tween.tween_property(panel, "scale", Vector2(1.1, 1.1), 0.09)
-	pulse_tween.tween_property(panel, "scale", Vector2.ONE, 0.14)
+	pulse_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	pulse_tween.tween_property(panel, "self_modulate", Color(1.18, 1.12, 0.78, 1.0), 0.09)
+	pulse_tween.parallel().tween_property(count_label, "modulate", Color(1.2, 1.08, 0.58, 1.0), 0.09)
+	pulse_tween.tween_property(panel, "self_modulate", Color.WHITE, 0.14)
+	pulse_tween.parallel().tween_property(count_label, "modulate", Color.WHITE, 0.14)

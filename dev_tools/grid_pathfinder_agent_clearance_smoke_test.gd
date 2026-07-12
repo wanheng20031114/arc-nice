@@ -18,6 +18,8 @@ func _run() -> void:
 	root.add_child(game)
 	current_scene = game
 	await process_frame
+	await process_frame
+	await process_frame
 	await physics_frame
 
 	var pathfinder := game.get_node("GridPathfinder") as GridPathfinder

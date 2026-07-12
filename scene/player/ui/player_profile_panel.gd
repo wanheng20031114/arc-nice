@@ -498,10 +498,12 @@ func _request_multiplayer_inventory_item_discard(slot_index: int) -> bool:
 
 func _update_panel_transform() -> void:
 	var viewport_size := Vector2(get_viewport().get_visible_rect().size)
-	var scale_factor := minf(
-		viewport_size.x / DESIGN_SIZE.x,
-		viewport_size.y / DESIGN_SIZE.y
-	) * 0.94
-	scale_factor = minf(scale_factor, 1.0)
+	var scale_factor := 1.0
+	if viewport_size.x < DESIGN_SIZE.x or viewport_size.y < DESIGN_SIZE.y:
+		scale_factor = minf(
+			viewport_size.x / DESIGN_SIZE.x,
+			viewport_size.y / DESIGN_SIZE.y
+		) * 0.94
+		scale_factor = minf(scale_factor, 1.0)
 	panel_root.scale = Vector2.ONE * scale_factor
-	panel_root.position = (viewport_size - DESIGN_SIZE * scale_factor) * 0.5
+	panel_root.position = ((viewport_size - DESIGN_SIZE * scale_factor) * 0.5).round()

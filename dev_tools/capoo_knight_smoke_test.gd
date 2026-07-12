@@ -33,7 +33,8 @@ class FakePathfinder:
 	func get_global_path(
 		_from_global_position: Vector2,
 		_to_global_position: Vector2,
-		_agent_half_extents: Vector2 = Vector2.ZERO
+		_agent_half_extents: Vector2 = Vector2.ZERO,
+		_traversal_types: int = DualGridTilemap.TraversalType.LAND
 	) -> PackedVector2Array:
 		requested_path = true
 		return path
@@ -41,7 +42,8 @@ class FakePathfinder:
 	func try_get_global_path(
 		_from_global_position: Vector2,
 		_to_global_position: Vector2,
-		_agent_half_extents: Vector2 = Vector2.ZERO
+		_agent_half_extents: Vector2 = Vector2.ZERO,
+		_traversal_types: int = DualGridTilemap.TraversalType.LAND
 	) -> Variant:
 		requested_path = true
 		if not budget_available:

@@ -72,14 +72,20 @@ func _refresh_navigation_path() -> void:
 			"try_get_global_path",
 			global_position,
 			target_player.global_position,
-			_get_body_collision_half_extents()
+			_get_body_collision_half_extents(),
+			terrain_traversal_types
 		)
 		if path_result == null:
 			path_refresh_time_left = _get_navigation_retry_interval()
 			return
 		current_path = path_result
 	else:
-		current_path = pathfinder.get_global_path(global_position, target_player.global_position, _get_body_collision_half_extents())
+		current_path = pathfinder.get_global_path(
+			global_position,
+			target_player.global_position,
+			_get_body_collision_half_extents(),
+			terrain_traversal_types
+		)
 	path_refresh_time_left = _get_navigation_refresh_interval()
 	current_path_index = 0
 

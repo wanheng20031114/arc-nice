@@ -4,6 +4,7 @@ const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
 const EXPECTED_BASE_DIRT_RECT := Rect2i(-120, -88, 256, 192)
 const EXPECTED_BASE_DIRT_CELL_COUNT := 256 * 192
 const FULL_DIRT_ATLAS_COORDS := Vector2i(2, 1)
+const WATER_TERRAIN_COLLISION_LAYER := 1 << 11
 
 var failures: Array[String] = []
 
@@ -30,6 +31,7 @@ func _run() -> void:
 	_verify_dual_grid_wiring(game)
 	_verify_visual_grid_alignment(game)
 	_verify_base_dirt_coverage(game)
+	_verify_terrain_semantics(game)
 	_verify_runtime_placement_visibility(game)
 	var refresh_start_msec := Time.get_ticks_msec()
 	game.dual_grid_terrain.refresh_all_tiles()
@@ -69,6 +71,23 @@ func _verify_dual_grid_wiring(game: GameTowerDefense) -> void:
 		_expect(not layer.collision_enabled, "%s must stay visual-only without collision." % layer.name)
 		_expect(not layer.navigation_enabled, "%s must stay outside TileMap navigation." % layer.name)
 		_expect(not layer.occlusion_enabled, "%s must not create light occluders." % layer.name)
+
+	var water_collision_layer := terrain.water_collision_map_layer
+	_expect(water_collision_layer != null, "Dual-grid terrain must expose WaterCollisionLayer.")
+	if water_collision_layer != null:
+		_expect(water_collision_layer.collision_enabled, "WaterCollisionLayer must enable collision.")
+		_expect(not water_collision_layer.navigation_enabled, "Water collision must not create TileMap navigation.")
+		_expect(is_zero_approx(water_collision_layer.self_modulate.a), "Water collision tiles must remain visually transparent.")
+		_expect(water_collision_layer.tile_set != null, "WaterCollisionLayer must have a TileSet.")
+		if water_collision_layer.tile_set != null:
+			_expect(
+				water_collision_layer.tile_set.get_physics_layers_count() == 1,
+				"WaterCollisionLayer must provide exactly one physics layer."
+			)
+			_expect(
+				water_collision_layer.tile_set.get_physics_layer_collision_layer(0) == WATER_TERRAIN_COLLISION_LAYER,
+				"Water collision must use the dedicated WaterTerrain physics layer."
+			)
 
 	_expect(
 		game.ground_tile_map_layer.tile_set.tile_size == terrain.world_map_layer.tile_set.tile_size,
@@ -127,11 +146,12 @@ func _verify_visual_grid_alignment(game: GameTowerDefense) -> void:
 			),
 			"%s rendered cells must retain the original dual-grid offset." % layer.name
 		)
+	_expect(terrain.base_dirt_map_layer.z_index == -3, "Base dirt must stay at Z=-3.")
 	_expect(
-		terrain.base_dirt_map_layer.z_index == -3,
-		"Base dirt must stay at Z=-3 as the lowest terrain layer."
+		terrain.world_map_layer.z_index < terrain.base_dirt_map_layer.z_index,
+		"Semantic WorldLayer must render below BaseDirt so placeholder borders cannot leak."
 	)
-	_expect(terrain.world_map_layer.z_index == -2, "WorldLayer must stay at Z=-2.")
+	_expect(not terrain.world_map_layer.visible, "Semantic WorldLayer must be hidden at runtime.")
 	for layer in [
 		terrain.grass_display_map_layer,
 		terrain.dirt_display_map_layer,
@@ -152,12 +172,28 @@ func _verify_visual_grid_alignment(game: GameTowerDefense) -> void:
 		"OverlayTileMapLayer must stay at Z=1 above GroundTileMapLayer."
 	)
 
-	terrain.set_tile(Vector2i.ZERO, DualGridTilemap.TerrainType.GRASS)
+	var isolated_test_cell := Vector2i(80, 60)
 	_expect(
-		terrain.grass_display_map_layer.get_used_cells().size() == 4,
-		"One dual-grid logical grass cell must render four aligned visual cells."
+		terrain.get_terrain_type(isolated_test_cell) == DualGridTilemap.TerrainType.EMPTY,
+		"Terrain refresh test requires an unused logical cell."
 	)
-	terrain.set_tile(Vector2i.ZERO, DualGridTilemap.TerrainType.EMPTY)
+	terrain.set_tile(isolated_test_cell, DualGridTilemap.TerrainType.GRASS)
+	for offset in DualGridTilemap.NEIGHBOURS:
+		_expect(
+			terrain.grass_display_map_layer.get_cell_source_id(isolated_test_cell + offset)
+			== DualGridTilemap.TerrainType.GRASS,
+			"One logical grass cell must refresh each of its four display cells."
+		)
+	terrain.set_tile(isolated_test_cell, DualGridTilemap.TerrainType.WATER)
+	_expect(
+		terrain.water_collision_map_layer.get_cell_source_id(isolated_test_cell) == 0,
+		"Changing a logical cell to water must immediately synchronize its physical tile."
+	)
+	terrain.set_tile(isolated_test_cell, DualGridTilemap.TerrainType.EMPTY)
+	_expect(
+		terrain.water_collision_map_layer.get_cell_source_id(isolated_test_cell) == -1,
+		"Removing water must immediately erase its physical tile."
+	)
 
 
 func _verify_base_dirt_coverage(game: GameTowerDefense) -> void:
@@ -194,18 +230,175 @@ func _verify_base_dirt_coverage(game: GameTowerDefense) -> void:
 		dirt_layer.z_index < game.ground_tile_map_layer.z_index,
 		"Base dirt must render below the existing gameplay ground."
 	)
+	var gameplay_rect := game.ground_tile_map_layer.get_used_rect()
 	_expect(
-		game.ground_tile_map_layer.get_used_rect().size == Vector2i(54, 31),
-		"The visual dirt backdrop must not expand the 54x31 gameplay/pathfinding grid."
+		gameplay_rect.size.x > 0
+		and gameplay_rect.size.y > 0
+		and gameplay_rect.size.x < EXPECTED_BASE_DIRT_RECT.size.x
+		and gameplay_rect.size.y < EXPECTED_BASE_DIRT_RECT.size.y,
+		"The large visual dirt backdrop must remain isolated from the smaller gameplay/pathfinding grid."
 	)
 	_expect(
 		game.plant_system.ground_tile_map == game.ground_tile_map_layer,
 		"Plant placement must continue using the gameplay ground, not the visual backdrop."
 	)
 	_expect(
+		game.plant_system.terrain_map == terrain,
+		"Plant placement must use DualGridTerrain as its terrain semantics provider."
+	)
+	_expect(
 		game.grid_pathfinder.get("obstacle_tile_layer_path") == NodePath("../GroundTileMapLayer"),
 		"GridPathfinder must remain isolated from the large visual dirt backdrop."
 	)
+	_expect(
+		game.grid_pathfinder.get("terrain_map_path") == NodePath("../DualGridTerrain"),
+		"Tower-defense pathfinding must read semantic terrain from DualGridTerrain."
+	)
+
+
+func _verify_terrain_semantics(game: GameTowerDefense) -> void:
+	var terrain := game.dual_grid_terrain
+	if terrain == null:
+		return
+	var water_cells: Array[Vector2i] = []
+	var grass_cells: Array[Vector2i] = []
+	for cell in terrain.world_map_layer.get_used_cells():
+		match terrain.get_terrain_type(cell):
+			DualGridTilemap.TerrainType.WATER:
+				water_cells.append(cell)
+			DualGridTilemap.TerrainType.GRASS:
+				grass_cells.append(cell)
+	_expect(not water_cells.is_empty(), "Tower-defense terrain must contain semantic water cells.")
+	_expect(not grass_cells.is_empty(), "Tower-defense terrain must contain semantic grass cells.")
+	_expect(
+		(game.player.collision_mask & WATER_TERRAIN_COLLISION_LAYER) != 0,
+		"Default land players must collide with WaterTerrain."
+	)
+	_expect(
+		terrain.water_collision_map_layer.get_used_cells().size() == water_cells.size(),
+		"Every semantic water cell must have one aligned physical blocker."
+	)
+	if not water_cells.is_empty():
+		var water_cell := water_cells[0]
+		_expect(not terrain.is_cell_plantable(water_cell), "Water must reject plant placement.")
+		_expect(
+			not terrain.is_cell_traversable(water_cell, DualGridTilemap.TraversalType.LAND),
+			"Land traversal must reject water."
+		)
+		_expect(
+			terrain.is_cell_traversable(
+				water_cell,
+				DualGridTilemap.TraversalType.LAND | DualGridTilemap.TraversalType.WATER
+			),
+			"An amphibious traversal profile must accept water."
+		)
+		var water_tile_data := terrain.water_collision_map_layer.get_cell_tile_data(water_cell)
+		_expect(
+			water_tile_data != null and water_tile_data.get_collision_polygons_count(0) == 1,
+			"Each water blocker must use one full-cell collision polygon."
+		)
+		_expect(
+			_has_water_physics_at_cell(game, water_cell),
+			"WaterTerrain physics must be queryable at the semantic water cell."
+		)
+	if not grass_cells.is_empty():
+		_expect(terrain.is_cell_plantable(grass_cells[0]), "Only semantic grass must be plantable.")
+		_expect(
+			not _has_water_physics_at_cell(game, grass_cells[0]),
+			"Grass must not receive a WaterTerrain physical blocker."
+		)
+	_verify_open_ground_terrain_rules(game, terrain)
+	var default_dirt_cell := Vector2i(70, 50)
+	_expect(
+		terrain.get_effective_terrain_type(default_dirt_cell) == DualGridTilemap.TerrainType.DIRT,
+		"Unpainted cells over the dirt fallback must behave as default dirt."
+	)
+	_expect(not terrain.is_cell_plantable(default_dirt_cell), "Default dirt must reject plants.")
+	_expect(
+		terrain.is_cell_traversable(default_dirt_cell, DualGridTilemap.TraversalType.LAND),
+		"Default dirt must remain land-traversable."
+	)
+
+
+func _verify_open_ground_terrain_rules(
+	game: GameTowerDefense,
+	terrain: DualGridTilemap
+) -> void:
+	var ground_cell := Vector2i.MAX
+	for candidate in game.ground_tile_map_layer.get_used_cells():
+		var tile_data := game.ground_tile_map_layer.get_cell_tile_data(candidate)
+		if tile_data != null and tile_data.get_collision_polygons_count(0) == 0:
+			ground_cell = candidate
+			break
+	_expect(ground_cell != Vector2i.MAX, "Gameplay grid must contain an open cell for terrain-rule tests.")
+	if ground_cell == Vector2i.MAX:
+		return
+
+	var world_position := game.ground_tile_map_layer.to_global(
+		game.ground_tile_map_layer.map_to_local(ground_cell)
+	)
+	var terrain_cell := terrain.world_to_map(world_position)
+	var original_terrain_type := terrain.get_terrain_type(terrain_cell)
+	var pathfinder := game.grid_pathfinder as GridPathfinder
+	var amphibious_types := (
+		DualGridTilemap.TraversalType.LAND | DualGridTilemap.TraversalType.WATER
+	)
+
+	terrain.set_tile(terrain_cell, DualGridTilemap.TerrainType.WATER)
+	pathfinder.rebuild()
+	_expect(
+		not bool(game.plant_system.call("_is_floor_cell_available", ground_cell)),
+		"PlantSystem must reject water even when the gameplay ground cell is open."
+	)
+	_expect(
+		bool(pathfinder.call(
+			"_is_cell_blocked",
+			ground_cell,
+			DualGridTilemap.TraversalType.LAND
+		)),
+		"Default land pathfinding must mark water solid."
+	)
+	_expect(
+		not bool(pathfinder.call("_is_cell_blocked", ground_cell, amphibious_types)),
+		"Amphibious pathfinding must allow water when gameplay ground is open."
+	)
+	var amphibious_grid := pathfinder.call(
+		"_get_or_create_agent_grid",
+		Vector2.ZERO,
+		amphibious_types
+	) as AStarGrid2D
+	_expect(
+		amphibious_grid != pathfinder.astar_grid,
+		"Traversal profiles must use distinct cached AStar grids."
+	)
+	_expect(
+		not amphibious_grid.is_point_solid(ground_cell),
+		"The amphibious AStar grid must keep an open water cell walkable."
+	)
+
+	terrain.set_tile(terrain_cell, DualGridTilemap.TerrainType.GRASS)
+	_expect(
+		bool(game.plant_system.call("_is_floor_cell_available", ground_cell)),
+		"PlantSystem must accept an open semantic grass cell."
+	)
+	terrain.set_tile(terrain_cell, original_terrain_type)
+	pathfinder.rebuild()
+
+
+func _has_water_physics_at_cell(game: GameTowerDefense, cell: Vector2i) -> bool:
+	var collision_layer := game.dual_grid_terrain.water_collision_map_layer
+	var query_shape := RectangleShape2D.new()
+	query_shape.size = Vector2(8.0, 8.0)
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = query_shape
+	query.transform = Transform2D(
+		0.0,
+		collision_layer.to_global(collision_layer.map_to_local(cell))
+	)
+	query.collision_mask = WATER_TERRAIN_COLLISION_LAYER
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	return not game.get_world_2d().direct_space_state.intersect_shape(query, 1).is_empty()
 
 
 func _verify_runtime_placement_visibility(game: GameTowerDefense) -> void:

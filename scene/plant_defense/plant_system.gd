@@ -11,6 +11,7 @@ const ENTITY_BLOCKING_MASK: int = 1 | 2 | 4 | 32 | 256
 const FOOTPRINT_COLLISION_INSET: Vector2 = Vector2(4.0, 4.0)
 
 var ground_tile_map: TileMapLayer = null
+var terrain_map: DualGridTilemap = null
 var owner_player: Player = null
 var plant_container: Node2D = null
 var placement_area: Rect2i = DEFAULT_PLACEMENT_AREA
@@ -24,9 +25,11 @@ func setup(
 	new_ground_tile_map: TileMapLayer,
 	new_owner_player: Player,
 	new_plant_container: Node2D,
-	new_placement_area: Rect2i = DEFAULT_PLACEMENT_AREA
+	new_placement_area: Rect2i = DEFAULT_PLACEMENT_AREA,
+	new_terrain_map: DualGridTilemap = null
 ) -> void:
 	ground_tile_map = new_ground_tile_map
+	terrain_map = new_terrain_map
 	owner_player = new_owner_player
 	plant_container = new_plant_container
 	placement_area = new_placement_area
@@ -36,9 +39,16 @@ func configure(
 	new_ground_tile_map: TileMapLayer,
 	new_owner_player: Player,
 	new_plant_container: Node2D,
-	new_placement_area: Rect2i = DEFAULT_PLACEMENT_AREA
+	new_placement_area: Rect2i = DEFAULT_PLACEMENT_AREA,
+	new_terrain_map: DualGridTilemap = null
 ) -> void:
-	setup(new_ground_tile_map, new_owner_player, new_plant_container, new_placement_area)
+	setup(
+		new_ground_tile_map,
+		new_owner_player,
+		new_plant_container,
+		new_placement_area,
+		new_terrain_map
+	)
 
 
 func get_available_configs() -> Array[PlantDefenseConfig]:
@@ -207,7 +217,12 @@ func _is_floor_cell_available(cell: Vector2i) -> bool:
 	var tile_data := ground_tile_map.get_cell_tile_data(cell)
 	if tile_data == null:
 		return false
-	return tile_data.get_collision_polygons_count(0) == 0
+	if tile_data.get_collision_polygons_count(0) > 0:
+		return false
+	if terrain_map == null:
+		return true
+	var world_cell_center := ground_tile_map.to_global(ground_tile_map.map_to_local(cell))
+	return terrain_map.is_world_position_plantable(world_cell_center)
 
 
 func _is_entity_space_clear(

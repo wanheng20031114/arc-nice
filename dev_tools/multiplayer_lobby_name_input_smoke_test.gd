@@ -37,7 +37,16 @@ func _run() -> void:
 	var caret := lobby.get_node_or_null(
 		"LobbyCenter/UsernamePanel/MarginContainer/VBoxContainer/NameCard/CardVBox/InputSurface/InputLayer/UsernameCaret"
 	) as ColorRect
+	var username_panel := lobby.get_node_or_null("LobbyCenter/UsernamePanel") as PanelContainer
+	var tile_pattern := lobby.get_node_or_null("TilePattern") as TextureRect
 
+	_expect(
+		tile_pattern != null and tile_pattern.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
+		"Pixel-art lobby background must keep Nearest filtering."
+	)
+	_expect(username_panel != null, "UsernamePanel must exist.")
+	if username_panel != null:
+		_expect(username_panel.scale == Vector2.ONE, "UsernamePanel intro must never scale its text subtree.")
 	_expect(input != null, "Username LineEdit must remain available as the real input control.")
 	_expect(display != null, "BouncyNameDisplay must exist.")
 	_expect(caret != null, "UsernameCaret must exist as the visible input-state indicator.")
@@ -64,7 +73,9 @@ func _run() -> void:
 		_expect(int(display.get("max_length")) == MAX_PLAYER_NAME_LENGTH, "BouncyNameDisplay length must match network name limit.")
 		_expect(display.get("input_audio") == audio, "BouncyNameDisplay must use the scene audio player.")
 		for index in range(MAX_PLAYER_NAME_LENGTH):
-			_expect(display.get_child(index).get_script() == BOUNCY_NAME_LETTER_SCRIPT, "Every name display child must be a BouncyNameLetter.")
+			var letter := display.get_child(index) as Label
+			_expect(letter.get_script() == BOUNCY_NAME_LETTER_SCRIPT, "Every name display child must be a BouncyNameLetter.")
+			_expect(letter.scale == Vector2.ONE, "Bouncy name letters must keep unit scale.")
 
 	if input != null and display != null:
 		var empty_caret_x := 0.0
@@ -96,6 +107,11 @@ func _run() -> void:
 		_expect((display.get_child(0) as Label).text == "C", "First visible name label must contain the first typed letter.")
 		_expect((display.get_child(9) as Label).text == "e", "Last typed name label must contain the last typed letter.")
 		_expect(not display.get_child(10).visible, "Unused name label slots must stay hidden.")
+		for index in range(input.text.length()):
+			_expect(
+				(display.get_child(index) as Label).scale == Vector2.ONE,
+				"Animated name letters must stay at unit scale."
+			)
 
 		input.text = ""
 		lobby.call("_on_username_text_changed", input.text)

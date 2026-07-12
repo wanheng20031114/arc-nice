@@ -271,7 +271,8 @@ func _configure_plant_defense_system() -> void:
 		ground_tile_map_layer,
 		player,
 		plant_container,
-		placement_rect
+		placement_rect,
+		dual_grid_terrain
 	)
 	plant_system.clear_reserved_cells()
 	plant_system.reserve_world_position(player_spawn.global_position)
@@ -1115,16 +1116,26 @@ func _prewarm_enemy_navigation_grids() -> void:
 			var body_half_extents := _get_enemy_scene_body_half_extents(enemy_config)
 			if body_half_extents == Vector2.ZERO:
 				continue
-			var extent_key := "%d:%d" % [ceili(body_half_extents.x), ceili(body_half_extents.y)]
+			var traversal_types := enemy_config.terrain_traversal_types
+			var extent_key := "%d:%d:%d" % [
+				ceili(body_half_extents.x),
+				ceili(body_half_extents.y),
+				traversal_types,
+			]
 			if seen_extent_keys.has(extent_key):
 				continue
 			seen_extent_keys[extent_key] = true
-			grid_pathfinder.call("prewarm_agent_grid", body_half_extents)
+			grid_pathfinder.call(
+				"prewarm_agent_grid",
+				body_half_extents,
+				traversal_types
+			)
 			if grid_pathfinder.has_method("prewarm_flow_navigation_target") and player != null:
 				grid_pathfinder.call(
 					"prewarm_flow_navigation_target",
 					player.global_position,
-					body_half_extents
+					body_half_extents,
+					traversal_types
 				)
 
 

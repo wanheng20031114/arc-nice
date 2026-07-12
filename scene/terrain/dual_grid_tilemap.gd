@@ -2,6 +2,8 @@
 extends Node2D
 class_name DualGridTilemap
 
+signal terrain_changed(cell: Vector2i, previous_terrain: int, current_terrain: int)
+
 const PLACEHOLDER_SOURCE_ID := 0
 const EMPTY_ATLAS_COORDS := Vector2i(-1, -1)
 const GRASS_DETAIL_HASH_SALT := 101
@@ -62,8 +64,14 @@ enum TerrainType {
 	METAL = 4,
 }
 
+enum TraversalType {
+	LAND = 1,
+	WATER = 2,
+}
+
 @export var world_map_layer: TileMapLayer
 @export var base_dirt_map_layer: TileMapLayer
+@export var water_collision_map_layer: TileMapLayer
 @export var grass_display_map_layer: TileMapLayer
 @export var dirt_display_map_layer: TileMapLayer
 @export var water_display_map_layer: TileMapLayer
@@ -77,6 +85,9 @@ enum TerrainType {
 @export var base_dirt_fill_cells := Vector2i.ZERO
 @export var base_dirt_source_id := TerrainType.DIRT
 @export var base_dirt_atlas_coords := Vector2i(2, 1)
+@export var water_collision_source_id := 0
+@export var water_collision_atlas_coords := Vector2i(2, 0)
+@export var hide_world_layer_at_runtime := false
 @export_range(0.0, 0.11, 0.01) var grass_flower_density := 0.10
 @export_range(0.0, 0.11, 0.01) var dirt_clay_density := 0.07
 @export var terrain_detail_seed := 3
@@ -89,6 +100,8 @@ var _base_dirt_generation_key: Array = []
 
 func _ready() -> void:
 	refresh_all_tiles()
+	if hide_world_layer_at_runtime and not Engine.is_editor_hint():
+		world_map_layer.hide()
 
 
 func _process(_delta: float) -> void:
@@ -101,6 +114,7 @@ func refresh_all_tiles() -> void:
 		return
 
 	_refresh_base_dirt_layer()
+	_refresh_water_collision_layer()
 	grass_display_map_layer.clear()
 	dirt_display_map_layer.clear()
 	water_display_map_layer.clear()
@@ -123,12 +137,23 @@ func refresh_all_tiles() -> void:
 func clear_tiles() -> void:
 	if not _has_required_layers():
 		return
+	var cleared_terrain_types := {}
+	for cell_pos in world_map_layer.get_used_cells():
+		cleared_terrain_types[cell_pos] = get_terrain_type(cell_pos)
 	world_map_layer.clear()
 	grass_display_map_layer.clear()
 	dirt_display_map_layer.clear()
 	water_display_map_layer.clear()
 	metal_display_map_layer.clear()
 	terrain_detail_map_layer.clear()
+	if water_collision_map_layer != null:
+		water_collision_map_layer.clear()
+	for cell_pos in cleared_terrain_types:
+		terrain_changed.emit(
+			cell_pos,
+			int(cleared_terrain_types[cell_pos]),
+			TerrainType.EMPTY
+		)
 
 
 func local_to_map(local_position: Vector2) -> Vector2i:
@@ -141,6 +166,38 @@ func world_to_map(world_position: Vector2) -> Vector2i:
 	if world_map_layer == null:
 		return Vector2i.ZERO
 	return world_map_layer.local_to_map(world_map_layer.to_local(world_position))
+
+
+func is_cell_plantable(cell_pos: Vector2i) -> bool:
+	return get_terrain_type(cell_pos) == TerrainType.GRASS
+
+
+func is_world_position_plantable(world_position: Vector2) -> bool:
+	return is_cell_plantable(world_to_map(world_position))
+
+
+func get_effective_terrain_type(cell_pos: Vector2i) -> int:
+	var terrain_type := get_terrain_type(cell_pos)
+	if terrain_type == TerrainType.EMPTY:
+		return TerrainType.DIRT
+	return terrain_type
+
+
+func get_terrain_traversal_type(cell_pos: Vector2i) -> int:
+	if get_effective_terrain_type(cell_pos) == TerrainType.WATER:
+		return TraversalType.WATER
+	return TraversalType.LAND
+
+
+func is_cell_traversable(cell_pos: Vector2i, traversal_types: int = TraversalType.LAND) -> bool:
+	return (get_terrain_traversal_type(cell_pos) & traversal_types) != 0
+
+
+func is_world_position_traversable(
+	world_position: Vector2,
+	traversal_types: int = TraversalType.LAND
+) -> bool:
+	return is_cell_traversable(world_to_map(world_position), traversal_types)
 
 
 func set_tile_from_world(world_position: Vector2, terrain_type: int) -> void:
@@ -162,9 +219,12 @@ func set_tile(coords: Vector2i, terrain_type: int) -> void:
 
 	if old_terrain_type != TerrainType.EMPTY:
 		_refresh_display_tile(coords, _get_display_layer(old_terrain_type), old_terrain_type)
+	_refresh_water_collision_cell(coords)
 
 	for neighbour in NEIGHBOURS:
 		_refresh_detail_tile(coords + neighbour)
+	if old_terrain_type != terrain_type:
+		terrain_changed.emit(coords, old_terrain_type, terrain_type)
 
 
 func get_terrain_type(cell_pos: Vector2i) -> int:
@@ -218,6 +278,27 @@ func _refresh_base_dirt_layer() -> void:
 		for x in range(fill_rect.position.x, fill_rect.end.x):
 			base_dirt_map_layer.set_cell(Vector2i(x, y), base_dirt_source_id, base_dirt_atlas_coords)
 	_base_dirt_generation_key = generation_key
+
+
+func _refresh_water_collision_layer() -> void:
+	if water_collision_map_layer == null:
+		return
+	water_collision_map_layer.clear()
+	for cell_pos in world_map_layer.get_used_cells():
+		_refresh_water_collision_cell(cell_pos)
+
+
+func _refresh_water_collision_cell(cell_pos: Vector2i) -> void:
+	if water_collision_map_layer == null:
+		return
+	if get_terrain_type(cell_pos) == TerrainType.WATER:
+		water_collision_map_layer.set_cell(
+			cell_pos,
+			water_collision_source_id,
+			water_collision_atlas_coords
+		)
+	else:
+		water_collision_map_layer.erase_cell(cell_pos)
 
 
 func _base_dirt_layer_matches(fill_rect: Rect2i) -> bool:
