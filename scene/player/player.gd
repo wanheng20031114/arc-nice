@@ -133,6 +133,8 @@ var rapid_fire_rate_multiplier: float = DEFAULT_FIRE_RATE_MULTIPLIER
 # 通用临时增益分别维护剩余持续时间，避免互相覆盖。
 var speed_buff_time_left: float = 0.0
 var rapid_buff_time_left: float = 0.0
+var attack_buff_time_left: float = 0.0
+var temporary_attack_damage_multiplier: float = 1.0
 var footstep_time_left: float = 0.0
 var dodge_chance: float = 0.0
 var skill1_unlocked: bool = false
@@ -459,6 +461,8 @@ func notify_primary_attack_performed() -> void:
 func apply_pickup(config: PickupConfig) -> bool:
 	if config == null:
 		return false
+	if config.pickup_type == PickupConfig.PickupType.MATERIAL:
+		return false
 		
 	var applied := false
 	var should_refresh_shooting_timer := false
@@ -487,6 +491,11 @@ func apply_pickup(config: PickupConfig) -> bool:
 		rapid_fire_rate_multiplier = config.fire_rate_multiplier
 		rapid_buff_time_left = buff_duration
 		should_refresh_shooting_timer = true
+		applied = true
+	if not is_equal_approx(config.attack_damage_multiplier, 1.0):
+		temporary_attack_damage_multiplier = maxf(config.attack_damage_multiplier, 0.1)
+		attack_buff_time_left = buff_duration
+		_refresh_collectible_stats(false)
 		applied = true
 	if has_form_override:
 		var character_pickup_applied := _apply_character_pickup(config, buff_duration)
@@ -1025,8 +1034,6 @@ func apply_multiplayer_realtime_state(
 		_ensure_skill1_base_charge_duration()
 	_sync_skill1_charge_duration_to_upgrade_level()
 	skill1_charge = clampf(new_skill1_charge, 0.0, skill1_charge_duration)
-	rapid_buff_time_left = 0.0
-	speed_buff_time_left = 0.0
 	var clamped_health: int = clampi(new_current_health, 0, max_health)
 	if new_is_dead or clamped_health <= 0:
 		apply_multiplayer_death_state()
@@ -1629,7 +1636,13 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 
 	var old_max_health := max_health
 	# 允许角色以半点为单位配置成长，但对外战斗伤害始终保持整数。
-	attack_damage = maxi(roundi(_base_attack_damage) + attack_bonus, 1)
+	attack_damage = maxi(
+		ceili(
+			float(roundi(_base_attack_damage) + attack_bonus)
+			* maxf(temporary_attack_damage_multiplier, 0.1)
+		),
+		1
+	)
 	max_health = maxi(_base_max_health + max_health_bonus, 1)
 	move_speed = maxf(_base_move_speed + move_speed_bonus, 0.0)
 	physical_defense = maxi(_base_physical_defense + physical_defense_bonus, 0)
@@ -3002,6 +3015,12 @@ func _update_pickup_effects(delta: float) -> void:
 		if rapid_buff_time_left <= 0.0:
 			rapid_fire_rate_multiplier = DEFAULT_FIRE_RATE_MULTIPLIER
 			_refresh_shooting_timer_wait_time()
+
+	if attack_buff_time_left > 0.0:
+		attack_buff_time_left = maxf(attack_buff_time_left - delta, 0.0)
+		if attack_buff_time_left <= 0.0:
+			temporary_attack_damage_multiplier = 1.0
+			_refresh_collectible_stats(false)
 	_update_character_pickup_effects(delta)
 
 

@@ -9,6 +9,11 @@ const BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER := &"bleed_overlay_strength"
 const PATH_DIRECTION_PROBE_DISTANCE := 1.0
 const FLOW_NAVIGATION_WAYPOINT_ARRIVAL_DISTANCE := 1.0
 const AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
+const MATERIAL_PICKUP_SCENE := preload("res://scene/pickup.tscn")
+const MATERIAL_WOOD := preload("res://resources/config/materials/material_wood.tres")
+const MATERIAL_SAPLING := preload("res://resources/config/materials/material_sapling.tres")
+const MATERIAL_DROP_CHANCE := 0.03
+const MATERIAL_DROP_CONFIGS: Array[PickupConfig] = [MATERIAL_WOOD, MATERIAL_SAPLING]
 const SLOW_OVERLAY_ACTIVE_STRENGTH := 0.36
 const BURN_OVERLAY_ACTIVE_STRENGTH := 0.26
 const BLEED_OVERLAY_ACTIVE_STRENGTH := 0.42
@@ -65,10 +70,12 @@ var proxy_action_restore_token: int = 0
 var navigation_update_frame_offset: int = 0
 var cached_navigation_move_direction := Vector2.ZERO
 var animated_sprite_base_position := Vector2.ZERO
+var material_drop_random_generator := RandomNumberGenerator.new()
 
 
 func _ready() -> void:
 	_apply_terrain_collision_profile()
+	material_drop_random_generator.randomize()
 	navigation_update_frame_offset = int(get_instance_id()) % maxi(navigation_update_interval_frames, 1)
 	_refresh_collision_shape_cache()
 	_cache_collision_shape_mirror_states()
@@ -1060,6 +1067,7 @@ func _die() -> void:
 	if is_dead:
 		return
 
+	_try_drop_material()
 	is_dead = true
 	defeated.emit(self)
 	velocity = Vector2.ZERO
@@ -1075,6 +1083,56 @@ func _die() -> void:
 	touch_damage_area.set_deferred("monitorable", false)
 	AUDIO_LIMITER.play_enemy_death(death_audio)
 	_start_death_sequence()
+
+
+func _try_drop_material() -> void:
+	if is_multiplayer_proxy:
+		return
+	if material_drop_random_generator.randf() >= MATERIAL_DROP_CHANCE:
+		return
+	var material := _pick_material_drop_config(
+		material_drop_random_generator.randf_range(0.0, _get_material_drop_total_weight())
+	)
+	if material == null:
+		return
+	call_deferred("_spawn_material_drop", material, global_position)
+
+
+func _pick_material_drop_config(target_weight: float) -> PickupConfig:
+	var total_weight := _get_material_drop_total_weight()
+	if total_weight <= 0.0:
+		return null
+	var clamped_target := clampf(target_weight, 0.0, total_weight)
+	var accumulated_weight := 0.0
+	for material in MATERIAL_DROP_CONFIGS:
+		if material == null or material.drop_weight <= 0.0:
+			continue
+		accumulated_weight += material.drop_weight
+		if clamped_target < accumulated_weight:
+			return material
+	return MATERIAL_DROP_CONFIGS.back()
+
+
+func _get_material_drop_total_weight() -> float:
+	var total_weight := 0.0
+	for material in MATERIAL_DROP_CONFIGS:
+		if material != null:
+			total_weight += maxf(material.drop_weight, 0.0)
+	return total_weight
+
+
+func _spawn_material_drop(material: PickupConfig, spawn_position: Vector2) -> void:
+	if material == null:
+		return
+	var drop_parent := get_parent()
+	if drop_parent == null:
+		return
+	var pickup := MATERIAL_PICKUP_SCENE.instantiate() as Pickup
+	if pickup == null:
+		return
+	pickup.config = material
+	drop_parent.add_child(pickup)
+	pickup.global_position = spawn_position
 
 
 func _set_collision_shapes_disabled(shape_nodes: Array[CollisionShape2D], disabled: bool) -> void:

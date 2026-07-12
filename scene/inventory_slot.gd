@@ -7,8 +7,10 @@ signal slot_selected(slot_index: int)
 @export var slot_index: int = -1
 
 @onready var item_icon: TextureRect = $Icon
+@onready var stack_count_label: Label = $StackCount
 
 var item: PickupConfig = null
+var stack_count: int = 0
 
 
 func _ready() -> void:
@@ -16,11 +18,14 @@ func _ready() -> void:
 	gui_input.connect(_on_gui_input)
 
 
-func set_item(new_item: PickupConfig) -> void:
+func set_item(new_item: PickupConfig, new_stack_count: int = 1) -> void:
 	item = new_item
+	stack_count = maxi(new_stack_count, 0) if item != null else 0
 	item_icon.texture = null
 	if item != null:
 		item_icon.texture = item.icon_texture
+	stack_count_label.visible = item != null and stack_count > 1
+	stack_count_label.text = str(stack_count)
 	tooltip_text = _get_tooltip_text()
 
 
@@ -54,5 +59,6 @@ func _get_tooltip_text() -> String:
 	if item == null:
 		return "空槽位"
 	if item.description.is_empty():
-		return item.display_name
-	return "%s\n%s" % [item.display_name, item.description]
+		return "%s ×%d" % [item.display_name, stack_count] if stack_count > 1 else item.display_name
+	var name_text := "%s ×%d" % [item.display_name, stack_count] if stack_count > 1 else item.display_name
+	return "%s\n%s" % [name_text, item.description]

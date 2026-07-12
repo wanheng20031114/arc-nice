@@ -146,12 +146,12 @@ func _test_player_movement_status_visuals() -> void:
 	)
 
 	player.apply_pickup(TENPURA_PICKUP)
-	player.velocity = Vector2.RIGHT * 24.0
+	player.velocity = Vector2.RIGHT * 120.0
 	player.call("_update_movement_status_visuals", Vector2.RIGHT)
-	_expect(not speed_trail.visible, "Player speed down must hide speed trail lines.")
+	_expect(speed_trail.visible, "Tempura must not remove an active speed boost or hide its trail lines.")
 	_expect(
-		float(sprite_material.get_shader_parameter(SLOW_OVERLAY_PARAMETER)) > 0.0,
-		"Player speed down must apply the slow overlay."
+		is_equal_approx(float(sprite_material.get_shader_parameter(SLOW_OVERLAY_PARAMETER)), 0.0),
+		"Tempura must no longer apply the slow overlay."
 	)
 
 	player.queue_free()

@@ -174,18 +174,18 @@ func _test_collectible_resources() -> void:
 		"Blood trident must be a unique rare 1.2x bleeding-target multiplier."
 	)
 	_expect(
-		BANANA.collectible_rarity == PickupConfig.CollectibleRarity.COMMON
+		BANANA.collectible_rarity == PickupConfig.CollectibleRarity.RARE
 		and BANANA.collectible_stacks_by_copy
 		and BANANA.collectible_max_copies == 4
 		and is_equal_approx(BANANA.bullet_homing_chance, 0.3),
-		"Banana must be a four-copy common with 30% homing per copy."
+		"Banana must be a four-copy rare with 30% homing per copy."
 	)
 	_expect(
-		ORANGE.collectible_rarity == PickupConfig.CollectibleRarity.COMMON
+		ORANGE.collectible_rarity == PickupConfig.CollectibleRarity.RARE
 		and ORANGE.collectible_stacks_by_copy
 		and ORANGE.collectible_max_copies == 10
 		and is_equal_approx(ORANGE.ammo_free_shot_chance, 0.1),
-		"Orange must be a ten-copy common with 10% ammo preservation per copy."
+		"Orange must be a ten-copy rare with 10% ammo preservation per copy."
 	)
 	_expect(
 		ROLLER_SKATES.collectible_rarity == PickupConfig.CollectibleRarity.RARE
@@ -222,7 +222,7 @@ func _test_collectible_resources() -> void:
 	_expect(is_equal_approx(SAKURA.periodic_interval, 10.0), "Sakura periodic interval must be 10 seconds.")
 	_expect(SAKURA.periodic_damage == 100, "Sakura periodic damage must be 100.")
 	_expect(SAKURA.periodic_target_count == 1, "Sakura must target one nearest enemy.")
-	_expect(SAKURA.collectible_rarity == PickupConfig.CollectibleRarity.EPIC, "Sakura must be epic rarity.")
+	_expect(SAKURA.collectible_rarity == PickupConfig.CollectibleRarity.LEGENDARY, "Sakura must be legendary rarity.")
 
 
 func _test_burn_collectible_tiers() -> void:
