@@ -20,7 +20,15 @@ const NEAR_STATIC_DIRECT_OBJECTIVE_DISTANCE := 96.0
 const NEAR_STATIC_DIRECT_OBJECTIVE_DISTANCE_SQUARED := (
 	NEAR_STATIC_DIRECT_OBJECTIVE_DISTANCE * NEAR_STATIC_DIRECT_OBJECTIVE_DISTANCE
 )
+# Tower-defense players only become an objective inside a 200 px aggro radius.
+# Keep the moving-target line sweep bounded to the same scale in every mode so
+# open terrain can use a native full-body diagonal without a flow-field query.
+const NEAR_MOVING_TARGET_DIRECT_DISTANCE := 200.0
+const NEAR_MOVING_TARGET_DIRECT_DISTANCE_SQUARED := (
+	NEAR_MOVING_TARGET_DIRECT_DISTANCE * NEAR_MOVING_TARGET_DIRECT_DISTANCE
+)
 const AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
+const HIT_EFFECT_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")
 const MATERIAL_PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const MATERIAL_WOOD := preload("res://resources/config/materials/material_wood.tres")
 const MATERIAL_SAPLING := preload("res://resources/config/materials/material_sapling.tres")
@@ -50,7 +58,6 @@ enum DeathSequenceStage {
 @onready var collision_shape: CollisionShape2D = null
 @onready var touch_damage_area: Area2D = $TouchDamageArea
 @onready var touch_damage_shape: CollisionShape2D = null
-@onready var hit_particles: GPUParticles2D = $HitParticles
 @onready var hit_audio: AudioStreamPlayer2D = $HitAudio
 @onready var death_audio: AudioStreamPlayer2D = $DeathAudio
 
@@ -985,6 +992,15 @@ func _get_safe_navigation_move_direction(
 		)
 		if direct_direction != Vector2.ZERO:
 			return _cache_navigation_move_direction(direct_direction, true)
+	elif _is_near_moving_target(target_node):
+		# PhysicsBody2D.test_move() sweeps the real body through the complete
+		# remaining segment. On open ground this is both cheaper and more accurate
+		# than rebuilding a full-map field every time the player crosses a tile.
+		var direct_direction := _get_collision_safe_near_moving_target_direction(
+			target_node.global_position
+		)
+		if direct_direction != Vector2.ZERO:
+			return _cache_navigation_move_direction(direct_direction)
 
 	return _get_flow_navigation_move_direction(
 		target_node,
@@ -1017,15 +1033,30 @@ func _get_flow_navigation_move_direction(
 			navigation_step_result = GridPathfinder.NavigationStepResult.new()
 		if navigation_flow_context == null:
 			navigation_flow_context = GridPathfinder.FlowQueryContext.new()
-		grid_pathfinder.try_write_safe_navigation_step(
-			navigation_step_result,
-			navigation_flow_context,
-			global_position,
-			target_node.global_position,
-			_get_body_collision_half_extents(),
-			terrain_traversal_types,
-			target_node != target_player
-		)
+		if (
+			target_node == target_player
+			and grid_pathfinder.has_method(
+				"try_write_dynamic_target_navigation_step"
+			)
+		):
+			grid_pathfinder.try_write_dynamic_target_navigation_step(
+				navigation_step_result,
+				navigation_flow_context,
+				global_position,
+				target_node,
+				_get_body_collision_half_extents(),
+				terrain_traversal_types
+			)
+		else:
+			grid_pathfinder.try_write_safe_navigation_step(
+				navigation_step_result,
+				navigation_flow_context,
+				global_position,
+				target_node.global_position,
+				_get_body_collision_half_extents(),
+				terrain_traversal_types,
+				target_node != target_player
+			)
 		status = navigation_step_result.status
 		is_complete_route = navigation_step_result.is_complete_route
 		waypoint = navigation_step_result.waypoint
@@ -1155,16 +1186,24 @@ func _get_collision_safe_direct_objective_direction(
 	# cheap straight-line tier outside that conservative band, otherwise the
 	# later handoff to flow navigation may have no valid start cell.
 	var grid_pathfinder := pathfinder as GridPathfinder
-	if (
-		grid_pathfinder != null
-		and not grid_pathfinder.is_navigation_segment_walkable(
-			global_position,
-			global_position + probe_motion,
-			_get_body_collision_half_extents(),
-			terrain_traversal_types
-		)
-	):
-		return Vector2.ZERO
+	if grid_pathfinder != null:
+		var segment_walkable: Variant = null
+		if grid_pathfinder.has_method("try_is_navigation_segment_walkable"):
+			segment_walkable = grid_pathfinder.try_is_navigation_segment_walkable(
+				global_position,
+				global_position + probe_motion,
+				_get_body_collision_half_extents(),
+				terrain_traversal_types
+			)
+		else:
+			segment_walkable = grid_pathfinder.is_navigation_segment_walkable(
+				global_position,
+				global_position + probe_motion,
+				_get_body_collision_half_extents(),
+				terrain_traversal_types
+			)
+		if segment_walkable != true:
+			return Vector2.ZERO
 	return direct_direction
 
 
@@ -1177,6 +1216,17 @@ func _get_collision_safe_near_static_objective_direction(
 	# Sweep the complete remaining segment with the real CharacterBody shape.
 	# The near tier continues through move_and_slide(), so this check is only a
 	# line-of-sight shortcut and never enables the lightweight far translation.
+	if test_move(global_transform, offset):
+		return Vector2.ZERO
+	return offset.normalized()
+
+
+func _get_collision_safe_near_moving_target_direction(
+	objective_position: Vector2
+) -> Vector2:
+	var offset := objective_position - global_position
+	if offset == Vector2.ZERO:
+		return Vector2.ZERO
 	if test_move(global_transform, offset):
 		return Vector2.ZERO
 	return offset.normalized()
@@ -1265,6 +1315,15 @@ func _is_near_static_objective(target_node: Node2D) -> bool:
 		and target_node != target_player
 		and global_position.distance_squared_to(target_node.global_position)
 			<= NEAR_STATIC_DIRECT_OBJECTIVE_DISTANCE_SQUARED
+	)
+
+
+func _is_near_moving_target(target_node: Node2D) -> bool:
+	return (
+		is_instance_valid(target_node)
+		and target_node == target_player
+		and global_position.distance_squared_to(target_node.global_position)
+			<= NEAR_MOVING_TARGET_DIRECT_DISTANCE_SQUARED
 	)
 
 
@@ -1502,10 +1561,30 @@ func _get_multiplayer_touch_source_id() -> int:
 func _play_hit_particles(impact_direction: Vector2) -> void:
 	if impact_direction == Vector2.ZERO:
 		return
-
-	hit_particles.rotation = impact_direction.angle()
-	hit_particles.restart()
-	hit_particles.emitting = true
+	var spawn_parent := get_tree().current_scene
+	if spawn_parent == null:
+		return
+	var effect: BulletHitEffect = null
+	var uses_registered_pool := (
+		spawn_parent.has_method("has_session_object_pool_scene")
+		and bool(spawn_parent.call("has_session_object_pool_scene", HIT_EFFECT_SCENE))
+	)
+	if uses_registered_pool:
+		effect = spawn_parent.call(
+			"acquire_session_object",
+			HIT_EFFECT_SCENE,
+			true
+		) as BulletHitEffect
+	else:
+		effect = HIT_EFFECT_SCENE.instantiate() as BulletHitEffect
+	if effect == null:
+		return
+	effect.top_level = true
+	if effect.get_parent() == null:
+		spawn_parent.add_child(effect)
+	effect.global_position = global_position
+	effect.reset_physics_interpolation()
+	effect.setup(impact_direction)
 
 
 func _die() -> void:

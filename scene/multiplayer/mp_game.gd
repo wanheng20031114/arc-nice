@@ -85,6 +85,7 @@ const ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES := 56
 
 var snapshot_mgr := SnapshotManager.new()
 var _runtime_scene_cache: Dictionary = {}
+var _projectile_default_parameter_cache: Dictionary[StringName, Dictionary] = {}
 var _agave_cannonball_scene: PackedScene = null
 var _linglan_sakura_bullet_scene: PackedScene = null
 var _linglan_skill2_config: Resource = null
@@ -2171,8 +2172,10 @@ func _spawn_network_projectile(
 		lifetime,
 		pierces_enemies
 	)
-	add_child(projectile)
+	if projectile.get_parent() == null:
+		add_child(projectile)
 	projectile.global_position = spawn_position
+	projectile.reset_physics_interpolation()
 	if compensation_age > 0.0 and projectile.has_method("simulate_compensated_motion"):
 		projectile.call("simulate_compensated_motion", compensation_age)
 	else:
@@ -2251,6 +2254,35 @@ func _get_runtime_packed_scene(path: String) -> PackedScene:
 	return loaded_scene
 
 
+func _acquire_or_instantiate_projectile(scene: PackedScene) -> Node:
+	if scene == null:
+		return null
+	if has_session_object_pool_scene(scene):
+		return acquire_session_object(scene, false)
+	return scene.instantiate()
+
+
+func _get_cached_projectile_defaults(
+	projectile_type: StringName,
+	scene: PackedScene
+) -> Dictionary:
+	var cached := _projectile_default_parameter_cache.get(projectile_type, {}) as Dictionary
+	if not cached.is_empty():
+		return cached
+	if scene == null:
+		return {}
+	var projectile := scene.instantiate()
+	if projectile == null:
+		return {}
+	var defaults := {
+		"speed": float(projectile.get("speed")),
+		"lifetime": float(projectile.get("max_lifetime")),
+	}
+	projectile.free()
+	_projectile_default_parameter_cache[projectile_type] = defaults
+	return defaults
+
+
 func _instantiate_projectile(
 	projectile_type: StringName,
 	owner_peer_id: int,
@@ -2267,7 +2299,7 @@ func _instantiate_projectile(
 			var bullet_scene := _get_runtime_packed_scene(BULLET_SCENE_PATH)
 			if bullet_scene == null:
 				return null
-			var bullet := bullet_scene.instantiate() as Bullet
+			var bullet := _acquire_or_instantiate_projectile(bullet_scene) as Bullet
 			if bullet == null:
 				return null
 			bullet.top_level = true
@@ -2282,7 +2314,7 @@ func _instantiate_projectile(
 			var sniper_scene := _get_runtime_packed_scene(TIYI_SNIPER_BULLET_SCENE_PATH)
 			if sniper_scene == null:
 				return null
-			var sniper_bullet := sniper_scene.instantiate() as Bullet
+			var sniper_bullet := _acquire_or_instantiate_projectile(sniper_scene) as Bullet
 			if sniper_bullet == null:
 				return null
 			sniper_bullet.top_level = true
@@ -2317,7 +2349,10 @@ func _instantiate_projectile(
 			bomb.set("remaining_lifetime", lifetime)
 			return bomb
 		&"capoo_ak47_bullet":
-			var capoo_bullet := CAPOO_AK47_BULLET_SCENE.instantiate() as CapooAK47Bullet
+			var capoo_bullet := (
+				_acquire_or_instantiate_projectile(CAPOO_AK47_BULLET_SCENE)
+				as CapooAK47Bullet
+			)
 			if capoo_bullet == null:
 				return null
 			capoo_bullet.top_level = true
@@ -2338,7 +2373,10 @@ func _instantiate_projectile(
 			fireball.setup(direction, damage, speed, lifetime)
 			return fireball
 		&"capoo_smg_bullet":
-			var smg_bullet := CAPOO_SMG_BULLET_SCENE.instantiate() as CapooAK47Bullet
+			var smg_bullet := (
+				_acquire_or_instantiate_projectile(CAPOO_SMG_BULLET_SCENE)
+				as CapooAK47Bullet
+			)
 			if smg_bullet == null:
 				return null
 			smg_bullet.top_level = true
@@ -2506,21 +2544,22 @@ func _get_authoritative_client_projectile_parameters(
 			var bullet_scene := _get_runtime_packed_scene(BULLET_SCENE_PATH)
 			if bullet_scene == null:
 				return {}
-			var bullet := bullet_scene.instantiate() as Bullet
-			if bullet == null:
+			var bullet_defaults := _get_cached_projectile_defaults(
+				projectile_type,
+				bullet_scene
+			)
+			if bullet_defaults.is_empty():
 				return {}
-			var bullet_result := {
+			return {
 				"damage": owner_player.get_outgoing_damage(
 					owner_player.attack_damage,
 					EnemyConfig.DamageType.PHYSICAL
 				),
-				"speed": bullet.speed,
-				"lifetime": bullet.max_lifetime,
+				"speed": float(bullet_defaults["speed"]),
+				"lifetime": float(bullet_defaults["lifetime"]),
 				"can_pierce_enemies": owner_player.get_inventory_bullet_pierce_chance() > 0.0,
 				"can_home": owner_player._get_inventory_bullet_homing_chance() > 0.0,
 			}
-			bullet.free()
-			return bullet_result
 		TIYI_SNIPER_PROJECTILE_TYPE:
 			if not _is_valid_tiyi_player(owner_player):
 				return {}
@@ -2535,21 +2574,22 @@ func _get_authoritative_client_projectile_parameters(
 			var sniper_scene := _get_runtime_packed_scene(TIYI_SNIPER_BULLET_SCENE_PATH)
 			if sniper_scene == null:
 				return {}
-			var sniper_bullet := sniper_scene.instantiate() as Bullet
-			if sniper_bullet == null:
+			var sniper_defaults := _get_cached_projectile_defaults(
+				projectile_type,
+				sniper_scene
+			)
+			if sniper_defaults.is_empty():
 				return {}
-			var sniper_result := {
+			return {
 				"damage": owner_player.get_outgoing_damage(
 					owner_player.attack_damage,
 					EnemyConfig.DamageType.MAGIC
 				),
-				"speed": sniper_bullet.speed,
-				"lifetime": sniper_bullet.max_lifetime,
+				"speed": float(sniper_defaults["speed"]),
+				"lifetime": float(sniper_defaults["lifetime"]),
 				"can_pierce_enemies": owner_player.get_inventory_bullet_pierce_chance() > 0.0,
 				"can_home": owner_player._get_inventory_bullet_homing_chance() > 0.0,
 			}
-			sniper_bullet.free()
-			return sniper_result
 		&"skill1_bomb":
 			if not owner_player.can_request_multiplayer_projectile(projectile_type):
 				return {}
@@ -2801,11 +2841,25 @@ func _setup_projectile_network_identity(
 ) -> void:
 	if projectile.has_method("setup_multiplayer"):
 		projectile.call("setup_multiplayer", projectile_id, owner_peer_id, projectile_type)
-	projectile.tree_exited.connect(_on_network_projectile_tree_exited.bind(projectile_id))
+	if projectile.has_signal(&"projectile_finished"):
+		var finished_callable := Callable(self, "_on_network_projectile_finished")
+		if not projectile.is_connected(&"projectile_finished", finished_callable):
+			projectile.connect(&"projectile_finished", finished_callable)
+	if not projectile.has_meta(SessionObjectPool.POOL_OWNER_META):
+		projectile.tree_exited.connect(
+			_on_network_projectile_tree_exited.bind(projectile_id, projectile),
+			CONNECT_ONE_SHOT
+		)
 
 
-func _on_network_projectile_tree_exited(projectile_id: int) -> void:
-	_known_projectiles.erase(projectile_id)
+func _on_network_projectile_finished(projectile_id: int, projectile: Node) -> void:
+	if _known_projectiles.get(projectile_id) == projectile:
+		_known_projectiles.erase(projectile_id)
+
+
+func _on_network_projectile_tree_exited(projectile_id: int, projectile: Node) -> void:
+	if _known_projectiles.get(projectile_id) == projectile:
+		_known_projectiles.erase(projectile_id)
 
 
 func _update_recent_event_cache_prune(delta: float) -> void:
@@ -3508,6 +3562,20 @@ func get_local_multiplayer_player() -> Player:
 	if game == null:
 		return null
 	return game.player
+
+
+func has_session_object_pool_scene(scene: PackedScene) -> bool:
+	return game != null and game.has_session_object_pool_scene(scene)
+
+
+func acquire_session_object(scene: PackedScene, strict: bool = false) -> Node:
+	if game == null:
+		return null
+	return game.acquire_session_object(scene, strict)
+
+
+func release_session_object(instance: Node) -> bool:
+	return game != null and game.release_session_object(instance)
 
 
 func spawn_xirang_reward(
@@ -5053,7 +5121,10 @@ func _clear_projectiles_for_peer(peer_id: int) -> void:
 		if projectile_variant != null and is_instance_valid(projectile_variant):
 			var projectile_node := projectile_variant as Node
 			if projectile_node != null:
-				projectile_node.queue_free()
+				if projectile_node.has_method("retire"):
+					projectile_node.call("retire")
+				else:
+					projectile_node.queue_free()
 
 
 func _clear_projectile_records_for_peer(peer_id: int) -> void:

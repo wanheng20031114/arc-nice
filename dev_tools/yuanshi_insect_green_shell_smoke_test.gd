@@ -62,7 +62,11 @@ func _test_resource_contract() -> void:
 		_expect(_get_shape_extent_radius(body_shape_node) > 0.0, "Green shell body collision extent must be positive.")
 		_expect(GREEN_SHELL_CONFIG.aura_radius > _get_shape_extent_radius(body_shape_node), "Aura must exceed body collision extent.")
 	scene_enemy.free()
-	_expect(GREEN_SHELL_CONFIG.aura_particle_amount >= 60, "Aura particles are not dense enough.")
+	_expect(
+		GREEN_SHELL_CONFIG.aura_particle_amount >= 24
+		and GREEN_SHELL_CONFIG.aura_particle_amount <= 32,
+		"Aura particle budget must stay dense but bounded."
+	)
 	_expect(GREEN_SHELL_CONFIG.aura_particle_texture != null, "Aura particle texture is missing.")
 	_expect(GREEN_SHELL_CONFIG.aura_particle_color_ramp != null, "Aura color ramp is missing.")
 	_expect(
@@ -94,6 +98,8 @@ func _test_aura_visual_configuration() -> void:
 	_expect(enemy.aura_particles.emitting, "Green shell particles are not emitting continuously.")
 	_expect(enemy.aura_particles.local_coords, "Aura particles must stay attached to the moving enemy.")
 	_expect(enemy.aura_particles.amount == GREEN_SHELL_CONFIG.aura_particle_amount, "Particle amount ignored config.")
+	_expect(enemy.aura_particles.fixed_fps == 30, "Aura particles must use the 30 Hz simulation budget.")
+	_expect(enemy.aura_particles.preprocess == 0.0, "Aura spawn must not preprocess a full lifetime.")
 	_expect(enemy.aura_particles.texture == GREEN_SHELL_CONFIG.aura_particle_texture, "Particle texture ignored config.")
 	_expect(
 		is_equal_approx(enemy.aura_particles.lifetime, GREEN_SHELL_CONFIG.aura_particle_lifetime),
@@ -135,15 +141,15 @@ func _test_aura_visual_configuration() -> void:
 			aura_material.color_initial_ramp == GREEN_SHELL_CONFIG.aura_particle_color_ramp,
 			"Particle color variation ignored config."
 		)
-	_expect(aura_material != second_material, "Aura material is shared between enemy instances.")
-	_expect(enemy.aura_range_fill.visible, "Aura range fill is hidden.")
+	_expect(aura_material == second_material, "Identical aura instances must share their particle material.")
+	_expect(not enemy.aura_range_fill.visible, "The near-transparent aura fill must stay culled.")
 	_expect(enemy.aura_range_outline.visible, "Aura range outline is hidden.")
 	_expect(enemy.aura_range_fill.color == GREEN_SHELL_CONFIG.aura_fill_color, "Aura fill color ignored config.")
 	_expect(
 		enemy.aura_range_outline.default_color == GREEN_SHELL_CONFIG.aura_outline_color,
 		"Aura outline color ignored config."
 	)
-	_expect(enemy.aura_range_outline.points.size() >= 32, "Aura outline is too coarse.")
+	_expect(enemy.aura_range_outline.points.size() == 24, "Aura outline must use the bounded 24-segment ring.")
 	for point in enemy.aura_range_outline.points:
 		_expect(
 			is_equal_approx(point.length(), GREEN_SHELL_CONFIG.aura_radius),
@@ -155,6 +161,7 @@ func _test_aura_visual_configuration() -> void:
 	enemy.queue_free()
 	second_enemy.queue_free()
 	player.queue_free()
+	await process_frame
 	await physics_frame
 
 
@@ -211,6 +218,7 @@ func _test_shared_attack_damage() -> void:
 
 	enemy.queue_free()
 	player.queue_free()
+	await process_frame
 	await physics_frame
 
 
@@ -245,6 +253,7 @@ func _test_aura_damage_and_shutdown() -> void:
 
 	enemy.queue_free()
 	player.queue_free()
+	await process_frame
 	await physics_frame
 
 
@@ -260,6 +269,7 @@ func _test_normal_enemy_has_no_aura() -> void:
 
 	enemy.queue_free()
 	player.queue_free()
+	await process_frame
 	await physics_frame
 
 
@@ -267,7 +277,6 @@ func _spawn_player(position: Vector2) -> Player:
 	var player := PLAYER_SCENE.instantiate() as Player
 	player.global_position = position
 	test_root.add_child(player)
-	player.max_health = 100
 	player.current_health = player.max_health
 	player.health_bar.setup(player.max_health, player.current_health)
 	return player

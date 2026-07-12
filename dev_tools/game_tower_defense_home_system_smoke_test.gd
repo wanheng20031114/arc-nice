@@ -70,6 +70,22 @@ func _verify_camera(game: GameTowerDefense) -> void:
 	_expect(game.map_camera.position == Vector2.ZERO, "Following camera must use zero local offset.")
 	_expect(game.map_camera.zoom == Vector2(2.0, 2.0), "Tower-defense camera must retain 2x zoom.")
 	_expect(not game.map_camera.position_smoothing_enabled, "Tower-defense camera smoothing must stay disabled.")
+	_expect(
+		game.map_camera.process_callback == Camera2D.CAMERA2D_PROCESS_PHYSICS,
+		"The interpolated follow camera must sample physics transforms."
+	)
+	_expect(
+		game.physics_interpolation_mode == Node.PHYSICS_INTERPOLATION_MODE_OFF,
+		"Tower-defense static scene branches must stay outside physics interpolation."
+	)
+	_expect(
+		game.player.physics_interpolation_mode == Node.PHYSICS_INTERPOLATION_MODE_ON,
+		"The local player and its following camera must use native interpolation."
+	)
+	_expect(
+		physics_interpolation,
+		"Tower-defense runtime must enable native physics interpolation."
+	)
 
 
 func _verify_spawn_mask_resolution(game: GameTowerDefense) -> void:
@@ -208,6 +224,17 @@ func _verify_far_linear_enemy_reaches_home(game: GameTowerDefense) -> void:
 	enemy.setup(BASIC_CONFIG, game.player, game.grid_pathfinder)
 	enemy.set_objective_target(nearest_gate)
 	enemy.add_move_speed_modifier(900001, 8.0)
+	# This fixture verifies the complete far-linear -> flow -> physical gate
+	# journey. Runtime cold-build staging has its own dedicated smoke test.
+	game.grid_pathfinder.prewarm_agent_grid(
+		enemy.get_configured_body_collision_half_extents(),
+		BASIC_CONFIG.terrain_traversal_types
+	)
+	game.grid_pathfinder.prewarm_flow_navigation_target(
+		nearest_gate.global_position,
+		enemy.get_configured_body_collision_half_extents(),
+		BASIC_CONFIG.terrain_traversal_types
+	)
 	_expect(
 		enemy.global_position.distance_to(nearest_gate.global_position)
 		>= Enemy.FAR_STATIC_OBJECTIVE_DISTANCE,

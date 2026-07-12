@@ -2,6 +2,11 @@ extends GameRuntimeBase
 class_name Game
 
 const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/enemy/yuanshi_insect_spawn_effect.tscn")
+const PLAYER_BULLET_POOL_SCENE := preload("res://scene/bullet.tscn")
+const CAPOO_AK47_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo_ak47_bullet.tscn")
+const CAPOO_SMG_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
+const BULLET_HIT_EFFECT_POOL_SCENE := preload("res://scene/bullet_hit_effect.tscn")
+const ENEMY_HIT_EFFECT_POOL_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/guardian_point_light.png")
 const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
 const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := "res://scene/boss/linglan/linglan_boss_intro_vfx.tscn"
@@ -121,6 +126,11 @@ func _ready() -> void:
 	_configure_timers()
 	_prewarm_enemy_visual_resources()
 	session_object_pool.register_scene(ENEMY_SPAWN_EFFECT_SCENE, 16, 24)
+	session_object_pool.register_scene(PLAYER_BULLET_POOL_SCENE, 64, 768)
+	session_object_pool.register_scene(CAPOO_AK47_BULLET_POOL_SCENE, 32, 384)
+	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
+	session_object_pool.register_scene(BULLET_HIT_EFFECT_POOL_SCENE, 48, 48)
+	session_object_pool.register_scene(ENEMY_HIT_EFFECT_POOL_SCENE, 96, 96)
 	if not enemy_container.child_entered_tree.is_connected(
 		_on_dynamic_pickup_container_child_entered
 	):

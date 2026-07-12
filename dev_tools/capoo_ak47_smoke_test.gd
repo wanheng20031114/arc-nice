@@ -83,6 +83,10 @@ func _test_resource_contract() -> void:
 	_expect(bullet_instance != null, "AK bullet scene did not instantiate CapooAK47Bullet.")
 	if bullet_instance != null:
 		var bullet_shape := bullet_instance.get_node_or_null("CollisionShape2D") as CollisionShape2D
+		_expect(
+			bullet_instance.collision_mask == 2,
+			"AK bullet Area must scan Player only; its cached sweep owns World collision."
+		)
 		_expect(bullet_shape != null, "AK bullet collision shape must be a direct child of the Area2D.")
 		_expect(bullet_shape != null and bullet_shape.shape is RectangleShape2D, "AK bullet collision should use the configured rectangle shape.")
 		bullet_instance.free()

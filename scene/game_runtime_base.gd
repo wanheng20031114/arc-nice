@@ -232,6 +232,25 @@ func prepare_shared_runtime_data_and_complete() -> void:
 		mark_runtime_preparation_complete()
 
 
+func has_session_object_pool_scene(scene: PackedScene) -> bool:
+	var pool := get_node_or_null("SessionObjectPool") as SessionObjectPool
+	return pool != null and pool.is_registered(scene)
+
+
+func acquire_session_object(scene: PackedScene, strict: bool = false) -> Node:
+	var pool := get_node_or_null("SessionObjectPool") as SessionObjectPool
+	if pool == null or not pool.is_registered(scene):
+		return null
+	if strict:
+		return pool.try_acquire(scene)
+	return pool.acquire(scene)
+
+
+func release_session_object(instance: Node) -> bool:
+	var pool := get_node_or_null("SessionObjectPool") as SessionObjectPool
+	return pool != null and pool.release(instance)
+
+
 func spawn_xirang_reward(
 	amount: int,
 	target_player: Player,

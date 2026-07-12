@@ -365,6 +365,13 @@ func _verify_diagonal_flow_and_corner_guards(
 		moving_enemy.set_objective_target(objective)
 		moving_enemy.navigation_update_interval_frames = 1
 		moving_enemy.set_physics_process(false)
+		# This assertion validates diagonal consumption, not runtime cold-build
+		# scheduling. Runtime try_* misses are intentionally staged now.
+		pathfinder.prewarm_flow_navigation_target(
+			objective.global_position,
+			moving_enemy.get_configured_body_collision_half_extents(),
+			enemy_config.terrain_traversal_types
+		)
 		var move_direction := moving_enemy.call(
 			"_get_flow_navigation_move_direction",
 			objective,
@@ -652,6 +659,16 @@ func _verify_spawn_recovery_motion(
 		if probe_enemy == null:
 			continue
 		var uses_shared_chase_consumer := probe_enemy.has_method("_get_navigation_move_direction")
+		if uses_shared_chase_consumer:
+			pathfinder.prewarm_agent_grid(
+				probe_enemy.get_configured_body_collision_half_extents(),
+				enemy_config.terrain_traversal_types
+			)
+			pathfinder.prewarm_flow_navigation_target(
+				objective.global_position,
+				probe_enemy.get_configured_body_collision_half_extents(),
+				enemy_config.terrain_traversal_types
+			)
 		probe_enemy.free()
 		if not uses_shared_chase_consumer:
 			continue

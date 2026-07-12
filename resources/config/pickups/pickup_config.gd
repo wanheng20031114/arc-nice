@@ -109,6 +109,7 @@ const KILL_EFFECT_FROST := "frost"
 const KILL_EFFECT_HASTE := "haste"
 const KILL_EFFECT_BLOOM := "bloom"
 const KILL_EFFECT_BURST := "burst"
+const MAX_DASH_COOLDOWN_REDUCTION_PER_COLLECTIBLE := 0.5
 
 @export_group("基础信息")
 @export var pickup_type:PickupType = PickupType.SPEED
@@ -182,7 +183,8 @@ const KILL_EFFECT_BURST := "burst"
 @export_range(0.0, 999.0, 1.0, "or_greater") var collectible_move_speed_bonus: float = 0.0
 @export_range(0.0, 999.0, 0.1, "or_greater") var collectible_attack_speed_bonus: float = 0.0
 @export_range(0.0, 999.0, 1.0, "or_greater") var collectible_dash_distance_bonus: float = 0.0
-@export_range(0.0, 30.0, 0.1, "or_greater") var collectible_dash_cooldown_reduction: float = 0.0
+# 每件收藏品的固定减秒至多 0.5；多件不同收藏品仍可按件累加。
+@export_range(0.0, 0.5, 0.1) var collectible_dash_cooldown_reduction: float = 0.0
 @export_range(0, 999, 1, "or_greater") var collectible_physical_defense_bonus: int = 0
 @export_range(0, 100, 1) var collectible_magic_defense_bonus: int = 0
 @export_range(0, 999, 1, "or_greater") var collectible_physical_damage_bonus: int = 0

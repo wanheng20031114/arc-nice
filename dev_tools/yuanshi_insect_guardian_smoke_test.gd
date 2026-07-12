@@ -9,6 +9,24 @@ const GREEN_SHELL_CONFIG := preload(
 const AURA_SCRIPT := preload("res://scene/enemy/yuanshi_insect_aura.gd")
 const ENEMY_VISUAL_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
 
+class NavigationStub extends Node:
+	var is_built := true
+
+	func try_get_safe_navigation_step(
+		_from_position: Vector2,
+		target_position: Vector2,
+		_collision_half_extents: Vector2,
+		_traversal_types: int
+	) -> Dictionary:
+		return {
+			"status": GridPathfinder.NavigationStepStatus.READY,
+			"is_complete_route": true,
+			"waypoint": target_position,
+			"resolved_from_cell": Vector2i.MAX,
+			"next_cell": Vector2i.MAX,
+			"used_start_recovery": false,
+		}
+
 var failures: Array[String] = []
 var test_root: Node2D
 
@@ -108,6 +126,9 @@ func _test_damage_defense_formulas() -> void:
 	player.magic_defense = 25
 	player.apply_damage(5)
 	_expect(player.current_health == 17, "Player physical defense formula is incorrect.")
+	# Damage refreshes derived collectible stats, so set the second isolated
+	# formula fixture after the first assertion.
+	player.magic_defense = 25
 	player.apply_damage(7, EnemyConfig.DamageType.MAGIC)
 	_expect(player.current_health == 12, "Player magic defense formula is incorrect.")
 
@@ -123,6 +144,7 @@ func _test_damage_defense_formulas() -> void:
 
 	player.queue_free()
 	enemy.queue_free()
+	await process_frame
 	await physics_frame
 
 
@@ -219,16 +241,21 @@ func _test_guardian_aura_visual_configuration() -> void:
 
 	guardian.queue_free()
 	player.queue_free()
+	await process_frame
 	await physics_frame
 
 
 func _test_guardian_chase_and_collision_contract() -> void:
 	var player := _spawn_player(Vector2(96.0, 0.0))
 	var guardian: Variant = _spawn_enemy(Vector2.ZERO, GUARDIAN_CONFIG, player)
+	var pathfinder := NavigationStub.new()
+	test_root.add_child(pathfinder)
 	_expect(guardian != null, "Guardian scene must instantiate YuanshiInsect.")
 	if guardian == null:
 		player.queue_free()
+		pathfinder.queue_free()
 		return
+	guardian.set_pathfinder(pathfinder)
 	_expect(guardian.get_script() == AURA_SCRIPT, "Guardian scene must use the aura script.")
 	await _wait_physics_frames(2)
 
@@ -245,10 +272,22 @@ func _test_guardian_chase_and_collision_contract() -> void:
 	var start_distance: float = guardian.global_position.distance_to(player.global_position)
 	await _wait_physics_frames(12)
 	var end_distance: float = guardian.global_position.distance_to(player.global_position)
-	_expect(end_distance < start_distance - 1.0, "Guardian did not move toward the player.")
+	_expect(
+		end_distance < start_distance - 1.0,
+		"Guardian did not move toward the player (%.2f -> %.2f, speed %.2f, physics=%s, mode=%d)."
+		% [
+			start_distance,
+			end_distance,
+			guardian.get_effective_move_speed(),
+			str(guardian.is_physics_processing()),
+			guardian.process_mode,
+		]
+	)
 
 	guardian.queue_free()
 	player.queue_free()
+	pathfinder.queue_free()
+	await process_frame
 	await physics_frame
 
 
@@ -300,6 +339,7 @@ func _test_guardian_aura_defense_lifecycle() -> void:
 		second_guardian.queue_free()
 	ally.queue_free()
 	player.queue_free()
+	await process_frame
 	await physics_frame
 
 

@@ -33,6 +33,7 @@ color = Color(0.76, 0.98, 1, 0.62)
 color_ramp = SubResource("GradientTexture1D_speed_line_lifetime")
 
 [node name="MoveSpeedTrailEffect" type="Node2D"]
+process_mode = 4
 script = ExtResource("1_speed_trail")
 
 [node name="TrailParticles" type="GPUParticles2D" parent="."]

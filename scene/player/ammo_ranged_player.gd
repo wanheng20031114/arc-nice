@@ -377,7 +377,19 @@ func _spawn_bullet(shoot_direction: Vector2, track_attack_direction: bool = true
 	var projectile_scene := _get_primary_projectile_scene()
 	if projectile_scene == null:
 		return false
-	var bullet := projectile_scene.instantiate() as Bullet
+	var bullet: Bullet = null
+	var uses_registered_pool := (
+		spawn_parent.has_method("has_session_object_pool_scene")
+		and bool(spawn_parent.call("has_session_object_pool_scene", projectile_scene))
+	)
+	if uses_registered_pool:
+		bullet = spawn_parent.call(
+			"acquire_session_object",
+			projectile_scene,
+			false
+		) as Bullet
+	else:
+		bullet = projectile_scene.instantiate() as Bullet
 	if bullet == null:
 		return false
 
@@ -394,8 +406,10 @@ func _spawn_bullet(shoot_direction: Vector2, track_attack_direction: bool = true
 	bullet.setup(normalized_direction, bullet_damage, pierces_enemies)
 	bullet.setup_homing(homing_target)
 	bullet.setup_collectible_owner(self)
-	spawn_parent.add_child(bullet)
+	if bullet.get_parent() == null:
+		spawn_parent.add_child(bullet)
 	bullet.global_position = global_position + normalized_direction * _get_muzzle_distance()
+	bullet.reset_physics_interpolation()
 	var target_enemy_net_id := 0
 	if homing_target != null and is_instance_valid(homing_target):
 		target_enemy_net_id = int(homing_target.get_meta("net_id", 0))

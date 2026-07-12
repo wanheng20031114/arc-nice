@@ -2616,7 +2616,8 @@ func _test_tower_defense_spawn_slots_and_fixed_respawn() -> void:
 		"Tower-defense PlayerSpawn must match the blue-gate reference position."
 	)
 	_expect(
-		game.player_spawn.global_position == Vector2(118.0, 367.0),
+		game.player_spawn.global_position
+		== game.position + game.player_spawn.position,
 		"Tower-defense PlayerSpawn world position must include the scene root offset."
 	)
 	var expected_offsets: Array[Vector2] = [

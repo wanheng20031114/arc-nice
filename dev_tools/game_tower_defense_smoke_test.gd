@@ -117,8 +117,11 @@ func _test_main_menu_entry() -> void:
 	)
 	character_overlay.confirmation_lock_time_left = 0.0
 	character_overlay.call("_confirm_selection")
-	await create_timer(0.4).timeout
-	for _frame in range(3):
+	var scene_change_deadline := Time.get_ticks_msec() + 30000
+	while (
+		not (current_scene is GameTowerDefense)
+		and Time.get_ticks_msec() < scene_change_deadline
+	):
 		await process_frame
 
 	_expect(run_state.run_started, "Tower-defense entry must begin a new single-player run.")
@@ -134,6 +137,16 @@ func _test_main_menu_entry() -> void:
 		)
 	var tower_game := current_scene as GameTowerDefense
 	if tower_game != null:
+		var preparation_deadline := Time.get_ticks_msec() + 30000
+		while (
+			not tower_game.is_runtime_preparation_complete()
+			and Time.get_ticks_msec() < preparation_deadline
+		):
+			await process_frame
+		_expect(
+			tower_game.is_runtime_preparation_complete(),
+			"Tower-defense entry must finish staged runtime preparation."
+		)
 		_expect(
 			tower_game.player != null
 			and tower_game.player.get_character_id() == PlayerCharacterRegistry.TIYI_ID,

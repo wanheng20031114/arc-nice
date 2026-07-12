@@ -18,13 +18,22 @@ func _run() -> void:
 	root.add_child(game)
 	current_scene = game
 	await process_frame
-	await process_frame
-	await process_frame
+	game.call("_schedule_enemy_navigation_prewarm")
+	var preparation_deadline := Time.get_ticks_msec() + 30000
+	while (
+		not game.is_runtime_preparation_complete()
+		and Time.get_ticks_msec() < preparation_deadline
+	):
+		await process_frame
 	await physics_frame
 
 	var pathfinder := game.get_node("GridPathfinder") as GridPathfinder
 	_expect(pathfinder != null, "Game must provide GridPathfinder.")
 	_expect(pathfinder != null and pathfinder.is_built, "GridPathfinder must be built.")
+	_expect(
+		game.is_runtime_preparation_complete(),
+		"Game startup must complete staged navigation preparation."
+	)
 	if pathfinder == null or not pathfinder.is_built:
 		_finish(game)
 		return

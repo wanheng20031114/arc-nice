@@ -14,7 +14,7 @@ radius = 6.0
 height = 22.0
 
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_aura"]
-resource_local_to_scene = true
+resource_local_to_scene = false
 emission_shape = 6
 emission_ring_axis = Vector3(0, 0, 1)
 emission_ring_height = 0.0
@@ -66,6 +66,8 @@ rotation = 1.5707964
 shape = SubResource("CapsuleShape2D_cyucs")
 
 [node name="AuraParticles" type="GPUParticles2D" parent="." index="6" unique_id=226124382]
+process_mode = 4
+visible = false
 z_index = 1
 emitting = false
 amount = 72

@@ -196,8 +196,12 @@ func _test_collectible_resources() -> void:
 	_expect(
 		POWER_WHEEL.collectible_rarity == PickupConfig.CollectibleRarity.EPIC
 		and not POWER_WHEEL.collectible_stacks_by_copy
-		and is_equal_approx(POWER_WHEEL.collectible_dash_cooldown_reduction, 2.0),
-		"Power wheel must be a unique epic collectible with 2 seconds of dash cooldown reduction."
+		and is_equal_approx(POWER_WHEEL.collectible_dash_cooldown_reduction, 0.3)
+		and is_equal_approx(
+			PickupConfig.MAX_DASH_COOLDOWN_REDUCTION_PER_COLLECTIBLE,
+			0.5
+		),
+		"Power wheel must be a unique epic collectible with 0.3 seconds of dash cooldown reduction."
 	)
 	for projectile_item_variant in [PURE_CHARGE_CRYSTAL, FLAME_TRIDENT, BLOOD_TRIDENT, BANANA, ORANGE]:
 		var projectile_item := projectile_item_variant as PickupConfig
@@ -610,6 +614,10 @@ func _test_trident_and_bullet_rules() -> void:
 	var bullet := BULLET_SCENE.instantiate() as Bullet
 	_expect(bullet != null, "Bullet scene must instantiate for combined piercing-homing coverage.")
 	if bullet != null:
+		_expect(
+			bullet.collision_mask == 4,
+			"Player bullet Area must scan EnemyBody only; its cached sweep owns World collision."
+		)
 		bullet.setup(Vector2.RIGHT, 10, true)
 		bullet.setup_homing(homing_target)
 		bullet.setup_collectible_owner(player)

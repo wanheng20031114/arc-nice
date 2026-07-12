@@ -69,10 +69,16 @@ func _test_enemy_scene_contract(enemy_config: EnemyConfig) -> void:
 
 	var animated_sprite := enemy.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
 	var touch_damage_area := enemy.get_node_or_null("TouchDamageArea") as Area2D
+	var legacy_hit_particles := enemy.get_node_or_null("HitParticles") as GPUParticles2D
 	var body_shape_nodes := _collect_direct_collision_shapes(enemy)
 	var touch_shape_nodes := _collect_direct_collision_shapes(touch_damage_area)
 	_expect(animated_sprite != null, "%s scene must include AnimatedSprite2D." % enemy_config.resource_path)
 	_expect(touch_damage_area != null, "%s scene must include TouchDamageArea." % enemy_config.resource_path)
+	_expect(
+		legacy_hit_particles == null,
+		"%s must use the shared hit-effect pool instead of a resident emitter."
+		% enemy_config.resource_path
+	)
 	_expect(not body_shape_nodes.is_empty(), "%s scene must include body CollisionShape2D nodes." % enemy_config.resource_path)
 	_expect(not touch_shape_nodes.is_empty(), "%s scene must include touch CollisionShape2D nodes." % enemy_config.resource_path)
 	if animated_sprite == null or touch_damage_area == null or body_shape_nodes.is_empty() or touch_shape_nodes.is_empty():
@@ -109,6 +115,18 @@ func _test_enemy_scene_contract(enemy_config: EnemyConfig) -> void:
 	test_root.add_child(enemy)
 	enemy.setup(enemy_config, null, null)
 	await process_frame
+	var effects_before := _collect_active_hit_effects().size()
+	enemy.call("_play_hit_particles", Vector2.RIGHT)
+	var active_effects := _collect_active_hit_effects()
+	_expect(
+		active_effects.size() == effects_before + 1
+		and active_effects.back().emitting,
+		"%s hit feedback must use a transient shared effect."
+		% enemy_config.resource_path
+	)
+	if not active_effects.is_empty():
+		active_effects.back().call("_on_finished")
+	await process_frame
 
 	_expect(animated_sprite.sprite_frames == scene_frames, "%s setup must not replace scene SpriteFrames." % enemy_config.resource_path)
 	_expect(enemy.body_collision_shapes.size() == body_shape_nodes.size(), "%s runtime must cache all body collision shapes." % enemy_config.resource_path)
@@ -119,6 +137,15 @@ func _test_enemy_scene_contract(enemy_config: EnemyConfig) -> void:
 
 	enemy.queue_free()
 	await process_frame
+
+
+func _collect_active_hit_effects() -> Array[BulletHitEffect]:
+	var effects: Array[BulletHitEffect] = []
+	for child in test_root.get_children():
+		var effect := child as BulletHitEffect
+		if effect != null and effect.pool_active:
+			effects.append(effect)
+	return effects
 
 
 func _collect_direct_collision_shapes(parent_node: Node) -> Array[CollisionShape2D]:

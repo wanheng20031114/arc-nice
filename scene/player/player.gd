@@ -14,7 +14,7 @@ signal died
 @export var invincibility_duration: float = 1.0
 @export_range(1.0, 200.0, 1.0, "or_greater") var dash_distance: float = 35.0
 @export_range(0.05, 1.0, 0.01, "or_greater") var dash_duration: float = 0.12
-@export_range(0.0, 30.0, 0.1, "or_greater") var dash_cooldown: float = 5.0
+@export_range(0.0, 30.0, 0.1, "or_greater") var dash_cooldown: float = 2.2
 @export var attack_damage: int = 1
 @export var physical_defense: int = 0
 @export var magic_defense: int = 0
@@ -1128,6 +1128,7 @@ func set_multiplayer_health_state(new_health: int, new_is_dead: bool) -> void:
 func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invincible_seconds: float = 0.0) -> void:
 	var was_dead := is_dead
 	global_position = revive_position
+	reset_physics_interpolation()
 	_set_multiplayer_visual_offset(Vector2.ZERO)
 	is_dead = false
 	controls_locked = false
@@ -1606,7 +1607,11 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 		physical_damage_bonus += item.collectible_physical_damage_bonus
 		magic_damage_bonus += item.collectible_magic_damage_bonus
 		dash_distance_bonus += item.collectible_dash_distance_bonus
-		dash_cooldown_reduction += item.collectible_dash_cooldown_reduction
+		dash_cooldown_reduction += clampf(
+			item.collectible_dash_cooldown_reduction,
+			0.0,
+			PickupConfig.MAX_DASH_COOLDOWN_REDUCTION_PER_COLLECTIBLE
+		)
 		skill_charge_bonus += item.collectible_skill_charge_bonus_per_second
 		skill_charge_preserve_chance += item.skill_charge_preserve_chance
 		base_upgrade_free_chance += item.base_upgrade_free_chance

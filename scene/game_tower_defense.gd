@@ -2,6 +2,11 @@ extends GameRuntimeBase
 class_name GameTowerDefense
 
 const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/enemy/yuanshi_insect_spawn_effect.tscn")
+const PLAYER_BULLET_POOL_SCENE := preload("res://scene/bullet.tscn")
+const CAPOO_AK47_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo_ak47_bullet.tscn")
+const CAPOO_SMG_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
+const BULLET_HIT_EFFECT_POOL_SCENE := preload("res://scene/bullet_hit_effect.tscn")
+const ENEMY_HIT_EFFECT_POOL_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/guardian_point_light.png")
 const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
 const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := "res://scene/boss/linglan/linglan_boss_intro_vfx.tscn"
@@ -146,6 +151,21 @@ var boss_health_hud: BossHealthHUD = null
 var boss_runtime_scene_loads_requested: bool = false
 var navigation_prewarm_requested: bool = false
 var navigation_prewarmed: bool = false
+var _previous_physics_interpolation_enabled := false
+var _owns_physics_interpolation_override := false
+
+
+func _enter_tree() -> void:
+	_previous_physics_interpolation_enabled = get_tree().physics_interpolation
+	get_tree().physics_interpolation = true
+	_owns_physics_interpolation_override = true
+
+
+func _exit_tree() -> void:
+	if not _owns_physics_interpolation_override:
+		return
+	get_tree().physics_interpolation = _previous_physics_interpolation_enabled
+	_owns_physics_interpolation_override = false
 
 
 func _ready() -> void:
@@ -168,6 +188,11 @@ func _ready() -> void:
 	_configure_timers()
 	_prewarm_enemy_visual_resources()
 	session_object_pool.register_scene(ENEMY_SPAWN_EFFECT_SCENE, 16, 24)
+	session_object_pool.register_scene(PLAYER_BULLET_POOL_SCENE, 64, 768)
+	session_object_pool.register_scene(CAPOO_AK47_BULLET_POOL_SCENE, 32, 384)
+	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
+	session_object_pool.register_scene(BULLET_HIT_EFFECT_POOL_SCENE, 48, 48)
+	session_object_pool.register_scene(ENEMY_HIT_EFFECT_POOL_SCENE, 96, 96)
 	if not enemy_container.child_entered_tree.is_connected(
 		_on_dynamic_pickup_container_child_entered
 	):
@@ -326,12 +351,22 @@ func _configure_singleplayer_player() -> void:
 func _attach_camera_to_local_player() -> void:
 	if map_camera == null or player == null:
 		return
+	# The local player moves on the 60 Hz physics clock while the renderer can
+	# run much faster. Interpolate this one branch so the following camera does
+	# not turn each physics step into a whole-screen judder. The scene root is
+	# explicitly opted out, keeping UI, tweens and network-smoothed proxies on
+	# their existing timing paths.
+	map_camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
+	player.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
 	if map_camera.get_parent() != player:
 		map_camera.reparent(player)
+	map_camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_INHERIT
 	map_camera.position = Vector2.ZERO
 	map_camera.zoom = Vector2(2.0, 2.0)
 	map_camera.position_smoothing_enabled = false
 	map_camera.enabled = true
+	player.reset_physics_interpolation()
+	map_camera.reset_physics_interpolation()
 
 
 func _configure_home_defense() -> void:
@@ -2658,6 +2693,12 @@ func _configure_multiplayer_players() -> void:
 			runtime_mode == RuntimeMode.HOST_AUTHORITY
 			and peer_id != multiplayer_local_peer_id
 		)
+		player_instance.physics_interpolation_mode = (
+			Node.PHYSICS_INTERPOLATION_MODE_ON
+			if accepts_local_input or predicts_local_movement
+			else Node.PHYSICS_INTERPOLATION_MODE_OFF
+		)
+		player_instance.reset_physics_interpolation()
 		if (
 			(runtime_mode == RuntimeMode.CLIENT_VIEW and not predicts_local_movement)
 			or (runtime_mode == RuntimeMode.HOST_AUTHORITY and peer_id != multiplayer_local_peer_id)

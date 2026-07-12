@@ -13,10 +13,17 @@ var has_hit: bool = false
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"yuanshi_fire_projectile"
+var world_collision_query := PhysicsRayQueryParameters2D.create(
+	Vector2.ZERO,
+	Vector2.ZERO,
+	WORLD_COLLISION_MASK
+)
 
 
 func _ready() -> void:
 	remaining_lifetime = maxf(max_lifetime, 0.01)
+	world_collision_query.collide_with_bodies = true
+	world_collision_query.collide_with_areas = false
 	body_entered.connect(_on_body_entered)
 
 
@@ -62,14 +69,11 @@ func _physics_process(delta: float) -> void:
 
 
 func _will_hit_world(from_position: Vector2, to_position: Vector2) -> bool:
-	var query := PhysicsRayQueryParameters2D.create(
-		from_position,
-		to_position,
-		WORLD_COLLISION_MASK
-	)
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	return not get_world_2d().direct_space_state.intersect_ray(query).is_empty()
+	world_collision_query.from = from_position
+	world_collision_query.to = to_position
+	return not get_world_2d().direct_space_state.intersect_ray(
+		world_collision_query
+	).is_empty()
 
 
 func _on_body_entered(body: Node2D) -> void:

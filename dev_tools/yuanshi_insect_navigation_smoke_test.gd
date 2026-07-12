@@ -36,6 +36,8 @@ func _run() -> void:
 	root.add_child(test_root)
 	current_scene = test_root
 
+	await _test_near_clear_player_uses_direct_sweep()
+	await _test_near_blocked_player_falls_back_to_flow()
 	await _test_unreachable_never_direct_fallbacks()
 	await _test_ready_step_moves_toward_waypoint()
 	await _test_blocked_primary_axis_uses_safe_secondary_axis()
@@ -56,8 +58,43 @@ func _run() -> void:
 	quit(1)
 
 
+func _test_near_clear_player_uses_direct_sweep() -> void:
+	var player := _spawn_player(Vector2(64.0, 32.0))
+	var pathfinder := _spawn_pathfinder()
+	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
+	enemy.navigation_update_interval_frames = 1
+	await physics_frame
+	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
+	_expect(
+		not pathfinder.requested_safe_step,
+		"A nearby player with a clear full-body segment must bypass flow navigation."
+	)
+	_expect(
+		move_direction.is_equal_approx(Vector2(64.0, 32.0).normalized()),
+		"The moving-target fast path must preserve a true normalized diagonal."
+	)
+	await _free_fixture([enemy, pathfinder, player])
+
+
+func _test_near_blocked_player_falls_back_to_flow() -> void:
+	var player := _spawn_player(Vector2(64.0, 0.0))
+	var wall := _spawn_wall(Vector2(14.0, 0.0), Vector2(16.0, 64.0))
+	var pathfinder := _spawn_pathfinder()
+	pathfinder.safe_step = _ready_step(Vector2(0.0, 32.0))
+	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
+	enemy.navigation_update_interval_frames = 1
+	await physics_frame
+	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
+	_expect(
+		pathfinder.requested_safe_step,
+		"A wall-blocked nearby player must fall back to complete flow navigation."
+	)
+	_expect(move_direction == Vector2.DOWN, "The blocked direct tier must consume the safe flow step.")
+	await _free_fixture([enemy, wall, pathfinder, player])
+
+
 func _test_unreachable_never_direct_fallbacks() -> void:
-	var player := _spawn_player(Vector2(48.0, 0.0))
+	var player := _spawn_player(Vector2(248.0, 0.0))
 	var pathfinder := _spawn_pathfinder()
 	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
 	enemy.navigation_update_interval_frames = 1
@@ -66,13 +103,13 @@ func _test_unreachable_never_direct_fallbacks() -> void:
 	_expect(pathfinder.requested_safe_step, "Fast insect must request the unified safe-step API.")
 	_expect(
 		move_direction == Vector2.ZERO,
-		"UNREACHABLE must stop even with clear direct line; direct fallback is forbidden."
+		"UNREACHABLE must stop when a distant target requires flow navigation."
 	)
 	await _free_fixture([enemy, pathfinder, player])
 
 
 func _test_ready_step_moves_toward_waypoint() -> void:
-	var player := _spawn_player(Vector2(64.0, 0.0))
+	var player := _spawn_player(Vector2(264.0, 0.0))
 	var pathfinder := _spawn_pathfinder()
 	pathfinder.safe_step = _ready_step(Vector2(32.0, 0.0))
 	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
@@ -83,7 +120,7 @@ func _test_ready_step_moves_toward_waypoint() -> void:
 
 
 func _test_blocked_primary_axis_uses_safe_secondary_axis() -> void:
-	var player := _spawn_player(Vector2(64.0, 32.0))
+	var player := _spawn_player(Vector2(264.0, 32.0))
 	var wall := _spawn_wall(Vector2(14.0, 0.0), Vector2(16.0, 64.0))
 	var pathfinder := _spawn_pathfinder()
 	pathfinder.safe_step = _ready_step(Vector2(32.0, 32.0))
@@ -99,7 +136,7 @@ func _test_blocked_primary_axis_uses_safe_secondary_axis() -> void:
 
 
 func _test_blocked_only_axis_stops() -> void:
-	var player := _spawn_player(Vector2(64.0, 0.0))
+	var player := _spawn_player(Vector2(264.0, 0.0))
 	var wall := _spawn_wall(Vector2(14.0, 0.0), Vector2(16.0, 64.0))
 	var pathfinder := _spawn_pathfinder()
 	pathfinder.safe_step = _ready_step(Vector2(32.0, 0.0))
@@ -112,7 +149,7 @@ func _test_blocked_only_axis_stops() -> void:
 
 
 func _test_deferred_without_cache_stops() -> void:
-	var player := _spawn_player(Vector2(64.0, 0.0))
+	var player := _spawn_player(Vector2(264.0, 0.0))
 	var pathfinder := _spawn_pathfinder()
 	pathfinder.safe_step = {"status": GridPathfinder.NavigationStepStatus.DEFERRED}
 	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
@@ -123,7 +160,7 @@ func _test_deferred_without_cache_stops() -> void:
 
 
 func _test_deferred_reuses_only_shape_safe_cached_direction() -> void:
-	var player := _spawn_player(Vector2(64.0, 64.0))
+	var player := _spawn_player(Vector2(264.0, 264.0))
 	var pathfinder := _spawn_pathfinder()
 	pathfinder.safe_step = {"status": GridPathfinder.NavigationStepStatus.DEFERRED}
 	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)

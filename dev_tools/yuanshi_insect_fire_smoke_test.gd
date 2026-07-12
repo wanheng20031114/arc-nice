@@ -82,7 +82,10 @@ func _test_resource_contract() -> void:
 	_expect(projectile != null, "Projectile scene did not instantiate YuanshiInsectFireProjectile.")
 	if projectile != null:
 		_expect(projectile.collision_layer == 128, "Projectile must use EnemyProjectile layer 8.")
-		_expect(projectile.collision_mask == 3, "Projectile must only scan World and Player.")
+		_expect(
+			projectile.collision_mask == 2,
+			"Projectile Area must scan Player only; its cached sweep owns World collision."
+		)
 		projectile.free()
 
 

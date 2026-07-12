@@ -1,6 +1,7 @@
 extends SceneTree
 
 const SPAWN_EFFECT_SCENE := preload("res://scene/enemy/yuanshi_insect_spawn_effect.tscn")
+const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const POOL_SCRIPT := preload("res://scene/session_object_pool.gd")
 const XIRANG_MANAGER_SCRIPT := preload("res://scene/xirang_drop_manager.gd")
@@ -15,6 +16,8 @@ func _init() -> void:
 func _run() -> void:
 	_test_runtime_scene_wiring()
 	await _test_session_pool()
+	await _test_strict_session_pool()
+	await _test_per_bucket_pending_metrics()
 	await _test_spawn_effect_tween_isolation()
 	await _test_xirang_aggregation()
 	await _test_xirang_visual_spawn_budget()
@@ -46,6 +49,22 @@ func _test_runtime_scene_wiring() -> void:
 		var manager := runtime.get_node_or_null("XirangDropManager") as XirangDropManager
 		_expect(pool != null, "Runtime scene must own its session object pool: %s" % runtime_scene_path)
 		_expect(manager != null, "Runtime scene must own its Xirang manager: %s" % runtime_scene_path)
+		if pool != null:
+			pool.register_scene(SPAWN_EFFECT_SCENE, 1, 1)
+			_expect(
+				runtime.has_session_object_pool_scene(SPAWN_EFFECT_SCENE),
+				"Runtime pool forwarding must expose registered scenes: %s" % runtime_scene_path
+			)
+			var forwarded_lease := runtime.acquire_session_object(SPAWN_EFFECT_SCENE, true)
+			_expect(
+				forwarded_lease != null,
+				"Runtime strict acquisition must forward to its pool: %s" % runtime_scene_path
+			)
+			_expect(
+				runtime.release_session_object(forwarded_lease),
+				"Runtime release must reject neither its own pool nor active lease: %s"
+				% runtime_scene_path
+			)
 		if manager != null:
 			_expect(
 				manager.get_node_or_null(manager.drop_parent_path) == runtime.get_node_or_null("EnemyContainer"),
@@ -79,6 +98,91 @@ func _test_session_pool() -> void:
 	await physics_frame
 	var reused := pool.acquire(SPAWN_EFFECT_SCENE)
 	_expect(reused == first, "A released lease must become reusable after the physics quarantine frame.")
+	pool.queue_free()
+	await process_frame
+
+
+func _test_strict_session_pool() -> void:
+	var pool := POOL_SCRIPT.new() as SessionObjectPool
+	root.add_child(pool)
+	pool.register_scene(SPAWN_EFFECT_SCENE, 2, 2)
+	_expect(pool.is_registered(SPAWN_EFFECT_SCENE), "Registered pool scenes must be discoverable.")
+	_expect(not pool.is_registered(BULLET_SCENE), "Unregistered scenes must not enter strict acquisition.")
+	_expect(pool.try_acquire(BULLET_SCENE) == null, "Strict acquisition must reject an unregistered scene.")
+
+	var first := pool.try_acquire(SPAWN_EFFECT_SCENE)
+	var second := pool.try_acquire(SPAWN_EFFECT_SCENE)
+	var dropped := pool.try_acquire(SPAWN_EFFECT_SCENE)
+	var saturated := pool.get_metrics(SPAWN_EFFECT_SCENE.resource_path)
+	_expect(first != null and second != null, "Strict acquisition must use every retained slot.")
+	_expect(dropped == null, "Strict acquisition must not create overflow instances.")
+	_expect(
+		int(saturated.get("created", 0)) == 2
+		and int(saturated.get("in_use", 0)) == 2
+		and int(saturated.get("overflow", 0)) == 0
+		and int(saturated.get("dropped", 0)) == 1,
+		"Strict saturation must preserve capacity and record one dropped visual lease."
+	)
+
+	_expect(
+		SessionObjectPool.release_to_owner(first),
+		"Static safe release must resolve and release the owning pool."
+	)
+	_expect(
+		not SessionObjectPool.release_to_owner(first),
+		"Static safe release must reject duplicate release."
+	)
+	_expect(
+		pool.try_acquire(SPAWN_EFFECT_SCENE) == null,
+		"Strict acquisition must respect the one-frame release quarantine."
+	)
+	await physics_frame
+	await physics_frame
+	var reused := pool.try_acquire(SPAWN_EFFECT_SCENE)
+	_expect(reused == first, "Strict acquisition must reuse a quarantined retained instance.")
+
+	var foreign := Node.new()
+	root.add_child(foreign)
+	_expect(
+		not SessionObjectPool.release_to_owner(foreign),
+		"Static safe release must reject nodes without a pool owner."
+	)
+	foreign.queue_free()
+	pool.queue_free()
+	await process_frame
+
+
+func _test_per_bucket_pending_metrics() -> void:
+	var pool := POOL_SCRIPT.new() as SessionObjectPool
+	root.add_child(pool)
+	pool.register_scene(SPAWN_EFFECT_SCENE, 1, 1)
+	pool.register_scene(BULLET_SCENE, 1, 1)
+	var effect := pool.acquire(SPAWN_EFFECT_SCENE)
+	var bullet := pool.acquire(BULLET_SCENE)
+	_expect(effect != null and bullet != null, "Pending metrics fixture must acquire both scene buckets.")
+	_expect(pool.release(effect), "Pending metrics fixture must release its effect lease.")
+	var effect_pending := pool.get_metrics(SPAWN_EFFECT_SCENE.resource_path)
+	var bullet_before_release := pool.get_metrics(BULLET_SCENE.resource_path)
+	_expect(
+		int(effect_pending.get("pending_release", 0)) == 1
+		and int(bullet_before_release.get("pending_release", -1)) == 0,
+		"Pending release metrics must be counted per scene bucket."
+	)
+	_expect(pool.release(bullet), "Pending metrics fixture must release its bullet lease.")
+	var bullet_pending := pool.get_metrics(BULLET_SCENE.resource_path)
+	_expect(
+		int(bullet_pending.get("pending_release", 0)) == 1,
+		"A second bucket must track only its own pending lease."
+	)
+	await physics_frame
+	await physics_frame
+	var effect_released := pool.get_metrics(SPAWN_EFFECT_SCENE.resource_path)
+	var bullet_released := pool.get_metrics(BULLET_SCENE.resource_path)
+	_expect(
+		int(effect_released.get("pending_release", -1)) == 0
+		and int(bullet_released.get("pending_release", -1)) == 0,
+		"Each bucket pending count must clear after quarantine processing."
+	)
 	pool.queue_free()
 	await process_frame
 

@@ -44,9 +44,9 @@ func _run() -> void:
 	_test_shader_contracts()
 	_test_character_dash_override_contract()
 	await _test_collectible_dash_modifiers()
-	await _test_player_scene(WEISHIDAIER_SCENE, "Weishidaier", 35.0, 5.0)
-	await _test_player_scene(HOE_CAT_SCENE, "Hoe Cat", 35.0, 3.0)
-	await _test_player_scene(TIYI_SCENE, "Tiyi", 35.0, 5.0)
+	await _test_player_scene(WEISHIDAIER_SCENE, "Weishidaier", 35.0, 2.2)
+	await _test_player_scene(HOE_CAT_SCENE, "Hoe Cat", 35.0, 1.8)
+	await _test_player_scene(TIYI_SCENE, "Tiyi", 35.0, 2.2)
 	await _test_dash_wall_collision()
 	await _test_dash_preserves_existing_invincibility()
 	await _test_multiplayer_dash_protection()
@@ -161,19 +161,19 @@ func _test_collectible_dash_modifiers() -> void:
 	_expect(run_state.try_add_item(ROLLER_SKATES), "Duplicate roller skates setup must fit in inventory.")
 	await process_frame
 	_expect(is_equal_approx(player.get_dash_distance(), 45.0), "Duplicate roller skates must grant dash distance only once.")
-	_expect(is_equal_approx(player.get_dash_cooldown(), 5.0), "Roller skates must not change dash cooldown.")
+	_expect(is_equal_approx(player.get_dash_cooldown(), 2.2), "Roller skates must not change dash cooldown.")
 
 	_expect(run_state.try_add_item(POWER_WHEEL), "First power wheel copy must fit in inventory.")
 	_expect(run_state.try_add_item(POWER_WHEEL), "Duplicate power wheel setup must fit in inventory.")
 	await process_frame
 	_expect(is_equal_approx(player.get_dash_distance(), 45.0), "Both boot collectibles must preserve the +10 dash distance.")
-	_expect(is_equal_approx(player.get_dash_cooldown(), 3.0), "Duplicate power wheels must reduce dash cooldown only once.")
+	_expect(is_equal_approx(player.get_dash_cooldown(), 1.9), "Duplicate power wheels must reduce dash cooldown only once.")
 	var cooldown_timer := player.get_node("DashCooldownTimer") as Timer
 	_expect(bool(player.call("_try_start_dash", Vector2.RIGHT)), "Boot collectible dash must start.")
 	_expect(is_equal_approx(player.dash_distance_left, 45.0), "Boot collectible dash must capture 45 pixels of travel.")
 	_expect(
-		cooldown_timer != null and is_equal_approx(cooldown_timer.wait_time, 3.0),
-		"Boot collectible dash must start a three-second cooldown."
+		cooldown_timer != null and is_equal_approx(cooldown_timer.wait_time, 1.9),
+		"Boot collectible dash must start a 1.9-second cooldown."
 	)
 	player.call("_finish_dash")
 	if cooldown_timer != null:
@@ -183,7 +183,27 @@ func _test_collectible_dash_modifiers() -> void:
 	_expect(run_state.discard_item(2) and run_state.discard_item(3), "Both power wheel copies must be discardable.")
 	await process_frame
 	_expect(is_equal_approx(player.get_dash_distance(), 35.0), "Discarding roller skates must restore base dash distance.")
-	_expect(is_equal_approx(player.get_dash_cooldown(), 5.0), "Discarding power wheel must restore base dash cooldown.")
+	_expect(is_equal_approx(player.get_dash_cooldown(), 2.2), "Discarding power wheel must restore base dash cooldown.")
+
+	var oversized_reduction := POWER_WHEEL.duplicate(true) as PickupConfig
+	oversized_reduction.collectible_effect_id = "dash_reduction_cap_probe"
+	oversized_reduction.collectible_design_id = "dash_reduction_cap_probe"
+	oversized_reduction.collectible_dash_cooldown_reduction = 5.0
+	_expect(
+		run_state.try_add_item(oversized_reduction),
+		"Dash reduction cap probe collectible must fit in inventory."
+	)
+	await process_frame
+	_expect(
+		is_equal_approx(player.get_dash_cooldown(), 1.7),
+		"One collectible must never subtract more than 0.5 seconds of dash cooldown."
+	)
+	_expect(run_state.discard_item(0), "Dash reduction cap probe must be discardable.")
+	await process_frame
+	_expect(
+		is_equal_approx(player.get_dash_cooldown(), 2.2),
+		"Discarding the cap probe must restore the 2.2-second baseline."
+	)
 
 	player.queue_free()
 	await process_frame
@@ -231,11 +251,11 @@ func _test_player_scene(
 		"%s dash cooldown Timer must match its %.1f-second character baseline."
 		% [label, expected_dash_cooldown]
 	)
-	player.collectible_dash_cooldown_reduction = 2.0
+	player.collectible_dash_cooldown_reduction = 0.5
 	_expect(
 		is_equal_approx(
 			player.get_dash_cooldown(),
-			maxf(expected_dash_cooldown - 2.0, 0.0)
+			maxf(expected_dash_cooldown - 0.5, 0.0)
 		),
 		"%s must apply dash cooldown collectibles relative to its own baseline."
 		% label

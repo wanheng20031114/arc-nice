@@ -156,7 +156,7 @@ shape = SubResource("CircleShape2D_sh265")
 
 [node name="DashCooldownTimer" type="Timer" parent="." unique_id=1546025839]
 process_callback = 0
-wait_time = 5.0
+wait_time = 2.2
 one_shot = true
 
 [node name="AmmoBar" parent="." unique_id=1608733861 instance=ExtResource("16_ammo_bar")]

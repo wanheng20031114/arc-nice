@@ -1,15 +1,20 @@
 extends YuanshiInsect
 class_name YuanshiInsectAura
 
-const AURA_RANGE_SEGMENTS := 48
+const AURA_RANGE_SEGMENTS := 24
+const AURA_PARTICLE_FIXED_FPS := 30
+const MAX_ACTIVE_GUARDIAN_LIGHTS := 12
 const PLAYER_COLLISION_MASK := 2
 const ENEMY_COLLISION_MASK := 4
+const GUARDIAN_LIGHT_CANDIDATE_GROUP := &"guardian_light_budget_candidates"
+const GUARDIAN_LIGHT_ACTIVE_GROUP := &"guardian_light_budget_active"
 
 @onready var aura_particles: GPUParticles2D = $AuraParticles
 @onready var aura_range_fill: Polygon2D = $AuraRangeFill
 @onready var aura_range_outline: Line2D = $AuraRangeOutline
 @onready var aura_area: Area2D = $AuraArea
 @onready var aura_area_shape: CollisionShape2D = $AuraArea/CollisionShape2D
+@onready var guardian_light: PointLight2D = get_node_or_null("GuardianLight") as PointLight2D
 
 # 毒性/守护光环状态。
 var aura_active: bool = false
@@ -22,6 +27,11 @@ func _ready() -> void:
 	super._ready()
 	aura_area.body_entered.connect(_on_aura_area_body_entered)
 	aura_area.body_exited.connect(_on_aura_area_body_exited)
+	_configure_guardian_light_budget()
+
+
+func _exit_tree() -> void:
+	_release_guardian_light_budget()
 
 
 func _physics_process(delta: float) -> void:
@@ -50,6 +60,8 @@ func _apply_aura_config() -> void:
 		aura_circle.radius = aura_config.aura_radius
 
 	if aura_config.aura_particles_enabled:
+		aura_particles.process_mode = Node.PROCESS_MODE_INHERIT
+		aura_particles.visible = true
 		var aura_material := aura_particles.process_material as ParticleProcessMaterial
 		if aura_material != null:
 			var emission_radius := maxf(aura_config.aura_particle_emission_radius, 0.0)
@@ -86,10 +98,15 @@ func _apply_aura_config() -> void:
 
 		aura_particles.amount = maxi(aura_config.aura_particle_amount, 1)
 		aura_particles.lifetime = maxf(aura_config.aura_particle_lifetime, 0.05)
-		aura_particles.preprocess = aura_particles.lifetime
+		# Preprocessing every newly spawned aura caused a large one-frame GPU setup
+		# spike. Let the ring fill naturally during its first lifetime instead.
+		aura_particles.preprocess = 0.0
+		aura_particles.fixed_fps = AURA_PARTICLE_FIXED_FPS
 		aura_particles.texture = aura_config.aura_particle_texture
 	else:
 		aura_particles.emitting = false
+		aura_particles.visible = false
+		aura_particles.process_mode = Node.PROCESS_MODE_DISABLED
 
 	var visibility_radius := aura_config.aura_radius + 16.0
 	aura_particles.visibility_rect = Rect2(
@@ -107,7 +124,9 @@ func _apply_aura_range_indicator(aura_config: YuanshiInsectAuraConfig) -> void:
 		var angle := TAU * float(point_index) / float(AURA_RANGE_SEGMENTS)
 		range_points.append(Vector2.RIGHT.rotated(angle) * aura_config.aura_radius)
 
-	aura_range_fill.polygon = range_points
+	# The authored fill is almost fully transparent and cost one independent
+	# canvas submission per aura. The outline communicates the same range.
+	aura_range_fill.polygon = PackedVector2Array()
 	aura_range_fill.color = aura_config.aura_fill_color
 	aura_range_outline.points = range_points
 	aura_range_outline.default_color = aura_config.aura_outline_color
@@ -122,12 +141,14 @@ func _start_aura() -> void:
 	aura_active = true
 	var aura_config := config as YuanshiInsectAuraConfig
 	if aura_config != null and aura_config.aura_particles_enabled:
+		aura_particles.process_mode = Node.PROCESS_MODE_INHERIT
+		aura_particles.visible = true
 		aura_particles.restart()
 		aura_particles.emitting = true
 	else:
 		aura_particles.emitting = false
 	var show_range_indicator := (config as YuanshiInsectGuardianConfig) == null
-	aura_range_fill.visible = show_range_indicator
+	aura_range_fill.visible = false
 	aura_range_outline.visible = show_range_indicator
 	aura_area.visible = true
 	aura_area.set_deferred("monitoring", true)
@@ -139,6 +160,8 @@ func _stop_aura() -> void:
 	aura_active = false
 	_clear_guardian_defense_modifiers()
 	aura_particles.emitting = false
+	aura_particles.visible = false
+	aura_particles.process_mode = Node.PROCESS_MODE_DISABLED
 	aura_range_fill.visible = false
 	aura_range_outline.visible = false
 	aura_area.visible = false
@@ -153,6 +176,44 @@ func _configure_aura_collision_mask() -> void:
 		aura_area.collision_mask = ENEMY_COLLISION_MASK
 	else:
 		aura_area.collision_mask = PLAYER_COLLISION_MASK
+
+
+func _configure_guardian_light_budget() -> void:
+	if guardian_light == null:
+		return
+	guardian_light.enabled = false
+	add_to_group(GUARDIAN_LIGHT_CANDIDATE_GROUP)
+	_try_claim_guardian_light_budget()
+
+
+func _try_claim_guardian_light_budget() -> void:
+	if guardian_light == null or is_dead or not is_inside_tree():
+		return
+	if is_in_group(GUARDIAN_LIGHT_ACTIVE_GROUP):
+		guardian_light.enabled = true
+		return
+	if get_tree().get_nodes_in_group(GUARDIAN_LIGHT_ACTIVE_GROUP).size() >= MAX_ACTIVE_GUARDIAN_LIGHTS:
+		guardian_light.enabled = false
+		return
+	add_to_group(GUARDIAN_LIGHT_ACTIVE_GROUP)
+	guardian_light.enabled = true
+
+
+func _release_guardian_light_budget() -> void:
+	if guardian_light == null:
+		return
+	var released_slot := is_in_group(GUARDIAN_LIGHT_ACTIVE_GROUP)
+	if released_slot:
+		remove_from_group(GUARDIAN_LIGHT_ACTIVE_GROUP)
+	if is_in_group(GUARDIAN_LIGHT_CANDIDATE_GROUP):
+		remove_from_group(GUARDIAN_LIGHT_CANDIDATE_GROUP)
+	guardian_light.enabled = false
+	if released_slot and is_inside_tree():
+		get_tree().call_group_flags(
+			SceneTree.GROUP_CALL_DEFERRED,
+			GUARDIAN_LIGHT_CANDIDATE_GROUP,
+			&"_try_claim_guardian_light_budget"
+		)
 
 
 # 光环区域检测到目标进入。
@@ -264,5 +325,6 @@ func _die() -> void:
 	if is_dead:
 		return
 
+	_release_guardian_light_budget()
 	_stop_aura()
 	super._die()

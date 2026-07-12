@@ -148,7 +148,14 @@ func _audit_single_collectible(item: PickupConfig) -> void:
 	_expect(
 		is_equal_approx(
 			player.get_dash_cooldown(),
-			maxf(base_dash_cooldown - item.collectible_dash_cooldown_reduction, 0.0)
+			maxf(
+				base_dash_cooldown
+				- minf(
+					item.collectible_dash_cooldown_reduction,
+					PickupConfig.MAX_DASH_COOLDOWN_REDUCTION_PER_COLLECTIBLE
+				),
+				0.0
+			)
 		),
 		"%s dash cooldown reduction must apply." % item.display_name
 	)

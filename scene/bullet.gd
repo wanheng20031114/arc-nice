@@ -2,6 +2,8 @@ extends Area2D
 
 class_name Bullet
 
+signal projectile_finished(projectile_id: int, projectile: Node)
+
 # 世界碰撞层的掩码
 const WORLD_COLLISION_MASK := 1
 const HOMING_TURN_SPEED := 5.5
@@ -28,10 +30,75 @@ var hit_enemy_instance_ids: Dictionary = {}
 var collectible_owner: Player = null
 var homing_target: Enemy = null
 var is_homing: bool = false
+var pool_active: bool = true
+var _authored_speed: float = 320.0
+var _authored_max_lifetime: float = 2.0
+var _authored_collision_layer: int = 16
+var _authored_collision_mask: int = 4
+var world_collision_query := PhysicsRayQueryParameters2D.create(
+	Vector2.ZERO,
+	Vector2.ZERO,
+	WORLD_COLLISION_MASK
+)
 
 
 func _ready() -> void:
+	_authored_speed = speed
+	_authored_max_lifetime = max_lifetime
+	_authored_collision_layer = collision_layer
+	_authored_collision_mask = collision_mask
 	remaining_lifetime = max_lifetime
+	pool_active = not has_meta(SessionObjectPool.POOL_OWNER_META)
+	world_collision_query.collide_with_bodies = true
+	world_collision_query.collide_with_areas = false
+
+
+func on_pool_acquired(_generation: int) -> void:
+	pool_active = true
+	direction = Vector2.RIGHT
+	damage = 1
+	speed = _authored_speed
+	max_lifetime = _authored_max_lifetime
+	remaining_lifetime = max_lifetime
+	projectile_id = 0
+	owner_peer_id = 0
+	source_type = &"player_bullet"
+	pierces_enemies = false
+	hit_enemy_instance_ids.clear()
+	collectible_owner = null
+	homing_target = null
+	is_homing = false
+	rotation = 0.0
+	modulate = Color.WHITE
+	collision_layer = _authored_collision_layer
+	collision_mask = _authored_collision_mask
+	monitoring = true
+	monitorable = true
+	set_physics_process(true)
+
+
+func on_pool_released(_generation: int) -> void:
+	pool_active = false
+	set_physics_process(false)
+	set_deferred("monitoring", false)
+	set_deferred("monitorable", false)
+	hit_enemy_instance_ids.clear()
+	collectible_owner = null
+	homing_target = null
+	is_homing = false
+
+
+func retire() -> void:
+	if not pool_active:
+		return
+	pool_active = false
+	set_physics_process(false)
+	set_deferred("monitoring", false)
+	set_deferred("monitorable", false)
+	projectile_finished.emit(projectile_id, self)
+	if SessionObjectPool.release_to_owner(self):
+		return
+	queue_free()
 
 
 # 外部生成子弹后调用，用来设置方向
@@ -74,13 +141,15 @@ func get_damage_type() -> EnemyConfig.DamageType:
 
 # 物理帧更新逻辑，处理子弹移动和碰撞检测
 func _physics_process(delta: float) -> void:
+	if not pool_active:
+		return
 	_update_homing(delta)
 	var current_position: Vector2 = global_position
 	var next_position: Vector2 = current_position + direction * speed * delta
 	
 	# 检查这一帧移动路径是否撞到世界
 	if _will_hit_world(current_position, next_position):
-		queue_free()
+		retire()
 		return
 	
 	global_position = next_position
@@ -88,7 +157,7 @@ func _physics_process(delta: float) -> void:
 	# 生命周期结束后自动删除
 	remaining_lifetime -= delta
 	if remaining_lifetime <= 0.0:
-		queue_free()
+		retire()
 
 
 func _update_homing(delta: float) -> void:
@@ -130,39 +199,36 @@ func _will_hit_world(from_position: Vector2, to_position: Vector2) -> bool:
 	if space_state == null:
 		return false
 	
-	var query := PhysicsRayQueryParameters2D.create(
-		from_position,
-		to_position,
-		WORLD_COLLISION_MASK
-	)
-	
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	
-	var hit_result: Dictionary = space_state.intersect_ray(query)
+	world_collision_query.from = from_position
+	world_collision_query.to = to_position
+	var hit_result: Dictionary = space_state.intersect_ray(world_collision_query)
 	
 	return not hit_result.is_empty()
 
 
 # 撞到其他 Area2D 时
 func _on_area_entered(area: Area2D) -> void:
+	if not pool_active:
+		return
 	if area is Bullet :
 		return
-	queue_free()
+	retire()
 
 
 # 撞到 PhysicsBody2D 时，比如 StaticBody2D / CharacterBody2D / RigidBody2D
 func _on_body_entered(body: Node2D) -> void:
+	if not pool_active:
+		return
 	var enemy := body as Enemy
 	if enemy != null:
 		try_hit_enemy(enemy)
 		return
 
-	queue_free()
+	retire()
 
 
 func try_hit_enemy(enemy: Enemy) -> bool:
-	if is_queued_for_deletion():
+	if not pool_active or is_queued_for_deletion():
 		return false
 	if enemy == null or not is_instance_valid(enemy):
 		return false
@@ -191,7 +257,7 @@ func try_hit_enemy(enemy: Enemy) -> bool:
 	if is_homing and enemy == homing_target:
 		_stop_homing()
 	if not pierces_enemies:
-		queue_free()
+		retire()
 	return true
 
 

@@ -25,6 +25,7 @@ const FLOW_DIRECTIONS: Array[Vector2i] = [
 ]
 const FLOW_ORTHOGONAL_COST := 10
 const FLOW_DIAGONAL_COST := 14
+const FLOW_BUCKET_COUNT := FLOW_DIAGONAL_COST + 1
 const MAX_FLOW_RECOVERY_CACHE_ENTRIES := 512
 const DEFAULT_TRAVERSAL_TYPES := DualGridTilemap.TraversalType.LAND
 
@@ -76,12 +77,60 @@ class FlowQueryContext:
 	var path_grid: AStarGrid2D = null
 	var next_cells: Dictionary = {}
 	var distances: Dictionary = {}
+	var dynamic_slot_key: String = ""
+	var dynamic_slot_revision: int = -1
 
 	func invalidate() -> void:
 		generation = -1
 		path_grid = null
 		next_cells = {}
 		distances = {}
+		dynamic_slot_key = ""
+		dynamic_slot_revision = -1
+
+
+class DynamicFlowTargetSlot:
+	var generation: int = -1
+	var slot_key: String = ""
+	var target_instance_id: int = 0
+	var target_reference: WeakRef = null
+	var normalized_extents: Vector2 = Vector2.ZERO
+	var traversal_types: int = 0
+	var path_grid: AStarGrid2D = null
+	var desired_original_cell: Vector2i = Vector2i.MAX
+	var desired_resolved_cell: Vector2i = Vector2i.MAX
+	var published_anchor_cell: Vector2i = Vector2i.MAX
+	var published_field: Dictionary = {}
+	var published_revision: int = 0
+	var published_physics_frame: int = -1
+	var pending_job_key: String = ""
+	var last_request_physics_frame: int = -1
+
+
+class RuntimeFlowBuildJob:
+	var generation: int = -1
+	var cache_key: String = ""
+	var target_cell: Vector2i = Vector2i.MAX
+	var normalized_extents: Vector2 = Vector2.ZERO
+	var traversal_types: int = 0
+	var path_grid: AStarGrid2D = null
+	var next_cells: Dictionary = {}
+	var distances: Dictionary = {}
+	var pending_buckets: Array = []
+	var pending_entry_count: int = 0
+	var current_distance: int = 0
+	var waiting_dynamic_slots: Dictionary = {}
+	var publish_to_fixed_cache: bool = false
+	var urgent: bool = false
+
+
+class RuntimeAgentGridBuildJob:
+	var generation: int = -1
+	var cache_key: String = ""
+	var normalized_extents: Vector2 = Vector2.ZERO
+	var traversal_types: int = 0
+	var path_grid: AStarGrid2D = null
+	var next_cell_index: int = 0
 
 @export var obstacle_tile_layer_path: NodePath = ^"../GroundTileMapLayer"
 @export var terrain_map_path: NodePath
@@ -97,10 +146,20 @@ class FlowQueryContext:
 # 敌人体积寻路按实际碰撞外接尺寸计算；需要覆盖 CharacterBody2D.safe_margin，
 # 否则刚好贴边的格子会被寻路视为可走，但 move_and_slide() 会在碰撞恢复中卡住。
 @export var agent_clearance_padding: float = 0.1
-# 每个物理帧最多新建多少张 flow field；已缓存的场会被所有敌人共享，不计入预算。
+# 每个物理帧最多登记多少张新 flow job；实际建图由独立的格数/时间预算分片。
 @export_range(1, 128, 1, "or_greater") var max_flow_field_builds_per_physics_frame: int = 4
 # flow field 按“敌人体型 + 目标格”缓存，限制上限避免长局无限增长。
 @export_range(1, 256, 1, "or_greater") var max_flow_field_cache_entries: int = 48
+# 动态目标的运行期建图必须切成有上限的小片，绝不允许在敌人物理帧中
+# 同步遍历整张地图。格数与时间任一先到即让出主线程。
+@export_range(16, 4096, 1, "or_greater") var runtime_navigation_max_expansions_per_frame: int = 192
+@export_range(100, 8000, 50, "or_greater") var runtime_navigation_time_budget_usec: int = 1000
+# 玩家目标至少偏离已发布锚点两个格子才立即请求新场；若停在相邻格，
+# 最迟也会在短暂稳定后刷新。这样不会在每个 16px 格边界制造全图工作。
+@export_range(1, 8, 1, "or_greater") var dynamic_target_repath_distance_cells: int = 2
+@export_range(0.05, 2.0, 0.05, "or_greater") var dynamic_target_max_anchor_age_seconds: float = 0.25
+@export_range(1.0, 120.0, 1.0, "or_greater") var dynamic_target_slot_ttl_seconds: float = 15.0
+@export_range(1, 256, 1, "or_greater") var max_dynamic_target_slots: int = 64
 
 # 内部使用的 AStarGrid2D 对象，用于 A* 寻路计算
 var astar_grid: AStarGrid2D = AStarGrid2D.new()
@@ -118,21 +177,39 @@ var flow_field_cache: Dictionary = {}
 var flow_field_cache_order: Array[String] = []
 var flow_recovery_route_cache: Dictionary = {}
 var flow_recovery_cache_order: Array[String] = []
+var dynamic_flow_target_slots: Dictionary = {}
+var runtime_flow_build_jobs: Dictionary = {}
+var runtime_flow_build_order: Array[String] = []
+var runtime_agent_grid_build_jobs: Dictionary = {}
+var runtime_agent_grid_build_order: Array[String] = []
 var region_local_rect: Rect2 = Rect2()
 var terrain_rebuild_queued: bool = false
 var navigation_generation: int = 0
 var legacy_navigation_step_scratch := NavigationStepResult.new()
+var runtime_navigation_expansions_last_frame: int = 0
+var runtime_navigation_build_usec_last_frame: int = 0
+var runtime_navigation_build_usec_peak: int = 0
+var runtime_flow_builds_completed: int = 0
+var runtime_flow_builds_cancelled: int = 0
+var runtime_navigation_prefers_urgent_flow: bool = true
 
 
 # 在节点进入场景树时调用，初始化寻路网格
 func _ready() -> void:
 	rebuild()
+	set_process(false)
+
+
+func _process(_delta: float) -> void:
+	_advance_runtime_navigation_jobs()
 
 
 # 重新构建寻路网格数据
 func rebuild() -> void:
 	navigation_generation += 1
 	is_built = false
+	_cancel_all_runtime_navigation_jobs()
+	dynamic_flow_target_slots.clear()
 	obstacle_tile_layer = get_node_or_null(obstacle_tile_layer_path) as TileMapLayer
 	_resolve_terrain_map()
 	if obstacle_tile_layer == null:
@@ -328,6 +405,28 @@ func try_write_safe_navigation_step(
 	)
 
 
+# Runtime-only path for moving objectives such as players. It never performs a
+# full flow-field or agent-grid build inside the caller's physics tick. All
+# enemies that chase the same Node2D with the same body profile share one slot,
+# one published immutable field and at most one staged replacement job.
+func try_write_dynamic_target_navigation_step(
+	result: NavigationStepResult,
+	context: FlowQueryContext,
+	from_global_position: Vector2,
+	target_node: Node2D,
+	agent_half_extents: Vector2 = Vector2.ZERO,
+	traversal_types: int = DEFAULT_TRAVERSAL_TYPES
+) -> void:
+	_write_dynamic_target_navigation_step(
+		result,
+		context,
+		from_global_position,
+		target_node,
+		agent_half_extents,
+		traversal_types
+	)
+
+
 # Unbudgeted form for prewarming, validation and deterministic tests.
 func get_safe_navigation_step(
 	from_global_position: Vector2,
@@ -380,6 +479,49 @@ func is_navigation_segment_walkable(
 		return false
 	var normalized_extents := _normalize_agent_half_extents(agent_half_extents)
 	var path_grid := _get_or_create_agent_grid(normalized_extents, traversal_types)
+	return _is_navigation_segment_walkable_with_grid(
+		from_global_position,
+		to_global_position,
+		normalized_extents,
+		traversal_types,
+		path_grid
+	)
+
+
+# Budget-aware runtime variant. A null result means the agent grid is being
+# built in stages; callers should fall back to DEFERRED flow navigation rather
+# than synchronously constructing it from a movement tick.
+func try_is_navigation_segment_walkable(
+	from_global_position: Vector2,
+	to_global_position: Vector2,
+	agent_half_extents: Vector2 = Vector2.ZERO,
+	traversal_types: int = DEFAULT_TRAVERSAL_TYPES
+) -> Variant:
+	if not is_built or obstacle_tile_layer == null:
+		return false
+	var normalized_extents := _normalize_agent_half_extents(agent_half_extents)
+	var path_grid := _get_runtime_agent_grid_or_enqueue(
+		normalized_extents,
+		traversal_types
+	)
+	if path_grid == null:
+		return null
+	return _is_navigation_segment_walkable_with_grid(
+		from_global_position,
+		to_global_position,
+		normalized_extents,
+		traversal_types,
+		path_grid
+	)
+
+
+func _is_navigation_segment_walkable_with_grid(
+	from_global_position: Vector2,
+	to_global_position: Vector2,
+	normalized_extents: Vector2,
+	traversal_types: int,
+	path_grid: AStarGrid2D
+) -> bool:
 	var from_local := obstacle_tile_layer.to_local(from_global_position)
 	var to_local := obstacle_tile_layer.to_local(to_global_position)
 	var local_distance := from_local.distance_to(to_local)
@@ -580,6 +722,434 @@ func _refresh_flow_field_budget_frame() -> void:
 	flow_field_builds_used_this_frame = 0
 
 
+func _get_runtime_agent_grid_or_enqueue(
+	normalized_extents: Vector2,
+	traversal_types: int
+) -> AStarGrid2D:
+	if normalized_extents == Vector2.ZERO and traversal_types == DEFAULT_TRAVERSAL_TYPES:
+		return astar_grid
+	var cache_key := _get_agent_grid_cache_key(normalized_extents, traversal_types)
+	var cached_grid := agent_grid_cache.get(cache_key) as AStarGrid2D
+	if cached_grid != null:
+		return cached_grid
+	_enqueue_runtime_agent_grid_build(
+		cache_key,
+		normalized_extents,
+		traversal_types
+	)
+	return null
+
+
+func _enqueue_runtime_agent_grid_build(
+	cache_key: String,
+	normalized_extents: Vector2,
+	traversal_types: int
+) -> void:
+	if runtime_agent_grid_build_jobs.has(cache_key):
+		return
+	var job := RuntimeAgentGridBuildJob.new()
+	job.generation = navigation_generation
+	job.cache_key = cache_key
+	job.normalized_extents = normalized_extents
+	job.traversal_types = traversal_types
+	job.path_grid = AStarGrid2D.new()
+	job.path_grid.region = astar_grid.region
+	job.path_grid.cell_size = astar_grid.cell_size
+	job.path_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	job.path_grid.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
+	job.path_grid.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
+	job.path_grid.update()
+	runtime_agent_grid_build_jobs[cache_key] = job
+	runtime_agent_grid_build_order.append(cache_key)
+	set_process(true)
+
+
+func _request_runtime_dynamic_flow_build(
+	slot: DynamicFlowTargetSlot,
+	target_cell: Vector2i
+) -> void:
+	if (
+		slot == null
+		or slot.generation != navigation_generation
+		or target_cell == Vector2i.MAX
+	):
+		return
+	var cached_field := _get_cached_flow_field(
+		target_cell,
+		slot.normalized_extents,
+		slot.traversal_types
+	)
+	if not cached_field.is_empty():
+		_publish_dynamic_flow_slot(slot, target_cell, cached_field)
+		return
+
+	var needs_first_field := slot.published_field.is_empty()
+	var job := _get_or_create_runtime_flow_build_job(
+		target_cell,
+		slot.normalized_extents,
+		slot.traversal_types,
+		slot.path_grid,
+		needs_first_field
+	)
+	job.waiting_dynamic_slots[slot.slot_key] = true
+	slot.pending_job_key = job.cache_key
+	set_process(true)
+
+
+func _request_runtime_fixed_flow_build(
+	target_cell: Vector2i,
+	normalized_extents: Vector2,
+	traversal_types: int,
+	path_grid: AStarGrid2D
+) -> void:
+	var job := _get_or_create_runtime_flow_build_job(
+		target_cell,
+		normalized_extents,
+		traversal_types,
+		path_grid,
+		true
+	)
+	job.publish_to_fixed_cache = true
+	set_process(true)
+
+
+func _get_or_create_runtime_flow_build_job(
+	target_cell: Vector2i,
+	normalized_extents: Vector2,
+	traversal_types: int,
+	path_grid: AStarGrid2D,
+	urgent: bool
+) -> RuntimeFlowBuildJob:
+	var cache_key := _get_flow_field_cache_key(
+		target_cell,
+		normalized_extents,
+		traversal_types
+	)
+	var job := runtime_flow_build_jobs.get(cache_key) as RuntimeFlowBuildJob
+	if job != null:
+		if urgent and not job.urgent:
+			job.urgent = true
+			runtime_flow_build_order.erase(cache_key)
+			_insert_runtime_flow_job_key(cache_key, true)
+		return job
+
+	job = RuntimeFlowBuildJob.new()
+	job.generation = navigation_generation
+	job.cache_key = cache_key
+	job.target_cell = target_cell
+	job.normalized_extents = normalized_extents
+	job.traversal_types = traversal_types
+	job.path_grid = path_grid
+	job.urgent = urgent
+	for _bucket_index in range(FLOW_BUCKET_COUNT):
+		job.pending_buckets.append([])
+	job.next_cells[target_cell] = target_cell
+	job.distances[target_cell] = 0
+	var first_bucket := job.pending_buckets[0] as Array
+	first_bucket.append(target_cell)
+	job.pending_entry_count = 1
+	runtime_flow_build_jobs[cache_key] = job
+	_insert_runtime_flow_job_key(cache_key, urgent)
+	return job
+
+
+func _insert_runtime_flow_job_key(cache_key: String, urgent: bool) -> void:
+	if not urgent:
+		runtime_flow_build_order.append(cache_key)
+		return
+	# Urgent jobs remain FIFO among themselves and are inserted immediately
+	# before refresh jobs. A stream of newly joined profiles therefore cannot
+	# perpetually restart or starve the first cold target.
+	var insertion_index := 0
+	while insertion_index < runtime_flow_build_order.size():
+		var queued_job := runtime_flow_build_jobs.get(
+			runtime_flow_build_order[insertion_index]
+		) as RuntimeFlowBuildJob
+		if queued_job == null or not queued_job.urgent:
+			break
+		insertion_index += 1
+	runtime_flow_build_order.insert(insertion_index, cache_key)
+
+
+func _advance_runtime_navigation_jobs() -> void:
+	var started_usec := Time.get_ticks_usec()
+	var deadline_usec := started_usec + maxi(runtime_navigation_time_budget_usec, 100)
+	var maximum_expansions := maxi(runtime_navigation_max_expansions_per_frame, 1)
+	var expansions := 0
+	var attempts_since_time_check := 0
+
+	while expansions < maximum_expansions:
+		var advanced := false
+		var urgent_flow_waiting := false
+		if not runtime_flow_build_order.is_empty():
+			var first_flow_job := runtime_flow_build_jobs.get(
+				runtime_flow_build_order[0]
+			) as RuntimeFlowBuildJob
+			urgent_flow_waiting = first_flow_job != null and first_flow_job.urgent
+		if urgent_flow_waiting and not runtime_agent_grid_build_order.is_empty():
+			# A ready-grid cold flow and a newly joined body profile are equally
+			# urgent. Alternate individual scheduler steps so neither can starve
+			# the other while both still share the same global time deadline.
+			if runtime_navigation_prefers_urgent_flow:
+				advanced = _advance_first_runtime_flow_job()
+			else:
+				advanced = _advance_first_runtime_agent_grid_job()
+			runtime_navigation_prefers_urgent_flow = (
+				not runtime_navigation_prefers_urgent_flow
+			)
+		elif urgent_flow_waiting:
+			advanced = _advance_first_runtime_flow_job()
+		elif not runtime_agent_grid_build_order.is_empty():
+			advanced = _advance_first_runtime_agent_grid_job()
+		elif not runtime_flow_build_order.is_empty():
+			advanced = _advance_first_runtime_flow_job()
+		else:
+			break
+		if advanced:
+			expansions += 1
+		attempts_since_time_check += 1
+		# Checking every four expansions keeps overshoot close to the authored
+		# deadline even on Dictionary-heavy corner cells. These jobs are rare and
+		# staged, so the tiny clock-read cost is preferable to a hidden 2 ms spike.
+		if attempts_since_time_check >= 4:
+			attempts_since_time_check = 0
+			if Time.get_ticks_usec() >= deadline_usec:
+				break
+
+	runtime_navigation_expansions_last_frame = expansions
+	runtime_navigation_build_usec_last_frame = int(Time.get_ticks_usec() - started_usec)
+	runtime_navigation_build_usec_peak = maxi(
+		runtime_navigation_build_usec_peak,
+		runtime_navigation_build_usec_last_frame
+	)
+	_prune_dynamic_flow_slots(false)
+	if (
+		runtime_agent_grid_build_order.is_empty()
+		and runtime_flow_build_order.is_empty()
+	):
+		set_process(false)
+
+
+func _advance_first_runtime_agent_grid_job() -> bool:
+	if runtime_agent_grid_build_order.is_empty():
+		return false
+	var cache_key := runtime_agent_grid_build_order[0]
+	var job := runtime_agent_grid_build_jobs.get(cache_key) as RuntimeAgentGridBuildJob
+	if job == null or job.generation != navigation_generation:
+		_remove_runtime_agent_grid_job(cache_key)
+		return false
+	var region := job.path_grid.region
+	var total_cells := region.size.x * region.size.y
+	if job.next_cell_index >= total_cells:
+		agent_grid_cache[cache_key] = job.path_grid
+		_remove_runtime_agent_grid_job(cache_key)
+		return false
+	var cell := Vector2i(
+		region.position.x + job.next_cell_index % region.size.x,
+		region.position.y + floori(
+			float(job.next_cell_index) / float(region.size.x)
+		)
+	)
+	job.path_grid.set_point_solid(
+		cell,
+		_is_cell_blocked_for_agent(
+			cell,
+			job.normalized_extents,
+			job.traversal_types
+		)
+	)
+	job.next_cell_index += 1
+	if job.next_cell_index >= total_cells:
+		agent_grid_cache[cache_key] = job.path_grid
+		_remove_runtime_agent_grid_job(cache_key)
+	return true
+
+
+func _advance_first_runtime_flow_job() -> bool:
+	if runtime_flow_build_order.is_empty():
+		return false
+	var cache_key := runtime_flow_build_order[0]
+	var job := runtime_flow_build_jobs.get(cache_key) as RuntimeFlowBuildJob
+	if job == null or job.generation != navigation_generation:
+		_cancel_runtime_flow_build_job(cache_key)
+		return false
+
+	while job.pending_entry_count > 0:
+		var bucket_index := job.current_distance % FLOW_BUCKET_COUNT
+		var bucket := job.pending_buckets[bucket_index] as Array
+		if bucket.is_empty():
+			job.current_distance += 1
+			continue
+		var current_cell := bucket.pop_back() as Vector2i
+		job.pending_entry_count -= 1
+		if int(job.distances.get(current_cell, -1)) != job.current_distance:
+			# A cell whose tentative distance improved leaves one stale bucket
+			# entry behind. Consume only one entry per scheduler step so a large
+			# stale tail can never escape the global time/expansion budget.
+			if job.pending_entry_count <= 0:
+				_complete_runtime_flow_build_job(job)
+			return true
+		for direction in FLOW_DIRECTIONS:
+			var neighbor := current_cell + direction
+			if not _is_safe_flow_transition(current_cell, direction, job.path_grid):
+				continue
+			var candidate_distance := (
+				job.current_distance + _get_flow_transition_cost(direction)
+			)
+			if candidate_distance >= int(job.distances.get(neighbor, 2147483647)):
+				continue
+			job.distances[neighbor] = candidate_distance
+			job.next_cells[neighbor] = current_cell
+			var target_bucket := (
+				job.pending_buckets[candidate_distance % FLOW_BUCKET_COUNT] as Array
+			)
+			target_bucket.append(neighbor)
+			job.pending_entry_count += 1
+		if job.pending_entry_count <= 0:
+			_complete_runtime_flow_build_job(job)
+		return true
+
+	_complete_runtime_flow_build_job(job)
+	return false
+
+
+func _complete_runtime_flow_build_job(job: RuntimeFlowBuildJob) -> void:
+	if job == null:
+		return
+	var field := {
+		"target_cell": job.target_cell,
+		"next_cells": job.next_cells,
+		"distances": job.distances,
+	}
+	if job.publish_to_fixed_cache:
+		_store_flow_field(
+			job.target_cell,
+			job.normalized_extents,
+			job.traversal_types,
+			field
+		)
+	var published_slots: Array[DynamicFlowTargetSlot] = []
+	for slot_key_variant in job.waiting_dynamic_slots:
+		var slot_key := String(slot_key_variant)
+		var slot := dynamic_flow_target_slots.get(slot_key) as DynamicFlowTargetSlot
+		if (
+			slot == null
+			or slot.generation != navigation_generation
+			or slot.pending_job_key != job.cache_key
+		):
+			continue
+		_publish_dynamic_flow_slot(slot, job.target_cell, field)
+		published_slots.append(slot)
+	runtime_flow_builds_completed += 1
+	_remove_runtime_flow_build_job(job.cache_key)
+	# Coalesce every target update that arrived during the build into at most one
+	# successor request. The just-published complete field remains active while
+	# that successor is built; no half-field is ever visible to an enemy.
+	for slot in published_slots:
+		_update_dynamic_flow_slot_request(
+			slot,
+			slot.desired_original_cell,
+			slot.desired_resolved_cell
+		)
+
+
+func _remove_runtime_agent_grid_job(cache_key: String) -> void:
+	runtime_agent_grid_build_jobs.erase(cache_key)
+	runtime_agent_grid_build_order.erase(cache_key)
+
+
+func _remove_runtime_flow_build_job(cache_key: String) -> void:
+	runtime_flow_build_jobs.erase(cache_key)
+	runtime_flow_build_order.erase(cache_key)
+
+
+func _cancel_runtime_flow_build_job(cache_key: String) -> void:
+	var job := runtime_flow_build_jobs.get(cache_key) as RuntimeFlowBuildJob
+	if job != null:
+		for slot_key_variant in job.waiting_dynamic_slots:
+			var slot := dynamic_flow_target_slots.get(
+				String(slot_key_variant)
+			) as DynamicFlowTargetSlot
+			if slot != null and slot.pending_job_key == cache_key:
+				slot.pending_job_key = ""
+		runtime_flow_builds_cancelled += 1
+	_remove_runtime_flow_build_job(cache_key)
+
+
+func _cancel_all_runtime_navigation_jobs() -> void:
+	runtime_flow_builds_cancelled += runtime_flow_build_jobs.size()
+	runtime_flow_build_jobs.clear()
+	runtime_flow_build_order.clear()
+	runtime_agent_grid_build_jobs.clear()
+	runtime_agent_grid_build_order.clear()
+	runtime_navigation_prefers_urgent_flow = true
+	set_process(false)
+
+
+func _remove_dynamic_flow_slot(slot_key: String) -> void:
+	var slot := dynamic_flow_target_slots.get(slot_key) as DynamicFlowTargetSlot
+	if slot == null:
+		return
+	if slot.pending_job_key != "":
+		var job := runtime_flow_build_jobs.get(
+			slot.pending_job_key
+		) as RuntimeFlowBuildJob
+		if job != null:
+			job.waiting_dynamic_slots.erase(slot_key)
+			if (
+				job.waiting_dynamic_slots.is_empty()
+				and not job.publish_to_fixed_cache
+			):
+				_cancel_runtime_flow_build_job(job.cache_key)
+	dynamic_flow_target_slots.erase(slot_key)
+
+
+func _prune_dynamic_flow_slots(force_capacity: bool) -> void:
+	if dynamic_flow_target_slots.is_empty():
+		return
+	var current_frame := Engine.get_physics_frames()
+	var ttl_frames := maxi(
+		ceili(
+			dynamic_target_slot_ttl_seconds
+			* float(maxi(Engine.physics_ticks_per_second, 1))
+		),
+		1
+	)
+	var removable_keys: Array[String] = []
+	var oldest_key := ""
+	var oldest_frame := 2147483647
+	for slot_key_variant in dynamic_flow_target_slots:
+		var slot_key := String(slot_key_variant)
+		var slot := dynamic_flow_target_slots.get(slot_key) as DynamicFlowTargetSlot
+		if slot == null:
+			removable_keys.append(slot_key)
+			continue
+		var target: Object = (
+			slot.target_reference.get_ref()
+			if slot.target_reference != null
+			else null
+		)
+		if (
+			target == null
+			or not is_instance_valid(target)
+			or current_frame - slot.last_request_physics_frame >= ttl_frames
+		):
+			removable_keys.append(slot_key)
+			continue
+		if slot.last_request_physics_frame < oldest_frame:
+			oldest_frame = slot.last_request_physics_frame
+			oldest_key = slot_key
+	for slot_key in removable_keys:
+		_remove_dynamic_flow_slot(slot_key)
+	if (
+		force_capacity
+		and dynamic_flow_target_slots.size() >= maxi(max_dynamic_target_slots, 1)
+		and oldest_key != ""
+		and current_frame - oldest_frame > 2
+	):
+		_remove_dynamic_flow_slot(oldest_key)
+
+
 func _get_or_create_agent_grid(
 	agent_half_extents: Vector2,
 	traversal_types: int = DEFAULT_TRAVERSAL_TYPES
@@ -649,7 +1219,18 @@ func _write_safe_navigation_step(
 		distances_variant = context.distances
 	else:
 		original_target_cell = _global_to_map(to_global_position)
-		path_grid = _get_or_create_agent_grid(normalized_extents, traversal_types)
+		path_grid = (
+			_get_runtime_agent_grid_or_enqueue(normalized_extents, traversal_types)
+			if uses_build_budget
+			else _get_or_create_agent_grid(normalized_extents, traversal_types)
+		)
+		if path_grid == null:
+			result.reset(
+				NavigationStepStatus.DEFERRED,
+				original_from_cell,
+				original_target_cell
+			)
+			return
 		target_cell = _get_closest_walkable_cell(original_target_cell, path_grid)
 		if target_cell == Vector2i.MAX:
 			result.reset(
@@ -664,20 +1245,46 @@ func _write_safe_navigation_step(
 		var field := _get_cached_flow_field(target_cell, normalized_extents, traversal_types)
 		if field.is_empty():
 			if uses_build_budget:
-				_refresh_flow_field_budget_frame()
-				if flow_field_builds_used_this_frame >= maxi(max_flow_field_builds_per_physics_frame, 1):
-					result.reset(
-						NavigationStepStatus.DEFERRED,
-						original_from_cell,
-						original_target_cell
-					)
-					result.resolved_target_cell = target_cell
-					if context != null:
-						context.invalidate()
-					return
-				flow_field_builds_used_this_frame += 1
-			field = _build_flow_field(target_cell, path_grid)
-			_store_flow_field(target_cell, normalized_extents, traversal_types, field)
+				var job_key := _get_flow_field_cache_key(
+					target_cell,
+					normalized_extents,
+					traversal_types
+				)
+				if not runtime_flow_build_jobs.has(job_key):
+					_refresh_flow_field_budget_frame()
+					if flow_field_builds_used_this_frame >= maxi(
+						max_flow_field_builds_per_physics_frame,
+						1
+					):
+						result.reset(
+							NavigationStepStatus.DEFERRED,
+							original_from_cell,
+							original_target_cell
+						)
+						result.resolved_target_cell = target_cell
+						return
+					flow_field_builds_used_this_frame += 1
+				_request_runtime_fixed_flow_build(
+					target_cell,
+					normalized_extents,
+					traversal_types,
+					path_grid
+				)
+				result.reset(
+					NavigationStepStatus.DEFERRED,
+					original_from_cell,
+					original_target_cell
+				)
+				result.resolved_target_cell = target_cell
+				return
+			else:
+				field = _build_flow_field(target_cell, path_grid)
+				_store_flow_field(
+					target_cell,
+					normalized_extents,
+					traversal_types,
+					field
+				)
 
 		if field.is_empty():
 			result.reset(
@@ -718,7 +1325,34 @@ func _write_safe_navigation_step(
 			)
 	var next_cells := next_cells_variant as Dictionary
 	var distances := distances_variant as Dictionary
+	_write_navigation_step_from_flow_field(
+		result,
+		from_global_position,
+		to_global_position,
+		original_from_cell,
+		original_target_cell,
+		target_cell,
+		normalized_extents,
+		traversal_types,
+		path_grid,
+		next_cells,
+		distances
+	)
 
+
+func _write_navigation_step_from_flow_field(
+	result: NavigationStepResult,
+	from_global_position: Vector2,
+	field_target_position: Vector2,
+	original_from_cell: Vector2i,
+	original_target_cell: Vector2i,
+	target_cell: Vector2i,
+	normalized_extents: Vector2,
+	traversal_types: int,
+	path_grid: AStarGrid2D,
+	next_cells: Dictionary,
+	distances: Dictionary
+) -> void:
 	var from_cell := original_from_cell
 	var used_start_recovery := false
 	var recovery_waypoint_cell := Vector2i.MAX
@@ -780,17 +1414,11 @@ func _write_safe_navigation_step(
 	result.next_cell = recovery_waypoint_cell if used_start_recovery else flow_next_cell
 	result.used_start_recovery = used_start_recovery
 	result.is_complete_route = true
-	# Internally the eight-way Dijkstra uses 10/14 Octile weights. Keep the
-	# existing result field in tile-distance units instead of leaking that
-	# implementation scale to callers.
 	result.remaining_cell_distance = ceili(
 		float(route_distance + recovery_cost) / float(FLOW_ORTHOGONAL_COST)
 	)
 
 	if used_start_recovery:
-		# The body moves toward this center normally; it is never teleported. The
-		# raw-cell corridor and CharacterBody shape sweep together let a large body
-		# leave the conservative inflated band without crossing authored terrain.
 		result.waypoint = _map_to_global(recovery_waypoint_cell)
 		return
 
@@ -800,18 +1428,289 @@ func _write_safe_navigation_step(
 
 	var resolved_target_position := _map_to_global(target_cell)
 	if _is_global_position_walkable_for_agent(
-		to_global_position,
+		field_target_position,
 		normalized_extents,
 		traversal_types
 	):
-		result.waypoint = to_global_position
-		if from_global_position.distance_squared_to(to_global_position) <= 0.25:
+		result.waypoint = field_target_position
+		if from_global_position.distance_squared_to(field_target_position) <= 0.25:
 			result.status = NavigationStepStatus.ARRIVED
 		return
 
 	result.waypoint = resolved_target_position
 	if from_global_position.distance_squared_to(resolved_target_position) <= 0.25:
 		result.status = NavigationStepStatus.ARRIVED
+
+
+func _write_dynamic_target_navigation_step(
+	result: NavigationStepResult,
+	context: FlowQueryContext,
+	from_global_position: Vector2,
+	target_node: Node2D,
+	agent_half_extents: Vector2,
+	traversal_types: int
+) -> void:
+	if result == null:
+		return
+	if not is_built:
+		result.reset(NavigationStepStatus.DEFERRED)
+		return
+	if target_node == null or not is_instance_valid(target_node):
+		result.reset(NavigationStepStatus.UNREACHABLE)
+		if context != null:
+			context.invalidate()
+		return
+
+	var normalized_extents := _normalize_agent_half_extents(agent_half_extents)
+	var original_from_cell := _global_to_map(from_global_position)
+	var target_position := target_node.global_position
+	var original_target_cell := _global_to_map(target_position)
+	var path_grid := _get_runtime_agent_grid_or_enqueue(
+		normalized_extents,
+		traversal_types
+	)
+	if path_grid == null:
+		result.reset(
+			NavigationStepStatus.DEFERRED,
+			original_from_cell,
+			original_target_cell
+		)
+		return
+
+	var slot := _get_or_create_dynamic_flow_slot(
+		target_node,
+		normalized_extents,
+		traversal_types,
+		path_grid
+	)
+	if slot == null:
+		result.reset(
+			NavigationStepStatus.DEFERRED,
+			original_from_cell,
+			original_target_cell
+		)
+		return
+	var desired_target_cell := slot.desired_resolved_cell
+	if (
+		slot.desired_original_cell != original_target_cell
+		or desired_target_cell == Vector2i.MAX
+	):
+		desired_target_cell = _get_closest_walkable_cell(
+			original_target_cell,
+			path_grid
+		)
+	if desired_target_cell == Vector2i.MAX:
+		_remove_dynamic_flow_slot(slot.slot_key)
+		result.reset(
+			NavigationStepStatus.UNREACHABLE,
+			original_from_cell,
+			original_target_cell
+		)
+		if context != null:
+			context.invalidate()
+		return
+	_update_dynamic_flow_slot_request(
+		slot,
+		original_target_cell,
+		desired_target_cell
+	)
+
+	if slot.published_field.is_empty():
+		result.reset(
+			NavigationStepStatus.DEFERRED,
+			original_from_cell,
+			original_target_cell
+		)
+		result.resolved_target_cell = desired_target_cell
+		_bind_dynamic_flow_query_context(
+			context,
+			slot,
+			target_position,
+			original_target_cell
+		)
+		return
+
+	var next_cells := slot.published_field.get("next_cells", {}) as Dictionary
+	var distances := slot.published_field.get("distances", {}) as Dictionary
+	if next_cells.is_empty() or distances.is_empty():
+		result.reset(
+			NavigationStepStatus.DEFERRED,
+			original_from_cell,
+			original_target_cell
+		)
+		return
+
+	_bind_dynamic_flow_query_context(
+		context,
+		slot,
+		target_position,
+		original_target_cell
+	)
+	# A published dynamic field always terminates at its immutable anchor. The
+	# current player position is deliberately not substituted here: only the
+	# Enemy's full-body line-of-sight sweep may approve a direct final segment.
+	_write_navigation_step_from_flow_field(
+		result,
+		from_global_position,
+		_map_to_global(slot.published_anchor_cell),
+		original_from_cell,
+		original_target_cell,
+		slot.published_anchor_cell,
+		normalized_extents,
+		traversal_types,
+		path_grid,
+		next_cells,
+		distances
+	)
+
+
+func _get_or_create_dynamic_flow_slot(
+	target_node: Node2D,
+	normalized_extents: Vector2,
+	traversal_types: int,
+	path_grid: AStarGrid2D
+) -> DynamicFlowTargetSlot:
+	var slot_key := _get_dynamic_flow_slot_key(
+		target_node.get_instance_id(),
+		normalized_extents,
+		traversal_types
+	)
+	var slot := dynamic_flow_target_slots.get(slot_key) as DynamicFlowTargetSlot
+	if slot != null:
+		var referenced_target: Object = (
+			slot.target_reference.get_ref()
+			if slot.target_reference != null
+			else null
+		)
+		if (
+			slot.generation == navigation_generation
+			and referenced_target == target_node
+			and slot.path_grid == path_grid
+		):
+			return slot
+		_remove_dynamic_flow_slot(slot_key)
+
+	_prune_dynamic_flow_slots(true)
+	if dynamic_flow_target_slots.size() >= maxi(max_dynamic_target_slots, 1):
+		return null
+	slot = DynamicFlowTargetSlot.new()
+	slot.generation = navigation_generation
+	slot.slot_key = slot_key
+	slot.target_instance_id = target_node.get_instance_id()
+	slot.target_reference = weakref(target_node)
+	slot.normalized_extents = normalized_extents
+	slot.traversal_types = traversal_types
+	slot.path_grid = path_grid
+	dynamic_flow_target_slots[slot_key] = slot
+	return slot
+
+
+func _update_dynamic_flow_slot_request(
+	slot: DynamicFlowTargetSlot,
+	original_target_cell: Vector2i,
+	desired_target_cell: Vector2i
+) -> void:
+	var current_physics_frame := Engine.get_physics_frames()
+	slot.last_request_physics_frame = current_physics_frame
+	slot.desired_original_cell = original_target_cell
+	slot.desired_resolved_cell = desired_target_cell
+
+	if slot.published_field.is_empty():
+		# Loading prewarm stores the initial player field in the fixed cache. Adopt
+		# that immutable dictionary once, then keep later moving fields out of the
+		# fixed-objective LRU so player footsteps cannot evict Home fields.
+		var prewarmed_field := _get_cached_flow_field(
+			desired_target_cell,
+			slot.normalized_extents,
+			slot.traversal_types
+		)
+		if not prewarmed_field.is_empty():
+			_publish_dynamic_flow_slot(
+				slot,
+				desired_target_cell,
+				prewarmed_field
+			)
+
+	if slot.pending_job_key != "":
+		return
+	if slot.published_field.is_empty():
+		_request_runtime_dynamic_flow_build(slot, desired_target_cell)
+		return
+	if desired_target_cell == slot.published_anchor_cell:
+		return
+
+	var anchor_distance := _chebyshev_cell_distance(
+		slot.published_anchor_cell,
+		desired_target_cell
+	)
+	var maximum_age_frames := maxi(
+		ceili(
+			dynamic_target_max_anchor_age_seconds
+			* float(maxi(Engine.physics_ticks_per_second, 1))
+		),
+		1
+	)
+	var anchor_age := current_physics_frame - slot.published_physics_frame
+	if (
+		anchor_distance >= maxi(dynamic_target_repath_distance_cells, 1)
+		or anchor_age >= maximum_age_frames
+	):
+		_request_runtime_dynamic_flow_build(slot, desired_target_cell)
+
+
+func _publish_dynamic_flow_slot(
+	slot: DynamicFlowTargetSlot,
+	anchor_cell: Vector2i,
+	field: Dictionary
+) -> void:
+	if slot == null or field.is_empty():
+		return
+	slot.published_anchor_cell = anchor_cell
+	slot.published_field = field
+	slot.published_revision += 1
+	slot.published_physics_frame = Engine.get_physics_frames()
+	slot.pending_job_key = ""
+
+
+func _bind_dynamic_flow_query_context(
+	context: FlowQueryContext,
+	slot: DynamicFlowTargetSlot,
+	requested_target_position: Vector2,
+	original_target_cell: Vector2i
+) -> void:
+	if context == null or slot == null:
+		return
+	context.generation = navigation_generation
+	context.target_is_static = false
+	context.requested_target_position = requested_target_position
+	context.original_target_cell = original_target_cell
+	context.resolved_target_cell = slot.published_anchor_cell
+	context.normalized_extents = slot.normalized_extents
+	context.traversal_types = slot.traversal_types
+	# Dynamic contexts store only the shared slot revision, not the large field
+	# dictionaries. Replacing a slot therefore releases the old field once and
+	# cannot be kept alive by hundreds of dormant enemies.
+	if (
+		context.path_grid != null
+		or not context.next_cells.is_empty()
+		or not context.distances.is_empty()
+	):
+		context.path_grid = null
+		context.next_cells = {}
+		context.distances = {}
+	context.dynamic_slot_key = slot.slot_key
+	context.dynamic_slot_revision = slot.published_revision
+
+
+func _get_dynamic_flow_slot_key(
+	target_instance_id: int,
+	normalized_extents: Vector2,
+	traversal_types: int
+) -> String:
+	return "%d:%s" % [
+		target_instance_id,
+		_get_agent_grid_cache_key(normalized_extents, traversal_types),
+	]
 
 
 func _can_reuse_flow_query_context(

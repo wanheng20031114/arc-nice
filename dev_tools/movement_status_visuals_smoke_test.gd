@@ -127,6 +127,10 @@ func _test_player_movement_status_visuals() -> void:
 	_expect(trail_particles != null, "Player speed trail must use particle speed lines.")
 	_expect(all_trail_particles.size() >= 4, "Player speed trail must use several staggered speed lines.")
 	_expect(
+		speed_trail.process_mode == Node.PROCESS_MODE_DISABLED,
+		"An idle player speed trail must disable its particle subtree processing."
+	)
+	_expect(
 		trail_particles != null and not trail_particles.local_coords,
 		"Player speed trail particles must remain in world space after emission."
 	)
@@ -146,6 +150,10 @@ func _test_player_movement_status_visuals() -> void:
 	player.velocity = Vector2.RIGHT * 120.0
 	player.call("_update_movement_status_visuals", Vector2.RIGHT)
 	_expect(speed_trail.visible, "Player temporary speed boost must show speed trail lines.")
+	_expect(
+		speed_trail.process_mode == Node.PROCESS_MODE_INHERIT,
+		"An active player speed trail must restore its particle subtree processing."
+	)
 	_expect(
 		is_equal_approx(_get_instance_shader_float(sprite, SLOW_OVERLAY_PARAMETER), 0.0),
 		"Player speed boost must not apply the slow overlay."
@@ -200,6 +208,10 @@ func _test_enemy_movement_status_visuals() -> void:
 	_expect(trail_particles != null, "Enemy speed trail must use particle speed lines.")
 	_expect(all_trail_particles.size() >= 4, "Enemy speed trail must use several staggered speed lines.")
 	_expect(
+		speed_trail.process_mode == Node.PROCESS_MODE_DISABLED,
+		"An idle enemy speed trail must disable its particle subtree processing."
+	)
+	_expect(
 		trail_particles != null and not trail_particles.local_coords,
 		"Enemy speed trail particles must remain in world space after emission."
 	)
@@ -244,6 +256,10 @@ func _test_enemy_movement_status_visuals() -> void:
 		"Clearing the final status overlay must restore the unmaterialed batching fast path."
 	)
 	_expect(speed_trail.visible, "Enemy speed boost modifier must show speed trail lines while moving.")
+	_expect(
+		speed_trail.process_mode == Node.PROCESS_MODE_INHERIT,
+		"An active enemy speed trail must restore its particle subtree processing."
+	)
 	var health_before_hit := enemy.current_health
 	enemy.apply_damage(1, Vector2.RIGHT)
 	_expect(enemy.current_health == health_before_hit - 1, "Enemy hit sanity check must apply damage.")

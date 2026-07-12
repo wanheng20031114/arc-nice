@@ -82,7 +82,7 @@
 | resources/config/collectibles/collectible_physical_ring.tres | 物理戒指 | 稀有 | 物防+1；物伤+1 | 物理成长：每份使物理防御和物理伤害各+1。 | 21x22 | 325 | OK |
 | resources/config/collectibles/collectible_pocket_anvil.tres | 口袋铁砧 | 普通 | 命中:crack | 破甲命中：攻击命中时有概率短暂降低敌人物防。 | 22x19 | 273 | OK |
 | resources/config/collectibles/collectible_power_ring.tres | 力量戒指 | 稀有 | 攻击+5 | 攻击成长：每份使攻击力+5。 | 19x20 | 262 | OK |
-| resources/config/collectibles/collectible_power_wheel.tres | 加力轮子 | 史诗 | 冲刺冷却减免+2.0 | 冲刺加速：冲刺冷却减少2秒。 | 24x17 | 280 | OK |
+| resources/config/collectibles/collectible_power_wheel.tres | 加力轮子 | 史诗 | 冲刺冷却减免+0.3 | 冲刺加速：冲刺冷却减少0.3秒。 | 24x17 | 280 | OK |
 | resources/config/collectibles/collectible_prism_lens.tres | 棱镜镜片 | 稀有 | 穿透率+0.15 | 穿透弹：普通子弹有15%概率变为穿透弹。 | 24x26 | 315 | OK |
 | resources/config/collectibles/collectible_pure_charge_crystal.tres | 纯净充能水晶 | 传说 | 技能免耗率+0.2 | 纯净回响：每份提供20%技能免耗概率，最多5份、最高100%。 | 12x26 | 224 | OK |
 | resources/config/collectibles/collectible_quick_feather.tres | 轻羽 | 普通 | 移速+6.0 | 移动速度：移动速度+6。 | 19x25 | 218 | OK |

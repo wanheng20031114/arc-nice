@@ -118,6 +118,7 @@ custom_data_layer_0/type = 21
 sources/0 = SubResource("TileSetAtlasSource_fc0e3")
 
 [node name="GameTowerDefense" type="Node2D" unique_id=20737211]
+physics_interpolation_mode = 2
 position = Vector2(2, 0)
 script = ExtResource("1_17rxn")
 
@@ -277,10 +278,10 @@ script = ExtResource("29_session_pool")
 script = ExtResource("30_xirang_manager")
 
 [node name="ZhuangfangyiMerchant" parent="." unique_id=112812860 instance=ExtResource("15_merchant")]
-position = Vector2(136, 289)
+position = Vector2(96, 81)
 
 [node name="LuoxiMerchant" parent="." unique_id=146965342 instance=ExtResource("20_luoxi")]
-position = Vector2(194, 290)
+position = Vector2(154, 82)
 
 [node name="BossContainer" type="Node2D" parent="." unique_id=1704115178]
 

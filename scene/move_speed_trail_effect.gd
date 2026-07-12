@@ -19,12 +19,22 @@ func _ready() -> void:
 	for emitter in trail_particles:
 		emitter.emitting = false
 	_apply_motion_direction()
+	process_mode = Node.PROCESS_MODE_DISABLED
 
 
 func set_effect_active(enabled: bool) -> void:
-	if visible == enabled and _are_emitters_active(enabled):
+	var expected_process_mode := (
+		Node.PROCESS_MODE_INHERIT if enabled else Node.PROCESS_MODE_DISABLED
+	)
+	if (
+		visible == enabled
+		and _are_emitters_active(enabled)
+		and process_mode == expected_process_mode
+	):
 		return
 
+	if enabled:
+		process_mode = Node.PROCESS_MODE_INHERIT
 	visible = enabled
 	for emitter in trail_particles:
 		emitter.emitting = enabled
@@ -32,6 +42,8 @@ func set_effect_active(enabled: bool) -> void:
 		_apply_motion_direction()
 		for emitter in trail_particles:
 			emitter.restart()
+	else:
+		process_mode = Node.PROCESS_MODE_DISABLED
 
 
 func set_motion_direction(direction: Vector2) -> void:

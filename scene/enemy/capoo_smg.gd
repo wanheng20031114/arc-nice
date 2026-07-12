@@ -101,13 +101,29 @@ func _fire_bullet(shoot_direction: Vector2) -> bool:
 	var smg_config := config as SMGConfig
 	if smg_config == null or smg_config.projectile_scene == null:
 		return false
-	var projectile := smg_config.projectile_scene.instantiate() as CapooAK47Bullet
-	if projectile == null:
-		push_warning("SMG Capoo projectile scene must instantiate CapooAK47Bullet.")
-		return false
 	var spawn_parent := get_tree().current_scene
 	if spawn_parent == null:
-		projectile.queue_free()
+		return false
+	var projectile: CapooAK47Bullet = null
+	var uses_registered_pool := (
+		spawn_parent.has_method("has_session_object_pool_scene")
+		and bool(
+			spawn_parent.call(
+				"has_session_object_pool_scene",
+				smg_config.projectile_scene
+			)
+		)
+	)
+	if uses_registered_pool:
+		projectile = spawn_parent.call(
+			"acquire_session_object",
+			smg_config.projectile_scene,
+			false
+		) as CapooAK47Bullet
+	else:
+		projectile = smg_config.projectile_scene.instantiate() as CapooAK47Bullet
+	if projectile == null:
+		push_warning("SMG Capoo projectile scene must instantiate CapooAK47Bullet.")
 		return false
 	projectile.top_level = true
 	projectile.setup(
@@ -116,8 +132,10 @@ func _fire_bullet(shoot_direction: Vector2) -> bool:
 		smg_config.projectile_speed,
 		smg_config.projectile_lifetime
 	)
-	spawn_parent.add_child(projectile)
+	if projectile.get_parent() == null:
+		spawn_parent.add_child(projectile)
 	projectile.global_position = global_position + shoot_direction * smg_config.projectile_spawn_distance
+	projectile.reset_physics_interpolation()
 	if spawn_parent.has_method("register_local_projectile"):
 		spawn_parent.call(
 			"register_local_projectile",
