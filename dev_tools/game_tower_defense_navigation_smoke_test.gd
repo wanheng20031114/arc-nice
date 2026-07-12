@@ -29,7 +29,7 @@ func _run() -> void:
 	var enemy_configs := _collect_actual_enemy_configs(game)
 
 	_expect(spawn_points.size() == 6, "Tower defense navigation must validate all six spawn points.")
-	_expect(targets.size() == 5, "Tower defense navigation must validate the player and four Home cells.")
+	_expect(targets.size() == 2, "Tower defense navigation must validate the player and logical Home entrance.")
 	_expect(not enemy_configs.is_empty(), "Tower defense campaign must expose actual EnemyConfig resources.")
 
 	if pathfinder != null and pathfinder.is_built and not enemy_configs.is_empty():
@@ -41,6 +41,11 @@ func _run() -> void:
 				spawn_points,
 				targets
 			)
+		_verify_diagonal_flow_and_corner_guards(
+			game,
+			pathfinder,
+			enemy_configs[0]
+		)
 		_verify_partial_path_is_rejected(pathfinder, enemy_configs[0], spawn_points[0])
 		_verify_deferred_does_not_direct_fallback(
 			game,
@@ -115,6 +120,11 @@ func _verify_config_navigation_matrix(
 	var half_extents := probe_enemy.get_configured_body_collision_half_extents()
 	var uses_shared_chase_consumer := probe_enemy.has_method("_get_navigation_move_direction")
 	probe_enemy.free()
+	var agent_grid := pathfinder.call(
+		"_get_or_create_agent_grid",
+		half_extents,
+		enemy_config.terrain_traversal_types
+	) as AStarGrid2D
 
 	for spawn_point in spawn_points:
 		for target in targets:
@@ -167,18 +177,44 @@ func _verify_config_navigation_matrix(
 				_expect(resolved_from_cell != Vector2i.MAX, "%s must resolve its start cell." % route_label)
 			_expect(resolved_target_cell != Vector2i.MAX, "%s must resolve its target cell." % route_label)
 			if bool(step.get("used_start_recovery", false)):
+				var recovery_first_step: Vector2i = step.get("next_cell", Vector2i.MAX)
+				var recovery_delta := recovery_first_step - from_cell
 				_expect(
-					_manhattan_distance(from_cell, resolved_from_cell) == 1,
-					"%s recovery must be exactly one cardinal cell, got %s->%s."
-					% [route_label, from_cell, resolved_from_cell]
+					resolved_from_cell != from_cell
+					and _chebyshev_distance(from_cell, resolved_from_cell)
+						<= pathfinder.max_nearest_cell_search_radius
+					and _chebyshev_distance(from_cell, recovery_first_step) == 1
+					and bool(pathfinder.call(
+						"_is_raw_recovery_transition_safe",
+						from_cell,
+						recovery_delta,
+						enemy_config.terrain_traversal_types
+					)),
+					"%s recovery must use one bounded raw-terrain-safe step, got %s->%s (resolved %s)."
+					% [route_label, from_cell, recovery_first_step, resolved_from_cell]
 				)
 
 			var next_cell: Vector2i = step.get("next_cell", Vector2i.MAX)
-			if status == GridPathfinder.NavigationStepStatus.READY and next_cell != Vector2i.MAX:
+			if (
+				status == GridPathfinder.NavigationStepStatus.READY
+				and next_cell != Vector2i.MAX
+				and not bool(step.get("used_start_recovery", false))
+			):
+				var next_delta := next_cell - resolved_from_cell
 				_expect(
-					_manhattan_distance(resolved_from_cell, next_cell) <= 1,
-					"%s next cell must be current or one cardinal neighbor." % route_label
+					_chebyshev_distance(resolved_from_cell, next_cell) <= 1,
+					"%s next cell must be current or one eight-way neighbor." % route_label
 				)
+				if next_delta.x != 0 and next_delta.y != 0:
+					_expect(
+						bool(pathfinder.call(
+							"_is_safe_flow_transition",
+							resolved_from_cell,
+							next_delta,
+							agent_grid
+						)),
+						"%s diagonal step must not cut an obstacle corner." % route_label
+					)
 
 			var complete_path := pathfinder.get_complete_global_path(
 				spawn_point.global_position,
@@ -230,6 +266,119 @@ func _verify_enemy_consumer_for_config(
 				% [enemy_config.display_name, spawn_point.name]
 			)
 		enemy.free()
+
+
+func _verify_diagonal_flow_and_corner_guards(
+	game: GameTowerDefense,
+	pathfinder: GridPathfinder,
+	enemy_config: EnemyConfig
+) -> void:
+	var probe_enemy := enemy_config.enemy_scene.instantiate() as Enemy
+	if probe_enemy == null:
+		return
+	var half_extents := probe_enemy.get_configured_body_collision_half_extents()
+	probe_enemy.free()
+	var agent_grid := pathfinder.call(
+		"_get_or_create_agent_grid",
+		half_extents,
+		enemy_config.terrain_traversal_types
+	) as AStarGrid2D
+	var source_cell := Vector2i.MAX
+	var target_cell := Vector2i.MAX
+	var diagonal_direction := Vector2i(1, 1)
+	for y in range(agent_grid.region.position.y + 1, agent_grid.region.end.y - 1):
+		for x in range(agent_grid.region.position.x + 1, agent_grid.region.end.x - 1):
+			var candidate_source := Vector2i(x, y)
+			if bool(pathfinder.call(
+				"_is_safe_flow_transition",
+				candidate_source,
+				diagonal_direction,
+				agent_grid
+			)):
+				source_cell = candidate_source
+				target_cell = candidate_source + diagonal_direction
+				break
+		if source_cell != Vector2i.MAX:
+			break
+	_expect(source_cell != Vector2i.MAX, "Diagonal flow test must find an open 2x2 agent-grid area.")
+	if source_cell == Vector2i.MAX:
+		return
+	_expect(
+		bool(pathfinder.call(
+			"_is_safe_flow_transition",
+			target_cell,
+			-diagonal_direction,
+			agent_grid
+		)),
+		"The reverse flow-field expansion must accept the same unobstructed diagonal."
+	)
+
+	var open_field := pathfinder.call(
+		"_build_flow_field",
+		target_cell,
+		agent_grid
+	) as Dictionary
+	var open_next_cells := open_field.get("next_cells", {}) as Dictionary
+	var open_distances := open_field.get("distances", {}) as Dictionary
+	_expect(
+		open_next_cells.get(source_cell, Vector2i.MAX) == target_cell,
+		"An unobstructed diagonal must be the next shared-flow step, got %s->%s (target %s, field=%d, target_next=%s)."
+		% [
+			source_cell,
+			open_next_cells.get(source_cell, Vector2i.MAX),
+			target_cell,
+			open_next_cells.size(),
+			open_next_cells.get(target_cell, Vector2i.MAX),
+		]
+	)
+	_expect(
+		int(open_distances.get(source_cell, -1)) == GridPathfinder.FLOW_DIAGONAL_COST,
+		"One diagonal flow step must use the authored Octile cost, got %s."
+		% open_distances.get(source_cell, -1)
+	)
+
+	var blocked_side_cell := source_cell + Vector2i.RIGHT
+	var blocked_side_was_solid := agent_grid.is_point_solid(blocked_side_cell)
+	agent_grid.set_point_solid(blocked_side_cell, true)
+	var guarded_field := pathfinder.call(
+		"_build_flow_field",
+		target_cell,
+		agent_grid
+	) as Dictionary
+	var guarded_next_cells := guarded_field.get("next_cells", {}) as Dictionary
+	_expect(
+		guarded_next_cells.get(source_cell, Vector2i.MAX) != target_cell,
+		"A diagonal must be rejected when either orthogonal side cell is blocked."
+	)
+	agent_grid.set_point_solid(blocked_side_cell, blocked_side_was_solid)
+	pathfinder.flow_field_cache.clear()
+	pathfinder.flow_field_cache_order.clear()
+
+	var objective := Node2D.new()
+	game.add_child(objective)
+	objective.global_position = pathfinder.call("_map_to_global", target_cell) as Vector2
+	var moving_enemy := enemy_config.enemy_scene.instantiate() as Enemy
+	if moving_enemy != null and moving_enemy.has_method("_get_navigation_move_direction"):
+		game.enemy_container.add_child(moving_enemy)
+		moving_enemy.global_position = pathfinder.call("_map_to_global", source_cell) as Vector2
+		moving_enemy.setup(enemy_config, game.player, pathfinder)
+		moving_enemy.set_objective_target(objective)
+		moving_enemy.navigation_update_interval_frames = 1
+		moving_enemy.set_physics_process(false)
+		var move_direction := moving_enemy.call(
+			"_get_flow_navigation_move_direction",
+			objective,
+			pathfinder,
+			0.0
+		) as Vector2
+		_expect(
+			not is_zero_approx(move_direction.x)
+			and not is_zero_approx(move_direction.y)
+			and is_equal_approx(move_direction.length(), 1.0),
+			"The enemy flow consumer must preserve a normalized diagonal waypoint."
+		)
+		moving_enemy.free()
+	objective.free()
 
 
 func _verify_deferred_does_not_direct_fallback(
@@ -340,6 +489,12 @@ func _verify_far_home_uses_safe_direct_approach(
 		"A distant static Home target must use the cheap direct-approach tier before flow lookup."
 	)
 	if move_direction != Vector2.ZERO:
+		_expect(
+			move_direction.is_equal_approx(
+				enemy.global_position.direction_to(objective.global_position)
+			),
+			"The far direct-approach tier must preserve the true normalized objective direction."
+		)
 		var probe_distance := float(enemy.call("_get_far_direct_objective_probe_distance"))
 		var minimum_interval_distance := (
 			enemy.get_effective_move_speed()
@@ -567,6 +722,11 @@ func _expect_navigation_step_equivalent(
 
 func _manhattan_distance(a: Vector2i, b: Vector2i) -> int:
 	return absi(a.x - b.x) + absi(a.y - b.y)
+
+
+func _chebyshev_distance(a: Vector2i, b: Vector2i) -> int:
+	var delta := (b - a).abs()
+	return maxi(delta.x, delta.y)
 
 
 func _status_name(status: int) -> String:

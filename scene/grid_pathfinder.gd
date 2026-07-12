@@ -7,6 +7,25 @@ const FLOW_CARDINAL_DIRECTIONS: Array[Vector2i] = [
 	Vector2i.DOWN,
 	Vector2i.UP,
 ]
+const FLOW_DIAGONAL_DIRECTIONS: Array[Vector2i] = [
+	Vector2i(1, 1),
+	Vector2i(1, -1),
+	Vector2i(-1, 1),
+	Vector2i(-1, -1),
+]
+const FLOW_DIRECTIONS: Array[Vector2i] = [
+	Vector2i.RIGHT,
+	Vector2i.LEFT,
+	Vector2i.DOWN,
+	Vector2i.UP,
+	Vector2i(1, 1),
+	Vector2i(1, -1),
+	Vector2i(-1, 1),
+	Vector2i(-1, -1),
+]
+const FLOW_ORTHOGONAL_COST := 10
+const FLOW_DIAGONAL_COST := 14
+const MAX_FLOW_RECOVERY_CACHE_ENTRIES := 512
 const DEFAULT_TRAVERSAL_TYPES := DualGridTilemap.TraversalType.LAND
 
 enum NavigationStepStatus {
@@ -97,6 +116,8 @@ var flow_field_budget_frame: int = -1
 var agent_grid_cache: Dictionary = {}
 var flow_field_cache: Dictionary = {}
 var flow_field_cache_order: Array[String] = []
+var flow_recovery_route_cache: Dictionary = {}
+var flow_recovery_cache_order: Array[String] = []
 var region_local_rect: Rect2 = Rect2()
 var terrain_rebuild_queued: bool = false
 var navigation_generation: int = 0
@@ -130,11 +151,13 @@ func rebuild() -> void:
 	agent_grid_cache.clear()
 	flow_field_cache.clear()
 	flow_field_cache_order.clear()
+	flow_recovery_route_cache.clear()
+	flow_recovery_cache_order.clear()
 	astar_grid.region = used_rect
 	astar_grid.cell_size = Vector2(obstacle_tile_layer.tile_set.tile_size)
-	astar_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
-	astar_grid.default_compute_heuristic = AStarGrid2D.HEURISTIC_MANHATTAN
-	astar_grid.default_estimate_heuristic = AStarGrid2D.HEURISTIC_MANHATTAN
+	astar_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	astar_grid.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
+	astar_grid.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
 	astar_grid.update()
 	_update_region_local_rect()
 
@@ -347,6 +370,43 @@ func write_safe_navigation_step(
 	)
 
 
+func is_navigation_segment_walkable(
+	from_global_position: Vector2,
+	to_global_position: Vector2,
+	agent_half_extents: Vector2 = Vector2.ZERO,
+	traversal_types: int = DEFAULT_TRAVERSAL_TYPES
+) -> bool:
+	if not is_built or obstacle_tile_layer == null:
+		return false
+	var normalized_extents := _normalize_agent_half_extents(agent_half_extents)
+	var path_grid := _get_or_create_agent_grid(normalized_extents, traversal_types)
+	var from_local := obstacle_tile_layer.to_local(from_global_position)
+	var to_local := obstacle_tile_layer.to_local(to_global_position)
+	var local_distance := from_local.distance_to(to_local)
+	var minimum_cell_size := minf(
+		absf(astar_grid.cell_size.x),
+		absf(astar_grid.cell_size.y)
+	)
+	var sample_spacing := maxf(minimum_cell_size * 0.5, 1.0)
+	var sample_count := maxi(ceili(local_distance / sample_spacing), 1)
+	for sample_index in range(sample_count + 1):
+		var weight := float(sample_index) / float(sample_count)
+		var sample_local := from_local.lerp(to_local, weight)
+		var sample_cell := obstacle_tile_layer.local_to_map(sample_local)
+		if not _is_cell_walkable(sample_cell, path_grid):
+			return false
+		if (
+			normalized_extents != Vector2.ZERO
+			and not _is_local_position_walkable_for_agent(
+				sample_local,
+				normalized_extents,
+				traversal_types
+			)
+		):
+			return false
+	return true
+
+
 # Complete-only A* path used by diagnostics and callers that need the full
 # route. This deliberately ignores allow_partial_path.
 func get_complete_global_path(
@@ -417,13 +477,14 @@ func prewarm_agent_grid_staged(
 	var cache_key := _get_agent_grid_cache_key(normalized_extents, traversal_types)
 	if agent_grid_cache.has(cache_key):
 		return
+	var build_generation := navigation_generation
 
 	var agent_grid := AStarGrid2D.new()
 	agent_grid.region = astar_grid.region
 	agent_grid.cell_size = astar_grid.cell_size
-	agent_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
-	agent_grid.default_compute_heuristic = AStarGrid2D.HEURISTIC_MANHATTAN
-	agent_grid.default_estimate_heuristic = AStarGrid2D.HEURISTIC_MANHATTAN
+	agent_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	agent_grid.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
+	agent_grid.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
 	agent_grid.update()
 	var completed_rows := 0
 	for y in range(agent_grid.region.position.y, agent_grid.region.end.y):
@@ -437,8 +498,14 @@ func prewarm_agent_grid_staged(
 		if completed_rows >= maxi(rows_per_frame, 1):
 			completed_rows = 0
 			await get_tree().process_frame
-			if not is_inside_tree() or not is_built:
+			if (
+				not is_inside_tree()
+				or not is_built
+				or navigation_generation != build_generation
+			):
 				return
+	if navigation_generation != build_generation:
+		return
 	agent_grid_cache[cache_key] = agent_grid
 
 
@@ -481,12 +548,18 @@ func prewarm_flow_navigation_target_staged(
 		return
 	if not _get_cached_flow_field(target_cell, normalized_extents, traversal_types).is_empty():
 		return
+	var build_generation := navigation_generation
 	var field: Dictionary = await _build_flow_field_staged(
 		target_cell,
 		path_grid,
 		cells_per_frame
 	)
-	if field.is_empty() or not is_inside_tree() or not is_built:
+	if (
+		field.is_empty()
+		or not is_inside_tree()
+		or not is_built
+		or navigation_generation != build_generation
+	):
 		return
 	_store_flow_field(target_cell, normalized_extents, traversal_types, field)
 
@@ -522,9 +595,9 @@ func _get_or_create_agent_grid(
 	var agent_grid := AStarGrid2D.new()
 	agent_grid.region = astar_grid.region
 	agent_grid.cell_size = astar_grid.cell_size
-	agent_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
-	agent_grid.default_compute_heuristic = AStarGrid2D.HEURISTIC_MANHATTAN
-	agent_grid.default_estimate_heuristic = AStarGrid2D.HEURISTIC_MANHATTAN
+	agent_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	agent_grid.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
+	agent_grid.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
 	agent_grid.update()
 
 	for y in range(agent_grid.region.position.y, agent_grid.region.end.y):
@@ -648,14 +721,28 @@ func _write_safe_navigation_step(
 
 	var from_cell := original_from_cell
 	var used_start_recovery := false
+	var recovery_waypoint_cell := Vector2i.MAX
+	var recovery_cost := 0
 	if not _is_cell_walkable(from_cell, path_grid):
-		from_cell = _get_safe_adjacent_flow_recovery_cell(
+		var recovery_route := _get_cached_safe_flow_recovery_route(
 			original_from_cell,
+			target_cell,
+			normalized_extents,
 			next_cells,
 			distances,
-			path_grid
+			path_grid,
+			traversal_types
 		)
-		used_start_recovery = from_cell != Vector2i.MAX
+		from_cell = recovery_route.get("resolved_cell", Vector2i.MAX) as Vector2i
+		recovery_waypoint_cell = recovery_route.get(
+			"first_step_cell",
+			Vector2i.MAX
+		) as Vector2i
+		recovery_cost = int(recovery_route.get("recovery_cost", 0))
+		used_start_recovery = (
+			from_cell != Vector2i.MAX
+			and recovery_waypoint_cell != Vector2i.MAX
+		)
 	elif not next_cells.has(from_cell):
 		# A walkable cell absent from the target's field is in another connected
 		# component. Do not turn a partial route into apparent forward progress.
@@ -687,18 +774,24 @@ func _write_safe_navigation_step(
 	)
 	result.resolved_from_cell = from_cell
 	result.resolved_target_cell = target_cell
-	# next_cell always describes the waypoint returned for this decision. During
-	# recovery that is the one adjacent reachable cell; the following flow step
-	# is deliberately deferred until the body has safely entered it.
-	result.next_cell = from_cell if used_start_recovery else flow_next_cell
+	# next_cell always describes the immediate waypoint returned for this
+	# decision. During recovery it is the first raw-terrain-safe step toward the
+	# resolved flow cell, never the farther resolved cell itself.
+	result.next_cell = recovery_waypoint_cell if used_start_recovery else flow_next_cell
 	result.used_start_recovery = used_start_recovery
 	result.is_complete_route = true
-	result.remaining_cell_distance = route_distance + (1 if used_start_recovery else 0)
+	# Internally the eight-way Dijkstra uses 10/14 Octile weights. Keep the
+	# existing result field in tile-distance units instead of leaking that
+	# implementation scale to callers.
+	result.remaining_cell_distance = ceili(
+		float(route_distance + recovery_cost) / float(FLOW_ORTHOGONAL_COST)
+	)
 
 	if used_start_recovery:
-		# Recovery is deliberately limited to one cardinal cell. Returning a
-		# farther cell would ask CharacterBody2D to cross unknown collision space.
-		result.waypoint = _map_to_global(from_cell)
+		# The body moves toward this center normally; it is never teleported. The
+		# raw-cell corridor and CharacterBody shape sweep together let a large body
+		# leave the conservative inflated band without crossing authored terrain.
+		result.waypoint = _map_to_global(recovery_waypoint_cell)
 		return
 
 	if flow_next_cell != from_cell:
@@ -782,25 +875,164 @@ func _navigation_step_result_to_dictionary(result: NavigationStepResult) -> Dict
 	}
 
 
-func _get_safe_adjacent_flow_recovery_cell(
+func _get_safe_flow_recovery_route(
 	origin_cell: Vector2i,
 	next_cells: Dictionary,
 	distances: Dictionary,
-	path_grid: AStarGrid2D
-) -> Vector2i:
+	path_grid: AStarGrid2D,
+	traversal_types: int
+) -> Dictionary:
+	var search_radius := maxi(max_nearest_cell_search_radius, 0)
+	if search_radius <= 0 or _is_cell_blocked(origin_cell, traversal_types):
+		return {}
+
+	var recovery_costs: Dictionary = {origin_cell: 0}
+	var recovery_parents: Dictionary = {origin_cell: Vector2i.MAX}
+	var pending_cells: Array[Vector2i] = []
+	var pending_costs: Array[int] = []
 	var best_cell := Vector2i.MAX
-	var best_flow_distance := INF
-	for direction in FLOW_CARDINAL_DIRECTIONS:
-		var candidate := origin_cell + direction
-		if not next_cells.has(candidate):
+	var best_recovery_cost := 2147483647
+	var best_flow_distance := 2147483647
+	_push_flow_heap_entry(pending_cells, pending_costs, origin_cell, 0)
+
+	while not pending_cells.is_empty():
+		var pending_entry := _pop_flow_heap_entry(pending_cells, pending_costs)
+		var current_cell := Vector2i(pending_entry.x, pending_entry.y)
+		var current_cost := pending_entry.z
+		if current_cost != int(recovery_costs.get(current_cell, -1)):
 			continue
-		if not _is_cell_walkable(candidate, path_grid):
+		if current_cost > best_recovery_cost:
+			break
+		if (
+			current_cell != origin_cell
+			and next_cells.has(current_cell)
+			and _is_cell_walkable(current_cell, path_grid)
+		):
+			var flow_distance := int(distances.get(current_cell, 2147483647))
+			if (
+				current_cost < best_recovery_cost
+				or (
+					current_cost == best_recovery_cost
+					and flow_distance < best_flow_distance
+				)
+			):
+				best_cell = current_cell
+				best_recovery_cost = current_cost
+				best_flow_distance = flow_distance
 			continue
-		var flow_distance := float(distances.get(candidate, INF))
-		if flow_distance < best_flow_distance:
-			best_flow_distance = flow_distance
-			best_cell = candidate
-	return best_cell
+
+		for direction in FLOW_DIRECTIONS:
+			var neighbor := current_cell + direction
+			if _chebyshev_cell_distance(origin_cell, neighbor) > search_radius:
+				continue
+			if not path_grid.is_in_boundsv(neighbor):
+				continue
+			if not _is_raw_recovery_transition_safe(
+				current_cell,
+				direction,
+				traversal_types
+			):
+				continue
+			var candidate_cost := current_cost + _get_flow_transition_cost(direction)
+			if candidate_cost >= int(recovery_costs.get(neighbor, 2147483647)):
+				continue
+			recovery_costs[neighbor] = candidate_cost
+			recovery_parents[neighbor] = current_cell
+			_push_flow_heap_entry(
+				pending_cells,
+				pending_costs,
+				neighbor,
+				candidate_cost
+			)
+
+	if best_cell == Vector2i.MAX:
+		return {}
+	var first_step_cell := best_cell
+	var parent_cell: Vector2i = recovery_parents.get(
+		first_step_cell,
+		Vector2i.MAX
+	)
+	while parent_cell != origin_cell and parent_cell != Vector2i.MAX:
+		first_step_cell = parent_cell
+		parent_cell = recovery_parents.get(
+			first_step_cell,
+			Vector2i.MAX
+		)
+	if parent_cell != origin_cell:
+		return {}
+	return {
+		"resolved_cell": best_cell,
+		"first_step_cell": first_step_cell,
+		"recovery_cost": best_recovery_cost,
+	}
+
+
+func _get_cached_safe_flow_recovery_route(
+	origin_cell: Vector2i,
+	target_cell: Vector2i,
+	agent_half_extents: Vector2,
+	next_cells: Dictionary,
+	distances: Dictionary,
+	path_grid: AStarGrid2D,
+	traversal_types: int
+) -> Dictionary:
+	# Hundreds of enemies often enter the same conservative blocked band at the
+	# same cell. The recovery corridor depends only on the current navigation
+	# generation, flow profile, origin and configured search radius, so share it
+	# just like the flow field instead of rerunning bounded Dijkstra per enemy.
+	var cache_key := "%d:%s:%d:%d:%d" % [
+		navigation_generation,
+		_get_flow_field_cache_key(target_cell, agent_half_extents, traversal_types),
+		origin_cell.x,
+		origin_cell.y,
+		maxi(max_nearest_cell_search_radius, 0),
+	]
+	if flow_recovery_route_cache.has(cache_key):
+		return flow_recovery_route_cache[cache_key] as Dictionary
+
+	var recovery_route := _get_safe_flow_recovery_route(
+		origin_cell,
+		next_cells,
+		distances,
+		path_grid,
+		traversal_types
+	)
+	flow_recovery_route_cache[cache_key] = recovery_route
+	flow_recovery_cache_order.append(cache_key)
+	while flow_recovery_cache_order.size() > MAX_FLOW_RECOVERY_CACHE_ENTRIES:
+		var oldest_key := flow_recovery_cache_order.pop_front() as String
+		flow_recovery_route_cache.erase(oldest_key)
+	return recovery_route
+
+
+func _is_raw_recovery_transition_safe(
+	from_cell: Vector2i,
+	direction: Vector2i,
+	traversal_types: int
+) -> bool:
+	var target_cell := from_cell + direction
+	if not astar_grid.is_in_boundsv(target_cell):
+		return false
+	if _is_cell_blocked(target_cell, traversal_types):
+		return false
+	if direction.x == 0 or direction.y == 0:
+		return true
+	var horizontal_side := from_cell + Vector2i(direction.x, 0)
+	var vertical_side := from_cell + Vector2i(0, direction.y)
+	if (
+		not astar_grid.is_in_boundsv(horizontal_side)
+		or not astar_grid.is_in_boundsv(vertical_side)
+	):
+		return false
+	return (
+		not _is_cell_blocked(horizontal_side, traversal_types)
+		and not _is_cell_blocked(vertical_side, traversal_types)
+	)
+
+
+func _chebyshev_cell_distance(from_cell: Vector2i, to_cell: Vector2i) -> int:
+	var delta := (to_cell - from_cell).abs()
+	return maxi(delta.x, delta.y)
 
 
 func _get_flow_navigation_waypoint(
@@ -811,7 +1043,7 @@ func _get_flow_navigation_waypoint(
 	uses_build_budget: bool
 ) -> Variant:
 	# Compatibility wrapper: legacy flow callers inherit the complete-route and
-	# one-cardinal-cell recovery guarantees of the safe-step API.
+	# bounded, step-by-step recovery guarantees of the safe-step API.
 	var step := legacy_navigation_step_scratch
 	_write_safe_navigation_step(
 		step,
@@ -833,24 +1065,32 @@ func _build_flow_field(target_cell: Vector2i, path_grid: AStarGrid2D) -> Diction
 	var next_cells: Dictionary = {}
 	var distances: Dictionary = {}
 	var pending_cells: Array[Vector2i] = []
-	var pending_cell_index := 0
+	var pending_costs: Array[int] = []
 	next_cells[target_cell] = target_cell
 	distances[target_cell] = 0
-	pending_cells.append(target_cell)
+	_push_flow_heap_entry(pending_cells, pending_costs, target_cell, 0)
 
-	while pending_cell_index < pending_cells.size():
-		var current_cell := pending_cells[pending_cell_index]
-		pending_cell_index += 1
-		var current_distance := int(distances[current_cell])
-		for direction in FLOW_CARDINAL_DIRECTIONS:
+	while not pending_cells.is_empty():
+		var pending_entry := _pop_flow_heap_entry(pending_cells, pending_costs)
+		var current_cell := Vector2i(pending_entry.x, pending_entry.y)
+		var current_distance := pending_entry.z
+		if current_distance != int(distances.get(current_cell, -1)):
+			continue
+		for direction in FLOW_DIRECTIONS:
 			var neighbor: Vector2i = current_cell + direction
-			if distances.has(neighbor):
+			if not _is_safe_flow_transition(current_cell, direction, path_grid):
 				continue
-			if not _is_cell_walkable(neighbor, path_grid):
+			var candidate_distance := current_distance + _get_flow_transition_cost(direction)
+			if candidate_distance >= int(distances.get(neighbor, 2147483647)):
 				continue
-			distances[neighbor] = current_distance + 1
+			distances[neighbor] = candidate_distance
 			next_cells[neighbor] = current_cell
-			pending_cells.append(neighbor)
+			_push_flow_heap_entry(
+				pending_cells,
+				pending_costs,
+				neighbor,
+				candidate_distance
+			)
 
 	return {
 		"target_cell": target_cell,
@@ -867,33 +1107,129 @@ func _build_flow_field_staged(
 	var next_cells: Dictionary = {}
 	var distances: Dictionary = {}
 	var pending_cells: Array[Vector2i] = []
-	var pending_cell_index := 0
+	var pending_costs: Array[int] = []
 	var processed_this_frame := 0
+	var build_generation := navigation_generation
 	next_cells[target_cell] = target_cell
 	distances[target_cell] = 0
-	pending_cells.append(target_cell)
-	while pending_cell_index < pending_cells.size():
-		var current_cell := pending_cells[pending_cell_index]
-		pending_cell_index += 1
-		var current_distance := int(distances[current_cell])
-		for direction in FLOW_CARDINAL_DIRECTIONS:
+	_push_flow_heap_entry(pending_cells, pending_costs, target_cell, 0)
+	while not pending_cells.is_empty():
+		var pending_entry := _pop_flow_heap_entry(pending_cells, pending_costs)
+		var current_cell := Vector2i(pending_entry.x, pending_entry.y)
+		var current_distance := pending_entry.z
+		if current_distance != int(distances.get(current_cell, -1)):
+			continue
+		for direction in FLOW_DIRECTIONS:
 			var neighbor: Vector2i = current_cell + direction
-			if distances.has(neighbor) or not _is_cell_walkable(neighbor, path_grid):
+			if not _is_safe_flow_transition(current_cell, direction, path_grid):
 				continue
-			distances[neighbor] = current_distance + 1
+			var candidate_distance := current_distance + _get_flow_transition_cost(direction)
+			if candidate_distance >= int(distances.get(neighbor, 2147483647)):
+				continue
+			distances[neighbor] = candidate_distance
 			next_cells[neighbor] = current_cell
-			pending_cells.append(neighbor)
+			_push_flow_heap_entry(
+				pending_cells,
+				pending_costs,
+				neighbor,
+				candidate_distance
+			)
 		processed_this_frame += 1
 		if processed_this_frame >= maxi(cells_per_frame, 1):
 			processed_this_frame = 0
 			await get_tree().process_frame
-			if not is_inside_tree() or not is_built:
+			if (
+				not is_inside_tree()
+				or not is_built
+				or navigation_generation != build_generation
+			):
 				return {}
 	return {
 		"target_cell": target_cell,
 		"next_cells": next_cells,
 		"distances": distances,
 	}
+
+
+func _is_safe_flow_transition(
+	from_cell: Vector2i,
+	direction: Vector2i,
+	path_grid: AStarGrid2D
+) -> bool:
+	if not _is_cell_walkable(from_cell, path_grid):
+		return false
+	var target_cell := from_cell + direction
+	if not _is_cell_walkable(target_cell, path_grid):
+		return false
+	if direction.x == 0 or direction.y == 0:
+		return true
+	# A diagonal is valid only when both orthogonal side cells are valid for the
+	# same inflated agent grid. This is the grid equivalent of Godot's
+	# DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES and prevents cutting across wall/water
+	# corners with large collision shapes.
+	return (
+		_is_cell_walkable(from_cell + Vector2i(direction.x, 0), path_grid)
+		and _is_cell_walkable(from_cell + Vector2i(0, direction.y), path_grid)
+	)
+
+
+func _get_flow_transition_cost(direction: Vector2i) -> int:
+	return (
+		FLOW_DIAGONAL_COST
+		if direction.x != 0 and direction.y != 0
+		else FLOW_ORTHOGONAL_COST
+	)
+
+
+func _push_flow_heap_entry(
+	heap_cells: Array[Vector2i],
+	heap_costs: Array[int],
+	cell: Vector2i,
+	cost: int
+) -> void:
+	heap_cells.append(cell)
+	heap_costs.append(cost)
+	var index := heap_cells.size() - 1
+	while index > 0:
+		var parent_index := (index - 1) >> 1
+		if heap_costs[parent_index] <= cost:
+			break
+		heap_cells[index] = heap_cells[parent_index]
+		heap_costs[index] = heap_costs[parent_index]
+		index = parent_index
+	heap_cells[index] = cell
+	heap_costs[index] = cost
+
+
+func _pop_flow_heap_entry(
+	heap_cells: Array[Vector2i],
+	heap_costs: Array[int]
+) -> Vector3i:
+	var root_cell := heap_cells[0]
+	var root_cost := heap_costs[0]
+	var last_cell: Vector2i = heap_cells.pop_back()
+	var last_cost: int = heap_costs.pop_back()
+	if not heap_cells.is_empty():
+		var index := 0
+		while true:
+			var left_child := index * 2 + 1
+			if left_child >= heap_cells.size():
+				break
+			var right_child := left_child + 1
+			var smaller_child := left_child
+			if (
+				right_child < heap_cells.size()
+				and heap_costs[right_child] < heap_costs[left_child]
+			):
+				smaller_child = right_child
+			if heap_costs[smaller_child] >= last_cost:
+				break
+			heap_cells[index] = heap_cells[smaller_child]
+			heap_costs[index] = heap_costs[smaller_child]
+			index = smaller_child
+		heap_cells[index] = last_cell
+		heap_costs[index] = last_cost
+	return Vector3i(root_cell.x, root_cell.y, root_cost)
 
 
 func _get_cached_flow_field(

@@ -137,12 +137,14 @@ func _verify_home_gate_areas(game: GameTowerDefense) -> void:
 			"Home-gate cells must be reserved against plant placement: %s." % expected_cell
 		)
 	var targets := controller.get_objective_targets()
-	_expect(targets.size() == EXPECTED_HOME_CELLS.size(), "Every home cell must expose one objective Area2D.")
-	for target in targets:
-		var area := target as Area2D
-		_expect(area != null, "Home objective must be an Area2D.")
-		if area == null:
-			continue
+	_expect(targets.size() == 1, "The connected 2x2 Home gate must expose one corridor-center objective.")
+	if targets.size() == 1:
+		_expect(
+			targets[0].global_position.is_equal_approx(Vector2(50.0, 368.0)),
+			"The Home objective must use the connected gate's geometric center."
+		)
+	_expect(controller.home_gate_areas.size() == EXPECTED_HOME_CELLS.size(), "Every Home tile must retain one physical trigger Area2D.")
+	for area in controller.home_gate_areas:
 		_expect(area.collision_layer == 0, "Home Area2D must not occupy a collision layer.")
 		_expect(area.collision_mask == 4, "Home Area2D must only detect Enemy layer value 4.")
 		var shape_node := area.get_node_or_null("CollisionShape2D") as CollisionShape2D

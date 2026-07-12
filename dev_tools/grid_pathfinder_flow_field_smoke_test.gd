@@ -80,12 +80,42 @@ func _test_flow_field_recovers_from_blocked_for_agent_start(pathfinder: GridPath
 
 	var distant_pair := _find_distant_agent_recovery_pair(pathfinder, BLOCKED_AGENT_HALF_EXTENTS)
 	if distant_pair.size() == 2:
+		var distant_start_global := pathfinder.call("_map_to_global", distant_pair[0]) as Vector2
+		var distant_target_global := pathfinder.call("_map_to_global", distant_pair[1]) as Vector2
 		var distant_result: Variant = pathfinder.get_flow_navigation_waypoint(
-			pathfinder.call("_map_to_global", distant_pair[0]) as Vector2,
-			pathfinder.call("_map_to_global", distant_pair[1]) as Vector2,
+			distant_start_global,
+			distant_target_global,
 			BLOCKED_AGENT_HALF_EXTENTS
 		)
-		_expect(distant_result == null, "Legacy flow API must reject recovery that would skip more than one cardinal cell.")
+		var distant_step := pathfinder.get_safe_navigation_step(
+			distant_start_global,
+			distant_target_global,
+			BLOCKED_AGENT_HALF_EXTENTS
+		)
+		var first_step: Vector2i = distant_step.get("next_cell", Vector2i.MAX)
+		var first_delta := first_step - distant_pair[0]
+		_expect(
+			distant_result != null
+			and int(distant_step.get("status", GridPathfinder.NavigationStepStatus.UNREACHABLE))
+				== GridPathfinder.NavigationStepStatus.READY
+			and bool(distant_step.get("used_start_recovery", false)),
+			"A physically open multi-cell clearance band must expose bounded recovery."
+		)
+		_expect(
+			distant_result != null
+			and first_step != Vector2i.MAX
+			and maxi(absi(first_delta.x), absi(first_delta.y)) == 1
+			and bool(pathfinder.call(
+				"_is_raw_recovery_transition_safe",
+				distant_pair[0],
+				first_delta,
+				GridPathfinder.DEFAULT_TRAVERSAL_TYPES
+			))
+			and (distant_result as Vector2).is_equal_approx(
+				pathfinder.call("_map_to_global", first_step) as Vector2
+			),
+			"Multi-cell recovery must return only one adjacent no-corner-cutting waypoint."
+		)
 
 
 func _test_complete_path_same_cell(pathfinder: GridPathfinder) -> void:

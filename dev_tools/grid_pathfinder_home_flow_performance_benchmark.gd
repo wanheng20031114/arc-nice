@@ -58,6 +58,7 @@ func _run() -> void:
 		await process_frame
 		_finish()
 		return
+	_report_cold_recovery_pass(pathfinder, query_positions, target_position)
 	_verify_fast_path_equivalence(pathfinder, query_positions, target_position)
 
 	var results: Array[GridPathfinder.NavigationStepResult] = []
@@ -187,6 +188,45 @@ func _verify_fast_path_equivalence(
 		context.generation == pathfinder.navigation_generation
 		and result.is_complete_route,
 		"A stale reusable context must rebind to the current navigation generation."
+	)
+
+
+func _report_cold_recovery_pass(
+	pathfinder: GridPathfinder,
+	query_positions: Array[Vector2],
+	target_position: Vector2
+) -> void:
+	pathfinder.flow_recovery_route_cache.clear()
+	pathfinder.flow_recovery_cache_order.clear()
+	var result := GridPathfinder.NavigationStepResult.new()
+	var context := GridPathfinder.FlowQueryContext.new()
+	var recovery_positions := 0
+	var started_usec := Time.get_ticks_usec()
+	for from_position in query_positions:
+		pathfinder.write_safe_navigation_step(
+			result,
+			context,
+			from_position,
+			target_position,
+			AGENT_HALF_EXTENTS,
+			TRAVERSAL_TYPES,
+			true
+		)
+		if result.used_start_recovery:
+			recovery_positions += 1
+	var elapsed_usec := Time.get_ticks_usec() - started_usec
+	print(
+		"GRID_PATHFINDER_HOME_FLOW_COLD_RECOVERY positions=%d recovery_positions=%d cache_entries=%d usec=%d"
+		% [
+			query_positions.size(),
+			recovery_positions,
+			pathfinder.flow_recovery_route_cache.size(),
+			elapsed_usec,
+		]
+	)
+	_expect(
+		recovery_positions > 0,
+		"Home flow benchmark must include blocked-start recovery positions."
 	)
 
 

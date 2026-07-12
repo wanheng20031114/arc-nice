@@ -66,7 +66,9 @@ func _run() -> void:
 	)
 
 	game.set_physics_process(false)
-	var positioned_near_home := _position_enemies_near_home_flow_band()
+	if game.player != null:
+		game.player.global_position = Vector2(-5000.0, -5000.0)
+	var positioned_near_home := _position_enemies_at_home_distance(280.0)
 	_expect(
 		positioned_near_home == EXPECTED_ENEMIES,
 		"Render probe must position all enemies inside the full-flow navigation band."
@@ -75,10 +77,36 @@ func _run() -> void:
 		await process_frame
 	var near_summary := await _sample_monitor_window(SAMPLE_FRAMES)
 	_print_monitor_summary("near_home_flow", near_summary)
+
+	var positioned_inside_direct_tier := _position_enemies_at_home_distance(
+		72.0,
+		true
+	)
+	_expect(
+		positioned_inside_direct_tier == EXPECTED_ENEMIES,
+		"Render probe must position all enemies inside the near direct-sweep tier."
+	)
+	for _direct_warmup_frame in range(60):
+		await process_frame
+	var direct_summary := await _sample_monitor_window(SAMPLE_FRAMES)
+	_print_monitor_summary("near_home_direct_sweep", direct_summary)
+	var direct_wall := direct_summary["wall_frame"] as Dictionary
+	var direct_physics := direct_summary["physics"] as Dictionary
+	_expect(
+		float(direct_wall["p95"]) < 20.0,
+		"Three hundred near-Home direct sweeps must keep wall-frame p95 below 20ms."
+	)
+	_expect(
+		float(direct_physics["p95"]) < 25.0,
+		"Three hundred near-Home direct sweeps must keep physics p95 below 25ms."
+	)
 	await _finish()
 
 
-func _position_enemies_near_home_flow_band() -> int:
+func _position_enemies_at_home_distance(
+	target_distance: float,
+	freeze_movement: bool = false
+) -> int:
 	var home_targets := game.get_home_objective_targets()
 	if home_targets.is_empty():
 		return 0
@@ -101,17 +129,26 @@ func _position_enemies_near_home_flow_band() -> int:
 		for waypoint_variant in path:
 			var waypoint := waypoint_variant as Vector2
 			var home_distance: float = waypoint.distance_to(home_target.global_position)
-			var distance_error := absf(home_distance - 280.0)
+			var distance_error := absf(home_distance - target_distance)
 			if home_distance < Enemy.FAR_STATIC_OBJECTIVE_DISTANCE and distance_error < best_distance_error:
 				chosen_position = waypoint
 				best_distance_error = distance_error
 		if best_distance_error == INF:
+			continue
+		if (
+			target_distance <= Enemy.NEAR_STATIC_DIRECT_OBJECTIVE_DISTANCE
+			and chosen_position.distance_to(home_target.global_position)
+				> Enemy.NEAR_STATIC_DIRECT_OBJECTIVE_DISTANCE
+		):
 			continue
 		enemy.set_physics_process(false)
 		enemy.global_position = chosen_position
 		enemy.set_target_player(game.player)
 		enemy.set_objective_target(home_target)
 		enemy.call("_clear_navigation_path")
+		if freeze_movement:
+			enemy.cached_effective_move_speed = 0.0
+			enemy.velocity = Vector2.ZERO
 		enemy.set_physics_process(true)
 		positioned += 1
 	return positioned

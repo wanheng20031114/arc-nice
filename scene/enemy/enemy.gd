@@ -8,14 +8,18 @@ const BURN_OVERLAY_STRENGTH_SHADER_PARAMETER := &"burn_overlay_strength"
 const BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER := &"bleed_overlay_strength"
 const PATH_DIRECTION_PROBE_DISTANCE := 1.0
 # Home objectives are static, so distant enemies can approach them with a cheap,
-# collision-tested axis step instead of requesting the shared flow field every
-# other physics frame. Once an obstacle is reached, navigation immediately falls
-# back to the complete-route flow field below.
+# collision-tested normalized step instead of requesting the shared flow field
+# every other physics frame. Once an obstacle is reached, navigation immediately
+# falls back to the complete-route flow field below.
 const FAR_STATIC_OBJECTIVE_DISTANCE := 320.0
 const FAR_STATIC_OBJECTIVE_DISTANCE_SQUARED := (
 	FAR_STATIC_OBJECTIVE_DISTANCE * FAR_STATIC_OBJECTIVE_DISTANCE
 )
 const FAR_STATIC_OBJECTIVE_UPDATE_INTERVAL_FRAMES := 8
+const NEAR_STATIC_DIRECT_OBJECTIVE_DISTANCE := 96.0
+const NEAR_STATIC_DIRECT_OBJECTIVE_DISTANCE_SQUARED := (
+	NEAR_STATIC_DIRECT_OBJECTIVE_DISTANCE * NEAR_STATIC_DIRECT_OBJECTIVE_DISTANCE
+)
 const AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const MATERIAL_PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const MATERIAL_WOOD := preload("res://resources/config/materials/material_wood.tres")
@@ -970,6 +974,17 @@ func _get_safe_navigation_move_direction(
 		)
 		if direct_direction != Vector2.ZERO:
 			return _cache_navigation_move_direction(direct_direction, true)
+	elif _is_near_static_objective(target_node):
+		# Near a static objective, a full body sweep is cheaper than another flow
+		# query when the remaining corridor is open. This is also the physical
+		# final-approach tier: a flow target may resolve to the nearest conservative
+		# grid cell, but Home damage still happens only after the body actually
+		# enters the gate Area2D.
+		var direct_direction := _get_collision_safe_near_static_objective_direction(
+			target_node.global_position
+		)
+		if direct_direction != Vector2.ZERO:
+			return _cache_navigation_move_direction(direct_direction, true)
 
 	return _get_flow_navigation_move_direction(
 		target_node,
@@ -993,6 +1008,9 @@ func _get_flow_navigation_move_direction(
 	var status := GridPathfinder.NavigationStepStatus.UNREACHABLE
 	var is_complete_route := false
 	var waypoint := global_position
+	var resolved_from_cell := Vector2i.MAX
+	var next_cell := Vector2i.MAX
+	var used_start_recovery := false
 	var grid_pathfinder := shared_pathfinder as GridPathfinder
 	if grid_pathfinder != null:
 		if navigation_step_result == null:
@@ -1011,6 +1029,9 @@ func _get_flow_navigation_move_direction(
 		status = navigation_step_result.status
 		is_complete_route = navigation_step_result.is_complete_route
 		waypoint = navigation_step_result.waypoint
+		resolved_from_cell = navigation_step_result.resolved_from_cell
+		next_cell = navigation_step_result.next_cell
+		used_start_recovery = navigation_step_result.used_start_recovery
 	else:
 		var step: Dictionary = shared_pathfinder.call(
 			"try_get_safe_navigation_step",
@@ -1025,11 +1046,31 @@ func _get_flow_navigation_move_direction(
 		))
 		is_complete_route = bool(step.get("is_complete_route", false))
 		waypoint = step.get("waypoint", global_position) as Vector2
+		resolved_from_cell = step.get("resolved_from_cell", Vector2i.MAX) as Vector2i
+		next_cell = step.get("next_cell", Vector2i.MAX) as Vector2i
+		used_start_recovery = bool(step.get("used_start_recovery", false))
 	match status:
 		GridPathfinder.NavigationStepStatus.READY:
 			if not is_complete_route:
 				return _cache_navigation_move_direction(Vector2.ZERO)
-			var move_direction := _get_axis_aligned_waypoint_direction(
+			var waypoint_arrival_radius := maxf(waypoint_arrival_distance, 0.0)
+			var reached_resolved_flow_endpoint := (
+				not used_start_recovery
+				and resolved_from_cell != Vector2i.MAX
+				and next_cell == resolved_from_cell
+				and global_position.distance_squared_to(waypoint)
+					<= waypoint_arrival_radius * waypoint_arrival_radius
+			)
+			if reached_resolved_flow_endpoint:
+				if target_node != target_player:
+					return _cache_navigation_move_direction(
+						_get_static_objective_final_alignment_direction(
+							target_node.global_position,
+							waypoint_arrival_distance
+						)
+					)
+				return _cache_navigation_move_direction(Vector2.ZERO)
+			var move_direction := _get_waypoint_move_direction(
 				waypoint,
 				waypoint_arrival_distance
 			)
@@ -1037,6 +1078,15 @@ func _get_flow_navigation_move_direction(
 		GridPathfinder.NavigationStepStatus.DEFERRED:
 			if _is_cached_navigation_direction_shape_safe():
 				return cached_navigation_move_direction
+			return _cache_navigation_move_direction(Vector2.ZERO)
+		GridPathfinder.NavigationStepStatus.ARRIVED:
+			if target_node != target_player:
+				return _cache_navigation_move_direction(
+					_get_static_objective_final_alignment_direction(
+						target_node.global_position,
+						waypoint_arrival_distance
+					)
+				)
 			return _cache_navigation_move_direction(Vector2.ZERO)
 		_:
 			return _cache_navigation_move_direction(Vector2.ZERO)
@@ -1056,50 +1106,110 @@ func _clear_navigation_path() -> void:
 	_clear_cached_navigation_move_direction()
 
 
-func _get_axis_aligned_waypoint_direction(waypoint: Vector2, arrival_distance: float) -> Vector2:
+func _get_waypoint_move_direction(
+	waypoint: Vector2,
+	_arrival_distance: float
+) -> Vector2:
 	var offset := waypoint - global_position
 	if offset == Vector2.ZERO:
 		return Vector2.ZERO
 
-	var deadzone := maxf(arrival_distance, 0.0)
-	var abs_x := absf(offset.x)
-	var abs_y := absf(offset.y)
-	if abs_x <= deadzone and abs_y > deadzone:
-		return _choose_unblocked_axis_direction(Vector2(0.0, signf(offset.y)))
-	if abs_y <= deadzone and abs_x > deadzone:
-		return _choose_unblocked_axis_direction(Vector2(signf(offset.x), 0.0))
-	if abs_x >= abs_y:
-		return _choose_unblocked_axis_direction(Vector2(signf(offset.x), 0.0), Vector2(0.0, signf(offset.y)))
-	return _choose_unblocked_axis_direction(Vector2(0.0, signf(offset.y)), Vector2(signf(offset.x), 0.0))
+	# Flow waypoints may be diagonal. Prefer the true normalized vector so open
+	# terrain is crossed in a straight line; if the body is already touching an
+	# obstacle, fall back to the safer dominant/tangent axis until it has cleared
+	# the corner.
+	var direct_direction := offset.normalized()
+	if _is_navigation_motion_shape_safe(
+		direct_direction,
+		PATH_DIRECTION_PROBE_DISTANCE
+	):
+		return direct_direction
+	var horizontal_direction := Vector2(signf(offset.x), 0.0)
+	var vertical_direction := Vector2(0.0, signf(offset.y))
+	if absf(offset.x) >= absf(offset.y):
+		return _choose_unblocked_axis_direction(
+			horizontal_direction,
+			vertical_direction
+		)
+	return _choose_unblocked_axis_direction(
+		vertical_direction,
+		horizontal_direction
+	)
 
 
 func _get_collision_safe_direct_objective_direction(
 	objective_position: Vector2,
-	arrival_distance: float
+	_arrival_distance: float
 ) -> Vector2:
 	var offset := objective_position - global_position
-	var deadzone := maxf(arrival_distance, 0.0)
-	var abs_x := absf(offset.x)
-	var abs_y := absf(offset.y)
-	var direct_direction := Vector2.ZERO
-	if abs_x <= deadzone and abs_y > deadzone:
-		direct_direction = Vector2(0.0, signf(offset.y))
-	elif abs_y <= deadzone and abs_x > deadzone:
-		direct_direction = Vector2(signf(offset.x), 0.0)
-	elif abs_x >= abs_y:
-		direct_direction = Vector2(signf(offset.x), 0.0)
-	else:
-		direct_direction = Vector2(0.0, signf(offset.y))
+	if offset == Vector2.ZERO:
+		return Vector2.ZERO
+	var direct_direction := offset.normalized()
+	var probe_distance := _get_far_direct_objective_probe_distance()
+	var probe_motion := direct_direction * probe_distance
+	if test_move(global_transform, probe_motion):
+		return Vector2.ZERO
 
+	# Physical clearance alone can still place a large body inside a grid cell
+	# that is deliberately blocked by the inflated navigation profile. Keep the
+	# cheap straight-line tier outside that conservative band, otherwise the
+	# later handoff to flow navigation may have no valid start cell.
+	var grid_pathfinder := pathfinder as GridPathfinder
 	if (
-		direct_direction != Vector2.ZERO
-		and not test_move(
-			global_transform,
-			direct_direction * _get_far_direct_objective_probe_distance()
+		grid_pathfinder != null
+		and not grid_pathfinder.is_navigation_segment_walkable(
+			global_position,
+			global_position + probe_motion,
+			_get_body_collision_half_extents(),
+			terrain_traversal_types
 		)
 	):
-		return direct_direction
-	return Vector2.ZERO
+		return Vector2.ZERO
+	return direct_direction
+
+
+func _get_collision_safe_near_static_objective_direction(
+	objective_position: Vector2
+) -> Vector2:
+	var offset := objective_position - global_position
+	if offset == Vector2.ZERO:
+		return Vector2.ZERO
+	# Sweep the complete remaining segment with the real CharacterBody shape.
+	# The near tier continues through move_and_slide(), so this check is only a
+	# line-of-sight shortcut and never enables the lightweight far translation.
+	if test_move(global_transform, offset):
+		return Vector2.ZERO
+	return offset.normalized()
+
+
+func _get_static_objective_final_alignment_direction(
+	objective_position: Vector2,
+	arrival_distance: float
+) -> Vector2:
+	# A conservative agent grid can finish beside a narrow entrance while the
+	# real body still has a physically open final corridor. If a full diagonal
+	# sweep clips the entrance corner, first align the smaller axis by one safe
+	# local step; the regular near-direct tier takes over as soon as the full
+	# segment clears. This never reports objective contact or bypasses Area2D.
+	var offset := objective_position - global_position
+	if offset == Vector2.ZERO:
+		return Vector2.ZERO
+	var deadzone := maxf(arrival_distance, 0.0)
+	var horizontal_direction := Vector2(signf(offset.x), 0.0)
+	var vertical_direction := Vector2(0.0, signf(offset.y))
+	if absf(offset.x) <= deadzone:
+		return _choose_unblocked_axis_direction(vertical_direction)
+	if absf(offset.y) <= deadzone:
+		return _choose_unblocked_axis_direction(horizontal_direction)
+	if absf(offset.x) < absf(offset.y):
+		return _choose_unblocked_axis_direction(
+			horizontal_direction,
+			vertical_direction
+		)
+	return _choose_unblocked_axis_direction(
+		vertical_direction,
+		horizontal_direction
+	)
 
 
 func _get_far_direct_objective_probe_distance() -> float:
@@ -1146,6 +1256,15 @@ func _is_far_static_objective(target_node: Node2D) -> bool:
 		and target_node != target_player
 		and global_position.distance_squared_to(target_node.global_position)
 			>= FAR_STATIC_OBJECTIVE_DISTANCE_SQUARED
+	)
+
+
+func _is_near_static_objective(target_node: Node2D) -> bool:
+	return (
+		is_instance_valid(target_node)
+		and target_node != target_player
+		and global_position.distance_squared_to(target_node.global_position)
+			<= NEAR_STATIC_DIRECT_OBJECTIVE_DISTANCE_SQUARED
 	)
 
 
