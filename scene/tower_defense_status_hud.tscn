@@ -1,0 +1,197 @@
+[gd_scene load_steps=13 format=3]
+
+[ext_resource type="Script" path="res://scene/tower_defense_status_hud.gd" id="1_script"]
+[ext_resource type="Shader" path="res://scene/tower_defense_death_screen.gdshader" id="2_death_shader"]
+[ext_resource type="Shader" path="res://scene/tower_defense_gate_warning.gdshader" id="3_gate_shader"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
+[ext_resource type="AudioStream" path="res://resources/audio/ui/home_gate_double_warning.wav" id="5_warning_audio"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_death"]
+shader = ExtResource("2_death_shader")
+shader_parameter/intensity = 0.0
+shader_parameter/grayscale_strength = 0.32
+shader_parameter/edge_darkness = 0.46
+shader_parameter/edge_width = 0.26
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_gate"]
+shader = ExtResource("3_gate_shader")
+shader_parameter/edge_color = Color(1, 0.08, 0.035, 0.72)
+shader_parameter/intensity = 0.0
+shader_parameter/edge_width = 0.24
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_dead_list"]
+bg_color = Color(0.075, 0.065, 0.07, 0.9)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.62, 0.3, 0.3, 0.9)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+shadow_color = Color(0, 0, 0, 0.38)
+shadow_size = 4
+shadow_offset = Vector2(0, 2)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_local_dead"]
+bg_color = Color(0.045, 0.045, 0.05, 0.88)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.62, 0.62, 0.66, 0.82)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+shadow_color = Color(0, 0, 0, 0.52)
+shadow_size = 7
+shadow_offset = Vector2(0, 3)
+
+[sub_resource type="LabelSettings" id="LabelSettings_dead_title"]
+font = ExtResource("4_font")
+font_size = 17
+font_color = Color(1, 0.58, 0.54, 1)
+outline_size = 3
+outline_color = Color(0.08, 0.025, 0.025, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_dead_players"]
+font = ExtResource("4_font")
+font_size = 14
+font_color = Color(0.93, 0.87, 0.86, 1)
+outline_size = 2
+outline_color = Color(0.06, 0.03, 0.03, 0.95)
+
+[sub_resource type="LabelSettings" id="LabelSettings_local_title"]
+font = ExtResource("4_font")
+font_size = 34
+font_color = Color(0.84, 0.84, 0.86, 1)
+outline_size = 5
+outline_color = Color(0.04, 0.04, 0.05, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_local_countdown"]
+font = ExtResource("4_font")
+font_size = 19
+font_color = Color(0.94, 0.9, 0.88, 1)
+outline_size = 3
+outline_color = Color(0.04, 0.04, 0.05, 1)
+
+[node name="TowerDefenseStatusHUD" type="CanvasLayer"]
+layer = 18
+script = ExtResource("1_script")
+
+[node name="DeathScreenEffect" type="ColorRect" parent="."]
+material = SubResource("ShaderMaterial_death")
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(1, 1, 1, 1)
+
+[node name="GateWarningOverlay" type="ColorRect" parent="."]
+material = SubResource("ShaderMaterial_gate")
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(1, 1, 1, 1)
+
+[node name="RightMargin" type="MarginContainer" parent="."]
+layout_mode = 3
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -292.0
+offset_top = 68.0
+offset_right = -12.0
+offset_bottom = 240.0
+grow_horizontal = 0
+theme_override_constants/margin_left = 0
+theme_override_constants/margin_top = 0
+theme_override_constants/margin_right = 0
+theme_override_constants/margin_bottom = 0
+
+[node name="DeadPlayersPanel" type="PanelContainer" parent="RightMargin"]
+custom_minimum_size = Vector2(280, 84)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_dead_list")
+
+[node name="Margin" type="MarginContainer" parent="RightMargin/DeadPlayersPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 9
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="Content" type="VBoxContainer" parent="RightMargin/DeadPlayersPanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="Title" type="Label" parent="RightMargin/DeadPlayersPanel/Margin/Content"]
+layout_mode = 2
+text = "阵亡队员"
+label_settings = SubResource("LabelSettings_dead_title")
+
+[node name="Players" type="Label" parent="RightMargin/DeadPlayersPanel/Margin/Content"]
+layout_mode = 2
+text = "玩家：5秒后复活"
+label_settings = SubResource("LabelSettings_dead_players")
+autowrap_mode = 2
+
+[node name="LocalDeathCenter" type="CenterContainer" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="LocalDeathCenter"]
+custom_minimum_size = Vector2(372, 138)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_local_dead")
+
+[node name="Margin" type="MarginContainer" parent="LocalDeathCenter/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 26
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 26
+theme_override_constants/margin_bottom = 18
+
+[node name="Content" type="VBoxContainer" parent="LocalDeathCenter/Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="Title" type="Label" parent="LocalDeathCenter/Panel/Margin/Content"]
+layout_mode = 2
+text = "已阵亡"
+label_settings = SubResource("LabelSettings_local_title")
+horizontal_alignment = 1
+
+[node name="Countdown" type="Label" parent="LocalDeathCenter/Panel/Margin/Content"]
+layout_mode = 2
+text = "将在 5 秒后复活"
+label_settings = SubResource("LabelSettings_local_countdown")
+horizontal_alignment = 1
+
+[node name="SpectatorHint" type="Label" parent="LocalDeathCenter/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.73, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 12
+text = "移动键可观察战场"
+horizontal_alignment = 1
+
+[node name="GateWarningAudio" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("5_warning_audio")
+volume_db = -1.0
