@@ -27,17 +27,18 @@ func _physics_process(delta: float) -> void:
 	muzzle_flash_time_left = maxf(muzzle_flash_time_left - delta, 0.0)
 	_set_muzzle_flash(muzzle_flash_time_left / 0.05, last_move_direction)
 
-	if not is_instance_valid(target_player):
+	if not is_instance_valid(objective_target):
 		velocity = Vector2.ZERO
 		_move_until_player_contact()
 		return
 	if _has_player_contact():
-		var contact_aim_direction := global_position.direction_to(target_player.global_position)
-		if contact_aim_direction != Vector2.ZERO:
-			last_move_direction = contact_aim_direction
-		_update_facing(contact_aim_direction)
 		velocity = Vector2.ZERO
-		_try_fire_scatter(last_move_direction)
+		if is_objective_targeting_player():
+			var contact_aim_direction := global_position.direction_to(target_player.global_position)
+			if contact_aim_direction != Vector2.ZERO:
+				last_move_direction = contact_aim_direction
+			_update_facing(contact_aim_direction)
+			_try_fire_scatter(last_move_direction)
 		return
 
 	var move_direction := _get_navigation_move_direction(delta)
@@ -46,7 +47,8 @@ func _physics_process(delta: float) -> void:
 	_update_facing(move_direction)
 	velocity = move_direction * _get_move_speed()
 	_move_until_player_contact()
-	_try_fire_scatter(last_move_direction if move_direction != Vector2.ZERO else Vector2.ZERO)
+	if is_objective_targeting_player():
+		_try_fire_scatter(last_move_direction if move_direction != Vector2.ZERO else Vector2.ZERO)
 
 
 func _apply_config() -> void:
@@ -70,6 +72,8 @@ func play_multiplayer_death_sequence() -> void:
 
 
 func _try_fire_scatter(base_direction: Vector2) -> bool:
+	if not is_objective_targeting_player():
+		return false
 	var smg_config := config as SMGConfig
 	if smg_config == null or smg_config.projectile_scene == null:
 		return false

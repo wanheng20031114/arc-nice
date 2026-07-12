@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="FlowGraphConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/flow/flow_graph_config.gd" id="1_7aj6o"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/standard/multiplayer/wave_01.tres" id="2_0eej4"]
+[ext_resource type="Script" path="res://resources/config/flow/flow_step_config.gd" id="3_7a4m1"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/standard/multiplayer/wave_02.tres" id="4_k60m3"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/standard/multiplayer/wave_03.tres" id="5_b40f8"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/standard/multiplayer/wave_04.tres" id="6_nmvsn"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/standard/multiplayer/wave_05.tres" id="7_pm2dp"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/standard/multiplayer/wave_06.tres" id="8_3n2iq"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/standard/multiplayer/wave_07.tres" id="9_yld3m"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/standard/multiplayer/wave_08.tres" id="10_msenj"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/standard/multiplayer/wave_09.tres" id="11_iinaj"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/standard/multiplayer/wave_10.tres" id="12_xfhr6"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/standard/multiplayer/wave_11.tres" id="13_bn61k"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/standard/multiplayer/wave_12.tres" id="14_puvrq"]
+[ext_resource type="Resource" path="res://resources/config/bosses/boss_01_linglan.tres" id="15_5fasi"]
+
+[resource]
+script = ExtResource("1_7aj6o")
+graph_name = "普通模式 / 多人战斗流程"
+start_step = ExtResource("2_0eej4")
+steps = Array[ExtResource("3_7a4m1")]([ExtResource("2_0eej4"), ExtResource("4_k60m3"), ExtResource("5_b40f8"), ExtResource("6_nmvsn"), ExtResource("7_pm2dp"), ExtResource("8_3n2iq"), ExtResource("9_yld3m"), ExtResource("10_msenj"), ExtResource("11_iinaj"), ExtResource("12_xfhr6"), ExtResource("13_bn61k"), ExtResource("14_puvrq"), ExtResource("15_5fasi")])

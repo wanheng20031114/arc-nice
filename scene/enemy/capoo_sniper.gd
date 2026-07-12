@@ -37,17 +37,19 @@ func _physics_process(delta: float) -> void:
 
 	_update_touch_damage(delta)
 	_update_attack_cooldown(delta)
+	if combat_state == CombatState.LOCK and not is_objective_targeting_player():
+		_cancel_lock()
 
 	if combat_state == CombatState.LOCK:
 		_update_lock(delta)
 		return
 
-	if not is_instance_valid(target_player):
+	if not is_instance_valid(objective_target):
 		velocity = Vector2.ZERO
 		_move_until_player_contact()
 		return
 
-	if _try_start_lock():
+	if is_objective_targeting_player() and _try_start_lock():
 		return
 	if _has_player_contact():
 		velocity = Vector2.ZERO
@@ -99,6 +101,8 @@ func _update_attack_cooldown(delta: float) -> void:
 
 
 func _try_start_lock() -> bool:
+	if not is_objective_targeting_player():
+		return false
 	var sniper_config := config as SniperConfig
 	if sniper_config == null or sniper_config.lock_reticle_scene == null:
 		return false
@@ -126,7 +130,11 @@ func _try_start_lock() -> bool:
 
 func _update_lock(delta: float) -> void:
 	var sniper_config := config as SniperConfig
-	if sniper_config == null or not _is_lock_target_valid(sniper_config):
+	if (
+		sniper_config == null
+		or not is_objective_targeting_player()
+		or not _is_lock_target_valid(sniper_config)
+	):
 		_cancel_lock()
 		return
 

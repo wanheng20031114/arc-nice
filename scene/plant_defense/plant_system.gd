@@ -10,6 +10,10 @@ const MAX_PLACEMENT_MANHATTAN_DISTANCE: int = 4
 const ENTITY_BLOCKING_MASK: int = 1 | 2 | 4 | 32 | 256
 const FOOTPRINT_COLLISION_INSET: Vector2 = Vector2(4.0, 4.0)
 
+@export_range(0, 64, 1) var max_placement_manhattan_distance: int = (
+	MAX_PLACEMENT_MANHATTAN_DISTANCE
+)
+
 var ground_tile_map: TileMapLayer = null
 var terrain_map: DualGridTilemap = null
 var owner_player: Player = null
@@ -19,6 +23,7 @@ var placement_area: Rect2i = DEFAULT_PLACEMENT_AREA
 var occupied_cells: Dictionary = {}
 var plant_footprints: Dictionary = {}
 var reserved_cells: Dictionary = {}
+var plants_by_net_id: Dictionary[int, PlantDefense] = {}
 
 
 func setup(
@@ -87,27 +92,59 @@ func get_anchor_world_position(
 
 
 func get_valid_anchors(config: PlantDefenseConfig) -> Array[Vector2i]:
+	return get_valid_anchors_for_player(config, owner_player)
+
+
+func get_valid_anchors_for_player(
+	config: PlantDefenseConfig,
+	placement_player: Player
+) -> Array[Vector2i]:
 	var valid_anchors: Array[Vector2i] = []
-	if not _is_ready_for_placement() or config == null or not config.is_valid():
+	if not _is_ready_for_placement(placement_player) or config == null or not config.is_valid():
 		return valid_anchors
 
-	var last_top_left_exclusive := placement_area.end - config.footprint_size + Vector2i.ONE
-	for y in range(placement_area.position.y, last_top_left_exclusive.y):
-		for x in range(placement_area.position.x, last_top_left_exclusive.x):
+	var player_cell := _get_player_cell(placement_player)
+	var candidate_area := _get_candidate_anchor_area(config, player_cell)
+	for y in range(candidate_area.position.y, candidate_area.end.y):
+		for x in range(candidate_area.position.x, candidate_area.end.x):
 			var top_left_cell := Vector2i(x, y)
-			if is_placement_valid(top_left_cell, config):
+			if (
+				_get_footprint_manhattan_distance(
+					top_left_cell,
+					config.footprint_size,
+					player_cell
+				)
+				> maxi(max_placement_manhattan_distance, 0)
+			):
+				continue
+			if is_placement_valid_for_player(top_left_cell, config, placement_player):
 				valid_anchors.append(top_left_cell)
 	return valid_anchors
 
 
 func is_placement_valid(top_left_cell: Vector2i, config: PlantDefenseConfig) -> bool:
-	if not _is_ready_for_placement() or config == null or not config.is_valid():
+	return is_placement_valid_for_player(top_left_cell, config, owner_player)
+
+
+func is_placement_valid_for_player(
+	top_left_cell: Vector2i,
+	config: PlantDefenseConfig,
+	placement_player: Player
+) -> bool:
+	if not _is_ready_for_placement(placement_player) or config == null or not config.is_valid():
 		return false
 
 	var cells := get_footprint_cells(top_left_cell, config)
 	if cells.size() != config.footprint_size.x * config.footprint_size.y:
 		return false
-	if not _is_within_player_distance(cells):
+	if (
+		_get_footprint_manhattan_distance(
+			top_left_cell,
+			config.footprint_size,
+			_get_player_cell(placement_player)
+		)
+		> maxi(max_placement_manhattan_distance, 0)
+	):
 		return false
 
 	for cell in cells:
@@ -122,8 +159,94 @@ func is_placement_valid(top_left_cell: Vector2i, config: PlantDefenseConfig) -> 
 
 
 func try_place(config: PlantDefenseConfig, top_left_cell: Vector2i) -> PlantDefense:
-	if not is_placement_valid(top_left_cell, config):
+	return try_place_for_player(config, top_left_cell, owner_player)
+
+
+func try_place_for_player(
+	config: PlantDefenseConfig,
+	top_left_cell: Vector2i,
+	placement_player: Player,
+	net_id: int = 0
+) -> PlantDefense:
+	if net_id < 0:
+		push_error("PlantSystem net_id cannot be negative.")
 		return null
+	if net_id > 0 and plants_by_net_id.has(net_id):
+		push_error("PlantSystem duplicate authoritative net_id: %d." % net_id)
+		return null
+	if not is_placement_valid_for_player(top_left_cell, config, placement_player):
+		return null
+	return _instantiate_registered_plant(
+		config,
+		top_left_cell,
+		placement_player,
+		net_id,
+		false,
+		-1,
+		0,
+		-1
+	)
+
+
+func spawn_multiplayer_replica(
+	plant_id: StringName,
+	top_left_cell: Vector2i,
+	placement_player: Player,
+	net_id: int,
+	current_health: int,
+	maximum_health: int,
+	health_revision: int
+) -> PlantDefense:
+	var config := get_config(plant_id)
+	if (
+		config == null
+		or not config.is_valid()
+		or not config.supports_multiplayer
+		or net_id <= 0
+		or ground_tile_map == null
+		or ground_tile_map.tile_set == null
+		or not is_instance_valid(plant_container)
+	):
+		return null
+	if plants_by_net_id.has(net_id):
+		var existing_plant := plants_by_net_id[net_id] as PlantDefense
+		if (
+			existing_plant != null
+			and is_instance_valid(existing_plant)
+			and not existing_plant.is_queued_for_deletion()
+		):
+			return existing_plant
+		plants_by_net_id.erase(net_id)
+	var cells := get_footprint_cells(top_left_cell, config)
+	for cell in cells:
+		if not placement_area.has_point(cell):
+			push_error("PlantSystem replica footprint is outside placement area at %s." % cell)
+			return null
+		if reserved_cells.has(cell) or occupied_cells.has(cell):
+			push_error("PlantSystem replica footprint conflicts at %s." % cell)
+			return null
+	return _instantiate_registered_plant(
+		config,
+		top_left_cell,
+		placement_player,
+		net_id,
+		true,
+		clampi(current_health, 0, maxi(maximum_health, 1)),
+		health_revision,
+		maximum_health
+	)
+
+
+func _instantiate_registered_plant(
+	config: PlantDefenseConfig,
+	top_left_cell: Vector2i,
+	placement_player: Player,
+	net_id: int,
+	as_multiplayer_proxy: bool,
+	initial_health: int,
+	initial_health_revision: int,
+	initial_maximum_health: int
+) -> PlantDefense:
 
 	var instance := config.plant_scene.instantiate()
 	var plant := instance as PlantDefense
@@ -133,13 +256,30 @@ func try_place(config: PlantDefenseConfig, top_left_cell: Vector2i) -> PlantDefe
 		return null
 
 	var cells := get_footprint_cells(top_left_cell, config)
-	plant.name = "%s_%d" % [String(config.plant_id), plant.get_instance_id()]
+	plant.name = (
+		"%s_net_%d" % [String(config.plant_id), net_id]
+		if net_id > 0
+		else "%s_%d" % [String(config.plant_id), plant.get_instance_id()]
+	)
 	plant_container.add_child(plant)
 	plant.global_position = get_anchor_world_position(top_left_cell, config)
+	if net_id > 0:
+		plant.set_meta(&"net_id", net_id)
+		plants_by_net_id[net_id] = plant
 	_register_plant_footprint(plant, cells)
 	plant.died.connect(_on_plant_died.bind(plant), CONNECT_ONE_SHOT)
 	plant.tree_exiting.connect(_on_plant_tree_exiting.bind(plant), CONNECT_ONE_SHOT)
-	plant.setup(config, owner_player, cells)
+	plant.setup(
+		config,
+		placement_player,
+		cells,
+		as_multiplayer_proxy,
+		initial_health,
+		initial_health_revision,
+		initial_maximum_health
+	)
+	if plant.is_dead:
+		return null
 	plant_placed.emit(plant)
 	return plant
 
@@ -150,6 +290,20 @@ func try_place_by_id(plant_id: StringName, top_left_cell: Vector2i) -> PlantDefe
 
 func get_plant_at_cell(cell: Vector2i) -> PlantDefense:
 	return occupied_cells.get(cell) as PlantDefense
+
+
+func get_plant_by_net_id(net_id: int) -> PlantDefense:
+	return plants_by_net_id.get(net_id) as PlantDefense
+
+
+func remove_plant_by_net_id(net_id: int) -> bool:
+	var plant := get_plant_by_net_id(net_id)
+	if plant == null or not is_instance_valid(plant):
+		plants_by_net_id.erase(net_id)
+		return false
+	_release_plant_footprint(plant)
+	plant.queue_free()
+	return true
 
 
 func is_cell_occupied(cell: Vector2i) -> bool:
@@ -190,37 +344,67 @@ func clear_all_plants() -> void:
 			plant.queue_free()
 
 
-func _is_ready_for_placement() -> bool:
+func _is_ready_for_placement(placement_player: Player) -> bool:
 	return (
 		ground_tile_map != null
 		and ground_tile_map.tile_set != null
-		and is_instance_valid(owner_player)
+		and is_instance_valid(placement_player)
 		and is_instance_valid(plant_container)
 	)
 
 
-func _is_within_player_distance(cells: Array[Vector2i]) -> bool:
-	if ground_tile_map == null or not is_instance_valid(owner_player):
-		return false
-
-	var player_cell := ground_tile_map.local_to_map(
-		ground_tile_map.to_local(owner_player.global_position)
+func _get_player_cell(placement_player: Player) -> Vector2i:
+	return ground_tile_map.local_to_map(
+		ground_tile_map.to_local(placement_player.global_position)
 	)
-	var closest_distance := 1 << 30
-	for cell in cells:
-		var distance := absi(cell.x - player_cell.x) + absi(cell.y - player_cell.y)
-		closest_distance = mini(closest_distance, distance)
-	return closest_distance <= MAX_PLACEMENT_MANHATTAN_DISTANCE
+
+
+func _get_candidate_anchor_area(
+	config: PlantDefenseConfig,
+	player_cell: Vector2i
+) -> Rect2i:
+	var placement_anchor_size := (
+		placement_area.size - config.footprint_size + Vector2i.ONE
+	)
+	if placement_anchor_size.x <= 0 or placement_anchor_size.y <= 0:
+		return Rect2i()
+
+	var placement_anchor_area := Rect2i(placement_area.position, placement_anchor_size)
+	var radius := maxi(max_placement_manhattan_distance, 0)
+	var footprint_extension := config.footprint_size - Vector2i.ONE
+	var nearby_anchor_area := Rect2i(
+		player_cell - Vector2i(radius, radius) - footprint_extension,
+		Vector2i(radius * 2 + 1, radius * 2 + 1) + footprint_extension
+	)
+	return placement_anchor_area.intersection(nearby_anchor_area)
+
+
+func _get_footprint_manhattan_distance(
+	top_left_cell: Vector2i,
+	footprint_size: Vector2i,
+	player_cell: Vector2i
+) -> int:
+	var bottom_right_cell := top_left_cell + footprint_size - Vector2i.ONE
+	var x_distance := 0
+	if player_cell.x < top_left_cell.x:
+		x_distance = top_left_cell.x - player_cell.x
+	elif player_cell.x > bottom_right_cell.x:
+		x_distance = player_cell.x - bottom_right_cell.x
+
+	var y_distance := 0
+	if player_cell.y < top_left_cell.y:
+		y_distance = top_left_cell.y - player_cell.y
+	elif player_cell.y > bottom_right_cell.y:
+		y_distance = player_cell.y - bottom_right_cell.y
+	return x_distance + y_distance
 
 
 func _is_floor_cell_available(cell: Vector2i) -> bool:
 	var tile_data := ground_tile_map.get_cell_tile_data(cell)
-	if tile_data == null:
-		return false
-	if tile_data.get_collision_polygons_count(0) > 0:
+	if tile_data != null and tile_data.get_collision_polygons_count(0) > 0:
 		return false
 	if terrain_map == null:
-		return true
+		return tile_data != null
 	var world_cell_center := ground_tile_map.to_global(ground_tile_map.map_to_local(cell))
 	return terrain_map.is_world_position_plantable(world_cell_center)
 
@@ -258,6 +442,9 @@ func _release_plant_footprint(plant: PlantDefense) -> void:
 
 	var cells: Array = plant_footprints[plant]
 	plant_footprints.erase(plant)
+	var net_id := int(plant.get_meta(&"net_id", 0)) if is_instance_valid(plant) else 0
+	if net_id > 0 and plants_by_net_id.get(net_id) == plant:
+		plants_by_net_id.erase(net_id)
 	for cell_variant in cells:
 		var cell: Vector2i = cell_variant
 		if occupied_cells.get(cell) == plant:

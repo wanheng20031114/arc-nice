@@ -1,0 +1,91 @@
+[gd_resource type="Resource" script_class="WaveConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_v5wrs"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_fast.tres" id="2_j4r3t"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_shell.tres" id="3_y5tem"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_purple_bomber.tres" id="4_dlmix"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_green_shell.tres" id="5_bhgqb"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_ak47.tres" id="6_gtgeq"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_knight.tres" id="7_kqyk8"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_knight_elite.tres" id="8_mhopo"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_swordsman.tres" id="9_mq6fc"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_mage.tres" id="10_aox76"]
+[ext_resource type="Script" path="res://resources/config/flow/flow_exit_config.gd" id="11_0b575"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_swamp_combat.ogg" id="12_1ho3s"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_swamp_intermission.ogg" id="13_h8tw4"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="14_30tlm"]
+
+[sub_resource type="Resource" id="Resource_tlg0m"]
+script = ExtResource("1_v5wrs")
+enemy_config = ExtResource("2_j4r3t")
+count = 150
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_ywmg3"]
+script = ExtResource("1_v5wrs")
+enemy_config = ExtResource("3_y5tem")
+count = 360
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_lqg28"]
+script = ExtResource("1_v5wrs")
+enemy_config = ExtResource("4_dlmix")
+count = 90
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_brkdf"]
+script = ExtResource("1_v5wrs")
+enemy_config = ExtResource("5_bhgqb")
+count = 60
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_trg0u"]
+script = ExtResource("1_v5wrs")
+enemy_config = ExtResource("6_gtgeq")
+count = 60
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_nbjgw"]
+script = ExtResource("1_v5wrs")
+enemy_config = ExtResource("7_kqyk8")
+count = 60
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_w4kxv"]
+script = ExtResource("1_v5wrs")
+enemy_config = ExtResource("8_mhopo")
+count = 60
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_v4dxa"]
+script = ExtResource("1_v5wrs")
+enemy_config = ExtResource("9_mq6fc")
+count = 180
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_ninri"]
+script = ExtResource("1_v5wrs")
+enemy_config = ExtResource("10_aox76")
+count = 180
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_ggi53"]
+script = ExtResource("11_0b575")
+target_step_id = &"wave_10"
+metadata/_custom_type_script = "uid://blcjxtu575ki5"
+
+[resource]
+script = ExtResource("14_30tlm")
+wave_name = "第9波"
+enemy_entries = Array[ExtResource("1_v5wrs")]([SubResource("Resource_tlg0m"), SubResource("Resource_ywmg3"), SubResource("Resource_lqg28"), SubResource("Resource_brkdf"), SubResource("Resource_trg0u"), SubResource("Resource_nbjgw"), SubResource("Resource_w4kxv"), SubResource("Resource_v4dxa"), SubResource("Resource_ninri")])
+spawn_point_mask = 63
+spawn_interval = 0.1
+spawn_count_per_tick = 4
+max_alive_enemies = 300
+music = ExtResource("12_1ho3s")
+post_wave_music = ExtResource("13_h8tw4")
+step_id = &"wave_09"
+display_name = "第9波"
+post_clear_rest_duration = 30.0
+exits = Array[ExtResource("11_0b575")]([SubResource("Resource_ggi53")])
+editor_position = Vector2(120, 320)

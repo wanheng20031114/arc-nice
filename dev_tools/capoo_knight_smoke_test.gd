@@ -30,25 +30,22 @@ class FakePathfinder:
 	var budget_available := true
 	var path := PackedVector2Array()
 
-	func get_global_path(
+	func try_get_safe_navigation_step(
 		_from_global_position: Vector2,
 		_to_global_position: Vector2,
 		_agent_half_extents: Vector2 = Vector2.ZERO,
 		_traversal_types: int = DualGridTilemap.TraversalType.LAND
-	) -> PackedVector2Array:
-		requested_path = true
-		return path
-
-	func try_get_global_path(
-		_from_global_position: Vector2,
-		_to_global_position: Vector2,
-		_agent_half_extents: Vector2 = Vector2.ZERO,
-		_traversal_types: int = DualGridTilemap.TraversalType.LAND
-	) -> Variant:
+	) -> Dictionary:
 		requested_path = true
 		if not budget_available:
-			return null
-		return path
+			return {"status": GridPathfinder.NavigationStepStatus.DEFERRED}
+		if path.is_empty():
+			return {"status": GridPathfinder.NavigationStepStatus.UNREACHABLE}
+		return {
+			"status": GridPathfinder.NavigationStepStatus.READY,
+			"waypoint": path[0],
+			"is_complete_route": true,
+		}
 
 
 func _init() -> void:
@@ -362,9 +359,8 @@ func _test_path_waypoint_motion_does_not_cut_corners() -> void:
 	test_root.add_child(pathfinder)
 	var enemy := _spawn_knight(Vector2.ZERO, player)
 	enemy.pathfinder = pathfinder
-	enemy.current_path = PackedVector2Array([Vector2(32.0, 32.0)])
-	enemy.current_path_index = 0
-	enemy.path_refresh_time_left = 10.0
+	enemy.navigation_update_interval_frames = 1
+	pathfinder.path = PackedVector2Array([Vector2(32.0, 32.0)])
 
 	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
 	_expect(is_zero_approx(move_direction.x) or is_zero_approx(move_direction.y), "Knight path following must not move diagonally into obstacle corners.")
@@ -385,18 +381,16 @@ func _test_navigation_budget_retry_keeps_existing_path() -> void:
 	test_root.add_child(pathfinder)
 	var enemy := _spawn_knight(Vector2.ZERO, player)
 	enemy.pathfinder = pathfinder
-	enemy.current_path = PackedVector2Array([Vector2(8.0, 0.0)])
-	enemy.current_path_index = 0
+	enemy.navigation_update_interval_frames = 1
+	enemy.cached_navigation_move_direction = Vector2.RIGHT
 
 	pathfinder.budget_available = false
-	enemy.call("_refresh_navigation_path")
-	_expect(enemy.current_path.size() == 1 and enemy.current_path[0] == Vector2(8.0, 0.0), "Knight must keep its current path when path budget is exhausted.")
-	_expect(enemy.path_refresh_time_left >= 0.03 and enemy.path_refresh_time_left <= 0.08, "Knight retry delay must be short when path budget is exhausted.")
+	var deferred_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
+	_expect(deferred_direction == Vector2.RIGHT, "Knight must keep only its shape-safe cached direction while navigation is DEFERRED.")
 
 	pathfinder.budget_available = true
-	enemy.call("_refresh_navigation_path")
-	_expect(enemy.current_path.size() == 2 and enemy.current_path[0] == Vector2(16.0, 0.0), "Knight must update its path when path budget is available.")
-	_expect(enemy.path_refresh_time_left >= 0.1875 and enemy.path_refresh_time_left <= 0.3125, "Knight successful refresh delay must be jittered around the configured interval.")
+	var ready_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
+	_expect(ready_direction == Vector2.RIGHT, "Knight must consume the READY safe waypoint when budget returns.")
 
 	enemy.queue_free()
 	pathfinder.queue_free()

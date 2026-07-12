@@ -39,12 +39,39 @@ func _run() -> void:
 	) as ColorRect
 	var username_panel := lobby.get_node_or_null("LobbyCenter/UsernamePanel") as PanelContainer
 	var tile_pattern := lobby.get_node_or_null("TilePattern") as TextureRect
+	var game_mode_selector := lobby.get_node_or_null(
+		"LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/GameModeRow/GameModeSelector"
+	) as OptionButton
+	var room_mode_label := lobby.get_node_or_null(
+		"LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomModeLabel"
+	) as Label
 
 	_expect(
 		tile_pattern != null and tile_pattern.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
 		"Pixel-art lobby background must keep Nearest filtering."
 	)
 	_expect(username_panel != null, "UsernamePanel must exist.")
+	_expect(game_mode_selector != null, "Lobby must expose a native game-mode selector.")
+	_expect(room_mode_label != null, "Room wait panel must expose the synchronized mode label.")
+	if game_mode_selector != null:
+		_expect(game_mode_selector.item_count == 2, "Game-mode selector must contain standard and tower defense.")
+		_expect(
+			game_mode_selector.get_item_id(0) == NetManagerStore.GameMode.STANDARD
+			and game_mode_selector.get_item_id(1) == NetManagerStore.GameMode.TOWER_DEFENSE,
+			"Game-mode selector ids must match the network enum."
+		)
+		game_mode_selector.select(1)
+		lobby.call("_on_game_mode_selected", 1)
+		_expect(
+			(root.get_node("NetManager") as NetManagerStore).get_current_game_mode()
+			== NetManagerStore.GameMode.TOWER_DEFENSE,
+			"Disconnected room hosts must be able to select tower-defense mode."
+		)
+		lobby.call("_update_room_mode_label")
+		_expect(
+			room_mode_label != null and room_mode_label.text.contains("塔防模式"),
+			"Room wait mode label must reflect NetManager authority."
+		)
 	if username_panel != null:
 		_expect(username_panel.scale == Vector2.ONE, "UsernamePanel intro must never scale its text subtree.")
 	_expect(input != null, "Username LineEdit must remain available as the real input control.")
@@ -124,6 +151,7 @@ func _run() -> void:
 
 	if audio != null:
 		audio.stop()
+	(root.get_node("NetManager") as NetManagerStore).disconnect_from_game()
 	for _frame_index in range(32):
 		await process_frame
 	lobby.queue_free()

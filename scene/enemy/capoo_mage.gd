@@ -32,6 +32,8 @@ func _physics_process(delta: float) -> void:
 
 	_update_touch_damage(delta)
 	_update_attack_cooldown(delta)
+	if combat_state != CombatState.CHASE and not is_objective_targeting_player():
+		_cancel_attack()
 
 	match combat_state:
 		CombatState.WINDUP:
@@ -41,12 +43,12 @@ func _physics_process(delta: float) -> void:
 			_update_fire(delta)
 			return
 
-	if not is_instance_valid(target_player):
+	if not is_instance_valid(objective_target):
 		velocity = Vector2.ZERO
 		_move_until_player_contact()
 		return
 
-	if _try_start_windup():
+	if is_objective_targeting_player() and _try_start_windup():
 		return
 	if _has_player_contact():
 		velocity = Vector2.ZERO
@@ -88,6 +90,8 @@ func _update_attack_cooldown(delta: float) -> void:
 
 
 func _try_start_windup() -> bool:
+	if not is_objective_targeting_player():
+		return false
 	var mage_config := config as MageConfig
 	if mage_config == null or mage_config.projectile_scene == null:
 		return false
@@ -116,7 +120,11 @@ func _try_start_windup() -> bool:
 
 func _update_windup(delta: float) -> void:
 	var mage_config := config as MageConfig
-	if mage_config == null or not is_instance_valid(target_player):
+	if (
+		mage_config == null
+		or not is_objective_targeting_player()
+		or not is_instance_valid(target_player)
+	):
 		_cancel_attack()
 		return
 

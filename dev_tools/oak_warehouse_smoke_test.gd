@@ -52,6 +52,7 @@ func _test_config_and_scene(config: PlantDefenseConfig, warehouse: OakWarehouse)
 	_expect(config != null and config.is_valid(), "橡木仓库配置必须有效。")
 	_expect(config.footprint_size == Vector2i(2, 2), "橡木仓库必须占用四格地砖。")
 	_expect(config.max_health == 300, "橡木仓库生命值必须为300。")
+	_expect(not config.supports_multiplayer, "仓库库存联网前，橡木仓库必须明确限制为单人建筑。")
 	_expect(PlantDefenseRegistry.get_all_configs().size() == 2, "植物选择必须包含两种建筑。")
 	_expect(warehouse.storage_items.size() == 20, "仓库必须拥有20个物品格。")
 	_expect(

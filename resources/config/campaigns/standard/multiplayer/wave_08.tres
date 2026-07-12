@@ -1,0 +1,47 @@
+[gd_resource type="Resource" script_class="WaveConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_fnhnx"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_shell.tres" id="2_hhj14"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_purple_bomber.tres" id="3_b4gfj"]
+[ext_resource type="Script" path="res://resources/config/flow/flow_exit_config.gd" id="4_n8h0l"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_swamp_combat.ogg" id="5_qmqet"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_swamp_intermission.ogg" id="6_mr5eb"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="7_l3hxd"]
+
+[sub_resource type="Resource" id="Resource_8kig3"]
+script = ExtResource("1_fnhnx")
+enemy_config = ExtResource("2_hhj14")
+count = 120
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_oh7la"]
+script = ExtResource("1_fnhnx")
+enemy_config = ExtResource("3_b4gfj")
+count = 100
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_qnqjb"]
+script = ExtResource("1_fnhnx")
+enemy_config = ExtResource("2_hhj14")
+count = 200
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_8j8ef"]
+script = ExtResource("4_n8h0l")
+target_step_id = &"wave_09"
+metadata/_custom_type_script = "uid://blcjxtu575ki5"
+
+[resource]
+script = ExtResource("7_l3hxd")
+wave_name = "第8波"
+enemy_entries = Array[ExtResource("1_fnhnx")]([SubResource("Resource_8kig3"), SubResource("Resource_oh7la"), SubResource("Resource_qnqjb")])
+spawn_interval = 0.142857
+spawn_count_per_tick = 2
+max_alive_enemies = 150
+music = ExtResource("5_qmqet")
+post_wave_music = ExtResource("6_mr5eb")
+step_id = &"wave_08"
+display_name = "第8波"
+post_clear_rest_duration = 30.0
+exits = Array[ExtResource("4_n8h0l")]([SubResource("Resource_8j8ef")])
+editor_position = Vector2(1200, 100)

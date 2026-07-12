@@ -27,9 +27,6 @@ var burst_shot_direction := Vector2.RIGHT
 var burst_shots_fired: int = 0
 var burst_fire_time_left: float = 0.0
 var burst_audio_step: int = 0
-var current_path: PackedVector2Array = PackedVector2Array()
-var current_path_index: int = 0
-var path_refresh_time_left: float = 0.0
 var action_sequence: int = 0
 var latest_proxy_action_id: int = 0
 
@@ -47,6 +44,8 @@ func _physics_process(delta: float) -> void:
 
 	_update_touch_damage(delta)
 	_update_attack_cooldown(delta)
+	if combat_state != CombatState.CHASE and not is_objective_targeting_player():
+		_cancel_attack()
 
 	match combat_state:
 		CombatState.WINDUP:
@@ -56,12 +55,12 @@ func _physics_process(delta: float) -> void:
 			_update_burst(delta)
 			return
 
-	if not is_instance_valid(target_player):
+	if not is_instance_valid(objective_target):
 		velocity = Vector2.ZERO
 		_move_until_player_contact()
 		return
 
-	if _try_start_windup():
+	if is_objective_targeting_player() and _try_start_windup():
 		return
 	if _has_player_contact():
 		velocity = Vector2.ZERO
@@ -108,6 +107,8 @@ func _update_attack_cooldown(delta: float) -> void:
 
 
 func _try_start_windup() -> bool:
+	if not is_objective_targeting_player():
+		return false
 	var capoo_config := config as CapooConfig
 	if capoo_config == null:
 		return false
@@ -135,7 +136,11 @@ func _try_start_windup() -> bool:
 
 func _update_windup(delta: float) -> void:
 	var capoo_config := config as CapooConfig
-	if capoo_config == null or not is_instance_valid(target_player):
+	if (
+		capoo_config == null
+		or not is_objective_targeting_player()
+		or not is_instance_valid(target_player)
+	):
 		_cancel_attack()
 		return
 
@@ -323,106 +328,12 @@ func _get_move_speed() -> float:
 	return get_effective_move_speed()
 
 
-func _get_navigation_move_direction(delta: float) -> Vector2:
-	path_refresh_time_left = maxf(path_refresh_time_left - delta, 0.0)
-	if not _should_update_navigation_direction():
-		return cached_navigation_move_direction
-
-	if _should_direct_chase_target():
-		var direct_move_direction := _get_shape_safe_move_direction_to_target(target_player)
-		if direct_move_direction != Vector2.ZERO:
-			_clear_navigation_path()
-			return _cache_navigation_move_direction(direct_move_direction)
-		path_refresh_time_left = minf(path_refresh_time_left, _get_navigation_retry_interval())
-
-	if pathfinder == null or not pathfinder.get("is_built"):
-		return _cache_navigation_move_direction(_get_shape_safe_move_direction_to_target(target_player))
-
-	var flow_direction := _get_shared_flow_navigation_direction(target_player, pathfinder)
-	if flow_direction != Vector2.ZERO:
-		_clear_navigation_path()
-		return _cache_navigation_move_direction(flow_direction)
-
-	if path_refresh_time_left <= 0.0 or current_path.is_empty():
-		_refresh_navigation_path()
-
-	if current_path.is_empty():
-		return _cache_navigation_move_direction(_get_navigation_fallback_move_direction())
-
-	while current_path_index < current_path.size():
-		var waypoint := current_path[current_path_index]
-		if global_position.distance_to(waypoint) > waypoint_arrival_distance:
-			return _cache_navigation_move_direction(_get_axis_aligned_waypoint_direction(waypoint, waypoint_arrival_distance))
-		current_path_index += 1
-
-	return _cache_navigation_move_direction(_get_navigation_fallback_move_direction())
-
-
-func _refresh_navigation_path() -> void:
-	if pathfinder.has_method("try_get_global_path"):
-		var path_result: Variant = pathfinder.call(
-			"try_get_global_path",
-			global_position,
-			target_player.global_position,
-			_get_body_collision_half_extents(),
-			terrain_traversal_types
-		)
-		if path_result == null:
-			path_refresh_time_left = _get_navigation_retry_interval()
-			return
-		current_path = path_result
-	else:
-		current_path = pathfinder.get_global_path(
-			global_position,
-			target_player.global_position,
-			_get_body_collision_half_extents(),
-			terrain_traversal_types
-		)
-	path_refresh_time_left = _get_navigation_refresh_interval()
-	current_path_index = 0
-
-
-func _get_navigation_refresh_interval() -> float:
-	return maxf(path_refresh_interval, 0.05) * random_generator.randf_range(0.75, 1.25)
-
-
-func _get_navigation_retry_interval() -> float:
-	return random_generator.randf_range(0.03, 0.08)
-
-
-func _clear_navigation_path() -> void:
-	current_path = PackedVector2Array()
-	current_path_index = 0
-	path_refresh_time_left = 0.0
-	_clear_cached_navigation_move_direction()
-
-
-func _get_navigation_fallback_move_direction() -> Vector2:
-	if _has_clear_world_line_to_target():
-		var direct_direction := _get_shape_safe_move_direction_to_target(target_player)
-		if direct_direction != Vector2.ZERO:
-			return direct_direction
-	path_refresh_time_left = minf(path_refresh_time_left, _get_navigation_retry_interval())
-	return Vector2.ZERO
-
-
-func _should_direct_chase_target() -> bool:
-	var direct_chase_distance := _get_body_extent_radius() + _get_target_extent_radius() + direct_chase_extra_distance
-	if global_position.distance_to(target_player.global_position) > direct_chase_distance:
-		return false
-	return _has_clear_world_line_to_target()
-
-
-func _get_body_extent_radius() -> float:
-	return _get_body_collision_extent_radius()
-
-
-func _get_target_extent_radius() -> float:
-	var target_collision_shape := target_player.get_node_or_null("CollisionShape2D") as CollisionShape2D
-	if target_collision_shape == null:
-		return 0.0
-
-	return _get_collision_shape_extent_radius(target_collision_shape)
+func _get_navigation_move_direction(_delta: float) -> Vector2:
+	return _get_safe_navigation_move_direction(
+		objective_target,
+		pathfinder,
+		waypoint_arrival_distance
+	)
 
 
 func _update_facing(move_direction: Vector2) -> void:
@@ -467,7 +378,7 @@ func _drop_xirang() -> void:
 		return
 	if config.xirang_drop_amount <= 0:
 		return
-	if not is_instance_valid(target_player):
+	if not is_instance_valid(reward_player):
 		return
 
 	var drop_parent := get_parent()
@@ -479,7 +390,7 @@ func _drop_xirang() -> void:
 		return
 
 	drop_parent.add_child(drop)
-	drop.setup(config.xirang_drop_amount, target_player, global_position, Vector2.ZERO)
+	drop.setup(config.xirang_drop_amount, reward_player, global_position, Vector2.ZERO)
 
 
 func _try_drop_pickup() -> void:

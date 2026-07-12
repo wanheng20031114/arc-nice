@@ -1,9 +1,9 @@
-[gd_resource type="Resource" script_class="CapooSniperConfig" format=3]
+[gd_resource type="Resource" script_class="CapooSniperConfig" format=3 uid="uid://cqlpqyrs5d7d2"]
 
-[ext_resource type="Script" path="res://resources/config/enemies/capoo_sniper_config.gd" id="1_script"]
-[ext_resource type="PackedScene" path="res://scene/enemy/capoo_sniper.tscn" id="2_scene"]
+[ext_resource type="Script" uid="uid://cc7ac136dc8l8" path="res://resources/config/enemies/capoo_sniper_config.gd" id="1_script"]
+[ext_resource type="PackedScene" uid="uid://bv3hadhgf8c88" path="res://scene/enemy/capoo_sniper.tscn" id="2_scene"]
 [ext_resource type="PackedScene" path="res://scene/enemy/capoo_sniper_lock_reticle.tscn" id="3_reticle"]
-[ext_resource type="AudioStream" path="res://resources/audio/capoo_sniper_fire.wav" id="4_audio"]
+[ext_resource type="AudioStream" uid="uid://b0nwiuq3akcvc" path="res://resources/audio/capoo_sniper_fire.wav" id="4_audio"]
 
 [resource]
 script = ExtResource("1_script")
@@ -16,5 +16,6 @@ attack_damage = 200
 physical_defense = 20
 magic_defense = 0
 move_speed = 80.0
+home_damage = 2
 xirang_drop_amount = 35
 pickup_drop_chance = 0.2

@@ -95,6 +95,8 @@ func _test_default_wave_resources() -> void:
 
 func _test_game_scene_wave_list() -> void:
 	var game := GAME_SCENE.instantiate() as Node2D
+	var campaign_configured := bool(game.call("_configure_active_campaign"))
+	_expect(campaign_configured, "Game scene must configure its singleplayer Campaign.")
 	var game_waves: Array = game.get("waves")
 	var flow_graph := game.get("flow_graph") as FlowGraphConfig
 	_expect(game_waves.size() == 12, "Game scene must load 12 waves.")
@@ -203,10 +205,9 @@ func _test_wave_state_flow() -> void:
 		merchant.get_node("StaticBody2D/CollisionShape2D") as CollisionShape2D
 	)
 	var wave_hud := game.get_node("WaveHUD") as WaveHUD
-	var test_waves := _create_test_waves(3)
-	game.set("waves", test_waves)
+	var test_waves := _configure_test_campaign(game, 3)
 	game.set("pre_wave_duration", 5.0)
-	game.call("_enter_pre_wave", 0)
+	game.call("_enter_pre_flow_step", test_waves[0])
 
 	_expect(
 		merchant_sprite.scale == Vector2.ONE,
@@ -230,7 +231,7 @@ func _test_wave_state_flow() -> void:
 	_expect(merchant_collision.disabled, "Merchant collision was active before intermission.")
 	_expect(wave_hud.status_label.text.contains("5"), "Wave HUD did not show opening countdown.")
 
-	game.call("_begin_wave", 0)
+	game.call("_begin_flow_step", test_waves[0])
 	await physics_frame
 	_expect(game.get("wave_state") == STATE_WAVE_ACTIVE, "Wave 1 did not start.")
 	_expect(game.get("current_wave_total") == 1, "Test wave total is incorrect.")
@@ -262,7 +263,7 @@ func _test_wave_state_flow() -> void:
 		"Final countdown pitch must stay 1.0 at 2 seconds."
 	)
 
-	game.call("_begin_wave", 1)
+	game.call("_begin_flow_step", test_waves[1])
 	await physics_frame
 	_expect(not merchant.visible, "Merchant did not hide when wave 2 began.")
 	await physics_frame
@@ -270,7 +271,7 @@ func _test_wave_state_flow() -> void:
 	await _defeat_only_enemy(game)
 	_expect(game.get("wave_state") == STATE_INTERMISSION, "Wave 2 did not enter intermission.")
 
-	game.call("_begin_wave", 2)
+	game.call("_begin_flow_step", test_waves[2])
 	await physics_frame
 	await _defeat_only_enemy(game)
 	_expect(game.get("wave_state") == STATE_VICTORY, "Third wave did not enter victory.")
@@ -291,8 +292,8 @@ func _test_defeat_stops_flow() -> void:
 	await process_frame
 	await physics_frame
 
-	game.set("waves", _create_test_waves(1))
-	game.call("_begin_wave", 0)
+	var test_waves := _configure_test_campaign(game, 1)
+	game.call("_begin_flow_step", test_waves[0])
 	await physics_frame
 	var player := game.get_node("Player") as Player
 	player.apply_damage(player.current_health)
@@ -339,6 +340,24 @@ func _create_test_waves(wave_count: int) -> Array[WaveConfig]:
 		flow_exit.target_step_id = result[wave_index + 1].step_id
 		result[wave_index].exits = [flow_exit]
 	return result
+
+
+func _configure_test_campaign(game: Node2D, wave_count: int) -> Array[WaveConfig]:
+	var test_waves := _create_test_waves(wave_count)
+	var flow_graph := FlowGraphConfig.new()
+	flow_graph.graph_name = "Smoke Test Flow"
+	flow_graph.steps.assign(test_waves)
+	flow_graph.start_step = test_waves[0] if not test_waves.is_empty() else null
+
+	var campaign := WaveCampaignConfig.new()
+	campaign.campaign_id = &"wave_system_smoke_test"
+	campaign.flow_graph = flow_graph
+	game.set("singleplayer_campaign", campaign)
+	_expect(
+		bool(game.call("_configure_active_campaign")),
+		"Test Campaign must initialize through the flow-only Campaign path."
+	)
+	return test_waves
 
 
 func _defeat_only_enemy(game: Node2D) -> void:

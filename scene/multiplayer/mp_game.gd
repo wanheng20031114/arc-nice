@@ -1,7 +1,9 @@
 extends Node2D
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
-const GAME_SCENE := preload("res://scene/game.tscn")
+const STANDARD_GAME_SCENE := preload("res://scene/game.tscn")
+const TOWER_DEFENSE_GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
+const AGAVE_CANNONBALL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const TIYI_SNIPER_BULLET_SCENE := preload("res://scene/player/tiyi/tiyi_sniper_bullet.tscn")
@@ -84,11 +86,12 @@ var _linglan_skill4_config: LinglanSkill4Config = DEFAULT_LINGLAN_SKILL4_CONFIG
 # Client-view only: remote player visual timeline. Host gameplay never reads this.
 var player_visual_interpolators: Dictionary = {}
 var enemy_interpolators: Dictionary = {}
-var game: Game = null
+var game: GameRuntimeBase = null
 var input_sequence: int = 0
 var _net_time_origin: float = 0.0
 var _net_enemies: Dictionary = {}
 var _enemy_spawn_snapshot_times: Dictionary = {}
+var _escaped_enemy_ids: Dictionary = {}
 var _has_host_time_offset: bool = false
 var _host_to_client_time_offset: float = 0.0
 var _has_sent_input: bool = false
@@ -133,12 +136,15 @@ var _recent_event_prune_time_left: float = RECENT_EVENT_PRUNE_INTERVAL_SECONDS
 var _snapshot_packet_warn_time_left: float = 0.0
 var _host_startup_snapshot_grace_time_left: float = 0.0
 var _client_host_game_ready: bool = false
+var _client_has_received_flow_state: bool = false
+var _runtime_state_requested: bool = false
 var _max_player_snapshot_packet_bytes: int = 0
 var _max_enemy_snapshot_packet_bytes: int = 0
 var _large_player_snapshot_packet_count: int = 0
 var _large_enemy_snapshot_packet_count: int = 0
 var _last_player_keyframe_time_by_peer: Dictionary = {}
 var _last_enemy_keyframe_time_by_peer: Dictionary = {}
+var _last_plant_placement_request_ids: Dictionary = {}
 var _public_room_keepalive_time_left: float = 0.0
 var _public_room_keepalive_in_flight: bool = false
 var _revive_random_generator := RandomNumberGenerator.new()
@@ -155,11 +161,15 @@ func _ready() -> void:
 	if not public_room_keepalive_request.request_completed.is_connected(_on_public_room_keepalive_completed):
 		public_room_keepalive_request.request_completed.connect(_on_public_room_keepalive_completed)
 	if net_manager.is_host():
-		_setup_game(GAME_RUNTIME_HOST_AUTHORITY)
+		if not _setup_game(GAME_RUNTIME_HOST_AUTHORITY):
+			call_deferred("_return_to_lobby")
+			return
 		_host_startup_snapshot_grace_time_left = HOST_STARTUP_SNAPSHOT_GRACE_SECONDS
 		_client_host_game_ready = true
 	elif net_manager.is_client():
-		_setup_game(GAME_RUNTIME_CLIENT_VIEW)
+		if not _setup_game(GAME_RUNTIME_CLIENT_VIEW):
+			call_deferred("_return_to_lobby")
+			return
 		_client_host_game_ready = bool(net_manager.get("host_game_ready"))
 	else:
 		push_warning("MpGame 启动时没有有效的多人连接，返回大厅。")
@@ -167,6 +177,8 @@ func _ready() -> void:
 		return
 	if net_manager.is_host() or _client_host_game_ready:
 		net_manager.mark_in_game()
+	if net_manager.is_client() and _client_host_game_ready:
+		_request_runtime_state_from_host()
 
 
 func _exit_tree() -> void:
@@ -468,17 +480,118 @@ func request_debug_collectible(config_path: String) -> void:
 		net_debug_collectible_requested.rpc_id(_get_host_peer_id(), config_path)
 
 
+func _on_local_plant_placement_requested(
+	request_id: int,
+	plant_id: StringName,
+	anchor: Vector2i
+) -> void:
+	if game == null or not game.supports_tower_defense():
+		return
+	if net_manager.is_host():
+		_handle_authoritative_plant_placement_request(
+			_get_local_peer_id(),
+			request_id,
+			plant_id,
+			anchor
+		)
+	elif net_manager.is_client():
+		net_plant_placement_requested.rpc_id(
+			_get_host_peer_id(),
+			request_id,
+			String(plant_id),
+			anchor
+		)
+
+
+func _handle_authoritative_plant_placement_request(
+	requester_peer_id: int,
+	request_id: int,
+	plant_id: StringName,
+	anchor: Vector2i
+) -> void:
+	if not net_manager.is_host() or game == null or not game.supports_tower_defense():
+		return
+	var last_request_id := int(_last_plant_placement_request_ids.get(requester_peer_id, 0))
+	if request_id <= last_request_id:
+		_send_plant_placement_rejected(requester_peer_id, request_id, &"stale_request")
+		return
+	_last_plant_placement_request_ids[requester_peer_id] = request_id
+	game.request_multiplayer_plant_placement(
+		requester_peer_id,
+		request_id,
+		plant_id,
+		anchor
+	)
+
+
+func broadcast_plant_projectile_visual(
+	_plant_net_id: int,
+	spawn_position: Vector2,
+	direction: Vector2,
+	speed: float,
+	explosion_radius: float,
+	lifetime: float
+) -> void:
+	if (
+		not net_manager.is_host()
+		or not _is_finite_vector2(spawn_position)
+		or not _is_finite_vector2(direction)
+		or direction.length_squared() <= 0.001
+	):
+		return
+	_rpc_to_connected_clients(
+		&"net_plant_projectile_visual",
+		[
+			spawn_position,
+			direction.normalized(),
+			maxf(speed, 0.0),
+			maxf(explosion_radius, 1.0),
+			maxf(lifetime, 0.01),
+		]
+	)
+
+
+func apply_authoritative_plant_enemy_damage(
+	_damage_source_id: int,
+	enemy: Enemy,
+	damage: int,
+	impact_direction: Vector2,
+	damage_type: EnemyConfig.DamageType
+) -> bool:
+	if not net_manager.is_host() or game == null or enemy == null or damage <= 0:
+		return false
+	var enemy_net_id := int(
+		game.multiplayer_enemy_ids_by_instance.get(enemy.get_instance_id(), 0)
+	)
+	if enemy_net_id <= 0:
+		return false
+	var safe_direction := impact_direction if _is_finite_vector2(impact_direction) else Vector2.ZERO
+	return _apply_confirmed_enemy_damage(
+		enemy_net_id,
+		enemy,
+		damage,
+		safe_direction,
+		damage_type
+	)
+
+
 func is_client_view_runtime() -> bool:
 	if game != null:
 		return int(game.runtime_mode) == GAME_RUNTIME_CLIENT_VIEW
 	return net_manager != null and net_manager.is_client()
 
 
-func _setup_game(mode: int) -> void:
-	game = GAME_SCENE.instantiate() as Game
+func _setup_game(mode: int) -> bool:
+	var game_mode := int(net_manager.get("current_game_mode"))
+	var game_scene := (
+		TOWER_DEFENSE_GAME_SCENE
+		if game_mode == NetManagerStore.GameMode.TOWER_DEFENSE
+		else STANDARD_GAME_SCENE
+	)
+	game = game_scene.instantiate() as GameRuntimeBase
 	if game == null:
-		push_error("MpGame: 无法实例化 game.tscn")
-		return
+		push_error("MpGame: 无法实例化所选多人游戏场景。")
+		return false
 
 	var local_peer_id: int = _get_local_peer_id()
 	if local_peer_id <= 0 and net_manager.is_host():
@@ -489,24 +602,104 @@ func _setup_game(mode: int) -> void:
 		net_manager.connected_players,
 		net_manager.call("get_player_character_map") as Dictionary
 	)
-	add_child(game)
-	run_state.set_active_multiplayer_peer(local_peer_id)
-
 	if net_manager.is_host():
 		game.multiplayer_enemy_spawned.connect(_on_host_enemy_spawned)
 		game.multiplayer_enemy_defeated.connect(_on_host_enemy_defeated)
 		game.multiplayer_enemy_removed.connect(_on_host_enemy_removed)
+		game.multiplayer_enemy_escaped.connect(_on_host_enemy_escaped)
 		game.multiplayer_pickup_spawned.connect(_on_host_pickup_spawned)
 		game.multiplayer_pickup_collected.connect(_on_host_pickup_collected)
 		game.multiplayer_pickup_removed.connect(_on_host_pickup_removed)
 		game.multiplayer_merchant_active_changed.connect(_on_host_merchant_active_changed)
-		game.multiplayer_wave_started.connect(_on_host_wave_started)
 		game.multiplayer_flow_state_changed.connect(_on_host_flow_state_changed)
 		game.multiplayer_boss_started.connect(_on_host_boss_started)
 		game.multiplayer_defeat_started.connect(_on_host_defeat_started)
 		game.multiplayer_victory_started.connect(_on_host_victory_started)
 		game.multiplayer_revive_all_requested.connect(_on_host_revive_all_requested)
+		game.multiplayer_base_health_changed.connect(_on_host_base_health_changed)
+		game.multiplayer_tower_defense_wave_progress_changed.connect(
+			_on_host_tower_defense_wave_progress_changed
+		)
+		game.multiplayer_plant_spawned.connect(_on_host_plant_spawned)
+		game.multiplayer_plant_placement_rejected.connect(
+			_on_host_plant_placement_rejected
+		)
+		game.multiplayer_plant_health_changed.connect(_on_host_plant_health_changed)
+		game.multiplayer_plant_removed.connect(_on_host_plant_removed)
+	game.multiplayer_plant_placement_requested.connect(
+		_on_local_plant_placement_requested
+	)
 	game.return_to_lobby_requested.connect(_on_game_return_to_lobby_requested)
+	add_child(game)
+	run_state.set_active_multiplayer_peer(local_peer_id)
+	if net_manager.is_host() and game.supports_tower_defense():
+		_broadcast_base_health_snapshot()
+	return true
+
+
+func _request_runtime_state_from_host() -> void:
+	if (
+		_runtime_state_requested
+		or not net_manager.is_client()
+		or game == null
+		or not _client_host_game_ready
+	):
+		return
+	_runtime_state_requested = true
+	net_runtime_state_requested.rpc_id(
+		_get_host_peer_id(),
+		not _client_has_received_flow_state
+	)
+
+
+func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void:
+	if not net_manager.is_host() or game == null or peer_id <= 0:
+		return
+	if net_manager.has_method("is_peer_send_ready"):
+		if not bool(net_manager.call("is_peer_send_ready", peer_id)):
+			return
+	if game.supports_tower_defense():
+		var base_snapshot := game.get_base_health_snapshot()
+		if not base_snapshot.is_empty():
+			net_base_health_changed.rpc_id(
+				peer_id,
+				int(base_snapshot.get("current_health", 0)),
+				int(base_snapshot.get("maximum_health", 1)),
+				int(base_snapshot.get("revision", 0))
+			)
+		for plant_snapshot in game.get_multiplayer_plant_snapshots():
+			net_plant_spawned.rpc_id(
+				peer_id,
+				0,
+				int(plant_snapshot.get("owner_peer_id", 0)),
+				int(plant_snapshot.get("net_id", 0)),
+				String(plant_snapshot.get("plant_id", &"")),
+				plant_snapshot.get("anchor", Vector2i.ZERO) as Vector2i,
+				int(plant_snapshot.get("current_health", 0)),
+				int(plant_snapshot.get("maximum_health", 1)),
+				int(plant_snapshot.get("health_revision", 0))
+			)
+		var progress_snapshot := game.get_tower_defense_wave_progress_snapshot()
+		if not progress_snapshot.is_empty():
+			net_tower_defense_wave_progress_changed.rpc_id(
+				peer_id,
+				int(progress_snapshot.get("wave_number", 1)),
+				int(progress_snapshot.get("defeated", 0)),
+				int(progress_snapshot.get("escaped", 0)),
+				int(progress_snapshot.get("resolved", 0)),
+				int(progress_snapshot.get("total", 0))
+			)
+	if not include_flow_state:
+		return
+	var flow_snapshot := game.get_flow_state_snapshot()
+	if flow_snapshot.is_empty():
+		return
+	net_flow_state_changed.rpc_id(
+		peer_id,
+		String(flow_snapshot.get("step_id", &"")),
+		int(flow_snapshot.get("state", GameRuntimeBase.WaveState.PRE_WAVE)),
+		int(flow_snapshot.get("countdown_seconds", 0))
+	)
 
 
 func _host_physics_tick(frame: int, _delta: float) -> void:
@@ -3133,7 +3326,7 @@ func _schedule_player_revive(peer_id: int) -> void:
 func _host_update_player_revives() -> void:
 	if not net_manager.is_host() or game == null:
 		return
-	if game.wave_state == Game.WaveState.DEFEAT:
+	if game.wave_state == GameRuntimeBase.WaveState.DEFEAT:
 		return
 	var now := _get_net_time()
 	var due_peers: Array[int] = []
@@ -3150,10 +3343,13 @@ func _host_update_player_revives() -> void:
 	if due_peers.is_empty():
 		return
 	var revive_positions := _collect_living_player_revive_positions()
-	if revive_positions.is_empty():
-		return
 	for peer_id in due_peers:
-		_revive_player_peer(peer_id, _pick_multiplayer_revive_position(revive_positions))
+		var revive_position: Variant = _resolve_multiplayer_revive_position(
+			peer_id,
+			revive_positions
+		)
+		if revive_position is Vector2:
+			_revive_player_peer(peer_id, revive_position as Vector2)
 
 
 func _collect_living_player_revive_positions() -> Array[Vector2]:
@@ -3179,6 +3375,20 @@ func _pick_multiplayer_revive_position(revive_positions: Array) -> Vector2:
 	if revive_positions.is_empty():
 		return Vector2.ZERO
 	return revive_positions[_revive_random_generator.randi_range(0, revive_positions.size() - 1)]
+
+
+func _resolve_multiplayer_revive_position(
+	peer_id: int,
+	living_player_positions: Array
+) -> Variant:
+	if game == null or peer_id <= 0:
+		return null
+	var fixed_position: Variant = game.get_fixed_multiplayer_respawn_position(peer_id)
+	if fixed_position is Vector2:
+		return fixed_position
+	if living_player_positions.is_empty():
+		return null
+	return _pick_multiplayer_revive_position(living_player_positions)
 
 
 func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
@@ -3234,14 +3444,17 @@ func _on_host_revive_all_requested() -> void:
 	if not net_manager.is_host() or game == null:
 		return
 	var revive_positions := _collect_living_player_revive_positions()
-	if revive_positions.is_empty():
-		return
 	for peer_id_variant in game.peer_players:
 		var peer_id := int(peer_id_variant)
 		var player_node := game.peer_players[peer_id_variant] as Player
 		if player_node == null or not is_instance_valid(player_node) or not player_node.is_dead:
 			continue
-		_revive_player_peer(peer_id, _pick_multiplayer_revive_position(revive_positions))
+		var revive_position: Variant = _resolve_multiplayer_revive_position(
+			peer_id,
+			revive_positions
+		)
+		if revive_position is Vector2:
+			_revive_player_peer(peer_id, revive_position as Vector2)
 
 
 @rpc("authority", "call_remote", "reliable", 4)
@@ -3309,6 +3522,130 @@ func _on_host_enemy_removed(net_id: int) -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
 	_rpc_to_connected_clients(&"net_enemy_removed", [net_id])
+
+
+func _on_host_enemy_escaped(net_id: int) -> void:
+	if not is_inside_tree() or not net_manager.is_host() or net_id <= 0:
+		return
+	_rpc_to_connected_clients(&"net_enemy_escaped", [net_id])
+
+
+func _on_host_base_health_changed(
+	current_health: int,
+	maximum_health: int,
+	revision: int
+) -> void:
+	if not is_inside_tree() or not net_manager.is_host():
+		return
+	_rpc_to_connected_clients(
+		&"net_base_health_changed",
+		[current_health, maximum_health, revision]
+	)
+
+
+func _on_host_tower_defense_wave_progress_changed(
+	wave_number: int,
+	defeated: int,
+	escaped: int,
+	resolved: int,
+	total: int
+) -> void:
+	if not is_inside_tree() or not net_manager.is_host():
+		return
+	_rpc_to_connected_clients(
+		&"net_tower_defense_wave_progress_changed",
+		[wave_number, defeated, escaped, resolved, total]
+	)
+
+
+func _broadcast_base_health_snapshot() -> void:
+	if game == null or not game.supports_tower_defense() or not net_manager.is_host():
+		return
+	var snapshot := game.get_base_health_snapshot()
+	if snapshot.is_empty():
+		return
+	_on_host_base_health_changed(
+		int(snapshot.get("current_health", 0)),
+		int(snapshot.get("maximum_health", 1)),
+		int(snapshot.get("revision", 0))
+	)
+
+
+func _on_host_plant_spawned(
+	request_id: int,
+	owner_peer_id: int,
+	net_id: int,
+	plant_id: StringName,
+	anchor: Vector2i,
+	current_health: int,
+	maximum_health: int,
+	health_revision: int
+) -> void:
+	if not is_inside_tree() or not net_manager.is_host():
+		return
+	_rpc_to_connected_clients(
+		&"net_plant_spawned",
+		[
+			request_id,
+			owner_peer_id,
+			net_id,
+			String(plant_id),
+			anchor,
+			current_health,
+			maximum_health,
+			health_revision,
+		]
+	)
+
+
+func _on_host_plant_placement_rejected(
+	request_id: int,
+	requester_peer_id: int,
+	reason: StringName
+) -> void:
+	if not is_inside_tree() or not net_manager.is_host():
+		return
+	_send_plant_placement_rejected(requester_peer_id, request_id, reason)
+
+
+func _send_plant_placement_rejected(
+	requester_peer_id: int,
+	request_id: int,
+	reason: StringName
+) -> void:
+	if game == null or requester_peer_id <= 0:
+		return
+	if requester_peer_id == _get_local_peer_id():
+		game.apply_remote_plant_placement_rejected(request_id, reason)
+		return
+	if net_manager.has_method("is_peer_send_ready"):
+		if not bool(net_manager.call("is_peer_send_ready", requester_peer_id)):
+			return
+	net_plant_placement_rejected.rpc_id(
+		requester_peer_id,
+		request_id,
+		String(reason)
+	)
+
+
+func _on_host_plant_health_changed(
+	net_id: int,
+	current_health: int,
+	maximum_health: int,
+	health_revision: int
+) -> void:
+	if not is_inside_tree() or not net_manager.is_host():
+		return
+	_rpc_to_connected_clients(
+		&"net_plant_health_changed",
+		[net_id, current_health, maximum_health, health_revision]
+	)
+
+
+func _on_host_plant_removed(net_id: int) -> void:
+	if not is_inside_tree() or not net_manager.is_host() or net_id <= 0:
+		return
+	_rpc_to_connected_clients(&"net_plant_removed", [net_id])
 
 
 func broadcast_enemy_action(
@@ -3381,12 +3718,6 @@ func _on_host_merchant_active_changed(active: bool) -> void:
 	_rpc_to_connected_clients(&"net_merchant_active_changed", [active])
 
 
-func _on_host_wave_started(wave_index: int) -> void:
-	if not is_inside_tree() or not net_manager.is_host():
-		return
-	_rpc_to_connected_clients(&"net_wave_started", [wave_index])
-
-
 func _on_host_flow_state_changed(step_id: StringName, state: int, countdown_seconds: int) -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
@@ -3424,6 +3755,31 @@ func _on_game_return_to_lobby_requested() -> void:
 		return
 	_return_to_lobby()
 
+
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_runtime_state_requested(include_flow_state: bool = true) -> void:
+	if not net_manager.is_host() or game == null:
+		return
+	_send_runtime_state_to_peer(multiplayer.get_remote_sender_id(), include_flow_state)
+
+
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_plant_placement_requested(
+	request_id: int,
+	plant_id: String,
+	anchor: Vector2i
+) -> void:
+	if not net_manager.is_host() or game == null:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	_handle_authoritative_plant_placement_request(
+		sender_id,
+		request_id,
+		StringName(plant_id),
+		anchor
+	)
+
+
 @rpc("authority", "call_remote", "reliable", 4)
 func net_enemy_spawned(
 	net_id: int,
@@ -3434,7 +3790,8 @@ func net_enemy_spawned(
 ) -> void:
 	if game == null or net_manager.is_host():
 		return
-	_remove_client_enemy(net_id, false)
+	_escaped_enemy_ids.erase(net_id)
+	_remove_client_enemy(net_id, false, true)
 	var enemy_config: EnemyConfig = load(config_path) as EnemyConfig
 	if enemy_config == null:
 		return
@@ -3472,7 +3829,136 @@ func net_enemy_defeated(net_id: int, defeat_position: Vector2) -> void:
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_enemy_removed(net_id: int) -> void:
+	if _escaped_enemy_ids.has(net_id):
+		return
 	_remove_client_enemy(net_id, true)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_enemy_escaped(net_id: int) -> void:
+	if game == null or net_manager.is_host() or net_id <= 0:
+		return
+	_escaped_enemy_ids[net_id] = true
+	game.apply_remote_enemy_escape(net_id)
+	_remove_client_enemy(net_id, false)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_base_health_changed(
+	current_health: int,
+	maximum_health: int,
+	revision: int
+) -> void:
+	if game == null or net_manager.is_host():
+		return
+	game.apply_remote_base_health(current_health, maximum_health, revision)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_tower_defense_wave_progress_changed(
+	wave_number: int,
+	defeated: int,
+	escaped: int,
+	resolved: int,
+	total: int
+) -> void:
+	if game == null or net_manager.is_host():
+		return
+	game.apply_remote_tower_defense_wave_progress(
+		wave_number,
+		defeated,
+		escaped,
+		resolved,
+		total
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_plant_spawned(
+	request_id: int,
+	owner_peer_id: int,
+	net_id: int,
+	plant_id: String,
+	anchor: Vector2i,
+	current_health: int,
+	maximum_health: int,
+	health_revision: int
+) -> void:
+	if game == null or net_manager.is_host():
+		return
+	game.apply_remote_plant_spawn(
+		request_id,
+		owner_peer_id,
+		net_id,
+		StringName(plant_id),
+		anchor,
+		current_health,
+		maximum_health,
+		health_revision
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_plant_placement_rejected(request_id: int, reason: String) -> void:
+	if game == null or net_manager.is_host():
+		return
+	game.apply_remote_plant_placement_rejected(request_id, StringName(reason))
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_plant_health_changed(
+	net_id: int,
+	current_health: int,
+	maximum_health: int,
+	health_revision: int
+) -> void:
+	if game == null or net_manager.is_host():
+		return
+	game.apply_remote_plant_health(
+		net_id,
+		current_health,
+		maximum_health,
+		health_revision
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_plant_removed(net_id: int) -> void:
+	if game == null or net_manager.is_host():
+		return
+	game.apply_remote_plant_removed(net_id)
+
+
+@rpc("authority", "call_remote", "unreliable_ordered", 3)
+func net_plant_projectile_visual(
+	spawn_position: Vector2,
+	direction: Vector2,
+	speed: float,
+	explosion_radius: float,
+	lifetime: float
+) -> void:
+	if (
+		game == null
+		or net_manager.is_host()
+		or not _is_finite_vector2(spawn_position)
+		or not _is_finite_vector2(direction)
+		or direction.length_squared() <= 0.001
+	):
+		return
+	var projectile := AGAVE_CANNONBALL_SCENE.instantiate() as AgaveCannonball
+	if projectile == null:
+		return
+	add_child(projectile)
+	projectile.global_position = spawn_position
+	projectile.setup(
+		direction.normalized(),
+		0,
+		maxf(speed, 0.0),
+		maxf(explosion_radius, 1.0),
+		maxf(lifetime, 0.01),
+		false,
+		0
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 4)
@@ -3592,15 +4078,22 @@ func _reconcile_enemy_roster(seen_enemy_ids: Dictionary, snapshot_time: float) -
 			continue
 		stale_ids.append(net_id)
 	for net_id in stale_ids:
-		_remove_client_enemy(net_id, true)
+		# Snapshot roster reconciliation is recovery, not a death event. Explicit
+		# reliable defeat/removal RPCs own death presentation; a leaked Home enemy
+		# must disappear silently even if the state channel arrives first.
+		_remove_client_enemy(net_id, false)
 
 
-func _remove_client_enemy(net_id: int, clear_interpolator: bool) -> void:
+func _remove_client_enemy(
+	net_id: int,
+	play_death_sequence: bool,
+	preserve_interpolator: bool = false
+) -> void:
 	var enemy_variant: Variant = _net_enemies.get(net_id)
 	if enemy_variant != null and is_instance_valid(enemy_variant):
 		var enemy: Enemy = enemy_variant as Enemy
 		if enemy != null:
-			if clear_interpolator:
+			if play_death_sequence:
 				enemy.play_multiplayer_death_sequence()
 			else:
 				enemy.queue_free()
@@ -3612,7 +4105,7 @@ func _remove_client_enemy(net_id: int, clear_interpolator: bool) -> void:
 			var enemy_for_instance := enemy_variant as Enemy
 			if enemy_for_instance != null:
 				game.multiplayer_enemy_ids_by_instance.erase(enemy_for_instance.get_instance_id())
-	if clear_interpolator:
+	if not preserve_interpolator:
 		enemy_interpolators.erase(net_id)
 
 @rpc("authority", "call_remote", "reliable", 4)
@@ -3684,16 +4177,10 @@ func net_merchant_active_changed(active: bool) -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 4)
-func net_wave_started(wave_index: int) -> void:
-	if game == null or net_manager.is_host():
-		return
-	game.apply_remote_wave_started(wave_index)
-
-
-@rpc("authority", "call_remote", "reliable", 4)
 func net_flow_state_changed(step_id: String, state: int, countdown_seconds: int) -> void:
 	if game == null or net_manager.is_host():
 		return
+	_client_has_received_flow_state = true
 	game.apply_remote_flow_state(StringName(step_id), state, countdown_seconds)
 
 
@@ -4255,6 +4742,7 @@ func _on_connection_state_changed(new_state: int) -> void:
 		_return_to_lobby()
 	elif new_state == STATE_IN_GAME and net_manager.is_client():
 		_client_host_game_ready = true
+		_request_runtime_state_from_host()
 
 
 func _on_net_player_left(peer_id: int) -> void:
@@ -4272,6 +4760,7 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	snapshot_mgr.clear_peer_delta_cache(peer_id)
 	_last_player_keyframe_time_by_peer.erase(peer_id)
 	_last_enemy_keyframe_time_by_peer.erase(peer_id)
+	_last_plant_placement_request_ids.erase(peer_id)
 	player_visual_interpolators.erase(peer_id)
 	_last_player_state_sequences.erase(peer_id)
 	_last_dash_request_sequences.erase(peer_id)

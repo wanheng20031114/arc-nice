@@ -11,37 +11,19 @@ class FakePathfinder:
 	extends Node
 
 	var is_built := true
-	var requested_path := false
-	var requested_flow_waypoint := false
-	var path := PackedVector2Array()
-	var flow_waypoint: Variant = null
+	var requested_safe_step := false
+	var safe_step: Dictionary = {
+		"status": GridPathfinder.NavigationStepStatus.UNREACHABLE,
+	}
 
-	func get_global_path(
+	func try_get_safe_navigation_step(
 		_from_global_position: Vector2,
 		_to_global_position: Vector2,
 		_agent_half_extents: Vector2 = Vector2.ZERO,
 		_traversal_types: int = DualGridTilemap.TraversalType.LAND
-	) -> PackedVector2Array:
-		requested_path = true
-		return path
-
-	func try_get_global_path(
-		_from_global_position: Vector2,
-		_to_global_position: Vector2,
-		_agent_half_extents: Vector2 = Vector2.ZERO,
-		_traversal_types: int = DualGridTilemap.TraversalType.LAND
-	) -> Variant:
-		requested_path = true
-		return path
-
-	func try_get_flow_navigation_waypoint(
-		_from_global_position: Vector2,
-		_to_global_position: Vector2,
-		_agent_half_extents: Vector2 = Vector2.ZERO,
-		_traversal_types: int = DualGridTilemap.TraversalType.LAND
-	) -> Variant:
-		requested_flow_waypoint = true
-		return flow_waypoint
+	) -> Dictionary:
+		requested_safe_step = true
+		return safe_step.duplicate()
 
 
 func _init() -> void:
@@ -54,12 +36,12 @@ func _run() -> void:
 	root.add_child(test_root)
 	current_scene = test_root
 
-	await _test_fast_insect_does_not_push_into_wall_when_path_is_empty()
-	await _test_fast_insect_can_fallback_chase_with_clear_line()
-	await _test_fast_insect_skips_blocked_corner_waypoint()
-	await _test_fast_insect_uses_path_when_direct_chase_shape_is_blocked()
-	await _test_fast_insect_does_not_turn_before_reaching_corner_center()
-	await _test_fast_insect_prefers_shared_flow_waypoint()
+	await _test_unreachable_never_direct_fallbacks()
+	await _test_ready_step_moves_toward_waypoint()
+	await _test_blocked_primary_axis_uses_safe_secondary_axis()
+	await _test_blocked_only_axis_stops()
+	await _test_deferred_without_cache_stops()
+	await _test_deferred_reuses_only_shape_safe_cached_direction()
 
 	test_root.queue_free()
 	await process_frame
@@ -69,145 +51,106 @@ func _run() -> void:
 		print("YUANSHI_INSECT_NAVIGATION_SMOKE_TEST_OK")
 		quit()
 		return
-
 	for failure in failures:
 		push_error(failure)
 	quit(1)
 
 
-func _test_fast_insect_does_not_push_into_wall_when_path_is_empty() -> void:
+func _test_unreachable_never_direct_fallbacks() -> void:
 	var player := _spawn_player(Vector2(48.0, 0.0))
-	var wall := _spawn_wall(Vector2(24.0, 0.0), Vector2(8.0, 64.0))
-	var pathfinder := FakePathfinder.new()
-	test_root.add_child(pathfinder)
-	await physics_frame
-
+	var pathfinder := _spawn_pathfinder()
 	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
-	enemy.path_refresh_time_left = 10.0
+	enemy.navigation_update_interval_frames = 1
+	await physics_frame
 	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
-	_expect(pathfinder.requested_path, "Fast insect must request a path when its path is empty.")
-	_expect(move_direction == Vector2.ZERO, "Fast insect must not directly push into a wall when no path is available.")
-	_expect(enemy.path_refresh_time_left <= 0.08, "Fast insect must retry pathfinding soon when blocked.")
-
-	enemy.queue_free()
-	wall.queue_free()
-	pathfinder.queue_free()
-	player.queue_free()
-	await physics_frame
+	_expect(pathfinder.requested_safe_step, "Fast insect must request the unified safe-step API.")
+	_expect(
+		move_direction == Vector2.ZERO,
+		"UNREACHABLE must stop even with clear direct line; direct fallback is forbidden."
+	)
+	await _free_fixture([enemy, pathfinder, player])
 
 
-func _test_fast_insect_can_fallback_chase_with_clear_line() -> void:
-	var player := _spawn_player(Vector2(48.0, 0.0))
-	var pathfinder := FakePathfinder.new()
-	test_root.add_child(pathfinder)
-	await physics_frame
-
+func _test_ready_step_moves_toward_waypoint() -> void:
+	var player := _spawn_player(Vector2(64.0, 0.0))
+	var pathfinder := _spawn_pathfinder()
+	pathfinder.safe_step = _ready_step(Vector2(32.0, 0.0))
 	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
-	enemy.path_refresh_time_left = 10.0
+	enemy.navigation_update_interval_frames = 1
 	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
-	_expect(pathfinder.requested_path, "Fast insect must request a path when its path is empty.")
-	_expect(move_direction.x > 0.0 and is_zero_approx(move_direction.y), "Fast insect must still chase directly when line of sight is clear.")
-
-	enemy.queue_free()
-	pathfinder.queue_free()
-	player.queue_free()
-	await physics_frame
+	_expect(move_direction == Vector2.RIGHT, "READY must move toward its safe waypoint.")
+	await _free_fixture([enemy, pathfinder, player])
 
 
-func _test_fast_insect_skips_blocked_corner_waypoint() -> void:
+func _test_blocked_primary_axis_uses_safe_secondary_axis() -> void:
 	var player := _spawn_player(Vector2(64.0, 32.0))
-	var blocking_wall := _spawn_wall(Vector2(14.0, 0.0), Vector2(16.0, 64.0))
-	var pathfinder := FakePathfinder.new()
-	pathfinder.path = PackedVector2Array([
-		Vector2(32.0, 0.0),
-		Vector2(0.0, 32.0),
-	])
-	test_root.add_child(pathfinder)
-	await physics_frame
-
+	var wall := _spawn_wall(Vector2(14.0, 0.0), Vector2(16.0, 64.0))
+	var pathfinder := _spawn_pathfinder()
+	pathfinder.safe_step = _ready_step(Vector2(32.0, 32.0))
 	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
-	enemy.path_refresh_time_left = 10.0
+	enemy.navigation_update_interval_frames = 1
+	await physics_frame
 	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
-	_expect(pathfinder.requested_path, "Fast insect must request a corner path.")
-	_expect(move_direction.y > 0.0 and is_zero_approx(move_direction.x), "Fast insect must skip an unreachable corner waypoint and keep moving along the open axis.")
-	_expect(enemy.current_path_index == 1, "Fast insect must advance past the blocked corner waypoint.")
-
-	enemy.queue_free()
-	blocking_wall.queue_free()
-	pathfinder.queue_free()
-	player.queue_free()
-	await physics_frame
+	_expect(
+		move_direction == Vector2.DOWN,
+		"Safe-step consumer must use the unblocked secondary axis instead of entering a wall."
+	)
+	await _free_fixture([enemy, wall, pathfinder, player])
 
 
-func _test_fast_insect_uses_path_when_direct_chase_shape_is_blocked() -> void:
-	var player := _spawn_player(Vector2(8.0, 8.0))
-	var side_wall := _spawn_wall(Vector2(8.5, 0.0), Vector2(4.0, 8.0))
-	var lower_wall := _spawn_wall(Vector2(0.0, 8.5), Vector2(8.0, 4.0))
-	var pathfinder := FakePathfinder.new()
-	pathfinder.path = PackedVector2Array([
-		Vector2(0.0, -32.0),
-	])
-	test_root.add_child(pathfinder)
-	await physics_frame
-
+func _test_blocked_only_axis_stops() -> void:
+	var player := _spawn_player(Vector2(64.0, 0.0))
+	var wall := _spawn_wall(Vector2(14.0, 0.0), Vector2(16.0, 64.0))
+	var pathfinder := _spawn_pathfinder()
+	pathfinder.safe_step = _ready_step(Vector2(32.0, 0.0))
 	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
-	enemy.path_refresh_time_left = 10.0
+	enemy.navigation_update_interval_frames = 1
+	await physics_frame
 	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
-	_expect(pathfinder.requested_path, "Fast insect must request a path when direct chase line is clear but its body cannot move into the corner.")
-	_expect(move_direction.y < 0.0 and is_zero_approx(move_direction.x), "Fast insect must use the path direction instead of stopping at a blocked direct-chase corner.")
-
-	enemy.queue_free()
-	side_wall.queue_free()
-	lower_wall.queue_free()
-	pathfinder.queue_free()
-	player.queue_free()
-	await physics_frame
+	_expect(move_direction == Vector2.ZERO, "Consumer must stop when the only step axis is physically blocked.")
+	await _free_fixture([enemy, wall, pathfinder, player])
 
 
-func _test_fast_insect_does_not_turn_before_reaching_corner_center() -> void:
-	var player := _spawn_player(Vector2(64.0, 16.0))
-	var pathfinder := FakePathfinder.new()
-	test_root.add_child(pathfinder)
-	await physics_frame
-
-	var enemy := _spawn_fast_insect(Vector2(0.0, 10.5), player, pathfinder)
-	enemy.current_path = PackedVector2Array([
-		Vector2(0.0, 16.0),
-		Vector2(16.0, 16.0),
-	])
-	enemy.current_path_index = 0
-	enemy.path_refresh_time_left = 10.0
+func _test_deferred_without_cache_stops() -> void:
+	var player := _spawn_player(Vector2(64.0, 0.0))
+	var pathfinder := _spawn_pathfinder()
+	pathfinder.safe_step = {"status": GridPathfinder.NavigationStepStatus.DEFERRED}
+	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
+	enemy.navigation_update_interval_frames = 1
 	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
-	_expect(move_direction.y > 0.0 and is_zero_approx(move_direction.x), "Fast insect must not turn before reaching the corner waypoint center.")
-	_expect(enemy.current_path_index == 0, "Fast insect must keep the current corner waypoint until it is reached closely enough.")
-
-	enemy.queue_free()
-	pathfinder.queue_free()
-	player.queue_free()
-	await physics_frame
+	_expect(move_direction == Vector2.ZERO, "DEFERRED without a verified cached step must stop.")
+	await _free_fixture([enemy, pathfinder, player])
 
 
-func _test_fast_insect_prefers_shared_flow_waypoint() -> void:
+func _test_deferred_reuses_only_shape_safe_cached_direction() -> void:
 	var player := _spawn_player(Vector2(64.0, 64.0))
-	var pathfinder := FakePathfinder.new()
-	pathfinder.flow_waypoint = Vector2(0.0, 32.0)
-	pathfinder.path = PackedVector2Array([
-		Vector2(32.0, 0.0),
-	])
-	test_root.add_child(pathfinder)
-	await physics_frame
-
+	var pathfinder := _spawn_pathfinder()
+	pathfinder.safe_step = {"status": GridPathfinder.NavigationStepStatus.DEFERRED}
 	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
-	enemy.path_refresh_time_left = 10.0
+	enemy.navigation_update_interval_frames = 1
+	enemy.cached_navigation_move_direction = Vector2.DOWN
 	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
-	_expect(pathfinder.requested_flow_waypoint, "Fast insect must request the shared flow-field waypoint when it is available.")
-	_expect(not pathfinder.requested_path, "Fast insect must not request an A* path when the shared flow field returns a usable waypoint.")
-	_expect(move_direction.y > 0.0 and is_zero_approx(move_direction.x), "Fast insect must move toward the shared flow-field waypoint.")
-
-	enemy.queue_free()
-	pathfinder.queue_free()
-	player.queue_free()
+	_expect(move_direction == Vector2.DOWN, "DEFERRED may reuse the last shape-safe verified direction.")
+	var wall := _spawn_wall(Vector2(0.0, 7.5), Vector2(64.0, 8.0))
 	await physics_frame
+	enemy.cached_navigation_move_direction = Vector2.DOWN
+	move_direction = enemy.call("_get_navigation_move_direction", 0.016) as Vector2
+	_expect(move_direction == Vector2.ZERO, "DEFERRED must discard a cached direction once physics blocks it.")
+	await _free_fixture([enemy, wall, pathfinder, player])
+
+
+func _ready_step(waypoint: Vector2) -> Dictionary:
+	return {
+		"status": GridPathfinder.NavigationStepStatus.READY,
+		"waypoint": waypoint,
+		"is_complete_route": true,
+	}
+
+
+func _spawn_pathfinder() -> FakePathfinder:
+	var pathfinder := FakePathfinder.new()
+	test_root.add_child(pathfinder)
+	return pathfinder
 
 
 func _spawn_player(position: Vector2) -> Player:
@@ -222,6 +165,7 @@ func _spawn_fast_insect(position: Vector2, player: Player, pathfinder: Node) -> 
 	test_root.add_child(enemy)
 	enemy.global_position = position
 	enemy.setup(FAST_CONFIG, player, pathfinder)
+	enemy.set_physics_process(false)
 	return enemy
 
 
@@ -237,6 +181,13 @@ func _spawn_wall(position: Vector2, size: Vector2) -> StaticBody2D:
 	test_root.add_child(wall)
 	wall.global_position = position
 	return wall
+
+
+func _free_fixture(nodes: Array) -> void:
+	for node in nodes:
+		if node != null and is_instance_valid(node):
+			node.queue_free()
+	await physics_frame
 
 
 func _expect(condition: bool, message: String) -> void:

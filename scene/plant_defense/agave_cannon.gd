@@ -42,11 +42,27 @@ func _on_setup_completed() -> void:
 
 	body_sprite.play(&"idle")
 	cannon_sprite.play(&"idle")
+	if is_multiplayer_proxy:
+		_disable_proxy_combat_runtime()
+		return
 	var attack_interval := config.get_attack_interval()
 	if attack_interval <= 0.0:
 		attack_interval = DEFAULT_ATTACK_INTERVAL
 	attack_timer.wait_time = attack_interval
 	attack_timer.start()
+
+
+func _on_multiplayer_proxy_configured() -> void:
+	_disable_proxy_combat_runtime()
+
+
+func _disable_proxy_combat_runtime() -> void:
+	attack_timer.stop()
+	targeting_area.set_deferred("monitoring", false)
+	target_candidates.clear()
+	pending_target = null
+	projectile_spawned_for_current_attack = false
+	cannon_sprite.play(&"idle")
 
 
 func _on_death_started() -> void:
@@ -78,7 +94,7 @@ func _on_targeting_area_body_exited(body: Node2D) -> void:
 
 
 func _on_attack_timer_timeout() -> void:
-	if is_dead or cannon_sprite.animation == &"fire":
+	if is_multiplayer_proxy or is_dead or cannon_sprite.animation == &"fire":
 		return
 
 	var target := _select_nearest_visible_enemy()
@@ -112,6 +128,8 @@ func _on_cannon_sprite_animation_finished() -> void:
 
 
 func _fire_pending_projectile() -> void:
+	if is_multiplayer_proxy:
+		return
 	if not _is_valid_target(pending_target):
 		return
 	if not _has_clear_world_line_to(pending_target):
@@ -131,13 +149,26 @@ func _fire_pending_projectile() -> void:
 		return
 	spawn_parent.add_child(cannonball)
 	cannonball.global_position = muzzle.global_position
+	var projectile_lifetime := configured_attack_range / CANNONBALL_SPEED + 0.25
 	cannonball.setup(
 		shot_direction,
 		configured_attack_damage,
 		CANNONBALL_SPEED,
 		CANNONBALL_EXPLOSION_RADIUS,
-		configured_attack_range / CANNONBALL_SPEED + 0.25
+		projectile_lifetime,
+		true,
+		int(get_meta(&"net_id", get_instance_id()))
 	)
+	if spawn_parent.has_method("broadcast_plant_projectile_visual"):
+		spawn_parent.call(
+			"broadcast_plant_projectile_visual",
+			int(get_meta(&"net_id", 0)),
+			muzzle.global_position,
+			shot_direction,
+			CANNONBALL_SPEED,
+			CANNONBALL_EXPLOSION_RADIUS,
+			projectile_lifetime
+		)
 	if fire_audio.stream != null:
 		fire_audio.play()
 

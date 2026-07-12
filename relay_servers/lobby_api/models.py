@@ -21,6 +21,11 @@ class RoomStatus(str, Enum):
     CLOSED = "closed"         # 已关闭
 
 
+class GameMode(str, Enum):
+    STANDARD = "standard"
+    TOWER_DEFENSE = "tower_defense"
+
+
 @dataclass
 class PlayerInfo:
     name: str
@@ -38,6 +43,7 @@ class RoomInfo:
     host_peer_id: int = 0
     port: int = 29170
     max_players: int = 4
+    game_mode: GameMode = GameMode.STANDARD
     status: RoomStatus = RoomStatus.WAITING
     players: dict[str, PlayerInfo] = field(default_factory=dict)  # name → PlayerInfo
     relay_port: int = 0
@@ -72,6 +78,7 @@ class RoomInfo:
             "host_peer_id": self.host_peer_id,
             "player_count": self.player_count,
             "max_players": self.max_players,
+            "game_mode": self.game_mode.value,
             "status": self.status.value,
         }
 

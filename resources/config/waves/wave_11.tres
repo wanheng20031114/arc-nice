@@ -15,7 +15,7 @@
 [ext_resource type="Resource" uid="uid://drv4a8xgl4k2c" path="res://resources/config/enemies/capoo_smg.tres" id="13_smg"]
 [ext_resource type="Resource" uid="uid://uaeho5a1060p" path="res://resources/config/enemies/capoo_rpg.tres" id="14_rpg"]
 [ext_resource type="Resource" uid="uid://c8fsbfbwadt63" path="res://resources/config/enemies/capoo_mage.tres" id="15_mage"]
-[ext_resource type="Resource" path="res://resources/config/enemies/capoo_sniper.tres" id="16_sniper"]
+[ext_resource type="Resource" uid="uid://cqlpqyrs5d7d2" path="res://resources/config/enemies/capoo_sniper.tres" id="16_sniper"]
 [ext_resource type="AudioStream" uid="uid://c164munr8xpwj" path="res://resources/audio/shenmu_town_combat.ogg" id="17_music"]
 [ext_resource type="AudioStream" uid="uid://d0sjivcq682gn" path="res://resources/audio/shenmu_town_intermission.ogg" id="18_post_music"]
 

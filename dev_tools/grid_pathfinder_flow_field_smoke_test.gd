@@ -27,6 +27,7 @@ func _run() -> void:
 
 	_test_flow_field_reuses_target_cache(pathfinder)
 	_test_flow_field_recovers_from_blocked_for_agent_start(pathfinder)
+	_test_complete_path_same_cell(pathfinder)
 
 	_finish(game)
 
@@ -58,16 +59,12 @@ func _test_flow_field_reuses_target_cache(pathfinder: GridPathfinder) -> void:
 
 
 func _test_flow_field_recovers_from_blocked_for_agent_start(pathfinder: GridPathfinder) -> void:
-	var point_walkable_cell := _find_point_walkable_but_agent_blocked_cell(pathfinder, BLOCKED_AGENT_HALF_EXTENTS)
-	_expect(point_walkable_cell != Vector2i.MAX, "Map must contain a point-walkable cell that is blocked for a larger enemy body.")
-	if point_walkable_cell == Vector2i.MAX:
+	var recovery_pair := _find_adjacent_agent_recovery_pair(pathfinder, BLOCKED_AGENT_HALF_EXTENTS)
+	_expect(recovery_pair.size() == 2, "Map must contain an agent-blocked cell with one safe cardinal recovery cell.")
+	if recovery_pair.size() != 2:
 		return
-
-	var agent_grid := pathfinder.call("_get_or_create_agent_grid", BLOCKED_AGENT_HALF_EXTENTS) as AStarGrid2D
-	var recovery_cell := pathfinder.call("_get_closest_walkable_cell", point_walkable_cell, agent_grid) as Vector2i
-	_expect(recovery_cell != Vector2i.MAX and recovery_cell != point_walkable_cell, "Flow field test must find a distinct recovery cell.")
-	if recovery_cell == Vector2i.MAX:
-		return
+	var point_walkable_cell := recovery_pair[0]
+	var recovery_cell := recovery_pair[1]
 
 	var blocked_start_global := pathfinder.call("_map_to_global", point_walkable_cell) as Vector2
 	var recovery_global := pathfinder.call("_map_to_global", recovery_cell) as Vector2
@@ -76,10 +73,46 @@ func _test_flow_field_recovers_from_blocked_for_agent_start(pathfinder: GridPath
 		recovery_global,
 		BLOCKED_AGENT_HALF_EXTENTS
 	)
-	_expect(waypoint_result != null, "Flow field must return a recovery waypoint when the start cell is too close to an obstacle.")
+	_expect(waypoint_result != null, "Flow field must return a waypoint for one-cardinal-cell recovery.")
 	if waypoint_result != null:
 		var waypoint: Vector2 = waypoint_result
-		_expect(waypoint.is_equal_approx(recovery_global), "Flow field must steer first toward the nearest reachable recovery cell.")
+		_expect(waypoint.is_equal_approx(recovery_global), "Flow field recovery must never skip beyond its adjacent safe cell.")
+
+	var distant_pair := _find_distant_agent_recovery_pair(pathfinder, BLOCKED_AGENT_HALF_EXTENTS)
+	if distant_pair.size() == 2:
+		var distant_result: Variant = pathfinder.get_flow_navigation_waypoint(
+			pathfinder.call("_map_to_global", distant_pair[0]) as Vector2,
+			pathfinder.call("_map_to_global", distant_pair[1]) as Vector2,
+			BLOCKED_AGENT_HALF_EXTENTS
+		)
+		_expect(distant_result == null, "Legacy flow API must reject recovery that would skip more than one cardinal cell.")
+
+
+func _test_complete_path_same_cell(pathfinder: GridPathfinder) -> void:
+	var path_grid := pathfinder.call("_get_or_create_agent_grid", TEST_AGENT_HALF_EXTENTS) as AStarGrid2D
+	var region := pathfinder.astar_grid.region
+	for cell_y in range(region.position.y, region.end.y):
+		for cell_x in range(region.position.x, region.end.x):
+			var cell := Vector2i(cell_x, cell_y)
+			if not bool(pathfinder.call("_is_cell_walkable", cell, path_grid)):
+				continue
+			var global_position := pathfinder.call("_map_to_global", cell) as Vector2
+			var complete_path := pathfinder.get_complete_global_path(
+				global_position,
+				global_position,
+				TEST_AGENT_HALF_EXTENTS
+			)
+			_expect(
+				complete_path.size() == 1,
+				"A complete same-cell path must contain exactly its reachable endpoint."
+			)
+			if complete_path.size() == 1:
+				_expect(
+					complete_path[0].is_equal_approx(global_position),
+					"A complete same-cell path must preserve the exact reachable target."
+				)
+			return
+	_expect(false, "Map must provide a walkable cell for same-cell complete-path testing.")
 
 
 func _find_reachable_cell_pair(pathfinder: GridPathfinder, agent_half_extents: Vector2) -> Array[Vector2i]:
@@ -104,7 +137,10 @@ func _find_reachable_cell_pair(pathfinder: GridPathfinder, agent_half_extents: V
 	return []
 
 
-func _find_point_walkable_but_agent_blocked_cell(pathfinder: GridPathfinder, agent_half_extents: Vector2) -> Vector2i:
+func _find_adjacent_agent_recovery_pair(
+	pathfinder: GridPathfinder,
+	agent_half_extents: Vector2
+) -> Array[Vector2i]:
 	var agent_grid := pathfinder.call("_get_or_create_agent_grid", agent_half_extents) as AStarGrid2D
 	var region := pathfinder.astar_grid.region
 	for y in range(region.position.y, region.end.y):
@@ -112,9 +148,35 @@ func _find_point_walkable_but_agent_blocked_cell(pathfinder: GridPathfinder, age
 			var cell := Vector2i(x, y)
 			if not bool(pathfinder.call("_is_cell_walkable", cell)):
 				continue
-			if agent_grid != null and agent_grid.is_point_solid(cell):
-				return cell
-	return Vector2i.MAX
+			if agent_grid == null or not agent_grid.is_point_solid(cell):
+				continue
+			for direction in GridPathfinder.FLOW_CARDINAL_DIRECTIONS:
+				var recovery_cell := cell + direction
+				if bool(pathfinder.call("_is_cell_walkable", recovery_cell, agent_grid)):
+					return [cell, recovery_cell]
+	return []
+
+
+func _find_distant_agent_recovery_pair(
+	pathfinder: GridPathfinder,
+	agent_half_extents: Vector2
+) -> Array[Vector2i]:
+	var agent_grid := pathfinder.call("_get_or_create_agent_grid", agent_half_extents) as AStarGrid2D
+	var region := pathfinder.astar_grid.region
+	for y in range(region.position.y, region.end.y):
+		for x in range(region.position.x, region.end.x):
+			var cell := Vector2i(x, y)
+			if not bool(pathfinder.call("_is_cell_walkable", cell)):
+				continue
+			if agent_grid == null or not agent_grid.is_point_solid(cell):
+				continue
+			var recovery_cell := pathfinder.call("_get_closest_walkable_cell", cell, agent_grid) as Vector2i
+			if recovery_cell == Vector2i.MAX:
+				continue
+			var manhattan_distance := absi(cell.x - recovery_cell.x) + absi(cell.y - recovery_cell.y)
+			if manhattan_distance > 1:
+				return [cell, recovery_cell]
+	return []
 
 
 func _finish(game: Node) -> void:

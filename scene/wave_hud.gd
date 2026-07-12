@@ -39,6 +39,26 @@ func show_wave_progress(wave_number: int, defeated: int, total: int) -> void:
 	]
 
 
+func show_tower_defense_wave_progress(
+	wave_number: int,
+	defeated: int,
+	escaped: int,
+	resolved: int,
+	total: int
+) -> void:
+	_stop_result_tween()
+	top_bar.visible = true
+	result_overlay.visible = false
+	status_label.modulate = Color.WHITE
+	status_label.text = "第 %d 波  击败 %d  ·  漏过 %d  ·  已结算 %d/%d" % [
+		wave_number,
+		defeated,
+		escaped,
+		resolved,
+		total,
+	]
+
+
 func show_enemy_count(wave_number: int, alive_count: int) -> void:
 	_stop_result_tween()
 	top_bar.visible = true

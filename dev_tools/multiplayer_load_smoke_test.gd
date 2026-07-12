@@ -3,6 +3,7 @@ extends SceneTree
 const LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const GAME_SCENE := preload("res://scene/game.tscn")
+const TOWER_DEFENSE_GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const BOMBER_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_bomber.tres")
@@ -47,6 +48,7 @@ func _run() -> void:
 
 	await _test_scene_instantiation()
 	_test_net_manager_protocol_version_gate()
+	_test_net_manager_game_mode_authority()
 	_test_net_manager_lan_lifecycle()
 	_test_public_room_context_lifecycle()
 	_test_net_manager_player_list_sync_diff()
@@ -58,6 +60,7 @@ func _run() -> void:
 	await _test_enemy_proxy_action_animation_restore()
 	await _test_player_multiplayer_death_visual_state()
 	await _test_multiplayer_revive_position_uses_living_players()
+	await _test_tower_defense_spawn_slots_and_fixed_respawn()
 	await _test_multiplayer_revive_resets_remote_visual_interpolator()
 	await _test_client_local_damage_confirm_starts_hurt_blink()
 	await _test_linglan_boss_registration_uses_boss_event_only()
@@ -147,10 +150,18 @@ func _test_net_manager_lan_lifecycle() -> void:
 
 	net_manager.local_player_name = "SmokeHost"
 	net_manager.set_local_character_id(&"weishidaier", true)
+	_expect(
+		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),
+		"LAN Host must be able to choose tower-defense mode before creating the server."
+	)
 	var err: Error = net_manager.host_create_lan_server(29171)
 	_expect(err == OK, "NetManager must create a LAN host on test port.")
 	_expect(net_manager.is_host(), "NetManager must enter host role.")
 	_expect(net_manager.connected_players.has(1), "Host peer must be registered.")
+	_expect(
+		net_manager.get_current_game_mode() == NetManagerStore.GameMode.TOWER_DEFENSE,
+		"Creating a LAN server must preserve the Host-selected game mode."
+	)
 	_expect(
 		net_manager.get_player_character_id(1) == &"weishidaier"
 		and net_manager.is_player_character_confirmed(1),
@@ -180,15 +191,15 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 2, "The multiplayer protocol version must be 2.")
+	_expect(NetConstants.PROTOCOL_VERSION == 3, "The multiplayer protocol version must be 3.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
 	)
 	_expect(
-		not bool(net_manager.call("_is_protocol_version_compatible", 1))
+		not bool(net_manager.call("_is_protocol_version_compatible", 2))
 		and not bool(net_manager.call("_is_protocol_version_compatible", -1)),
-		"NetManager must reject version 1 and legacy registrations with no version."
+		"NetManager must reject protocol version 2 and legacy registrations with no version."
 	)
 
 	var rejection_reasons: Array[String] = []
@@ -208,6 +219,57 @@ func _test_net_manager_protocol_version_gate() -> void:
 		not net_manager.is_multiplayer_active()
 		and int(net_manager.connection_state) == NetManagerStore.ConnectionState.DISCONNECTED,
 		"A protocol-rejected client must fully leave multiplayer state."
+	)
+
+
+func _test_net_manager_game_mode_authority() -> void:
+	var net_manager := root.get_node_or_null("NetManager")
+	_expect(net_manager != null, "NetManager autoload is missing for game-mode coverage.")
+	if net_manager == null:
+		return
+
+	net_manager.disconnect_from_game()
+	var mode_events: Array[int] = []
+	var mode_callback := func(game_mode: NetManagerStore.GameMode) -> void:
+		mode_events.append(int(game_mode))
+	net_manager.game_mode_changed.connect(mode_callback)
+	_expect(
+		net_manager.get_current_game_mode() == NetManagerStore.GameMode.STANDARD,
+		"Disconnected NetManager must default to standard mode."
+	)
+	_expect(
+		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),
+		"A disconnected future Host must be able to select tower-defense mode."
+	)
+	_expect(
+		net_manager.get_current_game_mode() == NetManagerStore.GameMode.TOWER_DEFENSE,
+		"Host game-mode selection must update authoritative state."
+	)
+	_expect(
+		NetManagerStore.game_mode_to_key(NetManagerStore.GameMode.TOWER_DEFENSE)
+		== "tower_defense",
+		"Tower-defense mode must expose a stable API key."
+	)
+	net_manager.set("net_role", NetManagerStore.NetRole.CLIENT)
+	net_manager.set("connection_state", NetManagerStore.ConnectionState.CONNECTED_IN_LOBBY)
+	_expect(
+		not net_manager.set_host_game_mode(NetManagerStore.GameMode.STANDARD),
+		"A connected client must not overwrite the Host-authoritative game mode."
+	)
+	_expect(
+		net_manager.get_current_game_mode() == NetManagerStore.GameMode.TOWER_DEFENSE,
+		"Rejected client mode edits must preserve the Host-selected mode."
+	)
+	net_manager.disconnect_from_game()
+	net_manager.game_mode_changed.disconnect(mode_callback)
+	_expect(
+		net_manager.get_current_game_mode() == NetManagerStore.GameMode.STANDARD,
+		"Disconnect must reset game mode to the backward-compatible standard default."
+	)
+	_expect(
+		mode_events.has(NetManagerStore.GameMode.TOWER_DEFENSE)
+		and mode_events.has(NetManagerStore.GameMode.STANDARD),
+		"Game-mode changes must emit both selection and reset events."
 	)
 
 
@@ -272,7 +334,8 @@ func _test_net_manager_player_list_sync_diff() -> void:
 			{"id": 2, "name": "Renamed", "character_id": "hoe_cat", "character_confirmed": true},
 			{"id": 4, "name": "New", "character_id": "hoe_cat", "character_confirmed": false},
 		],
-		1
+		1,
+		NetManagerStore.GameMode.TOWER_DEFENSE
 	)
 	net_manager.player_left.disconnect(left_callback)
 	net_manager.player_joined.disconnect(joined_callback)
@@ -294,6 +357,10 @@ func _test_net_manager_player_list_sync_diff() -> void:
 		net_manager.get_player_character_id(4) == &"hoe_cat"
 		and not net_manager.is_player_character_confirmed(4),
 		"Player list sync must preserve an unconfirmed character choice."
+	)
+	_expect(
+		net_manager.get_current_game_mode() == NetManagerStore.GameMode.TOWER_DEFENSE,
+		"Reliable player-list sync must make clients follow the Host game mode."
 	)
 	net_manager.disconnect_from_game()
 
@@ -1860,6 +1927,10 @@ func _test_host_authoritative_tiyi_protocol() -> void:
 	high_noon_target_config.physical_defense = 999
 	high_noon_target_config.magic_defense = 25
 	_expect(
+		_prepare_direct_enemy_spawn_points(host_game),
+		"High-noon test must resolve its Campaign wave spawn-point mask."
+	)
+	_expect(
 		host_game.call("_try_spawn_enemy", high_noon_target_config),
 		"Host must spawn a target for high-noon resolution coverage."
 	)
@@ -1914,6 +1985,10 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 	host_game.set("auto_start_waves", false)
 	root.add_child(host_game)
 	await process_frame
+	_expect(
+		_prepare_direct_enemy_spawn_points(host_game),
+		"Enemy hit test must resolve its Campaign wave spawn-point mask."
+	)
 	_expect(host_game.call("_try_spawn_enemy", BASIC_CONFIG), "Host must spawn an enemy for hit dedupe test.")
 	_expect(host_game.call("_try_spawn_enemy", BASIC_CONFIG), "Host must spawn a second enemy for projectile hit-limit tests.")
 	var host_enemy := host_game.get_enemy_for_net_id(1)
@@ -2318,11 +2393,113 @@ func _test_multiplayer_revive_position_uses_living_players() -> void:
 			picked_position == host_player.global_position or picked_position == accepted_remote_position,
 			"Random revive position must be selected from living player anchors."
 		)
+		_expect(
+			game.get_fixed_multiplayer_respawn_position(2) == null,
+			"Standard mode must not opt into a fixed multiplayer respawn position."
+		)
+		var resolved_position: Variant = mp_game.call(
+			"_resolve_multiplayer_revive_position",
+			2,
+			revive_positions
+		)
+		_expect(
+			resolved_position is Vector2 and revive_positions.has(resolved_position),
+			"Standard mode revive resolver must preserve living-player random respawns."
+		)
 
 	mp_game.free()
 	_stop_audio_players(game)
 	game.queue_free()
 	await process_frame
+
+
+func _test_tower_defense_spawn_slots_and_fixed_respawn() -> void:
+	var game := TOWER_DEFENSE_GAME_SCENE.instantiate() as GameTowerDefense
+	_expect(game != null, "Tower-defense game must instantiate for spawn-slot coverage.")
+	if game == null:
+		return
+	var player_names := {
+		1: "Host",
+		2: "Peer 2",
+		3: "Peer 3",
+		4: "Peer 4",
+	}
+	game.configure_multiplayer(GameRuntimeBase.RuntimeMode.HOST_AUTHORITY, 1, player_names)
+	game.auto_start_waves = false
+	_expect(not game.linglan_boss_enabled, "Tower-defense Linglan must be disabled by default.")
+	root.add_child(game)
+	await process_frame
+	await physics_frame
+
+	_expect(
+		game.player_spawn.position == Vector2(117.0, 367.0),
+		"Tower-defense PlayerSpawn must match the blue-gate reference position."
+	)
+	_expect(
+		game.player_spawn.global_position == Vector2(118.0, 367.0),
+		"Tower-defense PlayerSpawn world position must include the scene root offset."
+	)
+	var expected_offsets: Array[Vector2] = [
+		Vector2.ZERO,
+		Vector2(18.0, 0.0),
+		Vector2(0.0, 18.0),
+		Vector2(18.0, 18.0),
+	]
+	for index in range(expected_offsets.size()):
+		var peer_id := index + 1
+		var player_node := game.get_player_for_peer(peer_id)
+		var expected_position := game.player_spawn.global_position + expected_offsets[index]
+		_expect(player_node != null, "Tower-defense spawn test must create peer %d." % peer_id)
+		if player_node == null:
+			continue
+		_expect(
+			player_node.global_position.is_equal_approx(expected_position),
+			"Tower-defense peer %d must start in its stable spawn slot." % peer_id
+		)
+		var fixed_position: Variant = game.get_fixed_multiplayer_respawn_position(peer_id)
+		_expect(
+			fixed_position is Vector2
+			and (fixed_position as Vector2).is_equal_approx(expected_position),
+			"Tower-defense peer %d fixed respawn must match its initial slot." % peer_id
+		)
+
+	var mp_game := MP_GAME_SCENE.instantiate()
+	_expect(mp_game != null, "MpGame scene must instantiate for tower-defense respawn resolver coverage.")
+	if mp_game != null:
+		mp_game.set("game", game)
+		var unrelated_living_positions: Array[Vector2] = [Vector2(-400.0, -300.0)]
+		for peer_id in player_names:
+			var resolved_position: Variant = mp_game.call(
+				"_resolve_multiplayer_revive_position",
+				int(peer_id),
+				unrelated_living_positions
+			)
+			var expected_position: Variant = game.get_fixed_multiplayer_respawn_position(
+				int(peer_id)
+			)
+			_expect(
+				resolved_position is Vector2
+				and expected_position is Vector2
+				and (resolved_position as Vector2).is_equal_approx(expected_position as Vector2),
+				"Tower-defense revive resolver must prefer peer %d's fixed slot." % int(peer_id)
+			)
+
+		var peer_four_position: Variant = game.get_fixed_multiplayer_respawn_position(4)
+		game.remove_multiplayer_player(2)
+		_expect(
+			peer_four_position is Vector2
+			and game.get_fixed_multiplayer_respawn_position(4) is Vector2
+			and (
+				game.get_fixed_multiplayer_respawn_position(4) as Vector2
+			).is_equal_approx(peer_four_position as Vector2),
+			"Removing a lower peer id must not shift another peer's respawn slot."
+		)
+		mp_game.free()
+
+	_stop_audio_players(game)
+	game.queue_free()
+	await process_frame
+	await physics_frame
 
 
 func _test_multiplayer_revive_resets_remote_visual_interpolator() -> void:
@@ -2711,6 +2888,10 @@ func _test_game_runtime_modes() -> void:
 		and host_remote_player.nameplate_label.label_settings != host_player.nameplate_label.label_settings,
 		"Remote player nameplate must keep the normal color on the host."
 	)
+	_expect(
+		_prepare_direct_enemy_spawn_points(host_game),
+		"Runtime-mode test must resolve its Campaign wave spawn-point mask."
+	)
 	_expect(host_game.call("_try_spawn_enemy", BASIC_CONFIG), "Host authority game must spawn an indexed enemy.")
 	var spawned_enemy: Enemy = host_game.get_enemy_for_net_id(1)
 	_expect(spawned_enemy != null, "Host authority game must index spawned enemies by net id.")
@@ -3049,6 +3230,18 @@ func _has_active_damage_number_text(game: Game, expected_text: String) -> bool:
 		if damage_number.label != null and damage_number.label.text == expected_text:
 			return true
 	return false
+
+
+func _prepare_direct_enemy_spawn_points(game: Game) -> bool:
+	if game == null:
+		return false
+	var campaign_waves: Array = game.get("waves")
+	if campaign_waves.is_empty():
+		return false
+	var wave_config := campaign_waves[0] as WaveConfig
+	if wave_config == null:
+		return false
+	return bool(game.call("_resolve_wave_spawn_points", wave_config))
 
 
 func _expect(condition: bool, message: String) -> void:

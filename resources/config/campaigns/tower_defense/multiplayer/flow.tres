@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="FlowGraphConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/flow/flow_graph_config.gd" id="1_5aitk"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/multiplayer/wave_01.tres" id="2_poxgo"]
+[ext_resource type="Script" path="res://resources/config/flow/flow_step_config.gd" id="3_bvhki"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/multiplayer/wave_02.tres" id="4_sh10f"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/multiplayer/wave_03.tres" id="5_bpfb6"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/multiplayer/wave_04.tres" id="6_n4rus"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/multiplayer/wave_05.tres" id="7_edk56"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/multiplayer/wave_06.tres" id="8_p3fe3"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/multiplayer/wave_07.tres" id="9_j1vtg"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/multiplayer/wave_08.tres" id="10_fmb6n"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/multiplayer/wave_09.tres" id="11_vcju8"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/multiplayer/wave_10.tres" id="12_7i6hk"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/multiplayer/wave_11.tres" id="13_extql"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/multiplayer/wave_12.tres" id="14_wvrgb"]
+
+[resource]
+script = ExtResource("1_5aitk")
+graph_name = "塔防模式 / 多人战斗流程"
+start_step = ExtResource("2_poxgo")
+steps = Array[ExtResource("3_bvhki")]([ExtResource("2_poxgo"), ExtResource("4_sh10f"), ExtResource("5_bpfb6"), ExtResource("6_n4rus"), ExtResource("7_edk56"), ExtResource("8_p3fe3"), ExtResource("9_j1vtg"), ExtResource("10_fmb6n"), ExtResource("11_vcju8"), ExtResource("12_7i6hk"), ExtResource("13_extql"), ExtResource("14_wvrgb")])

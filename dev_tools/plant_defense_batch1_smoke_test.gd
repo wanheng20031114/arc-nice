@@ -18,6 +18,20 @@ var plant_container: Node2D
 var agave_config: PlantDefenseConfig
 
 
+class AnchorCountingPlantSystem:
+	extends PlantSystem
+
+	var validation_calls := 0
+
+	func is_placement_valid_for_player(
+		_top_left_cell: Vector2i,
+		_config: PlantDefenseConfig,
+		_placement_player: Player
+	) -> bool:
+		validation_calls += 1
+		return true
+
+
 func _init() -> void:
 	call_deferred("_run")
 
@@ -26,9 +40,11 @@ func _run() -> void:
 	_build_fixture()
 	await physics_frame
 	_test_config_and_scene_contracts()
+	_test_large_area_anchor_enumeration()
 	await _test_grid_and_occupancy_rules()
 	await _test_realtime_selection_and_cancel()
 	await _test_enemy_contact_and_release()
+	await _test_multiplayer_authority_contracts()
 	await _test_cannonball_aoe_deduplication()
 
 	if test_root != null and is_instance_valid(test_root):
@@ -61,6 +77,13 @@ func _build_fixture() -> void:
 	var tower_template := TOWER_SCENE.instantiate()
 	tile_map = tower_template.get_node("GroundTileMapLayer").duplicate() as TileMapLayer
 	tower_template.free()
+	# Keep this API/physics suite deterministic when the authored tower map changes.
+	# The real scene's grass/water integration is covered by the terrain smoke test.
+	tile_map.clear()
+	var fixture_area := PlantSystem.DEFAULT_PLACEMENT_AREA
+	for y in range(fixture_area.position.y, fixture_area.end.y):
+		for x in range(fixture_area.position.x, fixture_area.end.x):
+			tile_map.set_cell(Vector2i(x, y), 0, Vector2i.ZERO, 0)
 	test_root.add_child(tile_map)
 
 	player = PLAYER_SCENE.instantiate() as Player
@@ -90,6 +113,7 @@ func _test_config_and_scene_contracts() -> void:
 	_expect(agave_config.max_health == 200, "龙舌兰生命值必须为200。")
 	_expect(agave_config.attack_damage == 10, "龙舌兰攻击力必须为10。")
 	_expect(is_equal_approx(agave_config.attack_speed, 50.0), "龙舌兰攻速必须为50。")
+	_expect(agave_config.supports_multiplayer, "龙舌兰必须继续支持多人权威放置。")
 	_expect(is_equal_approx(agave_config.get_attack_interval(), 2.0), "龙舌兰攻击间隔必须为2秒。")
 	_expect(is_equal_approx(agave_config.attack_range, 160.0), "龙舌兰索敌半径必须为160。")
 	_expect(agave_config.footprint_size == Vector2i(2, 2), "植物必须占2×2格。")
@@ -165,6 +189,89 @@ func _test_config_and_scene_contracts() -> void:
 		_expect(blast_circle != null and is_equal_approx(blast_circle.radius, 18.0), "黑球爆炸半径必须为18。")
 		_expect(is_equal_approx(cannonball.speed, 180.0), "黑球飞行速度必须为180。")
 		cannonball.free()
+
+
+func _test_large_area_anchor_enumeration() -> void:
+	if agave_config == null or not agave_config.is_valid():
+		return
+
+	var counting_system := AnchorCountingPlantSystem.new()
+	test_root.add_child(counting_system)
+	counting_system.setup(
+		tile_map,
+		player,
+		plant_container,
+		Rect2i(-120, -88, 256, 192)
+	)
+	_assert_anchor_enumeration_case(counting_system, Vector2i(40, 35))
+
+	counting_system.placement_area = Rect2i(38, 34, 5, 4)
+	_assert_anchor_enumeration_case(counting_system, Vector2i(42, 37))
+	counting_system.queue_free()
+
+
+func _assert_anchor_enumeration_case(
+	counting_system: AnchorCountingPlantSystem,
+	player_cell: Vector2i
+) -> void:
+	_set_player_cell(player_cell)
+	counting_system.validation_calls = 0
+	var anchors := counting_system.get_valid_anchors_for_player(agave_config, player)
+	var expected := _get_expected_nearby_anchors(
+		counting_system.placement_area,
+		agave_config.footprint_size,
+		player_cell,
+		counting_system.max_placement_manhattan_distance
+	)
+	var actual := {}
+	for anchor in anchors:
+		actual[anchor] = true
+		for cell in counting_system.get_footprint_cells(anchor, agave_config):
+			_expect(
+				counting_system.placement_area.has_point(cell),
+				"大地图候选锚的完整植物足迹必须位于placement_area内。"
+			)
+
+	_expect(
+		actual == expected,
+		"大地图候选锚必须精确等于玩家Manhattan窗口与合法足迹锚区域的交集。"
+	)
+	_expect(
+		counting_system.validation_calls == expected.size(),
+		"大地图枚举不得对玩家附近Manhattan窗口之外的锚执行完整放置校验。"
+	)
+	_expect(
+		counting_system.validation_calls <= 128,
+		"2×2植物、距离4的放置枚举必须保持为常量级候选集。"
+	)
+
+
+func _get_expected_nearby_anchors(
+	area: Rect2i,
+	footprint_size: Vector2i,
+	player_cell: Vector2i,
+	radius: int
+) -> Dictionary:
+	var expected := {}
+	var legal_anchor_size := area.size - footprint_size + Vector2i.ONE
+	if legal_anchor_size.x <= 0 or legal_anchor_size.y <= 0:
+		return expected
+	var legal_anchor_area := Rect2i(area.position, legal_anchor_size)
+	for y in range(player_cell.y - radius, player_cell.y + radius + 1):
+		for x in range(player_cell.x - radius, player_cell.x + radius + 1):
+			var nearby_cell := Vector2i(x, y)
+			if (
+				absi(nearby_cell.x - player_cell.x)
+				+ absi(nearby_cell.y - player_cell.y)
+				> radius
+			):
+				continue
+			for footprint_y in range(footprint_size.y):
+				for footprint_x in range(footprint_size.x):
+					var anchor := nearby_cell - Vector2i(footprint_x, footprint_y)
+					if legal_anchor_area.has_point(anchor):
+						expected[anchor] = true
+	return expected
 
 
 func _test_grid_and_occupancy_rules() -> void:
@@ -292,6 +399,193 @@ func _test_enemy_contact_and_release() -> void:
 	await process_frame
 
 
+func _test_multiplayer_authority_contracts() -> void:
+	var anchor := _find_open_anchor_with_left_margin()
+	_expect(anchor != Vector2i(9999, 9999), "多人植物测试需要可用2×2测试格。")
+	if anchor == Vector2i(9999, 9999):
+		return
+
+	var requesting_player := PLAYER_SCENE.instantiate() as Player
+	test_root.add_child(requesting_player)
+	requesting_player.set_controls_locked(true)
+	requesting_player.set_physics_process(false)
+	_set_specific_player_cell(player, anchor + Vector2i(-6, 0))
+	_set_specific_player_cell(requesting_player, anchor + Vector2i(-4, 0))
+	await physics_frame
+	_expect(
+		not plant_system.is_placement_valid(anchor, agave_config),
+		"默认owner距离过远时不得通过放置校验。"
+	)
+	_expect(
+		plant_system.is_placement_valid_for_player(anchor, agave_config, requesting_player),
+		"主机必须按请求玩家自身的位置校验放置距离。"
+	)
+	_expect(
+		not plant_system.is_placement_valid_for_player(anchor, agave_config, null),
+		"请求玩家不存在时不得回退到房主或本地owner。"
+	)
+
+	const HOST_PLANT_NET_ID := 4101
+	var authoritative_plant := plant_system.try_place_for_player(
+		agave_config,
+		anchor,
+		requesting_player,
+		HOST_PLANT_NET_ID
+	)
+	_expect(authoritative_plant != null, "主机必须能以指定玩家和net_id放置植物。")
+	if authoritative_plant == null:
+		requesting_player.queue_free()
+		await process_frame
+		return
+	_expect(
+		plant_system.get_plant_by_net_id(HOST_PLANT_NET_ID) == authoritative_plant,
+		"主机植物必须注册到net_id索引。"
+	)
+	_expect(
+		int(authoritative_plant.get_meta(&"net_id", 0)) == HOST_PLANT_NET_ID,
+		"主机植物节点必须携带稳定net_id。"
+	)
+	_expect(authoritative_plant.owner_player == requesting_player, "植物owner必须是请求玩家。")
+	_expect(authoritative_plant.health_revision == 1, "权威植物初始生命revision必须为1。")
+	var health_events: Array[Vector3i] = []
+	authoritative_plant.authoritative_health_changed.connect(
+		func(current: int, maximum: int, revision: int) -> void:
+			health_events.append(Vector3i(current, maximum, revision))
+	)
+	var host_health_before := authoritative_plant.current_health
+	_expect(authoritative_plant.receive_damage(7), "权威植物必须接受主机伤害。")
+	_expect(
+		authoritative_plant.current_health == host_health_before - 7
+		and authoritative_plant.health_revision == 2,
+		"权威植物伤害必须同时推进生命值和revision。"
+	)
+	_expect(
+		health_events.size() == 1
+		and health_events[0] == Vector3i(host_health_before - 7, 200, 2),
+		"生命revision信号必须携带同一份权威状态。"
+	)
+	_expect(
+		plant_system.remove_plant_by_net_id(HOST_PLANT_NET_ID),
+		"按net_id移除权威植物必须成功。"
+	)
+	_expect(
+		plant_system.get_plant_by_net_id(HOST_PLANT_NET_ID) == null
+		and not plant_system.is_cell_occupied(anchor),
+		"按net_id移除后必须立即释放索引和占格。"
+	)
+	await physics_frame
+	_expect(
+		plant_system.spawn_multiplayer_replica(
+			&"oak_warehouse",
+			anchor,
+			requesting_player,
+			4100,
+			300,
+			300,
+			1
+		) == null,
+		"未实现库存同步的橡木仓库不得生成多人客户端副本。"
+	)
+
+	const REPLICA_NET_ID := 4102
+	var replica := plant_system.spawn_multiplayer_replica(
+		agave_config.plant_id,
+		anchor,
+		requesting_player,
+		REPLICA_NET_ID,
+		180,
+		200,
+		8
+	) as AgaveCannon
+	_expect(replica != null, "客户端必须能按权威状态创建植物副本。")
+	if replica == null:
+		requesting_player.queue_free()
+		await process_frame
+		return
+	await physics_frame
+	_expect(replica.is_multiplayer_proxy, "客户端植物必须标记为multiplayer proxy。")
+	_expect(replica.attack_timer.is_stopped(), "客户端植物副本不得运行攻击计时器。")
+	_expect(not replica.targeting_area.monitoring, "客户端植物副本不得运行本地索敌。")
+	var replica_health_before := replica.current_health
+	_expect(not replica.receive_damage(25), "客户端植物副本必须拒绝本地伤害。")
+	_expect(replica.current_health == replica_health_before, "本地伤害不得改变副本生命值。")
+	_expect(
+		not replica.apply_remote_health(120, 200, 8),
+		"重复或过期revision不得回滚副本生命。"
+	)
+	_expect(
+		replica.apply_remote_health(120, 200, 9)
+		and replica.current_health == 120
+		and replica.health_revision == 9,
+		"更新revision必须原子应用远端生命状态。"
+	)
+
+	var attack_probe := ENEMY_CONFIG.enemy_scene.instantiate() as Enemy
+	test_root.add_child(attack_probe)
+	attack_probe.setup(ENEMY_CONFIG, requesting_player)
+	attack_probe.set_physics_process(false)
+	attack_probe.global_position = replica.global_position + Vector2(24, 0)
+	replica.target_candidates[attack_probe.get_instance_id()] = attack_probe
+	replica._on_attack_timer_timeout()
+	_expect(
+		replica.cannon_sprite.animation == &"idle" and replica.pending_target == null,
+		"客户端植物副本即使收到本地timeout也不得开始攻击。"
+	)
+	attack_probe.queue_free()
+
+	var replica_cell := replica.footprint_cells[0]
+	_expect(replica.apply_remote_health(0, 200, 10), "权威零生命更新必须被副本接受。")
+	_expect(
+		plant_system.get_plant_by_net_id(REPLICA_NET_ID) == null
+		and not plant_system.is_cell_occupied(replica_cell),
+		"副本零生命必须走统一死亡路径并立即释放net_id与占格。"
+	)
+	await physics_frame
+
+	var controller := PLACEMENT_CONTROLLER_SCENE.instantiate() as PlantPlacementController
+	test_root.add_child(controller)
+	controller.setup(plant_system, requesting_player)
+	controller.set_multiplayer_request_mode(true)
+	_expect(controller.open_selection(), "多人植物选择必须仍可打开。")
+	_expect(
+		controller.selection_hud.available_configs.size() == 1
+		and controller.selection_hud.available_configs[0] == agave_config,
+		"多人植物选择必须只公开显式支持联网的龙舌兰。"
+	)
+	controller.cancel_placement()
+	var placement_requests: Array[Dictionary] = []
+	controller.multiplayer_placement_requested.connect(
+		func(request_id: int, plant_id: StringName, requested_anchor: Vector2i) -> void:
+			placement_requests.append({
+				"request_id": request_id,
+				"plant_id": plant_id,
+				"anchor": requested_anchor,
+			})
+	)
+	controller.selected_config = agave_config
+	controller.placement_state = PlantPlacementController.PlacementState.PLACING
+	controller.hovered_anchor = anchor
+	controller.has_hovered_anchor = true
+	var plant_count_before_request := plant_container.get_child_count()
+	controller.call("_try_place_hovered")
+	_expect(placement_requests.size() == 1, "多人放置必须只发送一次带request_id的请求。")
+	if placement_requests.size() == 1:
+		_expect(
+			int(placement_requests[0]["request_id"]) == 1
+			and placement_requests[0]["plant_id"] == agave_config.plant_id
+			and placement_requests[0]["anchor"] == anchor,
+			"多人放置请求必须包含request_id、plant_id和anchor。"
+		)
+	_expect(
+		plant_container.get_child_count() == plant_count_before_request
+		and not plant_system.is_cell_occupied(anchor),
+		"客户端提交放置请求时不得本地预测生成植物。"
+	)
+	controller.queue_free()
+	requesting_player.queue_free()
+	await process_frame
+
+
 func _test_cannonball_aoe_deduplication() -> void:
 	var enemy_a := ENEMY_CONFIG.enemy_scene.instantiate() as Enemy
 	var enemy_b := ENEMY_CONFIG.enemy_scene.instantiate() as Enemy
@@ -303,6 +597,10 @@ func _test_cannonball_aoe_deduplication() -> void:
 	enemy_b.setup(ENEMY_CONFIG, player)
 	enemy_a.set_physics_process(false)
 	enemy_b.set_physics_process(false)
+	# This test verifies damage semantics, not audio playback. Avoid leaving
+	# active AudioStreamPlaybackWAV objects when the headless SceneTree exits.
+	enemy_a.hit_audio.stream = null
+	enemy_b.hit_audio.stream = null
 
 	var cannonball := CANNONBALL_SCENE.instantiate() as AgaveCannonball
 	cannonball.position = Vector2(506, 500)
@@ -316,6 +614,21 @@ func _test_cannonball_aoe_deduplication() -> void:
 	_expect(enemy_a.current_health == health_a - 10, "直接命中目标在AOE查询中只能承伤一次。")
 	_expect(enemy_b.current_health == health_b - 10, "爆炸半径内第二目标必须承伤一次。")
 	_expect(enemy_a.last_damage_taken == 10 and enemy_b.last_damage_taken == 10, "AOE伤害必须为10。")
+
+	var visual_cannonball := CANNONBALL_SCENE.instantiate() as AgaveCannonball
+	visual_cannonball.position = Vector2(506, 500)
+	test_root.add_child(visual_cannonball)
+	visual_cannonball.setup(Vector2.RIGHT, 10, 180.0, 18.0, 1.0, false, 4102)
+	visual_cannonball.set_physics_process(false)
+	await physics_frame
+	var visual_health_a := enemy_a.current_health
+	var visual_health_b := enemy_b.current_health
+	visual_cannonball._apply_explosion_damage(enemy_a)
+	_expect(
+		enemy_a.current_health == visual_health_a and enemy_b.current_health == visual_health_b,
+		"客户端视觉炮弹不得对直接目标或AOE目标造成伤害。"
+	)
+	visual_cannonball.queue_free()
 	cannonball.queue_free()
 	enemy_a.queue_free()
 	enemy_b.queue_free()
@@ -339,7 +652,11 @@ func _find_open_anchor_with_left_margin() -> Vector2i:
 
 
 func _set_player_cell(cell: Vector2i) -> void:
-	player.global_position = tile_map.to_global(tile_map.map_to_local(cell))
+	_set_specific_player_cell(player, cell)
+
+
+func _set_specific_player_cell(target_player: Player, cell: Vector2i) -> void:
+	target_player.global_position = tile_map.to_global(tile_map.map_to_local(cell))
 
 
 func _expect(condition: bool, message: String) -> void:

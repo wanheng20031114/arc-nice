@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="WaveConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_80qkg"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_shell.tres" id="2_7kori"]
+[ext_resource type="Script" path="res://resources/config/flow/flow_exit_config.gd" id="3_4org8"]
+[ext_resource type="AudioStream" path="res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3" id="4_2r8dq"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="5_q865d"]
+
+[sub_resource type="Resource" id="Resource_bb0xq"]
+script = ExtResource("1_80qkg")
+enemy_config = ExtResource("2_7kori")
+count = 50
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_4tes2"]
+script = ExtResource("3_4org8")
+target_step_id = &"wave_02"
+metadata/_custom_type_script = "uid://blcjxtu575ki5"
+
+[resource]
+script = ExtResource("5_q865d")
+wave_name = "第1波 音效测试"
+enemy_entries = Array[ExtResource("1_80qkg")]([SubResource("Resource_bb0xq")])
+spawn_interval = 0.35
+max_alive_enemies = 35
+music = ExtResource("4_2r8dq")
+step_id = &"wave_01"
+display_name = "第1波 音效测试"
+post_clear_rest_duration = 20.0
+exits = Array[ExtResource("3_4org8")]([SubResource("Resource_4tes2")])
+editor_position = Vector2(120, -120)

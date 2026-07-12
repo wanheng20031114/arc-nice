@@ -270,14 +270,19 @@ func _refresh_base_dirt_layer() -> void:
 		base_dirt_source_id,
 		base_dirt_atlas_coords,
 	]
-	if _base_dirt_generation_key == generation_key and _base_dirt_layer_matches(fill_rect):
+	if _base_dirt_layer_matches(fill_rect):
+		_base_dirt_generation_key = generation_key
 		return
 
+	_rebuild_base_dirt_layer(fill_rect)
+	_base_dirt_generation_key = generation_key
+
+
+func _rebuild_base_dirt_layer(fill_rect: Rect2i) -> void:
 	base_dirt_map_layer.clear()
 	for y in range(fill_rect.position.y, fill_rect.end.y):
 		for x in range(fill_rect.position.x, fill_rect.end.x):
 			base_dirt_map_layer.set_cell(Vector2i(x, y), base_dirt_source_id, base_dirt_atlas_coords)
-	_base_dirt_generation_key = generation_key
 
 
 func _refresh_water_collision_layer() -> void:

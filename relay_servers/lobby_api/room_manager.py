@@ -8,7 +8,7 @@ import time
 import threading
 from typing import Optional
 
-from .models import RoomInfo, RoomStatus, PlayerInfo
+from .models import GameMode, RoomInfo, RoomStatus, PlayerInfo
 from . import config
 
 
@@ -28,6 +28,7 @@ class RoomManager:
         host_ip: str,
         max_players: int = 4,
         port: int = config.RELAY_PORT_START,
+        game_mode: GameMode = GameMode.STANDARD,
     ) -> Optional[RoomInfo]:
         with self._lock:
             if len(self._rooms) >= config.MAX_ROOMS:
@@ -39,6 +40,7 @@ class RoomManager:
                 host_ip=host_ip,
                 port=port,
                 max_players=min(max(max_players, 2), config.MAX_PLAYERS_PER_ROOM),
+                game_mode=game_mode,
                 status=RoomStatus.STARTING,
             )
 
@@ -63,12 +65,19 @@ class RoomManager:
 
     # ─── 加入 / 离开 ─────────────────────────────
 
-    def join_room(self, room_id: str, player_name: str) -> Optional[RoomInfo]:
+    def join_room(
+        self,
+        room_id: str,
+        player_name: str,
+        game_mode: GameMode = GameMode.STANDARD,
+    ) -> Optional[RoomInfo]:
         with self._lock:
             room = self._rooms.get(room_id)
             if room is None:
                 return None
             if not room.is_joinable:
+                return None
+            if room.game_mode != game_mode:
                 return None
             if player_name in room.players:
                 return None  # 重名
@@ -171,10 +180,14 @@ class RoomManager:
 
     # ─── 快速匹配 ─────────────────────────────────
 
-    def find_match(self) -> Optional[RoomInfo]:
+    def find_match(self, game_mode: GameMode = GameMode.STANDARD) -> Optional[RoomInfo]:
         """找一个人数最多但未满的房间。"""
         with self._lock:
-            joinable = [r for r in self._rooms.values() if r.is_joinable]
+            joinable = [
+                room
+                for room in self._rooms.values()
+                if room.is_joinable and room.game_mode == game_mode
+            ]
             if not joinable:
                 return None
             # 优先匹配人数最多的房间

@@ -32,6 +32,7 @@ func _run() -> void:
 		pathfinder.agent_grid_cache.size() > 0,
 		"Game startup must prewarm enemy agent clearance grids."
 	)
+	_verify_local_clearance_matches_bruteforce(pathfinder)
 
 	var adjacent_cell := _find_walkable_cell_adjacent_to_blocked(pathfinder)
 	_expect(adjacent_cell != Vector2i.MAX, "Map must contain a walkable cell adjacent to a blocked tile.")
@@ -92,6 +93,89 @@ func _run() -> void:
 					)
 
 	_finish(game)
+
+
+func _verify_local_clearance_matches_bruteforce(pathfinder: GridPathfinder) -> void:
+	var region := pathfinder.astar_grid.region
+	var sample_step := Vector2i(
+		maxi(region.size.x / 7, 1),
+		maxi(region.size.y / 7, 1)
+	)
+	var sample_offsets: Array[Vector2] = [
+		Vector2.ZERO,
+		Vector2(7.5, 0.0),
+		Vector2(-7.5, 0.0),
+		Vector2(0.0, 7.5),
+		Vector2(0.0, -7.5),
+	]
+	var sample_extents: Array[Vector2] = [
+		Vector2.ZERO,
+		FAST_INSECT_HALF_EXTENTS,
+		EXACT_TOUCH_AGENT_HALF_EXTENTS,
+		TEST_AGENT_HALF_EXTENTS,
+	]
+	for cell_y in range(region.position.y, region.end.y, sample_step.y):
+		for cell_x in range(region.position.x, region.end.x, sample_step.x):
+			var cell_center := pathfinder.obstacle_tile_layer.map_to_local(Vector2i(cell_x, cell_y))
+			for offset in sample_offsets:
+				var local_position := cell_center + offset
+				for half_extents in sample_extents:
+					var optimized := bool(pathfinder.call(
+						"_is_local_position_walkable_for_agent",
+						local_position,
+						half_extents,
+						DualGridTilemap.TraversalType.LAND
+					))
+					var reference := _is_local_position_walkable_bruteforce(
+						pathfinder,
+						local_position,
+						half_extents,
+						DualGridTilemap.TraversalType.LAND
+					)
+					if optimized == reference:
+						continue
+					_expect(
+						false,
+						"Local clearance neighborhood scan must match brute force at %s with extents %s."
+						% [local_position, half_extents]
+					)
+					return
+
+
+func _is_local_position_walkable_bruteforce(
+	pathfinder: GridPathfinder,
+	local_position: Vector2,
+	agent_half_extents: Vector2,
+	traversal_types: int
+) -> bool:
+	var padded_extents := (
+		agent_half_extents
+		+ Vector2.ONE * maxf(pathfinder.agent_clearance_padding, 0.0)
+	)
+	if local_position.x - padded_extents.x < pathfinder.region_local_rect.position.x:
+		return false
+	if local_position.y - padded_extents.y < pathfinder.region_local_rect.position.y:
+		return false
+	if local_position.x + padded_extents.x > pathfinder.region_local_rect.end.x:
+		return false
+	if local_position.y + padded_extents.y > pathfinder.region_local_rect.end.y:
+		return false
+
+	var half_cell := pathfinder.astar_grid.cell_size * 0.5
+	var region := pathfinder.astar_grid.region
+	for cell_y in range(region.position.y, region.end.y):
+		for cell_x in range(region.position.x, region.end.x):
+			var blocked_cell := Vector2i(cell_x, cell_y)
+			if not bool(pathfinder.call("_is_cell_blocked", blocked_cell, traversal_types)):
+				continue
+			var blocked_center := pathfinder.obstacle_tile_layer.map_to_local(blocked_cell)
+			var delta := (local_position - blocked_center).abs()
+			if (
+				delta.x < padded_extents.x + half_cell.x
+				and delta.y < padded_extents.y + half_cell.y
+			):
+				return false
+	return true
 
 
 func _find_walkable_cell_adjacent_to_blocked(pathfinder: GridPathfinder) -> Vector2i:

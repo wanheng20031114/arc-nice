@@ -7,7 +7,7 @@
 [ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="5_4gucm"]
 [ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="6_qurg6"]
 [ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="7_465hc"]
-[ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect_purple_bomber.tscn" id="enemy_scene"]
+[ext_resource type="PackedScene" uid="uid://m17avh70k6cu" path="res://scene/enemy/yuanshi_insect_purple_bomber.tscn" id="enemy_scene"]
 
 [resource]
 script = ExtResource("2_script")

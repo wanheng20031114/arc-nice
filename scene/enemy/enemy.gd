@@ -7,7 +7,6 @@ const SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER := &"slow_overlay_strength"
 const BURN_OVERLAY_STRENGTH_SHADER_PARAMETER := &"burn_overlay_strength"
 const BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER := &"bleed_overlay_strength"
 const PATH_DIRECTION_PROBE_DISTANCE := 1.0
-const FLOW_NAVIGATION_WAYPOINT_ARRIVAL_DISTANCE := 1.0
 const AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const MATERIAL_PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const MATERIAL_WOOD := preload("res://resources/config/materials/material_wood.tres")
@@ -42,6 +41,8 @@ enum DeathSequenceStage {
 @onready var death_audio: AudioStreamPlayer2D = $DeathAudio
 
 var target_player: Player = null
+var objective_target: Node2D = null
+var reward_player: Player = null
 var pathfinder: Node = null
 var current_health: int = 1
 var is_dead: bool = false
@@ -121,13 +122,40 @@ func _refresh_status_process_enabled() -> void:
 func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = null) -> void:
 	config = enemy_config
 	target_player = player
+	objective_target = player
+	reward_player = player
 	pathfinder = shared_pathfinder
 	_apply_config()
 
 
 func set_target_player(player: Player) -> void:
+	var previous_target := target_player
 	target_player = player
+	reward_player = player
+	if objective_target == null or objective_target == previous_target:
+		objective_target = player
 	_clear_cached_navigation_move_direction()
+
+
+func set_objective_target(target: Node2D) -> void:
+	if objective_target == target:
+		return
+	objective_target = target
+	_clear_cached_navigation_move_direction()
+
+
+func set_reward_player(player: Player) -> void:
+	reward_player = player
+
+
+func is_objective_targeting_player() -> bool:
+	return (
+		objective_target != null
+		and is_instance_valid(objective_target)
+		and target_player != null
+		and is_instance_valid(target_player)
+		and objective_target == target_player
+	)
 
 
 func set_pathfinder(shared_pathfinder: Node) -> void:
@@ -137,6 +165,8 @@ func set_pathfinder(shared_pathfinder: Node) -> void:
 func configure_multiplayer_proxy() -> void:
 	is_multiplayer_proxy = true
 	target_player = null
+	objective_target = null
+	reward_player = null
 	pathfinder = null
 	touched_player = null
 	touching_players.clear()
@@ -151,6 +181,30 @@ func configure_multiplayer_proxy() -> void:
 	collision_mask = 0
 	_disable_proxy_area_collisions(self)
 	_ensure_multiplayer_proxy_move_animation()
+
+
+func remove_for_home_escape() -> bool:
+	if is_dead:
+		return false
+	is_dead = true
+	velocity = Vector2.ZERO
+	set_process(false)
+	set_physics_process(false)
+	touched_player = null
+	touching_players.clear()
+	touched_plant = null
+	touching_plants.clear()
+	objective_target = null
+	proxy_action_animation_name_in_use = &""
+	proxy_action_restore_token += 1
+	_set_collision_shapes_disabled(body_collision_shapes, true)
+	_set_collision_shapes_disabled(touch_damage_shapes, true)
+	if touch_damage_area != null:
+		touch_damage_area.set_deferred("monitoring", false)
+		touch_damage_area.set_deferred("monitorable", false)
+	visible = false
+	queue_free()
+	return true
 
 
 func apply_multiplayer_proxy_motion(proxy_position: Vector2, proxy_velocity: Vector2) -> void:
@@ -807,6 +861,63 @@ func _get_collision_shape_half_extents(shape_node: CollisionShape2D) -> Vector2:
 	)
 
 
+func _get_safe_navigation_move_direction(
+	target_node: Node2D,
+	shared_pathfinder: Node,
+	waypoint_arrival_distance: float
+) -> Vector2:
+	if not _should_update_navigation_direction():
+		return cached_navigation_move_direction
+	if not is_instance_valid(target_node):
+		return _cache_navigation_move_direction(Vector2.ZERO)
+	if shared_pathfinder == null or not shared_pathfinder.get("is_built"):
+		return _cache_navigation_move_direction(Vector2.ZERO)
+	if not shared_pathfinder.has_method("try_get_safe_navigation_step"):
+		return _cache_navigation_move_direction(Vector2.ZERO)
+
+	var step: Dictionary = shared_pathfinder.call(
+		"try_get_safe_navigation_step",
+		global_position,
+		target_node.global_position,
+		_get_body_collision_half_extents(),
+		terrain_traversal_types
+	)
+	var status := int(step.get(
+		"status",
+		GridPathfinder.NavigationStepStatus.UNREACHABLE
+	))
+	match status:
+		GridPathfinder.NavigationStepStatus.READY:
+			if not bool(step.get("is_complete_route", false)):
+				return _cache_navigation_move_direction(Vector2.ZERO)
+			var waypoint: Vector2 = step.get("waypoint", global_position)
+			var move_direction := _get_axis_aligned_waypoint_direction(
+				waypoint,
+				waypoint_arrival_distance
+			)
+			return _cache_navigation_move_direction(move_direction)
+		GridPathfinder.NavigationStepStatus.DEFERRED:
+			if _is_cached_navigation_direction_shape_safe():
+				return cached_navigation_move_direction
+			return _cache_navigation_move_direction(Vector2.ZERO)
+		_:
+			return _cache_navigation_move_direction(Vector2.ZERO)
+
+
+func _is_cached_navigation_direction_shape_safe() -> bool:
+	return (
+		cached_navigation_move_direction != Vector2.ZERO
+		and not test_move(
+			global_transform,
+			cached_navigation_move_direction * PATH_DIRECTION_PROBE_DISTANCE
+		)
+	)
+
+
+func _clear_navigation_path() -> void:
+	_clear_cached_navigation_move_direction()
+
+
 func _get_axis_aligned_waypoint_direction(waypoint: Vector2, arrival_distance: float) -> Vector2:
 	var offset := waypoint - global_position
 	if offset == Vector2.ZERO:
@@ -822,30 +933,6 @@ func _get_axis_aligned_waypoint_direction(waypoint: Vector2, arrival_distance: f
 	if abs_x >= abs_y:
 		return _choose_unblocked_axis_direction(Vector2(signf(offset.x), 0.0), Vector2(0.0, signf(offset.y)))
 	return _choose_unblocked_axis_direction(Vector2(0.0, signf(offset.y)), Vector2(signf(offset.x), 0.0))
-
-
-func _get_shared_flow_navigation_direction(target_node: Node2D, shared_pathfinder: Node) -> Vector2:
-	if not is_instance_valid(target_node):
-		return Vector2.ZERO
-	if shared_pathfinder == null:
-		return Vector2.ZERO
-	if not shared_pathfinder.get("is_built"):
-		return Vector2.ZERO
-	if not shared_pathfinder.has_method("try_get_flow_navigation_waypoint"):
-		return Vector2.ZERO
-
-	var waypoint_result: Variant = shared_pathfinder.call(
-		"try_get_flow_navigation_waypoint",
-		global_position,
-		target_node.global_position,
-		_get_body_collision_half_extents(),
-		terrain_traversal_types
-	)
-	if waypoint_result == null:
-		return Vector2.ZERO
-
-	var waypoint: Vector2 = waypoint_result
-	return _get_axis_aligned_waypoint_direction(waypoint, FLOW_NAVIGATION_WAYPOINT_ARRIVAL_DISTANCE)
 
 
 func _should_update_navigation_direction() -> bool:
@@ -864,21 +951,6 @@ func _cache_navigation_move_direction(move_direction: Vector2) -> Vector2:
 
 func _clear_cached_navigation_move_direction() -> void:
 	cached_navigation_move_direction = Vector2.ZERO
-
-
-func _get_shape_safe_move_direction_to_target(target_node: Node2D) -> Vector2:
-	if not is_instance_valid(target_node):
-		return Vector2.ZERO
-	var direct_direction := global_position.direction_to(target_node.global_position)
-	if direct_direction == Vector2.ZERO:
-		return Vector2.ZERO
-	if not test_move(global_transform, direct_direction * PATH_DIRECTION_PROBE_DISTANCE):
-		return direct_direction
-	var x_direction := Vector2(signf(direct_direction.x), 0.0)
-	var y_direction := Vector2(0.0, signf(direct_direction.y))
-	if absf(direct_direction.x) >= absf(direct_direction.y):
-		return _choose_unblocked_axis_direction(x_direction, y_direction)
-	return _choose_unblocked_axis_direction(y_direction, x_direction)
 
 
 func _choose_unblocked_axis_direction(primary_direction: Vector2, secondary_direction: Vector2 = Vector2.ZERO) -> Vector2:

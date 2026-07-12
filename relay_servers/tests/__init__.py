@@ -1,0 +1,1 @@
+"""Lobby service tests."""

@@ -5,6 +5,7 @@ signal state_changed(previous_state: PlacementState, current_state: PlacementSta
 signal placement_mode_changed(active: bool)
 signal player_lock_requested(locked: bool)
 signal plant_placed(plant: PlantDefense, config: PlantDefenseConfig)
+signal multiplayer_placement_requested(request_id: int, plant_id: StringName, anchor: Vector2i)
 signal placement_cancelled
 signal selection_unavailable
 
@@ -37,6 +38,8 @@ var markers_by_anchor: Dictionary = {}
 var hovered_anchor := Vector2i.ZERO
 var has_hovered_anchor := false
 var marker_refresh_time_left := 0.0
+var multiplayer_request_mode := false
+var next_multiplayer_request_id := 1
 
 
 func _ready() -> void:
@@ -63,6 +66,14 @@ func configure(new_plant_system: PlantSystem, new_owner_player: Player = null) -
 		owner_player.tree_exiting.connect(_on_owner_player_unavailable)
 
 
+func set_multiplayer_request_mode(enabled: bool) -> void:
+	multiplayer_request_mode = enabled
+
+
+func notify_multiplayer_placement_rejected(_request_id: int) -> void:
+	selection_unavailable.emit()
+
+
 func is_active() -> bool:
 	return placement_state != PlacementState.IDLE
 
@@ -80,7 +91,7 @@ func open_selection() -> bool:
 		return false
 	if owner_player != null and owner_player.is_dead:
 		return false
-	var configs := plant_system.get_available_configs()
+	var configs := _get_available_configs_for_current_mode()
 	if configs.is_empty():
 		selection_unavailable.emit()
 		return false
@@ -92,6 +103,18 @@ func open_selection() -> bool:
 	cancel_placement()
 	selection_unavailable.emit()
 	return false
+
+
+func _get_available_configs_for_current_mode() -> Array[PlantDefenseConfig]:
+	var configs := plant_system.get_available_configs()
+	if not multiplayer_request_mode:
+		return configs
+
+	var multiplayer_configs: Array[PlantDefenseConfig] = []
+	for config in configs:
+		if config != null and config.supports_multiplayer:
+			multiplayer_configs.append(config)
+	return multiplayer_configs
 
 
 func cancel_placement() -> void:
@@ -238,18 +261,34 @@ func _set_hovered_anchor(anchor: Vector2i, has_anchor: bool) -> void:
 func _try_place_hovered() -> void:
 	if not has_hovered_anchor or plant_system == null or selected_config == null:
 		return
+	if multiplayer_request_mode:
+		var request_id := next_multiplayer_request_id
+		next_multiplayer_request_id += 1
+		var requested_config := selected_config
+		var requested_anchor := hovered_anchor
+		_finish_placement_interaction()
+		multiplayer_placement_requested.emit(
+			request_id,
+			requested_config.plant_id,
+			requested_anchor
+		)
+		return
 	var placed_plant := plant_system.try_place(selected_config, hovered_anchor)
 	if placed_plant == null:
 		refresh_valid_positions()
 		return
 	var placed_config := selected_config
+	_finish_placement_interaction()
+	plant_placed.emit(placed_plant, placed_config)
+
+
+func _finish_placement_interaction() -> void:
 	selection_hud.close()
 	_clear_world_preview()
 	selected_config = null
 	_set_placement_state(PlacementState.IDLE)
 	placement_mode_changed.emit(false)
 	player_lock_requested.emit(false)
-	plant_placed.emit(placed_plant, placed_config)
 
 
 func _clear_world_preview() -> void:

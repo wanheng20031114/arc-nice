@@ -1,4 +1,4 @@
-extends Node2D
+extends GameRuntimeBase
 class_name Game
 
 const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/enemy/yuanshi_insect_spawn_effect.tscn")
@@ -22,80 +22,26 @@ const MUSIC_FADE_IN_SECONDS := 3.0
 const MUSIC_FADE_IN_START_VOLUME_DB := -12.0
 const INITIAL_PLAYER_XIRANG := 1000
 
-signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
-signal multiplayer_enemy_defeated(net_id: int, defeat_position: Vector2)
-signal multiplayer_enemy_removed(net_id: int)
-signal multiplayer_pickup_spawned(net_id: int, pickup_config: PickupConfig, spawn_position: Vector2)
-signal multiplayer_pickup_collected(
-	net_id: int,
-	collector_peer_id: int,
-	pickup_config: PickupConfig,
-	applied_immediately: bool
+@export_group("战役资源")
+@export var singleplayer_campaign: WaveCampaignConfig = preload(
+	"res://resources/config/campaigns/standard/singleplayer/campaign.tres"
 )
-signal multiplayer_pickup_removed(net_id: int)
-signal multiplayer_merchant_active_changed(active: bool)
-signal multiplayer_wave_started(wave_index: int)
-signal multiplayer_flow_state_changed(step_id: StringName, state: int, countdown_seconds: int)
-signal multiplayer_boss_started(net_id: int, boss_config: BossConfig, spawn_position: Vector2)
-signal multiplayer_defeat_started
-signal multiplayer_victory_started
-signal multiplayer_revive_all_requested
-signal return_to_lobby_requested
-
-enum RuntimeMode {
-	SINGLEPLAYER,
-	HOST_AUTHORITY,
-	CLIENT_VIEW,
-}
-
-enum WaveState {
-	PRE_WAVE,
-	WAVE_ACTIVE,
-	INTERMISSION,
-	VICTORY,
-	DEFEAT,
-	BOSS_INTRO,
-	BOSS_ACTIVE,
-}
-
-@export_group("波次资源")
-@export var waves: Array[WaveConfig] = [
-	preload("res://resources/config/waves/wave_01.tres"),
-	preload("res://resources/config/waves/wave_02.tres"),
-	preload("res://resources/config/waves/wave_03.tres"),
-	preload("res://resources/config/waves/wave_04.tres"),
-	preload("res://resources/config/waves/wave_05.tres"),
-	preload("res://resources/config/waves/wave_06.tres"),
-	preload("res://resources/config/waves/wave_07.tres"),
-	preload("res://resources/config/waves/wave_08.tres"),
-	preload("res://resources/config/waves/wave_09.tres"),
-	preload("res://resources/config/waves/wave_10.tres"),
-	preload("res://resources/config/waves/wave_11.tres"),
-	preload("res://resources/config/waves/wave_12.tres"),
-]
-
-@export_group("Boss资源")
-@export var bosses: Array[Resource] = [
-	preload("res://resources/config/bosses/boss_01_linglan.tres"),
-]
+@export var multiplayer_campaign: WaveCampaignConfig = preload(
+	"res://resources/config/campaigns/standard/multiplayer/campaign.tres"
+)
 
 @export_group("战斗流程")
-@export var flow_graph: FlowGraphConfig = preload("res://resources/config/flow/default_combat_flow.tres")
 @export_range(0.0, 60.0, 1.0, "or_greater") var pre_wave_duration: float = 5.0
 @export var auto_start_waves: bool = true
-@export var runtime_mode: RuntimeMode = RuntimeMode.SINGLEPLAYER
 @export var linglan_boss_enabled: bool = true
 
-var player: Player = null
 @onready var player_spawn: Marker2D = $PlayerSpawn
 @onready var ground_tile_map_layer: TileMapLayer = $GroundTileMapLayer
 @onready var overlay_tile_map_layer: TileMapLayer = $OverlayTileMapLayer
-@onready var enemy_container: Node2D = $EnemyContainer
 @onready var enemy_spawn_points_root: Node2D = $EnemySpawnPoints
 @onready var enemy_spawn_timer: Timer = $EnemySpawnTimer
 @onready var state_timer: Timer = $StateTimer
 @onready var map_camera: Camera2D = $Camera2D
-@onready var grid_pathfinder: Node = $GridPathfinder
 @onready var music_player: AudioStreamPlayer = $MusicPlayer
 @onready var countdown_audio: AudioStreamPlayer = $CountdownAudio
 @onready var wave_start_audio: AudioStreamPlayer = $WaveStartAudio
@@ -111,12 +57,18 @@ var player: Player = null
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
 var random_generator := RandomNumberGenerator.new()
+var active_campaign: WaveCampaignConfig = null
+var flow_graph: FlowGraphConfig = null
+var waves: Array[WaveConfig] = []
+var bosses: Array[Resource] = []
 var enemy_spawn_points: Array[Marker2D] = []
+var enemy_spawn_points_by_name: Dictionary[StringName, Marker2D] = {}
+var active_wave_spawn_points: Array[Marker2D] = []
+var spawn_point_configuration_valid := true
 var pending_enemy_configs: Array[EnemyConfig] = []
 var pending_enemy_config_index: int = 0
 var active_wave_enemy_ids: Dictionary = {}
 
-var wave_state: WaveState = WaveState.PRE_WAVE
 var current_wave_index: int = 0
 var current_wave_total: int = 0
 var current_wave_spawned: int = 0
@@ -125,14 +77,9 @@ var countdown_seconds: int = 0
 var current_flow_step: FlowStepConfig = null
 var next_flow_step_after_rest: FlowStepConfig = null
 var music_fade_tween: Tween = null
-var multiplayer_local_peer_id: int = 0
 var multiplayer_player_names: Dictionary = {}
 var multiplayer_player_character_ids: Dictionary = {}
-var peer_players: Dictionary = {}
-var multiplayer_pickups: Dictionary = {}
 var removed_multiplayer_pickup_ids: Dictionary = {}
-var multiplayer_enemy_ids_by_instance: Dictionary = {}
-var multiplayer_enemies_by_net_id: Dictionary = {}
 var removed_multiplayer_enemy_ids: Dictionary = {}
 var enemy_retarget_time_left: float = 0.0
 var next_multiplayer_enemy_net_id: int = 1
@@ -153,6 +100,10 @@ var navigation_prewarmed: bool = false
 
 func _ready() -> void:
 	random_generator.randomize()
+	if not _configure_active_campaign():
+		set_process(false)
+		set_physics_process(false)
+		return
 	var user_settings := get_node_or_null("/root/UserSettings")
 	if user_settings != null and user_settings.has_method("assign_audio_buses_to_tree"):
 		user_settings.call("assign_audio_buses_to_tree")
@@ -230,6 +181,30 @@ func configure_multiplayer(
 	multiplayer_local_peer_id = local_peer_id
 	multiplayer_player_names = player_names.duplicate()
 	multiplayer_player_character_ids = player_character_ids.duplicate()
+
+
+func _configure_active_campaign() -> bool:
+	active_campaign = (
+		singleplayer_campaign
+		if runtime_mode == RuntimeMode.SINGLEPLAYER
+		else multiplayer_campaign
+	)
+	flow_graph = null
+	waves.clear()
+	bosses.clear()
+	if active_campaign == null:
+		push_error("Game: 当前运行模式没有配置 WaveCampaignConfig。")
+		return false
+	var campaign_errors := active_campaign.validate_campaign()
+	if not campaign_errors.is_empty():
+		for error in campaign_errors:
+			push_error(error)
+		return false
+	flow_graph = active_campaign.flow_graph
+	waves.assign(active_campaign.get_waves())
+	for boss_config in active_campaign.get_bosses():
+		bosses.append(boss_config)
+	return true
 
 
 func _configure_singleplayer_player() -> void:
@@ -380,12 +355,15 @@ func apply_remote_merchant_active(active: bool) -> void:
 func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> void:
 	if runtime_mode != RuntimeMode.CLIENT_VIEW:
 		return
+	var typed_state := state as WaveState
 	var flow_step := _get_flow_step_by_id(step_id)
+	if flow_step == null and typed_state not in [WaveState.VICTORY, WaveState.DEFEAT]:
+		push_error("Game: 收到当前 Campaign 不存在的流程 step_id：%s" % String(step_id))
+		return
 	if flow_step != null:
 		current_flow_step = flow_step
 		if flow_step is WaveConfig:
 			current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
-	var typed_state := state as WaveState
 	match typed_state:
 		WaveState.PRE_WAVE, WaveState.INTERMISSION:
 			_start_client_flow_countdown(typed_state, step_id, seconds)
@@ -426,18 +404,12 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 			apply_remote_defeat()
 
 
-func apply_remote_wave_started(wave_index: int) -> void:
-	if wave_index < 0 or wave_index >= waves.size():
-		return
-	var wave_config := waves[wave_index]
-	if wave_config == null:
-		return
-	state_timer.stop()
-	wave_state = WaveState.WAVE_ACTIVE
-	current_wave_index = wave_index
-	_update_wave_music(wave_config)
-	wave_hud.show_enemy_count(current_wave_index + 1, 0)
-	wave_start_audio.play()
+func get_flow_state_snapshot() -> Dictionary:
+	return {
+		"step_id": _get_flow_step_id(current_flow_step),
+		"state": int(wave_state),
+		"countdown_seconds": countdown_seconds,
+	}
 
 
 func apply_remote_boss_started(net_id: int, boss_config: BossConfig, spawn_position: Vector2) -> void:
@@ -947,10 +919,19 @@ func _load_threaded_or_direct(path: String) -> Resource:
 
 func _collect_enemy_spawn_points() -> void:
 	enemy_spawn_points.clear()
+	enemy_spawn_points_by_name.clear()
+	active_wave_spawn_points.clear()
+	spawn_point_configuration_valid = true
 	for child in enemy_spawn_points_root.get_children():
 		var spawn_point := child as Marker2D
 		if spawn_point != null:
+			var spawn_name := StringName(spawn_point.name)
+			if enemy_spawn_points_by_name.has(spawn_name):
+				push_error("EnemySpawnPoints 包含重复名称：%s" % String(spawn_name))
+				spawn_point_configuration_valid = false
+				continue
 			enemy_spawn_points.append(spawn_point)
+			enemy_spawn_points_by_name[spawn_name] = spawn_point
 
 	if enemy_spawn_points.is_empty():
 		push_warning("EnemySpawnPoints 下没有可用的 Marker2D 刷新点。")
@@ -1058,13 +1039,6 @@ func _get_enemy_scene_body_half_extents(enemy_config: EnemyConfig) -> Vector2:
 	return body_half_extents
 
 
-func _enter_pre_wave(wave_index: int) -> void:
-	if wave_index < 0 or wave_index >= waves.size():
-		_enter_victory()
-		return
-	_enter_pre_flow_step(waves[wave_index])
-
-
 func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
 	if flow_step == null:
 		_enter_victory()
@@ -1115,17 +1089,6 @@ func _enter_intermission(next_step: FlowStepConfig = null) -> void:
 	state_timer.start(1.0)
 
 
-func _begin_wave(wave_index: int) -> void:
-	if wave_index < 0 or wave_index >= waves.size():
-		_enter_victory()
-		return
-
-	var wave_config := waves[wave_index]
-	current_flow_step = wave_config
-	next_flow_step_after_rest = null
-	_begin_wave_config(wave_config)
-
-
 func _begin_flow_step(flow_step: FlowStepConfig) -> void:
 	if flow_step == null:
 		_enter_victory()
@@ -1144,6 +1107,9 @@ func _begin_flow_step(flow_step: FlowStepConfig) -> void:
 func _begin_wave_config(wave_config: WaveConfig) -> void:
 	if wave_config == null:
 		push_error("流程节点缺少 WaveConfig。")
+		_enter_defeat()
+		return
+	if not _resolve_wave_spawn_points(wave_config):
 		_enter_defeat()
 		return
 	if runtime_mode != RuntimeMode.CLIENT_VIEW and not navigation_prewarmed:
@@ -1166,8 +1132,6 @@ func _begin_wave_config(wave_config: WaveConfig) -> void:
 		current_wave_total
 	)
 	wave_start_audio.play()
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_wave_started.emit(current_wave_index)
 	_emit_multiplayer_flow_state(WaveState.WAVE_ACTIVE)
 
 	if current_wave_total <= 0:
@@ -1195,6 +1159,44 @@ func _build_wave_spawn_queue(wave_config: WaveConfig) -> void:
 		pending_enemy_configs[target_index] = temporary
 
 
+func _resolve_wave_spawn_points(wave_config: WaveConfig) -> bool:
+	active_wave_spawn_points.clear()
+	var resolution := _inspect_wave_spawn_points(wave_config)
+	if not bool(resolution.get("valid", false)):
+		var error_message := str(resolution.get("error", ""))
+		if not error_message.is_empty():
+			push_error(error_message)
+		return false
+	active_wave_spawn_points.assign(resolution.get("points", []))
+	return not active_wave_spawn_points.is_empty()
+
+
+func _inspect_wave_spawn_points(wave_config: WaveConfig) -> Dictionary:
+	var points: Array[Marker2D] = []
+	if wave_config == null or not spawn_point_configuration_valid:
+		return {"valid": false, "points": points, "error": ""}
+	var enabled_names := wave_config.get_enabled_spawn_point_names()
+	if enabled_names.is_empty():
+		return {
+			"valid": false,
+			"points": points,
+			"error": "波次 %s 没有启用任何出生点。" % wave_config.get_flow_display_name(),
+		}
+	for spawn_name in enabled_names:
+		var marker := enemy_spawn_points_by_name.get(spawn_name) as Marker2D
+		if marker == null:
+			return {
+				"valid": false,
+				"points": points,
+				"error": (
+					"波次 %s 引用了场景中不存在的出生点 %s。"
+					% [wave_config.get_flow_display_name(), String(spawn_name)]
+				),
+			}
+		points.append(marker)
+	return {"valid": true, "points": points, "error": ""}
+
+
 func _on_state_timer_timeout() -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		_update_client_flow_countdown()
@@ -1219,19 +1221,6 @@ func _on_state_timer_timeout() -> void:
 
 func _on_enemy_spawn_timer_timeout() -> void:
 	_spawn_wave_batch()
-
-
-func _start_client_wave_countdown(state: WaveState, wave_index: int, seconds: int) -> void:
-	wave_state = state
-	current_wave_index = clampi(wave_index, 0, maxi(waves.size() - 1, 0))
-	if state == WaveState.INTERMISSION and current_wave_index >= 0 and current_wave_index < waves.size():
-		_update_post_wave_music(waves[current_wave_index])
-	countdown_seconds = maxi(seconds, 0)
-	wave_hud.show_countdown(countdown_seconds)
-	if countdown_seconds <= 0:
-		state_timer.stop()
-		return
-	state_timer.start(1.0)
 
 
 func _start_client_flow_countdown(state: WaveState, step_id: StringName, seconds: int) -> void:
@@ -2229,23 +2218,10 @@ func _get_enemy_spawn_marker(marker_name: StringName) -> Marker2D:
 	return node as Marker2D
 
 
-func _is_wave_system_ready() -> bool:
-	if not _is_spawn_system_ready():
-		return false
-	if waves.is_empty():
-		push_warning("Game 场景没有配置任何波次资源。")
-		return false
-	for wave_config in waves:
-		if wave_config == null:
-			push_warning("Game 场景的波次数组包含空资源。")
-			return false
-	return true
-
-
 func _is_flow_system_ready() -> bool:
 	if flow_graph == null:
-		push_warning("Game 场景没有配置 FlowGraphConfig。")
-		return _is_wave_system_ready()
+		push_error("Game 当前 Campaign 没有配置 FlowGraphConfig。")
+		return false
 	if not _is_spawn_system_ready():
 		return false
 	var errors := flow_graph.validate_graph()
@@ -2257,28 +2233,13 @@ func _is_flow_system_ready() -> bool:
 
 
 func _get_start_flow_step() -> FlowStepConfig:
-	if flow_graph != null and flow_graph.start_step != null:
-		return flow_graph.start_step
-	if not waves.is_empty():
-		return waves[0]
-	return null
+	return flow_graph.start_step if flow_graph != null else null
 
 
 func _get_flow_step_by_id(step_id: StringName) -> FlowStepConfig:
 	if step_id == &"":
 		return null
-	if flow_graph != null:
-		var flow_step := flow_graph.get_step_by_id(step_id)
-		if flow_step != null:
-			return flow_step
-	for wave_config in waves:
-		if wave_config != null and wave_config.step_id == step_id:
-			return wave_config
-	for boss_resource in bosses:
-		var boss_config := boss_resource as BossConfig
-		if boss_config != null and boss_config.step_id == step_id:
-			return boss_config
-	return null
+	return flow_graph.get_step_by_id(step_id) if flow_graph != null else null
 
 
 func _get_flow_step_id(flow_step: FlowStepConfig) -> StringName:
@@ -2288,14 +2249,9 @@ func _get_flow_step_id(flow_step: FlowStepConfig) -> StringName:
 func _get_default_next_flow_step(flow_step: FlowStepConfig) -> FlowStepConfig:
 	if flow_step == null:
 		return null
-	if flow_graph != null and flow_graph.get_step_index(flow_step) >= 0:
-		return flow_graph.get_default_next_step(flow_step)
-	var default_exit := flow_step.get_default_exit()
-	if default_exit == null:
+	if flow_graph == null or flow_graph.get_step_index(flow_step) < 0:
 		return null
-	if default_exit.target_step != null:
-		return default_exit.target_step
-	return _get_flow_step_by_id(default_exit.target_step_id)
+	return flow_graph.get_default_next_step(flow_step)
 
 
 func _get_wave_number_for_step(wave_config: WaveConfig) -> int:
@@ -2347,19 +2303,14 @@ func _is_spawn_system_ready() -> bool:
 
 
 func _get_current_wave() -> WaveConfig:
-	var flow_wave := current_flow_step as WaveConfig
-	if flow_wave != null:
-		return flow_wave
-	if current_wave_index < 0 or current_wave_index >= waves.size():
-		return null
-	return waves[current_wave_index]
+	return current_flow_step as WaveConfig
 
 
 func _pick_spawn_point() -> Marker2D:
-	if enemy_spawn_points.is_empty():
+	if active_wave_spawn_points.is_empty():
 		return null
-	return enemy_spawn_points[
-		random_generator.randi_range(0, enemy_spawn_points.size() - 1)
+	return active_wave_spawn_points[
+		random_generator.randi_range(0, active_wave_spawn_points.size() - 1)
 	]
 
 

@@ -45,7 +45,7 @@ func _run() -> void:
 	_test_character_dash_override_contract()
 	await _test_collectible_dash_modifiers()
 	await _test_player_scene(WEISHIDAIER_SCENE, "Weishidaier", 35.0, 5.0)
-	await _test_player_scene(HOE_CAT_SCENE, "Hoe Cat", 35.0, 4.0)
+	await _test_player_scene(HOE_CAT_SCENE, "Hoe Cat", 35.0, 3.0)
 	await _test_player_scene(TIYI_SCENE, "Tiyi", 35.0, 5.0)
 	await _test_dash_wall_collision()
 	await _test_dash_preserves_existing_invincibility()

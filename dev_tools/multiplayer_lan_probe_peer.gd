@@ -19,14 +19,17 @@ const PROBE_SCENARIO_FULL := "full"
 const PROBE_SCENARIO_LEAVE := "leave"
 const PROBE_SCENARIO_WAVE := "wave"
 const PROBE_SCENARIO_BOSS := "boss"
+const PROBE_SCENARIO_TOWER_DEFENSE := "tower_defense"
 const PROBE_OWNED_ROOT_NODE_NAMES := {
 	"MpGame": true,
 	"Game": true,
+	"GameTowerDefense": true,
 	"MultiplayerLobby": true,
 }
 
 var failures: Array[String] = []
 var probe_scenario := PROBE_SCENARIO_FULL
+var probe_game_mode := "standard"
 
 
 func _init() -> void:
@@ -49,6 +52,15 @@ func _run() -> void:
 	probe_scenario = str(options.get("scenario", PROBE_SCENARIO_FULL)).strip_edges().to_lower()
 	if probe_scenario.is_empty():
 		probe_scenario = PROBE_SCENARIO_FULL
+	probe_game_mode = str(options.get("game_mode", "standard")).strip_edges().to_lower()
+	if probe_game_mode not in ["standard", "tower_defense"]:
+		_fail("Unsupported probe game mode: %s" % probe_game_mode)
+		_finish()
+		return
+	if probe_scenario == PROBE_SCENARIO_TOWER_DEFENSE and probe_game_mode != "tower_defense":
+		_fail("Tower-defense runtime scenario requires --probe-game_mode=tower_defense.")
+		_finish()
+		return
 
 	var net_manager := root.get_node_or_null("NetManager")
 	if net_manager == null:
@@ -102,6 +114,14 @@ func _run_host(
 	run_seconds: float,
 	linger_seconds: float
 ) -> void:
+	if not bool(
+		net_manager.call(
+			"set_host_game_mode",
+			NetManagerStore.game_mode_from_key(probe_game_mode)
+		)
+	):
+		_fail("Host failed to select game mode: %s" % probe_game_mode)
+		return
 	var err: Error = OK
 	if mode == PROBE_MODE_RELAY:
 		err = net_manager.host_create_relay_room(host_ip, port)
@@ -193,11 +213,25 @@ func _run_mp_game_probe(
 		_fail("MpGame did not mark NetManager in-game.")
 		mp_game.queue_free()
 		return
-	var game := mp_game.get("game") as Game
-	if game == null or not is_instance_valid(game):
-		_fail("MpGame did not create Game.")
+	var game: Variant = mp_game.get("game")
+	if game == null or not is_instance_valid(game) or not game is GameRuntimeBase:
+		_fail("MpGame did not create a GameRuntimeBase.")
 		mp_game.queue_free()
 		return
+	var expects_tower_defense := probe_game_mode == "tower_defense"
+	if bool(game.call("supports_tower_defense")) != expects_tower_defense:
+		_fail("MpGame instantiated the wrong runtime for mode %s." % probe_game_mode)
+	if expects_tower_defense:
+		var local_player := game.get_player_for_peer(int(net_manager.get_local_peer_id())) as Player
+		var map_camera := game.get("map_camera") as Camera2D
+		if local_player == null or map_camera == null or map_camera.get_parent() != local_player:
+			_fail("Tower-defense camera is not parented to this endpoint's local player.")
+		elif map_camera.position != Vector2.ZERO:
+			_fail("Tower-defense camera did not preserve zero local offset.")
+		elif map_camera.zoom != Vector2(2.0, 2.0):
+			_fail("Tower-defense camera zoom is not the required 2x value.")
+		elif map_camera.position_smoothing_enabled:
+			_fail("Tower-defense camera unexpectedly enabled smoothing.")
 	_disable_probe_wave_flow(game)
 	if game.peer_players.size() != expected_players:
 		_fail(
@@ -219,6 +253,11 @@ func _run_mp_game_probe(
 		_detach_probe_scene_disconnect_handlers(net_manager, mp_game, game)
 		await _cleanup_probe_game(net_manager, mp_game)
 		return
+	if probe_scenario == PROBE_SCENARIO_TOWER_DEFENSE:
+		await _run_tower_defense_runtime_probe(net_manager, mp_game, game, is_host_probe)
+		_detach_probe_scene_disconnect_handlers(net_manager, mp_game, game)
+		await _cleanup_probe_game(net_manager, mp_game)
+		return
 	await _wait_seconds(1.5)
 	if is_host_probe:
 		await _run_host_replication_probe(net_manager, mp_game, game)
@@ -226,7 +265,7 @@ func _run_mp_game_probe(
 		await _run_client_replication_probe(net_manager, mp_game, game, events_enabled)
 	await _wait_seconds(run_seconds)
 	if is_host_probe:
-		var states := game.collect_player_snapshot_states()
+		var states: Array = game.collect_player_snapshot_states()
 		if states.size() != expected_players:
 			_fail(
 				"Host snapshot expected %d players, saw %d."
@@ -267,7 +306,7 @@ func _run_mp_game_probe(
 func _run_leave_probe(
 	net_manager: Node,
 	_mp_game: Node,
-	game: Game,
+	game: Variant,
 	is_host_probe: bool
 ) -> void:
 	var leaving_peer_id := _get_peer_id_by_name(net_manager, CLIENT4_PLAYER_NAME)
@@ -296,7 +335,7 @@ func _run_leave_probe(
 func _run_wave_probe(
 	_net_manager: Node,
 	mp_game: Node,
-	game: Game,
+	game: Variant,
 	is_host_probe: bool
 ) -> void:
 	_configure_probe_wave_flow(game)
@@ -307,7 +346,7 @@ func _run_wave_probe(
 		await _run_client_wave_probe(mp_game, game)
 
 
-func _run_boss_probe(mp_game: Node, game: Game, is_host_probe: bool) -> void:
+func _run_boss_probe(mp_game: Node, game: Variant, is_host_probe: bool) -> void:
 	_configure_probe_boss_flow(game)
 	await _wait_seconds(1.0)
 	if is_host_probe:
@@ -316,9 +355,221 @@ func _run_boss_probe(mp_game: Node, game: Game, is_host_probe: bool) -> void:
 		await _run_client_boss_probe(mp_game, game)
 
 
-func _run_host_wave_probe(game: Game) -> void:
-	game.call("_begin_wave", 0)
-	if not await _wait_for_game_wave_state(game, Game.WaveState.WAVE_ACTIVE, 3.0):
+func _run_tower_defense_runtime_probe(
+	net_manager: Node,
+	mp_game: Node,
+	game: Variant,
+	is_host_probe: bool
+) -> void:
+	if not bool(game.call("supports_tower_defense")):
+		_fail("Tower-defense runtime probe received the standard Game runtime.")
+		return
+	await _wait_seconds(1.0)
+	var plant_config := PlantDefenseRegistry.get_config(&"agave_cannon")
+	var shared_plant_anchor := _find_shared_multiplayer_plant_anchor(game, plant_config)
+	if shared_plant_anchor == Vector2i.MAX:
+		_fail("Tower-defense peers could not resolve a shared valid grass anchor.")
+		return
+	if is_host_probe:
+		await _run_host_tower_defense_runtime_probe(
+			net_manager,
+			mp_game,
+			game,
+			shared_plant_anchor
+		)
+	else:
+		await _run_client_tower_defense_runtime_probe(
+			net_manager,
+			mp_game,
+			game,
+			shared_plant_anchor
+		)
+
+
+func _run_host_tower_defense_runtime_probe(
+	net_manager: Node,
+	mp_game: Node,
+	game: Variant,
+	shared_plant_anchor: Vector2i
+) -> void:
+	game.call("_apply_base_damage", 7)
+	if int(game.current_base_health) != 93:
+		_fail("Host base damage did not update tower-defense health to 93.")
+		return
+	print("LAN_PROBE_EVENT host_td_base_health=%d" % int(game.current_base_health))
+	await _wait_seconds(0.5)
+
+	var escaped_enemy_id := await _spawn_host_probe_enemy(game)
+	if escaped_enemy_id <= 0:
+		return
+	await _wait_seconds(1.0)
+	var escaped_enemy: Enemy = game.get_enemy_for_net_id(escaped_enemy_id)
+	if escaped_enemy == null or not is_instance_valid(escaped_enemy):
+		_fail("Host tower-defense escape probe lost its enemy before Home resolution.")
+		return
+	game.call("_on_enemy_reached_home", escaped_enemy, Vector2i.ZERO)
+	if int(game.current_base_health) != 92:
+		_fail("Host Home escape did not apply the configured enemy base damage.")
+		return
+	if not await _wait_for_host_enemy_removed(game, escaped_enemy_id, 3.0):
+		_fail("Host Home escape did not clear the enemy network mapping.")
+		return
+	print("LAN_PROBE_EVENT host_td_enemy_escaped net_id=%d" % escaped_enemy_id)
+	for peer_id_variant in net_manager.connected_players:
+		var peer_id := int(peer_id_variant)
+		if peer_id == int(net_manager.get_local_peer_id()):
+			continue
+		mp_game.callv("rpc_id", [peer_id, &"net_base_health_changed", 91, 100, 1])
+		mp_game.callv("rpc_id", [peer_id, &"net_base_health_changed", 50, 100, 2])
+	await _wait_seconds(0.75)
+
+	if not await _wait_for_host_plant_requests(mp_game, net_manager, 101, 5.0):
+		_fail("Host did not receive every client's competing plant-placement request.")
+		return
+	await _wait_seconds(0.5)
+	var plant := game.plant_system.get_plant_by_net_id(1) as PlantDefense
+	if plant == null or not is_instance_valid(plant):
+		_fail("Competing client plant requests did not create authoritative net_id 1.")
+		return
+	if game.plant_system.plants_by_net_id.size() != 1:
+		_fail("Competing requests created more than one plant on the same footprint.")
+		return
+	if plant.footprint_cells.is_empty() or plant.footprint_cells[0] != shared_plant_anchor:
+		_fail("Authoritative plant did not use the clients' shared requested anchor.")
+		return
+	for peer_id_variant in net_manager.connected_players:
+		var peer_id := int(peer_id_variant)
+		if peer_id != int(net_manager.get_local_peer_id()):
+			mp_game.call("_send_runtime_state_to_peer", peer_id, false)
+	await _wait_seconds(0.5)
+
+	var damage_enemy_id := await _spawn_host_probe_enemy(game)
+	if damage_enemy_id <= 0:
+		return
+	var damage_enemy := game.get_enemy_for_net_id(damage_enemy_id) as Enemy
+	if damage_enemy == null or not is_instance_valid(damage_enemy):
+		_fail("Host lost the authoritative plant-damage probe enemy.")
+		return
+	damage_enemy.set_physics_process(false)
+	if not await _position_enemy_for_clear_plant_shot(plant as AgaveCannon, damage_enemy):
+		_fail("Host could not find a clear line for the authoritative plant shot.")
+		return
+	var enemy_health_before := damage_enemy.current_health
+	await _wait_seconds(0.75)
+	var agave := plant as AgaveCannon
+	agave.pending_target = damage_enemy
+	agave.call("_fire_pending_projectile")
+	if not await _wait_for_enemy_health_below(damage_enemy, enemy_health_before, 3.0):
+		_fail("Host Agave cannonball did not damage its authoritative enemy target.")
+		return
+	if damage_enemy.current_health != enemy_health_before - agave.config.attack_damage:
+		_fail("Host Agave cannonball damage was not applied exactly once.")
+		return
+	print(
+		"LAN_PROBE_EVENT host_td_plant_projectile enemy_id=%d health=%d"
+		% [damage_enemy_id, damage_enemy.current_health]
+	)
+	await _wait_seconds(0.5)
+
+	var expected_health := plant.current_health - 10
+	plant.receive_damage(10)
+	if plant.current_health != expected_health:
+		_fail("Host authoritative plant damage was not applied.")
+		return
+	print("LAN_PROBE_EVENT host_td_plant_health=%d" % plant.current_health)
+	await _wait_seconds(0.75)
+	game.plant_system.remove_plant_by_net_id(1)
+	if damage_enemy != null and is_instance_valid(damage_enemy):
+		damage_enemy.queue_free()
+	await _wait_seconds(0.75)
+	print("LAN_PROBE_EVENT host_td_plant_removed net_id=1")
+
+
+func _run_client_tower_defense_runtime_probe(
+	net_manager: Node,
+	mp_game: Node,
+	game: Variant,
+	shared_plant_anchor: Vector2i
+) -> void:
+	if not await _wait_for_int_property(game, &"current_base_health", 93, 5.0):
+		_fail("Client did not receive the Host base-health update.")
+		return
+	var escaped_enemy_id := await _wait_for_first_client_enemy_id(mp_game, 5.0)
+	if escaped_enemy_id <= 0:
+		_fail("Client did not receive the tower-defense escape probe enemy.")
+		return
+	if not await _wait_for_client_enemy_removed(mp_game, escaped_enemy_id, 5.0):
+		_fail("Client did not remove the escaped enemy silently.")
+		return
+	if not await _wait_for_int_property(game, &"current_base_health", 92, 5.0):
+		_fail("Client did not receive Home escape base damage.")
+		return
+	await _wait_seconds(1.0)
+	if int(game.current_base_health) != 92 or int(game.base_health_revision) != 2:
+		_fail("Client accepted a stale or conflicting base-health revision.")
+		return
+	print("LAN_PROBE_EVENT client_td_enemy_escaped net_id=%d" % escaped_enemy_id)
+	var rejection_state := {&"received": false}
+	game.plant_placement_controller.selection_unavailable.connect(
+		func() -> void: rejection_state[&"received"] = true
+	)
+	mp_game.call(
+		"_on_local_plant_placement_requested",
+		101,
+		&"agave_cannon",
+		shared_plant_anchor
+	)
+	var plant := await _wait_for_client_plant(game, 1, 5.0)
+	if plant == null:
+		_fail("Client did not spawn the authoritative plant replica.")
+		return
+	var local_player := game.get_player_for_peer(int(net_manager.get_local_peer_id())) as Player
+	var won_competition := plant.owner_player == local_player
+	if not won_competition:
+		if not await _wait_for_dictionary_flag(rejection_state, &"received", 3.0):
+			_fail("Losing client did not receive the authoritative placement rejection.")
+			return
+	elif bool(rejection_state[&"received"]):
+		_fail("Winning client unexpectedly received a placement rejection.")
+		return
+	await _wait_seconds(0.75)
+	if game.plant_system.plants_by_net_id.size() != 1:
+		_fail("Client runtime-state replay duplicated the authoritative plant replica.")
+		return
+	var damage_enemy_id := await _wait_for_first_client_enemy_id(mp_game, 5.0)
+	if damage_enemy_id <= 0:
+		_fail("Client did not receive the plant-damage probe enemy.")
+		return
+	var damage_enemy := game.get_enemy_for_net_id(damage_enemy_id) as Enemy
+	if damage_enemy == null or not is_instance_valid(damage_enemy):
+		_fail("Client could not resolve the plant-damage probe enemy.")
+		return
+	var enemy_health_before := damage_enemy.current_health
+	var visual_projectile := await _wait_for_client_plant_projectile_visual(mp_game, 5.0)
+	if visual_projectile == null:
+		_fail("Client did not receive the unreliable plant projectile visual.")
+		return
+	if visual_projectile.authoritative_damage or visual_projectile.damage != 0:
+		_fail("Client plant projectile visual retained authoritative damage.")
+		return
+	if not await _wait_for_enemy_health_below(damage_enemy, enemy_health_before, 5.0):
+		_fail("Client did not receive Host-authoritative plant damage.")
+		return
+	if not await _wait_for_plant_health_below(plant, plant.max_health, 5.0):
+		_fail("Client did not apply the authoritative plant health revision.")
+		return
+	if not await _wait_for_client_plant_removed(game, 1, 5.0):
+		_fail("Client did not remove the authoritative plant replica.")
+		return
+	print("LAN_PROBE_EVENT client_td_plant_lifecycle net_id=1")
+	# Keep the RPC node alive until the Host finishes its final reliable event
+	# and shuts down, avoiding a test-only disconnect/send race.
+	await _wait_seconds(2.0)
+
+
+func _run_host_wave_probe(game: Variant) -> void:
+	game.call("_begin_flow_step", game.flow_graph.start_step)
+	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.WAVE_ACTIVE, 3.0):
 		_fail("Host wave probe did not enter wave active state.")
 		return
 	if int(game.current_wave_total) != 1:
@@ -331,7 +582,7 @@ func _run_host_wave_probe(game: Game) -> void:
 	print("LAN_PROBE_EVENT host_wave_enemy_spawned net_id=%d" % enemy_id)
 
 	await _wait_seconds(0.5)
-	var enemy := game.get_enemy_for_net_id(enemy_id)
+	var enemy: Enemy = game.get_enemy_for_net_id(enemy_id)
 	if enemy == null or not is_instance_valid(enemy):
 		_fail("Host wave probe enemy disappeared before damage.")
 		return
@@ -339,19 +590,25 @@ func _run_host_wave_probe(game: Game) -> void:
 	if not await _wait_for_host_enemy_removed(game, enemy_id, 8.0):
 		_fail("Host wave probe enemy was not removed after defeat.")
 		return
-	if not await _wait_for_game_wave_state(game, Game.WaveState.INTERMISSION, 5.0):
+	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.INTERMISSION, 5.0):
 		_fail("Host wave probe did not enter intermission.")
 		return
 	print("LAN_PROBE_EVENT host_wave_intermission_confirmed")
 	await _wait_seconds(1.0)
 
 
-func _run_client_wave_probe(mp_game: Node, game: Game) -> void:
-	if not await _wait_for_game_wave_state(game, Game.WaveState.WAVE_ACTIVE, 6.0):
+func _run_client_wave_probe(mp_game: Node, game: Variant) -> void:
+	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.WAVE_ACTIVE, 6.0):
 		_fail("Client wave probe did not receive wave start.")
 		return
 	if not await _wait_for_wave_hud_text_contains(game, "第 1 波", 2.0):
 		_fail("Client wave probe HUD did not show wave 1.")
+		return
+	if (
+		bool(game.call("supports_tower_defense"))
+		and not await _wait_for_wave_hud_text_contains(game, "漏过", 2.0)
+	):
+		_fail("Tower-defense client HUD did not receive resolved/escaped wave progress.")
 		return
 	var enemy_id := await _wait_for_first_client_enemy_id(mp_game, 6.0)
 	if enemy_id <= 0:
@@ -361,7 +618,7 @@ func _run_client_wave_probe(mp_game: Node, game: Game) -> void:
 	if not await _wait_for_client_enemy_removed(mp_game, enemy_id, 10.0):
 		_fail("Client wave probe did not receive wave enemy removal.")
 		return
-	if not await _wait_for_game_wave_state(game, Game.WaveState.INTERMISSION, 6.0):
+	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.INTERMISSION, 6.0):
 		_fail("Client wave probe did not receive intermission.")
 		return
 	if not await _wait_for_merchant_active(game, true, 2.0):
@@ -371,7 +628,7 @@ func _run_client_wave_probe(mp_game: Node, game: Game) -> void:
 	await _wait_seconds(4.0)
 
 
-func _run_host_boss_probe(game: Game) -> void:
+func _run_host_boss_probe(game: Variant) -> void:
 	game.multiplayer_enemy_spawned.connect(
 		func(net_id: int, enemy_config: EnemyConfig, _spawn_position: Vector2) -> void:
 			var config_path := enemy_config.resource_path if enemy_config != null else ""
@@ -384,12 +641,12 @@ func _run_host_boss_probe(game: Game) -> void:
 	)
 	game.call("_enter_pre_flow_step", LINGLAN_BOSS_ENTRY)
 	await _wait_frames(2)
-	if not await _wait_for_game_wave_state(game, Game.WaveState.BOSS_INTRO, 4.0):
+	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.BOSS_INTRO, 4.0):
 		_fail("Host boss probe did not enter boss intro.")
 		return
 	print("LAN_PROBE_EVENT host_boss_intro_confirmed")
 	game.call("_on_linglan_boss_intro_finished")
-	if not await _wait_for_game_wave_state(game, Game.WaveState.BOSS_ACTIVE, 4.0):
+	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.BOSS_ACTIVE, 4.0):
 		_fail("Host boss probe did not activate boss.")
 		return
 	var boss_id := await _wait_for_first_host_enemy_net_id(game, 4.0)
@@ -412,37 +669,37 @@ func _run_host_boss_probe(game: Game) -> void:
 
 	if boss != null and is_instance_valid(boss):
 		boss.apply_damage(boss.current_health + boss.get_effective_physical_defense())
-	if not await _wait_for_game_wave_state(game, Game.WaveState.VICTORY, 6.0):
+	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.VICTORY, 6.0):
 		_fail("Host boss probe did not enter victory after boss defeat.")
 		return
 	print("LAN_PROBE_EVENT host_boss_victory_confirmed")
 
 
-func _run_client_boss_probe(mp_game: Node, game: Game) -> void:
-	if not await _wait_for_game_wave_state(game, Game.WaveState.BOSS_INTRO, 6.0):
+func _run_client_boss_probe(mp_game: Node, game: Variant) -> void:
+	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.BOSS_INTRO, 6.0):
 		_fail("Client boss probe did not receive boss intro.")
 		return
 	print("LAN_PROBE_EVENT client_boss_intro_confirmed")
-	if not await _wait_for_game_wave_state(game, Game.WaveState.BOSS_ACTIVE, 8.0):
+	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.BOSS_ACTIVE, 8.0):
 		_fail("Client boss probe did not receive boss active state.")
 		return
 	var boss_id := await _wait_for_first_client_enemy_id(mp_game, 8.0)
 	if boss_id <= 0:
 		_fail("Client boss probe did not receive boss spawn.")
 		return
-	var boss := game.linglan_boss
+	var boss: LinglanBoss = game.linglan_boss
 	if boss == null or not is_instance_valid(boss):
 		_fail("Client boss probe did not bind Linglan boss proxy.")
 		return
 	print("LAN_PROBE_EVENT client_boss_active net_id=%d" % boss_id)
 
-	var previous_health := boss.current_health
+	var previous_health: int = boss.current_health
 	if not await _wait_for_boss_health_below(game, previous_health, 8.0):
 		_fail("Client boss probe did not receive boss health sync.")
 		return
 	print("LAN_PROBE_EVENT client_boss_health_confirmed")
 
-	if not await _wait_for_game_wave_state(game, Game.WaveState.VICTORY, 10.0):
+	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.VICTORY, 10.0):
 		_fail("Client boss probe did not receive victory after boss defeat.")
 		return
 	print("LAN_PROBE_EVENT client_boss_victory_confirmed")
@@ -451,7 +708,10 @@ func _run_client_boss_probe(mp_game: Node, game: Game) -> void:
 
 func _cleanup_probe_game(net_manager: Node, mp_game) -> void:
 	_release_probe_input_actions()
-	if failures.is_empty() and net_manager.has_method("disconnect_from_game"):
+	# Tear down the transport before freeing the RPC node even on assertion
+	# failures. Otherwise still-connected peers can send into a missing MpGame
+	# and bury the original probe failure under secondary packet errors.
+	if net_manager.has_method("disconnect_from_game"):
 		net_manager.disconnect_from_game()
 		await _wait_frames(8)
 	if is_instance_valid(mp_game):
@@ -460,7 +720,7 @@ func _cleanup_probe_game(net_manager: Node, mp_game) -> void:
 	await _cleanup_current_scene()
 
 
-func _run_host_replication_probe(net_manager: Node, mp_game: Node, game: Game) -> void:
+func _run_host_replication_probe(net_manager: Node, mp_game: Node, game: Variant) -> void:
 	var client2_peer_id := _get_peer_id_by_name(net_manager, CLIENT2_PLAYER_NAME)
 	if client2_peer_id <= 0:
 		_fail("Host replication probe could not find client2 peer id.")
@@ -483,7 +743,7 @@ func _run_host_replication_probe(net_manager: Node, mp_game: Node, game: Game) -
 	if not await _run_host_projectile_hit_probe(mp_game, game, client2_peer_id, spawned_enemy_id):
 		return
 	await _wait_seconds(2.5)
-	var spawned_enemy := game.get_enemy_for_net_id(spawned_enemy_id)
+	var spawned_enemy: Enemy = game.get_enemy_for_net_id(spawned_enemy_id)
 	if spawned_enemy == null or not is_instance_valid(spawned_enemy):
 		_fail("Host probe enemy disappeared before explicit removal.")
 		return
@@ -519,7 +779,15 @@ func _run_host_replication_probe(net_manager: Node, mp_game: Node, game: Game) -
 		_fail("Host did not observe client2 death.")
 		return
 	print("LAN_PROBE_EVENT host_death_confirmed peer=%d" % client2_peer_id)
-	if not await _wait_for_player_revived(client2_player, 14.0):
+	var death_revision := _get_player_health_revision(mp_game, client2_peer_id)
+	if not await _wait_for_player_state_at_revision(
+		mp_game,
+		client2_player,
+		client2_peer_id,
+		death_revision + 1,
+		false,
+		14.0
+	):
 		_fail("Host did not revive client2.")
 		return
 	if not await _wait_for_player_invincibility_clear(client2_player, 5.0):
@@ -530,15 +798,15 @@ func _run_host_replication_probe(net_manager: Node, mp_game: Node, game: Game) -
 
 func _run_host_projectile_hit_probe(
 	mp_game: Node,
-	game: Game,
+	game: Variant,
 	owner_peer_id: int,
 	enemy_net_id: int
 ) -> bool:
-	var enemy := game.get_enemy_for_net_id(enemy_net_id)
+	var enemy: Enemy = game.get_enemy_for_net_id(enemy_net_id)
 	if enemy == null or not is_instance_valid(enemy):
 		_fail("Host projectile hit probe missing enemy.")
 		return false
-	var health_before := enemy.current_health
+	var health_before: int = enemy.current_health
 	if health_before <= 1:
 		_fail("Host projectile hit probe enemy health is too low.")
 		return false
@@ -556,7 +824,7 @@ func _run_host_projectile_hit_probe(
 func _run_client_replication_probe(
 	net_manager: Node,
 	mp_game: Node,
-	game: Game,
+	game: Variant,
 	collect_orb: bool
 ) -> void:
 	if collect_orb:
@@ -596,10 +864,10 @@ func _run_client_replication_probe(
 		% [orb_id, player.current_xirang]
 	)
 	if not collect_orb:
-		await _run_remote_client2_death_view_probe(net_manager, game)
+		await _run_remote_client2_death_view_probe(net_manager, mp_game, game)
 
 
-func _run_client_projectile_hit_probe(mp_game: Node, game: Game, enemy_id: int) -> void:
+func _run_client_projectile_hit_probe(mp_game: Node, game: Variant, enemy_id: int) -> void:
 	var player := game.player as Player
 	if player == null or not is_instance_valid(player):
 		_fail("Client projectile hit probe missing local player.")
@@ -659,7 +927,7 @@ func _run_client_projectile_hit_probe(mp_game: Node, game: Game, enemy_id: int) 
 	)
 
 
-func _run_client_reliable_event_probe(mp_game: Node, game: Game) -> void:
+func _run_client_reliable_event_probe(mp_game: Node, game: Variant) -> void:
 	var player := game.player as Player
 	if player == null or not is_instance_valid(player):
 		_fail("Reliable event probe missing local player.")
@@ -698,13 +966,14 @@ func _run_client_reliable_event_probe(mp_game: Node, game: Game) -> void:
 	await _run_client_death_revive_probe(mp_game, game)
 
 
-func _run_client_death_revive_probe(mp_game: Node, game: Game) -> void:
+func _run_client_death_revive_probe(mp_game: Node, game: Variant) -> void:
 	var player := game.player as Player
 	if player == null or not is_instance_valid(player):
 		_fail("Death/revive probe missing local player.")
 		return
 	var local_peer_id := int(game.multiplayer_local_peer_id)
 	var source_id := local_peer_id * 1000000 + 770001
+	var revision_before_death := _get_player_health_revision(mp_game, local_peer_id)
 	var accepted := bool(mp_game.call(
 		"request_multiplayer_player_damage",
 		source_id,
@@ -715,11 +984,26 @@ func _run_client_death_revive_probe(mp_game: Node, game: Game) -> void:
 	if not accepted:
 		_fail("Death/revive probe damage request was rejected.")
 		return
-	if not await _wait_for_player_dead(player, 3.0):
+	if not await _wait_for_player_state_at_revision(
+		mp_game,
+		player,
+		local_peer_id,
+		revision_before_death + 1,
+		true,
+		3.0
+	):
 		_fail("Death/revive probe did not enter dead state.")
 		return
 	print("LAN_PROBE_EVENT death_confirmed peer=%d" % local_peer_id)
-	if not await _wait_for_player_revived(player, 13.0):
+	var death_revision := _get_player_health_revision(mp_game, local_peer_id)
+	if not await _wait_for_player_state_at_revision(
+		mp_game,
+		player,
+		local_peer_id,
+		death_revision + 1,
+		false,
+		13.0
+	):
 		_fail("Death/revive probe did not receive Host revive.")
 		return
 	if not await _wait_for_player_invincibility_clear(player, 5.0):
@@ -731,7 +1015,11 @@ func _run_client_death_revive_probe(mp_game: Node, game: Game) -> void:
 	)
 
 
-func _run_remote_client2_death_view_probe(net_manager: Node, game: Game) -> void:
+func _run_remote_client2_death_view_probe(
+	net_manager: Node,
+	mp_game: Node,
+	game: Variant
+) -> void:
 	var client2_peer_id := _get_peer_id_by_name(net_manager, CLIENT2_PLAYER_NAME)
 	if client2_peer_id <= 0:
 		_fail("Remote death view probe could not find client2 peer id.")
@@ -740,11 +1028,30 @@ func _run_remote_client2_death_view_probe(net_manager: Node, game: Game) -> void
 	if remote_player == null or not is_instance_valid(remote_player):
 		_fail("Remote death view probe missing client2 player node.")
 		return
-	if not await _wait_for_player_dead(remote_player, 8.0):
+	var minimum_death_revision := maxi(
+		_get_player_health_revision(mp_game, client2_peer_id),
+		1
+	)
+	if not await _wait_for_player_state_at_revision(
+		mp_game,
+		remote_player,
+		client2_peer_id,
+		minimum_death_revision,
+		true,
+		8.0
+	):
 		_fail("Remote clients did not see client2 death.")
 		return
 	print("LAN_PROBE_EVENT remote_death_confirmed peer=%d" % client2_peer_id)
-	if not await _wait_for_player_revived(remote_player, 14.0):
+	var death_revision := _get_player_health_revision(mp_game, client2_peer_id)
+	if not await _wait_for_player_state_at_revision(
+		mp_game,
+		remote_player,
+		client2_peer_id,
+		death_revision + 1,
+		false,
+		14.0
+	):
 		_fail("Remote clients did not see client2 revive.")
 		return
 	print("LAN_PROBE_EVENT remote_revive_confirmed peer=%d" % client2_peer_id)
@@ -786,14 +1093,32 @@ func _wait_for_player_dead(player: Player, timeout_seconds: float) -> bool:
 	return false
 
 
-func _wait_for_player_revived(player: Player, timeout_seconds: float) -> bool:
+func _get_player_health_revision(mp_game: Node, peer_id: int) -> int:
+	if mp_game == null or not is_instance_valid(mp_game) or peer_id <= 0:
+		return 0
+	var revisions := mp_game.get("_player_health_revisions") as Dictionary
+	return int(revisions.get(peer_id, 0))
+
+
+func _wait_for_player_state_at_revision(
+	mp_game: Node,
+	player: Player,
+	peer_id: int,
+	minimum_revision: int,
+	expected_dead: bool,
+	timeout_seconds: float
+) -> bool:
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
 		if (
 			player != null
 			and is_instance_valid(player)
-			and not player.is_dead
-			and player.current_health > 0
+			and _get_player_health_revision(mp_game, peer_id) >= minimum_revision
+			and player.is_dead == expected_dead
+			and (
+				(expected_dead and player.current_health <= 0)
+				or (not expected_dead and player.current_health > 0)
+			)
 		):
 			return true
 		await process_frame
@@ -832,7 +1157,7 @@ func _wait_for_player_position_delta(
 	return false
 
 
-func _wait_for_host_enemy_removed(game: Game, net_id: int, timeout_seconds: float) -> bool:
+func _wait_for_host_enemy_removed(game: Variant, net_id: int, timeout_seconds: float) -> bool:
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
 		if game == null or not is_instance_valid(game) or game.get_enemy_for_net_id(net_id) == null:
@@ -858,6 +1183,8 @@ func _wait_for_mp_game_int_at_least(
 func _wait_for_first_client_enemy_id(mp_game: Node, timeout_seconds: float) -> int:
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
+		if mp_game == null or not is_instance_valid(mp_game):
+			return 0
 		var enemies := mp_game.get("_net_enemies") as Dictionary
 		for enemy_id_variant in enemies:
 			var enemy_id := int(enemy_id_variant)
@@ -879,6 +1206,174 @@ func _wait_for_client_enemy_removed(mp_game: Node, enemy_id: int, timeout_second
 	return false
 
 
+func _wait_for_int_property(
+	object: Object,
+	property_name: StringName,
+	expected_value: int,
+	timeout_seconds: float
+) -> bool:
+	var end_time := _now_seconds() + timeout_seconds
+	while _now_seconds() <= end_time:
+		if object != null and is_instance_valid(object):
+			if int(object.get(property_name)) == expected_value:
+				return true
+		await process_frame
+	return false
+
+
+func _find_shared_multiplayer_plant_anchor(
+	game: Variant,
+	config: PlantDefenseConfig
+) -> Vector2i:
+	if game == null or game.plant_system == null or config == null:
+		return Vector2i.MAX
+	var peer_ids: Array[int] = []
+	for peer_id_variant in game.peer_players:
+		peer_ids.append(int(peer_id_variant))
+	peer_ids.sort()
+	if peer_ids.is_empty():
+		return Vector2i.MAX
+	var placement_area: Rect2i = game.plant_system.placement_area
+	var last_anchor_exclusive := placement_area.end - config.footprint_size + Vector2i.ONE
+	for y in range(placement_area.position.y, last_anchor_exclusive.y):
+		for x in range(placement_area.position.x, last_anchor_exclusive.x):
+			var anchor := Vector2i(x, y)
+			var valid_for_every_player := true
+			for peer_id in peer_ids:
+				var placement_player := game.get_player_for_peer(peer_id) as Player
+				if not game.plant_system.is_placement_valid_for_player(
+					anchor,
+					config,
+					placement_player
+				):
+					valid_for_every_player = false
+					break
+			if valid_for_every_player:
+				return anchor
+	return Vector2i.MAX
+
+
+func _position_enemy_for_clear_plant_shot(plant: AgaveCannon, enemy: Enemy) -> bool:
+	if plant == null or enemy == null:
+		return false
+	var directions := [
+		Vector2.RIGHT,
+		Vector2.LEFT,
+		Vector2.UP,
+		Vector2.DOWN,
+		Vector2(1.0, 1.0).normalized(),
+		Vector2(-1.0, 1.0).normalized(),
+		Vector2(1.0, -1.0).normalized(),
+		Vector2(-1.0, -1.0).normalized(),
+	]
+	for direction in directions:
+		enemy.global_position = plant.global_position + direction * 48.0
+		await physics_frame
+		if bool(plant.call("_has_clear_world_line_to", enemy)):
+			return true
+	return false
+
+
+func _wait_for_host_plant_requests(
+	mp_game: Node,
+	net_manager: Node,
+	request_id: int,
+	timeout_seconds: float
+) -> bool:
+	var expected_client_ids: Array[int] = []
+	var local_peer_id := int(net_manager.get_local_peer_id())
+	for peer_id_variant in net_manager.connected_players:
+		var peer_id := int(peer_id_variant)
+		if peer_id != local_peer_id:
+			expected_client_ids.append(peer_id)
+	var end_time := _now_seconds() + timeout_seconds
+	while _now_seconds() <= end_time:
+		var processed_requests := mp_game.get("_last_plant_placement_request_ids") as Dictionary
+		var all_processed := not expected_client_ids.is_empty()
+		for peer_id in expected_client_ids:
+			if int(processed_requests.get(peer_id, 0)) != request_id:
+				all_processed = false
+				break
+		if all_processed:
+			return true
+		await process_frame
+	return false
+
+
+func _wait_for_dictionary_flag(
+	state: Dictionary,
+	key: Variant,
+	timeout_seconds: float
+) -> bool:
+	var end_time := _now_seconds() + timeout_seconds
+	while _now_seconds() <= end_time:
+		if bool(state.get(key, false)):
+			return true
+		await process_frame
+	return false
+
+
+func _wait_for_client_plant_projectile_visual(
+	mp_game: Node,
+	timeout_seconds: float
+) -> AgaveCannonball:
+	var end_time := _now_seconds() + timeout_seconds
+	while _now_seconds() <= end_time:
+		for child in mp_game.get_children():
+			var projectile := child as AgaveCannonball
+			if (
+				projectile != null
+				and is_instance_valid(projectile)
+				and not projectile.is_queued_for_deletion()
+			):
+				return projectile
+		await process_frame
+	return null
+
+
+func _wait_for_client_plant(
+	game: Variant,
+	net_id: int,
+	timeout_seconds: float
+) -> PlantDefense:
+	var end_time := _now_seconds() + timeout_seconds
+	while _now_seconds() <= end_time:
+		var plant := game.plant_system.get_plant_by_net_id(net_id) as PlantDefense
+		if plant != null and is_instance_valid(plant):
+			return plant
+		await process_frame
+	return null
+
+
+func _wait_for_plant_health_below(
+	plant: PlantDefense,
+	previous_health: int,
+	timeout_seconds: float
+) -> bool:
+	var end_time := _now_seconds() + timeout_seconds
+	while _now_seconds() <= end_time:
+		if plant == null or not is_instance_valid(plant):
+			return false
+		if plant.current_health < previous_health:
+			return true
+		await process_frame
+	return false
+
+
+func _wait_for_client_plant_removed(
+	game: Variant,
+	net_id: int,
+	timeout_seconds: float
+) -> bool:
+	var end_time := _now_seconds() + timeout_seconds
+	while _now_seconds() <= end_time:
+		var plant := game.plant_system.get_plant_by_net_id(net_id) as PlantDefense
+		if plant == null or not is_instance_valid(plant):
+			return true
+		await process_frame
+	return false
+
+
 func _wait_for_enemy_health_below(enemy: Enemy, previous_health: int, timeout_seconds: float) -> bool:
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
@@ -890,31 +1385,31 @@ func _wait_for_enemy_health_below(enemy: Enemy, previous_health: int, timeout_se
 	return false
 
 
-func _wait_for_boss_health_below(game: Game, previous_health: int, timeout_seconds: float) -> bool:
+func _wait_for_boss_health_below(game: Variant, previous_health: int, timeout_seconds: float) -> bool:
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
 		if game == null or not is_instance_valid(game):
 			return false
-		var boss := game.linglan_boss
+		var boss: LinglanBoss = game.linglan_boss
 		if boss != null and is_instance_valid(boss) and boss.current_health < previous_health:
 			return true
 		await process_frame
 	return false
 
 
-func _wait_for_first_host_enemy_net_id(game: Game, timeout_seconds: float) -> int:
+func _wait_for_first_host_enemy_net_id(game: Variant, timeout_seconds: float) -> int:
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
 		for net_id_variant in game.multiplayer_enemies_by_net_id:
 			var net_id := int(net_id_variant)
-			var enemy := game.get_enemy_for_net_id(net_id)
+			var enemy: Enemy = game.get_enemy_for_net_id(net_id)
 			if net_id > 0 and enemy != null and is_instance_valid(enemy):
 				return net_id
 		await process_frame
 	return 0
 
 
-func _wait_for_game_wave_state(game: Game, target_state: int, timeout_seconds: float) -> bool:
+func _wait_for_game_wave_state(game: Variant, target_state: int, timeout_seconds: float) -> bool:
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
 		if game != null and is_instance_valid(game) and int(game.wave_state) == target_state:
@@ -923,7 +1418,7 @@ func _wait_for_game_wave_state(game: Game, target_state: int, timeout_seconds: f
 	return false
 
 
-func _wait_for_merchant_active(game: Game, expected_active: bool, timeout_seconds: float) -> bool:
+func _wait_for_merchant_active(game: Variant, expected_active: bool, timeout_seconds: float) -> bool:
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
 		if (
@@ -955,7 +1450,7 @@ func _wait_for_new_projectile_id_for_peer(
 
 
 func _wait_for_wave_hud_text_contains(
-	game: Game,
+	game: Variant,
 	expected_text: String,
 	timeout_seconds: float
 ) -> bool:
@@ -1022,7 +1517,7 @@ func _wait_for_first_xirang_orb(mp_game: Node, timeout_seconds: float) -> Dictio
 
 func _wait_for_peer_removed_from_host(
 	net_manager: Node,
-	game: Game,
+	game: Variant,
 	peer_id: int,
 	timeout_seconds: float
 ) -> bool:
@@ -1035,7 +1530,7 @@ func _wait_for_peer_removed_from_host(
 	return false
 
 
-func _wait_for_peer_removed_from_client(game: Game, peer_id: int, timeout_seconds: float) -> bool:
+func _wait_for_peer_removed_from_client(game: Variant, peer_id: int, timeout_seconds: float) -> bool:
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
 		if not game.peer_players.has(peer_id):
@@ -1090,7 +1585,7 @@ func _wait_frames(frame_count: int) -> void:
 		await process_frame
 
 
-func _drive_local_player_motion(mp_game: Node, game: Game) -> void:
+func _drive_local_player_motion(mp_game: Node, game: Variant) -> void:
 	var player := game.player as Player
 	if player == null or not is_instance_valid(player):
 		_fail("Client motion probe missing local player.")
@@ -1116,7 +1611,7 @@ func _release_probe_input_actions() -> void:
 	Input.action_release("shoot_down")
 
 
-func _disable_probe_wave_flow(game: Game) -> void:
+func _disable_probe_wave_flow(game: Variant) -> void:
 	game.auto_start_waves = false
 	if game.enemy_spawn_timer != null:
 		game.enemy_spawn_timer.stop()
@@ -1124,7 +1619,7 @@ func _disable_probe_wave_flow(game: Game) -> void:
 		game.state_timer.stop()
 
 
-func _configure_probe_wave_flow(game: Game) -> void:
+func _configure_probe_wave_flow(game: Variant) -> void:
 	_disable_probe_wave_flow(game)
 	game.waves = _create_probe_waves()
 	var flow_graph := FlowGraphConfig.new()
@@ -1141,7 +1636,7 @@ func _configure_probe_wave_flow(game: Game) -> void:
 	game.current_wave_defeated = 0
 
 
-func _configure_probe_boss_flow(game: Game) -> void:
+func _configure_probe_boss_flow(game: Variant) -> void:
 	_disable_probe_wave_flow(game)
 	var boss_resources: Array[Resource] = [LINGLAN_BOSS_ENTRY]
 	game.bosses = boss_resources
@@ -1251,7 +1746,11 @@ func _get_peer_id_by_name(net_manager: Node, player_name: String) -> int:
 	return 0
 
 
-func _spawn_host_probe_enemy(game: Game) -> int:
+func _spawn_host_probe_enemy(game: Variant) -> int:
+	if game.active_wave_spawn_points.is_empty():
+		if game.waves.is_empty() or not bool(game.call("_resolve_wave_spawn_points", game.waves[0])):
+			_fail("Host probe could not resolve an active wave spawn-point mask.")
+			return 0
 	var previous_ids: Dictionary = {}
 	for net_id_variant in game.multiplayer_enemies_by_net_id:
 		previous_ids[int(net_id_variant)] = true

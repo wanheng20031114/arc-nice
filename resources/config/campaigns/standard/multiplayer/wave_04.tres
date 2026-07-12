@@ -1,0 +1,69 @@
+[gd_resource type="Resource" script_class="WaveConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_72ycd"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_basic.tres" id="2_v8k0i"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_fast.tres" id="3_m6ype"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_bomber.tres" id="4_jbeqf"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_purple_bomber.tres" id="5_5bpyn"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_fire_ranged.tres" id="6_1t8pd"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_green_shell.tres" id="7_etno1"]
+[ext_resource type="Script" path="res://resources/config/flow/flow_exit_config.gd" id="8_8c6w5"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_forest_combat.ogg" id="9_jxkw7"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_forest_intermission.ogg" id="10_6b3tr"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="11_w84fb"]
+
+[sub_resource type="Resource" id="Resource_ti31i"]
+script = ExtResource("1_72ycd")
+enemy_config = ExtResource("2_v8k0i")
+count = 120
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_ucvyn"]
+script = ExtResource("1_72ycd")
+enemy_config = ExtResource("3_m6ype")
+count = 120
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_ujlwg"]
+script = ExtResource("1_72ycd")
+enemy_config = ExtResource("4_jbeqf")
+count = 150
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_a4a5n"]
+script = ExtResource("1_72ycd")
+enemy_config = ExtResource("5_5bpyn")
+count = 10
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_l7dyf"]
+script = ExtResource("1_72ycd")
+enemy_config = ExtResource("6_1t8pd")
+count = 10
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_2oekm"]
+script = ExtResource("1_72ycd")
+enemy_config = ExtResource("7_etno1")
+count = 40
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_qmogp"]
+script = ExtResource("8_8c6w5")
+target_step_id = &"wave_05"
+metadata/_custom_type_script = "uid://blcjxtu575ki5"
+
+[resource]
+script = ExtResource("11_w84fb")
+wave_name = "第4波"
+enemy_entries = Array[ExtResource("1_72ycd")]([SubResource("Resource_ti31i"), SubResource("Resource_ucvyn"), SubResource("Resource_ujlwg"), SubResource("Resource_a4a5n"), SubResource("Resource_l7dyf"), SubResource("Resource_2oekm")])
+spawn_interval = 0.166667
+spawn_count_per_tick = 2
+max_alive_enemies = 110
+music = ExtResource("9_jxkw7")
+post_wave_music = ExtResource("10_6b3tr")
+step_id = &"wave_04"
+display_name = "第4波"
+post_clear_rest_duration = 20.0
+exits = Array[ExtResource("8_8c6w5")]([SubResource("Resource_qmogp")])
+editor_position = Vector2(1200, -120)

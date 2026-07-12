@@ -10,6 +10,7 @@ const REQUIRED_FOOTPRINT_SIZE: Vector2i = Vector2i(2, 2)
 @export_multiline var description: String = ""
 @export var icon: Texture2D
 @export var plant_scene: PackedScene
+@export var supports_multiplayer: bool = false
 
 @export_group("基础数值")
 @export_range(1, 9999, 1, "or_greater") var max_health: int = 100

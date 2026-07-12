@@ -24,13 +24,29 @@ func _run() -> void:
 		"net_tiyi_high_noon_finished",
 		"net_tiyi_high_noon_cancelled",
 		"net_tiyi_sniper_hit_confirmed",
+		"net_luoxi_collectible_refresh_requested",
+		"net_luoxi_collectible_refresh_confirmed",
+		"net_enemy_escaped",
+		"net_base_health_changed",
+		"net_plant_placement_requested",
+		"net_plant_spawned",
+		"net_plant_placement_rejected",
+		"net_plant_health_changed",
+		"net_plant_removed",
+		"net_plant_projectile_visual",
+		"net_runtime_state_requested",
+		"net_tower_defense_wave_progress_changed",
 	]:
-		_expect(main_rpcs.has(required_method), "Tiyi RPC %s must be registered." % required_method)
+		_expect(main_rpcs.has(required_method), "Gameplay RPC %s must be registered." % required_method)
 	if main_rpcs.has("net_tiyi_high_noon_requested"):
 		_expect(
 			String(main_rpcs["net_tiyi_high_noon_requested"]).contains("activation_id:int"),
 			"High-noon requests must carry their monotonic activation id."
 		)
+	_expect(
+		not main_rpcs.has("net_wave_started"),
+		"Legacy wave-index RPC must stay removed; flow step_id is the sole lifecycle source."
+	)
 
 	var main_net_manager_rpcs := _extract_rpc_surface(MAIN_NET_MANAGER_PATH)
 	var relay_net_manager_rpcs := _extract_rpc_surface(RELAY_NET_MANAGER_PATH)
@@ -54,8 +70,18 @@ func _run() -> void:
 			),
 			"Player registration must carry a protocol version and reject legacy omitted values."
 		)
+	if main_net_manager_rpcs.has("_rpc_sync_player_list"):
+		_expect(
+			String(main_net_manager_rpcs["_rpc_sync_player_list"]).contains("game_mode:int=0"),
+			"Player-list sync must carry the Host-authoritative game mode."
+		)
+	if main_net_manager_rpcs.has("_rpc_start_game"):
+		_expect(
+			String(main_net_manager_rpcs["_rpc_start_game"]).contains("game_mode:int=0"),
+			"Start-game sync must repeat the authoritative game mode."
+		)
 	_test_registration_protocol_handshake_source()
-	_expect(NetConstants.PROTOCOL_VERSION == 2, "Tiyi multiplayer requires protocol version 2.")
+	_expect(NetConstants.PROTOCOL_VERSION == 3, "Game-mode multiplayer requires protocol version 3.")
 
 	if failures.is_empty():
 		print("RELAY_RPC_PARITY_SMOKE_TEST_OK")

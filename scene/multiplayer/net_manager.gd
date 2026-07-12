@@ -9,11 +9,13 @@ signal player_left(peer_id: int)
 signal player_list_changed
 signal player_character_changed(peer_id: int, character_id: StringName, confirmed: bool)
 signal connection_failed(reason: String)
+signal game_mode_changed(new_game_mode: GameMode)
 
 const DEFAULT_CHARACTER_ID := &"weishidaier"
 
 enum NetRole { NONE, HOST, CLIENT }
 enum ConnMode { DIRECT, RELAY }
+enum GameMode { STANDARD, TOWER_DEFENSE }
 enum ConnectionState {
 	DISCONNECTED,
 	HOSTING_LAN,
@@ -40,6 +42,7 @@ var host_game_ready: bool = false
 var public_room_id: String = ""
 var public_host_token: String = ""
 var public_is_host: bool = false
+var current_game_mode: GameMode = GameMode.STANDARD
 
 var _physics_frame_count: int = 0
 var _enet_peer: ENetMultiplayerPeer = null
@@ -74,6 +77,46 @@ func clear_public_room_context() -> void:
 	public_is_host = false
 
 
+func set_host_game_mode(game_mode: GameMode) -> bool:
+	if not _is_valid_game_mode(int(game_mode)):
+		return false
+	if is_client() or connection_state >= ConnectionState.LOADING_GAME:
+		return false
+	_set_current_game_mode(game_mode)
+	if is_host():
+		_broadcast_player_list_to_clients()
+	return true
+
+
+func set_pending_game_mode(game_mode: GameMode) -> bool:
+	if not _is_valid_game_mode(int(game_mode)):
+		return false
+	if is_multiplayer_active() or net_role != NetRole.NONE:
+		return false
+	_set_current_game_mode(game_mode)
+	return true
+
+
+func get_current_game_mode() -> GameMode:
+	return current_game_mode
+
+
+static func game_mode_to_key(game_mode: GameMode) -> String:
+	return "tower_defense" if game_mode == GameMode.TOWER_DEFENSE else "standard"
+
+
+static func game_mode_from_key(game_mode_key: String) -> GameMode:
+	return (
+		GameMode.TOWER_DEFENSE
+		if game_mode_key.strip_edges().to_lower() == "tower_defense"
+		else GameMode.STANDARD
+	)
+
+
+static func get_game_mode_display_name(game_mode: GameMode) -> String:
+	return "塔防模式" if game_mode == GameMode.TOWER_DEFENSE else "普通模式"
+
+
 func is_multiplayer_active() -> bool:
 	return (
 		not _disconnect_in_progress
@@ -91,8 +134,10 @@ func is_client() -> bool:
 
 
 func host_create_lan_server(port: int = NetConstants.ENET_PORT_DEFAULT) -> Error:
+	var configured_game_mode := current_game_mode
 	if _enet_peer != null:
 		disconnect_from_game()
+	_set_current_game_mode(configured_game_mode)
 
 	lan_port = port
 	_enet_peer = ENetMultiplayerPeer.new()
@@ -133,8 +178,10 @@ func host_create_server(port: int = NetConstants.ENET_PORT_DEFAULT) -> Error:
 
 
 func client_connect_lan(host_ip: String, port: int = NetConstants.ENET_PORT_DEFAULT) -> Error:
+	var pending_game_mode := current_game_mode
 	if _enet_peer != null:
 		disconnect_from_game()
+	_set_current_game_mode(pending_game_mode)
 
 	var trimmed_ip := host_ip.strip_edges()
 	if trimmed_ip.is_empty():
@@ -173,8 +220,10 @@ func client_connect_direct(host_ip: String, port: int = NetConstants.ENET_PORT_D
 
 
 func host_create_relay_room(target_relay_ip: String, target_relay_port: int) -> Error:
+	var configured_game_mode := current_game_mode
 	if _enet_peer != null:
 		disconnect_from_game()
+	_set_current_game_mode(configured_game_mode)
 
 	var trimmed_ip := target_relay_ip.strip_edges()
 	if trimmed_ip.is_empty():
@@ -218,8 +267,10 @@ func client_join_relay_room(
 	target_relay_port: int,
 	target_host_peer_id: int
 ) -> Error:
+	var pending_game_mode := current_game_mode
 	if _enet_peer != null:
 		disconnect_from_game()
+	_set_current_game_mode(pending_game_mode)
 
 	var trimmed_ip := target_relay_ip.strip_edges()
 	if trimmed_ip.is_empty():
@@ -276,6 +327,7 @@ func disconnect_from_game() -> void:
 	set_multiplayer_authority(host_peer_id)
 	host_game_ready = false
 	clear_public_room_context()
+	_set_current_game_mode(GameMode.STANDARD)
 	_relay_register_pending = false
 	_clear_connection_attempt()
 	_physics_frame_count = 0
@@ -660,7 +712,11 @@ func _rpc_set_player_character(character_id: String, confirmed: bool) -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 0)
-func _rpc_sync_player_list(player_list: Array, new_host_peer_id: int = 0) -> void:
+func _rpc_sync_player_list(
+	player_list: Array,
+	new_host_peer_id: int = 0,
+	game_mode: int = 0
+) -> void:
 	if is_host():
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
@@ -692,8 +748,11 @@ func _rpc_sync_player_list(player_list: Array, new_host_peer_id: int = 0) -> voi
 		synced_confirmations[peer_id] = bool(entry.get("character_confirmed", false))
 	if not synced_players.has(resolved_host_id):
 		return
+	if not _is_valid_game_mode(game_mode):
+		return
 	host_peer_id = resolved_host_id
 	set_multiplayer_authority(host_peer_id)
+	_set_current_game_mode(game_mode as GameMode)
 	connected_players = synced_players
 	connected_player_characters = synced_characters
 	confirmed_character_peers = synced_confirmations
@@ -725,9 +784,12 @@ func _rpc_sync_player_list(player_list: Array, new_host_peer_id: int = 0) -> voi
 
 
 @rpc("authority", "call_remote", "reliable", 0)
-func _rpc_start_game() -> void:
+func _rpc_start_game(game_mode: int = 0) -> void:
 	if multiplayer.get_remote_sender_id() != get_host_peer_id():
 		return
+	if not _is_valid_game_mode(game_mode):
+		return
+	_set_current_game_mode(game_mode as GameMode)
 	host_game_ready = false
 	_set_connection_state(ConnectionState.LOADING_GAME)
 
@@ -765,7 +827,7 @@ func _broadcast_player_list_to_clients() -> void:
 			continue
 		if not is_peer_send_ready(peer_id):
 			continue
-		_rpc_sync_player_list.rpc_id(peer_id, player_list, host_id)
+		_rpc_sync_player_list.rpc_id(peer_id, player_list, host_id, int(current_game_mode))
 
 
 func _send_start_game_to_clients() -> void:
@@ -776,7 +838,7 @@ func _send_start_game_to_clients() -> void:
 			continue
 		if not is_peer_send_ready(peer_id):
 			continue
-		_rpc_start_game.rpc_id(peer_id)
+		_rpc_start_game.rpc_id(peer_id, int(current_game_mode))
 
 
 func _send_host_game_ready_to_clients() -> void:
@@ -795,6 +857,17 @@ func _set_connection_state(new_state: ConnectionState) -> void:
 		return
 	connection_state = new_state
 	connection_state_changed.emit(new_state)
+
+
+func _set_current_game_mode(game_mode: GameMode) -> void:
+	if current_game_mode == game_mode:
+		return
+	current_game_mode = game_mode
+	game_mode_changed.emit(current_game_mode)
+
+
+func _is_valid_game_mode(game_mode: int) -> bool:
+	return game_mode == GameMode.STANDARD or game_mode == GameMode.TOWER_DEFENSE
 
 
 func _get_safe_local_name() -> String:

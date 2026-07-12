@@ -18,6 +18,8 @@ var direction := Vector2.RIGHT
 var damage := 10
 var remaining_lifetime := 0.0
 var has_exploded := false
+var authoritative_damage := true
+var damage_source_id := 0
 
 
 func _ready() -> void:
@@ -30,7 +32,9 @@ func setup(
 	initial_damage: int = 10,
 	initial_speed: float = 180.0,
 	initial_explosion_radius: float = 18.0,
-	initial_lifetime: float = 1.25
+	initial_lifetime: float = 1.25,
+	can_apply_damage: bool = true,
+	initial_damage_source_id: int = 0
 ) -> void:
 	if initial_direction != Vector2.ZERO:
 		direction = initial_direction.normalized()
@@ -40,6 +44,8 @@ func setup(
 	explosion_radius = maxf(initial_explosion_radius, 1.0)
 	max_lifetime = maxf(initial_lifetime, 0.01)
 	remaining_lifetime = max_lifetime
+	authoritative_damage = can_apply_damage
+	damage_source_id = maxi(initial_damage_source_id, 0)
 
 	var blast_circle := explosion_shape.shape as CircleShape2D
 	if blast_circle != null:
@@ -105,6 +111,8 @@ func _on_impact_audio_finished() -> void:
 
 
 func _apply_explosion_damage(direct_enemy: Enemy) -> void:
+	if not authoritative_damage:
+		return
 	var blast_circle := explosion_shape.shape as CircleShape2D
 	if blast_circle == null:
 		return
@@ -128,11 +136,24 @@ func _apply_explosion_damage(direct_enemy: Enemy) -> void:
 		var impact_direction := global_position.direction_to(enemy.global_position)
 		if impact_direction == Vector2.ZERO:
 			impact_direction = direction
-		enemy.apply_damage(
-			damage,
-			impact_direction,
-			EnemyConfig.DamageType.PHYSICAL
-		)
+		var current_scene := get_tree().current_scene
+		if current_scene != null and current_scene.has_method(
+			"apply_authoritative_plant_enemy_damage"
+		):
+			current_scene.call(
+				"apply_authoritative_plant_enemy_damage",
+				damage_source_id,
+				enemy,
+				damage,
+				impact_direction,
+				EnemyConfig.DamageType.PHYSICAL
+			)
+		else:
+			enemy.apply_damage(
+				damage,
+				impact_direction,
+				EnemyConfig.DamageType.PHYSICAL
+			)
 
 
 func _add_explosion_target(targets: Dictionary[int, Enemy], enemy: Enemy) -> void:

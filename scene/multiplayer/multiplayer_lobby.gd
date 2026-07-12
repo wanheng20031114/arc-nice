@@ -10,6 +10,8 @@ const STATE_HOSTING_LAN := NetManagerStore.ConnectionState.HOSTING_LAN
 const STATE_CONNECTING_LAN := NetManagerStore.ConnectionState.CONNECTING_LAN
 const STATE_CONNECTED_IN_LOBBY := NetManagerStore.ConnectionState.CONNECTED_IN_LOBBY
 const STATE_LOADING_GAME := NetManagerStore.ConnectionState.LOADING_GAME
+const GAME_MODE_STANDARD_KEY := "standard"
+const GAME_MODE_TOWER_DEFENSE_KEY := "tower_defense"
 
 enum LobbyView {
 	USERNAME_INPUT,
@@ -47,6 +49,8 @@ enum PublicRequest {
 @onready var mode_back_btn: Button = $LobbyCenter/ModeSelectPanel/MarginContainer/VBoxContainer/BackToMenuButton
 @onready var room_browser_panel: PanelContainer = $LobbyCenter/RoomBrowserPanel
 @onready var browser_title: Label = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserTitle
+@onready var game_mode_label: Label = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/GameModeRow/GameModeLabel
+@onready var game_mode_selector: OptionButton = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/GameModeRow/GameModeSelector
 @onready var tab_container: TabContainer = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer
 @onready var room_list_vbox: VBoxContainer = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/RoomListTab/ScrollContainer/RoomListVBox
 @onready var refresh_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/RoomListTab/RefreshButton
@@ -58,6 +62,7 @@ enum PublicRequest {
 @onready var browser_back_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BackButton
 @onready var room_wait_panel: PanelContainer = $LobbyCenter/RoomWaitPanel
 @onready var room_code_label: Label = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomCodeLabel
+@onready var room_mode_label: Label = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomModeLabel
 @onready var wait_player_list_vbox: VBoxContainer = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/PlayerListScroll/PlayerListVBox
 @onready var choose_character_btn: Button = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/ChooseCharacterButton
 @onready var start_game_btn: Button = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/StartGameButton
@@ -83,6 +88,7 @@ var current_public_room_id: String = ""
 var current_public_host_token: String = ""
 var current_public_room_name: String = ""
 var current_public_is_host: bool = false
+var current_public_room_game_mode: NetManagerStore.GameMode = NetManagerStore.GameMode.STANDARD
 var relay_host_ready_sent: bool = false
 var pending_start_after_public_status: bool = false
 var keep_room_view_after_connection_failure: bool = false
@@ -94,6 +100,7 @@ var _username_caret_blink_elapsed := 0.0
 
 func _ready() -> void:
 	_sync_local_character_selection()
+	_configure_game_mode_selector()
 	_build_lan_direct_panel()
 	username_input.max_length = _NetConstants.MAX_PLAYER_NAME_LENGTH
 	username_name_display.set("max_length", _NetConstants.MAX_PLAYER_NAME_LENGTH)
@@ -124,6 +131,7 @@ func _ready() -> void:
 	character_choice_overlay.character_confirmed.connect(_on_character_confirmed)
 	character_choice_overlay.selection_closed.connect(_on_character_selection_closed)
 	public_lobby_request.request_completed.connect(_on_public_lobby_request_completed)
+	game_mode_selector.item_selected.connect(_on_game_mode_selected)
 
 	_connect_net_manager_signals()
 	_show_view(LobbyView.USERNAME_INPUT)
@@ -152,6 +160,8 @@ func _connect_net_manager_signals() -> void:
 		net_manager.connection_failed.connect(_on_net_connection_failed)
 	if not net_manager.connection_state_changed.is_connected(_on_net_state_changed):
 		net_manager.connection_state_changed.connect(_on_net_state_changed)
+	if not net_manager.game_mode_changed.is_connected(_on_net_game_mode_changed):
+		net_manager.game_mode_changed.connect(_on_net_game_mode_changed)
 
 
 func _disconnect_net_manager_signals() -> void:
@@ -169,6 +179,97 @@ func _disconnect_net_manager_signals() -> void:
 		net_manager.connection_failed.disconnect(_on_net_connection_failed)
 	if net_manager.connection_state_changed.is_connected(_on_net_state_changed):
 		net_manager.connection_state_changed.disconnect(_on_net_state_changed)
+	if net_manager.game_mode_changed.is_connected(_on_net_game_mode_changed):
+		net_manager.game_mode_changed.disconnect(_on_net_game_mode_changed)
+
+
+func _configure_game_mode_selector() -> void:
+	game_mode_selector.clear()
+	game_mode_selector.add_item("普通模式", NetManagerStore.GameMode.STANDARD)
+	game_mode_selector.add_item("塔防模式", NetManagerStore.GameMode.TOWER_DEFENSE)
+	_select_game_mode_in_selector(
+		net_manager.get_current_game_mode() as NetManagerStore.GameMode
+	)
+
+
+func _on_game_mode_selected(item_index: int) -> void:
+	if item_index < 0 or item_index >= game_mode_selector.item_count:
+		return
+	var game_mode := game_mode_selector.get_item_id(item_index) as NetManagerStore.GameMode
+	if net_manager.set_host_game_mode(game_mode):
+		return
+	_select_game_mode_in_selector(
+		net_manager.get_current_game_mode() as NetManagerStore.GameMode
+	)
+
+
+func _get_selected_game_mode() -> NetManagerStore.GameMode:
+	var item_index := game_mode_selector.selected
+	if item_index < 0 or item_index >= game_mode_selector.item_count:
+		return NetManagerStore.GameMode.STANDARD
+	var item_id := game_mode_selector.get_item_id(item_index)
+	if item_id == NetManagerStore.GameMode.TOWER_DEFENSE:
+		return NetManagerStore.GameMode.TOWER_DEFENSE
+	return NetManagerStore.GameMode.STANDARD
+
+
+func _get_selected_game_mode_key() -> String:
+	return NetManagerStore.game_mode_to_key(_get_selected_game_mode())
+
+
+func _select_game_mode_in_selector(game_mode: NetManagerStore.GameMode) -> void:
+	for item_index in range(game_mode_selector.item_count):
+		if game_mode_selector.get_item_id(item_index) == int(game_mode):
+			game_mode_selector.select(item_index)
+			return
+
+
+func _prepare_selected_host_game_mode() -> bool:
+	var selected_game_mode := _get_selected_game_mode()
+	if net_manager.set_host_game_mode(selected_game_mode):
+		return true
+	_show_public_error("当前连接状态不能更改游戏模式。")
+	return false
+
+
+func _get_room_game_mode_key(room_data: Dictionary) -> String:
+	var game_mode_key := str(
+		room_data.get("game_mode", GAME_MODE_STANDARD_KEY)
+	).strip_edges().to_lower()
+	if game_mode_key == GAME_MODE_STANDARD_KEY or game_mode_key == GAME_MODE_TOWER_DEFENSE_KEY:
+		return game_mode_key
+	return ""
+
+
+func _apply_room_game_mode(room_data: Dictionary, as_host: bool) -> bool:
+	var game_mode_key := _get_room_game_mode_key(room_data)
+	if game_mode_key.is_empty():
+		_show_public_error("房间返回了无效的游戏模式。")
+		return false
+	var game_mode := NetManagerStore.game_mode_from_key(game_mode_key)
+	var applied := false
+	if as_host:
+		applied = bool(net_manager.set_host_game_mode(game_mode))
+	else:
+		applied = bool(net_manager.set_pending_game_mode(game_mode))
+	if not applied:
+		_show_public_error("当前连接状态不能应用房间游戏模式。")
+		return false
+	current_public_room_game_mode = game_mode
+	_select_game_mode_in_selector(game_mode)
+	_update_room_mode_label()
+	return true
+
+
+func _update_room_mode_label() -> void:
+	if room_mode_label == null:
+		return
+	var game_mode := net_manager.get_current_game_mode() as NetManagerStore.GameMode
+	room_mode_label.text = "模式: %s" % NetManagerStore.get_game_mode_display_name(game_mode)
+
+
+func _refresh_game_mode_selector_state() -> void:
+	game_mode_selector.disabled = net_manager.is_multiplayer_active()
 
 
 func _build_lan_direct_panel() -> void:
@@ -232,6 +333,7 @@ func _show_view(view: LobbyView) -> void:
 	mode_select_panel.visible = view == LobbyView.MODE_SELECT
 	room_browser_panel.visible = view == LobbyView.PUBLIC_BROWSER or view == LobbyView.LAN_DIRECT
 	room_wait_panel.visible = view == LobbyView.ROOM_WAIT
+	_refresh_game_mode_selector_state()
 	if view != LobbyView.USERNAME_INPUT:
 		username_caret.visible = false
 	if view == LobbyView.PUBLIC_BROWSER:
@@ -346,6 +448,7 @@ func _finish_username_panel_intro() -> void:
 
 func _apply_public_browser_state() -> void:
 	browser_title.text = "公网游戏"
+	game_mode_label.text = "匹配 / 建房模式"
 	tab_container.visible = true
 	browser_status_label.visible = true
 	browser_back_button.visible = true
@@ -354,6 +457,7 @@ func _apply_public_browser_state() -> void:
 
 func _apply_lan_browser_state() -> void:
 	browser_title.text = "局域网游戏"
+	game_mode_label.text = "建房模式"
 	tab_container.visible = false
 	browser_status_label.visible = false
 	browser_back_button.visible = false
@@ -409,6 +513,9 @@ func _refresh_lan_info() -> void:
 
 
 func _on_host_lan_pressed() -> void:
+	if not _prepare_selected_host_game_mode():
+		lan_status_label.text = "当前连接状态不能更改游戏模式。"
+		return
 	var port: int = int(port_spin.value)
 	var err: Error = net_manager.host_create_lan_server(port)
 	if err != OK:
@@ -419,6 +526,7 @@ func _on_host_lan_pressed() -> void:
 	var room_data := {
 		"name": "%s 的局域网房间" % net_manager.local_player_name,
 		"id": "LAN:%d" % port,
+		"game_mode": _get_selected_game_mode_key(),
 	}
 	_enter_room_wait(room_data)
 
@@ -426,6 +534,9 @@ func _on_host_lan_pressed() -> void:
 func _on_join_lan_pressed() -> void:
 	var host_ip: String = join_ip_input.text.strip_edges()
 	var port: int = int(port_spin.value)
+	if not net_manager.set_pending_game_mode(NetManagerStore.GameMode.STANDARD):
+		lan_status_label.text = "当前连接状态不能加入主机。"
+		return
 	var err: Error = net_manager.client_connect_lan(host_ip, port)
 	if err != OK:
 		lan_status_label.text = "连接失败: %s" % error_string(err)
@@ -437,6 +548,7 @@ func _on_join_lan_pressed() -> void:
 		"id": "%s:%d" % [host_ip, port],
 	}
 	_enter_room_wait(room_data)
+	room_mode_label.text = "模式: 等待主机同步…"
 
 
 func _request_public_health() -> void:
@@ -452,23 +564,39 @@ func _request_public_rooms() -> void:
 
 
 func _on_create_public_room_pressed() -> void:
+	if not _prepare_selected_host_game_mode():
+		return
 	var body := {
 		"name": room_name_input.text.strip_edges(),
 		"host_name": net_manager.local_player_name,
 		"max_players": int(max_players_spin.value),
+		"game_mode": _get_selected_game_mode_key(),
 	}
 	browser_status_label.text = "正在创建公网房间..."
 	_send_public_request(PublicRequest.CREATE_ROOM, "/rooms", HTTPClient.METHOD_POST, body)
 
 
 func _on_quick_match_pressed() -> void:
-	var body := {"player_name": net_manager.local_player_name}
+	if not _prepare_selected_host_game_mode():
+		return
+	var body := {
+		"player_name": net_manager.local_player_name,
+		"game_mode": _get_selected_game_mode_key(),
+	}
 	browser_status_label.text = "正在快速匹配..."
 	_send_public_request(PublicRequest.QUICK_MATCH, "/matchmaking/quick", HTTPClient.METHOD_POST, body)
 
 
-func _on_public_room_selected(room_id: String) -> void:
-	var body := {"player_name": net_manager.local_player_name}
+func _on_public_room_selected(room_id: String, game_mode_key: String) -> void:
+	var game_mode := NetManagerStore.game_mode_from_key(game_mode_key)
+	if not net_manager.set_pending_game_mode(game_mode):
+		_show_public_error("当前连接状态不能加入房间。")
+		return
+	_select_game_mode_in_selector(game_mode)
+	var body := {
+		"player_name": net_manager.local_player_name,
+		"game_mode": game_mode_key,
+	}
 	browser_status_label.text = "正在加入房间..."
 	_send_public_request(PublicRequest.JOIN_ROOM, "/rooms/%s/join" % room_id, HTTPClient.METHOD_POST, body)
 
@@ -597,14 +725,19 @@ func _render_public_rooms(rooms: Array) -> void:
 		var room_id := _get_public_room_id(room)
 		if room_id.is_empty():
 			continue
+		var game_mode_key := _get_room_game_mode_key(room)
+		if game_mode_key.is_empty():
+			continue
+		var game_mode := NetManagerStore.game_mode_from_key(game_mode_key)
 		var button := Button.new()
-		button.text = "%s  %d/%d  Host: %s" % [
+		button.text = "[%s] %s  %d/%d  Host: %s" % [
+			NetManagerStore.get_game_mode_display_name(game_mode),
 			str(room.get("name", "房间")),
 			int(room.get("player_count", 0)),
 			int(room.get("max_players", 0)),
 			str(room.get("host_name", "")),
 		]
-		button.pressed.connect(_on_public_room_selected.bind(room_id))
+		button.pressed.connect(_on_public_room_selected.bind(room_id, game_mode_key))
 		room_list_vbox.add_child(button)
 	browser_status_label.text = "房间列表已刷新。"
 
@@ -619,6 +752,8 @@ func _begin_public_host_room(data: Dictionary) -> void:
 	var host_token := str(data.get("host_token", ""))
 	if relay_ip.is_empty() or relay_port <= 0 or room_id.is_empty() or host_token.is_empty():
 		_show_public_error("创建公网房间失败：Relay 信息不完整")
+		return
+	if not _apply_room_game_mode(data, true):
 		return
 
 	current_public_room_id = room_id
@@ -647,6 +782,8 @@ func _begin_public_client_room(data: Dictionary) -> void:
 	var room_id := _get_public_room_id(data)
 	if relay_ip.is_empty() or relay_port <= 0 or host_peer_id <= 0 or room_id.is_empty():
 		_show_public_error("加入公网房间失败：Relay 信息不完整")
+		return
+	if not _apply_room_game_mode(data, false):
 		return
 
 	current_public_room_id = room_id
@@ -707,6 +844,7 @@ func _enter_room_wait(room_data: Dictionary) -> void:
 	var room_name: String = str(room_data.get("name", "房间"))
 	var room_id: String = _get_public_room_id(room_data)
 	room_code_label.text = "房间: %s (%s)" % [room_name, room_id]
+	_update_room_mode_label()
 	start_game_btn.visible = net_manager.is_host()
 	wait_status_label.text = "等待玩家加入..."
 	_refresh_wait_player_list()
@@ -795,6 +933,12 @@ func _on_net_player_list_changed() -> void:
 		_refresh_wait_player_list()
 
 
+func _on_net_game_mode_changed(new_game_mode: NetManagerStore.GameMode) -> void:
+	_select_game_mode_in_selector(new_game_mode)
+	_update_room_mode_label()
+	_refresh_game_mode_selector_state()
+
+
 func _on_net_connection_failed(reason: String) -> void:
 	if current_view == LobbyView.ROOM_WAIT:
 		keep_room_view_after_connection_failure = true
@@ -805,6 +949,7 @@ func _on_net_connection_failed(reason: String) -> void:
 
 func _on_net_state_changed(new_state: NetManagerStore.ConnectionState) -> void:
 	var is_relay := int(net_manager.get("conn_mode")) == 1
+	_refresh_game_mode_selector_state()
 	match new_state:
 		STATE_CONNECTING_LAN:
 			if current_view == LobbyView.ROOM_WAIT:
@@ -818,6 +963,7 @@ func _on_net_state_changed(new_state: NetManagerStore.ConnectionState) -> void:
 			_refresh_wait_player_list()
 		STATE_CONNECTED_IN_LOBBY:
 			wait_status_label.text = "已连接，等待开始。"
+			_update_room_mode_label()
 			_refresh_wait_player_list()
 		STATE_LOADING_GAME:
 			_start_multiplayer_game()
@@ -905,6 +1051,7 @@ func _clear_public_room_state() -> void:
 	current_public_host_token = ""
 	current_public_room_name = ""
 	current_public_is_host = false
+	current_public_room_game_mode = NetManagerStore.GameMode.STANDARD
 	relay_host_ready_sent = false
 	pending_start_after_public_status = false
 	keep_room_view_after_connection_failure = false

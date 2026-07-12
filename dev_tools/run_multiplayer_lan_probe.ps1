@@ -2,8 +2,10 @@ param(
     [string]$GodotExe = "C:\Users\wh\Downloads\Godot_v4.6.3-stable_win64.exe\Godot_v4.6.3-stable_win64_console.exe",
     [int]$Port = 29270,
     [int]$TimeoutSeconds = 65,
-    [ValidateSet("full", "leave", "wave", "boss")]
+    [ValidateSet("full", "leave", "wave", "boss", "tower_defense")]
     [string]$Scenario = "full",
+    [ValidateSet("standard", "tower_defense")]
+    [string]$GameMode = "standard",
     [switch]$GodotVerbose
 )
 
@@ -49,7 +51,8 @@ function Start-ProbePeer {
         "--probe-run_seconds=$RunSeconds",
         "--probe-linger_seconds=$LingerSeconds",
         "--probe-events=$Events",
-        "--probe-scenario=$Scenario"
+        "--probe-scenario=$Scenario",
+        "--probe-game_mode=$GameMode"
     )
 
     $process = Start-Process `
@@ -125,7 +128,7 @@ try {
         exit 1
     }
 
-    Write-Host "MULTIPLAYER_LAN_PROBE_OK scenario=$Scenario logRoot=$logRoot"
+    Write-Host "MULTIPLAYER_LAN_PROBE_OK scenario=$Scenario gameMode=$GameMode logRoot=$logRoot"
     exit 0
 }
 finally {

@@ -11,6 +11,7 @@ display_name = "橡木仓库"
 description = "拥有20格独立储物空间。靠近后按F打开，可在仓库与背包之间整叠移动物品。"
 icon = ExtResource("2_icon")
 plant_scene = ExtResource("3_scene")
+supports_multiplayer = false
 max_health = 300
 attack_damage = 0
 attack_speed = 0.0

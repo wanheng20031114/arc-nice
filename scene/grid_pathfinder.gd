@@ -9,12 +9,20 @@ const FLOW_CARDINAL_DIRECTIONS: Array[Vector2i] = [
 ]
 const DEFAULT_TRAVERSAL_TYPES := DualGridTilemap.TraversalType.LAND
 
+enum NavigationStepStatus {
+	READY,
+	ARRIVED,
+	DEFERRED,
+	UNREACHABLE,
+}
+
 @export var obstacle_tile_layer_path: NodePath = ^"../GroundTileMapLayer"
 @export var terrain_map_path: NodePath
 # 用于检测阻挡的碰撞层索引
 @export var tile_physics_layer_index: int = 0
-# 如果无法到达目标，是否允许返回部分路径（尽可能靠近目标）
-@export var allow_partial_path: bool = true
+# Legacy full-path callers are complete-only by default. Partial routes remain
+# opt-in for diagnostics and are never accepted by the safe-step API.
+@export var allow_partial_path: bool = false
 # 搜索最近可行走格子的最大半径
 @export var max_nearest_cell_search_radius: int = 6
 # 每个物理帧允许的 A* 路径查询数量，用于避免大量敌人同帧刷新造成尖峰。
@@ -38,8 +46,6 @@ var path_queries_used_this_frame: int = 0
 var path_query_budget_frame: int = -1
 var flow_field_builds_used_this_frame: int = 0
 var flow_field_budget_frame: int = -1
-var blocked_cells: Array[Vector2i] = []
-var blocked_cells_by_traversal: Dictionary = {}
 var agent_grid_cache: Dictionary = {}
 var flow_field_cache: Dictionary = {}
 var flow_field_cache_order: Array[String] = []
@@ -73,8 +79,6 @@ func rebuild() -> void:
 	agent_grid_cache.clear()
 	flow_field_cache.clear()
 	flow_field_cache_order.clear()
-	blocked_cells.clear()
-	blocked_cells_by_traversal.clear()
 	astar_grid.region = used_rect
 	astar_grid.cell_size = Vector2(obstacle_tile_layer.tile_set.tile_size)
 	astar_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
@@ -86,11 +90,7 @@ func rebuild() -> void:
 	for y in range(used_rect.position.y, used_rect.end.y):
 		for x in range(used_rect.position.x, used_rect.end.x):
 			var cell := Vector2i(x, y)
-			var is_blocked := _is_cell_blocked(cell)
-			astar_grid.set_point_solid(cell, is_blocked)
-			if is_blocked:
-				blocked_cells.append(cell)
-	blocked_cells_by_traversal[DEFAULT_TRAVERSAL_TYPES] = blocked_cells.duplicate()
+			astar_grid.set_point_solid(cell, _is_cell_blocked(cell))
 
 	is_built = true
 
@@ -207,6 +207,86 @@ func get_flow_navigation_waypoint(
 	)
 
 
+# Returns one grid-safe navigation decision with an explicit status. Unlike the
+# legacy path API, READY is only returned when the resolved start belongs to a
+# flow field that reaches the resolved target. Partial A* paths are never
+# surfaced as successful navigation.
+func try_get_safe_navigation_step(
+	from_global_position: Vector2,
+	to_global_position: Vector2,
+	agent_half_extents: Vector2 = Vector2.ZERO,
+	traversal_types: int = DEFAULT_TRAVERSAL_TYPES
+) -> Dictionary:
+	return _get_safe_navigation_step(
+		from_global_position,
+		to_global_position,
+		agent_half_extents,
+		traversal_types,
+		true
+	)
+
+
+# Unbudgeted form for prewarming, validation and deterministic tests.
+func get_safe_navigation_step(
+	from_global_position: Vector2,
+	to_global_position: Vector2,
+	agent_half_extents: Vector2 = Vector2.ZERO,
+	traversal_types: int = DEFAULT_TRAVERSAL_TYPES
+) -> Dictionary:
+	return _get_safe_navigation_step(
+		from_global_position,
+		to_global_position,
+		agent_half_extents,
+		traversal_types,
+		false
+	)
+
+
+# Complete-only A* path used by diagnostics and callers that need the full
+# route. This deliberately ignores allow_partial_path.
+func get_complete_global_path(
+	from_global_position: Vector2,
+	to_global_position: Vector2,
+	agent_half_extents: Vector2 = Vector2.ZERO,
+	traversal_types: int = DEFAULT_TRAVERSAL_TYPES
+) -> PackedVector2Array:
+	if not is_built:
+		return PackedVector2Array()
+
+	var normalized_extents := _normalize_agent_half_extents(agent_half_extents)
+	var path_grid := _get_or_create_agent_grid(normalized_extents, traversal_types)
+	var original_from_cell := _global_to_map(from_global_position)
+	var from_cell := _get_closest_walkable_cell(original_from_cell, path_grid)
+	var target_cell := _get_closest_walkable_cell(_global_to_map(to_global_position), path_grid)
+	if from_cell == Vector2i.MAX or target_cell == Vector2i.MAX:
+		return PackedVector2Array()
+
+	var cell_path := path_grid.get_id_path(from_cell, target_cell, false)
+	if cell_path.is_empty() or cell_path[cell_path.size() - 1] != target_cell:
+		return PackedVector2Array()
+	if cell_path.size() == 1:
+		if _is_global_position_walkable_for_agent(
+			to_global_position,
+			normalized_extents,
+			traversal_types
+		):
+			return PackedVector2Array([to_global_position])
+		return PackedVector2Array([_map_to_global(target_cell)])
+
+	var global_path := PackedVector2Array()
+	var first_path_index := 1 if from_cell == original_from_cell else 0
+	for cell_index in range(first_path_index, cell_path.size()):
+		global_path.append(_map_to_global(cell_path[cell_index]))
+
+	if not global_path.is_empty() and _is_global_position_walkable_for_agent(
+		to_global_position,
+		normalized_extents,
+		traversal_types
+	):
+		global_path[global_path.size() - 1] = to_global_position
+	return global_path
+
+
 func prewarm_agent_grid(
 	agent_half_extents: Vector2,
 	traversal_types: int = DEFAULT_TRAVERSAL_TYPES
@@ -291,6 +371,170 @@ func _get_or_create_agent_grid(
 	return agent_grid
 
 
+func _get_safe_navigation_step(
+	from_global_position: Vector2,
+	to_global_position: Vector2,
+	agent_half_extents: Vector2,
+	traversal_types: int,
+	uses_build_budget: bool
+) -> Dictionary:
+	if not is_built:
+		return _make_navigation_step_result(NavigationStepStatus.DEFERRED)
+
+	var normalized_extents := _normalize_agent_half_extents(agent_half_extents)
+	var path_grid := _get_or_create_agent_grid(normalized_extents, traversal_types)
+	var original_from_cell := _global_to_map(from_global_position)
+	var original_target_cell := _global_to_map(to_global_position)
+	var target_cell := _get_closest_walkable_cell(original_target_cell, path_grid)
+	if target_cell == Vector2i.MAX:
+		return _make_navigation_step_result(
+			NavigationStepStatus.UNREACHABLE,
+			original_from_cell,
+			original_target_cell
+		)
+
+	var field := _get_cached_flow_field(target_cell, normalized_extents, traversal_types)
+	if field.is_empty():
+		if uses_build_budget:
+			_refresh_flow_field_budget_frame()
+			if flow_field_builds_used_this_frame >= maxi(max_flow_field_builds_per_physics_frame, 1):
+				var deferred_result := _make_navigation_step_result(
+					NavigationStepStatus.DEFERRED,
+					original_from_cell,
+					original_target_cell
+				)
+				deferred_result["resolved_target_cell"] = target_cell
+				return deferred_result
+			flow_field_builds_used_this_frame += 1
+		field = _build_flow_field(target_cell, path_grid)
+		_store_flow_field(target_cell, normalized_extents, traversal_types, field)
+
+	var next_cells := field.get("next_cells", {}) as Dictionary
+	var distances := field.get("distances", {}) as Dictionary
+	if next_cells.is_empty():
+		var empty_field_result := _make_navigation_step_result(
+			NavigationStepStatus.UNREACHABLE,
+			original_from_cell,
+			original_target_cell
+		)
+		empty_field_result["resolved_target_cell"] = target_cell
+		return empty_field_result
+
+	var from_cell := original_from_cell
+	var used_start_recovery := false
+	if not _is_cell_walkable(from_cell, path_grid):
+		from_cell = _get_safe_adjacent_flow_recovery_cell(
+			original_from_cell,
+			next_cells,
+			distances,
+			path_grid
+		)
+		used_start_recovery = from_cell != Vector2i.MAX
+	elif not next_cells.has(from_cell):
+		# A walkable cell absent from the target's field is in another connected
+		# component. Do not turn a partial route into apparent forward progress.
+		from_cell = Vector2i.MAX
+
+	if from_cell == Vector2i.MAX or not next_cells.has(from_cell):
+		var unreachable_result := _make_navigation_step_result(
+			NavigationStepStatus.UNREACHABLE,
+			original_from_cell,
+			original_target_cell
+		)
+		unreachable_result["resolved_target_cell"] = target_cell
+		return unreachable_result
+
+	var route_distance := int(distances.get(from_cell, -1))
+	var flow_next_cell: Vector2i = next_cells.get(from_cell, Vector2i.MAX)
+	if flow_next_cell == Vector2i.MAX:
+		return _make_navigation_step_result(
+			NavigationStepStatus.UNREACHABLE,
+			original_from_cell,
+			original_target_cell
+		)
+
+	var result := _make_navigation_step_result(
+		NavigationStepStatus.READY,
+		original_from_cell,
+		original_target_cell
+	)
+	result["resolved_from_cell"] = from_cell
+	result["resolved_target_cell"] = target_cell
+	# next_cell always describes the waypoint returned for this decision. During
+	# recovery that is the one adjacent reachable cell; the following flow step
+	# is deliberately deferred until the body has safely entered it.
+	result["next_cell"] = from_cell if used_start_recovery else flow_next_cell
+	result["used_start_recovery"] = used_start_recovery
+	result["is_complete_route"] = true
+	result["remaining_cell_distance"] = route_distance + (1 if used_start_recovery else 0)
+
+	if used_start_recovery:
+		# Recovery is deliberately limited to one cardinal cell. Returning a
+		# farther cell would ask CharacterBody2D to cross unknown collision space.
+		result["waypoint"] = _map_to_global(from_cell)
+		return result
+
+	if flow_next_cell != from_cell:
+		result["waypoint"] = _map_to_global(flow_next_cell)
+		return result
+
+	var resolved_target_position := _map_to_global(target_cell)
+	if _is_global_position_walkable_for_agent(
+		to_global_position,
+		normalized_extents,
+		traversal_types
+	):
+		result["waypoint"] = to_global_position
+		if from_global_position.distance_squared_to(to_global_position) <= 0.25:
+			result["status"] = NavigationStepStatus.ARRIVED
+		return result
+
+	result["waypoint"] = resolved_target_position
+	if from_global_position.distance_squared_to(resolved_target_position) <= 0.25:
+		result["status"] = NavigationStepStatus.ARRIVED
+	return result
+
+
+func _make_navigation_step_result(
+	status: NavigationStepStatus,
+	from_cell: Vector2i = Vector2i.MAX,
+	target_cell: Vector2i = Vector2i.MAX
+) -> Dictionary:
+	return {
+		"status": status,
+		"waypoint": Vector2.ZERO,
+		"from_cell": from_cell,
+		"resolved_from_cell": Vector2i.MAX,
+		"target_cell": target_cell,
+		"resolved_target_cell": Vector2i.MAX,
+		"next_cell": Vector2i.MAX,
+		"used_start_recovery": false,
+		"is_complete_route": false,
+		"remaining_cell_distance": -1,
+	}
+
+
+func _get_safe_adjacent_flow_recovery_cell(
+	origin_cell: Vector2i,
+	next_cells: Dictionary,
+	distances: Dictionary,
+	path_grid: AStarGrid2D
+) -> Vector2i:
+	var best_cell := Vector2i.MAX
+	var best_flow_distance := INF
+	for direction in FLOW_CARDINAL_DIRECTIONS:
+		var candidate := origin_cell + direction
+		if not next_cells.has(candidate):
+			continue
+		if not _is_cell_walkable(candidate, path_grid):
+			continue
+		var flow_distance := float(distances.get(candidate, INF))
+		if flow_distance < best_flow_distance:
+			best_flow_distance = flow_distance
+			best_cell = candidate
+	return best_cell
+
+
 func _get_flow_navigation_waypoint(
 	from_global_position: Vector2,
 	to_global_position: Vector2,
@@ -298,56 +542,19 @@ func _get_flow_navigation_waypoint(
 	traversal_types: int,
 	uses_build_budget: bool
 ) -> Variant:
-	if not is_built:
+	# Compatibility wrapper: legacy flow callers inherit the complete-route and
+	# one-cardinal-cell recovery guarantees of the safe-step API.
+	var step := _get_safe_navigation_step(
+		from_global_position,
+		to_global_position,
+		agent_half_extents,
+		traversal_types,
+		uses_build_budget
+	)
+	var status := int(step.get("status", NavigationStepStatus.UNREACHABLE))
+	if status != NavigationStepStatus.READY and status != NavigationStepStatus.ARRIVED:
 		return null
-
-	var normalized_extents := _normalize_agent_half_extents(agent_half_extents)
-	var path_grid := _get_or_create_agent_grid(normalized_extents, traversal_types)
-	var target_cell := _get_closest_walkable_cell(_global_to_map(to_global_position), path_grid)
-	if target_cell == Vector2i.MAX:
-		return null
-
-	var field := _get_cached_flow_field(target_cell, normalized_extents, traversal_types)
-	if field.is_empty():
-		if uses_build_budget:
-			_refresh_flow_field_budget_frame()
-			if flow_field_builds_used_this_frame >= maxi(max_flow_field_builds_per_physics_frame, 1):
-				return null
-			flow_field_builds_used_this_frame += 1
-		field = _build_flow_field(target_cell, path_grid)
-		_store_flow_field(target_cell, normalized_extents, traversal_types, field)
-
-	var next_cells := field.get("next_cells", {}) as Dictionary
-	if next_cells.is_empty():
-		return null
-	var distances := field.get("distances", {}) as Dictionary
-
-	var from_cell := _global_to_map(from_global_position)
-	if not _is_cell_walkable(from_cell, path_grid):
-		var recovery_cell := _get_closest_flow_reachable_cell(from_cell, next_cells, distances, path_grid)
-		if recovery_cell == Vector2i.MAX:
-			return null
-		return _map_to_global(recovery_cell)
-
-	if not next_cells.has(from_cell):
-		var reachable_cell := _get_closest_flow_reachable_cell(from_cell, next_cells, distances, path_grid)
-		if reachable_cell == Vector2i.MAX:
-			return null
-		return _map_to_global(reachable_cell)
-
-	var next_cell: Vector2i = next_cells.get(from_cell, Vector2i.MAX)
-	if next_cell == Vector2i.MAX:
-		return null
-	if next_cell == from_cell:
-		if _is_global_position_walkable_for_agent(
-			to_global_position,
-			normalized_extents,
-			traversal_types
-		):
-			return to_global_position
-		return _map_to_global(next_cell)
-
-	return _map_to_global(next_cell)
+	return step.get("waypoint", null)
 
 
 func _build_flow_field(target_cell: Vector2i, path_grid: AStarGrid2D) -> Dictionary:
@@ -378,47 +585,6 @@ func _build_flow_field(target_cell: Vector2i, path_grid: AStarGrid2D) -> Diction
 		"next_cells": next_cells,
 		"distances": distances,
 	}
-
-
-func _get_closest_flow_reachable_cell(
-	origin_cell: Vector2i,
-	next_cells: Dictionary,
-	distances: Dictionary,
-	path_grid: AStarGrid2D
-) -> Vector2i:
-	if next_cells.has(origin_cell):
-		return origin_cell
-
-	var search_radius := maxi(max_nearest_cell_search_radius, 0)
-	var best_cell := Vector2i.MAX
-	var best_flow_distance := INF
-	var best_origin_distance := INF
-	for radius in range(1, search_radius + 1):
-		for y in range(origin_cell.y - radius, origin_cell.y + radius + 1):
-			for x in range(origin_cell.x - radius, origin_cell.x + radius + 1):
-				if x != origin_cell.x - radius and x != origin_cell.x + radius and y != origin_cell.y - radius and y != origin_cell.y + radius:
-					continue
-
-				var candidate := Vector2i(x, y)
-				if not next_cells.has(candidate):
-					continue
-				if not _is_cell_walkable(candidate, path_grid):
-					continue
-
-				var flow_distance := float(distances.get(candidate, INF))
-				var origin_distance := float(origin_cell.distance_squared_to(candidate))
-				if (
-					flow_distance < best_flow_distance
-					or (
-						is_equal_approx(flow_distance, best_flow_distance)
-						and origin_distance < best_origin_distance
-					)
-				):
-					best_flow_distance = flow_distance
-					best_origin_distance = origin_distance
-					best_cell = candidate
-
-	return best_cell
 
 
 func _get_cached_flow_field(
@@ -596,12 +762,32 @@ func _is_local_position_walkable_for_agent(
 	if local_position.y + padded_extents.y > region_local_rect.end.y:
 		return false
 
-	var half_cell := astar_grid.cell_size * 0.5
-	for blocked_cell in _get_blocked_cells_for_traversal(traversal_types):
-		var blocked_center := obstacle_tile_layer.map_to_local(blocked_cell)
-		var delta := (local_position - blocked_center).abs()
-		if delta.x < padded_extents.x + half_cell.x and delta.y < padded_extents.y + half_cell.y:
-			return false
+	var cell_size := astar_grid.cell_size.abs()
+	var half_cell := cell_size * 0.5
+	var collision_reach := padded_extents + half_cell
+	var center_cell := obstacle_tile_layer.local_to_map(local_position)
+	var candidate_radius := Vector2i(
+		ceili(collision_reach.x / maxf(cell_size.x, 0.001)),
+		ceili(collision_reach.y / maxf(cell_size.y, 0.001))
+	)
+	var region := astar_grid.region
+	var min_cell := Vector2i(
+		maxi(center_cell.x - candidate_radius.x, region.position.x),
+		maxi(center_cell.y - candidate_radius.y, region.position.y)
+	)
+	var max_cell := Vector2i(
+		mini(center_cell.x + candidate_radius.x, region.end.x - 1),
+		mini(center_cell.y + candidate_radius.y, region.end.y - 1)
+	)
+	for cell_y in range(min_cell.y, max_cell.y + 1):
+		for cell_x in range(min_cell.x, max_cell.x + 1):
+			var blocked_cell := Vector2i(cell_x, cell_y)
+			if not _is_cell_blocked(blocked_cell, traversal_types):
+				continue
+			var blocked_center := obstacle_tile_layer.map_to_local(blocked_cell)
+			var delta := (local_position - blocked_center).abs()
+			if delta.x < collision_reach.x and delta.y < collision_reach.y:
+				return false
 	return true
 
 
@@ -623,21 +809,10 @@ func _is_cell_blocked(
 func _is_obstacle_cell_blocked(cell: Vector2i) -> bool:
 	var tile_data := obstacle_tile_layer.get_cell_tile_data(cell)
 	if tile_data == null:
-		return true
+		# In dual-grid scenes the obstacle layer is sparse: open dirt/grass lives
+		# in the semantic terrain map and only authored structures occupy this
+		# layer. A missing obstacle tile therefore means "no obstacle", while
+		# legacy scenes without a terrain map retain their closed-grid behavior.
+		return terrain_map == null
 
 	return tile_data.get_collision_polygons_count(tile_physics_layer_index) > 0
-
-
-func _get_blocked_cells_for_traversal(traversal_types: int) -> Array[Vector2i]:
-	if blocked_cells_by_traversal.has(traversal_types):
-		var cached_cells: Array[Vector2i] = blocked_cells_by_traversal[traversal_types]
-		return cached_cells
-
-	var traversal_blocked_cells: Array[Vector2i] = []
-	for y in range(astar_grid.region.position.y, astar_grid.region.end.y):
-		for x in range(astar_grid.region.position.x, astar_grid.region.end.x):
-			var cell := Vector2i(x, y)
-			if _is_cell_blocked(cell, traversal_types):
-				traversal_blocked_cells.append(cell)
-	blocked_cells_by_traversal[traversal_types] = traversal_blocked_cells
-	return traversal_blocked_cells

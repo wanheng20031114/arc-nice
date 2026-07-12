@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from . import config
-from .models import RoomStatus
+from .models import GameMode, RoomStatus
 from .room_manager import RoomManager
 from .relay_launcher import RelayLauncher
 
@@ -60,10 +60,12 @@ class CreateRoomRequest(BaseModel):
     name: str = ""
     host_name: str
     max_players: int = Field(default=4, ge=2, le=8)
+    game_mode: GameMode = GameMode.STANDARD
 
 
 class JoinRoomRequest(BaseModel):
     player_name: str
+    game_mode: GameMode = GameMode.STANDARD
 
 
 class UpdateRoomRequest(BaseModel):
@@ -82,6 +84,7 @@ class HostReadyRequest(BaseModel):
 
 class QuickMatchRequest(BaseModel):
     player_name: str
+    game_mode: GameMode = GameMode.STANDARD
 
 
 async def _ensure_room_relay(room) -> dict:
@@ -133,6 +136,7 @@ async def create_room(req: CreateRoomRequest) -> dict:
         host_name=req.host_name,
         host_ip="",  # Host 的公网 IP 将由 Host 自行通知
         max_players=req.max_players,
+        game_mode=req.game_mode,
     )
 
     if room is None:
@@ -144,9 +148,12 @@ async def create_room(req: CreateRoomRequest) -> dict:
 @app.post("/rooms/{room_id}/join")
 async def join_room(room_id: str, req: JoinRoomRequest) -> dict:
     """加入指定房间。"""
-    room = room_mgr.join_room(room_id, req.player_name)
+    room = room_mgr.join_room(room_id, req.player_name, req.game_mode)
     if room is None:
-        raise HTTPException(status_code=404, detail="房间不存在、已满或玩家名重复")
+        raise HTTPException(
+            status_code=404,
+            detail="房间不存在、已满、模式不匹配或玩家名重复",
+        )
 
     return room.to_join_dict(config.PUBLIC_IP)
 
@@ -261,7 +268,7 @@ async def destroy_room(room_id: str, req: HostTokenRequest) -> dict:
 @app.post("/matchmaking/quick")
 async def quick_match(req: QuickMatchRequest) -> dict:
     """快速匹配：找一个最佳房间加入。"""
-    room = room_mgr.find_match()
+    room = room_mgr.find_match(req.game_mode)
 
     if room is None:
         # 没有可用房间，自动创建一个
@@ -270,13 +277,14 @@ async def quick_match(req: QuickMatchRequest) -> dict:
             host_name=req.player_name,
             host_ip="",
             max_players=4,
+            game_mode=req.game_mode,
         )
         if room is None:
             raise HTTPException(status_code=503, detail="无法创建房间")
         return await _ensure_room_relay(room)
 
     # 加入找到的房间
-    joined = room_mgr.join_room(room.id, req.player_name)
+    joined = room_mgr.join_room(room.id, req.player_name, req.game_mode)
     if joined is None:
         raise HTTPException(status_code=409, detail="加入房间失败")
 

@@ -1,0 +1,61 @@
+[gd_resource type="Resource" script_class="WaveConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_0dv1p"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_basic.tres" id="2_86ngk"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_fast.tres" id="3_fmeey"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_shell.tres" id="4_f5kh8"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_bomber.tres" id="5_p200g"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_purple_bomber.tres" id="6_juyde"]
+[ext_resource type="Script" path="res://resources/config/flow/flow_exit_config.gd" id="7_mo0f3"]
+[ext_resource type="AudioStream" path="res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3" id="8_482lm"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="9_230e3"]
+
+[sub_resource type="Resource" id="Resource_3r8ep"]
+script = ExtResource("1_0dv1p")
+enemy_config = ExtResource("2_86ngk")
+count = 768
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_ylj2e"]
+script = ExtResource("1_0dv1p")
+enemy_config = ExtResource("3_fmeey")
+count = 224
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_ocy6l"]
+script = ExtResource("1_0dv1p")
+enemy_config = ExtResource("4_f5kh8")
+count = 128
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_7n6aq"]
+script = ExtResource("1_0dv1p")
+enemy_config = ExtResource("5_p200g")
+count = 64
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_f0t8n"]
+script = ExtResource("1_0dv1p")
+enemy_config = ExtResource("6_juyde")
+count = 16
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_8nqyc"]
+script = ExtResource("7_mo0f3")
+target_step_id = &"wave_03"
+metadata/_custom_type_script = "uid://blcjxtu575ki5"
+
+[resource]
+script = ExtResource("9_230e3")
+wave_name = "第2波"
+enemy_entries = Array[ExtResource("1_0dv1p")]([SubResource("Resource_3r8ep"), SubResource("Resource_ylj2e"), SubResource("Resource_ocy6l"), SubResource("Resource_7n6aq"), SubResource("Resource_f0t8n")])
+spawn_point_mask = 63
+spawn_interval = 0.1
+spawn_count_per_tick = 4
+max_alive_enemies = 300
+music = ExtResource("8_482lm")
+step_id = &"wave_02"
+display_name = "第2波"
+post_clear_rest_duration = 20.0
+exits = Array[ExtResource("7_mo0f3")]([SubResource("Resource_8nqyc")])
+editor_position = Vector2(480, -80)

@@ -20,5 +20,6 @@ enemy_scene = ExtResource("2_scene")
 max_health = 200
 attack_damage = 30
 move_speed = 100.0
+home_damage = 2
 xirang_drop_amount = 25
 pickup_drop_chance = 0.2

@@ -24,5 +24,6 @@ max_health = 150
 attack_damage = 10
 physical_defense = 5
 move_speed = 20.0
+home_damage = 5
 xirang_drop_amount = 10
 pickup_drop_chance = 0.2

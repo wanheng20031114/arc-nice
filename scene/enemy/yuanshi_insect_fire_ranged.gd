@@ -30,8 +30,10 @@ func _physics_process(delta: float) -> void:
 	if is_dead:
 		velocity = Vector2.ZERO
 		return
+	if combat_state == CombatState.ATTACK and not is_objective_targeting_player():
+		_finish_ranged_attack()
 
-	if not is_instance_valid(target_player):
+	if not is_instance_valid(target_player) or not is_objective_targeting_player():
 		super._physics_process(delta)
 		return
 
@@ -77,6 +79,8 @@ func _try_start_ranged_attack() -> bool:
 		return false
 	if attack_cooldown_left > 0.0:
 		return false
+	if not is_objective_targeting_player():
+		return false
 	if not is_instance_valid(target_player):
 		return false
 	if fire_config.projectile_scene == null:
@@ -116,6 +120,8 @@ func _has_clear_world_line_to_target() -> bool:
 func _try_fire_ranged_projectile() -> bool:
 	var fire_config := config as FireConfig
 	if is_dead or combat_state != CombatState.ATTACK or fire_config == null:
+		return false
+	if not is_objective_targeting_player():
 		return false
 	if fire_config.projectile_scene == null:
 		return false

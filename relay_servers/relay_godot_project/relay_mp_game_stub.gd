@@ -222,6 +222,18 @@ func net_player_revived(
 ) -> void:
 	pass
 
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_runtime_state_requested(include_flow_state: bool = true) -> void:
+	pass
+
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_plant_placement_requested(
+	request_id: int,
+	plant_id: String,
+	anchor: Vector2i
+) -> void:
+	pass
+
 @rpc("authority", "call_remote", "reliable", 4)
 func net_enemy_spawned(
 	net_id: int,
@@ -238,6 +250,68 @@ func net_enemy_defeated(net_id: int, defeat_position: Vector2) -> void:
 
 @rpc("authority", "call_remote", "reliable", 4)
 func net_enemy_removed(net_id: int) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_enemy_escaped(net_id: int) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_base_health_changed(
+	current_health: int,
+	maximum_health: int,
+	revision: int
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_tower_defense_wave_progress_changed(
+	wave_number: int,
+	defeated: int,
+	escaped: int,
+	resolved: int,
+	total: int
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_plant_spawned(
+	request_id: int,
+	owner_peer_id: int,
+	net_id: int,
+	plant_id: String,
+	anchor: Vector2i,
+	current_health: int,
+	maximum_health: int,
+	health_revision: int
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_plant_placement_rejected(request_id: int, reason: String) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_plant_health_changed(
+	net_id: int,
+	current_health: int,
+	maximum_health: int,
+	health_revision: int
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_plant_removed(net_id: int) -> void:
+	pass
+
+@rpc("authority", "call_remote", "unreliable_ordered", 3)
+func net_plant_projectile_visual(
+	spawn_position: Vector2,
+	direction: Vector2,
+	speed: float,
+	explosion_radius: float,
+	lifetime: float
+) -> void:
 	pass
 
 @rpc("authority", "call_remote", "reliable", 4)
@@ -284,10 +358,6 @@ func net_merchant_active_changed(active: bool) -> void:
 	pass
 
 @rpc("authority", "call_remote", "reliable", 4)
-func net_wave_started(wave_index: int) -> void:
-	pass
-
-@rpc("authority", "call_remote", "reliable", 4)
 func net_flow_state_changed(step_id: String, state: int, countdown_seconds: int) -> void:
 	pass
 
@@ -321,6 +391,10 @@ func net_skill1_purchase_requested() -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 4)
 func net_luoxi_collectible_choice_requested(choice_index: int, config_path: String) -> void:
+	pass
+
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_luoxi_collectible_refresh_requested() -> void:
 	pass
 
 @rpc("any_peer", "call_remote", "reliable", 4)
@@ -372,6 +446,15 @@ func net_luoxi_collectible_confirmed(
 	choice_index: int,
 	config_path: String,
 	result_code: int
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 4)
+func net_luoxi_collectible_refresh_confirmed(
+	peer_id: int,
+	result_code: int,
+	refresh_count: int,
+	current_xirang: int
 ) -> void:
 	pass
 

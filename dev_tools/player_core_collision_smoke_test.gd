@@ -41,25 +41,19 @@ class CountingPathfinder:
 	var path_queries: int = 0
 
 
-	func try_get_flow_navigation_waypoint(
+	func try_get_safe_navigation_step(
 		from_global_position: Vector2,
 		to_global_position: Vector2,
 		_agent_half_extents: Vector2 = Vector2.ZERO,
 		_traversal_types: int = DualGridTilemap.TraversalType.LAND
-	) -> Variant:
+	) -> Dictionary:
 		flow_queries += 1
 		var direction := from_global_position.direction_to(to_global_position)
-		return from_global_position + direction * 16.0
-
-
-	func try_get_global_path(
-		_from_global_position: Vector2,
-		to_global_position: Vector2,
-		_agent_half_extents: Vector2 = Vector2.ZERO,
-		_traversal_types: int = DualGridTilemap.TraversalType.LAND
-	) -> Variant:
-		path_queries += 1
-		return PackedVector2Array([to_global_position])
+		return {
+			"status": GridPathfinder.NavigationStepStatus.READY,
+			"waypoint": from_global_position + direction * 16.0,
+			"is_complete_route": true,
+		}
 
 
 var failures: Array[String] = []
@@ -150,16 +144,19 @@ func _test_enemy_collision_contract() -> void:
 
 func _test_basic_enemy_stops_in_partial_contact_from_all_sides() -> void:
 	for direction in CARDINAL_DIRECTIONS:
+		var pathfinder := CountingPathfinder.new()
+		test_root.add_child(pathfinder)
 		var player := _spawn_player(Vector2.ZERO)
 		var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
 		_expect(enemy != null, "Basic enemy must instantiate for directional contact testing.")
 		if enemy == null:
 			player.queue_free()
+			pathfinder.queue_free()
 			await physics_frame
 			continue
 		test_root.add_child(enemy)
 		enemy.global_position = direction * 24.0
-		enemy.setup(BASIC_CONFIG, player)
+		enemy.setup(BASIC_CONFIG, player, pathfinder)
 		var health_before := player.current_health
 
 		var contacted := false
@@ -191,6 +188,7 @@ func _test_basic_enemy_stops_in_partial_contact_from_all_sides() -> void:
 
 		enemy.queue_free()
 		player.queue_free()
+		pathfinder.queue_free()
 		await physics_frame
 
 
@@ -229,12 +227,14 @@ func _test_all_regular_enemy_touch_shapes_hold_motion() -> void:
 
 
 func _test_multiple_touching_players_are_tracked() -> void:
+	var pathfinder := CountingPathfinder.new()
+	test_root.add_child(pathfinder)
 	var player_one := _spawn_player(Vector2.ZERO)
 	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
 	enemy.set_physics_process(false)
 	test_root.add_child(enemy)
 	enemy.global_position = Vector2.ZERO
-	enemy.setup(BASIC_CONFIG, player_one)
+	enemy.setup(BASIC_CONFIG, player_one, pathfinder)
 	await _wait_until_contact_count(enemy, 1, 4)
 
 	var player_two := _spawn_player(Vector2.ZERO)
@@ -265,6 +265,7 @@ func _test_multiple_touching_players_are_tracked() -> void:
 	enemy.queue_free()
 	player_one.queue_free()
 	player_two.queue_free()
+	pathfinder.queue_free()
 	await physics_frame
 
 

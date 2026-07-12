@@ -24,7 +24,7 @@ func _run() -> void:
 		_finish()
 		return
 	game.auto_start_waves = false
-	game.linglan_boss_enabled = false
+	_expect(not game.linglan_boss_enabled, "Tower-defense Linglan must be disabled by default.")
 	root.add_child(game)
 	current_scene = game
 	await process_frame

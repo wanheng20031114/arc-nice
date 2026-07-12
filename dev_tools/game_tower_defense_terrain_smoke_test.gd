@@ -22,16 +22,18 @@ func _run() -> void:
 		return
 
 	game.auto_start_waves = false
-	game.linglan_boss_enabled = false
+	_expect(not game.linglan_boss_enabled, "Tower-defense Linglan must be disabled by default.")
 	root.add_child(game)
 	current_scene = game
 	await process_frame
 	await process_frame
 
 	_verify_dual_grid_wiring(game)
+	_verify_large_map_topology(game)
 	_verify_visual_grid_alignment(game)
 	_verify_base_dirt_coverage(game)
 	_verify_terrain_semantics(game)
+	_verify_reachable_grass_placement(game)
 	_verify_runtime_placement_visibility(game)
 	var refresh_start_msec := Time.get_ticks_msec()
 	game.dual_grid_terrain.refresh_all_tiles()
@@ -99,6 +101,56 @@ func _verify_dual_grid_wiring(game: GameTowerDefense) -> void:
 	)
 
 
+func _verify_large_map_topology(game: GameTowerDefense) -> void:
+	var gameplay_layer := game.ground_tile_map_layer
+	var gameplay_rect := gameplay_layer.get_used_rect()
+	_expect(
+		gameplay_rect == Rect2i(0, 0, 74, 46),
+		"Tower-defense gameplay bounds must cover the complete authored large map."
+	)
+	var boundary_cells: Array[Vector2i] = []
+	for x in range(gameplay_rect.position.x, gameplay_rect.end.x):
+		boundary_cells.append(Vector2i(x, gameplay_rect.position.y))
+		boundary_cells.append(Vector2i(x, gameplay_rect.end.y - 1))
+	for y in range(gameplay_rect.position.y + 1, gameplay_rect.end.y - 1):
+		boundary_cells.append(Vector2i(gameplay_rect.position.x, y))
+		boundary_cells.append(Vector2i(gameplay_rect.end.x - 1, y))
+	for cell in boundary_cells:
+		var tile_data := gameplay_layer.get_cell_tile_data(cell)
+		_expect(
+			tile_data != null and tile_data.get_collision_polygons_count(0) > 0,
+			"Every outer large-map boundary cell must block escape: %s" % cell
+		)
+
+	var spawn_root := game.get_node("EnemySpawnPoints") as Node2D
+	_expect(spawn_root.get_child_count() == 6, "Tower-defense map must expose all six spawn markers.")
+	for child in spawn_root.get_children():
+		var marker := child as Marker2D
+		if marker == null:
+			continue
+		var marker_cell := gameplay_layer.local_to_map(
+			gameplay_layer.to_local(marker.global_position)
+		)
+		_expect(
+			gameplay_rect.grow(-1).has_point(marker_cell),
+			"Enemy spawn marker must stay inside the closed map boundary: %s" % marker.name
+		)
+
+	for spawn_offset in GameTowerDefense.MULTIPLAYER_SPAWN_OFFSETS:
+		var spawn_position := game.player_spawn.global_position + spawn_offset
+		var spawn_cell := gameplay_layer.local_to_map(gameplay_layer.to_local(spawn_position))
+		var ground_data := gameplay_layer.get_cell_tile_data(spawn_cell)
+		_expect(
+			game.dual_grid_terrain.get_terrain_type(spawn_cell)
+			== DualGridTilemap.TerrainType.GRASS,
+			"Every initial/respawn slot must remain on grass: %s" % spawn_cell
+		)
+		_expect(
+			ground_data == null or ground_data.get_collision_polygons_count(0) == 0,
+			"Every initial/respawn slot must be free of Ground collision: %s" % spawn_cell
+		)
+
+
 func _verify_visual_grid_alignment(game: GameTowerDefense) -> void:
 	var terrain := game.dual_grid_terrain
 	if terrain == null:
@@ -146,10 +198,10 @@ func _verify_visual_grid_alignment(game: GameTowerDefense) -> void:
 			),
 			"%s rendered cells must retain the original dual-grid offset." % layer.name
 		)
-	_expect(terrain.base_dirt_map_layer.z_index == -3, "Base dirt must stay at Z=-3.")
+	_expect(terrain.base_dirt_map_layer.z_index == -5, "Base dirt must stay at Z=-5.")
 	_expect(
-		terrain.world_map_layer.z_index < terrain.base_dirt_map_layer.z_index,
-		"Semantic WorldLayer must render below BaseDirt so placeholder borders cannot leak."
+		terrain.base_dirt_map_layer.z_index < terrain.world_map_layer.z_index,
+		"BaseDirt must render below the semantic WorldLayer."
 	)
 	_expect(not terrain.world_map_layer.visible, "Semantic WorldLayer must be hidden at runtime.")
 	for layer in [
@@ -422,6 +474,116 @@ func _verify_runtime_placement_visibility(game: GameTowerDefense) -> void:
 	controller.cancel_placement()
 	_expect(not controller.selection_hud.visible, "Plant selection CanvasLayer must hide after cancellation.")
 	_expect(instructions != null and not instructions.visible, "Placement instructions must hide after cancellation.")
+
+
+func _verify_reachable_grass_placement(game: GameTowerDefense) -> void:
+	var configs := game.plant_system.get_available_configs()
+	_expect(not configs.is_empty(), "Tower-defense scene must expose at least one plant config.")
+	if configs.is_empty():
+		return
+	var config := configs[0]
+	var valid_anchors := game.plant_system.get_valid_anchors_for_player(config, game.player)
+	var player_cell := game.ground_tile_map_layer.local_to_map(
+		game.ground_tile_map_layer.to_local(game.player.global_position)
+	)
+	var nearest_semantic_distance := 1 << 30
+	var nearest_any_grass_distance := 1 << 30
+	var nearest_grounded_grass_distance := 1 << 30
+	var grass_cell_count := 0
+	for candidate in game.dual_grid_terrain.world_map_layer.get_used_cells():
+		if game.dual_grid_terrain.get_terrain_type(candidate) != DualGridTilemap.TerrainType.GRASS:
+			continue
+		grass_cell_count += 1
+		var terrain_square := [
+			candidate,
+			candidate + Vector2i.RIGHT,
+			candidate + Vector2i.DOWN,
+			candidate + Vector2i.ONE,
+		]
+		var all_semantic_grass := true
+		var all_grounded_grass := true
+		var square_distance := 1 << 30
+		for cell in terrain_square:
+			if game.dual_grid_terrain.get_terrain_type(cell) != DualGridTilemap.TerrainType.GRASS:
+				all_semantic_grass = false
+				all_grounded_grass = false
+				break
+			var ground_data := game.ground_tile_map_layer.get_cell_tile_data(cell)
+			if ground_data == null or ground_data.get_collision_polygons_count(0) > 0:
+				all_grounded_grass = false
+			square_distance = mini(
+				square_distance,
+				absi(cell.x - player_cell.x) + absi(cell.y - player_cell.y)
+			)
+		if all_semantic_grass:
+			nearest_any_grass_distance = mini(nearest_any_grass_distance, square_distance)
+		if all_grounded_grass:
+			nearest_grounded_grass_distance = mini(
+				nearest_grounded_grass_distance,
+				square_distance
+			)
+	var placement_area: Rect2i = game.plant_system.placement_area
+	_expect(
+		placement_area == game.dual_grid_terrain.world_map_layer.get_used_rect(),
+		"Plant placement bounds must follow the authored terrain, not the legacy boss arena."
+	)
+	_expect(
+		game.plant_system.max_placement_manhattan_distance == 4,
+		"Tower-defense plant placement must use the intended local four-cell radius."
+	)
+	var last_anchor_exclusive := placement_area.end - config.footprint_size + Vector2i.ONE
+	for y in range(placement_area.position.y, last_anchor_exclusive.y):
+		for x in range(placement_area.position.x, last_anchor_exclusive.x):
+			var anchor := Vector2i(x, y)
+			var cells := game.plant_system.get_footprint_cells(anchor, config)
+			var all_grass := true
+			var closest_cell_distance := 1 << 30
+			for cell in cells:
+				if not bool(game.plant_system.call("_is_floor_cell_available", cell)):
+					all_grass = false
+					break
+				closest_cell_distance = mini(
+					closest_cell_distance,
+					absi(cell.x - player_cell.x) + absi(cell.y - player_cell.y)
+				)
+			if all_grass:
+				nearest_semantic_distance = mini(
+					nearest_semantic_distance,
+					closest_cell_distance
+				)
+	print(
+		(
+			"Tower-defense nearest area-grounded grass=%d any-grass=%d "
+			+ "grounded-grass=%d valid_anchors=%d player_cell=%s area=%s grass_cells=%d"
+		)
+		% [
+			nearest_semantic_distance,
+			nearest_any_grass_distance,
+			nearest_grounded_grass_distance,
+			valid_anchors.size(),
+			player_cell,
+			placement_area,
+			grass_cell_count,
+		]
+	)
+	_expect(
+		not valid_anchors.is_empty(),
+		(
+			(
+				"PlayerSpawn must have a reachable 2x2 grass plant anchor "
+				+ "(area=%s, nearest area-grounded=%d, any-grass=%d, grounded-grass=%d, "
+				+ "player_cell=%s, grass_cells=%d)."
+			)
+			% [
+				placement_area,
+				nearest_semantic_distance,
+				nearest_any_grass_distance,
+				nearest_grounded_grass_distance,
+				player_cell,
+				grass_cell_count,
+			]
+		)
+	)
 
 
 func _finish() -> void:

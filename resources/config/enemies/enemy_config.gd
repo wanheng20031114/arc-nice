@@ -23,6 +23,8 @@ enum DamageType {
 @export_range(0, 100, 1) var magic_defense: int = 0
 # 移动速度，单位通常为像素/秒。
 @export_range(0.0, 1000.0, 1.0, "or_greater") var move_speed: float = 60.0
+# 在塔防模式进入 Home 时对基地造成的伤害。
+@export_range(1, 999, 1, "or_greater") var home_damage: int = 1
 
 @export_group("地形移动")
 # 角色可以通过的地形类型。默认仅陆地；两栖单位使用 Land | Water。
