@@ -9,6 +9,25 @@ const XIRANG_MANAGER_SCRIPT := preload("res://scene/xirang_drop_manager.gd")
 var failures: Array[String] = []
 
 
+class PhysicsReleaseProbe:
+	extends Node
+
+	signal release_completed
+
+	var pool: SessionObjectPool = null
+	var instance: Node = null
+	var release_result := false
+	var process_mode_during_release := -1
+
+	func _physics_process(_delta: float) -> void:
+		if pool == null or instance == null:
+			return
+		release_result = pool.release(instance)
+		process_mode_during_release = instance.process_mode
+		set_physics_process(false)
+		release_completed.emit()
+
+
 func _init() -> void:
 	call_deferred("_run")
 
@@ -16,6 +35,7 @@ func _init() -> void:
 func _run() -> void:
 	_test_runtime_scene_wiring()
 	await _test_session_pool()
+	await _test_physics_callback_release()
 	await _test_strict_session_pool()
 	await _test_per_bucket_pending_metrics()
 	await _test_spawn_effect_tween_isolation()
@@ -98,6 +118,50 @@ func _test_session_pool() -> void:
 	await physics_frame
 	var reused := pool.acquire(SPAWN_EFFECT_SCENE)
 	_expect(reused == first, "A released lease must become reusable after the physics quarantine frame.")
+	pool.queue_free()
+	await process_frame
+
+
+func _test_physics_callback_release() -> void:
+	var pool := POOL_SCRIPT.new() as SessionObjectPool
+	root.add_child(pool)
+	pool.register_scene(BULLET_SCENE, 1, 1)
+	var bullet := pool.acquire(BULLET_SCENE) as Bullet
+	_expect(bullet != null, "Physics-callback release fixture must acquire its bullet lease.")
+	if bullet == null:
+		pool.queue_free()
+		await process_frame
+		return
+
+	var probe := PhysicsReleaseProbe.new()
+	probe.pool = pool
+	probe.instance = bullet
+	root.add_child(probe)
+	await probe.release_completed
+	_expect(probe.release_result, "A physics callback must be able to release an active lease.")
+	_expect(
+		probe.process_mode_during_release != Node.PROCESS_MODE_DISABLED,
+		"CollisionObject process-mode shutdown must be deferred outside the physics callback."
+	)
+	await process_frame
+	_expect(
+		bullet.process_mode == Node.PROCESS_MODE_DISABLED,
+		"The deferred inactive state must commit on the following idle frame."
+	)
+	_expect(
+		not bullet.monitoring and not bullet.monitorable,
+		"A physics-released Area2D must leave monitoring before it can be reused."
+	)
+	await physics_frame
+	await physics_frame
+	var reused := pool.acquire(BULLET_SCENE) as Bullet
+	_expect(
+		reused == bullet and reused.process_mode == Node.PROCESS_MODE_INHERIT,
+		"The quarantined physics-released lease must reactivate normally."
+	)
+	if reused != null:
+		pool.release(reused)
+	probe.queue_free()
 	pool.queue_free()
 	await process_frame
 

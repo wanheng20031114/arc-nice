@@ -225,7 +225,16 @@ func _activate_instance(instance: Node, key: String, bucket: Dictionary) -> Node
 
 
 func _prepare_inactive(instance: Node) -> void:
-	instance.process_mode = Node.PROCESS_MODE_DISABLED
+	# Projectile leases are commonly released from Area2D body/area signals or
+	# their physics tick. Disabling a CollisionObject2D through process_mode while
+	# the physics server is flushing callbacks is forbidden. The lease is already
+	# marked inactive and its release hook has stopped gameplay work, while the
+	# one-physics-frame quarantine prevents reacquisition before this deferred
+	# state change is committed.
+	if Engine.is_in_physics_frame():
+		instance.set_deferred("process_mode", Node.PROCESS_MODE_DISABLED)
+	else:
+		instance.process_mode = Node.PROCESS_MODE_DISABLED
 	if instance is CanvasItem:
 		(instance as CanvasItem).hide()
 

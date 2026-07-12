@@ -31,6 +31,7 @@ func _run() -> void:
 	pool.register_scene(ENEMY_HIT_EFFECT_SCENE, 2, 2)
 
 	await _verify_player_bullet_reuse()
+	await _verify_real_collision_callback_release()
 	await _verify_capoo_bullet_reuse()
 	await _verify_strict_hit_effect_budget()
 	await _finish()
@@ -85,6 +86,66 @@ func _verify_player_bullet_reuse() -> void:
 	reused.retire()
 	_expect(finished_ids == [41, 42], "A reused bullet must not accumulate duplicate lifecycle callbacks.")
 	await _wait_for_quarantine()
+
+
+func _verify_real_collision_callback_release() -> void:
+	var collision_pool := SessionObjectPool.new()
+	collision_pool.name = "PhysicsCallbackPool"
+	fixture.add_child(collision_pool)
+	collision_pool.register_scene(BULLET_SCENE, 1, 1)
+	var bullet := collision_pool.acquire(BULLET_SCENE) as Bullet
+	_expect(bullet != null, "Physics callback fixture must acquire a pooled Area2D bullet.")
+	if bullet == null:
+		collision_pool.queue_free()
+		await process_frame
+		return
+
+	var target_body := StaticBody2D.new()
+	target_body.collision_layer = 4
+	target_body.collision_mask = 0
+	var target_shape := CollisionShape2D.new()
+	var target_rectangle := RectangleShape2D.new()
+	target_rectangle.size = Vector2(16.0, 16.0)
+	target_shape.shape = target_rectangle
+	target_body.add_child(target_shape)
+	fixture.add_child(target_body)
+	var overlap_position := Vector2(320.0, 240.0)
+	target_body.global_position = overlap_position
+	bullet.global_position = overlap_position
+	bullet.speed = 0.0
+	bullet.remaining_lifetime = 10.0
+	bullet.setup_multiplayer(901, 1, &"physics_callback_probe")
+	var finished_ids: Array[int] = []
+	bullet.projectile_finished.connect(
+		func(projectile_id: int, projectile: Node) -> void:
+			if projectile == bullet:
+				finished_ids.append(projectile_id)
+	)
+	for _physics_frame in range(3):
+		await physics_frame
+		if not bool(bullet.get_meta(SessionObjectPool.POOL_ACTIVE_META, false)):
+			break
+	_expect(finished_ids == [901], "A real body_entered callback must consume its lease exactly once.")
+	_expect(
+		not bool(bullet.get_meta(SessionObjectPool.POOL_ACTIVE_META, true)),
+		"The collision callback must synchronously invalidate the pool lease."
+	)
+	await process_frame
+	_expect(
+		bullet.process_mode == Node.PROCESS_MODE_DISABLED,
+		"The collision callback's deferred process-mode shutdown must commit safely."
+	)
+	await _wait_for_quarantine()
+	var reused := collision_pool.acquire(BULLET_SCENE) as Bullet
+	_expect(
+		reused == bullet and reused.monitoring and reused.monitorable,
+		"A collision-released bullet must remain reusable with monitoring restored."
+	)
+	if reused != null:
+		collision_pool.release(reused)
+	target_body.queue_free()
+	collision_pool.queue_free()
+	await process_frame
 
 
 func _verify_capoo_bullet_reuse() -> void:
