@@ -1,9 +1,9 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scene/plant_defense/agave_cannon.gd" id="1_script"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/plant_defense/agave_body_sprite_frames.tres" id="2_body_frames"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/plant_defense/agave_cannon_sprite_frames.tres" id="3_cannon_frames"]
-[ext_resource type="PackedScene" path="res://scene/player/ui/player_health_bar.tscn" id="4_health_bar"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="4_health_bar"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 resource_local_to_scene = true
@@ -11,7 +11,11 @@ size = Vector2(28, 28)
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_targeting"]
 resource_local_to_scene = true
-radius = 160.0
+radius = 176.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_player_core"]
+resource_local_to_scene = true
+radius = 7.0
 
 [node name="AgaveCannon" type="StaticBody2D"]
 collision_layer = 512
@@ -41,6 +45,14 @@ position = Vector2(13, 0)
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("RectangleShape2D_body")
 
+[node name="PlayerCoreBody" type="StaticBody2D" parent="."]
+position = Vector2(0, 1)
+collision_layer = 1024
+collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody"]
+shape = SubResource("CircleShape2D_player_core")
+
 [node name="TargetingArea" type="Area2D" parent="."]
 collision_layer = 0
 collision_mask = 4
@@ -53,9 +65,9 @@ shape = SubResource("CircleShape2D_targeting")
 wait_time = 2.0
 
 [node name="HealthBar" parent="." instance=ExtResource("4_health_bar")]
-offset_left = -12.0
+offset_left = -16.0
 offset_top = -38.0
-offset_right = 12.0
+offset_right = 16.0
 offset_bottom = -33.0
 
 [node name="FireAudio" type="AudioStreamPlayer2D" parent="."]

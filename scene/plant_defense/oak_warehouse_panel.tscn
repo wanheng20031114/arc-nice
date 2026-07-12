@@ -261,44 +261,48 @@ layout_mode = 2
 slot_index = 19
 
 [node name="ItemDetail" type="Control" parent="Overlay/PanelRoot"]
+clip_contents = true
 layout_mode = 0
-offset_left = 220.0
-offset_top = 420.0
-offset_right = 514.0
-offset_bottom = 495.0
+offset_left = 224.0
+offset_top = 419.0
+offset_right = 500.0
+offset_bottom = 493.0
 
 [node name="ItemTitle" type="Label" parent="Overlay/PanelRoot/ItemDetail"]
 layout_mode = 0
-offset_left = 5.0
+offset_left = 8.0
 offset_top = 2.0
-offset_right = 206.0
+offset_right = 180.0
 offset_bottom = 25.0
 text = "选择一个物品查看详情"
 label_settings = SubResource("LabelSettings_detail_title")
 text_overrun_behavior = 3
+clip_text = true
 
 [node name="ItemCategory" type="Label" parent="Overlay/PanelRoot/ItemDetail"]
 layout_mode = 0
-offset_left = 196.0
+offset_left = 184.0
 offset_top = 5.0
-offset_right = 289.0
+offset_right = 268.0
 offset_bottom = 23.0
 text = "物资 · 仓库"
 label_settings = SubResource("LabelSettings_small")
 horizontal_alignment = 2
+clip_text = true
 
 [node name="ItemDescription" type="RichTextLabel" parent="Overlay/PanelRoot/ItemDetail"]
+clip_contents = true
 layout_mode = 0
-offset_left = 5.0
-offset_top = 27.0
-offset_right = 289.0
-offset_bottom = 72.0
+offset_left = 8.0
+offset_top = 29.0
+offset_right = 268.0
+offset_bottom = 66.0
 mouse_filter = 2
 bbcode_enabled = true
-text = "在左侧仓库与右侧背包之间移动物品。"
+text = "双击物品，可在仓库与背包间快速移动。"
 fit_content = false
-scroll_active = true
-autowrap_mode = 2
+scroll_active = false
+autowrap_mode = 3
 theme_override_colors/default_color = Color(0.86, 0.79, 0.66, 1)
 theme_override_fonts/normal_font = ExtResource("4_font")
 theme_override_font_sizes/normal_font_size = 11

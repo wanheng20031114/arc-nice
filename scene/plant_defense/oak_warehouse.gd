@@ -7,12 +7,16 @@ const STORAGE_CAPACITY := RunStateStore.INVENTORY_CAPACITY
 
 @onready var interaction_area: Area2D = $InteractionArea
 @onready var interaction_prompt: Control = $InteractionPrompt
+@onready var prompt_keycap: Control = $InteractionPrompt/PromptMargin/PromptRow/Keycap
+@onready var idle_animation_player: AnimationPlayer = $IdleAnimationPlayer
 @onready var storage_panel: OakWarehousePanel = $OakWarehousePanel
 @onready var health_bar: Control = $HealthBar
 
 var storage_items: Array[PickupConfig] = []
 var storage_stack_counts: Array[int] = []
 var nearby_player: Player = null
+var prompt_rest_position := Vector2.ZERO
+var prompt_tween: Tween = null
 
 
 func _ready() -> void:
@@ -20,7 +24,12 @@ func _ready() -> void:
 	storage_items.resize(STORAGE_CAPACITY)
 	storage_stack_counts.resize(STORAGE_CAPACITY)
 	storage_stack_counts.fill(0)
-	interaction_prompt.hide()
+	prompt_rest_position = interaction_prompt.position
+	_hide_interaction_prompt()
+	if idle_animation_player.has_animation(&"idle"):
+		var phase := fmod(float(get_instance_id()) * 0.37, 4.0)
+		idle_animation_player.play(&"idle")
+		idle_animation_player.seek(phase, true)
 	set_process_unhandled_input(false)
 	interaction_area.body_entered.connect(_on_interaction_area_body_entered)
 	interaction_area.body_exited.connect(_on_interaction_area_body_exited)
@@ -174,7 +183,8 @@ func _on_interaction_area_body_entered(body: Node2D) -> void:
 	if player == null or not player.uses_local_input or player.is_dead:
 		return
 	nearby_player = player
-	interaction_prompt.visible = not storage_panel.is_open()
+	if not storage_panel.is_open():
+		_show_interaction_prompt()
 	set_process_unhandled_input(true)
 
 
@@ -182,21 +192,54 @@ func _on_interaction_area_body_exited(body: Node2D) -> void:
 	if body != nearby_player:
 		return
 	nearby_player = null
-	interaction_prompt.hide()
+	_hide_interaction_prompt()
 	set_process_unhandled_input(false)
 	storage_panel.close()
 
 
 func _on_storage_panel_opened() -> void:
-	interaction_prompt.hide()
+	_hide_interaction_prompt()
 	set_process_unhandled_input(false)
 	modal_ui_visibility_changed.emit(true)
 
 
 func _on_storage_panel_closed() -> void:
-	interaction_prompt.visible = nearby_player != null and not is_dead
+	if nearby_player != null and not is_dead:
+		_show_interaction_prompt()
+	else:
+		_hide_interaction_prompt()
 	set_process_unhandled_input(nearby_player != null and not is_dead)
 	modal_ui_visibility_changed.emit(false)
+
+
+func _show_interaction_prompt() -> void:
+	_stop_prompt_tween()
+	interaction_prompt.position = prompt_rest_position + Vector2(0, 2)
+	interaction_prompt.modulate = Color(1, 1, 1, 0)
+	prompt_keycap.modulate = Color(1, 1, 0.72, 1)
+	interaction_prompt.show()
+	prompt_tween = create_tween().set_parallel(true)
+	prompt_tween.tween_property(interaction_prompt, "modulate:a", 1.0, 0.08)
+	prompt_tween.tween_method(_set_prompt_reveal_offset, 2.0, 0.0, 0.08)
+	prompt_tween.tween_property(prompt_keycap, "modulate", Color.WHITE, 0.14)
+
+
+func _hide_interaction_prompt() -> void:
+	_stop_prompt_tween()
+	interaction_prompt.hide()
+	interaction_prompt.position = prompt_rest_position
+	interaction_prompt.modulate = Color.WHITE
+	prompt_keycap.modulate = Color.WHITE
+
+
+func _stop_prompt_tween() -> void:
+	if prompt_tween != null and prompt_tween.is_valid():
+		prompt_tween.kill()
+	prompt_tween = null
+
+
+func _set_prompt_reveal_offset(offset: float) -> void:
+	interaction_prompt.position = prompt_rest_position + Vector2(0, roundf(offset))
 
 
 func _on_health_changed(new_health: int, new_max_health: int) -> void:
@@ -209,6 +252,6 @@ func _on_owner_player_died() -> void:
 
 func _on_death_started() -> void:
 	interaction_area.set_deferred("monitoring", false)
-	interaction_prompt.hide()
+	_hide_interaction_prompt()
 	storage_panel.close()
 	super._on_death_started()

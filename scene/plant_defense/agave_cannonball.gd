@@ -15,7 +15,7 @@ const EXPLOSION_QUERY_MAX_RESULTS := 128
 @onready var impact_audio: AudioStreamPlayer2D = $ImpactAudio
 
 var direction := Vector2.RIGHT
-var damage := 10
+var damage := 50
 var remaining_lifetime := 0.0
 var has_exploded := false
 var authoritative_damage := true
@@ -29,7 +29,7 @@ func _ready() -> void:
 
 func setup(
 	initial_direction: Vector2,
-	initial_damage: int = 10,
+	initial_damage: int = 50,
 	initial_speed: float = 180.0,
 	initial_explosion_radius: float = 18.0,
 	initial_lifetime: float = 1.25,

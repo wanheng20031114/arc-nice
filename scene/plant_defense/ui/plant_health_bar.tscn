@@ -1,0 +1,13 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/ui/plant_health_bar.gd" id="1_script"]
+
+[node name="PlantHealthBar" type="Control"]
+z_index = 20
+custom_minimum_size = Vector2(32, 5)
+layout_mode = 3
+anchors_preset = 0
+offset_right = 32.0
+offset_bottom = 5.0
+mouse_filter = 2
+script = ExtResource("1_script")

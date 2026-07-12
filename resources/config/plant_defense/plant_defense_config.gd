@@ -14,6 +14,8 @@ const REQUIRED_FOOTPRINT_SIZE: Vector2i = Vector2i(2, 2)
 
 @export_group("基础数值")
 @export_range(1, 9999, 1, "or_greater") var max_health: int = 100
+@export_range(0, 999, 1, "or_greater") var physical_defense: int = 0
+@export_range(0, 100, 1) var magic_defense: int = 0
 @export_range(0, 9999, 1, "or_greater") var attack_damage: int = 0
 @export_range(0.0, 99999.0, 1.0, "or_greater") var attack_speed: float = 0.0
 @export_range(0.0, 2048.0, 1.0, "or_greater") var attack_range: float = 0.0

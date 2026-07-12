@@ -1,8 +1,8 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="Script" path="res://scene/plant_defense/oak_warehouse.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/plant_defense/oak_warehouse/oak_warehouse.png" id="2_sprite"]
-[ext_resource type="PackedScene" path="res://scene/player/ui/player_health_bar.tscn" id="3_health_bar"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/oak_warehouse_panel.tscn" id="4_panel"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="5_font"]
 
@@ -14,24 +14,120 @@ size = Vector2(28, 28)
 resource_local_to_scene = true
 radius = 42.0
 
+[sub_resource type="CircleShape2D" id="CircleShape2D_player_core"]
+resource_local_to_scene = true
+radius = 9.0
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_prompt"]
-bg_color = Color(0.075, 0.045, 0.025, 0.94)
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+bg_color = Color(0.129, 0.082, 0.051, 0.96)
 border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(0.92, 0.69, 0.27, 1)
-corner_radius_top_left = 5
-corner_radius_top_right = 5
-corner_radius_bottom_right = 5
-corner_radius_bottom_left = 5
+border_color = Color(0.788, 0.529, 0.2, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+shadow_color = Color(0.035, 0.018, 0.008, 0.55)
+shadow_size = 2
+shadow_offset = Vector2(0, 2)
 
-[sub_resource type="LabelSettings" id="LabelSettings_prompt"]
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_keycap"]
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+bg_color = Color(0.827, 0.612, 0.267, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.824, 0.443, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="LabelSettings" id="LabelSettings_keycap"]
 font = ExtResource("5_font")
-font_size = 12
-font_color = Color(1, 0.92, 0.66, 1)
-outline_size = 3
-outline_color = Color(0.08, 0.035, 0.015, 1)
+font_size = 13
+font_color = Color(0.153, 0.086, 0.035, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_action"]
+font = ExtResource("5_font")
+font_size = 14
+font_color = Color(0.965, 0.867, 0.667, 1)
+outline_size = 1
+outline_color = Color(0.055, 0.027, 0.012, 1)
+
+[sub_resource type="Animation" id="Animation_oak_idle_reset"]
+resource_name = "RESET"
+length = 0.0
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Sprite2D:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(0, -2)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Sprite2D:modulate")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Color(1, 1, 1, 1)]
+}
+
+[sub_resource type="Animation" id="Animation_oak_idle"]
+resource_name = "idle"
+length = 4.0
+loop_mode = 1
+step = 0.1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Sprite2D:position")
+tracks/0/interp = 0
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 2.6, 2.8, 3, 4),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(0, -2), Vector2(0, -2), Vector2(0, -3), Vector2(0, -2), Vector2(0, -2)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Sprite2D:modulate")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 2.4, 2.8, 3.2, 4),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
+"update": 0,
+"values": [Color(1, 1, 1, 1), Color(1, 1, 1, 1), Color(1, 0.965, 0.9, 1), Color(1, 1, 1, 1), Color(1, 1, 1, 1)]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_oak_idle"]
+_data = {
+&"RESET": SubResource("Animation_oak_idle_reset"),
+&"idle": SubResource("Animation_oak_idle")
+}
 
 [node name="OakWarehouse" type="StaticBody2D"]
 collision_layer = 512
@@ -44,9 +140,23 @@ position = Vector2(0, -2)
 z_index = 1
 texture = ExtResource("2_sprite")
 
+[node name="IdleAnimationPlayer" type="AnimationPlayer" parent="."]
+libraries = {
+&"": SubResource("AnimationLibrary_oak_idle")
+}
+autoplay = "idle"
+
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 position = Vector2(0, 7)
 shape = SubResource("RectangleShape2D_body")
+
+[node name="PlayerCoreBody" type="StaticBody2D" parent="."]
+position = Vector2(0, 9)
+collision_layer = 1024
+collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody"]
+shape = SubResource("CircleShape2D_player_core")
 
 [node name="InteractionArea" type="Area2D" parent="."]
 collision_layer = 0
@@ -58,23 +168,47 @@ shape = SubResource("CircleShape2D_interaction")
 
 [node name="InteractionPrompt" type="PanelContainer" parent="."]
 texture_filter = 1
-position = Vector2(-55, -57)
+position = Vector2(-26, -64)
+scale = Vector2(0.5, 0.5)
 z_index = 10
-custom_minimum_size = Vector2(110, 25)
+custom_minimum_size = Vector2(104, 28)
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_prompt")
 
-[node name="PromptLabel" type="Label" parent="InteractionPrompt"]
+[node name="PromptMargin" type="MarginContainer" parent="InteractionPrompt"]
 layout_mode = 2
-text = "按 F 打开仓库"
-label_settings = SubResource("LabelSettings_prompt")
+theme_override_constants/margin_left = 5
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 5
+theme_override_constants/margin_bottom = 4
+
+[node name="PromptRow" type="HBoxContainer" parent="InteractionPrompt/PromptMargin"]
+layout_mode = 2
+theme_override_constants/separation = 5
+alignment = 1
+
+[node name="Keycap" type="PanelContainer" parent="InteractionPrompt/PromptMargin/PromptRow"]
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_keycap")
+
+[node name="KeyLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow/Keycap"]
+layout_mode = 2
+text = "F"
+label_settings = SubResource("LabelSettings_keycap")
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="ActionLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow"]
+layout_mode = 2
+text = "打开仓库"
+label_settings = SubResource("LabelSettings_action")
+vertical_alignment = 1
+
 [node name="HealthBar" parent="." instance=ExtResource("3_health_bar")]
-offset_left = -16.0
-offset_top = -38.0
-offset_right = 16.0
-offset_bottom = -33.0
+offset_left = -22.0
+offset_top = -41.0
+offset_right = 22.0
+offset_bottom = -36.0
 
 [node name="OakWarehousePanel" parent="." instance=ExtResource("4_panel")]

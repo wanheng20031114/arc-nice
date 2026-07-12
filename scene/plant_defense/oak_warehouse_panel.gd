@@ -171,10 +171,8 @@ func _on_slot_selected(slot_index: int, source: int) -> void:
 
 func _on_slot_activated(slot_index: int, source: int) -> void:
 	_on_slot_selected(slot_index, source)
-	if source == ItemSource.STORAGE:
+	if selected_source == source and selected_slot_index == slot_index:
 		_on_move_pressed()
-	elif _is_consumable_item(_get_selected_item()):
-		_on_use_pressed()
 
 
 func _on_use_pressed() -> void:
@@ -245,7 +243,7 @@ func _refresh_detail() -> void:
 	if item == null:
 		item_title.text = "选择一个物品查看详情"
 		item_category.text = ""
-		item_description.text = "在左侧仓库与右侧背包之间移动物品。"
+		item_description.text = "双击物品，可在仓库与背包间快速移动。"
 		item_description.tooltip_text = item_description.text
 		use_button.disabled = true
 		move_button.disabled = true

@@ -2,11 +2,14 @@ extends SceneTree
 
 const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
+const TIYI_SCENE := preload("res://scene/player/tiyi/player_tiyi.tscn")
+const HOE_CAT_SCENE := preload("res://scene/player/hoe_cat/player_hoe_cat.tscn")
 const PLANT_SYSTEM_SCRIPT := preload("res://scene/plant_defense/plant_system.gd")
 const PLACEMENT_CONTROLLER_SCENE := preload(
 	"res://scene/plant_defense/plant_placement_controller.tscn"
 )
 const CANNONBALL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
+const PLANT_HEALTH_BAR_SCRIPT := preload("res://scene/plant_defense/ui/plant_health_bar.gd")
 const ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 
 var failures: Array[String] = []
@@ -40,6 +43,8 @@ func _run() -> void:
 	_build_fixture()
 	await physics_frame
 	_test_config_and_scene_contracts()
+	_test_plant_defense_mitigation()
+	await _test_player_core_collision()
 	_test_large_area_anchor_enumeration()
 	await _test_grid_and_occupancy_rules()
 	await _test_realtime_selection_and_cancel()
@@ -110,17 +115,37 @@ func _test_config_and_scene_contracts() -> void:
 	if agave_config == null:
 		return
 	_expect(PlantDefenseRegistry.get_all_configs().size() == 2, "植物注册表必须公开龙舌兰与橡木仓库。")
-	_expect(agave_config.max_health == 200, "龙舌兰生命值必须为200。")
-	_expect(agave_config.attack_damage == 10, "龙舌兰攻击力必须为10。")
+	_expect(agave_config.max_health == 2000, "龙舌兰生命值必须为2000。")
+	_expect(
+		agave_config.physical_defense == 10 and agave_config.magic_defense == 20,
+		"龙舌兰必须拥有10物理防御与20法术防御。"
+	)
+	_expect(agave_config.attack_damage == 50, "龙舌兰炮弹伤害必须为50。")
 	_expect(is_equal_approx(agave_config.attack_speed, 50.0), "龙舌兰攻速必须为50。")
 	_expect(agave_config.supports_multiplayer, "龙舌兰必须继续支持多人权威放置。")
 	_expect(is_equal_approx(agave_config.get_attack_interval(), 2.0), "龙舌兰攻击间隔必须为2秒。")
-	_expect(is_equal_approx(agave_config.attack_range, 160.0), "龙舌兰索敌半径必须为160。")
+	_expect(is_equal_approx(agave_config.attack_range, 176.0), "龙舌兰索敌半径必须为176。")
 	_expect(agave_config.footprint_size == Vector2i(2, 2), "植物必须占2×2格。")
+	_expect(
+		agave_config.plant_scene.resource_path.begins_with("res://scene/plant_defense/"),
+		"龙舌兰必须继续由scene/plant_defense下的独立场景实例化。"
+	)
 	_expect(
 		ProjectSettings.get_setting("layer_names/2d_physics/layer_10") == "PlantBody",
 		"物理层10必须命名为PlantBody。"
 	)
+	_expect(
+		ProjectSettings.get_setting("layer_names/2d_physics/layer_11") == "TowerCore",
+		"物理层11必须命名为TowerCore。"
+	)
+	for player_scene: PackedScene in [PLAYER_SCENE, TIYI_SCENE, HOE_CAT_SCENE]:
+		var player_probe := player_scene.instantiate() as Player
+		_expect(
+			player_probe != null and (player_probe.collision_mask & 1024) != 0,
+			"所有玩家角色都必须碰撞TowerCore层。"
+		)
+		if player_probe != null:
+			player_probe.free()
 	_expect(
 		preload("res://scene/settings/settings_manager.gd").BINDABLE_ACTIONS.has("plant"),
 		"plant必须是正式可改键动作。"
@@ -168,9 +193,27 @@ func _test_config_and_scene_contracts() -> void:
 		var body_shape := agave.get_node("CollisionShape2D") as CollisionShape2D
 		var rectangle := body_shape.shape as RectangleShape2D
 		_expect(rectangle != null and rectangle.size == Vector2(28, 28), "植物接触碰撞必须为28×28。")
+		var player_core := agave.get_node("PlayerCoreBody") as StaticBody2D
+		var player_core_shape := player_core.get_node("CollisionShape2D") as CollisionShape2D
+		var player_core_circle := player_core_shape.shape as CircleShape2D
+		_expect(
+			player_core.collision_layer == 1024
+			and player_core.collision_mask == 2
+			and player_core_circle != null
+			and is_equal_approx(player_core_circle.radius, 7.0),
+			"龙舌兰核心必须使用仅供玩家碰撞的TowerCore圆形体积。"
+		)
 		var target_shape := agave.get_node("TargetingArea/CollisionShape2D") as CollisionShape2D
 		var target_circle := target_shape.shape as CircleShape2D
-		_expect(target_circle != null and is_equal_approx(target_circle.radius, 160.0), "索敌Area半径必须为160。")
+		_expect(target_circle != null and is_equal_approx(target_circle.radius, 176.0), "索敌Area半径必须为176。")
+		var plant_health_bar := agave.get_node("HealthBar") as Control
+		_expect(
+			plant_health_bar != null
+			and plant_health_bar.get_script() == PLANT_HEALTH_BAR_SCRIPT
+			and plant_health_bar.size == Vector2(32, 5)
+			and plant_health_bar.scale == Vector2.ONE,
+			"龙舌兰必须实例化32×5且无缩放的独立植物血条。"
+		)
 		agave.free()
 
 	var cannonball := CANNONBALL_SCENE.instantiate() as AgaveCannonball
@@ -188,7 +231,65 @@ func _test_config_and_scene_contracts() -> void:
 		var blast_circle := blast_shape.shape as CircleShape2D
 		_expect(blast_circle != null and is_equal_approx(blast_circle.radius, 18.0), "黑球爆炸半径必须为18。")
 		_expect(is_equal_approx(cannonball.speed, 180.0), "黑球飞行速度必须为180。")
+		_expect(cannonball.damage == 50, "黑球炮弹默认伤害必须为50。")
 		cannonball.free()
+
+
+func _test_plant_defense_mitigation() -> void:
+	var defense_probe := PlantDefense.new()
+	test_root.add_child(defense_probe)
+	defense_probe.setup(agave_config, player, [])
+	var full_health := defense_probe.current_health
+	_expect(
+		defense_probe.receive_damage(50, null, Vector2.ZERO, EnemyConfig.DamageType.PHYSICAL)
+		and defense_probe.current_health == full_health - 40,
+		"10点物防必须把50点物理伤害降为40。"
+	)
+	defense_probe.receive_healing(50)
+	_expect(
+		defense_probe.receive_damage(50, null, Vector2.ZERO, EnemyConfig.DamageType.MAGIC)
+		and defense_probe.current_health == full_health - 40,
+		"20点法防必须把50点法术伤害按20%降为40。"
+	)
+	defense_probe.receive_healing(50)
+	_expect(
+		defense_probe.receive_damage(7, null, Vector2.ZERO, EnemyConfig.DamageType.PHYSICAL)
+		and defense_probe.current_health == full_health - 1,
+		"防御后的有效伤害必须至少为1。"
+	)
+	defense_probe.queue_free()
+
+
+func _test_player_core_collision() -> void:
+	var collision_plant := agave_config.plant_scene.instantiate() as AgaveCannon
+	collision_plant.global_position = Vector2(2000, 2000)
+	test_root.add_child(collision_plant)
+	collision_plant.setup(agave_config, player, [Vector2i.ZERO])
+	collision_plant.attack_timer.stop()
+	player.global_position = Vector2(1975, 2001)
+	await physics_frame
+	var player_collision := player.move_and_collide(Vector2(50, 0), true)
+	_expect(
+		player_collision != null
+		and player_collision.get_collider() == collision_plant.get_node("PlayerCoreBody"),
+		"玩家向植物核心移动时必须被TowerCore实体碰撞阻挡。"
+	)
+
+	var enemy_probe := ENEMY_CONFIG.enemy_scene.instantiate() as Enemy
+	enemy_probe.global_position = Vector2(1975, 2001)
+	test_root.add_child(enemy_probe)
+	enemy_probe.setup(ENEMY_CONFIG, player)
+	enemy_probe.set_physics_process(false)
+	await physics_frame
+	var enemy_collision := enemy_probe.move_and_collide(Vector2(50, 0), true)
+	_expect(
+		enemy_collision == null
+		or enemy_collision.get_collider() != collision_plant.get_node("PlayerCoreBody"),
+		"敌人身体不得被仅供玩家使用的TowerCore体积阻挡。"
+	)
+	enemy_probe.queue_free()
+	collision_plant.queue_free()
+	await process_frame
 
 
 func _test_large_area_anchor_enumeration() -> void:
@@ -396,13 +497,14 @@ func _test_enemy_contact_and_release() -> void:
 	enemy.set_physics_process(false)
 	enemy.global_position = Vector2(600, 600)
 	var starting_health := plant.current_health
+	var contact_damage := maxi(ENEMY_CONFIG.attack_damage - agave_config.physical_defense, 1)
 	enemy._on_touch_damage_area_body_entered(plant)
 	_expect(enemy._has_player_contact(), "接触植物后旧接触包装必须报告true。")
-	_expect(plant.current_health == starting_health - ENEMY_CONFIG.attack_damage, "敌人接触必须立即伤害植物一次。")
+	_expect(plant.current_health == starting_health - contact_damage, "敌人接触必须立即结算一次物防后的伤害。")
 	enemy._update_touch_damage(0.1)
-	_expect(plant.current_health == starting_health - ENEMY_CONFIG.attack_damage, "接触冷却内不得重复伤害。")
+	_expect(plant.current_health == starting_health - contact_damage, "接触冷却内不得重复伤害。")
 	enemy._update_touch_damage(enemy.touch_damage_interval)
-	_expect(plant.current_health == starting_health - ENEMY_CONFIG.attack_damage * 2, "冷却结束后必须再次伤害。")
+	_expect(plant.current_health == starting_health - contact_damage * 2, "冷却结束后必须再次结算防御后伤害。")
 	enemy.velocity = Vector2(30, 0)
 	enemy._move_until_player_contact()
 	_expect(enemy.velocity == Vector2.ZERO, "接触植物时敌人必须停止而不改A*。")
@@ -471,13 +573,13 @@ func _test_multiplayer_authority_contracts() -> void:
 	var host_health_before := authoritative_plant.current_health
 	_expect(authoritative_plant.receive_damage(7), "权威植物必须接受主机伤害。")
 	_expect(
-		authoritative_plant.current_health == host_health_before - 7
+		authoritative_plant.current_health == host_health_before - 1
 		and authoritative_plant.health_revision == 2,
-		"权威植物伤害必须同时推进生命值和revision。"
+		"权威植物必须在结算物防后同时推进生命值和revision。"
 	)
 	_expect(
 		health_events.size() == 1
-		and health_events[0] == Vector3i(host_health_before - 7, 200, 2),
+		and health_events[0] == Vector3i(host_health_before - 1, agave_config.max_health, 2),
 		"生命revision信号必须携带同一份权威状态。"
 	)
 	_expect(
@@ -496,8 +598,8 @@ func _test_multiplayer_authority_contracts() -> void:
 			anchor,
 			requesting_player,
 			4100,
-			300,
-			300,
+			5000,
+			5000,
 			1
 		) == null,
 		"未实现库存同步的橡木仓库不得生成多人客户端副本。"
@@ -611,6 +713,11 @@ func _test_cannonball_aoe_deduplication() -> void:
 	test_root.add_child(enemy_b)
 	enemy_a.setup(ENEMY_CONFIG, player)
 	enemy_b.setup(ENEMY_CONFIG, player)
+	# Keep both targets alive after the authoritative blast so the following
+	# client-visual projectile assertion exercises live enemies instead of being skipped.
+	var test_target_health := agave_config.attack_damage * 3
+	enemy_a.current_health = test_target_health
+	enemy_b.current_health = test_target_health
 	enemy_a.set_physics_process(false)
 	enemy_b.set_physics_process(false)
 	# This test verifies damage semantics, not audio playback. Avoid leaving
@@ -621,20 +728,28 @@ func _test_cannonball_aoe_deduplication() -> void:
 	var cannonball := CANNONBALL_SCENE.instantiate() as AgaveCannonball
 	cannonball.position = Vector2(506, 500)
 	test_root.add_child(cannonball)
-	cannonball.setup(Vector2.RIGHT, 10, 180.0, 18.0, 1.0)
+	cannonball.setup(Vector2.RIGHT, agave_config.attack_damage, 180.0, 18.0, 1.0)
 	cannonball.set_physics_process(false)
 	await physics_frame
 	var health_a := enemy_a.current_health
 	var health_b := enemy_b.current_health
 	cannonball._apply_explosion_damage(enemy_a)
-	_expect(enemy_a.current_health == health_a - 10, "直接命中目标在AOE查询中只能承伤一次。")
-	_expect(enemy_b.current_health == health_b - 10, "爆炸半径内第二目标必须承伤一次。")
-	_expect(enemy_a.last_damage_taken == 10 and enemy_b.last_damage_taken == 10, "AOE伤害必须为10。")
+	_expect(enemy_a.current_health == health_a - 50, "直接命中目标在AOE查询中只能承受50点伤害。")
+	_expect(enemy_b.current_health == health_b - 50, "爆炸半径内第二目标必须承受50点伤害。")
+	_expect(enemy_a.last_damage_taken == 50 and enemy_b.last_damage_taken == 50, "AOE伤害必须为50。")
 
 	var visual_cannonball := CANNONBALL_SCENE.instantiate() as AgaveCannonball
 	visual_cannonball.position = Vector2(506, 500)
 	test_root.add_child(visual_cannonball)
-	visual_cannonball.setup(Vector2.RIGHT, 10, 180.0, 18.0, 1.0, false, 4102)
+	visual_cannonball.setup(
+		Vector2.RIGHT,
+		agave_config.attack_damage,
+		180.0,
+		18.0,
+		1.0,
+		false,
+		4102
+	)
 	visual_cannonball.set_physics_process(false)
 	await physics_frame
 	var visual_health_a := enemy_a.current_health
