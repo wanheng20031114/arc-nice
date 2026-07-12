@@ -18,7 +18,7 @@ func _run() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 3, "Game-mode metadata requires protocol v3.")
+	_expect(NetConstants.PROTOCOL_VERSION == 4, "Loading-barrier metadata requires protocol v4.")
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),
 		"A disconnected future Host must be able to select tower defense."

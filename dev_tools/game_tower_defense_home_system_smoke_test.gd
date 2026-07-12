@@ -52,6 +52,7 @@ func _run() -> void:
 	_verify_spawn_mask_resolution(game)
 	_verify_home_gate_areas(game)
 	await _verify_physical_home_gate_trigger(game)
+	await _verify_far_linear_enemy_reaches_home(game)
 	_verify_target_selection(game)
 	_verify_enemy_contract(game)
 	_verify_home_damage_resources()
@@ -183,10 +184,77 @@ func _verify_physical_home_gate_trigger(game: GameTowerDefense) -> void:
 	game.call("_update_base_health_display")
 
 
+func _verify_far_linear_enemy_reaches_home(game: GameTowerDefense) -> void:
+	var targets := game.get_home_objective_targets()
+	if targets.is_empty() or game.enemy_spawn_points.is_empty():
+		return
+	var spawn_position := game.enemy_spawn_points[0].global_position
+	var nearest_gate := targets[0]
+	var nearest_distance := spawn_position.distance_squared_to(nearest_gate.global_position)
+	for target in targets:
+		var distance := spawn_position.distance_squared_to(target.global_position)
+		if distance < nearest_distance:
+			nearest_gate = target
+			nearest_distance = distance
+
+	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
+	_expect(enemy != null, "Far-linear Home journey must instantiate a basic enemy.")
+	if enemy == null:
+		return
+	game.enemy_container.add_child(enemy)
+	enemy.global_position = spawn_position
+	enemy.setup(BASIC_CONFIG, game.player, game.grid_pathfinder)
+	enemy.set_objective_target(nearest_gate)
+	enemy.add_move_speed_modifier(900001, 8.0)
+	_expect(
+		enemy.global_position.distance_to(nearest_gate.global_position)
+		>= Enemy.FAR_STATIC_OBJECTIVE_DISTANCE,
+		"The Home journey fixture must begin in the far linear movement tier."
+	)
+
+	game.set_physics_process(false)
+	var health_before := game.current_base_health
+	for _frame in range(420):
+		await physics_frame
+		await process_frame
+		if not is_instance_valid(enemy) or game.current_base_health < health_before:
+			break
+	_expect(
+		game.current_base_health == health_before - BASIC_CONFIG.home_damage,
+		"A far linear enemy must transition through flow navigation and physically reach Home."
+	)
+	_expect(
+		not is_instance_valid(enemy) or enemy.is_dead,
+		"The completed far-to-Home journey must resolve the enemy exactly once."
+	)
+	game.set_physics_process(true)
+	game.current_base_health = game.maximum_base_health
+	game.base_health_revision = 0
+	game.current_wave_escaped = 0
+	game.current_wave_resolved = 0
+	game.resolved_home_enemy_ids.clear()
+	game.call("_update_base_health_display")
+
+
 func _verify_target_selection(game: GameTowerDefense) -> void:
 	var targets := game.get_home_objective_targets()
 	if targets.is_empty():
 		return
+	var logical_tile_width := float(game.ground_tile_map_layer.tile_set.tile_size.x)
+	_expect(
+		is_equal_approx(
+			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS / logical_tile_width,
+			12.5
+		),
+		"The 200-world-pixel player aggro radius must equal 12.5 logical tiles."
+	)
+	_expect(
+		is_equal_approx(
+			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS * game.map_camera.zoom.x,
+			400.0
+		),
+		"At tower-defense zoom 2, the player aggro radius must appear as 400 screen pixels."
+	)
 	var gate := targets[0]
 	game.player.global_position = gate.global_position - Vector2(160.0, 0.0)
 	var near_gate := gate.global_position + Vector2(-2.0, 0.0)
@@ -194,7 +262,17 @@ func _verify_target_selection(game: GameTowerDefense) -> void:
 	_expect(picked_gate == gate, "Enemy objective selection must choose the nearer home gate.")
 	var midpoint := (gate.global_position + game.player.global_position) * 0.5
 	var tie_target: Node2D = game.call("_pick_enemy_objective", midpoint, game.player) as Node2D
-	_expect(tie_target == game.player, "Exact objective-distance ties must prefer the player.")
+	_expect(tie_target == gate, "Exact objective-distance ties must keep Home as the objective.")
+	var near_player := game.player.global_position + Vector2(2.0, 0.0)
+	_expect(
+		game.call("_pick_enemy_objective", near_player, game.player) == game.player,
+		"A player inside 200px and closer than Home must become the movement objective."
+	)
+	var outside_player_aggro := game.player.global_position - Vector2(201.0, 0.0)
+	_expect(
+		game.call("_pick_enemy_objective", outside_player_aggro, game.player) == gate,
+		"A player farther than 200px must not pull an enemy away from Home."
+	)
 
 	var retarget_enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
 	_expect(retarget_enemy != null, "Basic enemy must instantiate for timed retarget verification.")
@@ -222,7 +300,56 @@ func _verify_target_selection(game: GameTowerDefense) -> void:
 		retarget_enemy.objective_target == game.player,
 		"The retarget loop must switch back to a nearer living player after its interval."
 	)
-	retarget_enemy.queue_free()
+	retarget_enemy.cached_navigation_move_direction = Vector2.RIGHT
+	retarget_enemy.cached_navigation_uses_direct_objective_approach = true
+	retarget_enemy.set_target_player(game.player)
+	_expect(
+		retarget_enemy.cached_navigation_move_direction == Vector2.RIGHT
+		and retarget_enemy.cached_navigation_uses_direct_objective_approach,
+		"Reassigning the same combat player must preserve the cached navigation direction."
+	)
+	retarget_enemy.free()
+
+	_verify_retarget_budget(game, gate)
+
+
+func _verify_retarget_budget(game: GameTowerDefense, gate: Node2D) -> void:
+	var enemies: Array[Enemy] = []
+	for index in range(GameTowerDefense.ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME + 1):
+		var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
+		if enemy == null:
+			continue
+		game.enemy_container.add_child(enemy)
+		enemy.setup(BASIC_CONFIG, game.player, game.grid_pathfinder)
+		enemy.set_physics_process(false)
+		enemy.collision_layer = 0
+		enemy.global_position = gate.global_position + Vector2(2.0, 0.0)
+		enemies.append(enemy)
+
+	game.enemy_retarget_cursor = 0
+	game.enemy_retarget_sweep_remaining = 0
+	game.enemy_retarget_time_left = 0.0
+	game.call("_update_tower_defense_enemy_targets", 0.0)
+	var gate_target_count := 0
+	for enemy in enemies:
+		if enemy.objective_target == gate:
+			gate_target_count += 1
+	_expect(
+		gate_target_count == GameTowerDefense.ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME,
+		"A retarget sweep must honor its per-physics-frame enemy budget."
+	)
+
+	game.call("_update_tower_defense_enemy_targets", 0.0)
+	gate_target_count = 0
+	for enemy in enemies:
+		if enemy.objective_target == gate:
+			gate_target_count += 1
+	_expect(
+		gate_target_count == enemies.size(),
+		"A budgeted retarget sweep must resume from its cursor on the next frame."
+	)
+	for enemy in enemies:
+		enemy.free()
 
 
 func _verify_enemy_contract(game: GameTowerDefense) -> void:

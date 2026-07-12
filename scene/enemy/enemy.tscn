@@ -8,7 +8,7 @@
 [ext_resource type="PackedScene" path="res://scene/move_speed_trail_effect.tscn" id="6_speed_trail"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_enemy"]
-resource_local_to_scene = true
+resource_local_to_scene = false
 shader = ExtResource("1_h08p8")
 shader_parameter/blink_enabled = false
 shader_parameter/blink_speed = 12.0

@@ -369,6 +369,13 @@ func _drop_xirang() -> void:
 	var drop_parent := get_parent()
 	if drop_parent == null:
 		return
+	if _request_xirang_reward(
+		config.xirang_drop_amount,
+		reward_player,
+		global_position,
+		Vector2.ZERO
+	):
+		return
 	var drop := XIRANG_DROP_SCENE.instantiate() as XirangDrop
 	if drop == null:
 		return

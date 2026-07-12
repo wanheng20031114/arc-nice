@@ -27,6 +27,10 @@ var _render_delay: float = 0.1
 var _max_extrapolation_seconds: float = _NetConstants.MAX_EXTRAPOLATION_SECONDS
 var _last_position: Vector2 = Vector2.ZERO
 var _has_position: bool = false
+var _cached_motion_time: float = 0.0
+var _cached_motion_position: Vector2 = Vector2.ZERO
+var _cached_motion_velocity: Vector2 = Vector2.ZERO
+var _has_cached_motion: bool = false
 
 
 func _init(
@@ -58,7 +62,19 @@ func push_snapshot(
 	health: int = 0,
 	is_dead: bool = false,
 ) -> void:
-	var frame := FrameSnapshot.new()
+	_has_cached_motion = false
+	var appends_in_order := (
+		_buffer.is_empty()
+		or timestamp > _buffer[_buffer.size() - 1].timestamp
+	)
+	var frame: FrameSnapshot = null
+	if appends_in_order and _buffer.size() >= _buffer_max_size:
+		# The state channel is ordered in the common path. Reuse the expired frame
+		# object to avoid one allocation/refcount release per entity per snapshot.
+		frame = _buffer[0]
+		_buffer.remove_at(0)
+	else:
+		frame = FrameSnapshot.new()
 	frame.timestamp = timestamp
 	frame.position = position
 	frame.velocity = velocity
@@ -82,70 +98,62 @@ func push_snapshot(
 ## 获取指定时刻的插值位置
 ## current_time 通常为 Time.get_ticks_msec() / 1000.0
 func get_interpolated_position(current_time: float) -> Vector2:
-	var render_time := current_time - _render_delay
-
-	if _buffer.is_empty():
-		return _last_position if _has_position else Vector2.ZERO
-
-	if _buffer.size() == 1:
-		return _buffer[0].position
-
-	if render_time <= _buffer[0].timestamp:
-		return _buffer[0].position
-
-	# 找到 render_time 前后的两帧
-	var before: FrameSnapshot = null
-	var after: FrameSnapshot = null
-
-	for i in range(_buffer.size() - 1):
-		if _buffer[i].timestamp <= render_time and _buffer[i + 1].timestamp >= render_time:
-			before = _buffer[i]
-			after = _buffer[i + 1]
-			break
-
-	if before == null or after == null:
-		return _extrapolate_latest_position(render_time)
-
-	# 计算插值因子
-	var total := after.timestamp - before.timestamp
-	if total <= 0.0:
-		return after.position
-
-	var t := clampf((render_time - before.timestamp) / total, 0.0, 1.0)
-	return before.position.lerp(after.position, t)
+	_update_cached_motion(current_time)
+	return _cached_motion_position
 
 
 ## 获取指定时刻的插值速度
 func get_interpolated_velocity(current_time: float) -> Vector2:
+	_update_cached_motion(current_time)
+	return _cached_motion_velocity
+
+
+func _update_cached_motion(current_time: float) -> void:
+	if _has_cached_motion and current_time == _cached_motion_time:
+		return
+	_cached_motion_time = current_time
+	_has_cached_motion = true
 	var render_time := current_time - _render_delay
 
 	if _buffer.is_empty():
-		return Vector2.ZERO
+		_cached_motion_position = _last_position if _has_position else Vector2.ZERO
+		_cached_motion_velocity = Vector2.ZERO
+		return
 
 	if _buffer.size() == 1:
-		return _buffer[0].velocity
+		_cached_motion_position = _buffer[0].position
+		_cached_motion_velocity = _buffer[0].velocity
+		return
 
 	if render_time <= _buffer[0].timestamp:
-		return _buffer[0].velocity
+		_cached_motion_position = _buffer[0].position
+		_cached_motion_velocity = _buffer[0].velocity
+		return
 
 	var before: FrameSnapshot = null
 	var after: FrameSnapshot = null
 
-	for i in range(_buffer.size() - 1):
+	# 渲染延迟通常只有 2-3 个快照，从最新端反查能避免遍历整个缓冲区。
+	for i in range(_buffer.size() - 2, -1, -1):
 		if _buffer[i].timestamp <= render_time and _buffer[i + 1].timestamp >= render_time:
 			before = _buffer[i]
 			after = _buffer[i + 1]
 			break
 
 	if before == null or after == null:
-		return _buffer[_buffer.size() - 1].velocity
+		_cached_motion_position = _extrapolate_latest_position(render_time)
+		_cached_motion_velocity = _buffer[_buffer.size() - 1].velocity
+		return
 
 	var total := after.timestamp - before.timestamp
 	if total <= 0.0:
-		return after.velocity
+		_cached_motion_position = after.position
+		_cached_motion_velocity = after.velocity
+		return
 
 	var t := clampf((render_time - before.timestamp) / total, 0.0, 1.0)
-	return before.velocity.lerp(after.velocity, t)
+	_cached_motion_position = before.position.lerp(after.position, t)
+	_cached_motion_velocity = before.velocity.lerp(after.velocity, t)
 
 
 ## 获取当前渲染时间对应的离散状态（朝向、动画、血量等不做插值）
@@ -170,6 +178,7 @@ func get_current_state(current_time: float) -> FrameSnapshot:
 func clear() -> void:
 	_buffer.clear()
 	_has_position = false
+	_has_cached_motion = false
 
 
 ## 获取缓存中最新快照的时间戳

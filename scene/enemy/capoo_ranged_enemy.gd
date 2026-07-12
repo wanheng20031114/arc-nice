@@ -2,6 +2,10 @@ extends Enemy
 class_name CapooRangedEnemy
 
 const WORLD_COLLISION_MASK := 1
+const NO_PATHFINDER_DIRECT_CHASE_DISTANCE := 192.0
+const NO_PATHFINDER_DIRECT_CHASE_DISTANCE_SQUARED := (
+	NO_PATHFINDER_DIRECT_CHASE_DISTANCE * NO_PATHFINDER_DIRECT_CHASE_DISTANCE
+)
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 
@@ -29,10 +33,27 @@ func _get_move_speed() -> float:
 
 
 func _get_navigation_move_direction(_delta: float) -> Vector2:
+	if _can_direct_chase_player_without_pathfinder():
+		return _cache_navigation_move_direction(
+			_get_collision_safe_direct_objective_direction(
+				target_player.global_position,
+				waypoint_arrival_distance
+			)
+		)
 	return _get_safe_navigation_move_direction(
 		objective_target,
 		pathfinder,
 		waypoint_arrival_distance
+	)
+
+
+func _can_direct_chase_player_without_pathfinder() -> bool:
+	return (
+		(pathfinder == null or not bool(pathfinder.get("is_built")))
+		and is_objective_targeting_player()
+		and global_position.distance_squared_to(target_player.global_position)
+			<= NO_PATHFINDER_DIRECT_CHASE_DISTANCE_SQUARED
+		and _has_clear_world_line_to_target()
 	)
 
 
@@ -110,6 +131,13 @@ func _drop_xirang() -> void:
 		return
 	var drop_parent := get_parent()
 	if drop_parent == null:
+		return
+	if _request_xirang_reward(
+		config.xirang_drop_amount,
+		reward_player,
+		global_position,
+		Vector2.ZERO
+	):
 		return
 	var drop := XIRANG_DROP_SCENE.instantiate() as XirangDrop
 	if drop == null:

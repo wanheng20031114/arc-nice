@@ -6,7 +6,7 @@
 [ext_resource type="SpriteFrames" uid="uid://ftdqslfcushq" path="res://resources/animation/capoo_ak47.tres" id="4_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_fa6ph"]
-resource_local_to_scene = true
+resource_local_to_scene = false
 shader = ExtResource("2_vtgnm")
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_3ha6o"]

@@ -90,6 +90,10 @@ func _test_enemy_scene_contract(enemy_config: EnemyConfig) -> void:
 		sprite_material != null and sprite_material.shader.resource_path == ENEMY_VISUAL_SHADER_PATH,
 		"%s sprite must use the enemy visual shader." % enemy_config.resource_path
 	)
+	_expect(
+		sprite_material != null and not sprite_material.resource_local_to_scene,
+		"%s enemy visual material must be shared for 2D batching." % enemy_config.resource_path
+	)
 	_expect(scene_frames != null, "%s scene must own SpriteFrames." % enemy_config.resource_path)
 	if scene_frames != null:
 		_expect(scene_frames.has_animation(enemy_config.move_animation_name), "%s scene must include move animation." % enemy_config.resource_path)

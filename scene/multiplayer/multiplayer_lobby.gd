@@ -1008,6 +1008,10 @@ func _change_to_multiplayer_game() -> void:
 	var tree := get_tree()
 	if tree == null:
 		return
+	var load_coordinator := get_node_or_null("/root/GameLoadCoordinator")
+	if load_coordinator != null and load_coordinator.has_method("begin_multiplayer"):
+		load_coordinator.call("begin_multiplayer")
+		return
 	tree.change_scene_to_file(MULTIPLAYER_GAME_SCENE_PATH)
 
 

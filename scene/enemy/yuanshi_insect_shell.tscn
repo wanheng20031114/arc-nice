@@ -5,7 +5,7 @@
 [ext_resource type="Shader" path="res://scene/entity_motion_status.gdshader" id="2_jukkn"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_8xji7"]
-resource_local_to_scene = true
+resource_local_to_scene = false
 shader = ExtResource("2_jukkn")
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_urb56"]

@@ -25,6 +25,8 @@
 [ext_resource type="TileSet" uid="uid://c0qgc6eff1m0q" path="res://resources/terrain/dual_grid/terrain_water_collision_tileset_16.tres" id="26_water_collision_tileset"]
 [ext_resource type="Script" uid="uid://b6tgthpedimsg" path="res://scene/home_gate_controller.gd" id="27_home_gate_controller"]
 [ext_resource type="PackedScene" path="res://scene/home_base_hud.tscn" id="28_home_base_hud"]
+[ext_resource type="Script" uid="uid://c53fvlhqiuysa" path="res://scene/session_object_pool.gd" id="29_session_pool"]
+[ext_resource type="Script" uid="uid://cthsxvai7jtgh" path="res://scene/xirang_drop_manager.gd" id="30_xirang_manager"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -116,7 +118,7 @@ custom_data_layer_0/type = 21
 sources/0 = SubResource("TileSetAtlasSource_fc0e3")
 
 [node name="GameTowerDefense" type="Node2D" unique_id=20737211]
-position = Vector2(1, 0)
+position = Vector2(2, 0)
 script = ExtResource("1_17rxn")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2059488462]
@@ -267,6 +269,12 @@ layer = 30
 
 [node name="DamageNumberPool" type="Node2D" parent="." unique_id=788052799]
 script = ExtResource("18_damage_pool")
+
+[node name="SessionObjectPool" type="Node2D" parent="." unique_id=501179968]
+script = ExtResource("29_session_pool")
+
+[node name="XirangDropManager" type="Node" parent="." unique_id=456057162]
+script = ExtResource("30_xirang_manager")
 
 [node name="ZhuangfangyiMerchant" parent="." unique_id=112812860 instance=ExtResource("15_merchant")]
 position = Vector2(136, 289)

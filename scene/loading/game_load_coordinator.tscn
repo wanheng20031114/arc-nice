@@ -1,0 +1,215 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scene/loading/game_load_coordinator.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/ui/menu_rooftop_garden_background.png" id="2_background"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_font"]
+
+[sub_resource type="StyleBoxFlat" id="ProgressBackground"]
+bg_color = Color(0.12, 0.13, 0.14, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.38, 0.34, 0.25, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="ProgressFill"]
+bg_color = Color(0.91, 0.72, 0.31, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="ButtonNormal"]
+content_margin_left = 18.0
+content_margin_top = 8.0
+content_margin_right = 18.0
+content_margin_bottom = 8.0
+bg_color = Color(0.15, 0.16, 0.17, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.52, 0.46, 0.31, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="ButtonHover"]
+content_margin_left = 18.0
+content_margin_top = 8.0
+content_margin_right = 18.0
+content_margin_bottom = 8.0
+bg_color = Color(0.23, 0.21, 0.16, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.91, 0.72, 0.31, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="GameLoadCoordinator" type="CanvasLayer"]
+layer = 1000
+script = ExtResource("1_script")
+
+[node name="Overlay" type="Control" parent="."]
+process_mode = 3
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Backdrop" type="ColorRect" parent="Overlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.035, 0.04, 0.045, 1)
+
+[node name="GardenBackground" type="TextureRect" parent="Overlay"]
+texture_filter = 1
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+modulate = Color(0.42, 0.43, 0.4, 0.56)
+texture = ExtResource("2_background")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Shade" type="ColorRect" parent="Overlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.025, 0.03, 0.035, 0.68)
+
+[node name="Layout" type="MarginContainer" parent="Overlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 64.0
+offset_top = 48.0
+offset_right = -64.0
+offset_bottom = -48.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Stack" type="VBoxContainer" parent="Overlay/Layout"]
+layout_mode = 2
+
+[node name="TopBrand" type="Label" parent="Overlay/Layout/Stack"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.91, 0.72, 0.31, 0.88)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 14
+text = "ARC NICE  /  FIELD DEPLOYMENT"
+
+[node name="Spacer" type="Control" parent="Overlay/Layout/Stack"]
+custom_minimum_size = Vector2(0, 96)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Content" type="VBoxContainer" parent="Overlay/Layout/Stack"]
+custom_minimum_size = Vector2(560, 244)
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_constants/separation = 12
+
+[node name="Accent" type="ColorRect" parent="Overlay/Layout/Stack/Content"]
+custom_minimum_size = Vector2(72, 3)
+layout_mode = 2
+color = Color(0.91, 0.72, 0.31, 1)
+
+[node name="Stage" type="Label" parent="Overlay/Layout/Stack/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.94, 0.86, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 32
+text = "正在部署战场"
+
+[node name="Detail" type="Label" parent="Overlay/Layout/Stack/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.76, 0.75, 0.69, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 16
+text = "整理作战资源与地形数据…"
+
+[node name="RouteSpacer" type="Control" parent="Overlay/Layout/Stack/Content"]
+custom_minimum_size = Vector2(0, 16)
+layout_mode = 2
+
+[node name="RouteGlow" type="ColorRect" parent="Overlay/Layout/Stack/Content"]
+custom_minimum_size = Vector2(128, 2)
+layout_mode = 2
+color = Color(0.98, 0.82, 0.45, 0.72)
+
+[node name="RouteProgress" type="ProgressBar" parent="Overlay/Layout/Stack/Content"]
+custom_minimum_size = Vector2(560, 9)
+layout_mode = 2
+theme_override_styles/background = SubResource("ProgressBackground")
+theme_override_styles/fill = SubResource("ProgressFill")
+show_percentage = false
+
+[node name="ProgressRow" type="HBoxContainer" parent="Overlay/Layout/Stack/Content"]
+layout_mode = 2
+
+[node name="Percentage" type="Label" parent="Overlay/Layout/Stack/Content/ProgressRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.88, 0.62, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 14
+text = "0%"
+
+[node name="RowSpacer" type="Control" parent="Overlay/Layout/Stack/Content/ProgressRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Readiness" type="Label" parent="Overlay/Layout/Stack/Content/ProgressRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.69, 0.72, 0.69, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 2
+
+[node name="ActionRow" type="HBoxContainer" parent="Overlay/Layout/Stack/Content"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Retry" type="Button" parent="Overlay/Layout/Stack/Content/ActionRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.9, 0.72, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("ButtonNormal")
+theme_override_styles/hover = SubResource("ButtonHover")
+theme_override_styles/pressed = SubResource("ButtonHover")
+text = "重试"
+
+[node name="Back" type="Button" parent="Overlay/Layout/Stack/Content/ActionRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.84, 0.82, 0.76, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("ButtonNormal")
+theme_override_styles/hover = SubResource("ButtonHover")
+theme_override_styles/pressed = SubResource("ButtonHover")
+text = "返回"

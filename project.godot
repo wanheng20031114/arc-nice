@@ -25,6 +25,7 @@ UserSettings="*res://scene/settings/settings_manager.gd"
 RunState="*res://run_state.gd"
 NetManager="*res://scene/multiplayer/net_manager.gd"
 UIAudio="*res://scene/ui_click_audio.tscn"
+GameLoadCoordinator="*res://scene/loading/game_load_coordinator.tscn"
 
 [display]
 

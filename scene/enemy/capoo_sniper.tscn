@@ -6,7 +6,7 @@
 [ext_resource type="SpriteFrames" uid="uid://b0k8qc31gx3ei" path="res://resources/animation/capoo_sniper.tres" id="4_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_buikk"]
-resource_local_to_scene = true
+resource_local_to_scene = false
 shader = ExtResource("3_shader")
 shader_parameter/blink_enabled = false
 shader_parameter/blink_speed = 12.0

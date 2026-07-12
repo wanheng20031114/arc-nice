@@ -21,14 +21,16 @@ const DEFAULT_MUSIC_VOLUME_DB := -6.0
 const MUSIC_FADE_IN_SECONDS := 3.0
 const MUSIC_FADE_IN_START_VOLUME_DB := -12.0
 const INITIAL_PLAYER_XIRANG := 1000
-
-@export_group("战役资源")
-@export var singleplayer_campaign: WaveCampaignConfig = preload(
+const SINGLEPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/standard/singleplayer/campaign.tres"
 )
-@export var multiplayer_campaign: WaveCampaignConfig = preload(
+const MULTIPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/standard/multiplayer/campaign.tres"
 )
+
+@export_group("战役资源")
+@export var singleplayer_campaign: WaveCampaignConfig = null
+@export var multiplayer_campaign: WaveCampaignConfig = null
 
 @export_group("战斗流程")
 @export_range(0.0, 60.0, 1.0, "or_greater") var pre_wave_duration: float = 5.0
@@ -54,6 +56,7 @@ const INITIAL_PLAYER_XIRANG := 1000
 @onready var luoxi_merchant: LuoxiMerchant = $LuoxiMerchant
 @onready var boss_container: Node2D = $BossContainer
 @onready var damage_number_pool: DamageNumberPool = $DamageNumberPool
+@onready var session_object_pool: SessionObjectPool = $SessionObjectPool
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
 var random_generator := RandomNumberGenerator.new()
@@ -100,6 +103,10 @@ var navigation_prewarmed: bool = false
 
 func _ready() -> void:
 	random_generator.randomize()
+	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		var load_coordinator := get_node_or_null("/root/GameLoadCoordinator")
+		if load_coordinator != null and bool(load_coordinator.call("is_loading")):
+			defer_runtime_activation()
 	if not _configure_active_campaign():
 		set_process(false)
 		set_physics_process(false)
@@ -113,6 +120,19 @@ func _ready() -> void:
 	_collect_enemy_spawn_points()
 	_configure_timers()
 	_prewarm_enemy_visual_resources()
+	session_object_pool.register_scene(ENEMY_SPAWN_EFFECT_SCENE, 16, 24)
+	if not enemy_container.child_entered_tree.is_connected(
+		_on_dynamic_pickup_container_child_entered
+	):
+		enemy_container.child_entered_tree.connect(
+			_on_dynamic_pickup_container_child_entered
+		)
+	if not boss_container.child_entered_tree.is_connected(
+		_on_dynamic_pickup_container_child_entered
+	):
+		boss_container.child_entered_tree.connect(
+			_on_dynamic_pickup_container_child_entered
+		)
 	if runtime_mode != RuntimeMode.SINGLEPLAYER:
 		run_state.ensure_run_started()
 		run_state.set_active_multiplayer_peer(multiplayer_local_peer_id)
@@ -147,17 +167,30 @@ func _ready() -> void:
 			_get_flow_step_id(_get_start_flow_step()),
 			maxi(ceili(pre_wave_duration), 0)
 		)
-	elif auto_start_waves and _is_flow_system_ready():
+	elif auto_start_waves and not runtime_activation_deferred and _is_flow_system_ready():
 		_enter_pre_flow_step(_get_start_flow_step())
 	else:
 		wave_hud.hide_all()
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		if runtime_activation_deferred:
+			call_deferred("prepare_shared_runtime_data_and_complete")
+		else:
+			mark_runtime_preparation_complete()
+	elif auto_start_waves or runtime_activation_deferred:
+		_schedule_enemy_navigation_prewarm()
+
+
+func _on_runtime_activated() -> void:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		return
+	if current_flow_step == null and auto_start_waves and _is_flow_system_ready():
+		_enter_pre_flow_step(_get_start_flow_step())
 
 
 func _physics_process(delta: float) -> void:
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		_update_multiplayer_remote_player_passive_state(delta)
 		_update_multiplayer_enemy_targets(delta)
-		_register_dynamic_multiplayer_pickups()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -189,6 +222,13 @@ func _configure_active_campaign() -> bool:
 		if runtime_mode == RuntimeMode.SINGLEPLAYER
 		else multiplayer_campaign
 	)
+	if active_campaign == null:
+		var campaign_path := (
+			SINGLEPLAYER_CAMPAIGN_PATH
+			if runtime_mode == RuntimeMode.SINGLEPLAYER
+			else MULTIPLAYER_CAMPAIGN_PATH
+		)
+		active_campaign = load(campaign_path) as WaveCampaignConfig
 	flow_graph = null
 	waves.clear()
 	bosses.clear()
@@ -1016,9 +1056,105 @@ func _run_scheduled_enemy_navigation_prewarm() -> void:
 		return
 	navigation_prewarm_requested = false
 	if navigation_prewarmed:
+		await prewarm_shared_runtime_data()
+		if not is_inside_tree():
+			return
+		mark_runtime_preparation_complete()
 		return
-	_prewarm_enemy_navigation_grids()
+	await _prewarm_enemy_navigation_grids_staged()
+	if not is_inside_tree():
+		return
 	navigation_prewarmed = true
+	await prewarm_shared_runtime_data()
+	if not is_inside_tree():
+		return
+	mark_runtime_preparation_complete()
+
+
+func _prewarm_enemy_navigation_grids_staged() -> void:
+	update_runtime_preparation_progress("分析敌人通行体型…", 0, 1)
+	await get_tree().process_frame
+	if (
+		grid_pathfinder == null
+		or not grid_pathfinder.has_method("prewarm_agent_grid")
+		or not bool(grid_pathfinder.get("is_built"))
+	):
+		return
+
+	var profiles: Array[Dictionary] = []
+	var seen_scene_keys: Dictionary = {}
+	var seen_extent_keys: Dictionary = {}
+	for wave_config in waves:
+		if wave_config == null:
+			continue
+		for entry in wave_config.enemy_entries:
+			if entry == null or entry.enemy_config == null:
+				continue
+			var enemy_config := entry.enemy_config
+			if enemy_config.enemy_scene == null:
+				continue
+			var scene_key := enemy_config.enemy_scene.resource_path
+			if scene_key.is_empty():
+				scene_key = enemy_config.resource_path
+			if seen_scene_keys.has(scene_key):
+				continue
+			seen_scene_keys[scene_key] = true
+			var body_half_extents := _get_enemy_scene_body_half_extents(enemy_config)
+			await get_tree().process_frame
+			if not is_inside_tree() or body_half_extents == Vector2.ZERO:
+				continue
+			var traversal_types := enemy_config.terrain_traversal_types
+			var extent_key := "%d:%d:%d" % [
+				ceili(body_half_extents.x),
+				ceili(body_half_extents.y),
+				traversal_types,
+			]
+			if seen_extent_keys.has(extent_key):
+				continue
+			seen_extent_keys[extent_key] = true
+			profiles.append({
+				"half_extents": body_half_extents,
+				"traversal_types": traversal_types,
+			})
+
+	var target_count := 1 if player != null else 0
+	var total_steps := maxi(profiles.size() * (1 + target_count), 1)
+	var completed_steps := 0
+	update_runtime_preparation_progress("预热寻路网格…", completed_steps, total_steps)
+	for profile in profiles:
+		var half_extents: Vector2 = profile["half_extents"]
+		var traversal_types: int = int(profile["traversal_types"])
+		if grid_pathfinder.has_method("prewarm_agent_grid_staged"):
+			await grid_pathfinder.call(
+				"prewarm_agent_grid_staged",
+				half_extents,
+				traversal_types
+			)
+		else:
+			grid_pathfinder.call("prewarm_agent_grid", half_extents, traversal_types)
+		completed_steps += 1
+		update_runtime_preparation_progress("预热寻路网格…", completed_steps, total_steps)
+		await get_tree().process_frame
+		if not is_inside_tree():
+			return
+		if player != null and grid_pathfinder.has_method("prewarm_flow_navigation_target"):
+			if grid_pathfinder.has_method("prewarm_flow_navigation_target_staged"):
+				await grid_pathfinder.call(
+					"prewarm_flow_navigation_target_staged",
+					player.global_position,
+					half_extents,
+					traversal_types
+				)
+			else:
+				grid_pathfinder.call(
+					"prewarm_flow_navigation_target",
+					player.global_position,
+					half_extents,
+					traversal_types
+				)
+			completed_steps += 1
+			update_runtime_preparation_progress("预热首波路线…", completed_steps, total_steps)
+			await get_tree().process_frame
 
 
 func _prewarm_enemy_visual_resources() -> void:
@@ -1961,16 +2097,41 @@ func _register_static_multiplayer_pickups() -> void:
 
 
 func _register_dynamic_multiplayer_pickups() -> void:
-	var pickups: Array[Pickup] = []
-	_collect_pickups_recursive(self, pickups)
-	for pickup in pickups:
-		if pickup == null or not is_instance_valid(pickup):
-			continue
-		if int(pickup.get_meta("net_id", 0)) > 0:
-			continue
-		var net_id := next_multiplayer_pickup_net_id
-		next_multiplayer_pickup_net_id += 1
-		_register_multiplayer_pickup(pickup, net_id, true)
+	for child in enemy_container.get_children():
+		_register_dynamic_multiplayer_pickup(child as Pickup)
+	for child in boss_container.get_children():
+		_register_dynamic_multiplayer_pickup(child as Pickup)
+
+
+func _on_dynamic_pickup_container_child_entered(child: Node) -> void:
+	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
+		return
+	var pickup := child as Pickup
+	if pickup == null:
+		return
+	# Drop scripts assign global_position immediately after add_child(). Defer one
+	# turn so the spawn RPC observes that final position rather than the container
+	# origin, while still avoiding a full-tree scan on every physics frame.
+	call_deferred("_register_dynamic_multiplayer_pickup_from_ref", weakref(pickup))
+
+
+func _register_dynamic_multiplayer_pickup_from_ref(pickup_ref: WeakRef) -> void:
+	if pickup_ref == null:
+		return
+	var pickup := pickup_ref.get_ref() as Pickup
+	_register_dynamic_multiplayer_pickup(pickup)
+
+
+func _register_dynamic_multiplayer_pickup(pickup: Pickup) -> void:
+	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
+		return
+	if pickup == null or not is_instance_valid(pickup) or pickup.is_queued_for_deletion():
+		return
+	if int(pickup.get_meta("net_id", 0)) > 0:
+		return
+	var net_id := next_multiplayer_pickup_net_id
+	next_multiplayer_pickup_net_id += 1
+	_register_multiplayer_pickup(pickup, net_id, true)
 
 
 func _collect_pickups_recursive(node: Node, pickups: Array[Pickup]) -> void:
@@ -2317,11 +2478,12 @@ func _pick_spawn_point() -> Marker2D:
 func _spawn_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
 	if not _consume_spawn_effect_budget():
 		return
-	var effect := ENEMY_SPAWN_EFFECT_SCENE.instantiate() as Node2D
+	var effect := session_object_pool.acquire(ENEMY_SPAWN_EFFECT_SCENE) as Node2D
 	if effect == null:
 		return
-	add_child(effect)
 	effect.global_position = spawn_global_position
+	if effect.has_method("restart_effect"):
+		effect.call("restart_effect")
 
 
 func play_remote_enemy_spawn_effect(spawn_global_position: Vector2) -> void:

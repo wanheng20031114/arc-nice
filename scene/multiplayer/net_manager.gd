@@ -10,6 +10,7 @@ signal player_list_changed
 signal player_character_changed(peer_id: int, character_id: StringName, confirmed: bool)
 signal connection_failed(reason: String)
 signal game_mode_changed(new_game_mode: GameMode)
+signal game_load_progress_changed(ready_count: int, total_count: int)
 
 const DEFAULT_CHARACTER_ID := &"weishidaier"
 
@@ -43,6 +44,7 @@ var public_room_id: String = ""
 var public_host_token: String = ""
 var public_is_host: bool = false
 var current_game_mode: GameMode = GameMode.STANDARD
+var loading_session_id: int = 0
 
 var _physics_frame_count: int = 0
 var _enet_peer: ENetMultiplayerPeer = null
@@ -52,6 +54,10 @@ var _connect_started_msec: int = 0
 var _connect_timeout_ms: int = 0
 var _connect_target_description: String = ""
 var _connected_signal_handled: bool = false
+var _expected_game_load_peers: Dictionary = {}
+var _ready_game_load_peers: Dictionary = {}
+var _reported_game_load_ready_count: int = 0
+var _reported_game_load_total_count: int = 0
 
 
 func _physics_process(_delta: float) -> void:
@@ -326,6 +332,11 @@ func disconnect_from_game() -> void:
 	host_peer_id = 1
 	set_multiplayer_authority(host_peer_id)
 	host_game_ready = false
+	loading_session_id = 0
+	_expected_game_load_peers.clear()
+	_ready_game_load_peers.clear()
+	_reported_game_load_ready_count = 0
+	_reported_game_load_total_count = 0
 	clear_public_room_context()
 	_set_current_game_mode(GameMode.STANDARD)
 	_relay_register_pending = false
@@ -340,11 +351,19 @@ func disconnect_from_game() -> void:
 func host_start_game() -> void:
 	if not is_host():
 		return
+	if connection_state >= ConnectionState.LOADING_GAME:
+		return
 	if not are_all_player_characters_confirmed():
 		connection_failed.emit("仍有玩家尚未确认角色")
 		return
 	host_game_ready = false
+	loading_session_id += 1
+	_expected_game_load_peers.clear()
+	_ready_game_load_peers.clear()
+	for peer_id_variant in connected_players:
+		_expected_game_load_peers[int(peer_id_variant)] = true
 	_set_connection_state(ConnectionState.LOADING_GAME)
+	_emit_game_load_progress()
 	_send_start_game_to_clients()
 
 
@@ -357,11 +376,37 @@ func host_broadcast_start_game() -> void:
 
 
 func mark_in_game() -> void:
-	_set_connection_state(ConnectionState.IN_GAME)
 	if not is_host():
 		return
+	if connection_state != ConnectionState.LOADING_GAME:
+		return
+	if not _are_all_game_load_peers_ready():
+		return
 	host_game_ready = true
+	_set_connection_state(ConnectionState.IN_GAME)
 	_send_host_game_ready_to_clients()
+
+
+func report_game_loaded() -> void:
+	if connection_state != ConnectionState.LOADING_GAME or loading_session_id <= 0:
+		return
+	var local_peer_id := get_local_peer_id()
+	if local_peer_id <= 0 and is_host():
+		local_peer_id = get_host_peer_id()
+	if local_peer_id <= 0:
+		return
+	if is_host():
+		_mark_peer_game_loaded(local_peer_id, loading_session_id)
+	elif is_client():
+		_rpc_report_game_loaded.rpc_id(get_host_peer_id(), loading_session_id)
+
+
+func get_game_load_progress() -> Dictionary:
+	return {
+		"ready": _reported_game_load_ready_count,
+		"total": _reported_game_load_total_count,
+		"session_id": loading_session_id,
+	}
 
 
 func set_local_character_id(character_id: StringName, confirmed: bool = true) -> bool:
@@ -495,6 +540,12 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	connected_players.erase(peer_id)
 	connected_player_characters.erase(peer_id)
 	confirmed_character_peers.erase(peer_id)
+	if is_host() and connection_state == ConnectionState.LOADING_GAME:
+		_expected_game_load_peers.erase(peer_id)
+		_ready_game_load_peers.erase(peer_id)
+		_emit_game_load_progress()
+		_broadcast_game_load_progress()
+		_try_finish_game_loading()
 	player_left.emit(peer_id)
 	player_list_changed.emit()
 	if conn_mode == ConnMode.RELAY and net_role == NetRole.CLIENT and peer_id == get_host_peer_id():
@@ -784,23 +835,61 @@ func _rpc_sync_player_list(
 
 
 @rpc("authority", "call_remote", "reliable", 0)
-func _rpc_start_game(game_mode: int = 0) -> void:
+func _rpc_start_game(game_mode: int = 0, session_id: int = 0) -> void:
 	if multiplayer.get_remote_sender_id() != get_host_peer_id():
 		return
-	if not _is_valid_game_mode(game_mode):
+	if not _is_valid_game_mode(game_mode) or session_id <= 0:
+		return
+	if connection_state >= ConnectionState.LOADING_GAME:
+		# Reliable delivery should only apply this transition once. Ignore a stale or
+		# duplicated start packet instead of resetting already reported readiness.
 		return
 	_set_current_game_mode(game_mode as GameMode)
 	host_game_ready = false
+	loading_session_id = session_id
+	_expected_game_load_peers.clear()
+	_ready_game_load_peers.clear()
+	for peer_id_variant in connected_players:
+		_expected_game_load_peers[int(peer_id_variant)] = true
 	_set_connection_state(ConnectionState.LOADING_GAME)
+	_emit_game_load_progress()
 
 
 @rpc("authority", "call_remote", "reliable", 0)
-func _rpc_host_game_ready() -> void:
+func _rpc_host_game_ready(session_id: int = 0) -> void:
 	if multiplayer.get_remote_sender_id() != get_host_peer_id():
+		return
+	if session_id != loading_session_id:
 		return
 	host_game_ready = true
 	if connection_state >= ConnectionState.LOADING_GAME:
 		_set_connection_state(ConnectionState.IN_GAME)
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func _rpc_report_game_loaded(session_id: int) -> void:
+	if not is_host() or connection_state != ConnectionState.LOADING_GAME:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	_mark_peer_game_loaded(sender_id, session_id)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _rpc_game_load_progress(session_id: int, ready_count: int, total_count: int) -> void:
+	if multiplayer.get_remote_sender_id() != get_host_peer_id():
+		return
+	if session_id != loading_session_id:
+		return
+	_reported_game_load_total_count = maxi(total_count, 0)
+	_reported_game_load_ready_count = clampi(
+		ready_count,
+		0,
+		_reported_game_load_total_count
+	)
+	game_load_progress_changed.emit(
+		_reported_game_load_ready_count,
+		_reported_game_load_total_count
+	)
 
 
 func _build_player_list_array() -> Array:
@@ -838,7 +927,7 @@ func _send_start_game_to_clients() -> void:
 			continue
 		if not is_peer_send_ready(peer_id):
 			continue
-		_rpc_start_game.rpc_id(peer_id, int(current_game_mode))
+		_rpc_start_game.rpc_id(peer_id, int(current_game_mode), loading_session_id)
 
 
 func _send_host_game_ready_to_clients() -> void:
@@ -849,7 +938,62 @@ func _send_host_game_ready_to_clients() -> void:
 			continue
 		if not is_peer_send_ready(peer_id):
 			continue
-		_rpc_host_game_ready.rpc_id(peer_id)
+		_rpc_host_game_ready.rpc_id(peer_id, loading_session_id)
+
+
+func _mark_peer_game_loaded(peer_id: int, session_id: int) -> void:
+	if not is_host() or connection_state != ConnectionState.LOADING_GAME:
+		return
+	if session_id != loading_session_id or not _expected_game_load_peers.has(peer_id):
+		return
+	if _ready_game_load_peers.has(peer_id):
+		return
+	_ready_game_load_peers[peer_id] = true
+	_emit_game_load_progress()
+	_broadcast_game_load_progress()
+	_try_finish_game_loading()
+
+
+func _try_finish_game_loading() -> void:
+	if not is_host() or connection_state != ConnectionState.LOADING_GAME:
+		return
+	if not _are_all_game_load_peers_ready():
+		return
+	mark_in_game()
+
+
+func _are_all_game_load_peers_ready() -> bool:
+	if _expected_game_load_peers.is_empty():
+		return false
+	for peer_id_variant in _expected_game_load_peers:
+		if not _ready_game_load_peers.has(int(peer_id_variant)):
+			return false
+	return true
+
+
+func _emit_game_load_progress() -> void:
+	_reported_game_load_ready_count = _ready_game_load_peers.size()
+	_reported_game_load_total_count = _expected_game_load_peers.size()
+	game_load_progress_changed.emit(
+		_reported_game_load_ready_count,
+		_reported_game_load_total_count
+	)
+
+
+func _broadcast_game_load_progress() -> void:
+	if not is_host():
+		return
+	var host_id := get_host_peer_id()
+	for peer_id_variant in _expected_game_load_peers:
+		var peer_id := int(peer_id_variant)
+		if peer_id <= 0 or peer_id == host_id or not is_peer_send_ready(peer_id):
+			continue
+		_rpc_game_load_progress.rpc_id(
+			peer_id,
+			loading_session_id,
+			_ready_game_load_peers.size(),
+			_expected_game_load_peers.size()
+		)
 
 
 func _set_connection_state(new_state: ConnectionState) -> void:

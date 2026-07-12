@@ -6,7 +6,7 @@
 [ext_resource type="SpriteFrames" uid="uid://xdafsl0jue4g" path="res://resources/animation/capoo_knight_elite.tres" id="4_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_314m3"]
-resource_local_to_scene = true
+resource_local_to_scene = false
 shader = ExtResource("3_blink")
 shader_parameter/dodge_effect_strength = 0.0
 shader_parameter/dodge_sweep = 0.0

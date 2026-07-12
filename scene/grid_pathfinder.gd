@@ -16,6 +16,54 @@ enum NavigationStepStatus {
 	UNREACHABLE,
 }
 
+
+class NavigationStepResult:
+	var status: int = NavigationStepStatus.DEFERRED
+	var waypoint: Vector2 = Vector2.ZERO
+	var from_cell: Vector2i = Vector2i.MAX
+	var resolved_from_cell: Vector2i = Vector2i.MAX
+	var target_cell: Vector2i = Vector2i.MAX
+	var resolved_target_cell: Vector2i = Vector2i.MAX
+	var next_cell: Vector2i = Vector2i.MAX
+	var used_start_recovery: bool = false
+	var is_complete_route: bool = false
+	var remaining_cell_distance: int = -1
+
+	func reset(
+		new_status: int,
+		new_from_cell: Vector2i = Vector2i.MAX,
+		new_target_cell: Vector2i = Vector2i.MAX
+	) -> void:
+		status = new_status
+		waypoint = Vector2.ZERO
+		from_cell = new_from_cell
+		resolved_from_cell = Vector2i.MAX
+		target_cell = new_target_cell
+		resolved_target_cell = Vector2i.MAX
+		next_cell = Vector2i.MAX
+		used_start_recovery = false
+		is_complete_route = false
+		remaining_cell_distance = -1
+
+
+class FlowQueryContext:
+	var generation: int = -1
+	var target_is_static: bool = false
+	var requested_target_position: Vector2 = Vector2.ZERO
+	var original_target_cell: Vector2i = Vector2i.MAX
+	var resolved_target_cell: Vector2i = Vector2i.MAX
+	var normalized_extents: Vector2 = Vector2.ZERO
+	var traversal_types: int = 0
+	var path_grid: AStarGrid2D = null
+	var next_cells: Dictionary = {}
+	var distances: Dictionary = {}
+
+	func invalidate() -> void:
+		generation = -1
+		path_grid = null
+		next_cells = {}
+		distances = {}
+
 @export var obstacle_tile_layer_path: NodePath = ^"../GroundTileMapLayer"
 @export var terrain_map_path: NodePath
 # 用于检测阻挡的碰撞层索引
@@ -51,6 +99,8 @@ var flow_field_cache: Dictionary = {}
 var flow_field_cache_order: Array[String] = []
 var region_local_rect: Rect2 = Rect2()
 var terrain_rebuild_queued: bool = false
+var navigation_generation: int = 0
+var legacy_navigation_step_scratch := NavigationStepResult.new()
 
 
 # 在节点进入场景树时调用，初始化寻路网格
@@ -60,6 +110,7 @@ func _ready() -> void:
 
 # 重新构建寻路网格数据
 func rebuild() -> void:
+	navigation_generation += 1
 	is_built = false
 	obstacle_tile_layer = get_node_or_null(obstacle_tile_layer_path) as TileMapLayer
 	_resolve_terrain_map()
@@ -217,12 +268,40 @@ func try_get_safe_navigation_step(
 	agent_half_extents: Vector2 = Vector2.ZERO,
 	traversal_types: int = DEFAULT_TRAVERSAL_TYPES
 ) -> Dictionary:
-	return _get_safe_navigation_step(
+	var result := legacy_navigation_step_scratch
+	_write_safe_navigation_step(
+		result,
+		null,
 		from_global_position,
 		to_global_position,
 		agent_half_extents,
 		traversal_types,
-		true
+		true,
+		false
+	)
+	return _navigation_step_result_to_dictionary(result)
+
+
+# Allocation-free form for hot consumers. `result` and `context` are owned and
+# reused by the caller; static targets reuse the already-resolved shared field.
+func try_write_safe_navigation_step(
+	result: NavigationStepResult,
+	context: FlowQueryContext,
+	from_global_position: Vector2,
+	to_global_position: Vector2,
+	agent_half_extents: Vector2 = Vector2.ZERO,
+	traversal_types: int = DEFAULT_TRAVERSAL_TYPES,
+	target_is_static: bool = false
+) -> void:
+	_write_safe_navigation_step(
+		result,
+		context,
+		from_global_position,
+		to_global_position,
+		agent_half_extents,
+		traversal_types,
+		true,
+		target_is_static
 	)
 
 
@@ -233,12 +312,38 @@ func get_safe_navigation_step(
 	agent_half_extents: Vector2 = Vector2.ZERO,
 	traversal_types: int = DEFAULT_TRAVERSAL_TYPES
 ) -> Dictionary:
-	return _get_safe_navigation_step(
+	var result := legacy_navigation_step_scratch
+	_write_safe_navigation_step(
+		result,
+		null,
 		from_global_position,
 		to_global_position,
 		agent_half_extents,
 		traversal_types,
+		false,
 		false
+	)
+	return _navigation_step_result_to_dictionary(result)
+
+
+func write_safe_navigation_step(
+	result: NavigationStepResult,
+	context: FlowQueryContext,
+	from_global_position: Vector2,
+	to_global_position: Vector2,
+	agent_half_extents: Vector2 = Vector2.ZERO,
+	traversal_types: int = DEFAULT_TRAVERSAL_TYPES,
+	target_is_static: bool = false
+) -> void:
+	_write_safe_navigation_step(
+		result,
+		context,
+		from_global_position,
+		to_global_position,
+		agent_half_extents,
+		traversal_types,
+		false,
+		target_is_static
 	)
 
 
@@ -299,6 +404,44 @@ func prewarm_agent_grid(
 	_get_or_create_agent_grid(normalized_extents, traversal_types)
 
 
+func prewarm_agent_grid_staged(
+	agent_half_extents: Vector2,
+	traversal_types: int = DEFAULT_TRAVERSAL_TYPES,
+	rows_per_frame: int = 8
+) -> void:
+	if not is_built:
+		return
+	var normalized_extents := _normalize_agent_half_extents(agent_half_extents)
+	if normalized_extents == Vector2.ZERO:
+		return
+	var cache_key := _get_agent_grid_cache_key(normalized_extents, traversal_types)
+	if agent_grid_cache.has(cache_key):
+		return
+
+	var agent_grid := AStarGrid2D.new()
+	agent_grid.region = astar_grid.region
+	agent_grid.cell_size = astar_grid.cell_size
+	agent_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
+	agent_grid.default_compute_heuristic = AStarGrid2D.HEURISTIC_MANHATTAN
+	agent_grid.default_estimate_heuristic = AStarGrid2D.HEURISTIC_MANHATTAN
+	agent_grid.update()
+	var completed_rows := 0
+	for y in range(agent_grid.region.position.y, agent_grid.region.end.y):
+		for x in range(agent_grid.region.position.x, agent_grid.region.end.x):
+			var cell := Vector2i(x, y)
+			agent_grid.set_point_solid(
+				cell,
+				_is_cell_blocked_for_agent(cell, normalized_extents, traversal_types)
+			)
+		completed_rows += 1
+		if completed_rows >= maxi(rows_per_frame, 1):
+			completed_rows = 0
+			await get_tree().process_frame
+			if not is_inside_tree() or not is_built:
+				return
+	agent_grid_cache[cache_key] = agent_grid
+
+
 func prewarm_flow_navigation_target(
 	to_global_position: Vector2,
 	agent_half_extents: Vector2 = Vector2.ZERO,
@@ -321,6 +464,31 @@ func prewarm_flow_navigation_target(
 		traversal_types,
 		_build_flow_field(target_cell, path_grid)
 	)
+
+
+func prewarm_flow_navigation_target_staged(
+	to_global_position: Vector2,
+	agent_half_extents: Vector2 = Vector2.ZERO,
+	traversal_types: int = DEFAULT_TRAVERSAL_TYPES,
+	cells_per_frame: int = 1024
+) -> void:
+	if not is_built:
+		return
+	var normalized_extents := _normalize_agent_half_extents(agent_half_extents)
+	var path_grid := _get_or_create_agent_grid(normalized_extents, traversal_types)
+	var target_cell := _get_closest_walkable_cell(_global_to_map(to_global_position), path_grid)
+	if target_cell == Vector2i.MAX:
+		return
+	if not _get_cached_flow_field(target_cell, normalized_extents, traversal_types).is_empty():
+		return
+	var field: Dictionary = await _build_flow_field_staged(
+		target_cell,
+		path_grid,
+		cells_per_frame
+	)
+	if field.is_empty() or not is_inside_tree() or not is_built:
+		return
+	_store_flow_field(target_cell, normalized_extents, traversal_types, field)
 
 
 func _refresh_path_query_budget_frame() -> void:
@@ -371,54 +539,112 @@ func _get_or_create_agent_grid(
 	return agent_grid
 
 
-func _get_safe_navigation_step(
+func _write_safe_navigation_step(
+	result: NavigationStepResult,
+	context: FlowQueryContext,
 	from_global_position: Vector2,
 	to_global_position: Vector2,
 	agent_half_extents: Vector2,
 	traversal_types: int,
-	uses_build_budget: bool
-) -> Dictionary:
+	uses_build_budget: bool,
+	target_is_static: bool
+) -> void:
+	if result == null:
+		return
 	if not is_built:
-		return _make_navigation_step_result(NavigationStepStatus.DEFERRED)
+		result.reset(NavigationStepStatus.DEFERRED)
+		return
 
 	var normalized_extents := _normalize_agent_half_extents(agent_half_extents)
-	var path_grid := _get_or_create_agent_grid(normalized_extents, traversal_types)
 	var original_from_cell := _global_to_map(from_global_position)
-	var original_target_cell := _global_to_map(to_global_position)
-	var target_cell := _get_closest_walkable_cell(original_target_cell, path_grid)
-	if target_cell == Vector2i.MAX:
-		return _make_navigation_step_result(
-			NavigationStepStatus.UNREACHABLE,
-			original_from_cell,
-			original_target_cell
-		)
+	var original_target_cell := Vector2i.MAX
+	var target_cell := Vector2i.MAX
+	var path_grid: AStarGrid2D = null
+	var next_cells_variant: Variant = null
+	var distances_variant: Variant = null
+	if _can_reuse_flow_query_context(
+		context,
+		to_global_position,
+		normalized_extents,
+		traversal_types,
+		target_is_static
+	):
+		original_target_cell = context.original_target_cell
+		target_cell = context.resolved_target_cell
+		path_grid = context.path_grid
+		next_cells_variant = context.next_cells
+		distances_variant = context.distances
+	else:
+		original_target_cell = _global_to_map(to_global_position)
+		path_grid = _get_or_create_agent_grid(normalized_extents, traversal_types)
+		target_cell = _get_closest_walkable_cell(original_target_cell, path_grid)
+		if target_cell == Vector2i.MAX:
+			result.reset(
+				NavigationStepStatus.UNREACHABLE,
+				original_from_cell,
+				original_target_cell
+			)
+			if context != null:
+				context.invalidate()
+			return
 
-	var field := _get_cached_flow_field(target_cell, normalized_extents, traversal_types)
-	if field.is_empty():
-		if uses_build_budget:
-			_refresh_flow_field_budget_frame()
-			if flow_field_builds_used_this_frame >= maxi(max_flow_field_builds_per_physics_frame, 1):
-				var deferred_result := _make_navigation_step_result(
-					NavigationStepStatus.DEFERRED,
-					original_from_cell,
-					original_target_cell
-				)
-				deferred_result["resolved_target_cell"] = target_cell
-				return deferred_result
-			flow_field_builds_used_this_frame += 1
-		field = _build_flow_field(target_cell, path_grid)
-		_store_flow_field(target_cell, normalized_extents, traversal_types, field)
+		var field := _get_cached_flow_field(target_cell, normalized_extents, traversal_types)
+		if field.is_empty():
+			if uses_build_budget:
+				_refresh_flow_field_budget_frame()
+				if flow_field_builds_used_this_frame >= maxi(max_flow_field_builds_per_physics_frame, 1):
+					result.reset(
+						NavigationStepStatus.DEFERRED,
+						original_from_cell,
+						original_target_cell
+					)
+					result.resolved_target_cell = target_cell
+					if context != null:
+						context.invalidate()
+					return
+				flow_field_builds_used_this_frame += 1
+			field = _build_flow_field(target_cell, path_grid)
+			_store_flow_field(target_cell, normalized_extents, traversal_types, field)
 
-	var next_cells := field.get("next_cells", {}) as Dictionary
-	var distances := field.get("distances", {}) as Dictionary
-	if next_cells.is_empty():
-		var empty_field_result := _make_navigation_step_result(
-			NavigationStepStatus.UNREACHABLE,
-			original_from_cell,
-			original_target_cell
-		)
-		empty_field_result["resolved_target_cell"] = target_cell
-		return empty_field_result
+		if field.is_empty():
+			result.reset(
+				NavigationStepStatus.UNREACHABLE,
+				original_from_cell,
+				original_target_cell
+			)
+			result.resolved_target_cell = target_cell
+			if context != null:
+				context.invalidate()
+			return
+		next_cells_variant = field["next_cells"]
+		distances_variant = field["distances"]
+		var field_next_cells := next_cells_variant as Dictionary
+		var field_distances := distances_variant as Dictionary
+		if field_next_cells.is_empty():
+			result.reset(
+				NavigationStepStatus.UNREACHABLE,
+				original_from_cell,
+				original_target_cell
+			)
+			result.resolved_target_cell = target_cell
+			if context != null:
+				context.invalidate()
+			return
+		if context != null:
+			_bind_flow_query_context(
+				context,
+				to_global_position,
+				original_target_cell,
+				target_cell,
+				normalized_extents,
+				traversal_types,
+				path_grid,
+				field_next_cells,
+				field_distances,
+				target_is_static
+			)
+	var next_cells := next_cells_variant as Dictionary
+	var distances := distances_variant as Dictionary
 
 	var from_cell := original_from_cell
 	var used_start_recovery := false
@@ -436,47 +662,48 @@ func _get_safe_navigation_step(
 		from_cell = Vector2i.MAX
 
 	if from_cell == Vector2i.MAX or not next_cells.has(from_cell):
-		var unreachable_result := _make_navigation_step_result(
+		result.reset(
 			NavigationStepStatus.UNREACHABLE,
 			original_from_cell,
 			original_target_cell
 		)
-		unreachable_result["resolved_target_cell"] = target_cell
-		return unreachable_result
+		result.resolved_target_cell = target_cell
+		return
 
 	var route_distance := int(distances.get(from_cell, -1))
 	var flow_next_cell: Vector2i = next_cells.get(from_cell, Vector2i.MAX)
 	if flow_next_cell == Vector2i.MAX:
-		return _make_navigation_step_result(
+		result.reset(
 			NavigationStepStatus.UNREACHABLE,
 			original_from_cell,
 			original_target_cell
 		)
+		return
 
-	var result := _make_navigation_step_result(
+	result.reset(
 		NavigationStepStatus.READY,
 		original_from_cell,
 		original_target_cell
 	)
-	result["resolved_from_cell"] = from_cell
-	result["resolved_target_cell"] = target_cell
+	result.resolved_from_cell = from_cell
+	result.resolved_target_cell = target_cell
 	# next_cell always describes the waypoint returned for this decision. During
 	# recovery that is the one adjacent reachable cell; the following flow step
 	# is deliberately deferred until the body has safely entered it.
-	result["next_cell"] = from_cell if used_start_recovery else flow_next_cell
-	result["used_start_recovery"] = used_start_recovery
-	result["is_complete_route"] = true
-	result["remaining_cell_distance"] = route_distance + (1 if used_start_recovery else 0)
+	result.next_cell = from_cell if used_start_recovery else flow_next_cell
+	result.used_start_recovery = used_start_recovery
+	result.is_complete_route = true
+	result.remaining_cell_distance = route_distance + (1 if used_start_recovery else 0)
 
 	if used_start_recovery:
 		# Recovery is deliberately limited to one cardinal cell. Returning a
 		# farther cell would ask CharacterBody2D to cross unknown collision space.
-		result["waypoint"] = _map_to_global(from_cell)
-		return result
+		result.waypoint = _map_to_global(from_cell)
+		return
 
 	if flow_next_cell != from_cell:
-		result["waypoint"] = _map_to_global(flow_next_cell)
-		return result
+		result.waypoint = _map_to_global(flow_next_cell)
+		return
 
 	var resolved_target_position := _map_to_global(target_cell)
 	if _is_global_position_walkable_for_agent(
@@ -484,33 +711,74 @@ func _get_safe_navigation_step(
 		normalized_extents,
 		traversal_types
 	):
-		result["waypoint"] = to_global_position
+		result.waypoint = to_global_position
 		if from_global_position.distance_squared_to(to_global_position) <= 0.25:
-			result["status"] = NavigationStepStatus.ARRIVED
-		return result
+			result.status = NavigationStepStatus.ARRIVED
+		return
 
-	result["waypoint"] = resolved_target_position
+	result.waypoint = resolved_target_position
 	if from_global_position.distance_squared_to(resolved_target_position) <= 0.25:
-		result["status"] = NavigationStepStatus.ARRIVED
-	return result
+		result.status = NavigationStepStatus.ARRIVED
 
 
-func _make_navigation_step_result(
-	status: NavigationStepStatus,
-	from_cell: Vector2i = Vector2i.MAX,
-	target_cell: Vector2i = Vector2i.MAX
-) -> Dictionary:
+func _can_reuse_flow_query_context(
+	context: FlowQueryContext,
+	to_global_position: Vector2,
+	normalized_extents: Vector2,
+	traversal_types: int,
+	target_is_static: bool
+) -> bool:
+	if context == null or context.generation != navigation_generation:
+		return false
+	if context.path_grid == null or context.next_cells.is_empty():
+		return false
+	if (
+		context.normalized_extents != normalized_extents
+		or context.traversal_types != traversal_types
+		or context.target_is_static != target_is_static
+	):
+		return false
+	if target_is_static:
+		return context.requested_target_position == to_global_position
+	return context.original_target_cell == _global_to_map(to_global_position)
+
+
+func _bind_flow_query_context(
+	context: FlowQueryContext,
+	to_global_position: Vector2,
+	original_target_cell: Vector2i,
+	resolved_target_cell: Vector2i,
+	normalized_extents: Vector2,
+	traversal_types: int,
+	path_grid: AStarGrid2D,
+	next_cells: Dictionary,
+	distances: Dictionary,
+	target_is_static: bool
+) -> void:
+	context.generation = navigation_generation
+	context.target_is_static = target_is_static
+	context.requested_target_position = to_global_position
+	context.original_target_cell = original_target_cell
+	context.resolved_target_cell = resolved_target_cell
+	context.normalized_extents = normalized_extents
+	context.traversal_types = traversal_types
+	context.path_grid = path_grid
+	context.next_cells = next_cells
+	context.distances = distances
+
+
+func _navigation_step_result_to_dictionary(result: NavigationStepResult) -> Dictionary:
 	return {
-		"status": status,
-		"waypoint": Vector2.ZERO,
-		"from_cell": from_cell,
-		"resolved_from_cell": Vector2i.MAX,
-		"target_cell": target_cell,
-		"resolved_target_cell": Vector2i.MAX,
-		"next_cell": Vector2i.MAX,
-		"used_start_recovery": false,
-		"is_complete_route": false,
-		"remaining_cell_distance": -1,
+		"status": result.status,
+		"waypoint": result.waypoint,
+		"from_cell": result.from_cell,
+		"resolved_from_cell": result.resolved_from_cell,
+		"target_cell": result.target_cell,
+		"resolved_target_cell": result.resolved_target_cell,
+		"next_cell": result.next_cell,
+		"used_start_recovery": result.used_start_recovery,
+		"is_complete_route": result.is_complete_route,
+		"remaining_cell_distance": result.remaining_cell_distance,
 	}
 
 
@@ -544,17 +812,21 @@ func _get_flow_navigation_waypoint(
 ) -> Variant:
 	# Compatibility wrapper: legacy flow callers inherit the complete-route and
 	# one-cardinal-cell recovery guarantees of the safe-step API.
-	var step := _get_safe_navigation_step(
+	var step := legacy_navigation_step_scratch
+	_write_safe_navigation_step(
+		step,
+		null,
 		from_global_position,
 		to_global_position,
 		agent_half_extents,
 		traversal_types,
-		uses_build_budget
+		uses_build_budget,
+		false
 	)
-	var status := int(step.get("status", NavigationStepStatus.UNREACHABLE))
+	var status := step.status
 	if status != NavigationStepStatus.READY and status != NavigationStepStatus.ARRIVED:
 		return null
-	return step.get("waypoint", null)
+	return step.waypoint
 
 
 func _build_flow_field(target_cell: Vector2i, path_grid: AStarGrid2D) -> Dictionary:
@@ -587,6 +859,43 @@ func _build_flow_field(target_cell: Vector2i, path_grid: AStarGrid2D) -> Diction
 	}
 
 
+func _build_flow_field_staged(
+	target_cell: Vector2i,
+	path_grid: AStarGrid2D,
+	cells_per_frame: int
+) -> Dictionary:
+	var next_cells: Dictionary = {}
+	var distances: Dictionary = {}
+	var pending_cells: Array[Vector2i] = []
+	var pending_cell_index := 0
+	var processed_this_frame := 0
+	next_cells[target_cell] = target_cell
+	distances[target_cell] = 0
+	pending_cells.append(target_cell)
+	while pending_cell_index < pending_cells.size():
+		var current_cell := pending_cells[pending_cell_index]
+		pending_cell_index += 1
+		var current_distance := int(distances[current_cell])
+		for direction in FLOW_CARDINAL_DIRECTIONS:
+			var neighbor: Vector2i = current_cell + direction
+			if distances.has(neighbor) or not _is_cell_walkable(neighbor, path_grid):
+				continue
+			distances[neighbor] = current_distance + 1
+			next_cells[neighbor] = current_cell
+			pending_cells.append(neighbor)
+		processed_this_frame += 1
+		if processed_this_frame >= maxi(cells_per_frame, 1):
+			processed_this_frame = 0
+			await get_tree().process_frame
+			if not is_inside_tree() or not is_built:
+				return {}
+	return {
+		"target_cell": target_cell,
+		"next_cells": next_cells,
+		"distances": distances,
+	}
+
+
 func _get_cached_flow_field(
 	target_cell: Vector2i,
 	agent_half_extents: Vector2,
@@ -597,8 +906,11 @@ func _get_cached_flow_field(
 		agent_half_extents,
 		traversal_types
 	)
-	var field := flow_field_cache.get(cache_key, {}) as Dictionary
-	if field.is_empty():
+	var field_variant: Variant = flow_field_cache.get(cache_key)
+	if field_variant == null:
+		return {}
+	var field := field_variant as Dictionary
+	if field == null or field.is_empty():
 		return {}
 	flow_field_cache_order.erase(cache_key)
 	flow_field_cache_order.append(cache_key)

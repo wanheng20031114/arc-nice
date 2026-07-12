@@ -58,6 +58,8 @@ func _run() -> void:
 		"_rpc_sync_player_list",
 		"_rpc_start_game",
 		"_rpc_host_game_ready",
+		"_rpc_report_game_loaded",
+		"_rpc_game_load_progress",
 	]:
 		_expect(
 			main_net_manager_rpcs.has(required_method),
@@ -77,11 +79,12 @@ func _run() -> void:
 		)
 	if main_net_manager_rpcs.has("_rpc_start_game"):
 		_expect(
-			String(main_net_manager_rpcs["_rpc_start_game"]).contains("game_mode:int=0"),
-			"Start-game sync must repeat the authoritative game mode."
+			String(main_net_manager_rpcs["_rpc_start_game"]).contains("game_mode:int=0")
+			and String(main_net_manager_rpcs["_rpc_start_game"]).contains("session_id:int=0"),
+			"Start-game sync must carry both authoritative mode and loading session."
 		)
 	_test_registration_protocol_handshake_source()
-	_expect(NetConstants.PROTOCOL_VERSION == 3, "Game-mode multiplayer requires protocol version 3.")
+	_expect(NetConstants.PROTOCOL_VERSION == 4, "Loading-barrier multiplayer requires protocol version 4.")
 
 	if failures.is_empty():
 		print("RELAY_RPC_PARITY_SMOKE_TEST_OK")

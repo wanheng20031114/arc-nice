@@ -32,10 +32,20 @@ func _rpc_sync_player_list(
 
 
 @rpc("authority", "call_remote", "reliable", 0)
-func _rpc_start_game(game_mode: int = 0) -> void:
+func _rpc_start_game(game_mode: int = 0, session_id: int = 0) -> void:
 	pass
 
 
 @rpc("authority", "call_remote", "reliable", 0)
-func _rpc_host_game_ready() -> void:
+func _rpc_host_game_ready(session_id: int = 0) -> void:
+	pass
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func _rpc_report_game_loaded(session_id: int) -> void:
+	pass
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _rpc_game_load_progress(session_id: int, ready_count: int, total_count: int) -> void:
 	pass

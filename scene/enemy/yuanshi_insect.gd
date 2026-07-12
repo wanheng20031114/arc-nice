@@ -171,6 +171,16 @@ func _drop_xirang() -> void:
 	var drop_parent := get_parent()
 	if drop_parent == null:
 		return
+	var aggregate_angle := random_generator.randf_range(0.0, TAU)
+	var aggregate_distance := random_generator.randf_range(8.0, 18.0)
+	var aggregate_offset := Vector2.RIGHT.rotated(aggregate_angle) * aggregate_distance
+	if _request_xirang_reward(
+		config.xirang_drop_amount,
+		reward_player,
+		global_position,
+		aggregate_offset
+	):
+		return
 
 	var orb_count := mini(config.xirang_drop_amount, MAX_XIRANG_ORBS_PER_ENEMY)
 	var base_value := floori(float(config.xirang_drop_amount) / float(orb_count))

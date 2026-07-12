@@ -6,7 +6,7 @@
 [ext_resource type="SpriteFrames" uid="uid://bynglissk1f1v" path="res://resources/animation/capoo_mage.tres" id="4_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_rrbks"]
-resource_local_to_scene = true
+resource_local_to_scene = false
 shader = ExtResource("3_shader")
 shader_parameter/blink_enabled = false
 shader_parameter/blink_speed = 12.0

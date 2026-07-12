@@ -56,6 +56,8 @@ signal multiplayer_plant_placement_requested(
 	anchor: Vector2i
 )
 signal return_to_lobby_requested
+signal runtime_preparation_progress_changed(stage: String, completed: int, total: int)
+signal runtime_preparation_completed
 
 enum RuntimeMode {
 	SINGLEPLAYER,
@@ -85,6 +87,12 @@ var peer_players: Dictionary = {}
 var multiplayer_pickups: Dictionary = {}
 var multiplayer_enemy_ids_by_instance: Dictionary = {}
 var multiplayer_enemies_by_net_id: Dictionary = {}
+var runtime_activation_deferred := false
+var runtime_activated := false
+var runtime_preparation_complete := false
+var runtime_preparation_stage := "等待场景初始化"
+var runtime_preparation_completed_steps := 0
+var runtime_preparation_total_steps := 1
 
 
 @abstract func configure_multiplayer(
@@ -138,6 +146,102 @@ var multiplayer_enemies_by_net_id: Dictionary = {}
 	current_xirang: int
 ) -> void
 @abstract func show_debug_collectible_grant_result(config_path: String, success: bool) -> void
+
+
+func defer_runtime_activation() -> void:
+	runtime_activation_deferred = true
+	runtime_activated = false
+	process_mode = Node.PROCESS_MODE_DISABLED
+
+
+func activate_runtime() -> void:
+	if runtime_activated:
+		return
+	runtime_activation_deferred = false
+	runtime_activated = true
+	process_mode = Node.PROCESS_MODE_INHERIT
+	_on_runtime_activated()
+
+
+func _on_runtime_activated() -> void:
+	pass
+
+
+func update_runtime_preparation_progress(stage: String, completed: int, total: int) -> void:
+	runtime_preparation_stage = stage
+	runtime_preparation_total_steps = maxi(total, 1)
+	runtime_preparation_completed_steps = clampi(
+		completed,
+		0,
+		runtime_preparation_total_steps
+	)
+	runtime_preparation_progress_changed.emit(
+		runtime_preparation_stage,
+		runtime_preparation_completed_steps,
+		runtime_preparation_total_steps
+	)
+
+
+func mark_runtime_preparation_complete() -> void:
+	if runtime_preparation_complete:
+		return
+	runtime_preparation_complete = true
+	update_runtime_preparation_progress("战场准备完成", 1, 1)
+	runtime_preparation_completed.emit()
+
+
+func is_runtime_preparation_complete() -> bool:
+	return runtime_preparation_complete
+
+
+func get_runtime_preparation_progress() -> Dictionary:
+	return {
+		"stage": runtime_preparation_stage,
+		"completed": runtime_preparation_completed_steps,
+		"total": runtime_preparation_total_steps,
+	}
+
+
+func prewarm_shared_runtime_data() -> void:
+	if LuoxiMerchant.is_collectible_cache_ready():
+		return
+	var config_paths := LuoxiMerchant.get_collectible_config_paths()
+	const CONFIGS_PER_FRAME := 8
+	var total_batches := maxi(ceili(float(config_paths.size()) / CONFIGS_PER_FRAME), 1)
+	var completed_batches := 0
+	for batch_start in range(0, config_paths.size(), CONFIGS_PER_FRAME):
+		var batch_end := mini(batch_start + CONFIGS_PER_FRAME, config_paths.size())
+		for config_index in range(batch_start, batch_end):
+			var config := load(config_paths[config_index]) as PickupConfig
+			LuoxiMerchant.cache_collectible_config(config)
+		completed_batches += 1
+		update_runtime_preparation_progress(
+			"缓存收藏品配置…",
+			completed_batches,
+			total_batches
+		)
+		await get_tree().process_frame
+		if not is_inside_tree():
+			return
+	LuoxiMerchant.finish_collectible_cache_warmup()
+
+
+func prepare_shared_runtime_data_and_complete() -> void:
+	await prewarm_shared_runtime_data()
+	if is_inside_tree():
+		mark_runtime_preparation_complete()
+
+
+func spawn_xirang_reward(
+	amount: int,
+	target_player: Player,
+	spawn_position: Vector2,
+	landing_offset: Vector2 = Vector2.ZERO
+) -> bool:
+	var drop_manager := get_node_or_null("XirangDropManager") as XirangDropManager
+	if drop_manager == null:
+		return false
+	return drop_manager.spawn_reward(amount, target_player, spawn_position, landing_offset)
 
 
 func supports_tower_defense() -> bool:

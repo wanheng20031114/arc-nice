@@ -8,7 +8,13 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 	pass
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
-func _rpc_receive_enemy_snapshot(host_timestamp: float, data: PackedByteArray) -> void:
+func _rpc_receive_enemy_snapshot(
+	host_timestamp: float,
+	data: PackedByteArray,
+	batch_id: int = 0,
+	chunk_index: int = 0,
+	chunk_count: int = 1
+) -> void:
 	pass
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)

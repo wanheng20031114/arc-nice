@@ -39,6 +39,7 @@ func _run() -> void:
 	await _test_fireball_impact_damage_and_release()
 	await _test_sniper_lock_cancel_and_damage()
 	await _test_smg_scatter_fire()
+	await _test_smg_no_pathfinder_direct_chase_respects_world_wall()
 	await _test_proxy_action_visuals()
 	_test_multiplayer_projectile_registry()
 	_test_wave_entries()
@@ -287,6 +288,27 @@ func _test_smg_scatter_fire() -> void:
 	if not spawned_smg_bullets.is_empty() and is_instance_valid(spawned_smg_bullets[0]):
 		_expect(is_equal_approx(spawned_smg_bullets[0].max_lifetime, SMG_CONFIG.projectile_lifetime), "SMG bullet lifetime mismatch.")
 	smg.queue_free()
+	player.queue_free()
+	await physics_frame
+
+
+func _test_smg_no_pathfinder_direct_chase_respects_world_wall() -> void:
+	spawned_smg_bullets.clear()
+	var player := _spawn_player(Vector2(140.0, 0.0), 200)
+	var wall := _spawn_wall(Vector2(70.0, 0.0), 20.0)
+	await physics_frame
+	var smg := _spawn_smg(Vector2.ZERO, player)
+	await _wait_physics_frames(12)
+	_expect(
+		spawned_smg_bullets.is_empty(),
+		"SMG Capoo must not use no-pathfinder direct chase through a world wall."
+	)
+	_expect(
+		smg.global_position.distance_squared_to(Vector2.ZERO) < 0.01,
+		"SMG Capoo must remain stopped when its no-pathfinder player line is blocked."
+	)
+	smg.queue_free()
+	wall.queue_free()
 	player.queue_free()
 	await physics_frame
 

@@ -47,6 +47,13 @@ func _run() -> void:
 			pathfinder,
 			enemy_configs[0],
 			spawn_points[0],
+			targets[0]
+		)
+		_verify_far_home_uses_safe_direct_approach(
+			game,
+			pathfinder,
+			enemy_configs[0],
+			spawn_points[0],
 			targets[1]
 		)
 		await _verify_spawn_recovery_motion(game, pathfinder, enemy_configs)
@@ -122,6 +129,18 @@ func _verify_config_navigation_matrix(
 				half_extents,
 				enemy_config.terrain_traversal_types
 			)
+			var fast_result := GridPathfinder.NavigationStepResult.new()
+			var fast_context := GridPathfinder.FlowQueryContext.new()
+			pathfinder.write_safe_navigation_step(
+				fast_result,
+				fast_context,
+				spawn_point.global_position,
+				target.global_position,
+				half_extents,
+				enemy_config.terrain_traversal_types,
+				target != game.player
+			)
+			_expect_navigation_step_equivalent(step, fast_result, route_label)
 			var status := int(step.get("status", GridPathfinder.NavigationStepStatus.UNREACHABLE))
 			var safe_step_ready := (
 				status == GridPathfinder.NavigationStepStatus.READY
@@ -248,15 +267,113 @@ func _verify_deferred_does_not_direct_fallback(
 		enemy.get_configured_body_collision_half_extents(),
 		enemy_config.terrain_traversal_types
 	)
+	var fast_deferred_result := GridPathfinder.NavigationStepResult.new()
+	var fast_deferred_context := GridPathfinder.FlowQueryContext.new()
+	pathfinder.try_write_safe_navigation_step(
+		fast_deferred_result,
+		fast_deferred_context,
+		enemy.global_position,
+		objective.global_position,
+		enemy.get_configured_body_collision_half_extents(),
+		enemy_config.terrain_traversal_types,
+		true
+	)
 	_expect(
 		int(deferred_step.get("status", -1)) == GridPathfinder.NavigationStepStatus.DEFERRED,
 		"Exhausted flow build budget must produce explicit DEFERRED status."
+	)
+	_expect_navigation_step_equivalent(
+		deferred_step,
+		fast_deferred_result,
+		"Exhausted flow build budget"
 	)
 	var move_direction := enemy.call("_get_navigation_move_direction", 1.0 / 60.0) as Vector2
 	_expect(
 		move_direction == Vector2.ZERO,
 		"DEFERRED with no previously verified step must stop instead of direct-fallback chasing."
 	)
+	_expect(
+		not bool(enemy.call("_should_update_navigation_direction", objective)),
+		"A zero/deferred navigation result must wait for its next query interval instead of retrying every frame."
+	)
+	pathfinder.flow_field_budget_frame = -1
+	pathfinder.flow_field_builds_used_this_frame = 0
+	pathfinder.flow_field_cache.clear()
+	pathfinder.flow_field_cache_order.clear()
+	enemy.free()
+
+
+func _verify_far_home_uses_safe_direct_approach(
+	game: GameTowerDefense,
+	pathfinder: GridPathfinder,
+	enemy_config: EnemyConfig,
+	spawn_point: Marker2D,
+	objective: Node2D
+) -> void:
+	var enemy := enemy_config.enemy_scene.instantiate() as Enemy
+	if enemy == null or not enemy.has_method("_get_navigation_move_direction"):
+		if enemy != null:
+			enemy.free()
+		return
+	game.enemy_container.add_child(enemy)
+	enemy.global_position = spawn_point.global_position
+	enemy.setup(enemy_config, game.player, pathfinder)
+	enemy.set_objective_target(objective)
+	enemy.set_physics_process(false)
+	enemy.call("_clear_navigation_path")
+
+	_expect(
+		enemy.global_position.distance_to(objective.global_position)
+		>= Enemy.FAR_STATIC_OBJECTIVE_DISTANCE,
+		"Far-Home navigation probe must begin beyond the direct-approach threshold."
+	)
+	pathfinder.flow_field_cache.clear()
+	pathfinder.flow_field_cache_order.clear()
+	pathfinder.flow_field_budget_frame = Engine.get_physics_frames()
+	pathfinder.flow_field_builds_used_this_frame = maxi(
+		pathfinder.max_flow_field_builds_per_physics_frame,
+		1
+	)
+	var move_direction := enemy.call("_get_navigation_move_direction", 1.0 / 60.0) as Vector2
+	_expect(
+		move_direction != Vector2.ZERO and enemy.cached_navigation_uses_direct_objective_approach,
+		"A distant static Home target must use the cheap direct-approach tier before flow lookup."
+	)
+	if move_direction != Vector2.ZERO:
+		var probe_distance := float(enemy.call("_get_far_direct_objective_probe_distance"))
+		var minimum_interval_distance := (
+			enemy.get_effective_move_speed()
+			* float(Enemy.FAR_STATIC_OBJECTIVE_UPDATE_INTERVAL_FRAMES)
+			/ float(maxi(Engine.physics_ticks_per_second, 1))
+		)
+		_expect(
+			probe_distance > minimum_interval_distance,
+			"Far direct movement must sweep beyond its complete low-frequency travel interval."
+		)
+		_expect(
+			not enemy.test_move(
+				enemy.global_transform,
+				move_direction * probe_distance
+			),
+			"The far direct-approach tier must collision-test its complete travel interval."
+		)
+		var position_before_linear_step := enemy.global_position
+		enemy.velocity = move_direction * enemy.get_effective_move_speed()
+		enemy.call("_move_until_player_contact")
+		_expect(
+			enemy.global_position.distance_to(position_before_linear_step) > 0.0,
+			"A verified far-Home route must use lightweight linear movement."
+		)
+		_expect(
+			bool(enemy.call("_can_use_far_static_objective_linear_movement")),
+			"The lightweight movement tier must remain exclusive to a verified far static objective."
+		)
+	_expect(
+		int(enemy.call("_get_navigation_update_interval_frames", objective))
+		>= Enemy.FAR_STATIC_OBJECTIVE_UPDATE_INTERVAL_FRAMES,
+		"Distant static Home targets must use the lower-frequency navigation tier."
+	)
+
 	pathfinder.flow_field_budget_frame = -1
 	pathfinder.flow_field_builds_used_this_frame = 0
 	pathfinder.flow_field_cache.clear()
@@ -424,6 +541,28 @@ func _verify_spawn_recovery_motion(
 		)
 		enemy.queue_free()
 	await physics_frame
+
+
+func _expect_navigation_step_equivalent(
+	legacy: Dictionary,
+	fast: GridPathfinder.NavigationStepResult,
+	label: String
+) -> void:
+	_expect(
+		int(legacy.get("status", -1)) == fast.status
+		and (legacy.get("waypoint", Vector2.ZERO) as Vector2).is_equal_approx(fast.waypoint)
+		and (legacy.get("from_cell", Vector2i.MAX) as Vector2i) == fast.from_cell
+		and (legacy.get("resolved_from_cell", Vector2i.MAX) as Vector2i)
+			== fast.resolved_from_cell
+		and (legacy.get("target_cell", Vector2i.MAX) as Vector2i) == fast.target_cell
+		and (legacy.get("resolved_target_cell", Vector2i.MAX) as Vector2i)
+			== fast.resolved_target_cell
+		and (legacy.get("next_cell", Vector2i.MAX) as Vector2i) == fast.next_cell
+		and bool(legacy.get("used_start_recovery", false)) == fast.used_start_recovery
+		and bool(legacy.get("is_complete_route", false)) == fast.is_complete_route
+		and int(legacy.get("remaining_cell_distance", -1)) == fast.remaining_cell_distance,
+		"%s reusable safe-step result must exactly match the legacy Dictionary." % label
+	)
 
 
 func _manhattan_distance(a: Vector2i, b: Vector2i) -> int:

@@ -260,21 +260,42 @@ static func encode_enemy_snapshot(
 	previous: EnemyState,
 ) -> PackedByteArray:
 	var buf := StreamPeerBuffer.new()
+	_write_enemy_snapshot(buf, current, previous)
+	return buf.data_array
 
-	buf.put_32(current.net_id)
 
-	var mask := 0
+static func _get_enemy_change_mask(current: EnemyState, previous: EnemyState) -> int:
 	if previous == null:
-		mask = FULL_ENEMY_MASK
-	else:
-		if not current.position.is_equal_approx(previous.position):
-			mask |= MASK_POSITION
-		if not current.velocity.is_equal_approx(previous.velocity):
-			mask |= MASK_VELOCITY
-		if current.health != previous.health:
-			mask |= MASK_HEALTH
-		if current.is_dead != previous.is_dead:
-			mask |= MASK_IS_DEAD
+		return FULL_ENEMY_MASK
+	var mask := 0
+	if (
+		_pack_scaled_i16(current.position.x, POSITION_SCALE)
+		!= _pack_scaled_i16(previous.position.x, POSITION_SCALE)
+		or _pack_scaled_i16(current.position.y, POSITION_SCALE)
+		!= _pack_scaled_i16(previous.position.y, POSITION_SCALE)
+	):
+		mask |= MASK_POSITION
+	if (
+		_pack_scaled_i16(current.velocity.x, VELOCITY_SCALE)
+		!= _pack_scaled_i16(previous.velocity.x, VELOCITY_SCALE)
+		or _pack_scaled_i16(current.velocity.y, VELOCITY_SCALE)
+		!= _pack_scaled_i16(previous.velocity.y, VELOCITY_SCALE)
+	):
+		mask |= MASK_VELOCITY
+	if current.health != previous.health:
+		mask |= MASK_HEALTH
+	if current.is_dead != previous.is_dead:
+		mask |= MASK_IS_DEAD
+	return mask
+
+
+static func _write_enemy_snapshot(
+	buf: StreamPeerBuffer,
+	current: EnemyState,
+	previous: EnemyState
+) -> void:
+	buf.put_32(current.net_id)
+	var mask := _get_enemy_change_mask(current, previous)
 
 	buf.put_u8(mask)
 
@@ -289,8 +310,6 @@ static func encode_enemy_snapshot(
 	if mask & MASK_IS_DEAD:
 		buf.put_u8(1 if current.is_dead else 0)
 
-	return buf.data_array
-
 
 ## 解码敌人快照
 static func decode_enemy_snapshot(
@@ -304,7 +323,11 @@ static func decode_enemy_snapshot(
 	var buf := StreamPeerBuffer.new()
 	buf.data_array = data
 	buf.seek(offset)
+	_read_enemy_snapshot(buf, target)
+	return buf.get_position()
 
+
+static func _read_enemy_snapshot(buf: StreamPeerBuffer, target: EnemyState) -> void:
 	target.net_id = buf.get_32()
 	var mask: int = buf.get_u8()
 
@@ -318,8 +341,6 @@ static func decode_enemy_snapshot(
 		target.health = buf.get_32()
 	if mask & MASK_IS_DEAD:
 		target.is_dead = buf.get_u8() != 0
-
-	return buf.get_position()
 
 
 static func _get_enemy_snapshot_size(data: PackedByteArray, offset: int) -> int:
@@ -398,14 +419,18 @@ static func _copy_player_state(source: PlayerState) -> PlayerState:
 
 static func _copy_enemy_state(source: EnemyState) -> EnemyState:
 	var copy := EnemyState.new()
-	if source == null:
-		return copy
-	copy.net_id = source.net_id
-	copy.position = source.position
-	copy.velocity = source.velocity
-	copy.health = source.health
-	copy.is_dead = source.is_dead
+	_copy_enemy_state_into(source, copy)
 	return copy
+
+
+static func _copy_enemy_state_into(source: EnemyState, target: EnemyState) -> void:
+	if source == null or target == null:
+		return
+	target.net_id = source.net_id
+	target.position = source.position
+	target.velocity = source.velocity
+	target.health = source.health
+	target.is_dead = source.is_dead
 
 
 static func _apply_player_delta(target: PlayerState, delta: PlayerState, mask: int) -> void:
@@ -588,39 +613,81 @@ func decode_player_snapshots_with_baseline(data: PackedByteArray) -> Array[Playe
 
 ## 编码一批敌人快照
 func encode_all_enemy_snapshots(enemies: Array[EnemyState]) -> PackedByteArray:
-	var buf := PackedByteArray()
-	# 敌人数量用 uint16 表示（最多 65535）
 	var stream := StreamPeerBuffer.new()
+	# 敌人数量用 uint16 表示（最多 65535）
 	stream.put_u16(enemies.size())
-	buf.append_array(stream.data_array)
-
 	for enemy_state: EnemyState in enemies:
-		buf.append_array(encode_enemy_snapshot(enemy_state, null))
-	return buf
+		_write_enemy_snapshot(stream, enemy_state, null)
+	return stream.data_array
 
 
 ## 按接收端编码敌人快照。force_keyframe=true 时全部实体写 full。
 func encode_enemy_snapshots_for_peer(
 	receiver_peer_id: int,
 	enemies: Array[EnemyState],
+	force_keyframe: bool = false,
+	prune_baseline: bool = true
+) -> PackedByteArray:
+	return _encode_enemy_snapshot_range_for_peer(
+		receiver_peer_id,
+		enemies,
+		0,
+		enemies.size(),
+		force_keyframe,
+		prune_baseline
+	)
+
+
+## 编码连续敌人区间，供多人分块发送使用；分块调用方在整批完成后统一 prune。
+func encode_enemy_snapshot_range_for_peer(
+	receiver_peer_id: int,
+	enemies: Array[EnemyState],
+	start_index: int,
+	entity_count: int,
 	force_keyframe: bool = false
 ) -> PackedByteArray:
-	var buf := PackedByteArray()
+	return _encode_enemy_snapshot_range_for_peer(
+		receiver_peer_id,
+		enemies,
+		start_index,
+		entity_count,
+		force_keyframe,
+		false
+	)
+
+
+func _encode_enemy_snapshot_range_for_peer(
+	receiver_peer_id: int,
+	enemies: Array[EnemyState],
+	start_index: int,
+	entity_count: int,
+	force_keyframe: bool,
+	prune_baseline: bool
+) -> PackedByteArray:
+	var resolved_start := clampi(start_index, 0, enemies.size())
+	var resolved_count := clampi(entity_count, 0, enemies.size() - resolved_start)
 	var stream := StreamPeerBuffer.new()
-	stream.put_u16(enemies.size())
-	buf.append_array(stream.data_array)
+	stream.put_u16(resolved_count)
 
 	var baseline := _get_enemy_send_baseline(receiver_peer_id)
-	var live_ids: Dictionary = {}
-	for enemy_state: EnemyState in enemies:
-		live_ids[enemy_state.net_id] = true
+	for state_index in range(resolved_start, resolved_start + resolved_count):
+		var enemy_state: EnemyState = enemies[state_index]
 		var previous: EnemyState = null
 		if not force_keyframe:
 			previous = baseline.get(enemy_state.net_id) as EnemyState
-		buf.append_array(encode_enemy_snapshot(enemy_state, previous))
-		baseline[enemy_state.net_id] = _copy_enemy_state(enemy_state)
-	_prune_dictionary_to_ids(baseline, live_ids)
-	return buf
+		_write_enemy_snapshot(stream, enemy_state, previous)
+		var stored := baseline.get(enemy_state.net_id) as EnemyState
+		if stored == null:
+			stored = EnemyState.new()
+			baseline[enemy_state.net_id] = stored
+		_copy_enemy_state_into(enemy_state, stored)
+	if prune_baseline:
+		var live_ids: Dictionary = {}
+		for state_index in range(resolved_start, resolved_start + resolved_count):
+			var live_enemy_state: EnemyState = enemies[state_index]
+			live_ids[live_enemy_state.net_id] = true
+		_prune_dictionary_to_ids(baseline, live_ids)
+	return stream.data_array
 
 
 ## 解码一批敌人快照
@@ -638,7 +705,9 @@ static func decode_all_enemy_snapshots(data: PackedByteArray) -> Array[EnemyStat
 		if snapshot_size < 0 or offset + snapshot_size > data.size():
 			break
 		var state := EnemyState.new()
-		var next_offset := decode_enemy_snapshot(data, offset, state)
+		stream.seek(offset)
+		_read_enemy_snapshot(stream, state)
+		var next_offset := stream.get_position()
 		if next_offset <= offset or next_offset > data.size():
 			break
 		offset = next_offset
@@ -647,7 +716,10 @@ static func decode_all_enemy_snapshots(data: PackedByteArray) -> Array[EnemyStat
 
 
 ## 使用接收端基线解码 delta 敌人快照；缺失基线的 delta 实体会被跳过。
-func decode_enemy_snapshots_with_baseline(data: PackedByteArray) -> Array[EnemyState]:
+func decode_enemy_snapshots_with_baseline(
+	data: PackedByteArray,
+	prune_baseline: bool = true
+) -> Array[EnemyState]:
 	var result: Array[EnemyState] = []
 	if data.size() < 2:
 		return result
@@ -664,27 +736,44 @@ func decode_enemy_snapshots_with_baseline(data: PackedByteArray) -> Array[EnemyS
 			can_prune = false
 			break
 		var mask := _get_enemy_snapshot_mask(data, offset)
-		var delta := EnemyState.new()
-		var next_offset := decode_enemy_snapshot(data, offset, delta)
+		stream.seek(offset)
+		var net_id := stream.get_32()
+		var previous := enemy_receive_baselines.get(net_id) as EnemyState
+		if previous == null and not _is_full_enemy_mask(mask):
+			can_prune = false
+			offset += snapshot_size
+			continue
+
+		var restored := EnemyState.new()
+		_copy_enemy_state_into(previous, restored)
+		stream.seek(offset)
+		_read_enemy_snapshot(stream, restored)
+		var next_offset := stream.get_position()
 		if next_offset <= offset or next_offset > data.size():
 			can_prune = false
 			break
 		offset = next_offset
 
-		var previous := enemy_receive_baselines.get(delta.net_id) as EnemyState
-		if previous == null and not _is_full_enemy_mask(mask):
-			can_prune = false
-			continue
-
-		var restored := _copy_enemy_state(previous)
-		_apply_enemy_delta(restored, delta, mask)
-		enemy_receive_baselines[restored.net_id] = _copy_enemy_state(restored)
+		var stored := previous
+		if stored == null:
+			stored = EnemyState.new()
+			enemy_receive_baselines[restored.net_id] = stored
+		_copy_enemy_state_into(restored, stored)
 		live_ids[restored.net_id] = true
 		result.append(restored)
 
-	if can_prune and offset == data.size():
+	if prune_baseline and can_prune and offset == data.size():
 		_prune_dictionary_to_ids(enemy_receive_baselines, live_ids)
 	return result
+
+
+func prune_enemy_send_baseline_to_ids(receiver_peer_id: int, live_ids: Dictionary) -> void:
+	var baseline := _get_enemy_send_baseline(receiver_peer_id)
+	_prune_dictionary_to_ids(baseline, live_ids)
+
+
+func prune_enemy_receive_baseline_to_ids(live_ids: Dictionary) -> void:
+	_prune_dictionary_to_ids(enemy_receive_baselines, live_ids)
 
 
 func clear_peer_delta_cache(peer_id: int) -> void:

@@ -1,18 +1,20 @@
 extends Node2D
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
-const STANDARD_GAME_SCENE := preload("res://scene/game.tscn")
-const TOWER_DEFENSE_GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
-const AGAVE_CANNONBALL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
+const STANDARD_GAME_SCENE_PATH := "res://scene/game.tscn"
+const TOWER_DEFENSE_GAME_SCENE_PATH := "res://scene/game_tower_defense.tscn"
+const AGAVE_CANNONBALL_SCENE_PATH := "res://scene/plant_defense/agave_cannonball.tscn"
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
-const BULLET_SCENE := preload("res://scene/bullet.tscn")
-const TIYI_SNIPER_BULLET_SCENE := preload("res://scene/player/tiyi/tiyi_sniper_bullet.tscn")
-const TIYI_SNIPER_HIT_EFFECT_SCENE := preload(
+const BULLET_SCENE_PATH := "res://scene/bullet.tscn"
+const TIYI_SNIPER_BULLET_SCENE_PATH := "res://scene/player/tiyi/tiyi_sniper_bullet.tscn"
+const TIYI_SNIPER_HIT_EFFECT_SCENE_PATH := (
 	"res://scene/player/tiyi/tiyi_sniper_hit_effect.tscn"
 )
 const COLLECTIBLE_ARROW_PROJECTILE_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
 const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/collectible_arrow_projectile.gd")
-const SKILL1_BOMB_SCENE := preload("res://scene/player/weishidaier/weishidaier_skill1_bomb.tscn")
+const SKILL1_BOMB_SCENE_PATH := (
+	"res://scene/player/weishidaier/weishidaier_skill1_bomb.tscn"
+)
 const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/collectible_area_effect.tscn")
 const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/collectible_frost_area_effect.tscn")
 const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
@@ -22,14 +24,15 @@ const CAPOO_RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo_rpg_rocket.tscn
 const CAPOO_MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
 const CAPOO_SMG_BULLET_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
 const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
-const LINGLAN_SAKURA_BULLET_SCENE := preload("res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn")
-const DEFAULT_LINGLAN_SKILL2_CONFIG := preload("res://resources/config/bosses/linglan_skill2.tres")
-const LINGLAN_SKILL2_ROCKET_SCENE := preload("res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn")
-const DEFAULT_LINGLAN_SKILL3_CONFIG := preload("res://resources/config/bosses/linglan_skill3.tres")
-const LINGLAN_SKILL3_ORB_SCENE := preload("res://scene/boss/linglan/linglan_skill3_light_orb.tscn")
-const DEFAULT_LINGLAN_SKILL4_CONFIG := preload("res://resources/config/bosses/linglan_skill4.tres")
-const LINGLAN_SKILL4_ORB_SCENE := preload("res://scene/boss/linglan/linglan_skill4_light_orb.tscn")
-const LINGLAN_SKILL4_ORB_SCRIPT := preload("res://scene/boss/linglan/linglan_skill4_light_orb.gd")
+const LINGLAN_SAKURA_BULLET_SCENE_PATH := "res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn"
+const LINGLAN_SKILL2_CONFIG_PATH := "res://resources/config/bosses/linglan_skill2.tres"
+const LINGLAN_SKILL2_ROCKET_SCENE_PATH := "res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn"
+const LINGLAN_SKILL3_CONFIG_PATH := "res://resources/config/bosses/linglan_skill3.tres"
+const LINGLAN_SKILL3_ORB_SCENE_PATH := "res://scene/boss/linglan/linglan_skill3_light_orb.tscn"
+const LINGLAN_SKILL4_CONFIG_PATH := "res://resources/config/bosses/linglan_skill4.tres"
+const LINGLAN_SKILL4_ORB_SCENE_PATH := "res://scene/boss/linglan/linglan_skill4_light_orb.tscn"
+const LINGLAN_SKILL4_ORB_SCRIPT_PATH := "res://scene/boss/linglan/linglan_skill4_light_orb.gd"
+const COLLECTIBLE_SAKURA_EXPLOSION_RADIUS := 47.0
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 
 const INPUT_BUTTON_RELOAD := 2
@@ -66,6 +69,7 @@ const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_ACTION_SNAPSHOT_REORDER_TOLERANCE_SECONDS := 0.075
+const ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES := 56
 # Multiplayer protocol map:
 # - CH_INPUT unreliable_ordered: client player pose/input and redundant dash requests to host.
 # - CH_STATE unreliable_ordered: host player/enemy snapshots to clients.
@@ -80,9 +84,16 @@ const ENEMY_ACTION_SNAPSHOT_REORDER_TOLERANCE_SECONDS := 0.075
 @onready var public_room_keepalive_request: HTTPRequest = $PublicRoomKeepaliveRequest
 
 var snapshot_mgr := SnapshotManager.new()
-var _linglan_skill2_config: LinglanSkill2Config = DEFAULT_LINGLAN_SKILL2_CONFIG
-var _linglan_skill3_config: LinglanSkill3Config = DEFAULT_LINGLAN_SKILL3_CONFIG
-var _linglan_skill4_config: LinglanSkill4Config = DEFAULT_LINGLAN_SKILL4_CONFIG
+var _runtime_scene_cache: Dictionary = {}
+var _agave_cannonball_scene: PackedScene = null
+var _linglan_sakura_bullet_scene: PackedScene = null
+var _linglan_skill2_config: Resource = null
+var _linglan_skill2_rocket_scene: PackedScene = null
+var _linglan_skill3_config: Resource = null
+var _linglan_skill3_orb_scene: PackedScene = null
+var _linglan_skill4_config: Resource = null
+var _linglan_skill4_orb_scene: PackedScene = null
+var _linglan_skill4_orb_script: Script = null
 # Client-view only: remote player visual timeline. Host gameplay never reads this.
 var player_visual_interpolators: Dictionary = {}
 var enemy_interpolators: Dictionary = {}
@@ -127,6 +138,7 @@ var _xirang_orbs: Dictionary = {}
 var _collected_xirang_orbs: Dictionary = {}
 var _granted_xirang_orbs: Dictionary = {}
 var _host_player_snapshot_sequence: int = 0
+var _host_enemy_snapshot_batch_sequence: int = 0
 var _player_health_revisions: Dictionary = {}
 var _local_player_hit_revision: int = 0
 var _dead_player_revive_times: Dictionary = {}
@@ -142,9 +154,17 @@ var _max_player_snapshot_packet_bytes: int = 0
 var _max_enemy_snapshot_packet_bytes: int = 0
 var _large_player_snapshot_packet_count: int = 0
 var _large_enemy_snapshot_packet_count: int = 0
+var _enemy_snapshot_payload_bytes_total: int = 0
+var _enemy_snapshot_packet_count: int = 0
+var _enemy_snapshot_batch_count: int = 0
+var _enemy_snapshot_completed_batch_count: int = 0
+var _enemy_snapshot_incomplete_batch_evict_count: int = 0
+var _enemy_snapshot_stale_chunk_count: int = 0
 var _last_player_keyframe_time_by_peer: Dictionary = {}
 var _last_enemy_keyframe_time_by_peer: Dictionary = {}
 var _last_plant_placement_request_ids: Dictionary = {}
+var _pending_enemy_snapshot_batches: Dictionary = {}
+var _last_completed_enemy_snapshot_batch_id: int = 0
 var _public_room_keepalive_time_left: float = 0.0
 var _public_room_keepalive_in_flight: bool = false
 var _revive_random_generator := RandomNumberGenerator.new()
@@ -175,10 +195,7 @@ func _ready() -> void:
 		push_warning("MpGame 启动时没有有效的多人连接，返回大厅。")
 		call_deferred("_return_to_lobby")
 		return
-	if net_manager.is_host() or _client_host_game_ready:
-		net_manager.mark_in_game()
-	if net_manager.is_client() and _client_host_game_ready:
-		_request_runtime_state_from_host()
+	_report_game_loaded_when_prepared()
 
 
 func _exit_tree() -> void:
@@ -194,10 +211,13 @@ func _exit_tree() -> void:
 		if public_room_keepalive_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
 			public_room_keepalive_request.cancel_request()
 	snapshot_mgr.reset_delta_cache()
+	_pending_enemy_snapshot_batches.clear()
 	_public_room_keepalive_in_flight = false
 
 
 func _physics_process(delta: float) -> void:
+	if int(net_manager.connection_state) != STATE_IN_GAME:
+		return
 	_update_recent_event_cache_prune(delta)
 	_update_snapshot_packet_warning_timer(delta)
 	var frame: int = net_manager.get_physics_frame_count()
@@ -205,6 +225,26 @@ func _physics_process(delta: float) -> void:
 		_host_physics_tick(frame, delta)
 	elif net_manager.is_client():
 		_client_physics_tick(frame)
+
+
+func _report_game_loaded_when_prepared() -> void:
+	if game == null:
+		return
+	if not game.is_runtime_preparation_complete():
+		await game.runtime_preparation_completed
+	if not is_inside_tree() or int(net_manager.connection_state) != 4:
+		return
+	net_manager.report_game_loaded()
+
+
+func is_runtime_preparation_complete() -> bool:
+	return game != null and game.is_runtime_preparation_complete()
+
+
+func get_runtime_preparation_progress() -> Dictionary:
+	if game == null:
+		return {"stage": "正在创建多人战场", "completed": 0, "total": 1}
+	return game.get_runtime_preparation_progress()
 
 
 func _process(delta: float) -> void:
@@ -583,15 +623,20 @@ func is_client_view_runtime() -> bool:
 
 func _setup_game(mode: int) -> bool:
 	var game_mode := int(net_manager.get("current_game_mode"))
-	var game_scene := (
-		TOWER_DEFENSE_GAME_SCENE
+	var game_scene_path := (
+		TOWER_DEFENSE_GAME_SCENE_PATH
 		if game_mode == NetManagerStore.GameMode.TOWER_DEFENSE
-		else STANDARD_GAME_SCENE
+		else STANDARD_GAME_SCENE_PATH
 	)
+	var game_scene := load(game_scene_path) as PackedScene
+	if game_scene == null:
+		push_error("MpGame: 无法加载所选多人游戏场景：%s" % game_scene_path)
+		return false
 	game = game_scene.instantiate() as GameRuntimeBase
 	if game == null:
 		push_error("MpGame: 无法实例化所选多人游戏场景。")
 		return false
+	game.defer_runtime_activation()
 
 	var local_peer_id: int = _get_local_peer_id()
 	if local_peer_id <= 0 and net_manager.is_host():
@@ -755,15 +800,50 @@ func _apply_latest_client_player_snapshot_states(states: Array[SnapshotManager.P
 
 
 func _host_broadcast_enemy_snapshots() -> void:
+	var client_peer_ids := _get_connected_client_peer_ids()
+	if client_peer_ids.is_empty():
+		return
 	var states: Array[SnapshotManager.EnemyState] = game.collect_enemy_snapshot_states()
 	var snapshot_time := _get_net_time()
-	for peer_id in _get_connected_client_peer_ids():
+	_host_enemy_snapshot_batch_sequence += 1
+	var batch_id := _host_enemy_snapshot_batch_sequence
+	var chunk_count := maxi(
+		ceili(float(states.size()) / float(ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES)),
+		1
+	)
+	var live_ids: Dictionary = {}
+	for state in states:
+		if state != null and state.net_id > 0:
+			live_ids[state.net_id] = true
+	for peer_id in client_peer_ids:
+		_enemy_snapshot_batch_count += 1
 		var force_keyframe := _should_force_enemy_delta_keyframe(peer_id, snapshot_time)
-		var data := snapshot_mgr.encode_enemy_snapshots_for_peer(peer_id, states, force_keyframe)
+		for chunk_index in range(chunk_count):
+			var chunk_start := chunk_index * ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES
+			var chunk_end := mini(
+				chunk_start + ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES,
+				states.size()
+			)
+			var chunk_entity_count := chunk_end - chunk_start
+			var data := snapshot_mgr.encode_enemy_snapshot_range_for_peer(
+				peer_id,
+				states,
+				chunk_start,
+				chunk_entity_count,
+				force_keyframe
+			)
+			_record_snapshot_packet_size(&"enemy", data.size(), chunk_entity_count)
+			_rpc_receive_enemy_snapshot.rpc_id(
+				peer_id,
+				snapshot_time,
+				data,
+				batch_id,
+				chunk_index,
+				chunk_count
+			)
+		snapshot_mgr.prune_enemy_send_baseline_to_ids(peer_id, live_ids)
 		if force_keyframe:
 			_last_enemy_keyframe_time_by_peer[peer_id] = snapshot_time
-		_record_snapshot_packet_size(&"enemy", data.size(), states.size())
-		_rpc_receive_enemy_snapshot.rpc_id(peer_id, snapshot_time, data)
 
 
 func _should_force_player_delta_keyframe(peer_id: int, snapshot_time: float) -> bool:
@@ -822,6 +902,8 @@ func _record_snapshot_packet_size(snapshot_type: StringName, packet_bytes: int, 
 		_large_player_snapshot_packet_count += 1
 	elif snapshot_type == &"enemy":
 		_max_enemy_snapshot_packet_bytes = maxi(_max_enemy_snapshot_packet_bytes, packet_bytes)
+		_enemy_snapshot_payload_bytes_total += packet_bytes
+		_enemy_snapshot_packet_count += 1
 		if packet_bytes <= SNAPSHOT_PACKET_WARN_BYTES:
 			return
 		_large_enemy_snapshot_packet_count += 1
@@ -843,6 +925,12 @@ func get_snapshot_packet_metrics() -> Dictionary:
 		"max_enemy_snapshot_packet_bytes": _max_enemy_snapshot_packet_bytes,
 		"large_player_snapshot_packet_count": _large_player_snapshot_packet_count,
 		"large_enemy_snapshot_packet_count": _large_enemy_snapshot_packet_count,
+		"enemy_snapshot_payload_bytes_total": _enemy_snapshot_payload_bytes_total,
+		"enemy_snapshot_packet_count": _enemy_snapshot_packet_count,
+		"enemy_snapshot_batch_count": _enemy_snapshot_batch_count,
+		"enemy_snapshot_completed_batch_count": _enemy_snapshot_completed_batch_count,
+		"enemy_snapshot_incomplete_batch_evict_count": _enemy_snapshot_incomplete_batch_evict_count,
+		"enemy_snapshot_stale_chunk_count": _enemy_snapshot_stale_chunk_count,
 	}
 
 
@@ -1173,15 +1261,47 @@ func _reconcile_player_roster(seen_player_ids: Dictionary) -> void:
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
-func _rpc_receive_enemy_snapshot(host_timestamp: float, data: PackedByteArray) -> void:
+func _rpc_receive_enemy_snapshot(
+	host_timestamp: float,
+	data: PackedByteArray,
+	batch_id: int = 0,
+	chunk_index: int = 0,
+	chunk_count: int = 1
+) -> void:
 	if game == null:
 		return
 	if not is_client_view_runtime():
 		return
+	var is_chunked_batch := batch_id > 0
+	if is_chunked_batch and (chunk_count <= 0 or chunk_index < 0 or chunk_index >= chunk_count):
+		return
+	if is_chunked_batch and batch_id <= _last_completed_enemy_snapshot_batch_id:
+		_enemy_snapshot_stale_chunk_count += 1
+		return
 	var snapshot_time := _map_host_timestamp_to_client_time(host_timestamp)
-	var states := snapshot_mgr.decode_enemy_snapshots_with_baseline(data)
+	var batch: Dictionary = {}
+	if is_chunked_batch:
+		_prune_old_enemy_snapshot_batches(batch_id)
+		batch = _pending_enemy_snapshot_batches.get(batch_id, {}) as Dictionary
+		if batch.is_empty():
+			batch = {
+				"chunk_count": chunk_count,
+				"received": {},
+				"seen": {},
+				"snapshot_time": snapshot_time,
+			}
+			_pending_enemy_snapshot_batches[batch_id] = batch
+		elif int(batch.get("chunk_count", 0)) != chunk_count:
+			_pending_enemy_snapshot_batches.erase(batch_id)
+			return
+		var received := batch["received"] as Dictionary
+		if received.has(chunk_index):
+			return
+	var states := snapshot_mgr.decode_enemy_snapshots_with_baseline(data, not is_chunked_batch)
 	var snapshot_has_full_roster := _is_complete_enemy_snapshot_batch(data, states.size())
 	var seen_enemy_ids: Dictionary = {}
+	if is_chunked_batch:
+		seen_enemy_ids = batch["seen"] as Dictionary
 	for state in states:
 		var enemy_state := state as SnapshotManager.EnemyState
 		if enemy_state == null:
@@ -1212,8 +1332,37 @@ func _rpc_receive_enemy_snapshot(host_timestamp: float, data: PackedByteArray) -
 		if enemy_node != null and is_instance_valid(enemy_node):
 			_apply_enemy_network_health(enemy_node, enemy_state.health)
 			enemy_node.is_dead = enemy_state.is_dead
-	if snapshot_has_full_roster:
-		_reconcile_enemy_roster(seen_enemy_ids, snapshot_time)
+	if not is_chunked_batch:
+		if snapshot_has_full_roster:
+			_reconcile_enemy_roster(seen_enemy_ids, snapshot_time)
+		return
+	if not snapshot_has_full_roster:
+		return
+	var received := batch["received"] as Dictionary
+	received[chunk_index] = true
+	if received.size() == chunk_count:
+		snapshot_mgr.prune_enemy_receive_baseline_to_ids(seen_enemy_ids)
+		_enemy_snapshot_completed_batch_count += 1
+		_last_completed_enemy_snapshot_batch_id = batch_id
+		_discard_enemy_snapshot_batches_through(batch_id)
+		_reconcile_enemy_roster(seen_enemy_ids, float(batch.get("snapshot_time", snapshot_time)))
+
+
+func _prune_old_enemy_snapshot_batches(current_batch_id: int) -> void:
+	for pending_batch_id_variant in _pending_enemy_snapshot_batches.keys():
+		var pending_batch_id := int(pending_batch_id_variant)
+		if pending_batch_id < current_batch_id - 2:
+			_enemy_snapshot_incomplete_batch_evict_count += 1
+			_pending_enemy_snapshot_batches.erase(pending_batch_id)
+
+
+func _discard_enemy_snapshot_batches_through(completed_batch_id: int) -> void:
+	for pending_batch_id_variant in _pending_enemy_snapshot_batches.keys():
+		var pending_batch_id := int(pending_batch_id_variant)
+		if pending_batch_id <= completed_batch_id:
+			if pending_batch_id < completed_batch_id:
+				_enemy_snapshot_incomplete_batch_evict_count += 1
+			_pending_enemy_snapshot_batches.erase(pending_batch_id)
 
 
 func _is_complete_enemy_snapshot_batch(data: PackedByteArray, decoded_count: int) -> bool:
@@ -2058,10 +2207,6 @@ func _apply_projectile_lifetime_compensation(
 	if projectile != null and projectile.get_script() == COLLECTIBLE_ARROW_PROJECTILE_SCRIPT:
 		projectile.set("remaining_lifetime", remaining)
 		return
-	var bomb := projectile as WeishidaierSkill1Bomb
-	if bomb != null:
-		bomb.remaining_lifetime = remaining
-		return
 	var capoo_bullet := projectile as CapooAK47Bullet
 	if capoo_bullet != null:
 		capoo_bullet.remaining_lifetime = remaining
@@ -2078,17 +2223,32 @@ func _apply_projectile_lifetime_compensation(
 	if fire_projectile != null:
 		fire_projectile.remaining_lifetime = remaining
 		return
-	var sakura_bullet := projectile as LinglanSakuraBullet
-	if sakura_bullet != null:
-		sakura_bullet.remaining_lifetime = remaining
-		return
-	var sakura_rocket := projectile as LinglanSkill2SakuraRocket
-	if sakura_rocket != null:
-		sakura_rocket.remaining_lifetime = remaining
-		return
-	if projectile != null and projectile.get_script() == LINGLAN_SKILL4_ORB_SCRIPT:
+	var projectile_script := projectile.get_script() as Script
+	var projectile_script_path := projectile_script.resource_path if projectile_script != null else ""
+	if (
+		projectile_script_path == "res://scene/player/weishidaier/weishidaier_skill1_bomb.gd"
+		or projectile_script_path == "res://scene/boss/linglan/linglan_skill1_sakura_bullet.gd"
+		or projectile_script_path == "res://scene/boss/linglan/linglan_skill2_sakura_rocket.gd"
+	):
 		projectile.set("remaining_lifetime", remaining)
 		return
+	if (
+		projectile != null
+		and _linglan_skill4_orb_script != null
+		and projectile.get_script() == _linglan_skill4_orb_script
+	):
+		projectile.set("remaining_lifetime", remaining)
+		return
+
+
+func _get_runtime_packed_scene(path: String) -> PackedScene:
+	var cached_scene := _runtime_scene_cache.get(path) as PackedScene
+	if cached_scene != null:
+		return cached_scene
+	var loaded_scene := load(path) as PackedScene
+	if loaded_scene != null:
+		_runtime_scene_cache[path] = loaded_scene
+	return loaded_scene
 
 
 func _instantiate_projectile(
@@ -2104,7 +2264,10 @@ func _instantiate_projectile(
 ) -> Node:
 	match projectile_type:
 		&"player_bullet":
-			var bullet := BULLET_SCENE.instantiate() as Bullet
+			var bullet_scene := _get_runtime_packed_scene(BULLET_SCENE_PATH)
+			if bullet_scene == null:
+				return null
+			var bullet := bullet_scene.instantiate() as Bullet
 			if bullet == null:
 				return null
 			bullet.top_level = true
@@ -2116,7 +2279,10 @@ func _instantiate_projectile(
 			bullet.remaining_lifetime = lifetime
 			return bullet
 		TIYI_SNIPER_PROJECTILE_TYPE:
-			var sniper_bullet := TIYI_SNIPER_BULLET_SCENE.instantiate() as Bullet
+			var sniper_scene := _get_runtime_packed_scene(TIYI_SNIPER_BULLET_SCENE_PATH)
+			if sniper_scene == null:
+				return null
+			var sniper_bullet := sniper_scene.instantiate() as Bullet
 			if sniper_bullet == null:
 				return null
 			sniper_bullet.top_level = true
@@ -2138,14 +2304,17 @@ func _instantiate_projectile(
 			collectible_arrow.set("remaining_lifetime", lifetime)
 			return collectible_arrow
 		&"skill1_bomb":
-			var bomb := SKILL1_BOMB_SCENE.instantiate() as WeishidaierSkill1Bomb
+			var bomb_scene := _get_runtime_packed_scene(SKILL1_BOMB_SCENE_PATH)
+			if bomb_scene == null:
+				return null
+			var bomb := bomb_scene.instantiate() as Node2D
 			if bomb == null:
 				return null
 			bomb.top_level = true
-			bomb.setup(game.get_player_for_peer(owner_peer_id), direction, damage)
-			bomb.speed = speed
-			bomb.max_lifetime = lifetime
-			bomb.remaining_lifetime = lifetime
+			bomb.call("setup", game.get_player_for_peer(owner_peer_id), direction, damage)
+			bomb.set("speed", speed)
+			bomb.set("max_lifetime", lifetime)
+			bomb.set("remaining_lifetime", lifetime)
 			return bomb
 		&"capoo_ak47_bullet":
 			var capoo_bullet := CAPOO_AK47_BULLET_SCENE.instantiate() as CapooAK47Bullet
@@ -2183,69 +2352,87 @@ func _instantiate_projectile(
 			fire_projectile.setup(direction, damage, speed, lifetime)
 			return fire_projectile
 		&"linglan_skill1":
-			var sakura_bullet := LINGLAN_SAKURA_BULLET_SCENE.instantiate() as LinglanSakuraBullet
+			_ensure_linglan_projectile_resources(projectile_type)
+			if _linglan_sakura_bullet_scene == null:
+				return null
+			var sakura_bullet := _linglan_sakura_bullet_scene.instantiate() as Node2D
 			if sakura_bullet == null:
 				return null
 			sakura_bullet.top_level = true
-			sakura_bullet.setup(direction, damage, speed, lifetime)
+			sakura_bullet.call("setup", direction, damage, speed, lifetime)
 			return sakura_bullet
 		&"linglan_skill2_rocket":
-			var sakura_rocket := LINGLAN_SKILL2_ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
+			_ensure_linglan_projectile_resources(projectile_type)
+			if _linglan_skill2_rocket_scene == null or _linglan_skill2_config == null:
+				return null
+			var sakura_rocket := _linglan_skill2_rocket_scene.instantiate() as Node2D
 			if sakura_rocket == null:
 				return null
 			sakura_rocket.top_level = true
 			var rocket_target: Player = null
 			if game != null and target_peer_id > 0:
 				rocket_target = game.get_player_for_peer(target_peer_id)
-			sakura_rocket.setup(
+			sakura_rocket.call(
+				"setup",
 				direction,
 				damage,
 				speed,
 				lifetime,
-				_linglan_skill2_config.rocket_explosion_radius,
+				float(_linglan_skill2_config.get("rocket_explosion_radius")),
 				rocket_target,
-				_linglan_skill2_config.rocket_homing_turn_rate
+				float(_linglan_skill2_config.get("rocket_homing_turn_rate"))
 			)
 			return sakura_rocket
 		&"collectible_sakura_rocket":
-			var collectible_sakura_rocket := LINGLAN_SKILL2_ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
+			_ensure_linglan_projectile_resources(projectile_type)
+			if _linglan_skill2_rocket_scene == null or _linglan_skill2_config == null:
+				return null
+			var collectible_sakura_rocket := _linglan_skill2_rocket_scene.instantiate() as Node2D
 			if collectible_sakura_rocket == null:
 				return null
 			collectible_sakura_rocket.top_level = true
 			var target_enemy: Enemy = null
 			if game != null and target_enemy_net_id > 0:
 				target_enemy = game.get_enemy_for_net_id(target_enemy_net_id)
-			collectible_sakura_rocket.setup(
+			collectible_sakura_rocket.call(
+				"setup",
 				direction,
 				damage,
 				speed,
 				lifetime,
-				LinglanSkill2SakuraRocket.COLLECTIBLE_SAKURA_EXPLOSION_RADIUS,
+				COLLECTIBLE_SAKURA_EXPLOSION_RADIUS,
 				null,
-				_linglan_skill2_config.rocket_homing_turn_rate,
+				float(_linglan_skill2_config.get("rocket_homing_turn_rate")),
 				target_enemy,
 				true,
 				EnemyConfig.DamageType.MAGIC
 			)
 			return collectible_sakura_rocket
 		&"linglan_skill3_orb":
-			var light_orb := LINGLAN_SKILL3_ORB_SCENE.instantiate() as LinglanSkill3LightOrb
+			_ensure_linglan_projectile_resources(projectile_type)
+			if _linglan_skill3_orb_scene == null or _linglan_skill3_config == null:
+				return null
+			var light_orb := _linglan_skill3_orb_scene.instantiate() as Node2D
 			if light_orb == null:
 				return null
 			light_orb.top_level = true
-			light_orb.setup(
+			light_orb.call(
+				"setup",
 				direction,
 				damage,
 				speed,
 				lifetime,
-				_linglan_skill3_config.orb_base_radius,
-				_linglan_skill3_config.orb_grow_scale,
-				_linglan_skill3_config.orb_expanded_hold_duration,
-				_linglan_skill3_config.orb_flash_lead_time
+				float(_linglan_skill3_config.get("orb_base_radius")),
+				float(_linglan_skill3_config.get("orb_grow_scale")),
+				float(_linglan_skill3_config.get("orb_expanded_hold_duration")),
+				float(_linglan_skill3_config.get("orb_flash_lead_time"))
 			)
 			return light_orb
 		&"linglan_skill4_orb":
-			var skill4_orb := LINGLAN_SKILL4_ORB_SCENE.instantiate() as Node2D
+			_ensure_linglan_projectile_resources(projectile_type)
+			if _linglan_skill4_orb_scene == null or _linglan_skill4_config == null:
+				return null
+			var skill4_orb := _linglan_skill4_orb_scene.instantiate() as Node2D
 			if skill4_orb == null:
 				return null
 			skill4_orb.top_level = true
@@ -2255,12 +2442,44 @@ func _instantiate_projectile(
 				damage,
 				speed,
 				lifetime,
-				_linglan_skill4_config.orb_radius,
-				_linglan_skill4_config.orb_damage_radius
+				float(_linglan_skill4_config.get("orb_radius")),
+				float(_linglan_skill4_config.get("orb_damage_radius"))
 			)
 			return skill4_orb
 		_:
 			return null
+
+
+func _ensure_linglan_projectile_resources(projectile_type: StringName) -> void:
+	match projectile_type:
+		&"linglan_skill1":
+			if _linglan_sakura_bullet_scene == null:
+				_linglan_sakura_bullet_scene = load(
+					LINGLAN_SAKURA_BULLET_SCENE_PATH
+				) as PackedScene
+		&"linglan_skill2_rocket", &"collectible_sakura_rocket":
+			if _linglan_skill2_config == null:
+				_linglan_skill2_config = load(LINGLAN_SKILL2_CONFIG_PATH)
+			if _linglan_skill2_rocket_scene == null:
+				_linglan_skill2_rocket_scene = load(
+					LINGLAN_SKILL2_ROCKET_SCENE_PATH
+				) as PackedScene
+		&"linglan_skill3_orb":
+			if _linglan_skill3_config == null:
+				_linglan_skill3_config = load(LINGLAN_SKILL3_CONFIG_PATH)
+			if _linglan_skill3_orb_scene == null:
+				_linglan_skill3_orb_scene = load(
+					LINGLAN_SKILL3_ORB_SCENE_PATH
+				) as PackedScene
+		&"linglan_skill4_orb":
+			if _linglan_skill4_config == null:
+				_linglan_skill4_config = load(LINGLAN_SKILL4_CONFIG_PATH)
+			if _linglan_skill4_orb_scene == null:
+				_linglan_skill4_orb_scene = load(
+					LINGLAN_SKILL4_ORB_SCENE_PATH
+				) as PackedScene
+			if _linglan_skill4_orb_script == null:
+				_linglan_skill4_orb_script = load(LINGLAN_SKILL4_ORB_SCRIPT_PATH) as Script
 
 
 func _get_authoritative_client_projectile_parameters(
@@ -2284,7 +2503,10 @@ func _get_authoritative_client_projectile_parameters(
 					return {}
 			elif not owner_player.try_consume_authoritative_player_bullet_ammo():
 				return {}
-			var bullet := BULLET_SCENE.instantiate() as Bullet
+			var bullet_scene := _get_runtime_packed_scene(BULLET_SCENE_PATH)
+			if bullet_scene == null:
+				return {}
+			var bullet := bullet_scene.instantiate() as Bullet
 			if bullet == null:
 				return {}
 			var bullet_result := {
@@ -2310,7 +2532,10 @@ func _get_authoritative_client_projectile_parameters(
 				owner_player.call("try_accept_authoritative_primary_shot", projectile_type)
 			):
 				return {}
-			var sniper_bullet := TIYI_SNIPER_BULLET_SCENE.instantiate() as Bullet
+			var sniper_scene := _get_runtime_packed_scene(TIYI_SNIPER_BULLET_SCENE_PATH)
+			if sniper_scene == null:
+				return {}
+			var sniper_bullet := sniper_scene.instantiate() as Bullet
 			if sniper_bullet == null:
 				return {}
 			var sniper_result := {
@@ -2331,13 +2556,16 @@ func _get_authoritative_client_projectile_parameters(
 			if not owner_player.consume_multiplayer_skill1_charge():
 				return {}
 			owner_player.activate_collectible_skill_effects_from_multiplayer()
-			var bomb := SKILL1_BOMB_SCENE.instantiate() as WeishidaierSkill1Bomb
+			var bomb_scene := _get_runtime_packed_scene(SKILL1_BOMB_SCENE_PATH)
+			if bomb_scene == null:
+				return {}
+			var bomb := bomb_scene.instantiate() as Node2D
 			if bomb == null:
 				return {}
 			var bomb_result := {
 				"damage": owner_player.get_skill1_projectile_damage(),
-				"speed": bomb.speed,
-				"lifetime": bomb.max_lifetime,
+				"speed": float(bomb.get("speed")),
+				"lifetime": float(bomb.get("max_lifetime")),
 			}
 			bomb.free()
 			return bomb_result
@@ -2841,7 +3069,10 @@ func net_tiyi_sniper_hit_confirmed(
 				continues_piercing
 			)
 			return
-	var hit_effect := TIYI_SNIPER_HIT_EFFECT_SCENE.instantiate() as Node2D
+	var hit_effect_scene := _get_runtime_packed_scene(TIYI_SNIPER_HIT_EFFECT_SCENE_PATH)
+	if hit_effect_scene == null:
+		return
+	var hit_effect := hit_effect_scene.instantiate() as Node2D
 	if hit_effect == null:
 		return
 	hit_effect.top_level = true
@@ -3277,6 +3508,17 @@ func get_local_multiplayer_player() -> Player:
 	if game == null:
 		return null
 	return game.player
+
+
+func spawn_xirang_reward(
+	amount: int,
+	target_player: Player,
+	spawn_position: Vector2,
+	landing_offset: Vector2 = Vector2.ZERO
+) -> bool:
+	if game == null or not net_manager.is_host():
+		return false
+	return game.spawn_xirang_reward(amount, target_player, spawn_position, landing_offset)
 
 
 func is_host_multiplayer_authority() -> bool:
@@ -3945,12 +4187,17 @@ func net_plant_projectile_visual(
 		or direction.length_squared() <= 0.001
 	):
 		return
-	var projectile := AGAVE_CANNONBALL_SCENE.instantiate() as AgaveCannonball
+	if _agave_cannonball_scene == null:
+		_agave_cannonball_scene = load(AGAVE_CANNONBALL_SCENE_PATH) as PackedScene
+	if _agave_cannonball_scene == null:
+		return
+	var projectile := _agave_cannonball_scene.instantiate() as Node2D
 	if projectile == null:
 		return
 	add_child(projectile)
 	projectile.global_position = spawn_position
-	projectile.setup(
+	projectile.call(
+		"setup",
 		direction.normalized(),
 		0,
 		maxf(speed, 0.0),
@@ -4740,9 +4987,12 @@ func _map_host_timestamp_to_client_time(host_timestamp: float, update_offset: bo
 func _on_connection_state_changed(new_state: int) -> void:
 	if new_state == STATE_DISCONNECTED:
 		_return_to_lobby()
-	elif new_state == STATE_IN_GAME and net_manager.is_client():
+	elif new_state == STATE_IN_GAME:
 		_client_host_game_ready = true
-		_request_runtime_state_from_host()
+		if game != null:
+			game.activate_runtime()
+		if net_manager.is_client():
+			_request_runtime_state_from_host()
 
 
 func _on_net_player_left(peer_id: int) -> void:
@@ -4819,6 +5069,8 @@ func _clear_projectile_records_for_peer(peer_id: int) -> void:
 
 func _return_to_lobby() -> void:
 	snapshot_mgr.reset_delta_cache()
+	_pending_enemy_snapshot_batches.clear()
+	_last_completed_enemy_snapshot_batch_id = 0
 	_last_player_keyframe_time_by_peer.clear()
 	_last_enemy_keyframe_time_by_peer.clear()
 	_player_character_mismatch_warnings.clear()

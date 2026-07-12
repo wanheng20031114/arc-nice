@@ -54,6 +54,7 @@ func _run() -> void:
 	_test_net_manager_player_list_sync_diff()
 	_test_recent_event_cache()
 	_test_snapshot_packet_metrics()
+	_test_enemy_snapshot_chunk_codec()
 	_test_delta_snapshot_peer_cache_cleanup()
 	_test_freed_pickup_index_cleanup()
 	_test_xirang_drop_attraction_radius()
@@ -177,9 +178,21 @@ func _test_net_manager_lan_lifecycle() -> void:
 	net_manager.host_start_game()
 	_expect(int(net_manager.connection_state) == 4, "Host start must enter loading state.")
 	_expect(not bool(net_manager.host_game_ready), "Host game ready must stay false until MpGame is ready.")
+	var loading_progress: Dictionary = net_manager.get_game_load_progress()
+	_expect(
+		int(loading_progress.get("ready", -1)) == 0
+		and int(loading_progress.get("total", -1)) == 1
+		and int(loading_progress.get("session_id", 0)) > 0,
+		"Host start must freeze a one-peer loading roster with a valid session id."
+	)
 	net_manager.mark_in_game()
-	_expect(int(net_manager.connection_state) == 5, "Host mark_in_game must enter in-game state.")
-	_expect(bool(net_manager.host_game_ready), "Host mark_in_game must publish host ready state.")
+	_expect(
+		int(net_manager.connection_state) == 4,
+		"Host mark_in_game must not bypass the loading roster barrier."
+	)
+	net_manager.report_game_loaded()
+	_expect(int(net_manager.connection_state) == 5, "The final loaded peer must enter in-game state.")
+	_expect(bool(net_manager.host_game_ready), "The completed barrier must publish host ready state.")
 	net_manager.disconnect_from_game()
 	_expect(not net_manager.is_multiplayer_active(), "NetManager must cleanly disconnect after LAN host smoke.")
 
@@ -191,15 +204,16 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 3, "The multiplayer protocol version must be 3.")
+	_expect(NetConstants.PROTOCOL_VERSION == 4, "The multiplayer protocol version must be 4.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
 	)
 	_expect(
-		not bool(net_manager.call("_is_protocol_version_compatible", 2))
+		not bool(net_manager.call("_is_protocol_version_compatible", 3))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 2))
 		and not bool(net_manager.call("_is_protocol_version_compatible", -1)),
-		"NetManager must reject protocol version 2 and legacy registrations with no version."
+		"NetManager must reject protocol versions 3/2 and legacy registrations with no version."
 	)
 
 	var rejection_reasons: Array[String] = []
@@ -423,7 +437,102 @@ func _test_snapshot_packet_metrics() -> void:
 		int(metrics.get("large_enemy_snapshot_packet_count", 0)) == 2,
 		"Snapshot metrics must keep counting large packets after warning cooldown."
 	)
+	_expect(
+		int(metrics.get("enemy_snapshot_payload_bytes_total", 0)) == 2900
+		and int(metrics.get("enemy_snapshot_packet_count", 0)) == 2,
+		"Snapshot metrics must accumulate enemy payload bytes and packet count."
+	)
 	mp_game.free()
+
+
+func _test_enemy_snapshot_chunk_codec() -> void:
+	const CHUNK_SIZE := 56
+	const ENTITY_COUNT := 300
+	const PACKET_BUDGET := 1200
+	var sender := SnapshotManager.new()
+	var receiver := SnapshotManager.new()
+	var states: Array[SnapshotManager.EnemyState] = []
+	var live_ids: Dictionary = {}
+	for enemy_index in range(ENTITY_COUNT):
+		var state := SnapshotManager.EnemyState.new()
+		state.net_id = enemy_index + 1
+		state.position = Vector2(enemy_index, enemy_index * 0.5)
+		state.velocity = Vector2.RIGHT
+		state.health = 100
+		states.append(state)
+		live_ids[state.net_id] = true
+
+	var decoded_total := 0
+	for chunk_start in range(0, states.size(), CHUNK_SIZE):
+		var chunk_count := mini(CHUNK_SIZE, states.size() - chunk_start)
+		var packet := sender.encode_enemy_snapshot_range_for_peer(
+			77,
+			states,
+			chunk_start,
+			chunk_count,
+			true
+		)
+		_expect(
+			packet.size() <= PACKET_BUDGET,
+			"A full 56-enemy snapshot chunk must stay below the packet budget."
+		)
+		var decoded := receiver.decode_enemy_snapshots_with_baseline(packet, false)
+		decoded_total += decoded.size()
+		var expected_baseline_size := mini(chunk_start + CHUNK_SIZE, ENTITY_COUNT)
+		var send_baseline := sender.enemy_send_baselines_by_peer.get(77, {}) as Dictionary
+		_expect(
+			send_baseline.size() == expected_baseline_size,
+			"Encoding a chunk must retain every earlier chunk in the send baseline."
+		)
+		_expect(
+			receiver.enemy_receive_baselines.size() == expected_baseline_size,
+			"Decoding a chunk must retain every earlier chunk in the receive baseline."
+		)
+	sender.prune_enemy_send_baseline_to_ids(77, live_ids)
+	receiver.prune_enemy_receive_baseline_to_ids(live_ids)
+	_expect(decoded_total == ENTITY_COUNT, "All chunked keyframe enemies must decode exactly once.")
+
+	for state in states:
+		state.position += Vector2(1.0, 0.0)
+	states[299].health = 73
+	decoded_total = 0
+	var last_health := -1
+	for chunk_start in range(0, states.size(), CHUNK_SIZE):
+		var chunk_count := mini(CHUNK_SIZE, states.size() - chunk_start)
+		var packet := sender.encode_enemy_snapshot_range_for_peer(
+			77,
+			states,
+			chunk_start,
+			chunk_count,
+			false
+		)
+		_expect(
+			packet.size() <= PACKET_BUDGET,
+			"A moving 56-enemy delta chunk must stay below the packet budget."
+		)
+		var decoded := receiver.decode_enemy_snapshots_with_baseline(packet, false)
+		decoded_total += decoded.size()
+		for decoded_state in decoded:
+			if decoded_state.net_id == 300:
+				last_health = decoded_state.health
+	sender.prune_enemy_send_baseline_to_ids(77, live_ids)
+	receiver.prune_enemy_receive_baseline_to_ids(live_ids)
+	_expect(
+		decoded_total == ENTITY_COUNT and last_health == 73,
+		"Chunked deltas must retain cross-chunk baselines and late-chunk health."
+	)
+
+	var reduced_live_ids: Dictionary = {}
+	for net_id in range(1, 251):
+		reduced_live_ids[net_id] = true
+	sender.prune_enemy_send_baseline_to_ids(77, reduced_live_ids)
+	receiver.prune_enemy_receive_baseline_to_ids(reduced_live_ids)
+	var reduced_send_baseline := sender.enemy_send_baselines_by_peer.get(77, {}) as Dictionary
+	_expect(
+		reduced_send_baseline.size() == 250
+		and receiver.enemy_receive_baselines.size() == 250,
+		"Whole-batch pruning must remove stale send and receive baselines together."
+	)
 
 
 func _test_delta_snapshot_peer_cache_cleanup() -> void:
@@ -829,12 +938,18 @@ func _test_enemy_snapshot_roster_requires_complete_batch() -> void:
 
 	var enemy_a := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
 	var enemy_b := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
-	_expect(enemy_a != null and enemy_b != null, "Enemy roster snapshot test must instantiate enemies.")
-	if enemy_a == null or enemy_b == null:
+	var enemy_c := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
+	_expect(
+		enemy_a != null and enemy_b != null and enemy_c != null,
+		"Enemy roster snapshot test must instantiate enemies."
+	)
+	if enemy_a == null or enemy_b == null or enemy_c == null:
 		if enemy_a != null:
 			enemy_a.queue_free()
 		if enemy_b != null:
 			enemy_b.queue_free()
+		if enemy_c != null:
+			enemy_c.queue_free()
 		_stop_audio_players(game)
 		game.queue_free()
 		await process_frame
@@ -842,12 +957,14 @@ func _test_enemy_snapshot_roster_requires_complete_batch() -> void:
 		return
 	game.enemy_container.add_child(enemy_a)
 	game.enemy_container.add_child(enemy_b)
+	game.enemy_container.add_child(enemy_c)
 
 	var mp_game := MP_GAME_SCENE.instantiate()
 	_expect(mp_game != null, "MpGame scene must instantiate for enemy roster snapshot test.")
 	if mp_game == null:
 		enemy_a.queue_free()
 		enemy_b.queue_free()
+		enemy_c.queue_free()
 		_stop_audio_players(game)
 		game.queue_free()
 		await process_frame
@@ -858,8 +975,10 @@ func _test_enemy_snapshot_roster_requires_complete_batch() -> void:
 	var enemy_spawn_times := mp_game.get("_enemy_spawn_snapshot_times") as Dictionary
 	net_enemies[7] = enemy_a
 	net_enemies[8] = enemy_b
+	net_enemies[9] = enemy_c
 	enemy_spawn_times[7] = 0.0
 	enemy_spawn_times[8] = 0.0
+	enemy_spawn_times[9] = 0.0
 
 	var snapshot_mgr := SnapshotManager.new()
 	var state_a := SnapshotManager.EnemyState.new()
@@ -872,6 +991,56 @@ func _test_enemy_snapshot_roster_requires_complete_batch() -> void:
 	state_b.position = Vector2(30.0, 40.0)
 	state_b.velocity = Vector2.LEFT
 	state_b.health = 11
+	var state_c := SnapshotManager.EnemyState.new()
+	state_c.net_id = 9
+	state_c.position = Vector2(50.0, 60.0)
+	state_c.velocity = Vector2.UP
+	state_c.health = 10
+	var first_chunk := snapshot_mgr.encode_all_enemy_snapshots([state_a])
+	var second_chunk := snapshot_mgr.encode_all_enemy_snapshots([state_b, state_c])
+	mp_game.call("_rpc_receive_enemy_snapshot", 0.0, first_chunk, 10, 0, 2)
+	_expect(
+		net_enemies.has(7) and net_enemies.has(8) and net_enemies.has(9),
+		"An incomplete snapshot chunk batch must not reconcile unseen chunks."
+	)
+	mp_game.call("_rpc_receive_enemy_snapshot", 0.0, second_chunk, 10, 1, 2)
+	_expect(
+		net_enemies.has(7) and net_enemies.has(8) and net_enemies.has(9),
+		"A complete chunk batch must reconcile against the union of every chunk."
+	)
+
+	# Batch 11 loses its second chunk. Seeing a newer partial batch must not make
+	# either incomplete roster authoritative.
+	mp_game.call("_rpc_receive_enemy_snapshot", 1.0, first_chunk, 11, 0, 2)
+	mp_game.call("_rpc_receive_enemy_snapshot", 2.0, first_chunk, 12, 0, 2)
+	_expect(
+		net_enemies.has(7) and net_enemies.has(8) and net_enemies.has(9),
+		"A lost chunk must never reconcile either its batch or a newer partial batch."
+	)
+
+	# Completing batch 12 makes only its 7+8 union authoritative and retires every
+	# older pending batch. A late chunk from batch 11 must then be ignored.
+	var state_b_chunk := snapshot_mgr.encode_all_enemy_snapshots([state_b])
+	mp_game.call("_rpc_receive_enemy_snapshot", 2.0, state_b_chunk, 12, 1, 2)
+	await process_frame
+	_expect(
+		net_enemies.has(7) and net_enemies.has(8) and not net_enemies.has(9),
+		"A complete newer batch must reconcile only against its own chunk union."
+	)
+	_expect(not is_instance_valid(enemy_c), "The complete newer batch must free stale enemy 9.")
+	var empty_chunk := snapshot_mgr.encode_all_enemy_snapshots([])
+	mp_game.call("_rpc_receive_enemy_snapshot", 1.0, empty_chunk, 11, 1, 2)
+	_expect(
+		net_enemies.has(7) and net_enemies.has(8),
+		"A late chunk from an older batch must not re-run stale roster reconciliation."
+	)
+	var snapshot_metrics := mp_game.call("get_snapshot_packet_metrics") as Dictionary
+	_expect(
+		int(snapshot_metrics.get("enemy_snapshot_completed_batch_count", 0)) == 2
+		and int(snapshot_metrics.get("enemy_snapshot_incomplete_batch_evict_count", 0)) == 1
+		and int(snapshot_metrics.get("enemy_snapshot_stale_chunk_count", 0)) == 1,
+		"Snapshot telemetry must classify completed, evicted incomplete, and stale chunks."
+	)
 
 	var two_enemy_data := snapshot_mgr.encode_all_enemy_snapshots([state_a, state_b])
 	var truncated_two_enemy_data := two_enemy_data.duplicate()
@@ -965,11 +1134,22 @@ func _test_enemy_snapshot_death_and_empty_roster_cleanup() -> void:
 	_expect(not mp_game.enemy_interpolators.has(21), "Dead enemy snapshots must clear interpolation state.")
 	_expect(enemy_dead.is_dead, "Dead enemy snapshots must start the proxy death state.")
 
-	mp_game.call("_rpc_receive_enemy_snapshot", 2.0, snapshot_mgr.encode_all_enemy_snapshots([]))
+	mp_game.call(
+		"_rpc_receive_enemy_snapshot",
+		2.0,
+		snapshot_mgr.encode_all_enemy_snapshots([]),
+		30,
+		0,
+		1
+	)
 	await process_frame
-	_expect(not net_enemies.has(22), "Empty complete enemy snapshots must reconcile stale enemies.")
-	_expect(not enemy_spawn_times.has(22), "Empty complete enemy snapshots must erase stale spawn timing.")
-	_expect(not mp_game.enemy_interpolators.has(22), "Empty complete enemy snapshots must clear stale interpolation.")
+	_expect(not net_enemies.has(22), "An empty chunked roster must reconcile stale enemies.")
+	_expect(not enemy_spawn_times.has(22), "An empty chunked roster must erase stale spawn timing.")
+	_expect(not mp_game.enemy_interpolators.has(22), "An empty chunked roster must clear stale interpolation.")
+	_expect(
+		mp_game.snapshot_mgr.enemy_receive_baselines.is_empty(),
+		"An empty chunked roster must prune the receive baseline only after completion."
+	)
 
 	mp_game.free()
 	_stop_audio_players(game)
@@ -3143,6 +3323,24 @@ func _test_snapshot_round_trip() -> void:
 	_expect(repeated_enemy_states.size() == 1, "Repeated enemy delta must decode through baseline.")
 	if repeated_enemy_states.size() == 1:
 		_expect(repeated_enemy_states[0].health == 3, "Enemy delta must preserve health through baseline.")
+	enemy_state.position += Vector2(0.01, 0.0)
+	var sub_quantum_enemy_delta := delta_enemy_mgr.encode_enemy_snapshots_for_peer(
+		20,
+		[enemy_state],
+		false
+	)
+	_expect(
+		sub_quantum_enemy_delta.size() == repeated_enemy_delta.size(),
+		"Enemy motion below the 0.1-pixel wire quantum must not emit a redundant position field."
+	)
+	var sub_quantum_enemy_states := delta_enemy_mgr.decode_enemy_snapshots_with_baseline(
+		sub_quantum_enemy_delta
+	)
+	_expect(
+		sub_quantum_enemy_states.size() == 1
+		and sub_quantum_enemy_states[0].position.distance_to(Vector2(88.0, 99.0)) < 0.01,
+		"Sub-quantum motion must preserve the receiver's last representable position."
+	)
 	var enemy_copy_sender := SnapshotManager.new()
 	var enemy_copy_receiver := SnapshotManager.new()
 	var reused_enemy_state := SnapshotManager.EnemyState.new()

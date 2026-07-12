@@ -6,7 +6,7 @@
 [ext_resource type="SpriteFrames" uid="uid://7k14qqwrj73r" path="res://resources/animation/capoo_knight.tres" id="4_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_tg75k"]
-resource_local_to_scene = true
+resource_local_to_scene = false
 shader = ExtResource("3_blink")
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_l7sr7"]

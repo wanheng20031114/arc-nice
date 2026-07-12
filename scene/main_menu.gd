@@ -41,6 +41,10 @@ func _on_character_confirmed(character_id: StringName) -> void:
 		push_error("Main menu received an invalid character selection: %s" % character_id)
 		return
 	run_state.begin_new_run(character_id)
+	var load_coordinator := get_node_or_null("/root/GameLoadCoordinator")
+	if load_coordinator != null and load_coordinator.has_method("begin_singleplayer"):
+		load_coordinator.call("begin_singleplayer", _get_pending_singleplayer_scene_path())
+		return
 	get_tree().change_scene_to_file(_get_pending_singleplayer_scene_path())
 
 

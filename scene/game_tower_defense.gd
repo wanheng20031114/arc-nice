@@ -26,6 +26,19 @@ const BOSS_INTRO_CAMERA_RESTORE_SECONDS := 0.25
 const INITIAL_PLAYER_XIRANG := 1000
 const DEFAULT_BASE_HEALTH := 100
 const ENEMY_RETARGET_INTERVAL_SECONDS := 0.35
+const SINGLEPLAYER_CAMPAIGN_PATH := (
+	"res://resources/config/campaigns/tower_defense/singleplayer/campaign.tres"
+)
+const MULTIPLAYER_CAMPAIGN_PATH := (
+	"res://resources/config/campaigns/tower_defense/multiplayer/campaign.tres"
+)
+const ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME := 16
+# World-space radius: 200 px = 12.5 logical 16 px tiles. With the tower-defense
+# camera zoom of 2, this occupies 400 physical screen pixels.
+const PLAYER_OBJECTIVE_AGGRO_RADIUS := 200.0
+const PLAYER_OBJECTIVE_AGGRO_RADIUS_SQUARED := (
+	PLAYER_OBJECTIVE_AGGRO_RADIUS * PLAYER_OBJECTIVE_AGGRO_RADIUS
+)
 const PLANT_PLACEMENT_REJECT_INVALID_REQUEST := &"invalid_request"
 const PLANT_PLACEMENT_REJECT_INVALID_PLAYER := &"invalid_player"
 const PLANT_PLACEMENT_REJECT_INVALID_CONFIG := &"invalid_config"
@@ -45,12 +58,8 @@ const MULTIPLAYER_SPAWN_OFFSETS: Array[Vector2] = [
 signal base_health_changed(current_health: int, maximum_health: int, revision: int)
 
 @export_group("战役资源")
-@export var singleplayer_campaign: WaveCampaignConfig = preload(
-	"res://resources/config/campaigns/tower_defense/singleplayer/campaign.tres"
-)
-@export var multiplayer_campaign: WaveCampaignConfig = preload(
-	"res://resources/config/campaigns/tower_defense/multiplayer/campaign.tres"
-)
+@export var singleplayer_campaign: WaveCampaignConfig = null
+@export var multiplayer_campaign: WaveCampaignConfig = null
 
 @export_group("战斗流程")
 @export_range(0.0, 60.0, 1.0, "or_greater") var pre_wave_duration: float = 5.0
@@ -82,6 +91,7 @@ signal base_health_changed(current_health: int, maximum_health: int, revision: i
 @onready var plant_system: PlantSystem = $PlantSystem
 @onready var plant_placement_controller: PlantPlacementController = $PlantPlacementController
 @onready var damage_number_pool: DamageNumberPool = $DamageNumberPool
+@onready var session_object_pool: SessionObjectPool = $SessionObjectPool
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
 var random_generator := RandomNumberGenerator.new()
@@ -114,6 +124,9 @@ var multiplayer_spawn_slot_indices: Dictionary[int, int] = {}
 var removed_multiplayer_pickup_ids: Dictionary = {}
 var removed_multiplayer_enemy_ids: Dictionary = {}
 var enemy_retarget_time_left: float = 0.0
+var enemy_retarget_sweep_remaining: int = 0
+var enemy_retarget_cursor: int = 0
+var home_objective_targets: Array[Node2D] = []
 var maximum_base_health: int = DEFAULT_BASE_HEALTH
 var current_base_health: int = DEFAULT_BASE_HEALTH
 var base_health_revision: int = 0
@@ -137,6 +150,10 @@ var navigation_prewarmed: bool = false
 
 func _ready() -> void:
 	random_generator.randomize()
+	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		var load_coordinator := get_node_or_null("/root/GameLoadCoordinator")
+		if load_coordinator != null and bool(load_coordinator.call("is_loading")):
+			defer_runtime_activation()
 	if not _configure_active_campaign():
 		set_process(false)
 		set_physics_process(false)
@@ -150,6 +167,19 @@ func _ready() -> void:
 	_collect_enemy_spawn_points()
 	_configure_timers()
 	_prewarm_enemy_visual_resources()
+	session_object_pool.register_scene(ENEMY_SPAWN_EFFECT_SCENE, 16, 24)
+	if not enemy_container.child_entered_tree.is_connected(
+		_on_dynamic_pickup_container_child_entered
+	):
+		enemy_container.child_entered_tree.connect(
+			_on_dynamic_pickup_container_child_entered
+		)
+	if not boss_container.child_entered_tree.is_connected(
+		_on_dynamic_pickup_container_child_entered
+	):
+		boss_container.child_entered_tree.connect(
+			_on_dynamic_pickup_container_child_entered
+		)
 	if runtime_mode != RuntimeMode.SINGLEPLAYER:
 		run_state.ensure_run_started()
 		run_state.set_active_multiplayer_peer(multiplayer_local_peer_id)
@@ -190,10 +220,24 @@ func _ready() -> void:
 			_get_flow_step_id(_get_start_flow_step()),
 			maxi(ceili(pre_wave_duration), 0)
 		)
-	elif auto_start_waves and _is_flow_system_ready():
+	elif auto_start_waves and not runtime_activation_deferred and _is_flow_system_ready():
 		_enter_pre_flow_step(_get_start_flow_step())
 	else:
 		wave_hud.hide_all()
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		if runtime_activation_deferred:
+			call_deferred("prepare_shared_runtime_data_and_complete")
+		else:
+			mark_runtime_preparation_complete()
+	elif auto_start_waves or runtime_activation_deferred:
+		_schedule_enemy_navigation_prewarm()
+
+
+func _on_runtime_activated() -> void:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		return
+	if current_flow_step == null and auto_start_waves and _is_flow_system_ready():
+		_enter_pre_flow_step(_get_start_flow_step())
 
 
 func _physics_process(delta: float) -> void:
@@ -201,7 +245,6 @@ func _physics_process(delta: float) -> void:
 		_update_tower_defense_enemy_targets(delta)
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		_update_multiplayer_remote_player_passive_state(delta)
-		_register_dynamic_multiplayer_pickups()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -244,6 +287,13 @@ func _configure_active_campaign() -> bool:
 		if runtime_mode == RuntimeMode.SINGLEPLAYER
 		else multiplayer_campaign
 	)
+	if active_campaign == null:
+		var campaign_path := (
+			SINGLEPLAYER_CAMPAIGN_PATH
+			if runtime_mode == RuntimeMode.SINGLEPLAYER
+			else MULTIPLAYER_CAMPAIGN_PATH
+		)
+		active_campaign = load(campaign_path) as WaveCampaignConfig
 	flow_graph = null
 	waves.clear()
 	bosses.clear()
@@ -289,19 +339,19 @@ func _configure_home_defense() -> void:
 	current_base_health = maximum_base_health
 	base_health_revision = 0
 	resolved_home_enemy_ids.clear()
+	home_objective_targets.clear()
 	if home_gate_controller == null:
 		push_error("GameTowerDefense: HomeGateController 缺失。")
 	else:
 		home_gate_controller.setup(overlay_tile_map_layer)
+		home_objective_targets = home_gate_controller.get_objective_targets()
 		if not home_gate_controller.enemy_reached_home.is_connected(_on_enemy_reached_home):
 			home_gate_controller.enemy_reached_home.connect(_on_enemy_reached_home)
 	_update_base_health_display()
 
 
 func get_home_objective_targets() -> Array[Node2D]:
-	if home_gate_controller == null:
-		return []
-	return home_gate_controller.get_objective_targets()
+	return home_objective_targets.duplicate()
 
 
 func get_base_health_snapshot() -> Dictionary:
@@ -1591,9 +1641,113 @@ func _run_scheduled_enemy_navigation_prewarm() -> void:
 		return
 	navigation_prewarm_requested = false
 	if navigation_prewarmed:
+		await prewarm_shared_runtime_data()
+		if not is_inside_tree():
+			return
+		mark_runtime_preparation_complete()
 		return
-	_prewarm_enemy_navigation_grids()
+	await _prewarm_enemy_navigation_grids_staged()
+	if not is_inside_tree():
+		return
 	navigation_prewarmed = true
+	await prewarm_shared_runtime_data()
+	if not is_inside_tree():
+		return
+	mark_runtime_preparation_complete()
+
+
+func _prewarm_enemy_navigation_grids_staged() -> void:
+	update_runtime_preparation_progress("分析塔防敌人体型…", 0, 1)
+	await get_tree().process_frame
+	if (
+		grid_pathfinder == null
+		or not grid_pathfinder.has_method("prewarm_agent_grid")
+		or not bool(grid_pathfinder.get("is_built"))
+	):
+		return
+
+	var profiles: Array[Dictionary] = []
+	var seen_scene_keys: Dictionary = {}
+	var seen_extent_keys: Dictionary = {}
+	for wave_config in waves:
+		if wave_config == null:
+			continue
+		for entry in wave_config.enemy_entries:
+			if entry == null or entry.enemy_config == null:
+				continue
+			var enemy_config := entry.enemy_config
+			if enemy_config.enemy_scene == null:
+				continue
+			var scene_key := enemy_config.enemy_scene.resource_path
+			if scene_key.is_empty():
+				scene_key = enemy_config.resource_path
+			if seen_scene_keys.has(scene_key):
+				continue
+			seen_scene_keys[scene_key] = true
+			var body_half_extents := _get_enemy_scene_body_half_extents(enemy_config)
+			await get_tree().process_frame
+			if not is_inside_tree() or body_half_extents == Vector2.ZERO:
+				continue
+			var traversal_types := enemy_config.terrain_traversal_types
+			var extent_key := "%d:%d:%d" % [
+				ceili(body_half_extents.x),
+				ceili(body_half_extents.y),
+				traversal_types,
+			]
+			if seen_extent_keys.has(extent_key):
+				continue
+			seen_extent_keys[extent_key] = true
+			profiles.append({
+				"half_extents": body_half_extents,
+				"traversal_types": traversal_types,
+			})
+
+	var navigation_targets: Array[Node2D] = []
+	if player != null:
+		navigation_targets.append(player)
+	navigation_targets.append_array(get_home_objective_targets())
+	var total_steps := maxi(profiles.size() * (1 + navigation_targets.size()), 1)
+	var completed_steps := 0
+	update_runtime_preparation_progress("预热塔防寻路网格…", completed_steps, total_steps)
+	for profile in profiles:
+		var half_extents: Vector2 = profile["half_extents"]
+		var traversal_types: int = int(profile["traversal_types"])
+		if grid_pathfinder.has_method("prewarm_agent_grid_staged"):
+			await grid_pathfinder.call(
+				"prewarm_agent_grid_staged",
+				half_extents,
+				traversal_types
+			)
+		else:
+			grid_pathfinder.call("prewarm_agent_grid", half_extents, traversal_types)
+		completed_steps += 1
+		update_runtime_preparation_progress("预热塔防寻路网格…", completed_steps, total_steps)
+		await get_tree().process_frame
+		if not is_inside_tree():
+			return
+		if not grid_pathfinder.has_method("prewarm_flow_navigation_target"):
+			continue
+		for navigation_target in navigation_targets:
+			if navigation_target == null or not is_instance_valid(navigation_target):
+				completed_steps += 1
+				continue
+			if grid_pathfinder.has_method("prewarm_flow_navigation_target_staged"):
+				await grid_pathfinder.call(
+					"prewarm_flow_navigation_target_staged",
+					navigation_target.global_position,
+					half_extents,
+					traversal_types
+				)
+			else:
+				grid_pathfinder.call(
+					"prewarm_flow_navigation_target",
+					navigation_target.global_position,
+					half_extents,
+					traversal_types
+				)
+			completed_steps += 1
+			update_runtime_preparation_progress("预热 Home 防线…", completed_steps, total_steps)
+			await get_tree().process_frame
 
 
 func _prewarm_enemy_visual_resources() -> void:
@@ -2616,16 +2770,41 @@ func _register_static_multiplayer_pickups() -> void:
 
 
 func _register_dynamic_multiplayer_pickups() -> void:
-	var pickups: Array[Pickup] = []
-	_collect_pickups_recursive(self, pickups)
-	for pickup in pickups:
-		if pickup == null or not is_instance_valid(pickup):
-			continue
-		if int(pickup.get_meta("net_id", 0)) > 0:
-			continue
-		var net_id := next_multiplayer_pickup_net_id
-		next_multiplayer_pickup_net_id += 1
-		_register_multiplayer_pickup(pickup, net_id, true)
+	for child in enemy_container.get_children():
+		_register_dynamic_multiplayer_pickup(child as Pickup)
+	for child in boss_container.get_children():
+		_register_dynamic_multiplayer_pickup(child as Pickup)
+
+
+func _on_dynamic_pickup_container_child_entered(child: Node) -> void:
+	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
+		return
+	var pickup := child as Pickup
+	if pickup == null:
+		return
+	# Drop scripts assign global_position immediately after add_child(). Defer one
+	# turn so the spawn RPC observes that final position rather than the container
+	# origin, while still avoiding a full-tree scan on every physics frame.
+	call_deferred("_register_dynamic_multiplayer_pickup_from_ref", weakref(pickup))
+
+
+func _register_dynamic_multiplayer_pickup_from_ref(pickup_ref: WeakRef) -> void:
+	if pickup_ref == null:
+		return
+	var pickup := pickup_ref.get_ref() as Pickup
+	_register_dynamic_multiplayer_pickup(pickup)
+
+
+func _register_dynamic_multiplayer_pickup(pickup: Pickup) -> void:
+	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
+		return
+	if pickup == null or not is_instance_valid(pickup) or pickup.is_queued_for_deletion():
+		return
+	if int(pickup.get_meta("net_id", 0)) > 0:
+		return
+	var net_id := next_multiplayer_pickup_net_id
+	next_multiplayer_pickup_net_id += 1
+	_register_multiplayer_pickup(pickup, net_id, true)
 
 
 func _collect_pickups_recursive(node: Node, pickups: Array[Pickup]) -> void:
@@ -2756,16 +2935,36 @@ func _collect_enemy_snapshot_states_from_container(
 
 func _update_tower_defense_enemy_targets(delta: float) -> void:
 	enemy_retarget_time_left = maxf(enemy_retarget_time_left - delta, 0.0)
-	if enemy_retarget_time_left > 0.0:
-		return
-	enemy_retarget_time_left = ENEMY_RETARGET_INTERVAL_SECONDS
-	for child in enemy_container.get_children():
-		var enemy := child as Enemy
+	if enemy_retarget_time_left <= 0.0 and enemy_retarget_sweep_remaining <= 0:
+		enemy_retarget_time_left = ENEMY_RETARGET_INTERVAL_SECONDS
+		enemy_retarget_sweep_remaining = enemy_container.get_child_count()
+		if linglan_boss != null and is_instance_valid(linglan_boss) and not linglan_boss.is_dead:
+			_assign_enemy_targets(linglan_boss, linglan_boss.global_position)
+
+	_process_enemy_retarget_budget()
+
+
+func _process_enemy_retarget_budget() -> void:
+	var processed_count := 0
+	while (
+		enemy_retarget_sweep_remaining > 0
+		and processed_count < ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME
+	):
+		var enemy_count := enemy_container.get_child_count()
+		if enemy_count <= 0:
+			enemy_retarget_sweep_remaining = 0
+			enemy_retarget_cursor = 0
+			return
+		if enemy_retarget_cursor >= enemy_count:
+			enemy_retarget_cursor = 0
+
+		var enemy := enemy_container.get_child(enemy_retarget_cursor) as Enemy
+		enemy_retarget_cursor = (enemy_retarget_cursor + 1) % enemy_count
+		enemy_retarget_sweep_remaining -= 1
+		processed_count += 1
 		if enemy == null or enemy.is_dead:
 			continue
 		_assign_enemy_targets(enemy, enemy.global_position)
-	if linglan_boss != null and is_instance_valid(linglan_boss) and not linglan_boss.is_dead:
-		_assign_enemy_targets(linglan_boss, linglan_boss.global_position)
 
 
 func _assign_enemy_targets(enemy: Enemy, from_position: Vector2) -> void:
@@ -2774,7 +2973,6 @@ func _assign_enemy_targets(enemy: Enemy, from_position: Vector2) -> void:
 	var combat_player := _pick_enemy_target(from_position)
 	var objective := _pick_enemy_objective(from_position, combat_player)
 	enemy.set_target_player(combat_player)
-	enemy.set_reward_player(combat_player)
 	enemy.set_objective_target(objective)
 
 
@@ -2797,7 +2995,7 @@ func _pick_enemy_target(from_position: Vector2) -> Player:
 func _pick_enemy_objective(from_position: Vector2, combat_player: Player) -> Node2D:
 	var best_gate: Node2D = null
 	var best_gate_distance := INF
-	for gate_target in get_home_objective_targets():
+	for gate_target in home_objective_targets:
 		if gate_target == null or not is_instance_valid(gate_target):
 			continue
 		var gate_distance := from_position.distance_squared_to(gate_target.global_position)
@@ -2807,7 +3005,10 @@ func _pick_enemy_objective(from_position: Vector2, combat_player: Player) -> Nod
 	if combat_player == null or not is_instance_valid(combat_player) or combat_player.is_dead:
 		return best_gate
 	var player_distance := from_position.distance_squared_to(combat_player.global_position)
-	if best_gate == null or player_distance <= best_gate_distance:
+	if (
+		player_distance <= PLAYER_OBJECTIVE_AGGRO_RADIUS_SQUARED
+		and (best_gate == null or player_distance < best_gate_distance)
+	):
 		return combat_player
 	return best_gate
 
@@ -3066,11 +3267,12 @@ func _pick_spawn_point() -> Marker2D:
 func _spawn_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
 	if not _consume_spawn_effect_budget():
 		return
-	var effect := ENEMY_SPAWN_EFFECT_SCENE.instantiate() as Node2D
+	var effect := session_object_pool.acquire(ENEMY_SPAWN_EFFECT_SCENE) as Node2D
 	if effect == null:
 		return
-	add_child(effect)
 	effect.global_position = spawn_global_position
+	if effect.has_method("restart_effect"):
+		effect.call("restart_effect")
 
 
 func play_remote_enemy_spawn_effect(spawn_global_position: Vector2) -> void:

@@ -1,0 +1,296 @@
+extends SceneTree
+
+const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const PICKUP_SCENE := preload("res://scene/pickup.tscn")
+const PICKUP_CONFIG := preload("res://resources/config/pickups/pickup_health.tres")
+const EXPECTED_ENEMY_COUNT := 300
+const WARMUP_PHYSICS_FRAMES := 30
+const SAMPLE_PHYSICS_FRAMES := 180
+const METHOD_BENCHMARK_ITERATIONS := 600
+const LEGACY_PICKUP_SCAN_BENCHMARK_ITERATIONS := 12
+
+var failures: Array[String] = []
+
+
+func _init() -> void:
+	call_deferred("_run")
+
+
+func _run() -> void:
+	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	_expect(game != null, "Non-navigation fixture must instantiate tower defense.")
+	if game == null:
+		await _finish(null)
+		return
+	game.auto_start_waves = false
+	root.add_child(game)
+	current_scene = game
+	await process_frame
+	await physics_frame
+
+	game.call("_schedule_enemy_navigation_prewarm")
+	var preparation_deadline := Time.get_ticks_msec() + 30000
+	while not game.is_runtime_preparation_complete() and Time.get_ticks_msec() < preparation_deadline:
+		await process_frame
+	_expect(
+		game.is_runtime_preparation_complete(),
+		"Non-navigation fixture must finish staged runtime preparation."
+	)
+	if game.waves.is_empty():
+		await _finish(game)
+		return
+
+	game.call("_begin_flow_step", game.waves[0])
+	game.enemy_spawn_timer.stop()
+	for _batch_index in range(100):
+		game.call("_spawn_wave_batch")
+	game.set_physics_process(false)
+
+	var enemies: Array[Enemy] = []
+	for child in game.enemy_container.get_children():
+		var enemy := child as Enemy
+		if enemy == null or enemy.is_dead:
+			continue
+		enemy.set_objective_target(null)
+		enemy.set_pathfinder(null)
+		enemy.velocity = Vector2.ZERO
+		enemies.append(enemy)
+	_expect(
+		enemies.size() == EXPECTED_ENEMY_COUNT,
+		"Non-navigation fixture must hold exactly 300 live enemies."
+	)
+
+	_verify_cached_move_speed(enemies)
+	_verify_empty_touch_fast_path(enemies)
+	_verify_source_allocation_contract()
+	await _verify_event_driven_pickup_registration(game)
+	var method_benchmark := _benchmark_idle_methods(enemies)
+	var legacy_pickup_scan_benchmark := _benchmark_legacy_pickup_scan(game)
+
+	var frame_samples_ms: Array[float] = await _sample_physics_frames()
+	var p50_ms: float = _percentile(frame_samples_ms, 0.50)
+	var p95_ms: float = _percentile(frame_samples_ms, 0.95)
+	var maximum_ms: float = frame_samples_ms.back() if not frame_samples_ms.is_empty() else 0.0
+	for enemy in enemies:
+		enemy.set_physics_process(false)
+	var passive_samples_ms: Array[float] = await _sample_physics_frames()
+	var passive_p50_ms := _percentile(passive_samples_ms, 0.50)
+	var passive_p95_ms := _percentile(passive_samples_ms, 0.95)
+	var avoided_empty_array_allocations_per_second: int = (
+		enemies.size() * Engine.physics_ticks_per_second * 2
+	)
+	var runtime_node_count := _count_nodes_recursive(game)
+	var eliminated_pickup_scan_node_visits_per_second := (
+		runtime_node_count * Engine.physics_ticks_per_second
+	)
+	print(
+		(
+			"ENEMY_NON_NAVIGATION_PERFORMANCE enemies=%d frames=%d p50_ms=%.3f "
+			+ "p95_ms=%.3f max_ms=%.3f passive_p50_ms=%.3f passive_p95_ms=%.3f "
+			+ "active_minus_passive_p50_ms=%.3f speed_calls=%d speed_ms=%.3f "
+			+ "touch_calls=%d touch_ms=%.3f avoided_empty_arrays_per_second=%d "
+			+ "runtime_nodes=%d eliminated_pickup_scan_node_visits_per_second=%d "
+			+ "legacy_pickup_scan_ms_each=%.3f legacy_scan_cpu_ms_per_second=%.3f"
+		)
+		% [
+			enemies.size(),
+			SAMPLE_PHYSICS_FRAMES,
+			p50_ms,
+			p95_ms,
+			maximum_ms,
+			passive_p50_ms,
+			passive_p95_ms,
+			maxf(p50_ms - passive_p50_ms, 0.0),
+			int(method_benchmark["speed_calls"]),
+			float(method_benchmark["speed_ms"]),
+			int(method_benchmark["touch_calls"]),
+			float(method_benchmark["touch_ms"]),
+			avoided_empty_array_allocations_per_second,
+			runtime_node_count,
+			eliminated_pickup_scan_node_visits_per_second,
+			float(legacy_pickup_scan_benchmark["per_scan_ms"]),
+			float(legacy_pickup_scan_benchmark["estimated_cpu_ms_per_second"]),
+		]
+	)
+	_expect(p95_ms < 35.0, "300 enemies without navigation must keep p95 below 35 ms.")
+	await _finish(game)
+
+
+func _benchmark_idle_methods(enemies: Array[Enemy]) -> Dictionary:
+	var speed_checksum := 0.0
+	var speed_started_usec := Time.get_ticks_usec()
+	for _iteration in range(METHOD_BENCHMARK_ITERATIONS):
+		for enemy in enemies:
+			speed_checksum += enemy.get_effective_move_speed()
+	var speed_elapsed_ms := float(Time.get_ticks_usec() - speed_started_usec) / 1000.0
+
+	var touch_started_usec := Time.get_ticks_usec()
+	for _iteration in range(METHOD_BENCHMARK_ITERATIONS):
+		for enemy in enemies:
+			enemy.call("_update_touch_damage", 1.0 / 60.0)
+	var touch_elapsed_ms := float(Time.get_ticks_usec() - touch_started_usec) / 1000.0
+	_expect(speed_checksum > 0.0, "Move-speed benchmark checksum must remain positive.")
+	return {
+		"speed_calls": enemies.size() * METHOD_BENCHMARK_ITERATIONS,
+		"speed_ms": speed_elapsed_ms,
+		"touch_calls": enemies.size() * METHOD_BENCHMARK_ITERATIONS,
+		"touch_ms": touch_elapsed_ms,
+	}
+
+
+func _benchmark_legacy_pickup_scan(game: GameTowerDefense) -> Dictionary:
+	var started_usec := Time.get_ticks_usec()
+	for _iteration in range(LEGACY_PICKUP_SCAN_BENCHMARK_ITERATIONS):
+		var pickups: Array[Pickup] = []
+		game.call("_collect_pickups_recursive", game, pickups)
+	var elapsed_ms := float(Time.get_ticks_usec() - started_usec) / 1000.0
+	var per_scan_ms := elapsed_ms / float(LEGACY_PICKUP_SCAN_BENCHMARK_ITERATIONS)
+	return {
+		"per_scan_ms": per_scan_ms,
+		"estimated_cpu_ms_per_second": per_scan_ms * Engine.physics_ticks_per_second,
+	}
+
+
+func _sample_physics_frames() -> Array[float]:
+	for _warmup_index in range(WARMUP_PHYSICS_FRAMES):
+		await physics_frame
+	var samples_ms: Array[float] = []
+	var previous_tick_usec := Time.get_ticks_usec()
+	for _sample_index in range(SAMPLE_PHYSICS_FRAMES):
+		await physics_frame
+		var current_tick_usec := Time.get_ticks_usec()
+		samples_ms.append(float(current_tick_usec - previous_tick_usec) / 1000.0)
+		previous_tick_usec = current_tick_usec
+	samples_ms.sort()
+	return samples_ms
+
+
+func _verify_cached_move_speed(enemies: Array[Enemy]) -> void:
+	if enemies.is_empty():
+		return
+	var enemy := enemies[0]
+	var base_speed := enemy.config.move_speed
+	_expect(
+		is_equal_approx(enemy.get_effective_move_speed(), base_speed),
+		"Cached effective speed must initially match EnemyConfig."
+	)
+	enemy.add_move_speed_modifier(900001, 0.5)
+	enemy.add_move_speed_modifier(900002, 1.2)
+	_expect(
+		is_equal_approx(enemy.get_effective_move_speed(), base_speed * 0.6),
+		"Cached effective speed must refresh after modifier insertion."
+	)
+	enemy.remove_move_speed_modifier(900001)
+	_expect(
+		is_equal_approx(enemy.get_effective_move_speed(), base_speed * 1.2),
+		"Cached effective speed must refresh after modifier removal."
+	)
+	enemy.remove_move_speed_modifier(900002)
+
+
+func _verify_empty_touch_fast_path(enemies: Array[Enemy]) -> void:
+	if enemies.size() < 2:
+		return
+	var enemy := enemies[1]
+	_expect(
+		enemy.touching_players.is_empty() and enemy.touching_plants.is_empty(),
+		"Touch fast-path fixture must start without contacts."
+	)
+	enemy.touch_damage_cooldown_left = 0.2
+	enemy.call("_update_touch_damage", 0.1)
+	_expect(
+		is_equal_approx(enemy.touch_damage_cooldown_left, 0.1)
+		and enemy.touched_player == null
+		and enemy.touched_plant == null,
+		"Empty-contact fast path must still advance cooldown without inventing contacts."
+	)
+
+
+func _verify_source_allocation_contract() -> void:
+	var source := FileAccess.get_file_as_string("res://scene/enemy/enemy.gd")
+	_expect(
+		not source.contains("move_speed_modifiers.values()"),
+		"Per-frame effective speed must not allocate Dictionary.values arrays."
+	)
+	_expect(
+		not source.contains("touching_plants.keys()"),
+		"Touch selection must not allocate Dictionary.keys arrays."
+	)
+	_expect(
+		source.contains("cached_effective_move_speed"),
+		"Enemy must cache effective move speed between modifier changes."
+	)
+	for runtime_source_path in [
+		"res://scene/game.gd",
+		"res://scene/game_tower_defense.gd",
+	]:
+		var runtime_source := FileAccess.get_file_as_string(runtime_source_path)
+		_expect(
+			runtime_source.count("_register_dynamic_multiplayer_pickups()") == 1,
+			"Runtime physics must not poll the full scene tree for pickups: %s"
+			% runtime_source_path
+		)
+		_expect(
+			runtime_source.contains("enemy_container.child_entered_tree.connect("),
+			"Runtime must register dynamic pickups from EnemyContainer events: %s"
+			% runtime_source_path
+		)
+
+
+func _verify_event_driven_pickup_registration(game: GameTowerDefense) -> void:
+	var original_mode := game.runtime_mode
+	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	var pickup := PICKUP_SCENE.instantiate() as Pickup
+	_expect(pickup != null, "Event-driven pickup fixture must instantiate Pickup.")
+	if pickup == null:
+		game.runtime_mode = original_mode
+		return
+	pickup.config = PICKUP_CONFIG
+	game.enemy_container.add_child(pickup)
+	pickup.global_position = Vector2(10000.0, 9000.0)
+	await process_frame
+	var net_id := int(pickup.get_meta("net_id", 0))
+	_expect(
+		net_id >= 1000
+		and game.multiplayer_pickups.get(net_id) == pickup
+		and pickup.global_position == Vector2(10000.0, 9000.0),
+		"EnemyContainer child events must register the finalized pickup exactly once."
+	)
+	pickup.queue_free()
+	await process_frame
+	game.runtime_mode = original_mode
+
+
+func _percentile(sorted_samples: Array[float], ratio: float) -> float:
+	if sorted_samples.is_empty():
+		return 0.0
+	var rank := ceili(clampf(ratio, 0.0, 1.0) * sorted_samples.size())
+	return sorted_samples[clampi(rank - 1, 0, sorted_samples.size() - 1)]
+
+
+func _count_nodes_recursive(node: Node) -> int:
+	var count := 1
+	for child in node.get_children():
+		count += _count_nodes_recursive(child)
+	return count
+
+
+func _finish(game: GameTowerDefense) -> void:
+	current_scene = null
+	if game != null:
+		game.queue_free()
+	for _cleanup_index in range(6):
+		await process_frame
+		await physics_frame
+	if failures.is_empty():
+		print("ENEMY_NON_NAVIGATION_PERFORMANCE_SMOKE_TEST_OK")
+		quit(0)
+		return
+	for failure in failures:
+		push_error(failure)
+	quit(1)
+
+
+func _expect(condition: bool, message: String) -> void:
+	if not condition:
+		failures.append(message)

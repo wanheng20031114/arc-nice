@@ -7,6 +7,15 @@ const SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER := &"slow_overlay_strength"
 const BURN_OVERLAY_STRENGTH_SHADER_PARAMETER := &"burn_overlay_strength"
 const BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER := &"bleed_overlay_strength"
 const PATH_DIRECTION_PROBE_DISTANCE := 1.0
+# Home objectives are static, so distant enemies can approach them with a cheap,
+# collision-tested axis step instead of requesting the shared flow field every
+# other physics frame. Once an obstacle is reached, navigation immediately falls
+# back to the complete-route flow field below.
+const FAR_STATIC_OBJECTIVE_DISTANCE := 320.0
+const FAR_STATIC_OBJECTIVE_DISTANCE_SQUARED := (
+	FAR_STATIC_OBJECTIVE_DISTANCE * FAR_STATIC_OBJECTIVE_DISTANCE
+)
+const FAR_STATIC_OBJECTIVE_UPDATE_INTERVAL_FRAMES := 8
 const AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const MATERIAL_PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const MATERIAL_WOOD := preload("res://resources/config/materials/material_wood.tres")
@@ -18,6 +27,7 @@ const BURN_OVERLAY_ACTIVE_STRENGTH := 0.26
 const BLEED_OVERLAY_ACTIVE_STRENGTH := 0.42
 const BURN_STATUS_TICK_INTERVAL := 1.0
 const WATER_TERRAIN_COLLISION_LAYER := 1 << 11
+const DEATH_ANIMATION_SPEED_SCALES: Array[float] = [0.92, 0.96, 1.0, 1.04, 1.08]
 
 enum DeathSequenceStage {
 	NONE,
@@ -70,18 +80,36 @@ var proxy_action_animation_name_in_use: StringName = &""
 var proxy_action_restore_token: int = 0
 var navigation_update_frame_offset: int = 0
 var cached_navigation_move_direction := Vector2.ZERO
+var cached_navigation_uses_direct_objective_approach: bool = false
+var navigation_zero_direction_retry_frame: int = 0
+var navigation_collision_probe := KinematicCollision2D.new()
+var navigation_step_result: GridPathfinder.NavigationStepResult = null
+var navigation_flow_context: GridPathfinder.FlowQueryContext = null
 var animated_sprite_base_position := Vector2.ZERO
 var material_drop_random_generator := RandomNumberGenerator.new()
+var cached_effective_move_speed := 0.0
+var status_visual_material: ShaderMaterial = null
+var slow_overlay_strength := 0.0
+var burn_overlay_strength := 0.0
+var bleed_overlay_strength := 0.0
 
 
 func _ready() -> void:
 	_apply_terrain_collision_profile()
 	material_drop_random_generator.randomize()
-	navigation_update_frame_offset = int(get_instance_id()) % maxi(navigation_update_interval_frames, 1)
+	navigation_update_frame_offset = int(get_instance_id()) % maxi(
+		navigation_update_interval_frames,
+		FAR_STATIC_OBJECTIVE_UPDATE_INTERVAL_FRAMES
+	)
 	_refresh_collision_shape_cache()
 	_cache_collision_shape_mirror_states()
 	if animated_sprite != null:
 		animated_sprite_base_position = animated_sprite.position
+		status_visual_material = animated_sprite.material as ShaderMaterial
+		# The default status shader is visually neutral but would split the normal
+		# horde into extra CanvasItem batches. Attach the shared material only while
+		# an enemy actually has a slow, burn or bleed overlay.
+		animated_sprite.material = null
 	_apply_sprite_facing()
 	_apply_facing_mirror()
 	touch_damage_area.body_entered.connect(_on_touch_damage_area_body_entered)
@@ -125,16 +153,25 @@ func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = 
 	objective_target = player
 	reward_player = player
 	pathfinder = shared_pathfinder
+	if navigation_flow_context != null:
+		navigation_flow_context.invalidate()
 	_apply_config()
 
 
 func set_target_player(player: Player) -> void:
+	if target_player == player:
+		reward_player = player
+		if objective_target == null:
+			objective_target = player
+			_clear_cached_navigation_move_direction()
+		return
+
 	var previous_target := target_player
 	target_player = player
 	reward_player = player
 	if objective_target == null or objective_target == previous_target:
 		objective_target = player
-	_clear_cached_navigation_move_direction()
+		_clear_cached_navigation_move_direction()
 
 
 func set_objective_target(target: Node2D) -> void:
@@ -146,6 +183,24 @@ func set_objective_target(target: Node2D) -> void:
 
 func set_reward_player(player: Player) -> void:
 	reward_player = player
+
+
+func _request_xirang_reward(
+	amount: int,
+	reward_target: Player,
+	spawn_position: Vector2,
+	landing_offset: Vector2 = Vector2.ZERO
+) -> bool:
+	var current_scene := get_tree().current_scene
+	if current_scene == null or not current_scene.has_method("spawn_xirang_reward"):
+		return false
+	return bool(current_scene.call(
+		"spawn_xirang_reward",
+		amount,
+		reward_target,
+		spawn_position,
+		landing_offset
+	))
 
 
 func is_objective_targeting_player() -> bool:
@@ -160,6 +215,8 @@ func is_objective_targeting_player() -> bool:
 
 func set_pathfinder(shared_pathfinder: Node) -> void:
 	pathfinder = shared_pathfinder
+	if navigation_flow_context != null:
+		navigation_flow_context.invalidate()
 
 
 func configure_multiplayer_proxy() -> void:
@@ -312,8 +369,8 @@ func remove_physical_defense_modifier(source_id: int) -> void:
 
 func get_effective_physical_defense() -> int:
 	var total := config.physical_defense if config != null else 0
-	for modifier in physical_defense_modifiers.values():
-		total += maxi(modifier as int, 0)
+	for source_id in physical_defense_modifiers:
+		total += maxi(int(physical_defense_modifiers[source_id]), 0)
 	return maxi(total, 0)
 
 
@@ -335,8 +392,8 @@ func remove_damage_taken_multiplier_modifier(source_id: int) -> void:
 
 func get_damage_taken_multiplier() -> float:
 	var total := 1.0
-	for multiplier in damage_taken_multiplier_modifiers.values():
-		total *= maxf(float(multiplier), 0.0)
+	for source_id in damage_taken_multiplier_modifiers:
+		total *= maxf(float(damage_taken_multiplier_modifiers[source_id]), 0.0)
 	return maxf(total, 0.0)
 
 
@@ -344,6 +401,7 @@ func add_move_speed_modifier(source_id: int, multiplier: float) -> void:
 	if source_id == 0:
 		return
 	move_speed_modifiers[source_id] = maxf(multiplier, 0.0)
+	_refresh_effective_move_speed_cache()
 	_clear_cached_navigation_move_direction()
 	_update_movement_status_visuals()
 	_refresh_status_process_enabled()
@@ -353,16 +411,21 @@ func remove_move_speed_modifier(source_id: int) -> void:
 	if not move_speed_modifiers.has(source_id):
 		return
 	move_speed_modifiers.erase(source_id)
+	_refresh_effective_move_speed_cache()
 	_clear_cached_navigation_move_direction()
 	_update_movement_status_visuals()
 	_refresh_status_process_enabled()
 
 
 func get_effective_move_speed() -> float:
+	return cached_effective_move_speed
+
+
+func _refresh_effective_move_speed_cache() -> void:
 	var total := config.move_speed if config != null else 0.0
-	for modifier in move_speed_modifiers.values():
-		total *= maxf(float(modifier), 0.0)
-	return maxf(total, 0.0)
+	for source_id in move_speed_modifiers:
+		total *= maxf(float(move_speed_modifiers[source_id]), 0.0)
+	cached_effective_move_speed = maxf(total, 0.0)
 
 
 func _update_movement_status_visuals() -> void:
@@ -386,15 +449,15 @@ func _update_movement_status_visuals() -> void:
 
 
 func _has_move_speed_modifier_below_default() -> bool:
-	for modifier in move_speed_modifiers.values():
-		if float(modifier) < 1.0:
+	for source_id in move_speed_modifiers:
+		if float(move_speed_modifiers[source_id]) < 1.0:
 			return true
 	return false
 
 
 func _has_move_speed_modifier_above_default() -> bool:
-	for modifier in move_speed_modifiers.values():
-		if float(modifier) > 1.0:
+	for source_id in move_speed_modifiers:
+		if float(move_speed_modifiers[source_id]) > 1.0:
 			return true
 	return false
 
@@ -421,8 +484,8 @@ func _set_bleed_overlay_strength(strength: float) -> void:
 
 
 func _has_collectible_status(status_id: StringName) -> bool:
-	for status in collectible_status_effects.values():
-		var status_data := status as Dictionary
+	for effect_key in collectible_status_effects:
+		var status_data := collectible_status_effects[effect_key] as Dictionary
 		if status_data.is_empty():
 			continue
 		if (
@@ -438,9 +501,33 @@ func has_collectible_status(status_id: StringName) -> bool:
 
 
 func _set_visual_shader_parameter(parameter_name: StringName, value: Variant) -> void:
-	var sprite_material := animated_sprite.material as ShaderMaterial
-	if sprite_material != null:
-		sprite_material.set_shader_parameter(parameter_name, value)
+	if animated_sprite == null or status_visual_material == null:
+		return
+	var strength := clampf(float(value), 0.0, 1.0)
+	match parameter_name:
+		SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER:
+			slow_overlay_strength = strength
+		BURN_OVERLAY_STRENGTH_SHADER_PARAMETER:
+			burn_overlay_strength = strength
+		BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER:
+			bleed_overlay_strength = strength
+		_:
+			if animated_sprite.material == null:
+				animated_sprite.material = status_visual_material
+			animated_sprite.set_instance_shader_parameter(parameter_name, value)
+			return
+
+	var has_status_overlay := (
+		slow_overlay_strength > 0.0
+		or burn_overlay_strength > 0.0
+		or bleed_overlay_strength > 0.0
+	)
+	if has_status_overlay and animated_sprite.material == null:
+		animated_sprite.material = status_visual_material
+	if animated_sprite.material != null:
+		animated_sprite.set_instance_shader_parameter(parameter_name, strength)
+	if not has_status_overlay:
+		animated_sprite.material = null
 
 
 func _calculate_incoming_damage(
@@ -541,7 +628,7 @@ func _update_collectible_status_effects(delta: float) -> void:
 func _get_highest_damage_status_key(status_id: StringName) -> Variant:
 	var strongest_key: Variant = null
 	var strongest_damage := -1
-	for effect_key in collectible_status_effects.keys():
+	for effect_key in collectible_status_effects:
 		var status: Dictionary = collectible_status_effects.get(effect_key, {})
 		if status.is_empty():
 			continue
@@ -594,11 +681,13 @@ func _play_collectible_status_feedback(status_id: StringName) -> void:
 
 func _apply_config() -> void:
 	if config == null:
+		cached_effective_move_speed = 0.0
 		return
 
 	terrain_traversal_types = config.terrain_traversal_types
 	_apply_terrain_collision_profile()
 	current_health = config.max_health
+	_refresh_effective_move_speed_cache()
 	_play_scene_animation(config.move_animation_name)
 
 
@@ -866,7 +955,7 @@ func _get_safe_navigation_move_direction(
 	shared_pathfinder: Node,
 	waypoint_arrival_distance: float
 ) -> Vector2:
-	if not _should_update_navigation_direction():
+	if not _should_update_navigation_direction(target_node):
 		return cached_navigation_move_direction
 	if not is_instance_valid(target_node):
 		return _cache_navigation_move_direction(Vector2.ZERO)
@@ -874,23 +963,72 @@ func _get_safe_navigation_move_direction(
 		return _cache_navigation_move_direction(Vector2.ZERO)
 	if not shared_pathfinder.has_method("try_get_safe_navigation_step"):
 		return _cache_navigation_move_direction(Vector2.ZERO)
+	if _is_far_static_objective(target_node):
+		var direct_direction := _get_collision_safe_direct_objective_direction(
+			target_node.global_position,
+			waypoint_arrival_distance
+		)
+		if direct_direction != Vector2.ZERO:
+			return _cache_navigation_move_direction(direct_direction, true)
 
-	var step: Dictionary = shared_pathfinder.call(
-		"try_get_safe_navigation_step",
-		global_position,
-		target_node.global_position,
-		_get_body_collision_half_extents(),
-		terrain_traversal_types
+	return _get_flow_navigation_move_direction(
+		target_node,
+		shared_pathfinder,
+		waypoint_arrival_distance
 	)
-	var status := int(step.get(
-		"status",
-		GridPathfinder.NavigationStepStatus.UNREACHABLE
-	))
+
+
+func _get_flow_navigation_move_direction(
+	target_node: Node2D,
+	shared_pathfinder: Node,
+	waypoint_arrival_distance: float
+) -> Vector2:
+	if not is_instance_valid(target_node):
+		return _cache_navigation_move_direction(Vector2.ZERO)
+	if shared_pathfinder == null or not shared_pathfinder.get("is_built"):
+		return _cache_navigation_move_direction(Vector2.ZERO)
+	if not shared_pathfinder.has_method("try_get_safe_navigation_step"):
+		return _cache_navigation_move_direction(Vector2.ZERO)
+
+	var status := GridPathfinder.NavigationStepStatus.UNREACHABLE
+	var is_complete_route := false
+	var waypoint := global_position
+	var grid_pathfinder := shared_pathfinder as GridPathfinder
+	if grid_pathfinder != null:
+		if navigation_step_result == null:
+			navigation_step_result = GridPathfinder.NavigationStepResult.new()
+		if navigation_flow_context == null:
+			navigation_flow_context = GridPathfinder.FlowQueryContext.new()
+		grid_pathfinder.try_write_safe_navigation_step(
+			navigation_step_result,
+			navigation_flow_context,
+			global_position,
+			target_node.global_position,
+			_get_body_collision_half_extents(),
+			terrain_traversal_types,
+			target_node != target_player
+		)
+		status = navigation_step_result.status
+		is_complete_route = navigation_step_result.is_complete_route
+		waypoint = navigation_step_result.waypoint
+	else:
+		var step: Dictionary = shared_pathfinder.call(
+			"try_get_safe_navigation_step",
+			global_position,
+			target_node.global_position,
+			_get_body_collision_half_extents(),
+			terrain_traversal_types
+		)
+		status = int(step.get(
+			"status",
+			GridPathfinder.NavigationStepStatus.UNREACHABLE
+		))
+		is_complete_route = bool(step.get("is_complete_route", false))
+		waypoint = step.get("waypoint", global_position) as Vector2
 	match status:
 		GridPathfinder.NavigationStepStatus.READY:
-			if not bool(step.get("is_complete_route", false)):
+			if not is_complete_route:
 				return _cache_navigation_move_direction(Vector2.ZERO)
-			var waypoint: Vector2 = step.get("waypoint", global_position)
 			var move_direction := _get_axis_aligned_waypoint_direction(
 				waypoint,
 				waypoint_arrival_distance
@@ -907,9 +1045,9 @@ func _get_safe_navigation_move_direction(
 func _is_cached_navigation_direction_shape_safe() -> bool:
 	return (
 		cached_navigation_move_direction != Vector2.ZERO
-		and not test_move(
-			global_transform,
-			cached_navigation_move_direction * PATH_DIRECTION_PROBE_DISTANCE
+		and _is_navigation_motion_shape_safe(
+			cached_navigation_move_direction,
+			PATH_DIRECTION_PROBE_DISTANCE
 		)
 	)
 
@@ -935,41 +1073,153 @@ func _get_axis_aligned_waypoint_direction(waypoint: Vector2, arrival_distance: f
 	return _choose_unblocked_axis_direction(Vector2(0.0, signf(offset.y)), Vector2(signf(offset.x), 0.0))
 
 
-func _should_update_navigation_direction() -> bool:
+func _get_collision_safe_direct_objective_direction(
+	objective_position: Vector2,
+	arrival_distance: float
+) -> Vector2:
+	var offset := objective_position - global_position
+	var deadzone := maxf(arrival_distance, 0.0)
+	var abs_x := absf(offset.x)
+	var abs_y := absf(offset.y)
+	var direct_direction := Vector2.ZERO
+	if abs_x <= deadzone and abs_y > deadzone:
+		direct_direction = Vector2(0.0, signf(offset.y))
+	elif abs_y <= deadzone and abs_x > deadzone:
+		direct_direction = Vector2(signf(offset.x), 0.0)
+	elif abs_x >= abs_y:
+		direct_direction = Vector2(signf(offset.x), 0.0)
+	else:
+		direct_direction = Vector2(0.0, signf(offset.y))
+
+	if (
+		direct_direction != Vector2.ZERO
+		and not test_move(
+			global_transform,
+			direct_direction * _get_far_direct_objective_probe_distance()
+		)
+	):
+		return direct_direction
+	return Vector2.ZERO
+
+
+func _get_far_direct_objective_probe_distance() -> float:
+	# The far-distance movement tier advances without a CharacterBody motion
+	# query on every physics tick. Sweep the complete distance that can be
+	# travelled before the next scheduled direction update, plus a small margin,
+	# so a wall or water collider switches the enemy back to the full flow field
+	# before the lightweight movement can reach it.
+	var physics_ticks_per_second := maxi(Engine.physics_ticks_per_second, 1)
+	var update_interval := maxi(
+		_get_navigation_update_interval_frames(objective_target),
+		1
+	)
+	var interval_travel_distance := (
+		get_effective_move_speed()
+		* float(update_interval)
+		/ float(physics_ticks_per_second)
+	)
+	return maxf(
+		PATH_DIRECTION_PROBE_DISTANCE,
+		interval_travel_distance + PATH_DIRECTION_PROBE_DISTANCE
+	)
+
+
+func _should_update_navigation_direction(target_node: Node2D = objective_target) -> bool:
 	if cached_navigation_move_direction == Vector2.ZERO:
-		return true
-	var interval := maxi(navigation_update_interval_frames, 1)
+		return Engine.get_physics_frames() >= navigation_zero_direction_retry_frame
+	var interval := _get_navigation_update_interval_frames(target_node)
 	if interval <= 1:
 		return true
 	return (Engine.get_physics_frames() + navigation_update_frame_offset) % interval == 0
 
 
-func _cache_navigation_move_direction(move_direction: Vector2) -> Vector2:
+func _get_navigation_update_interval_frames(target_node: Node2D) -> int:
+	var interval := maxi(navigation_update_interval_frames, 1)
+	if _is_far_static_objective(target_node):
+		interval = maxi(interval, FAR_STATIC_OBJECTIVE_UPDATE_INTERVAL_FRAMES)
+	return interval
+
+
+func _is_far_static_objective(target_node: Node2D) -> bool:
+	return (
+		is_instance_valid(target_node)
+		and target_node != target_player
+		and global_position.distance_squared_to(target_node.global_position)
+			>= FAR_STATIC_OBJECTIVE_DISTANCE_SQUARED
+	)
+
+
+func _cache_navigation_move_direction(
+	move_direction: Vector2,
+	uses_direct_objective_approach: bool = false
+) -> Vector2:
 	cached_navigation_move_direction = move_direction
+	cached_navigation_uses_direct_objective_approach = (
+		uses_direct_objective_approach and move_direction != Vector2.ZERO
+	)
+	if move_direction == Vector2.ZERO:
+		navigation_zero_direction_retry_frame = (
+			Engine.get_physics_frames()
+			+ _get_navigation_update_interval_frames(objective_target)
+		)
+	else:
+		navigation_zero_direction_retry_frame = 0
 	return move_direction
 
 
 func _clear_cached_navigation_move_direction() -> void:
 	cached_navigation_move_direction = Vector2.ZERO
+	cached_navigation_uses_direct_objective_approach = false
+	navigation_zero_direction_retry_frame = 0
+	if navigation_flow_context != null:
+		navigation_flow_context.invalidate()
 
 
 func _choose_unblocked_axis_direction(primary_direction: Vector2, secondary_direction: Vector2 = Vector2.ZERO) -> Vector2:
 	if primary_direction == Vector2.ZERO:
-		if secondary_direction != Vector2.ZERO and not test_move(global_transform, secondary_direction * PATH_DIRECTION_PROBE_DISTANCE):
+		if _is_navigation_motion_shape_safe(secondary_direction, PATH_DIRECTION_PROBE_DISTANCE):
 			return secondary_direction
 		return Vector2.ZERO
-	if not test_move(global_transform, primary_direction * PATH_DIRECTION_PROBE_DISTANCE):
+	if _is_navigation_motion_shape_safe(primary_direction, PATH_DIRECTION_PROBE_DISTANCE):
 		return primary_direction
-	if secondary_direction != Vector2.ZERO and not test_move(global_transform, secondary_direction * PATH_DIRECTION_PROBE_DISTANCE):
+	if _is_navigation_motion_shape_safe(secondary_direction, PATH_DIRECTION_PROBE_DISTANCE):
 		return secondary_direction
 	return Vector2.ZERO
+
+
+func _is_navigation_motion_shape_safe(direction: Vector2, probe_distance: float) -> bool:
+	if direction == Vector2.ZERO or probe_distance <= 0.0:
+		return false
+	var normalized_direction := direction.normalized()
+	var motion := normalized_direction * probe_distance
+	if not test_move(global_transform, motion):
+		return true
+
+	# test_move() can report an existing side contact even when the requested
+	# motion is exactly tangent to that surface. Treat that contact as safe so an
+	# enemy touching a wall can still follow a flow-field waypoint along it. A
+	# motion pointing into the collision normal remains blocked.
+	test_move(global_transform, motion, navigation_collision_probe)
+	return normalized_direction.dot(navigation_collision_probe.get_normal()) >= -0.001
 
 
 func _move_until_player_contact() -> void:
 	if _has_player_contact():
 		velocity = Vector2.ZERO
 		return
+	if velocity == Vector2.ZERO:
+		return
+	if _can_use_far_static_objective_linear_movement():
+		global_position += velocity * get_physics_process_delta_time()
+		return
 	move_and_slide()
+
+
+func _can_use_far_static_objective_linear_movement() -> bool:
+	return (
+		cached_navigation_uses_direct_objective_approach
+		and _is_far_static_objective(objective_target)
+	)
 
 
 func _has_player_contact() -> bool:
@@ -1034,11 +1284,11 @@ func _select_touching_player() -> Player:
 
 
 func _select_touching_plant() -> PlantDefense:
-	for instance_id in touching_plants.keys():
+	for instance_id in touching_plants:
 		var plant := touching_plants[instance_id] as PlantDefense
 		if is_instance_valid(plant) and not plant.is_dead:
 			return plant
-		touching_plants.erase(instance_id)
+	touching_plants.clear()
 	return null
 
 
@@ -1064,6 +1314,10 @@ func _on_touch_damage_area_area_entered(area: Area2D) -> void:
 func _update_touch_damage(delta: float) -> void:
 	if touch_damage_cooldown_left > 0.0:
 		touch_damage_cooldown_left = maxf(touch_damage_cooldown_left - delta, 0.0)
+	if touching_plants.is_empty() and touching_players.is_empty():
+		touched_plant = null
+		touched_player = null
+		return
 
 	if touched_plant == null or not is_instance_valid(touched_plant) or touched_plant.is_dead:
 		touched_plant = _select_touching_plant()
@@ -1231,8 +1485,20 @@ func _finish_after_death_animation() -> void:
 func _play_death_sequence_animation(animation_name: StringName, stage: DeathSequenceStage) -> bool:
 	death_sequence_stage = stage
 	death_animation_name_in_use = animation_name
+	if animated_sprite != null:
+		animated_sprite.speed_scale = (
+			_get_staggered_death_animation_speed_scale()
+			if stage == DeathSequenceStage.DEATH
+			else 1.0
+		)
 
 	return _play_scene_animation(animation_name)
+
+
+func _get_staggered_death_animation_speed_scale() -> float:
+	var stable_id := int(get_meta("net_id", get_instance_id()))
+	var bucket_index := posmod(stable_id, DEATH_ANIMATION_SPEED_SCALES.size())
+	return DEATH_ANIMATION_SPEED_SCALES[bucket_index]
 
 
 func _on_animated_sprite_animation_finished() -> void:

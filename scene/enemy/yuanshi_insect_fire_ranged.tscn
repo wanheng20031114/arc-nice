@@ -6,7 +6,7 @@
 [ext_resource type="SpriteFrames" uid="uid://b0at4donk13di" path="res://resources/animation/yuanshi_insect_fire_ranged.tres" id="3_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_m31cj"]
-resource_local_to_scene = true
+resource_local_to_scene = false
 shader = ExtResource("2_g6imx")
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_buru2"]

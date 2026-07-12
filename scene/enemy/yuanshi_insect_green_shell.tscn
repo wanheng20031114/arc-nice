@@ -6,7 +6,7 @@
 [ext_resource type="SpriteFrames" uid="uid://p451nqj5gojm" path="res://resources/animation/yuanshi_insect_green_shell.tres" id="3_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_uutsh"]
-resource_local_to_scene = true
+resource_local_to_scene = false
 shader = ExtResource("2_g7i4v")
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_g7i4v"]

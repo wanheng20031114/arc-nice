@@ -871,10 +871,9 @@ func _queue_free_skill1_bombs() -> void:
 func _get_enemy_shader_parameter_float(enemy: Enemy, parameter_name: StringName) -> float:
 	if enemy == null or enemy.animated_sprite == null:
 		return 0.0
-	var sprite_material := enemy.animated_sprite.material as ShaderMaterial
-	if sprite_material == null:
+	if enemy.animated_sprite.material == null:
 		return 0.0
-	return float(sprite_material.get_shader_parameter(parameter_name))
+	return float(enemy.animated_sprite.get_instance_shader_parameter(parameter_name))
 
 
 func _get_collectible_status_tick_damage(enemy: Enemy, status_id: StringName) -> int:

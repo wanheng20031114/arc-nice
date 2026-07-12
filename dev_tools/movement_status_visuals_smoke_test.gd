@@ -60,6 +60,12 @@ func _test_motion_status_shader_preserves_default_texture_color() -> void:
 		"Motion status shader must expose a dedicated bleed overlay parameter."
 	)
 	_expect(
+		shader_source.find("instance uniform float slow_overlay_strength") >= 0
+		and shader_source.find("instance uniform float burn_overlay_strength") >= 0
+		and shader_source.find("instance uniform float bleed_overlay_strength") >= 0,
+		"High-volume enemy status strengths must use per-CanvasItem instance uniforms."
+	)
+	_expect(
 		shader_source.find("burn_overlay_color : source_color = vec4(1.0, 0.56, 0.18, 0.46)") >= 0,
 		"Burn overlay default color must be translucent light orange."
 	)
@@ -141,7 +147,7 @@ func _test_player_movement_status_visuals() -> void:
 	player.call("_update_movement_status_visuals", Vector2.RIGHT)
 	_expect(speed_trail.visible, "Player temporary speed boost must show speed trail lines.")
 	_expect(
-		is_equal_approx(float(sprite_material.get_shader_parameter(SLOW_OVERLAY_PARAMETER)), 0.0),
+		is_equal_approx(_get_instance_shader_float(sprite, SLOW_OVERLAY_PARAMETER), 0.0),
 		"Player speed boost must not apply the slow overlay."
 	)
 
@@ -150,7 +156,7 @@ func _test_player_movement_status_visuals() -> void:
 	player.call("_update_movement_status_visuals", Vector2.RIGHT)
 	_expect(speed_trail.visible, "Tempura must not remove an active speed boost or hide its trail lines.")
 	_expect(
-		is_equal_approx(float(sprite_material.get_shader_parameter(SLOW_OVERLAY_PARAMETER)), 0.0),
+		is_equal_approx(_get_instance_shader_float(sprite, SLOW_OVERLAY_PARAMETER), 0.0),
 		"Tempura must no longer apply the slow overlay."
 	)
 
@@ -164,10 +170,14 @@ func _test_enemy_movement_status_visuals() -> void:
 	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
 	test_root.add_child(enemy)
 	enemy.setup(BASIC_CONFIG, player, null)
+	var second_enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
+	test_root.add_child(second_enemy)
+	second_enemy.setup(BASIC_CONFIG, player, null)
 	await process_frame
 
 	var sprite := enemy.get_node("AnimatedSprite2D") as AnimatedSprite2D
-	var visual_material := sprite.material as ShaderMaterial
+	var visual_material := enemy.status_visual_material
+	var second_sprite := second_enemy.get_node("AnimatedSprite2D") as AnimatedSprite2D
 	var speed_trail := enemy.get_node("MoveSpeedTrailEffect") as Node2D
 	var trail_particles := speed_trail.get_node_or_null("TrailParticles") as GPUParticles2D
 	var all_trail_particles := _collect_trail_particles(speed_trail)
@@ -177,6 +187,14 @@ func _test_enemy_movement_status_visuals() -> void:
 	_expect(
 		visual_material != null and visual_material.shader.resource_path == MOTION_STATUS_SHADER_PATH,
 		"Enemy sprite must use the motion status shader."
+	)
+	_expect(
+		second_enemy.status_visual_material == visual_material,
+		"Enemies of the same visual type must share one material for 2D batching."
+	)
+	_expect(
+		sprite.material == null and second_sprite.material == null,
+		"Enemies without active status overlays must use the unmaterialed batching fast path."
 	)
 	_expect(speed_trail != null, "Enemy must include a speed trail effect node.")
 	_expect(trail_particles != null, "Enemy speed trail must use particle speed lines.")
@@ -201,8 +219,16 @@ func _test_enemy_movement_status_visuals() -> void:
 	enemy.add_move_speed_modifier(101, 0.5)
 	enemy.call("_update_movement_status_visuals")
 	_expect(
-		float(visual_material.get_shader_parameter(SLOW_OVERLAY_PARAMETER)) > 0.0,
+		_get_instance_shader_float(sprite, SLOW_OVERLAY_PARAMETER) > 0.0,
 		"Enemy speed down modifier must apply the slow overlay."
+	)
+	_expect(
+		sprite.material == visual_material,
+		"An active status overlay must attach the shared status material."
+	)
+	_expect(
+		is_zero_approx(_get_instance_shader_float(second_sprite, SLOW_OVERLAY_PARAMETER)),
+		"Shared enemy materials must keep slow strength isolated per CanvasItem instance."
 	)
 	_expect(not speed_trail.visible, "Enemy speed down modifier must not show speed trail lines.")
 
@@ -210,8 +236,12 @@ func _test_enemy_movement_status_visuals() -> void:
 	enemy.add_move_speed_modifier(102, 1.35)
 	enemy.call("_update_movement_status_visuals")
 	_expect(
-		is_equal_approx(float(visual_material.get_shader_parameter(SLOW_OVERLAY_PARAMETER)), 0.0),
+		is_equal_approx(_get_instance_shader_float(sprite, SLOW_OVERLAY_PARAMETER), 0.0),
 		"Enemy speed boost modifier must clear the slow overlay."
+	)
+	_expect(
+		sprite.material == null,
+		"Clearing the final status overlay must restore the unmaterialed batching fast path."
 	)
 	_expect(speed_trail.visible, "Enemy speed boost modifier must show speed trail lines while moving.")
 	var health_before_hit := enemy.current_health
@@ -223,6 +253,7 @@ func _test_enemy_movement_status_visuals() -> void:
 	)
 
 	enemy.queue_free()
+	second_enemy.queue_free()
 	player.queue_free()
 	await process_frame
 
@@ -231,6 +262,13 @@ func _expect(condition: bool, message: String) -> void:
 	if condition:
 		return
 	failures.append(message)
+
+
+func _get_instance_shader_float(canvas_item: CanvasItem, parameter_name: StringName) -> float:
+	if canvas_item == null:
+		return 0.0
+	var value: Variant = canvas_item.get_instance_shader_parameter(parameter_name)
+	return float(value) if value != null else 0.0
 
 
 func _collect_trail_particles(speed_trail: Node) -> Array[GPUParticles2D]:

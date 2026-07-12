@@ -46,6 +46,10 @@ var claim_counts_by_player_key: Dictionary = {}
 var refresh_counts_by_player_key: Dictionary = {}
 var pending_choices_by_player_key: Dictionary = {}
 
+static var _collectible_pool_cache: Array[PickupConfig] = []
+static var _collectible_by_path_cache: Dictionary = {}
+static var _collectible_cache_ready := false
+
 
 static func get_choice_count() -> int:
 	return CHOICE_COUNT
@@ -62,12 +66,8 @@ static func get_refresh_cost(refresh_count: int) -> int:
 
 
 static func get_collectible_pool() -> Array:
-	var pool: Array = []
-	for config_path in _get_collectible_config_paths():
-		var item := load(config_path) as PickupConfig
-		if item != null:
-			pool.append(item)
-	return pool
+	_ensure_collectible_cache()
+	return _collectible_pool_cache.duplicate()
 
 
 static func get_collectible_for_choice(choice_index: int) -> PickupConfig:
@@ -80,11 +80,37 @@ static func get_collectible_for_choice(choice_index: int) -> PickupConfig:
 static func get_collectible_for_path(config_path: String) -> PickupConfig:
 	if config_path.is_empty():
 		return null
-	for item in get_collectible_pool():
-		var config := item as PickupConfig
-		if config != null and config.resource_path == config_path:
-			return config
-	return null
+	_ensure_collectible_cache()
+	return _collectible_by_path_cache.get(config_path) as PickupConfig
+
+
+static func is_collectible_cache_ready() -> bool:
+	return _collectible_cache_ready
+
+
+static func get_collectible_config_paths() -> Array[String]:
+	return _get_collectible_config_paths()
+
+
+static func cache_collectible_config(item: PickupConfig) -> void:
+	if item == null or item.resource_path.is_empty():
+		return
+	if _collectible_by_path_cache.has(item.resource_path):
+		return
+	_collectible_by_path_cache[item.resource_path] = item
+	_collectible_pool_cache.append(item)
+
+
+static func finish_collectible_cache_warmup() -> void:
+	_collectible_cache_ready = true
+
+
+static func _ensure_collectible_cache() -> void:
+	if _collectible_cache_ready:
+		return
+	for config_path in _get_collectible_config_paths():
+		cache_collectible_config(load(config_path) as PickupConfig)
+	finish_collectible_cache_warmup()
 
 
 static func is_collectible_pool_path(config_path: String) -> bool:

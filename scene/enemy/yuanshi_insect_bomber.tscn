@@ -7,7 +7,7 @@
 [ext_resource type="AudioStream" uid="uid://bogl46dtqkano" path="res://resources/audio/cowboy_explosion.wav" id="4_explosion_audio"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_qjjxk"]
-resource_local_to_scene = true
+resource_local_to_scene = false
 shader = ExtResource("2_qjjxk")
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_2whi5"]
