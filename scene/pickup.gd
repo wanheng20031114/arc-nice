@@ -21,12 +21,12 @@ var is_expiring: bool = false
 # 初始化显示图标、寿命计时与拾取检测。
 func _ready() -> void:
 	lifetime_timer.one_shot = true
+	_apply_config_to_visual()
 	# 启动生命周期定时器
 	if lifetime_timer.wait_time > 0.0:
 		lifetime_timer.start()
 	# 初始状态关闭闪烁效果
 	_set_blink_enabled(false)
-	_apply_config_to_visual()
 
 
 # 道具临近消失时开启闪烁提示。
@@ -49,6 +49,7 @@ func _apply_config_to_visual() -> void:
 		
 	sprite.texture = config.icon_texture
 	sprite.scale = config.icon_scale
+	lifetime_timer.wait_time = config.world_lifetime
 	
 
 # 当物体进入道具区域时触发，用于处理玩家拾取

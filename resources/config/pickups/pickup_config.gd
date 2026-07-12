@@ -123,6 +123,7 @@ const KILL_EFFECT_BURST := "burst"
 @export_group("显示资源")
 @export var icon_texture : Texture2D
 @export var icon_scale: Vector2 = Vector2.ONE
+@export_range(0.0, 300.0, 1.0, "or_greater") var world_lifetime: float = 12.0
 
 
 @export_group("Buff 效果")
