@@ -12,7 +12,10 @@ const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
 const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := "res://scene/boss/linglan/linglan_boss_intro_vfx.tscn"
 const BOSS_HEALTH_HUD_SCENE_PATH := "res://scene/boss/linglan/boss_health_hud.tscn"
 const COUNTDOWN_FINAL_SECONDS := 3
-const MULTIPLAYER_DEFEAT_GRACE_SECONDS := 0.25
+const REST_DURATION_SECONDS := 300
+const PLAYER_RESPAWN_DELAYS: Array[int] = [5, 10, 15, 20]
+const PLAYER_RESPAWN_INVINCIBILITY_SECONDS := 3.0
+const SPECTATOR_CAMERA_SPEED := 180.0
 const PURCHASE_RESULT_SUCCESS := 0
 const PURCHASE_RESULT_ALREADY_OWNED := 1
 const PURCHASE_RESULT_INSUFFICIENT_XIRANG := 2
@@ -70,7 +73,7 @@ signal base_health_changed(current_health: int, maximum_health: int, revision: i
 @export var multiplayer_campaign: WaveCampaignConfig = null
 
 @export_group("战斗流程")
-@export_range(0.0, 60.0, 1.0, "or_greater") var pre_wave_duration: float = 5.0
+@export_range(0.0, 3600.0, 1.0, "or_greater") var pre_wave_duration: float = REST_DURATION_SECONDS
 @export var auto_start_waves: bool = true
 @export var linglan_boss_enabled: bool = false
 
@@ -89,6 +92,7 @@ signal base_health_changed(current_health: int, maximum_health: int, revision: i
 @onready var currency_hud: CurrencyHUD = $CurrencyHUD
 @onready var home_base_hud: HomeBaseHUD = $HomeBaseHUD
 @onready var wave_hud: WaveHUD = $WaveHUD
+@onready var tower_defense_status_hud: TowerDefenseStatusHUD = $TowerDefenseStatusHUD
 @onready var player_profile_panel: PlayerProfilePanel = $PlayerProfilePanel
 @onready var settings_panel: SettingsPanel = $SettingsLayer/SettingsPanel
 @onready var debug_collectible_window: DebugCollectibleWindow = $SettingsLayer/DebugCollectibleWindow
@@ -138,11 +142,11 @@ var home_objective_targets: Array[Node2D] = []
 var maximum_base_health: int = DEFAULT_BASE_HEALTH
 var current_base_health: int = DEFAULT_BASE_HEALTH
 var base_health_revision: int = 0
+var has_received_remote_base_health_snapshot := false
 var resolved_home_enemy_ids: Dictionary = {}
 var next_multiplayer_enemy_net_id: int = 1
 var next_multiplayer_pickup_net_id: int = 1000
 var next_multiplayer_plant_net_id: int = 1
-var multiplayer_defeat_check_pending: bool = false
 var spawn_effect_budget_started_msec: int = 0
 var spawn_effects_this_second: int = 0
 var luoxi_collectible_claim_counts: Dictionary = {}
@@ -156,6 +160,11 @@ var navigation_prewarm_requested: bool = false
 var navigation_prewarmed: bool = false
 var _previous_physics_interpolation_enabled := false
 var _owns_physics_interpolation_override := false
+var merchant_intermission_active := false
+var player_wave_death_counts: Dictionary = {}
+var singleplayer_respawn_time_left := -1.0
+var singleplayer_respawn_last_seconds := -1
+var spectator_camera_active := false
 
 
 func _enter_tree() -> void:
@@ -235,8 +244,11 @@ func _ready() -> void:
 	wave_hud.set_return_button_text("返回菜单" if runtime_mode == RuntimeMode.SINGLEPLAYER else "返回大厅")
 	if not wave_hud.return_to_lobby_requested.is_connected(_on_wave_hud_return_to_lobby_requested):
 		wave_hud.return_to_lobby_requested.connect(_on_wave_hud_return_to_lobby_requested)
+	if not wave_hud.start_wave_requested.is_connected(_on_wave_hud_start_wave_requested):
+		wave_hud.start_wave_requested.connect(_on_wave_hud_start_wave_requested)
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		player.died.connect(_on_player_died)
+		player.revived.connect(_on_player_revived.bind(0))
 	_set_merchant_active(false)
 	_configure_linglan_boss()
 	call_deferred("_deferred_request_boss_runtime_scene_loads")
@@ -246,7 +258,7 @@ func _ready() -> void:
 		_start_client_flow_countdown(
 			WaveState.PRE_WAVE,
 			_get_flow_step_id(_get_start_flow_step()),
-			maxi(ceili(pre_wave_duration), 0)
+			_get_rest_duration_seconds()
 		)
 	elif auto_start_waves and not runtime_activation_deferred and _is_flow_system_ready():
 		_enter_pre_flow_step(_get_start_flow_step())
@@ -269,6 +281,8 @@ func _on_runtime_activated() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_update_local_spectator_camera(delta)
+	_update_singleplayer_respawn(delta)
 	if runtime_mode != RuntimeMode.CLIENT_VIEW:
 		_update_tower_defense_enemy_targets(delta)
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
@@ -407,8 +421,14 @@ func apply_remote_base_health(
 ) -> void:
 	if runtime_mode != RuntimeMode.CLIENT_VIEW:
 		return
-	if new_revision <= base_health_revision:
+	if (
+		has_received_remote_base_health_snapshot
+		and new_revision <= base_health_revision
+	):
 		return
+	if not has_received_remote_base_health_snapshot and new_revision < base_health_revision:
+		return
+	var previous_health := current_base_health
 	var safe_maximum := maxi(new_maximum_health, 1)
 	var safe_current := clampi(new_current_health, 0, safe_maximum)
 	maximum_base_health = safe_maximum
@@ -416,6 +436,13 @@ func apply_remote_base_health(
 	base_health_revision = new_revision
 	_update_base_health_display()
 	base_health_changed.emit(current_base_health, maximum_base_health, base_health_revision)
+	if (
+		has_received_remote_base_health_snapshot
+		and current_base_health < previous_health
+		and tower_defense_status_hud != null
+	):
+		tower_defense_status_hud.play_gate_damage_warning()
+	has_received_remote_base_health_snapshot = true
 
 
 func apply_remote_enemy_escape(net_id: int) -> void:
@@ -484,6 +511,8 @@ func _apply_base_damage(amount: int) -> void:
 	current_base_health = maxi(current_base_health - amount, 0)
 	base_health_revision += 1
 	_update_base_health_display()
+	if tower_defense_status_hud != null:
+		tower_defense_status_hud.play_gate_damage_warning()
 	base_health_changed.emit(current_base_health, maximum_base_health, base_health_revision)
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_base_health_changed.emit(
@@ -994,10 +1023,6 @@ func show_debug_collectible_grant_result(config_path: String, success: bool) -> 
 
 func apply_remote_merchant_active(active: bool) -> void:
 	_set_local_merchants_active(active)
-	if runtime_mode != RuntimeMode.CLIENT_VIEW:
-		return
-	if not active and (wave_state == WaveState.PRE_WAVE or wave_state == WaveState.INTERMISSION):
-		state_timer.stop()
 
 
 func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> void:
@@ -1141,11 +1166,12 @@ func apply_remote_defeat() -> void:
 	if wave_state == WaveState.DEFEAT:
 		return
 	wave_state = WaveState.DEFEAT
+	_clear_respawn_runtime_for_result()
 	enemy_spawn_timer.stop()
 	state_timer.stop()
 	_restore_camera_after_boss_intro()
 	_set_merchant_active(false)
-	wave_hud.show_defeat()
+	wave_hud.show_tower_defense_defeat()
 
 
 func show_damage_number(
@@ -1327,6 +1353,39 @@ func _on_wave_hud_return_to_lobby_requested() -> void:
 	return_to_lobby_requested.emit()
 
 
+func _on_wave_hud_start_wave_requested() -> void:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		var current_scene := get_tree().current_scene
+		if current_scene != null and current_scene.has_method("request_multiplayer_start_wave"):
+			current_scene.call("request_multiplayer_start_wave")
+		return
+	request_tower_defense_wave_start(multiplayer_local_peer_id)
+
+
+func request_tower_defense_wave_start(requester_peer_id: int = 0) -> bool:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		return false
+	if (
+		runtime_mode == RuntimeMode.HOST_AUTHORITY
+		and requester_peer_id > 0
+		and not peer_players.has(requester_peer_id)
+	):
+		return false
+	if wave_state != WaveState.PRE_WAVE and wave_state != WaveState.INTERMISSION:
+		return false
+	var flow_step := (
+		current_flow_step
+		if wave_state == WaveState.PRE_WAVE
+		else next_flow_step_after_rest
+	)
+	if flow_step == null:
+		return false
+	state_timer.stop()
+	countdown_seconds = 0
+	_begin_flow_step(flow_step)
+	return true
+
+
 func _set_merchant_active(active: bool) -> void:
 	var changed := _set_local_merchants_active(active)
 	if not changed:
@@ -1336,16 +1395,19 @@ func _set_merchant_active(active: bool) -> void:
 
 
 func _set_local_merchants_active(active: bool) -> bool:
-	var changed := false
-	if merchant != null and merchant.is_active != active:
-		merchant.set_active(active)
+	var changed := merchant_intermission_active != active
+	var entering_new_intermission := active and not merchant_intermission_active
+	merchant_intermission_active = active
+	if merchant != null and not merchant.is_active:
+		merchant.set_active(true)
 		changed = true
-	if luoxi_merchant != null and luoxi_merchant.is_active != active:
-		if active:
+	if luoxi_merchant != null:
+		if not luoxi_merchant.is_active:
+			luoxi_merchant.set_active(true)
+			changed = true
+		if entering_new_intermission:
 			luoxi_collectible_claim_counts.clear()
 			luoxi_merchant.reset_intermission_state()
-		luoxi_merchant.set_active(active)
-		changed = true
 	return changed
 
 
@@ -1606,6 +1668,10 @@ func _configure_timers() -> void:
 		state_timer.timeout.connect(_on_state_timer_timeout)
 
 
+func _get_rest_duration_seconds() -> int:
+	return maxi(ceili(pre_wave_duration), 0)
+
+
 func _prewarm_enemy_navigation_grids() -> void:
 	if grid_pathfinder == null:
 		return
@@ -1818,9 +1884,10 @@ func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
 	if flow_step is WaveConfig:
 		current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
 	enemy_spawn_timer.stop()
-	_set_merchant_active(false)
-	countdown_seconds = maxi(ceili(pre_wave_duration), 0)
-	wave_hud.show_countdown(countdown_seconds)
+	_set_merchant_active(true)
+	countdown_seconds = _get_rest_duration_seconds()
+	_update_post_wave_music(flow_step)
+	wave_hud.show_countdown(countdown_seconds, true)
 	_schedule_enemy_navigation_prewarm()
 	_emit_multiplayer_flow_state(WaveState.PRE_WAVE)
 
@@ -1834,19 +1901,13 @@ func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
 
 
 func _enter_intermission(next_step: FlowStepConfig = null) -> void:
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_revive_all_requested.emit()
 	wave_state = WaveState.INTERMISSION
 	enemy_spawn_timer.stop()
 	_set_merchant_active(true)
 	next_flow_step_after_rest = next_step
-	countdown_seconds = (
-		maxi(ceili(current_flow_step.post_clear_rest_duration), 0)
-		if current_flow_step != null
-		else 0
-	)
+	countdown_seconds = _get_rest_duration_seconds()
 	_update_post_wave_music(current_flow_step)
-	wave_hud.show_countdown(countdown_seconds)
+	wave_hud.show_countdown(countdown_seconds, true)
 	_emit_multiplayer_flow_state(WaveState.INTERMISSION)
 
 	if countdown_seconds <= 0:
@@ -1886,6 +1947,7 @@ func _begin_wave_config(wave_config: WaveConfig) -> void:
 		navigation_prewarmed = true
 
 	wave_state = WaveState.WAVE_ACTIVE
+	_reset_player_wave_death_counts()
 	current_wave_index = _get_wave_number_for_step(wave_config) - 1
 	state_timer.stop()
 	_set_merchant_active(false)
@@ -1975,7 +2037,7 @@ func _on_state_timer_timeout() -> void:
 
 	countdown_seconds = maxi(countdown_seconds - 1, 0)
 	if countdown_seconds > 0:
-		wave_hud.show_countdown(countdown_seconds)
+		wave_hud.show_countdown(countdown_seconds, true)
 		if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
 			_play_countdown_tick()
 		return
@@ -1998,10 +2060,11 @@ func _start_client_flow_countdown(state: WaveState, step_id: StringName, seconds
 		current_flow_step = flow_step
 		if flow_step is WaveConfig:
 			current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
-	if state == WaveState.INTERMISSION:
+	if state == WaveState.PRE_WAVE or state == WaveState.INTERMISSION:
+		_set_local_merchants_active(true)
 		_update_post_wave_music(flow_step)
 	countdown_seconds = maxi(seconds, 0)
-	wave_hud.show_countdown(countdown_seconds)
+	wave_hud.show_countdown(countdown_seconds, true)
 	if countdown_seconds <= 0:
 		state_timer.stop()
 		return
@@ -2013,7 +2076,7 @@ func _update_client_flow_countdown() -> void:
 		state_timer.stop()
 		return
 	countdown_seconds = maxi(countdown_seconds - 1, 0)
-	wave_hud.show_countdown(countdown_seconds)
+	wave_hud.show_countdown(countdown_seconds, true)
 	if countdown_seconds <= 0:
 		state_timer.stop()
 		return
@@ -2412,10 +2475,7 @@ func _complete_current_step() -> void:
 	if next_step == null:
 		_enter_victory()
 		return
-	if current_flow_step != null and current_flow_step.post_clear_rest_duration > 0.0:
-		_enter_intermission(next_step)
-		return
-	_begin_flow_step(next_step)
+	_enter_intermission(next_step)
 
 
 func _enter_victory(emit_multiplayer: bool = true) -> void:
@@ -2424,6 +2484,9 @@ func _enter_victory(emit_multiplayer: bool = true) -> void:
 	if emit_multiplayer and runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_revive_all_requested.emit()
 	wave_state = WaveState.VICTORY
+	_clear_respawn_runtime_for_result()
+	if tower_defense_status_hud != null:
+		tower_defense_status_hud.stop_gate_damage_warning()
 	enemy_spawn_timer.stop()
 	state_timer.stop()
 	_set_merchant_active(false)
@@ -2443,6 +2506,7 @@ func _enter_defeat() -> void:
 	_cancel_plant_placement()
 	_restore_camera_after_boss_intro()
 	wave_state = WaveState.DEFEAT
+	_clear_respawn_runtime_for_result()
 	enemy_spawn_timer.stop()
 	state_timer.stop()
 	_set_merchant_active(false)
@@ -2450,9 +2514,17 @@ func _enter_defeat() -> void:
 		linglan_boss_intro_vfx.stop_intro()
 	if boss_health_hud != null:
 		boss_health_hud.hide_all()
-	wave_hud.show_defeat()
+	wave_hud.show_tower_defense_defeat()
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_defeat_started.emit()
+
+
+func _clear_respawn_runtime_for_result() -> void:
+	singleplayer_respawn_time_left = -1.0
+	singleplayer_respawn_last_seconds = -1
+	spectator_camera_active = false
+	if tower_defense_status_hud != null:
+		tower_defense_status_hud.clear_all_respawns()
 
 
 func _begin_linglan_boss_intro(boss_config: BossConfig = null) -> void:
@@ -2468,6 +2540,7 @@ func _begin_linglan_boss_intro(boss_config: BossConfig = null) -> void:
 		_enter_victory()
 		return
 	active_boss_config = boss_config
+	_reset_player_wave_death_counts()
 	linglan_boss_started = true
 	current_flow_step = boss_config
 	wave_state = WaveState.BOSS_INTRO
@@ -2623,34 +2696,144 @@ func _prepare_linglan_boss_arena(boss_config: Resource) -> void:
 func _on_player_died() -> void:
 	_cancel_plant_placement()
 	_update_plant_placement_input_state()
-	if wave_state == WaveState.VICTORY:
-		return
-	_enter_defeat()
-
-
-func _on_multiplayer_player_died(_peer_id: int) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
+	player.apply_tower_defense_death_presentation()
 	if wave_state == WaveState.VICTORY or wave_state == WaveState.DEFEAT:
 		return
-	if multiplayer_defeat_check_pending:
-		return
-	multiplayer_defeat_check_pending = true
-	var defeat_timer := get_tree().create_timer(MULTIPLAYER_DEFEAT_GRACE_SECONDS)
-	defeat_timer.timeout.connect(_check_multiplayer_defeat_after_grace)
+	_begin_local_spectator_camera()
+	var respawn_delay := consume_next_player_respawn_delay(0)
+	singleplayer_respawn_time_left = respawn_delay
+	singleplayer_respawn_last_seconds = ceili(respawn_delay)
+	update_player_respawn_countdown(0, singleplayer_respawn_last_seconds)
 
 
-func _check_multiplayer_defeat_after_grace() -> void:
-	multiplayer_defeat_check_pending = false
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
+func _on_multiplayer_player_died(peer_id: int) -> void:
+	var dead_player := get_player_for_peer(peer_id)
+	if dead_player != null and is_instance_valid(dead_player):
+		dead_player.apply_tower_defense_death_presentation()
 	if wave_state == WaveState.VICTORY or wave_state == WaveState.DEFEAT:
 		return
-	for peer_id_variant in peer_players:
-		var candidate := peer_players[peer_id_variant] as Player
-		if candidate != null and is_instance_valid(candidate) and not candidate.is_dead:
-			return
-	_enter_defeat()
+	if peer_id == multiplayer_local_peer_id:
+		_begin_local_spectator_camera()
+
+
+func _on_player_revived(peer_id: int) -> void:
+	clear_player_respawn_countdown(peer_id)
+	if (
+		(runtime_mode == RuntimeMode.SINGLEPLAYER and peer_id == 0)
+		or peer_id == multiplayer_local_peer_id
+	):
+		_end_local_spectator_camera()
+	_update_plant_placement_input_state()
+
+
+func consume_next_player_respawn_delay(peer_id: int) -> float:
+	var death_count := int(player_wave_death_counts.get(peer_id, 0))
+	var delay_index := mini(death_count, PLAYER_RESPAWN_DELAYS.size() - 1)
+	player_wave_death_counts[peer_id] = death_count + 1
+	return float(PLAYER_RESPAWN_DELAYS[delay_index])
+
+
+func update_player_respawn_countdown(peer_id: int, seconds_left: int) -> void:
+	if tower_defense_status_hud == null:
+		return
+	var is_local := (
+		(runtime_mode == RuntimeMode.SINGLEPLAYER and peer_id == 0)
+		or peer_id == multiplayer_local_peer_id
+	)
+	var display_name := "玩家"
+	if runtime_mode != RuntimeMode.SINGLEPLAYER:
+		display_name = str(multiplayer_player_names.get(peer_id, "玩家 %d" % peer_id))
+	tower_defense_status_hud.set_player_respawn(
+		peer_id,
+		display_name,
+		seconds_left,
+		is_local
+	)
+
+
+func clear_player_respawn_countdown(peer_id: int) -> void:
+	if tower_defense_status_hud != null:
+		tower_defense_status_hud.clear_player_respawn(peer_id)
+
+
+func _reset_player_wave_death_counts() -> void:
+	player_wave_death_counts.clear()
+
+
+func _update_singleplayer_respawn(delta: float) -> void:
+	if runtime_mode != RuntimeMode.SINGLEPLAYER or singleplayer_respawn_time_left < 0.0:
+		return
+	if player == null or not player.is_dead:
+		singleplayer_respawn_time_left = -1.0
+		singleplayer_respawn_last_seconds = -1
+		return
+	singleplayer_respawn_time_left = maxf(singleplayer_respawn_time_left - delta, 0.0)
+	var seconds_left := ceili(singleplayer_respawn_time_left)
+	if seconds_left != singleplayer_respawn_last_seconds:
+		singleplayer_respawn_last_seconds = seconds_left
+		update_player_respawn_countdown(0, seconds_left)
+	if singleplayer_respawn_time_left > 0.0:
+		return
+	singleplayer_respawn_time_left = -1.0
+	singleplayer_respawn_last_seconds = -1
+	player.revive_multiplayer(
+		player_spawn.global_position,
+		player.max_health,
+		PLAYER_RESPAWN_INVINCIBILITY_SECONDS
+	)
+
+
+func _begin_local_spectator_camera() -> void:
+	if spectator_camera_active or map_camera == null or player == null:
+		return
+	if map_camera.get_parent() != self:
+		map_camera.reparent(self, true)
+	map_camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	map_camera.reset_physics_interpolation()
+	spectator_camera_active = true
+
+
+func _end_local_spectator_camera() -> void:
+	if not spectator_camera_active:
+		return
+	spectator_camera_active = false
+	_attach_camera_to_local_player()
+
+
+func _update_local_spectator_camera(delta: float) -> void:
+	if not spectator_camera_active or map_camera == null:
+		return
+	if _has_exclusive_modal_open():
+		return
+	var move_input := Input.get_vector(
+		&"move_left",
+		&"move_right",
+		&"move_up",
+		&"move_down"
+	)
+	if move_input == Vector2.ZERO:
+		return
+	map_camera.global_position += move_input * SPECTATOR_CAMERA_SPEED * delta
+	map_camera.global_position = _clamp_spectator_camera_position(map_camera.global_position)
+
+
+func _clamp_spectator_camera_position(camera_position: Vector2) -> Vector2:
+	if ground_tile_map_layer == null or ground_tile_map_layer.tile_set == null:
+		return camera_position
+	var used_rect := ground_tile_map_layer.get_used_rect()
+	if used_rect.size.x <= 0 or used_rect.size.y <= 0:
+		return camera_position
+	var top_left := ground_tile_map_layer.to_global(
+		ground_tile_map_layer.map_to_local(used_rect.position)
+	)
+	var bottom_right_cell := used_rect.end - Vector2i.ONE
+	var bottom_right := ground_tile_map_layer.to_global(
+		ground_tile_map_layer.map_to_local(bottom_right_cell)
+	)
+	return Vector2(
+		clampf(camera_position.x, minf(top_left.x, bottom_right.x), maxf(top_left.x, bottom_right.x)),
+		clampf(camera_position.y, minf(top_left.y, bottom_right.y), maxf(top_left.y, bottom_right.y))
+	)
 
 
 func _configure_multiplayer_players() -> void:
@@ -2711,6 +2894,8 @@ func _configure_multiplayer_players() -> void:
 			player_instance.set_physics_process(false)
 		if not player_instance.died.is_connected(_on_multiplayer_player_died.bind(peer_id)):
 			player_instance.died.connect(_on_multiplayer_player_died.bind(peer_id))
+		if not player_instance.revived.is_connected(_on_player_revived.bind(peer_id)):
+			player_instance.revived.connect(_on_player_revived.bind(peer_id))
 		peer_players[peer_id] = player_instance
 		if peer_id == multiplayer_local_peer_id:
 			player = player_instance
@@ -2763,10 +2948,10 @@ func remove_multiplayer_player(peer_id: int) -> void:
 	multiplayer_spawn_slot_indices.erase(peer_id)
 	multiplayer_player_names.erase(peer_id)
 	multiplayer_player_character_ids.erase(peer_id)
+	clear_player_respawn_countdown(peer_id)
+	player_wave_death_counts.erase(peer_id)
 	if player_instance != null and is_instance_valid(player_instance):
 		player_instance.queue_free()
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		_check_multiplayer_defeat_after_grace()
 
 
 func get_player_for_peer(peer_id: int) -> Player:

@@ -69,14 +69,10 @@ func clear_all_respawns() -> void:
 
 func play_gate_damage_warning() -> bool:
 	var now_msec := Time.get_ticks_msec()
-	if now_msec - last_gate_warning_msec < GATE_WARNING_COOLDOWN_MSEC:
-		return false
-	last_gate_warning_msec = now_msec
 	if gate_warning_tween != null:
 		gate_warning_tween.kill()
 	gate_warning_overlay.show()
 	_set_shader_intensity(gate_warning_overlay, 1.0)
-	gate_warning_audio.play()
 	gate_warning_tween = create_tween()
 	gate_warning_tween.tween_method(
 		_set_gate_warning_intensity,
@@ -85,7 +81,20 @@ func play_gate_damage_warning() -> bool:
 		GATE_WARNING_FADE_SECONDS
 	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	gate_warning_tween.finished.connect(_on_gate_warning_finished)
+	if now_msec - last_gate_warning_msec < GATE_WARNING_COOLDOWN_MSEC:
+		return false
+	last_gate_warning_msec = now_msec
+	gate_warning_audio.play()
 	return true
+
+
+func stop_gate_damage_warning() -> void:
+	if gate_warning_tween != null:
+		gate_warning_tween.kill()
+		gate_warning_tween = null
+	gate_warning_audio.stop()
+	gate_warning_overlay.hide()
+	_set_shader_intensity(gate_warning_overlay, 0.0)
 
 
 func _refresh_dead_player_list() -> void:

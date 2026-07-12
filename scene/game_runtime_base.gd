@@ -267,6 +267,22 @@ func supports_tower_defense() -> bool:
 	return false
 
 
+func request_tower_defense_wave_start(_requester_peer_id: int = 0) -> bool:
+	return false
+
+
+func consume_next_player_respawn_delay(_peer_id: int) -> float:
+	return 10.0
+
+
+func update_player_respawn_countdown(_peer_id: int, _seconds_left: int) -> void:
+	pass
+
+
+func clear_player_respawn_countdown(_peer_id: int) -> void:
+	pass
+
+
 ## Runtime modes with a fixed multiplayer respawn layout can return a world-space
 ## position here. Returning null preserves the standard mode's living-player
 ## revive behavior.

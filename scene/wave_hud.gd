@@ -1,10 +1,14 @@
 extends CanvasLayer
 class_name WaveHUD
 
+const EARLY_START_RETRY_SECONDS := 1.5
+
 signal return_to_lobby_requested
+signal start_wave_requested
 
 @onready var top_bar: PanelContainer = $WaveInfoBar
 @onready var status_label: Label = $WaveInfoBar/Margin/Status
+@onready var start_wave_button: Button = $StartWaveButton
 @onready var result_overlay: Control = $ResultOverlay
 @onready var result_backdrop: TextureRect = $ResultOverlay/Backdrop
 @onready var result_shade: ColorRect = $ResultOverlay/Shade
@@ -16,10 +20,13 @@ signal return_to_lobby_requested
 var pulse_tween: Tween = null
 var result_tween: Tween = null
 var return_button_label: String = "返回大厅"
+var early_start_pending := false
+var early_start_request_generation := 0
 
 
 func _ready() -> void:
 	return_button.pressed.connect(return_to_lobby_requested.emit)
+	start_wave_button.pressed.connect(_on_start_wave_button_pressed)
 
 
 func set_return_button_text(button_text: String) -> void:
@@ -37,6 +44,7 @@ func show_wave_progress(wave_number: int, defeated: int, total: int) -> void:
 		defeated,
 		total,
 	]
+	_hide_start_wave_button()
 
 
 func show_tower_defense_wave_progress(
@@ -57,6 +65,7 @@ func show_tower_defense_wave_progress(
 		resolved,
 		total,
 	]
+	_hide_start_wave_button()
 
 
 func show_enemy_count(wave_number: int, alive_count: int) -> void:
@@ -65,13 +74,27 @@ func show_enemy_count(wave_number: int, alive_count: int) -> void:
 	result_overlay.visible = false
 	status_label.modulate = Color.WHITE
 	status_label.text = "第 %d 波  场上敌人 %d" % [wave_number, maxi(alive_count, 0)]
+	_hide_start_wave_button()
 
 
-func show_countdown(seconds: int) -> void:
+func show_countdown(seconds: int, allow_early_start: bool = false) -> void:
 	_stop_result_tween()
 	top_bar.visible = true
 	result_overlay.visible = false
-	status_label.text = "下一波将在 %d 秒后开始" % maxi(seconds, 0)
+	var safe_seconds := maxi(seconds, 0)
+	var countdown_text := (
+		_format_countdown(safe_seconds)
+		if allow_early_start
+		else "%d 秒" % safe_seconds
+	)
+	status_label.text = "下一波将在 %s 后开始" % countdown_text
+	start_wave_button.visible = allow_early_start
+	start_wave_button.disabled = not allow_early_start or early_start_pending
+	start_wave_button.text = (
+		"等待战斗开始……"
+		if early_start_pending
+		else "提前结束休整并开始战斗"
+	)
 	status_label.modulate = (
 		Color(1.0, 0.86, 0.42, 1.0)
 		if seconds <= 3
@@ -82,6 +105,7 @@ func show_countdown(seconds: int) -> void:
 
 
 func show_victory() -> void:
+	_hide_start_wave_button()
 	_play_result_sequence(
 		"通关",
 		"源石虫的浪潮暂时退去了",
@@ -90,9 +114,19 @@ func show_victory() -> void:
 
 
 func show_defeat() -> void:
+	_hide_start_wave_button()
 	_play_result_sequence(
 		"战败",
 		"全员已经倒下，回到大厅重新整备。",
+		Color(1.0, 0.38, 0.3, 1.0)
+	)
+
+
+func show_tower_defense_defeat() -> void:
+	_hide_start_wave_button()
+	_play_result_sequence(
+		"战败",
+		"蓝门已经失守，回到大厅重新整备。",
 		Color(1.0, 0.38, 0.3, 1.0)
 	)
 
@@ -101,6 +135,43 @@ func hide_all() -> void:
 	_stop_result_tween()
 	top_bar.visible = false
 	result_overlay.visible = false
+	_hide_start_wave_button()
+
+
+func _on_start_wave_button_pressed() -> void:
+	if start_wave_button.disabled or not start_wave_button.visible:
+		return
+	start_wave_button.disabled = true
+	start_wave_button.text = "等待战斗开始……"
+	early_start_pending = true
+	early_start_request_generation += 1
+	var request_generation := early_start_request_generation
+	start_wave_requested.emit()
+	get_tree().create_timer(EARLY_START_RETRY_SECONDS).timeout.connect(
+		_on_early_start_retry_timeout.bind(request_generation)
+	)
+
+
+func _hide_start_wave_button() -> void:
+	early_start_request_generation += 1
+	early_start_pending = false
+	start_wave_button.visible = false
+	start_wave_button.disabled = true
+
+
+func _on_early_start_retry_timeout(request_generation: int) -> void:
+	if request_generation != early_start_request_generation:
+		return
+	if not early_start_pending or not start_wave_button.visible:
+		return
+	early_start_pending = false
+	start_wave_button.disabled = false
+	start_wave_button.text = "提前结束休整并开始战斗"
+
+
+func _format_countdown(seconds: int) -> String:
+	var safe_seconds := maxi(seconds, 0)
+	return "%02d:%02d" % [floori(float(safe_seconds) / 60.0), safe_seconds % 60]
 
 
 func _play_result_sequence(title: String, subtitle: String, title_color: Color) -> void:

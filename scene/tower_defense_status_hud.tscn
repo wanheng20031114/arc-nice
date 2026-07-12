@@ -78,7 +78,7 @@ outline_size = 3
 outline_color = Color(0.04, 0.04, 0.05, 1)
 
 [node name="TowerDefenseStatusHUD" type="CanvasLayer"]
-layer = 18
+layer = 90
 script = ExtResource("1_script")
 
 [node name="DeathScreenEffect" type="ColorRect" parent="."]
@@ -113,6 +113,7 @@ offset_top = 68.0
 offset_right = -12.0
 offset_bottom = 240.0
 grow_horizontal = 0
+mouse_filter = 2
 theme_override_constants/margin_left = 0
 theme_override_constants/margin_top = 0
 theme_override_constants/margin_right = 0
@@ -126,6 +127,7 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_dead_list")
 
 [node name="Margin" type="MarginContainer" parent="RightMargin/DeadPlayersPanel"]
 layout_mode = 2
+mouse_filter = 2
 theme_override_constants/margin_left = 12
 theme_override_constants/margin_top = 9
 theme_override_constants/margin_right = 12
@@ -133,15 +135,18 @@ theme_override_constants/margin_bottom = 10
 
 [node name="Content" type="VBoxContainer" parent="RightMargin/DeadPlayersPanel/Margin"]
 layout_mode = 2
+mouse_filter = 2
 theme_override_constants/separation = 5
 
 [node name="Title" type="Label" parent="RightMargin/DeadPlayersPanel/Margin/Content"]
 layout_mode = 2
+mouse_filter = 2
 text = "阵亡队员"
 label_settings = SubResource("LabelSettings_dead_title")
 
 [node name="Players" type="Label" parent="RightMargin/DeadPlayersPanel/Margin/Content"]
 layout_mode = 2
+mouse_filter = 2
 text = "玩家：5秒后复活"
 label_settings = SubResource("LabelSettings_dead_players")
 autowrap_mode = 2
@@ -158,10 +163,12 @@ mouse_filter = 2
 [node name="Panel" type="PanelContainer" parent="LocalDeathCenter"]
 custom_minimum_size = Vector2(372, 138)
 layout_mode = 2
+mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_local_dead")
 
 [node name="Margin" type="MarginContainer" parent="LocalDeathCenter/Panel"]
 layout_mode = 2
+mouse_filter = 2
 theme_override_constants/margin_left = 26
 theme_override_constants/margin_top = 18
 theme_override_constants/margin_right = 26
@@ -169,23 +176,27 @@ theme_override_constants/margin_bottom = 18
 
 [node name="Content" type="VBoxContainer" parent="LocalDeathCenter/Panel/Margin"]
 layout_mode = 2
+mouse_filter = 2
 theme_override_constants/separation = 8
 alignment = 1
 
 [node name="Title" type="Label" parent="LocalDeathCenter/Panel/Margin/Content"]
 layout_mode = 2
+mouse_filter = 2
 text = "已阵亡"
 label_settings = SubResource("LabelSettings_local_title")
 horizontal_alignment = 1
 
 [node name="Countdown" type="Label" parent="LocalDeathCenter/Panel/Margin/Content"]
 layout_mode = 2
+mouse_filter = 2
 text = "将在 5 秒后复活"
 label_settings = SubResource("LabelSettings_local_countdown")
 horizontal_alignment = 1
 
 [node name="SpectatorHint" type="Label" parent="LocalDeathCenter/Panel/Margin/Content"]
 layout_mode = 2
+mouse_filter = 2
 theme_override_colors/font_color = Color(0.7, 0.7, 0.73, 1)
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_font_sizes/font_size = 12
@@ -195,3 +206,4 @@ horizontal_alignment = 1
 [node name="GateWarningAudio" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("5_warning_audio")
 volume_db = -1.0
+bus = &"SFX"

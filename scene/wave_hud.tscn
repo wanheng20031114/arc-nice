@@ -134,6 +134,26 @@ label_settings = SubResource("LabelSettings_status")
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="StartWaveButton" type="Button" parent="."]
+custom_minimum_size = Vector2(250, 38)
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -125.0
+offset_top = 47.0
+offset_right = 125.0
+offset_bottom = 85.0
+grow_horizontal = 2
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.93, 0.96, 0.84, 1)
+theme_override_colors/font_disabled_color = Color(0.58, 0.61, 0.55, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+text = "提前结束休整并开始战斗"
+
 [node name="ResultOverlay" type="Control" parent="." unique_id=1055332597]
 visible = false
 layout_mode = 3

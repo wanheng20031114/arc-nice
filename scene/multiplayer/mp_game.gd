@@ -48,7 +48,6 @@ const STATE_IN_GAME := 5
 const HOST_TIME_OFFSET_SMOOTH_WEIGHT := 0.08
 const INPUT_CHANGE_EPSILON := 0.001
 const PLAYER_STATE_MAX_ACCEPTED_JUMP_DISTANCE := 2048.0
-const PLAYER_REVIVE_DELAY_SECONDS := 10.0
 const PLAYER_REVIVE_INVINCIBILITY_SECONDS := 3.0
 const CHEAT_XIRANG_AMOUNT := 1000
 const HIT_DEDUP_RETENTION_SECONDS := 30.0
@@ -282,6 +281,15 @@ func request_multiplayer_skill1_purchase() -> void:
 		_apply_skill1_purchase_for_peer(_get_local_peer_id())
 	else:
 		net_skill1_purchase_requested.rpc_id(_get_host_peer_id())
+
+
+func request_multiplayer_start_wave() -> void:
+	if game == null or not game.supports_tower_defense():
+		return
+	if net_manager.is_host():
+		game.request_tower_defense_wave_start(_get_local_peer_id())
+	else:
+		net_tower_defense_start_wave_requested.rpc_id(_get_host_peer_id())
 
 
 func notify_local_player_dash_started(direction: Vector2, start_move_input: Vector2) -> void:
@@ -1051,6 +1059,10 @@ func _client_send_input_if_needed(buttons: int) -> void:
 	if game != null:
 		player_node = game.player
 	if player_node == null:
+		return
+	if player_node.is_dead:
+		_last_sent_move_input = Vector2.ZERO
+		_last_sent_shoot_input = Vector2.ZERO
 		return
 	var input_changed := (
 		not _has_sent_input
@@ -3623,20 +3635,30 @@ func _next_player_health_revision(peer_id: int) -> int:
 func _schedule_player_revive(peer_id: int) -> void:
 	if peer_id <= 0 or _dead_player_revive_times.has(peer_id):
 		return
+	if game == null or game.wave_state in [
+		GameRuntimeBase.WaveState.VICTORY,
+		GameRuntimeBase.WaveState.DEFEAT,
+	]:
+		return
 	_host_latest_client_player_snapshot_states.erase(peer_id)
-	_dead_player_revive_times[peer_id] = _get_net_time() + PLAYER_REVIVE_DELAY_SECONDS
+	var revive_delay := game.consume_next_player_respawn_delay(peer_id)
+	revive_delay = maxf(revive_delay, 0.0)
+	_dead_player_revive_times[peer_id] = _get_net_time() + revive_delay
 	_dead_player_revive_last_seconds[peer_id] = -1
 	_rpc_to_connected_clients(
 		&"net_player_revive_countdown",
-		[peer_id, int(ceil(PLAYER_REVIVE_DELAY_SECONDS))]
+		[peer_id, int(ceil(revive_delay))]
 	)
-	net_player_revive_countdown(peer_id, int(ceil(PLAYER_REVIVE_DELAY_SECONDS)))
+	net_player_revive_countdown(peer_id, int(ceil(revive_delay)))
 
 
 func _host_update_player_revives() -> void:
 	if not net_manager.is_host() or game == null:
 		return
-	if game.wave_state == GameRuntimeBase.WaveState.DEFEAT:
+	if game.wave_state in [
+		GameRuntimeBase.WaveState.VICTORY,
+		GameRuntimeBase.WaveState.DEFEAT,
+	]:
 		return
 	var now := _get_net_time()
 	var due_peers: Array[int] = []
@@ -3774,7 +3796,10 @@ func net_player_revive_countdown(peer_id: int, seconds_left: int) -> void:
 	var player_node := game.get_player_for_peer(peer_id)
 	if player_node == null or not is_instance_valid(player_node):
 		return
-	player_node.set_multiplayer_revive_countdown(seconds_left)
+	if game.supports_tower_defense():
+		game.update_player_respawn_countdown(peer_id, seconds_left)
+	else:
+		player_node.set_multiplayer_revive_countdown(seconds_left)
 
 
 @rpc("authority", "call_remote", "reliable", 4)
@@ -3800,6 +3825,7 @@ func net_player_revived(
 	_active_tiyi_activations_by_peer.erase(peer_id)
 	_tiyi_target_ids_by_peer.erase(peer_id)
 	player_node.revive_multiplayer(revive_position, current_health, invincible_seconds)
+	game.clear_player_respawn_countdown(peer_id)
 	if is_client_view_runtime() and peer_id != _get_client_view_local_peer_id():
 		_reset_player_visual_interpolator_to_state(
 			peer_id,
@@ -4050,13 +4076,20 @@ func _on_host_boss_started(
 func _on_host_defeat_started() -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
+	_clear_pending_player_revives()
 	_rpc_to_connected_clients(&"net_game_defeated")
 
 
 func _on_host_victory_started() -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
+	_clear_pending_player_revives()
 	_rpc_to_connected_clients(&"net_game_victory")
+
+
+func _clear_pending_player_revives() -> void:
+	_dead_player_revive_times.clear()
+	_dead_player_revive_last_seconds.clear()
 
 
 func _on_game_return_to_lobby_requested() -> void:
@@ -4518,6 +4551,7 @@ func net_boss_started(net_id: int, boss_config_path: String, spawn_position: Vec
 func net_game_defeated() -> void:
 	if game == null or net_manager.is_host():
 		return
+	_clear_pending_player_revives()
 	game.apply_remote_defeat()
 
 
@@ -4525,6 +4559,7 @@ func net_game_defeated() -> void:
 func net_game_victory() -> void:
 	if game == null or net_manager.is_host():
 		return
+	_clear_pending_player_revives()
 	game.apply_remote_victory()
 
 
@@ -4566,6 +4601,16 @@ func net_skill1_purchase_requested() -> void:
 	if sender_id <= 0:
 		return
 	_apply_skill1_purchase_for_peer(sender_id)
+
+
+@rpc("any_peer", "call_remote", "reliable", 4)
+func net_tower_defense_start_wave_requested() -> void:
+	if not net_manager.is_host() or game == null or not game.supports_tower_defense():
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0 or game.get_player_for_peer(sender_id) == null:
+		return
+	game.request_tower_defense_wave_start(sender_id)
 
 
 @rpc("any_peer", "call_remote", "reliable", 4)

@@ -702,9 +702,13 @@ func reset_intermission_state() -> void:
 	claim_counts_by_player_key.clear()
 	refresh_counts_by_player_key.clear()
 	pending_choices_by_player_key.clear()
-	if choice_visible:
-		choice_visible = false
-		choice_overlay.hide_choices()
+	selected_choice_index = 0
+	choice_visible = false
+	result_visible = false
+	dialogue_index = 0
+	choice_overlay.hide_choices()
+	dialogue_bubble.hide_bubble()
+	dialogue_lines = _build_dialogue_lines(active_player)
 
 
 func reset_round_collectible_claims() -> void:

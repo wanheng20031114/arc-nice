@@ -309,6 +309,10 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	_expect(run_state.get_item(1) == null, "Luoxi must not add a second collectible in the same intermission.")
 
 	luoxi.reset_intermission_state()
+	_expect(not bubble.visible, "Luoxi intermission reset must clear the previous claimed-result bubble.")
+	luoxi._unhandled_input(interact)
+	bubble.finish_line()
+	luoxi._unhandled_input(interact)
 	bubble.finish_line()
 	luoxi._unhandled_input(interact)
 	_expect(choice_overlay.is_open(), "Luoxi must allow a new collectible choice after round reset.")

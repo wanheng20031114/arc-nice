@@ -7,6 +7,7 @@ signal health_changed(current: int, maximum: int)
 signal attack_speed_changed(attack_speed: float)
 signal dodge_changed(chance: float)
 signal died
+signal revived
 
 @export var character_id: StringName = &""
 @export var move_speed: float = 120.0
@@ -31,6 +32,7 @@ var multiplayer_dash_protection_time_left: float = 0.0
 var remote_dash_visual_time_left: float = 0.0
 var is_dead: bool = false
 var controls_locked: bool = false
+var tower_defense_death_presentation_active: bool = false
 var peer_id: int = 0
 var uses_local_input: bool = true
 var network_move_input: Vector2 = Vector2.ZERO
@@ -1044,6 +1046,13 @@ func apply_multiplayer_realtime_state(
 		apply_multiplayer_death_state()
 		_update_skill1_charge_bar()
 		_update_character_visual_state()
+		if tower_defense_death_presentation_active:
+			_apply_tower_defense_hidden_death_state()
+		return
+	# Tower-defense revives are reliable authoritative events. An older alive
+	# realtime snapshot must never unlock a dead player or clear spectator HUD.
+	if is_dead and tower_defense_death_presentation_active:
+		_apply_tower_defense_hidden_death_state()
 		return
 	if is_dead:
 		revive_multiplayer(global_position, clamped_health, new_invincibility_time_left)
@@ -1111,6 +1120,14 @@ func _update_nameplate_position() -> void:
 
 func set_multiplayer_health_state(new_health: int, new_is_dead: bool) -> void:
 	var clamped_health := clampi(new_health, 0, max_health)
+	if (
+		is_dead
+		and tower_defense_death_presentation_active
+		and not new_is_dead
+		and clamped_health > 0
+	):
+		_apply_tower_defense_hidden_death_state()
+		return
 	current_health = clamped_health
 	if new_is_dead or clamped_health <= 0:
 		apply_multiplayer_death_state()
@@ -1127,6 +1144,7 @@ func set_multiplayer_health_state(new_health: int, new_is_dead: bool) -> void:
 
 func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invincible_seconds: float = 0.0) -> void:
 	var was_dead := is_dead
+	tower_defense_death_presentation_active = false
 	global_position = revive_position
 	reset_physics_interpolation()
 	_set_multiplayer_visual_offset(Vector2.ZERO)
@@ -1153,6 +1171,8 @@ func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invi
 		invincibility_time_left = 0.0
 		_set_hurt_blink_enabled(false)
 	_refresh_dash_ready_visual()
+	if was_dead:
+		revived.emit()
 	if was_dead and uses_local_input:
 		_start_local_revive_glow_effect()
 
@@ -1199,11 +1219,37 @@ func apply_multiplayer_death_state() -> void:
 		body_sprite.stop()
 	if collision_shape != null:
 		collision_shape.set_deferred("disabled", true)
+	if tower_defense_death_presentation_active:
+		_apply_tower_defense_hidden_death_state()
 	_refresh_dash_ready_visual()
 	health_changed.emit(current_health, max_health)
 	if not was_dead:
 		death_audio.play()
 		died.emit()
+
+
+func apply_tower_defense_death_presentation() -> void:
+	if not is_dead:
+		return
+	tower_defense_death_presentation_active = true
+	_apply_tower_defense_hidden_death_state()
+
+
+func _apply_tower_defense_hidden_death_state() -> void:
+	controls_locked = true
+	mouse_fire_held = false
+	velocity = Vector2.ZERO
+	body_sprite.stop()
+	body_sprite.hide()
+	nameplate_layer.hide()
+	health_bar.hide()
+	if attack_interval_bar != null:
+		attack_interval_bar.hide()
+	if collision_shape != null:
+		collision_shape.set_deferred("disabled", true)
+	_update_movement_status_visuals(Vector2.ZERO)
+	_update_skill1_charge_bar()
+	_refresh_dash_ready_visual()
 
 
 func _reset_character_resources_on_revive() -> void:

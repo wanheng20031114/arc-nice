@@ -12,7 +12,10 @@ void fragment() {
 	float luminance = dot(screen_color.rgb, vec3(0.299, 0.587, 0.114));
 	vec3 gray_color = vec3(luminance);
 	vec3 desaturated = mix(screen_color.rgb, gray_color, grayscale_strength * intensity);
-	float edge_distance = min(min(UV.x, 1.0 - UV.x), min(UV.y, 1.0 - UV.y));
+	float aspect_ratio = SCREEN_PIXEL_SIZE.y / max(SCREEN_PIXEL_SIZE.x, 0.000001);
+	vec2 edge_distances = min(UV, vec2(1.0) - UV);
+	edge_distances.x *= aspect_ratio;
+	float edge_distance = min(edge_distances.x, edge_distances.y);
 	float edge_mask = 1.0 - smoothstep(0.0, edge_width, edge_distance);
 	float darkness = edge_darkness * intensity * (0.18 + edge_mask * 0.82);
 	COLOR = vec4(desaturated * (1.0 - darkness), screen_color.a);
