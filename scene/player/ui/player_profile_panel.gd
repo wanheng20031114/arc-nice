@@ -208,7 +208,10 @@ func _collect_slots() -> void:
 
 func _refresh_inventory() -> void:
 	for slot_index in range(slots.size()):
-		slots[slot_index].set_item(run_state.get_item(slot_index))
+		slots[slot_index].set_item(
+			run_state.get_item(slot_index),
+			run_state.get_item_count(slot_index)
+		)
 		slots[slot_index].set_selected(slot_index == selected_slot_index)
 	_refresh_item_detail()
 
@@ -416,14 +419,25 @@ func _refresh_item_detail() -> void:
 		return
 
 	var is_consumable := _is_consumable_item(item)
-	item_detail_title.text = item.display_name
+	var is_material := item.pickup_type == PickupConfig.PickupType.MATERIAL
+	var stack_count := run_state.get_item_count(selected_slot_index)
+	item_detail_title.text = (
+		"%s ×%d" % [item.display_name, stack_count]
+		if stack_count > 1
+		else item.display_name
+	)
 	item_detail_category_label.text = _get_item_type_label(item)
-	item_detail_category_backing.texture = ITEM_CATEGORY_ITEM_TEXTURE if is_consumable else ITEM_CATEGORY_COLLECTIBLE_TEXTURE
+	item_detail_category_backing.texture = (
+		ITEM_CATEGORY_ITEM_TEXTURE
+		if is_consumable or is_material
+		else ITEM_CATEGORY_COLLECTIBLE_TEXTURE
+	)
 	item_detail_description.text = item.description if not item.description.is_empty() else "暂无描述"
 	item_detail_hint.visible = is_consumable
 	item_detail_hint.text = "也可以双击槽位使用"
 	item_detail_use_button.visible = is_consumable
 	item_detail_discard_button.visible = true
+	item_detail_discard_button.text = "删除" if is_material else "丢弃"
 	item_detail_panel.visible = true
 	item_detail_panel.move_to_front()
 	_update_item_detail_position(slots[selected_slot_index])
@@ -471,12 +485,18 @@ func _on_detail_discard_pressed() -> void:
 
 
 func _is_consumable_item(item: PickupConfig) -> bool:
-	return item != null and item.pickup_type != PickupConfig.PickupType.COLLECTIBLE
+	return (
+		item != null
+		and item.pickup_type != PickupConfig.PickupType.COLLECTIBLE
+		and item.pickup_type != PickupConfig.PickupType.MATERIAL
+	)
 
 
 func _get_item_type_label(item: PickupConfig) -> String:
 	if item != null and item.pickup_type == PickupConfig.PickupType.COLLECTIBLE:
 		return "收藏品"
+	if item != null and item.pickup_type == PickupConfig.PickupType.MATERIAL:
+		return "物资"
 	return "道具"
 
 

@@ -29,6 +29,7 @@ const UPGRADE_COSTS := {
 }
 
 var inventory: Array[PickupConfig] = []
+var inventory_stack_counts: Array[int] = []
 var run_started := false
 var upgrade_levels := {
 	StatType.ATTACK: 0,
@@ -38,6 +39,7 @@ var upgrade_levels := {
 }
 var active_multiplayer_peer_id: int = 0
 var multiplayer_inventories: Dictionary = {}
+var multiplayer_inventory_stack_counts: Dictionary = {}
 var multiplayer_upgrade_levels: Dictionary = {}
 var selected_character_id: StringName = PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
 
@@ -66,10 +68,14 @@ func begin_new_run(character_id: StringName = &"weishidaier") -> void:
 		return
 	inventory.clear()
 	inventory.resize(INVENTORY_CAPACITY)
+	inventory_stack_counts.clear()
+	inventory_stack_counts.resize(INVENTORY_CAPACITY)
+	inventory_stack_counts.fill(0)
 	for stat_type: int in upgrade_levels:
 		upgrade_levels[stat_type] = 0
 	active_multiplayer_peer_id = 0
 	multiplayer_inventories.clear()
+	multiplayer_inventory_stack_counts.clear()
 	multiplayer_upgrade_levels.clear()
 	run_started = true
 	inventory_changed.emit()
@@ -88,10 +94,23 @@ func try_add_item(item: PickupConfig) -> bool:
 		return try_add_item_for_peer(active_multiplayer_peer_id, item)
 	if item == null or not item.can_store_in_inventory:
 		return false
+	_ensure_local_inventory_shape()
+
+	if item.stackable:
+		for slot_index in range(inventory.size()):
+			if not _items_share_stack(inventory[slot_index], item):
+				continue
+			var stack_limit := _get_item_stack_limit(item)
+			if inventory_stack_counts[slot_index] >= stack_limit:
+				continue
+			inventory_stack_counts[slot_index] += 1
+			inventory_changed.emit()
+			return true
 
 	for slot_index in range(inventory.size()):
 		if inventory[slot_index] == null:
 			inventory[slot_index] = item
+			inventory_stack_counts[slot_index] = 1
 			inventory_changed.emit()
 			return true
 
@@ -112,7 +131,11 @@ func try_use_item(slot_index: int, player: Player) -> bool:
 	if not player.apply_pickup(item):
 		return false
 
-	inventory[slot_index] = null
+	if get_item_count(slot_index) > 1:
+		inventory_stack_counts[slot_index] -= 1
+	else:
+		inventory[slot_index] = null
+		inventory_stack_counts[slot_index] = 0
 	inventory_changed.emit()
 	return true
 
@@ -126,6 +149,7 @@ func discard_item(slot_index: int) -> bool:
 		return false
 
 	inventory[slot_index] = null
+	inventory_stack_counts[slot_index] = 0
 	inventory_changed.emit()
 	return true
 
@@ -136,6 +160,15 @@ func get_item(slot_index: int) -> PickupConfig:
 	if slot_index < 0 or slot_index >= inventory.size():
 		return null
 	return inventory[slot_index]
+
+
+func get_item_count(slot_index: int) -> int:
+	if active_multiplayer_peer_id > 0:
+		return get_item_count_for_peer(active_multiplayer_peer_id, slot_index)
+	_ensure_local_inventory_shape()
+	if slot_index < 0 or slot_index >= inventory.size() or inventory[slot_index] == null:
+		return 0
+	return maxi(inventory_stack_counts[slot_index], 1)
 
 
 func try_upgrade(stat_type: int, player: Player) -> bool:
@@ -211,6 +244,11 @@ func ensure_multiplayer_peer_state(peer_id: int) -> void:
 		var peer_inventory: Array[PickupConfig] = []
 		peer_inventory.resize(INVENTORY_CAPACITY)
 		multiplayer_inventories[peer_id] = peer_inventory
+	if not multiplayer_inventory_stack_counts.has(peer_id):
+		var peer_counts: Array[int] = []
+		peer_counts.resize(INVENTORY_CAPACITY)
+		peer_counts.fill(0)
+		multiplayer_inventory_stack_counts[peer_id] = peer_counts
 	if not multiplayer_upgrade_levels.has(peer_id):
 		multiplayer_upgrade_levels[peer_id] = {
 			StatType.ATTACK: 0,
@@ -227,9 +265,22 @@ func try_add_item_for_peer(peer_id: int, item: PickupConfig) -> bool:
 		return false
 
 	var peer_inventory := multiplayer_inventories[peer_id] as Array
+	var peer_counts := multiplayer_inventory_stack_counts[peer_id] as Array
+	if item.stackable:
+		for slot_index in range(peer_inventory.size()):
+			var stored_item := peer_inventory[slot_index] as PickupConfig
+			if not _items_share_stack(stored_item, item):
+				continue
+			var stack_limit := _get_item_stack_limit(item)
+			if int(peer_counts[slot_index]) >= stack_limit:
+				continue
+			peer_counts[slot_index] = int(peer_counts[slot_index]) + 1
+			inventory_changed.emit()
+			return true
 	for slot_index in range(peer_inventory.size()):
 		if peer_inventory[slot_index] == null:
 			peer_inventory[slot_index] = item
+			peer_counts[slot_index] = 1
 			inventory_changed.emit()
 			return true
 
@@ -250,7 +301,12 @@ func try_use_item_for_peer(peer_id: int, slot_index: int, player: Player) -> boo
 	if not player.apply_pickup(item):
 		return false
 
-	peer_inventory[slot_index] = null
+	var peer_counts := multiplayer_inventory_stack_counts[peer_id] as Array
+	if get_item_count_for_peer(peer_id, slot_index) > 1:
+		peer_counts[slot_index] = int(peer_counts[slot_index]) - 1
+	else:
+		peer_inventory[slot_index] = null
+		peer_counts[slot_index] = 0
 	inventory_changed.emit()
 	return true
 
@@ -264,6 +320,8 @@ func discard_item_for_peer(peer_id: int, slot_index: int) -> bool:
 		return false
 
 	peer_inventory[slot_index] = null
+	var peer_counts := multiplayer_inventory_stack_counts[peer_id] as Array
+	peer_counts[slot_index] = 0
 	inventory_changed.emit()
 	return true
 
@@ -274,6 +332,44 @@ func get_item_for_peer(peer_id: int, slot_index: int) -> PickupConfig:
 	if slot_index < 0 or slot_index >= peer_inventory.size():
 		return null
 	return peer_inventory[slot_index] as PickupConfig
+
+
+func get_item_count_for_peer(peer_id: int, slot_index: int) -> int:
+	ensure_multiplayer_peer_state(peer_id)
+	var peer_inventory := multiplayer_inventories[peer_id] as Array
+	var peer_counts := multiplayer_inventory_stack_counts[peer_id] as Array
+	if slot_index < 0 or slot_index >= peer_inventory.size() or peer_inventory[slot_index] == null:
+		return 0
+	return maxi(int(peer_counts[slot_index]), 1)
+
+
+func _ensure_local_inventory_shape() -> void:
+	if inventory.size() != INVENTORY_CAPACITY:
+		inventory.resize(INVENTORY_CAPACITY)
+	if inventory_stack_counts.size() != INVENTORY_CAPACITY:
+		inventory_stack_counts.resize(INVENTORY_CAPACITY)
+	for slot_index in range(INVENTORY_CAPACITY):
+		if inventory[slot_index] == null:
+			inventory_stack_counts[slot_index] = 0
+		elif inventory_stack_counts[slot_index] <= 0:
+			inventory_stack_counts[slot_index] = 1
+
+
+func _items_share_stack(existing_item: PickupConfig, incoming_item: PickupConfig) -> bool:
+	if existing_item == null or incoming_item == null or not incoming_item.stackable:
+		return false
+	if existing_item == incoming_item:
+		return true
+	return (
+		not existing_item.resource_path.is_empty()
+		and existing_item.resource_path == incoming_item.resource_path
+	)
+
+
+func _get_item_stack_limit(item: PickupConfig) -> int:
+	if item == null or not item.stackable:
+		return 1
+	return clampi(item.inventory_stack_limit, 1, 999)
 
 
 func try_upgrade_for_peer(peer_id: int, stat_type: int, player: Player) -> bool:

@@ -8,6 +8,7 @@ enum PickupType {
 	TENPURA,
 	HEALTH,
 	COLLECTIBLE,
+	MATERIAL,
 	
 }
 
@@ -116,6 +117,8 @@ const KILL_EFFECT_BURST := "burst"
 @export_multiline var description: String = ""
 @export var can_store_in_inventory: bool = false
 @export var stackable: bool = false
+# 可叠加物品在单个背包槽位中的数量上限；不可叠加物品固定视为 1。
+@export_range(1, 999, 1) var inventory_stack_limit: int = 1
 
 @export_group("显示资源")
 @export var icon_texture : Texture2D
@@ -131,6 +134,8 @@ const KILL_EFFECT_BURST := "burst"
 @export_range(0.1, 5.0, 0.05, "or_greater") var move_speed_multiplier: float = 1.0
 # 玩家射速倍率，1.0 表示不改变，1.5 表示射速提升 50%。
 @export_range(0.1, 5.0, 0.05, "or_greater") var fire_rate_multiplier: float = 1.0
+# 玩家攻击力倍率，1.0 表示不改变，1.1 表示攻击力提高 10%。
+@export_range(0.1, 5.0, 0.05, "or_greater") var attack_damage_multiplier: float = 1.0
 
 
 @export_group("形态与弹幕")
