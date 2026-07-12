@@ -16,16 +16,20 @@ const FAR_STATIC_OBJECTIVE_DISTANCE_SQUARED := (
 	FAR_STATIC_OBJECTIVE_DISTANCE * FAR_STATIC_OBJECTIVE_DISTANCE
 )
 const FAR_STATIC_OBJECTIVE_UPDATE_INTERVAL_FRAMES := 8
-const NEAR_STATIC_DIRECT_OBJECTIVE_DISTANCE := 96.0
+# The tower-defense plant aggro radius is eight 16 px cells. Sweep that entire
+# local approach so a visible plant on open ground never needs a flow field;
+# any wall or water collision still falls back to complete navigation.
+const NEAR_STATIC_DIRECT_OBJECTIVE_DISTANCE := 128.0
 const NEAR_STATIC_DIRECT_OBJECTIVE_DISTANCE_SQUARED := (
 	NEAR_STATIC_DIRECT_OBJECTIVE_DISTANCE * NEAR_STATIC_DIRECT_OBJECTIVE_DISTANCE
 )
-# Tower-defense players only become an objective inside a 200 px aggro radius.
-# Keep the moving-target line sweep bounded to the same scale in every mode so
-# open terrain can use a native full-body diagonal without a flow-field query.
-const NEAR_MOVING_TARGET_DIRECT_DISTANCE := 200.0
-const NEAR_MOVING_TARGET_DIRECT_DISTANCE_SQUARED := (
-	NEAR_MOVING_TARGET_DIRECT_DISTANCE * NEAR_MOVING_TARGET_DIRECT_DISTANCE
+# Ordinary modes retain their authored 200 px shortcut. Tower defense raises
+# this per enemy to its 16-cell aggro radius without changing shared Enemy
+# behavior elsewhere.
+const DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE := 200.0
+const DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE_SQUARED := (
+	DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE
+	* DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE
 )
 const AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const HIT_EFFECT_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")
@@ -96,6 +100,10 @@ var navigation_zero_direction_retry_frame: int = 0
 var navigation_collision_probe := KinematicCollision2D.new()
 var navigation_step_result: GridPathfinder.NavigationStepResult = null
 var navigation_flow_context: GridPathfinder.FlowQueryContext = null
+var near_moving_target_direct_distance := DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE
+var near_moving_target_direct_distance_squared := (
+	DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE_SQUARED
+)
 var animated_sprite_base_position := Vector2.ZERO
 var material_drop_random_generator := RandomNumberGenerator.new()
 var cached_effective_move_speed := 0.0
@@ -164,6 +172,10 @@ func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = 
 	objective_target = player
 	reward_player = player
 	pathfinder = shared_pathfinder
+	near_moving_target_direct_distance = DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE
+	near_moving_target_direct_distance_squared = (
+		DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE_SQUARED
+	)
 	if navigation_flow_context != null:
 		navigation_flow_context.invalidate()
 	_apply_config()
@@ -189,6 +201,15 @@ func set_objective_target(target: Node2D) -> void:
 	if objective_target == target:
 		return
 	objective_target = target
+	_clear_cached_navigation_move_direction()
+
+
+func set_near_moving_target_direct_distance(distance: float) -> void:
+	var normalized_distance := maxf(distance, 0.0)
+	if is_equal_approx(near_moving_target_direct_distance, normalized_distance):
+		return
+	near_moving_target_direct_distance = normalized_distance
+	near_moving_target_direct_distance_squared = normalized_distance * normalized_distance
 	_clear_cached_navigation_move_direction()
 
 
@@ -982,21 +1003,29 @@ func _get_safe_navigation_move_direction(
 		if direct_direction != Vector2.ZERO:
 			return _cache_navigation_move_direction(direct_direction, true)
 	elif _is_near_static_objective(target_node):
-		# Near a static objective, a full body sweep is cheaper than another flow
-		# query when the remaining corridor is open. This is also the physical
-		# final-approach tier: a flow target may resolve to the nearest conservative
-		# grid cell, but Home damage still happens only after the body actually
-		# enters the gate Area2D.
+		# Near a static objective, a precomputed open-area certificate plus a short
+		# body probe avoids another flow query. Non-certified corridors retain the
+		# full real-shape sweep. Home damage still happens only after the body
+		# actually enters the gate Area2D.
 		var direct_direction := _get_collision_safe_near_static_objective_direction(
 			target_node.global_position
 		)
 		if direct_direction != Vector2.ZERO:
 			return _cache_navigation_move_direction(direct_direction, true)
 	elif _is_near_moving_target(target_node):
-		# PhysicsBody2D.test_move() sweeps the real body through the complete
-		# remaining segment. On open ground this is both cheaper and more accurate
-		# than rebuilding a full-map field every time the player crosses a tile.
+		# The immutable open-area snapshot handles large plains; exact test_move()
+		# remains the fallback around authored obstacles. Both paths avoid rebuilding
+		# a full-map field every time the player crosses a tile in open terrain.
 		var direct_direction := _get_collision_safe_near_moving_target_direction(
+			target_node.global_position
+		)
+		if direct_direction != Vector2.ZERO:
+			return _cache_navigation_move_direction(direct_direction)
+	elif target_node != target_player:
+		# Between the near and far tiers, only take a straight static route when
+		# the shared profile snapshot can certify the complete rectangle as open.
+		# Cluttered or not-yet-built profiles keep using the complete flow field.
+		var direct_direction := _get_collision_safe_precomputed_open_plain_direction(
 			target_node.global_position
 		)
 		if direct_direction != Vector2.ZERO:
@@ -1187,6 +1216,9 @@ func _get_collision_safe_direct_objective_direction(
 	# later handoff to flow navigation may have no valid start cell.
 	var grid_pathfinder := pathfinder as GridPathfinder
 	if grid_pathfinder != null:
+		var open_plain: Variant = _try_get_navigation_open_plain(objective_position)
+		if open_plain == true:
+			return direct_direction
 		var segment_walkable: Variant = null
 		if grid_pathfinder.has_method("try_is_navigation_segment_walkable"):
 			segment_walkable = grid_pathfinder.try_is_navigation_segment_walkable(
@@ -1210,12 +1242,17 @@ func _get_collision_safe_direct_objective_direction(
 func _get_collision_safe_near_static_objective_direction(
 	objective_position: Vector2
 ) -> Vector2:
+	var precomputed_direction := (
+		_get_collision_safe_precomputed_open_plain_direction(objective_position)
+	)
+	if precomputed_direction != Vector2.ZERO:
+		return precomputed_direction
 	var offset := objective_position - global_position
 	if offset == Vector2.ZERO:
 		return Vector2.ZERO
-	# Sweep the complete remaining segment with the real CharacterBody shape.
-	# The near tier continues through move_and_slide(), so this check is only a
-	# line-of-sight shortcut and never enables the lightweight far translation.
+	# For a non-certified rectangle, sweep the complete remaining segment with
+	# the real CharacterBody shape. The near tier continues through
+	# move_and_slide(), so this never enables lightweight far translation.
 	if test_move(global_transform, offset):
 		return Vector2.ZERO
 	return offset.normalized()
@@ -1224,12 +1261,50 @@ func _get_collision_safe_near_static_objective_direction(
 func _get_collision_safe_near_moving_target_direction(
 	objective_position: Vector2
 ) -> Vector2:
+	var precomputed_direction := (
+		_get_collision_safe_precomputed_open_plain_direction(objective_position)
+	)
+	if precomputed_direction != Vector2.ZERO:
+		return precomputed_direction
 	var offset := objective_position - global_position
 	if offset == Vector2.ZERO:
 		return Vector2.ZERO
 	if test_move(global_transform, offset):
 		return Vector2.ZERO
 	return offset.normalized()
+
+
+func _get_collision_safe_precomputed_open_plain_direction(
+	objective_position: Vector2
+) -> Vector2:
+	var offset := objective_position - global_position
+	if offset == Vector2.ZERO:
+		return Vector2.ZERO
+	if _try_get_navigation_open_plain(objective_position) != true:
+		return Vector2.ZERO
+	var direct_direction := offset.normalized()
+	var probe_distance := minf(
+		offset.length(),
+		_get_far_direct_objective_probe_distance()
+	)
+	if test_move(global_transform, direct_direction * probe_distance):
+		return Vector2.ZERO
+	return direct_direction
+
+
+func _try_get_navigation_open_plain(objective_position: Vector2) -> Variant:
+	var grid_pathfinder := pathfinder as GridPathfinder
+	if (
+		grid_pathfinder == null
+		or not grid_pathfinder.has_method("try_is_navigation_open_plain")
+	):
+		return null
+	return grid_pathfinder.try_is_navigation_open_plain(
+		global_position,
+		objective_position,
+		_get_body_collision_half_extents(),
+		terrain_traversal_types
+	)
 
 
 func _get_static_objective_final_alignment_direction(
@@ -1323,7 +1398,7 @@ func _is_near_moving_target(target_node: Node2D) -> bool:
 		is_instance_valid(target_node)
 		and target_node == target_player
 		and global_position.distance_squared_to(target_node.global_position)
-			<= NEAR_MOVING_TARGET_DIRECT_DISTANCE_SQUARED
+			<= near_moving_target_direct_distance_squared
 	)
 
 

@@ -38,11 +38,14 @@ const MULTIPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/tower_defense/multiplayer/campaign.tres"
 )
 const ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME := 16
-# World-space radius: 200 px = 12.5 logical 16 px tiles. With the tower-defense
-# camera zoom of 2, this occupies 400 physical screen pixels.
-const PLAYER_OBJECTIVE_AGGRO_RADIUS := 200.0
-const PLAYER_OBJECTIVE_AGGRO_RADIUS_SQUARED := (
-	PLAYER_OBJECTIVE_AGGRO_RADIUS * PLAYER_OBJECTIVE_AGGRO_RADIUS
+# Target priority is evaluated in logical tile units so it remains stable if a
+# TileMap transform changes. These world-space constants document the current
+# authored 16 px grid and remain useful to UI/tests.
+const AUTHORED_LOGICAL_TILE_SIZE := 16.0
+const PLANT_OBJECTIVE_AGGRO_RADIUS_CELLS := 8.0
+const PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS := 16.0
+const PLAYER_OBJECTIVE_AGGRO_RADIUS := (
+	PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS * AUTHORED_LOGICAL_TILE_SIZE
 )
 const PLANT_PLACEMENT_REJECT_INVALID_REQUEST := &"invalid_request"
 const PLANT_PLACEMENT_REJECT_INVALID_PLAYER := &"invalid_player"
@@ -581,6 +584,7 @@ func _on_plant_placement_mode_changed(active: bool) -> void:
 func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 	if plant == null:
 		return
+	_request_enemy_retarget_after_objective_change()
 	if not plant.modal_ui_visibility_changed.is_connected(_on_plant_modal_ui_visibility_changed):
 		plant.modal_ui_visibility_changed.connect(_on_plant_modal_ui_visibility_changed)
 
@@ -730,6 +734,7 @@ func _on_authoritative_plant_health_changed(
 
 
 func _on_plant_removed(plant: PlantDefense) -> void:
+	_request_enemy_retarget_after_objective_change()
 	if runtime_mode != RuntimeMode.HOST_AUTHORITY or plant == null:
 		return
 	var net_id := int(plant.get_meta(&"net_id", 0))
@@ -3011,6 +3016,7 @@ func _process_enemy_retarget_budget() -> void:
 func _assign_enemy_targets(enemy: Enemy, from_position: Vector2) -> void:
 	if enemy == null or enemy.is_dead:
 		return
+	enemy.set_near_moving_target_direct_distance(PLAYER_OBJECTIVE_AGGRO_RADIUS)
 	var combat_player := _pick_enemy_target(from_position)
 	var objective := _pick_enemy_objective(from_position, combat_player)
 	enemy.set_target_player(combat_player)
@@ -3034,6 +3040,24 @@ func _pick_enemy_target(from_position: Vector2) -> Player:
 
 
 func _pick_enemy_objective(from_position: Vector2, combat_player: Player) -> Node2D:
+	if plant_system != null:
+		var nearest_plant := plant_system.find_nearest_living_plant(
+			from_position,
+			PLANT_OBJECTIVE_AGGRO_RADIUS_CELLS
+		)
+		if nearest_plant != null:
+			return nearest_plant
+	if (
+		combat_player != null
+		and is_instance_valid(combat_player)
+		and not combat_player.is_dead
+		and _get_logical_tile_distance_squared(
+			from_position,
+			combat_player.global_position
+		) <= PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS * PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS
+	):
+		return combat_player
+
 	var best_gate: Node2D = null
 	var best_gate_distance := INF
 	for gate_target in home_objective_targets:
@@ -3043,15 +3067,35 @@ func _pick_enemy_objective(from_position: Vector2, combat_player: Player) -> Nod
 		if gate_distance < best_gate_distance:
 			best_gate_distance = gate_distance
 			best_gate = gate_target
-	if combat_player == null or not is_instance_valid(combat_player) or combat_player.is_dead:
-		return best_gate
-	var player_distance := from_position.distance_squared_to(combat_player.global_position)
-	if (
-		player_distance <= PLAYER_OBJECTIVE_AGGRO_RADIUS_SQUARED
-		and (best_gate == null or player_distance < best_gate_distance)
-	):
-		return combat_player
 	return best_gate
+
+
+func _get_logical_tile_distance_squared(
+	from_global_position: Vector2,
+	to_global_position: Vector2
+) -> float:
+	if ground_tile_map_layer == null or ground_tile_map_layer.tile_set == null:
+		return (
+			from_global_position.distance_squared_to(to_global_position)
+			/ (AUTHORED_LOGICAL_TILE_SIZE * AUTHORED_LOGICAL_TILE_SIZE)
+		)
+	var tile_size := Vector2(ground_tile_map_layer.tile_set.tile_size).abs()
+	if tile_size.x <= 0.0 or tile_size.y <= 0.0:
+		return INF
+	var from_local := ground_tile_map_layer.to_local(from_global_position)
+	var to_local := ground_tile_map_layer.to_local(to_global_position)
+	var offset_in_cells := Vector2(
+		(to_local.x - from_local.x) / tile_size.x,
+		(to_local.y - from_local.y) / tile_size.y
+	)
+	return offset_in_cells.length_squared()
+
+
+func _request_enemy_retarget_after_objective_change() -> void:
+	# Do not restart an in-progress budgeted sweep. Setting the timer to zero
+	# guarantees one fresh pass immediately after it finishes, while preserving
+	# the per-physics-frame cap for 300+ active enemies.
+	enemy_retarget_time_left = 0.0
 
 
 func get_linglan_skill2_target_global_position(target_cell: Vector2i) -> Vector2:

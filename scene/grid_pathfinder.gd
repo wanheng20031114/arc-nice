@@ -124,13 +124,24 @@ class RuntimeFlowBuildJob:
 	var urgent: bool = false
 
 
+class AgentSolidIntegralSnapshot:
+	var generation: int = -1
+	var region: Rect2i = Rect2i()
+	var stride: int = 0
+	var values: PackedInt32Array = PackedInt32Array()
+
+
 class RuntimeAgentGridBuildJob:
 	var generation: int = -1
 	var cache_key: String = ""
 	var normalized_extents: Vector2 = Vector2.ZERO
 	var traversal_types: int = 0
 	var path_grid: AStarGrid2D = null
+	var publish_path_grid_to_cache: bool = true
 	var next_cell_index: int = 0
+	var grid_cells_completed: bool = false
+	var solid_integral_snapshot: AgentSolidIntegralSnapshot = null
+	var next_integral_cell_index: int = 0
 
 @export var obstacle_tile_layer_path: NodePath = ^"../GroundTileMapLayer"
 @export var terrain_map_path: NodePath
@@ -173,6 +184,11 @@ var path_query_budget_frame: int = -1
 var flow_field_builds_used_this_frame: int = 0
 var flow_field_budget_frame: int = -1
 var agent_grid_cache: Dictionary = {}
+# Each shared agent profile owns one immutable summed-area table of its solid
+# cells. The table is published atomically with the profile grid, so a runtime
+# caller can cheaply certify a completely open rectangle without ever observing
+# a partially built snapshot.
+var agent_open_plain_integral_cache: Dictionary = {}
 var flow_field_cache: Dictionary = {}
 var flow_field_cache_order: Array[String] = []
 var flow_recovery_route_cache: Dictionary = {}
@@ -226,6 +242,7 @@ func rebuild() -> void:
 
 	astar_grid.clear()
 	agent_grid_cache.clear()
+	agent_open_plain_integral_cache.clear()
 	flow_field_cache.clear()
 	flow_field_cache_order.clear()
 	flow_recovery_route_cache.clear()
@@ -243,6 +260,10 @@ func rebuild() -> void:
 			var cell := Vector2i(x, y)
 			astar_grid.set_point_solid(cell, _is_cell_blocked(cell))
 
+	_store_agent_open_plain_integral_snapshot(
+		_get_agent_grid_cache_key(Vector2.ZERO, DEFAULT_TRAVERSAL_TYPES),
+		_build_agent_solid_integral_snapshot(astar_grid)
+	)
 	is_built = true
 
 
@@ -515,6 +536,59 @@ func try_is_navigation_segment_walkable(
 	)
 
 
+# Budget-aware, conservative certificate for static open terrain. This does not
+# perform a physics sweep and does not claim that a body can move: it only
+# proves that every cell in the endpoint bounding rectangle is walkable for the
+# shared agent profile. Callers must retain their normal physics validation for
+# dynamic bodies and exact collision geometry.
+#
+# A null result means that the profile grid and its immutable integral snapshot
+# are still being built by the runtime navigation scheduler.
+func try_is_navigation_open_plain(
+	from_global_position: Vector2,
+	to_global_position: Vector2,
+	agent_half_extents: Vector2 = Vector2.ZERO,
+	traversal_types: int = DEFAULT_TRAVERSAL_TYPES
+) -> Variant:
+	if not is_built or obstacle_tile_layer == null:
+		return null
+	var normalized_extents := _normalize_agent_half_extents(agent_half_extents)
+	var path_grid := _get_runtime_agent_grid_or_enqueue(
+		normalized_extents,
+		traversal_types
+	)
+	if path_grid == null:
+		return null
+	var cache_key := _get_agent_grid_cache_key(
+		normalized_extents,
+		traversal_types
+	)
+	var snapshot := _get_agent_open_plain_integral_snapshot(cache_key)
+	if snapshot == null:
+		return null
+
+	var from_cell := _global_to_map(from_global_position)
+	var to_cell := _global_to_map(to_global_position)
+	if (
+		not snapshot.region.has_point(from_cell)
+		or not snapshot.region.has_point(to_cell)
+	):
+		return false
+	var minimum_cell := Vector2i(
+		mini(from_cell.x, to_cell.x),
+		mini(from_cell.y, to_cell.y)
+	)
+	var maximum_cell := Vector2i(
+		maxi(from_cell.x, to_cell.x),
+		maxi(from_cell.y, to_cell.y)
+	)
+	return _get_agent_solid_count_in_cell_rect(
+		snapshot,
+		minimum_cell,
+		maximum_cell
+	) == 0
+
+
 func _is_navigation_segment_walkable_with_grid(
 	from_global_position: Vector2,
 	to_global_position: Vector2,
@@ -617,7 +691,10 @@ func prewarm_agent_grid_staged(
 	if normalized_extents == Vector2.ZERO:
 		return
 	var cache_key := _get_agent_grid_cache_key(normalized_extents, traversal_types)
-	if agent_grid_cache.has(cache_key):
+	if (
+		agent_grid_cache.has(cache_key)
+		and _get_agent_open_plain_integral_snapshot(cache_key) != null
+	):
 		return
 	var build_generation := navigation_generation
 
@@ -646,8 +723,33 @@ func prewarm_agent_grid_staged(
 				or navigation_generation != build_generation
 			):
 				return
+	var solid_integral_snapshot := _create_empty_agent_solid_integral_snapshot(
+		agent_grid
+	)
+	completed_rows = 0
+	for local_y in range(agent_grid.region.size.y):
+		for local_x in range(agent_grid.region.size.x):
+			_write_agent_solid_integral_cell(
+				solid_integral_snapshot,
+				agent_grid,
+				local_y * agent_grid.region.size.x + local_x
+			)
+		completed_rows += 1
+		if completed_rows >= maxi(rows_per_frame, 1):
+			completed_rows = 0
+			await get_tree().process_frame
+			if (
+				not is_inside_tree()
+				or not is_built
+				or navigation_generation != build_generation
+			):
+				return
 	if navigation_generation != build_generation:
 		return
+	_store_agent_open_plain_integral_snapshot(
+		cache_key,
+		solid_integral_snapshot
+	)
 	agent_grid_cache[cache_key] = agent_grid
 
 
@@ -726,16 +828,27 @@ func _get_runtime_agent_grid_or_enqueue(
 	normalized_extents: Vector2,
 	traversal_types: int
 ) -> AStarGrid2D:
-	if normalized_extents == Vector2.ZERO and traversal_types == DEFAULT_TRAVERSAL_TYPES:
-		return astar_grid
 	var cache_key := _get_agent_grid_cache_key(normalized_extents, traversal_types)
-	var cached_grid := agent_grid_cache.get(cache_key) as AStarGrid2D
-	if cached_grid != null:
+	var uses_default_grid := (
+		normalized_extents == Vector2.ZERO
+		and traversal_types == DEFAULT_TRAVERSAL_TYPES
+	)
+	var cached_grid := (
+		astar_grid
+		if uses_default_grid
+		else agent_grid_cache.get(cache_key) as AStarGrid2D
+	)
+	if (
+		cached_grid != null
+		and _get_agent_open_plain_integral_snapshot(cache_key) != null
+	):
 		return cached_grid
 	_enqueue_runtime_agent_grid_build(
 		cache_key,
 		normalized_extents,
-		traversal_types
+		traversal_types,
+		cached_grid,
+		not uses_default_grid
 	)
 	return null
 
@@ -743,7 +856,9 @@ func _get_runtime_agent_grid_or_enqueue(
 func _enqueue_runtime_agent_grid_build(
 	cache_key: String,
 	normalized_extents: Vector2,
-	traversal_types: int
+	traversal_types: int,
+	existing_path_grid: AStarGrid2D = null,
+	publish_path_grid_to_cache: bool = true
 ) -> void:
 	if runtime_agent_grid_build_jobs.has(cache_key):
 		return
@@ -752,13 +867,19 @@ func _enqueue_runtime_agent_grid_build(
 	job.cache_key = cache_key
 	job.normalized_extents = normalized_extents
 	job.traversal_types = traversal_types
-	job.path_grid = AStarGrid2D.new()
-	job.path_grid.region = astar_grid.region
-	job.path_grid.cell_size = astar_grid.cell_size
-	job.path_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
-	job.path_grid.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
-	job.path_grid.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
-	job.path_grid.update()
+	job.publish_path_grid_to_cache = publish_path_grid_to_cache
+	job.path_grid = existing_path_grid
+	if job.path_grid != null:
+		job.next_cell_index = job.path_grid.region.size.x * job.path_grid.region.size.y
+		job.grid_cells_completed = true
+	else:
+		job.path_grid = AStarGrid2D.new()
+		job.path_grid.region = astar_grid.region
+		job.path_grid.cell_size = astar_grid.cell_size
+		job.path_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+		job.path_grid.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
+		job.path_grid.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
+		job.path_grid.update()
 	runtime_agent_grid_build_jobs[cache_key] = job
 	runtime_agent_grid_build_order.append(cache_key)
 	set_process(true)
@@ -940,28 +1061,50 @@ func _advance_first_runtime_agent_grid_job() -> bool:
 		return false
 	var region := job.path_grid.region
 	var total_cells := region.size.x * region.size.y
-	if job.next_cell_index >= total_cells:
-		agent_grid_cache[cache_key] = job.path_grid
-		_remove_runtime_agent_grid_job(cache_key)
-		return false
-	var cell := Vector2i(
-		region.position.x + job.next_cell_index % region.size.x,
-		region.position.y + floori(
-			float(job.next_cell_index) / float(region.size.x)
+	if not job.grid_cells_completed:
+		if job.next_cell_index < total_cells:
+			var cell := Vector2i(
+				region.position.x + job.next_cell_index % region.size.x,
+				region.position.y + floori(
+					float(job.next_cell_index) / float(region.size.x)
+				)
+			)
+			job.path_grid.set_point_solid(
+				cell,
+				_is_cell_blocked_for_agent(
+					cell,
+					job.normalized_extents,
+					job.traversal_types
+				)
+			)
+			job.next_cell_index += 1
+			if job.next_cell_index < total_cells:
+				return true
+		job.grid_cells_completed = true
+
+	if job.solid_integral_snapshot == null:
+		job.solid_integral_snapshot = _create_empty_agent_solid_integral_snapshot(
+			job.path_grid
 		)
-	)
-	job.path_grid.set_point_solid(
-		cell,
-		_is_cell_blocked_for_agent(
-			cell,
-			job.normalized_extents,
-			job.traversal_types
+		return true
+
+	if job.next_integral_cell_index < total_cells:
+		_write_agent_solid_integral_cell(
+			job.solid_integral_snapshot,
+			job.path_grid,
+			job.next_integral_cell_index
 		)
+		job.next_integral_cell_index += 1
+		if job.next_integral_cell_index < total_cells:
+			return true
+
+	_store_agent_open_plain_integral_snapshot(
+		cache_key,
+		job.solid_integral_snapshot
 	)
-	job.next_cell_index += 1
-	if job.next_cell_index >= total_cells:
+	if job.publish_path_grid_to_cache:
 		agent_grid_cache[cache_key] = job.path_grid
-		_remove_runtime_agent_grid_job(cache_key)
+	_remove_runtime_agent_grid_job(cache_key)
 	return true
 
 
@@ -1155,11 +1298,25 @@ func _get_or_create_agent_grid(
 	traversal_types: int = DEFAULT_TRAVERSAL_TYPES
 ) -> AStarGrid2D:
 	if agent_half_extents == Vector2.ZERO and traversal_types == DEFAULT_TRAVERSAL_TYPES:
+		var default_cache_key := _get_agent_grid_cache_key(
+			Vector2.ZERO,
+			DEFAULT_TRAVERSAL_TYPES
+		)
+		if _get_agent_open_plain_integral_snapshot(default_cache_key) == null:
+			_store_agent_open_plain_integral_snapshot(
+				default_cache_key,
+				_build_agent_solid_integral_snapshot(astar_grid)
+			)
 		return astar_grid
 
 	var cache_key := _get_agent_grid_cache_key(agent_half_extents, traversal_types)
 	var cached_grid := agent_grid_cache.get(cache_key) as AStarGrid2D
 	if cached_grid != null:
+		if _get_agent_open_plain_integral_snapshot(cache_key) == null:
+			_store_agent_open_plain_integral_snapshot(
+				cache_key,
+				_build_agent_solid_integral_snapshot(cached_grid)
+			)
 		return cached_grid
 
 	var agent_grid := AStarGrid2D.new()
@@ -1178,6 +1335,10 @@ func _get_or_create_agent_grid(
 				_is_cell_blocked_for_agent(cell, agent_half_extents, traversal_types)
 			)
 
+	_store_agent_open_plain_integral_snapshot(
+		cache_key,
+		_build_agent_solid_integral_snapshot(agent_grid)
+	)
 	agent_grid_cache[cache_key] = agent_grid
 	return agent_grid
 
@@ -2181,6 +2342,112 @@ func _get_flow_field_cache_key(
 		target_cell.x,
 		target_cell.y,
 	]
+
+
+func _build_agent_solid_integral_snapshot(
+	path_grid: AStarGrid2D
+) -> AgentSolidIntegralSnapshot:
+	var snapshot := _create_empty_agent_solid_integral_snapshot(path_grid)
+	if snapshot == null:
+		return null
+	var total_cells := path_grid.region.size.x * path_grid.region.size.y
+	for cell_index in range(total_cells):
+		_write_agent_solid_integral_cell(snapshot, path_grid, cell_index)
+	return snapshot
+
+
+func _create_empty_agent_solid_integral_snapshot(
+	path_grid: AStarGrid2D
+) -> AgentSolidIntegralSnapshot:
+	if path_grid == null:
+		return null
+	var snapshot := AgentSolidIntegralSnapshot.new()
+	snapshot.generation = navigation_generation
+	snapshot.region = path_grid.region
+	snapshot.stride = path_grid.region.size.x + 1
+	snapshot.values.resize(
+		(path_grid.region.size.x + 1) * (path_grid.region.size.y + 1)
+	)
+	snapshot.values.fill(0)
+	return snapshot
+
+
+func _write_agent_solid_integral_cell(
+	snapshot: AgentSolidIntegralSnapshot,
+	path_grid: AStarGrid2D,
+	cell_index: int
+) -> void:
+	if snapshot == null or path_grid == null:
+		return
+	var width := snapshot.region.size.x
+	var total_cells := width * snapshot.region.size.y
+	if cell_index < 0 or cell_index >= total_cells:
+		return
+	var local_x := cell_index % width
+	var local_y := floori(float(cell_index) / float(width))
+	var cell := snapshot.region.position + Vector2i(local_x, local_y)
+	var prefix_x := local_x + 1
+	var prefix_y := local_y + 1
+	var destination_index := prefix_y * snapshot.stride + prefix_x
+	var solid_value := 1 if path_grid.is_point_solid(cell) else 0
+	snapshot.values[destination_index] = (
+		solid_value
+		+ snapshot.values[(prefix_y - 1) * snapshot.stride + prefix_x]
+		+ snapshot.values[prefix_y * snapshot.stride + prefix_x - 1]
+		- snapshot.values[(prefix_y - 1) * snapshot.stride + prefix_x - 1]
+	)
+
+
+func _store_agent_open_plain_integral_snapshot(
+	cache_key: String,
+	snapshot: AgentSolidIntegralSnapshot
+) -> void:
+	if (
+		cache_key.is_empty()
+		or snapshot == null
+		or snapshot.generation != navigation_generation
+	):
+		return
+	agent_open_plain_integral_cache[cache_key] = snapshot
+
+
+func _get_agent_open_plain_integral_snapshot(
+	cache_key: String
+) -> AgentSolidIntegralSnapshot:
+	var snapshot := agent_open_plain_integral_cache.get(
+		cache_key
+	) as AgentSolidIntegralSnapshot
+	if (
+		snapshot == null
+		or snapshot.generation != navigation_generation
+		or snapshot.region != astar_grid.region
+		or snapshot.stride != snapshot.region.size.x + 1
+		or snapshot.values.size()
+			!= (snapshot.region.size.x + 1) * (snapshot.region.size.y + 1)
+	):
+		return null
+	return snapshot
+
+
+func _get_agent_solid_count_in_cell_rect(
+	snapshot: AgentSolidIntegralSnapshot,
+	minimum_cell: Vector2i,
+	maximum_cell: Vector2i
+) -> int:
+	if snapshot == null:
+		return 0
+	var local_minimum := minimum_cell - snapshot.region.position
+	var local_maximum := maximum_cell - snapshot.region.position
+	var prefix_left := local_minimum.x
+	var prefix_top := local_minimum.y
+	var prefix_right := local_maximum.x + 1
+	var prefix_bottom := local_maximum.y + 1
+	return (
+		snapshot.values[prefix_bottom * snapshot.stride + prefix_right]
+		- snapshot.values[prefix_top * snapshot.stride + prefix_right]
+		- snapshot.values[prefix_bottom * snapshot.stride + prefix_left]
+		+ snapshot.values[prefix_top * snapshot.stride + prefix_left]
+	)
 
 
 func _get_agent_grid_cache_key(agent_half_extents: Vector2, traversal_types: int) -> String:

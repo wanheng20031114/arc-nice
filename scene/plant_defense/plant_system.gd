@@ -292,6 +292,58 @@ func get_plant_at_cell(cell: Vector2i) -> PlantDefense:
 	return occupied_cells.get(cell) as PlantDefense
 
 
+func find_nearest_living_plant(
+	from_global_position: Vector2,
+	max_radius_cells: float
+) -> PlantDefense:
+	if (
+		ground_tile_map == null
+		or ground_tile_map.tile_set == null
+		or occupied_cells.is_empty()
+		or max_radius_cells < 0.0
+	):
+		return null
+
+	# occupied_cells already is the authoritative spatial index for every
+	# single-player, host and replicated plant. A bounded cell query keeps target
+	# selection independent of the total plant count and avoids a SceneTree scan
+	# for every enemy retarget.
+	var tile_size := Vector2(ground_tile_map.tile_set.tile_size).abs()
+	if tile_size.x <= 0.0 or tile_size.y <= 0.0:
+		return null
+	var from_local := ground_tile_map.to_local(from_global_position)
+	var center_cell := ground_tile_map.local_to_map(from_local)
+	# One extra cell covers sub-cell source positions and even-sized footprints
+	# whose authored anchor lies between two logical cells.
+	var search_radius := ceili(max_radius_cells) + 1
+	var maximum_distance_squared := max_radius_cells * max_radius_cells
+	var nearest_plant: PlantDefense = null
+	var nearest_distance_squared := INF
+	for cell_y in range(center_cell.y - search_radius, center_cell.y + search_radius + 1):
+		for cell_x in range(center_cell.x - search_radius, center_cell.x + search_radius + 1):
+			var plant := occupied_cells.get(Vector2i(cell_x, cell_y)) as PlantDefense
+			if (
+				plant == null
+				or not is_instance_valid(plant)
+				or plant.is_dead
+				or plant.is_queued_for_deletion()
+			):
+				continue
+			var plant_local := ground_tile_map.to_local(plant.global_position)
+			var offset_in_cells := Vector2(
+				(plant_local.x - from_local.x) / tile_size.x,
+				(plant_local.y - from_local.y) / tile_size.y
+			)
+			var distance_squared := offset_in_cells.length_squared()
+			if (
+				distance_squared <= maximum_distance_squared
+				and distance_squared < nearest_distance_squared
+			):
+				nearest_distance_squared = distance_squared
+				nearest_plant = plant
+	return nearest_plant
+
+
 func get_plant_by_net_id(net_id: int) -> PlantDefense:
 	return plants_by_net_id.get(net_id) as PlantDefense
 

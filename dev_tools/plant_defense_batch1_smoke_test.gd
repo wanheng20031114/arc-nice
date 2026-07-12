@@ -326,6 +326,22 @@ func _test_grid_and_occupancy_rules() -> void:
 	_expect(plant.footprint_cells.size() == 4, "植物实例必须保存四个占用格。")
 	_expect(is_equal_approx((plant as AgaveCannon).attack_timer.wait_time, 2.0), "放置后攻击计时器必须严格为2秒。")
 	_expect((plant as AgaveCannon).attack_timer.time_left > 1.8, "首次攻击必须等待完整攻击间隔。")
+	var tile_width := float(tile_map.tile_set.tile_size.x)
+	var plant_local_position := tile_map.to_local(plant.global_position)
+	var exactly_eight_cells_away := tile_map.to_global(
+		plant_local_position - Vector2(tile_width * 8.0, 0.0)
+	)
+	_expect(
+		plant_system.find_nearest_living_plant(exactly_eight_cells_away, 8.0) == plant,
+		"植物空间索引必须包含恰好8格的半径边界。"
+	)
+	var outside_eight_cells := tile_map.to_global(
+		plant_local_position - Vector2(tile_width * 8.01, 0.0)
+	)
+	_expect(
+		plant_system.find_nearest_living_plant(outside_eight_cells, 8.0) == null,
+		"植物空间索引不得返回8格半径外的目标。"
+	)
 	plant.set_meta(&"batch1_test_anchor", anchor)
 
 
