@@ -16,6 +16,7 @@ class FakeLobbyNetManager:
 	signal connection_failed(reason: String)
 	signal connection_state_changed(new_state: int)
 	signal player_character_changed(peer_id: int, character_id: StringName, confirmed: bool)
+	signal game_mode_changed(new_game_mode: int)
 
 	var connected_players: Dictionary = {1: "SelectionTester"}
 	var connected_player_characters: Dictionary = {}
@@ -24,6 +25,15 @@ class FakeLobbyNetManager:
 	var local_character_id: StringName = PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
 	var local_character_confirmed := false
 	var connection_state := NetManagerStore.ConnectionState.CONNECTED_IN_LOBBY
+	var current_game_mode := NetManagerStore.GameMode.STANDARD
+
+
+	func get_current_game_mode() -> NetManagerStore.GameMode:
+		return current_game_mode
+
+
+	func is_multiplayer_active() -> bool:
+		return false
 
 
 	func set_local_character_id(character_id: StringName, confirmed: bool = true) -> bool:

@@ -35,6 +35,11 @@ func _on_setup_completed() -> void:
 	var range_circle := targeting_shape.shape as CircleShape2D
 	if range_circle != null:
 		range_circle.radius = configured_attack_range
+	# Target acquisition uses the runtime's shared spatial index. Keeping one
+	# monitoring Area2D per cannon would multiply broad-phase overlap work by
+	# every plant and every enemy in high-pressure waves.
+	targeting_area.set_deferred("monitoring", false)
+	targeting_area.set_deferred("monitorable", false)
 
 	health_bar.call("setup", max_health, current_health)
 	if not health_changed.is_connected(_on_health_changed):
@@ -144,10 +149,23 @@ func _fire_pending_projectile() -> void:
 	if spawn_parent == null:
 		return
 
-	var cannonball := CANNONBALL_SCENE.instantiate() as AgaveCannonball
+	var cannonball: AgaveCannonball = null
+	if (
+		spawn_parent.has_method("has_session_object_pool_scene")
+		and bool(spawn_parent.call("has_session_object_pool_scene", CANNONBALL_SCENE))
+	):
+		cannonball = spawn_parent.call(
+			"acquire_session_object",
+			CANNONBALL_SCENE,
+			false
+		) as AgaveCannonball
+	else:
+		cannonball = CANNONBALL_SCENE.instantiate() as AgaveCannonball
 	if cannonball == null:
 		return
-	spawn_parent.add_child(cannonball)
+	cannonball.top_level = true
+	if cannonball.get_parent() == null:
+		spawn_parent.add_child(cannonball)
 	cannonball.global_position = muzzle.global_position
 	var projectile_lifetime := configured_attack_range / CANNONBALL_SPEED + 0.25
 	cannonball.setup(
@@ -159,6 +177,7 @@ func _fire_pending_projectile() -> void:
 		true,
 		int(get_meta(&"net_id", get_instance_id()))
 	)
+	cannonball.reset_physics_interpolation()
 	if spawn_parent.has_method("broadcast_plant_projectile_visual"):
 		spawn_parent.call(
 			"broadcast_plant_projectile_visual",
@@ -177,12 +196,29 @@ func _select_nearest_visible_enemy() -> Enemy:
 	var nearest_enemy: Enemy = null
 	var nearest_distance_squared := INF
 	var stale_candidate_ids: Array[int] = []
+	var candidates: Array[Enemy] = []
+	var current_scene := get_tree().current_scene
+	if current_scene != null and current_scene.has_method("query_combat_targets"):
+		candidates.assign(
+			current_scene.call(
+				"query_combat_targets",
+				global_position,
+				configured_attack_range,
+				0
+			) as Array
+		)
+	else:
+		for candidate_id: int in target_candidates:
+			var fallback_candidate := target_candidates[candidate_id] as Enemy
+			if not _is_valid_target(fallback_candidate):
+				stale_candidate_ids.append(candidate_id)
+				continue
+			candidates.append(fallback_candidate)
 
-	for candidate_id: int in target_candidates:
-		var candidate := target_candidates[candidate_id]
+	for candidate in candidates:
 		if not _is_valid_target(candidate):
-			stale_candidate_ids.append(candidate_id)
 			continue
+		var candidate_id := candidate.get_instance_id()
 		var distance_squared := global_position.distance_squared_to(candidate.global_position)
 		if distance_squared > configured_attack_range * configured_attack_range:
 			continue

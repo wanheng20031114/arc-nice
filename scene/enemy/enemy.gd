@@ -82,6 +82,9 @@ var physical_defense_modifiers: Dictionary = {}
 var move_speed_modifiers: Dictionary = {}
 var damage_taken_multiplier_modifiers: Dictionary = {}
 var collectible_status_effects: Dictionary = {}
+var network_visual_status_mask: int = 0
+var multiplayer_proxy_visual_active: bool = true
+var multiplayer_proxy_authored_animation_speed: float = 1.0
 var collectible_status_tween: Tween = null
 var is_multiplayer_proxy: bool = false
 var last_damage_taken: int = 0
@@ -123,6 +126,7 @@ func _ready() -> void:
 	_refresh_collision_shape_cache()
 	_cache_collision_shape_mirror_states()
 	if animated_sprite != null:
+		multiplayer_proxy_authored_animation_speed = animated_sprite.speed_scale
 		animated_sprite_base_position = animated_sprite.position
 		status_visual_material = animated_sprite.material as ShaderMaterial
 		# The default status shader is visually neutral but would split the normal
@@ -530,6 +534,57 @@ func _has_collectible_status(status_id: StringName) -> bool:
 
 func has_collectible_status(status_id: StringName) -> bool:
 	return _has_collectible_status(status_id)
+
+
+func get_collectible_visual_status_mask() -> int:
+	var result := 0
+	if _has_collectible_status(&"burn"):
+		result |= 1
+	if _has_collectible_status(&"bleed"):
+		result |= 2
+	if _has_collectible_status(&"chill"):
+		result |= 4
+	if _has_collectible_status(&"mark"):
+		result |= 8
+	return result
+
+
+func apply_multiplayer_visual_status_mask(status_mask: int) -> void:
+	if not is_multiplayer_proxy:
+		return
+	var safe_mask := status_mask & 0x0f
+	var added_mask := safe_mask & ~network_visual_status_mask
+	network_visual_status_mask = safe_mask
+	_set_visual_shader_parameter(
+		SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER,
+		0.6 if (safe_mask & 4) != 0 else 0.0
+	)
+	_set_visual_shader_parameter(
+		BURN_OVERLAY_STRENGTH_SHADER_PARAMETER,
+		0.72 if (safe_mask & 1) != 0 else 0.0
+	)
+	_set_visual_shader_parameter(
+		BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER,
+		0.7 if (safe_mask & 2) != 0 else 0.0
+	)
+	if (added_mask & 8) != 0:
+		_play_collectible_status_feedback(&"mark")
+
+
+func set_multiplayer_proxy_visual_active(active: bool) -> void:
+	if not is_multiplayer_proxy or multiplayer_proxy_visual_active == active:
+		return
+	multiplayer_proxy_visual_active = active
+	if animated_sprite != null:
+		animated_sprite.speed_scale = (
+			multiplayer_proxy_authored_animation_speed if active else 0.0
+		)
+	for child in find_children("", "GPUParticles2D", true, false):
+		var particles := child as GPUParticles2D
+		if particles != null:
+			particles.process_mode = (
+				Node.PROCESS_MODE_INHERIT if active else Node.PROCESS_MODE_DISABLED
+			)
 
 
 func _set_visual_shader_parameter(parameter_name: StringName, value: Variant) -> void:

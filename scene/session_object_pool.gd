@@ -125,6 +125,16 @@ func get_metrics(scene_path: String) -> Dictionary:
 	return _build_metrics(bucket)
 
 
+func get_all_metrics() -> Dictionary:
+	var result: Dictionary = {}
+	for key_variant in _buckets.keys():
+		var key := str(key_variant)
+		var bucket := _buckets.get(key, {}) as Dictionary
+		if not bucket.is_empty():
+			result[key] = _build_metrics(bucket)
+	return result
+
+
 func _physics_process(_delta: float) -> void:
 	_process_pending_releases()
 	_flush_metric_signals()

@@ -1,6 +1,8 @@
 extends Area2D
 class_name CapooMageFireball
 
+signal projectile_finished(projectile_id: int, projectile: Node)
+
 const IMPACT_SCENE := preload("res://scene/enemy/capoo_mage_fireball_impact.tscn")
 const WORLD_COLLISION_MASK := 1
 const PLAYER_COLLISION_MASK := 2
@@ -23,14 +25,70 @@ var has_exploded: bool = false
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"capoo_mage_fireball"
+var pool_active: bool = true
+var _authored_speed: float = 155.0
+var _authored_max_lifetime: float = 4.0
+var _authored_radius: float = 10.5
+var _authored_homing_turn_rate: float = 0.65
+var _authored_collision_layer: int = 128
+var _authored_collision_mask: int = 3
 
 
 func _ready() -> void:
+	_authored_speed = speed
+	_authored_max_lifetime = max_lifetime
+	_authored_radius = fireball_radius
+	_authored_homing_turn_rate = homing_turn_rate
+	_authored_collision_layer = collision_layer
+	_authored_collision_mask = collision_mask
 	remaining_lifetime = maxf(max_lifetime, 0.01)
+	pool_active = not has_meta(SessionObjectPool.POOL_OWNER_META)
 	body_entered.connect(_on_body_entered)
 	_apply_radius()
 	if animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"fly"):
 		animated_sprite.play(&"fly")
+
+
+func on_pool_acquired(_generation: int) -> void:
+	pool_active = true
+	has_exploded = false
+	direction = Vector2.RIGHT
+	target_player = null
+	damage = 1
+	speed = _authored_speed
+	max_lifetime = _authored_max_lifetime
+	fireball_radius = _authored_radius
+	homing_turn_rate = _authored_homing_turn_rate
+	remaining_lifetime = maxf(max_lifetime, 0.01)
+	projectile_id = 0
+	owner_peer_id = 0
+	source_type = &"capoo_mage_fireball"
+	rotation = 0.0
+	collision_layer = _authored_collision_layer
+	collision_mask = _authored_collision_mask
+	monitoring = true
+	monitorable = true
+	collision_shape.disabled = false
+	set_physics_process(true)
+	_apply_radius()
+	if animated_sprite != null:
+		animated_sprite.stop()
+		animated_sprite.frame = 0
+		animated_sprite.frame_progress = 0.0
+		if animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"fly"):
+			animated_sprite.play(&"fly")
+
+
+func on_pool_released(_generation: int) -> void:
+	pool_active = false
+	has_exploded = true
+	target_player = null
+	set_physics_process(false)
+	set_deferred("monitoring", false)
+	set_deferred("monitorable", false)
+	collision_shape.set_deferred("disabled", true)
+	if animated_sprite != null:
+		animated_sprite.stop()
 
 
 func setup(
@@ -42,6 +100,8 @@ func setup(
 	initial_target_player: Player = null,
 	initial_homing_turn_rate: float = 0.65
 ) -> void:
+	pool_active = true
+	has_exploded = false
 	if initial_direction != Vector2.ZERO:
 		direction = initial_direction.normalized()
 		rotation = direction.angle()
@@ -66,7 +126,7 @@ func setup_multiplayer(
 
 
 func _physics_process(delta: float) -> void:
-	if has_exploded:
+	if has_exploded or not pool_active:
 		return
 
 	_update_homing(delta)
@@ -115,7 +175,7 @@ func _on_body_entered(_body: Node2D) -> void:
 
 
 func _explode() -> void:
-	if has_exploded:
+	if has_exploded or not pool_active:
 		return
 	has_exploded = true
 	set_deferred("monitoring", false)
@@ -125,6 +185,17 @@ func _explode() -> void:
 	collision_shape.set_deferred("disabled", true)
 	_apply_explosion_damage()
 	_spawn_impact_effect()
+	_retire()
+
+
+func _retire() -> void:
+	if not pool_active:
+		return
+	pool_active = false
+	set_physics_process(false)
+	projectile_finished.emit(projectile_id, self)
+	if SessionObjectPool.release_to_owner(self):
+		return
 	queue_free()
 
 

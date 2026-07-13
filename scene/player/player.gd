@@ -157,6 +157,7 @@ var collectible_shot_counters: Dictionary = {}
 var collectible_trigger_cooldowns: Dictionary = {}
 var collectible_swift_time_left: float = 0.0
 var collectible_swift_move_speed_multiplier: float = 1.0
+var network_effective_move_speed_multiplier_override: float = 0.0
 var collectible_physical_damage_bonus: int = 0
 var collectible_magic_damage_bonus: int = 0
 var collectible_dash_distance_bonus: float = 0.0
@@ -462,6 +463,8 @@ func plays_multiplayer_death_animation() -> bool:
 
 
 func notify_primary_attack_performed() -> void:
+	if not _should_run_authoritative_collectible_effects():
+		return
 	_trigger_collectible_primary_attack_effects()
 
 # 应用道具效果，更新玩家形态、射速、移速等增益状态
@@ -1857,6 +1860,8 @@ func _trigger_collectible_shot_effects() -> void:
 
 
 func _trigger_collectible_hurt_effects() -> void:
+	if not _should_run_authoritative_collectible_effects():
+		return
 	for item in _get_active_collectible_items():
 		if _is_collectible_trigger_event(item, &"hurt"):
 			_apply_collectible_trigger_effect(item)
@@ -2318,6 +2323,14 @@ func _trigger_sakura_rocket(item: PickupConfig) -> void:
 
 
 func _collect_nearest_alive_enemies(max_count: int, radius: float) -> Array[Enemy]:
+	var current_scene := get_tree().current_scene
+	if current_scene != null and current_scene.has_method("query_combat_targets"):
+		return current_scene.call(
+			"query_combat_targets",
+			global_position,
+			maxf(radius, 0.0),
+			maxi(max_count, 0)
+		) as Array[Enemy]
 	var enemies := _collect_alive_enemies()
 	if enemies.is_empty():
 		return []
@@ -2330,7 +2343,7 @@ func _collect_nearest_alive_enemies(max_count: int, radius: float) -> Array[Enem
 			continue
 		filtered.append(enemy)
 	filtered.sort_custom(_sort_enemies_by_distance_to_self)
-	if filtered.size() > max_count:
+	if max_count > 0 and filtered.size() > max_count:
 		filtered.resize(max_count)
 	return filtered
 
@@ -2340,10 +2353,11 @@ func _sort_enemies_by_distance_to_self(a: Enemy, b: Enemy) -> bool:
 		return false
 	if b == null:
 		return true
-	return (
-		global_position.distance_squared_to(a.global_position)
-		< global_position.distance_squared_to(b.global_position)
-	)
+	var a_distance := global_position.distance_squared_to(a.global_position)
+	var b_distance := global_position.distance_squared_to(b.global_position)
+	if not is_equal_approx(a_distance, b_distance):
+		return a_distance < b_distance
+	return a.get_instance_id() < b.get_instance_id()
 
 
 func _spawn_collectible_arrow(target_enemy: Enemy, arrow_damage: int) -> bool:
@@ -2355,13 +2369,31 @@ func _spawn_collectible_arrow(target_enemy: Enemy, arrow_damage: int) -> bool:
 	var shoot_direction := global_position.direction_to(target_enemy.global_position)
 	if shoot_direction == Vector2.ZERO:
 		shoot_direction = _facing_suffix_to_vector(facing_suffix)
-	var arrow := COLLECTIBLE_ARROW_PROJECTILE_SCENE.instantiate()
+	var arrow: Node = null
+	if (
+		spawn_parent.has_method("has_session_object_pool_scene")
+		and bool(
+			spawn_parent.call(
+				"has_session_object_pool_scene",
+				COLLECTIBLE_ARROW_PROJECTILE_SCENE
+			)
+		)
+	):
+		arrow = spawn_parent.call(
+			"acquire_session_object",
+			COLLECTIBLE_ARROW_PROJECTILE_SCENE,
+			false
+		)
+	else:
+		arrow = COLLECTIBLE_ARROW_PROJECTILE_SCENE.instantiate()
 	if arrow == null:
 		return false
 	arrow.top_level = true
 	arrow.call("setup", shoot_direction, arrow_damage)
-	spawn_parent.add_child(arrow)
+	if arrow.get_parent() == null:
+		spawn_parent.add_child(arrow)
 	arrow.global_position = global_position + shoot_direction * auxiliary_projectile_spawn_distance
+	arrow.reset_physics_interpolation()
 	_register_multiplayer_projectile(
 		arrow,
 		&"collectible_arrow",
@@ -2439,7 +2471,18 @@ func _spawn_collectible_sakura_rocket(target_enemy: Enemy, rocket_damage: int) -
 	var shoot_direction := global_position.direction_to(target_enemy.global_position)
 	if shoot_direction == Vector2.ZERO:
 		shoot_direction = _facing_suffix_to_vector(facing_suffix)
-	var rocket := rocket_scene.instantiate() as Node2D
+	var rocket: Node2D = null
+	if (
+		spawn_parent.has_method("has_session_object_pool_scene")
+		and bool(spawn_parent.call("has_session_object_pool_scene", rocket_scene))
+	):
+		rocket = spawn_parent.call(
+			"acquire_session_object",
+			rocket_scene,
+			false
+		) as Node2D
+	else:
+		rocket = rocket_scene.instantiate() as Node2D
 	if rocket == null:
 		return false
 	rocket.top_level = true
@@ -2456,8 +2499,10 @@ func _spawn_collectible_sakura_rocket(target_enemy: Enemy, rocket_damage: int) -
 		true,
 		EnemyConfig.DamageType.MAGIC
 	)
-	spawn_parent.add_child(rocket)
+	if rocket.get_parent() == null:
+		spawn_parent.add_child(rocket)
 	rocket.global_position = global_position + shoot_direction * auxiliary_projectile_spawn_distance
+	rocket.reset_physics_interpolation()
 	var target_enemy_net_id := int(target_enemy.get_meta("net_id", 0))
 	_register_multiplayer_projectile(
 		rocket,
@@ -2608,6 +2653,8 @@ func _collect_alive_enemies() -> Array[Enemy]:
 	var root := get_tree().current_scene
 	if root == null:
 		return result
+	if root.has_method("get_all_combat_targets"):
+		return root.call("get_all_combat_targets") as Array[Enemy]
 	_collect_alive_enemies_recursive(root, result)
 	return result
 
@@ -2740,6 +2787,8 @@ func _broadcast_collectible_follow_visual(
 
 
 func _activate_collectible_skill_effects() -> void:
+	if not _should_run_authoritative_collectible_effects():
+		return
 	for item in _get_active_collectible_items():
 		match item.skill_effect_id:
 			PickupConfig.SKILL_EFFECT_MOON_SHIELD:
@@ -3017,7 +3066,13 @@ func _on_dash_cooldown_timer_timeout() -> void:
 
 # 获取当前实际移动速度（受移速加成影响）
 func _get_effective_move_speed() -> float:
+	if network_effective_move_speed_multiplier_override > 0.0:
+		return move_speed * network_effective_move_speed_multiplier_override
 	return move_speed * current_move_speed_multiplier * collectible_swift_move_speed_multiplier
+
+
+func apply_multiplayer_effective_move_speed_multiplier(multiplier: float) -> void:
+	network_effective_move_speed_multiplier_override = clampf(multiplier, 0.05, 8.0)
 
 
 func _get_mouse_shoot_direction() -> Vector2:

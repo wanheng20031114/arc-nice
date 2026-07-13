@@ -197,14 +197,28 @@ func _fire_rocket() -> bool:
 	if rpg_config == null or rpg_config.projectile_scene == null:
 		return false
 
-	var rocket := rpg_config.projectile_scene.instantiate() as CapooRPGRocket
-	if rocket == null:
-		push_warning("Capoo RPG projectile scene must instantiate CapooRPGRocket.")
-		return false
-
 	var spawn_parent := get_tree().current_scene
 	if spawn_parent == null:
-		rocket.queue_free()
+		return false
+	var rocket: CapooRPGRocket = null
+	if (
+		spawn_parent.has_method("has_session_object_pool_scene")
+		and bool(
+			spawn_parent.call(
+				"has_session_object_pool_scene",
+				rpg_config.projectile_scene
+			)
+		)
+	):
+		rocket = spawn_parent.call(
+			"acquire_session_object",
+			rpg_config.projectile_scene,
+			false
+		) as CapooRPGRocket
+	else:
+		rocket = rpg_config.projectile_scene.instantiate() as CapooRPGRocket
+	if rocket == null:
+		push_warning("Capoo RPG projectile scene must instantiate CapooRPGRocket.")
 		return false
 
 	rocket.top_level = true
@@ -215,8 +229,10 @@ func _fire_rocket() -> bool:
 		rpg_config.projectile_lifetime,
 		rpg_config.explosion_radius
 	)
-	spawn_parent.add_child(rocket)
+	if rocket.get_parent() == null:
+		spawn_parent.add_child(rocket)
 	rocket.global_position = global_position + fire_direction * rpg_config.projectile_spawn_distance
+	rocket.reset_physics_interpolation()
 	if spawn_parent.has_method("register_local_projectile"):
 		spawn_parent.call(
 			"register_local_projectile",

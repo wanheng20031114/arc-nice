@@ -1,6 +1,8 @@
 extends Area2D
 class_name YuanshiInsectFireProjectile
 
+signal projectile_finished(projectile_id: int, projectile: Node)
+
 const WORLD_COLLISION_MASK := 1
 
 @export var speed: float = 142.5
@@ -13,6 +15,11 @@ var has_hit: bool = false
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"yuanshi_fire_projectile"
+var pool_active: bool = true
+var _authored_speed: float = 142.5
+var _authored_max_lifetime: float = 2.0
+var _authored_collision_layer: int = 128
+var _authored_collision_mask: int = 2
 var world_collision_query := PhysicsRayQueryParameters2D.create(
 	Vector2.ZERO,
 	Vector2.ZERO,
@@ -21,10 +28,42 @@ var world_collision_query := PhysicsRayQueryParameters2D.create(
 
 
 func _ready() -> void:
+	_authored_speed = speed
+	_authored_max_lifetime = max_lifetime
+	_authored_collision_layer = collision_layer
+	_authored_collision_mask = collision_mask
 	remaining_lifetime = maxf(max_lifetime, 0.01)
+	pool_active = not has_meta(SessionObjectPool.POOL_OWNER_META)
 	world_collision_query.collide_with_bodies = true
 	world_collision_query.collide_with_areas = false
 	body_entered.connect(_on_body_entered)
+
+
+func on_pool_acquired(_generation: int) -> void:
+	pool_active = true
+	has_hit = false
+	direction = Vector2.RIGHT
+	damage = 1
+	speed = _authored_speed
+	max_lifetime = _authored_max_lifetime
+	remaining_lifetime = maxf(max_lifetime, 0.01)
+	projectile_id = 0
+	owner_peer_id = 0
+	source_type = &"yuanshi_fire_projectile"
+	rotation = 0.0
+	collision_layer = _authored_collision_layer
+	collision_mask = _authored_collision_mask
+	monitoring = true
+	monitorable = true
+	set_physics_process(true)
+
+
+func on_pool_released(_generation: int) -> void:
+	pool_active = false
+	has_hit = true
+	set_physics_process(false)
+	set_deferred("monitoring", false)
+	set_deferred("monitorable", false)
 
 
 func setup(
@@ -33,6 +72,8 @@ func setup(
 	initial_speed: float,
 	initial_lifetime: float
 ) -> void:
+	pool_active = true
+	has_hit = false
 	if initial_direction != Vector2.ZERO:
 		direction = initial_direction.normalized()
 		rotation = direction.angle()
@@ -53,7 +94,7 @@ func setup_multiplayer(
 
 
 func _physics_process(delta: float) -> void:
-	if has_hit:
+	if has_hit or not pool_active:
 		return
 
 	var current_position := global_position
@@ -77,7 +118,7 @@ func _will_hit_world(from_position: Vector2, to_position: Vector2) -> bool:
 
 
 func _on_body_entered(body: Node2D) -> void:
-	if has_hit:
+	if has_hit or not pool_active:
 		return
 
 	var player := body as Player
@@ -92,10 +133,16 @@ func _on_body_entered(body: Node2D) -> void:
 
 
 func _consume() -> void:
-	if has_hit:
+	if has_hit or not pool_active:
 		return
 	has_hit = true
+	pool_active = false
+	set_physics_process(false)
 	set_deferred("monitoring", false)
+	set_deferred("monitorable", false)
+	projectile_finished.emit(projectile_id, self)
+	if SessionObjectPool.release_to_owner(self):
+		return
 	queue_free()
 
 

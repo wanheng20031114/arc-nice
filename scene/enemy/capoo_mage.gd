@@ -181,14 +181,28 @@ func _fire_fireball() -> bool:
 	if mage_config == null or mage_config.projectile_scene == null:
 		return false
 
-	var fireball := mage_config.projectile_scene.instantiate() as CapooMageFireball
-	if fireball == null:
-		push_warning("Mage Capoo projectile scene must instantiate CapooMageFireball.")
-		return false
-
 	var spawn_parent := get_tree().current_scene
 	if spawn_parent == null:
-		fireball.queue_free()
+		return false
+	var fireball: CapooMageFireball = null
+	if (
+		spawn_parent.has_method("has_session_object_pool_scene")
+		and bool(
+			spawn_parent.call(
+				"has_session_object_pool_scene",
+				mage_config.projectile_scene
+			)
+		)
+	):
+		fireball = spawn_parent.call(
+			"acquire_session_object",
+			mage_config.projectile_scene,
+			false
+		) as CapooMageFireball
+	else:
+		fireball = mage_config.projectile_scene.instantiate() as CapooMageFireball
+	if fireball == null:
+		push_warning("Mage Capoo projectile scene must instantiate CapooMageFireball.")
 		return false
 
 	fireball.top_level = true
@@ -201,8 +215,10 @@ func _fire_fireball() -> bool:
 		target_player,
 		mage_config.fireball_homing_turn_rate
 	)
-	spawn_parent.add_child(fireball)
+	if fireball.get_parent() == null:
+		spawn_parent.add_child(fireball)
 	fireball.global_position = global_position + fire_direction * mage_config.projectile_spawn_distance
+	fireball.reset_physics_interpolation()
 	if spawn_parent.has_method("register_local_projectile"):
 		spawn_parent.call(
 			"register_local_projectile",

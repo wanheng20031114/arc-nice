@@ -1,6 +1,8 @@
 extends Area2D
 class_name CapooRPGRocket
 
+signal projectile_finished(projectile_id: int, projectile: Node)
+
 const EXPLOSION_SCENE := preload("res://scene/enemy/capoo_rpg_explosion.tscn")
 const WORLD_COLLISION_MASK := 1
 const PLAYER_COLLISION_MASK := 2
@@ -20,14 +22,63 @@ var has_exploded: bool = false
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"capoo_rpg_rocket"
+var pool_active: bool = true
+var _authored_speed: float = 210.0
+var _authored_max_lifetime: float = 3.0
+var _authored_explosion_radius: float = 44.0
+var _authored_collision_layer: int = 128
+var _authored_collision_mask: int = 3
 
 
 func _ready() -> void:
+	_authored_speed = speed
+	_authored_max_lifetime = max_lifetime
+	_authored_explosion_radius = explosion_radius
+	_authored_collision_layer = collision_layer
+	_authored_collision_mask = collision_mask
 	remaining_lifetime = maxf(max_lifetime, 0.01)
+	pool_active = not has_meta(SessionObjectPool.POOL_OWNER_META)
 	_apply_explosion_radius()
 	body_entered.connect(_on_body_entered)
 	if animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"fly"):
 		animated_sprite.play(&"fly")
+
+
+func on_pool_acquired(_generation: int) -> void:
+	pool_active = true
+	has_exploded = false
+	direction = Vector2.RIGHT
+	damage = 20
+	speed = _authored_speed
+	max_lifetime = _authored_max_lifetime
+	explosion_radius = _authored_explosion_radius
+	remaining_lifetime = maxf(max_lifetime, 0.01)
+	projectile_id = 0
+	owner_peer_id = 0
+	source_type = &"capoo_rpg_rocket"
+	rotation = 0.0
+	collision_layer = _authored_collision_layer
+	collision_mask = _authored_collision_mask
+	monitoring = true
+	monitorable = true
+	set_physics_process(true)
+	_apply_explosion_radius()
+	if animated_sprite != null:
+		animated_sprite.stop()
+		animated_sprite.frame = 0
+		animated_sprite.frame_progress = 0.0
+		if animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"fly"):
+			animated_sprite.play(&"fly")
+
+
+func on_pool_released(_generation: int) -> void:
+	pool_active = false
+	has_exploded = true
+	set_physics_process(false)
+	set_deferred("monitoring", false)
+	set_deferred("monitorable", false)
+	if animated_sprite != null:
+		animated_sprite.stop()
 
 
 func setup(
@@ -37,6 +88,8 @@ func setup(
 	initial_lifetime: float,
 	initial_explosion_radius: float = 44.0
 ) -> void:
+	pool_active = true
+	has_exploded = false
 	if initial_direction != Vector2.ZERO:
 		direction = initial_direction.normalized()
 		rotation = direction.angle()
@@ -59,7 +112,7 @@ func setup_multiplayer(
 
 
 func _physics_process(delta: float) -> void:
-	if has_exploded:
+	if has_exploded or not pool_active:
 		return
 
 	var current_position := global_position
@@ -93,12 +146,23 @@ func _on_body_entered(_body: Node2D) -> void:
 
 
 func _explode() -> void:
-	if has_exploded:
+	if has_exploded or not pool_active:
 		return
 	has_exploded = true
 	set_deferred("monitoring", false)
 	_apply_explosion_damage()
 	_spawn_explosion_effect()
+	_retire()
+
+
+func _retire() -> void:
+	if not pool_active:
+		return
+	pool_active = false
+	set_physics_process(false)
+	projectile_finished.emit(projectile_id, self)
+	if SessionObjectPool.release_to_owner(self):
+		return
 	queue_free()
 
 

@@ -31,6 +31,11 @@ var _high_noon_next_lock_time: float = HIGH_NOON_LOCK_INTERVAL
 var _high_noon_target_refs: Array[WeakRef] = []
 var _high_noon_locked_instance_ids: Dictionary = {}
 var _high_noon_remote_target_ids := PackedInt32Array()
+var _high_noon_remote_resolve_time_left := 0.0
+var _high_noon_remote_resolve_attempts := 0
+
+const HIGH_NOON_REMOTE_RESOLVE_INTERVAL := 0.1
+const HIGH_NOON_REMOTE_RESOLVE_MAX_ATTEMPTS := 12
 var _high_noon_lock_lines_base_position: Vector2 = Vector2.ZERO
 var _high_noon_cast_effect_sprite_base_position: Vector2 = Vector2.ZERO
 
@@ -162,23 +167,32 @@ func apply_remote_high_noon_targets(
 	if not _high_noon_active or activation_id != _high_noon_activation_id:
 		return
 	_high_noon_remote_target_ids = target_ids.duplicate()
+	_high_noon_remote_resolve_time_left = 0.0
+	_high_noon_remote_resolve_attempts = 0
 	_resolve_remote_high_noon_targets()
 
 
 func _resolve_remote_high_noon_targets() -> void:
-	var enemies_by_net_id: Dictionary = {}
-	for enemy in _collect_alive_enemies():
-		var enemy_net_id := int(enemy.get_meta("net_id", 0))
-		if enemy_net_id > 0:
-			enemies_by_net_id[enemy_net_id] = enemy
+	var current_scene := get_tree().current_scene
 	var resolved_targets: Array[Enemy] = []
 	var resolved_instance_ids: Dictionary = {}
+	var unresolved_count := 0
 	for enemy_net_id in _high_noon_remote_target_ids:
-		var enemy := enemies_by_net_id.get(int(enemy_net_id)) as Enemy
+		var enemy: Enemy = null
+		if current_scene != null and current_scene.has_method("get_combat_target_by_net_id"):
+			enemy = current_scene.call("get_combat_target_by_net_id", int(enemy_net_id)) as Enemy
 		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+			unresolved_count += 1
 			continue
 		resolved_targets.append(enemy)
 		resolved_instance_ids[enemy.get_instance_id()] = true
+	if (
+		unresolved_count > 0
+		and _high_noon_remote_resolve_attempts < HIGH_NOON_REMOTE_RESOLVE_MAX_ATTEMPTS
+	):
+		_high_noon_remote_resolve_time_left = HIGH_NOON_REMOTE_RESOLVE_INTERVAL
+	elif unresolved_count == 0:
+		_high_noon_remote_resolve_attempts = HIGH_NOON_REMOTE_RESOLVE_MAX_ATTEMPTS
 	if resolved_instance_ids == _high_noon_locked_instance_ids:
 		return
 	_high_noon_target_refs.clear()
@@ -242,6 +256,8 @@ func _begin_high_noon(activation_id: int, authoritative: bool) -> void:
 	_high_noon_target_refs.clear()
 	_high_noon_locked_instance_ids.clear()
 	_high_noon_remote_target_ids.clear()
+	_high_noon_remote_resolve_time_left = 0.0
+	_high_noon_remote_resolve_attempts = 0
 	high_noon_cast_effect_sprite.frame = 0
 	high_noon_cast_effect_sprite.frame_progress = 0.0
 	high_noon_cast_effect_sprite.show()
@@ -253,7 +269,12 @@ func _update_high_noon(delta: float) -> void:
 	if not _high_noon_active:
 		return
 	if not _high_noon_authoritative:
-		_resolve_remote_high_noon_targets()
+		if _high_noon_remote_resolve_attempts >= HIGH_NOON_REMOTE_RESOLVE_MAX_ATTEMPTS:
+			return
+		_high_noon_remote_resolve_time_left -= maxf(delta, 0.0)
+		if _high_noon_remote_resolve_time_left <= 0.0:
+			_high_noon_remote_resolve_attempts += 1
+			_resolve_remote_high_noon_targets()
 		return
 	if is_dead or controls_locked or not is_inside_tree():
 		_cancel_high_noon(true)
@@ -276,7 +297,18 @@ func _acquire_next_high_noon_target() -> bool:
 	if _get_locked_high_noon_targets().size() >= HIGH_NOON_MAX_TARGETS:
 		return false
 	var candidates: Array[Enemy] = []
-	for enemy in _collect_alive_enemies():
+	var candidate_source: Array[Enemy] = []
+	var current_scene := get_tree().current_scene
+	if current_scene != null and current_scene.has_method("query_combat_targets"):
+		candidate_source = current_scene.call(
+			"query_combat_targets",
+			global_position,
+			HIGH_NOON_RANGE,
+			0
+		) as Array[Enemy]
+	else:
+		candidate_source = _collect_alive_enemies()
+	for enemy in candidate_source:
 		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
 			continue
 		if _high_noon_locked_instance_ids.has(enemy.get_instance_id()):
@@ -457,6 +489,8 @@ func _clear_high_noon_state() -> void:
 	_high_noon_target_refs.clear()
 	_high_noon_locked_instance_ids.clear()
 	_high_noon_remote_target_ids.clear()
+	_high_noon_remote_resolve_time_left = 0.0
+	_high_noon_remote_resolve_attempts = 0
 	high_noon_cast_effect_sprite.stop()
 	high_noon_cast_effect_sprite.hide()
 	if high_noon_lock_lines != null and is_instance_valid(high_noon_lock_lines):

@@ -5,6 +5,14 @@ const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/enemy/yuanshi_insect_spaw
 const PLAYER_BULLET_POOL_SCENE := preload("res://scene/bullet.tscn")
 const CAPOO_AK47_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo_ak47_bullet.tscn")
 const CAPOO_SMG_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
+const CAPOO_RPG_ROCKET_POOL_SCENE := preload("res://scene/enemy/capoo_rpg_rocket.tscn")
+const CAPOO_MAGE_FIREBALL_POOL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
+const YUANSHI_FIRE_PROJECTILE_POOL_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
+const AGAVE_CANNONBALL_POOL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
+const COLLECTIBLE_ARROW_POOL_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
+const COLLECTIBLE_SAKURA_ROCKET_POOL_SCENE := preload(
+	"res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn"
+)
 const BULLET_HIT_EFFECT_POOL_SCENE := preload("res://scene/bullet_hit_effect.tscn")
 const ENEMY_HIT_EFFECT_POOL_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/guardian_point_light.png")
@@ -129,6 +137,12 @@ func _ready() -> void:
 	session_object_pool.register_scene(PLAYER_BULLET_POOL_SCENE, 64, 768)
 	session_object_pool.register_scene(CAPOO_AK47_BULLET_POOL_SCENE, 32, 384)
 	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
+	session_object_pool.register_scene(CAPOO_RPG_ROCKET_POOL_SCENE, 12, 96)
+	session_object_pool.register_scene(CAPOO_MAGE_FIREBALL_POOL_SCENE, 12, 96)
+	session_object_pool.register_scene(YUANSHI_FIRE_PROJECTILE_POOL_SCENE, 24, 192)
+	session_object_pool.register_scene(AGAVE_CANNONBALL_POOL_SCENE, 16, 128)
+	session_object_pool.register_scene(COLLECTIBLE_ARROW_POOL_SCENE, 24, 192)
+	session_object_pool.register_scene(COLLECTIBLE_SAKURA_ROCKET_POOL_SCENE, 8, 64)
 	session_object_pool.register_scene(BULLET_HIT_EFFECT_POOL_SCENE, 48, 48)
 	session_object_pool.register_scene(ENEMY_HIT_EFFECT_POOL_SCENE, 96, 96)
 	if not enemy_container.child_entered_tree.is_connected(
@@ -510,6 +524,7 @@ func _instantiate_remote_linglan_boss_proxy(
 	boss_enemy.configure_multiplayer_proxy()
 	boss_enemy.set_meta("net_id", net_id)
 	multiplayer_enemies_by_net_id[net_id] = boss_enemy
+	register_combat_target(net_id, boss_enemy)
 	multiplayer_enemy_ids_by_instance[boss_enemy.get_instance_id()] = net_id
 	return boss_enemy
 
@@ -1660,6 +1675,7 @@ func _register_multiplayer_enemy_instance(
 	enemy_instance.set_meta("net_id", enemy_net_id)
 	multiplayer_enemy_ids_by_instance[enemy_id] = enemy_net_id
 	multiplayer_enemies_by_net_id[enemy_net_id] = enemy_instance
+	register_combat_target(enemy_net_id, enemy_instance)
 	if broadcast_spawn:
 		multiplayer_enemy_spawned.emit(enemy_net_id, enemy_config, spawn_position)
 	return enemy_net_id
@@ -1705,6 +1721,7 @@ func _mark_multiplayer_enemy_removed(enemy_id: int) -> void:
 	multiplayer_enemy_ids_by_instance.erase(enemy_id)
 	if enemy_net_id > 0:
 		multiplayer_enemies_by_net_id.erase(enemy_net_id)
+		unregister_combat_target(enemy_net_id)
 	if enemy_net_id <= 0 or removed_multiplayer_enemy_ids.has(enemy_net_id):
 		return
 	removed_multiplayer_enemy_ids[enemy_net_id] = true
@@ -2070,9 +2087,11 @@ func get_enemy_for_net_id(net_id: int) -> Enemy:
 	var enemy_variant: Variant = multiplayer_enemies_by_net_id.get(net_id)
 	if enemy_variant == null:
 		multiplayer_enemies_by_net_id.erase(net_id)
+		unregister_combat_target(net_id)
 		return null
 	if not is_instance_valid(enemy_variant):
 		multiplayer_enemies_by_net_id.erase(net_id)
+		unregister_combat_target(net_id)
 		return null
 	return enemy_variant as Enemy
 
@@ -2230,6 +2249,10 @@ func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 		state.is_reloading = player_instance.get_multiplayer_is_reloading()
 		state.reload_progress = player_instance.get_multiplayer_reload_progress()
 		state.primary_cooldown_ratio = _get_player_primary_cooldown_ratio(player_instance)
+		state.effective_move_speed_multiplier = (
+			player_instance.current_move_speed_multiplier
+			* player_instance.collectible_swift_move_speed_multiplier
+		)
 		states.append(state)
 	return states
 
@@ -2245,29 +2268,8 @@ func _get_player_primary_cooldown_ratio(player_instance: Player) -> float:
 
 
 func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
-	var states: Array[SnapshotManager.EnemyState] = []
-	_collect_enemy_snapshot_states_from_container(enemy_container, states)
-	_collect_enemy_snapshot_states_from_container(boss_container, states)
-	return states
-
-
-func _collect_enemy_snapshot_states_from_container(
-	container: Node,
-	states: Array[SnapshotManager.EnemyState]
-) -> void:
-	if container == null:
-		return
-	for child in container.get_children():
-		var enemy := child as Enemy
-		if enemy == null or not is_instance_valid(enemy):
-			continue
-		var state := SnapshotManager.EnemyState.new()
-		state.net_id = int(enemy.get_meta("net_id", enemy.get_instance_id()))
-		state.position = enemy.global_position
-		state.velocity = enemy.velocity
-		state.health = enemy.current_health
-		state.is_dead = enemy.is_dead
-		states.append(state)
+	var containers: Array[Node] = [enemy_container, boss_container]
+	return collect_reused_enemy_snapshot_states(containers)
 
 
 func _update_multiplayer_enemy_targets(delta: float) -> void:

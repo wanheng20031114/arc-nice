@@ -1,6 +1,8 @@
 extends Area2D
 class_name LinglanSkill2SakuraRocket
 
+signal projectile_finished(projectile_id: int, projectile: Node)
+
 const EXPLOSION_SCENE := preload("res://scene/boss/linglan/linglan_skill2_sakura_explosion.tscn")
 const COLLECTIBLE_SAKURA_EXPLOSION_SCENE := preload("res://scene/collectible_sakura_explosion.tscn")
 const WORLD_COLLISION_MASK := 1
@@ -54,9 +56,22 @@ var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"linglan_skill2_rocket"
 var base_sprite_modulate: Color = Color.WHITE
+var pool_active := true
+var _authored_speed := 210.0
+var _authored_max_lifetime := 5.0
+var _authored_explosion_radius := 78.0
+var _authored_homing_turn_rate := 1.2
+var _authored_collision_layer := 128
+var _authored_collision_mask := HIT_COLLISION_MASK
 
 
 func _ready() -> void:
+	_authored_speed = speed
+	_authored_max_lifetime = max_lifetime
+	_authored_explosion_radius = explosion_radius
+	_authored_homing_turn_rate = homing_turn_rate
+	_authored_collision_layer = collision_layer
+	_authored_collision_mask = collision_mask
 	remaining_lifetime = maxf(max_lifetime, 0.01)
 	body_entered.connect(_on_body_entered)
 	_apply_collision_masks()
@@ -65,6 +80,58 @@ func _ready() -> void:
 	if animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"fly"):
 		animated_sprite.play(&"fly")
 	_update_flash_visual()
+	pool_active = not has_meta(SessionObjectPool.POOL_OWNER_META)
+
+
+func on_pool_acquired(_generation: int) -> void:
+	pool_active = true
+	has_exploded = false
+	direction = Vector2.RIGHT
+	target_player = null
+	target_node = null
+	damage = 80
+	damage_type = EnemyConfig.DamageType.PHYSICAL
+	speed = _authored_speed
+	max_lifetime = _authored_max_lifetime
+	explosion_radius = _authored_explosion_radius
+	homing_turn_rate = _authored_homing_turn_rate
+	remaining_lifetime = maxf(max_lifetime, 0.01)
+	enemies_only = false
+	projectile_id = 0
+	owner_peer_id = 0
+	source_type = &"linglan_skill2_rocket"
+	rotation = 0.0
+	collision_layer = _authored_collision_layer
+	collision_mask = _authored_collision_mask
+	monitoring = true
+	monitorable = true
+	if collision_shape != null:
+		collision_shape.disabled = false
+	if animated_sprite != null:
+		animated_sprite.modulate = base_sprite_modulate
+		animated_sprite.stop()
+		animated_sprite.frame = 0
+		animated_sprite.frame_progress = 0.0
+		if animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"fly"):
+			animated_sprite.play(&"fly")
+	_apply_collision_masks()
+	_apply_explosion_radius()
+	set_physics_process(true)
+
+
+func on_pool_released(_generation: int) -> void:
+	pool_active = false
+	has_exploded = true
+	target_player = null
+	target_node = null
+	set_physics_process(false)
+	set_deferred("monitoring", false)
+	set_deferred("monitorable", false)
+	if collision_shape != null:
+		collision_shape.set_deferred("disabled", true)
+	if animated_sprite != null:
+		animated_sprite.modulate = base_sprite_modulate
+		animated_sprite.stop()
 
 
 func setup(
@@ -79,6 +146,9 @@ func setup(
 	initial_enemies_only: bool = false,
 	initial_damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
 ) -> void:
+	pool_active = true
+	has_exploded = false
+	set_physics_process(true)
 	if initial_direction != Vector2.ZERO:
 		direction = initial_direction.normalized()
 		rotation = direction.angle()
@@ -112,7 +182,7 @@ func setup_multiplayer(
 
 
 func _physics_process(delta: float) -> void:
-	if has_exploded:
+	if has_exploded or not pool_active:
 		return
 
 	_update_homing(delta)
@@ -163,7 +233,7 @@ func _on_body_entered(_body: Node2D) -> void:
 
 
 func _explode() -> void:
-	if has_exploded:
+	if has_exploded or not pool_active:
 		return
 	has_exploded = true
 	set_deferred("monitoring", false)
@@ -175,6 +245,17 @@ func _explode() -> void:
 	animated_sprite.modulate = base_sprite_modulate
 	_apply_explosion_damage()
 	_spawn_explosion_effect()
+	_retire()
+
+
+func _retire() -> void:
+	if not pool_active:
+		return
+	pool_active = false
+	set_physics_process(false)
+	projectile_finished.emit(projectile_id, self)
+	if SessionObjectPool.release_to_owner(self):
+		return
 	queue_free()
 
 

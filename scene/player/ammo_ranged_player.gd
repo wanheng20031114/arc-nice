@@ -135,7 +135,7 @@ func _has_active_form_override() -> bool:
 
 
 func get_ammo_capacity() -> int:
-	if _network_ammo_capacity_override > 0 and not uses_local_input:
+	if _network_ammo_capacity_override > 0:
 		return _network_ammo_capacity_override
 	var additive_capacity := maxi(
 		ammo_capacity + collectible_ammo_capacity_additive_bonus,
@@ -202,6 +202,7 @@ func try_accept_authoritative_primary_shot(projectile_type: StringName) -> bool:
 	_consume_ammo_after_successful_shot()
 	shooting_timer.start(_get_effective_fire_interval())
 	_update_attack_interval_bar()
+	notify_primary_attack_performed()
 	if current_shot_pattern == PickupConfig.ShotPattern.SPIRAL:
 		_authoritative_spiral_partner_pending = true
 		_authoritative_spiral_partner_deadline_msec = now_msec + 100

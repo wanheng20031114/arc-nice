@@ -134,14 +134,28 @@ func _try_fire_ranged_projectile() -> bool:
 	if shoot_direction == Vector2.ZERO:
 		return false
 
-	var projectile := fire_config.projectile_scene.instantiate() as YuanshiInsectFireProjectile
-	if projectile == null:
-		push_warning("Fire projectile scene must instantiate YuanshiInsectFireProjectile.")
-		return false
-
 	var spawn_parent := get_tree().current_scene
 	if spawn_parent == null:
-		projectile.queue_free()
+		return false
+	var projectile: YuanshiInsectFireProjectile = null
+	if (
+		spawn_parent.has_method("has_session_object_pool_scene")
+		and bool(
+			spawn_parent.call(
+				"has_session_object_pool_scene",
+				fire_config.projectile_scene
+			)
+		)
+	):
+		projectile = spawn_parent.call(
+			"acquire_session_object",
+			fire_config.projectile_scene,
+			false
+		) as YuanshiInsectFireProjectile
+	else:
+		projectile = fire_config.projectile_scene.instantiate() as YuanshiInsectFireProjectile
+	if projectile == null:
+		push_warning("Fire projectile scene must instantiate YuanshiInsectFireProjectile.")
 		return false
 
 	projectile.top_level = true
@@ -151,10 +165,12 @@ func _try_fire_ranged_projectile() -> bool:
 		fire_config.projectile_speed,
 		fire_config.projectile_lifetime
 	)
-	spawn_parent.add_child(projectile)
+	if projectile.get_parent() == null:
+		spawn_parent.add_child(projectile)
 	projectile.global_position = (
 		global_position + shoot_direction * fire_config.projectile_spawn_distance
 	)
+	projectile.reset_physics_interpolation()
 	if spawn_parent.has_method("register_local_projectile"):
 		spawn_parent.call(
 			"register_local_projectile",

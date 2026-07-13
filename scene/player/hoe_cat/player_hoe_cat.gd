@@ -32,6 +32,7 @@ var _pending_primary_damage: int = 0
 var _pending_whirlwind_attack: bool = false
 var _pending_whirlwind_damage: int = 0
 var _latest_remote_action_sequence: int = 0
+var _latest_predicted_action_request_id: int = 0
 var _basic_slash_effect_base_position: Vector2 = Vector2.ZERO
 var _whirlwind_range_effect_base_position: Vector2 = Vector2.ZERO
 var _whirlwind_body_effect_base_position: Vector2 = Vector2.ZERO
@@ -172,6 +173,49 @@ func play_remote_hoe_action(
 			_play_primary_attack_visual(safe_direction)
 		&"whirlwind":
 			_play_whirlwind_visual()
+
+
+func play_predicted_hoe_action(
+	action_kind: StringName,
+	attack_direction: Vector2,
+	request_id: int
+) -> void:
+	if request_id <= _latest_predicted_action_request_id or is_dead or controls_locked:
+		return
+	_latest_predicted_action_request_id = request_id
+	match action_kind:
+		&"primary":
+			var safe_direction := _get_safe_attack_direction(attack_direction)
+			last_attack_direction = safe_direction
+			_play_primary_attack_visual(safe_direction)
+		&"whirlwind":
+			_play_whirlwind_visual()
+
+
+func reconcile_predicted_hoe_action(
+	request_id: int,
+	accepted: bool,
+	action_kind: StringName,
+	cooldown_ratio: float,
+	authoritative_skill_charge: float
+) -> void:
+	if request_id < _latest_predicted_action_request_id:
+		return
+	_latest_predicted_action_request_id = request_id
+	apply_multiplayer_primary_cooldown_ratio(cooldown_ratio)
+	if authoritative_skill_charge >= 0.0:
+		skill1_charge = clampf(authoritative_skill_charge, 0.0, skill1_charge_duration)
+		_update_skill1_charge_bar()
+	if accepted:
+		return
+	match action_kind:
+		&"primary":
+			_primary_visual_time_left = 0.0
+			_primary_visual_facing_suffix = &""
+			basic_slash_effect.hide()
+			basic_slash_effect.stop()
+		&"whirlwind":
+			_finish_whirlwind_visual()
 
 
 func _apply_hoe_attack_damage(

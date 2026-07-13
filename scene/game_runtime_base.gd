@@ -2,6 +2,8 @@
 extends Node2D
 class_name GameRuntimeBase
 
+const CombatTargetIndexScript := preload("res://scene/combat_target_index.gd")
+
 signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
 signal multiplayer_enemy_defeated(net_id: int, defeat_position: Vector2)
 signal multiplayer_enemy_removed(net_id: int)
@@ -87,6 +89,9 @@ var peer_players: Dictionary = {}
 var multiplayer_pickups: Dictionary = {}
 var multiplayer_enemy_ids_by_instance: Dictionary = {}
 var multiplayer_enemies_by_net_id: Dictionary = {}
+var combat_target_index = CombatTargetIndexScript.new()
+var _enemy_snapshot_states_by_net_id: Dictionary = {}
+var _enemy_snapshot_output: Array[SnapshotManager.EnemyState] = []
 var runtime_activation_deferred := false
 var runtime_activated := false
 var runtime_preparation_complete := false
@@ -146,6 +151,96 @@ var runtime_preparation_total_steps := 1
 	current_xirang: int
 ) -> void
 @abstract func show_debug_collectible_grant_result(config_path: String, success: bool) -> void
+
+
+func register_combat_target(net_id: int, enemy: Enemy) -> void:
+	combat_target_index.register_enemy(net_id, enemy)
+
+
+func unregister_combat_target(net_id: int) -> void:
+	combat_target_index.unregister_enemy(net_id)
+
+
+func get_all_combat_targets() -> Array[Enemy]:
+	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		var result: Array[Enemy] = []
+		_collect_combat_targets_from_container(enemy_container, result)
+		_collect_combat_targets_from_container(get_node_or_null("BossContainer"), result)
+		return result
+	return combat_target_index.get_all_alive()
+
+
+func query_combat_targets(center: Vector2, radius: float, max_count: int = 0) -> Array[Enemy]:
+	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		var result: Array[Enemy] = []
+		var safe_radius := maxf(radius, 0.0)
+		var radius_squared := safe_radius * safe_radius
+		for enemy in get_all_combat_targets():
+			if safe_radius > 0.0 and center.distance_squared_to(enemy.global_position) > radius_squared:
+				continue
+			result.append(enemy)
+		result.sort_custom(
+			func(a: Enemy, b: Enemy) -> bool:
+				var a_distance := center.distance_squared_to(a.global_position)
+				var b_distance := center.distance_squared_to(b.global_position)
+				if not is_equal_approx(a_distance, b_distance):
+					return a_distance < b_distance
+				return a.get_instance_id() < b.get_instance_id()
+		)
+		if max_count > 0 and result.size() > max_count:
+			result.resize(max_count)
+		return result
+	return combat_target_index.query_radius(center, radius, max_count)
+
+
+func get_multiplayer_plant_node(_net_id: int) -> PlantDefense:
+	return null
+
+
+func _collect_combat_targets_from_container(container: Node, result: Array[Enemy]) -> void:
+	if container == null:
+		return
+	for child in container.get_children():
+		var enemy := child as Enemy
+		if enemy != null and is_instance_valid(enemy) and not enemy.is_dead:
+			result.append(enemy)
+
+
+func collect_reused_enemy_snapshot_states(
+	containers: Array[Node]
+) -> Array[SnapshotManager.EnemyState]:
+	_enemy_snapshot_output.clear()
+	var live_ids: Dictionary = {}
+	for container in containers:
+		if container == null:
+			continue
+		for child in container.get_children():
+			var enemy := child as Enemy
+			if enemy == null or not is_instance_valid(enemy):
+				continue
+			var net_id := int(enemy.get_meta("net_id", enemy.get_instance_id()))
+			if net_id <= 0:
+				continue
+			live_ids[net_id] = true
+			var state := (
+				_enemy_snapshot_states_by_net_id.get(net_id)
+				as SnapshotManager.EnemyState
+			)
+			if state == null:
+				state = SnapshotManager.EnemyState.new()
+				_enemy_snapshot_states_by_net_id[net_id] = state
+			state.net_id = net_id
+			state.position = enemy.global_position
+			state.velocity = enemy.velocity
+			state.health = enemy.current_health
+			state.is_dead = enemy.is_dead
+			state.visual_status_mask = enemy.get_collectible_visual_status_mask()
+			_enemy_snapshot_output.append(state)
+	for cached_id_variant in _enemy_snapshot_states_by_net_id.keys():
+		var cached_id := int(cached_id_variant)
+		if not live_ids.has(cached_id):
+			_enemy_snapshot_states_by_net_id.erase(cached_id)
+	return _enemy_snapshot_output
 
 
 func defer_runtime_activation() -> void:

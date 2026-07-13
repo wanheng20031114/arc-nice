@@ -1,6 +1,8 @@
 extends Node2D
 class_name AgaveCannonball
 
+signal projectile_finished(projectile_id: int, projectile: Node)
+
 const WORLD_AND_ENEMY_COLLISION_MASK := 5
 const ENEMY_COLLISION_MASK := 4
 const EXPLOSION_QUERY_MAX_RESULTS := 128
@@ -20,11 +22,43 @@ var remaining_lifetime := 0.0
 var has_exploded := false
 var authoritative_damage := true
 var damage_source_id := 0
+var projectile_id := 0
+var owner_peer_id := 0
+var source_type: StringName = &"agave_cannonball"
+var pool_active := true
 
 
 func _ready() -> void:
 	remaining_lifetime = maxf(max_lifetime, 0.01)
 	flight_cast.collision_mask = WORLD_AND_ENEMY_COLLISION_MASK
+	pool_active = not has_meta(SessionObjectPool.POOL_OWNER_META)
+
+
+func on_pool_acquired(_generation: int) -> void:
+	pool_active = true
+	has_exploded = false
+	direction = Vector2.RIGHT
+	damage = 50
+	remaining_lifetime = maxf(max_lifetime, 0.01)
+	authoritative_damage = true
+	damage_source_id = 0
+	projectile_id = 0
+	owner_peer_id = 0
+	source_type = &"agave_cannonball"
+	rotation = 0.0
+	flight_cast.enabled = true
+	cannonball_sprite.visible = true
+	impact_audio.stop()
+	set_physics_process(true)
+
+
+func on_pool_released(_generation: int) -> void:
+	pool_active = false
+	has_exploded = true
+	set_physics_process(false)
+	flight_cast.set_deferred("enabled", false)
+	cannonball_sprite.visible = false
+	impact_audio.stop()
 
 
 func setup(
@@ -36,6 +70,11 @@ func setup(
 	can_apply_damage: bool = true,
 	initial_damage_source_id: int = 0
 ) -> void:
+	pool_active = true
+	has_exploded = false
+	set_physics_process(true)
+	flight_cast.enabled = true
+	cannonball_sprite.visible = true
 	if initial_direction != Vector2.ZERO:
 		direction = initial_direction.normalized()
 	rotation = direction.angle()
@@ -52,8 +91,18 @@ func setup(
 		blast_circle.radius = explosion_radius
 
 
+func setup_multiplayer(
+	new_projectile_id: int,
+	new_owner_peer_id: int,
+	new_source_type: StringName
+) -> void:
+	projectile_id = maxi(new_projectile_id, 0)
+	owner_peer_id = new_owner_peer_id
+	source_type = new_source_type
+
+
 func _physics_process(delta: float) -> void:
-	if has_exploded:
+	if has_exploded or not pool_active:
 		return
 
 	var travel_distance := speed * maxf(delta, 0.0)
@@ -76,7 +125,7 @@ func _physics_process(delta: float) -> void:
 	global_position += displacement
 	remaining_lifetime = maxf(remaining_lifetime - delta, 0.0)
 	if remaining_lifetime <= 0.0:
-		queue_free()
+		_retire()
 
 
 func _get_closest_collision_enemy() -> Enemy:
@@ -102,12 +151,23 @@ func _explode(direct_enemy: Enemy = null) -> void:
 	if impact_audio.stream != null:
 		impact_audio.play()
 	else:
-		queue_free()
+		_retire()
 
 
 func _on_impact_audio_finished() -> void:
 	if has_exploded:
-		queue_free()
+		_retire()
+
+
+func _retire() -> void:
+	if not pool_active:
+		return
+	pool_active = false
+	set_physics_process(false)
+	projectile_finished.emit(projectile_id, self)
+	if SessionObjectPool.release_to_owner(self):
+		return
+	queue_free()
 
 
 func _apply_explosion_damage(direct_enemy: Enemy) -> void:

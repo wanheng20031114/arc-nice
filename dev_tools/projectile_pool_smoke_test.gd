@@ -3,6 +3,14 @@ extends SceneTree
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const AK_BULLET_SCENE := preload("res://scene/enemy/capoo_ak47_bullet.tscn")
 const SMG_BULLET_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
+const RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo_rpg_rocket.tscn")
+const MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
+const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
+const AGAVE_CANNONBALL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
+const COLLECTIBLE_ARROW_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
+const COLLECTIBLE_SAKURA_ROCKET_SCENE := preload(
+	"res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn"
+)
 const BULLET_HIT_EFFECT_SCENE := preload("res://scene/bullet_hit_effect.tscn")
 const ENEMY_HIT_EFFECT_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")
 
@@ -27,12 +35,19 @@ func _run() -> void:
 	pool.register_scene(BULLET_SCENE, 1, 2)
 	pool.register_scene(AK_BULLET_SCENE, 1, 2)
 	pool.register_scene(SMG_BULLET_SCENE, 1, 2)
+	pool.register_scene(RPG_ROCKET_SCENE, 1, 2)
+	pool.register_scene(MAGE_FIREBALL_SCENE, 1, 2)
+	pool.register_scene(YUANSHI_FIRE_PROJECTILE_SCENE, 1, 2)
+	pool.register_scene(AGAVE_CANNONBALL_SCENE, 1, 2)
+	pool.register_scene(COLLECTIBLE_ARROW_SCENE, 1, 2)
+	pool.register_scene(COLLECTIBLE_SAKURA_ROCKET_SCENE, 1, 2)
 	pool.register_scene(BULLET_HIT_EFFECT_SCENE, 2, 2)
 	pool.register_scene(ENEMY_HIT_EFFECT_SCENE, 2, 2)
 
 	await _verify_player_bullet_reuse()
 	await _verify_real_collision_callback_release()
 	await _verify_capoo_bullet_reuse()
+	await _verify_extended_projectile_reuse()
 	await _verify_strict_hit_effect_budget()
 	await _finish()
 
@@ -187,6 +202,60 @@ func _verify_capoo_bullet_reuse() -> void:
 	_expect(_count_active_hit_effects() == 0, "Natural projectile expiry must not spawn a hit effect.")
 	await _wait_for_quarantine()
 
+
+func _verify_extended_projectile_reuse() -> void:
+	var scenes: Array[PackedScene] = [
+		RPG_ROCKET_SCENE,
+		MAGE_FIREBALL_SCENE,
+		YUANSHI_FIRE_PROJECTILE_SCENE,
+		AGAVE_CANNONBALL_SCENE,
+		COLLECTIBLE_ARROW_SCENE,
+		COLLECTIBLE_SAKURA_ROCKET_SCENE,
+	]
+	for projectile_scene in scenes:
+		var projectile := pool.acquire(projectile_scene)
+		_expect(projectile != null, "%s must be acquirable from the elastic pool." % projectile_scene.resource_path)
+		if projectile == null:
+			continue
+		var first_instance_id := projectile.get_instance_id()
+		if projectile.has_method("setup_multiplayer"):
+			projectile.call("setup_multiplayer", 701, 9, &"contaminated")
+		projectile.set("direction", Vector2.DOWN)
+		projectile.set("damage", 99)
+		projectile.set("remaining_lifetime", 0.125)
+		if projectile is Area2D:
+			(projectile as Area2D).collision_layer = 0
+			(projectile as Area2D).collision_mask = 0
+		_expect(pool.release(projectile), "%s active lease must release." % projectile_scene.resource_path)
+		await _wait_for_quarantine()
+
+		var reused := pool.acquire(projectile_scene)
+		_expect(
+			reused != null and reused.get_instance_id() == first_instance_id,
+			"%s must reuse its retained instance." % projectile_scene.resource_path
+		)
+		if reused == null:
+			continue
+		_expect(bool(reused.get("pool_active")), "%s must reactivate its gameplay lease." % projectile_scene.resource_path)
+		_expect(
+			int(reused.get("projectile_id")) == 0 and int(reused.get("owner_peer_id")) == 0,
+			"%s must clear network identity." % projectile_scene.resource_path
+		)
+		_expect(
+			reused.get("direction") == Vector2.RIGHT and int(reused.get("damage")) > 0,
+			"%s must restore direction and authored damage defaults." % projectile_scene.resource_path
+		)
+		_expect(
+			float(reused.get("remaining_lifetime")) > 0.0,
+			"%s must restore a positive lifetime." % projectile_scene.resource_path
+		)
+		if reused is Area2D:
+			_expect(
+				(reused as Area2D).monitoring and (reused as Area2D).monitorable,
+				"%s must restore Area2D monitoring." % projectile_scene.resource_path
+			)
+		_expect(pool.release(reused), "%s reused lease must release." % projectile_scene.resource_path)
+		await _wait_for_quarantine()
 
 func _verify_strict_hit_effect_budget() -> void:
 	var first := pool.try_acquire(BULLET_HIT_EFFECT_SCENE) as BulletHitEffect
