@@ -11,7 +11,7 @@ uniform float dodge_outline_width : hint_range(1.0, 6.0) = 3.0;
 
 void fragment() {
 	vec4 texture_color = texture(TEXTURE, UV);
-	vec4 color = texture_color * COLOR;
+	vec4 color = COLOR;
 	 
 	if (blink_enabled && color.a >0.0) {
 		float blink_phase = fract(TIME * blink_speed);

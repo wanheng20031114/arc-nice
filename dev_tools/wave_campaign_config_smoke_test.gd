@@ -42,6 +42,8 @@ const TOWER_DEFENSE_STRESS_TOTAL_ENEMIES := 1200
 const TOWER_DEFENSE_STRESS_MAX_ALIVE := 300
 const TOWER_DEFENSE_STRESS_SPAWN_INTERVAL := 0.1
 const TOWER_DEFENSE_STRESS_SPAWN_COUNT_PER_TICK := 4
+const TOWER_DEFENSE_FOREST_COMBAT_BGM := "res://resources/audio/shenmu_forest_combat.ogg"
+const TOWER_DEFENSE_FOREST_INTERMISSION_BGM := "res://resources/audio/shenmu_forest_intermission.ogg"
 const FIRST_WAVE_EXPECTED_COUNTS := {
 	"res://resources/config/enemies/yuanshi_insect_basic.tres": 850,
 	"res://resources/config/enemies/yuanshi_insect_shell.tres": 320,
@@ -276,6 +278,18 @@ func _verify_tower_defense_stress_wave(
 		and wave_config.spawn_count_per_tick == TOWER_DEFENSE_STRESS_SPAWN_COUNT_PER_TICK,
 		"Tower-defense pressure waves must spawn four enemies every 0.1 seconds."
 	)
+	if wave_index < 8:
+		_expect(
+			_resource_path(wave_config.music) == TOWER_DEFENSE_FOREST_COMBAT_BGM,
+			"Tower-defense waves 1-8 must use the forest combat BGM: %s"
+			% wave_config.resource_path
+		)
+		_expect(
+			_resource_path(wave_config.post_wave_music)
+			== TOWER_DEFENSE_FOREST_INTERMISSION_BGM,
+			"Tower-defense rests through wave 8 must use the forest pre-combat BGM: %s"
+			% wave_config.resource_path
+		)
 	if wave_index < 11:
 		_expect(
 			wave_config.exits.size() == 1

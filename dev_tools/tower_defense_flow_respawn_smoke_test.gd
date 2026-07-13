@@ -42,6 +42,11 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	_expect(game.countdown_seconds == 300, "The first preparation period must start at 300 seconds.")
 	_expect(game.wave_hud.start_wave_button.visible and not game.wave_hud.start_wave_button.disabled, "The rest HUD must expose an enabled early-start button.")
 	_expect(game.wave_hud.status_label.text.contains("05:00"), "The five-minute rest HUD must use MM:SS formatting.")
+	_expect(
+		game.music_player.stream.resource_path
+		== "res://resources/audio/shenmu_forest_intermission.ogg",
+		"The initial tower-defense rest must play the forest pre-combat BGM."
+	)
 	_expect(game.tower_defense_status_hud.layer > 70, "Death and gate warnings must render above every gameplay HUD.")
 	_expect(_all_control_descendants_ignore_mouse(game.tower_defense_status_hud), "The status HUD must never consume gameplay or menu input.")
 	_expect(game.merchant.is_active and game.merchant.visible, "Zhuangfangyi must remain visible and interactive during rest.")
@@ -49,6 +54,11 @@ func _test_singleplayer_flow_and_respawn() -> void:
 
 	game.wave_hud.start_wave_button.pressed.emit()
 	_expect(game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE, "Early-start must enter active combat exactly once.")
+	_expect(
+		game.music_player.stream.resource_path
+		== "res://resources/audio/shenmu_forest_combat.ogg",
+		"Tower-defense combat through wave 8 must play the forest combat BGM."
+	)
 	_expect(game.merchant.is_active and game.merchant.visible, "Zhuangfangyi must remain standing during combat.")
 	_expect(game.luoxi_merchant.is_active and game.luoxi_merchant.visible, "Luoxi must remain standing during combat.")
 	_expect(not game.request_tower_defense_wave_start(0), "An early-start request during combat must be rejected.")
@@ -66,6 +76,11 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	game.call("_enter_intermission", first_step)
 	_expect(game.wave_state == GameRuntimeBase.WaveState.INTERMISSION, "Every cleared wave must enter a rest state.")
 	_expect(game.countdown_seconds == 300, "Every between-wave rest must start at 300 seconds.")
+	_expect(
+		game.music_player.stream.resource_path
+		== "res://resources/audio/shenmu_forest_intermission.ogg",
+		"The between-wave tower-defense rest must play the forest pre-combat BGM."
+	)
 	_expect(game.luoxi_merchant.get_player_refresh_count(0) == 0, "Luoxi must refresh choices when a new rest begins.")
 	_expect(game.luoxi_merchant.pending_choices_by_player_key.is_empty(), "A new rest must discard Luoxi's previous pending choices.")
 	_expect(game.luoxi_collectible_claim_counts.is_empty(), "A new rest must clear the authoritative Luoxi claim ledger.")
