@@ -40,17 +40,18 @@ autoplay = "idle"
 
 [node name="CannonPivot" type="Node2D" parent="VisualRoot" unique_id=1291920717]
 z_index = 2
-position = Vector2(0, -6)
+position = Vector2(4, 0)
 
 [node name="CannonSprite" type="AnimatedSprite2D" parent="VisualRoot/CannonPivot" unique_id=83471690]
 material = SubResource("ShaderMaterial_pixel_snap")
 texture_filter = 1
+position = Vector2(-4, -6)
 sprite_frames = ExtResource("3_cannon_frames")
 animation = &"idle"
 autoplay = "idle"
 
 [node name="Muzzle" type="Marker2D" parent="VisualRoot/CannonPivot" unique_id=1814134360]
-position = Vector2(18, 7)
+position = Vector2(14, 1)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1927670711]
 position = Vector2(0, 3.5)
@@ -76,6 +77,10 @@ shape = SubResource("CircleShape2D_targeting")
 [node name="AttackTimer" type="Timer" parent="." unique_id=1803363272]
 wait_time = 2.0
 
+[node name="IdleAimTimer" type="Timer" parent="."]
+wait_time = 0.7
+one_shot = true
+
 [node name="HealthBar" parent="." unique_id=657702345 instance=ExtResource("4_health_bar")]
 offset_left = -16.0
 offset_top = -15.0
@@ -92,3 +97,4 @@ max_polyphony = 3
 [connection signal="body_entered" from="TargetingArea" to="." method="_on_targeting_area_body_entered"]
 [connection signal="body_exited" from="TargetingArea" to="." method="_on_targeting_area_body_exited"]
 [connection signal="timeout" from="AttackTimer" to="." method="_on_attack_timer_timeout"]
+[connection signal="timeout" from="IdleAimTimer" to="." method="_on_idle_aim_timer_timeout"]

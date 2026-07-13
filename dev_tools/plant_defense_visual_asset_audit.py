@@ -25,9 +25,10 @@ WORLD_SCALE = 0.5
 WORLD_FOOTPRINT_SIDE = 32.0
 MAX_VISIBLE_COLORS = 64
 WAREHOUSE_MAX_SUBJECT_SIZE = (60, 62)
-PIVOT_IN_TEXTURE = (SOURCE_SIDE // 2, SOURCE_SIDE // 2)
+CANVAS_CENTER = (SOURCE_SIDE // 2, SOURCE_SIDE // 2)
 AGAVE_HEAD_OFFSET = (0, -6)
-AGAVE_HEAD_MAX_PIXEL_CENTER_RADIUS = 24.1
+AGAVE_HEAD_PIVOT_IN_TEXTURE = (36, 38)
+AGAVE_HEAD_MAX_PIVOT_RADIUS = 19.0
 PREVIEW_ALIGNMENT_TOLERANCE_WORLD = 0.5
 
 WAREHOUSE_ASSET = TEXTURE_ROOT / "oak_warehouse/oak_warehouse.png"
@@ -78,9 +79,12 @@ def _audit_png(path: Path) -> dict[str, Any]:
             round((bbox[2] - SOURCE_SIDE * 0.5) * WORLD_SCALE, 3),
             round((bbox[3] - SOURCE_SIDE * 0.5) * WORLD_SCALE, 3),
         ]
-    maximum_radius_from_center = max(
+    audit_pivot = (
+        AGAVE_HEAD_PIVOT_IN_TEXTURE if path in AGAVE_HEAD_FRAMES else CANVAS_CENTER
+    )
+    maximum_radius_from_audit_pivot = max(
         (
-            math.hypot((x + 0.5) - PIVOT_IN_TEXTURE[0], (y + 0.5) - PIVOT_IN_TEXTURE[1])
+            math.hypot((x + 0.5) - audit_pivot[0], (y + 0.5) - audit_pivot[1])
             for y in range(image.height)
             for x in range(image.width)
             if image.getpixel((x, y))[3] == 255
@@ -101,7 +105,8 @@ def _audit_png(path: Path) -> dict[str, Any]:
         "subject_size": list(_bbox_size(bbox)),
         "world_bounds_at_scale_0_5": world_bounds,
         "visible_color_count": len(visible_colors),
-        "maximum_radius_from_canvas_center": round(maximum_radius_from_center, 3),
+        "audit_pivot": list(audit_pivot),
+        "maximum_radius_from_audit_pivot": round(maximum_radius_from_audit_pivot, 3),
         "binary_alpha": alpha_values.issubset({0, 255}),
         "transparent_rgb_clean": all(
             alpha != 0 or (red == 0 and green == 0 and blue == 0)
@@ -217,13 +222,13 @@ def _collect_failures(report: dict[str, Any]) -> list[str]:
     for path in AGAVE_HEAD_FRAMES:
         audit = audits[_relative(path)]
         if (
-            audit["maximum_radius_from_canvas_center"]
-            > AGAVE_HEAD_MAX_PIXEL_CENTER_RADIUS
+            audit["maximum_radius_from_audit_pivot"]
+            > AGAVE_HEAD_MAX_PIVOT_RADIUS
         ):
             failures.append(
                 f"{_relative(path)} exceeds the "
-                f"{AGAVE_HEAD_MAX_PIXEL_CENTER_RADIUS}px pixel-center radius "
-                "around the shared 32,32 pivot"
+                f"{AGAVE_HEAD_MAX_PIVOT_RADIUS}px pixel-center radius "
+                "around the shared rear-barrel 36,38 pivot"
             )
 
     alignment = report["agave_default_preview_alignment"]
@@ -253,8 +258,8 @@ def build_report() -> dict[str, Any]:
             "world_footprint": [WORLD_FOOTPRINT_SIDE, WORLD_FOOTPRINT_SIDE],
             "max_visible_colors": MAX_VISIBLE_COLORS,
             "warehouse_max_subject": list(WAREHOUSE_MAX_SUBJECT_SIZE),
-            "agave_shared_head_pivot": list(PIVOT_IN_TEXTURE),
-            "agave_head_max_pixel_center_radius": AGAVE_HEAD_MAX_PIXEL_CENTER_RADIUS,
+            "agave_shared_head_pivot": list(AGAVE_HEAD_PIVOT_IN_TEXTURE),
+            "agave_head_max_pivot_radius": AGAVE_HEAD_MAX_PIVOT_RADIUS,
             "agave_max_body_footpoint_drift": 1.0,
             "preview_alignment_tolerance_world": PREVIEW_ALIGNMENT_TOLERANCE_WORLD,
         },

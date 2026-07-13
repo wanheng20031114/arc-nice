@@ -232,6 +232,7 @@ func _test_config_and_scene_contracts() -> void:
 		_expect(
 			body_sprite.scale == Vector2.ONE
 			and cannon_sprite.scale == Vector2.ONE
+			and cannon_sprite.position == Vector2(-4, -6)
 			and body_sprite.centered
 			and cannon_sprite.centered
 			and body_sprite.offset == Vector2.ZERO
@@ -239,18 +240,18 @@ func _test_config_and_scene_contracts() -> void:
 			"龙舌兰64px身体与炮头必须共用居中的无偏移源坐标。"
 		)
 		_expect(
-			cannon_pivot.position == Vector2(0, -6)
-			and muzzle.position == Vector2(18, 7),
-			"龙舌兰炮座与炮口必须使用素材审计后的64px源坐标。"
+			cannon_pivot.position == Vector2(4, 0)
+			and muzzle.position == Vector2(14, 1),
+			"龙舌兰必须围绕炮管后半主体中心旋转，并保持原始炮口合成坐标。"
 		)
 		var pivot_world_position := visual_root.transform * cannon_pivot.position
 		var muzzle_world_position := (
 			visual_root.transform * (cannon_pivot.transform * muzzle.position)
 		)
 		_expect(
-			pivot_world_position == Vector2(0, -3)
+			pivot_world_position == Vector2(2, 0)
 			and muzzle_world_position == Vector2(9, 0.5),
-			"VisualRoot缩放后炮座与炮口必须落在预期世界坐标。"
+			"修正枢轴后必须保持默认朝向的炮口世界坐标不变。"
 		)
 		for aim_direction in [Vector2.RIGHT, Vector2.DOWN, Vector2(-1, -1).normalized()]:
 			agave.call(
@@ -265,6 +266,43 @@ func _test_config_and_scene_contracts() -> void:
 				"龙舌兰瞄准必须抵消固定美术角，使视觉炮口与目标方向一致。"
 			)
 		cannon_pivot.rotation = 0.0
+		var idle_aim_timer := agave.get_node("IdleAimTimer") as Timer
+		_expect(
+			idle_aim_timer.one_shot
+			and is_equal_approx(idle_aim_timer.wait_time, 0.7),
+			"龙舌兰待机炮口必须使用0.7秒原生单次Timer，而非逐帧轮询。"
+		)
+		agave.idle_aim_random.seed = 20260714
+		agave.call("_start_idle_aim")
+		var previous_idle_rotation := cannon_pivot.rotation
+		var previous_idle_direction := 0
+		var expected_idle_intervals := [0.7, 0.7, 0.3, 0.7, 0.7, 0.7, 0.3, 0.7]
+		for step_index in range(expected_idle_intervals.size()):
+			agave.call("_on_idle_aim_timer_timeout")
+			var rotation_delta := cannon_pivot.rotation - previous_idle_rotation
+			var direction := signi(roundi(rotation_delta * 1000000.0))
+			_expect(direction != 0, "每次待机活动都必须产生可见的小幅瞬时旋转。")
+			if previous_idle_direction != 0:
+				_expect(
+					direction == -previous_idle_direction,
+					"龙舌兰相邻两次待机旋转必须严格交替顺逆时针。"
+				)
+			_expect(
+				absf(cannon_pivot.rotation - agave.idle_aim_center_rotation)
+				<= deg_to_rad(20.0) + 0.00001,
+				"龙舌兰待机炮口不得离开默认方向上下20度范围。"
+			)
+			_expect(
+				is_equal_approx(idle_aim_timer.wait_time, expected_idle_intervals[step_index]),
+				"龙舌兰待机移动必须遵循1、1、2步节奏，双步间隔为0.3秒。"
+			)
+			previous_idle_rotation = cannon_pivot.rotation
+			previous_idle_direction = direction
+		agave.call("_stop_idle_aim")
+		_expect(
+			idle_aim_timer.is_stopped() and not agave.idle_aim_active,
+			"进入索敌或死亡状态时必须能完整停止待机炮口活动。"
+		)
 		var body_shape := agave.get_node("CollisionShape2D") as CollisionShape2D
 		var rectangle := body_shape.shape as RectangleShape2D
 		_expect(
@@ -916,6 +954,10 @@ func _test_multiplayer_authority_contracts() -> void:
 	await physics_frame
 	_expect(replica.is_multiplayer_proxy, "客户端植物必须标记为multiplayer proxy。")
 	_expect(replica.attack_timer.is_stopped(), "客户端植物副本不得运行攻击计时器。")
+	_expect(
+		not replica.idle_aim_timer.is_stopped(),
+		"客户端植物副本可以运行纯本地低频待机炮口活动。"
+	)
 	_expect(not replica.targeting_area.monitoring, "客户端植物副本不得运行本地索敌。")
 	var replica_health_before := replica.current_health
 	_expect(not replica.receive_damage(25), "客户端植物副本必须拒绝本地伤害。")

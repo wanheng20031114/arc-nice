@@ -9,10 +9,11 @@ const DEFAULT_ATTACK_INTERVAL := 2.0
 const CANNONBALL_SPEED := 180.0
 const CANNONBALL_EXPLOSION_RADIUS := 18.0
 const FIRE_PROJECTILE_FRAME := 2
-# The authored muzzle marker sits inside the barrel rim at (18, 7) in the
-# 64 px head canvas. Compensate that fixed three-quarter-view slope so the
-# marker-to-target line, projectile origin and visible bore stay aligned.
-const CANNON_ART_AIM_OFFSET := 0.3708913 # atan2(7, 18)
+const IDLE_AIM_INTERVAL := 0.7
+const IDLE_AIM_BURST_INTERVAL := 0.3
+const IDLE_AIM_LIMIT := 0.34906585 # 20 degrees.
+const IDLE_AIM_MIN_STEP := 0.06981317 # 4 degrees.
+const IDLE_AIM_MAX_STEP := 0.13962634 # 8 degrees.
 
 @onready var body_sprite: AnimatedSprite2D = $VisualRoot/BodySprite
 @onready var cannon_pivot: Node2D = $VisualRoot/CannonPivot
@@ -21,6 +22,7 @@ const CANNON_ART_AIM_OFFSET := 0.3708913 # atan2(7, 18)
 @onready var targeting_area: Area2D = $TargetingArea
 @onready var targeting_shape: CollisionShape2D = $TargetingArea/CollisionShape2D
 @onready var attack_timer: Timer = $AttackTimer
+@onready var idle_aim_timer: Timer = $IdleAimTimer
 @onready var health_bar: Control = $HealthBar
 @onready var fire_audio: AudioStreamPlayer2D = $FireAudio
 
@@ -29,6 +31,12 @@ var pending_target: Enemy = null
 var projectile_spawned_for_current_attack := false
 var configured_attack_damage := DEFAULT_ATTACK_DAMAGE
 var configured_attack_range := DEFAULT_ATTACK_RANGE
+var idle_aim_random := RandomNumberGenerator.new()
+var idle_aim_center_rotation := 0.0
+var idle_aim_last_direction := 0
+var idle_aim_single_moves_completed := 0
+var idle_aim_burst_followup_pending := false
+var idle_aim_active := false
 
 
 func _on_setup_completed() -> void:
@@ -51,6 +59,9 @@ func _on_setup_completed() -> void:
 
 	body_sprite.play(&"idle")
 	cannon_sprite.play(&"idle")
+	idle_aim_center_rotation = cannon_pivot.rotation
+	idle_aim_random.randomize()
+	_start_idle_aim()
 	if is_multiplayer_proxy:
 		_disable_proxy_combat_runtime()
 		return
@@ -76,6 +87,7 @@ func _disable_proxy_combat_runtime() -> void:
 
 func _on_death_started() -> void:
 	attack_timer.stop()
+	_stop_idle_aim()
 	targeting_area.set_deferred("monitoring", false)
 	target_candidates.clear()
 	pending_target = null
@@ -108,8 +120,10 @@ func _on_attack_timer_timeout() -> void:
 
 	var target := _select_nearest_visible_enemy()
 	if target == null:
+		_start_idle_aim()
 		return
 
+	_stop_idle_aim()
 	pending_target = target
 	projectile_spawned_for_current_attack = false
 	_point_cannon_at(target.global_position)
@@ -134,6 +148,56 @@ func _on_cannon_sprite_animation_finished() -> void:
 	pending_target = null
 	projectile_spawned_for_current_attack = false
 	cannon_sprite.play(&"idle")
+
+
+func _on_idle_aim_timer_timeout() -> void:
+	if not idle_aim_active or is_dead:
+		return
+	_apply_idle_aim_step()
+	if idle_aim_burst_followup_pending:
+		idle_aim_burst_followup_pending = false
+		idle_aim_single_moves_completed = 0
+		idle_aim_timer.start(IDLE_AIM_INTERVAL)
+	elif idle_aim_single_moves_completed >= 2:
+		idle_aim_burst_followup_pending = true
+		idle_aim_timer.start(IDLE_AIM_BURST_INTERVAL)
+	else:
+		idle_aim_single_moves_completed += 1
+		idle_aim_timer.start(IDLE_AIM_INTERVAL)
+
+
+func _start_idle_aim() -> void:
+	if is_dead or idle_aim_active:
+		return
+	idle_aim_active = true
+	idle_aim_last_direction = 0
+	idle_aim_single_moves_completed = 0
+	idle_aim_burst_followup_pending = false
+	cannon_pivot.rotation = idle_aim_center_rotation
+	idle_aim_timer.start(IDLE_AIM_INTERVAL)
+
+
+func _stop_idle_aim() -> void:
+	idle_aim_timer.stop()
+	idle_aim_active = false
+	idle_aim_last_direction = 0
+	idle_aim_single_moves_completed = 0
+	idle_aim_burst_followup_pending = false
+
+
+func _apply_idle_aim_step() -> void:
+	var direction := -idle_aim_last_direction
+	if direction == 0:
+		direction = 1 if idle_aim_random.randi_range(0, 1) == 1 else -1
+	var relative_rotation := cannon_pivot.rotation - idle_aim_center_rotation
+	var step := idle_aim_random.randf_range(IDLE_AIM_MIN_STEP, IDLE_AIM_MAX_STEP)
+	relative_rotation = clampf(
+		relative_rotation + step * float(direction),
+		-IDLE_AIM_LIMIT,
+		IDLE_AIM_LIMIT
+	)
+	cannon_pivot.rotation = idle_aim_center_rotation + relative_rotation
+	idle_aim_last_direction = direction
 
 
 func _fire_pending_projectile() -> void:
@@ -270,4 +334,4 @@ func _has_clear_world_line_to(enemy: Enemy) -> bool:
 func _point_cannon_at(world_position: Vector2) -> void:
 	var aim_direction := cannon_pivot.global_position.direction_to(world_position)
 	if aim_direction != Vector2.ZERO:
-		cannon_pivot.global_rotation = aim_direction.angle() - CANNON_ART_AIM_OFFSET
+		cannon_pivot.global_rotation = aim_direction.angle() - muzzle.position.angle()

@@ -32,15 +32,19 @@
       32
     ],
     "cannon_pivot_in_body_canvas": [
-      32,
-      26
-    ],
-    "head_texture_pivot": [
-      32,
+      36,
       32
     ],
-    "muzzle_in_head_texture": [
+    "head_texture_pivot": [
+      36,
+      38
+    ],
+    "visual_muzzle_edge_in_head_texture": [
       54,
+      39
+    ],
+    "scene_muzzle_marker_in_head_texture": [
+      50,
       39
     ],
     "alpha": "binary",
@@ -137,19 +141,19 @@
       33
     ],
     "body_pivot": [
-      32,
-      26
+      36,
+      32
     ],
     "output_pivot": [
-      32,
-      32
+      36,
+      38
     ],
     "visual_muzzle_edge": [
       54,
       39
     ],
     "scene_muzzle_marker": [
-      54,
+      50,
       39
     ]
   },
@@ -510,41 +514,41 @@
     "body_foot_drift_limit_source_px": 1.0,
     "head_output_pivots": {
       "head_idle_0": [
-        32,
-        32
+        36,
+        38
       ],
       "head_fire_0": [
-        32,
-        32
+        36,
+        38
       ],
       "head_fire_1": [
-        32,
-        32
+        36,
+        38
       ],
       "head_fire_2": [
-        32,
-        32
+        36,
+        38
       ],
       "head_fire_3": [
-        32,
-        32
+        36,
+        38
       ],
       "head_fire_4": [
-        32,
-        32
+        36,
+        38
       ]
     },
     "head_pivot_max_drift_source_px": 0,
     "head_radius_by_frame_source_px": {
-      "head_idle_0": 23.505,
-      "head_fire_0": 23.505,
-      "head_fire_1": 22.594,
-      "head_fire_2": 22.594,
-      "head_fire_3": 22.594,
-      "head_fire_4": 23.505
+      "head_idle_0": 17.847,
+      "head_fire_0": 17.847,
+      "head_fire_1": 16.867,
+      "head_fire_2": 16.867,
+      "head_fire_3": 16.867,
+      "head_fire_4": 17.847
     },
-    "head_maximum_radius_source_px": 23.505,
-    "head_radius_limit_source_px": 24.0,
+    "head_maximum_radius_source_px": 17.847,
+    "head_radius_limit_source_px": 19.0,
     "muzzle_edge_x_by_frame": {
       "head_idle_0": 54,
       "head_fire_0": 54,

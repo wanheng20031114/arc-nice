@@ -57,15 +57,16 @@ OUTPUT_FILES = {
 
 # The selected full sprite is fitted slightly inside the maximum canvas.  The
 # audited muzzle coordinate retains the source's slight three-quarter art angle
-# while remaining inside the 24px pivot radius under the zoom=2 camera.
+# while the head rotates around the solid rear half of the barrel.
 COMPOSITE_MAX_SUBJECT_SIZE = (56, 58)
 BODY_MAX_SUBJECT_SIZE = (60, 62)
 BODY_FOOT_TARGET = (32, 62)
 ROOT_PIVOT = (32, 32)
-CANNON_PIVOT_IN_BODY = (32, 26)
-HEAD_TEXTURE_PIVOT = (32, 32)
-MUZZLE_IN_HEAD_TEXTURE = (54, 39)
-HEAD_MAX_RADIUS = 24.0
+CANNON_PIVOT_IN_BODY = (36, 32)
+HEAD_TEXTURE_PIVOT = (36, 38)
+VISUAL_MUZZLE_EDGE_IN_HEAD_TEXTURE = (54, 39)
+SCENE_MUZZLE_MARKER_IN_HEAD_TEXTURE = (50, 39)
+HEAD_MAX_RADIUS = 19.0
 
 
 def _is_warm_seed(color: tuple[int, int, int, int]) -> bool:
@@ -290,8 +291,8 @@ def _register_head(head_full: Image.Image) -> tuple[Image.Image, dict]:
         "paste_origin": [origin_x, origin_y],
         "body_pivot": list(CANNON_PIVOT_IN_BODY),
         "output_pivot": list(HEAD_TEXTURE_PIVOT),
-        "visual_muzzle_edge": list(MUZZLE_IN_HEAD_TEXTURE),
-        "scene_muzzle_marker": list(MUZZLE_IN_HEAD_TEXTURE),
+        "visual_muzzle_edge": list(VISUAL_MUZZLE_EDGE_IN_HEAD_TEXTURE),
+        "scene_muzzle_marker": list(SCENE_MUZZLE_MARKER_IN_HEAD_TEXTURE),
     }
 
 
@@ -563,7 +564,12 @@ def main() -> None:
             "root_pivot_in_source_canvas": list(ROOT_PIVOT),
             "cannon_pivot_in_body_canvas": list(CANNON_PIVOT_IN_BODY),
             "head_texture_pivot": list(HEAD_TEXTURE_PIVOT),
-            "muzzle_in_head_texture": list(MUZZLE_IN_HEAD_TEXTURE),
+            "visual_muzzle_edge_in_head_texture": list(
+                VISUAL_MUZZLE_EDGE_IN_HEAD_TEXTURE
+            ),
+            "scene_muzzle_marker_in_head_texture": list(
+                SCENE_MUZZLE_MARKER_IN_HEAD_TEXTURE
+            ),
             "alpha": "binary",
             "transparent_rgb": [0, 0, 0],
             "visible_color_limit": MAX_VISIBLE_COLORS,
