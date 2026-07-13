@@ -103,6 +103,7 @@ signal base_health_changed(current_health: int, maximum_health: int, revision: i
 @onready var home_base_hud: HomeBaseHUD = $HomeBaseHUD
 @onready var wave_hud: WaveHUD = $WaveHUD
 @onready var tower_defense_status_hud: TowerDefenseStatusHUD = $TowerDefenseStatusHUD
+@onready var tower_defense_minimap: TowerDefenseMinimap = $TowerDefenseMinimap
 @onready var player_profile_panel: PlayerProfilePanel = $PlayerProfilePanel
 @onready var settings_panel: SettingsPanel = $SettingsLayer/SettingsPanel
 @onready var debug_collectible_window: DebugCollectibleWindow = $SettingsLayer/DebugCollectibleWindow
@@ -248,6 +249,7 @@ func _ready() -> void:
 	_attach_camera_to_local_player()
 	_configure_home_defense()
 	_configure_plant_defense_system()
+	_configure_minimap()
 	_apply_initial_player_xirang()
 	currency_hud.bind_player(player)
 	player_profile_panel.bind_player(player)
@@ -422,6 +424,20 @@ func _configure_home_defense() -> void:
 
 func get_home_objective_targets() -> Array[Node2D]:
 	return home_objective_targets.duplicate()
+
+
+func _configure_minimap() -> void:
+	tower_defense_minimap.setup(
+		player,
+		map_camera,
+		ground_tile_map_layer,
+		dual_grid_terrain,
+		overlay_tile_map_layer,
+		self,
+		enemy_container,
+		boss_container,
+		plant_container
+	)
 
 
 func get_base_health_snapshot() -> Dictionary:

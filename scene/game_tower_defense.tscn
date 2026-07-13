@@ -29,6 +29,7 @@
 [ext_resource type="Script" uid="uid://c53fvlhqiuysa" path="res://scene/session_object_pool.gd" id="29_session_pool"]
 [ext_resource type="Script" uid="uid://cthsxvai7jtgh" path="res://scene/xirang_drop_manager.gd" id="30_xirang_manager"]
 [ext_resource type="PackedScene" path="res://scene/tower_defense_status_hud.tscn" id="31_status_hud"]
+[ext_resource type="PackedScene" path="res://scene/tower_defense_minimap.tscn" id="32_minimap"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -268,6 +269,8 @@ visible = false
 
 [node name="TowerDefenseStatusHUD" parent="." unique_id=1073363921 instance=ExtResource("31_status_hud")]
 visible = false
+
+[node name="TowerDefenseMinimap" parent="." instance=ExtResource("32_minimap")]
 
 [node name="PlayerProfilePanel" parent="." unique_id=1216528429 instance=ExtResource("13_profile_panel")]
 
