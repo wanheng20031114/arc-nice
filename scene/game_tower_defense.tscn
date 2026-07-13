@@ -19,8 +19,8 @@
 [ext_resource type="PackedScene" uid="uid://cvh5s1gowuh0r" path="res://scene/luoxi_merchant.tscn" id="20_luoxi"]
 [ext_resource type="PackedScene" path="res://scene/debug_collectible_window.tscn" id="21_debug_collectibles"]
 [ext_resource type="Script" uid="uid://jvlyxxwk5co0" path="res://scene/plant_defense/plant_system.gd" id="22_plant_system"]
-[ext_resource type="PackedScene" uid="uid://b43m8ktg7sfho" path="res://scene/plant_defense/plant_placement_controller.tscn" id="23_plant_placement"]
-[ext_resource type="TileSet" uid="uid://cw8usll36b5wa" path="res://resources/terrain/dual_grid/terrain_dual_grid_tileset_16.tres" id="24_dual_grid_tileset"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/plant_placement_controller.tscn" id="23_plant_placement"]
+[ext_resource type="TileSet" path="res://resources/terrain/dual_grid/terrain_dual_grid_tileset_16.tres" id="24_dual_grid_tileset"]
 [ext_resource type="Script" uid="uid://10rnkne5bliy" path="res://scene/terrain/dual_grid_tilemap.gd" id="25_dual_grid_script"]
 [ext_resource type="TileSet" uid="uid://c0qgc6eff1m0q" path="res://resources/terrain/dual_grid/terrain_water_collision_tileset_16.tres" id="26_water_collision_tileset"]
 [ext_resource type="Script" uid="uid://b6tgthpedimsg" path="res://scene/home_gate_controller.gd" id="27_home_gate_controller"]
@@ -260,7 +260,7 @@ visible = false
 
 [node name="WaveHUD" parent="." unique_id=1126268867 instance=ExtResource("14_wave_hud")]
 
-[node name="TowerDefenseStatusHUD" parent="." instance=ExtResource("31_status_hud")]
+[node name="TowerDefenseStatusHUD" parent="." unique_id=1073363921 instance=ExtResource("31_status_hud")]
 visible = false
 
 [node name="PlayerProfilePanel" parent="." unique_id=1216528429 instance=ExtResource("13_profile_panel")]
