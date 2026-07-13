@@ -1,6 +1,6 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene format=3 uid="uid://bm1cgr4yf1v0t"]
 
-[ext_resource type="Script" path="res://scene/plant_defense/agave_cannon.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://crl1nlhom226j" path="res://scene/plant_defense/agave_cannon.gd" id="1_script"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/plant_defense/agave_body_sprite_frames.tres" id="2_body_frames"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/plant_defense/agave_cannon_sprite_frames.tres" id="3_cannon_frames"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="4_health_bar"]
@@ -9,71 +9,72 @@
 resource_local_to_scene = true
 size = Vector2(28, 28)
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_targeting"]
-resource_local_to_scene = true
-radius = 176.0
-
 [sub_resource type="CircleShape2D" id="CircleShape2D_player_core"]
 resource_local_to_scene = true
 radius = 7.0
 
-[node name="AgaveCannon" type="StaticBody2D"]
+[sub_resource type="CircleShape2D" id="CircleShape2D_targeting"]
+resource_local_to_scene = true
+radius = 176.0
+
+[node name="AgaveCannon" type="StaticBody2D" unique_id=877900]
 collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
 
-[node name="VisualRoot" type="Node2D" parent="."]
+[node name="VisualRoot" type="Node2D" parent="." unique_id=934693179]
 scale = Vector2(0.5, 0.5)
 
-[node name="BodySprite" type="AnimatedSprite2D" parent="VisualRoot"]
-texture_filter = 1
+[node name="BodySprite" type="AnimatedSprite2D" parent="VisualRoot" unique_id=1832784205]
 z_index = 1
+texture_filter = 1
 sprite_frames = ExtResource("2_body_frames")
 animation = &"idle"
 autoplay = "idle"
 
-[node name="CannonPivot" type="Node2D" parent="VisualRoot"]
-position = Vector2(0, -6)
+[node name="CannonPivot" type="Node2D" parent="VisualRoot" unique_id=1291920717]
 z_index = 2
+position = Vector2(0, -6)
 
-[node name="CannonSprite" type="AnimatedSprite2D" parent="VisualRoot/CannonPivot"]
+[node name="CannonSprite" type="AnimatedSprite2D" parent="VisualRoot/CannonPivot" unique_id=83471690]
 texture_filter = 1
 sprite_frames = ExtResource("3_cannon_frames")
 animation = &"idle"
 autoplay = "idle"
 
-[node name="Muzzle" type="Marker2D" parent="VisualRoot/CannonPivot"]
+[node name="Muzzle" type="Marker2D" parent="VisualRoot/CannonPivot" unique_id=1814134360]
 position = Vector2(22, 7)
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1927670711]
 shape = SubResource("RectangleShape2D_body")
 
-[node name="PlayerCoreBody" type="StaticBody2D" parent="."]
+[node name="PlayerCoreBody" type="StaticBody2D" parent="." unique_id=227376089]
 position = Vector2(0, 1)
 collision_layer = 1024
 collision_mask = 2
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody" unique_id=1734955811]
 shape = SubResource("CircleShape2D_player_core")
 
-[node name="TargetingArea" type="Area2D" parent="."]
+[node name="TargetingArea" type="Area2D" parent="." unique_id=10418399]
 collision_layer = 0
 collision_mask = 4
 monitorable = false
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="TargetingArea"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="TargetingArea" unique_id=1749385050]
 shape = SubResource("CircleShape2D_targeting")
 
-[node name="AttackTimer" type="Timer" parent="."]
+[node name="AttackTimer" type="Timer" parent="." unique_id=1803363272]
 wait_time = 2.0
 
-[node name="HealthBar" parent="." instance=ExtResource("4_health_bar")]
+[node name="HealthBar" parent="." unique_id=657702345 instance=ExtResource("4_health_bar")]
 offset_left = -16.0
-offset_top = -23.0
+offset_top = -15.0
 offset_right = 16.0
-offset_bottom = -18.0
+offset_bottom = -10.0
+damage_trail_color = Color(0.92156863, 0.28235295, 0.18039216, 1)
 
-[node name="FireAudio" type="AudioStreamPlayer2D" parent="."]
+[node name="FireAudio" type="AudioStreamPlayer2D" parent="." unique_id=762823818]
 volume_db = -10.0
 max_polyphony = 3
 
