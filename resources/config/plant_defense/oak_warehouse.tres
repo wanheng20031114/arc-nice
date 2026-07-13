@@ -1,7 +1,7 @@
-[gd_resource type="Resource" script_class="PlantDefenseConfig" load_steps=4 format=3]
+[gd_resource type="Resource" script_class="PlantDefenseConfig" format=3 uid="uid://dufwxxsfeljw1"]
 
-[ext_resource type="Script" path="res://resources/config/plant_defense/plant_defense_config.gd" id="1_config"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/oak_warehouse/oak_warehouse.png" id="2_icon"]
+[ext_resource type="Script" uid="uid://b5ngq5py6eyrp" path="res://resources/config/plant_defense/plant_defense_config.gd" id="1_config"]
+[ext_resource type="Texture2D" uid="uid://b6b8m1sebgy8g" path="res://resources/texture/plant_defense/oak_warehouse/oak_warehouse.png" id="2_icon"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/oak_warehouse.tscn" id="3_scene"]
 
 [resource]

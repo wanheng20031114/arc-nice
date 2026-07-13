@@ -227,6 +227,7 @@ func _ready() -> void:
 		set_process(false)
 		set_physics_process(false)
 		return
+	tower_defense_status_hud.show()
 	_attach_camera_to_local_player()
 	_configure_home_defense()
 	_configure_plant_defense_system()

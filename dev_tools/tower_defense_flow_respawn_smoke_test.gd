@@ -24,11 +24,17 @@ func _run() -> void:
 
 func _test_singleplayer_flow_and_respawn() -> void:
 	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var authored_status_hud := game.get_node("TowerDefenseStatusHUD") as CanvasLayer
+	_expect(
+		authored_status_hud != null and not authored_status_hud.visible,
+		"TowerDefenseStatusHUD must be hidden in the authored tower-defense scene."
+	)
 	root.add_child(game)
 	current_scene = game
 	await process_frame
 	await physics_frame
 
+	_expect(game.tower_defense_status_hud.visible, "Tower-defense runtime must explicitly enable its status HUD.")
 	_expect(is_equal_approx(game.pre_wave_duration, 300.0), "Tower-defense rest limit must default to five minutes.")
 	_expect(game.player.current_xirang == 1000, "The player must enter tower defense with 1000 Xirang.")
 	var first_step := game.current_flow_step

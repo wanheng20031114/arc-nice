@@ -12,11 +12,11 @@ size = Vector2(28, 28)
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_interaction"]
 resource_local_to_scene = true
-radius = 42.0
+radius = 28.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_player_core"]
 resource_local_to_scene = true
-radius = 9.0
+radius = 7.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_prompt"]
 content_margin_left = 0.0
@@ -55,12 +55,12 @@ corner_radius_bottom_left = 2
 
 [sub_resource type="LabelSettings" id="LabelSettings_keycap"]
 font = ExtResource("5_font")
-font_size = 13
+font_size = 12
 font_color = Color(0.153, 0.086, 0.035, 1)
 
 [sub_resource type="LabelSettings" id="LabelSettings_action"]
 font = ExtResource("5_font")
-font_size = 14
+font_size = 13
 font_color = Color(0.965, 0.867, 0.667, 1)
 outline_size = 1
 outline_color = Color(0.055, 0.027, 0.012, 1)
@@ -78,7 +78,7 @@ tracks/0/keys = {
 "times": PackedFloat32Array(0),
 "transitions": PackedFloat32Array(1),
 "update": 0,
-"values": [Vector2(0, -2)]
+"values": [Vector2(0, 0)]
 }
 tracks/1/type = "value"
 tracks/1/imported = false
@@ -108,7 +108,7 @@ tracks/0/keys = {
 "times": PackedFloat32Array(0, 2.6, 2.8, 3, 4),
 "transitions": PackedFloat32Array(1, 1, 1, 1, 1),
 "update": 0,
-"values": [Vector2(0, -2), Vector2(0, -2), Vector2(0, -3), Vector2(0, -2), Vector2(0, -2)]
+"values": [Vector2(0, 0), Vector2(0, 0), Vector2(0, -1), Vector2(0, 0), Vector2(0, 0)]
 }
 tracks/1/type = "value"
 tracks/1/imported = false
@@ -136,7 +136,7 @@ script = ExtResource("1_script")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture_filter = 1
-position = Vector2(0, -2)
+scale = Vector2(0.5, 0.5)
 z_index = 1
 texture = ExtResource("2_sprite")
 
@@ -147,11 +147,10 @@ libraries = {
 autoplay = "idle"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-position = Vector2(0, 7)
 shape = SubResource("RectangleShape2D_body")
 
 [node name="PlayerCoreBody" type="StaticBody2D" parent="."]
-position = Vector2(0, 9)
+position = Vector2(0, 6)
 collision_layer = 1024
 collision_mask = 2
 
@@ -168,27 +167,27 @@ shape = SubResource("CircleShape2D_interaction")
 
 [node name="InteractionPrompt" type="PanelContainer" parent="."]
 texture_filter = 1
-position = Vector2(-26, -64)
+position = Vector2(-22, -40)
 scale = Vector2(0.5, 0.5)
 z_index = 10
-custom_minimum_size = Vector2(104, 28)
+custom_minimum_size = Vector2(88, 26)
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_prompt")
 
 [node name="PromptMargin" type="MarginContainer" parent="InteractionPrompt"]
 layout_mode = 2
-theme_override_constants/margin_left = 5
-theme_override_constants/margin_top = 4
-theme_override_constants/margin_right = 5
-theme_override_constants/margin_bottom = 4
+theme_override_constants/margin_left = 4
+theme_override_constants/margin_top = 3
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = 3
 
 [node name="PromptRow" type="HBoxContainer" parent="InteractionPrompt/PromptMargin"]
 layout_mode = 2
-theme_override_constants/separation = 5
+theme_override_constants/separation = 4
 alignment = 1
 
 [node name="Keycap" type="PanelContainer" parent="InteractionPrompt/PromptMargin/PromptRow"]
-custom_minimum_size = Vector2(20, 20)
+custom_minimum_size = Vector2(18, 18)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_keycap")
 
@@ -206,9 +205,9 @@ label_settings = SubResource("LabelSettings_action")
 vertical_alignment = 1
 
 [node name="HealthBar" parent="." instance=ExtResource("3_health_bar")]
-offset_left = -22.0
-offset_top = -41.0
-offset_right = 22.0
-offset_bottom = -36.0
+offset_left = -16.0
+offset_top = -24.0
+offset_right = 16.0
+offset_bottom = -19.0
 
 [node name="OakWarehousePanel" parent="." instance=ExtResource("4_panel")]

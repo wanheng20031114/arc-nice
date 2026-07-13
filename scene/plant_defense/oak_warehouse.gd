@@ -4,6 +4,8 @@ class_name OakWarehouse
 signal storage_changed
 
 const STORAGE_CAPACITY := RunStateStore.INVENTORY_CAPACITY
+const INTERACTION_GROUP := &"oak_warehouse_interaction"
+const INTERACTION_SELECTION_REFRESH_SECONDS := 0.08
 
 @onready var interaction_area: Area2D = $InteractionArea
 @onready var interaction_prompt: Control = $InteractionPrompt
@@ -15,12 +17,15 @@ const STORAGE_CAPACITY := RunStateStore.INVENTORY_CAPACITY
 var storage_items: Array[PickupConfig] = []
 var storage_stack_counts: Array[int] = []
 var nearby_player: Player = null
+var is_interaction_target := false
+var interaction_selection_refresh_left := 0.0
 var prompt_rest_position := Vector2.ZERO
 var prompt_tween: Tween = null
 
 
 func _ready() -> void:
 	super._ready()
+	add_to_group(INTERACTION_GROUP)
 	storage_items.resize(STORAGE_CAPACITY)
 	storage_stack_counts.resize(STORAGE_CAPACITY)
 	storage_stack_counts.fill(0)
@@ -30,11 +35,25 @@ func _ready() -> void:
 		var phase := fmod(float(get_instance_id()) * 0.37, 4.0)
 		idle_animation_player.play(&"idle")
 		idle_animation_player.seek(phase, true)
+	set_process(false)
 	set_process_unhandled_input(false)
 	interaction_area.body_entered.connect(_on_interaction_area_body_entered)
 	interaction_area.body_exited.connect(_on_interaction_area_body_exited)
 	storage_panel.opened.connect(_on_storage_panel_opened)
 	storage_panel.closed.connect(_on_storage_panel_closed)
+
+
+func _process(delta: float) -> void:
+	if nearby_player == null or not is_instance_valid(nearby_player):
+		nearby_player = null
+		_set_interaction_target(false)
+		set_process(false)
+		return
+	interaction_selection_refresh_left -= delta
+	if interaction_selection_refresh_left > 0.0:
+		return
+	interaction_selection_refresh_left = INTERACTION_SELECTION_REFRESH_SECONDS
+	_refresh_interaction_selection(nearby_player)
 
 
 func _on_setup_completed() -> void:
@@ -47,7 +66,7 @@ func _on_setup_completed() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if nearby_player == null or storage_panel.is_open():
+	if not is_interaction_target or nearby_player == null or storage_panel.is_open():
 		return
 	if not event.is_action_pressed(&"interact"):
 		return
@@ -183,44 +202,127 @@ func _on_interaction_area_body_entered(body: Node2D) -> void:
 	if player == null or not player.uses_local_input or player.is_dead:
 		return
 	nearby_player = player
-	if not storage_panel.is_open():
-		_show_interaction_prompt()
-	set_process_unhandled_input(true)
+	interaction_selection_refresh_left = 0.0
+	set_process(true)
+	_refresh_interaction_selection(player)
 
 
 func _on_interaction_area_body_exited(body: Node2D) -> void:
 	if body != nearby_player:
 		return
+	var exiting_player := nearby_player
 	nearby_player = null
-	_hide_interaction_prompt()
-	set_process_unhandled_input(false)
+	set_process(false)
+	_set_interaction_target(false)
 	storage_panel.close()
+	_refresh_interaction_selection(exiting_player)
 
 
 func _on_storage_panel_opened() -> void:
-	_hide_interaction_prompt()
-	set_process_unhandled_input(false)
+	_set_interaction_target(false)
+	_refresh_interaction_selection(nearby_player)
 	modal_ui_visibility_changed.emit(true)
 
 
 func _on_storage_panel_closed() -> void:
-	if nearby_player != null and not is_dead:
+	if nearby_player != null:
+		_refresh_interaction_selection(nearby_player)
+	else:
+		_set_interaction_target(false)
+	modal_ui_visibility_changed.emit(false)
+
+
+func _refresh_interaction_selection(player: Player) -> void:
+	if player == null or not is_instance_valid(player) or get_tree() == null:
+		return
+	var nearby_warehouses: Array[OakWarehouse] = []
+	var nearest_warehouse: OakWarehouse = null
+	var nearest_distance_squared := INF
+	var warehouse_panel_is_open := false
+	for node in get_tree().get_nodes_in_group(INTERACTION_GROUP):
+		var warehouse := node as OakWarehouse
+		if (
+			warehouse == null
+			or not is_instance_valid(warehouse)
+			or warehouse.is_queued_for_deletion()
+		):
+			continue
+		if (
+			warehouse.storage_panel.is_open()
+			and warehouse.storage_panel.tracked_player == player
+		):
+			warehouse_panel_is_open = true
+		if warehouse.nearby_player != player:
+			continue
+		nearby_warehouses.append(warehouse)
+		if warehouse.is_dead or warehouse.storage_panel.is_open():
+			continue
+		var distance_squared := player.global_position.distance_squared_to(
+			warehouse.global_position
+		)
+		var wins_distance_tie := false
+		if is_equal_approx(distance_squared, nearest_distance_squared):
+			wins_distance_tie = (
+				nearest_warehouse == null
+				or warehouse.global_position.y < nearest_warehouse.global_position.y
+				or (
+					is_equal_approx(
+						warehouse.global_position.y,
+						nearest_warehouse.global_position.y
+					)
+					and (
+						warehouse.global_position.x < nearest_warehouse.global_position.x
+						or (
+							is_equal_approx(
+								warehouse.global_position.x,
+								nearest_warehouse.global_position.x
+							)
+							and (
+								warehouse.get_instance_id()
+								< nearest_warehouse.get_instance_id()
+							)
+						)
+					)
+				)
+			)
+		if distance_squared < nearest_distance_squared or wins_distance_tie:
+			nearest_warehouse = warehouse
+			nearest_distance_squared = distance_squared
+
+	var can_select := (
+		not warehouse_panel_is_open
+		and not player.is_dead
+		and not player.controls_locked
+	)
+	for warehouse in nearby_warehouses:
+		warehouse._set_interaction_target(
+			can_select and warehouse == nearest_warehouse
+		)
+
+
+func _set_interaction_target(should_be_target: bool) -> void:
+	if is_interaction_target == should_be_target:
+		set_process_unhandled_input(should_be_target)
+		if not should_be_target and interaction_prompt.visible:
+			_hide_interaction_prompt()
+		return
+	is_interaction_target = should_be_target
+	set_process_unhandled_input(should_be_target)
+	if should_be_target:
 		_show_interaction_prompt()
 	else:
 		_hide_interaction_prompt()
-	set_process_unhandled_input(nearby_player != null and not is_dead)
-	modal_ui_visibility_changed.emit(false)
 
 
 func _show_interaction_prompt() -> void:
 	_stop_prompt_tween()
-	interaction_prompt.position = prompt_rest_position + Vector2(0, 2)
+	interaction_prompt.position = prompt_rest_position + Vector2(0, 1)
 	interaction_prompt.modulate = Color(1, 1, 1, 0)
 	prompt_keycap.modulate = Color(1, 1, 0.72, 1)
 	interaction_prompt.show()
 	prompt_tween = create_tween().set_parallel(true)
 	prompt_tween.tween_property(interaction_prompt, "modulate:a", 1.0, 0.08)
-	prompt_tween.tween_method(_set_prompt_reveal_offset, 2.0, 0.0, 0.08)
+	prompt_tween.tween_method(_set_prompt_reveal_offset, 1.0, 0.0, 0.08)
 	prompt_tween.tween_property(prompt_keycap, "modulate", Color.WHITE, 0.14)
 
 
@@ -247,11 +349,17 @@ func _on_health_changed(new_health: int, new_max_health: int) -> void:
 
 
 func _on_owner_player_died() -> void:
+	_set_interaction_target(false)
 	storage_panel.close()
+	_refresh_interaction_selection(nearby_player)
 
 
 func _on_death_started() -> void:
+	var interaction_player := nearby_player
+	nearby_player = null
+	set_process(false)
 	interaction_area.set_deferred("monitoring", false)
-	_hide_interaction_prompt()
+	_set_interaction_target(false)
 	storage_panel.close()
+	_refresh_interaction_selection(interaction_player)
 	super._on_death_started()

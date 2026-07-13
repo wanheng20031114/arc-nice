@@ -261,6 +261,7 @@ visible = false
 [node name="WaveHUD" parent="." unique_id=1126268867 instance=ExtResource("14_wave_hud")]
 
 [node name="TowerDefenseStatusHUD" parent="." instance=ExtResource("31_status_hud")]
+visible = false
 
 [node name="PlayerProfilePanel" parent="." unique_id=1216528429 instance=ExtResource("13_profile_panel")]
 
