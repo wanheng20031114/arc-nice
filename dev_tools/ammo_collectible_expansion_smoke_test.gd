@@ -39,7 +39,7 @@ func _run() -> void:
 	run_state = root.get_node("RunState") as RunStateStore
 
 	await _test_capacity_tiers_and_highest_only()
-	await _test_additive_before_multiplier_and_copy_caps()
+	await _test_additive_before_multiplier_and_effect_caps()
 	await _test_reload_tiers_and_highest_only()
 	await _test_ammo_state_transitions()
 	await _test_character_compatibility_and_orange_marker()
@@ -77,7 +77,7 @@ func _test_capacity_tiers_and_highest_only() -> void:
 	await _free_player(tiyi)
 
 
-func _test_additive_before_multiplier_and_copy_caps() -> void:
+func _test_additive_before_multiplier_and_effect_caps() -> void:
 	var tiyi := await _spawn_ammo_player(TIYI_SCENE)
 	_set_inventory([ADDITIVE_ITEMS[0], ADDITIVE_ITEMS[1], ADDITIVE_ITEMS[2], CAPACITY_ITEMS[1]], tiyi)
 	_expect(tiyi.get_ammo_capacity() == 21, "Tiyi must calculate floor((5 + 1 + 3 + 5) * 1.5) = 21.")
@@ -86,9 +86,35 @@ func _test_additive_before_multiplier_and_copy_caps() -> void:
 		run_state.begin_new_run(&"tiyi")
 		for _copy_index in range(5):
 			_expect(run_state.try_add_item(additive_item), "%s copy setup must fit." % additive_item.display_name)
+		tiyi.call("_refresh_collectible_stats", false)
+		var capped_capacity := tiyi.get_ammo_capacity()
 		_expect(
-			not LuoxiMerchant.is_collectible_available_for_inventory(additive_item, run_state),
-			"%s must stop appearing after five copies." % additive_item.display_name
+			capped_capacity == (
+				tiyi.ammo_capacity
+				+ additive_item.collectible_ammo_capacity_additive_bonus
+				* additive_item.collectible_max_copies
+			),
+			"%s must apply exactly its first five carried copies to magazine capacity."
+			% additive_item.display_name
+		)
+		_expect(
+			LuoxiMerchant.is_collectible_available_for_inventory(additive_item, run_state),
+			"%s must remain obtainable after five copies cap its active effect."
+			% additive_item.display_name
+		)
+		_expect(
+			run_state.try_add_item(additive_item),
+			"A sixth %s must remain carryable." % additive_item.display_name
+		)
+		_expect(
+			run_state.get_item(5) == additive_item,
+			"A sixth %s must be stored in a real inventory slot." % additive_item.display_name
+		)
+		tiyi.call("_refresh_collectible_stats", false)
+		_expect(
+			tiyi.get_ammo_capacity() == capped_capacity,
+			"A sixth carried %s must not increase magazine capacity beyond its five-copy effect cap."
+			% additive_item.display_name
 		)
 	await _free_player(tiyi)
 

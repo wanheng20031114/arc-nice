@@ -151,7 +151,7 @@ const MAX_DASH_COOLDOWN_REDUCTION_PER_COLLECTIBLE := 0.5
 @export var collectible_effect_id: String = ""
 @export var collectible_rarity: CollectibleRarity = CollectibleRarity.COMMON
 @export var collectible_stacks_by_copy: bool = false
-# 仅对可逐份叠加的收藏品生效；0 表示不限制份数。
+# 仅限制参与效果计算的份数，不限制玩家实际携带；0 表示所有携带份数均生效。
 @export_range(0, 99, 1, "or_greater") var collectible_max_copies: int = 0
 
 @export_group("收藏品兼容性")

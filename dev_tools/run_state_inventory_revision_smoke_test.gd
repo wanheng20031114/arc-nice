@@ -17,7 +17,7 @@ func _run() -> void:
 	run_state.begin_new_run(&"weishidaier")
 	_test_local_revision_and_snapshot(run_state)
 	_test_peer_slot_state_and_snapshot(run_state)
-	_test_collectible_copy_limit(run_state)
+	_test_collectible_effect_cap_does_not_limit_carrying(run_state)
 	await _test_stacked_item_use(run_state)
 	run_state.begin_new_run(&"weishidaier")
 
@@ -124,15 +124,20 @@ func _test_stacked_item_use(run_state: RunStateStore) -> void:
 	await process_frame
 
 
-func _test_collectible_copy_limit(run_state: RunStateStore) -> void:
+func _test_collectible_effect_cap_does_not_limit_carrying(run_state: RunStateStore) -> void:
 	const PEER_ID := 5
 	_expect(
 		run_state.try_add_item_count_for_peer(PEER_ID, APPLE, APPLE.collectible_max_copies),
-		"Host必须允许收藏品精确达到配置的最大份数。"
+		"Host必须允许收藏品达到配置的效果生效份数上限。"
 	)
 	_expect(
-		not run_state.can_add_item_count_for_peer(PEER_ID, APPLE, 1),
-		"Host背包容量检查必须拒绝突破收藏品最大份数。"
+		run_state.can_add_item_count_for_peer(PEER_ID, APPLE, 1)
+		and run_state.try_add_item_count_for_peer(PEER_ID, APPLE, 1),
+		"收藏品效果封顶后，Host仍必须允许Peer携带第6份。"
+	)
+	_expect(
+		run_state.get_item_for_peer(PEER_ID, APPLE.collectible_max_copies) == APPLE,
+		"第6份苹果必须真实写入新的Peer背包槽，而不是被效果上限吞掉。"
 	)
 
 

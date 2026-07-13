@@ -194,11 +194,7 @@ func _test_material_inventory_detail() -> void:
 	_expect(not profile.item_detail_use_button.visible, "Materials must not show a use button.")
 	_expect(not profile.item_detail_hint.visible, "Materials must not show a double-click use hint.")
 	_expect(profile.item_detail_discard_button.visible and profile.item_detail_discard_button.text == "删除", "Materials must show only a delete action.")
-	var double_click := InputEventMouseButton.new()
-	double_click.button_index = MOUSE_BUTTON_LEFT
-	double_click.pressed = true
-	double_click.double_click = true
-	profile.slots[0]._on_gui_input(double_click)
+	_simulate_double_click(profile.slots[0])
 	await process_frame
 	_expect(run_state.get_item_count(0) == 2, "Double-clicking a material must not consume it.")
 	profile.item_detail_discard_button.emit_signal("pressed")
@@ -209,6 +205,20 @@ func _test_material_inventory_detail() -> void:
 	player.queue_free()
 	await process_frame
 	await physics_frame
+
+
+func _simulate_double_click(slot: InventorySlot) -> void:
+	for _click_index in 2:
+		var press := InputEventMouseButton.new()
+		press.button_index = MOUSE_BUTTON_LEFT
+		press.pressed = true
+		press.position = Vector2(24.0, 24.0)
+		slot._on_gui_input(press)
+		var release := InputEventMouseButton.new()
+		release.button_index = MOUSE_BUTTON_LEFT
+		release.pressed = false
+		release.position = press.position
+		slot._on_gui_input(release)
 
 
 func _stop_audio_players(node: Node) -> void:

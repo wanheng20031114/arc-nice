@@ -152,14 +152,14 @@ func _test_collectible_resources() -> void:
 			_expect(config.icon_texture.get_height() <= 32, "%s icon height must be <= 32." % config.display_name)
 	_expect(projectile_requirement_count == 8, "Exactly eight collectibles must require projectile primary attacks.")
 	_expect(APPLE.icon_texture.get_width() == 32 and APPLE.icon_texture.get_height() == 32, "Apple icon must remain 32x32.")
-	_expect(APPLE.collectible_stacks_by_copy and APPLE.collectible_max_copies == 5, "Apple must stack by copy up to five copies.")
+	_expect(APPLE.collectible_stacks_by_copy and APPLE.collectible_max_copies == 5, "Apple effects must stack from up to five active copies.")
 	_expect(APPLE.description.contains("最高100%"), "Apple description must state its 100% pierce cap.")
 	_expect(
 		PURE_CHARGE_CRYSTAL.collectible_rarity == PickupConfig.CollectibleRarity.LEGENDARY
 		and PURE_CHARGE_CRYSTAL.collectible_stacks_by_copy
 		and PURE_CHARGE_CRYSTAL.collectible_max_copies == 5
 		and is_equal_approx(PURE_CHARGE_CRYSTAL.skill_charge_preserve_chance, 0.2),
-		"Pure charge crystal must be a five-copy legendary with 20% charge preservation per copy."
+		"Pure charge crystal must be legendary with a five-active-copy effect cap and 20% charge preservation per copy."
 	)
 	_expect(
 		FLAME_TRIDENT.collectible_rarity == PickupConfig.CollectibleRarity.RARE
@@ -178,14 +178,14 @@ func _test_collectible_resources() -> void:
 		and BANANA.collectible_stacks_by_copy
 		and BANANA.collectible_max_copies == 4
 		and is_equal_approx(BANANA.bullet_homing_chance, 0.3),
-		"Banana must be a four-copy rare with 30% homing per copy."
+		"Banana must be rare with a four-active-copy effect cap and 30% homing per copy."
 	)
 	_expect(
 		ORANGE.collectible_rarity == PickupConfig.CollectibleRarity.RARE
 		and ORANGE.collectible_stacks_by_copy
 		and ORANGE.collectible_max_copies == 10
 		and is_equal_approx(ORANGE.ammo_free_shot_chance, 0.1),
-		"Orange must be a ten-copy rare with 10% ammo preservation per copy."
+		"Orange must be rare with a ten-active-copy effect cap and 10% ammo preservation per copy."
 	)
 	_expect(
 		ROLLER_SKATES.collectible_rarity == PickupConfig.CollectibleRarity.RARE
@@ -287,8 +287,8 @@ func _test_new_collectible_rules() -> void:
 	player = _spawn_player()
 	_expect(run_state.try_add_item(LUCKY_GEM), "Lucky gem must fit in inventory.")
 	_expect(
-		not run_state.try_add_item(LUCKY_GEM),
-		"Duplicate non-stacking lucky gem must be rejected by authoritative inventory rules."
+		run_state.try_add_item(LUCKY_GEM),
+		"A duplicate non-stacking lucky gem must remain carryable even though its effect is unique."
 	)
 	_expect(run_state.try_add_item(ALCHEMIST_VIAL), "Alchemist vial must fit in inventory.")
 	_expect(run_state.try_add_item(FOX_COIN), "Fox coin must fit in inventory.")
@@ -297,7 +297,7 @@ func _test_new_collectible_rules() -> void:
 	await process_frame
 	_expect(
 		is_equal_approx(float(player.get("collectible_base_upgrade_free_chance")), 0.33),
-		"Different free-upgrade collectibles must stack while duplicate lucky gems stay single-effect."
+		"Different free-upgrade collectibles must stack while both carried lucky gems contribute only one active effect."
 	)
 	_expect(
 		is_equal_approx(float(player.get("collectible_ranged_dodge_chance")), 0.25),
@@ -431,7 +431,7 @@ func _test_collectible_stat_rules() -> void:
 	for copy_index in range(5):
 		_expect(
 			LuoxiMerchant.is_collectible_available_for_inventory(APPLE, run_state),
-			"Apple copy %d must remain available before reaching its cap." % (copy_index + 1)
+			"Apple copy %d must remain available while building its active effect." % (copy_index + 1)
 		)
 		_expect(run_state.try_add_item(APPLE), "Apple copy %d must fit in inventory." % (copy_index + 1))
 	await process_frame
@@ -440,8 +440,14 @@ func _test_collectible_stat_rules() -> void:
 		"Five apples must stack their pierce chance to the 100% cap."
 	)
 	_expect(
-		not LuoxiMerchant.is_collectible_available_for_inventory(APPLE, run_state),
-		"Apple must stop appearing after five owned copies."
+		LuoxiMerchant.is_collectible_available_for_inventory(APPLE, run_state),
+		"Apple must remain obtainable after five owned copies cap its active effect."
+	)
+	_expect(run_state.try_add_item(APPLE), "A sixth apple must remain carryable after piercing reaches 100%.")
+	await process_frame
+	_expect(
+		is_equal_approx(player.call("_get_inventory_bullet_pierce_chance"), 1.0),
+		"A sixth carried apple must not increase piercing beyond its five-copy effect cap."
 	)
 	_expect(run_state.try_add_item(GLASS_MARBLE), "Glass marble must fit in inventory with apples.")
 	await process_frame
@@ -460,7 +466,7 @@ func _test_new_stack_and_skill_rules() -> void:
 	for copy_index in range(4):
 		_expect(
 			LuoxiMerchant.is_collectible_available_for_inventory(BANANA, run_state),
-			"Banana copy %d must remain available before reaching its cap." % (copy_index + 1)
+			"Banana copy %d must remain available while building its active effect." % (copy_index + 1)
 		)
 		_expect(run_state.try_add_item(BANANA), "Banana copy %d must fit in inventory." % (copy_index + 1))
 	await process_frame
@@ -469,8 +475,14 @@ func _test_new_stack_and_skill_rules() -> void:
 		"Four bananas must clamp their combined homing chance to 100%."
 	)
 	_expect(
-		not LuoxiMerchant.is_collectible_available_for_inventory(BANANA, run_state),
-		"Banana must stop appearing after four owned copies."
+		LuoxiMerchant.is_collectible_available_for_inventory(BANANA, run_state),
+		"Banana must remain obtainable after four owned copies cap its active effect."
+	)
+	_expect(run_state.try_add_item(BANANA), "A fifth banana must remain carryable after homing reaches 100%.")
+	await process_frame
+	_expect(
+		is_equal_approx(player.call("_get_inventory_bullet_homing_chance"), 1.0),
+		"A fifth carried banana must not increase homing beyond its four-copy effect cap."
 	)
 	player.queue_free()
 	await process_frame
@@ -480,7 +492,7 @@ func _test_new_stack_and_skill_rules() -> void:
 	for copy_index in range(10):
 		_expect(
 			LuoxiMerchant.is_collectible_available_for_inventory(ORANGE, run_state),
-			"Orange copy %d must remain available before reaching its cap." % (copy_index + 1)
+			"Orange copy %d must remain available while building its active effect." % (copy_index + 1)
 		)
 		_expect(run_state.try_add_item(ORANGE), "Orange copy %d must fit in inventory." % (copy_index + 1))
 	await process_frame
@@ -499,8 +511,14 @@ func _test_new_stack_and_skill_rules() -> void:
 		"A full orange stack must not reduce current ammunition."
 	)
 	_expect(
-		not LuoxiMerchant.is_collectible_available_for_inventory(ORANGE, run_state),
-		"Orange must stop appearing after ten owned copies."
+		LuoxiMerchant.is_collectible_available_for_inventory(ORANGE, run_state),
+		"Orange must remain obtainable after ten owned copies cap its active effect."
+	)
+	_expect(run_state.try_add_item(ORANGE), "An eleventh orange must remain carryable after ammo preservation reaches 100%.")
+	await process_frame
+	_expect(
+		is_equal_approx(player.call("_get_inventory_ammo_free_shot_chance"), 1.0),
+		"An eleventh carried orange must not increase ammo preservation beyond its ten-copy effect cap."
 	)
 	player.queue_free()
 	await process_frame
@@ -510,7 +528,7 @@ func _test_new_stack_and_skill_rules() -> void:
 	for copy_index in range(5):
 		_expect(
 			LuoxiMerchant.is_collectible_available_for_inventory(PURE_CHARGE_CRYSTAL, run_state),
-			"Pure charge crystal copy %d must remain available before reaching its cap."
+			"Pure charge crystal copy %d must remain available while building its active effect."
 			% (copy_index + 1)
 		)
 		_expect(
@@ -523,8 +541,17 @@ func _test_new_stack_and_skill_rules() -> void:
 		"Five pure charge crystals must stack their skill charge preservation to 100%."
 	)
 	_expect(
-		not LuoxiMerchant.is_collectible_available_for_inventory(PURE_CHARGE_CRYSTAL, run_state),
-		"Pure charge crystal must stop appearing after five owned copies."
+		LuoxiMerchant.is_collectible_available_for_inventory(PURE_CHARGE_CRYSTAL, run_state),
+		"Pure charge crystal must remain obtainable after five owned copies cap its active effect."
+	)
+	_expect(
+		run_state.try_add_item(PURE_CHARGE_CRYSTAL),
+		"A sixth pure charge crystal must remain carryable after preservation reaches 100%."
+	)
+	await process_frame
+	_expect(
+		is_equal_approx(float(player.get("collectible_skill_charge_preserve_chance")), 1.0),
+		"A sixth carried pure charge crystal must not exceed its five-copy effect cap."
 	)
 	_expect(
 		Player.MIN_SKILL_ACTIVATION_INTERVAL_MSEC == 100,
@@ -572,10 +599,13 @@ func _test_trident_and_bullet_rules() -> void:
 	_expect(run_state.try_add_item(BLOOD_TRIDENT), "Blood trident must fit in inventory.")
 	await process_frame
 	_expect(
-		not LuoxiMerchant.is_collectible_available_for_inventory(FLAME_TRIDENT, run_state)
-		and not LuoxiMerchant.is_collectible_available_for_inventory(BLOOD_TRIDENT, run_state),
-		"Both tridents must remain unique after their first copy."
+		LuoxiMerchant.is_collectible_available_for_inventory(FLAME_TRIDENT, run_state)
+		and LuoxiMerchant.is_collectible_available_for_inventory(BLOOD_TRIDENT, run_state),
+		"Both tridents must remain obtainable after their unique effects are already active."
 	)
+	_expect(run_state.try_add_item(FLAME_TRIDENT), "A duplicate flame trident must remain carryable.")
+	_expect(run_state.try_add_item(BLOOD_TRIDENT), "A duplicate blood trident must remain carryable.")
+	await process_frame
 	var burning_enemy := _spawn_enemy(Vector2(44.0, 0.0), player)
 	var bleeding_enemy := _spawn_enemy(Vector2(56.0, 0.0), player)
 	var dual_status_enemy := _spawn_enemy(Vector2(68.0, 0.0), player)

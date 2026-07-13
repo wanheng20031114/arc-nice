@@ -103,8 +103,6 @@ func can_add_item_count(item: PickupConfig, count: int = 1) -> bool:
 	if item == null or not item.can_store_in_inventory or count <= 0:
 		return false
 	_ensure_local_inventory_shape()
-	if not _can_add_collectible_copies(inventory, inventory_stack_counts, item, count):
-		return false
 	return _get_available_item_capacity(inventory, inventory_stack_counts, item) >= count
 
 
@@ -278,8 +276,6 @@ func can_add_item_count_for_peer(peer_id: int, item: PickupConfig, count: int = 
 
 	var peer_inventory := multiplayer_inventories[peer_id] as Array
 	var peer_counts := multiplayer_inventory_stack_counts[peer_id] as Array
-	if not _can_add_collectible_copies(peer_inventory, peer_counts, item, count):
-		return false
 	return _get_available_item_capacity(peer_inventory, peer_counts, item) >= count
 
 
@@ -467,6 +463,136 @@ func clear_item_slot_if_revision(slot_index: int, expected_revision: int) -> boo
 	return discard_item(slot_index)
 
 
+func take_item_stack_if_revision(
+	slot_index: int,
+	expected_revision: int,
+	emit_change: bool = true
+) -> Dictionary:
+	_ensure_local_inventory_shape()
+	if expected_revision != inventory_revision:
+		return {"success": false}
+	if slot_index < 0 or slot_index >= inventory.size():
+		return {"success": false}
+	var item := inventory[slot_index]
+	if item == null:
+		return {"success": false}
+	var count := maxi(inventory_stack_counts[slot_index], 1)
+	inventory[slot_index] = null
+	inventory_stack_counts[slot_index] = 0
+	_bump_local_inventory_revision()
+	if emit_change:
+		inventory_changed.emit()
+	return {
+		"success": true,
+		"item": item,
+		"stack_count": count,
+		"revision": inventory_revision,
+	}
+
+
+func try_add_item_count_if_revision(
+	item: PickupConfig,
+	count: int,
+	expected_revision: int,
+	emit_change: bool = true
+) -> bool:
+	ensure_run_started()
+	_ensure_local_inventory_shape()
+	if (
+		expected_revision != inventory_revision
+		or item == null
+		or not item.can_store_in_inventory
+		or count <= 0
+		or _get_available_item_capacity(inventory, inventory_stack_counts, item) < count
+	):
+		return false
+	_add_item_count_to_arrays(inventory, inventory_stack_counts, item, count)
+	_bump_local_inventory_revision()
+	if emit_change:
+		inventory_changed.emit()
+	return true
+
+
+func can_add_item_count_to_slot(
+	item: PickupConfig,
+	count: int,
+	target_slot_index: int,
+	expected_revision: int = -1
+) -> bool:
+	ensure_run_started()
+	_ensure_local_inventory_shape()
+	if expected_revision >= 0 and expected_revision != inventory_revision:
+		return false
+	return _can_add_item_count_to_slot_in_arrays(
+		inventory,
+		inventory_stack_counts,
+		item,
+		count,
+		target_slot_index
+	)
+
+
+func try_add_item_count_to_slot_if_revision(
+	item: PickupConfig,
+	count: int,
+	target_slot_index: int,
+	expected_revision: int,
+	emit_change: bool = true
+) -> bool:
+	if not can_add_item_count_to_slot(item, count, target_slot_index, expected_revision):
+		return false
+	_add_item_count_to_slot_unchecked(
+		inventory,
+		inventory_stack_counts,
+		item,
+		count,
+		target_slot_index
+	)
+	_bump_local_inventory_revision()
+	if emit_change:
+		inventory_changed.emit()
+	return true
+
+
+func move_item_stack_to_slot(
+	source_slot_index: int,
+	target_slot_index: int,
+	expected_revision: int = -1,
+	emit_change: bool = true
+) -> bool:
+	ensure_run_started()
+	if active_multiplayer_peer_id > 0:
+		return move_item_stack_to_slot_for_peer_if_revision(
+			active_multiplayer_peer_id,
+			source_slot_index,
+			target_slot_index,
+			get_inventory_revision_for_peer(active_multiplayer_peer_id)
+				if expected_revision < 0
+				else expected_revision,
+			emit_change
+		)
+	_ensure_local_inventory_shape()
+	if expected_revision >= 0 and expected_revision != inventory_revision:
+		return false
+	if not _can_move_item_stack_between_slots(
+		inventory,
+		inventory_stack_counts,
+		source_slot_index,
+		target_slot_index
+	):
+		return false
+	_move_item_stack_between_slots_unchecked(
+		inventory,
+		inventory_stack_counts,
+		source_slot_index,
+		target_slot_index
+	)
+	_bump_local_inventory_revision()
+	if emit_change:
+		inventory_changed.emit()
+	return true
+
+
 func clear_item_slot_for_peer_if_revision(
 	peer_id: int,
 	slot_index: int,
@@ -523,6 +649,85 @@ func try_add_item_count_for_peer_if_revision(
 	var peer_inventory := multiplayer_inventories[peer_id] as Array
 	var peer_counts := multiplayer_inventory_stack_counts[peer_id] as Array
 	_add_item_count_to_arrays(peer_inventory, peer_counts, item, count)
+	_bump_inventory_revision_for_peer(peer_id)
+	if emit_change:
+		inventory_changed.emit()
+	return true
+
+
+func can_add_item_count_to_slot_for_peer(
+	peer_id: int,
+	item: PickupConfig,
+	count: int,
+	target_slot_index: int,
+	expected_revision: int = -1
+) -> bool:
+	ensure_multiplayer_peer_state(peer_id)
+	if expected_revision >= 0 and expected_revision != get_inventory_revision_for_peer(peer_id):
+		return false
+	return _can_add_item_count_to_slot_in_arrays(
+		multiplayer_inventories[peer_id] as Array,
+		multiplayer_inventory_stack_counts[peer_id] as Array,
+		item,
+		count,
+		target_slot_index
+	)
+
+
+func try_add_item_count_to_slot_for_peer_if_revision(
+	peer_id: int,
+	item: PickupConfig,
+	count: int,
+	target_slot_index: int,
+	expected_revision: int,
+	emit_change: bool = true
+) -> bool:
+	if not can_add_item_count_to_slot_for_peer(
+		peer_id,
+		item,
+		count,
+		target_slot_index,
+		expected_revision
+	):
+		return false
+	_add_item_count_to_slot_unchecked(
+		multiplayer_inventories[peer_id] as Array,
+		multiplayer_inventory_stack_counts[peer_id] as Array,
+		item,
+		count,
+		target_slot_index
+	)
+	_bump_inventory_revision_for_peer(peer_id)
+	if emit_change:
+		inventory_changed.emit()
+	return true
+
+
+func move_item_stack_to_slot_for_peer_if_revision(
+	peer_id: int,
+	source_slot_index: int,
+	target_slot_index: int,
+	expected_revision: int,
+	emit_change: bool = true
+) -> bool:
+	ensure_multiplayer_peer_state(peer_id)
+	if expected_revision != get_inventory_revision_for_peer(peer_id):
+		return false
+	var peer_inventory := multiplayer_inventories[peer_id] as Array
+	var peer_counts := multiplayer_inventory_stack_counts[peer_id] as Array
+	if not _can_move_item_stack_between_slots(
+		peer_inventory,
+		peer_counts,
+		source_slot_index,
+		target_slot_index
+	):
+		return false
+	_move_item_stack_between_slots_unchecked(
+		peer_inventory,
+		peer_counts,
+		source_slot_index,
+		target_slot_index
+	)
 	_bump_inventory_revision_for_peer(peer_id)
 	if emit_change:
 		inventory_changed.emit()
@@ -728,36 +933,86 @@ func _get_available_item_capacity(
 	return capacity
 
 
-func _can_add_collectible_copies(
+func _can_add_item_count_to_slot_in_arrays(
 	items: Array,
 	counts: Array,
 	item: PickupConfig,
-	count: int
+	count: int,
+	target_slot_index: int
 ) -> bool:
-	if item == null or item.pickup_type != PickupConfig.PickupType.COLLECTIBLE:
-		return true
-	var effect_key := item.collectible_effect_id
-	if effect_key.is_empty():
-		effect_key = item.resource_path
-	if effect_key.is_empty():
-		return true
-	var existing_copies := 0
-	for slot_index in range(items.size()):
-		var stored_item := items[slot_index] as PickupConfig
-		if stored_item == null or stored_item.pickup_type != PickupConfig.PickupType.COLLECTIBLE:
-			continue
-		var stored_effect_key := stored_item.collectible_effect_id
-		if stored_effect_key.is_empty():
-			stored_effect_key = stored_item.resource_path
-		if stored_effect_key != effect_key:
-			continue
-		existing_copies += maxi(int(counts[slot_index]), 1)
-	if not item.collectible_stacks_by_copy:
-		return existing_copies == 0 and count == 1
-	return (
-		item.collectible_max_copies <= 0
-		or existing_copies + count <= item.collectible_max_copies
+	if (
+		item == null
+		or not item.can_store_in_inventory
+		or count <= 0
+		or target_slot_index < 0
+		or target_slot_index >= items.size()
+	):
+		return false
+	var target_item := items[target_slot_index] as PickupConfig
+	if target_item == null:
+		return count <= _get_item_stack_limit(item)
+	if not _items_share_stack(target_item, item):
+		return false
+	return int(counts[target_slot_index]) + count <= _get_item_stack_limit(item)
+
+
+func _add_item_count_to_slot_unchecked(
+	items: Array,
+	counts: Array,
+	item: PickupConfig,
+	count: int,
+	target_slot_index: int
+) -> void:
+	if items[target_slot_index] == null:
+		items[target_slot_index] = item
+		counts[target_slot_index] = count
+	else:
+		counts[target_slot_index] = int(counts[target_slot_index]) + count
+
+
+func _can_move_item_stack_between_slots(
+	items: Array,
+	counts: Array,
+	source_slot_index: int,
+	target_slot_index: int
+) -> bool:
+	if (
+		source_slot_index < 0
+		or source_slot_index >= items.size()
+		or target_slot_index < 0
+		or target_slot_index >= items.size()
+		or source_slot_index == target_slot_index
+	):
+		return false
+	var source_item := items[source_slot_index] as PickupConfig
+	if source_item == null:
+		return false
+	return _can_add_item_count_to_slot_in_arrays(
+		items,
+		counts,
+		source_item,
+		maxi(int(counts[source_slot_index]), 1),
+		target_slot_index
 	)
+
+
+func _move_item_stack_between_slots_unchecked(
+	items: Array,
+	counts: Array,
+	source_slot_index: int,
+	target_slot_index: int
+) -> void:
+	var source_item := items[source_slot_index] as PickupConfig
+	var source_count := maxi(int(counts[source_slot_index]), 1)
+	_add_item_count_to_slot_unchecked(
+		items,
+		counts,
+		source_item,
+		source_count,
+		target_slot_index
+	)
+	items[source_slot_index] = null
+	counts[source_slot_index] = 0
 
 
 func _add_item_count_to_arrays(

@@ -193,5 +193,9 @@ offset_right = 16.0
 offset_bottom = -15.0
 damage_trail_color = Color(0.92156863, 0.28235295, 0.18039216, 1)
 
+[node name="MultiplayerStorageRequestTimer" type="Timer" parent="."]
+wait_time = 4.0
+one_shot = true
+
 [node name="OakWarehousePanel" parent="." unique_id=1003003184 instance=ExtResource("4_panel")]
 visible = false

@@ -1756,21 +1756,31 @@ func _get_active_collectible_items() -> Array[PickupConfig]:
 	if run_state == null:
 		return result
 
-	var seen_unique_effects: Dictionary = {}
+	var active_copy_counts: Dictionary = {}
 	for slot_index in range(RunStateStore.INVENTORY_CAPACITY):
 		var item := _get_inventory_item(run_state, slot_index)
 		if item == null:
 			continue
 		if item.pickup_type != PickupConfig.PickupType.COLLECTIBLE:
 			continue
-		if item.collectible_stacks_by_copy:
+		var effect_key := _get_collectible_runtime_key(item)
+		var active_copies := int(active_copy_counts.get(effect_key, 0))
+		if not item.collectible_stacks_by_copy:
+			if active_copies > 0:
+				continue
+			active_copy_counts[effect_key] = 1
 			result.append(item)
 			continue
-		var effect_key := _get_collectible_runtime_key(item)
-		if seen_unique_effects.has(effect_key):
-			continue
-		seen_unique_effects[effect_key] = true
-		result.append(item)
+
+		var copies_to_activate := _get_inventory_item_count(run_state, slot_index)
+		if item.collectible_max_copies > 0:
+			copies_to_activate = mini(
+				copies_to_activate,
+				maxi(item.collectible_max_copies - active_copies, 0)
+			)
+		for _copy_index in range(copies_to_activate):
+			result.append(item)
+		active_copy_counts[effect_key] = active_copies + copies_to_activate
 	return result
 
 
@@ -1778,6 +1788,12 @@ func _get_inventory_item(run_state: RunStateStore, slot_index: int) -> PickupCon
 	if peer_id > 0:
 		return run_state.get_item_for_peer(peer_id, slot_index)
 	return run_state.get_item(slot_index)
+
+
+func _get_inventory_item_count(run_state: RunStateStore, slot_index: int) -> int:
+	if peer_id > 0:
+		return run_state.get_item_count_for_peer(peer_id, slot_index)
+	return run_state.get_item_count(slot_index)
 
 
 func _get_collectible_runtime_key(item: PickupConfig) -> String:

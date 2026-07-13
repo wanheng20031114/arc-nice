@@ -96,10 +96,10 @@ func _audit_single_collectible(item: PickupConfig) -> void:
 	var base_reload_duration := ammo_player.get_effective_reload_duration()
 
 	_expect(run_state.try_add_item(item), "%s must fit into an empty inventory." % item.display_name)
-	_expect(item.collectible_max_copies >= 0, "%s copy limit must not be negative." % item.display_name)
+	_expect(item.collectible_max_copies >= 0, "%s active-effect copy cap must not be negative." % item.display_name)
 	_expect(
 		item.collectible_max_copies == 0 or item.collectible_stacks_by_copy,
-		"%s must allow copy stacking when it defines a copy limit." % item.display_name
+		"%s must stack effects by copy when it defines an active-effect copy cap." % item.display_name
 	)
 	var dynamic_xirang := maxi(item.attack_speed_xirang_step, item.defense_xirang_step)
 	if dynamic_xirang > 0:

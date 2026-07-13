@@ -30,7 +30,7 @@ func _run() -> void:
 
 	await _test_luoxi_game_scene_placement()
 	await _test_luoxi_dialogue_choice_and_inventory()
-	await _test_luoxi_filters_owned_non_repeating_collectibles()
+	await _test_luoxi_keeps_owned_collectibles_available()
 	await _test_hoe_cat_collectible_compatibility_filter()
 	await _test_full_inventory_keeps_luoxi_choice_available()
 	await _test_apple_piercing_bullet_effect()
@@ -326,7 +326,7 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	await physics_frame
 
 
-func _test_luoxi_filters_owned_non_repeating_collectibles() -> void:
+func _test_luoxi_keeps_owned_collectibles_available() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run()
 	_expect(run_state.try_add_item(APPLE_COLLECTIBLE), "Owned apple setup must fit in inventory.")
@@ -346,27 +346,31 @@ func _test_luoxi_filters_owned_non_repeating_collectibles() -> void:
 	var filtered_pool := luoxi.call("_get_collectible_pool_for_player", player) as Array
 	_expect(
 		_pool_contains_collectible(filtered_pool, APPLE_COLLECTIBLE),
-		"Luoxi must continue offering apple until its five-copy cap is reached."
+		"Luoxi must continue offering an already-owned apple."
 	)
 	_expect(
 		_pool_contains_collectible(filtered_pool, RUBY_COLLECTIBLE),
 		"Luoxi must still offer an already-owned collectible whose copies stack."
 	)
 	_expect(
-		not _pool_contains_collectible(filtered_pool, ARCHER_COLLECTIBLE),
-		"Luoxi must not offer an already-owned non-repeating collectible."
+		_pool_contains_collectible(filtered_pool, ARCHER_COLLECTIBLE),
+		"Luoxi must keep offering an already-owned collectible whose unique effect is active."
 	)
 	_expect(
-		not _pool_contains_collectible(filtered_pool, ROLLER_SKATES_COLLECTIBLE)
-		and not _pool_contains_collectible(filtered_pool, POWER_WHEEL_COLLECTIBLE),
-		"Luoxi must not offer either already-owned unique boot collectible."
+		_pool_contains_collectible(filtered_pool, ROLLER_SKATES_COLLECTIBLE)
+		and _pool_contains_collectible(filtered_pool, POWER_WHEEL_COLLECTIBLE),
+		"Luoxi must keep offering both already-owned boot collectibles even though duplicate effects stay inactive."
 	)
 	for _copy_index in range(4):
-		_expect(run_state.try_add_item(APPLE_COLLECTIBLE), "Apple copy-cap setup must fit in inventory.")
+		_expect(run_state.try_add_item(APPLE_COLLECTIBLE), "Apple effect-cap setup must fit in inventory.")
+	_expect(
+		run_state.try_add_item(APPLE_COLLECTIBLE),
+		"A sixth apple must remain carryable after its five-copy effect cap."
+	)
 	filtered_pool = luoxi.call("_get_collectible_pool_for_player", player) as Array
 	_expect(
-		not _pool_contains_collectible(filtered_pool, APPLE_COLLECTIBLE),
-		"Luoxi must stop offering apple after five copies reach 100% piercing."
+		_pool_contains_collectible(filtered_pool, APPLE_COLLECTIBLE),
+		"Luoxi must keep offering apple after carried copies exceed the 100% piercing effect cap."
 	)
 
 	luoxi.queue_free()

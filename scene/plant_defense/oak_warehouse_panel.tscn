@@ -5,41 +5,7 @@
 [ext_resource type="PackedScene" path="res://scene/plant_defense/oak_warehouse_inventory_slot.tscn" id="3_slot"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button"]
-bg_color = Color(0.13, 0.075, 0.04, 0.82)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.78, 0.52, 0.2, 1)
-corner_radius_top_left = 5
-corner_radius_top_right = 5
-corner_radius_bottom_right = 5
-corner_radius_bottom_left = 5
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_hover"]
-bg_color = Color(0.24, 0.19, 0.07, 0.94)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.98, 0.78, 0.31, 1)
-corner_radius_top_left = 5
-corner_radius_top_right = 5
-corner_radius_bottom_right = 5
-corner_radius_bottom_left = 5
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_disabled"]
-bg_color = Color(0.12, 0.1, 0.08, 0.56)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.35, 0.3, 0.24, 0.7)
-corner_radius_top_left = 5
-corner_radius_top_right = 5
-corner_radius_bottom_right = 5
-corner_radius_bottom_left = 5
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_button"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_title"]
 font = ExtResource("4_font")
@@ -61,6 +27,30 @@ font_size = 11
 font_color = Color(0.82, 0.75, 0.62, 1)
 outline_size = 2
 outline_color = Color(0.08, 0.035, 0.02, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_cursor_outer"]
+bg_color = Color(1, 0.82, 0.35, 0.56)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.38, 0.19, 0.055, 0.96)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_cursor_inner"]
+bg_color = Color(0.34, 0.16, 0.035, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.79, 0.29, 0.9)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
 
 [node name="OakWarehousePanel" type="CanvasLayer"]
 layer = 70
@@ -260,6 +250,40 @@ slot_index = 18
 layout_mode = 2
 slot_index = 19
 
+[node name="VirtualCursor" type="Control" parent="Overlay/PanelRoot"]
+visible = false
+z_index = 50
+layout_mode = 0
+offset_right = 28.0
+offset_bottom = 28.0
+mouse_filter = 2
+
+[node name="Outer" type="Panel" parent="Overlay/PanelRoot/VirtualCursor"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_cursor_outer")
+
+[node name="Inner" type="Panel" parent="Overlay/PanelRoot/VirtualCursor"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -7.0
+offset_top = -7.0
+offset_right = 7.0
+offset_bottom = 7.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_cursor_inner")
+
 [node name="ItemDetail" type="Control" parent="Overlay/PanelRoot"]
 clip_contents = true
 layout_mode = 0
@@ -326,14 +350,17 @@ offset_bottom = 480.0
 mouse_default_cursor_shape = 2
 text = "使用"
 theme_override_colors/font_color = Color(1, 0.88, 0.57, 1)
+theme_override_colors/font_hover_color = Color(1, 0.95, 0.74, 1)
+theme_override_colors/font_pressed_color = Color(0.91, 0.66, 0.25, 1)
+theme_override_colors/font_focus_color = Color(1, 0.95, 0.74, 1)
 theme_override_colors/font_disabled_color = Color(0.48, 0.43, 0.36, 1)
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_font_sizes/font_size = 14
-theme_override_styles/normal = SubResource("StyleBoxFlat_button")
-theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
-theme_override_styles/focus = SubResource("StyleBoxFlat_button_hover")
-theme_override_styles/disabled = SubResource("StyleBoxFlat_button_disabled")
+theme_override_styles/normal = SubResource("StyleBoxEmpty_button")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_button")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_button")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_button")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_button")
 
 [node name="MoveButton" type="Button" parent="Overlay/PanelRoot"]
 layout_mode = 0
@@ -344,14 +371,17 @@ offset_bottom = 480.0
 mouse_default_cursor_shape = 2
 text = "移动"
 theme_override_colors/font_color = Color(1, 0.88, 0.57, 1)
+theme_override_colors/font_hover_color = Color(1, 0.95, 0.74, 1)
+theme_override_colors/font_pressed_color = Color(0.91, 0.66, 0.25, 1)
+theme_override_colors/font_focus_color = Color(1, 0.95, 0.74, 1)
 theme_override_colors/font_disabled_color = Color(0.48, 0.43, 0.36, 1)
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_font_sizes/font_size = 12
-theme_override_styles/normal = SubResource("StyleBoxFlat_button")
-theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
-theme_override_styles/focus = SubResource("StyleBoxFlat_button_hover")
-theme_override_styles/disabled = SubResource("StyleBoxFlat_button_disabled")
+theme_override_styles/normal = SubResource("StyleBoxEmpty_button")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_button")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_button")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_button")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_button")
 
 [node name="DiscardButton" type="Button" parent="Overlay/PanelRoot"]
 layout_mode = 0
@@ -362,14 +392,17 @@ offset_bottom = 480.0
 mouse_default_cursor_shape = 2
 text = "丢弃"
 theme_override_colors/font_color = Color(1, 0.72, 0.52, 1)
+theme_override_colors/font_hover_color = Color(1, 0.85, 0.68, 1)
+theme_override_colors/font_pressed_color = Color(0.91, 0.48, 0.28, 1)
+theme_override_colors/font_focus_color = Color(1, 0.85, 0.68, 1)
 theme_override_colors/font_disabled_color = Color(0.48, 0.43, 0.36, 1)
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_font_sizes/font_size = 13
-theme_override_styles/normal = SubResource("StyleBoxFlat_button")
-theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
-theme_override_styles/focus = SubResource("StyleBoxFlat_button_hover")
-theme_override_styles/disabled = SubResource("StyleBoxFlat_button_disabled")
+theme_override_styles/normal = SubResource("StyleBoxEmpty_button")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_button")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_button")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_button")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_button")
 
 [node name="CloseButton" type="Button" parent="Overlay/PanelRoot"]
 layout_mode = 0
@@ -380,9 +413,17 @@ offset_bottom = 480.0
 mouse_default_cursor_shape = 2
 text = "关闭"
 theme_override_colors/font_color = Color(1, 0.88, 0.57, 1)
+theme_override_colors/font_hover_color = Color(1, 0.95, 0.74, 1)
+theme_override_colors/font_pressed_color = Color(0.91, 0.66, 0.25, 1)
+theme_override_colors/font_focus_color = Color(1, 0.95, 0.74, 1)
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_font_sizes/font_size = 13
-theme_override_styles/normal = SubResource("StyleBoxFlat_button")
-theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
-theme_override_styles/focus = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/normal = SubResource("StyleBoxEmpty_button")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_button")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_button")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_button")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_button")
+
+[node name="ControllerHoldTimer" type="Timer" parent="."]
+wait_time = 0.32
+one_shot = true

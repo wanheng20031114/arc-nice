@@ -14,6 +14,7 @@ func _init() -> void:
 
 
 func _run() -> void:
+	var inventory_only := OS.get_cmdline_user_args().has("--inventory-only")
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier")
 
@@ -32,13 +33,16 @@ func _run() -> void:
 	)
 	await process_frame
 
-	_test_config_and_scene(config, warehouse)
-	await _test_plant_health_bar(warehouse)
-	_test_interaction_lock(player, warehouse)
+	if not inventory_only:
+		_test_config_and_scene(config, warehouse)
+		await _test_plant_health_bar(warehouse)
+		_test_interaction_lock(player, warehouse)
 	_test_detail_layout(warehouse.storage_panel)
-	_test_slot_transfer_interactions(run_state, warehouse)
+	await _test_slot_transfer_interactions(run_state, warehouse)
+	await _test_drag_and_controller_slot_moves(run_state, warehouse)
 	_test_authoritative_shared_storage(run_state, warehouse)
-	await _test_unique_nearest_interaction(player, warehouse, config, fixture)
+	if not inventory_only:
+		await _test_unique_nearest_interaction(player, warehouse, config, fixture)
 
 	fixture.queue_free()
 	for _frame in range(3):
@@ -321,6 +325,38 @@ func _test_detail_layout(panel: OakWarehousePanel) -> void:
 		detail_rect.encloses(description_rect.grow(8.0)),
 		"物品描述四周必须保留至少8像素安全内边距。"
 	)
+	var button_specs := [
+		{
+			"path": "Overlay/PanelRoot/UseButton",
+			"rect": Rect2(50.0, 421.0, 61.0, 59.0),
+		},
+		{
+			"path": "Overlay/PanelRoot/MoveButton",
+			"rect": Rect2(117.0, 421.0, 61.0, 59.0),
+		},
+		{
+			"path": "Overlay/PanelRoot/DiscardButton",
+			"rect": Rect2(545.0, 421.0, 61.0, 59.0),
+		},
+		{
+			"path": "Overlay/PanelRoot/CloseButton",
+			"rect": Rect2(612.0, 421.0, 61.0, 59.0),
+		},
+	]
+	for spec: Dictionary in button_specs:
+		var button := panel.get_node(str(spec["path"])) as Button
+		_expect(
+			Rect2(button.position, button.size) == spec["rect"],
+			"仓库按钮点击区域必须精确贴合底图中的像素按钮框：%s。" % spec["path"]
+		)
+		for style_name in [&"normal", &"hover", &"pressed", &"focus", &"disabled"]:
+			_expect(
+				button.get_theme_stylebox(style_name) is StyleBoxEmpty,
+				"仓库按钮不得在底图像素按钮框上重复绘制圆角边框：%s/%s。" % [
+					spec["path"],
+					style_name,
+				]
+			)
 
 
 func _test_slot_transfer_interactions(run_state: RunStateStore, warehouse: OakWarehouse) -> void:
@@ -341,26 +377,331 @@ func _test_slot_transfer_interactions(run_state: RunStateStore, warehouse: OakWa
 	_expect(run_state.get_item(0) == null, "物资移入仓库后来源槽必须清空。")
 	_expect(warehouse.get_storage_item_count(0) == 17, "移动按钮必须把整叠物资移入仓库。")
 
-	var double_click := InputEventMouseButton.new()
-	double_click.button_index = MOUSE_BUTTON_LEFT
-	double_click.pressed = true
-	double_click.double_click = true
-	panel.storage_slots[0].call("_on_gui_input", double_click)
+	_simulate_double_click(panel.storage_slots[0])
+	await process_frame
 	_expect(
 		warehouse.get_storage_item(0) == null and run_state.get_item_count(0) == 17,
 		"双击仓储槽必须把整叠物品快速移回背包。"
 	)
-	panel.player_slots[0].call("_on_gui_input", double_click)
+	_expect(
+		panel.status_label.text == "物品已移动",
+		"双击的原生Button release不得在延迟提交后清空移动状态。"
+	)
+	_simulate_double_click(panel.player_slots[0])
+	await process_frame
 	_expect(
 		run_state.get_item(0) == null and warehouse.get_storage_item_count(0) == 17,
 		"双击背包槽必须把整叠物品快速移入仓库。"
 	)
-	panel.storage_slots[0].call("_on_gui_input", double_click)
+	_simulate_double_click(panel.storage_slots[0])
+	await process_frame
 	_expect(
 		warehouse.get_storage_item(0) == null and run_state.get_item_count(0) == 17,
 		"双击往返移动不得丢失物品数量。"
 	)
+	_send_mouse_click(panel.player_slots[0], Vector2(24.0, 24.0))
+	var outside_release_press := InputEventMouseButton.new()
+	outside_release_press.button_index = MOUSE_BUTTON_LEFT
+	outside_release_press.pressed = true
+	outside_release_press.position = Vector2(24.0, 24.0)
+	panel.player_slots[0].call("_on_gui_input", outside_release_press)
+	var outside_release := InputEventMouseButton.new()
+	outside_release.button_index = MOUSE_BUTTON_LEFT
+	outside_release.pressed = false
+	outside_release.position = Vector2(-2.0, 24.0)
+	panel.player_slots[0].call("_on_gui_input", outside_release)
+	_expect(
+		run_state.get_item_count(0) == 17 and warehouse.get_storage_item(0) == null,
+		"第二次点击在槽外松开时不得误触快速移动。"
+	)
+	_send_mouse_click(panel.player_slots[0], Vector2(24.0, 24.0))
+	_send_mouse_click(panel.player_slots[1], Vector2(24.0, 24.0))
+	_send_mouse_click(panel.player_slots[0], Vector2(24.0, 24.0))
+	await process_frame
+	_expect(
+		run_state.get_item_count(0) == 17 and warehouse.get_storage_item(0) == null,
+		"A槽、其他槽、A槽的非连续点击不得被识别成双击。"
+	)
+	panel.open()
+	for _frame in 2:
+		await process_frame
+	var sequence_before_viewport_clicks := panel.panel_mouse_press_sequence
+	await _send_viewport_double_click(panel.player_slots[0])
+	_expect(
+		panel.panel_mouse_press_sequence == sequence_before_viewport_clicks + 2,
+		"Viewport真实双击的每次物理按下必须且只能计入一个面板点击序号。"
+	)
+	_expect(
+		run_state.get_item(0) == null and warehouse.get_storage_item_count(0) == 17,
+		"Viewport从_input复制到gui_input的真实双击必须把背包物品移入仓库。"
+	)
+	_expect(
+		warehouse.transfer_storage_stack_to_player(0, run_state),
+		"真实双击回归测试结束后必须能恢复测试物品。"
+	)
 	run_state.discard_item(0)
+
+
+func _simulate_double_click(slot: InventorySlot) -> void:
+	for _click_index in 2:
+		_send_mouse_click(slot, Vector2(24.0, 24.0))
+
+
+func _send_mouse_click(slot: InventorySlot, position: Vector2) -> void:
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = position
+	slot.call("_on_gui_input", press)
+	var release := InputEventMouseButton.new()
+	release.button_index = MOUSE_BUTTON_LEFT
+	release.pressed = false
+	release.position = position
+	slot.call("_on_gui_input", release)
+	slot.call("_on_pressed")
+
+
+func _send_viewport_double_click(slot: InventorySlot) -> void:
+	var position := slot.get_global_rect().get_center()
+	await _send_viewport_mouse_click(position, false)
+	await _send_viewport_mouse_click(position, true)
+	for _frame in 2:
+		await process_frame
+
+
+func _send_viewport_mouse_click(position: Vector2, double_click: bool) -> void:
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.button_mask = MOUSE_BUTTON_MASK_LEFT
+	press.pressed = true
+	press.double_click = double_click
+	press.position = position
+	press.global_position = position
+	root.push_input(press, true)
+	await process_frame
+
+	var release := InputEventMouseButton.new()
+	release.button_index = MOUSE_BUTTON_LEFT
+	release.pressed = false
+	release.position = position
+	release.global_position = position
+	root.push_input(release, true)
+	await process_frame
+
+
+func _test_drag_and_controller_slot_moves(
+	run_state: RunStateStore,
+	warehouse: OakWarehouse
+) -> void:
+	var panel := warehouse.storage_panel
+	_expect(run_state.try_add_item_count(WOOD, 3), "拖拽测试必须准备一叠木材。")
+	panel.call("_refresh_all")
+	panel.open()
+	for _frame in range(2):
+		await process_frame
+	panel.storage_slots[0].grab_focus()
+	var empty_slot_accept := InputEventJoypadButton.new()
+	empty_slot_accept.device = 0
+	empty_slot_accept.button_index = JOY_BUTTON_A
+	empty_slot_accept.pressed = true
+	panel._input(empty_slot_accept)
+	panel.storage_slots[0]._on_gui_input(empty_slot_accept)
+	panel.storage_slots[0]._on_pressed()
+	_expect(
+		panel.get_viewport().gui_get_focus_owner() == panel.storage_slots[0]
+		and not panel.controller_accept_held,
+		"手柄在空槽按A不得丢失GUI焦点或启动拖拽。"
+	)
+
+	var player_drag_data := panel.make_slot_drag_data(
+		OakWarehousePanel.ItemSource.PLAYER,
+		0
+	)
+	var unchanged_inventory := run_state.export_inventory_snapshot()
+	var unchanged_storage := warehouse.export_storage_snapshot()
+	_expect(
+		not panel.can_drop_slot_data(
+			player_drag_data,
+			OakWarehousePanel.ItemSource.PLAYER,
+			0
+		),
+		"拖回原槽必须被视为无效落点。"
+	)
+	panel.drop_slot_data(
+		player_drag_data,
+		OakWarehousePanel.ItemSource.PLAYER,
+		0
+	)
+	_expect(
+		run_state.export_inventory_snapshot() == unchanged_inventory
+		and warehouse.export_storage_snapshot() == unchanged_storage,
+		"无效拖放必须让背包与仓库保持零写入。"
+	)
+	_expect(
+		panel.can_drop_slot_data(
+			player_drag_data,
+			OakWarehousePanel.ItemSource.STORAGE,
+			5
+		),
+		"鼠标拖拽必须能预检背包到指定仓库格。"
+	)
+	panel.drop_slot_data(
+		player_drag_data,
+		OakWarehousePanel.ItemSource.STORAGE,
+		5
+	)
+	_expect(
+		run_state.get_item(0) == null
+		and warehouse.get_storage_item_count(5) == 3,
+		"鼠标拖拽必须只在有效落点提交整叠移动。"
+	)
+
+	_expect(run_state.try_add_item(APPLE), "占位测试必须能加入苹果。")
+	var blocked_drag_data := panel.make_slot_drag_data(
+		OakWarehousePanel.ItemSource.STORAGE,
+		5
+	)
+	unchanged_inventory = run_state.export_inventory_snapshot()
+	unchanged_storage = warehouse.export_storage_snapshot()
+	_expect(
+		not panel.can_drop_slot_data(
+			blocked_drag_data,
+			OakWarehousePanel.ItemSource.PLAYER,
+			0
+		),
+		"不同物品占用的目标格必须拒绝拖放。"
+	)
+	panel.drop_slot_data(
+		blocked_drag_data,
+		OakWarehousePanel.ItemSource.PLAYER,
+		0
+	)
+	_expect(
+		run_state.export_inventory_snapshot() == unchanged_inventory
+		and warehouse.export_storage_snapshot() == unchanged_storage,
+		"被占用目标格上的无效拖放必须完整零写入。"
+	)
+	_expect(run_state.discard_item(0), "占位苹果必须能在验证后清理。")
+	var storage_drag_data := panel.make_slot_drag_data(
+		OakWarehousePanel.ItemSource.STORAGE,
+		5
+	)
+	panel.drop_slot_data(
+		storage_drag_data,
+		OakWarehousePanel.ItemSource.PLAYER,
+		7
+	)
+	_expect(
+		warehouse.get_storage_item(5) == null
+		and run_state.get_item_count(7) == 3,
+		"鼠标拖拽必须能把仓库整叠放到指定背包格。"
+	)
+
+	panel.player_slots[7].grab_focus()
+	_expect(
+		bool(panel.call("_begin_controller_accept_hold", 0)),
+		"手柄按住A必须从当前聚焦物品建立拖拽候选。"
+	)
+	panel.call("_on_controller_hold_timeout")
+	_expect(
+		panel.controller_drag_active and panel.virtual_cursor.visible,
+		"手柄A达到长按阈值后必须显示虚拟光标。"
+	)
+	var storage_target_center := panel.call(
+		"_get_slot_center_in_panel",
+		OakWarehousePanel.ItemSource.STORAGE,
+		3
+	) as Vector2
+	var resolved_controller_target := panel.call(
+		"_get_slot_at_panel_position",
+		storage_target_center
+	) as Dictionary
+	_expect(
+		int(resolved_controller_target.get("source", OakWarehousePanel.ItemSource.NONE))
+		== OakWarehousePanel.ItemSource.STORAGE
+		and int(resolved_controller_target.get("slot_index", -1)) == 3,
+		"虚拟光标槽位坐标必须解析回仓库目标格。"
+	)
+	_expect(
+		panel.can_drop_slot_data(
+			panel.controller_drag_data,
+			OakWarehousePanel.ItemSource.STORAGE,
+			3
+		),
+		"手柄长按数据必须能通过目标格纯预检。"
+	)
+	panel.virtual_cursor.position = storage_target_center - panel.virtual_cursor.size * 0.5
+	panel.call("_finish_controller_accept_hold")
+	_expect(
+		run_state.get_item(7) == null
+		and warehouse.get_storage_item_count(3) == 3
+		and not panel.virtual_cursor.visible,
+		"手柄松开A到有效格时必须提交移动并隐藏虚拟光标。"
+	)
+
+	panel.storage_slots[3].grab_focus()
+	_expect(
+		bool(panel.call("_begin_controller_accept_hold", 0)),
+		"手柄无效落点测试必须重新建立拖拽候选。"
+	)
+	panel.call("_on_controller_hold_timeout")
+	unchanged_inventory = run_state.export_inventory_snapshot()
+	unchanged_storage = warehouse.export_storage_snapshot()
+	panel.virtual_cursor.position = Vector2(-100.0, -100.0)
+	panel.call("_finish_controller_accept_hold")
+	_expect(
+		run_state.export_inventory_snapshot() == unchanged_inventory
+		and warehouse.export_storage_snapshot() == unchanged_storage,
+		"手柄松开A到非格子区域时必须让两端完整零写入。"
+	)
+
+	panel.storage_slots[3].grab_focus()
+	_expect(
+		bool(panel.call("_begin_controller_accept_hold", 0)),
+		"手柄断连测试必须建立长按候选。"
+	)
+	panel.call("_on_joy_connection_changed", 0, false)
+	_expect(
+		not panel.controller_accept_held
+		and not panel.controller_drag_active
+		and not panel.virtual_cursor.visible,
+		"手柄断连必须取消长按和虚拟光标状态。"
+	)
+
+	storage_drag_data = panel.make_slot_drag_data(
+		OakWarehousePanel.ItemSource.STORAGE,
+		3
+	)
+	panel.drop_slot_data(
+		storage_drag_data,
+		OakWarehousePanel.ItemSource.PLAYER,
+		0
+	)
+	_expect(
+		warehouse.get_storage_item(3) == null and run_state.get_item_count(0) == 3,
+		"拖拽测试物资必须能完整取回。"
+	)
+	panel.status_label.text = "正在等待主机确认…"
+	panel.set_multiplayer_storage_state(true, true, false)
+	panel.multiplayer_slot_drop_pending = true
+	panel.multiplayer_slot_drop_source = OakWarehousePanel.ItemSource.PLAYER
+	panel.multiplayer_slot_drop_source_index = 0
+	panel.multiplayer_slot_drop_target = OakWarehousePanel.ItemSource.STORAGE
+	panel.multiplayer_slot_drop_target_index = 2
+	panel.storage_slots[2].grab_focus()
+	panel.show_multiplayer_command_result(
+		false,
+		OakWarehouseProtocol.RESULT_TARGET_FULL
+	)
+	await process_frame
+	_expect(
+		panel.get_viewport().gui_get_focus_owner() == panel.player_slots[0]
+		and panel.status_label.text.is_empty(),
+		"Host拒绝拖放时必须静默恢复来源格焦点。"
+	)
+	panel.set_multiplayer_storage_state(false, true, false)
+	panel.close()
+	_expect(run_state.discard_item(0), "拖拽测试物资必须能在验证后清理。")
 
 
 func _test_authoritative_shared_storage(
@@ -370,6 +711,32 @@ func _test_authoritative_shared_storage(
 	const PEER_ID := 2
 	const WAREHOUSE_NET_ID := 44
 	warehouse.configure_multiplayer_storage(WAREHOUSE_NET_ID, PEER_ID, true)
+	var malformed_inventory_snapshot := run_state.export_inventory_snapshot_for_peer(PEER_ID)
+	var malformed_storage_snapshot := warehouse.export_storage_snapshot()
+	var malformed_command := OakWarehouseProtocol.make_transfer_command(
+		99,
+		WAREHOUSE_NET_ID,
+		PEER_ID,
+		OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE,
+		0,
+		run_state.get_inventory_revision_for_peer(PEER_ID),
+		warehouse.get_storage_revision()
+	)
+	malformed_command["operation"] = []
+	malformed_command["peer_id"] = {}
+	_expect(
+		not OakWarehouseProtocol.is_valid_command(malformed_command),
+		"多人仓库协议必须安全拒绝字段类型畸形的命令。"
+	)
+	var malformed_result := warehouse.apply_transfer_command(malformed_command, run_state)
+	_expect(
+		not bool(malformed_result.get("success", false))
+		and malformed_result.get("reason") == OakWarehouseProtocol.RESULT_INVALID_COMMAND
+		and run_state.export_inventory_snapshot_for_peer(PEER_ID)
+		== malformed_inventory_snapshot
+		and warehouse.export_storage_snapshot() == malformed_storage_snapshot,
+		"字段类型畸形的多人命令必须零写入并返回invalid_command。"
+	)
 	_expect(
 		run_state.try_add_item_count_for_peer(PEER_ID, WOOD, 17),
 		"多人测试物资必须能整叠加入指定玩家背包。"
@@ -435,38 +802,43 @@ func _test_authoritative_shared_storage(
 
 	_expect(
 		run_state.try_add_item_count_for_peer(PEER_ID, APPLE, APPLE.collectible_max_copies),
-		"仓库份数测试必须先把Peer收藏品填到配置上限。"
+		"仓库份数测试必须先把Peer收藏品填到效果生效份数上限。"
 	)
 	_expect(
 		warehouse.try_add_storage_item_count(APPLE, 1, warehouse.get_storage_revision()),
 		"共享仓库允许独立保存超出玩家当前生效上限的收藏品。"
 	)
-	var limited_storage_revision := warehouse.get_storage_revision()
-	var limited_inventory_revision := run_state.get_inventory_revision_for_peer(PEER_ID)
-	var limited_retrieve_command := OakWarehouseProtocol.make_transfer_command(
+	var sixth_apple_storage_revision := warehouse.get_storage_revision()
+	var sixth_apple_inventory_revision := run_state.get_inventory_revision_for_peer(PEER_ID)
+	var sixth_apple_retrieve_command := OakWarehouseProtocol.make_transfer_command(
 		3,
 		WAREHOUSE_NET_ID,
 		PEER_ID,
 		OakWarehouseProtocol.TransferDirection.STORAGE_TO_PLAYER,
 		0,
-		limited_inventory_revision,
-		limited_storage_revision
+		sixth_apple_inventory_revision,
+		sixth_apple_storage_revision
 	)
-	var limited_retrieve_result := warehouse.apply_transfer_command(
-		limited_retrieve_command,
+	var sixth_apple_retrieve_result := warehouse.apply_transfer_command(
+		sixth_apple_retrieve_command,
 		run_state
 	)
 	_expect(
-		not bool(limited_retrieve_result.get("success", false))
-		and limited_retrieve_result.get("reason") == OakWarehouseProtocol.RESULT_TARGET_FULL,
-		"Host必须拒绝从共享仓库取回会突破最大份数的收藏品。"
+		bool(sixth_apple_retrieve_result.get("success", false))
+		and sixth_apple_retrieve_result.get("reason") == OakWarehouseProtocol.RESULT_SUCCESS,
+		"Host必须允许从共享仓库取回效果已封顶的第6个苹果。"
 	)
 	_expect(
-		warehouse.get_storage_item(0) == APPLE
-		and warehouse.get_storage_revision() == limited_storage_revision
-		and run_state.get_inventory_revision_for_peer(PEER_ID) == limited_inventory_revision,
-		"份数校验失败时仓库与个人背包必须原子保持不变。"
+		_count_peer_item_copies(run_state, PEER_ID, APPLE) == 6
+		and warehouse.get_storage_item(0) == null
+		and warehouse.get_storage_revision() == sixth_apple_storage_revision + 1
+		and run_state.get_inventory_revision_for_peer(PEER_ID)
+		== sixth_apple_inventory_revision + 1,
+		"第6个苹果必须真实写入Peer背包，且取回事务双方revision各只递增一次。"
 	)
+
+	_test_authoritative_slot_moves(run_state, warehouse, PEER_ID, WAREHOUSE_NET_ID)
+	_test_multiplayer_result_correlation(run_state, warehouse)
 
 	var requested_snapshot_ids: Array[int] = []
 	var snapshot_request_callback := func(requested_net_id: int) -> void:
@@ -479,21 +851,371 @@ func _test_authoritative_shared_storage(
 	_expect(
 		warehouse.multiplayer_storage_enabled
 		and not warehouse.storage_panel.multiplayer_storage_snapshot_ready
-		and requested_snapshot_ids == [WAREHOUSE_NET_ID],
+		and requested_snapshot_ids == [WAREHOUSE_NET_ID]
+		and not warehouse.multiplayer_storage_request_timer.is_stopped(),
 		"请求仓库快照时必须进入只读加载态并携带正确net id。"
+	)
+	warehouse.call("_on_multiplayer_storage_request_timeout")
+	_expect(
+		requested_snapshot_ids == [WAREHOUSE_NET_ID, WAREHOUSE_NET_ID]
+		and not warehouse.multiplayer_storage_request_timer.is_stopped(),
+		"共享仓库快照未到达时必须保持只读并定时重试。"
 	)
 	warehouse.storage_snapshot_requested.disconnect(snapshot_request_callback)
 	_expect(
-		warehouse.apply_storage_snapshot(warehouse.export_storage_snapshot()),
+		warehouse.apply_storage_snapshot(warehouse.export_storage_snapshot())
+		and warehouse.multiplayer_storage_request_timer.is_stopped(),
 		"收到权威仓库快照后必须恢复可交互状态。"
 	)
 	warehouse.storage_panel.call("_refresh_all")
-	warehouse.storage_panel.player_slots[0].call("_on_pressed")
+	warehouse.storage_panel.player_slots[1].call("_on_pressed")
 	_expect(
 		warehouse.storage_panel.discard_button.disabled,
 		"多人仓库界面必须禁止直接删除共享或个人物品。"
 	)
-	run_state.discard_item_for_peer(PEER_ID, 0)
+	for slot_index in range(RunStateStore.INVENTORY_CAPACITY):
+		if run_state.get_item_for_peer(PEER_ID, slot_index) != null:
+			run_state.discard_item_for_peer(PEER_ID, slot_index)
+	_test_unconfigured_multiplayer_storage_is_read_only(run_state, warehouse, PEER_ID)
+
+
+func _test_multiplayer_result_correlation(
+	run_state: RunStateStore,
+	warehouse: OakWarehouse
+) -> void:
+	var requested_commands: Array[Dictionary] = []
+	var command_callback := func(command: Dictionary) -> void:
+		requested_commands.append(command)
+	warehouse.storage_command_requested.connect(command_callback)
+	_expect(
+		warehouse.request_multiplayer_stack_transfer(
+			OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE,
+			19
+		),
+		"多人结果关联测试必须发出一个权威请求。"
+	)
+	warehouse.storage_command_requested.disconnect(command_callback)
+	_expect(requested_commands.size() == 1, "多人结果关联测试必须捕获唯一请求。")
+	if requested_commands.is_empty():
+		return
+	var command := requested_commands[0]
+	var result := warehouse.apply_transfer_command(command, run_state)
+	_expect(
+		warehouse.is_current_multiplayer_storage_result(result),
+		"只有当前pending request的Host结果才能进入客户端提交路径。"
+	)
+	var unrelated_result := result.duplicate(true)
+	unrelated_result["request_id"] = int(result["request_id"]) + 1
+	_expect(
+		not warehouse.is_current_multiplayer_storage_result(unrelated_result),
+		"迟到或乱序的多人结果必须在应用快照前被拒绝。"
+	)
+	var inventory_snapshot := result.get("inventory_snapshot", {}) as Dictionary
+	var storage_snapshot := result.get("storage_snapshot", {}) as Dictionary
+	_expect(
+		run_state.apply_inventory_snapshot_for_peer(
+			warehouse.multiplayer_storage_peer_id,
+			inventory_snapshot
+		),
+		"当前多人结果必须能先应用单调revision的背包快照。"
+	)
+	_expect(
+		warehouse.complete_multiplayer_storage_request(result),
+		"当前多人结果必须能完成pending request。"
+	)
+	_expect(
+		warehouse.apply_storage_snapshot(storage_snapshot)
+		and not warehouse.multiplayer_storage_request_pending,
+		"完成结果后应用仓库快照不得重新清除或错配请求状态。"
+	)
+
+
+func _test_authoritative_slot_moves(
+	run_state: RunStateStore,
+	warehouse: OakWarehouse,
+	peer_id: int,
+	warehouse_net_id: int
+) -> void:
+	var inventory_revision := run_state.get_inventory_revision_for_peer(peer_id)
+	var storage_revision := warehouse.get_storage_revision()
+	var player_move_command := OakWarehouseProtocol.make_slot_move_command(
+		4,
+		warehouse_net_id,
+		peer_id,
+		OakWarehouseProtocol.ItemContainer.PLAYER,
+		0,
+		OakWarehouseProtocol.ItemContainer.PLAYER,
+		10,
+		inventory_revision,
+		storage_revision
+	)
+	_expect(
+		player_move_command.get("operation") == OakWarehouseProtocol.OPERATION_SLOT_MOVE
+		and OakWarehouseProtocol.is_valid_slot_move_command(player_move_command)
+		and OakWarehouseProtocol.is_valid_command(player_move_command),
+		"slot_move协议必须编码容器、精确槽位与双方revision，并通过统一命令校验。"
+	)
+	var player_move_result := warehouse.apply_transfer_command(
+		player_move_command,
+		run_state
+	)
+	_expect(
+		bool(player_move_result.get("success", false))
+		and run_state.get_item_for_peer(peer_id, 0) == null
+		and run_state.get_item_for_peer(peer_id, 10) == WOOD
+		and run_state.get_item_count_for_peer(peer_id, 10) == 17,
+		"Host必须按slot_move协议把Peer背包整叠物资移动到指定背包槽。"
+	)
+	_expect(
+		run_state.get_inventory_revision_for_peer(peer_id) == inventory_revision + 1
+		and warehouse.get_storage_revision() == storage_revision,
+		"背包内精确槽移动只能写入一次个人背包revision。"
+	)
+
+	inventory_revision = run_state.get_inventory_revision_for_peer(peer_id)
+	storage_revision = warehouse.get_storage_revision()
+	var store_exact_command := OakWarehouseProtocol.make_slot_move_command(
+		5,
+		warehouse_net_id,
+		peer_id,
+		OakWarehouseProtocol.ItemContainer.PLAYER,
+		10,
+		OakWarehouseProtocol.ItemContainer.STORAGE,
+		12,
+		inventory_revision,
+		storage_revision
+	)
+	var store_exact_result := warehouse.apply_transfer_command(store_exact_command, run_state)
+	_expect(
+		bool(store_exact_result.get("success", false))
+		and run_state.get_item_for_peer(peer_id, 10) == null
+		and warehouse.get_storage_item(12) == WOOD
+		and warehouse.get_storage_item_count(12) == 17,
+		"Host必须把Peer物资原子存入请求指定的仓库槽。"
+	)
+	_expect(
+		run_state.get_inventory_revision_for_peer(peer_id) == inventory_revision + 1
+		and warehouse.get_storage_revision() == storage_revision + 1,
+		"背包到仓库的精确槽事务必须让双方revision各递增一次。"
+	)
+
+	inventory_revision = run_state.get_inventory_revision_for_peer(peer_id)
+	storage_revision = warehouse.get_storage_revision()
+	var storage_move_command := OakWarehouseProtocol.make_slot_move_command(
+		6,
+		warehouse_net_id,
+		peer_id,
+		OakWarehouseProtocol.ItemContainer.STORAGE,
+		12,
+		OakWarehouseProtocol.ItemContainer.STORAGE,
+		14,
+		inventory_revision,
+		storage_revision
+	)
+	var storage_move_result := warehouse.apply_transfer_command(
+		storage_move_command,
+		run_state
+	)
+	_expect(
+		bool(storage_move_result.get("success", false))
+		and warehouse.get_storage_item(12) == null
+		and warehouse.get_storage_item(14) == WOOD
+		and warehouse.get_storage_item_count(14) == 17,
+		"Host必须按精确槽位完成共享仓库内部移动。"
+	)
+	_expect(
+		run_state.get_inventory_revision_for_peer(peer_id) == inventory_revision
+		and warehouse.get_storage_revision() == storage_revision + 1,
+		"仓库内精确槽移动只能写入一次共享仓库revision。"
+	)
+
+	var invalid_inventory_snapshot := run_state.export_inventory_snapshot_for_peer(peer_id)
+	var invalid_storage_snapshot := warehouse.export_storage_snapshot()
+	_expect(
+		not warehouse.can_move_stack_to_slot(
+			OakWarehouseProtocol.ItemContainer.STORAGE,
+			14,
+			-1,
+			11,
+			run_state,
+			run_state.get_inventory_revision_for_peer(peer_id),
+			warehouse.get_storage_revision(),
+			peer_id
+		)
+		and not warehouse.move_stack_to_slot(
+			OakWarehouseProtocol.ItemContainer.STORAGE,
+			14,
+			-1,
+			11,
+			run_state,
+			run_state.get_inventory_revision_for_peer(peer_id),
+			warehouse.get_storage_revision(),
+			peer_id
+		),
+		"非法容器编号必须在任何读写前被拒绝。"
+	)
+	_expect(
+		run_state.export_inventory_snapshot_for_peer(peer_id) == invalid_inventory_snapshot
+		and warehouse.export_storage_snapshot() == invalid_storage_snapshot,
+		"非法容器编号失败时，个人背包与共享仓库都必须零写入。"
+	)
+	var invalid_target_command := OakWarehouseProtocol.make_slot_move_command(
+		7,
+		warehouse_net_id,
+		peer_id,
+		OakWarehouseProtocol.ItemContainer.STORAGE,
+		14,
+		OakWarehouseProtocol.ItemContainer.PLAYER,
+		1,
+		run_state.get_inventory_revision_for_peer(peer_id),
+		warehouse.get_storage_revision()
+	)
+	var invalid_target_result := warehouse.apply_transfer_command(
+		invalid_target_command,
+		run_state
+	)
+	_expect(
+		not bool(invalid_target_result.get("success", false))
+		and invalid_target_result.get("reason") == OakWarehouseProtocol.RESULT_TARGET_FULL,
+		"Host必须拒绝把木材精确移动到已被苹果占用的Peer槽位。"
+	)
+	_expect(
+		run_state.export_inventory_snapshot_for_peer(peer_id) == invalid_inventory_snapshot
+		and warehouse.export_storage_snapshot() == invalid_storage_snapshot,
+		"无效目标槽失败时，个人背包与共享仓库都必须零写入。"
+	)
+
+	var stale_inventory_snapshot := run_state.export_inventory_snapshot_for_peer(peer_id)
+	var stale_storage_snapshot := warehouse.export_storage_snapshot()
+	var stale_move_command := OakWarehouseProtocol.make_slot_move_command(
+		8,
+		warehouse_net_id,
+		peer_id,
+		OakWarehouseProtocol.ItemContainer.STORAGE,
+		14,
+		OakWarehouseProtocol.ItemContainer.PLAYER,
+		11,
+		run_state.get_inventory_revision_for_peer(peer_id) - 1,
+		warehouse.get_storage_revision()
+	)
+	var stale_move_result := warehouse.apply_transfer_command(stale_move_command, run_state)
+	_expect(
+		not bool(stale_move_result.get("success", false))
+		and stale_move_result.get("reason") == OakWarehouseProtocol.RESULT_STALE_INVENTORY,
+		"Host必须按权威revision拒绝过期的多人slot_move命令。"
+	)
+	_expect(
+		run_state.export_inventory_snapshot_for_peer(peer_id) == stale_inventory_snapshot
+		and warehouse.export_storage_snapshot() == stale_storage_snapshot,
+		"stale inventory revision失败时，个人背包与共享仓库都必须零写入。"
+	)
+
+	stale_inventory_snapshot = run_state.export_inventory_snapshot_for_peer(peer_id)
+	stale_storage_snapshot = warehouse.export_storage_snapshot()
+	var stale_storage_move_command := OakWarehouseProtocol.make_slot_move_command(
+		9,
+		warehouse_net_id,
+		peer_id,
+		OakWarehouseProtocol.ItemContainer.STORAGE,
+		14,
+		OakWarehouseProtocol.ItemContainer.PLAYER,
+		11,
+		run_state.get_inventory_revision_for_peer(peer_id),
+		warehouse.get_storage_revision() - 1
+	)
+	var stale_storage_move_result := warehouse.apply_transfer_command(
+		stale_storage_move_command,
+		run_state
+	)
+	_expect(
+		not bool(stale_storage_move_result.get("success", false))
+		and stale_storage_move_result.get("reason") == OakWarehouseProtocol.RESULT_STALE_STORAGE,
+		"Host必须按权威revision拒绝过期仓库状态的多人slot_move命令。"
+	)
+	_expect(
+		run_state.export_inventory_snapshot_for_peer(peer_id) == stale_inventory_snapshot
+		and warehouse.export_storage_snapshot() == stale_storage_snapshot,
+		"stale storage revision失败时，个人背包与共享仓库都必须零写入。"
+	)
+
+	inventory_revision = run_state.get_inventory_revision_for_peer(peer_id)
+	storage_revision = warehouse.get_storage_revision()
+	var retrieve_exact_command := OakWarehouseProtocol.make_slot_move_command(
+		10,
+		warehouse_net_id,
+		peer_id,
+		OakWarehouseProtocol.ItemContainer.STORAGE,
+		14,
+		OakWarehouseProtocol.ItemContainer.PLAYER,
+		11,
+		inventory_revision,
+		storage_revision
+	)
+	var retrieve_exact_result := warehouse.apply_transfer_command(
+		retrieve_exact_command,
+		run_state
+	)
+	_expect(
+		bool(retrieve_exact_result.get("success", false))
+		and warehouse.get_storage_item(14) == null
+		and run_state.get_item_for_peer(peer_id, 11) == WOOD
+		and run_state.get_item_count_for_peer(peer_id, 11) == 17,
+		"Host必须把共享物资原子取回请求指定的Peer背包槽。"
+	)
+	_expect(
+		run_state.get_inventory_revision_for_peer(peer_id) == inventory_revision + 1
+		and warehouse.get_storage_revision() == storage_revision + 1,
+		"仓库到背包的精确槽事务必须让双方revision各递增一次。"
+	)
+	_expect(
+		run_state.discard_item_for_peer(peer_id, 11),
+		"精确槽位测试的木材必须能在验证后清理。"
+	)
+
+
+func _test_unconfigured_multiplayer_storage_is_read_only(
+	run_state: RunStateStore,
+	warehouse: OakWarehouse,
+	peer_id: int
+) -> void:
+	warehouse.configure_multiplayer_storage(0, 0, true)
+	run_state.set_active_multiplayer_peer(peer_id)
+	_expect(
+		run_state.try_add_item_count_for_peer(peer_id, WOOD, 3),
+		"未配置共享仓库的只读测试必须准备Peer物资。"
+	)
+	var local_inventory_snapshot := run_state.export_inventory_snapshot()
+	var peer_inventory_snapshot := run_state.export_inventory_snapshot_for_peer(peer_id)
+	var storage_snapshot := warehouse.export_storage_snapshot()
+	warehouse.storage_panel.call("_refresh_all")
+	warehouse.storage_panel.player_slots[0].call("_on_pressed")
+	warehouse.storage_panel.call("_on_move_pressed")
+	_expect(
+		run_state.export_inventory_snapshot() == local_inventory_snapshot
+		and run_state.export_inventory_snapshot_for_peer(peer_id) == peer_inventory_snapshot
+		and warehouse.export_storage_snapshot() == storage_snapshot,
+		"多人仓库尚未获得网络配置时，快速移动必须保持两端零写入。"
+	)
+	_expect(
+		warehouse.storage_panel.status_label.text == "正在同步共享仓库…",
+		"多人仓库尚未配置时必须保持只读同步状态。"
+	)
+	run_state.discard_item_for_peer(peer_id, 0)
+	run_state.set_active_multiplayer_peer(0)
+
+
+func _count_peer_item_copies(
+	run_state: RunStateStore,
+	peer_id: int,
+	item: PickupConfig
+) -> int:
+	var copy_count := 0
+	for slot_index in range(RunStateStore.INVENTORY_CAPACITY):
+		var stored_item := run_state.get_item_for_peer(peer_id, slot_index)
+		if stored_item == null or stored_item.resource_path != item.resource_path:
+			continue
+		copy_count += run_state.get_item_count_for_peer(peer_id, slot_index)
+	return copy_count
 
 
 func _expect(condition: bool, message: String) -> void:

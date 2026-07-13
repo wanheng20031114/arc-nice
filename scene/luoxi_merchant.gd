@@ -136,32 +136,12 @@ static func can_collectible_repeat_effect(item: PickupConfig) -> bool:
 
 static func is_collectible_available_for_inventory(
 	item: PickupConfig,
-	run_state: RunStateStore,
-	peer_id: int = 0
+	_run_state: RunStateStore,
+	_peer_id: int = 0
 ) -> bool:
-	if item == null:
-		return false
-	if run_state == null:
-		return true
-
-	var effect_key := get_collectible_effect_key(item)
-	if effect_key.is_empty():
-		return true
-	var matching_copy_count := 0
-	for slot_index in range(RunStateStore.INVENTORY_CAPACITY):
-		var stored_item := (
-			run_state.get_item_for_peer(peer_id, slot_index)
-			if peer_id > 0
-			else run_state.get_item(slot_index)
-		)
-		if stored_item == null or stored_item.pickup_type != PickupConfig.PickupType.COLLECTIBLE:
-			continue
-		if get_collectible_effect_key(stored_item) != effect_key:
-			continue
-		if not can_collectible_repeat_effect(item):
-			return false
-		matching_copy_count += 1
-	return item.collectible_max_copies <= 0 or matching_copy_count < item.collectible_max_copies
+	# Offer availability is independent from both the effect cap and current bag space.
+	# The authoritative claim path performs the physical-capacity write atomically.
+	return item != null
 
 
 static func get_collectible_rarity_roll_weight(rarity: int) -> float:

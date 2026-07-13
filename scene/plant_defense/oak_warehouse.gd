@@ -8,6 +8,7 @@ signal storage_snapshot_requested(warehouse_net_id: int)
 const STORAGE_CAPACITY := RunStateStore.INVENTORY_CAPACITY
 const INTERACTION_GROUP := &"oak_warehouse_interaction"
 const INTERACTION_SELECTION_REFRESH_SECONDS := 0.08
+const MULTIPLAYER_STORAGE_REQUEST_TIMEOUT_SECONDS := 4.0
 
 @onready var interaction_area: Area2D = $InteractionArea
 @onready var interaction_prompt: Control = $InteractionPrompt
@@ -15,6 +16,7 @@ const INTERACTION_SELECTION_REFRESH_SECONDS := 0.08
 @onready var idle_animation_player: AnimationPlayer = $IdleAnimationPlayer
 @onready var storage_panel: OakWarehousePanel = $OakWarehousePanel
 @onready var health_bar: Control = $HealthBar
+@onready var multiplayer_storage_request_timer: Timer = $MultiplayerStorageRequestTimer
 
 var storage_items: Array[PickupConfig] = []
 var storage_stack_counts: Array[int] = []
@@ -52,6 +54,9 @@ func _ready() -> void:
 	interaction_area.body_exited.connect(_on_interaction_area_body_exited)
 	storage_panel.opened.connect(_on_storage_panel_opened)
 	storage_panel.closed.connect(_on_storage_panel_closed)
+	multiplayer_storage_request_timer.timeout.connect(
+		_on_multiplayer_storage_request_timeout
+	)
 
 
 func _process(delta: float) -> void:
@@ -120,6 +125,8 @@ func configure_multiplayer_storage(
 	multiplayer_storage_snapshot_ready = snapshot_ready or not multiplayer_storage_enabled
 	multiplayer_storage_request_pending = false
 	multiplayer_storage_pending_request_id = 0
+	multiplayer_storage_request_timer.stop()
+	storage_panel.clear_multiplayer_slot_drop_pending()
 	storage_panel.set_multiplayer_storage_state(
 		multiplayer_storage_enabled,
 		multiplayer_storage_snapshot_ready,
@@ -129,6 +136,8 @@ func configure_multiplayer_storage(
 
 func set_multiplayer_storage_snapshot_ready(is_ready: bool) -> void:
 	multiplayer_storage_snapshot_ready = is_ready or not multiplayer_storage_enabled
+	if multiplayer_storage_snapshot_ready and not multiplayer_storage_request_pending:
+		multiplayer_storage_request_timer.stop()
 	storage_panel.set_multiplayer_storage_state(
 		multiplayer_storage_enabled,
 		multiplayer_storage_snapshot_ready,
@@ -148,6 +157,7 @@ func request_multiplayer_storage_snapshot() -> bool:
 	if not multiplayer_storage_enabled or warehouse_net_id <= 0:
 		return false
 	set_multiplayer_storage_snapshot_ready(false)
+	multiplayer_storage_request_timer.start(MULTIPLAYER_STORAGE_REQUEST_TIMEOUT_SECONDS)
 	storage_snapshot_requested.emit(warehouse_net_id)
 	return true
 
@@ -175,19 +185,54 @@ func request_multiplayer_stack_transfer(direction: int, slot_index: int) -> bool
 	)
 	multiplayer_storage_request_pending = true
 	multiplayer_storage_pending_request_id = request_id
+	multiplayer_storage_request_timer.start(MULTIPLAYER_STORAGE_REQUEST_TIMEOUT_SECONDS)
+	storage_panel.set_multiplayer_storage_state(true, true, true)
+	storage_command_requested.emit(command)
+	return true
+
+
+func request_multiplayer_slot_move(
+	source_container: int,
+	source_slot_index: int,
+	target_container: int,
+	target_slot_index: int,
+	expected_inventory_revision: int,
+	expected_storage_revision: int
+) -> bool:
+	if not is_multiplayer_storage_ready():
+		return false
+	var run_state := get_node_or_null("/root/RunState") as RunStateStore
+	if run_state == null:
+		return false
+	var request_id := next_multiplayer_storage_request_id
+	var command := OakWarehouseProtocol.make_slot_move_command(
+		request_id,
+		warehouse_net_id,
+		multiplayer_storage_peer_id,
+		source_container,
+		source_slot_index,
+		target_container,
+		target_slot_index,
+		expected_inventory_revision,
+		expected_storage_revision
+	)
+	if not OakWarehouseProtocol.is_valid_slot_move_command(command):
+		return false
+	next_multiplayer_storage_request_id += 1
+	multiplayer_storage_request_pending = true
+	multiplayer_storage_pending_request_id = request_id
+	multiplayer_storage_request_timer.start(MULTIPLAYER_STORAGE_REQUEST_TIMEOUT_SECONDS)
 	storage_panel.set_multiplayer_storage_state(true, true, true)
 	storage_command_requested.emit(command)
 	return true
 
 
 func complete_multiplayer_storage_request(result: Dictionary) -> bool:
-	if (
-		not multiplayer_storage_enabled
-		or int(result.get("request_id", 0)) != multiplayer_storage_pending_request_id
-	):
+	if not is_current_multiplayer_storage_result(result):
 		return false
 	multiplayer_storage_request_pending = false
 	multiplayer_storage_pending_request_id = 0
+	multiplayer_storage_request_timer.stop()
 	storage_panel.set_multiplayer_storage_state(
 		true,
 		multiplayer_storage_snapshot_ready,
@@ -198,6 +243,37 @@ func complete_multiplayer_storage_request(result: Dictionary) -> bool:
 		StringName(result.get("reason", OakWarehouseProtocol.RESULT_INVALID_COMMAND))
 	)
 	return true
+
+
+func is_current_multiplayer_storage_result(result: Dictionary) -> bool:
+	return (
+		multiplayer_storage_enabled
+		and multiplayer_storage_request_pending
+		and OakWarehouseProtocol.get_int_field(result, "request_id", 0)
+		== multiplayer_storage_pending_request_id
+		and OakWarehouseProtocol.get_int_field(result, "warehouse_net_id", 0)
+		== warehouse_net_id
+		and OakWarehouseProtocol.get_int_field(result, "peer_id", 0)
+		== multiplayer_storage_peer_id
+	)
+
+
+func _on_multiplayer_storage_request_timeout() -> void:
+	if not multiplayer_storage_enabled:
+		return
+	if (
+		not multiplayer_storage_request_pending
+		and multiplayer_storage_snapshot_ready
+	):
+		return
+	if multiplayer_storage_request_pending:
+		multiplayer_storage_request_pending = false
+		multiplayer_storage_pending_request_id = 0
+		storage_panel.clear_multiplayer_slot_drop_pending()
+	multiplayer_storage_snapshot_ready = false
+	storage_panel.set_multiplayer_storage_state(true, false, false)
+	multiplayer_storage_request_timer.start(MULTIPLAYER_STORAGE_REQUEST_TIMEOUT_SECONDS)
+	storage_snapshot_requested.emit(warehouse_net_id)
 
 
 func can_add_storage_item_count(item: PickupConfig, count: int) -> bool:
@@ -234,7 +310,7 @@ func discard_storage_item(slot_index: int, expected_revision: int = -1) -> bool:
 
 
 func transfer_player_stack_to_storage(slot_index: int, run_state: RunStateStore) -> bool:
-	if run_state == null:
+	if run_state == null or run_state.active_multiplayer_peer_id > 0:
 		return false
 	var item := run_state.get_item(slot_index)
 	var count := run_state.get_item_count(slot_index)
@@ -242,31 +318,181 @@ func transfer_player_stack_to_storage(slot_index: int, run_state: RunStateStore)
 		return false
 	var inventory_revision := run_state.get_inventory_revision()
 	var expected_storage_revision := storage_revision
-	if not run_state.clear_item_slot_if_revision(slot_index, inventory_revision):
+	var taken_stack := run_state.take_item_stack_if_revision(
+		slot_index,
+		inventory_revision,
+		false
+	)
+	if not bool(taken_stack.get("success", false)):
 		return false
-	return try_add_storage_item_count(item, count, expected_storage_revision)
+	_add_storage_item_count_unchecked(item, count)
+	storage_revision = expected_storage_revision + 1
+	storage_changed.emit()
+	run_state.notify_inventory_transaction_completed()
+	return true
 
 
 func transfer_storage_stack_to_player(slot_index: int, run_state: RunStateStore) -> bool:
-	if run_state == null:
+	if run_state == null or run_state.active_multiplayer_peer_id > 0:
 		return false
 	var item := get_storage_item(slot_index)
 	var count := get_storage_item_count(slot_index)
 	if item == null or count <= 0:
 		return false
+	var expected_inventory_revision := run_state.get_inventory_revision()
 	var expected_storage_revision := storage_revision
-	if not run_state.try_add_item_count(item, count):
+	var item_added := run_state.try_add_item_count_if_revision(
+		item,
+		count,
+		expected_inventory_revision,
+		false
+	)
+	if not item_added:
 		return false
-	return discard_storage_item(slot_index, expected_storage_revision)
+	storage_items[slot_index] = null
+	storage_stack_counts[slot_index] = 0
+	storage_revision += 1
+	storage_changed.emit()
+	run_state.notify_inventory_transaction_completed()
+	return true
+
+
+func can_move_stack_to_slot(
+	source_container: int,
+	source_slot_index: int,
+	target_container: int,
+	target_slot_index: int,
+	run_state: RunStateStore,
+	expected_inventory_revision: int,
+	expected_storage_revision: int,
+	peer_id: int = 0
+) -> bool:
+	if (
+		run_state == null
+		or (peer_id <= 0 and run_state.active_multiplayer_peer_id > 0)
+		or source_container < OakWarehouseProtocol.ItemContainer.PLAYER
+		or source_container > OakWarehouseProtocol.ItemContainer.STORAGE
+		or target_container < OakWarehouseProtocol.ItemContainer.PLAYER
+		or target_container > OakWarehouseProtocol.ItemContainer.STORAGE
+		or source_slot_index < 0
+		or source_slot_index >= STORAGE_CAPACITY
+		or target_slot_index < 0
+		or target_slot_index >= STORAGE_CAPACITY
+		or (source_container == target_container and source_slot_index == target_slot_index)
+		or expected_storage_revision != storage_revision
+	):
+		return false
+	var current_inventory_revision := (
+		run_state.get_inventory_revision_for_peer(peer_id)
+		if peer_id > 0
+		else run_state.get_inventory_revision()
+	)
+	if expected_inventory_revision != current_inventory_revision:
+		return false
+
+	var source_item := _get_container_item(
+		source_container,
+		source_slot_index,
+		run_state,
+		peer_id
+	)
+	if source_item == null:
+		return false
+	var source_count := _get_container_item_count(
+		source_container,
+		source_slot_index,
+		run_state,
+		peer_id
+	)
+	var target_item := _get_container_item(
+		target_container,
+		target_slot_index,
+		run_state,
+		peer_id
+	)
+	var target_count := _get_container_item_count(
+		target_container,
+		target_slot_index,
+		run_state,
+		peer_id
+	)
+	return _can_place_stack_in_slot(
+		source_item,
+		source_count,
+		target_item,
+		target_count
+	)
+
+
+func move_stack_to_slot(
+	source_container: int,
+	source_slot_index: int,
+	target_container: int,
+	target_slot_index: int,
+	run_state: RunStateStore,
+	expected_inventory_revision: int,
+	expected_storage_revision: int,
+	peer_id: int = 0
+) -> bool:
+	if not can_move_stack_to_slot(
+		source_container,
+		source_slot_index,
+		target_container,
+		target_slot_index,
+		run_state,
+		expected_inventory_revision,
+		expected_storage_revision,
+		peer_id
+	):
+		return false
+
+	if source_container == OakWarehouseProtocol.ItemContainer.PLAYER:
+		if target_container == OakWarehouseProtocol.ItemContainer.PLAYER:
+			if peer_id > 0:
+				return run_state.move_item_stack_to_slot_for_peer_if_revision(
+					peer_id,
+					source_slot_index,
+					target_slot_index,
+					expected_inventory_revision
+				)
+			return run_state.move_item_stack_to_slot(
+				source_slot_index,
+				target_slot_index,
+				expected_inventory_revision
+			)
+		return _move_player_stack_to_storage_slot(
+			source_slot_index,
+			target_slot_index,
+			run_state,
+			expected_inventory_revision,
+			expected_storage_revision,
+			peer_id
+		)
+
+	if target_container == OakWarehouseProtocol.ItemContainer.STORAGE:
+		_move_storage_stack_between_slots_unchecked(source_slot_index, target_slot_index)
+		_bump_storage_revision()
+		return true
+	return _move_storage_stack_to_player_slot(
+		source_slot_index,
+		target_slot_index,
+		run_state,
+		expected_inventory_revision,
+		expected_storage_revision,
+		peer_id
+	)
 
 
 func apply_transfer_command(command: Dictionary, run_state: RunStateStore) -> Dictionary:
-	var peer_id := int(command.get("peer_id", 0))
+	var peer_id := OakWarehouseProtocol.get_int_field(command, "peer_id", 0)
 	var result_reason := OakWarehouseProtocol.RESULT_INVALID_COMMAND
 	if (
 		run_state == null
-		or not OakWarehouseProtocol.is_valid_transfer_command(command)
-		or int(command.get("warehouse_net_id", 0)) != warehouse_net_id
+		or not OakWarehouseProtocol.is_valid_command(command)
+		or (
+			OakWarehouseProtocol.get_int_field(command, "warehouse_net_id", 0)
+			!= warehouse_net_id
+		)
 		or not run_state.has_multiplayer_peer_state(peer_id)
 	):
 		return _make_transfer_result(command, false, result_reason, run_state, peer_id)
@@ -287,6 +513,14 @@ func apply_transfer_command(command: Dictionary, run_state: RunStateStore) -> Di
 			OakWarehouseProtocol.RESULT_STALE_STORAGE,
 			run_state,
 			peer_id
+		)
+	if StringName(command.get("operation", OakWarehouseProtocol.OPERATION_TRANSFER)) == OakWarehouseProtocol.OPERATION_SLOT_MOVE:
+		return _apply_slot_move_command(
+			command,
+			run_state,
+			peer_id,
+			expected_inventory_revision,
+			expected_storage_revision
 		)
 
 	var slot_index := int(command["slot_index"])
@@ -352,6 +586,74 @@ func apply_transfer_command(command: Dictionary, run_state: RunStateStore) -> Di
 	return _make_transfer_result(command, false, result_reason, run_state, peer_id)
 
 
+func _apply_slot_move_command(
+	command: Dictionary,
+	run_state: RunStateStore,
+	peer_id: int,
+	expected_inventory_revision: int,
+	expected_storage_revision: int
+) -> Dictionary:
+	var source_container := int(command["source_container"])
+	var source_slot_index := int(command["source_slot_index"])
+	var target_container := int(command["target_container"])
+	var target_slot_index := int(command["target_slot_index"])
+	var source_item := _get_container_item(
+		source_container,
+		source_slot_index,
+		run_state,
+		peer_id
+	)
+	if source_item == null:
+		return _make_transfer_result(
+			command,
+			false,
+			OakWarehouseProtocol.RESULT_SOURCE_EMPTY,
+			run_state,
+			peer_id
+		)
+	if not can_move_stack_to_slot(
+		source_container,
+		source_slot_index,
+		target_container,
+		target_slot_index,
+		run_state,
+		expected_inventory_revision,
+		expected_storage_revision,
+		peer_id
+	):
+		return _make_transfer_result(
+			command,
+			false,
+			OakWarehouseProtocol.RESULT_TARGET_FULL,
+			run_state,
+			peer_id
+		)
+	if not move_stack_to_slot(
+		source_container,
+		source_slot_index,
+		target_container,
+		target_slot_index,
+		run_state,
+		expected_inventory_revision,
+		expected_storage_revision,
+		peer_id
+	):
+		return _make_transfer_result(
+			command,
+			false,
+			OakWarehouseProtocol.RESULT_INVALID_COMMAND,
+			run_state,
+			peer_id
+		)
+	return _make_transfer_result(
+		command,
+		true,
+		OakWarehouseProtocol.RESULT_SUCCESS,
+		run_state,
+		peer_id
+	)
+
+
 func _get_available_storage_capacity(item: PickupConfig) -> int:
 	var stack_limit := _get_stack_limit(item)
 	var capacity := 0
@@ -362,6 +664,136 @@ func _get_available_storage_capacity(item: PickupConfig) -> int:
 		elif item.stackable and _items_share_stack(stored_item, item):
 			capacity += maxi(stack_limit - storage_stack_counts[slot_index], 0)
 	return capacity
+
+
+func _get_container_item(
+	container: int,
+	slot_index: int,
+	run_state: RunStateStore,
+	peer_id: int
+) -> PickupConfig:
+	if container == OakWarehouseProtocol.ItemContainer.STORAGE:
+		return get_storage_item(slot_index)
+	if container != OakWarehouseProtocol.ItemContainer.PLAYER or run_state == null:
+		return null
+	if peer_id > 0:
+		return run_state.get_item_for_peer(peer_id, slot_index)
+	return run_state.get_item(slot_index)
+
+
+func _get_container_item_count(
+	container: int,
+	slot_index: int,
+	run_state: RunStateStore,
+	peer_id: int
+) -> int:
+	if container == OakWarehouseProtocol.ItemContainer.STORAGE:
+		return get_storage_item_count(slot_index)
+	if container != OakWarehouseProtocol.ItemContainer.PLAYER or run_state == null:
+		return 0
+	if peer_id > 0:
+		return run_state.get_item_count_for_peer(peer_id, slot_index)
+	return run_state.get_item_count(slot_index)
+
+
+func _can_place_stack_in_slot(
+	item: PickupConfig,
+	count: int,
+	target_item: PickupConfig,
+	target_count: int
+) -> bool:
+	if item == null or count <= 0 or count > _get_stack_limit(item):
+		return false
+	if target_item == null:
+		return true
+	return (
+		_items_share_stack(target_item, item)
+		and target_count + count <= _get_stack_limit(item)
+	)
+
+
+func _move_player_stack_to_storage_slot(
+	source_slot_index: int,
+	target_slot_index: int,
+	run_state: RunStateStore,
+	expected_inventory_revision: int,
+	expected_storage_revision: int,
+	peer_id: int
+) -> bool:
+	var taken_stack := (
+		run_state.take_item_stack_for_peer_if_revision(
+			peer_id,
+			source_slot_index,
+			expected_inventory_revision,
+			false
+		)
+		if peer_id > 0
+		else run_state.take_item_stack_if_revision(
+			source_slot_index,
+			expected_inventory_revision,
+			false
+		)
+	)
+	if not bool(taken_stack.get("success", false)):
+		return false
+	_add_storage_item_count_to_slot_unchecked(
+		taken_stack.get("item") as PickupConfig,
+		int(taken_stack.get("stack_count", 0)),
+		target_slot_index
+	)
+	storage_revision = expected_storage_revision + 1
+	storage_changed.emit()
+	run_state.notify_inventory_transaction_completed()
+	return true
+
+
+func _move_storage_stack_to_player_slot(
+	source_slot_index: int,
+	target_slot_index: int,
+	run_state: RunStateStore,
+	expected_inventory_revision: int,
+	expected_storage_revision: int,
+	peer_id: int
+) -> bool:
+	var item := get_storage_item(source_slot_index)
+	var count := get_storage_item_count(source_slot_index)
+	var item_added := (
+		run_state.try_add_item_count_to_slot_for_peer_if_revision(
+			peer_id,
+			item,
+			count,
+			target_slot_index,
+			expected_inventory_revision,
+			false
+		)
+		if peer_id > 0
+		else run_state.try_add_item_count_to_slot_if_revision(
+			item,
+			count,
+			target_slot_index,
+			expected_inventory_revision,
+			false
+		)
+	)
+	if not item_added:
+		return false
+	storage_items[source_slot_index] = null
+	storage_stack_counts[source_slot_index] = 0
+	storage_revision = expected_storage_revision + 1
+	storage_changed.emit()
+	run_state.notify_inventory_transaction_completed()
+	return true
+
+
+func _move_storage_stack_between_slots_unchecked(
+	source_slot_index: int,
+	target_slot_index: int
+) -> void:
+	var item := storage_items[source_slot_index]
+	var count := storage_stack_counts[source_slot_index]
+	_add_storage_item_count_to_slot_unchecked(item, count, target_slot_index)
+	storage_items[source_slot_index] = null
+	storage_stack_counts[source_slot_index] = 0
 
 
 func export_storage_snapshot() -> Dictionary:
@@ -426,6 +858,8 @@ func apply_storage_snapshot(snapshot: Dictionary) -> bool:
 	storage_stack_counts.assign(decoded_counts)
 	storage_revision = new_revision
 	multiplayer_storage_snapshot_ready = true
+	if not multiplayer_storage_request_pending:
+		multiplayer_storage_request_timer.stop()
 	storage_panel.set_multiplayer_storage_state(
 		multiplayer_storage_enabled,
 		true,
@@ -457,6 +891,18 @@ func _add_storage_item_count_unchecked(item: PickupConfig, count: int) -> void:
 		remaining -= added
 		if remaining <= 0:
 			return
+
+
+func _add_storage_item_count_to_slot_unchecked(
+	item: PickupConfig,
+	count: int,
+	target_slot_index: int
+) -> void:
+	if storage_items[target_slot_index] == null:
+		storage_items[target_slot_index] = item
+		storage_stack_counts[target_slot_index] = count
+	else:
+		storage_stack_counts[target_slot_index] += count
 
 
 func _bump_storage_revision() -> void:
