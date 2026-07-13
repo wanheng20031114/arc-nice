@@ -16,6 +16,10 @@ func _rpc_register_player(
 func _rpc_protocol_rejected(expected_protocol_version: int) -> void:
 	pass
 
+@rpc("authority", "call_remote", "reliable", 0)
+func _rpc_join_rejected(reason: String) -> void:
+	pass
+
 
 @rpc("any_peer", "call_remote", "reliable", 0)
 func _rpc_set_player_character(character_id: String, confirmed: bool) -> void:

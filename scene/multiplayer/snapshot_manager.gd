@@ -16,7 +16,9 @@ const MASK_FACING := 4
 const MASK_ANIM_STATE := 8
 const MASK_HEALTH := 16
 const MASK_IS_DEAD := 32
-const MASK_XIRANG := 64
+const MASK_AUXILIARY := 64
+const MASK_XIRANG := MASK_AUXILIARY
+const MASK_ENEMY_VISUAL_STATUS := MASK_AUXILIARY
 const MASK_PLAYER_META := 128
 
 const PLAYER_SNAPSHOT_HEADER_BYTES := 9
@@ -25,7 +27,8 @@ const PACKED_VECTOR2_BYTES := 4
 const PACKED_U8_BYTES := 1
 const PACKED_U16_BYTES := 2
 const PACKED_U32_BYTES := 4
-const PLAYER_META_BYTES := 36
+const PLAYER_META_BYTES := 38
+const MOVE_MULTIPLIER_SCALE := 1000.0
 const DEFAULT_CHARACTER_ID := &"weishidaier"
 const HOE_CAT_CHARACTER_ID := &"hoe_cat"
 const TIYI_CHARACTER_ID := &"tiyi"
@@ -41,7 +44,13 @@ const FULL_PLAYER_MASK := (
 	| MASK_ANIM_STATE
 	| MASK_PLAYER_META
 )
-const FULL_ENEMY_MASK := MASK_POSITION | MASK_VELOCITY | MASK_HEALTH | MASK_IS_DEAD
+const FULL_ENEMY_MASK := (
+	MASK_POSITION
+	| MASK_VELOCITY
+	| MASK_HEALTH
+	| MASK_IS_DEAD
+	| MASK_ENEMY_VISUAL_STATUS
+)
 
 
 # ─────────────────────────────────────────────
@@ -73,6 +82,8 @@ class PlayerState:
 	var is_reloading: bool = false
 	var reload_progress: float = 0.0
 	var primary_cooldown_ratio: float = 0.0
+	## Host 权威的最终移动倍率；包含角色形态与收藏品等运行时修正。
+	var effective_move_speed_multiplier: float = 1.0
 
 
 ## 每个接收端独立维护发送基线，避免丢包/晚加入导致不同客户端共用错误基准。
@@ -86,6 +97,10 @@ var player_receive_baselines: Dictionary = {}
 
 ## Client 接收端敌人还原基线。
 var enemy_receive_baselines: Dictionary = {}
+
+## 接收解码结果按实体复用。调用方应在下一次同类解码前消费返回值，勿长期持有引用。
+var player_receive_output_states: Dictionary = {}
+var enemy_receive_output_states: Dictionary = {}
 
 
 ## 构建玩家快照的二进制数据包
@@ -148,6 +163,10 @@ static func encode_player_snapshot(
 		buf.put_float(clampf(current.reload_progress, 0.0, 1.0))
 		buf.put_u8(_encode_character_id(current.character_id))
 		buf.put_u8(_pack_ratio_u8(current.primary_cooldown_ratio))
+		buf.put_u16(_pack_scaled_u16(
+			current.effective_move_speed_multiplier,
+			MOVE_MULTIPLIER_SCALE
+		))
 
 	return buf.data_array
 
@@ -174,6 +193,13 @@ static func _player_meta_changed(current: PlayerState, previous: PlayerState) ->
 		or current.character_id != previous.character_id
 		or _pack_ratio_u8(current.primary_cooldown_ratio)
 		!= _pack_ratio_u8(previous.primary_cooldown_ratio)
+		or _pack_scaled_u16(
+			current.effective_move_speed_multiplier,
+			MOVE_MULTIPLIER_SCALE
+		) != _pack_scaled_u16(
+			previous.effective_move_speed_multiplier,
+			MOVE_MULTIPLIER_SCALE
+		)
 	)
 
 static func decode_player_snapshot(
@@ -220,6 +246,9 @@ static func decode_player_snapshot(
 		target.reload_progress = buf.get_float()
 		target.character_id = _decode_character_id(buf.get_u8())
 		target.primary_cooldown_ratio = float(buf.get_u8()) / 255.0
+		target.effective_move_speed_multiplier = (
+			float(buf.get_u16()) / MOVE_MULTIPLIER_SCALE
+		)
 
 	return buf.get_position()
 
@@ -252,6 +281,8 @@ class EnemyState:
 	var velocity: Vector2 = Vector2.ZERO
 	var health: int = 0
 	var is_dead: bool = false
+	## 纯表现状态位：burn=1、bleed=2、chill=4、mark=8；伤害仍只由 Host 结算。
+	var visual_status_mask: int = 0
 
 
 ## 构建敌人快照二进制数据
@@ -286,6 +317,8 @@ static func _get_enemy_change_mask(current: EnemyState, previous: EnemyState) ->
 		mask |= MASK_HEALTH
 	if current.is_dead != previous.is_dead:
 		mask |= MASK_IS_DEAD
+	if current.visual_status_mask != previous.visual_status_mask:
+		mask |= MASK_ENEMY_VISUAL_STATUS
 	return mask
 
 
@@ -309,6 +342,8 @@ static func _write_enemy_snapshot(
 		buf.put_32(current.health)
 	if mask & MASK_IS_DEAD:
 		buf.put_u8(1 if current.is_dead else 0)
+	if mask & MASK_ENEMY_VISUAL_STATUS:
+		buf.put_u8(clampi(current.visual_status_mask, 0, 255))
 
 
 ## 解码敌人快照
@@ -341,6 +376,8 @@ static func _read_enemy_snapshot(buf: StreamPeerBuffer, target: EnemyState) -> v
 		target.health = buf.get_32()
 	if mask & MASK_IS_DEAD:
 		target.is_dead = buf.get_u8() != 0
+	if mask & MASK_ENEMY_VISUAL_STATUS:
+		target.visual_status_mask = buf.get_u8()
 
 
 static func _get_enemy_snapshot_size(data: PackedByteArray, offset: int) -> int:
@@ -355,6 +392,8 @@ static func _get_enemy_snapshot_size(data: PackedByteArray, offset: int) -> int:
 	if mask & MASK_HEALTH:
 		size += PACKED_U32_BYTES
 	if mask & MASK_IS_DEAD:
+		size += PACKED_U8_BYTES
+	if mask & MASK_ENEMY_VISUAL_STATUS:
 		size += PACKED_U8_BYTES
 	return size
 
@@ -387,34 +426,43 @@ static func _pack_scaled_i16(value: float, scale: float) -> int:
 	return clampi(roundi(value * scale), PACKED_I16_MIN, PACKED_I16_MAX)
 
 
+static func _pack_scaled_u16(value: float, scale: float) -> int:
+	return clampi(roundi(maxf(value, 0.0) * scale), 0, 65535)
+
+
 static func _copy_player_state(source: PlayerState) -> PlayerState:
 	var copy := PlayerState.new()
-	if source == null:
-		return copy
-	copy.peer_id = source.peer_id
-	copy.sequence = source.sequence
-	copy.character_id = source.character_id
-	copy.position = source.position
-	copy.velocity = source.velocity
-	copy.facing = source.facing
-	copy.anim_state = source.anim_state
-	copy.current_health = source.current_health
-	copy.max_health = source.max_health
-	copy.current_xirang = source.current_xirang
-	copy.is_dead = source.is_dead
-	copy.invincibility_time_left = source.invincibility_time_left
-	copy.skill1_unlocked = source.skill1_unlocked
-	copy.skill1_charge = source.skill1_charge
-	copy.skill1_charge_duration = source.skill1_charge_duration
-	copy.skill1_upgrade_level = source.skill1_upgrade_level
-	copy.form_mode = source.form_mode
-	copy.shot_pattern = source.shot_pattern
-	copy.ammo_capacity = source.ammo_capacity
-	copy.current_ammo = source.current_ammo
-	copy.is_reloading = source.is_reloading
-	copy.reload_progress = source.reload_progress
-	copy.primary_cooldown_ratio = source.primary_cooldown_ratio
+	_copy_player_state_into(source, copy)
 	return copy
+
+
+static func _copy_player_state_into(source: PlayerState, target: PlayerState) -> void:
+	if source == null or target == null:
+		return
+	target.peer_id = source.peer_id
+	target.sequence = source.sequence
+	target.character_id = source.character_id
+	target.position = source.position
+	target.velocity = source.velocity
+	target.facing = source.facing
+	target.anim_state = source.anim_state
+	target.current_health = source.current_health
+	target.max_health = source.max_health
+	target.current_xirang = source.current_xirang
+	target.is_dead = source.is_dead
+	target.invincibility_time_left = source.invincibility_time_left
+	target.skill1_unlocked = source.skill1_unlocked
+	target.skill1_charge = source.skill1_charge
+	target.skill1_charge_duration = source.skill1_charge_duration
+	target.skill1_upgrade_level = source.skill1_upgrade_level
+	target.form_mode = source.form_mode
+	target.shot_pattern = source.shot_pattern
+	target.ammo_capacity = source.ammo_capacity
+	target.current_ammo = source.current_ammo
+	target.is_reloading = source.is_reloading
+	target.reload_progress = source.reload_progress
+	target.primary_cooldown_ratio = source.primary_cooldown_ratio
+	target.effective_move_speed_multiplier = source.effective_move_speed_multiplier
 
 
 static func _copy_enemy_state(source: EnemyState) -> EnemyState:
@@ -431,6 +479,7 @@ static func _copy_enemy_state_into(source: EnemyState, target: EnemyState) -> vo
 	target.velocity = source.velocity
 	target.health = source.health
 	target.is_dead = source.is_dead
+	target.visual_status_mask = source.visual_status_mask
 
 
 static func _apply_player_delta(target: PlayerState, delta: PlayerState, mask: int) -> void:
@@ -462,6 +511,7 @@ static func _apply_player_delta(target: PlayerState, delta: PlayerState, mask: i
 		target.reload_progress = delta.reload_progress
 		target.character_id = delta.character_id
 		target.primary_cooldown_ratio = delta.primary_cooldown_ratio
+		target.effective_move_speed_multiplier = delta.effective_move_speed_multiplier
 
 
 static func _apply_enemy_delta(target: EnemyState, delta: EnemyState, mask: int) -> void:
@@ -474,6 +524,8 @@ static func _apply_enemy_delta(target: EnemyState, delta: EnemyState, mask: int)
 		target.health = delta.health
 	if mask & MASK_IS_DEAD:
 		target.is_dead = delta.is_dead
+	if mask & MASK_ENEMY_VISUAL_STATUS:
+		target.visual_status_mask = delta.visual_status_mask
 
 
 static func _is_full_player_mask(mask: int) -> bool:
@@ -546,7 +598,11 @@ func encode_player_snapshots_for_peer(
 		if not force_keyframe:
 			previous = baseline.get(player_state.peer_id) as PlayerState
 		buf.append_array(encode_player_snapshot(player_state, previous))
-		baseline[player_state.peer_id] = _copy_player_state(player_state)
+		var stored := baseline.get(player_state.peer_id) as PlayerState
+		if stored == null:
+			stored = PlayerState.new()
+			baseline[player_state.peer_id] = stored
+		_copy_player_state_into(player_state, stored)
 	_prune_dictionary_to_ids(baseline, live_ids)
 	return buf
 
@@ -582,32 +638,45 @@ func decode_player_snapshots_with_baseline(data: PackedByteArray) -> Array[Playe
 	var offset := 1
 	var live_ids: Dictionary = {}
 	var can_prune := true
+	var stream := StreamPeerBuffer.new()
+	stream.data_array = data
 	for _i in range(count):
 		var snapshot_size := _get_player_snapshot_size(data, offset)
 		if snapshot_size < 0 or offset + snapshot_size > data.size():
 			can_prune = false
 			break
 		var mask := _get_player_snapshot_mask(data, offset)
-		var delta := PlayerState.new()
-		var next_offset := decode_player_snapshot(data, offset, delta)
+		stream.seek(offset)
+		var peer_id := stream.get_32()
+		var previous := player_receive_baselines.get(peer_id) as PlayerState
+		if previous == null and not _is_full_player_mask(mask):
+			can_prune = false
+			offset += snapshot_size
+			continue
+
+		var restored := player_receive_output_states.get(peer_id) as PlayerState
+		if restored == null or previous == null:
+			restored = PlayerState.new()
+			player_receive_output_states[peer_id] = restored
+		else:
+			_copy_player_state_into(previous, restored)
+		var next_offset := decode_player_snapshot(data, offset, restored)
 		if next_offset <= offset or next_offset > data.size():
 			can_prune = false
 			break
 		offset = next_offset
 
-		var previous := player_receive_baselines.get(delta.peer_id) as PlayerState
-		if previous == null and not _is_full_player_mask(mask):
-			can_prune = false
-			continue
-
-		var restored := _copy_player_state(previous)
-		_apply_player_delta(restored, delta, mask)
-		player_receive_baselines[restored.peer_id] = _copy_player_state(restored)
+		var stored := previous
+		if stored == null:
+			stored = PlayerState.new()
+			player_receive_baselines[restored.peer_id] = stored
+		_copy_player_state_into(restored, stored)
 		live_ids[restored.peer_id] = true
 		result.append(restored)
 
 	if can_prune and offset == data.size():
 		_prune_dictionary_to_ids(player_receive_baselines, live_ids)
+		_prune_dictionary_to_ids(player_receive_output_states, live_ids)
 	return result
 
 
@@ -744,8 +813,12 @@ func decode_enemy_snapshots_with_baseline(
 			offset += snapshot_size
 			continue
 
-		var restored := EnemyState.new()
-		_copy_enemy_state_into(previous, restored)
+		var restored := enemy_receive_output_states.get(net_id) as EnemyState
+		if restored == null or previous == null:
+			restored = EnemyState.new()
+			enemy_receive_output_states[net_id] = restored
+		else:
+			_copy_enemy_state_into(previous, restored)
 		stream.seek(offset)
 		_read_enemy_snapshot(stream, restored)
 		var next_offset := stream.get_position()
@@ -764,6 +837,7 @@ func decode_enemy_snapshots_with_baseline(
 
 	if prune_baseline and can_prune and offset == data.size():
 		_prune_dictionary_to_ids(enemy_receive_baselines, live_ids)
+		_prune_dictionary_to_ids(enemy_receive_output_states, live_ids)
 	return result
 
 
@@ -774,12 +848,14 @@ func prune_enemy_send_baseline_to_ids(receiver_peer_id: int, live_ids: Dictionar
 
 func prune_enemy_receive_baseline_to_ids(live_ids: Dictionary) -> void:
 	_prune_dictionary_to_ids(enemy_receive_baselines, live_ids)
+	_prune_dictionary_to_ids(enemy_receive_output_states, live_ids)
 
 
 func clear_peer_delta_cache(peer_id: int) -> void:
 	player_send_baselines_by_peer.erase(peer_id)
 	enemy_send_baselines_by_peer.erase(peer_id)
 	player_receive_baselines.erase(peer_id)
+	player_receive_output_states.erase(peer_id)
 	for receiver_peer_id in player_send_baselines_by_peer.keys():
 		var player_baseline := player_send_baselines_by_peer[receiver_peer_id] as Dictionary
 		if player_baseline != null:
@@ -792,3 +868,5 @@ func reset_delta_cache() -> void:
 	enemy_send_baselines_by_peer.clear()
 	player_receive_baselines.clear()
 	enemy_receive_baselines.clear()
+	player_receive_output_states.clear()
+	enemy_receive_output_states.clear()

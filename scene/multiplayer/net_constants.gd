@@ -1,7 +1,7 @@
 extends RefCounted
 
 ## 协议与版本
-const PROTOCOL_VERSION := 4
+const PROTOCOL_VERSION := 5
 
 ## 玩家限制
 const MAX_PLAYERS := 8
@@ -21,16 +21,26 @@ const PUBLIC_ROOM_KEEPALIVE_INTERVAL_SECONDS := 60.0
 
 ## ENet 信道定义
 ## 0: 认证、加载、完整状态恢复 — reliable
-## 1: 玩家状态上报 — unreliable_ordered
-## 2: 玩家/敌人状态快照 — unreliable_ordered
-## 3: 投射物事件 — Client→Host 生成/命中 reliable；Host→Client 视觉副本 unreliable_ordered
-## 4: 伤害、死亡、生成、掉落、升级与角色技能事件 — reliable
+## 1: 玩家输入上报 — unreliable_ordered
+## 2: 玩家实时状态 — unreliable_ordered
+## 3: 敌人分块状态 — unreliable
+## 4: 投射物请求与表现 — reliable / unreliable_ordered
+## 5: 敌人、植物、基地等持久世界事件 — reliable
+## 6: 库存、经济、洛茜与仓库事务 — reliable
+## 7: 可丢弃的战斗反馈 — unreliable
 const CH_AUTH := 0
 const CH_INPUT := 1
-const CH_STATE := 2
-const CH_PROJECTILE := 3
-const CH_EVENT := 4
-const CHANNEL_COUNT := 5
+const CH_PLAYER_STATE := 2
+const CH_ENEMY_STATE := 3
+const CH_PROJECTILE := 4
+const CH_WORLD_EVENT := 5
+const CH_TRANSACTION := 6
+const CH_FEEDBACK := 7
+const CHANNEL_COUNT := 8
+
+## 旧名称只保留为普通多人代码的迁移别名；新 RPC 不应继续扩大这些别名的使用范围。
+const CH_STATE := CH_PLAYER_STATE
+const CH_EVENT := CH_WORLD_EVENT
 
 ## 同步频率 (Hz)
 const HOST_PHYSICS_HZ := 60

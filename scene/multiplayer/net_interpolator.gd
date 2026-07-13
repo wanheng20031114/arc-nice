@@ -24,6 +24,7 @@ var _buffer_max_size: int = _NetConstants.INTERPOLATION_BUFFER_SIZE * 3
 
 ## 当前的插值渲染延迟（秒）
 var _render_delay: float = 0.1
+var _delay_factor: float = _NetConstants.INTERPOLATION_DELAY_FACTOR
 var _max_extrapolation_seconds: float = _NetConstants.MAX_EXTRAPOLATION_SECONDS
 var _last_position: Vector2 = Vector2.ZERO
 var _has_position: bool = false
@@ -44,12 +45,17 @@ func _init(
 		if delay_factor < 0.0
 		else delay_factor
 	)
-	_render_delay = resolved_delay_factor * snapshot_interval
+	_delay_factor = resolved_delay_factor
+	_render_delay = _delay_factor * snapshot_interval
 	_max_extrapolation_seconds = (
 		_NetConstants.MAX_EXTRAPOLATION_SECONDS
 		if max_extrapolation_seconds < 0.0
 		else maxf(max_extrapolation_seconds, 0.0)
 	)
+
+
+func set_snapshot_interval(snapshot_interval: float) -> void:
+	_render_delay = _delay_factor * maxf(snapshot_interval, 0.001)
 
 
 ## 添加一帧快照到缓存

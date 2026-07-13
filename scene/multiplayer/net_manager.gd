@@ -531,8 +531,24 @@ func _cleanup_multiplayer_signals() -> void:
 
 func _on_peer_connected(peer_id: int) -> void:
 	_debug_log("NetManager: Peer 已连接, id=%d" % peer_id)
+	if is_host() and not _is_registration_open() and peer_id != get_host_peer_id():
+		call_deferred("_reject_late_connected_peer", peer_id)
+		return
 	if _relay_register_pending:
 		_try_send_relay_registration()
+
+
+func _reject_late_connected_peer(peer_id: int) -> void:
+	if not is_host() or _is_registration_open() or peer_id <= 0:
+		return
+	if connected_players.has(peer_id):
+		return
+	if is_peer_send_ready(peer_id):
+		_rpc_join_rejected.rpc_id(
+			peer_id,
+			"房间已经开始加载，暂不支持中途加入或断线重连。"
+		)
+	call_deferred("_disconnect_incompatible_peer", peer_id)
 
 
 func _on_peer_disconnected(peer_id: int) -> void:
@@ -701,6 +717,17 @@ func _rpc_register_player(
 		_rpc_protocol_rejected.rpc_id(sender_id, NetConstants.PROTOCOL_VERSION)
 		call_deferred("_disconnect_incompatible_peer", sender_id)
 		return
+	# A delayed or replayed reliable registration from a member of the frozen roster
+	# is idempotent. It must not eject an already accepted player from the running game.
+	if connected_players.has(sender_id) and not _is_registration_open():
+		return
+	if not _is_registration_open():
+		_rpc_join_rejected.rpc_id(
+			sender_id,
+			"房间已经开始加载，暂不支持中途加入或断线重连。"
+		)
+		call_deferred("_disconnect_incompatible_peer", sender_id)
+		return
 	if connected_players.size() >= NetConstants.MAX_PLAYERS:
 		if _enet_peer != null:
 			_enet_peer.get_peer(sender_id).peer_disconnect()
@@ -724,6 +751,10 @@ func _is_protocol_version_compatible(protocol_version: int) -> bool:
 	return protocol_version == NetConstants.PROTOCOL_VERSION
 
 
+func _is_registration_open() -> bool:
+	return connection_state < ConnectionState.LOADING_GAME
+
+
 func _disconnect_incompatible_peer(peer_id: int) -> void:
 	if _enet_peer == null or peer_id <= 0:
 		return
@@ -743,6 +774,17 @@ func _rpc_protocol_rejected(expected_protocol_version: int) -> void:
 		"联机协议版本不匹配：需要版本 %d，请使用相同构建。"
 		% expected_protocol_version
 	)
+	disconnect_from_game()
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _rpc_join_rejected(reason: String) -> void:
+	if is_host():
+		return
+	var resolved_reason := reason.strip_edges()
+	if resolved_reason.is_empty():
+		resolved_reason = "房间已经开始，无法加入。"
+	connection_failed.emit(resolved_reason)
 	disconnect_from_game()
 
 
