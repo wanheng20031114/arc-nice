@@ -8,7 +8,7 @@ script = ExtResource("2_script")
 pickup_type = 5
 display_name = "扩容弹簧"
 drop_weight = 0.0
-description = "弹匣容量提高20%（向下取整；同类效果只取最高值）。"
+description = "弹匣容量提高20%。"
 can_store_in_inventory = true
 icon_texture = ExtResource("1_icon")
 icon_scale = Vector2(1, 1)
@@ -16,7 +16,7 @@ duration = 0.0
 collectible_effect_id = "capacity_spring"
 collectible_rarity = 0
 collectible_design_id = "capacity_spring"
-collectible_design_note = "百分比弹匣容量：加算容量完成后提高20%，同类只取最高值。"
+collectible_design_note = "扩容弹簧规则：弹匣容量百分比增幅为20%。多个百分比弹匣效果同时存在时只取最高增幅；最终弹匣容量=floor((角色基础弹匣容量+所有有效加算值)×(1+最高百分比增幅))，结果至少为1发。容量刷新时，若当前弹药不少于刷新前的有效容量，则视为原先满弹并将当前弹药改为新容量；否则保留当前弹药但向下钳制到新容量。换弹中的当前弹药为0，容量变化不会补弹或重置换弹进度；换弹完成时填满届时最新容量。副本规则：相同collectible_effect_id的重复副本仍可放入背包并携带，但仅1份参与效果计算，其余副本不生效。角色兼容：候选池仅向具备弹药与换弹机制的角色提供此收藏品。"
 requires_ammunition = true
 collectible_ammo_capacity_bonus_ratio = 0.2
 metadata/_custom_type_script = "uid://qucrregg4cq0"

@@ -15,7 +15,7 @@ duration = 0.0
 collectible_effect_id = "power_ring"
 collectible_rarity = 1
 collectible_design_id = "power_ring"
-collectible_design_note = "攻击成长：每份使攻击力+5。"
+collectible_design_note = "力量戒指规则：每个生效副本提供攻击力+5。最终攻击力=max(ceil((round(角色基础攻击力)+所有有效攻击力加成)×max(当前临时攻击倍率,0.1)),1)。副本规则：效果层不设置生效份数上限，所有已携带副本均逐份参与效果计算。"
 collectible_stacks_by_copy = true
 collectible_attack_bonus = 5
 metadata/_custom_type_script = "uid://qucrregg4cq0"

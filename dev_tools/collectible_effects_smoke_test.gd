@@ -153,7 +153,16 @@ func _test_collectible_resources() -> void:
 	_expect(projectile_requirement_count == 8, "Exactly eight collectibles must require projectile primary attacks.")
 	_expect(APPLE.icon_texture.get_width() == 32 and APPLE.icon_texture.get_height() == 32, "Apple icon must remain 32x32.")
 	_expect(APPLE.collectible_stacks_by_copy and APPLE.collectible_max_copies == 5, "Apple effects must stack from up to five active copies.")
-	_expect(APPLE.description.contains("最高100%"), "Apple description must state its 100% pierce cap.")
+	_expect(
+		APPLE.description == "普通子弹有20%概率穿透敌人（可叠加）。",
+		"Apple player-facing description must stay concise and mark only that it stacks."
+	)
+	_expect(
+		APPLE.collectible_design_note.contains("最多前5份")
+		and APPLE.collectible_design_note.contains("第6份及以后仍可放入背包并携带")
+		and APPLE.collectible_design_note.contains("最终钳制在0%至100%"),
+		"Apple design note must preserve its exact active-copy, excess-carry, and probability-cap rules."
+	)
 	_expect(
 		PURE_CHARGE_CRYSTAL.collectible_rarity == PickupConfig.CollectibleRarity.LEGENDARY
 		and PURE_CHARGE_CRYSTAL.collectible_stacks_by_copy

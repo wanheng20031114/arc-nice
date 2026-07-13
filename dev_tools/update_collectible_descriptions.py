@@ -205,49 +205,49 @@ def describe_on_hit(data: dict[str, Any]) -> str:
     tick_interval = fmt_num(1.0 if effect_id == "burn" else data.get("on_hit_tick_interval", 0.5))
     damage = fmt_num(data.get("on_hit_damage", 0))
     if effect_id == "burn":
-        return f"普通子弹命中时，{chance}概率使敌人燃烧{duration}秒，每{tick_interval}秒受{damage}法术伤害{cooldown}"
+        return f"攻击命中时，{chance}概率使敌人燃烧{duration}秒，每{tick_interval}秒受{damage}法术伤害{cooldown}"
     if effect_id == "bleed":
-        return f"普通子弹命中时，{chance}概率使敌人流血{duration}秒，每{tick_interval}秒受{damage}物理伤害{cooldown}"
+        return f"攻击命中时，{chance}概率使敌人流血{duration}秒，每{tick_interval}秒受{damage}物理伤害{cooldown}"
     if effect_id == "chill":
         slow = percent(1.0 - float(data.get("on_hit_slow_multiplier", 1.0)))
         if float(data.get("on_hit_damage", 0)) == 0.0:
-            return f"普通子弹命中时，{chance}概率使敌人寒冷{duration}秒，移速-{slow}{cooldown}"
+            return f"攻击命中时，{chance}概率使敌人寒冷{duration}秒，移速-{slow}{cooldown}"
         return (
-            f"普通子弹命中时，{chance}概率使敌人寒冷{duration}秒，"
+            f"攻击命中时，{chance}概率使敌人寒冷{duration}秒，"
             f"每{tick_interval}秒受{damage}法术伤害，移速-{slow}{cooldown}"
         )
     if effect_id == "shock":
         return (
-            f"普通子弹命中时，{chance}概率对命中点{fmt_num(data.get('on_hit_radius', 0.0))}"
+            f"攻击命中时，{chance}概率对命中点{fmt_num(data.get('on_hit_radius', 0.0))}"
             f"范围敌人造成{damage}法术伤害{cooldown}"
         )
     if effect_id == "mark":
         extra_damage = float(data.get("on_hit_damage_taken_multiplier", 1.0)) - 1.0
         return (
-            f"普通子弹命中时，{chance}概率标记敌人{duration}秒，"
+            f"攻击命中时，{chance}概率标记敌人{duration}秒，"
             f"使其额外受到{percent(extra_damage)}伤害{cooldown}"
         )
     if effect_id == "crack":
         return (
-            f"普通子弹命中时，{chance}概率使敌人物理防御"
+            f"攻击命中时，{chance}概率使敌人物理防御"
             f"{signed_num(data.get('on_hit_physical_defense_modifier', 0))}，持续{duration}秒{cooldown}"
         )
     if effect_id == "leech":
-        return f"普通子弹命中时，{chance}概率回复自身{fmt_num(data.get('on_hit_heal', 0))}生命{cooldown}"
+        return f"攻击命中时，{chance}概率回复自身{fmt_num(data.get('on_hit_heal', 0))}生命{cooldown}"
     if effect_id == "siphon":
-        return f"普通子弹命中时，{chance}概率补充{fmt_num(data.get('on_hit_skill_charge', 0.0))}秒技力{cooldown}"
+        return f"攻击命中时，{chance}概率补充{fmt_num(data.get('on_hit_skill_charge', 0.0))}秒技力{cooldown}"
     if effect_id == "execute":
         return (
-            f"普通子弹命中时，{chance}概率处决生命不高于"
+            f"攻击命中时，{chance}概率处决生命不高于"
             f"{percent(float(data.get('on_hit_execute_health_ratio', 0.0)))}的敌人{cooldown}"
         )
     if effect_id == "bloom":
         return (
-            f"普通子弹命中时，{chance}概率治疗命中点{fmt_num(data.get('on_hit_radius', 0.0))}"
+            f"攻击命中时，{chance}概率治疗命中点{fmt_num(data.get('on_hit_radius', 0.0))}"
             f"范围友方{fmt_num(data.get('on_hit_heal', 0))}生命{cooldown}"
         )
     if effect_id == "xirang":
-        return f"普通子弹命中时，{chance}概率获得{fmt_num(data.get('on_hit_xirang', 0))}息壤{cooldown}"
+        return f"攻击命中时，{chance}概率获得{fmt_num(data.get('on_hit_xirang', 0))}息壤{cooldown}"
     return ""
 
 
@@ -299,23 +299,41 @@ def generate_description(data: dict[str, Any]) -> str:
     parts: list[str] = []
     ammo_additive = int(data.get("collectible_ammo_capacity_additive_bonus", 0))
     if ammo_additive:
-        max_copies = int(data.get("collectible_max_copies", 0))
-        copy_text = f"，最多{max_copies}份" if max_copies > 0 else ""
-        parts.append(f"弹匣容量+{ammo_additive}（可叠加{copy_text}；先加算再乘算）")
+        parts.append(f"弹匣容量+{ammo_additive}")
 
     ammo_ratio = float(data.get("collectible_ammo_capacity_bonus_ratio", 0.0))
     if ammo_ratio:
-        parts.append(f"弹匣容量提高{percent(ammo_ratio)}（向下取整；同类效果只取最高值）")
+        parts.append(f"弹匣容量提高{percent(ammo_ratio)}")
 
     reload_reduction = float(data.get("collectible_reload_time_reduction", 0.0))
     if reload_reduction:
-        parts.append(f"换弹时间缩短{percent(reload_reduction)}（同类效果只取最高值）")
+        parts.append(f"换弹时间缩短{percent(reload_reduction)}")
+
+    dash_distance = float(data.get("collectible_dash_distance_bonus", 0.0))
+    if dash_distance:
+        parts.append(f"冲刺距离{signed_num(dash_distance)}")
+
+    dash_cooldown_reduction = float(data.get("collectible_dash_cooldown_reduction", 0.0))
+    if dash_cooldown_reduction:
+        parts.append(f"冲刺冷却减少{fmt_num(dash_cooldown_reduction)}秒")
 
     parts.extend(stat_parts(data, "collectible_"))
 
     pierce_chance = float(data.get("bullet_pierce_chance", 0.0))
     if pierce_chance:
         parts.append(f"普通子弹有{percent(pierce_chance)}概率穿透敌人")
+
+    homing_chance = float(data.get("bullet_homing_chance", 0.0))
+    if homing_chance:
+        parts.append(f"普通子弹有{percent(homing_chance)}概率获得中等偏强的追踪能力")
+
+    ammo_free_chance = float(data.get("ammo_free_shot_chance", 0.0))
+    if ammo_free_chance:
+        parts.append(f"普通射击有{percent(ammo_free_chance)}概率不消耗弹药")
+
+    skill_preserve_chance = float(data.get("skill_charge_preserve_chance", 0.0))
+    if skill_preserve_chance:
+        parts.append(f"使用技能时有{percent(skill_preserve_chance)}概率不消耗技力")
 
     free_chance = float(data.get("base_upgrade_free_chance", 0.0))
     if free_chance:
@@ -369,7 +387,7 @@ def generate_description(data: dict[str, Any]) -> str:
         return str(data.get("description", ""))
 
     description = "；".join(parts)
-    if bool(data.get("collectible_stacks_by_copy", False)) and ammo_additive == 0:
+    if bool(data.get("collectible_stacks_by_copy", False)):
         description += "（可叠加）"
     return description + "。"
 

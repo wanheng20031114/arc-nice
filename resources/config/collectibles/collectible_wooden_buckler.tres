@@ -16,6 +16,6 @@ duration = 0.0
 collectible_effect_id = "wooden_buckler"
 collectible_rarity = 0
 collectible_design_id = "wooden_buckler"
-collectible_design_note = "远程闪避：受到远程攻击时，额外有5%概率闪避。"
+collectible_design_note = "木圆盾规则：收到标记为远程的伤害时，每个生效副本额外提供5个百分点闪避概率；所有收藏品远程闪避概率按百分点相加，最终钳制在0%至100%；角色普通闪避先独立判定，仅普通闪避失败后再判定这项收藏品远程闪避。副本规则：相同collectible_effect_id的重复副本仍可放入背包并携带，但仅1份参与效果计算，其余副本不生效。"
 incoming_ranged_dodge_chance = 0.05
 metadata/_custom_type_script = "uid://qucrregg4cq0"

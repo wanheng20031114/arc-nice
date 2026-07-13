@@ -16,7 +16,7 @@ duration = 0.0
 collectible_effect_id = "ironwood_seed"
 collectible_rarity = 1
 collectible_design_id = "ironwood_seed"
-collectible_design_note = "生命上限：生命上限+25。"
+collectible_design_note = "铁木种子规则：每个生效副本提供生命上限+25。最终生命上限=max(角色基础生命上限+所有有效生命上限加成,1)；刷新上限时当前生命只钳制到新上限，不额外治疗。副本规则：效果层不设置生效份数上限，所有已携带副本均逐份参与效果计算。"
 collectible_stacks_by_copy = true
 collectible_max_health_bonus = 25
 metadata/_custom_type_script = "uid://qucrregg4cq0"

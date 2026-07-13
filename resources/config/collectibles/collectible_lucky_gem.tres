@@ -15,6 +15,6 @@ duration = 0.0
 collectible_effect_id = "lucky_gem"
 collectible_rarity = 1
 collectible_design_id = "lucky_gem"
-collectible_design_note = "基础升级返还：升级基础属性时有20%概率不消耗息壤。"
+collectible_design_note = "幸运宝石规则：升级基础属性时，每个生效副本提供20个百分点不消耗息壤概率；所有基础升级免耗概率按百分点相加，最终钳制在0%至100%。副本规则：相同collectible_effect_id的重复副本仍可放入背包并携带，但仅1份参与效果计算，其余副本不生效。"
 base_upgrade_free_chance = 0.2
 metadata/_custom_type_script = "uid://qucrregg4cq0"

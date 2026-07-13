@@ -442,7 +442,7 @@ func remove_physical_defense_modifier(source_id: int) -> void:
 func get_effective_physical_defense() -> int:
 	var total := config.physical_defense if config != null else 0
 	for source_id in physical_defense_modifiers:
-		total += maxi(int(physical_defense_modifiers[source_id]), 0)
+		total += int(physical_defense_modifiers[source_id])
 	return maxi(total, 0)
 
 

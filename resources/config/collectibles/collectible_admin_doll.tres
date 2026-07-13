@@ -16,5 +16,5 @@ duration = 0.0
 collectible_effect_id = "admin_doll"
 collectible_rarity = 3
 collectible_design_id = "admin_doll"
-collectible_design_note = "技能升级免费：已解锁技能的后续升级不消耗息壤。"
+collectible_design_note = "管理员人偶规则：在庄方宜处升级已解锁技能的后续等级时，本次升级不消耗息壤。副本规则：相同collectible_effect_id的重复副本仍可放入背包并携带，但仅1份参与效果计算，其余副本不生效。"
 metadata/_custom_type_script = "uid://qucrregg4cq0"

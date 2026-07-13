@@ -15,9 +15,12 @@ import hashlib
 import json
 from math import floor
 from pathlib import Path
+import re
 from typing import Any
 
 from PIL import Image
+from update_collectible_descriptions import generate_description
+from update_collectible_design_notes import generate_design_note
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +29,7 @@ REPORT_PATH = PROJECT_ROOT / "dev_tools" / "collectible_audit_report.md"
 SOURCE_IMAGE_ROOT = PROJECT_ROOT / "dev_assets" / "source_images"
 MIN_SOURCE_GRID_CONFIDENCE = 0.65
 MAX_SOURCE_LOGICAL_SUBJECT_SIZE = 26
+ALLOWED_DESCRIPTION_PARENTHESES = {"（可叠加）"}
 
 RARITY_LABELS = {
     0: "普通",
@@ -651,14 +655,35 @@ def validate_unique_design_fields(data: dict[str, Any], issues: list[str], is_or
         issues.append("缺少面向玩家的设计描述")
     if "独特设计" in description:
         issues.append("描述仍然使用外挂机制式的“独特设计”标签")
+    parenthetical_phrases = re.findall(r"（[^（）]*）|\([^()]*\)", description)
+    for phrase in parenthetical_phrases:
+        if phrase not in ALLOWED_DESCRIPTION_PARENTHESES:
+            issues.append(f"玩家描述包含冗长括号说明: {phrase}")
+    if description.count("（") != description.count("）") or description.count("(") != description.count(")"):
+        issues.append("玩家描述括号不配对")
+    expected_description = generate_description(data)
+    if description != expected_description:
+        issues.append("玩家描述未由运行字段 canonical 生成")
+    stacks_by_copy = data.get("collectible_stacks_by_copy") is True
+    if stacks_by_copy and "（可叠加）" not in description:
+        issues.append("逐份生效收藏品的玩家描述必须使用简洁的（可叠加）标记")
+    if not stacks_by_copy and "（可叠加）" in description:
+        issues.append("非逐份生效收藏品错误标记为（可叠加）")
+    if not design_note:
+        issues.append("缺少 collectible_design_note")
+    else:
+        try:
+            expected_note = generate_design_note(data)
+        except ValueError as error:
+            issues.append(f"collectible_design_note 无法从运行字段复现: {error}")
+        else:
+            if design_note != expected_note:
+                issues.append("collectible_design_note 未完整覆盖数值、触发、副本、兼容或结算规则")
     if is_original:
         return
 
     if not design_id:
         issues.append("缺少 collectible_design_id")
-    if not design_note:
-        issues.append("缺少 collectible_design_note")
-
     categories = primary_affix_categories(data)
     if len(categories) != 1:
         summary = "、".join(categories) if categories else "无"

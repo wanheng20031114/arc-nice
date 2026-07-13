@@ -16,6 +16,6 @@ duration = 0.0
 collectible_effect_id = "titan_helm"
 collectible_rarity = 2
 collectible_design_id = "titan_helm"
-collectible_design_note = "生命上限：生命上限+35。"
+collectible_design_note = "泰坦头盔规则：每个生效副本提供生命上限+35。最终生命上限=max(角色基础生命上限+所有有效生命上限加成,1)；刷新上限时当前生命只钳制到新上限，不额外治疗。副本规则：相同collectible_effect_id的重复副本仍可放入背包并携带，但仅1份参与效果计算，其余副本不生效。"
 collectible_max_health_bonus = 35
 metadata/_custom_type_script = "uid://qucrregg4cq0"

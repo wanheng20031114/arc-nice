@@ -129,6 +129,8 @@ const DEFAULT_MAGIC_DEFENSE_LIMIT := 100
 const RANGED_DIRECTION_SIDE_THRESHOLD := 0.35
 const DEFAULT_SKILL1_DISPLAY_NAME := "技能"
 
+static var _collectible_temporary_source_serial: int = 0
+
 var facing_suffix: StringName = &"right"
 
 # 当前移动倍率，由道具效果驱动。
@@ -2218,7 +2220,7 @@ func _trigger_frost_crystal(item: PickupConfig) -> void:
 		item.periodic_damage,
 		EnemyConfig.DamageType.MAGIC
 	)
-	var slow_source_id := int(Time.get_ticks_msec() + get_instance_id())
+	var slow_source_id := _next_collectible_temporary_source_id()
 	for enemy in _collect_alive_enemies():
 		if enemy == null or not is_instance_valid(enemy):
 			continue
@@ -2274,7 +2276,7 @@ func _trigger_collectible_custom_frost(item: PickupConfig) -> void:
 		item.trigger_damage,
 		EnemyConfig.DamageType.MAGIC
 	)
-	var slow_source_id := int(Time.get_ticks_msec() + get_instance_id())
+	var slow_source_id := _next_collectible_temporary_source_id()
 	for enemy in _collect_alive_enemies():
 		if enemy == null or not is_instance_valid(enemy):
 			continue
@@ -2594,6 +2596,13 @@ func _get_collectible_effect_source_id(item: PickupConfig, salt: int) -> int:
 	return absi(key_text.hash()) + salt + get_instance_id()
 
 
+func _next_collectible_temporary_source_id() -> int:
+	# Persistent collectible status sources are positive. Transient area slows use
+	# unique negative IDs so same-frame triggers cannot overwrite one another.
+	_collectible_temporary_source_serial += 1
+	return -_collectible_temporary_source_serial
+
+
 func _apply_collectible_area_damage(
 	center_position: Vector2,
 	radius: float,
@@ -2643,7 +2652,7 @@ func _apply_collectible_area_frost(
 		maxi(damage, 1),
 		EnemyConfig.DamageType.MAGIC
 	)
-	var slow_source_id := int(Time.get_ticks_msec() + get_instance_id())
+	var slow_source_id := _next_collectible_temporary_source_id()
 	for enemy in _collect_alive_enemies():
 		if enemy == null or not is_instance_valid(enemy):
 			continue

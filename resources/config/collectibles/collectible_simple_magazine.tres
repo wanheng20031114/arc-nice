@@ -8,7 +8,7 @@ script = ExtResource("2_script")
 pickup_type = 5
 display_name = "简易弹匣"
 drop_weight = 0.0
-description = "弹匣容量+1（最多5份生效，超出部分可携带但不生效；先加算再乘算）。"
+description = "弹匣容量+1（可叠加）。"
 can_store_in_inventory = true
 icon_texture = ExtResource("1_icon")
 icon_scale = Vector2(1, 1)
@@ -16,7 +16,7 @@ duration = 0.0
 collectible_effect_id = "simple_magazine"
 collectible_rarity = 0
 collectible_design_id = "simple_magazine"
-collectible_design_note = "加算弹匣容量：每份容量+1，最多5份生效；超出部分可携带但不生效。"
+collectible_design_note = "简易弹匣规则：每个生效副本使弹匣容量加算值+1。最终弹匣容量=floor((角色基础弹匣容量+所有有效加算值)×(1+持有的最高百分比增幅))，结果至少为1发。容量刷新时，若当前弹药不少于刷新前的有效容量，则视为原先满弹并将当前弹药改为新容量；否则保留当前弹药但向下钳制到新容量。换弹中的当前弹药为0，容量变化不会补弹或重置换弹进度；换弹完成时填满届时最新容量。副本规则：相同collectible_effect_id最多前5份参与效果计算；第6份及以后仍可放入背包并携带，但不再生效。角色兼容：候选池仅向具备弹药与换弹机制的角色提供此收藏品。"
 collectible_stacks_by_copy = true
 collectible_max_copies = 5
 requires_ammunition = true

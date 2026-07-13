@@ -8,11 +8,16 @@ transparent pixel-art PNG and every config is a Godot PickupConfig resource.
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
-import subprocess
 from typing import Any
 
 from PIL import Image, ImageDraw
+from update_collectible_descriptions import (
+    generate_description as generate_player_description,
+    parse_value,
+)
+from update_collectible_design_notes import generate_design_note
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -72,6 +77,7 @@ FIELD_ALIASES = {
     "mdamage": "collectible_magic_damage_bonus",
     "charge": "collectible_skill_charge_bonus_per_second",
     "pierce": "bullet_pierce_chance",
+    "requires_projectile": "requires_projectile_primary_attack",
     "requires_ammo": "requires_ammunition",
     "ammo_add": "collectible_ammo_capacity_additive_bonus",
     "ammo_ratio": "collectible_ammo_capacity_bonus_ratio",
@@ -152,6 +158,7 @@ CONFIG_FIELD_ORDER = [
     "collectible_design_note",
     "collectible_stacks_by_copy",
     "collectible_max_copies",
+    "requires_projectile_primary_attack",
     "requires_ammunition",
     "bullet_pierce_chance",
     "collectible_ammo_capacity_additive_bonus",
@@ -236,7 +243,7 @@ CONFIG_FIELD_ORDER = [
 ]
 
 EXISTING_RARITIES = {
-    "collectible_apple.tres": COMMON,
+    "collectible_apple.tres": RARE,
     "collectible_ruby.tres": COMMON,
     "collectible_emerald.tres": COMMON,
     "collectible_topaz.tres": COMMON,
@@ -250,7 +257,7 @@ EXISTING_RARITIES = {
     "collectible_charged_jade_pendant.tres": RARE,
     "collectible_lucky_gem.tres": RARE,
     "collectible_medieval_shield.tres": RARE,
-    "collectible_gold_wine_cup.tres": EPIC,
+    "collectible_gold_wine_cup.tres": LEGENDARY,
     "collectible_tianshi_stake.tres": EPIC,
     "collectible_moon_amulet.tres": EPIC,
     "collectible_thunder_crystal.tres": EPIC,
@@ -526,7 +533,13 @@ DESIGN_ROWS = [
     design("river_shell", "魔法防御", "魔法防御+1。", stack=True, mdef=1),
     design("salt_charm", "易伤标记", "普通子弹有概率标记敌人，使其短时承受更多伤害。", hit="mark", hit_chance=0.12, hit_duration=1.8, hit_taken=1.1),
     design("rusty_helm", "物理防御", "物理防御+2。", stack=True, pdef=2),
-    design("glass_marble", "穿透弹", "普通子弹有6%概率变为穿透弹。", pierce=0.06),
+    design(
+        "glass_marble",
+        "穿透弹",
+        "普通子弹有6%概率变为穿透弹。",
+        pierce=0.06,
+        requires_projectile=True,
+    ),
     design("oil_lamp", "油火命中", "普通子弹有概率造成每秒15点伤害的油火灼烧。", hit="burn", hit_chance=0.14, hit_damage=15, hit_duration=2.6, hit_tick=1.0),
     design("goat_horn", "低血处决", "普通子弹有概率处决低生命敌人。", hit="execute", hit_chance=0.14, hit_execute=0.14, hit_cd=0.8),
     design("pocket_anvil", "破甲命中", "普通子弹有概率短暂降低敌人物防。", hit="crack", hit_chance=0.13, hit_duration=2.0, hit_pdef_mod=-2),
@@ -548,7 +561,13 @@ DESIGN_ROWS = [
     design("guardian_badge", "受伤反击", "受伤后小范围反击落雷。", trigger="hurt_thunder", cooldown=8.0, t_damage=16, t_radius=36.0),
     design("swift_boot", "移动速度", "移动速度+18。", stack=True, move=18.0),
     design("alchemist_vial", "免费升级", "升级基础属性时有8%概率不消耗息壤。", free=0.08),
-    design("prism_lens", "穿透弹", "普通子弹有15%概率变为穿透弹。", pierce=0.15),
+    design(
+        "prism_lens",
+        "穿透弹",
+        "普通子弹有15%概率变为穿透弹。",
+        pierce=0.15,
+        requires_projectile=True,
+    ),
     design("thorn_shield", "荆棘反击", "受伤后释放一次小范围反击。", trigger="hurt_thunder", cooldown=7.0, t_damage=18, t_radius=42.0),
     design("frost_totem", "周期寒霜", "每13秒释放寒霜，伤害并减速范围内敌人。", periodic="frost", interval=13.0, radius=56.0, damage=8, slow=0.65, slow_duration=1.5),
     design("spark_bottle", "周期落雷", "每16秒引落闪电。", periodic="thunder", interval=16.0, radius=32.0, damage=32),
@@ -1206,8 +1225,12 @@ def num(value: float | int) -> str:
 
 
 def build_description(config: dict[str, Any]) -> str:
-    if config.get("design_description"):
-        return str(config["design_description"])
+    canonical_data = dict(config["fields"])
+    canonical_data["collectible_effect_id"] = config["slug"]
+    canonical_data["description"] = str(config.get("design_description", ""))
+    canonical_description = generate_player_description(canonical_data)
+    if canonical_description:
+        return canonical_description
 
     fields = config["fields"]
     stats: list[str] = []
@@ -1296,9 +1319,6 @@ def build_description(config: dict[str, Any]) -> str:
             % (pct(float(fields["skill_move_speed_multiplier"])), num(fields["skill_effect_duration"]))
         )
 
-    if fields.get("collectible_design_note", ""):
-        segments.append(str(fields["collectible_design_note"]))
-
     if not segments:
         segments.append("持有时，提供一项稳定的小幅祝福。")
     return "".join(segments)
@@ -1314,9 +1334,15 @@ def godot_value(value: Any) -> str:
     return str(value)
 
 
-def write_config(config: dict[str, Any]) -> None:
-    fields = config["fields"]
-    description = build_description(config)
+def render_config(config: dict[str, Any]) -> str:
+    fields = dict(config["fields"])
+    note_data = dict(fields)
+    note_data["collectible_effect_id"] = config["slug"]
+    note_data["display_name"] = config["name"]
+    fields["collectible_design_note"] = generate_design_note(note_data)
+    description_config = dict(config)
+    description_config["fields"] = fields
+    description = build_description(description_config)
     lines = [
         '[gd_resource type="Resource" script_class="PickupConfig" format=3]',
         "",
@@ -1340,7 +1366,14 @@ def write_config(config: dict[str, Any]) -> None:
         if key in fields and key != "collectible_rarity":
             lines.append("%s = %s" % (key, godot_value(fields[key])))
     lines.append('metadata/_custom_type_script = "uid://qucrregg4cq0"')
-    (CONFIG_DIR / ("collectible_%s.tres" % config["slug"])).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return "\n".join(lines) + "\n"
+
+
+def write_config(config: dict[str, Any]) -> None:
+    path = CONFIG_DIR / ("collectible_%s.tres" % config["slug"])
+    rendered = render_config(config)
+    if not path.is_file() or path.read_text(encoding="utf-8") != rendered:
+        path.write_text(rendered, encoding="utf-8")
 
 
 def _read_godot_string_assignment(line_text: str) -> str:
@@ -1350,19 +1383,34 @@ def _read_godot_string_assignment(line_text: str) -> str:
     return raw_value.replace('\\"', '"')
 
 
-def _read_git_head_text(res_path: str) -> str:
-    return subprocess.check_output(
-        ["git", "show", "HEAD:%s" % res_path],
-        cwd=PROJECT_ROOT,
-        encoding="utf-8",
-        text=True,
-    )
+def _parse_config_text(text: str) -> dict[str, Any]:
+    data: dict[str, Any] = {}
+    for line_text in text.splitlines():
+        if " = " not in line_text or line_text.startswith("["):
+            continue
+        key, raw_value = line_text.split(" = ", 1)
+        data[key] = parse_value(raw_value)
+    return data
 
 
-def update_existing_config(file_name: str, rarity: int) -> None:
+def _replace_string_assignment(text: str, key: str, value: str) -> str:
+    newline = "\r\n" if "\r\n" in text else "\n"
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    replacement = '%s = "%s"' % (key, escaped)
+    lines = text.splitlines()
+    matches = [index for index, line_text in enumerate(lines) if line_text.startswith(key + " = ")]
+    if len(matches) != 1:
+        raise RuntimeError("Expected exactly one %s assignment" % key)
+    lines[matches[0]] = replacement
+    return newline.join(lines) + newline
+
+
+def render_existing_config(file_name: str, rarity: int) -> str:
     path = CONFIG_DIR / file_name
-    res_path = "resources/config/collectibles/%s" % file_name
-    text = _read_git_head_text(res_path)
+    if not path.is_file():
+        raise RuntimeError("Missing existing collectible config: %s" % path)
+    text = path.read_text(encoding="utf-8")
+    newline = "\r\n" if "\r\n" in text else "\n"
     lines = text.splitlines()
     updated: list[str] = []
     inserted = False
@@ -1373,8 +1421,6 @@ def update_existing_config(file_name: str, rarity: int) -> None:
             key = line_text.split(" = ", 1)[0]
             if key == "collectible_rarity" or key in override_fields:
                 continue
-            if key == "description" and "description" in override:
-                line_text = 'description = "%s"' % str(override["description"]).replace('"', '\\"')
         if line_text.startswith("collectible_effect_id = "):
             updated.append(line_text)
             updated.append("collectible_rarity = %d" % rarity)
@@ -1386,7 +1432,29 @@ def update_existing_config(file_name: str, rarity: int) -> None:
         updated.append(line_text)
     if not inserted:
         raise RuntimeError("Could not insert rarity/design into %s" % path)
-    path.write_text("\n".join(updated) + "\n", encoding="utf-8")
+
+    canonical_text = newline.join(updated) + newline
+    canonical_data = _parse_config_text(canonical_text)
+    canonical_text = _replace_string_assignment(
+        canonical_text,
+        "description",
+        generate_player_description(canonical_data),
+    )
+    canonical_data = _parse_config_text(canonical_text)
+    canonical_text = _replace_string_assignment(
+        canonical_text,
+        "collectible_design_note",
+        generate_design_note(canonical_data),
+    )
+    return canonical_text
+
+
+def update_existing_config(file_name: str, rarity: int) -> None:
+    path = CONFIG_DIR / file_name
+    current = path.read_text(encoding="utf-8")
+    rendered = render_existing_config(file_name, rarity)
+    if current != rendered:
+        path.write_text(rendered, encoding="utf-8")
 
 
 def apply_curated_design(config: dict[str, Any]) -> None:
@@ -1407,7 +1475,10 @@ def validate_design_specs() -> None:
         raise RuntimeError("Unknown redesign specs: %s" % ", ".join(extra))
 
 
-def build_audit_sheet(configs: list[dict[str, Any]]) -> None:
+def render_audit_sheet(
+    configs: list[dict[str, Any]],
+    icons: dict[str, Image.Image] | None = None,
+) -> Image.Image:
     cell = 64
     columns = 10
     rows = (len(configs) + columns - 1) // columns
@@ -1421,11 +1492,18 @@ def build_audit_sheet(configs: list[dict[str, Any]]) -> None:
             for x in range(0, 32, 8):
                 color = checker_a if ((x + y) // 8) % 2 == 0 else checker_b
                 ImageDraw.Draw(image).rectangle((x0 + 16 + x, y0 + 5 + y, x0 + 23 + x, y0 + 12 + y), fill=color)
-        icon = Image.open(TEXTURE_DIR / ("%s.png" % config["slug"])).convert("RGBA")
+        if icons is None:
+            icon = Image.open(TEXTURE_DIR / ("%s.png" % config["slug"])).convert("RGBA")
+        else:
+            icon = icons[config["slug"]]
         image.alpha_composite(icon.resize((32, 32), Image.Resampling.NEAREST), (x0 + 16, y0 + 5))
         draw = ImageDraw.Draw(image)
         draw.text((x0 + 2, y0 + 42), config["slug"][:12], fill=(210, 210, 210, 255))
-    image.save(AUDIT_PATH)
+    return image
+
+
+def build_audit_sheet(configs: list[dict[str, Any]], icons: dict[str, Image.Image]) -> None:
+    save_image_if_changed(AUDIT_PATH, render_audit_sheet(configs, icons))
 
 
 def _read_existing_display_name(file_name: str) -> str:
@@ -1462,7 +1540,7 @@ def _mechanic_summary(fields: dict[str, Any]) -> str:
     return "，".join(parts) if parts else "常驻属性"
 
 
-def build_design_manifest(configs: list[dict[str, Any]]) -> None:
+def render_design_manifest(configs: list[dict[str, Any]]) -> str:
     name_by_slug = {config["slug"]: config["name"] for config in configs}
     rarity_by_slug = {config["slug"]: config["rarity"] for config in configs}
     for file_name, rarity in EXISTING_RARITIES.items():
@@ -1495,7 +1573,22 @@ def build_design_manifest(configs: list[dict[str, Any]]) -> None:
                 _mechanic_summary(row["fields"]),
             )
         )
-    DESIGN_MANIFEST_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return "\n".join(lines) + "\n"
+
+
+def build_design_manifest(configs: list[dict[str, Any]]) -> None:
+    rendered = render_design_manifest(configs)
+    if not DESIGN_MANIFEST_PATH.is_file() or DESIGN_MANIFEST_PATH.read_text(encoding="utf-8") != rendered:
+        DESIGN_MANIFEST_PATH.write_text(rendered, encoding="utf-8")
+
+
+def save_image_if_changed(path: Path, image: Image.Image) -> None:
+    if path.is_file():
+        with Image.open(path) as current_source:
+            current = current_source.convert("RGBA")
+            if current.size == image.size and current.tobytes() == image.convert("RGBA").tobytes():
+                return
+    image.save(path)
 
 
 def validate_outputs(configs: list[dict[str, Any]]) -> None:
@@ -1523,29 +1616,97 @@ def validate_outputs(configs: list[dict[str, Any]]) -> None:
             raise RuntimeError("Missing config: %s" % config_path)
 
 
-def main() -> None:
+def validate_generated_in_memory(
+    configs: list[dict[str, Any]],
+    icons: dict[str, Image.Image],
+    rendered_configs: dict[str, str],
+) -> None:
+    seen_slugs: set[str] = set()
+    seen_design_ids: set[str] = set()
+    for config in configs:
+        slug = str(config["slug"])
+        if slug in seen_slugs:
+            raise RuntimeError("Duplicate slug: %s" % slug)
+        seen_slugs.add(slug)
+
+        data = _parse_config_text(rendered_configs[slug])
+        design_id = str(data.get("collectible_design_id", ""))
+        if not design_id:
+            raise RuntimeError("Missing collectible design id: %s" % slug)
+        if design_id in seen_design_ids:
+            raise RuntimeError("Duplicate collectible design id: %s" % design_id)
+        seen_design_ids.add(design_id)
+        if str(data.get("description", "")) != generate_player_description(data):
+            raise RuntimeError("Non-canonical description: %s" % slug)
+        if str(data.get("collectible_design_note", "")) != generate_design_note(data):
+            raise RuntimeError("Non-canonical collectible design note: %s" % slug)
+
+        icon = icons[slug].convert("RGBA")
+        if icon.size != (32, 32):
+            raise RuntimeError("%s is not 32x32" % slug)
+        if icon.getchannel("A").getbbox() is None:
+            raise RuntimeError("%s is empty" % slug)
+
+    for file_name, rarity in EXISTING_RARITIES.items():
+        canonical_text = render_existing_config(file_name, rarity)
+        data = _parse_config_text(canonical_text)
+        if str(data.get("description", "")) != generate_player_description(data):
+            raise RuntimeError("Non-canonical existing description: %s" % file_name)
+        if str(data.get("collectible_design_note", "")) != generate_design_note(data):
+            raise RuntimeError("Non-canonical existing design note: %s" % file_name)
+
+    audit_sheet = render_audit_sheet(configs, icons)
+    if audit_sheet.size != (640, 512):
+        raise RuntimeError("Unexpected audit sheet size: %s" % (audit_sheet.size,))
+    manifest = render_design_manifest(configs)
+    if manifest.count("\n|") != len(configs) + 2:
+        raise RuntimeError("Design manifest does not contain exactly %d rows" % len(configs))
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Generate or validate the 80-item collectible expansion")
+    parser.add_argument(
+        "--check-only",
+        action="store_true",
+        help="validate all generated data in memory without writing any files",
+    )
+    args = parser.parse_args()
+
     if len(ITEMS) != 80:
         raise RuntimeError("Expected exactly 80 new collectibles, got %d" % len(ITEMS))
     validate_design_specs()
+
+    icons: dict[str, Image.Image] = {}
+    rendered_configs: dict[str, str] = {}
+    for config in ITEMS:
+        apply_curated_design(config)
+        slug = str(config["slug"])
+        icons[slug] = generate_icon(config)
+        rendered_configs[slug] = render_config(config)
+    validate_generated_in_memory(ITEMS, icons, rendered_configs)
+
+    if args.check_only:
+        print("Validated %d collectibles entirely in memory; no files written." % len(ITEMS))
+        return 0
+
     TEXTURE_DIR.mkdir(parents=True, exist_ok=True)
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-
-    existing_entries = list(EXISTING_RARITIES.items())
-    for _index, (file_name, rarity) in enumerate(existing_entries):
+    for file_name, rarity in EXISTING_RARITIES.items():
         update_existing_config(file_name, rarity)
 
     for config in ITEMS:
-        apply_curated_design(config)
-        generate_icon(config).save(TEXTURE_DIR / ("%s.png" % config["slug"]))
+        slug = str(config["slug"])
+        save_image_if_changed(TEXTURE_DIR / ("%s.png" % slug), icons[slug])
         write_config(config)
 
     validate_outputs(ITEMS)
-    build_audit_sheet(ITEMS)
+    build_audit_sheet(ITEMS, icons)
     build_design_manifest(ITEMS)
     print("Generated %d collectibles." % len(ITEMS))
     print("Audit sheet: %s" % AUDIT_PATH)
     print("Design manifest: %s" % DESIGN_MANIFEST_PATH)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

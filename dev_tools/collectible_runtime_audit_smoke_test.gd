@@ -39,6 +39,7 @@ func _run() -> void:
 	root.add_child(test_root)
 	current_scene = test_root
 
+	await _test_frost_sources_stack_and_expire_independently()
 	await _test_every_collectible_runtime_effect()
 
 	test_root.queue_free()
@@ -75,6 +76,49 @@ func _test_every_collectible_runtime_effect() -> void:
 			seen_effect_ids.has(effect_id),
 			"Runtime audit must include the new %s collectible." % effect_id
 		)
+
+
+func _test_frost_sources_stack_and_expire_independently() -> void:
+	var player := _spawn_player()
+	var enemy := _spawn_enemy(Vector2(20.0, 0.0), player)
+	await process_frame
+	enemy.current_health = 500
+
+	# These two applications happen consecutively in the same frame. The former
+	# millisecond-derived IDs collided here and let the first timer erase both.
+	player.call("_apply_collectible_area_frost", Vector2.ZERO, 48.0, 1, 0.8, 0.05)
+	player.call("_apply_collectible_area_frost", Vector2.ZERO, 48.0, 1, 0.5, 0.18)
+	_expect(
+		enemy.move_speed_modifiers.size() == 2,
+		"Same-frame frost applications must receive distinct temporary source IDs."
+	)
+	var combined_multiplier := 1.0
+	for source_id in enemy.move_speed_modifiers:
+		_expect(int(source_id) < 0, "Transient frost source IDs must stay outside the positive persistent-effect namespace.")
+		combined_multiplier *= float(enemy.move_speed_modifiers[source_id])
+	_expect(
+		is_equal_approx(combined_multiplier, 0.4),
+		"Concurrent frost sources must multiply their movement-speed modifiers."
+	)
+
+	await create_timer(0.09).timeout
+	_expect(
+		enemy.move_speed_modifiers.size() == 1,
+		"The earlier frost timer must remove only its own source."
+	)
+	if enemy.move_speed_modifiers.size() == 1:
+		_expect(
+			is_equal_approx(float(enemy.move_speed_modifiers.values()[0]), 0.5),
+			"The later frost source must remain active after the earlier source expires."
+		)
+
+	await create_timer(0.14).timeout
+	_expect(
+		enemy.move_speed_modifiers.is_empty(),
+		"Each frost source must expire independently at the end of its own duration."
+	)
+	_cleanup_test_children()
+	await process_frame
 
 
 func _audit_single_collectible(item: PickupConfig) -> void:
@@ -456,6 +500,12 @@ func _activate_trigger_event(player: Player, item: PickupConfig) -> void:
 func _audit_on_hit_effect(player: Player, item: PickupConfig) -> void:
 	var enemy := _spawn_enemy(Vector2(40.0, 0.0), player)
 	enemy.current_health = 500
+	var base_enemy_physical_defense := enemy.get_effective_physical_defense()
+	var crack_test_baseline_source_id := 990001
+	var crack_test_floor_source_id := 990002
+	if item.on_hit_effect_id == PickupConfig.HIT_EFFECT_CRACK:
+		enemy.add_physical_defense_modifier(crack_test_baseline_source_id, 5)
+		base_enemy_physical_defense = enemy.get_effective_physical_defense()
 	var ally: Player = null
 	match item.on_hit_effect_id:
 		PickupConfig.HIT_EFFECT_LEECH:
@@ -481,14 +531,56 @@ func _audit_on_hit_effect(player: Player, item: PickupConfig) -> void:
 	if item.on_hit_effect_id == PickupConfig.HIT_EFFECT_SHOCK:
 		shock_enemy = _spawn_enemy(Vector2(52.0, 0.0), player)
 		shock_enemy.current_health = 500
+	var applied_item := item
+	if item.on_hit_effect_id == PickupConfig.HIT_EFFECT_CRACK:
+		applied_item = item.duplicate() as PickupConfig
+		applied_item.on_hit_chance = 1.0
 
 	for _attempt in range(240):
-		var cooldown_key := str(player.call("_get_collectible_aux_key", item, "hit:%s" % item.on_hit_effect_id))
+		var cooldown_key := str(player.call("_get_collectible_aux_key", applied_item, "hit:%s" % applied_item.on_hit_effect_id))
 		player.collectible_trigger_cooldowns.erase(cooldown_key)
-		player.call("_apply_collectible_on_hit_effect", item, enemy, 10)
+		player.call("_apply_collectible_on_hit_effect", applied_item, enemy, 10)
 		await process_frame
-		if _has_on_hit_effect_result(player, item, enemy, shock_enemy, ally, health_before, charge_before, xirang_before, ally_health_before):
+		var produced_result := _has_on_hit_effect_result(
+			player,
+			item,
+			enemy,
+			shock_enemy,
+			ally,
+			health_before,
+			charge_before,
+			xirang_before,
+			ally_health_before
+		)
+		if item.on_hit_effect_id == PickupConfig.HIT_EFFECT_CRACK:
+			produced_result = (
+				enemy.get_effective_physical_defense()
+				== maxi(base_enemy_physical_defense + item.on_hit_physical_defense_modifier, 0)
+			)
+		if produced_result:
+			if item.on_hit_effect_id == PickupConfig.HIT_EFFECT_CRACK:
+				_expect(
+					enemy.get_effective_physical_defense()
+					== maxi(base_enemy_physical_defense + item.on_hit_physical_defense_modifier, 0),
+					"%s crack effect must lower effective physical defense by its configured modifier."
+					% item.display_name
+				)
+				enemy.add_physical_defense_modifier(crack_test_floor_source_id, -999)
+				_expect(
+					enemy.get_effective_physical_defense() == 0,
+					"Enemy physical defense modifiers must allow armor break but clamp the final defense to zero."
+				)
+				enemy.remove_physical_defense_modifier(crack_test_floor_source_id)
+				await create_timer(maxf(item.on_hit_duration, 0.05) + 0.15).timeout
+				_expect(
+					enemy.get_effective_physical_defense() == base_enemy_physical_defense,
+					"%s crack effect must restore effective physical defense after its duration."
+					% item.display_name
+				)
+				enemy.remove_physical_defense_modifier(crack_test_baseline_source_id)
 			return
+	if item.on_hit_effect_id == PickupConfig.HIT_EFFECT_CRACK:
+		enemy.remove_physical_defense_modifier(crack_test_baseline_source_id)
 	_expect(false, "%s on-hit effect must produce its configured result." % item.display_name)
 
 

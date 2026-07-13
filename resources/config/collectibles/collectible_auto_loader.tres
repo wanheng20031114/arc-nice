@@ -8,7 +8,7 @@ script = ExtResource("2_script")
 pickup_type = 5
 display_name = "自动装填器"
 drop_weight = 0.0
-description = "换弹时间缩短30%（同类效果只取最高值）。"
+description = "换弹时间缩短30%。"
 can_store_in_inventory = true
 icon_texture = ExtResource("1_icon")
 icon_scale = Vector2(1, 1)
@@ -16,7 +16,7 @@ duration = 0.0
 collectible_effect_id = "auto_loader"
 collectible_rarity = 2
 collectible_design_id = "auto_loader"
-collectible_design_note = "换弹缩短：换弹时间缩短30%，同类只取最高值。"
+collectible_design_note = "自动装填器规则：换弹时间缩短比例为30%。多个换弹缩短效果同时存在时只取最高比例，再将该比例钳制在0%至95%；有效换弹时间=角色基础换弹时间×(1-钳制后比例)，结果至少为0.01秒；换弹中途增减该效果会按新的有效换弹时间继续推进同一归一化进度，不会重置已完成进度。副本规则：相同collectible_effect_id的重复副本仍可放入背包并携带，但仅1份参与效果计算，其余副本不生效。角色兼容：候选池仅向具备弹药与换弹机制的角色提供此收藏品。"
 requires_ammunition = true
 collectible_reload_time_reduction = 0.3
 metadata/_custom_type_script = "uid://qucrregg4cq0"
