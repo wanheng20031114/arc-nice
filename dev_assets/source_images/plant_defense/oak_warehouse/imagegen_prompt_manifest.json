@@ -1,18 +1,62 @@
 {
-  "mode": "generate",
-  "assets": [
+  "schema_version": 2,
+  "generation_mode": "built-in imagegen",
+  "use_case": "stylized-concept",
+  "asset_family": "oak_warehouse",
+  "reference_roles": [
     {
-      "name": "oak_warehouse_building",
-      "prompt": "Create a single game-ready pixel-art sprite for a fantasy plant building called “Oak Warehouse”. SUBJECT: one compact oak-tree warehouse, clearly a living plant building rather than a normal house. A stout warm-brown oak trunk forms the central storage body; a rounded leafy green crown sits above; a small arched wooden storage door and two subtle brass hinges are visible on the front; a few acorns and tied wooden bands reinforce the storage theme. Silhouette must read clearly at tiny scale and occupy no more than a square 64×64 logical-pixel canvas after cleanup. COMPOSITION: one centered object only, straight-on three-quarter game view matching a top-down action game, with the base centered and no cast shadow extending outside the footprint. STYLE: handcrafted crisp pixel art, chunky deliberate pixel clusters, consistent 1-logical-pixel outline, limited palette, strong readable silhouette, similar quality to polished indie tower-defense sprites. Avoid excessive micro-detail. BACKGROUND: solid flat pure magenta #FF00FF only for chroma key removal, no gradient, no shadow, no glow. CONSTRAINTS: no text, no UI, no ground tile, no soil patch, no extra objects, no multiple variants, no watermark. The final sprite will be cropped and normalized to 64×64, so keep every important feature well inside the frame.",
-      "raw_source": "dev_assets/source_images/plant_defense/oak_warehouse/oak_warehouse_imagegen_magenta.png",
-      "processed_source": "dev_assets/source_images/plant_defense/oak_warehouse/oak_warehouse_logical60.png",
-      "final_asset": "resources/texture/plant_defense/oak_warehouse/oak_warehouse.png"
+      "name": "volume_reference",
+      "role": "The user-provided farm-building screenshot supplies only the three-quarter top-down view, roof/canopy thickness, plane separation, and grounded weight. Do not copy its building, layout, palette, or pixels."
     },
     {
-      "name": "oak_warehouse_inventory_background",
-      "prompt": "Create one complete text-free pixel-art UI background plate for an in-game “Oak Warehouse” inventory transfer screen. FORMAT: a clean 4:3 landscape panel, front-facing, symmetric, designed to hold two equal 5-column by 4-row item grids side by side. LEFT half is the warehouse storage area; RIGHT half is the player backpack area. Each half must contain one large dark recessed rectangular field with generous clean space for exactly 20 overlaid item-slot controls; do NOT draw the individual slots themselves, because crisp native UI slots will be overlaid later. Add a narrow central wooden divider with a small carved bidirectional arrow motif, and a bottom information/action strip for item description and buttons. STYLE: high-quality crisp pixel art matching a polished fantasy nature/wood-and-brass game interface; dark oak boards, warm bronze corners, subtle green leaf and acorn accents, strong contrast, limited palette, deliberate pixel clusters, clean borders. The two grid fields must be visually distinct and very readable. COMPOSITION: full-bleed rectangular panel with a strong outer frame, equal left/right hierarchy, no perspective distortion, no characters, no items. LIGHTING: even UI lighting, dark interiors behind grids, brighter amber borders. CONSTRAINTS: absolutely no words, letters, numbers, icons that resemble text, no watermark, no photographic texture, no blur, no transparency. This image will be cropped to 4:3 and used directly behind authored Godot controls, so keep the layout perfectly centered and leave safe margins around both grid fields.",
-      "raw_source": "dev_assets/source_images/plant_defense/oak_warehouse/oak_warehouse_ui_imagegen.png",
-      "final_asset": "resources/texture/plant_defense/oak_warehouse/oak_warehouse_panel_background.png"
+      "name": "identity_reference",
+      "path": "resources/texture/plant_defense/oak_warehouse/oak_warehouse.png",
+      "role": "Preserve only the living oak identity, arched warehouse door, acorn/storage motifs, and green/warm-brown color family. Replace the flat illustration rendering."
     }
-  ]
+  ],
+  "common_contract": {
+    "logical_canvas": [64, 64],
+    "maximum_subject": [60, 62],
+    "world_scale": [0.5, 0.5],
+    "world_footprint": [32, 32],
+    "camera_zoom": 2,
+    "lighting": "upper-left key light; bright canopy top, medium front trunk, dark narrow right wall and lower occlusion",
+    "pixel_style": "native logical pixel art with hard square clusters and no antialiasing",
+    "palette": "coherent palette designed to normalize to at most 64 visible RGB colors",
+    "background": "perfectly flat solid #FF00FF chroma key, without gradient, floor, reflection, or background shadow",
+    "alpha_after_processing": "binary; transparent RGB zero",
+    "foot_registration": "bottom-centre -> source coordinate (32,62)"
+  },
+  "concept_candidates": [
+    {
+      "name": "oak_warehouse_candidate_a",
+      "raw_source": "dev_assets/source_images/plant_defense/oak_warehouse/oak_warehouse_candidate_a_imagegen_magenta.png",
+      "prompt": "Use case: stylized-concept. Asset type: 64-logical-pixel tower-defense plant-building sprite candidate. Input images: Image 1 is a viewpoint and volume reference only; Image 2 is an Oak Warehouse identity and palette reference only. Create one compact living oak warehouse in a clear three-quarter top-down game view. A broad leafy canopy forms a readable bright top plane; its darker front foliage overlaps a thick trunk-built front wall; show one narrow dark right-side wall, a deeply recessed arched wooden storage door, subtle brass hinges, a few restrained acorns, and tied timber storage bands. Make the base feel heavy and grounded with compact internal contact occlusion, entirely inside the building silhouette. Canvas 64x64 logical pixels, subject no larger than 60x62, bottom-centred, with every logical pixel rendered as a hard uniform square block. Upper-left light, limited palette suitable for <=64 colors. Perfectly flat #FF00FF background. No text, UI, ground tile, external cast shadow, extra object, blur, antialiasing, watermark, or copied reference architecture."
+    },
+    {
+      "name": "oak_warehouse_candidate_b",
+      "raw_source": "dev_assets/source_images/plant_defense/oak_warehouse/oak_warehouse_candidate_b_imagegen_magenta.png",
+      "prompt": "Use case: stylized-concept. Asset type: alternate 64-logical-pixel Oak Warehouse sprite candidate. Input images: Image 1 supplies only volumetric plane separation; Image 2 supplies only living-oak warehouse identity. Design one compact ancient oak whose layered crown acts like a natural roof over a stout hollow trunk storehouse. Clearly separate the sunlit leaf roof plane, darker foliage fascia, front trunk facade, narrow shaded right wall, thick arched doorway rim, and deep dark door recess. Add only restrained acorn and timber-band details. Strong weighted base and occlusion must remain within the 2x2 footprint. Three-quarter top-down view, upper-left light, hard native pixel clusters, subject <=60x62 logical pixels on a 64x64 logical canvas, palette suitable for <=64 colors. Uniform #FF00FF background only. No text, UI, ground patch, external shadow, extra props, soft painting, antialiasing, watermark, or copied screenshot details."
+    }
+  ],
+  "selection": {
+    "generation_mode": "built-in imagegen",
+    "chosen_source": "oak_warehouse_candidate_b_refined",
+    "derived_from": "oak_warehouse_candidate_b",
+    "rule": "Choose the candidate with the clearest top/front/right plane separation and cleanest readable 64px silhouette; do not average or blend candidates.",
+    "selected_candidate": "oak_warehouse_candidate_b_refined",
+    "refined_source": "dev_assets/source_images/plant_defense/oak_warehouse/oak_warehouse_candidate_b_refined_imagegen_magenta.png",
+    "refinement_spec": "Refine candidate B only: preserve the exact living-oak warehouse identity, arched door, storage motifs, silhouette, upper-left light, and top/front/right plane separation; regularize the logical pixel clusters and pure #FF00FF background for clean keying; do not add ground, external shadow, text, UI, props, or new architecture.",
+    "selected_source": "dev_assets/source_images/plant_defense/oak_warehouse/oak_warehouse_selected_imagegen_magenta.png",
+    "selected_sha256": "693F037B3D1D7F937748C73742CB72D1C65D29F1CF58DCB02DB4755BC3FA06CF",
+    "selected_source_action": "Copy the refined candidate B byte-for-byte to selected_source without resizing or filtering before running the processor."
+  },
+  "processor": {
+    "path": "dev_tools/process_oak_warehouse_asset.py",
+    "check_command": "python dev_tools/process_oak_warehouse_asset.py --check-only",
+    "write_command": "python dev_tools/process_oak_warehouse_asset.py",
+    "unsafe_grid_compression": false,
+    "managed_output": "resources/texture/plant_defense/oak_warehouse/oak_warehouse.png",
+    "explicitly_unmanaged": "resources/texture/plant_defense/oak_warehouse/oak_warehouse_panel_background.png"
+  }
 }

@@ -167,6 +167,10 @@ func _test_config_and_scene_contracts() -> void:
 		tower_instance.get_node_or_null("PlantPlacementController") is PlantPlacementController,
 		"塔防场景必须预建放置控制器。"
 	)
+	_expect(
+		(tower_instance.get_node("Camera2D") as Camera2D).zoom == Vector2(2, 2),
+		"64px素材的0.5世界缩放必须继续由塔防2倍镜头形成一源像素一屏幕像素。"
+	)
 	var ghost := tower_instance.get_node(
 		"PlantPlacementController/PlantPlacementPreview/GhostSprite"
 	) as Sprite2D
@@ -174,22 +178,77 @@ func _test_config_and_scene_contracts() -> void:
 		ghost.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
 		"植物放置幽灵必须使用邻近采样。"
 	)
-	tower_instance.free()
+	_expect(
+		ghost.position == Vector2.ZERO and ghost.scale == Vector2(0.5, 0.5),
+		"64px植物放置幽灵必须在锚点原点以0.5静态缩放显示。"
+	)
+	for config in PlantDefenseRegistry.get_all_configs():
+		_expect(
+			config.icon != null and config.icon.get_size() == Vector2(64, 64),
+			"每种植物配置都必须提供64×64组合图标。"
+		)
 
 	var agave := agave_config.plant_scene.instantiate() as AgaveCannon
 	_expect(agave != null, "龙舌兰场景根节点必须继承PlantDefense。")
 	if agave != null:
+		test_root.add_child(agave)
 		_expect(agave.collision_layer == 512, "植物必须位于PlantBody层。")
+		var visual_root := agave.get_node("VisualRoot") as Node2D
+		var body_sprite := agave.get_node("VisualRoot/BodySprite") as AnimatedSprite2D
+		var cannon_pivot := agave.get_node("VisualRoot/CannonPivot") as Node2D
+		var cannon_sprite := agave.get_node(
+			"VisualRoot/CannonPivot/CannonSprite"
+		) as AnimatedSprite2D
+		var muzzle := agave.get_node("VisualRoot/CannonPivot/Muzzle") as Marker2D
 		_expect(
-			(agave.get_node("BodySprite") as AnimatedSprite2D).texture_filter
-			== CanvasItem.TEXTURE_FILTER_NEAREST,
+			visual_root.position == Vector2.ZERO
+			and visual_root.scale == Vector2(0.5, 0.5),
+			"龙舌兰必须只对独立VisualRoot应用0.5静态缩放。"
+		)
+		_expect(
+			body_sprite.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
 			"植物身体动画必须使用邻近采样。"
 		)
 		_expect(
-			(agave.get_node("CannonPivot/CannonSprite") as AnimatedSprite2D).texture_filter
-			== CanvasItem.TEXTURE_FILTER_NEAREST,
+			cannon_sprite.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
 			"植物开火动画必须使用邻近采样。"
 		)
+		_expect(
+			body_sprite.scale == Vector2.ONE
+			and cannon_sprite.scale == Vector2.ONE
+			and body_sprite.centered
+			and cannon_sprite.centered
+			and body_sprite.offset == Vector2.ZERO
+			and cannon_sprite.offset == Vector2.ZERO,
+			"龙舌兰64px身体与炮头必须共用居中的无偏移源坐标。"
+		)
+		_expect(
+			cannon_pivot.position == Vector2(0, -6)
+			and muzzle.position == Vector2(22, 7),
+			"龙舌兰炮座与炮口必须使用素材审计后的64px源坐标。"
+		)
+		var pivot_world_position := visual_root.transform * cannon_pivot.position
+		var muzzle_world_position := (
+			visual_root.transform * (cannon_pivot.transform * muzzle.position)
+		)
+		_expect(
+			pivot_world_position == Vector2(0, -3)
+			and muzzle_world_position == Vector2(11, 0.5),
+			"VisualRoot缩放后炮座与炮口必须落在预期世界坐标。"
+		)
+		for aim_direction in [Vector2.RIGHT, Vector2.DOWN, Vector2(-1, -1).normalized()]:
+			agave.call(
+				"_point_cannon_at",
+				cannon_pivot.global_position + aim_direction * 100.0
+			)
+			var visual_muzzle_direction := cannon_pivot.global_position.direction_to(
+				muzzle.global_position
+			)
+			_expect(
+				visual_muzzle_direction.dot(aim_direction) > 0.9999,
+				"龙舌兰瞄准必须抵消固定美术角，使视觉炮口与目标方向一致。"
+			)
+		cannon_pivot.rotation = 0.0
 		var body_shape := agave.get_node("CollisionShape2D") as CollisionShape2D
 		var rectangle := body_shape.shape as RectangleShape2D
 		_expect(rectangle != null and rectangle.size == Vector2(28, 28), "植物接触碰撞必须为28×28。")
@@ -211,10 +270,14 @@ func _test_config_and_scene_contracts() -> void:
 			plant_health_bar != null
 			and plant_health_bar.get_script() == PLANT_HEALTH_BAR_SCRIPT
 			and plant_health_bar.size == Vector2(32, 5)
-			and plant_health_bar.scale == Vector2.ONE,
-			"龙舌兰必须实例化32×5且无缩放的独立植物血条。"
+			and plant_health_bar.scale == Vector2.ONE
+			and plant_health_bar.position == Vector2(-16, -23),
+			"龙舌兰必须实例化位于-23..-18的32×5无缩放植物血条。"
 		)
+		_test_agave_visual_bounds(visual_root, body_sprite, cannon_pivot, cannon_sprite)
+		_test_preview_runtime_alignment(ghost, agave, body_sprite, cannon_pivot, cannon_sprite)
 		agave.free()
+	tower_instance.free()
 
 	var cannonball := CANNONBALL_SCENE.instantiate() as AgaveCannonball
 	_expect(cannonball != null, "黑球炮弹场景必须可独立实例化。")
@@ -233,6 +296,196 @@ func _test_config_and_scene_contracts() -> void:
 		_expect(is_equal_approx(cannonball.speed, 180.0), "黑球飞行速度必须为180。")
 		_expect(cannonball.damage == 50, "黑球炮弹默认伤害必须为50。")
 		cannonball.free()
+
+
+func _test_agave_visual_bounds(
+	visual_root: Node2D,
+	body_sprite: AnimatedSprite2D,
+	cannon_pivot: Node2D,
+	cannon_sprite: AnimatedSprite2D
+) -> void:
+	var footprint_rect := Rect2(Vector2(-16, -16), Vector2(32, 32))
+	for texture in _get_animation_textures(body_sprite):
+		_expect(texture.get_size() == Vector2(64, 64), "龙舌兰全部身体帧必须为64×64。")
+		var body_rect := _get_animated_sprite_subject_rect(
+			body_sprite,
+			texture,
+			visual_root.transform
+		)
+		_expect(
+			footprint_rect.grow(0.01).encloses(body_rect),
+			"龙舌兰身体帧应用VisualRoot变换后不得越出32×32占格。"
+		)
+
+	var original_rotation := cannon_pivot.rotation
+	for texture in _get_animation_textures(cannon_sprite):
+		_expect(texture.get_size() == Vector2(64, 64), "龙舌兰全部炮头帧必须为64×64。")
+		_expect(
+			_get_max_opaque_radius(texture, Vector2(32, 32)) <= 24.0,
+			"龙舌兰炮头相对共享枢轴的可见半径不得超过24源像素。"
+		)
+		for direction_index in range(8):
+			cannon_pivot.rotation = float(direction_index) * PI / 4.0
+			var cannon_rect := _get_animated_sprite_subject_rect(
+				cannon_sprite,
+				texture,
+				visual_root.transform * cannon_pivot.transform
+			)
+			_expect(
+				footprint_rect.grow(0.01).encloses(cannon_rect),
+				"龙舌兰炮头任意八方向旋转时不得越出32×32占格。"
+			)
+	cannon_pivot.rotation = original_rotation
+
+
+func _test_preview_runtime_alignment(
+	ghost: Sprite2D,
+	agave: AgaveCannon,
+	body_sprite: AnimatedSprite2D,
+	cannon_pivot: Node2D,
+	cannon_sprite: AnimatedSprite2D
+) -> void:
+	ghost.texture = agave_config.icon
+	var ghost_rect := _get_sprite_subject_rect(ghost, agave_config.icon, Transform2D.IDENTITY)
+	var body_texture := body_sprite.sprite_frames.get_frame_texture(&"idle", 0)
+	var cannon_texture := cannon_sprite.sprite_frames.get_frame_texture(&"idle", 0)
+	var visual_root := agave.get_node("VisualRoot") as Node2D
+	var runtime_rect := _get_animated_sprite_subject_rect(
+		body_sprite,
+		body_texture,
+		visual_root.transform
+	)
+	runtime_rect = runtime_rect.merge(
+		_get_animated_sprite_subject_rect(
+			cannon_sprite,
+			cannon_texture,
+			visual_root.transform * cannon_pivot.transform
+		)
+	)
+	_expect(
+		_rect_edges_are_close(ghost_rect, runtime_rect, 0.5),
+		"龙舌兰放置预览与默认运行外观的包围盒和脚点误差不得超过0.5世界像素。"
+	)
+
+	var warehouse_config := PlantDefenseRegistry.get_config(&"oak_warehouse")
+	var warehouse := warehouse_config.plant_scene.instantiate() as OakWarehouse
+	var warehouse_sprite := warehouse.get_node("Sprite2D") as Sprite2D
+	ghost.texture = warehouse_config.icon
+	ghost_rect = _get_sprite_subject_rect(ghost, warehouse_config.icon, Transform2D.IDENTITY)
+	runtime_rect = _get_sprite_subject_rect(
+		warehouse_sprite,
+		warehouse_sprite.texture,
+		Transform2D.IDENTITY
+	)
+	_expect(
+		_rect_edges_are_close(ghost_rect, runtime_rect, 0.5),
+		"橡木仓库放置预览与运行建筑的包围盒和脚点误差不得超过0.5世界像素。"
+	)
+	warehouse.free()
+
+
+func _get_animation_textures(sprite: AnimatedSprite2D) -> Array[Texture2D]:
+	var textures: Array[Texture2D] = []
+	for animation_name in sprite.sprite_frames.get_animation_names():
+		for frame_index in range(sprite.sprite_frames.get_frame_count(animation_name)):
+			var texture := sprite.sprite_frames.get_frame_texture(animation_name, frame_index)
+			if texture != null and not textures.has(texture):
+				textures.append(texture)
+	return textures
+
+
+func _get_animated_sprite_subject_rect(
+	sprite: AnimatedSprite2D,
+	texture: Texture2D,
+	parent_transform: Transform2D
+) -> Rect2:
+	return _get_transformed_subject_rect(
+		texture,
+		sprite.centered,
+		sprite.offset,
+		parent_transform * sprite.transform
+	)
+
+
+func _get_sprite_subject_rect(
+	sprite: Sprite2D,
+	texture: Texture2D,
+	parent_transform: Transform2D
+) -> Rect2:
+	return _get_transformed_subject_rect(
+		texture,
+		sprite.centered,
+		sprite.offset,
+		parent_transform * sprite.transform
+	)
+
+
+func _get_transformed_subject_rect(
+	texture: Texture2D,
+	centered: bool,
+	offset: Vector2,
+	transform: Transform2D
+) -> Rect2:
+	var opaque_bounds := _get_texture_opaque_bounds(texture)
+	var source_rect := Rect2(Vector2(opaque_bounds.position), Vector2(opaque_bounds.size))
+	if centered:
+		source_rect.position -= texture.get_size() * 0.5
+	source_rect.position += offset
+	return _transform_rect(source_rect, transform)
+
+
+func _transform_rect(rect: Rect2, transform: Transform2D) -> Rect2:
+	var corners: Array[Vector2] = [
+		rect.position,
+		Vector2(rect.end.x, rect.position.y),
+		rect.end,
+		Vector2(rect.position.x, rect.end.y),
+	]
+	var first_point := transform * corners[0]
+	var transformed := Rect2(first_point, Vector2.ZERO)
+	for corner_index in range(1, corners.size()):
+		transformed = transformed.expand(transform * corners[corner_index])
+	return transformed
+
+
+func _get_texture_opaque_bounds(texture: Texture2D) -> Rect2i:
+	var image := texture.get_image()
+	var minimum := Vector2i(image.get_width(), image.get_height())
+	var maximum := Vector2i(-1, -1)
+	for y in range(image.get_height()):
+		for x in range(image.get_width()):
+			if image.get_pixel(x, y).a <= 0.001:
+				continue
+			minimum.x = mini(minimum.x, x)
+			minimum.y = mini(minimum.y, y)
+			maximum.x = maxi(maximum.x, x + 1)
+			maximum.y = maxi(maximum.y, y + 1)
+	if maximum.x < minimum.x or maximum.y < minimum.y:
+		return Rect2i()
+	return Rect2i(minimum, maximum - minimum)
+
+
+func _get_max_opaque_radius(texture: Texture2D, pivot: Vector2) -> float:
+	var image := texture.get_image()
+	var maximum_radius := 0.0
+	for y in range(image.get_height()):
+		for x in range(image.get_width()):
+			if image.get_pixel(x, y).a <= 0.001:
+				continue
+			maximum_radius = maxf(
+				maximum_radius,
+				Vector2(float(x) + 0.5, float(y) + 0.5).distance_to(pivot)
+			)
+	return maximum_radius
+
+
+func _rect_edges_are_close(first: Rect2, second: Rect2, tolerance: float) -> bool:
+	return (
+		absf(first.position.x - second.position.x) <= tolerance
+		and absf(first.position.y - second.position.y) <= tolerance
+		and absf(first.end.x - second.end.x) <= tolerance
+		and absf(first.end.y - second.end.y) <= tolerance
+	)
 
 
 func _test_plant_defense_mitigation() -> void:
@@ -592,18 +845,24 @@ func _test_multiplayer_authority_contracts() -> void:
 		"按net_id移除后必须立即释放索引和占格。"
 	)
 	await physics_frame
-	_expect(
-		plant_system.spawn_multiplayer_replica(
-			&"oak_warehouse",
-			anchor,
-			requesting_player,
-			4100,
-			5000,
-			5000,
-			1
-		) == null,
-		"未实现库存同步的橡木仓库不得生成多人客户端副本。"
-	)
+	const WAREHOUSE_REPLICA_NET_ID := 4100
+	var warehouse_replica := plant_system.spawn_multiplayer_replica(
+		&"oak_warehouse",
+		anchor,
+		requesting_player,
+		WAREHOUSE_REPLICA_NET_ID,
+		5000,
+		5000,
+		1
+	) as OakWarehouse
+	_expect(warehouse_replica != null, "共享仓库必须能生成多人客户端副本。")
+	if warehouse_replica != null:
+		_expect(warehouse_replica.is_multiplayer_proxy, "共享仓库副本必须标记为多人代理。")
+		_expect(
+			plant_system.remove_plant_by_net_id(WAREHOUSE_REPLICA_NET_ID),
+			"共享仓库副本必须能按net_id移除并释放占格。"
+		)
+	await physics_frame
 
 	const REPLICA_NET_ID := 4102
 	var replica := plant_system.spawn_multiplayer_replica(
@@ -666,9 +925,12 @@ func _test_multiplayer_authority_contracts() -> void:
 	controller.set_multiplayer_request_mode(true)
 	_expect(controller.open_selection(), "多人植物选择必须仍可打开。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 1
-		and controller.selection_hud.available_configs[0] == agave_config,
-		"多人植物选择必须只公开显式支持联网的龙舌兰。"
+		controller.selection_hud.available_configs.size() == 2
+		and controller.selection_hud.available_configs.has(agave_config)
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"oak_warehouse")
+		),
+		"多人植物选择必须公开龙舌兰与共享仓库。"
 	)
 	controller.cancel_placement()
 	var placement_requests: Array[Dictionary] = []

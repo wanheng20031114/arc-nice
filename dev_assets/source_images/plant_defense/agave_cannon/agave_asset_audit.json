@@ -1,362 +1,983 @@
 {
-  "pipeline": "built-in imagegen -> magenta key -> logical-grid analysis -> 33px normalization -> limited palette -> 64px layout",
-  "logical_side": 33,
-  "source_analysis": {
-    "idle_0": {
-      "image_width": 1153,
-      "image_height": 1364,
+  "schema_version": 2,
+  "asset_family": "agave_cannon",
+  "status": "passed",
+  "pipeline": [
+    "built-in imagegen selected composite master",
+    "flat #FF00FF chroma key",
+    "reliable logical-grid analysis",
+    "nearest logical-cell selection into 64px contract",
+    "shared <=64-color palette without dithering",
+    "material-aware body/head separation",
+    "deterministic stationary idle and fixed-pivot recoil derivation",
+    "binary-alpha and footprint audit"
+  ],
+  "visual_contract": {
+    "source_canvas_px": [
+      64,
+      64
+    ],
+    "static_world_scale": [
+      0.5,
+      0.5
+    ],
+    "world_footprint_px": [
+      32,
+      32
+    ],
+    "camera_zoom": 2,
+    "screen_px_per_source_px": 1,
+    "root_pivot_in_source_canvas": [
+      32,
+      32
+    ],
+    "cannon_pivot_in_body_canvas": [
+      32,
+      26
+    ],
+    "head_texture_pivot": [
+      32,
+      32
+    ],
+    "muzzle_in_head_texture": [
+      54,
+      39
+    ],
+    "alpha": "binary",
+    "transparent_rgb": [
+      0,
+      0,
+      0
+    ],
+    "visible_color_limit": 64
+  },
+  "source": {
+    "path": "dev_assets/source_images/plant_defense/agave_cannon/agave_cannon_selected_imagegen_magenta.png",
+    "normalization_mode": "measured_grid_center_sample",
+    "detected_logical_subject_size": [
+      53,
+      47
+    ],
+    "logical_subject_size": [
+      53,
+      47
+    ],
+    "logical_fit_scale": 1.0,
+    "grid_analysis": {
+      "image_width": 1254,
+      "image_height": 1254,
       "image_mode": "RGBA",
-      "detection_mode": "approximate",
-      "grid_cell_width": 26.9,
-      "grid_cell_height": 27.6,
-      "grid_cell_size": 27,
-      "confidence": 0.962,
+      "detection_mode": "periodic_phase_fallback",
+      "grid_cell_width": 18.65,
+      "grid_cell_height": 20.1,
+      "grid_cell_size": 19,
+      "confidence": 0.649,
       "subject_bbox": {
-        "left": 210,
-        "top": 218,
-        "right": 965,
-        "bottom": 1128
+        "left": 128,
+        "top": 150,
+        "right": 1117,
+        "bottom": 1098
       },
-      "subject_pixel_width": 755,
-      "subject_pixel_height": 910,
-      "subject_grid_width": 28,
-      "subject_grid_height": 33,
-      "recommended_canvas_grid_width": 43,
-      "recommended_canvas_grid_height": 49
-    },
-    "idle_1": {
-      "image_width": 1154,
-      "image_height": 1363,
-      "image_mode": "RGBA",
-      "detection_mode": "approximate",
-      "grid_cell_width": 27.6,
-      "grid_cell_height": 27.7,
-      "grid_cell_size": 28,
-      "confidence": 0.721,
-      "subject_bbox": {
-        "left": 180,
-        "top": 203,
-        "right": 978,
-        "bottom": 1137
-      },
-      "subject_pixel_width": 798,
-      "subject_pixel_height": 934,
-      "subject_grid_width": 29,
-      "subject_grid_height": 34,
-      "recommended_canvas_grid_width": 42,
-      "recommended_canvas_grid_height": 49
-    },
-    "idle_2": {
-      "image_width": 1155,
-      "image_height": 1362,
-      "image_mode": "RGBA",
-      "detection_mode": "inherited_from_master",
-      "grid_cell_width": 27.25,
-      "grid_cell_height": 27.25,
-      "grid_cell_size": 27,
-      "confidence": 0.363,
-      "subject_bbox": {
-        "left": 201,
-        "top": 194,
-        "right": 966,
-        "bottom": 1150
-      },
-      "subject_pixel_width": 765,
-      "subject_pixel_height": 956,
-      "subject_grid_width": 28,
-      "subject_grid_height": 35,
-      "recommended_canvas_grid_width": 1155,
-      "recommended_canvas_grid_height": 1362
-    },
-    "idle_3": {
-      "image_width": 1154,
-      "image_height": 1363,
-      "image_mode": "RGBA",
-      "detection_mode": "approximate",
-      "grid_cell_width": 26.95,
-      "grid_cell_height": 26.7,
-      "grid_cell_size": 27,
-      "confidence": 0.875,
-      "subject_bbox": {
-        "left": 209,
-        "top": 244,
-        "right": 964,
-        "bottom": 1154
-      },
-      "subject_pixel_width": 755,
-      "subject_pixel_height": 910,
-      "subject_grid_width": 28,
-      "subject_grid_height": 34,
-      "recommended_canvas_grid_width": 43,
-      "recommended_canvas_grid_height": 51
-    },
-    "fire_0": {
-      "image_width": 1154,
-      "image_height": 1363,
-      "image_mode": "RGBA",
-      "detection_mode": "inherited_from_master",
-      "grid_cell_width": 27.25,
-      "grid_cell_height": 27.25,
-      "grid_cell_size": 27,
-      "confidence": 0.055,
-      "subject_bbox": {
-        "left": 184,
-        "top": 207,
-        "right": 987,
-        "bottom": 1127
-      },
-      "subject_pixel_width": 803,
-      "subject_pixel_height": 920,
-      "subject_grid_width": 29,
-      "subject_grid_height": 34,
-      "recommended_canvas_grid_width": 1154,
-      "recommended_canvas_grid_height": 1363
-    },
-    "fire_1": {
-      "image_width": 1153,
-      "image_height": 1364,
-      "image_mode": "RGBA",
-      "detection_mode": "approximate",
-      "grid_cell_width": 26.9,
-      "grid_cell_height": 27.6,
-      "grid_cell_size": 27,
-      "confidence": 0.884,
-      "subject_bbox": {
-        "left": 211,
-        "top": 218,
-        "right": 968,
-        "bottom": 1128
-      },
-      "subject_pixel_width": 757,
-      "subject_pixel_height": 910,
-      "subject_grid_width": 28,
-      "subject_grid_height": 33,
-      "recommended_canvas_grid_width": 43,
-      "recommended_canvas_grid_height": 49
-    },
-    "fire_2": {
-      "image_width": 1154,
-      "image_height": 1363,
-      "image_mode": "RGBA",
-      "detection_mode": "approximate",
-      "grid_cell_width": 26.75,
-      "grid_cell_height": 27.55,
-      "grid_cell_size": 27,
-      "confidence": 0.754,
-      "subject_bbox": {
-        "left": 213,
-        "top": 219,
-        "right": 1061,
-        "bottom": 1127
-      },
-      "subject_pixel_width": 848,
-      "subject_pixel_height": 908,
-      "subject_grid_width": 32,
-      "subject_grid_height": 33,
-      "recommended_canvas_grid_width": 43,
-      "recommended_canvas_grid_height": 49
-    },
-    "fire_3": {
-      "image_width": 1154,
-      "image_height": 1363,
-      "image_mode": "RGBA",
-      "detection_mode": "approximate",
-      "grid_cell_width": 26.35,
-      "grid_cell_height": 27.25,
-      "grid_cell_size": 27,
-      "confidence": 0.886,
-      "subject_bbox": {
-        "left": 190,
-        "top": 229,
-        "right": 1048,
-        "bottom": 1127
-      },
-      "subject_pixel_width": 858,
-      "subject_pixel_height": 898,
-      "subject_grid_width": 33,
-      "subject_grid_height": 33,
-      "recommended_canvas_grid_width": 44,
-      "recommended_canvas_grid_height": 50
-    },
-    "fire_4": {
-      "image_width": 1155,
-      "image_height": 1362,
-      "image_mode": "RGBA",
-      "detection_mode": "approximate",
-      "grid_cell_width": 26.8,
-      "grid_cell_height": 26.55,
-      "grid_cell_size": 27,
-      "confidence": 0.783,
-      "subject_bbox": {
-        "left": 211,
-        "top": 237,
-        "right": 963,
-        "bottom": 1135
-      },
-      "subject_pixel_width": 752,
-      "subject_pixel_height": 898,
-      "subject_grid_width": 28,
-      "subject_grid_height": 34,
-      "recommended_canvas_grid_width": 43,
-      "recommended_canvas_grid_height": 51
+      "subject_pixel_width": 989,
+      "subject_pixel_height": 948,
+      "subject_grid_width": 53,
+      "subject_grid_height": 47,
+      "recommended_canvas_grid_width": 67,
+      "recommended_canvas_grid_height": 62,
+      "fallback_axis_scores": [
+        0.471,
+        0.826
+      ],
+      "fallback_period_ratio": 1.078
     }
   },
-  "outputs": [
-    {
-      "path": "resources/texture/plant_defense/agave_cannon/agave_body_idle_0.png",
-      "size": [
-        64,
+  "master_registration": {
+    "mode": "bottom_center",
+    "paste_origin": [
+      6,
+      16
+    ],
+    "output_foot_target": [
+      32,
+      62
+    ]
+  },
+  "segmentation": {
+    "method": "warm-material seeded 8-connected mask excluding confident leaf hues, plus geometry-recovered enclosed muzzle reflection",
+    "warm_seed_count": 179,
+    "mask_pixel_count": 212,
+    "search_bbox_exclusive": [
+      28,
+      25,
+      56,
+      41
+    ],
+    "mask_bbox_exclusive": [
+      28,
+      27,
+      54,
+      39
+    ],
+    "muzzle_interior_center": [
+      49,
+      32
+    ],
+    "muzzle_interior_pixels_added": 12
+  },
+  "head_registration": {
+    "mode": "source-relative shared body/head pivot registration",
+    "source_mask_bbox_exclusive": [
+      28,
+      27,
+      54,
+      39
+    ],
+    "paste_origin": [
+      28,
+      33
+    ],
+    "body_pivot": [
+      32,
+      26
+    ],
+    "output_pivot": [
+      32,
+      32
+    ],
+    "visual_muzzle_edge": [
+      54,
+      39
+    ],
+    "scene_muzzle_marker": [
+      54,
+      39
+    ]
+  },
+  "animation_derivation": {
+    "body": "stationary geometry; deterministic interior highlight substitutions only",
+    "head_fire_recoil_source_px": [
+      0,
+      1,
+      1,
+      1,
+      0
+    ],
+    "head_fire_heat_columns": [
+      1,
+      2,
+      3,
+      1,
+      0
+    ],
+    "detached_projectile_or_flash_in_frames": false
+  },
+  "shared_palette": {
+    "visible_color_limit": 64,
+    "actual_color_count": 62,
+    "rgb": [
+      [
+        251,
+        188,
+        36
+      ],
+      [
+        194,
+        172,
+        55
+      ],
+      [
+        85,
+        195,
+        164
+      ],
+      [
+        82,
+        192,
+        162
+      ],
+      [
+        54,
+        170,
+        142
+      ],
+      [
+        50,
+        164,
+        138
+      ],
+      [
+        50,
+        163,
+        138
+      ],
+      [
+        49,
+        163,
+        137
+      ],
+      [
+        49,
+        162,
+        137
+      ],
+      [
+        214,
+        132,
+        11
+      ],
+      [
+        196,
+        117,
+        9
+      ],
+      [
+        131,
+        136,
+        48
+      ],
+      [
+        105,
+        128,
+        50
+      ],
+      [
+        50,
+        160,
+        135
+      ],
+      [
+        89,
+        111,
+        41
+      ],
+      [
+        84,
+        106,
+        41
+      ],
+      [
+        82,
+        106,
+        40
+      ],
+      [
+        47,
+        164,
+        137
+      ],
+      [
+        47,
+        162,
+        136
+      ],
+      [
+        48,
+        161,
+        136
+      ],
+      [
+        46,
+        161,
+        135
+      ],
+      [
+        46,
+        158,
+        134
+      ],
+      [
+        44,
+        153,
+        128
+      ],
+      [
+        37,
+        137,
+        113
+      ],
+      [
+        34,
+        129,
+        105
+      ],
+      [
+        33,
+        127,
+        103
+      ],
+      [
+        33,
+        125,
+        101
+      ],
+      [
+        31,
+        120,
+        96
+      ],
+      [
+        31,
+        117,
+        94
+      ],
+      [
+        30,
+        115,
+        92
+      ],
+      [
+        29,
+        114,
+        91
+      ],
+      [
+        28,
+        109,
+        87
+      ],
+      [
+        80,
+        103,
+        39
+      ],
+      [
+        140,
+        79,
+        5
+      ],
+      [
+        90,
+        52,
+        2
+      ],
+      [
+        51,
+        77,
+        30
+      ],
+      [
+        43,
+        59,
+        17
+      ],
+      [
+        43,
+        53,
+        14
+      ],
+      [
+        36,
+        49,
+        14
+      ],
+      [
+        24,
+        96,
+        76
+      ],
+      [
+        20,
+        82,
         64
       ],
-      "size_ok": true,
-      "binary_alpha": true,
-      "transparent_rgb_clean": true,
-      "exterior_outline_black": true,
-      "palette_color_count": 4,
-      "has_purple": false
-    },
-    {
-      "path": "resources/texture/plant_defense/agave_cannon/agave_body_idle_1.png",
-      "size": [
-        64,
-        64
+      [
+        16,
+        72,
+        55
       ],
-      "size_ok": true,
-      "binary_alpha": true,
-      "transparent_rgb_clean": true,
-      "exterior_outline_black": true,
-      "palette_color_count": 5,
-      "has_purple": false
-    },
-    {
-      "path": "resources/texture/plant_defense/agave_cannon/agave_body_idle_2.png",
-      "size": [
+      [
+        13,
         64,
-        64
+        48
       ],
-      "size_ok": true,
-      "binary_alpha": true,
-      "transparent_rgb_clean": true,
-      "exterior_outline_black": true,
-      "palette_color_count": 4,
-      "has_purple": false
-    },
-    {
-      "path": "resources/texture/plant_defense/agave_cannon/agave_body_idle_3.png",
-      "size": [
-        64,
-        64
+      [
+        10,
+        58,
+        43
       ],
-      "size_ok": true,
-      "binary_alpha": true,
-      "transparent_rgb_clean": true,
-      "exterior_outline_black": true,
-      "palette_color_count": 5,
-      "has_purple": false
-    },
-    {
-      "path": "resources/texture/plant_defense/agave_cannon/agave_cannon_idle_0.png",
-      "size": [
-        64,
-        64
+      [
+        6,
+        49,
+        35
       ],
-      "size_ok": true,
-      "binary_alpha": true,
-      "transparent_rgb_clean": true,
-      "exterior_outline_black": true,
-      "palette_color_count": 4,
-      "has_purple": false
-    },
-    {
-      "path": "resources/texture/plant_defense/agave_cannon/agave_cannon_fire_0.png",
-      "size": [
-        64,
-        64
+      [
+        5,
+        42,
+        30
       ],
-      "size_ok": true,
-      "binary_alpha": true,
-      "transparent_rgb_clean": true,
-      "exterior_outline_black": true,
-      "palette_color_count": 4,
-      "has_purple": false
-    },
-    {
-      "path": "resources/texture/plant_defense/agave_cannon/agave_cannon_fire_1.png",
-      "size": [
-        64,
-        64
+      [
+        4,
+        40,
+        28
       ],
-      "size_ok": true,
-      "binary_alpha": true,
-      "transparent_rgb_clean": true,
-      "exterior_outline_black": true,
-      "palette_color_count": 6,
-      "has_purple": false
-    },
-    {
-      "path": "resources/texture/plant_defense/agave_cannon/agave_cannon_fire_2.png",
-      "size": [
-        64,
-        64
+      [
+        26,
+        30,
+        12
       ],
-      "size_ok": true,
-      "binary_alpha": true,
-      "transparent_rgb_clean": true,
-      "exterior_outline_black": true,
-      "palette_color_count": 7,
-      "has_purple": false
-    },
-    {
-      "path": "resources/texture/plant_defense/agave_cannon/agave_cannon_fire_3.png",
-      "size": [
-        64,
-        64
+      [
+        18,
+        20,
+        14
       ],
-      "size_ok": true,
-      "binary_alpha": true,
-      "transparent_rgb_clean": true,
-      "exterior_outline_black": true,
-      "palette_color_count": 4,
-      "has_purple": false
-    },
-    {
-      "path": "resources/texture/plant_defense/agave_cannon/agave_cannon_fire_4.png",
-      "size": [
-        64,
-        64
+      [
+        15,
+        18,
+        12
       ],
-      "size_ok": true,
-      "binary_alpha": true,
-      "transparent_rgb_clean": true,
-      "exterior_outline_black": true,
-      "palette_color_count": 4,
-      "has_purple": false
-    },
-    {
-      "path": "resources/texture/plant_defense/agave_cannon/icon.png",
-      "size": [
+      [
+        13,
+        18,
+        13
+      ],
+      [
+        13,
+        16,
+        10
+      ],
+      [
+        13,
+        15,
+        9
+      ],
+      [
+        11,
+        14,
+        10
+      ],
+      [
+        12,
+        12,
+        7
+      ],
+      [
+        5,
+        38,
+        28
+      ],
+      [
+        3,
+        38,
+        27
+      ],
+      [
+        4,
+        35,
+        26
+      ],
+      [
+        4,
+        32,
+        23
+      ],
+      [
+        6,
+        26,
+        22
+      ],
+      [
+        10,
+        14,
+        9
+      ],
+      [
+        10,
+        12,
+        7
+      ]
+    ]
+  },
+  "cross_frame_audit": {
+    "body_foot_anchors": [
+      [
+        32.0,
+        62.0
+      ],
+      [
+        32.0,
+        62.0
+      ],
+      [
+        32.0,
+        62.0
+      ],
+      [
+        32.0,
+        62.0
+      ]
+    ],
+    "body_foot_max_drift_source_px": 0.0,
+    "body_foot_drift_limit_source_px": 1.0,
+    "head_output_pivots": {
+      "head_idle_0": [
         32,
         32
       ],
-      "size_ok": true,
-      "binary_alpha": true,
-      "transparent_rgb_clean": true,
-      "exterior_outline_black": true,
-      "palette_color_count": 7,
-      "has_purple": false
+      "head_fire_0": [
+        32,
+        32
+      ],
+      "head_fire_1": [
+        32,
+        32
+      ],
+      "head_fire_2": [
+        32,
+        32
+      ],
+      "head_fire_3": [
+        32,
+        32
+      ],
+      "head_fire_4": [
+        32,
+        32
+      ]
+    },
+    "head_pivot_max_drift_source_px": 0,
+    "head_radius_by_frame_source_px": {
+      "head_idle_0": 23.505,
+      "head_fire_0": 23.505,
+      "head_fire_1": 22.594,
+      "head_fire_2": 22.594,
+      "head_fire_3": 22.594,
+      "head_fire_4": 23.505
+    },
+    "head_maximum_radius_source_px": 23.505,
+    "head_radius_limit_source_px": 24.0,
+    "muzzle_edge_x_by_frame": {
+      "head_idle_0": 54,
+      "head_fire_0": 54,
+      "head_fire_1": 53,
+      "head_fire_2": 53,
+      "head_fire_3": 53,
+      "head_fire_4": 54
+    },
+    "muzzle_tip_max_drift_source_px": 1,
+    "anchor_recomposition_diff_pixels": 0
+  },
+  "outputs": [
+    {
+      "label": "body_idle_0",
+      "path": "resources/texture/plant_defense/agave_cannon/agave_body_idle_0.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        6,
+        16,
+        59,
+        63
+      ],
+      "subject_size": [
+        53,
+        47
+      ],
+      "visible_color_count": 57,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -13.0,
+        -8.0,
+        13.5,
+        15.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
     },
     {
-      "path": "resources/texture/plant_defense/agave_cannon/agave_cannonball.png",
-      "size": [
-        12,
+      "label": "body_idle_1",
+      "path": "resources/texture/plant_defense/agave_cannon/agave_body_idle_1.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        6,
+        16,
+        59,
+        63
+      ],
+      "subject_size": [
+        53,
+        47
+      ],
+      "visible_color_count": 57,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -13.0,
+        -8.0,
+        13.5,
+        15.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "body_idle_2",
+      "path": "resources/texture/plant_defense/agave_cannon/agave_body_idle_2.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        6,
+        16,
+        59,
+        63
+      ],
+      "subject_size": [
+        53,
+        47
+      ],
+      "visible_color_count": 57,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -13.0,
+        -8.0,
+        13.5,
+        15.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "body_idle_3",
+      "path": "resources/texture/plant_defense/agave_cannon/agave_body_idle_3.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        6,
+        16,
+        59,
+        63
+      ],
+      "subject_size": [
+        53,
+        47
+      ],
+      "visible_color_count": 57,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -13.0,
+        -8.0,
+        13.5,
+        15.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "head_idle_0",
+      "path": "resources/texture/plant_defense/agave_cannon/agave_cannon_idle_0.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        28,
+        33,
+        54,
+        45
+      ],
+      "subject_size": [
+        26,
         12
       ],
-      "size_ok": true,
-      "binary_alpha": true,
-      "transparent_rgb_clean": true,
-      "exterior_outline_black": true,
-      "palette_color_count": 3,
-      "has_purple": false
+      "visible_color_count": 9,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -2.0,
+        0.5,
+        11.0,
+        6.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "head_fire_0",
+      "path": "resources/texture/plant_defense/agave_cannon/agave_cannon_fire_0.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        28,
+        33,
+        54,
+        45
+      ],
+      "subject_size": [
+        26,
+        12
+      ],
+      "visible_color_count": 9,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -2.0,
+        0.5,
+        11.0,
+        6.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "head_fire_1",
+      "path": "resources/texture/plant_defense/agave_cannon/agave_cannon_fire_1.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        28,
+        33,
+        53,
+        45
+      ],
+      "subject_size": [
+        25,
+        12
+      ],
+      "visible_color_count": 9,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -2.0,
+        0.5,
+        10.5,
+        6.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "head_fire_2",
+      "path": "resources/texture/plant_defense/agave_cannon/agave_cannon_fire_2.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        28,
+        33,
+        53,
+        45
+      ],
+      "subject_size": [
+        25,
+        12
+      ],
+      "visible_color_count": 9,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -2.0,
+        0.5,
+        10.5,
+        6.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "head_fire_3",
+      "path": "resources/texture/plant_defense/agave_cannon/agave_cannon_fire_3.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        28,
+        33,
+        53,
+        45
+      ],
+      "subject_size": [
+        25,
+        12
+      ],
+      "visible_color_count": 9,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -2.0,
+        0.5,
+        10.5,
+        6.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "head_fire_4",
+      "path": "resources/texture/plant_defense/agave_cannon/agave_cannon_fire_4.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        28,
+        33,
+        54,
+        45
+      ],
+      "subject_size": [
+        26,
+        12
+      ],
+      "visible_color_count": 9,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -2.0,
+        0.5,
+        11.0,
+        6.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "icon",
+      "path": "resources/texture/plant_defense/agave_cannon/icon.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        6,
+        16,
+        59,
+        63
+      ],
+      "subject_size": [
+        53,
+        47
+      ],
+      "visible_color_count": 62,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -13.0,
+        -8.0,
+        13.5,
+        15.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
     }
-  ]
+  ],
+  "validation": {
+    "passed": true,
+    "failures": []
+  }
 }

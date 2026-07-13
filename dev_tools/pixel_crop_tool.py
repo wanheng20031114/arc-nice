@@ -30,7 +30,11 @@ from pixel_grid_analyzer import analyze_image, find_subject_bbox
 
 
 MIN_SAFE_GRID_CONFIDENCE = 0.65
-NATIVE_PIXEL_CANVAS_LIMIT = 32
+# 64px is the native plant-building contract.  A native image at or below this
+# size can be copied/padded without destructive compression; larger unknown
+# grids are still rejected unless the caller explicitly opts into the existing
+# unsafe override.
+NATIVE_PIXEL_CANVAS_LIMIT = 64
 
 
 def normalize_transparency(

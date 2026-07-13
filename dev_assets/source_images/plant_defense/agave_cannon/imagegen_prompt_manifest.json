@@ -1,0 +1,93 @@
+{
+  "schema_version": 2,
+  "generation_mode": "built-in imagegen",
+  "use_case": "stylized-concept",
+  "asset_family": "agave_cannon",
+  "reference_roles": [
+    {
+      "name": "volume_reference",
+      "role": "The user-provided farm-building screenshot is a viewpoint, plane-separation, roof-thickness, and grounding reference only. Do not copy its building, palette, or details."
+    },
+    {
+      "name": "identity_reference",
+      "path": "resources/texture/plant_defense/agave_cannon/icon.png",
+      "role": "Preserve only the agave identity, teal-green leaf family, warm pod/cannon material, and gameplay readability. Do not preserve the old detached-paper silhouette or offset."
+    }
+  ],
+  "common_contract": {
+    "logical_canvas": [64, 64],
+    "world_scale": [0.5, 0.5],
+    "world_footprint": [32, 32],
+    "camera_zoom": 2,
+    "lighting": "upper-left key light; bright top planes, medium front planes, dark right and underside planes",
+    "pixel_style": "native logical pixel art, hard square clusters, no antialiasing, no subpixel strokes, no painterly texture",
+    "palette": "coherent limited palette designed to quantize to at most 64 visible RGB colors",
+    "background": "perfectly flat solid #FF00FF chroma key; no variation, gradient, floor, reflection, or background shadow",
+    "alpha_after_processing": "binary; transparent RGB zero",
+    "avoid": [
+      "text",
+      "UI",
+      "ground tile",
+      "separate props",
+      "watermark",
+      "soft edges",
+      "glow outside the footprint",
+      "Stardew Valley-specific architecture or copied pixels"
+    ]
+  },
+  "concept_candidates": [
+    {
+      "name": "agave_cannon_concept_a",
+      "raw_source": "dev_assets/source_images/plant_defense/agave_cannon/agave_cannon_candidate_a_imagegen_magenta.png",
+      "prompt": "Use case: stylized-concept. Asset type: 64-logical-pixel tower-defense plant-building concept. Input images: Image 1 is a volume/viewpoint reference only; Image 2 is an identity and palette reference only. Create one compact Agave Cannon seen in a clear three-quarter top-down game view. Build the base from several thick overlapping agave leaves with visible bright top surfaces, medium front faces, dark right/undersides, and a recessed central rotating socket. The cannon pod must feel thick and mounted, with a lit top plane, readable side material, and a dark underside. Keep the entire combined silhouette inside a 64x64 logical-pixel square and visually grounded with compact occlusion at the base. Render every logical pixel as a uniform hard square block. Flat pure #FF00FF background only. No text, UI, ground tile, cast shadow beyond the silhouette, extra object, blur, antialiasing, watermark, or copied reference-building details."
+    },
+    {
+      "name": "agave_cannon_concept_b",
+      "raw_source": "dev_assets/source_images/plant_defense/agave_cannon/agave_cannon_candidate_b_imagegen_magenta.png",
+      "prompt": "Use case: stylized-concept. Asset type: alternate 64-logical-pixel tower-defense plant-building concept. Input images: Image 1 supplies only volumetric plane separation; Image 2 supplies only Agave Cannon identity and colors. Create one compact living agave artillery plant in a three-quarter top-down view. Emphasize a layered rosette pedestal: broad fleshy leaves form a weighty lower ring, smaller raised leaves form a central armored turret well, and the seed-pod barrel locks into that well instead of floating above it. Use upper-left light, clear top/front/right planes, dark contact occlusion contained inside the footprint, and a strong readable silhouette. The complete object must fit within 64x64 logical pixels. Hard square pixel clusters and a palette suitable for <=64 colors. Perfectly uniform #FF00FF background. No text, UI, ground tile, extra variant, soft painting, antialiasing, glow, watermark, or copied reference architecture."
+    }
+  ],
+  "selection": {
+    "generation_mode": "built-in imagegen",
+    "chosen_source": "agave_cannon_candidate_b_refined",
+    "derived_from": "agave_cannon_candidate_b",
+    "selected_candidate": "agave_cannon_concept_b_refined",
+    "refined_source": "dev_assets/source_images/plant_defense/agave_cannon/agave_cannon_candidate_b_refined_imagegen_magenta.png",
+    "refinement_spec": "Refine candidate B only: preserve its exact Agave Cannon identity, pose, palette family, upper-left light, and volumetric layered-leaf construction; make the logical pixel clusters more regular and the pure #FF00FF background easier to key; keep the amber right-facing cannon materially separable from the green/olive body; do not add ground, shadow, text, UI, projectile, flash, or new objects.",
+    "selected_source": "dev_assets/source_images/plant_defense/agave_cannon/agave_cannon_selected_imagegen_magenta.png",
+    "selected_sha256": "771357FA627C55EF3D67048B44316F0B9209CE652CA5AAE660E71DA05B4F146C",
+    "selected_source_action": "Copy the refined candidate B byte-for-byte to selected_source before processing; do not resize, filter, or blend candidates."
+  },
+  "production_derivation": {
+    "single_master": true,
+    "reason": "All runtime frames inherit one exact silhouette, material identity, and palette instead of drifting across independent imagegen calls.",
+    "body_head_split": "Warm amber material seeds grow through adjacent outline/shadow pixels while confident green/teal leaf hues are excluded; the socket and right-side leaves hidden by the installed head are reconstructed from the authored ring and mirrored leaf planes.",
+    "body_idle_frames": "Four frames share identical alpha geometry and foot; only deterministic interior highlight pixels change.",
+    "head_idle_frame": "The separated head preserves every source pixel relative to body pivot (32,26), translated to texture pivot (32,32). The measured visual muzzle is texture coordinate (54,39), so the scene uses local marker (22,7) and subtracts that fixed art angle while aiming.",
+    "head_fire_frames": "Five frames use deterministic 0/1-source-pixel barrel recoil plus internal muzzle heat colors; mount pixels remain fixed and no detached projectile/flash is baked in.",
+    "icon": "Recompose body idle 0 and head idle on one 64x64 source canvas.",
+    "shared_palette": "One <=64-color palette is derived from the selected composite and reused by every output frame."
+  },
+  "processor": {
+    "path": "dev_tools/process_agave_cannon_assets.py",
+    "check_command": "python dev_tools/process_agave_cannon_assets.py --check-only",
+    "write_command": "python dev_tools/process_agave_cannon_assets.py",
+    "unsafe_grid_compression": false,
+    "managed_outputs": [
+      "resources/texture/plant_defense/agave_cannon/agave_body_idle_0.png",
+      "resources/texture/plant_defense/agave_cannon/agave_body_idle_1.png",
+      "resources/texture/plant_defense/agave_cannon/agave_body_idle_2.png",
+      "resources/texture/plant_defense/agave_cannon/agave_body_idle_3.png",
+      "resources/texture/plant_defense/agave_cannon/agave_cannon_idle_0.png",
+      "resources/texture/plant_defense/agave_cannon/agave_cannon_fire_0.png",
+      "resources/texture/plant_defense/agave_cannon/agave_cannon_fire_1.png",
+      "resources/texture/plant_defense/agave_cannon/agave_cannon_fire_2.png",
+      "resources/texture/plant_defense/agave_cannon/agave_cannon_fire_3.png",
+      "resources/texture/plant_defense/agave_cannon/agave_cannon_fire_4.png",
+      "resources/texture/plant_defense/agave_cannon/icon.png"
+    ],
+    "explicitly_unmanaged": [
+      "resources/texture/plant_defense/agave_cannon/agave_cannonball.png"
+    ]
+  }
+}

@@ -93,12 +93,28 @@ func _test_config_and_scene(config: PlantDefenseConfig, warehouse: OakWarehouse)
 		"64×64仓库像素图必须以0.5静态缩放收进32×32占格。"
 	)
 	_expect(
-		sprite_texture.get_size().x <= 128 and sprite_texture.get_size().y <= 128,
-		"橡木仓库贴图必须遵守单张不超过128×128的规则。"
+		sprite_texture.get_size() == Vector2(64, 64),
+		"橡木仓库必须使用真正的64×64逻辑像素画布。"
 	)
 	var warehouse_image := sprite_texture.get_image()
 	_expect(_has_binary_alpha(warehouse_image), "橡木仓库像素图不得包含半透明脏边。")
 	_expect(not _has_legacy_magenta_fringe(warehouse_image), "橡木仓库轮廓不得残留旧素材的紫色边缘。")
+	var opaque_bounds := _get_opaque_bounds(warehouse_image)
+	_expect(
+		opaque_bounds.has_area()
+		and opaque_bounds.size.x <= 60
+		and opaque_bounds.size.y <= 62,
+		"橡木仓库可见主体必须收进60×62源像素预算。"
+	)
+	var subject_rect := _get_centered_sprite_subject_rect(
+		warehouse_sprite,
+		opaque_bounds,
+		sprite_texture.get_size()
+	)
+	_expect(
+		Rect2(Vector2(-16, -16), Vector2(32, 32)).encloses(subject_rect),
+		"橡木仓库应用0.5场景变换后必须完整位于32×32世界占格内。"
+	)
 	var body_shape := warehouse.get_node("CollisionShape2D") as CollisionShape2D
 	var body_rectangle := body_shape.shape as RectangleShape2D
 	_expect(
@@ -139,58 +155,52 @@ func _test_config_and_scene(config: PlantDefenseConfig, warehouse: OakWarehouse)
 		"橡木仓库必须持续播放低频循环待机动画。"
 	)
 	if idle_animation != null:
-		var opaque_bounds := _get_opaque_bounds(warehouse_image)
-		var footprint_rect := Rect2(Vector2(-16, -16), Vector2(32, 32))
 		for track_index in range(idle_animation.get_track_count()):
 			var track_path := str(idle_animation.track_get_path(track_index))
 			_expect(
-				not track_path.contains(":scale"),
-				"仓库待机动画不得缩放像素图。"
+				not track_path.ends_with(":position")
+				and not track_path.ends_with(":scale"),
+				"仓库待机动画不得再移动或缩放整栋建筑。"
 			)
-			if track_path.ends_with(":position"):
-				_expect(
-					idle_animation.track_get_interpolation_type(track_index)
-					== Animation.INTERPOLATION_NEAREST,
-					"仓库待机位移必须使用阶跃插值避免亚像素模糊。"
-				)
-				for key_index in range(idle_animation.track_get_key_count(track_index)):
-					var position_key: Vector2 = idle_animation.track_get_key_value(
-						track_index,
-						key_index
-					)
-					_expect(
-						position_key == position_key.round()
-						and is_zero_approx(position_key.x)
-						and position_key.y >= -1.0
-						and position_key.y <= 0.0,
-						"仓库待机动画必须只在占格内做最多1像素的整数上移。"
-					)
-					var subject_rect := Rect2(
-						Vector2(opaque_bounds.position) * warehouse_sprite.scale
-						- sprite_texture.get_size() * warehouse_sprite.scale * 0.5
-						+ position_key,
-						Vector2(opaque_bounds.size) * warehouse_sprite.scale
-					)
-					_expect(
-						footprint_rect.encloses(subject_rect),
-						"仓库可见像素在完整待机动画中都必须位于32×32占格内。"
-					)
 	var background := warehouse.storage_panel.get_node("Overlay/PanelRoot/Background") as TextureRect
 	_expect(background.texture.get_size() == Vector2(724, 543), "仓库界面底图必须匹配724×543设计画布。")
 	var prompt := warehouse.interaction_prompt
 	var key_label := prompt.get_node("PromptMargin/PromptRow/Keycap/KeyLabel") as Label
 	var action_label := prompt.get_node("PromptMargin/PromptRow/ActionLabel") as Label
 	_expect(prompt.scale == Vector2(0.5, 0.5), "仓库提示必须用0.5静态缩放抵消塔防镜头放大。")
+	_expect(
+		warehouse.prompt_rest_position == Vector2(-22, -30),
+		"仓库提示静止位置必须降低到紧贴屋顶的世界坐标。"
+	)
 	_expect(prompt.custom_minimum_size == Vector2(88, 26), "仓库提示内部画布必须压缩为88×26。")
 	_expect(key_label.text == "F" and action_label.text == "打开仓库", "仓库提示必须使用独立F键帽与精简文案。")
-	var prompt_bottom := prompt.position.y + prompt.size.y * prompt.scale.y
-	var prompt_gap := warehouse.health_bar.position.y - prompt_bottom
 	_expect(
-		prompt_gap >= 1.0
-		and prompt_gap <= 4.0
-		and warehouse.health_bar.position.y - (prompt_bottom + 1.0) >= 1.0,
-		"仓库提示在静止和入场动画期间都必须紧贴生命条且不得重叠。"
+		warehouse.health_bar.position == Vector2(-16, -38)
+		and warehouse.health_bar.size == Vector2(32, 5),
+		"仓库血条必须位于提示上方的-38..-33世界坐标。"
 	)
+	var health_bottom := warehouse.health_bar.position.y + warehouse.health_bar.size.y
+	var health_prompt_gap := warehouse.prompt_rest_position.y - health_bottom
+	var prompt_bottom := (
+		warehouse.prompt_rest_position.y + prompt.size.y * prompt.scale.y
+	)
+	var prompt_roof_gap := subject_rect.position.y - prompt_bottom
+	_expect(
+		health_prompt_gap >= 1.0
+		and health_prompt_gap <= 4.0
+		and prompt_roof_gap >= 1.0
+		and prompt_roof_gap <= 3.0,
+		"仓库提示必须位于血条与屋顶之间，并与屋顶保持约1至2像素间距。"
+	)
+	warehouse.call("_set_prompt_reveal_offset", 1.0)
+	_expect(prompt.position == Vector2(-22, -29), "仓库提示入场只能使用-29整数Y坐标。")
+	var reveal_prompt_bottom := prompt.position.y + prompt.size.y * prompt.scale.y
+	_expect(
+		subject_rect.position.y - reveal_prompt_bottom >= 0.0,
+		"仓库提示入场的-29位置也不得压住屋顶。"
+	)
+	warehouse.call("_set_prompt_reveal_offset", 0.0)
+	_expect(prompt.position == Vector2(-22, -30), "仓库提示静止时必须回到-30整数Y坐标。")
 
 
 func _test_interaction_lock(player: Player, warehouse: OakWarehouse) -> void:
@@ -502,6 +512,21 @@ func _get_opaque_bounds(image: Image) -> Rect2i:
 	if maximum.x < minimum.x or maximum.y < minimum.y:
 		return Rect2i()
 	return Rect2i(minimum, maximum - minimum)
+
+
+func _get_centered_sprite_subject_rect(
+	sprite: Sprite2D,
+	opaque_bounds: Rect2i,
+	texture_size: Vector2
+) -> Rect2:
+	var source_origin := Vector2(opaque_bounds.position)
+	if sprite.centered:
+		source_origin -= texture_size * 0.5
+	source_origin += sprite.offset
+	return Rect2(
+		sprite.position + source_origin * sprite.scale,
+		Vector2(opaque_bounds.size) * sprite.scale.abs()
+	)
 
 
 func _has_legacy_magenta_fringe(image: Image) -> bool:

@@ -1,402 +1,593 @@
 #!/usr/bin/env python3
-"""Build audited 64px Agave Cannon animation frames from imagegen sources.
+"""Derive audited 64px Agave Cannon assets from one selected composite master.
 
-The source art is first keyed, measured as a logical pixel grid, normalized to
-one pixel per logical cell, palette-quantized, then laid out on 64x64 canvases.
-This deliberately avoids treating the high-resolution imagegen output as a
-continuous image and losing its pixel silhouette during an ordinary resize.
+Imagegen supplies the volumetric identity once.  This processor separates the
+green/olive plant body from the amber cannon, registers one shared pivot, then
+creates deliberately small deterministic pixel-only idle/recoil variations.
+The cannonball remains an existing gameplay asset and is never rewritten.
 """
 
 from __future__ import annotations
 
-import json
+import argparse
+import colorsys
 from collections import deque
+import json
 from pathlib import Path
 
 from PIL import Image
 
-from connected_background_remover import (
-    ConnectedBackgroundOptions,
-    remove_connected_background,
+from plant_pixel_asset_pipeline import (
+    CANVAS_SIDE,
+    MAX_VISIBLE_COLORS,
+    TRANSPARENT,
+    WORLD_FOOTPRINT_SIDE,
+    WORLD_SCALE,
+    alpha_bbox,
+    apply_palette,
+    audit_image,
+    build_shared_palette,
+    clean_transparency,
+    foot_anchor,
+    max_visible_radius,
+    normalize_imagegen_subject,
+    place_at,
+    place_bottom_center,
+    portable_path,
+    source_audit,
+    validation_failures,
 )
-from pixel_crop_tool import crop_to_square
-from pixel_grid_analyzer import analyze_image
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "dev_assets/source_images/plant_defense/agave_cannon"
+DEFAULT_INPUT = SOURCE_DIR / "agave_cannon_selected_imagegen_magenta.png"
 OUTPUT_DIR = ROOT / "resources/texture/plant_defense/agave_cannon"
-LOGICAL_SIDE = 33
-FRAME_SIDE = 64
-REFERENCE_GRID_CELL_SIZE = 27.25
-LOGICAL_PASTE_ORIGIN = (16, 6)
-PIVOT_IN_FRAME = (36, 24)
-PIVOT_IN_HEAD_TEXTURE = (32, 32)
+AUDIT_PATH = SOURCE_DIR / "agave_asset_audit.json"
 
-SOURCE_FILES = {
-    "idle_0": "agave_anchor_v2_imagegen_magenta.png",
-    "idle_1": "idle_1_imagegen_magenta.png",
-    "idle_2": "idle_2_imagegen_magenta.png",
-    "idle_3": "idle_3_imagegen_magenta.png",
-    "fire_0": "fire_0_imagegen_magenta.png",
-    "fire_1": "fire_1_imagegen_magenta.png",
-    "fire_2": "fire_2_imagegen_magenta.png",
-    "fire_3": "fire_3_imagegen_magenta.png",
-    "fire_4": "fire_4_imagegen_magenta.png",
+OUTPUT_FILES = {
+    **{f"body_idle_{index}": f"agave_body_idle_{index}.png" for index in range(4)},
+    "head_idle_0": "agave_cannon_idle_0.png",
+    **{
+        f"head_fire_{index}": f"agave_cannon_fire_{index}.png"
+        for index in range(5)
+    },
+    "icon": "icon.png",
 }
 
-# Neutral, deliberately small palette. The first entry is the mandatory
-# exterior outline. No violet/purple colors are present.
-PALETTE = {
-    "outline": (8, 8, 8, 255),
-    "teal_dark": (32, 104, 91, 255),
-    "teal": (60, 150, 123, 255),
-    "teal_light": (79, 174, 145, 255),
-    "pod_dark": (66, 88, 37, 255),
-    "pod": (99, 126, 54, 255),
-    "wood_dark": (143, 88, 24, 255),
-    "wood": (211, 149, 43, 255),
-    "flash": (255, 229, 113, 255),
-    "ball_gray": (104, 108, 104, 255),
-}
-PALETTE_VALUES = tuple(PALETTE.values())
-TRANSPARENT = (0, 0, 0, 0)
+# The selected full sprite is fitted slightly inside the maximum canvas.  The
+# audited muzzle coordinate retains the source's slight three-quarter art angle
+# while remaining inside the 24px pivot radius under the zoom=2 camera.
+COMPOSITE_MAX_SUBJECT_SIZE = (56, 58)
+BODY_MAX_SUBJECT_SIZE = (60, 62)
+BODY_FOOT_TARGET = (32, 62)
+ROOT_PIVOT = (32, 32)
+CANNON_PIVOT_IN_BODY = (32, 26)
+HEAD_TEXTURE_PIVOT = (32, 32)
+MUZZLE_IN_HEAD_TEXTURE = (54, 39)
+HEAD_MAX_RADIUS = 24.0
 
 
-def _nearest_palette_color(pixel: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
-    if pixel[3] == 0:
-        return TRANSPARENT
-    red, green, blue = pixel[:3]
-    return min(
-        PALETTE_VALUES,
-        key=lambda color: (
-            (red - color[0]) ** 2
-            + (green - color[1]) ** 2
-            + (blue - color[2]) ** 2
-        ),
+def _is_warm_seed(color: tuple[int, int, int, int]) -> bool:
+    red, green, blue, alpha = color
+    return (
+        alpha > 0
+        and red >= 72
+        and red > green * 1.07
+        and green > blue * 1.10
+        and red > blue * 1.45
     )
 
 
-def _quantize(image: Image.Image) -> Image.Image:
-    rgba = image.convert("RGBA")
-    result = Image.new("RGBA", rgba.size, TRANSPARENT)
-    source = rgba.load()
-    target = result.load()
-    for y in range(rgba.height):
-        for x in range(rgba.width):
-            target[x, y] = _nearest_palette_color(source[x, y])
-    return result
+def _is_confident_leaf(color: tuple[int, int, int, int]) -> bool:
+    red, green, blue, alpha = color
+    return alpha > 0 and green > red * 1.03 and green > blue * 1.08
 
 
-def _enforce_black_exterior(image: Image.Image) -> Image.Image:
-    rgba = image.copy().convert("RGBA")
-    source = rgba.copy().load()
-    target = rgba.load()
-    for y in range(rgba.height):
-        for x in range(rgba.width):
-            if source[x, y][3] == 0:
-                target[x, y] = TRANSPARENT
-                continue
-            for offset_x, offset_y in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-                neighbor_x = x + offset_x
-                neighbor_y = y + offset_y
-                if not (0 <= neighbor_x < rgba.width and 0 <= neighbor_y < rgba.height):
-                    target[x, y] = PALETTE["outline"]
-                    break
-                if source[neighbor_x, neighbor_y][3] == 0:
-                    target[x, y] = PALETTE["outline"]
-                    break
-    return rgba
-
-
-def _normalize_source(source_path: Path) -> tuple[Image.Image, dict]:
-    keyed = remove_connected_background(
-        Image.open(source_path),
-        ConnectedBackgroundOptions(
-            rgb_tolerance=72,
-            hue_tolerance=0.035,
-            expansion_radius=12,
-            harden_alpha=True,
-        ),
-    )
-    analysis = analyze_image(keyed)
-    if analysis["detection_mode"] == "native_or_unknown":
-        # A few reference-edited frames have fewer internal color edges, so
-        # the periodic detector cannot independently lock phase. They inherit
-        # the measured 27.25px grid of the audited master instead of being
-        # resized as continuous art.
-        analysis["detection_mode"] = "inherited_from_master"
-        analysis["grid_cell_width"] = REFERENCE_GRID_CELL_SIZE
-        analysis["grid_cell_height"] = REFERENCE_GRID_CELL_SIZE
-        analysis["grid_cell_size"] = round(REFERENCE_GRID_CELL_SIZE)
-        analysis["subject_grid_width"] = round(
-            analysis["subject_pixel_width"] / REFERENCE_GRID_CELL_SIZE
-        )
-        analysis["subject_grid_height"] = round(
-            analysis["subject_pixel_height"] / REFERENCE_GRID_CELL_SIZE
-        )
-    elif analysis["confidence"] < 0.45:
-        raise RuntimeError(f"Logical grid confidence is too low: {source_path}")
-    if analysis["subject_grid_width"] > 40 or analysis["subject_grid_height"] > 40:
-        raise RuntimeError(
-            "Source exceeds the visual pixel budget "
-            f"({analysis['subject_grid_width']}x{analysis['subject_grid_height']}): "
-            f"{source_path}"
-        )
-
-    square = crop_to_square(keyed, padding=0, align_to_grid=False)
-    logical = square.resize((LOGICAL_SIDE, LOGICAL_SIDE), Image.Resampling.NEAREST)
-    logical = _quantize(logical)
-    logical = _enforce_black_exterior(logical)
-    return logical, analysis
-
-
-def _to_full_frame(logical: Image.Image) -> Image.Image:
-    frame = Image.new("RGBA", (FRAME_SIDE, FRAME_SIDE), TRANSPARENT)
-    frame.alpha_composite(logical, LOGICAL_PASTE_ORIGIN)
-    return frame
-
-
-def _find_head_mask(full_frame: Image.Image) -> set[tuple[int, int]]:
-    pixels = full_frame.load()
-    primary_colors = {
-        PALETTE["pod_dark"],
-        PALETTE["pod"],
-        PALETTE["wood_dark"],
-        PALETTE["wood"],
-        PALETTE["flash"],
-        PALETTE["ball_gray"],
-    }
-    primary_points = [
+def _find_head_mask(composite: Image.Image) -> tuple[set[tuple[int, int]], dict]:
+    """Find the amber head while explicitly excluding green/olive leaf planes."""
+    rgba = composite.convert("RGBA")
+    pixels = rgba.load()
+    seeds = {
         (x, y)
-        for y in range(10, 33)
-        for x in range(24, 52)
-        if pixels[x, y] in primary_colors
-    ]
-    if not primary_points:
-        raise RuntimeError("The cannon head colors could not be isolated")
+        for y in range(rgba.height)
+        for x in range(rgba.width)
+        if x >= ROOT_PIVOT[0] - 4
+        and y <= ROOT_PIVOT[1] + 8
+        and _is_warm_seed(pixels[x, y])
+    }
+    if len(seeds) < 8:
+        raise RuntimeError(
+            "Selected Agave master has no substantial separable amber cannon "
+            "region; regenerate or choose the other concept candidate"
+        )
 
-    left = max(min(point[0] for point in primary_points) - 2, 0)
-    top = max(min(point[1] for point in primary_points) - 2, 0)
-    right = min(max(point[0] for point in primary_points) + 3, FRAME_SIDE)
-    bottom = min(max(point[1] for point in primary_points) + 3, FRAME_SIDE)
-    non_leaf_colors = primary_colors | {PALETTE["outline"]}
+    seed_left = min(x for x, _y in seeds)
+    seed_top = min(y for _x, y in seeds)
+    seed_right = max(x for x, _y in seeds) + 1
+    seed_bottom = max(y for _x, y in seeds) + 1
+    search_bbox = (
+        max(ROOT_PIVOT[0] - 4, seed_left - 2),
+        max(0, seed_top - 2),
+        min(CANVAS_SIDE, seed_right + 2),
+        min(CANVAS_SIDE, seed_bottom + 2),
+    )
     candidates = {
         (x, y)
-        for y in range(top, bottom)
-        for x in range(left, right)
-        if pixels[x, y] in non_leaf_colors
+        for y in range(search_bbox[1], search_bbox[3])
+        for x in range(search_bbox[0], search_bbox[2])
+        if pixels[x, y][3] > 0 and not _is_confident_leaf(pixels[x, y])
     }
 
-    # Keep only the connected component that owns the most pod/wood pixels.
-    # A detached cannonball in fire frame 3 therefore stays out of the muzzle
-    # animation, avoiding a duplicate with the real projectile.
+    # Grow from every warm material seed through adjacent outline/shadow pixels.
+    # This retains the barrel's black rim and seam while refusing the green body.
     remaining = set(candidates)
-    best_component: set[tuple[int, int]] = set()
-    best_score = -1
-    while remaining:
-        start = remaining.pop()
-        component = {start}
-        queue: deque[tuple[int, int]] = deque([start])
-        while queue:
-            x, y = queue.popleft()
-            for neighbor in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
-                if neighbor in remaining:
-                    remaining.remove(neighbor)
-                    component.add(neighbor)
-                    queue.append(neighbor)
-        score = sum(pixels[x, y] in primary_colors for x, y in component) * 1000 + len(component)
-        if score > best_score:
-            best_score = score
-            best_component = component
-    return best_component
+    mask: set[tuple[int, int]] = set()
+    queue: deque[tuple[int, int]] = deque()
+    for seed in seeds:
+        if seed in remaining:
+            remaining.remove(seed)
+            mask.add(seed)
+            queue.append(seed)
+    while queue:
+        x, y = queue.popleft()
+        for neighbor in (
+            (x - 1, y),
+            (x + 1, y),
+            (x, y - 1),
+            (x, y + 1),
+            (x - 1, y - 1),
+            (x + 1, y - 1),
+            (x - 1, y + 1),
+            (x + 1, y + 1),
+        ):
+            if neighbor in remaining:
+                remaining.remove(neighbor)
+                mask.add(neighbor)
+                queue.append(neighbor)
 
-
-def _build_head_frame(full_frame: Image.Image, head_mask: set[tuple[int, int]]) -> Image.Image:
-    source = full_frame.load()
-    head = Image.new("RGBA", (FRAME_SIDE, FRAME_SIDE), TRANSPARENT)
-    target = head.load()
-    shift_x = PIVOT_IN_HEAD_TEXTURE[0] - PIVOT_IN_FRAME[0]
-    shift_y = PIVOT_IN_HEAD_TEXTURE[1] - PIVOT_IN_FRAME[1]
-    for x, y in head_mask:
-        target_x = x + shift_x
-        target_y = y + shift_y
-        if 0 <= target_x < FRAME_SIDE and 0 <= target_y < FRAME_SIDE:
-            target[target_x, target_y] = source[x, y]
-    return _enforce_black_exterior(head)
-
-
-def _draw_socket(body: Image.Image) -> None:
-    pixels = body.load()
-    center_x, center_y = PIVOT_IN_FRAME
-    pattern = (
-        (0, -2, "outline"),
-        (-1, -1, "outline"), (0, -1, "teal_dark"), (1, -1, "outline"),
-        (-2, 0, "outline"), (-1, 0, "teal_dark"), (0, 0, "teal_dark"),
-        (1, 0, "teal_dark"), (2, 0, "outline"),
-        (-1, 1, "outline"), (0, 1, "teal_dark"), (1, 1, "outline"),
-        (0, 2, "outline"),
+    # The selected pod intentionally reflects teal inside its dark muzzle.  A
+    # pure hue split would misclassify those enclosed pixels as leaves and make
+    # the muzzle transparent when the head rotates.  Recover the small opening
+    # from the geometry of the rightmost warm ring, independent of its hue.
+    rightmost_seed_x = max(x for x, _y in seeds)
+    right_ring_ys = [
+        y for x, y in seeds
+        if x >= rightmost_seed_x - 2
+    ]
+    muzzle_center = (
+        rightmost_seed_x - 4,
+        round(sum(right_ring_ys) / len(right_ring_ys)),
     )
-    for offset_x, offset_y, color_name in pattern:
-        pixels[center_x + offset_x, center_y + offset_y] = PALETTE[color_name]
-
-
-def _build_body_frame(full_frame: Image.Image, head_mask: set[tuple[int, int]]) -> Image.Image:
-    body = full_frame.copy()
-    pixels = body.load()
-    for x, y in head_mask:
-        pixels[x, y] = TRANSPARENT
-    _draw_socket(body)
-    return _enforce_black_exterior(body)
-
-
-def _build_icon(logical_idle: Image.Image) -> Image.Image:
-    bbox = logical_idle.getchannel("A").getbbox()
-    if bbox is None:
-        raise RuntimeError("Idle anchor is empty")
-    subject = logical_idle.crop(bbox)
-    if subject.width > 32 or subject.height > 32:
-        scale = min(32.0 / subject.width, 32.0 / subject.height)
-        subject = subject.resize(
-            (max(1, round(subject.width * scale)), max(1, round(subject.height * scale))),
-            Image.Resampling.NEAREST,
-        )
-    icon = Image.new("RGBA", (32, 32), TRANSPARENT)
-    icon.alpha_composite(subject, ((32 - subject.width) // 2, (32 - subject.height) // 2))
-    return _enforce_black_exterior(icon)
-
-
-def _build_cannonball() -> Image.Image:
-    image = Image.new("RGBA", (12, 12), TRANSPARENT)
-    pixels = image.load()
-    rows = {
-        1: (4, 7),
-        2: (2, 9),
-        3: (1, 10),
-        4: (1, 10),
-        5: (1, 10),
-        6: (1, 10),
-        7: (1, 10),
-        8: (1, 10),
-        9: (2, 9),
-        10: (4, 7),
-    }
-    for y, (left, right) in rows.items():
-        for x in range(left, right + 1):
-            pixels[x, y] = (22, 23, 22, 255)
-    image = _enforce_black_exterior(image)
-    pixels = image.load()
-    pixels[3, 3] = PALETTE["ball_gray"]
-    pixels[4, 3] = PALETTE["ball_gray"]
-    pixels[3, 4] = PALETTE["ball_gray"]
-    return image
-
-
-def _audit_output(path: Path, expected_size: tuple[int, int]) -> dict:
-    image = Image.open(path).convert("RGBA")
-    pixels = image.load()
-    alpha_values = set(image.getchannel("A").getdata())
-    transparent_rgb_clean = all(
-        alpha != 0 or (red == 0 and green == 0 and blue == 0)
-        for red, green, blue, alpha in image.getdata()
-    )
-    visible_colors = {pixel for pixel in image.getdata() if pixel[3] > 0}
-    has_purple = any(red > blue * 0.55 and blue > green * 1.3 for red, green, blue, _ in visible_colors)
-    exterior_pixels: list[tuple[int, int, int, int]] = []
-    for y in range(image.height):
-        for x in range(image.width):
-            if pixels[x, y][3] == 0:
+    muzzle_interior_added = 0
+    for y in range(muzzle_center[1] - 3, muzzle_center[1] + 4):
+        for x in range(muzzle_center[0] - 3, muzzle_center[0] + 4):
+            if (x - muzzle_center[0]) ** 2 + (y - muzzle_center[1]) ** 2 > 9:
                 continue
-            for offset_x, offset_y in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-                neighbor_x = x + offset_x
-                neighbor_y = y + offset_y
-                if not (0 <= neighbor_x < image.width and 0 <= neighbor_y < image.height):
-                    exterior_pixels.append(pixels[x, y])
-                    break
-                if pixels[neighbor_x, neighbor_y][3] == 0:
-                    exterior_pixels.append(pixels[x, y])
-                    break
-    return {
-        "path": path.relative_to(ROOT).as_posix(),
-        "size": list(image.size),
-        "size_ok": image.size == expected_size,
-        "binary_alpha": alpha_values.issubset({0, 255}),
-        "transparent_rgb_clean": transparent_rgb_clean,
-        "exterior_outline_black": bool(exterior_pixels) and all(
-            pixel == PALETTE["outline"] for pixel in exterior_pixels
+            if pixels[x, y][3] == 0 or (x, y) in mask:
+                continue
+            mask.add((x, y))
+            muzzle_interior_added += 1
+    if len(mask) < 16:
+        raise RuntimeError("Amber cannon segmentation collapsed to an unusable mask")
+    mask_bbox = (
+        min(x for x, _y in mask),
+        min(y for _x, y in mask),
+        max(x for x, _y in mask) + 1,
+        max(y for _x, y in mask) + 1,
+    )
+    return mask, {
+        "method": (
+            "warm-material seeded 8-connected mask excluding confident leaf hues, "
+            "plus geometry-recovered enclosed muzzle reflection"
         ),
-        "palette_color_count": len(visible_colors),
-        "has_purple": has_purple,
+        "warm_seed_count": len(seeds),
+        "mask_pixel_count": len(mask),
+        "search_bbox_exclusive": list(search_bbox),
+        "mask_bbox_exclusive": list(mask_bbox),
+        "muzzle_interior_center": list(muzzle_center),
+        "muzzle_interior_pixels_added": muzzle_interior_added,
+    }
+
+
+def _split_composite(
+    composite: Image.Image,
+    head_mask: set[tuple[int, int]],
+) -> tuple[Image.Image, Image.Image]:
+    source = composite.convert("RGBA")
+    source_pixels = source.load()
+    body = source.copy()
+    body_pixels = body.load()
+    head_full = Image.new("RGBA", source.size, TRANSPARENT)
+    head_pixels = head_full.load()
+    for x, y in head_mask:
+        head_pixels[x, y] = source_pixels[x, y]
+        body_pixels[x, y] = TRANSPARENT
+    return clean_transparency(body), clean_transparency(head_full)
+
+
+def _draw_recessed_socket(
+    body: Image.Image,
+    palette: tuple[tuple[int, int, int], ...],
+    head_mask: set[tuple[int, int]],
+) -> Image.Image:
+    """Restore the circular socket hidden beneath the detachable cannon head.
+
+    The imagegen master contains the complete installed turret, so separating the
+    head naturally uncovers transparent pixels on the socket's lower-right side.
+    Only those newly transparent pixels are reconstructed; the authored crescent
+    ring and leaf planes stay byte-for-byte unchanged.
+    """
+    result = body.copy().convert("RGBA")
+    pixels = result.load()
+    # Reconstruct only genuinely occluded right-side leaf/ring pixels from the
+    # corresponding authored left half.  Transparent pixels whose mirror is
+    # also transparent remain outside the natural rosette silhouette.
+    center_x, center_y = CANNON_PIVOT_IN_BODY
+    for x, y in head_mask:
+        if x <= center_x or pixels[x, y][3] > 0:
+            continue
+        mirror_x = center_x - (x - center_x)
+        if mirror_x < 0:
+            continue
+        mirrored_pixel = pixels[mirror_x, y]
+        if mirrored_pixel[3] > 0:
+            pixels[x, y] = mirrored_pixel
+
+    darkest = min(palette, key=lambda color: sum(color))
+    green_colors = []
+    for color in palette:
+        hue, saturation, _value = colorsys.rgb_to_hsv(
+            *(channel / 255.0 for channel in color)
+        )
+        if 0.16 <= hue <= 0.52 and saturation >= 0.18:
+            green_colors.append(color)
+    green_colors.sort(key=lambda color: sum(color))
+    socket_fill = green_colors[0] if green_colors else darkest
+    socket_rim = (
+        green_colors[min(2, len(green_colors) - 1)]
+        if green_colors
+        else darkest
+    )
+    for offset_y in range(-11, 12):
+        for offset_x in range(-11, 12):
+            distance_sq = offset_x * offset_x + offset_y * offset_y
+            if distance_sq > 121:
+                continue
+            x = center_x + offset_x
+            y = center_y + offset_y
+            if (x, y) not in head_mask:
+                continue
+            if pixels[x, y][3] > 0:
+                continue
+            if distance_sq >= 81:
+                pixels[x, y] = (*socket_rim, 255)
+            elif distance_sq >= 64:
+                pixels[x, y] = (*socket_fill, 255)
+            else:
+                pixels[x, y] = (*darkest, 255)
+    return clean_transparency(result)
+
+
+def _register_head(head_full: Image.Image) -> tuple[Image.Image, dict]:
+    bbox = alpha_bbox(head_full)
+    subject = head_full.crop(bbox)
+    # Preserve every pixel's position relative to the authored body pivot.  The
+    # scene places HEAD_TEXTURE_PIVOT on CANNON_PIVOT_IN_BODY; translating by the
+    # pivot delta therefore recreates the selected master exactly at rotation 0
+    # and keeps every firing frame on one shared pivot.
+    pivot_delta = (
+        HEAD_TEXTURE_PIVOT[0] - CANNON_PIVOT_IN_BODY[0],
+        HEAD_TEXTURE_PIVOT[1] - CANNON_PIVOT_IN_BODY[1],
+    )
+    origin_x = bbox[0] + pivot_delta[0]
+    origin_y = bbox[1] + pivot_delta[1]
+    registered = place_at(subject, (origin_x, origin_y))
+    registered_bbox = alpha_bbox(registered)
+    return registered, {
+        "mode": "source-relative shared body/head pivot registration",
+        "source_mask_bbox_exclusive": list(bbox),
+        "paste_origin": [origin_x, origin_y],
+        "body_pivot": list(CANNON_PIVOT_IN_BODY),
+        "output_pivot": list(HEAD_TEXTURE_PIVOT),
+        "visual_muzzle_edge": list(MUZZLE_IN_HEAD_TEXTURE),
+        "scene_muzzle_marker": list(MUZZLE_IN_HEAD_TEXTURE),
+    }
+
+
+def _green_palette_ramp(
+    palette: tuple[tuple[int, int, int], ...],
+) -> list[tuple[int, int, int]]:
+    colors = []
+    for color in palette:
+        hue, saturation, value = colorsys.rgb_to_hsv(
+            *(channel / 255.0 for channel in color)
+        )
+        if 0.16 <= hue <= 0.52 and saturation >= 0.18 and value >= 0.15:
+            colors.append(color)
+    return sorted(colors, key=lambda color: sum(color))
+
+
+def _body_idle_frame(
+    body: Image.Image,
+    frame_index: int,
+    palette: tuple[tuple[int, int, int], ...],
+) -> Image.Image:
+    if frame_index == 0:
+        return body.copy()
+    ramp = _green_palette_ramp(palette)
+    if len(ramp) < 3:
+        return body.copy()
+    highlight = ramp[-1]
+    replacement = ramp[-2]
+    result = body.copy().convert("RGBA")
+    source = body.load()
+    target = result.load()
+    for y in range(1, result.height - 1):
+        for x in range(1, result.width - 1):
+            if source[x, y][:3] != highlight or source[x, y][3] == 0:
+                continue
+            if any(
+                source[x + dx, y + dy][3] == 0
+                for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1))
+            ):
+                continue
+            if (x * 3 + y * 5 + frame_index * 7) % 19 == 0:
+                target[x, y] = (*replacement, 255)
+    return clean_transparency(result)
+
+
+def _warm_palette_ramp(
+    palette: tuple[tuple[int, int, int], ...],
+) -> list[tuple[int, int, int]]:
+    colors = []
+    for color in palette:
+        red, green, blue = color
+        if red > green * 1.04 and green > blue * 1.05:
+            colors.append(color)
+    return sorted(colors, key=lambda color: sum(color))
+
+
+def _fire_head_frame(
+    head: Image.Image,
+    recoil: int,
+    heat_columns: int,
+    palette: tuple[tuple[int, int, int], ...],
+) -> Image.Image:
+    source = head.convert("RGBA")
+    source_pixels = source.load()
+    result = Image.new("RGBA", source.size, TRANSPARENT)
+    target = result.load()
+    fixed_mount_right = HEAD_TEXTURE_PIVOT[0] + 3
+    for y in range(source.height):
+        for x in range(source.width):
+            pixel = source_pixels[x, y]
+            if pixel[3] == 0:
+                continue
+            target_x = x if x <= fixed_mount_right else x - recoil
+            target[target_x, y] = pixel
+
+    warm_ramp = _warm_palette_ramp(palette)
+    if heat_columns > 0 and warm_ramp:
+        bbox = alpha_bbox(result)
+        hottest = warm_ramp[-1]
+        for y in range(bbox[1], bbox[3]):
+            for x in range(max(bbox[0], bbox[2] - heat_columns - 1), bbox[2] - 1):
+                red, green, blue, alpha = target[x, y]
+                if alpha > 0 and red > green * 1.04 and green > blue * 1.05:
+                    target[x, y] = (*hottest, 255)
+    return clean_transparency(result)
+
+
+def _build_icon(body: Image.Image, head: Image.Image) -> Image.Image:
+    icon = body.copy().convert("RGBA")
+    offset = (
+        CANNON_PIVOT_IN_BODY[0] - HEAD_TEXTURE_PIVOT[0],
+        CANNON_PIVOT_IN_BODY[1] - HEAD_TEXTURE_PIVOT[1],
+    )
+    icon.alpha_composite(head, offset)
+    return clean_transparency(icon)
+
+
+def _maximum_anchor_drift(anchors: list[tuple[float, float]]) -> float:
+    first_x, first_y = anchors[0]
+    return max(
+        max(abs(anchor_x - first_x), abs(anchor_y - first_y))
+        for anchor_x, anchor_y in anchors
+    )
+
+
+def _pixel_difference_count(first: Image.Image, second: Image.Image) -> int:
+    if first.size != second.size:
+        raise RuntimeError("Cannot compare Agave anchor images with different sizes")
+    return sum(
+        first_pixel != second_pixel
+        for first_pixel, second_pixel in zip(first.getdata(), second.getdata())
+    )
+
+
+def build_assets(input_path: Path) -> tuple[dict[str, Image.Image], dict]:
+    master = normalize_imagegen_subject(
+        input_path,
+        max_subject_size=COMPOSITE_MAX_SUBJECT_SIZE,
+    )
+    registered_master, master_origin = place_bottom_center(
+        master.image,
+        target=BODY_FOOT_TARGET,
+    )
+    palette = build_shared_palette([registered_master], max_colors=MAX_VISIBLE_COLORS)
+    registered_master = apply_palette(registered_master, palette)
+    head_mask, segmentation = _find_head_mask(registered_master)
+    body_base, head_full = _split_composite(registered_master, head_mask)
+    body_base = _draw_recessed_socket(body_base, palette, head_mask)
+    head_idle, head_registration = _register_head(head_full)
+
+    assets = {
+        f"body_idle_{index}": _body_idle_frame(body_base, index, palette)
+        for index in range(4)
+    }
+    assets["head_idle_0"] = head_idle
+    fire_sequence = ((0, 1), (1, 2), (1, 3), (1, 1), (0, 0))
+    for index, (recoil, heat_columns) in enumerate(fire_sequence):
+        assets[f"head_fire_{index}"] = _fire_head_frame(
+            head_idle,
+            recoil,
+            heat_columns,
+            palette,
+        )
+    assets["icon"] = _build_icon(assets["body_idle_0"], head_idle)
+    assets = {name: apply_palette(image, palette) for name, image in assets.items()}
+    anchor_recomposition_diff = _pixel_difference_count(
+        assets["icon"],
+        registered_master,
+    )
+
+    body_feet = [foot_anchor(assets[f"body_idle_{index}"]) for index in range(4)]
+    body_foot_drift = _maximum_anchor_drift(body_feet)
+    head_radii = {
+        name: round(max_visible_radius(image, HEAD_TEXTURE_PIVOT), 3)
+        for name, image in assets.items()
+        if name.startswith("head_")
+    }
+    maximum_head_radius = max(head_radii.values())
+    muzzle_tips = {
+        name: alpha_bbox(image)[2]
+        for name, image in assets.items()
+        if name.startswith("head_")
+    }
+    muzzle_tip_drift = max(muzzle_tips.values()) - min(muzzle_tips.values())
+    if body_foot_drift > 1.0:
+        raise RuntimeError(
+            f"Agave body foot drift is {body_foot_drift:.3f}px; limit is 1px"
+        )
+    if maximum_head_radius > HEAD_MAX_RADIUS:
+        raise RuntimeError(
+            f"Agave head radius is {maximum_head_radius:.3f}px; "
+            f"limit is {HEAD_MAX_RADIUS}px. Regenerate instead of shrinking it."
+        )
+    if muzzle_tip_drift > 1:
+        raise RuntimeError(
+            f"Agave firing muzzle drifts {muzzle_tip_drift}px; limit is 1px"
+        )
+    if anchor_recomposition_diff != 0:
+        raise RuntimeError(
+            "Agave body/head anchor recomposition differs from the selected "
+            f"master by {anchor_recomposition_diff} pixels"
+        )
+
+    return assets, {
+        "source": source_audit(master),
+        "master_registration": {
+            "mode": "bottom_center",
+            "paste_origin": list(master_origin),
+            "output_foot_target": list(BODY_FOOT_TARGET),
+        },
+        "segmentation": segmentation,
+        "head_registration": head_registration,
+        "animation_derivation": {
+            "body": "stationary geometry; deterministic interior highlight substitutions only",
+            "head_fire_recoil_source_px": [item[0] for item in fire_sequence],
+            "head_fire_heat_columns": [item[1] for item in fire_sequence],
+            "detached_projectile_or_flash_in_frames": False,
+        },
+        "shared_palette": {
+            "visible_color_limit": MAX_VISIBLE_COLORS,
+            "actual_color_count": len(palette),
+            "rgb": [list(color) for color in palette],
+        },
+        "cross_frame_audit": {
+            "body_foot_anchors": [list(anchor) for anchor in body_feet],
+            "body_foot_max_drift_source_px": round(body_foot_drift, 3),
+            "body_foot_drift_limit_source_px": 1.0,
+            "head_output_pivots": {
+                name: list(HEAD_TEXTURE_PIVOT) for name in head_radii
+            },
+            "head_pivot_max_drift_source_px": 0,
+            "head_radius_by_frame_source_px": head_radii,
+            "head_maximum_radius_source_px": round(maximum_head_radius, 3),
+            "head_radius_limit_source_px": HEAD_MAX_RADIUS,
+            "muzzle_edge_x_by_frame": muzzle_tips,
+            "muzzle_tip_max_drift_source_px": muzzle_tip_drift,
+            "anchor_recomposition_diff_pixels": anchor_recomposition_diff,
+        },
     }
 
 
 def main() -> None:
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    normalized: dict[str, Image.Image] = {}
-    source_audits: dict[str, dict] = {}
-    for frame_name, file_name in SOURCE_FILES.items():
-        source_path = SOURCE_DIR / file_name
-        if not source_path.is_file():
-            raise FileNotFoundError(source_path)
-        logical, analysis = _normalize_source(source_path)
-        normalized[frame_name] = logical
-        source_audits[frame_name] = analysis
+    parser = argparse.ArgumentParser(
+        description="Build audited true-64px Agave Cannon assets from one master",
+    )
+    parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
+    parser.add_argument("--audit-path", type=Path, default=AUDIT_PATH)
+    parser.add_argument(
+        "--check-only",
+        action="store_true",
+        help="Validate entirely in memory; do not write PNG or audit files",
+    )
+    args = parser.parse_args()
 
-    generated_paths: list[Path] = []
-    for frame_index in range(4):
-        frame_name = f"idle_{frame_index}"
-        full = _to_full_frame(normalized[frame_name])
-        head_mask = _find_head_mask(full)
-        body = _build_body_frame(full, head_mask)
-        output_path = OUTPUT_DIR / f"agave_body_idle_{frame_index}.png"
-        body.save(output_path)
-        generated_paths.append(output_path)
-
-    idle_full = _to_full_frame(normalized["idle_0"])
-    idle_head = _build_head_frame(idle_full, _find_head_mask(idle_full))
-    idle_head_path = OUTPUT_DIR / "agave_cannon_idle_0.png"
-    idle_head.save(idle_head_path)
-    generated_paths.append(idle_head_path)
-
-    for frame_index in range(5):
-        full = _to_full_frame(normalized[f"fire_{frame_index}"])
-        head = _build_head_frame(full, _find_head_mask(full))
-        output_path = OUTPUT_DIR / f"agave_cannon_fire_{frame_index}.png"
-        head.save(output_path)
-        generated_paths.append(output_path)
-
-    icon_path = OUTPUT_DIR / "icon.png"
-    _build_icon(normalized["idle_0"]).save(icon_path)
-    generated_paths.append(icon_path)
-
-    cannonball_path = OUTPUT_DIR / "agave_cannonball.png"
-    _build_cannonball().save(cannonball_path)
-    generated_paths.append(cannonball_path)
-
-    audits = [
-        _audit_output(path, (32, 32) if path.name == "icon.png" else ((12, 12) if path.name == "agave_cannonball.png" else (64, 64)))
-        for path in generated_paths
-    ]
-    if not all(
-        audit["size_ok"]
-        and audit["binary_alpha"]
-        and audit["transparent_rgb_clean"]
-        and audit["exterior_outline_black"]
-        and not audit["has_purple"]
-        for audit in audits
-    ):
-        raise RuntimeError("One or more processed assets failed the pixel audit")
-
+    assets, context = build_assets(args.input)
+    outputs = []
+    for name, image in assets.items():
+        max_size = BODY_MAX_SUBJECT_SIZE if name.startswith("body_") else (64, 64)
+        outputs.append(
+            audit_image(
+                image,
+                label=name,
+                path=portable_path(args.output_dir / OUTPUT_FILES[name]),
+                max_subject_size=max_size,
+            )
+        )
+    failures = validation_failures(outputs)
     report = {
-        "pipeline": "built-in imagegen -> magenta key -> logical-grid analysis -> 33px normalization -> limited palette -> 64px layout",
-        "logical_side": LOGICAL_SIDE,
-        "source_analysis": source_audits,
-        "outputs": audits,
+        "schema_version": 2,
+        "asset_family": "agave_cannon",
+        "status": "failed" if failures else "passed",
+        "pipeline": [
+            "built-in imagegen selected composite master",
+            "flat #FF00FF chroma key",
+            "reliable logical-grid analysis",
+            "nearest logical-cell selection into 64px contract",
+            "shared <=64-color palette without dithering",
+            "material-aware body/head separation",
+            "deterministic stationary idle and fixed-pivot recoil derivation",
+            "binary-alpha and footprint audit",
+        ],
+        "visual_contract": {
+            "source_canvas_px": [CANVAS_SIDE, CANVAS_SIDE],
+            "static_world_scale": [WORLD_SCALE, WORLD_SCALE],
+            "world_footprint_px": [WORLD_FOOTPRINT_SIDE, WORLD_FOOTPRINT_SIDE],
+            "camera_zoom": 2,
+            "screen_px_per_source_px": 1,
+            "root_pivot_in_source_canvas": list(ROOT_PIVOT),
+            "cannon_pivot_in_body_canvas": list(CANNON_PIVOT_IN_BODY),
+            "head_texture_pivot": list(HEAD_TEXTURE_PIVOT),
+            "muzzle_in_head_texture": list(MUZZLE_IN_HEAD_TEXTURE),
+            "alpha": "binary",
+            "transparent_rgb": [0, 0, 0],
+            "visible_color_limit": MAX_VISIBLE_COLORS,
+        },
+        **context,
+        "outputs": outputs,
+        "validation": {"passed": not failures, "failures": failures},
     }
-    report_path = SOURCE_DIR / "agave_asset_audit.json"
-    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Built {len(generated_paths)} assets in {OUTPUT_DIR}")
-    print(f"Audit report: {report_path}")
+    if failures:
+        raise RuntimeError("; ".join(failures))
+    if args.check_only:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return
+
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    for name, image in assets.items():
+        image.save(args.output_dir / OUTPUT_FILES[name])
+    args.audit_path.parent.mkdir(parents=True, exist_ok=True)
+    args.audit_path.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    print(f"Built {len(assets)} Agave assets in {args.output_dir}")
+    print(f"Audit report: {args.audit_path}")
 
 
 if __name__ == "__main__":

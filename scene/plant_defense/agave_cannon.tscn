@@ -22,25 +22,28 @@ collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
 
-[node name="BodySprite" type="AnimatedSprite2D" parent="."]
+[node name="VisualRoot" type="Node2D" parent="."]
+scale = Vector2(0.5, 0.5)
+
+[node name="BodySprite" type="AnimatedSprite2D" parent="VisualRoot"]
 texture_filter = 1
 z_index = 1
 sprite_frames = ExtResource("2_body_frames")
 animation = &"idle"
 autoplay = "idle"
 
-[node name="CannonPivot" type="Node2D" parent="."]
-position = Vector2(4, -8)
+[node name="CannonPivot" type="Node2D" parent="VisualRoot"]
+position = Vector2(0, -6)
 z_index = 2
 
-[node name="CannonSprite" type="AnimatedSprite2D" parent="CannonPivot"]
+[node name="CannonSprite" type="AnimatedSprite2D" parent="VisualRoot/CannonPivot"]
 texture_filter = 1
 sprite_frames = ExtResource("3_cannon_frames")
 animation = &"idle"
 autoplay = "idle"
 
-[node name="Muzzle" type="Marker2D" parent="CannonPivot"]
-position = Vector2(13, 0)
+[node name="Muzzle" type="Marker2D" parent="VisualRoot/CannonPivot"]
+position = Vector2(22, 7)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("RectangleShape2D_body")
@@ -66,16 +69,16 @@ wait_time = 2.0
 
 [node name="HealthBar" parent="." instance=ExtResource("4_health_bar")]
 offset_left = -16.0
-offset_top = -38.0
+offset_top = -23.0
 offset_right = 16.0
-offset_bottom = -33.0
+offset_bottom = -18.0
 
 [node name="FireAudio" type="AudioStreamPlayer2D" parent="."]
 volume_db = -10.0
 max_polyphony = 3
 
-[connection signal="animation_finished" from="CannonPivot/CannonSprite" to="." method="_on_cannon_sprite_animation_finished"]
-[connection signal="frame_changed" from="CannonPivot/CannonSprite" to="." method="_on_cannon_sprite_frame_changed"]
+[connection signal="animation_finished" from="VisualRoot/CannonPivot/CannonSprite" to="." method="_on_cannon_sprite_animation_finished"]
+[connection signal="frame_changed" from="VisualRoot/CannonPivot/CannonSprite" to="." method="_on_cannon_sprite_frame_changed"]
 [connection signal="body_entered" from="TargetingArea" to="." method="_on_targeting_area_body_entered"]
 [connection signal="body_exited" from="TargetingArea" to="." method="_on_targeting_area_body_exited"]
 [connection signal="timeout" from="AttackTimer" to="." method="_on_attack_timer_timeout"]

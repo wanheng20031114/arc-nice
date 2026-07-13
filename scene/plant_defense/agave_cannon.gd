@@ -9,11 +9,12 @@ const DEFAULT_ATTACK_INTERVAL := 2.0
 const CANNONBALL_SPEED := 180.0
 const CANNONBALL_EXPLOSION_RADIUS := 18.0
 const FIRE_PROJECTILE_FRAME := 2
+const CANNON_ART_AIM_OFFSET := 0.30805278 # atan2(7, 22)
 
-@onready var body_sprite: AnimatedSprite2D = $BodySprite
-@onready var cannon_pivot: Node2D = $CannonPivot
-@onready var cannon_sprite: AnimatedSprite2D = $CannonPivot/CannonSprite
-@onready var muzzle: Marker2D = $CannonPivot/Muzzle
+@onready var body_sprite: AnimatedSprite2D = $VisualRoot/BodySprite
+@onready var cannon_pivot: Node2D = $VisualRoot/CannonPivot
+@onready var cannon_sprite: AnimatedSprite2D = $VisualRoot/CannonPivot/CannonSprite
+@onready var muzzle: Marker2D = $VisualRoot/CannonPivot/Muzzle
 @onready var targeting_area: Area2D = $TargetingArea
 @onready var targeting_shape: CollisionShape2D = $TargetingArea/CollisionShape2D
 @onready var attack_timer: Timer = $AttackTimer
@@ -266,4 +267,4 @@ func _has_clear_world_line_to(enemy: Enemy) -> bool:
 func _point_cannon_at(world_position: Vector2) -> void:
 	var aim_direction := cannon_pivot.global_position.direction_to(world_position)
 	if aim_direction != Vector2.ZERO:
-		cannon_pivot.global_rotation = aim_direction.angle()
+		cannon_pivot.global_rotation = aim_direction.angle() - CANNON_ART_AIM_OFFSET
