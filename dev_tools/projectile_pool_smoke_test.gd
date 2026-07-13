@@ -190,7 +190,11 @@ func _verify_capoo_bullet_reuse() -> void:
 	_expect(reused_ak.direction == Vector2.RIGHT and reused_ak.damage == 1, "AK direction and damage must reset.")
 	_expect(reused_ak.projectile_id == 0 and reused_ak.owner_peer_id == 0, "AK network identity must reset.")
 	_expect(reused_ak.rotation == 0.0, "AK rotation must reset.")
-	_expect(reused_ak.collision_layer == 128 and reused_ak.collision_mask == 2, "AK collision profile must reset.")
+	_expect(
+		reused_ak.collision_layer == 128
+		and reused_ak.collision_mask == CapooAK47Bullet.DAMAGEABLE_COLLISION_MASK,
+		"AK collision profile must reset for Player and PlantDefense targets."
+	)
 	_expect(
 		reused_ak.animated_sprite.frame == 0
 		and reused_ak.animated_sprite.frame_progress == 0.0,

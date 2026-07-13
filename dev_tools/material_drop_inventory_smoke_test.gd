@@ -74,6 +74,8 @@ func _test_material_config_and_weighting() -> void:
 		_expect(material.inventory_stack_limit == 999, "%s must cap each slot at 999." % material.display_name)
 		_expect(material.icon_scale == Vector2(0.625, 0.625), "%s world drop must match the visual size of ordinary pickups." % material.display_name)
 		_expect(is_equal_approx(material.world_lifetime, 24.0), "%s world drop must survive for 24 seconds." % material.display_name)
+	_audit_material_icon(WOOD, 8, 115.0)
+	_audit_material_icon(SAPLING, 8, 115.0)
 	_expect(is_equal_approx(TEMPURA.world_lifetime, 12.0), "Ordinary pickups must retain the default 12-second lifetime.")
 	_expect(is_equal_approx(Enemy.MATERIAL_DROP_CHANCE, 0.03), "Every enemy must have an independent 3% material drop chance.")
 	_expect(is_equal_approx(WOOD.drop_weight, 80.0) and is_equal_approx(SAPLING.drop_weight, 20.0), "Material weights must be 80 wood to 20 sapling.")
@@ -126,7 +128,11 @@ func _test_material_drop_spawn() -> void:
 	if spawned_material != null:
 		_expect(spawned_material.global_position == Vector2(12.0, 18.0), "Material pickup must spawn at the defeated enemy position.")
 		_expect(spawned_material.sprite.scale == WOOD.icon_scale, "The spawned material must apply its world-only icon scale.")
-		_expect(spawned_material.sprite.modulate == Color.WHITE, "The spawned material must keep the same untinted color as its inventory icon.")
+		_expect(
+			spawned_material.sprite.modulate == Color.WHITE
+			and spawned_material.sprite.self_modulate == Color.WHITE,
+			"The spawned material must render its native texture colors without runtime brightness compensation."
+		)
 		_expect(is_equal_approx(spawned_material.lifetime_timer.wait_time, 24.0), "The spawned material timer must use the configured 24-second lifetime.")
 		var blink_material := spawned_material.sprite.material as ShaderMaterial
 		_expect(blink_material != null and not bool(blink_material.get_shader_parameter(&"blink_enabled")), "The pickup blink shader must stay visually inactive before expiry.")
@@ -135,6 +141,35 @@ func _test_material_drop_spawn() -> void:
 	player.queue_free()
 	await process_frame
 	await physics_frame
+
+
+func _audit_material_icon(material: PickupConfig, max_visible_colors: int, minimum_mean_luminance: float) -> void:
+	var image := Image.load_from_file(ProjectSettings.globalize_path(material.icon_texture.resource_path))
+	_expect(image != null and image.get_size() == Vector2i(32, 32), "%s icon must remain a native 32x32 texture." % material.display_name)
+	if image == null:
+		return
+	var visible_colors: Dictionary = {}
+	var visible_pixel_count := 0
+	var luminance_sum := 0.0
+	var has_partial_alpha := false
+	var has_dirty_transparent_rgb := false
+	for y in range(image.get_height()):
+		for x in range(image.get_width()):
+			var pixel := image.get_pixel(x, y)
+			if is_zero_approx(pixel.a):
+				has_dirty_transparent_rgb = has_dirty_transparent_rgb or not Vector3(pixel.r, pixel.g, pixel.b).is_zero_approx()
+				continue
+			if not is_equal_approx(pixel.a, 1.0):
+				has_partial_alpha = true
+			visible_colors[pixel.to_rgba32()] = true
+			visible_pixel_count += 1
+			luminance_sum += (0.2126 * pixel.r + 0.7152 * pixel.g + 0.0722 * pixel.b) * 255.0
+	_expect(visible_pixel_count > 0, "%s icon must contain visible pixels." % material.display_name)
+	_expect(visible_colors.size() <= max_visible_colors, "%s icon must use a compact pixel-art palette." % material.display_name)
+	_expect(not has_partial_alpha, "%s icon must keep binary alpha for crisp nearest-neighbour rendering." % material.display_name)
+	_expect(not has_dirty_transparent_rgb, "%s icon must keep transparent RGB clear." % material.display_name)
+	if visible_pixel_count > 0:
+		_expect(luminance_sum / float(visible_pixel_count) >= minimum_mean_luminance, "%s icon source palette must be bright enough without runtime compensation." % material.display_name)
 
 
 func _test_material_inventory_detail() -> void:

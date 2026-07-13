@@ -49,6 +49,8 @@ func _apply_config_to_visual() -> void:
 		
 	sprite.texture = config.icon_texture
 	sprite.scale = config.icon_scale
+	# 掉落物直接显示源素材颜色，避免 HDR 乘色受 glow 与渲染后端影响。
+	sprite.self_modulate = Color.WHITE
 	lifetime_timer.wait_time = config.world_lifetime
 	
 

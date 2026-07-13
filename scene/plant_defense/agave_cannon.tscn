@@ -7,11 +7,11 @@
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 resource_local_to_scene = true
-size = Vector2(28, 28)
+size = Vector2(28, 27)
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_player_core"]
-resource_local_to_scene = true
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_n64dq"]
 radius = 7.0
+height = 14.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_targeting"]
 resource_local_to_scene = true
@@ -21,6 +21,7 @@ radius = 176.0
 collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
+enemy_approach_depth = 6.0
 
 [node name="VisualRoot" type="Node2D" parent="." unique_id=934693179]
 scale = Vector2(0.5, 0.5)
@@ -43,9 +44,10 @@ animation = &"idle"
 autoplay = "idle"
 
 [node name="Muzzle" type="Marker2D" parent="VisualRoot/CannonPivot" unique_id=1814134360]
-position = Vector2(22, 7)
+position = Vector2(18, 7)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1927670711]
+position = Vector2(0, 3.5)
 shape = SubResource("RectangleShape2D_body")
 
 [node name="PlayerCoreBody" type="StaticBody2D" parent="." unique_id=227376089]
@@ -54,7 +56,8 @@ collision_layer = 1024
 collision_mask = 2
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody" unique_id=1734955811]
-shape = SubResource("CircleShape2D_player_core")
+position = Vector2(0, 2)
+shape = SubResource("CapsuleShape2D_n64dq")
 
 [node name="TargetingArea" type="Area2D" parent="." unique_id=10418399]
 collision_layer = 0

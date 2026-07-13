@@ -30,10 +30,10 @@ func _physics_process(delta: float) -> void:
 	if is_dead:
 		velocity = Vector2.ZERO
 		return
-	if combat_state == CombatState.ATTACK and not is_objective_targeting_player():
+	if combat_state == CombatState.ATTACK and not has_attackable_objective():
 		_finish_ranged_attack()
 
-	if not is_instance_valid(target_player) or not is_objective_targeting_player():
+	if not has_attackable_objective():
 		super._physics_process(delta)
 		return
 
@@ -79,15 +79,14 @@ func _try_start_ranged_attack() -> bool:
 		return false
 	if attack_cooldown_left > 0.0:
 		return false
-	if not is_objective_targeting_player():
-		return false
-	if not is_instance_valid(target_player):
+	var attack_target := get_attackable_objective()
+	if attack_target == null:
 		return false
 	if fire_config.projectile_scene == null:
 		return false
 	if not _has_scene_animation(fire_config.attack_animation_name):
 		return false
-	if global_position.distance_to(target_player.global_position) > fire_config.attack_range:
+	if not is_attackable_objective_in_range(fire_config.attack_range):
 		return false
 	if not _has_clear_world_line_to_target():
 		return false
@@ -96,19 +95,21 @@ func _try_start_ranged_attack() -> bool:
 	attack_has_fired = false
 	attack_cooldown_left = maxf(fire_config.attack_interval, 0.01)
 	_clear_navigation_path()
-	_update_facing(global_position.direction_to(target_player.global_position))
+	var attack_direction := global_position.direction_to(attack_target.global_position)
+	_update_facing(attack_direction)
 	_play_scene_animation(fire_config.attack_animation_name)
-	_broadcast_enemy_action(&"attack", global_position.direction_to(target_player.global_position))
+	_broadcast_enemy_action(&"attack", attack_direction)
 	return true
 
 
 func _has_clear_world_line_to_target() -> bool:
-	if not is_instance_valid(target_player):
+	var attack_target := get_attackable_objective()
+	if attack_target == null:
 		return false
 
 	var query := PhysicsRayQueryParameters2D.create(
 		global_position,
-		target_player.global_position,
+		attack_target.global_position,
 		WORLD_COLLISION_MASK,
 		[get_rid()]
 	)
@@ -121,16 +122,15 @@ func _try_fire_ranged_projectile() -> bool:
 	var fire_config := config as FireConfig
 	if is_dead or combat_state != CombatState.ATTACK or fire_config == null:
 		return false
-	if not is_objective_targeting_player():
-		return false
 	if fire_config.projectile_scene == null:
 		return false
-	if not is_instance_valid(target_player):
+	var attack_target := get_attackable_objective()
+	if attack_target == null:
 		return false
 	if not _has_clear_world_line_to_target():
 		return false
 
-	var shoot_direction := global_position.direction_to(target_player.global_position)
+	var shoot_direction := global_position.direction_to(attack_target.global_position)
 	if shoot_direction == Vector2.ZERO:
 		return false
 

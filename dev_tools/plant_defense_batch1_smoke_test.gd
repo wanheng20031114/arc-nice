@@ -224,7 +224,7 @@ func _test_config_and_scene_contracts() -> void:
 		)
 		_expect(
 			cannon_pivot.position == Vector2(0, -6)
-			and muzzle.position == Vector2(22, 7),
+			and muzzle.position == Vector2(18, 7),
 			"龙舌兰炮座与炮口必须使用素材审计后的64px源坐标。"
 		)
 		var pivot_world_position := visual_root.transform * cannon_pivot.position
@@ -233,7 +233,7 @@ func _test_config_and_scene_contracts() -> void:
 		)
 		_expect(
 			pivot_world_position == Vector2(0, -3)
-			and muzzle_world_position == Vector2(11, 0.5),
+			and muzzle_world_position == Vector2(9, 0.5),
 			"VisualRoot缩放后炮座与炮口必须落在预期世界坐标。"
 		)
 		for aim_direction in [Vector2.RIGHT, Vector2.DOWN, Vector2(-1, -1).normalized()]:
@@ -251,16 +251,24 @@ func _test_config_and_scene_contracts() -> void:
 		cannon_pivot.rotation = 0.0
 		var body_shape := agave.get_node("CollisionShape2D") as CollisionShape2D
 		var rectangle := body_shape.shape as RectangleShape2D
-		_expect(rectangle != null and rectangle.size == Vector2(28, 28), "植物接触碰撞必须为28×28。")
+		_expect(
+			rectangle != null
+			and rectangle.size == Vector2(28, 27)
+			and body_shape.position == Vector2(0, 3.5),
+			"龙舌兰接触碰撞必须贴合当前下沉半像素的28×27主体。"
+		)
 		var player_core := agave.get_node("PlayerCoreBody") as StaticBody2D
 		var player_core_shape := player_core.get_node("CollisionShape2D") as CollisionShape2D
-		var player_core_circle := player_core_shape.shape as CircleShape2D
+		var player_core_capsule := player_core_shape.shape as CapsuleShape2D
 		_expect(
 			player_core.collision_layer == 1024
 			and player_core.collision_mask == 2
-			and player_core_circle != null
-			and is_equal_approx(player_core_circle.radius, 7.0),
-			"龙舌兰核心必须使用仅供玩家碰撞的TowerCore圆形体积。"
+			and player_core.position == Vector2(0, 1)
+			and player_core_shape.position == Vector2(0, 2)
+			and player_core_capsule != null
+			and is_equal_approx(player_core_capsule.radius, 7.0)
+			and is_equal_approx(player_core_capsule.height, 14.0),
+			"龙舌兰核心必须使用仅供玩家碰撞的TowerCore胶囊体积。"
 		)
 		var target_shape := agave.get_node("TargetingArea/CollisionShape2D") as CollisionShape2D
 		var target_circle := target_shape.shape as CircleShape2D
@@ -271,8 +279,8 @@ func _test_config_and_scene_contracts() -> void:
 			and plant_health_bar.get_script() == PLANT_HEALTH_BAR_SCRIPT
 			and plant_health_bar.size == Vector2(32, 5)
 			and plant_health_bar.scale == Vector2.ONE
-			and plant_health_bar.position == Vector2(-16, -23),
-			"龙舌兰必须实例化位于-23..-18的32×5无缩放植物血条。"
+			and plant_health_bar.position == Vector2(-16, -15),
+			"龙舌兰必须实例化位于-15..-10的32×5无缩放植物血条。"
 		)
 		_test_agave_visual_bounds(visual_root, body_sprite, cannon_pivot, cannon_sprite)
 		_test_preview_runtime_alignment(ghost, agave, body_sprite, cannon_pivot, cannon_sprite)
@@ -321,8 +329,8 @@ func _test_agave_visual_bounds(
 	for texture in _get_animation_textures(cannon_sprite):
 		_expect(texture.get_size() == Vector2(64, 64), "龙舌兰全部炮头帧必须为64×64。")
 		_expect(
-			_get_max_opaque_radius(texture, Vector2(32, 32)) <= 24.0,
-			"龙舌兰炮头相对共享枢轴的可见半径不得超过24源像素。"
+			_get_max_opaque_radius(texture, Vector2(32, 32)) <= 24.1,
+			"龙舌兰炮头相对共享枢轴的像素中心半径不得超过24.1源像素。"
 		)
 		for direction_index in range(8):
 			cannon_pivot.rotation = float(direction_index) * PI / 4.0
@@ -748,16 +756,18 @@ func _test_enemy_contact_and_release() -> void:
 	test_root.add_child(enemy)
 	enemy.setup(ENEMY_CONFIG, player)
 	enemy.set_physics_process(false)
-	enemy.global_position = Vector2(600, 600)
+	enemy.global_position = plant.global_position + Vector2(20.0, 0.0)
 	var starting_health := plant.current_health
 	var contact_damage := maxi(ENEMY_CONFIG.attack_damage - agave_config.physical_defense, 1)
 	enemy._on_touch_damage_area_body_entered(plant)
-	_expect(enemy._has_player_contact(), "接触植物后旧接触包装必须报告true。")
+	_expect(not enemy._has_player_contact(), "初次接触龙舌兰外缘时必须继续向内贴近。")
 	_expect(plant.current_health == starting_health - contact_damage, "敌人接触必须立即结算一次物防后的伤害。")
 	enemy._update_touch_damage(0.1)
 	_expect(plant.current_health == starting_health - contact_damage, "接触冷却内不得重复伤害。")
 	enemy._update_touch_damage(enemy.touch_damage_interval)
 	_expect(plant.current_health == starting_health - contact_damage * 2, "冷却结束后必须再次结算防御后伤害。")
+	enemy.global_position = plant.global_position + Vector2(14.0, 0.0)
+	_expect(enemy._has_player_contact(), "向龙舌兰内部推进6像素后必须形成稳定停止接触。")
 	enemy.velocity = Vector2(30, 0)
 	enemy._move_until_player_contact()
 	_expect(enemy.velocity == Vector2.ZERO, "接触植物时敌人必须停止而不改A*。")

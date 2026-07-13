@@ -9,7 +9,10 @@ const DEFAULT_ATTACK_INTERVAL := 2.0
 const CANNONBALL_SPEED := 180.0
 const CANNONBALL_EXPLOSION_RADIUS := 18.0
 const FIRE_PROJECTILE_FRAME := 2
-const CANNON_ART_AIM_OFFSET := 0.30805278 # atan2(7, 22)
+# The authored muzzle marker sits inside the barrel rim at (18, 7) in the
+# 64 px head canvas. Compensate that fixed three-quarter-view slope so the
+# marker-to-target line, projectile origin and visible bore stay aligned.
+const CANNON_ART_AIM_OFFSET := 0.3708913 # atan2(7, 18)
 
 @onready var body_sprite: AnimatedSprite2D = $VisualRoot/BodySprite
 @onready var cannon_pivot: Node2D = $VisualRoot/CannonPivot

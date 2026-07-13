@@ -76,6 +76,7 @@ var touched_player: Player = null
 var touching_players: Dictionary[int, Player] = {}
 var touched_plant: PlantDefense = null
 var touching_plants: Dictionary[int, PlantDefense] = {}
+var touching_plant_entry_distances: Dictionary[int, float] = {}
 var death_sequence_stage: DeathSequenceStage = DeathSequenceStage.NONE
 var death_animation_name_in_use: StringName = &""
 var physical_defense_modifiers: Dictionary = {}
@@ -249,6 +250,33 @@ func is_objective_targeting_player() -> bool:
 	)
 
 
+func get_attackable_objective() -> Node2D:
+	if objective_target == null or not is_instance_valid(objective_target):
+		return null
+	var player_objective := objective_target as Player
+	if player_objective != null:
+		return null if player_objective.is_dead else player_objective
+	var plant_objective := objective_target as PlantDefense
+	if plant_objective != null:
+		return null if plant_objective.is_dead else plant_objective
+	# Home gates and other navigation-only objectives must never become combat
+	# targets merely because they are Node2D instances.
+	return null
+
+
+func has_attackable_objective() -> bool:
+	return get_attackable_objective() != null
+
+
+func is_attackable_objective_in_range(attack_range: float) -> bool:
+	var attack_target := get_attackable_objective()
+	return (
+		attack_target != null
+		and global_position.distance_squared_to(attack_target.global_position)
+			<= maxf(attack_range, 0.0) * maxf(attack_range, 0.0)
+	)
+
+
 func set_pathfinder(shared_pathfinder: Node) -> void:
 	pathfinder = shared_pathfinder
 	if navigation_flow_context != null:
@@ -265,6 +293,7 @@ func configure_multiplayer_proxy() -> void:
 	touching_players.clear()
 	touched_plant = null
 	touching_plants.clear()
+	touching_plant_entry_distances.clear()
 	touch_damage_cooldown_left = 0.0
 	proxy_action_animation_name_in_use = &""
 	_update_movement_status_visuals()
@@ -287,6 +316,7 @@ func remove_for_home_escape() -> bool:
 	touching_players.clear()
 	touched_plant = null
 	touching_plants.clear()
+	touching_plant_entry_distances.clear()
 	objective_target = null
 	proxy_action_animation_name_in_use = &""
 	proxy_action_restore_token += 1
@@ -379,6 +409,7 @@ func play_multiplayer_death_sequence() -> void:
 	touching_players.clear()
 	touched_plant = null
 	touching_plants.clear()
+	touching_plant_entry_distances.clear()
 	proxy_action_animation_name_in_use = &""
 	proxy_action_restore_token += 1
 	_set_collision_shapes_disabled(body_collision_shapes, true)
@@ -1531,13 +1562,31 @@ func _can_use_far_static_objective_linear_movement() -> bool:
 
 
 func _has_player_contact() -> bool:
-	return not touching_plants.is_empty() or not touching_players.is_empty()
+	if not touching_players.is_empty():
+		return true
+	for instance_id in touching_plants:
+		var plant := touching_plants[instance_id] as PlantDefense
+		if plant == null or not is_instance_valid(plant) or plant.is_dead:
+			continue
+		var entry_distance := float(
+			touching_plant_entry_distances.get(instance_id, INF)
+		)
+		if not is_finite(entry_distance):
+			continue
+		var stop_distance := maxf(
+			entry_distance - plant.get_enemy_approach_depth(),
+			minf(entry_distance, 1.0)
+		)
+		if global_position.distance_to(plant.global_position) <= stop_distance:
+			return true
+	return false
 
 
 func _clear_touching_players() -> void:
 	touching_players.clear()
 	touched_player = null
 	touching_plants.clear()
+	touching_plant_entry_distances.clear()
 	touched_plant = null
 
 
@@ -1549,7 +1598,12 @@ func _on_touch_damage_area_body_entered(body: Node2D) -> void:
 	if plant != null:
 		if plant.is_dead:
 			return
-		touching_plants[plant.get_instance_id()] = plant
+		var plant_instance_id := plant.get_instance_id()
+		touching_plants[plant_instance_id] = plant
+		if not touching_plant_entry_distances.has(plant_instance_id):
+			touching_plant_entry_distances[plant_instance_id] = (
+				global_position.distance_to(plant.global_position)
+			)
 		touched_plant = plant
 		var died_callback := _on_touched_plant_died.bind(plant)
 		if not plant.died.is_connected(died_callback):
@@ -1569,7 +1623,9 @@ func _on_touch_damage_area_body_entered(body: Node2D) -> void:
 func _on_touch_damage_area_body_exited(body: Node2D) -> void:
 	var plant := body as PlantDefense
 	if plant != null:
-		touching_plants.erase(plant.get_instance_id())
+		var plant_instance_id := plant.get_instance_id()
+		touching_plants.erase(plant_instance_id)
+		touching_plant_entry_distances.erase(plant_instance_id)
 		if plant == touched_plant:
 			touched_plant = _select_touching_plant()
 		return
@@ -1597,13 +1653,16 @@ func _select_touching_plant() -> PlantDefense:
 		if is_instance_valid(plant) and not plant.is_dead:
 			return plant
 	touching_plants.clear()
+	touching_plant_entry_distances.clear()
 	return null
 
 
 func _on_touched_plant_died(plant: PlantDefense) -> void:
 	if plant == null:
 		return
-	touching_plants.erase(plant.get_instance_id())
+	var plant_instance_id := plant.get_instance_id()
+	touching_plants.erase(plant_instance_id)
+	touching_plant_entry_distances.erase(plant_instance_id)
 	if touched_plant == plant:
 		touched_plant = _select_touching_plant()
 
@@ -1731,6 +1790,7 @@ func _die() -> void:
 	touching_players.clear()
 	touched_plant = null
 	touching_plants.clear()
+	touching_plant_entry_distances.clear()
 	_set_collision_shapes_disabled(body_collision_shapes, true)
 	_set_collision_shapes_disabled(touch_damage_shapes, true)
 	touch_damage_area.set_deferred("monitoring", false)

@@ -6,6 +6,8 @@ signal authoritative_health_changed(current_health: int, maximum_health: int, re
 signal died
 signal modal_ui_visibility_changed(is_open: bool)
 
+@export_range(0.0, 12.0, 0.5, "or_greater") var enemy_approach_depth: float = 3.0
+
 var config: PlantDefenseConfig = null
 var owner_player: Player = null
 var footprint_cells: Array[Vector2i] = []
@@ -99,6 +101,14 @@ func get_effective_physical_defense() -> int:
 
 func get_effective_magic_defense() -> int:
 	return clampi(magic_defense, 0, 100)
+
+
+func get_enemy_approach_depth() -> float:
+	# Enemy damage sensing begins at the authored collision boundary, while this
+	# visual inset controls how far an attacker may press into that silhouette
+	# before movement stops. Individual buildings can tune it without changing
+	# their footprint, projectile hitbox or shared enemy navigation code.
+	return maxf(enemy_approach_depth, 0.0)
 
 
 func is_modal_ui_open() -> bool:

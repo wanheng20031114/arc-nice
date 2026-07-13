@@ -168,6 +168,10 @@ var navigation_prewarm_requested: bool = false
 var navigation_prewarmed: bool = false
 var _previous_physics_interpolation_enabled := false
 var _owns_physics_interpolation_override := false
+var _pixel_snap_viewport: Viewport = null
+var _previous_transform_pixel_snap_enabled := false
+var _previous_vertex_pixel_snap_enabled := false
+var _owns_pixel_snap_override := false
 var merchant_intermission_active := false
 var player_wave_death_counts: Dictionary = {}
 var singleplayer_respawn_time_left := -1.0
@@ -179,13 +183,34 @@ func _enter_tree() -> void:
 	_previous_physics_interpolation_enabled = get_tree().physics_interpolation
 	get_tree().physics_interpolation = true
 	_owns_physics_interpolation_override = true
+	# The 64 px plant art is intentionally rendered at 0.5 world scale through
+	# a 2x camera. Camera interpolation otherwise leaves its one-screen-pixel
+	# outlines on fractional canvas coordinates, so nearest sampling alternates
+	# edge pixels while the player moves. Snap the final CanvasItem transforms
+	# for this runtime only; physics, collision and network coordinates remain
+	# untouched. Vertex snapping stays off to avoid double-snapping rotated art.
+	_pixel_snap_viewport = get_viewport()
+	if _pixel_snap_viewport != null:
+		_previous_transform_pixel_snap_enabled = (
+			_pixel_snap_viewport.snap_2d_transforms_to_pixel
+		)
+		_previous_vertex_pixel_snap_enabled = _pixel_snap_viewport.snap_2d_vertices_to_pixel
+		_pixel_snap_viewport.snap_2d_transforms_to_pixel = true
+		_pixel_snap_viewport.snap_2d_vertices_to_pixel = false
+		_owns_pixel_snap_override = true
 
 
 func _exit_tree() -> void:
-	if not _owns_physics_interpolation_override:
-		return
-	get_tree().physics_interpolation = _previous_physics_interpolation_enabled
-	_owns_physics_interpolation_override = false
+	if _owns_pixel_snap_override and is_instance_valid(_pixel_snap_viewport):
+		_pixel_snap_viewport.snap_2d_transforms_to_pixel = (
+			_previous_transform_pixel_snap_enabled
+		)
+		_pixel_snap_viewport.snap_2d_vertices_to_pixel = _previous_vertex_pixel_snap_enabled
+	_owns_pixel_snap_override = false
+	_pixel_snap_viewport = null
+	if _owns_physics_interpolation_override:
+		get_tree().physics_interpolation = _previous_physics_interpolation_enabled
+		_owns_physics_interpolation_override = false
 
 
 func _ready() -> void:

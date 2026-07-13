@@ -206,14 +206,26 @@ func _test_config_and_scene(config: PlantDefenseConfig, warehouse: OakWarehouse)
 func _test_interaction_lock(player: Player, warehouse: OakWarehouse) -> void:
 	warehouse.call("_on_interaction_area_body_entered", player)
 	_expect(warehouse.interaction_prompt.visible, "玩家靠近后必须显示按F打开提示。")
-	var interact_event := InputEventAction.new()
-	interact_event.action = &"interact"
+	var interact_event := InputEventKey.new()
+	interact_event.physical_keycode = KEY_F
 	interact_event.pressed = true
+	_expect(interact_event.is_action_pressed(&"interact"), "键盘F必须继续映射到interact动作。")
 	warehouse._unhandled_input(interact_event)
 	_expect(warehouse.storage_panel.is_open(), "仓库界面必须能够打开。")
 	_expect(player.controls_locked, "打开仓库时必须锁定玩家操作。")
-	warehouse.storage_panel.close()
-	_expect(not player.controls_locked, "关闭仓库后必须解除玩家操作锁。")
+	warehouse.storage_panel._input(interact_event)
+	_expect(not warehouse.storage_panel.is_open(), "仓库打开后再次按F必须关闭界面。")
+	_expect(not player.controls_locked, "按F关闭仓库后必须解除玩家操作锁。")
+
+	warehouse._unhandled_input(interact_event)
+	_expect(warehouse.storage_panel.is_open(), "仓库关闭后必须能再次打开。")
+	var joypad_y := InputEventJoypadButton.new()
+	joypad_y.button_index = JOY_BUTTON_Y
+	joypad_y.pressed = true
+	_expect(joypad_y.is_action_pressed(&"interact"), "手柄Y必须继续映射到interact动作。")
+	warehouse.storage_panel._input(joypad_y)
+	_expect(not warehouse.storage_panel.is_open(), "仓库打开后按手柄Y必须关闭界面。")
+	_expect(not player.controls_locked, "按手柄Y关闭仓库后必须解除玩家操作锁。")
 
 
 func _test_plant_health_bar(warehouse: OakWarehouse) -> void:

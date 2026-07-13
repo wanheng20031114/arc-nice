@@ -68,9 +68,10 @@ func _play_config_animation(animation_name: StringName) -> void:
 
 
 func _has_clear_world_line_to_target() -> bool:
-	if not is_instance_valid(target_player):
+	var attack_target := get_attackable_objective()
+	if attack_target == null:
 		return false
-	return _has_clear_world_line_to_position(target_player.global_position)
+	return _has_clear_world_line_to_position(attack_target.global_position)
 
 
 func _has_clear_world_line_to_objective() -> bool:

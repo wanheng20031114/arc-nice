@@ -132,6 +132,7 @@ func _input(event: InputEvent) -> void:
 		event.is_action_pressed(&"quit")
 		or event.is_action_pressed(&"ui_cancel")
 		or event.is_action_pressed(&"bag")
+		or event.is_action_pressed(&"interact")
 	):
 		close()
 		get_viewport().set_input_as_handled()

@@ -4,6 +4,7 @@ class_name CapooAK47Bullet
 signal projectile_finished(projectile_id: int, projectile: Node)
 
 const WORLD_COLLISION_MASK := 1
+const DAMAGEABLE_COLLISION_MASK := 2 | 512
 const HIT_EFFECT_SCENE := preload("res://scene/bullet_hit_effect.tscn")
 
 @export var speed: float = 142.5
@@ -22,7 +23,7 @@ var pool_active: bool = true
 var _authored_speed: float = 142.5
 var _authored_max_lifetime: float = 2.0
 var _authored_collision_layer: int = 128
-var _authored_collision_mask: int = 2
+var _authored_collision_mask: int = DAMAGEABLE_COLLISION_MASK
 var world_collision_query := PhysicsRayQueryParameters2D.create(
 	Vector2.ZERO,
 	Vector2.ZERO,
@@ -139,6 +140,15 @@ func _on_body_entered(body: Node2D) -> void:
 				damage,
 				EnemyConfig.DamageType.PHYSICAL,
 				_get_player_damage_context()
+			)
+	else:
+		var plant := body as PlantDefense
+		if plant != null and not plant.is_dead:
+			plant.receive_damage(
+				damage,
+				self,
+				direction,
+				EnemyConfig.DamageType.PHYSICAL
 			)
 	_consume(true)
 

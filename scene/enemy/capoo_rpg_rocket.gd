@@ -5,7 +5,7 @@ signal projectile_finished(projectile_id: int, projectile: Node)
 
 const EXPLOSION_SCENE := preload("res://scene/enemy/capoo_rpg_explosion.tscn")
 const WORLD_COLLISION_MASK := 1
-const PLAYER_COLLISION_MASK := 2
+const DAMAGEABLE_COLLISION_MASK := 2 | 512
 const EXPLOSION_QUERY_MAX_RESULTS := 16
 
 @export var speed: float = 210.0
@@ -27,7 +27,7 @@ var _authored_speed: float = 210.0
 var _authored_max_lifetime: float = 3.0
 var _authored_explosion_radius: float = 44.0
 var _authored_collision_layer: int = 128
-var _authored_collision_mask: int = 3
+var _authored_collision_mask: int = WORLD_COLLISION_MASK | DAMAGEABLE_COLLISION_MASK
 
 
 func _ready() -> void:
@@ -174,26 +174,38 @@ func _apply_explosion_damage() -> void:
 	var query := PhysicsShapeQueryParameters2D.new()
 	query.shape = circle_shape
 	query.transform = Transform2D(0.0, global_position)
-	query.collision_mask = PLAYER_COLLISION_MASK
+	query.collision_mask = DAMAGEABLE_COLLISION_MASK
 	query.collide_with_bodies = true
 	query.collide_with_areas = false
 	query.exclude = [get_rid()]
 
 	var results := get_world_2d().direct_space_state.intersect_shape(query, EXPLOSION_QUERY_MAX_RESULTS)
-	var damaged_players: Dictionary = {}
+	var damaged_bodies: Dictionary = {}
 	for result in results:
-		var player := result.get("collider") as Player
-		if player == null or player.is_dead:
+		var body := result.get("collider") as Node2D
+		if body == null:
 			continue
-		var player_id := player.get_instance_id()
-		if damaged_players.has(player_id):
+		var body_id := body.get_instance_id()
+		if damaged_bodies.has(body_id):
 			continue
-		damaged_players[player_id] = true
-		if not _try_report_multiplayer_player_hit(player):
-			player.apply_damage(
+		damaged_bodies[body_id] = true
+		var player := body as Player
+		if player != null and not player.is_dead:
+			if not _try_report_multiplayer_player_hit(player):
+				player.apply_damage(
+					damage,
+					EnemyConfig.DamageType.PHYSICAL,
+					_get_player_damage_context(player)
+				)
+			continue
+		var plant := body as PlantDefense
+		if plant != null and not plant.is_dead:
+			var impact_direction := global_position.direction_to(plant.global_position)
+			plant.receive_damage(
 				damage,
-				EnemyConfig.DamageType.PHYSICAL,
-				_get_player_damage_context(player)
+				self,
+				impact_direction,
+				EnemyConfig.DamageType.PHYSICAL
 			)
 
 

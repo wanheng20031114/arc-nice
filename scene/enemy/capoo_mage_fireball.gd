@@ -5,7 +5,7 @@ signal projectile_finished(projectile_id: int, projectile: Node)
 
 const IMPACT_SCENE := preload("res://scene/enemy/capoo_mage_fireball_impact.tscn")
 const WORLD_COLLISION_MASK := 1
-const PLAYER_COLLISION_MASK := 2
+const DAMAGEABLE_COLLISION_MASK := 2 | 512
 const EXPLOSION_QUERY_MAX_RESULTS := 8
 
 @export var speed: float = 155.0
@@ -18,7 +18,7 @@ const EXPLOSION_QUERY_MAX_RESULTS := 8
 @onready var explosion_shape: CollisionShape2D = $ExplosionShape
 
 var direction := Vector2.RIGHT
-var target_player: Player = null
+var target_player: Node2D = null
 var damage: int = 1
 var remaining_lifetime: float = 0.0
 var has_exploded: bool = false
@@ -31,7 +31,7 @@ var _authored_max_lifetime: float = 4.0
 var _authored_radius: float = 10.5
 var _authored_homing_turn_rate: float = 0.65
 var _authored_collision_layer: int = 128
-var _authored_collision_mask: int = 3
+var _authored_collision_mask: int = WORLD_COLLISION_MASK | DAMAGEABLE_COLLISION_MASK
 
 
 func _ready() -> void:
@@ -97,7 +97,7 @@ func setup(
 	initial_speed: float,
 	initial_lifetime: float,
 	initial_radius: float = 10.5,
-	initial_target_player: Player = null,
+	initial_target_player: Node2D = null,
 	initial_homing_turn_rate: float = 0.65
 ) -> void:
 	pool_active = true
@@ -147,7 +147,7 @@ func _physics_process(delta: float) -> void:
 func _update_homing(delta: float) -> void:
 	if homing_turn_rate <= 0.0:
 		return
-	if target_player == null or not is_instance_valid(target_player) or target_player.is_dead:
+	if not _is_homing_target_alive():
 		return
 	var desired_direction := global_position.direction_to(target_player.global_position)
 	if desired_direction == Vector2.ZERO:
@@ -156,6 +156,16 @@ func _update_homing(delta: float) -> void:
 	var max_turn := homing_turn_rate * delta
 	direction = direction.rotated(clampf(angle_delta, -max_turn, max_turn)).normalized()
 	rotation = direction.angle()
+
+
+func _is_homing_target_alive() -> bool:
+	if target_player == null or not is_instance_valid(target_player):
+		return false
+	var player := target_player as Player
+	if player != null:
+		return not player.is_dead
+	var plant := target_player as PlantDefense
+	return plant != null and not plant.is_dead
 
 
 func _get_world_hit(from_position: Vector2, to_position: Vector2) -> Dictionary:
@@ -207,25 +217,36 @@ func _apply_explosion_damage() -> void:
 	var query := PhysicsShapeQueryParameters2D.new()
 	query.shape = circle_shape
 	query.transform = Transform2D(0.0, global_position)
-	query.collision_mask = PLAYER_COLLISION_MASK
+	query.collision_mask = DAMAGEABLE_COLLISION_MASK
 	query.collide_with_bodies = true
 	query.collide_with_areas = false
 	query.exclude = [get_rid()]
 	var results := get_world_2d().direct_space_state.intersect_shape(query, EXPLOSION_QUERY_MAX_RESULTS)
-	var damaged_players: Dictionary = {}
+	var damaged_bodies: Dictionary = {}
 	for result in results:
-		var player := result.get("collider") as Player
-		if player == null or player.is_dead:
+		var body := result.get("collider") as Node2D
+		if body == null:
 			continue
-		var player_id := player.get_instance_id()
-		if damaged_players.has(player_id):
+		var body_id := body.get_instance_id()
+		if damaged_bodies.has(body_id):
 			continue
-		damaged_players[player_id] = true
-		if not _try_report_multiplayer_player_hit(player):
-			player.apply_damage(
+		damaged_bodies[body_id] = true
+		var player := body as Player
+		if player != null and not player.is_dead:
+			if not _try_report_multiplayer_player_hit(player):
+				player.apply_damage(
+					damage,
+					EnemyConfig.DamageType.PHYSICAL,
+					_get_player_damage_context(player)
+				)
+			continue
+		var plant := body as PlantDefense
+		if plant != null and not plant.is_dead:
+			plant.receive_damage(
 				damage,
-				EnemyConfig.DamageType.PHYSICAL,
-				_get_player_damage_context(player)
+				self,
+				global_position.direction_to(plant.global_position),
+				EnemyConfig.DamageType.PHYSICAL
 			)
 
 

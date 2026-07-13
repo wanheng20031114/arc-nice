@@ -44,7 +44,7 @@ func _physics_process(delta: float) -> void:
 
 	_update_touch_damage(delta)
 	_update_attack_cooldown(delta)
-	if combat_state != CombatState.CHASE and not is_objective_targeting_player():
+	if combat_state != CombatState.CHASE and not has_attackable_objective():
 		_cancel_attack()
 
 	match combat_state:
@@ -60,7 +60,7 @@ func _physics_process(delta: float) -> void:
 		_move_until_player_contact()
 		return
 
-	if is_objective_targeting_player() and _try_start_windup():
+	if has_attackable_objective() and _try_start_windup():
 		return
 	if _has_player_contact():
 		velocity = Vector2.ZERO
@@ -107,18 +107,17 @@ func _update_attack_cooldown(delta: float) -> void:
 
 
 func _try_start_windup() -> bool:
-	if not is_objective_targeting_player():
-		return false
 	var capoo_config := config as CapooConfig
 	if capoo_config == null:
 		return false
 	if attack_cooldown_left > 0.0:
 		return false
-	if not is_instance_valid(target_player):
+	var attack_target := get_attackable_objective()
+	if attack_target == null:
 		return false
 	if capoo_config.projectile_scene == null:
 		return false
-	if global_position.distance_to(target_player.global_position) > capoo_config.attack_range:
+	if not is_attackable_objective_in_range(capoo_config.attack_range):
 		return false
 	if not _has_clear_world_line_to_target():
 		return false
@@ -127,25 +126,23 @@ func _try_start_windup() -> bool:
 	windup_time_left = maxf(capoo_config.attack_windup, 0.0)
 	velocity = Vector2.ZERO
 	_clear_navigation_path()
-	_update_facing(global_position.direction_to(target_player.global_position))
+	var target_direction := global_position.direction_to(attack_target.global_position)
+	_update_facing(target_direction)
 	_play_config_animation(capoo_config.windup_animation_name)
-	_set_muzzle_heat(0.0, global_position.direction_to(target_player.global_position))
-	_broadcast_enemy_action(&"windup", global_position.direction_to(target_player.global_position))
+	_set_muzzle_heat(0.0, target_direction)
+	_broadcast_enemy_action(&"windup", target_direction)
 	return true
 
 
 func _update_windup(delta: float) -> void:
 	var capoo_config := config as CapooConfig
-	if (
-		capoo_config == null
-		or not is_objective_targeting_player()
-		or not is_instance_valid(target_player)
-	):
+	var attack_target := get_attackable_objective()
+	if capoo_config == null or attack_target == null:
 		_cancel_attack()
 		return
 
 	velocity = Vector2.ZERO
-	var target_direction := global_position.direction_to(target_player.global_position)
+	var target_direction := global_position.direction_to(attack_target.global_position)
 	_update_facing(target_direction)
 	windup_time_left = maxf(windup_time_left - delta, 0.0)
 	var progress := 1.0 - (windup_time_left / maxf(capoo_config.attack_windup, 0.001))
@@ -326,12 +323,13 @@ func _play_proxy_muzzle_heat(direction: Vector2, duration: float, action_id: int
 
 
 func _has_clear_world_line_to_target() -> bool:
-	if not is_instance_valid(target_player):
+	var attack_target := get_attackable_objective()
+	if attack_target == null:
 		return false
 
 	var query := PhysicsRayQueryParameters2D.create(
 		global_position,
-		target_player.global_position,
+		attack_target.global_position,
 		WORLD_COLLISION_MASK,
 		[get_rid()]
 	)

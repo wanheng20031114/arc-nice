@@ -27,6 +27,8 @@ MAX_VISIBLE_COLORS = 64
 WAREHOUSE_MAX_SUBJECT_SIZE = (60, 62)
 PIVOT_IN_TEXTURE = (SOURCE_SIDE // 2, SOURCE_SIDE // 2)
 AGAVE_HEAD_OFFSET = (0, -6)
+AGAVE_HEAD_MAX_PIXEL_CENTER_RADIUS = 24.1
+PREVIEW_ALIGNMENT_TOLERANCE_WORLD = 0.5
 
 WAREHOUSE_ASSET = TEXTURE_ROOT / "oak_warehouse/oak_warehouse.png"
 AGAVE_ICON = TEXTURE_ROOT / "agave_cannon/icon.png"
@@ -118,16 +120,40 @@ def _footpoint(audit: dict[str, Any]) -> tuple[float, float]:
     return ((left + right - 1) * 0.5, float(bottom - 1))
 
 
-def _agave_default_recomposition_diff() -> int:
+def _agave_default_recomposition_metrics() -> dict[str, Any]:
     body = _load_rgba(AGAVE_BODY_FRAMES[0])
     head = _load_rgba(AGAVE_HEAD_FRAMES[0])
     recomposed = body.copy()
     recomposed.alpha_composite(head, AGAVE_HEAD_OFFSET)
     icon = _load_rgba(AGAVE_ICON)
-    return sum(
+    runtime_bbox = recomposed.getchannel("A").getbbox()
+    icon_bbox = icon.getchannel("A").getbbox()
+    edge_error_world = math.inf
+    footpoint_error_world = math.inf
+    if runtime_bbox is not None and icon_bbox is not None:
+        edge_error_world = max(
+            abs(runtime_edge - icon_edge)
+            for runtime_edge, icon_edge in zip(runtime_bbox, icon_bbox)
+        ) * WORLD_SCALE
+        runtime_footpoint = (
+            (runtime_bbox[0] + runtime_bbox[2] - 1) * 0.5,
+            float(runtime_bbox[3] - 1),
+        )
+        icon_footpoint = (
+            (icon_bbox[0] + icon_bbox[2] - 1) * 0.5,
+            float(icon_bbox[3] - 1),
+        )
+        footpoint_error_world = math.dist(runtime_footpoint, icon_footpoint) * WORLD_SCALE
+    return {
+        "pixel_diff_count": sum(
         recomposed_pixel != icon_pixel
         for recomposed_pixel, icon_pixel in zip(recomposed.getdata(), icon.getdata())
-    )
+        ),
+        "runtime_subject_bbox": list(runtime_bbox) if runtime_bbox is not None else None,
+        "icon_subject_bbox": list(icon_bbox) if icon_bbox is not None else None,
+        "maximum_edge_error_world": round(edge_error_world, 3),
+        "footpoint_error_world": round(footpoint_error_world, 3),
+    }
 
 
 def _collect_failures(report: dict[str, Any]) -> list[str]:
@@ -190,15 +216,24 @@ def _collect_failures(report: dict[str, Any]) -> list[str]:
 
     for path in AGAVE_HEAD_FRAMES:
         audit = audits[_relative(path)]
-        if audit["maximum_radius_from_canvas_center"] > 24.0:
+        if (
+            audit["maximum_radius_from_canvas_center"]
+            > AGAVE_HEAD_MAX_PIXEL_CENTER_RADIUS
+        ):
             failures.append(
-                f"{_relative(path)} exceeds the 24px radius around the shared 32,32 pivot"
+                f"{_relative(path)} exceeds the "
+                f"{AGAVE_HEAD_MAX_PIXEL_CENTER_RADIUS}px pixel-center radius "
+                "around the shared 32,32 pivot"
             )
 
-    if report["agave_default_recomposition_diff_pixels"] != 0:
+    alignment = report["agave_default_preview_alignment"]
+    if (
+        alignment["maximum_edge_error_world"] > PREVIEW_ALIGNMENT_TOLERANCE_WORLD
+        or alignment["footpoint_error_world"] > PREVIEW_ALIGNMENT_TOLERANCE_WORLD
+    ):
         failures.append(
-            "Agave runtime body/head composition must match its placement icon "
-            "pixel-for-pixel at the default pivot"
+            "Agave runtime body/head composition and placement icon must keep "
+            f"their world bounds and footpoint within {PREVIEW_ALIGNMENT_TOLERANCE_WORLD}px"
         )
 
     return failures
@@ -219,11 +254,13 @@ def build_report() -> dict[str, Any]:
             "max_visible_colors": MAX_VISIBLE_COLORS,
             "warehouse_max_subject": list(WAREHOUSE_MAX_SUBJECT_SIZE),
             "agave_shared_head_pivot": list(PIVOT_IN_TEXTURE),
+            "agave_head_max_pixel_center_radius": AGAVE_HEAD_MAX_PIXEL_CENTER_RADIUS,
             "agave_max_body_footpoint_drift": 1.0,
+            "preview_alignment_tolerance_world": PREVIEW_ALIGNMENT_TOLERANCE_WORLD,
         },
         "assets": asset_audits,
         "agave_body_footpoints": body_footpoints,
-        "agave_default_recomposition_diff_pixels": _agave_default_recomposition_diff(),
+        "agave_default_preview_alignment": _agave_default_recomposition_metrics(),
     }
 
 

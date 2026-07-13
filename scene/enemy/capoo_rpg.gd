@@ -42,7 +42,7 @@ func _physics_process(delta: float) -> void:
 
 	_update_touch_damage(delta)
 	_update_attack_cooldown(delta)
-	if combat_state != CombatState.CHASE and not is_objective_targeting_player():
+	if combat_state != CombatState.CHASE and not has_attackable_objective():
 		_cancel_attack()
 
 	match combat_state:
@@ -58,7 +58,7 @@ func _physics_process(delta: float) -> void:
 		_move_until_player_contact()
 		return
 
-	if is_objective_targeting_player() and _try_start_windup():
+	if has_attackable_objective() and _try_start_windup():
 		return
 	if _has_player_contact():
 		velocity = Vector2.ZERO
@@ -104,25 +104,24 @@ func _update_attack_cooldown(delta: float) -> void:
 
 
 func _try_start_windup() -> bool:
-	if not is_objective_targeting_player():
-		return false
 	var rpg_config := config as CapooRPGConfigScript
 	if rpg_config == null:
 		return false
 	if attack_cooldown_left > 0.0:
 		return false
-	if not is_instance_valid(target_player):
+	var attack_target := get_attackable_objective()
+	if attack_target == null:
 		return false
 	if rpg_config.projectile_scene == null:
 		return false
-	if global_position.distance_to(target_player.global_position) > rpg_config.attack_range:
+	if not is_attackable_objective_in_range(rpg_config.attack_range):
 		return false
 	if not _has_clear_world_line_to_target():
 		return false
 
 	combat_state = CombatState.WINDUP
 	windup_time_left = maxf(rpg_config.attack_windup, 0.0)
-	fire_direction = global_position.direction_to(target_player.global_position)
+	fire_direction = global_position.direction_to(attack_target.global_position)
 	if fire_direction == Vector2.ZERO:
 		fire_direction = Vector2.RIGHT
 	velocity = Vector2.ZERO
@@ -136,16 +135,13 @@ func _try_start_windup() -> bool:
 
 func _update_windup(delta: float) -> void:
 	var rpg_config := config as CapooRPGConfigScript
-	if (
-		rpg_config == null
-		or not is_objective_targeting_player()
-		or not is_instance_valid(target_player)
-	):
+	var attack_target := get_attackable_objective()
+	if rpg_config == null or attack_target == null:
 		_cancel_attack()
 		return
 
 	velocity = Vector2.ZERO
-	fire_direction = global_position.direction_to(target_player.global_position)
+	fire_direction = global_position.direction_to(attack_target.global_position)
 	if fire_direction == Vector2.ZERO:
 		fire_direction = Vector2.RIGHT
 	_update_facing(fire_direction)
@@ -328,12 +324,13 @@ func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> voi
 
 
 func _has_clear_world_line_to_target() -> bool:
-	if not is_instance_valid(target_player):
+	var attack_target := get_attackable_objective()
+	if attack_target == null:
 		return false
 
 	var query := PhysicsRayQueryParameters2D.create(
 		global_position,
-		target_player.global_position,
+		attack_target.global_position,
 		WORLD_COLLISION_MASK,
 		[get_rid()]
 	)

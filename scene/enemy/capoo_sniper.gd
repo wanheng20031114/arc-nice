@@ -17,10 +17,14 @@ enum CombatState {
 var combat_state: CombatState = CombatState.CHASE
 var attack_cooldown_left: float = 0.0
 var lock_time_left: float = 0.0
+var locked_target: Node2D = null
 var locked_player: Player = null
 var lock_reticle: CapooSniperLockReticle = null
 var latest_proxy_target_action_id: int = 0
+var latest_proxy_action_id: int = 0
 var proxy_locked_player: Player = null
+var proxy_plant_lock_active := false
+var proxy_locked_plant_position := Vector2.ZERO
 var proxy_lock_duration: float = 0.0
 var proxy_lock_elapsed: float = 0.0
 
@@ -37,7 +41,7 @@ func _physics_process(delta: float) -> void:
 
 	_update_touch_damage(delta)
 	_update_attack_cooldown(delta)
-	if combat_state == CombatState.LOCK and not is_objective_targeting_player():
+	if combat_state == CombatState.LOCK and not has_attackable_objective():
 		_cancel_lock()
 
 	if combat_state == CombatState.LOCK:
@@ -49,7 +53,7 @@ func _physics_process(delta: float) -> void:
 		_move_until_player_contact()
 		return
 
-	if is_objective_targeting_player() and _try_start_lock():
+	if has_attackable_objective() and _try_start_lock():
 		return
 	if _has_player_contact():
 		velocity = Vector2.ZERO
@@ -77,6 +81,7 @@ func _apply_config() -> void:
 	combat_state = CombatState.CHASE
 	attack_cooldown_left = 0.0
 	lock_time_left = 0.0
+	locked_target = null
 	locked_player = null
 	_clear_lock_reticle()
 	_clear_proxy_lock_visual()
@@ -101,30 +106,37 @@ func _update_attack_cooldown(delta: float) -> void:
 
 
 func _try_start_lock() -> bool:
-	if not is_objective_targeting_player():
-		return false
 	var sniper_config := config as SniperConfig
 	if sniper_config == null or sniper_config.lock_reticle_scene == null:
 		return false
 	if attack_cooldown_left > 0.0:
 		return false
-	if not is_instance_valid(target_player):
+	var attack_target := get_attackable_objective()
+	if attack_target == null:
 		return false
-	if global_position.distance_to(target_player.global_position) > sniper_config.attack_range:
+	if not is_attackable_objective_in_range(sniper_config.attack_range):
 		return false
 	if not _has_clear_world_line_to_target():
 		return false
 
 	combat_state = CombatState.LOCK
-	locked_player = target_player
+	locked_target = attack_target
+	locked_player = attack_target as Player
 	lock_time_left = maxf(sniper_config.lock_duration, 0.01)
 	velocity = Vector2.ZERO
 	_clear_navigation_path()
-	_update_facing(global_position.direction_to(locked_player.global_position))
+	var lock_direction := global_position.direction_to(locked_target.global_position)
+	_update_facing(lock_direction)
 	_play_config_animation(sniper_config.aim_animation_name)
-	_show_lock_reticle(locked_player, sniper_config.lock_duration)
-	_set_aim_glow(0.35, locked_player.global_position)
-	_broadcast_enemy_target_action(&"sniper_lock_start", locked_player.peer_id)
+	_show_lock_reticle(locked_target, sniper_config.lock_duration)
+	_set_aim_glow(0.35, locked_target.global_position)
+	if locked_player != null:
+		_broadcast_enemy_target_action(&"sniper_lock_start", locked_player.peer_id)
+	else:
+		_broadcast_enemy_action(
+			&"sniper_plant_lock_start",
+			locked_target.global_position - global_position
+		)
 	return true
 
 
@@ -132,20 +144,19 @@ func _update_lock(delta: float) -> void:
 	var sniper_config := config as SniperConfig
 	if (
 		sniper_config == null
-		or not is_objective_targeting_player()
 		or not _is_lock_target_valid(sniper_config)
 	):
 		_cancel_lock()
 		return
 
 	velocity = Vector2.ZERO
-	var direction := global_position.direction_to(locked_player.global_position)
+	var direction := global_position.direction_to(locked_target.global_position)
 	if direction == Vector2.ZERO:
 		direction = Vector2.RIGHT
 	_update_facing(direction)
 	lock_time_left = maxf(lock_time_left - delta, 0.0)
 	var progress := 1.0 - lock_time_left / maxf(sniper_config.lock_duration, 0.01)
-	_set_aim_glow(progress, locked_player.global_position)
+	_set_aim_glow(progress, locked_target.global_position)
 	if lock_reticle != null and is_instance_valid(lock_reticle):
 		lock_reticle.set_progress(progress)
 
@@ -156,47 +167,65 @@ func _update_lock(delta: float) -> void:
 
 
 func _is_lock_target_valid(sniper_config: SniperConfig) -> bool:
-	if locked_player == null or not is_instance_valid(locked_player) or locked_player.is_dead:
+	if locked_target == null or not is_instance_valid(locked_target):
 		return false
-	if global_position.distance_to(locked_player.global_position) > sniper_config.attack_range:
+	if locked_target != get_attackable_objective():
 		return false
-	return _has_clear_world_line_to_position(locked_player.global_position)
+	if global_position.distance_to(locked_target.global_position) > sniper_config.attack_range:
+		return false
+	return _has_clear_world_line_to_position(locked_target.global_position)
 
 
 func _fire_locked_shot(direction: Vector2) -> void:
 	var sniper_config := config as SniperConfig
-	if sniper_config == null or locked_player == null:
+	if sniper_config == null or locked_target == null or not is_instance_valid(locked_target):
 		_cancel_lock()
 		return
 
 	attack_cooldown_left = maxf(sniper_config.attack_interval, 0.01)
-	var hit_source_id := _get_multiplayer_damage_source_id(Time.get_ticks_msec() % 1000000)
-	var current_scene := get_tree().current_scene
-	var reported := false
-	if current_scene != null and current_scene.has_method("request_multiplayer_player_damage"):
-		reported = bool(current_scene.call(
-			"request_multiplayer_player_damage",
-			hit_source_id,
-			locked_player.peer_id,
+	var locked_plant := locked_target as PlantDefense
+	if locked_plant != null:
+		locked_plant.receive_damage(
 			sniper_config.attack_damage,
-			&"capoo_sniper_lock",
+			self,
 			-direction,
-			true
-		))
-	if not reported:
-		locked_player.apply_damage(
-			sniper_config.attack_damage,
-			EnemyConfig.DamageType.PHYSICAL,
-			{
-				"is_ranged": true,
-				"source_direction": -direction,
-			}
+			EnemyConfig.DamageType.PHYSICAL
 		)
+	elif locked_player != null:
+		var hit_source_id := _get_multiplayer_damage_source_id(Time.get_ticks_msec() % 1000000)
+		var current_scene := get_tree().current_scene
+		var reported := false
+		if current_scene != null and current_scene.has_method("request_multiplayer_player_damage"):
+			reported = bool(current_scene.call(
+				"request_multiplayer_player_damage",
+				hit_source_id,
+				locked_player.peer_id,
+				sniper_config.attack_damage,
+				&"capoo_sniper_lock",
+				-direction,
+				true
+			))
+		if not reported:
+			locked_player.apply_damage(
+				sniper_config.attack_damage,
+				EnemyConfig.DamageType.PHYSICAL,
+				{
+					"is_ranged": true,
+					"source_direction": -direction,
+				}
+			)
 	if sniper_config.attack_audio_stream != null:
 		attack_audio.pitch_scale = random_generator.randf_range(0.96, 1.03)
 		attack_audio.play()
-	_broadcast_enemy_target_action(&"sniper_lock_fire", locked_player.peer_id)
+	if locked_player != null:
+		_broadcast_enemy_target_action(&"sniper_lock_fire", locked_player.peer_id)
+	else:
+		_broadcast_enemy_action(
+			&"sniper_plant_lock_fire",
+			locked_target.global_position - global_position
+		)
 	_clear_lock_reticle()
+	locked_target = null
 	locked_player = null
 	combat_state = CombatState.CHASE
 	_set_aim_glow(0.0, global_position + direction)
@@ -206,8 +235,14 @@ func _fire_locked_shot(direction: Vector2) -> void:
 func _cancel_lock() -> void:
 	if locked_player != null and is_instance_valid(locked_player):
 		_broadcast_enemy_target_action(&"sniper_lock_cancel", locked_player.peer_id)
+	elif locked_target is PlantDefense and is_instance_valid(locked_target):
+		_broadcast_enemy_action(
+			&"sniper_plant_lock_cancel",
+			locked_target.global_position - global_position
+		)
 	combat_state = CombatState.CHASE
 	lock_time_left = 0.0
+	locked_target = null
 	locked_player = null
 	_clear_lock_reticle()
 	_set_aim_glow(0.0, global_position + Vector2.RIGHT)
@@ -216,7 +251,7 @@ func _cancel_lock() -> void:
 		_play_config_animation(sniper_config.move_animation_name)
 
 
-func _show_lock_reticle(target: Player, duration: float) -> void:
+func _show_lock_reticle(target: Node2D, duration: float) -> void:
 	_clear_lock_reticle()
 	var sniper_config := config as SniperConfig
 	if sniper_config == null or sniper_config.lock_reticle_scene == null:
@@ -261,8 +296,46 @@ func play_multiplayer_enemy_target_action(
 		_clear_proxy_lock_visual()
 
 
+func play_multiplayer_enemy_action(
+	action_name: StringName,
+	target_offset: Vector2,
+	action_id: int
+) -> void:
+	if action_id <= latest_proxy_action_id:
+		return
+	latest_proxy_action_id = action_id
+	if action_name == &"sniper_plant_lock_start":
+		var sniper_config := config as SniperConfig
+		if sniper_config == null:
+			return
+		proxy_locked_player = null
+		proxy_plant_lock_active = true
+		proxy_locked_plant_position = global_position + target_offset
+		proxy_lock_duration = maxf(sniper_config.lock_duration, 0.01)
+		proxy_lock_elapsed = 0.0
+		_play_multiplayer_proxy_action_animation(
+			sniper_config.aim_animation_name,
+			sniper_config.lock_duration + 0.15
+		)
+		var direction := target_offset.normalized()
+		if direction == Vector2.ZERO:
+			direction = Vector2.RIGHT
+		_update_facing(direction)
+		_set_aim_glow(0.35, proxy_locked_plant_position)
+	elif (
+		action_name == &"sniper_plant_lock_cancel"
+		or action_name == &"sniper_plant_lock_fire"
+	):
+		_clear_proxy_lock_visual()
+
+
 func _update_proxy_lock_visual(delta: float) -> void:
-	if proxy_locked_player == null or not is_instance_valid(proxy_locked_player):
+	var target_position := Vector2.ZERO
+	if proxy_locked_player != null and is_instance_valid(proxy_locked_player):
+		target_position = proxy_locked_player.global_position
+	elif proxy_plant_lock_active:
+		target_position = proxy_locked_plant_position
+	else:
 		_clear_proxy_lock_visual()
 		return
 	var sniper_config := config as SniperConfig
@@ -272,17 +345,19 @@ func _update_proxy_lock_visual(delta: float) -> void:
 	proxy_lock_duration = maxf(proxy_lock_duration, 0.01)
 	proxy_lock_elapsed = minf(proxy_lock_elapsed + maxf(delta, 0.0), proxy_lock_duration)
 	var progress := clampf(proxy_lock_elapsed / proxy_lock_duration, 0.0, 1.0)
-	var direction := global_position.direction_to(proxy_locked_player.global_position)
+	var direction := global_position.direction_to(target_position)
 	if direction == Vector2.ZERO:
 		direction = Vector2.RIGHT
 	_update_facing(direction)
-	_set_aim_glow(progress, proxy_locked_player.global_position)
+	_set_aim_glow(progress, target_position)
 	if lock_reticle != null and is_instance_valid(lock_reticle):
 		lock_reticle.set_progress(progress)
 
 
 func _clear_proxy_lock_visual() -> void:
 	proxy_locked_player = null
+	proxy_plant_lock_active = false
+	proxy_locked_plant_position = Vector2.ZERO
 	proxy_lock_duration = 0.0
 	proxy_lock_elapsed = 0.0
 	_clear_lock_reticle()

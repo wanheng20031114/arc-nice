@@ -33,8 +33,9 @@ func _physics_process(delta: float) -> void:
 		return
 	if _has_player_contact():
 		velocity = Vector2.ZERO
-		if is_objective_targeting_player():
-			var contact_aim_direction := global_position.direction_to(target_player.global_position)
+		var attack_target := get_attackable_objective()
+		if attack_target != null:
+			var contact_aim_direction := global_position.direction_to(attack_target.global_position)
 			if contact_aim_direction != Vector2.ZERO:
 				last_move_direction = contact_aim_direction
 			_update_facing(contact_aim_direction)
@@ -47,7 +48,7 @@ func _physics_process(delta: float) -> void:
 	_update_facing(move_direction)
 	velocity = move_direction * _get_move_speed()
 	_move_until_player_contact()
-	if is_objective_targeting_player():
+	if has_attackable_objective():
 		_try_fire_scatter(last_move_direction if move_direction != Vector2.ZERO else Vector2.ZERO)
 
 
@@ -72,7 +73,7 @@ func play_multiplayer_death_sequence() -> void:
 
 
 func _try_fire_scatter(base_direction: Vector2) -> bool:
-	if not is_objective_targeting_player():
+	if not has_attackable_objective():
 		return false
 	var smg_config := config as SMGConfig
 	if smg_config == null or smg_config.projectile_scene == null:

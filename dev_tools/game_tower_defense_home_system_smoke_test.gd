@@ -37,6 +37,8 @@ func _init() -> void:
 
 
 func _run() -> void:
+	var previous_transform_pixel_snap := root.snap_2d_transforms_to_pixel
+	var previous_vertex_pixel_snap := root.snap_2d_vertices_to_pixel
 	var game := TOWER_SCENE.instantiate() as GameTowerDefense
 	_expect(game != null, "Tower-defense scene must instantiate for Home verification.")
 	if game == null:
@@ -63,6 +65,14 @@ func _run() -> void:
 	game.queue_free()
 	await process_frame
 	await process_frame
+	_expect(
+		root.snap_2d_transforms_to_pixel == previous_transform_pixel_snap,
+		"Tower-defense teardown must restore the viewport transform pixel-snap state."
+	)
+	_expect(
+		root.snap_2d_vertices_to_pixel == previous_vertex_pixel_snap,
+		"Tower-defense teardown must restore the viewport vertex pixel-snap state."
+	)
 	_finish()
 
 
@@ -86,6 +96,14 @@ func _verify_camera(game: GameTowerDefense) -> void:
 	_expect(
 		physics_interpolation,
 		"Tower-defense runtime must enable native physics interpolation."
+	)
+	_expect(
+		root.snap_2d_transforms_to_pixel,
+		"Tower-defense must snap final 2D transforms so interpolated camera motion cannot shimmer pixel-art edges."
+	)
+	_expect(
+		not root.snap_2d_vertices_to_pixel,
+		"Tower-defense must avoid vertex snapping on top of transform snapping."
 	)
 
 

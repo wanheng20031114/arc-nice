@@ -3,7 +3,9 @@ extends SceneTree
 const CAPOO_SCENE := preload("res://scene/enemy/capoo_ak47.tscn")
 const BULLET_SCENE := preload("res://scene/enemy/capoo_ak47_bullet.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
+const AGAVE_SCENE := preload("res://scene/plant_defense/agave_cannon.tscn")
 const CAPOO_CONFIG := preload("res://resources/config/enemies/capoo_ak47.tres")
+const AGAVE_CONFIG := preload("res://resources/config/plant_defense/agave_cannon.tres")
 const WAVE_06 := preload("res://resources/config/waves/wave_06.tres")
 const WAVE_07 := preload("res://resources/config/waves/wave_07.tres")
 
@@ -25,6 +27,7 @@ func _run() -> void:
 
 	_test_resource_contract()
 	await _test_windup_and_locked_burst()
+	await _test_plant_targeting_and_contact_depth()
 	await _test_projectile_damage_and_world_collision()
 	await _test_death_interrupts_attack()
 	await _test_proxy_action_visuals()
@@ -84,8 +87,8 @@ func _test_resource_contract() -> void:
 	if bullet_instance != null:
 		var bullet_shape := bullet_instance.get_node_or_null("CollisionShape2D") as CollisionShape2D
 		_expect(
-			bullet_instance.collision_mask == 2,
-			"AK bullet Area must scan Player only; its cached sweep owns World collision."
+			bullet_instance.collision_mask == CapooAK47Bullet.DAMAGEABLE_COLLISION_MASK,
+			"AK bullet Area must scan Player and PlantDefense; its cached sweep owns World collision."
 		)
 		_expect(bullet_shape != null, "AK bullet collision shape must be a direct child of the Area2D.")
 		_expect(bullet_shape != null and bullet_shape.shape is RectangleShape2D, "AK bullet collision should use the configured rectangle shape.")
@@ -130,6 +133,18 @@ func _test_projectile_damage_and_world_collision() -> void:
 	_expect(player.current_health == 4, "AK bullet did not deal 1 damage to the player.")
 	_expect(not is_instance_valid(projectile), "AK bullet remained after hitting player.")
 
+	var plant := _spawn_agave(Vector2(20.0, 40.0))
+	var plant_health_before := plant.current_health
+	var plant_projectile := _spawn_projectile(Vector2.ZERO, Vector2.RIGHT)
+	plant_projectile.damage = 20
+	plant_projectile.call("_on_body_entered", plant)
+	await physics_frame
+	_expect(
+		plant.current_health == plant_health_before - 10,
+		"AK bullet must damage a plant through its authored physical defense."
+	)
+	_expect(not is_instance_valid(plant_projectile), "AK bullet remained after hitting a plant.")
+
 	var wall := StaticBody2D.new()
 	wall.collision_layer = 1
 	var wall_shape := CollisionShape2D.new()
@@ -145,7 +160,55 @@ func _test_projectile_damage_and_world_collision() -> void:
 	_expect(not is_instance_valid(wall_projectile), "AK bullet did not disappear on World collision.")
 
 	wall.queue_free()
+	plant.queue_free()
 	player.queue_free()
+	await physics_frame
+
+
+func _test_plant_targeting_and_contact_depth() -> void:
+	var player := _spawn_player(Vector2(400.0, 0.0))
+	var plant := _spawn_agave(Vector2(100.0, 0.0))
+	var enemy := _spawn_capoo(Vector2.ZERO, player)
+	enemy.set_physics_process(false)
+	enemy.set_objective_target(plant)
+	_expect(enemy.has_attackable_objective(), "A living plant must be an attackable enemy objective.")
+	_expect(
+		bool(enemy.call("_try_start_windup")),
+		"AK Capoo must begin its ranged windup when a targeted plant is in range."
+	)
+
+	var gate := Node2D.new()
+	test_root.add_child(gate)
+	enemy.set_objective_target(gate)
+	_expect(not enemy.has_attackable_objective(), "A Home/navigation node must not become a ranged attack target.")
+	enemy.call("_cancel_attack")
+
+	enemy.set_objective_target(plant)
+	enemy.global_position = plant.global_position + Vector2(23.0, 0.0)
+	enemy.call("_on_touch_damage_area_body_entered", plant)
+	_expect(
+		not bool(enemy.call("_has_player_contact")),
+		"Initial plant overlap must not stop the enemy at the outer visual edge."
+	)
+	_expect(
+		is_equal_approx(plant.get_enemy_approach_depth(), 6.0),
+		"Agave must author a deeper six-pixel enemy approach inset."
+	)
+	enemy.global_position = plant.global_position + Vector2(18.0, 0.0)
+	_expect(
+		not bool(enemy.call("_has_player_contact")),
+		"Agave contact must preserve the full six-pixel approach depth."
+	)
+	enemy.global_position = plant.global_position + Vector2(17.0, 0.0)
+	_expect(
+		bool(enemy.call("_has_player_contact")),
+		"Enemy must stop after pressing six pixels into the Agave contact boundary."
+	)
+
+	enemy.queue_free()
+	plant.queue_free()
+	player.queue_free()
+	gate.queue_free()
 	await physics_frame
 
 
@@ -201,6 +264,14 @@ func _spawn_capoo(position: Vector2, player: Player) -> CapooAK47:
 	enemy.global_position = position
 	enemy.setup(CAPOO_CONFIG, player)
 	return enemy
+
+
+func _spawn_agave(position: Vector2) -> AgaveCannon:
+	var plant := AGAVE_SCENE.instantiate() as AgaveCannon
+	test_root.add_child(plant)
+	plant.global_position = position
+	plant.setup(AGAVE_CONFIG, null, [Vector2i.ZERO])
+	return plant
 
 
 func _spawn_projectile(position: Vector2, direction: Vector2) -> CapooAK47Bullet:
