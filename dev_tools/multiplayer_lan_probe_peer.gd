@@ -4,6 +4,7 @@ const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const LINGLAN_BOSS_ENTRY := preload("res://resources/config/bosses/boss_01_linglan.tres")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
+const WOOD_MATERIAL := preload("res://resources/config/materials/material_wood.tres")
 
 const STATE_HOSTING_LAN := 1
 const STATE_LOADING_GAME := 4
@@ -30,6 +31,7 @@ const PROBE_OWNED_ROOT_NODE_NAMES := {
 var failures: Array[String] = []
 var probe_scenario := PROBE_SCENARIO_FULL
 var probe_game_mode := "standard"
+var probe_transport_mode := PROBE_MODE_LAN
 
 
 func _init() -> void:
@@ -47,6 +49,7 @@ func _run() -> void:
 	var events_enabled := _parse_bool(str(options.get("events", "false")))
 	var host_ip := str(options.get("host", "127.0.0.1"))
 	var mode := str(options.get("mode", PROBE_MODE_LAN)).strip_edges().to_lower()
+	probe_transport_mode = mode
 	var relay_host_peer_id := int(options.get("relay_host_peer_id", "0"))
 	var player_name := str(options.get("name", "Probe%s" % role.capitalize()))
 	probe_scenario = str(options.get("scenario", PROBE_SCENARIO_FULL)).strip_edges().to_lower()
@@ -68,6 +71,12 @@ func _run() -> void:
 		_finish()
 		return
 	net_manager.local_player_name = player_name
+	if probe_game_mode == "tower_defense":
+		var character_id := _get_tower_defense_probe_character_id(role, player_name)
+		if not bool(net_manager.call("set_local_character_id", character_id, true)):
+			_fail("Failed to select tower-defense probe character: %s" % character_id)
+			_finish()
+			return
 
 	match role:
 		"host":
@@ -209,7 +218,12 @@ func _run_mp_game_probe(
 		return
 	root.add_child(mp_game)
 	current_scene = mp_game
-	if not await _wait_for_connection_state(net_manager, STATE_IN_GAME, 3.0):
+	var runtime_load_timeout := 30.0 if probe_game_mode == "tower_defense" else 10.0
+	if not await _wait_for_connection_state(
+		net_manager,
+		STATE_IN_GAME,
+		runtime_load_timeout
+	):
 		_fail("MpGame did not mark NetManager in-game.")
 		mp_game.queue_free()
 		return
@@ -255,6 +269,8 @@ func _run_mp_game_probe(
 		return
 	if probe_scenario == PROBE_SCENARIO_TOWER_DEFENSE:
 		await _run_tower_defense_runtime_probe(net_manager, mp_game, game, is_host_probe)
+		if is_host_probe and mp_game != null and is_instance_valid(mp_game):
+			_validate_and_print_runtime_metrics(mp_game, true, expected_players)
 		_detach_probe_scene_disconnect_handlers(net_manager, mp_game, game)
 		await _cleanup_probe_game(net_manager, mp_game)
 		return
@@ -280,16 +296,7 @@ func _run_mp_game_probe(
 			)
 	if events_enabled and not is_host_probe:
 		await _run_client_reliable_event_probe(mp_game, game)
-	var metrics := mp_game.call("get_snapshot_packet_metrics") as Dictionary
-	print(
-		"LAN_PROBE_METRICS role=%s players=%d max_player_packet=%d max_enemy_packet=%d"
-		% [
-			"host" if is_host_probe else "client",
-			expected_players,
-			int(metrics.get("max_player_snapshot_packet_bytes", 0)),
-			int(metrics.get("max_enemy_snapshot_packet_bytes", 0)),
-		]
-	)
+	_validate_and_print_runtime_metrics(mp_game, is_host_probe, expected_players)
 	_detach_probe_scene_disconnect_handlers(net_manager, mp_game, game)
 	if keepalive_seconds > 0.0:
 		await _wait_seconds(keepalive_seconds)
@@ -301,6 +308,37 @@ func _run_mp_game_probe(
 		mp_game.queue_free()
 		await _wait_cleanup_frames(8)
 	await _cleanup_current_scene()
+
+
+func _validate_and_print_runtime_metrics(
+	mp_game: Node,
+	is_host_probe: bool,
+	expected_players: int
+) -> void:
+	var metrics := mp_game.call("get_snapshot_packet_metrics") as Dictionary
+	var transaction_sample_count := int(metrics.get("transaction_latency_sample_count", 0))
+	var transaction_p95_ms := float(metrics.get("transaction_latency_p95_ms", 0.0))
+	if probe_scenario == PROBE_SCENARIO_TOWER_DEFENSE and not is_host_probe:
+		var latency_limit_ms := 350.0 if probe_transport_mode == PROBE_MODE_RELAY else 100.0
+		if transaction_sample_count <= 0 or transaction_p95_ms > latency_limit_ms:
+			_fail(
+				"Tower-defense warehouse transaction latency exceeded %.0fms: samples=%d p95=%.3fms."
+				% [latency_limit_ms, transaction_sample_count, transaction_p95_ms]
+			)
+	print(
+		(
+			"LAN_PROBE_METRICS role=%s players=%d max_player_packet=%d "
+			+ "max_enemy_packet=%d transaction_samples=%d transaction_p95_ms=%.3f"
+		)
+		% [
+			"host" if is_host_probe else "client",
+			expected_players,
+			int(metrics.get("max_player_snapshot_packet_bytes", 0)),
+			int(metrics.get("max_enemy_snapshot_packet_bytes", 0)),
+			transaction_sample_count,
+			transaction_p95_ms,
+		]
+	)
 
 
 func _run_leave_probe(
@@ -365,6 +403,8 @@ func _run_tower_defense_runtime_probe(
 		_fail("Tower-defense runtime probe received the standard Game runtime.")
 		return
 	await _wait_seconds(1.0)
+	if not await _exercise_tower_defense_local_character(net_manager, mp_game, game):
+		return
 	var plant_config := PlantDefenseRegistry.get_config(&"agave_cannon")
 	var shared_plant_anchor := _find_shared_multiplayer_plant_anchor(game, plant_config)
 	if shared_plant_anchor == Vector2i.MAX:
@@ -384,6 +424,65 @@ func _run_tower_defense_runtime_probe(
 			game,
 			shared_plant_anchor
 		)
+
+
+func _get_tower_defense_probe_character_id(
+	role: String,
+	player_name: String
+) -> StringName:
+	if role == "host":
+		return &"weishidaier"
+	match player_name:
+		"client2":
+			return &"hoe_cat"
+		"client3":
+			return &"tiyi"
+		_:
+			return &"weishidaier"
+
+
+func _exercise_tower_defense_local_character(
+	net_manager: Node,
+	mp_game: Node,
+	game: Variant
+) -> bool:
+	var local_peer_id := int(net_manager.get_local_peer_id())
+	var local_player := game.get_player_for_peer(local_peer_id) as Player
+	if local_player == null or not is_instance_valid(local_player):
+		_fail("Tower-defense character probe could not resolve its local player.")
+		return false
+	var ammo_player := local_player as AmmoRangedPlayer
+	if (
+		ammo_player != null
+		and (
+			ammo_player.ammo_bar == null
+			or ammo_player.get_multiplayer_ammo_capacity() <= 0
+			or ammo_player.get_multiplayer_current_ammo() < 0
+		)
+	):
+		_fail("Tower-defense ammo HUD is not bound to authoritative ammo state.")
+		return false
+	var action_started := false
+	match local_player.get_character_id():
+		&"hoe_cat":
+			action_started = bool(mp_game.call("request_hoe_primary_attack", Vector2.RIGHT))
+		&"tiyi", &"weishidaier":
+			action_started = bool(local_player.call("_spawn_bullet", Vector2.RIGHT))
+		_:
+			_fail("Tower-defense character probe received an unexpected character id.")
+			return false
+	if not action_started:
+		_fail(
+			"Tower-defense local action prediction failed for %s."
+			% local_player.get_character_id()
+		)
+		return false
+	await _wait_seconds(0.35)
+	print(
+		"LAN_PROBE_EVENT td_character_action peer=%d character=%s"
+		% [local_peer_id, local_player.get_character_id()]
+	)
+	return true
 
 
 func _run_host_tower_defense_runtime_probe(
@@ -471,9 +570,9 @@ func _run_host_tower_defense_runtime_probe(
 	)
 	await _wait_seconds(0.5)
 
-	var expected_health := plant.current_health - 10
+	var health_before_plant_damage := plant.current_health
 	plant.receive_damage(10)
-	if plant.current_health != expected_health:
+	if plant.current_health >= health_before_plant_damage:
 		_fail("Host authoritative plant damage was not applied.")
 		return
 	print("LAN_PROBE_EVENT host_td_plant_health=%d" % plant.current_health)
@@ -483,6 +582,32 @@ func _run_host_tower_defense_runtime_probe(
 		damage_enemy.queue_free()
 	await _wait_seconds(0.75)
 	print("LAN_PROBE_EVENT host_td_plant_removed net_id=1")
+
+	if not await _wait_for_host_plant_requests(mp_game, net_manager, 102, 5.0):
+		_fail("Host did not receive every client's shared-warehouse placement request.")
+		return
+	var warehouse := game.plant_system.get_plant_by_net_id(2) as OakWarehouse
+	if warehouse == null or not is_instance_valid(warehouse):
+		_fail("Competing warehouse placement did not create authoritative net_id 2.")
+		return
+	if not warehouse.try_add_storage_item_count(WOOD_MATERIAL, 1):
+		_fail("Host could not seed the shared warehouse transaction probe.")
+		return
+	mp_game.call("_broadcast_warehouse_snapshot", warehouse)
+	await _wait_seconds(0.75)
+	if not await _wait_for_host_warehouse_transactions(mp_game, net_manager, 5.0):
+		_fail("Host did not settle every competing warehouse transaction.")
+		return
+	var run_state := root.get_node("RunState") as RunStateStore
+	if warehouse.get_storage_item(0) != null:
+		_fail("Competing shared-warehouse retrieval must consume its only source stack once.")
+		return
+	if _count_peer_item_stacks(run_state, net_manager.connected_players, WOOD_MATERIAL) != 1:
+		_fail("Shared-warehouse competition duplicated or lost the authoritative stack.")
+		return
+	print("LAN_PROBE_EVENT host_td_warehouse_atomic net_id=2")
+	game.plant_system.remove_plant_by_net_id(2)
+	await _wait_seconds(0.75)
 
 
 func _run_client_tower_defense_runtime_probe(
@@ -562,6 +687,56 @@ func _run_client_tower_defense_runtime_probe(
 		_fail("Client did not remove the authoritative plant replica.")
 		return
 	print("LAN_PROBE_EVENT client_td_plant_lifecycle net_id=1")
+	mp_game.call(
+		"_on_local_plant_placement_requested",
+		102,
+		&"oak_warehouse",
+		shared_plant_anchor
+	)
+	var warehouse_plant: PlantDefense = await _wait_for_client_plant(game, 2, 5.0)
+	var warehouse := warehouse_plant as OakWarehouse
+	if warehouse == null:
+		_fail("Client did not spawn the authoritative shared warehouse replica.")
+		return
+	if local_player == null or not is_instance_valid(local_player):
+		_fail("Client could not resolve its local player before warehouse interaction.")
+		return
+	var approach_direction := warehouse.global_position.direction_to(local_player.global_position)
+	if approach_direction == Vector2.ZERO:
+		approach_direction = Vector2.DOWN
+	local_player.global_position = warehouse.global_position + approach_direction.normalized() * 24.0
+	local_player.velocity = Vector2.ZERO
+	mp_game.set("_has_sent_input", false)
+	mp_game.call("_client_send_input_if_needed", 0)
+	await _wait_seconds(0.5)
+	if not await _wait_for_warehouse_storage_count(warehouse, 0, 1, 5.0):
+		_fail("Client did not receive the seeded shared warehouse snapshot.")
+		return
+	if not warehouse.request_multiplayer_stack_transfer(
+		OakWarehouseProtocol.TransferDirection.STORAGE_TO_PLAYER,
+		0
+	):
+		_fail("Client could not submit the shared warehouse retrieval transaction.")
+		return
+	if not await _wait_for_warehouse_request_settled(warehouse, 5.0):
+		_fail("Client warehouse transaction did not receive a Host result.")
+		return
+	if not await _wait_for_warehouse_storage_count(warehouse, 0, 0, 5.0):
+		_fail("Client warehouse state did not converge after competing retrievals.")
+		return
+	var run_state := root.get_node("RunState") as RunStateStore
+	if _count_peer_item_stacks(run_state, net_manager.connected_players, WOOD_MATERIAL) != 1:
+		_fail("Client inventory snapshots did not converge on one warehouse winner.")
+		return
+	if not await _wait_for_client_plant_removed(game, 2, 5.0):
+		_fail("Client did not remove the shared warehouse after Host teardown.")
+		return
+	print("LAN_PROBE_EVENT client_td_warehouse_atomic net_id=2")
+	_validate_and_print_runtime_metrics(
+		mp_game,
+		false,
+		_get_connected_player_count(net_manager)
+	)
 	# Keep the RPC node alive until the Host finishes its final reliable event
 	# and shuts down, avoiding a test-only disconnect/send race.
 	await _wait_seconds(2.0)
@@ -1300,6 +1475,88 @@ func _wait_for_host_plant_requests(
 	return false
 
 
+func _wait_for_host_warehouse_transactions(
+	mp_game: Node,
+	net_manager: Node,
+	timeout_seconds: float
+) -> bool:
+	var expected_client_ids: Array[int] = []
+	var local_peer_id := int(net_manager.get_local_peer_id())
+	for peer_id_variant in net_manager.connected_players:
+		var peer_id := int(peer_id_variant)
+		if peer_id != local_peer_id:
+			expected_client_ids.append(peer_id)
+	var end_time := _now_seconds() + timeout_seconds
+	while _now_seconds() <= end_time:
+		var results_by_peer := mp_game.get(
+			"_warehouse_transaction_results_by_peer"
+		) as Dictionary
+		var all_processed := not expected_client_ids.is_empty()
+		for peer_id in expected_client_ids:
+			var peer_results := results_by_peer.get(peer_id, {}) as Dictionary
+			if peer_results.is_empty():
+				all_processed = false
+				break
+		if all_processed:
+			return true
+		await process_frame
+	return false
+
+
+func _wait_for_warehouse_request_settled(
+	warehouse: OakWarehouse,
+	timeout_seconds: float
+) -> bool:
+	var end_time := _now_seconds() + timeout_seconds
+	while _now_seconds() <= end_time:
+		if (
+			warehouse == null
+			or not is_instance_valid(warehouse)
+			or not warehouse.multiplayer_storage_request_pending
+		):
+			return warehouse != null and is_instance_valid(warehouse)
+		await process_frame
+	return false
+
+
+func _wait_for_warehouse_storage_count(
+	warehouse: OakWarehouse,
+	slot_index: int,
+	expected_count: int,
+	timeout_seconds: float
+) -> bool:
+	var end_time := _now_seconds() + timeout_seconds
+	var next_snapshot_request_time := 0.0
+	while _now_seconds() <= end_time:
+		if warehouse == null or not is_instance_valid(warehouse):
+			return false
+		if warehouse.get_storage_item_count(slot_index) == expected_count:
+			return true
+		var now := _now_seconds()
+		if now >= next_snapshot_request_time:
+			warehouse.request_multiplayer_storage_snapshot()
+			next_snapshot_request_time = now + 0.6
+		await process_frame
+	return false
+
+
+func _count_peer_item_stacks(
+	run_state: RunStateStore,
+	connected_players: Dictionary,
+	item: PickupConfig
+) -> int:
+	if run_state == null or item == null:
+		return 0
+	var total := 0
+	for peer_id_variant in connected_players.keys():
+		var peer_id := int(peer_id_variant)
+		for slot_index in range(RunStateStore.INVENTORY_CAPACITY):
+			var stored_item := run_state.get_item_for_peer(peer_id, slot_index)
+			if stored_item != null and stored_item.resource_path == item.resource_path:
+				total += run_state.get_item_count_for_peer(peer_id, slot_index)
+	return total
+
+
 func _wait_for_dictionary_flag(
 	state: Dictionary,
 	key: Variant,
@@ -1319,14 +1576,24 @@ func _wait_for_client_plant_projectile_visual(
 ) -> AgaveCannonball:
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
-		for child in mp_game.get_children():
-			var projectile := child as AgaveCannonball
-			if (
-				projectile != null
-				and is_instance_valid(projectile)
-				and not projectile.is_queued_for_deletion()
-			):
-				return projectile
+		if mp_game == null or not is_instance_valid(mp_game):
+			return null
+		var search_roots: Array[Node] = [mp_game]
+		var game: Variant = mp_game.get("game")
+		if game != null and is_instance_valid(game):
+			var object_pool := game.get_node_or_null("SessionObjectPool") as Node
+			if object_pool != null:
+				search_roots.append(object_pool)
+		for search_root in search_roots:
+			for child in search_root.get_children():
+				var projectile := child as AgaveCannonball
+				if (
+					projectile != null
+					and is_instance_valid(projectile)
+					and bool(projectile.get("pool_active"))
+					and not projectile.is_queued_for_deletion()
+				):
+					return projectile
 		await process_frame
 	return null
 

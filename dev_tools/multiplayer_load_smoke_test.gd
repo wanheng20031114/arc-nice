@@ -13,6 +13,7 @@ const SNIPER_CONFIG := preload("res://resources/config/enemies/capoo_sniper.tres
 const PICKUP_SPEED_CONFIG := preload("res://resources/config/pickups/pickup_speed.tres")
 const PICKUP_SPIRAL_CONFIG := preload("res://resources/config/pickups/pickup_spiral.tres")
 const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
+const WOOD_MATERIAL := preload("res://resources/config/materials/material_wood.tres")
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 const XIRANG_DROP_CONFIG := preload("res://resources/config/xirang_drop.tres")
 const LINGLAN_SKILL2_ROCKET_SCENE := preload("res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn")
@@ -204,16 +205,18 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 4, "The multiplayer protocol version must be 4.")
+	_expect(NetConstants.PROTOCOL_VERSION == 5, "The multiplayer protocol version must be 5.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v5 must provision eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
 	)
 	_expect(
-		not bool(net_manager.call("_is_protocol_version_compatible", 3))
+		not bool(net_manager.call("_is_protocol_version_compatible", 4))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 3))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 2))
 		and not bool(net_manager.call("_is_protocol_version_compatible", -1)),
-		"NetManager must reject protocol versions 3/2 and legacy registrations with no version."
+		"NetManager must reject protocol versions 4/3/2 and legacy registrations with no version."
 	)
 
 	var rejection_reasons: Array[String] = []
@@ -233,6 +236,33 @@ func _test_net_manager_protocol_version_gate() -> void:
 		not net_manager.is_multiplayer_active()
 		and int(net_manager.connection_state) == NetManagerStore.ConnectionState.DISCONNECTED,
 		"A protocol-rejected client must fully leave multiplayer state."
+	)
+	_expect(
+		bool(net_manager.call("_is_registration_open")),
+		"A disconnected/lobby NetManager must keep registration open."
+	)
+	var join_rejection_reasons: Array[String] = []
+	var join_rejection_callback := func(reason: String) -> void:
+		join_rejection_reasons.append(reason)
+	net_manager.connection_failed.connect(join_rejection_callback)
+	net_manager.set("net_role", NetManagerStore.NetRole.CLIENT)
+	net_manager.set("connection_state", NetManagerStore.ConnectionState.LOADING_GAME)
+	_expect(
+		not bool(net_manager.call("_is_registration_open")),
+		"The frozen loading roster must reject late registrations."
+	)
+	net_manager.set("connection_state", NetManagerStore.ConnectionState.IN_GAME)
+	_expect(
+		not bool(net_manager.call("_is_registration_open")),
+		"An active game must keep the room locked against late joins and reconnects."
+	)
+	net_manager.set("connection_state", NetManagerStore.ConnectionState.LOADING_GAME)
+	net_manager.call("_rpc_join_rejected", "房间已经开始加载")
+	net_manager.connection_failed.disconnect(join_rejection_callback)
+	_expect(
+		join_rejection_reasons == ["房间已经开始加载"]
+		and not net_manager.is_multiplayer_active(),
+		"A late-join rejection must explain the failure and fully disconnect the client."
 	)
 
 
@@ -1656,6 +1686,34 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			is_equal_approx(peer_four.call("_get_inventory_bullet_pierce_chance"), 0.0),
 			"Discarding peer 4's only apple must remove the piercing chance."
 		)
+		_expect(
+			run_state.try_add_item_for_peer(4, HEALTH_PICKUP),
+			"Peer 4 health pickup must fit for inventory revision conflict testing."
+		)
+		var peer_four_inventory_revision: int = (
+			run_state.get_inventory_revision_for_peer(4)
+		)
+		mp_game.call(
+			"_apply_inventory_item_discard_for_peer",
+			4,
+			0,
+			peer_four_inventory_revision - 1
+		)
+		_expect(
+			run_state.get_item_for_peer(4, 0) == HEALTH_PICKUP
+			and run_state.get_inventory_revision_for_peer(4) == peer_four_inventory_revision,
+			"Host must reject stale inventory commands without mutating the authoritative slot."
+		)
+		mp_game.call(
+			"_apply_inventory_item_discard_for_peer",
+			4,
+			0,
+			peer_four_inventory_revision
+		)
+		_expect(
+			run_state.get_item_for_peer(4, 0) == null,
+			"Host must accept the same inventory command when its expected revision matches."
+		)
 		peer_four.skill1_charge_duration = 1.0
 		peer_four.skill1_charge = 0.0
 		game.call("_update_multiplayer_remote_player_passive_state", 0.5)
@@ -1697,6 +1755,62 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		_expect(run_state.try_add_item_for_peer(3, APPLE_COLLECTIBLE), "Peer 3 apple must fit for inventory discard confirmation testing.")
 		mp_game.call("net_inventory_item_discarded", 3, 0, true)
 		_expect(run_state.get_item_for_peer(3, 0) == null, "Inventory discard confirm must remove the confirmed peer item.")
+		_expect(
+			run_state.try_add_item_count_for_peer(3, WOOD_MATERIAL, 3),
+			"Peer 3 stacked material must fit for authoritative inventory snapshot testing."
+		)
+		var stacked_inventory_snapshot: Dictionary = (
+			run_state.export_inventory_snapshot_for_peer(3)
+		)
+		stacked_inventory_snapshot["revision"] = (
+			run_state.get_inventory_revision_for_peer(3) + 1
+		)
+		var stacked_slots := stacked_inventory_snapshot.get("slots", []) as Array
+		var first_stacked_slot := stacked_slots[0] as Dictionary
+		first_stacked_slot["stack_count"] = 2
+		for stacked_slot_value in stacked_slots:
+			var stacked_slot := stacked_slot_value as Dictionary
+			stacked_slot["revision"] = int(
+				stacked_inventory_snapshot["revision"]
+			)
+		mp_game.call(
+			"net_inventory_item_used",
+			3,
+			0,
+			"",
+			true,
+			stacked_inventory_snapshot
+		)
+		_expect(
+			run_state.get_item_count_for_peer(3, 0) == 2,
+			"Authoritative inventory use confirmation must preserve the remainder of a stack."
+		)
+		var host_repair_snapshot: Dictionary = (
+			run_state.export_inventory_snapshot_for_peer(3)
+		)
+		_expect(
+			run_state.discard_item_for_peer(3, 0),
+			"Client drift fixture must be able to move ahead of the Host revision."
+		)
+		mp_game.call(
+			"net_inventory_item_discarded",
+			3,
+			0,
+			false,
+			host_repair_snapshot,
+			true
+		)
+		_expect(
+			run_state.get_item_count_for_peer(3, 0) == 2
+			and run_state.get_inventory_revision_for_peer(3)
+			== int(host_repair_snapshot.get("revision", -1)),
+			"Revision conflicts must force-apply the Host inventory snapshot without performing the rejected action."
+		)
+		mp_game.call("net_inventory_item_discarded", 3, 0, true)
+		_expect(
+			run_state.get_item_for_peer(3, 0) == null,
+			"Legacy inventory confirmations without snapshots must remain compatible."
+		)
 		var peer_inventories := run_state.get("multiplayer_inventories") as Dictionary
 		mp_game.call("net_inventory_item_used", 99, 0, HEALTH_PICKUP.resource_path, true)
 		mp_game.call("net_inventory_item_discarded", 99, 0, true)
@@ -2397,12 +2511,28 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			45.0,
 			56.0
 		)
+		var pickup_inventory_snapshot: Dictionary = (
+			client_run_state.export_inventory_snapshot_for_peer(2)
+		)
+		pickup_inventory_snapshot["revision"] = (
+			client_run_state.get_inventory_revision_for_peer(2) + 1
+		)
+		var pickup_slots := pickup_inventory_snapshot.get("slots", []) as Array
+		var pickup_slot := pickup_slots[0] as Dictionary
+		pickup_slot["config_path"] = HEALTH_PICKUP.resource_path
+		pickup_slot["stack_count"] = 1
+		for pickup_slot_value in pickup_slots:
+			var authoritative_pickup_slot := pickup_slot_value as Dictionary
+			authoritative_pickup_slot["revision"] = int(
+				pickup_inventory_snapshot["revision"]
+			)
 		client_mp_game.call(
 			"net_pickup_collected",
 			9002,
 			2,
 			HEALTH_PICKUP.resource_path,
-			false
+			false,
+			pickup_inventory_snapshot
 		)
 		await process_frame
 		_expect(not client_game.multiplayer_pickups.has(9002), "Stored pickup confirm must erase pickup index.")
@@ -2965,7 +3095,6 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 			-1.0,
 			501
 		)
-		await process_frame
 		var known_projectiles := mp_game.get("_known_projectiles") as Dictionary
 		var spawned_rocket := known_projectiles.get(2000009) as LinglanSkill2SakuraRocket
 		_expect(spawned_rocket != null, "Sakura rocket network spawn must create a tracked projectile.")
@@ -2990,6 +3119,9 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 		))
 		_expect(applied, "Host must accept Sakura collectible enemy damage confirmation.")
 		_expect(target_enemy.current_health == health_before - 100, "Sakura collectible enemy damage must apply as magic damage.")
+		if spawned_rocket != null and is_instance_valid(spawned_rocket):
+			spawned_rocket.call("_retire")
+		await process_frame
 
 	if net_manager != null:
 		net_manager.set("net_role", previous_role)
@@ -3139,6 +3271,7 @@ func _test_snapshot_round_trip() -> void:
 	player_state.is_reloading = true
 	player_state.reload_progress = 0.4
 	player_state.primary_cooldown_ratio = 0.37
+	player_state.effective_move_speed_multiplier = 1.375
 	var player_data := snapshot_mgr.encode_all_player_snapshots([player_state])
 	var player_states := SnapshotManager.decode_all_player_snapshots(player_data)
 	_expect(player_states.size() == 1, "Player snapshot count mismatch.")
@@ -3154,6 +3287,10 @@ func _test_snapshot_round_trip() -> void:
 		_expect(
 			absf(player_states[0].primary_cooldown_ratio - 0.37) <= 1.0 / 255.0,
 			"Player snapshot primary cooldown ratio mismatch."
+		)
+		_expect(
+			absf(player_states[0].effective_move_speed_multiplier - 1.375) <= 0.001,
+			"Player snapshot authoritative movement multiplier mismatch."
 		)
 	var tiyi_state := SnapshotManager.PlayerState.new()
 	tiyi_state.peer_id = 3
@@ -3189,6 +3326,12 @@ func _test_snapshot_round_trip() -> void:
 	)
 	var repeated_player_states := delta_player_mgr.decode_player_snapshots_with_baseline(repeated_player_delta)
 	_expect(repeated_player_states.size() == 1, "Repeated player delta must decode through baseline.")
+	_expect(
+		received_player_keyframe.size() == 1
+		and repeated_player_states.size() == 1
+		and is_same(received_player_keyframe[0], repeated_player_states[0]),
+		"Player delta decoding must reuse its per-peer output state."
+	)
 	if repeated_player_states.size() == 1:
 		_expect(repeated_player_states[0].current_health == 42, "Player delta must preserve health through baseline.")
 		_expect(repeated_player_states[0].skill1_upgrade_level == 2, "Player delta must preserve skill upgrade through baseline.")
@@ -3200,6 +3343,10 @@ func _test_snapshot_round_trip() -> void:
 		_expect(
 			absf(repeated_player_states[0].primary_cooldown_ratio - 0.37) <= 1.0 / 255.0,
 			"Player delta must preserve primary cooldown through baseline."
+		)
+		_expect(
+			absf(repeated_player_states[0].effective_move_speed_multiplier - 1.375) <= 0.001,
+			"Player delta must preserve the authoritative movement multiplier."
 		)
 	var player_copy_sender := SnapshotManager.new()
 	var player_copy_receiver := SnapshotManager.new()
@@ -3299,12 +3446,14 @@ func _test_snapshot_round_trip() -> void:
 	enemy_state.position = Vector2(88.0, 99.0)
 	enemy_state.velocity = Vector2.LEFT
 	enemy_state.health = 3
+	enemy_state.visual_status_mask = 0b1101
 	var enemy_data := snapshot_mgr.encode_all_enemy_snapshots([enemy_state])
 	var enemy_states := SnapshotManager.decode_all_enemy_snapshots(enemy_data)
 	_expect(enemy_states.size() == 1, "Enemy snapshot count mismatch.")
 	if enemy_states.size() == 1:
 		_expect(enemy_states[0].net_id == 7, "Enemy snapshot net_id mismatch.")
 		_expect(enemy_states[0].health == 3, "Enemy snapshot health mismatch.")
+		_expect(enemy_states[0].visual_status_mask == 0b1101, "Enemy visual status mask mismatch.")
 	var enemy_data_2 := snapshot_mgr.encode_all_enemy_snapshots([enemy_state])
 	var enemy_states_2 := SnapshotManager.decode_all_enemy_snapshots(enemy_data_2)
 	_expect(
@@ -3322,8 +3471,18 @@ func _test_snapshot_round_trip() -> void:
 	)
 	var repeated_enemy_states := delta_enemy_mgr.decode_enemy_snapshots_with_baseline(repeated_enemy_delta)
 	_expect(repeated_enemy_states.size() == 1, "Repeated enemy delta must decode through baseline.")
+	_expect(
+		received_enemy_keyframe.size() == 1
+		and repeated_enemy_states.size() == 1
+		and is_same(received_enemy_keyframe[0], repeated_enemy_states[0]),
+		"Enemy delta decoding must reuse its per-enemy output state."
+	)
 	if repeated_enemy_states.size() == 1:
 		_expect(repeated_enemy_states[0].health == 3, "Enemy delta must preserve health through baseline.")
+		_expect(
+			repeated_enemy_states[0].visual_status_mask == 0b1101,
+			"Enemy delta must preserve the visual status mask through baseline."
+		)
 	enemy_state.position += Vector2(0.01, 0.0)
 	var sub_quantum_enemy_delta := delta_enemy_mgr.encode_enemy_snapshots_for_peer(
 		20,

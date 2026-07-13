@@ -110,7 +110,7 @@ try {
         if (Test-Path $entry.Stderr) {
             $stderrText = Get-Content $entry.Stderr -Raw
             Write-Host $stderrText
-            if ($stderrText -match "Node not found|Invalid packet received|ERR_UNCONFIGURED|Unable to send packet|Trying to cast|ObjectDB instances leaked|resources still in use") {
+            if ($stderrText -match "SCRIPT ERROR|Node not found|Invalid packet received|ERR_UNCONFIGURED|Unable to send packet|Trying to cast|ObjectDB instances leaked|resources still in use") {
                 $failed = $true
                 Write-Host "ERROR: $($entry.Name) produced network/runtime errors in stderr."
             }

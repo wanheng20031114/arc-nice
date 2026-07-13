@@ -47,9 +47,25 @@ func _run() -> void:
 	_test_host_ready_barrier()
 	await _test_mp_game_preparation_barrier()
 	await _test_singleplayer_coordinator_flow()
-	for _frame in range(3):
+	await _cleanup_test_runtime()
+	call_deferred("_finish")
+
+
+func _cleanup_test_runtime() -> void:
+	var coordinator := root.get_node_or_null("GameLoadCoordinator")
+	if coordinator != null:
+		coordinator.set("_state", 0)
+		coordinator.set_process(false)
+		var overlay := coordinator.get_node_or_null("Overlay") as Control
+		if overlay != null:
+			overlay.hide()
+	var runtime := current_scene
+	current_scene = null
+	if runtime != null and is_instance_valid(runtime):
+		runtime.queue_free()
+	for _cleanup_frame in range(8):
 		await process_frame
-	_finish()
+		await physics_frame
 
 
 func _test_loading_scene_contract() -> void:

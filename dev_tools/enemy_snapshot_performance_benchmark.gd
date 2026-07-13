@@ -2,11 +2,14 @@ extends SceneTree
 
 const ENTITY_COUNT := 300
 const CHUNK_SIZE := 56
-const SNAPSHOT_HZ := 30
-const KEYFRAME_INTERVAL_TICKS := 15
+# 300 entities use MpGame's high-pressure cadence. Keep the benchmark aligned
+# with production so its bytes/s result measures the actual acceptance path.
+const SNAPSHOT_HZ := 20
+const KEYFRAME_INTERVAL_TICKS := 10
 const WARMUP_TICKS := 30
 const MEASURE_TICKS := 240
 const PAYLOAD_BUDGET_BYTES := 1200
+const PAYLOAD_BUDGET_BYTES_PER_SECOND := 65_000.0
 const RECEIVER_PEER_ID := 77
 
 var failures: Array[String] = []
@@ -109,6 +112,10 @@ func _run() -> void:
 		]
 	)
 	_expect(max_payload_bytes <= PAYLOAD_BUDGET_BYTES, "Snapshot payload must stay within budget.")
+	_expect(
+		payload_bytes_per_second <= PAYLOAD_BUDGET_BYTES_PER_SECOND,
+		"The 300-enemy 20 Hz application payload must stay below about 65 KB/s."
+	)
 	if failures.is_empty():
 		print("ENEMY_SNAPSHOT_PERFORMANCE_BENCHMARK_OK")
 		quit()

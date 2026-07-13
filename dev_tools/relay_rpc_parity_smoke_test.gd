@@ -4,6 +4,7 @@ const MAIN_MP_GAME_PATH := "res://scene/multiplayer/mp_game.gd"
 const RELAY_MP_GAME_PATH := "res://relay_servers/relay_godot_project/relay_mp_game_stub.gd"
 const MAIN_NET_MANAGER_PATH := "res://scene/multiplayer/net_manager.gd"
 const RELAY_NET_MANAGER_PATH := "res://relay_servers/relay_godot_project/relay_net_manager_stub.gd"
+const RELAY_SERVER_PATH := "res://relay_servers/relay_godot_project/relay_server.gd"
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 
 var failures: Array[String] = []
@@ -36,6 +37,20 @@ func _run() -> void:
 		"net_plant_projectile_visual",
 		"net_runtime_state_requested",
 		"net_tower_defense_wave_progress_changed",
+		"net_inventory_item_use_requested",
+		"net_inventory_item_discard_requested",
+		"net_inventory_item_used",
+		"net_inventory_item_discarded",
+		"net_inventory_snapshot",
+		"net_pickup_collected",
+		"net_luoxi_collectible_offer_requested",
+		"net_luoxi_collectible_offer_state",
+		"net_luoxi_collectible_choice_requested",
+		"net_luoxi_collectible_confirmed",
+		"net_warehouse_command_requested",
+		"net_warehouse_snapshot_requested",
+		"net_warehouse_command_result",
+		"net_warehouse_storage_snapshot",
 	]:
 		_expect(main_rpcs.has(required_method), "Gameplay RPC %s must be registered." % required_method)
 	if main_rpcs.has("net_tiyi_high_noon_requested"):
@@ -47,6 +62,8 @@ func _run() -> void:
 		not main_rpcs.has("net_wave_started"),
 		"Legacy wave-index RPC must stay removed; flow step_id is the sole lifecycle source."
 	)
+	_test_gameplay_v5_transaction_contract(main_rpcs)
+	_test_gameplay_channel_contract(main_rpcs)
 
 	var main_net_manager_rpcs := _extract_rpc_surface(MAIN_NET_MANAGER_PATH)
 	var relay_net_manager_rpcs := _extract_rpc_surface(RELAY_NET_MANAGER_PATH)
@@ -54,6 +71,7 @@ func _run() -> void:
 	for required_method in [
 		"_rpc_register_player",
 		"_rpc_protocol_rejected",
+		"_rpc_join_rejected",
 		"_rpc_set_player_character",
 		"_rpc_sync_player_list",
 		"_rpc_start_game",
@@ -84,7 +102,9 @@ func _run() -> void:
 			"Start-game sync must carry both authoritative mode and loading session."
 		)
 	_test_registration_protocol_handshake_source()
-	_expect(NetConstants.PROTOCOL_VERSION == 4, "Loading-barrier multiplayer requires protocol version 4.")
+	_expect(NetConstants.PROTOCOL_VERSION == 5, "Split-channel multiplayer requires protocol version 5.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v5 must provision eight ENet channels.")
+	_test_relay_channel_count()
 
 	if failures.is_empty():
 		print("RELAY_RPC_PARITY_SMOKE_TEST_OK")
@@ -149,6 +169,182 @@ func _test_registration_protocol_handshake_source() -> void:
 	_expect(
 		compact_source.contains("call_deferred(\"_disconnect_incompatible_peer\",sender_id)"),
 		"Host registration rejection must disconnect the incompatible peer after reporting it."
+	)
+	_expect(
+		compact_source.contains("ifnot_is_registration_open():")
+		and compact_source.contains("_rpc_join_rejected.rpc_id("),
+		"Host registration must reject peers after the frozen loading roster begins."
+	)
+	_expect(
+		compact_source.contains(
+			"ifconnected_players.has(sender_id)andnot_is_registration_open():return"
+		),
+		"A delayed duplicate registration from the frozen roster must remain idempotent."
+	)
+	_expect(
+		compact_source.contains(
+			"ifis_host()andnot_is_registration_open()andpeer_id!=get_host_peer_id():"
+		)
+		and compact_source.contains("call_deferred(\"_reject_late_connected_peer\",peer_id)"),
+		"The Host must reject a newly connected transport peer as soon as loading locks the room."
+	)
+
+
+func _test_relay_channel_count() -> void:
+	var relay_source := FileAccess.get_file_as_string(RELAY_SERVER_PATH)
+	_expect(not relay_source.is_empty(), "Relay server source must be readable.")
+	_expect(
+		relay_source.contains("const CHANNEL_COUNT := 8")
+		and relay_source.contains("create_server(_port, MAX_CLIENTS, CHANNEL_COUNT)"),
+		"Relay server must provision the same eight ENet channels as protocol v5 clients."
+	)
+
+
+func _test_gameplay_v5_transaction_contract(rpcs: Dictionary) -> void:
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_inventory_item_use_requested",
+		"expected_inventory_revision:int=-1"
+	)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_inventory_item_discard_requested",
+		"expected_inventory_revision:int=-1"
+	)
+	for confirmation_method in [
+		"net_inventory_item_used",
+		"net_inventory_item_discarded",
+	]:
+		_expect_rpc_signature_contains(
+			rpcs,
+			confirmation_method,
+			"inventory_snapshot:Dictionary={}"
+		)
+		_expect_rpc_signature_contains(
+			rpcs,
+			confirmation_method,
+			"force_inventory_repair:bool=false"
+		)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_inventory_snapshot",
+		"force_inventory_repair:bool=false"
+	)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_pickup_collected",
+		"inventory_snapshot:Dictionary={}"
+	)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_luoxi_collectible_choice_requested",
+		"offer_revision:int=0"
+	)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_luoxi_collectible_offer_state",
+		"config_paths:PackedStringArray"
+	)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_luoxi_collectible_confirmed",
+		"inventory_snapshot:Dictionary={}"
+	)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_warehouse_command_requested",
+		"command:Dictionary"
+	)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_warehouse_snapshot_requested",
+		"warehouse_net_id:int"
+	)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_warehouse_command_result",
+		"result:Dictionary"
+	)
+
+
+func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
+	var channel_regex := RegEx.new()
+	if channel_regex.compile("@rpc\\([^)]*,([0-9]+)\\)func") != OK:
+		failures.append("Unable to compile gameplay RPC channel parser regex.")
+		return
+	for method_name_variant in rpcs:
+		var method_name := String(method_name_variant)
+		var rpc_surface := String(rpcs[method_name])
+		var channel_match := channel_regex.search(rpc_surface)
+		_expect(channel_match != null, "Gameplay RPC %s must expose a channel." % method_name)
+		if channel_match == null:
+			continue
+		var channel := int(channel_match.get_string(1))
+		_expect(
+			channel >= 0 and channel < NetConstants.CHANNEL_COUNT,
+			"Gameplay RPC %s uses out-of-range channel %d." % [method_name, channel]
+		)
+
+	_expect_rpc_channel(rpcs, "net_runtime_state_requested", NetConstants.CH_AUTH)
+	_expect_rpc_channel(rpcs, "_rpc_client_player_state", NetConstants.CH_INPUT)
+	_expect_rpc_channel(rpcs, "_rpc_receive_player_snapshot", NetConstants.CH_PLAYER_STATE)
+	_expect_rpc_channel(rpcs, "_rpc_receive_enemy_snapshot", NetConstants.CH_ENEMY_STATE)
+	_expect_rpc_channel(rpcs, "_rpc_projectile_fired_from_client", NetConstants.CH_PROJECTILE)
+	for world_event_method in [
+		"net_enemy_spawned_batch",
+		"net_enemy_terminal",
+		"net_plant_spawned",
+		"net_plant_removed",
+		"net_base_health_changed",
+	]:
+		_expect_rpc_channel(rpcs, world_event_method, NetConstants.CH_WORLD_EVENT)
+	for transaction_method in [
+		"net_inventory_item_use_requested",
+		"net_inventory_item_discard_requested",
+		"net_inventory_item_used",
+		"net_inventory_item_discarded",
+		"net_inventory_snapshot",
+		"net_pickup_collected",
+		"net_luoxi_collectible_offer_requested",
+		"net_luoxi_collectible_offer_state",
+		"net_luoxi_collectible_choice_requested",
+		"net_luoxi_collectible_confirmed",
+		"net_warehouse_command_requested",
+		"net_warehouse_snapshot_requested",
+		"net_warehouse_command_result",
+		"net_warehouse_storage_snapshot",
+	]:
+		_expect_rpc_channel(rpcs, transaction_method, NetConstants.CH_TRANSACTION)
+	for feedback_method in [
+		"net_enemy_damage_feedback_batch",
+		"net_collectible_visual_effect",
+		"net_collectible_follow_visual_effect",
+		"net_plant_health_batch",
+	]:
+		_expect_rpc_channel(rpcs, feedback_method, NetConstants.CH_FEEDBACK)
+
+
+func _expect_rpc_signature_contains(
+	rpcs: Dictionary,
+	method_name: String,
+	required_fragment: String
+) -> void:
+	_expect(rpcs.has(method_name), "Gameplay RPC %s must be registered." % method_name)
+	if not rpcs.has(method_name):
+		return
+	_expect(
+		String(rpcs[method_name]).contains(required_fragment),
+		"Gameplay RPC %s must contain %s." % [method_name, required_fragment]
+	)
+
+
+func _expect_rpc_channel(rpcs: Dictionary, method_name: String, expected_channel: int) -> void:
+	_expect(rpcs.has(method_name), "Gameplay RPC %s must be registered." % method_name)
+	if not rpcs.has(method_name):
+		return
+	_expect(
+		String(rpcs[method_name]).contains(",%d)func" % expected_channel),
+		"Gameplay RPC %s must use channel %d." % [method_name, expected_channel]
 	)
 
 

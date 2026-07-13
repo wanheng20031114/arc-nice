@@ -2,8 +2,10 @@ param(
     [string]$GodotExe = "C:\Program Files\Godot\Godot_console.exe",
     [int]$Port = 40230,
     [int]$TimeoutSeconds = 130,
-    [ValidateSet("full", "leave", "wave")]
+    [ValidateSet("full", "leave", "wave", "tower_defense")]
     [string]$Scenario = "full",
+    [ValidateSet("standard", "tower_defense")]
+    [string]$GameMode = "standard",
     [switch]$GodotVerbose
 )
 
@@ -65,7 +67,8 @@ try {
         "--probe-run_seconds=3",
         "--probe-linger_seconds=0",
         "--probe-events=False",
-        "--probe-scenario=$Scenario"
+        "--probe-scenario=$Scenario",
+        "--probe-game_mode=$GameMode"
     )
     Set-Content -Path (Join-Path $logRoot "host.args.txt") -Encoding UTF8 -Value ($hostArgs -join "`n")
     $hostProcess = Start-Process `
@@ -115,7 +118,8 @@ try {
         "--probe-timeout_seconds=20",
         "--probe-run_seconds=2",
         "--probe-linger_seconds=6",
-        "--probe-scenario=$Scenario"
+        "--probe-scenario=$Scenario",
+        "--probe-game_mode=$GameMode"
     )
 
     foreach ($clientSpec in @(
@@ -208,7 +212,7 @@ try {
         if ($entry.Name -eq "relay") {
             $effectiveStderr = $effectiveStderr -replace "ERROR: Unable to send packet on channel 0, max channels: 0\r?\n\s+at: send \(modules/enet/enet_packet_peer.cpp:62\)\r?\n", ""
         }
-        if ($effectiveStderr -match "Node not found|Invalid packet received|ERR_UNCONFIGURED|Unable to send packet|Trying to cast|ObjectDB instances leaked|resources still in use|RPC '.*' is not allowed|unknown peer ID|checksum failed|Failed to get cached node") {
+        if ($effectiveStderr -match "SCRIPT ERROR|Node not found|Invalid packet received|ERR_UNCONFIGURED|Unable to send packet|Trying to cast|ObjectDB instances leaked|resources still in use|RPC '.*' is not allowed|unknown peer ID|checksum failed|Failed to get cached node") {
             $failed = $true
             Write-Host "ERROR: $($entry.Name) produced network/runtime errors in stderr."
         }
@@ -221,7 +225,7 @@ try {
         exit 1
     }
 
-    Write-Host "MULTIPLAYER_RELAY_PROBE_OK scenario=$Scenario port=$Port hostPeerId=$hostPeerId logRoot=$logRoot"
+    Write-Host "MULTIPLAYER_RELAY_PROBE_OK scenario=$Scenario gameMode=$GameMode port=$Port hostPeerId=$hostPeerId logRoot=$logRoot"
     exit 0
 }
 finally {
