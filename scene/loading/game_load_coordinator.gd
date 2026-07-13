@@ -29,6 +29,22 @@ const LOAD_TIMEOUT_SECONDS := 120.0
 const MULTIPLAYER_STATE_DISCONNECTED := 0
 const MULTIPLAYER_STATE_IN_GAME := 5
 const CAMPAIGN_RUNTIME_RESOURCES_META := &"_game_load_runtime_resources"
+const TOWER_DEFENSE_RUNTIME_RESOURCE_PATHS: Array[String] = [
+	"res://scene/plant_defense/agave_cannon.tscn",
+	"res://scene/plant_defense/agave_cannonball.tscn",
+	"res://scene/plant_defense/oak_warehouse.tscn",
+	"res://scene/collectible_arrow_projectile.tscn",
+	"res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn",
+	"res://scene/collectible_sakura_explosion.tscn",
+	"res://scene/enemy/capoo_ak47_bullet.tscn",
+	"res://scene/enemy/capoo_smg_bullet.tscn",
+	"res://scene/enemy/capoo_rpg_rocket.tscn",
+	"res://scene/enemy/capoo_mage_fireball.tscn",
+	"res://scene/enemy/yuanshi_insect_fire_projectile.tscn",
+	"res://scene/bullet.tscn",
+	"res://scene/bullet_hit_effect.tscn",
+	"res://scene/enemy/enemy_hit_effect.tscn",
+]
 
 enum LoadState {
 	IDLE,
@@ -92,6 +108,9 @@ func begin_singleplayer(scene_path: String) -> void:
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if run_state != null:
 		_append_character_scene(manifest, run_state.get_selected_character_id())
+		_append_inventory_runtime_resources(manifest, run_state)
+	if scene_path == TOWER_DEFENSE_GAME_SCENE_PATH:
+		_append_tower_defense_runtime_resources(manifest, false)
 	_begin_load(scene_path, manifest, false)
 
 
@@ -116,6 +135,11 @@ func begin_multiplayer() -> void:
 	var character_map: Dictionary = net_manager.call("get_player_character_map") as Dictionary
 	for character_id_variant in character_map.values():
 		_append_character_scene(manifest, StringName(character_id_variant))
+	var run_state := get_node_or_null("/root/RunState") as RunStateStore
+	if run_state != null:
+		_append_inventory_runtime_resources(manifest, run_state)
+	if tower_defense:
+		_append_tower_defense_runtime_resources(manifest, true)
 	_begin_load(MULTIPLAYER_SCENE_PATH, manifest, true)
 
 
@@ -465,6 +489,55 @@ func _append_character_scene(manifest: Array[String], character_id: StringName) 
 	manifest.append(config.player_scene)
 
 
+func _append_tower_defense_runtime_resources(
+	manifest: Array[String],
+	include_all_characters: bool
+) -> void:
+	for path in TOWER_DEFENSE_RUNTIME_RESOURCE_PATHS:
+		_append_existing_resource_path(manifest, path)
+	for plant_config in PlantDefenseRegistry.get_all_configs():
+		if plant_config == null:
+			continue
+		_append_existing_resource_path(manifest, plant_config.resource_path)
+		if plant_config.plant_scene != null:
+			_append_existing_resource_path(manifest, plant_config.plant_scene.resource_path)
+	if include_all_characters:
+		for character_config in PlayerCharacterRegistry.get_all_configs():
+			if character_config != null:
+				_append_existing_resource_path(manifest, character_config.player_scene)
+
+
+func _append_inventory_runtime_resources(
+	manifest: Array[String],
+	run_state: RunStateStore
+) -> void:
+	if run_state == null:
+		return
+	_append_inventory_snapshot_resources(manifest, run_state.export_inventory_snapshot())
+	for peer_id_variant in run_state.multiplayer_inventories.keys():
+		var peer_id := int(peer_id_variant)
+		if peer_id > 0 and run_state.has_multiplayer_peer_state(peer_id):
+			_append_inventory_snapshot_resources(
+				manifest,
+				run_state.export_inventory_snapshot_for_peer(peer_id)
+			)
+
+
+func _append_inventory_snapshot_resources(
+	manifest: Array[String],
+	snapshot: Dictionary
+) -> void:
+	for slot_variant in snapshot.get("slots", []) as Array:
+		var slot := slot_variant as Dictionary
+		_append_existing_resource_path(manifest, str(slot.get("config_path", "")))
+
+
+func _append_existing_resource_path(manifest: Array[String], path: String) -> void:
+	if path.is_empty() or manifest.has(path) or not ResourceLoader.exists(path):
+		return
+	manifest.append(path)
+
+
 func _expand_campaign_runtime_manifest(
 	campaign_path: String,
 	campaign: WaveCampaignConfig
@@ -477,6 +550,21 @@ func _expand_campaign_runtime_manifest(
 
 	var added_weight := 0.0
 	for flow_step in campaign.flow_graph.steps:
+		var wave_config := flow_step as WaveConfig
+		if wave_config != null:
+			for entry in wave_config.enemy_entries:
+				if entry == null or entry.enemy_config == null:
+					continue
+				for runtime_path in [
+					entry.enemy_config.resource_path,
+					entry.enemy_config.enemy_scene.resource_path
+					if entry.enemy_config.enemy_scene != null
+					else "",
+				]:
+					added_weight += _append_campaign_runtime_resource(
+						campaign,
+						str(runtime_path)
+					)
 		var boss_config := flow_step as BossConfig
 		if boss_config == null:
 			continue
@@ -485,17 +573,24 @@ func _expand_campaign_runtime_manifest(
 			boss_config.intro_vfx_scene_path,
 			boss_config.boss_hud_scene_path,
 		]:
-			if runtime_path.is_empty() or _requested_paths.has(runtime_path):
-				continue
-			if not ResourceLoader.exists(runtime_path):
-				_show_error("Boss 加载清单中的资源不存在：%s" % runtime_path)
-				return added_weight
-			_requested_paths.append(runtime_path)
-			_runtime_resource_campaign_owners[runtime_path] = campaign
-			var weight := _get_resource_weight(runtime_path)
-			_resource_weights[runtime_path] = weight
-			added_weight += weight
+			added_weight += _append_campaign_runtime_resource(campaign, str(runtime_path))
 	return added_weight
+
+
+func _append_campaign_runtime_resource(
+	campaign: WaveCampaignConfig,
+	path: String
+) -> float:
+	if path.is_empty() or _requested_paths.has(path):
+		return 0.0
+	if not ResourceLoader.exists(path):
+		_show_error("战役加载清单中的资源不存在：%s" % path)
+		return 0.0
+	_requested_paths.append(path)
+	_runtime_resource_campaign_owners[path] = campaign
+	var weight := _get_resource_weight(path)
+	_resource_weights[path] = weight
+	return weight
 
 
 func _retain_campaign_runtime_resource(path: String, resource: Resource) -> void:
