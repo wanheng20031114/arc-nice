@@ -93,6 +93,19 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	_expect(game.request_tower_defense_wave_start(0), "The between-wave rest button must also start combat early.")
 	game.enemy_spawn_timer.stop()
 	game.player.call("_die")
+	var death_shader := game.tower_defense_status_hud.death_screen_effect.material as ShaderMaterial
+	_expect(
+		game.tower_defense_status_hud.local_death_center.modulate.a < 0.05,
+		"The local death card must begin transparent instead of appearing instantly."
+	)
+	_expect(
+		game.tower_defense_status_hud.dead_players_panel.modulate.a < 0.05,
+		"The dead-player list must remain transparent until the local death card reaches the top."
+	)
+	_expect(
+		float(death_shader.get_shader_parameter(&"intensity")) < 0.05,
+		"The death screen effect must begin transparent instead of appearing instantly."
+	)
 	await physics_frame
 	_expect(game.player.is_dead, "A killed tower-defense player must enter the dead state.")
 	_expect(game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE, "Player death must not end tower defense.")
@@ -103,6 +116,35 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	_expect(game.tower_defense_status_hud.local_death_center.visible, "The local death HUD must be visible.")
 	_expect(game.tower_defense_status_hud.dead_players_panel.visible, "The right-side dead-player HUD must be visible.")
 	_expect(game.singleplayer_respawn_last_seconds == 5, "The first death in a wave must use a five-second revive.")
+	_expect(
+		game.tower_defense_status_hud.local_death_center.position.y
+		> game.tower_defense_status_hud.local_death_top_position.y + 100.0,
+		"The local death card must begin near the screen center before moving upward."
+	)
+
+	await create_timer(1.4).timeout
+	_expect(
+		game.tower_defense_status_hud.local_death_center.position.is_equal_approx(
+			game.tower_defense_status_hud.local_death_top_position
+		),
+		"The local death card must finish at its authored top position."
+	)
+	_expect(
+		game.tower_defense_status_hud.local_death_center.modulate.a > 0.99,
+		"The local death card must finish fully visible."
+	)
+	_expect(
+		game.tower_defense_status_hud.dead_players_panel.modulate.a > 0.99,
+		"The dead-player list must fade in after the local death card moves upward."
+	)
+	_expect(
+		float(death_shader.get_shader_parameter(&"intensity")) > 0.99,
+		"The death screen effect must reach its full authored intensity."
+	)
+	_expect(
+		game.tower_defense_status_hud.local_countdown_label.label_settings.font_size >= 26,
+		"The local revive countdown must remain visually prominent."
+	)
 
 	var camera_before := game.map_camera.global_position
 	Input.action_press(&"move_right")
@@ -138,9 +180,11 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	var warning_length := game.tower_defense_status_hud.gate_warning_audio.stream.get_length()
 	_expect(warning_length >= 0.3 and warning_length <= 0.5, "The two-beep warning sound must stay between 0.3 and 0.5 seconds.")
 	_expect(not game.tower_defense_status_hud.play_gate_damage_warning(), "The warning audio must be throttled to once per 0.5 seconds.")
-	var death_shader := game.tower_defense_status_hud.death_screen_effect.material as ShaderMaterial
 	var gate_shader := game.tower_defense_status_hud.gate_warning_overlay.material as ShaderMaterial
 	_expect(death_shader.shader.code.contains("SCREEN_PIXEL_SIZE"), "The death vignette must compensate for viewport aspect ratio.")
+	_expect(death_shader.shader.code.contains("corner_mask"), "The death vignette must darken the corners beyond the ordinary edges.")
+	_expect(float(death_shader.get_shader_parameter(&"center_darkness")) <= 0.03, "The death vignette center must stay nearly unchanged.")
+	_expect(float(death_shader.get_shader_parameter(&"edge_darkness")) >= 0.65, "The death vignette edges must clearly communicate the dead state.")
 	_expect(gate_shader.shader.code.contains("SCREEN_PIXEL_SIZE"), "The gate vignette must compensate for viewport aspect ratio.")
 	game.wave_hud.show_defeat()
 	_expect(game.wave_hud.result_subtitle.text.contains("全员"), "The shared WaveHUD must retain standard-mode defeat wording.")

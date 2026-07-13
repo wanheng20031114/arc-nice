@@ -9,9 +9,11 @@
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_death"]
 shader = ExtResource("2_death_shader")
 shader_parameter/intensity = 0.0
-shader_parameter/grayscale_strength = 0.32
-shader_parameter/edge_darkness = 0.46
-shader_parameter/edge_width = 0.26
+shader_parameter/grayscale_strength = 0.34
+shader_parameter/center_darkness = 0.025
+shader_parameter/edge_darkness = 0.68
+shader_parameter/corner_darkness = 0.15
+shader_parameter/edge_width = 0.3
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_gate"]
 shader = ExtResource("3_gate_shader")
@@ -49,12 +51,12 @@ outline_size = 2
 outline_color = Color(0.06, 0.03, 0.03, 0.95)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_local_dead"]
-bg_color = Color(0.045, 0.045, 0.05, 0.88)
+bg_color = Color(0.04, 0.035, 0.04, 0.94)
 border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(0.62, 0.62, 0.66, 0.82)
+border_color = Color(0.76, 0.4, 0.38, 0.9)
 corner_radius_top_left = 8
 corner_radius_top_right = 8
 corner_radius_bottom_right = 8
@@ -65,16 +67,16 @@ shadow_offset = Vector2(0, 3)
 
 [sub_resource type="LabelSettings" id="LabelSettings_local_title"]
 font = ExtResource("4_font")
-font_size = 34
-font_color = Color(0.84, 0.84, 0.86, 1)
-outline_size = 5
+font_size = 28
+font_color = Color(1, 0.58, 0.52, 1)
+outline_size = 4
 outline_color = Color(0.04, 0.04, 0.05, 1)
 
 [sub_resource type="LabelSettings" id="LabelSettings_local_countdown"]
 font = ExtResource("4_font")
-font_size = 19
-font_color = Color(0.94, 0.9, 0.88, 1)
-outline_size = 3
+font_size = 26
+font_color = Color(1, 0.84, 0.4, 1)
+outline_size = 4
 outline_color = Color(0.04, 0.04, 0.05, 1)
 
 [node name="TowerDefenseStatusHUD" type="CanvasLayer" unique_id=730301422]
@@ -145,15 +147,15 @@ label_settings = SubResource("LabelSettings_dead_players")
 autowrap_mode = 2
 
 [node name="LocalDeathCenter" type="CenterContainer" parent="." unique_id=1209968609]
-anchors_preset = 15
+anchors_preset = 10
 anchor_right = 1.0
-anchor_bottom = 1.0
+offset_top = 52.0
+offset_bottom = 176.0
 grow_horizontal = 2
-grow_vertical = 2
 mouse_filter = 2
 
 [node name="Panel" type="PanelContainer" parent="LocalDeathCenter" unique_id=1127518723]
-custom_minimum_size = Vector2(372, 138)
+custom_minimum_size = Vector2(372, 118)
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_local_dead")
@@ -162,14 +164,14 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_local_dead")
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/margin_left = 26
-theme_override_constants/margin_top = 18
+theme_override_constants/margin_top = 12
 theme_override_constants/margin_right = 26
-theme_override_constants/margin_bottom = 18
+theme_override_constants/margin_bottom = 12
 
 [node name="Content" type="VBoxContainer" parent="LocalDeathCenter/Panel/Margin" unique_id=2118964197]
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 4
 alignment = 1
 
 [node name="Title" type="Label" parent="LocalDeathCenter/Panel/Margin/Content" unique_id=934228268]
@@ -180,7 +182,7 @@ horizontal_alignment = 1
 
 [node name="Countdown" type="Label" parent="LocalDeathCenter/Panel/Margin/Content" unique_id=291469753]
 layout_mode = 2
-text = "将在 5 秒后复活"
+text = "5 秒后复活"
 label_settings = SubResource("LabelSettings_local_countdown")
 horizontal_alignment = 1
 
