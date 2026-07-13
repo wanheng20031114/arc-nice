@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://b5ngq5py6eyrp" path="res://resources/config/plant_defense/plant_defense_config.gd" id="1_config"]
 [ext_resource type="Texture2D" uid="uid://pih41ngscyri" path="res://resources/texture/plant_defense/agave_cannon/icon.png" id="2_icon"]
-[ext_resource type="PackedScene" path="res://scene/plant_defense/agave_cannon.tscn" id="3_scene"]
+[ext_resource type="PackedScene" uid="uid://bm1cgr4yf1v0t" path="res://scene/plant_defense/agave_cannon.tscn" id="3_scene"]
 
 [resource]
 script = ExtResource("1_config")

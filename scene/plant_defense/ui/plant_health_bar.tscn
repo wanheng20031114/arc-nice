@@ -1,8 +1,8 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://by1igl2yc3ch0"]
 
-[ext_resource type="Script" path="res://scene/plant_defense/ui/plant_health_bar.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://b3srx7at6hsft" path="res://scene/plant_defense/ui/plant_health_bar.gd" id="1_script"]
 
-[node name="PlantHealthBar" type="Control"]
+[node name="PlantHealthBar" type="Control" unique_id=998785923]
 z_index = 20
 custom_minimum_size = Vector2(32, 5)
 layout_mode = 3
@@ -11,3 +11,4 @@ offset_right = 32.0
 offset_bottom = 5.0
 mouse_filter = 2
 script = ExtResource("1_script")
+damage_trail_color = Color(0.92156863, 0.28235295, 0.18039216, 1)

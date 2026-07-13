@@ -1,26 +1,66 @@
-[gd_scene load_steps=18 format=3]
+[gd_scene format=3 uid="uid://q5ylmt1wpanl"]
 
-[ext_resource type="Script" path="res://scene/plant_defense/oak_warehouse.gd" id="1_script"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/oak_warehouse/oak_warehouse.png" id="2_sprite"]
+[ext_resource type="Script" uid="uid://cffa0vxu11rp2" path="res://scene/plant_defense/oak_warehouse.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://b6b8m1sebgy8g" path="res://resources/texture/plant_defense/oak_warehouse/oak_warehouse.png" id="2_sprite"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/oak_warehouse_panel.tscn" id="4_panel"]
-[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="5_font"]
-[ext_resource type="Shader" path="res://resources/shader/plant_visual_pixel_snap.gdshader" id="6_pixel_snap_shader"]
+[ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="5_font"]
+[ext_resource type="Shader" uid="uid://k6uttyelrjo6" path="res://resources/shader/plant_visual_pixel_snap.gdshader" id="6_pixel_snap_shader"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_pixel_snap"]
 shader = ExtResource("6_pixel_snap_shader")
+
+[sub_resource type="Animation" id="Animation_oak_idle_reset"]
+resource_name = "RESET"
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Sprite2D:modulate")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Color(1, 1, 1, 1)]
+}
+
+[sub_resource type="Animation" id="Animation_oak_idle"]
+resource_name = "idle"
+length = 4.0
+loop_mode = 1
+step = 0.1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Sprite2D:modulate")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 2.4, 2.8, 3.2, 4),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
+"update": 0,
+"values": [Color(1, 1, 1, 1), Color(1, 1, 1, 1), Color(1, 0.965, 0.9, 1), Color(1, 1, 1, 1), Color(1, 1, 1, 1)]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_oak_idle"]
+_data = {
+&"RESET": SubResource("Animation_oak_idle_reset"),
+&"idle": SubResource("Animation_oak_idle")
+}
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 resource_local_to_scene = true
 size = Vector2(28, 28)
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_interaction"]
-resource_local_to_scene = true
-radius = 28.0
-
 [sub_resource type="CircleShape2D" id="CircleShape2D_player_core"]
 resource_local_to_scene = true
 radius = 7.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_interaction"]
+resource_local_to_scene = true
+radius = 28.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_prompt"]
 content_margin_left = 0.0
@@ -69,127 +109,89 @@ font_color = Color(0.965, 0.867, 0.667, 1)
 outline_size = 1
 outline_color = Color(0.055, 0.027, 0.012, 1)
 
-[sub_resource type="Animation" id="Animation_oak_idle_reset"]
-resource_name = "RESET"
-length = 0.0
-tracks/0/type = "value"
-tracks/0/imported = false
-tracks/0/enabled = true
-tracks/0/path = NodePath("Sprite2D:modulate")
-tracks/0/interp = 1
-tracks/0/loop_wrap = true
-tracks/0/keys = {
-"times": PackedFloat32Array(0),
-"transitions": PackedFloat32Array(1),
-"update": 0,
-"values": [Color(1, 1, 1, 1)]
-}
-
-[sub_resource type="Animation" id="Animation_oak_idle"]
-resource_name = "idle"
-length = 4.0
-loop_mode = 1
-step = 0.1
-tracks/0/type = "value"
-tracks/0/imported = false
-tracks/0/enabled = true
-tracks/0/path = NodePath("Sprite2D:modulate")
-tracks/0/interp = 1
-tracks/0/loop_wrap = true
-tracks/0/keys = {
-"times": PackedFloat32Array(0, 2.4, 2.8, 3.2, 4),
-"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
-"update": 0,
-"values": [Color(1, 1, 1, 1), Color(1, 1, 1, 1), Color(1, 0.965, 0.9, 1), Color(1, 1, 1, 1), Color(1, 1, 1, 1)]
-}
-
-[sub_resource type="AnimationLibrary" id="AnimationLibrary_oak_idle"]
-_data = {
-&"RESET": SubResource("Animation_oak_idle_reset"),
-&"idle": SubResource("Animation_oak_idle")
-}
-
-[node name="OakWarehouse" type="StaticBody2D"]
+[node name="OakWarehouse" type="StaticBody2D" unique_id=50354699]
 collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
-enemy_approach_depth = 3.0
 
-[node name="Sprite2D" type="Sprite2D" parent="."]
-material = SubResource("ShaderMaterial_pixel_snap")
-texture_filter = 1
-scale = Vector2(0.5, 0.5)
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1058152143]
 z_index = 1
+texture_filter = 1
+material = SubResource("ShaderMaterial_pixel_snap")
+scale = Vector2(0.5, 0.5)
 texture = ExtResource("2_sprite")
 
-[node name="IdleAnimationPlayer" type="AnimationPlayer" parent="."]
-libraries = {
-&"": SubResource("AnimationLibrary_oak_idle")
-}
-autoplay = "idle"
+[node name="IdleAnimationPlayer" type="AnimationPlayer" parent="." unique_id=1835881873]
+libraries/ = SubResource("AnimationLibrary_oak_idle")
+autoplay = &"idle"
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1724478090]
 shape = SubResource("RectangleShape2D_body")
 
-[node name="PlayerCoreBody" type="StaticBody2D" parent="."]
+[node name="PlayerCoreBody" type="StaticBody2D" parent="." unique_id=1153204918]
 position = Vector2(0, 6)
 collision_layer = 1024
 collision_mask = 2
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody" unique_id=1733689328]
 shape = SubResource("CircleShape2D_player_core")
 
-[node name="InteractionArea" type="Area2D" parent="."]
+[node name="InteractionArea" type="Area2D" parent="." unique_id=171521687]
 collision_layer = 0
 collision_mask = 2
 monitorable = false
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea" unique_id=1155286578]
 shape = SubResource("CircleShape2D_interaction")
 
-[node name="InteractionPrompt" type="PanelContainer" parent="."]
-texture_filter = 1
-position = Vector2(-22, -30)
-scale = Vector2(0.5, 0.5)
+[node name="InteractionPrompt" type="PanelContainer" parent="." unique_id=612632811]
 z_index = 10
+texture_filter = 1
 custom_minimum_size = Vector2(88, 26)
+offset_left = -22.0
+offset_top = -33.0
+offset_right = 66.0
+offset_bottom = -7.0
+scale = Vector2(0.5, 0.5)
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_prompt")
 
-[node name="PromptMargin" type="MarginContainer" parent="InteractionPrompt"]
+[node name="PromptMargin" type="MarginContainer" parent="InteractionPrompt" unique_id=77760462]
 layout_mode = 2
 theme_override_constants/margin_left = 4
 theme_override_constants/margin_top = 3
 theme_override_constants/margin_right = 4
 theme_override_constants/margin_bottom = 3
 
-[node name="PromptRow" type="HBoxContainer" parent="InteractionPrompt/PromptMargin"]
+[node name="PromptRow" type="HBoxContainer" parent="InteractionPrompt/PromptMargin" unique_id=1136729691]
 layout_mode = 2
 theme_override_constants/separation = 4
 alignment = 1
 
-[node name="Keycap" type="PanelContainer" parent="InteractionPrompt/PromptMargin/PromptRow"]
+[node name="Keycap" type="PanelContainer" parent="InteractionPrompt/PromptMargin/PromptRow" unique_id=1115924030]
 custom_minimum_size = Vector2(18, 18)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_keycap")
 
-[node name="KeyLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow/Keycap"]
+[node name="KeyLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow/Keycap" unique_id=1364676389]
 layout_mode = 2
 text = "F"
 label_settings = SubResource("LabelSettings_keycap")
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="ActionLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow"]
+[node name="ActionLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow" unique_id=1294518972]
 layout_mode = 2
 text = "打开仓库"
 label_settings = SubResource("LabelSettings_action")
 vertical_alignment = 1
 
-[node name="HealthBar" parent="." instance=ExtResource("3_health_bar")]
+[node name="HealthBar" parent="." unique_id=168110793 instance=ExtResource("3_health_bar")]
 offset_left = -16.0
-offset_top = -38.0
+offset_top = -20.0
 offset_right = 16.0
-offset_bottom = -33.0
+offset_bottom = -15.0
+damage_trail_color = Color(0.92156863, 0.28235295, 0.18039216, 1)
 
-[node name="OakWarehousePanel" parent="." instance=ExtResource("4_panel")]
+[node name="OakWarehousePanel" parent="." unique_id=1003003184 instance=ExtResource("4_panel")]
+visible = false
