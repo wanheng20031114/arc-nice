@@ -126,7 +126,7 @@ func show_tower_defense_defeat() -> void:
 	_hide_start_wave_button()
 	_play_result_sequence(
 		"战败",
-		"蓝门已经失守，回到大厅重新整备。",
+		"核心生命值归0，游戏结束",
 		Color(1.0, 0.38, 0.3, 1.0)
 	)
 

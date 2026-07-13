@@ -39,6 +39,7 @@ const MUSIC_FADE_IN_START_VOLUME_DB := -12.0
 const BOSS_INTRO_CAMERA_LOOK_AHEAD_DISTANCE := 96.0
 const BOSS_INTRO_CAMERA_FOCUS_SECONDS := 0.35
 const BOSS_INTRO_CAMERA_RESTORE_SECONDS := 0.25
+const DEFEAT_CAMERA_TRAVEL_SECONDS := 0.55
 const INITIAL_PLAYER_XIRANG := 1000
 const DEFAULT_BASE_HEALTH := 100
 const ENEMY_RETARGET_INTERVAL_SECONDS := 0.35
@@ -97,6 +98,7 @@ signal base_health_changed(current_health: int, maximum_health: int, revision: i
 @onready var music_player: AudioStreamPlayer = $MusicPlayer
 @onready var countdown_audio: AudioStreamPlayer = $CountdownAudio
 @onready var wave_start_audio: AudioStreamPlayer = $WaveStartAudio
+@onready var defeat_audio: AudioStreamPlayer = $DefeatAudio
 @onready var currency_hud: CurrencyHUD = $CurrencyHUD
 @onready var home_base_hud: HomeBaseHUD = $HomeBaseHUD
 @onready var wave_hud: WaveHUD = $WaveHUD
@@ -138,6 +140,8 @@ var current_flow_step: FlowStepConfig = null
 var next_flow_step_after_rest: FlowStepConfig = null
 var music_fade_tween: Tween = null
 var boss_intro_camera_tween: Tween = null
+var defeat_camera_tween: Tween = null
+var defeat_presentation_completed := false
 var multiplayer_player_names: Dictionary = {}
 var multiplayer_player_character_ids: Dictionary = {}
 var multiplayer_spawn_slot_indices: Dictionary[int, int] = {}
@@ -663,6 +667,7 @@ func _update_plant_placement_input_state() -> void:
 	var input_enabled := (
 		player != null
 		and not player.is_dead
+		and wave_state not in [WaveState.VICTORY, WaveState.DEFEAT]
 		and not _has_exclusive_modal_open()
 	)
 	plant_placement_controller.set_process_unhandled_input(input_enabled)
@@ -1185,15 +1190,7 @@ func apply_remote_enemy_count(alive_count: int) -> void:
 func apply_remote_defeat() -> void:
 	if runtime_mode != RuntimeMode.CLIENT_VIEW:
 		return
-	if wave_state == WaveState.DEFEAT:
-		return
-	wave_state = WaveState.DEFEAT
-	_clear_respawn_runtime_for_result()
-	enemy_spawn_timer.stop()
-	state_timer.stop()
-	_restore_camera_after_boss_intro()
-	_set_merchant_active(false)
-	wave_hud.show_tower_defense_defeat()
+	_enter_defeat(false)
 
 
 func show_damage_number(
@@ -2535,6 +2532,9 @@ func _complete_current_step() -> void:
 
 func _enter_victory(emit_multiplayer: bool = true) -> void:
 	_cancel_plant_placement()
+	if defeat_camera_tween != null:
+		defeat_camera_tween.kill()
+		defeat_camera_tween = null
 	_restore_camera_after_boss_intro()
 	if emit_multiplayer and runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_revive_all_requested.emit()
@@ -2555,23 +2555,77 @@ func _enter_victory(emit_multiplayer: bool = true) -> void:
 		_emit_multiplayer_flow_state(WaveState.VICTORY)
 
 
-func _enter_defeat() -> void:
+func _enter_defeat(emit_multiplayer: bool = true) -> void:
 	if wave_state == WaveState.DEFEAT:
 		return
 	_cancel_plant_placement()
-	_restore_camera_after_boss_intro()
 	wave_state = WaveState.DEFEAT
+	defeat_presentation_completed = false
 	_clear_respawn_runtime_for_result()
 	enemy_spawn_timer.stop()
 	state_timer.stop()
 	_set_merchant_active(false)
+	_stop_background_music_for_defeat()
 	if linglan_boss_intro_vfx != null:
 		linglan_boss_intro_vfx.stop_intro()
 	if boss_health_hud != null:
 		boss_health_hud.hide_all()
-	wave_hud.show_tower_defense_defeat()
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
+	wave_hud.hide_all()
+	if emit_multiplayer and runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_defeat_started.emit()
+	_begin_defeat_camera_sequence()
+
+
+func _begin_defeat_camera_sequence() -> void:
+	if boss_intro_camera_tween != null:
+		boss_intro_camera_tween.kill()
+		boss_intro_camera_tween = null
+	if defeat_camera_tween != null:
+		defeat_camera_tween.kill()
+		defeat_camera_tween = null
+	if map_camera == null or home_objective_targets.is_empty():
+		_complete_defeat_presentation()
+		return
+
+	# Keep the player's current zoom while detaching the camera from either a
+	# living player or spectator mode. The unique blue-gate objective is the
+	# authoritative destination on every peer.
+	spectator_camera_active = false
+	if map_camera.get_parent() != self:
+		map_camera.reparent(self, true)
+	map_camera.process_callback = Camera2D.CAMERA2D_PROCESS_IDLE
+	map_camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	map_camera.reset_physics_interpolation()
+	var gate_center := home_objective_targets[0].global_position.round()
+	if map_camera.global_position.is_equal_approx(gate_center) or not is_inside_tree():
+		map_camera.global_position = gate_center
+		_complete_defeat_presentation()
+		return
+
+	defeat_camera_tween = create_tween()
+	defeat_camera_tween.set_trans(Tween.TRANS_SINE)
+	defeat_camera_tween.set_ease(Tween.EASE_IN_OUT)
+	defeat_camera_tween.tween_method(
+		_set_map_camera_rounded_global_position,
+		map_camera.global_position,
+		gate_center,
+		DEFEAT_CAMERA_TRAVEL_SECONDS
+	)
+	defeat_camera_tween.tween_callback(_complete_defeat_presentation)
+
+
+func _set_map_camera_rounded_global_position(camera_position: Vector2) -> void:
+	if map_camera != null:
+		map_camera.global_position = camera_position.round()
+
+
+func _complete_defeat_presentation() -> void:
+	defeat_camera_tween = null
+	if wave_state != WaveState.DEFEAT or defeat_presentation_completed:
+		return
+	defeat_presentation_completed = true
+	wave_hud.show_tower_defense_defeat()
+	defeat_audio.play()
 
 
 func _clear_respawn_runtime_for_result() -> void:
@@ -3627,6 +3681,12 @@ func _update_boss_music(boss_config: BossConfig) -> void:
 func pause_all_background_music() -> void:
 	_stop_music_fade_tween()
 	_pause_background_music_players(self)
+
+
+func _stop_background_music_for_defeat() -> void:
+	_stop_music_fade_tween()
+	music_player.stream_paused = false
+	music_player.stop()
 
 
 func _play_music_stream(

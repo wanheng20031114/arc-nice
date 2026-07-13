@@ -170,9 +170,15 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	_expect(roundi(game.consume_next_player_respawn_delay(0)) == 5, "Starting a new wave must reset the next revive delay to five seconds.")
 
 	game.current_base_health = 1
+	var defeat_zoom := game.map_camera.zoom
+	var defeat_gate_center := game.home_objective_targets[0].global_position.round()
 	game.call("_apply_base_damage", 1)
 	_expect(game.wave_state == GameRuntimeBase.WaveState.DEFEAT, "Blue-gate health reaching zero must still end the game.")
-	_expect(game.wave_hud.result_subtitle.text.contains("蓝门"), "Defeat text must identify the lost blue gate instead of player deaths.")
+	_expect(not game.music_player.playing, "Tower-defense defeat must stop the active BGM immediately.")
+	_expect(not game.wave_hud.result_overlay.visible, "The defeat overlay must wait until the camera reaches the blue gate.")
+	_expect(not game.defeat_audio.playing, "The defeat cue must wait for the camera transition.")
+	_expect(game.map_camera.get_parent() == game, "Defeat must detach the camera from the local player or spectator target.")
+	_expect(game.map_camera.zoom.is_equal_approx(defeat_zoom), "Defeat camera travel must preserve the player's current zoom.")
 	_expect(game.tower_defense_status_hud.gate_warning_overlay.visible, "A blue-gate hit must flash a transparent red edge warning.")
 	_expect(game.tower_defense_status_hud.gate_warning_audio.playing, "A blue-gate hit must play the double warning beep.")
 	_expect(is_equal_approx(game.tower_defense_status_hud.gate_warning_audio.volume_db, -3.0), "The warning beep must stay slightly below the -2 dB player gunshot node.")
@@ -186,10 +192,19 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	_expect(float(death_shader.get_shader_parameter(&"center_darkness")) <= 0.03, "The death vignette center must stay nearly unchanged.")
 	_expect(float(death_shader.get_shader_parameter(&"edge_darkness")) >= 0.65, "The death vignette edges must clearly communicate the dead state.")
 	_expect(gate_shader.shader.code.contains("SCREEN_PIXEL_SIZE"), "The gate vignette must compensate for viewport aspect ratio.")
+	await create_timer(GameTowerDefense.DEFEAT_CAMERA_TRAVEL_SECONDS + 0.1).timeout
+	_expect(game.map_camera.global_position.is_equal_approx(defeat_gate_center), "The defeat camera must finish at the authoritative blue-gate center.")
+	_expect(game.map_camera.zoom.is_equal_approx(defeat_zoom), "The completed defeat camera transition must not alter zoom.")
+	_expect(game.wave_hud.result_overlay.visible, "The shared defeat overlay must appear after camera travel completes.")
+	_expect(game.wave_hud.result_subtitle.text == "核心生命值归0，游戏结束", "Tower defense must show the exact core-health defeat subtitle.")
+	_expect(game.defeat_audio.playing, "The defeat sound must play when the result overlay appears.")
+	var defeat_audio_playback := game.defeat_audio.get_playback_position()
+	game.call("_enter_defeat")
+	_expect(game.defeat_audio.get_playback_position() >= defeat_audio_playback, "Duplicate defeat events must not restart the local presentation.")
 	game.wave_hud.show_defeat()
 	_expect(game.wave_hud.result_subtitle.text.contains("全员"), "The shared WaveHUD must retain standard-mode defeat wording.")
 	game.wave_hud.show_tower_defense_defeat()
-	_expect(game.wave_hud.result_subtitle.text.contains("蓝门"), "Tower defense must use its dedicated blue-gate defeat wording.")
+	_expect(game.wave_hud.result_subtitle.text == "核心生命值归0，游戏结束", "Tower defense must reuse WaveHUD with its dedicated exact wording.")
 
 	_stop_audio_players(game)
 	game.queue_free()
@@ -219,6 +234,21 @@ func _test_client_gate_warning_replication() -> void:
 	_expect(game.current_base_health == 8, "A client must apply later blue-gate damage revisions.")
 	_expect(game.tower_defense_status_hud.gate_warning_overlay.visible, "A replicated blue-gate hit must flash on every client screen.")
 	_expect(game.tower_defense_status_hud.gate_warning_audio.playing, "A replicated blue-gate hit must play the client warning sound.")
+	var client_defeat_zoom := Vector2(1.5, 1.5)
+	game.map_camera.zoom = client_defeat_zoom
+	game.music_player.play()
+	game.apply_remote_defeat()
+	var first_defeat_tween := game.defeat_camera_tween
+	game.apply_remote_defeat()
+	_expect(game.wave_state == GameRuntimeBase.WaveState.DEFEAT, "A reliable defeat event must enter the shared client defeat state.")
+	_expect(game.defeat_camera_tween == first_defeat_tween, "A duplicate reliable defeat event must not restart client camera travel.")
+	_expect(not game.music_player.playing, "A client must stop its own BGM as soon as defeat is received.")
+	_expect(not game.wave_hud.result_overlay.visible, "A client must also defer the defeat overlay until its local camera arrives.")
+	await create_timer(GameTowerDefense.DEFEAT_CAMERA_TRAVEL_SECONDS + 0.1).timeout
+	_expect(game.map_camera.global_position.is_equal_approx(game.home_objective_targets[0].global_position.round()), "Every client camera must converge on the same blue-gate objective.")
+	_expect(game.map_camera.zoom.is_equal_approx(client_defeat_zoom), "Client defeat presentation must preserve local camera zoom.")
+	_expect(game.wave_hud.result_subtitle.text == "核心生命值归0，游戏结束", "Client defeat presentation must use the exact shared subtitle.")
+	_expect(game.defeat_audio.playing, "Each client must play the defeat sound locally after camera travel.")
 
 	_stop_audio_players(game)
 	game.queue_free()
@@ -280,6 +310,15 @@ func _test_multiplayer_all_dead_is_not_defeat() -> void:
 	game.update_player_respawn_countdown(1, 5)
 	game.update_player_respawn_countdown(2, 5)
 	_expect(game.tower_defense_status_hud.respawn_entries.size() == 2, "The right HUD must list every dead multiplayer player.")
+	var defeat_signals := {"count": 0}
+	game.multiplayer_defeat_started.connect(
+		func() -> void: defeat_signals["count"] = int(defeat_signals["count"]) + 1
+	)
+	game.current_base_health = 1
+	game.call("_apply_base_damage", 1)
+	_expect(int(defeat_signals["count"]) == 1, "The Host must broadcast defeat immediately when core health reaches zero.")
+	game.call("_enter_defeat")
+	_expect(int(defeat_signals["count"]) == 1, "Repeated Host defeat entry must not broadcast a second reliable event.")
 
 	_stop_audio_players(game)
 	game.queue_free()
