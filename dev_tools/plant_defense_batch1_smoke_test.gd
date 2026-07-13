@@ -11,6 +11,9 @@ const PLACEMENT_CONTROLLER_SCENE := preload(
 const CANNONBALL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
 const PLANT_HEALTH_BAR_SCRIPT := preload("res://scene/plant_defense/ui/plant_health_bar.gd")
 const ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
+const PLANT_VISUAL_PIXEL_SNAP_SHADER := preload(
+	"res://resources/shader/plant_visual_pixel_snap.gdshader"
+)
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -213,6 +216,19 @@ func _test_config_and_scene_contracts() -> void:
 			cannon_sprite.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
 			"植物开火动画必须使用邻近采样。"
 		)
+		var body_material := body_sprite.material as ShaderMaterial
+		var cannon_material := cannon_sprite.material as ShaderMaterial
+		_expect(
+			body_material != null
+			and cannon_material != null
+			and body_material == cannon_material
+			and body_material.shader == PLANT_VISUAL_PIXEL_SNAP_SHADER,
+			"龙舌兰身体与炮头必须共用仅作用于可绘制节点的画布像素相位修正。"
+		)
+		_expect(
+			agave.material == null and visual_root.material == null,
+			"龙舌兰像素相位修正不得作用于玩法根、炮口或碰撞树。"
+		)
 		_expect(
 			body_sprite.scale == Vector2.ONE
 			and cannon_sprite.scale == Vector2.ONE
@@ -379,6 +395,13 @@ func _test_preview_runtime_alignment(
 	var warehouse_config := PlantDefenseRegistry.get_config(&"oak_warehouse")
 	var warehouse := warehouse_config.plant_scene.instantiate() as OakWarehouse
 	var warehouse_sprite := warehouse.get_node("Sprite2D") as Sprite2D
+	var warehouse_material := warehouse_sprite.material as ShaderMaterial
+	_expect(
+		warehouse_material != null
+		and warehouse_material.shader == PLANT_VISUAL_PIXEL_SNAP_SHADER
+		and warehouse.material == null,
+		"仓库必须只对主体Sprite应用局部画布像素相位修正。"
+	)
 	ghost.texture = warehouse_config.icon
 	ghost_rect = _get_sprite_subject_rect(ghost, warehouse_config.icon, Transform2D.IDENTITY)
 	runtime_rect = _get_sprite_subject_rect(

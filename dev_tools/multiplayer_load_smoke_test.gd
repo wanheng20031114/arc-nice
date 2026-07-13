@@ -2427,6 +2427,10 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 		client_game.enemy_container.add_child(client_enemy)
 		client_enemy.setup(BOMBER_CONFIG, client_game.player, client_game.grid_pathfinder)
 		client_enemy.configure_multiplayer_proxy()
+		_expect(
+			client_enemy.physics_interpolation_mode == Node.PHYSICS_INTERPOLATION_MODE_OFF,
+			"Client enemy proxies must not stack native physics interpolation on network interpolation."
+		)
 		client_enemy.set_meta("net_id", 77)
 		var client_net_enemies := client_mp_game.get("_net_enemies") as Dictionary
 		var spawn_times := client_mp_game.get("_enemy_spawn_snapshot_times") as Dictionary

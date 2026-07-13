@@ -1,10 +1,14 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://scene/plant_defense/oak_warehouse.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/plant_defense/oak_warehouse/oak_warehouse.png" id="2_sprite"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/oak_warehouse_panel.tscn" id="4_panel"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="5_font"]
+[ext_resource type="Shader" path="res://resources/shader/plant_visual_pixel_snap.gdshader" id="6_pixel_snap_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_pixel_snap"]
+shader = ExtResource("6_pixel_snap_shader")
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 resource_local_to_scene = true
@@ -112,6 +116,7 @@ script = ExtResource("1_script")
 enemy_approach_depth = 3.0
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
+material = SubResource("ShaderMaterial_pixel_snap")
 texture_filter = 1
 scale = Vector2(0.5, 0.5)
 z_index = 1

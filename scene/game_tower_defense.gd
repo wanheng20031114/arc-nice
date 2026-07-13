@@ -168,10 +168,6 @@ var navigation_prewarm_requested: bool = false
 var navigation_prewarmed: bool = false
 var _previous_physics_interpolation_enabled := false
 var _owns_physics_interpolation_override := false
-var _pixel_snap_viewport: Viewport = null
-var _previous_transform_pixel_snap_enabled := false
-var _previous_vertex_pixel_snap_enabled := false
-var _owns_pixel_snap_override := false
 var merchant_intermission_active := false
 var player_wave_death_counts: Dictionary = {}
 var singleplayer_respawn_time_left := -1.0
@@ -183,31 +179,9 @@ func _enter_tree() -> void:
 	_previous_physics_interpolation_enabled = get_tree().physics_interpolation
 	get_tree().physics_interpolation = true
 	_owns_physics_interpolation_override = true
-	# The 64 px plant art is intentionally rendered at 0.5 world scale through
-	# a 2x camera. Camera interpolation otherwise leaves its one-screen-pixel
-	# outlines on fractional canvas coordinates, so nearest sampling alternates
-	# edge pixels while the player moves. Snap the final CanvasItem transforms
-	# for this runtime only; physics, collision and network coordinates remain
-	# untouched. Vertex snapping stays off to avoid double-snapping rotated art.
-	_pixel_snap_viewport = get_viewport()
-	if _pixel_snap_viewport != null:
-		_previous_transform_pixel_snap_enabled = (
-			_pixel_snap_viewport.snap_2d_transforms_to_pixel
-		)
-		_previous_vertex_pixel_snap_enabled = _pixel_snap_viewport.snap_2d_vertices_to_pixel
-		_pixel_snap_viewport.snap_2d_transforms_to_pixel = true
-		_pixel_snap_viewport.snap_2d_vertices_to_pixel = false
-		_owns_pixel_snap_override = true
 
 
 func _exit_tree() -> void:
-	if _owns_pixel_snap_override and is_instance_valid(_pixel_snap_viewport):
-		_pixel_snap_viewport.snap_2d_transforms_to_pixel = (
-			_previous_transform_pixel_snap_enabled
-		)
-		_pixel_snap_viewport.snap_2d_vertices_to_pixel = _previous_vertex_pixel_snap_enabled
-	_owns_pixel_snap_override = false
-	_pixel_snap_viewport = null
 	if _owns_physics_interpolation_override:
 		get_tree().physics_interpolation = _previous_physics_interpolation_enabled
 		_owns_physics_interpolation_override = false
@@ -2200,7 +2174,7 @@ func _try_spawn_enemy(enemy_config: EnemyConfig) -> bool:
 	active_wave_enemy_ids[enemy_id] = true
 	enemy_instance.defeated.connect(_on_wave_enemy_defeated)
 	enemy_instance.tree_exited.connect(_on_wave_enemy_tree_exited.bind(enemy_id))
-	_register_multiplayer_enemy_instance(enemy_instance, enemy_config, enemy_instance.global_position)
+	_finalize_authoritative_enemy_spawn(enemy_instance, enemy_config, enemy_instance.global_position)
 	_spawn_enemy_spawn_effect(spawn_point.global_position)
 	return true
 
@@ -2309,7 +2283,7 @@ func _finish_linglan_airdrop_sniper_spawn(
 		enemy_instance.defeated.connect(_on_boss_add_defeated)
 	if not enemy_instance.tree_exited.is_connected(_on_boss_enemy_tree_exited.bind(enemy_id)):
 		enemy_instance.tree_exited.connect(_on_boss_enemy_tree_exited.bind(enemy_id))
-	_register_multiplayer_enemy_instance(enemy_instance, enemy_config, landing_position)
+	_finalize_authoritative_enemy_spawn(enemy_instance, enemy_config, landing_position)
 	_spawn_enemy_spawn_effect(landing_position)
 
 
@@ -2385,9 +2359,24 @@ func _try_spawn_boss_add_at_position(
 		enemy_instance.defeated.connect(_on_boss_add_defeated)
 	if not enemy_instance.tree_exited.is_connected(_on_boss_enemy_tree_exited.bind(enemy_id)):
 		enemy_instance.tree_exited.connect(_on_boss_enemy_tree_exited.bind(enemy_id))
-	_register_multiplayer_enemy_instance(enemy_instance, enemy_config, enemy_instance.global_position)
+	_finalize_authoritative_enemy_spawn(enemy_instance, enemy_config, enemy_instance.global_position)
 	_spawn_enemy_spawn_effect(spawn_position)
 	return true
+
+
+func _finalize_authoritative_enemy_spawn(
+	enemy_instance: Enemy,
+	enemy_config: EnemyConfig,
+	spawn_position: Vector2,
+	broadcast_spawn: bool = true
+) -> int:
+	_configure_authoritative_enemy_physics_interpolation(enemy_instance)
+	return _register_multiplayer_enemy_instance(
+		enemy_instance,
+		enemy_config,
+		spawn_position,
+		broadcast_spawn
+	)
 
 
 func _register_multiplayer_enemy_instance(
@@ -2413,6 +2402,22 @@ func _register_multiplayer_enemy_instance(
 	if broadcast_spawn:
 		multiplayer_enemy_spawned.emit(enemy_net_id, enemy_config, spawn_position)
 	return enemy_net_id
+
+
+func _configure_authoritative_enemy_physics_interpolation(enemy_instance: Enemy) -> void:
+	if (
+		runtime_mode == RuntimeMode.CLIENT_VIEW
+		or enemy_instance == null
+		or not is_instance_valid(enemy_instance)
+	):
+		return
+	# The local player and its following camera render on Godot's interpolated
+	# physics timeline. Authoritative enemies also move in _physics_process(), so
+	# they must use the same timeline or they visibly step against the camera.
+	# Client proxies stay out of this path because NetInterpolator already places
+	# them on the render clock.
+	enemy_instance.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
+	enemy_instance.reset_physics_interpolation()
 
 
 func _on_wave_enemy_defeated(enemy: Enemy) -> void:
@@ -2646,7 +2651,7 @@ func _activate_linglan_boss() -> void:
 	active_wave_enemy_ids[boss_instance_id] = true
 	if not linglan_boss.tree_exited.is_connected(_on_boss_enemy_tree_exited.bind(boss_instance_id)):
 		linglan_boss.tree_exited.connect(_on_boss_enemy_tree_exited.bind(boss_instance_id))
-	var boss_net_id := _register_multiplayer_enemy_instance(
+	var boss_net_id := _finalize_authoritative_enemy_spawn(
 		linglan_boss,
 		_get_boss_enemy_config(boss_config),
 		linglan_boss.global_position,

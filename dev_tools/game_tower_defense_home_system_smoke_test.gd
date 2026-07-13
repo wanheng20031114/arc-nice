@@ -37,13 +37,20 @@ func _init() -> void:
 
 
 func _run() -> void:
-	var previous_transform_pixel_snap := root.snap_2d_transforms_to_pixel
-	var previous_vertex_pixel_snap := root.snap_2d_vertices_to_pixel
+	var original_physics_interpolation := physics_interpolation
+	var original_transform_pixel_snap := root.snap_2d_transforms_to_pixel
+	var original_vertex_pixel_snap := root.snap_2d_vertices_to_pixel
 	var game := TOWER_SCENE.instantiate() as GameTowerDefense
 	_expect(game != null, "Tower-defense scene must instantiate for Home verification.")
 	if game == null:
 		_finish()
 		return
+	# Use values opposite to the removed tower-defense override. This catches any
+	# future attempt to solve a local pixel-art issue by mutating the shared
+	# Viewport, while still exercising the owned SceneTree interpolation state.
+	physics_interpolation = false
+	root.snap_2d_transforms_to_pixel = false
+	root.snap_2d_vertices_to_pixel = true
 	game.auto_start_waves = false
 	_expect(not game.linglan_boss_enabled, "Tower-defense Linglan must be disabled by default.")
 	root.add_child(game)
@@ -51,7 +58,8 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 
-	_verify_camera(game)
+	_verify_camera(game, false, true)
+	_verify_equal_directional_player_speed(game)
 	_verify_spawn_mask_resolution(game)
 	_verify_home_gate_areas(game)
 	await _verify_physical_home_gate_trigger(game)
@@ -66,17 +74,28 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	_expect(
-		root.snap_2d_transforms_to_pixel == previous_transform_pixel_snap,
-		"Tower-defense teardown must restore the viewport transform pixel-snap state."
+		not physics_interpolation,
+		"Tower-defense teardown must restore the SceneTree physics-interpolation state."
 	)
 	_expect(
-		root.snap_2d_vertices_to_pixel == previous_vertex_pixel_snap,
-		"Tower-defense teardown must restore the viewport vertex pixel-snap state."
+		not root.snap_2d_transforms_to_pixel,
+		"Tower-defense runtime and teardown must leave shared transform pixel snap unchanged."
 	)
+	_expect(
+		root.snap_2d_vertices_to_pixel,
+		"Tower-defense runtime and teardown must leave shared vertex pixel snap unchanged."
+	)
+	physics_interpolation = original_physics_interpolation
+	root.snap_2d_transforms_to_pixel = original_transform_pixel_snap
+	root.snap_2d_vertices_to_pixel = original_vertex_pixel_snap
 	_finish()
 
 
-func _verify_camera(game: GameTowerDefense) -> void:
+func _verify_camera(
+	game: GameTowerDefense,
+	expected_transform_pixel_snap: bool,
+	expected_vertex_pixel_snap: bool
+) -> void:
 	_expect(game.map_camera.get_parent() == game.player, "Camera2D must follow the local player.")
 	_expect(game.map_camera.position == Vector2.ZERO, "Following camera must use zero local offset.")
 	_expect(game.map_camera.zoom == Vector2(2.0, 2.0), "Tower-defense camera must retain 2x zoom.")
@@ -94,16 +113,44 @@ func _verify_camera(game: GameTowerDefense) -> void:
 		"The local player and its following camera must use native interpolation."
 	)
 	_expect(
+		game.map_camera.physics_interpolation_mode == Node.PHYSICS_INTERPOLATION_MODE_INHERIT,
+		"The following camera must inherit the local player's native interpolation."
+	)
+	_expect(
 		physics_interpolation,
 		"Tower-defense runtime must enable native physics interpolation."
 	)
 	_expect(
-		root.snap_2d_transforms_to_pixel,
-		"Tower-defense must snap final 2D transforms so interpolated camera motion cannot shimmer pixel-art edges."
+		root.snap_2d_transforms_to_pixel == expected_transform_pixel_snap,
+		"Tower-defense runtime must not override shared Viewport transform pixel snap."
 	)
 	_expect(
-		not root.snap_2d_vertices_to_pixel,
-		"Tower-defense must avoid vertex snapping on top of transform snapping."
+		root.snap_2d_vertices_to_pixel == expected_vertex_pixel_snap,
+		"Tower-defense runtime must not override shared Viewport vertex pixel snap."
+	)
+
+
+func _verify_equal_directional_player_speed(game: GameTowerDefense) -> void:
+	for action in [&"move_left", &"move_right", &"move_up", &"move_down"]:
+		Input.action_release(action)
+	Input.action_press(&"move_right")
+	var straight_input: Vector2 = game.player.call("_get_current_move_input")
+	Input.action_press(&"move_down")
+	var diagonal_input: Vector2 = game.player.call("_get_current_move_input")
+	Input.action_release(&"move_right")
+	Input.action_release(&"move_down")
+	var effective_speed := float(game.player.call("_get_effective_move_speed"))
+	_expect(
+		is_equal_approx(straight_input.length(), 1.0)
+		and is_equal_approx(diagonal_input.length(), 1.0),
+		"Digital straight and diagonal movement inputs must both have unit length."
+	)
+	_expect(
+		is_equal_approx(
+			(straight_input * effective_speed).length(),
+			(diagonal_input * effective_speed).length()
+		),
+		"Player movement speed must be equal in cardinal and diagonal directions."
 	)
 
 
@@ -477,6 +524,17 @@ func _verify_enemy_contract(game: GameTowerDefense) -> void:
 		return
 	game.enemy_container.add_child(enemy)
 	enemy.setup(BASIC_CONFIG, game.player, game.grid_pathfinder)
+	game.call(
+		"_finalize_authoritative_enemy_spawn",
+		enemy,
+		BASIC_CONFIG,
+		enemy.global_position,
+		false
+	)
+	_expect(
+		enemy.physics_interpolation_mode == Node.PHYSICS_INTERPOLATION_MODE_ON,
+		"Authoritative enemies must share the interpolated camera physics timeline."
+	)
 	_expect(enemy.target_player == game.player, "setup() must retain the combat player.")
 	_expect(enemy.objective_target == game.player, "setup() must default movement to the player.")
 	_expect(enemy.reward_player == game.player, "setup() must default rewards to the player.")

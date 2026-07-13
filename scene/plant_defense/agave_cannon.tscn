@@ -4,6 +4,10 @@
 [ext_resource type="SpriteFrames" path="res://resources/animation/plant_defense/agave_body_sprite_frames.tres" id="2_body_frames"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/plant_defense/agave_cannon_sprite_frames.tres" id="3_cannon_frames"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="4_health_bar"]
+[ext_resource type="Shader" path="res://resources/shader/plant_visual_pixel_snap.gdshader" id="5_pixel_snap_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_pixel_snap"]
+shader = ExtResource("5_pixel_snap_shader")
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 resource_local_to_scene = true
@@ -27,6 +31,7 @@ enemy_approach_depth = 6.0
 scale = Vector2(0.5, 0.5)
 
 [node name="BodySprite" type="AnimatedSprite2D" parent="VisualRoot" unique_id=1832784205]
+material = SubResource("ShaderMaterial_pixel_snap")
 z_index = 1
 texture_filter = 1
 sprite_frames = ExtResource("2_body_frames")
@@ -38,6 +43,7 @@ z_index = 2
 position = Vector2(0, -6)
 
 [node name="CannonSprite" type="AnimatedSprite2D" parent="VisualRoot/CannonPivot" unique_id=83471690]
+material = SubResource("ShaderMaterial_pixel_snap")
 texture_filter = 1
 sprite_frames = ExtResource("3_cannon_frames")
 animation = &"idle"

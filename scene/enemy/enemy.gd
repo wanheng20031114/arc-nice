@@ -285,6 +285,11 @@ func set_pathfinder(shared_pathfinder: Node) -> void:
 
 func configure_multiplayer_proxy() -> void:
 	is_multiplayer_proxy = true
+	# Proxy transforms are already interpolated from network snapshots during
+	# render updates. Native physics interpolation here would apply a second,
+	# mismatched timeline to the same visual transform.
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	reset_physics_interpolation()
 	target_player = null
 	objective_target = null
 	reward_player = null

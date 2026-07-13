@@ -133,7 +133,7 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	_expect(game.wave_hud.result_subtitle.text.contains("蓝门"), "Defeat text must identify the lost blue gate instead of player deaths.")
 	_expect(game.tower_defense_status_hud.gate_warning_overlay.visible, "A blue-gate hit must flash a transparent red edge warning.")
 	_expect(game.tower_defense_status_hud.gate_warning_audio.playing, "A blue-gate hit must play the double warning beep.")
-	_expect(is_equal_approx(game.tower_defense_status_hud.gate_warning_audio.volume_db, -1.0), "The warning beep must be slightly louder than the -2 dB player gunshot node.")
+	_expect(is_equal_approx(game.tower_defense_status_hud.gate_warning_audio.volume_db, -3.0), "The warning beep must stay slightly below the -2 dB player gunshot node.")
 	_expect(game.tower_defense_status_hud.gate_warning_audio.bus == &"SFX", "The warning beep must use the SFX bus.")
 	var warning_length := game.tower_defense_status_hud.gate_warning_audio.stream.get_length()
 	_expect(warning_length >= 0.3 and warning_length <= 0.5, "The two-beep warning sound must stay between 0.3 and 0.5 seconds.")

@@ -194,5 +194,5 @@ horizontal_alignment = 1
 
 [node name="GateWarningAudio" type="AudioStreamPlayer" parent="." unique_id=1353763298]
 stream = ExtResource("5_warning_audio")
-volume_db = -1.0
+volume_db = -3.0
 bus = &"SFX"
