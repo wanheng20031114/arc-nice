@@ -5,7 +5,7 @@
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_flight"]
 resource_local_to_scene = true
-radius = 4.5
+radius = 2.5
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_explosion"]
 resource_local_to_scene = true
@@ -17,6 +17,7 @@ script = ExtResource("1_script")
 
 [node name="CannonballSprite" type="Sprite2D" parent="."]
 texture_filter = 1
+scale = Vector2(0.5, 0.5)
 texture = ExtResource("2_texture")
 
 [node name="FlightCast" type="ShapeCast2D" parent="."]
