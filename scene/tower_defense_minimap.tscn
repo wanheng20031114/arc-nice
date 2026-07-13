@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scene/tower_defense_minimap.gd" id="1_root"]
 [ext_resource type="Script" path="res://scene/tower_defense_minimap_canvas.gd" id="2_canvas"]
@@ -21,33 +21,21 @@ shadow_color = Color(0, 0, 0, 0.45)
 shadow_size = 4
 shadow_offset = Vector2(0, 2)
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_coordinate"]
-bg_color = Color(0.025, 0.05, 0.04, 0.92)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.25, 0.43, 0.29, 0.94)
-corner_radius_top_left = 5
-corner_radius_top_right = 5
-corner_radius_bottom_right = 5
-corner_radius_bottom_left = 5
-
 [node name="TowerDefenseMinimap" type="CanvasLayer"]
 layer = 9
 script = ExtResource("1_root")
 
 [node name="TopLeftMargin" type="MarginContainer" parent="."]
 offset_left = 8.0
-offset_top = 62.0
+offset_top = 8.0
 offset_right = 300.0
-offset_bottom = 256.0
+offset_bottom = 196.0
 mouse_filter = 2
 
 [node name="Content" type="VBoxContainer" parent="TopLeftMargin"]
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/separation = 5
+theme_override_constants/separation = 0
 
 [node name="MapPanel" type="PanelContainer" parent="TopLeftMargin/Content"]
 custom_minimum_size = Vector2(292, 166)
@@ -82,20 +70,16 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("4_dynamic")
 
-[node name="CoordinatePanel" type="PanelContainer" parent="TopLeftMargin/Content"]
-custom_minimum_size = Vector2(292, 25)
+[node name="CoordinateLabel" type="Label" parent="TopLeftMargin/Content"]
+custom_minimum_size = Vector2(292, 22)
 layout_mode = 2
 mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_coordinate")
-
-[node name="CoordinateLabel" type="Label" parent="TopLeftMargin/Content/CoordinatePanel"]
-layout_mode = 2
 theme_override_colors/font_color = Color(0.86, 0.96, 0.87, 1)
 theme_override_colors/font_outline_color = Color(0.015, 0.025, 0.02, 0.98)
 theme_override_constants/outline_size = 2
 theme_override_fonts/font = ExtResource("5_font")
 theme_override_font_sizes/font_size = 14
-text = "瓦片坐标：0, 0"
+text = "当前坐标：0, 0"
 horizontal_alignment = 1
 vertical_alignment = 1
 

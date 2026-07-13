@@ -100,7 +100,6 @@ signal base_health_changed(current_health: int, maximum_health: int, revision: i
 @onready var wave_start_audio: AudioStreamPlayer = $WaveStartAudio
 @onready var defeat_audio: AudioStreamPlayer = $DefeatAudio
 @onready var currency_hud: CurrencyHUD = $CurrencyHUD
-@onready var home_base_hud: HomeBaseHUD = $HomeBaseHUD
 @onready var wave_hud: WaveHUD = $WaveHUD
 @onready var tower_defense_status_hud: TowerDefenseStatusHUD = $TowerDefenseStatusHUD
 @onready var tower_defense_minimap: TowerDefenseMinimap = $TowerDefenseMinimap
@@ -129,6 +128,7 @@ var spawn_point_configuration_valid := true
 var pending_enemy_configs: Array[EnemyConfig] = []
 var pending_enemy_config_index: int = 0
 var active_wave_enemy_ids: Dictionary = {}
+var hud_alive_enemy_ids: Dictionary = {}
 
 var current_wave_index: int = 0
 var current_wave_total: int = 0
@@ -247,6 +247,7 @@ func _ready() -> void:
 		return
 	tower_defense_status_hud.show()
 	_attach_camera_to_local_player()
+	wave_hud.configure_tower_defense(current_base_health, maximum_base_health)
 	_configure_home_defense()
 	_configure_plant_defense_system()
 	_configure_minimap()
@@ -283,7 +284,7 @@ func _ready() -> void:
 	elif auto_start_waves and not runtime_activation_deferred and _is_flow_system_ready():
 		_enter_pre_flow_step(_get_start_flow_step())
 	else:
-		wave_hud.hide_all()
+		_show_tower_defense_wave_progress()
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		if runtime_activation_deferred:
 			call_deferred("prepare_shared_runtime_data_and_complete")
@@ -468,7 +469,7 @@ func apply_remote_base_health(
 	maximum_base_health = safe_maximum
 	current_base_health = safe_current
 	base_health_revision = new_revision
-	_update_base_health_display()
+	_update_base_health_display(has_received_remote_base_health_snapshot)
 	base_health_changed.emit(current_base_health, maximum_base_health, base_health_revision)
 	if (
 		has_received_remote_base_health_snapshot
@@ -518,6 +519,7 @@ func _on_enemy_reached_home(enemy: Enemy, _gate_cell: Vector2i) -> void:
 		active_wave_enemy_ids.erase(enemy_id)
 
 	var home_damage := enemy.config.home_damage if enemy.config != null else 1
+	_remove_hud_alive_enemy(enemy_id)
 	_emit_multiplayer_enemy_escaped(enemy)
 	enemy.remove_for_home_escape()
 	_apply_base_damage(maxi(home_damage, 1))
@@ -559,9 +561,44 @@ func _apply_base_damage(amount: int) -> void:
 		_enter_defeat()
 
 
-func _update_base_health_display() -> void:
-	if home_base_hud != null:
-		home_base_hud.set_base_health(current_base_health, maximum_base_health)
+func _update_base_health_display(play_damage_pulse: bool = true) -> void:
+	if wave_hud != null:
+		wave_hud.set_tower_defense_core_health(
+			current_base_health,
+			maximum_base_health,
+			play_damage_pulse
+		)
+
+
+func _register_hud_alive_enemy(enemy: Enemy) -> void:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		return
+	if enemy == null or not is_instance_valid(enemy):
+		return
+	var enemy_id := enemy.get_instance_id()
+	if hud_alive_enemy_ids.has(enemy_id):
+		return
+	hud_alive_enemy_ids[enemy_id] = true
+	_update_hud_alive_enemy_count()
+
+
+func _remove_hud_alive_enemy(enemy_id: int) -> void:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW or not hud_alive_enemy_ids.has(enemy_id):
+		return
+	hud_alive_enemy_ids.erase(enemy_id)
+	_update_hud_alive_enemy_count()
+
+
+func _clear_hud_alive_enemies() -> void:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		return
+	hud_alive_enemy_ids.clear()
+	_update_hud_alive_enemy_count()
+
+
+func _update_hud_alive_enemy_count() -> void:
+	if wave_hud != null:
+		wave_hud.set_tower_defense_enemy_count(hud_alive_enemy_ids.size())
 
 
 func _complete_escaped_boss_step() -> void:
@@ -1098,7 +1135,7 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 			state_timer.stop()
 			wave_state = WaveState.BOSS_INTRO
 			_set_local_merchants_active(false)
-			wave_hud.hide_all()
+			wave_hud.show_tower_defense_boss_progress(0, 1)
 			var boss_config := flow_step as BossConfig
 			if boss_config != null:
 				active_boss_config = boss_config
@@ -1109,7 +1146,7 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 			state_timer.stop()
 			wave_state = WaveState.BOSS_ACTIVE
 			_set_local_merchants_active(false)
-			wave_hud.hide_all()
+			wave_hud.show_tower_defense_boss_progress(0, 1)
 			if linglan_boss_intro_vfx != null:
 				linglan_boss_intro_vfx.stop_intro()
 			_restore_camera_after_boss_intro()
@@ -1144,7 +1181,7 @@ func apply_remote_boss_started(net_id: int, boss_config: BossConfig, spawn_posit
 	current_flow_step = boss_config
 	wave_state = WaveState.BOSS_ACTIVE
 	state_timer.stop()
-	wave_hud.hide_all()
+	wave_hud.show_tower_defense_boss_progress(0, 1)
 	_set_local_merchants_active(false)
 	_update_boss_music(boss_config)
 
@@ -1197,9 +1234,10 @@ func apply_remote_victory() -> void:
 func apply_remote_enemy_count(alive_count: int) -> void:
 	if runtime_mode != RuntimeMode.CLIENT_VIEW:
 		return
-	# Tower-defense clients use the reliable resolved/escaped progress stream.
-	# Snapshot enemy counts must not overwrite it with the standard-mode HUD.
-	var _unused_alive_count := alive_count
+	# Enemy snapshots already carry the local proxy count. The dedicated HUD
+	# field can consume it without overwriting the independently replicated wave
+	# progress, so no additional multiplayer message is needed.
+	wave_hud.set_tower_defense_enemy_count(maxi(alive_count, 0))
 
 
 
@@ -1992,6 +2030,7 @@ func _begin_wave_config(wave_config: WaveConfig) -> void:
 	current_wave_resolved = 0
 	resolved_home_enemy_ids.clear()
 	active_wave_enemy_ids.clear()
+	_clear_hud_alive_enemies()
 	_build_wave_spawn_queue(wave_config)
 	current_wave_total = pending_enemy_configs.size()
 	_update_wave_music(wave_config)
@@ -2384,12 +2423,14 @@ func _finalize_authoritative_enemy_spawn(
 	broadcast_spawn: bool = true
 ) -> int:
 	_configure_authoritative_enemy_physics_interpolation(enemy_instance)
-	return _register_multiplayer_enemy_instance(
+	var enemy_net_id := _register_multiplayer_enemy_instance(
 		enemy_instance,
 		enemy_config,
 		spawn_position,
 		broadcast_spawn
 	)
+	_register_hud_alive_enemy(enemy_instance)
+	return enemy_net_id
 
 
 func _register_multiplayer_enemy_instance(
@@ -2441,6 +2482,7 @@ func _on_wave_enemy_defeated(enemy: Enemy) -> void:
 
 	current_wave_defeated = mini(current_wave_defeated + 1, current_wave_total)
 	current_wave_resolved = mini(current_wave_resolved + 1, current_wave_total)
+	_remove_hud_alive_enemy(enemy.get_instance_id())
 	_emit_multiplayer_enemy_defeated(enemy)
 	_show_tower_defense_wave_progress()
 	_check_wave_completion()
@@ -2504,6 +2546,7 @@ func _emit_multiplayer_enemy_defeated(enemy: Enemy) -> void:
 
 func _on_wave_enemy_tree_exited(enemy_id: int) -> void:
 	active_wave_enemy_ids.erase(enemy_id)
+	_remove_hud_alive_enemy(enemy_id)
 	_mark_multiplayer_enemy_removed(enemy_id)
 	_check_wave_completion()
 
@@ -2679,8 +2722,9 @@ func _begin_linglan_boss_intro(boss_config: BossConfig = null) -> void:
 	current_wave_escaped = 0
 	current_wave_resolved = 0
 	resolved_home_enemy_ids.clear()
+	_clear_hud_alive_enemies()
 	_set_merchant_active(false)
-	wave_hud.hide_all()
+	wave_hud.show_tower_defense_boss_progress(0, 1)
 	_update_boss_music(boss_config)
 	_prepare_linglan_boss_arena(boss_config)
 	linglan_boss.config = _get_boss_enemy_config(boss_config)
@@ -2727,6 +2771,7 @@ func _activate_linglan_boss() -> void:
 		linglan_boss.global_position,
 		false
 	)
+	wave_hud.show_tower_defense_boss_progress(0, 1)
 	if boss_health_hud != null:
 		boss_health_hud.show_for_boss(linglan_boss, _get_boss_display_name(boss_config))
 	_emit_multiplayer_flow_state(WaveState.BOSS_ACTIVE)
@@ -2737,10 +2782,13 @@ func _activate_linglan_boss() -> void:
 
 func _on_boss_enemy_tree_exited(enemy_id: int) -> void:
 	active_wave_enemy_ids.erase(enemy_id)
+	_remove_hud_alive_enemy(enemy_id)
 	_mark_multiplayer_enemy_removed(enemy_id)
 
 
 func _on_boss_add_defeated(enemy: Enemy) -> void:
+	if enemy != null:
+		_remove_hud_alive_enemy(enemy.get_instance_id())
 	_emit_multiplayer_enemy_defeated(enemy)
 
 
@@ -2766,8 +2814,10 @@ func _on_linglan_boss_defeated(enemy: Enemy) -> void:
 	if enemy != linglan_boss:
 		return
 	active_wave_enemy_ids.erase(enemy.get_instance_id())
+	_remove_hud_alive_enemy(enemy.get_instance_id())
 	current_wave_defeated = 1
 	current_wave_resolved = 1
+	wave_hud.show_tower_defense_boss_progress(1, 1)
 	_emit_multiplayer_enemy_defeated(enemy)
 	_remove_remaining_boss_adds()
 	var victory_timer := get_tree().create_timer(1.3)
@@ -2784,6 +2834,7 @@ func _complete_linglan_boss_after_delay() -> void:
 func _remove_remaining_boss_adds() -> void:
 	if enemy_container == null:
 		active_wave_enemy_ids.clear()
+		_clear_hud_alive_enemies()
 		return
 	for child in enemy_container.get_children():
 		var enemy := child as Enemy
@@ -2792,6 +2843,7 @@ func _remove_remaining_boss_adds() -> void:
 		if active_wave_enemy_ids.has(enemy.get_instance_id()):
 			enemy.queue_free()
 	active_wave_enemy_ids.clear()
+	_clear_hud_alive_enemies()
 
 
 func _prepare_linglan_boss_arena(boss_config: Resource) -> void:

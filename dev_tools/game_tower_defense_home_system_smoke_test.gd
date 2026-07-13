@@ -57,6 +57,12 @@ func _run() -> void:
 	current_scene = game
 	await process_frame
 	await process_frame
+	_expect(game.get_node_or_null("HomeBaseHUD") == null, "The separate top-left HomeBaseHUD must be removed.")
+	_expect(
+		game.wave_hud.tower_defense_stats.visible
+		and game.wave_hud.core_value_label.text == "100/100",
+		"The centered main HUD must own the initial core-health presentation."
+	)
 
 	_verify_camera(game, false, true)
 	_verify_equal_directional_player_speed(game)
@@ -255,6 +261,13 @@ func _verify_physical_home_gate_trigger(game: GameTowerDefense) -> void:
 	_expect(
 		game.current_base_health == health_before - BASIC_CONFIG.home_damage,
 		"Enemy CharacterBody2D entering a Home Area2D must damage the base."
+	)
+	_expect(
+		game.wave_hud.core_value_label.text == "%d/%d" % [
+			game.current_base_health,
+			game.maximum_base_health,
+		],
+		"Physical gate damage must update the centered core-health metric immediately."
 	)
 	_expect(
 		not is_instance_valid(enemy) or enemy.is_dead,

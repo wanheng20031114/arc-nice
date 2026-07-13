@@ -7,7 +7,7 @@ const SAMPLE_INTERVAL_SECONDS := 0.05
 	$TopLeftMargin/Content/MapPanel/MinimapCanvas
 )
 @onready var coordinate_label: Label = (
-	$TopLeftMargin/Content/CoordinatePanel/CoordinateLabel
+	$TopLeftMargin/Content/CoordinateLabel
 )
 @onready var sample_timer: Timer = $SampleTimer
 
@@ -42,4 +42,4 @@ func _on_sample_timer_timeout() -> void:
 
 
 func _on_minimap_canvas_tile_coordinate_changed(tile_coordinate: Vector2i) -> void:
-	coordinate_label.text = "瓦片坐标：%d, %d" % [tile_coordinate.x, tile_coordinate.y]
+	coordinate_label.text = "当前坐标：%d, %d" % [tile_coordinate.x, tile_coordinate.y]

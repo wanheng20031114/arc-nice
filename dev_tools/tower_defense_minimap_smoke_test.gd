@@ -62,9 +62,33 @@ func _verify_scene_structure(
 		"WaveHUD victory and defeat results must cover the minimap."
 	)
 	_expect(
-		minimap.layer < game.currency_hud.layer
-		and minimap.layer < game.home_base_hud.layer,
-		"Primary tower-defense HUD layers must remain above the minimap."
+		minimap.layer < game.currency_hud.layer,
+		"The currency HUD layer must remain above the minimap."
+	)
+	var top_left_margin := minimap.get_node("TopLeftMargin") as MarginContainer
+	var content := minimap.get_node("TopLeftMargin/Content") as VBoxContainer
+	_expect(
+		top_left_margin.position.is_equal_approx(Vector2(8.0, 8.0)),
+		"The minimap must occupy the true upper-left corner with an 8 px margin."
+	)
+	_expect(
+		minimap.coordinate_label.get_parent() == content
+		and content.get_theme_constant("separation") <= 1,
+		"The coordinate label must sit directly below the map with at most 1 px separation."
+	)
+	_expect(
+		minimap.get_node_or_null("TopLeftMargin/Content/CoordinatePanel") == null
+		and minimap.coordinate_label is Label,
+		"The coordinate text must not use a panel or background frame."
+	)
+	var minimap_rect := top_left_margin.get_global_rect()
+	_expect(
+		not minimap_rect.intersects(game.currency_hud.settings_button.get_global_rect()),
+		"Moving the minimap to the true upper-left must not overlap the relocated settings button."
+	)
+	_expect(
+		not minimap_rect.intersects(game.wave_hud.top_bar.get_global_rect()),
+		"The upper-left minimap must remain clear of the centered main HUD."
 	)
 	_expect(
 		is_equal_approx(minimap.sample_timer.wait_time, TowerDefenseMinimap.SAMPLE_INTERVAL_SECONDS),
@@ -126,7 +150,7 @@ func _verify_projection_and_coordinate(
 		"Coordinate label data must use integer TileMapLayer coordinates."
 	)
 	_expect(
-		minimap.coordinate_label.text == "瓦片坐标：%d, %d" % [
+		minimap.coordinate_label.text == "当前坐标：%d, %d" % [
 			expected_coordinate.x,
 			expected_coordinate.y,
 		],
@@ -152,6 +176,11 @@ func _verify_projection_and_coordinate(
 		TowerDefenseMinimapDynamicLayer.LOCAL_PLAYER_COLOR
 		== Color(0.18, 1.0, 0.38, 1.0),
 		"The local-player marker must remain green."
+	)
+	_expect(
+		TowerDefenseMinimapDynamicLayer.LOCAL_PLAYER_RADIUS <= 2.0
+		and TowerDefenseMinimapDynamicLayer.REMOTE_PLAYER_RADIUS < 2.0,
+		"Local and remote player dots must remain compact."
 	)
 	var projected_origin := canvas.static_layer._world_to_canvas(Vector2.ZERO)
 	var projected_east := canvas.static_layer._world_to_canvas(Vector2(16.0, 0.0))
@@ -220,6 +249,86 @@ func _verify_dynamic_markers(
 		TowerDefenseMinimapDynamicLayer.PLANT_COLOR == Color(0.52, 0.91, 0.54, 0.96),
 		"Plant markers must remain light green."
 	)
+	_verify_enemy_marker_aggregation(canvas.dynamic_layer, enemy.global_position)
+
+
+func _verify_enemy_marker_aggregation(
+	dynamic_layer: TowerDefenseMinimapDynamicLayer,
+	anchor_world_position: Vector2
+) -> void:
+	dynamic_layer.enemy_world_positions = PackedVector2Array(
+		[
+			anchor_world_position,
+			anchor_world_position + Vector2(1.0, 0.0),
+			anchor_world_position + Vector2(2.0, 0.0),
+			anchor_world_position + Vector2(3.0, 0.0),
+			anchor_world_position + Vector2(4.0, 0.0),
+		]
+	)
+	var overview_rect := Rect2(
+		dynamic_layer.world_center - dynamic_layer.overview_world_size * 0.5,
+		dynamic_layer.overview_world_size
+	)
+	var buckets := dynamic_layer._build_enemy_canvas_buckets(overview_rect)
+	_expect(
+		buckets.size() == 1 and buckets[0]["count"] == 5,
+		"Enemies inside one 4 px canvas bucket must collapse into one density marker."
+	)
+	_expect(
+		dynamic_layer.get_enemy_marker_radius(1)
+		< dynamic_layer.get_enemy_marker_radius(2)
+		and dynamic_layer.get_enemy_marker_radius(2)
+		< dynamic_layer.get_enemy_marker_radius(5),
+		"Single, medium, and high enemy densities must use distinct marker radii."
+	)
+	_expect(
+		dynamic_layer.get_enemy_marker_radius(5) <= 2.0,
+		"Even the highest enemy-density marker must have at most a 2 px outer radius."
+	)
+
+	# Stress the exact boundary that used to leave averaged representatives almost coincident.
+	dynamic_layer.set_projection(dynamic_layer.size * 0.5, dynamic_layer.size)
+	dynamic_layer.enemy_world_positions = PackedVector2Array(
+		[
+			Vector2(3.99, 40.0),
+			Vector2(3.99, 40.0),
+			Vector2(3.99, 40.0),
+			Vector2(3.99, 40.0),
+			Vector2(3.99, 40.0),
+			Vector2(4.01, 40.0),
+			Vector2(4.01, 40.0),
+			Vector2(4.01, 40.0),
+			Vector2(4.01, 40.0),
+			Vector2(4.01, 40.0),
+		]
+	)
+	var boundary_overview_rect := Rect2(Vector2.ZERO, dynamic_layer.size)
+	var boundary_buckets := dynamic_layer._build_enemy_canvas_buckets(
+		boundary_overview_rect
+	)
+	var boundary_centers := PackedVector2Array()
+	for bucket in boundary_buckets:
+		boundary_centers.append(bucket["canvas_position"])
+	_expect(
+		boundary_buckets.size() == 2
+		and boundary_centers.has(Vector2(2.0, 42.0))
+		and boundary_centers.has(Vector2(6.0, 42.0)),
+		"Enemies at 3.99 px and 4.01 px must use adjacent fixed bucket centers."
+	)
+	if boundary_buckets.size() == 2:
+		var first_boundary_bucket: Dictionary = boundary_buckets[0]
+		var second_boundary_bucket: Dictionary = boundary_buckets[1]
+		var first_boundary_center: Vector2 = first_boundary_bucket["canvas_position"]
+		var second_boundary_center: Vector2 = second_boundary_bucket["canvas_position"]
+		var boundary_distance := first_boundary_center.distance_to(second_boundary_center)
+		var combined_radii := (
+			dynamic_layer.get_enemy_marker_radius(first_boundary_bucket["count"])
+			+ dynamic_layer.get_enemy_marker_radius(second_boundary_bucket["count"])
+		)
+		_expect(
+			boundary_distance >= combined_radii,
+			"Adjacent high-density bucket markers must not overlap across a 4 px boundary."
+		)
 
 
 func _finish() -> void:

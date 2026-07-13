@@ -766,7 +766,24 @@ func _run_host_wave_probe(game: Variant) -> void:
 		_fail("Host wave probe enemy was not removed after defeat.")
 		return
 	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.INTERMISSION, 5.0):
-		_fail("Host wave probe did not enter intermission.")
+		var next_step: FlowStepConfig = game.call(
+			"_get_default_next_flow_step",
+			game.current_flow_step
+		)
+		_fail(
+			(
+				"Host wave probe did not enter intermission: state=%d step=%s "
+				+ "next=%s resolved=%d/%d active=%d."
+			)
+			% [
+				int(game.wave_state),
+				String(game.current_flow_step.step_id) if game.current_flow_step != null else "<null>",
+				String(next_step.step_id) if next_step != null else "<null>",
+				int(game.current_wave_resolved),
+				int(game.current_wave_total),
+				game.active_wave_enemy_ids.size(),
+			]
+		)
 		return
 	print("LAN_PROBE_EVENT host_wave_intermission_confirmed")
 	await _wait_seconds(1.0)
@@ -776,22 +793,28 @@ func _run_client_wave_probe(mp_game: Node, game: Variant) -> void:
 	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.WAVE_ACTIVE, 6.0):
 		_fail("Client wave probe did not receive wave start.")
 		return
-	if not await _wait_for_wave_hud_text_contains(game, "第 1 波", 2.0):
+	if not bool(game.call("supports_tower_defense")) and not await _wait_for_wave_hud_text_contains(game, "第 1 波", 2.0):
 		_fail("Client wave probe HUD did not show wave 1.")
-		return
-	if (
-		bool(game.call("supports_tower_defense"))
-		and not await _wait_for_wave_hud_text_contains(game, "漏过", 2.0)
-	):
-		_fail("Tower-defense client HUD did not receive resolved/escaped wave progress.")
 		return
 	var enemy_id := await _wait_for_first_client_enemy_id(mp_game, 6.0)
 	if enemy_id <= 0:
 		_fail("Client wave probe did not receive wave enemy spawn.")
 		return
+	if (
+		bool(game.call("supports_tower_defense"))
+		and not await _wait_for_tower_defense_hud_metrics(game, 1, 1, 0, 2.0)
+	):
+		_fail("Tower-defense client HUD did not show the live enemy without overwriting wave progress.")
+		return
 	print("LAN_PROBE_EVENT client_wave_enemy_spawned net_id=%d" % enemy_id)
 	if not await _wait_for_client_enemy_removed(mp_game, enemy_id, 10.0):
 		_fail("Client wave probe did not receive wave enemy removal.")
+		return
+	if (
+		bool(game.call("supports_tower_defense"))
+		and not await _wait_for_tower_defense_hud_metrics(game, 1, 0, 100, 2.0)
+	):
+		_fail("Tower-defense client HUD did not settle enemy count and wave progress independently.")
 		return
 	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.INTERMISSION, 6.0):
 		_fail("Client wave probe did not receive intermission.")
@@ -1735,6 +1758,28 @@ func _wait_for_wave_hud_text_contains(
 	return false
 
 
+func _wait_for_tower_defense_hud_metrics(
+	game: Variant,
+	wave_number: int,
+	expected_enemy_count: int,
+	expected_progress_percent: int,
+	timeout_seconds: float
+) -> bool:
+	var end_time := _now_seconds() + timeout_seconds
+	while _now_seconds() <= end_time:
+		if game != null and is_instance_valid(game) and game.wave_hud != null:
+			var hud: WaveHUD = game.wave_hud
+			if (
+				hud.tower_defense_stats.visible
+				and hud.wave_title_label.text == "第 %d 波" % wave_number
+				and hud.wave_value_label.text == "%d%%" % expected_progress_percent
+				and hud.enemy_value_label.text == str(expected_enemy_count)
+			):
+				return true
+		await process_frame
+	return false
+
+
 func _get_projectile_ids_for_peer(mp_game: Node, peer_id: int) -> Array[int]:
 	var result: Array[int] = []
 	if mp_game == null or not is_instance_valid(mp_game):
@@ -1896,7 +1941,9 @@ func _configure_probe_wave_flow(game: Variant) -> void:
 	if not flow_graph.steps.is_empty():
 		flow_graph.start_step = flow_graph.steps[0]
 	game.flow_graph = flow_graph
-	game.pre_wave_duration = 0.0
+	# The probe starts wave one directly, but still needs a non-zero rest duration
+	# so clearing it can be observed in INTERMISSION before wave two begins.
+	game.pre_wave_duration = 30.0
 	game.current_wave_index = 0
 	game.current_wave_total = 0
 	game.current_wave_spawned = 0

@@ -167,15 +167,15 @@ func _test_boss_hud_binding() -> void:
 	var authored_frame := hud.get_node_or_null("Root/Frame") as TextureRect
 	var authored_health_bar := hud.get_node_or_null("HealthBar") as ProgressBar
 	var authored_nameplate := hud.get_node_or_null("Root/Nameplate") as TextureRect
+	test_root.add_child(linglan)
+	test_root.add_child(hud)
+	await process_frame
 	var authored_frame_position := authored_frame.position if authored_frame != null else Vector2.ZERO
 	var authored_frame_size := authored_frame.size if authored_frame != null else Vector2.ZERO
 	var authored_health_bar_position := authored_health_bar.position if authored_health_bar != null else Vector2.ZERO
 	var authored_health_bar_size := authored_health_bar.size if authored_health_bar != null else Vector2.ZERO
 	var authored_nameplate_position := authored_nameplate.position if authored_nameplate != null else Vector2.ZERO
 	var authored_nameplate_size := authored_nameplate.size if authored_nameplate != null else Vector2.ZERO
-	test_root.add_child(linglan)
-	test_root.add_child(hud)
-	await process_frame
 	linglan.config = LINGLAN_CONFIG
 	linglan.activate_boss(null, null)
 	hud.show_for_boss(linglan, "铃兰")
@@ -200,6 +200,24 @@ func _test_boss_hud_binding() -> void:
 		nameplate != null and nameplate.position == authored_nameplate_position and nameplate.size == authored_nameplate_size,
 		"Boss HUD nameplate must keep the authored scene layout after runtime loading."
 	)
+	if frame != null and health_bar != null:
+		var minimap_rect := Rect2(8.0, 8.0, 292.0, 188.0)
+		var merged_hud_rect := Rect2(
+			root.get_visible_rect().size.x * 0.5 - 264.0,
+			8.0,
+			528.0,
+			66.0
+		)
+		_expect(
+			not frame.get_global_rect().intersects(minimap_rect)
+			and not health_bar.get_global_rect().intersects(minimap_rect),
+			"Centered boss HUD artwork must stay clear of the upper-left minimap."
+		)
+		_expect(
+			not frame.get_global_rect().intersects(merged_hud_rect)
+			and not health_bar.get_global_rect().intersects(merged_hud_rect),
+			"Boss health presentation must sit below the merged tower-defense HUD."
+		)
 	_expect(
 		root_control != null and root_control.scale.is_equal_approx(Vector2.ONE)
 		and nameplate != null and nameplate.scale.is_equal_approx(Vector2(0.5, 0.5)),

@@ -6,9 +6,17 @@ const REMOTE_PLAYER_COLOR := Color(0.96, 0.98, 1.0, 1.0)
 const ENEMY_COLOR := Color(1.0, 0.18, 0.14, 1.0)
 const PLANT_COLOR := Color(0.52, 0.91, 0.54, 0.96)
 const MARKER_OUTLINE_COLOR := Color(0.015, 0.025, 0.02, 0.96)
-const LOCAL_PLAYER_RADIUS := 4.2
-const REMOTE_PLAYER_RADIUS := 3.4
-const ENEMY_RADIUS := 2.8
+const LOCAL_PLAYER_COLOR_CENTER := Color(0.72, 1.0, 0.78, 1.0)
+const LOCAL_PLAYER_RADIUS := 2.0
+const LOCAL_PLAYER_CENTER_RADIUS := 0.65
+const REMOTE_PLAYER_RADIUS := 1.45
+const PLAYER_MARKER_OUTLINE_WIDTH := 0.45
+const ENEMY_BUCKET_SIZE_PX := 4.0
+const ENEMY_SINGLE_RADIUS := 1.1
+const ENEMY_MEDIUM_RADIUS := 1.55
+const ENEMY_HIGH_RADIUS := 2.0
+const ENEMY_MEDIUM_DENSITY := 2
+const ENEMY_HIGH_DENSITY := 5
 
 var tile_world_size := Vector2(16.0, 16.0)
 var world_center := Vector2.ZERO
@@ -54,24 +62,29 @@ func _draw() -> void:
 		var center := _world_to_canvas(world_position)
 		draw_rect(Rect2(center - plant_size * 0.5, plant_size), PLANT_COLOR)
 
-	for world_position in enemy_world_positions:
-		_draw_dot_if_visible(world_position, ENEMY_RADIUS, ENEMY_COLOR, overview_rect)
+	_draw_enemy_buckets(overview_rect)
 	for world_position in remote_player_world_positions:
-		_draw_dot_if_visible(
+		_draw_player_dot_if_visible(
 			world_position,
 			REMOTE_PLAYER_RADIUS,
 			REMOTE_PLAYER_COLOR,
 			overview_rect
 		)
-	_draw_dot_if_visible(
+	_draw_player_dot_if_visible(
 		local_player_world_position,
 		LOCAL_PLAYER_RADIUS,
 		LOCAL_PLAYER_COLOR,
 		overview_rect
 	)
+	if overview_rect.has_point(local_player_world_position):
+		draw_circle(
+			_world_to_canvas(local_player_world_position),
+			LOCAL_PLAYER_CENTER_RADIUS,
+			LOCAL_PLAYER_COLOR_CENTER
+		)
 
 
-func _draw_dot_if_visible(
+func _draw_player_dot_if_visible(
 	world_position: Vector2,
 	radius: float,
 	color: Color,
@@ -80,8 +93,50 @@ func _draw_dot_if_visible(
 	if not overview_rect.has_point(world_position):
 		return
 	var canvas_position := _world_to_canvas(world_position)
-	draw_circle(canvas_position, radius + 1.2, MARKER_OUTLINE_COLOR)
+	draw_circle(canvas_position, radius + PLAYER_MARKER_OUTLINE_WIDTH, MARKER_OUTLINE_COLOR)
 	draw_circle(canvas_position, radius, color)
+
+
+func _draw_enemy_buckets(overview_rect: Rect2) -> void:
+	for bucket in _build_enemy_canvas_buckets(overview_rect):
+		var enemy_count: int = bucket["count"]
+		var canvas_position: Vector2 = bucket["canvas_position"]
+		draw_circle(canvas_position, get_enemy_marker_radius(enemy_count), ENEMY_COLOR)
+
+
+func _build_enemy_canvas_buckets(overview_rect: Rect2) -> Array[Dictionary]:
+	var bucket_data := {}
+	for world_position in enemy_world_positions:
+		if not overview_rect.has_point(world_position):
+			continue
+		var canvas_position := _world_to_canvas(world_position)
+		var bucket_coordinate := Vector2i(
+			floori(canvas_position.x / ENEMY_BUCKET_SIZE_PX),
+			floori(canvas_position.y / ENEMY_BUCKET_SIZE_PX)
+		)
+		bucket_data[bucket_coordinate] = int(bucket_data.get(bucket_coordinate, 0)) + 1
+
+	var buckets: Array[Dictionary] = []
+	for bucket_coordinate in bucket_data:
+		var enemy_count: int = bucket_data[bucket_coordinate]
+		buckets.append(
+			{
+				"bucket_coordinate": bucket_coordinate,
+				"canvas_position": (
+					Vector2(bucket_coordinate) + Vector2.ONE * 0.5
+				) * ENEMY_BUCKET_SIZE_PX,
+				"count": enemy_count,
+			}
+		)
+	return buckets
+
+
+func get_enemy_marker_radius(enemy_count: int) -> float:
+	if enemy_count >= ENEMY_HIGH_DENSITY:
+		return ENEMY_HIGH_RADIUS
+	if enemy_count >= ENEMY_MEDIUM_DENSITY:
+		return ENEMY_MEDIUM_RADIUS
+	return ENEMY_SINGLE_RADIUS
 
 
 func _projected_tile_size() -> Vector2:

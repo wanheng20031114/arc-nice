@@ -41,7 +41,17 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	_expect(game.wave_state == GameRuntimeBase.WaveState.PRE_WAVE, "The first wave must wait in PRE_WAVE instead of starting immediately.")
 	_expect(game.countdown_seconds == 300, "The first preparation period must start at 300 seconds.")
 	_expect(game.wave_hud.start_wave_button.visible and not game.wave_hud.start_wave_button.disabled, "The rest HUD must expose an enabled early-start button.")
-	_expect(game.wave_hud.status_label.text.contains("05:00"), "The five-minute rest HUD must use MM:SS formatting.")
+	_expect(
+		game.wave_hud.stage_banner.visible
+		and game.wave_hud.stage_label.text.contains("05:00"),
+		"The tower-defense rest banner must use MM:SS formatting."
+	)
+	_expect(
+		game.get_node_or_null("HomeBaseHUD") == null
+		and game.wave_hud.tower_defense_stats.visible
+		and game.wave_hud.core_value_label.text == "100/100",
+		"Core health must be merged into the centered tower-defense HUD."
+	)
 	_expect(
 		game.music_player.stream.resource_path
 		== "res://resources/audio/shenmu_forest_intermission.ogg",
@@ -49,11 +59,35 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	)
 	_expect(game.tower_defense_status_hud.layer > 70, "Death and gate warnings must render above every gameplay HUD.")
 	_expect(_all_control_descendants_ignore_mouse(game.tower_defense_status_hud), "The status HUD must never consume gameplay or menu input.")
+	var local_death_rect := game.tower_defense_status_hud.local_death_center.get_global_rect()
+	var top_bar_rect := game.wave_hud.top_bar.get_global_rect()
+	var stage_banner_rect := game.wave_hud.stage_banner.get_global_rect()
+	var early_start_rect := game.wave_hud.start_wave_button.get_global_rect()
+	_expect(
+		not local_death_rect.intersects(top_bar_rect)
+		and not local_death_rect.intersects(stage_banner_rect)
+		and not local_death_rect.intersects(early_start_rect),
+		"The authored local-death region must not overlap the main HUD or rest controls."
+	)
+	_expect(
+		local_death_rect.position.y >= early_start_rect.end.y + 8.0,
+		"The local-death region must retain at least eight pixels below the early-start button."
+	)
 	_expect(game.merchant.is_active and game.merchant.visible, "Zhuangfangyi must remain visible and interactive during rest.")
 	_expect(game.luoxi_merchant.is_active and game.luoxi_merchant.visible, "Luoxi must remain visible and interactive during rest.")
 
 	game.wave_hud.start_wave_button.pressed.emit()
 	_expect(game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE, "Early-start must enter active combat exactly once.")
+	_expect(
+		not game.wave_hud.stage_banner.visible
+		and game.wave_hud.tower_defense_stats.visible,
+		"Active combat must hide only the phase banner while preserving the three metrics."
+	)
+	_expect(
+		int(game.wave_hud.enemy_value_label.text) == game.hud_alive_enemy_ids.size()
+		and game.hud_alive_enemy_ids.size() > 0,
+		"Authoritative enemy spawns must update the independent on-field enemy metric."
+	)
 	_expect(
 		game.music_player.stream.resource_path
 		== "res://resources/audio/shenmu_forest_combat.ogg",
@@ -67,6 +101,10 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	for enemy_node in game.enemy_container.get_children():
 		enemy_node.queue_free()
 	await process_frame
+	_expect(
+		game.wave_hud.enemy_value_label.text == "0",
+		"Enemy tree exit must clear the on-field enemy metric without changing wave progress."
+	)
 	game.luoxi_merchant.refresh_counts_by_player_key[0] = 3
 	game.luoxi_merchant.pending_choices_by_player_key[0] = []
 	game.luoxi_collectible_claim_counts[0] = 1
@@ -118,7 +156,7 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	_expect(game.singleplayer_respawn_last_seconds == 5, "The first death in a wave must use a five-second revive.")
 	_expect(
 		game.tower_defense_status_hud.local_death_center.position.y
-		> game.tower_defense_status_hud.local_death_top_position.y + 100.0,
+		> game.tower_defense_status_hud.local_death_top_position.y + 80.0,
 		"The local death card must begin near the screen center before moving upward."
 	)
 
@@ -228,10 +266,25 @@ func _test_client_gate_warning_replication() -> void:
 	await physics_frame
 	game.apply_remote_base_health(9, 10, 1)
 	_expect(game.current_base_health == 9, "A client must apply the authoritative blue-gate health loss.")
+	_expect(
+		game.wave_hud.core_value_label.text == "9/10",
+		"A client's centered core-health metric must use the authoritative snapshot."
+	)
 	_expect(not game.tower_defense_status_hud.gate_warning_overlay.visible, "A late-join client's initial damaged-gate snapshot must not fake a new hit warning.")
 	_expect(not game.tower_defense_status_hud.gate_warning_audio.playing, "Initial blue-gate synchronization must remain silent.")
 	game.apply_remote_base_health(8, 10, 2)
 	_expect(game.current_base_health == 8, "A client must apply later blue-gate damage revisions.")
+	_expect(
+		game.wave_hud.core_value_label.text == "8/10",
+		"Later core-health revisions must update the centered metric independently."
+	)
+	game.wave_hud.set_tower_defense_wave_progress(2, 1, 4)
+	game.apply_remote_enemy_count(7)
+	_expect(
+		game.wave_hud.enemy_value_label.text == "7"
+		and game.wave_hud.wave_value_label.text == "25%",
+		"Client enemy snapshots must update only the enemy metric without replacing wave progress."
+	)
 	_expect(game.tower_defense_status_hud.gate_warning_overlay.visible, "A replicated blue-gate hit must flash on every client screen.")
 	_expect(game.tower_defense_status_hud.gate_warning_audio.playing, "A replicated blue-gate hit must play the client warning sound.")
 	var client_defeat_zoom := Vector2(1.5, 1.5)

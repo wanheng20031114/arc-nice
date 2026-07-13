@@ -43,10 +43,14 @@ layer = 14
 script = ExtResource("1_script")
 
 [node name="HealthBar" type="ProgressBar" parent="." unique_id=688085363]
-offset_left = 270.0
-offset_top = 28.0
-offset_right = 882.0
-offset_bottom = 68.0
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -240.0
+offset_top = 94.0
+offset_right = 240.0
+offset_bottom = 126.0
+grow_horizontal = 2
 mouse_filter = 2
 theme_override_styles/background = SubResource("StyleBoxFlat_health_bg")
 theme_override_styles/fill = SubResource("StyleBoxFlat_health_fill")
@@ -75,28 +79,36 @@ layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -20.0
-offset_bottom = -20.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
 [node name="Frame" type="TextureRect" parent="Root" unique_id=82237535]
-layout_mode = 0
-offset_left = 192.0
-offset_right = 960.0
-offset_bottom = 127.600006
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -272.0
+offset_top = 76.0
+offset_right = 272.0
+offset_bottom = 166.0
+grow_horizontal = 2
 mouse_filter = 2
 texture = ExtResource("2_frame")
 expand_mode = 1
 metadata/_edit_group_ = true
 
 [node name="Nameplate" type="TextureRect" parent="Root" unique_id=2097219329]
-layout_mode = 0
-offset_left = 512.0
-offset_top = 90.0
-offset_right = 772.0
-offset_bottom = 169.4
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -130.0
+offset_top = 143.0
+offset_right = 130.0
+offset_bottom = 222.4
+grow_horizontal = 2
+pivot_offset = Vector2(130, 39.7)
 scale = Vector2(0.5, 0.5)
 mouse_filter = 2
 texture = ExtResource("3_nameplate")

@@ -148,7 +148,9 @@ func _test_settings_button_opens_and_closes() -> void:
 	player.set_controls_locked(false)
 	await process_frame
 
-	var settings_button := game.get_node("CurrencyHUD/TopLeftMargin/SettingsButton") as Button
+	var settings_button := game.get_node(
+		"CurrencyHUD/TopRightMargin/Content/SettingsButton"
+	) as Button
 	var settings_panel := game.get_node("SettingsLayer/SettingsPanel") as SettingsPanel
 	var button_position := settings_button.get_global_rect().get_center()
 

@@ -149,8 +149,8 @@ autowrap_mode = 2
 [node name="LocalDeathCenter" type="CenterContainer" parent="." unique_id=1209968609]
 anchors_preset = 10
 anchor_right = 1.0
-offset_top = 52.0
-offset_bottom = 176.0
+offset_top = 164.0
+offset_bottom = 288.0
 grow_horizontal = 2
 mouse_filter = 2
 

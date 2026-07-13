@@ -7,7 +7,7 @@ signal settings_requested
 @onready var panel: PanelContainer = $TopRightMargin/Content/CurrencyPanel
 @onready var count_label: Label = $TopRightMargin/Content/CurrencyPanel/ContentMargin/Content/Count
 @onready var profile_button: Button = $TopRightMargin/Content/ProfileButton
-@onready var settings_button: Button = $TopLeftMargin/SettingsButton
+@onready var settings_button: Button = $TopRightMargin/Content/SettingsButton
 
 var tracked_player: Player = null
 var pulse_tween: Tween = null
