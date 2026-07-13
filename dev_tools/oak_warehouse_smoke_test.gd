@@ -3,6 +3,7 @@ extends SceneTree
 const WAREHOUSE_SCENE := preload("res://scene/plant_defense/oak_warehouse.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const WOOD := preload("res://resources/config/materials/material_wood.tres")
+const APPLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 const PLANT_HEALTH_BAR_SCRIPT := preload("res://scene/plant_defense/ui/plant_health_bar.gd")
 
 var failures: Array[String] = []
@@ -36,6 +37,7 @@ func _run() -> void:
 	_test_interaction_lock(player, warehouse)
 	_test_detail_layout(warehouse.storage_panel)
 	_test_slot_transfer_interactions(run_state, warehouse)
+	_test_authoritative_shared_storage(run_state, warehouse)
 	await _test_unique_nearest_interaction(player, warehouse, config, fixture)
 
 	fixture.queue_free()
@@ -68,7 +70,7 @@ func _test_config_and_scene(config: PlantDefenseConfig, warehouse: OakWarehouse)
 		config.plant_scene.resource_path.begins_with("res://scene/plant_defense/"),
 		"橡木仓库必须继续由scene/plant_defense下的独立场景实例化。"
 	)
-	_expect(not config.supports_multiplayer, "仓库库存联网前，橡木仓库必须明确限制为单人建筑。")
+	_expect(config.supports_multiplayer, "共享仓库权威事务就绪后，橡木仓库必须允许多人放置。")
 	_expect(PlantDefenseRegistry.get_all_configs().size() == 2, "植物选择必须包含两种建筑。")
 	_expect(warehouse.storage_items.size() == 20, "仓库必须拥有20个物品格。")
 	_expect(
@@ -336,6 +338,140 @@ func _test_slot_transfer_interactions(run_state: RunStateStore, warehouse: OakWa
 		warehouse.get_storage_item(0) == null and run_state.get_item_count(0) == 17,
 		"双击往返移动不得丢失物品数量。"
 	)
+	run_state.discard_item(0)
+
+
+func _test_authoritative_shared_storage(
+	run_state: RunStateStore,
+	warehouse: OakWarehouse
+) -> void:
+	const PEER_ID := 2
+	const WAREHOUSE_NET_ID := 44
+	warehouse.configure_multiplayer_storage(WAREHOUSE_NET_ID, PEER_ID, true)
+	_expect(
+		run_state.try_add_item_count_for_peer(PEER_ID, WOOD, 17),
+		"多人测试物资必须能整叠加入指定玩家背包。"
+	)
+	var first_inventory_revision := run_state.get_inventory_revision_for_peer(PEER_ID)
+	var first_storage_revision := warehouse.get_storage_revision()
+	var store_command := OakWarehouseProtocol.make_transfer_command(
+		1,
+		WAREHOUSE_NET_ID,
+		PEER_ID,
+		OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE,
+		0,
+		first_inventory_revision,
+		first_storage_revision
+	)
+	var store_result := warehouse.apply_transfer_command(store_command, run_state)
+	_expect(bool(store_result.get("success", false)), "Host必须原子确认整叠物资存入共享仓库。")
+	_expect(
+		run_state.get_item_for_peer(PEER_ID, 0) == null
+		and warehouse.get_storage_item_count(0) == 17,
+		"成功事务必须清空来源槽且完整保留17个物资。"
+	)
+	_expect(
+		run_state.get_inventory_revision_for_peer(PEER_ID) == first_inventory_revision + 1
+		and warehouse.get_storage_revision() == first_storage_revision + 1,
+		"共享仓库成功事务必须各自只递增一次背包与仓库revision。"
+	)
+
+	var duplicate_result := warehouse.apply_transfer_command(store_command, run_state)
+	_expect(
+		not bool(duplicate_result.get("success", false))
+		and duplicate_result.get("reason") == OakWarehouseProtocol.RESULT_STALE_INVENTORY,
+		"重复或并发的旧revision命令必须被稳定拒绝。"
+	)
+	_expect(
+		warehouse.get_storage_item_count(0) == 17,
+		"拒绝重复命令后共享仓库数量不得翻倍。"
+	)
+
+	var retrieve_command := OakWarehouseProtocol.make_transfer_command(
+		2,
+		WAREHOUSE_NET_ID,
+		PEER_ID,
+		OakWarehouseProtocol.TransferDirection.STORAGE_TO_PLAYER,
+		0,
+		run_state.get_inventory_revision_for_peer(PEER_ID),
+		warehouse.get_storage_revision()
+	)
+	var retrieve_result := warehouse.apply_transfer_command(retrieve_command, run_state)
+	_expect(bool(retrieve_result.get("success", false)), "Host必须原子确认从共享仓库取回整叠物资。")
+	_expect(
+		run_state.get_item_count_for_peer(PEER_ID, 0) == 17
+		and warehouse.get_storage_item(0) == null,
+		"取回事务必须完整恢复背包堆叠并清空仓库来源槽。"
+	)
+	_expect(
+		(retrieve_result.get("inventory_snapshot", {}) as Dictionary).get("revision", -1)
+		== run_state.get_inventory_revision_for_peer(PEER_ID)
+		and (retrieve_result.get("storage_snapshot", {}) as Dictionary).get("revision", -1)
+		== warehouse.get_storage_revision(),
+		"事务结果必须携带可直接用于RPC确认的最新完整快照。"
+	)
+
+	_expect(
+		run_state.try_add_item_count_for_peer(PEER_ID, APPLE, APPLE.collectible_max_copies),
+		"仓库份数测试必须先把Peer收藏品填到配置上限。"
+	)
+	_expect(
+		warehouse.try_add_storage_item_count(APPLE, 1, warehouse.get_storage_revision()),
+		"共享仓库允许独立保存超出玩家当前生效上限的收藏品。"
+	)
+	var limited_storage_revision := warehouse.get_storage_revision()
+	var limited_inventory_revision := run_state.get_inventory_revision_for_peer(PEER_ID)
+	var limited_retrieve_command := OakWarehouseProtocol.make_transfer_command(
+		3,
+		WAREHOUSE_NET_ID,
+		PEER_ID,
+		OakWarehouseProtocol.TransferDirection.STORAGE_TO_PLAYER,
+		0,
+		limited_inventory_revision,
+		limited_storage_revision
+	)
+	var limited_retrieve_result := warehouse.apply_transfer_command(
+		limited_retrieve_command,
+		run_state
+	)
+	_expect(
+		not bool(limited_retrieve_result.get("success", false))
+		and limited_retrieve_result.get("reason") == OakWarehouseProtocol.RESULT_TARGET_FULL,
+		"Host必须拒绝从共享仓库取回会突破最大份数的收藏品。"
+	)
+	_expect(
+		warehouse.get_storage_item(0) == APPLE
+		and warehouse.get_storage_revision() == limited_storage_revision
+		and run_state.get_inventory_revision_for_peer(PEER_ID) == limited_inventory_revision,
+		"份数校验失败时仓库与个人背包必须原子保持不变。"
+	)
+
+	var requested_snapshot_ids: Array[int] = []
+	var snapshot_request_callback := func(requested_net_id: int) -> void:
+		requested_snapshot_ids.append(requested_net_id)
+	warehouse.storage_snapshot_requested.connect(snapshot_request_callback)
+	_expect(
+		warehouse.request_multiplayer_storage_snapshot(),
+		"多人仓库必须能显式请求Host重发权威快照。"
+	)
+	_expect(
+		warehouse.multiplayer_storage_enabled
+		and not warehouse.storage_panel.multiplayer_storage_snapshot_ready
+		and requested_snapshot_ids == [WAREHOUSE_NET_ID],
+		"请求仓库快照时必须进入只读加载态并携带正确net id。"
+	)
+	warehouse.storage_snapshot_requested.disconnect(snapshot_request_callback)
+	_expect(
+		warehouse.apply_storage_snapshot(warehouse.export_storage_snapshot()),
+		"收到权威仓库快照后必须恢复可交互状态。"
+	)
+	warehouse.storage_panel.call("_refresh_all")
+	warehouse.storage_panel.player_slots[0].call("_on_pressed")
+	_expect(
+		warehouse.storage_panel.discard_button.disabled,
+		"多人仓库界面必须禁止直接删除共享或个人物品。"
+	)
+	run_state.discard_item_for_peer(PEER_ID, 0)
 
 
 func _expect(condition: bool, message: String) -> void:

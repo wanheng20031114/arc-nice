@@ -23,11 +23,13 @@ const COLLECTIBLE_RESULT_SUCCESS := 0
 const COLLECTIBLE_RESULT_ALREADY_CLAIMED := 1
 const COLLECTIBLE_RESULT_INVENTORY_FULL := 2
 const COLLECTIBLE_RESULT_INVALID_PLAYER := 3
+const COLLECTIBLE_RESULT_STALE_OFFER := 4
 
 const REFRESH_RESULT_SUCCESS := 0
 const REFRESH_RESULT_LIMIT_REACHED := 1
 const REFRESH_RESULT_INSUFFICIENT_XIRANG := 2
 const REFRESH_RESULT_INVALID_PLAYER := 3
+const REFRESH_RESULT_STALE_OFFER := 4
 
 @onready var collision_shape: CollisionShape2D = $StaticBody2D/CollisionShape2D
 @onready var interaction_area: Area2D = $InteractionArea
@@ -45,6 +47,9 @@ var dialogue_lines: Array = []
 var claim_counts_by_player_key: Dictionary = {}
 var refresh_counts_by_player_key: Dictionary = {}
 var pending_choices_by_player_key: Dictionary = {}
+var authoritative_offer_revision: int = 0
+var authoritative_offer_paths: Array[String] = []
+var authoritative_offer_pending: bool = false
 
 static var _collectible_pool_cache: Array[PickupConfig] = []
 static var _collectible_by_path_cache: Dictionary = {}
@@ -330,7 +335,126 @@ func show_refresh_result(
 	_update_refresh_ui(status)
 
 
+func begin_authoritative_offer_request() -> void:
+	authoritative_offer_pending = true
+	choice_visible = true
+	dialogue_bubble.hide_bubble()
+	choice_overlay.hide_choices()
+
+
+func apply_authoritative_offer_state(
+	offer_revision: int,
+	config_paths: PackedStringArray,
+	confirmed_refresh_count: int,
+	confirmed_current_xirang: int,
+	refresh_result_code: int = -1
+) -> bool:
+	if active_player == null or offer_revision <= 0:
+		return false
+	if offer_revision < authoritative_offer_revision:
+		return false
+
+	var choices: Array = []
+	var normalized_paths: Array[String] = []
+	for config_path_value in config_paths:
+		var config_path := String(config_path_value)
+		var item := get_collectible_for_path(config_path)
+		if item == null or normalized_paths.has(config_path):
+			return false
+		normalized_paths.append(config_path)
+		choices.append(item)
+	if choices.size() != CHOICE_COUNT:
+		return false
+	if (
+		offer_revision == authoritative_offer_revision
+		and not authoritative_offer_paths.is_empty()
+		and normalized_paths != authoritative_offer_paths
+	):
+		return false
+
+	authoritative_offer_revision = offer_revision
+	authoritative_offer_paths = normalized_paths
+	authoritative_offer_pending = false
+	var player_key := _get_player_claim_key(active_player)
+	pending_choices_by_player_key[player_key] = choices
+	refresh_counts_by_player_key[player_key] = clampi(
+		confirmed_refresh_count,
+		0,
+		get_refresh_limit()
+	)
+	if confirmed_current_xirang >= 0 and active_player.current_xirang != confirmed_current_xirang:
+		var xirang_delta := confirmed_current_xirang - active_player.current_xirang
+		active_player.current_xirang = maxi(confirmed_current_xirang, 0)
+		active_player.xirang_changed.emit(active_player.current_xirang, xirang_delta)
+
+	selected_choice_index = clampi(selected_choice_index, 0, CHOICE_COUNT - 1)
+	choice_visible = true
+	dialogue_bubble.hide_bubble()
+	var status := _get_authoritative_refresh_status(refresh_result_code)
+	_update_refresh_ui(status)
+	choice_overlay.show_choices(choices, selected_choice_index)
+	return true
+
+
+func get_authoritative_offer_revision() -> int:
+	return authoritative_offer_revision
+
+
+func build_authoritative_offer_paths(
+	player: Player,
+	excluded_paths: Array[String],
+	rng: RandomNumberGenerator
+) -> Array[String]:
+	if player == null or rng == null:
+		return []
+	var pool := _get_collectible_pool_for_player(player)
+	if not excluded_paths.is_empty():
+		var filtered_pool: Array = []
+		for item_variant in pool:
+			var item := item_variant as PickupConfig
+			if item != null and not excluded_paths.has(item.resource_path):
+				filtered_pool.append(item)
+		if filtered_pool.size() >= CHOICE_COUNT:
+			pool = filtered_pool
+	if pool.size() < CHOICE_COUNT:
+		return []
+
+	var result: Array[String] = []
+	for _choice_index in range(CHOICE_COUNT):
+		var pool_index := _pick_weighted_collectible_index(pool, rng)
+		var item := pool[pool_index] as PickupConfig
+		if item == null or item.resource_path.is_empty():
+			return []
+		result.append(item.resource_path)
+		pool.remove_at(pool_index)
+	return result
+
+
+func _get_authoritative_refresh_status(result_code: int) -> String:
+	match result_code:
+		REFRESH_RESULT_SUCCESS:
+			return "刷新成功 · 新的收藏品已经出现"
+		REFRESH_RESULT_LIMIT_REACHED:
+			return "刷新次数已用尽，下次休整期重置"
+		REFRESH_RESULT_INSUFFICIENT_XIRANG:
+			return "息壤不足，无法支付本次刷新费用"
+		REFRESH_RESULT_STALE_OFFER:
+			return "报价已更新，已同步主机上的最新三张卡"
+		_:
+			return ""
+
+
 func _show_choice_offer() -> void:
+	var current_scene := get_tree().current_scene
+	if (
+		current_scene != null
+		and current_scene.has_method("uses_authoritative_luoxi_offers")
+		and bool(current_scene.call("uses_authoritative_luoxi_offers"))
+	):
+		begin_authoritative_offer_request()
+		if current_scene.has_method("request_luoxi_collectible_offer"):
+			current_scene.call("request_luoxi_collectible_offer")
+		return
 	choice_visible = true
 	dialogue_bubble.hide_bubble()
 	_update_refresh_ui()
@@ -338,6 +462,8 @@ func _show_choice_offer() -> void:
 
 
 func _handle_choice_input(event: InputEvent) -> bool:
+	if authoritative_offer_pending:
+		return true
 	if choice_overlay.handle_input(event):
 		selected_choice_index = choice_overlay.selected_index
 		return true
@@ -382,7 +508,18 @@ func _try_claim_selected_collectible() -> void:
 	var config_path := selected_item.resource_path
 	var current_scene := get_tree().current_scene
 	if current_scene != null and current_scene.has_method("request_luoxi_collectible_choice"):
-		current_scene.call("request_luoxi_collectible_choice", selected_choice_index, config_path)
+		if (
+			current_scene.has_method("uses_authoritative_luoxi_offers")
+			and bool(current_scene.call("uses_authoritative_luoxi_offers"))
+		):
+			current_scene.call(
+				"request_luoxi_collectible_choice",
+				selected_choice_index,
+				"",
+				authoritative_offer_revision
+			)
+		else:
+			current_scene.call("request_luoxi_collectible_choice", selected_choice_index, config_path)
 		return
 	show_collectible_result(_claim_local_collectible(active_player, config_path))
 
@@ -489,7 +626,16 @@ func _request_collectible_refresh() -> void:
 	var current_scene := get_tree().current_scene
 	if current_scene != null and current_scene.has_method("request_luoxi_collectible_refresh"):
 		choice_overlay.set_refresh_pending(true)
-		current_scene.call("request_luoxi_collectible_refresh")
+		if (
+			current_scene.has_method("uses_authoritative_luoxi_offers")
+			and bool(current_scene.call("uses_authoritative_luoxi_offers"))
+		):
+			current_scene.call(
+				"request_luoxi_collectible_refresh",
+				authoritative_offer_revision
+			)
+		else:
+			current_scene.call("request_luoxi_collectible_refresh")
 		return
 	var result_code := try_purchase_refresh_for_player(active_player)
 	show_refresh_result(
@@ -592,6 +738,8 @@ static func _get_collectible_config_paths() -> Array[String]:
 func _get_current_choice_item(choice_index: int) -> PickupConfig:
 	if choice_index < 0 or choice_index >= CHOICE_COUNT:
 		return null
+	if authoritative_offer_revision > 0 and choice_index < authoritative_offer_paths.size():
+		return get_collectible_for_path(authoritative_offer_paths[choice_index])
 	var choices := _build_collectible_choices()
 	if choice_index >= choices.size():
 		return null
@@ -702,6 +850,9 @@ func reset_intermission_state() -> void:
 	claim_counts_by_player_key.clear()
 	refresh_counts_by_player_key.clear()
 	pending_choices_by_player_key.clear()
+	authoritative_offer_revision = 0
+	authoritative_offer_paths.clear()
+	authoritative_offer_pending = false
 	selected_choice_index = 0
 	choice_visible = false
 	result_visible = false

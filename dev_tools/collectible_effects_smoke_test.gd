@@ -286,7 +286,10 @@ func _test_new_collectible_rules() -> void:
 	run_state.begin_new_run()
 	player = _spawn_player()
 	_expect(run_state.try_add_item(LUCKY_GEM), "Lucky gem must fit in inventory.")
-	_expect(run_state.try_add_item(LUCKY_GEM), "Duplicate lucky gem must fit in inventory.")
+	_expect(
+		not run_state.try_add_item(LUCKY_GEM),
+		"Duplicate non-stacking lucky gem must be rejected by authoritative inventory rules."
+	)
 	_expect(run_state.try_add_item(ALCHEMIST_VIAL), "Alchemist vial must fit in inventory.")
 	_expect(run_state.try_add_item(FOX_COIN), "Fox coin must fit in inventory.")
 	_expect(run_state.try_add_item(MEDIEVAL_SHIELD), "Medieval shield must fit in inventory.")

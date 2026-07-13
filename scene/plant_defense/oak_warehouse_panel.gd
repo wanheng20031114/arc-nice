@@ -32,6 +32,9 @@ var storage_slots: Array[InventorySlot] = []
 var player_slots: Array[InventorySlot] = []
 var selected_source := ItemSource.NONE
 var selected_slot_index := -1
+var multiplayer_storage_enabled := false
+var multiplayer_storage_snapshot_ready := true
+var multiplayer_storage_request_pending := false
 
 
 func _ready() -> void:
@@ -55,10 +58,40 @@ func _ready() -> void:
 func bind_warehouse(new_warehouse: OakWarehouse, player: Player) -> void:
 	if warehouse != null and warehouse.storage_changed.is_connected(_refresh_all):
 		warehouse.storage_changed.disconnect(_refresh_all)
+	if tracked_player != null and tracked_player.died.is_connected(_on_tracked_player_died):
+		tracked_player.died.disconnect(_on_tracked_player_died)
 	warehouse = new_warehouse
 	tracked_player = player
+	if tracked_player != null and not tracked_player.died.is_connected(_on_tracked_player_died):
+		tracked_player.died.connect(_on_tracked_player_died)
 	if warehouse != null and not warehouse.storage_changed.is_connected(_refresh_all):
 		warehouse.storage_changed.connect(_refresh_all)
+	_refresh_all()
+
+
+func set_multiplayer_storage_state(
+	enabled: bool,
+	snapshot_ready: bool,
+	request_pending: bool
+) -> void:
+	multiplayer_storage_enabled = enabled
+	multiplayer_storage_snapshot_ready = snapshot_ready or not enabled
+	multiplayer_storage_request_pending = request_pending and enabled
+	if multiplayer_storage_enabled and not multiplayer_storage_snapshot_ready:
+		status_label.text = "正在同步共享仓库…"
+	elif multiplayer_storage_request_pending:
+		status_label.text = "正在等待主机确认…"
+	elif status_label.text in ["正在同步共享仓库…", "正在等待主机确认…"]:
+		status_label.text = ""
+	_refresh_detail()
+
+
+func show_multiplayer_command_result(success: bool, reason: StringName) -> void:
+	if success:
+		status_label.text = "物品已移动"
+	else:
+		status_label.text = _get_multiplayer_failure_text(reason)
+	_clear_selection()
 	_refresh_all()
 
 
@@ -176,6 +209,9 @@ func _on_slot_activated(slot_index: int, source: int) -> void:
 
 
 func _on_use_pressed() -> void:
+	if multiplayer_storage_enabled:
+		status_label.text = "请在背包界面使用该物品"
+		return
 	if selected_source != ItemSource.PLAYER or selected_slot_index < 0:
 		return
 	var item := _get_selected_item()
@@ -191,6 +227,24 @@ func _on_use_pressed() -> void:
 func _on_move_pressed() -> void:
 	if warehouse == null or selected_slot_index < 0:
 		return
+	if multiplayer_storage_enabled:
+		if not multiplayer_storage_snapshot_ready:
+			status_label.text = "正在同步共享仓库…"
+			return
+		if multiplayer_storage_request_pending:
+			status_label.text = "正在等待主机确认…"
+			return
+		var direction := (
+			OakWarehouseProtocol.TransferDirection.STORAGE_TO_PLAYER
+			if selected_source == ItemSource.STORAGE
+			else OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE
+		)
+		if warehouse.request_multiplayer_stack_transfer(direction, selected_slot_index):
+			status_label.text = "正在等待主机确认…"
+		else:
+			status_label.text = "共享仓库当前不可操作"
+		_refresh_detail()
+		return
 	var moved := false
 	if selected_source == ItemSource.STORAGE:
 		moved = warehouse.transfer_storage_stack_to_player(selected_slot_index, run_state)
@@ -204,6 +258,13 @@ func _on_move_pressed() -> void:
 
 func _on_discard_pressed() -> void:
 	if selected_slot_index < 0:
+		return
+	if multiplayer_storage_enabled:
+		status_label.text = (
+			"共享仓库物品不能直接删除，请先取回背包"
+			if selected_source == ItemSource.STORAGE
+			else "多人模式请在背包界面管理物品"
+		)
 		return
 	var item := _get_selected_item()
 	var discarded := false
@@ -263,13 +324,38 @@ func _refresh_detail() -> void:
 	]
 	item_description.text = item.description if not item.description.is_empty() else "暂无描述"
 	item_description.tooltip_text = item_description.text
-	use_button.disabled = (
-		selected_source != ItemSource.PLAYER or not _is_consumable_item(item)
+	var network_locked := (
+		multiplayer_storage_enabled
+		and (
+			not multiplayer_storage_snapshot_ready
+			or multiplayer_storage_request_pending
+		)
 	)
-	move_button.disabled = false
-	discard_button.disabled = false
+	use_button.disabled = (
+		multiplayer_storage_enabled
+		or selected_source != ItemSource.PLAYER
+		or not _is_consumable_item(item)
+	)
+	move_button.disabled = network_locked
+	discard_button.disabled = multiplayer_storage_enabled or network_locked
 	move_button.text = "移入背包" if selected_source == ItemSource.STORAGE else "移入仓库"
 	discard_button.text = "删除" if item.pickup_type == PickupConfig.PickupType.MATERIAL else "丢弃"
+
+
+func _on_tracked_player_died() -> void:
+	close()
+
+
+func _get_multiplayer_failure_text(reason: StringName) -> String:
+	match reason:
+		OakWarehouseProtocol.RESULT_STALE_INVENTORY, OakWarehouseProtocol.RESULT_STALE_STORAGE:
+			return "内容已变化，已刷新最新状态"
+		OakWarehouseProtocol.RESULT_SOURCE_EMPTY:
+			return "来源物品已不存在"
+		OakWarehouseProtocol.RESULT_TARGET_FULL:
+			return "目标容器空间不足"
+		_:
+			return "共享仓库操作失败"
 
 
 func _get_selected_item() -> PickupConfig:
