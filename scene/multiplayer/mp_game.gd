@@ -54,6 +54,7 @@ const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect
 const LINGLAN_SAKURA_BULLET_SCENE_PATH := "res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn"
 const LINGLAN_SKILL2_CONFIG_PATH := "res://resources/config/bosses/linglan_skill2.tres"
 const LINGLAN_SKILL2_ROCKET_SCENE_PATH := "res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn"
+const COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH := "res://scene/collectible_sakura_rocket.tscn"
 const LINGLAN_SKILL3_CONFIG_PATH := "res://resources/config/bosses/linglan_skill3.tres"
 const LINGLAN_SKILL3_ORB_SCENE_PATH := "res://scene/boss/linglan/linglan_skill3_light_orb.tscn"
 const LINGLAN_SKILL4_CONFIG_PATH := "res://resources/config/bosses/linglan_skill4.tres"
@@ -151,6 +152,7 @@ var _agave_cannonball_scene: PackedScene = null
 var _linglan_sakura_bullet_scene: PackedScene = null
 var _linglan_skill2_config: Resource = null
 var _linglan_skill2_rocket_scene: PackedScene = null
+var _collectible_sakura_rocket_scene: PackedScene = null
 var _linglan_skill3_config: Resource = null
 var _linglan_skill3_orb_scene: PackedScene = null
 var _linglan_skill4_config: Resource = null
@@ -3358,10 +3360,10 @@ func _instantiate_projectile(
 			return sakura_rocket
 		&"collectible_sakura_rocket":
 			_ensure_linglan_projectile_resources(projectile_type)
-			if _linglan_skill2_rocket_scene == null or _linglan_skill2_config == null:
+			if _collectible_sakura_rocket_scene == null or _linglan_skill2_config == null:
 				return null
 			var collectible_sakura_rocket := (
-				_acquire_or_instantiate_projectile(_linglan_skill2_rocket_scene)
+				_acquire_or_instantiate_projectile(_collectible_sakura_rocket_scene)
 				as Node2D
 			)
 			if collectible_sakura_rocket == null:
@@ -3433,12 +3435,19 @@ func _ensure_linglan_projectile_resources(projectile_type: StringName) -> void:
 				_linglan_sakura_bullet_scene = load(
 					LINGLAN_SAKURA_BULLET_SCENE_PATH
 				) as PackedScene
-		&"linglan_skill2_rocket", &"collectible_sakura_rocket":
+		&"linglan_skill2_rocket":
 			if _linglan_skill2_config == null:
 				_linglan_skill2_config = load(LINGLAN_SKILL2_CONFIG_PATH)
 			if _linglan_skill2_rocket_scene == null:
 				_linglan_skill2_rocket_scene = load(
 					LINGLAN_SKILL2_ROCKET_SCENE_PATH
+				) as PackedScene
+		&"collectible_sakura_rocket":
+			if _linglan_skill2_config == null:
+				_linglan_skill2_config = load(LINGLAN_SKILL2_CONFIG_PATH)
+			if _collectible_sakura_rocket_scene == null:
+				_collectible_sakura_rocket_scene = load(
+					COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH
 				) as PackedScene
 		&"linglan_skill3_orb":
 			if _linglan_skill3_config == null:
@@ -3929,8 +3938,9 @@ func _is_client_enemy_hit_report_allowed(
 	var projectile_record_variant: Variant = _projectile_records.get(projectile_id)
 	if projectile_record_variant is Dictionary:
 		var projectile_record := projectile_record_variant as Dictionary
-		if StringName(projectile_record.get("projectile_type", &"")) == TIYI_SNIPER_PROJECTILE_TYPE:
-			# Tiyi's swept ShapeCast is simulated by Host. Clients cannot claim sniper hits.
+		var projectile_type := StringName(projectile_record.get("projectile_type", &""))
+		if projectile_type == TIYI_SNIPER_PROJECTILE_TYPE or projectile_type == &"skill1_bomb":
+			# These projectiles are simulated and settled by Host. Clients cannot claim hits.
 			return false
 	return true
 

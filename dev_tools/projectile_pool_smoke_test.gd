@@ -9,7 +9,7 @@ const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect
 const AGAVE_CANNONBALL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
 const COLLECTIBLE_ARROW_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
 const COLLECTIBLE_SAKURA_ROCKET_SCENE := preload(
-	"res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn"
+	"res://scene/collectible_sakura_rocket.tscn"
 )
 const BULLET_HIT_EFFECT_SCENE := preload("res://scene/bullet_hit_effect.tscn")
 const ENEMY_HIT_EFFECT_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")

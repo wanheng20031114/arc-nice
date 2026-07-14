@@ -2,11 +2,14 @@ extends YuanshiInsect
 class_name YuanshiInsectExploder
 
 const EXPLOSION_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
-const EXPLOSION_QUERY_MAX_RESULTS := 16
+const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/complete_shape_query_2d.gd")
+const EXPLOSION_QUERY_BATCH_SIZE := 64
 
 @onready var explosion_area: Area2D = $ExplosionArea
 @onready var explosion_shape: CollisionShape2D = $ExplosionArea/CollisionShape2D
 @onready var explosion_audio: AudioStreamPlayer2D = $ExplosionAudio
+
+var explosion_damage_done := false
 
 
 func _apply_config() -> void:
@@ -56,6 +59,8 @@ func _start_explosion_sequence() -> void:
 
 
 func _try_apply_explosion_damage() -> void:
+	if explosion_damage_done:
+		return
 	if config == null:
 		return
 	if not config.explode_on_death:
@@ -68,6 +73,7 @@ func _try_apply_explosion_damage() -> void:
 	var space_state := get_world_2d().direct_space_state
 	if space_state == null:
 		return
+	explosion_damage_done = true
 
 	var query := PhysicsShapeQueryParameters2D.new()
 	query.shape = explosion_shape.shape
@@ -77,7 +83,11 @@ func _try_apply_explosion_damage() -> void:
 	query.collide_with_areas = false
 	query.exclude = [get_rid()]
 
-	var query_results := space_state.intersect_shape(query, EXPLOSION_QUERY_MAX_RESULTS)
+	var query_results := COMPLETE_SHAPE_QUERY_2D.intersect_shape_all(
+		space_state,
+		query,
+		EXPLOSION_QUERY_BATCH_SIZE
+	)
 	if query_results.is_empty():
 		return
 

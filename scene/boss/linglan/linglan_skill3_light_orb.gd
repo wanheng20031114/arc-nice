@@ -105,7 +105,6 @@ func _physics_process(delta: float) -> void:
 			return
 
 	_update_visual_pulse()
-	_apply_overlap_damage()
 
 
 func _grow() -> void:
@@ -115,7 +114,8 @@ func _grow() -> void:
 	speed = 0.0
 	expanded_elapsed = 0.0
 	_apply_current_radius()
-	_apply_overlap_damage()
+	# body_entered handles flight; the radius jump needs one immediate catch-up query.
+	_apply_expansion_overlap_damage()
 
 
 func _apply_current_radius() -> void:
@@ -162,7 +162,7 @@ func _on_body_entered(body: Node2D) -> void:
 	_apply_player_damage(body as Player)
 
 
-func _apply_overlap_damage() -> void:
+func _apply_expansion_overlap_damage() -> void:
 	var circle_shape := collision_shape.shape as CircleShape2D
 	if circle_shape == null:
 		return

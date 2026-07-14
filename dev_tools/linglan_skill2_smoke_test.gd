@@ -362,7 +362,6 @@ func _test_multiplayer_projectile_instantiation() -> void:
 		_expect(is_equal_approx(projectile.remaining_lifetime, 5.0), "Registry Skill2 rocket lifetime mismatch.")
 		_expect(is_equal_approx(projectile.explosion_radius, 91.0), "Registry Skill2 rocket must read explosion radius from config.")
 		_expect(is_equal_approx(projectile.homing_turn_rate, 2.4), "Registry Skill2 rocket must read homing turn rate from config.")
-		projectile.free()
 	var collectible_projectile := mp_game.call(
 		"_instantiate_projectile",
 		&"collectible_sakura_rocket",
@@ -388,7 +387,36 @@ func _test_multiplayer_projectile_instantiation() -> void:
 			"Registry Sakura rocket must use the collectible Sakura explosion radius."
 		)
 		_expect(is_equal_approx(collectible_projectile.homing_turn_rate, 2.4), "Registry Sakura rocket must read homing turn rate from config.")
+		var boss_scene := mp_game.get("_linglan_skill2_rocket_scene") as PackedScene
+		var collectible_scene := mp_game.get("_collectible_sakura_rocket_scene") as PackedScene
+		_expect(
+			boss_scene != null and collectible_scene != null and boss_scene != collectible_scene,
+			"Boss and collectible Sakura rockets must use independent PackedScenes."
+		)
+		if projectile != null:
+			var boss_explosion_shape := projectile.get_node_or_null("ExplosionShape") as CollisionShape2D
+			var collectible_explosion_shape := (
+				collectible_projectile.get_node_or_null("ExplosionShape") as CollisionShape2D
+			)
+			_expect(
+				boss_explosion_shape != null
+				and collectible_explosion_shape != null
+				and boss_explosion_shape.shape != collectible_explosion_shape.shape,
+				"Boss and collectible Sakura rockets must not share Explosion Shape resources."
+			)
+			if boss_explosion_shape != null and collectible_explosion_shape != null:
+				var boss_circle := boss_explosion_shape.shape as CircleShape2D
+				var collectible_circle := collectible_explosion_shape.shape as CircleShape2D
+				if boss_circle != null and collectible_circle != null:
+					var boss_radius_before := boss_circle.radius
+					collectible_circle.radius = 123.0
+					_expect(
+						is_equal_approx(boss_circle.radius, boss_radius_before),
+						"Changing the collectible Shape must not overwrite the Boss explosion radius."
+					)
 		collectible_projectile.free()
+	if projectile != null:
+		projectile.free()
 	mp_game.free()
 
 

@@ -35,6 +35,7 @@ monitorable = false
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="ExplosionQueryArea"]
 shape = SubResource("CircleShape2D_explosion")
+disabled = true
 
 [node name="ImpactAudio" type="AudioStreamPlayer2D" parent="."]
 volume_db = -12.0

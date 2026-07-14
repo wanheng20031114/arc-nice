@@ -4,10 +4,12 @@
 [ext_resource type="SpriteFrames" uid="uid://cdgq5f6m41228" path="res://resources/animation/linglan_skill2_sakura_rocket.tres" id="2_frames"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_body"]
+resource_local_to_scene = true
 radius = 2.0
 height = 12.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_explosion"]
+resource_local_to_scene = true
 radius = 78.0
 
 [node name="LinglanSkill2SakuraRocket" type="Area2D" unique_id=91858176]

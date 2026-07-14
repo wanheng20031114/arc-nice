@@ -4,6 +4,8 @@ class_name LinglanSkill4LaserField
 const PLAYER_COLLISION_MASK := 2
 const DAMAGE_QUERY_MAX_RESULTS := 32
 
+static var _next_damage_event_source_id: int = 1
+
 @export var damage: int = 50
 @export var core_width: float = 6.0
 @export var warning_core_width: float = 1.5
@@ -36,6 +38,8 @@ var final_min := Vector2(32.0, 64.0)
 var final_max := Vector2(208.0, 176.0)
 var elapsed: float = 0.0
 var player_damage_cooldowns: Dictionary = {}
+var damage_query_time_left: float = 0.0
+var _overlap_damage_query_count: int = 0
 var field_id: int = 0
 var source_type: StringName = &"linglan_skill4_laser"
 var field_finished: bool = false
@@ -72,6 +76,8 @@ func setup(
 	elapsed = 0.0
 	field_finished = false
 	player_damage_cooldowns.clear()
+	damage_query_time_left = 0.0
+	_overlap_damage_query_count = 0
 	if is_node_ready():
 		_apply_current_geometry()
 		_set_damage_collision_enabled(damage_enabled)
@@ -116,7 +122,7 @@ func _physics_process(delta: float) -> void:
 	_tick_player_damage_cooldowns(safe_delta)
 	_apply_current_geometry()
 	if damage_enabled:
-		_apply_overlap_damage()
+		_update_overlap_damage_query(safe_delta)
 	if lifetime_duration > 0.0 and elapsed >= lifetime_duration:
 		finish()
 
@@ -224,7 +230,16 @@ func _on_body_entered(body: Node2D) -> void:
 		_apply_player_damage(body as Player)
 
 
+func _update_overlap_damage_query(delta: float) -> void:
+	damage_query_time_left = maxf(damage_query_time_left - maxf(delta, 0.0), 0.0)
+	if damage_query_time_left > 0.0:
+		return
+	_apply_overlap_damage()
+	damage_query_time_left = maxf(contact_damage_interval, 0.01)
+
+
 func _apply_overlap_damage() -> void:
+	_overlap_damage_query_count += 1
 	for shape_node in [top_shape, bottom_shape, left_shape, right_shape]:
 		_query_shape_damage(shape_node)
 
@@ -276,7 +291,7 @@ func _tick_player_damage_cooldowns(delta: float) -> void:
 
 
 func _try_report_multiplayer_player_hit(player: Player) -> bool:
-	var source_id := _get_damage_source_id()
+	var source_id := _allocate_damage_event_source_id()
 	if source_id <= 0:
 		return false
 	var current_scene := get_tree().current_scene
@@ -292,10 +307,10 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 	))
 
 
-func _get_damage_source_id() -> int:
-	if field_id > 0:
-		return field_id
-	return get_instance_id()
+static func _allocate_damage_event_source_id() -> int:
+	var source_id := maxi(_next_damage_event_source_id, 1)
+	_next_damage_event_source_id = source_id + 1
+	return source_id
 
 
 func _normalized_min(first: Vector2, second: Vector2) -> Vector2:

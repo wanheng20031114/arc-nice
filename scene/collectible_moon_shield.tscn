@@ -4,6 +4,7 @@
 [ext_resource type="SpriteFrames" path="res://resources/animation/moon_shield_vfx.tres" id="2_frames"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_moon"]
+resource_local_to_scene = true
 radius = 64.0
 
 [node name="CollectibleMoonShield" type="Area2D"]

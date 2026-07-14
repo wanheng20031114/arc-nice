@@ -2,10 +2,11 @@ extends Area2D
 class_name WeishidaierSkill1Bomb
 
 const EXPLOSION_SCENE := preload("res://scene/player/weishidaier/weishidaier_skill1_explosion.tscn")
+const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/complete_shape_query_2d.gd")
 const WORLD_MASK := 1
 const ENEMY_BODY_MASK := 4
 const PLAYER_MASK := 2
-const EXPLOSION_QUERY_MAX_RESULTS := 32
+const EXPLOSION_QUERY_PAGE_SIZE := 32
 
 @export var speed: float = 260.0
 @export var max_lifetime: float = 1.4
@@ -61,24 +62,27 @@ func _physics_process(delta: float) -> void:
 		_explode()
 
 
-func _on_body_entered(_body: Node2D) -> void:
-	_explode()
+func _on_body_entered(body: Node2D) -> void:
+	_explode(body as Enemy)
 
 
 func _on_area_entered(_area: Area2D) -> void:
 	_explode()
 
 
-func _explode() -> void:
+func _explode(direct_enemy: Enemy = null) -> void:
 	if has_exploded:
 		return
 	has_exploded = true
-	_apply_explosion_damage()
+	_apply_explosion_damage(direct_enemy)
 	_spawn_explosion_effect()
 	queue_free()
 
 
-func _apply_explosion_damage() -> void:
+func _apply_explosion_damage(direct_enemy: Enemy = null) -> void:
+	if not _can_apply_authoritative_damage():
+		return
+
 	var circle_shape := explosion_shape.shape as CircleShape2D
 	if circle_shape == null:
 		return
@@ -95,22 +99,56 @@ func _apply_explosion_damage() -> void:
 	query.collide_with_areas = false
 	query.exclude = [get_rid()]
 
-	var results := space_state.intersect_shape(query, EXPLOSION_QUERY_MAX_RESULTS)
 	var damaged_ids: Dictionary = {}
-	for result in results:
-		var enemy := result.get("collider") as Enemy
-		if enemy == null:
-			continue
-		var enemy_id := enemy.get_instance_id()
-		if damaged_ids.has(enemy_id):
-			continue
-		damaged_ids[enemy_id] = true
-		if _try_report_multiplayer_enemy_hit(enemy):
-			continue
-		var resolved_damage := damage
-		if owner_player != null and is_instance_valid(owner_player):
-			resolved_damage = owner_player.resolve_attack_damage_against_enemy(damage, enemy)
-		enemy.apply_damage(resolved_damage, enemy.global_position.direction_to(global_position))
+	_apply_damage_to_enemy(direct_enemy, damaged_ids)
+	var results := COMPLETE_SHAPE_QUERY_2D.intersect_shape_all(
+		space_state,
+		query,
+		EXPLOSION_QUERY_PAGE_SIZE
+	)
+	for result: Dictionary in results:
+		_apply_damage_to_enemy(result.get("collider") as Enemy, damaged_ids)
+
+
+func _can_apply_authoritative_damage() -> bool:
+	var current_scene := get_tree().current_scene
+	return not (
+		current_scene != null
+		and current_scene.has_method("is_client_view_runtime")
+		and bool(current_scene.call("is_client_view_runtime"))
+	)
+
+
+func _apply_damage_to_enemy(enemy: Enemy, damaged_ids: Dictionary) -> void:
+	if enemy == null or not is_instance_valid(enemy):
+		return
+	var enemy_id := enemy.get_instance_id()
+	if damaged_ids.has(enemy_id):
+		return
+	damaged_ids[enemy_id] = true
+	var resolved_damage := damage
+	if owner_player != null and is_instance_valid(owner_player):
+		resolved_damage = owner_player.resolve_attack_damage_against_enemy(damage, enemy)
+	var impact_direction := enemy.global_position.direction_to(global_position)
+	var current_scene := get_tree().current_scene
+	if (
+		current_scene != null
+		and current_scene.has_method("apply_multiplayer_collectible_enemy_damage")
+	):
+		current_scene.call(
+			"apply_multiplayer_collectible_enemy_damage",
+			enemy,
+			resolved_damage,
+			impact_direction,
+			EnemyConfig.DamageType.PHYSICAL,
+			true
+		)
+		return
+	enemy.apply_damage(
+		resolved_damage,
+		impact_direction,
+		EnemyConfig.DamageType.PHYSICAL
+	)
 
 
 func _spawn_explosion_effect() -> void:
@@ -126,23 +164,3 @@ func _spawn_explosion_effect() -> void:
 	explosion.top_level = true
 	spawn_parent.add_child(explosion)
 	explosion.global_position = global_position
-
-
-func _try_report_multiplayer_enemy_hit(enemy: Enemy) -> bool:
-	if projectile_id <= 0:
-		return false
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("request_enemy_hit_report"):
-		return false
-	var enemy_net_id := int(enemy.get_meta("net_id", 0))
-	if enemy_net_id <= 0:
-		return false
-	current_scene.call(
-		"request_enemy_hit_report",
-		projectile_id,
-		owner_peer_id,
-		enemy_net_id,
-		damage,
-		enemy.global_position.direction_to(global_position)
-	)
-	return true

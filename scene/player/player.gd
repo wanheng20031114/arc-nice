@@ -74,8 +74,8 @@ const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lig
 const COLLECTIBLE_MOON_SHIELD_SCENE := preload("res://scene/collectible_moon_shield.tscn")
 const COLLECTIBLE_ARROW_PROJECTILE_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
 const LINGLAN_SKILL2_CONFIG_PATH := "res://resources/config/bosses/linglan_skill2.tres"
-const LINGLAN_SKILL2_ROCKET_SCENE_PATH := (
-	"res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn"
+const COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH := (
+	"res://scene/collectible_sakura_rocket.tscn"
 )
 const COLLECTIBLE_SAKURA_EXPLOSION_RADIUS := 47.0
 const NORMAL_ANIMATION_PREFIX := &"normal"
@@ -177,7 +177,7 @@ var collectible_ranged_front_damage_multiplier: float = 1.0
 var collectible_ranged_back_damage_multiplier: float = 1.0
 var collectible_ranged_dodge_chance: float = 0.0
 var linglan_skill2_config_cache: LinglanSkill2Config = null
-var linglan_skill2_rocket_scene_cache: PackedScene = null
+var collectible_sakura_rocket_scene_cache: PackedScene = null
 var _sakura_runtime_load_requested := false
 var last_base_upgrade_was_free: bool = false
 var _last_skill_activation_msec: int = -MIN_SKILL_ACTIVATION_INTERVAL_MSEC
@@ -2442,17 +2442,12 @@ func _get_linglan_skill2_config() -> LinglanSkill2Config:
 	return linglan_skill2_config_cache
 
 
-func _get_linglan_skill2_rocket_scene() -> PackedScene:
-	if linglan_skill2_rocket_scene_cache != null:
-		return linglan_skill2_rocket_scene_cache
-	var skill2_config := _get_linglan_skill2_config()
-	if skill2_config != null and skill2_config.rocket_scene != null:
-		linglan_skill2_rocket_scene_cache = skill2_config.rocket_scene
-	else:
-		linglan_skill2_rocket_scene_cache = load(
-			LINGLAN_SKILL2_ROCKET_SCENE_PATH
+func _get_collectible_sakura_rocket_scene() -> PackedScene:
+	if collectible_sakura_rocket_scene_cache == null:
+		collectible_sakura_rocket_scene_cache = load(
+			COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH
 		) as PackedScene
-	return linglan_skill2_rocket_scene_cache
+	return collectible_sakura_rocket_scene_cache
 
 
 func _request_sakura_runtime_resources() -> void:
@@ -2483,7 +2478,7 @@ func _spawn_collectible_sakura_rocket(target_enemy: Enemy, rocket_damage: int) -
 	if spawn_parent == null:
 		return false
 	var skill2_config := _get_linglan_skill2_config()
-	var rocket_scene := _get_linglan_skill2_rocket_scene()
+	var rocket_scene := _get_collectible_sakura_rocket_scene()
 	if skill2_config == null or rocket_scene == null:
 		return false
 	var shoot_direction := global_position.direction_to(target_enemy.global_position)

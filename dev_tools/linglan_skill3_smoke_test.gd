@@ -183,6 +183,7 @@ func _test_orb_lifecycle_and_damage() -> void:
 	test_root.add_child(orb)
 	orb.global_position = Vector2.ZERO
 	orb.setup(Vector2.RIGHT, 50, 0.0, 2.2)
+	await physics_frame
 	await process_frame
 	orb.call("_physics_process", 0.016)
 	_expect(

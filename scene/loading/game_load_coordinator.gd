@@ -34,7 +34,7 @@ const TOWER_DEFENSE_RUNTIME_RESOURCE_PATHS: Array[String] = [
 	"res://scene/plant_defense/agave_cannonball.tscn",
 	"res://scene/plant_defense/oak_warehouse.tscn",
 	"res://scene/collectible_arrow_projectile.tscn",
-	"res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn",
+	"res://scene/collectible_sakura_rocket.tscn",
 	"res://scene/collectible_sakura_explosion.tscn",
 	"res://scene/enemy/capoo_ak47_bullet.tscn",
 	"res://scene/enemy/capoo_smg_bullet.tscn",

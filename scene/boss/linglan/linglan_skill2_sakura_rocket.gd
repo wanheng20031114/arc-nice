@@ -5,6 +5,7 @@ signal projectile_finished(projectile_id: int, projectile: Node)
 
 const EXPLOSION_SCENE := preload("res://scene/boss/linglan/linglan_skill2_sakura_explosion.tscn")
 const COLLECTIBLE_SAKURA_EXPLOSION_SCENE := preload("res://scene/collectible_sakura_explosion.tscn")
+const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/complete_shape_query_2d.gd")
 const WORLD_COLLISION_MASK := 1
 const PLAYER_COLLISION_MASK := 2
 const ENEMY_BODY_COLLISION_MASK := 4
@@ -31,7 +32,7 @@ const ENEMY_ONLY_EXPLOSION_DAMAGE_MASK := (
 	ENEMY_BODY_COLLISION_MASK
 	| BOSS_BODY_COLLISION_MASK
 )
-const EXPLOSION_QUERY_MAX_RESULTS := 96
+const EXPLOSION_QUERY_BATCH_SIZE := 64
 
 @export var speed: float = 210.0
 @export var max_lifetime: float = 5.0
@@ -191,7 +192,7 @@ func _physics_process(delta: float) -> void:
 	var hit := _get_hit(current_position, next_position)
 	if not hit.is_empty():
 		global_position = hit.get("position", next_position)
-		_explode()
+		_explode(hit.get("collider") as Node2D)
 		return
 
 	global_position = next_position
@@ -228,11 +229,11 @@ func _get_hit(from_position: Vector2, to_position: Vector2) -> Dictionary:
 	return get_world_2d().direct_space_state.intersect_ray(query)
 
 
-func _on_body_entered(_body: Node2D) -> void:
-	_explode()
+func _on_body_entered(body: Node2D) -> void:
+	_explode(body)
 
 
-func _explode() -> void:
+func _explode(direct_hit: Node2D = null) -> void:
 	if has_exploded or not pool_active:
 		return
 	has_exploded = true
@@ -243,7 +244,7 @@ func _explode() -> void:
 	if collision_shape != null:
 		collision_shape.set_deferred("disabled", true)
 	animated_sprite.modulate = base_sprite_modulate
-	_apply_explosion_damage()
+	_apply_explosion_damage(direct_hit)
 	_spawn_explosion_effect()
 	_retire()
 
@@ -273,7 +274,7 @@ func _update_flash_visual() -> void:
 	animated_sprite.modulate = next_modulate
 
 
-func _apply_explosion_damage() -> void:
+func _apply_explosion_damage(direct_hit: Node2D = null) -> void:
 	var circle_shape := explosion_shape.shape as CircleShape2D
 	if circle_shape == null:
 		return
@@ -286,30 +287,35 @@ func _apply_explosion_damage() -> void:
 	query.collide_with_areas = false
 	query.exclude = [get_rid()]
 
-	var results := get_world_2d().direct_space_state.intersect_shape(
-		query,
-		EXPLOSION_QUERY_MAX_RESULTS
-	)
 	var damaged_ids: Dictionary = {}
+	_apply_explosion_damage_to_collider(direct_hit, damaged_ids)
+	var results := COMPLETE_SHAPE_QUERY_2D.intersect_shape_all(
+		get_world_2d().direct_space_state,
+		query,
+		EXPLOSION_QUERY_BATCH_SIZE
+	)
 	for result in results:
 		var collider := result.get("collider") as Node2D
-		if collider == null:
-			continue
-		var collider_id := collider.get_instance_id()
-		if damaged_ids.has(collider_id):
-			continue
+		_apply_explosion_damage_to_collider(collider, damaged_ids)
+
+
+func _apply_explosion_damage_to_collider(collider: Node2D, damaged_ids: Dictionary) -> void:
+	if collider == null or not is_instance_valid(collider):
+		return
+	var collider_id := collider.get_instance_id()
+	if damaged_ids.has(collider_id):
+		return
+	var player := collider as Player
+	if player != null:
 		damaged_ids[collider_id] = true
-
-		var player := collider as Player
-		if player != null:
-			if enemies_only:
-				continue
+		if not enemies_only:
 			_apply_player_damage(player)
-			continue
-
-		var enemy := collider as Enemy
-		if enemy != null:
-			_apply_enemy_damage(enemy)
+		return
+	var enemy := collider as Enemy
+	if enemy == null:
+		return
+	damaged_ids[collider_id] = true
+	_apply_enemy_damage(enemy)
 
 
 func _apply_player_damage(player: Player) -> void:

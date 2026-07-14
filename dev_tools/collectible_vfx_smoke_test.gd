@@ -54,11 +54,26 @@ func _test_vfx_resources() -> void:
 	var shield := MOON_SHIELD_SCENE.instantiate() as CollectibleMoonShield
 	shield.setup(null, 64.0, 0.2)
 	test_root.add_child(shield)
+	var large_shield := MOON_SHIELD_SCENE.instantiate() as CollectibleMoonShield
+	large_shield.setup(null, 96.0, 0.2)
+	test_root.add_child(large_shield)
 	await process_frame
 	var shield_circle := shield.collision_shape.shape as CircleShape2D
+	var large_shield_circle := large_shield.collision_shape.shape as CircleShape2D
 	_expect(shield_circle != null and is_equal_approx(shield_circle.radius, 64.0), "Gameplay moon shield collision radius must match the configured radius.")
+	_expect(
+		large_shield_circle != null and is_equal_approx(large_shield_circle.radius, 96.0),
+		"Simultaneous moon shields must keep their independently configured radii."
+	)
+	_expect(
+		shield_circle != large_shield_circle
+		and shield_circle.resource_local_to_scene
+		and large_shield_circle.resource_local_to_scene,
+		"Moon shield collision Shapes must be local to each scene instance."
+	)
 	_expect(shield.visual.scale.is_equal_approx(Vector2.ONE), "Moon shield visual must be unscaled at a 64 px radius.")
 	shield.queue_free()
+	large_shield.queue_free()
 	await process_frame
 	await physics_frame
 

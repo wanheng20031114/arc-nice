@@ -4,9 +4,11 @@
 [ext_resource type="SpriteFrames" uid="uid://cemn3y2bgbhbs" path="res://resources/animation/capoo_mage_fireball.tres" id="2_frames"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_body"]
+resource_local_to_scene = true
 radius = 4.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_explosion"]
+resource_local_to_scene = true
 radius = 10.5
 
 [node name="CapooMageFireball" type="Area2D" unique_id=2042061065]

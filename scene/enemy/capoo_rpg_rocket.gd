@@ -4,9 +4,10 @@ class_name CapooRPGRocket
 signal projectile_finished(projectile_id: int, projectile: Node)
 
 const EXPLOSION_SCENE := preload("res://scene/enemy/capoo_rpg_explosion.tscn")
+const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/complete_shape_query_2d.gd")
 const WORLD_COLLISION_MASK := 1
 const DAMAGEABLE_COLLISION_MASK := 2 | 512
-const EXPLOSION_QUERY_MAX_RESULTS := 16
+const EXPLOSION_QUERY_BATCH_SIZE := 64
 
 @export var speed: float = 210.0
 @export var max_lifetime: float = 3.0
@@ -141,16 +142,16 @@ func _get_world_hit(from_position: Vector2, to_position: Vector2) -> Dictionary:
 	return get_world_2d().direct_space_state.intersect_ray(query)
 
 
-func _on_body_entered(_body: Node2D) -> void:
-	_explode()
+func _on_body_entered(body: Node2D) -> void:
+	_explode(body)
 
 
-func _explode() -> void:
+func _explode(direct_hit: Node2D = null) -> void:
 	if has_exploded or not pool_active:
 		return
 	has_exploded = true
 	set_deferred("monitoring", false)
-	_apply_explosion_damage()
+	_apply_explosion_damage(direct_hit)
 	_spawn_explosion_effect()
 	_retire()
 
@@ -166,7 +167,7 @@ func _retire() -> void:
 	queue_free()
 
 
-func _apply_explosion_damage() -> void:
+func _apply_explosion_damage(direct_hit: Node2D = null) -> void:
 	var circle_shape := explosion_shape.shape as CircleShape2D
 	if circle_shape == null:
 		return
@@ -179,34 +180,47 @@ func _apply_explosion_damage() -> void:
 	query.collide_with_areas = false
 	query.exclude = [get_rid()]
 
-	var results := get_world_2d().direct_space_state.intersect_shape(query, EXPLOSION_QUERY_MAX_RESULTS)
 	var damaged_bodies: Dictionary = {}
+	_apply_explosion_damage_to_body(direct_hit, damaged_bodies)
+	var results := COMPLETE_SHAPE_QUERY_2D.intersect_shape_all(
+		get_world_2d().direct_space_state,
+		query,
+		EXPLOSION_QUERY_BATCH_SIZE
+	)
 	for result in results:
 		var body := result.get("collider") as Node2D
-		if body == null:
-			continue
-		var body_id := body.get_instance_id()
-		if damaged_bodies.has(body_id):
-			continue
+		_apply_explosion_damage_to_body(body, damaged_bodies)
+
+
+func _apply_explosion_damage_to_body(body: Node2D, damaged_bodies: Dictionary) -> void:
+	if body == null or not is_instance_valid(body):
+		return
+	var body_id := body.get_instance_id()
+	if damaged_bodies.has(body_id):
+		return
+	var player := body as Player
+	if player != null:
 		damaged_bodies[body_id] = true
-		var player := body as Player
-		if player != null and not player.is_dead:
-			if not _try_report_multiplayer_player_hit(player):
-				player.apply_damage(
-					damage,
-					EnemyConfig.DamageType.PHYSICAL,
-					_get_player_damage_context(player)
-				)
-			continue
-		var plant := body as PlantDefense
-		if plant != null and not plant.is_dead:
-			var impact_direction := global_position.direction_to(plant.global_position)
-			plant.receive_damage(
+		if not player.is_dead and not _try_report_multiplayer_player_hit(player):
+			player.apply_damage(
 				damage,
-				self,
-				impact_direction,
-				EnemyConfig.DamageType.PHYSICAL
+				EnemyConfig.DamageType.PHYSICAL,
+				_get_player_damage_context(player)
 			)
+		return
+	var plant := body as PlantDefense
+	if plant == null:
+		return
+	damaged_bodies[body_id] = true
+	if plant.is_dead:
+		return
+	var impact_direction := global_position.direction_to(plant.global_position)
+	plant.receive_damage(
+		damage,
+		self,
+		impact_direction,
+		EnemyConfig.DamageType.PHYSICAL
+	)
 
 
 func _spawn_explosion_effect() -> void:

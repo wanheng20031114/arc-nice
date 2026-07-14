@@ -1,0 +1,37 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scene/boss/linglan/linglan_skill2_sakura_rocket.gd" id="1_script"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/linglan_skill2_sakura_rocket.tres" id="2_frames"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_body"]
+resource_local_to_scene = true
+radius = 2.0
+height = 12.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_explosion"]
+resource_local_to_scene = true
+radius = 47.0
+
+[node name="CollectibleSakuraRocket" type="Area2D"]
+z_index = 4
+collision_layer = 128
+collision_mask = 261
+explosion_radius = 47.0
+script = ExtResource("1_script")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+texture_filter = 2
+position = Vector2(-4, 0)
+scale = Vector2(0.15, 0.15)
+sprite_frames = ExtResource("2_frames")
+animation = &"fly"
+autoplay = "fly"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_body")
+
+[node name="ExplosionShape" type="CollisionShape2D" parent="."]
+visible = false
+shape = SubResource("CircleShape2D_explosion")
+disabled = true

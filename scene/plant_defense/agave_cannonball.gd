@@ -3,9 +3,10 @@ class_name AgaveCannonball
 
 signal projectile_finished(projectile_id: int, projectile: Node)
 
+const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/complete_shape_query_2d.gd")
 const WORLD_AND_ENEMY_COLLISION_MASK := 5
 const ENEMY_COLLISION_MASK := 4
-const EXPLOSION_QUERY_MAX_RESULTS := 128
+const EXPLOSION_QUERY_BATCH_SIZE := 64
 
 @export var speed := 180.0
 @export var max_lifetime := 1.25
@@ -189,7 +190,11 @@ func _apply_explosion_damage(direct_enemy: Enemy) -> void:
 	query.collision_mask = ENEMY_COLLISION_MASK
 	query.collide_with_bodies = true
 	query.collide_with_areas = false
-	for result: Dictionary in space_state.intersect_shape(query, EXPLOSION_QUERY_MAX_RESULTS):
+	for result: Dictionary in COMPLETE_SHAPE_QUERY_2D.intersect_shape_all(
+		space_state,
+		query,
+		EXPLOSION_QUERY_BATCH_SIZE
+	):
 		_add_explosion_target(targets, result.get("collider") as Enemy)
 
 	for enemy: Enemy in targets.values():

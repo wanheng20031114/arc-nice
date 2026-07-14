@@ -28,7 +28,7 @@ const PROJECTILE_CASES := [
 	},
 	{
 		"label": "collectible_sakura_rocket",
-		"scene": preload("res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn"),
+		"scene": preload("res://scene/collectible_sakura_rocket.tscn"),
 		"expected_lifetime": 5.0,
 	},
 ]

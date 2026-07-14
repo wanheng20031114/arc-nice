@@ -2342,6 +2342,23 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			"Client-style hit reports must never settle Tiyi sniper damage."
 		)
 		mp_game.call(
+			"_remember_projectile_record",
+			2000004,
+			2,
+			&"skill1_bomb",
+			11,
+			2.0
+		)
+		_expect(
+			not bool(mp_game.call(
+				"_is_client_enemy_hit_report_allowed",
+				2000004,
+				2,
+				2
+			)),
+			"Client hit reports must never settle Host-authoritative Skill1 bomb damage."
+		)
+		mp_game.call(
 			"_apply_enemy_hit_report",
 			2000003,
 			2,

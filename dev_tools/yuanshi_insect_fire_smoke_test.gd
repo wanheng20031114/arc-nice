@@ -102,11 +102,23 @@ func _assert_bomber_explosion_query_contract(
 ) -> void:
 	var inside_player := _spawn_player(Vector2(enemy_config.explosion_radius - 10.0, 0.0))
 	var outside_player := _spawn_player(Vector2(enemy_config.explosion_radius + 10.0, 0.0))
+	var dense_players: Array[Player] = []
+	for player_index in range(24):
+		var angle := TAU * float(player_index) / 24.0
+		var dense_player := _spawn_player(
+			Vector2.RIGHT.rotated(angle) * enemy_config.explosion_radius * 0.45
+		)
+		dense_player.invincibility_duration = 0.0
+		dense_player.invincibility_time_left = 0.0
+		dense_player.set_physics_process(false)
+		dense_players.append(dense_player)
 	var bomber := enemy_config.enemy_scene.instantiate() as YuanshiInsectExploder
 	_expect(bomber != null, "%s scene must instantiate YuanshiInsectExploder." % contract_name)
 	if bomber == null:
 		inside_player.queue_free()
 		outside_player.queue_free()
+		for dense_player in dense_players:
+			dense_player.queue_free()
 		await process_frame
 		return
 
@@ -134,6 +146,9 @@ func _assert_bomber_explosion_query_contract(
 	inside_player.invincibility_time_left = 0.0
 	var inside_health := inside_player.current_health
 	var outside_health := outside_player.current_health
+	var dense_health_before: Dictionary = {}
+	for dense_player in dense_players:
+		dense_health_before[dense_player.get_instance_id()] = dense_player.current_health
 	bomber.call("_try_apply_explosion_damage")
 	_expect(
 		inside_player.current_health == inside_health - enemy_config.explosion_damage,
@@ -148,10 +163,28 @@ func _assert_bomber_explosion_query_contract(
 		outside_player.current_health == outside_health,
 		"%s explicit explosion query damaged a player beyond its configured radius." % contract_name
 	)
+	for dense_player in dense_players:
+		var expected_health := (
+			int(dense_health_before[dense_player.get_instance_id()])
+			- enemy_config.explosion_damage
+		)
+		_expect(
+			dense_player.current_health == expected_health,
+			"%s dense explosion query skipped player %d after the legacy result cap."
+			% [contract_name, dense_player.get_instance_id()]
+		)
+	var health_after_first_explosion := inside_player.current_health
+	bomber.call("_try_apply_explosion_damage")
+	_expect(
+		inside_player.current_health == health_after_first_explosion,
+		"%s applied the same death explosion more than once." % contract_name
+	)
 
 	bomber.queue_free()
 	inside_player.queue_free()
 	outside_player.queue_free()
+	for dense_player in dense_players:
+		dense_player.queue_free()
 	await process_frame
 	await physics_frame
 

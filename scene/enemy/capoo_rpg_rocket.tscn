@@ -8,6 +8,7 @@ radius = 4.0
 height = 22.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_explosion"]
+resource_local_to_scene = true
 radius = 44.0
 
 [node name="CapooRPGRocket" type="Area2D" unique_id=1966445983]

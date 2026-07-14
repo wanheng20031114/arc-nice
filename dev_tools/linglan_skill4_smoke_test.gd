@@ -97,6 +97,28 @@ class Skill4Host:
 		})
 
 
+class LaserDamageReportHost:
+	extends Node2D
+
+	var damage_reports: Array[Dictionary] = []
+
+	func request_multiplayer_player_damage(
+		source_id: int,
+		target_peer_id: int,
+		damage: int,
+		source_type: StringName,
+		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
+	) -> bool:
+		damage_reports.append({
+			"source_id": source_id,
+			"target_peer_id": target_peer_id,
+			"damage": damage,
+			"source_type": source_type,
+			"damage_type": damage_type,
+		})
+		return true
+
+
 var failures: Array[String] = []
 var test_root: Node2D
 
@@ -114,6 +136,7 @@ func _run() -> void:
 	_test_skill4_config()
 	await _test_skill4_scene_contract()
 	await _test_laser_and_orb_damage()
+	await _test_laser_query_cadence_and_multiplayer_event_ids()
 	await _test_game_helpers()
 	await _test_skill_rotation_policy()
 	await _test_boss_skill4_schedule()
@@ -298,11 +321,13 @@ func _test_laser_and_orb_damage() -> void:
 	orb_player.physical_defense = 0
 	orb_player.magic_defense = 50
 	orb_player._base_magic_defense = 50
+	await physics_frame
 	var orb := ORB_SCENE.instantiate() as ORB_SCRIPT
 	test_root.add_child(orb)
 	orb.global_position = Vector2.ZERO
 	orb.setup(Vector2.RIGHT, 50, 0.0, 10.0, 8.0)
 	await physics_frame
+	await process_frame
 	orb.call("_physics_process", 0.016)
 	_expect(orb_player.current_health == 175, "Skill4 orb must use magic damage and respect 50 magic defense.")
 	orb.call("_physics_process", 0.016)
@@ -319,6 +344,63 @@ func _test_laser_and_orb_damage() -> void:
 	_expect(moving_orb.global_position.is_equal_approx(Vector2(-20.0, 0.0)), "Skill4 orb must move at configured speed.")
 	moving_orb.queue_free()
 	await process_frame
+
+
+func _test_laser_query_cadence_and_multiplayer_event_ids() -> void:
+	var report_host := LaserDamageReportHost.new()
+	report_host.name = "LaserDamageReportHost"
+	root.add_child(report_host)
+	current_scene = report_host
+
+	var field := LASER_FIELD_SCENE.instantiate() as LASER_FIELD_SCRIPT
+	report_host.add_child(field)
+	field.setup(
+		Vector2(-48.0, -16.0),
+		Vector2(288.0, 256.0),
+		Vector2(32.0, 64.0),
+		Vector2(208.0, 176.0),
+		50,
+		6.0,
+		3.0
+	)
+	field.set_physics_process(false)
+
+	for _frame_index in range(10):
+		field.call("_physics_process", 0.01)
+	_expect(
+		int(field.get("_overlap_damage_query_count")) == 1,
+		"Skill4 laser must query overlaps once per damage interval, not every physics frame."
+	)
+	field.call("_physics_process", 0.42)
+	_expect(
+		int(field.get("_overlap_damage_query_count")) == 2,
+		"Skill4 laser must query again when its 0.5s damage interval elapses."
+	)
+
+	var player := _spawn_player(report_host, Vector2(500.0, 500.0), 77, 200)
+	field.call("_apply_player_damage", player)
+	field.call("_tick_player_damage_cooldowns", field.contact_damage_interval)
+	field.call("_apply_player_damage", player)
+	_expect(
+		report_host.damage_reports.size() == 2,
+		"Skill4 multiplayer laser must report every legal repeated damage pulse."
+	)
+	if report_host.damage_reports.size() == 2:
+		_expect(
+			int(report_host.damage_reports[0]["source_id"])
+			!= int(report_host.damage_reports[1]["source_id"]),
+			"Repeated Skill4 laser pulses must use distinct multiplayer event IDs."
+		)
+		_expect(
+			report_host.damage_reports[0]["source_type"] == &"linglan_skill4_laser"
+			and report_host.damage_reports[1]["source_type"] == &"linglan_skill4_laser",
+			"Skill4 laser event IDs must not change the authored damage source type."
+		)
+
+	report_host.queue_free()
+	current_scene = test_root
+	await process_frame
+	await physics_frame
 
 
 func _test_game_helpers() -> void:

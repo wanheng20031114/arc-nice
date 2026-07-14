@@ -1,8 +1,6 @@
 extends Area2D
 class_name LinglanSkill4LightOrb
 
-const PLAYER_COLLISION_MASK := 2
-const DAMAGE_QUERY_MAX_RESULTS := 16
 const PULSE_MIN := 0.9
 const PULSE_MAX := 1.12
 
@@ -79,7 +77,6 @@ func _physics_process(delta: float) -> void:
 		return
 	global_position += direction * speed * safe_delta
 	_update_visual_pulse()
-	_apply_overlap_damage()
 
 
 func _apply_current_radius() -> void:
@@ -114,24 +111,8 @@ func _duplicate_polygon_materials() -> void:
 
 
 func _on_body_entered(body: Node2D) -> void:
+	# The radius is constant, so Area2D events replace per-frame overlap polling.
 	_apply_player_damage(body as Player)
-
-
-func _apply_overlap_damage() -> void:
-	var circle_shape := collision_shape.shape as CircleShape2D
-	if circle_shape == null:
-		return
-	var query := PhysicsShapeQueryParameters2D.new()
-	query.shape = circle_shape
-	query.transform = Transform2D(0.0, global_position)
-	query.collision_mask = PLAYER_COLLISION_MASK
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	query.exclude = [get_rid()]
-
-	var results := get_world_2d().direct_space_state.intersect_shape(query, DAMAGE_QUERY_MAX_RESULTS)
-	for result in results:
-		_apply_player_damage(result.get("collider") as Player)
 
 
 func _apply_player_damage(player: Player) -> void:

@@ -187,7 +187,9 @@ func _test_rocket_explosion_paths() -> void:
 	_expect(spawned_explosions.size() >= 1, "RPG rocket did not spawn an explosion on lifetime expiry.")
 
 	spawned_explosions.clear()
-	var player := _spawn_player(Vector2.ZERO, 100)
+	# Pass an explicit direct collider outside the blast circle. This proves the
+	# collision target is not dependent on the unordered follow-up area query.
+	var player := _spawn_player(Vector2(120.0, 0.0), 100)
 	await physics_frame
 	var direct_rocket := _spawn_rocket(Vector2.ZERO, Vector2.RIGHT, 20, 0.0, 3.0)
 	await physics_frame
