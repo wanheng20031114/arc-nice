@@ -59,12 +59,17 @@ func setup(
 			_baseline_raw_terrain[cell] = terrain_map.get_terrain_type(cell)
 	_tick_accumulator = 0.0
 	_clear_overlay()
-	set_process(true)
+	_refresh_process_enabled()
 	return true
 
 
 func set_authoritative(value: bool) -> void:
+	if authoritative == value:
+		return
 	authoritative = value
+	_resolve_due_sources()
+	_rebuild_overlay()
+	_refresh_process_enabled()
 
 
 func is_configured() -> bool:
@@ -96,6 +101,7 @@ func register_source(
 	_sources[source_id] = source
 	_resolve_due_sources()
 	_rebuild_overlay()
+	_refresh_process_enabled()
 	return true
 
 
@@ -126,6 +132,7 @@ func cancel_source(source_id: int) -> bool:
 
 	_emit_terrain_changes(terrain_changes)
 	_rebuild_overlay()
+	_refresh_process_enabled()
 	return true
 
 
@@ -143,6 +150,7 @@ func advance_time(delta_seconds: float) -> void:
 			_sources[source_id] = source
 	_resolve_due_sources()
 	_rebuild_overlay()
+	_refresh_process_enabled()
 
 
 func has_source(source_id: int) -> bool:
@@ -273,6 +281,7 @@ func _build_source(origin_cell: Vector2i, initial_elapsed_seconds: float) -> Dic
 		"origin": origin_cell,
 		"elapsed": clampf(initial_elapsed_seconds, 0.0, TOTAL_SPREAD_SECONDS),
 		"rings": rings,
+		"next_ring": 1,
 		"resolved": {},
 		"owned": {},
 	}
@@ -288,6 +297,7 @@ func _set_source_elapsed_forward(source_id: int, elapsed_seconds: float) -> bool
 	_sources[source_id] = source
 	_resolve_due_sources()
 	_rebuild_overlay()
+	_refresh_process_enabled()
 	return true
 
 
@@ -303,15 +313,26 @@ func _resolve_due_sources() -> void:
 		var resolved: Dictionary = source["resolved"]
 		var owned: Dictionary = source["owned"]
 		var rings: Array = source["rings"]
+		var elapsed := float(source["elapsed"])
+		var next_ring := clampi(
+			int(source.get("next_ring", 1)),
+			1,
+			SPREAD_RADIUS + 1
+		)
 
-		for ring in range(1, SPREAD_RADIUS + 1):
+		# A ring can change terrain only once, exactly at its authored deadline.
+		# Keep the next unresolved ring as a cursor instead of rescanning all 80
+		# cells for every source at 10 Hz.
+		while (
+			next_ring <= SPREAD_RADIUS
+			and elapsed >= float(next_ring) * SECONDS_PER_RING
+		):
+			var ring := next_ring
 			var ring_cells: Array[Vector2i] = rings[ring]
 			for cell in ring_cells:
 				if resolved.has(cell):
 					continue
 				if _generated_cells.has(cell):
-					if float(source["elapsed"]) < float(ring) * SECONDS_PER_RING:
-						continue
 					_add_generated_owner(cell, source_id)
 					resolved[cell] = true
 					owned[cell] = true
@@ -324,8 +345,6 @@ func _resolve_due_sources() -> void:
 				):
 					resolved[cell] = true
 					continue
-				if float(source["elapsed"]) < float(ring) * SECONDS_PER_RING:
-					continue
 
 				_generated_cells[cell] = {
 					"original_raw_terrain": raw_terrain,
@@ -335,7 +354,9 @@ func _resolve_due_sources() -> void:
 				owned[cell] = true
 				terrain_map.set_tile(cell, DualGridTilemap.TerrainType.GRASS)
 				terrain_changes[cell] = DualGridTilemap.TerrainType.GRASS
+			next_ring += 1
 
+		source["next_ring"] = next_ring
 		source["resolved"] = resolved
 		source["owned"] = owned
 		_sources[source_id] = source
@@ -356,29 +377,57 @@ func _collect_overlay_progress() -> Dictionary:
 		return overlay_progress
 	for source_id_variant in _sources:
 		var source: Dictionary = _sources[int(source_id_variant)]
-		var resolved: Dictionary = source["resolved"]
-		var elapsed := float(source["elapsed"])
-		var rings: Array = source["rings"]
-		for ring in range(1, SPREAD_RADIUS + 1):
-			var ring_start := float(ring - 1) * SECONDS_PER_RING
-			var progress := clampf((elapsed - ring_start) / SECONDS_PER_RING, 0.0, 1.0)
-			if progress <= 0.0:
-				continue
-			var ring_cells: Array[Vector2i] = rings[ring]
-			for cell in ring_cells:
-				if resolved.has(cell):
-					continue
-				var raw_terrain := terrain_map.get_terrain_type(cell)
-				if (
-					raw_terrain != DualGridTilemap.TerrainType.EMPTY
-					and raw_terrain != DualGridTilemap.TerrainType.DIRT
-				):
-					continue
-				overlay_progress[cell] = maxf(
-					float(overlay_progress.get(cell, 0.0)),
-					progress
+		if authoritative:
+			var active_ring := int(source.get("next_ring", 1))
+			if active_ring <= SPREAD_RADIUS:
+				_collect_source_ring_overlay_progress(
+					source,
+					active_ring,
+					overlay_progress
 				)
+			continue
+		for ring in range(1, SPREAD_RADIUS + 1):
+			_collect_source_ring_overlay_progress(source, ring, overlay_progress)
 	return overlay_progress
+
+
+func _collect_source_ring_overlay_progress(
+	source: Dictionary,
+	ring: int,
+	overlay_progress: Dictionary
+) -> void:
+	var elapsed := float(source["elapsed"])
+	var ring_start := float(ring - 1) * SECONDS_PER_RING
+	var progress := clampf((elapsed - ring_start) / SECONDS_PER_RING, 0.0, 1.0)
+	if progress <= 0.0:
+		return
+	var resolved: Dictionary = source["resolved"]
+	var rings: Array = source["rings"]
+	var ring_cells: Array[Vector2i] = rings[ring]
+	for cell in ring_cells:
+		if resolved.has(cell):
+			continue
+		var raw_terrain := terrain_map.get_terrain_type(cell)
+		if (
+			raw_terrain != DualGridTilemap.TerrainType.EMPTY
+			and raw_terrain != DualGridTilemap.TerrainType.DIRT
+		):
+			continue
+		overlay_progress[cell] = maxf(
+			float(overlay_progress.get(cell, 0.0)),
+			progress
+		)
+
+
+func _refresh_process_enabled() -> void:
+	var has_incomplete_source := false
+	if terrain_map != null:
+		for source_variant in _sources.values():
+			var source := source_variant as Dictionary
+			if float(source.get("elapsed", 0.0)) < TOTAL_SPREAD_SECONDS:
+				has_incomplete_source = true
+				break
+	set_process(has_incomplete_source)
 
 
 func _rebuild_overlay() -> void:

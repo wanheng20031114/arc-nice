@@ -292,28 +292,151 @@ func _test_skill1_upgrade_costs_and_charge_duration() -> void:
 func _test_explosion_audio_limiter() -> void:
 	var audio_root := Node2D.new()
 	test_root.add_child(audio_root)
-	var players: Array[AudioStreamPlayer2D] = []
-	for _index in range(EXPLOSION_AUDIO_LIMITER.MAX_SIMULTANEOUS_EXPLOSIONS + 1):
-		var audio_player := AudioStreamPlayer2D.new()
-		audio_player.stream = EXPLOSION_STREAM
-		audio_player.volume_db = -5.0
-		audio_root.add_child(audio_player)
-		players.append(audio_player)
-		EXPLOSION_AUDIO_LIMITER.play(audio_player)
-
-	_expect(players[0].playing, "First explosion audio must play.")
-	_expect(
-		players[1].volume_db < players[0].volume_db,
-		"Stacked explosion audio must be attenuated."
+	_test_audio_limiter_category(
+		audio_root,
+		&"explosion",
+		EXPLOSION_AUDIO_LIMITER.EXPLOSION_AUDIO_GROUP,
+		EXPLOSION_AUDIO_LIMITER.MAX_SIMULTANEOUS_EXPLOSIONS,
+		EXPLOSION_AUDIO_LIMITER.STACK_ATTENUATION_DB,
+		EXPLOSION_AUDIO_LIMITER.MAX_STACK_ATTENUATION_DB
 	)
+	_test_audio_limiter_category(
+		audio_root,
+		&"enemy_hit",
+		EXPLOSION_AUDIO_LIMITER.ENEMY_HIT_AUDIO_GROUP,
+		EXPLOSION_AUDIO_LIMITER.MAX_SIMULTANEOUS_ENEMY_HITS,
+		EXPLOSION_AUDIO_LIMITER.ENEMY_HIT_STACK_ATTENUATION_DB,
+		EXPLOSION_AUDIO_LIMITER.ENEMY_HIT_MAX_STACK_ATTENUATION_DB
+	)
+	_test_audio_limiter_category(
+		audio_root,
+		&"enemy_death",
+		EXPLOSION_AUDIO_LIMITER.ENEMY_DEATH_AUDIO_GROUP,
+		EXPLOSION_AUDIO_LIMITER.MAX_SIMULTANEOUS_ENEMY_DEATHS,
+		EXPLOSION_AUDIO_LIMITER.ENEMY_DEATH_STACK_ATTENUATION_DB,
+		EXPLOSION_AUDIO_LIMITER.ENEMY_DEATH_MAX_STACK_ATTENUATION_DB
+	)
+
+	var stopped_player := _create_audio_player(audio_root, EXPLOSION_STREAM, -5.0)
+	EXPLOSION_AUDIO_LIMITER.play(stopped_player)
+	stopped_player.stop()
+	var replacement_player := _create_audio_player(audio_root, EXPLOSION_STREAM, -5.0)
+	EXPLOSION_AUDIO_LIMITER.play(replacement_player)
 	_expect(
-		not players[players.size() - 1].playing,
-		"Explosion audio above the simultaneous cap must be dropped."
+		not stopped_player.is_in_group(EXPLOSION_AUDIO_LIMITER.EXPLOSION_AUDIO_GROUP),
+		"Stopped explosion audio must be pruned before the next limited playback."
+	)
+	_expect(replacement_player.playing, "Stopped audio must not consume an explosion slot.")
+	_expect(
+		is_equal_approx(replacement_player.volume_db, -5.0),
+		"Stopped audio must not attenuate the next explosion."
+	)
+	replacement_player.stop()
+	EXPLOSION_AUDIO_LIMITER._count_active_explosion_players(self)
+
+	var natural_player := _create_audio_player(audio_root, _create_short_audio_stream(), -5.0)
+	EXPLOSION_AUDIO_LIMITER.play(natural_player)
+	_expect(natural_player.playing, "Short explosion audio must begin playback.")
+	for _frame_index in range(120):
+		if not natural_player.playing:
+			break
+		await process_frame
+	_expect(not natural_player.playing, "Short explosion audio did not finish naturally.")
+	_expect(
+		not natural_player.is_in_group(EXPLOSION_AUDIO_LIMITER.EXPLOSION_AUDIO_GROUP),
+		"Naturally finished explosion audio must leave the limiter group immediately."
 	)
 
 	audio_root.queue_free()
 	await process_frame
 	await physics_frame
+
+
+func _test_audio_limiter_category(
+	audio_root: Node2D,
+	category: StringName,
+	audio_group: StringName,
+	max_simultaneous_count: int,
+	stack_attenuation_db: float,
+	max_stack_attenuation_db: float
+) -> void:
+	var players: Array[AudioStreamPlayer2D] = []
+	for _index in range(max_simultaneous_count + 1):
+		var audio_player := _create_audio_player(audio_root, EXPLOSION_STREAM, -5.0)
+		players.append(audio_player)
+		_play_audio_limiter_category(category, audio_player)
+
+	_expect(players[0].playing, "%s first audio must play." % category)
+	_expect(
+		is_equal_approx(players[0].volume_db, -5.0),
+		"%s first audio must preserve its base volume." % category
+	)
+	_expect(
+		not players[players.size() - 1].playing,
+		"%s audio above the simultaneous cap must be dropped." % category
+	)
+	_expect(
+		not players[players.size() - 1].is_in_group(audio_group),
+		"%s rejected audio must not enter the active group." % category
+	)
+	var expected_last_volume := -5.0 - minf(
+		float(max_simultaneous_count - 1) * stack_attenuation_db,
+		max_stack_attenuation_db
+	)
+	_expect(
+		is_equal_approx(players[max_simultaneous_count - 1].volume_db, expected_last_volume),
+		"%s stacked attenuation changed." % category
+	)
+	_expect(
+		EXPLOSION_AUDIO_LIMITER._count_active_audio_players(self, audio_group)
+		== max_simultaneous_count,
+		"%s active audio count must equal its concurrency cap." % category
+	)
+
+	for audio_player in players:
+		audio_player.stop()
+	_expect(
+		EXPLOSION_AUDIO_LIMITER._count_active_audio_players(self, audio_group) == 0,
+		"%s stopped audio must not accumulate in the limiter group." % category
+	)
+	_expect(
+		get_nodes_in_group(audio_group).is_empty(),
+		"%s limiter group must contain active players only." % category
+	)
+
+
+func _play_audio_limiter_category(category: StringName, audio_player: AudioStreamPlayer2D) -> void:
+	match category:
+		&"explosion":
+			EXPLOSION_AUDIO_LIMITER.play(audio_player)
+		&"enemy_hit":
+			EXPLOSION_AUDIO_LIMITER.play_enemy_hit(audio_player)
+		&"enemy_death":
+			EXPLOSION_AUDIO_LIMITER.play_enemy_death(audio_player)
+
+
+func _create_audio_player(
+	audio_root: Node2D,
+	stream: AudioStream,
+	volume_db: float
+) -> AudioStreamPlayer2D:
+	var audio_player := AudioStreamPlayer2D.new()
+	audio_player.stream = stream
+	audio_player.volume_db = volume_db
+	audio_root.add_child(audio_player)
+	return audio_player
+
+
+func _create_short_audio_stream() -> AudioStreamWAV:
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_8_BITS
+	stream.mix_rate = 8000
+	stream.stereo = false
+	var sample_data := PackedByteArray()
+	sample_data.resize(800)
+	sample_data.fill(128)
+	stream.data = sample_data
+	return stream
 
 
 func _test_skill_charge_and_bomb_direction() -> void:

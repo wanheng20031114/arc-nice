@@ -24,6 +24,7 @@ var occupied_cells: Dictionary = {}
 var plant_footprints: Dictionary = {}
 var reserved_cells: Dictionary = {}
 var plants_by_net_id: Dictionary[int, PlantDefense] = {}
+var _nearest_plant_candidate_cache: Dictionary = {}
 
 
 func setup(
@@ -38,6 +39,7 @@ func setup(
 	owner_player = new_owner_player
 	plant_container = new_plant_container
 	placement_area = new_placement_area
+	_invalidate_nearest_plant_candidate_cache()
 
 
 func configure(
@@ -319,8 +321,65 @@ func find_nearest_living_plant(
 	var maximum_distance_squared := max_radius_cells * max_radius_cells
 	var nearest_plant: PlantDefense = null
 	var nearest_distance_squared := INF
-	for cell_y in range(center_cell.y - search_radius, center_cell.y + search_radius + 1):
-		for cell_x in range(center_cell.x - search_radius, center_cell.x + search_radius + 1):
+	var candidates := _get_nearest_plant_candidates(center_cell, search_radius)
+	for candidate_variant in candidates:
+		var plant := candidate_variant as PlantDefense
+		if (
+			plant == null
+			or not is_instance_valid(plant)
+			or plant.is_dead
+			or plant.is_queued_for_deletion()
+		):
+			continue
+		# Candidate membership is cached by logical cell topology, but distance
+		# always uses the current world positions. Enemies sharing a cell can
+		# therefore reuse the broad candidate set without sharing a target result.
+		var plant_local := ground_tile_map.to_local(plant.global_position)
+		var offset_in_cells := Vector2(
+			(plant_local.x - from_local.x) / tile_size.x,
+			(plant_local.y - from_local.y) / tile_size.y
+		)
+		var distance_squared := offset_in_cells.length_squared()
+		if (
+			distance_squared <= maximum_distance_squared
+			and distance_squared < nearest_distance_squared
+		):
+			nearest_distance_squared = distance_squared
+			nearest_plant = plant
+	return nearest_plant
+
+
+func _get_nearest_plant_candidates(
+	center_cell: Vector2i,
+	search_radius: int
+) -> Array:
+	var safe_search_radius := maxi(search_radius, 0)
+	var cache_key := Vector3i(center_cell.x, center_cell.y, safe_search_radius)
+	if _nearest_plant_candidate_cache.has(cache_key):
+		return _nearest_plant_candidate_cache[cache_key] as Array
+
+	var candidates := _build_nearest_plant_candidates(
+		center_cell,
+		safe_search_radius
+	)
+	_nearest_plant_candidate_cache[cache_key] = candidates
+	return candidates
+
+
+func _build_nearest_plant_candidates(
+	center_cell: Vector2i,
+	search_radius: int
+) -> Array[PlantDefense]:
+	var candidates: Array[PlantDefense] = []
+	var seen_instance_ids: Dictionary[int, bool] = {}
+	for cell_y in range(
+		center_cell.y - search_radius,
+		center_cell.y + search_radius + 1
+	):
+		for cell_x in range(
+			center_cell.x - search_radius,
+			center_cell.x + search_radius + 1
+		):
 			var plant := occupied_cells.get(Vector2i(cell_x, cell_y)) as PlantDefense
 			if (
 				plant == null
@@ -329,19 +388,16 @@ func find_nearest_living_plant(
 				or plant.is_queued_for_deletion()
 			):
 				continue
-			var plant_local := ground_tile_map.to_local(plant.global_position)
-			var offset_in_cells := Vector2(
-				(plant_local.x - from_local.x) / tile_size.x,
-				(plant_local.y - from_local.y) / tile_size.y
-			)
-			var distance_squared := offset_in_cells.length_squared()
-			if (
-				distance_squared <= maximum_distance_squared
-				and distance_squared < nearest_distance_squared
-			):
-				nearest_distance_squared = distance_squared
-				nearest_plant = plant
-	return nearest_plant
+			var instance_id := plant.get_instance_id()
+			if seen_instance_ids.has(instance_id):
+				continue
+			seen_instance_ids[instance_id] = true
+			candidates.append(plant)
+	return candidates
+
+
+func _invalidate_nearest_plant_candidate_cache() -> void:
+	_nearest_plant_candidate_cache.clear()
 
 
 func get_plant_by_net_id(net_id: int) -> PlantDefense:
@@ -485,6 +541,7 @@ func _register_plant_footprint(plant: PlantDefense, cells: Array[Vector2i]) -> v
 	plant_footprints[plant] = cells.duplicate()
 	for cell in cells:
 		occupied_cells[cell] = plant
+	_invalidate_nearest_plant_candidate_cache()
 	occupancy_changed.emit()
 
 
@@ -501,6 +558,7 @@ func _release_plant_footprint(plant: PlantDefense) -> void:
 		var cell: Vector2i = cell_variant
 		if occupied_cells.get(cell) == plant:
 			occupied_cells.erase(cell)
+	_invalidate_nearest_plant_candidate_cache()
 	occupancy_changed.emit()
 	plant_removed.emit(plant)
 

@@ -3,6 +3,7 @@ extends SceneTree
 const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const FIRE_RANGED_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres")
+const AGAVE_CONFIG := preload("res://resources/config/plant_defense/agave_cannon.tres")
 const RETARGET_STRESS_ENEMY_COUNT := 300
 const EXPECTED_HOME_CELLS: Array[Vector2i] = [
 	Vector2i(2, 22),
@@ -71,6 +72,7 @@ func _run() -> void:
 	await _verify_physical_home_gate_trigger(game)
 	await _verify_far_linear_enemy_reaches_home(game)
 	_verify_target_selection(game)
+	await _verify_singleplayer_combat_target_index_and_agave(game)
 	_verify_enemy_contract(game)
 	_verify_home_damage_resources()
 	_expect(game.bosses.is_empty(), "Tower-defense Campaign must not contain a Boss step.")
@@ -528,6 +530,143 @@ func _verify_retarget_budget(game: GameTowerDefense, gate: Node2D) -> void:
 	for enemy in enemies:
 		enemy.free()
 	_release_target_probe_plant(game, far_plant)
+
+
+func _verify_singleplayer_combat_target_index_and_agave(
+	game: GameTowerDefense
+) -> void:
+	var agave := AGAVE_CONFIG.plant_scene.instantiate() as AgaveCannon
+	_expect(agave != null, "Single-player target-index verification requires an Agave cannon.")
+	if agave == null:
+		return
+	var fixture_origin := Vector2(5000.0, 5000.0)
+	game.plant_container.add_child(agave)
+	agave.global_position = fixture_origin
+	agave.setup(AGAVE_CONFIG, game.player, [Vector2i(300, 300)])
+	agave.attack_timer.stop()
+	agave.call("_stop_idle_aim")
+
+	var blocked_near_enemy := _spawn_singleplayer_index_probe_enemy(
+		game,
+		fixture_origin + Vector2(48.0, 0.0)
+	)
+	var clear_middle_enemy := _spawn_singleplayer_index_probe_enemy(
+		game,
+		fixture_origin + Vector2(0.0, 80.0)
+	)
+	var outside_range_enemy := _spawn_singleplayer_index_probe_enemy(
+		game,
+		fixture_origin + Vector2(220.0, 0.0)
+	)
+	_expect(
+		blocked_near_enemy != null
+		and clear_middle_enemy != null
+		and outside_range_enemy != null,
+		"Single-player target-index verification must instantiate all probe enemies."
+	)
+	if blocked_near_enemy == null or clear_middle_enemy == null or outside_range_enemy == null:
+		for enemy in [blocked_near_enemy, clear_middle_enemy, outside_range_enemy]:
+			if enemy != null and is_instance_valid(enemy):
+				enemy.free()
+		agave.free()
+		return
+
+	await physics_frame
+	var near_enemy_id := blocked_near_enemy.get_instance_id()
+	var middle_enemy_id := clear_middle_enemy.get_instance_id()
+	var outside_enemy_id := outside_range_enemy.get_instance_id()
+	_expect(
+		game.combat_target_index.get_enemy(near_enemy_id) == blocked_near_enemy
+		and game.combat_target_index.get_enemy(middle_enemy_id) == clear_middle_enemy
+		and game.combat_target_index.get_enemy(outside_enemy_id) == outside_range_enemy,
+		"Enemies manually added to the single-player EnemyContainer must auto-register."
+	)
+
+	var indexed_targets := game.query_combat_targets(
+		fixture_origin,
+		agave.configured_attack_range,
+		0
+	)
+	_expect(
+		indexed_targets.size() == 2
+		and indexed_targets[0] == blocked_near_enemy
+		and indexed_targets[1] == clear_middle_enemy,
+		"Single-player radius queries must use deterministic distance-ordered buckets."
+	)
+
+	game.unregister_combat_target(near_enemy_id)
+	_expect(
+		not game.query_combat_targets(
+			fixture_origin,
+			agave.configured_attack_range,
+			0
+		).has(blocked_near_enemy),
+		"Single-player queries must read the index instead of rescanning EnemyContainer."
+	)
+	game.enemy_container.remove_child(blocked_near_enemy)
+	game.enemy_container.add_child(blocked_near_enemy)
+	blocked_near_enemy.global_position = fixture_origin + Vector2(48.0, 0.0)
+	_expect(
+		game.combat_target_index.get_enemy(near_enemy_id) == blocked_near_enemy,
+		"Re-entering EnemyContainer must restore single-player target registration."
+	)
+	_expect(
+		agave.call("_select_nearest_visible_enemy") == blocked_near_enemy,
+		"Agave must select the first clear target from the ordered runtime query."
+	)
+
+	var blocker := StaticBody2D.new()
+	blocker.collision_layer = 1
+	blocker.collision_mask = 0
+	var blocker_shape_node := CollisionShape2D.new()
+	var blocker_shape := RectangleShape2D.new()
+	blocker_shape.size = Vector2(12.0, 24.0)
+	blocker_shape_node.shape = blocker_shape
+	blocker.add_child(blocker_shape_node)
+	game.add_child(blocker)
+	blocker.global_position = fixture_origin + Vector2(24.0, 0.0)
+	await physics_frame
+	_expect(
+		agave.call("_select_nearest_visible_enemy") == clear_middle_enemy,
+		"Agave must skip an obstructed nearest target and return the next clear target."
+	)
+
+	game.enemy_container.remove_child(blocked_near_enemy)
+	_expect(
+		game.combat_target_index.get_enemy(near_enemy_id) == null
+		and not game.query_combat_targets(
+			fixture_origin,
+			agave.configured_attack_range,
+			0
+		).has(blocked_near_enemy),
+		"Leaving EnemyContainer must synchronously remove a single-player target."
+	)
+	blocked_near_enemy.free()
+	clear_middle_enemy.free()
+	outside_range_enemy.free()
+	blocker.free()
+	agave.free()
+	_expect(
+		game.combat_target_index.get_enemy(middle_enemy_id) == null
+		and game.combat_target_index.get_enemy(outside_enemy_id) == null,
+		"Freeing indexed enemies must release every single-player target mapping."
+	)
+
+
+func _spawn_singleplayer_index_probe_enemy(
+	game: GameTowerDefense,
+	spawn_position: Vector2
+) -> Enemy:
+	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
+	if enemy == null:
+		return null
+	game.enemy_container.add_child(enemy)
+	enemy.global_position = spawn_position
+	enemy.setup(BASIC_CONFIG, game.player, null)
+	enemy.set_process(false)
+	enemy.set_physics_process(false)
+	enemy.velocity = Vector2.ZERO
+	return enemy
 
 
 func _verify_enemy_contract(game: GameTowerDefense) -> void:

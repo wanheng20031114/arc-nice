@@ -111,7 +111,9 @@ func _test_ring_geometry_and_pixel_hash() -> void:
 
 func _test_all_ring_deadlines_and_full_teardown() -> void:
 	await _build_fixture(Rect2i(-6, -6, 13, 13), true)
+	_expect(not spread.is_processing(), "没有传播来源时不应保留每帧处理。")
 	_expect(spread.register_source(70, Vector2i.ZERO), "五圈边界测试必须能注册权威来源。")
+	_expect(spread.is_processing(), "注册未完成来源后必须启用计时处理。")
 	var completed_cell_counts := [0, 4, 12, 28, 48, 88]
 	var ring_cell_counts := [0, 4, 8, 16, 20, 40]
 	var elapsed := 0.0
@@ -138,6 +140,7 @@ func _test_all_ring_deadlines_and_full_teardown() -> void:
 		)
 
 	_expect(spread.get_overlay_cell_count() == 0, "50秒全部五圈完成后不能残留临时绿化覆盖。")
+	_expect(not spread.is_processing(), "全部来源完成后必须停用每帧处理。")
 	for ring in range(1, VegetationSpreadSystem.SPREAD_RADIUS + 1):
 		for offset in VegetationSpreadSystem.get_ring_offsets(ring):
 			_expect(
@@ -147,7 +150,7 @@ func _test_all_ring_deadlines_and_full_teardown() -> void:
 
 	_expect(spread.cancel_source(70), "全部五圈完成后来源仍必须可销毁。")
 	_expect(not spread.has_source(70), "销毁后必须删除已完成来源。")
-	_expect(terrain.raw_cells.is_empty(), "完整传播来源销毁后，其88格EMPTY草地必须全部恢复。")
+	_expect(terrain.raw_cells.is_empty(), "完整传播来源销毁后，其80格EMPTY草地必须全部恢复。")
 	_expect(spread.get_overlay_cell_count() == 0, "完整传播来源销毁后不能残留覆盖实例。")
 
 
@@ -161,6 +164,7 @@ func _test_in_progress_teardown() -> void:
 	)
 	_expect(spread.get_overlay_cell_count() == 8, "15秒时第二圈8格必须处于50%绿化过程。")
 	_expect(spread.cancel_source(71), "传播进行中的来源必须可立即销毁。")
+	_expect(not spread.is_processing(), "销毁最后一个进行中来源后必须停用每帧处理。")
 	_expect(terrain.raw_cells.is_empty(), "进行中销毁必须恢复已完成第一圈并清除未完成第二圈。")
 	_expect(spread.get_overlay_cell_count() == 0, "进行中销毁必须立即清除所有临时绿化像素。")
 
@@ -296,7 +300,7 @@ func _test_non_authoritative_client() -> void:
 	spread.register_source(50, Vector2i.ZERO)
 	spread.advance_time(50.0)
 	_expect(terrain.set_call_count == 0, "非权威客户端不能根据本地计时修改地形。")
-	_expect(spread.get_overlay_cell_count() == 88, "非权威客户端仍须显示平滑后的五圈预测绿化覆盖。")
+	_expect(spread.get_overlay_cell_count() == 80, "非权威客户端仍须显示五圈的预测绿化覆盖。")
 	spread.cancel_source(50)
 	_expect(terrain.set_call_count == 0, "非权威客户端销毁来源也不能自行恢复地形。")
 
