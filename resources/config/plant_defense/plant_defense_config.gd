@@ -19,6 +19,8 @@ const REQUIRED_FOOTPRINT_SIZE: Vector2i = Vector2i(2, 2)
 @export_range(0, 9999, 1, "or_greater") var attack_damage: int = 0
 @export_range(0.0, 99999.0, 1.0, "or_greater") var attack_speed: float = 0.0
 @export_range(0.0, 2048.0, 1.0, "or_greater") var attack_range: float = 0.0
+@export_range(1, 64, 1, "or_greater") var attack_burst_count: int = 1
+@export_range(0.0, 10.0, 0.01, "or_greater") var attack_burst_shot_interval: float = 0.0
 
 @export_group("占格")
 @export var footprint_size: Vector2i = REQUIRED_FOOTPRINT_SIZE
@@ -37,6 +39,10 @@ func is_valid() -> bool:
 		and icon != null
 		and plant_scene != null
 		and max_health > 0
+		and attack_burst_count > 0
+		and is_finite(attack_burst_shot_interval)
+		and attack_burst_shot_interval >= 0.0
+		and (attack_burst_count == 1 or attack_burst_shot_interval > 0.0)
 		and footprint_size.x > 0
 		and footprint_size.y > 0
 	)

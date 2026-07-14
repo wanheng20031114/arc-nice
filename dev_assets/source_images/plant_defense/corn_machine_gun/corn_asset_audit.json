@@ -1,0 +1,1021 @@
+{
+  "schema_version": 1,
+  "asset_family": "corn_machine_gun",
+  "status": "passed",
+  "pipeline": [
+    "built-in imagegen selected compact composite master",
+    "connected flat #FF00FF chroma key removal",
+    "reliable logical-grid analysis with fit forbidden",
+    "nearest measured logical-cell center sampling into 64px contract",
+    "shared <=48-color median-cut palette without dithering",
+    "material-aware body/turret separation with socket reconstruction",
+    "fixed-shell deterministic idle/spin/flash derivation",
+    "binary-alpha, transparent-RGB, footprint, pivot, and drift audit"
+  ],
+  "visual_contract": {
+    "source_canvas_px": [
+      64,
+      64
+    ],
+    "static_world_scale": [
+      0.5,
+      0.5
+    ],
+    "world_footprint_px": [
+      32,
+      32
+    ],
+    "maximum_subject_px": [
+      58,
+      60
+    ],
+    "body_foot": [
+      32,
+      62
+    ],
+    "body_turret_pivot": [
+      30,
+      31
+    ],
+    "head_texture_pivot": [
+      32,
+      32
+    ],
+    "muzzle_in_head_texture": [
+      57,
+      33
+    ],
+    "flash_texture_anchor": [
+      32,
+      32
+    ],
+    "alpha": "binary",
+    "transparent_rgb": [
+      0,
+      0,
+      0
+    ],
+    "visible_color_limit": 48
+  },
+  "source": {
+    "path": "dev_assets/source_images/plant_defense/corn_machine_gun/corn_machine_gun_selected_imagegen_magenta.png",
+    "normalization_mode": "measured_grid_center_sample",
+    "detected_logical_subject_size": [
+      55,
+      49
+    ],
+    "logical_subject_size": [
+      55,
+      49
+    ],
+    "logical_fit_scale": 1.0,
+    "grid_analysis": {
+      "image_width": 1254,
+      "image_height": 1254,
+      "image_mode": "RGBA",
+      "detection_mode": "approximate",
+      "grid_cell_width": 19.5,
+      "grid_cell_height": 19.7,
+      "grid_cell_size": 20,
+      "confidence": 0.885,
+      "subject_bbox": {
+        "left": 92,
+        "top": 175,
+        "right": 1164,
+        "bottom": 1142
+      },
+      "subject_pixel_width": 1072,
+      "subject_pixel_height": 967,
+      "subject_grid_width": 55,
+      "subject_grid_height": 49,
+      "recommended_canvas_grid_width": 64,
+      "recommended_canvas_grid_height": 64
+    },
+    "sha256": "1878B97FE13C9138D610BD107C5227B74CDBFE3B270382A9CD21D03F793F8E9F"
+  },
+  "master_registration": {
+    "mode": "exact inclusive-bbox bottom center",
+    "paste_origin": [
+      5,
+      14
+    ],
+    "output_foot_target": [
+      32,
+      62
+    ]
+  },
+  "segmentation": {
+    "method": "warm-material seeds, one logical-pixel outline dilation, and bounded-interior recovery for the four dark apertures and locator",
+    "search_bbox_exclusive": [
+      27,
+      18,
+      58,
+      44
+    ],
+    "warm_seed_count": 253,
+    "mask_pixel_count": 488,
+    "mask_bbox_exclusive": [
+      28,
+      20,
+      56,
+      42
+    ]
+  },
+  "socket_reconstruction": {
+    "mode": "authored-left-shell mirror plus compact 11px recessed socket",
+    "pivot": [
+      30,
+      31
+    ],
+    "mirrored_pixels": 314,
+    "radial_fill_pixels": 53,
+    "maximum_radius_source_px": 11
+  },
+  "head_registration": {
+    "mode": "source-relative shared body/head pivot registration",
+    "source_mask_bbox_exclusive": [
+      28,
+      20,
+      56,
+      42
+    ],
+    "paste_origin": [
+      30,
+      21
+    ],
+    "body_turret_pivot": [
+      30,
+      31
+    ],
+    "head_texture_pivot": [
+      32,
+      32
+    ],
+    "muzzle_in_head_texture": [
+      57,
+      33
+    ],
+    "muzzle_local_to_head_pivot": [
+      25,
+      1
+    ]
+  },
+  "aperture_audit": {
+    "visual_aperture_count": 4,
+    "visual_aperture_centroids": [
+      [
+        48.5,
+        30.0
+      ],
+      [
+        52.917,
+        29.833
+      ],
+      [
+        48.5,
+        36.0
+      ],
+      [
+        53.0,
+        36.0
+      ]
+    ],
+    "gameplay_muzzle_count": 1,
+    "gameplay_muzzle": [
+      57,
+      33
+    ],
+    "note": "The four aperture centroids are image detail, not gameplay markers."
+  },
+  "animation_derivation": {
+    "body": "fixed alpha and geometry; one deterministic interior 1px highlight substitution in each nonzero idle frame",
+    "body_changed_highlight_cells": [
+      [
+        42,
+        59
+      ],
+      [
+        42,
+        49
+      ],
+      [
+        46,
+        50
+      ]
+    ],
+    "turret": "fixed alpha, outer shell, and mount; only internal kernel row colors, four aperture interior highlights, and the asymmetric pale-green locator change by phase",
+    "spin_mutable_bbox_exclusive": [
+      33,
+      24,
+      55,
+      41
+    ],
+    "locator_source_bbox_exclusive": [
+      33,
+      32,
+      37,
+      37
+    ],
+    "locator_target_origins": [
+      [
+        33,
+        32
+      ],
+      [
+        36,
+        25
+      ],
+      [
+        41,
+        28
+      ],
+      [
+        37,
+        35
+      ]
+    ],
+    "flash_frame_count": 2,
+    "flash_texture_anchor": [
+      32,
+      32
+    ],
+    "detached_flash_in_turret_frames": false
+  },
+  "shared_palette": {
+    "visible_color_limit": 48,
+    "actual_color_count": 48,
+    "rgb": [
+      [
+        253,
+        241,
+        117
+      ],
+      [
+        233,
+        225,
+        57
+      ],
+      [
+        215,
+        220,
+        43
+      ],
+      [
+        247,
+        205,
+        13
+      ],
+      [
+        183,
+        199,
+        34
+      ],
+      [
+        244,
+        173,
+        1
+      ],
+      [
+        240,
+        166,
+        1
+      ],
+      [
+        181,
+        191,
+        30
+      ],
+      [
+        173,
+        191,
+        32
+      ],
+      [
+        153,
+        176,
+        27
+      ],
+      [
+        202,
+        141,
+        4
+      ],
+      [
+        190,
+        114,
+        1
+      ],
+      [
+        115,
+        146,
+        20
+      ],
+      [
+        111,
+        142,
+        21
+      ],
+      [
+        106,
+        139,
+        19
+      ],
+      [
+        102,
+        135,
+        19
+      ],
+      [
+        99,
+        133,
+        18
+      ],
+      [
+        98,
+        131,
+        18
+      ],
+      [
+        94,
+        128,
+        17
+      ],
+      [
+        80,
+        117,
+        13
+      ],
+      [
+        67,
+        107,
+        10
+      ],
+      [
+        153,
+        90,
+        1
+      ],
+      [
+        120,
+        73,
+        1
+      ],
+      [
+        56,
+        96,
+        8
+      ],
+      [
+        76,
+        50,
+        0
+      ],
+      [
+        50,
+        89,
+        8
+      ],
+      [
+        50,
+        85,
+        8
+      ],
+      [
+        48,
+        80,
+        7
+      ],
+      [
+        34,
+        79,
+        6
+      ],
+      [
+        29,
+        75,
+        6
+      ],
+      [
+        28,
+        73,
+        6
+      ],
+      [
+        20,
+        53,
+        5
+      ],
+      [
+        4,
+        16,
+        4
+      ],
+      [
+        4,
+        15,
+        4
+      ],
+      [
+        4,
+        14,
+        4
+      ],
+      [
+        3,
+        15,
+        4
+      ],
+      [
+        3,
+        14,
+        4
+      ],
+      [
+        3,
+        14,
+        3
+      ],
+      [
+        3,
+        14,
+        2
+      ],
+      [
+        4,
+        13,
+        3
+      ],
+      [
+        3,
+        13,
+        4
+      ],
+      [
+        3,
+        13,
+        3
+      ],
+      [
+        3,
+        13,
+        2
+      ],
+      [
+        2,
+        14,
+        3
+      ],
+      [
+        2,
+        13,
+        3
+      ],
+      [
+        3,
+        12,
+        3
+      ],
+      [
+        2,
+        12,
+        2
+      ],
+      [
+        3,
+        10,
+        2
+      ]
+    ]
+  },
+  "cross_frame_audit": {
+    "body_foot_anchors": [
+      [
+        32.0,
+        62.0
+      ],
+      [
+        32.0,
+        62.0
+      ],
+      [
+        32.0,
+        62.0
+      ],
+      [
+        32.0,
+        62.0
+      ]
+    ],
+    "body_foot_max_drift_source_px": 0,
+    "body_alpha_silhouette_drift_pixels": 0,
+    "body_pixel_differences_from_idle_0": {
+      "body_idle_0": 0,
+      "body_idle_1": 1,
+      "body_idle_2": 1,
+      "body_idle_3": 1
+    },
+    "head_texture_pivots": {
+      "turret_idle_0": [
+        32,
+        32
+      ],
+      "turret_spin_0": [
+        32,
+        32
+      ],
+      "turret_spin_1": [
+        32,
+        32
+      ],
+      "turret_spin_2": [
+        32,
+        32
+      ],
+      "turret_spin_3": [
+        32,
+        32
+      ]
+    },
+    "head_pivot_max_drift_source_px": 0,
+    "head_alpha_silhouette_drift_pixels": 0,
+    "spin_pixel_differences_from_idle_0": {
+      "turret_spin_0": 0,
+      "turret_spin_1": 149,
+      "turret_spin_2": 155,
+      "turret_spin_3": 141
+    },
+    "spin_changed_pixels_outside_mutable_bbox": {
+      "turret_spin_0": 0,
+      "turret_spin_1": 0,
+      "turret_spin_2": 0,
+      "turret_spin_3": 0
+    },
+    "icon_recomposition_diff_pixels": 0,
+    "flash_common_anchor": [
+      32,
+      32
+    ]
+  },
+  "outputs": [
+    {
+      "label": "body_idle_0",
+      "path": "resources/texture/plant_defense/corn_machine_gun/corn_body_idle_0.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        5,
+        14,
+        60,
+        63
+      ],
+      "subject_size": [
+        55,
+        49
+      ],
+      "visible_color_count": 38,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -13.5,
+        -9.0,
+        14.0,
+        15.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "body_idle_1",
+      "path": "resources/texture/plant_defense/corn_machine_gun/corn_body_idle_1.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        5,
+        14,
+        60,
+        63
+      ],
+      "subject_size": [
+        55,
+        49
+      ],
+      "visible_color_count": 38,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -13.5,
+        -9.0,
+        14.0,
+        15.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "body_idle_2",
+      "path": "resources/texture/plant_defense/corn_machine_gun/corn_body_idle_2.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        5,
+        14,
+        60,
+        63
+      ],
+      "subject_size": [
+        55,
+        49
+      ],
+      "visible_color_count": 38,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -13.5,
+        -9.0,
+        14.0,
+        15.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "body_idle_3",
+      "path": "resources/texture/plant_defense/corn_machine_gun/corn_body_idle_3.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        5,
+        14,
+        60,
+        63
+      ],
+      "subject_size": [
+        55,
+        49
+      ],
+      "visible_color_count": 38,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -13.5,
+        -9.0,
+        14.0,
+        15.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "turret_idle_0",
+      "path": "resources/texture/plant_defense/corn_machine_gun/corn_turret_idle_0.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        30,
+        21,
+        58,
+        43
+      ],
+      "subject_size": [
+        28,
+        22
+      ],
+      "visible_color_count": 38,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -1.0,
+        -5.5,
+        13.0,
+        5.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "turret_spin_0",
+      "path": "resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_0.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        30,
+        21,
+        58,
+        43
+      ],
+      "subject_size": [
+        28,
+        22
+      ],
+      "visible_color_count": 38,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -1.0,
+        -5.5,
+        13.0,
+        5.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "turret_spin_1",
+      "path": "resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_1.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        30,
+        21,
+        58,
+        43
+      ],
+      "subject_size": [
+        28,
+        22
+      ],
+      "visible_color_count": 38,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -1.0,
+        -5.5,
+        13.0,
+        5.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "turret_spin_2",
+      "path": "resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_2.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        30,
+        21,
+        58,
+        43
+      ],
+      "subject_size": [
+        28,
+        22
+      ],
+      "visible_color_count": 38,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -1.0,
+        -5.5,
+        13.0,
+        5.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "turret_spin_3",
+      "path": "resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_3.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        30,
+        21,
+        58,
+        43
+      ],
+      "subject_size": [
+        28,
+        22
+      ],
+      "visible_color_count": 38,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -1.0,
+        -5.5,
+        13.0,
+        5.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "muzzle_flash_0",
+      "path": "resources/texture/plant_defense/corn_machine_gun/corn_muzzle_flash_0.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        29,
+        29,
+        36,
+        36
+      ],
+      "subject_size": [
+        7,
+        7
+      ],
+      "visible_color_count": 4,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -1.5,
+        -1.5,
+        2.0,
+        2.0
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "muzzle_flash_1",
+      "path": "resources/texture/plant_defense/corn_machine_gun/corn_muzzle_flash_1.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        29,
+        31,
+        39,
+        34
+      ],
+      "subject_size": [
+        10,
+        3
+      ],
+      "visible_color_count": 4,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -1.5,
+        -0.5,
+        3.5,
+        1.0
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "icon",
+      "path": "resources/texture/plant_defense/corn_machine_gun/icon.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        5,
+        14,
+        60,
+        63
+      ],
+      "subject_size": [
+        55,
+        49
+      ],
+      "visible_color_count": 48,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -13.5,
+        -9.0,
+        14.0,
+        15.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    }
+  ],
+  "validation": {
+    "passed": true,
+    "failures": []
+  }
+}

@@ -15,12 +15,13 @@ func _init() -> void:
 func _run() -> void:
 	_test_channel_contract()
 	_test_terrain_payload_contract()
+	_test_corn_burst_payload_contract()
 	_test_runtime_state_send_order()
 	_test_plant_removal_restore_order()
 	_test_player_codec_and_reuse()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V6_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V7_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -29,7 +30,7 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 6, "Protocol must be v6.")
+	_expect(NetConstants.PROTOCOL_VERSION == 7, "Protocol must be v7.")
 	_expect(NetConstants.CHANNEL_COUNT == 8, "ENet must provision eight channels.")
 	_expect(NetConstants.MAX_PLAYERS == 8, "Protocol capacity must accept an eight-player roster.")
 	_expect(
@@ -41,7 +42,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v6 channel assignments must remain stable."
+		"Protocol v7 channel assignments must remain stable."
 	)
 	_expect(
 		NetConstants.CH_STATE == NetConstants.CH_PLAYER_STATE
@@ -122,6 +123,100 @@ func _test_terrain_payload_contract() -> void:
 			96
 		)),
 		"Terrain chunks must reject a 97th cell."
+	)
+	mp_game.free()
+
+
+func _test_corn_burst_payload_contract() -> void:
+	var mp_game := MpGameScript.new()
+	_expect(
+		int(mp_game.call(
+			"_get_rpc_traffic_channel",
+			&"net_corn_machine_gun_burst_batch"
+		)) == NetConstants.CH_PROJECTILE,
+		"Corn burst traffic metrics must be attributed to CH_PROJECTILE."
+	)
+	var mp_game_source := FileAccess.get_file_as_string("res://scene/multiplayer/mp_game.gd")
+	_expect(
+		mp_game_source.contains(
+			"const CORN_MACHINE_GUN_BURST_FLUSH_INTERVAL_SECONDS := 0.05"
+		)
+		and mp_game_source.contains(
+			"const CORN_MACHINE_GUN_BURST_MAX_RECORDS_PER_PACKET := 32"
+		),
+		"Corn burst visuals must flush every 0.05 seconds in packets of at most 32."
+	)
+	var exit_start := mp_game_source.find("func _exit_tree()")
+	var exit_end := mp_game_source.find("\n\nfunc ", exit_start + 1)
+	var exit_body := (
+		mp_game_source.substr(exit_start, exit_end - exit_start)
+		if exit_start >= 0 and exit_end > exit_start
+		else ""
+	)
+	_expect(
+		exit_body.contains("_pending_corn_machine_gun_burst_visuals.clear()"),
+		"MpGame exit must discard queued corn burst visuals."
+	)
+	_expect(
+		mp_game_source.contains('"host_action_time": _get_net_time()')
+		and mp_game_source.contains("_map_host_timestamp_to_client_time("),
+		"Corn burst records must carry Host time and map it before client playback."
+	)
+	_expect(
+		bool(mp_game.call(
+			"_is_valid_corn_machine_gun_burst_payload",
+			PackedInt32Array([11, 12]),
+			PackedInt32Array([21, 22]),
+			PackedVector2Array([Vector2.RIGHT, Vector2.UP]),
+			PackedFloat64Array([0.0, 1.25])
+		)),
+		"Corn burst payloads must accept equal-length finite records."
+	)
+	_expect(
+		not bool(mp_game.call(
+			"_is_valid_corn_machine_gun_burst_payload",
+			PackedInt32Array([11, 12]),
+			PackedInt32Array([21]),
+			PackedVector2Array([Vector2.RIGHT, Vector2.UP]),
+			PackedFloat64Array([0.0, 1.25])
+		)),
+		"Corn burst payloads must reject mismatched packed-array lengths."
+	)
+	_expect(
+		not bool(mp_game.call(
+			"_is_valid_corn_machine_gun_burst_payload",
+			PackedInt32Array([11]),
+			PackedInt32Array([21]),
+			PackedVector2Array([Vector2(NAN, 0.0)]),
+			PackedFloat64Array([0.0])
+		))
+		and not bool(mp_game.call(
+			"_is_valid_corn_machine_gun_burst_payload",
+			PackedInt32Array([11]),
+			PackedInt32Array([21]),
+			PackedVector2Array([Vector2.RIGHT]),
+			PackedFloat64Array([NAN])
+		)),
+		"Corn burst payloads must reject non-finite directions and Host times."
+	)
+	var oversized_ids := PackedInt32Array()
+	var oversized_actions := PackedInt32Array()
+	var oversized_directions := PackedVector2Array()
+	var oversized_times := PackedFloat64Array()
+	for record_index in range(33):
+		oversized_ids.append(record_index + 1)
+		oversized_actions.append(record_index + 1)
+		oversized_directions.append(Vector2.RIGHT)
+		oversized_times.append(float(record_index))
+	_expect(
+		not bool(mp_game.call(
+			"_is_valid_corn_machine_gun_burst_payload",
+			oversized_ids,
+			oversized_actions,
+			oversized_directions,
+			oversized_times
+		)),
+		"Corn burst packets must reject a 33rd record."
 	)
 	mp_game.free()
 

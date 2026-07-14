@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="PlantDefenseConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/plant_defense/plant_defense_config.gd" id="1_config"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/icon.png" id="2_icon"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/corn_machine_gun.tscn" id="3_scene"]
+
+[resource]
+script = ExtResource("1_config")
+plant_id = &"corn_machine_gun"
+display_name = "玉米机枪塔"
+description = "每0.9秒进行一轮6发连射，每发造成10点物理伤害。"
+icon = ExtResource("2_icon")
+plant_scene = ExtResource("3_scene")
+supports_multiplayer = true
+max_health = 1600
+physical_defense = 8
+magic_defense = 15
+attack_damage = 10
+attack_speed = 111.11111111111111
+attack_range = 160.0
+attack_burst_count = 6
+attack_burst_shot_interval = 0.06
+footprint_size = Vector2i(2, 2)

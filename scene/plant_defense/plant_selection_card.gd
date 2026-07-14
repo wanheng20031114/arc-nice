@@ -43,8 +43,18 @@ func set_selected(value: bool) -> void:
 func _build_stats_text() -> String:
 	var parts: PackedStringArray = ["生命 %d" % plant_config.max_health]
 	if plant_config.attack_damage > 0.0:
-		parts.append("伤害 %s" % _format_number(plant_config.attack_damage))
-		parts.append("间隔 %s 秒" % _format_number(plant_config.get_attack_interval()))
+		if plant_config.attack_burst_count > 1:
+			parts.append(
+				"伤害 %s×%d"
+				% [
+					_format_number(plant_config.attack_damage),
+					plant_config.attack_burst_count,
+				]
+			)
+			parts.append("轮间隔 %s 秒" % _format_number(plant_config.get_attack_interval()))
+		else:
+			parts.append("伤害 %s" % _format_number(plant_config.attack_damage))
+			parts.append("间隔 %s 秒" % _format_number(plant_config.get_attack_interval()))
 	if plant_config.attack_range > 0.0:
 		parts.append("半径 %s" % _format_number(plant_config.attack_range))
 	return "  ·  ".join(parts)
@@ -53,7 +63,7 @@ func _build_stats_text() -> String:
 func _format_number(value: float) -> String:
 	if is_equal_approx(value, roundf(value)):
 		return str(roundi(value))
-	return "%.2f" % value
+	return ("%.2f" % value).trim_suffix("0")
 
 
 func _refresh_style() -> void:

@@ -27,6 +27,8 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://resources/config/plant_defense/agave_cannon.tres",
 	"res://scene/plant_defense/agave_cannon.tscn",
 	"res://scene/plant_defense/agave_cannonball.tscn",
+	"res://resources/config/plant_defense/corn_machine_gun.tres",
+	"res://scene/plant_defense/corn_machine_gun.tscn",
 	"res://resources/config/plant_defense/oak_warehouse.tres",
 	"res://scene/plant_defense/oak_warehouse.tscn",
 	"res://scene/enemy/yuanshi_insect_spawn_effect.tscn",

@@ -1,0 +1,221 @@
+[gd_scene load_steps=25 format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/corn_machine_gun.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_0.png" id="2_body_0"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_1.png" id="3_body_1"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_2.png" id="4_body_2"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_3.png" id="5_body_3"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_turret_idle_0.png" id="6_turret_idle"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_0.png" id="7_turret_spin_0"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_1.png" id="8_turret_spin_1"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_2.png" id="9_turret_spin_2"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_3.png" id="10_turret_spin_3"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_muzzle_flash_0.png" id="11_flash_0"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_muzzle_flash_1.png" id="12_flash_1"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="13_health_bar"]
+[ext_resource type="Shader" path="res://resources/shader/plant_visual_pixel_snap.gdshader" id="14_pixel_snap_shader"]
+[ext_resource type="AudioStream" path="res://resources/audio/capoo_smg_fire.wav" id="15_fire_audio"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_pixel_snap"]
+shader = ExtResource("14_pixel_snap_shader")
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_body"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("2_body_0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_body_1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_body_2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_body_3")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 3.0
+}]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_turret"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("6_turret_idle")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("7_turret_spin_0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("8_turret_spin_1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("9_turret_spin_2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("10_turret_spin_3")
+}],
+"loop": true,
+"name": &"spin",
+"speed": 20.0
+}]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_flash"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("11_flash_0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("12_flash_1")
+}],
+"loop": false,
+"name": &"flash",
+"speed": 50.0
+}]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+resource_local_to_scene = true
+size = Vector2(28, 28)
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_player_core"]
+resource_local_to_scene = true
+radius = 7.0
+height = 14.0
+
+[sub_resource type="Animation" id="Animation_tracer_reset"]
+resource_name = "RESET"
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Tracer:modulate:a")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [0.0]
+}
+
+[sub_resource type="Animation" id="Animation_tracer_fade"]
+resource_name = "fade"
+length = 0.06
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Tracer:modulate:a")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.06),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [1.0, 0.0]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_tracer"]
+_data = {
+&"RESET": SubResource("Animation_tracer_reset"),
+&"fade": SubResource("Animation_tracer_fade")
+}
+
+[node name="CornMachineGun" type="StaticBody2D"]
+collision_layer = 512
+collision_mask = 0
+script = ExtResource("1_script")
+enemy_approach_depth = 6.0
+
+[node name="VisualRoot" type="Node2D" parent="."]
+scale = Vector2(0.5, 0.5)
+
+[node name="BodySprite" type="AnimatedSprite2D" parent="VisualRoot"]
+material = SubResource("ShaderMaterial_pixel_snap")
+z_index = 1
+texture_filter = 1
+sprite_frames = SubResource("SpriteFrames_body")
+animation = &"idle"
+autoplay = "idle"
+
+[node name="AimPivot" type="Node2D" parent="VisualRoot"]
+z_index = 2
+position = Vector2(-2, -1)
+
+[node name="TurretSprite" type="AnimatedSprite2D" parent="VisualRoot/AimPivot"]
+material = SubResource("ShaderMaterial_pixel_snap")
+texture_filter = 1
+sprite_frames = SubResource("SpriteFrames_turret")
+animation = &"idle"
+autoplay = "idle"
+
+[node name="ForwardMarker" type="Marker2D" parent="VisualRoot/AimPivot"]
+position = Vector2(25, 1)
+
+[node name="Muzzle" type="Marker2D" parent="VisualRoot/AimPivot"]
+position = Vector2(25, 1)
+
+[node name="MuzzleFlashSprite" type="AnimatedSprite2D" parent="VisualRoot/AimPivot"]
+material = SubResource("ShaderMaterial_pixel_snap")
+z_index = 1
+texture_filter = 1
+position = Vector2(25, 1)
+sprite_frames = SubResource("SpriteFrames_flash")
+animation = &"flash"
+
+[node name="Tracer" type="Line2D" parent="."]
+top_level = true
+z_index = 4
+visible = false
+points = PackedVector2Array(0, 0, 20, 0)
+width = 0.5
+default_color = Color(1, 0.83, 0.24, 0.92)
+antialiased = false
+
+[node name="TracerFade" type="AnimationPlayer" parent="."]
+libraries/ = SubResource("AnimationLibrary_tracer")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 3)
+shape = SubResource("RectangleShape2D_body")
+
+[node name="PlayerCoreBody" type="StaticBody2D" parent="."]
+position = Vector2(0, 1)
+collision_layer = 1024
+collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody"]
+position = Vector2(0, 2)
+shape = SubResource("CapsuleShape2D_player_core")
+
+[node name="AttackTimer" type="Timer" parent="."]
+wait_time = 0.9
+
+[node name="IdleAimTimer" type="Timer" parent="."]
+wait_time = 0.9
+one_shot = true
+
+[node name="HealthBar" parent="." instance=ExtResource("13_health_bar")]
+offset_left = -14.0
+offset_top = -16.0
+offset_right = 14.0
+offset_bottom = -11.0
+damage_trail_color = Color(0.92156863, 0.28235295, 0.18039216, 1)
+
+[node name="FireAudio" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("15_fire_audio")
+volume_db = -18.0
+max_distance = 180.0
+max_polyphony = 1
+
+[connection signal="animation_finished" from="VisualRoot/AimPivot/MuzzleFlashSprite" to="." method="_on_muzzle_flash_animation_finished"]
+[connection signal="animation_finished" from="TracerFade" to="." method="_on_tracer_fade_animation_finished"]
+[connection signal="timeout" from="AttackTimer" to="." method="_on_attack_timer_timeout"]
+[connection signal="timeout" from="IdleAimTimer" to="." method="_on_idle_aim_timer_timeout"]

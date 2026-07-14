@@ -22,6 +22,7 @@ var player: Player
 var plant_system: PlantSystem
 var plant_container: Node2D
 var agave_config: PlantDefenseConfig
+var corn_config: PlantDefenseConfig
 var vegetation_stake_config: PlantDefenseConfig
 
 
@@ -88,6 +89,7 @@ func _run() -> void:
 	plant_system = null
 	plant_container = null
 	agave_config = null
+	corn_config = null
 	vegetation_stake_config = null
 	Input.action_release(&"plant")
 	Input.flush_buffered_events()
@@ -135,16 +137,18 @@ func _build_fixture() -> void:
 		PlantSystem.DEFAULT_PLACEMENT_AREA
 	)
 	agave_config = PlantDefenseRegistry.get_config(&"agave_cannon")
+	corn_config = PlantDefenseRegistry.get_config(&"corn_machine_gun")
 	vegetation_stake_config = PlantDefenseRegistry.get_config(&"vegetation_stake")
 
 
 func _test_config_and_scene_contracts() -> void:
 	_expect(agave_config != null and agave_config.is_valid(), "龙舌兰配置必须有效。")
+	_expect(corn_config != null and corn_config.is_valid(), "玉米机枪塔配置必须有效。")
 	_expect(
 		vegetation_stake_config != null and vegetation_stake_config.is_valid(),
 		"植被桩配置必须有效。"
 	)
-	if agave_config == null or vegetation_stake_config == null:
+	if agave_config == null or corn_config == null or vegetation_stake_config == null:
 		return
 	var oak_config := PlantDefenseRegistry.get_config(&"oak_warehouse")
 	_expect(oak_config != null and oak_config.is_valid(), "橡木仓库配置必须有效。")
@@ -152,11 +156,12 @@ func _test_config_and_scene_contracts() -> void:
 		return
 	var registered_configs := PlantDefenseRegistry.get_all_configs()
 	_expect(
-		registered_configs.size() == 3
+		registered_configs.size() == 4
 		and registered_configs.has(agave_config)
+		and registered_configs.has(corn_config)
 		and registered_configs.has(oak_config)
 		and registered_configs.has(vegetation_stake_config),
-		"植物注册表必须公开龙舌兰、橡木仓库与植被桩三项。"
+		"植物注册表必须公开龙舌兰、玉米机枪塔、橡木仓库与植被桩四项。"
 	)
 	_expect(agave_config.max_health == 2000, "龙舌兰生命值必须为2000。")
 	_expect(
@@ -168,7 +173,32 @@ func _test_config_and_scene_contracts() -> void:
 	_expect(agave_config.supports_multiplayer, "龙舌兰必须继续支持多人权威放置。")
 	_expect(is_equal_approx(agave_config.get_attack_interval(), 2.0), "龙舌兰攻击间隔必须为2秒。")
 	_expect(is_equal_approx(agave_config.attack_range, 176.0), "龙舌兰索敌半径必须为176。")
+	_expect(
+		agave_config.attack_burst_count == 1
+		and is_zero_approx(agave_config.attack_burst_shot_interval),
+		"旧植物必须继续使用单发默认配置。"
+	)
 	_expect(agave_config.footprint_size == Vector2i(2, 2), "龙舌兰必须继续占2×2格。")
+	_expect(corn_config.display_name == "玉米机枪塔", "玉米配置必须使用正式显示名。")
+	_expect(
+		corn_config.max_health == 1600
+		and corn_config.physical_defense == 8
+		and corn_config.magic_defense == 15
+		and corn_config.attack_damage == 10,
+		"玉米机枪塔必须拥有1600生命、8物防、15法抗与10点单发伤害。"
+	)
+	_expect(
+		is_equal_approx(corn_config.get_attack_interval(), 0.9)
+		and corn_config.attack_burst_count == 6
+		and is_equal_approx(corn_config.attack_burst_shot_interval, 0.06),
+		"玉米机枪塔必须每0.9秒进行一轮间隔0.06秒的6发连射。"
+	)
+	_expect(
+		is_equal_approx(corn_config.attack_range, 160.0)
+		and corn_config.footprint_size == Vector2i(2, 2)
+		and corn_config.supports_multiplayer,
+		"玉米机枪塔必须拥有160范围、占2×2格并支持多人。"
+	)
 	_expect(oak_config.footprint_size == Vector2i(2, 2), "橡木仓库必须继续占2×2格。")
 	_expect(
 		vegetation_stake_config.max_health == 4000
@@ -1092,14 +1122,32 @@ func _test_realtime_selection_and_cancel() -> void:
 	_expect(controller.is_selecting(), "打开后状态必须为SELECTING。")
 	_expect(controller.selection_hud.is_open(), "真实plant动作输入必须显示植物选择界面。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 3
+		controller.selection_hud.available_configs.size() == 4
 		and controller.selection_hud.available_configs.has(agave_config)
+		and controller.selection_hud.available_configs.has(corn_config)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"oak_warehouse")
 		)
 		and controller.selection_hud.available_configs.has(vegetation_stake_config)
-		and controller.selection_hud.cards.size() == 3,
-		"单人植物选择界面必须生成龙舌兰、橡木仓库与植被桩三张卡片。"
+		and controller.selection_hud.cards.size() == 4,
+		"单人植物选择界面必须生成龙舌兰、玉米机枪塔、橡木仓库与植被桩四张卡片。"
+	)
+	var agave_card: PlantSelectionCard = null
+	var corn_card: PlantSelectionCard = null
+	for card in controller.selection_hud.cards:
+		if card.plant_config == agave_config:
+			agave_card = card
+		elif card.plant_config == corn_config:
+			corn_card = card
+	_expect(
+		agave_card != null
+		and agave_card.stats_label.text == "生命 2000  ·  伤害 25  ·  间隔 2 秒  ·  半径 176",
+		"单发旧植物的属性文案必须保持原样。"
+	)
+	_expect(
+		corn_card != null
+		and corn_card.stats_label.text == "生命 1600  ·  伤害 10×6  ·  轮间隔 0.9 秒  ·  半径 160",
+		"玉米机枪塔卡片必须显示整轮伤害与轮间隔。"
 	)
 	_expect(paused == was_paused and not paused, "选择植物不得暂停SceneTree。")
 	_expect(not lock_events.is_empty() and lock_events.back(), "选择期间必须请求锁定玩家。")
@@ -1318,14 +1366,15 @@ func _test_multiplayer_authority_contracts() -> void:
 	controller.set_multiplayer_request_mode(true)
 	_expect(controller.open_selection(), "多人植物选择必须仍可打开。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 3
+		controller.selection_hud.available_configs.size() == 4
 		and controller.selection_hud.available_configs.has(agave_config)
+		and controller.selection_hud.available_configs.has(corn_config)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"oak_warehouse")
 		)
 		and controller.selection_hud.available_configs.has(vegetation_stake_config)
-		and controller.selection_hud.cards.size() == 3,
-		"多人植物选择必须公开龙舌兰、共享仓库与植被桩三张卡片。"
+		and controller.selection_hud.cards.size() == 4,
+		"多人植物选择必须公开龙舌兰、玉米机枪塔、共享仓库与植被桩四张卡片。"
 	)
 	controller.cancel_placement()
 	var placement_requests: Array[Dictionary] = []

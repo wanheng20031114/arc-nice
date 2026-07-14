@@ -2,11 +2,15 @@ extends RefCounted
 class_name PlantDefenseRegistry
 
 const AGAVE_CANNON_ID: StringName = &"agave_cannon"
+const CORN_MACHINE_GUN_ID: StringName = &"corn_machine_gun"
 const OAK_WAREHOUSE_ID: StringName = &"oak_warehouse"
 const VEGETATION_STAKE_ID: StringName = &"vegetation_stake"
 
 const AGAVE_CANNON_CONFIG: PlantDefenseConfig = preload(
 	"res://resources/config/plant_defense/agave_cannon.tres"
+)
+const CORN_MACHINE_GUN_CONFIG: PlantDefenseConfig = preload(
+	"res://resources/config/plant_defense/corn_machine_gun.tres"
 )
 const OAK_WAREHOUSE_CONFIG: PlantDefenseConfig = preload(
 	"res://resources/config/plant_defense/oak_warehouse.tres"
@@ -17,6 +21,7 @@ const VEGETATION_STAKE_CONFIG: PlantDefenseConfig = preload(
 
 const PLANT_CONFIGS := {
 	AGAVE_CANNON_ID: AGAVE_CANNON_CONFIG,
+	CORN_MACHINE_GUN_ID: CORN_MACHINE_GUN_CONFIG,
 	OAK_WAREHOUSE_ID: OAK_WAREHOUSE_CONFIG,
 	VEGETATION_STAKE_ID: VEGETATION_STAKE_CONFIG,
 }
@@ -27,7 +32,12 @@ static func get_config(plant_id: StringName) -> PlantDefenseConfig:
 
 
 static func get_all_configs() -> Array[PlantDefenseConfig]:
-	return [AGAVE_CANNON_CONFIG, OAK_WAREHOUSE_CONFIG, VEGETATION_STAKE_CONFIG]
+	return [
+		AGAVE_CANNON_CONFIG,
+		CORN_MACHINE_GUN_CONFIG,
+		OAK_WAREHOUSE_CONFIG,
+		VEGETATION_STAKE_CONFIG,
+	]
 
 
 static func is_valid_plant_id(plant_id: StringName) -> bool:

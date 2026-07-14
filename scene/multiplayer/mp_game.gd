@@ -31,6 +31,7 @@ const FEEDBACK_RPC_METHODS := {
 const STANDARD_GAME_SCENE_PATH := "res://scene/game.tscn"
 const TOWER_DEFENSE_GAME_SCENE_PATH := "res://scene/game_tower_defense.tscn"
 const AGAVE_CANNONBALL_SCENE_PATH := "res://scene/plant_defense/agave_cannonball.tscn"
+const CORN_MACHINE_GUN_SCRIPT := preload("res://scene/plant_defense/corn_machine_gun.gd")
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const BULLET_SCENE_PATH := "res://scene/bullet.tscn"
 const TIYI_SNIPER_BULLET_SCENE_PATH := "res://scene/player/tiyi/tiyi_sniper_bullet.tscn"
@@ -104,11 +105,13 @@ const ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES := 56
 const ENEMY_HIGH_PRESSURE_THRESHOLD := 200
 const ENEMY_HIGH_PRESSURE_SNAPSHOT_HZ := 20
 const COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS := 0.05
+const CORN_MACHINE_GUN_BURST_FLUSH_INTERVAL_SECONDS := 0.05
 const WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS := 0.1
 const PLANT_HEALTH_FLUSH_INTERVAL_SECONDS := 0.05
 const CLIENT_PROXY_VISUAL_BUDGET_INTERVAL_SECONDS := 0.2
 const CLIENT_PROXY_VISUAL_BUDGET_MARGIN := 192.0
 const COMBAT_FEEDBACK_MAX_RECORDS_PER_PACKET := 40
+const CORN_MACHINE_GUN_BURST_MAX_RECORDS_PER_PACKET := 32
 const ENEMY_SPAWN_BATCH_MAX_RECORDS := 16
 const ENEMY_TERMINAL_DEFEATED := 0
 const ENEMY_TERMINAL_ESCAPED := 1
@@ -246,6 +249,10 @@ var _latest_enemy_snapshot_batch_seen: int = 0
 var _current_enemy_snapshot_hz: int = _NetConstants.ENEMY_SNAPSHOT_HZ
 var _pending_enemy_damage_feedback: Dictionary = {}
 var _combat_feedback_flush_time_left: float = COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS
+var _pending_corn_machine_gun_burst_visuals: Array[Dictionary] = []
+var _corn_machine_gun_burst_flush_time_left: float = (
+	CORN_MACHINE_GUN_BURST_FLUSH_INTERVAL_SECONDS
+)
 var _pending_plant_health_updates: Dictionary = {}
 var _plant_health_flush_time_left: float = PLANT_HEALTH_FLUSH_INTERVAL_SECONDS
 var _pending_wave_progress: Dictionary = {}
@@ -315,6 +322,7 @@ func _exit_tree() -> void:
 	_pending_enemy_snapshot_batches.clear()
 	_processed_collectible_effect_event_ids.clear()
 	_pending_enemy_damage_feedback.clear()
+	_pending_corn_machine_gun_burst_visuals.clear()
 	_pending_plant_health_updates.clear()
 	_pending_wave_progress.clear()
 	_pending_enemy_spawns.clear()
@@ -855,6 +863,36 @@ func broadcast_plant_projectile_visual(
 			maxf(lifetime, 0.01),
 		]
 	)
+
+
+func queue_corn_machine_gun_burst_visual(
+	plant_net_id: int,
+	action_id: int,
+	direction: Vector2
+) -> void:
+	if (
+		not is_inside_tree()
+		or not net_manager.is_host()
+		or game == null
+		or plant_net_id <= 0
+		or action_id <= 0
+		or not _is_finite_vector2(direction)
+		or direction.length_squared() <= 0.001
+	):
+		return
+	var corn := game.get_multiplayer_plant_node(plant_net_id)
+	if (
+		corn == null
+		or not is_instance_valid(corn)
+		or corn.get_script() != CORN_MACHINE_GUN_SCRIPT
+	):
+		return
+	_pending_corn_machine_gun_burst_visuals.append({
+		"plant_net_id": plant_net_id,
+		"action_id": action_id,
+		"direction": direction.normalized(),
+		"host_action_time": _get_net_time(),
+	})
 
 
 func apply_authoritative_plant_enemy_damage(
@@ -1625,7 +1663,11 @@ func _record_outbound_rpc(
 
 
 func _get_rpc_traffic_channel(method_name: StringName) -> int:
-	if method_name == &"net_projectile_fired" or method_name == &"net_plant_projectile_visual":
+	if (
+		method_name == &"net_projectile_fired"
+		or method_name == &"net_plant_projectile_visual"
+		or method_name == &"net_corn_machine_gun_burst_batch"
+	):
 		return _NetConstants.CH_PROJECTILE
 	if TRANSACTION_RPC_METHODS.has(method_name):
 		return _NetConstants.CH_TRANSACTION
@@ -3780,6 +3822,36 @@ func _is_finite_vector2(value: Vector2) -> bool:
 	return is_finite(value.x) and is_finite(value.y)
 
 
+func _is_valid_corn_machine_gun_burst_payload(
+	plant_net_ids: PackedInt32Array,
+	action_ids: PackedInt32Array,
+	directions: PackedVector2Array,
+	host_action_times: PackedFloat64Array
+) -> bool:
+	var record_count := plant_net_ids.size()
+	if (
+		record_count <= 0
+		or record_count > CORN_MACHINE_GUN_BURST_MAX_RECORDS_PER_PACKET
+		or action_ids.size() != record_count
+		or directions.size() != record_count
+		or host_action_times.size() != record_count
+	):
+		return false
+	for record_index in range(record_count):
+		var direction := directions[record_index]
+		var host_action_time := host_action_times[record_index]
+		if (
+			plant_net_ids[record_index] <= 0
+			or action_ids[record_index] <= 0
+			or not _is_finite_vector2(direction)
+			or direction.length_squared() <= 0.001
+			or not is_finite(host_action_time)
+			or host_action_time < 0.0
+		):
+			return false
+	return true
+
+
 func _prune_projectile_records(now: float) -> void:
 	var expired_projectile_ids: Array[int] = []
 	for projectile_id_variant in _projectile_records.keys():
@@ -4156,6 +4228,12 @@ func _update_batched_network_events(delta: float) -> void:
 	if _combat_feedback_flush_time_left <= 0.0:
 		_combat_feedback_flush_time_left = COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS
 		_flush_enemy_damage_feedback()
+	_corn_machine_gun_burst_flush_time_left -= maxf(delta, 0.0)
+	if _corn_machine_gun_burst_flush_time_left <= 0.0:
+		_corn_machine_gun_burst_flush_time_left = (
+			CORN_MACHINE_GUN_BURST_FLUSH_INTERVAL_SECONDS
+		)
+		_flush_corn_machine_gun_burst_visuals()
 	_plant_health_flush_time_left -= maxf(delta, 0.0)
 	if _plant_health_flush_time_left <= 0.0:
 		_plant_health_flush_time_left = PLANT_HEALTH_FLUSH_INTERVAL_SECONDS
@@ -4165,6 +4243,35 @@ func _update_batched_network_events(delta: float) -> void:
 		_wave_progress_flush_time_left = WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS
 		_flush_wave_progress()
 		_flush_tiyi_target_updates()
+
+
+func _flush_corn_machine_gun_burst_visuals() -> void:
+	if _pending_corn_machine_gun_burst_visuals.is_empty():
+		return
+	for chunk_start in range(
+		0,
+		_pending_corn_machine_gun_burst_visuals.size(),
+		CORN_MACHINE_GUN_BURST_MAX_RECORDS_PER_PACKET
+	):
+		var chunk_end := mini(
+			chunk_start + CORN_MACHINE_GUN_BURST_MAX_RECORDS_PER_PACKET,
+			_pending_corn_machine_gun_burst_visuals.size()
+		)
+		var plant_net_ids := PackedInt32Array()
+		var action_ids := PackedInt32Array()
+		var directions := PackedVector2Array()
+		var host_action_times := PackedFloat64Array()
+		for record_index in range(chunk_start, chunk_end):
+			var record := _pending_corn_machine_gun_burst_visuals[record_index]
+			plant_net_ids.append(int(record.get("plant_net_id", 0)))
+			action_ids.append(int(record.get("action_id", 0)))
+			directions.append(record.get("direction", Vector2.ZERO) as Vector2)
+			host_action_times.append(float(record.get("host_action_time", 0.0)))
+		_rpc_to_connected_clients(
+			&"net_corn_machine_gun_burst_batch",
+			[plant_net_ids, action_ids, directions, host_action_times]
+		)
+	_pending_corn_machine_gun_burst_visuals.clear()
 
 
 func _flush_tiyi_target_updates() -> void:
@@ -6048,6 +6155,47 @@ func net_plant_projectile_visual(
 		0
 	)
 	projectile.reset_physics_interpolation()
+
+
+@rpc("authority", "call_remote", "unreliable_ordered", 4)
+func net_corn_machine_gun_burst_batch(
+	plant_net_ids: PackedInt32Array,
+	action_ids: PackedInt32Array,
+	directions: PackedVector2Array,
+	host_action_times: PackedFloat64Array
+) -> void:
+	if (
+		game == null
+		or net_manager.is_host()
+		or not _is_valid_corn_machine_gun_burst_payload(
+			plant_net_ids,
+			action_ids,
+			directions,
+			host_action_times
+		)
+	):
+		return
+	for record_index in range(plant_net_ids.size()):
+		var corn := game.get_multiplayer_plant_node(plant_net_ids[record_index])
+		if (
+			corn == null
+			or not is_instance_valid(corn)
+			or corn.get_script() != CORN_MACHINE_GUN_SCRIPT
+		):
+			continue
+		var mapped_action_time := _map_host_timestamp_to_client_time(
+			host_action_times[record_index],
+			false
+		)
+		var elapsed := maxf(_get_net_time() - mapped_action_time, 0.0)
+		if not is_finite(elapsed):
+			continue
+		corn.call(
+			"play_multiplayer_burst",
+			directions[record_index].normalized(),
+			action_ids[record_index],
+			elapsed
+		)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 7)
