@@ -1,9 +1,6 @@
 extends Area2D
 class_name LinglanSkill4LightOrb
 
-const PULSE_MIN := 0.9
-const PULSE_MAX := 1.12
-
 @export var speed: float = 40.0
 @export var damage: int = 50
 @export var orb_radius: float = 8.0
@@ -11,10 +8,8 @@ const PULSE_MAX := 1.12
 @export var max_lifetime: float = 10.0
 
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
-@onready var visual_root: Node2D = $VisualRoot
 
 var direction := Vector2.RIGHT
-var elapsed: float = 0.0
 var remaining_lifetime: float = 10.0
 var damaged_player_ids: Dictionary = {}
 var projectile_id: int = 0
@@ -24,9 +19,7 @@ var source_type: StringName = &"linglan_skill4_orb"
 
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
-	_duplicate_polygon_materials()
 	_apply_current_radius()
-	_update_visual_pulse()
 
 
 func setup(
@@ -47,7 +40,6 @@ func setup(
 	rotation = direction.angle()
 	if is_node_ready():
 		_apply_current_radius()
-		_update_visual_pulse()
 
 
 func setup_multiplayer(
@@ -70,13 +62,11 @@ func get_damage_radius() -> float:
 
 func _physics_process(delta: float) -> void:
 	var safe_delta := maxf(delta, 0.0)
-	elapsed += safe_delta
 	remaining_lifetime = maxf(remaining_lifetime - safe_delta, 0.0)
 	if remaining_lifetime <= 0.0:
 		queue_free()
 		return
 	global_position += direction * speed * safe_delta
-	_update_visual_pulse()
 
 
 func _apply_current_radius() -> void:
@@ -85,29 +75,6 @@ func _apply_current_radius() -> void:
 	var circle_shape := collision_shape.shape as CircleShape2D
 	if circle_shape != null:
 		circle_shape.radius = damage_radius
-
-
-func _update_visual_pulse() -> void:
-	if visual_root == null:
-		return
-	var wave := (sin(elapsed * TAU * 3.5) + 1.0) * 0.5
-	var pulse := lerpf(PULSE_MIN, PULSE_MAX, wave)
-	for child in visual_root.get_children():
-		var polygon := child as Polygon2D
-		if polygon == null:
-			continue
-		var shader_material := polygon.material as ShaderMaterial
-		if shader_material != null:
-			shader_material.set_shader_parameter(&"pulse", pulse)
-
-
-func _duplicate_polygon_materials() -> void:
-	if visual_root == null:
-		return
-	for child in visual_root.get_children():
-		var polygon := child as Polygon2D
-		if polygon != null and polygon.material != null:
-			polygon.material = polygon.material.duplicate()
 
 
 func _on_body_entered(body: Node2D) -> void:

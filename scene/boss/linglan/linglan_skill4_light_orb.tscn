@@ -8,10 +8,14 @@ resource_local_to_scene = true
 radius = 5.5
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_outer"]
-resource_local_to_scene = true
 shader = ExtResource("2_shader")
 shader_parameter/tint = Color(0.28, 0.86, 1, 0.12)
 shader_parameter/pulse = 1.0
+shader_parameter/gpu_pulse_enabled = true
+shader_parameter/gpu_pulse_frequency = 3.5
+shader_parameter/gpu_pulse_min = 0.9
+shader_parameter/gpu_pulse_max = 1.12
+shader_parameter/gpu_pulse_phase = 0.0
 shader_parameter/inner_radius = 0.12
 shader_parameter/outer_softness = 1.0
 shader_parameter/fill_strength = 1.0
@@ -20,10 +24,14 @@ shader_parameter/ring_width = 0.0
 shader_parameter/ring_strength = 0.0
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mid"]
-resource_local_to_scene = true
 shader = ExtResource("2_shader")
 shader_parameter/tint = Color(0.38, 0.9, 1, 0.17)
 shader_parameter/pulse = 1.0
+shader_parameter/gpu_pulse_enabled = true
+shader_parameter/gpu_pulse_frequency = 3.5
+shader_parameter/gpu_pulse_min = 0.9
+shader_parameter/gpu_pulse_max = 1.12
+shader_parameter/gpu_pulse_phase = 0.0
 shader_parameter/inner_radius = 0.08
 shader_parameter/outer_softness = 0.95
 shader_parameter/fill_strength = 1.0
@@ -32,10 +40,14 @@ shader_parameter/ring_width = 0.0
 shader_parameter/ring_strength = 0.0
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_inner"]
-resource_local_to_scene = true
 shader = ExtResource("2_shader")
 shader_parameter/tint = Color(0.6, 0.95, 1, 0.28)
 shader_parameter/pulse = 1.0
+shader_parameter/gpu_pulse_enabled = true
+shader_parameter/gpu_pulse_frequency = 3.5
+shader_parameter/gpu_pulse_min = 0.9
+shader_parameter/gpu_pulse_max = 1.12
+shader_parameter/gpu_pulse_phase = 0.0
 shader_parameter/inner_radius = 0.0
 shader_parameter/outer_softness = 0.9
 shader_parameter/fill_strength = 1.0
@@ -44,10 +56,14 @@ shader_parameter/ring_width = 0.0
 shader_parameter/ring_strength = 0.0
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_core"]
-resource_local_to_scene = true
 shader = ExtResource("2_shader")
 shader_parameter/tint = Color(0.7, 0.98, 1, 0.62)
 shader_parameter/pulse = 1.0
+shader_parameter/gpu_pulse_enabled = true
+shader_parameter/gpu_pulse_frequency = 3.5
+shader_parameter/gpu_pulse_min = 0.9
+shader_parameter/gpu_pulse_max = 1.12
+shader_parameter/gpu_pulse_phase = 0.0
 shader_parameter/inner_radius = 0.74
 shader_parameter/outer_softness = 1.0
 shader_parameter/fill_strength = 1.0
@@ -56,10 +72,14 @@ shader_parameter/ring_width = 0.0
 shader_parameter/ring_strength = 0.0
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_boundary"]
-resource_local_to_scene = true
 shader = ExtResource("2_shader")
 shader_parameter/tint = Color(0.88, 1, 1, 0.36)
 shader_parameter/pulse = 1.0
+shader_parameter/gpu_pulse_enabled = true
+shader_parameter/gpu_pulse_frequency = 3.5
+shader_parameter/gpu_pulse_min = 0.9
+shader_parameter/gpu_pulse_max = 1.12
+shader_parameter/gpu_pulse_phase = 0.0
 shader_parameter/inner_radius = 0.0
 shader_parameter/outer_softness = 1.0
 shader_parameter/fill_strength = 0.0

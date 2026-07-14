@@ -60,7 +60,6 @@ const LINGLAN_SKILL3_ORB_SCENE_PATH := "res://scene/boss/linglan/linglan_skill3_
 const LINGLAN_SKILL4_CONFIG_PATH := "res://resources/config/bosses/linglan_skill4.tres"
 const LINGLAN_SKILL4_ORB_SCENE_PATH := "res://scene/boss/linglan/linglan_skill4_light_orb.tscn"
 const LINGLAN_SKILL4_ORB_SCRIPT_PATH := "res://scene/boss/linglan/linglan_skill4_light_orb.gd"
-const COLLECTIBLE_SAKURA_EXPLOSION_RADIUS := 47.0
 const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 const OakWarehouseProtocolScript := preload("res://scene/plant_defense/oak_warehouse_protocol.gd")
 
@@ -3360,7 +3359,7 @@ func _instantiate_projectile(
 			return sakura_rocket
 		&"collectible_sakura_rocket":
 			_ensure_linglan_projectile_resources(projectile_type)
-			if _collectible_sakura_rocket_scene == null or _linglan_skill2_config == null:
+			if _collectible_sakura_rocket_scene == null:
 				return null
 			var collectible_sakura_rocket := (
 				_acquire_or_instantiate_projectile(_collectible_sakura_rocket_scene)
@@ -3369,6 +3368,12 @@ func _instantiate_projectile(
 			if collectible_sakura_rocket == null:
 				return null
 			collectible_sakura_rocket.top_level = true
+			var collectible_explosion_radius := float(
+				collectible_sakura_rocket.get("explosion_radius")
+			)
+			var collectible_homing_turn_rate := float(
+				collectible_sakura_rocket.get("homing_turn_rate")
+			)
 			var target_enemy: Enemy = null
 			if game != null and target_enemy_net_id > 0:
 				target_enemy = game.get_enemy_for_net_id(target_enemy_net_id)
@@ -3378,9 +3383,9 @@ func _instantiate_projectile(
 				damage,
 				speed,
 				lifetime,
-				COLLECTIBLE_SAKURA_EXPLOSION_RADIUS,
+				collectible_explosion_radius,
 				null,
-				float(_linglan_skill2_config.get("rocket_homing_turn_rate")),
+				collectible_homing_turn_rate,
 				target_enemy,
 				true,
 				EnemyConfig.DamageType.MAGIC
@@ -3443,8 +3448,6 @@ func _ensure_linglan_projectile_resources(projectile_type: StringName) -> void:
 					LINGLAN_SKILL2_ROCKET_SCENE_PATH
 				) as PackedScene
 		&"collectible_sakura_rocket":
-			if _linglan_skill2_config == null:
-				_linglan_skill2_config = load(LINGLAN_SKILL2_CONFIG_PATH)
 			if _collectible_sakura_rocket_scene == null:
 				_collectible_sakura_rocket_scene = load(
 					COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH

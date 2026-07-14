@@ -11,6 +11,9 @@ const COLLECTIBLE_ARROW_SCENE := preload("res://scene/collectible_arrow_projecti
 const COLLECTIBLE_SAKURA_ROCKET_SCENE := preload(
 	"res://scene/collectible_sakura_rocket.tscn"
 )
+const COLLECTIBLE_SAKURA_EXPLOSION_SCENE := preload(
+	"res://scene/collectible_sakura_explosion.tscn"
+)
 const BULLET_HIT_EFFECT_SCENE := preload("res://scene/bullet_hit_effect.tscn")
 const ENEMY_HIT_EFFECT_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")
 
@@ -227,6 +230,11 @@ func _verify_extended_projectile_reuse() -> void:
 		projectile.set("direction", Vector2.DOWN)
 		projectile.set("damage", 99)
 		projectile.set("remaining_lifetime", 0.125)
+		if projectile_scene == COLLECTIBLE_SAKURA_ROCKET_SCENE:
+			projectile.set("speed", 13.0)
+			projectile.set("max_lifetime", 0.25)
+			projectile.set("explosion_radius", 9.0)
+			projectile.set("homing_turn_rate", 0.2)
 		if projectile is Area2D:
 			(projectile as Area2D).collision_layer = 0
 			(projectile as Area2D).collision_mask = 0
@@ -253,6 +261,17 @@ func _verify_extended_projectile_reuse() -> void:
 			float(reused.get("remaining_lifetime")) > 0.0,
 			"%s must restore a positive lifetime." % projectile_scene.resource_path
 		)
+		if projectile_scene == COLLECTIBLE_SAKURA_ROCKET_SCENE:
+			var sakura_rocket := reused as LinglanSkill2SakuraRocket
+			_expect(
+				sakura_rocket != null
+				and sakura_rocket.explosion_scene == COLLECTIBLE_SAKURA_EXPLOSION_SCENE
+				and is_equal_approx(sakura_rocket.speed, 210.0)
+				and is_equal_approx(sakura_rocket.max_lifetime, 5.0)
+				and is_equal_approx(sakura_rocket.explosion_radius, 47.0)
+				and is_equal_approx(sakura_rocket.homing_turn_rate, 1.2),
+				"Pooled collectible Sakura rockets must retain their isolated effect and authored movement defaults."
+			)
 		if reused is Area2D:
 			_expect(
 				(reused as Area2D).monitoring and (reused as Area2D).monitorable,

@@ -2,9 +2,9 @@
 
 [ext_resource type="Script" path="res://scene/boss/linglan/linglan_skill2_sakura_rocket.gd" id="1_script"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/linglan_skill2_sakura_rocket.tres" id="2_frames"]
+[ext_resource type="PackedScene" path="res://scene/collectible_sakura_explosion.tscn" id="3_explosion"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_body"]
-resource_local_to_scene = true
 radius = 2.0
 height = 12.0
 
@@ -16,8 +16,9 @@ radius = 47.0
 z_index = 4
 collision_layer = 128
 collision_mask = 261
-explosion_radius = 47.0
 script = ExtResource("1_script")
+explosion_radius = 47.0
+explosion_scene = ExtResource("3_explosion")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
 texture_filter = 2

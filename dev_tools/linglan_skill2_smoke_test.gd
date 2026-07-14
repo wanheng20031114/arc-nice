@@ -6,6 +6,8 @@ const SKILL2_CONFIG := preload("res://resources/config/bosses/linglan_skill2.tre
 const ROCKET_SCENE := preload("res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn")
 const WARNING_ARROW_SCENE := preload("res://scene/boss/linglan/linglan_skill2_warning_arrow.tscn")
 const EXPLOSION_SCENE := preload("res://scene/boss/linglan/linglan_skill2_sakura_explosion.tscn")
+const COLLECTIBLE_ROCKET_SCENE := preload("res://scene/collectible_sakura_rocket.tscn")
+const COLLECTIBLE_EXPLOSION_SCENE := preload("res://scene/collectible_sakura_explosion.tscn")
 const COLLECTIBLE_SAKURA_EXPLOSION_SCRIPT := preload("res://scene/collectible_sakura_explosion.gd")
 const EXPLOSION_FRAMES := preload("res://resources/animation/linglan_skill2_sakura_explosion.tres")
 const GAME_SCENE := preload("res://scene/game.tscn")
@@ -82,6 +84,7 @@ func _run() -> void:
 	current_scene = test_root
 
 	_test_skill2_config()
+	_test_collectible_sakura_resource_dependencies()
 	await _test_skill2_scene_contract()
 	await _test_game_target_and_spawn_entry()
 	await _test_boss_skill2_schedule()
@@ -126,6 +129,38 @@ func _test_skill2_config() -> void:
 	_expect(is_equal_approx(SKILL2_CONFIG.get_total_duration(), 10.0), "Skill2 total duration mismatch.")
 
 
+func _test_collectible_sakura_resource_dependencies() -> void:
+	var dependency_closure := _collect_resource_dependency_closure(
+		COLLECTIBLE_ROCKET_SCENE.resource_path
+	)
+	var forbidden_dependencies := [
+		"res://resources/config/bosses/linglan_skill2.tres",
+		"res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn",
+		"res://scene/boss/linglan/linglan_skill2_sakura_explosion.tscn",
+		"res://scene/boss/linglan/linglan_skill2_warning_arrow.tscn",
+		"res://resources/config/enemies/yuanshi_insect_shell.tres",
+	]
+	for forbidden_path in forbidden_dependencies:
+		_expect(
+			not dependency_closure.has(forbidden_path),
+			"Collectible Sakura dependency closure must exclude %s." % forbidden_path
+		)
+	_expect(
+		dependency_closure.has(COLLECTIBLE_EXPLOSION_SCENE.resource_path),
+		"Collectible Sakura rocket must depend on its own explosion scene."
+	)
+	var collectible_rocket := (
+		COLLECTIBLE_ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
+	)
+	_expect(collectible_rocket != null, "Collectible Sakura rocket scene must instantiate.")
+	if collectible_rocket != null:
+		_expect(
+			collectible_rocket.explosion_scene == COLLECTIBLE_EXPLOSION_SCENE,
+			"Collectible Sakura rocket must inject only its collectible explosion scene."
+		)
+		collectible_rocket.free()
+
+
 func _test_skill2_scene_contract() -> void:
 	var rocket := ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
 	_expect(rocket != null, "Skill2 rocket scene did not instantiate as LinglanSkill2SakuraRocket.")
@@ -138,8 +173,17 @@ func _test_skill2_scene_contract() -> void:
 	_expect(rocket.collision_mask == 263, "Skill2 rocket collision mask must hit World/Player/EnemyBody/BossBody.")
 	var body_shape := rocket.get_node_or_null("CollisionShape2D") as CollisionShape2D
 	_expect(body_shape != null and body_shape.shape is CapsuleShape2D, "Skill2 rocket must expose a capsule hit shape.")
+	if body_shape != null:
+		_expect(
+			not body_shape.shape.resource_local_to_scene,
+			"Immutable Skill2 rocket capsule Shape must be shared between instances."
+		)
 	var explosion_shape := rocket.get_node_or_null("ExplosionShape") as CollisionShape2D
 	_expect(explosion_shape != null and explosion_shape.shape is CircleShape2D, "Skill2 rocket must expose an explosion circle shape.")
+	_expect(
+		rocket.explosion_scene == EXPLOSION_SCENE,
+		"Skill2 rocket must inject the Boss explosion scene."
+	)
 	if explosion_shape != null and explosion_shape.shape is CircleShape2D:
 		var circle := explosion_shape.shape as CircleShape2D
 		_expect(is_equal_approx(circle.radius, EXPECTED_ROCKET_EXPLOSION_RADIUS), "Skill2 explosion shape radius mismatch.")
@@ -337,6 +381,54 @@ func _test_multiplayer_projectile_instantiation() -> void:
 	_expect(mp_game != null, "MP game scene must instantiate for Skill2 projectile registry.")
 	if mp_game == null:
 		return
+	var collectible_projectile := mp_game.call(
+		"_instantiate_projectile",
+		&"collectible_sakura_rocket",
+		999999,
+		Vector2.RIGHT,
+		100,
+		234.0,
+		6.0,
+		false,
+		0,
+		0
+	) as LinglanSkill2SakuraRocket
+	_expect(collectible_projectile != null, "Multiplayer registry must instantiate collectible_sakura_rocket.")
+	_expect(
+		mp_game.get("_linglan_skill2_config") == null,
+		"Collectible Sakura multiplayer setup must not load the Boss Skill2 config."
+	)
+	if collectible_projectile != null:
+		_expect(collectible_projectile.damage == 100, "Registry Sakura rocket damage mismatch.")
+		_expect(collectible_projectile.enemies_only, "Registry Sakura rocket must be enemy-only.")
+		_expect(collectible_projectile.damage_type == EnemyConfig.DamageType.MAGIC, "Registry Sakura rocket must be magic damage.")
+		_expect(
+			is_equal_approx(collectible_projectile.speed, 234.0),
+			"Registry Sakura rocket must preserve the network speed payload."
+		)
+		_expect(
+			is_equal_approx(collectible_projectile.remaining_lifetime, 6.0),
+			"Registry Sakura rocket must preserve the network lifetime payload."
+		)
+		_expect(
+			is_equal_approx(
+				collectible_projectile.explosion_radius,
+				LinglanSkill2SakuraRocket.COLLECTIBLE_SAKURA_EXPLOSION_RADIUS
+			),
+			"Registry Sakura rocket must use its collectible explosion radius default."
+		)
+		_expect(
+			is_equal_approx(
+				collectible_projectile.homing_turn_rate,
+				EXPECTED_ROCKET_HOMING_TURN_RATE
+			),
+			"Registry Sakura rocket must use its collectible homing default."
+		)
+		_expect(
+			collectible_projectile.explosion_scene == COLLECTIBLE_EXPLOSION_SCENE,
+			"Registry Sakura rocket must keep the collectible explosion dependency."
+		)
+
 	var registry_config := SKILL2_CONFIG.duplicate(true) as LinglanSkill2Config
 	registry_config.rocket_explosion_radius = 91.0
 	registry_config.rocket_homing_turn_rate = 2.4
@@ -362,31 +454,11 @@ func _test_multiplayer_projectile_instantiation() -> void:
 		_expect(is_equal_approx(projectile.remaining_lifetime, 5.0), "Registry Skill2 rocket lifetime mismatch.")
 		_expect(is_equal_approx(projectile.explosion_radius, 91.0), "Registry Skill2 rocket must read explosion radius from config.")
 		_expect(is_equal_approx(projectile.homing_turn_rate, 2.4), "Registry Skill2 rocket must read homing turn rate from config.")
-	var collectible_projectile := mp_game.call(
-		"_instantiate_projectile",
-		&"collectible_sakura_rocket",
-		999999,
-		Vector2.RIGHT,
-		100,
-		210.0,
-		5.0,
-		false,
-		0,
-		0
-	) as LinglanSkill2SakuraRocket
-	_expect(collectible_projectile != null, "Multiplayer registry must instantiate collectible_sakura_rocket.")
-	if collectible_projectile != null:
-		_expect(collectible_projectile.damage == 100, "Registry Sakura rocket damage mismatch.")
-		_expect(collectible_projectile.enemies_only, "Registry Sakura rocket must be enemy-only.")
-		_expect(collectible_projectile.damage_type == EnemyConfig.DamageType.MAGIC, "Registry Sakura rocket must be magic damage.")
 		_expect(
-			is_equal_approx(
-				collectible_projectile.explosion_radius,
-				LinglanSkill2SakuraRocket.COLLECTIBLE_SAKURA_EXPLOSION_RADIUS
-			),
-			"Registry Sakura rocket must use the collectible Sakura explosion radius."
+			projectile.explosion_scene == EXPLOSION_SCENE,
+			"Registry Skill2 rocket must keep the Boss explosion dependency."
 		)
-		_expect(is_equal_approx(collectible_projectile.homing_turn_rate, 2.4), "Registry Sakura rocket must read homing turn rate from config.")
+	if collectible_projectile != null:
 		var boss_scene := mp_game.get("_linglan_skill2_rocket_scene") as PackedScene
 		var collectible_scene := mp_game.get("_collectible_sakura_rocket_scene") as PackedScene
 		_expect(
@@ -509,7 +581,9 @@ func _test_rocket_homing_and_explosion_damage() -> void:
 			shape_node.disabled = false
 	await _wait_process_and_physics_frames(3)
 	player.current_health = 200
-	var sakura_mode_rocket := ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
+	var sakura_mode_rocket := (
+		COLLECTIBLE_ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
+	)
 	test_root.add_child(sakura_mode_rocket)
 	sakura_mode_rocket.global_position = Vector2.ZERO
 	sakura_mode_rocket.setup(
@@ -660,6 +734,24 @@ func _clear_collectible_sakura_explosions(parent: Node) -> void:
 	for child in parent.get_children():
 		if child.get_script() == COLLECTIBLE_SAKURA_EXPLOSION_SCRIPT:
 			child.queue_free()
+
+
+func _collect_resource_dependency_closure(root_path: String) -> Dictionary:
+	var closure: Dictionary = {}
+	var pending: Array[String] = [root_path]
+	while not pending.is_empty():
+		var current_path: String = pending.pop_back()
+		if closure.has(current_path):
+			continue
+		closure[current_path] = true
+		for raw_dependency in ResourceLoader.get_dependencies(current_path):
+			var dependency_sections := String(raw_dependency).split("::", false)
+			if dependency_sections.is_empty():
+				continue
+			var dependency_path := dependency_sections[dependency_sections.size() - 1]
+			if dependency_path.begins_with("res://") and not closure.has(dependency_path):
+				pending.append(dependency_path)
+	return closure
 
 
 func _expect(condition: bool, message: String) -> void:

@@ -67,6 +67,11 @@ func _test_sakura_rocket_resource_isolation() -> void:
 	var boss_shape_a := boss_rocket_a.get_node("ExplosionShape") as CollisionShape2D
 	var boss_shape_b := boss_rocket_b.get_node("ExplosionShape") as CollisionShape2D
 	var collectible_shape := collectible_rocket.get_node("ExplosionShape") as CollisionShape2D
+	var boss_body_shape_a := boss_rocket_a.get_node("CollisionShape2D") as CollisionShape2D
+	var boss_body_shape_b := boss_rocket_b.get_node("CollisionShape2D") as CollisionShape2D
+	var collectible_body_shape := (
+		collectible_rocket.get_node("CollisionShape2D") as CollisionShape2D
+	)
 	_expect(
 		boss_shape_a.shape.resource_local_to_scene
 		and boss_shape_b.shape.resource_local_to_scene
@@ -77,6 +82,16 @@ func _test_sakura_rocket_resource_isolation() -> void:
 		boss_shape_a.shape != boss_shape_b.shape
 		and boss_shape_a.shape != collectible_shape.shape,
 		"Boss/collectible Sakura rocket instances must not share mutable Shape resources."
+	)
+	_expect(
+		not boss_body_shape_a.shape.resource_local_to_scene
+		and not boss_body_shape_b.shape.resource_local_to_scene
+		and not collectible_body_shape.shape.resource_local_to_scene,
+		"Immutable Sakura rocket body Shapes must remain shared resources."
+	)
+	_expect(
+		boss_body_shape_a.shape == boss_body_shape_b.shape,
+		"Boss Sakura rocket instances must reuse their immutable capsule Shape."
 	)
 	var boss_circle_a := boss_shape_a.shape as CircleShape2D
 	var boss_circle_b := boss_shape_b.shape as CircleShape2D
@@ -176,10 +191,12 @@ func _test_complete_shape_query_pagination() -> void:
 	query.collide_with_bodies = true
 	query.collide_with_areas = false
 	query.exclude = [bodies[0].get_rid()]
+	var query_metrics: Dictionary = {}
 	var results := COMPLETE_SHAPE_QUERY_2D.intersect_shape_all(
 		test_root.get_world_2d().direct_space_state,
 		query,
-		16
+		16,
+		query_metrics
 	)
 	var unique_collider_ids: Dictionary = {}
 	for result in results:
@@ -194,6 +211,20 @@ func _test_complete_shape_query_pagination() -> void:
 	_expect(
 		query.exclude.size() == 1 and query.exclude[0] == bodies[0].get_rid(),
 		"Complete Shape query must restore the caller's original exclusions."
+	)
+	_expect(
+		int(query_metrics.get("full_batch_count", 0)) == 9
+		and int(query_metrics.get("physics_query_count", 0)) >= 9
+		and int(query_metrics.get("physics_query_count", 0)) <= 10
+		and int(query_metrics.get("newly_excluded_count", 0)) == DENSE_COLLIDER_COUNT - 1
+		and int(query_metrics.get("result_count", 0)) == DENSE_COLLIDER_COUNT - 1,
+		"Dense query metrics must expose all nine full pages and at most one terminal query: %s."
+		% [query_metrics]
+	)
+	_expect(
+		query_metrics.has("elapsed_usec")
+		and int(query_metrics.get("elapsed_usec", -1)) >= 0,
+		"Dense query diagnostics must report a non-negative elapsed time."
 	)
 	for body in bodies:
 		body.queue_free()

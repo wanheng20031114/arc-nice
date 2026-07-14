@@ -2,7 +2,6 @@ extends Area2D
 class_name LinglanSkill4LaserField
 
 const PLAYER_COLLISION_MASK := 2
-const DAMAGE_QUERY_MAX_RESULTS := 32
 
 static var _next_damage_event_source_id: int = 1
 
@@ -37,9 +36,11 @@ var start_max := Vector2(288.0, 256.0)
 var final_min := Vector2(32.0, 64.0)
 var final_max := Vector2(208.0, 176.0)
 var elapsed: float = 0.0
-var player_damage_cooldowns: Dictionary = {}
-var damage_query_time_left: float = 0.0
-var _overlap_damage_query_count: int = 0
+var overlapping_players: Dictionary[int, Player] = {}
+var player_next_damage_times: Dictionary[int, float] = {}
+var _last_geometry_progress: float = -1.0
+var _last_geometry_warning: bool = false
+var _geometry_update_count: int = 0
 var field_id: int = 0
 var source_type: StringName = &"linglan_skill4_laser"
 var field_finished: bool = false
@@ -47,6 +48,7 @@ var field_finished: bool = false
 
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
+	body_exited.connect(_on_body_exited)
 	_apply_current_geometry()
 	_set_damage_collision_enabled(damage_enabled)
 
@@ -75,9 +77,9 @@ func setup(
 	lifetime_duration = maxf(initial_lifetime_duration, 0.0)
 	elapsed = 0.0
 	field_finished = false
-	player_damage_cooldowns.clear()
-	damage_query_time_left = 0.0
-	_overlap_damage_query_count = 0
+	overlapping_players.clear()
+	player_next_damage_times.clear()
+	_invalidate_geometry_cache()
 	if is_node_ready():
 		_apply_current_geometry()
 		_set_damage_collision_enabled(damage_enabled)
@@ -89,6 +91,9 @@ func setup_multiplayer_visual_only() -> void:
 
 
 func _set_damage_collision_enabled(enabled: bool) -> void:
+	if not enabled:
+		overlapping_players.clear()
+		player_next_damage_times.clear()
 	monitoring = enabled
 	monitorable = enabled
 	collision_layer = 128 if enabled else 0
@@ -119,10 +124,9 @@ func _physics_process(delta: float) -> void:
 		return
 	var safe_delta := maxf(delta, 0.0)
 	elapsed += safe_delta
-	_tick_player_damage_cooldowns(safe_delta)
 	_apply_current_geometry()
 	if damage_enabled:
-		_update_overlap_damage_query(safe_delta)
+		_update_overlapping_player_damage()
 	if lifetime_duration > 0.0 and elapsed >= lifetime_duration:
 		finish()
 
@@ -137,7 +141,20 @@ func finish() -> void:
 
 
 func _apply_current_geometry() -> void:
-	var bounds := get_current_bounds()
+	var progress := get_laser_progress()
+	var warning_active := is_warning_active()
+	if (
+		is_equal_approx(progress, _last_geometry_progress)
+		and warning_active == _last_geometry_warning
+	):
+		return
+	_last_geometry_progress = progress
+	_last_geometry_warning = warning_active
+	_geometry_update_count += 1
+
+	var current_min := start_min.lerp(final_min, progress)
+	var current_max := start_max.lerp(final_max, progress)
+	var bounds := Rect2(current_min, current_max - current_min)
 	var min_position := bounds.position
 	var max_position := bounds.end
 	var top_a := Vector2(min_position.x, min_position.y)
@@ -189,6 +206,10 @@ func _apply_current_geometry() -> void:
 	)
 
 
+func _invalidate_geometry_cache() -> void:
+	_last_geometry_progress = -1.0
+
+
 func _get_active_core_width() -> float:
 	if is_warning_active():
 		return maxf(warning_core_width, 1.0)
@@ -226,68 +247,53 @@ func _set_rectangle_shape(shape_node: CollisionShape2D, center: Vector2, size: V
 
 
 func _on_body_entered(body: Node2D) -> void:
+	var player := body as Player
+	if player == null:
+		return
+	var player_id := player.get_instance_id()
+	overlapping_players[player_id] = player
 	if damage_enabled:
-		_apply_player_damage(body as Player)
+		_apply_player_damage(player)
 
 
-func _update_overlap_damage_query(delta: float) -> void:
-	damage_query_time_left = maxf(damage_query_time_left - maxf(delta, 0.0), 0.0)
-	if damage_query_time_left > 0.0:
+func _on_body_exited(body: Node2D) -> void:
+	var player := body as Player
+	if player == null:
 		return
-	_apply_overlap_damage()
-	damage_query_time_left = maxf(contact_damage_interval, 0.01)
+	var player_id := player.get_instance_id()
+	overlapping_players.erase(player_id)
 
 
-func _apply_overlap_damage() -> void:
-	_overlap_damage_query_count += 1
-	for shape_node in [top_shape, bottom_shape, left_shape, right_shape]:
-		_query_shape_damage(shape_node)
-
-
-func _query_shape_damage(shape_node: CollisionShape2D) -> void:
-	if shape_node == null or shape_node.disabled:
+func _update_overlapping_player_damage() -> void:
+	if overlapping_players.is_empty():
 		return
-	var rectangle := shape_node.shape as RectangleShape2D
-	if rectangle == null:
-		return
-	var query := PhysicsShapeQueryParameters2D.new()
-	query.shape = rectangle
-	query.transform = shape_node.global_transform
-	query.collision_mask = PLAYER_COLLISION_MASK
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	query.exclude = [get_rid()]
-
-	var results := get_world_2d().direct_space_state.intersect_shape(query, DAMAGE_QUERY_MAX_RESULTS)
-	for result in results:
-		_apply_player_damage(result.get("collider") as Player)
+	var stale_player_ids: Array[int] = []
+	for player_id in overlapping_players:
+		var player := overlapping_players[player_id]
+		if not is_instance_valid(player) or player.is_dead:
+			stale_player_ids.append(player_id)
+			continue
+		if player_next_damage_times.get(player_id, 0.0) > elapsed:
+			continue
+		_apply_player_damage(player)
+	for player_id in stale_player_ids:
+		overlapping_players.erase(player_id)
+		player_next_damage_times.erase(player_id)
 
 
 func _apply_player_damage(player: Player) -> void:
 	if player == null or player.is_dead:
 		return
 	var player_id := player.get_instance_id()
-	if float(player_damage_cooldowns.get(player_id, 0.0)) > 0.0:
+	if player_next_damage_times.get(player_id, 0.0) > elapsed:
 		return
 	if _try_report_multiplayer_player_hit(player):
-		player_damage_cooldowns[player_id] = contact_damage_interval
+		player_next_damage_times[player_id] = elapsed + maxf(contact_damage_interval, 0.0)
 		return
-	if player.apply_damage(damage, EnemyConfig.DamageType.MAGIC):
-		player_damage_cooldowns[player_id] = contact_damage_interval
-
-
-func _tick_player_damage_cooldowns(delta: float) -> void:
-	if player_damage_cooldowns.is_empty():
-		return
-	var expired_player_ids: Array[int] = []
-	for player_id in player_damage_cooldowns:
-		var remaining := maxf(float(player_damage_cooldowns[player_id]) - delta, 0.0)
-		if remaining <= 0.0:
-			expired_player_ids.append(player_id)
-		else:
-			player_damage_cooldowns[player_id] = remaining
-	for player_id in expired_player_ids:
-		player_damage_cooldowns.erase(player_id)
+	player.apply_damage(damage, EnemyConfig.DamageType.MAGIC)
+	# Preserve the authored contact cadence even when dash/invincibility rejects
+	# this pulse; otherwise an overlapping player would be retried every frame.
+	player_next_damage_times[player_id] = elapsed + maxf(contact_damage_interval, 0.0)
 
 
 func _try_report_multiplayer_player_hit(player: Player) -> bool:

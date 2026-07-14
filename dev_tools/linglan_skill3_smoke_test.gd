@@ -145,6 +145,19 @@ func _test_skill3_scene_contract() -> void:
 			var core_tint: Color = core_material.get_shader_parameter(&"tint")
 			_expect(core_tint.a >= 0.5, "Skill3 orb core must be a high-density fill inside the collision radius.")
 			_expect(float(core_material.get_shader_parameter(&"inner_radius")) >= 0.75, "Skill3 orb core must keep most of the collision radius densely lit.")
+			_expect(
+				core_material.get_shader_parameter(&"gpu_pulse_enabled") != true
+				and core_material.shader != null
+				and core_material.shader.code.contains(
+					"uniform bool gpu_pulse_enabled = false;"
+				),
+				"Skill3 orb must keep the shared shader's manual pulse behavior."
+			)
+			orb.call("_set_visual_pulse", 0.83)
+			_expect(
+				is_equal_approx(float(core_material.get_shader_parameter(&"pulse")), 0.83),
+				"Skill3 orb must still be able to drive its authored flash pulse manually."
+			)
 		if outer_halo != null and outer_halo.material is ShaderMaterial:
 			var outer_material := outer_halo.material as ShaderMaterial
 			var outer_tint: Color = outer_material.get_shader_parameter(&"tint")

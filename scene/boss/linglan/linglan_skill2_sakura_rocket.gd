@@ -3,8 +3,6 @@ class_name LinglanSkill2SakuraRocket
 
 signal projectile_finished(projectile_id: int, projectile: Node)
 
-const EXPLOSION_SCENE := preload("res://scene/boss/linglan/linglan_skill2_sakura_explosion.tscn")
-const COLLECTIBLE_SAKURA_EXPLOSION_SCENE := preload("res://scene/collectible_sakura_explosion.tscn")
 const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/complete_shape_query_2d.gd")
 const WORLD_COLLISION_MASK := 1
 const PLAYER_COLLISION_MASK := 2
@@ -38,6 +36,7 @@ const EXPLOSION_QUERY_BATCH_SIZE := 64
 @export var max_lifetime: float = 5.0
 @export var explosion_radius: float = 78.0
 @export var homing_turn_rate: float = 1.2
+@export var explosion_scene: PackedScene
 @export_range(0.0, 10.0, 0.05, "or_greater") var flash_lead_time: float = 1.2
 @export_range(1.0, 30.0, 0.1, "or_greater") var flash_frequency: float = 9.0
 
@@ -351,15 +350,14 @@ func _apply_enemy_damage(enemy: Enemy) -> void:
 
 
 func _spawn_explosion_effect() -> void:
+	if explosion_scene == null:
+		return
 	var spawn_parent := get_tree().current_scene
 	if spawn_parent == null:
 		spawn_parent = get_parent()
 	if spawn_parent == null:
 		return
 
-	var explosion_scene := EXPLOSION_SCENE
-	if enemies_only:
-		explosion_scene = COLLECTIBLE_SAKURA_EXPLOSION_SCENE
 	var explosion := explosion_scene.instantiate() as Node2D
 	if explosion == null:
 		return

@@ -79,6 +79,7 @@ func _init() -> void:
 
 
 func _run() -> void:
+	await _verify_explosion_shape_isolation()
 	await _verify_dense_singleplayer_explosion_has_no_result_cap()
 	await _verify_direct_body_hit_is_always_included()
 	await _verify_host_uses_authoritative_damage_path()
@@ -96,6 +97,48 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _verify_explosion_shape_isolation() -> void:
+	var scene := Node2D.new()
+	scene.name = "BombShapeIsolationTest"
+	root.add_child(scene)
+	current_scene = scene
+
+	var first_bomb := BOMB_SCENE.instantiate() as WeishidaierSkill1Bomb
+	var second_bomb := BOMB_SCENE.instantiate() as WeishidaierSkill1Bomb
+	first_bomb.explosion_radius = 31.0
+	second_bomb.explosion_radius = 57.0
+	first_bomb.monitoring = false
+	second_bomb.monitoring = false
+	scene.add_child(first_bomb)
+	scene.add_child(second_bomb)
+	first_bomb.set_physics_process(false)
+	second_bomb.set_physics_process(false)
+
+	var first_circle := first_bomb.explosion_shape.shape as CircleShape2D
+	var second_circle := second_bomb.explosion_shape.shape as CircleShape2D
+	_expect(
+		first_circle != null and second_circle != null,
+		"Bomb instances must expose their authored explosion CircleShapes."
+	)
+	if first_circle != null and second_circle != null:
+		_expect(
+			first_circle.resource_local_to_scene and second_circle.resource_local_to_scene,
+			"Runtime-mutated bomb explosion Shapes must remain local to each scene instance."
+		)
+		_expect(
+			first_circle != second_circle
+			and is_equal_approx(first_circle.radius, 31.0)
+			and is_equal_approx(second_circle.radius, 57.0),
+			"Two bombs with different radii must not share or overwrite explosion Shapes."
+		)
+		first_circle.radius = 12.0
+		_expect(
+			is_equal_approx(second_circle.radius, 57.0),
+			"Mutating one bomb explosion Shape must not leak into another bomb."
+		)
+	await _free_scene(scene)
 
 
 func _verify_dense_singleplayer_explosion_has_no_result_cap() -> void:

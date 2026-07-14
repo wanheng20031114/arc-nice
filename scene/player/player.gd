@@ -73,11 +73,9 @@ const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/collectible_fr
 const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
 const COLLECTIBLE_MOON_SHIELD_SCENE := preload("res://scene/collectible_moon_shield.tscn")
 const COLLECTIBLE_ARROW_PROJECTILE_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
-const LINGLAN_SKILL2_CONFIG_PATH := "res://resources/config/bosses/linglan_skill2.tres"
 const COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH := (
 	"res://scene/collectible_sakura_rocket.tscn"
 )
-const COLLECTIBLE_SAKURA_EXPLOSION_RADIUS := 47.0
 const NORMAL_ANIMATION_PREFIX := &"normal"
 const DEFAULT_FIRE_RATE_MULTIPLIER := 1.0
 const DEFAULT_MOVE_SPEED_MULTIPLIER := 1.0
@@ -176,7 +174,6 @@ var collectible_damage_against_bleeding_multiplier: float = 1.0
 var collectible_ranged_front_damage_multiplier: float = 1.0
 var collectible_ranged_back_damage_multiplier: float = 1.0
 var collectible_ranged_dodge_chance: float = 0.0
-var linglan_skill2_config_cache: LinglanSkill2Config = null
 var collectible_sakura_rocket_scene_cache: PackedScene = null
 var _sakura_runtime_load_requested := false
 var last_base_upgrade_was_free: bool = false
@@ -2424,26 +2421,20 @@ func _spawn_collectible_arrow(target_enemy: Enemy, arrow_damage: int) -> bool:
 	return true
 
 
-func _get_linglan_skill2_config() -> LinglanSkill2Config:
-	if linglan_skill2_config_cache != null:
-		return linglan_skill2_config_cache
-	var status := ResourceLoader.load_threaded_get_status(LINGLAN_SKILL2_CONFIG_PATH)
+func _get_collectible_sakura_rocket_scene() -> PackedScene:
+	if collectible_sakura_rocket_scene_cache != null:
+		return collectible_sakura_rocket_scene_cache
+	var status := ResourceLoader.load_threaded_get_status(
+		COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH
+	)
 	if (
 		status == ResourceLoader.THREAD_LOAD_LOADED
 		or status == ResourceLoader.THREAD_LOAD_IN_PROGRESS
 	):
-		linglan_skill2_config_cache = ResourceLoader.load_threaded_get(
-			LINGLAN_SKILL2_CONFIG_PATH
-		) as LinglanSkill2Config
+		collectible_sakura_rocket_scene_cache = ResourceLoader.load_threaded_get(
+			COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH
+		) as PackedScene
 	else:
-		linglan_skill2_config_cache = load(
-			LINGLAN_SKILL2_CONFIG_PATH
-		) as LinglanSkill2Config
-	return linglan_skill2_config_cache
-
-
-func _get_collectible_sakura_rocket_scene() -> PackedScene:
-	if collectible_sakura_rocket_scene_cache == null:
 		collectible_sakura_rocket_scene_cache = load(
 			COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH
 		) as PackedScene
@@ -2451,17 +2442,19 @@ func _get_collectible_sakura_rocket_scene() -> PackedScene:
 
 
 func _request_sakura_runtime_resources() -> void:
-	if _sakura_runtime_load_requested or linglan_skill2_config_cache != null:
+	if _sakura_runtime_load_requested or collectible_sakura_rocket_scene_cache != null:
 		return
 	_sakura_runtime_load_requested = true
-	var status := ResourceLoader.load_threaded_get_status(LINGLAN_SKILL2_CONFIG_PATH)
+	var status := ResourceLoader.load_threaded_get_status(
+		COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH
+	)
 	if (
 		status == ResourceLoader.THREAD_LOAD_IN_PROGRESS
 		or status == ResourceLoader.THREAD_LOAD_LOADED
 	):
 		return
 	var error := ResourceLoader.load_threaded_request(
-		LINGLAN_SKILL2_CONFIG_PATH,
+		COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH,
 		"",
 		true,
 		ResourceLoader.CACHE_MODE_REUSE
@@ -2477,9 +2470,8 @@ func _spawn_collectible_sakura_rocket(target_enemy: Enemy, rocket_damage: int) -
 	var spawn_parent := get_tree().current_scene
 	if spawn_parent == null:
 		return false
-	var skill2_config := _get_linglan_skill2_config()
 	var rocket_scene := _get_collectible_sakura_rocket_scene()
-	if skill2_config == null or rocket_scene == null:
+	if rocket_scene == null:
 		return false
 	var shoot_direction := global_position.direction_to(target_enemy.global_position)
 	if shoot_direction == Vector2.ZERO:
@@ -2499,15 +2491,19 @@ func _spawn_collectible_sakura_rocket(target_enemy: Enemy, rocket_damage: int) -
 	if rocket == null:
 		return false
 	rocket.top_level = true
+	var rocket_speed := float(rocket.get("speed"))
+	var rocket_lifetime := float(rocket.get("max_lifetime"))
+	var rocket_explosion_radius := float(rocket.get("explosion_radius"))
+	var rocket_homing_turn_rate := float(rocket.get("homing_turn_rate"))
 	rocket.call(
 		"setup",
 		shoot_direction,
 		rocket_damage,
-		skill2_config.rocket_speed,
-		skill2_config.rocket_lifetime,
-		COLLECTIBLE_SAKURA_EXPLOSION_RADIUS,
+		rocket_speed,
+		rocket_lifetime,
+		rocket_explosion_radius,
 		null,
-		skill2_config.rocket_homing_turn_rate,
+		rocket_homing_turn_rate,
 		target_enemy,
 		true,
 		EnemyConfig.DamageType.MAGIC

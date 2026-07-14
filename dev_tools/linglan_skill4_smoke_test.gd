@@ -8,6 +8,9 @@ const LASER_FIELD_SCENE := preload("res://scene/boss/linglan/linglan_skill4_lase
 const ORB_SCENE := preload("res://scene/boss/linglan/linglan_skill4_light_orb.tscn")
 const LASER_FIELD_SCRIPT := preload("res://scene/boss/linglan/linglan_skill4_laser_field.gd")
 const ORB_SCRIPT := preload("res://scene/boss/linglan/linglan_skill4_light_orb.gd")
+const ORB_SCRIPT_PATH := "res://scene/boss/linglan/linglan_skill4_light_orb.gd"
+const ORB_SCENE_PATH := "res://scene/boss/linglan/linglan_skill4_light_orb.tscn"
+const ORB_SHADER_PATH := "res://scene/boss/linglan/linglan_skill3_light_orb.gdshader"
 const GAME_SCENE := preload("res://scene/game.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
@@ -134,9 +137,10 @@ func _run() -> void:
 	current_scene = test_root
 
 	_test_skill4_config()
+	_test_skill4_gpu_pulse_contract()
 	await _test_skill4_scene_contract()
 	await _test_laser_and_orb_damage()
-	await _test_laser_query_cadence_and_multiplayer_event_ids()
+	await _test_laser_overlap_tracking_and_multiplayer_event_ids()
 	await _test_game_helpers()
 	await _test_skill_rotation_policy()
 	await _test_boss_skill4_schedule()
@@ -201,6 +205,55 @@ func _test_skill4_config() -> void:
 		seen_rows[row] = true
 
 
+func _test_skill4_gpu_pulse_contract() -> void:
+	var shader_source := FileAccess.get_file_as_string(ORB_SHADER_PATH)
+	var vertex_start := shader_source.find("void vertex()")
+	var fragment_start := shader_source.find("void fragment()")
+	_expect(
+		vertex_start >= 0 and fragment_start > vertex_start,
+		"Shared Linglan orb shader must expose inspectable vertex and fragment stages."
+	)
+	if vertex_start >= 0 and fragment_start > vertex_start:
+		var vertex_source := shader_source.substr(vertex_start, fragment_start - vertex_start)
+		var fragment_source := shader_source.substr(fragment_start)
+		_expect(
+			vertex_source.contains("TIME")
+			and vertex_source.contains("gpu_pulse_frequency")
+			and vertex_source.contains("gpu_pulse_min")
+			and vertex_source.contains("gpu_pulse_max")
+			and vertex_source.contains("gpu_pulse_phase")
+			and vertex_source.contains("sin("),
+			"Skill4 pulse must be calculated once per vertex from GPU TIME and configurable frequency/range/phase."
+		)
+		_expect(
+			not fragment_source.contains("sin(")
+			and fragment_source.contains("resolved_pulse"),
+			"Linglan orb fragments must consume the interpolated pulse without recalculating its sine per pixel."
+		)
+	_expect(
+		shader_source.contains("uniform bool gpu_pulse_enabled = false;"),
+		"The shared shader must keep GPU pulse disabled by default so Skill3 retains manual pulse control."
+	)
+
+	var orb_script_source := FileAccess.get_file_as_string(ORB_SCRIPT_PATH)
+	_expect(
+		not orb_script_source.contains("set_shader_parameter")
+		and not orb_script_source.contains("_update_visual_pulse")
+		and not orb_script_source.contains("_duplicate_polygon_materials"),
+		"Skill4 orb scripts must not traverse or mutate five visual materials every physics frame."
+	)
+
+	var orb_scene_source := FileAccess.get_file_as_string(ORB_SCENE_PATH)
+	var material_start := orb_scene_source.find("[sub_resource type=\"ShaderMaterial\"")
+	var node_start := orb_scene_source.find("[node name=", material_start)
+	_expect(
+		material_start >= 0
+		and node_start > material_start
+		and not orb_scene_source.substr(material_start, node_start - material_start).contains("resource_local_to_scene = true"),
+		"Immutable Skill4 ShaderMaterials must be shared instead of duplicated for every orb instance."
+	)
+
+
 func _test_skill4_scene_contract() -> void:
 	var field := LASER_FIELD_SCENE.instantiate() as LASER_FIELD_SCRIPT
 	_expect(field != null, "Skill4 laser field scene must instantiate.")
@@ -224,6 +277,7 @@ func _test_skill4_scene_contract() -> void:
 	_expect(field.is_warning_active(), "Skill4 laser must start in warning mode.")
 	var top_shape := field.get_node_or_null("TopShape") as CollisionShape2D
 	var left_shape := field.get_node_or_null("LeftShape") as CollisionShape2D
+	var top_core_line := field.get_node_or_null("VisualRoot/TopCore") as Line2D
 	_expect(top_shape != null and top_shape.shape is RectangleShape2D, "Skill4 top laser must use a rectangle core.")
 	_expect(left_shape != null and left_shape.shape is RectangleShape2D, "Skill4 left laser must use a rectangle core.")
 	if top_shape != null and top_shape.shape is RectangleShape2D:
@@ -235,7 +289,12 @@ func _test_skill4_scene_contract() -> void:
 		_expect(line != null, "Skill4 laser visual missing %s." % node_name)
 		if node_name.ends_with("Core") and line != null:
 			_expect(line.width < 6.0, "Skill4 warning core visual must be thinner than active laser.")
+	var initial_geometry_update_count := int(field.get("_geometry_update_count"))
 	field.call("_physics_process", 0.5)
+	_expect(
+		int(field.get("_geometry_update_count")) == initial_geometry_update_count,
+		"Skill4 laser must not rewrite static warning geometry every physics frame."
+	)
 	var warning_bounds := field.get_current_bounds()
 	_expect(warning_bounds.position.is_equal_approx(Vector2(-48.0, -16.0)), "Skill4 warning min bounds must stay at start.")
 	_expect(warning_bounds.end.is_equal_approx(Vector2(288.0, 256.0)), "Skill4 warning max bounds must stay at start.")
@@ -249,10 +308,48 @@ func _test_skill4_scene_contract() -> void:
 	var mid_bounds := field.get_current_bounds()
 	_expect(mid_bounds.position.is_equal_approx(Vector2(-8.0, 24.0)), "Skill4 laser midpoint min bounds mismatch.")
 	_expect(mid_bounds.end.is_equal_approx(Vector2(248.0, 216.0)), "Skill4 laser midpoint max bounds mismatch.")
+	if top_core_line != null:
+		_expect(
+			top_core_line.points.size() == 2
+			and top_core_line.points[0].is_equal_approx(Vector2(-8.0, 24.0))
+			and top_core_line.points[1].is_equal_approx(Vector2(248.0, 24.0)),
+			"Skill4 laser midpoint must update the rendered top line."
+		)
+	if top_shape != null and top_shape.shape is RectangleShape2D:
+		_expect(
+			top_shape.position.is_equal_approx(Vector2(120.0, 24.0))
+			and (top_shape.shape as RectangleShape2D).size.is_equal_approx(Vector2(256.0, 6.0)),
+			"Skill4 laser midpoint must update the top collision rectangle."
+		)
+	if left_shape != null and left_shape.shape is RectangleShape2D:
+		_expect(
+			left_shape.position.is_equal_approx(Vector2(-8.0, 120.0))
+			and (left_shape.shape as RectangleShape2D).size.is_equal_approx(Vector2(6.0, 192.0)),
+			"Skill4 laser midpoint must update the left collision rectangle."
+		)
 	field.call("_physics_process", 1.5)
 	var final_bounds := field.get_current_bounds()
 	_expect(final_bounds.position.is_equal_approx(Vector2(32.0, 64.0)), "Skill4 laser final min bounds mismatch.")
 	_expect(final_bounds.end.is_equal_approx(Vector2(208.0, 176.0)), "Skill4 laser final max bounds mismatch.")
+	if top_core_line != null:
+		_expect(
+			top_core_line.points.size() == 2
+			and top_core_line.points[0].is_equal_approx(Vector2(32.0, 64.0))
+			and top_core_line.points[1].is_equal_approx(Vector2(208.0, 64.0)),
+			"Skill4 laser final geometry must update the rendered top line."
+		)
+	if top_shape != null and top_shape.shape is RectangleShape2D:
+		_expect(
+			top_shape.position.is_equal_approx(Vector2(120.0, 64.0))
+			and (top_shape.shape as RectangleShape2D).size.is_equal_approx(Vector2(176.0, 6.0)),
+			"Skill4 laser final geometry must update the top collision rectangle."
+		)
+	var final_geometry_update_count := int(field.get("_geometry_update_count"))
+	field.call("_physics_process", 0.75)
+	_expect(
+		int(field.get("_geometry_update_count")) == final_geometry_update_count,
+		"Skill4 laser must stop rewriting geometry after shrink reaches its final bounds."
+	)
 	field.setup_multiplayer_visual_only()
 	_expect(field.collision_layer == 0 and field.collision_mask == 0, "Skill4 proxy laser must disable collision layers.")
 	if top_shape != null:
@@ -273,6 +370,20 @@ func _test_skill4_scene_contract() -> void:
 			_expect(is_equal_approx((orb_shape.shape as CircleShape2D).radius, 6.0), "Skill4 orb collision radius must be smaller than its visual radius.")
 		var core := orb.get_node_or_null("VisualRoot/Core") as Polygon2D
 		_expect(core != null and core.material is ShaderMaterial, "Skill4 orb core must use shader glow material.")
+		if core != null and core.material is ShaderMaterial:
+			var core_material := core.material as ShaderMaterial
+			_expect(core_material.get_shader_parameter(&"gpu_pulse_enabled") == true, "Skill4 orb materials must enable GPU pulse.")
+			_expect(is_equal_approx(float(core_material.get_shader_parameter(&"gpu_pulse_frequency")), 3.5), "Skill4 GPU pulse frequency changed.")
+			_expect(is_equal_approx(float(core_material.get_shader_parameter(&"gpu_pulse_min")), 0.9), "Skill4 GPU pulse minimum changed.")
+			_expect(is_equal_approx(float(core_material.get_shader_parameter(&"gpu_pulse_max")), 1.12), "Skill4 GPU pulse maximum changed.")
+			_expect(is_equal_approx(float(core_material.get_shader_parameter(&"gpu_pulse_phase")), 0.0), "Skill4 GPU pulse phase changed.")
+			var comparison_orb := ORB_SCENE.instantiate() as ORB_SCRIPT
+			var comparison_core := comparison_orb.get_node_or_null("VisualRoot/Core") as Polygon2D
+			_expect(
+				comparison_core != null and comparison_core.material == core.material,
+				"Skill4 orb instances must share immutable visual materials."
+			)
+			comparison_orb.free()
 		orb.queue_free()
 	await process_frame
 	await physics_frame
@@ -298,6 +409,11 @@ func _test_laser_and_orb_damage() -> void:
 	field.set_physics_process(false)
 	await process_frame
 	await physics_frame
+	await physics_frame
+	_expect(
+		field.overlapping_players.has(laser_player.get_instance_id()),
+		"Skill4 laser must track a player already overlapping when the field enters the scene."
+	)
 	field.call("_physics_process", 0.016)
 	_expect(
 		laser_player.current_health == 175,
@@ -313,8 +429,47 @@ func _test_laser_and_orb_damage() -> void:
 		laser_player.current_health == 150,
 		"Skill4 laser must keep contact damage after warning, health=%d." % laser_player.current_health
 	)
+	laser_player.global_position = Vector2(500.0, 500.0)
+	await physics_frame
+	await physics_frame
+	_expect(
+		not field.overlapping_players.has(laser_player.get_instance_id()),
+		"Skill4 laser must stop tracking a player after body_exited."
+	)
+	field.call("_physics_process", field.contact_damage_interval + 0.1)
+	_expect(
+		laser_player.current_health == 150,
+		"Skill4 laser must not damage a player after body_exited."
+	)
 	field.queue_free()
 	laser_player.queue_free()
+	await process_frame
+
+	var invulnerable_player := _spawn_player(test_root, Vector2(500.0, 500.0), 3, 200)
+	invulnerable_player.magic_defense = 0
+	invulnerable_player._base_magic_defense = 0
+	var retry_field := LASER_FIELD_SCENE.instantiate() as LASER_FIELD_SCRIPT
+	test_root.add_child(retry_field)
+	retry_field.set_physics_process(false)
+	invulnerable_player.invincibility_time_left = 1.0
+	retry_field.call("_on_body_entered", invulnerable_player)
+	_expect(
+		invulnerable_player.current_health == 200,
+		"Skill4 laser must respect an invulnerable player's rejected contact pulse."
+	)
+	invulnerable_player.invincibility_time_left = 0.0
+	retry_field.call("_physics_process", retry_field.contact_damage_interval * 0.5)
+	_expect(
+		invulnerable_player.current_health == 200,
+		"Rejected Skill4 laser pulses must still retain the authored contact cooldown."
+	)
+	retry_field.call("_physics_process", retry_field.contact_damage_interval * 0.5)
+	_expect(
+		invulnerable_player.current_health == 150,
+		"Skill4 laser must retry after the rejected pulse's contact cooldown expires."
+	)
+	retry_field.queue_free()
+	invulnerable_player.queue_free()
 	await process_frame
 
 	var orb_player := _spawn_player(test_root, Vector2(4.0, 0.0), 2, 200)
@@ -346,7 +501,7 @@ func _test_laser_and_orb_damage() -> void:
 	await process_frame
 
 
-func _test_laser_query_cadence_and_multiplayer_event_ids() -> void:
+func _test_laser_overlap_tracking_and_multiplayer_event_ids() -> void:
 	var report_host := LaserDamageReportHost.new()
 	report_host.name = "LaserDamageReportHost"
 	root.add_child(report_host)
@@ -365,25 +520,30 @@ func _test_laser_query_cadence_and_multiplayer_event_ids() -> void:
 	)
 	field.set_physics_process(false)
 
-	for _frame_index in range(10):
-		field.call("_physics_process", 0.01)
-	_expect(
-		int(field.get("_overlap_damage_query_count")) == 1,
-		"Skill4 laser must query overlaps once per damage interval, not every physics frame."
-	)
-	field.call("_physics_process", 0.42)
-	_expect(
-		int(field.get("_overlap_damage_query_count")) == 2,
-		"Skill4 laser must query again when its 0.5s damage interval elapses."
-	)
-
+	# Advance close to the former global query boundary before contact. Repeated damage
+	# must still be timed from this player's own entry hit, not from a field-wide phase.
+	field.call("_physics_process", 0.49)
 	var player := _spawn_player(report_host, Vector2(500.0, 500.0), 77, 200)
-	field.call("_apply_player_damage", player)
-	field.call("_tick_player_damage_cooldowns", field.contact_damage_interval)
-	field.call("_apply_player_damage", player)
+	field.call("_on_body_entered", player)
+	_expect(
+		report_host.damage_reports.size() == 1,
+		"Skill4 laser must damage a newly overlapping player immediately."
+	)
+	field.call("_on_body_exited", player)
+	field.call("_on_body_entered", player)
+	_expect(
+		report_host.damage_reports.size() == 1,
+		"Skill4 laser must preserve contact cooldown across a quick exit and re-entry."
+	)
+	field.call("_physics_process", 0.49)
+	_expect(
+		report_host.damage_reports.size() == 1,
+		"Skill4 laser must preserve the entered player's full contact cooldown."
+	)
+	field.call("_physics_process", 0.02)
 	_expect(
 		report_host.damage_reports.size() == 2,
-		"Skill4 multiplayer laser must report every legal repeated damage pulse."
+		"Skill4 laser must repeat damage about 0.5s after entry regardless of the old query phase."
 	)
 	if report_host.damage_reports.size() == 2:
 		_expect(
@@ -396,6 +556,12 @@ func _test_laser_query_cadence_and_multiplayer_event_ids() -> void:
 			and report_host.damage_reports[1]["source_type"] == &"linglan_skill4_laser",
 			"Skill4 laser event IDs must not change the authored damage source type."
 		)
+	field.call("_on_body_exited", player)
+	field.call("_physics_process", field.contact_damage_interval + 0.1)
+	_expect(
+		report_host.damage_reports.size() == 2,
+		"Skill4 laser must stop repeated damage as soon as the player exits."
+	)
 
 	report_host.queue_free()
 	current_scene = test_root
