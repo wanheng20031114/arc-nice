@@ -1,7 +1,7 @@
 shader_type canvas_item;
 render_mode unshaded;
 
-uniform vec4 base_color : source_color = vec4(0.298, 0.961, 0.416, 0.96);
+uniform vec4 base_color : source_color = vec4(0.298, 0.961, 0.416, 1.0);
 
 float pixel_hash(vec2 pixel) {
 	return fract(sin(dot(pixel, vec2(127.1, 311.7))) * 43758.5453);
@@ -25,6 +25,6 @@ void fragment() {
 		float speed = mix(1.8, 3.6, pixel_hash(pixel.yx + vec2(19.0, 7.0)));
 		float wave = sin(TIME * speed + phase) * 0.5 + 0.5;
 		float brightness = mix(0.72, 1.18, wave);
-		COLOR = vec4(base_color.rgb * brightness, base_color.a);
+		COLOR = vec4(base_color.rgb * brightness, 1.0);
 	}
 }

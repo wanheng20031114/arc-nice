@@ -267,6 +267,13 @@ func _test_config_and_scene_contracts() -> void:
 				and border_shader_code.contains("pixel.y >= 14.0"),
 				"植被桩边框必须覆盖16×16地块且只绘制最外两圈逻辑像素。"
 			)
+			_expect(
+				border_shader_code.contains(
+					"COLOR = vec4(base_color.rgb * brightness, 1.0);"
+				)
+				and not border_shader_code.contains("base_color.a"),
+				"植被桩所有可见边框像素必须保持完全不透明，亮度动画只能改变RGB。"
+			)
 		if glow_motes != null:
 			var mote_material := glow_motes.process_material as ParticleProcessMaterial
 			_expect(
