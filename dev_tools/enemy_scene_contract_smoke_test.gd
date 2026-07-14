@@ -135,6 +135,13 @@ func _test_enemy_scene_contract(enemy_config: EnemyConfig) -> void:
 	_expect(_shape_nodes_match_resources(touch_shape_nodes, touch_shapes), "%s setup must not replace touch shapes." % enemy_config.resource_path)
 	_test_collision_shapes_mirror_with_facing(enemy_config, enemy, animated_sprite, body_shape_nodes, touch_shape_nodes)
 
+	enemy.play_multiplayer_death_sequence()
+	_expect(
+		not enemy.is_physics_processing(),
+		"%s multiplayer death sequence must stop script physics while its animation finishes."
+		% enemy_config.resource_path
+	)
+
 	enemy.queue_free()
 	await process_frame
 

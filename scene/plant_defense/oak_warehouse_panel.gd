@@ -53,6 +53,7 @@ var multiplayer_slot_drop_target := ItemSource.NONE
 var multiplayer_slot_drop_target_index := -1
 var queued_quick_moves: Array[Dictionary] = []
 var panel_mouse_press_sequence := 0
+var panel_session_generation := 0
 
 
 func _ready() -> void:
@@ -72,23 +73,41 @@ func _ready() -> void:
 	Input.joy_connection_changed.connect(_on_joy_connection_changed)
 	get_viewport().size_changed.connect(_update_panel_transform)
 	run_state.ensure_run_started()
-	run_state.inventory_changed.connect(_refresh_all)
 	_update_panel_transform()
 	_refresh_detail()
 
 
 func bind_warehouse(new_warehouse: OakWarehouse, player: Player) -> void:
-	if warehouse != null and warehouse.storage_changed.is_connected(_refresh_all):
-		warehouse.storage_changed.disconnect(_refresh_all)
-	if tracked_player != null and tracked_player.died.is_connected(_on_tracked_player_died):
-		tracked_player.died.disconnect(_on_tracked_player_died)
+	if warehouse == new_warehouse and tracked_player == player:
+		_refresh_all()
+		return
+	if is_open():
+		close()
+	else:
+		_reset_transient_state()
+		_unbind_warehouse()
+	if new_warehouse != null:
+		panel_session_generation += 1
 	warehouse = new_warehouse
 	tracked_player = player
 	if tracked_player != null and not tracked_player.died.is_connected(_on_tracked_player_died):
 		tracked_player.died.connect(_on_tracked_player_died)
 	if warehouse != null and not warehouse.storage_changed.is_connected(_refresh_all):
 		warehouse.storage_changed.connect(_refresh_all)
+	if not run_state.inventory_changed.is_connected(_refresh_all):
+		run_state.inventory_changed.connect(_refresh_all)
+	if warehouse != null:
+		set_multiplayer_storage_state(
+			warehouse.multiplayer_storage_enabled,
+			warehouse.multiplayer_storage_snapshot_ready,
+			warehouse.multiplayer_storage_request_pending
+		)
 	_refresh_all()
+
+
+func open_for(new_warehouse: OakWarehouse, player: Player) -> void:
+	bind_warehouse(new_warehouse, player)
+	open()
 
 
 func set_multiplayer_storage_state(
@@ -146,6 +165,8 @@ func clear_multiplayer_slot_drop_pending() -> void:
 
 func open() -> void:
 	if warehouse == null or tracked_player == null or tracked_player.is_dead:
+		_reset_transient_state()
+		_unbind_warehouse()
 		return
 	if overlay.visible:
 		return
@@ -157,28 +178,76 @@ func open() -> void:
 	_clear_selection()
 	_refresh_all()
 	_focus_first_item_slot()
+	warehouse.on_shared_storage_panel_opened(self)
 	opened.emit()
 
 
 func close() -> void:
-	if not overlay.visible:
+	if not overlay.visible and warehouse == null:
 		return
+	var closing_warehouse := warehouse
+	var closing_player := tracked_player
+	var was_open := overlay.visible
 	overlay.hide()
 	hide()
-	_cancel_controller_drag()
-	queued_quick_moves.clear()
-	if get_viewport().gui_is_dragging():
-		get_viewport().gui_cancel_drag()
 	set_process_input(false)
 	set_process_unhandled_input(false)
-	_clear_selection()
-	if tracked_player != null and not tracked_player.is_dead:
-		tracked_player.set_controls_locked(false)
+	_reset_transient_state()
+	if (
+		was_open
+		and closing_player != null
+		and is_instance_valid(closing_player)
+		and not closing_player.is_dead
+	):
+		closing_player.set_controls_locked(false)
+	_unbind_warehouse()
+	_clear_slot_contents()
+	if not was_open:
+		return
+	if closing_warehouse != null and is_instance_valid(closing_warehouse):
+		closing_warehouse.on_shared_storage_panel_closed(self)
 	closed.emit()
 
 
 func is_open() -> bool:
 	return overlay.visible
+
+
+func is_bound_to_warehouse(candidate: OakWarehouse) -> bool:
+	return warehouse == candidate and candidate != null
+
+
+func _reset_transient_state() -> void:
+	_cancel_controller_drag()
+	queued_quick_moves.clear()
+	clear_multiplayer_slot_drop_pending()
+	if get_viewport().gui_is_dragging():
+		get_viewport().gui_cancel_drag()
+	_clear_selection()
+	multiplayer_storage_enabled = false
+	multiplayer_storage_snapshot_ready = true
+	multiplayer_storage_request_pending = false
+	status_label.text = ""
+
+
+func _unbind_warehouse() -> void:
+	if warehouse != null and warehouse.storage_changed.is_connected(_refresh_all):
+		warehouse.storage_changed.disconnect(_refresh_all)
+	if tracked_player != null and tracked_player.died.is_connected(_on_tracked_player_died):
+		tracked_player.died.disconnect(_on_tracked_player_died)
+	if run_state.inventory_changed.is_connected(_refresh_all):
+		run_state.inventory_changed.disconnect(_refresh_all)
+	warehouse = null
+	tracked_player = null
+
+
+func _clear_slot_contents() -> void:
+	for slot in storage_slots:
+		slot.set_item(null, 0)
+		slot.set_selected(false)
+	for slot in player_slots:
+		slot.set_item(null, 0)
+		slot.set_selected(false)
 
 
 func _input(event: InputEvent) -> void:
@@ -438,6 +507,9 @@ func make_slot_drag_data(source: int, slot_index: int) -> Dictionary:
 	_on_slot_selected(slot_index, source)
 	return {
 		"panel_instance_id": get_instance_id(),
+		"panel_session_generation": panel_session_generation,
+		"warehouse_instance_id": warehouse.get_instance_id(),
+		"warehouse_net_id": warehouse.warehouse_net_id,
 		"source": source,
 		"source_slot_index": slot_index,
 		"item_path": item.resource_path,
@@ -450,7 +522,10 @@ func make_slot_drag_data(source: int, slot_index: int) -> Dictionary:
 func get_slot_gesture_revision(_source: int) -> String:
 	if warehouse == null:
 		return ""
-	return "%d:%d:%d" % [
+	return "%d:%d:%d:%d:%d:%d" % [
+		panel_session_generation,
+		warehouse.get_instance_id(),
+		warehouse.warehouse_net_id,
 		_get_panel_inventory_revision(),
 		warehouse.get_storage_revision(),
 		1 if _is_network_locked() else 0,
@@ -814,6 +889,9 @@ func _drag_source_is_current(data: Dictionary) -> bool:
 		data.is_empty()
 		or warehouse == null
 		or int(data.get("panel_instance_id", 0)) != get_instance_id()
+		or int(data.get("panel_session_generation", -1)) != panel_session_generation
+		or int(data.get("warehouse_instance_id", 0)) != warehouse.get_instance_id()
+		or int(data.get("warehouse_net_id", -1)) != warehouse.warehouse_net_id
 		or int(data.get("inventory_revision", -1)) != _get_panel_inventory_revision()
 		or int(data.get("storage_revision", -1)) != warehouse.get_storage_revision()
 	):

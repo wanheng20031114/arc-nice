@@ -261,7 +261,10 @@ func _show_lock_reticle(target: Node2D, duration: float) -> void:
 		return
 	target.add_child(reticle)
 	reticle.position = Vector2.ZERO
-	reticle.start(duration)
+	# The authoritative sniper physics tick and multiplayer proxy render tick
+	# already provide the exact lock progress. Keep the reticle passive so it
+	# cannot advance and refresh the target a second time on its own.
+	reticle.start(duration, false)
 	lock_reticle = reticle
 
 

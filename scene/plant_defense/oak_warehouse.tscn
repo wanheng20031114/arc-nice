@@ -3,7 +3,6 @@
 [ext_resource type="Script" uid="uid://cffa0vxu11rp2" path="res://scene/plant_defense/oak_warehouse.gd" id="1_script"]
 [ext_resource type="Texture2D" uid="uid://b6b8m1sebgy8g" path="res://resources/texture/plant_defense/oak_warehouse/oak_warehouse.png" id="2_sprite"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
-[ext_resource type="PackedScene" path="res://scene/plant_defense/oak_warehouse_panel.tscn" id="4_panel"]
 [ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="5_font"]
 [ext_resource type="Shader" uid="uid://k6uttyelrjo6" path="res://resources/shader/plant_visual_pixel_snap.gdshader" id="6_pixel_snap_shader"]
 
@@ -196,6 +195,3 @@ damage_trail_color = Color(0.92156863, 0.28235295, 0.18039216, 1)
 [node name="MultiplayerStorageRequestTimer" type="Timer" parent="."]
 wait_time = 4.0
 one_shot = true
-
-[node name="OakWarehousePanel" parent="." unique_id=1003003184 instance=ExtResource("4_panel")]
-visible = false

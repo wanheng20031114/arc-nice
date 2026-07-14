@@ -1,6 +1,7 @@
 extends SceneTree
 
 const WAREHOUSE_SCENE := preload("res://scene/plant_defense/oak_warehouse.tscn")
+const WAREHOUSE_PANEL_SCENE := preload("res://scene/plant_defense/oak_warehouse_panel.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const WOOD := preload("res://resources/config/materials/material_wood.tres")
 const APPLE := preload("res://resources/config/collectibles/collectible_apple.tres")
@@ -23,8 +24,12 @@ func _run() -> void:
 	var player := PLAYER_SCENE.instantiate() as Player
 	fixture.add_child(player)
 	player.set_physics_process(false)
+	var storage_panel := WAREHOUSE_PANEL_SCENE.instantiate() as OakWarehousePanel
+	storage_panel.visible = false
+	fixture.add_child(storage_panel)
 	var warehouse := WAREHOUSE_SCENE.instantiate() as OakWarehouse
 	fixture.add_child(warehouse)
+	warehouse.set_shared_storage_panel(storage_panel)
 	var config := PlantDefenseRegistry.get_config(&"oak_warehouse")
 	warehouse.setup(
 		config,
@@ -42,7 +47,13 @@ func _run() -> void:
 	await _test_drag_and_controller_slot_moves(run_state, warehouse)
 	_test_authoritative_shared_storage(run_state, warehouse)
 	if not inventory_only:
-		await _test_unique_nearest_interaction(player, warehouse, config, fixture)
+		await _test_unique_nearest_interaction(
+			run_state,
+			player,
+			warehouse,
+			config,
+			fixture
+		)
 
 	fixture.queue_free()
 	for _frame in range(3):
@@ -77,6 +88,12 @@ func _test_config_and_scene(config: PlantDefenseConfig, warehouse: OakWarehouse)
 	_expect(config.supports_multiplayer, "共享仓库权威事务就绪后，橡木仓库必须允许多人放置。")
 	_expect(PlantDefenseRegistry.get_all_configs().size() == 3, "植物选择必须包含三种建筑。")
 	_expect(warehouse.storage_items.size() == 20, "仓库必须拥有20个物品格。")
+	_expect(
+		warehouse.get_node_or_null("OakWarehousePanel") == null
+		and warehouse.storage_panel != null
+		and warehouse.storage_panel.get_parent() != warehouse,
+		"仓库建筑场景不得再内嵌独立面板，必须引用游戏级共享面板。"
+	)
 	_expect(
 		warehouse.storage_panel.storage_slots.size() == 20,
 		"仓库左侧界面必须拥有20个槽位。"
@@ -247,6 +264,7 @@ func _test_plant_health_bar(warehouse: OakWarehouse) -> void:
 
 
 func _test_unique_nearest_interaction(
+	run_state: RunStateStore,
 	player: Player,
 	first_warehouse: OakWarehouse,
 	config: PlantDefenseConfig,
@@ -255,6 +273,7 @@ func _test_unique_nearest_interaction(
 	var second_warehouse := WAREHOUSE_SCENE.instantiate() as OakWarehouse
 	second_warehouse.position = Vector2(32, 0)
 	fixture.add_child(second_warehouse)
+	second_warehouse.set_shared_storage_panel(first_warehouse.storage_panel)
 	second_warehouse.setup(
 		config,
 		player,
@@ -294,17 +313,139 @@ func _test_unique_nearest_interaction(
 	_expect(not first_warehouse.storage_panel.is_open(), "非目标仓库不得响应F交互。")
 	second_warehouse._unhandled_input(interact_event)
 	_expect(
-		second_warehouse.storage_panel.is_open()
-		and not first_warehouse.storage_panel.is_open()
+		second_warehouse.is_modal_ui_open()
+		and not first_warehouse.is_modal_ui_open()
+		and second_warehouse.storage_panel == first_warehouse.storage_panel
+		and second_warehouse.storage_panel.warehouse == second_warehouse
 		and not first_warehouse.interaction_prompt.visible
 		and not second_warehouse.interaction_prompt.visible,
 		"按F只能打开唯一目标仓库，并在面板打开时隐藏全部仓库提示。"
 	)
-	second_warehouse.storage_panel.close()
+	await _test_shared_panel_rebinding(
+		run_state,
+		player,
+		first_warehouse,
+		second_warehouse
+	)
 	first_warehouse.call("_on_interaction_area_body_exited", player)
 	second_warehouse.call("_on_interaction_area_body_exited", player)
-	second_warehouse.queue_free()
+	if not second_warehouse.is_queued_for_deletion():
+		second_warehouse.queue_free()
 	await process_frame
+
+
+func _test_shared_panel_rebinding(
+	run_state: RunStateStore,
+	player: Player,
+	first_warehouse: OakWarehouse,
+	second_warehouse: OakWarehouse
+) -> void:
+	var panel := first_warehouse.storage_panel
+	var refresh_callback := Callable(panel, "_refresh_all")
+	for warehouse in [first_warehouse, second_warehouse]:
+		warehouse.storage_items.fill(null)
+		warehouse.storage_stack_counts.fill(0)
+		warehouse.storage_items[0] = WOOD
+		warehouse.storage_stack_counts[0] = 1
+		warehouse.storage_revision = 77
+	first_warehouse.warehouse_net_id = 101
+	second_warehouse.warehouse_net_id = 202
+	panel.call("_refresh_all")
+	var stale_drag_data := panel.make_slot_drag_data(
+		OakWarehousePanel.ItemSource.STORAGE,
+		0
+	)
+	_expect(
+		int(stale_drag_data.get("warehouse_instance_id", 0))
+		== second_warehouse.get_instance_id()
+		and int(stale_drag_data.get("warehouse_net_id", 0)) == 202,
+		"共享面板拖拽凭据必须同时记录仓库实例与网络身份。"
+	)
+
+	panel.queued_quick_moves.append({"source": OakWarehousePanel.ItemSource.STORAGE})
+	panel.controller_accept_held = true
+	panel.controller_drag_active = true
+	panel.controller_device = 0
+	panel.controller_drag_data = stale_drag_data.duplicate(true)
+	panel.virtual_cursor.show()
+	panel.set_process(true)
+	panel.multiplayer_slot_drop_pending = true
+	panel.multiplayer_slot_drop_source = OakWarehousePanel.ItemSource.STORAGE
+	panel.multiplayer_slot_drop_source_index = 0
+	panel.multiplayer_slot_drop_target = OakWarehousePanel.ItemSource.PLAYER
+	panel.multiplayer_slot_drop_target_index = 19
+	panel.open_for(first_warehouse, player)
+	_expect(
+		panel.is_open()
+		and panel.warehouse == first_warehouse
+		and first_warehouse.is_modal_ui_open()
+		and not second_warehouse.is_modal_ui_open(),
+		"同一个共享面板必须能从一栋仓库原子切换绑定到另一栋。"
+	)
+	_expect(
+		first_warehouse.storage_changed.is_connected(refresh_callback)
+		and not second_warehouse.storage_changed.is_connected(refresh_callback)
+		and run_state.inventory_changed.is_connected(refresh_callback),
+		"重绑后只能订阅当前仓库与当前打开会话的背包信号。"
+	)
+	_expect(
+		panel.queued_quick_moves.is_empty()
+		and not panel.controller_accept_held
+		and not panel.controller_drag_active
+		and panel.controller_drag_data.is_empty()
+		and not panel.virtual_cursor.visible
+		and not panel.multiplayer_slot_drop_pending,
+		"跨仓重绑必须清空快速移动、手柄拖拽与多人落点等待状态。"
+	)
+	_expect(
+		not panel.can_drop_slot_data(
+			stale_drag_data,
+			OakWarehousePanel.ItemSource.PLAYER,
+			19
+		),
+		"即使两栋仓库revision与物品完全相同，旧仓库拖拽凭据也不得串仓提交。"
+	)
+
+	panel.close()
+	_expect(
+		not panel.is_open()
+		and panel.warehouse == null
+		and panel.tracked_player == null
+		and not first_warehouse.storage_changed.is_connected(refresh_callback)
+		and not run_state.inventory_changed.is_connected(refresh_callback),
+		"关闭共享面板必须解绑仓库、玩家以及所有内容变更信号。"
+	)
+	_expect(run_state.try_add_item_count(WOOD, 1), "隐藏面板断连测试必须准备一份木材。")
+	first_warehouse.storage_changed.emit()
+	_expect(
+		panel.player_slots[0].item == null and panel.storage_slots[0].item == null,
+		"关闭后背包与仓库变化不得继续刷新隐藏面板。"
+	)
+	_expect(run_state.discard_item(0), "隐藏面板断连测试物品必须能清理。")
+	for warehouse in [first_warehouse, second_warehouse]:
+		warehouse.storage_items.fill(null)
+		warehouse.storage_stack_counts.fill(0)
+		warehouse.storage_changed.emit()
+
+	panel.open_for(first_warehouse, player)
+	player.died.emit()
+	_expect(
+		not panel.is_open() and panel.warehouse == null and not player.controls_locked,
+		"玩家死亡信号必须关闭、解锁并解绑共享仓库面板。"
+	)
+	panel.open_for(first_warehouse, player)
+	first_warehouse.call("_on_interaction_area_body_exited", player)
+	_expect(
+		not panel.is_open() and panel.warehouse == null,
+		"玩家离开当前仓库交互范围时必须关闭并解绑共享面板。"
+	)
+	first_warehouse.call("_on_interaction_area_body_entered", player)
+	panel.open_for(second_warehouse, player)
+	second_warehouse.call("_on_death_started")
+	_expect(
+		not panel.is_open() and panel.warehouse == null,
+		"当前仓库死亡时必须关闭并解绑游戏级共享面板。"
+	)
 
 
 func _test_detail_layout(panel: OakWarehousePanel) -> void:
@@ -361,11 +502,13 @@ func _test_detail_layout(panel: OakWarehousePanel) -> void:
 
 func _test_slot_transfer_interactions(run_state: RunStateStore, warehouse: OakWarehouse) -> void:
 	var panel := warehouse.storage_panel
+	panel.open_for(warehouse, warehouse.owner_player)
 	# This suite validates transfer behavior, not the global button SFX playback.
 	panel.move_button.set_meta(&"skip_ui_click_audio", true)
 	_expect(run_state.try_add_item_count(WOOD, 17), "测试物资必须能整叠加入背包。")
 	_expect(run_state.get_item_count(0) == 17, "背包测试木头数量必须为17。")
 	panel.call("_refresh_all")
+	await _test_reopened_panel_click_session(run_state, warehouse, panel)
 	panel.player_slots[0].call("_on_pressed")
 	_expect(
 		panel.selected_source == OakWarehousePanel.ItemSource.PLAYER
@@ -440,6 +583,44 @@ func _test_slot_transfer_interactions(run_state: RunStateStore, warehouse: OakWa
 		"真实双击回归测试结束后必须能恢复测试物品。"
 	)
 	run_state.discard_item(0)
+
+
+func _test_reopened_panel_click_session(
+	run_state: RunStateStore,
+	warehouse: OakWarehouse,
+	panel: OakWarehousePanel
+) -> void:
+	var previous_session_generation := panel.panel_session_generation
+	var previous_gesture_revision := panel.get_slot_gesture_revision(
+		OakWarehousePanel.ItemSource.PLAYER
+	)
+	_send_mouse_click(panel.player_slots[0], Vector2(24.0, 24.0))
+	panel.close()
+	panel.open_for(warehouse, warehouse.owner_player)
+	var reopened_gesture_revision := panel.get_slot_gesture_revision(
+		OakWarehousePanel.ItemSource.PLAYER
+	)
+	_expect(
+		panel.panel_session_generation == previous_session_generation + 1
+		and reopened_gesture_revision != previous_gesture_revision,
+		"关闭后重开同一仓库必须创建新的面板点击会话。"
+	)
+	_send_mouse_click(panel.player_slots[0], Vector2(24.0, 24.0))
+	await process_frame
+	_expect(
+		run_state.get_item_count(0) == 17 and warehouse.get_storage_item(0) == null,
+		"420毫秒内重开同仓后的首次点击不得沿用旧会话并误触双击移动。"
+	)
+	_send_mouse_click(panel.player_slots[0], Vector2(24.0, 24.0))
+	await process_frame
+	_expect(
+		run_state.get_item(0) == null and warehouse.get_storage_item_count(0) == 17,
+		"新会话内连续两次点击仍必须正常触发快速移动。"
+	)
+	_expect(
+		warehouse.transfer_storage_stack_to_player(0, run_state),
+		"面板点击会话回归测试结束后必须恢复测试物资。"
+	)
 
 
 func _simulate_double_click(slot: InventorySlot) -> void:
@@ -710,6 +891,7 @@ func _test_authoritative_shared_storage(
 ) -> void:
 	const PEER_ID := 2
 	const WAREHOUSE_NET_ID := 44
+	warehouse.storage_panel.open_for(warehouse, warehouse.owner_player)
 	warehouse.configure_multiplayer_storage(WAREHOUSE_NET_ID, PEER_ID, true)
 	var malformed_inventory_snapshot := run_state.export_inventory_snapshot_for_peer(PEER_ID)
 	var malformed_storage_snapshot := warehouse.export_storage_snapshot()
@@ -877,6 +1059,7 @@ func _test_authoritative_shared_storage(
 		if run_state.get_item_for_peer(PEER_ID, slot_index) != null:
 			run_state.discard_item_for_peer(PEER_ID, slot_index)
 	_test_unconfigured_multiplayer_storage_is_read_only(run_state, warehouse, PEER_ID)
+	warehouse.storage_panel.close()
 
 
 func _test_multiplayer_result_correlation(
@@ -899,6 +1082,28 @@ func _test_multiplayer_result_correlation(
 	if requested_commands.is_empty():
 		return
 	var command := requested_commands[0]
+	var pending_request_id := warehouse.multiplayer_storage_pending_request_id
+	var pending_timer_time_left := warehouse.multiplayer_storage_request_timer.time_left
+	warehouse.configure_multiplayer_storage(
+		int(command["warehouse_net_id"]),
+		int(command["peer_id"]),
+		true
+	)
+	warehouse.configure_multiplayer_storage(
+		int(command["warehouse_net_id"]),
+		int(command["peer_id"]),
+		false
+	)
+	_expect(
+		warehouse.multiplayer_storage_request_pending
+		and warehouse.multiplayer_storage_pending_request_id == pending_request_id
+		and warehouse.multiplayer_storage_snapshot_ready
+		and not warehouse.multiplayer_storage_request_timer.is_stopped()
+		and warehouse.multiplayer_storage_request_timer.time_left > 0.0
+		and warehouse.multiplayer_storage_request_timer.time_left
+		<= pending_timer_time_left,
+		"实时spawn与完整roster重复配置同一仓库时必须保留pending事务、ready状态和计时器。"
+	)
 	var result := warehouse.apply_transfer_command(command, run_state)
 	_expect(
 		warehouse.is_current_multiplayer_storage_result(result),

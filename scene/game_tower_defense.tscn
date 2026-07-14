@@ -31,6 +31,7 @@
 [ext_resource type="PackedScene" path="res://scene/tower_defense_minimap.tscn" id="32_minimap"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/vegetation_spread_system.tscn" id="33_vegetation_spread"]
 [ext_resource type="PackedScene" path="res://scene/vfx/tower_defense_ambient_vfx.tscn" id="34_ambient_vfx"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/oak_warehouse_panel.tscn" id="35_oak_warehouse_panel"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -273,6 +274,9 @@ visible = false
 visible = false
 
 [node name="TowerDefenseMinimap" parent="." unique_id=1375760873 instance=ExtResource("32_minimap")]
+
+[node name="OakWarehousePanel" parent="." instance=ExtResource("35_oak_warehouse_panel")]
+visible = false
 
 [node name="PlayerProfilePanel" parent="." unique_id=1216528429 instance=ExtResource("13_profile_panel")]
 
