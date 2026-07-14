@@ -14,7 +14,6 @@ const MULTIPLAYER_STORAGE_REQUEST_TIMEOUT_SECONDS := 4.0
 @onready var interaction_prompt: Control = $InteractionPrompt
 @onready var prompt_keycap: Control = $InteractionPrompt/PromptMargin/PromptRow/Keycap
 @onready var idle_animation_player: AnimationPlayer = $IdleAnimationPlayer
-@onready var storage_panel: OakWarehousePanel = $OakWarehousePanel
 @onready var health_bar: Control = $HealthBar
 @onready var multiplayer_storage_request_timer: Timer = $MultiplayerStorageRequestTimer
 
@@ -28,12 +27,12 @@ var multiplayer_storage_snapshot_ready := true
 var multiplayer_storage_request_pending := false
 var multiplayer_storage_pending_request_id: int = 0
 var next_multiplayer_storage_request_id: int = 1
+var storage_panel: OakWarehousePanel = null
 var nearby_player: Player = null
 var is_interaction_target := false
 var interaction_selection_refresh_left := 0.0
 var prompt_rest_position := Vector2.ZERO
 var prompt_tween: Tween = null
-var panel_interaction_player: Player = null
 
 
 func _ready() -> void:
@@ -52,8 +51,6 @@ func _ready() -> void:
 	set_process_unhandled_input(false)
 	interaction_area.body_entered.connect(_on_interaction_area_body_entered)
 	interaction_area.body_exited.connect(_on_interaction_area_body_exited)
-	storage_panel.opened.connect(_on_storage_panel_opened)
-	storage_panel.closed.connect(_on_storage_panel_closed)
 	multiplayer_storage_request_timer.timeout.connect(
 		_on_multiplayer_storage_request_timeout
 	)
@@ -76,11 +73,27 @@ func _on_setup_completed() -> void:
 	super._on_setup_completed()
 	health_bar.call("setup", max_health, current_health)
 	health_changed.connect(_on_health_changed)
-	storage_panel.bind_warehouse(self, owner_player)
+
+
+func set_shared_storage_panel(shared_panel: OakWarehousePanel) -> void:
+	if storage_panel == shared_panel:
+		return
+	close_storage_panel()
+	storage_panel = shared_panel
+
+
+func close_storage_panel() -> void:
+	if _has_bound_storage_panel():
+		storage_panel.close()
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not is_interaction_target or nearby_player == null or storage_panel.is_open():
+	if (
+		not is_interaction_target
+		or nearby_player == null
+		or storage_panel == null
+		or storage_panel.is_open()
+	):
 		return
 	if not event.is_action_pressed(&"interact"):
 		return
@@ -88,12 +101,29 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	get_viewport().set_input_as_handled()
-	storage_panel.bind_warehouse(self, nearby_player)
-	storage_panel.open()
+	storage_panel.open_for(self, nearby_player)
 
 
 func is_modal_ui_open() -> bool:
-	return storage_panel != null and storage_panel.is_open()
+	return _has_bound_storage_panel() and storage_panel.is_open()
+
+
+func _has_bound_storage_panel() -> bool:
+	return (
+		storage_panel != null
+		and is_instance_valid(storage_panel)
+		and storage_panel.is_bound_to_warehouse(self)
+	)
+
+
+func _sync_bound_storage_panel_state() -> void:
+	if not _has_bound_storage_panel():
+		return
+	storage_panel.set_multiplayer_storage_state(
+		multiplayer_storage_enabled,
+		multiplayer_storage_snapshot_ready,
+		multiplayer_storage_request_pending
+	)
 
 
 func get_storage_item(slot_index: int) -> PickupConfig:
@@ -119,30 +149,36 @@ func configure_multiplayer_storage(
 	peer_id: int,
 	snapshot_ready: bool = false
 ) -> void:
-	warehouse_net_id = maxi(new_warehouse_net_id, 0)
-	multiplayer_storage_peer_id = maxi(peer_id, 0)
-	multiplayer_storage_enabled = warehouse_net_id > 0 and multiplayer_storage_peer_id > 0
+	var normalized_warehouse_net_id := maxi(new_warehouse_net_id, 0)
+	var normalized_peer_id := maxi(peer_id, 0)
+	var storage_will_be_enabled := (
+		normalized_warehouse_net_id > 0 and normalized_peer_id > 0
+	)
+	var identity_changed := (
+		warehouse_net_id != normalized_warehouse_net_id
+		or multiplayer_storage_peer_id != normalized_peer_id
+	)
+	var enabled_mode_changed := multiplayer_storage_enabled != storage_will_be_enabled
+	if not identity_changed and not enabled_mode_changed:
+		_sync_bound_storage_panel_state()
+		return
+	warehouse_net_id = normalized_warehouse_net_id
+	multiplayer_storage_peer_id = normalized_peer_id
+	multiplayer_storage_enabled = storage_will_be_enabled
 	multiplayer_storage_snapshot_ready = snapshot_ready or not multiplayer_storage_enabled
 	multiplayer_storage_request_pending = false
 	multiplayer_storage_pending_request_id = 0
 	multiplayer_storage_request_timer.stop()
-	storage_panel.clear_multiplayer_slot_drop_pending()
-	storage_panel.set_multiplayer_storage_state(
-		multiplayer_storage_enabled,
-		multiplayer_storage_snapshot_ready,
-		false
-	)
+	if _has_bound_storage_panel():
+		storage_panel.clear_multiplayer_slot_drop_pending()
+	_sync_bound_storage_panel_state()
 
 
 func set_multiplayer_storage_snapshot_ready(is_ready: bool) -> void:
 	multiplayer_storage_snapshot_ready = is_ready or not multiplayer_storage_enabled
 	if multiplayer_storage_snapshot_ready and not multiplayer_storage_request_pending:
 		multiplayer_storage_request_timer.stop()
-	storage_panel.set_multiplayer_storage_state(
-		multiplayer_storage_enabled,
-		multiplayer_storage_snapshot_ready,
-		multiplayer_storage_request_pending
-	)
+	_sync_bound_storage_panel_state()
 
 
 func is_multiplayer_storage_ready() -> bool:
@@ -186,7 +222,7 @@ func request_multiplayer_stack_transfer(direction: int, slot_index: int) -> bool
 	multiplayer_storage_request_pending = true
 	multiplayer_storage_pending_request_id = request_id
 	multiplayer_storage_request_timer.start(MULTIPLAYER_STORAGE_REQUEST_TIMEOUT_SECONDS)
-	storage_panel.set_multiplayer_storage_state(true, true, true)
+	_sync_bound_storage_panel_state()
 	storage_command_requested.emit(command)
 	return true
 
@@ -222,7 +258,7 @@ func request_multiplayer_slot_move(
 	multiplayer_storage_request_pending = true
 	multiplayer_storage_pending_request_id = request_id
 	multiplayer_storage_request_timer.start(MULTIPLAYER_STORAGE_REQUEST_TIMEOUT_SECONDS)
-	storage_panel.set_multiplayer_storage_state(true, true, true)
+	_sync_bound_storage_panel_state()
 	storage_command_requested.emit(command)
 	return true
 
@@ -233,15 +269,12 @@ func complete_multiplayer_storage_request(result: Dictionary) -> bool:
 	multiplayer_storage_request_pending = false
 	multiplayer_storage_pending_request_id = 0
 	multiplayer_storage_request_timer.stop()
-	storage_panel.set_multiplayer_storage_state(
-		true,
-		multiplayer_storage_snapshot_ready,
-		false
-	)
-	storage_panel.show_multiplayer_command_result(
-		bool(result.get("success", false)),
-		StringName(result.get("reason", OakWarehouseProtocol.RESULT_INVALID_COMMAND))
-	)
+	_sync_bound_storage_panel_state()
+	if _has_bound_storage_panel():
+		storage_panel.show_multiplayer_command_result(
+			bool(result.get("success", false)),
+			StringName(result.get("reason", OakWarehouseProtocol.RESULT_INVALID_COMMAND))
+		)
 	return true
 
 
@@ -269,9 +302,10 @@ func _on_multiplayer_storage_request_timeout() -> void:
 	if multiplayer_storage_request_pending:
 		multiplayer_storage_request_pending = false
 		multiplayer_storage_pending_request_id = 0
-		storage_panel.clear_multiplayer_slot_drop_pending()
+		if _has_bound_storage_panel():
+			storage_panel.clear_multiplayer_slot_drop_pending()
 	multiplayer_storage_snapshot_ready = false
-	storage_panel.set_multiplayer_storage_state(true, false, false)
+	_sync_bound_storage_panel_state()
 	multiplayer_storage_request_timer.start(MULTIPLAYER_STORAGE_REQUEST_TIMEOUT_SECONDS)
 	storage_snapshot_requested.emit(warehouse_net_id)
 
@@ -860,11 +894,7 @@ func apply_storage_snapshot(snapshot: Dictionary) -> bool:
 	multiplayer_storage_snapshot_ready = true
 	if not multiplayer_storage_request_pending:
 		multiplayer_storage_request_timer.stop()
-	storage_panel.set_multiplayer_storage_state(
-		multiplayer_storage_enabled,
-		true,
-		multiplayer_storage_request_pending
-	)
+	_sync_bound_storage_panel_state()
 	storage_changed.emit()
 	return true
 
@@ -967,47 +997,28 @@ func _on_interaction_area_body_exited(body: Node2D) -> void:
 	nearby_player = null
 	set_process(false)
 	_set_interaction_target(false)
-	storage_panel.close()
+	close_storage_panel()
 	_refresh_interaction_selection(exiting_player)
 
 
-func _on_storage_panel_opened() -> void:
+func on_shared_storage_panel_opened(panel: OakWarehousePanel) -> void:
+	if panel != storage_panel or not _has_bound_storage_panel() or not panel.is_open():
+		return
 	if multiplayer_storage_enabled:
 		request_multiplayer_storage_snapshot()
-	_disconnect_panel_interaction_player()
-	panel_interaction_player = storage_panel.tracked_player
-	if (
-		panel_interaction_player != null
-		and is_instance_valid(panel_interaction_player)
-		and not panel_interaction_player.died.is_connected(_on_interaction_player_died)
-	):
-		panel_interaction_player.died.connect(_on_interaction_player_died)
 	_set_interaction_target(false)
 	_refresh_interaction_selection(nearby_player)
 	modal_ui_visibility_changed.emit(true)
 
 
-func _on_storage_panel_closed() -> void:
-	_disconnect_panel_interaction_player()
+func on_shared_storage_panel_closed(panel: OakWarehousePanel) -> void:
+	if panel != storage_panel:
+		return
 	if nearby_player != null:
 		_refresh_interaction_selection(nearby_player)
 	else:
 		_set_interaction_target(false)
 	modal_ui_visibility_changed.emit(false)
-
-
-func _on_interaction_player_died() -> void:
-	storage_panel.close()
-
-
-func _disconnect_panel_interaction_player() -> void:
-	if (
-		panel_interaction_player != null
-		and is_instance_valid(panel_interaction_player)
-		and panel_interaction_player.died.is_connected(_on_interaction_player_died)
-	):
-		panel_interaction_player.died.disconnect(_on_interaction_player_died)
-	panel_interaction_player = null
 
 
 func _refresh_interaction_selection(player: Player) -> void:
@@ -1025,15 +1036,25 @@ func _refresh_interaction_selection(player: Player) -> void:
 			or warehouse.is_queued_for_deletion()
 		):
 			continue
+		var shared_panel := warehouse.storage_panel
 		if (
-			warehouse.storage_panel.is_open()
-			and warehouse.storage_panel.tracked_player == player
+			shared_panel != null
+			and is_instance_valid(shared_panel)
+			and shared_panel.is_open()
+			and shared_panel.tracked_player == player
 		):
 			warehouse_panel_is_open = true
 		if warehouse.nearby_player != player:
 			continue
 		nearby_warehouses.append(warehouse)
-		if warehouse.is_dead or warehouse.storage_panel.is_open():
+		if (
+			warehouse.is_dead
+			or (
+				shared_panel != null
+				and is_instance_valid(shared_panel)
+				and shared_panel.is_open()
+			)
+		):
 			continue
 		var distance_squared := player.global_position.distance_squared_to(
 			warehouse.global_position
@@ -1132,6 +1153,6 @@ func _on_death_started() -> void:
 	set_process(false)
 	interaction_area.set_deferred("monitoring", false)
 	_set_interaction_target(false)
-	storage_panel.close()
+	close_storage_panel()
 	_refresh_interaction_selection(interaction_player)
 	super._on_death_started()

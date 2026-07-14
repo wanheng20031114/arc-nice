@@ -18,15 +18,17 @@ var progress_display_active: bool = true
 
 func _ready() -> void:
 	set_process(false)
-	set_progress(0.0)
+	_refresh_target_reticles()
+	if progress_display_active:
+		queue_redraw()
 
 
-func start(new_duration: float) -> void:
+func start(new_duration: float, progress_automatically: bool = true) -> void:
 	duration = maxf(new_duration, 0.01)
 	elapsed = 0.0
-	auto_progress = true
+	auto_progress = progress_automatically
 	visible = true
-	set_process(true)
+	set_process(auto_progress)
 	set_progress(0.0)
 
 
@@ -41,8 +43,16 @@ func is_progress_display_active() -> bool:
 
 
 func set_progress(progress: float) -> void:
-	progress_ratio = clampf(progress, 0.0, 1.0)
+	var normalized_progress := clampf(progress, 0.0, 1.0)
+	if is_equal_approx(progress_ratio, normalized_progress):
+		return
+	var was_progress_display_active := progress_display_active
+	progress_ratio = normalized_progress
 	_refresh_target_reticles()
+	# A stable winner still needs one redraw for its changed arc. Visibility
+	# transitions redraw inside _set_progress_display_active().
+	if was_progress_display_active and progress_display_active:
+		queue_redraw()
 
 
 func _exit_tree() -> void:
@@ -119,6 +129,8 @@ func _get_highest_progress_reticle(parent_node: Node) -> CapooSniperLockReticle:
 
 
 func _set_progress_display_active(active: bool) -> void:
+	if progress_display_active == active:
+		return
 	progress_display_active = active
 	if is_node_ready():
 		center_mark.visible = active

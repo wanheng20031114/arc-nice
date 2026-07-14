@@ -110,6 +110,7 @@ var near_moving_target_direct_distance_squared := (
 )
 var animated_sprite_base_position := Vector2.ZERO
 var material_drop_random_generator := RandomNumberGenerator.new()
+var cached_effective_physical_defense := 0
 var cached_effective_move_speed := 0.0
 var status_visual_material: ShaderMaterial = null
 var slow_overlay_strength := 0.0
@@ -410,6 +411,7 @@ func play_multiplayer_death_sequence() -> void:
 	velocity = Vector2.ZERO
 	_update_movement_status_visuals()
 	set_process(false)
+	set_physics_process(false)
 	touched_player = null
 	touching_players.clear()
 	touched_plant = null
@@ -431,19 +433,29 @@ func add_physical_defense_modifier(source_id: int, amount: int) -> void:
 		return
 	if amount == 0:
 		return
+	if int(physical_defense_modifiers.get(source_id, 0)) == amount:
+		return
 
 	physical_defense_modifiers[source_id] = amount
+	_refresh_effective_physical_defense_cache()
 
 
 func remove_physical_defense_modifier(source_id: int) -> void:
+	if not physical_defense_modifiers.has(source_id):
+		return
 	physical_defense_modifiers.erase(source_id)
+	_refresh_effective_physical_defense_cache()
 
 
 func get_effective_physical_defense() -> int:
+	return cached_effective_physical_defense
+
+
+func _refresh_effective_physical_defense_cache() -> void:
 	var total := config.physical_defense if config != null else 0
 	for source_id in physical_defense_modifiers:
 		total += int(physical_defense_modifiers[source_id])
-	return maxi(total, 0)
+	cached_effective_physical_defense = maxi(total, 0)
 
 
 func get_effective_magic_defense() -> int:
@@ -804,12 +816,14 @@ func _play_collectible_status_feedback(status_id: StringName) -> void:
 
 func _apply_config() -> void:
 	if config == null:
+		cached_effective_physical_defense = 0
 		cached_effective_move_speed = 0.0
 		return
 
 	terrain_traversal_types = config.terrain_traversal_types
 	_apply_terrain_collision_profile()
 	current_health = config.max_health
+	_refresh_effective_physical_defense_cache()
 	_refresh_effective_move_speed_cache()
 	_play_scene_animation(config.move_animation_name)
 
@@ -1536,14 +1550,13 @@ func _is_navigation_motion_shape_safe(direction: Vector2, probe_distance: float)
 		return false
 	var normalized_direction := direction.normalized()
 	var motion := normalized_direction * probe_distance
-	if not test_move(global_transform, motion):
+	if not test_move(global_transform, motion, navigation_collision_probe):
 		return true
 
 	# test_move() can report an existing side contact even when the requested
 	# motion is exactly tangent to that surface. Treat that contact as safe so an
 	# enemy touching a wall can still follow a flow-field waypoint along it. A
 	# motion pointing into the collision normal remains blocked.
-	test_move(global_transform, motion, navigation_collision_probe)
 	return normalized_direction.dot(navigation_collision_probe.get_normal()) >= -0.001
 
 
@@ -1791,6 +1804,7 @@ func _die() -> void:
 	velocity = Vector2.ZERO
 	_update_movement_status_visuals()
 	set_process(false)
+	set_physics_process(false)
 	touched_player = null
 	touching_players.clear()
 	touched_plant = null

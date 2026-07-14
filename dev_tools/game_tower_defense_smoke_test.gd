@@ -38,6 +38,15 @@ func _test_tower_defense_scene_identity() -> void:
 		game_tower_defense.get_script().resource_path == "res://scene/game_tower_defense.gd",
 		"Tower-defense scene must use its independent controller script."
 	)
+	var warehouse_panels: Array[OakWarehousePanel] = []
+	for candidate in game_tower_defense.find_children("*", "", true, false):
+		if candidate is OakWarehousePanel:
+			warehouse_panels.append(candidate as OakWarehousePanel)
+	_expect(
+		warehouse_panels.size() == 1
+		and warehouse_panels[0] == game_tower_defense.get_node_or_null("OakWarehousePanel"),
+		"Tower-defense scene must author exactly one game-level shared oak warehouse panel."
+	)
 	game_tower_defense.free()
 
 

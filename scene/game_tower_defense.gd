@@ -104,6 +104,7 @@ signal base_health_changed(current_health: int, maximum_health: int, revision: i
 @onready var wave_hud: WaveHUD = $WaveHUD
 @onready var tower_defense_status_hud: TowerDefenseStatusHUD = $TowerDefenseStatusHUD
 @onready var tower_defense_minimap: TowerDefenseMinimap = $TowerDefenseMinimap
+@onready var oak_warehouse_panel: OakWarehousePanel = $OakWarehousePanel
 @onready var player_profile_panel: PlayerProfilePanel = $PlayerProfilePanel
 @onready var settings_panel: SettingsPanel = $SettingsLayer/SettingsPanel
 @onready var debug_collectible_window: DebugCollectibleWindow = $SettingsLayer/DebugCollectibleWindow
@@ -748,6 +749,9 @@ func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 	if plant == null:
 		return
 	_request_enemy_retarget_after_objective_change()
+	var oak_warehouse := plant as OakWarehouse
+	if oak_warehouse != null:
+		oak_warehouse.set_shared_storage_panel(oak_warehouse_panel)
 	if not plant.modal_ui_visibility_changed.is_connected(_on_plant_modal_ui_visibility_changed):
 		plant.modal_ui_visibility_changed.connect(_on_plant_modal_ui_visibility_changed)
 	var vegetation_stake := plant as VegetationStake
@@ -963,6 +967,9 @@ func _on_plant_removed(plant: PlantDefense) -> void:
 	_request_enemy_retarget_after_objective_change()
 	if plant == null:
 		return
+	var oak_warehouse := plant as OakWarehouse
+	if oak_warehouse != null:
+		oak_warehouse.close_storage_panel()
 	var net_id := int(plant.get_meta(&"net_id", 0))
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY and net_id > 0:
 		multiplayer_plant_removed.emit(net_id)

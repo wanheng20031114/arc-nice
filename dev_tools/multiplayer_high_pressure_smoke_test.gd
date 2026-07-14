@@ -18,6 +18,9 @@ class ClientNetManagerStub:
 	func is_client() -> bool:
 		return true
 
+	func get_local_peer_id() -> int:
+		return 2
+
 
 class TestRuntime:
 	extends GameRuntimeBase
@@ -190,6 +193,7 @@ func _run() -> void:
 	_test_unordered_enemy_chunk_convergence()
 	_test_missing_delta_then_keyframe_recovery()
 	_test_runtime_world_manifest_prunes_stale_replicas()
+	_test_enemy_interpolator_iteration_prunes_after_traversal()
 	_test_plant_health_batch_revision_ordering()
 	_test_warehouse_transaction_cache_scope()
 	await _test_hoe_prediction_confirmation_reconciliation()
@@ -227,6 +231,31 @@ func _test_adaptive_enemy_snapshot_cadence() -> void:
 		"The 300-enemy pressure target must remain on the 20 Hz cadence."
 	)
 	fixture.multiplayer_enemies_by_net_id.clear()
+
+
+func _test_enemy_interpolator_iteration_prunes_after_traversal() -> void:
+	var mp_game := _new_mp_game()
+	var stale_ids: Array = mp_game.get("_stale_enemy_interpolator_ids") as Array
+	mp_game.enemy_interpolators[7001] = NetInterpolator.new()
+	mp_game.call("_client_interpolate_entities")
+	_expect(
+		not mp_game.enemy_interpolators.has(7001),
+		"Client interpolation must prune missing enemies after direct dictionary traversal."
+	)
+	_expect(
+		is_same(stale_ids, mp_game.get("_stale_enemy_interpolator_ids")),
+		"Client interpolation must reuse its stale-id buffer instead of allocating one each frame."
+	)
+	var source := FileAccess.get_file_as_string("res://scene/multiplayer/mp_game.gd")
+	var function_start := source.find("func _client_interpolate_entities()")
+	var function_end := source.find("\n\n@rpc", function_start)
+	var function_source := source.substr(function_start, function_end - function_start)
+	_expect(
+		function_start >= 0
+		and function_end > function_start
+		and not function_source.contains("enemy_interpolators.keys()"),
+		"Client enemy interpolation must not allocate a Dictionary keys array every render frame."
+	)
 
 
 func _test_warehouse_transaction_cache_scope() -> void:

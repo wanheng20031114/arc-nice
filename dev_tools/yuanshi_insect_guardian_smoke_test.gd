@@ -303,6 +303,23 @@ func _test_guardian_aura_defense_lifecycle() -> void:
 	var ally := _spawn_enemy(Vector2(20.0, 0.0), BASIC_CONFIG, player)
 	ally.current_health = 20
 	await _wait_physics_frames(2)
+	var cache_probe_source_id := -91001
+	var cache_probe_baseline := ally.get_effective_physical_defense()
+	ally.add_physical_defense_modifier(cache_probe_source_id, 2)
+	_expect(
+		ally.get_effective_physical_defense() == cache_probe_baseline + 2,
+		"Physical defense cache did not include a new source."
+	)
+	ally.add_physical_defense_modifier(cache_probe_source_id, 5)
+	_expect(
+		ally.get_effective_physical_defense() == cache_probe_baseline + 5,
+		"Physical defense cache did not replace an existing source."
+	)
+	ally.remove_physical_defense_modifier(cache_probe_source_id)
+	_expect(
+		ally.get_effective_physical_defense() == cache_probe_baseline,
+		"Physical defense cache did not remove a source."
+	)
 
 	guardian.call("_on_aura_area_body_entered", guardian)
 	_expect(
@@ -330,6 +347,7 @@ func _test_guardian_aura_defense_lifecycle() -> void:
 		GUARDIAN_CONFIG.max_health
 		+ GUARDIAN_CONFIG.physical_defense
 	)
+	_expect(not guardian.is_physics_processing(), "Dead guardian must stop script physics immediately.")
 	await _wait_physics_frames(45)
 	_expect(ally.get_effective_physical_defense() == 0, "Guardian aura defense did not clear on death.")
 

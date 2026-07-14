@@ -97,6 +97,7 @@ const TIYI_HIGH_NOON_MAX_TARGETS := 25
 # Application payload budget. Keep room for Godot RPC, ENet, UDP/IP headers before MTU pressure.
 const SNAPSHOT_PACKET_WARN_BYTES := 1200
 const SNAPSHOT_PACKET_WARN_INTERVAL_SECONDS := 5.0
+const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
@@ -163,6 +164,7 @@ var _linglan_skill4_orb_script: Script = null
 # Client-view only: remote player visual timeline. Host gameplay never reads this.
 var player_visual_interpolators: Dictionary = {}
 var enemy_interpolators: Dictionary = {}
+var _stale_enemy_interpolator_ids: Array[int] = []
 var game: GameRuntimeBase = null
 var input_sequence: int = 0
 var _net_time_origin: float = 0.0
@@ -270,6 +272,10 @@ var _client_has_terrain_snapshot: bool = false
 var _client_waiting_for_terrain_snapshot: bool = false
 var _last_completed_terrain_snapshot_id: int = 0
 var _pending_terrain_snapshot_batches: Dictionary = {}
+var _rpc_payload_diagnostics_enabled := false
+var _rpc_payload_call_counts: Dictionary[StringName, int] = {}
+var _rpc_payload_sample_bytes: Dictionary[StringName, int] = {}
+var _rpc_payload_sample_count := 0
 var _revive_random_generator := RandomNumberGenerator.new()
 var _luoxi_offer_random_generator := RandomNumberGenerator.new()
 var _runtime_network_metrics = MultiplayerRuntimeMetricsScript.new(
@@ -807,7 +813,7 @@ func _handle_authoritative_plant_placement_request(
 	):
 		_send_plant_placement_rejected(requester_peer_id, request_id, &"rate_limited")
 		return
-	if game.get_multiplayer_plant_snapshots().size() >= MULTIPLAYER_TEAM_PLANT_LIMIT:
+	if _get_authoritative_team_plant_count() >= MULTIPLAYER_TEAM_PLANT_LIMIT:
 		_send_plant_placement_rejected(requester_peer_id, request_id, &"team_limit_reached")
 		return
 	game.request_multiplayer_plant_placement(
@@ -836,6 +842,17 @@ func _consume_peer_rate_token(
 		tokens -= 1.0
 	buckets[peer_id] = {"tokens": tokens, "last_time": now}
 	return accepted
+
+
+func _get_authoritative_team_plant_count() -> int:
+	if game == null or not game.supports_tower_defense():
+		return 0
+	var tower_defense_game := game as GameTowerDefense
+	if tower_defense_game == null or tower_defense_game.plant_system == null:
+		# A tower-defense Host without its authoritative registry must fail closed;
+		# accepting placements here would silently bypass the shared team limit.
+		return MULTIPLAYER_TEAM_PLANT_LIMIT
+	return tower_defense_game.plant_system.plants_by_net_id.size()
 
 
 func broadcast_plant_projectile_visual(
@@ -1654,12 +1671,37 @@ func _record_outbound_rpc(
 ) -> void:
 	if packet_count <= 0:
 		return
-	var payload_bytes := var_to_bytes(args).size() + 16
+	var channel := _get_rpc_traffic_channel(method_name)
+	# Packet counts remain exact in production. Payload byte diagnostics are opt-in
+	# because serializing live RPC arguments here would duplicate Godot's real RPC
+	# serialization work. When enabled, one sample per method is refreshed every
+	# fixed number of calls and reused as an explicitly approximate byte estimate.
+	if not _rpc_payload_diagnostics_enabled:
+		_runtime_network_metrics.record_packet(channel, 0, packet_count)
+		return
+	var call_count := int(_rpc_payload_call_counts.get(method_name, 0)) + 1
+	_rpc_payload_call_counts[method_name] = call_count
+	if (
+		not _rpc_payload_sample_bytes.has(method_name)
+		or call_count % RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL == 0
+	):
+		_rpc_payload_sample_bytes[method_name] = var_to_bytes(args).size() + 16
+		_rpc_payload_sample_count += 1
+	var payload_bytes := int(_rpc_payload_sample_bytes.get(method_name, 0))
 	_runtime_network_metrics.record_packet(
-		_get_rpc_traffic_channel(method_name),
+		channel,
 		payload_bytes,
 		packet_count
 	)
+
+
+func set_rpc_payload_diagnostics_enabled(enabled: bool) -> void:
+	if _rpc_payload_diagnostics_enabled == enabled:
+		return
+	_rpc_payload_diagnostics_enabled = enabled
+	_rpc_payload_call_counts.clear()
+	_rpc_payload_sample_bytes.clear()
+	_rpc_payload_sample_count = 0
 
 
 func _get_rpc_traffic_channel(method_name: StringName) -> int:
@@ -1732,6 +1774,9 @@ func get_snapshot_packet_metrics() -> Dictionary:
 		"enemy_snapshot_incomplete_batch_evict_count": _enemy_snapshot_incomplete_batch_evict_count,
 		"enemy_snapshot_stale_chunk_count": _enemy_snapshot_stale_chunk_count,
 		"offscreen_enemy_proxy_count": _offscreen_enemy_proxy_count,
+		"rpc_payload_diagnostics_enabled": _rpc_payload_diagnostics_enabled,
+		"rpc_payload_diagnostic_sample_interval": RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL,
+		"rpc_payload_diagnostic_sample_count": _rpc_payload_sample_count,
 		"channel_metrics": runtime_metrics.get("channels", []),
 		"state_repair_count": runtime_metrics.get("state_repair_count", 0),
 		"transaction_latency_sample_count": runtime_metrics.get(
@@ -1931,7 +1976,7 @@ func _client_interpolate_entities() -> void:
 	var current_time := _get_net_time()
 	var local_peer_id: int = _get_client_view_local_peer_id()
 	if is_client_view_runtime():
-		for peer_id_variant in player_visual_interpolators.keys():
+		for peer_id_variant in player_visual_interpolators:
 			var peer_id := int(peer_id_variant)
 			if peer_id == local_peer_id:
 				continue
@@ -1945,14 +1990,30 @@ func _client_interpolate_entities() -> void:
 					frame_state.facing,
 					frame_state.anim_state
 				)
-	for net_id_variant in enemy_interpolators.keys():
+	_stale_enemy_interpolator_ids.clear()
+	for net_id_variant in enemy_interpolators:
 		var net_id := int(net_id_variant)
-		var enemy_interp := enemy_interpolators[net_id] as NetInterpolator
-		var enemy_node: Enemy = _get_valid_client_enemy_for_net_id(net_id)
-		if enemy_interp != null and enemy_node != null and is_instance_valid(enemy_node):
-			var enemy_position: Vector2 = enemy_interp.get_interpolated_position(current_time)
-			var enemy_velocity: Vector2 = enemy_interp.get_interpolated_velocity(current_time)
-			enemy_node.apply_multiplayer_proxy_motion(enemy_position, enemy_velocity)
+		var enemy_interp := enemy_interpolators.get(net_id) as NetInterpolator
+		var enemy_variant: Variant = _net_enemies.get(net_id)
+		if (
+			enemy_interp == null
+			or enemy_variant == null
+			or not is_instance_valid(enemy_variant)
+		):
+			_stale_enemy_interpolator_ids.append(net_id)
+			continue
+		var enemy_node := enemy_variant as Enemy
+		if enemy_node == null:
+			_stale_enemy_interpolator_ids.append(net_id)
+			continue
+		var enemy_position: Vector2 = enemy_interp.get_interpolated_position(current_time)
+		var enemy_velocity: Vector2 = enemy_interp.get_interpolated_velocity(current_time)
+		enemy_node.apply_multiplayer_proxy_motion(enemy_position, enemy_velocity)
+	# Dictionary mutation during direct iteration is unsafe. Prune invalid entries
+	# only after the allocation-free traversal has completed.
+	for stale_net_id in _stale_enemy_interpolator_ids:
+		_get_valid_client_enemy_for_net_id(stale_net_id)
+		enemy_interpolators.erase(stale_net_id)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)

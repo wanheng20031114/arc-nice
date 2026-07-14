@@ -47,12 +47,42 @@ func _run() -> void:
 	pool.register_scene(BULLET_HIT_EFFECT_SCENE, 2, 2)
 	pool.register_scene(ENEMY_HIT_EFFECT_SCENE, 2, 2)
 
+	_verify_world_collision_query_reuse()
 	await _verify_player_bullet_reuse()
 	await _verify_real_collision_callback_release()
 	await _verify_capoo_bullet_reuse()
 	await _verify_extended_projectile_reuse()
 	await _verify_strict_hit_effect_budget()
 	await _finish()
+
+
+func _verify_world_collision_query_reuse() -> void:
+	var projectile_scenes: Array[PackedScene] = [RPG_ROCKET_SCENE, MAGE_FIREBALL_SCENE]
+	for projectile_scene in projectile_scenes:
+		var projectile: Node = projectile_scene.instantiate()
+		fixture.add_child(projectile)
+		var query := projectile.get("world_collision_query") as PhysicsRayQueryParameters2D
+		var exclude: Array = projectile.get("world_collision_exclude") as Array
+		_expect(query != null, "%s must retain one world ray query." % projectile_scene.resource_path)
+		_expect(
+			exclude.size() == 1 and exclude[0] == projectile.get_rid(),
+			"%s must retain one reusable self-exclusion RID." % projectile_scene.resource_path
+		)
+		if query != null:
+			var from_position := Vector2(3.0, 5.0)
+			var to_position := Vector2(13.0, 17.0)
+			projectile.call("_get_world_hit", from_position, to_position)
+			_expect(
+				query.from == from_position and query.to == to_position,
+				"%s world cast must update the retained query." % projectile_scene.resource_path
+			)
+			_expect(
+				is_same(query, projectile.get("world_collision_query"))
+				and is_same(exclude, projectile.get("world_collision_exclude")),
+				"%s world casts must not replace their query or exclusion array."
+				% projectile_scene.resource_path
+			)
+		projectile.free()
 
 
 func _verify_player_bullet_reuse() -> void:

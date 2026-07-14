@@ -236,6 +236,10 @@ func _test_legacy_bomber_unchanged() -> void:
 	_expect(_get_projectile_ids().is_empty(), "Base bomber generated a fire projectile.")
 
 	bomber.apply_damage(BOMBER_CONFIG.max_health)
+	_expect(
+		not bomber.is_physics_processing(),
+		"Dying bomber must stop script physics without interrupting its animation-driven explosion."
+	)
 	await _wait_physics_frames(60)
 	_expect(not is_instance_valid(bomber), "Bomber did not finish its death and explosion sequence.")
 	_expect(_get_projectile_ids().is_empty(), "Dying bomber generated a fire projectile.")
@@ -317,6 +321,7 @@ func _test_death_interrupts_attack() -> void:
 	_expect(enemy.get("combat_state") == COMBAT_STATE_ATTACK, "Death test enemy did not begin attacking.")
 
 	enemy.apply_damage(FIRE_CONFIG.max_health)
+	_expect(not enemy.is_physics_processing(), "Dead ranged enemy must stop script physics immediately.")
 	await _wait_physics_frames(20)
 	var new_projectile_ids := _get_projectile_ids()
 	for projectile_id in new_projectile_ids:

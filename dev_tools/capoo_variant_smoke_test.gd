@@ -133,6 +133,15 @@ func _test_reticle_highest_progress_priority() -> void:
 	player.add_child(slow_reticle)
 	player.add_child(urgent_reticle)
 	await process_frame
+	slow_reticle.start(3.0, false)
+	urgent_reticle.start(3.0, false)
+	_expect(
+		not slow_reticle.auto_progress
+		and not urgent_reticle.auto_progress
+		and not slow_reticle.is_processing()
+		and not urgent_reticle.is_processing(),
+		"Manually driven sniper reticles must not advance in their own process callback."
+	)
 
 	slow_reticle.set_progress(0.35)
 	urgent_reticle.set_progress(0.75)
@@ -231,6 +240,12 @@ func _test_sniper_lock_cancel_and_damage() -> void:
 	await _wait_physics_frames(3)
 	_expect(sniper.combat_state == CapooSniper.CombatState.LOCK, "Sniper Capoo did not enter lock state.")
 	_expect(_count_reticles(blocked_player) == 1, "Sniper lock did not attach one reticle to the player.")
+	_expect(
+		sniper.lock_reticle != null
+		and not sniper.lock_reticle.auto_progress
+		and not sniper.lock_reticle.is_processing(),
+		"Authoritative sniper must be the sole driver of lock-reticle progress."
+	)
 	_expect(_has_sniper_aim_line(sniper), "Sniper lock must show a thin source-to-target aim line.")
 	var wall := _spawn_wall(Vector2(180.0, 0.0), 12.0)
 	await _wait_physics_frames(6)
@@ -251,6 +266,12 @@ func _test_sniper_lock_cancel_and_damage() -> void:
 	var firing_sniper := _spawn_sniper(Vector2.ZERO, player)
 	await _wait_physics_frames(3)
 	_expect(firing_sniper.combat_state == CapooSniper.CombatState.LOCK, "Sniper Capoo did not lock before damage test.")
+	_expect(
+		firing_sniper.lock_reticle != null
+		and not firing_sniper.lock_reticle.auto_progress
+		and not firing_sniper.lock_reticle.is_processing(),
+		"Damage-test sniper reticle unexpectedly retained its duplicate process driver."
+	)
 	_expect(_has_sniper_aim_line(firing_sniper), "Sniper damage lock must show a thin source-to-target aim line.")
 	var sniper_guard_frames := 0
 	while player.current_health != expected_health_after_shot and sniper_guard_frames < 230:
@@ -360,6 +381,10 @@ func _test_proxy_action_visuals() -> void:
 	sniper.call("_process", 0.2)
 	_expect(sniper.lock_reticle != null, "Proxy sniper lock start must attach a reticle.")
 	_expect(_count_reticles(sniper_player) == 1, "Proxy sniper lock start must add exactly one player reticle.")
+	_expect(
+		not sniper.lock_reticle.auto_progress and not sniper.lock_reticle.is_processing(),
+		"Proxy sniper must be the sole driver of lock-reticle progress."
+	)
 	_expect(_has_sniper_aim_line(sniper), "Proxy sniper lock start must show an aim line.")
 
 	sniper_player.global_position = Vector2(120.0, 180.0)
