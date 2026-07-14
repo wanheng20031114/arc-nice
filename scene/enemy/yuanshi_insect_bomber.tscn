@@ -41,11 +41,14 @@ rotation = 1.5707964
 shape = SubResource("CapsuleShape2D_qjjxk")
 
 [node name="ExplosionArea" type="Area2D" parent="." index="6" unique_id=1412067951]
-collision_layer = 64
+collision_layer = 0
 collision_mask = 6
+monitoring = false
+monitorable = false
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="ExplosionArea" index="0" unique_id=1945204364]
 shape = SubResource("CircleShape2D_explosion")
+disabled = true
 debug_color = Color(0.9764706, 0.6, 0.69803923, 0.41960785)
 
 [node name="ExplosionAudio" type="AudioStreamPlayer2D" parent="." index="7" unique_id=283508414]

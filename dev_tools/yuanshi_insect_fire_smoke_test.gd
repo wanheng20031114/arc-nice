@@ -3,6 +3,7 @@ extends SceneTree
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const FIRE_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres")
 const BOMBER_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_bomber.tres")
+const PURPLE_BOMBER_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_purple_bomber.tres")
 const FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
 const EXPLODER_SCRIPT := preload("res://scene/enemy/yuanshi_insect_exploder.gd")
 const FIRE_CONFIG_SCRIPT := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged_config.gd")
@@ -25,6 +26,7 @@ func _run() -> void:
 	current_scene = test_root
 
 	_test_resource_contract()
+	await _test_bomber_explosion_query_contract()
 	await _test_legacy_bomber_unchanged()
 	await _test_attack_and_live_aim()
 	await _test_wall_blocks_attack()
@@ -87,6 +89,71 @@ func _test_resource_contract() -> void:
 			"Projectile Area must scan Player and PlantDefense; its cached sweep owns World collision."
 		)
 		projectile.free()
+
+
+func _test_bomber_explosion_query_contract() -> void:
+	await _assert_bomber_explosion_query_contract(BOMBER_CONFIG, "Bomber")
+	await _assert_bomber_explosion_query_contract(PURPLE_BOMBER_CONFIG, "Purple bomber")
+
+
+func _assert_bomber_explosion_query_contract(
+	enemy_config: YuanshiInsectConfig,
+	contract_name: String
+) -> void:
+	var inside_player := _spawn_player(Vector2(enemy_config.explosion_radius - 10.0, 0.0))
+	var outside_player := _spawn_player(Vector2(enemy_config.explosion_radius + 10.0, 0.0))
+	var bomber := enemy_config.enemy_scene.instantiate() as YuanshiInsectExploder
+	_expect(bomber != null, "%s scene must instantiate YuanshiInsectExploder." % contract_name)
+	if bomber == null:
+		inside_player.queue_free()
+		outside_player.queue_free()
+		await process_frame
+		return
+
+	test_root.add_child(bomber)
+	bomber.global_position = Vector2.ZERO
+	bomber.setup(enemy_config, inside_player)
+	bomber.set_physics_process(false)
+	await physics_frame
+	await physics_frame
+
+	var explosion_area := bomber.get_node("ExplosionArea") as Area2D
+	var explosion_shape := bomber.get_node("ExplosionArea/CollisionShape2D") as CollisionShape2D
+	var explosion_circle := explosion_shape.shape as CircleShape2D
+	_expect(explosion_area.collision_layer == 0, "%s explosion area must not occupy a physics layer." % contract_name)
+	_expect(explosion_area.collision_mask == 6, "%s explosion query mask changed." % contract_name)
+	_expect(not explosion_area.monitoring, "%s explosion area must not monitor continuously." % contract_name)
+	_expect(not explosion_area.monitorable, "%s explosion area must not be monitorable." % contract_name)
+	_expect(explosion_shape.disabled, "%s explosion collision shape must stay disabled." % contract_name)
+	_expect(
+		explosion_circle != null
+		and is_equal_approx(explosion_circle.radius, enemy_config.explosion_radius),
+		"%s explosion radius changed." % contract_name
+	)
+
+	inside_player.invincibility_time_left = 0.0
+	var inside_health := inside_player.current_health
+	var outside_health := outside_player.current_health
+	bomber.call("_try_apply_explosion_damage")
+	_expect(
+		inside_player.current_health == inside_health - enemy_config.explosion_damage,
+		"%s explicit explosion query damage mismatch: expected %d, got %d."
+		% [
+			contract_name,
+			inside_health - enemy_config.explosion_damage,
+			inside_player.current_health,
+		]
+	)
+	_expect(
+		outside_player.current_health == outside_health,
+		"%s explicit explosion query damaged a player beyond its configured radius." % contract_name
+	)
+
+	bomber.queue_free()
+	inside_player.queue_free()
+	outside_player.queue_free()
+	await process_frame
+	await physics_frame
 
 
 func _test_legacy_bomber_unchanged() -> void:

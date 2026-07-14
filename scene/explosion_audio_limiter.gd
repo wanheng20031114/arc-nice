@@ -67,6 +67,9 @@ static func _play_limited_audio(
 
 	if not audio_player.is_in_group(audio_group):
 		audio_player.add_to_group(audio_group)
+	var finished_callback := _on_limited_audio_finished.bind(audio_player, audio_group)
+	if not audio_player.finished.is_connected(finished_callback):
+		audio_player.finished.connect(finished_callback, CONNECT_ONE_SHOT)
 
 	var base_volume_db := audio_player.volume_db
 	if audio_player.has_meta(BASE_VOLUME_META):
@@ -80,6 +83,8 @@ static func _play_limited_audio(
 	)
 	audio_player.volume_db = base_volume_db - attenuation_db
 	audio_player.play()
+	if not audio_player.playing:
+		_remove_audio_player_from_group(audio_player, audio_group)
 
 
 static func _count_active_explosion_players(tree: SceneTree) -> int:
@@ -91,9 +96,29 @@ static func _count_active_audio_players(tree: SceneTree, audio_group: StringName
 	for node in tree.get_nodes_in_group(audio_group):
 		var audio_player := node as AudioStreamPlayer2D
 		if audio_player == null:
+			node.remove_from_group(audio_group)
 			continue
 		if not is_instance_valid(audio_player):
 			continue
-		if audio_player.playing:
-			active_count += 1
+		if not audio_player.playing:
+			_remove_audio_player_from_group(audio_player, audio_group)
+			continue
+		active_count += 1
 	return active_count
+
+
+static func _on_limited_audio_finished(
+	audio_player: AudioStreamPlayer2D,
+	audio_group: StringName
+) -> void:
+	_remove_audio_player_from_group(audio_player, audio_group)
+
+
+static func _remove_audio_player_from_group(
+	audio_player: AudioStreamPlayer2D,
+	audio_group: StringName
+) -> void:
+	if not is_instance_valid(audio_player):
+		return
+	if audio_player.is_in_group(audio_group):
+		audio_player.remove_from_group(audio_group)

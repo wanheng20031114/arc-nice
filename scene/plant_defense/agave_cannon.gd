@@ -261,8 +261,6 @@ func _fire_pending_projectile() -> void:
 
 
 func _select_nearest_visible_enemy() -> Enemy:
-	var nearest_enemy: Enemy = null
-	var nearest_distance_squared := INF
 	var stale_candidate_ids: Array[int] = []
 	var candidates: Array[Enemy] = []
 	var current_scene := get_tree().current_scene
@@ -275,6 +273,17 @@ func _select_nearest_visible_enemy() -> Enemy:
 				0
 			) as Array
 		)
+		for candidate in candidates:
+			if not _is_valid_target(candidate):
+				continue
+			if (
+				global_position.distance_squared_to(candidate.global_position)
+				> configured_attack_range * configured_attack_range
+			):
+				continue
+			if _has_clear_world_line_to(candidate):
+				return candidate
+		return null
 	else:
 		for candidate_id: int in target_candidates:
 			var fallback_candidate := target_candidates[candidate_id] as Enemy
@@ -283,6 +292,8 @@ func _select_nearest_visible_enemy() -> Enemy:
 				continue
 			candidates.append(fallback_candidate)
 
+	var nearest_enemy: Enemy = null
+	var nearest_distance_squared := INF
 	for candidate in candidates:
 		if not _is_valid_target(candidate):
 			continue
