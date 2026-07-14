@@ -182,6 +182,7 @@ func _test_physical_defense_round_totals() -> void:
 	]
 	for defense_case in defense_cases:
 		enemy_config.physical_defense = defense_case.x
+		enemy.call("_refresh_effective_physical_defense_cache")
 		var per_shot_damage := int(
 			enemy.call(
 				"_calculate_incoming_damage",

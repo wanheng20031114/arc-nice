@@ -4885,7 +4885,8 @@ func get_all_combat_targets() -> Array[Enemy]:
 	if net_manager.is_host():
 		return game.get_all_combat_targets()
 	var result: Array[Enemy] = []
-	for enemy_variant in _net_enemies.values():
+	for enemy_net_id_variant in _net_enemies:
+		var enemy_variant: Variant = _net_enemies.get(int(enemy_net_id_variant))
 		if enemy_variant == null or not is_instance_valid(enemy_variant):
 			continue
 		var enemy := enemy_variant as Enemy
@@ -4895,14 +4896,31 @@ func get_all_combat_targets() -> Array[Enemy]:
 
 
 func query_combat_targets(center: Vector2, radius: float, max_count: int = 0) -> Array[Enemy]:
-	if game == null:
-		return []
-	if net_manager.is_host():
-		return game.query_combat_targets(center, radius, max_count)
 	var result: Array[Enemy] = []
+	query_combat_targets_into(center, radius, result, max_count)
+	return result
+
+
+func query_combat_targets_into(
+	center: Vector2,
+	radius: float,
+	result: Array[Enemy],
+	max_count: int = 0
+) -> void:
+	result.clear()
+	if game == null:
+		return
+	if net_manager.is_host():
+		game.query_combat_targets_into(center, radius, result, max_count)
+		return
 	var safe_radius := maxf(radius, 0.0)
 	var radius_squared := safe_radius * safe_radius
-	for enemy in get_all_combat_targets():
+	for enemy_variant in _net_enemies.values():
+		if enemy_variant == null or not is_instance_valid(enemy_variant):
+			continue
+		var enemy := enemy_variant as Enemy
+		if enemy == null or enemy.is_dead:
+			continue
 		if safe_radius > 0.0 and center.distance_squared_to(enemy.global_position) > radius_squared:
 			continue
 		result.append(enemy)
@@ -4916,7 +4934,6 @@ func query_combat_targets(center: Vector2, radius: float, max_count: int = 0) ->
 	)
 	if max_count > 0 and result.size() > max_count:
 		result.resize(max_count)
-	return result
 
 
 func has_session_object_pool_scene(scene: PackedScene) -> bool:

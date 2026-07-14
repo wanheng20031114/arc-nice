@@ -345,9 +345,21 @@ func query_combat_targets(
 	radius: float,
 	max_count: int = 0
 ) -> Array[Enemy]:
+	var result: Array[Enemy] = []
+	query_combat_targets_into(center, radius, result, max_count)
+	return result
+
+
+func query_combat_targets_into(
+	center: Vector2,
+	radius: float,
+	result: Array[Enemy],
+	max_count: int = 0
+) -> void:
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		return combat_target_index.query_radius(center, radius, max_count) as Array[Enemy]
-	return super.query_combat_targets(center, radius, max_count)
+		combat_target_index.query_radius_into(center, radius, result, max_count)
+		return
+	super.query_combat_targets_into(center, radius, result, max_count)
 
 
 func _configure_singleplayer_combat_target_index() -> void:

@@ -16,6 +16,7 @@ use_custom_data = true
 mesh = SubResource("QuadMesh_cell")
 
 [node name="VegetationSpreadSystem" type="Node2D"]
+process_priority = 100
 script = ExtResource("1_script")
 
 [node name="GrowthOverlay" type="MultiMeshInstance2D" parent="."]

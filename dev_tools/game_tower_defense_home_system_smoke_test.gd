@@ -593,6 +593,17 @@ func _verify_singleplayer_combat_target_index_and_agave(
 		and indexed_targets[1] == clear_middle_enemy,
 		"Single-player radius queries must use deterministic distance-ordered buckets."
 	)
+	var reusable_targets: Array[Enemy] = [outside_range_enemy]
+	game.query_combat_targets_into(
+		fixture_origin,
+		agave.configured_attack_range,
+		reusable_targets,
+		0
+	)
+	_expect(
+		reusable_targets == indexed_targets,
+		"Single-player target queries must refill caller-owned arrays with identical ordering."
+	)
 
 	game.unregister_combat_target(near_enemy_id)
 	_expect(
@@ -610,9 +621,16 @@ func _verify_singleplayer_combat_target_index_and_agave(
 		game.combat_target_index.get_enemy(near_enemy_id) == blocked_near_enemy,
 		"Re-entering EnemyContainer must restore single-player target registration."
 	)
+	var retained_agave_query_buffer := agave.indexed_target_candidates
+	var retained_los_query := agave.world_los_query
+	var retained_los_exclude := agave.world_los_exclude
 	_expect(
-		agave.call("_select_nearest_visible_enemy") == blocked_near_enemy,
-		"Agave must select the first clear target from the ordered runtime query."
+		agave.call("_select_nearest_visible_enemy") == blocked_near_enemy
+		and is_same(retained_agave_query_buffer, agave.indexed_target_candidates)
+		and is_same(retained_los_query, agave.world_los_query)
+		and is_same(retained_los_exclude, agave.world_los_exclude)
+		and retained_los_query.to == blocked_near_enemy.global_position,
+		"Agave must select through its caller-owned target and LOS query containers."
 	)
 
 	var blocker := StaticBody2D.new()

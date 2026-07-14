@@ -27,16 +27,22 @@ var projectile_id := 0
 var owner_peer_id := 0
 var source_type: StringName = &"agave_cannonball"
 var pool_active := true
+var explosion_query := PhysicsShapeQueryParameters2D.new()
+var explosion_targets: Dictionary[int, Enemy] = {}
 
 
 func _ready() -> void:
 	remaining_lifetime = maxf(max_lifetime, 0.01)
 	flight_cast.collision_mask = WORLD_AND_ENEMY_COLLISION_MASK
+	explosion_query.collision_mask = ENEMY_COLLISION_MASK
+	explosion_query.collide_with_bodies = true
+	explosion_query.collide_with_areas = false
 	pool_active = not has_meta(SessionObjectPool.POOL_OWNER_META)
 
 
 func on_pool_acquired(_generation: int) -> void:
 	pool_active = true
+	explosion_targets.clear()
 	has_exploded = false
 	direction = Vector2.RIGHT
 	damage = 25
@@ -55,6 +61,7 @@ func on_pool_acquired(_generation: int) -> void:
 
 func on_pool_released(_generation: int) -> void:
 	pool_active = false
+	explosion_targets.clear()
 	has_exploded = true
 	set_physics_process(false)
 	flight_cast.set_deferred("enabled", false)
@@ -172,6 +179,7 @@ func _retire() -> void:
 
 
 func _apply_explosion_damage(direct_enemy: Enemy) -> void:
+	explosion_targets.clear()
 	if not authoritative_damage:
 		return
 	var blast_circle := explosion_shape.shape as CircleShape2D
@@ -181,23 +189,20 @@ func _apply_explosion_damage(direct_enemy: Enemy) -> void:
 	if space_state == null:
 		return
 
-	var targets: Dictionary[int, Enemy] = {}
-	_add_explosion_target(targets, direct_enemy)
-
-	var query := PhysicsShapeQueryParameters2D.new()
-	query.shape = blast_circle
-	query.transform = Transform2D(0.0, global_position)
-	query.collision_mask = ENEMY_COLLISION_MASK
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
+	_add_explosion_target(explosion_targets, direct_enemy)
+	explosion_query.shape = blast_circle
+	explosion_query.transform = Transform2D(0.0, global_position)
 	for result: Dictionary in COMPLETE_SHAPE_QUERY_2D.intersect_shape_all(
 		space_state,
-		query,
+		explosion_query,
 		EXPLOSION_QUERY_BATCH_SIZE
 	):
-		_add_explosion_target(targets, result.get("collider") as Enemy)
+		_add_explosion_target(explosion_targets, result.get("collider") as Enemy)
 
-	for enemy: Enemy in targets.values():
+	for enemy_id in explosion_targets:
+		var enemy := explosion_targets[enemy_id] as Enemy
+		if enemy == null:
+			continue
 		var impact_direction := global_position.direction_to(enemy.global_position)
 		if impact_direction == Vector2.ZERO:
 			impact_direction = direction
@@ -219,6 +224,7 @@ func _apply_explosion_damage(direct_enemy: Enemy) -> void:
 				impact_direction,
 				EnemyConfig.DamageType.PHYSICAL
 			)
+	explosion_targets.clear()
 
 
 func _add_explosion_target(targets: Dictionary[int, Enemy], enemy: Enemy) -> void:

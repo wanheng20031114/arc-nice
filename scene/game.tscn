@@ -20,6 +20,7 @@
 [ext_resource type="PackedScene" path="res://scene/debug_collectible_window.tscn" id="21_debug_collectibles"]
 [ext_resource type="Script" path="res://scene/session_object_pool.gd" id="22_session_pool"]
 [ext_resource type="Script" path="res://scene/xirang_drop_manager.gd" id="23_xirang_manager"]
+[ext_resource type="PackedScene" path="res://scene/enemy/guardian_aura_system.tscn" id="24_guardian_aura_system"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -221,6 +222,8 @@ scale = Vector2(0.3, 0.3)
 shape = SubResource("SegmentShape2D_ryrav")
 
 [node name="EnemyContainer" type="Node2D" parent="." unique_id=1663148247]
+
+[node name="GuardianAuraSystem" parent="." unique_id=1017497354 instance=ExtResource("24_guardian_aura_system")]
 
 [node name="EnemySpawnPoints" type="Node2D" parent="." unique_id=1509239636]
 

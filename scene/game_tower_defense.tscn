@@ -32,6 +32,7 @@
 [ext_resource type="PackedScene" path="res://scene/plant_defense/vegetation_spread_system.tscn" id="33_vegetation_spread"]
 [ext_resource type="PackedScene" path="res://scene/vfx/tower_defense_ambient_vfx.tscn" id="34_ambient_vfx"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/oak_warehouse_panel.tscn" id="35_oak_warehouse_panel"]
+[ext_resource type="PackedScene" path="res://scene/enemy/guardian_aura_system.tscn" id="36_guardian_aura_system"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -322,6 +323,8 @@ position = Vector2(168, 331)
 config = ExtResource("8_rrr3j")
 
 [node name="EnemyContainer" type="Node2D" parent="." unique_id=1663148247]
+
+[node name="GuardianAuraSystem" parent="." unique_id=1147354632 instance=ExtResource("36_guardian_aura_system")]
 
 [node name="EnemySpawnPoints" type="Node2D" parent="." unique_id=1509239636]
 

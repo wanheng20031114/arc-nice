@@ -942,8 +942,15 @@ func _test_grid_and_occupancy_rules() -> void:
 		return
 	_expect(not plant_system.is_placement_valid(anchor, agave_config), "已占用footprint必须拒绝重复放置。")
 	_expect(plant.footprint_cells.size() == 4, "植物实例必须保存四个占用格。")
-	_expect(is_equal_approx((plant as AgaveCannon).attack_timer.wait_time, 2.0), "放置后攻击计时器必须严格为2秒。")
-	_expect((plant as AgaveCannon).attack_timer.time_left > 1.8, "首次攻击必须等待完整攻击间隔。")
+	var placed_agave := plant as AgaveCannon
+	_expect(is_equal_approx(placed_agave.attack_timer.wait_time, 2.0), "放置后攻击计时器必须严格为2秒。")
+	_expect(placed_agave.attack_timer.time_left > 1.8, "首次攻击必须等待完整攻击间隔。")
+	_expect(
+		placed_agave.world_los_query != null
+		and placed_agave.world_los_exclude.size() == 1
+		and placed_agave.world_los_exclude[0] == placed_agave.get_rid(),
+		"龙舌兰必须为全部LOS检查复用同一个查询对象和自身RID排除数组。"
+	)
 	var tile_width := float(tile_map.tile_set.tile_size.x)
 	var plant_local_position := tile_map.to_local(plant.global_position)
 	var exactly_eight_cells_away := tile_map.to_global(
@@ -1439,10 +1446,18 @@ func _test_cannonball_aoe_deduplication() -> void:
 	await physics_frame
 	var health_a := enemy_a.current_health
 	var health_b := enemy_b.current_health
+	var retained_explosion_query := cannonball.explosion_query
+	var retained_explosion_targets := cannonball.explosion_targets
 	cannonball._apply_explosion_damage(enemy_a)
 	_expect(enemy_a.current_health == health_a - 25, "直接命中目标在AOE查询中只能承受25点伤害。")
 	_expect(enemy_b.current_health == health_b - 25, "爆炸半径内第二目标必须承受25点伤害。")
 	_expect(enemy_a.last_damage_taken == 25 and enemy_b.last_damage_taken == 25, "AOE伤害必须为25。")
+	_expect(
+		is_same(retained_explosion_query, cannonball.explosion_query)
+		and is_same(retained_explosion_targets, cannonball.explosion_targets)
+		and cannonball.explosion_targets.is_empty(),
+		"池化黑球必须跨爆炸复用查询容器，并在伤害结算后立即释放目标引用。"
+	)
 
 	var visual_cannonball := CANNONBALL_SCENE.instantiate() as AgaveCannonball
 	visual_cannonball.position = Vector2(506, 500)

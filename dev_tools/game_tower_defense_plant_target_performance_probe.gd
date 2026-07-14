@@ -22,6 +22,7 @@ var failures: Array[String] = []
 var game: GameTowerDefense = null
 var enemies: Array[Enemy] = []
 var query_centers := PackedVector2Array()
+var reusable_indexed_targets: Array[Enemy] = []
 
 
 func _init() -> void:
@@ -58,6 +59,7 @@ func _run() -> void:
 	for _warmup_index in range(WARMUP_SWEEPS):
 		await physics_frame
 		_run_indexed_sweep()
+		_run_reused_indexed_sweep()
 		_run_legacy_sweep()
 
 	var indexed_samples: Array[float] = []
@@ -70,21 +72,40 @@ func _run() -> void:
 		else:
 			legacy_samples.append(_measure_legacy_sweep())
 			indexed_samples.append(_measure_indexed_sweep())
+	# Keep the original indexed-vs-legacy loop unchanged so its old/new numbers
+	# remain comparable. Measure the reusable API in separate physics frames so it
+	# also pays the once-per-frame index refresh instead of inheriting a warm index.
+	var reused_indexed_samples: Array[float] = []
+	for sample_index in range(SAMPLE_SWEEPS):
+		await physics_frame
+		if sample_index % 2 == 0:
+			reused_indexed_samples.append(_measure_reused_indexed_sweep())
+			_run_legacy_sweep()
+		else:
+			_run_legacy_sweep()
+			reused_indexed_samples.append(_measure_reused_indexed_sweep())
 
 	var indexed_summary := _summarize(indexed_samples)
+	var reused_indexed_summary := _summarize(reused_indexed_samples)
 	var legacy_summary := _summarize(legacy_samples)
+	var crowded_migration_ms := await _measure_crowded_bucket_migration()
 	print(
 		(
 			"PLANT_TARGET_QUERY_PROBE enemies=%d queries_per_sweep=%d samples=%d "
-			+ "indexed_ms=%s legacy_ms=%s speedup_p50=%.2f"
+			+ "indexed_ms=%s indexed_reuse_ms=%s legacy_ms=%s "
+			+ "speedup_p50=%.2f reuse_speedup_p50=%.2f crowded_migration_ms=%.3f"
 		)
 		% [
 			ENEMY_COUNT,
 			QUERY_COUNT,
 			SAMPLE_SWEEPS,
 			_format_summary(indexed_summary),
+			_format_summary(reused_indexed_summary),
 			_format_summary(legacy_summary),
 			float(legacy_summary["p50"]) / maxf(float(indexed_summary["p50"]), 0.001),
+			float(legacy_summary["p50"])
+			/ maxf(float(reused_indexed_summary["p50"]), 0.001),
+			crowded_migration_ms,
 		]
 	)
 	await _finish()
@@ -150,9 +171,53 @@ func _measure_legacy_sweep() -> float:
 	return float(Time.get_ticks_usec() - started_usec) / 1000.0
 
 
+func _measure_reused_indexed_sweep() -> float:
+	var started_usec := Time.get_ticks_usec()
+	_run_reused_indexed_sweep()
+	return float(Time.get_ticks_usec() - started_usec) / 1000.0
+
+
 func _run_indexed_sweep() -> void:
 	for center in query_centers:
 		game.query_combat_targets(center, QUERY_RADIUS, 0)
+
+
+func _run_reused_indexed_sweep() -> void:
+	for center in query_centers:
+		game.query_combat_targets_into(
+			center,
+			QUERY_RADIUS,
+			reusable_indexed_targets,
+			0
+		)
+
+
+func _measure_crowded_bucket_migration() -> float:
+	var clustered_origin := FIXTURE_ORIGIN + Vector2(4096.0, 0.0)
+	for enemy in enemies:
+		enemy.global_position = clustered_origin
+	await physics_frame
+	_expect(
+		game.query_combat_targets(clustered_origin, 2.0, 0).size() == ENEMY_COUNT,
+		"Crowded migration warmup must place all targets in one bucket."
+	)
+	var migrated_origin := clustered_origin + Vector2(game.combat_target_index.bucket_size * 2.0, 0.0)
+	for enemy in enemies:
+		enemy.global_position = migrated_origin
+	await physics_frame
+	var started_usec := Time.get_ticks_usec()
+	game.query_combat_targets_into(
+		migrated_origin,
+		2.0,
+		reusable_indexed_targets,
+		0
+	)
+	var elapsed_ms := float(Time.get_ticks_usec() - started_usec) / 1000.0
+	_expect(
+		reusable_indexed_targets.size() == ENEMY_COUNT,
+		"Crowded whole-bucket migration must retain all targets."
+	)
+	return elapsed_ms
 
 
 func _run_legacy_sweep() -> void:

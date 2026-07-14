@@ -17,6 +17,8 @@ const MAX_REVEALED_PIXELS := 48
 const UPDATE_INTERVAL_SECONDS := 0.1
 const RUNTIME_STATE_SCHEMA := 1
 
+static var _ring_offsets_cache: Array = []
+
 @onready var growth_overlay: MultiMeshInstance2D = $GrowthOverlay
 
 var terrain_map: DualGridTilemap = null
@@ -25,11 +27,23 @@ var authoritative := true
 
 var _baseline_raw_terrain: Dictionary = {}
 var _sources: Dictionary = {}
+var _active_source_ids: Dictionary = {}
 var _generated_cells: Dictionary = {}
+var _pending_restore_cells: Dictionary[Vector2i, int] = {}
 var _tick_accumulator := 0.0
+var _overlay_dirty := false
+var _overlay_cells: Array[Vector2i] = []
+var _overlay_progress_by_cell: Dictionary = {}
+var _overlay_flush_count := 0
+var _overlay_layout_rebuild_count := 0
+var _overlay_transform_write_count := 0
+var _overlay_custom_data_write_count := 0
+var _last_advance_source_count := 0
+var _last_overlay_source_count := 0
 
 
 func _ready() -> void:
+	_ensure_ring_offsets_cache()
 	_clear_overlay()
 	set_process(false)
 
@@ -45,7 +59,11 @@ func setup(
 	if new_frozen_bounds.size.x <= 0 or new_frozen_bounds.size.y <= 0:
 		push_error("VegetationSpreadSystem requires non-empty frozen bounds.")
 		return false
-	if not _sources.is_empty() or not _generated_cells.is_empty():
+	if (
+		not _sources.is_empty()
+		or not _generated_cells.is_empty()
+		or not _pending_restore_cells.is_empty()
+	):
 		push_error("VegetationSpreadSystem cannot be reconfigured while sources are active.")
 		return false
 
@@ -53,6 +71,7 @@ func setup(
 	frozen_bounds = new_frozen_bounds
 	authoritative = new_authoritative
 	_baseline_raw_terrain.clear()
+	_active_source_ids.clear()
 	for y in range(frozen_bounds.position.y, frozen_bounds.end.y):
 		for x in range(frozen_bounds.position.x, frozen_bounds.end.x):
 			var cell := Vector2i(x, y)
@@ -67,9 +86,10 @@ func set_authoritative(value: bool) -> void:
 	if authoritative == value:
 		return
 	authoritative = value
-	_resolve_due_sources()
-	_rebuild_overlay()
-	_refresh_process_enabled()
+	if authoritative:
+		_restore_pending_cells()
+		_resolve_due_sources(_get_sorted_source_ids(_sources))
+	_mark_overlay_dirty()
 
 
 func is_configured() -> bool:
@@ -99,9 +119,9 @@ func register_source(
 
 	var source := _build_source(origin_cell, initial_elapsed_seconds)
 	_sources[source_id] = source
-	_resolve_due_sources()
-	_rebuild_overlay()
-	_refresh_process_enabled()
+	_update_source_active_state(source_id)
+	_resolve_due_sources([source_id])
+	_mark_overlay_dirty()
 	return true
 
 
@@ -111,6 +131,7 @@ func cancel_source(source_id: int) -> bool:
 
 	var source: Dictionary = _sources[source_id]
 	_sources.erase(source_id)
+	_active_source_ids.erase(source_id)
 	var terrain_changes: Dictionary = {}
 	var owned_cells: Dictionary = source["owned"]
 	for cell_variant in owned_cells:
@@ -126,31 +147,39 @@ func cancel_source(source_id: int) -> bool:
 			continue
 
 		var original_raw_terrain := int(generated["original_raw_terrain"])
-		_generated_cells.erase(cell)
-		terrain_map.set_tile(cell, original_raw_terrain)
-		terrain_changes[cell] = original_raw_terrain
+		if authoritative:
+			_generated_cells.erase(cell)
+			terrain_map.set_tile(cell, original_raw_terrain)
+			terrain_changes[cell] = original_raw_terrain
+		else:
+			_generated_cells.erase(cell)
+			_pending_restore_cells[cell] = original_raw_terrain
 
 	_emit_terrain_changes(terrain_changes)
-	_rebuild_overlay()
-	_refresh_process_enabled()
+	_mark_overlay_dirty()
 	return true
 
 
 func advance_time(delta_seconds: float) -> void:
 	if terrain_map == null or delta_seconds < 0.0:
 		return
+	_last_advance_source_count = 0
 	if delta_seconds > 0.0:
-		for source_id_variant in _sources:
-			var source_id := int(source_id_variant)
+		var active_source_ids := _get_sorted_source_ids(_active_source_ids)
+		_last_advance_source_count = active_source_ids.size()
+		for source_id in active_source_ids:
+			if not _sources.has(source_id):
+				continue
 			var source: Dictionary = _sources[source_id]
 			source["elapsed"] = minf(
 				float(source["elapsed"]) + delta_seconds,
 				TOTAL_SPREAD_SECONDS
 			)
 			_sources[source_id] = source
-	_resolve_due_sources()
-	_rebuild_overlay()
-	_refresh_process_enabled()
+		_resolve_due_sources(active_source_ids)
+		for source_id in active_source_ids:
+			_update_source_active_state(source_id)
+	_mark_overlay_dirty()
 
 
 func has_source(source_id: int) -> bool:
@@ -159,6 +188,34 @@ func has_source(source_id: int) -> bool:
 
 func get_source_count() -> int:
 	return _sources.size()
+
+
+func get_active_source_count() -> int:
+	return _active_source_ids.size()
+
+
+func get_last_advance_source_count() -> int:
+	return _last_advance_source_count
+
+
+func get_last_overlay_source_count() -> int:
+	return _last_overlay_source_count
+
+
+func get_overlay_update_stats() -> Dictionary:
+	return {
+		"flush_count": _overlay_flush_count,
+		"layout_rebuild_count": _overlay_layout_rebuild_count,
+		"transform_write_count": _overlay_transform_write_count,
+		"custom_data_write_count": _overlay_custom_data_write_count,
+	}
+
+
+func reset_overlay_update_stats() -> void:
+	_overlay_flush_count = 0
+	_overlay_layout_rebuild_count = 0
+	_overlay_transform_write_count = 0
+	_overlay_custom_data_write_count = 0
 
 
 func get_source_origin(source_id: int) -> Vector2i:
@@ -215,16 +272,36 @@ func get_overlay_progress(cell: Vector2i) -> float:
 	return float(_collect_overlay_progress().get(cell, 0.0))
 
 
-static func get_ring_offsets(ring: int) -> Array[Vector2i]:
-	var offsets: Array[Vector2i] = []
-	if ring < 1 or ring > SPREAD_RADIUS:
-		return offsets
+static func _ensure_ring_offsets_cache() -> void:
+	if _ring_offsets_cache.size() == SPREAD_RADIUS + 1:
+		return
+	_ring_offsets_cache.clear()
+	_ring_offsets_cache.resize(SPREAD_RADIUS + 1)
+	for ring in range(SPREAD_RADIUS + 1):
+		var empty_ring: Array[Vector2i] = []
+		_ring_offsets_cache[ring] = empty_ring
 	for y in range(-SPREAD_RADIUS, SPREAD_RADIUS + 1):
 		for x in range(-SPREAD_RADIUS, SPREAD_RADIUS + 1):
 			var offset := Vector2i(x, y)
-			if _ring_for_offset(offset) == ring:
+			var ring := _ring_for_offset(offset)
+			if ring > 0:
+				var offsets: Array[Vector2i] = _ring_offsets_cache[ring]
 				offsets.append(offset)
-	offsets.sort_custom(_sort_cells)
+	for ring in range(1, SPREAD_RADIUS + 1):
+		var offsets: Array[Vector2i] = _ring_offsets_cache[ring]
+		offsets.sort_custom(_sort_cells)
+
+
+static func get_ring_offsets(ring: int) -> Array[Vector2i]:
+	_ensure_ring_offsets_cache()
+	if ring < 1 or ring > SPREAD_RADIUS:
+		var empty_offsets: Array[Vector2i] = []
+		return empty_offsets
+	return _get_cached_ring_offsets(ring).duplicate()
+
+
+static func _get_cached_ring_offsets(ring: int) -> Array[Vector2i]:
+	var offsets: Array[Vector2i] = _ring_offsets_cache[ring]
 	return offsets
 
 
@@ -245,17 +322,18 @@ static func get_revealed_pixel_indices(
 
 
 func _process(delta: float) -> void:
-	if _sources.is_empty():
-		return
-	_tick_accumulator += delta
-	if _tick_accumulator < UPDATE_INTERVAL_SECONDS:
-		return
-	var elapsed_step := _tick_accumulator
-	_tick_accumulator = 0.0
-	advance_time(elapsed_step)
+	if not _active_source_ids.is_empty():
+		_tick_accumulator += delta
+		if _tick_accumulator >= UPDATE_INTERVAL_SECONDS:
+			var elapsed_step := _tick_accumulator
+			_tick_accumulator = 0.0
+			advance_time(elapsed_step)
+	_flush_overlay_if_dirty()
+	_refresh_process_enabled()
 
 
 func _build_source(origin_cell: Vector2i, initial_elapsed_seconds: float) -> Dictionary:
+	_ensure_ring_offsets_cache()
 	var rings: Array = []
 	rings.resize(SPREAD_RADIUS + 1)
 	for ring in range(SPREAD_RADIUS + 1):
@@ -263,7 +341,7 @@ func _build_source(origin_cell: Vector2i, initial_elapsed_seconds: float) -> Dic
 		rings[ring] = empty_ring
 	for ring in range(1, SPREAD_RADIUS + 1):
 		var ring_cells: Array[Vector2i] = []
-		for offset in get_ring_offsets(ring):
+		for offset in _get_cached_ring_offsets(ring):
 			var cell := origin_cell + offset
 			if not frozen_bounds.has_point(cell):
 				continue
@@ -287,28 +365,47 @@ func _build_source(origin_cell: Vector2i, initial_elapsed_seconds: float) -> Dic
 	}
 
 
+func _update_source_active_state(source_id: int) -> void:
+	if not _sources.has(source_id):
+		_active_source_ids.erase(source_id)
+		return
+	var source: Dictionary = _sources[source_id]
+	if float(source.get("elapsed", 0.0)) < TOTAL_SPREAD_SECONDS:
+		_active_source_ids[source_id] = true
+	else:
+		_active_source_ids.erase(source_id)
+
+
+static func _get_sorted_source_ids(source_set: Dictionary) -> Array[int]:
+	var source_ids: Array[int] = []
+	for source_id_variant in source_set:
+		source_ids.append(int(source_id_variant))
+	source_ids.sort()
+	return source_ids
+
+
 func _set_source_elapsed_forward(source_id: int, elapsed_seconds: float) -> bool:
 	var source: Dictionary = _sources[source_id]
 	var current_elapsed := float(source["elapsed"])
 	var new_elapsed := clampf(elapsed_seconds, 0.0, TOTAL_SPREAD_SECONDS)
 	if new_elapsed <= current_elapsed:
+		_mark_overlay_dirty()
 		return true
 	source["elapsed"] = new_elapsed
 	_sources[source_id] = source
-	_resolve_due_sources()
-	_rebuild_overlay()
-	_refresh_process_enabled()
+	_resolve_due_sources([source_id])
+	_update_source_active_state(source_id)
+	_mark_overlay_dirty()
 	return true
 
 
-func _resolve_due_sources() -> void:
+func _resolve_due_sources(source_ids: Array[int]) -> void:
 	if not authoritative:
 		return
 	var terrain_changes: Dictionary = {}
-	var source_ids := _sources.keys()
-	source_ids.sort()
-	for source_id_variant in source_ids:
-		var source_id := int(source_id_variant)
+	for source_id in source_ids:
+		if not _sources.has(source_id):
+			continue
 		var source: Dictionary = _sources[source_id]
 		var resolved: Dictionary = source["resolved"]
 		var owned: Dictionary = source["owned"]
@@ -321,7 +418,7 @@ func _resolve_due_sources() -> void:
 		)
 
 		# A ring can change terrain only once, exactly at its authored deadline.
-		# Keep the next unresolved ring as a cursor instead of rescanning all 80
+		# Keep the next unresolved ring as a cursor instead of rescanning all 88
 		# cells for every source at 10 Hz.
 		while (
 			next_ring <= SPREAD_RADIUS
@@ -373,9 +470,12 @@ func _add_generated_owner(cell: Vector2i, source_id: int) -> void:
 
 func _collect_overlay_progress() -> Dictionary:
 	var overlay_progress: Dictionary = {}
+	_last_overlay_source_count = 0
 	if terrain_map == null:
 		return overlay_progress
-	for source_id_variant in _sources:
+	var source_set := _active_source_ids if authoritative else _sources
+	_last_overlay_source_count = source_set.size()
+	for source_id_variant in source_set:
 		var source: Dictionary = _sources[int(source_id_variant)]
 		if authoritative:
 			var active_ring := int(source.get("next_ring", 1))
@@ -389,6 +489,18 @@ func _collect_overlay_progress() -> Dictionary:
 		for ring in range(1, SPREAD_RADIUS + 1):
 			_collect_source_ring_overlay_progress(source, ring, overlay_progress)
 	return overlay_progress
+
+
+func _restore_pending_cells() -> void:
+	if _pending_restore_cells.is_empty():
+		return
+	var terrain_changes: Dictionary = {}
+	for cell in _pending_restore_cells:
+		var original_raw_terrain := int(_pending_restore_cells[cell])
+		terrain_map.set_tile(cell, original_raw_terrain)
+		terrain_changes[cell] = original_raw_terrain
+	_pending_restore_cells.clear()
+	_emit_terrain_changes(terrain_changes)
 
 
 func _collect_source_ring_overlay_progress(
@@ -420,53 +532,83 @@ func _collect_source_ring_overlay_progress(
 
 
 func _refresh_process_enabled() -> void:
-	var has_incomplete_source := false
-	if terrain_map != null:
-		for source_variant in _sources.values():
-			var source := source_variant as Dictionary
-			if float(source.get("elapsed", 0.0)) < TOTAL_SPREAD_SECONDS:
-				has_incomplete_source = true
-				break
-	set_process(has_incomplete_source)
+	if _active_source_ids.is_empty():
+		_tick_accumulator = 0.0
+	set_process(terrain_map != null and (not _active_source_ids.is_empty() or _overlay_dirty))
 
 
-func _rebuild_overlay() -> void:
+func _mark_overlay_dirty() -> void:
+	_overlay_dirty = true
+	_refresh_process_enabled()
+
+
+func _flush_overlay_if_dirty() -> void:
+	if not _overlay_dirty:
+		return
+	_overlay_dirty = false
+	_overlay_flush_count += 1
 	if growth_overlay == null or growth_overlay.multimesh == null:
 		return
 	var overlay_progress := _collect_overlay_progress()
-	var cells: Array[Vector2i] = []
-	for cell_variant in overlay_progress:
-		var cell: Vector2i = cell_variant
-		cells.append(cell)
-	cells.sort_custom(_sort_cells)
-
+	var layout_changed := overlay_progress.size() != _overlay_cells.size()
+	if not layout_changed:
+		for existing_cell in _overlay_cells:
+			if not overlay_progress.has(existing_cell):
+				layout_changed = true
+				break
+	var cells: Array[Vector2i] = _overlay_cells
+	if layout_changed:
+		cells = []
+		for cell_variant in overlay_progress:
+			var cell: Vector2i = cell_variant
+			cells.append(cell)
+		cells.sort_custom(_sort_cells)
 	var multimesh := growth_overlay.multimesh
-	multimesh.instance_count = cells.size()
+	if layout_changed:
+		_overlay_layout_rebuild_count += 1
+		_overlay_cells = cells
+		multimesh.instance_count = cells.size()
 	for index in range(cells.size()):
 		var cell := cells[index]
-		var cell_global_position := terrain_map.world_map_layer.to_global(
-			terrain_map.world_map_layer.map_to_local(cell)
-		)
-		var cell_local_position := growth_overlay.to_local(cell_global_position)
-		multimesh.set_instance_transform_2d(
-			index,
-			Transform2D(0.0, cell_local_position)
-		)
+		if layout_changed:
+			var cell_global_position := terrain_map.world_map_layer.to_global(
+				terrain_map.world_map_layer.map_to_local(cell)
+			)
+			var cell_local_position := growth_overlay.to_local(cell_global_position)
+			multimesh.set_instance_transform_2d(
+				index,
+				Transform2D(0.0, cell_local_position)
+			)
+			_overlay_transform_write_count += 1
+		var progress := float(overlay_progress[cell])
+		if (
+			not layout_changed
+			and is_equal_approx(
+				progress,
+				float(_overlay_progress_by_cell.get(cell, -1.0))
+			)
+		):
+			continue
 		var seeds := _cell_visual_seeds(cell)
 		multimesh.set_instance_custom_data(
 			index,
 			Color(
-				float(overlay_progress[cell]),
+				progress,
 				(float(seeds.x) + 0.5) / 256.0,
 				(float(seeds.y) + 0.5) / 128.0,
 				1.0
 			)
 		)
+		_overlay_custom_data_write_count += 1
+	_overlay_progress_by_cell = overlay_progress
 
 
 func _clear_overlay() -> void:
 	if growth_overlay != null and growth_overlay.multimesh != null:
 		growth_overlay.multimesh.instance_count = 0
+	_overlay_dirty = false
+	_overlay_cells.clear()
+	_overlay_progress_by_cell.clear()
 
 
 func _emit_terrain_changes(changes: Dictionary) -> void:

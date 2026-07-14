@@ -333,6 +333,7 @@ func _test_real_plant_lifecycle(game: GameTowerDefense) -> void:
 	spread.advance_time(
 		float(target_ring) * VegetationSpreadSystem.SECONDS_PER_RING + 5.0
 	)
+	spread.call("_process", 0.0)
 	_expect(
 		game.dual_grid_terrain.get_terrain_type(target) == DualGridTilemap.TerrainType.GRASS,
 		"手动推进到第%d圈结算后，真实目标必须变成草地。" % target_ring
@@ -346,6 +347,7 @@ func _test_real_plant_lifecycle(game: GameTowerDefense) -> void:
 		spread.get_overlay_progress(pending_target) > 0.0,
 		"结算后继续推进5秒，下一圈必须存在可由死亡清除的临时覆盖。"
 	)
+	_expect(spread.get_overlay_cell_count() > 0, "下一圈临时覆盖必须已提交到共享MultiMesh。")
 	_expect(
 		game.multiplayer_terrain_revision == starting_revision + 1,
 		"真实传播结算必须只提交一个权威terrain revision。"
@@ -373,7 +375,12 @@ func _test_real_plant_lifecycle(game: GameTowerDefense) -> void:
 		not spread.has_source(LIFECYCLE_PLANT_NET_ID),
 		"PlantSystem removal必须同步触发传播来源cancel。"
 	)
-	_expect(spread.get_overlay_cell_count() == 0, "真实植被桩死亡必须立即清空所有临时覆盖。")
+	_expect(
+		spread.get_overlay_cell_count() > 0,
+		"来源cancel只能标记覆盖层为脏，不能在死亡调用栈内同步重建MultiMesh。"
+	)
+	spread.call("_process", 0.0)
+	_expect(spread.get_overlay_cell_count() == 0, "真实植被桩死亡后的下一次覆盖冲刷必须清空临时实例。")
 	_expect(
 		game.dual_grid_terrain.get_terrain_type(target) == target_baseline,
 		"真实植被桩死亡必须把目标精确恢复到authored EMPTY/DIRT baseline。"

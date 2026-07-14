@@ -1,8 +1,8 @@
 extends SceneTree
 
-# This probe requires a real rendering driver. It isolates the persistent visual
-# and physics costs owned by enemy variants while keeping the camera, map, enemy
-# count, placement and base body registration stable across each A/B pair.
+# The complete probe requires a real rendering driver. The
+# --guardian-physics-only mode is intentionally headless-safe and isolates the
+# retired guardian Area2D collision pairs from the centralized production state.
 const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
 const BASIC_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"
@@ -40,6 +40,7 @@ var warmup_frames := DEFAULT_WARMUP_FRAMES
 var sample_frames := DEFAULT_SAMPLE_FRAMES
 var fixed_seed := DEFAULT_SEED
 var current_cohort := &"none"
+var guardian_physics_only := false
 
 
 func _init() -> void:
@@ -85,6 +86,11 @@ func _run() -> void:
 		]
 	)
 
+	if guardian_physics_only:
+		await _run_guardian_cohort()
+		await _finish()
+		return
+
 	await _run_basic_cohort()
 	await _run_green_cohort()
 	await _run_guardian_cohort()
@@ -103,6 +109,8 @@ func _parse_user_arguments() -> void:
 			warmup_frames = maxi(int(argument.get_slice("=", 1)), 2)
 		elif argument.begins_with("--seed="):
 			fixed_seed = int(argument.get_slice("=", 1))
+		elif argument == "--guardian-physics-only":
+			guardian_physics_only = true
 
 
 func _stop_background_gameplay() -> void:
@@ -163,19 +171,20 @@ func _run_green_cohort() -> void:
 func _run_guardian_cohort() -> void:
 	var setup_ms := await _replace_with_uniform_cohort(GUARDIAN_CONFIG, &"guardian")
 	_configure_guardian_light(true)
+	# A/B only: reconstruct the retired per-guardian enemy-monitoring Area2D.
 	_configure_guardian_area(true)
-	await _measure_phase("guardian_full", setup_ms)
+	await _measure_phase("guardian_legacy_area_on", setup_ms)
 	_assert_guardian_state(enemy_count, enemy_count)
 
 	_configure_guardian_light(false)
 	_configure_guardian_area(true)
-	await _measure_phase("guardian_light_off", 0.0)
+	await _measure_phase("guardian_legacy_area_on_light_off", 0.0)
 	_assert_guardian_state(0, enemy_count)
 
-	# Restore the light so this phase isolates the guardian Area2D broadphase.
+	# Production state: GuardianAuraSystem owns defense and every guardian Area2D is inert.
 	_configure_guardian_light(true)
 	_configure_guardian_area(false)
-	await _measure_phase("guardian_area_off", 0.0)
+	await _measure_phase("guardian_centralized_area_off", 0.0)
 	_assert_guardian_state(enemy_count, 0)
 
 
@@ -371,8 +380,13 @@ func _configure_guardian_light(enabled: bool) -> void:
 
 func _configure_guardian_area(enabled: bool) -> void:
 	for enemy in enemies:
-		if _is_guardian_enemy(enemy):
-			_set_aura_area_enabled(enemy, enabled)
+		if not _is_guardian_enemy(enemy):
+			continue
+		var aura_area := enemy.get_node_or_null("AuraArea") as Area2D
+		if aura_area == null:
+			continue
+		aura_area.collision_mask = 4 if enabled else 0
+		_set_aura_area_enabled(enemy, enabled)
 
 
 func _set_aura_area_enabled(enemy: Enemy, enabled: bool) -> void:
@@ -417,18 +431,19 @@ func _measure_phase(label: String, setup_ms: float) -> void:
 		pipeline_draw_delta
 	)
 
-	var draw_summary := summary["canvas_draw_calls"] as Dictionary
-	var render_cpu_summary := summary["render_cpu"] as Dictionary
-	var render_gpu_summary := summary["render_gpu"] as Dictionary
-	_expect(float(draw_summary["p50"]) > 0.0, "%s requires a real render loop." % label)
-	_expect(
-		float(render_cpu_summary["p50"]) > 0.0,
-		"%s must expose non-zero viewport render CPU time." % label
-	)
-	_expect(
-		float(render_gpu_summary["p50"]) > 0.0,
-		"%s must expose non-zero viewport GPU time; do not run headless." % label
-	)
+	if not guardian_physics_only:
+		var draw_summary := summary["canvas_draw_calls"] as Dictionary
+		var render_cpu_summary := summary["render_cpu"] as Dictionary
+		var render_gpu_summary := summary["render_gpu"] as Dictionary
+		_expect(float(draw_summary["p50"]) > 0.0, "%s requires a real render loop." % label)
+		_expect(
+			float(render_cpu_summary["p50"]) > 0.0,
+			"%s must expose non-zero viewport render CPU time." % label
+		)
+		_expect(
+			float(render_gpu_summary["p50"]) > 0.0,
+			"%s must expose non-zero viewport GPU time; do not run headless." % label
+		)
 
 
 func _warmup_phase() -> float:

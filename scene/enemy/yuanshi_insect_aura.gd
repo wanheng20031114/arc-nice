@@ -1,11 +1,12 @@
 extends YuanshiInsect
 class_name YuanshiInsectAura
 
+signal guardian_aura_deactivated(guardian: Enemy)
+
 const AURA_RANGE_SEGMENTS := 24
 const AURA_PARTICLE_FIXED_FPS := 30
 const MAX_ACTIVE_GUARDIAN_LIGHTS := 12
 const PLAYER_COLLISION_MASK := 2
-const ENEMY_COLLISION_MASK := 4
 const GUARDIAN_LIGHT_CANDIDATE_GROUP := &"guardian_light_budget_candidates"
 const GUARDIAN_LIGHT_ACTIVE_GROUP := &"guardian_light_budget_active"
 
@@ -20,13 +21,10 @@ const GUARDIAN_LIGHT_ACTIVE_GROUP := &"guardian_light_budget_active"
 var aura_active: bool = false
 var aura_touched_player: Player = null
 var aura_damage_cooldown_left: float = 0.0
-var aura_defended_enemies: Dictionary = {}
 
 
 func _ready() -> void:
 	super._ready()
-	aura_area.body_entered.connect(_on_aura_area_body_entered)
-	aura_area.body_exited.connect(_on_aura_area_body_exited)
 	_configure_guardian_light_budget()
 
 
@@ -115,6 +113,8 @@ func _apply_aura_config() -> void:
 	)
 	_apply_aura_range_indicator(aura_config)
 	_configure_aura_collision_mask()
+	if config as YuanshiInsectGuardianConfig == null:
+		_ensure_player_aura_signals_connected()
 	_start_aura()
 
 
@@ -150,15 +150,29 @@ func _start_aura() -> void:
 	var show_range_indicator := (config as YuanshiInsectGuardianConfig) == null
 	aura_range_fill.visible = false
 	aura_range_outline.visible = show_range_indicator
-	aura_area.visible = true
-	aura_area.set_deferred("monitoring", true)
-	aura_area_shape.set_deferred("disabled", false)
+	if show_range_indicator:
+		# 绿壳仍使用原生 Area2D 对玩家造成周期伤害。
+		aura_area.visible = true
+		aura_area.set_deferred("monitoring", true)
+		aura_area.set_deferred("monitorable", true)
+		aura_area_shape.set_deferred("disabled", false)
+	else:
+		# 守卫防御由 GuardianAuraSystem 集中维护，杜绝 guardian × enemy 物理重叠对。
+		aura_area.visible = false
+		aura_area.set_deferred("monitoring", false)
+		aura_area.set_deferred("monitorable", false)
+		aura_area_shape.set_deferred("disabled", true)
 
 
 # 关闭光环，停止粒子和检测。
 func _stop_aura() -> void:
+	var guardian_was_active := (
+		aura_active
+		and (config as YuanshiInsectGuardianConfig) != null
+	)
 	aura_active = false
-	_clear_guardian_defense_modifiers()
+	if guardian_was_active:
+		guardian_aura_deactivated.emit(self)
 	aura_particles.emitting = false
 	aura_particles.visible = false
 	aura_particles.process_mode = Node.PROCESS_MODE_DISABLED
@@ -166,6 +180,7 @@ func _stop_aura() -> void:
 	aura_range_outline.visible = false
 	aura_area.visible = false
 	aura_area.set_deferred("monitoring", false)
+	aura_area.set_deferred("monitorable", false)
 	aura_area_shape.set_deferred("disabled", true)
 	aura_touched_player = null
 	aura_damage_cooldown_left = 0.0
@@ -173,9 +188,16 @@ func _stop_aura() -> void:
 
 func _configure_aura_collision_mask() -> void:
 	if config as YuanshiInsectGuardianConfig != null:
-		aura_area.collision_mask = ENEMY_COLLISION_MASK
+		aura_area.collision_mask = 0
 	else:
 		aura_area.collision_mask = PLAYER_COLLISION_MASK
+
+
+func _ensure_player_aura_signals_connected() -> void:
+	if not aura_area.body_entered.is_connected(_on_aura_area_body_entered):
+		aura_area.body_entered.connect(_on_aura_area_body_entered)
+	if not aura_area.body_exited.is_connected(_on_aura_area_body_exited):
+		aura_area.body_exited.connect(_on_aura_area_body_exited)
 
 
 func _configure_guardian_light_budget() -> void:
@@ -220,9 +242,7 @@ func _release_guardian_light_budget() -> void:
 func _on_aura_area_body_entered(body: Node2D) -> void:
 	if is_dead or not aura_active:
 		return
-
 	if config as YuanshiInsectGuardianConfig != null:
-		_add_guardian_defense_to_enemy(body as Enemy)
 		return
 
 	var player := body as Player
@@ -236,54 +256,10 @@ func _on_aura_area_body_entered(body: Node2D) -> void:
 # 目标离开光环区域。
 func _on_aura_area_body_exited(body: Node2D) -> void:
 	if config as YuanshiInsectGuardianConfig != null:
-		_remove_guardian_defense_from_enemy(body as Enemy)
 		return
 
 	if body == aura_touched_player:
 		aura_touched_player = null
-
-
-func _add_guardian_defense_to_enemy(enemy: Enemy) -> void:
-	var guardian_config := config as YuanshiInsectGuardianConfig
-	if guardian_config == null:
-		return
-	if enemy == null:
-		return
-	if enemy == self:
-		return
-	if enemy.is_dead:
-		return
-
-	var enemy_id := enemy.get_instance_id()
-	if aura_defended_enemies.has(enemy_id):
-		return
-
-	aura_defended_enemies[enemy_id] = enemy
-	enemy.add_physical_defense_modifier(
-		get_instance_id(),
-		guardian_config.aura_physical_defense_bonus
-	)
-
-
-func _remove_guardian_defense_from_enemy(enemy: Enemy) -> void:
-	if enemy == null:
-		return
-
-	var enemy_id := enemy.get_instance_id()
-	if not aura_defended_enemies.has(enemy_id):
-		return
-
-	aura_defended_enemies.erase(enemy_id)
-	enemy.remove_physical_defense_modifier(get_instance_id())
-
-
-func _clear_guardian_defense_modifiers() -> void:
-	for enemy in aura_defended_enemies.values():
-		var defended_enemy := enemy as Enemy
-		if is_instance_valid(defended_enemy):
-			defended_enemy.remove_physical_defense_modifier(get_instance_id())
-	aura_defended_enemies.clear()
-
 
 # 每帧更新光环持续伤害冷却，在冷却结束后再次造成伤害。
 func _update_aura_damage(delta: float) -> void:
@@ -328,3 +304,12 @@ func _die() -> void:
 	_release_guardian_light_budget()
 	_stop_aura()
 	super._die()
+
+
+func play_multiplayer_death_sequence() -> void:
+	if is_dead:
+		return
+	# 代理死亡不发 Enemy.defeated；先关闭光环并同步撤销本地来源。
+	_release_guardian_light_budget()
+	_stop_aura()
+	super.play_multiplayer_death_sequence()

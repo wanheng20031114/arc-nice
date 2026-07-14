@@ -38,10 +38,24 @@ var idle_aim_last_direction := 0
 var idle_aim_single_moves_completed := 0
 var idle_aim_burst_followup_pending := false
 var idle_aim_active := false
+var world_los_exclude: Array[RID] = []
+var world_los_query := PhysicsRayQueryParameters2D.create(
+	Vector2.ZERO,
+	Vector2.ZERO,
+	WORLD_COLLISION_MASK
+)
+var stale_target_candidate_ids: Array[int] = []
+var fallback_target_candidates: Array[Enemy] = []
+var indexed_target_candidates: Array[Enemy] = []
 
 
 func _on_setup_completed() -> void:
 	super._on_setup_completed()
+	world_los_exclude.clear()
+	world_los_exclude.append(get_rid())
+	world_los_query.exclude = world_los_exclude
+	world_los_query.collide_with_bodies = true
+	world_los_query.collide_with_areas = false
 	configured_attack_damage = maxi(config.attack_damage, 0)
 	configured_attack_range = maxf(config.attack_range, 0.0)
 
@@ -81,6 +95,9 @@ func _disable_proxy_combat_runtime() -> void:
 	attack_timer.stop()
 	targeting_area.set_deferred("monitoring", false)
 	target_candidates.clear()
+	stale_target_candidate_ids.clear()
+	fallback_target_candidates.clear()
+	indexed_target_candidates.clear()
 	pending_target = null
 	projectile_spawned_for_current_attack = false
 	cannon_sprite.play(&"idle")
@@ -91,6 +108,9 @@ func _on_death_started() -> void:
 	_stop_idle_aim()
 	targeting_area.set_deferred("monitoring", false)
 	target_candidates.clear()
+	stale_target_candidate_ids.clear()
+	fallback_target_candidates.clear()
+	indexed_target_candidates.clear()
 	pending_target = null
 	super._on_death_started()
 
@@ -274,19 +294,17 @@ func _fire_pending_projectile() -> void:
 
 
 func _select_nearest_visible_enemy() -> Enemy:
-	var stale_candidate_ids: Array[int] = []
-	var candidates: Array[Enemy] = []
+	indexed_target_candidates.clear()
 	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("query_combat_targets"):
-		candidates.assign(
-			current_scene.call(
-				"query_combat_targets",
-				global_position,
-				configured_attack_range,
-				0
-			) as Array
+	if current_scene != null and current_scene.has_method("query_combat_targets_into"):
+		current_scene.call(
+			"query_combat_targets_into",
+			global_position,
+			configured_attack_range,
+			indexed_target_candidates,
+			0
 		)
-		for candidate in candidates:
+		for candidate in indexed_target_candidates:
 			if not _is_valid_target(candidate):
 				continue
 			if (
@@ -297,17 +315,19 @@ func _select_nearest_visible_enemy() -> Enemy:
 			if _has_clear_world_line_to(candidate):
 				return candidate
 		return null
-	else:
-		for candidate_id: int in target_candidates:
-			var fallback_candidate := target_candidates[candidate_id] as Enemy
-			if not _is_valid_target(fallback_candidate):
-				stale_candidate_ids.append(candidate_id)
-				continue
-			candidates.append(fallback_candidate)
+
+	stale_target_candidate_ids.clear()
+	fallback_target_candidates.clear()
+	for candidate_id: int in target_candidates:
+		var fallback_candidate := target_candidates[candidate_id] as Enemy
+		if not _is_valid_target(fallback_candidate):
+			stale_target_candidate_ids.append(candidate_id)
+			continue
+		fallback_target_candidates.append(fallback_candidate)
 
 	var nearest_enemy: Enemy = null
 	var nearest_distance_squared := INF
-	for candidate in candidates:
+	for candidate in fallback_target_candidates:
 		if not _is_valid_target(candidate):
 			continue
 		var candidate_id := candidate.get_instance_id()
@@ -326,7 +346,7 @@ func _select_nearest_visible_enemy() -> Enemy:
 			nearest_enemy = candidate
 			nearest_distance_squared = distance_squared
 
-	for stale_id: int in stale_candidate_ids:
+	for stale_id: int in stale_target_candidate_ids:
 		target_candidates.erase(stale_id)
 
 	return nearest_enemy
@@ -344,15 +364,9 @@ func _is_valid_target(enemy: Enemy) -> bool:
 func _has_clear_world_line_to(enemy: Enemy) -> bool:
 	if not _is_valid_target(enemy):
 		return false
-	var query := PhysicsRayQueryParameters2D.create(
-		cannon_pivot.global_position,
-		enemy.global_position,
-		WORLD_COLLISION_MASK,
-		[get_rid()]
-	)
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	return get_world_2d().direct_space_state.intersect_ray(query).is_empty()
+	world_los_query.from = cannon_pivot.global_position
+	world_los_query.to = enemy.global_position
+	return get_world_2d().direct_space_state.intersect_ray(world_los_query).is_empty()
 
 
 func _point_cannon_at(world_position: Vector2) -> void:

@@ -22,6 +22,19 @@ class ClientNetManagerStub:
 		return 2
 
 
+class HostNetManagerStub:
+	extends Node
+
+	func is_host() -> bool:
+		return true
+
+	func is_client() -> bool:
+		return false
+
+	func get_local_peer_id() -> int:
+		return 1
+
+
 class TestRuntime:
 	extends GameRuntimeBase
 
@@ -168,6 +181,7 @@ class TestRuntime:
 var failures: Array[String] = []
 var fixture: TestRuntime = null
 var client_net_manager := ClientNetManagerStub.new()
+var host_net_manager := HostNetManagerStub.new()
 var mp_games: Array[Node] = []
 
 
@@ -182,6 +196,9 @@ func _run() -> void:
 	var enemy_container := Node2D.new()
 	enemy_container.name = "EnemyContainer"
 	fixture.add_child(enemy_container)
+	var boss_container := Node2D.new()
+	boss_container.name = "BossContainer"
+	fixture.add_child(boss_container)
 	var pathfinder_stub := Node.new()
 	pathfinder_stub.name = "GridPathfinder"
 	fixture.add_child(pathfinder_stub)
@@ -198,16 +215,120 @@ func _run() -> void:
 	_test_warehouse_transaction_cache_scope()
 	await _test_hoe_prediction_confirmation_reconciliation()
 	await _test_tiyi_direct_lookup_retry()
+	await _test_combat_target_query_reuse()
 	await _test_offscreen_proxy_visual_budget()
 	await _finish()
 
 
-func _new_mp_game() -> Node:
+func _new_mp_game(use_host: bool = false) -> Node:
 	var mp_game := MP_GAME_SCRIPT.new()
 	mp_game.set("game", fixture)
-	mp_game.set("net_manager", client_net_manager)
+	mp_game.set("net_manager", host_net_manager if use_host else client_net_manager)
 	mp_games.append(mp_game)
 	return mp_game
+
+
+func _test_combat_target_query_reuse() -> void:
+	var near_enemy := ENEMY_SCENE.instantiate() as Enemy
+	var boss_enemy := ENEMY_SCENE.instantiate() as Enemy
+	var far_enemy := ENEMY_SCENE.instantiate() as Enemy
+	fixture.get_node("EnemyContainer").add_child(near_enemy)
+	fixture.get_node("BossContainer").add_child(boss_enemy)
+	fixture.get_node("EnemyContainer").add_child(far_enemy)
+	near_enemy.global_position = Vector2(10.0, 0.0)
+	boss_enemy.global_position = Vector2(20.0, 0.0)
+	far_enemy.global_position = Vector2(100.0, 0.0)
+	fixture.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
+	var singleplayer_reused_targets: Array[Enemy] = [far_enemy]
+	fixture.query_combat_targets_into(
+		Vector2.ZERO,
+		50.0,
+		singleplayer_reused_targets,
+		0
+	)
+	_expect(
+		singleplayer_reused_targets == [near_enemy, boss_enemy],
+		"Base single-player queries must refill one array from Enemy and Boss containers in distance order."
+	)
+	fixture.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	fixture.register_combat_target(901, near_enemy)
+	fixture.register_combat_target(902, boss_enemy)
+	fixture.register_combat_target(903, far_enemy)
+
+	var host_mp_game := _new_mp_game(true)
+	var host_reused_targets: Array[Enemy] = [far_enemy]
+	host_mp_game.call(
+		"query_combat_targets_into",
+		Vector2.ZERO,
+		50.0,
+		host_reused_targets,
+		0
+	)
+	var host_returned_targets := host_mp_game.call(
+		"query_combat_targets",
+		Vector2.ZERO,
+		50.0,
+		0
+	) as Array[Enemy]
+	_expect(
+		host_reused_targets == [near_enemy, boss_enemy]
+		and host_returned_targets == host_reused_targets,
+		"MP host target queries must forward into caller-owned arrays with wrapper parity."
+	)
+
+	var client_mp_game := _new_mp_game()
+	client_mp_game.set("_net_enemies", {901: near_enemy, 902: boss_enemy, 903: far_enemy})
+	var client_reused_targets: Array[Enemy] = [far_enemy]
+	client_mp_game.call(
+		"query_combat_targets_into",
+		Vector2.ZERO,
+		50.0,
+		client_reused_targets,
+		0
+	)
+	var client_returned_targets := client_mp_game.call(
+		"query_combat_targets",
+		Vector2.ZERO,
+		50.0,
+		0
+	) as Array[Enemy]
+	_expect(
+		client_reused_targets == [near_enemy, boss_enemy]
+		and client_returned_targets == client_reused_targets,
+		"MP client target queries must preserve wrapper parity while refilling the caller-owned array."
+	)
+	client_mp_game.call(
+		"query_combat_targets_into",
+		Vector2.ZERO,
+		0.0,
+		client_reused_targets,
+		1
+	)
+	_expect(
+		client_reused_targets == [near_enemy],
+		"MP client queries must preserve non-positive radius and max_count semantics."
+	)
+	boss_enemy.is_dead = true
+	client_mp_game.call(
+		"query_combat_targets_into",
+		Vector2.ZERO,
+		50.0,
+		client_reused_targets,
+		0
+	)
+	_expect(
+		client_reused_targets == [near_enemy],
+		"MP client queries must exclude dead proxy targets."
+	)
+
+	client_mp_game.set("_net_enemies", {})
+	fixture.unregister_combat_target(901)
+	fixture.unregister_combat_target(902)
+	fixture.unregister_combat_target(903)
+	near_enemy.queue_free()
+	boss_enemy.queue_free()
+	far_enemy.queue_free()
+	await process_frame
 
 
 func _test_adaptive_enemy_snapshot_cadence() -> void:
@@ -579,6 +700,7 @@ func _finish() -> void:
 			mp_game.free()
 	mp_games.clear()
 	client_net_manager.free()
+	host_net_manager.free()
 	if fixture != null:
 		fixture.queue_free()
 	for _cleanup_frame in range(4):

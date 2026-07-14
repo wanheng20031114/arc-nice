@@ -250,6 +250,8 @@ func _verify_extended_projectile_reuse() -> void:
 		COLLECTIBLE_SAKURA_ROCKET_SCENE,
 	]
 	for projectile_scene in scenes:
+		var retained_agave_query: PhysicsShapeQueryParameters2D = null
+		var retained_agave_targets: Dictionary = {}
 		var projectile := pool.acquire(projectile_scene)
 		_expect(projectile != null, "%s must be acquirable from the elastic pool." % projectile_scene.resource_path)
 		if projectile == null:
@@ -260,6 +262,13 @@ func _verify_extended_projectile_reuse() -> void:
 		projectile.set("direction", Vector2.DOWN)
 		projectile.set("damage", 99)
 		projectile.set("remaining_lifetime", 0.125)
+		if projectile_scene == AGAVE_CANNONBALL_SCENE:
+			retained_agave_query = projectile.get(
+				"explosion_query"
+			) as PhysicsShapeQueryParameters2D
+			retained_agave_targets = projectile.get("explosion_targets") as Dictionary
+			retained_agave_targets[999] = null
+			projectile.set("authoritative_damage", false)
 		if projectile_scene == COLLECTIBLE_SAKURA_ROCKET_SCENE:
 			projectile.set("speed", 13.0)
 			projectile.set("max_lifetime", 0.25)
@@ -291,6 +300,14 @@ func _verify_extended_projectile_reuse() -> void:
 			float(reused.get("remaining_lifetime")) > 0.0,
 			"%s must restore a positive lifetime." % projectile_scene.resource_path
 		)
+		if projectile_scene == AGAVE_CANNONBALL_SCENE:
+			_expect(
+				is_same(retained_agave_query, reused.get("explosion_query"))
+				and is_same(retained_agave_targets, reused.get("explosion_targets"))
+				and retained_agave_targets.is_empty()
+				and bool(reused.get("authoritative_damage")),
+				"Pooled Agave cannonballs must retain query containers while clearing client/damage lease state."
+			)
 		if projectile_scene == COLLECTIBLE_SAKURA_ROCKET_SCENE:
 			var sakura_rocket := reused as LinglanSkill2SakuraRocket
 			_expect(

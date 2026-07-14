@@ -6,6 +6,11 @@ const GUARDIAN_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_
 const GREEN_SHELL_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_green_shell.tres"
 )
+const GUARDIAN_AURA_SYSTEM_SCENE := preload(
+	"res://scene/enemy/guardian_aura_system.tscn"
+)
+const STANDARD_GAME_SCENE := preload("res://scene/game.tscn")
+const TOWER_GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
 const AURA_SCRIPT := preload("res://scene/enemy/yuanshi_insect_aura.gd")
 const ENEMY_VISUAL_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
 
@@ -29,6 +34,9 @@ class NavigationStub extends Node:
 
 var failures: Array[String] = []
 var test_root: Node2D
+var enemy_container: Node2D
+var boss_container: Node2D
+var guardian_aura_system: Variant = null
 
 
 func _init() -> void:
@@ -40,12 +48,26 @@ func _run() -> void:
 	test_root.name = "YuanshiInsectGuardianSmokeTest"
 	root.add_child(test_root)
 	current_scene = test_root
+	enemy_container = Node2D.new()
+	enemy_container.name = "EnemyContainer"
+	test_root.add_child(enemy_container)
+	boss_container = Node2D.new()
+	boss_container.name = "BossContainer"
+	test_root.add_child(boss_container)
+	guardian_aura_system = GUARDIAN_AURA_SYSTEM_SCENE.instantiate()
+	test_root.add_child(guardian_aura_system)
 
+	_test_authored_game_scene_installation()
 	_test_resource_contract()
 	await _test_damage_defense_formulas()
 	await _test_guardian_aura_visual_configuration()
+	await _test_green_shell_keeps_player_area_contract()
 	await _test_guardian_chase_and_collision_contract()
+	await _test_guardian_aura_matches_legacy_overlap()
+	await _test_boss_container_target_semantics()
 	await _test_guardian_aura_defense_lifecycle()
+	await _test_multiplayer_proxy_guardian_values()
+	await _test_dense_guardian_registration_and_teardown()
 
 	test_root.queue_free()
 	await process_frame
@@ -63,7 +85,39 @@ func _run() -> void:
 	quit(1)
 
 
+func _test_authored_game_scene_installation() -> void:
+	for scene_entry in [
+		{"label": "standard", "scene": STANDARD_GAME_SCENE},
+		{"label": "tower-defense", "scene": TOWER_GAME_SCENE},
+	]:
+		var packed_scene := scene_entry["scene"] as PackedScene
+		var game_instance := packed_scene.instantiate()
+		var system := game_instance.get_node_or_null(
+			"GuardianAuraSystem"
+		) as GuardianAuraSystem
+		_expect(
+			system != null
+			and game_instance.get_node_or_null("EnemyContainer") != null
+			and game_instance.get_node_or_null("BossContainer") != null,
+			"%s game scene must author GuardianAuraSystem beside both target containers."
+			% String(scene_entry["label"])
+		)
+		game_instance.free()
+
+
 func _test_resource_contract() -> void:
+	_expect(
+		guardian_aura_system.process_physics_priority == 10,
+		"GuardianAuraSystem must run after ordinary enemy physics callbacks."
+	)
+	_expect(
+		guardian_aura_system.is_physics_processing(),
+		"GuardianAuraSystem must use fixed physics processing."
+	)
+	_expect(
+		guardian_aura_system.target_containers.size() == 2,
+		"GuardianAuraSystem must author EnemyContainer and BossContainer targets."
+	)
 	_expect(
 		GUARDIAN_CONFIG is YuanshiInsectGuardianConfig,
 		"Guardian config must use YuanshiInsectGuardianConfig."
@@ -163,7 +217,14 @@ func _test_guardian_aura_visual_configuration() -> void:
 	_expect(guardian.aura_active, "Guardian aura did not start.")
 	_expect(not GUARDIAN_CONFIG.aura_particles_enabled, "Guardian aura particles should be disabled.")
 	_expect(not guardian.aura_particles.emitting, "Guardian should not emit aura particles.")
-	_expect(guardian.aura_area.collision_mask == 4, "Guardian aura must monitor enemy bodies.")
+	_expect(guardian.aura_area.collision_mask == 0, "Guardian AuraArea must have no production collision mask.")
+	_expect(not guardian.aura_area.monitoring, "Guardian AuraArea must not monitor physics bodies.")
+	_expect(not guardian.aura_area.monitorable, "Guardian AuraArea must not be monitorable.")
+	_expect(guardian.aura_area_shape.disabled, "Guardian aura collision shape must stay disabled.")
+	_expect(
+		guardian.aura_area.body_entered.get_connections().is_empty(),
+		"Guardian AuraArea must not own per-guardian body callbacks."
+	)
 	_expect(aura_shape != null, "Guardian aura shape is not circular.")
 	if aura_shape != null:
 		_expect(is_equal_approx(aura_shape.radius, GUARDIAN_CONFIG.aura_radius), "Guardian aura radius ignored config.")
@@ -245,6 +306,28 @@ func _test_guardian_aura_visual_configuration() -> void:
 	await physics_frame
 
 
+func _test_green_shell_keeps_player_area_contract() -> void:
+	var player := _spawn_player(Vector2(160.0, 0.0))
+	var green_shell := _spawn_enemy(Vector2.ZERO, GREEN_SHELL_CONFIG, player)
+	green_shell.set_physics_process(false)
+	await _wait_physics_frames(3)
+
+	_expect(green_shell.aura_active, "Green-shell player aura did not start.")
+	_expect(green_shell.aura_area.collision_mask == 2, "Green-shell aura must still monitor players.")
+	_expect(green_shell.aura_area.monitoring, "Green-shell aura monitoring was disabled with guardian aura.")
+	_expect(green_shell.aura_area.monitorable, "Green-shell aura must remain monitorable after startup.")
+	_expect(not green_shell.aura_area_shape.disabled, "Green-shell aura shape must remain enabled.")
+	_expect(
+		not green_shell.aura_area.body_entered.get_connections().is_empty(),
+		"Green-shell aura must retain its player body callback."
+	)
+
+	green_shell.queue_free()
+	player.queue_free()
+	await process_frame
+	await physics_frame
+
+
 func _test_guardian_chase_and_collision_contract() -> void:
 	var player := _spawn_player(Vector2(96.0, 0.0))
 	var guardian: Variant = _spawn_enemy(Vector2.ZERO, GUARDIAN_CONFIG, player)
@@ -291,18 +374,151 @@ func _test_guardian_chase_and_collision_contract() -> void:
 	await physics_frame
 
 
+func _test_guardian_aura_matches_legacy_overlap() -> void:
+	var player := _spawn_player(Vector2(240.0, 0.0))
+	var guardian := _spawn_enemy(Vector2.ZERO, GUARDIAN_CONFIG, player)
+	var target := _spawn_enemy(Vector2.ZERO, BASIC_CONFIG, player)
+	guardian.set_physics_process(false)
+	target.set_physics_process(false)
+	var sample_positions := [
+		Vector2(32.0, 0.0),
+		Vector2(52.0, 0.0),
+		Vector2(57.0, 0.0),
+		Vector2(42.0, 24.0),
+		Vector2(46.0, 30.0),
+		Vector2(-51.0, -8.0),
+	]
+
+	for sample_position in sample_positions:
+		target.global_position = sample_position
+		await physics_frame
+		guardian_aura_system.force_refresh_all()
+		var centralized_overlap: bool = guardian_aura_system.has_guardian_source(target, guardian)
+		var legacy_overlap := _legacy_guardian_area_overlaps(guardian, target)
+		_expect(
+			centralized_overlap == legacy_overlap,
+			"Central guardian overlap diverged from legacy Area2D at %s (central=%s legacy=%s)."
+			% [sample_position, centralized_overlap, legacy_overlap]
+		)
+
+	target.collision_layer = 0
+	guardian_aura_system.force_refresh_all()
+	_expect(
+		not guardian_aura_system.has_guardian_source(target, guardian)
+		and not _legacy_guardian_area_overlaps(guardian, target),
+		"Collision-layer-disabled enemies must stay outside both centralized and legacy aura queries."
+	)
+	target.collision_layer = 4
+	target.collision_shape.set_deferred("disabled", true)
+	await _wait_physics_frames(2)
+	guardian_aura_system.force_refresh_all()
+	_expect(
+		not guardian_aura_system.has_guardian_source(target, guardian)
+		and not _legacy_guardian_area_overlaps(guardian, target),
+		"Collision-shape-disabled enemies must stay outside both centralized and legacy aura queries."
+	)
+	target.collision_shape.set_deferred("disabled", false)
+	await _wait_physics_frames(2)
+
+	guardian.queue_free()
+	target.queue_free()
+	player.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_boss_container_target_semantics() -> void:
+	var player := _spawn_player(Vector2(240.0, 0.0))
+	var guardian_source := _spawn_enemy(Vector2.ZERO, GUARDIAN_CONFIG, player)
+	var boss_target := _spawn_enemy_in_container(
+		boss_container,
+		Vector2(20.0, 0.0),
+		BASIC_CONFIG,
+		player
+	)
+	var boss_guardian_target := _spawn_enemy_in_container(
+		boss_container,
+		Vector2(24.0, 0.0),
+		GUARDIAN_CONFIG,
+		player
+	)
+	var regular_target := _spawn_enemy(Vector2(18.0, 0.0), BASIC_CONFIG, player)
+	guardian_source.set_physics_process(false)
+	boss_target.set_physics_process(false)
+	boss_guardian_target.set_physics_process(false)
+	regular_target.set_physics_process(false)
+	await _wait_physics_frames(2)
+	guardian_aura_system.force_refresh_all()
+
+	_expect(
+		guardian_aura_system.has_guardian_source(boss_target, guardian_source),
+		"EnemyContainer guardian did not preserve its legacy coverage of BossContainer targets."
+	)
+	_expect(
+		guardian_aura_system.has_guardian_source(boss_target, guardian_source)
+		== _legacy_guardian_area_overlaps(guardian_source, boss_target),
+		"BossContainer centralized coverage diverged from the legacy Area2D query."
+	)
+	_expect(
+		boss_target.get_effective_physical_defense() == 3,
+		"BossContainer target received the wrong guardian defense value."
+	)
+	_expect(
+		not guardian_aura_system.has_guardian_source(regular_target, boss_guardian_target),
+		"A guardian-config target inside BossContainer must not become an aura source."
+	)
+	_expect(
+		guardian_aura_system.get_guardian_count() == 1,
+		"Only guardian configs from EnemyContainer may register as sources."
+	)
+
+	boss_guardian_target.reparent(enemy_container)
+	guardian_aura_system.force_refresh_all()
+	_expect(
+		guardian_aura_system.get_guardian_count() == 2
+		and guardian_aura_system.has_guardian_source(
+			regular_target,
+			boss_guardian_target
+		)
+		and regular_target.get_effective_physical_defense() == 6,
+		"Reparenting a guardian from BossContainer into EnemyContainer must activate exactly one new source."
+	)
+	boss_guardian_target.reparent(boss_container)
+	_expect(
+		guardian_aura_system.get_guardian_count() == 1
+		and not guardian_aura_system.has_guardian_source(
+			regular_target,
+			boss_guardian_target
+		)
+		and regular_target.get_effective_physical_defense() == 3,
+		"Reparenting a guardian back to BossContainer must synchronously remove its source."
+	)
+
+	guardian_source.queue_free()
+	boss_target.queue_free()
+	boss_guardian_target.queue_free()
+	regular_target.queue_free()
+	player.queue_free()
+	await process_frame
+	await physics_frame
+
+
 func _test_guardian_aura_defense_lifecycle() -> void:
 	var player := _spawn_player(Vector2(160.0, 0.0))
-	var guardian: Variant = _spawn_enemy(Vector2.ZERO, GUARDIAN_CONFIG, player)
+	var guardian := _spawn_enemy(Vector2.ZERO, GUARDIAN_CONFIG, player)
 	_expect(guardian != null, "Guardian scene must instantiate YuanshiInsect.")
 	if guardian == null:
 		player.queue_free()
 		return
 	_expect(guardian.get_script() == AURA_SCRIPT, "Guardian scene must use the aura script.")
-	var second_guardian: Variant = _spawn_enemy(Vector2(120.0, 0.0), GUARDIAN_CONFIG, player)
+	var second_guardian := _spawn_enemy(Vector2(32.0, 0.0), GUARDIAN_CONFIG, player)
 	var ally := _spawn_enemy(Vector2(20.0, 0.0), BASIC_CONFIG, player)
+	guardian.set_physics_process(false)
+	second_guardian.set_physics_process(false)
+	ally.set_physics_process(false)
 	ally.current_health = 20
 	await _wait_physics_frames(2)
+	guardian_aura_system.force_refresh_all()
 	var cache_probe_source_id := -91001
 	var cache_probe_baseline := ally.get_effective_physical_defense()
 	ally.add_physical_defense_modifier(cache_probe_source_id, 2)
@@ -321,35 +537,52 @@ func _test_guardian_aura_defense_lifecycle() -> void:
 		"Physical defense cache did not remove a source."
 	)
 
-	guardian.call("_on_aura_area_body_entered", guardian)
 	_expect(
-		guardian.get_effective_physical_defense() == GUARDIAN_CONFIG.physical_defense,
+		not guardian_aura_system.has_guardian_source(guardian, guardian),
 		"Guardian aura must ignore its owner."
 	)
-
-	guardian.call("_on_aura_area_body_entered", ally)
-	_expect(ally.get_effective_physical_defense() == 3, "Guardian aura did not add +3 physical defense.")
-	second_guardian.call("_on_aura_area_body_entered", ally)
 	_expect(ally.get_effective_physical_defense() == 6, "Guardian aura bonuses from multiple guardians must stack.")
-	second_guardian.call("_on_aura_area_body_exited", ally)
+
+	second_guardian.global_position = Vector2(120.0, 0.0)
+	await _wait_physics_frames(8)
 	_expect(ally.get_effective_physical_defense() == 3, "Guardian aura stack did not remove one source on exit.")
 	ally.apply_damage(4)
 	_expect(ally.current_health == 19, "Guardian aura did not reduce physical damage by 3.")
 
-	guardian.call("_on_aura_area_body_exited", ally)
+	ally.global_position = Vector2(240.0, 0.0)
+	await _wait_physics_frames(8)
 	_expect(ally.get_effective_physical_defense() == 0, "Guardian aura defense did not clear on exit.")
 	ally.apply_damage(4)
 	_expect(ally.current_health == 15, "Enemy kept guardian defense after leaving aura.")
 
-	guardian.call("_on_aura_area_body_entered", ally)
-	_expect(ally.get_effective_physical_defense() == 3, "Guardian aura did not reapply physical defense.")
+	ally.global_position = Vector2(20.0, 0.0)
+	second_guardian.global_position = Vector2(32.0, 0.0)
+	await _wait_physics_frames(8)
+	_expect(ally.get_effective_physical_defense() == 6, "Guardian aura did not reapply overlapping sources after movement.")
 	guardian.apply_damage(
 		GUARDIAN_CONFIG.max_health
-		+ GUARDIAN_CONFIG.physical_defense
+		+ 100
 	)
 	_expect(not guardian.is_physics_processing(), "Dead guardian must stop script physics immediately.")
-	await _wait_physics_frames(45)
+	_expect(
+		ally.get_effective_physical_defense() == 3,
+		"Dead guardian source was not removed synchronously while another source remained."
+	)
+	second_guardian.apply_damage(
+		GUARDIAN_CONFIG.max_health
+		+ 100
+	)
 	_expect(ally.get_effective_physical_defense() == 0, "Guardian aura defense did not clear on death.")
+	var removed_guardian := _spawn_enemy(Vector2(18.0, 0.0), GUARDIAN_CONFIG, player)
+	removed_guardian.set_physics_process(false)
+	guardian_aura_system.force_refresh_all()
+	_expect(ally.get_effective_physical_defense() == 3, "New guardian source was not registered.")
+	enemy_container.remove_child(removed_guardian)
+	_expect(
+		ally.get_effective_physical_defense() == 0,
+		"Removing a guardian from EnemyContainer did not clear its source synchronously."
+	)
+	removed_guardian.queue_free()
 
 	if is_instance_valid(guardian):
 		guardian.queue_free()
@@ -359,6 +592,114 @@ func _test_guardian_aura_defense_lifecycle() -> void:
 	player.queue_free()
 	await process_frame
 	await physics_frame
+
+
+func _test_multiplayer_proxy_guardian_values() -> void:
+	var player := _spawn_player(Vector2(180.0, 0.0))
+	var first_guardian := _spawn_enemy(Vector2.ZERO, GUARDIAN_CONFIG, player)
+	var second_guardian := _spawn_enemy(Vector2(30.0, 0.0), GUARDIAN_CONFIG, player)
+	var ally := _spawn_enemy(Vector2(18.0, 0.0), BASIC_CONFIG, player)
+	first_guardian.configure_multiplayer_proxy()
+	second_guardian.configure_multiplayer_proxy()
+	ally.configure_multiplayer_proxy()
+	await _wait_physics_frames(2)
+	guardian_aura_system.force_refresh_all()
+
+	_expect(
+		ally.get_effective_physical_defense() == 6,
+		"Multiplayer proxies must derive the same +6 overlapping guardian defense."
+	)
+	_expect(
+		first_guardian.aura_area_shape.disabled and second_guardian.aura_area_shape.disabled,
+		"Multiplayer guardian values must not depend on enabled Area2D shapes."
+	)
+	first_guardian.play_multiplayer_death_sequence()
+	_expect(
+		ally.get_effective_physical_defense() == 3,
+		"Proxy guardian death did not synchronously remove exactly one centralized source."
+	)
+	await physics_frame
+
+	first_guardian.queue_free()
+	second_guardian.queue_free()
+	ally.queue_free()
+	player.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_dense_guardian_registration_and_teardown() -> void:
+	var player := _spawn_player(Vector2(1000.0, 1000.0))
+	await _wait_physics_frames(3)
+	var guardians: Array[YuanshiInsect] = []
+	for guardian_index in range(64):
+		var guardian := _spawn_enemy(
+			Vector2(
+				float(guardian_index % 8) * 2.0,
+				float(guardian_index / 8) * 2.0
+			),
+			GUARDIAN_CONFIG,
+			player
+		)
+		guardian.set_physics_process(false)
+		guardians.append(guardian)
+	await _wait_physics_frames(5)
+
+	for guardian in guardians:
+		_expect(not guardian.aura_area.monitoring, "Dense guardian cohort re-enabled AuraArea monitoring.")
+		_expect(guardian.aura_area_shape.disabled, "Dense guardian cohort re-enabled aura collision shapes.")
+	_expect(
+		guardian_aura_system.get_guardian_count() == guardians.size(),
+		"GuardianAuraSystem did not register the dense guardian cohort."
+	)
+	var tracked_slots_are_exact := true
+	for slot in range(guardian_aura_system.tracked_enemy_ids.size()):
+		var enemy_id := int(guardian_aura_system.tracked_enemy_ids[slot])
+		if int(guardian_aura_system.tracked_enemy_slot_by_id.get(enemy_id, -1)) != slot:
+			tracked_slots_are_exact = false
+			break
+	var guardian_slots_are_exact := true
+	for slot in range(guardian_aura_system.guardian_ids.size()):
+		var guardian_id := int(guardian_aura_system.guardian_ids[slot])
+		if int(guardian_aura_system.guardian_slot_by_id.get(guardian_id, -1)) != slot:
+			guardian_slots_are_exact = false
+			break
+	_expect(
+		tracked_slots_are_exact and guardian_slots_are_exact,
+		"Dense guardian registration must keep exact O(1) removal slot mappings."
+	)
+
+	for guardian in guardians:
+		guardian.queue_free()
+	player.queue_free()
+	await process_frame
+	await _wait_physics_frames(3)
+	_expect(
+		guardian_aura_system.tracked_enemy_ids.is_empty()
+		and guardian_aura_system.tracked_enemy_slot_by_id.is_empty()
+		and guardian_aura_system.guardian_ids.is_empty()
+		and guardian_aura_system.guardian_slot_by_id.is_empty()
+		and guardian_aura_system.tracked_enemies.is_empty()
+		and guardian_aura_system.guardians.is_empty()
+		and guardian_aura_system.aura_sources_by_enemy.is_empty()
+		and guardian_aura_system.covered_enemy_ids_by_guardian.is_empty(),
+		"Dense guardian teardown must clear all order, slot, source, and reference indexes."
+	)
+
+
+func _legacy_guardian_area_overlaps(guardian: YuanshiInsect, target: Enemy) -> bool:
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = guardian.aura_area_shape.shape
+	query.transform = guardian.aura_area_shape.global_transform
+	query.collision_mask = 4
+	query.collide_with_bodies = true
+	query.collide_with_areas = false
+	query.exclude = [guardian.get_rid()]
+	var intersections := guardian.get_world_2d().direct_space_state.intersect_shape(query, 32)
+	for intersection in intersections:
+		if intersection.get("collider") == target:
+			return true
+	return false
 
 
 func _spawn_player(position: Vector2) -> Player:
@@ -373,8 +714,17 @@ func _spawn_enemy(
 	enemy_config: YuanshiInsectConfig,
 	player: Player
 ) -> YuanshiInsect:
+	return _spawn_enemy_in_container(enemy_container, position, enemy_config, player)
+
+
+func _spawn_enemy_in_container(
+	spawn_container: Node2D,
+	position: Vector2,
+	enemy_config: YuanshiInsectConfig,
+	player: Player
+) -> YuanshiInsect:
 	var enemy := enemy_config.enemy_scene.instantiate() as YuanshiInsect
-	test_root.add_child(enemy)
+	spawn_container.add_child(enemy)
 	enemy.global_position = position
 	enemy.setup(enemy_config, player)
 	return enemy

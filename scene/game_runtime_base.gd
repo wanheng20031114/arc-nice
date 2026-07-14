@@ -179,14 +179,29 @@ func get_all_combat_targets() -> Array[Enemy]:
 
 
 func query_combat_targets(center: Vector2, radius: float, max_count: int = 0) -> Array[Enemy]:
+	var result: Array[Enemy] = []
+	query_combat_targets_into(center, radius, result, max_count)
+	return result
+
+
+func query_combat_targets_into(
+	center: Vector2,
+	radius: float,
+	result: Array[Enemy],
+	max_count: int = 0
+) -> void:
+	result.clear()
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		var result: Array[Enemy] = []
 		var safe_radius := maxf(radius, 0.0)
 		var radius_squared := safe_radius * safe_radius
-		for enemy in get_all_combat_targets():
-			if safe_radius > 0.0 and center.distance_squared_to(enemy.global_position) > radius_squared:
-				continue
-			result.append(enemy)
+		_append_combat_targets_in_radius(enemy_container, center, safe_radius, radius_squared, result)
+		_append_combat_targets_in_radius(
+			get_node_or_null("BossContainer"),
+			center,
+			safe_radius,
+			radius_squared,
+			result
+		)
 		result.sort_custom(
 			func(a: Enemy, b: Enemy) -> bool:
 				var a_distance := center.distance_squared_to(a.global_position)
@@ -197,8 +212,8 @@ func query_combat_targets(center: Vector2, radius: float, max_count: int = 0) ->
 		)
 		if max_count > 0 and result.size() > max_count:
 			result.resize(max_count)
-		return result
-	return combat_target_index.query_radius(center, radius, max_count)
+		return
+	combat_target_index.query_radius_into(center, radius, result, max_count)
 
 
 func get_multiplayer_plant_node(_net_id: int) -> PlantDefense:
@@ -212,6 +227,24 @@ func _collect_combat_targets_from_container(container: Node, result: Array[Enemy
 		var enemy := child as Enemy
 		if enemy != null and is_instance_valid(enemy) and not enemy.is_dead:
 			result.append(enemy)
+
+
+func _append_combat_targets_in_radius(
+	container: Node,
+	center: Vector2,
+	safe_radius: float,
+	radius_squared: float,
+	result: Array[Enemy]
+) -> void:
+	if container == null:
+		return
+	for child in container.get_children():
+		var enemy := child as Enemy
+		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+			continue
+		if safe_radius > 0.0 and center.distance_squared_to(enemy.global_position) > radius_squared:
+			continue
+		result.append(enemy)
 
 
 func collect_reused_enemy_snapshot_states(
