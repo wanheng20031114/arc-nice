@@ -1,0 +1,136 @@
+[gd_scene load_steps=15 format=3]
+
+[sub_resource type="Gradient" id="Gradient_wind_texture"]
+offsets = PackedFloat32Array(0, 0.12, 0.72, 1)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 0.92, 1, 1, 1, 0.56, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_wind_line"]
+gradient = SubResource("Gradient_wind_texture")
+width = 2
+height = 32
+fill_from = Vector2(0.5, 0)
+fill_to = Vector2(0.5, 1)
+
+[sub_resource type="Gradient" id="Gradient_wind_lifetime"]
+offsets = PackedFloat32Array(0, 0.14, 0.68, 1)
+colors = PackedColorArray(0.78, 0.96, 0.86, 0, 0.82, 0.98, 0.9, 0.32, 0.76, 0.94, 0.84, 0.22, 0.7, 0.9, 0.78, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_wind_lifetime"]
+gradient = SubResource("Gradient_wind_lifetime")
+width = 32
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_wind"]
+particle_flag_disable_z = true
+emission_shape = 3
+emission_box_extents = Vector3(800, 380, 1)
+direction = Vector3(1, 0.04, 0)
+spread = 7.0
+initial_velocity_min = 160.0
+initial_velocity_max = 280.0
+lifetime_randomness = 0.18
+gravity = Vector3(0, 6, 0)
+scale_min = 0.75
+scale_max = 1.15
+color = Color(0.82, 0.97, 0.88, 0.5)
+color_ramp = SubResource("GradientTexture1D_wind_lifetime")
+
+[sub_resource type="Shader" id="Shader_wind_lifetime_fade"]
+code = "shader_type canvas_item;\nrender_mode unshaded;\n\nvoid vertex() {\n\tfloat phase = clamp(INSTANCE_CUSTOM.y, 0.0, 1.0);\n\tfloat fade_in = smoothstep(0.0, 0.08, phase);\n\tfloat fade_out = 1.0 - smoothstep(0.58, 0.98, phase);\n\tCOLOR.a *= fade_in * fade_out;\n}\n"
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_wind_lifetime_fade"]
+shader = SubResource("Shader_wind_lifetime_fade")
+
+[sub_resource type="Gradient" id="Gradient_mote_texture"]
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_mote"]
+gradient = SubResource("Gradient_mote_texture")
+width = 2
+height = 2
+fill_from = Vector2(0, 0)
+fill_to = Vector2(1, 1)
+
+[sub_resource type="Gradient" id="Gradient_mote_lifetime"]
+offsets = PackedFloat32Array(0, 0.25, 0.75, 1)
+colors = PackedColorArray(0.88, 1, 0.82, 0, 0.88, 1, 0.82, 0.16, 0.82, 0.98, 0.76, 0.12, 0.82, 0.98, 0.76, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_mote_lifetime"]
+gradient = SubResource("Gradient_mote_lifetime")
+width = 32
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_motes"]
+particle_flag_disable_z = true
+emission_shape = 3
+emission_box_extents = Vector3(800, 380, 1)
+direction = Vector3(1, -0.05, 0)
+spread = 55.0
+initial_velocity_min = 2.0
+initial_velocity_max = 12.0
+lifetime_randomness = 0.35
+gravity = Vector3(0, -0.35, 0)
+angle_min = -180.0
+angle_max = 180.0
+scale_min = 0.35
+scale_max = 1.25
+color = Color(0.9, 1, 0.84, 0.56)
+color_ramp = SubResource("GradientTexture1D_mote_lifetime")
+
+[sub_resource type="Shader" id="Shader_gpu_tone"]
+code = "shader_type canvas_item;\nrender_mode unshaded, blend_mul;\n\nvoid vertex() {\n\tfloat breathing = 0.5 + 0.5 * sin(TIME * 0.62831853);\n\tfloat brightness = mix(0.973, 1.0, breathing);\n\tvec3 tone = vec3(brightness, min(brightness + 0.004, 1.0), brightness * 0.992);\n\tCOLOR = vec4(tone, 1.0);\n}\n"
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_gpu_tone"]
+shader = SubResource("Shader_gpu_tone")
+
+[node name="TowerDefenseAmbientVfx" type="Node"]
+
+[node name="ScreenSpaceParticles" type="CanvasLayer" parent="."]
+layer = 1
+
+[node name="GpuToneOverlay" type="ColorRect" parent="ScreenSpaceParticles"]
+material = SubResource("ShaderMaterial_gpu_tone")
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="ViewportCenter" type="Control" parent="ScreenSpaceParticles"]
+layout_mode = 3
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="WindLines" type="GPUParticles2D" parent="ScreenSpaceParticles/ViewportCenter"]
+material = SubResource("ShaderMaterial_wind_lifetime_fade")
+texture_filter = 2
+amount = 6
+lifetime = 2.6
+preprocess = 2.6
+randomness = 0.8
+trail_enabled = true
+trail_lifetime = 1.1
+trail_sections = 10
+trail_section_subdivisions = 3
+visibility_rect = Rect2(-900, -460, 1800, 920)
+texture = SubResource("GradientTexture2D_wind_line")
+process_material = SubResource("ParticleProcessMaterial_wind")
+
+[node name="AmbientMotes" type="GPUParticles2D" parent="ScreenSpaceParticles/ViewportCenter"]
+texture_filter = 1
+amount = 24
+lifetime = 3.2
+preprocess = 3.2
+randomness = 0.9
+fixed_fps = 30
+fract_delta = true
+interpolate = true
+visibility_rect = Rect2(-900, -460, 1800, 920)
+texture = SubResource("GradientTexture2D_mote")
+process_material = SubResource("ParticleProcessMaterial_motes")

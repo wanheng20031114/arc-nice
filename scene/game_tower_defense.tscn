@@ -30,6 +30,7 @@
 [ext_resource type="PackedScene" uid="uid://coffbf6d8ioi" path="res://scene/tower_defense_status_hud.tscn" id="31_status_hud"]
 [ext_resource type="PackedScene" path="res://scene/tower_defense_minimap.tscn" id="32_minimap"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/vegetation_spread_system.tscn" id="33_vegetation_spread"]
+[ext_resource type="PackedScene" path="res://scene/vfx/tower_defense_ambient_vfx.tscn" id="34_ambient_vfx"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -127,6 +128,8 @@ script = ExtResource("1_17rxn")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2059488462]
 environment = SubResource("Environment_revive_glow")
+
+[node name="TowerDefenseAmbientVfx" parent="." instance=ExtResource("34_ambient_vfx")]
 
 [node name="MusicPlayer" type="AudioStreamPlayer" parent="." unique_id=707834306]
 stream = ExtResource("10_swtgm")
