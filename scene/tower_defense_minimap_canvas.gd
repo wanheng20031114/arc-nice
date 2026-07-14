@@ -202,8 +202,8 @@ func _connect_topology_signals() -> void:
 		ground_tile_map_layer.changed.connect(_request_static_topology_rebuild)
 	if overlay_tile_map_layer != null:
 		overlay_tile_map_layer.changed.connect(_request_static_topology_rebuild)
-	if dual_grid_terrain != null and dual_grid_terrain.world_map_layer != null:
-		dual_grid_terrain.world_map_layer.changed.connect(_request_static_topology_rebuild)
+	if dual_grid_terrain != null:
+		dual_grid_terrain.terrain_changed.connect(_on_terrain_topology_changed)
 
 
 func _disconnect_topology_signals() -> void:
@@ -219,12 +219,28 @@ func _disconnect_topology_signals() -> void:
 		overlay_tile_map_layer.changed.disconnect(_request_static_topology_rebuild)
 	if (
 		dual_grid_terrain != null
-		and dual_grid_terrain.world_map_layer != null
-		and dual_grid_terrain.world_map_layer.changed.is_connected(
-			_request_static_topology_rebuild
-		)
+		and dual_grid_terrain.terrain_changed.is_connected(_on_terrain_topology_changed)
 	):
-		dual_grid_terrain.world_map_layer.changed.disconnect(_request_static_topology_rebuild)
+		dual_grid_terrain.terrain_changed.disconnect(_on_terrain_topology_changed)
+
+
+func _on_terrain_topology_changed(
+	_cell: Vector2i,
+	previous_terrain: int,
+	current_terrain: int
+) -> void:
+	if not _does_terrain_change_affect_static_topology(previous_terrain, current_terrain):
+		return
+	_request_static_topology_rebuild()
+
+
+func _does_terrain_change_affect_static_topology(
+	previous_terrain: int,
+	current_terrain: int
+) -> bool:
+	var was_water := previous_terrain == DualGridTilemap.TerrainType.WATER
+	var is_water := current_terrain == DualGridTilemap.TerrainType.WATER
+	return was_water != is_water
 
 
 func _request_static_topology_rebuild() -> void:

@@ -280,11 +280,29 @@ func _resolve_terrain_map() -> void:
 		terrain_map.terrain_changed.connect(_on_terrain_changed)
 
 
-func _on_terrain_changed(_cell: Vector2i, _previous_terrain: int, _current_terrain: int) -> void:
+func _on_terrain_changed(_cell: Vector2i, previous_terrain: int, current_terrain: int) -> void:
+	if not _does_terrain_change_affect_navigation(previous_terrain, current_terrain):
+		return
 	if terrain_rebuild_queued:
 		return
 	terrain_rebuild_queued = true
 	call_deferred("_rebuild_after_terrain_change")
+
+
+func _does_terrain_change_affect_navigation(
+	previous_terrain: int,
+	current_terrain: int
+) -> bool:
+	return (
+		_get_traversal_type_for_terrain(previous_terrain)
+		!= _get_traversal_type_for_terrain(current_terrain)
+	)
+
+
+func _get_traversal_type_for_terrain(terrain_type: int) -> int:
+	if terrain_type == DualGridTilemap.TerrainType.WATER:
+		return DualGridTilemap.TraversalType.WATER
+	return DualGridTilemap.TraversalType.LAND
 
 
 func _rebuild_after_terrain_change() -> void:

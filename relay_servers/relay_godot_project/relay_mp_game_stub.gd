@@ -251,6 +251,29 @@ func net_player_revived(
 func net_runtime_state_requested(include_flow_state: bool = true) -> void:
 	pass
 
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_terrain_snapshot_requested(known_revision: int) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_terrain_snapshot_chunk(
+	snapshot_id: int,
+	revision: int,
+	chunk_index: int,
+	chunk_count: int,
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_terrain_delta(
+	revision: int,
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array
+) -> void:
+	pass
+
 @rpc("authority", "call_remote", "reliable", 5)
 func net_runtime_world_manifest(
 	live_enemy_ids: PackedInt32Array,
@@ -339,7 +362,9 @@ func net_plant_spawned(
 	anchor: Vector2i,
 	current_health: int,
 	maximum_health: int,
-	health_revision: int
+	health_revision: int,
+	runtime_state: Dictionary,
+	host_sample_time: float
 ) -> void:
 	pass
 

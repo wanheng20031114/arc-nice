@@ -146,6 +146,17 @@ func configure_multiplayer_proxy(
 		_begin_death()
 
 
+func export_multiplayer_runtime_state() -> Dictionary:
+	return {}
+
+
+func apply_multiplayer_runtime_state(
+	_state: Dictionary,
+	_mapped_sample_time: float
+) -> void:
+	pass
+
+
 func _bump_health_revision() -> void:
 	health_revision += 1
 	authoritative_health_changed.emit(current_health, max_health, health_revision)

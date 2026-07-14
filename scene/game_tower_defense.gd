@@ -63,6 +63,7 @@ const PLANT_PLACEMENT_REJECT_INVALID_REQUEST := &"invalid_request"
 const PLANT_PLACEMENT_REJECT_INVALID_PLAYER := &"invalid_player"
 const PLANT_PLACEMENT_REJECT_INVALID_CONFIG := &"invalid_config"
 const PLANT_PLACEMENT_REJECT_INVALID_POSITION := &"invalid_position"
+const TERRAIN_NETWORK_BATCH_MAX_CELLS := 96
 const LINGLAN_SKILL_REFERENCE_ARENA_POSITION := Vector2i(-3, -1)
 const MULTIPLAYER_SPAWN_OFFSETS: Array[Vector2] = [
 	Vector2.ZERO,
@@ -111,12 +112,16 @@ signal base_health_changed(current_health: int, maximum_health: int, revision: i
 @onready var boss_container: Node2D = $BossContainer
 @onready var plant_container: Node2D = $PlantContainer
 @onready var plant_system: PlantSystem = $PlantSystem
+@onready var vegetation_spread_system: VegetationSpreadSystem = $VegetationSpreadSystem
 @onready var plant_placement_controller: PlantPlacementController = $PlantPlacementController
 @onready var damage_number_pool: DamageNumberPool = $DamageNumberPool
 @onready var session_object_pool: SessionObjectPool = $SessionObjectPool
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
 var random_generator := RandomNumberGenerator.new()
+var multiplayer_terrain_revision: int = 0
+var authored_terrain_baseline: Dictionary = {}
+var multiplayer_terrain_overrides: Dictionary = {}
 var active_campaign: WaveCampaignConfig = null
 var flow_graph: FlowGraphConfig = null
 var waves: Array[WaveConfig] = []
@@ -334,6 +339,10 @@ func configure_multiplayer(
 
 
 func supports_tower_defense() -> bool:
+	return true
+
+
+func supports_multiplayer_terrain_state() -> bool:
 	return true
 
 
@@ -629,6 +638,7 @@ func _configure_plant_defense_system() -> void:
 		placement_rect,
 		dual_grid_terrain
 	)
+	_configure_vegetation_spread_system(placement_rect)
 	plant_system.clear_reserved_cells()
 	for spawn_offset in MULTIPLAYER_SPAWN_OFFSETS:
 		plant_system.reserve_world_position(player_spawn.global_position + spawn_offset)
@@ -688,6 +698,68 @@ func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 	_request_enemy_retarget_after_objective_change()
 	if not plant.modal_ui_visibility_changed.is_connected(_on_plant_modal_ui_visibility_changed):
 		plant.modal_ui_visibility_changed.connect(_on_plant_modal_ui_visibility_changed)
+	var vegetation_stake := plant as VegetationStake
+	if vegetation_stake == null or vegetation_spread_system == null:
+		return
+	var source_id := _get_vegetation_source_id(plant)
+	var origin_cell := plant.footprint_cells[0]
+	vegetation_spread_system.register_source(
+		source_id,
+		origin_cell,
+		vegetation_stake.get_spread_elapsed_seconds()
+	)
+	if not vegetation_stake.spread_runtime_state_changed.is_connected(
+		_on_vegetation_runtime_state_changed.bind(source_id, origin_cell)
+	):
+		vegetation_stake.spread_runtime_state_changed.connect(
+			_on_vegetation_runtime_state_changed.bind(source_id, origin_cell)
+		)
+
+
+func _configure_vegetation_spread_system(placement_rect: Rect2i) -> void:
+	authored_terrain_baseline.clear()
+	multiplayer_terrain_overrides.clear()
+	multiplayer_terrain_revision = 0
+	if dual_grid_terrain == null or vegetation_spread_system == null:
+		push_error("GameTowerDefense: 植被传播节点或地形节点缺失。")
+		return
+	for y in range(placement_rect.position.y, placement_rect.end.y):
+		for x in range(placement_rect.position.x, placement_rect.end.x):
+			var cell := Vector2i(x, y)
+			authored_terrain_baseline[cell] = dual_grid_terrain.get_terrain_type(cell)
+	vegetation_spread_system.setup(
+		dual_grid_terrain,
+		placement_rect,
+		runtime_mode != RuntimeMode.CLIENT_VIEW
+	)
+	if not vegetation_spread_system.authoritative_terrain_changed.is_connected(
+		_on_authoritative_vegetation_terrain_changed
+	):
+		vegetation_spread_system.authoritative_terrain_changed.connect(
+			_on_authoritative_vegetation_terrain_changed
+		)
+
+
+func _on_vegetation_runtime_state_changed(
+	elapsed_seconds: float,
+	source_id: int,
+	origin_cell: Vector2i
+) -> void:
+	if vegetation_spread_system == null:
+		return
+	vegetation_spread_system.apply_source_runtime_state(
+		source_id,
+		origin_cell,
+		{
+			"schema": VegetationSpreadSystem.RUNTIME_STATE_SCHEMA,
+			"spread_elapsed_seconds": elapsed_seconds,
+		}
+	)
+
+
+func _get_vegetation_source_id(plant: PlantDefense) -> int:
+	var net_id := int(plant.get_meta(&"net_id", 0))
+	return net_id if net_id > 0 else int(plant.get_instance_id())
 
 
 func _on_plant_modal_ui_visibility_changed(is_open: bool) -> void:
@@ -837,11 +909,13 @@ func _on_authoritative_plant_health_changed(
 
 func _on_plant_removed(plant: PlantDefense) -> void:
 	_request_enemy_retarget_after_objective_change()
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY or plant == null:
+	if plant == null:
 		return
 	var net_id := int(plant.get_meta(&"net_id", 0))
-	if net_id > 0:
+	if runtime_mode == RuntimeMode.HOST_AUTHORITY and net_id > 0:
 		multiplayer_plant_removed.emit(net_id)
+	if plant is VegetationStake and vegetation_spread_system != null:
+		vegetation_spread_system.cancel_source(_get_vegetation_source_id(plant))
 
 
 func apply_remote_plant_spawn(
@@ -941,6 +1015,160 @@ func get_multiplayer_plant_snapshots() -> Array[Dictionary]:
 			"health_revision": plant.health_revision,
 		})
 	return snapshots
+
+
+func get_multiplayer_terrain_snapshot() -> Dictionary:
+	var cells: Array[Vector2i] = []
+	for cell_variant in multiplayer_terrain_overrides:
+		cells.append(cell_variant as Vector2i)
+	cells.sort_custom(_sort_terrain_cells)
+	var cell_xy := PackedInt32Array()
+	var terrain_types := PackedInt32Array()
+	for cell in cells:
+		cell_xy.append(cell.x)
+		cell_xy.append(cell.y)
+		terrain_types.append(int(multiplayer_terrain_overrides[cell]))
+	return {
+		"revision": multiplayer_terrain_revision,
+		"cell_xy": cell_xy,
+		"terrain_types": terrain_types,
+	}
+
+
+func apply_remote_terrain_snapshot(
+	revision: int,
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array
+) -> bool:
+	if runtime_mode != RuntimeMode.CLIENT_VIEW or revision < 0:
+		return false
+	if terrain_types.is_empty():
+		if not cell_xy.is_empty() or dual_grid_terrain == null:
+			return false
+	else:
+		if not _is_valid_terrain_payload(cell_xy, terrain_types):
+			return false
+	var next_overrides: Dictionary = {}
+	for index in range(terrain_types.size()):
+		var cell := Vector2i(cell_xy[index * 2], cell_xy[index * 2 + 1])
+		var terrain_type := terrain_types[index]
+		if terrain_type == int(authored_terrain_baseline[cell]):
+			return false
+		next_overrides[cell] = terrain_type
+	for cell_variant in multiplayer_terrain_overrides:
+		var previous_cell := cell_variant as Vector2i
+		if not next_overrides.has(previous_cell):
+			dual_grid_terrain.set_tile(
+				previous_cell,
+				int(authored_terrain_baseline[previous_cell])
+			)
+	for cell_variant in next_overrides:
+		var cell := cell_variant as Vector2i
+		dual_grid_terrain.set_tile(cell, int(next_overrides[cell]))
+	multiplayer_terrain_overrides = next_overrides
+	multiplayer_terrain_revision = revision
+	_refresh_remote_vegetation_overlay()
+	return true
+
+
+func apply_remote_terrain_delta(
+	revision: int,
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array
+) -> bool:
+	if (
+		runtime_mode != RuntimeMode.CLIENT_VIEW
+		or revision != multiplayer_terrain_revision + 1
+		or not _is_valid_terrain_payload(cell_xy, terrain_types)
+	):
+		return false
+	for index in range(terrain_types.size()):
+		var cell := Vector2i(cell_xy[index * 2], cell_xy[index * 2 + 1])
+		var terrain_type := terrain_types[index]
+		dual_grid_terrain.set_tile(cell, terrain_type)
+		if terrain_type == int(authored_terrain_baseline[cell]):
+			multiplayer_terrain_overrides.erase(cell)
+		else:
+			multiplayer_terrain_overrides[cell] = terrain_type
+	multiplayer_terrain_revision = revision
+	_refresh_remote_vegetation_overlay()
+	return true
+
+
+func _on_authoritative_vegetation_terrain_changed(
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array
+) -> void:
+	if not _is_valid_terrain_payload(cell_xy, terrain_types):
+		push_error("GameTowerDefense: 植被传播提交了非法地形批次。")
+		return
+	for index in range(terrain_types.size()):
+		var cell := Vector2i(cell_xy[index * 2], cell_xy[index * 2 + 1])
+		var terrain_type := terrain_types[index]
+		if terrain_type == int(authored_terrain_baseline[cell]):
+			multiplayer_terrain_overrides.erase(cell)
+		else:
+			multiplayer_terrain_overrides[cell] = terrain_type
+	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
+		return
+	var cell_count := terrain_types.size()
+	for start_index in range(0, cell_count, TERRAIN_NETWORK_BATCH_MAX_CELLS):
+		var end_index := mini(start_index + TERRAIN_NETWORK_BATCH_MAX_CELLS, cell_count)
+		var chunk_cell_xy := PackedInt32Array()
+		var chunk_terrain_types := PackedInt32Array()
+		for index in range(start_index, end_index):
+			chunk_cell_xy.append(cell_xy[index * 2])
+			chunk_cell_xy.append(cell_xy[index * 2 + 1])
+			chunk_terrain_types.append(terrain_types[index])
+		multiplayer_terrain_revision += 1
+		multiplayer_terrain_delta.emit(
+			multiplayer_terrain_revision,
+			chunk_cell_xy,
+			chunk_terrain_types
+		)
+
+
+func _is_valid_terrain_payload(
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array
+) -> bool:
+	if (
+		terrain_types.is_empty()
+		or cell_xy.size() != terrain_types.size() * 2
+		or dual_grid_terrain == null
+	):
+		return false
+	var previous_cell := Vector2i.ZERO
+	var has_previous := false
+	for index in range(terrain_types.size()):
+		var cell := Vector2i(cell_xy[index * 2], cell_xy[index * 2 + 1])
+		var terrain_type := terrain_types[index]
+		if not authored_terrain_baseline.has(cell):
+			return false
+		if terrain_type not in [
+			DualGridTilemap.TerrainType.EMPTY,
+			DualGridTilemap.TerrainType.GRASS,
+			DualGridTilemap.TerrainType.DIRT,
+			DualGridTilemap.TerrainType.WATER,
+			DualGridTilemap.TerrainType.METAL,
+		]:
+			return false
+		if has_previous and not _sort_terrain_cells(previous_cell, cell):
+			return false
+		previous_cell = cell
+		has_previous = true
+	return true
+
+
+func _refresh_remote_vegetation_overlay() -> void:
+	if vegetation_spread_system != null:
+		vegetation_spread_system.advance_time(0.0)
+
+
+static func _sort_terrain_cells(a: Vector2i, b: Vector2i) -> bool:
+	if a.y == b.y:
+		return a.x < b.x
+	return a.y < b.y
 
 
 func _get_selected_singleplayer_character_id() -> StringName:

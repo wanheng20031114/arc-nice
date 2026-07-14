@@ -25,6 +25,8 @@ WORLD_SCALE = 0.5
 WORLD_FOOTPRINT_SIDE = 32.0
 MAX_VISIBLE_COLORS = 64
 WAREHOUSE_MAX_SUBJECT_SIZE = (60, 62)
+VEGETATION_STAKE_MAX_SUBJECT_SIZE = (20, 23)
+VEGETATION_STAKE_MAX_VISIBLE_COLORS = 32
 CANVAS_CENTER = (SOURCE_SIDE // 2, SOURCE_SIDE // 2)
 AGAVE_HEAD_OFFSET = (0, -6)
 AGAVE_HEAD_PIVOT_IN_TEXTURE = (36, 38)
@@ -44,7 +46,16 @@ AGAVE_HEAD_FRAMES = (
         for index in range(5)
     ),
 )
-BUILDING_ASSETS = (WAREHOUSE_ASSET, AGAVE_ICON, *AGAVE_BODY_FRAMES, *AGAVE_HEAD_FRAMES)
+VEGETATION_STAKE_ASSET = TEXTURE_ROOT / "vegetation_stake/vegetation_stake.png"
+VEGETATION_STAKE_GLOW = TEXTURE_ROOT / "vegetation_stake/vegetation_stake_glow.png"
+BUILDING_ASSETS = (
+    WAREHOUSE_ASSET,
+    AGAVE_ICON,
+    *AGAVE_BODY_FRAMES,
+    *AGAVE_HEAD_FRAMES,
+    VEGETATION_STAKE_ASSET,
+    VEGETATION_STAKE_GLOW,
+)
 
 
 def _relative(path: Path) -> str:
@@ -208,6 +219,30 @@ def _collect_failures(report: dict[str, Any]) -> list[str]:
             f"got {warehouse_width}x{warehouse_height}"
         )
 
+    for path in (VEGETATION_STAKE_ASSET, VEGETATION_STAKE_GLOW):
+        stake_audit = audits[_relative(path)]
+        stake_width, stake_height = stake_audit["subject_size"]
+        if (
+            stake_width > VEGETATION_STAKE_MAX_SUBJECT_SIZE[0]
+            or stake_height > VEGETATION_STAKE_MAX_SUBJECT_SIZE[1]
+        ):
+            failures.append(
+                f"{stake_audit['path']} must fit within 20x23 source pixels; "
+                f"got {stake_width}x{stake_height}"
+            )
+        if stake_audit["visible_color_count"] > VEGETATION_STAKE_MAX_VISIBLE_COLORS:
+            failures.append(
+                f"{stake_audit['path']} exceeds the Vegetation Stake 32-color limit"
+            )
+
+    stake = _load_rgba(VEGETATION_STAKE_ASSET)
+    glow = _load_rgba(VEGETATION_STAKE_GLOW)
+    if any(
+        glow_pixel[3] > 0 and stake_pixel[3] == 0
+        for stake_pixel, glow_pixel in zip(stake.getdata(), glow.getdata())
+    ):
+        failures.append("Vegetation Stake glow mask must be a strict subset of its sprite")
+
     body_audits = [audits[_relative(path)] for path in AGAVE_BODY_FRAMES]
     body_footpoints = [_footpoint(audit) for audit in body_audits]
     if body_footpoints:
@@ -258,6 +293,8 @@ def build_report() -> dict[str, Any]:
             "world_footprint": [WORLD_FOOTPRINT_SIDE, WORLD_FOOTPRINT_SIDE],
             "max_visible_colors": MAX_VISIBLE_COLORS,
             "warehouse_max_subject": list(WAREHOUSE_MAX_SUBJECT_SIZE),
+            "vegetation_stake_max_subject": list(VEGETATION_STAKE_MAX_SUBJECT_SIZE),
+            "vegetation_stake_max_visible_colors": VEGETATION_STAKE_MAX_VISIBLE_COLORS,
             "agave_shared_head_pivot": list(AGAVE_HEAD_PIVOT_IN_TEXTURE),
             "agave_head_max_pivot_radius": AGAVE_HEAD_MAX_PIVOT_RADIUS,
             "agave_max_body_footpoint_drift": 1.0,

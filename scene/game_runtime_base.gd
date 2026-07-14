@@ -52,6 +52,14 @@ signal multiplayer_plant_health_changed(
 	health_revision: int
 )
 signal multiplayer_plant_removed(net_id: int)
+## Authoritative terrain batches are already committed locally when emitted.
+## Revisions must be positive, strictly monotonic, and advance exactly once per
+## non-empty batch. cell_xy stores x/y pairs parallel to terrain_types.
+signal multiplayer_terrain_delta(
+	revision: int,
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array
+)
 signal multiplayer_plant_placement_requested(
 	request_id: int,
 	plant_id: StringName,
@@ -446,6 +454,43 @@ func has_multiplayer_plant(_net_id: int) -> bool:
 
 func get_multiplayer_plant_snapshots() -> Array[Dictionary]:
 	return []
+
+
+## Only runtimes that own replicated terrain overrides should opt in. The
+## standard runtime deliberately keeps the no-op contract below.
+func supports_multiplayer_terrain_state() -> bool:
+	return false
+
+
+## Returns the complete authoritative override set relative to the authored
+## map: {revision: int, cell_xy: PackedInt32Array, terrain_types: PackedInt32Array}.
+## EMPTY (-1) is a valid terrain value and must not be discarded.
+func get_multiplayer_terrain_snapshot() -> Dictionary:
+	return {
+		"revision": 0,
+		"cell_xy": PackedInt32Array(),
+		"terrain_types": PackedInt32Array(),
+	}
+
+
+## Client-view implementations must replace the complete override set
+## atomically and return false without mutation when the payload is invalid.
+func apply_remote_terrain_snapshot(
+	_revision: int,
+	_cell_xy: PackedInt32Array,
+	_terrain_types: PackedInt32Array
+) -> bool:
+	return false
+
+
+## Client-view implementations must apply the whole revision atomically and
+## return false without mutation when the payload is invalid.
+func apply_remote_terrain_delta(
+	_revision: int,
+	_cell_xy: PackedInt32Array,
+	_terrain_types: PackedInt32Array
+) -> bool:
+	return false
 
 
 func get_tower_defense_wave_progress_snapshot() -> Dictionary:

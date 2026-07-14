@@ -22,6 +22,7 @@ var player: Player
 var plant_system: PlantSystem
 var plant_container: Node2D
 var agave_config: PlantDefenseConfig
+var vegetation_stake_config: PlantDefenseConfig
 
 
 class AnchorCountingPlantSystem:
@@ -65,6 +66,7 @@ func _run() -> void:
 	plant_system = null
 	plant_container = null
 	agave_config = null
+	vegetation_stake_config = null
 	Input.action_release(&"plant")
 	Input.flush_buffered_events()
 
@@ -111,13 +113,29 @@ func _build_fixture() -> void:
 		PlantSystem.DEFAULT_PLACEMENT_AREA
 	)
 	agave_config = PlantDefenseRegistry.get_config(&"agave_cannon")
+	vegetation_stake_config = PlantDefenseRegistry.get_config(&"vegetation_stake")
 
 
 func _test_config_and_scene_contracts() -> void:
 	_expect(agave_config != null and agave_config.is_valid(), "龙舌兰配置必须有效。")
-	if agave_config == null:
+	_expect(
+		vegetation_stake_config != null and vegetation_stake_config.is_valid(),
+		"植被桩配置必须有效。"
+	)
+	if agave_config == null or vegetation_stake_config == null:
 		return
-	_expect(PlantDefenseRegistry.get_all_configs().size() == 2, "植物注册表必须公开龙舌兰与橡木仓库。")
+	var oak_config := PlantDefenseRegistry.get_config(&"oak_warehouse")
+	_expect(oak_config != null and oak_config.is_valid(), "橡木仓库配置必须有效。")
+	if oak_config == null:
+		return
+	var registered_configs := PlantDefenseRegistry.get_all_configs()
+	_expect(
+		registered_configs.size() == 3
+		and registered_configs.has(agave_config)
+		and registered_configs.has(oak_config)
+		and registered_configs.has(vegetation_stake_config),
+		"植物注册表必须公开龙舌兰、橡木仓库与植被桩三项。"
+	)
 	_expect(agave_config.max_health == 2000, "龙舌兰生命值必须为2000。")
 	_expect(
 		agave_config.physical_defense == 10 and agave_config.magic_defense == 20,
@@ -128,7 +146,26 @@ func _test_config_and_scene_contracts() -> void:
 	_expect(agave_config.supports_multiplayer, "龙舌兰必须继续支持多人权威放置。")
 	_expect(is_equal_approx(agave_config.get_attack_interval(), 2.0), "龙舌兰攻击间隔必须为2秒。")
 	_expect(is_equal_approx(agave_config.attack_range, 176.0), "龙舌兰索敌半径必须为176。")
-	_expect(agave_config.footprint_size == Vector2i(2, 2), "植物必须占2×2格。")
+	_expect(agave_config.footprint_size == Vector2i(2, 2), "龙舌兰必须继续占2×2格。")
+	_expect(oak_config.footprint_size == Vector2i(2, 2), "橡木仓库必须继续占2×2格。")
+	_expect(
+		vegetation_stake_config.max_health == 4000
+		and vegetation_stake_config.physical_defense == 25
+		and vegetation_stake_config.magic_defense == 50
+		and vegetation_stake_config.attack_damage == 0,
+		"植被桩必须拥有4000生命、25物防、50法抗且攻击力为0。"
+	)
+	_expect(
+		vegetation_stake_config.footprint_size == Vector2i.ONE,
+		"植被桩必须只占1×1格。"
+	)
+	_expect(vegetation_stake_config.supports_multiplayer, "植被桩必须支持多人权威放置。")
+	var stake_anchor_cell := Vector2i(4, 3)
+	_expect(
+		plant_system.get_anchor_world_position(stake_anchor_cell, vegetation_stake_config)
+		== tile_map.to_global(tile_map.map_to_local(stake_anchor_cell)),
+		"1×1植被桩的放置锚点必须严格位于目标格中心。"
+	)
 	_expect(
 		agave_config.plant_scene.resource_path.begins_with("res://scene/plant_defense/"),
 		"龙舌兰必须继续由scene/plant_defense下的独立场景实例化。"
@@ -190,6 +227,60 @@ func _test_config_and_scene_contracts() -> void:
 			config.icon != null and config.icon.get_size() == Vector2(64, 64),
 			"每种植物配置都必须提供64×64组合图标。"
 		)
+
+	var vegetation_stake := vegetation_stake_config.plant_scene.instantiate() as PlantDefense
+	_expect(vegetation_stake != null, "植被桩场景根节点必须继承PlantDefense。")
+	if vegetation_stake != null:
+		var main_sprite := vegetation_stake.get_node_or_null("MainSprite") as Sprite2D
+		var top_glow := vegetation_stake.get_node_or_null("TopGlow") as Sprite2D
+		var glow_motes := vegetation_stake.get_node_or_null("GlowMotes") as GPUParticles2D
+		var cell_border := vegetation_stake.get_node_or_null("CellBorder") as MeshInstance2D
+		_expect(
+			main_sprite != null
+			and top_glow != null
+			and glow_motes != null
+			and cell_border != null,
+			"植被桩必须在场景中原生预建MainSprite、TopGlow、GlowMotes与CellBorder节点。"
+		)
+		if main_sprite != null and top_glow != null:
+			_expect(
+				main_sprite.scale == Vector2(0.5, 0.5)
+				and top_glow.scale == Vector2(0.5, 0.5)
+				and main_sprite.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+				and top_glow.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
+				"植被桩主体与发光层必须以0.5缩放和nearest采样保持像素轮廓。"
+			)
+		if cell_border != null:
+			var border_quad := cell_border.mesh as QuadMesh
+			var border_material := cell_border.material as ShaderMaterial
+			var border_shader_code := (
+				border_material.shader.code
+				if border_material != null and border_material.shader != null
+				else ""
+			)
+			_expect(
+				border_quad != null
+				and border_quad.size == Vector2(16, 16)
+				and border_shader_code.contains("pixel.x < 2.0")
+				and border_shader_code.contains("pixel.y < 2.0")
+				and border_shader_code.contains("pixel.x >= 14.0")
+				and border_shader_code.contains("pixel.y >= 14.0"),
+				"植被桩边框必须覆盖16×16地块且只绘制最外两圈逻辑像素。"
+			)
+		if glow_motes != null:
+			var mote_material := glow_motes.process_material as ParticleProcessMaterial
+			_expect(
+				glow_motes.texture == null
+				and glow_motes.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+				and glow_motes.amount == 6
+				and glow_motes.visibility_rect.size.x <= 16.0
+				and glow_motes.visibility_rect.size.y <= 16.0
+				and mote_material != null
+				and mote_material.scale_min >= 0.5
+				and mote_material.scale_max <= 1.0,
+				"植被桩飘光必须使用至多1世界像素的小方块并限制在单格可见范围内。"
+			)
+		vegetation_stake.free()
 
 	var agave := agave_config.plant_scene.instantiate() as AgaveCannon
 	_expect(agave != null, "龙舌兰场景根节点必须继承PlantDefense。")
@@ -743,7 +834,7 @@ func _test_grid_and_occupancy_rules() -> void:
 	await physics_frame
 
 	var plant := plant_system.try_place(agave_config, anchor)
-	_expect(plant != null, "合法交点必须成功放置龙舌兰。")
+	_expect(plant != null, "合法位置必须成功放置龙舌兰。")
 	if plant == null:
 		return
 	_expect(not plant_system.is_placement_valid(anchor, agave_config), "已占用footprint必须拒绝重复放置。")
@@ -784,6 +875,16 @@ func _test_realtime_selection_and_cancel() -> void:
 		await process_frame
 	_expect(controller.is_selecting(), "打开后状态必须为SELECTING。")
 	_expect(controller.selection_hud.is_open(), "真实plant动作输入必须显示植物选择界面。")
+	_expect(
+		controller.selection_hud.available_configs.size() == 3
+		and controller.selection_hud.available_configs.has(agave_config)
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"oak_warehouse")
+		)
+		and controller.selection_hud.available_configs.has(vegetation_stake_config)
+		and controller.selection_hud.cards.size() == 3,
+		"单人植物选择界面必须生成龙舌兰、橡木仓库与植被桩三张卡片。"
+	)
 	_expect(paused == was_paused and not paused, "选择植物不得暂停SceneTree。")
 	_expect(not lock_events.is_empty() and lock_events.back(), "选择期间必须请求锁定玩家。")
 	var plant_release := InputEventAction.new()
@@ -796,7 +897,7 @@ func _test_realtime_selection_and_cancel() -> void:
 	controller.selection_hud.selection_confirmed.emit(agave_config)
 	await process_frame
 	_expect(controller.is_placing(), "确认卡片后必须进入PLACING。")
-	_expect(not controller.valid_anchors.is_empty(), "放置阶段必须生成合法绿色交点。")
+	_expect(not controller.valid_anchors.is_empty(), "放置阶段必须生成合法绿色位置标记。")
 	controller.cancel_placement()
 	_expect(not controller.is_active(), "取消后必须回到IDLE。")
 	_expect(not lock_events.is_empty() and not lock_events.back(), "取消后必须请求解锁玩家。")
@@ -1001,12 +1102,14 @@ func _test_multiplayer_authority_contracts() -> void:
 	controller.set_multiplayer_request_mode(true)
 	_expect(controller.open_selection(), "多人植物选择必须仍可打开。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 2
+		controller.selection_hud.available_configs.size() == 3
 		and controller.selection_hud.available_configs.has(agave_config)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"oak_warehouse")
-		),
-		"多人植物选择必须公开龙舌兰与共享仓库。"
+		)
+		and controller.selection_hud.available_configs.has(vegetation_stake_config)
+		and controller.selection_hud.cards.size() == 3,
+		"多人植物选择必须公开龙舌兰、共享仓库与植被桩三张卡片。"
 	)
 	controller.cancel_placement()
 	var placement_requests: Array[Dictionary] = []

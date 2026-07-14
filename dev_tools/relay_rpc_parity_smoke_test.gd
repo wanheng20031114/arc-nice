@@ -36,6 +36,9 @@ func _run() -> void:
 		"net_plant_removed",
 		"net_plant_projectile_visual",
 		"net_runtime_state_requested",
+		"net_terrain_snapshot_requested",
+		"net_terrain_snapshot_chunk",
+		"net_terrain_delta",
 		"net_tower_defense_wave_progress_changed",
 		"net_inventory_item_use_requested",
 		"net_inventory_item_discard_requested",
@@ -62,7 +65,7 @@ func _run() -> void:
 		not main_rpcs.has("net_wave_started"),
 		"Legacy wave-index RPC must stay removed; flow step_id is the sole lifecycle source."
 	)
-	_test_gameplay_v5_transaction_contract(main_rpcs)
+	_test_gameplay_v6_transaction_contract(main_rpcs)
 	_test_gameplay_channel_contract(main_rpcs)
 
 	var main_net_manager_rpcs := _extract_rpc_surface(MAIN_NET_MANAGER_PATH)
@@ -102,8 +105,8 @@ func _run() -> void:
 			"Start-game sync must carry both authoritative mode and loading session."
 		)
 	_test_registration_protocol_handshake_source()
-	_expect(NetConstants.PROTOCOL_VERSION == 5, "Split-channel multiplayer requires protocol version 5.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v5 must provision eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 6, "Terrain replication requires protocol version 6.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v6 must provision eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -196,11 +199,29 @@ func _test_relay_channel_count() -> void:
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
 		and relay_source.contains("create_server(_port, MAX_CLIENTS, CHANNEL_COUNT)"),
-		"Relay server must provision the same eight ENet channels as protocol v5 clients."
+		"Relay server must provision the same eight ENet channels as protocol v6 clients."
 	)
 
 
-func _test_gameplay_v5_transaction_contract(rpcs: Dictionary) -> void:
+func _test_gameplay_v6_transaction_contract(rpcs: Dictionary) -> void:
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_terrain_snapshot_requested",
+		"known_revision:int"
+	)
+	for terrain_method in ["net_terrain_snapshot_chunk", "net_terrain_delta"]:
+		_expect_rpc_signature_contains(rpcs, terrain_method, "cell_xy:PackedInt32Array")
+		_expect_rpc_signature_contains(rpcs, terrain_method, "terrain_types:PackedInt32Array")
+	_expect_rpc_signature_contains(rpcs, "net_plant_spawned", "runtime_state:Dictionary")
+	_expect_rpc_signature_contains(rpcs, "net_plant_spawned", "host_sample_time:float")
+	var mp_game_source := FileAccess.get_file_as_string(MAIN_MP_GAME_PATH)
+	_expect(
+		mp_game_source.contains("const TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS := 96")
+		and mp_game_source.contains("const TERRAIN_TYPE_EMPTY := -1")
+		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_PER_SECOND := 1.0")
+		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_BURST := 2.0"),
+		"Protocol v6 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
+	)
 	_expect_rpc_signature_contains(
 		rpcs,
 		"net_inventory_item_use_requested",
@@ -286,6 +307,7 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		)
 
 	_expect_rpc_channel(rpcs, "net_runtime_state_requested", NetConstants.CH_AUTH)
+	_expect_rpc_channel(rpcs, "net_terrain_snapshot_requested", NetConstants.CH_AUTH)
 	_expect_rpc_channel(rpcs, "_rpc_client_player_state", NetConstants.CH_INPUT)
 	_expect_rpc_channel(rpcs, "_rpc_receive_player_snapshot", NetConstants.CH_PLAYER_STATE)
 	_expect_rpc_channel(rpcs, "_rpc_receive_enemy_snapshot", NetConstants.CH_ENEMY_STATE)
@@ -296,6 +318,8 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		"net_plant_spawned",
 		"net_plant_removed",
 		"net_base_health_changed",
+		"net_terrain_snapshot_chunk",
+		"net_terrain_delta",
 	]:
 		_expect_rpc_channel(rpcs, world_event_method, NetConstants.CH_WORLD_EVENT)
 	for transaction_method in [

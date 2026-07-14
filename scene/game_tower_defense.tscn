@@ -29,6 +29,7 @@
 [ext_resource type="Script" uid="uid://cthsxvai7jtgh" path="res://scene/xirang_drop_manager.gd" id="30_xirang_manager"]
 [ext_resource type="PackedScene" uid="uid://coffbf6d8ioi" path="res://scene/tower_defense_status_hud.tscn" id="31_status_hud"]
 [ext_resource type="PackedScene" path="res://scene/tower_defense_minimap.tscn" id="32_minimap"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/vegetation_spread_system.tscn" id="33_vegetation_spread"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -242,6 +243,8 @@ navigation_enabled = false
 [node name="GridPathfinder" type="Node" parent="." unique_id=251919052]
 script = ExtResource("9_5wjd4")
 terrain_map_path = NodePath("../DualGridTerrain")
+
+[node name="VegetationSpreadSystem" parent="." instance=ExtResource("33_vegetation_spread")]
 
 [node name="OverlayTileMapLayer" type="TileMapLayer" parent="." unique_id=852138298]
 z_index = 1

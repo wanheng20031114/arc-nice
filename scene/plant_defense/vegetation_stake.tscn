@@ -1,0 +1,98 @@
+[gd_scene load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/vegetation_stake.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/vegetation_stake/vegetation_stake.png" id="2_sprite"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/vegetation_stake/vegetation_stake_glow.png" id="3_glow"]
+[ext_resource type="Shader" path="res://resources/shader/plant_visual_pixel_snap.gdshader" id="4_pixel_snap"]
+[ext_resource type="Shader" path="res://resources/shader/vegetation_stake_glow.gdshader" id="5_glow_shader"]
+[ext_resource type="Shader" path="res://resources/shader/vegetation_stake_border.gdshader" id="6_border_shader"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="7_health_bar"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_pixel_snap"]
+shader = ExtResource("4_pixel_snap")
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_glow"]
+shader = ExtResource("5_glow_shader")
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_border"]
+shader = ExtResource("6_border_shader")
+
+[sub_resource type="QuadMesh" id="QuadMesh_border"]
+size = Vector2(16, 16)
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_motes"]
+particle_flag_disable_z = true
+emission_shape = 3
+emission_box_extents = Vector3(2.5, 0.5, 1)
+direction = Vector3(0, -1, 0)
+spread = 14.0
+gravity = Vector3(0, 1, 0)
+initial_velocity_min = 1.0
+initial_velocity_max = 2.0
+scale_min = 0.5
+scale_max = 0.5
+color = Color(0.741, 1, 0.278, 0.9)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+resource_local_to_scene = true
+size = Vector2(7, 8)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_core"]
+resource_local_to_scene = true
+radius = 3.5
+
+[node name="VegetationStake" type="StaticBody2D"]
+collision_layer = 512
+collision_mask = 0
+script = ExtResource("1_script")
+enemy_approach_depth = 2.0
+
+[node name="CellBorder" type="MeshInstance2D" parent="."]
+material = SubResource("ShaderMaterial_border")
+z_index = -1
+texture_filter = 1
+mesh = SubResource("QuadMesh_border")
+
+[node name="MainSprite" type="Sprite2D" parent="."]
+material = SubResource("ShaderMaterial_pixel_snap")
+z_index = 1
+texture_filter = 1
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("2_sprite")
+
+[node name="TopGlow" type="Sprite2D" parent="."]
+material = SubResource("ShaderMaterial_glow")
+z_index = 2
+texture_filter = 1
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("3_glow")
+
+[node name="GlowMotes" type="GPUParticles2D" parent="."]
+position = Vector2(0, -1.5)
+z_index = 3
+texture_filter = 1
+amount = 6
+lifetime = 0.8
+preprocess = 0.8
+randomness = 0.55
+visibility_rect = Rect2(-5, -4, 10, 12)
+process_material = SubResource("ParticleProcessMaterial_motes")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 3)
+shape = SubResource("RectangleShape2D_body")
+
+[node name="PlayerCoreBody" type="StaticBody2D" parent="."]
+position = Vector2(0, 3)
+collision_layer = 1024
+collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody"]
+shape = SubResource("CircleShape2D_core")
+
+[node name="HealthBar" parent="." instance=ExtResource("7_health_bar")]
+offset_left = -8.0
+offset_top = -9.0
+offset_right = 8.0
+offset_bottom = -6.0
+damage_trail_color = Color(0.298, 0.961, 0.416, 1)

@@ -1,7 +1,7 @@
 extends RefCounted
 
 ## 协议与版本
-const PROTOCOL_VERSION := 5
+const PROTOCOL_VERSION := 6
 
 ## 玩家限制
 const MAX_PLAYERS := 8
@@ -25,7 +25,7 @@ const PUBLIC_ROOM_KEEPALIVE_INTERVAL_SECONDS := 60.0
 ## 2: 玩家实时状态 — unreliable_ordered
 ## 3: 敌人分块状态 — unreliable
 ## 4: 投射物请求与表现 — reliable / unreliable_ordered
-## 5: 敌人、植物、基地等持久世界事件 — reliable
+## 5: 敌人、植物、地形、基地等持久世界事件 — reliable
 ## 6: 库存、经济、洛茜与仓库事务 — reliable
 ## 7: 可丢弃的战斗反馈 — unreliable
 const CH_AUTH := 0

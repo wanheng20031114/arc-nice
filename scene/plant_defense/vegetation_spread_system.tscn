@@ -1,0 +1,25 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/vegetation_spread_system.gd" id="1_script"]
+[ext_resource type="Shader" path="res://scene/plant_defense/vegetation_growth_overlay.gdshader" id="2_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_growth"]
+shader = ExtResource("2_shader")
+
+[sub_resource type="QuadMesh" id="QuadMesh_cell"]
+size = Vector2(16, 16)
+
+[sub_resource type="MultiMesh" id="MultiMesh_growth"]
+resource_local_to_scene = true
+transform_format = 0
+use_custom_data = true
+mesh = SubResource("QuadMesh_cell")
+
+[node name="VegetationSpreadSystem" type="Node2D"]
+script = ExtResource("1_script")
+
+[node name="GrowthOverlay" type="MultiMeshInstance2D" parent="."]
+z_index = 0
+texture_filter = 1
+material = SubResource("ShaderMaterial_growth")
+multimesh = SubResource("MultiMesh_growth")

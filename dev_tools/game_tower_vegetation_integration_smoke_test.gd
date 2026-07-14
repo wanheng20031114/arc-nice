@@ -1,0 +1,481 @@
+extends SceneTree
+
+const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const VEGETATION_STAKE_CONFIG := preload(
+	"res://resources/config/plant_defense/vegetation_stake.tres"
+)
+const AUTHORITATIVE_BATCH_CELL_COUNT := 193
+const LIFECYCLE_PLANT_NET_ID := 900001
+
+var failures: Array[String] = []
+var emitted_terrain_batches: Array[Dictionary] = []
+var lifecycle_events: Array[String] = []
+var record_lifecycle_events := false
+
+
+func _init() -> void:
+	call_deferred("_run")
+
+
+func _run() -> void:
+	_test_vegetation_stake_scene_contract()
+
+	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	_expect(game != null, "GameTowerDefense场景必须能够实例化。")
+	if game == null:
+		_finish()
+		return
+	game.auto_start_waves = false
+	root.add_child(game)
+	current_scene = game
+	await process_frame
+	await process_frame
+
+	_test_preauthored_spread_system(game)
+	_test_authoritative_batching(game)
+	_test_client_snapshot_replacement_and_revision(game)
+	await _test_real_plant_lifecycle(game)
+
+	game.queue_free()
+	await process_frame
+	await process_frame
+	_finish()
+
+
+func _test_vegetation_stake_scene_contract() -> void:
+	var config := VEGETATION_STAKE_CONFIG as PlantDefenseConfig
+	_expect(config != null, "植被桩配置必须能够加载为PlantDefenseConfig。")
+	if config == null:
+		return
+	_expect(config.plant_id == &"vegetation_stake", "植被桩配置ID必须稳定。")
+	_expect(config.display_name == "植被桩", "植被桩显示名必须正确。")
+	_expect(config.footprint_size == Vector2i.ONE, "植被桩必须严格占用1x1格。")
+	_expect(config.supports_multiplayer, "植被桩必须声明完整多人支持。")
+	_expect(config.max_health == 4000, "植被桩生命值必须为4000。")
+	_expect(config.physical_defense == 25, "植被桩物理防御必须为25。")
+	_expect(config.magic_defense == 50, "植被桩魔法防御必须为50。")
+	_expect(config.attack_damage == 0, "植被桩不能造成攻击伤害。")
+	_expect(config.plant_scene != null, "植被桩配置必须引用可实例化场景。")
+	if config.plant_scene == null:
+		return
+
+	var stake := config.plant_scene.instantiate() as VegetationStake
+	_expect(stake != null, "植被桩场景根节点必须为VegetationStake。")
+	if stake == null:
+		return
+	var border := stake.get_node_or_null("CellBorder") as MeshInstance2D
+	var main_sprite := stake.get_node_or_null("MainSprite") as Sprite2D
+	var top_glow := stake.get_node_or_null("TopGlow") as Sprite2D
+	var glow_motes := stake.get_node_or_null("GlowMotes") as GPUParticles2D
+	_expect(border != null and border.mesh is QuadMesh, "植被桩场景必须预置地面边框QuadMesh。")
+	if border != null and border.mesh is QuadMesh:
+		_expect(
+			(border.mesh as QuadMesh).size == Vector2(16, 16),
+			"植被桩地面边框必须严格覆盖16x16逻辑瓦片。"
+		)
+	_expect(main_sprite != null and main_sprite.scale == Vector2(0.5, 0.5), "植被桩主体必须沿用0.5像素素材缩放。")
+	_expect(top_glow != null and top_glow.texture != null, "植被桩必须预置独立顶部发光层。")
+	_expect(glow_motes != null and glow_motes.amount > 0, "植被桩必须预置少量GPU飘光粒子。")
+	stake.setup(config, null, [Vector2i.ZERO], true)
+	var sample_now := Time.get_ticks_msec() / 1000.0
+	var first_sample_age := minf(sample_now * 0.5, 0.25)
+	var first_sample_time := maxf(sample_now - first_sample_age, 0.000001)
+	stake.apply_multiplayer_runtime_state(
+		{"schema": 1, "spread_elapsed_seconds": 12.0},
+		first_sample_time
+	)
+	var first_elapsed := stake.get_spread_elapsed_seconds()
+	_expect(
+		absf(first_elapsed - (12.0 + sample_now - first_sample_time)) < 0.1,
+		"运行时状态必须计入Host采样后的映射时间。"
+	)
+	stake.apply_multiplayer_runtime_state(
+		{"schema": 1, "spread_elapsed_seconds": 8.0},
+		Time.get_ticks_msec() / 1000.0
+	)
+	_expect(
+		stake.get_spread_elapsed_seconds() + 0.001 >= first_elapsed,
+		"较旧的重复运行时状态不能让传播时间倒退。"
+	)
+	var advanced_now := Time.get_ticks_msec() / 1000.0
+	var advanced_sample_age := minf(advanced_now * 0.5, 0.5)
+	var advanced_sample_time := maxf(
+		advanced_now - advanced_sample_age,
+		0.000001
+	)
+	var advanced_raw_elapsed := first_elapsed - advanced_sample_age * 0.5
+	stake.apply_multiplayer_runtime_state(
+		{"schema": 1, "spread_elapsed_seconds": advanced_raw_elapsed},
+		advanced_sample_time
+	)
+	_expect(
+		stake.get_spread_elapsed_seconds() > first_elapsed,
+		"原始elapsed较小但映射到当前更先进的状态仍必须被接受。"
+	)
+	var exported_state := stake.export_multiplayer_runtime_state()
+	_expect(
+		int(exported_state.get("schema", 0)) == 1
+		and float(exported_state.get("spread_elapsed_seconds", -1.0)) <= 50.0,
+		"植被桩导出的运行时状态必须保持schema 1并封顶50秒。"
+	)
+	stake.free()
+
+
+func _test_preauthored_spread_system(game: GameTowerDefense) -> void:
+	_expect(game.supports_multiplayer_terrain_state(), "塔防运行时必须启用多人地形状态。")
+	var spread_node := game.get_node_or_null("VegetationSpreadSystem")
+	_expect(spread_node is VegetationSpreadSystem, "GameTower场景必须预置VegetationSpreadSystem。")
+	_expect(
+		spread_node == game.vegetation_spread_system,
+		"GameTower运行时引用必须指向场景预置的传播系统。"
+	)
+	if spread_node is VegetationSpreadSystem:
+		var overlay := spread_node.get_node_or_null("GrowthOverlay") as MultiMeshInstance2D
+		_expect(overlay != null and overlay.multimesh != null, "传播系统必须预置共享MultiMesh覆盖层。")
+	_expect(
+		GameTowerDefense.TERRAIN_NETWORK_BATCH_MAX_CELLS == 96,
+		"塔防权威地形网络批次上限必须为96格。"
+	)
+	_expect(
+		int(DualGridTilemap.TerrainType.EMPTY) == -1,
+		"多人地形协议必须保留EMPTY=-1。"
+	)
+
+
+func _test_authoritative_batching(game: GameTowerDefense) -> void:
+	_expect(
+		game.authored_terrain_baseline.size() >= AUTHORITATIVE_BATCH_CELL_COUNT,
+		"塔防 authored baseline 必须足够覆盖193格分块测试。"
+	)
+	if game.authored_terrain_baseline.size() < AUTHORITATIVE_BATCH_CELL_COUNT:
+		return
+
+	var cells: Array[Vector2i] = []
+	for cell_variant in game.authored_terrain_baseline.keys():
+		cells.append(cell_variant as Vector2i)
+	cells.sort_custom(_sort_cells)
+	cells.resize(AUTHORITATIVE_BATCH_CELL_COUNT)
+
+	var cell_xy := PackedInt32Array()
+	var terrain_types := PackedInt32Array()
+	for cell in cells:
+		var replacement := _different_terrain_type(
+			int(game.authored_terrain_baseline[cell])
+		)
+		cell_xy.append(cell.x)
+		cell_xy.append(cell.y)
+		terrain_types.append(replacement)
+		# The authoritative signal contract says the batch is already committed.
+		game.dual_grid_terrain.set_tile(cell, replacement)
+
+	emitted_terrain_batches.clear()
+	if not game.multiplayer_terrain_delta.is_connected(_on_terrain_delta):
+		game.multiplayer_terrain_delta.connect(_on_terrain_delta)
+	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	game.call(
+		"_on_authoritative_vegetation_terrain_changed",
+		cell_xy,
+		terrain_types
+	)
+
+	_expect(game.multiplayer_terrain_revision == 3, "193格权威批次必须产生3个连续revision。")
+	_expect(game.multiplayer_terrain_overrides.size() == 193, "权威批次必须完整维护193个terrain override。")
+	_expect(emitted_terrain_batches.size() == 3, "193格权威批次必须按96/96/1发出三包。")
+	var expected_sizes := [96, 96, 1]
+	for batch_index in range(emitted_terrain_batches.size()):
+		var batch := emitted_terrain_batches[batch_index]
+		_expect(
+			int(batch.get("revision", -1)) == batch_index + 1,
+			"权威地形批次revision必须从1严格连续递增。"
+		)
+		_expect(
+			(batch.get("terrain_types", PackedInt32Array()) as PackedInt32Array).size()
+			== expected_sizes[batch_index],
+			"第%d个权威地形包格数必须为%d。" % [batch_index + 1, expected_sizes[batch_index]]
+		)
+
+	var snapshot := game.get_multiplayer_terrain_snapshot()
+	_expect(int(snapshot.get("revision", -1)) == 3, "权威地形快照必须携带当前revision。")
+	_expect(
+		(snapshot.get("terrain_types", PackedInt32Array()) as PackedInt32Array).size() == 193,
+		"权威地形快照必须包含完整override集合。"
+	)
+
+
+func _test_client_snapshot_replacement_and_revision(game: GameTowerDefense) -> void:
+	var empty_target := Vector2i.ZERO
+	var found_empty_target := false
+	for cell_variant in game.authored_terrain_baseline.keys():
+		var cell := cell_variant as Vector2i
+		if int(game.authored_terrain_baseline[cell]) != int(DualGridTilemap.TerrainType.EMPTY):
+			empty_target = cell
+			found_empty_target = true
+			break
+	_expect(found_empty_target, "测试地图必须至少有一个非EMPTY authored格用于验证EMPTY=-1。")
+	if not found_empty_target:
+		return
+
+	var restored_cell := Vector2i.ZERO
+	var found_restored_cell := false
+	for cell_variant in game.multiplayer_terrain_overrides.keys():
+		var cell := cell_variant as Vector2i
+		if cell != empty_target:
+			restored_cell = cell
+			found_restored_cell = true
+			break
+	_expect(found_restored_cell, "客户端完整替换测试必须保留一个将被删除的旧override。")
+	if not found_restored_cell:
+		return
+
+	game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	var snapshot_applied := game.apply_remote_terrain_snapshot(
+		7,
+		PackedInt32Array([empty_target.x, empty_target.y]),
+		PackedInt32Array([DualGridTilemap.TerrainType.EMPTY])
+	)
+	_expect(snapshot_applied, "客户端必须接受合法的完整地形快照。")
+	_expect(game.multiplayer_terrain_revision == 7, "完整快照必须替换客户端terrain revision。")
+	_expect(game.multiplayer_terrain_overrides.size() == 1, "完整快照必须删除所有未列出的旧override。")
+	_expect(
+		int(game.multiplayer_terrain_overrides.get(empty_target, 99)) == -1,
+		"完整快照必须在override字典中保留EMPTY=-1。"
+	)
+	_expect(
+		game.dual_grid_terrain.get_terrain_type(restored_cell)
+		== int(game.authored_terrain_baseline[restored_cell]),
+		"完整快照必须把缺席的旧override恢复到authored baseline。"
+	)
+	var replaced_snapshot := game.get_multiplayer_terrain_snapshot()
+	_expect(
+		(replaced_snapshot.get("terrain_types", PackedInt32Array()) as PackedInt32Array)
+		== PackedInt32Array([-1]),
+		"导出的客户端快照不能丢弃EMPTY=-1。"
+	)
+
+	var baseline_type := int(game.authored_terrain_baseline[empty_target])
+	var delta_xy := PackedInt32Array([empty_target.x, empty_target.y])
+	var delta_types := PackedInt32Array([baseline_type])
+	_expect(
+		not game.apply_remote_terrain_delta(9, delta_xy, delta_types),
+		"客户端必须拒绝跳过revision 8的地形delta。"
+	)
+	_expect(game.multiplayer_terrain_revision == 7, "被拒绝的delta不能推进客户端revision。")
+	_expect(
+		game.dual_grid_terrain.get_terrain_type(empty_target)
+		== DualGridTilemap.TerrainType.EMPTY,
+		"被拒绝的delta不能部分修改地形。"
+	)
+	_expect(
+		game.apply_remote_terrain_delta(8, delta_xy, delta_types),
+		"客户端必须接受恰好下一个revision的合法delta。"
+	)
+	_expect(game.multiplayer_terrain_revision == 8, "合法delta必须推进一次revision。")
+	_expect(game.multiplayer_terrain_overrides.is_empty(), "恢复baseline的delta必须移除对应override。")
+
+
+func _test_real_plant_lifecycle(game: GameTowerDefense) -> void:
+	var spread := game.vegetation_spread_system
+	var plant_system := game.plant_system
+	var config := VEGETATION_STAKE_CONFIG as PlantDefenseConfig
+	_expect(spread != null and plant_system != null, "真实生命周期测试需要GameTower完整植物与传播系统。")
+	if spread == null or plant_system == null or config == null:
+		return
+
+	var was_processing := spread.is_processing()
+	spread.set_process(false)
+	var fixture := _find_lifecycle_fixture(game, config)
+	_expect(
+		not fixture.is_empty(),
+		"实际地图中必须存在合法草地锚点，并在前四圈内包含泥地目标和下一圈临时覆盖格。"
+	)
+	if fixture.is_empty():
+		spread.set_process(was_processing)
+		return
+
+	var anchor := fixture["anchor"] as Vector2i
+	var target := fixture["target"] as Vector2i
+	var pending_target := fixture["pending_target"] as Vector2i
+	var target_ring := int(fixture["target_ring"])
+	var target_baseline := int(game.authored_terrain_baseline[target])
+	_expect(
+		game.dual_grid_terrain.get_terrain_type(anchor) == DualGridTilemap.TerrainType.GRASS,
+		"真实植被桩锚点必须是草地。"
+	)
+	_expect(
+		plant_system.is_placement_valid_for_player(anchor, config, game.player),
+		"真实植被桩锚点必须通过PlantSystem完整合法性检查。"
+	)
+	_expect(
+		target_baseline in [DualGridTilemap.TerrainType.EMPTY, DualGridTilemap.TerrainType.DIRT],
+		"真实传播目标的authored baseline必须是EMPTY或DIRT。"
+	)
+
+	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	if not game.multiplayer_plant_removed.is_connected(_on_lifecycle_plant_removed):
+		game.multiplayer_plant_removed.connect(_on_lifecycle_plant_removed)
+	var starting_revision := game.multiplayer_terrain_revision
+	var plant := plant_system.try_place_for_player(
+		config,
+		anchor,
+		game.player,
+		LIFECYCLE_PLANT_NET_ID
+	) as VegetationStake
+	_expect(plant != null, "PlantSystem必须能用真实vegetation_stake配置完成放置。")
+	if plant == null:
+		spread.set_process(was_processing)
+		return
+	_expect(
+		spread.has_source(LIFECYCLE_PLANT_NET_ID),
+		"PlantSystem的plant_placed信号必须在传播系统注册对应net_id来源。"
+	)
+	_expect(spread.get_source_origin(LIFECYCLE_PLANT_NET_ID) == anchor, "传播来源原点必须等于1x1放置锚点。")
+
+	spread.advance_time(
+		float(target_ring) * VegetationSpreadSystem.SECONDS_PER_RING + 5.0
+	)
+	_expect(
+		game.dual_grid_terrain.get_terrain_type(target) == DualGridTilemap.TerrainType.GRASS,
+		"手动推进到第%d圈结算后，真实目标必须变成草地。" % target_ring
+	)
+	_expect(
+		int(game.multiplayer_terrain_overrides.get(target, 99))
+		== DualGridTilemap.TerrainType.GRASS,
+		"Host结算后的真实目标必须进入terrain override集合。"
+	)
+	_expect(
+		spread.get_overlay_progress(pending_target) > 0.0,
+		"结算后继续推进5秒，下一圈必须存在可由死亡清除的临时覆盖。"
+	)
+	_expect(
+		game.multiplayer_terrain_revision == starting_revision + 1,
+		"真实传播结算必须只提交一个权威terrain revision。"
+	)
+
+	lifecycle_events.clear()
+	record_lifecycle_events = true
+	var lethal_damage := plant.current_health + plant.get_effective_physical_defense()
+	_expect(
+		plant.receive_damage(
+			lethal_damage,
+			null,
+			Vector2.ZERO,
+			EnemyConfig.DamageType.PHYSICAL
+		),
+		"真实植被桩必须接受足以致死的权威物理伤害。"
+	)
+	record_lifecycle_events = false
+	_expect(plant.is_dead, "致死伤害必须进入真实PlantDefense死亡流程。")
+	_expect(
+		plant_system.get_plant_by_net_id(LIFECYCLE_PLANT_NET_ID) == null,
+		"PlantSystem死亡回调必须立即释放真实植被桩net_id。"
+	)
+	_expect(
+		not spread.has_source(LIFECYCLE_PLANT_NET_ID),
+		"PlantSystem removal必须同步触发传播来源cancel。"
+	)
+	_expect(spread.get_overlay_cell_count() == 0, "真实植被桩死亡必须立即清空所有临时覆盖。")
+	_expect(
+		game.dual_grid_terrain.get_terrain_type(target) == target_baseline,
+		"真实植被桩死亡必须把目标精确恢复到authored EMPTY/DIRT baseline。"
+	)
+	_expect(
+		not game.multiplayer_terrain_overrides.has(target),
+		"恢复baseline后必须从Host terrain override集合删除目标。"
+	)
+	_expect(game.multiplayer_terrain_overrides.is_empty(), "真实来源销毁后不能残留任何传播override。")
+	_expect(
+		game.multiplayer_terrain_revision == starting_revision + 2,
+		"真实来源销毁与地形恢复必须再提交一个连续terrain revision。"
+	)
+	_expect(
+		lifecycle_events == ["plant_removed", "terrain_delta"],
+		"真实Host死亡链路必须先发植物移除，再发同通道地形恢复delta。"
+	)
+
+	await process_frame
+	spread.set_process(was_processing)
+
+
+func _find_lifecycle_fixture(
+	game: GameTowerDefense,
+	config: PlantDefenseConfig
+) -> Dictionary:
+	var anchors := game.plant_system.get_valid_anchors_for_player(config, game.player)
+	for anchor in anchors:
+		for ring in range(1, VegetationSpreadSystem.SPREAD_RADIUS):
+			var target := _find_authored_spread_cell(game, anchor, ring)
+			if target == Vector2i.MAX:
+				continue
+			var pending_target := _find_authored_spread_cell(game, anchor, ring + 1)
+			if pending_target == Vector2i.MAX:
+				continue
+			return {
+				"anchor": anchor,
+				"target": target,
+				"pending_target": pending_target,
+				"target_ring": ring,
+			}
+	return {}
+
+
+func _find_authored_spread_cell(
+	game: GameTowerDefense,
+	anchor: Vector2i,
+	ring: int
+) -> Vector2i:
+	for offset in VegetationSpreadSystem.get_ring_offsets(ring):
+		var cell := anchor + offset
+		if not game.authored_terrain_baseline.has(cell):
+			continue
+		var baseline := int(game.authored_terrain_baseline[cell])
+		if baseline in [DualGridTilemap.TerrainType.EMPTY, DualGridTilemap.TerrainType.DIRT]:
+			return cell
+	return Vector2i.MAX
+
+
+func _different_terrain_type(baseline_type: int) -> int:
+	return (
+		DualGridTilemap.TerrainType.DIRT
+		if baseline_type == DualGridTilemap.TerrainType.GRASS
+		else DualGridTilemap.TerrainType.GRASS
+	)
+
+
+func _sort_cells(a: Vector2i, b: Vector2i) -> bool:
+	if a.y == b.y:
+		return a.x < b.x
+	return a.y < b.y
+
+
+func _on_terrain_delta(
+	revision: int,
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array
+) -> void:
+	emitted_terrain_batches.append({
+		"revision": revision,
+		"cell_xy": cell_xy.duplicate(),
+		"terrain_types": terrain_types.duplicate(),
+	})
+	if record_lifecycle_events:
+		lifecycle_events.append("terrain_delta")
+
+
+func _on_lifecycle_plant_removed(net_id: int) -> void:
+	if record_lifecycle_events and net_id == LIFECYCLE_PLANT_NET_ID:
+		lifecycle_events.append("plant_removed")
+
+
+func _finish() -> void:
+	if failures.is_empty():
+		print("GAME_TOWER_VEGETATION_INTEGRATION_SMOKE_TEST_OK")
+		quit()
+		return
+	for failure in failures:
+		push_error(failure)
+	quit(1)
+
+
+func _expect(condition: bool, message: String) -> void:
+	if not condition:
+		failures.append(message)

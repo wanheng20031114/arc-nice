@@ -37,5 +37,6 @@ func is_valid() -> bool:
 		and icon != null
 		and plant_scene != null
 		and max_health > 0
-		and footprint_size == REQUIRED_FOOTPRINT_SIZE
+		and footprint_size.x > 0
+		and footprint_size.y > 0
 	)

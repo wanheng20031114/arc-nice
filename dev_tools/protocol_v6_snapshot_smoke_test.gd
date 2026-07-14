@@ -2,6 +2,8 @@ extends SceneTree
 
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const SnapshotManager := preload("res://scene/multiplayer/snapshot_manager.gd")
+const MpGameScript := preload("res://scene/multiplayer/mp_game.gd")
+const TOWER_DEFENSE_RUNTIME_PATH := "res://scene/game_tower_defense.gd"
 
 var failures: Array[String] = []
 
@@ -12,10 +14,13 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_channel_contract()
+	_test_terrain_payload_contract()
+	_test_runtime_state_send_order()
+	_test_plant_removal_restore_order()
 	_test_player_codec_and_reuse()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V5_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V6_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -24,7 +29,7 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 5, "Protocol must be v5.")
+	_expect(NetConstants.PROTOCOL_VERSION == 6, "Protocol must be v6.")
 	_expect(NetConstants.CHANNEL_COUNT == 8, "ENet must provision eight channels.")
 	_expect(NetConstants.MAX_PLAYERS == 8, "Protocol capacity must accept an eight-player roster.")
 	_expect(
@@ -36,7 +41,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v5 channel assignments must remain stable."
+		"Protocol v6 channel assignments must remain stable."
 	)
 	_expect(
 		NetConstants.CH_STATE == NetConstants.CH_PLAYER_STATE
@@ -86,6 +91,41 @@ func _test_player_codec_and_reuse() -> void:
 	)
 
 
+func _test_terrain_payload_contract() -> void:
+	var mp_game := MpGameScript.new()
+	var cell_xy := PackedInt32Array([0, 0, 1, -2, 5, 7])
+	var terrain_types := PackedInt32Array([-1, 1, 2])
+	_expect(
+		bool(mp_game.call("_is_valid_terrain_payload", cell_xy, terrain_types, 96)),
+		"Terrain payloads must preserve EMPTY=-1 alongside grass and dirt."
+	)
+	_expect(
+		not bool(mp_game.call(
+			"_is_valid_terrain_payload",
+			PackedInt32Array([0, 0, 0, 0]),
+			PackedInt32Array([1, 2]),
+			96
+		)),
+		"Terrain payloads must reject duplicate coordinates."
+	)
+	var maximum_cell_xy := PackedInt32Array()
+	var maximum_types := PackedInt32Array()
+	for cell_index in range(97):
+		maximum_cell_xy.append(cell_index)
+		maximum_cell_xy.append(0)
+		maximum_types.append(1)
+	_expect(
+		not bool(mp_game.call(
+			"_is_valid_terrain_payload",
+			maximum_cell_xy,
+			maximum_types,
+			96
+		)),
+		"Terrain chunks must reject a 97th cell."
+	)
+	mp_game.free()
+
+
 func _test_enemy_codec_reuse_and_packet_budget() -> void:
 	var sender := SnapshotManager.new()
 	var receiver := SnapshotManager.new()
@@ -123,6 +163,46 @@ func _test_enemy_codec_reuse_and_packet_budget() -> void:
 		receiver.enemy_receive_baselines.size() == 1
 		and receiver.enemy_receive_output_states.size() == 1,
 		"Enemy pruning must release stale baseline and output-object entries together."
+	)
+
+
+func _test_runtime_state_send_order() -> void:
+	var source := FileAccess.get_file_as_string("res://scene/multiplayer/mp_game.gd")
+	var function_start := source.find("func _send_runtime_state_to_peer(")
+	var function_end := source.find("\n\nfunc ", function_start + 1)
+	var function_body := (
+		source.substr(function_start, function_end - function_start)
+		if function_start >= 0 and function_end > function_start
+		else ""
+	)
+	var terrain_position := function_body.find("_send_terrain_snapshot_to_peer")
+	var plant_position := function_body.find("_send_live_plant_roster_to_peer")
+	var other_position := function_body.find("_send_live_enemy_roster_to_peer")
+	var manifest_position := function_body.find("_send_runtime_world_manifest_to_peer")
+	_expect(
+		terrain_position >= 0
+		and plant_position > terrain_position
+		and other_position > plant_position
+		and manifest_position > other_position,
+		"Complete-state repair must send terrain, plants, other state, then the world manifest."
+	)
+
+
+func _test_plant_removal_restore_order() -> void:
+	var source := FileAccess.get_file_as_string(TOWER_DEFENSE_RUNTIME_PATH)
+	var function_start := source.find("func _on_plant_removed(")
+	var function_end := source.find("\n\nfunc ", function_start + 1)
+	var function_body := (
+		source.substr(function_start, function_end - function_start)
+		if function_start >= 0 and function_end > function_start
+		else ""
+	)
+	var removal_signal_position := function_body.find("multiplayer_plant_removed.emit")
+	var cancel_position := function_body.find("vegetation_spread_system.cancel_source")
+	_expect(
+		removal_signal_position >= 0
+		and cancel_position > removal_signal_position,
+		"Plant removal must reach reliable CH5 before its terrain-restore delta so clients clear the growth overlay first."
 	)
 
 

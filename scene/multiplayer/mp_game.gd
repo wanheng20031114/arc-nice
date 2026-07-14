@@ -122,12 +122,20 @@ const WAREHOUSE_TRANSACTION_RATE_BURST := 20.0
 const WAREHOUSE_SNAPSHOT_REQUEST_RATE_PER_SECOND := 2.0
 const WAREHOUSE_SNAPSHOT_REQUEST_RATE_BURST := 4.0
 const WAREHOUSE_TRANSACTION_RESULT_CACHE_SIZE := 256
+const TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS := 96
+const TERRAIN_SNAPSHOT_MAX_CHUNKS := 4096
+const TERRAIN_DELTA_MAX_CELLS := 96
+const TERRAIN_SNAPSHOT_REQUEST_RATE_PER_SECOND := 1.0
+const TERRAIN_SNAPSHOT_REQUEST_RATE_BURST := 2.0
+const TERRAIN_TYPE_EMPTY := -1
+const TERRAIN_TYPE_GRASS := 1
+const TERRAIN_TYPE_DIRT := 2
 # Multiplayer protocol map:
 # - CH_AUTH: authentication, loading barrier, and complete-state repair.
 # - CH_INPUT: client input and predicted pose reports.
 # - CH_PLAYER_STATE / CH_ENEMY_STATE: independent realtime snapshots.
 # - CH_PROJECTILE: projectile intents and replicated projectile presentation.
-# - CH_WORLD_EVENT: durable spawn, terminal, plant, base, and flow events.
+# - CH_WORLD_EVENT: durable spawn, terminal, plant, terrain, base, and flow events.
 # - CH_TRANSACTION: inventory, Luoxi, economy, and shared-warehouse commands.
 # - CH_FEEDBACK: discardable combat numbers, status visuals, and progress batches.
 # Host owns enemy AI, player damage confirmation, death, revive, pickups, upgrades, and wave lifecycle.
@@ -225,6 +233,7 @@ var _last_plant_placement_request_ids: Dictionary = {}
 var _plant_placement_rate_buckets: Dictionary = {}
 var _warehouse_transaction_rate_buckets: Dictionary = {}
 var _warehouse_snapshot_request_rate_buckets: Dictionary = {}
+var _terrain_snapshot_request_rate_buckets: Dictionary = {}
 var _warehouse_transaction_results_by_peer: Dictionary = {}
 var _warehouse_transaction_started_usec: Dictionary = {}
 var _pending_warehouse_snapshots: Dictionary = {}
@@ -246,6 +255,13 @@ var _pending_enemy_spawns: Array[Dictionary] = []
 var _host_terminal_enemy_ids: Dictionary = {}
 var _public_room_keepalive_time_left: float = 0.0
 var _public_room_keepalive_in_flight: bool = false
+var _next_terrain_snapshot_id: int = 1
+var _last_host_terrain_revision_broadcast: int = 0
+var _client_terrain_revision: int = -1
+var _client_has_terrain_snapshot: bool = false
+var _client_waiting_for_terrain_snapshot: bool = false
+var _last_completed_terrain_snapshot_id: int = 0
+var _pending_terrain_snapshot_batches: Dictionary = {}
 var _revive_random_generator := RandomNumberGenerator.new()
 var _luoxi_offer_random_generator := RandomNumberGenerator.new()
 var _runtime_network_metrics = MultiplayerRuntimeMetricsScript.new(
@@ -302,6 +318,8 @@ func _exit_tree() -> void:
 	_pending_wave_progress.clear()
 	_pending_enemy_spawns.clear()
 	_host_terminal_enemy_ids.clear()
+	_pending_terrain_snapshot_batches.clear()
+	_terrain_snapshot_request_rate_buckets.clear()
 	_luoxi_offer_states_by_peer.clear()
 	_luoxi_offer_revision_counters.clear()
 	_warehouse_transaction_started_usec.clear()
@@ -1126,11 +1144,14 @@ func _setup_game(mode: int) -> bool:
 		)
 		game.multiplayer_plant_health_changed.connect(_on_host_plant_health_changed)
 		game.multiplayer_plant_removed.connect(_on_host_plant_removed)
+		game.multiplayer_terrain_delta.connect(_on_host_terrain_delta)
 	game.multiplayer_plant_placement_requested.connect(
 		_on_local_plant_placement_requested
 	)
 	game.return_to_lobby_requested.connect(_on_game_return_to_lobby_requested)
 	add_child(game)
+	if net_manager.is_client():
+		_client_has_terrain_snapshot = not game.supports_multiplayer_terrain_state()
 	run_state.set_active_multiplayer_peer(local_peer_id)
 	if net_manager.is_host() and game.supports_tower_defense():
 		_broadcast_base_health_snapshot()
@@ -1146,6 +1167,8 @@ func _request_runtime_state_from_host() -> void:
 	):
 		return
 	_runtime_state_requested = true
+	if game.supports_multiplayer_terrain_state():
+		_client_waiting_for_terrain_snapshot = true
 	net_runtime_state_requested.rpc_id(
 		_get_host_peer_id(),
 		not _client_has_received_flow_state
@@ -1159,6 +1182,8 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 		if not bool(net_manager.call("is_peer_send_ready", peer_id)):
 			return
 	_runtime_network_metrics.record_state_repair()
+	_send_terrain_snapshot_to_peer(peer_id)
+	_send_live_plant_roster_to_peer(peer_id)
 	for state_peer_id_variant in game.peer_players.keys():
 		var state_peer_id := int(state_peer_id_variant)
 		if state_peer_id <= 0 or not run_state.has_multiplayer_peer_state(state_peer_id):
@@ -1185,26 +1210,6 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 				int(base_snapshot.get("maximum_health", 1)),
 				int(base_snapshot.get("revision", 0))
 			)
-		for plant_snapshot in game.get_multiplayer_plant_snapshots():
-			var plant_net_id := int(plant_snapshot.get("net_id", 0))
-			net_plant_spawned.rpc_id(
-				peer_id,
-				0,
-				int(plant_snapshot.get("owner_peer_id", 0)),
-				plant_net_id,
-				String(plant_snapshot.get("plant_id", &"")),
-				plant_snapshot.get("anchor", Vector2i.ZERO) as Vector2i,
-				int(plant_snapshot.get("current_health", 0)),
-				int(plant_snapshot.get("maximum_health", 1)),
-				int(plant_snapshot.get("health_revision", 0))
-			)
-			var warehouse := game.get_multiplayer_plant_node(plant_net_id) as OakWarehouse
-			if warehouse != null and is_instance_valid(warehouse):
-				net_warehouse_storage_snapshot.rpc_id(
-					peer_id,
-					plant_net_id,
-					warehouse.export_storage_snapshot()
-				)
 		var progress_snapshot := game.get_tower_defense_wave_progress_snapshot()
 		if not progress_snapshot.is_empty():
 			net_tower_defense_wave_progress_keyframe.rpc_id(
@@ -1215,18 +1220,109 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 				int(progress_snapshot.get("resolved", 0)),
 				int(progress_snapshot.get("total", 0))
 			)
+	if include_flow_state:
+		var flow_snapshot := game.get_flow_state_snapshot()
+		if not flow_snapshot.is_empty():
+			net_flow_state_changed.rpc_id(
+				peer_id,
+				String(flow_snapshot.get("step_id", &"")),
+				int(flow_snapshot.get("state", GameRuntimeBase.WaveState.PRE_WAVE)),
+				int(flow_snapshot.get("countdown_seconds", 0))
+			)
 	_send_runtime_world_manifest_to_peer(peer_id)
-	if not include_flow_state:
+
+
+func _send_live_plant_roster_to_peer(peer_id: int) -> void:
+	if not game.supports_tower_defense():
 		return
-	var flow_snapshot := game.get_flow_state_snapshot()
-	if flow_snapshot.is_empty():
+	for plant_snapshot in game.get_multiplayer_plant_snapshots():
+		var plant_net_id := int(plant_snapshot.get("net_id", 0))
+		var plant := game.get_multiplayer_plant_node(plant_net_id)
+		var runtime_state := _export_plant_runtime_state(plant)
+		var host_sample_time := _get_net_time()
+		net_plant_spawned.rpc_id(
+			peer_id,
+			0,
+			int(plant_snapshot.get("owner_peer_id", 0)),
+			plant_net_id,
+			String(plant_snapshot.get("plant_id", &"")),
+			plant_snapshot.get("anchor", Vector2i.ZERO) as Vector2i,
+			int(plant_snapshot.get("current_health", 0)),
+			int(plant_snapshot.get("maximum_health", 1)),
+			int(plant_snapshot.get("health_revision", 0)),
+			runtime_state,
+			host_sample_time
+		)
+		var warehouse := plant as OakWarehouse
+		if warehouse != null and is_instance_valid(warehouse):
+			net_warehouse_storage_snapshot.rpc_id(
+				peer_id,
+				plant_net_id,
+				warehouse.export_storage_snapshot()
+			)
+
+
+func _send_terrain_snapshot_to_peer(peer_id: int) -> void:
+	if (
+		not net_manager.is_host()
+		or game == null
+		or peer_id <= 0
+		or not game.supports_multiplayer_terrain_state()
+	):
 		return
-	net_flow_state_changed.rpc_id(
-		peer_id,
-		String(flow_snapshot.get("step_id", &"")),
-		int(flow_snapshot.get("state", GameRuntimeBase.WaveState.PRE_WAVE)),
-		int(flow_snapshot.get("countdown_seconds", 0))
+	var snapshot := game.get_multiplayer_terrain_snapshot()
+	var revision := int(snapshot.get("revision", -1))
+	var cell_xy: PackedInt32Array = snapshot.get("cell_xy", PackedInt32Array())
+	var terrain_types: PackedInt32Array = snapshot.get(
+		"terrain_types",
+		PackedInt32Array()
 	)
+	if (
+		revision < 0
+		or not _is_valid_terrain_payload(
+			cell_xy,
+			terrain_types,
+			TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS * TERRAIN_SNAPSHOT_MAX_CHUNKS
+		)
+	):
+		push_error("MpGame: authoritative terrain snapshot is invalid.")
+		return
+	var snapshot_id := _next_terrain_snapshot_id
+	_next_terrain_snapshot_id += 1
+	var cell_count := terrain_types.size()
+	var chunk_count := maxi(
+		ceili(float(cell_count) / float(TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS)),
+		1
+	)
+	for chunk_index in range(chunk_count):
+		var start_cell := chunk_index * TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS
+		var end_cell := mini(start_cell + TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS, cell_count)
+		var chunk_cell_xy := PackedInt32Array()
+		var chunk_terrain_types := PackedInt32Array()
+		for cell_index in range(start_cell, end_cell):
+			chunk_cell_xy.append(cell_xy[cell_index * 2])
+			chunk_cell_xy.append(cell_xy[cell_index * 2 + 1])
+			chunk_terrain_types.append(terrain_types[cell_index])
+		_record_outbound_rpc(
+			&"net_terrain_snapshot_chunk",
+			[
+				snapshot_id,
+				revision,
+				chunk_index,
+				chunk_count,
+				chunk_cell_xy,
+				chunk_terrain_types,
+			]
+		)
+		net_terrain_snapshot_chunk.rpc_id(
+			peer_id,
+			snapshot_id,
+			revision,
+			chunk_index,
+			chunk_count,
+			chunk_cell_xy,
+			chunk_terrain_types
+		)
 
 
 func _send_live_enemy_roster_to_peer(peer_id: int) -> void:
@@ -5043,6 +5139,8 @@ func _on_host_plant_spawned(
 		return
 	var plant := game.get_multiplayer_plant_node(net_id)
 	_configure_warehouse_network(plant, true)
+	var runtime_state := _export_plant_runtime_state(plant)
+	var host_sample_time := _get_net_time()
 	_rpc_to_connected_clients(
 		&"net_plant_spawned",
 		[
@@ -5054,6 +5152,8 @@ func _on_host_plant_spawned(
 			current_health,
 			maximum_health,
 			health_revision,
+			runtime_state,
+			host_sample_time,
 		]
 	)
 	var warehouse := plant as OakWarehouse
@@ -5114,6 +5214,57 @@ func _on_host_plant_removed(net_id: int) -> void:
 		return
 	_pending_plant_health_updates.erase(net_id)
 	_rpc_to_connected_clients(&"net_plant_removed", [net_id])
+
+
+func _on_host_terrain_delta(
+	revision: int,
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array
+) -> void:
+	if (
+		not is_inside_tree()
+		or not net_manager.is_host()
+		or revision <= _last_host_terrain_revision_broadcast
+		or terrain_types.is_empty()
+		or not _is_valid_terrain_payload(
+			cell_xy,
+			terrain_types,
+			TERRAIN_DELTA_MAX_CELLS
+		)
+	):
+		return
+	_last_host_terrain_revision_broadcast = revision
+	_rpc_to_connected_clients(
+		&"net_terrain_delta",
+		[revision, cell_xy, terrain_types]
+	)
+
+
+func _export_plant_runtime_state(plant: PlantDefense) -> Dictionary:
+	if plant == null or not is_instance_valid(plant):
+		return {}
+	return plant.export_multiplayer_runtime_state().duplicate(true)
+
+
+func _apply_plant_runtime_state(
+	plant: PlantDefense,
+	runtime_state: Dictionary,
+	host_sample_time: float
+) -> void:
+	if plant == null or not is_instance_valid(plant) or not is_finite(host_sample_time):
+		return
+	var corrected_state := runtime_state.duplicate(true)
+	var mapped_sample_time := _map_host_timestamp_to_client_time(host_sample_time, false)
+	var sample_age := maxf(_get_net_time() - mapped_sample_time, 0.0)
+	if corrected_state.has("spread_elapsed_seconds"):
+		var spread_elapsed := float(corrected_state.get("spread_elapsed_seconds", 0.0))
+		if not is_finite(spread_elapsed):
+			return
+		corrected_state["spread_elapsed_seconds"] = maxf(spread_elapsed, 0.0) + sample_age
+	plant.apply_multiplayer_runtime_state(
+		corrected_state,
+		Time.get_ticks_msec() / 1000.0
+	)
 
 
 func broadcast_enemy_action(
@@ -5273,6 +5424,163 @@ func net_runtime_state_requested(include_flow_state: bool = true) -> void:
 	if not net_manager.is_host() or game == null:
 		return
 	_send_runtime_state_to_peer(multiplayer.get_remote_sender_id(), include_flow_state)
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_terrain_snapshot_requested(known_revision: int) -> void:
+	if (
+		not net_manager.is_host()
+		or game == null
+		or not game.supports_multiplayer_terrain_state()
+		or known_revision < -1
+	):
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0 or game.get_player_for_peer(sender_id) == null:
+		return
+	if not _consume_peer_rate_token(
+		_terrain_snapshot_request_rate_buckets,
+		sender_id,
+		TERRAIN_SNAPSHOT_REQUEST_RATE_PER_SECOND,
+		TERRAIN_SNAPSHOT_REQUEST_RATE_BURST
+	):
+		return
+	_send_terrain_snapshot_to_peer(sender_id)
+
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_terrain_snapshot_chunk(
+	snapshot_id: int,
+	revision: int,
+	chunk_index: int,
+	chunk_count: int,
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array
+) -> void:
+	if game == null or net_manager.is_host() or not game.supports_multiplayer_terrain_state():
+		return
+	if snapshot_id <= _last_completed_terrain_snapshot_id:
+		return
+	if (
+		snapshot_id <= 0
+		or revision < 0
+		or chunk_count <= 0
+		or chunk_count > TERRAIN_SNAPSHOT_MAX_CHUNKS
+		or chunk_index < 0
+		or chunk_index >= chunk_count
+		or not _is_valid_terrain_payload(
+			cell_xy,
+			terrain_types,
+			TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS
+		)
+		or (chunk_index < chunk_count - 1 and terrain_types.size() != TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS)
+		or (terrain_types.is_empty() and (chunk_count != 1 or chunk_index != 0))
+	):
+		_restart_terrain_snapshot_repair()
+		return
+
+	var batch := _pending_terrain_snapshot_batches.get(snapshot_id, {}) as Dictionary
+	if batch.is_empty():
+		batch = {
+			"revision": revision,
+			"chunk_count": chunk_count,
+			"chunks": {},
+		}
+		_pending_terrain_snapshot_batches[snapshot_id] = batch
+	elif (
+		int(batch.get("revision", -1)) != revision
+		or int(batch.get("chunk_count", 0)) != chunk_count
+	):
+		_restart_terrain_snapshot_repair()
+		return
+
+	var chunks := batch.get("chunks", {}) as Dictionary
+	if chunks.has(chunk_index):
+		var previous := chunks[chunk_index] as Dictionary
+		if (
+			(previous.get("cell_xy", PackedInt32Array()) as PackedInt32Array) == cell_xy
+			and (
+				previous.get("terrain_types", PackedInt32Array()) as PackedInt32Array
+			) == terrain_types
+		):
+			return
+		_restart_terrain_snapshot_repair()
+		return
+	chunks[chunk_index] = {
+		"cell_xy": cell_xy.duplicate(),
+		"terrain_types": terrain_types.duplicate(),
+	}
+	if chunks.size() < chunk_count:
+		return
+
+	var complete_cell_xy := PackedInt32Array()
+	var complete_terrain_types := PackedInt32Array()
+	for ordered_chunk_index in range(chunk_count):
+		if not chunks.has(ordered_chunk_index):
+			_restart_terrain_snapshot_repair()
+			return
+		var chunk := chunks[ordered_chunk_index] as Dictionary
+		var ordered_cell_xy: PackedInt32Array = chunk.get("cell_xy", PackedInt32Array())
+		var ordered_terrain_types: PackedInt32Array = chunk.get(
+			"terrain_types",
+			PackedInt32Array()
+		)
+		complete_cell_xy.append_array(ordered_cell_xy)
+		complete_terrain_types.append_array(ordered_terrain_types)
+	if not _is_valid_terrain_payload(complete_cell_xy, complete_terrain_types):
+		_restart_terrain_snapshot_repair()
+		return
+	if _client_has_terrain_snapshot and revision < _client_terrain_revision:
+		_pending_terrain_snapshot_batches.erase(snapshot_id)
+		_client_waiting_for_terrain_snapshot = false
+		return
+	if not game.apply_remote_terrain_snapshot(
+		revision,
+		complete_cell_xy,
+		complete_terrain_types
+	):
+		_restart_terrain_snapshot_repair()
+		return
+	_client_terrain_revision = revision
+	_client_has_terrain_snapshot = true
+	_client_waiting_for_terrain_snapshot = false
+	_last_completed_terrain_snapshot_id = snapshot_id
+	for pending_id_variant in _pending_terrain_snapshot_batches.keys():
+		if int(pending_id_variant) <= snapshot_id:
+			_pending_terrain_snapshot_batches.erase(pending_id_variant)
+
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_terrain_delta(
+	revision: int,
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array
+) -> void:
+	if game == null or net_manager.is_host() or not game.supports_multiplayer_terrain_state():
+		return
+	if (
+		revision <= 0
+		or terrain_types.is_empty()
+		or not _is_valid_terrain_payload(
+			cell_xy,
+			terrain_types,
+			TERRAIN_DELTA_MAX_CELLS
+		)
+	):
+		_restart_terrain_snapshot_repair()
+		return
+	if _client_has_terrain_snapshot and revision <= _client_terrain_revision:
+		return
+	if not _client_has_terrain_snapshot or _client_waiting_for_terrain_snapshot:
+		_request_terrain_snapshot_repair()
+		return
+	if revision != _client_terrain_revision + 1:
+		_request_terrain_snapshot_repair()
+		return
+	if not game.apply_remote_terrain_delta(revision, cell_xy, terrain_types):
+		_request_terrain_snapshot_repair()
+		return
+	_client_terrain_revision = revision
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -5634,7 +5942,9 @@ func net_plant_spawned(
 	anchor: Vector2i,
 	current_health: int,
 	maximum_health: int,
-	health_revision: int
+	health_revision: int,
+	runtime_state: Dictionary,
+	host_sample_time: float
 ) -> void:
 	if game == null or net_manager.is_host():
 		return
@@ -5648,7 +5958,9 @@ func net_plant_spawned(
 		maximum_health,
 		health_revision
 	)
-	_configure_warehouse_network(game.get_multiplayer_plant_node(net_id), false)
+	var plant := game.get_multiplayer_plant_node(net_id)
+	_apply_plant_runtime_state(plant, runtime_state, host_sample_time)
+	_configure_warehouse_network(plant, false)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -6903,6 +7215,52 @@ func _get_client_view_local_peer_id() -> int:
 	return 0
 
 
+func _request_terrain_snapshot_repair() -> void:
+	if (
+		_client_waiting_for_terrain_snapshot
+		or not net_manager.is_client()
+		or game == null
+		or not game.supports_multiplayer_terrain_state()
+	):
+		return
+	_client_waiting_for_terrain_snapshot = true
+	net_terrain_snapshot_requested.rpc_id(
+		_get_host_peer_id(),
+		_client_terrain_revision
+	)
+
+
+func _restart_terrain_snapshot_repair() -> void:
+	_pending_terrain_snapshot_batches.clear()
+	_client_waiting_for_terrain_snapshot = false
+	_request_terrain_snapshot_repair()
+
+
+func _is_valid_terrain_payload(
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array,
+	maximum_cells: int = 0
+) -> bool:
+	if cell_xy.size() != terrain_types.size() * 2:
+		return false
+	if maximum_cells > 0 and terrain_types.size() > maximum_cells:
+		return false
+	var seen_cells: Dictionary = {}
+	for cell_index in range(terrain_types.size()):
+		var terrain_type := terrain_types[cell_index]
+		if (
+			terrain_type != TERRAIN_TYPE_EMPTY
+			and terrain_type != TERRAIN_TYPE_GRASS
+			and terrain_type != TERRAIN_TYPE_DIRT
+		):
+			return false
+		var cell := Vector2i(cell_xy[cell_index * 2], cell_xy[cell_index * 2 + 1])
+		if seen_cells.has(cell):
+			return false
+		seen_cells[cell] = true
+	return true
+
+
 func _get_net_time() -> float:
 	return Time.get_ticks_msec() / 1000.0 - _net_time_origin
 
@@ -6976,6 +7334,7 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_plant_placement_rate_buckets.erase(peer_id)
 	_warehouse_transaction_rate_buckets.erase(peer_id)
 	_warehouse_snapshot_request_rate_buckets.erase(peer_id)
+	_terrain_snapshot_request_rate_buckets.erase(peer_id)
 	_warehouse_transaction_results_by_peer.erase(peer_id)
 	_clear_projectiles_for_peer(peer_id)
 	_clear_projectile_records_for_peer(peer_id)
@@ -7030,6 +7389,13 @@ func _return_to_lobby() -> void:
 	_pending_wave_progress.clear()
 	_pending_enemy_spawns.clear()
 	_host_terminal_enemy_ids.clear()
+	_pending_terrain_snapshot_batches.clear()
+	_terrain_snapshot_request_rate_buckets.clear()
+	_client_terrain_revision = -1
+	_last_host_terrain_revision_broadcast = 0
+	_client_has_terrain_snapshot = false
+	_client_waiting_for_terrain_snapshot = false
+	_last_completed_terrain_snapshot_id = 0
 	_luoxi_offer_states_by_peer.clear()
 	_luoxi_offer_revision_counters.clear()
 	_warehouse_snapshot_request_rate_buckets.clear()

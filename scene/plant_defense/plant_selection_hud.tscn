@@ -144,7 +144,7 @@ mouse_filter = 2
 theme_override_colors/font_color = Color(0.6, 0.76, 0.6, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 13
-text = "战斗不会暂停，确认后在绿色交点处放置"
+text = "战斗不会暂停，确认后选择可放置位置"
 horizontal_alignment = 1
 
 [node name="Divider" type="ColorRect" parent="Root/Center/Content/Margin/Layout"]

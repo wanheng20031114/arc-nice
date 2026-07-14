@@ -1,0 +1,346 @@
+{
+  "schema_version": 1,
+  "asset_family": "vegetation_stake",
+  "status": "passed",
+  "pipeline": [
+    "built-in imagegen reference-guided master",
+    "flat #FF00FF chroma key",
+    "pixel_grid_analyzer measured logical grid",
+    "nearest logical-cell selection",
+    "detached motes delegated to GPUParticles2D",
+    "shared <=32-color palette without dithering",
+    "binary-alpha and footprint audit"
+  ],
+  "visual_contract": {
+    "source_canvas_px": [
+      64,
+      64
+    ],
+    "maximum_subject_px": [
+      20,
+      23
+    ],
+    "static_world_scale": [
+      0.5,
+      0.5
+    ],
+    "camera_zoom": 2,
+    "screen_px_per_source_px": 1,
+    "floor_border_logical_px": 2,
+    "inner_screen_px": [
+      24,
+      24
+    ],
+    "alpha": "binary",
+    "transparent_rgb": [
+      0,
+      0,
+      0
+    ],
+    "visible_color_limit": 32
+  },
+  "source": {
+    "path": "dev_assets/source_images/plant_defense/vegetation_stake/vegetation_stake_selected_imagegen_magenta.png",
+    "normalization_mode": "measured_grid_center_sample_fit_to_contract",
+    "detected_logical_subject_size": [
+      19,
+      45
+    ],
+    "logical_subject_size": [
+      10,
+      23
+    ],
+    "logical_fit_scale": 0.511111,
+    "grid_analysis": {
+      "image_width": 1254,
+      "image_height": 1254,
+      "image_mode": "RGBA",
+      "detection_mode": "periodic_phase_fallback",
+      "grid_cell_width": 20.4,
+      "grid_cell_height": 19.35,
+      "grid_cell_size": 20,
+      "confidence": 0.418,
+      "subject_bbox": {
+        "left": 436,
+        "top": 163,
+        "right": 819,
+        "bottom": 1037
+      },
+      "subject_pixel_width": 383,
+      "subject_pixel_height": 874,
+      "subject_grid_width": 19,
+      "subject_grid_height": 45,
+      "recommended_canvas_grid_width": 1254,
+      "recommended_canvas_grid_height": 1254,
+      "fallback_axis_scores": [
+        0.562,
+        0.274
+      ],
+      "fallback_period_ratio": 1.054
+    }
+  },
+  "component_filter": {
+    "component_count": 4,
+    "kept_body_pixels": 136,
+    "discarded_mote_pixels": 3,
+    "reason": "detached authored motes are recreated by GPUParticles2D"
+  },
+  "registration": {
+    "mode": "bottom_center",
+    "paste_origin": [
+      27,
+      25
+    ],
+    "output_foot_target": [
+      32,
+      47
+    ],
+    "measured_output_foot_anchor": [
+      31.5,
+      47.0
+    ]
+  },
+  "shared_palette": {
+    "visible_color_limit": 32,
+    "actual_color_count": 31,
+    "rgb": [
+      [
+        248,
+        254,
+        173
+      ],
+      [
+        235,
+        252,
+        129
+      ],
+      [
+        237,
+        253,
+        124
+      ],
+      [
+        239,
+        236,
+        204
+      ],
+      [
+        195,
+        251,
+        41
+      ],
+      [
+        218,
+        213,
+        169
+      ],
+      [
+        158,
+        236,
+        5
+      ],
+      [
+        130,
+        217,
+        0
+      ],
+      [
+        224,
+        202,
+        77
+      ],
+      [
+        187,
+        180,
+        113
+      ],
+      [
+        176,
+        156,
+        72
+      ],
+      [
+        144,
+        136,
+        91
+      ],
+      [
+        110,
+        195,
+        0
+      ],
+      [
+        71,
+        157,
+        1
+      ],
+      [
+        82,
+        143,
+        7
+      ],
+      [
+        64,
+        142,
+        1
+      ],
+      [
+        171,
+        125,
+        14
+      ],
+      [
+        146,
+        100,
+        4
+      ],
+      [
+        82,
+        113,
+        18
+      ],
+      [
+        95,
+        87,
+        23
+      ],
+      [
+        63,
+        128,
+        0
+      ],
+      [
+        46,
+        95,
+        0
+      ],
+      [
+        40,
+        84,
+        1
+      ],
+      [
+        30,
+        81,
+        0
+      ],
+      [
+        110,
+        78,
+        5
+      ],
+      [
+        105,
+        71,
+        7
+      ],
+      [
+        70,
+        73,
+        11
+      ],
+      [
+        33,
+        78,
+        0
+      ],
+      [
+        76,
+        59,
+        24
+      ],
+      [
+        54,
+        48,
+        24
+      ],
+      [
+        38,
+        51,
+        10
+      ]
+    ]
+  },
+  "outputs": [
+    {
+      "label": "vegetation_stake",
+      "path": "resources/texture/plant_defense/vegetation_stake/vegetation_stake.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        27,
+        29,
+        37,
+        48
+      ],
+      "subject_size": [
+        10,
+        19
+      ],
+      "visible_color_count": 31,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -2.5,
+        -1.5,
+        2.5,
+        8.0
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    {
+      "label": "vegetation_stake_glow",
+      "path": "resources/texture/plant_defense/vegetation_stake/vegetation_stake_glow.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        28,
+        29,
+        36,
+        38
+      ],
+      "subject_size": [
+        8,
+        9
+      ],
+      "visible_color_count": 15,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -2.0,
+        -1.5,
+        2.0,
+        3.0
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    }
+  ],
+  "validation": {
+    "passed": true,
+    "failures": []
+  }
+}

@@ -183,7 +183,7 @@ func _begin_placing(config: PlantDefenseConfig) -> void:
 	selected_config = config
 	selection_hud.close()
 	_set_placement_state(PlacementState.PLACING)
-	preview.configure(selected_config)
+	preview.configure(selected_config, _get_placement_tile_size())
 	placement_hint_layer.show()
 	placement_hint_root.show()
 	marker_refresh_time_left = 0.0
@@ -312,10 +312,20 @@ func _clear_markers() -> void:
 func _update_hint_text() -> void:
 	if selected_config == null:
 		return
-	placement_hint_label.text = "%s  ·  %d 个可放置交点  ·  左键放置  ·  右键 / Esc / 植物键取消" % [
+	placement_hint_label.text = "%s  ·  %d 个可放置位置  ·  左键放置  ·  右键 / Esc / 植物键取消" % [
 		selected_config.display_name,
 		valid_anchors.size(),
 	]
+
+
+func _get_placement_tile_size() -> Vector2:
+	if (
+		plant_system == null
+		or plant_system.ground_tile_map == null
+		or plant_system.ground_tile_map.tile_set == null
+	):
+		return PlantPlacementPreview.DEFAULT_TILE_SIZE
+	return Vector2(plant_system.ground_tile_map.tile_set.tile_size).abs()
 
 
 func _set_placement_state(next_state: PlacementState) -> void:

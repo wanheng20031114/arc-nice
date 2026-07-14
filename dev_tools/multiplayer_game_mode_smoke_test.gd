@@ -18,7 +18,7 @@ func _run() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 5, "Split-channel multiplayer requires protocol v5.")
+	_expect(NetConstants.PROTOCOL_VERSION == 6, "Terrain replication requires multiplayer protocol v6.")
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),
 		"A disconnected future Host must be able to select tower defense."

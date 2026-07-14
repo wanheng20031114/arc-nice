@@ -72,5 +72,5 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.82, 1, 0.78, 1)
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_font_sizes/font_size = 12
-text = "绿色交点均为可放置位置  ·  左键放置  ·  右键 / Esc / 植物键取消"
+text = "绿色标记均为可放置位置  ·  左键放置  ·  右键 / Esc / 植物键取消"
 horizontal_alignment = 1
