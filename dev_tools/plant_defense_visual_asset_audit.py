@@ -25,7 +25,7 @@ WORLD_SCALE = 0.5
 WORLD_FOOTPRINT_SIDE = 32.0
 MAX_VISIBLE_COLORS = 64
 WAREHOUSE_MAX_SUBJECT_SIZE = (60, 62)
-VEGETATION_STAKE_MAX_SUBJECT_SIZE = (20, 23)
+VEGETATION_STAKE_MAX_SUBJECT_SIZE = (22, 23)
 VEGETATION_STAKE_MAX_VISIBLE_COLORS = 32
 CANVAS_CENTER = (SOURCE_SIDE // 2, SOURCE_SIDE // 2)
 AGAVE_HEAD_OFFSET = (0, -6)
@@ -227,13 +227,20 @@ def _collect_failures(report: dict[str, Any]) -> list[str]:
             or stake_height > VEGETATION_STAKE_MAX_SUBJECT_SIZE[1]
         ):
             failures.append(
-                f"{stake_audit['path']} must fit within 20x23 source pixels; "
+                f"{stake_audit['path']} must fit within 22x23 source pixels; "
                 f"got {stake_width}x{stake_height}"
             )
         if stake_audit["visible_color_count"] > VEGETATION_STAKE_MAX_VISIBLE_COLORS:
             failures.append(
                 f"{stake_audit['path']} exceeds the Vegetation Stake 32-color limit"
             )
+
+    stake_audit = audits[_relative(VEGETATION_STAKE_ASSET)]
+    if tuple(stake_audit["subject_size"]) != VEGETATION_STAKE_MAX_SUBJECT_SIZE:
+        failures.append(
+            "Vegetation Stake body must remain exactly 22x23 source pixels; "
+            f"got {stake_audit['subject_size'][0]}x{stake_audit['subject_size'][1]}"
+        )
 
     stake = _load_rgba(VEGETATION_STAKE_ASSET)
     glow = _load_rgba(VEGETATION_STAKE_GLOW)

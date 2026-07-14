@@ -33,7 +33,11 @@ SOURCE_DIR = ROOT / "dev_assets/source_images/plant_defense/vegetation_stake"
 DEFAULT_INPUT = SOURCE_DIR / "vegetation_stake_selected_imagegen_magenta.png"
 OUTPUT_DIR = ROOT / "resources/texture/plant_defense/vegetation_stake"
 AUDIT_PATH = SOURCE_DIR / "vegetation_stake_asset_audit.json"
-MAX_SUBJECT_SIZE = (20, 23)
+# The selected square-core source is natively 22x30 logical pixels including
+# three detached glow motes. Once those motes are delegated to particles, the
+# connected opaque building is exactly 22x23 and needs no secondary downscale.
+MAX_NORMALIZED_SOURCE_SIZE = (22, 30)
+MAX_SUBJECT_SIZE = (22, 23)
 FOOT_TARGET = (32, 47)
 MAX_VISIBLE_COLORS = 32
 
@@ -101,10 +105,19 @@ def _build_glow_mask(image: Image.Image) -> Image.Image:
 def build_assets(input_path: Path) -> tuple[dict[str, Image.Image], dict]:
     subject = normalize_imagegen_subject(
         input_path,
-        max_subject_size=MAX_SUBJECT_SIZE,
+        max_subject_size=MAX_NORMALIZED_SOURCE_SIZE,
         fit_oversized=True,
     )
     body_subject, component_audit = _largest_component(subject.image)
+    body_bbox = alpha_bbox(body_subject)
+    body_subject = body_subject.crop(body_bbox)
+    component_audit["opaque_body_size"] = list(body_subject.size)
+    if body_subject.size != MAX_SUBJECT_SIZE:
+        raise RuntimeError(
+            "Vegetation Stake opaque body must remain exactly "
+            f"{MAX_SUBJECT_SIZE[0]}x{MAX_SUBJECT_SIZE[1]} logical pixels; "
+            f"got {body_subject.width}x{body_subject.height}"
+        )
     registered, paste_origin = place_bottom_center(body_subject, target=FOOT_TARGET)
     palette = build_shared_palette([registered], max_colors=MAX_VISIBLE_COLORS)
     sprite = apply_palette(registered, palette)
@@ -161,6 +174,7 @@ def main() -> None:
         "visual_contract": {
             "source_canvas_px": [CANVAS_SIDE, CANVAS_SIDE],
             "maximum_subject_px": list(MAX_SUBJECT_SIZE),
+            "maximum_normalized_source_px": list(MAX_NORMALIZED_SOURCE_SIZE),
             "static_world_scale": [WORLD_SCALE, WORLD_SCALE],
             "camera_zoom": 2,
             "screen_px_per_source_px": 1,

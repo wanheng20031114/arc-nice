@@ -235,6 +235,7 @@ func _test_config_and_scene_contracts() -> void:
 		var top_glow := vegetation_stake.get_node_or_null("TopGlow") as Sprite2D
 		var glow_motes := vegetation_stake.get_node_or_null("GlowMotes") as GPUParticles2D
 		var cell_border := vegetation_stake.get_node_or_null("CellBorder") as MeshInstance2D
+		var stake_health_bar := vegetation_stake.get_node_or_null("HealthBar") as Control
 		_expect(
 			main_sprite != null
 			and top_glow != null
@@ -279,13 +280,42 @@ func _test_config_and_scene_contracts() -> void:
 			_expect(
 				glow_motes.texture == null
 				and glow_motes.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
-				and glow_motes.amount == 6
-				and glow_motes.visibility_rect.size.x <= 16.0
-				and glow_motes.visibility_rect.size.y <= 16.0
+				and glow_motes.amount == 16
+				and glow_motes.position == Vector2(0, -3.25)
+				and glow_motes.visibility_rect == Rect2(-5.5, -2.5, 11, 3.5)
 				and mote_material != null
+				and mote_material.emission_box_extents == Vector3(4.75, 0.5, 1)
+				and mote_material.direction == Vector3(0, -1, 0)
+				and is_equal_approx(mote_material.spread, 14.0)
+				and is_equal_approx(mote_material.initial_velocity_min, 1.2)
+				and is_equal_approx(mote_material.initial_velocity_max, 2.4)
 				and mote_material.scale_min >= 0.5
 				and mote_material.scale_max <= 1.0,
-				"植被桩飘光必须使用至多1世界像素的小方块并限制在单格可见范围内。"
+				"植被桩飘光必须横向覆盖顶部核心，并向下多覆盖一个屏幕像素。"
+			)
+		if stake_health_bar != null:
+			var stake_health_bar_visual_width := (
+				stake_health_bar.offset_right - stake_health_bar.offset_left
+			) * stake_health_bar.scale.x
+			_expect(
+				is_equal_approx(stake_health_bar_visual_width, 12.0)
+				and is_equal_approx(stake_health_bar.offset_left, -6.0)
+				and is_equal_approx(stake_health_bar.offset_right, 18.0)
+				and is_equal_approx(stake_health_bar.offset_top, -8.0)
+				and is_equal_approx(stake_health_bar.offset_bottom, -3.0)
+				and stake_health_bar.scale == Vector2(0.5, 0.5)
+				and stake_health_bar.damage_trail_color.is_equal_approx(
+					Color(0.92156863, 0.28235295, 0.18039216, 1.0)
+				)
+				and is_equal_approx(
+					stake_health_bar.offset_left
+					+ (
+						stake_health_bar.offset_right
+						- stake_health_bar.offset_left
+					) * stake_health_bar.scale.x * 0.5,
+					0.0
+				),
+				"植被桩血条必须以24屏幕像素宽居中、留出上方间隔并继承公共红色残血。"
 			)
 		vegetation_stake.free()
 
