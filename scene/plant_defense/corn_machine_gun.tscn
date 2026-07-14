@@ -125,8 +125,8 @@ size = Vector2(30, 27)
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_player_core"]
 resource_local_to_scene = true
-radius = 8.0
-height = 20.0
+radius = 7.0
+height = 16.0
 
 [node name="CornMachineGun" type="StaticBody2D" unique_id=367692762]
 collision_layer = 512
@@ -138,6 +138,7 @@ enemy_approach_depth = 6.0
 scale = Vector2(0.5, 0.5)
 
 [node name="BodySprite" type="AnimatedSprite2D" parent="VisualRoot" unique_id=438462908]
+visible = false
 z_index = 1
 texture_filter = 1
 material = SubResource("ShaderMaterial_pixel_snap")
