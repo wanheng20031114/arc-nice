@@ -201,12 +201,12 @@ func _test_boss_hud_binding() -> void:
 		"Boss HUD nameplate must keep the authored scene layout after runtime loading."
 	)
 	if frame != null and health_bar != null:
-		var minimap_rect := Rect2(8.0, 8.0, 292.0, 188.0)
+		var minimap_rect := Rect2(8.0, 8.0, 194.0, 130.0)
 		var merged_hud_rect := Rect2(
-			root.get_visible_rect().size.x * 0.5 - 264.0,
-			8.0,
-			528.0,
-			66.0
+			root.get_visible_rect().size.x * 0.5 - 195.0,
+			6.0,
+			390.0,
+			44.0
 		)
 		_expect(
 			not frame.get_global_rect().intersects(minimap_rect)

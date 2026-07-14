@@ -11,13 +11,13 @@ border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
 border_color = Color(0.28, 0.58, 0.43, 0.82)
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_right = 8
-corner_radius_bottom_left = 8
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
 shadow_color = Color(0, 0, 0, 0.55)
-shadow_size = 5
-shadow_offset = Vector2(0, 2)
+shadow_size = 3
+shadow_offset = Vector2(0, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_stage"]
 bg_color = Color(0.025, 0.073, 0.057, 0.9)
@@ -26,12 +26,12 @@ border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
 border_color = Color(0.4, 0.58, 0.36, 0.72)
-corner_radius_top_left = 5
-corner_radius_top_right = 5
-corner_radius_bottom_right = 5
-corner_radius_bottom_left = 5
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
 shadow_color = Color(0, 0, 0, 0.4)
-shadow_size = 3
+shadow_size = 2
 shadow_offset = Vector2(0, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_progress_background"]
@@ -71,10 +71,10 @@ shadow_size = 6
 shadow_offset = Vector2(0, 3)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button"]
-content_margin_left = 18.0
-content_margin_top = 8.0
-content_margin_right = 18.0
-content_margin_bottom = 8.0
+content_margin_left = 12.0
+content_margin_top = 4.0
+content_margin_right = 12.0
+content_margin_bottom = 4.0
 bg_color = Color(0.13, 0.17, 0.145, 0.96)
 border_width_left = 1
 border_width_top = 1
@@ -87,10 +87,10 @@ corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_hover"]
-content_margin_left = 18.0
-content_margin_top = 8.0
-content_margin_right = 18.0
-content_margin_bottom = 8.0
+content_margin_left = 12.0
+content_margin_top = 4.0
+content_margin_right = 12.0
+content_margin_bottom = 4.0
 bg_color = Color(0.22, 0.2, 0.16, 1)
 border_width_left = 1
 border_width_top = 1
@@ -103,10 +103,10 @@ corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_pressed"]
-content_margin_left = 18.0
-content_margin_top = 8.0
-content_margin_right = 18.0
-content_margin_bottom = 8.0
+content_margin_left = 12.0
+content_margin_top = 4.0
+content_margin_right = 12.0
+content_margin_bottom = 4.0
 bg_color = Color(0.1, 0.13, 0.11, 1)
 border_width_left = 1
 border_width_top = 1
@@ -127,35 +127,35 @@ outline_color = Color(0.02, 0.035, 0.025, 0.9)
 
 [sub_resource type="LabelSettings" id="LabelSettings_stat_title"]
 font = ExtResource("2_font")
-font_size = 12
+font_size = 10
 font_color = Color(0.65, 0.75, 0.69, 1)
 outline_size = 1
 outline_color = Color(0.01, 0.025, 0.02, 0.9)
 
 [sub_resource type="LabelSettings" id="LabelSettings_core_value"]
 font = ExtResource("2_font")
-font_size = 21
+font_size = 17
 font_color = Color(1, 1, 1, 1)
 outline_size = 2
 outline_color = Color(0.01, 0.03, 0.025, 0.95)
 
 [sub_resource type="LabelSettings" id="LabelSettings_enemy_value"]
 font = ExtResource("2_font")
-font_size = 21
+font_size = 18
 font_color = Color(1, 0.48, 0.39, 1)
 outline_size = 2
 outline_color = Color(0.03, 0.018, 0.014, 0.95)
 
 [sub_resource type="LabelSettings" id="LabelSettings_wave_value"]
 font = ExtResource("2_font")
-font_size = 21
+font_size = 17
 font_color = Color(0.84, 0.82, 0.38, 1)
 outline_size = 2
 outline_color = Color(0.025, 0.03, 0.012, 0.95)
 
 [sub_resource type="LabelSettings" id="LabelSettings_stage"]
 font = ExtResource("2_font")
-font_size = 14
+font_size = 11
 font_color = Color(1, 1, 1, 1)
 outline_size = 2
 outline_color = Color(0.01, 0.03, 0.02, 0.92)
@@ -208,29 +208,34 @@ vertical_alignment = 1
 [node name="TowerDefenseStats" type="HBoxContainer" parent="WaveInfoBar/Margin"]
 visible = false
 layout_mode = 2
-theme_override_constants/separation = 12
+theme_override_constants/separation = 7
 alignment = 1
 
 [node name="CoreStat" type="VBoxContainer" parent="WaveInfoBar/Margin/TowerDefenseStats"]
-custom_minimum_size = Vector2(156, 0)
+custom_minimum_size = Vector2(132, 0)
 layout_mode = 2
 theme_override_constants/separation = 0
 alignment = 1
 
-[node name="CoreTitle" type="Label" parent="WaveInfoBar/Margin/TowerDefenseStats/CoreStat"]
+[node name="CoreRow" type="HBoxContainer" parent="WaveInfoBar/Margin/TowerDefenseStats/CoreStat"]
+layout_mode = 2
+theme_override_constants/separation = 5
+alignment = 1
+
+[node name="CoreTitle" type="Label" parent="WaveInfoBar/Margin/TowerDefenseStats/CoreStat/CoreRow"]
 layout_mode = 2
 text = "核心生命"
 label_settings = SubResource("LabelSettings_stat_title")
-horizontal_alignment = 1
+vertical_alignment = 1
 
-[node name="CoreValue" type="Label" parent="WaveInfoBar/Margin/TowerDefenseStats/CoreStat"]
+[node name="CoreValue" type="Label" parent="WaveInfoBar/Margin/TowerDefenseStats/CoreStat/CoreRow"]
 layout_mode = 2
 text = "100/100"
 label_settings = SubResource("LabelSettings_core_value")
-horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="CoreProgress" type="ProgressBar" parent="WaveInfoBar/Margin/TowerDefenseStats/CoreStat"]
-custom_minimum_size = Vector2(156, 4)
+custom_minimum_size = Vector2(132, 3)
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/background = SubResource("StyleBoxFlat_progress_background")
@@ -239,61 +244,71 @@ value = 100.0
 show_percentage = false
 
 [node name="CoreDivider" type="ColorRect" parent="WaveInfoBar/Margin/TowerDefenseStats"]
-custom_minimum_size = Vector2(1, 38)
+custom_minimum_size = Vector2(1, 26)
 layout_mode = 2
 mouse_filter = 2
 color = Color(0.28, 0.49, 0.39, 0.58)
 
 [node name="EnemyStat" type="VBoxContainer" parent="WaveInfoBar/Margin/TowerDefenseStats"]
-custom_minimum_size = Vector2(128, 0)
+custom_minimum_size = Vector2(82, 0)
 layout_mode = 2
 theme_override_constants/separation = 0
 alignment = 1
 
-[node name="EnemyTitle" type="Label" parent="WaveInfoBar/Margin/TowerDefenseStats/EnemyStat"]
+[node name="EnemyRow" type="HBoxContainer" parent="WaveInfoBar/Margin/TowerDefenseStats/EnemyStat"]
+layout_mode = 2
+theme_override_constants/separation = 5
+alignment = 1
+
+[node name="EnemyTitle" type="Label" parent="WaveInfoBar/Margin/TowerDefenseStats/EnemyStat/EnemyRow"]
 layout_mode = 2
 text = "场上敌人"
 label_settings = SubResource("LabelSettings_stat_title")
-horizontal_alignment = 1
+vertical_alignment = 1
 
-[node name="EnemyValue" type="Label" parent="WaveInfoBar/Margin/TowerDefenseStats/EnemyStat"]
+[node name="EnemyValue" type="Label" parent="WaveInfoBar/Margin/TowerDefenseStats/EnemyStat/EnemyRow"]
 layout_mode = 2
 text = "0"
 label_settings = SubResource("LabelSettings_enemy_value")
-horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="EnemyAccent" type="ColorRect" parent="WaveInfoBar/Margin/TowerDefenseStats/EnemyStat"]
-custom_minimum_size = Vector2(128, 4)
+custom_minimum_size = Vector2(82, 3)
 layout_mode = 2
 mouse_filter = 2
 color = Color(0.91, 0.3, 0.25, 0.86)
 
 [node name="WaveDivider" type="ColorRect" parent="WaveInfoBar/Margin/TowerDefenseStats"]
-custom_minimum_size = Vector2(1, 38)
+custom_minimum_size = Vector2(1, 26)
 layout_mode = 2
 mouse_filter = 2
 color = Color(0.28, 0.49, 0.39, 0.58)
 
 [node name="WaveStat" type="VBoxContainer" parent="WaveInfoBar/Margin/TowerDefenseStats"]
-custom_minimum_size = Vector2(156, 0)
+custom_minimum_size = Vector2(126, 0)
 layout_mode = 2
 theme_override_constants/separation = 0
 alignment = 1
 
-[node name="WaveTitle" type="Label" parent="WaveInfoBar/Margin/TowerDefenseStats/WaveStat"]
+[node name="WaveRow" type="HBoxContainer" parent="WaveInfoBar/Margin/TowerDefenseStats/WaveStat"]
+layout_mode = 2
+theme_override_constants/separation = 5
+alignment = 1
+
+[node name="WaveTitle" type="Label" parent="WaveInfoBar/Margin/TowerDefenseStats/WaveStat/WaveRow"]
 layout_mode = 2
 text = "第 1 波"
 label_settings = SubResource("LabelSettings_stat_title")
-horizontal_alignment = 1
+vertical_alignment = 1
 
-[node name="WaveValue" type="Label" parent="WaveInfoBar/Margin/TowerDefenseStats/WaveStat"]
+[node name="WaveValue" type="Label" parent="WaveInfoBar/Margin/TowerDefenseStats/WaveStat/WaveRow"]
 layout_mode = 2
 text = "0%"
 label_settings = SubResource("LabelSettings_wave_value")
-horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="WaveProgress" type="ProgressBar" parent="WaveInfoBar/Margin/TowerDefenseStats/WaveStat"]
-custom_minimum_size = Vector2(156, 4)
+custom_minimum_size = Vector2(126, 3)
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/background = SubResource("StyleBoxFlat_progress_background")
@@ -302,28 +317,28 @@ show_percentage = false
 
 [node name="StageBanner" type="PanelContainer" parent="."]
 visible = false
-custom_minimum_size = Vector2(354, 30)
+custom_minimum_size = Vector2(190, 26)
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -177.0
-offset_top = 79.0
-offset_right = 177.0
-offset_bottom = 109.0
+offset_left = -195.0
+offset_top = 54.0
+offset_right = -5.0
+offset_bottom = 80.0
 grow_horizontal = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_stage")
 
 [node name="Margin" type="MarginContainer" parent="StageBanner"]
 layout_mode = 2
-theme_override_constants/margin_left = 12
-theme_override_constants/margin_top = 3
-theme_override_constants/margin_right = 12
-theme_override_constants/margin_bottom = 3
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 2
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 2
 
 [node name="StageLabel" type="Label" parent="StageBanner/Margin"]
 layout_mode = 2
-text = "休整阶段  ·  下一波将在 05:00 后开始"
+text = "休整  ·  05:00"
 label_settings = SubResource("LabelSettings_stage")
 horizontal_alignment = 1
 vertical_alignment = 1

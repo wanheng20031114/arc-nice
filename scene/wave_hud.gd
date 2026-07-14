@@ -15,15 +15,15 @@ signal start_wave_requested
 @onready var status_label: Label = $WaveInfoBar/Margin/Status
 @onready var tower_defense_stats: HBoxContainer = $WaveInfoBar/Margin/TowerDefenseStats
 @onready var core_stat: VBoxContainer = $WaveInfoBar/Margin/TowerDefenseStats/CoreStat
-@onready var core_title_label: Label = $WaveInfoBar/Margin/TowerDefenseStats/CoreStat/CoreTitle
-@onready var core_value_label: Label = $WaveInfoBar/Margin/TowerDefenseStats/CoreStat/CoreValue
+@onready var core_title_label: Label = $WaveInfoBar/Margin/TowerDefenseStats/CoreStat/CoreRow/CoreTitle
+@onready var core_value_label: Label = $WaveInfoBar/Margin/TowerDefenseStats/CoreStat/CoreRow/CoreValue
 @onready var core_progress_bar: ProgressBar = $WaveInfoBar/Margin/TowerDefenseStats/CoreStat/CoreProgress
 @onready var enemy_stat: VBoxContainer = $WaveInfoBar/Margin/TowerDefenseStats/EnemyStat
-@onready var enemy_title_label: Label = $WaveInfoBar/Margin/TowerDefenseStats/EnemyStat/EnemyTitle
-@onready var enemy_value_label: Label = $WaveInfoBar/Margin/TowerDefenseStats/EnemyStat/EnemyValue
+@onready var enemy_title_label: Label = $WaveInfoBar/Margin/TowerDefenseStats/EnemyStat/EnemyRow/EnemyTitle
+@onready var enemy_value_label: Label = $WaveInfoBar/Margin/TowerDefenseStats/EnemyStat/EnemyRow/EnemyValue
 @onready var wave_stat: VBoxContainer = $WaveInfoBar/Margin/TowerDefenseStats/WaveStat
-@onready var wave_title_label: Label = $WaveInfoBar/Margin/TowerDefenseStats/WaveStat/WaveTitle
-@onready var wave_value_label: Label = $WaveInfoBar/Margin/TowerDefenseStats/WaveStat/WaveValue
+@onready var wave_title_label: Label = $WaveInfoBar/Margin/TowerDefenseStats/WaveStat/WaveRow/WaveTitle
+@onready var wave_value_label: Label = $WaveInfoBar/Margin/TowerDefenseStats/WaveStat/WaveRow/WaveValue
 @onready var wave_progress_bar: ProgressBar = $WaveInfoBar/Margin/TowerDefenseStats/WaveStat/WaveProgress
 @onready var stage_banner: PanelContainer = $StageBanner
 @onready var stage_label: Label = $StageBanner/Margin/StageLabel
@@ -75,17 +75,26 @@ func configure_tower_defense(current_core_health: int, max_core_health: int) -> 
 
 
 func _apply_tower_defense_layout() -> void:
-	top_bar.custom_minimum_size = Vector2(528.0, 66.0)
-	top_bar.offset_left = -264.0
-	top_bar.offset_top = 8.0
-	top_bar.offset_right = 264.0
-	top_bar.offset_bottom = 74.0
-	top_bar_margin.add_theme_constant_override("margin_left", 14)
-	top_bar_margin.add_theme_constant_override("margin_top", 7)
-	top_bar_margin.add_theme_constant_override("margin_right", 14)
-	top_bar_margin.add_theme_constant_override("margin_bottom", 7)
-	start_wave_button.offset_top = 114.0
-	start_wave_button.offset_bottom = 152.0
+	top_bar.custom_minimum_size = Vector2(390.0, 44.0)
+	top_bar.offset_left = -195.0
+	top_bar.offset_top = 6.0
+	top_bar.offset_right = 195.0
+	top_bar.offset_bottom = 50.0
+	top_bar_margin.add_theme_constant_override("margin_left", 10)
+	top_bar_margin.add_theme_constant_override("margin_top", 3)
+	top_bar_margin.add_theme_constant_override("margin_right", 10)
+	top_bar_margin.add_theme_constant_override("margin_bottom", 3)
+	stage_banner.custom_minimum_size = Vector2(190.0, 26.0)
+	stage_banner.offset_left = -195.0
+	stage_banner.offset_top = 54.0
+	stage_banner.offset_right = -5.0
+	stage_banner.offset_bottom = 80.0
+	start_wave_button.custom_minimum_size = Vector2(190.0, 26.0)
+	start_wave_button.offset_left = 5.0
+	start_wave_button.offset_top = 54.0
+	start_wave_button.offset_right = 195.0
+	start_wave_button.offset_bottom = 80.0
+	start_wave_button.add_theme_font_size_override("font_size", 11)
 
 
 func set_tower_defense_core_health(
@@ -224,16 +233,12 @@ func show_countdown(seconds: int, allow_early_start: bool = false) -> void:
 	status_label.text = countdown_status
 	start_wave_button.visible = allow_early_start
 	start_wave_button.disabled = not allow_early_start or early_start_pending
-	start_wave_button.text = (
-		"等待战斗开始……"
-		if early_start_pending
-		else "提前结束休整并开始战斗"
-	)
 	if tower_defense_mode:
+		start_wave_button.text = "等待开始……" if early_start_pending else "立即开始下一波"
 		status_label.visible = false
 		tower_defense_stats.visible = true
 		stage_banner.visible = true
-		stage_label.text = "休整阶段  ·  %s" % countdown_status
+		stage_label.text = "休整  ·  %s" % countdown_text
 		stage_label.self_modulate = (
 			STAGE_FINAL_COLOR if safe_seconds <= 3 else Color(0.84, 0.91, 0.82, 1.0)
 		)
@@ -242,6 +247,11 @@ func show_countdown(seconds: int, allow_early_start: bool = false) -> void:
 		else:
 			_reset_stage_banner_pulse()
 	else:
+		start_wave_button.text = (
+			"等待战斗开始……"
+			if early_start_pending
+			else "提前结束休整并开始战斗"
+		)
 		status_label.modulate = (
 			Color(1.0, 0.86, 0.42, 1.0)
 			if seconds <= 3
@@ -290,7 +300,7 @@ func _on_start_wave_button_pressed() -> void:
 	if start_wave_button.disabled or not start_wave_button.visible:
 		return
 	start_wave_button.disabled = true
-	start_wave_button.text = "等待战斗开始……"
+	start_wave_button.text = "等待开始……" if tower_defense_mode else "等待战斗开始……"
 	early_start_pending = true
 	early_start_request_generation += 1
 	var request_generation := early_start_request_generation
@@ -314,7 +324,11 @@ func _on_early_start_retry_timeout(request_generation: int) -> void:
 		return
 	early_start_pending = false
 	start_wave_button.disabled = false
-	start_wave_button.text = "提前结束休整并开始战斗"
+	start_wave_button.text = (
+		"立即开始下一波"
+		if tower_defense_mode
+		else "提前结束休整并开始战斗"
+	)
 
 
 func _format_countdown(seconds: int) -> String:

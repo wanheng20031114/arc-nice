@@ -79,6 +79,13 @@ font_color = Color(1, 0.84, 0.4, 1)
 outline_size = 4
 outline_color = Color(0.04, 0.04, 0.05, 1)
 
+[sub_resource type="LabelSettings" id="LabelSettings_local_compact_countdown"]
+font = ExtResource("4_font")
+font_size = 18
+font_color = Color(1, 0.84, 0.4, 1)
+outline_size = 3
+outline_color = Color(0.04, 0.04, 0.05, 1)
+
 [node name="TowerDefenseStatusHUD" type="CanvasLayer" unique_id=730301422]
 layer = 90
 script = ExtResource("1_script")
@@ -146,53 +153,90 @@ text = "玩家：5秒后复活"
 label_settings = SubResource("LabelSettings_dead_players")
 autowrap_mode = 2
 
-[node name="LocalDeathCenter" type="CenterContainer" parent="." unique_id=1209968609]
-anchors_preset = 10
-anchor_right = 1.0
-offset_top = 164.0
-offset_bottom = 288.0
+[node name="LocalDeathCenter" type="Control" parent="." unique_id=1209968609]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -125.0
+offset_top = 86.0
+offset_right = 125.0
+offset_bottom = 128.0
 grow_horizontal = 2
 mouse_filter = 2
 
 [node name="Panel" type="PanelContainer" parent="LocalDeathCenter" unique_id=1127518723]
-custom_minimum_size = Vector2(372, 118)
-layout_mode = 2
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_local_dead")
 
-[node name="Margin" type="MarginContainer" parent="LocalDeathCenter/Panel" unique_id=1729195502]
+[node name="ContentLayer" type="Control" parent="LocalDeathCenter/Panel"]
+clip_contents = true
 layout_mode = 2
+mouse_filter = 2
+
+[node name="FullMargin" type="MarginContainer" parent="LocalDeathCenter/Panel/ContentLayer" unique_id=1729195502]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 2
 theme_override_constants/margin_left = 26
 theme_override_constants/margin_top = 12
 theme_override_constants/margin_right = 26
 theme_override_constants/margin_bottom = 12
 
-[node name="Content" type="VBoxContainer" parent="LocalDeathCenter/Panel/Margin" unique_id=2118964197]
+[node name="FullContent" type="VBoxContainer" parent="LocalDeathCenter/Panel/ContentLayer/FullMargin" unique_id=2118964197]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 4
 alignment = 1
 
-[node name="Title" type="Label" parent="LocalDeathCenter/Panel/Margin/Content" unique_id=934228268]
+[node name="Title" type="Label" parent="LocalDeathCenter/Panel/ContentLayer/FullMargin/FullContent" unique_id=934228268]
 layout_mode = 2
 text = "已阵亡"
 label_settings = SubResource("LabelSettings_local_title")
 horizontal_alignment = 1
 
-[node name="Countdown" type="Label" parent="LocalDeathCenter/Panel/Margin/Content" unique_id=291469753]
+[node name="Countdown" type="Label" parent="LocalDeathCenter/Panel/ContentLayer/FullMargin/FullContent" unique_id=291469753]
 layout_mode = 2
 text = "5 秒后复活"
 label_settings = SubResource("LabelSettings_local_countdown")
 horizontal_alignment = 1
 
-[node name="SpectatorHint" type="Label" parent="LocalDeathCenter/Panel/Margin/Content" unique_id=1865984439]
+[node name="SpectatorHint" type="Label" parent="LocalDeathCenter/Panel/ContentLayer/FullMargin/FullContent" unique_id=1865984439]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.7, 0.73, 1)
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_font_sizes/font_size = 12
 text = "移动键可观察战场"
 horizontal_alignment = 1
+
+[node name="CompactMargin" type="MarginContainer" parent="LocalDeathCenter/Panel/ContentLayer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 3
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 3
+
+[node name="Countdown" type="Label" parent="LocalDeathCenter/Panel/ContentLayer/CompactMargin"]
+layout_mode = 2
+text = "5 秒后复活"
+label_settings = SubResource("LabelSettings_local_compact_countdown")
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="GateWarningAudio" type="AudioStreamPlayer" parent="." unique_id=1353763298]
 stream = ExtResource("5_warning_audio")

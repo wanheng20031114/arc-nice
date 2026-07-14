@@ -7,7 +7,7 @@ const WALL_COLOR := Color(0.53, 0.55, 0.58, 0.96)
 const HOME_GATE_COLOR := Color(0.08, 0.52, 1.0, 1.0)
 const ENEMY_GATE_COLOR := Color(1.0, 0.22, 0.18, 1.0)
 const VIEW_FRAME_COLOR := Color(0.22, 1.0, 0.42, 0.96)
-const VIEW_FRAME_WIDTH := 2.0
+const VIEW_FRAME_WIDTH := 1.25
 
 var tile_world_size := Vector2(16.0, 16.0)
 var wall_world_positions := PackedVector2Array()

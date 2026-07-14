@@ -67,19 +67,46 @@ func _verify_tower_defense_layout_and_updates() -> void:
 
 	_expect(hud.tower_defense_mode, "Tower-defense mode must require explicit configuration.")
 	_expect(
-		hud.top_bar.custom_minimum_size == Vector2(528.0, 66.0)
-		and is_equal_approx(hud.top_bar.offset_left, -264.0)
-		and is_equal_approx(hud.top_bar.offset_top, 8.0)
-		and is_equal_approx(hud.top_bar.offset_right, 264.0)
-		and is_equal_approx(hud.top_bar.offset_bottom, 74.0),
-		"Tower-defense configuration must expand the main strip to 528 by 66."
+		hud.top_bar.custom_minimum_size == Vector2(390.0, 44.0)
+		and is_equal_approx(hud.top_bar.offset_left, -195.0)
+		and is_equal_approx(hud.top_bar.offset_top, 6.0)
+		and is_equal_approx(hud.top_bar.offset_right, 195.0)
+		and is_equal_approx(hud.top_bar.offset_bottom, 50.0),
+		"Tower-defense configuration must use the compact 390 by 44 main strip."
 	)
 	_expect(
-		hud.top_bar_margin.get_theme_constant("margin_left") == 14
-		and hud.top_bar_margin.get_theme_constant("margin_top") == 7
-		and hud.top_bar_margin.get_theme_constant("margin_right") == 14
-		and hud.top_bar_margin.get_theme_constant("margin_bottom") == 7,
-		"Tower-defense configuration must apply its dedicated spacious margins."
+		hud.top_bar_margin.get_theme_constant("margin_left") == 10
+		and hud.top_bar_margin.get_theme_constant("margin_top") == 3
+		and hud.top_bar_margin.get_theme_constant("margin_right") == 10
+		and hud.top_bar_margin.get_theme_constant("margin_bottom") == 3,
+		"Tower-defense configuration must apply its dedicated compact margins."
+	)
+	_expect(
+		hud.core_title_label.label_settings.font_size == 10
+		and hud.core_value_label.label_settings.font_size == 17
+		and hud.enemy_value_label.label_settings.font_size == 18
+		and hud.wave_value_label.label_settings.font_size == 17
+		and hud.stage_label.label_settings.font_size == 11
+		and hud.start_wave_button.get_theme_font_size("font_size") == 11,
+		"Tower-defense labels and rest control must retain the compact font hierarchy."
+	)
+	_expect(
+		hud.core_progress_bar.custom_minimum_size == Vector2(132.0, 3.0)
+		and hud.wave_progress_bar.custom_minimum_size == Vector2(126.0, 3.0),
+		"Core and wave progress must remain thin accents instead of full-height rows."
+	)
+	_expect(
+		hud.stage_banner.custom_minimum_size == Vector2(190.0, 26.0)
+		and hud.start_wave_button.custom_minimum_size == Vector2(190.0, 26.0)
+		and is_equal_approx(hud.stage_banner.offset_left, -195.0)
+		and is_equal_approx(hud.stage_banner.offset_top, 54.0)
+		and is_equal_approx(hud.stage_banner.offset_right, -5.0)
+		and is_equal_approx(hud.stage_banner.offset_bottom, 80.0)
+		and is_equal_approx(hud.start_wave_button.offset_left, 5.0)
+		and is_equal_approx(hud.start_wave_button.offset_top, 54.0)
+		and is_equal_approx(hud.start_wave_button.offset_right, 195.0)
+		and is_equal_approx(hud.start_wave_button.offset_bottom, 80.0),
+		"Rest status and early-start action must share one compact 26 px row."
 	)
 	_expect(
 		not hud.status_label.visible and hud.tower_defense_stats.visible,
@@ -157,8 +184,10 @@ func _verify_tower_defense_layout_and_updates() -> void:
 		hud.top_bar.visible
 		and hud.tower_defense_stats.visible
 		and hud.stage_banner.visible
-		and hud.stage_label.text.contains("00:03"),
-		"Tower-defense rest time must use a separate banner below the three stats."
+		and hud.start_wave_button.visible
+		and hud.stage_label.text == "休整  ·  00:03"
+		and hud.start_wave_button.text == "立即开始下一波",
+		"Tower-defense rest controls must use the short same-row countdown wording."
 	)
 	_expect(
 		hud.status_label.text == "下一波将在 00:03 后开始",
