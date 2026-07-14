@@ -64,7 +64,7 @@ func _run() -> void:
 
 
 func _test_ring_geometry_and_pixel_hash() -> void:
-	var expected_counts := [0, 4, 8, 16, 20, 32]
+	var expected_counts := [0, 4, 8, 16, 20, 40]
 	var all_offsets: Dictionary = {}
 	for ring in range(1, VegetationSpreadSystem.SPREAD_RADIUS + 1):
 		var offsets := VegetationSpreadSystem.get_ring_offsets(ring)
@@ -73,7 +73,26 @@ func _test_ring_geometry_and_pixel_hash() -> void:
 			_expect(offset != Vector2i.ZERO, "传播圈必须排除中心格。")
 			_expect(not all_offsets.has(offset), "五个传播圈之间不能有重复格。")
 			all_offsets[offset] = true
-	_expect(all_offsets.size() == 80, "半径5的五个欧氏距离圈必须合计80格。")
+	_expect(all_offsets.size() == 88, "平滑外沿后的五个传播圈必须合计88格。")
+	var outer_ring := VegetationSpreadSystem.get_ring_offsets(5)
+	for smoothed_cap_cell in [
+		Vector2i(5, 1),
+		Vector2i(5, -1),
+		Vector2i(-5, 1),
+		Vector2i(-5, -1),
+		Vector2i(1, 5),
+		Vector2i(-1, 5),
+		Vector2i(1, -5),
+		Vector2i(-1, -5),
+	]:
+		_expect(outer_ring.has(smoothed_cap_cell), "第五圈必须补齐轴向尖帽相邻格：%s" % smoothed_cap_cell)
+	for outside_cell in [
+		Vector2i(5, 2),
+		Vector2i(2, 5),
+		Vector2i(-5, -2),
+		Vector2i(-2, -5),
+	]:
+		_expect(not outer_ring.has(outside_cell), "第五圈不能超出最小平滑扩展：%s" % outside_cell)
 
 	var cell := Vector2i(17, -9)
 	var quarter := VegetationSpreadSystem.get_revealed_pixel_indices(cell, 0.25)
@@ -93,8 +112,8 @@ func _test_ring_geometry_and_pixel_hash() -> void:
 func _test_all_ring_deadlines_and_full_teardown() -> void:
 	await _build_fixture(Rect2i(-6, -6, 13, 13), true)
 	_expect(spread.register_source(70, Vector2i.ZERO), "五圈边界测试必须能注册权威来源。")
-	var completed_cell_counts := [0, 4, 12, 28, 48, 80]
-	var ring_cell_counts := [0, 4, 8, 16, 20, 32]
+	var completed_cell_counts := [0, 4, 12, 28, 48, 88]
+	var ring_cell_counts := [0, 4, 8, 16, 20, 40]
 	var elapsed := 0.0
 	for ring in range(1, VegetationSpreadSystem.SPREAD_RADIUS + 1):
 		var just_before_deadline := float(ring) * VegetationSpreadSystem.SECONDS_PER_RING - 0.1
@@ -128,7 +147,7 @@ func _test_all_ring_deadlines_and_full_teardown() -> void:
 
 	_expect(spread.cancel_source(70), "全部五圈完成后来源仍必须可销毁。")
 	_expect(not spread.has_source(70), "销毁后必须删除已完成来源。")
-	_expect(terrain.raw_cells.is_empty(), "完整传播来源销毁后，其80格EMPTY草地必须全部恢复。")
+	_expect(terrain.raw_cells.is_empty(), "完整传播来源销毁后，其88格EMPTY草地必须全部恢复。")
 	_expect(spread.get_overlay_cell_count() == 0, "完整传播来源销毁后不能残留覆盖实例。")
 
 
@@ -277,7 +296,7 @@ func _test_non_authoritative_client() -> void:
 	spread.register_source(50, Vector2i.ZERO)
 	spread.advance_time(50.0)
 	_expect(terrain.set_call_count == 0, "非权威客户端不能根据本地计时修改地形。")
-	_expect(spread.get_overlay_cell_count() == 80, "非权威客户端仍须显示五圈的预测绿化覆盖。")
+	_expect(spread.get_overlay_cell_count() == 88, "非权威客户端仍须显示平滑后的五圈预测绿化覆盖。")
 	spread.cancel_source(50)
 	_expect(terrain.set_call_count == 0, "非权威客户端销毁来源也不能自行恢复地形。")
 

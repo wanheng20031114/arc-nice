@@ -9,11 +9,12 @@ const DEFAULT_ATTACK_INTERVAL := 2.0
 const CANNONBALL_SPEED := 180.0
 const CANNONBALL_EXPLOSION_RADIUS := 18.0
 const FIRE_PROJECTILE_FRAME := 2
-const IDLE_AIM_INTERVAL := 0.7
-const IDLE_AIM_BURST_INTERVAL := 0.3
-const IDLE_AIM_LIMIT := 0.34906585 # 20 degrees.
-const IDLE_AIM_MIN_STEP := 0.06981317 # 4 degrees.
-const IDLE_AIM_MAX_STEP := 0.13962634 # 8 degrees.
+const IDLE_AIM_INTERVAL_MIN := 0.55
+const IDLE_AIM_INTERVAL_MAX := 0.85
+const IDLE_AIM_BURST_INTERVAL_MIN := 0.24
+const IDLE_AIM_BURST_INTERVAL_MAX := 0.38
+const IDLE_AIM_LIMIT := 0.26179939 # 15 degrees; 30 degrees across the full arc.
+const IDLE_AIM_MIN_TARGET_OFFSET := 0.05235988 # 3 degrees from the center.
 
 @onready var body_sprite: AnimatedSprite2D = $VisualRoot/BodySprite
 @onready var cannon_pivot: Node2D = $VisualRoot/CannonPivot
@@ -157,13 +158,13 @@ func _on_idle_aim_timer_timeout() -> void:
 	if idle_aim_burst_followup_pending:
 		idle_aim_burst_followup_pending = false
 		idle_aim_single_moves_completed = 0
-		idle_aim_timer.start(IDLE_AIM_INTERVAL)
+		idle_aim_timer.start(_sample_idle_aim_interval(false))
 	elif idle_aim_single_moves_completed >= 2:
 		idle_aim_burst_followup_pending = true
-		idle_aim_timer.start(IDLE_AIM_BURST_INTERVAL)
+		idle_aim_timer.start(_sample_idle_aim_interval(true))
 	else:
 		idle_aim_single_moves_completed += 1
-		idle_aim_timer.start(IDLE_AIM_INTERVAL)
+		idle_aim_timer.start(_sample_idle_aim_interval(false))
 
 
 func _start_idle_aim() -> void:
@@ -174,7 +175,7 @@ func _start_idle_aim() -> void:
 	idle_aim_single_moves_completed = 0
 	idle_aim_burst_followup_pending = false
 	cannon_pivot.rotation = idle_aim_center_rotation
-	idle_aim_timer.start(IDLE_AIM_INTERVAL)
+	idle_aim_timer.start(_sample_idle_aim_interval(false))
 
 
 func _stop_idle_aim() -> void:
@@ -189,15 +190,27 @@ func _apply_idle_aim_step() -> void:
 	var direction := -idle_aim_last_direction
 	if direction == 0:
 		direction = 1 if idle_aim_random.randi_range(0, 1) == 1 else -1
-	var relative_rotation := cannon_pivot.rotation - idle_aim_center_rotation
-	var step := idle_aim_random.randf_range(IDLE_AIM_MIN_STEP, IDLE_AIM_MAX_STEP)
-	relative_rotation = clampf(
-		relative_rotation + step * float(direction),
-		-IDLE_AIM_LIMIT,
+	# Alternating signed half-arcs guarantees that the actual rotation delta,
+	# rather than only the requested direction, reverses on every idle move.
+	var target_offset := idle_aim_random.randf_range(
+		IDLE_AIM_MIN_TARGET_OFFSET,
 		IDLE_AIM_LIMIT
 	)
-	cannon_pivot.rotation = idle_aim_center_rotation + relative_rotation
+	cannon_pivot.rotation = idle_aim_center_rotation + target_offset * float(direction)
 	idle_aim_last_direction = direction
+
+
+func _sample_idle_aim_interval(is_burst_followup: bool) -> float:
+	if is_burst_followup:
+		return idle_aim_random.randf_range(
+			IDLE_AIM_BURST_INTERVAL_MIN,
+			IDLE_AIM_BURST_INTERVAL_MAX
+		)
+	return idle_aim_random.randf_range(IDLE_AIM_INTERVAL_MIN, IDLE_AIM_INTERVAL_MAX)
+
+
+func set_idle_aim_random_seed(seed_value: int) -> void:
+	idle_aim_random.seed = seed_value
 
 
 func _fire_pending_projectile() -> void:

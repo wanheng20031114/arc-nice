@@ -370,12 +370,11 @@ func _test_config_and_scene_contracts() -> void:
 			and is_equal_approx(idle_aim_timer.wait_time, 0.7),
 			"龙舌兰待机炮口必须使用0.7秒原生单次Timer，而非逐帧轮询。"
 		)
-		agave.idle_aim_random.seed = 20260714
+		agave.set_idle_aim_random_seed(20260714)
 		agave.call("_start_idle_aim")
 		var previous_idle_rotation := cannon_pivot.rotation
 		var previous_idle_direction := 0
-		var expected_idle_intervals := [0.7, 0.7, 0.3, 0.7, 0.7, 0.7, 0.3, 0.7]
-		for step_index in range(expected_idle_intervals.size()):
+		for step_index in range(8):
 			agave.call("_on_idle_aim_timer_timeout")
 			var rotation_delta := cannon_pivot.rotation - previous_idle_rotation
 			var direction := signi(roundi(rotation_delta * 1000000.0))
@@ -385,14 +384,29 @@ func _test_config_and_scene_contracts() -> void:
 					direction == -previous_idle_direction,
 					"龙舌兰相邻两次待机旋转必须严格交替顺逆时针。"
 				)
+			var relative_rotation := cannon_pivot.rotation - agave.idle_aim_center_rotation
 			_expect(
-				absf(cannon_pivot.rotation - agave.idle_aim_center_rotation)
-				<= deg_to_rad(20.0) + 0.00001,
-				"龙舌兰待机炮口不得离开默认方向上下20度范围。"
+				absf(relative_rotation) >= deg_to_rad(3.0) - 0.00001
+				and absf(relative_rotation) <= deg_to_rad(15.0) + 0.00001,
+				"龙舌兰待机随机目标必须位于中心两侧3至15度内。"
 			)
 			_expect(
-				is_equal_approx(idle_aim_timer.wait_time, expected_idle_intervals[step_index]),
-				"龙舌兰待机移动必须遵循1、1、2步节奏，双步间隔为0.3秒。"
+				signi(roundi(relative_rotation * 1000000.0)) == direction,
+				"每次待机目标必须落在本次移动方向对应的半弧。"
+			)
+			var is_burst_followup := step_index % 4 == 2
+			_expect(
+				idle_aim_timer.wait_time >= (
+					AgaveCannon.IDLE_AIM_BURST_INTERVAL_MIN
+					if is_burst_followup
+					else AgaveCannon.IDLE_AIM_INTERVAL_MIN
+				)
+				and idle_aim_timer.wait_time <= (
+					AgaveCannon.IDLE_AIM_BURST_INTERVAL_MAX
+					if is_burst_followup
+					else AgaveCannon.IDLE_AIM_INTERVAL_MAX
+				),
+				"龙舌兰待机普通与双步间隔必须落在各自的随机范围。"
 			)
 			previous_idle_rotation = cannon_pivot.rotation
 			previous_idle_direction = direction

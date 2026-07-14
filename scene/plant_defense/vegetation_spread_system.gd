@@ -7,6 +7,10 @@ signal authoritative_terrain_changed(
 )
 
 const SPREAD_RADIUS := 5
+## Fill the eight nearest cells just outside the strict radius-five disc so the
+## four cardinal caps are three cells wide instead of ending in a single-tile
+## spike. This keeps the five-ring schedule while only expanding the last ring.
+const OUTER_RING_RADIUS_SQUARED := SPREAD_RADIUS * SPREAD_RADIUS + 1
 const SECONDS_PER_RING := 10.0
 const TOTAL_SPREAD_SECONDS := SPREAD_RADIUS * SECONDS_PER_RING
 const MAX_REVEALED_PIXELS := 48
@@ -435,10 +439,13 @@ func _emit_terrain_changes(changes: Dictionary) -> void:
 
 static func _ring_for_offset(offset: Vector2i) -> int:
 	var distance_squared := offset.length_squared()
-	if distance_squared <= 0 or distance_squared > SPREAD_RADIUS * SPREAD_RADIUS:
+	if distance_squared <= 0 or distance_squared > OUTER_RING_RADIUS_SQUARED:
 		return 0
 	for ring in range(1, SPREAD_RADIUS + 1):
-		if distance_squared <= ring * ring:
+		var ring_radius_squared := ring * ring
+		if ring == SPREAD_RADIUS:
+			ring_radius_squared = OUTER_RING_RADIUS_SQUARED
+		if distance_squared <= ring_radius_squared:
 			return ring
 	return 0
 
