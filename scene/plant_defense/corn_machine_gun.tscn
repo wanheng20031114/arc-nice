@@ -1,20 +1,20 @@
-[gd_scene load_steps=25 format=3]
+[gd_scene format=3 uid="uid://dtpw7qyhalgsr"]
 
-[ext_resource type="Script" path="res://scene/plant_defense/corn_machine_gun.gd" id="1_script"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_0.png" id="2_body_0"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_1.png" id="3_body_1"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_2.png" id="4_body_2"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_3.png" id="5_body_3"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_turret_idle_0.png" id="6_turret_idle"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_0.png" id="7_turret_spin_0"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_1.png" id="8_turret_spin_1"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_2.png" id="9_turret_spin_2"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_3.png" id="10_turret_spin_3"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_muzzle_flash_0.png" id="11_flash_0"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/corn_muzzle_flash_1.png" id="12_flash_1"]
-[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="13_health_bar"]
-[ext_resource type="Shader" path="res://resources/shader/plant_visual_pixel_snap.gdshader" id="14_pixel_snap_shader"]
-[ext_resource type="AudioStream" path="res://resources/audio/capoo_smg_fire.wav" id="15_fire_audio"]
+[ext_resource type="Script" uid="uid://lm6kgq88rn7f" path="res://scene/plant_defense/corn_machine_gun.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://dnb1r3uffkkun" path="res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_0.png" id="2_body_0"]
+[ext_resource type="Texture2D" uid="uid://b4p8oljnwbglx" path="res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_1.png" id="3_body_1"]
+[ext_resource type="Texture2D" uid="uid://cb4hm6qjrtblh" path="res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_2.png" id="4_body_2"]
+[ext_resource type="Texture2D" uid="uid://clpilbkxgjfm8" path="res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_3.png" id="5_body_3"]
+[ext_resource type="Texture2D" uid="uid://ccw8xey2pnug5" path="res://resources/texture/plant_defense/corn_machine_gun/corn_turret_idle_0.png" id="6_turret_idle"]
+[ext_resource type="Texture2D" uid="uid://distk54cbb48y" path="res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_0.png" id="7_turret_spin_0"]
+[ext_resource type="Texture2D" uid="uid://br0omu04b30yu" path="res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_1.png" id="8_turret_spin_1"]
+[ext_resource type="Texture2D" uid="uid://dfmsd32mmgg6" path="res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_2.png" id="9_turret_spin_2"]
+[ext_resource type="Texture2D" uid="uid://0vmu6dex0sdb" path="res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_3.png" id="10_turret_spin_3"]
+[ext_resource type="Texture2D" uid="uid://cdnb3aktiwh1m" path="res://resources/texture/plant_defense/corn_machine_gun/corn_muzzle_flash_0.png" id="11_flash_0"]
+[ext_resource type="Texture2D" uid="uid://bgguljkgfcje1" path="res://resources/texture/plant_defense/corn_machine_gun/corn_muzzle_flash_1.png" id="12_flash_1"]
+[ext_resource type="PackedScene" uid="uid://by1igl2yc3ch0" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="13_health_bar"]
+[ext_resource type="Shader" uid="uid://k6uttyelrjo6" path="res://resources/shader/plant_visual_pixel_snap.gdshader" id="14_pixel_snap_shader"]
+[ext_resource type="AudioStream" uid="uid://chx8qq8m532lm" path="res://resources/audio/capoo_smg_fire.wav" id="15_fire_audio"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_pixel_snap"]
 shader = ExtResource("14_pixel_snap_shader")
@@ -81,15 +81,6 @@ animations = [{
 "speed": 50.0
 }]
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
-resource_local_to_scene = true
-size = Vector2(28, 28)
-
-[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_player_core"]
-resource_local_to_scene = true
-radius = 7.0
-height = 14.0
-
 [sub_resource type="Animation" id="Animation_tracer_reset"]
 resource_name = "RESET"
 length = 0.001
@@ -128,92 +119,100 @@ _data = {
 &"fade": SubResource("Animation_tracer_fade")
 }
 
-[node name="CornMachineGun" type="StaticBody2D"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+resource_local_to_scene = true
+size = Vector2(30, 27)
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_player_core"]
+resource_local_to_scene = true
+radius = 8.0
+height = 20.0
+
+[node name="CornMachineGun" type="StaticBody2D" unique_id=367692762]
 collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
 enemy_approach_depth = 6.0
 
-[node name="VisualRoot" type="Node2D" parent="."]
+[node name="VisualRoot" type="Node2D" parent="." unique_id=159657345]
 scale = Vector2(0.5, 0.5)
 
-[node name="BodySprite" type="AnimatedSprite2D" parent="VisualRoot"]
-material = SubResource("ShaderMaterial_pixel_snap")
+[node name="BodySprite" type="AnimatedSprite2D" parent="VisualRoot" unique_id=438462908]
 z_index = 1
 texture_filter = 1
+material = SubResource("ShaderMaterial_pixel_snap")
 sprite_frames = SubResource("SpriteFrames_body")
 animation = &"idle"
 autoplay = "idle"
+frame_progress = 0.8176119
 
-[node name="AimPivot" type="Node2D" parent="VisualRoot"]
+[node name="AimPivot" type="Node2D" parent="VisualRoot" unique_id=1711015965]
 z_index = 2
 position = Vector2(-2, -1)
 
-[node name="TurretSprite" type="AnimatedSprite2D" parent="VisualRoot/AimPivot"]
-material = SubResource("ShaderMaterial_pixel_snap")
+[node name="TurretSprite" type="AnimatedSprite2D" parent="VisualRoot/AimPivot" unique_id=2121598685]
 texture_filter = 1
+material = SubResource("ShaderMaterial_pixel_snap")
 sprite_frames = SubResource("SpriteFrames_turret")
 animation = &"idle"
 autoplay = "idle"
 
-[node name="ForwardMarker" type="Marker2D" parent="VisualRoot/AimPivot"]
+[node name="ForwardMarker" type="Marker2D" parent="VisualRoot/AimPivot" unique_id=133619351]
 position = Vector2(25, 1)
 
-[node name="Muzzle" type="Marker2D" parent="VisualRoot/AimPivot"]
+[node name="Muzzle" type="Marker2D" parent="VisualRoot/AimPivot" unique_id=276150408]
 position = Vector2(25, 1)
 
-[node name="MuzzleFlashSprite" type="AnimatedSprite2D" parent="VisualRoot/AimPivot"]
-material = SubResource("ShaderMaterial_pixel_snap")
+[node name="MuzzleFlashSprite" type="AnimatedSprite2D" parent="VisualRoot/AimPivot" unique_id=729832480]
 z_index = 1
 texture_filter = 1
+material = SubResource("ShaderMaterial_pixel_snap")
 position = Vector2(25, 1)
 sprite_frames = SubResource("SpriteFrames_flash")
 animation = &"flash"
 
-[node name="Tracer" type="Line2D" parent="."]
+[node name="Tracer" type="Line2D" parent="." unique_id=931404967]
+visible = false
+modulate = Color(1, 1, 1, 0)
 top_level = true
 z_index = 4
-visible = false
 points = PackedVector2Array(0, 0, 20, 0)
 width = 0.5
 default_color = Color(1, 0.83, 0.24, 0.92)
-antialiased = false
 
-[node name="TracerFade" type="AnimationPlayer" parent="."]
+[node name="TracerFade" type="AnimationPlayer" parent="." unique_id=446632180]
 libraries/ = SubResource("AnimationLibrary_tracer")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-position = Vector2(0, 3)
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1190555191]
+position = Vector2(0, 3.5)
 shape = SubResource("RectangleShape2D_body")
 
-[node name="PlayerCoreBody" type="StaticBody2D" parent="."]
+[node name="PlayerCoreBody" type="StaticBody2D" parent="." unique_id=158023787]
 position = Vector2(0, 1)
 collision_layer = 1024
 collision_mask = 2
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody" unique_id=1232892087]
 position = Vector2(0, 2)
 shape = SubResource("CapsuleShape2D_player_core")
 
-[node name="AttackTimer" type="Timer" parent="."]
+[node name="AttackTimer" type="Timer" parent="." unique_id=196103111]
 wait_time = 0.9
 
-[node name="IdleAimTimer" type="Timer" parent="."]
+[node name="IdleAimTimer" type="Timer" parent="." unique_id=89969407]
 wait_time = 0.9
 one_shot = true
 
-[node name="HealthBar" parent="." instance=ExtResource("13_health_bar")]
-offset_left = -14.0
-offset_top = -16.0
-offset_right = 14.0
-offset_bottom = -11.0
-damage_trail_color = Color(0.92156863, 0.28235295, 0.18039216, 1)
+[node name="HealthBar" parent="." unique_id=1342771048 instance=ExtResource("13_health_bar")]
+offset_left = -16.0
+offset_top = -15.0
+offset_right = 16.0
+offset_bottom = -10.0
 
-[node name="FireAudio" type="AudioStreamPlayer2D" parent="."]
+[node name="FireAudio" type="AudioStreamPlayer2D" parent="." unique_id=1414979781]
 stream = ExtResource("15_fire_audio")
 volume_db = -18.0
 max_distance = 180.0
-max_polyphony = 1
 
 [connection signal="animation_finished" from="VisualRoot/AimPivot/MuzzleFlashSprite" to="." method="_on_muzzle_flash_animation_finished"]
 [connection signal="animation_finished" from="TracerFade" to="." method="_on_tracer_fade_animation_finished"]
