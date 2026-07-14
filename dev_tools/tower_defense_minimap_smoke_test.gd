@@ -6,6 +6,13 @@ const REMOTE_PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weis
 const ENEMY_SCENE := preload("res://scene/enemy/yuanshi_insect_basic.tscn")
 const MAX_SAMPLE_RATE_HZ := 30.0
 const EXPECTED_HOME_GATE_CELL_COUNT := 4
+const EXPECTED_MINIMAP_SIZE := Vector2(194.0, 130.0)
+const EXPECTED_MAP_PANEL_SIZE := Vector2(194.0, 110.0)
+const EXPECTED_CANVAS_SIZE := Vector2(192.0, 108.0)
+const EXPECTED_COORDINATE_LABEL_SIZE := Vector2(194.0, 20.0)
+const MAX_VIEWPORT_WIDTH_RATIO := 0.17
+const MAX_VIEWPORT_HEIGHT_RATIO := 0.205
+const MIN_MAIN_HUD_GAP_PX := 24.0
 
 var failures: Array[String] = []
 
@@ -67,9 +74,30 @@ func _verify_scene_structure(
 	)
 	var top_left_margin := minimap.get_node("TopLeftMargin") as MarginContainer
 	var content := minimap.get_node("TopLeftMargin/Content") as VBoxContainer
+	var map_panel := minimap.get_node(
+		"TopLeftMargin/Content/MapPanel"
+	) as PanelContainer
 	_expect(
 		top_left_margin.position.is_equal_approx(Vector2(8.0, 8.0)),
 		"The minimap must occupy the true upper-left corner with an 8 px margin."
+	)
+	_expect(
+		top_left_margin.size.is_equal_approx(EXPECTED_MINIMAP_SIZE),
+		"The complete minimap, including coordinates, must remain 194 x 130 px; got %s."
+		% top_left_margin.size
+	)
+	_expect(
+		map_panel.size.is_equal_approx(EXPECTED_MAP_PANEL_SIZE),
+		"The framed map must remain compact at 194 x 110 px."
+	)
+	_expect(
+		minimap.minimap_canvas.size.is_equal_approx(EXPECTED_CANVAS_SIZE),
+		"The drawable minimap canvas must remain 192 x 108 px."
+	)
+	_expect(
+		minimap.coordinate_label.size.is_equal_approx(EXPECTED_COORDINATE_LABEL_SIZE),
+		"The rendered coordinate row must remain a compact 20 px-high single line; got %s."
+		% minimap.coordinate_label.size
 	)
 	_expect(
 		minimap.coordinate_label.get_parent() == content
@@ -82,13 +110,25 @@ func _verify_scene_structure(
 		"The coordinate text must not use a panel or background frame."
 	)
 	var minimap_rect := top_left_margin.get_global_rect()
+	var viewport_size := minimap.get_viewport().get_visible_rect().size
+	_expect(
+		minimap_rect.size.x <= viewport_size.x * MAX_VIEWPORT_WIDTH_RATIO
+		and minimap_rect.size.y <= viewport_size.y * MAX_VIEWPORT_HEIGHT_RATIO,
+		"The complete minimap must stay within 17%% width and 20.5%% height; got %s in %s."
+		% [minimap_rect.size, viewport_size]
+	)
 	_expect(
 		not minimap_rect.intersects(game.currency_hud.settings_button.get_global_rect()),
 		"Moving the minimap to the true upper-left must not overlap the relocated settings button."
 	)
+	var main_hud_rect := game.wave_hud.top_bar.get_global_rect()
 	_expect(
-		not minimap_rect.intersects(game.wave_hud.top_bar.get_global_rect()),
+		not minimap_rect.intersects(main_hud_rect),
 		"The upper-left minimap must remain clear of the centered main HUD."
+	)
+	_expect(
+		main_hud_rect.position.x - minimap_rect.end.x >= MIN_MAIN_HUD_GAP_PX,
+		"The compact minimap and centered HUD must retain at least 24 px of clear space."
 	)
 	_expect(
 		is_equal_approx(minimap.sample_timer.wait_time, TowerDefenseMinimap.SAMPLE_INTERVAL_SECONDS),
@@ -107,6 +147,11 @@ func _verify_scene_structure(
 	_expect(
 		is_equal_approx(canvas_size.x / canvas_size.y, 16.0 / 9.0),
 		"The authored map canvas must remain 16:9."
+	)
+	_expect(
+		minimap.coordinate_label.get_theme_font_size("font_size") == 13
+		and minimap.coordinate_label.get_theme_constant("outline_size") == 1,
+		"Compact coordinates must use a readable 13 px font with a restrained 1 px outline."
 	)
 	_expect(
 		minimap.minimap_canvas.get_node("StaticLayer") is Control
@@ -178,9 +223,21 @@ func _verify_projection_and_coordinate(
 		"The local-player marker must remain green."
 	)
 	_expect(
-		TowerDefenseMinimapDynamicLayer.LOCAL_PLAYER_RADIUS <= 2.0
-		and TowerDefenseMinimapDynamicLayer.REMOTE_PLAYER_RADIUS < 2.0,
-		"Local and remote player dots must remain compact."
+		TowerDefenseMinimapDynamicLayer.LOCAL_PLAYER_RADIUS >= 1.5
+		and TowerDefenseMinimapDynamicLayer.LOCAL_PLAYER_RADIUS <= 1.7
+		and TowerDefenseMinimapDynamicLayer.REMOTE_PLAYER_RADIUS >= 1.0
+		and TowerDefenseMinimapDynamicLayer.REMOTE_PLAYER_RADIUS <= 1.25,
+		"Local and remote player dots must remain compact without becoming sub-pixel marks."
+	)
+	_expect(
+		TowerDefenseMinimapDynamicLayer.LOCAL_PLAYER_CENTER_RADIUS >= 0.45
+		and (
+			TowerDefenseMinimapDynamicLayer.LOCAL_PLAYER_CENTER_RADIUS
+			< TowerDefenseMinimapDynamicLayer.LOCAL_PLAYER_RADIUS
+		)
+		and TowerDefenseMinimapDynamicLayer.PLAYER_MARKER_OUTLINE_WIDTH >= 0.3
+		and TowerDefenseMinimapDynamicLayer.PLAYER_MARKER_OUTLINE_WIDTH <= 0.4,
+		"The local player must retain a visible center and a thin contrasting outline."
 	)
 	var projected_origin := canvas.static_layer._world_to_canvas(Vector2.ZERO)
 	var projected_east := canvas.static_layer._world_to_canvas(Vector2(16.0, 0.0))
@@ -283,7 +340,15 @@ func _verify_enemy_marker_aggregation(
 	)
 	_expect(
 		dynamic_layer.get_enemy_marker_radius(5) <= 2.0,
-		"Even the highest enemy-density marker must have at most a 2 px outer radius."
+		"Even the highest enemy-density marker must remain below a 2 px radius."
+	)
+	_expect(
+		TowerDefenseMinimapDynamicLayer.ENEMY_SINGLE_RADIUS >= 1.0
+		and (
+			TowerDefenseMinimapDynamicLayer.ENEMY_HIGH_RADIUS * 2.0
+			<= TowerDefenseMinimapDynamicLayer.ENEMY_BUCKET_SIZE_PX
+		),
+		"Enemy dots must remain visible while adjacent highest-density buckets cannot overlap."
 	)
 
 	# Stress the exact boundary that used to leave averaged representatives almost coincident.

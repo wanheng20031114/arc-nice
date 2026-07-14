@@ -7,6 +7,10 @@ const DEATH_EFFECT_FADE_SECONDS := 0.62
 const LOCAL_DEATH_FADE_SECONDS := 0.26
 const LOCAL_DEATH_HOLD_SECONDS := 0.18
 const LOCAL_DEATH_MOVE_SECONDS := 0.56
+const LOCAL_DEATH_FULL_SIZE := Vector2(372.0, 118.0)
+const LOCAL_DEATH_CONTENT_FADE_SECONDS := 0.22
+const LOCAL_DEATH_COMPACT_REVEAL_DELAY := 0.2
+const LOCAL_DEATH_COMPACT_REVEAL_SECONDS := 0.28
 const DEAD_PLAYERS_FADE_SECONDS := 0.3
 const COUNTDOWN_PULSE_SECONDS := 0.22
 
@@ -14,31 +18,49 @@ const COUNTDOWN_PULSE_SECONDS := 0.22
 @onready var gate_warning_overlay: ColorRect = $GateWarningOverlay
 @onready var dead_players_panel: PanelContainer = $RightMargin/DeadPlayersPanel
 @onready var dead_players_label: Label = $RightMargin/DeadPlayersPanel/Margin/Content/Players
-@onready var local_death_center: CenterContainer = $LocalDeathCenter
-@onready var local_countdown_label: Label = $LocalDeathCenter/Panel/Margin/Content/Countdown
+@onready var local_death_center: Control = $LocalDeathCenter
+@onready var local_death_full_content: VBoxContainer = (
+	$LocalDeathCenter/Panel/ContentLayer/FullMargin/FullContent
+)
+@onready var local_countdown_label: Label = (
+	$LocalDeathCenter/Panel/ContentLayer/FullMargin/FullContent/Countdown
+)
+@onready var local_death_compact_content: MarginContainer = (
+	$LocalDeathCenter/Panel/ContentLayer/CompactMargin
+)
+@onready var local_compact_countdown_label: Label = (
+	$LocalDeathCenter/Panel/ContentLayer/CompactMargin/Countdown
+)
 @onready var gate_warning_audio: AudioStreamPlayer = $GateWarningAudio
 
 var respawn_entries: Dictionary = {}
 var local_dead_peer_id := -1
 var local_death_top_position := Vector2.ZERO
+var local_death_top_size := Vector2.ZERO
 var local_death_intro_active := false
 var death_effect_tween: Tween = null
 var local_death_tween: Tween = null
 var dead_players_tween: Tween = null
 var countdown_pulse_tween: Tween = null
+var countdown_pulse_target: Label = null
 var gate_warning_tween: Tween = null
 var last_gate_warning_msec := -GATE_WARNING_COOLDOWN_MSEC
 
 
 func _ready() -> void:
 	local_death_top_position = local_death_center.position
+	local_death_top_size = local_death_center.size
+	get_viewport().size_changed.connect(_on_viewport_size_changed)
 	death_screen_effect.hide()
 	gate_warning_overlay.hide()
 	dead_players_panel.hide()
 	local_death_center.hide()
 	dead_players_panel.modulate.a = 0.0
 	local_death_center.modulate.a = 0.0
+	local_death_full_content.modulate = Color.WHITE
+	local_death_compact_content.modulate.a = 0.0
 	local_countdown_label.pivot_offset = local_countdown_label.size * 0.5
+	local_compact_countdown_label.pivot_offset = local_compact_countdown_label.size * 0.5
 	_set_shader_intensity(death_screen_effect, 0.0)
 	_set_shader_intensity(gate_warning_overlay, 0.0)
 
@@ -144,13 +166,9 @@ func _refresh_dead_player_list() -> void:
 		dead_players_panel.modulate.a = 0.0
 	if dead_players_tween != null:
 		return
-	if local_death_intro_active and not was_visible:
-		_play_dead_players_intro(
-			LOCAL_DEATH_FADE_SECONDS
-			+ LOCAL_DEATH_HOLD_SECONDS
-			+ LOCAL_DEATH_MOVE_SECONDS
-		)
-	elif not was_visible or dead_players_panel.modulate.a < 1.0:
+	if local_death_intro_active:
+		return
+	if not was_visible or dead_players_panel.modulate.a < 1.0:
 		_play_dead_players_intro(0.0)
 
 
@@ -160,16 +178,30 @@ func _update_local_countdown(seconds_left: int, force_pulse := false) -> void:
 		if seconds_left <= 0
 		else "%d 秒后复活" % seconds_left
 	)
-	if local_countdown_label.text == countdown_text and not force_pulse:
+	var text_changed := (
+		local_countdown_label.text != countdown_text
+		or local_compact_countdown_label.text != countdown_text
+	)
+	if not text_changed and not force_pulse:
 		return
 	local_countdown_label.text = countdown_text
+	local_compact_countdown_label.text = countdown_text
 	if countdown_pulse_tween != null:
 		countdown_pulse_tween.kill()
-	local_countdown_label.pivot_offset = local_countdown_label.size * 0.5
-	local_countdown_label.scale = Vector2.ONE * 1.1
+	if countdown_pulse_target != null:
+		countdown_pulse_target.scale = Vector2.ONE
+	countdown_pulse_target = (
+		local_countdown_label
+		if local_death_intro_active
+		else local_compact_countdown_label
+	)
+	countdown_pulse_target.pivot_offset = countdown_pulse_target.size * 0.5
+	countdown_pulse_target.scale = Vector2.ONE * (
+		1.1 if local_death_intro_active else 1.06
+	)
 	countdown_pulse_tween = create_tween()
 	countdown_pulse_tween.tween_property(
-		local_countdown_label,
+		countdown_pulse_target,
 		"scale",
 		Vector2.ONE,
 		COUNTDOWN_PULSE_SECONDS
@@ -179,6 +211,7 @@ func _update_local_countdown(seconds_left: int, force_pulse := false) -> void:
 
 func _play_local_death_intro() -> void:
 	_stop_local_death_tweens()
+	_refresh_local_death_top_position()
 	local_death_intro_active = true
 	death_screen_effect.show()
 	_set_shader_intensity(death_screen_effect, 0.0)
@@ -192,7 +225,14 @@ func _play_local_death_intro() -> void:
 	death_effect_tween.finished.connect(_on_death_effect_intro_finished)
 
 	local_death_center.position = _get_local_death_intro_position()
+	local_death_center.size = LOCAL_DEATH_FULL_SIZE
 	local_death_center.modulate.a = 0.0
+	local_death_full_content.show()
+	local_death_full_content.modulate = Color.WHITE
+	local_death_compact_content.show()
+	local_death_compact_content.modulate.a = 0.0
+	local_countdown_label.scale = Vector2.ONE
+	local_compact_countdown_label.scale = Vector2.ONE
 	local_death_center.show()
 	local_death_tween = create_tween()
 	local_death_tween.tween_property(
@@ -208,6 +248,26 @@ func _play_local_death_intro() -> void:
 		local_death_top_position,
 		LOCAL_DEATH_MOVE_SECONDS
 	).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	local_death_tween.parallel().tween_property(
+		local_death_center,
+		"size",
+		local_death_top_size,
+		LOCAL_DEATH_MOVE_SECONDS
+	).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	local_death_tween.parallel().tween_property(
+		local_death_full_content,
+		"modulate:a",
+		0.0,
+		LOCAL_DEATH_CONTENT_FADE_SECONDS
+	).set_delay(0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	local_death_tween.parallel().tween_property(
+		local_death_compact_content,
+		"modulate:a",
+		1.0,
+		LOCAL_DEATH_COMPACT_REVEAL_SECONDS
+	).set_delay(LOCAL_DEATH_COMPACT_REVEAL_DELAY).set_trans(
+		Tween.TRANS_QUAD
+	).set_ease(Tween.EASE_OUT)
 	local_death_tween.finished.connect(_on_local_death_intro_finished)
 
 
@@ -236,9 +296,16 @@ func _stop_local_death_presentation() -> void:
 	local_death_intro_active = false
 	death_screen_effect.hide()
 	local_death_center.hide()
+	_refresh_local_death_top_position()
 	local_death_center.position = local_death_top_position
+	local_death_center.size = local_death_top_size
 	local_death_center.modulate.a = 0.0
+	local_death_full_content.show()
+	local_death_full_content.modulate = Color.WHITE
+	local_death_compact_content.modulate.a = 0.0
 	local_countdown_label.scale = Vector2.ONE
+	local_compact_countdown_label.scale = Vector2.ONE
+	countdown_pulse_target = null
 	_set_shader_intensity(death_screen_effect, 0.0)
 
 
@@ -252,15 +319,37 @@ func _stop_local_death_tweens() -> void:
 	if countdown_pulse_tween != null:
 		countdown_pulse_tween.kill()
 		countdown_pulse_tween = null
+	if countdown_pulse_target != null:
+		countdown_pulse_target.scale = Vector2.ONE
+		countdown_pulse_target = null
 
 
 func _get_local_death_intro_position() -> Vector2:
-	var viewport_height := get_viewport().get_visible_rect().size.y
-	var centered_y := (viewport_height - local_death_center.size.y) * 0.5
+	var viewport_size := get_viewport().get_visible_rect().size
 	return Vector2(
-		local_death_top_position.x,
-		maxf(centered_y, local_death_top_position.y)
+		(viewport_size.x - LOCAL_DEATH_FULL_SIZE.x) * 0.5,
+		maxf(
+			(viewport_size.y - LOCAL_DEATH_FULL_SIZE.y) * 0.5,
+			local_death_top_position.y
+		)
 	)
+
+
+func _refresh_local_death_top_position() -> void:
+	local_death_top_position.x = (
+		get_viewport().get_visible_rect().size.x - local_death_top_size.x
+	) * 0.5
+
+
+func _on_viewport_size_changed() -> void:
+	_refresh_local_death_top_position()
+	if local_death_intro_active:
+		if local_death_tween != null:
+			local_death_tween.kill()
+			local_death_tween = null
+		_on_local_death_intro_finished()
+		return
+	local_death_center.position = local_death_top_position
 
 
 func _set_death_effect_intensity(intensity: float) -> void:
@@ -274,6 +363,20 @@ func _on_death_effect_intro_finished() -> void:
 func _on_local_death_intro_finished() -> void:
 	local_death_tween = null
 	local_death_intro_active = false
+	_refresh_local_death_top_position()
+	local_death_center.position = local_death_top_position
+	local_death_center.size = local_death_top_size
+	local_death_center.modulate.a = 1.0
+	local_death_full_content.hide()
+	local_death_compact_content.show()
+	local_death_compact_content.modulate.a = 1.0
+	if (
+		not respawn_entries.is_empty()
+		and dead_players_panel.visible
+		and dead_players_panel.modulate.a < 1.0
+		and dead_players_tween == null
+	):
+		_play_dead_players_intro(0.0)
 
 
 func _on_dead_players_intro_finished() -> void:
@@ -282,6 +385,7 @@ func _on_dead_players_intro_finished() -> void:
 
 func _on_countdown_pulse_finished() -> void:
 	countdown_pulse_tween = null
+	countdown_pulse_target = null
 
 
 func _set_gate_warning_intensity(intensity: float) -> void:

@@ -59,7 +59,8 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	)
 	_expect(game.tower_defense_status_hud.layer > 70, "Death and gate warnings must render above every gameplay HUD.")
 	_expect(_all_control_descendants_ignore_mouse(game.tower_defense_status_hud), "The status HUD must never consume gameplay or menu input.")
-	var local_death_rect := game.tower_defense_status_hud.local_death_center.get_global_rect()
+	var status_hud: TowerDefenseStatusHUD = game.tower_defense_status_hud
+	var local_death_rect := status_hud.local_death_center.get_global_rect()
 	var top_bar_rect := game.wave_hud.top_bar.get_global_rect()
 	var stage_banner_rect := game.wave_hud.stage_banner.get_global_rect()
 	var early_start_rect := game.wave_hud.start_wave_button.get_global_rect()
@@ -70,8 +71,8 @@ func _test_singleplayer_flow_and_respawn() -> void:
 		"The authored local-death region must not overlap the main HUD or rest controls."
 	)
 	_expect(
-		local_death_rect.position.y >= early_start_rect.end.y + 8.0,
-		"The local-death region must retain at least eight pixels below the early-start button."
+		local_death_rect.position.y >= early_start_rect.end.y + 6.0,
+		"The compact local-death row must retain at least six pixels below the early-start button."
 	)
 	_expect(game.merchant.is_active and game.merchant.visible, "Zhuangfangyi must remain visible and interactive during rest.")
 	_expect(game.luoxi_merchant.is_active and game.luoxi_merchant.visible, "Luoxi must remain visible and interactive during rest.")
@@ -131,13 +132,13 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	_expect(game.request_tower_defense_wave_start(0), "The between-wave rest button must also start combat early.")
 	game.enemy_spawn_timer.stop()
 	game.player.call("_die")
-	var death_shader := game.tower_defense_status_hud.death_screen_effect.material as ShaderMaterial
+	var death_shader := status_hud.death_screen_effect.material as ShaderMaterial
 	_expect(
-		game.tower_defense_status_hud.local_death_center.modulate.a < 0.05,
+		status_hud.local_death_center.modulate.a < 0.05,
 		"The local death card must begin transparent instead of appearing instantly."
 	)
 	_expect(
-		game.tower_defense_status_hud.dead_players_panel.modulate.a < 0.05,
+		status_hud.dead_players_panel.modulate.a < 0.05,
 		"The dead-player list must remain transparent until the local death card reaches the top."
 	)
 	_expect(
@@ -151,28 +152,76 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	_expect(not game.player.nameplate_layer.visible, "No world-space revive countdown may remain over the death position.")
 	_expect(game.player.collision_shape.disabled, "A dead tower-defense player must have no world collision.")
 	_expect(game.map_camera.get_parent() == game, "The local camera must detach from the dead player for spectator movement.")
-	_expect(game.tower_defense_status_hud.local_death_center.visible, "The local death HUD must be visible.")
-	_expect(game.tower_defense_status_hud.dead_players_panel.visible, "The right-side dead-player HUD must be visible.")
+	_expect(status_hud.local_death_center.visible, "The local death HUD must be visible.")
+	_expect(status_hud.dead_players_panel.visible, "The right-side dead-player HUD must be visible.")
 	_expect(game.singleplayer_respawn_last_seconds == 5, "The first death in a wave must use a five-second revive.")
 	_expect(
-		game.tower_defense_status_hud.local_death_center.position.y
-		> game.tower_defense_status_hud.local_death_top_position.y + 80.0,
+		status_hud.local_death_center.position.y
+		> status_hud.local_death_top_position.y + 80.0,
 		"The local death card must begin near the screen center before moving upward."
 	)
-
-	await create_timer(1.4).timeout
 	_expect(
-		game.tower_defense_status_hud.local_death_center.position.is_equal_approx(
-			game.tower_defense_status_hud.local_death_top_position
+		status_hud.local_death_center.size.is_equal_approx(Vector2(372.0, 118.0)),
+		"The local death presentation must begin as the complete 372x118 card."
+	)
+	_expect(
+		status_hud.local_death_full_content.visible
+		and status_hud.local_death_full_content.modulate.a > 0.99
+		and status_hud.local_death_compact_content.modulate.a < 0.05,
+		"Only the complete three-line death content may be readable at intro start."
+	)
+	_expect(
+		status_hud.local_countdown_label.text == "5 秒后复活"
+		and status_hud.local_compact_countdown_label.text == "5 秒后复活",
+		"Full and compact death layouts must share the same initial revive countdown."
+	)
+	status_hud.set_player_respawn(77, "队友", 9, false)
+	_expect(
+		status_hud.dead_players_label.text.contains("队友：9秒后复活")
+		and status_hud.dead_players_panel.modulate.a < 0.05,
+		"A teammate update during the local intro must refresh data without fading the list in early."
+	)
+	var local_death_intro_position := status_hud.local_death_center.position
+
+	await create_timer(0.72).timeout
+	_expect(
+		status_hud.local_death_center.position.y < local_death_intro_position.y
+		and status_hud.local_death_center.position.y > status_hud.local_death_top_position.y,
+		"The local death card must still be moving upward midway through its transition."
+	)
+	_expect(
+		status_hud.local_death_center.size.x < 372.0
+		and status_hud.local_death_center.size.x > 250.0
+		and status_hud.local_death_center.size.y < 118.0
+		and status_hud.local_death_center.size.y > 42.0,
+		"The death frame must shrink in both axes while it moves upward."
+	)
+	_expect(
+		status_hud.local_death_full_content.visible
+		and status_hud.local_death_full_content.modulate.a < 0.95
+		and status_hud.local_death_compact_content.visible
+		and status_hud.local_death_compact_content.modulate.a > 0.05,
+		"The full and one-line contents must cross-fade during the size transition."
+	)
+
+	await create_timer(0.8).timeout
+	_expect(
+		status_hud.local_death_center.position.is_equal_approx(
+			status_hud.local_death_top_position
 		),
 		"The local death card must finish at its authored top position."
 	)
 	_expect(
-		game.tower_defense_status_hud.local_death_center.modulate.a > 0.99,
+		status_hud.local_death_center.size.is_equal_approx(Vector2(250.0, 42.0))
+		and status_hud.local_death_center.size.is_equal_approx(status_hud.local_death_top_size),
+		"The completed local death card must collapse to the authored 250x42 row."
+	)
+	_expect(
+		status_hud.local_death_center.modulate.a > 0.99,
 		"The local death card must finish fully visible."
 	)
 	_expect(
-		game.tower_defense_status_hud.dead_players_panel.modulate.a > 0.99,
+		status_hud.dead_players_panel.modulate.a > 0.99,
 		"The dead-player list must fade in after the local death card moves upward."
 	)
 	_expect(
@@ -180,9 +229,28 @@ func _test_singleplayer_flow_and_respawn() -> void:
 		"The death screen effect must reach its full authored intensity."
 	)
 	_expect(
-		game.tower_defense_status_hud.local_countdown_label.label_settings.font_size >= 26,
-		"The local revive countdown must remain visually prominent."
+		not status_hud.local_death_full_content.visible
+		and status_hud.local_death_compact_content.visible
+		and status_hud.local_death_compact_content.modulate.a > 0.99,
+		"Only the compact countdown row may remain after the death intro finishes."
 	)
+	_expect(
+		status_hud.local_compact_countdown_label.text == status_hud.local_countdown_label.text
+		and status_hud.local_compact_countdown_label.text.contains("秒后复活")
+		and not status_hud.local_compact_countdown_label.text.contains("\n")
+		and status_hud.local_compact_countdown_label.label_settings.font_size == 18,
+		"The compact death card must present only one restrained revive-countdown line."
+	)
+	status_hud.set_player_respawn(0, "玩家", 3, true)
+	_expect(
+		status_hud.local_compact_countdown_label.text == "3 秒后复活"
+		and status_hud.local_death_center.position.is_equal_approx(status_hud.local_death_top_position)
+		and status_hud.local_death_center.size.is_equal_approx(Vector2(250.0, 42.0))
+		and not status_hud.local_death_intro_active
+		and status_hud.local_death_tween == null,
+		"Countdown updates in compact state must not resize or replay the death intro."
+	)
+	status_hud.clear_player_respawn(77)
 
 	var camera_before := game.map_camera.global_position
 	Input.action_press(&"move_right")
@@ -197,7 +265,28 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	_expect(not game.player.is_dead, "The single-player revive timer must revive the player.")
 	_expect(game.player.global_position.is_equal_approx(game.player_spawn.global_position), "The player must revive at the authored point in front of the blue gate.")
 	_expect(game.map_camera.get_parent() == game.player, "Reviving must restore camera follow to the player.")
-	_expect(not game.tower_defense_status_hud.local_death_center.visible, "Reviving must clear the local death HUD.")
+	_expect(not status_hud.local_death_center.visible, "Reviving must clear the local death HUD.")
+	_expect(
+		status_hud.respawn_entries.is_empty()
+		and not status_hud.death_screen_effect.visible
+		and not status_hud.dead_players_panel.visible
+		and status_hud.local_death_tween == null
+		and status_hud.countdown_pulse_tween == null,
+		"Reviving must clear every local death presentation and pending animation."
+	)
+	_expect(
+		status_hud.local_death_center.position.is_equal_approx(status_hud.local_death_top_position)
+		and status_hud.local_death_center.size.is_equal_approx(Vector2(250.0, 42.0))
+		and status_hud.local_death_center.modulate.a < 0.05
+		and status_hud.local_death_full_content.visible
+		and status_hud.local_death_full_content.modulate.a > 0.99
+		and status_hud.local_death_compact_content.modulate.a < 0.05,
+		"Reviving must restore the hidden authored card state for the next death."
+	)
+	_expect(
+		float(death_shader.get_shader_parameter(&"intensity")) < 0.05,
+		"Reviving must completely clear the death-screen shader intensity."
+	)
 
 	var delays: Array[int] = []
 	game.call("_reset_player_wave_death_counts")
