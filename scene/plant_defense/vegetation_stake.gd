@@ -6,6 +6,8 @@ signal spread_runtime_state_changed(elapsed_seconds: float)
 const RUNTIME_STATE_SCHEMA := 1
 const TOTAL_SPREAD_SECONDS := 50.0
 
+@onready var health_bar: PlantHealthBar = $HealthBar
+
 var _spread_elapsed_at_sync: float = 0.0
 var _spread_sync_ticks: float = 0.0
 
@@ -13,6 +15,13 @@ var _spread_sync_ticks: float = 0.0
 func _on_setup_completed() -> void:
 	_spread_elapsed_at_sync = 0.0
 	_spread_sync_ticks = _now_seconds()
+	health_bar.setup(max_health, current_health)
+	if not health_changed.is_connected(_on_health_changed):
+		health_changed.connect(_on_health_changed)
+
+
+func _on_health_changed(new_health: int, new_max_health: int) -> void:
+	health_bar.set_health(new_health, new_max_health)
 
 
 func get_spread_elapsed_seconds() -> float:

@@ -2142,14 +2142,21 @@ func _test_host_authoritative_hoe_actions() -> void:
 	)
 	_expect(int(action_sequences.get(1, 0)) == 1, "Rejected Hoe Cat attacks must not advance the action sequence.")
 
-	while float(hoe_player.get("_primary_visual_time_left")) > 0.0:
-		await process_frame
+	_expect(
+		float(hoe_player.get("_primary_visual_time_left")) > 0.0,
+		"Host skill-priority coverage must begin while the primary presentation is still active."
+	)
 	hoe_player.unlock_skill1()
 	hoe_player.skill1_charge = hoe_player.skill1_charge_duration
 	hoe_player.current_health = 70
 	_expect(
 		bool(mp_game.call("_apply_authoritative_hoe_action", 1, &"whirlwind", Vector2.ZERO)),
-		"Host must accept a fully charged Hoe Cat whirlwind request."
+		"Host must let a fully charged Hoe Cat whirlwind interrupt the primary presentation."
+	)
+	_expect(
+		is_zero_approx(float(hoe_player.get("_primary_visual_time_left")))
+		and hoe_player.primary_impact_timer.is_stopped(),
+		"Host-authoritative whirlwind must clear the interrupted primary presentation and timer."
 	)
 	_expect(int(action_sequences.get(1, 0)) == 2, "Accepted whirlwind must advance the authoritative action sequence.")
 	_expect(hoe_player.current_health == 70, "Whirlwind healing must wait for its impact frame.")

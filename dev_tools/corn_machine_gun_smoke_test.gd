@@ -255,10 +255,10 @@ func _test_physical_defense_round_totals() -> void:
 	var enemy_config := EnemyConfig.new()
 	enemy.config = enemy_config
 	var defense_cases: Array[Vector2i] = [
-		Vector2i(0, 60),
-		Vector2i(5, 30),
-		Vector2i(10, 6),
-		Vector2i(25, 6),
+		Vector2i(0, 180),
+		Vector2i(5, 150),
+		Vector2i(10, 120),
+		Vector2i(25, 30),
 	]
 	for defense_case in defense_cases:
 		enemy_config.physical_defense = defense_case.x

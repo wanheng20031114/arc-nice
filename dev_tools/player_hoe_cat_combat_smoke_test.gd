@@ -124,6 +124,7 @@ func _run() -> void:
 	await _test_generic_collectible_hooks_for_both_characters()
 	await _test_primary_cone_attack()
 	_test_skill_purchase_and_upgrades()
+	await _test_whirlwind_interrupts_pending_primary_attack()
 	await _test_whirlwind_damage_and_heal()
 	await _test_primary_attack_through_real_input()
 	await _test_dynamic_skill_profile()
@@ -433,6 +434,63 @@ func _test_skill_purchase_and_upgrades() -> void:
 		)
 	_expect(player.is_skill1_upgrade_maxed(), "Whirlwind must report maxed after four upgrades.")
 	_expect(not player.try_upgrade_skill1_free(), "Whirlwind must reject a fifth upgrade, including a free one.")
+
+
+func _test_whirlwind_interrupts_pending_primary_attack() -> void:
+	var packed_scene := load(HOE_CAT_SCENE_PATH) as PackedScene
+	var interrupt_player := packed_scene.instantiate() as PlayerHoeCat if packed_scene != null else null
+	_expect(interrupt_player != null, "Hoe Cat must instantiate for primary-to-skill priority coverage.")
+	if interrupt_player == null:
+		return
+	interrupt_player.position = Vector2(500.0, 0.0)
+	test_root.add_child(interrupt_player)
+	var interrupt_target := _spawn_test_enemy(interrupt_player.position + Vector2.RIGHT * 6.0)
+	await process_frame
+	await physics_frame
+	_stop_audio_players(interrupt_player)
+	interrupt_player.unlock_skill1()
+	interrupt_player.skill1_charge = interrupt_player.skill1_charge_duration
+	interrupt_player.shooting_timer.stop()
+	_expect(
+		interrupt_player.try_authoritative_hoe_primary_attack(Vector2.RIGHT),
+		"Hoe Cat must begin a primary swing before skill-priority coverage."
+	)
+	_expect(
+		bool(interrupt_player.get("_pending_primary_attack"))
+		and not interrupt_player.primary_impact_timer.is_stopped(),
+		"A primary swing must hold its damage until the authored impact timer."
+	)
+	_expect(
+		bool(interrupt_player.call("_try_use_skill1")),
+		"A fully charged whirlwind must interrupt an in-progress primary swing."
+	)
+	_expect(
+		not bool(interrupt_player.get("_pending_primary_attack"))
+		and interrupt_player.primary_impact_timer.is_stopped()
+		and int(interrupt_player.get("_pending_primary_damage")) == 0,
+		"Whirlwind priority must cancel the pending primary payload and impact timer."
+	)
+	_expect(
+		is_zero_approx(float(interrupt_player.get("_primary_visual_time_left")))
+		and not interrupt_player.basic_slash_effect.visible
+		and float(interrupt_player.get("_whirlwind_visual_time_left")) > 0.0,
+		"Whirlwind priority must replace the primary presentation immediately."
+	)
+	interrupt_player.call("_on_primary_impact_timer_timeout")
+	_expect(
+		interrupt_target.total_damage_taken == 0,
+		"A canceled primary timeout must not apply damage after whirlwind takes priority."
+	)
+	await interrupt_player.whirlwind_impact_timer.timeout
+	await process_frame
+	_expect(
+		interrupt_target.total_damage_taken == 45,
+		"Only the prioritized whirlwind impact may damage the interrupted swing target."
+	)
+	interrupt_player.call("_finish_whirlwind_visual")
+	interrupt_player.queue_free()
+	interrupt_target.queue_free()
+	await process_frame
 
 
 func _test_whirlwind_damage_and_heal() -> void:

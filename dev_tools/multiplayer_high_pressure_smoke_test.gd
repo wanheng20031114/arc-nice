@@ -664,16 +664,31 @@ func _test_hoe_prediction_confirmation_reconciliation() -> void:
 		and is_equal_approx(player.skill1_charge, 1.5),
 		"A rejected primary prediction must cancel its visual and restore authoritative charge."
 	)
+	player.play_predicted_hoe_action(&"primary", Vector2.RIGHT, 11)
+	_expect(
+		not player.primary_impact_timer.is_stopped()
+		and float(player.get("_primary_visual_time_left")) > 0.0,
+		"A predicted primary must arm its presentation timer before skill-priority coverage."
+	)
+	player.play_predicted_hoe_action(&"whirlwind", Vector2.ZERO, 12)
+	_expect(
+		player.primary_impact_timer.is_stopped()
+		and is_zero_approx(float(player.get("_primary_visual_time_left")))
+		and not player.basic_slash_effect.visible
+		and float(player.get("_whirlwind_visual_time_left")) > 0.0,
+		"A predicted whirlwind must immediately replace an in-flight primary presentation."
+	)
+	player.reconcile_predicted_hoe_action(12, false, &"whirlwind", 1.0, 2.0)
 
-	player.play_predicted_hoe_action(&"whirlwind", Vector2.ZERO, 11)
-	player.reconcile_predicted_hoe_action(11, true, &"whirlwind", 1.0, 0.75)
+	player.play_predicted_hoe_action(&"whirlwind", Vector2.ZERO, 13)
+	player.reconcile_predicted_hoe_action(13, true, &"whirlwind", 1.0, 0.75)
 	_expect(
 		float(player.get("_whirlwind_visual_time_left")) > 0.0
 		and is_equal_approx(player.skill1_charge, 0.75),
 		"An accepted whirlwind must retain prediction while reconciling authoritative resources."
 	)
-	player.play_predicted_hoe_action(&"whirlwind", Vector2.ZERO, 12)
-	player.reconcile_predicted_hoe_action(12, false, &"whirlwind", 1.0, 2.0)
+	player.play_predicted_hoe_action(&"whirlwind", Vector2.ZERO, 14)
+	player.reconcile_predicted_hoe_action(14, false, &"whirlwind", 1.0, 2.0)
 	_expect(
 		is_zero_approx(float(player.get("_whirlwind_visual_time_left")))
 		and is_equal_approx(player.skill1_charge, 2.0),

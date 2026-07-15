@@ -5,7 +5,7 @@ signal burst_shot_emitted(shot_index: int, authoritative: bool)
 
 const AUDIO_LIMITER := preload("res://scene/plant_defense/plant_attack_audio_limiter.gd")
 const WORLD_AND_ENEMY_COLLISION_MASK := 5
-const DEFAULT_ATTACK_DAMAGE := 10
+const DEFAULT_ATTACK_DAMAGE := 30
 const DEFAULT_ATTACK_RANGE := 160.0
 const DEFAULT_ATTACK_INTERVAL := 0.9
 const DEFAULT_BURST_COUNT := 6
