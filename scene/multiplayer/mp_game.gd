@@ -8,6 +8,8 @@ const TRANSACTION_RPC_METHODS := {
 	&"net_inventory_snapshot": true,
 	&"net_inventory_item_used": true,
 	&"net_inventory_item_discarded": true,
+	&"net_pickup_collected": true,
+	&"net_xirang_granted_all": true,
 	&"net_upgrade_confirmed": true,
 	&"net_skill1_purchase_confirmed": true,
 	&"net_luoxi_collectible_confirmed": true,
@@ -16,7 +18,7 @@ const TRANSACTION_RPC_METHODS := {
 	&"net_warehouse_command_result": true,
 	&"net_warehouse_storage_snapshot": true,
 	&"net_cheat_xirang_confirmed": true,
-	&"net_debug_collectible_confirmed": true,
+	&"net_debug_collectible_granted": true,
 }
 const FEEDBACK_RPC_METHODS := {
 	&"net_collectible_visual_effect": true,
@@ -25,6 +27,7 @@ const FEEDBACK_RPC_METHODS := {
 	&"net_enemy_damage_applied": true,
 	&"net_tiyi_high_noon_targets": true,
 	&"net_enemy_action": true,
+	&"net_enemy_target_action": true,
 	&"net_plant_health_batch": true,
 	&"net_tower_defense_wave_progress_changed": true,
 }
@@ -132,6 +135,8 @@ const ENEMY_TERMINAL_DEFEATED := 0
 const ENEMY_TERMINAL_ESCAPED := 1
 const ENEMY_TERMINAL_REMOVED := 2
 const MULTIPLAYER_TEAM_PLANT_LIMIT := 256
+const CLIENT_PENDING_PLANT_HEALTH_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT
+const CLIENT_REMOVED_PLANT_TOMBSTONE_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT * 2
 const PLANT_PLACEMENT_RATE_PER_SECOND := 4.0
 const PLANT_PLACEMENT_RATE_BURST := 8.0
 const WAREHOUSE_INTERACTION_MAX_DISTANCE := 48.0
@@ -145,6 +150,7 @@ const TERRAIN_SNAPSHOT_MAX_CHUNKS := 4096
 const TERRAIN_DELTA_MAX_CELLS := 96
 const TERRAIN_SNAPSHOT_REQUEST_RATE_PER_SECOND := 1.0
 const TERRAIN_SNAPSHOT_REQUEST_RATE_BURST := 2.0
+const TERRAIN_SNAPSHOT_REPAIR_WATCHDOG_SECONDS := 2.0
 const TERRAIN_TYPE_EMPTY := -1
 const TERRAIN_TYPE_GRASS := 1
 const TERRAIN_TYPE_DIRT := 2
@@ -184,7 +190,6 @@ var input_sequence: int = 0
 var _net_time_origin: float = 0.0
 var _net_enemies: Dictionary = {}
 var _enemy_spawn_snapshot_times: Dictionary = {}
-var _escaped_enemy_ids: Dictionary = {}
 var _has_host_time_offset: bool = false
 var _host_to_client_time_offset: float = 0.0
 var _has_sent_input: bool = false
@@ -277,6 +282,12 @@ var _corn_machine_gun_burst_flush_time_left: float = (
 )
 var _pending_plant_health_updates: Dictionary = {}
 var _plant_health_flush_time_left: float = PLANT_HEALTH_FLUSH_INTERVAL_SECONDS
+# CH5 spawn/removal and CH7 health feedback have independent delivery order.
+# Keep only bounded client-side ordering state; the Host remains authoritative.
+var _pending_remote_plant_health_updates: Dictionary = {}
+var _pending_remote_plant_health_order: Array[int] = []
+var _removed_remote_plant_ids: Dictionary = {}
+var _removed_remote_plant_id_order: Array[int] = []
 var _pending_wave_progress: Dictionary = {}
 var _wave_progress_flush_time_left: float = WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS
 var _client_proxy_visual_budget_time_left: float = 0.0
@@ -291,6 +302,7 @@ var _last_host_terrain_revision_broadcast: int = 0
 var _client_terrain_revision: int = -1
 var _client_has_terrain_snapshot: bool = false
 var _client_waiting_for_terrain_snapshot: bool = false
+var _terrain_snapshot_repair_watchdog_time_left: float = 0.0
 var _last_completed_terrain_snapshot_id: int = 0
 var _pending_terrain_snapshot_batches: Dictionary = {}
 var _rpc_payload_diagnostics_enabled := false
@@ -355,12 +367,14 @@ func _exit_tree() -> void:
 	_pending_corn_machine_gun_burst_directions.clear()
 	_pending_corn_machine_gun_burst_host_times.clear()
 	_pending_plant_health_updates.clear()
+	_clear_remote_plant_health_state()
 	_pending_wave_progress.clear()
 	_pending_enemy_spawns.clear()
 	_host_terminal_enemy_ids.clear()
 	_pending_terrain_snapshot_batches.clear()
 	_terrain_snapshot_request_rate_buckets.clear()
 	_client_projectile_request_rate_buckets.clear()
+	_terrain_snapshot_repair_watchdog_time_left = 0.0
 	_luoxi_offer_states_by_peer.clear()
 	_luoxi_offer_revision_counters.clear()
 	_warehouse_transaction_started_usec.clear()
@@ -405,6 +419,7 @@ func _process(delta: float) -> void:
 	if net_manager.is_client() or net_manager.is_host():
 		_client_interpolate_entities()
 	if net_manager.is_client() and game != null:
+		_update_terrain_snapshot_repair_watchdog(delta)
 		_update_client_proxy_visual_budget(delta)
 		var remote_enemy_count := _net_enemies.size()
 		if remote_enemy_count != _last_applied_remote_enemy_count:
@@ -1284,6 +1299,7 @@ func _request_runtime_state_from_host() -> void:
 	_runtime_state_requested = true
 	if game.supports_multiplayer_terrain_state():
 		_client_waiting_for_terrain_snapshot = true
+		_arm_terrain_snapshot_repair_watchdog()
 	net_runtime_state_requested.rpc_id(
 		_get_host_peer_id(),
 		not _client_has_received_flow_state
@@ -1772,6 +1788,7 @@ func _get_rpc_traffic_channel(method_name: StringName) -> int:
 		or method_name == &"net_linglan_skill1_ring_batch"
 		or method_name == &"net_plant_projectile_visual"
 		or method_name == &"net_corn_machine_gun_burst_batch"
+		or method_name == &"net_tiyi_sniper_hit_confirmed"
 	):
 		return _NetConstants.CH_PROJECTILE
 	if TRANSACTION_RPC_METHODS.has(method_name):
@@ -4832,12 +4849,132 @@ func net_plant_health_batch(
 		mini(health_values.size(), mini(maximum_values.size(), revisions.size()))
 	)
 	for record_index in range(record_count):
-		game.apply_remote_plant_health(
+		_apply_or_defer_remote_plant_health(
 			net_ids[record_index],
 			health_values[record_index],
 			maximum_values[record_index],
 			revisions[record_index]
 		)
+
+
+func _apply_or_defer_remote_plant_health(
+	net_id: int,
+	current_health: int,
+	maximum_health: int,
+	health_revision: int
+) -> void:
+	if (
+		game == null
+		or net_manager.is_host()
+		or net_id <= 0
+		or health_revision < 0
+		or _removed_remote_plant_ids.has(net_id)
+	):
+		return
+	var plant := game.get_multiplayer_plant_node(net_id)
+	if plant == null or not is_instance_valid(plant):
+		_cache_remote_plant_health(
+			net_id,
+			current_health,
+			maximum_health,
+			health_revision
+		)
+		return
+
+	var pending := _pending_remote_plant_health_updates.get(net_id, {}) as Dictionary
+	var selected_health := current_health
+	var selected_maximum := maximum_health
+	var selected_revision := health_revision
+	if int(pending.get("health_revision", -1)) >= health_revision:
+		selected_health = int(pending.get("current_health", current_health))
+		selected_maximum = int(pending.get("maximum_health", maximum_health))
+		selected_revision = int(pending.get("health_revision", health_revision))
+	_erase_pending_remote_plant_health(net_id)
+	game.apply_remote_plant_health(
+		net_id,
+		selected_health,
+		selected_maximum,
+		selected_revision
+	)
+
+
+func _cache_remote_plant_health(
+	net_id: int,
+	current_health: int,
+	maximum_health: int,
+	health_revision: int
+) -> void:
+	var previous := _pending_remote_plant_health_updates.get(net_id, {}) as Dictionary
+	if int(previous.get("health_revision", -1)) >= health_revision:
+		return
+	if previous.is_empty():
+		while (
+			_pending_remote_plant_health_updates.size()
+			>= CLIENT_PENDING_PLANT_HEALTH_MAX_ENTRIES
+			and not _pending_remote_plant_health_order.is_empty()
+		):
+			var evicted_net_id := int(_pending_remote_plant_health_order.pop_front())
+			_pending_remote_plant_health_updates.erase(evicted_net_id)
+		_pending_remote_plant_health_order.append(net_id)
+	_pending_remote_plant_health_updates[net_id] = {
+		"current_health": current_health,
+		"maximum_health": maximum_health,
+		"health_revision": health_revision,
+	}
+
+
+func _apply_pending_remote_plant_health(net_id: int) -> void:
+	var pending := _pending_remote_plant_health_updates.get(net_id, {}) as Dictionary
+	if pending.is_empty():
+		return
+	var plant := game.get_multiplayer_plant_node(net_id)
+	if plant == null or not is_instance_valid(plant):
+		return
+	_erase_pending_remote_plant_health(net_id)
+	game.apply_remote_plant_health(
+		net_id,
+		int(pending.get("current_health", 0)),
+		int(pending.get("maximum_health", 1)),
+		int(pending.get("health_revision", -1))
+	)
+
+
+func _erase_pending_remote_plant_health(net_id: int) -> void:
+	if not _pending_remote_plant_health_updates.erase(net_id):
+		return
+	_pending_remote_plant_health_order.erase(net_id)
+
+
+func _mark_remote_plant_removed(net_id: int) -> void:
+	if net_id <= 0:
+		return
+	_erase_pending_remote_plant_health(net_id)
+	if _removed_remote_plant_ids.has(net_id):
+		return
+	while (
+		_removed_remote_plant_ids.size()
+		>= CLIENT_REMOVED_PLANT_TOMBSTONE_MAX_ENTRIES
+		and not _removed_remote_plant_id_order.is_empty()
+	):
+		var evicted_net_id := int(_removed_remote_plant_id_order.pop_front())
+		_removed_remote_plant_ids.erase(evicted_net_id)
+	_removed_remote_plant_ids[net_id] = true
+	_removed_remote_plant_id_order.append(net_id)
+
+
+func _clear_remote_plant_removed_marker(net_id: int) -> void:
+	if net_id <= 0:
+		return
+	if not _removed_remote_plant_ids.erase(net_id):
+		return
+	_removed_remote_plant_id_order.erase(net_id)
+
+
+func _clear_remote_plant_health_state() -> void:
+	_pending_remote_plant_health_updates.clear()
+	_pending_remote_plant_health_order.clear()
+	_removed_remote_plant_ids.clear()
+	_removed_remote_plant_id_order.clear()
 
 
 @rpc("authority", "call_remote", "unreliable", 7)
@@ -5683,8 +5820,6 @@ func _on_host_enemy_defeated(net_id: int, defeat_position: Vector2) -> void:
 func _on_host_enemy_removed(net_id: int) -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
-	if _host_terminal_enemy_ids.erase(net_id):
-		return
 	_broadcast_enemy_terminal(net_id, ENEMY_TERMINAL_REMOVED, Vector2.ZERO)
 
 
@@ -5695,9 +5830,24 @@ func _on_host_enemy_escaped(net_id: int) -> void:
 
 
 func _broadcast_enemy_terminal(net_id: int, reason: int, event_position: Vector2) -> void:
-	if net_id <= 0 or _host_terminal_enemy_ids.has(net_id):
+	if net_id <= 0:
 		return
-	_host_terminal_enemy_ids[net_id] = true
+	match reason:
+		ENEMY_TERMINAL_DEFEATED:
+			# A defeated enemy later emits the generic tree-exit removal. Retain only
+			# this in-flight pairing marker, then consume it on REMOVED below.
+			if _host_terminal_enemy_ids.has(net_id):
+				return
+			_host_terminal_enemy_ids[net_id] = true
+		ENEMY_TERMINAL_REMOVED:
+			if _host_terminal_enemy_ids.erase(net_id):
+				return
+		ENEMY_TERMINAL_ESCAPED:
+			# GameTowerDefense suppresses the later generic removal itself, so an
+			# escape must never become a session-long terminal-ID tombstone.
+			_host_terminal_enemy_ids.erase(net_id)
+		_:
+			return
 	_rpc_to_connected_clients(&"net_enemy_terminal", [net_id, reason, event_position])
 
 
@@ -6059,7 +6209,10 @@ func _on_game_return_to_lobby_requested() -> void:
 func net_runtime_state_requested(include_flow_state: bool = true) -> void:
 	if not net_manager.is_host() or game == null:
 		return
-	_send_runtime_state_to_peer(multiplayer.get_remote_sender_id(), include_flow_state)
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0 or game.get_player_for_peer(sender_id) == null:
+		return
+	_send_runtime_state_to_peer(sender_id, include_flow_state)
 
 
 @rpc("any_peer", "call_remote", "reliable", 0)
@@ -6114,6 +6267,7 @@ func net_terrain_snapshot_chunk(
 	):
 		_restart_terrain_snapshot_repair()
 		return
+	_arm_terrain_snapshot_repair_watchdog()
 
 	var batch := _pending_terrain_snapshot_batches.get(snapshot_id, {}) as Dictionary
 	if batch.is_empty():
@@ -6169,6 +6323,7 @@ func net_terrain_snapshot_chunk(
 	if _client_has_terrain_snapshot and revision < _client_terrain_revision:
 		_pending_terrain_snapshot_batches.erase(snapshot_id)
 		_client_waiting_for_terrain_snapshot = false
+		_terrain_snapshot_repair_watchdog_time_left = 0.0
 		return
 	if not game.apply_remote_terrain_snapshot(
 		revision,
@@ -6180,6 +6335,7 @@ func net_terrain_snapshot_chunk(
 	_client_terrain_revision = revision
 	_client_has_terrain_snapshot = true
 	_client_waiting_for_terrain_snapshot = false
+	_terrain_snapshot_repair_watchdog_time_left = 0.0
 	_last_completed_terrain_snapshot_id = snapshot_id
 	for pending_id_variant in _pending_terrain_snapshot_batches.keys():
 		if int(pending_id_variant) <= snapshot_id:
@@ -6239,6 +6395,7 @@ func net_runtime_world_manifest(
 	for net_id in live_plant_ids:
 		if net_id > 0:
 			plant_id_set[net_id] = true
+			_clear_remote_plant_removed_marker(net_id)
 
 	for net_id_variant in _net_enemies.keys():
 		var net_id := int(net_id_variant)
@@ -6253,11 +6410,18 @@ func net_runtime_world_manifest(
 			var plant_net_id := int(plant_snapshot.get("net_id", 0))
 			if plant_net_id > 0 and not plant_id_set.has(plant_net_id):
 				_pending_warehouse_snapshots.erase(plant_net_id)
+				_mark_remote_plant_removed(plant_net_id)
 				game.apply_remote_plant_removed(plant_net_id)
+			elif plant_net_id > 0:
+				_apply_pending_remote_plant_health(plant_net_id)
 		for pending_net_id_variant in _pending_warehouse_snapshots.keys():
 			var pending_net_id := int(pending_net_id_variant)
 			if not plant_id_set.has(pending_net_id):
 				_pending_warehouse_snapshots.erase(pending_net_id)
+		for pending_net_id_variant in _pending_remote_plant_health_updates.keys():
+			var pending_net_id := int(pending_net_id_variant)
+			if not plant_id_set.has(pending_net_id):
+				_mark_remote_plant_removed(pending_net_id)
 
 
 @rpc("any_peer", "call_remote", "reliable", 5)
@@ -6421,7 +6585,6 @@ func net_enemy_spawned(
 ) -> void:
 	if game == null or net_manager.is_host():
 		return
-	_escaped_enemy_ids.erase(net_id)
 	var existing_enemy := _get_valid_client_enemy_for_net_id(net_id)
 	if (
 		existing_enemy != null
@@ -6488,7 +6651,6 @@ func net_enemy_terminal(net_id: int, reason: int, event_position: Vector2) -> vo
 				enemy.global_position = event_position
 			_remove_client_enemy(net_id, true)
 		ENEMY_TERMINAL_ESCAPED:
-			_escaped_enemy_ids[net_id] = true
 			game.apply_remote_enemy_escape(net_id)
 			_remove_client_enemy(net_id, false)
 		_:
@@ -6508,8 +6670,6 @@ func net_enemy_defeated(net_id: int, defeat_position: Vector2) -> void:
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_enemy_removed(net_id: int) -> void:
-	if _escaped_enemy_ids.has(net_id):
-		return
 	_remove_client_enemy(net_id, true)
 
 
@@ -6517,7 +6677,6 @@ func net_enemy_removed(net_id: int) -> void:
 func net_enemy_escaped(net_id: int) -> void:
 	if game == null or net_manager.is_host() or net_id <= 0:
 		return
-	_escaped_enemy_ids[net_id] = true
 	game.apply_remote_enemy_escape(net_id)
 	_remove_client_enemy(net_id, false)
 
@@ -6584,6 +6743,7 @@ func net_plant_spawned(
 ) -> void:
 	if game == null or net_manager.is_host():
 		return
+	_clear_remote_plant_removed_marker(net_id)
 	game.apply_remote_plant_spawn(
 		request_id,
 		owner_peer_id,
@@ -6597,6 +6757,7 @@ func net_plant_spawned(
 	var plant := game.get_multiplayer_plant_node(net_id)
 	_apply_plant_runtime_state(plant, runtime_state, host_sample_time)
 	_configure_warehouse_network(plant, false)
+	_apply_pending_remote_plant_health(net_id)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -6615,7 +6776,7 @@ func net_plant_health_changed(
 ) -> void:
 	if game == null or net_manager.is_host():
 		return
-	game.apply_remote_plant_health(
+	_apply_or_defer_remote_plant_health(
 		net_id,
 		current_health,
 		maximum_health,
@@ -6628,6 +6789,7 @@ func net_plant_removed(net_id: int) -> void:
 	if game == null or net_manager.is_host():
 		return
 	_pending_warehouse_snapshots.erase(net_id)
+	_mark_remote_plant_removed(net_id)
 	game.apply_remote_plant_removed(net_id)
 
 
@@ -6925,9 +7087,6 @@ func net_pickup_collected(
 			collector_peer_id,
 			inventory_snapshot
 		)
-	else:
-		# v4/early-v5 compatibility: old confirmations did not include a snapshot.
-		run_state.try_add_item_for_peer(collector_peer_id, pickup_config)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -7001,7 +7160,8 @@ func net_inventory_item_use_requested(
 	if sender_id <= 0:
 		return
 	if expected_inventory_revision < 0:
-		# Protocol-v5 clients must always bind a command to their last snapshot.
+		# An omitted revision is converted to an impossible future revision so a
+		# remote caller can never bypass optimistic concurrency.
 		expected_inventory_revision = (
 			run_state.get_inventory_revision_for_peer(sender_id) + 1
 		)
@@ -7023,8 +7183,8 @@ func net_inventory_item_discard_requested(
 	if sender_id <= 0:
 		return
 	if expected_inventory_revision < 0:
-		# Keep the method's default for direct legacy tests, but never let a remote
-		# peer bypass optimistic concurrency by omitting the revision.
+		# Keep the default callable for direct tests, but never let a remote peer
+		# bypass optimistic concurrency by omitting the revision.
 		expected_inventory_revision = (
 			run_state.get_inventory_revision_for_peer(sender_id) + 1
 		)
@@ -7903,16 +8063,56 @@ func _request_terrain_snapshot_repair() -> void:
 		or not game.supports_multiplayer_terrain_state()
 	):
 		return
+	_send_terrain_snapshot_repair_request()
+
+
+func _send_terrain_snapshot_repair_request() -> void:
 	_client_waiting_for_terrain_snapshot = true
+	_arm_terrain_snapshot_repair_watchdog()
+	_transmit_terrain_snapshot_repair_request()
+
+
+func _transmit_terrain_snapshot_repair_request() -> void:
 	net_terrain_snapshot_requested.rpc_id(
 		_get_host_peer_id(),
 		_client_terrain_revision
 	)
 
 
+func _arm_terrain_snapshot_repair_watchdog() -> void:
+	_terrain_snapshot_repair_watchdog_time_left = (
+		TERRAIN_SNAPSHOT_REPAIR_WATCHDOG_SECONDS
+	)
+
+
+func _update_terrain_snapshot_repair_watchdog(delta: float) -> void:
+	if not _client_waiting_for_terrain_snapshot:
+		_terrain_snapshot_repair_watchdog_time_left = 0.0
+		return
+	if (
+		not net_manager.is_client()
+		or game == null
+		or not game.supports_multiplayer_terrain_state()
+	):
+		return
+	_terrain_snapshot_repair_watchdog_time_left = maxf(
+		_terrain_snapshot_repair_watchdog_time_left - maxf(delta, 0.0),
+		0.0
+	)
+	if _terrain_snapshot_repair_watchdog_time_left > 0.0:
+		return
+	# Drop an incomplete assembly before retrying. Each valid incoming chunk arms
+	# the watchdog again, so a large snapshot that is still making progress never
+	# generates duplicate requests; a silent/rate-limited request retries at most
+	# once every watchdog interval.
+	_pending_terrain_snapshot_batches.clear()
+	_send_terrain_snapshot_repair_request()
+
+
 func _restart_terrain_snapshot_repair() -> void:
 	_pending_terrain_snapshot_batches.clear()
 	_client_waiting_for_terrain_snapshot = false
+	_terrain_snapshot_repair_watchdog_time_left = 0.0
 	_request_terrain_snapshot_repair()
 
 
@@ -8067,6 +8267,7 @@ func _return_to_lobby() -> void:
 	_latest_enemy_snapshot_batch_seen = 0
 	_pending_enemy_damage_feedback.clear()
 	_pending_plant_health_updates.clear()
+	_clear_remote_plant_health_state()
 	_pending_wave_progress.clear()
 	_pending_enemy_spawns.clear()
 	_host_terminal_enemy_ids.clear()
@@ -8077,6 +8278,7 @@ func _return_to_lobby() -> void:
 	_last_host_terrain_revision_broadcast = 0
 	_client_has_terrain_snapshot = false
 	_client_waiting_for_terrain_snapshot = false
+	_terrain_snapshot_repair_watchdog_time_left = 0.0
 	_last_completed_terrain_snapshot_id = 0
 	_luoxi_offer_states_by_peer.clear()
 	_luoxi_offer_revision_counters.clear()

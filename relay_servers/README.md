@@ -15,12 +15,21 @@ relay_servers/
 ├── relay_godot_project/    # Godot Headless Relay 项目
 │   ├── project.godot
 │   ├── relay_server.gd
+│   ├── relay_net_manager_stub.gd  # 与主项目 NetManager RPC 表面一致
+│   ├── relay_mp_game_stub.gd      # 与主项目 MpGame RPC 表面一致
 │   └── relay_server.tscn
 ├── scripts/
 │   ├── deploy.sh           # 一键部署
 │   └── start_lobby.sh      # 启动大厅 API
 ├── requirements.txt
 └── README.md
+```
+
+当前网络基线为协议 v8、8 个 ENet 通道。Relay 只转发 RPC，不重复实现游戏状态逻辑；
+每次调整主项目 RPC 的名称、注解、参数或通道后，都必须同步两个 stub，并在仓库根目录运行：
+
+```bash
+godot --headless --path . --script res://dev_tools/relay_rpc_parity_smoke_test.gd
 ```
 
 ## 快速部署

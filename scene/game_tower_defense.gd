@@ -154,8 +154,8 @@ var defeat_presentation_completed := false
 var multiplayer_player_names: Dictionary = {}
 var multiplayer_player_character_ids: Dictionary = {}
 var multiplayer_spawn_slot_indices: Dictionary[int, int] = {}
-var removed_multiplayer_pickup_ids: Dictionary = {}
-var removed_multiplayer_enemy_ids: Dictionary = {}
+var pending_multiplayer_pickup_exit_ids: Dictionary = {}
+var pending_multiplayer_enemy_escape_ids: Dictionary = {}
 var enemy_retarget_time_left: float = 0.0
 var enemy_retarget_sweep_remaining: int = 0
 var enemy_retarget_cursor: int = 0
@@ -627,7 +627,7 @@ func _emit_multiplayer_enemy_escaped(enemy: Enemy) -> void:
 	if enemy_net_id > 0:
 		# Escape is the terminal replication event. Suppress the later generic
 		# tree-exit removal so clients never replay a death-style removal path.
-		removed_multiplayer_enemy_ids[enemy_net_id] = true
+		pending_multiplayer_enemy_escape_ids[enemy_net_id] = true
 		multiplayer_enemy_escaped.emit(enemy_net_id)
 
 
@@ -2873,9 +2873,12 @@ func _mark_multiplayer_enemy_removed(enemy_id: int) -> void:
 	if enemy_net_id > 0:
 		multiplayer_enemies_by_net_id.erase(enemy_net_id)
 		unregister_combat_target(enemy_net_id)
-	if enemy_net_id <= 0 or removed_multiplayer_enemy_ids.has(enemy_net_id):
+	if enemy_net_id <= 0:
 		return
-	removed_multiplayer_enemy_ids[enemy_net_id] = true
+	# Escape owns the terminal event and leaves exactly one short-lived marker for
+	# the ensuing tree exit. Consume it here; normal exits never become history.
+	if pending_multiplayer_enemy_escape_ids.erase(enemy_net_id):
+		return
 	multiplayer_enemy_removed.emit(enemy_net_id)
 
 
@@ -3479,7 +3482,7 @@ func get_pickup_for_net_id(net_id: int) -> Pickup:
 
 func _register_static_multiplayer_pickups() -> void:
 	multiplayer_pickups.clear()
-	removed_multiplayer_pickup_ids.clear()
+	pending_multiplayer_pickup_exit_ids.clear()
 	next_multiplayer_pickup_net_id = 1000
 	var pickups: Array[Pickup] = []
 	_collect_pickups_recursive(self, pickups)
@@ -3564,7 +3567,8 @@ func _on_multiplayer_pickup_consumed(
 	var net_id := int(pickup.get_meta("net_id", 0))
 	if net_id <= 0:
 		return
-	_mark_multiplayer_pickup_removed(net_id)
+	if not _mark_multiplayer_pickup_removed(net_id, true):
+		return
 	multiplayer_pickup_collected.emit(
 		net_id,
 		collector_peer_id,
@@ -3579,12 +3583,21 @@ func _on_multiplayer_pickup_tree_exited(net_id: int) -> void:
 	_mark_multiplayer_pickup_removed(net_id)
 
 
-func _mark_multiplayer_pickup_removed(net_id: int) -> void:
-	if removed_multiplayer_pickup_ids.has(net_id):
-		return
-	removed_multiplayer_pickup_ids[net_id] = true
+func _mark_multiplayer_pickup_removed(
+	net_id: int,
+	suppress_next_tree_exit: bool = false
+) -> bool:
+	if net_id <= 0:
+		return false
+	if suppress_next_tree_exit:
+		if pending_multiplayer_pickup_exit_ids.has(net_id):
+			return false
+		pending_multiplayer_pickup_exit_ids[net_id] = true
+	elif pending_multiplayer_pickup_exit_ids.erase(net_id):
+		return false
 	multiplayer_pickups.erase(net_id)
 	multiplayer_pickup_removed.emit(net_id)
+	return true
 
 
 func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:

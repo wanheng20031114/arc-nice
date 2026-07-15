@@ -36,6 +36,7 @@ func _init() -> void:
 		"Transaction telemetry must report a bounded p95 sample."
 	)
 	_test_mp_game_rpc_payload_diagnostics()
+	_test_outbound_rpc_channel_classification()
 	_test_authoritative_plant_registry_count()
 	_test_client_enemy_count_render_cache()
 	if failures.is_empty():
@@ -79,6 +80,56 @@ func _test_mp_game_rpc_payload_diagnostics() -> void:
 		and int(diagnostic_metrics.get("rpc_payload_diagnostic_sample_interval", 0)) == 64
 		and int(diagnostic_metrics.get("rpc_payload_diagnostic_sample_count", 0)) == 2,
 		"Opt-in RPC bytes must sample once immediately and refresh at the documented interval."
+	)
+	mp_game.free()
+
+
+func _test_outbound_rpc_channel_classification() -> void:
+	var source := FileAccess.get_file_as_string("res://scene/multiplayer/mp_game.gd")
+	var rpc_regex := RegEx.new()
+	var rpc_compile_error := rpc_regex.compile(
+		"(?ms)@rpc\\([^)]*,\\s*([0-9]+)\\)\\s*func\\s+([A-Za-z0-9_]+)\\s*\\("
+	)
+	_expect(rpc_compile_error == OK, "RPC channel audit regex must compile.")
+	if rpc_compile_error != OK:
+		return
+	var declared_channels: Dictionary = {}
+	for rpc_match in rpc_regex.search_all(source):
+		declared_channels[StringName(rpc_match.get_string(2))] = int(
+			rpc_match.get_string(1)
+		)
+
+	var outbound_regex := RegEx.new()
+	var outbound_compile_error := outbound_regex.compile(
+		"(?ms)(?:_rpc_to_connected_clients|_record_outbound_rpc)"
+		+ "\\s*\\(\\s*&\"([A-Za-z0-9_]+)\""
+	)
+	_expect(outbound_compile_error == OK, "Outbound RPC audit regex must compile.")
+	if outbound_compile_error != OK:
+		return
+	var mp_game := MpGameScript.new()
+	var checked_methods: Dictionary = {}
+	for outbound_match in outbound_regex.search_all(source):
+		var method_name := StringName(outbound_match.get_string(1))
+		if checked_methods.has(method_name):
+			continue
+		checked_methods[method_name] = true
+		var declared_channel := int(declared_channels.get(method_name, -1))
+		_expect(
+			declared_channel >= 0,
+			"Outbound telemetry method %s must have a declared RPC." % method_name
+		)
+		if declared_channel < 0:
+			continue
+		_expect(
+			int(mp_game.call("_get_rpc_traffic_channel", method_name))
+			== declared_channel,
+			"Outbound telemetry for %s must use declared channel %d."
+			% [method_name, declared_channel]
+		)
+	_expect(
+		checked_methods.size() >= 30,
+		"Outbound channel audit must cover the complete literal RPC send surface."
 	)
 	mp_game.free()
 

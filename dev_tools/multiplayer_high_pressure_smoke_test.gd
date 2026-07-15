@@ -155,6 +155,31 @@ class TestRuntime:
 		if plant != null:
 			plant.apply_remote_health(current_health, maximum_health, health_revision)
 
+	func apply_remote_plant_spawn(
+		_request_id: int,
+		_owner_peer_id: int,
+		net_id: int,
+		_plant_id: StringName,
+		_anchor: Vector2i,
+		current_health: int,
+		maximum_health: int,
+		health_revision: int
+	) -> void:
+		var plant := proxy_plants.get(net_id) as PlantDefense
+		if plant == null or not is_instance_valid(plant):
+			plant = PlantDefense.new()
+			plant.configure_multiplayer_proxy(
+				current_health,
+				maximum_health,
+				health_revision
+			)
+			proxy_plants[net_id] = plant
+			return
+		plant.apply_remote_health(current_health, maximum_health, health_revision)
+
+	func get_multiplayer_plant_node(net_id: int) -> PlantDefense:
+		return proxy_plants.get(net_id) as PlantDefense
+
 	func supports_tower_defense() -> bool:
 		return true
 
@@ -212,6 +237,7 @@ func _run() -> void:
 	_test_runtime_world_manifest_prunes_stale_replicas()
 	_test_enemy_interpolator_iteration_prunes_after_traversal()
 	_test_plant_health_batch_revision_ordering()
+	_test_plant_health_before_spawn_debt()
 	_test_warehouse_transaction_cache_scope()
 	_test_corn_burst_packed_queue_pressure()
 	await _test_hoe_prediction_confirmation_reconciliation()
@@ -636,6 +662,166 @@ func _test_plant_health_batch_revision_ordering() -> void:
 	)
 	fixture.proxy_plants.clear()
 	plant.free()
+
+
+func _test_plant_health_before_spawn_debt() -> void:
+	var mp_game := _new_mp_game()
+	mp_game.call(
+		"net_plant_health_batch",
+		PackedInt32Array([71, 71, 71]),
+		PackedInt32Array([80, 15, 60]),
+		PackedInt32Array([100, 100, 100]),
+		PackedInt32Array([5, 4, 7])
+	)
+	var pending := mp_game.get("_pending_remote_plant_health_updates") as Dictionary
+	_expect(
+		not fixture.proxy_plants.has(71)
+		and pending.size() == 1
+		and int((pending.get(71, {}) as Dictionary).get("health_revision", -1)) == 7,
+		"A CH7 health update received before its CH5 spawn must retain only the highest revision."
+	)
+	mp_game.call(
+		"net_plant_spawned",
+		0,
+		2,
+		71,
+		"test_plant",
+		Vector2i.ZERO,
+		100,
+		100,
+		3,
+		{},
+		0.0
+	)
+	var spawned_plant := fixture.proxy_plants.get(71) as PlantDefense
+	_expect(
+		spawned_plant != null
+		and spawned_plant.health_revision == 7
+		and spawned_plant.current_health == 60
+		and not pending.has(71),
+		"Plant registration must immediately settle a newer deferred health revision."
+	)
+	mp_game.call(
+		"net_plant_health_batch",
+		PackedInt32Array([71, 71]),
+		PackedInt32Array([10, 55]),
+		PackedInt32Array([100, 100]),
+		PackedInt32Array([6, 8])
+	)
+	_expect(
+		spawned_plant.health_revision == 8 and spawned_plant.current_health == 55,
+		"Settling spawn debt must not let a later stale health record overwrite the replica."
+	)
+
+	mp_game.call(
+		"net_plant_health_batch",
+		PackedInt32Array([72]),
+		PackedInt32Array([40]),
+		PackedInt32Array([100]),
+		PackedInt32Array([9])
+	)
+	mp_game.call("net_plant_removed", 72)
+	mp_game.call(
+		"net_plant_health_batch",
+		PackedInt32Array([72]),
+		PackedInt32Array([20]),
+		PackedInt32Array([100]),
+		PackedInt32Array([10])
+	)
+	var removed_ids := mp_game.get("_removed_remote_plant_ids") as Dictionary
+	_expect(
+		not pending.has(72) and removed_ids.has(72),
+		"A reliable removal must erase health debt and reject CH7 records that arrive afterward."
+	)
+	mp_game.call(
+		"net_plant_spawned",
+		0,
+		2,
+		72,
+		"test_plant",
+		Vector2i.ZERO,
+		90,
+		100,
+		11,
+		{},
+		0.0
+	)
+	_expect(
+		fixture.proxy_plants.has(72) and not removed_ids.has(72),
+		"A newer authoritative spawn must clear an older local removal marker."
+	)
+
+	mp_game.call("_clear_remote_plant_health_state")
+	var limit := MP_GAME_SCRIPT.CLIENT_PENDING_PLANT_HEALTH_MAX_ENTRIES
+	for index in range(limit + 5):
+		mp_game.call(
+			"_apply_or_defer_remote_plant_health",
+			1000 + index,
+			90 - index % 10,
+			100,
+			index + 1
+		)
+	pending = mp_game.get("_pending_remote_plant_health_updates") as Dictionary
+	var pending_order := mp_game.get("_pending_remote_plant_health_order") as Array
+	_expect(
+		pending.size() == limit
+		and pending_order.size() == limit
+		and not pending.has(1000)
+		and pending.has(1000 + limit + 4),
+		"Unknown-plant health debt must remain bounded at the multiplayer plant limit."
+	)
+	var newest_debt_id := 1000 + limit + 4
+	mp_game.call(
+		"net_runtime_world_manifest",
+		PackedInt32Array(),
+		PackedInt32Array(),
+		PackedInt32Array([72, newest_debt_id])
+	)
+	_expect(
+		pending.size() == 1 and pending.has(newest_debt_id),
+		"The complete plant manifest must discard debt for IDs the Host no longer considers live."
+	)
+	mp_game.call(
+		"net_plant_spawned",
+		0,
+		2,
+		newest_debt_id,
+		"test_plant",
+		Vector2i.ZERO,
+		100,
+		100,
+		1,
+		{},
+		0.0
+	)
+	var newest_plant := fixture.proxy_plants.get(newest_debt_id) as PlantDefense
+	_expect(
+		newest_plant != null
+		and newest_plant.health_revision == limit + 5
+		and newest_plant.current_health == 90
+		and pending.is_empty(),
+		"Debt retained by a live manifest entry must settle when its snapshot spawn registers."
+	)
+	var tombstone_limit := MP_GAME_SCRIPT.CLIENT_REMOVED_PLANT_TOMBSTONE_MAX_ENTRIES
+	for index in range(tombstone_limit + 5):
+		mp_game.call("_mark_remote_plant_removed", 2000 + index)
+	removed_ids = mp_game.get("_removed_remote_plant_ids") as Dictionary
+	_expect(
+		removed_ids.size() == tombstone_limit
+		and not removed_ids.has(2000)
+		and removed_ids.has(2000 + tombstone_limit + 4),
+		"Late-health removal markers must remain bounded during long high-churn sessions."
+	)
+
+	mp_game.call("net_plant_removed", 71)
+	mp_game.call("net_plant_removed", 72)
+	mp_game.call("net_plant_removed", newest_debt_id)
+	mp_game.call("_clear_remote_plant_health_state")
+	_expect(
+		(mp_game.get("_pending_remote_plant_health_updates") as Dictionary).is_empty()
+		and (mp_game.get("_removed_remote_plant_ids") as Dictionary).is_empty(),
+		"Leaving a session must be able to clear all deferred plant-health ordering state."
+	)
 
 
 func _test_hoe_prediction_confirmation_reconciliation() -> void:

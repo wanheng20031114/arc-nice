@@ -38,10 +38,6 @@ const CH_TRANSACTION := 6
 const CH_FEEDBACK := 7
 const CHANNEL_COUNT := 8
 
-## 旧名称只保留为普通多人代码的迁移别名；新 RPC 不应继续扩大这些别名的使用范围。
-const CH_STATE := CH_PLAYER_STATE
-const CH_EVENT := CH_WORLD_EVENT
-
 ## 同步频率 (Hz)
 const HOST_PHYSICS_HZ := 60
 const INPUT_SEND_HZ := 60

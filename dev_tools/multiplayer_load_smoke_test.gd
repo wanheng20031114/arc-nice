@@ -212,13 +212,14 @@ func _test_net_manager_protocol_version_gate() -> void:
 		"NetManager must accept the current protocol version."
 	)
 	_expect(
-		not bool(net_manager.call("_is_protocol_version_compatible", 6))
+		not bool(net_manager.call("_is_protocol_version_compatible", 7))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 6))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 5))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 4))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 3))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 2))
 		and not bool(net_manager.call("_is_protocol_version_compatible", -1)),
-		"NetManager must reject protocol versions 6/5/4/3/2 and legacy registrations with no version."
+		"NetManager must reject protocol versions 7/6/5/4/3/2 and registrations with no version."
 	)
 
 	var rejection_reasons: Array[String] = []
@@ -2690,6 +2691,28 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 		_expect(
 			client_run_state != null and client_run_state.get_item_for_peer(2, 0) == HEALTH_PICKUP,
 			"Stored pickup confirm must add the item to the collector inventory."
+		)
+		var revision_before_malformed_pickup := (
+			client_run_state.get_inventory_revision_for_peer(2)
+		)
+		client_mp_game.call(
+			"net_pickup_spawned",
+			9003,
+			HEALTH_PICKUP.resource_path,
+			46.0,
+			57.0
+		)
+		client_mp_game.call(
+			"net_pickup_collected",
+			9003,
+			2,
+			HEALTH_PICKUP.resource_path,
+			false
+		)
+		_expect(
+			client_run_state.get_inventory_revision_for_peer(2)
+			== revision_before_malformed_pickup,
+			"A stored-pickup confirmation without its v8 inventory snapshot must not invent a local item."
 		)
 	client_mp_game.free()
 	_stop_audio_players(client_game)

@@ -64,6 +64,15 @@ class TerrainRepairMpGame:
 		repair_request_count += 1
 
 
+class TerrainWatchdogMpGame:
+	extends "res://scene/multiplayer/mp_game.gd"
+
+	var repair_request_count := 0
+
+	func _transmit_terrain_snapshot_repair_request() -> void:
+		repair_request_count += 1
+
+
 var failures: Array[String] = []
 
 
@@ -75,6 +84,7 @@ func _run() -> void:
 	_test_channel_contract()
 	_test_terrain_payload_contract()
 	_test_terrain_delta_revision_repair_contract()
+	_test_terrain_snapshot_repair_watchdog_contract()
 	_test_corn_burst_payload_contract()
 	_test_projectile_id_codec_contract()
 	_test_projectile_origin_lane_runtime_contract()
@@ -107,13 +117,6 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_FEEDBACK == 7,
 		"Protocol v8 channel assignments must remain stable."
 	)
-	_expect(
-		NetConstants.CH_STATE == NetConstants.CH_PLAYER_STATE
-		and NetConstants.CH_EVENT == NetConstants.CH_WORLD_EVENT,
-		"Legacy channel aliases must remain compatible during migration."
-	)
-
-
 func _test_terrain_delta_revision_repair_contract() -> void:
 	var mp_game := TerrainRepairMpGame.new()
 	var runtime := TerrainRuntimeStub.new()
@@ -173,6 +176,103 @@ func _test_terrain_delta_revision_repair_contract() -> void:
 		and mp_game.repair_request_count == 3
 		and int(mp_game.get("_client_terrain_revision")) == 8,
 		"A runtime-rejected delta must preserve the prior revision and request repair."
+	)
+	mp_game.free()
+	runtime.free()
+	net_stub.free()
+
+
+func _test_terrain_snapshot_repair_watchdog_contract() -> void:
+	var mp_game := TerrainWatchdogMpGame.new()
+	var runtime := TerrainRuntimeStub.new()
+	var net_stub := TerrainClientNetManagerStub.new()
+	mp_game.set("game", runtime)
+	mp_game.set("net_manager", net_stub)
+
+	mp_game.call("_request_terrain_snapshot_repair")
+	mp_game.call("_request_terrain_snapshot_repair")
+	_expect(
+		mp_game.repair_request_count == 1
+		and bool(mp_game.get("_client_waiting_for_terrain_snapshot")),
+		"Terrain repair must send one request while a snapshot is already pending."
+	)
+	mp_game.call("_update_terrain_snapshot_repair_watchdog", 1.99)
+	_expect(
+		mp_game.repair_request_count == 1,
+		"Terrain repair watchdog must not retry before its conservative timeout."
+	)
+	mp_game.call("_update_terrain_snapshot_repair_watchdog", 0.02)
+	_expect(
+		mp_game.repair_request_count == 2,
+		"Terrain repair watchdog must retry a silent or Host-rate-limited request."
+	)
+	for _frame_index in range(60):
+		mp_game.call("_update_terrain_snapshot_repair_watchdog", 1.0 / 60.0)
+	_expect(
+		mp_game.repair_request_count == 2,
+		"Terrain repair watchdog must not create a per-frame request storm."
+	)
+
+	var first_chunk_xy := PackedInt32Array()
+	var first_chunk_types := PackedInt32Array()
+	for cell_x in range(96):
+		first_chunk_xy.append(cell_x)
+		first_chunk_xy.append(0)
+		first_chunk_types.append(1)
+	mp_game.call(
+		"net_terrain_snapshot_chunk",
+		41,
+		0,
+		0,
+		2,
+		first_chunk_xy,
+		first_chunk_types
+	)
+	mp_game.call("_update_terrain_snapshot_repair_watchdog", 1.99)
+	_expect(
+		mp_game.repair_request_count == 2,
+		"Every valid terrain chunk must rearm the watchdog while assembly progresses."
+	)
+	mp_game.call("_update_terrain_snapshot_repair_watchdog", 0.02)
+	_expect(
+		mp_game.repair_request_count == 3
+		and (mp_game.get("_pending_terrain_snapshot_batches") as Dictionary).is_empty(),
+		"A stalled partial terrain snapshot must be discarded before retrying."
+	)
+
+	mp_game.call(
+		"net_terrain_snapshot_chunk",
+		42,
+		0,
+		0,
+		2,
+		first_chunk_xy,
+		first_chunk_types
+	)
+	mp_game.call("_update_terrain_snapshot_repair_watchdog", 1.5)
+	var last_chunk_xy := PackedInt32Array([96, 0])
+	var last_chunk_types := PackedInt32Array([1])
+	mp_game.call(
+		"net_terrain_snapshot_chunk",
+		42,
+		0,
+		1,
+		2,
+		last_chunk_xy,
+		last_chunk_types
+	)
+	_expect(
+		runtime.snapshot_revisions == [0]
+		and not bool(mp_game.get("_client_waiting_for_terrain_snapshot"))
+		and is_zero_approx(float(mp_game.get(
+			"_terrain_snapshot_repair_watchdog_time_left"
+		))),
+		"A complete terrain snapshot must cancel the repair watchdog."
+	)
+	mp_game.call("_update_terrain_snapshot_repair_watchdog", 10.0)
+	_expect(
+		mp_game.repair_request_count == 3,
+		"A completed terrain snapshot must not trigger a later watchdog retry."
 	)
 	mp_game.free()
 	runtime.free()
@@ -798,6 +898,18 @@ func _test_enemy_codec_reuse_and_packet_budget() -> void:
 
 func _test_runtime_state_send_order() -> void:
 	var source := FileAccess.get_file_as_string("res://scene/multiplayer/mp_game.gd")
+	var request_start := source.find("func net_runtime_state_requested(")
+	var request_end := source.find("\n\nfunc ", request_start + 1)
+	var request_body := (
+		source.substr(request_start, request_end - request_start)
+		if request_start >= 0 and request_end > request_start
+		else ""
+	)
+	_expect(
+		request_body.contains("multiplayer.get_remote_sender_id()")
+		and request_body.contains("game.get_player_for_peer(sender_id) == null"),
+		"Complete-state repair requests must come from a registered in-game peer."
+	)
 	var function_start := source.find("func _send_runtime_state_to_peer(")
 	var function_end := source.find("\n\nfunc ", function_start + 1)
 	var function_body := (
