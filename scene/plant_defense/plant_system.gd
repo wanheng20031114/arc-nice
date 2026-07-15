@@ -188,7 +188,8 @@ func try_place_for_player(
 		false,
 		-1,
 		0,
-		-1
+		-1,
+		true
 	)
 
 
@@ -199,7 +200,8 @@ func spawn_multiplayer_replica(
 	net_id: int,
 	current_health: int,
 	maximum_health: int,
-	health_revision: int
+	health_revision: int,
+	play_placement_effect: bool = false
 ) -> PlantDefense:
 	var config := get_config(plant_id)
 	if (
@@ -237,7 +239,8 @@ func spawn_multiplayer_replica(
 		true,
 		clampi(current_health, 0, maxi(maximum_health, 1)),
 		health_revision,
-		maximum_health
+		maximum_health,
+		play_placement_effect
 	)
 
 
@@ -249,7 +252,8 @@ func _instantiate_registered_plant(
 	as_multiplayer_proxy: bool,
 	initial_health: int,
 	initial_health_revision: int,
-	initial_maximum_health: int
+	initial_maximum_health: int,
+	play_placement_effect: bool
 ) -> PlantDefense:
 
 	var instance := config.plant_scene.instantiate()
@@ -271,7 +275,10 @@ func _instantiate_registered_plant(
 		plant.set_meta(&"net_id", net_id)
 		plants_by_net_id[net_id] = plant
 	_register_plant_footprint(plant, cells)
-	plant.died.connect(_on_plant_died.bind(plant), CONNECT_ONE_SHOT)
+	plant.removal_started.connect(
+		_on_plant_removal_started.bind(plant),
+		CONNECT_ONE_SHOT
+	)
 	plant.tree_exiting.connect(_on_plant_tree_exiting.bind(plant), CONNECT_ONE_SHOT)
 	plant.setup(
 		config,
@@ -280,7 +287,8 @@ func _instantiate_registered_plant(
 		as_multiplayer_proxy,
 		initial_health,
 		initial_health_revision,
-		initial_maximum_health
+		initial_maximum_health,
+		play_placement_effect
 	)
 	if plant.is_dead:
 		return null
@@ -319,6 +327,7 @@ func apply_unsupported_terrain_damage_tick() -> int:
 			plant == null
 			or not is_instance_valid(plant)
 			or plant.is_dead
+			or plant.is_removing
 			or plant.is_multiplayer_proxy
 			or plant.is_queued_for_deletion()
 		):
@@ -332,7 +341,12 @@ func apply_unsupported_terrain_damage_tick() -> int:
 
 	var damaged_plant_count := 0
 	for plant in unsupported_plants:
-		if not is_instance_valid(plant) or plant.is_dead or plant.is_queued_for_deletion():
+		if (
+			not is_instance_valid(plant)
+			or plant.is_dead
+			or plant.is_removing
+			or plant.is_queued_for_deletion()
+		):
 			continue
 		var damage := calculate_unsupported_terrain_damage(plant.current_health)
 		if plant.receive_unmitigated_damage(damage, self):
@@ -374,6 +388,7 @@ func find_nearest_living_plant(
 			plant == null
 			or not is_instance_valid(plant)
 			or plant.is_dead
+			or plant.is_removing
 			or plant.is_queued_for_deletion()
 		):
 			continue
@@ -431,6 +446,7 @@ func _build_nearest_plant_candidates(
 				plant == null
 				or not is_instance_valid(plant)
 				or plant.is_dead
+				or plant.is_removing
 				or plant.is_queued_for_deletion()
 			):
 				continue
@@ -450,13 +466,15 @@ func get_plant_by_net_id(net_id: int) -> PlantDefense:
 	return plants_by_net_id.get(net_id) as PlantDefense
 
 
-func remove_plant_by_net_id(net_id: int) -> bool:
+func remove_plant_by_net_id(
+	net_id: int,
+	mode: int = PlantDefense.RemovalMode.ANIMATED
+) -> bool:
 	var plant := get_plant_by_net_id(net_id)
 	if plant == null or not is_instance_valid(plant):
 		plants_by_net_id.erase(net_id)
 		return false
-	_release_plant_footprint(plant)
-	plant.queue_free()
+	plant.begin_removal(mode)
 	return true
 
 
@@ -493,9 +511,10 @@ func clear_all_plants() -> void:
 	var plants := plant_footprints.keys()
 	for plant_variant in plants:
 		var plant := plant_variant as PlantDefense
-		_release_plant_footprint(plant)
 		if is_instance_valid(plant):
-			plant.queue_free()
+			plant.begin_removal(PlantDefense.RemovalMode.SILENT)
+		else:
+			_release_plant_footprint(plant)
 
 
 func _is_ready_for_placement(placement_player: Player) -> bool:
@@ -609,7 +628,7 @@ func _release_plant_footprint(plant: PlantDefense) -> void:
 	plant_removed.emit(plant)
 
 
-func _on_plant_died(plant: PlantDefense) -> void:
+func _on_plant_removal_started(_mode: int, plant: PlantDefense) -> void:
 	_release_plant_footprint(plant)
 
 

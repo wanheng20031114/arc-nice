@@ -5,9 +5,12 @@ const VEGETATION_STAKE_CONFIG := preload(
 	"res://resources/config/plant_defense/vegetation_stake.tres"
 )
 const AGAVE_CONFIG := preload("res://resources/config/plant_defense/agave_cannon.tres")
+const ENEMY_CONFIG := preload("res://resources/config/enemies/capoo_ak47.tres")
 const AUTHORITATIVE_BATCH_CELL_COUNT := 193
 const LIFECYCLE_PLANT_NET_ID := 900001
 const MULTI_CELL_DECAY_PLANT_NET_ID := 900003
+const ROSTER_PLANT_NET_ID := 900004
+const REALTIME_PLANT_NET_ID := 900005
 
 var failures: Array[String] = []
 var emitted_terrain_batches: Array[Dictionary] = []
@@ -36,6 +39,7 @@ func _run() -> void:
 	_test_preauthored_spread_system(game)
 	_test_authoritative_batching(game)
 	_test_client_snapshot_replacement_and_revision(game)
+	await _test_multiplayer_lifecycle_effect_routing(game)
 	await _test_real_plant_lifecycle(game)
 	await _test_multi_cell_unsupported_terrain_damage(game)
 
@@ -368,8 +372,14 @@ func _test_real_plant_lifecycle(game: GameTowerDefense) -> void:
 		spread.set_process(was_processing)
 		return
 	_expect(
-		spread.has_source(LIFECYCLE_PLANT_NET_ID),
-		"PlantSystem的plant_placed信号必须在传播系统注册对应net_id来源。"
+		not plant.is_operational
+		and not spread.has_source(LIFECYCLE_PLANT_NET_ID),
+		"植被桩构建完成前必须占格，但不能提前注册传播来源。"
+	)
+	await create_timer(PlantDefense.CONSTRUCTION_DURATION_SECONDS + 0.08).timeout
+	_expect(
+		plant.is_operational and spread.has_source(LIFECYCLE_PLANT_NET_ID),
+		"植被桩0.7秒构建完成后必须注册对应net_id传播来源。"
 	)
 	_expect(spread.get_source_origin(LIFECYCLE_PLANT_NET_ID) == anchor, "传播来源原点必须等于1x1放置锚点。")
 	var health_bar := plant.get_node_or_null("HealthBar") as PlantHealthBar
@@ -465,6 +475,148 @@ func _test_real_plant_lifecycle(game: GameTowerDefense) -> void:
 
 	await process_frame
 	spread.set_process(was_processing)
+
+
+func _test_multiplayer_lifecycle_effect_routing(game: GameTowerDefense) -> void:
+	var plant_system := game.plant_system
+	var config := VEGETATION_STAKE_CONFIG as PlantDefenseConfig
+	if plant_system == null or config == null:
+		failures.append("多人生命周期路由测试需要真实PlantSystem与植被桩配置。")
+		return
+	var anchors := plant_system.get_valid_anchors_for_player(config, game.player)
+	_expect(not anchors.is_empty(), "多人生命周期路由测试需要至少一个合法植被桩锚点。")
+	if anchors.is_empty():
+		return
+
+	game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	var anchor := anchors[0]
+	game.apply_remote_plant_spawn(
+		0,
+		2,
+		ROSTER_PLANT_NET_ID,
+		config.plant_id,
+		anchor,
+		config.max_health,
+		config.max_health,
+		1
+	)
+	var roster_plant := game.get_multiplayer_plant_node(
+		ROSTER_PLANT_NET_ID
+	) as VegetationStake
+	_expect(
+		roster_plant != null
+		and roster_plant.is_operational
+		and not roster_plant.is_construction_visual_active(),
+		"迟加入roster与修复包的request_id=0必须直接显示完整建筑。"
+	)
+	game.apply_remote_plant_removed_silently(ROSTER_PLANT_NET_ID)
+	_expect(
+		roster_plant != null
+		and roster_plant.is_removing
+		and roster_plant.removal_mode == PlantDefense.RemovalMode.SILENT
+		and game.get_multiplayer_plant_node(ROSTER_PLANT_NET_ID) == null,
+		"manifest纠偏必须静默并在调用栈内释放客户端植物索引。"
+	)
+	await process_frame
+
+	game.apply_remote_plant_spawn(
+		77,
+		2,
+		REALTIME_PLANT_NET_ID,
+		config.plant_id,
+		anchor,
+		config.max_health,
+		config.max_health,
+		1
+	)
+	var realtime_plant := game.get_multiplayer_plant_node(
+		REALTIME_PLANT_NET_ID
+	) as VegetationStake
+	_expect(
+		realtime_plant != null
+		and not realtime_plant.is_operational
+		and realtime_plant.is_construction_visual_active()
+		and int(game.session_object_pool.get_metrics(
+			"res://scene/plant_defense/effects/plant_placement_particles.tscn"
+		).get("in_use", 0)) == 1,
+		"实时客户端request_id>0必须播放0.7秒生成效果。"
+	)
+	if realtime_plant == null:
+		game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+		return
+
+	await create_timer(0.18).timeout
+	var main_sprite := realtime_plant.get_node("MainSprite") as Sprite2D
+	var progress_before_duplicate := float(
+		main_sprite.get_instance_shader_parameter(&"construction_progress")
+	)
+	game.apply_remote_plant_spawn(
+		0,
+		2,
+		REALTIME_PLANT_NET_ID,
+		config.plant_id,
+		anchor,
+		config.max_health,
+		config.max_health,
+		1
+	)
+	_expect(
+		game.get_multiplayer_plant_node(REALTIME_PLANT_NET_ID) == realtime_plant
+		and is_equal_approx(
+			float(main_sprite.get_instance_shader_parameter(&"construction_progress")),
+			progress_before_duplicate
+		),
+		"重复spawn必须复用现有副本且不能重启生成效果。"
+	)
+
+	var enemy := ENEMY_CONFIG.enemy_scene.instantiate() as Enemy
+	game.enemy_container.add_child(enemy)
+	enemy.setup(ENEMY_CONFIG, game.player)
+	enemy.set_physics_process(false)
+	enemy.set_objective_target(realtime_plant)
+	game.apply_remote_plant_removed(REALTIME_PLANT_NET_ID)
+	_expect(
+		realtime_plant.is_removing
+		and not realtime_plant.is_dead
+		and realtime_plant.removal_mode == PlantDefense.RemovalMode.ANIMATED
+		and game.get_multiplayer_plant_node(REALTIME_PLANT_NET_ID) == null
+		and enemy.objective_target == null,
+		"reliable remove必须显式溶解非死亡副本，并在同一调用栈释放索引与敌人目标引用。"
+	)
+	var active_smoke: PlantRemovalSmoke = null
+	for pool_child in game.session_object_pool.get_children():
+		var smoke_candidate := pool_child as PlantRemovalSmoke
+		if (
+			smoke_candidate != null
+			and bool(smoke_candidate.get_meta(&"pool_active", false))
+		):
+			active_smoke = smoke_candidate
+			break
+	_expect(active_smoke != null, "reliable remove必须从受限对象池启动一份死亡烟雾。")
+	# DummyRenderer不会稳定推进GPU粒子的finished；手动发出原生信号只负责
+	# 确认生产中的 finished -> pool release 接口。
+	if active_smoke != null:
+		active_smoke.finished.emit()
+	enemy.queue_free()
+	await create_timer(PlantDefense.REMOVAL_DURATION_SECONDS + 0.08).timeout
+	await process_frame
+	await physics_frame
+	await physics_frame
+	_expect(not is_instance_valid(realtime_plant), "reliable remove残影必须在0.7秒后释放。")
+	var placement_metrics := game.session_object_pool.get_metrics(
+		"res://scene/plant_defense/effects/plant_placement_particles.tscn"
+	)
+	var smoke_metrics := game.session_object_pool.get_metrics(
+		"res://scene/plant_defense/effects/plant_removal_smoke.tscn"
+	)
+	_expect(
+		int(placement_metrics.get("in_use", -1)) == 0
+		and int(placement_metrics.get("pending_release", -1)) == 0
+		and int(smoke_metrics.get("in_use", -1)) == 0
+		and int(smoke_metrics.get("pending_release", -1)) == 0,
+		"实时生成后提前撤除时，两套生命周期粒子租约最终都必须归还对象池。"
+	)
+	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
 
 
 func _test_multi_cell_unsupported_terrain_damage(game: GameTowerDefense) -> void:

@@ -144,7 +144,9 @@ func _on_body_entered(body: Node2D) -> void:
 			)
 	else:
 		var plant := body as PlantDefense
-		if plant != null and not plant.is_dead:
+		if plant != null:
+			if plant.is_dead or plant.is_removing:
+				return
 			plant.receive_damage(
 				damage,
 				self,

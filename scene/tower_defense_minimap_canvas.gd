@@ -115,7 +115,7 @@ func _sample_world_entities() -> void:
 	if plant_container != null and is_instance_valid(plant_container):
 		for child in plant_container.get_children():
 			var plant := child as PlantDefense
-			if plant != null and not plant.is_dead:
+			if plant != null and not plant.is_dead and not plant.is_removing:
 				plant_positions.append(plant.global_position)
 
 	dynamic_layer.set_world_entities(

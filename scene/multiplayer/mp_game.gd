@@ -1106,7 +1106,13 @@ func _apply_authoritative_warehouse_command(peer_id: int, raw_command: Dictionar
 		rejection_reason = &"invalid_command"
 	elif player_node == null or not is_instance_valid(player_node) or player_node.is_dead:
 		rejection_reason = &"invalid_player"
-	elif warehouse == null or not is_instance_valid(warehouse) or warehouse.is_dead:
+	elif (
+		warehouse == null
+		or not is_instance_valid(warehouse)
+		or warehouse.is_dead
+		or warehouse.is_removing
+		or not warehouse.is_operational
+	):
 		rejection_reason = &"warehouse_missing"
 	elif not _is_authoritative_nearest_warehouse(player_node, warehouse):
 		rejection_reason = &"out_of_range"
@@ -6411,7 +6417,7 @@ func net_runtime_world_manifest(
 			if plant_net_id > 0 and not plant_id_set.has(plant_net_id):
 				_pending_warehouse_snapshots.erase(plant_net_id)
 				_mark_remote_plant_removed(plant_net_id)
-				game.apply_remote_plant_removed(plant_net_id)
+				game.apply_remote_plant_removed_silently(plant_net_id)
 			elif plant_net_id > 0:
 				_apply_pending_remote_plant_health(plant_net_id)
 		for pending_net_id_variant in _pending_warehouse_snapshots.keys():

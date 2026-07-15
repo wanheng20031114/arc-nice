@@ -603,6 +603,13 @@ func apply_remote_plant_removed(_net_id: int) -> void:
 	pass
 
 
+## Complete-state repair uses this path to prune a stale local replica without
+## presenting the correction as a newly observed gameplay removal. Runtimes
+## without a distinct visual lifecycle retain the existing removal behavior.
+func apply_remote_plant_removed_silently(net_id: int) -> void:
+	apply_remote_plant_removed(net_id)
+
+
 func apply_remote_plant_placement_rejected(_request_id: int, _reason: StringName) -> void:
 	pass
 

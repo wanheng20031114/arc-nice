@@ -75,6 +75,10 @@ func _on_setup_completed() -> void:
 	health_changed.connect(_on_health_changed)
 
 
+func _on_operational_started() -> void:
+	interaction_area.set_deferred("monitoring", true)
+
+
 func set_shared_storage_panel(shared_panel: OakWarehousePanel) -> void:
 	if storage_panel == shared_panel:
 		return
@@ -183,7 +187,9 @@ func set_multiplayer_storage_snapshot_ready(is_ready: bool) -> void:
 
 func is_multiplayer_storage_ready() -> bool:
 	return (
-		multiplayer_storage_enabled
+		is_operational
+		and not is_removing
+		and multiplayer_storage_enabled
 		and multiplayer_storage_snapshot_ready
 		and not multiplayer_storage_request_pending
 	)
@@ -1147,12 +1153,12 @@ func _on_health_changed(new_health: int, new_max_health: int) -> void:
 	health_bar.call("set_health", new_health, new_max_health)
 
 
-func _on_death_started() -> void:
+func _on_removal_started(_mode: RemovalMode) -> void:
 	var interaction_player := nearby_player
 	nearby_player = null
+	health_bar.hide()
 	set_process(false)
 	interaction_area.set_deferred("monitoring", false)
 	_set_interaction_target(false)
 	close_storage_panel()
 	_refresh_interaction_selection(interaction_player)
-	super._on_death_started()

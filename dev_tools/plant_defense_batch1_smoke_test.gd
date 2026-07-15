@@ -14,6 +14,9 @@ const ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_bas
 const PLANT_VISUAL_PIXEL_SNAP_SHADER := preload(
 	"res://resources/shader/plant_visual_pixel_snap.gdshader"
 )
+const PLANT_LIFECYCLE_SHADER := preload(
+	"res://resources/shader/plant_lifecycle.gdshader"
+)
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -303,6 +306,12 @@ func _test_config_and_scene_contracts() -> void:
 				and top_glow.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
 				"植被桩主体与发光层必须以0.5缩放和nearest采样保持像素轮廓。"
 			)
+			var stake_main_material := main_sprite.material as ShaderMaterial
+			_expect(
+				stake_main_material != null
+				and stake_main_material.shader == PLANT_LIFECYCLE_SHADER,
+				"植被桩主体必须使用兼具像素相位修正的生命周期shader。"
+			)
 		if cell_border != null:
 			var border_quad := cell_border.mesh as QuadMesh
 			var border_material := cell_border.material as ShaderMaterial
@@ -395,8 +404,8 @@ func _test_config_and_scene_contracts() -> void:
 			body_material != null
 			and cannon_material != null
 			and body_material == cannon_material
-			and body_material.shader == PLANT_VISUAL_PIXEL_SNAP_SHADER,
-			"龙舌兰身体与炮头必须共用仅作用于可绘制节点的画布像素相位修正。"
+			and body_material.shader == PLANT_LIFECYCLE_SHADER,
+			"龙舌兰身体与炮头必须共用兼具像素相位修正的生命周期shader。"
 		)
 		_expect(
 			agave.material == null and visual_root.material == null,
@@ -526,6 +535,33 @@ func _test_config_and_scene_contracts() -> void:
 		_test_agave_visual_bounds(visual_root, body_sprite, cannon_pivot, cannon_sprite)
 		_test_preview_runtime_alignment(ghost, agave, body_sprite, cannon_pivot, cannon_sprite)
 		agave.free()
+
+	var corn := corn_config.plant_scene.instantiate() as CornMachineGun
+	_expect(corn != null, "玉米机枪场景根节点必须继承PlantDefense。")
+	if corn != null:
+		var corn_body := corn.get_node("VisualRoot/BodySprite") as AnimatedSprite2D
+		var corn_turret := corn.get_node(
+			"VisualRoot/AimPivot/TurretSprite"
+		) as AnimatedSprite2D
+		var corn_flash := corn.get_node(
+			"VisualRoot/AimPivot/MuzzleFlashSprite"
+		) as AnimatedSprite2D
+		var corn_body_material := corn_body.material as ShaderMaterial
+		var corn_turret_material := corn_turret.material as ShaderMaterial
+		var corn_flash_material := corn_flash.material as ShaderMaterial
+		_expect(
+			corn_body_material != null
+			and corn_turret_material != null
+			and corn_body_material == corn_turret_material
+			and corn_body_material.shader == PLANT_LIFECYCLE_SHADER,
+			"玉米机枪身体与炮塔必须共用生命周期shader。"
+		)
+		_expect(
+			corn_flash_material != null
+			and corn_flash_material.shader == PLANT_VISUAL_PIXEL_SNAP_SHADER,
+			"玉米枪口火焰不参与溶解，必须继续使用独立像素相位修正shader。"
+		)
+		corn.free()
 	tower_instance.free()
 
 	var cannonball := CANNONBALL_SCENE.instantiate() as AgaveCannonball
@@ -623,9 +659,9 @@ func _test_preview_runtime_alignment(
 	var warehouse_material := warehouse_sprite.material as ShaderMaterial
 	_expect(
 		warehouse_material != null
-		and warehouse_material.shader == PLANT_VISUAL_PIXEL_SNAP_SHADER
+		and warehouse_material.shader == PLANT_LIFECYCLE_SHADER
 		and warehouse.material == null,
-		"仓库必须只对主体Sprite应用局部画布像素相位修正。"
+		"仓库必须只对主体Sprite应用兼具像素相位修正的生命周期shader。"
 	)
 	ghost.texture = warehouse_config.icon
 	ghost_rect = _get_sprite_subject_rect(ghost, warehouse_config.icon, Transform2D.IDENTITY)
@@ -953,6 +989,12 @@ func _test_grid_and_occupancy_rules() -> void:
 	_expect(plant.footprint_cells.size() == 4, "植物实例必须保存四个占用格。")
 	var placed_agave := plant as AgaveCannon
 	_expect(is_equal_approx(placed_agave.attack_timer.wait_time, 2.0), "放置后攻击计时器必须严格为2秒。")
+	_expect(
+		not placed_agave.is_operational and placed_agave.attack_timer.is_stopped(),
+		"放置动画完成前龙舌兰必须占格但不能启动攻击。"
+	)
+	await create_timer(PlantDefense.CONSTRUCTION_DURATION_SECONDS + 0.08).timeout
+	_expect(placed_agave.is_operational, "0.7秒构建完成后龙舌兰必须进入运行状态。")
 	_expect(placed_agave.attack_timer.time_left > 1.8, "首次攻击必须等待完整攻击间隔。")
 	_expect(
 		placed_agave.world_los_query != null

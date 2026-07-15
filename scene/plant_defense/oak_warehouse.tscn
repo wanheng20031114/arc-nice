@@ -4,10 +4,7 @@
 [ext_resource type="Texture2D" uid="uid://b6b8m1sebgy8g" path="res://resources/texture/plant_defense/oak_warehouse/oak_warehouse.png" id="2_sprite"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
 [ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="5_font"]
-[ext_resource type="Shader" uid="uid://k6uttyelrjo6" path="res://resources/shader/plant_visual_pixel_snap.gdshader" id="6_pixel_snap_shader"]
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_pixel_snap"]
-shader = ExtResource("6_pixel_snap_shader")
+[ext_resource type="ShaderMaterial" path="res://resources/shader/plant_lifecycle_material.tres" id="6_lifecycle_material"]
 
 [sub_resource type="Animation" id="Animation_oak_idle_reset"]
 resource_name = "RESET"
@@ -112,11 +109,15 @@ outline_color = Color(0.055, 0.027, 0.012, 1)
 collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
+lifecycle_visual_paths = Array[NodePath]([NodePath("Sprite2D")])
+lifecycle_effect_top_y = -16.0
+lifecycle_effect_bottom_y = 16.0
+lifecycle_particle_scale = 1.0
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=1058152143]
 z_index = 1
 texture_filter = 1
-material = SubResource("ShaderMaterial_pixel_snap")
+material = ExtResource("6_lifecycle_material")
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("2_sprite")
 
@@ -138,6 +139,7 @@ shape = SubResource("CircleShape2D_player_core")
 [node name="InteractionArea" type="Area2D" parent="." unique_id=171521687]
 collision_layer = 0
 collision_mask = 2
+monitoring = false
 monitorable = false
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea" unique_id=1155286578]

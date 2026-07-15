@@ -31,6 +31,11 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://scene/plant_defense/corn_machine_gun.tscn",
 	"res://resources/config/plant_defense/oak_warehouse.tres",
 	"res://scene/plant_defense/oak_warehouse.tscn",
+	"res://resources/shader/plant_lifecycle.gdshader",
+	"res://resources/shader/plant_lifecycle_material.tres",
+	"res://resources/shader/plant_lifecycle_noise.tres",
+	"res://scene/plant_defense/effects/plant_placement_particles.tscn",
+	"res://scene/plant_defense/effects/plant_removal_smoke.tscn",
 	"res://scene/enemy/yuanshi_insect_spawn_effect.tscn",
 	"res://scene/xirang_drop.tscn",
 ]
@@ -274,9 +279,13 @@ func _test_singleplayer_coordinator_flow() -> void:
 		and tower_runtime.scene_file_path == "res://scene/game_tower_defense.tscn"
 		and tower_runtime.supports_tower_defense()
 		and tower_runtime.is_runtime_preparation_complete()
-		and tower_runtime.runtime_activated,
+		and tower_runtime.runtime_activated
+		and bool(tower_runtime.get("plant_lifecycle_shader_prewarmed")),
 		"Tower-defense loading must finish staged preparation before activation."
 	)
+	await physics_frame
+	await physics_frame
+	_expect_lifecycle_prewarm_pool_released(tower_runtime)
 	for path in TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS:
 		_expect(
 			ResourceLoader.has_cached(path),
@@ -319,12 +328,29 @@ func _test_mp_game_preparation_barrier() -> void:
 		and runtime.supports_tower_defense()
 		and runtime.is_runtime_preparation_complete()
 		and runtime.runtime_activated
-		and runtime.process_mode == Node.PROCESS_MODE_INHERIT,
+		and runtime.process_mode == Node.PROCESS_MODE_INHERIT
+		and bool(runtime.get("plant_lifecycle_shader_prewarmed")),
 		"MpGame must finish preparation while disabled, report ready, then activate."
 	)
 	mp_game.queue_free()
 	await process_frame
 	net_manager.disconnect_from_game()
+
+
+func _expect_lifecycle_prewarm_pool_released(runtime: GameRuntimeBase) -> void:
+	var tower_runtime := runtime as GameTowerDefense
+	if tower_runtime == null:
+		return
+	for scene_path in [
+		"res://scene/plant_defense/effects/plant_placement_particles.tscn",
+		"res://scene/plant_defense/effects/plant_removal_smoke.tscn",
+	]:
+		var metrics := tower_runtime.session_object_pool.get_metrics(scene_path)
+		_expect(
+			int(metrics.get("in_use", -1)) == 0
+			and int(metrics.get("pending_release", -1)) == 0,
+			"Lifecycle VFX prewarm lease must return to its pool: %s" % scene_path
+		)
 
 
 func _finish() -> void:

@@ -101,6 +101,9 @@ func _on_setup_completed() -> void:
 	turret_sprite.play(&"idle")
 	idle_aim_center_rotation = aim_pivot.rotation
 	idle_aim_random.randomize()
+
+
+func _on_operational_started() -> void:
 	_start_idle_aim()
 	if is_multiplayer_proxy:
 		_disable_proxy_combat_runtime()
@@ -123,16 +126,16 @@ func _disable_proxy_combat_runtime() -> void:
 	_target_candidates.clear()
 
 
-func _on_death_started() -> void:
+func _on_removal_started(_mode: RemovalMode) -> void:
 	attack_timer.stop()
 	_stop_idle_aim()
+	health_bar.hide()
 	_cancel_burst(false)
 	tracer_fade.stop()
 	tracer.visible = false
 	muzzle_flash_sprite.visible = false
 	fire_audio.stop()
 	_target_candidates.clear()
-	super._on_death_started()
 
 
 func _on_health_changed(new_health: int, new_max_health: int) -> void:

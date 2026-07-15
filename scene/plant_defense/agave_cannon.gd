@@ -77,6 +77,9 @@ func _on_setup_completed() -> void:
 	cannon_sprite.play(&"idle")
 	idle_aim_center_rotation = cannon_pivot.rotation
 	idle_aim_random.randomize()
+
+
+func _on_operational_started() -> void:
 	_start_idle_aim()
 	if is_multiplayer_proxy:
 		_disable_proxy_combat_runtime()
@@ -104,16 +107,16 @@ func _disable_proxy_combat_runtime() -> void:
 	cannon_sprite.play(&"idle")
 
 
-func _on_death_started() -> void:
+func _on_removal_started(_mode: RemovalMode) -> void:
 	attack_timer.stop()
 	_stop_idle_aim()
+	health_bar.hide()
 	targeting_area.set_deferred("monitoring", false)
 	target_candidates.clear()
 	stale_target_candidate_ids.clear()
 	fallback_target_candidates.clear()
 	indexed_target_candidates.clear()
 	pending_target = null
-	super._on_death_started()
 
 
 func _on_health_changed(new_health: int, new_max_health: int) -> void:

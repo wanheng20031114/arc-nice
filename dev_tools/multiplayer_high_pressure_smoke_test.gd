@@ -41,6 +41,8 @@ class TestRuntime:
 	var proxy_plants: Dictionary[int, PlantDefense] = {}
 	var lookup_targets: Dictionary[int, Enemy] = {}
 	var target_lookup_count: int = 0
+	var animated_plant_removal_ids: Array[int] = []
+	var silent_plant_removal_ids: Array[int] = []
 
 	func configure_multiplayer(
 		_mode: int,
@@ -193,6 +195,14 @@ class TestRuntime:
 		return snapshots
 
 	func apply_remote_plant_removed(net_id: int) -> void:
+		animated_plant_removal_ids.append(net_id)
+		_remove_proxy_plant(net_id)
+
+	func apply_remote_plant_removed_silently(net_id: int) -> void:
+		silent_plant_removal_ids.append(net_id)
+		_remove_proxy_plant(net_id)
+
+	func _remove_proxy_plant(net_id: int) -> void:
 		var plant := proxy_plants.get(net_id) as PlantDefense
 		proxy_plants.erase(net_id)
 		if plant != null and is_instance_valid(plant):
@@ -632,7 +642,9 @@ func _test_runtime_world_manifest_prunes_stale_replicas() -> void:
 		fixture.proxy_plants.has(20)
 		and not fixture.proxy_plants.has(21)
 		and (mp_game.get("_pending_warehouse_snapshots") as Dictionary).has(20)
-		and not (mp_game.get("_pending_warehouse_snapshots") as Dictionary).has(21),
+		and not (mp_game.get("_pending_warehouse_snapshots") as Dictionary).has(21)
+		and fixture.silent_plant_removal_ids.has(21)
+		and not fixture.animated_plant_removal_ids.has(21),
 		"A complete-state manifest must prune stale plants and their queued warehouse snapshots."
 	)
 	mp_game.set("_net_enemies", {})
@@ -721,6 +733,11 @@ func _test_plant_health_before_spawn_debt() -> void:
 		PackedInt32Array([9])
 	)
 	mp_game.call("net_plant_removed", 72)
+	_expect(
+		fixture.animated_plant_removal_ids.has(72)
+		and not fixture.silent_plant_removal_ids.has(72),
+		"A reliable gameplay removal must use the animated client removal path."
+	)
 	mp_game.call(
 		"net_plant_health_batch",
 		PackedInt32Array([72]),

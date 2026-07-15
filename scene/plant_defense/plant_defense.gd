@@ -1,12 +1,28 @@
 extends StaticBody2D
 class_name PlantDefense
 
+enum RemovalMode {
+	SILENT,
+	ANIMATED,
+}
+
 signal health_changed(current_health: int, maximum_health: int)
 signal authoritative_health_changed(current_health: int, maximum_health: int, revision: int)
 signal died
 signal modal_ui_visibility_changed(is_open: bool)
+signal construction_finished
+signal removal_started(mode: RemovalMode)
+
+const CONSTRUCTION_DURATION_SECONDS: float = 0.7
+const REMOVAL_DURATION_SECONDS: float = 0.7
 
 @export_range(0.0, 12.0, 0.5, "or_greater") var enemy_approach_depth: float = 3.0
+
+@export_group("生命周期视觉")
+@export var lifecycle_visual_paths: Array[NodePath] = []
+@export var lifecycle_effect_top_y: float = -16.0
+@export var lifecycle_effect_bottom_y: float = 16.0
+@export_range(0.1, 4.0, 0.05, "or_greater") var lifecycle_particle_scale: float = 1.0
 
 var config: PlantDefenseConfig = null
 var owner_player: Player = null
@@ -18,6 +34,15 @@ var magic_defense: int = 0
 var is_dead: bool = false
 var is_multiplayer_proxy: bool = false
 var health_revision: int = 0
+var is_operational: bool = false
+var is_removing: bool = false
+var removal_mode: RemovalMode = RemovalMode.SILENT
+
+var _lifecycle_visuals: Array[CanvasItem] = []
+var _construction_tween: Tween = null
+var _removal_tween: Tween = null
+var _construction_progress: float = 1.0
+var _construction_visual_active := false
 
 
 func _ready() -> void:
@@ -31,7 +56,8 @@ func setup(
 	as_multiplayer_proxy: bool = false,
 	initial_health: int = -1,
 	initial_health_revision: int = 0,
-	initial_maximum_health: int = -1
+	initial_maximum_health: int = -1,
+	play_placement_effect: bool = false
 ) -> void:
 	if new_config == null or not new_config.is_valid():
 		push_error("PlantDefense setup requires a valid config.")
@@ -49,12 +75,22 @@ func setup(
 	is_dead = false
 	is_multiplayer_proxy = as_multiplayer_proxy
 	health_revision = maxi(initial_health_revision, 0)
+	is_operational = false
+	is_removing = false
+	removal_mode = RemovalMode.SILENT
 	health_changed.emit(current_health, max_health)
 	if not is_multiplayer_proxy:
 		_bump_health_revision()
 	_on_setup_completed()
+	_prepare_lifecycle_visuals()
 	if current_health <= 0:
+		_set_construction_progress(0.0 if play_placement_effect else 1.0)
+		_set_lifecycle_parameter(&"construction_front_strength", 0.0)
 		_begin_death()
+	elif play_placement_effect:
+		_start_construction_visual()
+	else:
+		_finish_construction(false)
 
 
 func receive_damage(
@@ -63,7 +99,7 @@ func receive_damage(
 	impact_direction: Vector2 = Vector2.ZERO,
 	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
 ) -> bool:
-	if is_multiplayer_proxy or is_dead or amount <= 0:
+	if is_multiplayer_proxy or is_dead or is_removing or amount <= 0:
 		return false
 
 	var mitigated_damage := _calculate_incoming_damage(amount, damage_type)
@@ -77,7 +113,7 @@ func receive_damage(
 ## Applies damage without physical or magic mitigation while preserving the
 ## authoritative health revision, signals and normal death lifecycle.
 func receive_unmitigated_damage(amount: int, source: Node = null) -> bool:
-	if is_multiplayer_proxy or is_dead or amount <= 0:
+	if is_multiplayer_proxy or is_dead or is_removing or amount <= 0:
 		return false
 
 	var applied_damage := _apply_damage_to_health(amount)
@@ -88,7 +124,13 @@ func receive_unmitigated_damage(amount: int, source: Node = null) -> bool:
 
 
 func receive_healing(amount: int, source: Node = null) -> bool:
-	if is_multiplayer_proxy or is_dead or amount <= 0 or current_health >= max_health:
+	if (
+		is_multiplayer_proxy
+		or is_dead
+		or is_removing
+		or amount <= 0
+		or current_health >= max_health
+	):
 		return false
 
 	var previous_health := current_health
@@ -130,7 +172,7 @@ func apply_remote_health(
 	new_maximum_health: int,
 	new_revision: int
 ) -> bool:
-	if not is_multiplayer_proxy or new_revision <= health_revision:
+	if not is_multiplayer_proxy or is_removing or new_revision <= health_revision:
 		return false
 	health_revision = new_revision
 	max_health = maxi(new_maximum_health, 1)
@@ -190,22 +232,173 @@ func _apply_damage_to_health(amount: int) -> int:
 
 
 func _begin_death() -> void:
-	if is_dead:
+	if is_dead or is_removing:
 		return
-
 	is_dead = true
 	current_health = 0
+	died.emit()
+	begin_removal(RemovalMode.ANIMATED)
+
+
+func begin_removal(mode: RemovalMode = RemovalMode.ANIMATED) -> void:
+	if is_removing:
+		if mode == RemovalMode.SILENT and removal_mode != RemovalMode.SILENT:
+			removal_mode = RemovalMode.SILENT
+			_stop_removal_tween()
+			queue_free()
+		return
+
+	is_removing = true
+	removal_mode = mode
+	is_operational = false
+	_stop_construction_tween()
+	_construction_visual_active = false
+	_set_lifecycle_parameter(&"construction_front_strength", 0.0)
 	set_deferred("collision_layer", 0)
 	set_deferred("collision_mask", 0)
 	var player_core_body := get_node_or_null("PlayerCoreBody") as StaticBody2D
 	if player_core_body != null:
 		player_core_body.set_deferred("collision_layer", 0)
 		player_core_body.set_deferred("collision_mask", 0)
-	died.emit()
-	_on_death_started()
+	_on_removal_started(mode)
+	removal_started.emit(mode)
+	if mode == RemovalMode.SILENT:
+		queue_free()
+		return
+	_start_animated_removal()
+
+
+func get_lifecycle_vfx_global_position() -> Vector2:
+	var local_center_y := (lifecycle_effect_top_y + lifecycle_effect_bottom_y) * 0.5
+	return to_global(Vector2(0.0, local_center_y))
+
+
+func get_lifecycle_particle_scale() -> float:
+	return lifecycle_particle_scale
+
+
+func is_construction_visual_active() -> bool:
+	return _construction_visual_active
+
+
+func _prepare_lifecycle_visuals() -> void:
+	_lifecycle_visuals.clear()
+	for visual_path in lifecycle_visual_paths:
+		var visual := get_node_or_null(visual_path) as CanvasItem
+		if visual == null:
+			push_error("PlantDefense lifecycle visual is missing: %s" % visual_path)
+			continue
+		_lifecycle_visuals.append(visual)
+
+	var noise_offset := _make_lifecycle_noise_offset()
+	var effect_top_world_y := to_global(Vector2(0.0, lifecycle_effect_top_y)).y
+	var effect_bottom_world_y := to_global(Vector2(0.0, lifecycle_effect_bottom_y)).y
+	_set_lifecycle_parameter(&"effect_top_y", effect_top_world_y)
+	_set_lifecycle_parameter(&"effect_bottom_y", effect_bottom_world_y)
+	_set_lifecycle_parameter(&"noise_offset", noise_offset)
+	_set_lifecycle_parameter(&"removal_enabled", false)
+	_set_lifecycle_parameter(&"removal_progress", 0.0)
+
+
+func _make_lifecycle_noise_offset() -> Vector2:
+	var instance_seed := int(get_meta(&"net_id", get_instance_id()))
+	return Vector2(
+		float((instance_seed * 37 + 17) % 997) / 997.0,
+		float((instance_seed * 101 + 53) % 991) / 991.0
+	)
+
+
+func _start_construction_visual() -> void:
+	_stop_construction_tween()
+	_construction_visual_active = true
+	_set_lifecycle_parameter(&"removal_enabled", false)
+	_set_lifecycle_parameter(&"removal_progress", 0.0)
+	_set_lifecycle_parameter(&"construction_front_strength", 1.0)
+	_set_construction_progress(0.0)
+	_on_construction_started()
+
+	_construction_tween = create_tween()
+	_construction_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_construction_tween.tween_method(
+		_set_construction_progress,
+		0.0,
+		1.0,
+		CONSTRUCTION_DURATION_SECONDS
+	)
+	_construction_tween.finished.connect(_on_construction_tween_finished)
+
+
+func _on_construction_tween_finished() -> void:
+	_construction_tween = null
+	_finish_construction(true)
+
+
+func _finish_construction(was_animated: bool) -> void:
+	if is_removing:
+		return
+	_construction_visual_active = false
+	_set_construction_progress(1.0)
+	_set_lifecycle_parameter(&"construction_front_strength", 0.0)
+	is_operational = true
+	_on_construction_finished(was_animated)
+	_on_operational_started()
+	construction_finished.emit()
+
+
+func _start_animated_removal() -> void:
+	_stop_removal_tween()
+	_set_lifecycle_parameter(&"removal_enabled", true)
+	_set_removal_progress(0.0)
+	_removal_tween = create_tween()
+	_removal_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_removal_tween.tween_method(
+		_set_removal_progress,
+		0.0,
+		1.0,
+		REMOVAL_DURATION_SECONDS
+	)
+	_removal_tween.tween_callback(queue_free)
+
+
+func _set_construction_progress(value: float) -> void:
+	_construction_progress = clampf(value, 0.0, 1.0)
+	_set_lifecycle_parameter(&"construction_progress", _construction_progress)
+
+
+func _set_removal_progress(value: float) -> void:
+	_set_lifecycle_parameter(&"removal_progress", clampf(value, 0.0, 1.0))
+
+
+func _set_lifecycle_parameter(parameter_name: StringName, value: Variant) -> void:
+	for visual in _lifecycle_visuals:
+		visual.set_instance_shader_parameter(parameter_name, value)
+
+
+func _stop_construction_tween() -> void:
+	if _construction_tween != null and _construction_tween.is_valid():
+		_construction_tween.kill()
+	_construction_tween = null
+
+
+func _stop_removal_tween() -> void:
+	if _removal_tween != null and _removal_tween.is_valid():
+		_removal_tween.kill()
+	_removal_tween = null
 
 
 func _on_setup_completed() -> void:
+	pass
+
+
+func _on_construction_started() -> void:
+	pass
+
+
+func _on_construction_finished(_was_animated: bool) -> void:
+	pass
+
+
+func _on_operational_started() -> void:
 	pass
 
 
@@ -230,5 +423,5 @@ func _on_healing_received(_applied_healing: int, _source: Node) -> void:
 	pass
 
 
-func _on_death_started() -> void:
-	queue_free()
+func _on_removal_started(_mode: RemovalMode) -> void:
+	pass

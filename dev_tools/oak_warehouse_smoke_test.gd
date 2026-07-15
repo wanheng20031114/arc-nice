@@ -441,7 +441,9 @@ func _test_shared_panel_rebinding(
 	)
 	first_warehouse.call("_on_interaction_area_body_entered", player)
 	panel.open_for(second_warehouse, player)
-	second_warehouse.call("_on_death_started")
+	second_warehouse.receive_damage(
+		second_warehouse.current_health + second_warehouse.get_effective_physical_defense()
+	)
 	_expect(
 		not panel.is_open() and panel.warehouse == null,
 		"当前仓库死亡时必须关闭并解绑游戏级共享面板。"

@@ -33,6 +33,8 @@
 [ext_resource type="PackedScene" path="res://scene/vfx/tower_defense_ambient_vfx.tscn" id="34_ambient_vfx"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/oak_warehouse_panel.tscn" id="35_oak_warehouse_panel"]
 [ext_resource type="PackedScene" path="res://scene/enemy/guardian_aura_system.tscn" id="36_guardian_aura_system"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/vegetation_stake/vegetation_stake.png" id="37_plant_lifecycle_prewarm_texture"]
+[ext_resource type="ShaderMaterial" path="res://resources/shader/plant_lifecycle_material.tres" id="38_plant_lifecycle_material"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -306,6 +308,15 @@ position = Vector2(154, 82)
 [node name="BossContainer" type="Node2D" parent="." unique_id=1704115178]
 
 [node name="PlantContainer" type="Node2D" parent="." unique_id=456125027]
+
+[node name="PlantLifecycleShaderPrewarm" type="Sprite2D" parent="."]
+visible = false
+modulate = Color(1, 1, 1, 0.01)
+z_index = 4095
+texture_filter = 1
+material = ExtResource("38_plant_lifecycle_material")
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("37_plant_lifecycle_prewarm_texture")
 
 [node name="PlantSystem" type="Node" parent="." unique_id=92727624]
 script = ExtResource("22_plant_system")

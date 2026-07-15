@@ -268,7 +268,7 @@ func get_attackable_objective() -> Node2D:
 		return null if player_objective.is_dead else player_objective
 	var plant_objective := objective_target as PlantDefense
 	if plant_objective != null:
-		return null if plant_objective.is_dead else plant_objective
+		return null if plant_objective.is_dead or plant_objective.is_removing else plant_objective
 	# Home gates and other navigation-only objectives must never become combat
 	# targets merely because they are Node2D instances.
 	return null
@@ -1671,7 +1671,12 @@ func _has_player_contact() -> bool:
 		return true
 	for instance_id in touching_plants:
 		var plant := touching_plants[instance_id] as PlantDefense
-		if plant == null or not is_instance_valid(plant) or plant.is_dead:
+		if (
+			plant == null
+			or not is_instance_valid(plant)
+			or plant.is_dead
+			or plant.is_removing
+		):
 			continue
 		var entry_distance := float(
 			touching_plant_entry_distances.get(instance_id, INF)
@@ -1701,7 +1706,7 @@ func _on_touch_damage_area_body_entered(body: Node2D) -> void:
 
 	var plant := body as PlantDefense
 	if plant != null:
-		if plant.is_dead:
+		if plant.is_dead or plant.is_removing:
 			return
 		var plant_instance_id := plant.get_instance_id()
 		touching_plants[plant_instance_id] = plant
@@ -1710,9 +1715,9 @@ func _on_touch_damage_area_body_entered(body: Node2D) -> void:
 				global_position.distance_to(plant.global_position)
 			)
 		touched_plant = plant
-		var died_callback := _on_touched_plant_died.bind(plant)
-		if not plant.died.is_connected(died_callback):
-			plant.died.connect(died_callback, CONNECT_ONE_SHOT)
+		var removal_callback := _on_touched_plant_removal_started.bind(plant)
+		if not plant.removal_started.is_connected(removal_callback):
+			plant.removal_started.connect(removal_callback, CONNECT_ONE_SHOT)
 		_try_deal_touch_damage()
 		return
 
@@ -1755,14 +1760,14 @@ func _select_touching_player() -> Player:
 func _select_touching_plant() -> PlantDefense:
 	for instance_id in touching_plants:
 		var plant := touching_plants[instance_id] as PlantDefense
-		if is_instance_valid(plant) and not plant.is_dead:
+		if is_instance_valid(plant) and not plant.is_dead and not plant.is_removing:
 			return plant
 	touching_plants.clear()
 	touching_plant_entry_distances.clear()
 	return null
 
 
-func _on_touched_plant_died(plant: PlantDefense) -> void:
+func _on_touched_plant_removal_started(_mode: int, plant: PlantDefense) -> void:
 	if plant == null:
 		return
 	var plant_instance_id := plant.get_instance_id()
@@ -1791,7 +1796,12 @@ func _update_touch_damage(delta: float) -> void:
 		touched_player = null
 		return
 
-	if touched_plant == null or not is_instance_valid(touched_plant) or touched_plant.is_dead:
+	if (
+		touched_plant == null
+		or not is_instance_valid(touched_plant)
+		or touched_plant.is_dead
+		or touched_plant.is_removing
+	):
 		touched_plant = _select_touching_plant()
 	if touched_plant != null:
 		if touch_damage_cooldown_left <= 0.0:
@@ -1819,7 +1829,12 @@ func _try_deal_touch_damage() -> void:
 		return
 	if config == null:
 		return
-	if touched_plant != null and is_instance_valid(touched_plant) and not touched_plant.is_dead:
+	if (
+		touched_plant != null
+		and is_instance_valid(touched_plant)
+		and not touched_plant.is_dead
+		and not touched_plant.is_removing
+	):
 		var impact_direction := global_position.direction_to(touched_plant.global_position)
 		if touched_plant.receive_damage(
 			config.attack_damage,

@@ -95,11 +95,21 @@ func _verify_ranged_enemy_target_contract() -> void:
 		bool(smg.call("_try_fire_scatter", Vector2.RIGHT)),
 		"SMG Capoo must fire while its objective is a plant."
 	)
+	plant.begin_removal(PlantDefense.RemovalMode.ANIMATED)
+	_expect(
+		not plant.is_dead
+		and ak.get_attackable_objective() == null
+		and rpg.get_attackable_objective() == null
+		and mage.get_attackable_objective() == null
+		and fire_insect.get_attackable_objective() == null
+		and smg.get_attackable_objective() == null,
+		"A non-death removal must invalidate every enemy plant objective immediately."
+	)
 
 	for enemy in [ak, rpg, mage, fire_insect, smg]:
 		if enemy != null and is_instance_valid(enemy):
 			enemy.queue_free()
-	plant.queue_free()
+	plant.begin_removal(PlantDefense.RemovalMode.SILENT)
 	player.queue_free()
 	gate.queue_free()
 	await physics_frame
@@ -132,8 +142,23 @@ func _verify_projectile_plant_damage_contract() -> void:
 				plant.current_health,
 			]
 		)
-		plant.queue_free()
+		plant.begin_removal(PlantDefense.RemovalMode.SILENT)
 		await physics_frame
+
+	var removing_plant := _spawn_agave(Vector2(1600.0, 0.0))
+	var removing_health := removing_plant.current_health
+	var ghost_bullet := AK_BULLET_SCENE.instantiate() as CapooAK47Bullet
+	test_root.add_child(ghost_bullet)
+	ghost_bullet.setup(Vector2.RIGHT, 50, 100.0, 1.0)
+	removing_plant.begin_removal(PlantDefense.RemovalMode.ANIMATED)
+	ghost_bullet.call("_on_body_entered", removing_plant)
+	_expect(
+		removing_plant.current_health == removing_health and not ghost_bullet.has_hit,
+		"A projectile callback in the deferred collision shutdown frame must ignore the removal remnant."
+	)
+	ghost_bullet.queue_free()
+	removing_plant.begin_removal(PlantDefense.RemovalMode.SILENT)
+	await physics_frame
 
 	var rocket_plant := _spawn_agave(Vector2(2000.0, 0.0))
 	var rocket_health_before := rocket_plant.current_health
@@ -152,7 +177,7 @@ func _verify_projectile_plant_damage_contract() -> void:
 		]
 	)
 	rocket.queue_free()
-	rocket_plant.queue_free()
+	rocket_plant.begin_removal(PlantDefense.RemovalMode.SILENT)
 	await physics_frame
 
 	var fireball_plant := _spawn_agave(Vector2(3000.0, 0.0))
@@ -173,7 +198,36 @@ func _verify_projectile_plant_damage_contract() -> void:
 		]
 	)
 	fireball.queue_free()
-	fireball_plant.queue_free()
+	fireball_plant.begin_removal(PlantDefense.RemovalMode.SILENT)
+	await physics_frame
+
+	var removing_fireball_plant := _spawn_agave(Vector2(3200.0, 0.0))
+	var removing_fireball_health := removing_fireball_plant.current_health
+	var removing_fireball := MAGE_FIREBALL_SCENE.instantiate() as CapooMageFireball
+	test_root.add_child(removing_fireball)
+	removing_fireball.monitoring = false
+	removing_fireball.global_position = removing_fireball_plant.global_position
+	removing_fireball.setup(
+		Vector2.RIGHT,
+		50,
+		0.0,
+		1.0,
+		16.0,
+		removing_fireball_plant,
+		0.65
+	)
+	removing_fireball_plant.begin_removal(PlantDefense.RemovalMode.ANIMATED)
+	_expect(
+		not bool(removing_fireball.call("_is_homing_target_alive")),
+		"Mage fireball homing must release a plant as soon as removal starts."
+	)
+	removing_fireball.call("_apply_explosion_damage")
+	_expect(
+		removing_fireball_plant.current_health == removing_fireball_health,
+		"Explosion queries must ignore a plant during its deferred collision shutdown frame."
+	)
+	removing_fireball.queue_free()
+	removing_fireball_plant.begin_removal(PlantDefense.RemovalMode.SILENT)
 	await physics_frame
 
 
@@ -217,7 +271,7 @@ func _verify_sniper_plant_damage_contract() -> void:
 		"Client-view sniper proxy must clear plant-lock VFX after fire."
 	)
 	proxy_sniper.queue_free()
-	plant.queue_free()
+	plant.begin_removal(PlantDefense.RemovalMode.SILENT)
 	player.queue_free()
 	await physics_frame
 

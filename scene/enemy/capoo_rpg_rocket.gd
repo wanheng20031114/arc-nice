@@ -218,9 +218,9 @@ func _apply_explosion_damage_to_body(body: Node2D, damaged_bodies: Dictionary) -
 	var plant := body as PlantDefense
 	if plant == null:
 		return
-	damaged_bodies[body_id] = true
-	if plant.is_dead:
+	if plant.is_dead or plant.is_removing:
 		return
+	damaged_bodies[body_id] = true
 	var impact_direction := global_position.direction_to(plant.global_position)
 	plant.receive_damage(
 		damage,

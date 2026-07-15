@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://ckvxqcske210i" path="res://scene/plant_defense/vegetation_stake.gd" id="1_script"]
 [ext_resource type="Texture2D" uid="uid://7j2elewjts2l" path="res://resources/texture/plant_defense/vegetation_stake/vegetation_stake.png" id="2_sprite"]
 [ext_resource type="Texture2D" uid="uid://dkb7hqmpnqe1i" path="res://resources/texture/plant_defense/vegetation_stake/vegetation_stake_glow.png" id="3_glow"]
-[ext_resource type="Shader" uid="uid://k6uttyelrjo6" path="res://resources/shader/plant_visual_pixel_snap.gdshader" id="4_pixel_snap"]
+[ext_resource type="ShaderMaterial" path="res://resources/shader/plant_lifecycle_material.tres" id="4_lifecycle_material"]
 [ext_resource type="Shader" uid="uid://dvyineny3ai08" path="res://resources/shader/vegetation_stake_glow.gdshader" id="5_glow_shader"]
 [ext_resource type="Shader" uid="uid://o4263aym3yuw" path="res://resources/shader/vegetation_stake_border.gdshader" id="6_border_shader"]
 [ext_resource type="PackedScene" uid="uid://by1igl2yc3ch0" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="7_health_bar"]
@@ -14,9 +14,6 @@ shader_parameter/base_color = Color(0.298, 0.961, 0.416, 1)
 
 [sub_resource type="QuadMesh" id="QuadMesh_border"]
 size = Vector2(16, 16)
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_pixel_snap"]
-shader = ExtResource("4_pixel_snap")
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_glow"]
 shader = ExtResource("5_glow_shader")
@@ -47,6 +44,10 @@ collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
 enemy_approach_depth = 2.0
+lifecycle_visual_paths = Array[NodePath]([NodePath("MainSprite")])
+lifecycle_effect_top_y = -5.0
+lifecycle_effect_bottom_y = 7.0
+lifecycle_particle_scale = 0.65
 
 [node name="CellBorder" type="MeshInstance2D" parent="." unique_id=328921285]
 z_index = -1
@@ -57,7 +58,7 @@ mesh = SubResource("QuadMesh_border")
 [node name="MainSprite" type="Sprite2D" parent="." unique_id=363835597]
 z_index = 1
 texture_filter = 1
-material = SubResource("ShaderMaterial_pixel_snap")
+material = ExtResource("4_lifecycle_material")
 position = Vector2(0, -1)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("2_sprite")

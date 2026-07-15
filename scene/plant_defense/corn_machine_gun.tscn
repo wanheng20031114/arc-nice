@@ -15,6 +15,7 @@
 [ext_resource type="PackedScene" uid="uid://by1igl2yc3ch0" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="13_health_bar"]
 [ext_resource type="Shader" uid="uid://k6uttyelrjo6" path="res://resources/shader/plant_visual_pixel_snap.gdshader" id="14_pixel_snap_shader"]
 [ext_resource type="AudioStream" uid="uid://chx8qq8m532lm" path="res://resources/audio/capoo_smg_fire.wav" id="15_fire_audio"]
+[ext_resource type="ShaderMaterial" path="res://resources/shader/plant_lifecycle_material.tres" id="16_lifecycle_material"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_pixel_snap"]
 shader = ExtResource("14_pixel_snap_shader")
@@ -133,6 +134,10 @@ collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
 enemy_approach_depth = 6.0
+lifecycle_visual_paths = Array[NodePath]([NodePath("VisualRoot/BodySprite"), NodePath("VisualRoot/AimPivot/TurretSprite")])
+lifecycle_effect_top_y = -9.0
+lifecycle_effect_bottom_y = 16.0
+lifecycle_particle_scale = 1.0
 
 [node name="VisualRoot" type="Node2D" parent="." unique_id=159657345]
 scale = Vector2(0.5, 0.5)
@@ -140,7 +145,7 @@ scale = Vector2(0.5, 0.5)
 [node name="BodySprite" type="AnimatedSprite2D" parent="VisualRoot" unique_id=438462908]
 z_index = 1
 texture_filter = 1
-material = SubResource("ShaderMaterial_pixel_snap")
+material = ExtResource("16_lifecycle_material")
 sprite_frames = SubResource("SpriteFrames_body")
 animation = &"idle"
 autoplay = "idle"
@@ -152,7 +157,7 @@ position = Vector2(3, -1)
 
 [node name="TurretSprite" type="AnimatedSprite2D" parent="VisualRoot/AimPivot" unique_id=2121598685]
 texture_filter = 1
-material = SubResource("ShaderMaterial_pixel_snap")
+material = ExtResource("16_lifecycle_material")
 position = Vector2(-5, 0)
 sprite_frames = SubResource("SpriteFrames_turret")
 animation = &"idle"

@@ -8,6 +8,12 @@ const CAPOO_RPG_ROCKET_POOL_SCENE := preload("res://scene/enemy/capoo_rpg_rocket
 const CAPOO_MAGE_FIREBALL_POOL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
 const YUANSHI_FIRE_PROJECTILE_POOL_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
 const AGAVE_CANNONBALL_POOL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
+const PLANT_PLACEMENT_PARTICLES_SCENE := preload(
+	"res://scene/plant_defense/effects/plant_placement_particles.tscn"
+)
+const PLANT_REMOVAL_SMOKE_SCENE := preload(
+	"res://scene/plant_defense/effects/plant_removal_smoke.tscn"
+)
 const COLLECTIBLE_ARROW_POOL_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
 const COLLECTIBLE_SAKURA_ROCKET_POOL_SCENE := preload(
 	"res://scene/collectible_sakura_rocket.tscn"
@@ -18,6 +24,7 @@ const LINGLAN_SKILL1_BULLET_POOL_SCENE := preload(
 const LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE := preload(
 	"res://scene/boss/linglan/linglan_sakura_hit_effect.tscn"
 )
+const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/guardian_point_light.png")
 const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
 const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := "res://scene/boss/linglan/linglan_boss_intro_vfx.tscn"
@@ -67,6 +74,8 @@ const PLANT_PLACEMENT_REJECT_INVALID_CONFIG := &"invalid_config"
 const PLANT_PLACEMENT_REJECT_INVALID_POSITION := &"invalid_position"
 const TERRAIN_NETWORK_BATCH_MAX_CELLS := 96
 const UNSUPPORTED_PLANT_DAMAGE_INTERVAL_SECONDS := 1.0
+const PLANT_LIFECYCLE_VFX_PREWARM_COUNT := 8
+const PLANT_LIFECYCLE_VFX_RETAINED_CAPACITY := 32
 const LINGLAN_SKILL_REFERENCE_ARENA_POSITION := Vector2i(-3, -1)
 const MULTIPLAYER_SPAWN_OFFSETS: Array[Vector2] = [
 	Vector2.ZERO,
@@ -119,6 +128,7 @@ signal base_health_changed(current_health: int, maximum_health: int, revision: i
 @onready var plant_system: PlantSystem = $PlantSystem
 @onready var vegetation_spread_system: VegetationSpreadSystem = $VegetationSpreadSystem
 @onready var plant_placement_controller: PlantPlacementController = $PlantPlacementController
+@onready var plant_lifecycle_shader_prewarm: Sprite2D = $PlantLifecycleShaderPrewarm
 @onready var damage_number_pool: DamageNumberPool = $DamageNumberPool
 @onready var session_object_pool: SessionObjectPool = $SessionObjectPool
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
@@ -179,6 +189,7 @@ var boss_health_hud: BossHealthHUD = null
 var boss_runtime_scene_loads_requested: bool = false
 var navigation_prewarm_requested: bool = false
 var navigation_prewarmed: bool = false
+var plant_lifecycle_shader_prewarmed: bool = false
 var _previous_physics_interpolation_enabled := false
 var _owns_physics_interpolation_override := false
 var merchant_intermission_active := false
@@ -220,6 +231,16 @@ func _ready() -> void:
 	_configure_timers()
 	_prewarm_enemy_visual_resources()
 	GameRuntimeBase.register_common_visual_effect_pools(session_object_pool)
+	session_object_pool.register_scene(
+		PLANT_PLACEMENT_PARTICLES_SCENE,
+		PLANT_LIFECYCLE_VFX_PREWARM_COUNT,
+		PLANT_LIFECYCLE_VFX_RETAINED_CAPACITY
+	)
+	session_object_pool.register_scene(
+		PLANT_REMOVAL_SMOKE_SCENE,
+		PLANT_LIFECYCLE_VFX_PREWARM_COUNT,
+		PLANT_LIFECYCLE_VFX_RETAINED_CAPACITY
+	)
 	session_object_pool.register_scene(PLAYER_BULLET_POOL_SCENE, 64, 768)
 	session_object_pool.register_scene(CAPOO_AK47_BULLET_POOL_SCENE, 32, 384)
 	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
@@ -778,6 +799,8 @@ func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 	if plant == null:
 		return
 	_request_enemy_retarget_after_objective_change()
+	if plant.is_construction_visual_active():
+		_spawn_plant_placement_particles(plant)
 	var oak_warehouse := plant as OakWarehouse
 	if oak_warehouse != null:
 		oak_warehouse.set_shared_storage_panel(oak_warehouse_panel)
@@ -786,8 +809,39 @@ func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 	var vegetation_stake := plant as VegetationStake
 	if vegetation_stake == null or vegetation_spread_system == null:
 		return
-	var source_id := _get_vegetation_source_id(plant)
-	var origin_cell := plant.footprint_cells[0]
+	if vegetation_stake.is_operational:
+		_activate_vegetation_stake_source(vegetation_stake)
+		return
+	var construction_callback := _on_vegetation_stake_construction_finished.bind(
+		vegetation_stake
+	)
+	if not vegetation_stake.construction_finished.is_connected(construction_callback):
+		vegetation_stake.construction_finished.connect(
+			construction_callback,
+			CONNECT_ONE_SHOT
+		)
+
+
+func _on_vegetation_stake_construction_finished(vegetation_stake: VegetationStake) -> void:
+	if (
+		vegetation_stake == null
+		or not is_instance_valid(vegetation_stake)
+		or not vegetation_stake.is_operational
+		or vegetation_stake.is_removing
+	):
+		return
+	_activate_vegetation_stake_source(vegetation_stake)
+
+
+func _activate_vegetation_stake_source(vegetation_stake: VegetationStake) -> void:
+	if (
+		vegetation_spread_system == null
+		or vegetation_stake == null
+		or vegetation_stake.footprint_cells.is_empty()
+	):
+		return
+	var source_id := _get_vegetation_source_id(vegetation_stake)
+	var origin_cell := vegetation_stake.footprint_cells[0]
 	vegetation_spread_system.register_source(
 		source_id,
 		origin_cell,
@@ -799,6 +853,38 @@ func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 		vegetation_stake.spread_runtime_state_changed.connect(
 			_on_vegetation_runtime_state_changed.bind(source_id, origin_cell)
 		)
+
+
+func _spawn_plant_placement_particles(plant: PlantDefense) -> void:
+	if not WORLD_EFFECT_VISIBILITY.is_position_near_viewport(
+		self,
+		plant.get_lifecycle_vfx_global_position()
+	):
+		return
+	var effect := session_object_pool.try_acquire(
+		PLANT_PLACEMENT_PARTICLES_SCENE
+	) as PlantPlacementParticles
+	if effect == null:
+		return
+	effect.global_position = plant.get_lifecycle_vfx_global_position()
+	effect.reset_physics_interpolation()
+	effect.restart_effect(plant, plant.get_lifecycle_particle_scale())
+
+
+func _spawn_plant_removal_smoke(plant: PlantDefense) -> void:
+	if not WORLD_EFFECT_VISIBILITY.is_position_near_viewport(
+		self,
+		plant.get_lifecycle_vfx_global_position()
+	):
+		return
+	var effect := session_object_pool.try_acquire(
+		PLANT_REMOVAL_SMOKE_SCENE
+	) as PlantRemovalSmoke
+	if effect == null:
+		return
+	effect.global_position = plant.get_lifecycle_vfx_global_position()
+	effect.reset_physics_interpolation()
+	effect.restart_effect(plant.get_lifecycle_particle_scale())
 
 
 func _on_plant_terrain_decay_timer_timeout() -> void:
@@ -999,9 +1085,12 @@ func _on_authoritative_plant_health_changed(
 
 
 func _on_plant_removed(plant: PlantDefense) -> void:
-	_request_enemy_retarget_after_objective_change()
 	if plant == null:
 		return
+	_clear_enemy_references_to_removed_plant(plant)
+	_request_enemy_retarget_after_objective_change()
+	if plant.removal_mode == PlantDefense.RemovalMode.ANIMATED:
+		_spawn_plant_removal_smoke(plant)
 	var oak_warehouse := plant as OakWarehouse
 	if oak_warehouse != null:
 		oak_warehouse.close_storage_panel()
@@ -1012,8 +1101,22 @@ func _on_plant_removed(plant: PlantDefense) -> void:
 		vegetation_spread_system.cancel_source(_get_vegetation_source_id(plant))
 
 
+func _clear_enemy_references_to_removed_plant(plant: PlantDefense) -> void:
+	# Removal is rare, so one bounded pass is preferable to letting enemies keep
+	# a direct reference to the visual-only dissolve remnant until a budgeted
+	# retarget sweep reaches them.
+	var objective_containers: Array[Node] = [enemy_container, boss_container]
+	for container in objective_containers:
+		if container == null:
+			continue
+		for child in container.get_children():
+			var enemy := child as Enemy
+			if enemy != null and enemy.objective_target == plant:
+				enemy.set_objective_target(null)
+
+
 func apply_remote_plant_spawn(
-	_request_id: int,
+	request_id: int,
 	owner_peer_id: int,
 	net_id: int,
 	plant_id: StringName,
@@ -1032,7 +1135,8 @@ func apply_remote_plant_spawn(
 		net_id,
 		current_health,
 		maximum_health,
-		health_revision
+		health_revision,
+		request_id > 0
 	)
 	if replica != null:
 		replica.apply_remote_health(current_health, maximum_health, health_revision)
@@ -1054,7 +1158,13 @@ func apply_remote_plant_health(
 func apply_remote_plant_removed(net_id: int) -> void:
 	if runtime_mode != RuntimeMode.CLIENT_VIEW or plant_system == null:
 		return
-	plant_system.remove_plant_by_net_id(net_id)
+	plant_system.remove_plant_by_net_id(net_id, PlantDefense.RemovalMode.ANIMATED)
+
+
+func apply_remote_plant_removed_silently(net_id: int) -> void:
+	if runtime_mode != RuntimeMode.CLIENT_VIEW or plant_system == null:
+		return
+	plant_system.remove_plant_by_net_id(net_id, PlantDefense.RemovalMode.SILENT)
 
 
 func apply_remote_plant_placement_rejected(request_id: int, _reason: StringName) -> void:
@@ -1067,7 +1177,12 @@ func has_multiplayer_plant(net_id: int) -> bool:
 	if plant_system == null or net_id <= 0:
 		return false
 	var plant := plant_system.get_plant_by_net_id(net_id)
-	return plant != null and is_instance_valid(plant) and not plant.is_dead
+	return (
+		plant != null
+		and is_instance_valid(plant)
+		and not plant.is_dead
+		and not plant.is_removing
+	)
 
 
 func get_multiplayer_plant_node(net_id: int) -> PlantDefense:
@@ -1090,6 +1205,7 @@ func get_multiplayer_plant_snapshots() -> Array[Dictionary]:
 			plant == null
 			or not is_instance_valid(plant)
 			or plant.is_dead
+			or plant.is_removing
 			or plant.config == null
 			or plant.footprint_cells.is_empty()
 		):
@@ -2140,6 +2256,77 @@ func _prewarm_enemy_navigation_grids() -> void:
 					)
 
 
+func prepare_shared_runtime_data_and_complete() -> void:
+	await prewarm_shared_runtime_data()
+	if not is_inside_tree():
+		return
+	await _prewarm_plant_lifecycle_shader()
+	if is_inside_tree():
+		mark_runtime_preparation_complete()
+
+
+func _prewarm_plant_lifecycle_shader() -> void:
+	if (
+		plant_lifecycle_shader_prewarmed
+		or not runtime_activation_deferred
+		or plant_lifecycle_shader_prewarm == null
+	):
+		return
+	update_runtime_preparation_progress("预热植物生命周期特效…", 0, 1)
+	var prewarm_position := map_camera.get_screen_center_position()
+	plant_lifecycle_shader_prewarm.global_position = prewarm_position
+	plant_lifecycle_shader_prewarm.set_instance_shader_parameter(
+		&"construction_progress",
+		0.5
+	)
+	plant_lifecycle_shader_prewarm.set_instance_shader_parameter(
+		&"construction_front_strength",
+		1.0
+	)
+	plant_lifecycle_shader_prewarm.set_instance_shader_parameter(&"removal_enabled", true)
+	plant_lifecycle_shader_prewarm.set_instance_shader_parameter(&"removal_progress", 0.5)
+	plant_lifecycle_shader_prewarm.show()
+
+	# The pre-authored Sprite2D compiles the lifecycle shader. Briefly drawing
+	# one pooled instance of each particle effect in the same masked frame also
+	# compiles their particle and canvas pipelines without adding runtime nodes.
+	var placement_particles := session_object_pool.try_acquire(
+		PLANT_PLACEMENT_PARTICLES_SCENE
+	) as GPUParticles2D
+	if placement_particles != null:
+		placement_particles.global_position = prewarm_position
+		placement_particles.reset_physics_interpolation()
+		placement_particles.amount_ratio = 1.0
+		placement_particles.restart()
+		placement_particles.emitting = true
+	var removal_smoke := session_object_pool.try_acquire(
+		PLANT_REMOVAL_SMOKE_SCENE
+	) as GPUParticles2D
+	if removal_smoke != null:
+		removal_smoke.global_position = prewarm_position
+		removal_smoke.reset_physics_interpolation()
+		removal_smoke.restart()
+		removal_smoke.emitting = true
+	if DisplayServer.get_name() == "headless":
+		# A headless DisplayServer has no Canvas frame to compile or signal. Still
+		# advance once so the pooled leases exercise the same acquire/release path.
+		await get_tree().process_frame
+	else:
+		await RenderingServer.frame_post_draw
+	plant_lifecycle_shader_prewarm.hide()
+	if placement_particles != null:
+		placement_particles.emitting = false
+		placement_particles.amount_ratio = 0.0
+		SessionObjectPool.release_to_owner(placement_particles)
+	if removal_smoke != null:
+		removal_smoke.emitting = false
+		SessionObjectPool.release_to_owner(removal_smoke)
+	if not is_inside_tree():
+		return
+	plant_lifecycle_shader_prewarmed = true
+	update_runtime_preparation_progress("预热植物生命周期特效…", 1, 1)
+
+
 func _schedule_enemy_navigation_prewarm() -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		return
@@ -2159,6 +2346,9 @@ func _run_scheduled_enemy_navigation_prewarm() -> void:
 		await prewarm_shared_runtime_data()
 		if not is_inside_tree():
 			return
+		await _prewarm_plant_lifecycle_shader()
+		if not is_inside_tree():
+			return
 		mark_runtime_preparation_complete()
 		return
 	await _prewarm_enemy_navigation_grids_staged()
@@ -2166,6 +2356,9 @@ func _run_scheduled_enemy_navigation_prewarm() -> void:
 		return
 	navigation_prewarmed = true
 	await prewarm_shared_runtime_data()
+	if not is_inside_tree():
+		return
+	await _prewarm_plant_lifecycle_shader()
 	if not is_inside_tree():
 		return
 	mark_runtime_preparation_complete()

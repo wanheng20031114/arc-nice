@@ -184,7 +184,7 @@ func _is_homing_target_alive() -> bool:
 	if player != null:
 		return not player.is_dead
 	var plant := target_player as PlantDefense
-	return plant != null and not plant.is_dead
+	return plant != null and not plant.is_dead and not plant.is_removing
 
 
 func _get_world_hit(from_position: Vector2, to_position: Vector2) -> Dictionary:
@@ -261,9 +261,9 @@ func _apply_explosion_damage_to_body(body: Node2D, damaged_bodies: Dictionary) -
 	var plant := body as PlantDefense
 	if plant == null:
 		return
-	damaged_bodies[body_id] = true
-	if plant.is_dead:
+	if plant.is_dead or plant.is_removing:
 		return
+	damaged_bodies[body_id] = true
 	plant.receive_damage(
 		damage,
 		self,
