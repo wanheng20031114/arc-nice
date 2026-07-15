@@ -1,6 +1,7 @@
 extends RefCounted
 class_name PlantAttackAudioLimiter
 
+const SPATIAL_VOICE_LIMITER := preload("res://scene/spatial_audio_voice_limiter.gd")
 const AUDIO_GROUP := &"limited_plant_attack_audio_players"
 const MAX_SIMULTANEOUS_VOICES := 6
 
@@ -24,15 +25,19 @@ static func play_burst(
 	var tree := audio_player.get_tree()
 	if tree == null:
 		return false
-	var already_owns_voice := audio_player.playing and audio_player.is_in_group(AUDIO_GROUP)
-	if not already_owns_voice and _count_active_voices(tree) >= MAX_SIMULTANEOUS_VOICES:
+	var active_count := SPATIAL_VOICE_LIMITER.claim_voice(
+		audio_player,
+		AUDIO_GROUP,
+		MAX_SIMULTANEOUS_VOICES
+	)
+	if active_count == SPATIAL_VOICE_LIMITER.REJECTED_ACTIVE_COUNT:
 		return false
 
 	if not audio_player.is_in_group(AUDIO_GROUP):
 		audio_player.add_to_group(AUDIO_GROUP)
 	var finished_callback := _on_audio_finished.bind(audio_player)
 	if not audio_player.finished.is_connected(finished_callback):
-		audio_player.finished.connect(finished_callback, CONNECT_ONE_SHOT)
+		audio_player.finished.connect(finished_callback)
 	audio_player.play(playback_offset)
 	if not audio_player.playing:
 		_remove_voice(audio_player)
@@ -61,6 +66,10 @@ static func _count_active_voices(tree: SceneTree) -> int:
 
 
 static func _on_audio_finished(audio_player: AudioStreamPlayer2D) -> void:
+	# One player can report an intermediate playback finishing while a same-frame
+	# replay is still active. Only the final playback releases the shared voice.
+	if is_instance_valid(audio_player) and audio_player.playing:
+		return
 	_remove_voice(audio_player)
 
 

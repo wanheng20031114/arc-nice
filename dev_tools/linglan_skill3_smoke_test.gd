@@ -155,9 +155,36 @@ func _test_skill3_scene_contract() -> void:
 			)
 			orb.call("_set_visual_pulse", 0.83)
 			_expect(
-				is_equal_approx(float(core_material.get_shader_parameter(&"pulse")), 0.83),
+				is_equal_approx(float(core.get_instance_shader_parameter(&"pulse")), 0.83),
 				"Skill3 orb must still be able to drive its authored flash pulse manually."
 			)
+			var orb_script := orb.get_script() as GDScript
+			var orb_script_source := orb_script.source_code if orb_script != null else ""
+			var pulse_method_start := orb_script_source.find(
+				"func _set_visual_pulse"
+			)
+			var pulse_method_end := orb_script_source.find(
+				"\nfunc ",
+				pulse_method_start + 1
+			)
+			var pulse_method_source := orb_script_source.substr(
+				pulse_method_start,
+				pulse_method_end - pulse_method_start
+			)
+			_expect(
+				pulse_method_start >= 0
+				and pulse_method_end > pulse_method_start
+				and pulse_method_source.contains("for polygon in visual_polygons")
+				and not pulse_method_source.contains("get_children"),
+				"Skill3 pulse updates must reuse cached scene nodes without per-frame child arrays."
+			)
+			var comparison_orb := ORB_SCENE.instantiate() as LinglanSkill3LightOrb
+			var comparison_core := comparison_orb.get_node_or_null("VisualRoot/Core") as Polygon2D
+			_expect(
+				comparison_core != null and comparison_core.material == core.material,
+				"Skill3 orb instances must share immutable glow materials."
+			)
+			comparison_orb.free()
 		if outer_halo != null and outer_halo.material is ShaderMaterial:
 			var outer_material := outer_halo.material as ShaderMaterial
 			var outer_tint: Color = outer_material.get_shader_parameter(&"tint")

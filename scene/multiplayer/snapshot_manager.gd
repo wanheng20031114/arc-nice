@@ -549,8 +549,13 @@ static func _get_enemy_snapshot_mask(data: PackedByteArray, offset: int) -> int:
 
 
 static func _prune_dictionary_to_ids(target: Dictionary, live_ids: Dictionary) -> void:
+	# Every complete encode/decode pass has already inserted all live IDs before
+	# pruning. Equal sizes therefore prove that no stale key exists, which is the
+	# overwhelmingly common horde-snapshot path.
+	if target.size() == live_ids.size():
+		return
 	var stale_ids: Array = []
-	for id_variant in target.keys():
+	for id_variant in target:
 		if not live_ids.has(id_variant):
 			stale_ids.append(id_variant)
 	for id_variant in stale_ids:

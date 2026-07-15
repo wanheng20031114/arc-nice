@@ -231,16 +231,29 @@ func _test_skill4_gpu_pulse_contract() -> void:
 			"Linglan orb fragments must consume the interpolated pulse without recalculating its sine per pixel."
 		)
 	_expect(
-		shader_source.contains("uniform bool gpu_pulse_enabled = false;"),
+		shader_source.contains("uniform bool gpu_pulse_enabled = false;")
+		and shader_source.contains("instance uniform float gpu_pulse_phase = 0.0;"),
 		"The shared shader must keep GPU pulse disabled by default so Skill3 retains manual pulse control."
 	)
 
 	var orb_script_source := FileAccess.get_file_as_string(ORB_SCRIPT_PATH)
+	var physics_process_start := orb_script_source.find("func _physics_process")
+	var physics_process_end := orb_script_source.find("\nfunc ", physics_process_start + 1)
+	var physics_process_source := orb_script_source.substr(
+		physics_process_start,
+		physics_process_end - physics_process_start
+	)
 	_expect(
 		not orb_script_source.contains("set_shader_parameter")
 		and not orb_script_source.contains("_update_visual_pulse")
 		and not orb_script_source.contains("_duplicate_polygon_materials"),
 		"Skill4 orb scripts must not traverse or mutate five visual materials every physics frame."
+	)
+	_expect(
+		physics_process_start >= 0
+		and physics_process_end > physics_process_start
+		and not physics_process_source.contains("shader_parameter"),
+		"Skill4 orb physics ticks must not perform any CPU shader-parameter writes."
 	)
 
 	var orb_scene_source := FileAccess.get_file_as_string(ORB_SCENE_PATH)
@@ -376,14 +389,37 @@ func _test_skill4_scene_contract() -> void:
 			_expect(is_equal_approx(float(core_material.get_shader_parameter(&"gpu_pulse_frequency")), 3.5), "Skill4 GPU pulse frequency changed.")
 			_expect(is_equal_approx(float(core_material.get_shader_parameter(&"gpu_pulse_min")), 0.9), "Skill4 GPU pulse minimum changed.")
 			_expect(is_equal_approx(float(core_material.get_shader_parameter(&"gpu_pulse_max")), 1.12), "Skill4 GPU pulse maximum changed.")
-			_expect(is_equal_approx(float(core_material.get_shader_parameter(&"gpu_pulse_phase")), 0.0), "Skill4 GPU pulse phase changed.")
+			var first_phase := float(core.get_instance_shader_parameter(&"gpu_pulse_phase"))
+			_expect(
+				is_equal_approx(first_phase, orb.gpu_pulse_phase),
+				"Skill4 GPU pulse phase must be written once through the CanvasItem instance uniform."
+			)
+			var origin_shader_time := fmod(
+				float(orb.gpu_pulse_origin_msec) * 0.001,
+				orb.SHADER_TIME_ROLLOVER_SECONDS
+			)
+			_expect(
+				absf(sin(origin_shader_time * TAU * orb.GPU_PULSE_FREQUENCY + first_phase)) < 0.0001,
+				"Every Skill4 orb must begin its GPU pulse at the authored local-time midpoint."
+			)
+			await create_timer(0.05).timeout
 			var comparison_orb := ORB_SCENE.instantiate() as ORB_SCRIPT
+			test_root.add_child(comparison_orb)
+			await process_frame
 			var comparison_core := comparison_orb.get_node_or_null("VisualRoot/Core") as Polygon2D
 			_expect(
 				comparison_core != null and comparison_core.material == core.material,
 				"Skill4 orb instances must share immutable visual materials."
 			)
-			comparison_orb.free()
+			if comparison_core != null:
+				var comparison_phase := float(
+					comparison_core.get_instance_shader_parameter(&"gpu_pulse_phase")
+				)
+				_expect(
+					not is_equal_approx(comparison_phase, first_phase),
+					"Skill4 orbs born at different times must keep independent local pulse phases."
+				)
+			comparison_orb.queue_free()
 		orb.queue_free()
 	await process_frame
 	await physics_frame

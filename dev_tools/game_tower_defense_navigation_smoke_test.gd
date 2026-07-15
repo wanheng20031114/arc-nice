@@ -1,6 +1,7 @@
 extends SceneTree
 
 const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const AGAVE_CONFIG := preload("res://resources/config/plant_defense/agave_cannon.tres")
 
 var failures: Array[String] = []
 
@@ -60,6 +61,11 @@ func _run() -> void:
 			enemy_configs[0],
 			spawn_points[0],
 			targets[1]
+		)
+		await _verify_near_static_verified_motion_contract(
+			game,
+			pathfinder,
+			enemy_configs[0]
 		)
 		await _verify_spawn_recovery_motion(game, pathfinder, enemy_configs)
 
@@ -527,8 +533,11 @@ func _verify_far_home_uses_safe_direct_approach(
 			"A verified far-Home route must use lightweight linear movement."
 		)
 		_expect(
-			bool(enemy.call("_can_use_far_static_objective_linear_movement")),
-			"The lightweight movement tier must remain exclusive to a verified far static objective."
+			bool(enemy.call(
+				"_can_use_verified_static_objective_linear_movement",
+				enemy.velocity * enemy.get_physics_process_delta_time()
+			)),
+			"The lightweight movement tier must retain enough collision-tested clearance for the next static-objective step."
 		)
 	_expect(
 		int(enemy.call("_get_navigation_update_interval_frames", objective))
@@ -541,6 +550,345 @@ func _verify_far_home_uses_safe_direct_approach(
 	pathfinder.flow_field_cache.clear()
 	pathfinder.flow_field_cache_order.clear()
 	enemy.free()
+
+
+func _verify_near_static_verified_motion_contract(
+	game: GameTowerDefense,
+	pathfinder: GridPathfinder,
+	enemy_config: EnemyConfig
+) -> void:
+	game.set_physics_process(false)
+	var enemy := enemy_config.enemy_scene.instantiate() as Enemy
+	_expect(enemy != null, "Near-static verified-motion fixture must instantiate an enemy.")
+	if enemy == null:
+		return
+	game.enemy_container.add_child(enemy)
+	enemy.setup(enemy_config, game.player, pathfinder)
+	enemy.set_physics_process(false)
+	var fixture := _find_open_near_static_fixture(
+		pathfinder,
+		enemy.get_configured_body_collision_half_extents(),
+		enemy_config.terrain_traversal_types,
+		game.player.global_position
+	)
+	_expect(
+		fixture.size() == 2,
+		"Near-static verified-motion test must find a collision-free open corridor."
+	)
+	if fixture.size() != 2:
+		enemy.free()
+		return
+
+	var objective := Node2D.new()
+	game.add_child(objective)
+	objective.global_position = fixture[1]
+	enemy.global_position = fixture[0]
+	enemy.set_objective_target(objective)
+	enemy.call("_clear_navigation_path")
+	var direct_direction := enemy.call(
+		"_get_navigation_move_direction",
+		1.0 / float(maxi(Engine.physics_ticks_per_second, 1))
+	) as Vector2
+	_expect(
+		direct_direction != Vector2.ZERO
+		and enemy.cached_navigation_uses_direct_objective_approach,
+		"A shape-swept near static corridor must opt into verified lightweight movement."
+	)
+	var clearance_before := enemy.cached_navigation_verified_direct_motion_clearance
+	enemy.velocity = direct_direction * enemy.get_effective_move_speed()
+	var verified_motion := enemy.velocity * enemy.get_physics_process_delta_time()
+	_expect(
+		bool(enemy.call(
+			"_can_use_verified_static_objective_linear_movement",
+			verified_motion
+		)),
+		"A normal physics step inside the exact swept clearance must be eligible for direct movement."
+	)
+	var position_before := enemy.global_position
+	enemy.call("_move_until_player_contact")
+	_expect(
+		enemy.global_position.is_equal_approx(position_before + verified_motion),
+		"Verified near-static movement must preserve the authored velocity and physics delta."
+	)
+	_expect(
+		is_equal_approx(
+			enemy.cached_navigation_verified_direct_motion_clearance,
+			clearance_before - verified_motion.length()
+		),
+		"Each lightweight step must consume exactly its collision-tested clearance."
+	)
+	_expect(
+		not bool(enemy.call(
+			"_can_use_verified_static_objective_linear_movement",
+			direct_direction * (clearance_before + 1.0)
+		)),
+		"A lag-sized step beyond the verified clearance must fall back to CharacterBody movement."
+	)
+	var physics_delta := maxf(enemy.get_physics_process_delta_time(), 0.0001)
+	var fallback_motion := direct_direction * (
+		enemy.cached_navigation_verified_direct_motion_clearance + 1.0
+	)
+	enemy.velocity = fallback_motion / physics_delta
+	var fallback_position_before := enemy.global_position
+	enemy.call("_move_until_player_contact")
+	_expect(
+		enemy.global_position.distance_to(fallback_position_before) > 0.0,
+		"An oversized open-corridor frame must exercise CharacterBody fallback movement."
+	)
+	_expect(
+		not enemy.cached_navigation_uses_direct_objective_approach
+		and is_zero_approx(
+			enemy.cached_navigation_verified_direct_motion_clearance
+		),
+		"CharacterBody fallback must invalidate the origin-bound direct-motion certificate."
+	)
+	enemy.velocity = direct_direction * enemy.get_effective_move_speed()
+	var next_frame_motion := enemy.velocity * physics_delta
+	_expect(
+		not bool(enemy.call(
+			"_can_use_verified_static_objective_linear_movement",
+			next_frame_motion
+		)),
+		"The frame after fallback must not reuse clearance certified from the old origin."
+	)
+	enemy.call("_move_until_player_contact")
+	_expect(
+		not enemy.cached_navigation_uses_direct_objective_approach
+		and is_zero_approx(
+			enemy.cached_navigation_verified_direct_motion_clearance
+		),
+		"Fallback movement must remain in CharacterBody mode until navigation revalidates."
+	)
+	# Even a stale direct certificate must never bypass CharacterBody movement for
+	# the moving player target; that path retains its existing contact semantics.
+	enemy.cached_navigation_uses_direct_objective_approach = true
+	enemy.cached_navigation_verified_direct_motion_clearance = (
+		next_frame_motion.length() + 1.0
+	)
+	enemy.objective_target = game.player
+	_expect(
+		not bool(enemy.call(
+			"_can_use_verified_static_objective_linear_movement",
+			verified_motion
+		)),
+		"Verified lightweight movement must remain unavailable for the player objective."
+	)
+	enemy.set_objective_target(objective)
+
+	var wall := _spawn_navigation_blocker(
+		game,
+		fixture[0],
+		fixture[1],
+		1
+	)
+	await physics_frame
+	await _verify_blocker_rejects_lightweight_motion(
+		enemy,
+		objective,
+		fixture[0],
+		"World wall"
+	)
+	wall.queue_free()
+	await physics_frame
+
+	if (enemy.collision_mask & Enemy.WATER_TERRAIN_COLLISION_LAYER) != 0:
+		var water := _spawn_navigation_blocker(
+			game,
+			fixture[0],
+			fixture[1],
+			Enemy.WATER_TERRAIN_COLLISION_LAYER
+		)
+		await physics_frame
+		await _verify_blocker_rejects_lightweight_motion(
+			enemy,
+			objective,
+			fixture[0],
+			"Water terrain"
+		)
+		water.queue_free()
+		await physics_frame
+
+	enemy.free()
+	objective.free()
+	await _verify_near_static_plant_contact_still_stops(
+		game,
+		pathfinder,
+		enemy_config,
+		fixture
+	)
+
+
+func _find_open_near_static_fixture(
+	pathfinder: GridPathfinder,
+	half_extents: Vector2,
+	traversal_types: int,
+	avoid_position: Vector2
+) -> PackedVector2Array:
+	var agent_grid := pathfinder.call(
+		"_get_or_create_agent_grid",
+		half_extents,
+		traversal_types
+	) as AStarGrid2D
+	var candidate_offsets: Array[Vector2i] = [
+		Vector2i(4, 0),
+		Vector2i(-4, 0),
+		Vector2i(0, 4),
+		Vector2i(0, -4),
+	]
+	for y in range(agent_grid.region.position.y + 2, agent_grid.region.end.y - 2):
+		for x in range(agent_grid.region.position.x + 2, agent_grid.region.end.x - 2):
+			var from_cell := Vector2i(x, y)
+			if agent_grid.is_point_solid(from_cell):
+				continue
+			var from_global := pathfinder.call("_map_to_global", from_cell) as Vector2
+			if from_global.distance_to(avoid_position) < 192.0:
+				continue
+			for offset in candidate_offsets:
+				var to_cell := from_cell + offset
+				if not agent_grid.is_in_boundsv(to_cell) or agent_grid.is_point_solid(to_cell):
+					continue
+				var to_global := pathfinder.call("_map_to_global", to_cell) as Vector2
+				if pathfinder.try_is_navigation_open_plain(
+					from_global,
+					to_global,
+					half_extents,
+					traversal_types
+				) == true:
+					return PackedVector2Array([from_global, to_global])
+	return PackedVector2Array()
+
+
+func _spawn_navigation_blocker(
+	game: GameTowerDefense,
+	from_position: Vector2,
+	to_position: Vector2,
+	collision_layer: int
+) -> StaticBody2D:
+	var body := StaticBody2D.new()
+	body.collision_layer = collision_layer
+	body.collision_mask = 0
+	var shape_node := CollisionShape2D.new()
+	var shape := RectangleShape2D.new()
+	var direction := from_position.direction_to(to_position)
+	shape.size = (
+		Vector2(8.0, 256.0)
+		if absf(direction.x) >= absf(direction.y)
+		else Vector2(256.0, 8.0)
+	)
+	shape_node.shape = shape
+	body.add_child(shape_node)
+	game.add_child(body)
+	body.global_position = from_position.lerp(to_position, 0.5)
+	return body
+
+
+func _verify_blocker_rejects_lightweight_motion(
+	enemy: Enemy,
+	objective: Node2D,
+	start_position: Vector2,
+	label: String
+) -> void:
+	enemy.global_position = start_position
+	enemy.velocity = Vector2.ZERO
+	enemy.set_objective_target(objective)
+	enemy.call("_clear_navigation_path")
+	var saw_physics_fallback := false
+	var path_direction := start_position.direction_to(objective.global_position)
+	var blocker_progress := start_position.distance_to(objective.global_position) * 0.5
+	var maximum_progress := 0.0
+	for _frame in range(180):
+		await physics_frame
+		var move_direction := enemy.call(
+			"_get_navigation_move_direction",
+			1.0 / float(maxi(Engine.physics_ticks_per_second, 1))
+		) as Vector2
+		enemy.velocity = move_direction * enemy.get_effective_move_speed()
+		saw_physics_fallback = (
+			saw_physics_fallback
+			or not enemy.cached_navigation_uses_direct_objective_approach
+		)
+		enemy.call("_move_until_player_contact")
+		maximum_progress = maxf(
+			maximum_progress,
+			(enemy.global_position - start_position).dot(path_direction)
+		)
+	_expect(
+		saw_physics_fallback,
+		"%s must invalidate lightweight motion before a body reaches it." % label
+	)
+	_expect(
+		maximum_progress < blocker_progress,
+		"%s must remain physically uncrossable during verified/static fallback movement." % label
+	)
+
+
+func _verify_near_static_plant_contact_still_stops(
+	game: GameTowerDefense,
+	pathfinder: GridPathfinder,
+	enemy_config: EnemyConfig,
+	fixture: PackedVector2Array
+) -> void:
+	game.set_physics_process(false)
+	var plant := AGAVE_CONFIG.plant_scene.instantiate() as PlantDefense
+	var enemy := enemy_config.enemy_scene.instantiate() as Enemy
+	_expect(
+		plant != null and enemy != null,
+		"Near-static contact fixture must instantiate its real plant and enemy."
+	)
+	if plant == null or enemy == null:
+		if plant != null:
+			plant.free()
+		if enemy != null:
+			enemy.free()
+		return
+	game.plant_container.add_child(plant)
+	plant.global_position = fixture[1]
+	plant.setup(AGAVE_CONFIG, game.player, [])
+	var attack_timer := plant.get_node_or_null("AttackTimer") as Timer
+	if attack_timer != null:
+		attack_timer.stop()
+	game.enemy_container.add_child(enemy)
+	enemy.global_position = fixture[0]
+	enemy.setup(enemy_config, game.player, pathfinder)
+	enemy.current_health = 1_000_000
+	enemy.set_objective_target(plant)
+	enemy.call("_clear_navigation_path")
+	var initial_health := plant.current_health
+	var saw_verified_motion := false
+	var reached_stable_contact := false
+	for _frame in range(240):
+		await physics_frame
+		saw_verified_motion = (
+			saw_verified_motion
+			or enemy.cached_navigation_uses_direct_objective_approach
+		)
+		if plant.current_health < initial_health and enemy.call("_has_player_contact"):
+			reached_stable_contact = true
+			break
+	_expect(
+		saw_verified_motion,
+		"The real near plant approach must exercise verified lightweight movement."
+	)
+	_expect(
+		plant.current_health < initial_health,
+		"Direct transform movement must preserve TouchDamageArea entry and plant damage."
+	)
+	_expect(
+		reached_stable_contact,
+		"The enemy must still stop at the authored plant approach depth."
+	)
+	if reached_stable_contact:
+		var stopped_position := enemy.global_position
+		for _frame in range(12):
+			await physics_frame
+		_expect(
+			enemy.global_position.distance_to(stopped_position) < 0.05
+			and enemy.velocity == Vector2.ZERO,
+			"A touching enemy must remain stopped after lightweight approach."
+		)
+	enemy.queue_free()
+	plant.queue_free()
+	await physics_frame
 
 
 func _verify_partial_path_is_rejected(

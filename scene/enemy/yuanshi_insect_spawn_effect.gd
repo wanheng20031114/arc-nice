@@ -9,6 +9,7 @@ extends Node2D
 
 @onready var outer_ring: Line2D = $OuterRing
 @onready var inner_ring: Line2D = $InnerRing
+@onready var particles: GPUParticles2D = $Particles
 var active_tween: Tween = null
 
 
@@ -19,13 +20,18 @@ func _ready() -> void:
 
 
 func on_pool_acquired(_lease_generation: int) -> void:
-	pass
+	# Pools may be contract-tested before their owning scene enters the tree, in
+	# which case @onready references are intentionally not initialized yet.
+	if particles != null:
+		particles.emitting = false
 
 
 func on_pool_released(_lease_generation: int) -> void:
 	if active_tween != null and active_tween.is_valid():
 		active_tween.kill()
 	active_tween = null
+	if particles != null:
+		particles.emitting = false
 	scale = Vector2.ONE * start_scale
 	modulate.a = 0.0
 
@@ -46,6 +52,8 @@ func restart_effect() -> void:
 	# 淡出动画：在特效后段逐渐变回透明
 	active_tween.chain().tween_property(self, "modulate:a", 0.0, duration * 0.62).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
 	active_tween.finished.connect(_finish_effect)
+	particles.restart()
+	particles.emitting = true
 
 	# 随机旋转内外环，使特效看起来更具随机性
 	outer_ring.rotation = randf_range(0.0, TAU)

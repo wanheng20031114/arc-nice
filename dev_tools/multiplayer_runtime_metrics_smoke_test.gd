@@ -17,7 +17,7 @@ func _init() -> void:
 		metrics.call("record_transaction_latency_ms", latency)
 	var summary := metrics.call("get_summary") as Dictionary
 	var channels := summary.get("channels", []) as Array
-	_expect(channels.size() == 8, "Protocol v7 telemetry must expose all eight channels.")
+	_expect(channels.size() == 8, "Protocol v8 telemetry must expose all eight channels.")
 	if channels.size() == 8:
 		var enemy_channel := channels[3] as Dictionary
 		_expect(
@@ -37,6 +37,7 @@ func _init() -> void:
 	)
 	_test_mp_game_rpc_payload_diagnostics()
 	_test_authoritative_plant_registry_count()
+	_test_client_enemy_count_render_cache()
 	if failures.is_empty():
 		print("MULTIPLAYER_RUNTIME_METRICS_SMOKE_TEST_OK")
 		quit(0)
@@ -99,6 +100,22 @@ func _test_authoritative_plant_registry_count() -> void:
 	plant_system.free()
 	tower_game.free()
 	mp_game.free()
+
+
+func _test_client_enemy_count_render_cache() -> void:
+	var source := FileAccess.get_file_as_string("res://scene/multiplayer/mp_game.gd")
+	_expect(
+		source.contains(
+			"if remote_enemy_count != _last_applied_remote_enemy_count:"
+		)
+		and source.contains(
+			"_last_applied_remote_enemy_count = remote_enemy_count"
+		)
+		and source.contains(
+			"_last_applied_remote_enemy_count = -1\n\tgame.apply_remote_flow_state"
+		),
+		"Client enemy-count HUD writes must occur only on count changes and invalidate on flow transitions."
+	)
 
 
 func _expect(condition: bool, message: String) -> void:

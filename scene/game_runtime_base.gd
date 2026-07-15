@@ -3,6 +3,17 @@ extends Node2D
 class_name GameRuntimeBase
 
 const CombatTargetIndexScript := preload("res://scene/combat_target_index.gd")
+const EnemySpawnEffectBudgetScript := preload("res://scene/enemy_spawn_effect_budget.gd")
+const ENEMY_SPAWN_EFFECT_SCENE := preload(
+	"res://scene/enemy/yuanshi_insect_spawn_effect.tscn"
+)
+const BULLET_HIT_EFFECT_POOL_SCENE := preload("res://scene/bullet_hit_effect.tscn")
+const ENEMY_HIT_EFFECT_POOL_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")
+
+const ENEMY_SPAWN_EFFECT_PREWARM_COUNT := 16
+const ENEMY_SPAWN_EFFECT_RETAINED_CAPACITY := 32
+const BULLET_HIT_EFFECT_CAPACITY := 64
+const ENEMY_HIT_EFFECT_CAPACITY := 128
 
 signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
 signal multiplayer_enemy_defeated(net_id: int, defeat_position: Vector2)
@@ -100,6 +111,9 @@ var multiplayer_enemies_by_net_id: Dictionary = {}
 var combat_target_index = CombatTargetIndexScript.new()
 var _enemy_snapshot_states_by_net_id: Dictionary = {}
 var _enemy_snapshot_output: Array[SnapshotManager.EnemyState] = []
+var _enemy_snapshot_live_ids: Dictionary = {}
+var _stale_enemy_snapshot_ids: Array[int] = []
+var _enemy_spawn_effect_budget = EnemySpawnEffectBudgetScript.new()
 var runtime_activation_deferred := false
 var runtime_activated := false
 var runtime_preparation_complete := false
@@ -161,6 +175,35 @@ var runtime_preparation_total_steps := 1
 @abstract func show_debug_collectible_grant_result(config_path: String, success: bool) -> void
 
 
+static func register_common_visual_effect_pools(pool: SessionObjectPool) -> void:
+	pool.register_scene(
+		ENEMY_SPAWN_EFFECT_SCENE,
+		ENEMY_SPAWN_EFFECT_PREWARM_COUNT,
+		ENEMY_SPAWN_EFFECT_RETAINED_CAPACITY
+	)
+	pool.register_scene(
+		BULLET_HIT_EFFECT_POOL_SCENE,
+		BULLET_HIT_EFFECT_CAPACITY,
+		BULLET_HIT_EFFECT_CAPACITY
+	)
+	pool.register_scene(
+		ENEMY_HIT_EFFECT_POOL_SCENE,
+		ENEMY_HIT_EFFECT_CAPACITY,
+		ENEMY_HIT_EFFECT_CAPACITY
+	)
+
+
+func try_reserve_enemy_spawn_effect(
+	spawn_global_position: Vector2,
+	sample_time_seconds: float = -1.0
+) -> bool:
+	return _enemy_spawn_effect_budget.try_reserve(
+		self,
+		spawn_global_position,
+		sample_time_seconds
+	)
+
+
 func register_combat_target(net_id: int, enemy: Enemy) -> void:
 	combat_target_index.register_enemy(net_id, enemy)
 
@@ -202,6 +245,9 @@ func query_combat_targets_into(
 			radius_squared,
 			result
 		)
+		if max_count == 1:
+			_retain_nearest_combat_target(result, center)
+			return
 		result.sort_custom(
 			func(a: Enemy, b: Enemy) -> bool:
 				var a_distance := center.distance_squared_to(a.global_position)
@@ -214,6 +260,33 @@ func query_combat_targets_into(
 			result.resize(max_count)
 		return
 	combat_target_index.query_radius_into(center, radius, result, max_count)
+
+
+func query_combat_targets_unordered_into(
+	center: Vector2,
+	radius: float,
+	result: Array[Enemy]
+) -> void:
+	result.clear()
+	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		var safe_radius := maxf(radius, 0.0)
+		var radius_squared := safe_radius * safe_radius
+		_append_combat_targets_in_radius(
+			enemy_container,
+			center,
+			safe_radius,
+			radius_squared,
+			result
+		)
+		_append_combat_targets_in_radius(
+			get_node_or_null("BossContainer"),
+			center,
+			safe_radius,
+			radius_squared,
+			result
+		)
+		return
+	combat_target_index.query_radius_unordered_into(center, radius, result)
 
 
 func get_multiplayer_plant_node(_net_id: int) -> PlantDefense:
@@ -247,41 +320,87 @@ func _append_combat_targets_in_radius(
 		result.append(enemy)
 
 
+func _retain_nearest_combat_target(
+	result: Array[Enemy],
+	center: Vector2
+) -> void:
+	if result.size() <= 1:
+		return
+	var nearest := result[0]
+	var nearest_distance := center.distance_squared_to(nearest.global_position)
+	var nearest_instance_id := nearest.get_instance_id()
+	for candidate_index in range(1, result.size()):
+		var candidate := result[candidate_index]
+		var candidate_distance := center.distance_squared_to(candidate.global_position)
+		var candidate_instance_id := candidate.get_instance_id()
+		if (
+			candidate_distance < nearest_distance
+			and not is_equal_approx(candidate_distance, nearest_distance)
+		) or (
+			is_equal_approx(candidate_distance, nearest_distance)
+			and candidate_instance_id < nearest_instance_id
+		):
+			nearest = candidate
+			nearest_distance = candidate_distance
+			nearest_instance_id = candidate_instance_id
+	result[0] = nearest
+	result.resize(1)
+
+
 func collect_reused_enemy_snapshot_states(
-	containers: Array[Node]
+	primary_container: Node,
+	secondary_container: Node = null
 ) -> Array[SnapshotManager.EnemyState]:
 	_enemy_snapshot_output.clear()
-	var live_ids: Dictionary = {}
-	for container in containers:
-		if container == null:
-			continue
-		for child in container.get_children():
-			var enemy := child as Enemy
-			if enemy == null or not is_instance_valid(enemy):
-				continue
-			var net_id := int(enemy.get_meta("net_id", enemy.get_instance_id()))
-			if net_id <= 0:
-				continue
-			live_ids[net_id] = true
-			var state := (
-				_enemy_snapshot_states_by_net_id.get(net_id)
-				as SnapshotManager.EnemyState
-			)
-			if state == null:
-				state = SnapshotManager.EnemyState.new()
-				_enemy_snapshot_states_by_net_id[net_id] = state
-			state.net_id = net_id
-			state.position = enemy.global_position
-			state.velocity = enemy.velocity
-			state.health = enemy.current_health
-			state.is_dead = enemy.is_dead
-			state.visual_status_mask = enemy.get_collectible_visual_status_mask()
-			_enemy_snapshot_output.append(state)
-	for cached_id_variant in _enemy_snapshot_states_by_net_id.keys():
+	_append_enemy_snapshot_states_from_container(primary_container)
+	_append_enemy_snapshot_states_from_container(secondary_container)
+	# With unique authoritative net IDs, adding every live state makes the cache
+	# larger than the output if and only if at least one old ID went stale. The
+	# common no-spawn/no-removal snapshot therefore skips all live-ID hash writes.
+	if _enemy_snapshot_states_by_net_id.size() == _enemy_snapshot_output.size():
+		return _enemy_snapshot_output
+	_enemy_snapshot_live_ids.clear()
+	for live_state in _enemy_snapshot_output:
+		_enemy_snapshot_live_ids[live_state.net_id] = true
+	_stale_enemy_snapshot_ids.clear()
+	# Direct Dictionary traversal avoids allocating keys() every snapshot. Erase
+	# only after traversal so the cached state table remains mutation-safe.
+	for cached_id_variant in _enemy_snapshot_states_by_net_id:
 		var cached_id := int(cached_id_variant)
-		if not live_ids.has(cached_id):
-			_enemy_snapshot_states_by_net_id.erase(cached_id)
+		if not _enemy_snapshot_live_ids.has(cached_id):
+			_stale_enemy_snapshot_ids.append(cached_id)
+	for stale_id in _stale_enemy_snapshot_ids:
+		_enemy_snapshot_states_by_net_id.erase(stale_id)
 	return _enemy_snapshot_output
+
+
+func _append_enemy_snapshot_states_from_container(container: Node) -> void:
+	if container == null:
+		return
+	# Godot materializes this child list in one native call. Despite its small
+	# temporary Array, this is materially faster at horde scale than crossing the
+	# script/native boundary once per child with get_child(index).
+	for child in container.get_children():
+		var enemy := child as Enemy
+		if enemy == null or not is_instance_valid(enemy):
+			continue
+		var net_id := int(enemy.get_meta(&"net_id", enemy.get_instance_id()))
+		if net_id <= 0:
+			continue
+		var state := (
+			_enemy_snapshot_states_by_net_id.get(net_id)
+			as SnapshotManager.EnemyState
+		)
+		if state == null:
+			state = SnapshotManager.EnemyState.new()
+			_enemy_snapshot_states_by_net_id[net_id] = state
+		state.net_id = net_id
+		state.position = enemy.global_position
+		state.velocity = enemy.velocity
+		state.health = enemy.current_health
+		state.is_dead = enemy.is_dead
+		state.visual_status_mask = enemy.get_collectible_visual_status_mask()
+		_enemy_snapshot_output.append(state)
 
 
 func defer_runtime_activation() -> void:
@@ -391,12 +510,19 @@ func spawn_xirang_reward(
 	amount: int,
 	target_player: Player,
 	spawn_position: Vector2,
-	landing_offset: Vector2 = Vector2.ZERO
+	landing_offset: Vector2 = Vector2.ZERO,
+	preferred_visual_count: int = 1
 ) -> bool:
 	var drop_manager := get_node_or_null("XirangDropManager") as XirangDropManager
 	if drop_manager == null:
 		return false
-	return drop_manager.spawn_reward(amount, target_player, spawn_position, landing_offset)
+	return drop_manager.spawn_reward(
+		amount,
+		target_player,
+		spawn_position,
+		landing_offset,
+		preferred_visual_count
+	)
 
 
 func supports_tower_defense() -> bool:

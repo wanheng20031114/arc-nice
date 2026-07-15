@@ -84,16 +84,27 @@ func _run() -> void:
 		else:
 			_run_legacy_sweep()
 			reused_indexed_samples.append(_measure_reused_indexed_sweep())
+	var nearest_indexed_samples: Array[float] = []
+	for sample_index in range(SAMPLE_SWEEPS):
+		await physics_frame
+		if sample_index % 2 == 0:
+			nearest_indexed_samples.append(_measure_nearest_indexed_sweep())
+			_run_legacy_sweep()
+		else:
+			_run_legacy_sweep()
+			nearest_indexed_samples.append(_measure_nearest_indexed_sweep())
 
 	var indexed_summary := _summarize(indexed_samples)
 	var reused_indexed_summary := _summarize(reused_indexed_samples)
+	var nearest_indexed_summary := _summarize(nearest_indexed_samples)
 	var legacy_summary := _summarize(legacy_samples)
 	var crowded_migration_ms := await _measure_crowded_bucket_migration()
 	print(
 		(
 			"PLANT_TARGET_QUERY_PROBE enemies=%d queries_per_sweep=%d samples=%d "
-			+ "indexed_ms=%s indexed_reuse_ms=%s legacy_ms=%s "
-			+ "speedup_p50=%.2f reuse_speedup_p50=%.2f crowded_migration_ms=%.3f"
+			+ "indexed_ms=%s indexed_reuse_ms=%s indexed_nearest_ms=%s legacy_ms=%s "
+			+ "speedup_p50=%.2f reuse_speedup_p50=%.2f nearest_speedup_p50=%.2f "
+			+ "crowded_migration_ms=%.3f"
 		)
 		% [
 			ENEMY_COUNT,
@@ -101,10 +112,13 @@ func _run() -> void:
 			SAMPLE_SWEEPS,
 			_format_summary(indexed_summary),
 			_format_summary(reused_indexed_summary),
+			_format_summary(nearest_indexed_summary),
 			_format_summary(legacy_summary),
 			float(legacy_summary["p50"]) / maxf(float(indexed_summary["p50"]), 0.001),
 			float(legacy_summary["p50"])
 			/ maxf(float(reused_indexed_summary["p50"]), 0.001),
+			float(reused_indexed_summary["p50"])
+			/ maxf(float(nearest_indexed_summary["p50"]), 0.001),
 			crowded_migration_ms,
 		]
 	)
@@ -157,6 +171,12 @@ func _verify_query_parity() -> void:
 				indexed[target_index] == legacy[target_index],
 				"Indexed queries must preserve deterministic distance/id ordering."
 			)
+		var nearest := game.query_combat_targets(center, QUERY_RADIUS, 1)
+		_expect(
+			nearest.size() == mini(legacy.size(), 1)
+			and (nearest.is_empty() or nearest[0] == legacy[0]),
+			"The linear max_count=1 path must preserve exact nearest-target ordering."
+		)
 
 
 func _measure_indexed_sweep() -> float:
@@ -177,6 +197,12 @@ func _measure_reused_indexed_sweep() -> float:
 	return float(Time.get_ticks_usec() - started_usec) / 1000.0
 
 
+func _measure_nearest_indexed_sweep() -> float:
+	var started_usec := Time.get_ticks_usec()
+	_run_nearest_indexed_sweep()
+	return float(Time.get_ticks_usec() - started_usec) / 1000.0
+
+
 func _run_indexed_sweep() -> void:
 	for center in query_centers:
 		game.query_combat_targets(center, QUERY_RADIUS, 0)
@@ -189,6 +215,16 @@ func _run_reused_indexed_sweep() -> void:
 			QUERY_RADIUS,
 			reusable_indexed_targets,
 			0
+		)
+
+
+func _run_nearest_indexed_sweep() -> void:
+	for center in query_centers:
+		game.query_combat_targets_into(
+			center,
+			QUERY_RADIUS,
+			reusable_indexed_targets,
+			1
 		)
 
 

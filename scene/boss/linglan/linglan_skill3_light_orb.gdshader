@@ -2,12 +2,12 @@ shader_type canvas_item;
 render_mode unshaded, blend_mix;
 
 uniform vec4 tint : source_color = vec4(1.0, 0.25, 0.78, 0.18);
-uniform float pulse = 1.0;
+instance uniform float pulse = 1.0;
 uniform bool gpu_pulse_enabled = false;
 uniform float gpu_pulse_frequency = 3.5;
 uniform float gpu_pulse_min = 0.9;
 uniform float gpu_pulse_max = 1.12;
-uniform float gpu_pulse_phase = 0.0;
+instance uniform float gpu_pulse_phase = 0.0;
 uniform float inner_radius = 0.0;
 uniform float outer_softness = 1.0;
 uniform float fill_strength = 1.0;

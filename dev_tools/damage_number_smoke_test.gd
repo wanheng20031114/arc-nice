@@ -87,6 +87,8 @@ func _run() -> void:
 	if damage_number_pool != null:
 		await physics_frame
 		_test_damage_number_pool_budget(damage_number_pool)
+		await physics_frame
+		await _test_offscreen_budget_priority(damage_number_pool)
 
 	_stop_audio_players(test_root)
 	current_scene = null
@@ -180,6 +182,59 @@ func _test_damage_number_pool_budget(damage_number_pool: Node2D) -> void:
 			shown_count += 1
 	_expect(shown_count == max_per_frame, "DamageNumberPool should enforce the per-frame display budget.")
 	_expect(damage_number_pool.get_child_count() == child_count_before, "DamageNumberPool should reuse prewarmed nodes.")
+
+
+func _test_offscreen_budget_priority(damage_number_pool: Node2D) -> void:
+	var camera := Camera2D.new()
+	camera.enabled = true
+	test_root.add_child(camera)
+	camera.global_position = Vector2(64.0, 64.0)
+	await process_frame
+
+	damage_number_pool.set("max_numbers_per_frame", 2)
+	damage_number_pool.set("budget_frame", Engine.get_physics_frames())
+	damage_number_pool.set("shown_this_frame", 0)
+	damage_number_pool.set("budget_second_started_msec", Time.get_ticks_msec())
+	damage_number_pool.set("shown_this_second", 0)
+	var skipped_before := int(damage_number_pool.get("offscreen_requests_skipped"))
+	_expect(
+		not bool(damage_number_pool.call(
+			"show_damage_number",
+			99,
+			Vector2(100000.0, 100000.0),
+			Vector2.RIGHT
+		)),
+		"A far-offscreen damage number must be skipped."
+	)
+	_expect(
+		int(damage_number_pool.get("offscreen_requests_skipped")) == skipped_before + 1,
+		"Offscreen damage-number skips must be observable for performance audits."
+	)
+	_expect(
+		bool(damage_number_pool.call(
+			"show_damage_number",
+			1,
+			Vector2(64.0, 64.0),
+			Vector2.RIGHT
+		))
+		and bool(damage_number_pool.call(
+			"show_damage_number",
+			2,
+			Vector2(72.0, 64.0),
+			Vector2.RIGHT
+		)),
+		"Offscreen requests must not consume either visible slot in the frame budget."
+	)
+	_expect(
+		not bool(damage_number_pool.call(
+			"show_damage_number",
+			3,
+			Vector2(80.0, 64.0),
+			Vector2.RIGHT
+		)),
+		"Visible requests must still obey the configured per-frame ceiling."
+	)
+	camera.queue_free()
 
 
 func _stop_audio_players(node: Node) -> void:

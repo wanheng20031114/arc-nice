@@ -30,6 +30,30 @@ static var _next_damage_event_source_id: int = 1
 @onready var right_glow: Line2D = $VisualRoot/RightGlow
 @onready var right_core: Line2D = $VisualRoot/RightCore
 @onready var right_center: Line2D = $VisualRoot/RightCenter
+@onready var damage_shapes: Array[CollisionShape2D] = [
+	$TopShape,
+	$BottomShape,
+	$LeftShape,
+	$RightShape,
+]
+@onready var glow_lines: Array[Line2D] = [
+	$VisualRoot/TopGlow,
+	$VisualRoot/BottomGlow,
+	$VisualRoot/LeftGlow,
+	$VisualRoot/RightGlow,
+]
+@onready var core_lines: Array[Line2D] = [
+	$VisualRoot/TopCore,
+	$VisualRoot/BottomCore,
+	$VisualRoot/LeftCore,
+	$VisualRoot/RightCore,
+]
+@onready var center_lines: Array[Line2D] = [
+	$VisualRoot/TopCenter,
+	$VisualRoot/BottomCenter,
+	$VisualRoot/LeftCenter,
+	$VisualRoot/RightCenter,
+]
 
 var start_min := Vector2(-48.0, -16.0)
 var start_max := Vector2(288.0, 256.0)
@@ -38,6 +62,7 @@ var final_max := Vector2(208.0, 176.0)
 var elapsed: float = 0.0
 var overlapping_players: Dictionary[int, Player] = {}
 var player_next_damage_times: Dictionary[int, float] = {}
+var stale_player_ids: Array[int] = []
 var _last_geometry_progress: float = -1.0
 var _last_geometry_warning: bool = false
 var _geometry_update_count: int = 0
@@ -79,6 +104,7 @@ func setup(
 	field_finished = false
 	overlapping_players.clear()
 	player_next_damage_times.clear()
+	stale_player_ids.clear()
 	_invalidate_geometry_cache()
 	if is_node_ready():
 		_apply_current_geometry()
@@ -94,11 +120,12 @@ func _set_damage_collision_enabled(enabled: bool) -> void:
 	if not enabled:
 		overlapping_players.clear()
 		player_next_damage_times.clear()
+		stale_player_ids.clear()
 	monitoring = enabled
 	monitorable = enabled
 	collision_layer = 128 if enabled else 0
 	collision_mask = PLAYER_COLLISION_MASK if enabled else 0
-	for shape_node in [top_shape, bottom_shape, left_shape, right_shape]:
+	for shape_node in damage_shapes:
 		if shape_node != null:
 			shape_node.disabled = not enabled
 
@@ -219,13 +246,13 @@ func _get_active_core_width() -> float:
 func _apply_current_line_widths(active_core_width: float) -> void:
 	var glow_width := active_core_width * (4.0 if is_warning_active() else 3.0)
 	var center_width := maxf(active_core_width * (0.5 if is_warning_active() else 0.3333), 1.0)
-	for line in [top_glow, bottom_glow, left_glow, right_glow]:
+	for line in glow_lines:
 		if line != null:
 			line.width = glow_width
-	for line in [top_core, bottom_core, left_core, right_core]:
+	for line in core_lines:
 		if line != null:
 			line.width = active_core_width
-	for line in [top_center, bottom_center, left_center, right_center]:
+	for line in center_lines:
 		if line != null:
 			line.width = center_width
 
@@ -233,7 +260,8 @@ func _apply_current_line_widths(active_core_width: float) -> void:
 func _set_line_points(line: Line2D, start_point: Vector2, end_point: Vector2) -> void:
 	if line == null:
 		return
-	line.points = PackedVector2Array([start_point, end_point])
+	line.set_point_position(0, start_point)
+	line.set_point_position(1, end_point)
 
 
 func _set_rectangle_shape(shape_node: CollisionShape2D, center: Vector2, size: Vector2) -> void:
@@ -267,7 +295,7 @@ func _on_body_exited(body: Node2D) -> void:
 func _update_overlapping_player_damage() -> void:
 	if overlapping_players.is_empty():
 		return
-	var stale_player_ids: Array[int] = []
+	stale_player_ids.clear()
 	for player_id in overlapping_players:
 		var player := overlapping_players[player_id]
 		if not is_instance_valid(player) or player.is_dead:

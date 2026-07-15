@@ -25,6 +25,7 @@ var local_player_world_position := Vector2.ZERO
 var remote_player_world_positions := PackedVector2Array()
 var enemy_world_positions := PackedVector2Array()
 var plant_world_positions := PackedVector2Array()
+var _enemy_canvas_bucket_counts: Dictionary[Vector2i, int] = {}
 
 
 func set_tile_world_size(new_tile_world_size: Vector2) -> void:
@@ -98,14 +99,38 @@ func _draw_player_dot_if_visible(
 
 
 func _draw_enemy_buckets(overview_rect: Rect2) -> void:
-	for bucket in _build_enemy_canvas_buckets(overview_rect):
-		var enemy_count: int = bucket["count"]
-		var canvas_position: Vector2 = bucket["canvas_position"]
-		draw_circle(canvas_position, get_enemy_marker_radius(enemy_count), ENEMY_COLOR)
+	_rebuild_enemy_canvas_bucket_counts(overview_rect)
+	for bucket_coordinate in _enemy_canvas_bucket_counts:
+		var enemy_count := _enemy_canvas_bucket_counts[bucket_coordinate]
+		var canvas_position := _get_enemy_bucket_canvas_position(bucket_coordinate)
+		draw_circle(
+			canvas_position,
+			get_enemy_marker_radius(enemy_count),
+			ENEMY_COLOR
+		)
 
 
 func _build_enemy_canvas_buckets(overview_rect: Rect2) -> Array[Dictionary]:
-	var bucket_data := {}
+	# Diagnostic representation used by focused tests. Runtime drawing consumes
+	# the reusable count table directly and does not allocate one Dictionary per
+	# visible density marker.
+	_rebuild_enemy_canvas_bucket_counts(overview_rect)
+	var buckets: Array[Dictionary] = []
+	for bucket_coordinate in _enemy_canvas_bucket_counts:
+		buckets.append(
+			{
+				"bucket_coordinate": bucket_coordinate,
+				"canvas_position": _get_enemy_bucket_canvas_position(
+					bucket_coordinate
+				),
+				"count": _enemy_canvas_bucket_counts[bucket_coordinate],
+			}
+		)
+	return buckets
+
+
+func _rebuild_enemy_canvas_bucket_counts(overview_rect: Rect2) -> void:
+	_enemy_canvas_bucket_counts.clear()
 	for world_position in enemy_world_positions:
 		if not overview_rect.has_point(world_position):
 			continue
@@ -114,21 +139,15 @@ func _build_enemy_canvas_buckets(overview_rect: Rect2) -> Array[Dictionary]:
 			floori(canvas_position.x / ENEMY_BUCKET_SIZE_PX),
 			floori(canvas_position.y / ENEMY_BUCKET_SIZE_PX)
 		)
-		bucket_data[bucket_coordinate] = int(bucket_data.get(bucket_coordinate, 0)) + 1
-
-	var buckets: Array[Dictionary] = []
-	for bucket_coordinate in bucket_data:
-		var enemy_count: int = bucket_data[bucket_coordinate]
-		buckets.append(
-			{
-				"bucket_coordinate": bucket_coordinate,
-				"canvas_position": (
-					Vector2(bucket_coordinate) + Vector2.ONE * 0.5
-				) * ENEMY_BUCKET_SIZE_PX,
-				"count": enemy_count,
-			}
+		_enemy_canvas_bucket_counts[bucket_coordinate] = (
+			_enemy_canvas_bucket_counts.get(bucket_coordinate, 0) + 1
 		)
-	return buckets
+
+
+func _get_enemy_bucket_canvas_position(bucket_coordinate: Vector2i) -> Vector2:
+	return (
+		Vector2(bucket_coordinate) + Vector2.ONE * 0.5
+	) * ENEMY_BUCKET_SIZE_PX
 
 
 func get_enemy_marker_radius(enemy_count: int) -> float:

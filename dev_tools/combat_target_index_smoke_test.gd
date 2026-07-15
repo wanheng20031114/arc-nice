@@ -64,6 +64,41 @@ func _run() -> void:
 		and not full_boundary_query.has(corner_enemy),
 		"Radius queries must include the circular boundary and reject AABB-corner false positives."
 	)
+	var unordered_query: Array[Enemy] = [far_enemy]
+	var unordered_buffer := unordered_query
+	target_index.call(
+		"query_radius_unordered_into",
+		Vector2.ZERO,
+		100.0,
+		unordered_query
+	)
+	_expect(
+		is_same(unordered_buffer, unordered_query)
+		and unordered_query.size() == full_boundary_query.size()
+		and unordered_query.has(near_enemy)
+		and unordered_query.has(middle_enemy)
+		and unordered_query.has(boundary_enemy),
+		"Unordered radius queries must reuse the caller buffer and preserve exact membership."
+	)
+	var first_unordered := CombatTargetIndex.take_nearest_candidate(
+		unordered_query,
+		Vector2.ZERO
+	)
+	var second_unordered := CombatTargetIndex.take_nearest_candidate(
+		unordered_query,
+		Vector2.ZERO
+	)
+	_expect(
+		first_unordered == near_enemy
+		and second_unordered == middle_enemy
+		and unordered_query == [boundary_enemy],
+		"Repeated linear extraction must preserve exact nearest order and remove each candidate once."
+	)
+	CombatTargetIndex.sort_candidates_by_distance(unordered_query, Vector2.ZERO)
+	_expect(
+		unordered_query == [boundary_enemy],
+		"Sorting an adaptive fallback tail must preserve the remaining target exactly."
+	)
 	var global_query := target_index.call(
 		"query_radius",
 		Vector2.ZERO,
@@ -89,14 +124,22 @@ func _run() -> void:
 	tie_index.call("register_enemy", 1, tie_enemy_a)
 	tie_index.call("register_enemy", 2, tie_enemy_b)
 	var tie_query := tie_index.call("query_radius", Vector2.ZERO, 25.0, 0) as Array[Enemy]
+	var nearest_tie_query := tie_index.call(
+		"query_radius",
+		Vector2.ZERO,
+		25.0,
+		1
+	) as Array[Enemy]
 	var expected_tie_first := (
 		tie_enemy_a
 		if tie_enemy_a.get_instance_id() < tie_enemy_b.get_instance_id()
 		else tie_enemy_b
 	)
 	_expect(
-		tie_query.size() == 2 and tie_query[0] == expected_tie_first,
-		"Equal-distance targets must retain the stable instance-id tie break."
+		tie_query.size() == 2
+		and tie_query[0] == expected_tie_first
+		and nearest_tie_query == [expected_tie_first],
+		"Full and linear nearest queries must retain the stable instance-id tie break."
 	)
 	tie_index.call("clear")
 	tie_enemy_a.free()

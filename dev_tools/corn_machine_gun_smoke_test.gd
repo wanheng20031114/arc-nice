@@ -2,12 +2,64 @@ extends SceneTree
 
 const CORN_SCENE := preload("res://scene/plant_defense/corn_machine_gun.tscn")
 const CORN_CONFIG := preload("res://resources/config/plant_defense/corn_machine_gun.tres")
+const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 const FIRE_STREAM := preload("res://resources/audio/capoo_smg_fire.wav")
 const AUDIO_LIMITER := preload("res://scene/plant_defense/plant_attack_audio_limiter.gd")
 const TEST_SEED := 20260715
 
 var failures: Array[String] = []
 var fixture: Node2D = null
+
+
+class TargetRuntimeStub:
+	extends Node2D
+
+	var candidate: Enemy = null
+	var candidates: Array[Enemy] = []
+	var query_call_count := 0
+	var unordered_query_call_count := 0
+	var reused_output_buffer := true
+	var all_queries_requested_nearest := true
+	var first_output_buffer: Array[Enemy] = []
+	var has_output_buffer := false
+
+	func query_combat_targets_into(
+		_center: Vector2,
+		_radius: float,
+		result: Array[Enemy],
+		max_count: int = 0
+	) -> void:
+		query_call_count += 1
+		all_queries_requested_nearest = all_queries_requested_nearest and max_count == 1
+		_track_output_buffer(result)
+		result.clear()
+		if not candidates.is_empty():
+			result.append(candidates[0])
+			return
+		if candidate != null and is_instance_valid(candidate):
+			result.append(candidate)
+
+	func query_combat_targets_unordered_into(
+		_center: Vector2,
+		_radius: float,
+		result: Array[Enemy]
+	) -> void:
+		unordered_query_call_count += 1
+		_track_output_buffer(result)
+		result.clear()
+		for target in candidates:
+			if target != null and is_instance_valid(target):
+				result.append(target)
+
+	func _track_output_buffer(result: Array[Enemy]) -> void:
+		if not has_output_buffer:
+			first_output_buffer = result
+			has_output_buffer = true
+			return
+		reused_output_buffer = reused_output_buffer and is_same(
+			first_output_buffer,
+			result
+		)
 
 
 func _init() -> void:
@@ -27,6 +79,8 @@ func _run() -> void:
 		_test_six_shot_frame_catchup(authority)
 		_test_proxy_elapsed_and_monotonic_actions(proxy)
 		_test_idle_aim_alternation(authority)
+		await _test_target_and_ray_query_reuse(authority)
+		await _test_blocked_nearest_adaptive_selection(authority)
 		await _test_hitscan_first_collision(authority)
 	_test_shared_audio_limiter()
 
@@ -144,6 +198,13 @@ func _test_six_shot_frame_catchup(tower: CornMachineGun) -> void:
 	var hitscan_queries_before := tower.get_hitscan_query_count()
 	tower.call("_begin_burst", Vector2.RIGHT, 1, 0.0, true)
 	_expect(emitted_indices == [0], "权威 Burst 必须在 t=0 立即发射第一发。")
+	_expect(
+		tower.burst_muzzle_position.is_equal_approx(tower.muzzle.global_position)
+		and tower.tracer.global_position.is_equal_approx(tower.burst_muzzle_position)
+		and is_equal_approx(tower.tracer.global_rotation, Vector2.RIGHT.angle())
+		and tower.tracer.get_point_position(0) == Vector2.ZERO,
+		"锁定 Burst 必须复用唯一 Muzzle 的精确世界位置、方向和静态 Tracer 起点。"
+	)
 	tower.call("_physics_process", 0.30)
 	_expect(
 		emitted_indices == [0, 1, 2, 3, 4, 5],
@@ -318,6 +379,130 @@ func _test_idle_aim_alternation(tower: CornMachineGun) -> void:
 	tower.call("_stop_idle_aim")
 
 
+func _test_target_and_ray_query_reuse(tower: CornMachineGun) -> void:
+	var runtime := TargetRuntimeStub.new()
+	runtime.name = "CornTargetRuntimeStub"
+	fixture.add_child(runtime)
+	var enemy := ENEMY_SCENE.instantiate() as Enemy
+	_expect(enemy != null, "Target reuse fixture must instantiate an Enemy.")
+	if enemy == null:
+		runtime.queue_free()
+		return
+	fixture.add_child(enemy)
+	enemy.set_process(false)
+	enemy.set_physics_process(false)
+	enemy.is_dead = false
+	enemy.collision_layer = 4
+	enemy.collision_mask = 0
+	tower.global_position = Vector2(256.0, 192.0)
+	enemy.global_position = tower.aim_pivot.global_position + Vector2(40.0, 0.0)
+	runtime.candidate = enemy
+	tower.set("_combat_runtime", runtime)
+	await physics_frame
+
+	var ray_query_before: PhysicsRayQueryParameters2D = tower.get("_ray_query")
+	var first_target := tower.call("_select_nearest_visible_enemy") as Enemy
+	var second_target := tower.call("_select_nearest_visible_enemy") as Enemy
+	var hit_result := tower.call("_cast_locked_hitscan", Vector2.RIGHT) as Dictionary
+	var ray_query_after: PhysicsRayQueryParameters2D = tower.get("_ray_query")
+	_expect(
+		first_target == enemy and second_target == enemy,
+		"Repeated Corn acquisition must preserve nearest-visible target semantics."
+	)
+	_expect(
+		runtime.query_call_count == 2
+		and runtime.reused_output_buffer
+		and runtime.all_queries_requested_nearest,
+		"Open-field Corn acquisition must reuse its target array and request only the nearest candidate."
+	)
+	_expect(
+		is_same(ray_query_before, ray_query_after)
+		and hit_result.get("collider") == enemy,
+		"Acquisition LOS and firing must reuse one ray-query object without changing first-hit semantics."
+	)
+	_expect(
+		ray_query_after.collision_mask == CornMachineGun.WORLD_AND_ENEMY_COLLISION_MASK
+		and ray_query_after.exclude.size() == 1
+		and ray_query_after.exclude[0] == tower.get_rid()
+		and ray_query_after.collide_with_bodies
+		and not ray_query_after.collide_with_areas,
+		"The reused Corn ray query must retain its mask, exclusion and collision flags."
+	)
+	var source := FileAccess.get_file_as_string(
+		"res://scene/plant_defense/corn_machine_gun.gd"
+	)
+	_expect(
+		source.contains("query_combat_targets_into")
+		and not source.contains("var candidate_values := current_scene.call"),
+		"Corn acquisition must use the allocation-reusing combat query path."
+	)
+	_expect(
+		source.contains("tracer.set_point_position")
+		and not source.contains("tracer.points = PackedVector2Array"),
+		"Six-shot tracers must update authored points instead of allocating a packed array per shot."
+	)
+	runtime.candidate = null
+	enemy.queue_free()
+	runtime.queue_free()
+	await physics_frame
+
+
+func _test_blocked_nearest_adaptive_selection(tower: CornMachineGun) -> void:
+	var runtime := TargetRuntimeStub.new()
+	runtime.name = "CornBlockedTargetRuntimeStub"
+	fixture.add_child(runtime)
+	var blocked_enemy := ENEMY_SCENE.instantiate() as Enemy
+	var clear_enemy := ENEMY_SCENE.instantiate() as Enemy
+	_expect(
+		blocked_enemy != null and clear_enemy != null,
+		"Blocked-target fixture must instantiate both candidate enemies."
+	)
+	if blocked_enemy == null or clear_enemy == null:
+		for enemy in [blocked_enemy, clear_enemy]:
+			if enemy != null:
+				enemy.queue_free()
+		runtime.queue_free()
+		return
+	for enemy in [blocked_enemy, clear_enemy]:
+		fixture.add_child(enemy)
+		enemy.set_process(false)
+		enemy.set_physics_process(false)
+		enemy.is_dead = false
+		enemy.collision_layer = 4
+		enemy.collision_mask = 0
+	tower.global_position = Vector2(640.0, 384.0)
+	var ray_origin := tower.aim_pivot.global_position
+	blocked_enemy.global_position = ray_origin + Vector2(48.0, 0.0)
+	clear_enemy.global_position = ray_origin + Vector2(0.0, 80.0)
+	runtime.candidates.assign([blocked_enemy, clear_enemy])
+	tower.set("_combat_runtime", runtime)
+
+	var blocker := _create_hitscan_probe(&"AdaptiveSelectionWall", 1)
+	blocker.global_position = ray_origin + Vector2(24.0, 0.0)
+	var blocker_shape := blocker.get_child(0) as CollisionShape2D
+	(blocker_shape.shape as RectangleShape2D).size = Vector2(12.0, 24.0)
+	await physics_frame
+
+	var selected := tower.call("_select_nearest_visible_enemy") as Enemy
+	_expect(
+		selected == clear_enemy,
+		"Corn must skip a wall-blocked exact nearest target and retain the next-visible target."
+	)
+	_expect(
+		runtime.query_call_count == 1
+		and runtime.unordered_query_call_count == 1
+		and runtime.all_queries_requested_nearest
+		and runtime.reused_output_buffer,
+		"Blocked Corn acquisition must reuse one output buffer and avoid a full ordered query."
+	)
+
+	blocker.queue_free()
+	blocked_enemy.queue_free()
+	clear_enemy.queue_free()
+	runtime.queue_free()
+	await physics_frame
+
+
 func _test_hitscan_first_collision(tower: CornMachineGun) -> void:
 	var wall := _create_hitscan_probe(&"WallProbe", 1)
 	var first_enemy := _create_hitscan_probe(&"FirstEnemyProbe", 4)
@@ -395,6 +580,40 @@ func _test_shared_audio_limiter() -> void:
 		AUDIO_LIMITER.get_active_voice_count(self) == 0,
 		"停止的音频必须立即从共享声部计数中清理。"
 	)
+
+	var camera := Camera2D.new()
+	camera.enabled = true
+	audio_root.add_child(camera)
+	for index in range(AUDIO_LIMITER.MAX_SIMULTANEOUS_VOICES):
+		players[index].position = Vector2(600.0 - float(index) * 80.0, 0.0)
+		players[index].max_distance = 800.0
+		_expect(AUDIO_LIMITER.play_burst(players[index]), "镜头内声部必须可重新占用共享槽位。")
+	var near_player := AudioStreamPlayer2D.new()
+	near_player.stream = FIRE_STREAM
+	near_player.max_polyphony = 1
+	near_player.max_distance = 800.0
+	near_player.position = Vector2(24.0, 0.0)
+	audio_root.add_child(near_player)
+	_expect(AUDIO_LIMITER.play_burst(near_player), "更近的植物攻击音效必须替换最远声部。")
+	_expect(not players[0].playing, "空间优先级必须停止最远的植物攻击声部。")
+	_expect(
+		AUDIO_LIMITER.get_active_voice_count(self) == AUDIO_LIMITER.MAX_SIMULTANEOUS_VOICES,
+		"空间替换后植物攻击音效仍必须严格遵守共享上限。"
+	)
+	var far_player := AudioStreamPlayer2D.new()
+	far_player.stream = FIRE_STREAM
+	far_player.max_polyphony = 1
+	far_player.max_distance = 800.0
+	far_player.position = Vector2(700.0, 0.0)
+	audio_root.add_child(far_player)
+	_expect(not AUDIO_LIMITER.play_burst(far_player), "更远的请求不得抢占镜头附近声部。")
+	var inaudible_player := AudioStreamPlayer2D.new()
+	inaudible_player.stream = FIRE_STREAM
+	inaudible_player.max_polyphony = 1
+	inaudible_player.max_distance = 100.0
+	inaudible_player.position = Vector2(200.0, 0.0)
+	audio_root.add_child(inaudible_player)
+	_expect(not AUDIO_LIMITER.play_burst(inaudible_player), "max_distance 外的植物攻击音效不得占槽。")
 	audio_root.queue_free()
 
 

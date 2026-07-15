@@ -87,11 +87,25 @@ const ORB_DEDUP_RETENTION_SECONDS := 60.0
 const COLLECTIBLE_EFFECT_DEDUP_RETENTION_SECONDS := 10.0
 const RECENT_EVENT_PRUNE_INTERVAL_SECONDS := 5.0
 const PROJECTILE_RECORD_RETENTION_SECONDS := 5.0
-const PROJECTILE_ID_NAMESPACE_SIZE := 1000000
+## Projectile IDs use one positive signed 64-bit value on the wire:
+## [31-bit owner peer id][1-bit origin lane][31-bit per-process counter].
+## Keeping the owner field disjoint avoids the old decimal namespace spilling
+## into the next owner after one million projectiles. The origin lane also keeps
+## Host-authored projectiles disjoint from a remote client's predicted shots
+## when both processes allocate concurrently for the same owner peer.
+const PROJECTILE_ID_SEQUENCE_BITS := 32
+const PROJECTILE_ID_SEQUENCE_MASK: int = 0xFFFFFFFF
+const PROJECTILE_ID_HOST_ORIGIN_BIT: int = 0x80000000
+const PROJECTILE_ID_SEQUENCE_COUNTER_MASK: int = 0x7FFFFFFF
+const PROJECTILE_ID_MAX_OWNER_PEER_ID: int = 0x7FFFFFFF
+const PROJECTILE_ID_FALLBACK_OWNER_PEER_ID := 999999
 const CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE := 224.0
 const CLIENT_PROJECTILE_DIRECTION_MIN_LENGTH := 0.2
 const CLIENT_PROJECTILE_DIRECTION_MAX_LENGTH := 1.5
+const CLIENT_PROJECTILE_REQUEST_RATE_PER_SECOND := 256.0
+const CLIENT_PROJECTILE_REQUEST_RATE_BURST := 64.0
 const PROJECTILE_TIME_COMPENSATION_MAX_SECONDS := 0.25
+const LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET := 32
 const TIYI_SNIPER_PROJECTILE_TYPE: StringName = &"tiyi_sniper_bullet"
 const TIYI_HIGH_NOON_MAX_TARGETS := 25
 # Application payload budget. Keep room for Godot RPC, ENet, UDP/IP headers before MTU pressure.
@@ -199,9 +213,10 @@ var _last_tiyi_activation_seen_by_peer: Dictionary = {}
 var _accepted_player_state_positions: Dictionary = {}
 var _accepted_player_state_times: Dictionary = {}
 var _host_latest_client_player_snapshot_states: Dictionary = {}
-var _next_projectile_id: int = 1
+var _next_projectile_sequence: int = 1
 var _known_projectiles: Dictionary = {}
 var _projectile_records: Dictionary = {}
+var _stale_projectile_record_ids: Array[int] = []
 var _processed_enemy_hit_ids: Dictionary = {}
 var _processed_player_hit_ids: Dictionary = {}
 var _next_collectible_effect_event_id: int = 1
@@ -212,6 +227,7 @@ var _collected_xirang_orbs: Dictionary = {}
 var _granted_xirang_orbs: Dictionary = {}
 var _host_player_snapshot_sequence: int = 0
 var _host_enemy_snapshot_batch_sequence: int = 0
+var _host_enemy_snapshot_live_ids: Dictionary = {}
 var _player_health_revisions: Dictionary = {}
 var _local_player_hit_revision: int = 0
 var _dead_player_revive_times: Dictionary = {}
@@ -237,6 +253,7 @@ var _last_player_keyframe_time_by_peer: Dictionary = {}
 var _last_enemy_keyframe_time_by_peer: Dictionary = {}
 var _last_plant_placement_request_ids: Dictionary = {}
 var _plant_placement_rate_buckets: Dictionary = {}
+var _client_projectile_request_rate_buckets: Dictionary = {}
 var _warehouse_transaction_rate_buckets: Dictionary = {}
 var _warehouse_snapshot_request_rate_buckets: Dictionary = {}
 var _terrain_snapshot_request_rate_buckets: Dictionary = {}
@@ -251,7 +268,10 @@ var _latest_enemy_snapshot_batch_seen: int = 0
 var _current_enemy_snapshot_hz: int = _NetConstants.ENEMY_SNAPSHOT_HZ
 var _pending_enemy_damage_feedback: Dictionary = {}
 var _combat_feedback_flush_time_left: float = COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS
-var _pending_corn_machine_gun_burst_visuals: Array[Dictionary] = []
+var _pending_corn_machine_gun_burst_visuals := PackedInt32Array()
+var _pending_corn_machine_gun_burst_action_ids := PackedInt32Array()
+var _pending_corn_machine_gun_burst_directions := PackedVector2Array()
+var _pending_corn_machine_gun_burst_host_times := PackedFloat64Array()
 var _corn_machine_gun_burst_flush_time_left: float = (
 	CORN_MACHINE_GUN_BURST_FLUSH_INTERVAL_SECONDS
 )
@@ -261,6 +281,7 @@ var _pending_wave_progress: Dictionary = {}
 var _wave_progress_flush_time_left: float = WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS
 var _client_proxy_visual_budget_time_left: float = 0.0
 var _offscreen_enemy_proxy_count: int = 0
+var _last_applied_remote_enemy_count: int = -1
 var _pending_enemy_spawns: Array[Dictionary] = []
 var _host_terminal_enemy_ids: Dictionary = {}
 var _public_room_keepalive_time_left: float = 0.0
@@ -326,15 +347,20 @@ func _exit_tree() -> void:
 			public_room_keepalive_request.cancel_request()
 	snapshot_mgr.reset_delta_cache()
 	_pending_enemy_snapshot_batches.clear()
+	_host_enemy_snapshot_live_ids.clear()
 	_processed_collectible_effect_event_ids.clear()
 	_pending_enemy_damage_feedback.clear()
 	_pending_corn_machine_gun_burst_visuals.clear()
+	_pending_corn_machine_gun_burst_action_ids.clear()
+	_pending_corn_machine_gun_burst_directions.clear()
+	_pending_corn_machine_gun_burst_host_times.clear()
 	_pending_plant_health_updates.clear()
 	_pending_wave_progress.clear()
 	_pending_enemy_spawns.clear()
 	_host_terminal_enemy_ids.clear()
 	_pending_terrain_snapshot_batches.clear()
 	_terrain_snapshot_request_rate_buckets.clear()
+	_client_projectile_request_rate_buckets.clear()
 	_luoxi_offer_states_by_peer.clear()
 	_luoxi_offer_revision_counters.clear()
 	_warehouse_transaction_started_usec.clear()
@@ -380,7 +406,10 @@ func _process(delta: float) -> void:
 		_client_interpolate_entities()
 	if net_manager.is_client() and game != null:
 		_update_client_proxy_visual_budget(delta)
-		game.apply_remote_enemy_count(_net_enemies.size())
+		var remote_enemy_count := _net_enemies.size()
+		if remote_enemy_count != _last_applied_remote_enemy_count:
+			_last_applied_remote_enemy_count = remote_enemy_count
+			game.apply_remote_enemy_count(remote_enemy_count)
 
 
 func _update_client_proxy_visual_budget(delta: float) -> void:
@@ -397,7 +426,8 @@ func _update_client_proxy_visual_budget(delta: float) -> void:
 		camera = viewport.get_camera_2d()
 	if camera == null:
 		_offscreen_enemy_proxy_count = 0
-		for enemy_variant in _net_enemies.values():
+		for enemy_net_id_variant in _net_enemies:
+			var enemy_variant: Variant = _net_enemies.get(enemy_net_id_variant)
 			var uncullable_enemy := enemy_variant as Enemy
 			if uncullable_enemy != null and is_instance_valid(uncullable_enemy):
 				uncullable_enemy.set_multiplayer_proxy_visual_active(true)
@@ -417,7 +447,8 @@ func _update_client_proxy_visual_budget(delta: float) -> void:
 		visible_world_size + margin_vector * 2.0
 	)
 	var offscreen_count := 0
-	for enemy_variant in _net_enemies.values():
+	for enemy_net_id_variant in _net_enemies:
+		var enemy_variant: Variant = _net_enemies.get(enemy_net_id_variant)
 		var enemy := enemy_variant as Enemy
 		if enemy == null or not is_instance_valid(enemy):
 			continue
@@ -833,14 +864,23 @@ func _consume_peer_rate_token(
 	if peer_id <= 0 or rate_per_second <= 0.0 or burst <= 0.0:
 		return false
 	var now := _get_net_time()
-	var bucket := buckets.get(peer_id, {}) as Dictionary
+	var bucket: Dictionary
+	if buckets.has(peer_id):
+		bucket = buckets[peer_id] as Dictionary
+	else:
+		bucket = {"tokens": burst, "last_time": now}
+		buckets[peer_id] = bucket
 	var tokens := float(bucket.get("tokens", burst))
 	var last_time := float(bucket.get("last_time", now))
 	tokens = minf(burst, tokens + maxf(now - last_time, 0.0) * rate_per_second)
 	var accepted := tokens >= 1.0
 	if accepted:
 		tokens -= 1.0
-	buckets[peer_id] = {"tokens": tokens, "last_time": now}
+	# Mutate the per-peer state in place. Projectile requests can legitimately
+	# reach hundreds per second, so replacing this Dictionary on every token would
+	# turn the safety gate itself into a steady allocation hot path.
+	bucket["tokens"] = tokens
+	bucket["last_time"] = now
 	return accepted
 
 
@@ -904,12 +944,31 @@ func queue_corn_machine_gun_burst_visual(
 		or corn.get_script() != CORN_MACHINE_GUN_SCRIPT
 	):
 		return
-	_pending_corn_machine_gun_burst_visuals.append({
-		"plant_net_id": plant_net_id,
-		"action_id": action_id,
-		"direction": direction.normalized(),
-		"host_action_time": _get_net_time(),
-	})
+	_append_corn_machine_gun_burst_visual(
+		plant_net_id,
+		action_id,
+		direction.normalized(),
+		_get_net_time()
+	)
+
+
+func _append_corn_machine_gun_burst_visual(
+	plant_net_id: int,
+	action_id: int,
+	direction: Vector2,
+	host_action_time: float
+) -> void:
+	_pending_corn_machine_gun_burst_visuals.append(plant_net_id)
+	_pending_corn_machine_gun_burst_action_ids.append(action_id)
+	_pending_corn_machine_gun_burst_directions.append(direction)
+	_pending_corn_machine_gun_burst_host_times.append(host_action_time)
+
+
+func _clear_corn_machine_gun_burst_visuals() -> void:
+	_pending_corn_machine_gun_burst_visuals.clear()
+	_pending_corn_machine_gun_burst_action_ids.clear()
+	_pending_corn_machine_gun_burst_directions.clear()
+	_pending_corn_machine_gun_burst_host_times.clear()
 
 
 func apply_authoritative_plant_enemy_damage(
@@ -1581,10 +1640,10 @@ func _host_broadcast_enemy_snapshots() -> void:
 		ceili(float(states.size()) / float(ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES)),
 		1
 	)
-	var live_ids: Dictionary = {}
+	_host_enemy_snapshot_live_ids.clear()
 	for state in states:
 		if state != null and state.net_id > 0:
-			live_ids[state.net_id] = true
+			_host_enemy_snapshot_live_ids[state.net_id] = true
 	for peer_id in client_peer_ids:
 		_enemy_snapshot_batch_count += 1
 		var force_keyframe := _should_force_enemy_delta_keyframe(peer_id, snapshot_time)
@@ -1612,7 +1671,10 @@ func _host_broadcast_enemy_snapshots() -> void:
 				chunk_count,
 				snapshot_hz
 			)
-		snapshot_mgr.prune_enemy_send_baseline_to_ids(peer_id, live_ids)
+		snapshot_mgr.prune_enemy_send_baseline_to_ids(
+			peer_id,
+			_host_enemy_snapshot_live_ids
+		)
 		if force_keyframe:
 			_last_enemy_keyframe_time_by_peer[peer_id] = snapshot_time
 
@@ -1707,6 +1769,7 @@ func set_rpc_payload_diagnostics_enabled(enabled: bool) -> void:
 func _get_rpc_traffic_channel(method_name: StringName) -> int:
 	if (
 		method_name == &"net_projectile_fired"
+		or method_name == &"net_linglan_skill1_ring_batch"
 		or method_name == &"net_plant_projectile_visual"
 		or method_name == &"net_corn_machine_gun_burst_batch"
 	):
@@ -2914,22 +2977,17 @@ func register_local_projectile(
 		return
 	if net_manager == null or not net_manager.is_multiplayer_active():
 		return
-	var projectile_namespace: int = owner_peer_id
-	if projectile_namespace <= 0:
-		projectile_namespace = 999999
-	var projectile_id := projectile_namespace * 1000000 + _next_projectile_id
-	_next_projectile_id += 1
-	_setup_projectile_network_identity(projectile, projectile_id, owner_peer_id, projectile_type)
-	_known_projectiles[projectile_id] = projectile
-	var host_fire_timestamp := _get_net_time()
-	_remember_projectile_record(
-		projectile_id,
-		owner_peer_id,
+	var projectile_id := _register_local_projectile_identity(
+		projectile,
 		projectile_type,
+		owner_peer_id,
 		damage,
 		lifetime,
 		pierces_enemies
 	)
+	if projectile_id <= 0:
+		return
+	var host_fire_timestamp := _get_net_time()
 	if net_manager.is_host():
 		_rpc_to_connected_clients(
 			&"net_projectile_fired",
@@ -2966,6 +3024,155 @@ func register_local_projectile(
 		)
 
 
+func register_local_linglan_skill1_ring(
+	projectiles: Array[Node],
+	spawn_positions: PackedVector2Array,
+	directions: PackedVector2Array,
+	owner_peer_id: int,
+	damage: int,
+	speed: float,
+	lifetime: float
+) -> void:
+	var projectile_count := projectiles.size()
+	if (
+		projectile_count <= 0
+		or spawn_positions.size() != projectile_count
+		or directions.size() != projectile_count
+		or net_manager == null
+		or not net_manager.is_multiplayer_active()
+		or not net_manager.is_host()
+		or owner_peer_id <= 0
+		or owner_peer_id > PROJECTILE_ID_MAX_OWNER_PEER_ID
+	):
+		return
+	# Validate every projectile lease before mutating the registries so malformed
+	# callers cannot leave a partial ring. ID-space exhaustion is an unrecoverable
+	# allocator failure rather than a transactional rollback case.
+	for projectile in projectiles:
+		if projectile == null or not is_instance_valid(projectile):
+			return
+
+	var projectile_ids := PackedInt64Array()
+	for projectile_index in range(projectile_count):
+		var projectile := projectiles[projectile_index]
+		var projectile_id := _register_local_projectile_identity(
+			projectile,
+			&"linglan_skill1",
+			owner_peer_id,
+			damage,
+			lifetime,
+			false
+		)
+		if projectile_id <= 0:
+			return
+		projectile_ids.append(projectile_id)
+	var host_fire_timestamp := _get_net_time()
+	if projectile_ids.size() <= LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET:
+		_rpc_to_connected_clients(
+			&"net_linglan_skill1_ring_batch",
+			[
+				projectile_ids,
+				spawn_positions,
+				directions,
+				owner_peer_id,
+				damage,
+				speed,
+				lifetime,
+				host_fire_timestamp,
+			]
+		)
+		return
+
+	for chunk_start in range(
+		0,
+		projectile_ids.size(),
+		LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET
+	):
+		var chunk_end := mini(
+			chunk_start + LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET,
+			projectile_ids.size()
+		)
+		_rpc_to_connected_clients(
+			&"net_linglan_skill1_ring_batch",
+			[
+				projectile_ids.slice(chunk_start, chunk_end),
+				spawn_positions.slice(chunk_start, chunk_end),
+				directions.slice(chunk_start, chunk_end),
+				owner_peer_id,
+				damage,
+				speed,
+				lifetime,
+				host_fire_timestamp,
+			]
+		)
+
+
+func _register_local_projectile_identity(
+	projectile: Node,
+	projectile_type: StringName,
+	owner_peer_id: int,
+	damage: int,
+	lifetime: float,
+	pierces_enemies: bool
+) -> int:
+	var projectile_namespace := owner_peer_id
+	if projectile_namespace <= 0:
+		projectile_namespace = PROJECTILE_ID_FALLBACK_OWNER_PEER_ID
+	var projectile_id := _allocate_projectile_id(
+		projectile_namespace,
+		net_manager != null and net_manager.is_host()
+	)
+	if projectile_id <= 0:
+		push_error(
+			"MpGame: unable to allocate projectile id for owner %d."
+			% projectile_namespace
+		)
+		return 0
+	_setup_projectile_network_identity(projectile, projectile_id, owner_peer_id, projectile_type)
+	_known_projectiles[projectile_id] = projectile
+	_remember_projectile_record(
+		projectile_id,
+		owner_peer_id,
+		projectile_type,
+		damage,
+		lifetime,
+		pierces_enemies
+	)
+	return projectile_id
+
+
+func _allocate_projectile_id(owner_peer_id: int, host_origin: bool) -> int:
+	if owner_peer_id <= 0 or owner_peer_id > PROJECTILE_ID_MAX_OWNER_PEER_ID:
+		return 0
+	# A zero or exhausted sequence can only occur after explicit state corruption
+	# or 2^31-1 allocations (more than 69 days at 360 projectiles/s). Wrap safely
+	# and skip any still-live/recent record instead of ever reusing its identity.
+	if (
+		_next_projectile_sequence <= 0
+		or _next_projectile_sequence > PROJECTILE_ID_SEQUENCE_COUNTER_MASK
+	):
+		_next_projectile_sequence = 1
+	var first_sequence := _next_projectile_sequence
+	while true:
+		var sequence_counter := _next_projectile_sequence
+		_next_projectile_sequence += 1
+		if _next_projectile_sequence > PROJECTILE_ID_SEQUENCE_COUNTER_MASK:
+			_next_projectile_sequence = 1
+		var sequence := sequence_counter
+		if host_origin:
+			sequence |= PROJECTILE_ID_HOST_ORIGIN_BIT
+		var projectile_id := _encode_projectile_id(owner_peer_id, sequence)
+		if (
+			projectile_id > 0
+			and not _known_projectiles.has(projectile_id)
+			and not _projectile_records.has(projectile_id)
+		):
+			return projectile_id
+		if _next_projectile_sequence == first_sequence:
+			return 0
+	return 0
+
+
 @rpc("any_peer", "call_remote", "reliable", 4)
 func _rpc_projectile_fired_from_client(
 	projectile_id: int,
@@ -2984,11 +3191,11 @@ func _rpc_projectile_fired_from_client(
 	if not net_manager.is_host():
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0 or owner_peer_id != sender_id:
-		return
-	if _known_projectiles.has(projectile_id) or _projectile_records.has(projectile_id):
-		return
-	if not _is_projectile_id_valid_for_owner(projectile_id, owner_peer_id):
+	if not _try_accept_client_projectile_request_identity(
+		sender_id,
+		projectile_id,
+		owner_peer_id
+	):
 		return
 	var accepted_direction := _get_valid_client_projectile_direction(direction)
 	if accepted_direction == Vector2.ZERO:
@@ -3122,6 +3329,73 @@ func net_projectile_fired(
 		host_fire_timestamp,
 		target_enemy_net_id
 	)
+
+
+func _try_accept_client_projectile_request_identity(
+	sender_id: int,
+	projectile_id: int,
+	owner_peer_id: int
+) -> bool:
+	if sender_id <= 0 or owner_peer_id != sender_id:
+		return false
+	# Duplicate predicted-shot retries are already known and must not consume the
+	# peer's budget. The origin-lane check is likewise cheaper than validating or
+	# instantiating the requested projectile type.
+	if _known_projectiles.has(projectile_id) or _projectile_records.has(projectile_id):
+		return false
+	if not _is_projectile_id_valid_for_client_owner(projectile_id, owner_peer_id):
+		return false
+	return _consume_peer_rate_token(
+		_client_projectile_request_rate_buckets,
+		sender_id,
+		CLIENT_PROJECTILE_REQUEST_RATE_PER_SECOND,
+		CLIENT_PROJECTILE_REQUEST_RATE_BURST
+	)
+
+
+@rpc("authority", "call_remote", "unreliable_ordered", 4)
+func net_linglan_skill1_ring_batch(
+	projectile_ids: PackedInt64Array,
+	spawn_positions: PackedVector2Array,
+	directions: PackedVector2Array,
+	owner_peer_id: int,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	host_fire_timestamp: float
+) -> void:
+	if not _is_valid_linglan_skill1_ring_payload(
+		projectile_ids,
+		spawn_positions,
+		directions,
+		owner_peer_id,
+		damage,
+		speed,
+		lifetime,
+		host_fire_timestamp
+	):
+		return
+	for projectile_index in range(projectile_ids.size()):
+		var projectile_id := int(projectile_ids[projectile_index])
+		if (
+			_known_projectiles.has(projectile_id)
+			or _projectile_records.has(projectile_id)
+		):
+			continue
+		_spawn_network_projectile(
+			projectile_id,
+			&"linglan_skill1",
+			owner_peer_id,
+			spawn_positions[projectile_index],
+			directions[projectile_index],
+			damage,
+			speed,
+			lifetime,
+			false,
+			0,
+			host_fire_timestamp,
+			0
+		)
 
 
 func _reconcile_predicted_projectile(
@@ -3432,11 +3706,14 @@ func _instantiate_projectile(
 			_ensure_linglan_projectile_resources(projectile_type)
 			if _linglan_sakura_bullet_scene == null:
 				return null
-			var sakura_bullet := _linglan_sakura_bullet_scene.instantiate() as Node2D
+			var sakura_bullet := (
+				_acquire_or_instantiate_projectile(_linglan_sakura_bullet_scene)
+				as LinglanSakuraBullet
+			)
 			if sakura_bullet == null:
 				return null
 			sakura_bullet.top_level = true
-			sakura_bullet.call("setup", direction, damage, speed, lifetime)
+			sakura_bullet.setup(direction, damage, speed, lifetime)
 			return sakura_bullet
 		&"linglan_skill2_rocket":
 			_ensure_linglan_projectile_resources(projectile_type)
@@ -3789,10 +4066,66 @@ func _get_player_projectile_damage_type(
 
 
 func _is_projectile_id_valid_for_owner(projectile_id: int, owner_peer_id: int) -> bool:
-	if projectile_id <= 0 or owner_peer_id <= 0:
-		return false
-	var projectile_namespace := floori(float(projectile_id) / float(PROJECTILE_ID_NAMESPACE_SIZE))
-	return projectile_namespace == owner_peer_id
+	return (
+		owner_peer_id > 0
+		and owner_peer_id <= PROJECTILE_ID_MAX_OWNER_PEER_ID
+		and _decode_projectile_owner_peer_id(projectile_id) == owner_peer_id
+		and _decode_projectile_sequence(projectile_id) > 0
+	)
+
+
+func _is_projectile_id_valid_for_client_owner(
+	projectile_id: int,
+	owner_peer_id: int
+) -> bool:
+	return (
+		_is_projectile_id_valid_for_owner(projectile_id, owner_peer_id)
+		and not _is_host_origin_projectile_id(projectile_id)
+	)
+
+
+func _is_projectile_id_valid_for_host_owner(
+	projectile_id: int,
+	owner_peer_id: int
+) -> bool:
+	return (
+		_is_projectile_id_valid_for_owner(projectile_id, owner_peer_id)
+		and _is_host_origin_projectile_id(projectile_id)
+	)
+
+
+func _encode_projectile_id(owner_peer_id: int, sequence: int) -> int:
+	if (
+		owner_peer_id <= 0
+		or owner_peer_id > PROJECTILE_ID_MAX_OWNER_PEER_ID
+		or sequence <= 0
+		or sequence > PROJECTILE_ID_SEQUENCE_MASK
+	):
+		return 0
+	return (owner_peer_id << PROJECTILE_ID_SEQUENCE_BITS) | sequence
+
+
+func _decode_projectile_owner_peer_id(projectile_id: int) -> int:
+	if projectile_id <= 0:
+		return 0
+	return projectile_id >> PROJECTILE_ID_SEQUENCE_BITS
+
+
+func _decode_projectile_sequence(projectile_id: int) -> int:
+	if projectile_id <= 0:
+		return 0
+	return projectile_id & PROJECTILE_ID_SEQUENCE_MASK
+
+
+func _decode_projectile_sequence_counter(projectile_id: int) -> int:
+	return _decode_projectile_sequence(projectile_id) & PROJECTILE_ID_SEQUENCE_COUNTER_MASK
+
+
+func _is_host_origin_projectile_id(projectile_id: int) -> bool:
+	return (
+		_decode_projectile_sequence(projectile_id)
+		& PROJECTILE_ID_HOST_ORIGIN_BIT
+	) != 0
 
 
 func _get_valid_client_projectile_direction(direction: Vector2) -> Vector2:
@@ -3883,6 +4216,51 @@ func _is_finite_vector2(value: Vector2) -> bool:
 	return is_finite(value.x) and is_finite(value.y)
 
 
+func _is_valid_linglan_skill1_ring_payload(
+	projectile_ids: PackedInt64Array,
+	spawn_positions: PackedVector2Array,
+	directions: PackedVector2Array,
+	owner_peer_id: int,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	host_fire_timestamp: float
+) -> bool:
+	var projectile_count := projectile_ids.size()
+	if (
+		projectile_count <= 0
+		or projectile_count > LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET
+		or spawn_positions.size() != projectile_count
+		or directions.size() != projectile_count
+		or owner_peer_id <= 0
+		or damage < 0
+		or not is_finite(speed)
+		or speed < 0.0
+		or not is_finite(lifetime)
+		or lifetime <= 0.0
+		or not is_finite(host_fire_timestamp)
+		or host_fire_timestamp < 0.0
+	):
+		return false
+	var seen_projectile_ids: Dictionary[int, bool] = {}
+	for projectile_index in range(projectile_count):
+		var projectile_id := int(projectile_ids[projectile_index])
+		var direction := directions[projectile_index]
+		if (
+			seen_projectile_ids.has(projectile_id)
+			or not _is_projectile_id_valid_for_host_owner(
+				projectile_id,
+				owner_peer_id
+			)
+			or not _is_finite_vector2(spawn_positions[projectile_index])
+			or not _is_finite_vector2(direction)
+			or direction.length_squared() <= 0.001
+		):
+			return false
+		seen_projectile_ids[projectile_id] = true
+	return true
+
+
 func _is_valid_corn_machine_gun_burst_payload(
 	plant_net_ids: PackedInt32Array,
 	action_ids: PackedInt32Array,
@@ -3914,13 +4292,13 @@ func _is_valid_corn_machine_gun_burst_payload(
 
 
 func _prune_projectile_records(now: float) -> void:
-	var expired_projectile_ids: Array[int] = []
-	for projectile_id_variant in _projectile_records.keys():
+	_stale_projectile_record_ids.clear()
+	for projectile_id_variant in _projectile_records:
 		var projectile_id := int(projectile_id_variant)
 		var record := _projectile_records[projectile_id] as Dictionary
 		if record.is_empty() or float(record.get("expires_at", 0.0)) <= now:
-			expired_projectile_ids.append(projectile_id)
-	for projectile_id in expired_projectile_ids:
+			_stale_projectile_record_ids.append(projectile_id)
+	for projectile_id in _stale_projectile_record_ids:
 		_projectile_records.erase(projectile_id)
 
 
@@ -4069,8 +4447,18 @@ func _is_client_enemy_hit_report_allowed(
 	owner_peer_id: int,
 	sender_id: int
 ) -> bool:
-	if sender_id > 0 and owner_peer_id != sender_id:
-		return false
+	if sender_id > 0:
+		if owner_peer_id != sender_id:
+			return false
+		# Host-origin identities are simulated and settled by Host. A remote
+		# client may only report collisions for its own prediction lane; otherwise
+		# it could submit a hit for an unrelated Host-authoritative projectile
+		# whose owner field happens to match that peer.
+		if not _is_projectile_id_valid_for_client_owner(
+			projectile_id,
+			owner_peer_id
+		):
+			return false
 	var projectile_record_variant: Variant = _projectile_records.get(projectile_id)
 	if projectile_record_variant is Dictionary:
 		var projectile_record := projectile_record_variant as Dictionary
@@ -4309,6 +4697,14 @@ func _update_batched_network_events(delta: float) -> void:
 func _flush_corn_machine_gun_burst_visuals() -> void:
 	if _pending_corn_machine_gun_burst_visuals.is_empty():
 		return
+	assert(
+		_pending_corn_machine_gun_burst_action_ids.size()
+		== _pending_corn_machine_gun_burst_visuals.size()
+		and _pending_corn_machine_gun_burst_directions.size()
+		== _pending_corn_machine_gun_burst_visuals.size()
+		and _pending_corn_machine_gun_burst_host_times.size()
+		== _pending_corn_machine_gun_burst_visuals.size()
+	)
 	for chunk_start in range(
 		0,
 		_pending_corn_machine_gun_burst_visuals.size(),
@@ -4318,21 +4714,27 @@ func _flush_corn_machine_gun_burst_visuals() -> void:
 			chunk_start + CORN_MACHINE_GUN_BURST_MAX_RECORDS_PER_PACKET,
 			_pending_corn_machine_gun_burst_visuals.size()
 		)
-		var plant_net_ids := PackedInt32Array()
-		var action_ids := PackedInt32Array()
-		var directions := PackedVector2Array()
-		var host_action_times := PackedFloat64Array()
-		for record_index in range(chunk_start, chunk_end):
-			var record := _pending_corn_machine_gun_burst_visuals[record_index]
-			plant_net_ids.append(int(record.get("plant_net_id", 0)))
-			action_ids.append(int(record.get("action_id", 0)))
-			directions.append(record.get("direction", Vector2.ZERO) as Vector2)
-			host_action_times.append(float(record.get("host_action_time", 0.0)))
+		var plant_net_ids := _pending_corn_machine_gun_burst_visuals.slice(
+			chunk_start,
+			chunk_end
+		)
+		var action_ids := _pending_corn_machine_gun_burst_action_ids.slice(
+			chunk_start,
+			chunk_end
+		)
+		var directions := _pending_corn_machine_gun_burst_directions.slice(
+			chunk_start,
+			chunk_end
+		)
+		var host_action_times := _pending_corn_machine_gun_burst_host_times.slice(
+			chunk_start,
+			chunk_end
+		)
 		_rpc_to_connected_clients(
 			&"net_corn_machine_gun_burst_batch",
 			[plant_net_ids, action_ids, directions, host_action_times]
 		)
-	_pending_corn_machine_gun_burst_visuals.clear()
+	_clear_corn_machine_gun_burst_visuals()
 
 
 func _flush_tiyi_target_updates() -> void:
@@ -4915,7 +5317,8 @@ func query_combat_targets_into(
 		return
 	var safe_radius := maxf(radius, 0.0)
 	var radius_squared := safe_radius * safe_radius
-	for enemy_variant in _net_enemies.values():
+	for enemy_net_id_variant in _net_enemies:
+		var enemy_variant: Variant = _net_enemies.get(enemy_net_id_variant)
 		if enemy_variant == null or not is_instance_valid(enemy_variant):
 			continue
 		var enemy := enemy_variant as Enemy
@@ -4936,6 +5339,34 @@ func query_combat_targets_into(
 		result.resize(max_count)
 
 
+func query_combat_targets_unordered_into(
+	center: Vector2,
+	radius: float,
+	result: Array[Enemy]
+) -> void:
+	result.clear()
+	if game == null:
+		return
+	if net_manager.is_host():
+		game.query_combat_targets_unordered_into(center, radius, result)
+		return
+	var safe_radius := maxf(radius, 0.0)
+	var radius_squared := safe_radius * safe_radius
+	for enemy_net_id_variant in _net_enemies:
+		var enemy_variant: Variant = _net_enemies.get(enemy_net_id_variant)
+		if enemy_variant == null or not is_instance_valid(enemy_variant):
+			continue
+		var enemy := enemy_variant as Enemy
+		if enemy == null or enemy.is_dead:
+			continue
+		if (
+			safe_radius > 0.0
+			and center.distance_squared_to(enemy.global_position) > radius_squared
+		):
+			continue
+		result.append(enemy)
+
+
 func has_session_object_pool_scene(scene: PackedScene) -> bool:
 	return game != null and game.has_session_object_pool_scene(scene)
 
@@ -4954,11 +5385,18 @@ func spawn_xirang_reward(
 	amount: int,
 	target_player: Player,
 	spawn_position: Vector2,
-	landing_offset: Vector2 = Vector2.ZERO
+	landing_offset: Vector2 = Vector2.ZERO,
+	preferred_visual_count: int = 1
 ) -> bool:
 	if game == null or not net_manager.is_host():
 		return false
-	return game.spawn_xirang_reward(amount, target_player, spawn_position, landing_offset)
+	return game.spawn_xirang_reward(
+		amount,
+		target_player,
+		spawn_position,
+		landing_offset,
+		preferred_visual_count
+	)
 
 
 func is_host_multiplayer_authority() -> bool:
@@ -6505,6 +6943,9 @@ func net_flow_state_changed(step_id: String, state: int, countdown_seconds: int)
 	if game == null or net_manager.is_host():
 		return
 	_client_has_received_flow_state = true
+	# The same count can need to repaint a newly entered wave/HUD state. Invalidate
+	# the render-frame cache at every authoritative flow transition.
+	_last_applied_remote_enemy_count = -1
 	game.apply_remote_flow_state(StringName(step_id), state, countdown_seconds)
 
 
@@ -7571,6 +8012,7 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_luoxi_offer_states_by_peer.erase(peer_id)
 	_luoxi_offer_revision_counters.erase(peer_id)
 	_plant_placement_rate_buckets.erase(peer_id)
+	_client_projectile_request_rate_buckets.erase(peer_id)
 	_warehouse_transaction_rate_buckets.erase(peer_id)
 	_warehouse_snapshot_request_rate_buckets.erase(peer_id)
 	_terrain_snapshot_request_rate_buckets.erase(peer_id)
@@ -7630,6 +8072,7 @@ func _return_to_lobby() -> void:
 	_host_terminal_enemy_ids.clear()
 	_pending_terrain_snapshot_batches.clear()
 	_terrain_snapshot_request_rate_buckets.clear()
+	_client_projectile_request_rate_buckets.clear()
 	_client_terrain_revision = -1
 	_last_host_terrain_revision_broadcast = 0
 	_client_has_terrain_snapshot = false

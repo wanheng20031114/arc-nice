@@ -1,6 +1,8 @@
 extends Node2D
 
 const MIN_DIRECTION_LENGTH_SQUARED := 0.001
+const EMITTER_BACK_OFFSET_DELTAS: Array[float] = [0.0, 4.0, 7.0, 12.0]
+const EMITTER_SIDE_OFFSETS: Array[float] = [-5.0, 0.0, 5.0, -1.5]
 
 @export var emitter_back_offset: float = 8.0
 
@@ -56,16 +58,13 @@ func set_motion_direction(direction: Vector2) -> void:
 func _apply_motion_direction() -> void:
 	var back_direction := -motion_direction
 	var side_direction := Vector2(-motion_direction.y, motion_direction.x)
-	var back_offsets: Array[float] = [
-		emitter_back_offset,
-		emitter_back_offset + 4.0,
-		emitter_back_offset + 7.0,
-		emitter_back_offset + 12.0,
-	]
-	var side_offsets: Array[float] = [-5.0, 0.0, 5.0, -1.5]
 	for index in range(trail_particles.size()):
 		var emitter := trail_particles[index]
-		emitter.position = back_direction * back_offsets[index] + side_direction * side_offsets[index]
+		var back_offset := emitter_back_offset + EMITTER_BACK_OFFSET_DELTAS[index]
+		emitter.position = (
+			back_direction * back_offset
+			+ side_direction * EMITTER_SIDE_OFFSETS[index]
+		)
 		emitter.rotation = back_direction.angle()
 
 

@@ -35,6 +35,8 @@ var world_collision_query := PhysicsRayQueryParameters2D.create(
 	Vector2.ZERO,
 	WORLD_COLLISION_MASK
 )
+var explosion_query := PhysicsShapeQueryParameters2D.new()
+var explosion_damaged_bodies: Dictionary = {}
 
 
 func _ready() -> void:
@@ -50,6 +52,9 @@ func _ready() -> void:
 	world_collision_query.exclude = world_collision_exclude
 	world_collision_query.collide_with_bodies = true
 	world_collision_query.collide_with_areas = false
+	explosion_query.collide_with_bodies = true
+	explosion_query.collide_with_areas = false
+	explosion_query.exclude = world_collision_exclude
 	_apply_explosion_radius()
 	body_entered.connect(_on_body_entered)
 	if animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"fly"):
@@ -68,6 +73,7 @@ func on_pool_acquired(_generation: int) -> void:
 	projectile_id = 0
 	owner_peer_id = 0
 	source_type = &"capoo_rpg_rocket"
+	explosion_damaged_bodies.clear()
 	rotation = 0.0
 	collision_layer = _authored_collision_layer
 	collision_mask = _authored_collision_mask
@@ -86,6 +92,7 @@ func on_pool_acquired(_generation: int) -> void:
 func on_pool_released(_generation: int) -> void:
 	pool_active = false
 	has_exploded = true
+	explosion_damaged_bodies.clear()
 	set_physics_process(false)
 	set_deferred("monitoring", false)
 	set_deferred("monitorable", false)
@@ -177,24 +184,19 @@ func _apply_explosion_damage(direct_hit: Node2D = null) -> void:
 	if circle_shape == null:
 		return
 
-	var query := PhysicsShapeQueryParameters2D.new()
-	query.shape = circle_shape
-	query.transform = Transform2D(0.0, global_position)
-	query.collision_mask = DAMAGEABLE_COLLISION_MASK
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	query.exclude = world_collision_exclude
-
-	var damaged_bodies: Dictionary = {}
-	_apply_explosion_damage_to_body(direct_hit, damaged_bodies)
+	explosion_query.shape = circle_shape
+	explosion_query.transform = Transform2D(0.0, global_position)
+	explosion_query.collision_mask = DAMAGEABLE_COLLISION_MASK
+	explosion_damaged_bodies.clear()
+	_apply_explosion_damage_to_body(direct_hit, explosion_damaged_bodies)
 	var results := COMPLETE_SHAPE_QUERY_2D.intersect_shape_all(
 		get_world_2d().direct_space_state,
-		query,
+		explosion_query,
 		EXPLOSION_QUERY_BATCH_SIZE
 	)
 	for result in results:
 		var body := result.get("collider") as Node2D
-		_apply_explosion_damage_to_body(body, damaged_bodies)
+		_apply_explosion_damage_to_body(body, explosion_damaged_bodies)
 
 
 func _apply_explosion_damage_to_body(body: Node2D, damaged_bodies: Dictionary) -> void:

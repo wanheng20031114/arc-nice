@@ -3,7 +3,66 @@ extends SceneTree
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const SnapshotManager := preload("res://scene/multiplayer/snapshot_manager.gd")
 const MpGameScript := preload("res://scene/multiplayer/mp_game.gd")
+const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const TOWER_DEFENSE_RUNTIME_PATH := "res://scene/game_tower_defense.gd"
+const PROJECTILE_SEQUENCE_MAX: int = 0xFFFFFFFF
+const PROJECTILE_HOST_ORIGIN_BIT: int = 0x80000000
+const PROJECTILE_SEQUENCE_COUNTER_MAX: int = 0x7FFFFFFF
+
+
+class TerrainClientNetManagerStub:
+	extends Node
+
+	func is_host() -> bool:
+		return false
+
+	func is_client() -> bool:
+		return true
+
+
+class TerrainRuntimeStub:
+	extends "res://scene/game_tower_defense.gd"
+
+	var snapshot_revisions: Array[int] = []
+	var delta_revisions: Array[int] = []
+	var accept_snapshot := true
+	var accept_delta := true
+
+	func supports_multiplayer_terrain_state() -> bool:
+		return true
+
+	func apply_remote_terrain_snapshot(
+		revision: int,
+		_cell_xy: PackedInt32Array,
+		_terrain_types: PackedInt32Array
+	) -> bool:
+		if not accept_snapshot:
+			return false
+		snapshot_revisions.append(revision)
+		return true
+
+	func apply_remote_terrain_delta(
+		revision: int,
+		_cell_xy: PackedInt32Array,
+		_terrain_types: PackedInt32Array
+	) -> bool:
+		if not accept_delta:
+			return false
+		delta_revisions.append(revision)
+		return true
+
+
+class TerrainRepairMpGame:
+	extends "res://scene/multiplayer/mp_game.gd"
+
+	var repair_request_count := 0
+
+	func _request_terrain_snapshot_repair() -> void:
+		if bool(get("_client_waiting_for_terrain_snapshot")):
+			return
+		set("_client_waiting_for_terrain_snapshot", true)
+		repair_request_count += 1
+
 
 var failures: Array[String] = []
 
@@ -15,13 +74,17 @@ func _init() -> void:
 func _run() -> void:
 	_test_channel_contract()
 	_test_terrain_payload_contract()
+	_test_terrain_delta_revision_repair_contract()
 	_test_corn_burst_payload_contract()
+	_test_projectile_id_codec_contract()
+	_test_projectile_origin_lane_runtime_contract()
+	_test_linglan_skill1_ring_payload_contract()
 	_test_runtime_state_send_order()
 	_test_plant_removal_restore_order()
 	_test_player_codec_and_reuse()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V7_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V8_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -30,7 +93,7 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 7, "Protocol must be v7.")
+	_expect(NetConstants.PROTOCOL_VERSION == 8, "Protocol must be v8.")
 	_expect(NetConstants.CHANNEL_COUNT == 8, "ENet must provision eight channels.")
 	_expect(NetConstants.MAX_PLAYERS == 8, "Protocol capacity must accept an eight-player roster.")
 	_expect(
@@ -42,13 +105,78 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v7 channel assignments must remain stable."
+		"Protocol v8 channel assignments must remain stable."
 	)
 	_expect(
 		NetConstants.CH_STATE == NetConstants.CH_PLAYER_STATE
 		and NetConstants.CH_EVENT == NetConstants.CH_WORLD_EVENT,
 		"Legacy channel aliases must remain compatible during migration."
 	)
+
+
+func _test_terrain_delta_revision_repair_contract() -> void:
+	var mp_game := TerrainRepairMpGame.new()
+	var runtime := TerrainRuntimeStub.new()
+	var net_stub := TerrainClientNetManagerStub.new()
+	mp_game.set("game", runtime)
+	mp_game.set("net_manager", net_stub)
+	var cell_xy := PackedInt32Array([4, 7])
+	var grass := PackedInt32Array([2])
+	var dirt := PackedInt32Array([1])
+
+	mp_game.call("net_terrain_delta", 1, cell_xy, grass)
+	_expect(
+		mp_game.repair_request_count == 1
+		and runtime.delta_revisions.is_empty()
+		and int(mp_game.get("_client_terrain_revision")) == -1,
+		"A delta before the first snapshot must request repair without mutating terrain."
+	)
+
+	mp_game.call("net_terrain_snapshot_chunk", 1, 5, 0, 1, cell_xy, grass)
+	_expect(
+		runtime.snapshot_revisions == [5]
+		and bool(mp_game.get("_client_has_terrain_snapshot"))
+		and not bool(mp_game.get("_client_waiting_for_terrain_snapshot"))
+		and int(mp_game.get("_client_terrain_revision")) == 5,
+		"A complete snapshot must apply atomically and establish the client revision."
+	)
+
+	mp_game.call("net_terrain_delta", 5, cell_xy, dirt)
+	_expect(
+		runtime.delta_revisions.is_empty()
+		and mp_game.repair_request_count == 1,
+		"A stale or duplicate terrain delta must be ignored without requesting repair."
+	)
+	mp_game.call("net_terrain_delta", 7, cell_xy, dirt)
+	mp_game.call("net_terrain_delta", 6, cell_xy, dirt)
+	_expect(
+		runtime.delta_revisions.is_empty()
+		and mp_game.repair_request_count == 2
+		and bool(mp_game.get("_client_waiting_for_terrain_snapshot"))
+		and int(mp_game.get("_client_terrain_revision")) == 5,
+		"A revision gap must request one repair and reject later deltas while waiting."
+	)
+
+	mp_game.call("net_terrain_snapshot_chunk", 2, 7, 0, 1, cell_xy, dirt)
+	mp_game.call("net_terrain_delta", 8, cell_xy, grass)
+	_expect(
+		runtime.snapshot_revisions == [5, 7]
+		and runtime.delta_revisions == [8]
+		and int(mp_game.get("_client_terrain_revision")) == 8,
+		"After repair, exactly the next revision must apply once and advance the client."
+	)
+
+	runtime.accept_delta = false
+	mp_game.call("net_terrain_delta", 9, cell_xy, dirt)
+	_expect(
+		runtime.delta_revisions == [8]
+		and mp_game.repair_request_count == 3
+		and int(mp_game.get("_client_terrain_revision")) == 8,
+		"A runtime-rejected delta must preserve the prior revision and request repair."
+	)
+	mp_game.free()
+	runtime.free()
+	net_stub.free()
 
 
 func _test_player_codec_and_reuse() -> void:
@@ -154,11 +282,22 @@ func _test_corn_burst_payload_contract() -> void:
 		else ""
 	)
 	_expect(
-		exit_body.contains("_pending_corn_machine_gun_burst_visuals.clear()"),
-		"MpGame exit must discard queued corn burst visuals."
+		exit_body.contains("_pending_corn_machine_gun_burst_visuals.clear()")
+		and exit_body.contains(
+			"_pending_corn_machine_gun_burst_action_ids.clear()"
+		)
+		and exit_body.contains(
+			"_pending_corn_machine_gun_burst_directions.clear()"
+		)
+		and exit_body.contains(
+			"_pending_corn_machine_gun_burst_host_times.clear()"
+		),
+		"MpGame exit must discard every packed column of queued corn burst visuals."
 	)
 	_expect(
-		mp_game_source.contains('"host_action_time": _get_net_time()')
+		mp_game_source.contains(
+			"_pending_corn_machine_gun_burst_host_times.append(host_action_time)"
+		)
 		and mp_game_source.contains("_map_host_timestamp_to_client_time("),
 		"Corn burst records must carry Host time and map it before client playback."
 	)
@@ -217,6 +356,402 @@ func _test_corn_burst_payload_contract() -> void:
 			oversized_times
 		)),
 		"Corn burst packets must reject a 33rd record."
+	)
+	mp_game.free()
+
+
+func _test_linglan_skill1_ring_payload_contract() -> void:
+	var mp_game := MpGameScript.new()
+	var first_projectile_id := int(mp_game.call(
+		"_encode_projectile_id",
+		1,
+		PROJECTILE_HOST_ORIGIN_BIT | 1000000
+	))
+	var second_projectile_id := int(mp_game.call(
+		"_encode_projectile_id",
+		1,
+		PROJECTILE_HOST_ORIGIN_BIT | 1000001
+	))
+	var projectile_ids := PackedInt64Array([first_projectile_id, second_projectile_id])
+	var spawn_positions := PackedVector2Array([Vector2(10.0, 20.0), Vector2(30.0, 40.0)])
+	var directions := PackedVector2Array([Vector2.RIGHT, Vector2.UP])
+	_expect(
+		int(mp_game.call(
+			"_get_rpc_traffic_channel",
+			&"net_linglan_skill1_ring_batch"
+		)) == NetConstants.CH_PROJECTILE,
+		"Linglan ring batches must be attributed to CH_PROJECTILE."
+	)
+	_expect(
+		bool(mp_game.call(
+			"_is_valid_linglan_skill1_ring_payload",
+			projectile_ids,
+			spawn_positions,
+			directions,
+			1,
+			50,
+			300.0,
+			2.0,
+			1.25
+		)),
+		"Linglan ring batches must accept aligned, finite packed columns."
+	)
+	_expect(
+		not bool(mp_game.call(
+			"_is_valid_linglan_skill1_ring_payload",
+			PackedInt64Array([first_projectile_id, first_projectile_id]),
+			spawn_positions,
+			directions,
+			1,
+			50,
+			300.0,
+			2.0,
+			1.25
+		)),
+		"Linglan ring batches must reject duplicate projectile IDs."
+	)
+	_expect(
+		not bool(mp_game.call(
+			"_is_valid_linglan_skill1_ring_payload",
+			PackedInt64Array([
+				first_projectile_id,
+				int(mp_game.call(
+					"_encode_projectile_id",
+					2,
+					PROJECTILE_HOST_ORIGIN_BIT | 1000001
+				)),
+			]),
+			spawn_positions,
+			directions,
+			1,
+			50,
+			300.0,
+			2.0,
+			1.25
+		)),
+		"Linglan ring batches must reject an ID encoded for another owner."
+	)
+	_expect(
+		not bool(mp_game.call(
+			"_is_valid_linglan_skill1_ring_payload",
+			PackedInt64Array([
+				int(mp_game.call("_encode_projectile_id", 1, 1000000)),
+				int(mp_game.call("_encode_projectile_id", 1, 1000001)),
+			]),
+			spawn_positions,
+			directions,
+			1,
+			50,
+			300.0,
+			2.0,
+			1.25
+		)),
+		"Host-authored Linglan batches must reject client-origin projectile IDs."
+	)
+	var wrapped_host_ids := PackedInt64Array([
+		int(mp_game.call(
+			"_encode_projectile_id",
+			1,
+			PROJECTILE_HOST_ORIGIN_BIT | PROJECTILE_SEQUENCE_COUNTER_MAX
+		)),
+		int(mp_game.call(
+			"_encode_projectile_id",
+			1,
+			PROJECTILE_HOST_ORIGIN_BIT | 1
+		)),
+	])
+	_expect(
+		wrapped_host_ids[1] < wrapped_host_ids[0]
+		and bool(mp_game.call(
+			"_is_valid_linglan_skill1_ring_payload",
+			wrapped_host_ids,
+			spawn_positions,
+			directions,
+			1,
+			50,
+			300.0,
+			2.0,
+			1.25
+		)),
+		"A valid Host ring must survive the 31-bit counter wrap without relying on monotonic IDs."
+	)
+	mp_game.free()
+
+
+func _test_projectile_id_codec_contract() -> void:
+	var mp_game := MpGameScript.new()
+	var below_legacy_boundary := int(
+		mp_game.call("_encode_projectile_id", 2, 999999)
+	)
+	var at_legacy_boundary := int(
+		mp_game.call("_encode_projectile_id", 2, 1000000)
+	)
+	var above_legacy_boundary := int(
+		mp_game.call("_encode_projectile_id", 2, 1000001)
+	)
+	var other_owner_same_sequence := int(
+		mp_game.call("_encode_projectile_id", 3, 1000000)
+	)
+	var host_same_owner_and_counter := int(mp_game.call(
+		"_encode_projectile_id",
+		2,
+		PROJECTILE_HOST_ORIGIN_BIT | 1000000
+	))
+	_expect(
+		below_legacy_boundary > 0
+		and at_legacy_boundary > below_legacy_boundary
+		and above_legacy_boundary > at_legacy_boundary
+		and other_owner_same_sequence != at_legacy_boundary
+		and host_same_owner_and_counter != at_legacy_boundary,
+		"Projectile IDs must stay unique across the old one-million boundary, owners, and origin lanes."
+	)
+	for projectile_id in [
+		below_legacy_boundary,
+		at_legacy_boundary,
+		above_legacy_boundary,
+	]:
+		_expect(
+			int(mp_game.call("_decode_projectile_owner_peer_id", projectile_id)) == 2
+			and bool(mp_game.call(
+				"_is_projectile_id_valid_for_owner",
+				projectile_id,
+				2
+			)),
+			"Cross-boundary projectile IDs must retain owner 2 exactly."
+		)
+	_expect(
+		int(mp_game.call("_decode_projectile_sequence", at_legacy_boundary)) == 1000000
+		and int(mp_game.call(
+			"_decode_projectile_owner_peer_id",
+			other_owner_same_sequence
+		)) == 3
+		and not bool(mp_game.call(
+			"_is_projectile_id_valid_for_owner",
+			other_owner_same_sequence,
+			2
+		)),
+		"Projectile ID decoding must keep owner and sequence in disjoint bit fields."
+	)
+	_expect(
+		bool(mp_game.call(
+			"_is_projectile_id_valid_for_client_owner",
+			at_legacy_boundary,
+			2
+		))
+		and not bool(mp_game.call(
+			"_is_projectile_id_valid_for_client_owner",
+			host_same_owner_and_counter,
+			2
+		))
+		and bool(mp_game.call(
+			"_is_projectile_id_valid_for_host_owner",
+			host_same_owner_and_counter,
+			2
+		))
+		and not bool(mp_game.call(
+			"_is_projectile_id_valid_for_host_owner",
+			at_legacy_boundary,
+			2
+		))
+		and int(mp_game.call(
+			"_decode_projectile_sequence_counter",
+			host_same_owner_and_counter
+		)) == 1000000,
+		"Host and client origin lanes must be disjoint while retaining the same 31-bit counter."
+	)
+	var signed_int64_max := int(mp_game.call(
+		"_encode_projectile_id",
+		0x7FFFFFFF,
+		PROJECTILE_SEQUENCE_MAX
+	))
+	_expect(
+		signed_int64_max == 0x7FFFFFFFFFFFFFFF
+		and int(mp_game.call(
+			"_decode_projectile_owner_peer_id",
+			signed_int64_max
+		)) == 0x7FFFFFFF
+		and int(mp_game.call(
+			"_decode_projectile_sequence",
+			signed_int64_max
+		)) == PROJECTILE_SEQUENCE_MAX,
+		"The largest supported owner/sequence pair must remain a positive signed int64."
+	)
+	_expect(
+		int(mp_game.call("_encode_projectile_id", 0, 1)) == 0
+		and int(mp_game.call("_encode_projectile_id", 0x80000000, 1)) == 0
+		and int(mp_game.call("_encode_projectile_id", 2, 0)) == 0
+		and int(mp_game.call(
+			"_encode_projectile_id",
+			2,
+			PROJECTILE_SEQUENCE_MAX + 1
+		)) == 0,
+		"Projectile ID encoding must reject zero and signed-overflow fields."
+	)
+	_expect(
+		not bool(mp_game.call("_is_projectile_id_valid_for_owner", 1, 0))
+		and not bool(mp_game.call(
+			"_is_projectile_id_valid_for_owner",
+			0x7FFFFFFF,
+			0
+		)),
+		"Owner zero must never become valid through a hand-crafted low sequence ID."
+	)
+
+	var occupied_wrapped_id := int(mp_game.call("_encode_projectile_id", 2, 1))
+	var records := mp_game.get("_projectile_records") as Dictionary
+	records[occupied_wrapped_id] = {"expires_at": INF}
+	mp_game.set("_next_projectile_sequence", PROJECTILE_SEQUENCE_COUNTER_MAX)
+	var final_sequence_id := int(mp_game.call("_allocate_projectile_id", 2, false))
+	var wrapped_sequence_id := int(mp_game.call("_allocate_projectile_id", 2, false))
+	_expect(
+		int(mp_game.call(
+			"_decode_projectile_sequence_counter",
+			final_sequence_id
+		)) == PROJECTILE_SEQUENCE_COUNTER_MAX
+		and int(mp_game.call(
+			"_decode_projectile_sequence_counter",
+			wrapped_sequence_id
+		)) == 2,
+		"Sequence wrap must skip zero and any still-live/recent wrapped identity."
+	)
+	mp_game.set("_next_projectile_sequence", 42)
+	var client_lane_id := int(mp_game.call("_allocate_projectile_id", 2, false))
+	mp_game.set("_next_projectile_sequence", 42)
+	var host_lane_id := int(mp_game.call("_allocate_projectile_id", 2, true))
+	_expect(
+		client_lane_id != host_lane_id
+		and int(mp_game.call(
+			"_decode_projectile_sequence_counter",
+			client_lane_id
+		)) == 42
+		and int(mp_game.call(
+			"_decode_projectile_sequence_counter",
+			host_lane_id
+		)) == 42
+		and bool(mp_game.call("_is_host_origin_projectile_id", host_lane_id))
+		and not bool(mp_game.call("_is_host_origin_projectile_id", client_lane_id)),
+		"Concurrent Host/client allocation for one owner must use collision-free origin lanes."
+	)
+	records[client_lane_id] = {
+		"owner_peer_id": 2,
+		"projectile_type": &"player_bullet",
+	}
+	records[host_lane_id] = {
+		"owner_peer_id": 2,
+		"projectile_type": &"player_bullet",
+	}
+	_expect(
+		bool(mp_game.call(
+			"_is_client_enemy_hit_report_allowed",
+			client_lane_id,
+			2,
+			2
+		))
+		and not bool(mp_game.call(
+			"_is_client_enemy_hit_report_allowed",
+			host_lane_id,
+			2,
+			2
+		))
+		and bool(mp_game.call(
+			"_is_client_enemy_hit_report_allowed",
+			host_lane_id,
+			2,
+			0
+		)),
+		"Remote hit RPCs must accept the owner's client lane, reject its Host lane, "
+		+ "and leave Host-local authoritative settlement valid."
+	)
+	mp_game.free()
+
+
+func _test_projectile_origin_lane_runtime_contract() -> void:
+	var mp_game := MpGameScript.new()
+	var client_lane_id := int(mp_game.call("_encode_projectile_id", 2, 57))
+	var host_lane_id := int(mp_game.call(
+		"_encode_projectile_id",
+		2,
+		PROJECTILE_HOST_ORIGIN_BIT | 57
+	))
+	var predicted_bullet := BULLET_SCENE.instantiate() as Bullet
+	mp_game.add_child(predicted_bullet)
+	mp_game.call(
+		"_setup_projectile_network_identity",
+		predicted_bullet,
+		client_lane_id,
+		2,
+		&"player_bullet"
+	)
+	var known_projectiles := mp_game.get("_known_projectiles") as Dictionary
+	known_projectiles[client_lane_id] = predicted_bullet
+	mp_game.call(
+		"_remember_projectile_record",
+		client_lane_id,
+		2,
+		&"player_bullet",
+		3,
+		2.0,
+		false
+	)
+
+	# The Host echo for a predicted client-lane shot must update the same node
+	# instead of creating a duplicate proxy.
+	mp_game.call(
+		"net_projectile_fired",
+		client_lane_id,
+		"player_bullet",
+		2,
+		Vector2(10.0, 20.0),
+		Vector2.UP,
+		11,
+		222.0,
+		1.5,
+		false,
+		0,
+		-1.0,
+		0
+	)
+	var reconciled_record := (
+		mp_game.get("_projectile_records") as Dictionary
+	).get(client_lane_id, {}) as Dictionary
+	_expect(
+		known_projectiles.size() == 1
+		and known_projectiles.get(client_lane_id) == predicted_bullet
+		and predicted_bullet.direction.is_equal_approx(Vector2.UP)
+		and predicted_bullet.damage == 11
+		and is_equal_approx(predicted_bullet.speed, 222.0)
+		and int(reconciled_record.get("damage", -1)) == 11,
+		"A Host echo must reconcile the existing client prediction in place."
+	)
+
+	# A distinct Host-authoritative projectile for the same remote owner and
+	# counter must coexist under the Host lane without replacing that prediction.
+	mp_game.call(
+		"net_projectile_fired",
+		host_lane_id,
+		"player_bullet",
+		2,
+		Vector2(30.0, 40.0),
+		Vector2.LEFT,
+		13,
+		180.0,
+		1.25,
+		false,
+		0,
+		-1.0,
+		0
+	)
+	var host_bullet := known_projectiles.get(host_lane_id) as Bullet
+	_expect(
+		known_projectiles.size() == 2
+		and known_projectiles.get(client_lane_id) == predicted_bullet
+		and host_bullet != null
+		and host_bullet != predicted_bullet
+		and host_bullet.projectile_id == host_lane_id
+		and host_bullet.owner_peer_id == 2
+		and host_bullet.damage == 13,
+		"A Host-lane projectile must coexist with the same owner's client prediction "
+		+ "without an ID collision or replacement."
 	)
 	mp_game.free()
 

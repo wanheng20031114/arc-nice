@@ -17,6 +17,7 @@ const IDLE_AIM_INTERVAL_MAX := 1.15
 const TRACER_MAX_LENGTH := 20.0
 const BURST_TIME_EPSILON := 0.00001
 const PROXY_BURST_EXPIRY_SECONDS := 0.32
+const LINEAR_BLOCKED_TARGET_ATTEMPTS := 3
 
 @onready var body_sprite: AnimatedSprite2D = $VisualRoot/BodySprite
 @onready var aim_pivot: Node2D = $VisualRoot/AimPivot
@@ -44,9 +45,18 @@ var burst_direction := Vector2.RIGHT
 var burst_elapsed_seconds := 0.0
 var burst_next_shot_index := 0
 var burst_action_id := 0
+var burst_muzzle_position := Vector2.ZERO
 var next_authoritative_action_id := 0
 var latest_proxy_action_id := 0
 var _hitscan_query_count := 0
+var _combat_runtime: Node = null
+var _target_candidates: Array[Enemy] = []
+var _ray_exclude: Array[RID] = []
+var _ray_query := PhysicsRayQueryParameters2D.create(
+	Vector2.ZERO,
+	Vector2.ZERO,
+	WORLD_AND_ENEMY_COLLISION_MASK
+)
 
 var idle_aim_random := RandomNumberGenerator.new()
 var idle_aim_center_rotation := 0.0
@@ -71,6 +81,11 @@ func _physics_process(delta: float) -> void:
 
 func _on_setup_completed() -> void:
 	super._on_setup_completed()
+	_combat_runtime = get_tree().current_scene
+	_ray_exclude.clear()
+	_ray_exclude.append(get_rid())
+	_configure_ray_query()
+	_set_ray_query_segment(Vector2.ZERO, Vector2.ZERO)
 	configured_attack_damage = maxi(config.attack_damage, 0)
 	configured_attack_range = maxf(config.attack_range, 0.0)
 	configured_burst_count = maxi(config.attack_burst_count, 1)
@@ -103,6 +118,7 @@ func _on_multiplayer_proxy_configured() -> void:
 func _disable_proxy_combat_runtime() -> void:
 	attack_timer.stop()
 	_cancel_burst(false)
+	_target_candidates.clear()
 
 
 func _on_death_started() -> void:
@@ -113,6 +129,7 @@ func _on_death_started() -> void:
 	tracer.visible = false
 	muzzle_flash_sprite.visible = false
 	fire_audio.stop()
+	_target_candidates.clear()
 	super._on_death_started()
 
 
@@ -139,11 +156,10 @@ func _start_authoritative_burst(direction: Vector2) -> void:
 	next_authoritative_action_id += 1
 	var action_id := next_authoritative_action_id
 	var safe_direction := direction.normalized()
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method(
+	if _combat_runtime != null and _combat_runtime.has_method(
 		"queue_corn_machine_gun_burst_visual"
 	):
-		current_scene.call(
+		_combat_runtime.call(
 			"queue_corn_machine_gun_burst_visual",
 			int(get_meta(&"net_id", 0)),
 			action_id,
@@ -190,6 +206,12 @@ func _begin_burst(
 		0 if authoritative else _get_first_future_proxy_shot_index(burst_elapsed_seconds)
 	)
 	_point_aim_at_direction(burst_direction)
+	# A Corn tower and its AimPivot remain fixed throughout the locked 0.30 s
+	# burst. Snapshot the one authored muzzle transform once instead of asking the
+	# scene tree to resolve the same global transform and angle for all six shots.
+	burst_muzzle_position = muzzle.global_position
+	tracer.global_position = burst_muzzle_position
+	tracer.global_rotation = burst_direction.angle()
 	turret_sprite.play(&"spin")
 	if turret_sprite.sprite_frames != null and turret_sprite.sprite_frames.has_animation(&"spin"):
 		var spin_frame_count := turret_sprite.sprite_frames.get_frame_count(&"spin")
@@ -232,31 +254,36 @@ func _emit_due_burst_shots() -> void:
 
 func _fire_locked_hitscan(shot_index: int, authoritative: bool) -> void:
 	var tracer_length := minf(configured_attack_range, TRACER_MAX_LENGTH)
-	var ray_result: Dictionary = {}
-	if authoritative:
-		ray_result = _cast_locked_hitscan(burst_direction)
-	if authoritative and not ray_result.is_empty():
+	if not authoritative:
+		_play_locked_shot_visual(tracer_length)
+		burst_shot_emitted.emit(shot_index, false)
+		return
+
+	var ray_result := _cast_locked_hitscan_from(
+		burst_muzzle_position,
+		burst_direction
+	)
+	if not ray_result.is_empty():
 		var hit_position: Vector2 = ray_result.get(
 			"position",
-			muzzle.global_position + burst_direction * tracer_length
+			burst_muzzle_position + burst_direction * tracer_length
 		)
 		tracer_length = minf(
 			tracer_length,
-			muzzle.global_position.distance_to(hit_position)
+			burst_muzzle_position.distance_to(hit_position)
 		)
-	_play_shot_visual(burst_direction, maxf(tracer_length, 0.0))
-	burst_shot_emitted.emit(shot_index, authoritative)
+	_play_locked_shot_visual(maxf(tracer_length, 0.0))
+	burst_shot_emitted.emit(shot_index, true)
 
-	if not authoritative or ray_result.is_empty():
+	if ray_result.is_empty():
 		return
 	var enemy := ray_result.get("collider") as Enemy
 	if not _is_valid_target(enemy):
 		return
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method(
+	if _combat_runtime != null and _combat_runtime.has_method(
 		"apply_authoritative_plant_enemy_damage"
 	):
-		current_scene.call(
+		_combat_runtime.call(
 			"apply_authoritative_plant_enemy_damage",
 			int(get_meta(&"net_id", get_instance_id())),
 			enemy,
@@ -273,18 +300,36 @@ func _fire_locked_hitscan(shot_index: int, authoritative: bool) -> void:
 
 
 func _cast_locked_hitscan(direction: Vector2) -> Dictionary:
-	_hitscan_query_count += 1
 	var safe_direction := direction.normalized() if direction != Vector2.ZERO else Vector2.RIGHT
-	var ray_start := muzzle.global_position
-	var query := PhysicsRayQueryParameters2D.create(
+	return _cast_locked_hitscan_from(muzzle.global_position, safe_direction)
+
+
+func _cast_locked_hitscan_from(
+	ray_start: Vector2,
+	normalized_direction: Vector2
+) -> Dictionary:
+	_hitscan_query_count += 1
+	_set_ray_query_segment(
 		ray_start,
-		ray_start + safe_direction * configured_attack_range,
-		WORLD_AND_ENEMY_COLLISION_MASK,
-		[get_rid()]
+		ray_start + normalized_direction * configured_attack_range
 	)
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	return get_world_2d().direct_space_state.intersect_ray(query)
+	return get_world_2d().direct_space_state.intersect_ray(_ray_query)
+
+
+func _configure_ray_query() -> void:
+	# All invariant fields are private to this tower and remain unchanged across
+	# acquisition and the six synchronous hitscans. Configure them once so the
+	# RID exclusion Array is not copied back into the native query every shot.
+	_ray_query.collision_mask = WORLD_AND_ENEMY_COLLISION_MASK
+	_ray_query.exclude = _ray_exclude
+	_ray_query.collide_with_bodies = true
+	_ray_query.collide_with_areas = false
+	_ray_query.hit_from_inside = false
+
+
+func _set_ray_query_segment(ray_from: Vector2, ray_to: Vector2) -> void:
+	_ray_query.from = ray_from
+	_ray_query.to = ray_to
 
 
 func get_hitscan_query_count() -> int:
@@ -292,14 +337,22 @@ func get_hitscan_query_count() -> int:
 
 
 func _play_shot_visual(direction: Vector2, tracer_length: float) -> void:
+	tracer.global_position = muzzle.global_position
+	tracer.global_rotation = direction.angle()
+	_restart_shot_visual(tracer_length)
+
+
+func _play_locked_shot_visual(tracer_length: float) -> void:
+	_restart_shot_visual(tracer_length)
+
+
+func _restart_shot_visual(tracer_length: float) -> void:
 	muzzle_flash_sprite.stop()
 	muzzle_flash_sprite.frame = 0
 	muzzle_flash_sprite.visible = true
 	muzzle_flash_sprite.play(&"flash")
 
-	tracer.global_position = muzzle.global_position
-	tracer.global_rotation = direction.angle()
-	tracer.points = PackedVector2Array([Vector2.ZERO, Vector2(tracer_length, 0.0)])
+	tracer.set_point_position(1, Vector2(tracer_length, 0.0))
 	tracer.visible = tracer_length > 0.0
 	tracer.modulate.a = 1.0
 	tracer_fade.stop()
@@ -338,29 +391,60 @@ func _cancel_burst(restart_idle: bool) -> void:
 
 
 func _select_nearest_visible_enemy() -> Enemy:
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("query_combat_targets"):
+	_target_candidates.clear()
+	if _combat_runtime == null:
 		return null
-	var candidate_values := current_scene.call(
-		"query_combat_targets",
+	# The common open-field case needs only the nearest indexed candidate. The
+	# index's max_count=1 path performs one linear selection instead of sorting
+	# every enemy in range. If that candidate is obstructed, the adaptive exact
+	# fallback below avoids sorting unless several nearer targets are also hidden.
+	_combat_runtime.call(
+		"query_combat_targets_into",
 		global_position,
 		configured_attack_range,
-		0
-	) as Array
-	for candidate_value in candidate_values:
-		var candidate := candidate_value as Enemy
-		if not _is_valid_target(candidate):
-			continue
-		var distance_squared := global_position.distance_squared_to(
-			candidate.global_position
+		_target_candidates,
+		1
+	)
+	if not _target_candidates.is_empty():
+		var nearest := _target_candidates[0]
+		if _is_valid_target(nearest) and _is_enemy_first_hitscan_collision(nearest):
+			return nearest
+		# The first exact candidate was blocked. Collect the radius once without
+		# sorting, discard that same nearest entry, then test a few more exact
+		# minima linearly. This keeps the common one-wall case O(n) while the sorted
+		# tail below bounds an arbitrarily large blocked group at O(n log n).
+		_combat_runtime.call(
+			"query_combat_targets_unordered_into",
+			global_position,
+			configured_attack_range,
+			_target_candidates
 		)
-		if distance_squared > configured_attack_range * configured_attack_range:
-			continue
-		if not _is_enemy_first_hitscan_collision(candidate):
-			continue
-		# GameRuntimeBase and CombatTargetIndex return radius queries in stable
-		# distance/instance-id order, so the first visible result is the nearest.
-		return candidate
+		CombatTargetIndex.take_nearest_candidate(
+			_target_candidates,
+			global_position
+		)
+		var linear_attempts := mini(
+			LINEAR_BLOCKED_TARGET_ATTEMPTS,
+			_target_candidates.size()
+		)
+		for _attempt_index in range(linear_attempts):
+			var candidate := CombatTargetIndex.take_nearest_candidate(
+				_target_candidates,
+				global_position
+			)
+			if _is_valid_target(candidate) and _is_enemy_first_hitscan_collision(candidate):
+				return candidate
+		CombatTargetIndex.sort_candidates_by_distance(
+			_target_candidates,
+			global_position
+		)
+		for candidate in _target_candidates:
+			if not _is_valid_target(candidate):
+				continue
+			if not _is_enemy_first_hitscan_collision(candidate):
+				continue
+			# The untouched tail retains stable distance/instance-id ordering.
+			return candidate
 	return null
 
 
@@ -368,15 +452,11 @@ func _is_enemy_first_hitscan_collision(enemy: Enemy) -> bool:
 	if not _is_valid_target(enemy):
 		return false
 	var ray_start := aim_pivot.global_position
-	var query := PhysicsRayQueryParameters2D.create(
+	_set_ray_query_segment(
 		ray_start,
-		enemy.global_position,
-		WORLD_AND_ENEMY_COLLISION_MASK,
-		[get_rid()]
+		enemy.global_position
 	)
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	var result := get_world_2d().direct_space_state.intersect_ray(query)
+	var result := get_world_2d().direct_space_state.intersect_ray(_ray_query)
 	if result.is_empty():
 		return false
 	var collider := result.get("collider") as Node

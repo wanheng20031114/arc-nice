@@ -583,6 +583,26 @@ func _test_guardian_aura_defense_lifecycle() -> void:
 		"Removing a guardian from EnemyContainer did not clear its source synchronously."
 	)
 	removed_guardian.queue_free()
+	var audited_guardian := _spawn_enemy(Vector2(18.0, 0.0), GUARDIAN_CONFIG, player)
+	audited_guardian.set_physics_process(false)
+	guardian_aura_system.force_refresh_all()
+	_expect(
+		ally.get_effective_physical_defense() == 3,
+		"Bounded invalid-source audit fixture did not apply its guardian source."
+	)
+	# Simulate an abnormal lifecycle that bypasses both defeated and child_exiting.
+	# Production removals still use those synchronous paths; this verifies the
+	# batched cursor remains a bounded safety net without a per-frame full scan.
+	audited_guardian.is_dead = true
+	await _wait_physics_frames(8)
+	_expect(
+		ally.get_effective_physical_defense() == 0
+		and not guardian_aura_system.tracked_enemies.has(
+			audited_guardian.get_instance_id()
+		),
+		"A missed lifecycle signal must be audited and fully untracked within one refresh interval."
+	)
+	audited_guardian.queue_free()
 
 	if is_instance_valid(guardian):
 		guardian.queue_free()

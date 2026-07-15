@@ -23,6 +23,14 @@ enum OrbState {
 
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var visual_root: Node2D = $VisualRoot
+@onready var visual_polygons: Array[Polygon2D] = [
+	$VisualRoot/OuterHalo,
+	$VisualRoot/MidHalo,
+	$VisualRoot/InnerHalo,
+	$VisualRoot/Core,
+	$VisualRoot/BoundaryGlow,
+	$VisualRoot/BoundaryEdge,
+]
 
 var direction := Vector2.RIGHT
 var elapsed: float = 0.0
@@ -36,7 +44,6 @@ var source_type: StringName = &"linglan_skill3_orb"
 
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
-	_duplicate_polygon_materials()
 	_apply_current_radius()
 	_update_visual_pulse()
 
@@ -140,22 +147,11 @@ func _update_visual_pulse() -> void:
 func _set_visual_pulse(pulse: float) -> void:
 	if visual_root == null:
 		return
-	for child in visual_root.get_children():
-		var polygon := child as Polygon2D
-		if polygon == null:
-			continue
-		var shader_material := polygon.material as ShaderMaterial
-		if shader_material != null:
-			shader_material.set_shader_parameter(&"pulse", pulse)
-
-
-func _duplicate_polygon_materials() -> void:
-	if visual_root == null:
-		return
-	for child in visual_root.get_children():
-		var polygon := child as Polygon2D
-		if polygon != null and polygon.material != null:
-			polygon.material = polygon.material.duplicate()
+	# Skill3 keeps its authored per-orb CPU timing, but the six immutable scene
+	# nodes are cached once instead of allocating a child-list Array for every
+	# active orb on every physics frame.
+	for polygon in visual_polygons:
+		polygon.set_instance_shader_parameter(&"pulse", pulse)
 
 
 func _on_body_entered(body: Node2D) -> void:

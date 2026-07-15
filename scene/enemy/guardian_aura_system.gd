@@ -30,6 +30,8 @@ var aura_sources_by_enemy: Dictionary[int, Dictionary] = {}
 # guardian_instance_id -> { enemy_id: true }
 var covered_enemy_ids_by_guardian: Dictionary[int, Dictionary] = {}
 var guardian_grid: Dictionary[Vector2i, Array] = {}
+var desired_sources_scratch: Dictionary[int, int] = {}
+var current_source_ids_scratch: Array[int] = []
 var maximum_guardian_radius := 0.0
 var refresh_cursor := 0
 
@@ -70,10 +72,11 @@ func _exit_tree() -> void:
 	guardian_ids.clear()
 	guardian_slot_by_id.clear()
 	guardian_grid.clear()
+	desired_sources_scratch.clear()
+	current_source_ids_scratch.clear()
 
 
 func _physics_process(delta: float) -> void:
-	_prune_dead_or_invalid_enemies()
 	_classify_pending_guardians()
 	_rebuild_guardian_grid()
 	_process_refresh_batch(delta)
@@ -149,6 +152,8 @@ func _track_enemy(enemy: Enemy, can_be_guardian_source: bool) -> void:
 
 
 func _classify_pending_guardians() -> void:
+	if pending_guardian_classification.is_empty():
+		return
 	for enemy_id_variant in pending_guardian_classification.keys():
 		var enemy_id := int(enemy_id_variant)
 		if not guardian_source_enemy_ids.has(enemy_id):
@@ -274,19 +279,28 @@ func _process_refresh_batch(delta: float) -> void:
 		enemy_count
 	)
 	for _batch_index in range(batch_size):
+		if tracked_enemy_ids.is_empty():
+			refresh_cursor = 0
+			return
 		if refresh_cursor >= tracked_enemy_ids.size():
 			refresh_cursor = 0
 		var enemy_id := tracked_enemy_ids[refresh_cursor]
 		refresh_cursor += 1
 		var enemy := tracked_enemies.get(enemy_id) as Enemy
 		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+			# Normal defeat and container removal are synchronous. This bounded audit
+			# is the safety net for an abnormal missed signal, folded into the same
+			# cursor that already visits every target once per refresh interval.
+			_untrack_enemy_id(enemy_id)
 			continue
 		_refresh_enemy_sources(enemy)
 
 
 func _refresh_enemy_sources(enemy: Enemy) -> void:
 	var enemy_id := enemy.get_instance_id()
-	var desired_sources: Dictionary = {}
+	# Refreshes are synchronous and processed one enemy at a time, so one reused
+	# dictionary removes a short-lived allocation from every aura target refresh.
+	desired_sources_scratch.clear()
 	if (
 		(enemy.collision_layer & ENEMY_COLLISION_LAYER) != 0
 		and not guardian_grid.is_empty()
@@ -311,16 +325,22 @@ func _refresh_enemy_sources(enemy: Enemy) -> void:
 					if guardian_config == null or not guardian_config.aura_enabled:
 						continue
 					if _guardian_reaches_enemy(guardian, guardian_config, enemy):
-						desired_sources[source_id] = guardian_config.aura_physical_defense_bonus
+						desired_sources_scratch[source_id] = (
+							guardian_config.aura_physical_defense_bonus
+						)
 
-	_apply_source_diff(enemy, desired_sources)
+	_apply_source_diff(enemy, desired_sources_scratch)
 
 
 func _apply_source_diff(enemy: Enemy, desired_sources: Dictionary) -> void:
 	var enemy_id := enemy.get_instance_id()
 	var current_sources: Dictionary = aura_sources_by_enemy.get(enemy_id, {})
-	for source_id_variant in current_sources.keys():
-		var source_id := int(source_id_variant)
+	# Source removal must happen after Dictionary traversal. Reuse one typed array
+	# instead of allocating `keys()` for every aura target refresh.
+	current_source_ids_scratch.clear()
+	for source_id_variant in current_sources:
+		current_source_ids_scratch.append(int(source_id_variant))
+	for source_id in current_source_ids_scratch:
 		if desired_sources.has(source_id):
 			continue
 		enemy.remove_physical_defense_modifier(source_id)

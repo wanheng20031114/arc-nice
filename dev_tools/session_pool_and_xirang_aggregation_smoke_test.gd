@@ -39,6 +39,7 @@ func _run() -> void:
 	await _test_strict_session_pool()
 	await _test_per_bucket_pending_metrics()
 	await _test_spawn_effect_tween_isolation()
+	await _test_xirang_preferred_visual_density()
 	await _test_xirang_aggregation()
 	await _test_xirang_visual_spawn_budget()
 	await _test_invalid_pending_target_preserves_value()
@@ -269,10 +270,23 @@ func _test_spawn_effect_tween_isolation() -> void:
 	root.add_child(tween_pool)
 	tween_pool.register_scene(SPAWN_EFFECT_SCENE, 1, 1)
 	var first_lease := tween_pool.acquire(SPAWN_EFFECT_SCENE)
+	var spawn_particles := first_lease.get_node_or_null("Particles") as GPUParticles2D
+	_expect(
+		spawn_particles != null,
+		"Pooled spawn accents must use GPU particles instead of the dormant CPU emitter."
+	)
 	first_lease.set("duration", 0.1)
 	first_lease.call("restart_effect")
+	_expect(
+		spawn_particles != null and spawn_particles.emitting,
+		"Restarting a pooled spawn effect must emit its particle accent."
+	)
 	await create_timer(0.02).timeout
 	_expect(tween_pool.release(first_lease), "An active spawn effect must return to its pool.")
+	_expect(
+		spawn_particles != null and not spawn_particles.emitting,
+		"Releasing a spawn effect must stop its GPU emitter before quarantine."
+	)
 	await physics_frame
 	await physics_frame
 
@@ -366,6 +380,62 @@ func _test_xirang_aggregation() -> void:
 		int(flushed.get("total_value_requested", 0)) == 55
 		and int(flushed.get("total_value_spawned", 0)) == 55,
 		"Flushing must preserve the exact requested reward total."
+	)
+	runtime.queue_free()
+	await process_frame
+
+
+func _test_xirang_preferred_visual_density() -> void:
+	var runtime := Node2D.new()
+	root.add_child(runtime)
+	var enemy_container := Node2D.new()
+	enemy_container.name = "EnemyContainer"
+	runtime.add_child(enemy_container)
+	var manager := XIRANG_MANAGER_SCRIPT.new() as XirangDropManager
+	manager.name = "XirangDropManager"
+	manager.max_active_visual_drops = 32
+	manager.max_visual_spawns_per_frame = 16
+	runtime.add_child(manager)
+	var player := PLAYER_SCENE.instantiate() as Player
+	player.process_mode = Node.PROCESS_MODE_DISABLED
+	runtime.add_child(player)
+	player.global_position = Vector2(10000.0, 10000.0)
+
+	var expected_total_visuals := 0
+	for amount in [1, 2, 4, 10]:
+		var preferred_count := mini(amount, 4)
+		var first_index := enemy_container.get_child_count()
+		_expect(
+			manager.spawn_reward(
+				amount,
+				player,
+				Vector2(float(amount) * 128.0, 0.0),
+				Vector2(12.0, 0.0),
+				preferred_count
+			),
+			"A low-pressure split Xirang reward must be accepted."
+		)
+		expected_total_visuals += preferred_count
+		_expect(
+			enemy_container.get_child_count() == expected_total_visuals,
+			"Xirang amounts 1/2/4/10 must retain their authored 1/2/4/4 visual density."
+		)
+		var spawned_value := 0
+		for child_index in range(first_index, enemy_container.get_child_count()):
+			var drop := enemy_container.get_child(child_index) as XirangDrop
+			if drop != null:
+				spawned_value += drop.xirang_value
+		_expect(
+			spawned_value == amount,
+			"Splitting a Xirang reward into visual shards must preserve exact currency value."
+		)
+	var metrics := manager.get_metrics()
+	_expect(
+		int(metrics.get("active_visual_drops", 0)) == 11
+		and int(metrics.get("pending_value", 0)) == 0
+		and int(metrics.get("total_value_requested", 0)) == 17
+		and int(metrics.get("total_value_spawned", 0)) == 17,
+		"Low-pressure preferred visuals must not enter aggregation or lose value."
 	)
 	runtime.queue_free()
 	await process_frame

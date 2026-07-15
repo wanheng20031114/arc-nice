@@ -40,6 +40,7 @@ func _run() -> void:
 	current_scene = test_root
 
 	await _test_frost_sources_stack_and_expire_independently()
+	await _test_status_expiry_precedes_same_frame_tick_damage()
 	await _test_every_collectible_runtime_effect()
 
 	test_root.queue_free()
@@ -116,6 +117,72 @@ func _test_frost_sources_stack_and_expire_independently() -> void:
 	_expect(
 		enemy.move_speed_modifiers.is_empty(),
 		"Each frost source must expire independently at the end of its own duration."
+	)
+	_cleanup_test_children()
+	await process_frame
+
+
+func _test_status_expiry_precedes_same_frame_tick_damage() -> void:
+	var player := _spawn_player()
+	var enemy := _spawn_enemy(Vector2(20.0, 0.0), player)
+	await process_frame
+	enemy.set_process(false)
+	enemy.current_health = 100
+	enemy.add_physical_defense_modifier(990100, 5)
+	enemy.apply_collectible_status(
+		&"mark",
+		990101,
+		0.05,
+		0,
+		0.5,
+		EnemyConfig.DamageType.MAGIC,
+		1.0,
+		0,
+		2.0
+	)
+	enemy.apply_collectible_status(
+		&"crack",
+		990102,
+		0.05,
+		0,
+		0.5,
+		EnemyConfig.DamageType.MAGIC,
+		1.0,
+		-4
+	)
+	enemy.apply_collectible_status(
+		&"bleed",
+		990103,
+		1.0,
+		10,
+		0.1,
+		EnemyConfig.DamageType.PHYSICAL
+	)
+	var mark_status := enemy.collectible_status_effects["990101:mark"] as Dictionary
+	var crack_status := enemy.collectible_status_effects["990102:crack"] as Dictionary
+	var bleed_status := enemy.collectible_status_effects["990103:bleed"] as Dictionary
+	mark_status["time_left"] = 0.01
+	crack_status["time_left"] = 0.01
+	bleed_status["tick_time_left"] = 0.01
+	enemy.collectible_status_effects["990101:mark"] = mark_status
+	enemy.collectible_status_effects["990102:crack"] = crack_status
+	enemy.collectible_status_effects["990103:bleed"] = bleed_status
+
+	enemy.call("_update_collectible_status_effects", 0.02)
+	_expect(
+		enemy.current_health == 95,
+		"An expiring mark and armor break must be removed before same-frame physical DoT; expected 5 damage."
+	)
+	_expect(
+		not enemy.collectible_status_effects.has("990101:mark")
+		and not enemy.collectible_status_effects.has("990102:crack")
+		and enemy.collectible_status_effects.has("990103:bleed"),
+		"Expired modifier statuses must be removed while the surviving DoT remains active."
+	)
+	_expect(
+		enemy.get_effective_physical_defense() == 5
+		and is_equal_approx(enemy.get_damage_taken_multiplier(), 1.0),
+		"Same-frame expiry must restore defense and damage multiplier before resolving DoT."
 	)
 	_cleanup_test_children()
 	await process_frame

@@ -33,6 +33,7 @@ const DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE_SQUARED := (
 )
 const AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const HIT_EFFECT_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")
+const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
 const MATERIAL_PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const MATERIAL_WOOD := preload("res://resources/config/materials/material_wood.tres")
 const MATERIAL_SAPLING := preload("res://resources/config/materials/material_sapling.tres")
@@ -83,6 +84,8 @@ var physical_defense_modifiers: Dictionary = {}
 var move_speed_modifiers: Dictionary = {}
 var damage_taken_multiplier_modifiers: Dictionary = {}
 var collectible_status_effects: Dictionary = {}
+var stale_collectible_status_keys: Array = []
+var active_collectible_status_keys: Array = []
 var network_visual_status_mask: int = 0
 var multiplayer_proxy_visual_active: bool = true
 var multiplayer_proxy_authored_animation_speed: float = 1.0
@@ -91,6 +94,7 @@ var is_multiplayer_proxy: bool = false
 var last_damage_taken: int = 0
 var body_collision_shapes: Array[CollisionShape2D] = []
 var touch_damage_shapes: Array[CollisionShape2D] = []
+var mirrored_collision_shapes: Array[CollisionShape2D] = []
 var body_collision_extent_radius: float = 0.0
 var body_collision_half_extents: Vector2 = Vector2.ZERO
 var collision_shape_mirror_states: Dictionary = {}
@@ -100,9 +104,12 @@ var proxy_action_restore_token: int = 0
 var navigation_update_frame_offset: int = 0
 var cached_navigation_move_direction := Vector2.ZERO
 var cached_navigation_uses_direct_objective_approach: bool = false
+var cached_navigation_verified_direct_motion_clearance: float = 0.0
 var navigation_zero_direction_retry_frame: int = 0
 var navigation_collision_probe := KinematicCollision2D.new()
 var navigation_step_result: GridPathfinder.NavigationStepResult = null
+var _world_los_query: PhysicsRayQueryParameters2D = null
+var _world_los_exclude: Array[RID] = []
 var navigation_flow_context: GridPathfinder.FlowQueryContext = null
 var near_moving_target_direct_distance := DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE
 var near_moving_target_direct_distance_squared := (
@@ -227,7 +234,8 @@ func _request_xirang_reward(
 	amount: int,
 	reward_target: Player,
 	spawn_position: Vector2,
-	landing_offset: Vector2 = Vector2.ZERO
+	landing_offset: Vector2 = Vector2.ZERO,
+	preferred_visual_count: int = 1
 ) -> bool:
 	var current_scene := get_tree().current_scene
 	if current_scene == null or not current_scene.has_method("spawn_xirang_reward"):
@@ -237,7 +245,8 @@ func _request_xirang_reward(
 		amount,
 		reward_target,
 		spawn_position,
-		landing_offset
+		landing_offset,
+		preferred_visual_count
 	))
 
 
@@ -729,17 +738,37 @@ func apply_collectible_status(
 func _update_collectible_status_effects(delta: float) -> void:
 	if collectible_status_effects.is_empty():
 		return
-	var active_burn_damage_key: Variant = _get_highest_damage_status_key(&"burn")
-	for effect_key in collectible_status_effects.keys():
+	stale_collectible_status_keys.clear()
+	active_collectible_status_keys.clear()
+	# Resolve every expiry before any tick damage. This makes the boundary frame
+	# independent of Dictionary insertion order: an expiring armor break or mark
+	# cannot still modify another status whose tick is due in the same frame.
+	for effect_key in collectible_status_effects:
 		var status: Dictionary = collectible_status_effects.get(effect_key, {})
 		if status.is_empty():
-			collectible_status_effects.erase(effect_key)
+			stale_collectible_status_keys.append(effect_key)
 			continue
 		var time_left := float(status.get("time_left", 0.0)) - delta
 		if time_left <= 0.0 or is_dead:
-			_remove_collectible_status(effect_key, status)
+			stale_collectible_status_keys.append(effect_key)
 			continue
 		status["time_left"] = time_left
+		collectible_status_effects[effect_key] = status
+		active_collectible_status_keys.append(effect_key)
+	for effect_key in stale_collectible_status_keys:
+		var stale_status := collectible_status_effects.get(effect_key, {}) as Dictionary
+		if stale_status.is_empty():
+			collectible_status_effects.erase(effect_key)
+			continue
+		_remove_collectible_status(effect_key, stale_status)
+	if active_collectible_status_keys.is_empty() or is_dead:
+		return
+
+	var active_burn_damage_key: Variant = _get_highest_damage_status_key(&"burn")
+	for effect_key in active_collectible_status_keys:
+		var status := collectible_status_effects.get(effect_key, {}) as Dictionary
+		if status.is_empty():
+			continue
 		var tick_damage := int(status.get("tick_damage", 0))
 		if tick_damage > 0:
 			if StringName(status.get("status_id", &"")) == &"burn" and effect_key != active_burn_damage_key:
@@ -911,6 +940,9 @@ func _get_scene_animation_duration(animation_name: StringName) -> float:
 func _refresh_collision_shape_cache() -> void:
 	body_collision_shapes = _collect_direct_collision_shapes(self)
 	touch_damage_shapes = _collect_direct_collision_shapes(touch_damage_area)
+	mirrored_collision_shapes.clear()
+	mirrored_collision_shapes.append_array(body_collision_shapes)
+	mirrored_collision_shapes.append_array(touch_damage_shapes)
 	collision_shape = null
 	if not body_collision_shapes.is_empty():
 		collision_shape = body_collision_shapes[0]
@@ -939,12 +971,32 @@ func _collect_direct_collision_shapes(parent_node: Node) -> Array[CollisionShape
 	return shapes
 
 
+func _is_world_segment_clear(
+	target_position: Vector2,
+	collision_mask_value: int = 1
+) -> bool:
+	# Ranged archetypes can test LOS every physics tick while a wall keeps them
+	# in range. Lazily reuse one native query and RID exclusion Array per enemy.
+	if _world_los_query == null:
+		_world_los_query = PhysicsRayQueryParameters2D.create(
+			Vector2.ZERO,
+			Vector2.ZERO,
+			collision_mask_value
+		)
+		_world_los_exclude.clear()
+		_world_los_exclude.append(get_rid())
+		_world_los_query.exclude = _world_los_exclude
+		_world_los_query.collide_with_bodies = true
+		_world_los_query.collide_with_areas = false
+	_world_los_query.from = global_position
+	_world_los_query.to = target_position
+	_world_los_query.collision_mask = collision_mask_value
+	return get_world_2d().direct_space_state.intersect_ray(_world_los_query).is_empty()
+
+
 func _cache_collision_shape_mirror_states() -> void:
 	collision_shape_mirror_states.clear()
-	var all_shape_nodes: Array[CollisionShape2D] = []
-	all_shape_nodes.append_array(body_collision_shapes)
-	all_shape_nodes.append_array(touch_damage_shapes)
-	for shape_node in all_shape_nodes:
+	for shape_node in mirrored_collision_shapes:
 		if shape_node == null:
 			continue
 		var state := {
@@ -988,10 +1040,7 @@ func _apply_sprite_facing() -> void:
 
 func _apply_facing_mirror() -> void:
 	var mirror_sign := -1.0 if facing_left else 1.0
-	var all_shape_nodes: Array[CollisionShape2D] = []
-	all_shape_nodes.append_array(body_collision_shapes)
-	all_shape_nodes.append_array(touch_damage_shapes)
-	for shape_node in all_shape_nodes:
+	for shape_node in mirrored_collision_shapes:
 		_apply_collision_shape_mirror(shape_node, mirror_sign)
 
 
@@ -1106,7 +1155,11 @@ func _get_safe_navigation_move_direction(
 			waypoint_arrival_distance
 		)
 		if direct_direction != Vector2.ZERO:
-			return _cache_navigation_move_direction(direct_direction, true)
+			return _cache_navigation_move_direction(
+				direct_direction,
+				true,
+				_get_far_direct_objective_probe_distance()
+			)
 	elif _is_near_static_objective(target_node):
 		# Near a static objective, a precomputed open-area certificate plus a short
 		# body probe avoids another flow query. Non-certified corridors retain the
@@ -1116,7 +1169,14 @@ func _get_safe_navigation_move_direction(
 			target_node.global_position
 		)
 		if direct_direction != Vector2.ZERO:
-			return _cache_navigation_move_direction(direct_direction, true)
+			return _cache_navigation_move_direction(
+				direct_direction,
+				true,
+				minf(
+					global_position.distance_to(target_node.global_position),
+					_get_far_direct_objective_probe_distance()
+				)
+			)
 	elif _is_near_moving_target(target_node):
 		# The immutable open-area snapshot handles large plains; exact test_move()
 		# remains the fallback around authored obstacles. Both paths avoid rebuilding
@@ -1356,8 +1416,9 @@ func _get_collision_safe_near_static_objective_direction(
 	if offset == Vector2.ZERO:
 		return Vector2.ZERO
 	# For a non-certified rectangle, sweep the complete remaining segment with
-	# the real CharacterBody shape. The near tier continues through
-	# move_and_slide(), so this never enables lightweight far translation.
+	# the real CharacterBody shape. The caller records only the shorter distance
+	# needed before the next navigation update, so lightweight translation can
+	# never travel beyond this exact collision certificate.
 	if test_move(global_transform, offset):
 		return Vector2.ZERO
 	return offset.normalized()
@@ -1509,11 +1570,17 @@ func _is_near_moving_target(target_node: Node2D) -> bool:
 
 func _cache_navigation_move_direction(
 	move_direction: Vector2,
-	uses_direct_objective_approach: bool = false
+	uses_direct_objective_approach: bool = false,
+	verified_direct_motion_clearance: float = 0.0
 ) -> Vector2:
 	cached_navigation_move_direction = move_direction
 	cached_navigation_uses_direct_objective_approach = (
 		uses_direct_objective_approach and move_direction != Vector2.ZERO
+	)
+	cached_navigation_verified_direct_motion_clearance = (
+		maxf(verified_direct_motion_clearance, 0.0)
+		if cached_navigation_uses_direct_objective_approach
+		else 0.0
 	)
 	if move_direction == Vector2.ZERO:
 		navigation_zero_direction_retry_frame = (
@@ -1528,6 +1595,7 @@ func _cache_navigation_move_direction(
 func _clear_cached_navigation_move_direction() -> void:
 	cached_navigation_move_direction = Vector2.ZERO
 	cached_navigation_uses_direct_objective_approach = false
+	cached_navigation_verified_direct_motion_clearance = 0.0
 	navigation_zero_direction_retry_frame = 0
 	if navigation_flow_context != null:
 		navigation_flow_context.invalidate()
@@ -1566,16 +1634,35 @@ func _move_until_player_contact() -> void:
 		return
 	if velocity == Vector2.ZERO:
 		return
-	if _can_use_far_static_objective_linear_movement():
-		global_position += velocity * get_physics_process_delta_time()
+	var motion := velocity * get_physics_process_delta_time()
+	if _can_use_verified_static_objective_linear_movement(motion):
+		global_position += motion
+		cached_navigation_verified_direct_motion_clearance = maxf(
+			cached_navigation_verified_direct_motion_clearance - motion.length(),
+			0.0
+		)
 		return
+	# A CharacterBody fallback changes (or can collision-recover) the origin that
+	# the direct-motion sweep certified. Never reuse that certificate from the
+	# resulting transform; the next scheduled navigation update must revalidate it.
+	cached_navigation_uses_direct_objective_approach = false
+	cached_navigation_verified_direct_motion_clearance = 0.0
 	move_and_slide()
 
 
-func _can_use_far_static_objective_linear_movement() -> bool:
+func _can_use_verified_static_objective_linear_movement(motion: Vector2) -> bool:
+	var motion_distance := motion.length()
 	return (
 		cached_navigation_uses_direct_objective_approach
-		and _is_far_static_objective(objective_target)
+		and is_instance_valid(objective_target)
+		and objective_target != target_player
+		and (
+			_is_far_static_objective(objective_target)
+			or _is_near_static_objective(objective_target)
+		)
+		and motion_distance > 0.0
+		and motion_distance
+			<= cached_navigation_verified_direct_motion_clearance + 0.0001
 	)
 
 
@@ -1770,6 +1857,11 @@ func _play_hit_particles(impact_direction: Vector2) -> void:
 		return
 	var spawn_parent := get_tree().current_scene
 	if spawn_parent == null:
+		return
+	if not WORLD_EFFECT_VISIBILITY.is_position_near_viewport(
+		self,
+		global_position
+	):
 		return
 	var effect: BulletHitEffect = null
 	var uses_registered_pool := (

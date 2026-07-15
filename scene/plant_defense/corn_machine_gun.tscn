@@ -138,7 +138,6 @@ enemy_approach_depth = 6.0
 scale = Vector2(0.5, 0.5)
 
 [node name="BodySprite" type="AnimatedSprite2D" parent="VisualRoot" unique_id=438462908]
-visible = false
 z_index = 1
 texture_filter = 1
 material = SubResource("ShaderMaterial_pixel_snap")

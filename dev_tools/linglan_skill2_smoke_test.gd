@@ -162,6 +162,16 @@ func _test_collectible_sakura_resource_dependencies() -> void:
 
 
 func _test_skill2_scene_contract() -> void:
+	var boss := LINGLAN_SCENE.instantiate() as LinglanBoss
+	_expect(boss != null, "Linglan scene must instantiate for the Skill2 audio contract.")
+	if boss != null:
+		var fire_audio := boss.get_node_or_null("Skill2FireAudio") as AudioStreamPlayer2D
+		_expect(
+			fire_audio != null and fire_audio.max_polyphony == 1,
+			"Skill2 fire audio must own one real voice so the shared limiter cap stays strict."
+		)
+		boss.free()
+
 	var rocket := ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
 	_expect(rocket != null, "Skill2 rocket scene did not instantiate as LinglanSkill2SakuraRocket.")
 	if rocket == null:

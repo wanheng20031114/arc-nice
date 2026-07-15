@@ -6,6 +6,7 @@ signal projectile_finished(projectile_id: int, projectile: Node)
 const WORLD_COLLISION_MASK := 1
 const DAMAGEABLE_COLLISION_MASK := 2 | 512
 const HIT_EFFECT_SCENE := preload("res://scene/bullet_hit_effect.tscn")
+const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
 
 @export var speed: float = 142.5
 @export var max_lifetime: float = 2.0
@@ -176,6 +177,11 @@ func retire(play_hit_effect: bool = false) -> void:
 func _spawn_hit_effect() -> void:
 	var spawn_parent := get_tree().current_scene
 	if spawn_parent == null:
+		return
+	if not WORLD_EFFECT_VISIBILITY.is_position_near_viewport(
+		self,
+		global_position
+	):
 		return
 
 	var effect: BulletHitEffect = null

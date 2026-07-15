@@ -458,9 +458,18 @@ func _fire_skill1_ring(skill_elapsed: float) -> void:
 	var direction_count := maxi(skill1_config.ring_direction_count, 1)
 	var angle_step := TAU / float(direction_count)
 	var base_angle := _get_skill1_base_angle(skill_elapsed)
+	var projectiles: Array[Node] = []
+	var spawn_positions := PackedVector2Array()
+	var directions := PackedVector2Array()
 	for index in range(direction_count):
 		var direction := Vector2.RIGHT.rotated(base_angle + angle_step * float(index))
-		_spawn_skill1_projectile(direction)
+		var projectile := _spawn_skill1_projectile(direction, false)
+		if projectile == null:
+			continue
+		projectiles.append(projectile)
+		spawn_positions.append(projectile.global_position)
+		directions.append(direction)
+	_register_multiplayer_skill1_ring(projectiles, spawn_positions, directions)
 
 
 func _get_skill1_base_angle(skill_elapsed: float) -> float:
@@ -470,15 +479,31 @@ func _get_skill1_base_angle(skill_elapsed: float) -> float:
 	return deg_to_rad(skill1_config.rotation_speed_degrees_per_second) * rotating_elapsed
 
 
-func _spawn_skill1_projectile(direction: Vector2) -> void:
-	var projectile := skill1_config.projectile_scene.instantiate() as LinglanSakuraBullet
-	if projectile == null:
-		return
-
+func _spawn_skill1_projectile(
+	direction: Vector2,
+	register_immediately: bool = true
+) -> LinglanSakuraBullet:
 	var spawn_parent := get_tree().current_scene
 	if spawn_parent == null:
-		projectile.free()
-		return
+		return null
+	var projectile: LinglanSakuraBullet = null
+	var uses_registered_pool := (
+		spawn_parent.has_method("has_session_object_pool_scene")
+		and bool(spawn_parent.call(
+			"has_session_object_pool_scene",
+			skill1_config.projectile_scene
+		))
+	)
+	if uses_registered_pool:
+		projectile = spawn_parent.call(
+			"acquire_session_object",
+			skill1_config.projectile_scene,
+			false
+		) as LinglanSakuraBullet
+	else:
+		projectile = skill1_config.projectile_scene.instantiate() as LinglanSakuraBullet
+	if projectile == null:
+		return null
 
 	projectile.top_level = true
 	projectile.setup(
@@ -487,9 +512,46 @@ func _spawn_skill1_projectile(direction: Vector2) -> void:
 		skill1_config.projectile_speed,
 		skill1_config.projectile_lifetime
 	)
-	spawn_parent.add_child(projectile)
+	if projectile.get_parent() == null:
+		spawn_parent.add_child(projectile)
 	projectile.global_position = global_position + direction * skill1_config.projectile_spawn_distance
-	_register_multiplayer_projectile(projectile, projectile.global_position, direction)
+	projectile.reset_physics_interpolation()
+	if register_immediately:
+		_register_multiplayer_projectile(projectile, projectile.global_position, direction)
+	return projectile
+
+
+func _register_multiplayer_skill1_ring(
+	projectiles: Array[Node],
+	spawn_positions: PackedVector2Array,
+	directions: PackedVector2Array
+) -> void:
+	if projectiles.is_empty():
+		return
+	var current_scene := get_tree().current_scene
+	if current_scene == null:
+		return
+	if current_scene.has_method("register_local_linglan_skill1_ring"):
+		current_scene.call(
+			"register_local_linglan_skill1_ring",
+			projectiles,
+			spawn_positions,
+			directions,
+			get_multiplayer_authority(),
+			skill1_config.projectile_damage,
+			skill1_config.projectile_speed,
+			skill1_config.projectile_lifetime
+		)
+		return
+	# Lightweight test runtimes and single-player scenes may only expose the
+	# generic hook. Keep that compatibility without sending individual RPCs in
+	# the production multiplayer scene, which always implements the batch hook.
+	for index in range(projectiles.size()):
+		_register_multiplayer_projectile(
+			projectiles[index] as LinglanSakuraBullet,
+			spawn_positions[index],
+			directions[index]
+		)
 
 
 func _register_multiplayer_projectile(

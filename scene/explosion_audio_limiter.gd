@@ -1,6 +1,7 @@
 extends RefCounted
 class_name ExplosionAudioLimiter
 
+const SPATIAL_VOICE_LIMITER := preload("res://scene/spatial_audio_voice_limiter.gd")
 const EXPLOSION_AUDIO_GROUP := &"limited_explosion_audio_players"
 const ENEMY_HIT_AUDIO_GROUP := &"limited_enemy_hit_audio_players"
 const ENEMY_DEATH_AUDIO_GROUP := &"limited_enemy_death_audio_players"
@@ -61,15 +62,19 @@ static func _play_limited_audio(
 		audio_player.play()
 		return
 
-	var active_count := _count_active_audio_players(tree, audio_group)
-	if active_count >= max_simultaneous_count:
+	var active_count := SPATIAL_VOICE_LIMITER.claim_voice(
+		audio_player,
+		audio_group,
+		max_simultaneous_count
+	)
+	if active_count == SPATIAL_VOICE_LIMITER.REJECTED_ACTIVE_COUNT:
 		return
 
 	if not audio_player.is_in_group(audio_group):
 		audio_player.add_to_group(audio_group)
 	var finished_callback := _on_limited_audio_finished.bind(audio_player, audio_group)
 	if not audio_player.finished.is_connected(finished_callback):
-		audio_player.finished.connect(finished_callback, CONNECT_ONE_SHOT)
+		audio_player.finished.connect(finished_callback)
 
 	var base_volume_db := audio_player.volume_db
 	if audio_player.has_meta(BASE_VOLUME_META):
@@ -111,6 +116,11 @@ static func _on_limited_audio_finished(
 	audio_player: AudioStreamPlayer2D,
 	audio_group: StringName
 ) -> void:
+	# AudioStreamPlayer2D emits finished whenever any one of its playback
+	# streams ends. Keep the logical voice while a replay/overlapping stream is
+	# still active; the persistent connection releases it after the final one.
+	if is_instance_valid(audio_player) and audio_player.playing:
+		return
 	_remove_audio_player_from_group(audio_player, audio_group)
 
 

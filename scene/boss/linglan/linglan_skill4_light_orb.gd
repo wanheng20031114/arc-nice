@@ -1,6 +1,9 @@
 extends Area2D
 class_name LinglanSkill4LightOrb
 
+const GPU_PULSE_FREQUENCY := 3.5
+const SHADER_TIME_ROLLOVER_SECONDS := 3600.0
+
 @export var speed: float = 40.0
 @export var damage: int = 50
 @export var orb_radius: float = 8.0
@@ -8,6 +11,7 @@ class_name LinglanSkill4LightOrb
 @export var max_lifetime: float = 10.0
 
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
+@onready var visual_root: Node2D = $VisualRoot
 
 var direction := Vector2.RIGHT
 var remaining_lifetime: float = 10.0
@@ -15,11 +19,14 @@ var damaged_player_ids: Dictionary = {}
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"linglan_skill4_orb"
+var gpu_pulse_phase: float = 0.0
+var gpu_pulse_origin_msec: int = 0
 
 
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	_apply_current_radius()
+	_apply_gpu_pulse_phase()
 
 
 func setup(
@@ -75,6 +82,22 @@ func _apply_current_radius() -> void:
 	var circle_shape := collision_shape.shape as CircleShape2D
 	if circle_shape != null:
 		circle_shape.radius = damage_radius
+
+
+func _apply_gpu_pulse_phase() -> void:
+	# Shader TIME is global. Offset it once per orb so every newly spawned orb
+	# starts at the authored local-time midpoint without duplicating materials or
+	# writing shader parameters every physics frame.
+	gpu_pulse_origin_msec = Time.get_ticks_msec()
+	var shader_time := fmod(
+		float(gpu_pulse_origin_msec) * 0.001,
+		SHADER_TIME_ROLLOVER_SECONDS
+	)
+	gpu_pulse_phase = fposmod(-shader_time * TAU * GPU_PULSE_FREQUENCY, TAU)
+	for child in visual_root.get_children():
+		var canvas_item := child as CanvasItem
+		if canvas_item != null:
+			canvas_item.set_instance_shader_parameter(&"gpu_pulse_phase", gpu_pulse_phase)
 
 
 func _on_body_entered(body: Node2D) -> void:

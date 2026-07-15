@@ -404,15 +404,10 @@ func _get_multiplayer_damage_source_id(source_suffix: int) -> int:
 func _has_clear_world_line_to_target() -> bool:
 	if not is_instance_valid(target_player):
 		return false
-	var query := PhysicsRayQueryParameters2D.create(
-		global_position,
+	return _is_world_segment_clear(
 		target_player.global_position,
-		WORLD_COLLISION_MASK,
-		[get_rid()]
+		WORLD_COLLISION_MASK
 	)
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	return get_world_2d().direct_space_state.intersect_ray(query).is_empty()
 
 
 func _get_attack_interval() -> float:

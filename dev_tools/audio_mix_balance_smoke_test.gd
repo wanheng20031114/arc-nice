@@ -19,8 +19,10 @@ const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres
 const ELITE_KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight_elite.tres")
 const SWORDSMAN_CONFIG := preload("res://resources/config/enemies/capoo_swordsman.tres")
 const FIRE_RANGED_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres")
-const WAVE_01 := preload("res://resources/config/waves/wave_01.tres")
 const AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
+const PLANT_AUDIO_LIMITER := preload(
+	"res://scene/plant_defense/plant_attack_audio_limiter.gd"
+)
 const ENEMY_HIT_STREAM := preload("res://resources/audio/cowboy_monsterhit.wav")
 const ENEMY_DEATH_STREAM := preload("res://resources/audio/cowboy_monsterdie.wav")
 
@@ -36,10 +38,11 @@ func _run() -> void:
 	await _test_player_mix()
 	await _test_enemy_mix()
 	await _test_combat_audio_limiter()
+	await _test_limited_audio_replay_lifecycle()
+	await _test_spatial_audio_priority()
 	await _test_ui_mix()
 	await _test_ui_click_audio()
 	_test_attack_stream_contracts()
-	_test_first_wave_audio_test_contract()
 	await _drain_cleanup_frames()
 
 	if failures.is_empty():
@@ -97,6 +100,10 @@ func _test_enemy_mix() -> void:
 	_expect(base_enemy != null, "Base enemy scene must instantiate for audio mix test.")
 	if base_enemy != null:
 		_expect_volume(base_enemy, "HitAudio", -6.0, "Enemy hit cue must stay present.")
+		_expect(
+			(base_enemy.get_node("HitAudio") as AudioStreamPlayer2D).max_polyphony == 1,
+			"One enemy hit player must own exactly one voice so the shared cap stays strict."
+		)
 		_expect_volume(base_enemy, "DeathAudio", -5.0, "Enemy death cue must stay below player death.")
 		_stop_audio_players(base_enemy)
 		base_enemy.queue_free()
@@ -149,6 +156,146 @@ func _test_combat_audio_limiter() -> void:
 		_float_close(death_players[1].volume_db, death_players[0].volume_db - 4.0),
 		"Enemy death audio limiter must attenuate stacked death sounds."
 	)
+
+	_stop_audio_players(audio_root)
+	audio_root.queue_free()
+	await _drain_cleanup_frames()
+
+
+func _test_limited_audio_replay_lifecycle() -> void:
+	var audio_root := Node2D.new()
+	root.add_child(audio_root)
+	await process_frame
+
+	var hit_player := AudioStreamPlayer2D.new()
+	hit_player.stream = ENEMY_HIT_STREAM
+	hit_player.max_polyphony = 1
+	hit_player.playback_type = AudioServer.PLAYBACK_TYPE_STREAM
+	audio_root.add_child(hit_player)
+	var hit_finished_events := [0]
+	hit_player.finished.connect(
+		func() -> void:
+			hit_finished_events[0] = int(hit_finished_events[0]) + 1
+	)
+	AUDIO_LIMITER.play_enemy_hit(hit_player)
+	AUDIO_LIMITER.play_enemy_hit(hit_player)
+	await physics_frame
+	await process_frame
+	_expect(
+		int(hit_finished_events[0]) >= 1,
+		"Same-frame hit replay must exercise an intermediate finished signal."
+	)
+	_expect(
+		hit_player.playing
+		and hit_player.is_in_group(AUDIO_LIMITER.ENEMY_HIT_AUDIO_GROUP)
+		and hit_player.get_signal_connection_list(&"finished").size() == 2
+		and AUDIO_LIMITER._count_active_audio_players(
+			self,
+			AUDIO_LIMITER.ENEMY_HIT_AUDIO_GROUP
+		) == 1,
+		"An intermediate hit finish must retain one voice and one limiter connection."
+	)
+	await create_timer(ENEMY_HIT_STREAM.get_length() + 0.1).timeout
+	await physics_frame
+	await process_frame
+	_expect(
+		not hit_player.playing
+		and not hit_player.is_in_group(AUDIO_LIMITER.ENEMY_HIT_AUDIO_GROUP),
+		"The final hit playback finish must release its logical voice."
+	)
+
+	var plant_player := AudioStreamPlayer2D.new()
+	plant_player.stream = ENEMY_HIT_STREAM
+	plant_player.max_polyphony = 1
+	plant_player.playback_type = AudioServer.PLAYBACK_TYPE_STREAM
+	audio_root.add_child(plant_player)
+	var plant_finished_events := [0]
+	plant_player.finished.connect(
+		func() -> void:
+			plant_finished_events[0] = int(plant_finished_events[0]) + 1
+	)
+	PLANT_AUDIO_LIMITER.play_burst(plant_player)
+	PLANT_AUDIO_LIMITER.play_burst(plant_player)
+	await physics_frame
+	await process_frame
+	_expect(
+		int(plant_finished_events[0]) >= 1,
+		"Same-frame plant replay must exercise an intermediate finished signal."
+	)
+	_expect(
+		plant_player.playing
+		and plant_player.is_in_group(PLANT_AUDIO_LIMITER.AUDIO_GROUP)
+		and plant_player.get_signal_connection_list(&"finished").size() == 2
+		and PLANT_AUDIO_LIMITER.get_active_voice_count(self) == 1,
+		"An intermediate plant finish must retain one voice and one limiter connection."
+	)
+	await create_timer(ENEMY_HIT_STREAM.get_length() + 0.1).timeout
+	await physics_frame
+	await process_frame
+	_expect(
+		not plant_player.playing
+		and not plant_player.is_in_group(PLANT_AUDIO_LIMITER.AUDIO_GROUP),
+		"The final plant playback finish must release its logical voice."
+	)
+
+	_stop_audio_players(audio_root)
+	audio_root.queue_free()
+	await _drain_cleanup_frames()
+
+
+func _test_spatial_audio_priority() -> void:
+	var audio_root := Node2D.new()
+	root.add_child(audio_root)
+	var camera := Camera2D.new()
+	camera.enabled = true
+	audio_root.add_child(camera)
+	await process_frame
+
+	var active_players: Array[AudioStreamPlayer2D] = []
+	for index in range(AUDIO_LIMITER.MAX_SIMULTANEOUS_ENEMY_HITS):
+		var audio_player := AudioStreamPlayer2D.new()
+		audio_player.stream = ENEMY_HIT_STREAM
+		audio_player.max_polyphony = 1
+		audio_player.max_distance = 800.0
+		audio_player.position = Vector2(500.0 - float(index) * 80.0, 0.0)
+		audio_root.add_child(audio_player)
+		active_players.append(audio_player)
+		AUDIO_LIMITER.play_enemy_hit(audio_player)
+
+	var near_player := AudioStreamPlayer2D.new()
+	near_player.stream = ENEMY_HIT_STREAM
+	near_player.max_polyphony = 1
+	near_player.max_distance = 800.0
+	near_player.position = Vector2(24.0, 0.0)
+	audio_root.add_child(near_player)
+	AUDIO_LIMITER.play_enemy_hit(near_player)
+	_expect(near_player.playing, "A nearer hit sound must replace the farthest saturated voice.")
+	_expect(not active_players[0].playing, "Spatial replacement must stop the farthest active hit sound.")
+	_expect(
+		AUDIO_LIMITER._count_active_audio_players(
+			self,
+			AUDIO_LIMITER.ENEMY_HIT_AUDIO_GROUP
+		) == AUDIO_LIMITER.MAX_SIMULTANEOUS_ENEMY_HITS,
+		"Spatial replacement must preserve the hard hit-audio voice cap."
+	)
+
+	var farther_player := AudioStreamPlayer2D.new()
+	farther_player.stream = ENEMY_HIT_STREAM
+	farther_player.max_polyphony = 1
+	farther_player.max_distance = 800.0
+	farther_player.position = Vector2(700.0, 0.0)
+	audio_root.add_child(farther_player)
+	AUDIO_LIMITER.play_enemy_hit(farther_player)
+	_expect(not farther_player.playing, "A farther request must not evict a nearer saturated voice.")
+
+	var inaudible_player := AudioStreamPlayer2D.new()
+	inaudible_player.stream = ENEMY_HIT_STREAM
+	inaudible_player.max_polyphony = 1
+	inaudible_player.max_distance = 100.0
+	inaudible_player.position = Vector2(200.0, 0.0)
+	audio_root.add_child(inaudible_player)
+	AUDIO_LIMITER.play_enemy_hit(inaudible_player)
+	_expect(not inaudible_player.playing, "A request beyond max_distance must not consume a voice.")
 
 	_stop_audio_players(audio_root)
 	audio_root.queue_free()
@@ -234,26 +381,6 @@ func _test_attack_stream_contracts() -> void:
 	_expect(FIRE_RANGED_CONFIG.attack_audio_stream != null, "Yuanshi fire attack stream must remain configured.")
 
 
-func _test_first_wave_audio_test_contract() -> void:
-	var expected_configs := [SWORDSMAN_CONFIG, KNIGHT_CONFIG, ELITE_KNIGHT_CONFIG, SMG_CONFIG, RPG_CONFIG, AK_CONFIG]
-	_expect(WAVE_01.display_name == "第1波 音效测试", "Wave 01 must be marked as the audio test wave.")
-	_expect(WAVE_01.get_total_enemy_count() == expected_configs.size(), "Wave 01 audio test wave must spawn one of each target enemy.")
-	_expect(WAVE_01.enemy_entries.size() == expected_configs.size(), "Wave 01 audio test wave must not include extra enemy entries.")
-	for enemy_config in expected_configs:
-		_expect(
-			_count_wave_entries_for_config(WAVE_01, enemy_config) == 1,
-			"Wave 01 audio test wave must include exactly one %s." % enemy_config.display_name
-		)
-	for entry in WAVE_01.enemy_entries:
-		if entry == null or entry.enemy_config == null:
-			_expect(false, "Wave 01 audio test wave must not include empty entries.")
-			continue
-		_expect(
-			expected_configs.has(entry.enemy_config),
-			"Wave 01 audio test wave contains an unexpected enemy: %s." % _resource_path(entry.enemy_config)
-		)
-
-
 func _expect_scene_audio_volume(scene: PackedScene, node_path: NodePath, expected_volume: float, message: String) -> void:
 	var instance := scene.instantiate()
 	_expect(instance != null, "%s must instantiate for audio mix test." % scene.resource_path)
@@ -301,14 +428,6 @@ func _count_playing(players: Array[AudioStreamPlayer2D]) -> int:
 		if player.playing:
 			playing_count += 1
 	return playing_count
-
-
-func _count_wave_entries_for_config(wave_config: WaveConfig, enemy_config: EnemyConfig) -> int:
-	var total := 0
-	for entry in wave_config.enemy_entries:
-		if entry != null and entry.enemy_config == enemy_config:
-			total += entry.count
-	return total
 
 
 func _expect(condition: bool, message: String) -> void:

@@ -175,6 +175,11 @@ var collectible_ranged_front_damage_multiplier: float = 1.0
 var collectible_ranged_back_damage_multiplier: float = 1.0
 var collectible_ranged_dodge_chance: float = 0.0
 var collectible_sakura_rocket_scene_cache: PackedScene = null
+var active_collectible_items_cache: Array[PickupConfig] = []
+var active_periodic_collectible_items_cache: Array[PickupConfig] = []
+var active_periodic_collectible_keys_cache: Array[String] = []
+var active_collectible_cache_initialized := false
+var _expired_collectible_trigger_cooldown_keys: Array[String] = []
 var _sakura_runtime_load_requested := false
 var last_base_upgrade_was_free: bool = false
 var _last_skill_activation_msec: int = -MIN_SKILL_ACTIVATION_INTERVAL_MSEC
@@ -196,13 +201,28 @@ var _skill1_charge_bar_base_position: Vector2 = Vector2.ZERO
 var _name_label_base_position: Vector2 = Vector2.ZERO
 var _nameplate_label_settings: LabelSettings = null
 var _nameplate_default_font_color: Color = DEFAULT_NAMEPLATE_FONT_COLOR
+var _wall_overlap_query := PhysicsShapeQueryParameters2D.new()
+var _wall_overlap_query_exclude: Array[RID] = []
+var _wall_overlap_probe_required: bool = true
+var _wall_overlap_expected_position := Vector2.ZERO
+var _homing_target_shape := CircleShape2D.new()
+var _homing_target_query := PhysicsShapeQueryParameters2D.new()
 
 
 # 节点首次进入场景树时的初始化逻辑
 func _ready() -> void:
 	_apply_terrain_collision_profile()
+	_configure_wall_overlap_query()
+	_configure_homing_target_query()
+	_wall_overlap_expected_position = global_position
 	_initialize_base_stats()
 	_connect_collectible_refresh_signals()
+	_rebuild_active_collectible_items_cache()
+	# Conditional health effects must evaluate an entering player as healthy,
+	# rather than against the construction-time current_health value of zero.
+	current_health = _get_collectible_health_condition_maximum(
+		active_collectible_items_cache
+	)
 	_refresh_collectible_stats(false)
 	_ensure_skill1_base_charge_duration()
 	current_health = maxi(max_health, 1)
@@ -224,6 +244,7 @@ func _ready() -> void:
 	_update_character_visual_state()
 	_update_skill1_charge_bar()
 	_update_attack_interval_bar()
+	body_sprite.animation_finished.connect(_on_body_sprite_animation_finished)
 	get_window().focus_exited.connect(_on_window_focus_exited)
 
 
@@ -235,6 +256,32 @@ func _apply_terrain_collision_profile() -> void:
 		collision_mask &= ~WATER_TERRAIN_COLLISION_LAYER
 	else:
 		collision_mask |= WATER_TERRAIN_COLLISION_LAYER
+
+
+func _configure_wall_overlap_query() -> void:
+	_wall_overlap_query.shape = collision_shape.shape if collision_shape != null else null
+	_wall_overlap_query.collision_mask = WORLD_COLLISION_MASK
+	_wall_overlap_query.collide_with_bodies = true
+	_wall_overlap_query.collide_with_areas = false
+	_wall_overlap_query_exclude.clear()
+	_wall_overlap_query_exclude.append(get_rid())
+	_wall_overlap_query.exclude = _wall_overlap_query_exclude
+
+
+func _configure_homing_target_query() -> void:
+	_homing_target_shape.radius = HOMING_TARGET_RADIUS
+	_homing_target_query.shape = _homing_target_shape
+	_homing_target_query.collision_mask = HOMING_ENEMY_BODY_MASK
+	_homing_target_query.collide_with_bodies = true
+	_homing_target_query.collide_with_areas = false
+
+
+func _refresh_wall_overlap_probe_gate() -> void:
+	# World collision comes from static authored TileMap geometry. A transform
+	# change outside this movement loop (spawn, revive or network correction) is
+	# therefore the only way to become newly embedded without a preceding slide.
+	if not global_position.is_equal_approx(_wall_overlap_expected_position):
+		_wall_overlap_probe_required = true
 
 
 func _initialize_base_stats() -> void:
@@ -344,6 +391,7 @@ func _physics_process(delta: float) -> void:
 	
 	var move_input := _get_current_move_input()
 	var shoot_input := _get_current_shoot_input()
+	_refresh_wall_overlap_probe_gate()
 	if uses_local_input and Input.is_action_just_pressed(&"dash"):
 		_try_start_dash(move_input)
 	if uses_local_input and mouse_fire_held:
@@ -356,10 +404,25 @@ func _physics_process(delta: float) -> void:
 	var movement_visual_direction := dash_direction if dash_was_active else move_input
 	if dash_was_active:
 		_perform_dash_movement(delta)
+		# A dash can finish against a wall or be corrected by collision recovery.
+		# Probe once when ordinary movement resumes.
+		_wall_overlap_probe_required = true
 	else:
 		velocity = move_input * _get_effective_move_speed()
-		if not _try_apply_wall_overlap_escape(move_input, delta):
+		var applied_wall_overlap_escape := false
+		if _wall_overlap_probe_required:
+			applied_wall_overlap_escape = _try_apply_wall_overlap_escape(
+				move_input,
+				delta
+			)
+		if applied_wall_overlap_escape:
+			# Keep checking until the authored body has completely left the wall.
+			_wall_overlap_probe_required = true
+		else:
 			move_and_slide()
+			if move_input != Vector2.ZERO:
+				_wall_overlap_probe_required = get_slide_collision_count() > 0
+	_wall_overlap_expected_position = global_position
 	_update_movement_status_visuals(movement_visual_direction)
 	_update_footstep_audio(delta, Vector2.ZERO if dash_was_active else move_input)
 
@@ -458,7 +521,11 @@ func uses_attack_interval_bar() -> bool:
 
 
 func plays_multiplayer_death_animation() -> bool:
-	return false
+	return (
+		body_sprite != null
+		and body_sprite.sprite_frames != null
+		and body_sprite.sprite_frames.has_animation(&"death")
+	)
 
 
 func notify_primary_attack_performed() -> void:
@@ -671,6 +738,7 @@ func get_attack_speed() -> float:
 
 
 func refresh_collectible_stats() -> void:
+	_rebuild_active_collectible_items_cache()
 	_refresh_collectible_stats()
 
 
@@ -773,7 +841,27 @@ func configure_multiplayer_control(
 	predict_movement_only: bool = false,
 	highlight_as_local_player: bool = false
 ) -> void:
+	var was_alive_at_full_health := (
+		is_node_ready()
+		and not is_dead
+		and current_health >= max_health
+	)
 	peer_id = new_peer_id
+	# Multiplayer inventories are keyed by peer. Rebind the immutable item cache
+	# as soon as this scene instance receives its authoritative peer identity.
+	_rebuild_active_collectible_items_cache()
+	if is_node_ready():
+		if was_alive_at_full_health:
+			current_health = _get_collectible_health_condition_maximum(
+				active_collectible_items_cache
+			)
+		_refresh_collectible_stats(false)
+		# Players enter the tree before their peer id is assigned. If the active
+		# RunState peer had a different max-health inventory, preserve the intended
+		# full-health spawn instead of retaining that temporary peer's old maximum.
+		if was_alive_at_full_health:
+			current_health = max_health
+			health_bar.set_health(current_health, max_health)
 	uses_local_input = use_local_input
 	client_movement_prediction_only = predict_movement_only
 	mouse_fire_held = false
@@ -1013,9 +1101,14 @@ func apply_multiplayer_realtime_state(
 	new_is_reloading: bool = false,
 	new_reload_progress: float = 0.0
 ) -> void:
+	var previous_health := current_health
+	var previous_max_health := max_health
+	var previous_skill1_unlocked := skill1_unlocked
 	max_health = maxi(new_max_health, 1)
-	current_xirang = maxi(new_current_xirang, 0)
-	xirang_changed.emit(current_xirang, 0)
+	var clamped_xirang := maxi(new_current_xirang, 0)
+	if current_xirang != clamped_xirang:
+		current_xirang = clamped_xirang
+		xirang_changed.emit(current_xirang, 0)
 	_apply_multiplayer_character_realtime_state(
 		new_form_mode,
 		new_shot_pattern,
@@ -1060,6 +1153,12 @@ func apply_multiplayer_realtime_state(
 		revive_multiplayer(global_position, clamped_health, new_invincibility_time_left)
 	else:
 		current_health = clamped_health
+		if (
+			current_health != previous_health
+			or max_health != previous_max_health
+			or skill1_unlocked != previous_skill1_unlocked
+		):
+			_refresh_collectible_stats(false)
 		health_bar.visible = true
 		health_bar.setup(max_health, current_health)
 		health_changed.emit(current_health, max_health)
@@ -1131,7 +1230,8 @@ func set_multiplayer_health_state(new_health: int, new_is_dead: bool) -> void:
 		_apply_tower_defense_hidden_death_state()
 		return
 	current_health = clamped_health
-	if new_is_dead or clamped_health <= 0:
+	_refresh_collectible_stats(false)
+	if new_is_dead or current_health <= 0:
 		apply_multiplayer_death_state()
 		return
 
@@ -1155,6 +1255,7 @@ func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invi
 	mouse_fire_held = false
 	velocity = Vector2.ZERO
 	current_health = max_health if revived_health < 0 else clampi(revived_health, 1, max_health)
+	_refresh_collectible_stats(false)
 	body_sprite.visible = true
 	_update_movement_status_visuals(Vector2.ZERO)
 	if collision_shape != null:
@@ -1202,7 +1303,10 @@ func apply_multiplayer_death_state() -> void:
 	network_reload_requested = false
 	velocity = Vector2.ZERO
 	_update_movement_status_visuals(Vector2.ZERO)
+	var health_condition_may_change := current_health != 0
 	current_health = 0
+	if health_condition_may_change:
+		_refresh_collectible_stats(false)
 	invincibility_time_left = 0.0
 	_set_hurt_blink_enabled(false)
 	_stop_dodge_feedback()
@@ -1214,7 +1318,15 @@ func apply_multiplayer_death_state() -> void:
 	health_bar.visible = false
 	_update_skill1_charge_bar()
 	if plays_multiplayer_death_animation():
-		if not was_dead or not body_sprite.visible or body_sprite.animation != &"death":
+		var keep_completed_tower_death_hidden := (
+			tower_defense_death_presentation_active
+			and was_dead
+			and not body_sprite.visible
+		)
+		if (
+			not keep_completed_tower_death_hidden
+			and (not was_dead or not body_sprite.visible or body_sprite.animation != &"death")
+		):
 			_play_death_animation()
 	else:
 		body_sprite.visible = false
@@ -1237,12 +1349,19 @@ func apply_tower_defense_death_presentation() -> void:
 	_apply_tower_defense_hidden_death_state()
 
 
-func _apply_tower_defense_hidden_death_state() -> void:
+func _apply_tower_defense_hidden_death_state(force_hide_body: bool = false) -> void:
 	controls_locked = true
 	mouse_fire_held = false
 	velocity = Vector2.ZERO
-	body_sprite.stop()
-	body_sprite.hide()
+	var keep_death_animation_visible := (
+		not force_hide_body
+		and body_sprite.visible
+		and body_sprite.animation == &"death"
+		and body_sprite.is_playing()
+	)
+	if not keep_death_animation_visible:
+		body_sprite.stop()
+		body_sprite.hide()
 	nameplate_layer.hide()
 	health_bar.hide()
 	if attack_interval_bar != null:
@@ -1252,6 +1371,15 @@ func _apply_tower_defense_hidden_death_state() -> void:
 	_update_movement_status_visuals(Vector2.ZERO)
 	_update_skill1_charge_bar()
 	_refresh_dash_ready_visual()
+
+
+func _on_body_sprite_animation_finished() -> void:
+	if (
+		is_dead
+		and tower_defense_death_presentation_active
+		and body_sprite.animation == &"death"
+	):
+		_apply_tower_defense_hidden_death_state(true)
 
 
 func _reset_character_resources_on_revive() -> void:
@@ -1572,18 +1700,14 @@ func _find_homing_bullet_target(shoot_direction: Vector2) -> Enemy:
 	var space_state := get_world_2d().direct_space_state
 	if space_state == null:
 		return null
-	var target_shape := CircleShape2D.new()
-	target_shape.radius = HOMING_TARGET_RADIUS
-	var query := PhysicsShapeQueryParameters2D.new()
-	query.shape = target_shape
-	query.transform = Transform2D(0.0, global_position)
-	query.collision_mask = HOMING_ENEMY_BODY_MASK
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
+	_homing_target_query.transform = Transform2D(0.0, global_position)
 	var normalized_direction := shoot_direction.normalized()
 	var best_target: Enemy = null
 	var best_distance_squared := INF
-	for result in space_state.intersect_shape(query, HOMING_QUERY_MAX_RESULTS):
+	for result in space_state.intersect_shape(
+		_homing_target_query,
+		HOMING_QUERY_MAX_RESULTS
+	):
 		var enemy := result.get("collider") as Enemy
 		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
 			continue
@@ -1601,6 +1725,7 @@ func _find_homing_bullet_target(shoot_direction: Vector2) -> Enemy:
 
 
 func _on_collectible_inventory_changed() -> void:
+	_rebuild_active_collectible_items_cache()
 	_refresh_collectible_stats()
 
 
@@ -1610,6 +1735,7 @@ func _on_collectible_xirang_changed(_total: int, _added_amount: int) -> void:
 
 func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	_initialize_base_stats()
+	var active_items := _get_active_collectible_items()
 
 	var attack_bonus := 0
 	var max_health_bonus := 0
@@ -1633,8 +1759,14 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	var ranged_back_damage_multiplier := 1.0
 	var ranged_dodge_chance := 0.0
 	var active_periodic_keys: Dictionary = {}
+	# Health-ratio conditions must use the maximum that this same refresh is
+	# about to publish. Otherwise adding/removing a max-health collectible can
+	# leave a threshold effect one refresh behind.
+	var health_condition_maximum := _get_collectible_health_condition_maximum(
+		active_items
+	)
 
-	for item in _get_active_collectible_items():
+	for item in active_items:
 		if item.periodic_effect_id == PickupConfig.PERIODIC_EFFECT_SAKURA_ROCKET:
 			_request_sakura_runtime_resources()
 		attack_bonus += item.collectible_attack_bonus
@@ -1678,7 +1810,7 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 			var dynamic_defense := defense_steps * item.defense_bonus_per_xirang_step
 			physical_defense_bonus += dynamic_defense
 			magic_defense_bonus += dynamic_defense
-		if _is_collectible_condition_active(item):
+		if _is_collectible_condition_active(item, health_condition_maximum):
 			attack_bonus += item.conditional_attack_bonus
 			max_health_bonus += item.conditional_max_health_bonus
 			move_speed_bonus += item.conditional_move_speed_bonus
@@ -1750,10 +1882,28 @@ func _on_collectible_ammunition_stats_refreshed() -> void:
 
 
 func _get_active_collectible_items() -> Array[PickupConfig]:
-	var result: Array[PickupConfig] = []
+	if not active_collectible_cache_initialized:
+		_rebuild_active_collectible_items_cache()
+	return active_collectible_items_cache
+
+
+func _get_collectible_health_condition_maximum(
+	active_items: Array[PickupConfig]
+) -> int:
+	var result := _base_max_health
+	for item in active_items:
+		result += item.collectible_max_health_bonus
+	return maxi(result, 1)
+
+
+func _rebuild_active_collectible_items_cache() -> void:
+	active_collectible_items_cache.clear()
+	active_periodic_collectible_items_cache.clear()
+	active_periodic_collectible_keys_cache.clear()
+	active_collectible_cache_initialized = false
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if run_state == null:
-		return result
+		return
 
 	var active_copy_counts: Dictionary = {}
 	for slot_index in range(RunStateStore.INVENTORY_CAPACITY):
@@ -1768,7 +1918,7 @@ func _get_active_collectible_items() -> Array[PickupConfig]:
 			if active_copies > 0:
 				continue
 			active_copy_counts[effect_key] = 1
-			result.append(item)
+			active_collectible_items_cache.append(item)
 			continue
 
 		var copies_to_activate := _get_inventory_item_count(run_state, slot_index)
@@ -1778,9 +1928,15 @@ func _get_active_collectible_items() -> Array[PickupConfig]:
 				maxi(item.collectible_max_copies - active_copies, 0)
 			)
 		for _copy_index in range(copies_to_activate):
-			result.append(item)
+			active_collectible_items_cache.append(item)
 		active_copy_counts[effect_key] = active_copies + copies_to_activate
-	return result
+	for item in active_collectible_items_cache:
+		if not item.periodic_effect_id.is_empty() and item.periodic_interval > 0.0:
+			active_periodic_collectible_items_cache.append(item)
+			active_periodic_collectible_keys_cache.append(
+				_get_collectible_runtime_key(item)
+			)
+	active_collectible_cache_initialized = true
 
 
 func _get_inventory_item(run_state: RunStateStore, slot_index: int) -> PickupConfig:
@@ -1803,18 +1959,37 @@ func _get_collectible_runtime_key(item: PickupConfig) -> String:
 	return item.resource_path
 
 
-func _is_collectible_condition_active(item: PickupConfig) -> bool:
+func _is_collectible_condition_active(
+	item: PickupConfig,
+	health_condition_maximum: int = -1
+) -> bool:
 	if item == null or item.conditional_effect_id.is_empty():
 		return false
 	match item.conditional_effect_id:
 		PickupConfig.CONDITION_HEALTH_BELOW:
-			if max_health <= 0:
+			var health_below_maximum := (
+				health_condition_maximum
+				if health_condition_maximum > 0
+				else max_health
+			)
+			if health_below_maximum <= 0:
 				return false
-			return float(current_health) / float(max_health) <= item.conditional_health_ratio_threshold
+			return (
+				float(current_health) / float(health_below_maximum)
+				<= item.conditional_health_ratio_threshold
+			)
 		PickupConfig.CONDITION_HEALTH_ABOVE:
-			if max_health <= 0:
+			var health_above_maximum := (
+				health_condition_maximum
+				if health_condition_maximum > 0
+				else max_health
+			)
+			if health_above_maximum <= 0:
 				return false
-			return float(current_health) / float(max_health) >= item.conditional_health_ratio_threshold
+			return (
+				float(current_health) / float(health_above_maximum)
+				>= item.conditional_health_ratio_threshold
+			)
 		PickupConfig.CONDITION_XIRANG_AT_LEAST:
 			return current_xirang >= item.conditional_xirang_threshold
 		PickupConfig.CONDITION_XIRANG_BELOW:
@@ -2141,21 +2316,25 @@ func _update_collectible_runtime_effects(delta: float) -> void:
 		if collectible_swift_time_left <= 0.0:
 			collectible_swift_move_speed_multiplier = 1.0
 
-	for trigger_key in collectible_trigger_cooldowns.keys():
-		var cooldown := float(collectible_trigger_cooldowns.get(trigger_key, 0.0))
-		cooldown = maxf(cooldown - delta, 0.0)
-		if cooldown <= 0.0:
+	if not collectible_trigger_cooldowns.is_empty():
+		_expired_collectible_trigger_cooldown_keys.clear()
+		for trigger_key: String in collectible_trigger_cooldowns:
+			var cooldown := float(collectible_trigger_cooldowns.get(trigger_key, 0.0))
+			cooldown = maxf(cooldown - delta, 0.0)
+			if cooldown <= 0.0:
+				_expired_collectible_trigger_cooldown_keys.append(trigger_key)
+			else:
+				collectible_trigger_cooldowns[trigger_key] = cooldown
+		for trigger_key in _expired_collectible_trigger_cooldown_keys:
 			collectible_trigger_cooldowns.erase(trigger_key)
-		else:
-			collectible_trigger_cooldowns[trigger_key] = cooldown
+		_expired_collectible_trigger_cooldown_keys.clear()
 
 	if not _should_run_authoritative_collectible_effects():
 		return
 
-	for item in _get_active_collectible_items():
-		if item.periodic_effect_id.is_empty() or item.periodic_interval <= 0.0:
-			continue
-		var cooldown_key := _get_collectible_runtime_key(item)
+	for periodic_index in active_periodic_collectible_items_cache.size():
+		var item := active_periodic_collectible_items_cache[periodic_index]
+		var cooldown_key := active_periodic_collectible_keys_cache[periodic_index]
 		var cooldown := float(
 			collectible_periodic_cooldowns.get(cooldown_key, item.periodic_interval)
 		)
@@ -3270,14 +3449,11 @@ func _try_apply_wall_overlap_escape(move_input: Vector2, delta: float) -> bool:
 
 
 func _get_world_overlap_rest_normal(shape_transform: Transform2D) -> Vector2:
-	var query := PhysicsShapeQueryParameters2D.new()
-	query.shape = collision_shape.shape
-	query.transform = shape_transform
-	query.collision_mask = WORLD_COLLISION_MASK
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	query.exclude = [get_rid()]
-	var result := get_world_2d().direct_space_state.get_rest_info(query)
+	_wall_overlap_query.shape = collision_shape.shape
+	_wall_overlap_query.transform = shape_transform
+	var result := get_world_2d().direct_space_state.get_rest_info(
+		_wall_overlap_query
+	)
 	if result.is_empty():
 		return Vector2.ZERO
 	var normal := result.get("normal", Vector2.ZERO) as Vector2
@@ -3285,15 +3461,10 @@ func _get_world_overlap_rest_normal(shape_transform: Transform2D) -> Vector2:
 
 
 func _count_world_shape_overlaps(shape_transform: Transform2D) -> int:
-	var query := PhysicsShapeQueryParameters2D.new()
-	query.shape = collision_shape.shape
-	query.transform = shape_transform
-	query.collision_mask = WORLD_COLLISION_MASK
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	query.exclude = [get_rid()]
+	_wall_overlap_query.shape = collision_shape.shape
+	_wall_overlap_query.transform = shape_transform
 	return get_world_2d().direct_space_state.intersect_shape(
-		query,
+		_wall_overlap_query,
 		WALL_ESCAPE_QUERY_MAX_RESULTS
 	).size()
 
@@ -3549,6 +3720,8 @@ func upgrade_max_health() -> void:
 	_base_max_health += 5
 	_refresh_collectible_stats(false)
 	current_health = max_health
+	# Full healing can deactivate health-threshold collectibles immediately.
+	_refresh_collectible_stats(false)
 	health_bar.set_health(current_health, max_health)
 	health_changed.emit(current_health, max_health)
 

@@ -148,7 +148,12 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	await physics_frame
 	_expect(game.player.is_dead, "A killed tower-defense player must enter the dead state.")
 	_expect(game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE, "Player death must not end tower defense.")
-	_expect(not game.player.body_sprite.visible, "No player body or death animation may remain in the world.")
+	_expect(
+		game.player.body_sprite.visible
+		and game.player.body_sprite.animation == &"death"
+		and game.player.body_sprite.is_playing(),
+		"Tower-defense death must keep the authored death animation visible while controls are locked."
+	)
 	_expect(not game.player.nameplate_layer.visible, "No world-space revive countdown may remain over the death position.")
 	_expect(game.player.collision_shape.disabled, "A dead tower-defense player must have no world collision.")
 	_expect(game.map_camera.get_parent() == game, "The local camera must detach from the dead player for spectator movement.")
@@ -258,6 +263,11 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	Input.action_release(&"move_right")
 	_expect(game.map_camera.global_position.x > camera_before.x, "Movement input while dead must move only the spectator camera.")
 	_expect(game.player.velocity == Vector2.ZERO, "Spectator input must not move the dead player body.")
+	await create_timer(0.6).timeout
+	_expect(
+		not game.player.body_sprite.visible,
+		"The tower-defense corpse must hide only after its non-looping death animation finishes."
+	)
 
 	game.singleplayer_respawn_time_left = 0.0
 	game.call("_update_singleplayer_respawn", 0.01)
@@ -425,9 +435,18 @@ func _test_multiplayer_all_dead_is_not_defeat() -> void:
 	_expect(game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE, "A full multiplayer team wipe must not end tower defense.")
 	for peer_id in [1, 2]:
 		var player_instance := game.get_player_for_peer(peer_id)
-		_expect(not player_instance.body_sprite.visible, "Every dead multiplayer body must disappear from the world.")
+		_expect(
+			player_instance.body_sprite.visible
+			and player_instance.body_sprite.animation == &"death"
+			and player_instance.body_sprite.is_playing(),
+			"Every multiplayer character must begin its authored death animation before disappearing."
+		)
 		player_instance.apply_multiplayer_death_state()
-		_expect(not player_instance.body_sprite.visible, "Repeated death snapshots must not make a tower-defense corpse reappear.")
+		_expect(
+			player_instance.body_sprite.visible
+			and player_instance.body_sprite.animation == &"death",
+			"Repeated death snapshots must preserve, not restart or hide, an active death animation."
+		)
 	var local_player := game.get_player_for_peer(1)
 	local_player.apply_multiplayer_realtime_state(
 		local_player.max_health,
@@ -442,7 +461,10 @@ func _test_multiplayer_all_dead_is_not_defeat() -> void:
 		local_player.get_multiplayer_shot_pattern()
 	)
 	_expect(local_player.is_dead, "An older alive snapshot must not revive a tower-defense player before the reliable revive event.")
-	_expect(not local_player.body_sprite.visible, "An ignored alive snapshot must keep the dead player hidden.")
+	_expect(
+		local_player.body_sprite.visible and local_player.body_sprite.animation == &"death",
+		"An ignored alive snapshot must leave the active death presentation intact."
+	)
 	local_player.revive_multiplayer(
 		game.get_fixed_multiplayer_respawn_position(1) as Vector2,
 		local_player.max_health,

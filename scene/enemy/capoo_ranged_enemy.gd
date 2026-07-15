@@ -81,15 +81,7 @@ func _has_clear_world_line_to_objective() -> bool:
 
 
 func _has_clear_world_line_to_position(target_position: Vector2) -> bool:
-	var query := PhysicsRayQueryParameters2D.create(
-		global_position,
-		target_position,
-		WORLD_COLLISION_MASK,
-		[get_rid()]
-	)
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	return get_world_2d().direct_space_state.intersect_ray(query).is_empty()
+	return _is_world_segment_clear(target_position, WORLD_COLLISION_MASK)
 
 
 func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> void:

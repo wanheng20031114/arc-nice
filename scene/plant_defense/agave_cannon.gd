@@ -15,6 +15,7 @@ const IDLE_AIM_BURST_INTERVAL_MIN := 0.24
 const IDLE_AIM_BURST_INTERVAL_MAX := 0.38
 const IDLE_AIM_LIMIT := 0.26179939 # 15 degrees; 30 degrees across the full arc.
 const IDLE_AIM_MIN_TARGET_OFFSET := 0.05235988 # 3 degrees from the center.
+const LINEAR_BLOCKED_TARGET_ATTEMPTS := 3
 
 @onready var body_sprite: AnimatedSprite2D = $VisualRoot/BodySprite
 @onready var cannon_pivot: Node2D = $VisualRoot/CannonPivot
@@ -297,23 +298,51 @@ func _select_nearest_visible_enemy() -> Enemy:
 	indexed_target_candidates.clear()
 	var current_scene := get_tree().current_scene
 	if current_scene != null and current_scene.has_method("query_combat_targets_into"):
+		# Most shots have an unobstructed nearest target. Ask the shared index for
+		# only that target first so it can use its linear nearest-selection path;
+		# the adaptive blocked-target path preserves exact nearest-visible behavior
+		# without sorting the full radius for the common one-wall case.
 		current_scene.call(
 			"query_combat_targets_into",
 			global_position,
 			configured_attack_range,
 			indexed_target_candidates,
-			0
+			1
 		)
-		for candidate in indexed_target_candidates:
-			if not _is_valid_target(candidate):
-				continue
-			if (
-				global_position.distance_squared_to(candidate.global_position)
-				> configured_attack_range * configured_attack_range
-			):
-				continue
-			if _has_clear_world_line_to(candidate):
-				return candidate
+		if not indexed_target_candidates.is_empty():
+			var nearest := indexed_target_candidates[0]
+			if _is_valid_target(nearest) and _has_clear_world_line_to(nearest):
+				return nearest
+			current_scene.call(
+				"query_combat_targets_unordered_into",
+				global_position,
+				configured_attack_range,
+				indexed_target_candidates
+			)
+			CombatTargetIndex.take_nearest_candidate(
+				indexed_target_candidates,
+				global_position
+			)
+			var linear_attempts := mini(
+				LINEAR_BLOCKED_TARGET_ATTEMPTS,
+				indexed_target_candidates.size()
+			)
+			for _attempt_index in range(linear_attempts):
+				var candidate := CombatTargetIndex.take_nearest_candidate(
+					indexed_target_candidates,
+					global_position
+				)
+				if _is_valid_target(candidate) and _has_clear_world_line_to(candidate):
+					return candidate
+			CombatTargetIndex.sort_candidates_by_distance(
+				indexed_target_candidates,
+				global_position
+			)
+			for candidate in indexed_target_candidates:
+				if not _is_valid_target(candidate):
+					continue
+				if _has_clear_world_line_to(candidate):
+					return candidate
 		return null
 
 	stale_target_candidate_ids.clear()

@@ -213,6 +213,7 @@ func _run() -> void:
 	_test_enemy_interpolator_iteration_prunes_after_traversal()
 	_test_plant_health_batch_revision_ordering()
 	_test_warehouse_transaction_cache_scope()
+	_test_corn_burst_packed_queue_pressure()
 	await _test_hoe_prediction_confirmation_reconciliation()
 	await _test_tiyi_direct_lookup_retry()
 	await _test_combat_target_query_reuse()
@@ -412,6 +413,85 @@ func _test_warehouse_transaction_cache_scope() -> void:
 		) as Dictionary).get("success", true)),
 		"Warehouse idempotency cache keys must include warehouse_net_id as well as request_id."
 	)
+
+
+func _test_corn_burst_packed_queue_pressure() -> void:
+	var mp_game := _new_mp_game(true)
+	const RECORD_COUNT := 513
+	for record_index in range(RECORD_COUNT):
+		mp_game.call(
+			"_append_corn_machine_gun_burst_visual",
+			1000 + record_index,
+			2000 + record_index,
+			Vector2.RIGHT.rotated(float(record_index % 16) * 0.1),
+			3.0 + float(record_index) * 0.01
+		)
+	var plant_ids: PackedInt32Array = mp_game.get(
+		"_pending_corn_machine_gun_burst_visuals"
+	)
+	var action_ids: PackedInt32Array = mp_game.get(
+		"_pending_corn_machine_gun_burst_action_ids"
+	)
+	var directions: PackedVector2Array = mp_game.get(
+		"_pending_corn_machine_gun_burst_directions"
+	)
+	var host_times: PackedFloat64Array = mp_game.get(
+		"_pending_corn_machine_gun_burst_host_times"
+	)
+	_expect(
+		plant_ids.size() == RECORD_COUNT
+		and action_ids.size() == RECORD_COUNT
+		and directions.size() == RECORD_COUNT
+		and host_times.size() == RECORD_COUNT,
+		"Corn burst pressure queue must keep all four packed columns exactly parallel."
+	)
+	_expect(
+		plant_ids[512] == 1512
+		and action_ids[512] == 2512
+		and directions[512].is_equal_approx(Vector2.RIGHT)
+		and is_equal_approx(host_times[512], 8.12),
+		"Corn burst pressure queue must preserve the final record without truncation or reordering."
+	)
+	# PackedArray.slice uses an exclusive end index and preserves the concrete
+	# packed type. The production flush depends on both details for 32-record
+	# packets and the one-record tail of this pressure fixture.
+	var first_chunk: PackedInt32Array = plant_ids.slice(0, 32)
+	var middle_chunk: PackedInt32Array = plant_ids.slice(32, 64)
+	var tail_chunk: PackedInt32Array = plant_ids.slice(512, 513)
+	var direction_tail: PackedVector2Array = directions.slice(512, 513)
+	var time_tail: PackedFloat64Array = host_times.slice(512, 513)
+	_expect(
+		first_chunk.size() == 32
+		and first_chunk[0] == 1000
+		and first_chunk[31] == 1031
+		and middle_chunk.size() == 32
+		and middle_chunk[0] == 1032
+		and middle_chunk[31] == 1063
+		and tail_chunk.size() == 1
+		and tail_chunk[0] == 1512
+		and direction_tail.size() == 1
+		and direction_tail[0].is_equal_approx(Vector2.RIGHT)
+		and time_tail.size() == 1
+		and is_equal_approx(time_tail[0], 8.12),
+		"Corn burst packed slices must be end-exclusive, typed and retain the final tail record."
+	)
+	mp_game.call("_clear_corn_machine_gun_burst_visuals")
+	_expect(
+		(mp_game.get("_pending_corn_machine_gun_burst_visuals") as PackedInt32Array).is_empty()
+		and (mp_game.get("_pending_corn_machine_gun_burst_action_ids") as PackedInt32Array).is_empty()
+		and (mp_game.get("_pending_corn_machine_gun_burst_directions") as PackedVector2Array).is_empty()
+		and (mp_game.get("_pending_corn_machine_gun_burst_host_times") as PackedFloat64Array).is_empty(),
+		"Corn burst queue cleanup must release every packed column together."
+	)
+	var source := FileAccess.get_file_as_string("res://scene/multiplayer/mp_game.gd")
+	_expect(
+		not source.contains(
+			"var _pending_corn_machine_gun_burst_visuals: Array[Dictionary]"
+		),
+		"Corn burst batching must not regress to one Dictionary allocation per tower action."
+	)
+
+
 func _test_unordered_enemy_chunk_convergence() -> void:
 	var mp_game := _new_mp_game()
 	var sender := SNAPSHOT_MANAGER.new()

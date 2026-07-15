@@ -149,6 +149,19 @@ func net_projectile_fired(
 ) -> void:
 	pass
 
+@rpc("authority", "call_remote", "unreliable_ordered", 4)
+func net_linglan_skill1_ring_batch(
+	projectile_ids: PackedInt64Array,
+	spawn_positions: PackedVector2Array,
+	directions: PackedVector2Array,
+	owner_peer_id: int,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	host_fire_timestamp: float
+) -> void:
+	pass
+
 @rpc("any_peer", "call_remote", "reliable", 4)
 func _rpc_enemy_hit_report(
 	projectile_id: int,

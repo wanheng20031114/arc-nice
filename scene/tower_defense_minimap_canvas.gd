@@ -108,8 +108,8 @@ func _sample_world_entities() -> void:
 			remote_player_positions.append(candidate.global_position)
 
 	var enemy_positions := PackedVector2Array()
-	enemy_positions.append_array(_collect_enemy_positions(enemy_container))
-	enemy_positions.append_array(_collect_enemy_positions(boss_container))
+	_append_enemy_positions(enemy_container, enemy_positions)
+	_append_enemy_positions(boss_container, enemy_positions)
 
 	var plant_positions := PackedVector2Array()
 	if plant_container != null and is_instance_valid(plant_container):
@@ -125,16 +125,17 @@ func _sample_world_entities() -> void:
 	)
 
 
-func _collect_enemy_positions(container: Node2D) -> PackedVector2Array:
-	var positions := PackedVector2Array()
+func _append_enemy_positions(
+	container: Node2D,
+	positions: PackedVector2Array
+) -> void:
 	if container == null or not is_instance_valid(container):
-		return positions
+		return
 	for child in container.get_children():
 		var enemy := child as Enemy
 		if enemy == null or enemy.is_dead:
 			continue
 		positions.append(enemy.global_position)
-	return positions
 
 
 func _rebuild_static_topology() -> void:

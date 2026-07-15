@@ -5,6 +5,23 @@
 [sub_resource type="Gradient" id="Gradient_spawn_particles"]
 colors = PackedColorArray(0.29, 0.95, 0.92, 0.95, 0.15, 0.42, 1, 0)
 
+[sub_resource type="GradientTexture1D" id="GradientTexture_spawn_particles"]
+gradient = SubResource("Gradient_spawn_particles")
+width = 32
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_spawn"]
+particle_flag_disable_z = true
+emission_shape = 1
+emission_sphere_radius = 5.0
+direction = Vector3(0, -1, 0)
+spread = 180.0
+initial_velocity_min = 18.0
+initial_velocity_max = 34.0
+gravity = Vector3(0, 0, 0)
+scale_min = 1.0
+scale_max = 1.8
+color_ramp = SubResource("GradientTexture_spawn_particles")
+
 [node name="YuanshiInsectSpawnEffect" type="Node2D" unique_id=282619779]
 script = ExtResource("1_spawn")
 
@@ -20,18 +37,10 @@ closed = true
 width = 1.0
 default_color = Color(0.42, 0.98, 1, 0.75)
 
-[node name="Particles" type="CPUParticles2D" parent="." unique_id=109168721]
+[node name="Particles" type="GPUParticles2D" parent="." unique_id=109168721]
 emitting = false
 amount = 12
 lifetime = 0.34
 one_shot = true
 explosiveness = 0.85
-emission_shape = 1
-emission_sphere_radius = 5.0
-direction = Vector2(0, -1)
-spread = 180.0
-gravity = Vector2(0, 0)
-initial_velocity_min = 18.0
-initial_velocity_max = 34.0
-scale_amount_max = 1.8
-color_ramp = SubResource("Gradient_spawn_particles")
+process_material = SubResource("ParticleProcessMaterial_spawn")

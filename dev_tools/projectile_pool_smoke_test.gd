@@ -8,6 +8,12 @@ const MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn
 const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
 const AGAVE_CANNONBALL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
 const COLLECTIBLE_ARROW_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
+const LINGLAN_SKILL1_BULLET_SCENE := preload(
+	"res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn"
+)
+const LINGLAN_SAKURA_HIT_EFFECT_SCENE := preload(
+	"res://scene/boss/linglan/linglan_sakura_hit_effect.tscn"
+)
 const COLLECTIBLE_SAKURA_ROCKET_SCENE := preload(
 	"res://scene/collectible_sakura_rocket.tscn"
 )
@@ -43,14 +49,18 @@ func _run() -> void:
 	pool.register_scene(YUANSHI_FIRE_PROJECTILE_SCENE, 1, 2)
 	pool.register_scene(AGAVE_CANNONBALL_SCENE, 1, 2)
 	pool.register_scene(COLLECTIBLE_ARROW_SCENE, 1, 2)
+	pool.register_scene(LINGLAN_SKILL1_BULLET_SCENE, 1, 2)
 	pool.register_scene(COLLECTIBLE_SAKURA_ROCKET_SCENE, 1, 2)
+	pool.register_scene(LINGLAN_SAKURA_HIT_EFFECT_SCENE, 1, 2)
 	pool.register_scene(BULLET_HIT_EFFECT_SCENE, 2, 2)
 	pool.register_scene(ENEMY_HIT_EFFECT_SCENE, 2, 2)
 
 	_verify_world_collision_query_reuse()
+	await _verify_real_reused_query_semantics()
 	await _verify_player_bullet_reuse()
 	await _verify_real_collision_callback_release()
 	await _verify_capoo_bullet_reuse()
+	await _verify_linglan_skill1_reuse()
 	await _verify_extended_projectile_reuse()
 	await _verify_strict_hit_effect_budget()
 	await _finish()
@@ -83,6 +93,194 @@ func _verify_world_collision_query_reuse() -> void:
 				% projectile_scene.resource_path
 			)
 		projectile.free()
+
+	var simple_ray_scenes: Array[PackedScene] = [
+		COLLECTIBLE_ARROW_SCENE,
+		LINGLAN_SKILL1_BULLET_SCENE,
+	]
+	for projectile_scene in simple_ray_scenes:
+		var projectile := projectile_scene.instantiate() as Area2D
+		fixture.add_child(projectile)
+		var query := projectile.get("world_collision_query") as PhysicsRayQueryParameters2D
+		var exclude := projectile.get("world_collision_exclude") as Array
+		var from_position := Vector2(2.0, 4.0)
+		var to_position := Vector2(12.0, 14.0)
+		projectile.call("_will_hit_world", from_position, to_position)
+		_expect(
+			query != null
+			and query.from == from_position
+			and query.to == to_position
+			and exclude.size() == 1
+			and exclude[0] == projectile.get_rid(),
+			"%s must update one retained self-excluding world ray query."
+			% projectile_scene.resource_path
+		)
+		projectile.free()
+
+	var skill2_rocket := COLLECTIBLE_SAKURA_ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
+	fixture.add_child(skill2_rocket)
+	var skill2_query := skill2_rocket.hit_collision_query
+	var skill2_exclude := skill2_rocket.hit_collision_exclude
+	skill2_rocket.call("_get_hit", Vector2(7.0, 9.0), Vector2(17.0, 19.0))
+	_expect(
+		skill2_query.from == Vector2(7.0, 9.0)
+		and skill2_query.to == Vector2(17.0, 19.0)
+		and skill2_exclude.size() == 1
+		and skill2_exclude[0] == skill2_rocket.get_rid(),
+		"Linglan Skill2 rockets must update one retained self-excluding hit query."
+	)
+	skill2_rocket.free()
+
+
+func _verify_real_reused_query_semantics() -> void:
+	var wall := StaticBody2D.new()
+	wall.collision_layer = LinglanSakuraBullet.WORLD_COLLISION_MASK
+	wall.collision_mask = 0
+	var wall_collision := CollisionShape2D.new()
+	var wall_shape := RectangleShape2D.new()
+	wall_shape.size = Vector2(18.0, 18.0)
+	wall_collision.shape = wall_shape
+	wall.add_child(wall_collision)
+	fixture.add_child(wall)
+
+	var first_wall_position := Vector2(640.0, 160.0)
+	var second_wall_position := Vector2(640.0, 256.0)
+	wall.global_position = first_wall_position
+	await physics_frame
+
+	var ray_bullet := pool.acquire(LINGLAN_SKILL1_BULLET_SCENE) as LinglanSakuraBullet
+	_expect(ray_bullet != null, "Real ray-query fixture must acquire a pooled Sakura bullet.")
+	if ray_bullet != null:
+		var ray_instance_id := ray_bullet.get_instance_id()
+		var retained_ray_query := ray_bullet.world_collision_query
+		var first_from := first_wall_position - Vector2(48.0, 0.0)
+		var first_to := first_wall_position + Vector2(48.0, 0.0)
+		_expect(
+			ray_bullet.call("_will_hit_world", first_from, first_to),
+			"A pooled ray query must hit a world body at its first lease position."
+		)
+		_expect(
+			retained_ray_query.from == first_from
+			and retained_ray_query.to == first_to
+			and retained_ray_query.collision_mask == LinglanSakuraBullet.WORLD_COLLISION_MASK,
+			"The first ray lease must apply the current segment and world-only collision mask."
+		)
+		_expect(pool.release(ray_bullet), "The first real ray-query lease must release.")
+		await _wait_for_quarantine()
+
+		wall.global_position = second_wall_position
+		await physics_frame
+		var reused_ray_bullet := pool.acquire(
+			LINGLAN_SKILL1_BULLET_SCENE
+		) as LinglanSakuraBullet
+		_expect(
+			reused_ray_bullet != null
+			and reused_ray_bullet.get_instance_id() == ray_instance_id
+			and is_same(reused_ray_bullet.world_collision_query, retained_ray_query),
+			"The second ray lease must reuse the same bullet and query object."
+		)
+		if reused_ray_bullet != null:
+			_expect(
+				not reused_ray_bullet.call("_will_hit_world", first_from, first_to),
+				"A reused ray query must not retain a hit at the first lease position."
+			)
+			var second_from := second_wall_position - Vector2(48.0, 0.0)
+			var second_to := second_wall_position + Vector2(48.0, 0.0)
+			_expect(
+				reused_ray_bullet.call("_will_hit_world", second_from, second_to),
+				"A reused ray query must hit the world body at its second lease position."
+			)
+			_expect(
+				retained_ray_query.from == second_from
+				and retained_ray_query.to == second_to
+				and retained_ray_query.exclude.size() == 1
+				and retained_ray_query.exclude[0] == reused_ray_bullet.get_rid(),
+				"The reused ray query must overwrite its segment while retaining only self-exclusion."
+			)
+			_expect(pool.release(reused_ray_bullet), "The second real ray-query lease must release.")
+			await _wait_for_quarantine()
+
+	var target := PlantDefense.new()
+	target.name = "ExplosionDamageProbePlant"
+	target.collision_layer = CapooRPGRocket.DAMAGEABLE_COLLISION_MASK & 512
+	target.collision_mask = 0
+	target.max_health = 200
+	target.current_health = target.max_health
+	target.physical_defense = 0
+	target.magic_defense = 0
+	var target_collision := CollisionShape2D.new()
+	var target_shape := RectangleShape2D.new()
+	target_shape.size = Vector2(16.0, 16.0)
+	target_collision.shape = target_shape
+	target.add_child(target_collision)
+	fixture.add_child(target)
+
+	var first_explosion_position := Vector2(800.0, 160.0)
+	var second_explosion_position := Vector2(800.0, 256.0)
+	target.global_position = first_explosion_position
+	await physics_frame
+
+	var rocket := pool.acquire(RPG_ROCKET_SCENE) as CapooRPGRocket
+	_expect(rocket != null, "Real explosion-query fixture must acquire a pooled RPG rocket.")
+	if rocket != null:
+		var rocket_instance_id := rocket.get_instance_id()
+		var retained_explosion_query := rocket.explosion_query
+		rocket.global_position = first_explosion_position
+		rocket.setup(Vector2.RIGHT, 17, 0.0, 1.0, 32.0)
+		var health_before_first_hit := target.current_health
+		rocket.call("_apply_explosion_damage", target)
+		_expect(
+			target.current_health == health_before_first_hit - 17,
+			"Direct-hit plus overlap results must damage a target exactly once per explosion."
+		)
+		_expect(
+			rocket.explosion_damaged_bodies.size() == 1
+			and rocket.explosion_damaged_bodies.has(target.get_instance_id()),
+			"The first explosion lease must de-duplicate its direct and overlap hit."
+		)
+		_expect(
+			retained_explosion_query.transform.origin == first_explosion_position
+			and retained_explosion_query.collision_mask == CapooRPGRocket.DAMAGEABLE_COLLISION_MASK,
+			"The first explosion lease must apply its current transform and damageable mask."
+		)
+		_expect(pool.release(rocket), "The first real explosion-query lease must release.")
+		await _wait_for_quarantine()
+
+		target.global_position = second_explosion_position
+		await physics_frame
+		var reused_rocket := pool.acquire(RPG_ROCKET_SCENE) as CapooRPGRocket
+		_expect(
+			reused_rocket != null
+			and reused_rocket.get_instance_id() == rocket_instance_id
+			and is_same(reused_rocket.explosion_query, retained_explosion_query),
+			"The second explosion lease must reuse the same rocket and shape query."
+		)
+		if reused_rocket != null:
+			_expect(
+				reused_rocket.explosion_damaged_bodies.is_empty(),
+				"The second explosion lease must begin without stale hit de-dup entries."
+			)
+			reused_rocket.global_position = second_explosion_position
+			reused_rocket.setup(Vector2.RIGHT, 17, 0.0, 1.0, 32.0)
+			var health_before_second_hit := target.current_health
+			reused_rocket.call("_apply_explosion_damage")
+			_expect(
+				target.current_health == health_before_second_hit - 17,
+				"A reused explosion query must find and damage the target at its new position once."
+			)
+			_expect(
+				retained_explosion_query.transform.origin == second_explosion_position
+				and retained_explosion_query.collision_mask == CapooRPGRocket.DAMAGEABLE_COLLISION_MASK
+				and reused_rocket.explosion_damaged_bodies.size() == 1
+				and reused_rocket.explosion_damaged_bodies.has(target.get_instance_id()),
+				"The reused explosion query must overwrite its transform, keep its mask, and rebuild de-dup state."
+			)
+			_expect(pool.release(reused_rocket), "The second real explosion-query lease must release.")
+			await _wait_for_quarantine()
+
+	wall.queue_free()
+	target.queue_free()
+	await physics_frame
 
 
 func _verify_player_bullet_reuse() -> void:
@@ -213,7 +411,6 @@ func _verify_capoo_bullet_reuse() -> void:
 	pool.release(ak)
 	smg.retire(false)
 	await _wait_for_quarantine()
-
 	var reused_ak := pool.acquire(AK_BULLET_SCENE) as CapooAK47Bullet
 	_expect(reused_ak != null and reused_ak.get_instance_id() == ak_id, "AK bullet must reuse its retained instance.")
 	if reused_ak == null:
@@ -240,6 +437,117 @@ func _verify_capoo_bullet_reuse() -> void:
 	await _wait_for_quarantine()
 
 
+func _verify_linglan_skill1_reuse() -> void:
+	var bullet := pool.acquire(LINGLAN_SKILL1_BULLET_SCENE) as LinglanSakuraBullet
+	_expect(bullet != null, "Linglan Skill1 bullet pool must provide its prewarmed lease.")
+	if bullet == null:
+		return
+	var first_instance_id := bullet.get_instance_id()
+	var retained_query := bullet.world_collision_query
+	var retained_exclude := bullet.world_collision_exclude
+	var finished_ids: Array[int] = []
+	bullet.projectile_finished.connect(
+		func(projectile_id: int, projectile: Node) -> void:
+			if projectile == bullet:
+				finished_ids.append(projectile_id)
+	)
+	bullet.setup(Vector2.DOWN, 91, 777.0, 8.0)
+	bullet.setup_multiplayer(1701, 17, &"contaminated")
+	bullet.modulate = Color.RED
+	bullet.self_modulate = Color.BLUE
+	bullet.collision_layer = 0
+	bullet.collision_mask = 0
+	bullet.animated_sprite.hide()
+	bullet.animated_sprite.frame = 1
+	bullet.retire()
+	_expect(
+		finished_ids == [1701],
+		"Linglan Skill1 retirement must publish its current network identity once."
+	)
+	await _wait_for_quarantine()
+
+	var reused := pool.acquire(LINGLAN_SKILL1_BULLET_SCENE) as LinglanSakuraBullet
+	_expect(
+		reused != null and reused.get_instance_id() == first_instance_id,
+		"Linglan Skill1 bullets must reuse the retained Area2D instance."
+	)
+	if reused == null:
+		return
+	_expect(reused.pool_active and not reused.has_hit, "Reused Sakura bullets must clear consumed state.")
+	_expect(
+		reused.direction == Vector2.RIGHT
+		and reused.damage == 50
+		and is_equal_approx(reused.speed, 300.0)
+		and is_equal_approx(reused.max_lifetime, 2.0)
+		and is_equal_approx(reused.remaining_lifetime, 2.0),
+		"Reused Sakura bullets must restore authored direction, damage, speed, and lifetime."
+	)
+	_expect(
+		reused.projectile_id == 0
+		and reused.owner_peer_id == 0
+		and reused.source_type == &"linglan_skill1",
+		"Reused Sakura bullets must clear multiplayer lease identity."
+	)
+	_expect(
+		reused.position == Vector2.ZERO
+		and is_zero_approx(reused.rotation)
+		and reused.modulate == Color.WHITE
+		and reused.self_modulate == Color.WHITE,
+		"Reused Sakura bullets must reset transform and tint state."
+	)
+	_expect(
+		reused.collision_layer == 128
+		and reused.collision_mask == 3
+		and reused.monitoring
+		and reused.monitorable,
+		"Reused Sakura bullets must restore their complete collision profile."
+	)
+	_expect(
+		is_same(retained_query, reused.world_collision_query)
+		and is_same(retained_exclude, reused.world_collision_exclude)
+		and retained_exclude.size() == 1
+		and retained_exclude[0] == reused.get_rid(),
+		"Sakura bullet reuse must retain one self-excluding world query."
+	)
+	_expect(
+		reused.animated_sprite.visible
+		and reused.animated_sprite.frame == 0
+		and reused.animated_sprite.is_playing(),
+		"Sakura bullet reuse must restart its visible flight animation from frame zero."
+	)
+	reused.setup_multiplayer(1702, 18, &"linglan_skill1")
+	reused.retire()
+	_expect(
+		finished_ids == [1701, 1702],
+		"A reused Sakura bullet must not accumulate duplicate lifecycle callbacks."
+	)
+	await _wait_for_quarantine()
+
+	var effect := pool.acquire(LINGLAN_SAKURA_HIT_EFFECT_SCENE) as LinglanSakuraHitEffect
+	_expect(effect != null and effect.pool_active, "Linglan hit particles must use an elastic pooled lease.")
+	if effect == null:
+		return
+	var effect_id := effect.get_instance_id()
+	effect.setup(Vector2.UP)
+	_expect(effect.emitting, "Pooled Linglan hit particles must emit after setup.")
+	effect.call("_on_finished")
+	await _wait_for_quarantine()
+	var reused_effect := pool.acquire(
+		LINGLAN_SAKURA_HIT_EFFECT_SCENE
+	) as LinglanSakuraHitEffect
+	_expect(
+		reused_effect != null
+		and reused_effect.get_instance_id() == effect_id
+		and reused_effect.pool_active
+		and not reused_effect.emitting
+		and is_zero_approx(reused_effect.rotation),
+		"Linglan hit particles must reset emission and orientation between leases."
+	)
+	if reused_effect != null:
+		reused_effect.call("_on_finished")
+	await _wait_for_quarantine()
+
+
 func _verify_extended_projectile_reuse() -> void:
 	var scenes: Array[PackedScene] = [
 		RPG_ROCKET_SCENE,
@@ -247,11 +555,12 @@ func _verify_extended_projectile_reuse() -> void:
 		YUANSHI_FIRE_PROJECTILE_SCENE,
 		AGAVE_CANNONBALL_SCENE,
 		COLLECTIBLE_ARROW_SCENE,
+		LINGLAN_SKILL1_BULLET_SCENE,
 		COLLECTIBLE_SAKURA_ROCKET_SCENE,
 	]
 	for projectile_scene in scenes:
-		var retained_agave_query: PhysicsShapeQueryParameters2D = null
-		var retained_agave_targets: Dictionary = {}
+		var retained_explosion_query: PhysicsShapeQueryParameters2D = null
+		var retained_explosion_targets: Dictionary = {}
 		var projectile := pool.acquire(projectile_scene)
 		_expect(projectile != null, "%s must be acquirable from the elastic pool." % projectile_scene.resource_path)
 		if projectile == null:
@@ -262,12 +571,18 @@ func _verify_extended_projectile_reuse() -> void:
 		projectile.set("direction", Vector2.DOWN)
 		projectile.set("damage", 99)
 		projectile.set("remaining_lifetime", 0.125)
+		if projectile_scene in [RPG_ROCKET_SCENE, MAGE_FIREBALL_SCENE, AGAVE_CANNONBALL_SCENE, COLLECTIBLE_SAKURA_ROCKET_SCENE]:
+			retained_explosion_query = projectile.get("explosion_query") as PhysicsShapeQueryParameters2D
+			var target_property := (
+				"explosion_targets"
+				if projectile_scene == AGAVE_CANNONBALL_SCENE
+				else "explosion_damaged_ids"
+				if projectile_scene == COLLECTIBLE_SAKURA_ROCKET_SCENE
+				else "explosion_damaged_bodies"
+			)
+			retained_explosion_targets = projectile.get(target_property) as Dictionary
+			retained_explosion_targets[999] = null
 		if projectile_scene == AGAVE_CANNONBALL_SCENE:
-			retained_agave_query = projectile.get(
-				"explosion_query"
-			) as PhysicsShapeQueryParameters2D
-			retained_agave_targets = projectile.get("explosion_targets") as Dictionary
-			retained_agave_targets[999] = null
 			projectile.set("authoritative_damage", false)
 		if projectile_scene == COLLECTIBLE_SAKURA_ROCKET_SCENE:
 			projectile.set("speed", 13.0)
@@ -300,13 +615,25 @@ func _verify_extended_projectile_reuse() -> void:
 			float(reused.get("remaining_lifetime")) > 0.0,
 			"%s must restore a positive lifetime." % projectile_scene.resource_path
 		)
+		if retained_explosion_query != null:
+			var target_property := (
+				"explosion_targets"
+				if projectile_scene == AGAVE_CANNONBALL_SCENE
+				else "explosion_damaged_ids"
+				if projectile_scene == COLLECTIBLE_SAKURA_ROCKET_SCENE
+				else "explosion_damaged_bodies"
+			)
+			_expect(
+				is_same(retained_explosion_query, reused.get("explosion_query"))
+				and is_same(retained_explosion_targets, reused.get(target_property))
+				and retained_explosion_targets.is_empty(),
+				"%s must retain explosion query containers while clearing lease de-dup state."
+				% projectile_scene.resource_path
+			)
 		if projectile_scene == AGAVE_CANNONBALL_SCENE:
 			_expect(
-				is_same(retained_agave_query, reused.get("explosion_query"))
-				and is_same(retained_agave_targets, reused.get("explosion_targets"))
-				and retained_agave_targets.is_empty()
-				and bool(reused.get("authoritative_damage")),
-				"Pooled Agave cannonballs must retain query containers while clearing client/damage lease state."
+				bool(reused.get("authoritative_damage")),
+				"Pooled Agave cannonballs must restore authoritative damage state."
 			)
 		if projectile_scene == COLLECTIBLE_SAKURA_ROCKET_SCENE:
 			var sakura_rocket := reused as LinglanSkill2SakuraRocket

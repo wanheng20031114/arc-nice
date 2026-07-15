@@ -178,7 +178,8 @@ func _drop_xirang() -> void:
 		config.xirang_drop_amount,
 		reward_player,
 		global_position,
-		aggregate_offset
+		aggregate_offset,
+		mini(config.xirang_drop_amount, MAX_XIRANG_ORBS_PER_ENEMY)
 	):
 		return
 

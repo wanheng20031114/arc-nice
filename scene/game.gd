@@ -1,7 +1,6 @@
 extends GameRuntimeBase
 class_name Game
 
-const ENEMY_SPAWN_EFFECT_SCENE := preload("res://scene/enemy/yuanshi_insect_spawn_effect.tscn")
 const PLAYER_BULLET_POOL_SCENE := preload("res://scene/bullet.tscn")
 const CAPOO_AK47_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo_ak47_bullet.tscn")
 const CAPOO_SMG_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
@@ -13,8 +12,12 @@ const COLLECTIBLE_ARROW_POOL_SCENE := preload("res://scene/collectible_arrow_pro
 const COLLECTIBLE_SAKURA_ROCKET_POOL_SCENE := preload(
 	"res://scene/collectible_sakura_rocket.tscn"
 )
-const BULLET_HIT_EFFECT_POOL_SCENE := preload("res://scene/bullet_hit_effect.tscn")
-const ENEMY_HIT_EFFECT_POOL_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")
+const LINGLAN_SKILL1_BULLET_POOL_SCENE := preload(
+	"res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn"
+)
+const LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE := preload(
+	"res://scene/boss/linglan/linglan_sakura_hit_effect.tscn"
+)
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/guardian_point_light.png")
 const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
 const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := "res://scene/boss/linglan/linglan_boss_intro_vfx.tscn"
@@ -29,7 +32,6 @@ const PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS := 4
 const PURCHASE_RESULT_SKILL1_UPGRADE_MAXED := 5
 const MIN_WAVE_SPAWN_INTERVAL_SECONDS := 0.1
 const MAX_WAVE_SPAWN_COUNT_PER_TICK := 4
-const SPAWN_EFFECTS_PER_SECOND_LIMIT := 24
 const DEFAULT_MUSIC_VOLUME_DB := -6.0
 const MUSIC_FADE_IN_SECONDS := 3.0
 const MUSIC_FADE_IN_START_VOLUME_DB := -12.0
@@ -101,8 +103,6 @@ var enemy_retarget_time_left: float = 0.0
 var next_multiplayer_enemy_net_id: int = 1
 var next_multiplayer_pickup_net_id: int = 1000
 var multiplayer_defeat_check_pending: bool = false
-var spawn_effect_budget_started_msec: int = 0
-var spawn_effects_this_second: int = 0
 var luoxi_collectible_claim_counts: Dictionary = {}
 var linglan_boss_started: bool = false
 var active_boss_config: Resource
@@ -133,7 +133,7 @@ func _ready() -> void:
 	_collect_enemy_spawn_points()
 	_configure_timers()
 	_prewarm_enemy_visual_resources()
-	session_object_pool.register_scene(ENEMY_SPAWN_EFFECT_SCENE, 16, 24)
+	GameRuntimeBase.register_common_visual_effect_pools(session_object_pool)
 	session_object_pool.register_scene(PLAYER_BULLET_POOL_SCENE, 64, 768)
 	session_object_pool.register_scene(CAPOO_AK47_BULLET_POOL_SCENE, 32, 384)
 	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
@@ -143,8 +143,12 @@ func _ready() -> void:
 	session_object_pool.register_scene(AGAVE_CANNONBALL_POOL_SCENE, 16, 128)
 	session_object_pool.register_scene(COLLECTIBLE_ARROW_POOL_SCENE, 24, 192)
 	session_object_pool.register_scene(COLLECTIBLE_SAKURA_ROCKET_POOL_SCENE, 8, 64)
-	session_object_pool.register_scene(BULLET_HIT_EFFECT_POOL_SCENE, 48, 48)
-	session_object_pool.register_scene(ENEMY_HIT_EFFECT_POOL_SCENE, 96, 96)
+	# 18 rings/s * 20 directions * 2 s lifetime = 720 live bullets. The extra
+	# retained headroom covers the pool's one-physics-frame release quarantine;
+	# elastic acquisition still preserves every shot after an unusually long frame.
+	session_object_pool.register_scene(LINGLAN_SKILL1_BULLET_POOL_SCENE, 64, 768)
+	# A 0.16 s effect at the same peak fire rate needs about 58 concurrent leases.
+	session_object_pool.register_scene(LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE, 16, 96)
 	if not enemy_container.child_entered_tree.is_connected(
 		_on_dynamic_pickup_container_child_entered
 	):
@@ -2268,8 +2272,7 @@ func _get_player_primary_cooldown_ratio(player_instance: Player) -> float:
 
 
 func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
-	var containers: Array[Node] = [enemy_container, boss_container]
-	return collect_reused_enemy_snapshot_states(containers)
+	return collect_reused_enemy_snapshot_states(enemy_container, boss_container)
 
 
 func _update_multiplayer_enemy_targets(delta: float) -> void:
@@ -2488,7 +2491,7 @@ func _pick_spawn_point() -> Marker2D:
 
 
 func _spawn_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
-	if not _consume_spawn_effect_budget():
+	if not try_reserve_enemy_spawn_effect(spawn_global_position):
 		return
 	var effect := session_object_pool.acquire(ENEMY_SPAWN_EFFECT_SCENE) as Node2D
 	if effect == null:
@@ -2500,17 +2503,6 @@ func _spawn_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
 
 func play_remote_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
 	_spawn_enemy_spawn_effect(spawn_global_position)
-
-
-func _consume_spawn_effect_budget() -> bool:
-	var now := Time.get_ticks_msec()
-	if now - spawn_effect_budget_started_msec >= 1000:
-		spawn_effect_budget_started_msec = now
-		spawn_effects_this_second = 0
-	if spawn_effects_this_second >= SPAWN_EFFECTS_PER_SECOND_LIMIT:
-		return false
-	spawn_effects_this_second += 1
-	return true
 
 
 func _play_countdown_tick() -> void:

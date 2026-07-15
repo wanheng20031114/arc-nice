@@ -20,6 +20,12 @@ var _authored_speed: float = 360.0
 var _authored_max_lifetime: float = 1.8
 var _authored_collision_layer: int = 16
 var _authored_collision_mask: int = 5
+var world_collision_exclude: Array[RID] = []
+var world_collision_query := PhysicsRayQueryParameters2D.create(
+	Vector2.ZERO,
+	Vector2.ZERO,
+	WORLD_COLLISION_MASK
+)
 
 
 func _ready() -> void:
@@ -29,6 +35,10 @@ func _ready() -> void:
 	_authored_collision_mask = collision_mask
 	remaining_lifetime = maxf(max_lifetime, 0.01)
 	pool_active = not has_meta(SessionObjectPool.POOL_OWNER_META)
+	world_collision_exclude.append(get_rid())
+	world_collision_query.exclude = world_collision_exclude
+	world_collision_query.collide_with_bodies = true
+	world_collision_query.collide_with_areas = false
 
 
 func on_pool_acquired(_generation: int) -> void:
@@ -93,15 +103,9 @@ func _physics_process(delta: float) -> void:
 
 
 func _will_hit_world(from_position: Vector2, to_position: Vector2) -> bool:
-	var query := PhysicsRayQueryParameters2D.create(
-		from_position,
-		to_position,
-		WORLD_COLLISION_MASK,
-		[get_rid()]
-	)
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	return not get_world_2d().direct_space_state.intersect_ray(query).is_empty()
+	world_collision_query.from = from_position
+	world_collision_query.to = to_position
+	return not get_world_2d().direct_space_state.intersect_ray(world_collision_query).is_empty()
 
 
 func _on_body_entered(body: Node2D) -> void:
