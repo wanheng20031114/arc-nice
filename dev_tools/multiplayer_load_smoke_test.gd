@@ -14,8 +14,6 @@ const PICKUP_SPEED_CONFIG := preload("res://resources/config/pickups/pickup_spee
 const PICKUP_SPIRAL_CONFIG := preload("res://resources/config/pickups/pickup_spiral.tres")
 const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
 const WOOD_MATERIAL := preload("res://resources/config/materials/material_wood.tres")
-const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
-const XIRANG_DROP_CONFIG := preload("res://resources/config/xirang_drop.tres")
 const LINGLAN_SKILL2_ROCKET_SCENE := preload("res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn")
 const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 const ARCHER_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_archer.tres")
@@ -58,7 +56,6 @@ func _run() -> void:
 	_test_enemy_snapshot_chunk_codec()
 	_test_delta_snapshot_peer_cache_cleanup()
 	_test_freed_pickup_index_cleanup()
-	_test_xirang_drop_attraction_radius()
 	await _test_enemy_proxy_action_animation_restore()
 	await _test_player_multiplayer_death_visual_state()
 	await _test_multiplayer_revive_position_uses_living_players()
@@ -633,17 +630,6 @@ func _test_freed_pickup_index_cleanup() -> void:
 	_expect(game.get_pickup_for_net_id(77) == null, "Game must ignore freed pickup references by net id.")
 	_expect(not game.multiplayer_pickups.has(77), "Game must erase freed pickup references from the net id index.")
 	game.free()
-
-
-func _test_xirang_drop_attraction_radius() -> void:
-	_expect(
-		XIRANG_DROP_CONFIG.attraction_radius >= 4096.0,
-		"Xirang drops must use a full-map attraction radius."
-	)
-	var drop := XIRANG_DROP_SCENE.instantiate()
-	var amount_label := drop.get_node("AmountLabel") as Label
-	_expect(amount_label.size.y >= 20.0, "Xirang drop amount label must leave room for outlined text.")
-	drop.free()
 
 
 func _test_multiplayer_peer_disconnect_cleanup() -> void:
@@ -1787,24 +1773,28 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 	var peer_two := game.get_player_for_peer(2) as Player
 	var peer_three := game.get_player_for_peer(3) as Player
 	if peer_two != null and peer_three != null:
-		var xirang_orbs := mp_game.get("_xirang_orbs") as Dictionary
-		xirang_orbs[440] = {"amount": 9, "drop": null}
-		var peer_two_xirang := peer_two.current_xirang
-		var peer_three_xirang := peer_three.current_xirang
-		mp_game.call("_apply_xirang_orb_collected", 440, 0)
-		mp_game.call("_apply_xirang_orb_collected", 440, 99)
-		_expect(peer_two.current_xirang == peer_two_xirang, "Invalid xirang collectors must not grant peer 2.")
-		_expect(peer_three.current_xirang == peer_three_xirang, "Invalid xirang collectors must not grant peer 3.")
-		_expect(xirang_orbs.has(440), "Invalid xirang collectors must not remove the orb.")
-		mp_game.call("_apply_xirang_orb_collected", 440, 2)
-		_expect(peer_two.current_xirang == peer_two_xirang + 9, "Valid xirang collector must grant peer 2.")
-		_expect(peer_three.current_xirang == peer_three_xirang + 9, "Valid xirang collector must grant peer 3.")
-		_expect(not xirang_orbs.has(440), "Valid xirang collector must remove the collected orb.")
-		peer_two_xirang = peer_two.current_xirang
-		peer_three_xirang = peer_three.current_xirang
-		mp_game.call("_grant_xirang_to_all_players", 12)
-		_expect(peer_two.current_xirang == peer_two_xirang + 12, "Xirang grant must update peer 2.")
-		_expect(peer_three.current_xirang == peer_three_xirang + 12, "Xirang grant must update peer 3.")
+		var xirang_before_by_peer: Dictionary = {}
+		for peer_id in [1, 2, 3, 4]:
+			var initial_reward_player := game.get_player_for_peer(peer_id) as Player
+			if initial_reward_player != null:
+				xirang_before_by_peer[peer_id] = initial_reward_player.current_xirang
+		peer_two.is_dead = true
+		_expect(
+			game.grant_xirang_kill_reward(BASIC_CONFIG.xirang_kill_reward),
+			"Host runtime must accept a configured positive Xirang kill reward."
+		)
+		await process_frame
+		for peer_id in [1, 2, 3, 4]:
+			var settled_reward_player := game.get_player_for_peer(peer_id) as Player
+			_expect(
+				settled_reward_player != null
+				and settled_reward_player.current_xirang
+				== int(xirang_before_by_peer.get(peer_id, 0))
+				+ BASIC_CONFIG.xirang_kill_reward,
+				"A multiplayer enemy kill reward must settle for peer %d by frame end."
+				% peer_id
+			)
+		peer_two.is_dead = false
 		_expect(run_state.try_add_item_for_peer(3, HEALTH_PICKUP), "Peer 3 health pickup must fit for inventory use confirmation testing.")
 		peer_three.current_health = maxi(peer_three.max_health - HEALTH_PICKUP.heal_amount, 1)
 		mp_game.call("net_inventory_item_used", 3, 0, HEALTH_PICKUP.resource_path, true)

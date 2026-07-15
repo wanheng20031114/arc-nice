@@ -2,8 +2,6 @@ extends Enemy
 class_name YuanshiInsect
 
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
-const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
-const MAX_XIRANG_ORBS_PER_ENEMY := 4
 
 # 寻路路径刷新间隔。多只敌人共享 GridPathfinder，但各自按这个节奏更新目标路径。
 @export var path_refresh_interval: float = 0.25
@@ -91,7 +89,6 @@ func _die() -> void:
 	if is_dead:
 		return
 
-	call_deferred("_drop_xirang")
 	_try_drop_pickup()
 	super._die()
 
@@ -158,43 +155,3 @@ func _spawn_dropped_pickup(pickup_config: PickupConfig, spawn_position: Vector2)
 	pickup_instance.config = pickup_config
 	drop_parent.add_child(pickup_instance)
 	pickup_instance.global_position = spawn_position
-
-
-func _drop_xirang() -> void:
-	if config == null:
-		return
-	if config.xirang_drop_amount <= 0:
-		return
-	if not is_instance_valid(reward_player):
-		return
-
-	var drop_parent := get_parent()
-	if drop_parent == null:
-		return
-	var aggregate_angle := random_generator.randf_range(0.0, TAU)
-	var aggregate_distance := random_generator.randf_range(8.0, 18.0)
-	var aggregate_offset := Vector2.RIGHT.rotated(aggregate_angle) * aggregate_distance
-	if _request_xirang_reward(
-		config.xirang_drop_amount,
-		reward_player,
-		global_position,
-		aggregate_offset,
-		mini(config.xirang_drop_amount, MAX_XIRANG_ORBS_PER_ENEMY)
-	):
-		return
-
-	var orb_count := mini(config.xirang_drop_amount, MAX_XIRANG_ORBS_PER_ENEMY)
-	var base_value := floori(float(config.xirang_drop_amount) / float(orb_count))
-	var remainder := config.xirang_drop_amount % orb_count
-
-	for orb_index in range(orb_count):
-		var drop := XIRANG_DROP_SCENE.instantiate() as XirangDrop
-		if drop == null:
-			continue
-
-		var orb_value := base_value + (1 if orb_index < remainder else 0)
-		var angle := random_generator.randf_range(0.0, TAU)
-		var distance := random_generator.randf_range(8.0, 18.0)
-		var landing_offset := Vector2.RIGHT.rotated(angle) * distance
-		drop_parent.add_child(drop)
-		drop.setup(orb_value, reward_player, global_position, landing_offset)

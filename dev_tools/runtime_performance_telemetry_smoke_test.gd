@@ -2,7 +2,6 @@ extends SceneTree
 
 const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
-const XIRANG_SCENE := preload("res://scene/xirang_drop.tscn")
 const TELEMETRY_SCRIPT := preload("res://scene/runtime_performance_telemetry.gd")
 const EXPECTED_WAVE_TOTAL := 1200
 const EXPECTED_MAX_ALIVE := 300
@@ -94,8 +93,8 @@ func _run() -> void:
 		"Telemetry must report exactly 300 active pressure enemies."
 	)
 	_expect(
-		int(counts["active_projectiles"]) == 0 and int(counts["active_xirang"]) == 0,
-		"Spawn-only pressure telemetry must not invent projectiles or xirang."
+		int(counts["active_projectiles"]) == 0,
+		"Spawn-only pressure telemetry must not invent projectiles."
 	)
 	_expect(
 		int(peak_summary["active_enemies"]) == EXPECTED_MAX_ALIVE,
@@ -172,30 +171,18 @@ func _verify_player_bullet_lifetime() -> void:
 
 func _verify_runtime_classification() -> void:
 	var bullet := BULLET_SCENE.instantiate() as Bullet
-	var xirang := XIRANG_SCENE.instantiate() as XirangDrop
-	_expect(bullet != null and xirang != null, "Telemetry classifiers require fixtures.")
-	if bullet == null or xirang == null:
-		if bullet != null:
-			bullet.free()
-		if xirang != null:
-			xirang.free()
+	_expect(bullet != null, "Telemetry classifier requires a projectile fixture.")
+	if bullet == null:
 		return
 
 	bullet.set_physics_process(false)
 	game.add_child(bullet)
-	game.enemy_container.add_child(xirang)
-	xirang.set_process(false)
 	var counts: Dictionary = telemetry.sample_runtime_counts(game)
 	_expect(
 		int(counts["active_projectiles"]) == 1,
 		"Telemetry must recognize a live production Bullet."
 	)
-	_expect(
-		int(counts["active_xirang"]) == 1,
-		"Telemetry must recognize a live XirangDrop."
-	)
 	bullet.queue_free()
-	xirang.queue_free()
 	await process_frame
 	await physics_frame
 

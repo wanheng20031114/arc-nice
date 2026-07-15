@@ -28,7 +28,7 @@
 
 ## 权威边界
 
-- Host 权威：波次生命周期、敌人 AI、敌人生成/移除、敌人受击确认、玩家死亡/复活、掉落/息壤、升级和技能购买。
+- Host 权威：波次生命周期、敌人 AI、敌人生成/移除、敌人受击确认、玩家死亡/复活、普通掉落、击杀息壤奖金、升级和技能购买。
 - Client 上报：本地输入、玩家移动状态、射击方向、客户端投射物生成和命中报告。
 - Client 展示：玩家/敌人插值、伤害数字、死亡/复活倒计时、HUD。
 
@@ -40,7 +40,7 @@
 - 投射物参数：Client -> Host 的玩家 projectile spawn 不再使用客户端上报的 `damage/speed/lifetime`，Host 按玩家权威属性和 projectile 场景默认值重建；生成与命中报告在同一 reliable 通道保持顺序，敌人命中必须具有 Host projectile record，并使用其中的 damage、owner 与穿透属性；projectile id 必须落在 owner peer 的 namespace。
 - 投射物 spawn 边界：Client projectile 的方向必须是有限且长度合理的向量，Host 会规范化后广播；spawn 位置必须靠近 Host 当前或最近接受的玩家位置，容忍窗口为高延迟/速度 buff 留余量。
 - 远端玩家权威状态：Host 现在会被动 tick 远端玩家的无敌、buff 和 skill1 充能；`_rpc_client_player_state` 保留协议字段但不再用客户端上报覆盖 Host 的 invincibility、skill charge、form 和 shot pattern；Host 接受 `skill1_bomb` 时要求并消耗 Host 侧 skill1 充能。
-- 4 人自动覆盖：`multiplayer_load_smoke_test.gd` 现在覆盖 4 peer Host runtime、4 人 player snapshot、升级确认、技能购买确认、死亡/过期 revision/复活确认、远端 skill1 被动充能、全员息壤分发。
+- 4 人自动覆盖：`multiplayer_load_smoke_test.gd` 现在覆盖 4 peer Host runtime、4 人 player snapshot、升级确认、技能购买确认、死亡/过期 revision/复活确认、远端 skill1 被动充能、Host 权威击杀奖金的全员帧末结算。
 - 事件覆盖：`multiplayer_load_smoke_test.gd` 现在直接覆盖敌人命中去重、客户端 enemy removed 清理、客户端 pickup spawn/collect 确认和即时拾取效果应用。
 - Snapshot 边界：玩家/敌人的 position 和 velocity 在 int16 打包前显式饱和到协议可表示范围，避免大地图或异常速度导致二进制回绕。
 - Snapshot 监控：`MpGame` 记录玩家/敌人快照最大包大小和超阈值次数；应用层 payload 超过 `1200 bytes` 时低频 warning，给 4 人 LAN 与高延迟/丢包手测提供带宽压力信号，不改变同步协议。
@@ -70,14 +70,14 @@
 - 敌人快照收敛：`MpGame._rpc_receive_enemy_snapshot()` 现在只在完整敌人快照批次上做 roster reconcile；截断批次仍可更新已解出的敌人插值，但不会把没解出的敌人误判为 stale 后移除。
 - 场景退出清理：`MpGame._exit_tree()` 显式断开 `NetManager.connection_state_changed`、`NetManager.player_left` 和 `Game.return_to_lobby_requested`，降低返回大厅或重开局时旧回调残留的风险。
 - 玩家健康 revision 清理：`net_player_damage_applied()` / `net_player_revived()` 现在会先确认 peer id 和玩家节点有效，再写入 `_player_health_revisions`，避免迟到可靠包指向已离开 peer 时污染后续状态。
-- 息壤拾取入口：`_rpc_xirang_orb_collected()` 拒绝无效 sender；`_apply_xirang_orb_collected()` 要求 collector 仍是当前 `Game.peer_players` 中的有效玩家，避免断线后的迟到拾取或工具上下文 collector=0 触发全员加钱。
+- 息壤击杀奖金：已删除球体生成、吸附、收集、状态表和业务 RPC；Host 在敌人权威死亡时按帧聚合，并给每位当前玩家完整奖金，Client 通过已有绝对玩家快照收敛。协议仍为 v8，四个旧 orb RPC 仅保留同签名的无副作用兼容壳，待下一次统一协议升级再删除。
 - 升级确认入口：`net_upgrade_confirmed()` 现在先确认 peer id 和玩家节点有效，再写入 `RunState.multiplayer_upgrade_levels`，避免不存在 peer 的迟到/异常确认创建升级状态。
 - 手动验证清单：新增 `dev_tools/multiplayer_manual_validation_checklist.md`，固定 4 人 LAN、断线、死亡复活、拾取/升级/技能购买、cheat 和高延迟/轻丢包档位的验证步骤，避免后续手测遗漏关键边界。
 - 玩家列表断线同步：Host 在大厅/加载阶段 `_on_peer_disconnected()` 后会向剩余 Client 同步新的玩家列表；Client 的 `_rpc_sync_player_list()` 会按差异 emit `player_left` / `player_joined`。游戏内断线清理由 `MpGame.player_left` 和 Host 玩家快照 roster 收敛兜底，避免关闭中的 peer 触发大厅 RPC 发送错误。
 - 大厅信号清理：`multiplayer_lobby.gd` 增加显式 NetManager 信号连接/断开 helper，返回大厅或离开多人界面时不保留旧 UI 回调。
 - 开始游戏竞态：`NetManager.host_start_game()` 现在只进入 loading；Host 侧 `MpGame._ready()` 在 `/root/MpGame` 已经存在后再广播 `_rpc_start_game()`，避免 Client 先进入游戏并向尚未入树的 Host `MpGame` 发送输入 RPC。
 - 快照启动宽限：Host `MpGame` 启动后会等待 `0.5s` 再发送玩家/敌人快照，给 Client 从大厅切换到 `/root/MpGame` 留出缓冲，避免可靠 start 事件后紧跟的快照打到尚未存在的 Client 节点。
-- 真实 LAN 探针：新增 `dev_tools/multiplayer_lan_probe_peer.gd` 与 `dev_tools/run_multiplayer_lan_probe.ps1`，可启动 1 Host + 3 Client headless Godot 进程，验证真实 ENet 注册、玩家列表、开始游戏、玩家快照、客户端移动状态上报、敌人生成/移除同步、息壤 orb 收集与全员加钱、死亡/复活状态同步。探针会把 `Node not found`、`Invalid packet received`、`ERR_UNCONFIGURED` 等网络竞态错误视为失败。当前已通过本机 1 Host + 3 Client headless `full` 探针，端口 `29310`，四端均输出 `LAN_PROBE_OK`。
+- 真实 LAN 探针：`dev_tools/multiplayer_lan_probe_peer.gd` 与 `dev_tools/run_multiplayer_lan_probe.ps1` 可启动 1 Host + 3 Client headless Godot 进程，验证真实 ENet 注册、玩家列表、开始游戏、玩家快照、客户端移动状态上报、敌人生成/移除同步、Host 实际击杀后四端收到配置奖金、死亡/复活状态同步。探针会把 `Node not found`、`Invalid packet received`、`ERR_UNCONFIGURED` 等网络竞态错误视为失败。
 - 真实可靠事件探针：`run_multiplayer_lan_probe.ps1` 会让 `client2` 在真实 ENet 连接中依次请求 cheat、攻击升级、技能购买，并等待 Host 确认回写；当前通过日志包含 `LAN_PROBE_EVENT cheat_confirmed`、`upgrade_confirmed`、`skill1_confirmed`。
 - Client 中途离开探针：`run_multiplayer_lan_probe.ps1 -Scenario leave` 会让 `client4` 入局后主动断开，Host、`client2`、`client3` 必须确认该 peer 被清理；当前端口 `29309` 通过，四端均输出 `LAN_PROBE_OK`。
 - 探针退出清理：`multiplayer_lan_probe_peer.gd` 退出前会在断开网络后释放 `MpGame`，并多轮清理断线流程可能切出的 `current_scene` / `MultiplayerLobby` 测试根节点；端口 `29309` / `29310` 的 4 进程验证 stderr 为空。`run_multiplayer_lan_probe.ps1` 现在会把 `ObjectDB instances leaked` / `resources still in use` 也视为失败。

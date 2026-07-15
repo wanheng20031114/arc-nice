@@ -22,5 +22,5 @@ attack_damage = 200
 physical_defense = 20
 move_speed = 80.0
 home_damage = 2
-xirang_drop_amount = 35
+xirang_kill_reward = 35
 pickup_drop_chance = 0.2

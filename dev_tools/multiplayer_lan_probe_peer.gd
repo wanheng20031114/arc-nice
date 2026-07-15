@@ -3,7 +3,6 @@ extends SceneTree
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const LINGLAN_BOSS_ENTRY := preload("res://resources/config/bosses/boss_01_linglan.tres")
-const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 const WOOD_MATERIAL := preload("res://resources/config/materials/material_wood.tres")
 
 const STATE_HOSTING_LAN := 1
@@ -11,7 +10,6 @@ const STATE_LOADING_GAME := 4
 const STATE_IN_GAME := 5
 const DEFAULT_TIMEOUT_SECONDS := 12.0
 const DEFAULT_RUN_SECONDS := 3.0
-const PROBE_XIRANG_AMOUNT := 7
 const PROBE_MODE_LAN := "lan"
 const PROBE_MODE_RELAY := "relay"
 const CLIENT2_PLAYER_NAME := "client2"
@@ -943,36 +941,38 @@ func _run_host_replication_probe(net_manager: Node, mp_game: Node, game: Variant
 	await _wait_seconds(2.5)
 	var spawned_enemy: Enemy = game.get_enemy_for_net_id(spawned_enemy_id)
 	if spawned_enemy == null or not is_instance_valid(spawned_enemy):
-		_fail("Host probe enemy disappeared before explicit removal.")
+		_fail("Host probe enemy disappeared before the configured kill-reward check.")
 		return
-	spawned_enemy.queue_free()
+	var xirang_before_by_peer: Dictionary = {}
+	for peer_id_variant in game.peer_players:
+		var initial_peer_id := int(peer_id_variant)
+		var initial_reward_player := game.get_player_for_peer(initial_peer_id) as Player
+		if initial_reward_player != null and is_instance_valid(initial_reward_player):
+			xirang_before_by_peer[initial_peer_id] = initial_reward_player.current_xirang
+	spawned_enemy.call("_die")
 	if not await _wait_for_host_enemy_removed(game, spawned_enemy_id, 2.0):
-		_fail("Host probe enemy net id was not cleared after removal.")
+		_fail("Host probe enemy net id was not cleared after death.")
 		return
 	print("LAN_PROBE_EVENT host_enemy_removed net_id=%d" % spawned_enemy_id)
-
-	var revision_before := int(mp_game.get("_xirang_revision"))
-	var orb_id := int(mp_game.get("_next_xirang_orb_id"))
-	var drop := XIRANG_DROP_SCENE.instantiate() as XirangDrop
-	if drop == null:
-		_fail("Host probe could not instantiate xirang drop.")
-		return
-	game.enemy_container.add_child(drop)
-	drop.global_position = game.player.global_position + Vector2(48.0, -24.0)
-	mp_game.call("register_xirang_orb", drop, PROBE_XIRANG_AMOUNT)
-	var orbs := mp_game.get("_xirang_orbs") as Dictionary
-	if not orbs.has(orb_id):
-		_fail("Host probe xirang orb was not registered.")
-		return
-	if not await _wait_for_mp_game_int_at_least(
-		mp_game,
-		"_xirang_revision",
-		revision_before + 1,
-		5.0
-	):
-		_fail("Host did not receive client xirang orb collection.")
-		return
-	print("LAN_PROBE_EVENT host_xirang_confirmed orb_id=%d" % orb_id)
+	await process_frame
+	for peer_id_variant in xirang_before_by_peer:
+		var observed_peer_id := int(peer_id_variant)
+		var observed_reward_player := game.get_player_for_peer(observed_peer_id) as Player
+		if (
+			observed_reward_player == null
+			or observed_reward_player.current_xirang
+			!= int(xirang_before_by_peer[observed_peer_id])
+			+ BASIC_ENEMY_CONFIG.xirang_kill_reward
+		):
+			_fail(
+				"Host did not grant the configured Xirang kill reward to peer %d."
+				% observed_peer_id
+			)
+			return
+	print(
+		"LAN_PROBE_EVENT host_xirang_confirmed reward=%d players=%d"
+		% [BASIC_ENEMY_CONFIG.xirang_kill_reward, xirang_before_by_peer.size()]
+	)
 	if not await _wait_for_player_dead(client2_player, 10.0):
 		_fail("Host did not observe client2 death.")
 		return
@@ -1023,9 +1023,9 @@ func _run_client_replication_probe(
 	net_manager: Node,
 	mp_game: Node,
 	game: Variant,
-	collect_orb: bool
+	drive_local_actions: bool
 ) -> void:
-	if collect_orb:
+	if drive_local_actions:
 		await _drive_local_player_motion(mp_game, game)
 
 	var enemy_id := await _wait_for_first_client_enemy_id(mp_game, 4.0)
@@ -1033,35 +1033,29 @@ func _run_client_replication_probe(
 		_fail("Client did not receive probe enemy spawn.")
 		return
 	print("LAN_PROBE_EVENT client_enemy_spawned net_id=%d" % enemy_id)
-	if collect_orb:
-		await _run_client_projectile_hit_probe(mp_game, game, enemy_id)
-	if not await _wait_for_client_enemy_removed(mp_game, enemy_id, 7.0):
-		_fail("Client did not receive probe enemy removal.")
-		return
-	print("LAN_PROBE_EVENT client_enemy_removed net_id=%d" % enemy_id)
-
 	var player := game.player as Player
 	if player == null or not is_instance_valid(player):
 		_fail("Client replication probe missing local player.")
 		return
 	var xirang_before := player.current_xirang
-	var orb := await _wait_for_first_xirang_orb(mp_game, 4.0)
-	var orb_id := int(orb.get("id", 0))
-	var amount := int(orb.get("amount", 0))
-	if orb_id <= 0 or amount <= 0:
-		_fail("Client did not receive probe xirang orb.")
+	if drive_local_actions:
+		await _run_client_projectile_hit_probe(mp_game, game, enemy_id)
+	if not await _wait_for_client_enemy_removed(mp_game, enemy_id, 7.0):
+		_fail("Client did not receive probe enemy removal.")
 		return
-	if collect_orb:
-		await _wait_seconds(0.25)
-		mp_game.call("request_xirang_orb_collected", orb_id)
-	if not await _wait_for_player_xirang_at_least(player, xirang_before + amount, 5.0):
-		_fail("Client did not receive probe xirang grant.")
+	print("LAN_PROBE_EVENT client_enemy_removed net_id=%d" % enemy_id)
+	if not await _wait_for_player_xirang_at_least(
+		player,
+		xirang_before + BASIC_ENEMY_CONFIG.xirang_kill_reward,
+		5.0
+	):
+		_fail("Client did not receive the configured direct Xirang kill reward.")
 		return
 	print(
-		"LAN_PROBE_EVENT client_xirang_confirmed orb_id=%d current_xirang=%d"
-		% [orb_id, player.current_xirang]
+		"LAN_PROBE_EVENT client_xirang_confirmed reward=%d current_xirang=%d"
+		% [BASIC_ENEMY_CONFIG.xirang_kill_reward, player.current_xirang]
 	)
-	if not collect_orb:
+	if not drive_local_actions:
 		await _run_remote_client2_death_view_probe(net_manager, mp_game, game)
 
 
@@ -1359,20 +1353,6 @@ func _wait_for_host_enemy_removed(game: Variant, net_id: int, timeout_seconds: f
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
 		if game == null or not is_instance_valid(game) or game.get_enemy_for_net_id(net_id) == null:
-			return true
-		await process_frame
-	return false
-
-
-func _wait_for_mp_game_int_at_least(
-	mp_game: Node,
-	property_name: StringName,
-	target_value: int,
-	timeout_seconds: float
-) -> bool:
-	var end_time := _now_seconds() + timeout_seconds
-	while _now_seconds() <= end_time:
-		if mp_game != null and is_instance_valid(mp_game) and int(mp_game.get(property_name)) >= target_value:
 			return true
 		await process_frame
 	return false
@@ -1809,22 +1789,6 @@ func _get_valid_client_enemy(mp_game: Node, enemy_id: int) -> Enemy:
 	if enemy_variant == null or not is_instance_valid(enemy_variant):
 		return null
 	return enemy_variant as Enemy
-
-
-func _wait_for_first_xirang_orb(mp_game: Node, timeout_seconds: float) -> Dictionary:
-	var end_time := _now_seconds() + timeout_seconds
-	while _now_seconds() <= end_time:
-		var orbs := mp_game.get("_xirang_orbs") as Dictionary
-		for orb_id_variant in orbs:
-			var orb_id := int(orb_id_variant)
-			var orb_data := orbs.get(orb_id) as Dictionary
-			if orb_id > 0 and not orb_data.is_empty():
-				return {
-					"id": orb_id,
-					"amount": int(orb_data.get("amount", 0)),
-				}
-		await process_frame
-	return {}
 
 
 func _wait_for_peer_removed_from_host(

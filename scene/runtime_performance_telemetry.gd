@@ -40,10 +40,8 @@ var runtime_root: Node = null
 var is_recording := false
 var current_active_enemies := 0
 var current_active_projectiles := 0
-var current_active_xirang := 0
 var peak_active_enemies := 0
 var peak_active_projectiles := 0
-var peak_active_xirang := 0
 
 var _frame_time_samples_ms: Array[float] = []
 var _spawn_batch_samples_ms: Array[float] = []
@@ -83,10 +81,8 @@ func reset() -> void:
 	_last_frame_tick_usec = Time.get_ticks_usec() if is_recording else -1
 	current_active_enemies = 0
 	current_active_projectiles = 0
-	current_active_xirang = 0
 	peak_active_enemies = 0
 	peak_active_projectiles = 0
-	peak_active_xirang = 0
 
 
 func _process(delta: float) -> void:
@@ -147,7 +143,6 @@ func sample_runtime_counts(target_root: Node = null) -> Dictionary:
 	var counts := {
 		"active_enemies": 0,
 		"active_projectiles": 0,
-		"active_xirang": 0,
 	}
 	if inspected_root == null or not is_instance_valid(inspected_root):
 		return counts
@@ -155,13 +150,11 @@ func sample_runtime_counts(target_root: Node = null) -> Dictionary:
 	_accumulate_runtime_counts(inspected_root, counts)
 	current_active_enemies = int(counts["active_enemies"])
 	current_active_projectiles = int(counts["active_projectiles"])
-	current_active_xirang = int(counts["active_xirang"])
 	peak_active_enemies = maxi(peak_active_enemies, current_active_enemies)
 	peak_active_projectiles = maxi(
 		peak_active_projectiles,
 		current_active_projectiles
 	)
-	peak_active_xirang = maxi(peak_active_xirang, current_active_xirang)
 	return counts
 
 
@@ -172,12 +165,10 @@ func get_summary() -> Dictionary:
 		"current": {
 			"active_enemies": current_active_enemies,
 			"active_projectiles": current_active_projectiles,
-			"active_xirang": current_active_xirang,
 		},
 		"peak": {
 			"active_enemies": peak_active_enemies,
 			"active_projectiles": peak_active_projectiles,
-			"active_xirang": peak_active_xirang,
 		},
 	}
 
@@ -193,7 +184,7 @@ func format_summary(prefix: String = "RUNTIME_PERFORMANCE_TELEMETRY") -> String:
 		+ "frame_p99_ms=%.3f frame_max_ms=%.3f spawn_samples=%d "
 		+ "spawn_p50_ms=%.3f spawn_p95_ms=%.3f spawn_p99_ms=%.3f "
 		+ "spawn_max_ms=%.3f active_enemies=%d active_projectiles=%d "
-		+ "active_xirang=%d peak_enemies=%d peak_projectiles=%d peak_xirang=%d"
+		+ "peak_enemies=%d peak_projectiles=%d"
 	) % [
 		prefix,
 		int(frame["sample_count"]),
@@ -208,10 +199,8 @@ func format_summary(prefix: String = "RUNTIME_PERFORMANCE_TELEMETRY") -> String:
 		float(spawn["max_ms"]),
 		int(current["active_enemies"]),
 		int(current["active_projectiles"]),
-		int(current["active_xirang"]),
 		int(peak["active_enemies"]),
 		int(peak["active_projectiles"]),
-		int(peak["active_xirang"]),
 	]
 
 
@@ -271,8 +260,6 @@ func _accumulate_runtime_counts(node: Node, counts: Dictionary) -> void:
 		counts["active_enemies"] = int(counts["active_enemies"]) + 1
 	if _is_active_projectile(node):
 		counts["active_projectiles"] = int(counts["active_projectiles"]) + 1
-	if _is_active_xirang(node):
-		counts["active_xirang"] = int(counts["active_xirang"]) + 1
 	for child in node.get_children():
 		_accumulate_runtime_counts(child, counts)
 
@@ -296,14 +283,6 @@ func _is_active_projectile(node: Node) -> bool:
 	return script != null and PROJECTILE_SCRIPT_PATHS.has(script.resource_path)
 
 
-func _is_active_xirang(node: Node) -> bool:
-	var drop := node as XirangDrop
-	return (
-		drop != null
-		and not drop.is_collected
-		and not drop.is_queued_for_deletion()
-		and _is_pool_instance_active(drop)
-	)
 
 
 func _is_pool_instance_active(node: Node) -> bool:

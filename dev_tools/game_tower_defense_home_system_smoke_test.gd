@@ -707,7 +707,6 @@ func _verify_enemy_contract(game: GameTowerDefense) -> void:
 	)
 	_expect(enemy.target_player == game.player, "setup() must retain the combat player.")
 	_expect(enemy.objective_target == game.player, "setup() must default movement to the player.")
-	_expect(enemy.reward_player == game.player, "setup() must default rewards to the player.")
 	var gate_targets := game.get_home_objective_targets()
 	if not gate_targets.is_empty():
 		enemy.set_objective_target(gate_targets[0])
@@ -739,6 +738,7 @@ func _verify_home_damage_resources() -> void:
 
 func _verify_escape_resolution(game: GameTowerDefense) -> void:
 	var pickup_count_before := _count_reward_nodes(game)
+	var xirang_before := game.player.current_xirang
 	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
 	_expect(enemy != null, "Basic enemy must instantiate for escape verification.")
 	if enemy == null:
@@ -769,7 +769,11 @@ func _verify_escape_resolution(game: GameTowerDefense) -> void:
 	_expect(enemy.is_dead and not enemy.visible, "Escaped enemies must disappear immediately.")
 	await process_frame
 	await process_frame
-	_expect(_count_reward_nodes(game) == pickup_count_before, "Escaped enemies must not drop pickups, materials, or Xirang.")
+	_expect(_count_reward_nodes(game) == pickup_count_before, "Escaped enemies must not drop pickups or materials.")
+	_expect(
+		game.player.current_xirang == xirang_before,
+		"Escaped enemies must not grant a Xirang kill reward."
+	)
 
 	game.call("_apply_base_damage", game.current_base_health)
 	_expect(game.wave_state == GameTowerDefense.WaveState.DEFEAT, "Base health reaching zero must cause defeat.")
@@ -788,7 +792,7 @@ func _verify_escape_resolution(game: GameTowerDefense) -> void:
 
 
 func _count_reward_nodes(node: Node) -> int:
-	var count := 1 if node is Pickup or node is XirangDrop else 0
+	var count := 1 if node is Pickup else 0
 	for child in node.get_children():
 		count += _count_reward_nodes(child)
 	return count

@@ -120,6 +120,8 @@ var runtime_preparation_complete := false
 var runtime_preparation_stage := "等待场景初始化"
 var runtime_preparation_completed_steps := 0
 var runtime_preparation_total_steps := 1
+var _pending_xirang_kill_reward: int = 0
+var _xirang_kill_reward_flush_queued: bool = false
 
 
 @abstract func configure_multiplayer(
@@ -506,23 +508,30 @@ func release_session_object(instance: Node) -> bool:
 	return pool != null and pool.release(instance)
 
 
-func spawn_xirang_reward(
-	amount: int,
-	target_player: Player,
-	spawn_position: Vector2,
-	landing_offset: Vector2 = Vector2.ZERO,
-	preferred_visual_count: int = 1
-) -> bool:
-	var drop_manager := get_node_or_null("XirangDropManager") as XirangDropManager
-	if drop_manager == null:
+func grant_xirang_kill_reward(amount: int) -> bool:
+	if amount <= 0 or runtime_mode == RuntimeMode.CLIENT_VIEW:
 		return false
-	return drop_manager.spawn_reward(
-		amount,
-		target_player,
-		spawn_position,
-		landing_offset,
-		preferred_visual_count
-	)
+	_pending_xirang_kill_reward += amount
+	if not _xirang_kill_reward_flush_queued:
+		_xirang_kill_reward_flush_queued = true
+		call_deferred("_flush_xirang_kill_rewards")
+	return true
+
+
+func _flush_xirang_kill_rewards() -> void:
+	_xirang_kill_reward_flush_queued = false
+	var amount := _pending_xirang_kill_reward
+	_pending_xirang_kill_reward = 0
+	if amount <= 0:
+		return
+	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		if player != null and is_instance_valid(player):
+			player.grant_xirang_reward(amount)
+		return
+	for peer_id_variant in peer_players:
+		var player_node := peer_players[peer_id_variant] as Player
+		if player_node != null and is_instance_valid(player_node):
+			player_node.grant_xirang_reward(amount)
 
 
 func supports_tower_defense() -> bool:

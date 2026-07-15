@@ -3,7 +3,6 @@ class_name CapooKnight
 
 const PLAYER_COLLISION_MASK := 2
 const WORLD_COLLISION_MASK := 1
-const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const CapooKnightConfigScript := preload("res://resources/config/enemies/capoo_knight_config.gd")
 
@@ -92,7 +91,6 @@ func _apply_config() -> void:
 
 func _die() -> void:
 	_cancel_attack()
-	call_deferred("_drop_xirang")
 	_try_drop_pickup()
 	super._die()
 
@@ -435,28 +433,6 @@ func _update_facing(move_direction: Vector2) -> void:
 
 func _play_config_animation(animation_name: StringName) -> void:
 	_play_scene_animation(animation_name)
-
-
-func _drop_xirang() -> void:
-	if config == null or config.xirang_drop_amount <= 0:
-		return
-	if not is_instance_valid(reward_player):
-		return
-	var drop_parent := get_parent()
-	if drop_parent == null:
-		return
-	if _request_xirang_reward(
-		config.xirang_drop_amount,
-		reward_player,
-		global_position,
-		Vector2.ZERO
-	):
-		return
-	var drop := XIRANG_DROP_SCENE.instantiate() as XirangDrop
-	if drop == null:
-		return
-	drop_parent.add_child(drop)
-	drop.setup(config.xirang_drop_amount, reward_player, global_position, Vector2.ZERO)
 
 
 func _try_drop_pickup() -> void:

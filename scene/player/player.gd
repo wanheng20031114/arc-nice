@@ -1390,7 +1390,7 @@ func _cleanup_character_combat_on_death() -> void:
 	pass
 
 
-func grant_multiplayer_xirang(amount: int) -> bool:
+func grant_xirang_reward(amount: int) -> bool:
 	if amount <= 0:
 		return false
 	current_xirang += amount
@@ -1418,19 +1418,6 @@ func _update_multiplayer_nameplate_text(seconds_left: int) -> void:
 
 func get_xirang() -> int:
 	return current_xirang
-
-
-func add_xirang(amount: int) -> bool:
-	if is_dead:
-		return false
-	if amount <= 0:
-		return false
-
-	current_xirang += amount
-	xirang_changed.emit(current_xirang, amount)
-	xirang_pickup_audio.pitch_scale = randf_range(1.12, 1.26)
-	xirang_pickup_audio.play()
-	return true
 
 
 func _grant_xirang_unrestricted(amount: int) -> bool:

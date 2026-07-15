@@ -9,7 +9,6 @@ const TRANSACTION_RPC_METHODS := {
 	&"net_inventory_item_used": true,
 	&"net_inventory_item_discarded": true,
 	&"net_pickup_collected": true,
-	&"net_xirang_granted_all": true,
 	&"net_upgrade_confirmed": true,
 	&"net_skill1_purchase_confirmed": true,
 	&"net_luoxi_collectible_confirmed": true,
@@ -64,7 +63,6 @@ const LINGLAN_SKILL3_ORB_SCENE_PATH := "res://scene/boss/linglan/linglan_skill3_
 const LINGLAN_SKILL4_CONFIG_PATH := "res://resources/config/bosses/linglan_skill4.tres"
 const LINGLAN_SKILL4_ORB_SCENE_PATH := "res://scene/boss/linglan/linglan_skill4_light_orb.tscn"
 const LINGLAN_SKILL4_ORB_SCRIPT_PATH := "res://scene/boss/linglan/linglan_skill4_light_orb.gd"
-const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 const OakWarehouseProtocolScript := preload("res://scene/plant_defense/oak_warehouse_protocol.gd")
 
 const INPUT_BUTTON_RELOAD := 2
@@ -86,7 +84,6 @@ const PLAYER_STATE_SPEED_TOLERANCE_MULTIPLIER := 1.75
 const PLAYER_REVIVE_INVINCIBILITY_SECONDS := 3.0
 const CHEAT_XIRANG_AMOUNT := 1000
 const HIT_DEDUP_RETENTION_SECONDS := 30.0
-const ORB_DEDUP_RETENTION_SECONDS := 60.0
 const COLLECTIBLE_EFFECT_DEDUP_RETENTION_SECONDS := 10.0
 const RECENT_EVENT_PRUNE_INTERVAL_SECONDS := 5.0
 const PROJECTILE_RECORD_RETENTION_SECONDS := 5.0
@@ -226,10 +223,6 @@ var _processed_enemy_hit_ids: Dictionary = {}
 var _processed_player_hit_ids: Dictionary = {}
 var _next_collectible_effect_event_id: int = 1
 var _processed_collectible_effect_event_ids: Dictionary = {}
-var _next_xirang_orb_id: int = 1
-var _xirang_orbs: Dictionary = {}
-var _collected_xirang_orbs: Dictionary = {}
-var _granted_xirang_orbs: Dictionary = {}
 var _host_player_snapshot_sequence: int = 0
 var _host_enemy_snapshot_batch_sequence: int = 0
 var _host_enemy_snapshot_live_ids: Dictionary = {}
@@ -237,7 +230,6 @@ var _player_health_revisions: Dictionary = {}
 var _local_player_hit_revision: int = 0
 var _dead_player_revive_times: Dictionary = {}
 var _dead_player_revive_last_seconds: Dictionary = {}
-var _xirang_revision: int = 0
 var _recent_event_prune_time_left: float = RECENT_EVENT_PRUNE_INTERVAL_SECONDS
 var _snapshot_packet_warn_time_left: float = 0.0
 var _host_startup_snapshot_grace_time_left: float = 0.0
@@ -4366,8 +4358,6 @@ func _prune_recent_event_caches(now: float) -> void:
 	_prune_recent_event_cache(_processed_enemy_hit_ids, now)
 	_prune_recent_event_cache(_processed_player_hit_ids, now)
 	_prune_recent_event_cache(_processed_collectible_effect_event_ids, now)
-	_prune_recent_event_cache(_collected_xirang_orbs, now)
-	_prune_recent_event_cache(_granted_xirang_orbs, now)
 	_prune_projectile_records(now)
 
 
@@ -5300,117 +5290,27 @@ func net_player_healed(peer_id: int, current_health: int, health_revision: int) 
 	player_node.set_multiplayer_health_state(current_health, false)
 
 
-func register_xirang_orb(drop: XirangDrop, amount: int) -> void:
-	if drop == null or not net_manager.is_host():
-		return
-	var orb_id := _next_xirang_orb_id
-	_next_xirang_orb_id += 1
-	drop.setup_multiplayer_orb(orb_id, amount, false)
-	_xirang_orbs[orb_id] = {"amount": amount, "drop": drop}
-	_rpc_to_connected_clients(&"net_xirang_orb_spawned", [orb_id, amount, drop.global_position])
-
-
+# Protocol v8 compatibility shells. Xirang orbs no longer exist, but keeping the
+# annotated signatures avoids a partial wire-protocol break until the next
+# coordinated protocol-version upgrade.
 @rpc("authority", "call_remote", "reliable", 5)
 func net_xirang_orb_spawned(orb_id: int, amount: int, spawn_position: Vector2) -> void:
-	if game == null or net_manager.is_host():
-		return
-	if _xirang_orbs.has(orb_id):
-		return
-	var drop := XIRANG_DROP_SCENE.instantiate() as XirangDrop
-	if drop == null:
-		return
-	game.enemy_container.add_child(drop)
-	drop.global_position = spawn_position
-	drop.setup_multiplayer_orb(orb_id, amount, true)
-	_xirang_orbs[orb_id] = {"amount": amount, "drop": drop}
-
-
-func request_xirang_orb_collected(orb_id: int) -> void:
-	if net_manager.is_host():
-		_apply_xirang_orb_collected(orb_id, _get_local_peer_id())
-	else:
-		_rpc_xirang_orb_collected.rpc_id(_get_host_peer_id(), orb_id)
+	pass
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func _rpc_xirang_orb_collected(orb_id: int) -> void:
-	if not net_manager.is_host():
-		return
-	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
-		return
-	_apply_xirang_orb_collected(orb_id, sender_id)
-
-
-func _apply_xirang_orb_collected(orb_id: int, collector_peer_id: int) -> void:
-	if not _is_valid_xirang_collector_peer(collector_peer_id):
-		return
-	var now := _get_net_time()
-	if (
-		orb_id <= 0
-		or _is_recent_event_cached(_collected_xirang_orbs, orb_id, now)
-		or not _xirang_orbs.has(orb_id)
-	):
-		if collector_peer_id > 0 and is_inside_tree():
-			net_xirang_orb_removed.rpc_id(collector_peer_id, orb_id)
-		return
-	_remember_recent_event(_collected_xirang_orbs, orb_id, ORB_DEDUP_RETENTION_SECONDS, now)
-	var orb_data := _xirang_orbs[orb_id] as Dictionary
-	var amount := int(orb_data.get("amount", 1))
-	var revision := _xirang_revision + 1
-	if is_inside_tree():
-		_rpc_to_connected_clients(&"net_xirang_granted_all", [orb_id, amount, revision])
-	net_xirang_granted_all(orb_id, amount, revision)
-
-
-func _is_valid_xirang_collector_peer(collector_peer_id: int) -> bool:
-	if collector_peer_id <= 0 or game == null:
-		return false
-	var player_node := game.get_player_for_peer(collector_peer_id)
-	return player_node != null and is_instance_valid(player_node)
+	pass
 
 
 @rpc("authority", "call_remote", "reliable", 6)
 func net_xirang_granted_all(orb_id: int, amount: int, revision: int) -> void:
-	if orb_id <= 0 or amount <= 0:
-		return
-	var now := _get_net_time()
-	if _is_recent_event_cached(_granted_xirang_orbs, orb_id, now):
-		_remove_xirang_orb_local(orb_id, false)
-		return
-	if revision <= _xirang_revision:
-		return
-	_remember_recent_event(_granted_xirang_orbs, orb_id, ORB_DEDUP_RETENTION_SECONDS, now)
-	_xirang_revision = revision
-	_grant_xirang_to_all_players(amount)
-	_remove_xirang_orb_local(orb_id, true)
+	pass
 
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_xirang_orb_removed(orb_id: int) -> void:
-	_remove_xirang_orb_local(orb_id, false)
-
-
-func _remove_xirang_orb_local(orb_id: int, play_collect_feedback: bool) -> void:
-	if not _xirang_orbs.has(orb_id):
-		return
-	var orb_data := _xirang_orbs[orb_id] as Dictionary
-	var drop := orb_data.get("drop") as XirangDrop
-	if drop != null and is_instance_valid(drop):
-		if play_collect_feedback:
-			drop.confirm_multiplayer_collect()
-		else:
-			drop.queue_free()
-	_xirang_orbs.erase(orb_id)
-
-
-func _grant_xirang_to_all_players(amount: int) -> void:
-	if game == null:
-		return
-	for peer_id_variant in game.peer_players:
-		var player_node := game.peer_players[peer_id_variant] as Player
-		if player_node != null and is_instance_valid(player_node):
-			player_node.grant_multiplayer_xirang(amount)
+	pass
 
 func get_local_multiplayer_player() -> Player:
 	if game == null:
@@ -5524,22 +5424,10 @@ func release_session_object(instance: Node) -> bool:
 	return game != null and game.release_session_object(instance)
 
 
-func spawn_xirang_reward(
-	amount: int,
-	target_player: Player,
-	spawn_position: Vector2,
-	landing_offset: Vector2 = Vector2.ZERO,
-	preferred_visual_count: int = 1
-) -> bool:
+func grant_xirang_kill_reward(amount: int) -> bool:
 	if game == null or not net_manager.is_host():
 		return false
-	return game.spawn_xirang_reward(
-		amount,
-		target_player,
-		spawn_position,
-		landing_offset,
-		preferred_visual_count
-	)
+	return game.grant_xirang_kill_reward(amount)
 
 
 func is_host_multiplayer_authority() -> bool:

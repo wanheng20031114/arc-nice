@@ -19,6 +19,6 @@ attack_damage = 14
 physical_defense = 3
 move_speed = 20.0
 home_damage = 2
-xirang_drop_amount = 4
+xirang_kill_reward = 4
 pickup_drop_chance = 0.08
 metadata/_custom_type_script = "uid://cxt041wfb1usj"

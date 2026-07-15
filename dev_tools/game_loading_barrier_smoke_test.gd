@@ -37,7 +37,6 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://scene/plant_defense/effects/plant_placement_particles.tscn",
 	"res://scene/plant_defense/effects/plant_removal_smoke.tscn",
 	"res://scene/enemy/yuanshi_insect_spawn_effect.tscn",
-	"res://scene/xirang_drop.tscn",
 ]
 
 var failures: Array[String] = []

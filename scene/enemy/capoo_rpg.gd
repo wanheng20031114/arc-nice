@@ -2,7 +2,6 @@ extends Enemy
 class_name CapooRPG
 
 const WORLD_COLLISION_MASK := 1
-const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const CapooRPGConfigScript := preload("res://resources/config/enemies/capoo_rpg_config.gd")
 
@@ -86,7 +85,6 @@ func _apply_config() -> void:
 func _die() -> void:
 	combat_state = CombatState.CHASE
 	_set_muzzle_heat(0.0, fire_direction)
-	call_deferred("_drop_xirang")
 	_try_drop_pickup()
 	super._die()
 
@@ -367,28 +365,6 @@ func _set_muzzle_heat(progress: float, direction: Vector2) -> void:
 	muzzle_heat.rotation = safe_direction.angle()
 	muzzle_heat.scale = Vector2.ONE * lerpf(0.75, 1.55, clamped_progress)
 	muzzle_heat.color = Color(1.0, lerpf(0.28, 0.78, clamped_progress), 0.08, lerpf(0.18, 0.74, clamped_progress))
-
-
-func _drop_xirang() -> void:
-	if config == null or config.xirang_drop_amount <= 0:
-		return
-	if not is_instance_valid(reward_player):
-		return
-	var drop_parent := get_parent()
-	if drop_parent == null:
-		return
-	if _request_xirang_reward(
-		config.xirang_drop_amount,
-		reward_player,
-		global_position,
-		Vector2.ZERO
-	):
-		return
-	var drop := XIRANG_DROP_SCENE.instantiate() as XirangDrop
-	if drop == null:
-		return
-	drop_parent.add_child(drop)
-	drop.setup(config.xirang_drop_amount, reward_player, global_position, Vector2.ZERO)
 
 
 func _try_drop_pickup() -> void:

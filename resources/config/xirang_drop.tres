@@ -1,9 +1,0 @@
-[gd_resource type="Resource" script_class="XirangDropConfig" format=3 uid="uid://dcutha1usemvt"]
-
-[ext_resource type="Texture2D" uid="uid://b1pjsr03i8nw4" path="res://resources/texture/xirang_orb.png" id="1_orb"]
-[ext_resource type="Script" uid="uid://bso7eyi2h3ixj" path="res://resources/config/xirang_drop_config.gd" id="2_config"]
-
-[resource]
-script = ExtResource("2_config")
-icon_texture = ExtResource("1_orb")
-attraction_radius = 4096.0

@@ -6,7 +6,6 @@ const NO_PATHFINDER_DIRECT_CHASE_DISTANCE := 192.0
 const NO_PATHFINDER_DIRECT_CHASE_DISTANCE_SQUARED := (
 	NO_PATHFINDER_DIRECT_CHASE_DISTANCE * NO_PATHFINDER_DIRECT_CHASE_DISTANCE
 )
-const XIRANG_DROP_SCENE := preload("res://scene/xirang_drop.tscn")
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 
 @export var path_refresh_interval: float = 0.25
@@ -23,7 +22,6 @@ func _ready() -> void:
 
 
 func _die() -> void:
-	call_deferred("_drop_xirang")
 	_try_drop_pickup()
 	super._die()
 
@@ -115,28 +113,6 @@ func _broadcast_enemy_target_action(action_name: StringName, target_peer_id: int
 func _get_multiplayer_damage_source_id(source_suffix: int) -> int:
 	var net_id := int(get_meta("net_id", get_instance_id()))
 	return maxi(net_id, 1) * 1000000 + maxi(source_suffix, 0)
-
-
-func _drop_xirang() -> void:
-	if config == null or config.xirang_drop_amount <= 0:
-		return
-	if not is_instance_valid(reward_player):
-		return
-	var drop_parent := get_parent()
-	if drop_parent == null:
-		return
-	if _request_xirang_reward(
-		config.xirang_drop_amount,
-		reward_player,
-		global_position,
-		Vector2.ZERO
-	):
-		return
-	var drop := XIRANG_DROP_SCENE.instantiate() as XirangDrop
-	if drop == null:
-		return
-	drop_parent.add_child(drop)
-	drop.setup(config.xirang_drop_amount, reward_player, global_position, Vector2.ZERO)
 
 
 func _try_drop_pickup() -> void:

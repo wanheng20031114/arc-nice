@@ -2,9 +2,9 @@ extends SceneTree
 
 const SPAWN_EFFECT_SCENE := preload("res://scene/enemy/yuanshi_insect_spawn_effect.tscn")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
-const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
+const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
+const LINGLAN_ENEMY_CONFIG := preload("res://resources/config/enemies/linglan_boss.tres")
 const POOL_SCRIPT := preload("res://scene/session_object_pool.gd")
-const XIRANG_MANAGER_SCRIPT := preload("res://scene/xirang_drop_manager.gd")
 
 var failures: Array[String] = []
 
@@ -39,10 +39,7 @@ func _run() -> void:
 	await _test_strict_session_pool()
 	await _test_per_bucket_pending_metrics()
 	await _test_spawn_effect_tween_isolation()
-	await _test_xirang_preferred_visual_density()
-	await _test_xirang_aggregation()
-	await _test_xirang_visual_spawn_budget()
-	await _test_invalid_pending_target_preserves_value()
+	await _test_direct_xirang_kill_reward()
 	_test_multiplayer_forwarding_contract()
 	if failures.is_empty():
 		print("SESSION_POOL_AND_XIRANG_AGGREGATION_SMOKE_TEST_OK")
@@ -67,9 +64,12 @@ func _test_runtime_scene_wiring() -> void:
 		if runtime == null:
 			continue
 		var pool := runtime.get_node_or_null("SessionObjectPool") as SessionObjectPool
-		var manager := runtime.get_node_or_null("XirangDropManager") as XirangDropManager
 		_expect(pool != null, "Runtime scene must own its session object pool: %s" % runtime_scene_path)
-		_expect(manager != null, "Runtime scene must own its Xirang manager: %s" % runtime_scene_path)
+		_expect(
+			runtime.get_node_or_null("XirangDropManager") == null,
+			"Runtime scene must not retain the removed Xirang orb manager: %s"
+			% runtime_scene_path
+		)
 		if pool != null:
 			pool.register_scene(SPAWN_EFFECT_SCENE, 1, 1)
 			_expect(
@@ -84,12 +84,6 @@ func _test_runtime_scene_wiring() -> void:
 			_expect(
 				runtime.release_session_object(forwarded_lease),
 				"Runtime release must reject neither its own pool nor active lease: %s"
-				% runtime_scene_path
-			)
-		if manager != null:
-			_expect(
-				manager.get_node_or_null(manager.drop_parent_path) == runtime.get_node_or_null("EnemyContainer"),
-				"Xirang visuals must be parented under the runtime EnemyContainer: %s"
 				% runtime_scene_path
 			)
 		runtime.free()
@@ -322,204 +316,81 @@ func _test_spawn_effect_tween_isolation() -> void:
 	await process_frame
 
 
-func _test_xirang_aggregation() -> void:
-	var runtime := Node2D.new()
-	root.add_child(runtime)
-	var enemy_container := Node2D.new()
-	enemy_container.name = "EnemyContainer"
-	runtime.add_child(enemy_container)
-	var manager := XIRANG_MANAGER_SCRIPT.new() as XirangDropManager
-	manager.name = "XirangDropManager"
-	_expect(
-		manager.max_active_visual_drops == 128,
-		"The production Xirang visual-node ceiling must default to 128."
-	)
-	manager.max_active_visual_drops = 4
-	runtime.add_child(manager)
-	var player := PLAYER_SCENE.instantiate() as Player
-	_expect(player != null, "Aggregation fixture requires a real Player target.")
-	if player == null:
-		runtime.queue_free()
+func _test_direct_xirang_kill_reward() -> void:
+	var runtime_scene := load("res://scene/game.tscn") as PackedScene
+	var runtime := runtime_scene.instantiate() as GameRuntimeBase
+	_expect(runtime != null, "Direct-reward fixture must instantiate the standard runtime.")
+	if runtime == null:
 		return
-	player.process_mode = Node.PROCESS_MODE_DISABLED
-	runtime.add_child(player)
-	player.global_position = Vector2(10000.0, 10000.0)
-
-	for amount in range(1, 11):
-		_expect(
-			manager.spawn_reward(amount, player, Vector2.ZERO, Vector2.ZERO),
-			"Every positive reward must be accepted."
-		)
-	var capped := manager.get_metrics()
-	_expect(
-		int(capped.get("active_visual_drops", 0)) == 4,
-		"Visual Xirang nodes must respect the configured active cap."
-	)
-	_expect(
-		int(capped.get("pending_reward_groups", 0)) == 1
-		and int(capped.get("pending_value", 0)) == 45,
-		"Rewards above the cap must aggregate without losing value."
-	)
-	_expect(
-		int(capped.get("total_value_requested", 0)) == 55
-		and int(capped.get("total_value_spawned", 0)) == 10,
-		"Aggregation accounting must distinguish queued and visualized value."
-	)
-
-	var first_drop := enemy_container.get_child(0) as XirangDrop
-	first_drop.queue_free()
-	await process_frame
-	await process_frame
-	var flushed := manager.get_metrics()
-	_expect(
-		int(flushed.get("active_visual_drops", 0)) == 4
-		and int(flushed.get("pending_value", 0)) == 0,
-		"A free visual slot must flush the aggregated reward as one new orb."
-	)
-	_expect(
-		int(flushed.get("total_value_requested", 0)) == 55
-		and int(flushed.get("total_value_spawned", 0)) == 55,
-		"Flushing must preserve the exact requested reward total."
-	)
-	runtime.queue_free()
-	await process_frame
-
-
-func _test_xirang_preferred_visual_density() -> void:
-	var runtime := Node2D.new()
+	runtime.set("auto_start_waves", false)
 	root.add_child(runtime)
-	var enemy_container := Node2D.new()
-	enemy_container.name = "EnemyContainer"
-	runtime.add_child(enemy_container)
-	var manager := XIRANG_MANAGER_SCRIPT.new() as XirangDropManager
-	manager.name = "XirangDropManager"
-	manager.max_active_visual_drops = 32
-	manager.max_visual_spawns_per_frame = 16
-	runtime.add_child(manager)
-	var player := PLAYER_SCENE.instantiate() as Player
-	player.process_mode = Node.PROCESS_MODE_DISABLED
-	runtime.add_child(player)
-	player.global_position = Vector2(10000.0, 10000.0)
+	current_scene = runtime
+	await process_frame
 
-	var expected_total_visuals := 0
-	for amount in [1, 2, 4, 10]:
-		var preferred_count := mini(amount, 4)
-		var first_index := enemy_container.get_child_count()
+	var enemy := BASIC_ENEMY_CONFIG.enemy_scene.instantiate() as Enemy
+	_expect(enemy != null, "Direct-reward fixture must instantiate a configured enemy.")
+	if enemy == null:
+		current_scene = null
+		runtime.queue_free()
+		await process_frame
+		return
+	runtime.enemy_container.add_child(enemy)
+	enemy.setup(BASIC_ENEMY_CONFIG, runtime.player, runtime.grid_pathfinder)
+	enemy.set_process(false)
+	enemy.set_physics_process(false)
+	var xirang_before := runtime.player.current_xirang
+	enemy.call("_die")
+	enemy.call("_die")
+	await process_frame
+	_expect(
+		runtime.player.current_xirang
+		== xirang_before + BASIC_ENEMY_CONFIG.xirang_kill_reward,
+		"Enemy death must settle its configured Xirang kill reward by frame end."
+	)
+	_expect(
+		runtime.player.current_xirang
+		== xirang_before + BASIC_ENEMY_CONFIG.xirang_kill_reward,
+		"Duplicate enemy death resolution must not grant Xirang twice."
+	)
+	var boss := LINGLAN_ENEMY_CONFIG.enemy_scene.instantiate() as Enemy
+	_expect(boss != null, "Linglan reward regression requires the configured boss scene.")
+	if boss != null:
+		runtime.get_node("BossContainer").add_child(boss)
+		boss.setup(LINGLAN_ENEMY_CONFIG, runtime.player, runtime.grid_pathfinder)
+		boss.call("_die")
+		await process_frame
 		_expect(
-			manager.spawn_reward(
-				amount,
-				player,
-				Vector2(float(amount) * 128.0, 0.0),
-				Vector2(12.0, 0.0),
-				preferred_count
-			),
-			"A low-pressure split Xirang reward must be accepted."
+			runtime.player.current_xirang
+			== xirang_before
+			+ BASIC_ENEMY_CONFIG.xirang_kill_reward
+			+ LINGLAN_ENEMY_CONFIG.xirang_kill_reward,
+			"Linglan death must now grant its configured 500 Xirang reward."
 		)
-		expected_total_visuals += preferred_count
-		_expect(
-			enemy_container.get_child_count() == expected_total_visuals,
-			"Xirang amounts 1/2/4/10 must retain their authored 1/2/4/4 visual density."
-		)
-		var spawned_value := 0
-		for child_index in range(first_index, enemy_container.get_child_count()):
-			var drop := enemy_container.get_child(child_index) as XirangDrop
-			if drop != null:
-				spawned_value += drop.xirang_value
-		_expect(
-			spawned_value == amount,
-			"Splitting a Xirang reward into visual shards must preserve exact currency value."
-		)
-	var metrics := manager.get_metrics()
 	_expect(
-		int(metrics.get("active_visual_drops", 0)) == 11
-		and int(metrics.get("pending_value", 0)) == 0
-		and int(metrics.get("total_value_requested", 0)) == 17
-		and int(metrics.get("total_value_spawned", 0)) == 17,
-		"Low-pressure preferred visuals must not enter aggregation or lose value."
+		runtime.get_node_or_null("XirangDropManager") == null,
+		"Direct enemy rewards must not create or require a Xirang orb manager."
 	)
+	current_scene = null
 	runtime.queue_free()
-	await process_frame
-
-
-func _test_invalid_pending_target_preserves_value() -> void:
-	var runtime := Node2D.new()
-	root.add_child(runtime)
-	var enemy_container := Node2D.new()
-	enemy_container.name = "EnemyContainer"
-	runtime.add_child(enemy_container)
-	var manager := XIRANG_MANAGER_SCRIPT.new() as XirangDropManager
-	manager.name = "XirangDropManager"
-	manager.max_active_visual_drops = 1
-	runtime.add_child(manager)
-	var player := PLAYER_SCENE.instantiate() as Player
-	player.process_mode = Node.PROCESS_MODE_DISABLED
-	runtime.add_child(player)
-	player.global_position = Vector2(10000.0, 10000.0)
-
-	_expect(manager.spawn_reward(2, player, Vector2.ZERO), "The first reward must occupy the visual slot.")
-	_expect(manager.spawn_reward(9, player, Vector2.ZERO), "The second reward must enter aggregation.")
-	player.queue_free()
-	await process_frame
-	var first_drop := enemy_container.get_child(0) as XirangDrop
-	first_drop.queue_free()
-	await process_frame
-	await process_frame
-	var preserved := manager.get_metrics()
-	_expect(
-		int(preserved.get("pending_value", 0)) == 9
-		and int(preserved.get("total_value_requested", 0)) == 11
-		and int(preserved.get("total_value_spawned", 0)) == 2,
-		"An invalid pending target must preserve, not silently discard, its reward value."
-	)
-	runtime.queue_free()
-	await process_frame
-
-
-func _test_xirang_visual_spawn_budget() -> void:
-	var runtime := Node2D.new()
-	root.add_child(runtime)
-	var enemy_container := Node2D.new()
-	enemy_container.name = "EnemyContainer"
-	runtime.add_child(enemy_container)
-	var manager := XIRANG_MANAGER_SCRIPT.new() as XirangDropManager
-	manager.name = "XirangDropManager"
-	manager.max_active_visual_drops = 128
-	manager.max_visual_spawns_per_frame = 4
-	runtime.add_child(manager)
-	var player := PLAYER_SCENE.instantiate() as Player
-	player.process_mode = Node.PROCESS_MODE_DISABLED
-	runtime.add_child(player)
-	player.global_position = Vector2(10000.0, 10000.0)
-
-	for _reward_index in range(10):
-		_expect(manager.spawn_reward(1, player, Vector2.ZERO), "Budgeted reward must be accepted.")
-	var first_frame := manager.get_metrics()
-	_expect(
-		int(first_frame.get("active_visual_drops", 0)) == 4
-		and int(first_frame.get("visual_spawns_this_frame", 0)) == 4
-		and int(first_frame.get("pending_value", 0)) == 6,
-		"A reward burst must stop visual instantiation at the per-frame budget."
-	)
-	await process_frame
-	await process_frame
-	var flushed := manager.get_metrics()
-	_expect(
-		int(flushed.get("active_visual_drops", 0)) == 5
-		and int(flushed.get("pending_value", 0)) == 0
-		and int(flushed.get("total_value_requested", 0)) == 10
-		and int(flushed.get("total_value_spawned", 0)) == 10,
-		"The next-frame aggregate must preserve all value without refilling 128 nodes."
-	)
-	runtime.queue_free()
-	await process_frame
+	for _cleanup_frame in range(3):
+		await process_frame
+		await physics_frame
 
 
 func _test_multiplayer_forwarding_contract() -> void:
+	_expect(
+		not ResourceLoader.exists("res://scene/xirang_drop.tscn")
+		and not ResourceLoader.exists("res://scene/xirang_drop_manager.gd")
+		and not ResourceLoader.exists("res://resources/config/xirang_drop.tres"),
+		"Xirang orb scene, manager, and config must be deleted, not merely disconnected."
+	)
 	var enemy_source := FileAccess.get_file_as_string("res://scene/enemy/enemy.gd")
 	_expect(
-		enemy_source.contains('current_scene.has_method("spawn_xirang_reward")')
-		and enemy_source.contains('current_scene.call(\n\t\t"spawn_xirang_reward"'),
-		"Enemy reward forwarding must route through the active root scene."
+		enemy_source.contains('current_scene.has_method("grant_xirang_kill_reward")')
+		and enemy_source.contains(
+			'current_scene.call("grant_xirang_kill_reward", config.xirang_kill_reward)'
+		),
+		"Enemy death rewards must route their configured value through the active root scene."
 	)
 	for reward_owner_path in [
 		"res://scene/enemy/yuanshi_insect.gd",
@@ -530,17 +401,42 @@ func _test_multiplayer_forwarding_contract() -> void:
 	]:
 		var reward_owner_source := FileAccess.get_file_as_string(reward_owner_path)
 		_expect(
-			reward_owner_source.contains("_request_xirang_reward("),
-			"Every enemy reward implementation must use the shared forwarding path: %s"
+			not reward_owner_source.contains("_request_xirang_reward(")
+			and not reward_owner_source.contains("xirang_drop.tscn")
+			and not reward_owner_source.contains("XirangDrop"),
+			"Enemy subclasses must not retain Xirang orb creation or collection code: %s"
 			% reward_owner_path
 		)
+	var runtime_source := FileAccess.get_file_as_string("res://scene/game_runtime_base.gd")
+	_expect(
+		runtime_source.contains("func grant_xirang_kill_reward(")
+		and not runtime_source.contains("func spawn_xirang_reward("),
+		"The shared runtime must expose direct kill rewards and remove orb spawning."
+	)
 	var mp_game_source := FileAccess.get_file_as_string("res://scene/multiplayer/mp_game.gd")
 	_expect(
-		mp_game_source.contains("func spawn_xirang_reward(")
+		mp_game_source.contains("func grant_xirang_kill_reward(")
 		and mp_game_source.contains("if game == null or not net_manager.is_host():")
-		and mp_game_source.contains("return game.spawn_xirang_reward("),
-		"MpGame must accept rewards only on the host and forward them to its child runtime."
+		and mp_game_source.contains("return game.grant_xirang_kill_reward(")
+		and not mp_game_source.contains("const XIRANG_DROP_SCENE")
+		and not mp_game_source.contains("var _xirang_orbs")
+		and not mp_game_source.contains("func register_xirang_orb(")
+		and not mp_game_source.contains("func request_xirang_orb_collected(")
+		and not mp_game_source.contains("func _apply_xirang_orb_collected(")
+		and not mp_game_source.contains("func _remove_xirang_orb_local("),
+		"MpGame must accept direct kill rewards only on the host and forward them to its runtime."
 	)
+	for compatibility_rpc_signature in [
+		"func net_xirang_orb_spawned(orb_id: int, amount: int, spawn_position: Vector2) -> void:\n\tpass",
+		"func _rpc_xirang_orb_collected(orb_id: int) -> void:\n\tpass",
+		"func net_xirang_granted_all(orb_id: int, amount: int, revision: int) -> void:\n\tpass",
+		"func net_xirang_orb_removed(orb_id: int) -> void:\n\tpass",
+	]:
+		_expect(
+			mp_game_source.contains(compatibility_rpc_signature),
+			"Protocol-v8 Xirang RPC compatibility shells must remain inert: %s"
+			% compatibility_rpc_signature.get_slice("(", 0)
+		)
 
 
 func _expect(condition: bool, message: String) -> void:

@@ -68,7 +68,6 @@ enum DeathSequenceStage {
 
 var target_player: Player = null
 var objective_target: Node2D = null
-var reward_player: Player = null
 var pathfinder: Node = null
 var current_health: int = 1
 var is_dead: bool = false
@@ -183,7 +182,6 @@ func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = 
 	config = enemy_config
 	target_player = player
 	objective_target = player
-	reward_player = player
 	pathfinder = shared_pathfinder
 	near_moving_target_direct_distance = DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE
 	near_moving_target_direct_distance_squared = (
@@ -196,7 +194,6 @@ func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = 
 
 func set_target_player(player: Player) -> void:
 	if target_player == player:
-		reward_player = player
 		if objective_target == null:
 			objective_target = player
 			_clear_cached_navigation_move_direction()
@@ -204,7 +201,6 @@ func set_target_player(player: Player) -> void:
 
 	var previous_target := target_player
 	target_player = player
-	reward_player = player
 	if objective_target == null or objective_target == previous_target:
 		objective_target = player
 		_clear_cached_navigation_move_direction()
@@ -224,30 +220,6 @@ func set_near_moving_target_direct_distance(distance: float) -> void:
 	near_moving_target_direct_distance = normalized_distance
 	near_moving_target_direct_distance_squared = normalized_distance * normalized_distance
 	_clear_cached_navigation_move_direction()
-
-
-func set_reward_player(player: Player) -> void:
-	reward_player = player
-
-
-func _request_xirang_reward(
-	amount: int,
-	reward_target: Player,
-	spawn_position: Vector2,
-	landing_offset: Vector2 = Vector2.ZERO,
-	preferred_visual_count: int = 1
-) -> bool:
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("spawn_xirang_reward"):
-		return false
-	return bool(current_scene.call(
-		"spawn_xirang_reward",
-		amount,
-		reward_target,
-		spawn_position,
-		landing_offset,
-		preferred_visual_count
-	))
 
 
 func is_objective_targeting_player() -> bool:
@@ -302,7 +274,6 @@ func configure_multiplayer_proxy() -> void:
 	reset_physics_interpolation()
 	target_player = null
 	objective_target = null
-	reward_player = null
 	pathfinder = null
 	touched_player = null
 	touching_players.clear()
@@ -1905,6 +1876,7 @@ func _die() -> void:
 	if is_dead:
 		return
 
+	_queue_configured_xirang_kill_reward()
 	_try_drop_material()
 	is_dead = true
 	defeated.emit(self)
@@ -1923,6 +1895,15 @@ func _die() -> void:
 	touch_damage_area.set_deferred("monitorable", false)
 	AUDIO_LIMITER.play_enemy_death(death_audio)
 	_start_death_sequence()
+
+
+func _queue_configured_xirang_kill_reward() -> void:
+	if is_multiplayer_proxy or config == null or config.xirang_kill_reward <= 0:
+		return
+	var current_scene := get_tree().current_scene
+	if current_scene == null or not current_scene.has_method("grant_xirang_kill_reward"):
+		return
+	current_scene.call("grant_xirang_kill_reward", config.xirang_kill_reward)
 
 
 func _try_drop_material() -> void:

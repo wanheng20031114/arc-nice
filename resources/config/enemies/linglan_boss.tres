@@ -20,6 +20,6 @@ magic_defense = 50
 move_speed = 0.0
 move_animation_name = &"idle"
 death_animation_name = &"die"
-xirang_drop_amount = 500
+xirang_kill_reward = 500
 pickup_drop_chance = 0.0
 metadata/_custom_type_script = "uid://c78u5cgfpcfcy"

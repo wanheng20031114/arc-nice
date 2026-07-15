@@ -25,6 +25,6 @@ attack_damage = 24
 physical_defense = 5
 move_speed = 38.0
 home_damage = 5
-xirang_drop_amount = 20
+xirang_kill_reward = 20
 pickup_drop_chance = 0.2
 pickup_drop_configs = Array[ExtResource("5_pickup_script")]([ExtResource("6_speed"), ExtResource("7_rapid"), ExtResource("8_spiral"), ExtResource("10_health")])

@@ -5,6 +5,7 @@ const EXPECTED_WAVE_TOTAL := 1200
 const EXPECTED_MAX_ALIVE := 300
 
 var failures: Array[String] = []
+var xirang_reward_signal_count := 0
 
 
 func _init() -> void:
@@ -40,17 +41,21 @@ func _run() -> void:
 	var expected_xirang_value := 0
 	for entry in first_wave.enemy_entries:
 		if entry != null and entry.enemy_config != null:
-			expected_xirang_value += entry.count * entry.enemy_config.xirang_drop_amount
+			expected_xirang_value += entry.count * entry.enemy_config.xirang_kill_reward
 	_expect(first_wave.get_total_enemy_count() == EXPECTED_WAVE_TOTAL, "Long-wave total must be 1200.")
 	_expect(first_wave.max_alive_enemies == EXPECTED_MAX_ALIVE, "Long-wave cap must be 300.")
+	_expect(
+		game.get_node_or_null("XirangDropManager") == null,
+		"Tower-defense runtime must not retain the removed Xirang orb manager."
+	)
 
 	var started_msec := Time.get_ticks_msec()
+	var initial_xirang := game.player.current_xirang
+	game.player.xirang_changed.connect(_on_xirang_changed)
 	game.call("_begin_flow_step", first_wave)
 	game.enemy_spawn_timer.stop()
 	var observed_peak_enemies := 0
-	var observed_peak_xirang := 0
 	var cycle_guard := 0
-	var xirang_manager := game.get_node("XirangDropManager") as XirangDropManager
 	var death_loop_samples_ms: Array[float] = []
 	var post_death_frame_samples_ms: Array[float] = []
 	var worst_post_death_frame: Dictionary = {}
@@ -85,11 +90,6 @@ func _run() -> void:
 		var previous_frame_tick_usec := Time.get_ticks_usec()
 		var post_frame_index := 0
 		while not game.active_wave_enemy_ids.is_empty() and Time.get_ticks_msec() < clear_deadline:
-			var manager_metrics := xirang_manager.get_metrics()
-			observed_peak_xirang = maxi(
-				observed_peak_xirang,
-				int(manager_metrics.get("active_visual_drops", 0))
-			)
 			var active_before := game.active_wave_enemy_ids.size()
 			var children_before := game.enemy_container.get_child_count()
 			await process_frame
@@ -99,7 +99,6 @@ func _run() -> void:
 			) / 1000.0
 			post_death_frame_samples_ms.append(frame_elapsed_ms)
 			if frame_elapsed_ms > float(worst_post_death_frame.get("elapsed_ms", -1.0)):
-				var after_metrics := xirang_manager.get_metrics()
 				worst_post_death_frame = {
 					"tranche": cycle_guard + 1,
 					"frame": post_frame_index,
@@ -108,10 +107,7 @@ func _run() -> void:
 					"active_after": game.active_wave_enemy_ids.size(),
 					"children_before": children_before,
 					"children_after": game.enemy_container.get_child_count(),
-					"xirang_active_before": int(manager_metrics.get("active_visual_drops", 0)),
-					"xirang_active_after": int(after_metrics.get("active_visual_drops", 0)),
-					"xirang_pending_after": int(after_metrics.get("pending_value", 0)),
-					"xirang_requested_after": int(after_metrics.get("total_value_requested", 0)),
+					"player_xirang": game.player.current_xirang,
 				}
 			previous_frame_tick_usec = current_frame_tick_usec
 			post_frame_index += 1
@@ -121,22 +117,8 @@ func _run() -> void:
 		)
 		cycle_guard += 1
 
-	var manager := xirang_manager
-	var reward_deadline := Time.get_ticks_msec() + 15000
-	while Time.get_ticks_msec() < reward_deadline:
-		var metrics := manager.get_metrics()
-		observed_peak_xirang = maxi(
-			observed_peak_xirang,
-			int(metrics.get("active_visual_drops", 0))
-		)
-		if (
-			int(metrics.get("active_visual_drops", 0)) == 0
-			and int(metrics.get("pending_value", 0)) == 0
-		):
-			break
-		await process_frame
-
-	var final_metrics := manager.get_metrics()
+	# Kill rewards are intentionally coalesced and settled once at frame end.
+	await process_frame
 	var elapsed_msec := Time.get_ticks_msec() - started_msec
 	death_loop_samples_ms.sort()
 	post_death_frame_samples_ms.sort()
@@ -151,14 +133,11 @@ func _run() -> void:
 		else 0.0
 	)
 	print(
-		"LONG_WAVE_XIRANG_DIAGNOSTIC expected=%d requested=%d spawned=%d pending=%d active=%d groups=%d"
+		"LONG_WAVE_XIRANG_DIAGNOSTIC expected=%d granted=%d final=%d"
 		% [
 			expected_xirang_value,
-			int(final_metrics.get("total_value_requested", 0)),
-			int(final_metrics.get("total_value_spawned", 0)),
-			int(final_metrics.get("pending_value", -1)),
-			int(final_metrics.get("active_visual_drops", -1)),
-			int(final_metrics.get("pending_reward_groups", -1)),
+			game.player.current_xirang - initial_xirang,
+			game.player.current_xirang,
 		]
 	)
 	print("LONG_WAVE_DEATH_WORST_FRAME %s" % str(worst_post_death_frame))
@@ -181,23 +160,15 @@ func _run() -> void:
 	_expect(game.current_wave_defeated == EXPECTED_WAVE_TOTAL, "All 1200 enemies must resolve as defeated.")
 	_expect(observed_peak_enemies == EXPECTED_MAX_ALIVE, "Long-wave peak enemy count must reach 300.")
 	_expect(
-		observed_peak_xirang <= manager.max_active_visual_drops,
-		"Long-wave Xirang visuals must remain under the manager cap."
-	)
-	_expect(
-		int(final_metrics.get("total_value_requested", 0)) == expected_xirang_value
-		and int(final_metrics.get("total_value_spawned", 0)) == expected_xirang_value
-		and int(final_metrics.get("pending_value", -1)) == 0,
+		game.player.current_xirang == initial_xirang + expected_xirang_value,
 		(
-			"Long-wave aggregation must preserve exact Xirang reward value: "
-			+ "expected=%d requested=%d spawned=%d pending=%d active=%d groups=%d"
+			"Long-wave deaths must grant the configured Xirang value directly: "
+			+ "expected=%d granted=%d initial=%d final=%d"
 			% [
 				expected_xirang_value,
-				int(final_metrics.get("total_value_requested", 0)),
-				int(final_metrics.get("total_value_spawned", 0)),
-				int(final_metrics.get("pending_value", -1)),
-				int(final_metrics.get("active_visual_drops", -1)),
-				int(final_metrics.get("pending_reward_groups", -1)),
+				game.player.current_xirang - initial_xirang,
+				initial_xirang,
+				game.player.current_xirang,
 			]
 		)
 	)
@@ -205,18 +176,28 @@ func _run() -> void:
 		death_loop_samples_ms.size() == 4 and not post_death_frame_samples_ms.is_empty(),
 		"Long-wave death benchmark must observe four 300-enemy tranches and deferred frames."
 	)
+	_expect(
+		xirang_reward_signal_count == death_loop_samples_ms.size(),
+		"Each 300-enemy tranche must settle through one aggregated Xirang change signal."
+	)
+	var granted_xirang := game.player.current_xirang - initial_xirang
 	current_scene = null
 	game.queue_free()
 	for _cleanup_frame in range(6):
 		await process_frame
-	_finish(elapsed_msec, observed_peak_xirang)
+	_finish(elapsed_msec, granted_xirang)
 
 
-func _finish(elapsed_msec: int, peak_xirang: int) -> void:
+func _on_xirang_changed(_total: int, added_amount: int) -> void:
+	if added_amount > 0:
+		xirang_reward_signal_count += 1
+
+
+func _finish(elapsed_msec: int, granted_xirang: int) -> void:
 	if failures.is_empty():
 		print(
-			"GAME_TOWER_DEFENSE_LONG_WAVE_SMOKE_TEST_OK enemies=1200 peak_xirang=%d elapsed_ms=%d"
-			% [peak_xirang, elapsed_msec]
+			"GAME_TOWER_DEFENSE_LONG_WAVE_SMOKE_TEST_OK enemies=1200 granted_xirang=%d elapsed_ms=%d"
+			% [granted_xirang, elapsed_msec]
 		)
 		quit()
 		return
