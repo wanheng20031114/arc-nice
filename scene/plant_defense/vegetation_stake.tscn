@@ -96,9 +96,8 @@ collision_mask = 2
 shape = SubResource("CircleShape2D_core")
 
 [node name="HealthBar" parent="." unique_id=1207887746 instance=ExtResource("7_health_bar")]
-custom_minimum_size = Vector2(22, 5)
+custom_minimum_size = Vector2(12, 3)
 offset_left = -6.0
-offset_top = -8.0
-offset_right = 18.0
-offset_bottom = -3.0
-scale = Vector2(0.5, 0.5)
+offset_top = -9.0
+offset_right = 6.0
+offset_bottom = -6.0

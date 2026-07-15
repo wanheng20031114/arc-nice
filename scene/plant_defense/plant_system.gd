@@ -9,6 +9,8 @@ const DEFAULT_PLACEMENT_AREA: Rect2i = Rect2i(-3, -1, 22, 18)
 const MAX_PLACEMENT_MANHATTAN_DISTANCE: int = 4
 const ENTITY_BLOCKING_MASK: int = 1 | 2 | 4 | 32 | 256
 const FOOTPRINT_COLLISION_INSET: Vector2 = Vector2(4.0, 4.0)
+const UNSUPPORTED_TERRAIN_DAMAGE_RATIO: float = 0.10
+const UNSUPPORTED_TERRAIN_MIN_DAMAGE: int = 50
 
 @export_range(0, 64, 1) var max_placement_manhattan_distance: int = (
 	MAX_PLACEMENT_MANHATTAN_DISTANCE
@@ -292,6 +294,50 @@ func try_place_by_id(plant_id: StringName, top_left_cell: Vector2i) -> PlantDefe
 
 func get_plant_at_cell(cell: Vector2i) -> PlantDefense:
 	return occupied_cells.get(cell) as PlantDefense
+
+
+static func calculate_unsupported_terrain_damage(current_health: int) -> int:
+	if current_health <= 0:
+		return 0
+	return maxi(
+		ceili(float(current_health) * UNSUPPORTED_TERRAIN_DAMAGE_RATIO),
+		UNSUPPORTED_TERRAIN_MIN_DAMAGE
+	)
+
+
+func apply_unsupported_terrain_damage_tick() -> int:
+	if terrain_map == null or plant_footprints.is_empty():
+		return 0
+
+	# Resolve support from a single terrain snapshot before applying damage.
+	# A dying vegetation stake can restore more cells synchronously, so collecting
+	# first keeps this tick independent of Dictionary traversal order.
+	var unsupported_plants: Array[PlantDefense] = []
+	for plant_variant in plant_footprints.keys():
+		var plant := plant_variant as PlantDefense
+		if (
+			plant == null
+			or not is_instance_valid(plant)
+			or plant.is_dead
+			or plant.is_multiplayer_proxy
+			or plant.is_queued_for_deletion()
+		):
+			continue
+		var footprint: Array = plant_footprints.get(plant, [])
+		for cell_variant in footprint:
+			var cell: Vector2i = cell_variant
+			if not terrain_map.is_cell_plantable(cell):
+				unsupported_plants.append(plant)
+				break
+
+	var damaged_plant_count := 0
+	for plant in unsupported_plants:
+		if not is_instance_valid(plant) or plant.is_dead or plant.is_queued_for_deletion():
+			continue
+		var damage := calculate_unsupported_terrain_damage(plant.current_health)
+		if plant.receive_unmitigated_damage(damage, self):
+			damaged_plant_count += 1
+	return damaged_plant_count
 
 
 func find_nearest_living_plant(

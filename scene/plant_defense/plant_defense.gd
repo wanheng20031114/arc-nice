@@ -67,11 +67,21 @@ func receive_damage(
 		return false
 
 	var mitigated_damage := _calculate_incoming_damage(amount, damage_type)
-	var applied_damage := mini(mitigated_damage, current_health)
-	current_health -= applied_damage
-	health_changed.emit(current_health, max_health)
-	_bump_health_revision()
+	var applied_damage := _apply_damage_to_health(mitigated_damage)
 	_on_damage_received(applied_damage, source, impact_direction, damage_type)
+	if current_health <= 0:
+		_begin_death()
+	return true
+
+
+## Applies damage without physical or magic mitigation while preserving the
+## authoritative health revision, signals and normal death lifecycle.
+func receive_unmitigated_damage(amount: int, source: Node = null) -> bool:
+	if is_multiplayer_proxy or is_dead or amount <= 0:
+		return false
+
+	var applied_damage := _apply_damage_to_health(amount)
+	_on_unmitigated_damage_received(applied_damage, source)
 	if current_health <= 0:
 		_begin_death()
 	return true
@@ -171,6 +181,14 @@ func _calculate_incoming_damage(amount: int, damage_type: EnemyConfig.DamageType
 			return maxi(amount - get_effective_physical_defense(), 1)
 
 
+func _apply_damage_to_health(amount: int) -> int:
+	var applied_damage := mini(amount, current_health)
+	current_health -= applied_damage
+	health_changed.emit(current_health, max_health)
+	_bump_health_revision()
+	return applied_damage
+
+
 func _begin_death() -> void:
 	if is_dead:
 		return
@@ -201,6 +219,10 @@ func _on_damage_received(
 	_impact_direction: Vector2,
 	_damage_type: EnemyConfig.DamageType
 ) -> void:
+	pass
+
+
+func _on_unmitigated_damage_received(_applied_damage: int, _source: Node) -> void:
 	pass
 
 

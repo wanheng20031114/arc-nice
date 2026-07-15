@@ -66,6 +66,7 @@ const PLANT_PLACEMENT_REJECT_INVALID_PLAYER := &"invalid_player"
 const PLANT_PLACEMENT_REJECT_INVALID_CONFIG := &"invalid_config"
 const PLANT_PLACEMENT_REJECT_INVALID_POSITION := &"invalid_position"
 const TERRAIN_NETWORK_BATCH_MAX_CELLS := 96
+const UNSUPPORTED_PLANT_DAMAGE_INTERVAL_SECONDS := 1.0
 const LINGLAN_SKILL_REFERENCE_ARENA_POSITION := Vector2i(-3, -1)
 const MULTIPLAYER_SPAWN_OFFSETS: Array[Vector2] = [
 	Vector2.ZERO,
@@ -97,6 +98,7 @@ signal base_health_changed(current_health: int, maximum_health: int, revision: i
 @onready var enemy_spawn_points_root: Node2D = $EnemySpawnPoints
 @onready var enemy_spawn_timer: Timer = $EnemySpawnTimer
 @onready var state_timer: Timer = $StateTimer
+@onready var plant_terrain_decay_timer: Timer = $PlantTerrainDecayTimer
 @onready var map_camera: Camera2D = $Camera2D
 @onready var music_player: AudioStreamPlayer = $MusicPlayer
 @onready var countdown_audio: AudioStreamPlayer = $CountdownAudio
@@ -797,6 +799,12 @@ func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 		vegetation_stake.spread_runtime_state_changed.connect(
 			_on_vegetation_runtime_state_changed.bind(source_id, origin_cell)
 		)
+
+
+func _on_plant_terrain_decay_timer_timeout() -> void:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		return
+	plant_system.apply_unsupported_terrain_damage_tick()
 
 
 func _configure_vegetation_spread_system(placement_rect: Rect2i) -> void:
@@ -2053,6 +2061,20 @@ func _configure_timers() -> void:
 	state_timer.wait_time = 1.0
 	if not state_timer.timeout.is_connected(_on_state_timer_timeout):
 		state_timer.timeout.connect(_on_state_timer_timeout)
+
+	plant_terrain_decay_timer.one_shot = false
+	plant_terrain_decay_timer.wait_time = UNSUPPORTED_PLANT_DAMAGE_INTERVAL_SECONDS
+	plant_terrain_decay_timer.process_callback = Timer.TIMER_PROCESS_PHYSICS
+	if not plant_terrain_decay_timer.timeout.is_connected(
+		_on_plant_terrain_decay_timer_timeout
+	):
+		plant_terrain_decay_timer.timeout.connect(
+			_on_plant_terrain_decay_timer_timeout
+		)
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		plant_terrain_decay_timer.stop()
+	else:
+		plant_terrain_decay_timer.start()
 
 
 func _get_rest_duration_seconds() -> int:

@@ -202,10 +202,10 @@ func _test_config_and_scene_contracts() -> void:
 	_expect(oak_config.footprint_size == Vector2i(2, 2), "橡木仓库必须继续占2×2格。")
 	_expect(
 		vegetation_stake_config.max_health == 4000
-		and vegetation_stake_config.physical_defense == 25
+		and vegetation_stake_config.physical_defense == 10
 		and vegetation_stake_config.magic_defense == 50
 		and vegetation_stake_config.attack_damage == 0,
-		"植被桩必须拥有4000生命、25物防、50法抗且攻击力为0。"
+		"植被桩必须拥有4000生命、10物防、50法抗且攻击力为0。"
 	)
 	_expect(
 		vegetation_stake_config.footprint_size == Vector2i.ONE,
@@ -346,28 +346,21 @@ func _test_config_and_scene_contracts() -> void:
 				"植被桩飘光必须横向覆盖顶部核心，并向下多覆盖一个屏幕像素。"
 			)
 		if stake_health_bar != null:
-			var stake_health_bar_visual_width := (
-				stake_health_bar.offset_right - stake_health_bar.offset_left
-			) * stake_health_bar.scale.x
 			_expect(
-				is_equal_approx(stake_health_bar_visual_width, 12.0)
+				stake_health_bar.custom_minimum_size == Vector2(12, 3)
 				and is_equal_approx(stake_health_bar.offset_left, -6.0)
-				and is_equal_approx(stake_health_bar.offset_right, 18.0)
-				and is_equal_approx(stake_health_bar.offset_top, -8.0)
-				and is_equal_approx(stake_health_bar.offset_bottom, -3.0)
-				and stake_health_bar.scale == Vector2(0.5, 0.5)
+				and is_equal_approx(stake_health_bar.offset_right, 6.0)
+				and is_equal_approx(stake_health_bar.offset_top, -9.0)
+				and is_equal_approx(stake_health_bar.offset_bottom, -6.0)
+				and stake_health_bar.scale == Vector2.ONE
 				and stake_health_bar.damage_trail_color.is_equal_approx(
 					Color(0.92156863, 0.28235295, 0.18039216, 1.0)
 				)
 				and is_equal_approx(
-					stake_health_bar.offset_left
-					+ (
-						stake_health_bar.offset_right
-						- stake_health_bar.offset_left
-					) * stake_health_bar.scale.x * 0.5,
+					(stake_health_bar.offset_left + stake_health_bar.offset_right) * 0.5,
 					0.0
 				),
-				"植被桩血条必须以24屏幕像素宽居中、留出上方间隔并继承公共红色残血。"
+				"植被桩血条必须以12×3逻辑像素原生绘制、居中且继承公共红色残血。"
 			)
 		vegetation_stake.free()
 
@@ -773,6 +766,22 @@ func _test_plant_defense_mitigation() -> void:
 		defense_probe.receive_damage(7, null, Vector2.ZERO, EnemyConfig.DamageType.PHYSICAL)
 		and defense_probe.current_health == full_health - 1,
 		"防御后的有效伤害必须至少为1。"
+	)
+	defense_probe.receive_healing(1)
+	defense_probe.physical_defense = 999
+	var revision_before_unmitigated_damage := defense_probe.health_revision
+	_expect(
+		defense_probe.receive_unmitigated_damage(50)
+		and defense_probe.current_health == full_health - 50
+		and defense_probe.health_revision == revision_before_unmitigated_damage + 1,
+		"无视防御伤害必须完整扣除数值并沿用权威生命revision链。"
+	)
+	_expect(
+		PlantSystem.calculate_unsupported_terrain_damage(1001) == 101
+		and PlantSystem.calculate_unsupported_terrain_damage(501) == 51
+		and PlantSystem.calculate_unsupported_terrain_damage(500) == 50
+		and PlantSystem.calculate_unsupported_terrain_damage(1) == 50,
+		"非草地衰败必须按当前生命10%向上取整，并保持每秒至少50点。"
 	)
 	defense_probe.queue_free()
 
@@ -1333,6 +1342,10 @@ func _test_multiplayer_authority_contracts() -> void:
 	_expect(not replica.targeting_area.monitoring, "客户端植物副本不得运行本地索敌。")
 	var replica_health_before := replica.current_health
 	_expect(not replica.receive_damage(25), "客户端植物副本必须拒绝本地伤害。")
+	_expect(
+		not replica.receive_unmitigated_damage(50),
+		"客户端植物副本必须拒绝本地无视防御伤害。"
+	)
 	_expect(replica.current_health == replica_health_before, "本地伤害不得改变副本生命值。")
 	_expect(
 		not replica.apply_remote_health(120, 200, 8),

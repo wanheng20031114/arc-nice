@@ -4,8 +4,10 @@ const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
 const VEGETATION_STAKE_CONFIG := preload(
 	"res://resources/config/plant_defense/vegetation_stake.tres"
 )
+const AGAVE_CONFIG := preload("res://resources/config/plant_defense/agave_cannon.tres")
 const AUTHORITATIVE_BATCH_CELL_COUNT := 193
 const LIFECYCLE_PLANT_NET_ID := 900001
+const MULTI_CELL_DECAY_PLANT_NET_ID := 900003
 
 var failures: Array[String] = []
 var emitted_terrain_batches: Array[Dictionary] = []
@@ -35,6 +37,7 @@ func _run() -> void:
 	_test_authoritative_batching(game)
 	_test_client_snapshot_replacement_and_revision(game)
 	await _test_real_plant_lifecycle(game)
+	await _test_multi_cell_unsupported_terrain_damage(game)
 
 	game.queue_free()
 	await process_frame
@@ -52,7 +55,7 @@ func _test_vegetation_stake_scene_contract() -> void:
 	_expect(config.footprint_size == Vector2i.ONE, "植被桩必须严格占用1x1格。")
 	_expect(config.supports_multiplayer, "植被桩必须声明完整多人支持。")
 	_expect(config.max_health == 4000, "植被桩生命值必须为4000。")
-	_expect(config.physical_defense == 25, "植被桩物理防御必须为25。")
+	_expect(config.physical_defense == 10, "植被桩物理防御必须为10。")
 	_expect(config.magic_defense == 50, "植被桩魔法防御必须为50。")
 	_expect(config.attack_damage == 0, "植被桩不能造成攻击伤害。")
 	_expect(config.plant_scene != null, "植被桩配置必须引用可实例化场景。")
@@ -79,6 +82,13 @@ func _test_vegetation_stake_scene_contract() -> void:
 	_expect(glow_motes != null and glow_motes.amount > 0, "植被桩必须预置少量GPU飘光粒子。")
 	_expect(health_bar != null, "植被桩必须预置并绑定公共植物血条。")
 	root.add_child(stake)
+	_expect(
+		health_bar != null
+		and health_bar.position == Vector2(-6, -9)
+		and health_bar.size == Vector2(12, 3)
+		and health_bar.scale == Vector2.ONE,
+		"植被桩血条必须使用12×3逻辑像素的无缩放布局，避免像素栅格闪烁。"
+	)
 	stake.setup(
 		config,
 		null,
@@ -156,6 +166,15 @@ func _test_preauthored_spread_system(game: GameTowerDefense) -> void:
 	if spread_node is VegetationSpreadSystem:
 		var overlay := spread_node.get_node_or_null("GrowthOverlay") as MultiMeshInstance2D
 		_expect(overlay != null and overlay.multimesh != null, "传播系统必须预置共享MultiMesh覆盖层。")
+	var decay_timer := game.get_node_or_null("PlantTerrainDecayTimer") as Timer
+	_expect(
+		decay_timer != null
+		and decay_timer == game.plant_terrain_decay_timer
+		and is_equal_approx(decay_timer.wait_time, 1.0)
+		and decay_timer.process_callback == Timer.TIMER_PROCESS_PHYSICS
+		and not decay_timer.is_stopped(),
+		"塔防场景必须预置并启动权威端1秒植物失地衰败Timer。"
+	)
 	_expect(
 		GameTowerDefense.TERRAIN_NETWORK_BATCH_MAX_CELLS == 96,
 		"塔防权威地形网络批次上限必须为96格。"
@@ -446,6 +465,87 @@ func _test_real_plant_lifecycle(game: GameTowerDefense) -> void:
 
 	await process_frame
 	spread.set_process(was_processing)
+
+
+func _test_multi_cell_unsupported_terrain_damage(game: GameTowerDefense) -> void:
+	var config := AGAVE_CONFIG as PlantDefenseConfig
+	var plant_system := game.plant_system
+	_expect(config != null and plant_system != null, "2x2失地衰败测试需要龙舌兰配置与PlantSystem。")
+	if config == null or plant_system == null:
+		return
+
+	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	var valid_anchors := plant_system.get_valid_anchors_for_player(config, game.player)
+	_expect(not valid_anchors.is_empty(), "真实地图必须保留可放置2x2植物的草地锚点。")
+	if valid_anchors.is_empty():
+		return
+	var plant := plant_system.try_place_for_player(
+		config,
+		valid_anchors[0],
+		game.player,
+		MULTI_CELL_DECAY_PLANT_NET_ID
+	) as AgaveCannon
+	_expect(plant != null, "PlantSystem必须能放置2x2衰败测试植物。")
+	if plant == null:
+		return
+	plant.attack_timer.stop()
+	_expect(plant.footprint_cells.size() == 4, "龙舌兰衰败测试必须覆盖完整2x2占地。")
+
+	var original_terrain: Dictionary[Vector2i, int] = {}
+	for cell in plant.footprint_cells:
+		var terrain_type := game.dual_grid_terrain.get_terrain_type(cell)
+		original_terrain[cell] = terrain_type
+		_expect(
+			terrain_type == DualGridTilemap.TerrainType.GRASS,
+			"合法放置的2x2植物所有占地格初始都必须是草地。"
+		)
+		game.dual_grid_terrain.set_tile(cell, DualGridTilemap.TerrainType.DIRT)
+
+	var full_health := plant.current_health
+	game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	game.plant_terrain_decay_timer.timeout.emit()
+	_expect(
+		plant.current_health == full_health,
+		"CLIENT_VIEW不能本地结算2x2植物的失地衰败伤害。"
+	)
+	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	game.plant_terrain_decay_timer.timeout.emit()
+	_expect(
+		plant.current_health == full_health - 200,
+		"2x2植物即使四格全部失去草地，每个tick也只能无视防御扣一次当前生命10%。"
+	)
+	for cell in plant.footprint_cells:
+		game.dual_grid_terrain.set_tile(cell, original_terrain[cell])
+	var restored_health := plant.current_health
+	game.plant_terrain_decay_timer.timeout.emit()
+	_expect(
+		plant.current_health == restored_health,
+		"2x2植物全部占地恢复草地后必须立即停止衰败。"
+	)
+	_expect(
+		plant.receive_unmitigated_damage(plant.current_health - 501),
+		"衰败下限测试必须能把2x2植物准备到501点生命。"
+	)
+	for cell in plant.footprint_cells:
+		game.dual_grid_terrain.set_tile(cell, DualGridTilemap.TerrainType.DIRT)
+	game.plant_terrain_decay_timer.timeout.emit()
+	_expect(
+		plant.current_health == 450,
+		"501点当前生命的衰败伤害必须向上取整为51。"
+	)
+	game.plant_terrain_decay_timer.timeout.emit()
+	_expect(
+		plant.current_health == 400,
+		"当前生命低于500后，衰败伤害必须保持每秒最低50点。"
+	)
+	for cell in plant.footprint_cells:
+		game.dual_grid_terrain.set_tile(cell, original_terrain[cell])
+	plant.receive_unmitigated_damage(plant.current_health)
+	_expect(
+		plant_system.get_plant_by_net_id(MULTI_CELL_DECAY_PLANT_NET_ID) == null,
+		"2x2衰败测试植物死亡后必须释放net_id与占地。"
+	)
+	await process_frame
 
 
 func _find_lifecycle_fixture(
