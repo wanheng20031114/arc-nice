@@ -18,7 +18,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	_test_vegetation_stake_scene_contract()
+	await _test_vegetation_stake_scene_contract()
 
 	var game := TOWER_SCENE.instantiate() as GameTowerDefense
 	_expect(game != null, "GameTowerDefense场景必须能够实例化。")
@@ -67,6 +67,7 @@ func _test_vegetation_stake_scene_contract() -> void:
 	var main_sprite := stake.get_node_or_null("MainSprite") as Sprite2D
 	var top_glow := stake.get_node_or_null("TopGlow") as Sprite2D
 	var glow_motes := stake.get_node_or_null("GlowMotes") as GPUParticles2D
+	var health_bar := stake.get_node_or_null("HealthBar") as PlantHealthBar
 	_expect(border != null and border.mesh is QuadMesh, "植被桩场景必须预置地面边框QuadMesh。")
 	if border != null and border.mesh is QuadMesh:
 		_expect(
@@ -76,7 +77,29 @@ func _test_vegetation_stake_scene_contract() -> void:
 	_expect(main_sprite != null and main_sprite.scale == Vector2(0.5, 0.5), "植被桩主体必须沿用0.5像素素材缩放。")
 	_expect(top_glow != null and top_glow.texture != null, "植被桩必须预置独立顶部发光层。")
 	_expect(glow_motes != null and glow_motes.amount > 0, "植被桩必须预置少量GPU飘光粒子。")
-	stake.setup(config, null, [Vector2i.ZERO], true)
+	_expect(health_bar != null, "植被桩必须预置并绑定公共植物血条。")
+	root.add_child(stake)
+	stake.setup(
+		config,
+		null,
+		[Vector2i.ZERO],
+		true,
+		config.max_health - 100,
+		4,
+		config.max_health
+	)
+	_expect(
+		health_bar != null
+		and health_bar.visible
+		and health_bar.max_health_value == config.max_health,
+		"初始残血的植被桩多人代理必须立即显示正确上限的血条。"
+	)
+	_expect(
+		stake.apply_remote_health(config.max_health - 200, config.max_health, 5)
+		and health_bar != null
+		and health_bar.visible,
+		"植被桩多人代理收到更新revision后必须持续刷新并显示残血血条。"
+	)
 	var sample_now := Time.get_ticks_msec() / 1000.0
 	var first_sample_age := minf(sample_now * 0.5, 0.25)
 	var first_sample_time := maxf(sample_now - first_sample_age, 0.000001)
@@ -118,7 +141,8 @@ func _test_vegetation_stake_scene_contract() -> void:
 		and float(exported_state.get("spread_elapsed_seconds", -1.0)) <= 50.0,
 		"植被桩导出的运行时状态必须保持schema 1并封顶50秒。"
 	)
-	stake.free()
+	stake.queue_free()
+	await process_frame
 
 
 func _test_preauthored_spread_system(game: GameTowerDefense) -> void:
@@ -329,6 +353,27 @@ func _test_real_plant_lifecycle(game: GameTowerDefense) -> void:
 		"PlantSystem的plant_placed信号必须在传播系统注册对应net_id来源。"
 	)
 	_expect(spread.get_source_origin(LIFECYCLE_PLANT_NET_ID) == anchor, "传播来源原点必须等于1x1放置锚点。")
+	var health_bar := plant.get_node_or_null("HealthBar") as PlantHealthBar
+	_expect(
+		health_bar != null and not health_bar.visible,
+		"满生命的权威植被桩血条必须保持隐藏。"
+	)
+	var health_before_damage := plant.current_health
+	_expect(
+		plant.receive_damage(
+			plant.get_effective_physical_defense() + 100,
+			null,
+			Vector2.ZERO,
+			EnemyConfig.DamageType.PHYSICAL
+		),
+		"权威植被桩必须接受非致死伤害以驱动血条。"
+	)
+	_expect(
+		plant.current_health == health_before_damage - 100
+		and health_bar != null
+		and health_bar.visible,
+		"权威植被桩残血后必须立即显示公共植物血条。"
+	)
 
 	spread.advance_time(
 		float(target_ring) * VegetationSpreadSystem.SECONDS_PER_RING + 5.0

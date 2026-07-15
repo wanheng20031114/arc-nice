@@ -181,11 +181,11 @@ func _test_config_and_scene_contracts() -> void:
 	_expect(agave_config.footprint_size == Vector2i(2, 2), "龙舌兰必须继续占2×2格。")
 	_expect(corn_config.display_name == "玉米机枪塔", "玉米配置必须使用正式显示名。")
 	_expect(
-		corn_config.max_health == 1600
-		and corn_config.physical_defense == 8
-		and corn_config.magic_defense == 15
-		and corn_config.attack_damage == 10,
-		"玉米机枪塔必须拥有1600生命、8物防、15法抗与10点单发伤害。"
+		corn_config.max_health == 2500
+		and corn_config.physical_defense == 10
+		and corn_config.magic_defense == 20
+		and corn_config.attack_damage == 30,
+		"玉米机枪塔必须拥有2500生命、10物防、20法抗与30点单发伤害。"
 	)
 	_expect(
 		is_equal_approx(corn_config.get_attack_interval(), 0.9)
@@ -1153,7 +1153,7 @@ func _test_realtime_selection_and_cancel() -> void:
 	)
 	_expect(
 		corn_card != null
-		and corn_card.stats_label.text == "生命 1600  ·  伤害 10×6  ·  轮间隔 0.9 秒  ·  半径 160",
+		and corn_card.stats_label.text == "生命 2500  ·  伤害 30×6  ·  轮间隔 0.9 秒  ·  半径 160",
 		"玉米机枪塔卡片必须显示整轮伤害与轮间隔。"
 	)
 	_expect(paused == was_paused and not paused, "选择植物不得暂停SceneTree。")

@@ -123,8 +123,6 @@ func _try_use_skill1() -> bool:
 	if (
 		is_dead
 		or controls_locked
-		or _primary_visual_time_left > 0.0
-		or _pending_primary_attack
 		or _whirlwind_visual_time_left > 0.0
 		or _pending_whirlwind_attack
 	):
@@ -142,8 +140,6 @@ func try_authoritative_hoe_whirlwind() -> bool:
 	if (
 		is_dead
 		or controls_locked
-		or _primary_visual_time_left > 0.0
-		or _pending_primary_attack
 		or _whirlwind_visual_time_left > 0.0
 		or _pending_whirlwind_attack
 	):
@@ -402,10 +398,7 @@ func _play_primary_attack_body_animation(restart: bool) -> void:
 
 func _play_whirlwind_visual() -> void:
 	_finish_whirlwind_visual()
-	_primary_visual_time_left = 0.0
-	_primary_visual_facing_suffix = &""
-	basic_slash_effect.hide()
-	basic_slash_effect.stop()
+	_cancel_primary_attack_for_whirlwind()
 	_whirlwind_visual_time_left = WHIRLWIND_VISUAL_DURATION
 	body_sprite.visible = false
 	whirlwind_body_effect.frame = 0
@@ -415,6 +408,22 @@ func _play_whirlwind_visual() -> void:
 	whirlwind_range_effect.show()
 	whirlwind_range_effect.play(&"whirlwind")
 	whirlwind_impact_timer.start(WHIRLWIND_IMPACT_DELAY)
+
+
+func _cancel_primary_attack_for_whirlwind() -> void:
+	# Whirlwind has explicit priority over a swing that has not reached its
+	# impact frame yet. Clear both the presentation and the authoritative
+	# pending payload so the stopped timer cannot deal delayed primary damage.
+	_primary_visual_time_left = 0.0
+	_primary_visual_facing_suffix = &""
+	_pending_primary_attack = false
+	_pending_primary_direction = Vector2.ZERO
+	_pending_primary_damage = 0
+	if primary_impact_timer != null:
+		primary_impact_timer.stop()
+	if basic_slash_effect != null:
+		basic_slash_effect.hide()
+		basic_slash_effect.stop()
 
 
 func _finish_whirlwind_visual() -> void:
