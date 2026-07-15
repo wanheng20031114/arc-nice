@@ -148,26 +148,27 @@ frame_progress = 0.8176119
 
 [node name="AimPivot" type="Node2D" parent="VisualRoot" unique_id=1711015965]
 z_index = 2
-position = Vector2(-2, -1)
+position = Vector2(3, -1)
 
 [node name="TurretSprite" type="AnimatedSprite2D" parent="VisualRoot/AimPivot" unique_id=2121598685]
 texture_filter = 1
 material = SubResource("ShaderMaterial_pixel_snap")
+position = Vector2(-5, 0)
 sprite_frames = SubResource("SpriteFrames_turret")
 animation = &"idle"
 autoplay = "idle"
 
 [node name="ForwardMarker" type="Marker2D" parent="VisualRoot/AimPivot" unique_id=133619351]
-position = Vector2(25, 1)
+position = Vector2(20, 1)
 
 [node name="Muzzle" type="Marker2D" parent="VisualRoot/AimPivot" unique_id=276150408]
-position = Vector2(25, 1)
+position = Vector2(20, 1)
 
 [node name="MuzzleFlashSprite" type="AnimatedSprite2D" parent="VisualRoot/AimPivot" unique_id=729832480]
 z_index = 1
 texture_filter = 1
 material = SubResource("ShaderMaterial_pixel_snap")
-position = Vector2(25, 1)
+position = Vector2(20, 1)
 sprite_frames = SubResource("SpriteFrames_flash")
 animation = &"flash"
 

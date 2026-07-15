@@ -118,12 +118,18 @@ func _test_scene_contract(tower: CornMachineGun) -> void:
 		"炮塔必须使用独立 ForwardMarker 校准瞄准轴。"
 	)
 	_expect(
-		tower.aim_pivot.position == Vector2(-2, -1)
-		and tower.turret_sprite.position == Vector2.ZERO
-		and tower.forward_marker.position == Vector2(25, 1)
-		and tower.muzzle.position == Vector2(25, 1)
-		and tower.muzzle_flash_sprite.position == Vector2(25, 1),
-		"炮塔枢轴、中央枪口与公共闪光必须匹配素材审计坐标。"
+		tower.aim_pivot.position == Vector2(3, -1)
+		and tower.turret_sprite.position == Vector2(-5, 0)
+		and tower.forward_marker.position == Vector2(20, 1)
+		and tower.muzzle.position == Vector2(20, 1)
+		and tower.muzzle_flash_sprite.position == Vector2(20, 1),
+		"炮塔枢轴必须位于炮头后半中心，中央枪口与公共闪光必须匹配补偿坐标。"
+	)
+	_expect(
+		tower.aim_pivot.position + tower.turret_sprite.position == Vector2(-2, -1)
+		and tower.aim_pivot.position + tower.muzzle.position == Vector2(23, 0)
+		and tower.aim_pivot.position + tower.muzzle_flash_sprite.position == Vector2(23, 0),
+		"移动旋转轴后，默认炮头、真实枪口与公共闪光的位置不得发生漂移。"
 	)
 	var aim_probe_direction := Vector2(1.0, 0.37).normalized()
 	tower.call("_point_aim_at_direction", aim_probe_direction)
@@ -196,8 +202,13 @@ func _test_six_shot_frame_catchup(tower: CornMachineGun) -> void:
 	var fixture_children_before := fixture.get_child_count()
 	var tower_children_before := tower.get_child_count()
 	var hitscan_queries_before := tower.get_hitscan_query_count()
+	var authored_idle_center := tower.idle_aim_center_rotation
 	tower.call("_begin_burst", Vector2.RIGHT, 1, 0.0, true)
 	_expect(emitted_indices == [0], "权威 Burst 必须在 t=0 立即发射第一发。")
+	_expect(
+		absf(angle_difference(tower.aim_pivot.rotation, authored_idle_center)) > 0.01,
+		"回正测试必须先让 Burst 锁定到非默认角度。"
+	)
 	_expect(
 		tower.burst_muzzle_position.is_equal_approx(tower.muzzle.global_position)
 		and tower.tracer.global_position.is_equal_approx(tower.burst_muzzle_position)
@@ -226,8 +237,16 @@ func _test_six_shot_frame_catchup(tower: CornMachineGun) -> void:
 		"六发 Hitscan 不得动态创建投射物或其它运行时节点。"
 	)
 	_expect(
-		is_equal_approx(tower.idle_aim_center_rotation, tower.aim_pivot.rotation),
-		"战后待机弧中心必须继承当前锁定角。"
+		is_zero_approx(angle_difference(
+			tower.idle_aim_center_rotation,
+			authored_idle_center
+		))
+		and is_zero_approx(angle_difference(
+			tower.aim_pivot.rotation,
+			authored_idle_center
+		))
+		and tower.idle_aim_active,
+		"战斗结束后必须回到场景默认角，再从该中心恢复待机摆动。"
 	)
 
 
@@ -262,6 +281,7 @@ func _test_physical_defense_round_totals() -> void:
 
 func _test_proxy_elapsed_and_monotonic_actions(proxy: CornMachineGun) -> void:
 	proxy.fire_audio.stream = null
+	var authored_idle_center := proxy.idle_aim_center_rotation
 	_expect(proxy.is_multiplayer_proxy, "代理测试塔必须标记为 multiplayer proxy。")
 	_expect(proxy.attack_timer.is_stopped(), "代理必须停止本地索敌计时器。")
 	_expect(not proxy.is_physics_processing(), "空闲代理不得运行物理处理。")
@@ -301,7 +321,15 @@ func _test_proxy_elapsed_and_monotonic_actions(proxy: CornMachineGun) -> void:
 	)
 	proxy.call("_physics_process", 0.12)
 	_expect(proxy_indices == [3, 4, 5], "代理必须继续播放其余未来发次。")
-	_expect(not proxy.burst_active, "代理播放完未来发次后必须回到待机。")
+	_expect(
+		not proxy.burst_active
+		and proxy.idle_aim_active
+		and is_zero_approx(angle_difference(
+			proxy.aim_pivot.rotation,
+			authored_idle_center
+		)),
+		"代理播放完未来发次后必须回到默认角的待机状态。"
+	)
 	_expect(
 		not proxy_authority.has(true),
 		"代理 Burst 的每发都必须是纯视觉、非权威。"
@@ -338,16 +366,37 @@ func _test_proxy_elapsed_and_monotonic_actions(proxy: CornMachineGun) -> void:
 	_expect(
 		proxy.latest_proxy_action_id == 13
 		and not proxy.burst_active
-		and not proxy.is_physics_processing(),
-		"更新且已过期的动作必须终止旧表现，并保持物理处理关闭。"
+		and not proxy.is_physics_processing()
+		and proxy.idle_aim_active
+		and is_zero_approx(angle_difference(
+			proxy.idle_aim_center_rotation,
+			authored_idle_center
+		))
+		and is_zero_approx(angle_difference(
+			proxy.aim_pivot.rotation,
+			authored_idle_center
+		)),
+		"更新且已过期的动作必须终止旧表现、回到默认角并保持物理处理关闭。"
 	)
 
 
 func _test_idle_aim_alternation(tower: CornMachineGun) -> void:
 	tower.call("_stop_idle_aim")
-	tower.idle_aim_center_rotation = tower.aim_pivot.rotation
+	var authored_idle_center := tower.idle_aim_center_rotation
+	tower.call("_point_aim_at_direction", Vector2.UP)
 	tower.set_idle_aim_random_seed(TEST_SEED)
 	tower.call("_start_idle_aim")
+	_expect(
+		is_zero_approx(angle_difference(
+			tower.aim_pivot.rotation,
+			authored_idle_center
+		))
+		and is_zero_approx(angle_difference(
+			tower.idle_aim_center_rotation,
+			authored_idle_center
+		)),
+		"进入待机时必须先回到场景默认角，且不得把最后瞄准角写成新中心。"
+	)
 	var previous_rotation := tower.aim_pivot.rotation
 	var previous_move_direction := 0
 	for _step_index in range(24):
@@ -377,6 +426,7 @@ func _test_idle_aim_alternation(tower: CornMachineGun) -> void:
 		previous_rotation = tower.aim_pivot.rotation
 		previous_move_direction = move_direction
 	tower.call("_stop_idle_aim")
+	tower.aim_pivot.rotation = authored_idle_center
 
 
 func _test_target_and_ray_query_reuse(tower: CornMachineGun) -> void:

@@ -59,6 +59,8 @@ var _ray_query := PhysicsRayQueryParameters2D.create(
 )
 
 var idle_aim_random := RandomNumberGenerator.new()
+# Authored local rotation captured once during setup. Combat aim must never
+# redefine this center; every return to idle starts from the scene default.
 var idle_aim_center_rotation := 0.0
 var idle_aim_last_direction := 0
 var idle_aim_active := false
@@ -366,7 +368,6 @@ func _finish_burst() -> void:
 	burst_authoritative = false
 	set_physics_process(false)
 	turret_sprite.play(&"idle")
-	idle_aim_center_rotation = aim_pivot.rotation
 	_start_idle_aim()
 
 
@@ -386,7 +387,6 @@ func _cancel_burst(restart_idle: bool) -> void:
 		muzzle_flash_sprite.stop()
 		muzzle_flash_sprite.visible = false
 	if restart_idle:
-		idle_aim_center_rotation = aim_pivot.rotation
 		_start_idle_aim()
 
 
