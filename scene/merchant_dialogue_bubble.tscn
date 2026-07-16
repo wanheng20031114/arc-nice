@@ -131,6 +131,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="BlipAudio" type="AudioStreamPlayer2D" parent="."]
+bus = &"SFX"
 stream = ExtResource("3_blip")
 volume_db = 4.0
 max_polyphony = 4

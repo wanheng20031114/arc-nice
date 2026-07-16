@@ -281,6 +281,10 @@ func _measure_phase(
 	for _warmup_index in range(WARMUP_FRAMES):
 		await process_frame
 		_drive_movement_input()
+	var segment_queries_start := pathfinder.segment_queries_total
+	var segment_integral_hits_start := pathfinder.segment_integral_hits_total
+	var segment_exact_fallbacks_start := pathfinder.segment_exact_fallbacks_total
+	var segment_budget_deferrals_start := pathfinder.segment_budget_deferrals_total
 
 	var wall_samples: Array[float] = []
 	var process_samples: Array[float] = []
@@ -341,11 +345,12 @@ func _measure_phase(
 		physics_samples.append(
 			Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
 		)
+		var current_process_frame := Engine.get_process_frames()
 		var builds_this_frame := 0
-		if pathfinder.flow_field_budget_frame == current_physics_frame:
+		if pathfinder.flow_field_budget_frame == current_process_frame:
 			builds_this_frame = pathfinder.flow_field_builds_used_this_frame
 		var queries_this_frame := 0
-		if pathfinder.path_query_budget_frame == current_physics_frame:
+		if pathfinder.path_query_budget_frame == current_process_frame:
 			queries_this_frame = pathfinder.path_queries_used_this_frame
 		flow_builds_total += builds_this_frame
 		path_queries_total += queries_this_frame
@@ -356,6 +361,11 @@ func _measure_phase(
 
 	_release_movement_input()
 	var navigation_counts := _get_enemy_navigation_counts()
+	var dynamic_flow_diagnostics := _get_dynamic_flow_diagnostics()
+	var segment_queries := pathfinder.segment_queries_total - segment_queries_start
+	var segment_integral_hits := (
+		pathfinder.segment_integral_hits_total - segment_integral_hits_start
+	)
 	var summary := {
 		"wall": _summarize(wall_samples),
 		"process": _summarize(process_samples),
@@ -374,8 +384,29 @@ func _measure_phase(
 		"runtime_build_usec_peak": pathfinder.runtime_navigation_build_usec_peak,
 		"runtime_build_usec_last": pathfinder.runtime_navigation_build_usec_last_frame,
 		"dynamic_slots": pathfinder.dynamic_flow_target_slots.size(),
+		"dynamic_published_slots": int(dynamic_flow_diagnostics["published_slots"]),
+		"dynamic_min_revision": int(dynamic_flow_diagnostics["min_revision"]),
+		"dynamic_end_max_anchor_lag_cells": int(dynamic_flow_diagnostics["max_anchor_lag_cells"]),
+		"dynamic_end_max_retargets_since_publish": int(
+			dynamic_flow_diagnostics["max_retargets_since_publish"]
+		),
 		"pending_flow_jobs": pathfinder.runtime_flow_build_jobs.size(),
 		"path_queries": path_queries_total,
+		"segment_queries": segment_queries,
+		"segment_integral_hits": segment_integral_hits,
+		"segment_integral_hit_rate": (
+			float(segment_integral_hits) / float(segment_queries)
+			if segment_queries > 0
+			else 0.0
+		),
+		"segment_exact_fallbacks": (
+			pathfinder.segment_exact_fallbacks_total
+			- segment_exact_fallbacks_start
+		),
+		"segment_budget_deferrals": (
+			pathfinder.segment_budget_deferrals_total
+			- segment_budget_deferrals_start
+		),
 		"target_cell_transitions": target_cell_transitions,
 		"maximum_player_displacement": maximum_player_displacement,
 		"navigation_counts": navigation_counts,
@@ -620,8 +651,17 @@ func _print_phase_summary(
 		"runtime_cancelled=%d" % int(summary["runtime_flow_builds_cancelled"]),
 		"runtime_peak_usec=%d" % int(summary["runtime_build_usec_peak"]),
 		"dynamic_slots=%d" % int(summary["dynamic_slots"]),
+		"dynamic_published=%d" % int(summary["dynamic_published_slots"]),
+		"dynamic_min_revision=%d" % int(summary["dynamic_min_revision"]),
+		"dynamic_end_max_lag_cells=%d" % int(summary["dynamic_end_max_anchor_lag_cells"]),
+		"dynamic_end_max_retargets=%d" % int(summary["dynamic_end_max_retargets_since_publish"]),
 		"pending_flow_jobs=%d" % int(summary["pending_flow_jobs"]),
 		"path_queries=%d" % int(summary["path_queries"]),
+		"segment_queries=%d" % int(summary["segment_queries"]),
+		"segment_integral_hits=%d" % int(summary["segment_integral_hits"]),
+		"segment_integral_hit_rate=%.3f" % float(summary["segment_integral_hit_rate"]),
+		"segment_exact_fallbacks=%d" % int(summary["segment_exact_fallbacks"]),
+		"segment_budget_deferrals=%d" % int(summary["segment_budget_deferrals"]),
 		"flow_cache_final=%d" % pathfinder.flow_field_cache.size(),
 		"agent_grid_cache=%d" % pathfinder.agent_grid_cache.size(),
 		"nav_ready=%d" % int(navigation_counts["ready"]),
@@ -643,6 +683,42 @@ func _print_phase_summary(
 	_append_summary(parts, "build_frame_wall_ms", summary["build_frame_wall"] as Dictionary)
 	_append_summary(parts, "no_build_frame_wall_ms", summary["no_build_frame_wall"] as Dictionary)
 	print("LIVE_ENEMY_MOVEMENT_PROBE %s" % " ".join(parts))
+
+
+func _get_dynamic_flow_diagnostics() -> Dictionary:
+	var published_slots := 0
+	var minimum_revision := 2147483647
+	var maximum_anchor_lag := 0
+	var maximum_retargets := 0
+	for slot_variant in pathfinder.dynamic_flow_target_slots.values():
+		var slot: Variant = slot_variant
+		if slot == null:
+			continue
+		maximum_retargets = maxi(
+			maximum_retargets,
+			int(slot.get("pending_retargets_since_publish"))
+		)
+		var published_field := slot.get("published_field") as Dictionary
+		if published_field.is_empty():
+			continue
+		published_slots += 1
+		minimum_revision = mini(
+			minimum_revision,
+			int(slot.get("published_revision"))
+		)
+		var published_anchor := slot.get("published_anchor_cell") as Vector2i
+		var desired_anchor := slot.get("desired_resolved_cell") as Vector2i
+		var anchor_delta := (published_anchor - desired_anchor).abs()
+		maximum_anchor_lag = maxi(
+			maximum_anchor_lag,
+			maxi(anchor_delta.x, anchor_delta.y)
+		)
+	return {
+		"published_slots": published_slots,
+		"min_revision": minimum_revision if published_slots > 0 else 0,
+		"max_anchor_lag_cells": maximum_anchor_lag,
+		"max_retargets_since_publish": maximum_retargets,
+	}
 
 
 func _print_comparison() -> void:

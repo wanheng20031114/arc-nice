@@ -64,6 +64,7 @@ shape = SubResource("CapsuleShape2D_touch")
 disabled = true
 
 [node name="Skill2FireAudio" type="AudioStreamPlayer2D" parent="." index="5" unique_id=266141881]
+bus = &"SFX"
 stream = ExtResource("7_skill2_fire_audio")
 volume_db = -7.0
 max_distance = 260.0

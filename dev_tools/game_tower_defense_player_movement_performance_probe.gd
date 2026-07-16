@@ -59,6 +59,10 @@ func _run() -> void:
 		_count_visible_enemies() == ENEMY_COUNT,
 		"All movement-probe enemies must begin inside the follow camera."
 	)
+	_expect(
+		_count_enemy_resident_trail_particles() == 0,
+		"Three hundred idle movement-probe enemies must carry no speed-trail GPU emitters."
+	)
 
 	physics_interpolation = false
 	await _measure_phase("stationary_interpolation_off", false)
@@ -76,7 +80,7 @@ func _run() -> void:
 		"Native interpolation must remove repeated whole-world render positions."
 	)
 
-	var base_dirt := game.get_node_or_null("DualGridTerrain/BaseDirtLayer") as TileMapLayer
+	var base_dirt := game.get_node_or_null("DualGridTerrain/BaseDirtLayer") as TextureRect
 	_expect(base_dirt != null, "Movement probe requires BaseDirtLayer.")
 	if base_dirt != null:
 		base_dirt.hide()
@@ -87,10 +91,6 @@ func _run() -> void:
 	game.enemy_container.hide()
 	await _measure_phase("moving_without_enemy_visuals", true)
 	game.enemy_container.show()
-
-	_set_enemy_particle_fast_path(false)
-	await _measure_phase("moving_with_legacy_idle_particle_processing", true)
-	_set_enemy_particle_fast_path(true)
 
 	await _finish()
 
@@ -268,15 +268,15 @@ func _release_movement_input() -> void:
 	movement_enabled = false
 
 
-func _set_enemy_particle_fast_path(enabled: bool) -> void:
+func _count_enemy_resident_trail_particles() -> int:
+	var count := 0
 	for enemy in enemies:
 		if enemy == null or not is_instance_valid(enemy):
 			continue
-		var trail := enemy.get_node_or_null("MoveSpeedTrailEffect") as Node2D
-		if trail != null:
-			trail.process_mode = (
-				Node.PROCESS_MODE_DISABLED if enabled else Node.PROCESS_MODE_INHERIT
-			)
+		for descendant in enemy.find_children("", "GPUParticles2D", true, false):
+			if descendant is GPUParticles2D:
+				count += 1
+	return count
 
 
 func _count_visible_enemies() -> int:

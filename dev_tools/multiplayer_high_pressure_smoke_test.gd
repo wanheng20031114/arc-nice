@@ -963,6 +963,21 @@ func _test_offscreen_proxy_visual_budget() -> void:
 		and int(mp_game.get("_offscreen_enemy_proxy_count")) == 1,
 		"The client visual budget must pause only the safely offscreen enemy proxy."
 	)
+	var first_offscreen_sample := bool(
+		mp_game.call("_should_interpolate_enemy_proxy", 2, far_enemy, 10.0)
+	)
+	var duplicate_offscreen_sample := bool(
+		mp_game.call("_should_interpolate_enemy_proxy", 2, far_enemy, 10.0)
+	)
+	var later_offscreen_sample := bool(
+		mp_game.call("_should_interpolate_enemy_proxy", 2, far_enemy, 10.2)
+	)
+	_expect(
+		first_offscreen_sample
+		and not duplicate_offscreen_sample
+		and later_offscreen_sample,
+		"A safely offscreen proxy must sample at bounded 15 Hz slots instead of every render call."
+	)
 	far_enemy.global_position = Vector2.ZERO
 	mp_game.set("_client_proxy_visual_budget_time_left", 0.0)
 	mp_game.call("_update_client_proxy_visual_budget", 0.0)
@@ -970,6 +985,11 @@ func _test_offscreen_proxy_visual_budget() -> void:
 		far_enemy.multiplayer_proxy_visual_active
 		and int(mp_game.get("_offscreen_enemy_proxy_count")) == 0,
 		"A proxy re-entering the expanded camera rectangle must immediately restore visuals."
+	)
+	_expect(
+		bool(mp_game.call("_should_interpolate_enemy_proxy", 2, far_enemy, 10.2))
+		and bool(mp_game.call("_should_interpolate_enemy_proxy", 2, far_enemy, 10.2)),
+		"A visible proxy must keep full render-rate interpolation even with a retained offscreen slot."
 	)
 	mp_game.set("_net_enemies", {})
 	near_enemy.queue_free()

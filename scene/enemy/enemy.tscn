@@ -4,7 +4,6 @@
 [ext_resource type="Script" uid="uid://b26kjgoph1aal" path="res://scene/enemy/enemy.gd" id="2_enemy"]
 [ext_resource type="AudioStream" uid="uid://4xnlqa7gq1qw" path="res://resources/audio/cowboy_monsterhit.wav" id="3_hit_audio"]
 [ext_resource type="AudioStream" uid="uid://dtcpsyjgcfb6m" path="res://resources/audio/cowboy_monsterdie.wav" id="4_death_audio"]
-[ext_resource type="PackedScene" path="res://scene/move_speed_trail_effect.tscn" id="6_speed_trail"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_enemy"]
 resource_local_to_scene = false
@@ -49,19 +48,19 @@ shape = SubResource("CircleShape2D_body")
 
 [node name="TouchDamageArea" type="Area2D" parent="." unique_id=738698124]
 collision_layer = 8
-collision_mask = 530
+collision_mask = 514
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="TouchDamageArea" unique_id=1983778379]
 z_index = 10
 shape = SubResource("CircleShape2D_touch")
 
 [node name="HitAudio" type="AudioStreamPlayer2D" parent="." unique_id=782546985]
+bus = &"SFX"
 stream = ExtResource("3_hit_audio")
 volume_db = -6.0
 max_polyphony = 1
 
 [node name="DeathAudio" type="AudioStreamPlayer2D" parent="." unique_id=1329864117]
+bus = &"SFX"
 stream = ExtResource("4_death_audio")
 volume_db = -5.0
-
-[node name="MoveSpeedTrailEffect" parent="." unique_id=739079668 instance=ExtResource("6_speed_trail")]

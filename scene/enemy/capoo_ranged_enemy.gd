@@ -69,13 +69,13 @@ func _has_clear_world_line_to_target() -> bool:
 	var attack_target := get_attackable_objective()
 	if attack_target == null:
 		return false
-	return _has_clear_world_line_to_position(attack_target.global_position)
+	return _has_throttled_world_line_of_sight(attack_target, WORLD_COLLISION_MASK)
 
 
 func _has_clear_world_line_to_objective() -> bool:
 	if not is_instance_valid(objective_target):
 		return false
-	return _has_clear_world_line_to_position(objective_target.global_position)
+	return _has_throttled_world_line_of_sight(objective_target, WORLD_COLLISION_MASK)
 
 
 func _has_clear_world_line_to_position(target_position: Vector2) -> bool:

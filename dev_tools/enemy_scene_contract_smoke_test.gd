@@ -19,6 +19,11 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/capoo_smg.tres"),
 ]
 const ENEMY_VISUAL_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
+const PLAYER_BULLET_SCENE := preload("res://scene/bullet.tscn")
+const PLAYER_COLLISION_LAYER := 1 << 1
+const ENEMY_BODY_COLLISION_LAYER := 1 << 2
+const BULLET_COLLISION_LAYER := 1 << 4
+const PLANT_BODY_COLLISION_LAYER := 1 << 9
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -36,6 +41,7 @@ func _run() -> void:
 
 	for enemy_config in ENEMY_CONFIGS:
 		await _test_enemy_scene_contract(enemy_config)
+	await _test_player_bullet_body_hit_path()
 
 	current_scene = null
 	test_root.queue_free()
@@ -70,13 +76,32 @@ func _test_enemy_scene_contract(enemy_config: EnemyConfig) -> void:
 	var animated_sprite := enemy.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
 	var touch_damage_area := enemy.get_node_or_null("TouchDamageArea") as Area2D
 	var legacy_hit_particles := enemy.get_node_or_null("HitParticles") as GPUParticles2D
+	var resident_speed_trail := enemy.get_node_or_null("MoveSpeedTrailEffect")
 	var body_shape_nodes := _collect_direct_collision_shapes(enemy)
 	var touch_shape_nodes := _collect_direct_collision_shapes(touch_damage_area)
 	_expect(animated_sprite != null, "%s scene must include AnimatedSprite2D." % enemy_config.resource_path)
 	_expect(touch_damage_area != null, "%s scene must include TouchDamageArea." % enemy_config.resource_path)
 	_expect(
+		(enemy.collision_layer & ENEMY_BODY_COLLISION_LAYER) != 0,
+		"%s body must remain directly detectable by player projectiles."
+		% enemy_config.resource_path
+	)
+	_expect(
+		touch_damage_area != null
+		and (touch_damage_area.collision_mask & BULLET_COLLISION_LAYER) == 0
+		and touch_damage_area.collision_mask
+			== (PLAYER_COLLISION_LAYER | PLANT_BODY_COLLISION_LAYER),
+		"%s TouchDamageArea must monitor only players and plants, not duplicate bullet hits."
+		% enemy_config.resource_path
+	)
+	_expect(
 		legacy_hit_particles == null,
 		"%s must use the shared hit-effect pool instead of a resident emitter."
+		% enemy_config.resource_path
+	)
+	_expect(
+		resident_speed_trail == null,
+		"%s must lease speed-trail particles only while hasted instead of carrying four idle emitters."
 		% enemy_config.resource_path
 	)
 	_expect(not body_shape_nodes.is_empty(), "%s scene must include body CollisionShape2D nodes." % enemy_config.resource_path)
@@ -115,6 +140,11 @@ func _test_enemy_scene_contract(enemy_config: EnemyConfig) -> void:
 	test_root.add_child(enemy)
 	enemy.setup(enemy_config, null, null)
 	await process_frame
+	_expect(
+		touch_damage_area.area_entered.get_connections().is_empty(),
+		"%s TouchDamageArea must not register the redundant enemy-side bullet callback."
+		% enemy_config.resource_path
+	)
 	var effects_before := _collect_active_hit_effects().size()
 	enemy.call("_play_hit_particles", Vector2.RIGHT)
 	var active_effects := _collect_active_hit_effects()
@@ -142,6 +172,33 @@ func _test_enemy_scene_contract(enemy_config: EnemyConfig) -> void:
 		% enemy_config.resource_path
 	)
 
+	enemy.queue_free()
+	await process_frame
+
+
+func _test_player_bullet_body_hit_path() -> void:
+	var enemy := ENEMY_CONFIGS[0].enemy_scene.instantiate() as Enemy
+	var bullet := PLAYER_BULLET_SCENE.instantiate() as Bullet
+	_expect(enemy != null and bullet != null, "Player bullet collision fixture must instantiate.")
+	if enemy == null or bullet == null:
+		return
+	test_root.add_child(enemy)
+	enemy.setup(ENEMY_CONFIGS[0], null, null)
+	enemy.set_physics_process(false)
+	enemy.global_position = Vector2.ZERO
+	var starting_health := enemy.current_health
+	bullet.speed = 0.0
+	bullet.global_position = enemy.global_position
+	test_root.add_child(bullet)
+	bullet.setup(Vector2.RIGHT, 5)
+	await physics_frame
+	await physics_frame
+	_expect(
+		enemy.current_health == starting_health - 5,
+		"Player Bullet.body_entered must own the one authoritative hit after enemy-side area listening is removed."
+	)
+	if is_instance_valid(bullet):
+		bullet.queue_free()
 	enemy.queue_free()
 	await process_frame
 

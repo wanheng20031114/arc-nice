@@ -28,6 +28,8 @@ const FLOW_DIAGONAL_COST := 14
 const FLOW_BUCKET_COUNT := FLOW_DIAGONAL_COST + 1
 const MAX_FLOW_RECOVERY_CACHE_ENTRIES := 512
 const DEFAULT_TRAVERSAL_TYPES := DualGridTilemap.TraversalType.LAND
+const NAVIGATION_CELL_OBSTACLE_FLAG := 1 << 7
+const NAVIGATION_CELL_TRAVERSAL_MASK := NAVIGATION_CELL_OBSTACLE_FLAG - 1
 
 enum NavigationStepStatus {
 	READY,
@@ -48,6 +50,10 @@ class NavigationStepResult:
 	var used_start_recovery: bool = false
 	var is_complete_route: bool = false
 	var remaining_cell_distance: int = -1
+	# Dynamic fields are immutable while a replacement is built. Consumers use
+	# this bit to avoid steering toward an anchor that has fallen materially
+	# behind the live target.
+	var dynamic_anchor_is_stale: bool = false
 
 	func reset(
 		new_status: int,
@@ -64,6 +70,7 @@ class NavigationStepResult:
 		used_start_recovery = false
 		is_complete_route = false
 		remaining_cell_distance = -1
+		dynamic_anchor_is_stale = false
 
 
 class FlowQueryContext:
@@ -105,6 +112,7 @@ class DynamicFlowTargetSlot:
 	var published_physics_frame: int = -1
 	var pending_job_key: String = ""
 	var last_request_physics_frame: int = -1
+	var pending_retargets_since_publish: int = 0
 
 
 class RuntimeFlowBuildJob:
@@ -131,6 +139,15 @@ class AgentSolidIntegralSnapshot:
 	var values: PackedInt32Array = PackedInt32Array()
 
 
+class AgentNavigationProfile:
+	var generation: int = -1
+	var cache_key: String = ""
+	var normalized_extents: Vector2 = Vector2.ZERO
+	var traversal_types: int = 0
+	var path_grid: AStarGrid2D = null
+	var solid_integral_snapshot: AgentSolidIntegralSnapshot = null
+
+
 class RuntimeAgentGridBuildJob:
 	var generation: int = -1
 	var cache_key: String = ""
@@ -152,12 +169,14 @@ class RuntimeAgentGridBuildJob:
 @export var allow_partial_path: bool = false
 # 搜索最近可行走格子的最大半径
 @export var max_nearest_cell_search_radius: int = 6
-# 每个物理帧允许的 A* 路径查询数量，用于避免大量敌人同帧刷新造成尖峰。
+# Kept under the original exported name for scene compatibility. The counter is
+# now reset by rendered/process frame, so physics catch-up ticks share one cap.
 @export_range(1, 128, 1, "or_greater") var max_path_queries_per_physics_frame: int = 12
 # 敌人体积寻路按实际碰撞外接尺寸计算；需要覆盖 CharacterBody2D.safe_margin，
 # 否则刚好贴边的格子会被寻路视为可走，但 move_and_slide() 会在碰撞恢复中卡住。
 @export var agent_clearance_padding: float = 0.1
-# 每个物理帧最多登记多少张新 flow job；实际建图由独立的格数/时间预算分片。
+# Likewise, registrations are capped per rendered/process frame rather than per
+# physics tick. Actual construction remains governed by the microsecond budget.
 @export_range(1, 128, 1, "or_greater") var max_flow_field_builds_per_physics_frame: int = 4
 # flow field 按“敌人体型 + 目标格”缓存，限制上限避免长局无限增长。
 @export_range(1, 256, 1, "or_greater") var max_flow_field_cache_entries: int = 48
@@ -165,10 +184,25 @@ class RuntimeAgentGridBuildJob:
 # 同步遍历整张地图。格数与时间任一先到即让出主线程。
 @export_range(16, 4096, 1, "or_greater") var runtime_navigation_max_expansions_per_frame: int = 192
 @export_range(100, 8000, 50, "or_greater") var runtime_navigation_time_budget_usec: int = 1000
+# Integral-certified segments are O(1). Only exact fallbacks near an obstacle
+# consume this per-render-frame budget; when exhausted, runtime callers receive
+# null and fall back to their shared flow field.
+@export_range(1, 256, 1, "or_greater") var max_exact_segment_fallbacks_per_render_frame: int = 32
+@export_range(100, 8000, 50, "or_greater") var exact_segment_fallback_time_budget_usec: int = 750
 # 玩家目标至少偏离已发布锚点两个格子才立即请求新场；若停在相邻格，
 # 最迟也会在短暂稳定后刷新。这样不会在每个 16px 格边界制造全图工作。
 @export_range(1, 8, 1, "or_greater") var dynamic_target_repath_distance_cells: int = 2
 @export_range(0.05, 2.0, 0.05, "or_greater") var dynamic_target_max_anchor_age_seconds: float = 0.25
+# A two-cell mismatch requests a refresh, but a recently completed field remains
+# useful while it is only a few cells behind. Beyond this bound consumers reject
+# it rather than visibly steering toward seconds-old player history.
+@export_range(2, 32, 1, "or_greater") var dynamic_target_max_usable_anchor_lag_cells: int = 6
+# A replacement already this far behind the newest requested cell is detached
+# and restarted, but only a bounded number of times before one complete
+# intermediate field is guaranteed to publish. This prevents a continuously
+# moving player from starving every reverse-field build.
+@export_range(2, 16, 1, "or_greater") var dynamic_target_pending_retarget_distance_cells: int = 4
+@export_range(0, 4, 1, "or_greater") var dynamic_target_max_pending_retargets_before_publish: int = 1
 @export_range(1.0, 120.0, 1.0, "or_greater") var dynamic_target_slot_ttl_seconds: float = 15.0
 @export_range(1, 256, 1, "or_greater") var max_dynamic_target_slots: int = 64
 
@@ -183,12 +217,23 @@ var path_queries_used_this_frame: int = 0
 var path_query_budget_frame: int = -1
 var flow_field_builds_used_this_frame: int = 0
 var flow_field_budget_frame: int = -1
+var exact_segment_budget_process_frame: int = -1
+var exact_segment_fallbacks_used_this_frame: int = 0
+var exact_segment_fallback_usec_used_this_frame: int = 0
+var segment_queries_total: int = 0
+var segment_integral_hits_total: int = 0
+var segment_exact_fallbacks_total: int = 0
+var segment_budget_deferrals_total: int = 0
 var agent_grid_cache: Dictionary = {}
 # Each shared agent profile owns one immutable summed-area table of its solid
 # cells. The table is published atomically with the profile grid, so a runtime
 # caller can cheaply certify a completely open rectangle without ever observing
 # a partially built snapshot.
 var agent_open_plain_integral_cache: Dictionary = {}
+# Lightweight generation-bound handles let consumers cache one resolved agent
+# profile instead of rebuilding a String key and traversing two dictionaries on
+# every movement probe.
+var agent_navigation_profile_cache: Dictionary = {}
 var flow_field_cache: Dictionary = {}
 var flow_field_cache_order: Array[String] = []
 var flow_recovery_route_cache: Dictionary = {}
@@ -201,6 +246,13 @@ var runtime_agent_grid_build_order: Array[String] = []
 var region_local_rect: Rect2 = Rect2()
 var terrain_rebuild_queued: bool = false
 var navigation_generation: int = 0
+# One byte per base navigation cell. The high bit represents authored collision
+# and the low bits store DualGridTilemap.TraversalType flags. TileMap resources
+# are sampled only while rebuilding; every steady-state clearance query reads
+# this immutable array instead of crossing into TileMapLayer repeatedly.
+var raw_navigation_snapshot_generation: int = -1
+var raw_navigation_snapshot_region: Rect2i = Rect2i()
+var raw_navigation_cell_snapshot: PackedByteArray = PackedByteArray()
 var legacy_navigation_step_scratch := NavigationStepResult.new()
 var runtime_navigation_expansions_last_frame: int = 0
 var runtime_navigation_build_usec_last_frame: int = 0
@@ -220,9 +272,19 @@ func _process(_delta: float) -> void:
 	_advance_runtime_navigation_jobs()
 
 
-# 重新构建寻路网格数据
+# 重新构建寻路网格数据。所有公开调用都会开启新 generation；只有 terrain
+# signal 已同步失效旧数据后，私有 deferred 路径才可复用当前 generation。
 func rebuild() -> void:
-	navigation_generation += 1
+	_rebuild_navigation_snapshot(true)
+	if is_built:
+		# An explicit rebuild already sampled every live terrain cell. Cancel any
+		# older deferred callback; it will observe false and become a no-op.
+		terrain_rebuild_queued = false
+
+
+func _rebuild_navigation_snapshot(invalidate_generation: bool) -> void:
+	if invalidate_generation:
+		navigation_generation += 1
 	is_built = false
 	_cancel_all_runtime_navigation_jobs()
 	dynamic_flow_target_slots.clear()
@@ -240,25 +302,39 @@ func rebuild() -> void:
 		push_warning("GridPathfinder 的 TileMapLayer 没有可用瓦片。")
 		return
 
-	astar_grid.clear()
+	var rebuilt_grid := AStarGrid2D.new()
 	agent_grid_cache.clear()
 	agent_open_plain_integral_cache.clear()
+	agent_navigation_profile_cache.clear()
 	flow_field_cache.clear()
 	flow_field_cache_order.clear()
 	flow_recovery_route_cache.clear()
 	flow_recovery_cache_order.clear()
-	astar_grid.region = used_rect
-	astar_grid.cell_size = Vector2(obstacle_tile_layer.tile_set.tile_size)
-	astar_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
-	astar_grid.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
-	astar_grid.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
-	astar_grid.update()
+	rebuilt_grid.region = used_rect
+	rebuilt_grid.cell_size = Vector2(obstacle_tile_layer.tile_set.tile_size)
+	rebuilt_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	rebuilt_grid.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
+	rebuilt_grid.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
+	rebuilt_grid.update()
+	var rebuilt_cell_snapshot := _build_raw_navigation_cell_snapshot(used_rect)
+	if rebuilt_cell_snapshot.size() != used_rect.size.x * used_rect.size.y:
+		push_warning("GridPathfinder 无法构建基础导航快照。")
+		return
+
+	# Publish the base grid and its byte snapshot as one generation. is_built
+	# remains false until all dependent default-profile data is ready, so runtime
+	# readers can observe either the complete old generation or the complete new
+	# generation, never a half-built mix.
+	astar_grid = rebuilt_grid
+	raw_navigation_snapshot_generation = navigation_generation
+	raw_navigation_snapshot_region = used_rect
+	raw_navigation_cell_snapshot = rebuilt_cell_snapshot
 	_update_region_local_rect()
 
 	for y in range(used_rect.position.y, used_rect.end.y):
 		for x in range(used_rect.position.x, used_rect.end.x):
 			var cell := Vector2i(x, y)
-			astar_grid.set_point_solid(cell, _is_cell_blocked(cell))
+			rebuilt_grid.set_point_solid(cell, _is_cell_blocked(cell))
 
 	_store_agent_open_plain_integral_snapshot(
 		_get_agent_grid_cache_key(Vector2.ZERO, DEFAULT_TRAVERSAL_TYPES),
@@ -285,6 +361,13 @@ func _on_terrain_changed(_cell: Vector2i, previous_terrain: int, current_terrain
 		return
 	if terrain_rebuild_queued:
 		return
+	# Invalidate certificates immediately. The expensive rebuild remains deferred
+	# so multiple edits coalesce, but no caller can keep using a LAND/WATER result
+	# produced before the first traversal-affecting edit.
+	navigation_generation += 1
+	is_built = false
+	_cancel_all_runtime_navigation_jobs()
+	dynamic_flow_target_slots.clear()
 	terrain_rebuild_queued = true
 	call_deferred("_rebuild_after_terrain_change")
 
@@ -306,8 +389,10 @@ func _get_traversal_type_for_terrain(terrain_type: int) -> int:
 
 
 func _rebuild_after_terrain_change() -> void:
+	if not terrain_rebuild_queued:
+		return
 	terrain_rebuild_queued = false
-	rebuild()
+	_rebuild_navigation_snapshot(false)
 
 
 # 获取两点之间的全局坐标路径数组
@@ -545,12 +630,74 @@ func try_is_navigation_segment_walkable(
 	)
 	if path_grid == null:
 		return null
-	return _is_navigation_segment_walkable_with_grid(
+	var cache_key := _get_agent_grid_cache_key(
+		normalized_extents,
+		traversal_types
+	)
+	return _try_is_navigation_segment_walkable_runtime(
 		from_global_position,
 		to_global_position,
 		normalized_extents,
 		traversal_types,
-		path_grid
+		path_grid,
+		_get_agent_open_plain_integral_snapshot(cache_key)
+	)
+
+
+func try_get_agent_navigation_profile(
+	agent_half_extents: Vector2 = Vector2.ZERO,
+	traversal_types: int = DEFAULT_TRAVERSAL_TYPES
+) -> AgentNavigationProfile:
+	if not is_built or obstacle_tile_layer == null:
+		return null
+	var normalized_extents := _normalize_agent_half_extents(agent_half_extents)
+	var cache_key := _get_agent_grid_cache_key(
+		normalized_extents,
+		traversal_types
+	)
+	var cached_profile := agent_navigation_profile_cache.get(
+		cache_key
+	) as AgentNavigationProfile
+	if _is_agent_navigation_profile_valid(cached_profile):
+		return cached_profile
+	var path_grid := _get_runtime_agent_grid_or_enqueue(
+		normalized_extents,
+		traversal_types
+	)
+	if path_grid == null:
+		return null
+	var snapshot := _get_agent_open_plain_integral_snapshot(cache_key)
+	if snapshot == null:
+		return null
+	var profile := AgentNavigationProfile.new()
+	profile.generation = navigation_generation
+	profile.cache_key = cache_key
+	profile.normalized_extents = normalized_extents
+	profile.traversal_types = traversal_types
+	profile.path_grid = path_grid
+	profile.solid_integral_snapshot = snapshot
+	agent_navigation_profile_cache[cache_key] = profile
+	return profile
+
+
+func is_agent_navigation_profile_valid(profile: AgentNavigationProfile) -> bool:
+	return _is_agent_navigation_profile_valid(profile)
+
+
+func try_is_navigation_segment_walkable_with_profile(
+	from_global_position: Vector2,
+	to_global_position: Vector2,
+	profile: AgentNavigationProfile
+) -> Variant:
+	if not _is_agent_navigation_profile_valid(profile):
+		return null
+	return _try_is_navigation_segment_walkable_runtime(
+		from_global_position,
+		to_global_position,
+		profile.normalized_extents,
+		profile.traversal_types,
+		profile.path_grid,
+		profile.solid_integral_snapshot
 	)
 
 
@@ -607,7 +754,111 @@ func try_is_navigation_open_plain(
 	) == 0
 
 
+func try_is_navigation_open_plain_with_profile(
+	from_global_position: Vector2,
+	to_global_position: Vector2,
+	profile: AgentNavigationProfile
+) -> Variant:
+	if not _is_agent_navigation_profile_valid(profile):
+		return null
+	var snapshot := profile.solid_integral_snapshot
+	var from_cell := _global_to_map(from_global_position)
+	var to_cell := _global_to_map(to_global_position)
+	if (
+		not snapshot.region.has_point(from_cell)
+		or not snapshot.region.has_point(to_cell)
+	):
+		return false
+	var minimum_cell := Vector2i(
+		mini(from_cell.x, to_cell.x),
+		mini(from_cell.y, to_cell.y)
+	)
+	var maximum_cell := Vector2i(
+		maxi(from_cell.x, to_cell.x),
+		maxi(from_cell.y, to_cell.y)
+	)
+	return _get_agent_solid_count_in_cell_rect(
+		snapshot,
+		minimum_cell,
+		maximum_cell
+	) == 0
+
+
 func _is_navigation_segment_walkable_with_grid(
+	from_global_position: Vector2,
+	to_global_position: Vector2,
+	normalized_extents: Vector2,
+	traversal_types: int,
+	path_grid: AStarGrid2D,
+	solid_integral_snapshot: AgentSolidIntegralSnapshot = null
+) -> bool:
+	# Most movement probes cover only a fraction of a tile. Certify their swept
+	# cell rectangle from the immutable agent-solid integral first; the expanded
+	# one-cell guard band makes this conservative for sub-cell endpoints. Only a
+	# segment near a wall, water edge, or region boundary pays for exact samples.
+	if _can_certify_navigation_segment_from_integral(
+		from_global_position,
+		to_global_position,
+		normalized_extents,
+		traversal_types,
+		solid_integral_snapshot
+	):
+		return true
+	return _is_navigation_segment_walkable_exact_with_grid(
+		from_global_position,
+		to_global_position,
+		normalized_extents,
+		traversal_types,
+		path_grid
+	)
+
+
+func _try_is_navigation_segment_walkable_runtime(
+	from_global_position: Vector2,
+	to_global_position: Vector2,
+	normalized_extents: Vector2,
+	traversal_types: int,
+	path_grid: AStarGrid2D,
+	solid_integral_snapshot: AgentSolidIntegralSnapshot
+) -> Variant:
+	segment_queries_total += 1
+	if _can_certify_navigation_segment_from_integral(
+		from_global_position,
+		to_global_position,
+		normalized_extents,
+		traversal_types,
+		solid_integral_snapshot
+	):
+		segment_integral_hits_total += 1
+		return true
+	_refresh_exact_segment_budget_frame()
+	if (
+		exact_segment_fallbacks_used_this_frame
+			>= maxi(max_exact_segment_fallbacks_per_render_frame, 1)
+		or exact_segment_fallback_usec_used_this_frame
+			>= maxi(exact_segment_fallback_time_budget_usec, 100)
+	):
+		segment_budget_deferrals_total += 1
+		return null
+
+	exact_segment_fallbacks_used_this_frame += 1
+	segment_exact_fallbacks_total += 1
+	var started_usec := Time.get_ticks_usec()
+	var is_walkable := _is_navigation_segment_walkable_exact_with_grid(
+		from_global_position,
+		to_global_position,
+		normalized_extents,
+		traversal_types,
+		path_grid
+	)
+	exact_segment_fallback_usec_used_this_frame += maxi(
+		Time.get_ticks_usec() - started_usec,
+		0
+	)
+	return is_walkable
+
+
+func _is_navigation_segment_walkable_exact_with_grid(
 	from_global_position: Vector2,
 	to_global_position: Vector2,
 	normalized_extents: Vector2,
@@ -639,6 +890,44 @@ func _is_navigation_segment_walkable_with_grid(
 		):
 			return false
 	return true
+
+
+func _can_certify_navigation_segment_from_integral(
+	from_global_position: Vector2,
+	to_global_position: Vector2,
+	normalized_extents: Vector2,
+	traversal_types: int,
+	solid_integral_snapshot: AgentSolidIntegralSnapshot = null
+) -> bool:
+	var snapshot := solid_integral_snapshot
+	if snapshot == null:
+		var cache_key := _get_agent_grid_cache_key(
+			normalized_extents,
+			traversal_types
+		)
+		snapshot = _get_agent_open_plain_integral_snapshot(cache_key)
+	if snapshot == null:
+		return false
+	var from_cell := _global_to_map(from_global_position)
+	var to_cell := _global_to_map(to_global_position)
+	var minimum_cell := Vector2i(
+		mini(from_cell.x, to_cell.x) - 1,
+		mini(from_cell.y, to_cell.y) - 1
+	)
+	var maximum_cell := Vector2i(
+		maxi(from_cell.x, to_cell.x) + 1,
+		maxi(from_cell.y, to_cell.y) + 1
+	)
+	if (
+		not snapshot.region.has_point(minimum_cell)
+		or not snapshot.region.has_point(maximum_cell)
+	):
+		return false
+	return _get_agent_solid_count_in_cell_rect(
+		snapshot,
+		minimum_cell,
+		maximum_cell
+	) == 0
 
 
 # Complete-only A* path used by diagnostics and callers that need the full
@@ -827,7 +1116,7 @@ func prewarm_flow_navigation_target_staged(
 
 
 func _refresh_path_query_budget_frame() -> void:
-	var current_frame := Engine.get_physics_frames()
+	var current_frame := Engine.get_process_frames()
 	if current_frame == path_query_budget_frame:
 		return
 	path_query_budget_frame = current_frame
@@ -835,11 +1124,20 @@ func _refresh_path_query_budget_frame() -> void:
 
 
 func _refresh_flow_field_budget_frame() -> void:
-	var current_frame := Engine.get_physics_frames()
+	var current_frame := Engine.get_process_frames()
 	if current_frame == flow_field_budget_frame:
 		return
 	flow_field_budget_frame = current_frame
 	flow_field_builds_used_this_frame = 0
+
+
+func _refresh_exact_segment_budget_frame() -> void:
+	var current_frame := Engine.get_process_frames()
+	if current_frame == exact_segment_budget_process_frame:
+		return
+	exact_segment_budget_process_frame = current_frame
+	exact_segment_fallbacks_used_this_frame = 0
+	exact_segment_fallback_usec_used_this_frame = 0
 
 
 func _get_runtime_agent_grid_or_enqueue(
@@ -922,13 +1220,12 @@ func _request_runtime_dynamic_flow_build(
 		_publish_dynamic_flow_slot(slot, target_cell, cached_field)
 		return
 
-	var needs_first_field := slot.published_field.is_empty()
 	var job := _get_or_create_runtime_flow_build_job(
 		target_cell,
 		slot.normalized_extents,
 		slot.traversal_types,
 		slot.path_grid,
-		needs_first_field
+		true
 	)
 	job.waiting_dynamic_slots[slot.slot_key] = true
 	slot.pending_job_key = job.cache_key
@@ -1189,7 +1486,7 @@ func _complete_runtime_flow_build_job(job: RuntimeFlowBuildJob) -> void:
 			job.traversal_types,
 			field
 		)
-	var published_slots: Array[DynamicFlowTargetSlot] = []
+	var affected_slots: Array[DynamicFlowTargetSlot] = []
 	for slot_key_variant in job.waiting_dynamic_slots:
 		var slot_key := String(slot_key_variant)
 		var slot := dynamic_flow_target_slots.get(slot_key) as DynamicFlowTargetSlot
@@ -1199,14 +1496,34 @@ func _complete_runtime_flow_build_job(job: RuntimeFlowBuildJob) -> void:
 			or slot.pending_job_key != job.cache_key
 		):
 			continue
-		_publish_dynamic_flow_slot(slot, job.target_cell, field)
-		published_slots.append(slot)
+		# Publish every complete intermediate field that is at least as close to the
+		# live target as the currently visible one. Together with the bounded
+		# retarget count, this guarantees monotonically fresher revisions even while
+		# the player moves continuously; the latest desired target is requested below.
+		var target_lag := _chebyshev_cell_distance(
+			job.target_cell,
+			slot.desired_resolved_cell
+		)
+		var published_lag := 2147483647
+		if not slot.published_field.is_empty():
+			published_lag = _chebyshev_cell_distance(
+				slot.published_anchor_cell,
+				slot.desired_resolved_cell
+			)
+		if (
+			slot.published_field.is_empty()
+			or target_lag <= published_lag
+		):
+			_publish_dynamic_flow_slot(slot, job.target_cell, field)
+		else:
+			slot.pending_job_key = ""
+		affected_slots.append(slot)
 	runtime_flow_builds_completed += 1
 	_remove_runtime_flow_build_job(job.cache_key)
 	# Coalesce every target update that arrived during the build into at most one
-	# successor request. The just-published complete field remains active while
-	# that successor is built; no half-field is ever visible to an enemy.
-	for slot in published_slots:
+	# successor request. Obsolete completions are discarded rather than resetting
+	# the apparent age of a seconds-old anchor.
+	for slot in affected_slots:
 		_update_dynamic_flow_slot_request(
 			slot,
 			slot.desired_original_cell,
@@ -1741,6 +2058,16 @@ func _write_dynamic_target_navigation_step(
 		next_cells,
 		distances
 	)
+	result.dynamic_anchor_is_stale = (
+		_chebyshev_cell_distance(
+			slot.published_anchor_cell,
+			desired_target_cell
+		)
+		>= maxi(
+			dynamic_target_max_usable_anchor_lag_cells,
+			dynamic_target_repath_distance_cells
+		)
+	)
 
 
 func _get_or_create_dynamic_flow_slot(
@@ -1811,7 +2138,23 @@ func _update_dynamic_flow_slot_request(
 			)
 
 	if slot.pending_job_key != "":
-		return
+		var pending_job := runtime_flow_build_jobs.get(
+			slot.pending_job_key
+		) as RuntimeFlowBuildJob
+		if pending_job == null:
+			slot.pending_job_key = ""
+		elif (
+			_chebyshev_cell_distance(
+				pending_job.target_cell,
+				desired_target_cell
+			) >= maxi(dynamic_target_pending_retarget_distance_cells, 2)
+			and slot.pending_retargets_since_publish
+				< maxi(dynamic_target_max_pending_retargets_before_publish, 0)
+		):
+			_detach_dynamic_flow_slot_from_pending_job(slot)
+			slot.pending_retargets_since_publish += 1
+		else:
+			return
 	if slot.published_field.is_empty():
 		_request_runtime_dynamic_flow_build(slot, desired_target_cell)
 		return
@@ -1837,6 +2180,21 @@ func _update_dynamic_flow_slot_request(
 		_request_runtime_dynamic_flow_build(slot, desired_target_cell)
 
 
+func _detach_dynamic_flow_slot_from_pending_job(
+	slot: DynamicFlowTargetSlot
+) -> void:
+	if slot == null or slot.pending_job_key == "":
+		return
+	var job_key := slot.pending_job_key
+	var job := runtime_flow_build_jobs.get(job_key) as RuntimeFlowBuildJob
+	slot.pending_job_key = ""
+	if job == null:
+		return
+	job.waiting_dynamic_slots.erase(slot.slot_key)
+	if job.waiting_dynamic_slots.is_empty() and not job.publish_to_fixed_cache:
+		_cancel_runtime_flow_build_job(job_key)
+
+
 func _publish_dynamic_flow_slot(
 	slot: DynamicFlowTargetSlot,
 	anchor_cell: Vector2i,
@@ -1849,6 +2207,7 @@ func _publish_dynamic_flow_slot(
 	slot.published_revision += 1
 	slot.published_physics_frame = Engine.get_physics_frames()
 	slot.pending_job_key = ""
+	slot.pending_retargets_since_publish = 0
 
 
 func _bind_dynamic_flow_query_context(
@@ -1950,6 +2309,7 @@ func _navigation_step_result_to_dictionary(result: NavigationStepResult) -> Dict
 		"used_start_recovery": result.used_start_recovery,
 		"is_complete_route": result.is_complete_route,
 		"remaining_cell_distance": result.remaining_cell_distance,
+		"dynamic_anchor_is_stale": result.dynamic_anchor_is_stale,
 	}
 
 
@@ -2447,6 +2807,28 @@ func _get_agent_open_plain_integral_snapshot(
 	return snapshot
 
 
+func _is_agent_navigation_profile_valid(
+	profile: AgentNavigationProfile
+) -> bool:
+	if (
+		profile == null
+		or not is_built
+		or profile.generation != navigation_generation
+		or profile.path_grid == null
+		or profile.solid_integral_snapshot == null
+		or profile.path_grid.region != astar_grid.region
+	):
+		return false
+	var snapshot := profile.solid_integral_snapshot
+	return (
+		snapshot.generation == navigation_generation
+		and snapshot.region == astar_grid.region
+		and snapshot.stride == snapshot.region.size.x + 1
+		and snapshot.values.size()
+			== (snapshot.region.size.x + 1) * (snapshot.region.size.y + 1)
+	)
+
+
 func _get_agent_solid_count_in_cell_rect(
 	snapshot: AgentSolidIntegralSnapshot,
 	minimum_cell: Vector2i,
@@ -2614,11 +2996,11 @@ func _is_local_position_walkable_for_agent(
 	for cell_y in range(min_cell.y, max_cell.y + 1):
 		for cell_x in range(min_cell.x, max_cell.x + 1):
 			var blocked_cell := Vector2i(cell_x, cell_y)
-			if not _is_cell_blocked(blocked_cell, traversal_types):
-				continue
 			var blocked_center := obstacle_tile_layer.map_to_local(blocked_cell)
 			var delta := (local_position - blocked_center).abs()
-			if delta.x < collision_reach.x and delta.y < collision_reach.y:
+			if delta.x >= collision_reach.x or delta.y >= collision_reach.y:
+				continue
+			if _is_cell_blocked(blocked_cell, traversal_types):
 				return false
 	return true
 
@@ -2628,17 +3010,64 @@ func _is_cell_blocked(
 	cell: Vector2i,
 	traversal_types: int = DEFAULT_TRAVERSAL_TYPES
 ) -> bool:
-	if _is_obstacle_cell_blocked(cell):
+	var flags := _get_raw_navigation_cell_flags(cell)
+	if flags < 0:
+		return true
+	if (flags & NAVIGATION_CELL_OBSTACLE_FLAG) != 0:
 		return true
 	if terrain_map == null:
 		return false
-	return not terrain_map.is_world_position_traversable(
-		_map_to_global(cell),
-		traversal_types
-	)
+	return (flags & traversal_types & NAVIGATION_CELL_TRAVERSAL_MASK) == 0
 
 
 func _is_obstacle_cell_blocked(cell: Vector2i) -> bool:
+	var flags := _get_raw_navigation_cell_flags(cell)
+	return flags < 0 or (flags & NAVIGATION_CELL_OBSTACLE_FLAG) != 0
+
+
+func _get_raw_navigation_cell_flags(cell: Vector2i) -> int:
+	if (
+		raw_navigation_snapshot_generation != navigation_generation
+		or raw_navigation_snapshot_region != astar_grid.region
+		or not raw_navigation_snapshot_region.has_point(cell)
+	):
+		return -1
+	var local_cell := cell - raw_navigation_snapshot_region.position
+	var cell_index := (
+		local_cell.y * raw_navigation_snapshot_region.size.x + local_cell.x
+	)
+	if cell_index < 0 or cell_index >= raw_navigation_cell_snapshot.size():
+		return -1
+	return int(raw_navigation_cell_snapshot[cell_index])
+
+
+func _build_raw_navigation_cell_snapshot(region: Rect2i) -> PackedByteArray:
+	var snapshot := PackedByteArray()
+	var total_cells := region.size.x * region.size.y
+	if total_cells <= 0:
+		return snapshot
+	snapshot.resize(total_cells)
+	for local_y in range(region.size.y):
+		for local_x in range(region.size.x):
+			var cell := region.position + Vector2i(local_x, local_y)
+			var flags := _get_live_terrain_traversal_flags(cell)
+			if _is_obstacle_cell_blocked_live(cell):
+				flags |= NAVIGATION_CELL_OBSTACLE_FLAG
+			snapshot[local_y * region.size.x + local_x] = flags
+	return snapshot
+
+
+func _get_live_terrain_traversal_flags(cell: Vector2i) -> int:
+	if terrain_map == null:
+		return NAVIGATION_CELL_TRAVERSAL_MASK
+	var terrain_cell := terrain_map.world_to_map(_map_to_global(cell))
+	return (
+		terrain_map.get_terrain_traversal_type(terrain_cell)
+		& NAVIGATION_CELL_TRAVERSAL_MASK
+	)
+
+
+func _is_obstacle_cell_blocked_live(cell: Vector2i) -> bool:
 	var tile_data := obstacle_tile_layer.get_cell_tile_data(cell)
 	if tile_data == null:
 		# In dual-grid scenes the obstacle layer is sparse: open dirt/grass lives

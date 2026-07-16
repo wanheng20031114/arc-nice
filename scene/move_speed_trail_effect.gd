@@ -24,6 +24,18 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_DISABLED
 
 
+func on_pool_acquired(_generation: int) -> void:
+	motion_direction = Vector2.RIGHT
+	global_position = Vector2.ZERO
+	set_effect_active(false)
+
+
+func on_pool_released(_generation: int) -> void:
+	set_effect_active(false)
+	motion_direction = Vector2.RIGHT
+	global_position = Vector2.ZERO
+
+
 func set_effect_active(enabled: bool) -> void:
 	var expected_process_mode := (
 		Node.PROCESS_MODE_INHERIT if enabled else Node.PROCESS_MODE_DISABLED
@@ -49,8 +61,12 @@ func set_effect_active(enabled: bool) -> void:
 
 
 func set_motion_direction(direction: Vector2) -> void:
-	if direction.length_squared() >= MIN_DIRECTION_LENGTH_SQUARED:
-		motion_direction = direction.normalized()
+	if direction.length_squared() < MIN_DIRECTION_LENGTH_SQUARED:
+		return
+	var normalized_direction := direction.normalized()
+	if motion_direction.is_equal_approx(normalized_direction):
+		return
+	motion_direction = normalized_direction
 	if visible:
 		_apply_motion_direction()
 

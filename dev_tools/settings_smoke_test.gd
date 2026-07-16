@@ -21,6 +21,8 @@ func _run() -> void:
 	_test_project_resolution_defaults()
 	_test_user_settings_singleton()
 	_test_config_file_reset()
+	_test_static_audio_bus_contract()
+	await _test_dynamic_audio_bus_routing()
 	await _test_settings_panel_scene()
 	await _test_audio_bus_assignment()
 	_test_hotkey_defaults_and_event_helpers()
@@ -98,8 +100,17 @@ func _test_project_resolution_defaults() -> void:
 func _test_user_settings_singleton() -> void:
 	var settings := _settings()
 	_expect(settings != null, "UserSettings singleton must be available.")
+	_expect(FileAccess.file_exists("res://default_bus_layout.tres"), "The authored audio bus layout must exist.")
 	_expect(AudioServer.get_bus_index("Music") >= 0, "Music audio bus must exist.")
 	_expect(AudioServer.get_bus_index("SFX") >= 0, "SFX audio bus must exist.")
+	var music_bus_index := AudioServer.get_bus_index("Music")
+	var sfx_bus_index := AudioServer.get_bus_index("SFX")
+	if music_bus_index >= 0:
+		_expect(AudioServer.get_bus_send(music_bus_index) == &"Master", "Music bus must feed Master.")
+	if sfx_bus_index >= 0:
+		_expect(AudioServer.get_bus_send(sfx_bus_index) == &"Master", "SFX bus must feed Master.")
+	_expect(not settings.has_method("assign_audio_buses_to_tree"), "Audio routing must not expose a full-tree scan API.")
+	_expect(not settings.is_processing(), "UserSettings must not run a periodic audio scan.")
 	var options: Array = settings.call("get_resolution_options")
 	_expect(not options.is_empty(), "Resolution options must be available.")
 	_expect(
@@ -291,8 +302,6 @@ func _test_audio_bus_assignment() -> void:
 	game.set("auto_start_waves", false)
 	root.add_child(game)
 	await process_frame
-	_settings().call("assign_audio_buses_to_tree")
-	await process_frame
 
 	var music_player := game.get_node_or_null("MusicPlayer") as AudioStreamPlayer
 	_expect(music_player != null, "Game MusicPlayer must exist.")
@@ -316,6 +325,96 @@ func _test_audio_bus_assignment() -> void:
 
 	game.queue_free()
 	await process_frame
+
+
+func _test_static_audio_bus_contract() -> void:
+	var scene_paths: Array[String] = []
+	_collect_scene_paths("res://scene", scene_paths)
+	var audio_node_count := 0
+	for scene_path in scene_paths:
+		var source := FileAccess.get_file_as_string(scene_path)
+		var audio_node_header := ""
+		var audio_bus := ""
+		for line_variant in source.split("\n"):
+			var line := str(line_variant).strip_edges()
+			if line.begins_with("["):
+				if not audio_node_header.is_empty():
+					_expect_static_audio_bus(scene_path, audio_node_header, audio_bus)
+					audio_node_count += 1
+				audio_node_header = line if _is_audio_node_header(line) else ""
+				audio_bus = ""
+				continue
+			if not audio_node_header.is_empty() and line.begins_with("bus ="):
+				audio_bus = line.trim_prefix("bus =").strip_edges()
+		if not audio_node_header.is_empty():
+			_expect_static_audio_bus(scene_path, audio_node_header, audio_bus)
+			audio_node_count += 1
+	_expect(audio_node_count >= 58, "Static audio contract must inspect every authored audio node.")
+
+
+func _test_dynamic_audio_bus_routing() -> void:
+	var runtime_sfx := AudioStreamPlayer2D.new()
+	runtime_sfx.name = "RuntimeImpactAudio"
+	root.add_child(runtime_sfx)
+	_expect(runtime_sfx.bus == &"SFX", "Unclassified dynamic audio must default to SFX when it enters the tree.")
+
+	var runtime_music := AudioStreamPlayer.new()
+	runtime_music.name = "RuntimeBgm"
+	root.add_child(runtime_music)
+	_expect(runtime_music.bus == &"Music", "Dynamically created BGM audio must route to Music.")
+
+	var metadata_override := AudioStreamPlayer3D.new()
+	metadata_override.name = "RuntimeMusicSting"
+	metadata_override.set_meta(SETTINGS_MANAGER_SCRIPT.AUDIO_CATEGORY_META, SETTINGS_MANAGER_SCRIPT.AUDIO_CATEGORY_SFX)
+	root.add_child(metadata_override)
+	_expect(metadata_override.bus == &"SFX", "Explicit dynamic audio category metadata must override name inference.")
+
+	var authored_bus := AudioStreamPlayer.new()
+	authored_bus.name = "RuntimeEffectWithAuthoredBus"
+	authored_bus.bus = &"Music"
+	root.add_child(authored_bus)
+	_expect(authored_bus.bus == &"Music", "A valid explicitly assigned bus must never be overwritten.")
+
+	var dynamic_scene_root := Node.new()
+	dynamic_scene_root.name = "DynamicSceneRoot"
+	var nested_sfx := AudioStreamPlayer2D.new()
+	nested_sfx.name = "NestedDynamicEffect"
+	dynamic_scene_root.add_child(nested_sfx)
+	root.add_child(dynamic_scene_root)
+	_expect(nested_sfx.bus == &"SFX", "Audio nested in a dynamically added subtree must be routed when it enters the tree.")
+
+	runtime_sfx.queue_free()
+	runtime_music.queue_free()
+	metadata_override.queue_free()
+	authored_bus.queue_free()
+	dynamic_scene_root.queue_free()
+	await process_frame
+
+
+func _collect_scene_paths(directory_path: String, output: Array[String]) -> void:
+	for file_name in DirAccess.get_files_at(directory_path):
+		if file_name.ends_with(".tscn"):
+			output.append(directory_path.path_join(file_name))
+	for child_directory in DirAccess.get_directories_at(directory_path):
+		_collect_scene_paths(directory_path.path_join(child_directory), output)
+
+
+func _is_audio_node_header(line: String) -> bool:
+	return (
+		line.begins_with("[node ")
+		and (
+			line.contains("type=\"AudioStreamPlayer\"")
+			or line.contains("type=\"AudioStreamPlayer2D\"")
+			or line.contains("type=\"AudioStreamPlayer3D\"")
+		)
+	)
+
+
+func _expect_static_audio_bus(scene_path: String, node_header: String, bus_value: String) -> void:
+	_expect(
+		bus_value == "&\"Music\"" or bus_value == "&\"SFX\"",
+		"%s %s must explicitly declare Music or SFX bus in the scene." % [scene_path, node_header]
+	)
 
 
 func _resolution_options_contain(options: Array, resolution_id: String) -> bool:

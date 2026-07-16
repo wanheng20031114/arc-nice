@@ -26,6 +26,66 @@ class FakePathfinder:
 		return safe_step.duplicate()
 
 
+class FakeDynamicPathfinder:
+	extends GridPathfinder
+
+	var requested_dynamic_step := false
+	var open_plain_is_clear := true
+	var segment_is_clear := true
+	var dynamic_status := GridPathfinder.NavigationStepStatus.READY
+	var dynamic_waypoint := Vector2.ZERO
+	var dynamic_live_target_cell := Vector2i(20, 0)
+	var dynamic_anchor_cell := Vector2i(10, 0)
+	var dynamic_from_cell := Vector2i.ZERO
+	var dynamic_next_cell := Vector2i(1, 0)
+
+	func _ready() -> void:
+		is_built = true
+		set_process(false)
+
+	func try_write_dynamic_target_navigation_step(
+		result: GridPathfinder.NavigationStepResult,
+		context: GridPathfinder.FlowQueryContext,
+		_from_global_position: Vector2,
+		_target_node: Node2D,
+		_agent_half_extents: Vector2 = Vector2.ZERO,
+		_traversal_types: int = DualGridTilemap.TraversalType.LAND
+	) -> void:
+		requested_dynamic_step = true
+		result.reset(dynamic_status, dynamic_from_cell, dynamic_live_target_cell)
+		result.waypoint = dynamic_waypoint
+		result.resolved_from_cell = dynamic_from_cell
+		result.resolved_target_cell = dynamic_anchor_cell
+		result.next_cell = dynamic_next_cell
+		result.is_complete_route = true
+		result.dynamic_anchor_is_stale = (
+			maxi(
+				abs(dynamic_live_target_cell.x - dynamic_anchor_cell.x),
+				abs(dynamic_live_target_cell.y - dynamic_anchor_cell.y)
+			) >= 6
+		)
+		context.generation = navigation_generation
+		context.dynamic_slot_key = "fake-live-player-slot"
+		context.original_target_cell = dynamic_live_target_cell
+		context.resolved_target_cell = dynamic_anchor_cell
+
+	func try_is_navigation_open_plain(
+		_from_global_position: Vector2,
+		_to_global_position: Vector2,
+		_agent_half_extents: Vector2 = Vector2.ZERO,
+		_traversal_types: int = DualGridTilemap.TraversalType.LAND
+	) -> Variant:
+		return open_plain_is_clear
+
+	func try_is_navigation_segment_walkable(
+		_from_global_position: Vector2,
+		_to_global_position: Vector2,
+		_agent_half_extents: Vector2 = Vector2.ZERO,
+		_traversal_types: int = DualGridTilemap.TraversalType.LAND
+	) -> Variant:
+		return segment_is_clear
+
+
 func _init() -> void:
 	call_deferred("_run")
 
@@ -44,6 +104,11 @@ func _run() -> void:
 	await _test_blocked_only_axis_stops()
 	await _test_deferred_without_cache_stops()
 	await _test_deferred_reuses_only_shape_safe_cached_direction()
+	await _test_outdated_dynamic_flow_prefers_live_player_on_open_plain()
+	await _test_outdated_dynamic_flow_keeps_obstacle_route_when_not_certified()
+	await _test_outdated_dynamic_flow_endpoint_never_waits_when_live_player_is_clear()
+	await _test_flow_direction_gains_bounded_direct_movement_certificate()
+	await _test_uncertified_flow_direction_keeps_move_and_slide_fallback()
 
 	test_root.queue_free()
 	await process_frame
@@ -114,6 +179,7 @@ func _test_ready_step_moves_toward_waypoint() -> void:
 	pathfinder.safe_step = _ready_step(Vector2(32.0, 0.0))
 	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
 	enemy.navigation_update_interval_frames = 1
+	await physics_frame
 	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
 	_expect(move_direction == Vector2.RIGHT, "READY must move toward its safe waypoint.")
 	await _free_fixture([enemy, pathfinder, player])
@@ -154,6 +220,7 @@ func _test_deferred_without_cache_stops() -> void:
 	pathfinder.safe_step = {"status": GridPathfinder.NavigationStepStatus.DEFERRED}
 	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
 	enemy.navigation_update_interval_frames = 1
+	await physics_frame
 	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
 	_expect(move_direction == Vector2.ZERO, "DEFERRED without a verified cached step must stop.")
 	await _free_fixture([enemy, pathfinder, player])
@@ -176,6 +243,100 @@ func _test_deferred_reuses_only_shape_safe_cached_direction() -> void:
 	await _free_fixture([enemy, wall, pathfinder, player])
 
 
+func _test_outdated_dynamic_flow_prefers_live_player_on_open_plain() -> void:
+	var player := _spawn_player(Vector2(320.0, 64.0))
+	var pathfinder := _spawn_dynamic_pathfinder()
+	pathfinder.dynamic_waypoint = Vector2(-32.0, 0.0)
+	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
+	enemy.navigation_update_interval_frames = 1
+	await physics_frame
+	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
+	_expect(pathfinder.requested_dynamic_step, "A far live player must use the shared dynamic slot API.")
+	_expect(
+		move_direction.is_equal_approx(player.global_position.normalized()),
+		"An outdated open-terrain flow must immediately correct toward the live player."
+	)
+	_expect(
+		enemy.cached_navigation_uses_direct_objective_approach,
+		"The live-player correction must retain a bounded collision certificate between staggered updates."
+	)
+	await _free_fixture([enemy, pathfinder, player])
+
+
+func _test_outdated_dynamic_flow_keeps_obstacle_route_when_not_certified() -> void:
+	var player := _spawn_player(Vector2(320.0, 64.0))
+	var pathfinder := _spawn_dynamic_pathfinder()
+	pathfinder.open_plain_is_clear = false
+	pathfinder.dynamic_waypoint = Vector2(0.0, 32.0)
+	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
+	enemy.navigation_update_interval_frames = 1
+	await physics_frame
+	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
+	_expect(
+		move_direction == Vector2.ZERO,
+		"A materially stale flow must pause when the live corridor is not certified instead of chasing an old player position."
+	)
+	_expect(
+		not enemy.cached_navigation_uses_direct_objective_approach,
+		"An uncertified live corridor must never gain direct-translation clearance."
+	)
+	await _free_fixture([enemy, pathfinder, player])
+
+
+func _test_outdated_dynamic_flow_endpoint_never_waits_when_live_player_is_clear() -> void:
+	var player := _spawn_player(Vector2(320.0, 0.0))
+	var pathfinder := _spawn_dynamic_pathfinder()
+	pathfinder.dynamic_waypoint = Vector2.ZERO
+	pathfinder.dynamic_next_cell = pathfinder.dynamic_from_cell
+	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
+	enemy.navigation_update_interval_frames = 1
+	await physics_frame
+	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
+	_expect(
+		move_direction == Vector2.RIGHT,
+		"Reaching an old flow anchor must not make an enemy wait there while the live player is directly reachable."
+	)
+	await _free_fixture([enemy, pathfinder, player])
+
+
+func _test_flow_direction_gains_bounded_direct_movement_certificate() -> void:
+	var player := _spawn_player(Vector2(320.0, 0.0))
+	var pathfinder := _spawn_dynamic_pathfinder()
+	pathfinder.dynamic_live_target_cell = Vector2i(20, 0)
+	pathfinder.dynamic_anchor_cell = Vector2i(20, 0)
+	pathfinder.dynamic_waypoint = Vector2(32.0, 0.0)
+	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
+	enemy.navigation_update_interval_frames = 3
+	await physics_frame
+	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
+	_expect(move_direction == Vector2.RIGHT, "A ready flow must retain its authored direction.")
+	_expect(
+		enemy.cached_navigation_uses_direct_objective_approach
+		and enemy.cached_navigation_verified_direct_motion_clearance > 0.0,
+		"An O(1)-certified flow segment must gain bounded direct movement clearance."
+	)
+	await _free_fixture([enemy, pathfinder, player])
+
+
+func _test_uncertified_flow_direction_keeps_move_and_slide_fallback() -> void:
+	var player := _spawn_player(Vector2(320.0, 0.0))
+	var pathfinder := _spawn_dynamic_pathfinder()
+	pathfinder.dynamic_live_target_cell = Vector2i(20, 0)
+	pathfinder.dynamic_anchor_cell = Vector2i(20, 0)
+	pathfinder.dynamic_waypoint = Vector2(32.0, 0.0)
+	pathfinder.segment_is_clear = false
+	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
+	enemy.navigation_update_interval_frames = 3
+	await physics_frame
+	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
+	_expect(move_direction == Vector2.RIGHT, "An uncertified flow must still provide movement.")
+	_expect(
+		not enemy.cached_navigation_uses_direct_objective_approach,
+		"An uncertified flow must retain the move_and_slide fallback."
+	)
+	await _free_fixture([enemy, pathfinder, player])
+
+
 func _ready_step(waypoint: Vector2) -> Dictionary:
 	return {
 		"status": GridPathfinder.NavigationStepStatus.READY,
@@ -186,6 +347,12 @@ func _ready_step(waypoint: Vector2) -> Dictionary:
 
 func _spawn_pathfinder() -> FakePathfinder:
 	var pathfinder := FakePathfinder.new()
+	test_root.add_child(pathfinder)
+	return pathfinder
+
+
+func _spawn_dynamic_pathfinder() -> FakeDynamicPathfinder:
+	var pathfinder := FakeDynamicPathfinder.new()
 	test_root.add_child(pathfinder)
 	return pathfinder
 

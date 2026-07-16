@@ -360,9 +360,6 @@ func _configure_green_visuals(
 			else:
 				aura_particles.emitting = false
 				aura_particles.process_mode = Node.PROCESS_MODE_DISABLED
-		var range_fill := enemy.get_node_or_null("AuraRangeFill") as Polygon2D
-		if range_fill != null:
-			range_fill.visible = range_geometry_enabled
 		var range_outline := enemy.get_node_or_null("AuraRangeOutline") as Line2D
 		if range_outline != null:
 			range_outline.visible = range_geometry_enabled
@@ -583,7 +580,6 @@ func _print_phase_summary(
 		"green=%d" % int(vfx_counts["green"]),
 		"guardian=%d" % int(vfx_counts["guardian"]),
 		"aura_emitters=%d" % int(vfx_counts["aura_particle_emitters"]),
-		"range_fills=%d" % int(vfx_counts["range_fills"]),
 		"range_outlines=%d" % int(vfx_counts["range_outlines"]),
 		"point_lights=%d" % int(vfx_counts["point_lights"]),
 		"guardian_halos=%d" % int(vfx_counts["guardian_halos"]),
@@ -633,7 +629,6 @@ func _get_vfx_counts() -> Dictionary:
 		"green": 0,
 		"guardian": 0,
 		"aura_particle_emitters": 0,
-		"range_fills": 0,
 		"range_outlines": 0,
 		"point_lights": 0,
 		"guardian_halos": 0,
@@ -650,9 +645,6 @@ func _get_vfx_counts() -> Dictionary:
 		var aura_particles := enemy.get_node_or_null("AuraParticles") as GPUParticles2D
 		if aura_particles != null and aura_particles.emitting:
 			counts["aura_particle_emitters"] += 1
-		var range_fill := enemy.get_node_or_null("AuraRangeFill") as Polygon2D
-		if range_fill != null and range_fill.is_visible_in_tree():
-			counts["range_fills"] += 1
 		var range_outline := enemy.get_node_or_null("AuraRangeOutline") as Line2D
 		if range_outline != null and range_outline.is_visible_in_tree():
 			counts["range_outlines"] += 1
@@ -682,8 +674,7 @@ func _assert_green_state(
 		"Green A/B has the wrong active aura emitter count."
 	)
 	_expect(
-		int(counts["range_fills"]) == expected_range_geometry
-		and int(counts["range_outlines"]) == expected_range_geometry,
+		int(counts["range_outlines"]) == expected_range_geometry,
 		"Green A/B has the wrong visible range geometry count."
 	)
 	_expect(

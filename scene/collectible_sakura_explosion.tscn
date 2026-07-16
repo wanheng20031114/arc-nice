@@ -13,6 +13,7 @@ sprite_frames = ExtResource("2_frames")
 animation = &"explode"
 
 [node name="ExplosionAudio" type="AudioStreamPlayer2D" parent="."]
+bus = &"SFX"
 stream = ExtResource("3_audio")
 volume_db = -9.0
 max_distance = 260.0

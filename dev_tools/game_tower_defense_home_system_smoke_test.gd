@@ -406,6 +406,18 @@ func _verify_target_selection(game: GameTowerDefense) -> void:
 		is_zero_approx(game.enemy_retarget_time_left),
 		"Removing a plant objective must request a fresh budgeted retarget sweep."
 	)
+	game.enemy_retarget_time_left = 1.0
+	game.call("_on_player_revived", 0)
+	_expect(
+		is_zero_approx(game.enemy_retarget_time_left),
+		"A revived player must request an immediate budgeted retarget sweep."
+	)
+	game.enemy_retarget_time_left = 1.0
+	game.call("_on_multiplayer_player_died", 999)
+	_expect(
+		is_zero_approx(game.enemy_retarget_time_left),
+		"A player death must request an immediate budgeted retarget sweep."
+	)
 
 	game.player.global_position = near_gate + Vector2(logical_tile_width * 16.01, 0.0)
 	_expect(
@@ -439,12 +451,12 @@ func _verify_target_selection(game: GameTowerDefense) -> void:
 		"Tower defense must scope its 16-tile direct-player tier without changing other modes."
 	)
 	retarget_enemy.global_position = game.player.global_position + Vector2(2.0, 0.0)
-	game.call("_update_tower_defense_enemy_targets", 0.1)
+	game.call("_update_tower_defense_enemy_targets", 0.4)
 	_expect(
 		retarget_enemy.objective_target == gate,
-		"The retarget loop must retain its objective until the 0.35-second interval expires."
+		"The retarget loop must retain its objective until the 0.60-second background interval expires."
 	)
-	game.call("_update_tower_defense_enemy_targets", 0.3)
+	game.call("_update_tower_defense_enemy_targets", 0.25)
 	_expect(
 		retarget_enemy.objective_target == game.player,
 		"The retarget loop must switch back to a nearer living player after its interval."

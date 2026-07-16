@@ -10,11 +10,12 @@ const PLAYER_COLLISION_MASK := 2
 const GUARDIAN_LIGHT_CANDIDATE_GROUP := &"guardian_light_budget_candidates"
 const GUARDIAN_LIGHT_ACTIVE_GROUP := &"guardian_light_budget_active"
 
-@onready var aura_particles: GPUParticles2D = $AuraParticles
-@onready var aura_range_fill: Polygon2D = $AuraRangeFill
-@onready var aura_range_outline: Line2D = $AuraRangeOutline
-@onready var aura_area: Area2D = $AuraArea
-@onready var aura_area_shape: CollisionShape2D = $AuraArea/CollisionShape2D
+@onready var aura_particles: GPUParticles2D = get_node_or_null("AuraParticles") as GPUParticles2D
+@onready var aura_range_outline: Line2D = get_node_or_null("AuraRangeOutline") as Line2D
+@onready var aura_area: Area2D = get_node_or_null("AuraArea") as Area2D
+@onready var aura_area_shape: CollisionShape2D = (
+	get_node_or_null("AuraArea/CollisionShape2D") as CollisionShape2D
+)
 @onready var guardian_light: PointLight2D = get_node_or_null("GuardianLight") as PointLight2D
 
 # 毒性/守护光环状态。
@@ -30,6 +31,7 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	_release_guardian_light_budget()
+	super._exit_tree()
 
 
 func _physics_process(delta: float) -> void:
@@ -52,6 +54,24 @@ func _apply_aura_config() -> void:
 	if aura_config == null or not aura_config.aura_enabled:
 		_stop_aura()
 		return
+	if _uses_centralized_guardian_aura():
+		# GuardianAuraSystem owns guardian range queries and defense sources. The
+		# guardian scene intentionally has no per-instance particle/range/Area nodes.
+		_start_aura()
+		return
+	if not _has_local_damage_aura_nodes():
+		push_error(
+			"Green-shell aura scenes require AuraParticles, AuraRangeOutline, "
+			+ "AuraArea and AuraArea/CollisionShape2D."
+		)
+		aura_active = false
+		return
+
+	_apply_local_damage_aura_config(aura_config)
+	_start_aura()
+
+
+func _apply_local_damage_aura_config(aura_config: YuanshiInsectAuraConfig) -> void:
 
 	var aura_circle := aura_area_shape.shape as CircleShape2D
 	if aura_circle != null:
@@ -113,9 +133,20 @@ func _apply_aura_config() -> void:
 	)
 	_apply_aura_range_indicator(aura_config)
 	_configure_aura_collision_mask()
-	if config as YuanshiInsectGuardianConfig == null:
-		_ensure_player_aura_signals_connected()
-	_start_aura()
+	_ensure_player_aura_signals_connected()
+
+
+func _has_local_damage_aura_nodes() -> bool:
+	return (
+		aura_particles != null
+		and aura_range_outline != null
+		and aura_area != null
+		and aura_area_shape != null
+	)
+
+
+func _uses_centralized_guardian_aura() -> bool:
+	return config as YuanshiInsectGuardianConfig != null
 
 
 func _apply_aura_range_indicator(aura_config: YuanshiInsectAuraConfig) -> void:
@@ -124,10 +155,6 @@ func _apply_aura_range_indicator(aura_config: YuanshiInsectAuraConfig) -> void:
 		var angle := TAU * float(point_index) / float(AURA_RANGE_SEGMENTS)
 		range_points.append(Vector2.RIGHT.rotated(angle) * aura_config.aura_radius)
 
-	# The authored fill is almost fully transparent and cost one independent
-	# canvas submission per aura. The outline communicates the same range.
-	aura_range_fill.polygon = PackedVector2Array()
-	aura_range_fill.color = aura_config.aura_fill_color
 	aura_range_outline.points = range_points
 	aura_range_outline.default_color = aura_config.aura_outline_color
 	aura_range_outline.width = aura_config.aura_outline_width
@@ -139,6 +166,9 @@ func _start_aura() -> void:
 		return
 
 	aura_active = true
+	if _uses_centralized_guardian_aura():
+		return
+
 	var aura_config := config as YuanshiInsectAuraConfig
 	if aura_config != null and aura_config.aura_particles_enabled:
 		aura_particles.process_mode = Node.PROCESS_MODE_INHERIT
@@ -147,36 +177,29 @@ func _start_aura() -> void:
 		aura_particles.emitting = true
 	else:
 		aura_particles.emitting = false
-	var show_range_indicator := (config as YuanshiInsectGuardianConfig) == null
-	aura_range_fill.visible = false
-	aura_range_outline.visible = show_range_indicator
-	if show_range_indicator:
-		# 绿壳仍使用原生 Area2D 对玩家造成周期伤害。
-		aura_area.visible = true
-		aura_area.set_deferred("monitoring", true)
-		aura_area.set_deferred("monitorable", true)
-		aura_area_shape.set_deferred("disabled", false)
-	else:
-		# 守卫防御由 GuardianAuraSystem 集中维护，杜绝 guardian × enemy 物理重叠对。
-		aura_area.visible = false
-		aura_area.set_deferred("monitoring", false)
-		aura_area.set_deferred("monitorable", false)
-		aura_area_shape.set_deferred("disabled", true)
+	aura_range_outline.visible = true
+	# 绿壳仍使用原生 Area2D 对玩家造成周期伤害。
+	aura_area.visible = true
+	aura_area.set_deferred("monitoring", true)
+	aura_area.set_deferred("monitorable", true)
+	aura_area_shape.set_deferred("disabled", false)
 
 
 # 关闭光环，停止粒子和检测。
 func _stop_aura() -> void:
-	var guardian_was_active := (
-		aura_active
-		and (config as YuanshiInsectGuardianConfig) != null
-	)
+	var guardian_aura := _uses_centralized_guardian_aura()
+	var guardian_was_active := aura_active and guardian_aura
 	aura_active = false
 	if guardian_was_active:
 		guardian_aura_deactivated.emit(self)
+	if guardian_aura:
+		aura_touched_player = null
+		aura_damage_cooldown_left = 0.0
+		return
+
 	aura_particles.emitting = false
 	aura_particles.visible = false
 	aura_particles.process_mode = Node.PROCESS_MODE_DISABLED
-	aura_range_fill.visible = false
 	aura_range_outline.visible = false
 	aura_area.visible = false
 	aura_area.set_deferred("monitoring", false)
@@ -187,10 +210,7 @@ func _stop_aura() -> void:
 
 
 func _configure_aura_collision_mask() -> void:
-	if config as YuanshiInsectGuardianConfig != null:
-		aura_area.collision_mask = 0
-	else:
-		aura_area.collision_mask = PLAYER_COLLISION_MASK
+	aura_area.collision_mask = PLAYER_COLLISION_MASK
 
 
 func _ensure_player_aura_signals_connected() -> void:
@@ -263,7 +283,7 @@ func _on_aura_area_body_exited(body: Node2D) -> void:
 
 # 每帧更新光环持续伤害冷却，在冷却结束后再次造成伤害。
 func _update_aura_damage(delta: float) -> void:
-	if not aura_active:
+	if not aura_active or _uses_centralized_guardian_aura():
 		return
 
 	if aura_damage_cooldown_left > 0.0:

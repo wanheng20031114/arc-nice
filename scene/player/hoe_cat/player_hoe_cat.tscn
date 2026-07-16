@@ -191,37 +191,45 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="PrimaryAttackAudio" type="AudioStreamPlayer2D" parent="." unique_id=2062294008]
+bus = &"SFX"
 stream = ExtResource("15_primary_audio")
 volume_db = -10.0
 max_polyphony = 8
 
 [node name="Skill1Audio" type="AudioStreamPlayer2D" parent="." unique_id=1430587860]
+bus = &"SFX"
 stream = ExtResource("19_whirlwind_audio")
 volume_db = -9.0
 
 [node name="FootstepAudio" type="AudioStreamPlayer2D" parent="." unique_id=765457380]
+bus = &"SFX"
 stream = ExtResource("4_footstep")
 volume_db = 6.0
 max_distance = 256.0
 
 [node name="DeathAudio" type="AudioStreamPlayer2D" parent="." unique_id=964792940]
+bus = &"SFX"
 stream = ExtResource("5_death")
 volume_db = -4.0
 
 [node name="PowerupAudio" type="AudioStreamPlayer2D" parent="." unique_id=330686363]
+bus = &"SFX"
 stream = ExtResource("6_powerup")
 volume_db = 6.0
 
 [node name="SecretAudio" type="AudioStreamPlayer2D" parent="." unique_id=114934271]
+bus = &"SFX"
 stream = ExtResource("7_secret")
 volume_db = -1.0
 
 [node name="XirangPickupAudio" type="AudioStreamPlayer2D" parent="." unique_id=1069942312]
+bus = &"SFX"
 stream = ExtResource("6_powerup")
 volume_db = -4.0
 max_polyphony = 6
 
 [node name="LuckyUpgradeAudio" type="AudioStreamPlayer2D" parent="." unique_id=1259170660]
+bus = &"SFX"
 stream = ExtResource("12_lucky_audio")
 volume_db = 2.0
 max_polyphony = 2

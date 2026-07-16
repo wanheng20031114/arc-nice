@@ -44,10 +44,10 @@ func _run() -> void:
 	_expect(path_grid != null, "The dynamic-flow test profile must have an agent grid.")
 	var test_cells := _find_test_cells(pathfinder, path_grid)
 	_expect(
-		test_cells.size() == 4,
-		"The tower map must provide a connected source and a walkable three-cell target lane."
+		test_cells.size() == 5,
+		"The tower map must provide a connected source and a walkable seven-cell target lane."
 	)
-	if path_grid == null or test_cells.size() != 4:
+	if path_grid == null or test_cells.size() != 5:
 		_finish(game, 0)
 		return
 
@@ -55,6 +55,7 @@ func _run() -> void:
 	var anchor_cell: Vector2i = test_cells["anchor"]
 	var adjacent_cell: Vector2i = test_cells["adjacent"]
 	var repath_cell: Vector2i = test_cells["repath"]
+	var far_retarget_cell: Vector2i = test_cells["far_retarget"]
 	var source_position := pathfinder.call("_map_to_global", source_cell) as Vector2
 
 	_reset_dynamic_runtime_state(pathfinder)
@@ -96,6 +97,7 @@ func _run() -> void:
 		anchor_cell,
 		adjacent_cell,
 		repath_cell,
+		far_retarget_cell,
 		results,
 		contexts
 	)
@@ -103,13 +105,20 @@ func _run() -> void:
 		pathfinder,
 		game,
 		source_position,
-		repath_cell
+		anchor_cell
 	)
 	_test_target_release_cancels_pending_job(pathfinder, target)
 	var static_build_frames := _test_static_try_stages_and_publishes_fixed_cache(
 		pathfinder,
 		source_position,
 		repath_cell
+	)
+	_test_cold_target_retarget_is_bounded(
+		pathfinder,
+		game,
+		source_position,
+		anchor_cell,
+		far_retarget_cell
 	)
 	_test_rebuild_cancels_flow_and_agent_grid_jobs(
 		pathfinder,
@@ -341,6 +350,7 @@ func _test_anchor_hysteresis_and_successor_deduplication(
 	anchor_cell: Vector2i,
 	adjacent_cell: Vector2i,
 	repath_cell: Vector2i,
+	far_retarget_cell: Vector2i,
 	results: Array[GridPathfinder.NavigationStepResult],
 	contexts: Array[GridPathfinder.FlowQueryContext]
 ) -> void:
@@ -374,6 +384,7 @@ func _test_anchor_hysteresis_and_successor_deduplication(
 
 	target.global_position = pathfinder.call("_map_to_global", repath_cell) as Vector2
 	var ready_while_repathing := 0
+	var stale_while_repathing := 0
 	for context_index in range(CONTEXT_COUNT):
 		pathfinder.try_write_dynamic_target_navigation_step(
 			results[context_index],
@@ -388,6 +399,8 @@ func _test_anchor_hysteresis_and_successor_deduplication(
 			and results[context_index].resolved_target_cell == anchor_cell
 		):
 			ready_while_repathing += 1
+		if results[context_index].dynamic_anchor_is_stale:
+			stale_while_repathing += 1
 	_expect(
 		pathfinder.runtime_flow_build_jobs.size() == 1
 		and pathfinder.runtime_flow_build_order.size() == 1,
@@ -395,9 +408,10 @@ func _test_anchor_hysteresis_and_successor_deduplication(
 	)
 	_expect(
 		ready_while_repathing == CONTEXT_COUNT
+		and stale_while_repathing == 0
 		and (slot.get("published_anchor_cell") as Vector2i) == anchor_cell
 		and int(slot.get("published_revision")) == published_revision,
-		"All contexts must keep using the old complete anchor while its successor is pending."
+		"A bounded two-cell lag must remain usable while its successor is pending."
 	)
 
 	pathfinder.set_process(false)
@@ -424,8 +438,100 @@ func _test_anchor_hysteresis_and_successor_deduplication(
 	)
 	_expect(
 		results[0].status == GridPathfinder.NavigationStepStatus.READY
-		and results[0].resolved_target_cell == anchor_cell,
+		and results[0].resolved_target_cell == anchor_cell
+		and not results[0].dynamic_anchor_is_stale,
 		"A caller must continue receiving the old READY field during successor construction."
+	)
+
+	var obsolete_job_key := String(pathfinder.runtime_flow_build_order[0])
+	var cancellations_before := pathfinder.runtime_flow_builds_cancelled
+	target.global_position = pathfinder.call(
+		"_map_to_global",
+		far_retarget_cell
+	) as Vector2
+	pathfinder.try_write_dynamic_target_navigation_step(
+		results[0],
+		contexts[0],
+		source_position,
+		target,
+		TEST_AGENT_HALF_EXTENTS,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES
+	)
+	var replacement_job: Variant = _only_value(pathfinder.runtime_flow_build_jobs)
+	_expect(
+		pathfinder.runtime_flow_build_jobs.size() == 1
+		and not pathfinder.runtime_flow_build_jobs.has(obsolete_job_key)
+		and replacement_job != null
+		and (replacement_job.get("target_cell") as Vector2i) == far_retarget_cell,
+		"A pending dynamic job that falls four cells behind must be cancelled and retargeted."
+	)
+	_expect(
+		pathfinder.runtime_flow_builds_cancelled == cancellations_before + 1,
+		"Retargeting the last waiter must record one obsolete-job cancellation."
+	)
+	_expect(
+		results[0].dynamic_anchor_is_stale
+		and results[0].resolved_target_cell == anchor_cell,
+		"The old complete field may remain readable but must be marked stale while the current replacement builds."
+	)
+
+	# Keep moving the target on every scheduler slice. A bounded retarget policy
+	# must still publish a complete, newer revision instead of cancelling or
+	# discarding forever.
+	var lane_direction := (far_retarget_cell - anchor_cell).sign()
+	var moving_neighbor := far_retarget_cell - lane_direction
+	var liveness_frames := 0
+	while (
+		int(slot.get("published_revision")) == published_revision
+		and liveness_frames < MAX_MANUAL_BUILD_FRAMES
+	):
+		var moving_target_cell := (
+			far_retarget_cell if liveness_frames % 2 == 0 else moving_neighbor
+		)
+		target.global_position = pathfinder.call(
+			"_map_to_global",
+			moving_target_cell
+		) as Vector2
+		pathfinder.try_write_dynamic_target_navigation_step(
+			results[0],
+			contexts[0],
+			source_position,
+			target,
+			TEST_AGENT_HALF_EXTENTS,
+			GridPathfinder.DEFAULT_TRAVERSAL_TYPES
+		)
+		pathfinder.set_process(false)
+		pathfinder.call("_advance_runtime_navigation_jobs")
+		pathfinder.set_process(false)
+		liveness_frames += 1
+	_expect(
+		int(slot.get("published_revision")) > published_revision,
+		"A continuously moving target must publish a newer revision within a bounded build."
+	)
+	_expect(
+		_chebyshev_distance(
+			slot.get("published_anchor_cell") as Vector2i,
+			far_retarget_cell
+		) <= 1,
+		"The bounded intermediate publication must remain close to the moving target lane."
+	)
+
+	# Leave one replacement pending so the following target-deduplication test can
+	# prove that a second target instance shares this profile/anchor job.
+	target.global_position = pathfinder.call("_map_to_global", anchor_cell) as Vector2
+	pathfinder.try_write_dynamic_target_navigation_step(
+		results[0],
+		contexts[0],
+		source_position,
+		target,
+		TEST_AGENT_HALF_EXTENTS,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES
+	)
+	var pending_return_job: Variant = _only_value(pathfinder.runtime_flow_build_jobs)
+	_expect(
+		pending_return_job != null
+		and (pending_return_job.get("target_cell") as Vector2i) == anchor_cell,
+		"The refreshed slot must immediately enqueue its newest distant target."
 	)
 
 
@@ -586,6 +692,102 @@ func _test_static_try_stages_and_publishes_fixed_cache(
 	return build_frames
 
 
+func _test_cold_target_retarget_is_bounded(
+	pathfinder: GridPathfinder,
+	game: GameTowerDefense,
+	source_position: Vector2,
+	anchor_cell: Vector2i,
+	far_retarget_cell: Vector2i
+) -> void:
+	var target := Node2D.new()
+	target.name = "ColdMovingTargetProbe"
+	game.add_child(target)
+	target.global_position = pathfinder.call("_map_to_global", anchor_cell) as Vector2
+	var result := GridPathfinder.NavigationStepResult.new()
+	var context := GridPathfinder.FlowQueryContext.new()
+	pathfinder.try_write_dynamic_target_navigation_step(
+		result,
+		context,
+		source_position,
+		target,
+		TEST_AGENT_HALF_EXTENTS,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES
+	)
+	var first_job: Variant = _only_value(pathfinder.runtime_flow_build_jobs)
+	_expect(
+		result.status == GridPathfinder.NavigationStepStatus.DEFERRED
+		and first_job != null
+		and (first_job.get("target_cell") as Vector2i) == anchor_cell,
+		"A cold dynamic target must begin with one unpublished anchor job."
+	)
+
+	var cancellations_before := pathfinder.runtime_flow_builds_cancelled
+	target.global_position = pathfinder.call(
+		"_map_to_global",
+		far_retarget_cell
+	) as Vector2
+	pathfinder.try_write_dynamic_target_navigation_step(
+		result,
+		context,
+		source_position,
+		target,
+		TEST_AGENT_HALF_EXTENTS,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES
+	)
+	var retargeted_job: Variant = _only_value(pathfinder.runtime_flow_build_jobs)
+	_expect(
+		retargeted_job != null
+		and (retargeted_job.get("target_cell") as Vector2i) == far_retarget_cell
+		and pathfinder.runtime_flow_builds_cancelled == cancellations_before + 1,
+		"A cold job may retarget once before its first guaranteed publication."
+	)
+
+	var slot: Variant = _only_value(pathfinder.dynamic_flow_target_slots)
+	var lane_direction := (far_retarget_cell - anchor_cell).sign()
+	var moving_neighbor := far_retarget_cell - lane_direction
+	var build_frames := 0
+	while (
+		slot != null
+		and int(slot.get("published_revision")) == 0
+		and build_frames < MAX_MANUAL_BUILD_FRAMES
+	):
+		var moving_target_cell := (
+			far_retarget_cell if build_frames % 2 == 0 else moving_neighbor
+		)
+		target.global_position = pathfinder.call(
+			"_map_to_global",
+			moving_target_cell
+		) as Vector2
+		pathfinder.try_write_dynamic_target_navigation_step(
+			result,
+			context,
+			source_position,
+			target,
+			TEST_AGENT_HALF_EXTENTS,
+			GridPathfinder.DEFAULT_TRAVERSAL_TYPES
+		)
+		pathfinder.set_process(false)
+		pathfinder.call("_advance_runtime_navigation_jobs")
+		pathfinder.set_process(false)
+		build_frames += 1
+	_expect(
+		slot != null
+		and int(slot.get("published_revision")) > 0
+		and int(slot.get("pending_retargets_since_publish")) == 0,
+		"A cold continuously moving target must publish after a bounded retarget count."
+	)
+	if slot != null and int(slot.get("published_revision")) > 0:
+		_expect(
+			_chebyshev_distance(
+				slot.get("published_anchor_cell") as Vector2i,
+				far_retarget_cell
+			) <= 1,
+			"The first cold publication must use the bounded recent target lane."
+		)
+	target.free()
+	pathfinder.call("_prune_dynamic_flow_slots", false)
+
+
 func _test_rebuild_cancels_flow_and_agent_grid_jobs(
 	pathfinder: GridPathfinder,
 	game: GameTowerDefense,
@@ -694,10 +896,17 @@ func _find_test_cells(
 			for direction in GridPathfinder.FLOW_CARDINAL_DIRECTIONS:
 				var adjacent := anchor + direction
 				var repath := anchor + direction * 2
-				if (
-					not bool(pathfinder.call("_is_cell_walkable", adjacent, path_grid))
-					or not bool(pathfinder.call("_is_cell_walkable", repath, path_grid))
-				):
+				var far_retarget := anchor + direction * 6
+				var lane_is_walkable := true
+				for lane_offset in range(1, 7):
+					if not bool(pathfinder.call(
+						"_is_cell_walkable",
+						anchor + direction * lane_offset,
+						path_grid
+					)):
+						lane_is_walkable = false
+						break
+				if not lane_is_walkable:
 					continue
 				var source := _find_connected_source(pathfinder, path_grid, anchor)
 				if source == Vector2i.MAX:
@@ -707,6 +916,7 @@ func _find_test_cells(
 					"anchor": anchor,
 					"adjacent": adjacent,
 					"repath": repath,
+					"far_retarget": far_retarget,
 				}
 	return {}
 

@@ -125,6 +125,12 @@ const WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS := 0.1
 const PLANT_HEALTH_FLUSH_INTERVAL_SECONDS := 0.05
 const CLIENT_PROXY_VISUAL_BUDGET_INTERVAL_SECONDS := 0.2
 const CLIENT_PROXY_VISUAL_BUDGET_MARGIN := 192.0
+# Proxies outside the expanded camera rectangle have no visible transform to
+# smooth. Keep their logical snapshots intact, but sample/apply them at 15 Hz.
+# A deterministic per-net-id phase spreads the work instead of producing one
+# large interpolation burst every fourth 60 Hz render frame.
+const CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_HZ := 15.0
+const CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_PHASE_COUNT := 64
 const COMBAT_FEEDBACK_MAX_RECORDS_PER_PACKET := 40
 const CORN_MACHINE_GUN_BURST_MAX_RECORDS_PER_PACKET := 32
 const ENEMY_SPAWN_BATCH_MAX_RECORDS := 16
@@ -284,6 +290,7 @@ var _pending_wave_progress: Dictionary = {}
 var _wave_progress_flush_time_left: float = WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS
 var _client_proxy_visual_budget_time_left: float = 0.0
 var _offscreen_enemy_proxy_count: int = 0
+var _offscreen_enemy_interpolation_slots: Dictionary = {}
 var _last_applied_remote_enemy_count: int = -1
 var _pending_enemy_spawns: Array[Dictionary] = []
 var _host_terminal_enemy_ids: Dictionary = {}
@@ -363,6 +370,7 @@ func _exit_tree() -> void:
 	_pending_wave_progress.clear()
 	_pending_enemy_spawns.clear()
 	_host_terminal_enemy_ids.clear()
+	_offscreen_enemy_interpolation_slots.clear()
 	_pending_terrain_snapshot_batches.clear()
 	_terrain_snapshot_request_rate_buckets.clear()
 	_client_projectile_request_rate_buckets.clear()
@@ -2084,6 +2092,8 @@ func _client_interpolate_entities() -> void:
 		if enemy_node == null:
 			_stale_enemy_interpolator_ids.append(net_id)
 			continue
+		if not _should_interpolate_enemy_proxy(net_id, enemy_node, current_time):
+			continue
 		var enemy_position: Vector2 = enemy_interp.get_interpolated_position(current_time)
 		var enemy_velocity: Vector2 = enemy_interp.get_interpolated_velocity(current_time)
 		enemy_node.apply_multiplayer_proxy_motion(enemy_position, enemy_velocity)
@@ -2092,6 +2102,33 @@ func _client_interpolate_entities() -> void:
 	for stale_net_id in _stale_enemy_interpolator_ids:
 		_get_valid_client_enemy_for_net_id(stale_net_id)
 		enemy_interpolators.erase(stale_net_id)
+		_offscreen_enemy_interpolation_slots.erase(stale_net_id)
+
+
+func _should_interpolate_enemy_proxy(
+	net_id: int,
+	enemy_node: Enemy,
+	current_time: float
+) -> bool:
+	if (
+		not is_client_view_runtime()
+		or enemy_node == null
+		or enemy_node.multiplayer_proxy_visual_active
+	):
+		return true
+	var interval := 1.0 / CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_HZ
+	var phase_index := (net_id * 37) % CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_PHASE_COUNT
+	var phase_offset := (
+		float(phase_index)
+		/ float(CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_PHASE_COUNT)
+		* interval
+	)
+	var current_slot := floori((current_time + phase_offset) / interval)
+	var previous_slot := int(_offscreen_enemy_interpolation_slots.get(net_id, current_slot - 1))
+	if previous_slot == current_slot:
+		return false
+	_offscreen_enemy_interpolation_slots[net_id] = current_slot
+	return true
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
@@ -5452,6 +5489,7 @@ func _get_valid_client_enemy_for_net_id(enemy_net_id: int) -> Enemy:
 		_net_enemies.erase(enemy_net_id)
 		_enemy_spawn_snapshot_times.erase(enemy_net_id)
 		enemy_interpolators.erase(enemy_net_id)
+		_offscreen_enemy_interpolation_slots.erase(enemy_net_id)
 		return null
 	return enemy_variant as Enemy
 
@@ -6865,6 +6903,7 @@ func _on_client_enemy_tree_exited(net_id: int, exiting_enemy: Enemy) -> void:
 	_net_enemies.erase(net_id)
 	_enemy_spawn_snapshot_times.erase(net_id)
 	enemy_interpolators.erase(net_id)
+	_offscreen_enemy_interpolation_slots.erase(net_id)
 	if game != null:
 		game.multiplayer_enemies_by_net_id.erase(net_id)
 		game.multiplayer_enemy_ids_by_instance.erase(exiting_enemy.get_instance_id())
@@ -6918,6 +6957,7 @@ func _remove_client_enemy(
 				game.multiplayer_enemy_ids_by_instance.erase(enemy_for_instance.get_instance_id())
 	if not preserve_interpolator:
 		enemy_interpolators.erase(net_id)
+	_offscreen_enemy_interpolation_slots.erase(net_id)
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_pickup_removed(net_id: int) -> void:

@@ -51,7 +51,10 @@ const BOSS_INTRO_CAMERA_RESTORE_SECONDS := 0.25
 const DEFEAT_CAMERA_TRAVEL_SECONDS := 0.55
 const INITIAL_PLAYER_XIRANG := 1000
 const DEFAULT_BASE_HEALTH := 100
-const ENEMY_RETARGET_INTERVAL_SECONDS := 0.35
+# A full background sweep only needs to keep long-lived objectives reasonably
+# fresh. Topology changes and player availability changes request an immediate
+# budgeted pass below, so the idle cadence can stay deliberately conservative.
+const ENEMY_RETARGET_INTERVAL_SECONDS := 0.60
 const SINGLEPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/tower_defense/singleplayer/campaign.tres"
 )
@@ -221,9 +224,6 @@ func _ready() -> void:
 		set_process(false)
 		set_physics_process(false)
 		return
-	var user_settings := get_node_or_null("/root/UserSettings")
-	if user_settings != null and user_settings.has_method("assign_audio_buses_to_tree"):
-		user_settings.call("assign_audio_buses_to_tree")
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		run_state.ensure_run_started()
 		_configure_singleplayer_player()
@@ -3403,6 +3403,7 @@ func _prepare_linglan_boss_arena(boss_config: Resource) -> void:
 
 
 func _on_player_died() -> void:
+	_request_enemy_retarget_after_objective_change()
 	_cancel_plant_placement()
 	_update_plant_placement_input_state()
 	player.apply_tower_defense_death_presentation()
@@ -3416,6 +3417,7 @@ func _on_player_died() -> void:
 
 
 func _on_multiplayer_player_died(peer_id: int) -> void:
+	_request_enemy_retarget_after_objective_change()
 	var dead_player := get_player_for_peer(peer_id)
 	if dead_player != null and is_instance_valid(dead_player):
 		dead_player.apply_tower_defense_death_presentation()
@@ -3426,6 +3428,7 @@ func _on_multiplayer_player_died(peer_id: int) -> void:
 
 
 func _on_player_revived(peer_id: int) -> void:
+	_request_enemy_retarget_after_objective_change()
 	clear_player_respawn_countdown(peer_id)
 	if (
 		(runtime_mode == RuntimeMode.SINGLEPLAYER and peer_id == 0)
@@ -3654,6 +3657,7 @@ func remove_multiplayer_player(peer_id: int) -> void:
 		return
 	var player_instance := peer_players.get(peer_id) as Player
 	peer_players.erase(peer_id)
+	_request_enemy_retarget_after_objective_change()
 	multiplayer_spawn_slot_indices.erase(peer_id)
 	multiplayer_player_names.erase(peer_id)
 	multiplayer_player_character_ids.erase(peer_id)

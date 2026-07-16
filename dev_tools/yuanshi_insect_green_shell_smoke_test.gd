@@ -142,9 +142,11 @@ func _test_aura_visual_configuration() -> void:
 			"Particle color variation ignored config."
 		)
 	_expect(aura_material == second_material, "Identical aura instances must share their particle material.")
-	_expect(not enemy.aura_range_fill.visible, "The near-transparent aura fill must stay culled.")
+	_expect(
+		enemy.get_node_or_null("AuraRangeFill") == null,
+		"The unused near-transparent aura fill node must not be resident."
+	)
 	_expect(enemy.aura_range_outline.visible, "Aura range outline is hidden.")
-	_expect(enemy.aura_range_fill.color == GREEN_SHELL_CONFIG.aura_fill_color, "Aura fill color ignored config.")
 	_expect(
 		enemy.aura_range_outline.default_color == GREEN_SHELL_CONFIG.aura_outline_color,
 		"Aura outline color ignored config."

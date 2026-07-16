@@ -71,6 +71,7 @@ enum TraversalType {
 
 @export var world_map_layer: TileMapLayer
 @export var base_dirt_map_layer: TileMapLayer
+@export var base_dirt_backdrop: TextureRect
 @export var water_collision_map_layer: TileMapLayer
 @export var grass_display_map_layer: TileMapLayer
 @export var dirt_display_map_layer: TileMapLayer
@@ -259,10 +260,15 @@ func _refresh_display_tile(pos: Vector2i, display_layer: TileMapLayer, terrain_t
 
 
 func _refresh_base_dirt_layer() -> void:
-	if base_dirt_map_layer == null or base_dirt_fill_cells.x <= 0 or base_dirt_fill_cells.y <= 0:
+	if base_dirt_fill_cells.x <= 0 or base_dirt_fill_cells.y <= 0:
 		return
 
 	var fill_rect := Rect2i(base_dirt_fill_origin, base_dirt_fill_cells)
+	if base_dirt_backdrop != null:
+		_refresh_repeated_base_dirt_backdrop(fill_rect)
+		return
+	if base_dirt_map_layer == null:
+		return
 	var generation_key := [
 		base_dirt_map_layer.get_instance_id(),
 		base_dirt_fill_origin,
@@ -276,6 +282,31 @@ func _refresh_base_dirt_layer() -> void:
 
 	_rebuild_base_dirt_layer(fill_rect)
 	_base_dirt_generation_key = generation_key
+
+
+func _refresh_repeated_base_dirt_backdrop(fill_rect: Rect2i) -> void:
+	var tile_size := world_map_layer.tile_set.tile_size
+	var display_offset := (
+		grass_display_map_layer.position
+		if grass_display_map_layer != null
+		else Vector2.ZERO
+	)
+	base_dirt_backdrop.position = (
+		display_offset + Vector2(fill_rect.position * tile_size)
+	)
+	base_dirt_backdrop.size = Vector2(fill_rect.size * tile_size)
+	# A tower scene converted from the legacy baked TileMap may temporarily wire
+	# both resources during development. Clear it once so only the single native
+	# tiled CanvasItem remains; semantic terrain and water collision use their
+	# own independent layers.
+	if base_dirt_map_layer != null and not base_dirt_map_layer.get_used_cells().is_empty():
+		base_dirt_map_layer.clear()
+	_base_dirt_generation_key = [
+		base_dirt_backdrop.get_instance_id(),
+		fill_rect.position,
+		fill_rect.size,
+		tile_size,
+	]
 
 
 func _rebuild_base_dirt_layer(fill_rect: Rect2i) -> void:

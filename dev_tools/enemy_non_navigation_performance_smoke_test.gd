@@ -62,6 +62,7 @@ func _run() -> void:
 
 	_verify_cached_move_speed(enemies)
 	_verify_empty_touch_fast_path(enemies)
+	_verify_segmented_enemy_metrics(enemies)
 	_verify_source_allocation_contract()
 	await _verify_event_driven_pickup_registration(game)
 	var method_benchmark := _benchmark_idle_methods(enemies)
@@ -234,6 +235,53 @@ func _verify_source_allocation_contract() -> void:
 			runtime_source.contains("enemy_container.child_entered_tree.connect("),
 			"Runtime must register dynamic pickups from EnemyContainer events: %s"
 			% runtime_source_path
+		)
+
+
+func _verify_segmented_enemy_metrics(enemies: Array[Enemy]) -> void:
+	if enemies.size() < 3:
+		return
+	var enemy := enemies[2]
+	Enemy.set_performance_metrics_enabled(true)
+	Enemy.reset_performance_metrics()
+	enemy.call("_update_touch_damage", 1.0 / 60.0)
+	enemy.call("_get_safe_navigation_move_direction", null, null, 1.0)
+	enemy.call("_test_navigation_motion", enemy.global_transform, Vector2.ZERO)
+	var position_before := enemy.global_position
+	enemy.velocity = Vector2.RIGHT
+	enemy.call("_move_until_player_contact")
+	enemy.velocity = Vector2.ZERO
+	var metrics := Enemy.get_performance_metrics()
+	Enemy.set_performance_metrics_enabled(false)
+	_expect(
+		int(metrics.get("touch_damage_calls", 0)) == 1,
+		"Opt-in enemy telemetry must count touch-damage segments exactly."
+	)
+	_expect(
+		int(metrics.get("navigation_calls", 0)) == 1,
+		"Opt-in enemy telemetry must count navigation segments exactly."
+	)
+	_expect(
+		int(metrics.get("test_move_calls", 0)) == 1,
+		"Opt-in enemy telemetry must count test_move segments exactly."
+	)
+	_expect(
+		int(metrics.get("move_and_slide_calls", 0)) == 1,
+		"Opt-in enemy telemetry must count CharacterBody movement segments exactly."
+	)
+	_expect(
+		enemy.global_position != position_before,
+		"Segmented movement telemetry must preserve the measured CharacterBody step."
+	)
+	for key in [
+		"touch_damage_usec",
+		"navigation_usec",
+		"test_move_usec",
+		"move_and_slide_usec",
+	]:
+		_expect(
+			int(metrics.get(key, -1)) >= 0,
+			"Opt-in enemy telemetry must expose non-negative %s." % key
 		)
 
 

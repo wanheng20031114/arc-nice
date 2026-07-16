@@ -125,14 +125,17 @@ script = ExtResource("1_17rxn")
 environment = SubResource("Environment_revive_glow")
 
 [node name="MusicPlayer" type="AudioStreamPlayer" parent="." unique_id=707834306]
+bus = &"Music"
 stream = ExtResource("10_swtgm")
 volume_db = -6.0
 
 [node name="CountdownAudio" type="AudioStreamPlayer" parent="." unique_id=382140993]
+bus = &"SFX"
 stream = ExtResource("16_countdown")
 volume_db = -13.0
 
 [node name="WaveStartAudio" type="AudioStreamPlayer" parent="." unique_id=1195857533]
+bus = &"SFX"
 stream = ExtResource("17_wave_start")
 volume_db = -12.0
 

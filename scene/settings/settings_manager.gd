@@ -9,6 +9,9 @@ const SECTION_BINDINGS := "input_bindings"
 const MASTER_BUS := &"Master"
 const MUSIC_BUS := &"Music"
 const SFX_BUS := &"SFX"
+const AUDIO_CATEGORY_META := &"audio_category"
+const AUDIO_CATEGORY_MUSIC := &"music"
+const AUDIO_CATEGORY_SFX := &"sfx"
 
 const DEFAULT_RESOLUTION_ID := "1280x720"
 const BASE_CONTENT_SCALE_SIZE := Vector2i(1152, 648)
@@ -49,30 +52,22 @@ const RESOLUTION_OPTIONS: Array[Dictionary] = [
 
 var _defaults_captured: bool = false
 var _default_events_by_action: Dictionary = {}
-var _audio_scan_elapsed: float = 0.0
 
 
 func _ready() -> void:
 	_ensure_audio_buses()
+	var tree := get_tree()
+	if tree != null and not tree.node_added.is_connected(_on_tree_node_added):
+		tree.node_added.connect(_on_tree_node_added)
 	_ensure_builtin_action_defaults()
 	_capture_default_bindings()
 	apply_all()
-	set_process(true)
-
-
-func _process(delta: float) -> void:
-	_audio_scan_elapsed += delta
-	if _audio_scan_elapsed < 0.5:
-		return
-	_audio_scan_elapsed = 0.0
-	assign_audio_buses_to_tree()
 
 
 func apply_all() -> void:
 	_apply_saved_resolution()
 	_apply_saved_audio()
 	_apply_saved_bindings()
-	assign_audio_buses_to_tree()
 
 
 func get_config_path() -> String:
@@ -95,7 +90,6 @@ func reset_all_settings() -> void:
 		_restore_action_default(action)
 	_apply_default_resolution()
 	_apply_default_audio()
-	assign_audio_buses_to_tree()
 
 
 func get_resolution_options() -> Array[Dictionary]:
@@ -310,13 +304,6 @@ func normalize_captured_event(event: InputEvent) -> InputEvent:
 	return null
 
 
-func assign_audio_buses_to_tree() -> void:
-	var tree := get_tree()
-	if tree == null or tree.root == null:
-		return
-	_assign_audio_buses_recursive(tree.root)
-
-
 func _load_config() -> ConfigFile:
 	var config := ConfigFile.new()
 	config.load(get_config_path())
@@ -497,15 +484,33 @@ func _ensure_bus(bus_name: StringName) -> void:
 	AudioServer.set_bus_send(index, MASTER_BUS)
 
 
-func _assign_audio_buses_recursive(node: Node) -> void:
-	if node is AudioStreamPlayer or node is AudioStreamPlayer2D or node is AudioStreamPlayer3D:
-		var bus_name := MUSIC_BUS if _is_music_player(node) else SFX_BUS
-		node.set("bus", bus_name)
-	for child in node.get_children():
-		_assign_audio_buses_recursive(child)
+func _on_tree_node_added(node: Node) -> void:
+	if not _is_audio_player(node):
+		return
+	_route_unclassified_audio_player(node)
 
 
-func _is_music_player(node: Node) -> bool:
+func _route_unclassified_audio_player(node: Node) -> void:
+	var configured_bus := StringName(node.get(&"bus"))
+	if configured_bus == MUSIC_BUS or configured_bus == SFX_BUS:
+		return
+	var category := StringName(node.get_meta(AUDIO_CATEGORY_META, &""))
+	match category:
+		AUDIO_CATEGORY_MUSIC:
+			node.set(&"bus", MUSIC_BUS)
+		AUDIO_CATEGORY_SFX:
+			node.set(&"bus", SFX_BUS)
+		_:
+			# Static scene players declare their bus in the Inspector. This branch is
+			# only for dynamically created or accidentally unclassified players.
+			node.set(&"bus", MUSIC_BUS if _has_music_name(node) else SFX_BUS)
+
+
+func _is_audio_player(node: Node) -> bool:
+	return node is AudioStreamPlayer or node is AudioStreamPlayer2D or node is AudioStreamPlayer3D
+
+
+func _has_music_name(node: Node) -> bool:
 	var node_name := node.name.to_lower()
 	return node_name.contains("music") or node_name.contains("bgm")
 

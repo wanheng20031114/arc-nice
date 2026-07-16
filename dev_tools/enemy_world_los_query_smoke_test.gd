@@ -43,6 +43,7 @@ func _run() -> void:
 
 	_test_hot_archetype_source_contract()
 	_test_query_semantics(enemy)
+	_test_blocked_retry_semantics(enemy)
 	var benchmark := _measure_blocked_query_paths(enemy, Vector2(64.0, 0.0))
 
 	fixture.queue_free()
@@ -156,13 +157,70 @@ func _test_hot_archetype_source_contract() -> void:
 		var source := FileAccess.get_file_as_string(source_path)
 		_expect(not source.is_empty(), "Could not read hot archetype source: %s" % source_path)
 		_expect(
-			source.find("_is_world_segment_clear(") >= 0,
-			"Hot archetype does not delegate to the shared LOS query: %s" % source_path
+			source.find("_has_throttled_world_line_of_sight(") >= 0,
+			"Hot archetype does not use the shared blocked-LOS retry budget: %s" % source_path
 		)
 		_expect(
 			source.find("PhysicsRayQueryParameters2D.create(") < 0,
 			"Hot archetype still allocates a ray query per attempt: %s" % source_path
 		)
+
+
+func _test_blocked_retry_semantics(enemy: Enemy) -> void:
+	var target := Node2D.new()
+	var replacement_target := Node2D.new()
+	enemy.get_parent().add_child(target)
+	enemy.get_parent().add_child(replacement_target)
+	enemy.global_position = Vector2(0.0, 6.0)
+	target.global_position = Vector2(64.0, 6.0)
+	replacement_target.global_position = target.global_position
+	enemy.call("_invalidate_blocked_world_los_cache")
+	var started_msec := int(Time.get_ticks_msec())
+	_expect(
+		not bool(enemy.call("_has_throttled_world_line_of_sight", target, WORLD_MASK)),
+		"The first blocked ranged LOS attempt must still execute and report blocked."
+	)
+	var retry_after_msec := int(enemy.get("_blocked_world_los_retry_after_msec"))
+	var retry_interval_msec := int(enemy.get("_blocked_world_los_retry_interval_msec"))
+	_expect(
+		retry_interval_msec >= Enemy.BLOCKED_WORLD_LOS_RETRY_MIN_MSEC
+		and retry_interval_msec <= Enemy.BLOCKED_WORLD_LOS_RETRY_MAX_MSEC
+		and retry_after_msec >= started_msec + retry_interval_msec,
+		"Blocked LOS retries must be deterministically staggered inside the 80-120 ms budget."
+	)
+	var query := enemy.get("_world_los_query") as PhysicsRayQueryParameters2D
+	var first_endpoint := query.to
+	target.global_position += Vector2(1.0, 0.0)
+	_expect(
+		not bool(enemy.call("_has_throttled_world_line_of_sight", target, WORLD_MASK))
+		and query.to.is_equal_approx(first_endpoint),
+		"Sub-threshold target motion must reuse the cached blocked result without another raycast."
+	)
+	target.global_position += Vector2(8.0, 0.0)
+	_expect(
+		not bool(enemy.call("_has_throttled_world_line_of_sight", target, WORLD_MASK))
+		and query.to.is_equal_approx(target.global_position),
+		"Material target motion must invalidate the blocked cache immediately."
+	)
+	_expect(
+		not bool(
+			enemy.call(
+				"_has_throttled_world_line_of_sight",
+				replacement_target,
+				WORLD_MASK
+			)
+		)
+		and int(enemy.get("_blocked_world_los_target_instance_id"))
+			== replacement_target.get_instance_id(),
+		"Changing attack targets must invalidate and replace the blocked LOS cache immediately."
+	)
+	replacement_target.global_position = Vector2(64.0, 40.0)
+	_expect(
+		bool(enemy.call("_has_throttled_world_line_of_sight", replacement_target, WORLD_MASK)),
+		"A materially moved target with a clear segment must bypass the old blocked cache."
+	)
+	target.queue_free()
+	replacement_target.queue_free()
 
 
 func _measure_blocked_query_paths(enemy: Enemy, target_position: Vector2) -> Dictionary:

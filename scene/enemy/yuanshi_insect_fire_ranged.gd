@@ -107,10 +107,7 @@ func _has_clear_world_line_to_target() -> bool:
 	if attack_target == null:
 		return false
 
-	return _is_world_segment_clear(
-		attack_target.global_position,
-		WORLD_COLLISION_MASK
-	)
+	return _has_throttled_world_line_of_sight(attack_target, WORLD_COLLISION_MASK)
 
 
 func _try_fire_ranged_projectile() -> bool:

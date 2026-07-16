@@ -216,6 +216,7 @@ offset_right = 16.0
 offset_bottom = -10.0
 
 [node name="FireAudio" type="AudioStreamPlayer2D" parent="." unique_id=1414979781]
+bus = &"SFX"
 stream = ExtResource("15_fire_audio")
 volume_db = -18.0
 max_distance = 180.0

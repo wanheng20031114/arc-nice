@@ -77,5 +77,6 @@ sprite_frames = SubResource("SpriteFrames_explosion")
 animation = &"explode"
 
 [node name="ExplosionAudio" type="AudioStreamPlayer2D" parent="."]
+bus = &"SFX"
 stream = ExtResource("3_audio")
 volume_db = -9.0

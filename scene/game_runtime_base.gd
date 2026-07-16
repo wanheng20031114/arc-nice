@@ -9,11 +9,15 @@ const ENEMY_SPAWN_EFFECT_SCENE := preload(
 )
 const BULLET_HIT_EFFECT_POOL_SCENE := preload("res://scene/bullet_hit_effect.tscn")
 const ENEMY_HIT_EFFECT_POOL_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")
+const MOVE_SPEED_TRAIL_EFFECT_POOL_SCENE := preload(
+	"res://scene/move_speed_trail_effect.tscn"
+)
 
 const ENEMY_SPAWN_EFFECT_PREWARM_COUNT := 16
 const ENEMY_SPAWN_EFFECT_RETAINED_CAPACITY := 32
 const BULLET_HIT_EFFECT_CAPACITY := 64
 const ENEMY_HIT_EFFECT_CAPACITY := 128
+const MOVE_SPEED_TRAIL_EFFECT_RETAINED_CAPACITY := 32
 
 signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
 signal multiplayer_enemy_defeated(net_id: int, defeat_position: Vector2)
@@ -178,6 +182,14 @@ var _xirang_kill_reward_flush_queued: bool = false
 
 
 static func register_common_visual_effect_pools(pool: SessionObjectPool) -> void:
+	# Enemy speed trails are exceptional status VFX. Keep no idle GPU particle
+	# nodes at startup; active hasted enemies lease them elastically and overflow
+	# instances are discarded again instead of becoming permanent horde baggage.
+	pool.register_scene(
+		MOVE_SPEED_TRAIL_EFFECT_POOL_SCENE,
+		0,
+		MOVE_SPEED_TRAIL_EFFECT_RETAINED_CAPACITY
+	)
 	pool.register_scene(
 		ENEMY_SPAWN_EFFECT_SCENE,
 		ENEMY_SPAWN_EFFECT_PREWARM_COUNT,

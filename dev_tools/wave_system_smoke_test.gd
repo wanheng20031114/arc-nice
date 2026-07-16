@@ -181,12 +181,27 @@ func _test_grid_pathfinder_budget() -> void:
 	_expect(first_result != null, "Pathfinder first query in a frame must be allowed.")
 	_expect(second_result == null, "Pathfinder must reject queries after the per-frame budget is exhausted.")
 
+	var budget_process_frame := pathfinder.path_query_budget_frame
 	await physics_frame
-	var third_result: Variant = pathfinder.try_get_global_path(
+	var catch_up_result: Variant = pathfinder.try_get_global_path(
 		from_position,
 		from_position + Vector2(48.0, 0.0)
 	)
-	_expect(third_result != null, "Pathfinder budget must reset on the next physics frame.")
+	if Engine.get_process_frames() == budget_process_frame:
+		_expect(
+			catch_up_result == null,
+			"Catch-up physics ticks in one render frame must share one path budget."
+		)
+	while Engine.get_process_frames() == budget_process_frame:
+		await process_frame
+	var next_render_result: Variant = pathfinder.try_get_global_path(
+		from_position,
+		from_position + Vector2(48.0, 0.0)
+	)
+	_expect(
+		next_render_result != null,
+		"Pathfinder budget must reset on the next rendered/process frame."
+	)
 
 	game.queue_free()
 	await process_frame

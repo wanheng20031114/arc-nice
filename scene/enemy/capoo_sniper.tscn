@@ -56,6 +56,7 @@ color = Color(1, 0.05, 0.03, 0.24)
 polygon = PackedVector2Array(0, -0.75, 24, -0.75, 24, 0.75, 0, 0.75)
 
 [node name="AttackAudio" type="AudioStreamPlayer2D" parent="." index="8" unique_id=1685502790]
+bus = &"SFX"
 volume_db = -8.0
 max_distance = 260.0
 max_polyphony = 2

@@ -123,9 +123,6 @@ func _ready() -> void:
 		set_process(false)
 		set_physics_process(false)
 		return
-	var user_settings := get_node_or_null("/root/UserSettings")
-	if user_settings != null and user_settings.has_method("assign_audio_buses_to_tree"):
-		user_settings.call("assign_audio_buses_to_tree")
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		run_state.ensure_run_started()
 		_configure_singleplayer_player()

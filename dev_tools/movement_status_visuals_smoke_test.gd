@@ -7,9 +7,11 @@ const TENPURA_PICKUP := preload("res://resources/config/pickups/pickup_tenpura.t
 const MOTION_STATUS_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
 const SLOW_OVERLAY_PARAMETER := &"slow_overlay_strength"
 const BLINK_PARAMETER := &"blink_enabled"
+const SPEED_TRAIL_SCENE := preload("res://scene/move_speed_trail_effect.tscn")
 
 var failures: Array[String] = []
 var test_root: Node2D
+var session_object_pool: SessionObjectPool
 
 
 func _init() -> void:
@@ -21,10 +23,15 @@ func _run() -> void:
 	test_root.name = "MovementStatusVisualsSmokeTest"
 	root.add_child(test_root)
 	current_scene = test_root
+	session_object_pool = SessionObjectPool.new()
+	session_object_pool.name = "SessionObjectPool"
+	test_root.add_child(session_object_pool)
+	session_object_pool.register_scene(SPEED_TRAIL_SCENE, 0, 4)
 
 	_test_motion_status_shader_preserves_default_texture_color()
 	await _test_player_movement_status_visuals()
 	await _test_enemy_movement_status_visuals()
+	await _test_active_enemy_speed_trail_teardown()
 
 	test_root.queue_free()
 	for _cleanup_frame in range(4):
@@ -117,7 +124,11 @@ func _test_player_movement_status_visuals() -> void:
 	var sprite_material := sprite.material as ShaderMaterial
 	var speed_trail := player.get_node("MoveSpeedTrailEffect") as Node2D
 	var trail_particles := speed_trail.get_node_or_null("TrailParticles") as GPUParticles2D
-	var all_trail_particles := _collect_trail_particles(speed_trail)
+	var all_trail_particles: Array[GPUParticles2D] = (
+		_collect_trail_particles(speed_trail)
+		if speed_trail != null
+		else [] as Array[GPUParticles2D]
+	)
 	_expect(sprite_material != null, "Player body sprite must use a ShaderMaterial.")
 	_expect(
 		sprite_material != null and sprite_material.shader.resource_path == MOTION_STATUS_SHADER_PATH,
@@ -186,9 +197,6 @@ func _test_enemy_movement_status_visuals() -> void:
 	var sprite := enemy.get_node("AnimatedSprite2D") as AnimatedSprite2D
 	var visual_material := enemy.status_visual_material
 	var second_sprite := second_enemy.get_node("AnimatedSprite2D") as AnimatedSprite2D
-	var speed_trail := enemy.get_node("MoveSpeedTrailEffect") as Node2D
-	var trail_particles := speed_trail.get_node_or_null("TrailParticles") as GPUParticles2D
-	var all_trail_particles := _collect_trail_particles(speed_trail)
 	_expect(enemy.material == null, "Enemy root must not hold the visual material.")
 	_expect(not sprite.use_parent_material, "Enemy sprite must not inherit a root material.")
 	_expect(visual_material != null, "Enemy sprite must use a ShaderMaterial.")
@@ -204,27 +212,14 @@ func _test_enemy_movement_status_visuals() -> void:
 		sprite.material == null and second_sprite.material == null,
 		"Enemies without active status overlays must use the unmaterialed batching fast path."
 	)
-	_expect(speed_trail != null, "Enemy must include a speed trail effect node.")
-	_expect(trail_particles != null, "Enemy speed trail must use particle speed lines.")
-	_expect(all_trail_particles.size() >= 4, "Enemy speed trail must use several staggered speed lines.")
 	_expect(
-		speed_trail.process_mode == Node.PROCESS_MODE_DISABLED,
-		"An idle enemy speed trail must disable its particle subtree processing."
+		enemy.get_node_or_null("MoveSpeedTrailEffect") == null,
+		"Idle enemies must not carry a resident speed-trail container or GPU emitters."
 	)
+	var initial_pool_metrics := session_object_pool.get_metrics(SPEED_TRAIL_SCENE.resource_path)
 	_expect(
-		trail_particles != null and not trail_particles.local_coords,
-		"Enemy speed trail particles must remain in world space after emission."
-	)
-	_expect(
-		trail_particles != null
-		and trail_particles.texture != null
-		and trail_particles.texture.get_size().x <= 16.0
-		and trail_particles.texture.get_size().y >= 3.0,
-		"Enemy speed trail particle texture must stay short and visible."
-	)
-	_expect(
-		speed_trail.z_index >= 0 and sprite.z_index > speed_trail.z_index,
-		"Enemy speed trail must render above ground but behind the body sprite."
+		int(initial_pool_metrics.get("created", -1)) == 0,
+		"The enemy speed-trail pool must stay cold until an enemy is actually hasted."
 	)
 
 	enemy.velocity = Vector2.LEFT * 60.0
@@ -242,11 +237,26 @@ func _test_enemy_movement_status_visuals() -> void:
 		is_zero_approx(_get_instance_shader_float(second_sprite, SLOW_OVERLAY_PARAMETER)),
 		"Shared enemy materials must keep slow strength isolated per CanvasItem instance."
 	)
-	_expect(not speed_trail.visible, "Enemy speed down modifier must not show speed trail lines.")
+	_expect(
+		enemy.speed_trail_effect == null,
+		"Enemy speed down modifiers must not acquire a speed-trail lease."
+	)
 
 	enemy.remove_move_speed_modifier(101)
+	enemy.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
 	enemy.add_move_speed_modifier(102, 1.35)
 	enemy.call("_update_movement_status_visuals")
+	var speed_trail := enemy.speed_trail_effect as Node2D
+	var trail_particles := (
+		speed_trail.get_node_or_null("TrailParticles") as GPUParticles2D
+		if speed_trail != null
+		else null
+	)
+	var all_trail_particles: Array[GPUParticles2D] = (
+		_collect_trail_particles(speed_trail)
+		if speed_trail != null
+		else [] as Array[GPUParticles2D]
+	)
 	_expect(
 		is_equal_approx(_get_instance_shader_float(sprite, SLOW_OVERLAY_PARAMETER), 0.0),
 		"Enemy speed boost modifier must clear the slow overlay."
@@ -255,10 +265,55 @@ func _test_enemy_movement_status_visuals() -> void:
 		sprite.material == null,
 		"Clearing the final status overlay must restore the unmaterialed batching fast path."
 	)
-	_expect(speed_trail.visible, "Enemy speed boost modifier must show speed trail lines while moving.")
+	_expect(speed_trail != null, "A moving hasted enemy must lease one speed-trail effect.")
 	_expect(
-		speed_trail.process_mode == Node.PROCESS_MODE_INHERIT,
+		speed_trail != null and speed_trail.visible,
+		"Enemy speed boost modifier must show speed trail lines while moving."
+	)
+	_expect(trail_particles != null, "The leased enemy speed trail must use particle speed lines.")
+	_expect(all_trail_particles.size() >= 4, "The leased enemy speed trail must preserve all authored staggered lines.")
+	_expect(
+		trail_particles != null and not trail_particles.local_coords,
+		"Leased enemy speed-trail particles must remain in world space after emission."
+	)
+	_expect(
+		trail_particles != null
+		and trail_particles.texture != null
+		and trail_particles.texture.get_size().x <= 16.0
+		and trail_particles.texture.get_size().y >= 3.0,
+		"Leased enemy speed-trail particle texture must stay short and visible."
+	)
+	_expect(
+		speed_trail != null
+		and bool(speed_trail.get_meta(SessionObjectPool.POOL_ACTIVE_META, false)),
+		"An active enemy speed trail must be owned by the session object pool."
+	)
+	_expect(
+		speed_trail != null and speed_trail.process_mode == Node.PROCESS_MODE_INHERIT,
 		"An active enemy speed trail must restore its particle subtree processing."
+	)
+	_expect(
+		speed_trail != null
+		and speed_trail.get_parent() == enemy
+		and speed_trail.position == Vector2.ZERO
+		and speed_trail.physics_interpolation_mode
+			== Node.PHYSICS_INTERPOLATION_MODE_INHERIT,
+		"A leased trail must temporarily inherit the authoritative enemy's 2D interpolation timeline."
+	)
+	enemy.remove_move_speed_modifier(102)
+	_expect(
+		enemy.speed_trail_effect == null,
+		"Removing the final haste modifier must immediately return the speed-trail lease."
+	)
+	_expect(
+		int(session_object_pool.get_metrics(SPEED_TRAIL_SCENE.resource_path).get("in_use", -1)) == 0,
+		"The speed-trail pool must report no in-use lease after haste expires."
+	)
+	_expect(
+		is_instance_valid(speed_trail)
+		and speed_trail.get_parent() == session_object_pool
+		and not bool(speed_trail.get_meta(SessionObjectPool.POOL_ACTIVE_META, true)),
+		"A released trail must return to the pool hierarchy without retaining the enemy parent."
 	)
 	var health_before_hit := enemy.current_health
 	enemy.apply_damage(1, Vector2.RIGHT)
@@ -270,6 +325,37 @@ func _test_enemy_movement_status_visuals() -> void:
 
 	enemy.queue_free()
 	second_enemy.queue_free()
+	player.queue_free()
+	await process_frame
+
+
+func _test_active_enemy_speed_trail_teardown() -> void:
+	var player := PLAYER_SCENE.instantiate() as Player
+	test_root.add_child(player)
+	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
+	test_root.add_child(enemy)
+	enemy.setup(BASIC_CONFIG, player, null)
+	enemy.velocity = Vector2.RIGHT * 60.0
+	enemy.add_move_speed_modifier(303, 1.25)
+	var leased_trail := enemy.speed_trail_effect as Node2D
+	_expect(
+		leased_trail != null
+		and bool(leased_trail.get_meta(SessionObjectPool.POOL_ACTIVE_META, false)),
+		"A moving hasted teardown fixture must own one active trail lease."
+	)
+
+	enemy.queue_free()
+	await process_frame
+	_expect(
+		int(session_object_pool.get_metrics(SPEED_TRAIL_SCENE.resource_path).get("in_use", -1)) == 0,
+		"Freeing an enemy during active haste must return its trail lease."
+	)
+	_expect(
+		is_instance_valid(leased_trail)
+		and leased_trail.get_parent() == session_object_pool
+		and not bool(leased_trail.get_meta(SessionObjectPool.POOL_ACTIVE_META, true)),
+		"Active-haste teardown must detach the trail from the enemy before it is freed."
+	)
 	player.queue_free()
 	await process_frame
 

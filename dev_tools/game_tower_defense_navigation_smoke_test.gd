@@ -34,6 +34,7 @@ func _run() -> void:
 	_expect(not enemy_configs.is_empty(), "Tower defense campaign must expose actual EnemyConfig resources.")
 
 	if pathfinder != null and pathfinder.is_built and not enemy_configs.is_empty():
+		_verify_navigation_phase_distribution(game, enemy_configs[0])
 		for enemy_config in enemy_configs:
 			_verify_config_navigation_matrix(
 				game,
@@ -67,6 +68,11 @@ func _run() -> void:
 			pathfinder,
 			enemy_configs[0]
 		)
+		_verify_near_moving_verified_motion_contract(
+			game,
+			pathfinder,
+			enemy_configs[0]
+		)
 		await _verify_spawn_recovery_motion(game, pathfinder, enemy_configs)
 
 	game.queue_free()
@@ -84,6 +90,60 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _verify_navigation_phase_distribution(
+	game: GameTowerDefense,
+	enemy_config: EnemyConfig
+) -> void:
+	const SAMPLE_COUNT := 24
+	var normal_groups: Array[int] = [0, 0, 0]
+	var far_groups: Array[int] = [0, 0, 0, 0, 0, 0, 0, 0]
+	var retry_frame_counts: Dictionary[int, int] = {}
+	var current_frame := Engine.get_physics_frames()
+	var fixtures: Array[Enemy] = []
+	for _index in range(SAMPLE_COUNT):
+		var enemy := enemy_config.enemy_scene.instantiate() as Enemy
+		_expect(enemy != null, "Navigation phase fixture must instantiate every enemy.")
+		if enemy == null:
+			continue
+		game.enemy_container.add_child(enemy)
+		enemy.set_physics_process(false)
+		fixtures.append(enemy)
+		var offset := enemy.navigation_update_frame_offset
+		normal_groups[offset % Enemy.DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES] += 1
+		far_groups[offset % Enemy.FAR_STATIC_OBJECTIVE_UPDATE_INTERVAL_FRAMES] += 1
+		var retry_frame := enemy.navigation_zero_direction_retry_frame
+		retry_frame_counts[retry_frame] = int(
+			retry_frame_counts.get(retry_frame, 0)
+		) + 1
+		_expect(
+			retry_frame > current_frame
+			and retry_frame <= current_frame + Enemy.DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES
+			and (
+				retry_frame + offset
+			) % Enemy.DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES == 0,
+			"Initial zero-direction retries must land on the enemy's deterministic navigation phase."
+		)
+
+	_expect(
+		normal_groups == [8, 8, 8],
+		"Twenty-four enemies must split evenly across three 20 Hz navigation groups."
+	)
+	_expect(
+		far_groups == [3, 3, 3, 3, 3, 3, 3, 3],
+		"Twenty-four enemies must split evenly across the eight-frame far-objective tier."
+	)
+	var retries_are_balanced := retry_frame_counts.size() == 3
+	for count_variant in retry_frame_counts.values():
+		retries_are_balanced = retries_are_balanced and int(count_variant) == 8
+	_expect(
+		retries_are_balanced,
+		"Initial zero-direction retries must be spread evenly over three physics frames."
+	)
+	for enemy in fixtures:
+		enemy.free()
+
 
 func _collect_actual_enemy_configs(game: GameTowerDefense) -> Array[EnemyConfig]:
 	var configs: Array[EnemyConfig] = []
@@ -418,7 +478,7 @@ func _verify_deferred_does_not_direct_fallback(
 
 	pathfinder.flow_field_cache.clear()
 	pathfinder.flow_field_cache_order.clear()
-	pathfinder.flow_field_budget_frame = Engine.get_physics_frames()
+	pathfinder.flow_field_budget_frame = Engine.get_process_frames()
 	pathfinder.flow_field_builds_used_this_frame = maxi(
 		pathfinder.max_flow_field_builds_per_physics_frame,
 		1
@@ -491,15 +551,26 @@ func _verify_far_home_uses_safe_direct_approach(
 	)
 	pathfinder.flow_field_cache.clear()
 	pathfinder.flow_field_cache_order.clear()
-	pathfinder.flow_field_budget_frame = Engine.get_physics_frames()
+	pathfinder.flow_field_budget_frame = Engine.get_process_frames()
 	pathfinder.flow_field_builds_used_this_frame = maxi(
 		pathfinder.max_flow_field_builds_per_physics_frame,
 		1
 	)
+	# Earlier contract checks intentionally consume many short-segment fallbacks
+	# in one synthetic render frame. This fixture verifies the far-direct tier,
+	# so give it a fresh production-sized exact budget.
+	pathfinder.exact_segment_budget_process_frame = Engine.get_process_frames()
+	pathfinder.exact_segment_fallbacks_used_this_frame = 0
+	pathfinder.exact_segment_fallback_usec_used_this_frame = 0
+	var segment_queries_before := pathfinder.segment_queries_total
 	var move_direction := enemy.call("_get_navigation_move_direction", 1.0 / 60.0) as Vector2
 	_expect(
 		move_direction != Vector2.ZERO and enemy.cached_navigation_uses_direct_objective_approach,
 		"A distant static Home target must use the cheap direct-approach tier before flow lookup."
+	)
+	_expect(
+		pathfinder.segment_queries_total == segment_queries_before + 1,
+		"Far direct approach must certify only its current short probe segment."
 	)
 	if move_direction != Vector2.ZERO:
 		_expect(
@@ -716,6 +787,134 @@ func _verify_near_static_verified_motion_contract(
 		enemy_config,
 		fixture
 	)
+
+
+func _verify_near_moving_verified_motion_contract(
+	game: GameTowerDefense,
+	pathfinder: GridPathfinder,
+	enemy_config: EnemyConfig
+) -> void:
+	var player := game.player
+	_expect(player != null, "Near-moving verified-motion fixture requires the player.")
+	if player == null:
+		return
+
+	var enemy := enemy_config.enemy_scene.instantiate() as Enemy
+	_expect(enemy != null, "Near-moving verified-motion fixture must instantiate an enemy.")
+	if enemy == null:
+		return
+	game.enemy_container.add_child(enemy)
+	enemy.setup(enemy_config, player, pathfinder)
+	enemy.set_physics_process(false)
+	var fixture := _find_open_near_static_fixture(
+		pathfinder,
+		enemy.get_configured_body_collision_half_extents(),
+		enemy_config.terrain_traversal_types,
+		player.global_position
+	)
+	_expect(
+		fixture.size() == 2,
+		"Near-moving verified-motion test must find a collision-free open corridor."
+	)
+	if fixture.size() != 2:
+		enemy.free()
+		return
+
+	var saved_player_position := player.global_position
+	var saved_player_physics := player.is_physics_processing()
+	player.set_physics_process(false)
+	player.global_position = fixture[1]
+	enemy.global_position = fixture[0]
+	enemy.set_near_moving_target_direct_distance(
+		fixture[0].distance_to(fixture[1]) + 16.0
+	)
+	enemy.set_objective_target(player)
+	enemy.call("_clear_navigation_path")
+	var direct_direction := enemy.call(
+		"_get_navigation_move_direction",
+		1.0 / float(maxi(Engine.physics_ticks_per_second, 1))
+	) as Vector2
+	_expect(
+		direct_direction != Vector2.ZERO
+		and enemy.cached_navigation_uses_direct_objective_approach,
+		"An open swept corridor to the moving player must create a direct-motion certificate."
+	)
+	_expect(
+		enemy.navigation_update_interval_frames
+			== Enemy.DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES,
+		"Normal enemies must stagger navigation direction updates across three 20 Hz groups."
+	)
+
+	enemy.velocity = direct_direction * enemy.get_effective_move_speed()
+	var verified_motion := enemy.velocity * enemy.get_physics_process_delta_time()
+	_expect(
+		bool(enemy.call(
+			"_can_use_verified_direct_objective_linear_movement",
+			verified_motion
+		)),
+		"A moving-player step inside its exact swept clearance must use lightweight movement."
+	)
+	_expect(
+		not bool(enemy.call(
+			"_can_use_verified_static_objective_linear_movement",
+			verified_motion
+		)),
+		"The compatibility predicate must remain restricted to static objectives."
+	)
+	_expect(
+		not bool(enemy.call(
+			"_can_use_verified_direct_objective_linear_movement",
+			direct_direction.rotated(PI * 0.5) * verified_motion.length()
+		)),
+		"A direct-motion certificate must reject movement outside its swept direction."
+	)
+	var position_before := enemy.global_position
+	var clearance_before := enemy.cached_navigation_verified_direct_motion_clearance
+	enemy.call("_move_until_player_contact")
+	_expect(
+		enemy.global_position.is_equal_approx(position_before + verified_motion),
+		"Verified moving-player movement must preserve the authored velocity and physics delta."
+	)
+	_expect(
+		is_equal_approx(
+			enemy.cached_navigation_verified_direct_motion_clearance,
+			clearance_before - verified_motion.length()
+		),
+		"Moving-player lightweight movement must consume its swept clearance exactly once."
+	)
+
+	var valid_generation := enemy.cached_navigation_generation
+	enemy.cached_navigation_generation = valid_generation - 1
+	_expect(
+		not bool(enemy.call(
+			"_can_use_verified_direct_objective_linear_movement",
+			verified_motion
+		)),
+		"A navigation rebuild must invalidate moving-player direct-motion certificates."
+	)
+	enemy.cached_navigation_generation = valid_generation
+	player.global_position = enemy.global_position - direct_direction * 32.0
+	_expect(
+		not bool(enemy.call(
+			"_can_use_verified_direct_objective_linear_movement",
+			verified_motion
+		)),
+		"A player crossing behind the cached direction must force navigation revalidation."
+	)
+	var crossed_position_before := enemy.global_position
+	enemy.velocity = direct_direction * enemy.get_effective_move_speed()
+	enemy.call("_move_until_player_contact")
+	_expect(
+		enemy.global_position.is_equal_approx(crossed_position_before)
+		and enemy.velocity == Vector2.ZERO
+		and enemy.cached_navigation_move_direction == Vector2.ZERO
+		and bool(enemy.call("_should_update_navigation_direction", player)),
+		"A live target crossing behind must stop this tick and force the next navigation update."
+	)
+
+	player.global_position = saved_player_position
+	player.set_physics_process(saved_player_physics)
+	enemy.free()
 
 
 func _find_open_near_static_fixture(

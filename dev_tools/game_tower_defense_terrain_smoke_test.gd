@@ -1,9 +1,15 @@
 extends SceneTree
 
 const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const BASE_DIRT_TILE_TEXTURE := preload(
+	"res://resources/terrain/dual_grid/tilled_soil_full_tile_16.png"
+)
+const DIRT_ATLAS_TEXTURE := preload(
+	"res://resources/terrain/dual_grid/tilled_soil_dual_grid_atlas_16.png"
+)
 const EXPECTED_BASE_DIRT_RECT := Rect2i(-120, -88, 256, 192)
-const EXPECTED_BASE_DIRT_CELL_COUNT := 256 * 192
-const FULL_DIRT_ATLAS_COORDS := Vector2i(2, 1)
+const EXPECTED_BASE_DIRT_WORLD_POSITION := Vector2(-1928.0, -1416.0)
+const EXPECTED_BASE_DIRT_WORLD_SIZE := Vector2(4096.0, 3072.0)
 const WATER_TERRAIN_COLLISION_LAYER := 1 << 11
 
 var failures: Array[String] = []
@@ -32,6 +38,7 @@ func _run() -> void:
 	_verify_large_map_topology(game)
 	_verify_visual_grid_alignment(game)
 	_verify_base_dirt_coverage(game)
+	_verify_base_dirt_texture_matches_atlas()
 	_verify_terrain_semantics(game)
 	_verify_reachable_grass_placement(game)
 	_verify_runtime_placement_visibility(game)
@@ -54,7 +61,6 @@ func _verify_dual_grid_wiring(game: GameTowerDefense) -> void:
 
 	var layers: Array[TileMapLayer] = [
 		terrain.world_map_layer,
-		terrain.base_dirt_map_layer,
 		terrain.grass_display_map_layer,
 		terrain.dirt_display_map_layer,
 		terrain.water_display_map_layer,
@@ -91,13 +97,26 @@ func _verify_dual_grid_wiring(game: GameTowerDefense) -> void:
 				"Water collision must use the dedicated WaterTerrain physics layer."
 			)
 
+	var base_dirt_backdrop := terrain.base_dirt_backdrop
+	_expect(base_dirt_backdrop != null, "Dual-grid terrain must expose the repeated base-dirt backdrop.")
+	_expect(
+		terrain.base_dirt_map_layer == null,
+		"Tower defense must not instantiate the legacy 49,152-cell base-dirt TileMapLayer."
+	)
+	if base_dirt_backdrop != null:
+		_expect(base_dirt_backdrop.texture != null, "Base dirt backdrop must provide its authored full-tile texture.")
+		_expect(
+			base_dirt_backdrop.stretch_mode == TextureRect.STRETCH_TILE,
+			"Base dirt backdrop must use TextureRect's native tiled stretch mode."
+		)
+		_expect(
+			base_dirt_backdrop.texture_repeat == CanvasItem.TEXTURE_REPEAT_ENABLED,
+			"Base dirt backdrop must explicitly enable texture repeat."
+		)
+
 	_expect(
 		game.ground_tile_map_layer.tile_set.tile_size == terrain.world_map_layer.tile_set.tile_size,
 		"Dual-grid logical cells must match the existing gameplay grid size."
-	)
-	_expect(
-		terrain.base_dirt_map_layer.rendering_quadrant_size == 32,
-		"The large dirt backdrop must batch rendering in 32x32 quadrants."
 	)
 
 
@@ -175,7 +194,6 @@ func _verify_visual_grid_alignment(game: GameTowerDefense) -> void:
 		"WorldLayer logical cell centers must match GroundTileMapLayer."
 	)
 	var display_layers: Array[TileMapLayer] = [
-		terrain.base_dirt_map_layer,
 		terrain.grass_display_map_layer,
 		terrain.dirt_display_map_layer,
 		terrain.water_display_map_layer,
@@ -198,9 +216,15 @@ func _verify_visual_grid_alignment(game: GameTowerDefense) -> void:
 			),
 			"%s rendered cells must retain the original dual-grid offset." % layer.name
 		)
-	_expect(terrain.base_dirt_map_layer.z_index == -5, "Base dirt must stay at Z=-5.")
+	var base_dirt_backdrop := terrain.base_dirt_backdrop
+	_expect(base_dirt_backdrop != null, "Base dirt backdrop must be wired for alignment checks.")
 	_expect(
-		terrain.base_dirt_map_layer.z_index < terrain.world_map_layer.z_index,
+		base_dirt_backdrop != null and base_dirt_backdrop.z_index == -5,
+		"Base dirt must stay at Z=-5."
+	)
+	_expect(
+		base_dirt_backdrop != null
+		and base_dirt_backdrop.z_index < terrain.world_map_layer.z_index,
 		"BaseDirt must render below the semantic WorldLayer."
 	)
 	_expect(not terrain.world_map_layer.visible, "Semantic WorldLayer must be hidden at runtime.")
@@ -250,9 +274,9 @@ func _verify_visual_grid_alignment(game: GameTowerDefense) -> void:
 
 func _verify_base_dirt_coverage(game: GameTowerDefense) -> void:
 	var terrain := game.dual_grid_terrain
-	if terrain == null or terrain.base_dirt_map_layer == null:
+	if terrain == null or terrain.base_dirt_backdrop == null:
 		return
-	var dirt_layer := terrain.base_dirt_map_layer
+	var dirt_backdrop := terrain.base_dirt_backdrop
 	_expect(
 		terrain.base_dirt_fill_origin == EXPECTED_BASE_DIRT_RECT.position,
 		"Base dirt fill origin must keep the backdrop centered on the arena."
@@ -262,24 +286,20 @@ func _verify_base_dirt_coverage(game: GameTowerDefense) -> void:
 		"Base dirt fill size must remain 256x192 cells."
 	)
 	_expect(
-		dirt_layer.get_used_rect() == EXPECTED_BASE_DIRT_RECT,
-		"Base dirt layer must cover the complete 4096x3072 world backdrop."
+		dirt_backdrop.position.is_equal_approx(EXPECTED_BASE_DIRT_WORLD_POSITION),
+		"Repeated base dirt must begin at the same half-cell-aligned world position as the legacy backdrop."
 	)
 	_expect(
-		dirt_layer.get_used_cells().size() == EXPECTED_BASE_DIRT_CELL_COUNT,
-		"Base dirt layer must contain every cell in its configured rectangle."
+		dirt_backdrop.size.is_equal_approx(EXPECTED_BASE_DIRT_WORLD_SIZE),
+		"Repeated base dirt must cover the complete 4096x3072 world backdrop."
 	)
-	for coords in [EXPECTED_BASE_DIRT_RECT.position, EXPECTED_BASE_DIRT_RECT.end - Vector2i.ONE]:
-		_expect(
-			dirt_layer.get_cell_source_id(coords) == DualGridTilemap.TerrainType.DIRT,
-			"Base dirt corner %s must use the dirt atlas source." % coords
-		)
-		_expect(
-			dirt_layer.get_cell_atlas_coords(coords) == FULL_DIRT_ATLAS_COORDS,
-			"Base dirt corner %s must use the full dirt tile." % coords
-		)
 	_expect(
-		dirt_layer.z_index < game.ground_tile_map_layer.z_index,
+		dirt_backdrop.texture != null
+		and dirt_backdrop.texture.get_size() == Vector2(16.0, 16.0),
+		"Repeated base dirt must use the exact standalone 16x16 full-dirt tile."
+	)
+	_expect(
+		dirt_backdrop.z_index < game.ground_tile_map_layer.z_index,
 		"Base dirt must render below the existing gameplay ground."
 	)
 	var gameplay_rect := game.ground_tile_map_layer.get_used_rect()
@@ -306,6 +326,24 @@ func _verify_base_dirt_coverage(game: GameTowerDefense) -> void:
 		game.grid_pathfinder.get("terrain_map_path") == NodePath("../DualGridTerrain"),
 		"Tower-defense pathfinding must read semantic terrain from DualGridTerrain."
 	)
+
+
+func _verify_base_dirt_texture_matches_atlas() -> void:
+	var standalone_image := BASE_DIRT_TILE_TEXTURE.get_image()
+	var atlas_image := DIRT_ATLAS_TEXTURE.get_image()
+	_expect(
+		standalone_image != null and standalone_image.get_size() == Vector2i(16, 16),
+		"Standalone base-dirt texture must decode as one 16x16 tile."
+	)
+	_expect(atlas_image != null, "Authored dirt atlas must remain readable for pixel comparison.")
+	if standalone_image == null or atlas_image == null:
+		return
+	for y in range(16):
+		for x in range(16):
+			_expect(
+				standalone_image.get_pixel(x, y) == atlas_image.get_pixel(x + 32, y + 16),
+				"Standalone base-dirt pixel (%d,%d) must exactly match atlas tile (2,1)." % [x, y]
+			)
 
 
 func _verify_terrain_semantics(game: GameTowerDefense) -> void:

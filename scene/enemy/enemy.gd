@@ -33,6 +33,7 @@ const DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE_SQUARED := (
 )
 const AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const HIT_EFFECT_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")
+const MOVE_SPEED_TRAIL_EFFECT_SCENE := preload("res://scene/move_speed_trail_effect.tscn")
 const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
 const MATERIAL_PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const MATERIAL_WOOD := preload("res://resources/config/materials/material_wood.tres")
@@ -45,6 +46,19 @@ const BLEED_OVERLAY_ACTIVE_STRENGTH := 0.42
 const BURN_STATUS_TICK_INTERVAL := 1.0
 const WATER_TERRAIN_COLLISION_LAYER := 1 << 11
 const DEATH_ANIMATION_SPEED_SCALES: Array[float] = [0.92, 0.96, 1.0, 1.04, 1.08]
+const DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES := 3
+# A moving flow field is rebuilt in bounded slices. While the replacement is
+# pending, its published anchor may legitimately lag behind the live player.
+# Once that lag reaches two cells, prefer the live target immediately whenever
+# the immutable agent profile can prove the entire correction corridor open.
+const DYNAMIC_FLOW_DIRECT_CORRECTION_DISTANCE_CELLS := 2
+const BLOCKED_WORLD_LOS_RETRY_MIN_MSEC := 80
+const BLOCKED_WORLD_LOS_RETRY_MAX_MSEC := 120
+const BLOCKED_WORLD_LOS_MOTION_INVALIDATION_DISTANCE := 8.0
+const BLOCKED_WORLD_LOS_MOTION_INVALIDATION_DISTANCE_SQUARED := (
+	BLOCKED_WORLD_LOS_MOTION_INVALIDATION_DISTANCE
+	* BLOCKED_WORLD_LOS_MOTION_INVALIDATION_DISTANCE
+)
 
 enum DeathSequenceStage {
 	NONE,
@@ -52,14 +66,34 @@ enum DeathSequenceStage {
 	EXPLOSION,
 }
 
+static var performance_metrics_enabled := false
+static var _next_navigation_phase_offset := 0
+static var _performance_metrics := {
+	"touch_damage_calls": 0,
+	"touch_damage_usec": 0,
+	"navigation_calls": 0,
+	"navigation_usec": 0,
+	"test_move_calls": 0,
+	"test_move_usec": 0,
+	"move_and_slide_calls": 0,
+	"move_and_slide_usec": 0,
+	"verified_direct_move_calls": 0,
+	"verified_direct_move_distance": 0.0,
+}
+
 @export var config: EnemyConfig
 @export var touch_damage_interval: float = 0.5
 @export var sprite_faces_left_by_default: bool = false
-@export_range(1, 8, 1, "or_greater") var navigation_update_interval_frames: int = 2
+# Navigation direction is refreshed at 20 Hz by default. Instance offsets split
+# a 60 Hz physics cadence into three deterministic groups; movement itself stays
+# at the authored physics rate so animation, contact and multiplayer state remain
+# smooth between direction samples.
+@export_range(1, 8, 1, "or_greater") var navigation_update_interval_frames: int = (
+	DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES
+)
 @export_flags("Land", "Water") var terrain_traversal_types: int = DualGridTilemap.TraversalType.LAND
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
-@onready var speed_trail_effect: Node2D = $MoveSpeedTrailEffect
 @onready var collision_shape: CollisionShape2D = null
 @onready var touch_damage_area: Area2D = $TouchDamageArea
 @onready var touch_damage_shape: CollisionShape2D = null
@@ -104,12 +138,21 @@ var navigation_update_frame_offset: int = 0
 var cached_navigation_move_direction := Vector2.ZERO
 var cached_navigation_uses_direct_objective_approach: bool = false
 var cached_navigation_verified_direct_motion_clearance: float = 0.0
+var cached_navigation_generation: int = -1
+var cached_navigation_tracks_live_target_direction: bool = false
 var navigation_zero_direction_retry_frame: int = 0
 var navigation_collision_probe := KinematicCollision2D.new()
 var navigation_step_result: GridPathfinder.NavigationStepResult = null
 var _world_los_query: PhysicsRayQueryParameters2D = null
 var _world_los_exclude: Array[RID] = []
+var _blocked_world_los_target_instance_id: int = 0
+var _blocked_world_los_target_position := Vector2.ZERO
+var _blocked_world_los_source_position := Vector2.ZERO
+var _blocked_world_los_collision_mask: int = 0
+var _blocked_world_los_retry_after_msec: int = 0
+var _blocked_world_los_retry_interval_msec: int = BLOCKED_WORLD_LOS_RETRY_MIN_MSEC
 var navigation_flow_context: GridPathfinder.FlowQueryContext = null
+var navigation_agent_profile: GridPathfinder.AgentNavigationProfile = null
 var near_moving_target_direct_distance := DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE
 var near_moving_target_direct_distance_squared := (
 	DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE_SQUARED
@@ -122,14 +165,64 @@ var status_visual_material: ShaderMaterial = null
 var slow_overlay_strength := 0.0
 var burn_overlay_strength := 0.0
 var bleed_overlay_strength := 0.0
+var speed_trail_effect: Node2D = null
+var speed_trail_owner_pool: SessionObjectPool = null
+
+
+static func set_performance_metrics_enabled(enabled: bool) -> void:
+	performance_metrics_enabled = enabled
+	reset_performance_metrics()
+
+
+static func reset_performance_metrics() -> void:
+	_performance_metrics["touch_damage_calls"] = 0
+	_performance_metrics["touch_damage_usec"] = 0
+	_performance_metrics["navigation_calls"] = 0
+	_performance_metrics["navigation_usec"] = 0
+	_performance_metrics["test_move_calls"] = 0
+	_performance_metrics["test_move_usec"] = 0
+	_performance_metrics["move_and_slide_calls"] = 0
+	_performance_metrics["move_and_slide_usec"] = 0
+	_performance_metrics["verified_direct_move_calls"] = 0
+	_performance_metrics["verified_direct_move_distance"] = 0.0
+
+
+static func get_performance_metrics(reset_after_read: bool = false) -> Dictionary:
+	var snapshot := _performance_metrics.duplicate()
+	if reset_after_read:
+		reset_performance_metrics()
+	return snapshot
+
+
+static func _record_performance_metric(
+	calls_key: String,
+	usec_key: String,
+	started_usec: int
+) -> void:
+	_performance_metrics[calls_key] = int(_performance_metrics[calls_key]) + 1
+	_performance_metrics[usec_key] = (
+		int(_performance_metrics[usec_key])
+		+ maxi(Time.get_ticks_usec() - started_usec, 0)
+	)
 
 
 func _ready() -> void:
 	_apply_terrain_collision_profile()
 	material_drop_random_generator.randomize()
-	navigation_update_frame_offset = int(get_instance_id()) % maxi(
-		navigation_update_interval_frames,
-		FAR_STATIC_OBJECTIVE_UPDATE_INTERVAL_FRAMES
+	_blocked_world_los_retry_interval_msec = (
+		BLOCKED_WORLD_LOS_RETRY_MIN_MSEC
+		+ (
+			int(get_instance_id())
+			% (BLOCKED_WORLD_LOS_RETRY_MAX_MSEC - BLOCKED_WORLD_LOS_RETRY_MIN_MSEC + 1)
+		)
+	)
+	# Allocate offsets round-robin instead of folding them through the 8-frame
+	# far-objective interval. The latter produced 3/3/2 normal-navigation groups;
+	# an unbounded sequence stays uniform for both the 3-frame and 8-frame tiers.
+	navigation_update_frame_offset = Enemy._next_navigation_phase_offset
+	Enemy._next_navigation_phase_offset += 1
+	navigation_zero_direction_retry_frame = _get_next_navigation_phase_frame(
+		_get_navigation_update_interval_frames(objective_target)
 	)
 	_refresh_collision_shape_cache()
 	_cache_collision_shape_mirror_states()
@@ -145,7 +238,6 @@ func _ready() -> void:
 	_apply_facing_mirror()
 	touch_damage_area.body_entered.connect(_on_touch_damage_area_body_entered)
 	touch_damage_area.body_exited.connect(_on_touch_damage_area_body_exited)
-	touch_damage_area.area_entered.connect(_on_touch_damage_area_area_entered)
 	animated_sprite.animation_finished.connect(_on_animated_sprite_animation_finished)
 	_apply_config()
 	_update_movement_status_visuals()
@@ -183,6 +275,8 @@ func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = 
 	target_player = player
 	objective_target = player
 	pathfinder = shared_pathfinder
+	navigation_agent_profile = null
+	_invalidate_blocked_world_los_cache()
 	near_moving_target_direct_distance = DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE
 	near_moving_target_direct_distance_squared = (
 		DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE_SQUARED
@@ -201,6 +295,7 @@ func set_target_player(player: Player) -> void:
 
 	var previous_target := target_player
 	target_player = player
+	_invalidate_blocked_world_los_cache()
 	if objective_target == null or objective_target == previous_target:
 		objective_target = player
 		_clear_cached_navigation_move_direction()
@@ -210,6 +305,7 @@ func set_objective_target(target: Node2D) -> void:
 	if objective_target == target:
 		return
 	objective_target = target
+	_invalidate_blocked_world_los_cache()
 	_clear_cached_navigation_move_direction()
 
 
@@ -260,9 +356,11 @@ func is_attackable_objective_in_range(attack_range: float) -> bool:
 
 
 func set_pathfinder(shared_pathfinder: Node) -> void:
+	if pathfinder == shared_pathfinder:
+		return
 	pathfinder = shared_pathfinder
-	if navigation_flow_context != null:
-		navigation_flow_context.invalidate()
+	navigation_agent_profile = null
+	_clear_cached_navigation_move_direction()
 
 
 func configure_multiplayer_proxy() -> void:
@@ -311,6 +409,7 @@ func remove_for_home_escape() -> bool:
 	if touch_damage_area != null:
 		touch_damage_area.set_deferred("monitoring", false)
 		touch_damage_area.set_deferred("monitorable", false)
+	_release_speed_trail_effect()
 	visible = false
 	queue_free()
 	return true
@@ -497,7 +596,7 @@ func _update_movement_status_visuals() -> void:
 		_set_slow_overlay_strength(0.0)
 		_set_burn_overlay_strength(0.0)
 		_set_bleed_overlay_strength(0.0)
-		speed_trail_effect.call("set_effect_active", false)
+		_release_speed_trail_effect()
 		return
 
 	var is_slowed := _has_move_speed_modifier_below_default()
@@ -507,9 +606,61 @@ func _update_movement_status_visuals() -> void:
 
 	var is_temporarily_hasted := _has_move_speed_modifier_above_default()
 	var is_moving := velocity.length_squared() > 0.001
-	speed_trail_effect.call("set_effect_active", is_temporarily_hasted and is_moving)
-	if is_moving:
-		speed_trail_effect.call("set_motion_direction", velocity)
+	if not is_temporarily_hasted or not is_moving:
+		_release_speed_trail_effect()
+		return
+
+	var acquired_new_lease := false
+	if speed_trail_effect == null or not is_instance_valid(speed_trail_effect):
+		speed_trail_effect = _acquire_speed_trail_effect()
+		acquired_new_lease = speed_trail_effect != null
+	if speed_trail_effect == null:
+		return
+	if acquired_new_lease:
+		# 2D interpolation is inherited through local parent transforms. Temporarily
+		# parent the pooled effect to the enemy so its emitter follows the same
+		# interpolated timeline as the sprite instead of stepping as a pool sibling.
+		speed_trail_effect.reparent(self, false)
+		speed_trail_effect.position = Vector2.ZERO
+		speed_trail_effect.rotation = 0.0
+		speed_trail_effect.scale = Vector2.ONE
+		speed_trail_effect.reset_physics_interpolation()
+	speed_trail_effect.call("set_motion_direction", velocity)
+	speed_trail_effect.call("set_effect_active", true)
+
+
+func _acquire_speed_trail_effect() -> Node2D:
+	var ancestor := get_parent()
+	while ancestor != null:
+		var pool := ancestor.get_node_or_null("SessionObjectPool") as SessionObjectPool
+		if pool != null and pool.is_registered(MOVE_SPEED_TRAIL_EFFECT_SCENE):
+			var effect := pool.acquire(MOVE_SPEED_TRAIL_EFFECT_SCENE) as Node2D
+			if effect != null:
+				speed_trail_owner_pool = pool
+			return effect
+		ancestor = ancestor.get_parent()
+	return null
+
+
+func _release_speed_trail_effect() -> void:
+	if speed_trail_effect == null:
+		return
+	if is_instance_valid(speed_trail_effect):
+		speed_trail_effect.call("set_effect_active", false)
+		if (
+			speed_trail_owner_pool != null
+			and is_instance_valid(speed_trail_owner_pool)
+			and speed_trail_owner_pool.is_inside_tree()
+			and speed_trail_effect.get_parent() != speed_trail_owner_pool
+		):
+			speed_trail_effect.reparent(speed_trail_owner_pool, true)
+		SessionObjectPool.release_to_owner(speed_trail_effect)
+	speed_trail_effect = null
+	speed_trail_owner_pool = null
+
+
+func _exit_tree() -> void:
+	_release_speed_trail_effect()
 
 
 func _has_move_speed_modifier_below_default() -> bool:
@@ -821,6 +972,7 @@ func _apply_config() -> void:
 		return
 
 	terrain_traversal_types = config.terrain_traversal_types
+	navigation_agent_profile = null
 	_apply_terrain_collision_profile()
 	current_health = config.max_health
 	_refresh_effective_physical_defense_cache()
@@ -946,8 +1098,9 @@ func _is_world_segment_clear(
 	target_position: Vector2,
 	collision_mask_value: int = 1
 ) -> bool:
-	# Ranged archetypes can test LOS every physics tick while a wall keeps them
-	# in range. Lazily reuse one native query and RID exclusion Array per enemy.
+	# Lazily reuse one native query and RID exclusion Array per enemy. Callers
+	# that can retry a blocked target continuously use the bounded cache below;
+	# this primitive remains exact for one-shot and attack-commit checks.
 	if _world_los_query == null:
 		_world_los_query = PhysicsRayQueryParameters2D.create(
 			Vector2.ZERO,
@@ -963,6 +1116,50 @@ func _is_world_segment_clear(
 	_world_los_query.to = target_position
 	_world_los_query.collision_mask = collision_mask_value
 	return get_world_2d().direct_space_state.intersect_ray(_world_los_query).is_empty()
+
+
+func _has_throttled_world_line_of_sight(
+	target_node: Node2D,
+	collision_mask_value: int = 1
+) -> bool:
+	# Cache only blocked results. A clear attempt may commit an attack immediately,
+	# while a blocked enemy otherwise repeats the same ray every physics frame.
+	if target_node == null or not is_instance_valid(target_node):
+		_invalidate_blocked_world_los_cache()
+		return false
+	var target_instance_id := target_node.get_instance_id()
+	var target_position := target_node.global_position
+	var current_msec := int(Time.get_ticks_msec())
+	var blocked_cache_is_current := (
+		_blocked_world_los_target_instance_id == target_instance_id
+		and _blocked_world_los_collision_mask == collision_mask_value
+		and global_position.distance_squared_to(_blocked_world_los_source_position)
+			<= BLOCKED_WORLD_LOS_MOTION_INVALIDATION_DISTANCE_SQUARED
+		and target_position.distance_squared_to(_blocked_world_los_target_position)
+			<= BLOCKED_WORLD_LOS_MOTION_INVALIDATION_DISTANCE_SQUARED
+		and current_msec < _blocked_world_los_retry_after_msec
+	)
+	if blocked_cache_is_current:
+		return false
+
+	var has_clear_line := _is_world_segment_clear(target_position, collision_mask_value)
+	if has_clear_line:
+		_invalidate_blocked_world_los_cache()
+		return true
+	_blocked_world_los_target_instance_id = target_instance_id
+	_blocked_world_los_target_position = target_position
+	_blocked_world_los_source_position = global_position
+	_blocked_world_los_collision_mask = collision_mask_value
+	_blocked_world_los_retry_after_msec = (
+		current_msec + _blocked_world_los_retry_interval_msec
+	)
+	return false
+
+
+func _invalidate_blocked_world_los_cache() -> void:
+	_blocked_world_los_target_instance_id = 0
+	_blocked_world_los_collision_mask = 0
+	_blocked_world_los_retry_after_msec = 0
 
 
 func _cache_collision_shape_mirror_states() -> void:
@@ -1112,6 +1309,31 @@ func _get_safe_navigation_move_direction(
 	shared_pathfinder: Node,
 	waypoint_arrival_distance: float
 ) -> Vector2:
+	if not Enemy.performance_metrics_enabled:
+		return _get_safe_navigation_move_direction_unprofiled(
+			target_node,
+			shared_pathfinder,
+			waypoint_arrival_distance
+		)
+	var started_usec := Time.get_ticks_usec()
+	var move_direction := _get_safe_navigation_move_direction_unprofiled(
+		target_node,
+		shared_pathfinder,
+		waypoint_arrival_distance
+	)
+	Enemy._record_performance_metric(
+		"navigation_calls",
+		"navigation_usec",
+		started_usec
+	)
+	return move_direction
+
+
+func _get_safe_navigation_move_direction_unprofiled(
+	target_node: Node2D,
+	shared_pathfinder: Node,
+	waypoint_arrival_distance: float
+) -> Vector2:
 	if not _should_update_navigation_direction(target_node):
 		return cached_navigation_move_direction
 	if not is_instance_valid(target_node):
@@ -1156,7 +1378,15 @@ func _get_safe_navigation_move_direction(
 			target_node.global_position
 		)
 		if direct_direction != Vector2.ZERO:
-			return _cache_navigation_move_direction(direct_direction)
+			return _cache_navigation_move_direction(
+				direct_direction,
+				true,
+				minf(
+					global_position.distance_to(target_node.global_position),
+					_get_far_direct_objective_probe_distance()
+				),
+				true
+			)
 	elif target_node != target_player:
 		# Between the near and far tiers, only take a straight static route when
 		# the shared profile snapshot can certify the complete rectangle as open.
@@ -1249,6 +1479,26 @@ func _get_flow_navigation_move_direction(
 		GridPathfinder.NavigationStepStatus.READY:
 			if not is_complete_route:
 				return _cache_navigation_move_direction(Vector2.ZERO)
+			var live_target_correction := (
+				_get_outdated_dynamic_flow_direct_correction(
+					target_node,
+					DYNAMIC_FLOW_DIRECT_CORRECTION_DISTANCE_CELLS
+				)
+			)
+			if live_target_correction != Vector2.ZERO:
+				return _cache_live_target_direct_correction(
+					live_target_correction,
+					target_node
+				)
+			if (
+				target_node == target_player
+				and navigation_step_result != null
+				and navigation_step_result.dynamic_anchor_is_stale
+			):
+				# The complete field is collision-safe but no longer points at the
+				# current player. If the live corridor was not certified above, wait
+				# for the urgent replacement instead of visibly chasing old history.
+				return _cache_navigation_move_direction(Vector2.ZERO)
 			var waypoint_arrival_radius := maxf(waypoint_arrival_distance, 0.0)
 			var reached_resolved_flow_endpoint := (
 				not used_start_recovery
@@ -1265,12 +1515,27 @@ func _get_flow_navigation_move_direction(
 							waypoint_arrival_distance
 						)
 					)
+				# Never wait at a superseded player anchor. A one-cell mismatch is
+				# enough at the endpoint because the old field has no next step left;
+				# the same conservative open-corridor certificate still gates motion.
+				live_target_correction = (
+					_get_outdated_dynamic_flow_direct_correction(target_node, 1)
+				)
+				if live_target_correction != Vector2.ZERO:
+					return _cache_live_target_direct_correction(
+						live_target_correction,
+						target_node
+					)
 				return _cache_navigation_move_direction(Vector2.ZERO)
 			var move_direction := _get_waypoint_move_direction(
 				waypoint,
 				waypoint_arrival_distance
 			)
-			return _cache_navigation_move_direction(move_direction)
+			return _cache_flow_navigation_move_direction(
+				move_direction,
+				waypoint,
+				target_node
+			)
 		GridPathfinder.NavigationStepStatus.DEFERRED:
 			if _is_cached_navigation_direction_shape_safe():
 				return cached_navigation_move_direction
@@ -1282,6 +1547,14 @@ func _get_flow_navigation_move_direction(
 						target_node.global_position,
 						waypoint_arrival_distance
 					)
+				)
+			var live_target_correction := (
+				_get_outdated_dynamic_flow_direct_correction(target_node, 1)
+			)
+			if live_target_correction != Vector2.ZERO:
+				return _cache_live_target_direct_correction(
+					live_target_correction,
+					target_node
 				)
 			return _cache_navigation_move_direction(Vector2.ZERO)
 		_:
@@ -1295,6 +1568,98 @@ func _is_cached_navigation_direction_shape_safe() -> bool:
 			cached_navigation_move_direction,
 			PATH_DIRECTION_PROBE_DISTANCE
 		)
+	)
+
+
+func _get_outdated_dynamic_flow_direct_correction(
+	target_node: Node2D,
+	minimum_anchor_distance_cells: int
+) -> Vector2:
+	if (
+		target_node == null
+		or target_node != target_player
+		or navigation_step_result == null
+		or navigation_flow_context == null
+		or navigation_flow_context.dynamic_slot_key == ""
+	):
+		return Vector2.ZERO
+	var live_target_cell := navigation_step_result.target_cell
+	var published_anchor_cell := navigation_step_result.resolved_target_cell
+	if (
+		live_target_cell == Vector2i.MAX
+		or published_anchor_cell == Vector2i.MAX
+	):
+		return Vector2.ZERO
+	var anchor_delta := (live_target_cell - published_anchor_cell).abs()
+	if (
+		maxi(anchor_delta.x, anchor_delta.y)
+		< maxi(minimum_anchor_distance_cells, 1)
+	):
+		return Vector2.ZERO
+	# This O(1) integral certificate is deliberately stricter than a local
+	# steering probe: it cannot pull an enemy back into a wall or U-shaped trap
+	# merely because the newest reverse field has not finished publishing yet.
+	return _get_collision_safe_precomputed_open_plain_direction(
+		target_node.global_position
+	)
+
+
+func _cache_live_target_direct_correction(
+	move_direction: Vector2,
+	target_node: Node2D
+) -> Vector2:
+	return _cache_navigation_move_direction(
+		move_direction,
+		true,
+		minf(
+			global_position.distance_to(target_node.global_position),
+			_get_far_direct_objective_probe_distance()
+		),
+		true
+	)
+
+
+func _cache_flow_navigation_move_direction(
+	move_direction: Vector2,
+	waypoint: Vector2,
+	target_node: Node2D
+) -> Vector2:
+	if move_direction == Vector2.ZERO or not is_instance_valid(target_node):
+		return _cache_navigation_move_direction(move_direction)
+	var ticks_per_second := maxi(Engine.physics_ticks_per_second, 1)
+	var update_interval := maxi(
+		_get_navigation_update_interval_frames(target_node),
+		1
+	)
+	var interval_travel_distance := (
+		get_effective_move_speed()
+		* float(update_interval)
+		/ float(ticks_per_second)
+	)
+	var waypoint_distance := global_position.distance_to(waypoint)
+	var certified_clearance := minf(interval_travel_distance, waypoint_distance)
+	if certified_clearance <= 0.0001:
+		return _cache_navigation_move_direction(move_direction)
+	# Sweep a small margin when the waypoint is far enough away. The cached
+	# translation allowance never includes that margin, so the body cannot pass
+	# beyond the exact interval/waypoint distance that was certified.
+	var sweep_distance := minf(
+		interval_travel_distance + PATH_DIRECTION_PROBE_DISTANCE,
+		waypoint_distance
+	)
+	var normalized_direction := move_direction.normalized()
+	var sweep_end := global_position + normalized_direction * sweep_distance
+	if _try_is_navigation_segment_walkable(global_position, sweep_end) != true:
+		return _cache_navigation_move_direction(move_direction)
+	if _test_navigation_motion(
+		global_transform,
+		normalized_direction * sweep_distance
+	):
+		return _cache_navigation_move_direction(move_direction)
+	return _cache_navigation_move_direction(
+		move_direction,
+		true,
+		certified_clearance
 	)
 
 
@@ -1343,7 +1708,7 @@ func _get_collision_safe_direct_objective_direction(
 	var direct_direction := offset.normalized()
 	var probe_distance := _get_far_direct_objective_probe_distance()
 	var probe_motion := direct_direction * probe_distance
-	if test_move(global_transform, probe_motion):
+	if _test_navigation_motion(global_transform, probe_motion):
 		return Vector2.ZERO
 
 	# Physical clearance alone can still place a large body inside a grid cell
@@ -1352,24 +1717,11 @@ func _get_collision_safe_direct_objective_direction(
 	# later handoff to flow navigation may have no valid start cell.
 	var grid_pathfinder := pathfinder as GridPathfinder
 	if grid_pathfinder != null:
-		var open_plain: Variant = _try_get_navigation_open_plain(objective_position)
-		if open_plain == true:
-			return direct_direction
-		var segment_walkable: Variant = null
-		if grid_pathfinder.has_method("try_is_navigation_segment_walkable"):
-			segment_walkable = grid_pathfinder.try_is_navigation_segment_walkable(
-				global_position,
-				global_position + probe_motion,
-				_get_body_collision_half_extents(),
-				terrain_traversal_types
-			)
-		else:
-			segment_walkable = grid_pathfinder.is_navigation_segment_walkable(
-				global_position,
-				global_position + probe_motion,
-				_get_body_collision_half_extents(),
-				terrain_traversal_types
-			)
+		var probe_end := global_position + probe_motion
+		var segment_walkable: Variant = _try_is_navigation_segment_walkable(
+			global_position,
+			probe_end
+		)
 		if segment_walkable != true:
 			return Vector2.ZERO
 	return direct_direction
@@ -1390,7 +1742,7 @@ func _get_collision_safe_near_static_objective_direction(
 	# the real CharacterBody shape. The caller records only the shorter distance
 	# needed before the next navigation update, so lightweight translation can
 	# never travel beyond this exact collision certificate.
-	if test_move(global_transform, offset):
+	if _test_navigation_motion(global_transform, offset):
 		return Vector2.ZERO
 	return offset.normalized()
 
@@ -1406,7 +1758,7 @@ func _get_collision_safe_near_moving_target_direction(
 	var offset := objective_position - global_position
 	if offset == Vector2.ZERO:
 		return Vector2.ZERO
-	if test_move(global_transform, offset):
+	if _test_navigation_motion(global_transform, offset):
 		return Vector2.ZERO
 	return offset.normalized()
 
@@ -1424,7 +1776,10 @@ func _get_collision_safe_precomputed_open_plain_direction(
 		offset.length(),
 		_get_far_direct_objective_probe_distance()
 	)
-	if test_move(global_transform, direct_direction * probe_distance):
+	if _test_navigation_motion(
+		global_transform,
+		direct_direction * probe_distance
+	):
 		return Vector2.ZERO
 	return direct_direction
 
@@ -1436,12 +1791,78 @@ func _try_get_navigation_open_plain(objective_position: Vector2) -> Variant:
 		or not grid_pathfinder.has_method("try_is_navigation_open_plain")
 	):
 		return null
+	var profile := _get_navigation_agent_profile()
+	if profile != null:
+		return grid_pathfinder.try_is_navigation_open_plain_with_profile(
+			global_position,
+			objective_position,
+			profile
+		)
 	return grid_pathfinder.try_is_navigation_open_plain(
 		global_position,
 		objective_position,
 		_get_body_collision_half_extents(),
 		terrain_traversal_types
 	)
+
+
+func _try_is_navigation_segment_walkable(
+	from_position: Vector2,
+	to_position: Vector2
+) -> Variant:
+	var grid_pathfinder := pathfinder as GridPathfinder
+	if grid_pathfinder == null:
+		return null
+	var profile := _get_navigation_agent_profile()
+	if profile != null:
+		return grid_pathfinder.try_is_navigation_segment_walkable_with_profile(
+			from_position,
+			to_position,
+			profile
+		)
+	return grid_pathfinder.try_is_navigation_segment_walkable(
+		from_position,
+		to_position,
+		_get_body_collision_half_extents(),
+		terrain_traversal_types
+	)
+
+
+func _get_navigation_agent_profile() -> GridPathfinder.AgentNavigationProfile:
+	var grid_pathfinder := pathfinder as GridPathfinder
+	if grid_pathfinder == null or not grid_pathfinder.is_built:
+		navigation_agent_profile = null
+		return null
+	if grid_pathfinder.is_agent_navigation_profile_valid(navigation_agent_profile):
+		return navigation_agent_profile
+	navigation_agent_profile = grid_pathfinder.try_get_agent_navigation_profile(
+		_get_body_collision_half_extents(),
+		terrain_traversal_types
+	)
+	return navigation_agent_profile
+
+
+func _test_navigation_motion(
+	from_transform: Transform2D,
+	motion: Vector2,
+	collision: KinematicCollision2D = null
+) -> bool:
+	if not Enemy.performance_metrics_enabled:
+		if collision == null:
+			return test_move(from_transform, motion)
+		return test_move(from_transform, motion, collision)
+	var started_usec := Time.get_ticks_usec()
+	var blocked := (
+		test_move(from_transform, motion)
+		if collision == null
+		else test_move(from_transform, motion, collision)
+	)
+	Enemy._record_performance_metric(
+		"test_move_calls",
+		"test_move_usec",
+		started_usec
+	)
+	return blocked
 
 
 func _get_static_objective_final_alignment_direction(
@@ -1505,6 +1926,19 @@ func _should_update_navigation_direction(target_node: Node2D = objective_target)
 	return (Engine.get_physics_frames() + navigation_update_frame_offset) % interval == 0
 
 
+func _get_next_navigation_phase_frame(interval: int) -> int:
+	var safe_interval := maxi(interval, 1)
+	var next_frame := Engine.get_physics_frames() + 1
+	if safe_interval <= 1:
+		return next_frame
+	var phase_remainder := (
+		next_frame + navigation_update_frame_offset
+	) % safe_interval
+	if phase_remainder != 0:
+		next_frame += safe_interval - phase_remainder
+	return next_frame
+
+
 func _get_navigation_update_interval_frames(target_node: Node2D) -> int:
 	var interval := maxi(navigation_update_interval_frames, 1)
 	if _is_far_static_objective(target_node):
@@ -1542,7 +1976,8 @@ func _is_near_moving_target(target_node: Node2D) -> bool:
 func _cache_navigation_move_direction(
 	move_direction: Vector2,
 	uses_direct_objective_approach: bool = false,
-	verified_direct_motion_clearance: float = 0.0
+	verified_direct_motion_clearance: float = 0.0,
+	tracks_live_target_direction: bool = false
 ) -> Vector2:
 	cached_navigation_move_direction = move_direction
 	cached_navigation_uses_direct_objective_approach = (
@@ -1553,10 +1988,18 @@ func _cache_navigation_move_direction(
 		if cached_navigation_uses_direct_objective_approach
 		else 0.0
 	)
+	cached_navigation_generation = (
+		_get_current_navigation_generation()
+		if cached_navigation_uses_direct_objective_approach
+		else -1
+	)
+	cached_navigation_tracks_live_target_direction = (
+		tracks_live_target_direction
+		and cached_navigation_uses_direct_objective_approach
+	)
 	if move_direction == Vector2.ZERO:
-		navigation_zero_direction_retry_frame = (
-			Engine.get_physics_frames()
-			+ _get_navigation_update_interval_frames(objective_target)
+		navigation_zero_direction_retry_frame = _get_next_navigation_phase_frame(
+			_get_navigation_update_interval_frames(objective_target)
 		)
 	else:
 		navigation_zero_direction_retry_frame = 0
@@ -1567,9 +2010,16 @@ func _clear_cached_navigation_move_direction() -> void:
 	cached_navigation_move_direction = Vector2.ZERO
 	cached_navigation_uses_direct_objective_approach = false
 	cached_navigation_verified_direct_motion_clearance = 0.0
+	cached_navigation_generation = -1
+	cached_navigation_tracks_live_target_direction = false
 	navigation_zero_direction_retry_frame = 0
 	if navigation_flow_context != null:
 		navigation_flow_context.invalidate()
+
+
+func _get_current_navigation_generation() -> int:
+	var grid_pathfinder := pathfinder as GridPathfinder
+	return grid_pathfinder.navigation_generation if grid_pathfinder != null else -1
 
 
 func _choose_unblocked_axis_direction(primary_direction: Vector2, secondary_direction: Vector2 = Vector2.ZERO) -> Vector2:
@@ -1589,7 +2039,11 @@ func _is_navigation_motion_shape_safe(direction: Vector2, probe_distance: float)
 		return false
 	var normalized_direction := direction.normalized()
 	var motion := normalized_direction * probe_distance
-	if not test_move(global_transform, motion, navigation_collision_probe):
+	if not _test_navigation_motion(
+		global_transform,
+		motion,
+		navigation_collision_probe
+	):
 		return true
 
 	# test_move() can report an existing side contact even when the requested
@@ -1605,35 +2059,90 @@ func _move_until_player_contact() -> void:
 		return
 	if velocity == Vector2.ZERO:
 		return
+	if (
+		cached_navigation_tracks_live_target_direction
+		and is_instance_valid(objective_target)
+		and objective_target == target_player
+		and cached_navigation_move_direction.dot(
+			objective_target.global_position - global_position
+		) <= 0.0
+	):
+		# The player crossed the origin of a direct-to-live-target sweep after this
+		# tick's direction was chosen. Do not submit one last move in the obsolete
+		# direction; clear the cache so the next physics tick recomputes immediately.
+		velocity = Vector2.ZERO
+		_clear_cached_navigation_move_direction()
+		return
 	var motion := velocity * get_physics_process_delta_time()
-	if _can_use_verified_static_objective_linear_movement(motion):
+	if _can_use_verified_direct_objective_linear_movement(motion):
 		global_position += motion
 		cached_navigation_verified_direct_motion_clearance = maxf(
 			cached_navigation_verified_direct_motion_clearance - motion.length(),
 			0.0
 		)
+		if Enemy.performance_metrics_enabled:
+			Enemy._performance_metrics["verified_direct_move_calls"] = (
+				int(Enemy._performance_metrics["verified_direct_move_calls"]) + 1
+			)
+			Enemy._performance_metrics["verified_direct_move_distance"] = (
+				float(Enemy._performance_metrics["verified_direct_move_distance"])
+				+ motion.length()
+			)
 		return
 	# A CharacterBody fallback changes (or can collision-recover) the origin that
 	# the direct-motion sweep certified. Never reuse that certificate from the
 	# resulting transform; the next scheduled navigation update must revalidate it.
 	cached_navigation_uses_direct_objective_approach = false
 	cached_navigation_verified_direct_motion_clearance = 0.0
+	cached_navigation_generation = -1
+	cached_navigation_tracks_live_target_direction = false
+	if not Enemy.performance_metrics_enabled:
+		move_and_slide()
+		return
+	var started_usec := Time.get_ticks_usec()
 	move_and_slide()
+	Enemy._record_performance_metric(
+		"move_and_slide_calls",
+		"move_and_slide_usec",
+		started_usec
+	)
 
 
-func _can_use_verified_static_objective_linear_movement(motion: Vector2) -> bool:
+func _can_use_verified_direct_objective_linear_movement(motion: Vector2) -> bool:
 	var motion_distance := motion.length()
+	var motion_matches_swept_direction := (
+		motion_distance > 0.0
+		and cached_navigation_move_direction != Vector2.ZERO
+		and cached_navigation_move_direction.dot(motion)
+			>= motion_distance * 0.999
+	)
+	var live_target_still_ahead := (
+		not cached_navigation_tracks_live_target_direction
+		or (
+			objective_target == target_player
+			and cached_navigation_move_direction.dot(
+				objective_target.global_position - global_position
+			) > 0.0
+		)
+	)
 	return (
 		cached_navigation_uses_direct_objective_approach
 		and is_instance_valid(objective_target)
-		and objective_target != target_player
-		and (
-			_is_far_static_objective(objective_target)
-			or _is_near_static_objective(objective_target)
-		)
-		and motion_distance > 0.0
+		and cached_navigation_generation == _get_current_navigation_generation()
+		and motion_matches_swept_direction
+		and live_target_still_ahead
 		and motion_distance
 			<= cached_navigation_verified_direct_motion_clearance + 0.0001
+	)
+
+
+# Kept as a static-objective contract for existing diagnostics. Production
+# movement uses the general verified-direct predicate above, which additionally
+# permits a nearby moving player within an exact, generation-bound sweep.
+func _can_use_verified_static_objective_linear_movement(motion: Vector2) -> bool:
+	return (
+		objective_target != target_player
+		and _can_use_verified_direct_objective_linear_movement(motion)
 	)
 
 
@@ -1674,6 +2183,9 @@ func _clear_touching_players() -> void:
 func _on_touch_damage_area_body_entered(body: Node2D) -> void:
 	if is_dead:
 		return
+	# A contact changes movement semantics immediately. Never reuse a sweep that
+	# was certified before the body/area overlap began.
+	_clear_cached_navigation_move_direction()
 
 	var plant := body as PlantDefense
 	if plant != null:
@@ -1748,18 +2260,20 @@ func _on_touched_plant_removal_started(_mode: int, plant: PlantDefense) -> void:
 		touched_plant = _select_touching_plant()
 
 
-func _on_touch_damage_area_area_entered(area: Area2D) -> void:
-	if is_dead:
-		return
-
-	var bullet := area as Bullet
-	if bullet == null:
-		return
-
-	bullet.try_hit_enemy(self)
-
-
 func _update_touch_damage(delta: float) -> void:
+	if not Enemy.performance_metrics_enabled:
+		_update_touch_damage_unprofiled(delta)
+		return
+	var started_usec := Time.get_ticks_usec()
+	_update_touch_damage_unprofiled(delta)
+	Enemy._record_performance_metric(
+		"touch_damage_calls",
+		"touch_damage_usec",
+		started_usec
+	)
+
+
+func _update_touch_damage_unprofiled(delta: float) -> void:
 	if touch_damage_cooldown_left > 0.0:
 		touch_damage_cooldown_left = maxf(touch_damage_cooldown_left - delta, 0.0)
 	if touching_plants.is_empty() and touching_players.is_empty():

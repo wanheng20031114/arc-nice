@@ -148,6 +148,8 @@ func _reset_enemy_motion_fixture(enemies: Array[Enemy], direct_enabled: bool) ->
 		enemy.position = Vector2(index % 30, index / 30) * 24.0
 		enemy.cached_navigation_uses_direct_objective_approach = direct_enabled
 		enemy.cached_navigation_verified_direct_motion_clearance = INF if direct_enabled else 0.0
+		enemy.cached_navigation_move_direction = Vector2.RIGHT if direct_enabled else Vector2.ZERO
+		enemy.cached_navigation_generation = -1
 
 
 func _measure_character_body_motion(enemies: Array[Enemy]) -> float:

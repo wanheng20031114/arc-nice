@@ -212,24 +212,26 @@ func _test_guardian_aura_visual_configuration() -> void:
 	_expect(guardian.get_script() == AURA_SCRIPT, "Guardian scene must use the aura script.")
 	await _wait_physics_frames(3)
 
-	var aura_shape := guardian.aura_area_shape.shape as CircleShape2D
-
 	_expect(guardian.aura_active, "Guardian aura did not start.")
 	_expect(not GUARDIAN_CONFIG.aura_particles_enabled, "Guardian aura particles should be disabled.")
-	_expect(not guardian.aura_particles.emitting, "Guardian should not emit aura particles.")
-	_expect(guardian.aura_area.collision_mask == 0, "Guardian AuraArea must have no production collision mask.")
-	_expect(not guardian.aura_area.monitoring, "Guardian AuraArea must not monitor physics bodies.")
-	_expect(not guardian.aura_area.monitorable, "Guardian AuraArea must not be monitorable.")
-	_expect(guardian.aura_area_shape.disabled, "Guardian aura collision shape must stay disabled.")
 	_expect(
-		guardian.aura_area.body_entered.get_connections().is_empty(),
-		"Guardian AuraArea must not own per-guardian body callbacks."
+		guardian.aura_particles == null
+		and guardian.aura_range_outline == null
+		and guardian.aura_area == null
+		and guardian.aura_area_shape == null,
+		"Guardian shared-script aura dependencies must resolve to null without local nodes."
 	)
-	_expect(aura_shape != null, "Guardian aura shape is not circular.")
-	if aura_shape != null:
-		_expect(is_equal_approx(aura_shape.radius, GUARDIAN_CONFIG.aura_radius), "Guardian aura radius ignored config.")
-	_expect(not guardian.aura_range_fill.visible, "Guardian aura range fill should be hidden.")
-	_expect(not guardian.aura_range_outline.visible, "Guardian aura range outline should be hidden.")
+	for absent_node_path in [
+		"AuraParticles",
+		"AuraRangeFill",
+		"AuraRangeOutline",
+		"AuraArea",
+		"AuraArea/CollisionShape2D",
+	]:
+		_expect(
+			guardian.get_node_or_null(absent_node_path) == null,
+			"Guardian must not retain unused local aura node %s." % absent_node_path
+		)
 	var guardian_light := guardian.get_node_or_null("GuardianLight") as PointLight2D
 	var guardian_halo := guardian.get_node_or_null("GuardianLightHalo") as Sprite2D
 	var guardian_body_material := guardian.animated_sprite.material as ShaderMaterial
@@ -630,8 +632,9 @@ func _test_multiplayer_proxy_guardian_values() -> void:
 		"Multiplayer proxies must derive the same +6 overlapping guardian defense."
 	)
 	_expect(
-		first_guardian.aura_area_shape.disabled and second_guardian.aura_area_shape.disabled,
-		"Multiplayer guardian values must not depend on enabled Area2D shapes."
+		first_guardian.get_node_or_null("AuraArea") == null
+		and second_guardian.get_node_or_null("AuraArea") == null,
+		"Multiplayer guardian values must not depend on per-guardian Area2D nodes."
 	)
 	first_guardian.play_multiplayer_death_sequence()
 	_expect(
@@ -666,8 +669,10 @@ func _test_dense_guardian_registration_and_teardown() -> void:
 	await _wait_physics_frames(5)
 
 	for guardian in guardians:
-		_expect(not guardian.aura_area.monitoring, "Dense guardian cohort re-enabled AuraArea monitoring.")
-		_expect(guardian.aura_area_shape.disabled, "Dense guardian cohort re-enabled aura collision shapes.")
+		_expect(
+			guardian.get_node_or_null("AuraArea") == null,
+			"Dense guardian cohorts must not instantiate per-guardian AuraArea nodes."
+		)
 	_expect(
 		guardian_aura_system.get_guardian_count() == guardians.size(),
 		"GuardianAuraSystem did not register the dense guardian cohort."
@@ -709,8 +714,10 @@ func _test_dense_guardian_registration_and_teardown() -> void:
 
 func _legacy_guardian_area_overlaps(guardian: YuanshiInsect, target: Enemy) -> bool:
 	var query := PhysicsShapeQueryParameters2D.new()
-	query.shape = guardian.aura_area_shape.shape
-	query.transform = guardian.aura_area_shape.global_transform
+	var legacy_shape := CircleShape2D.new()
+	legacy_shape.radius = GUARDIAN_CONFIG.aura_radius
+	query.shape = legacy_shape
+	query.transform = guardian.global_transform
 	query.collision_mask = 4
 	query.collide_with_bodies = true
 	query.collide_with_areas = false

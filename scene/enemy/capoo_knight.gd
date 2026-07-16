@@ -402,10 +402,7 @@ func _get_multiplayer_damage_source_id(source_suffix: int) -> int:
 func _has_clear_world_line_to_target() -> bool:
 	if not is_instance_valid(target_player):
 		return false
-	return _is_world_segment_clear(
-		target_player.global_position,
-		WORLD_COLLISION_MASK
-	)
+	return _has_throttled_world_line_of_sight(target_player, WORLD_COLLISION_MASK)
 
 
 func _get_attack_interval() -> float:
