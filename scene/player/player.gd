@@ -22,6 +22,8 @@ signal revived
 @export_flags("Land", "Water") var terrain_traversal_types: int = DualGridTilemap.TraversalType.LAND
 
 var current_health: int = 0
+var last_damage_taken: int = 0
+var last_healing_received: int = 0
 var current_xirang: int = 0
 var invincibility_time_left: float = 0.0
 var dash_time_left: float = 0.0
@@ -43,6 +45,8 @@ var mouse_viewport_position: Vector2 = Vector2.ZERO
 var multiplayer_display_name: String = ""
 var client_movement_prediction_only: bool = false
 var navigation_collision_extent_radius: float = -1.0
+var _pending_healing_number_amount: int = 0
+var _healing_number_flush_queued := false
 
 @export var fire_interval: float = 1.0
 @export_range(1.0, 1000.0, 1.0, "or_greater") var attack_speed_units_per_attack: float = 100.0
@@ -599,7 +603,7 @@ func notify_primary_attack_performed() -> void:
 	_trigger_collectible_primary_attack_effects()
 
 # 应用道具效果，更新玩家形态、射速、移速等增益状态
-func apply_pickup(config: PickupConfig) -> bool:
+func apply_pickup(config: PickupConfig, apply_healing: bool = true) -> bool:
 	if config == null:
 		return false
 	if config.pickup_type == PickupConfig.PickupType.MATERIAL:
@@ -624,8 +628,15 @@ func apply_pickup(config: PickupConfig) -> bool:
 		speed_buff_time_left = buff_duration
 		applied = true
 
-	if config.heal_amount > 0:
+	# Multiplayer clients replay the non-health parts of a reliable pickup/item
+	# event, then receive health through net_player_healed. This prevents a
+	# cross-channel ordering race from applying the same healing twice.
+	if apply_healing and config.heal_amount > 0:
 		applied = _try_heal(config.heal_amount) or applied
+	elif not apply_healing and config.heal_amount > 0:
+		# The authoritative health event is delivered separately, but this reliable
+		# replay still represents a successfully consumed healing pickup/item.
+		applied = true
 
 	# 普通射速道具与形态专属射速提升维护，避免螺旋形态的射速被其他 Buff 状态覆盖。
 	if has_fire_rate_override and not requests_projectile_form_override:
@@ -659,6 +670,7 @@ func apply_damage(
 	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
 	damage_context: Dictionary = {}
 ) -> bool:
+	last_damage_taken = 0
 	if is_dead:
 		return false
 
@@ -680,7 +692,15 @@ func apply_damage(
 
 	var adjusted_amount := _apply_collectible_ranged_damage_multiplier(amount, damage_context)
 	var final_damage := _calculate_incoming_damage(adjusted_amount, damage_type)
+	var health_before_damage := maxi(current_health, 0)
 	current_health = maxi(current_health - final_damage, 0)
+	last_damage_taken = maxi(health_before_damage - current_health, 0)
+	if peer_id <= 0:
+		show_damage_number(
+			last_damage_taken,
+			_get_damage_number_impact_direction(damage_context),
+			damage_type
+		)
 	health_bar.set_health(current_health, max_health)
 	health_changed.emit(current_health, max_health)
 	_refresh_collectible_stats(false)
@@ -730,9 +750,69 @@ func _get_damage_source_side_direction(damage_context: Dictionary) -> Vector2:
 	var source_direction_variant: Variant = damage_context.get("source_direction", Vector2.ZERO)
 	if source_direction_variant is Vector2:
 		var source_direction := source_direction_variant as Vector2
+		if not source_direction.is_finite():
+			return Vector2.ZERO
 		if source_direction.length_squared() > 0.001:
 			return source_direction.normalized()
 	return Vector2.ZERO
+
+
+func _get_damage_number_impact_direction(damage_context: Dictionary) -> Vector2:
+	return -_get_damage_source_side_direction(damage_context)
+
+
+func show_damage_number(
+	amount: int,
+	impact_direction: Vector2 = Vector2.ZERO,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
+) -> void:
+	if amount <= 0:
+		return
+	var damage_number_owner := get_parent()
+	while damage_number_owner != null:
+		if damage_number_owner.has_method("show_damage_number"):
+			damage_number_owner.call(
+				"show_damage_number",
+				amount,
+				global_position,
+				impact_direction,
+				damage_type,
+				DamageNumberPool.DisplayPriority.IMPORTANT
+			)
+			return
+		damage_number_owner = damage_number_owner.get_parent()
+
+
+func queue_healing_number(amount: int) -> void:
+	if amount <= 0:
+		return
+	_pending_healing_number_amount += amount
+	if _healing_number_flush_queued:
+		return
+	_healing_number_flush_queued = true
+	call_deferred("_flush_pending_healing_number")
+
+
+func _flush_pending_healing_number() -> void:
+	_healing_number_flush_queued = false
+	var amount := _pending_healing_number_amount
+	_pending_healing_number_amount = 0
+	if amount <= 0:
+		return
+	var combat_number_owner := get_parent()
+	while combat_number_owner != null:
+		if combat_number_owner.has_method("show_combat_number"):
+			combat_number_owner.call(
+				"show_combat_number",
+				amount,
+				global_position,
+				DamageNumberPool.CombatNumberKind.HEALING,
+				Vector2.ZERO,
+				EnemyConfig.DamageType.PHYSICAL,
+				DamageNumberPool.DisplayPriority.IMPORTANT
+			)
+			return
+		combat_number_owner = combat_number_owner.get_parent()
 
 
 func _calculate_incoming_damage(
@@ -1622,7 +1702,8 @@ func _get_skill1_duration_for_level(level: int) -> float:
 	)
 
 
-func _try_heal(amount: int) -> bool:
+func _try_heal(amount: int, report_multiplayer: bool = true) -> bool:
+	last_healing_received = 0
 	if is_dead:
 		return false
 	if amount <= 0:
@@ -1630,10 +1711,25 @@ func _try_heal(amount: int) -> bool:
 	if current_health >= max_health:
 		return false
 
+	var previous_health := current_health
 	current_health = mini(current_health + amount, max_health)
+	last_healing_received = current_health - previous_health
 	health_bar.set_health(current_health, max_health)
 	health_changed.emit(current_health, max_health)
 	_refresh_collectible_stats(false)
+	if peer_id <= 0:
+		queue_healing_number(last_healing_received)
+	elif report_multiplayer:
+		var current_scene := get_tree().current_scene
+		if (
+			current_scene != null
+			and current_scene.has_method("report_multiplayer_player_healing")
+		):
+			current_scene.call(
+				"report_multiplayer_player_healing",
+				self,
+				last_healing_received
+			)
 	return true
 
 

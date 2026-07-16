@@ -561,11 +561,37 @@ func show_damage_number(
 	amount: int,
 	spawn_position: Vector2,
 	impact_direction: Vector2 = Vector2.ZERO,
-	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+	display_priority: DamageNumberPool.DisplayPriority = DamageNumberPool.DisplayPriority.NORMAL
+) -> bool:
+	return show_combat_number(
+		amount,
+		spawn_position,
+		DamageNumberPool.CombatNumberKind.DAMAGE,
+		impact_direction,
+		damage_type,
+		display_priority
+	)
+
+
+func show_combat_number(
+	amount: int,
+	spawn_position: Vector2,
+	number_kind: DamageNumberPool.CombatNumberKind,
+	motion_direction: Vector2 = Vector2.ZERO,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+	display_priority: DamageNumberPool.DisplayPriority = DamageNumberPool.DisplayPriority.NORMAL
 ) -> bool:
 	if damage_number_pool == null:
 		return false
-	return damage_number_pool.show_damage_number(amount, spawn_position, impact_direction, damage_type)
+	return damage_number_pool.show_combat_number(
+		amount,
+		spawn_position,
+		number_kind,
+		motion_direction,
+		damage_type,
+		display_priority
+	)
 
 
 func try_purchase_skill1_for_peer(peer_id: int) -> int:

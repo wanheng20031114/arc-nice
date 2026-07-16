@@ -1,6 +1,16 @@
 extends Node2D
 class_name DamageNumberPool
 
+enum DisplayPriority {
+	NORMAL,
+	IMPORTANT,
+}
+
+enum CombatNumberKind {
+	DAMAGE,
+	HEALING,
+}
+
 const DAMAGE_FONT := preload("res://resources/font/ResourceHanRoundedCN-Medium.ttf")
 const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
 const BASE_SIZE := Vector2(38.0, 20.0)
@@ -10,14 +20,18 @@ const FONT_COLOR := Color(1.0, 0.12, 0.09, 1.0)
 const OUTLINE_COLOR := Color(0.28, 0.02, 0.02, 0.98)
 const MAGIC_FONT_COLOR := Color(0.74, 0.34, 1.0, 1.0)
 const MAGIC_OUTLINE_COLOR := Color(0.16, 0.04, 0.30, 0.98)
+const HEALING_FONT_COLOR := Color("#AFDD22")
+const HEALING_OUTLINE_COLOR := Color(0.08, 0.20, 0.015, 0.98)
 const OUTLINE_SIZE := 2
 
 @export_range(1, 256, 1, "or_greater") var pool_size: int = 96
 @export_range(1, 240, 1, "or_greater") var max_numbers_per_second: int = 120
 @export_range(1, 32, 1, "or_greater") var max_numbers_per_frame: int = 16
+@export_range(0, 32, 1, "or_greater") var important_frame_reserve: int = 4
+@export_range(0, 240, 1, "or_greater") var important_per_second_reserve: int = 24
 @export_range(0.0, 512.0, 1.0, "or_greater") var visibility_margin: float = 192.0
 
-# Damage numbers used to be 96 Node2D + Label pairs, each with its own
+# Combat numbers used to be 96 Node2D + Label pairs, each with its own
 # _process callback and CanvasItem state. These fixed-capacity arrays keep the
 # same visual slots while one node updates and draws the entire batch.
 var slot_active := PackedByteArray()
@@ -25,14 +39,17 @@ var slot_elapsed := PackedFloat32Array()
 var slot_start_positions := PackedVector2Array()
 var slot_float_offsets := PackedVector2Array()
 var slot_texts: Array[String] = []
+var slot_number_kinds := PackedByteArray()
 var slot_damage_types := PackedByteArray()
 var slot_text_lines: Array[TextLine] = []
 var active_count: int = 0
 
 var budget_frame: int = -1
 var shown_this_frame: int = 0
+var normal_shown_this_frame: int = 0
 var budget_second_started_msec: int = 0
 var shown_this_second: int = 0
+var normal_shown_this_second: int = 0
 var offscreen_requests_skipped: int = 0
 
 
@@ -46,9 +63,51 @@ func show_damage_number(
 	amount: int,
 	spawn_position: Vector2,
 	impact_direction: Vector2 = Vector2.ZERO,
-	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+	display_priority: DisplayPriority = DisplayPriority.NORMAL
+) -> bool:
+	return show_combat_number(
+		amount,
+		spawn_position,
+		CombatNumberKind.DAMAGE,
+		impact_direction,
+		damage_type,
+		display_priority
+	)
+
+
+func show_healing_number(
+	amount: int,
+	spawn_position: Vector2,
+	motion_direction: Vector2 = Vector2.ZERO,
+	display_priority: DisplayPriority = DisplayPriority.NORMAL
+) -> bool:
+	return show_combat_number(
+		amount,
+		spawn_position,
+		CombatNumberKind.HEALING,
+		motion_direction,
+		EnemyConfig.DamageType.PHYSICAL,
+		display_priority
+	)
+
+
+## Canonical allocation-free combat feedback entry point. Damage and healing
+## share the same fixed slots, visibility check and render-frame/second budgets.
+func show_combat_number(
+	amount: int,
+	spawn_position: Vector2,
+	number_kind: CombatNumberKind,
+	motion_direction: Vector2 = Vector2.ZERO,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+	display_priority: DisplayPriority = DisplayPriority.NORMAL
 ) -> bool:
 	if amount <= 0:
+		return false
+	# Budget saturation is much cheaper to test than resolving a viewport and
+	# its transformed visible rect. Recheck at consumption so a future caller
+	# cannot accidentally bypass the shared limits.
+	if not _has_display_budget(display_priority):
 		return false
 	# Invisible feedback must not consume the shared display budget and starve
 	# nearby combat. The margin keeps numbers that can enter view during their
@@ -60,7 +119,7 @@ func show_damage_number(
 	):
 		offscreen_requests_skipped += 1
 		return false
-	if not _consume_display_budget():
+	if not _consume_display_budget(display_priority):
 		return false
 
 	var slot_index := _find_available_slot()
@@ -73,15 +132,20 @@ func show_damage_number(
 		spawn_position + Vector2(randf_range(-2.0, 2.0), -9.0)
 	)
 	var horizontal_sign := 0.0
-	if not is_zero_approx(impact_direction.x):
-		horizontal_sign = signf(impact_direction.x)
+	if not is_zero_approx(motion_direction.x):
+		horizontal_sign = signf(motion_direction.x)
 	else:
 		horizontal_sign = -1.0 if randf() < 0.5 else 1.0
 	slot_float_offsets[slot_index] = Vector2(
 		horizontal_sign * randf_range(4.0, 8.0),
 		-14.0
 	)
-	slot_texts[slot_index] = str(maxi(amount, 0))
+	slot_texts[slot_index] = (
+		"+%d" % amount
+		if number_kind == CombatNumberKind.HEALING
+		else str(amount)
+	)
+	slot_number_kinds[slot_index] = number_kind
 	slot_damage_types[slot_index] = damage_type
 	_shape_slot_text(slot_index)
 	if not was_active:
@@ -110,17 +174,45 @@ func get_first_active_debug_snapshot(
 	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
 ) -> Dictionary:
 	for index in range(slot_active.size()):
-		if slot_active[index] == 0 or slot_damage_types[index] != damage_type:
+		if (
+			slot_active[index] == 0
+			or slot_number_kinds[index] != CombatNumberKind.DAMAGE
+			or slot_damage_types[index] != damage_type
+		):
 			continue
-		return {
-			"text": slot_texts[index],
-			"elapsed": slot_elapsed[index],
-			"font_color": _get_font_color(damage_type),
-			"outline_color": _get_outline_color(damage_type),
-			"start_position": slot_start_positions[index],
-			"float_offset": slot_float_offsets[index],
-		}
+		return _get_slot_debug_snapshot(index)
 	return {}
+
+
+func get_first_active_combat_number_debug_snapshot(
+	number_kind: CombatNumberKind,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
+) -> Dictionary:
+	for index in range(slot_active.size()):
+		if slot_active[index] == 0 or slot_number_kinds[index] != number_kind:
+			continue
+		if (
+			number_kind == CombatNumberKind.DAMAGE
+			and slot_damage_types[index] != damage_type
+		):
+			continue
+		return _get_slot_debug_snapshot(index)
+	return {}
+
+
+func _get_slot_debug_snapshot(index: int) -> Dictionary:
+	var number_kind := int(slot_number_kinds[index]) as CombatNumberKind
+	var damage_type := int(slot_damage_types[index]) as EnemyConfig.DamageType
+	return {
+		"text": slot_texts[index],
+		"elapsed": slot_elapsed[index],
+		"number_kind": number_kind,
+		"damage_type": damage_type,
+		"font_color": _get_font_color(number_kind, damage_type),
+		"outline_color": _get_outline_color(number_kind, damage_type),
+		"start_position": slot_start_positions[index],
+		"float_offset": slot_float_offsets[index],
+	}
 
 
 func _process(delta: float) -> void:
@@ -166,10 +258,15 @@ func _draw() -> void:
 		)
 		var brightness := _get_brightness(elapsed)
 		var alpha := _get_alpha(elapsed)
+		var number_kind := int(slot_number_kinds[index]) as CombatNumberKind
 		var damage_type := int(slot_damage_types[index]) as EnemyConfig.DamageType
-		var font_color := _scaled_color(_get_font_color(damage_type), brightness, alpha)
+		var font_color := _scaled_color(
+			_get_font_color(number_kind, damage_type),
+			brightness,
+			alpha
+		)
 		var outline_color := _scaled_color(
-			_get_outline_color(damage_type),
+			_get_outline_color(number_kind, damage_type),
 			brightness,
 			alpha
 		)
@@ -193,6 +290,8 @@ func _initialize_slots() -> void:
 	slot_start_positions.fill(Vector2.ZERO)
 	slot_float_offsets.resize(capacity)
 	slot_float_offsets.fill(Vector2.ZERO)
+	slot_number_kinds.resize(capacity)
+	slot_number_kinds.fill(CombatNumberKind.DAMAGE)
 	slot_damage_types.resize(capacity)
 	slot_damage_types.fill(EnemyConfig.DamageType.PHYSICAL)
 	slot_texts.resize(capacity)
@@ -206,7 +305,44 @@ func _initialize_slots() -> void:
 	active_count = 0
 
 
-func _consume_display_budget() -> bool:
+func _consume_display_budget(display_priority: DisplayPriority) -> bool:
+	if not _has_display_budget(display_priority):
+		return false
+	shown_this_frame += 1
+	shown_this_second += 1
+	if display_priority == DisplayPriority.NORMAL:
+		normal_shown_this_frame += 1
+		normal_shown_this_second += 1
+	return true
+
+
+func _has_display_budget(display_priority: DisplayPriority) -> bool:
+	_refresh_display_budget_windows()
+	var frame_limit := maxi(max_numbers_per_frame, 1)
+	if shown_this_frame >= frame_limit:
+		return false
+	if display_priority == DisplayPriority.NORMAL:
+		var normal_frame_limit := maxi(
+			frame_limit - clampi(important_frame_reserve, 0, frame_limit),
+			0
+		)
+		if normal_shown_this_frame >= normal_frame_limit:
+			return false
+
+	var second_limit := maxi(max_numbers_per_second, 1)
+	if shown_this_second >= second_limit:
+		return false
+	if display_priority == DisplayPriority.NORMAL:
+		var normal_second_limit := maxi(
+			second_limit - clampi(important_per_second_reserve, 0, second_limit),
+			0
+		)
+		if normal_shown_this_second >= normal_second_limit:
+			return false
+	return true
+
+
+func _refresh_display_budget_windows() -> void:
 	# A long visible frame can execute multiple catch-up physics ticks. Render
 	# feedback must share one budget across all of them, so key the limiter to the
 	# process/render frame instead of allowing max_numbers_per_frame per tick.
@@ -214,19 +350,13 @@ func _consume_display_budget() -> bool:
 	if current_frame != budget_frame:
 		budget_frame = current_frame
 		shown_this_frame = 0
-	if shown_this_frame >= maxi(max_numbers_per_frame, 1):
-		return false
+		normal_shown_this_frame = 0
 
 	var now := Time.get_ticks_msec()
 	if now - budget_second_started_msec >= 1000:
 		budget_second_started_msec = now
 		shown_this_second = 0
-	if shown_this_second >= maxi(max_numbers_per_second, 1):
-		return false
-
-	shown_this_frame += 1
-	shown_this_second += 1
-	return true
+		normal_shown_this_second = 0
 
 
 func _find_available_slot() -> int:
@@ -268,11 +398,21 @@ func _get_alpha(elapsed: float) -> float:
 	return 1.0 - _ease_out_sine(clampf((elapsed - 0.5) / 0.22, 0.0, 1.0))
 
 
-func _get_font_color(damage_type: EnemyConfig.DamageType) -> Color:
+func _get_font_color(
+	number_kind: CombatNumberKind,
+	damage_type: EnemyConfig.DamageType
+) -> Color:
+	if number_kind == CombatNumberKind.HEALING:
+		return HEALING_FONT_COLOR
 	return MAGIC_FONT_COLOR if damage_type == EnemyConfig.DamageType.MAGIC else FONT_COLOR
 
 
-func _get_outline_color(damage_type: EnemyConfig.DamageType) -> Color:
+func _get_outline_color(
+	number_kind: CombatNumberKind,
+	damage_type: EnemyConfig.DamageType
+) -> Color:
+	if number_kind == CombatNumberKind.HEALING:
+		return HEALING_OUTLINE_COLOR
 	return (
 		MAGIC_OUTLINE_COLOR
 		if damage_type == EnemyConfig.DamageType.MAGIC

@@ -67,6 +67,18 @@ signal multiplayer_plant_health_changed(
 	maximum_health: int,
 	health_revision: int
 )
+signal multiplayer_plant_damage_applied(
+	net_id: int,
+	applied_damage: int,
+	impact_direction: Vector2,
+	damage_type: EnemyConfig.DamageType,
+	world_position: Vector2
+)
+signal multiplayer_plant_healing_applied(
+	net_id: int,
+	applied_healing: int,
+	world_position: Vector2
+)
 signal multiplayer_plant_removed(net_id: int)
 ## Authoritative terrain batches are already committed locally when emitted.
 ## Revisions must be positive, strictly monotonic, and advance exactly once per
@@ -614,6 +626,53 @@ func grant_xirang_kill_reward(amount: int) -> bool:
 		_xirang_kill_reward_flush_queued = true
 		call_deferred("_flush_xirang_kill_rewards")
 	return true
+
+
+## Canonical shared combat feedback entry point. Concrete game scenes with a
+## DamageNumberPool override this; lightweight test/server runtimes keep the
+## zero-cost default. Compatibility wrappers below preserve focused call sites.
+func show_combat_number(
+	_amount: int,
+	_spawn_position: Vector2,
+	_number_kind: DamageNumberPool.CombatNumberKind,
+	_motion_direction: Vector2 = Vector2.ZERO,
+	_damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+	_display_priority: DamageNumberPool.DisplayPriority = DamageNumberPool.DisplayPriority.NORMAL
+) -> bool:
+	return false
+
+
+func show_damage_number(
+	amount: int,
+	spawn_position: Vector2,
+	impact_direction: Vector2 = Vector2.ZERO,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+	display_priority: DamageNumberPool.DisplayPriority = DamageNumberPool.DisplayPriority.NORMAL
+) -> bool:
+	return show_combat_number(
+		amount,
+		spawn_position,
+		DamageNumberPool.CombatNumberKind.DAMAGE,
+		impact_direction,
+		damage_type,
+		display_priority
+	)
+
+
+func show_healing_number(
+	amount: int,
+	spawn_position: Vector2,
+	motion_direction: Vector2 = Vector2.ZERO,
+	display_priority: DamageNumberPool.DisplayPriority = DamageNumberPool.DisplayPriority.NORMAL
+) -> bool:
+	return show_combat_number(
+		amount,
+		spawn_position,
+		DamageNumberPool.CombatNumberKind.HEALING,
+		motion_direction,
+		EnemyConfig.DamageType.PHYSICAL,
+		display_priority
+	)
 
 
 func _flush_xirang_kill_rewards() -> void:

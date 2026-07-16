@@ -202,8 +202,8 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 8, "The multiplayer protocol version must be 8.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v8 must provision eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 9, "The multiplayer protocol version must be 9.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v9 must provision eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
@@ -1650,7 +1650,16 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 	_expect(peer_four != null, "Peer 4 must exist for confirmed event test.")
 	if peer_four != null:
 		var health_revisions := mp_game.get("_player_health_revisions") as Dictionary
-		mp_game.call("net_player_damage_applied", 99, 0, true, 8)
+		mp_game.call(
+			"net_player_damage_applied",
+			99,
+			0,
+			true,
+			8,
+			0,
+			Vector2.ZERO,
+			EnemyConfig.DamageType.PHYSICAL
+		)
 		mp_game.call("net_player_revived", 99, Vector2(4.0, 8.0), 10, 0.5, 9)
 		_expect(
 			not health_revisions.has(99),
@@ -1789,9 +1798,27 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		peer_four.skill1_charge = 0.0
 		game.call("_update_multiplayer_remote_player_passive_state", 0.5)
 		_expect(peer_four.skill1_charge > 0.0, "Host passive tick must charge remote players' skill1.")
-		mp_game.call("net_player_damage_applied", 4, 0, true, 2)
+		mp_game.call(
+			"net_player_damage_applied",
+			4,
+			0,
+			true,
+			2,
+			peer_four.current_health,
+			Vector2.LEFT,
+			EnemyConfig.DamageType.PHYSICAL
+		)
 		_expect(peer_four.is_dead, "Damage confirm must put the selected peer into death state.")
-		mp_game.call("net_player_damage_applied", 4, peer_four.max_health, false, 1)
+		mp_game.call(
+			"net_player_damage_applied",
+			4,
+			peer_four.max_health,
+			false,
+			1,
+			0,
+			Vector2.ZERO,
+			EnemyConfig.DamageType.PHYSICAL
+		)
 		_expect(peer_four.is_dead, "Stale damage revisions must be ignored.")
 		mp_game.call("net_player_revived", 4, Vector2(32.0, 48.0), peer_four.max_health, 1.25, 3)
 		_expect(not peer_four.is_dead, "Revive confirm must clear the selected peer death state.")
@@ -2549,7 +2576,15 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 		)
 		var peer_two := host_game.get_player_for_peer(2) as Player
 		if peer_two != null:
+			var damage_number_pool := host_game.get_node("DamageNumberPool") as DamageNumberPool
+			_expect(
+				damage_number_pool != null,
+				"Multiplayer healing confirmation must share the fixed combat-number pool."
+			)
 			peer_two.current_health = 5
+			var host_healing_number_count_before := (
+				damage_number_pool.get_active_count() if damage_number_pool != null else 0
+			)
 			var heal_result := bool(mp_game.call(
 				"apply_multiplayer_player_heal",
 				peer_two,
@@ -2560,12 +2595,48 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			var health_revisions := mp_game.get("_player_health_revisions") as Dictionary
 			var heal_revision := int(health_revisions.get(2, 0))
 			_expect(heal_revision > 0, "Host-authoritative player heal must allocate a health revision.")
+			await process_frame
+			if damage_number_pool != null:
+				_expect(
+					damage_number_pool.get_active_count() == host_healing_number_count_before + 1
+					and damage_number_pool.has_active_text("+10"),
+					"Host-authoritative healing must display its confirmed actual gain exactly once."
+				)
+
+			# Simulate a realtime snapshot arriving before the reliable heal confirm.
+			# The health delta is already gone, but the explicit confirmed value must
+			# still produce feedback once.
 			peer_two.current_health = 5
 			health_revisions.erase(2)
-			mp_game.call("net_player_healed", 2, 15, 1)
-			_expect(peer_two.current_health == 15, "Heal confirm must update the selected peer's health.")
-			mp_game.call("net_player_healed", 2, 35, 1)
+			peer_two.set_multiplayer_health_state(15, false)
+			var confirmed_healing_number_count_before := (
+				damage_number_pool.get_active_count() if damage_number_pool != null else 0
+			)
+			mp_game.call("net_player_healed", 2, 15, 1, 10)
+			_expect(
+				peer_two.current_health == 15,
+				"Heal confirm must preserve health that an earlier realtime snapshot already applied."
+			)
+			await process_frame
+			if damage_number_pool != null:
+				_expect(
+					damage_number_pool.get_active_count()
+					== confirmed_healing_number_count_before + 1
+					and damage_number_pool.has_active_text("+10"),
+					"Reliable heal confirmation must display confirmed_healing even after the snapshot."
+				)
+			var count_before_stale_heal := (
+				damage_number_pool.get_active_count() if damage_number_pool != null else 0
+			)
+			mp_game.call("net_player_healed", 2, 35, 1, 99)
+			await process_frame
 			_expect(peer_two.current_health == 15, "Stale heal revisions must be ignored.")
+			if damage_number_pool != null:
+				_expect(
+					damage_number_pool.get_active_count() == count_before_stale_heal
+					and not damage_number_pool.has_active_text("+99"),
+					"A duplicate heal revision must neither display again nor enqueue stale feedback."
+				)
 		if host_net_manager != null:
 			host_net_manager.set("net_role", previous_role)
 		mp_game.free()
@@ -3089,7 +3160,9 @@ func _test_client_local_damage_confirm_starts_hurt_blink() -> void:
 	_expect(host_player != null, "Client damage confirm blink test must create the host player.")
 	if local_player != null and host_player != null:
 		var mp_game := MP_GAME_SCENE.instantiate()
+		var damage_number_pool := game.get_node("DamageNumberPool") as DamageNumberPool
 		_expect(mp_game != null, "MpGame scene must instantiate for client damage confirm blink test.")
+		_expect(damage_number_pool != null, "Client damage confirmation must share the game damage-number pool.")
 		if mp_game != null:
 			mp_game.set("game", game)
 			local_player.current_health = local_player.max_health
@@ -3097,9 +3170,41 @@ func _test_client_local_damage_confirm_starts_hurt_blink() -> void:
 			local_player.call("_set_hurt_blink_enabled", false)
 			var sprite_material := local_player.body_sprite.material as ShaderMaterial
 			_expect(sprite_material != null, "Local player body sprite must use a ShaderMaterial.")
+			var damage_number_count_before := (
+				damage_number_pool.get_active_count() if damage_number_pool != null else 0
+			)
 
-			mp_game.call("net_player_damage_applied", 2, local_player.max_health - 7, false, 1)
+			mp_game.call(
+				"net_player_damage_applied",
+				2,
+				local_player.max_health - 7,
+				false,
+				1,
+				7,
+				Vector2.LEFT,
+				EnemyConfig.DamageType.PHYSICAL
+			)
 			_expect(local_player.current_health == local_player.max_health - 7, "Local damage confirm must update health.")
+			if damage_number_pool != null:
+				_expect(
+					damage_number_pool.get_active_count() == damage_number_count_before + 1
+					and damage_number_pool.has_active_text("7"),
+					"A new reliable player-damage revision must display its confirmed amount once."
+				)
+				mp_game.call(
+					"net_player_damage_applied",
+					2,
+					local_player.current_health,
+					false,
+					1,
+					7,
+					Vector2.LEFT,
+					EnemyConfig.DamageType.PHYSICAL
+				)
+				_expect(
+					damage_number_pool.get_active_count() == damage_number_count_before + 1,
+					"A duplicate reliable player-damage revision must not display twice."
+				)
 			_expect(local_player.invincibility_time_left > 0.0, "Local damage confirm must start local blink time.")
 			if sprite_material != null:
 				_expect(
@@ -3109,11 +3214,28 @@ func _test_client_local_damage_confirm_starts_hurt_blink() -> void:
 
 			local_player.invincibility_time_left = 0.0
 			local_player.call("_set_hurt_blink_enabled", false)
-			mp_game.call("net_player_damage_applied", 2, local_player.current_health, false, 2)
+			mp_game.call(
+				"net_player_damage_applied",
+				2,
+				local_player.current_health,
+				false,
+				2,
+				7,
+				Vector2.RIGHT,
+				EnemyConfig.DamageType.MAGIC
+			)
 			_expect(
 				local_player.invincibility_time_left > 0.0,
 				"Local damage confirm must restore blink even when predicted health already matches."
 			)
+			if damage_number_pool != null:
+				_expect(
+					damage_number_pool.get_active_count() == damage_number_count_before + 2
+					and not damage_number_pool.get_first_active_debug_snapshot(
+						EnemyConfig.DamageType.MAGIC
+					).is_empty(),
+					"A confirmation after local prediction must still show one typed damage number."
+				)
 			if sprite_material != null:
 				_expect(
 					bool(sprite_material.get_shader_parameter(&"blink_enabled")),
@@ -3122,7 +3244,16 @@ func _test_client_local_damage_confirm_starts_hurt_blink() -> void:
 
 			local_player.invincibility_time_left = 0.0
 			local_player.call("_set_hurt_blink_enabled", false)
-			mp_game.call("net_player_damage_applied", 1, host_player.max_health - 5, false, 2)
+			mp_game.call(
+				"net_player_damage_applied",
+				1,
+				host_player.max_health - 5,
+				false,
+				2,
+				5,
+				Vector2.LEFT,
+				EnemyConfig.DamageType.PHYSICAL
+			)
 			if sprite_material != null:
 				_expect(
 					not bool(sprite_material.get_shader_parameter(&"blink_enabled")),

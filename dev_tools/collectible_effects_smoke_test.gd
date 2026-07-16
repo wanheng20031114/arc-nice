@@ -51,19 +51,39 @@ class DamageNumberTestRoot:
 
 	var damage_number_pool: DamageNumberPool = null
 
+	func show_combat_number(
+		amount: int,
+		spawn_position: Vector2,
+		number_kind: DamageNumberPool.CombatNumberKind,
+		motion_direction: Vector2 = Vector2.ZERO,
+		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+		display_priority: DamageNumberPool.DisplayPriority = DamageNumberPool.DisplayPriority.NORMAL
+	) -> bool:
+		if damage_number_pool == null:
+			return false
+		return damage_number_pool.show_combat_number(
+			amount,
+			spawn_position,
+			number_kind,
+			motion_direction,
+			damage_type,
+			display_priority
+		)
+
 	func show_damage_number(
 		amount: int,
 		spawn_position: Vector2,
 		impact_direction: Vector2 = Vector2.ZERO,
-		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
+		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+		display_priority: DamageNumberPool.DisplayPriority = DamageNumberPool.DisplayPriority.NORMAL
 	) -> bool:
-		if damage_number_pool == null:
-			return false
-		return damage_number_pool.show_damage_number(
+		return show_combat_number(
 			amount,
 			spawn_position,
+			DamageNumberPool.CombatNumberKind.DAMAGE,
 			impact_direction,
-			damage_type
+			damage_type,
+			display_priority
 		)
 
 
@@ -794,8 +814,17 @@ func _test_combat_effects() -> void:
 	_expect(run_state.try_add_item(LIFE_CRYSTAL), "Life crystal must fit in inventory.")
 	await process_frame
 	ally.current_health = 5
+	var life_crystal_number_count_before := _count_active_damage_numbers()
+	var life_crystal_pool_children_before := test_root.damage_number_pool.get_child_count()
 	player.call("_trigger_life_crystal", LIFE_CRYSTAL)
 	_expect(ally.current_health == 15, "Life crystal must heal nearby friendly players for 10 health.")
+	await process_frame
+	_expect(
+		_count_active_damage_numbers() == life_crystal_number_count_before + 1
+		and test_root.damage_number_pool.has_active_text("+10")
+		and test_root.damage_number_pool.get_child_count() == life_crystal_pool_children_before,
+		"Life crystal healing must display one +10 in the same allocation-free combat-number pool."
+	)
 
 	run_state.begin_new_run()
 	player.refresh_collectible_stats()

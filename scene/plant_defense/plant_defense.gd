@@ -8,6 +8,12 @@ enum RemovalMode {
 
 signal health_changed(current_health: int, maximum_health: int)
 signal authoritative_health_changed(current_health: int, maximum_health: int, revision: int)
+signal damage_applied(
+	applied_damage: int,
+	impact_direction: Vector2,
+	damage_type: EnemyConfig.DamageType
+)
+signal healing_applied(applied_healing: int)
 signal died
 signal modal_ui_visibility_changed(is_open: bool)
 signal construction_finished
@@ -44,6 +50,12 @@ var _construction_tween: Tween = null
 var _removal_tween: Tween = null
 var _construction_progress: float = 1.0
 var _construction_visual_active := false
+var _pending_physical_damage_number_amount: int = 0
+var _pending_magic_damage_number_amount: int = 0
+var _pending_healing_number_amount: int = 0
+var _pending_physical_damage_number_direction := Vector2.ZERO
+var _pending_magic_damage_number_direction := Vector2.ZERO
+var _combat_number_flush_queued := false
 
 
 func _ready() -> void:
@@ -79,6 +91,12 @@ func setup(
 	is_operational = false
 	is_removing = false
 	removal_mode = RemovalMode.SILENT
+	_pending_physical_damage_number_amount = 0
+	_pending_magic_damage_number_amount = 0
+	_pending_healing_number_amount = 0
+	_pending_physical_damage_number_direction = Vector2.ZERO
+	_pending_magic_damage_number_direction = Vector2.ZERO
+	_combat_number_flush_queued = false
 	health_changed.emit(current_health, max_health)
 	if not is_multiplayer_proxy:
 		_bump_health_revision()
@@ -105,6 +123,7 @@ func receive_damage(
 
 	var mitigated_damage := _calculate_incoming_damage(amount, damage_type)
 	var applied_damage := _apply_damage_to_health(mitigated_damage)
+	_report_damage_applied(applied_damage, impact_direction, damage_type)
 	_on_damage_received(applied_damage, source, impact_direction, damage_type)
 	if current_health <= 0:
 		_begin_death()
@@ -118,6 +137,11 @@ func receive_unmitigated_damage(amount: int, source: Node = null) -> bool:
 		return false
 
 	var applied_damage := _apply_damage_to_health(amount)
+	_report_damage_applied(
+		applied_damage,
+		Vector2.ZERO,
+		EnemyConfig.DamageType.PHYSICAL
+	)
 	_on_unmitigated_damage_received(applied_damage, source)
 	if current_health <= 0:
 		_begin_death()
@@ -136,9 +160,13 @@ func receive_healing(amount: int, source: Node = null) -> bool:
 
 	var previous_health := current_health
 	current_health = mini(current_health + amount, max_health)
+	var applied_healing := current_health - previous_health
 	health_changed.emit(current_health, max_health)
 	_bump_health_revision()
-	_on_healing_received(current_health - previous_health, source)
+	healing_applied.emit(applied_healing)
+	_pending_healing_number_amount += applied_healing
+	_queue_combat_number_flush()
+	_on_healing_received(applied_healing, source)
 	return true
 
 
@@ -240,6 +268,91 @@ func _apply_damage_to_health(amount: int) -> int:
 	health_changed.emit(current_health, max_health)
 	_bump_health_revision()
 	return applied_damage
+
+
+func _report_damage_applied(
+	applied_damage: int,
+	impact_direction: Vector2,
+	damage_type: EnemyConfig.DamageType
+) -> void:
+	if applied_damage <= 0:
+		return
+	var safe_impact_direction := Vector2.ZERO
+	if impact_direction.is_finite() and impact_direction.length_squared() > 0.001:
+		safe_impact_direction = impact_direction.normalized()
+	var safe_damage_type := (
+		EnemyConfig.DamageType.MAGIC
+		if damage_type == EnemyConfig.DamageType.MAGIC
+		else EnemyConfig.DamageType.PHYSICAL
+	)
+	damage_applied.emit(applied_damage, safe_impact_direction, safe_damage_type)
+	if safe_damage_type == EnemyConfig.DamageType.MAGIC:
+		_pending_magic_damage_number_amount += applied_damage
+		_pending_magic_damage_number_direction = safe_impact_direction
+	else:
+		_pending_physical_damage_number_amount += applied_damage
+		_pending_physical_damage_number_direction = safe_impact_direction
+	_queue_combat_number_flush()
+
+
+func _queue_combat_number_flush() -> void:
+	if _combat_number_flush_queued:
+		return
+	_combat_number_flush_queued = true
+	call_deferred("_flush_pending_combat_numbers")
+
+
+func _flush_pending_combat_numbers() -> void:
+	_combat_number_flush_queued = false
+	var physical_amount := _pending_physical_damage_number_amount
+	var magic_amount := _pending_magic_damage_number_amount
+	var damage_amount := physical_amount + magic_amount
+	var healing_amount := _pending_healing_number_amount
+	var use_magic := magic_amount > physical_amount
+	var impact_direction := (
+		_pending_magic_damage_number_direction
+		if use_magic
+		else _pending_physical_damage_number_direction
+	)
+	var damage_type := (
+		EnemyConfig.DamageType.MAGIC
+		if use_magic
+		else EnemyConfig.DamageType.PHYSICAL
+	)
+	_pending_physical_damage_number_amount = 0
+	_pending_magic_damage_number_amount = 0
+	_pending_healing_number_amount = 0
+	_pending_physical_damage_number_direction = Vector2.ZERO
+	_pending_magic_damage_number_direction = Vector2.ZERO
+	if is_multiplayer_proxy:
+		return
+
+	var combat_number_owner := get_parent()
+	while combat_number_owner != null:
+		if combat_number_owner.has_method("show_combat_number"):
+			var world_position := get_lifecycle_vfx_global_position()
+			if damage_amount > 0:
+				combat_number_owner.call(
+					"show_combat_number",
+					damage_amount,
+					world_position,
+					DamageNumberPool.CombatNumberKind.DAMAGE,
+					impact_direction,
+					damage_type,
+					DamageNumberPool.DisplayPriority.IMPORTANT
+				)
+			if healing_amount > 0:
+				combat_number_owner.call(
+					"show_combat_number",
+					healing_amount,
+					world_position,
+					DamageNumberPool.CombatNumberKind.HEALING,
+					Vector2.ZERO,
+					EnemyConfig.DamageType.PHYSICAL,
+					DamageNumberPool.DisplayPriority.IMPORTANT
+				)
+			return
+		combat_number_owner = combat_number_owner.get_parent()
 
 
 func _begin_death() -> void:

@@ -739,6 +739,13 @@ func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 	if plant == null:
 		return
 	_request_enemy_retarget_after_objective_change()
+	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
+		var damage_callback := _on_authoritative_plant_damage_applied.bind(plant)
+		if not plant.damage_applied.is_connected(damage_callback):
+			plant.damage_applied.connect(damage_callback)
+		var healing_callback := _on_authoritative_plant_healing_applied.bind(plant)
+		if not plant.healing_applied.is_connected(healing_callback):
+			plant.healing_applied.connect(healing_callback)
 	if plant.is_construction_visual_active():
 		_spawn_plant_placement_particles(plant)
 	var oak_warehouse := plant as OakWarehouse
@@ -1025,6 +1032,52 @@ func _on_authoritative_plant_health_changed(
 		current_health,
 		maximum_health,
 		health_revision
+	)
+
+
+func _on_authoritative_plant_damage_applied(
+	applied_damage: int,
+	impact_direction: Vector2,
+	damage_type: EnemyConfig.DamageType,
+	plant: PlantDefense
+) -> void:
+	if (
+		runtime_mode != RuntimeMode.HOST_AUTHORITY
+		or applied_damage <= 0
+		or plant == null
+		or not is_instance_valid(plant)
+	):
+		return
+	var net_id := int(plant.get_meta(&"net_id", 0))
+	if net_id <= 0:
+		return
+	multiplayer_plant_damage_applied.emit(
+		net_id,
+		applied_damage,
+		impact_direction,
+		damage_type,
+		plant.get_lifecycle_vfx_global_position()
+	)
+
+
+func _on_authoritative_plant_healing_applied(
+	applied_healing: int,
+	plant: PlantDefense
+) -> void:
+	if (
+		runtime_mode != RuntimeMode.HOST_AUTHORITY
+		or applied_healing <= 0
+		or plant == null
+		or not is_instance_valid(plant)
+	):
+		return
+	var net_id := int(plant.get_meta(&"net_id", 0))
+	if net_id <= 0:
+		return
+	multiplayer_plant_healing_applied.emit(
+		net_id,
+		applied_healing,
+		plant.get_lifecycle_vfx_global_position()
 	)
 
 
@@ -1637,11 +1690,37 @@ func show_damage_number(
 	amount: int,
 	spawn_position: Vector2,
 	impact_direction: Vector2 = Vector2.ZERO,
-	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+	display_priority: DamageNumberPool.DisplayPriority = DamageNumberPool.DisplayPriority.NORMAL
+) -> bool:
+	return show_combat_number(
+		amount,
+		spawn_position,
+		DamageNumberPool.CombatNumberKind.DAMAGE,
+		impact_direction,
+		damage_type,
+		display_priority
+	)
+
+
+func show_combat_number(
+	amount: int,
+	spawn_position: Vector2,
+	number_kind: DamageNumberPool.CombatNumberKind,
+	motion_direction: Vector2 = Vector2.ZERO,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+	display_priority: DamageNumberPool.DisplayPriority = DamageNumberPool.DisplayPriority.NORMAL
 ) -> bool:
 	if damage_number_pool == null:
 		return false
-	return damage_number_pool.show_damage_number(amount, spawn_position, impact_direction, damage_type)
+	return damage_number_pool.show_combat_number(
+		amount,
+		spawn_position,
+		number_kind,
+		motion_direction,
+		damage_type,
+		display_priority
+	)
 
 
 func try_purchase_skill1_for_peer(peer_id: int) -> int:

@@ -213,7 +213,10 @@ func _rpc_player_hit_report(
 	source_type: String,
 	reported_health_after: int,
 	reported_is_dead: bool,
-	hit_revision: int
+	hit_revision: int,
+	reported_applied_damage: int,
+	impact_direction: Vector2,
+	damage_type: int
 ) -> void:
 	pass
 
@@ -222,12 +225,20 @@ func net_player_damage_applied(
 	player_peer_id: int,
 	current_health: int,
 	is_dead: bool,
-	health_revision: int
+	health_revision: int,
+	confirmed_damage: int,
+	impact_direction: Vector2,
+	damage_type: int
 ) -> void:
 	pass
 
 @rpc("authority", "call_remote", "reliable", 5)
-func net_player_healed(peer_id: int, current_health: int, health_revision: int) -> void:
+func net_player_healed(
+	peer_id: int,
+	current_health: int,
+	health_revision: int,
+	confirmed_healing: int
+) -> void:
 	pass
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -399,7 +410,12 @@ func net_plant_health_batch(
 	net_ids: PackedInt32Array,
 	health_values: PackedInt32Array,
 	maximum_values: PackedInt32Array,
-	revisions: PackedInt32Array
+	revisions: PackedInt32Array,
+	damage_values: PackedInt32Array,
+	healing_values: PackedInt32Array,
+	directions: PackedVector2Array,
+	damage_types: PackedByteArray,
+	world_positions: PackedVector2Array
 ) -> void:
 	pass
 

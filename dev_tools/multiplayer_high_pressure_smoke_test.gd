@@ -35,6 +35,24 @@ class HostNetManagerStub:
 		return 1
 
 
+class CapturingMpGame:
+	extends "res://scene/multiplayer/mp_game.gd"
+
+	var outbound_calls: Array[Dictionary] = []
+
+	func _ready() -> void:
+		pass
+
+	func _exit_tree() -> void:
+		pass
+
+	func _rpc_to_connected_clients(method_name: StringName, args: Array = []) -> void:
+		outbound_calls.append({
+			"method_name": method_name,
+			"args": args.duplicate(true),
+		})
+
+
 class TestRuntime:
 	extends GameRuntimeBase
 
@@ -43,6 +61,7 @@ class TestRuntime:
 	var target_lookup_count: int = 0
 	var animated_plant_removal_ids: Array[int] = []
 	var silent_plant_removal_ids: Array[int] = []
+	var damage_number_requests: Array[Dictionary] = []
 
 	func configure_multiplayer(
 		_mode: int,
@@ -212,6 +231,24 @@ class TestRuntime:
 		target_lookup_count += 1
 		return lookup_targets.get(net_id) as Enemy
 
+	func show_combat_number(
+		amount: int,
+		spawn_position: Vector2,
+		number_kind: DamageNumberPool.CombatNumberKind,
+		motion_direction: Vector2 = Vector2.ZERO,
+		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+		display_priority: DamageNumberPool.DisplayPriority = DamageNumberPool.DisplayPriority.NORMAL
+	) -> bool:
+		damage_number_requests.append({
+			"amount": amount,
+			"spawn_position": spawn_position,
+			"number_kind": number_kind,
+			"impact_direction": motion_direction,
+			"damage_type": damage_type,
+			"display_priority": display_priority,
+		})
+		return true
+
 
 var failures: Array[String] = []
 var fixture: TestRuntime = null
@@ -248,6 +285,8 @@ func _run() -> void:
 	_test_enemy_interpolator_iteration_prunes_after_traversal()
 	_test_plant_health_batch_revision_ordering()
 	_test_plant_health_before_spawn_debt()
+	_test_plant_damage_feedback_revision_and_removal_ordering()
+	_test_host_plant_damage_aggregation_and_fatal_flush()
 	_test_warehouse_transaction_cache_scope()
 	_test_corn_burst_packed_queue_pressure()
 	await _test_hoe_prediction_confirmation_reconciliation()
@@ -666,7 +705,12 @@ func _test_plant_health_batch_revision_ordering() -> void:
 		PackedInt32Array([42, 42, 42]),
 		PackedInt32Array([80, 15, 60]),
 		PackedInt32Array([100, 100, 100]),
-		PackedInt32Array([5, 4, 6])
+		PackedInt32Array([5, 4, 6]),
+		PackedInt32Array([0, 0, 0]),
+		PackedInt32Array([0, 0, 0]),
+		PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]),
+		PackedByteArray([0, 0, 0]),
+		PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
 	)
 	_expect(
 		plant.health_revision == 6 and plant.current_health == 60,
@@ -683,7 +727,12 @@ func _test_plant_health_before_spawn_debt() -> void:
 		PackedInt32Array([71, 71, 71]),
 		PackedInt32Array([80, 15, 60]),
 		PackedInt32Array([100, 100, 100]),
-		PackedInt32Array([5, 4, 7])
+		PackedInt32Array([5, 4, 7]),
+		PackedInt32Array([0, 0, 0]),
+		PackedInt32Array([0, 0, 0]),
+		PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]),
+		PackedByteArray([0, 0, 0]),
+		PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
 	)
 	var pending := mp_game.get("_pending_remote_plant_health_updates") as Dictionary
 	_expect(
@@ -718,7 +767,12 @@ func _test_plant_health_before_spawn_debt() -> void:
 		PackedInt32Array([71, 71]),
 		PackedInt32Array([10, 55]),
 		PackedInt32Array([100, 100]),
-		PackedInt32Array([6, 8])
+		PackedInt32Array([6, 8]),
+		PackedInt32Array([0, 0]),
+		PackedInt32Array([0, 0]),
+		PackedVector2Array([Vector2.ZERO, Vector2.ZERO]),
+		PackedByteArray([0, 0]),
+		PackedVector2Array([Vector2.ZERO, Vector2.ZERO])
 	)
 	_expect(
 		spawned_plant.health_revision == 8 and spawned_plant.current_health == 55,
@@ -730,7 +784,12 @@ func _test_plant_health_before_spawn_debt() -> void:
 		PackedInt32Array([72]),
 		PackedInt32Array([40]),
 		PackedInt32Array([100]),
-		PackedInt32Array([9])
+		PackedInt32Array([9]),
+		PackedInt32Array([0]),
+		PackedInt32Array([0]),
+		PackedVector2Array([Vector2.ZERO]),
+		PackedByteArray([0]),
+		PackedVector2Array([Vector2.ZERO])
 	)
 	mp_game.call("net_plant_removed", 72)
 	_expect(
@@ -743,7 +802,12 @@ func _test_plant_health_before_spawn_debt() -> void:
 		PackedInt32Array([72]),
 		PackedInt32Array([20]),
 		PackedInt32Array([100]),
-		PackedInt32Array([10])
+		PackedInt32Array([10]),
+		PackedInt32Array([0]),
+		PackedInt32Array([0]),
+		PackedVector2Array([Vector2.ZERO]),
+		PackedByteArray([0]),
+		PackedVector2Array([Vector2.ZERO])
 	)
 	var removed_ids := mp_game.get("_removed_remote_plant_ids") as Dictionary
 	_expect(
@@ -839,6 +903,225 @@ func _test_plant_health_before_spawn_debt() -> void:
 		and (mp_game.get("_removed_remote_plant_ids") as Dictionary).is_empty(),
 		"Leaving a session must be able to clear all deferred plant-health ordering state."
 	)
+
+
+func _test_plant_damage_feedback_revision_and_removal_ordering() -> void:
+	var mp_game := _new_mp_game()
+	fixture.damage_number_requests.clear()
+	var feedback_position := Vector2(88.0, 96.0)
+	var feedback_arguments := [
+		PackedInt32Array([73]),
+		PackedInt32Array([95]),
+		PackedInt32Array([100]),
+		PackedInt32Array([3]),
+		PackedInt32Array([10]),
+		PackedInt32Array([5]),
+		PackedVector2Array([Vector2.LEFT]),
+		PackedByteArray([EnemyConfig.DamageType.MAGIC]),
+		PackedVector2Array([feedback_position]),
+	]
+	mp_game.callv("net_plant_health_batch", feedback_arguments)
+	mp_game.callv("net_plant_health_batch", feedback_arguments)
+	_expect(
+		fixture.damage_number_requests.size() == 2,
+		"One plant feedback revision must display damage and healing once each, without replaying either on duplicate delivery."
+	)
+	if fixture.damage_number_requests.size() >= 2:
+		var damage_request := fixture.damage_number_requests[0]
+		var healing_request := fixture.damage_number_requests[1]
+		_expect(
+			int(damage_request.get("amount", 0)) == 10
+			and damage_request.get("spawn_position", Vector2.ZERO) == feedback_position
+			and int(damage_request.get("number_kind", -1))
+			== DamageNumberPool.CombatNumberKind.DAMAGE
+			and damage_request.get("impact_direction", Vector2.ZERO) == Vector2.LEFT
+			and int(damage_request.get("damage_type", -1))
+			== EnemyConfig.DamageType.MAGIC
+			and int(damage_request.get("display_priority", -1))
+			== DamageNumberPool.DisplayPriority.IMPORTANT,
+			"Plant feedback must preserve its aggregate, position, direction, type, and priority."
+		)
+		_expect(
+			int(healing_request.get("amount", 0)) == 5
+			and healing_request.get("spawn_position", Vector2.ZERO) == feedback_position
+			and int(healing_request.get("number_kind", -1))
+			== DamageNumberPool.CombatNumberKind.HEALING
+			and healing_request.get("impact_direction", Vector2.INF) == Vector2.ZERO
+			and int(healing_request.get("display_priority", -1))
+			== DamageNumberPool.DisplayPriority.IMPORTANT,
+			"Plant healing feedback must preserve its actual amount, position, semantic kind, and important priority."
+		)
+	mp_game.call("net_plant_removed", 73)
+	mp_game.call(
+		"net_plant_health_batch",
+		PackedInt32Array([73]),
+		PackedInt32Array([0]),
+		PackedInt32Array([100]),
+		PackedInt32Array([4]),
+		PackedInt32Array([90]),
+		PackedInt32Array([0]),
+		PackedVector2Array([Vector2.RIGHT]),
+		PackedByteArray([EnemyConfig.DamageType.PHYSICAL]),
+		PackedVector2Array([feedback_position])
+	)
+	_expect(
+		fixture.damage_number_requests.size() == 3,
+		"A fatal plant feedback record must still display when reliable removal arrives first."
+	)
+	var newer_live_plant := PlantDefense.new()
+	newer_live_plant.configure_multiplayer_proxy(80, 100, 5)
+	fixture.proxy_plants[74] = newer_live_plant
+	mp_game.call(
+		"net_plant_health_batch",
+		PackedInt32Array([74]),
+		PackedInt32Array([90]),
+		PackedInt32Array([100]),
+		PackedInt32Array([4]),
+		PackedInt32Array([10]),
+		PackedInt32Array([0]),
+		PackedVector2Array([Vector2.LEFT]),
+		PackedByteArray([EnemyConfig.DamageType.PHYSICAL]),
+		PackedVector2Array([feedback_position])
+	)
+	_expect(
+		fixture.damage_number_requests.size() == 3,
+		"A CH7 record older than a reliable live-plant state must not replay historical damage."
+	)
+	fixture.proxy_plants.erase(74)
+	newer_live_plant.free()
+
+
+func _test_host_plant_damage_aggregation_and_fatal_flush() -> void:
+	var mp_game := _new_capturing_host_mp_game()
+	mp_game.call("_on_host_plant_health_changed", 81, 90, 100, 2)
+	mp_game.call(
+		"_on_host_plant_damage_applied",
+		81,
+		6,
+		Vector2.LEFT,
+		EnemyConfig.DamageType.MAGIC,
+		Vector2(40.0, 50.0)
+	)
+	mp_game.call(
+		"_on_host_plant_damage_applied",
+		81,
+		4,
+		Vector2.RIGHT,
+		EnemyConfig.DamageType.PHYSICAL,
+		Vector2(42.0, 52.0)
+	)
+	mp_game.call("_on_host_plant_health_changed", 81, 93, 100, 3)
+	mp_game.call(
+		"_on_host_plant_healing_applied",
+		81,
+		3,
+		Vector2(43.0, 53.0)
+	)
+	mp_game.call("_on_host_plant_health_changed", 81, 95, 100, 4)
+	mp_game.call(
+		"_on_host_plant_healing_applied",
+		81,
+		2,
+		Vector2(44.0, 54.0)
+	)
+	var pending := mp_game.get("_pending_plant_health_updates") as Dictionary
+	var aggregate := pending.get(81, {}) as Dictionary
+	_expect(
+		mp_game.outbound_calls.is_empty()
+		and pending.size() == 1
+		and int(aggregate.get("damage", 0)) == 10
+		and int(aggregate.get("healing", 0)) == 5
+		and int(aggregate.get("health_revision", 0)) == 4,
+		"Host plant damage and healing must aggregate independently by net ID without sending one packet per event."
+	)
+	mp_game.call("_on_host_plant_removed", 81)
+	_expect(
+		mp_game.outbound_calls.size() == 2
+		and mp_game.outbound_calls[0].get("method_name", &"")
+		== &"net_plant_health_batch"
+		and mp_game.outbound_calls[1].get("method_name", &"") == &"net_plant_removed"
+		and pending.is_empty(),
+		"Plant removal must flush aggregate damage and healing before its reliable removal event."
+	)
+	if mp_game.outbound_calls.size() >= 1:
+		var batch_args := mp_game.outbound_calls[0].get("args", []) as Array
+		_expect(
+			batch_args.size() == 9
+			and (batch_args[0] as PackedInt32Array) == PackedInt32Array([81])
+			and (batch_args[3] as PackedInt32Array) == PackedInt32Array([4])
+			and (batch_args[4] as PackedInt32Array) == PackedInt32Array([10])
+			and (batch_args[5] as PackedInt32Array) == PackedInt32Array([5])
+			and (batch_args[6] as PackedVector2Array) == PackedVector2Array([Vector2.LEFT])
+			and (batch_args[7] as PackedByteArray)
+			== PackedByteArray([EnemyConfig.DamageType.MAGIC])
+			and (batch_args[8] as PackedVector2Array)
+			== PackedVector2Array([Vector2(44.0, 54.0)]),
+			"The removal flush must preserve separate damage/healing sums and the latest visual metadata."
+		)
+	mp_game.queue_free()
+
+	var chunk_mp_game := _new_capturing_host_mp_game()
+	var plant_limit := MP_GAME_SCRIPT.MULTIPLAYER_TEAM_PLANT_LIMIT
+	var chunk_limit := MP_GAME_SCRIPT.PLANT_HEALTH_MAX_RECORDS_PER_PACKET
+	for record_index in range(plant_limit):
+		chunk_mp_game.call(
+			"_on_host_plant_health_changed",
+			1000 + record_index,
+			90,
+			100,
+			1
+		)
+		chunk_mp_game.call(
+			"_on_host_plant_healing_applied",
+			1000 + record_index,
+			1,
+			Vector2(float(record_index), 1.0)
+		)
+	chunk_mp_game.call("_flush_plant_health_updates")
+	var chunked_record_count := 0
+	var chunks_with_valid_size := true
+	var maximum_estimated_packet_bytes := 0
+	for outbound_call in chunk_mp_game.outbound_calls:
+		var batch_args := outbound_call.get("args", []) as Array
+		if (
+			outbound_call.get("method_name", &"") != &"net_plant_health_batch"
+			or batch_args.size() != 9
+		):
+			chunks_with_valid_size = false
+			continue
+		var chunk_ids := batch_args[0] as PackedInt32Array
+		chunked_record_count += chunk_ids.size()
+		maximum_estimated_packet_bytes = maxi(
+			maximum_estimated_packet_bytes,
+			var_to_bytes(batch_args).size() + 16
+		)
+		chunks_with_valid_size = (
+			chunks_with_valid_size
+			and chunk_ids.size() > 0
+			and chunk_ids.size() <= chunk_limit
+			and (batch_args[5] as PackedInt32Array).size() == chunk_ids.size()
+		)
+	_expect(
+		chunk_mp_game.outbound_calls.size()
+		== ceili(float(plant_limit) / float(chunk_limit))
+		and chunked_record_count == plant_limit
+		and chunks_with_valid_size
+		and maximum_estimated_packet_bytes <= MP_GAME_SCRIPT.SNAPSHOT_PACKET_WARN_BYTES,
+		"The full plant limit with healing metadata must chunk into actual MTU-safe batches without dropping records."
+	)
+	chunk_mp_game.queue_free()
+
+
+func _new_capturing_host_mp_game() -> CapturingMpGame:
+	var mp_game := CapturingMpGame.new()
+	mp_game.process_mode = Node.PROCESS_MODE_DISABLED
+	var keepalive_request := HTTPRequest.new()
+	keepalive_request.name = "PublicRoomKeepaliveRequest"
+	mp_game.add_child(keepalive_request)
+	fixture.add_child(mp_game)
+	mp_game.set("game", fixture)
+	mp_game.set("net_manager", host_net_manager)
+	return mp_game
 
 
 func _test_hoe_prediction_confirmation_reconciliation() -> void:

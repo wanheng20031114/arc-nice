@@ -2,6 +2,8 @@ extends SceneTree
 
 const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 const ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
+const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
+const AGAVE_CONFIG := preload("res://resources/config/plant_defense/agave_cannon.tres")
 const DAMAGE_NUMBER_POOL_SCRIPT := preload("res://scene/damage_number_pool.gd")
 
 
@@ -10,15 +12,41 @@ class DamageNumberOwner:
 
 	var damage_number_pool: Node = null
 
+	func show_combat_number(
+		amount: int,
+		spawn_position: Vector2,
+		number_kind: DamageNumberPool.CombatNumberKind,
+		motion_direction: Vector2 = Vector2.ZERO,
+		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+		display_priority: DamageNumberPool.DisplayPriority = DamageNumberPool.DisplayPriority.NORMAL
+	) -> bool:
+		if damage_number_pool == null:
+			return false
+		return damage_number_pool.call(
+			"show_combat_number",
+			amount,
+			spawn_position,
+			number_kind,
+			motion_direction,
+			damage_type,
+			display_priority
+		) == true
+
 	func show_damage_number(
 		amount: int,
 		spawn_position: Vector2,
 		impact_direction: Vector2 = Vector2.ZERO,
-		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
+		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+		display_priority: DamageNumberPool.DisplayPriority = DamageNumberPool.DisplayPriority.NORMAL
 	) -> bool:
-		if damage_number_pool == null:
-			return false
-		return damage_number_pool.call("show_damage_number", amount, spawn_position, impact_direction, damage_type) == true
+		return show_combat_number(
+			amount,
+			spawn_position,
+			DamageNumberPool.CombatNumberKind.DAMAGE,
+			impact_direction,
+			damage_type,
+			display_priority
+		)
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -98,8 +126,13 @@ func _run() -> void:
 		_expect(not magic_snapshot.is_empty(), "Magic damage slot should be inspectable.")
 		_test_magic_damage_number_style(magic_snapshot)
 	if damage_number_pool != null:
+		await process_frame
+		await _test_player_and_plant_damage_numbers(owner, damage_number_pool)
+		await process_frame
 		await physics_frame
 		_test_damage_number_pool_budget(damage_number_pool)
+		await _test_damage_number_pool_second_reserve()
+		await _test_combat_number_kinds_share_budget()
 		await physics_frame
 		await _test_offscreen_budget_priority(damage_number_pool)
 		await physics_frame
@@ -153,10 +186,268 @@ func _test_magic_damage_number_style(snapshot: Dictionary) -> void:
 	_expect(outline_color.b > outline_color.r and outline_color.b > outline_color.g, "Magic DamageNumber outline should be dark purple.")
 
 
+func _test_healing_number_style(snapshot: Dictionary) -> void:
+	var font_color := snapshot.get("font_color", Color.TRANSPARENT) as Color
+	_expect(
+		font_color.is_equal_approx(Color("#AFDD22")),
+		"Healing combat numbers must use the authored #AFDD22 green."
+	)
+	var outline_color := snapshot.get("outline_color", Color.TRANSPARENT) as Color
+	_expect(
+		outline_color.g > outline_color.r
+		and outline_color.g > outline_color.b
+		and maxf(outline_color.r, maxf(outline_color.g, outline_color.b)) <= 0.25,
+		"Healing combat numbers must use a dark green outline."
+	)
+
+
+func _test_player_and_plant_damage_numbers(
+	owner: DamageNumberOwner,
+	damage_number_pool: DamageNumberPool
+) -> void:
+	var player := PLAYER_SCENE.instantiate() as Player
+	_expect(player != null, "Player scene must instantiate for damage-number feedback.")
+	if player != null:
+		owner.add_child(player)
+		player.global_position = Vector2(112.0, 72.0)
+		player.set_physics_process(false)
+		await process_frame
+		player.peer_id = 0
+		player.current_health = player.max_health
+		player.physical_defense = 0
+		player.magic_defense = 50
+		player.dodge_chance = 0.0
+		player.collectible_ranged_dodge_chance = 0.0
+		player.collectible_ranged_front_damage_multiplier = 1.0
+		player.collectible_ranged_back_damage_multiplier = 1.0
+		player.invincibility_time_left = 0.0
+		player.damage_reduction_modifiers.clear()
+		var player_count_before := damage_number_pool.get_active_count()
+		_expect(
+			player.apply_damage(
+				26,
+				EnemyConfig.DamageType.MAGIC,
+				{"is_ranged": true, "source_direction": Vector2.RIGHT}
+			),
+			"A confirmed single-player hit must damage the player."
+		)
+		_expect(
+			player.last_damage_taken == 13
+			and damage_number_pool.get_active_count() == player_count_before + 1
+			and damage_number_pool.has_active_text("13"),
+			"Player feedback must display the actual post-defense health loss."
+		)
+		var player_count_before_overheal := damage_number_pool.get_active_count()
+		_expect(
+			player._try_heal(999)
+			and player.last_healing_received == 13
+			and damage_number_pool.get_active_count() == player_count_before_overheal,
+			"Player overhealing must queue only the actual missing-health amount."
+		)
+		await process_frame
+		_expect(
+			damage_number_pool.get_active_count() == player_count_before_overheal + 1
+			and damage_number_pool.has_active_text("+13"),
+			"Player overhealing must display the clamped actual value with a plus sign."
+		)
+		var healing_snapshot := damage_number_pool.get_first_active_combat_number_debug_snapshot(
+			DamageNumberPool.CombatNumberKind.HEALING
+		)
+		_expect(
+			not healing_snapshot.is_empty()
+			and healing_snapshot.get("text", "") == "+13",
+			"A healing slot must expose its kind and signed text through the shared debug API."
+		)
+		if not healing_snapshot.is_empty():
+			_test_healing_number_style(healing_snapshot)
+		var player_count_at_full_health := damage_number_pool.get_active_count()
+		_expect(
+			not player._try_heal(1)
+			and player.last_healing_received == 0,
+			"A full-health player must reject healing without reporting a value."
+		)
+		await process_frame
+		_expect(
+			damage_number_pool.get_active_count() == player_count_at_full_health,
+			"Rejected full-health healing must not allocate a combat-number slot."
+		)
+		var count_during_invincibility := damage_number_pool.get_active_count()
+		_expect(
+			not player.apply_damage(99)
+			and player.last_damage_taken == 0
+			and damage_number_pool.get_active_count() == count_during_invincibility,
+			"Invincible player hits must not create damage numbers."
+		)
+		player.invincibility_time_left = 0.0
+		player.current_health = 3
+		var count_before_lethal_hit := damage_number_pool.get_active_count()
+		_expect(
+			player.apply_damage(999)
+			and player.last_damage_taken == 3
+			and damage_number_pool.get_active_count() == count_before_lethal_hit + 1
+			and damage_number_pool.has_active_text("3"),
+			"A lethal player hit must display only the actual remaining health loss."
+		)
+		var player_count_while_dead := damage_number_pool.get_active_count()
+		_expect(
+			not player._try_heal(50)
+			and player.last_healing_received == 0,
+			"A dead player must reject ordinary healing."
+		)
+		await process_frame
+		_expect(
+			damage_number_pool.get_active_count() == player_count_while_dead,
+			"Rejected dead-player healing must not allocate a combat-number slot."
+		)
+		player.queue_free()
+		await process_frame
+
+	var plant := PlantDefense.new()
+	owner.add_child(plant)
+	plant.global_position = Vector2(132.0, 88.0)
+	plant.setup(AGAVE_CONFIG, null, [Vector2i.ZERO])
+	plant.physical_defense = 3
+	plant.magic_defense = 50
+	var plant_count_before := damage_number_pool.get_active_count()
+	_expect(
+		plant.receive_damage(
+			10,
+			null,
+			Vector2.LEFT,
+			EnemyConfig.DamageType.PHYSICAL
+		)
+		and plant.receive_damage(
+			10,
+			null,
+			Vector2.RIGHT,
+			EnemyConfig.DamageType.MAGIC
+		),
+		"Authoritative plants must accept both physical and magic test hits."
+	)
+	_expect(
+		damage_number_pool.get_active_count() == plant_count_before,
+		"Multiple same-turn plant hits must wait for one deferred aggregate."
+	)
+	await process_frame
+	var aggregate_uses_dominant_type := false
+	for slot_index in range(damage_number_pool.slot_active.size()):
+		if (
+			damage_number_pool.slot_active[slot_index] != 0
+			and damage_number_pool.slot_texts[slot_index] == "12"
+			and damage_number_pool.slot_damage_types[slot_index]
+			== EnemyConfig.DamageType.PHYSICAL
+		):
+			aggregate_uses_dominant_type = true
+			break
+	_expect(
+		damage_number_pool.get_active_count() == plant_count_before + 1
+		and aggregate_uses_dominant_type,
+		"Same-turn mixed plant hits must create one sum colored by the dominant type."
+	)
+	var count_before_mixed_feedback := damage_number_pool.get_active_count()
+	var child_count_before_mixed_feedback := damage_number_pool.get_child_count()
+	_expect(
+		plant.receive_damage(
+			5,
+			null,
+			Vector2.LEFT,
+			EnemyConfig.DamageType.PHYSICAL
+		)
+		and plant.receive_healing(3)
+		and plant.receive_healing(4),
+		"A plant must accept same-turn damage and multiple healing events."
+	)
+	_expect(
+		damage_number_pool.get_active_count() == count_before_mixed_feedback,
+		"Same-turn plant damage and healing must share one deferred flush."
+	)
+	await process_frame
+	var found_mixed_damage := false
+	var found_aggregated_healing := false
+	for slot_index in range(damage_number_pool.slot_active.size()):
+		if damage_number_pool.slot_active[slot_index] == 0:
+			continue
+		if (
+			damage_number_pool.slot_number_kinds[slot_index]
+			== DamageNumberPool.CombatNumberKind.DAMAGE
+			and damage_number_pool.slot_texts[slot_index] == "2"
+		):
+			found_mixed_damage = true
+		elif (
+			damage_number_pool.slot_number_kinds[slot_index]
+			== DamageNumberPool.CombatNumberKind.HEALING
+			and damage_number_pool.slot_texts[slot_index] == "+7"
+		):
+			found_aggregated_healing = true
+	_expect(
+		damage_number_pool.get_active_count() == count_before_mixed_feedback + 2
+		and found_mixed_damage
+		and found_aggregated_healing
+		and damage_number_pool.get_child_count() == child_count_before_mixed_feedback,
+		"Plant damage and aggregated +healing must create two fixed-pool slots without child nodes."
+	)
+	plant.current_health = 4
+	_expect(
+		plant.receive_unmitigated_damage(50),
+		"Unmitigated plant decay must use the shared feedback path."
+	)
+	await process_frame
+	_expect(
+		damage_number_pool.has_active_text("4"),
+		"A lethal plant hit must display only the actual remaining health loss."
+	)
+
+	var proxy_plant := PlantDefense.new()
+	owner.add_child(proxy_plant)
+	proxy_plant.setup(AGAVE_CONFIG, null, [Vector2i.ZERO], true, 100, 1, 100)
+	var proxy_count_before := damage_number_pool.get_active_count()
+	_expect(
+		not proxy_plant.receive_damage(10)
+		and damage_number_pool.get_active_count() == proxy_count_before,
+		"Client proxy plants must not predict or duplicate authoritative feedback."
+	)
+	proxy_plant.begin_removal(PlantDefense.RemovalMode.SILENT)
+
+	var pressure_plant := PlantDefense.new()
+	owner.add_child(pressure_plant)
+	pressure_plant.global_position = Vector2(148.0, 88.0)
+	pressure_plant.setup(AGAVE_CONFIG, null, [Vector2i.ZERO])
+	pressure_plant.max_health = 2000
+	pressure_plant.current_health = 2000
+	pressure_plant.physical_defense = 0
+	var pressure_count_before := damage_number_pool.get_active_count()
+	var pressure_child_count := damage_number_pool.get_child_count()
+	for _hit_index in range(1000):
+		pressure_plant.receive_damage(1)
+	await process_frame
+	_expect(
+		damage_number_pool.get_active_count() == pressure_count_before + 1
+		and damage_number_pool.has_active_text("1000")
+		and damage_number_pool.get_child_count() == pressure_child_count,
+		"One thousand same-turn plant hits must collapse to one fixed-pool text request."
+	)
+	var pressure_healing_count_before := damage_number_pool.get_active_count()
+	for _heal_index in range(1000):
+		pressure_plant.receive_healing(1)
+	await process_frame
+	_expect(
+		damage_number_pool.get_active_count() == pressure_healing_count_before + 1
+		and damage_number_pool.has_active_text("+1000")
+		and damage_number_pool.get_child_count() == pressure_child_count,
+		"One thousand same-turn plant heals must collapse to one shared fixed-pool text request."
+	)
+	pressure_plant.begin_removal(PlantDefense.RemovalMode.SILENT)
+
+
 func _test_damage_number_pool_budget(damage_number_pool: DamageNumberPool) -> void:
 	var child_count_before := damage_number_pool.get_child_count()
 	var max_per_frame := int(damage_number_pool.get("max_numbers_per_frame"))
-	var shown_count := 0
+	var important_reserve := mini(
+		int(damage_number_pool.get("important_frame_reserve")),
+		max_per_frame
+	)
+	var normal_limit := max_per_frame - important_reserve
+	var normal_shown_count := 0
 	for index in range(max_per_frame + 1):
 		if damage_number_pool.call(
 			"show_damage_number",
@@ -164,9 +455,103 @@ func _test_damage_number_pool_budget(damage_number_pool: DamageNumberPool) -> vo
 			Vector2(80.0 + float(index), 80.0),
 			Vector2.RIGHT
 		) == true:
-			shown_count += 1
-	_expect(shown_count == max_per_frame, "DamageNumberPool should enforce the per-frame display budget.")
+			normal_shown_count += 1
+	_expect(
+		normal_shown_count == normal_limit,
+		"Normal damage numbers must leave the authored important-feedback reserve."
+	)
+	var important_shown_count := 0
+	for index in range(important_reserve + 1):
+		if damage_number_pool.show_damage_number(
+			100 + index,
+			Vector2(96.0 + float(index), 80.0),
+			Vector2.LEFT,
+			EnemyConfig.DamageType.PHYSICAL,
+			DamageNumberPool.DisplayPriority.IMPORTANT
+		):
+			important_shown_count += 1
+	_expect(
+		important_shown_count == important_reserve,
+		"Important feedback must fill only its reserved share of the unchanged frame cap."
+	)
 	_expect(damage_number_pool.get_child_count() == child_count_before, "DamageNumberPool should reuse fixed data slots.")
+
+
+func _test_damage_number_pool_second_reserve() -> void:
+	var reserve_pool := DAMAGE_NUMBER_POOL_SCRIPT.new() as DamageNumberPool
+	reserve_pool.pool_size = 8
+	reserve_pool.max_numbers_per_frame = 8
+	reserve_pool.max_numbers_per_second = 5
+	reserve_pool.important_frame_reserve = 0
+	reserve_pool.important_per_second_reserve = 2
+	test_root.add_child(reserve_pool)
+	await process_frame
+	var normal_shown := 0
+	for index in range(4):
+		if reserve_pool.show_damage_number(
+			10 + index,
+			Vector2(64.0 + float(index), 64.0)
+		):
+			normal_shown += 1
+	var important_shown := 0
+	for index in range(3):
+		if reserve_pool.show_damage_number(
+			20 + index,
+			Vector2(72.0 + float(index), 64.0),
+			Vector2.ZERO,
+			EnemyConfig.DamageType.PHYSICAL,
+			DamageNumberPool.DisplayPriority.IMPORTANT
+		):
+			important_shown += 1
+	_expect(
+		normal_shown == 3
+		and important_shown == 2
+		and reserve_pool.shown_this_second == 5
+		and reserve_pool.normal_shown_this_second == 3,
+		"Per-second priority reserve must preserve two important slots without raising the cap."
+	)
+	reserve_pool.queue_free()
+	await process_frame
+
+
+func _test_combat_number_kinds_share_budget() -> void:
+	var shared_pool := DAMAGE_NUMBER_POOL_SCRIPT.new() as DamageNumberPool
+	shared_pool.pool_size = 4
+	shared_pool.max_numbers_per_frame = 2
+	shared_pool.max_numbers_per_second = 2
+	shared_pool.important_frame_reserve = 0
+	shared_pool.important_per_second_reserve = 0
+	test_root.add_child(shared_pool)
+	await process_frame
+	_expect(
+		shared_pool.show_combat_number(
+			8,
+			Vector2(64.0, 64.0),
+			DamageNumberPool.CombatNumberKind.DAMAGE
+		)
+		and shared_pool.show_combat_number(
+			6,
+			Vector2(72.0, 64.0),
+			DamageNumberPool.CombatNumberKind.HEALING
+		)
+		and not shared_pool.show_combat_number(
+			4,
+			Vector2(80.0, 64.0),
+			DamageNumberPool.CombatNumberKind.DAMAGE
+		),
+		"Damage and healing must consume the same unchanged render-frame and second budgets."
+	)
+	_expect(
+		shared_pool.get_active_count() == 2
+		and shared_pool.shown_this_frame == 2
+		and shared_pool.shown_this_second == 2
+		and shared_pool.has_active_text("8")
+		and shared_pool.has_active_text("+6")
+		and shared_pool.get_child_count() == 0,
+		"Both combat-number kinds must remain in one allocation-free fixed pool."
+	)
+	shared_pool.queue_free()
+	await process_frame
 
 
 func _test_offscreen_budget_priority(damage_number_pool: DamageNumberPool) -> void:
@@ -177,10 +562,14 @@ func _test_offscreen_budget_priority(damage_number_pool: DamageNumberPool) -> vo
 	await process_frame
 
 	damage_number_pool.set("max_numbers_per_frame", 2)
+	damage_number_pool.set("important_frame_reserve", 0)
+	damage_number_pool.set("important_per_second_reserve", 0)
 	damage_number_pool.set("budget_frame", Engine.get_process_frames())
 	damage_number_pool.set("shown_this_frame", 0)
+	damage_number_pool.set("normal_shown_this_frame", 0)
 	damage_number_pool.set("budget_second_started_msec", Time.get_ticks_msec())
 	damage_number_pool.set("shown_this_second", 0)
+	damage_number_pool.set("normal_shown_this_second", 0)
 	var skipped_before := int(damage_number_pool.get("offscreen_requests_skipped"))
 	_expect(
 		not bool(damage_number_pool.call(
@@ -241,6 +630,8 @@ func _test_full_pool_replacement_and_lifecycle(
 	replacement_pool.pool_size = 2
 	replacement_pool.max_numbers_per_frame = 3
 	replacement_pool.max_numbers_per_second = 3
+	replacement_pool.important_frame_reserve = 0
+	replacement_pool.important_per_second_reserve = 0
 	test_root.add_child(replacement_pool)
 	await process_frame
 	_expect(replacement_pool.show_damage_number(1, Vector2(64.0, 64.0)), "Slot 1 must activate.")

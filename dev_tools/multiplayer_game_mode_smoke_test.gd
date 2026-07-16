@@ -18,7 +18,7 @@ func _run() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 8, "Linglan ring batching requires multiplayer protocol v8.")
+	_expect(NetConstants.PROTOCOL_VERSION == 9, "Authoritative damage feedback requires multiplayer protocol v9.")
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),
 		"A disconnected future Host must be able to select tower defense."

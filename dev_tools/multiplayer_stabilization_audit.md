@@ -1,7 +1,7 @@
 # 多人模式稳定化审查记录（历史）
 
 > 本文件保留历次稳定化工作的背景与验证记录，不再作为实时债务清单。
-> 当前协议基线为 v8；2026-07-15 的债务收口状态见文末“当前债务状态”。
+> 当前协议基线为 v9；2026-07-15 的债务收口状态见文末“当前债务状态”。
 
 ## 目标边界
 
@@ -15,7 +15,7 @@
 - clumsy network simulator: https://jagt.github.io/clumsy/
 - clumsy command line arguments: https://github.com/jagt/clumsy/wiki/Command-Line-Arguments
 
-## 当前 v8 协议地图
+## 当前 v9 协议地图
 
 - `CH_AUTH`：认证、加载和完整状态恢复。
 - `CH_INPUT`：Client -> Host 的玩家输入上报。
@@ -70,7 +70,8 @@
 - 敌人快照收敛：`MpGame._rpc_receive_enemy_snapshot()` 现在只在完整敌人快照批次上做 roster reconcile；截断批次仍可更新已解出的敌人插值，但不会把没解出的敌人误判为 stale 后移除。
 - 场景退出清理：`MpGame._exit_tree()` 显式断开 `NetManager.connection_state_changed`、`NetManager.player_left` 和 `Game.return_to_lobby_requested`，降低返回大厅或重开局时旧回调残留的风险。
 - 玩家健康 revision 清理：`net_player_damage_applied()` / `net_player_revived()` 现在会先确认 peer id 和玩家节点有效，再写入 `_player_health_revisions`，避免迟到可靠包指向已离开 peer 时污染后续状态。
-- 息壤击杀奖金：已删除球体生成、吸附、收集、状态表和业务 RPC；Host 在敌人权威死亡时按帧聚合，并给每位当前玩家完整奖金，Client 通过已有绝对玩家快照收敛。协议仍为 v8，四个旧 orb RPC 仅保留同签名的无副作用兼容壳，待下一次统一协议升级再删除。
+- 息壤击杀奖金：已删除球体生成、吸附、收集、状态表和业务 RPC；Host 在敌人权威死亡时按帧聚合，并给每位当前玩家完整奖金，Client 通过已有绝对玩家快照收敛。四个旧 orb RPC 仍仅保留同签名的无副作用兼容壳。
+- v9：玩家的可靠受伤确认携带实际伤害、方向与类型；植物的 50 ms 血量批次携带按建筑聚合的同类反馈，并在致死移除前刷新最终记录。
 - 升级确认入口：`net_upgrade_confirmed()` 现在先确认 peer id 和玩家节点有效，再写入 `RunState.multiplayer_upgrade_levels`，避免不存在 peer 的迟到/异常确认创建升级状态。
 - 手动验证清单：新增 `dev_tools/multiplayer_manual_validation_checklist.md`，固定 4 人 LAN、断线、死亡复活、拾取/升级/技能购买、cheat 和高延迟/轻丢包档位的验证步骤，避免后续手测遗漏关键边界。
 - 玩家列表断线同步：Host 在大厅/加载阶段 `_on_peer_disconnected()` 后会向剩余 Client 同步新的玩家列表；Client 的 `_rpc_sync_player_list()` 会按差异 emit `player_left` / `player_joined`。游戏内断线清理由 `MpGame.player_left` 和 Host 玩家快照 roster 收敛兜底，避免关闭中的 peer 触发大厅 RPC 发送错误。
@@ -92,7 +93,7 @@
 
 - 已关闭：terrain repair 等待状态具备无进展 watchdog；合法分块会续期，完整快照会停表。
 - 已关闭：植物 CH5 出生与 CH7 血量极端乱序由有界最高-revision 欠账和删除 tombstone 收敛。
-- 已关闭：协议快照测试文件与内容统一命名为 v8，旧信道迁移别名已移除。
+- 已关闭：协议快照测试内容基线已同步为 v9（历史测试路径保留），旧信道迁移别名已移除。
 - 已关闭：敌人终态、逃逸与拾取物删除的重复抑制状态按生命周期释放，不再随长局线性增长。
 - 已关闭：所有字面量 outbound RPC 的 telemetry 分类会由 smoke 自动对照实际 `@rpc` 通道，避免指标与 Relay 真实通道漂移。
 - 有意保留：完整 runtime-state 不设置频率配额，以保留大状态同步策略；正常客户端每局只请求一次，Host 仅接受已注册在局 peer。剩余威胁是恶意在局客户端主动重复请求造成放大流量，若公开房间威胁模型提高，应改为请求合并或独立滥用防护。

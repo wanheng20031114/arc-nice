@@ -29,6 +29,7 @@ func _run() -> void:
 		"net_luoxi_collectible_refresh_confirmed",
 		"net_enemy_escaped",
 		"net_base_health_changed",
+		"net_player_healed",
 		"net_plant_placement_requested",
 		"net_plant_spawned",
 		"net_plant_placement_rejected",
@@ -67,7 +68,7 @@ func _run() -> void:
 		not main_rpcs.has("net_wave_started"),
 		"Legacy wave-index RPC must stay removed; flow step_id is the sole lifecycle source."
 	)
-	_test_gameplay_v8_transaction_contract(main_rpcs)
+	_test_gameplay_v9_transaction_contract(main_rpcs)
 	_test_gameplay_channel_contract(main_rpcs)
 
 	var main_net_manager_rpcs := _extract_rpc_surface(MAIN_NET_MANAGER_PATH)
@@ -107,8 +108,8 @@ func _run() -> void:
 			"Start-game sync must carry both authoritative mode and loading session."
 		)
 	_test_registration_protocol_handshake_source()
-	_expect(NetConstants.PROTOCOL_VERSION == 8, "Linglan ring batching requires protocol version 8.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v8 must provision eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 9, "Authoritative damage feedback requires protocol version 9.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v9 must provision eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -201,11 +202,11 @@ func _test_relay_channel_count() -> void:
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
 		and relay_source.contains("create_server(_port, MAX_CLIENTS, CHANNEL_COUNT)"),
-		"Relay server must provision the same eight ENet channels as protocol v8 clients."
+		"Relay server must provision the same eight ENet channels as protocol v9 clients."
 	)
 
 
-func _test_gameplay_v8_transaction_contract(rpcs: Dictionary) -> void:
+func _test_gameplay_v9_transaction_contract(rpcs: Dictionary) -> void:
 	_expect_rpc_signature_contains(
 		rpcs,
 		"net_terrain_snapshot_requested",
@@ -216,13 +217,20 @@ func _test_gameplay_v8_transaction_contract(rpcs: Dictionary) -> void:
 		_expect_rpc_signature_contains(rpcs, terrain_method, "terrain_types:PackedInt32Array")
 	_expect_rpc_signature_contains(rpcs, "net_plant_spawned", "runtime_state:Dictionary")
 	_expect_rpc_signature_contains(rpcs, "net_plant_spawned", "host_sample_time:float")
+	for signature_fragment in [
+		"peer_id:int",
+		"current_health:int",
+		"health_revision:int",
+		"confirmed_healing:int",
+	]:
+		_expect_rpc_signature_contains(rpcs, "net_player_healed", signature_fragment)
 	var mp_game_source := FileAccess.get_file_as_string(MAIN_MP_GAME_PATH)
 	_expect(
 		mp_game_source.contains("const TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS := 96")
 		and mp_game_source.contains("const TERRAIN_TYPE_EMPTY := -1")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_PER_SECOND := 1.0")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_BURST := 2.0"),
-		"Protocol v8 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
+		"Protocol v9 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
 	)
 	for signature_fragment in [
 		"plant_net_ids:PackedInt32Array",

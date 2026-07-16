@@ -88,12 +88,23 @@ func _run() -> void:
 	batched_pool.pool_size = SLOT_COUNT
 	batched_pool.max_numbers_per_frame = SLOT_COUNT
 	batched_pool.max_numbers_per_second = SLOT_COUNT * 4
+	batched_pool.important_frame_reserve = 0
+	batched_pool.important_per_second_reserve = 0
 	fixture.add_child(batched_pool)
 	await process_frame
 	batched_pool.set_process(false)
 	for index in range(SLOT_COUNT):
+		var number_kind := (
+			DamageNumberPool.CombatNumberKind.HEALING
+			if index % 2 == 1
+			else DamageNumberPool.CombatNumberKind.DAMAGE
+		)
 		_expect(
-			batched_pool.show_damage_number(300, Vector2(float(index), 0.0)),
+			batched_pool.show_combat_number(
+				300,
+				Vector2(float(index), 0.0),
+				number_kind
+			),
 			"Batched fixture could not activate every fixed slot."
 		)
 	batched_pool.set_process(false)
@@ -140,7 +151,7 @@ func _run() -> void:
 	var speedup := legacy_median / maxf(batched_median, 1.0)
 	_expect(
 		speedup >= 2.0,
-		"Single-node damage-number updates should be materially faster. speedup=%.2fx"
+		"Single-node combat-number updates should be materially faster. speedup=%.2fx"
 		% speedup
 	)
 	print(

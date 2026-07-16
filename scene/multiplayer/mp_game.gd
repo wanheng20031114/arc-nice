@@ -115,7 +115,7 @@ const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
-## 协议 v8 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
+## 协议 v9 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
 ## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
 const SHARED_SNAPSHOT_COHORT_ID := -1
 const ENEMY_ACTION_SNAPSHOT_REORDER_TOLERANCE_SECONDS := 0.075
@@ -135,6 +135,9 @@ const CLIENT_PROXY_VISUAL_BUDGET_MARGIN := 192.0
 const CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_HZ := 15.0
 const CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_PHASE_COUNT := 64
 const COMBAT_FEEDBACK_MAX_RECORDS_PER_PACKET := 40
+# v9 plant records carry 41 raw packed bytes before RPC/ENet framing. Twenty-four
+# records stay near 984 bytes and below the project's 1200-byte packet budget.
+const PLANT_HEALTH_MAX_RECORDS_PER_PACKET := 24
 const CORN_MACHINE_GUN_BURST_MAX_RECORDS_PER_PACKET := 32
 const ENEMY_SPAWN_BATCH_MAX_RECORDS := 16
 const ENEMY_TERMINAL_DEFEATED := 0
@@ -295,6 +298,8 @@ var _pending_remote_plant_health_updates: Dictionary = {}
 var _pending_remote_plant_health_order: Array[int] = []
 var _removed_remote_plant_ids: Dictionary = {}
 var _removed_remote_plant_id_order: Array[int] = []
+var _remote_plant_feedback_revisions: Dictionary = {}
+var _remote_plant_feedback_revision_order: Array[int] = []
 var _pending_wave_progress: Dictionary = {}
 var _wave_progress_flush_time_left: float = WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS
 var _client_proxy_visual_budget_time_left: float = 0.0
@@ -1290,6 +1295,8 @@ func _setup_game(mode: int) -> bool:
 			_on_host_plant_placement_rejected
 		)
 		game.multiplayer_plant_health_changed.connect(_on_host_plant_health_changed)
+		game.multiplayer_plant_damage_applied.connect(_on_host_plant_damage_applied)
+		game.multiplayer_plant_healing_applied.connect(_on_host_plant_healing_applied)
 		game.multiplayer_plant_removed.connect(_on_host_plant_removed)
 		game.multiplayer_terrain_delta.connect(_on_host_terrain_delta)
 	game.multiplayer_plant_placement_requested.connect(
@@ -4954,27 +4961,56 @@ func _flush_plant_health_updates() -> void:
 	for net_id_variant in _pending_plant_health_updates.keys():
 		net_ids.append(int(net_id_variant))
 	net_ids.sort()
-	for chunk_start in range(0, net_ids.size(), COMBAT_FEEDBACK_MAX_RECORDS_PER_PACKET):
+	_send_pending_plant_health_updates(net_ids)
+	for net_id in net_ids:
+		_pending_plant_health_updates.erase(net_id)
+
+
+func _send_pending_plant_health_updates(net_ids: PackedInt32Array) -> void:
+	for chunk_start in range(0, net_ids.size(), PLANT_HEALTH_MAX_RECORDS_PER_PACKET):
 		var chunk_end := mini(
-			chunk_start + COMBAT_FEEDBACK_MAX_RECORDS_PER_PACKET,
+			chunk_start + PLANT_HEALTH_MAX_RECORDS_PER_PACKET,
 			net_ids.size()
 		)
 		var chunk_ids := PackedInt32Array()
 		var health_values := PackedInt32Array()
 		var maximum_values := PackedInt32Array()
 		var revisions := PackedInt32Array()
+		var damage_values := PackedInt32Array()
+		var healing_values := PackedInt32Array()
+		var directions := PackedVector2Array()
+		var damage_types := PackedByteArray()
+		var world_positions := PackedVector2Array()
 		for record_index in range(chunk_start, chunk_end):
 			var net_id := net_ids[record_index]
 			var update := _pending_plant_health_updates.get(net_id, {}) as Dictionary
+			if update.is_empty():
+				continue
 			chunk_ids.append(net_id)
 			health_values.append(int(update.get("current_health", 0)))
 			maximum_values.append(int(update.get("maximum_health", 1)))
 			revisions.append(int(update.get("health_revision", 0)))
+			damage_values.append(int(update.get("damage", 0)))
+			healing_values.append(int(update.get("healing", 0)))
+			directions.append(update.get("impact_direction", Vector2.ZERO) as Vector2)
+			damage_types.append(int(update.get("damage_type", EnemyConfig.DamageType.PHYSICAL)))
+			world_positions.append(update.get("world_position", Vector2.ZERO) as Vector2)
+		if chunk_ids.is_empty():
+			continue
 		_rpc_to_connected_clients(
 			&"net_plant_health_batch",
-			[chunk_ids, health_values, maximum_values, revisions]
+			[
+				chunk_ids,
+				health_values,
+				maximum_values,
+				revisions,
+				damage_values,
+				healing_values,
+				directions,
+				damage_types,
+				world_positions,
+			]
 		)
-	_pending_plant_health_updates.clear()
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 7)
@@ -4982,21 +5018,81 @@ func net_plant_health_batch(
 	net_ids: PackedInt32Array,
 	health_values: PackedInt32Array,
 	maximum_values: PackedInt32Array,
-	revisions: PackedInt32Array
+	revisions: PackedInt32Array,
+	damage_values: PackedInt32Array,
+	healing_values: PackedInt32Array,
+	directions: PackedVector2Array,
+	damage_types: PackedByteArray,
+	world_positions: PackedVector2Array
 ) -> void:
 	if game == null or net_manager.is_host():
 		return
 	var record_count := mini(
 		net_ids.size(),
-		mini(health_values.size(), mini(maximum_values.size(), revisions.size()))
+		mini(
+			health_values.size(),
+			mini(
+				maximum_values.size(),
+				mini(
+					revisions.size(),
+					mini(
+						damage_values.size(),
+						mini(
+							healing_values.size(),
+							mini(
+								directions.size(),
+								mini(damage_types.size(), world_positions.size())
+							)
+						)
+					)
+				)
+			)
+		)
 	)
 	for record_index in range(record_count):
+		var net_id := net_ids[record_index]
+		var health_revision := revisions[record_index]
+		var live_plant_before := game.get_multiplayer_plant_node(net_id)
+		var stale_for_live_plant := (
+			live_plant_before != null
+			and is_instance_valid(live_plant_before)
+			and health_revision <= live_plant_before.health_revision
+		)
 		_apply_or_defer_remote_plant_health(
-			net_ids[record_index],
+			net_id,
 			health_values[record_index],
 			maximum_values[record_index],
-			revisions[record_index]
+			health_revision
 		)
+		var applied_damage := damage_values[record_index]
+		var applied_healing := healing_values[record_index]
+		if applied_damage <= 0 and applied_healing <= 0:
+			continue
+		if not _accept_remote_plant_feedback_revision(net_id, health_revision):
+			continue
+		# A reliable roster/repair can overtake CH7. Do not replay historical
+		# feedback against an already-newer live replica; removed replicas remain
+		# eligible because the packet carries the impact world position.
+		if stale_for_live_plant:
+			continue
+		if applied_damage > 0:
+			game.show_combat_number(
+				applied_damage,
+				world_positions[record_index],
+				DamageNumberPool.CombatNumberKind.DAMAGE,
+				directions[record_index],
+				int(damage_types[record_index]) as EnemyConfig.DamageType,
+				DamageNumberPool.DisplayPriority.IMPORTANT
+			)
+		if applied_healing > 0:
+			game.show_combat_number(
+				applied_healing,
+				world_positions[record_index],
+				DamageNumberPool.CombatNumberKind.HEALING,
+				Vector2.ZERO,
+				EnemyConfig.DamageType.PHYSICAL,
+				DamageNumberPool.DisplayPriority.IMPORTANT
+			)
 
 
 func _apply_or_defer_remote_plant_health(
@@ -5112,11 +5208,31 @@ func _clear_remote_plant_removed_marker(net_id: int) -> void:
 	_removed_remote_plant_id_order.erase(net_id)
 
 
+func _accept_remote_plant_feedback_revision(net_id: int, health_revision: int) -> bool:
+	if net_id <= 0 or health_revision < 0:
+		return false
+	if health_revision <= int(_remote_plant_feedback_revisions.get(net_id, -1)):
+		return false
+	if not _remote_plant_feedback_revisions.has(net_id):
+		while (
+			_remote_plant_feedback_revisions.size()
+			>= CLIENT_REMOVED_PLANT_TOMBSTONE_MAX_ENTRIES
+			and not _remote_plant_feedback_revision_order.is_empty()
+		):
+			var evicted_net_id := int(_remote_plant_feedback_revision_order.pop_front())
+			_remote_plant_feedback_revisions.erase(evicted_net_id)
+		_remote_plant_feedback_revision_order.append(net_id)
+	_remote_plant_feedback_revisions[net_id] = health_revision
+	return true
+
+
 func _clear_remote_plant_health_state() -> void:
 	_pending_remote_plant_health_updates.clear()
 	_pending_remote_plant_health_order.clear()
 	_removed_remote_plant_ids.clear()
 	_removed_remote_plant_id_order.clear()
+	_remote_plant_feedback_revisions.clear()
+	_remote_plant_feedback_revision_order.clear()
 
 
 @rpc("authority", "call_remote", "unreliable", 7)
@@ -5210,6 +5326,9 @@ func request_multiplayer_player_damage(
 		elif source_direction_or_is_ranged is bool:
 			resolved_is_ranged = bool(source_direction_or_is_ranged)
 	var damage_context := _build_player_damage_context(source_direction, resolved_is_ranged)
+	var impact_direction := Vector2.ZERO
+	if source_direction.is_finite() and source_direction.length_squared() > 0.001:
+		impact_direction = -source_direction.normalized()
 	var hit_key := "%d:%d:%s" % [source_id, target_peer_id, String(source_type)]
 	var now := _get_net_time()
 	var player_node: Player = null
@@ -5232,7 +5351,10 @@ func request_multiplayer_player_damage(
 				damage,
 				source_type,
 				player_node.current_health,
-				player_node.is_dead
+				player_node.is_dead,
+				player_node.last_damage_taken,
+				impact_direction,
+				resolved_damage_type
 			)
 		return true
 	if net_manager.is_host():
@@ -5246,7 +5368,10 @@ func request_multiplayer_player_damage(
 				source_type,
 				player_node.current_health,
 				player_node.is_dead,
-				_next_player_hit_revision()
+				_next_player_hit_revision(),
+				player_node.last_damage_taken,
+				impact_direction,
+				resolved_damage_type
 			)
 		return true
 	return false
@@ -5257,7 +5382,11 @@ func _build_player_damage_context(source_direction: Vector2, is_ranged: bool) ->
 		return {}
 	return {
 		"is_ranged": true,
-		"source_direction": source_direction.normalized() if source_direction != Vector2.ZERO else Vector2.ZERO,
+		"source_direction": (
+			source_direction.normalized()
+			if source_direction.is_finite() and source_direction.length_squared() > 0.001
+			else Vector2.ZERO
+		),
 	}
 
 
@@ -5267,7 +5396,10 @@ func request_player_hit_report(
 	damage: int,
 	source_type: StringName,
 	reported_health_after: int,
-	reported_is_dead: bool
+	reported_is_dead: bool,
+	reported_applied_damage: int,
+	impact_direction: Vector2,
+	damage_type: EnemyConfig.DamageType
 ) -> void:
 	var hit_revision := _next_player_hit_revision()
 	if net_manager.is_host():
@@ -5278,7 +5410,10 @@ func request_player_hit_report(
 			source_type,
 			reported_health_after,
 			reported_is_dead,
-			hit_revision
+			hit_revision,
+			reported_applied_damage,
+			impact_direction,
+			damage_type
 		)
 	else:
 		_rpc_player_hit_report.rpc_id(
@@ -5289,7 +5424,10 @@ func request_player_hit_report(
 			String(source_type),
 			reported_health_after,
 			reported_is_dead,
-			hit_revision
+			hit_revision,
+			reported_applied_damage,
+			impact_direction,
+			int(damage_type)
 		)
 
 
@@ -5301,7 +5439,10 @@ func _rpc_player_hit_report(
 	source_type: String,
 	reported_health_after: int,
 	reported_is_dead: bool,
-	hit_revision: int
+	hit_revision: int,
+	reported_applied_damage: int,
+	impact_direction: Vector2,
+	damage_type: int
 ) -> void:
 	if not net_manager.is_host():
 		return
@@ -5315,7 +5456,10 @@ func _rpc_player_hit_report(
 		StringName(source_type),
 		reported_health_after,
 		reported_is_dead,
-		hit_revision
+		hit_revision,
+		reported_applied_damage,
+		impact_direction,
+		damage_type as EnemyConfig.DamageType
 	)
 
 
@@ -5326,7 +5470,10 @@ func _apply_player_hit_report(
 	source_type: StringName,
 	reported_health_after: int,
 	reported_is_dead: bool,
-	_hit_revision: int
+	_hit_revision: int,
+	reported_applied_damage: int,
+	impact_direction: Vector2,
+	damage_type: EnemyConfig.DamageType
 ) -> void:
 	if source_id <= 0 or player_peer_id <= 0 or damage <= 0:
 		return
@@ -5346,7 +5493,22 @@ func _apply_player_hit_report(
 	if player_node.current_health > 0:
 		confirmed_health = mini(confirmed_health, player_node.current_health)
 	var confirmed_dead := reported_is_dead or confirmed_health <= 0
+	var confirmed_damage := clampi(reported_applied_damage, 0, player_node.max_health)
+	var confirmed_impact_direction := Vector2.ZERO
+	if impact_direction.is_finite() and impact_direction.length_squared() > 0.001:
+		confirmed_impact_direction = impact_direction.normalized()
+	var confirmed_damage_type := (
+		EnemyConfig.DamageType.MAGIC
+		if damage_type == EnemyConfig.DamageType.MAGIC
+		else EnemyConfig.DamageType.PHYSICAL
+	)
 	player_node.set_multiplayer_health_state(confirmed_health, confirmed_dead)
+	_show_confirmed_player_damage_number(
+		player_node,
+		confirmed_damage,
+		confirmed_impact_direction,
+		confirmed_damage_type
+	)
 	if confirmed_dead and _is_valid_tiyi_player(player_node):
 		_clear_projectiles_for_peer(player_peer_id)
 		_clear_projectile_records_for_peer(player_peer_id)
@@ -5355,13 +5517,24 @@ func _apply_player_hit_report(
 		_schedule_player_revive(player_peer_id)
 	_rpc_to_connected_clients(
 		&"net_player_damage_applied",
-		[player_peer_id, player_node.current_health, player_node.is_dead, health_revision]
+		[
+			player_peer_id,
+			player_node.current_health,
+			player_node.is_dead,
+			health_revision,
+			confirmed_damage,
+			confirmed_impact_direction,
+			int(confirmed_damage_type),
+		]
 	)
 	net_player_damage_applied(
 		player_peer_id,
 		player_node.current_health,
 		player_node.is_dead,
-		health_revision
+		health_revision,
+		confirmed_damage,
+		confirmed_impact_direction,
+		int(confirmed_damage_type)
 	)
 
 
@@ -5370,7 +5543,10 @@ func net_player_damage_applied(
 	player_peer_id: int,
 	current_health: int,
 	is_dead: bool,
-	health_revision: int
+	health_revision: int,
+	confirmed_damage: int,
+	impact_direction: Vector2,
+	damage_type: int
 ) -> void:
 	if player_peer_id <= 0:
 		return
@@ -5383,6 +5559,16 @@ func net_player_damage_applied(
 		return
 	_player_health_revisions[player_peer_id] = health_revision
 	player_node.set_multiplayer_health_state(current_health, is_dead)
+	_show_confirmed_player_damage_number(
+		player_node,
+		clampi(confirmed_damage, 0, player_node.max_health),
+		impact_direction.normalized()
+		if impact_direction.is_finite() and impact_direction.length_squared() > 0.001
+		else Vector2.ZERO,
+		EnemyConfig.DamageType.MAGIC
+		if damage_type == EnemyConfig.DamageType.MAGIC
+		else EnemyConfig.DamageType.PHYSICAL
+	)
 	if is_dead and _is_valid_tiyi_player(player_node):
 		_active_tiyi_activations_by_peer.erase(player_peer_id)
 		_tiyi_target_ids_by_peer.erase(player_peer_id)
@@ -5397,6 +5583,28 @@ func net_player_damage_applied(
 		player_node.start_multiplayer_invincibility(player_node.invincibility_duration)
 
 
+func _show_confirmed_player_damage_number(
+	player_node: Player,
+	confirmed_damage: int,
+	impact_direction: Vector2,
+	damage_type: EnemyConfig.DamageType
+) -> void:
+	if (
+		game == null
+		or player_node == null
+		or not is_instance_valid(player_node)
+		or confirmed_damage <= 0
+	):
+		return
+	game.show_damage_number(
+		confirmed_damage,
+		player_node.global_position,
+		impact_direction,
+		damage_type,
+		DamageNumberPool.DisplayPriority.IMPORTANT
+	)
+
+
 func apply_multiplayer_player_heal(target_player: Player, heal_amount: int) -> bool:
 	if not net_manager.is_host():
 		return false
@@ -5404,15 +5612,39 @@ func apply_multiplayer_player_heal(target_player: Player, heal_amount: int) -> b
 		return false
 	if heal_amount <= 0 or target_player.peer_id <= 0:
 		return false
-	if not target_player._try_heal(heal_amount):
+	if not target_player._try_heal(heal_amount, false):
 		return false
+	report_multiplayer_player_healing(
+		target_player,
+		target_player.last_healing_received
+	)
+	return true
+
+
+## Receives an already-applied authoritative heal. Keeping replication here
+## makes every Host-side source (pickup, leech, trigger, aura or future skill)
+## share one revisioned confirmation path without health_changed inference.
+func report_multiplayer_player_healing(
+	target_player: Player,
+	confirmed_healing: int
+) -> void:
+	if not net_manager.is_host():
+		return
+	if target_player == null or not is_instance_valid(target_player):
+		return
+	if confirmed_healing <= 0 or target_player.peer_id <= 0 or target_player.is_dead:
+		return
 	var health_revision := _next_player_health_revision(target_player.peer_id)
+	target_player.queue_healing_number(confirmed_healing)
 	_rpc_to_connected_clients(
 		&"net_player_healed",
-		[target_player.peer_id, target_player.current_health, health_revision]
+		[
+			target_player.peer_id,
+			target_player.current_health,
+			health_revision,
+			confirmed_healing,
+		]
 	)
-	net_player_healed(target_player.peer_id, target_player.current_health, health_revision)
-	return true
 
 
 func apply_multiplayer_collectible_player_heal(target_player: Player, heal_amount: int) -> bool:
@@ -5420,7 +5652,12 @@ func apply_multiplayer_collectible_player_heal(target_player: Player, heal_amoun
 
 
 @rpc("authority", "call_remote", "reliable", 5)
-func net_player_healed(peer_id: int, current_health: int, health_revision: int) -> void:
+func net_player_healed(
+	peer_id: int,
+	current_health: int,
+	health_revision: int,
+	confirmed_healing: int
+) -> void:
 	if peer_id <= 0:
 		return
 	var player_node: Player = null
@@ -5434,9 +5671,10 @@ func net_player_healed(peer_id: int, current_health: int, health_revision: int) 
 		return
 	_player_health_revisions[peer_id] = health_revision
 	player_node.set_multiplayer_health_state(current_health, false)
+	player_node.queue_healing_number(confirmed_healing)
 
 
-# Protocol v8 compatibility shells. Xirang orbs no longer exist, but keeping the
+# Legacy compatibility shells retained in protocol v9. Xirang orbs no longer exist, but keeping the
 # annotated signatures avoids a partial wire-protocol break until the next
 # coordinated protocol-version upgrade.
 @rpc("authority", "call_remote", "reliable", 5)
@@ -6030,16 +6268,86 @@ func _on_host_plant_health_changed(
 	var previous := _pending_plant_health_updates.get(net_id, {}) as Dictionary
 	if int(previous.get("health_revision", -1)) > health_revision:
 		return
-	_pending_plant_health_updates[net_id] = {
-		"current_health": current_health,
-		"maximum_health": maximum_health,
-		"health_revision": health_revision,
-	}
+	previous["current_health"] = current_health
+	previous["maximum_health"] = maximum_health
+	previous["health_revision"] = health_revision
+	_pending_plant_health_updates[net_id] = previous
+
+
+func _on_host_plant_damage_applied(
+	net_id: int,
+	applied_damage: int,
+	impact_direction: Vector2,
+	damage_type: EnemyConfig.DamageType,
+	world_position: Vector2
+) -> void:
+	if (
+		not is_inside_tree()
+		or not net_manager.is_host()
+		or net_id <= 0
+		or applied_damage <= 0
+		or not impact_direction.is_finite()
+		or not world_position.is_finite()
+	):
+		return
+	var update := _pending_plant_health_updates.get(net_id, {}) as Dictionary
+	if update.is_empty():
+		return
+	var safe_damage_type := (
+		EnemyConfig.DamageType.MAGIC
+		if damage_type == EnemyConfig.DamageType.MAGIC
+		else EnemyConfig.DamageType.PHYSICAL
+	)
+	if safe_damage_type == EnemyConfig.DamageType.MAGIC:
+		update["magic_damage"] = int(update.get("magic_damage", 0)) + applied_damage
+		update["magic_direction"] = impact_direction
+	else:
+		update["physical_damage"] = int(update.get("physical_damage", 0)) + applied_damage
+		update["physical_direction"] = impact_direction
+	var physical_damage := int(update.get("physical_damage", 0))
+	var magic_damage := int(update.get("magic_damage", 0))
+	var use_magic := magic_damage > physical_damage
+	update["damage"] = physical_damage + magic_damage
+	update["impact_direction"] = (
+		update.get("magic_direction", Vector2.ZERO)
+		if use_magic
+		else update.get("physical_direction", Vector2.ZERO)
+	)
+	update["damage_type"] = int(
+		EnemyConfig.DamageType.MAGIC
+		if use_magic
+		else EnemyConfig.DamageType.PHYSICAL
+	)
+	update["world_position"] = world_position
+	_pending_plant_health_updates[net_id] = update
+
+
+func _on_host_plant_healing_applied(
+	net_id: int,
+	applied_healing: int,
+	world_position: Vector2
+) -> void:
+	if (
+		not is_inside_tree()
+		or not net_manager.is_host()
+		or net_id <= 0
+		or applied_healing <= 0
+		or not world_position.is_finite()
+	):
+		return
+	var update := _pending_plant_health_updates.get(net_id, {}) as Dictionary
+	if update.is_empty():
+		return
+	update["healing"] = int(update.get("healing", 0)) + applied_healing
+	update["world_position"] = world_position
+	_pending_plant_health_updates[net_id] = update
 
 
 func _on_host_plant_removed(net_id: int) -> void:
 	if not is_inside_tree() or not net_manager.is_host() or net_id <= 0:
 		return
+	if _pending_plant_health_updates.has(net_id):
+		_send_pending_plant_health_updates(PackedInt32Array([net_id]))
 	_pending_plant_health_updates.erase(net_id)
 	_rpc_to_connected_clients(&"net_plant_removed", [net_id])
 
@@ -7125,7 +7433,7 @@ func net_pickup_collected(
 	if player_node == null or not is_instance_valid(player_node):
 		return
 	if applied_immediately:
-		player_node.apply_pickup(pickup_config)
+		player_node.apply_pickup(pickup_config, false)
 	elif not inventory_snapshot.is_empty():
 		run_state.apply_inventory_snapshot_for_peer(
 			collector_peer_id,
@@ -7382,7 +7690,7 @@ func net_inventory_item_used(
 	):
 		var item := load(config_path) as PickupConfig
 		if item != null:
-			player_node.apply_pickup(item)
+			player_node.apply_pickup(item, false)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
