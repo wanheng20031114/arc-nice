@@ -43,8 +43,9 @@ func get_enemy(net_id: int) -> Enemy:
 
 
 func get_all_alive() -> Array[Enemy]:
-	_refresh_buckets_once_per_physics_frame()
 	var result: Array[Enemy] = []
+	# A full-list query does not consume bucket positions, so reconciling every
+	# moving enemy first would be redundant O(n) work.
 	_append_all_alive(result)
 	return result
 
@@ -62,11 +63,18 @@ func query_radius_into(
 	max_count: int = 0
 ) -> void:
 	result.clear()
-	_refresh_buckets_once_per_physics_frame()
 	var safe_radius := maxf(radius, 0.0)
 	if max_count == 1:
+		if safe_radius > 0.0:
+			_refresh_buckets_once_per_physics_frame()
 		_append_nearest_alive(result, center, safe_radius)
 		return
+	if safe_radius <= 0.0:
+		_append_all_alive(result)
+		_sort_by_distance(result, center)
+		_limit_result(result, max_count)
+		return
+	_refresh_buckets_once_per_physics_frame()
 	query_radius_unordered_into(center, safe_radius, result)
 	_sort_by_distance(result, center)
 	_limit_result(result, max_count)
@@ -78,11 +86,11 @@ func query_radius_unordered_into(
 	result: Array[Enemy]
 ) -> void:
 	result.clear()
-	_refresh_buckets_once_per_physics_frame()
 	var safe_radius := maxf(radius, 0.0)
 	if safe_radius <= 0.0:
 		_append_all_alive(result)
 		return
+	_refresh_buckets_once_per_physics_frame()
 	var radius_squared := safe_radius * safe_radius
 	var minimum_cell := _to_bucket(center - Vector2.ONE * safe_radius)
 	var maximum_cell := _to_bucket(center + Vector2.ONE * safe_radius)
@@ -192,13 +200,20 @@ func _refresh_buckets_once_per_physics_frame() -> void:
 
 
 func _append_all_alive(result: Array[Enemy]) -> void:
+	_stale_enemy_net_ids.clear()
 	for net_id_variant in enemies_by_net_id:
-		var enemy_variant: Variant = enemies_by_net_id.get(int(net_id_variant))
+		var net_id := int(net_id_variant)
+		var enemy_variant: Variant = enemies_by_net_id.get(net_id)
 		if enemy_variant == null or not is_instance_valid(enemy_variant):
+			_stale_enemy_net_ids.append(net_id)
 			continue
 		var enemy := enemy_variant as Enemy
-		if enemy != null and not enemy.is_dead:
-			result.append(enemy)
+		if enemy == null or enemy.is_dead:
+			_stale_enemy_net_ids.append(net_id)
+			continue
+		result.append(enemy)
+	for net_id in _stale_enemy_net_ids:
+		_remove_enemy_entry(net_id)
 
 
 func _append_nearest_alive(
@@ -211,12 +226,16 @@ func _append_nearest_alive(
 	var nearest_instance_id := 0
 	var radius_squared := radius * radius
 	if radius <= 0.0:
+		_stale_enemy_net_ids.clear()
 		for net_id_variant in enemies_by_net_id:
-			var enemy_variant: Variant = enemies_by_net_id.get(int(net_id_variant))
+			var net_id := int(net_id_variant)
+			var enemy_variant: Variant = enemies_by_net_id.get(net_id)
 			if enemy_variant == null or not is_instance_valid(enemy_variant):
+				_stale_enemy_net_ids.append(net_id)
 				continue
 			var enemy := enemy_variant as Enemy
 			if enemy == null or enemy.is_dead:
+				_stale_enemy_net_ids.append(net_id)
 				continue
 			var distance := center.distance_squared_to(enemy.global_position)
 			var instance_id := enemy.get_instance_id()
@@ -234,6 +253,8 @@ func _append_nearest_alive(
 				nearest = enemy
 				nearest_distance = distance
 				nearest_instance_id = instance_id
+		for net_id in _stale_enemy_net_ids:
+			_remove_enemy_entry(net_id)
 	else:
 		var minimum_cell := _to_bucket(center - Vector2.ONE * radius)
 		var maximum_cell := _to_bucket(center + Vector2.ONE * radius)

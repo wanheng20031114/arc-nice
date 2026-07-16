@@ -3,6 +3,7 @@ extends SceneTree
 const MAIN_MENU_SCENE := preload("res://scene/main_menu.tscn")
 const GAME_SCENE := preload("res://scene/game.tscn")
 const SETTINGS_MANAGER_SCRIPT := preload("res://scene/settings/settings_manager.gd")
+const NODE_ADDED_CALLBACK_BENCHMARK_COUNT := 512
 
 var failures: Array[String] = []
 var _had_settings_config := false
@@ -22,7 +23,7 @@ func _run() -> void:
 	_test_user_settings_singleton()
 	_test_config_file_reset()
 	_test_static_audio_bus_contract()
-	await _test_dynamic_audio_bus_routing()
+	await _test_node_added_audio_router_removal()
 	await _test_settings_panel_scene()
 	await _test_audio_bus_assignment()
 	_test_hotkey_defaults_and_event_helpers()
@@ -110,6 +111,10 @@ func _test_user_settings_singleton() -> void:
 	if sfx_bus_index >= 0:
 		_expect(AudioServer.get_bus_send(sfx_bus_index) == &"Master", "SFX bus must feed Master.")
 	_expect(not settings.has_method("assign_audio_buses_to_tree"), "Audio routing must not expose a full-tree scan API.")
+	_expect(
+		not settings.has_method("_on_tree_node_added"),
+		"UserSettings must not subscribe a script callback to every SceneTree node addition."
+	)
 	_expect(not settings.is_processing(), "UserSettings must not run a periodic audio scan.")
 	var options: Array = settings.call("get_resolution_options")
 	_expect(not options.is_empty(), "Resolution options must be available.")
@@ -352,42 +357,37 @@ func _test_static_audio_bus_contract() -> void:
 	_expect(audio_node_count >= 58, "Static audio contract must inspect every authored audio node.")
 
 
-func _test_dynamic_audio_bus_routing() -> void:
-	var runtime_sfx := AudioStreamPlayer2D.new()
-	runtime_sfx.name = "RuntimeImpactAudio"
-	root.add_child(runtime_sfx)
-	_expect(runtime_sfx.bus == &"SFX", "Unclassified dynamic audio must default to SFX when it enters the tree.")
-
-	var runtime_music := AudioStreamPlayer.new()
-	runtime_music.name = "RuntimeBgm"
-	root.add_child(runtime_music)
-	_expect(runtime_music.bus == &"Music", "Dynamically created BGM audio must route to Music.")
-
-	var metadata_override := AudioStreamPlayer3D.new()
-	metadata_override.name = "RuntimeMusicSting"
-	metadata_override.set_meta(SETTINGS_MANAGER_SCRIPT.AUDIO_CATEGORY_META, SETTINGS_MANAGER_SCRIPT.AUDIO_CATEGORY_SFX)
-	root.add_child(metadata_override)
-	_expect(metadata_override.bus == &"SFX", "Explicit dynamic audio category metadata must override name inference.")
-
-	var authored_bus := AudioStreamPlayer.new()
-	authored_bus.name = "RuntimeEffectWithAuthoredBus"
-	authored_bus.bus = &"Music"
-	root.add_child(authored_bus)
-	_expect(authored_bus.bus == &"Music", "A valid explicitly assigned bus must never be overwritten.")
-
-	var dynamic_scene_root := Node.new()
-	dynamic_scene_root.name = "DynamicSceneRoot"
-	var nested_sfx := AudioStreamPlayer2D.new()
-	nested_sfx.name = "NestedDynamicEffect"
-	dynamic_scene_root.add_child(nested_sfx)
-	root.add_child(dynamic_scene_root)
-	_expect(nested_sfx.bus == &"SFX", "Audio nested in a dynamically added subtree must be routed when it enters the tree.")
-
-	runtime_sfx.queue_free()
-	runtime_music.queue_free()
-	metadata_override.queue_free()
-	authored_bus.queue_free()
-	dynamic_scene_root.queue_free()
+func _test_node_added_audio_router_removal() -> void:
+	# Quantify the amplification avoided by removing the old SceneTree.node_added
+	# hook: a batch of otherwise irrelevant gameplay nodes used to cross into
+	# UserSettings once per node. The observer below measures the exact event
+	# count without reintroducing production routing work.
+	var observed_node_additions: Array[int] = [0]
+	var observer := func(_node: Node) -> void:
+		observed_node_additions[0] += 1
+	node_added.connect(observer)
+	var batch_root := Node.new()
+	batch_root.name = "SettingsNodeAddedBenchmark"
+	root.add_child(batch_root)
+	for index in range(NODE_ADDED_CALLBACK_BENCHMARK_COUNT):
+		var gameplay_node := Node2D.new()
+		gameplay_node.name = "GameplayNode%d" % index
+		batch_root.add_child(gameplay_node)
+	node_added.disconnect(observer)
+	_expect(
+		observed_node_additions[0] == NODE_ADDED_CALLBACK_BENCHMARK_COUNT + 1,
+		"Node-added benchmark must observe the root plus every batched gameplay node."
+	)
+	_expect(
+		not _settings().has_method("_on_tree_node_added"),
+		"The %d measured node additions must cause zero UserSettings routing callbacks."
+		% observed_node_additions[0]
+	)
+	print(
+		"SETTINGS_NODE_ADDED_CALLBACK_BENCHMARK events=%d old_router_calls=%d new_router_calls=0"
+		% [observed_node_additions[0], observed_node_additions[0]]
+	)
+	batch_root.queue_free()
 	await process_frame
 
 

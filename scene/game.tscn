@@ -173,6 +173,7 @@ layer = 30
 [node name="DebugCollectibleWindow" parent="SettingsLayer" unique_id=274849800 instance=ExtResource("21_debug_collectibles")]
 
 [node name="DamageNumberPool" type="Node2D" parent="." unique_id=788052799]
+z_index = 100
 script = ExtResource("18_damage_pool")
 
 [node name="SniperLockVisualCoordinator" type="Node" parent="."]

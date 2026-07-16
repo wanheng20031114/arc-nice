@@ -43,25 +43,18 @@ class AnchorCountingPlantSystem:
 		return true
 
 
-class CandidateCacheInspectingPlantSystem:
+class InfluenceIndexInspectingPlantSystem:
 	extends PlantSystem
 
-	var candidate_build_calls := 0
+	func get_influence_radius_count() -> int:
+		return _plant_influence_cells_by_radius.size()
 
-	func _build_nearest_plant_candidates(
-		center_cell: Vector2i,
-		search_radius: int
-	) -> Array[PlantDefense]:
-		candidate_build_calls += 1
-		return super._build_nearest_plant_candidates(center_cell, search_radius)
+	func get_influence_cell_count(search_radius: int) -> int:
+		var influence_index := _ensure_plant_influence_index(search_radius)
+		return influence_index.size()
 
-	func get_candidate_cache_size() -> int:
-		return _nearest_plant_candidate_cache.size()
-
-	func get_cached_candidate_count(center_cell: Vector2i, search_radius: int) -> int:
-		var cache_key := Vector3i(center_cell.x, center_cell.y, search_radius)
-		var cached := _nearest_plant_candidate_cache.get(cache_key, []) as Array
-		return cached.size()
+	func get_influence_candidate_count(center_cell: Vector2i, search_radius: int) -> int:
+		return _get_plant_influence_candidates(center_cell, search_radius).size()
 
 
 func _init() -> void:
@@ -76,7 +69,7 @@ func _run() -> void:
 	await _test_player_core_collision()
 	_test_large_area_anchor_enumeration()
 	await _test_grid_and_occupancy_rules()
-	await _test_nearest_plant_candidate_cache()
+	await _test_event_driven_plant_influence_index()
 	await _test_realtime_selection_and_cancel()
 	await _test_enemy_contact_and_release()
 	await _test_multiplayer_authority_contracts()
@@ -1035,18 +1028,23 @@ func _test_grid_and_occupancy_rules() -> void:
 	plant.set_meta(&"batch1_test_anchor", anchor)
 
 
-func _test_nearest_plant_candidate_cache() -> void:
+func _test_event_driven_plant_influence_index() -> void:
 	var cache_container := Node2D.new()
-	cache_container.name = "CandidateCachePlantContainer"
+	cache_container.name = "InfluenceIndexPlantContainer"
 	test_root.add_child(cache_container)
-	var cache_system := CandidateCacheInspectingPlantSystem.new()
-	cache_system.name = "CandidateCachePlantSystem"
+	var cache_system := InfluenceIndexInspectingPlantSystem.new()
+	cache_system.name = "InfluenceIndexPlantSystem"
 	test_root.add_child(cache_system)
 	cache_system.setup(
 		tile_map,
 		player,
 		cache_container,
 		PlantSystem.DEFAULT_PLACEMENT_AREA
+	)
+	_expect(
+		cache_system.get_influence_radius_count() == 1
+		and cache_system.get_influence_cell_count(9) == 0,
+		"PlantSystem setup必须预建塔防8格查询所需的9格空influence index。"
 	)
 
 	var center_cell := Vector2i(8, 7)
@@ -1060,12 +1058,12 @@ func _test_nearest_plant_candidate_cache() -> void:
 		vegetation_stake_config,
 		left_anchor
 	)
-	_expect(left_stake != null, "候选缓存测试必须成功放置左侧植被桩。")
+	_expect(left_stake != null, "influence index测试必须成功放置左侧植被桩。")
 
 	_set_player_cell(agave_anchor + Vector2i(0, 3))
 	await physics_frame
 	var multi_cell_agave := cache_system.try_place(agave_config, agave_anchor)
-	_expect(multi_cell_agave != null, "候选缓存测试必须成功放置2×2龙舌兰。")
+	_expect(multi_cell_agave != null, "influence index测试必须成功放置2×2龙舌兰。")
 	if left_stake == null or multi_cell_agave == null:
 		cache_system.clear_all_plants()
 		cache_system.queue_free()
@@ -1074,17 +1072,18 @@ func _test_nearest_plant_candidate_cache() -> void:
 		return
 
 	var center_world := tile_map.to_global(tile_map.map_to_local(center_cell))
+	var indexed_cell_count_before_query := cache_system.get_influence_cell_count(9)
 	var initial_target := cache_system.find_nearest_living_plant(center_world, 8.0)
-	_expect(initial_target == left_stake, "候选缓存首次查询必须返回真实最近植物。")
-	_expect(cache_system.candidate_build_calls == 1, "首次中心瓦片查询必须只构建一次候选缓存。")
+	_expect(initial_target == left_stake, "事件驱动索引首次查询必须返回真实最近植物。")
 	_expect(
-		cache_system.get_cached_candidate_count(center_cell, 9) == 2,
-		"2×2植物在同一候选缓存中必须去重为单个植物引用。"
+		cache_system.get_influence_candidate_count(center_cell, 9) == 2,
+		"2×2植物在同一influence bucket中必须去重为单个植物引用。"
 	)
 	var repeated_target := cache_system.find_nearest_living_plant(center_world, 8.0)
 	_expect(
-		repeated_target == left_stake and cache_system.candidate_build_calls == 1,
-		"相同中心瓦片与搜索半径必须命中缓存且保持最近目标。"
+		repeated_target == left_stake
+		and cache_system.get_influence_cell_count(9) == indexed_cell_count_before_query,
+		"重复查询必须只读事件索引，不得按敌人中心格新增缓存状态。"
 	)
 
 	_set_player_cell(right_anchor + Vector2i(0, 3))
@@ -1093,10 +1092,11 @@ func _test_nearest_plant_candidate_cache() -> void:
 		vegetation_stake_config,
 		right_anchor
 	)
-	_expect(right_stake != null, "候选缓存测试必须成功放置右侧植被桩。")
+	_expect(right_stake != null, "influence index测试必须成功放置右侧植被桩。")
 	_expect(
-		cache_system.get_candidate_cache_size() == 0,
-		"新增植物必须在occupancy信号发出前失效全部候选缓存。"
+		cache_system.get_influence_radius_count() == 1
+		and cache_system.get_influence_candidate_count(center_cell, 9) == 3,
+		"新增植物必须立即增量更新已有influence index而不是清空后等待查询重建。"
 	)
 	if right_stake == null:
 		cache_system.clear_all_plants()
@@ -1104,20 +1104,21 @@ func _test_nearest_plant_candidate_cache() -> void:
 		cache_container.queue_free()
 		await process_frame
 		return
+	var indexed_cell_count_after_topology_change := cache_system.get_influence_cell_count(9)
 
 	var tied_target := cache_system.find_nearest_living_plant(center_world, 8.0)
 	_expect(
-		tied_target == left_stake and cache_system.candidate_build_calls == 2,
-		"拓扑变化后必须重建缓存，并按稳定的格子顺序确定等距目标。"
+		tied_target == left_stake,
+		"事件索引必须保持旧19×19行优先扫描的等距目标顺序。"
 	)
 	_expect(
-		cache_system.get_cached_candidate_count(center_cell, 9) == 3,
-		"重建缓存必须包含两个单格植物和一个去重后的多格植物。"
+		cache_system.get_influence_candidate_count(center_cell, 9) == 3,
+		"中心bucket必须包含两个单格植物和一个去重后的多格植物。"
 	)
 	for _repeat_index in range(4):
 		_expect(
 			cache_system.find_nearest_living_plant(center_world, 8.0) == left_stake,
-			"等距最近目标在连续缓存命中间必须保持确定性。"
+			"等距最近目标在连续事件索引查询间必须保持确定性。"
 		)
 
 	var tile_width := float(tile_map.tile_set.tile_size.x)
@@ -1135,40 +1136,66 @@ func _test_nearest_plant_candidate_cache() -> void:
 	_expect(
 		cache_system.find_nearest_living_plant(left_biased_world, 8.0) == left_stake
 		and cache_system.find_nearest_living_plant(right_biased_world, 8.0) == right_stake,
-		"候选集合可以复用，但每次查询必须用真实世界位置重新选择最近植物。"
+		"influence候选集合可以复用，但每次查询必须用真实世界位置重新选择最近植物。"
 	)
 	_expect(
-		cache_system.candidate_build_calls == 2,
-		"同瓦片内实际位置变化不得重复构建候选集合。"
+		cache_system.get_influence_cell_count(9) == indexed_cell_count_after_topology_change,
+		"同瓦片内实际位置变化不得扩张事件索引。"
 	)
 
 	_expect(
 		cache_system.find_nearest_living_plant(center_world, 4.0) == left_stake
-		and cache_system.candidate_build_calls == 3,
-		"不同搜索半径必须使用独立缓存键并保持精确距离语义。"
+		and cache_system.get_influence_radius_count() == 2
+		and cache_system.get_influence_candidate_count(center_cell, 5) == 3,
+		"不同搜索半径必须拥有独立influence index并保持精确距离语义。"
 	)
 	_expect(
 		cache_system.find_nearest_living_plant(center_world, 8.0) == left_stake
-		and cache_system.candidate_build_calls == 3,
-		"建立其他半径缓存后，原搜索半径仍必须继续命中已有缓存。"
+		and cache_system.get_influence_radius_count() == 2,
+		"建立其他半径索引后，原搜索半径必须保持可用且不重复物化。"
 	)
 
 	right_stake.receive_damage(99999)
 	_expect(
-		cache_system.get_candidate_cache_size() == 0,
-		"植物死亡释放footprint时必须立即失效候选缓存。"
+		cache_system.get_influence_radius_count() == 2
+		and cache_system.get_influence_candidate_count(center_cell, 9) == 2
+		and cache_system.get_influence_candidate_count(center_cell, 5) == 2,
+		"植物死亡释放footprint时必须立即从所有已物化半径索引移除。"
 	)
 	_expect(
 		cache_system.find_nearest_living_plant(right_biased_world, 8.0) == left_stake
-		and cache_system.candidate_build_calls == 4,
-		"死亡拓扑失效后不得从旧缓存返回已死亡植物。"
+		and cache_system.get_influence_radius_count() == 2,
+		"死亡后的查询不得返回已移除植物，也不得触发索引重建。"
 	)
 
 	cache_system.clear_all_plants()
 	_expect(
-		cache_system.get_candidate_cache_size() == 0
+		cache_system.get_influence_radius_count() == 2
+		and cache_system.get_influence_cell_count(9) == 0
+		and cache_system.get_influence_cell_count(5) == 0
 		and cache_system.find_nearest_living_plant(center_world, 8.0) == null,
-		"清空全部植物必须同步清空候选缓存与最近目标结果。"
+		"清空全部植物必须同步清空每个bucket，同时保留可增量恢复的半径索引。"
+	)
+
+	_set_player_cell(left_anchor + Vector2i(0, 3))
+	await physics_frame
+	var restored_stake := cache_system.try_place(
+		vegetation_stake_config,
+		left_anchor
+	)
+	_expect(
+		restored_stake != null
+		and cache_system.find_nearest_living_plant(center_world, 8.0) == restored_stake
+		and cache_system.get_influence_candidate_count(center_cell, 9) == 1
+		and cache_system.get_influence_candidate_count(center_cell, 5) == 1,
+		"清理后重新放置必须增量恢复全部已物化半径索引。"
+	)
+	if restored_stake != null:
+		restored_stake.begin_removal(PlantDefense.RemovalMode.SILENT)
+	_expect(
+		cache_system.get_influence_cell_count(9) == 0
+		and cache_system.get_influence_cell_count(5) == 0,
+		"静默撤除必须在同一帧从全部influence index释放。"
 	)
 	cache_system.queue_free()
 	cache_container.queue_free()

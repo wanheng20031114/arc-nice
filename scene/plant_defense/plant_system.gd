@@ -17,6 +17,12 @@ const ENTITY_BLOCKING_MASK: int = 1 | 2
 const FOOTPRINT_COLLISION_INSET: Vector2 = Vector2(4.0, 4.0)
 const UNSUPPORTED_TERRAIN_DAMAGE_RATIO: float = 0.10
 const UNSUPPORTED_TERRAIN_MIN_DAMAGE: int = 50
+# Enemy objective selection currently asks for plants within eight logical
+# cells. The former query-local cache scanned a 19 x 19 square the first time
+# every moving enemy entered a cell. Keep that hot radius resident instead:
+# placement/removal events update the inverse index once, while every enemy
+# query reads one already-populated cell bucket.
+const DEFAULT_PLANT_INFLUENCE_SEARCH_RADIUS_CELLS: int = 9
 
 @export_range(0, 64, 1) var max_placement_manhattan_distance: int = (
 	MAX_PLACEMENT_MANHATTAN_DISTANCE
@@ -32,7 +38,13 @@ var occupied_cells: Dictionary = {}
 var plant_footprints: Dictionary = {}
 var reserved_cells: Dictionary = {}
 var plants_by_net_id: Dictionary[int, PlantDefense] = {}
-var _nearest_plant_candidate_cache: Dictionary = {}
+# search_radius -> center_cell -> (plant instance id -> PlantDefense)
+#
+# A radius-specific inverse index preserves the public method's arbitrary
+# max_radius_cells contract. The gameplay radius is created eagerly; uncommon
+# radii are materialized once and then participate in the same event-driven
+# placement/removal updates.
+var _plant_influence_cells_by_radius: Dictionary = {}
 
 
 func setup(
@@ -47,7 +59,7 @@ func setup(
 	owner_player = new_owner_player
 	plant_container = new_plant_container
 	placement_area = new_placement_area
-	_invalidate_nearest_plant_candidate_cache()
+	_reset_plant_influence_indices()
 
 
 func configure(
@@ -372,10 +384,9 @@ func find_nearest_living_plant(
 	):
 		return null
 
-	# occupied_cells already is the authoritative spatial index for every
-	# single-player, host and replicated plant. A bounded cell query keeps target
-	# selection independent of the total plant count and avoids a SceneTree scan
-	# for every enemy retarget.
+	# The event-driven inverse index is authoritative for broad candidates. Exact
+	# distance still uses live world positions below, so sub-cell query movement
+	# and transformed TileMapLayer nodes retain the previous behavior.
 	var tile_size := Vector2(ground_tile_map.tile_set.tile_size).abs()
 	if tile_size.x <= 0.0 or tile_size.y <= 0.0:
 		return null
@@ -387,9 +398,9 @@ func find_nearest_living_plant(
 	var maximum_distance_squared := max_radius_cells * max_radius_cells
 	var nearest_plant: PlantDefense = null
 	var nearest_distance_squared := INF
-	var candidates := _get_nearest_plant_candidates(center_cell, search_radius)
-	for candidate_variant in candidates:
-		var plant := candidate_variant as PlantDefense
+	var candidates := _get_plant_influence_candidates(center_cell, search_radius)
+	for candidate_instance_id_variant in candidates:
+		var plant := candidates[candidate_instance_id_variant] as PlantDefense
 		if (
 			plant == null
 			or not is_instance_valid(plant)
@@ -407,65 +418,217 @@ func find_nearest_living_plant(
 			(plant_local.y - from_local.y) / tile_size.y
 		)
 		var distance_squared := offset_in_cells.length_squared()
+		if distance_squared > maximum_distance_squared:
+			continue
 		if (
-			distance_squared <= maximum_distance_squared
-			and distance_squared < nearest_distance_squared
+			distance_squared < nearest_distance_squared
+			or (
+				distance_squared == nearest_distance_squared
+				and _is_plant_candidate_before(
+					plant,
+					nearest_plant,
+					center_cell,
+					search_radius
+				)
+			)
 		):
 			nearest_distance_squared = distance_squared
 			nearest_plant = plant
 	return nearest_plant
 
 
-func _get_nearest_plant_candidates(
+func _get_plant_influence_candidates(
 	center_cell: Vector2i,
 	search_radius: int
-) -> Array:
+) -> Dictionary:
 	var safe_search_radius := maxi(search_radius, 0)
-	var cache_key := Vector3i(center_cell.x, center_cell.y, safe_search_radius)
-	if _nearest_plant_candidate_cache.has(cache_key):
-		return _nearest_plant_candidate_cache[cache_key] as Array
+	var influence_index := _ensure_plant_influence_index(safe_search_radius)
+	return influence_index.get(center_cell, {}) as Dictionary
 
-	var candidates := _build_nearest_plant_candidates(
+
+func _ensure_plant_influence_index(search_radius: int) -> Dictionary:
+	var safe_search_radius := maxi(search_radius, 0)
+	if _plant_influence_cells_by_radius.has(safe_search_radius):
+		return _plant_influence_cells_by_radius[safe_search_radius] as Dictionary
+
+	var influence_index: Dictionary = {}
+	_plant_influence_cells_by_radius[safe_search_radius] = influence_index
+	for plant_variant in plant_footprints:
+		var plant := plant_variant as PlantDefense
+		if plant == null or not is_instance_valid(plant):
+			continue
+		var footprint: Array = plant_footprints.get(plant, [])
+		_add_plant_to_influence_index(
+			influence_index,
+			safe_search_radius,
+			plant,
+			footprint
+		)
+	return influence_index
+
+
+func _reset_plant_influence_indices() -> void:
+	_plant_influence_cells_by_radius.clear()
+	# Materialize the 8-cell gameplay query's 9-cell broad phase before enemies
+	# can request targets. Existing footprints are included when setup() is reused.
+	_ensure_plant_influence_index(DEFAULT_PLANT_INFLUENCE_SEARCH_RADIUS_CELLS)
+
+
+func _add_plant_to_all_influence_indices(
+	plant: PlantDefense,
+	footprint: Array
+) -> void:
+	for search_radius_variant in _plant_influence_cells_by_radius:
+		var search_radius := int(search_radius_variant)
+		var influence_index := (
+			_plant_influence_cells_by_radius[search_radius_variant] as Dictionary
+		)
+		_add_plant_to_influence_index(
+			influence_index,
+			search_radius,
+			plant,
+			footprint
+		)
+
+
+func _remove_plant_from_all_influence_indices(
+	plant: PlantDefense,
+	footprint: Array
+) -> void:
+	for search_radius_variant in _plant_influence_cells_by_radius:
+		var search_radius := int(search_radius_variant)
+		var influence_index := (
+			_plant_influence_cells_by_radius[search_radius_variant] as Dictionary
+		)
+		_remove_plant_from_influence_index(
+			influence_index,
+			search_radius,
+			plant,
+			footprint
+		)
+
+
+func _add_plant_to_influence_index(
+	influence_index: Dictionary,
+	search_radius: int,
+	plant: PlantDefense,
+	footprint: Array
+) -> void:
+	if plant == null or footprint.is_empty():
+		return
+	var influence_rect := _get_plant_influence_rect(footprint, search_radius)
+	if influence_rect.size.x <= 0 or influence_rect.size.y <= 0:
+		return
+	var plant_instance_id := plant.get_instance_id()
+	for cell_y in range(influence_rect.position.y, influence_rect.end.y):
+		for cell_x in range(influence_rect.position.x, influence_rect.end.x):
+			var center_cell := Vector2i(cell_x, cell_y)
+			var candidates: Dictionary
+			if influence_index.has(center_cell):
+				candidates = influence_index[center_cell] as Dictionary
+			else:
+				candidates = {}
+				influence_index[center_cell] = candidates
+			candidates[plant_instance_id] = plant
+
+
+func _remove_plant_from_influence_index(
+	influence_index: Dictionary,
+	search_radius: int,
+	plant: PlantDefense,
+	footprint: Array
+) -> void:
+	if plant == null or footprint.is_empty():
+		return
+	var influence_rect := _get_plant_influence_rect(footprint, search_radius)
+	if influence_rect.size.x <= 0 or influence_rect.size.y <= 0:
+		return
+	var plant_instance_id := plant.get_instance_id()
+	for cell_y in range(influence_rect.position.y, influence_rect.end.y):
+		for cell_x in range(influence_rect.position.x, influence_rect.end.x):
+			var center_cell := Vector2i(cell_x, cell_y)
+			if not influence_index.has(center_cell):
+				continue
+			var candidates := influence_index[center_cell] as Dictionary
+			if candidates.get(plant_instance_id) != plant:
+				continue
+			candidates.erase(plant_instance_id)
+			if candidates.is_empty():
+				influence_index.erase(center_cell)
+
+
+func _get_plant_influence_rect(footprint: Array, search_radius: int) -> Rect2i:
+	if footprint.is_empty():
+		return Rect2i()
+	var minimum_cell := footprint[0] as Vector2i
+	var maximum_cell := minimum_cell
+	for cell_variant in footprint:
+		var cell := cell_variant as Vector2i
+		minimum_cell.x = mini(minimum_cell.x, cell.x)
+		minimum_cell.y = mini(minimum_cell.y, cell.y)
+		maximum_cell.x = maxi(maximum_cell.x, cell.x)
+		maximum_cell.y = maxi(maximum_cell.y, cell.y)
+	var safe_search_radius := maxi(search_radius, 0)
+	return Rect2i(
+		minimum_cell - Vector2i(safe_search_radius, safe_search_radius),
+		maximum_cell - minimum_cell
+			+ Vector2i(safe_search_radius * 2 + 1, safe_search_radius * 2 + 1)
+	)
+
+
+func _is_plant_candidate_before(
+	candidate: PlantDefense,
+	current: PlantDefense,
+	center_cell: Vector2i,
+	search_radius: int
+) -> bool:
+	if current == null:
+		return true
+	var candidate_cell := _get_first_scanned_footprint_cell(
+		candidate,
 		center_cell,
+		search_radius
+	)
+	var current_cell := _get_first_scanned_footprint_cell(
+		current,
+		center_cell,
+		search_radius
+	)
+	if candidate_cell.y != current_cell.y:
+		return candidate_cell.y < current_cell.y
+	if candidate_cell.x != current_cell.x:
+		return candidate_cell.x < current_cell.x
+	return candidate.get_instance_id() < current.get_instance_id()
+
+
+func _get_first_scanned_footprint_cell(
+	plant: PlantDefense,
+	center_cell: Vector2i,
+	search_radius: int
+) -> Vector2i:
+	var first_cell := Vector2i(2147483647, 2147483647)
+	var footprint: Array = plant_footprints.get(plant, [])
+	var safe_search_radius := maxi(search_radius, 0)
+	var minimum_query_cell := center_cell - Vector2i(
+		safe_search_radius,
 		safe_search_radius
 	)
-	_nearest_plant_candidate_cache[cache_key] = candidates
-	return candidates
-
-
-func _build_nearest_plant_candidates(
-	center_cell: Vector2i,
-	search_radius: int
-) -> Array[PlantDefense]:
-	var candidates: Array[PlantDefense] = []
-	var seen_instance_ids: Dictionary[int, bool] = {}
-	for cell_y in range(
-		center_cell.y - search_radius,
-		center_cell.y + search_radius + 1
-	):
-		for cell_x in range(
-			center_cell.x - search_radius,
-			center_cell.x + search_radius + 1
+	var maximum_query_cell := center_cell + Vector2i(
+		safe_search_radius,
+		safe_search_radius
+	)
+	for cell_variant in footprint:
+		var cell := cell_variant as Vector2i
+		if (
+			cell.x < minimum_query_cell.x
+			or cell.x > maximum_query_cell.x
+			or cell.y < minimum_query_cell.y
+			or cell.y > maximum_query_cell.y
 		):
-			var plant := occupied_cells.get(Vector2i(cell_x, cell_y)) as PlantDefense
-			if (
-				plant == null
-				or not is_instance_valid(plant)
-				or plant.is_dead
-				or plant.is_removing
-				or plant.is_queued_for_deletion()
-			):
-				continue
-			var instance_id := plant.get_instance_id()
-			if seen_instance_ids.has(instance_id):
-				continue
-			seen_instance_ids[instance_id] = true
-			candidates.append(plant)
-	return candidates
-
-
-func _invalidate_nearest_plant_candidate_cache() -> void:
-	_nearest_plant_candidate_cache.clear()
+			continue
+		if cell.y < first_cell.y or (cell.y == first_cell.y and cell.x < first_cell.x):
+			first_cell = cell
+	return first_cell
 
 
 func get_plant_by_net_id(net_id: int) -> PlantDefense:
@@ -612,7 +775,7 @@ func _register_plant_footprint(plant: PlantDefense, cells: Array[Vector2i]) -> v
 	plant_footprints[plant] = cells.duplicate()
 	for cell in cells:
 		occupied_cells[cell] = plant
-	_invalidate_nearest_plant_candidate_cache()
+	_add_plant_to_all_influence_indices(plant, cells)
 	occupancy_changed.emit()
 
 
@@ -621,6 +784,7 @@ func _release_plant_footprint(plant: PlantDefense) -> void:
 		return
 
 	var cells: Array = plant_footprints[plant]
+	_remove_plant_from_all_influence_indices(plant, cells)
 	plant_footprints.erase(plant)
 	var net_id := int(plant.get_meta(&"net_id", 0)) if is_instance_valid(plant) else 0
 	if net_id > 0 and plants_by_net_id.get(net_id) == plant:
@@ -629,7 +793,6 @@ func _release_plant_footprint(plant: PlantDefense) -> void:
 		var cell: Vector2i = cell_variant
 		if occupied_cells.get(cell) == plant:
 			occupied_cells.erase(cell)
-	_invalidate_nearest_plant_candidate_cache()
 	occupancy_changed.emit()
 	plant_removed.emit(plant)
 

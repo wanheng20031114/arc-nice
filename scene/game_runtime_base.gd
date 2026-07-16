@@ -18,6 +18,9 @@ const ENEMY_SPAWN_EFFECT_RETAINED_CAPACITY := 32
 const BULLET_HIT_EFFECT_CAPACITY := 64
 const ENEMY_HIT_EFFECT_CAPACITY := 128
 const MOVE_SPEED_TRAIL_EFFECT_RETAINED_CAPACITY := 32
+const SINGLEPLAYER_NEAREST_INDEX_QUERY_THRESHOLD := 3
+const SINGLEPLAYER_BULK_INDEX_QUERY_THRESHOLD := 8
+const SINGLEPLAYER_BULK_INDEX_MIN_TARGETS := 512
 
 signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
 signal multiplayer_enemy_defeated(net_id: int, defeat_position: Vector2)
@@ -113,6 +116,11 @@ var multiplayer_pickups: Dictionary = {}
 var multiplayer_enemy_ids_by_instance: Dictionary = {}
 var multiplayer_enemies_by_net_id: Dictionary = {}
 var combat_target_index = CombatTargetIndexScript.new()
+var _singleplayer_combat_target_index_enabled := false
+var _singleplayer_combat_target_index_force_local_queries := false
+var _singleplayer_combat_query_physics_frame := -1
+var _singleplayer_combat_queries_this_frame := 0
+var _singleplayer_combat_queries_previous_frame := 0
 var _enemy_snapshot_states_by_net_id: Dictionary = {}
 var _enemy_snapshot_output: Array[SnapshotManager.EnemyState] = []
 var _enemy_snapshot_live_ids: Dictionary = {}
@@ -226,7 +234,57 @@ func unregister_combat_target(net_id: int) -> void:
 	combat_target_index.unregister_enemy(net_id)
 
 
+func enable_singleplayer_combat_target_index(force_local_queries: bool = false) -> void:
+	if runtime_mode != RuntimeMode.SINGLEPLAYER:
+		return
+	_singleplayer_combat_target_index_enabled = true
+	_singleplayer_combat_target_index_force_local_queries = (
+		_singleplayer_combat_target_index_force_local_queries or force_local_queries
+	)
+	var target_containers: Array[Node] = [
+		enemy_container,
+		get_node_or_null("BossContainer"),
+	]
+	for target_container in target_containers:
+		if target_container == null:
+			continue
+		if not target_container.child_entered_tree.is_connected(
+			_on_singleplayer_combat_target_entered
+		):
+			target_container.child_entered_tree.connect(
+				_on_singleplayer_combat_target_entered
+			)
+		if not target_container.child_exiting_tree.is_connected(
+			_on_singleplayer_combat_target_exiting
+		):
+			target_container.child_exiting_tree.connect(
+				_on_singleplayer_combat_target_exiting
+			)
+		for child in target_container.get_children():
+			_on_singleplayer_combat_target_entered(child)
+
+
+func _on_singleplayer_combat_target_entered(child: Node) -> void:
+	if runtime_mode != RuntimeMode.SINGLEPLAYER:
+		return
+	var enemy := child as Enemy
+	if enemy == null:
+		return
+	register_combat_target(enemy.get_instance_id(), enemy)
+
+
+func _on_singleplayer_combat_target_exiting(child: Node) -> void:
+	if runtime_mode != RuntimeMode.SINGLEPLAYER:
+		return
+	var enemy := child as Enemy
+	if enemy == null:
+		return
+	unregister_combat_target(enemy.get_instance_id())
+
+
 func get_all_combat_targets() -> Array[Enemy]:
+	# A global result still has to visit and return every enemy. The index would
+	# add its full moving-bucket reconciliation before doing the same O(n) work.
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		var result: Array[Enemy] = []
 		_collect_combat_targets_from_container(enemy_container, result)
@@ -249,6 +307,9 @@ func query_combat_targets_into(
 ) -> void:
 	result.clear()
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		if _should_use_singleplayer_combat_target_index(radius, max_count):
+			combat_target_index.query_radius_into(center, radius, result, max_count)
+			return
 		var safe_radius := maxf(radius, 0.0)
 		var radius_squared := safe_radius * safe_radius
 		_append_combat_targets_in_radius(enemy_container, center, safe_radius, radius_squared, result)
@@ -283,6 +344,9 @@ func query_combat_targets_unordered_into(
 ) -> void:
 	result.clear()
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		if _should_use_singleplayer_combat_target_index(radius, 1, true):
+			combat_target_index.query_radius_unordered_into(center, radius, result)
+			return
 		var safe_radius := maxf(radius, 0.0)
 		var radius_squared := safe_radius * safe_radius
 		_append_combat_targets_in_radius(
@@ -301,6 +365,48 @@ func query_combat_targets_unordered_into(
 		)
 		return
 	combat_target_index.query_radius_unordered_into(center, radius, result)
+
+
+func _should_use_singleplayer_combat_target_index(
+	radius: float,
+	max_count: int,
+	unordered: bool = false
+) -> bool:
+	# A non-positive radius means a global query. Buckets cannot prune it, so the
+	# container scan avoids paying an additional full moving-bucket refresh.
+	if not _singleplayer_combat_target_index_enabled or radius <= 0.0:
+		return false
+	if _singleplayer_combat_target_index_force_local_queries:
+		return true
+	_update_singleplayer_combat_query_density()
+	if unordered or max_count == 1:
+		return (
+			_singleplayer_combat_queries_previous_frame
+			>= SINGLEPLAYER_NEAREST_INDEX_QUERY_THRESHOLD
+		)
+	# Local sorted/bulk queries only broke even at high density in the A/B. Keep
+	# small encounters on the cheaper scan and reserve this path for large waves.
+	return (
+		combat_target_index.enemies_by_net_id.size()
+		>= SINGLEPLAYER_BULK_INDEX_MIN_TARGETS
+		and _singleplayer_combat_queries_previous_frame
+		>= SINGLEPLAYER_BULK_INDEX_QUERY_THRESHOLD
+	)
+
+
+func _update_singleplayer_combat_query_density() -> void:
+	var physics_frame := Engine.get_physics_frames()
+	if physics_frame != _singleplayer_combat_query_physics_frame:
+		if physics_frame == _singleplayer_combat_query_physics_frame + 1:
+			_singleplayer_combat_queries_previous_frame = (
+				_singleplayer_combat_queries_this_frame
+			)
+		else:
+			# Do not keep a stale high-density certificate across an idle gap.
+			_singleplayer_combat_queries_previous_frame = 0
+		_singleplayer_combat_query_physics_frame = physics_frame
+		_singleplayer_combat_queries_this_frame = 0
+	_singleplayer_combat_queries_this_frame += 1
 
 
 func get_multiplayer_plant_node(_net_id: int) -> PlantDefense:

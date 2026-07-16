@@ -3769,13 +3769,7 @@ func _test_snapshot_round_trip() -> void:
 func _has_active_damage_number_text(game: Game, expected_text: String) -> bool:
 	if game == null or game.damage_number_pool == null:
 		return false
-	for number in game.damage_number_pool.pooled_numbers:
-		var damage_number := number as DamageNumber
-		if damage_number == null or not damage_number.is_active():
-			continue
-		if damage_number.label != null and damage_number.label.text == expected_text:
-			return true
-	return false
+	return game.damage_number_pool.has_active_text(expected_text)
 
 
 func _prepare_direct_enemy_spawn_points(game: Game) -> bool:

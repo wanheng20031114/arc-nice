@@ -145,6 +145,7 @@ func _ready() -> void:
 	session_object_pool.register_scene(LINGLAN_SKILL1_BULLET_POOL_SCENE, 64, 768)
 	# A 0.16 s effect at the same peak fire rate needs about 58 concurrent leases.
 	session_object_pool.register_scene(LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE, 16, 96)
+	enable_singleplayer_combat_target_index()
 	if not enemy_container.child_entered_tree.is_connected(
 		_on_dynamic_pickup_container_child_entered
 	):

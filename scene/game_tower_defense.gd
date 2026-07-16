@@ -265,7 +265,9 @@ func _ready() -> void:
 	session_object_pool.register_scene(LINGLAN_SKILL1_BULLET_POOL_SCENE, 64, 768)
 	# A 0.16 s effect at the same peak fire rate needs about 58 concurrent leases.
 	session_object_pool.register_scene(LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE, 16, 96)
-	_configure_singleplayer_combat_target_index()
+	# Tower-defense batteries issue independently staggered target queries. Keep
+	# its already-validated policy of forcing every bounded query through buckets.
+	enable_singleplayer_combat_target_index(true)
 	if not enemy_container.child_entered_tree.is_connected(
 		_on_dynamic_pickup_container_child_entered
 	):
@@ -377,80 +379,6 @@ func configure_multiplayer(
 	multiplayer_local_peer_id = local_peer_id
 	multiplayer_player_names = player_names.duplicate()
 	multiplayer_player_character_ids = player_character_ids.duplicate()
-
-
-func query_combat_targets(
-	center: Vector2,
-	radius: float,
-	max_count: int = 0
-) -> Array[Enemy]:
-	var result: Array[Enemy] = []
-	query_combat_targets_into(center, radius, result, max_count)
-	return result
-
-
-func query_combat_targets_into(
-	center: Vector2,
-	radius: float,
-	result: Array[Enemy],
-	max_count: int = 0
-) -> void:
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		combat_target_index.query_radius_into(center, radius, result, max_count)
-		return
-	super.query_combat_targets_into(center, radius, result, max_count)
-
-
-func query_combat_targets_unordered_into(
-	center: Vector2,
-	radius: float,
-	result: Array[Enemy]
-) -> void:
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		combat_target_index.query_radius_unordered_into(center, radius, result)
-		return
-	super.query_combat_targets_unordered_into(center, radius, result)
-
-
-func _configure_singleplayer_combat_target_index() -> void:
-	var target_containers: Array[Node] = [enemy_container, boss_container]
-	for target_container in target_containers:
-		if target_container == null:
-			continue
-		if not target_container.child_entered_tree.is_connected(
-			_on_singleplayer_combat_target_entered
-		):
-			target_container.child_entered_tree.connect(
-				_on_singleplayer_combat_target_entered
-			)
-		if not target_container.child_exiting_tree.is_connected(
-			_on_singleplayer_combat_target_exiting
-		):
-			target_container.child_exiting_tree.connect(
-				_on_singleplayer_combat_target_exiting
-			)
-		if runtime_mode != RuntimeMode.SINGLEPLAYER:
-			continue
-		for child in target_container.get_children():
-			_on_singleplayer_combat_target_entered(child)
-
-
-func _on_singleplayer_combat_target_entered(child: Node) -> void:
-	if runtime_mode != RuntimeMode.SINGLEPLAYER:
-		return
-	var enemy := child as Enemy
-	if enemy == null:
-		return
-	register_combat_target(enemy.get_instance_id(), enemy)
-
-
-func _on_singleplayer_combat_target_exiting(child: Node) -> void:
-	if runtime_mode != RuntimeMode.SINGLEPLAYER:
-		return
-	var enemy := child as Enemy
-	if enemy == null:
-		return
-	unregister_combat_target(enemy.get_instance_id())
 
 
 func supports_tower_defense() -> bool:

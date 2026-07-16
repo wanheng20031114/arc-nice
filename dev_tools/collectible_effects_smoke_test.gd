@@ -903,7 +903,9 @@ func _spawn_enemy(position: Vector2, player: Player) -> Enemy:
 
 
 func _count_active_damage_numbers() -> int:
-	return get_nodes_in_group(&"damage_numbers").size()
+	if test_root == null or test_root.damage_number_pool == null:
+		return 0
+	return test_root.damage_number_pool.get_active_count()
 
 
 func _count_skill1_bombs() -> int:
