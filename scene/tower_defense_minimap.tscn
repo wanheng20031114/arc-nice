@@ -1,10 +1,11 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="Script" path="res://scene/tower_defense_minimap.gd" id="1_root"]
 [ext_resource type="Script" path="res://scene/tower_defense_minimap_canvas.gd" id="2_canvas"]
 [ext_resource type="Script" path="res://scene/tower_defense_minimap_static_layer.gd" id="3_static"]
 [ext_resource type="Script" path="res://scene/tower_defense_minimap_dynamic_layer.gd" id="4_dynamic"]
 [ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="5_font"]
+[ext_resource type="Shader" path="res://scene/tower_defense_minimap_enemy_marker.gdshader" id="6_enemy_marker_shader"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_map"]
 bg_color = Color(0.018, 0.035, 0.03, 0.9)
@@ -20,6 +21,48 @@ corner_radius_bottom_left = 4
 shadow_color = Color(0, 0, 0, 0.38)
 shadow_size = 2
 shadow_offset = Vector2(0, 1)
+
+[sub_resource type="QuadMesh" id="QuadMesh_static_tile"]
+resource_local_to_scene = true
+size = Vector2(16, 16)
+
+[sub_resource type="MultiMesh" id="MultiMesh_water"]
+resource_local_to_scene = true
+transform_format = 0
+use_colors = true
+mesh = SubResource("QuadMesh_static_tile")
+
+[sub_resource type="MultiMesh" id="MultiMesh_wall"]
+resource_local_to_scene = true
+transform_format = 0
+use_colors = true
+mesh = SubResource("QuadMesh_static_tile")
+
+[sub_resource type="MultiMesh" id="MultiMesh_enemy_gate"]
+resource_local_to_scene = true
+transform_format = 0
+use_colors = true
+mesh = SubResource("QuadMesh_static_tile")
+
+[sub_resource type="MultiMesh" id="MultiMesh_home_gate"]
+resource_local_to_scene = true
+transform_format = 0
+use_colors = true
+mesh = SubResource("QuadMesh_static_tile")
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_enemy_marker"]
+shader = ExtResource("6_enemy_marker_shader")
+
+[sub_resource type="QuadMesh" id="QuadMesh_enemy_marker"]
+resource_local_to_scene = true
+material = SubResource("ShaderMaterial_enemy_marker")
+size = Vector2(2, 2)
+
+[sub_resource type="MultiMesh" id="MultiMesh_enemy_marker"]
+resource_local_to_scene = true
+transform_format = 0
+use_colors = true
+mesh = SubResource("QuadMesh_enemy_marker")
 
 [node name="TowerDefenseMinimap" type="CanvasLayer"]
 layer = 9
@@ -59,6 +102,11 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("3_static")
+static_tile_mesh = SubResource("QuadMesh_static_tile")
+water_multimesh = SubResource("MultiMesh_water")
+wall_multimesh = SubResource("MultiMesh_wall")
+enemy_gate_multimesh = SubResource("MultiMesh_enemy_gate")
+home_gate_multimesh = SubResource("MultiMesh_home_gate")
 
 [node name="DynamicLayer" type="Control" parent="TopLeftMargin/Content/MapPanel/MinimapCanvas"]
 layout_mode = 1
@@ -69,6 +117,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("4_dynamic")
+enemy_marker_multimesh = SubResource("MultiMesh_enemy_marker")
 
 [node name="CoordinateLabel" type="Label" parent="TopLeftMargin/Content"]
 custom_minimum_size = Vector2(194, 18)

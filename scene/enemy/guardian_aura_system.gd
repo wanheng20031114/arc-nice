@@ -13,6 +13,10 @@ const ENEMY_COLLISION_LAYER := 4
 ]
 @export_range(16.0, 256.0, 1.0, "or_greater") var grid_cell_size := 64.0
 @export_range(0.02, 0.5, 0.01, "or_greater") var refresh_interval_seconds := 0.1
+# Strict in-process A/B switch. Production uses the compact snapshot whose
+# buckets cover the guardian aura AABB; the legacy branch remains available to
+# prove identical source membership against the former center-cell search.
+@export var use_snapshot_coverage_grid := true
 
 var enemy_container: Node = null
 var target_containers: Array[Node] = []
@@ -30,6 +34,16 @@ var aura_sources_by_enemy: Dictionary[int, Dictionary] = {}
 # guardian_instance_id -> { enemy_id: true }
 var covered_enemy_ids_by_guardian: Dictionary[int, Dictionary] = {}
 var guardian_grid: Dictionary[Vector2i, Array] = {}
+# Active guardian data is resolved once at the start of a physics tick. Grid
+# buckets store these compact slots, so the target hot path does not repeat
+# Node validity checks, config casts, transforms, or radius calculations for
+# every guardian-target candidate pair.
+var active_guardian_source_ids := PackedInt64Array()
+var active_guardian_positions := PackedVector2Array()
+var active_guardian_radii := PackedFloat64Array()
+var active_guardian_bonuses := PackedInt32Array()
+var candidate_seen_epoch_by_active_slot := PackedInt32Array()
+var candidate_query_epoch := 0
 var desired_sources_scratch: Dictionary[int, int] = {}
 var current_source_ids_scratch: Array[int] = []
 var maximum_guardian_radius := 0.0
@@ -72,6 +86,12 @@ func _exit_tree() -> void:
 	guardian_ids.clear()
 	guardian_slot_by_id.clear()
 	guardian_grid.clear()
+	active_guardian_source_ids.clear()
+	active_guardian_positions.clear()
+	active_guardian_radii.clear()
+	active_guardian_bonuses.clear()
+	candidate_seen_epoch_by_active_slot.clear()
+	candidate_query_epoch = 0
 	desired_sources_scratch.clear()
 	current_source_ids_scratch.clear()
 
@@ -236,6 +256,19 @@ func _clear_all_guardian_sources() -> void:
 func _rebuild_guardian_grid() -> void:
 	guardian_grid.clear()
 	maximum_guardian_radius = 0.0
+	active_guardian_source_ids.clear()
+	active_guardian_positions.clear()
+	active_guardian_radii.clear()
+	active_guardian_bonuses.clear()
+	if use_snapshot_coverage_grid:
+		_rebuild_guardian_snapshot_coverage_grid()
+		candidate_seen_epoch_by_active_slot.resize(active_guardian_source_ids.size())
+		candidate_seen_epoch_by_active_slot.fill(0)
+		candidate_query_epoch = 0
+		return
+
+	# Legacy A/B path: one guardian center per grid bucket, followed by a square
+	# neighborhood search for every target.
 	for source_id in guardian_ids:
 		var guardian := guardians.get(source_id) as Enemy
 		if guardian == null or not is_instance_valid(guardian) or guardian.is_dead:
@@ -256,6 +289,45 @@ func _rebuild_guardian_grid() -> void:
 			bucket.append(source_id)
 		else:
 			guardian_grid[cell] = [source_id]
+
+
+func _rebuild_guardian_snapshot_coverage_grid() -> void:
+	for source_id in guardian_ids:
+		var guardian := guardians.get(source_id) as Enemy
+		if guardian == null or not is_instance_valid(guardian) or guardian.is_dead:
+			continue
+		var guardian_config := guardian.config as YuanshiInsectGuardianConfig
+		if guardian_config == null or not guardian_config.aura_enabled:
+			continue
+		var defense_bonus := guardian_config.aura_physical_defense_bonus
+		if defense_bonus == 0:
+			continue
+
+		var world_radius := _get_guardian_world_radius(guardian, guardian_config)
+		if world_radius <= 0.0:
+			continue
+		var active_slot := active_guardian_source_ids.size()
+		var aura_center := guardian.global_position
+		active_guardian_source_ids.append(source_id)
+		active_guardian_positions.append(aura_center)
+		active_guardian_radii.append(world_radius)
+		active_guardian_bonuses.append(defense_bonus)
+
+		# Stamp every grid cell touched by the aura AABB. A target queries every
+		# cell touched by its conservative body AABB; any real circle-shape
+		# intersection therefore shares at least one cell and cannot be missed.
+		var extent := Vector2.ONE * world_radius
+		var minimum_cell := _world_to_cell(aura_center - extent)
+		var maximum_cell := _world_to_cell(aura_center + extent)
+		for cell_y in range(minimum_cell.y, maximum_cell.y + 1):
+			for cell_x in range(minimum_cell.x, maximum_cell.x + 1):
+				var cell := Vector2i(cell_x, cell_y)
+				var bucket_variant: Variant = guardian_grid.get(cell)
+				if bucket_variant != null:
+					var bucket := bucket_variant as Array
+					bucket.append(active_slot)
+				else:
+					guardian_grid[cell] = [active_slot]
 
 
 func _process_refresh_batch(delta: float) -> void:
@@ -305,31 +377,73 @@ func _refresh_enemy_sources(enemy: Enemy) -> void:
 		(enemy.collision_layer & ENEMY_COLLISION_LAYER) != 0
 		and not guardian_grid.is_empty()
 	):
-		var search_radius := maximum_guardian_radius + _get_enemy_broadphase_extent(enemy)
-		var cell_radius := ceili(search_radius / maxf(grid_cell_size, 1.0))
-		var center_cell := _world_to_cell(enemy.global_position)
-		for cell_y in range(center_cell.y - cell_radius, center_cell.y + cell_radius + 1):
-			for cell_x in range(center_cell.x - cell_radius, center_cell.x + cell_radius + 1):
-				var cell := Vector2i(cell_x, cell_y)
-				if not guardian_grid.has(cell):
-					continue
-				var source_ids: Array = guardian_grid[cell]
-				for source_id_variant in source_ids:
-					var source_id := int(source_id_variant)
-					if source_id == enemy_id:
-						continue
-					var guardian := guardians.get(source_id) as Enemy
-					if guardian == null or not is_instance_valid(guardian) or guardian.is_dead:
-						continue
-					var guardian_config := guardian.config as YuanshiInsectGuardianConfig
-					if guardian_config == null or not guardian_config.aura_enabled:
-						continue
-					if _guardian_reaches_enemy(guardian, guardian_config, enemy):
-						desired_sources_scratch[source_id] = (
-							guardian_config.aura_physical_defense_bonus
-						)
+		if use_snapshot_coverage_grid:
+			_collect_snapshot_guardian_sources(enemy, enemy_id)
+		else:
+			_collect_legacy_guardian_sources(enemy, enemy_id)
 
 	_apply_source_diff(enemy, desired_sources_scratch)
+
+
+func _collect_snapshot_guardian_sources(enemy: Enemy, enemy_id: int) -> void:
+	var target_center := enemy.global_position
+	var target_extent := _get_enemy_broadphase_extent(enemy)
+	var extent := Vector2.ONE * target_extent
+	var minimum_cell := _world_to_cell(target_center - extent)
+	var maximum_cell := _world_to_cell(target_center + extent)
+	var query_epoch := _begin_candidate_query_epoch()
+	for cell_y in range(minimum_cell.y, maximum_cell.y + 1):
+		for cell_x in range(minimum_cell.x, maximum_cell.x + 1):
+			var cell := Vector2i(cell_x, cell_y)
+			var active_slots_variant: Variant = guardian_grid.get(cell)
+			if active_slots_variant == null:
+				continue
+			var active_slots := active_slots_variant as Array
+			for active_slot_variant in active_slots:
+				var active_slot := int(active_slot_variant)
+				if candidate_seen_epoch_by_active_slot[active_slot] == query_epoch:
+					continue
+				candidate_seen_epoch_by_active_slot[active_slot] = query_epoch
+				var source_id := int(active_guardian_source_ids[active_slot])
+				if source_id == enemy_id:
+					continue
+				if _snapshot_guardian_reaches_enemy(active_slot, enemy):
+					desired_sources_scratch[source_id] = active_guardian_bonuses[active_slot]
+
+
+func _collect_legacy_guardian_sources(enemy: Enemy, enemy_id: int) -> void:
+	var search_radius := maximum_guardian_radius + _get_enemy_broadphase_extent(enemy)
+	var cell_radius := ceili(search_radius / maxf(grid_cell_size, 1.0))
+	var center_cell := _world_to_cell(enemy.global_position)
+	for cell_y in range(center_cell.y - cell_radius, center_cell.y + cell_radius + 1):
+		for cell_x in range(center_cell.x - cell_radius, center_cell.x + cell_radius + 1):
+			var cell := Vector2i(cell_x, cell_y)
+			if not guardian_grid.has(cell):
+				continue
+			var source_ids: Array = guardian_grid[cell]
+			for source_id_variant in source_ids:
+				var source_id := int(source_id_variant)
+				if source_id == enemy_id:
+					continue
+				var guardian := guardians.get(source_id) as Enemy
+				if guardian == null or not is_instance_valid(guardian) or guardian.is_dead:
+					continue
+				var guardian_config := guardian.config as YuanshiInsectGuardianConfig
+				if guardian_config == null or not guardian_config.aura_enabled:
+					continue
+				if _guardian_reaches_enemy(guardian, guardian_config, enemy):
+					desired_sources_scratch[source_id] = (
+						guardian_config.aura_physical_defense_bonus
+					)
+
+
+func _begin_candidate_query_epoch() -> int:
+	if candidate_query_epoch >= 2147483647:
+		candidate_seen_epoch_by_active_slot.fill(0)
+		candidate_query_epoch = 1
+	else:
+		candidate_query_epoch += 1
+	return candidate_query_epoch
 
 
 func _apply_source_diff(enemy: Enemy, desired_sources: Dictionary) -> void:
@@ -374,8 +488,26 @@ func _guardian_reaches_enemy(
 	guardian_config: YuanshiInsectGuardianConfig,
 	enemy: Enemy
 ) -> bool:
-	var aura_center := guardian.global_position
-	var aura_radius := _get_guardian_world_radius(guardian, guardian_config)
+	return _guardian_circle_reaches_enemy(
+		guardian.global_position,
+		_get_guardian_world_radius(guardian, guardian_config),
+		enemy
+	)
+
+
+func _snapshot_guardian_reaches_enemy(active_slot: int, enemy: Enemy) -> bool:
+	return _guardian_circle_reaches_enemy(
+		active_guardian_positions[active_slot],
+		active_guardian_radii[active_slot],
+		enemy
+	)
+
+
+func _guardian_circle_reaches_enemy(
+	aura_center: Vector2,
+	aura_radius: float,
+	enemy: Enemy
+) -> bool:
 	for shape_node in enemy.body_collision_shapes:
 		if (
 			shape_node != null

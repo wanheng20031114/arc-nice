@@ -173,6 +173,24 @@ func _verify_scene_structure(
 		"Enemy bucket cleanup must track only touched packed-array indices."
 	)
 	_expect(
+		dynamic_layer.use_multimesh_batches
+		and dynamic_layer.enemy_marker_multimesh != null
+		and dynamic_layer.enemy_marker_multimesh.transform_format
+		== MultiMesh.TRANSFORM_2D
+		and dynamic_layer.enemy_marker_multimesh.use_colors,
+		"Enemy density markers must use the authored colored 2D MultiMesh batch."
+	)
+	var static_layer := minimap.minimap_canvas.static_layer
+	_expect(
+		static_layer.use_multimesh_batches
+		and static_layer.static_tile_mesh != null
+		and static_layer.water_multimesh != null
+		and static_layer.wall_multimesh != null
+		and static_layer.enemy_gate_multimesh != null
+		and static_layer.home_gate_multimesh != null,
+		"Static topology must retain four authored MultiMesh batches in draw order."
+	)
+	_expect(
 		minimap.find_children("*", "SubViewport", true, false).is_empty(),
 		"The minimap must not render the world a second time through a SubViewport."
 	)
@@ -193,6 +211,60 @@ func _verify_static_topology(canvas: TowerDefenseMinimapCanvas) -> void:
 	_expect(
 		canvas.dynamic_layer.plant_world_positions.is_empty(),
 		"An empty PlantContainer must produce no phantom minimap plants."
+	)
+	_verify_static_multimesh_signature(
+		layer.water_multimesh,
+		layer.water_world_positions,
+		layer._water_batch_world_positions,
+		TowerDefenseMinimapStaticLayer.WATER_COLOR,
+		"water"
+	)
+	_verify_static_multimesh_signature(
+		layer.wall_multimesh,
+		layer.wall_world_positions,
+		layer._wall_batch_world_positions,
+		TowerDefenseMinimapStaticLayer.WALL_COLOR,
+		"wall"
+	)
+	_verify_static_multimesh_signature(
+		layer.enemy_gate_multimesh,
+		layer.enemy_gate_world_positions,
+		layer._enemy_gate_batch_world_positions,
+		TowerDefenseMinimapStaticLayer.ENEMY_GATE_COLOR,
+		"enemy gate"
+	)
+	_verify_static_multimesh_signature(
+		layer.home_gate_multimesh,
+		layer.home_gate_world_positions,
+		layer._home_gate_batch_world_positions,
+		TowerDefenseMinimapStaticLayer.HOME_GATE_COLOR,
+		"home gate"
+	)
+	_expect(
+		layer.static_tile_mesh.size.is_equal_approx(layer.tile_world_size),
+		"The shared static QuadMesh must preserve the authored world tile size."
+	)
+
+
+func _verify_static_multimesh_signature(
+	multimesh: MultiMesh,
+	positions: PackedVector2Array,
+	batch_positions: PackedVector2Array,
+	color: Color,
+	label: String
+) -> void:
+	_expect(
+		multimesh.instance_count == positions.size(),
+		"The %s MultiMesh count must match its topology source." % label
+	)
+	_expect(
+		batch_positions == positions,
+		"The %s CPU batch signature must exactly match its legacy topology source."
+		% label
+	)
+	_expect(
+		color.a > 0.0,
+		"The %s batch must retain a visible authored color." % label
 	)
 
 
@@ -278,6 +350,25 @@ func _verify_projection_and_coordinate(
 		),
 		"Both minimap layers must cache the shared world-to-canvas projection scale."
 	)
+	var static_redraw_count := canvas.static_layer._redraw_request_count
+	var dynamic_redraw_count := canvas.dynamic_layer._redraw_request_count
+	canvas.static_layer.set_projection(
+		canvas.static_layer.world_center,
+		canvas.static_layer.overview_world_size,
+		canvas.static_layer.visible_world_size
+	)
+	canvas.dynamic_layer.set_projection(
+		canvas.dynamic_layer.world_center,
+		canvas.dynamic_layer.overview_world_size
+	)
+	canvas.dynamic_layer.set_local_player_position(
+		canvas.dynamic_layer.local_player_world_position
+	)
+	_expect(
+		canvas.static_layer._redraw_request_count == static_redraw_count
+		and canvas.dynamic_layer._redraw_request_count == dynamic_redraw_count,
+		"Unchanged projection and local-player samples must not request redraws."
+	)
 	var projected_tile_rect := canvas.static_layer._world_rect_to_canvas(
 		Rect2(Vector2.ZERO, canvas.static_layer.tile_world_size)
 	)
@@ -347,6 +438,16 @@ func _verify_dynamic_markers(
 		TowerDefenseMinimapDynamicLayer.PLANT_COLOR == Color(0.52, 0.91, 0.54, 0.96),
 		"Plant markers must remain light green."
 	)
+	var redraw_count := canvas.dynamic_layer._redraw_request_count
+	canvas.dynamic_layer.set_world_entities(
+		canvas.dynamic_layer.remote_player_world_positions,
+		canvas.dynamic_layer.enemy_world_positions,
+		canvas.dynamic_layer.plant_world_positions
+	)
+	_expect(
+		canvas.dynamic_layer._redraw_request_count == redraw_count,
+		"An unchanged entity snapshot must not request another dynamic redraw."
+	)
 	_verify_enemy_marker_aggregation(canvas.dynamic_layer, enemy.global_position)
 
 
@@ -371,6 +472,19 @@ func _verify_enemy_marker_aggregation(
 	_expect(
 		buckets.size() == 1 and buckets[0]["count"] == 5,
 		"Enemies inside one 4 px canvas bucket must collapse into one density marker."
+	)
+	_expect(
+		dynamic_layer.enemy_marker_multimesh.visible_instance_count == 1
+		and dynamic_layer._enemy_marker_canvas_centers[0].is_equal_approx(
+			buckets[0]["canvas_position"]
+		)
+		and is_equal_approx(
+			dynamic_layer._enemy_marker_radii[0],
+			dynamic_layer.get_enemy_marker_radius(5)
+		)
+		and dynamic_layer._enemy_marker_bucket_indices[0]
+		== dynamic_layer._touched_enemy_bucket_indices[0],
+		"The batched enemy marker must preserve the dense bucket center, radius, and color."
 	)
 	_expect(
 		dynamic_layer.get_enemy_marker_radius(1)
@@ -420,6 +534,11 @@ func _verify_enemy_marker_aggregation(
 		and boundary_centers.has(Vector2(2.0, 42.0))
 		and boundary_centers.has(Vector2(6.0, 42.0)),
 		"Enemies at 3.99 px and 4.01 px must use adjacent fixed bucket centers."
+	)
+	_expect(
+		dynamic_layer.enemy_marker_multimesh.visible_instance_count
+		== boundary_buckets.size(),
+		"The enemy MultiMesh visible count must exactly match touched buckets."
 	)
 	if boundary_buckets.size() == 2:
 		var first_boundary_bucket: Dictionary = boundary_buckets[0]

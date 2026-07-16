@@ -119,6 +119,10 @@ func _test_resource_contract() -> void:
 		"GuardianAuraSystem must author EnemyContainer and BossContainer targets."
 	)
 	_expect(
+		guardian_aura_system.use_snapshot_coverage_grid,
+		"GuardianAuraSystem must default to the compact snapshot coverage grid."
+	)
+	_expect(
 		GUARDIAN_CONFIG is YuanshiInsectGuardianConfig,
 		"Guardian config must use YuanshiInsectGuardianConfig."
 	)
@@ -394,14 +398,31 @@ func _test_guardian_aura_matches_legacy_overlap() -> void:
 	for sample_position in sample_positions:
 		target.global_position = sample_position
 		await physics_frame
+		guardian_aura_system.use_snapshot_coverage_grid = true
 		guardian_aura_system.force_refresh_all()
-		var centralized_overlap: bool = guardian_aura_system.has_guardian_source(target, guardian)
+		var snapshot_overlap: bool = guardian_aura_system.has_guardian_source(target, guardian)
+		guardian_aura_system.use_snapshot_coverage_grid = false
+		guardian_aura_system.force_refresh_all()
+		var legacy_centralized_overlap: bool = guardian_aura_system.has_guardian_source(
+			target,
+			guardian
+		)
 		var legacy_overlap := _legacy_guardian_area_overlaps(guardian, target)
 		_expect(
-			centralized_overlap == legacy_overlap,
-			"Central guardian overlap diverged from legacy Area2D at %s (central=%s legacy=%s)."
-			% [sample_position, centralized_overlap, legacy_overlap]
+			snapshot_overlap == legacy_centralized_overlap
+			and snapshot_overlap == legacy_overlap,
+			(
+				"Snapshot guardian overlap diverged at %s "
+				+ "(snapshot=%s centralized_legacy=%s area_legacy=%s)."
+			)
+			% [
+				sample_position,
+				snapshot_overlap,
+				legacy_centralized_overlap,
+				legacy_overlap,
+			]
 		)
+	guardian_aura_system.use_snapshot_coverage_grid = true
 
 	target.collision_layer = 0
 	guardian_aura_system.force_refresh_all()
