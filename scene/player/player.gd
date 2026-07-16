@@ -129,6 +129,18 @@ const RANGED_DIRECTION_SIDE_THRESHOLD := 0.35
 const DEFAULT_SKILL1_DISPLAY_NAME := "技能"
 
 static var _collectible_temporary_source_serial: int = 0
+# Keep the former one-SceneTreeTimer-per-enemy path available for deterministic
+# A/B probes while production uses one expiry timer per area-slow application.
+static var collectible_slow_batch_expiry_enabled := true
+static var collectible_slow_expiry_metrics_enabled := false
+static var _collectible_slow_expiry_metrics := {
+	"target_registrations": 0,
+	"timer_count": 0,
+	"batch_timer_count": 0,
+	"legacy_timer_count": 0,
+	"expiry_callback_count": 0,
+	"removed_modifier_count": 0,
+}
 
 var facing_suffix: StringName = &"right"
 
@@ -208,6 +220,35 @@ var _wall_overlap_probe_required: bool = true
 var _wall_overlap_expected_position := Vector2.ZERO
 var _homing_target_shape := CircleShape2D.new()
 var _homing_target_query := PhysicsShapeQueryParameters2D.new()
+
+
+static func set_collectible_slow_batch_expiry_enabled(enabled: bool) -> void:
+	collectible_slow_batch_expiry_enabled = enabled
+
+
+static func set_collectible_slow_expiry_metrics_enabled(enabled: bool) -> void:
+	collectible_slow_expiry_metrics_enabled = enabled
+	reset_collectible_slow_expiry_metrics()
+
+
+static func reset_collectible_slow_expiry_metrics() -> void:
+	for metric_key in _collectible_slow_expiry_metrics:
+		_collectible_slow_expiry_metrics[metric_key] = 0
+
+
+static func get_collectible_slow_expiry_metrics(reset_after_read: bool = false) -> Dictionary:
+	var snapshot := _collectible_slow_expiry_metrics.duplicate()
+	if reset_after_read:
+		reset_collectible_slow_expiry_metrics()
+	return snapshot
+
+
+static func _increment_collectible_slow_expiry_metric(metric_key: String, amount: int = 1) -> void:
+	if not collectible_slow_expiry_metrics_enabled:
+		return
+	_collectible_slow_expiry_metrics[metric_key] = (
+		int(_collectible_slow_expiry_metrics.get(metric_key, 0)) + amount
+	)
 
 
 func get_navigation_collision_extent_radius() -> float:
@@ -2406,6 +2447,7 @@ func _trigger_frost_crystal(item: PickupConfig) -> void:
 		EnemyConfig.DamageType.MAGIC
 	)
 	var slow_source_id := _next_collectible_temporary_source_id()
+	var slow_enemy_refs: Array[WeakRef] = []
 	for enemy in _collect_alive_enemies():
 		if enemy == null or not is_instance_valid(enemy):
 			continue
@@ -2418,10 +2460,17 @@ func _trigger_frost_crystal(item: PickupConfig) -> void:
 			EnemyConfig.DamageType.MAGIC
 		)
 		enemy.add_move_speed_modifier(slow_source_id, item.periodic_slow_multiplier)
-		if item.periodic_slow_duration > 0.0:
-			get_tree().create_timer(item.periodic_slow_duration).timeout.connect(
-				_remove_collectible_enemy_slow.bind(weakref(enemy), slow_source_id)
+		_queue_collectible_enemy_slow_expiry(
+			enemy,
+			slow_source_id,
+			item.periodic_slow_duration,
+			slow_enemy_refs
 		)
+	_schedule_collectible_enemy_slow_batch_expiry(
+		slow_enemy_refs,
+		slow_source_id,
+		item.periodic_slow_duration
+	)
 	_spawn_collectible_frost_effect(radius, 0.4)
 
 
@@ -2462,6 +2511,7 @@ func _trigger_collectible_custom_frost(item: PickupConfig) -> void:
 		EnemyConfig.DamageType.MAGIC
 	)
 	var slow_source_id := _next_collectible_temporary_source_id()
+	var slow_enemy_refs: Array[WeakRef] = []
 	for enemy in _collect_alive_enemies():
 		if enemy == null or not is_instance_valid(enemy):
 			continue
@@ -2475,10 +2525,17 @@ func _trigger_collectible_custom_frost(item: PickupConfig) -> void:
 		)
 		if item.trigger_slow_multiplier < 1.0:
 			enemy.add_move_speed_modifier(slow_source_id, item.trigger_slow_multiplier)
-			if item.trigger_slow_duration > 0.0:
-				get_tree().create_timer(item.trigger_slow_duration).timeout.connect(
-					_remove_collectible_enemy_slow.bind(weakref(enemy), slow_source_id)
-				)
+			_queue_collectible_enemy_slow_expiry(
+				enemy,
+				slow_source_id,
+				item.trigger_slow_duration,
+				slow_enemy_refs
+			)
+	_schedule_collectible_enemy_slow_batch_expiry(
+		slow_enemy_refs,
+		slow_source_id,
+		item.trigger_slow_duration
+	)
 	_spawn_collectible_frost_effect(radius, 0.4)
 
 
@@ -2716,13 +2773,68 @@ func _spawn_collectible_sakura_rocket(target_enemy: Enemy, rocket_damage: int) -
 	return true
 
 
-func _remove_collectible_enemy_slow(enemy_ref: WeakRef, source_id: int) -> void:
+func _queue_collectible_enemy_slow_expiry(
+	enemy: Enemy,
+	source_id: int,
+	duration: float,
+	batch_enemy_refs: Array[WeakRef]
+) -> void:
+	if duration <= 0.0:
+		return
+	var enemy_ref: WeakRef = weakref(enemy)
+	Player._increment_collectible_slow_expiry_metric("target_registrations")
+	if Player.collectible_slow_batch_expiry_enabled:
+		batch_enemy_refs.append(enemy_ref)
+		return
+	Player._increment_collectible_slow_expiry_metric("timer_count")
+	Player._increment_collectible_slow_expiry_metric("legacy_timer_count")
+	get_tree().create_timer(duration).timeout.connect(
+		Player._remove_collectible_enemy_slow.bind(enemy_ref, source_id)
+	)
+
+
+func _schedule_collectible_enemy_slow_batch_expiry(
+	enemy_refs: Array[WeakRef],
+	source_id: int,
+	duration: float
+) -> void:
+	if (
+		not Player.collectible_slow_batch_expiry_enabled
+		or duration <= 0.0
+		or enemy_refs.is_empty()
+	):
+		return
+	Player._increment_collectible_slow_expiry_metric("timer_count")
+	Player._increment_collectible_slow_expiry_metric("batch_timer_count")
+	get_tree().create_timer(duration).timeout.connect(
+		Player._remove_collectible_enemy_slow_batch.bind(enemy_refs, source_id)
+	)
+
+
+static func _remove_collectible_enemy_slow_batch(
+	enemy_refs: Array[WeakRef],
+	source_id: int
+) -> void:
+	Player._increment_collectible_slow_expiry_metric("expiry_callback_count")
+	for enemy_ref in enemy_refs:
+		Player._remove_collectible_enemy_slow_from_ref(enemy_ref, source_id)
+
+
+static func _remove_collectible_enemy_slow(enemy_ref: WeakRef, source_id: int) -> void:
+	Player._increment_collectible_slow_expiry_metric("expiry_callback_count")
+	Player._remove_collectible_enemy_slow_from_ref(enemy_ref, source_id)
+
+
+static func _remove_collectible_enemy_slow_from_ref(enemy_ref: WeakRef, source_id: int) -> void:
 	var enemy: Enemy = null
 	if enemy_ref != null:
 		enemy = enemy_ref.get_ref() as Enemy
 	if enemy == null or not is_instance_valid(enemy):
 		return
+	if not enemy.move_speed_modifiers.has(source_id):
+		return
 	enemy.remove_move_speed_modifier(source_id)
+	Player._increment_collectible_slow_expiry_metric("removed_modifier_count")
 
 
 func _apply_authoritative_collectible_enemy_damage(
@@ -2832,6 +2944,7 @@ func _apply_collectible_area_frost(
 		EnemyConfig.DamageType.MAGIC
 	)
 	var slow_source_id := _next_collectible_temporary_source_id()
+	var slow_enemy_refs: Array[WeakRef] = []
 	for enemy in _collect_alive_enemies():
 		if enemy == null or not is_instance_valid(enemy):
 			continue
@@ -2845,10 +2958,17 @@ func _apply_collectible_area_frost(
 		)
 		if slow_multiplier < 1.0:
 			enemy.add_move_speed_modifier(slow_source_id, slow_multiplier)
-			if slow_duration > 0.0:
-				get_tree().create_timer(slow_duration).timeout.connect(
-					_remove_collectible_enemy_slow.bind(weakref(enemy), slow_source_id)
-				)
+			_queue_collectible_enemy_slow_expiry(
+				enemy,
+				slow_source_id,
+				slow_duration,
+				slow_enemy_refs
+			)
+	_schedule_collectible_enemy_slow_batch_expiry(
+		slow_enemy_refs,
+		slow_source_id,
+		slow_duration
+	)
 	_spawn_collectible_frost_effect_at(center_position, effective_radius, 0.4)
 
 

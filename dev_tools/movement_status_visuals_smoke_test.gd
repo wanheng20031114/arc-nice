@@ -226,6 +226,10 @@ func _test_enemy_movement_status_visuals() -> void:
 	enemy.add_move_speed_modifier(101, 0.5)
 	enemy.call("_update_movement_status_visuals")
 	_expect(
+		not enemy.is_processing(),
+		"A static slow overlay must update event-wise without enabling Enemy._process."
+	)
+	_expect(
 		_get_instance_shader_float(sprite, SLOW_OVERLAY_PARAMETER) > 0.0,
 		"Enemy speed down modifier must apply the slow overlay."
 	)
@@ -246,6 +250,10 @@ func _test_enemy_movement_status_visuals() -> void:
 	enemy.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
 	enemy.add_move_speed_modifier(102, 1.35)
 	enemy.call("_update_movement_status_visuals")
+	_expect(
+		enemy.is_processing(),
+		"Haste must retain Enemy._process so its pooled trail follows live velocity."
+	)
 	var speed_trail := enemy.speed_trail_effect as Node2D
 	var trail_particles := (
 		speed_trail.get_node_or_null("TrailParticles") as GPUParticles2D
@@ -310,10 +318,24 @@ func _test_enemy_movement_status_visuals() -> void:
 		"The speed-trail pool must report no in-use lease after haste expires."
 	)
 	_expect(
+		not enemy.is_processing(),
+		"Removing the final haste must disable status processing when no timed status remains."
+	)
+	_expect(
 		is_instance_valid(speed_trail)
 		and speed_trail.get_parent() == session_object_pool
 		and not bool(speed_trail.get_meta(SessionObjectPool.POOL_ACTIVE_META, true)),
 		"A released trail must return to the pool hierarchy without retaining the enemy parent."
+	)
+	enemy.apply_collectible_status(&"mark", 304, 0.2)
+	_expect(
+		enemy.is_processing(),
+		"A timed collectible status must keep Enemy._process enabled for expiry and ticks."
+	)
+	enemy.call("_update_collectible_status_effects", 0.21)
+	_expect(
+		not enemy.is_processing(),
+		"Expiring the final timed status must disable Enemy._process again."
 	)
 	var health_before_hit := enemy.current_health
 	enemy.apply_damage(1, Vector2.RIGHT)

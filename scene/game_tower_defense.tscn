@@ -37,6 +37,7 @@
 [ext_resource type="ShaderMaterial" path="res://resources/shader/plant_lifecycle_material.tres" id="38_plant_lifecycle_material"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/production_coordinator.tscn" id="39_production_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/production_building_panel.tscn" id="40_production_panel"]
+[ext_resource type="Script" uid="uid://dfuccjc7ww0jj" path="res://scene/enemy/capoo_sniper_lock_visual_coordinator.gd" id="41_sniper_lock_visuals"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -304,6 +305,9 @@ layer = 30
 
 [node name="DamageNumberPool" type="Node2D" parent="." unique_id=788052799]
 script = ExtResource("18_damage_pool")
+
+[node name="SniperLockVisualCoordinator" type="Node" parent="."]
+script = ExtResource("41_sniper_lock_visuals")
 
 [node name="SessionObjectPool" type="Node2D" parent="." unique_id=501179968]
 script = ExtResource("29_session_pool")

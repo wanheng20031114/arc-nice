@@ -6,6 +6,9 @@ const SMG_SCENE := preload("res://scene/enemy/capoo_smg.tscn")
 const FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
 const FIREBALL_IMPACT_SCENE := preload("res://scene/enemy/capoo_mage_fireball_impact.tscn")
 const RETICLE_SCENE := preload("res://scene/enemy/capoo_sniper_lock_reticle.tscn")
+const RETICLE_COORDINATOR_SCRIPT := preload(
+	"res://scene/enemy/capoo_sniper_lock_visual_coordinator.gd"
+)
 const SMG_BULLET_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const MAGE_CONFIG := preload("res://resources/config/enemies/capoo_mage.tres")
@@ -20,6 +23,7 @@ var failures: Array[String] = []
 var test_root: Node2D
 var spawned_fireballs: Array[CapooMageFireball] = []
 var spawned_smg_bullets: Array[CapooAK47Bullet] = []
+var reticle_coordinator: CapooSniperLockVisualCoordinator = null
 
 
 func _init() -> void:
@@ -32,6 +36,9 @@ func _run() -> void:
 	root.add_child(test_root)
 	current_scene = test_root
 	test_root.child_entered_tree.connect(_on_child_entered_tree)
+	reticle_coordinator = RETICLE_COORDINATOR_SCRIPT.new() as CapooSniperLockVisualCoordinator
+	reticle_coordinator.name = "SniperLockVisualCoordinator"
+	test_root.add_child(reticle_coordinator)
 
 	_test_resource_contract()
 	await _test_reticle_highest_progress_priority()
@@ -124,6 +131,29 @@ func _test_resource_contract() -> void:
 	_expect(_has_fireball_impact_audio(), "Fireball impact audio contract failed.")
 	_expect(_sprite_frames_count("res://resources/animation/capoo_smg_bullet.tres", &"fly") == 3, "SMG bullet frame count mismatch.")
 	_expect(_has_reticle_scene_contract(), "Sniper reticle scene contract failed.")
+	_test_reticle_coordinator_scene_installation()
+
+
+func _test_reticle_coordinator_scene_installation() -> void:
+	for scene_path in ["res://scene/game.tscn", "res://scene/game_tower_defense.tscn"]:
+		var packed_scene := load(scene_path) as PackedScene
+		var game_instance := packed_scene.instantiate() if packed_scene != null else null
+		_expect(game_instance != null, "Sniper coordinator scene fixture failed to instantiate: %s" % scene_path)
+		if game_instance == null:
+			continue
+		var coordinator := game_instance.get_node_or_null("SniperLockVisualCoordinator")
+		var enemy_container := game_instance.get_node_or_null("EnemyContainer")
+		_expect(
+			coordinator is CapooSniperLockVisualCoordinator,
+			"Gameplay scene must author the shared sniper lock coordinator: %s" % scene_path
+		)
+		_expect(
+			coordinator != null
+			and enemy_container != null
+			and coordinator.get_index() < enemy_container.get_index(),
+			"Coordinator must enter the tree before runtime enemies can spawn: %s" % scene_path
+		)
+		game_instance.free()
 
 
 func _test_reticle_highest_progress_priority() -> void:
@@ -146,6 +176,11 @@ func _test_reticle_highest_progress_priority() -> void:
 	slow_reticle.set_progress(0.35)
 	urgent_reticle.set_progress(0.75)
 	await process_frame
+	_expect(
+		slow_reticle.uses_coordinated_arbitration()
+		and urgent_reticle.uses_coordinated_arbitration(),
+		"Runtime sniper reticles must register with the shared visual coordinator."
+	)
 	_expect(not slow_reticle.is_progress_display_active(), "Lower sniper reticle progress must stay hidden.")
 	_expect(urgent_reticle.is_progress_display_active(), "Highest sniper reticle progress must be visible.")
 
@@ -154,6 +189,28 @@ func _test_reticle_highest_progress_priority() -> void:
 	await process_frame
 	_expect(slow_reticle.is_progress_display_active(), "Reticle priority did not move to the new highest progress.")
 	_expect(not urgent_reticle.is_progress_display_active(), "Reticle with lower updated progress remained visible.")
+
+	slow_reticle.set_progress(0.8)
+	urgent_reticle.set_progress(0.8)
+	await process_frame
+	var tie_winner := (
+		urgent_reticle
+		if urgent_reticle.get_instance_id() > slow_reticle.get_instance_id()
+		else slow_reticle
+	)
+	_expect(
+		tie_winner.is_progress_display_active(),
+		"Equal-progress reticles must preserve the highest-instance-id tie break."
+	)
+	var cancelled_winner := tie_winner
+	var remaining_reticle := slow_reticle if cancelled_winner == urgent_reticle else urgent_reticle
+	cancelled_winner.get_parent().remove_child(cancelled_winner)
+	cancelled_winner.free()
+	await process_frame
+	_expect(
+		remaining_reticle.is_progress_display_active(),
+		"Cancelling the winning lock must promote the remaining target reticle."
+	)
 
 	player.queue_free()
 	await process_frame

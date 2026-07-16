@@ -68,6 +68,9 @@ enum DeathSequenceStage {
 }
 
 static var performance_metrics_enabled := false
+# Explicit A/B switch for the former behavior where every movement modifier,
+# including a visually static slow, enabled one render-frame callback per enemy.
+static var slow_only_status_process_optimization_enabled := true
 static var _next_navigation_phase_offset := 0
 static var _performance_metrics := {
 	"touch_damage_calls": 0,
@@ -80,6 +83,8 @@ static var _performance_metrics := {
 	"move_and_slide_usec": 0,
 	"verified_direct_move_calls": 0,
 	"verified_direct_move_distance": 0.0,
+	"status_process_calls": 0,
+	"status_process_usec": 0,
 }
 
 @export var config: EnemyConfig
@@ -176,6 +181,10 @@ static func set_performance_metrics_enabled(enabled: bool) -> void:
 	reset_performance_metrics()
 
 
+static func set_slow_only_status_process_optimization_enabled(enabled: bool) -> void:
+	slow_only_status_process_optimization_enabled = enabled
+
+
 static func reset_performance_metrics() -> void:
 	_performance_metrics["touch_damage_calls"] = 0
 	_performance_metrics["touch_damage_usec"] = 0
@@ -187,6 +196,8 @@ static func reset_performance_metrics() -> void:
 	_performance_metrics["move_and_slide_usec"] = 0
 	_performance_metrics["verified_direct_move_calls"] = 0
 	_performance_metrics["verified_direct_move_distance"] = 0.0
+	_performance_metrics["status_process_calls"] = 0
+	_performance_metrics["status_process_usec"] = 0
 
 
 static func get_performance_metrics(reset_after_read: bool = false) -> Dictionary:
@@ -257,10 +268,37 @@ func _apply_terrain_collision_profile() -> void:
 
 
 func _process(delta: float) -> void:
-	if collectible_status_effects.is_empty() and move_speed_modifiers.is_empty():
+	var metrics_started_usec := Time.get_ticks_usec() if Enemy.performance_metrics_enabled else 0
+	if not _status_requires_render_process():
+		# This also makes a runtime A/B switch converge without waiting for another
+		# modifier mutation to call _refresh_status_process_enabled().
+		set_process(false)
+		if Enemy.performance_metrics_enabled:
+			Enemy._record_performance_metric(
+				"status_process_calls",
+				"status_process_usec",
+				metrics_started_usec
+			)
 		return
 	_update_collectible_status_effects(delta)
 	_update_movement_status_visuals()
+	if Enemy.performance_metrics_enabled:
+		Enemy._record_performance_metric(
+			"status_process_calls",
+			"status_process_usec",
+			metrics_started_usec
+		)
+
+
+func _status_requires_render_process() -> bool:
+	if not collectible_status_effects.is_empty():
+		return true
+	if not Enemy.slow_only_status_process_optimization_enabled:
+		return not move_speed_modifiers.is_empty()
+	# Slow overlays are static instance-shader parameters and are refreshed at
+	# modifier add/remove time. Only haste needs render-frame work to follow the
+	# enemy velocity and acquire/release its pooled trail while movement changes.
+	return _has_move_speed_modifier_above_default()
 
 
 func _refresh_status_process_enabled() -> void:
@@ -269,7 +307,7 @@ func _refresh_status_process_enabled() -> void:
 		return
 	if is_multiplayer_proxy:
 		return
-	set_process(not collectible_status_effects.is_empty() or not move_speed_modifiers.is_empty())
+	set_process(_status_requires_render_process())
 
 
 func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = null) -> void:

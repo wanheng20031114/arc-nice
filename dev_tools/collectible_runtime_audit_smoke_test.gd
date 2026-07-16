@@ -40,6 +40,7 @@ func _run() -> void:
 	current_scene = test_root
 
 	await _test_frost_sources_stack_and_expire_independently()
+	await _test_frost_expiry_outlives_source_player()
 	await _test_status_expiry_precedes_same_frame_tick_damage()
 	await _test_every_collectible_runtime_effect()
 
@@ -80,10 +81,15 @@ func _test_every_collectible_runtime_effect() -> void:
 
 
 func _test_frost_sources_stack_and_expire_independently() -> void:
+	Player.set_collectible_slow_batch_expiry_enabled(true)
+	Player.set_collectible_slow_expiry_metrics_enabled(true)
+	Enemy.set_slow_only_status_process_optimization_enabled(true)
 	var player := _spawn_player()
 	var enemy := _spawn_enemy(Vector2(20.0, 0.0), player)
+	var second_enemy := _spawn_enemy(Vector2(28.0, 0.0), player)
 	await process_frame
 	enemy.current_health = 500
+	second_enemy.current_health = 500
 
 	# These two applications happen consecutively in the same frame. The former
 	# millisecond-derived IDs collided here and let the first timer erase both.
@@ -92,6 +98,23 @@ func _test_frost_sources_stack_and_expire_independently() -> void:
 	_expect(
 		enemy.move_speed_modifiers.size() == 2,
 		"Same-frame frost applications must receive distinct temporary source IDs."
+	)
+	_expect(
+		second_enemy.move_speed_modifiers.size() == 2,
+		"Every enemy in consecutive frost batches must retain both unique sources."
+	)
+	_expect(
+		not enemy.is_processing() and not second_enemy.is_processing(),
+		"Enemies with only static slow overlays must not run a render-frame status callback."
+	)
+	var scheduled_metrics := Player.get_collectible_slow_expiry_metrics()
+	_expect(
+		int(scheduled_metrics.get("target_registrations", -1)) == 4
+		and int(scheduled_metrics.get("timer_count", -1)) == 2
+		and int(scheduled_metrics.get("batch_timer_count", -1)) == 2
+		and int(scheduled_metrics.get("legacy_timer_count", -1)) == 0,
+		"Two two-target frost casts must schedule two batch timers instead of four per-target timers: %s."
+		% [scheduled_metrics]
 	)
 	var combined_multiplier := 1.0
 	for source_id in enemy.move_speed_modifiers:
@@ -107,6 +130,10 @@ func _test_frost_sources_stack_and_expire_independently() -> void:
 		enemy.move_speed_modifiers.size() == 1,
 		"The earlier frost timer must remove only its own source."
 	)
+	_expect(
+		second_enemy.move_speed_modifiers.size() == 1,
+		"The earlier batch must remove its source from every still-valid target."
+	)
 	if enemy.move_speed_modifiers.size() == 1:
 		_expect(
 			is_equal_approx(float(enemy.move_speed_modifiers.values()[0]), 0.5),
@@ -115,9 +142,54 @@ func _test_frost_sources_stack_and_expire_independently() -> void:
 
 	await create_timer(0.14).timeout
 	_expect(
-		enemy.move_speed_modifiers.is_empty(),
+		enemy.move_speed_modifiers.is_empty() and second_enemy.move_speed_modifiers.is_empty(),
 		"Each frost source must expire independently at the end of its own duration."
 	)
+	var expired_metrics := Player.get_collectible_slow_expiry_metrics()
+	_expect(
+		int(expired_metrics.get("expiry_callback_count", -1)) == 2
+		and int(expired_metrics.get("removed_modifier_count", -1)) == 4,
+		"Each frost batch must use one callback while removing all four target/source pairs: %s."
+		% [expired_metrics]
+	)
+	Player.set_collectible_slow_expiry_metrics_enabled(false)
+	_cleanup_test_children()
+	await process_frame
+
+
+func _test_frost_expiry_outlives_source_player() -> void:
+	for batched_expiry_enabled in [false, true]:
+		Player.set_collectible_slow_batch_expiry_enabled(batched_expiry_enabled)
+		var player := _spawn_player()
+		var enemy := _spawn_enemy(Vector2(20.0, 0.0), player)
+		await process_frame
+		enemy.current_health = 500
+		player.call(
+			"_apply_collectible_area_frost",
+			Vector2.ZERO,
+			48.0,
+			1,
+			0.5,
+			0.05
+		)
+		_expect(
+			enemy.move_speed_modifiers.size() == 1,
+			"Frost must be active before its source player leaves the scene."
+		)
+		player.queue_free()
+		await process_frame
+		await create_timer(0.09).timeout
+		_expect(
+			enemy.move_speed_modifiers.is_empty(),
+			(
+				"Frost expiry must not depend on the source Player lifetime "
+				+ "(batched=%s)."
+			)
+			% [str(batched_expiry_enabled)]
+		)
+		enemy.queue_free()
+		await process_frame
+	Player.set_collectible_slow_batch_expiry_enabled(true)
 	_cleanup_test_children()
 	await process_frame
 
