@@ -1,0 +1,422 @@
+[gd_scene load_steps=13 format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/production_building_panel.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/production/production_panel_background.png" id="2_background"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/oak_warehouse_inventory_slot.tscn" id="3_slot"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font = ExtResource("4_font")
+font_size = 22
+font_color = Color(1, 0.84, 0.45, 1)
+outline_size = 5
+outline_color = Color(0.08, 0.035, 0.02, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_section"]
+font = ExtResource("4_font")
+font_size = 16
+font_color = Color(0.96, 0.83, 0.57, 1)
+outline_size = 3
+outline_color = Color(0.06, 0.03, 0.02, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_small"]
+font = ExtResource("4_font")
+font_size = 13
+font_color = Color(0.86, 0.79, 0.67, 1)
+outline_size = 2
+outline_color = Color(0.05, 0.025, 0.015, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_toggle_off"]
+bg_color = Color(0.27, 0.12, 0.08, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.73, 0.35, 0.18, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_toggle_on"]
+bg_color = Color(0.12, 0.32, 0.19, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.55, 0.9, 0.42, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_recipe"]
+bg_color = Color(0.07, 0.055, 0.05, 0.82)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.42, 0.33, 0.25, 0.95)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_recipe_active"]
+bg_color = Color(0.2, 0.33, 0.16, 0.94)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.98, 0.76, 0.28, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_material_list"]
+bg_color = Color(0.055, 0.042, 0.035, 0.98)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.65, 0.43, 0.2, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+shadow_color = Color(0, 0, 0, 0.65)
+shadow_size = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_material_row"]
+bg_color = Color(0.11, 0.08, 0.06, 0.88)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.43, 0.31, 0.19, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_material_hover"]
+bg_color = Color(0.23, 0.17, 0.09, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.9, 0.66, 0.25, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_progress_bg"]
+bg_color = Color(0.025, 0.02, 0.018, 0.9)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.33, 0.26, 0.19, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_progress_fill"]
+bg_color = Color(0.83, 0.54, 0.16, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.82, 0.34, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[node name="ProductionBuildingPanel" type="CanvasLayer"]
+visible = false
+layer = 70
+script = ExtResource("1_script")
+
+[node name="Overlay" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Dim" type="ColorRect" parent="Overlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.012, 0.01, 0.009, 0.74)
+
+[node name="PanelRoot" type="Control" parent="Overlay"]
+texture_filter = 1
+layout_mode = 0
+offset_right = 728.0
+offset_bottom = 544.0
+
+[node name="Background" type="TextureRect" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_right = 728.0
+offset_bottom = 544.0
+mouse_filter = 2
+texture = ExtResource("2_background")
+
+[node name="BuildingTitle" type="Label" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 84.0
+offset_top = 23.0
+offset_right = 620.0
+offset_bottom = 62.0
+text = "生产建筑"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ToggleButton" type="Button" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 658.0
+offset_top = 20.0
+offset_right = 704.0
+offset_bottom = 66.0
+toggle_mode = true
+button_pressed = true
+tooltip_text = "暂停生产并清空本轮进度"
+theme_override_colors/font_color = Color(1, 0.92, 0.65, 1)
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBoxFlat_toggle_off")
+theme_override_styles/hover = SubResource("StyleBoxFlat_toggle_on")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_toggle_on")
+theme_override_styles/focus = SubResource("StyleBoxFlat_toggle_on")
+text = "Ⅱ"
+
+[node name="InputTitle" type="Label" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 44.0
+offset_top = 196.0
+offset_right = 124.0
+offset_bottom = 224.0
+text = "原材料"
+label_settings = SubResource("LabelSettings_section")
+horizontal_alignment = 1
+
+[node name="OutputTitle" type="Label" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 298.0
+offset_top = 196.0
+offset_right = 445.0
+offset_bottom = 224.0
+text = "产物槽位"
+label_settings = SubResource("LabelSettings_section")
+horizontal_alignment = 1
+
+[node name="InputSlot" parent="Overlay/PanelRoot" instance=ExtResource("3_slot")]
+layout_mode = 0
+offset_left = 57.0
+offset_top = 257.0
+offset_right = 109.0
+offset_bottom = 315.0
+tooltip_text = "点击查看可选物资"
+
+[node name="ProgressBar" type="ProgressBar" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 122.0
+offset_top = 271.0
+offset_right = 286.0
+offset_bottom = 296.0
+mouse_filter = 2
+theme_override_styles/background = SubResource("StyleBoxFlat_progress_bg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_progress_fill")
+show_percentage = false
+
+[node name="ProgressLabel" type="Label" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 115.0
+offset_top = 304.0
+offset_right = 294.0
+offset_bottom = 331.0
+text = "请选择右侧配方"
+label_settings = SubResource("LabelSettings_small")
+horizontal_alignment = 1
+
+[node name="OutputSlot1" parent="Overlay/PanelRoot" instance=ExtResource("3_slot")]
+layout_mode = 0
+offset_left = 301.0
+offset_top = 257.0
+offset_right = 353.0
+offset_bottom = 315.0
+mouse_filter = 2
+
+[node name="OutputSlot2" parent="Overlay/PanelRoot" instance=ExtResource("3_slot")]
+layout_mode = 0
+offset_left = 350.0
+offset_top = 257.0
+offset_right = 402.0
+offset_bottom = 315.0
+mouse_filter = 2
+
+[node name="OutputSlot3" parent="Overlay/PanelRoot" instance=ExtResource("3_slot")]
+layout_mode = 0
+offset_left = 399.0
+offset_top = 257.0
+offset_right = 451.0
+offset_bottom = 315.0
+mouse_filter = 2
+
+[node name="MaterialList" type="PanelContainer" parent="Overlay/PanelRoot"]
+visible = false
+z_index = 20
+layout_mode = 0
+offset_left = 43.0
+offset_top = 322.0
+offset_right = 250.0
+offset_bottom = 432.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_material_list")
+
+[node name="ListMargin" type="MarginContainer" parent="Overlay/PanelRoot/MaterialList"]
+layout_mode = 2
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 6
+
+[node name="Rows" type="VBoxContainer" parent="Overlay/PanelRoot/MaterialList/ListMargin"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="WoodButton" type="Button" parent="Overlay/PanelRoot/MaterialList/ListMargin/Rows"]
+custom_minimum_size = Vector2(0, 45)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_material_row")
+theme_override_styles/hover = SubResource("StyleBoxFlat_material_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_material_hover")
+text = "木头"
+icon_max_width = 32
+alignment = 0
+
+[node name="SaplingButton" type="Button" parent="Overlay/PanelRoot/MaterialList/ListMargin/Rows"]
+custom_minimum_size = Vector2(0, 45)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_material_row")
+theme_override_styles/hover = SubResource("StyleBoxFlat_material_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_material_hover")
+text = "树苗"
+icon_max_width = 32
+alignment = 0
+
+[node name="RecipeTitle" type="Label" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 500.0
+offset_top = 112.0
+offset_right = 688.0
+offset_bottom = 143.0
+text = "配方方案"
+label_settings = SubResource("LabelSettings_section")
+horizontal_alignment = 1
+
+[node name="RecipeScroll" type="ScrollContainer" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 499.0
+offset_top = 150.0
+offset_right = 691.0
+offset_bottom = 430.0
+horizontal_scroll_mode = 0
+
+[node name="RecipeRows" type="VBoxContainer" parent="Overlay/PanelRoot/RecipeScroll"]
+custom_minimum_size = Vector2(184, 0)
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="RecipeRow1" type="Button" parent="Overlay/PanelRoot/RecipeScroll/RecipeRows"]
+custom_minimum_size = Vector2(184, 72)
+layout_mode = 2
+toggle_mode = true
+theme_override_colors/font_color = Color(0.92, 0.84, 0.7, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/hover = SubResource("StyleBoxFlat_recipe_active")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_active")
+theme_override_styles/focus = SubResource("StyleBoxFlat_recipe_active")
+text = "木头 → 木板"
+icon_max_width = 34
+alignment = 0
+
+[node name="RecipeRow2" type="Button" parent="Overlay/PanelRoot/RecipeScroll/RecipeRows"]
+visible = false
+custom_minimum_size = Vector2(184, 72)
+layout_mode = 2
+toggle_mode = true
+theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_active")
+
+[node name="RecipeRow3" type="Button" parent="Overlay/PanelRoot/RecipeScroll/RecipeRows"]
+visible = false
+custom_minimum_size = Vector2(184, 72)
+layout_mode = 2
+toggle_mode = true
+theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_active")
+
+[node name="RecipeRow4" type="Button" parent="Overlay/PanelRoot/RecipeScroll/RecipeRows"]
+visible = false
+custom_minimum_size = Vector2(184, 72)
+layout_mode = 2
+toggle_mode = true
+theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_active")
+
+[node name="RecipeRow5" type="Button" parent="Overlay/PanelRoot/RecipeScroll/RecipeRows"]
+visible = false
+custom_minimum_size = Vector2(184, 72)
+layout_mode = 2
+toggle_mode = true
+theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_active")
+
+[node name="RecipeRow6" type="Button" parent="Overlay/PanelRoot/RecipeScroll/RecipeRows"]
+visible = false
+custom_minimum_size = Vector2(184, 72)
+layout_mode = 2
+toggle_mode = true
+theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_active")
+
+[node name="StatusLabel" type="Label" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 45.0
+offset_top = 440.0
+offset_right = 466.0
+offset_bottom = 492.0
+text = "原料和产物只在一轮完成瞬间于全场仓库中结算。"
+label_settings = SubResource("LabelSettings_small")
+autowrap_mode = 2
+vertical_alignment = 1
+
+[node name="CloseButton" type="Button" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 548.0
+offset_top = 456.0
+offset_right = 657.0
+offset_bottom = 493.0
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/hover = SubResource("StyleBoxFlat_recipe_active")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_active")
+text = "关闭"
+
+[node name="TransientStatusTimer" type="Timer" parent="."]
+wait_time = 2.0
+one_shot = true

@@ -35,6 +35,8 @@
 [ext_resource type="PackedScene" path="res://scene/enemy/guardian_aura_system.tscn" id="36_guardian_aura_system"]
 [ext_resource type="Texture2D" path="res://resources/texture/plant_defense/vegetation_stake/vegetation_stake.png" id="37_plant_lifecycle_prewarm_texture"]
 [ext_resource type="ShaderMaterial" path="res://resources/shader/plant_lifecycle_material.tres" id="38_plant_lifecycle_material"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/production_coordinator.tscn" id="39_production_coordinator"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/production_building_panel.tscn" id="40_production_panel"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -258,6 +260,8 @@ terrain_map_path = NodePath("../DualGridTerrain")
 
 [node name="VegetationSpreadSystem" parent="." instance=ExtResource("33_vegetation_spread")]
 
+[node name="ProductionCoordinator" parent="." instance=ExtResource("39_production_coordinator")]
+
 [node name="OverlayTileMapLayer" type="TileMapLayer" parent="." unique_id=852138298]
 z_index = 1
 tile_map_data = PackedByteArray("AAA5ACsAAAAAAAAAAAA6ACsAAAAAAAAAAAA7ACsAAAAAAAAAAAA8ACsAAAAAAAAAAAA5AAIAAAAAAAAAAAA6AAIAAAAAAAAAAAA7AAIAAAAAAAAAAAA8AAIAAAAAAAAAAABHAAwAAAAAAAAAAABHAA0AAAAAAAAAAABHAB4AAAAAAAAAAABHAB8AAAAAAAAAAABHACAAAAAAAAAAAABHACEAAAAAAAAAAABHAA4AAAAAAAAAAABHAA8AAAAAAAAAAAAdAAIAAAAAAAAAAAAeAAIAAAAAAAAAAAAfAAIAAAAAAAAAAAAgAAIAAAAAAAAAAAAdACsAAAAAAAAAAAAeACsAAAAAAAAAAAAfACsAAAAAAAAAAAAgACsAAAAAAAAAAAACABYAAAAAAAMAAAADABYAAAAAAAMAAAADABcAAAAAAAMAAAACABcAAAAAAAMAAAA=")
@@ -284,6 +288,9 @@ visible = false
 [node name="TowerDefenseMinimap" parent="." unique_id=1375760873 instance=ExtResource("32_minimap")]
 
 [node name="OakWarehousePanel" parent="." instance=ExtResource("35_oak_warehouse_panel")]
+visible = false
+
+[node name="ProductionBuildingPanel" parent="." instance=ExtResource("40_production_panel")]
 visible = false
 
 [node name="PlayerProfilePanel" parent="." unique_id=1216528429 instance=ExtResource("13_profile_panel")]

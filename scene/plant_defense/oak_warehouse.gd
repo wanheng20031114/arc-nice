@@ -6,7 +6,7 @@ signal storage_command_requested(command: Dictionary)
 signal storage_snapshot_requested(warehouse_net_id: int)
 
 const STORAGE_CAPACITY := RunStateStore.INVENTORY_CAPACITY
-const INTERACTION_GROUP := &"oak_warehouse_interaction"
+const INTERACTION_GROUP := PlantDefense.BUILDING_INTERACTION_GROUP
 const INTERACTION_SELECTION_REFRESH_SECONDS := 0.08
 const MULTIPLAYER_STORAGE_REQUEST_TIMEOUT_SECONDS := 4.0
 
@@ -112,6 +112,14 @@ func is_modal_ui_open() -> bool:
 	return _has_bound_storage_panel() and storage_panel.is_open()
 
 
+func get_interaction_player() -> Player:
+	return nearby_player
+
+
+func set_interaction_target_selected(selected: bool) -> void:
+	_set_interaction_target(selected)
+
+
 func _has_bound_storage_panel() -> bool:
 	return (
 		storage_panel != null
@@ -146,6 +154,67 @@ func get_storage_item_count(slot_index: int) -> int:
 
 func get_storage_revision() -> int:
 	return storage_revision
+
+
+func get_storage_item_total(item: PickupConfig) -> int:
+	if item == null:
+		return 0
+	var total := 0
+	for slot_index in STORAGE_CAPACITY:
+		if _items_share_stack(storage_items[slot_index], item):
+			total += get_storage_item_count(slot_index)
+	return total
+
+
+func export_production_storage_snapshot() -> Dictionary:
+	return {
+		"warehouse": self,
+		"revision": storage_revision,
+		"items": storage_items.duplicate(),
+		"counts": storage_stack_counts.duplicate(),
+		"changed": false,
+	}
+
+
+func apply_production_storage_snapshot(
+	items: Array,
+	counts: Array,
+	expected_revision: int,
+	emit_change_signal: bool = true
+) -> bool:
+	if (
+		is_multiplayer_proxy
+		or is_dead
+		or is_removing
+		or not is_operational
+		or expected_revision != storage_revision
+		or items.size() != STORAGE_CAPACITY
+		or counts.size() != STORAGE_CAPACITY
+	):
+		return false
+	for slot_index in STORAGE_CAPACITY:
+		var item := items[slot_index] as PickupConfig
+		var count := int(counts[slot_index])
+		if item == null:
+			if count != 0:
+				return false
+			continue
+		if (
+			not item.can_store_in_inventory
+			or count <= 0
+			or count > _get_stack_limit(item)
+		):
+			return false
+	storage_items.assign(items)
+	storage_stack_counts.assign(counts)
+	storage_revision += 1
+	if emit_change_signal:
+		storage_changed.emit()
+	return true
+
+
+func notify_production_storage_changed() -> void:
+	storage_changed.emit()
 
 
 func configure_multiplayer_storage(
@@ -1030,78 +1099,65 @@ func on_shared_storage_panel_closed(panel: OakWarehousePanel) -> void:
 func _refresh_interaction_selection(player: Player) -> void:
 	if player == null or not is_instance_valid(player) or get_tree() == null:
 		return
-	var nearby_warehouses: Array[OakWarehouse] = []
-	var nearest_warehouse: OakWarehouse = null
+	var nearby_buildings: Array[PlantDefense] = []
+	var nearest_building: PlantDefense = null
 	var nearest_distance_squared := INF
-	var warehouse_panel_is_open := false
+	var building_panel_is_open := false
 	for node in get_tree().get_nodes_in_group(INTERACTION_GROUP):
-		var warehouse := node as OakWarehouse
+		var building := node as PlantDefense
 		if (
-			warehouse == null
-			or not is_instance_valid(warehouse)
-			or warehouse.is_queued_for_deletion()
+			building == null
+			or not is_instance_valid(building)
+			or building.is_queued_for_deletion()
 		):
 			continue
-		var shared_panel := warehouse.storage_panel
-		if (
-			shared_panel != null
-			and is_instance_valid(shared_panel)
-			and shared_panel.is_open()
-			and shared_panel.tracked_player == player
-		):
-			warehouse_panel_is_open = true
-		if warehouse.nearby_player != player:
+		if building.get_interaction_player() != player:
 			continue
-		nearby_warehouses.append(warehouse)
-		if (
-			warehouse.is_dead
-			or (
-				shared_panel != null
-				and is_instance_valid(shared_panel)
-				and shared_panel.is_open()
-			)
-		):
+		nearby_buildings.append(building)
+		if building.is_modal_ui_open():
+			building_panel_is_open = true
+		if building.is_dead or building.is_removing or building.is_modal_ui_open():
 			continue
 		var distance_squared := player.global_position.distance_squared_to(
-			warehouse.global_position
+			building.global_position
 		)
 		var wins_distance_tie := false
 		if is_equal_approx(distance_squared, nearest_distance_squared):
 			wins_distance_tie = (
-				nearest_warehouse == null
-				or warehouse.global_position.y < nearest_warehouse.global_position.y
+				nearest_building == null
+				or building.global_position.y < nearest_building.global_position.y
 				or (
 					is_equal_approx(
-						warehouse.global_position.y,
-						nearest_warehouse.global_position.y
+						building.global_position.y,
+						nearest_building.global_position.y
 					)
 					and (
-						warehouse.global_position.x < nearest_warehouse.global_position.x
+						building.global_position.x < nearest_building.global_position.x
 						or (
 							is_equal_approx(
-								warehouse.global_position.x,
-								nearest_warehouse.global_position.x
+								building.global_position.x,
+								nearest_building.global_position.x
 							)
 							and (
-								warehouse.get_instance_id()
-								< nearest_warehouse.get_instance_id()
+								building.get_instance_id()
+								< nearest_building.get_instance_id()
 							)
 						)
 					)
 				)
 			)
 		if distance_squared < nearest_distance_squared or wins_distance_tie:
-			nearest_warehouse = warehouse
+			nearest_building = building
 			nearest_distance_squared = distance_squared
 
 	var can_select := (
-		not warehouse_panel_is_open
+		not building_panel_is_open
 		and not player.is_dead
 		and not player.controls_locked
 	)
-	for warehouse in nearby_warehouses:
-		warehouse._set_interaction_target(
-			can_select and warehouse == nearest_warehouse
+	for building in nearby_buildings:
+		building.set_interaction_target_selected(
+			can_select and building == nearest_building
 		)
 
 
