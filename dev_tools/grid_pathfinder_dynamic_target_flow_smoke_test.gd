@@ -9,6 +9,29 @@ const MAX_MANUAL_BUILD_FRAMES := 10000
 var failures: Array[String] = []
 
 
+class SyntheticGridPathfinder:
+	extends GridPathfinder
+
+	func _ready() -> void:
+		set_process(false)
+
+	func _global_to_map(global_position: Vector2) -> Vector2i:
+		return Vector2i(
+			floori(global_position.x / astar_grid.cell_size.x),
+			floori(global_position.y / astar_grid.cell_size.y)
+		)
+
+	func _map_to_global(cell: Vector2i) -> Vector2:
+		return (Vector2(cell) + Vector2(0.5, 0.5)) * astar_grid.cell_size
+
+	func _is_raw_navigation_segment_walkable(
+		_from_global_position: Vector2,
+		_to_global_position: Vector2,
+		_traversal_types: int
+	) -> bool:
+		return true
+
+
 func _init() -> void:
 	call_deferred("_run")
 
@@ -61,8 +84,16 @@ func _run() -> void:
 	_reset_dynamic_runtime_state(pathfinder)
 	pathfinder.runtime_navigation_max_expansions_per_frame = TEST_EXPANSIONS_PER_FRAME
 	pathfinder.runtime_navigation_time_budget_usec = 8000
+	# The algorithm-equivalence cases below intentionally compare against a full
+	# synchronous field. Production uses a bounded 20-cell moving-target region;
+	# that separate contract is covered by the wall pursuit integration test.
+	pathfinder.coalesce_dynamic_target_profiles_by_grid_topology = false
+	pathfinder.dynamic_target_flow_radius_cells = 128
 	pathfinder.dynamic_target_repath_distance_cells = 2
 	pathfinder.dynamic_target_max_anchor_age_seconds = 2.0
+	# This suite retains a dedicated bounded-retarget contract. Production uses
+	# zero cancellations so queued topology groups cannot lose completed work.
+	pathfinder.dynamic_target_max_pending_retargets_before_publish = 1
 
 	var target := Node2D.new()
 	target.name = "DynamicFlowTargetProbe"
@@ -127,7 +158,7 @@ func _run() -> void:
 		anchor_cell,
 		adjacent_cell
 	)
-
+	_test_public_api_auto_extends_long_wall_coverage(game)
 	_finish(game, build_frames + static_build_frames)
 
 
@@ -879,6 +910,233 @@ func _test_rebuild_cancels_flow_and_agent_grid_jobs(
 		"A terrain rebuild must record its pending flow job as cancelled."
 	)
 	target.free()
+
+
+func _test_public_api_auto_extends_long_wall_coverage(
+	game: GameTowerDefense
+) -> void:
+	var synthetic_grid := AStarGrid2D.new()
+	synthetic_grid.region = Rect2i(0, 0, 64, 64)
+	synthetic_grid.cell_size = Vector2(16.0, 16.0)
+	synthetic_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	synthetic_grid.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
+	synthetic_grid.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
+	synthetic_grid.update()
+	for wall_y in range(35):
+		synthetic_grid.set_point_solid(Vector2i(21, wall_y), true)
+
+	var synthetic_pathfinder := SyntheticGridPathfinder.new()
+	synthetic_pathfinder.name = "PublicCoverageSyntheticPathfinder"
+	game.add_child(synthetic_pathfinder)
+	synthetic_pathfinder.navigation_generation = 1
+	synthetic_pathfinder.astar_grid = synthetic_grid
+	synthetic_pathfinder.is_built = true
+	synthetic_pathfinder.dynamic_target_flow_radius_cells = 20
+	synthetic_pathfinder.coalesce_dynamic_target_profiles_by_grid_topology = false
+	var default_cache_key := synthetic_pathfinder.call(
+		"_get_agent_grid_cache_key",
+		Vector2.ZERO,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES
+	) as String
+	var default_snapshot: Variant = synthetic_pathfinder.call(
+		"_build_agent_solid_integral_snapshot",
+		synthetic_grid
+	)
+	synthetic_pathfinder.call(
+		"_store_agent_open_plain_integral_snapshot",
+		default_cache_key,
+		default_snapshot
+	)
+
+	var target_cell := Vector2i(20, 10)
+	var source_cell := Vector2i(22, 10)
+	var target := Node2D.new()
+	target.name = "PublicCoverageTarget"
+	synthetic_pathfinder.add_child(target)
+	target.global_position = synthetic_pathfinder.call(
+		"_map_to_global",
+		target_cell
+	) as Vector2
+	var source_position := synthetic_pathfinder.call(
+		"_map_to_global",
+		source_cell
+	) as Vector2
+	var result := GridPathfinder.NavigationStepResult.new()
+	var context := GridPathfinder.FlowQueryContext.new()
+	synthetic_pathfinder.try_write_dynamic_target_navigation_step(
+		result,
+		context,
+		source_position,
+		target,
+		Vector2.ZERO,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+		0.0
+	)
+	_expect(
+		result.status == GridPathfinder.NavigationStepStatus.DEFERRED
+		and synthetic_pathfinder.runtime_flow_build_jobs.size() == 1,
+		"The public API must stage one bounded field on a cold long-wall query."
+	)
+	_drain_runtime_flow_jobs(synthetic_pathfinder, 5000)
+
+	result = GridPathfinder.NavigationStepResult.new()
+	context = GridPathfinder.FlowQueryContext.new()
+	synthetic_pathfinder.try_write_dynamic_target_navigation_step(
+		result,
+		context,
+		source_position,
+		target,
+		Vector2.ZERO,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+		0.0
+	)
+	_expect(
+		result.status == GridPathfinder.NavigationStepStatus.DEFERRED,
+		"A public bounded-field coverage miss must be DEFERRED, never UNREACHABLE."
+	)
+	for source_y in range(1, 11):
+		for source_x in range(22, 32):
+			synthetic_pathfinder.try_write_dynamic_target_navigation_step(
+				GridPathfinder.NavigationStepResult.new(),
+				GridPathfinder.FlowQueryContext.new(),
+				synthetic_pathfinder.call(
+					"_map_to_global",
+					Vector2i(source_x, source_y)
+				) as Vector2,
+				target,
+				Vector2.ZERO,
+				GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+				0.0
+			)
+	var coverage_job: Variant = _only_value(
+		synthetic_pathfinder.runtime_flow_build_jobs
+	)
+	_expect(
+		coverage_job != null
+		and bool(coverage_job.get("complete_when_required_sources_reached"))
+		and (coverage_job.get("required_source_cells") as Dictionary).size() == 100
+		and not bool(coverage_job.get("urgent")),
+		"Public misses from 100 source cells must merge into one low-priority continuation."
+	)
+	_drain_runtime_flow_jobs(synthetic_pathfinder, 10000)
+
+	result = GridPathfinder.NavigationStepResult.new()
+	context = GridPathfinder.FlowQueryContext.new()
+	synthetic_pathfinder.try_write_dynamic_target_navigation_step(
+		result,
+		context,
+		source_position,
+		target,
+		Vector2.ZERO,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+		0.0
+	)
+	var public_slot: Variant = _only_value(
+		synthetic_pathfinder.dynamic_flow_target_slots
+	)
+	_expect(
+		result.status == GridPathfinder.NavigationStepStatus.READY
+		and result.is_complete_route
+		and public_slot != null
+		and int(public_slot.get("published_revision")) == 2,
+		"The public API must atomically publish coverage and become READY on revision two."
+	)
+
+	# Close the only opening and start a new immutable generation. The coverage
+	# continuation must exhaust the target component once, publish an exhaustive
+	# verdict, and never enqueue the same impossible route on later queries.
+	for wall_y in range(35, 64):
+		synthetic_grid.set_point_solid(Vector2i(21, wall_y), true)
+	synthetic_pathfinder.call("_cancel_all_runtime_navigation_jobs")
+	synthetic_pathfinder.dynamic_flow_target_slots.clear()
+	synthetic_pathfinder.flow_field_cache.clear()
+	synthetic_pathfinder.flow_field_cache_order.clear()
+	synthetic_pathfinder.agent_open_plain_integral_cache.clear()
+	synthetic_pathfinder.navigation_generation += 1
+	default_snapshot = synthetic_pathfinder.call(
+		"_build_agent_solid_integral_snapshot",
+		synthetic_grid
+	)
+	synthetic_pathfinder.call(
+		"_store_agent_open_plain_integral_snapshot",
+		default_cache_key,
+		default_snapshot
+	)
+	result = GridPathfinder.NavigationStepResult.new()
+	context = GridPathfinder.FlowQueryContext.new()
+	synthetic_pathfinder.try_write_dynamic_target_navigation_step(
+		result,
+		context,
+		source_position,
+		target,
+		Vector2.ZERO,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+		0.0
+	)
+	_drain_runtime_flow_jobs(synthetic_pathfinder, 5000)
+	synthetic_pathfinder.try_write_dynamic_target_navigation_step(
+		result,
+		context,
+		source_position,
+		target,
+		Vector2.ZERO,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+		0.0
+	)
+	_expect(
+		result.status == GridPathfinder.NavigationStepStatus.DEFERRED,
+		"A non-exhaustive local miss must still request one full connectivity verdict."
+	)
+	_drain_runtime_flow_jobs(synthetic_pathfinder, 10000)
+	result = GridPathfinder.NavigationStepResult.new()
+	context = GridPathfinder.FlowQueryContext.new()
+	synthetic_pathfinder.try_write_dynamic_target_navigation_step(
+		result,
+		context,
+		source_position,
+		target,
+		Vector2.ZERO,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+		0.0
+	)
+	public_slot = _only_value(synthetic_pathfinder.dynamic_flow_target_slots)
+	_expect(
+		result.status == GridPathfinder.NavigationStepStatus.UNREACHABLE
+		and public_slot != null
+		and bool((public_slot.get("published_field") as Dictionary).get(
+			"coverage_is_exhaustive",
+			false
+		))
+		and synthetic_pathfinder.runtime_flow_build_jobs.is_empty(),
+		"A disconnected source must become stable UNREACHABLE after one exhaustive continuation."
+	)
+	synthetic_pathfinder.try_write_dynamic_target_navigation_step(
+		result,
+		context,
+		source_position,
+		target,
+		Vector2.ZERO,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+		0.0
+	)
+	_expect(
+		synthetic_pathfinder.runtime_flow_build_jobs.is_empty(),
+		"Repeated queries against an exhaustive field must not rebuild impossible coverage."
+	)
+
+	synthetic_pathfinder.set_process(false)
+	synthetic_pathfinder.queue_free()
+
+
+func _drain_runtime_flow_jobs(pathfinder: GridPathfinder, maximum_steps: int) -> void:
+	var steps := 0
+	while not pathfinder.runtime_flow_build_jobs.is_empty() and steps < maximum_steps:
+		pathfinder.call("_advance_first_runtime_flow_job")
+		steps += 1
+	_expect(
+		pathfinder.runtime_flow_build_jobs.is_empty(),
+		"A synthetic runtime flow job must complete within its expansion guard."
+	)
 
 
 func _find_test_cells(

@@ -10,6 +10,7 @@ const EXPECTED_MINIMAP_SIZE := Vector2(194.0, 130.0)
 const EXPECTED_MAP_PANEL_SIZE := Vector2(194.0, 110.0)
 const EXPECTED_CANVAS_SIZE := Vector2(192.0, 108.0)
 const EXPECTED_COORDINATE_LABEL_SIZE := Vector2(194.0, 20.0)
+const EXPECTED_ENEMY_BUCKET_CAPACITY := 48 * 27
 const MAX_VIEWPORT_WIDTH_RATIO := 0.17
 const MAX_VIEWPORT_HEIGHT_RATIO := 0.205
 const MIN_MAIN_HUD_GAP_PX := 24.0
@@ -158,6 +159,19 @@ func _verify_scene_structure(
 		and minimap.minimap_canvas.get_node("DynamicLayer") is Control,
 		"Static topology and dynamic markers must use separate draw layers."
 	)
+	var dynamic_layer := minimap.minimap_canvas.dynamic_layer
+	_expect(
+		typeof(dynamic_layer._enemy_canvas_bucket_counts)
+		== TYPE_PACKED_INT32_ARRAY
+		and dynamic_layer._enemy_canvas_bucket_counts.size()
+		== EXPECTED_ENEMY_BUCKET_CAPACITY,
+		"The 192 x 108 minimap must use one reusable packed 48 x 27 enemy bucket table."
+	)
+	_expect(
+		typeof(dynamic_layer._touched_enemy_bucket_indices)
+		== TYPE_PACKED_INT32_ARRAY,
+		"Enemy bucket cleanup must track only touched packed-array indices."
+	)
 	_expect(
 		minimap.find_children("*", "SubViewport", true, false).is_empty(),
 		"The minimap must not render the world a second time through a SubViewport."
@@ -248,6 +262,33 @@ func _verify_projection_and_coordinate(
 		and projected_north.y < projected_origin.y
 		and is_equal_approx(projected_north.x, projected_origin.x),
 		"World axes must project directly so north remains up on the minimap."
+	)
+	var expected_projection_scale := minf(
+		canvas.static_layer.size.x / canvas.static_layer.overview_world_size.x,
+		canvas.static_layer.size.y / canvas.static_layer.overview_world_size.y
+	)
+	_expect(
+		is_equal_approx(
+			canvas.static_layer._projection_scale,
+			expected_projection_scale
+		)
+		and is_equal_approx(
+			canvas.dynamic_layer._projection_scale,
+			expected_projection_scale
+		),
+		"Both minimap layers must cache the shared world-to-canvas projection scale."
+	)
+	var projected_tile_rect := canvas.static_layer._world_rect_to_canvas(
+		Rect2(Vector2.ZERO, canvas.static_layer.tile_world_size)
+	)
+	_expect(
+		projected_tile_rect.size.is_equal_approx(
+			canvas.static_layer.tile_world_size * expected_projection_scale
+		)
+		and canvas.static_layer._projected_tile_size.is_equal_approx(
+			projected_tile_rect.size
+		),
+		"Static topology must reuse one cached projected tile size for every cell."
 	)
 
 	var previous_coordinate := expected_coordinate
@@ -394,6 +435,28 @@ func _verify_enemy_marker_aggregation(
 			boundary_distance >= combined_radii,
 			"Adjacent high-density bucket markers must not overlap across a 4 px boundary."
 		)
+
+	# Rebuilding a different bucket set must clear only the previously touched
+	# packed slots; stale density counts cannot leak into a later draw.
+	dynamic_layer.enemy_world_positions = PackedVector2Array(
+		[Vector2(12.0, 12.0), Vector2(12.0, 12.0)]
+	)
+	dynamic_layer._rebuild_enemy_canvas_bucket_counts(boundary_overview_rect)
+	var previous_bucket_index := int(dynamic_layer._touched_enemy_bucket_indices[0])
+	_expect(
+		dynamic_layer._enemy_canvas_bucket_counts[previous_bucket_index] == 2,
+		"The packed enemy bucket table must accumulate density in-place."
+	)
+	dynamic_layer.enemy_world_positions = PackedVector2Array([Vector2(100.0, 80.0)])
+	dynamic_layer._rebuild_enemy_canvas_bucket_counts(boundary_overview_rect)
+	var replacement_bucket_index := int(dynamic_layer._touched_enemy_bucket_indices[0])
+	_expect(
+		previous_bucket_index != replacement_bucket_index
+		and dynamic_layer._enemy_canvas_bucket_counts[previous_bucket_index] == 0
+		and dynamic_layer._enemy_canvas_bucket_counts[replacement_bucket_index] == 1
+		and dynamic_layer._touched_enemy_bucket_indices.size() == 1,
+		"Touched-index cleanup must zero old packed slots without retaining stale buckets."
+	)
 
 
 func _finish() -> void:

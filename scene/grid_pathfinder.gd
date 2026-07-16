@@ -51,8 +51,8 @@ class NavigationStepResult:
 	var is_complete_route: bool = false
 	var remaining_cell_distance: int = -1
 	# Dynamic fields are immutable while a replacement is built. Consumers use
-	# this bit to avoid steering toward an anchor that has fallen materially
-	# behind the live target.
+	# this bit as freshness telemetry and to prefer a certified live correction;
+	# it must never invalidate an otherwise complete, collision-safe old route.
 	var dynamic_anchor_is_stale: bool = false
 
 	func reset(
@@ -103,11 +103,27 @@ class DynamicFlowTargetSlot:
 	var target_reference: WeakRef = null
 	var normalized_extents: Vector2 = Vector2.ZERO
 	var traversal_types: int = 0
+	var target_contact_radius_world: float = 0.0
 	var path_grid: AStarGrid2D = null
 	var desired_original_cell: Vector2i = Vector2i.MAX
 	var desired_resolved_cell: Vector2i = Vector2i.MAX
+	var desired_target_position: Vector2 = Vector2.ZERO
+	var desired_goal_cells: Array[Vector2i] = []
+	var desired_goal_signature: String = ""
+	var desired_goal_evaluation_valid: bool = false
+	var desired_build_region: Rect2i = Rect2i()
 	var published_anchor_cell: Vector2i = Vector2i.MAX
+	var published_goal_cells: Array[Vector2i] = []
+	var published_goal_lookup: Dictionary = {}
+	var published_goal_signature: String = ""
+	var published_build_region: Rect2i = Rect2i()
 	var published_field: Dictionary = {}
+	var previous_published_anchor_cell: Vector2i = Vector2i.MAX
+	var previous_published_goal_cells: Array[Vector2i] = []
+	var previous_published_build_region: Rect2i = Rect2i()
+	var previous_published_field: Dictionary = {}
+	var previous_retained_physics_frame: int = -1
+	var previous_published_revision: int = -1
 	var published_revision: int = 0
 	var published_physics_frame: int = -1
 	var pending_job_key: String = ""
@@ -119,6 +135,9 @@ class RuntimeFlowBuildJob:
 	var generation: int = -1
 	var cache_key: String = ""
 	var target_cell: Vector2i = Vector2i.MAX
+	var target_cells: Array[Vector2i] = []
+	var dynamic_target_original_cell: Vector2i = Vector2i.MAX
+	var expansion_region: Rect2i = Rect2i()
 	var normalized_extents: Vector2 = Vector2.ZERO
 	var traversal_types: int = 0
 	var path_grid: AStarGrid2D = null
@@ -130,6 +149,10 @@ class RuntimeFlowBuildJob:
 	var waiting_dynamic_slots: Dictionary = {}
 	var publish_to_fixed_cache: bool = false
 	var urgent: bool = false
+	var complete_when_required_sources_reached: bool = false
+	var required_source_cells: Dictionary = {}
+	var remaining_required_source_cells: Dictionary = {}
+	var completed_by_required_coverage: bool = false
 
 
 class AgentSolidIntegralSnapshot:
@@ -193,16 +216,26 @@ class RuntimeAgentGridBuildJob:
 # 最迟也会在短暂稳定后刷新。这样不会在每个 16px 格边界制造全图工作。
 @export_range(1, 8, 1, "or_greater") var dynamic_target_repath_distance_cells: int = 2
 @export_range(0.05, 2.0, 0.05, "or_greater") var dynamic_target_max_anchor_age_seconds: float = 0.25
-# A two-cell mismatch requests a refresh, but a recently completed field remains
-# useful while it is only a few cells behind. Beyond this bound consumers reject
-# it rather than visibly steering toward seconds-old player history.
+# A two-cell mismatch requests a refresh. This wider threshold marks when a
+# consumer should prefer a separately certified live correction and exposes
+# diagnostics; the old complete field remains a valid obstacle route meanwhile.
 @export_range(2, 32, 1, "or_greater") var dynamic_target_max_usable_anchor_lag_cells: int = 6
+# Tower-defense enemies only select a moving player inside a 16-cell radius.
+# Keep a small handoff margin for the budgeted retarget sweep, but never spend
+# runtime frames integrating a player field across the entire authored map.
+@export_range(8, 64, 1, "or_greater") var dynamic_target_flow_radius_cells: int = 20
+# Cell-center clearance grids depend on how many neighboring rows/columns an
+# AABB reaches, not on every individual sprite size. Canonicalizing only the
+# moving-target profile makes equivalent enemy bodies share one field while
+# static Home/objective navigation retains its exact authored extents.
+@export var coalesce_dynamic_target_profiles_by_grid_topology: bool = true
+@export_range(0.1, 3.0, 0.1, "or_greater") var dynamic_previous_field_retention_seconds: float = 1.0
 # A replacement already this far behind the newest requested cell is detached
 # and restarted, but only a bounded number of times before one complete
 # intermediate field is guaranteed to publish. This prevents a continuously
 # moving player from starving every reverse-field build.
 @export_range(2, 16, 1, "or_greater") var dynamic_target_pending_retarget_distance_cells: int = 4
-@export_range(0, 4, 1, "or_greater") var dynamic_target_max_pending_retargets_before_publish: int = 1
+@export_range(0, 4, 1, "or_greater") var dynamic_target_max_pending_retargets_before_publish: int = 0
 @export_range(1.0, 120.0, 1.0, "or_greater") var dynamic_target_slot_ttl_seconds: float = 15.0
 @export_range(1, 256, 1, "or_greater") var max_dynamic_target_slots: int = 64
 
@@ -482,6 +515,10 @@ func get_flow_navigation_waypoint(
 	)
 
 
+func get_navigation_cell_half_diagonal() -> float:
+	return astar_grid.cell_size.abs().length() * 0.5
+
+
 # Returns one grid-safe navigation decision with an explicit status. Unlike the
 # legacy path API, READY is only returned when the resolved start belongs to a
 # flow field that reaches the resolved target. Partial A* paths are never
@@ -539,7 +576,8 @@ func try_write_dynamic_target_navigation_step(
 	from_global_position: Vector2,
 	target_node: Node2D,
 	agent_half_extents: Vector2 = Vector2.ZERO,
-	traversal_types: int = DEFAULT_TRAVERSAL_TYPES
+	traversal_types: int = DEFAULT_TRAVERSAL_TYPES,
+	target_contact_radius_world: float = 0.0
 ) -> void:
 	_write_dynamic_target_navigation_step(
 		result,
@@ -547,7 +585,8 @@ func try_write_dynamic_target_navigation_step(
 		from_global_position,
 		target_node,
 		agent_half_extents,
-		traversal_types
+		traversal_types,
+		target_contact_radius_world
 	)
 
 
@@ -984,7 +1023,15 @@ func prewarm_agent_grid(
 	var normalized_extents := _normalize_agent_half_extents(agent_half_extents)
 	if normalized_extents == Vector2.ZERO:
 		return
-	_get_or_create_agent_grid(normalized_extents, traversal_types)
+	var path_grid := _get_or_create_agent_grid(normalized_extents, traversal_types)
+	_store_dynamic_target_profile_grid_alias(
+		normalized_extents,
+		traversal_types,
+		path_grid,
+		_get_agent_open_plain_integral_snapshot(
+			_get_agent_grid_cache_key(normalized_extents, traversal_types)
+		)
+	)
 
 
 func prewarm_agent_grid_staged(
@@ -1002,6 +1049,12 @@ func prewarm_agent_grid_staged(
 		agent_grid_cache.has(cache_key)
 		and _get_agent_open_plain_integral_snapshot(cache_key) != null
 	):
+		_store_dynamic_target_profile_grid_alias(
+			normalized_extents,
+			traversal_types,
+			agent_grid_cache.get(cache_key) as AStarGrid2D,
+			_get_agent_open_plain_integral_snapshot(cache_key)
+		)
 		return
 	var build_generation := navigation_generation
 
@@ -1058,6 +1111,12 @@ func prewarm_agent_grid_staged(
 		solid_integral_snapshot
 	)
 	agent_grid_cache[cache_key] = agent_grid
+	_store_dynamic_target_profile_grid_alias(
+		normalized_extents,
+		traversal_types,
+		agent_grid,
+		solid_integral_snapshot
+	)
 
 
 func prewarm_flow_navigation_target(
@@ -1073,14 +1132,32 @@ func prewarm_flow_navigation_target(
 	var target_cell := _get_closest_walkable_cell(_global_to_map(to_global_position), path_grid)
 	if target_cell == Vector2i.MAX:
 		return
-	if not _get_cached_flow_field(target_cell, normalized_extents, traversal_types).is_empty():
+	var cached_field := _get_cached_flow_field(
+		target_cell,
+		normalized_extents,
+		traversal_types
+	)
+	if not cached_field.is_empty():
+		_store_dynamic_target_flow_alias(
+			target_cell,
+			normalized_extents,
+			traversal_types,
+			cached_field
+		)
 		return
 
+	var field := _build_flow_field(target_cell, path_grid)
 	_store_flow_field(
 		target_cell,
 		normalized_extents,
 		traversal_types,
-		_build_flow_field(target_cell, path_grid)
+		field
+	)
+	_store_dynamic_target_flow_alias(
+		target_cell,
+		normalized_extents,
+		traversal_types,
+		field
 	)
 
 
@@ -1097,7 +1174,18 @@ func prewarm_flow_navigation_target_staged(
 	var target_cell := _get_closest_walkable_cell(_global_to_map(to_global_position), path_grid)
 	if target_cell == Vector2i.MAX:
 		return
-	if not _get_cached_flow_field(target_cell, normalized_extents, traversal_types).is_empty():
+	var cached_field := _get_cached_flow_field(
+		target_cell,
+		normalized_extents,
+		traversal_types
+	)
+	if not cached_field.is_empty():
+		_store_dynamic_target_flow_alias(
+			target_cell,
+			normalized_extents,
+			traversal_types,
+			cached_field
+		)
 		return
 	var build_generation := navigation_generation
 	var field: Dictionary = await _build_flow_field_staged(
@@ -1113,6 +1201,12 @@ func prewarm_flow_navigation_target_staged(
 	):
 		return
 	_store_flow_field(target_cell, normalized_extents, traversal_types, field)
+	_store_dynamic_target_flow_alias(
+		target_cell,
+		normalized_extents,
+		traversal_types,
+		field
+	)
 
 
 func _refresh_path_query_budget_frame() -> void:
@@ -1203,30 +1297,110 @@ func _enqueue_runtime_agent_grid_build(
 
 func _request_runtime_dynamic_flow_build(
 	slot: DynamicFlowTargetSlot,
-	target_cell: Vector2i
+	target_cell: Vector2i,
+	target_cells: Array[Vector2i],
+	original_target_cell: Vector2i
 ) -> void:
 	if (
 		slot == null
 		or slot.generation != navigation_generation
 		or target_cell == Vector2i.MAX
+		or target_cells.is_empty()
 	):
 		return
-	var cached_field := _get_cached_flow_field(
-		target_cell,
-		slot.normalized_extents,
-		slot.traversal_types
-	)
-	if not cached_field.is_empty():
-		_publish_dynamic_flow_slot(slot, target_cell, cached_field)
-		return
+	# A fixed single-goal field is safe to adopt only when its endpoint is the
+	# live target cell itself. Wall-adjacent moving targets use a multi-source
+	# contact region and therefore need their own bounded runtime field.
+	if target_cells.size() == 1 and target_cell == original_target_cell:
+		var cached_field := _get_cached_flow_field(
+			target_cell,
+			slot.normalized_extents,
+			slot.traversal_types
+		)
+		if not cached_field.is_empty():
+			_publish_dynamic_flow_slot(
+				slot,
+				original_target_cell,
+				target_cells,
+				cached_field
+			)
+			return
 
+	var flow_radius := maxi(dynamic_target_flow_radius_cells, 1)
+	var requested_region := Rect2i(
+		original_target_cell - Vector2i(flow_radius, flow_radius),
+		Vector2i(flow_radius * 2 + 1, flow_radius * 2 + 1)
+	).intersection(slot.path_grid.region)
+	var job_key := _get_dynamic_flow_job_cache_key(
+		slot,
+		original_target_cell,
+		target_cells
+	)
 	var job := _get_or_create_runtime_flow_build_job(
 		target_cell,
 		slot.normalized_extents,
 		slot.traversal_types,
 		slot.path_grid,
-		true
+		true,
+		target_cells,
+		requested_region,
+		original_target_cell,
+		job_key
 	)
+	job.waiting_dynamic_slots[slot.slot_key] = true
+	slot.pending_job_key = job.cache_key
+	set_process(true)
+
+
+func _request_runtime_dynamic_flow_coverage_build(
+	slot: DynamicFlowTargetSlot,
+	original_source_cell: Vector2i
+) -> void:
+	if (
+		slot == null
+		or slot.generation != navigation_generation
+		or slot.path_grid == null
+		or slot.desired_resolved_cell == Vector2i.MAX
+		or slot.desired_goal_cells.is_empty()
+	):
+		return
+	if slot.pending_job_key != "":
+		var pending_job := runtime_flow_build_jobs.get(
+			slot.pending_job_key
+		) as RuntimeFlowBuildJob
+		if pending_job == null:
+			slot.pending_job_key = ""
+		elif pending_job.complete_when_required_sources_reached:
+			if _is_cell_walkable(original_source_cell, slot.path_grid):
+				_add_required_source_to_runtime_flow_job(
+					pending_job,
+					original_source_cell
+				)
+			pending_job.waiting_dynamic_slots[slot.slot_key] = true
+			set_process(true)
+			return
+		else:
+			return
+
+	var job_key := "%s:coverage" % _get_dynamic_flow_job_cache_key(
+		slot,
+		slot.desired_original_cell,
+		slot.desired_goal_cells
+	)
+	var job := _get_or_create_runtime_flow_build_job(
+		slot.desired_resolved_cell,
+		slot.normalized_extents,
+		slot.traversal_types,
+		slot.path_grid,
+		false,
+		slot.desired_goal_cells,
+		slot.path_grid.region,
+		slot.desired_original_cell,
+		job_key
+	)
+	job.complete_when_required_sources_reached = true
+	if _is_cell_walkable(original_source_cell, slot.path_grid):
+		_add_required_source_to_runtime_flow_job(job, original_source_cell)
 	job.waiting_dynamic_slots[slot.slot_key] = true
 	slot.pending_job_key = job.cache_key
 	set_process(true)
@@ -1254,13 +1428,19 @@ func _get_or_create_runtime_flow_build_job(
 	normalized_extents: Vector2,
 	traversal_types: int,
 	path_grid: AStarGrid2D,
-	urgent: bool
+	urgent: bool,
+	target_cells: Array[Vector2i] = [],
+	expansion_region: Rect2i = Rect2i(),
+	dynamic_target_original_cell: Vector2i = Vector2i.MAX,
+	cache_key_override: String = ""
 ) -> RuntimeFlowBuildJob:
-	var cache_key := _get_flow_field_cache_key(
-		target_cell,
-		normalized_extents,
-		traversal_types
-	)
+	var cache_key := cache_key_override
+	if cache_key.is_empty():
+		cache_key = _get_flow_field_cache_key(
+			target_cell,
+			normalized_extents,
+			traversal_types
+		)
 	var job := runtime_flow_build_jobs.get(cache_key) as RuntimeFlowBuildJob
 	if job != null:
 		if urgent and not job.urgent:
@@ -1273,17 +1453,31 @@ func _get_or_create_runtime_flow_build_job(
 	job.generation = navigation_generation
 	job.cache_key = cache_key
 	job.target_cell = target_cell
+	job.target_cells = target_cells.duplicate()
+	if job.target_cells.is_empty():
+		job.target_cells.append(target_cell)
+	job.dynamic_target_original_cell = dynamic_target_original_cell
+	job.expansion_region = expansion_region
+	if job.expansion_region.size.x <= 0 or job.expansion_region.size.y <= 0:
+		job.expansion_region = path_grid.region
 	job.normalized_extents = normalized_extents
 	job.traversal_types = traversal_types
 	job.path_grid = path_grid
 	job.urgent = urgent
 	for _bucket_index in range(FLOW_BUCKET_COUNT):
 		job.pending_buckets.append([])
-	job.next_cells[target_cell] = target_cell
-	job.distances[target_cell] = 0
 	var first_bucket := job.pending_buckets[0] as Array
-	first_bucket.append(target_cell)
-	job.pending_entry_count = 1
+	for seed_cell in job.target_cells:
+		if not job.expansion_region.has_point(seed_cell):
+			continue
+		if not _is_cell_walkable(seed_cell, path_grid):
+			continue
+		if job.next_cells.has(seed_cell):
+			continue
+		job.next_cells[seed_cell] = seed_cell
+		job.distances[seed_cell] = 0
+		first_bucket.append(seed_cell)
+		job.pending_entry_count += 1
 	runtime_flow_build_jobs[cache_key] = job
 	_insert_runtime_flow_job_key(cache_key, urgent)
 	return job
@@ -1431,7 +1625,10 @@ func _advance_first_runtime_flow_job() -> bool:
 	if job == null or job.generation != navigation_generation:
 		_cancel_runtime_flow_build_job(cache_key)
 		return false
-
+	if _runtime_flow_job_reached_all_required_sources(job):
+		job.completed_by_required_coverage = true
+		_complete_runtime_flow_build_job(job)
+		return true
 	while job.pending_entry_count > 0:
 		var bucket_index := job.current_distance % FLOW_BUCKET_COUNT
 		var bucket := job.pending_buckets[bucket_index] as Array
@@ -1447,8 +1644,12 @@ func _advance_first_runtime_flow_job() -> bool:
 			if job.pending_entry_count <= 0:
 				_complete_runtime_flow_build_job(job)
 			return true
+		if job.remaining_required_source_cells.has(current_cell):
+			job.remaining_required_source_cells.erase(current_cell)
 		for direction in FLOW_DIRECTIONS:
 			var neighbor := current_cell + direction
+			if not job.expansion_region.has_point(neighbor):
+				continue
 			if not _is_safe_flow_transition(current_cell, direction, job.path_grid):
 				continue
 			var candidate_distance := (
@@ -1463,6 +1664,10 @@ func _advance_first_runtime_flow_job() -> bool:
 			)
 			target_bucket.append(neighbor)
 			job.pending_entry_count += 1
+		if _runtime_flow_job_reached_all_required_sources(job):
+			job.completed_by_required_coverage = true
+			_complete_runtime_flow_build_job(job)
+			return true
 		if job.pending_entry_count <= 0:
 			_complete_runtime_flow_build_job(job)
 		return true
@@ -1471,13 +1676,46 @@ func _advance_first_runtime_flow_job() -> bool:
 	return false
 
 
+func _runtime_flow_job_reached_all_required_sources(
+	job: RuntimeFlowBuildJob
+) -> bool:
+	return (
+		job != null
+		and job.complete_when_required_sources_reached
+		and not job.required_source_cells.is_empty()
+		and job.remaining_required_source_cells.is_empty()
+	)
+
+
+func _add_required_source_to_runtime_flow_job(
+	job: RuntimeFlowBuildJob,
+	source_cell: Vector2i
+) -> void:
+	if job == null or job.required_source_cells.has(source_cell):
+		return
+	job.required_source_cells[source_cell] = true
+	var known_distance := int(job.distances.get(source_cell, -1))
+	# Positive transition costs make any discovered distance final once the
+	# Dijkstra cursor reaches it. This keeps source completion O(1) per expansion.
+	if known_distance < 0 or known_distance > job.current_distance:
+		job.remaining_required_source_cells[source_cell] = true
+
+
 func _complete_runtime_flow_build_job(job: RuntimeFlowBuildJob) -> void:
 	if job == null:
 		return
 	var field := {
 		"target_cell": job.target_cell,
+		"target_cells": job.target_cells,
+		"goal_cells": job.target_cells,
+		"build_region": job.expansion_region,
 		"next_cells": job.next_cells,
 		"distances": job.distances,
+		"coverage_is_exhaustive": (
+			job.expansion_region == job.path_grid.region
+			and not job.completed_by_required_coverage
+			and job.pending_entry_count <= 0
+		),
 	}
 	if job.publish_to_fixed_cache:
 		_store_flow_field(
@@ -1500,21 +1738,31 @@ func _complete_runtime_flow_build_job(job: RuntimeFlowBuildJob) -> void:
 		# live target as the currently visible one. Together with the bounded
 		# retarget count, this guarantees monotonically fresher revisions even while
 		# the player moves continuously; the latest desired target is requested below.
-		var target_lag := _chebyshev_cell_distance(
-			job.target_cell,
-			slot.desired_resolved_cell
+		var published_target_cell := (
+			job.dynamic_target_original_cell
+			if job.dynamic_target_original_cell != Vector2i.MAX
+			else job.target_cell
+		)
+		var target_lag := _get_goal_cell_set_distance(
+			job.target_cells,
+			slot.desired_goal_cells
 		)
 		var published_lag := 2147483647
 		if not slot.published_field.is_empty():
-			published_lag = _chebyshev_cell_distance(
-				slot.published_anchor_cell,
-				slot.desired_resolved_cell
+			published_lag = _get_goal_cell_set_distance(
+				slot.published_goal_cells,
+				slot.desired_goal_cells
 			)
 		if (
 			slot.published_field.is_empty()
 			or target_lag <= published_lag
 		):
-			_publish_dynamic_flow_slot(slot, job.target_cell, field)
+			_publish_dynamic_flow_slot(
+				slot,
+				published_target_cell,
+				job.target_cells,
+				field
+			)
 		else:
 			slot.pending_job_key = ""
 		affected_slots.append(slot)
@@ -1527,7 +1775,10 @@ func _complete_runtime_flow_build_job(job: RuntimeFlowBuildJob) -> void:
 		_update_dynamic_flow_slot_request(
 			slot,
 			slot.desired_original_cell,
-			slot.desired_resolved_cell
+			slot.desired_resolved_cell,
+			slot.desired_goal_cells,
+			slot.desired_target_position,
+			false
 		)
 
 
@@ -1847,7 +2098,9 @@ func _write_navigation_step_from_flow_field(
 	traversal_types: int,
 	path_grid: AStarGrid2D,
 	next_cells: Dictionary,
-	distances: Dictionary
+	distances: Dictionary,
+	use_flow_seed_as_endpoint: bool = false,
+	recovery_cache_discriminator: String = ""
 ) -> void:
 	var from_cell := original_from_cell
 	var used_start_recovery := false
@@ -1861,7 +2114,8 @@ func _write_navigation_step_from_flow_field(
 			next_cells,
 			distances,
 			path_grid,
-			traversal_types
+			traversal_types,
+			recovery_cache_discriminator
 		)
 		from_cell = recovery_route.get("resolved_cell", Vector2i.MAX) as Vector2i
 		recovery_waypoint_cell = recovery_route.get(
@@ -1903,7 +2157,11 @@ func _write_navigation_step_from_flow_field(
 		original_target_cell
 	)
 	result.resolved_from_cell = from_cell
-	result.resolved_target_cell = target_cell
+	result.resolved_target_cell = (
+		from_cell
+		if flow_next_cell == from_cell
+		else target_cell
+	)
 	# next_cell always describes the immediate waypoint returned for this
 	# decision. During recovery it is the first raw-terrain-safe step toward the
 	# resolved flow cell, never the farther resolved cell itself.
@@ -1921,12 +2179,21 @@ func _write_navigation_step_from_flow_field(
 	if flow_next_cell != from_cell:
 		result.waypoint = _map_to_global(flow_next_cell)
 		return
+	if use_flow_seed_as_endpoint and route_distance == 0:
+		result.waypoint = _map_to_global(from_cell)
+		if from_global_position.distance_squared_to(result.waypoint) <= 0.25:
+			result.status = NavigationStepStatus.ARRIVED
+		return
 
-	var resolved_target_position := _map_to_global(target_cell)
-	if _is_global_position_walkable_for_agent(
+	var endpoint_cell := from_cell if flow_next_cell == from_cell else target_cell
+	var resolved_target_position := _map_to_global(endpoint_cell)
+	if (
+		endpoint_cell == target_cell
+		and _is_global_position_walkable_for_agent(
 		field_target_position,
 		normalized_extents,
 		traversal_types
+		)
 	):
 		result.waypoint = field_target_position
 		if from_global_position.distance_squared_to(field_target_position) <= 0.25:
@@ -1944,7 +2211,8 @@ func _write_dynamic_target_navigation_step(
 	from_global_position: Vector2,
 	target_node: Node2D,
 	agent_half_extents: Vector2,
-	traversal_types: int
+	traversal_types: int,
+	target_contact_radius_world: float
 ) -> void:
 	if result == null:
 		return
@@ -1957,10 +2225,13 @@ func _write_dynamic_target_navigation_step(
 			context.invalidate()
 		return
 
-	var normalized_extents := _normalize_agent_half_extents(agent_half_extents)
+	var normalized_extents := _get_dynamic_target_profile_extents(
+		agent_half_extents
+	)
 	var original_from_cell := _global_to_map(from_global_position)
 	var target_position := target_node.global_position
 	var original_target_cell := _global_to_map(target_position)
+	var normalized_contact_radius := maxf(target_contact_radius_world, 0.0)
 	var path_grid := _get_runtime_agent_grid_or_enqueue(
 		normalized_extents,
 		traversal_types
@@ -1977,7 +2248,8 @@ func _write_dynamic_target_navigation_step(
 		target_node,
 		normalized_extents,
 		traversal_types,
-		path_grid
+		path_grid,
+		normalized_contact_radius
 	)
 	if slot == null:
 		result.reset(
@@ -1986,17 +2258,41 @@ func _write_dynamic_target_navigation_step(
 			original_target_cell
 		)
 		return
+	_expire_previous_dynamic_field_if_needed(slot)
 	var desired_target_cell := slot.desired_resolved_cell
-	if (
+	var desired_goal_cells := slot.desired_goal_cells
+	var desired_state_changed := (
 		slot.desired_original_cell != original_target_cell
-		or desired_target_cell == Vector2i.MAX
-	):
-		desired_target_cell = _get_closest_walkable_cell(
+		or not slot.desired_goal_evaluation_valid
+		or slot.desired_target_position.distance_squared_to(target_position) >= 4.0
+	)
+	if desired_state_changed:
+		desired_goal_cells = _get_dynamic_target_goal_cells(
 			original_target_cell,
-			path_grid
+			target_position,
+			path_grid,
+			traversal_types,
+			normalized_contact_radius
 		)
-	if desired_target_cell == Vector2i.MAX:
-		_remove_dynamic_flow_slot(slot.slot_key)
+		desired_target_cell = _select_dynamic_goal_anchor(
+			desired_goal_cells,
+			target_position,
+			slot
+		)
+	if desired_target_cell == Vector2i.MAX or desired_goal_cells.is_empty():
+		if desired_state_changed:
+			slot.desired_original_cell = original_target_cell
+			slot.desired_resolved_cell = Vector2i.MAX
+			slot.desired_target_position = target_position
+			slot.desired_goal_cells = []
+			slot.desired_goal_signature = ""
+			slot.desired_build_region = _get_dynamic_flow_expansion_region(
+				original_target_cell,
+				slot.path_grid
+			)
+			slot.desired_goal_evaluation_valid = true
+			slot.last_request_physics_frame = Engine.get_physics_frames()
+			_detach_dynamic_flow_slot_from_pending_job(slot)
 		result.reset(
 			NavigationStepStatus.UNREACHABLE,
 			original_from_cell,
@@ -2008,7 +2304,10 @@ func _write_dynamic_target_navigation_step(
 	_update_dynamic_flow_slot_request(
 		slot,
 		original_target_cell,
-		desired_target_cell
+		desired_target_cell,
+		desired_goal_cells,
+		target_position,
+		desired_state_changed
 	)
 
 	if slot.published_field.is_empty():
@@ -2026,8 +2325,39 @@ func _write_dynamic_target_navigation_step(
 		)
 		return
 
-	var next_cells := slot.published_field.get("next_cells", {}) as Dictionary
-	var distances := slot.published_field.get("distances", {}) as Dictionary
+	var selected_field := slot.published_field
+	var selected_anchor_cell := slot.published_anchor_cell
+	var selected_revision := slot.published_revision
+	var selected_next_cells := selected_field.get("next_cells", {}) as Dictionary
+	var current_field_missing_walkable_source := (
+		_is_cell_walkable(original_from_cell, path_grid)
+		and not selected_next_cells.has(original_from_cell)
+	)
+	if (
+		current_field_missing_walkable_source
+		and not bool(selected_field.get("coverage_is_exhaustive", true))
+	):
+		_request_runtime_dynamic_flow_coverage_build(slot, original_from_cell)
+	if (
+		current_field_missing_walkable_source
+		and _can_use_previous_dynamic_field(slot)
+	):
+		var previous_next_cells := slot.previous_published_field.get(
+			"next_cells",
+			{}
+		) as Dictionary
+		if previous_next_cells.has(original_from_cell):
+			selected_field = slot.previous_published_field
+			selected_anchor_cell = slot.previous_published_anchor_cell
+			selected_revision = slot.previous_published_revision
+			selected_next_cells = previous_next_cells
+
+	var published_target_cell := selected_field.get(
+		"target_cell",
+		selected_anchor_cell
+	) as Vector2i
+	var next_cells := selected_next_cells
+	var distances := selected_field.get("distances", {}) as Dictionary
 	if next_cells.is_empty() or distances.is_empty():
 		result.reset(
 			NavigationStepStatus.DEFERRED,
@@ -2040,7 +2370,9 @@ func _write_dynamic_target_navigation_step(
 		context,
 		slot,
 		target_position,
-		original_target_cell
+		original_target_cell,
+		selected_anchor_cell,
+		selected_revision
 	)
 	# A published dynamic field always terminates at its immutable anchor. The
 	# current player position is deliberately not substituted here: only the
@@ -2048,20 +2380,35 @@ func _write_dynamic_target_navigation_step(
 	_write_navigation_step_from_flow_field(
 		result,
 		from_global_position,
-		_map_to_global(slot.published_anchor_cell),
+		_map_to_global(published_target_cell),
 		original_from_cell,
 		original_target_cell,
-		slot.published_anchor_cell,
+		published_target_cell,
 		normalized_extents,
 		traversal_types,
 		path_grid,
 		next_cells,
-		distances
+		distances,
+		true,
+		"%s:%d" % [slot.slot_key, selected_revision]
 	)
+	if (
+		result.status == NavigationStepStatus.UNREACHABLE
+		and not bool(selected_field.get("coverage_is_exhaustive", true))
+	):
+		_request_runtime_dynamic_flow_coverage_build(slot, original_from_cell)
+		result.reset(
+			NavigationStepStatus.DEFERRED,
+			original_from_cell,
+			original_target_cell
+		)
+	# Expose the immutable field's live-target anchor separately from whichever
+	# contact-region seed this particular consumer currently flows toward.
+	result.resolved_target_cell = selected_anchor_cell
 	result.dynamic_anchor_is_stale = (
 		_chebyshev_cell_distance(
-			slot.published_anchor_cell,
-			desired_target_cell
+			selected_anchor_cell,
+			original_target_cell
 		)
 		>= maxi(
 			dynamic_target_max_usable_anchor_lag_cells,
@@ -2074,12 +2421,14 @@ func _get_or_create_dynamic_flow_slot(
 	target_node: Node2D,
 	normalized_extents: Vector2,
 	traversal_types: int,
-	path_grid: AStarGrid2D
+	path_grid: AStarGrid2D,
+	target_contact_radius_world: float
 ) -> DynamicFlowTargetSlot:
 	var slot_key := _get_dynamic_flow_slot_key(
 		target_node.get_instance_id(),
 		normalized_extents,
-		traversal_types
+		traversal_types,
+		target_contact_radius_world
 	)
 	var slot := dynamic_flow_target_slots.get(slot_key) as DynamicFlowTargetSlot
 	if slot != null:
@@ -2106,6 +2455,7 @@ func _get_or_create_dynamic_flow_slot(
 	slot.target_reference = weakref(target_node)
 	slot.normalized_extents = normalized_extents
 	slot.traversal_types = traversal_types
+	slot.target_contact_radius_world = target_contact_radius_world
 	slot.path_grid = path_grid
 	dynamic_flow_target_slots[slot_key] = slot
 	return slot
@@ -2114,28 +2464,53 @@ func _get_or_create_dynamic_flow_slot(
 func _update_dynamic_flow_slot_request(
 	slot: DynamicFlowTargetSlot,
 	original_target_cell: Vector2i,
-	desired_target_cell: Vector2i
+	desired_target_cell: Vector2i,
+	desired_goal_cells: Array[Vector2i],
+	target_position: Vector2,
+	desired_state_changed: bool = true
 ) -> void:
 	var current_physics_frame := Engine.get_physics_frames()
 	slot.last_request_physics_frame = current_physics_frame
-	slot.desired_original_cell = original_target_cell
-	slot.desired_resolved_cell = desired_target_cell
+	if desired_state_changed:
+		slot.desired_original_cell = original_target_cell
+		slot.desired_resolved_cell = desired_target_cell
+		slot.desired_target_position = target_position
+		slot.desired_goal_cells = desired_goal_cells.duplicate()
+		slot.desired_goal_signature = _get_goal_cells_signature(
+			desired_goal_cells
+		)
+		slot.desired_goal_evaluation_valid = true
+		slot.desired_build_region = _get_dynamic_flow_expansion_region(
+			original_target_cell,
+			slot.path_grid
+		)
 
+	var adopted_prewarmed_field := false
 	if slot.published_field.is_empty():
 		# Loading prewarm stores the initial player field in the fixed cache. Adopt
-		# that immutable dictionary once, then keep later moving fields out of the
-		# fixed-objective LRU so player footsteps cannot evict Home fields.
-		var prewarmed_field := _get_cached_flow_field(
-			desired_target_cell,
-			slot.normalized_extents,
-			slot.traversal_types
-		)
-		if not prewarmed_field.is_empty():
+		# one complete immutable field immediately, then replace it with the bounded
+		# multi-source contact field in the scheduler. This avoids a cold 0.3 s stop
+		# on the first wall pursuit without putting moving footsteps in the fixed LRU.
+		var prewarm_goal_candidates: Array[Vector2i] = desired_goal_cells.duplicate()
+		prewarm_goal_candidates.erase(desired_target_cell)
+		prewarm_goal_candidates.push_front(desired_target_cell)
+		for prewarm_goal_cell: Vector2i in prewarm_goal_candidates:
+			var prewarmed_field := _get_cached_flow_field(
+				prewarm_goal_cell,
+				slot.normalized_extents,
+				slot.traversal_types
+			)
+			if prewarmed_field.is_empty():
+				continue
+			var adopted_goal_cells: Array[Vector2i] = [prewarm_goal_cell]
 			_publish_dynamic_flow_slot(
 				slot,
-				desired_target_cell,
+				original_target_cell,
+				adopted_goal_cells,
 				prewarmed_field
 			)
+			adopted_prewarmed_field = true
+			break
 
 	if slot.pending_job_key != "":
 		var pending_job := runtime_flow_build_jobs.get(
@@ -2144,9 +2519,18 @@ func _update_dynamic_flow_slot_request(
 		if pending_job == null:
 			slot.pending_job_key = ""
 		elif (
+			pending_job.complete_when_required_sources_reached
+			and _chebyshev_cell_distance(
+				pending_job.dynamic_target_original_cell,
+				original_target_cell
+			) >= maxi(dynamic_target_repath_distance_cells, 1)
+		):
+			# Fresh bounded target work always preempts optional long-detour coverage.
+			_detach_dynamic_flow_slot_from_pending_job(slot)
+		elif (
 			_chebyshev_cell_distance(
-				pending_job.target_cell,
-				desired_target_cell
+				pending_job.dynamic_target_original_cell,
+				original_target_cell
 			) >= maxi(dynamic_target_pending_retarget_distance_cells, 2)
 			and slot.pending_retargets_since_publish
 				< maxi(dynamic_target_max_pending_retargets_before_publish, 0)
@@ -2155,16 +2539,32 @@ func _update_dynamic_flow_slot_request(
 			slot.pending_retargets_since_publish += 1
 		else:
 			return
+	if adopted_prewarmed_field:
+		_request_runtime_dynamic_flow_build(
+			slot,
+			desired_target_cell,
+			desired_goal_cells,
+			original_target_cell
+		)
+		return
 	if slot.published_field.is_empty():
-		_request_runtime_dynamic_flow_build(slot, desired_target_cell)
+		_request_runtime_dynamic_flow_build(
+			slot,
+			desired_target_cell,
+			desired_goal_cells,
+			original_target_cell
+		)
 		return
-	if desired_target_cell == slot.published_anchor_cell:
-		return
-
 	var anchor_distance := _chebyshev_cell_distance(
 		slot.published_anchor_cell,
-		desired_target_cell
+		original_target_cell
 	)
+	var goal_signature_changed := (
+		slot.desired_goal_signature
+		!= slot.published_goal_signature
+	)
+	if anchor_distance == 0 and not goal_signature_changed:
+		return
 	var maximum_age_frames := maxi(
 		ceili(
 			dynamic_target_max_anchor_age_seconds
@@ -2175,9 +2575,17 @@ func _update_dynamic_flow_slot_request(
 	var anchor_age := current_physics_frame - slot.published_physics_frame
 	if (
 		anchor_distance >= maxi(dynamic_target_repath_distance_cells, 1)
-		or anchor_age >= maximum_age_frames
+		or (
+			anchor_age >= maximum_age_frames
+			and (anchor_distance > 0 or goal_signature_changed)
+		)
 	):
-		_request_runtime_dynamic_flow_build(slot, desired_target_cell)
+		_request_runtime_dynamic_flow_build(
+			slot,
+			desired_target_cell,
+			desired_goal_cells,
+			original_target_cell
+		)
 
 
 func _detach_dynamic_flow_slot_from_pending_job(
@@ -2198,11 +2606,25 @@ func _detach_dynamic_flow_slot_from_pending_job(
 func _publish_dynamic_flow_slot(
 	slot: DynamicFlowTargetSlot,
 	anchor_cell: Vector2i,
+	goal_cells: Array[Vector2i],
 	field: Dictionary
 ) -> void:
 	if slot == null or field.is_empty():
 		return
+	if not slot.published_field.is_empty():
+		slot.previous_published_anchor_cell = slot.published_anchor_cell
+		slot.previous_published_goal_cells = slot.published_goal_cells.duplicate()
+		slot.previous_published_build_region = slot.published_build_region
+		slot.previous_published_field = slot.published_field
+		slot.previous_retained_physics_frame = Engine.get_physics_frames()
+		slot.previous_published_revision = slot.published_revision
 	slot.published_anchor_cell = anchor_cell
+	slot.published_goal_cells = goal_cells.duplicate()
+	slot.published_goal_signature = _get_goal_cells_signature(goal_cells)
+	slot.published_goal_lookup.clear()
+	for goal_cell in slot.published_goal_cells:
+		slot.published_goal_lookup[goal_cell] = true
+	slot.published_build_region = field.get("build_region", Rect2i()) as Rect2i
 	slot.published_field = field
 	slot.published_revision += 1
 	slot.published_physics_frame = Engine.get_physics_frames()
@@ -2210,11 +2632,50 @@ func _publish_dynamic_flow_slot(
 	slot.pending_retargets_since_publish = 0
 
 
+func _can_use_previous_dynamic_field(slot: DynamicFlowTargetSlot) -> bool:
+	_expire_previous_dynamic_field_if_needed(slot)
+	return slot != null and not slot.previous_published_field.is_empty()
+
+
+func _expire_previous_dynamic_field_if_needed(
+	slot: DynamicFlowTargetSlot
+) -> void:
+	if (
+		slot == null
+		or slot.previous_published_field.is_empty()
+		or slot.previous_retained_physics_frame < 0
+	):
+		return
+	var maximum_retention_frames := maxi(
+		ceili(
+			dynamic_previous_field_retention_seconds
+			* float(maxi(Engine.physics_ticks_per_second, 1))
+		),
+		1
+	)
+	if (
+		Engine.get_physics_frames() - slot.previous_retained_physics_frame
+		<= maximum_retention_frames
+	):
+		return
+	# A source-driven continuation may contain most of the authored map. Release
+	# it as soon as its brief handoff window expires instead of retaining two large
+	# Dictionary graphs for the lifetime of an otherwise active target slot.
+	slot.previous_published_anchor_cell = Vector2i.MAX
+	slot.previous_published_goal_cells = []
+	slot.previous_published_build_region = Rect2i()
+	slot.previous_published_field = {}
+	slot.previous_retained_physics_frame = -1
+	slot.previous_published_revision = -1
+
+
 func _bind_dynamic_flow_query_context(
 	context: FlowQueryContext,
 	slot: DynamicFlowTargetSlot,
 	requested_target_position: Vector2,
-	original_target_cell: Vector2i
+	original_target_cell: Vector2i,
+	resolved_anchor_cell: Vector2i = Vector2i.MAX,
+	selected_revision: int = -1
 ) -> void:
 	if context == null or slot == null:
 		return
@@ -2222,7 +2683,11 @@ func _bind_dynamic_flow_query_context(
 	context.target_is_static = false
 	context.requested_target_position = requested_target_position
 	context.original_target_cell = original_target_cell
-	context.resolved_target_cell = slot.published_anchor_cell
+	context.resolved_target_cell = (
+		resolved_anchor_cell
+		if resolved_anchor_cell != Vector2i.MAX
+		else slot.published_anchor_cell
+	)
 	context.normalized_extents = slot.normalized_extents
 	context.traversal_types = slot.traversal_types
 	# Dynamic contexts store only the shared slot revision, not the large field
@@ -2237,18 +2702,219 @@ func _bind_dynamic_flow_query_context(
 		context.next_cells = {}
 		context.distances = {}
 	context.dynamic_slot_key = slot.slot_key
-	context.dynamic_slot_revision = slot.published_revision
+	context.dynamic_slot_revision = (
+		selected_revision if selected_revision >= 0 else slot.published_revision
+	)
 
 
 func _get_dynamic_flow_slot_key(
 	target_instance_id: int,
 	normalized_extents: Vector2,
-	traversal_types: int
+	traversal_types: int,
+	target_contact_radius_world: float
 ) -> String:
-	return "%d:%s" % [
+	return "%d:%s:%d" % [
 		target_instance_id,
 		_get_agent_grid_cache_key(normalized_extents, traversal_types),
+		roundi(maxf(target_contact_radius_world, 0.0) * 10.0),
 	]
+
+
+func _get_dynamic_flow_job_cache_key(
+	slot: DynamicFlowTargetSlot,
+	original_target_cell: Vector2i,
+	goal_cells: Array[Vector2i]
+) -> String:
+	var goal_parts := PackedStringArray()
+	for goal_cell in goal_cells:
+		goal_parts.append("%d,%d" % [goal_cell.x, goal_cell.y])
+	return "dynamic:%s:%d,%d:%s" % [
+		_get_agent_grid_cache_key(slot.normalized_extents, slot.traversal_types),
+		original_target_cell.x,
+		original_target_cell.y,
+		";".join(goal_parts),
+	]
+
+
+func _get_dynamic_target_goal_cells(
+	original_target_cell: Vector2i,
+	target_global_position: Vector2,
+	path_grid: AStarGrid2D,
+	traversal_types: int,
+	target_contact_radius_world: float
+) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	if path_grid == null:
+		return result
+	# The goal is a geographic contact envelope, not the player's exact cell.
+	# Every seed must be standable by this body profile, close enough for the two
+	# collision envelopes to meet, and have raw-terrain line of sight to the live
+	# player. A wall therefore removes seeds on its opposite side instead of an
+	# arbitrary nearest-cell scan choosing one side for the entire horde.
+	var contact_radius := maxf(target_contact_radius_world, 0.5)
+	var minimum_cell_size := maxf(
+		minf(absf(astar_grid.cell_size.x), absf(astar_grid.cell_size.y)),
+		1.0
+	)
+	var search_radius := mini(
+		maxi(ceili(contact_radius / minimum_cell_size) + 1, 1),
+		maxi(max_nearest_cell_search_radius, 1)
+	)
+	var maximum_distance_squared := contact_radius * contact_radius + 0.01
+	for y in range(
+		original_target_cell.y - search_radius,
+		original_target_cell.y + search_radius + 1
+	):
+		for x in range(
+			original_target_cell.x - search_radius,
+			original_target_cell.x + search_radius + 1
+		):
+			var candidate := Vector2i(x, y)
+			if not _is_cell_walkable(candidate, path_grid):
+				continue
+			var candidate_position := _map_to_global(candidate)
+			if (
+				candidate_position.distance_squared_to(target_global_position)
+				> maximum_distance_squared
+			):
+				continue
+			if not _is_raw_navigation_segment_walkable(
+				candidate_position,
+				target_global_position,
+				traversal_types
+			):
+				continue
+			result.append(candidate)
+	if not result.is_empty():
+		return result
+
+	# Never fall back to an arbitrary nearest walkable cell. Around a thin wall
+	# that cell may be in the opposite connected component, which would publish
+	# one wrong anchor to the complete pursuing cohort. No certified same-side
+	# contact seed is an explicit unreachable result until the target moves.
+	return result
+
+
+func _select_dynamic_goal_anchor(
+	goal_cells: Array[Vector2i],
+	target_global_position: Vector2,
+	slot: DynamicFlowTargetSlot
+) -> Vector2i:
+	if goal_cells.is_empty():
+		return Vector2i.MAX
+	if slot != null and not slot.published_goal_lookup.is_empty():
+		for goal_cell in goal_cells:
+			if slot.published_goal_lookup.has(goal_cell):
+				return goal_cell
+	var best_cell := goal_cells[0]
+	var best_distance := _map_to_global(best_cell).distance_squared_to(
+		target_global_position
+	)
+	for index in range(1, goal_cells.size()):
+		var candidate := goal_cells[index]
+		var candidate_distance := _map_to_global(candidate).distance_squared_to(
+			target_global_position
+		)
+		if candidate_distance < best_distance:
+			best_cell = candidate
+			best_distance = candidate_distance
+	return best_cell
+
+
+func _get_dynamic_flow_expansion_region(
+	original_target_cell: Vector2i,
+	path_grid: AStarGrid2D
+) -> Rect2i:
+	if path_grid == null:
+		return Rect2i()
+	var radius := maxi(dynamic_target_flow_radius_cells, 1)
+	return Rect2i(
+		original_target_cell - Vector2i(radius, radius),
+		Vector2i(radius * 2 + 1, radius * 2 + 1)
+	).intersection(path_grid.region)
+
+
+func _get_goal_cells_signature(goal_cells: Array[Vector2i]) -> String:
+	var parts := PackedStringArray()
+	for goal_cell in goal_cells:
+		parts.append("%d,%d" % [goal_cell.x, goal_cell.y])
+	return ";".join(parts)
+
+
+func _get_goal_cell_set_distance(
+	from_cells: Array[Vector2i],
+	to_cells: Array[Vector2i]
+) -> int:
+	if from_cells.is_empty() or to_cells.is_empty():
+		return 2147483647
+	var best_distance := 2147483647
+	for from_cell in from_cells:
+		for to_cell in to_cells:
+			best_distance = mini(
+				best_distance,
+				_chebyshev_cell_distance(from_cell, to_cell)
+			)
+			if best_distance == 0:
+				return 0
+	return best_distance
+
+
+func _is_raw_navigation_segment_walkable(
+	from_global_position: Vector2,
+	to_global_position: Vector2,
+	traversal_types: int
+) -> bool:
+	var from_local := obstacle_tile_layer.to_local(from_global_position)
+	var to_local := obstacle_tile_layer.to_local(to_global_position)
+	var current_cell := obstacle_tile_layer.local_to_map(from_local)
+	var target_cell := obstacle_tile_layer.local_to_map(to_local)
+	if _is_cell_blocked(current_cell, traversal_types):
+		return false
+	if current_cell == target_cell:
+		return true
+
+	# Grid DDA visits every cell touched by the real sub-cell segment. At an exact
+	# corner crossing both orthogonal neighbors are checked before the diagonal
+	# cell, preventing a goal seed from seeing through two touching wall corners.
+	var delta := to_local - from_local
+	var step_x := signi(roundi(signf(delta.x)))
+	var step_y := signi(roundi(signf(delta.y)))
+	var cell_size := astar_grid.cell_size.abs()
+	var t_delta_x := INF if step_x == 0 else cell_size.x / absf(delta.x)
+	var t_delta_y := INF if step_y == 0 else cell_size.y / absf(delta.y)
+	var current_center := obstacle_tile_layer.map_to_local(current_cell)
+	var next_boundary_x := current_center.x + float(step_x) * cell_size.x * 0.5
+	var next_boundary_y := current_center.y + float(step_y) * cell_size.y * 0.5
+	var t_max_x := INF if step_x == 0 else (next_boundary_x - from_local.x) / delta.x
+	var t_max_y := INF if step_y == 0 else (next_boundary_y - from_local.y) / delta.y
+	var maximum_steps := (
+		absi(target_cell.x - current_cell.x)
+		+ absi(target_cell.y - current_cell.y)
+		+ 2
+	)
+	for _step_index in range(maximum_steps):
+		if is_equal_approx(t_max_x, t_max_y):
+			var horizontal_cell := current_cell + Vector2i(step_x, 0)
+			var vertical_cell := current_cell + Vector2i(0, step_y)
+			if (
+				_is_cell_blocked(horizontal_cell, traversal_types)
+				or _is_cell_blocked(vertical_cell, traversal_types)
+			):
+				return false
+			current_cell += Vector2i(step_x, step_y)
+			t_max_x += t_delta_x
+			t_max_y += t_delta_y
+		elif t_max_x < t_max_y:
+			current_cell.x += step_x
+			t_max_x += t_delta_x
+		else:
+			current_cell.y += step_y
+			t_max_y += t_delta_y
+		if _is_cell_blocked(current_cell, traversal_types):
+			return false
+		if current_cell == target_cell:
+			return true
+	return false
 
 
 func _can_reuse_flow_query_context(
@@ -2412,18 +3078,20 @@ func _get_cached_safe_flow_recovery_route(
 	next_cells: Dictionary,
 	distances: Dictionary,
 	path_grid: AStarGrid2D,
-	traversal_types: int
+	traversal_types: int,
+	flow_revision_discriminator: String = ""
 ) -> Dictionary:
 	# Hundreds of enemies often enter the same conservative blocked band at the
 	# same cell. The recovery corridor depends only on the current navigation
 	# generation, flow profile, origin and configured search radius, so share it
 	# just like the flow field instead of rerunning bounded Dijkstra per enemy.
-	var cache_key := "%d:%s:%d:%d:%d" % [
+	var cache_key := "%d:%s:%d:%d:%d:%s" % [
 		navigation_generation,
 		_get_flow_field_cache_key(target_cell, agent_half_extents, traversal_types),
 		origin_cell.x,
 		origin_cell.y,
 		maxi(max_nearest_cell_search_radius, 0),
+		flow_revision_discriminator,
 	]
 	if flow_recovery_route_cache.has(cache_key):
 		return flow_recovery_route_cache[cache_key] as Dictionary
@@ -2856,6 +3524,108 @@ func _get_agent_grid_cache_key(agent_half_extents: Vector2, traversal_types: int
 
 func _get_agent_extents_cache_key(agent_half_extents: Vector2) -> String:
 	return "%d:%d" % [ceili(agent_half_extents.x), ceili(agent_half_extents.y)]
+
+
+func _get_dynamic_target_profile_extents(
+	agent_half_extents: Vector2
+) -> Vector2:
+	var normalized_extents := _normalize_agent_half_extents(agent_half_extents)
+	if (
+		not coalesce_dynamic_target_profiles_by_grid_topology
+		or astar_grid == null
+	):
+		return normalized_extents
+	return Vector2(
+		_get_grid_topology_axis_extent(
+			normalized_extents.x,
+			absf(astar_grid.cell_size.x)
+		),
+		_get_grid_topology_axis_extent(
+			normalized_extents.y,
+			absf(astar_grid.cell_size.y)
+		)
+	)
+
+
+func _store_dynamic_target_profile_grid_alias(
+	normalized_extents: Vector2,
+	traversal_types: int,
+	path_grid: AStarGrid2D,
+	snapshot: AgentSolidIntegralSnapshot
+) -> void:
+	if path_grid == null or snapshot == null:
+		return
+	var dynamic_extents := _get_dynamic_target_profile_extents(
+		normalized_extents
+	)
+	if dynamic_extents == normalized_extents:
+		return
+	# The zero-clearance topology is the already-published base grid. For other
+	# topology-equivalent profiles, alias the immutable grid/snapshot rather than
+	# rebuilding the same cells under another extents key.
+	if dynamic_extents == Vector2.ZERO:
+		return
+	var dynamic_cache_key := _get_agent_grid_cache_key(
+		dynamic_extents,
+		traversal_types
+	)
+	if agent_grid_cache.has(dynamic_cache_key):
+		return
+	agent_grid_cache[dynamic_cache_key] = path_grid
+	agent_open_plain_integral_cache[dynamic_cache_key] = snapshot
+
+
+func _store_dynamic_target_flow_alias(
+	target_cell: Vector2i,
+	normalized_extents: Vector2,
+	traversal_types: int,
+	field: Dictionary
+) -> void:
+	if field.is_empty():
+		return
+	var dynamic_extents := _get_dynamic_target_profile_extents(
+		normalized_extents
+	)
+	if dynamic_extents == normalized_extents:
+		return
+	if not _get_cached_flow_field(
+		target_cell,
+		dynamic_extents,
+		traversal_types
+	).is_empty():
+		return
+	_store_flow_field(
+		target_cell,
+		dynamic_extents,
+		traversal_types,
+		field
+	)
+
+
+func _get_grid_topology_axis_extent(extent: float, cell_size: float) -> float:
+	var safe_cell_size := maxf(cell_size, 0.001)
+	var collision_reach := (
+		maxf(extent, 0.0)
+		+ maxf(agent_clearance_padding, 0.0)
+		+ safe_cell_size * 0.5
+	)
+	# `_is_local_position_walkable_for_agent()` rejects a neighboring obstacle
+	# only while its center distance is strictly below collision_reach. Collapse
+	# all extents that reach the same number of grid rows/columns to the smallest
+	# integer extent with exactly that topology.
+	var reached_neighbor_count := maxi(
+		ceili((collision_reach - 0.001) / safe_cell_size) - 1,
+		0
+	)
+	if reached_neighbor_count <= 0:
+		return 0.0
+	return float(ceili(maxf(
+		float(reached_neighbor_count) * safe_cell_size
+			- safe_cell_size * 0.5
+			- maxf(agent_clearance_padding, 0.0)
+			+ 0.001,
+		0.0
+	)))
 
 
 func _normalize_agent_half_extents(agent_half_extents: Vector2) -> Vector2:

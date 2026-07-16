@@ -978,7 +978,10 @@ func _test_grid_and_occupancy_rules() -> void:
 	tile_map.set_cell(missing_cell, source_id, atlas_coords, alternative)
 
 	var blocker := CharacterBody2D.new()
-	blocker.collision_layer = 4
+	# Transient enemies, bosses and loose pickups are deliberately ignored so a
+	# crowd cannot erase the complete placement radius. A world-layer body still
+	# proves that authored persistent blockers reject overlapping placement.
+	blocker.collision_layer = 1
 	blocker.collision_mask = 0
 	var blocker_shape := CollisionShape2D.new()
 	var blocker_rectangle := RectangleShape2D.new()
@@ -988,7 +991,7 @@ func _test_grid_and_occupancy_rules() -> void:
 	test_root.add_child(blocker)
 	blocker.global_position = plant_system.get_anchor_world_position(anchor, agave_config)
 	await physics_frame
-	_expect(not plant_system.is_placement_valid(anchor, agave_config), "实体重叠必须拒绝。")
+	_expect(not plant_system.is_placement_valid(anchor, agave_config), "世界实体重叠必须拒绝。")
 	blocker.queue_free()
 	await physics_frame
 

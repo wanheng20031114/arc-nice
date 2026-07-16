@@ -38,9 +38,11 @@ class FakeDynamicPathfinder:
 	var dynamic_anchor_cell := Vector2i(10, 0)
 	var dynamic_from_cell := Vector2i.ZERO
 	var dynamic_next_cell := Vector2i(1, 0)
+	var requested_contact_radius_world := 0.0
 
 	func _ready() -> void:
 		is_built = true
+		astar_grid.cell_size = Vector2(16.0, 16.0)
 		set_process(false)
 
 	func try_write_dynamic_target_navigation_step(
@@ -49,9 +51,11 @@ class FakeDynamicPathfinder:
 		_from_global_position: Vector2,
 		_target_node: Node2D,
 		_agent_half_extents: Vector2 = Vector2.ZERO,
-		_traversal_types: int = DualGridTilemap.TraversalType.LAND
+		_traversal_types: int = GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+		_target_contact_radius_world: float = 0.0
 	) -> void:
 		requested_dynamic_step = true
+		requested_contact_radius_world = _target_contact_radius_world
 		result.reset(dynamic_status, dynamic_from_cell, dynamic_live_target_cell)
 		result.waypoint = dynamic_waypoint
 		result.resolved_from_cell = dynamic_from_cell
@@ -78,12 +82,20 @@ class FakeDynamicPathfinder:
 		return open_plain_is_clear
 
 	func try_is_navigation_segment_walkable(
-		_from_global_position: Vector2,
-		_to_global_position: Vector2,
+		from_global_position: Vector2,
+		to_global_position: Vector2,
 		_agent_half_extents: Vector2 = Vector2.ZERO,
 		_traversal_types: int = DualGridTilemap.TraversalType.LAND
 	) -> Variant:
-		return segment_is_clear
+		if not segment_is_clear:
+			return false
+		if open_plain_is_clear:
+			return true
+		# Model a vertical wall: a short horizontal correction toward the live
+		# player is blocked, while the old flow waypoint may safely continue down
+		# the wall. This distinguishes the two certificates used by Enemy.
+		var delta := to_global_position - from_global_position
+		return absf(delta.y) > absf(delta.x)
 
 
 func _init() -> void:
@@ -96,7 +108,7 @@ func _run() -> void:
 	root.add_child(test_root)
 	current_scene = test_root
 
-	await _test_near_clear_player_uses_direct_sweep()
+	await _test_near_clear_player_uses_certified_short_probe()
 	await _test_near_blocked_player_falls_back_to_flow()
 	await _test_unreachable_never_direct_fallbacks()
 	await _test_ready_step_moves_toward_waypoint()
@@ -107,6 +119,8 @@ func _run() -> void:
 	await _test_outdated_dynamic_flow_prefers_live_player_on_open_plain()
 	await _test_outdated_dynamic_flow_keeps_obstacle_route_when_not_certified()
 	await _test_outdated_dynamic_flow_endpoint_never_waits_when_live_player_is_clear()
+	await _test_far_stale_endpoint_does_not_issue_full_physics_sweep()
+	await _test_contact_region_endpoint_finishes_sub_cell_player_approach()
 	await _test_flow_direction_gains_bounded_direct_movement_certificate()
 	await _test_uncertified_flow_direction_keeps_move_and_slide_fallback()
 
@@ -123,16 +137,16 @@ func _run() -> void:
 	quit(1)
 
 
-func _test_near_clear_player_uses_direct_sweep() -> void:
+func _test_near_clear_player_uses_certified_short_probe() -> void:
 	var player := _spawn_player(Vector2(64.0, 32.0))
-	var pathfinder := _spawn_pathfinder()
+	var pathfinder := _spawn_dynamic_pathfinder()
 	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
 	enemy.navigation_update_interval_frames = 1
 	await physics_frame
 	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
 	_expect(
-		not pathfinder.requested_safe_step,
-		"A nearby player with a clear full-body segment must bypass flow navigation."
+		not pathfinder.requested_dynamic_step,
+		"A nearby player with an O(1) open-plain certificate must bypass flow navigation."
 	)
 	_expect(
 		move_direction.is_equal_approx(Vector2(64.0, 32.0).normalized()),
@@ -273,12 +287,24 @@ func _test_outdated_dynamic_flow_keeps_obstacle_route_when_not_certified() -> vo
 	await physics_frame
 	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
 	_expect(
-		move_direction == Vector2.ZERO,
-		"A materially stale flow must pause when the live corridor is not certified instead of chasing an old player position."
+		move_direction.is_equal_approx(Vector2.DOWN),
+		(
+			"A materially stale dynamic anchor must keep following its complete, "
+			+ "collision-safe flow waypoint while the replacement builds; field "
+			+ "freshness must never freeze the pursuing cohort."
+		)
 	)
 	_expect(
-		not enemy.cached_navigation_uses_direct_objective_approach,
-		"An uncertified live corridor must never gain direct-translation clearance."
+		enemy.cached_navigation_uses_direct_objective_approach
+		and enemy.cached_navigation_verified_direct_motion_clearance > 0.0,
+		(
+			"The stale live corridor must not be used, but the independently certified "
+			+ "old flow waypoint may retain bounded direct translation."
+		)
+	)
+	_expect(
+		pathfinder.requested_contact_radius_world > 0.0,
+		"Player pursuit must pass a derived collision contact radius into the shared dynamic slot."
 	)
 	await _free_fixture([enemy, pathfinder, player])
 
@@ -295,6 +321,69 @@ func _test_outdated_dynamic_flow_endpoint_never_waits_when_live_player_is_clear(
 	_expect(
 		move_direction == Vector2.RIGHT,
 		"Reaching an old flow anchor must not make an enemy wait there while the live player is directly reachable."
+	)
+	await _free_fixture([enemy, pathfinder, player])
+
+
+func _test_far_stale_endpoint_does_not_issue_full_physics_sweep() -> void:
+	var player := _spawn_player(Vector2(320.0, 0.0))
+	var pathfinder := _spawn_dynamic_pathfinder()
+	pathfinder.open_plain_is_clear = false
+	pathfinder.dynamic_waypoint = Vector2.ZERO
+	pathfinder.dynamic_next_cell = pathfinder.dynamic_from_cell
+	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
+	enemy.navigation_update_interval_frames = 1
+	await physics_frame
+	Enemy.set_performance_metrics_enabled(true)
+	var move_direction := enemy.call(
+		"_get_flow_navigation_move_direction",
+		player,
+		pathfinder,
+		1.0
+	) as Vector2
+	var metrics := Enemy.get_performance_metrics()
+	Enemy.set_performance_metrics_enabled(false)
+	_expect(
+		move_direction == Vector2.ZERO,
+		"A blocked far stale endpoint must wait for the staged replacement."
+	)
+	_expect(
+		int(metrics.get("test_move_calls", -1)) == 0,
+		(
+			"A blocked far stale endpoint must not sweep the full distance to "
+			+ "the live player for every enemy."
+		)
+	)
+	await _free_fixture([enemy, pathfinder, player])
+
+
+func _test_contact_region_endpoint_finishes_sub_cell_player_approach() -> void:
+	var player := _spawn_player(Vector2(16.0, 0.0))
+	var pathfinder := _spawn_dynamic_pathfinder()
+	pathfinder.dynamic_live_target_cell = Vector2i.ZERO
+	pathfinder.dynamic_anchor_cell = Vector2i.ZERO
+	pathfinder.dynamic_waypoint = Vector2.ZERO
+	pathfinder.dynamic_next_cell = pathfinder.dynamic_from_cell
+	var enemy := _spawn_fast_insect(Vector2.ZERO, player, pathfinder)
+	enemy.navigation_update_interval_frames = 1
+	await physics_frame
+	await physics_frame
+	var move_direction := enemy.call(
+		"_get_flow_navigation_move_direction",
+		player,
+		pathfinder,
+		1.0
+	) as Vector2
+	_expect(
+		move_direction == Vector2.RIGHT,
+		(
+			"A multi-source contact-region endpoint must finish the short "
+			+ "collision-safe approach instead of stopping beside the player."
+		)
+	)
+	_expect(
+		enemy.cached_navigation_tracks_live_target_direction,
+		"The final sub-cell approach must invalidate itself if the player crosses it."
 	)
 	await _free_fixture([enemy, pathfinder, player])
 

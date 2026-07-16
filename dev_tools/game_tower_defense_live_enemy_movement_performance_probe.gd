@@ -707,7 +707,11 @@ func _get_dynamic_flow_diagnostics() -> Dictionary:
 			int(slot.get("published_revision"))
 		)
 		var published_anchor := slot.get("published_anchor_cell") as Vector2i
-		var desired_anchor := slot.get("desired_resolved_cell") as Vector2i
+		# published_anchor_cell is the immutable player/target cell captured by the
+		# field, while desired_resolved_cell is one seed in the surrounding contact
+		# envelope. Comparing those two reports the intentional contact radius as
+		# target lag. Measure like-for-like original target cells instead.
+		var desired_anchor := slot.get("desired_original_cell") as Vector2i
 		var anchor_delta := (published_anchor - desired_anchor).abs()
 		maximum_anchor_lag = maxi(
 			maximum_anchor_lag,

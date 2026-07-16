@@ -1,0 +1,671 @@
+extends SceneTree
+
+# Integration regression for the synchronized enemy stop observed when the
+# moving player target reaches a wall. It drives the same contact-region slot
+# contract as production enemies and validates both build bounds and liveness.
+const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const BASIC_ENEMY_CONFIG := preload(
+	"res://resources/config/enemies/yuanshi_insect_basic.tres"
+)
+const MAX_ENEMIES := 160
+const MIN_SOURCE_DISTANCE_CELLS := 12
+const MAX_BUILD_FRAMES := 600
+
+var game: GameTowerDefense
+var pathfinder: GridPathfinder
+var enemies: Array[Enemy] = []
+var failures: Array[String] = []
+
+
+func _init() -> void:
+	call_deferred("_run")
+
+
+func _run() -> void:
+	game = TOWER_SCENE.instantiate() as GameTowerDefense
+	if game == null:
+		push_error("WALL_DYNAMIC_FLOW_DIAGNOSTIC could not instantiate tower defense.")
+		quit(1)
+		return
+	game.auto_start_waves = false
+	root.add_child(game)
+	current_scene = game
+	await process_frame
+	await physics_frame
+	_stop_background_gameplay()
+
+	pathfinder = game.grid_pathfinder as GridPathfinder
+	if pathfinder == null or not pathfinder.is_built or game.player == null:
+		push_error("WALL_DYNAMIC_FLOW_DIAGNOSTIC requires a built pathfinder and player.")
+		await _finish(1)
+		return
+
+	var probe_enemy := BASIC_ENEMY_CONFIG.enemy_scene.instantiate() as Enemy
+	game.enemy_container.add_child(probe_enemy)
+	probe_enemy.setup(BASIC_ENEMY_CONFIG, game.player, pathfinder)
+	probe_enemy.set_physics_process(false)
+	var half_extents := probe_enemy.get_configured_body_collision_half_extents()
+	var traversal_types := BASIC_ENEMY_CONFIG.terrain_traversal_types
+	pathfinder.prewarm_agent_grid(half_extents, traversal_types)
+	var profile := pathfinder.try_get_agent_navigation_profile(
+		half_extents,
+		traversal_types
+	)
+	if profile == null:
+		push_error("WALL_DYNAMIC_FLOW_DIAGNOSTIC could not build the basic enemy profile.")
+		await _finish(1)
+		return
+
+	var fixture := _find_wall_fixture(profile)
+	if fixture.is_empty():
+		push_error("WALL_DYNAMIC_FLOW_DIAGNOSTIC found no reachable wall fixture.")
+		await _finish(1)
+		return
+	var initial_cell := fixture["initial_cell"] as Vector2i
+	var wall_cell := fixture["wall_cell"] as Vector2i
+	var wall_direction := fixture["wall_direction"] as Vector2i
+	var initial_position := pathfinder.call("_map_to_global", initial_cell) as Vector2
+	var wall_position := pathfinder.call("_map_to_global", wall_cell) as Vector2
+	game.player.global_position = initial_position
+	game.player.velocity = Vector2.ZERO
+	game.player.set_physics_process(false)
+
+	var source_cells := _collect_sources(
+		profile,
+		wall_cell,
+		wall_position,
+		initial_cell
+	)
+	if source_cells.is_empty():
+		push_error("WALL_DYNAMIC_FLOW_DIAGNOSTIC found no wall-occluded enemy sources.")
+		await _finish(1)
+		return
+	probe_enemy.queue_free()
+	await process_frame
+	_spawn_enemies(source_cells)
+
+	var initial_build := await _wait_for_dynamic_ready(enemies[0])
+	var initial_build_frames := int(initial_build["frames"])
+	if initial_build_frames < 0:
+		push_error("WALL_DYNAMIC_FLOW_DIAGNOSTIC initial dynamic field did not publish.")
+		await _finish(1)
+		return
+	var slot := _get_only_dynamic_slot()
+	var initial_revision := slot.published_revision if slot != null else -1
+	_expect(
+		pathfinder.dynamic_flow_target_slots.size() == 1 and slot != null,
+		"The initial pursuing cohort must share exactly one dynamic target slot."
+	)
+	if slot != null:
+		_expect(
+			slot.published_build_region.size.x
+				<= pathfinder.dynamic_target_flow_radius_cells * 2 + 1
+			and slot.published_build_region.size.y
+				<= pathfinder.dynamic_target_flow_radius_cells * 2 + 1,
+			"The normal moving-target field must stay inside its bounded local window."
+		)
+
+	game.player.global_position = wall_position
+	var frozen_snapshot := _sample_enemy_flow_directions()
+	var production_snapshot := _sample_enemy_safe_directions()
+	var pending_slot := _get_only_dynamic_slot()
+	var frozen_published_anchor := (
+		pending_slot.published_anchor_cell if pending_slot != null else Vector2i.MAX
+	)
+	var frozen_desired_original := (
+		pending_slot.desired_original_cell if pending_slot != null else Vector2i.MAX
+	)
+	var frozen_desired_resolved := (
+		pending_slot.desired_resolved_cell if pending_slot != null else Vector2i.MAX
+	)
+	var pending_job_target := Vector2i.MAX
+	if pending_slot != null and pending_slot.pending_job_key != "":
+		var pending_job := pathfinder.runtime_flow_build_jobs.get(
+			pending_slot.pending_job_key
+		) as GridPathfinder.RuntimeFlowBuildJob
+		if pending_job != null:
+			pending_job_target = pending_job.target_cell
+
+	var replacement_frames := 0
+	var replacement_expansion_sum := 0
+	var replacement_expansion_peak := 0
+	var replacement_usec_sum := 0
+	var replacement_usec_peak := 0
+	var replacement_expansion_capped_frames := 0
+	var replacement_deadline_capped_frames := 0
+	while replacement_frames < MAX_BUILD_FRAMES:
+		var live_slot := _get_only_dynamic_slot()
+		if live_slot != null and live_slot.published_revision > initial_revision:
+			break
+		await process_frame
+		replacement_frames += 1
+		replacement_expansion_sum += pathfinder.runtime_navigation_expansions_last_frame
+		replacement_expansion_peak = maxi(
+			replacement_expansion_peak,
+			pathfinder.runtime_navigation_expansions_last_frame
+		)
+		replacement_usec_sum += pathfinder.runtime_navigation_build_usec_last_frame
+		replacement_usec_peak = maxi(
+			replacement_usec_peak,
+			pathfinder.runtime_navigation_build_usec_last_frame
+		)
+		if (
+			pathfinder.runtime_navigation_expansions_last_frame
+			>= pathfinder.runtime_navigation_max_expansions_per_frame
+		):
+			replacement_expansion_capped_frames += 1
+		if (
+			pathfinder.runtime_navigation_build_usec_last_frame
+			>= pathfinder.runtime_navigation_time_budget_usec
+		):
+			replacement_deadline_capped_frames += 1
+	var replacement_slot := _get_only_dynamic_slot()
+	_expect(
+		replacement_frames < MAX_BUILD_FRAMES
+		and replacement_slot != null
+		and replacement_slot.published_revision > initial_revision,
+		"The wall-adjacent replacement field must publish within the render-frame guard."
+	)
+	if replacement_slot != null:
+		_expect(
+			replacement_slot.published_build_region.size.x
+				<= pathfinder.dynamic_target_flow_radius_cells * 2 + 1
+			and replacement_slot.published_build_region.size.y
+				<= pathfinder.dynamic_target_flow_radius_cells * 2 + 1,
+			"A fresh local replacement must remain bounded even beside a wall."
+		)
+
+	var recovered_snapshot := _sample_enemy_flow_directions()
+	var recovery_wait_frames := 0
+	while recovery_wait_frames < MAX_BUILD_FRAMES:
+		var recovery_slot := _get_only_dynamic_slot()
+		if (
+			int(recovered_snapshot.get("nonzero", 0)) == enemies.size()
+			and recovery_slot != null
+			and recovery_slot.pending_job_key == ""
+		):
+			break
+		await process_frame
+		recovery_wait_frames += 1
+		recovered_snapshot = _sample_enemy_flow_directions()
+	var final_slot := _get_only_dynamic_slot()
+	var local_goal_region := _collect_local_goal_region(profile, wall_cell)
+	var profile_resolution_summary := _get_profile_resolution_summary(wall_cell)
+
+	print(
+		(
+			"WALL_DYNAMIC_FLOW_DIAGNOSTIC enemies=%d initial_cell=%s wall_cell=%s "
+			+ "initial_build_frames=%d stale=%d zero=%d ready=%d deferred=%d "
+			+ "old_flow_nonzero=%d old_flow_shape_safe=%d far_from_old_anchor=%d "
+			+ "outside_old_anchor_influence=%d remaining_range=%d..%d anchor_lag=%d "
+			+ "uncertified_live_corridor=%d pending_job_target=%s "
+			+ "replacement_frames=%d recovered_nonzero=%d final_revision=%d "
+			+ "final_anchor=%s desired=%s "
+			+ "initial_expansions_avg=%.1f initial_expansions_peak=%d "
+			+ "initial_usec_avg=%.1f initial_usec_peak=%d initial_caps=%d/%d "
+			+ "replacement_expansions_avg=%.1f replacement_expansions_peak=%d "
+			+ "replacement_usec_avg=%.1f replacement_usec_peak=%d replacement_caps=%d/%d"
+			+ " wall_direction=%s frozen_published=%s frozen_desired_original=%s "
+			+ "frozen_desired_resolved=%s local_goal_region=%s profile_resolutions=%s"
+			+ " production_zero=%d production_nonzero=%d production_direct=%d production_stale=%d"
+		)
+		% [
+			enemies.size(),
+			str(initial_cell),
+			str(wall_cell),
+			initial_build_frames,
+			int(frozen_snapshot["stale"]),
+			int(frozen_snapshot["zero"]),
+			int(frozen_snapshot["ready"]),
+			int(frozen_snapshot["deferred"]),
+			int(frozen_snapshot["old_flow_nonzero"]),
+			int(frozen_snapshot["old_flow_shape_safe"]),
+			int(frozen_snapshot["far_from_old_anchor"]),
+			int(frozen_snapshot["outside_old_anchor_influence"]),
+			int(frozen_snapshot["minimum_remaining"]),
+			int(frozen_snapshot["maximum_remaining"]),
+			int(frozen_snapshot["maximum_anchor_lag"]),
+			int(frozen_snapshot["uncertified"]),
+			str(pending_job_target),
+			replacement_frames,
+			int(recovered_snapshot["nonzero"]),
+			final_slot.published_revision if final_slot != null else -1,
+			str(final_slot.published_anchor_cell if final_slot != null else Vector2i.MAX),
+			str(final_slot.desired_resolved_cell if final_slot != null else Vector2i.MAX),
+			float(initial_build["expansion_sum"]) / maxf(initial_build_frames, 1),
+			int(initial_build["expansion_peak"]),
+			float(initial_build["usec_sum"]) / maxf(initial_build_frames, 1),
+			int(initial_build["usec_peak"]),
+			int(initial_build["expansion_capped_frames"]),
+			int(initial_build["deadline_capped_frames"]),
+			float(replacement_expansion_sum) / maxf(replacement_frames, 1),
+			replacement_expansion_peak,
+			float(replacement_usec_sum) / maxf(replacement_frames, 1),
+			replacement_usec_peak,
+			replacement_expansion_capped_frames,
+			replacement_deadline_capped_frames,
+			str(wall_direction),
+			str(frozen_published_anchor),
+			str(frozen_desired_original),
+			str(frozen_desired_resolved),
+			str(local_goal_region),
+			str(profile_resolution_summary),
+			int(production_snapshot["zero"]),
+			int(production_snapshot["nonzero"]),
+			int(production_snapshot["direct"]),
+			int(production_snapshot["stale"]),
+		]
+	)
+
+	_expect(not enemies.is_empty(), "The wall fixture must retain a non-empty enemy cohort.")
+	_expect(
+		int(frozen_snapshot["old_flow_nonzero"]) == enemies.size()
+		and int(frozen_snapshot["old_flow_shape_safe"])
+			== int(frozen_snapshot["old_flow_nonzero"]),
+		"Every old-field step must remain non-zero and shape-safe while replacement builds."
+	)
+	_expect(
+		int(production_snapshot["zero"]) == 0
+		and int(production_snapshot["nonzero"]) == enemies.size(),
+		"Moving the player beside a wall must never freeze any member of the pursuing cohort."
+	)
+	_expect(
+		recovery_wait_frames < MAX_BUILD_FRAMES
+		and int(recovered_snapshot["nonzero"]) == enemies.size(),
+		"All pursuers must regain a complete non-zero route after optional coverage continuation."
+	)
+	_expect(
+		pathfinder.dynamic_flow_target_slots.size() == 1
+		and final_slot != null
+		and final_slot.published_anchor_cell == wall_cell
+		and final_slot.desired_original_cell == wall_cell
+		and final_slot.pending_job_key == "",
+		"The final shared slot must target the live wall cell and leave no pending job."
+	)
+	_expect(
+		final_slot != null and not final_slot.published_goal_cells.is_empty(),
+		"The wall-adjacent player must retain at least one certified contact-region goal."
+	)
+
+	if failures.is_empty():
+		await _finish(0)
+		return
+	for failure in failures:
+		push_error(failure)
+	await _finish(1)
+
+
+func _stop_background_gameplay() -> void:
+	game.set_process(false)
+	game.set_physics_process(false)
+	game.enemy_spawn_timer.stop()
+	game.state_timer.stop()
+	game.player.max_health = 1_000_000
+	game.player.current_health = 1_000_000
+	game.player.is_dead = false
+
+
+func _find_wall_fixture(
+	profile: GridPathfinder.AgentNavigationProfile
+) -> Dictionary:
+	var grid := profile.path_grid
+	for y in range(grid.region.position.y, grid.region.end.y):
+		for x in range(grid.region.position.x, grid.region.end.x):
+			var wall_cell := Vector2i(x, y)
+			if grid.is_point_solid(wall_cell):
+				continue
+			for wall_direction in GridPathfinder.FLOW_CARDINAL_DIRECTIONS:
+				if not grid.is_in_boundsv(wall_cell + wall_direction):
+					continue
+				if not grid.is_point_solid(wall_cell + wall_direction):
+					continue
+				var away := -wall_direction
+				for distance in range(8, 17):
+					var initial_cell := wall_cell + away * distance
+					if not grid.is_in_boundsv(initial_cell):
+						continue
+					if grid.is_point_solid(initial_cell):
+						continue
+					var route := grid.get_id_path(initial_cell, wall_cell, false)
+					if route.is_empty() or route[route.size() - 1] != wall_cell:
+						continue
+					return {
+						"wall_cell": wall_cell,
+						"initial_cell": initial_cell,
+						"wall_direction": wall_direction,
+					}
+	return {}
+
+
+func _collect_sources(
+	profile: GridPathfinder.AgentNavigationProfile,
+	wall_cell: Vector2i,
+	wall_position: Vector2,
+	initial_target_cell: Vector2i
+) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	var grid := profile.path_grid
+	for y in range(grid.region.position.y, grid.region.end.y):
+		for x in range(grid.region.position.x, grid.region.end.x):
+			var cell := Vector2i(x, y)
+			if grid.is_point_solid(cell):
+				continue
+			var delta := (cell - wall_cell).abs()
+			if maxi(delta.x, delta.y) < MIN_SOURCE_DISTANCE_CELLS:
+				continue
+			var initial_delta := (cell - initial_target_cell).abs()
+			if (
+				maxi(initial_delta.x, initial_delta.y)
+				>= pathfinder.dynamic_target_flow_radius_cells
+			):
+				continue
+			if Vector2(cell - wall_cell).length_squared() > 16.0 * 16.0:
+				continue
+			var world_position := pathfinder.call("_map_to_global", cell) as Vector2
+			if pathfinder.try_is_navigation_open_plain_with_profile(
+				world_position,
+				wall_position,
+				profile
+			) == true:
+				continue
+			var route := grid.get_id_path(cell, wall_cell, false)
+			if route.is_empty() or route[route.size() - 1] != wall_cell:
+				continue
+			cells.append(cell)
+			if cells.size() >= MAX_ENEMIES:
+				return cells
+	return cells
+
+
+func _collect_local_goal_region(
+	profile: GridPathfinder.AgentNavigationProfile,
+	target_cell: Vector2i
+) -> Array[Vector2i]:
+	var target_position := pathfinder.call("_map_to_global", target_cell) as Vector2
+	var goal_cells: Array[Vector2i] = []
+	for y in range(target_cell.y - 1, target_cell.y + 2):
+		for x in range(target_cell.x - 1, target_cell.x + 2):
+			var candidate := Vector2i(x, y)
+			if (
+				not profile.path_grid.is_in_boundsv(candidate)
+				or profile.path_grid.is_point_solid(candidate)
+			):
+				continue
+			var candidate_position := pathfinder.call(
+				"_map_to_global",
+				candidate
+			) as Vector2
+			if pathfinder.call(
+				"_is_navigation_segment_walkable_with_grid",
+				candidate_position,
+				target_position,
+				profile.normalized_extents,
+				profile.traversal_types,
+				profile.path_grid,
+				profile.solid_integral_snapshot
+			):
+				goal_cells.append(candidate)
+	return goal_cells
+
+
+func _get_profile_resolution_summary(target_cell: Vector2i) -> Array[String]:
+	var summaries: Array[String] = []
+	var seen_configs: Dictionary = {}
+	for wave_config in game.waves:
+		if wave_config == null:
+			continue
+		for entry in wave_config.enemy_entries:
+			if entry == null or entry.enemy_config == null:
+				continue
+			var enemy_config := entry.enemy_config as EnemyConfig
+			if seen_configs.has(enemy_config.resource_path):
+				continue
+			seen_configs[enemy_config.resource_path] = true
+			var probe := enemy_config.enemy_scene.instantiate() as Enemy
+			if probe == null:
+				continue
+			var half_extents := probe.get_configured_body_collision_half_extents()
+			probe.free()
+			pathfinder.prewarm_agent_grid(
+				half_extents,
+				enemy_config.terrain_traversal_types
+			)
+			var other_profile := pathfinder.try_get_agent_navigation_profile(
+				half_extents,
+				enemy_config.terrain_traversal_types
+			)
+			if other_profile == null:
+				continue
+			var resolved := pathfinder.call(
+				"_get_closest_walkable_cell",
+				target_cell,
+				other_profile.path_grid
+			) as Vector2i
+			summaries.append(
+				"%s extents=%s target_solid=%s resolved=%s"
+				% [
+					enemy_config.resource_path.get_file(),
+					str(half_extents.ceil()),
+					str(other_profile.path_grid.is_point_solid(target_cell)),
+					str(resolved),
+				]
+			)
+	return summaries
+
+
+func _spawn_enemies(source_cells: Array[Vector2i]) -> void:
+	for cell in source_cells:
+		var enemy := BASIC_ENEMY_CONFIG.enemy_scene.instantiate() as Enemy
+		game.enemy_container.add_child(enemy)
+		enemy.setup(BASIC_ENEMY_CONFIG, game.player, pathfinder)
+		enemy.set_near_moving_target_direct_distance(
+			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS
+		)
+		enemy.global_position = pathfinder.call("_map_to_global", cell) as Vector2
+		enemy.navigation_update_interval_frames = 1
+		enemy.set_physics_process(false)
+		enemies.append(enemy)
+
+
+func _wait_for_dynamic_ready(enemy: Enemy) -> Dictionary:
+	var expansion_sum := 0
+	var expansion_peak := 0
+	var usec_sum := 0
+	var usec_peak := 0
+	var expansion_capped_frames := 0
+	var deadline_capped_frames := 0
+	for frame_index in range(MAX_BUILD_FRAMES):
+		var result := GridPathfinder.NavigationStepResult.new()
+		var context := GridPathfinder.FlowQueryContext.new()
+		pathfinder.try_write_dynamic_target_navigation_step(
+			result,
+			context,
+			enemy.global_position,
+			game.player,
+			enemy.get_configured_body_collision_half_extents(),
+			enemy.terrain_traversal_types,
+			enemy.get_dynamic_target_contact_goal_radius(game.player)
+		)
+		if result.status == GridPathfinder.NavigationStepStatus.READY:
+			return {
+				"frames": frame_index,
+				"expansion_sum": expansion_sum,
+				"expansion_peak": expansion_peak,
+				"usec_sum": usec_sum,
+				"usec_peak": usec_peak,
+				"expansion_capped_frames": expansion_capped_frames,
+				"deadline_capped_frames": deadline_capped_frames,
+			}
+		await process_frame
+		expansion_sum += pathfinder.runtime_navigation_expansions_last_frame
+		expansion_peak = maxi(
+			expansion_peak,
+			pathfinder.runtime_navigation_expansions_last_frame
+		)
+		usec_sum += pathfinder.runtime_navigation_build_usec_last_frame
+		usec_peak = maxi(usec_peak, pathfinder.runtime_navigation_build_usec_last_frame)
+		if (
+			pathfinder.runtime_navigation_expansions_last_frame
+			>= pathfinder.runtime_navigation_max_expansions_per_frame
+		):
+			expansion_capped_frames += 1
+		if (
+			pathfinder.runtime_navigation_build_usec_last_frame
+			>= pathfinder.runtime_navigation_time_budget_usec
+		):
+			deadline_capped_frames += 1
+	return {
+		"frames": -1,
+		"expansion_sum": expansion_sum,
+		"expansion_peak": expansion_peak,
+		"usec_sum": usec_sum,
+		"usec_peak": usec_peak,
+		"expansion_capped_frames": expansion_capped_frames,
+		"deadline_capped_frames": deadline_capped_frames,
+	}
+
+
+func _sample_enemy_flow_directions() -> Dictionary:
+	var stale := 0
+	var zero := 0
+	var nonzero := 0
+	var ready := 0
+	var deferred := 0
+	var uncertified := 0
+	var old_flow_nonzero := 0
+	var old_flow_shape_safe := 0
+	var far_from_old_anchor := 0
+	var outside_old_anchor_influence := 0
+	var minimum_remaining := 2147483647
+	var maximum_remaining := -1
+	var maximum_anchor_lag := 0
+	for enemy in enemies:
+		enemy.call("_clear_cached_navigation_move_direction")
+		var direction := enemy.call(
+			"_get_flow_navigation_move_direction",
+			game.player,
+			pathfinder,
+			1.0
+		) as Vector2
+		if enemy.navigation_step_result != null:
+			var anchor_delta := (
+				enemy.navigation_step_result.target_cell
+				- enemy.navigation_step_result.resolved_target_cell
+			).abs()
+			var anchor_lag := maxi(anchor_delta.x, anchor_delta.y)
+			maximum_anchor_lag = maxi(maximum_anchor_lag, anchor_lag)
+			if enemy.navigation_step_result.dynamic_anchor_is_stale:
+				stale += 1
+			var old_flow_direction := enemy.call(
+				"_get_waypoint_move_direction",
+				enemy.navigation_step_result.waypoint,
+				1.0
+			) as Vector2
+			if old_flow_direction != Vector2.ZERO:
+				old_flow_nonzero += 1
+				if enemy.call(
+					"_is_navigation_motion_shape_safe",
+					old_flow_direction,
+					1.0
+				):
+					old_flow_shape_safe += 1
+			if enemy.navigation_step_result.remaining_cell_distance >= 6:
+				far_from_old_anchor += 1
+			if enemy.navigation_step_result.remaining_cell_distance >= 0:
+				minimum_remaining = mini(
+					minimum_remaining,
+					enemy.navigation_step_result.remaining_cell_distance
+				)
+				maximum_remaining = maxi(
+					maximum_remaining,
+					enemy.navigation_step_result.remaining_cell_distance
+				)
+				if (
+					enemy.navigation_step_result.remaining_cell_distance
+					> anchor_lag + 2
+				):
+					outside_old_anchor_influence += 1
+			match enemy.navigation_step_result.status:
+				GridPathfinder.NavigationStepStatus.READY:
+					ready += 1
+				GridPathfinder.NavigationStepStatus.DEFERRED:
+					deferred += 1
+		if enemy.call(
+			"_try_get_navigation_open_plain",
+			game.player.global_position
+		) != true:
+			uncertified += 1
+		if direction == Vector2.ZERO:
+			zero += 1
+		else:
+			nonzero += 1
+	return {
+		"stale": stale,
+		"zero": zero,
+		"nonzero": nonzero,
+		"ready": ready,
+		"deferred": deferred,
+		"uncertified": uncertified,
+		"old_flow_nonzero": old_flow_nonzero,
+		"old_flow_shape_safe": old_flow_shape_safe,
+		"far_from_old_anchor": far_from_old_anchor,
+		"outside_old_anchor_influence": outside_old_anchor_influence,
+		"minimum_remaining": (
+			minimum_remaining if minimum_remaining != 2147483647 else -1
+		),
+		"maximum_remaining": maximum_remaining,
+		"maximum_anchor_lag": maximum_anchor_lag,
+	}
+
+
+func _sample_enemy_safe_directions() -> Dictionary:
+	var zero := 0
+	var nonzero := 0
+	var direct := 0
+	var stale := 0
+	for enemy in enemies:
+		enemy.call("_clear_cached_navigation_move_direction")
+		var direction := enemy.call(
+			"_get_safe_navigation_move_direction",
+			game.player,
+			pathfinder,
+			1.0
+		) as Vector2
+		if direction == Vector2.ZERO:
+			zero += 1
+		else:
+			nonzero += 1
+		if enemy.cached_navigation_uses_direct_objective_approach:
+			direct += 1
+		if (
+			enemy.navigation_step_result != null
+			and enemy.navigation_step_result.dynamic_anchor_is_stale
+		):
+			stale += 1
+	return {
+		"zero": zero,
+		"nonzero": nonzero,
+		"direct": direct,
+		"stale": stale,
+	}
+
+
+func _get_only_dynamic_slot() -> GridPathfinder.DynamicFlowTargetSlot:
+	if pathfinder.dynamic_flow_target_slots.size() != 1:
+		return null
+	for value in pathfinder.dynamic_flow_target_slots.values():
+		return value as GridPathfinder.DynamicFlowTargetSlot
+	return null
+
+
+func _expect(condition: bool, message: String) -> void:
+	if not condition:
+		failures.append(message)
+
+
+func _finish(exit_code: int) -> void:
+	if game != null and is_instance_valid(game):
+		game.queue_free()
+	await process_frame
+	await physics_frame
+	quit(exit_code)

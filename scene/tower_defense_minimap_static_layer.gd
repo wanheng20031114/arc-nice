@@ -18,6 +18,23 @@ var enemy_gate_world_positions := PackedVector2Array()
 var world_center := Vector2.ZERO
 var overview_world_size := Vector2(1.0, 1.0)
 var visible_world_size := Vector2.ONE
+var _projection_scale := 1.0
+var _projection_origin := Vector2.ZERO
+var _world_top_left := Vector2.ZERO
+var _cached_overview_rect := Rect2(Vector2.ZERO, Vector2.ONE)
+var _projected_tile_size := Vector2(16.0, 16.0)
+var _projected_half_tile := Vector2(8.0, 8.0)
+
+
+func _ready() -> void:
+	_refresh_projection_cache()
+
+
+func _notification(what: int) -> void:
+	if what != NOTIFICATION_RESIZED:
+		return
+	_refresh_projection_cache()
+	queue_redraw()
 
 
 func set_topology(
@@ -32,6 +49,7 @@ func set_topology(
 	water_world_positions = new_water_world_positions
 	home_gate_world_positions = new_home_gate_world_positions
 	enemy_gate_world_positions = new_enemy_gate_world_positions
+	_refresh_projected_tile_cache()
 	queue_redraw()
 
 
@@ -43,6 +61,7 @@ func set_projection(
 	world_center = new_world_center
 	overview_world_size = new_overview_world_size
 	visible_world_size = new_visible_world_size
+	_refresh_projection_cache()
 	queue_redraw()
 
 
@@ -64,28 +83,45 @@ func _draw() -> void:
 
 
 func _draw_world_squares(positions: PackedVector2Array, color: Color) -> void:
-	var overview_rect := Rect2(world_center - overview_world_size * 0.5, overview_world_size)
 	var half_tile := tile_world_size * 0.5
 	for world_position in positions:
 		var tile_rect := Rect2(world_position - half_tile, tile_world_size)
-		if not overview_rect.intersects(tile_rect):
+		if not _cached_overview_rect.intersects(tile_rect):
 			continue
-		draw_rect(_world_rect_to_canvas(tile_rect), color)
+		var canvas_center := (
+			_projection_origin
+			+ (world_position - _world_top_left) * _projection_scale
+		)
+		draw_rect(
+			Rect2(canvas_center - _projected_half_tile, _projected_tile_size),
+			color
+		)
 
 
 func _world_rect_to_canvas(world_rect: Rect2) -> Rect2:
-	var canvas_top_left := _world_to_canvas(world_rect.position)
-	var canvas_bottom_right := _world_to_canvas(world_rect.end)
-	return Rect2(canvas_top_left, canvas_bottom_right - canvas_top_left)
+	return Rect2(
+		_world_to_canvas(world_rect.position),
+		world_rect.size * _projection_scale
+	)
 
 
 func _world_to_canvas(world_position: Vector2) -> Vector2:
+	return _projection_origin + (world_position - _world_top_left) * _projection_scale
+
+
+func _refresh_projection_cache() -> void:
 	var safe_world_size := Vector2(
 		maxf(overview_world_size.x, 0.001),
 		maxf(overview_world_size.y, 0.001)
 	)
-	var projection_scale := minf(size.x / safe_world_size.x, size.y / safe_world_size.y)
-	var projected_world_size := safe_world_size * projection_scale
-	var projection_origin := (size - projected_world_size) * 0.5
-	var world_top_left := world_center - safe_world_size * 0.5
-	return projection_origin + (world_position - world_top_left) * projection_scale
+	_projection_scale = minf(size.x / safe_world_size.x, size.y / safe_world_size.y)
+	var projected_world_size := safe_world_size * _projection_scale
+	_projection_origin = (size - projected_world_size) * 0.5
+	_world_top_left = world_center - safe_world_size * 0.5
+	_cached_overview_rect = Rect2(_world_top_left, safe_world_size)
+	_refresh_projected_tile_cache()
+
+
+func _refresh_projected_tile_cache() -> void:
+	_projected_tile_size = tile_world_size * _projection_scale
+	_projected_half_tile = _projected_tile_size * 0.5

@@ -30,6 +30,12 @@ func open() -> void:
 func close() -> void:
 	if not visible:
 		return
+	# Hiding a focused modal does not guarantee that every close route releases
+	# its focused child immediately. Do it explicitly for both the list/F10 path
+	# and the focused close-button path so the next gameplay modal owns focus.
+	var focus_owner := get_viewport().gui_get_focus_owner()
+	if focus_owner != null and (focus_owner == self or is_ancestor_of(focus_owner)):
+		focus_owner.release_focus()
 	visible = false
 	set_process_unhandled_input(false)
 	closed.emit()

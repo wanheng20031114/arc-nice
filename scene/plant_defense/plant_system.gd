@@ -7,7 +7,13 @@ signal occupancy_changed
 
 const DEFAULT_PLACEMENT_AREA: Rect2i = Rect2i(-3, -1, 22, 18)
 const MAX_PLACEMENT_MANHATTAN_DISTANCE: int = 4
-const ENTITY_BLOCKING_MASK: int = 1 | 2 | 4 | 32 | 256
+# Building placement is authoritative on terrain, reserved/occupied cells and
+# persistent world/player bodies. Enemies, bosses and loose pickups are transient
+# and can crowd every cell around the player, so treating them as placement
+# blockers can erase every otherwise-valid anchor. Their layers (4, 32 and 256)
+# are intentionally excluded; a newly placed building still becomes an immediate
+# contact-attack target through the normal combat Area2D.
+const ENTITY_BLOCKING_MASK: int = 1 | 2
 const FOOTPRINT_COLLISION_INSET: Vector2 = Vector2(4.0, 4.0)
 const UNSUPPORTED_TERRAIN_DAMAGE_RATIO: float = 0.10
 const UNSUPPORTED_TERRAIN_MIN_DAMAGE: int = 50

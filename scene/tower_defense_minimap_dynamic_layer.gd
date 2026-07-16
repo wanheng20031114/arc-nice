@@ -25,7 +25,25 @@ var local_player_world_position := Vector2.ZERO
 var remote_player_world_positions := PackedVector2Array()
 var enemy_world_positions := PackedVector2Array()
 var plant_world_positions := PackedVector2Array()
-var _enemy_canvas_bucket_counts: Dictionary[Vector2i, int] = {}
+var _projection_scale := 1.0
+var _projection_origin := Vector2.ZERO
+var _world_top_left := Vector2.ZERO
+var _cached_overview_rect := Rect2(Vector2.ZERO, Vector2.ONE)
+var _enemy_bucket_column_count := 1
+var _enemy_bucket_row_count := 1
+var _enemy_canvas_bucket_counts := PackedInt32Array([0])
+var _touched_enemy_bucket_indices := PackedInt32Array()
+
+
+func _ready() -> void:
+	_refresh_projection_cache()
+
+
+func _notification(what: int) -> void:
+	if what != NOTIFICATION_RESIZED:
+		return
+	_refresh_projection_cache()
+	queue_redraw()
 
 
 func set_tile_world_size(new_tile_world_size: Vector2) -> void:
@@ -35,6 +53,7 @@ func set_tile_world_size(new_tile_world_size: Vector2) -> void:
 func set_projection(new_world_center: Vector2, new_overview_world_size: Vector2) -> void:
 	world_center = new_world_center
 	overview_world_size = new_overview_world_size
+	_refresh_projection_cache()
 	queue_redraw()
 
 
@@ -55,29 +74,28 @@ func set_world_entities(
 
 
 func _draw() -> void:
-	var overview_rect := Rect2(world_center - overview_world_size * 0.5, overview_world_size)
 	var plant_size := _projected_tile_size()
 	for world_position in plant_world_positions:
-		if not overview_rect.has_point(world_position):
+		if not _cached_overview_rect.has_point(world_position):
 			continue
 		var center := _world_to_canvas(world_position)
 		draw_rect(Rect2(center - plant_size * 0.5, plant_size), PLANT_COLOR)
 
-	_draw_enemy_buckets(overview_rect)
+	_draw_enemy_buckets(_cached_overview_rect)
 	for world_position in remote_player_world_positions:
 		_draw_player_dot_if_visible(
 			world_position,
 			REMOTE_PLAYER_RADIUS,
 			REMOTE_PLAYER_COLOR,
-			overview_rect
+			_cached_overview_rect
 		)
 	_draw_player_dot_if_visible(
 		local_player_world_position,
 		LOCAL_PLAYER_RADIUS,
 		LOCAL_PLAYER_COLOR,
-		overview_rect
+		_cached_overview_rect
 	)
-	if overview_rect.has_point(local_player_world_position):
+	if _cached_overview_rect.has_point(local_player_world_position):
 		draw_circle(
 			_world_to_canvas(local_player_world_position),
 			LOCAL_PLAYER_CENTER_RADIUS,
@@ -100,8 +118,9 @@ func _draw_player_dot_if_visible(
 
 func _draw_enemy_buckets(overview_rect: Rect2) -> void:
 	_rebuild_enemy_canvas_bucket_counts(overview_rect)
-	for bucket_coordinate in _enemy_canvas_bucket_counts:
-		var enemy_count := _enemy_canvas_bucket_counts[bucket_coordinate]
+	for bucket_index in _touched_enemy_bucket_indices:
+		var enemy_count := _enemy_canvas_bucket_counts[bucket_index]
+		var bucket_coordinate := _get_enemy_bucket_coordinate(bucket_index)
 		var canvas_position := _get_enemy_bucket_canvas_position(bucket_coordinate)
 		draw_circle(
 			canvas_position,
@@ -116,32 +135,52 @@ func _build_enemy_canvas_buckets(overview_rect: Rect2) -> Array[Dictionary]:
 	# visible density marker.
 	_rebuild_enemy_canvas_bucket_counts(overview_rect)
 	var buckets: Array[Dictionary] = []
-	for bucket_coordinate in _enemy_canvas_bucket_counts:
+	for bucket_index in _touched_enemy_bucket_indices:
+		var bucket_coordinate := _get_enemy_bucket_coordinate(bucket_index)
 		buckets.append(
 			{
 				"bucket_coordinate": bucket_coordinate,
 				"canvas_position": _get_enemy_bucket_canvas_position(
 					bucket_coordinate
 				),
-				"count": _enemy_canvas_bucket_counts[bucket_coordinate],
+				"count": _enemy_canvas_bucket_counts[bucket_index],
 			}
 		)
 	return buckets
 
 
 func _rebuild_enemy_canvas_bucket_counts(overview_rect: Rect2) -> void:
-	_enemy_canvas_bucket_counts.clear()
+	_clear_touched_enemy_bucket_counts()
 	for world_position in enemy_world_positions:
 		if not overview_rect.has_point(world_position):
 			continue
 		var canvas_position := _world_to_canvas(world_position)
-		var bucket_coordinate := Vector2i(
-			floori(canvas_position.x / ENEMY_BUCKET_SIZE_PX),
-			floori(canvas_position.y / ENEMY_BUCKET_SIZE_PX)
-		)
-		_enemy_canvas_bucket_counts[bucket_coordinate] = (
-			_enemy_canvas_bucket_counts.get(bucket_coordinate, 0) + 1
-		)
+		var bucket_x := floori(canvas_position.x / ENEMY_BUCKET_SIZE_PX)
+		var bucket_y := floori(canvas_position.y / ENEMY_BUCKET_SIZE_PX)
+		if (
+			bucket_x < 0
+			or bucket_x >= _enemy_bucket_column_count
+			or bucket_y < 0
+			or bucket_y >= _enemy_bucket_row_count
+		):
+			continue
+		var bucket_index := bucket_y * _enemy_bucket_column_count + bucket_x
+		if _enemy_canvas_bucket_counts[bucket_index] == 0:
+			_touched_enemy_bucket_indices.append(bucket_index)
+		_enemy_canvas_bucket_counts[bucket_index] += 1
+
+
+func _clear_touched_enemy_bucket_counts() -> void:
+	for bucket_index in _touched_enemy_bucket_indices:
+		_enemy_canvas_bucket_counts[bucket_index] = 0
+	_touched_enemy_bucket_indices.clear()
+
+
+func _get_enemy_bucket_coordinate(bucket_index: int) -> Vector2i:
+	return Vector2i(
+		bucket_index % _enemy_bucket_column_count,
+		floori(float(bucket_index) / float(_enemy_bucket_column_count))
+	)
 
 
 func _get_enemy_bucket_canvas_position(bucket_coordinate: Vector2i) -> Vector2:
@@ -159,27 +198,54 @@ func get_enemy_marker_radius(enemy_count: int) -> float:
 
 
 func _projected_tile_size() -> Vector2:
-	var projection_scale := _get_projection_scale()
 	return Vector2(
-		maxf(tile_world_size.x * projection_scale, 2.0),
-		maxf(tile_world_size.y * projection_scale, 2.0)
+		maxf(tile_world_size.x * _projection_scale, 2.0),
+		maxf(tile_world_size.y * _projection_scale, 2.0)
 	)
 
 
 func _world_to_canvas(world_position: Vector2) -> Vector2:
+	return _projection_origin + (world_position - _world_top_left) * _projection_scale
+
+
+func _get_projection_scale() -> float:
+	return _projection_scale
+
+
+func _refresh_projection_cache() -> void:
 	var safe_world_size := Vector2(
 		maxf(overview_world_size.x, 0.001),
 		maxf(overview_world_size.y, 0.001)
 	)
-	var projection_scale := _get_projection_scale()
-	var projected_world_size := safe_world_size * projection_scale
-	var projection_origin := (size - projected_world_size) * 0.5
-	var world_top_left := world_center - safe_world_size * 0.5
-	return projection_origin + (world_position - world_top_left) * projection_scale
-
-
-func _get_projection_scale() -> float:
-	return minf(
+	_projection_scale = minf(
 		size.x / maxf(overview_world_size.x, 0.001),
 		size.y / maxf(overview_world_size.y, 0.001)
 	)
+	var projected_world_size := safe_world_size * _projection_scale
+	_projection_origin = (size - projected_world_size) * 0.5
+	_world_top_left = world_center - safe_world_size * 0.5
+	_cached_overview_rect = Rect2(_world_top_left, safe_world_size)
+	_resize_enemy_bucket_storage_if_needed()
+
+
+func _resize_enemy_bucket_storage_if_needed() -> void:
+	var required_column_count := maxi(
+		ceili(maxf(size.x, 1.0) / ENEMY_BUCKET_SIZE_PX),
+		1
+	)
+	var required_row_count := maxi(
+		ceili(maxf(size.y, 1.0) / ENEMY_BUCKET_SIZE_PX),
+		1
+	)
+	if (
+		required_column_count == _enemy_bucket_column_count
+		and required_row_count == _enemy_bucket_row_count
+	):
+		return
+	_enemy_bucket_column_count = required_column_count
+	_enemy_bucket_row_count = required_row_count
+	_touched_enemy_bucket_indices.clear()
+	_enemy_canvas_bucket_counts.resize(
+		_enemy_bucket_column_count * _enemy_bucket_row_count
+	)
+	_enemy_canvas_bucket_counts.fill(0)

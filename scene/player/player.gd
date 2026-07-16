@@ -42,6 +42,7 @@ var mouse_fire_held: bool = false
 var mouse_viewport_position: Vector2 = Vector2.ZERO
 var multiplayer_display_name: String = ""
 var client_movement_prediction_only: bool = false
+var navigation_collision_extent_radius: float = -1.0
 
 @export var fire_interval: float = 1.0
 @export_range(1.0, 1000.0, 1.0, "or_greater") var attack_speed_units_per_attack: float = 100.0
@@ -207,6 +208,27 @@ var _wall_overlap_probe_required: bool = true
 var _wall_overlap_expected_position := Vector2.ZERO
 var _homing_target_shape := CircleShape2D.new()
 var _homing_target_query := PhysicsShapeQueryParameters2D.new()
+
+
+func get_navigation_collision_extent_radius() -> float:
+	if navigation_collision_extent_radius >= 0.0:
+		return navigation_collision_extent_radius
+	if collision_shape == null or collision_shape.shape == null:
+		return 0.0
+	var shape_rect := collision_shape.shape.get_rect()
+	var corners: Array[Vector2] = [
+		shape_rect.position,
+		Vector2(shape_rect.end.x, shape_rect.position.y),
+		shape_rect.end,
+		Vector2(shape_rect.position.x, shape_rect.end.y),
+	]
+	navigation_collision_extent_radius = 0.0
+	for corner in corners:
+		navigation_collision_extent_radius = maxf(
+			navigation_collision_extent_radius,
+			(collision_shape.transform * corner).length()
+		)
+	return navigation_collision_extent_radius
 
 
 # 节点首次进入场景树时的初始化逻辑

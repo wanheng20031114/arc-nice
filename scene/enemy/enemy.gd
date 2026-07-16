@@ -52,6 +52,7 @@ const DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES := 3
 # Once that lag reaches two cells, prefer the live target immediately whenever
 # the immutable agent profile can prove the entire correction corridor open.
 const DYNAMIC_FLOW_DIRECT_CORRECTION_DISTANCE_CELLS := 2
+const DYNAMIC_TARGET_FINAL_ALIGNMENT_MARGIN := 2.0
 const BLOCKED_WORLD_LOS_RETRY_MIN_MSEC := 80
 const BLOCKED_WORLD_LOS_RETRY_MAX_MSEC := 120
 const BLOCKED_WORLD_LOS_MOTION_INVALIDATION_DISTANCE := 8.0
@@ -129,6 +130,7 @@ var body_collision_shapes: Array[CollisionShape2D] = []
 var touch_damage_shapes: Array[CollisionShape2D] = []
 var mirrored_collision_shapes: Array[CollisionShape2D] = []
 var body_collision_extent_radius: float = 0.0
+var touch_damage_extent_radius: float = 0.0
 var body_collision_half_extents: Vector2 = Vector2.ZERO
 var collision_shape_mirror_states: Dictionary = {}
 var facing_left: bool = false
@@ -1073,6 +1075,7 @@ func _refresh_collision_shape_cache() -> void:
 	if not touch_damage_shapes.is_empty():
 		touch_damage_shape = touch_damage_shapes[0]
 	body_collision_extent_radius = _get_collision_shapes_extent_radius(body_collision_shapes)
+	touch_damage_extent_radius = _get_collision_shapes_extent_radius(touch_damage_shapes)
 	body_collision_half_extents = _get_collision_shapes_half_extents(body_collision_shapes)
 
 
@@ -1081,6 +1084,22 @@ func get_configured_body_collision_half_extents() -> Vector2:
 	if shape_nodes.is_empty():
 		shape_nodes = _collect_direct_collision_shapes(self)
 	return _get_collision_shapes_half_extents(shape_nodes)
+
+
+func get_dynamic_target_contact_goal_radius(target_node: Node2D) -> float:
+	var target_extent_radius := 0.0
+	var player_target := target_node as Player
+	if player_target != null:
+		target_extent_radius = player_target.get_navigation_collision_extent_radius()
+	var grid_half_diagonal := 0.0
+	var grid_pathfinder := pathfinder as GridPathfinder
+	if grid_pathfinder != null:
+		grid_half_diagonal = grid_pathfinder.get_navigation_cell_half_diagonal()
+	return (
+		maxf(touch_damage_extent_radius, body_collision_extent_radius)
+		+ target_extent_radius
+		+ grid_half_diagonal
+	)
 
 
 func _collect_direct_collision_shapes(parent_node: Node) -> Array[CollisionShape2D]:
@@ -1371,10 +1390,11 @@ func _get_safe_navigation_move_direction_unprofiled(
 				)
 			)
 	elif _is_near_moving_target(target_node):
-		# The immutable open-area snapshot handles large plains; exact test_move()
-		# remains the fallback around authored obstacles. Both paths avoid rebuilding
-		# a full-map field every time the player crosses a tile in open terrain.
-		var direct_direction := _get_collision_safe_near_moving_target_direction(
+		# A moving horde must never pay one full target-distance physics sweep per
+		# enemy beside a wall. The immutable profile either certifies the complete
+		# corridor in O(1), after which physics probes only the short cached motion,
+		# or the shared flow field handles the obstacle route.
+		var direct_direction := _get_collision_safe_precomputed_open_plain_direction(
 			target_node.global_position
 		)
 		if direct_direction != Vector2.ZERO:
@@ -1440,7 +1460,8 @@ func _get_flow_navigation_move_direction(
 				global_position,
 				target_node,
 				_get_body_collision_half_extents(),
-				terrain_traversal_types
+				terrain_traversal_types,
+				get_dynamic_target_contact_goal_radius(target_node)
 			)
 		else:
 			grid_pathfinder.try_write_safe_navigation_step(
@@ -1490,15 +1511,11 @@ func _get_flow_navigation_move_direction(
 					live_target_correction,
 					target_node
 				)
-			if (
-				target_node == target_player
-				and navigation_step_result != null
-				and navigation_step_result.dynamic_anchor_is_stale
-			):
-				# The complete field is collision-safe but no longer points at the
-				# current player. If the live corridor was not certified above, wait
-				# for the urgent replacement instead of visibly chasing old history.
-				return _cache_navigation_move_direction(Vector2.ZERO)
+			# A moving-target field is double-buffered: its published route remains
+			# complete and collision-safe while the bounded replacement integrates.
+			# Never turn the shared stale bit into a horde-wide stop. Open terrain was
+			# already corrected toward the live player above; obstacle corridors keep
+			# making progress on the old route until the atomic replacement arrives.
 			var waypoint_arrival_radius := maxf(waypoint_arrival_distance, 0.0)
 			var reached_resolved_flow_endpoint := (
 				not used_start_recovery
@@ -1524,6 +1541,14 @@ func _get_flow_navigation_move_direction(
 				if live_target_correction != Vector2.ZERO:
 					return _cache_live_target_direct_correction(
 						live_target_correction,
+						target_node
+					)
+				var final_alignment_direction := (
+					_get_dynamic_target_final_alignment_direction(target_node)
+				)
+				if final_alignment_direction != Vector2.ZERO:
+					return _cache_live_target_direct_correction(
+						final_alignment_direction,
 						target_node
 					)
 				return _cache_navigation_move_direction(Vector2.ZERO)
@@ -1554,6 +1579,14 @@ func _get_flow_navigation_move_direction(
 			if live_target_correction != Vector2.ZERO:
 				return _cache_live_target_direct_correction(
 					live_target_correction,
+					target_node
+				)
+			var final_alignment_direction := (
+				_get_dynamic_target_final_alignment_direction(target_node)
+			)
+			if final_alignment_direction != Vector2.ZERO:
+				return _cache_live_target_direct_correction(
+					final_alignment_direction,
 					target_node
 				)
 			return _cache_navigation_move_direction(Vector2.ZERO)
@@ -1600,6 +1633,34 @@ func _get_outdated_dynamic_flow_direct_correction(
 	# steering probe: it cannot pull an enemy back into a wall or U-shaped trap
 	# merely because the newest reverse field has not finished publishing yet.
 	return _get_collision_safe_precomputed_open_plain_direction(
+		target_node.global_position
+	)
+
+
+func _get_dynamic_target_final_alignment_direction(
+	target_node: Node2D
+) -> Vector2:
+	if (
+		target_node == null
+		or target_node != target_player
+		or not is_instance_valid(target_node)
+		or _has_player_contact()
+	):
+		return Vector2.ZERO
+	# A multi-source player field ends on a reachable cell around the player,
+	# not necessarily on the player's exact center. Only bridge that final
+	# sub-cell gap: a stale field several cells away must keep waiting for its
+	# staged replacement instead of issuing hundreds of long physics sweeps.
+	if (
+		global_position.distance_squared_to(target_node.global_position)
+		> pow(
+			get_dynamic_target_contact_goal_radius(target_node)
+				+ DYNAMIC_TARGET_FINAL_ALIGNMENT_MARGIN,
+			2.0
+		)
+	):
+		return Vector2.ZERO
+	return _get_collision_safe_near_moving_target_direction(
 		target_node.global_position
 	)
 
@@ -1769,16 +1830,24 @@ func _get_collision_safe_precomputed_open_plain_direction(
 	var offset := objective_position - global_position
 	if offset == Vector2.ZERO:
 		return Vector2.ZERO
-	if _try_get_navigation_open_plain(objective_position) != true:
-		return Vector2.ZERO
 	var direct_direction := offset.normalized()
 	var probe_distance := minf(
 		offset.length(),
 		_get_far_direct_objective_probe_distance()
 	)
+	var probe_motion := direct_direction * probe_distance
+	# Certify only the distance that can actually be travelled before the next
+	# staggered navigation refresh. Checking the complete rectangle to a moving
+	# player makes almost every wall-adjacent query fail the O(1) integral test and
+	# forces hundreds of redundant exact samples through distant map cells.
+	if _try_is_navigation_segment_walkable(
+		global_position,
+		global_position + probe_motion
+	) != true:
+		return Vector2.ZERO
 	if _test_navigation_motion(
 		global_transform,
-		direct_direction * probe_distance
+		probe_motion
 	):
 		return Vector2.ZERO
 	return direct_direction

@@ -17,6 +17,14 @@ func _ready() -> void:
 	amount_ratio = 0.0
 
 
+func _exit_tree() -> void:
+	# A scene teardown can remove the source plant and the pooled effect in the
+	# same frame. The removal callback may have just created its tail Tween, so
+	# explicitly kill that RefCounted before this node leaves the tree instead of
+	# relying on the 0.6 s completion callback that can no longer run.
+	_reset_effect_state()
+
+
 func on_pool_acquired(_generation: int) -> void:
 	_reset_effect_state()
 
@@ -70,12 +78,17 @@ func _disconnect_source_removal() -> void:
 	_source = null
 
 
-func _on_source_removal_started(_mode: int) -> void:
+func _on_source_removal_started(mode: int) -> void:
 	if not _effect_active:
 		return
 	_disconnect_source_removal()
 	_kill_effect_tween()
 	_stop_emitting()
+	# Silent removal is used for scene teardown, manifest repair and test cleanup;
+	# by definition it must not leave a visual tail (or a SceneTreeTween) behind.
+	if mode == PlantDefense.RemovalMode.SILENT:
+		_finish_effect()
+		return
 	_effect_tween = create_tween()
 	_effect_tween.tween_interval(PARTICLE_TAIL_DURATION)
 	_effect_tween.finished.connect(_finish_effect)
