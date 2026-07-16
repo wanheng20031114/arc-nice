@@ -6,63 +6,60 @@
     "built-in imagegen reference-guided masters",
     "flat #FF00FF chroma key",
     "project pixel-grid review and nearest logical-cell sampling",
+    "oversized building sources rejected instead of fitted",
     "palette reduction without dithering",
     "binary-alpha and footprint audit"
   ],
   "building": {
     "source": {
-      "path": "dev_assets/source_images/plant_defense/wood_processing_station/wood_processing_station_selected_imagegen_magenta.png",
-      "normalization_mode": "measured_grid_center_sample_fit_to_contract",
+      "path": "dev_assets/source_images/plant_defense/wood_processing_station/wood_processing_station_selected_imagegen_magenta_v4.png",
+      "normalization_mode": "measured_grid_center_sample",
       "detected_logical_subject_size": [
-        71,
-        87
+        24,
+        29
       ],
       "logical_subject_size": [
-        25,
-        31
+        24,
+        29
       ],
-      "logical_fit_scale": 0.356322,
+      "logical_fit_scale": 1.0,
       "grid_analysis": {
         "image_width": 1254,
         "image_height": 1254,
         "image_mode": "RGBA",
-        "detection_mode": "periodic_phase_fallback",
-        "grid_cell_width": 10.55,
-        "grid_cell_height": 10.35,
-        "grid_cell_size": 10,
-        "confidence": 0.602,
+        "detection_mode": "approximate",
+        "grid_cell_width": 34.55,
+        "grid_cell_height": 33.5,
+        "grid_cell_size": 34,
+        "confidence": 0.879,
         "subject_bbox": {
-          "left": 249,
-          "top": 192,
-          "right": 994,
-          "bottom": 1091
+          "left": 229,
+          "top": 179,
+          "right": 1049,
+          "bottom": 1149
         },
-        "subject_pixel_width": 745,
-        "subject_pixel_height": 899,
-        "subject_grid_width": 71,
-        "subject_grid_height": 87,
-        "recommended_canvas_grid_width": 119,
-        "recommended_canvas_grid_height": 121,
-        "fallback_axis_scores": [
-          0.517,
-          0.686
-        ],
-        "fallback_period_ratio": 1.019
+        "subject_pixel_width": 820,
+        "subject_pixel_height": 970,
+        "subject_grid_width": 24,
+        "subject_grid_height": 29,
+        "recommended_canvas_grid_width": 36,
+        "recommended_canvas_grid_height": 37
       }
     },
     "paste_origin": [
       20,
-      17
+      19
     ],
     "foot_target": [
       32,
       47
     ],
     "measured_foot_anchor": [
-      32.0,
+      31.5,
       47.0
     ],
-    "visible_palette_size": 46,
+    "oversized_source_policy": "reject_and_regenerate_without_logical_resize",
+    "visible_palette_size": 41,
     "audit": {
       "label": "wood_processing_station",
       "path": "resources/texture/plant_defense/wood_processing_station/wood_processing_station.png",
@@ -72,23 +69,23 @@
       ],
       "subject_bbox_exclusive": [
         20,
-        17,
-        45,
+        19,
+        44,
         48
       ],
       "subject_size": [
-        25,
-        31
+        24,
+        29
       ],
-      "visible_color_count": 46,
+      "visible_color_count": 41,
       "alpha_values": [
         0,
         255
       ],
       "world_bounds_at_scale_0_5": [
         -6.0,
-        -7.5,
-        6.5,
+        -6.5,
+        6.0,
         8.0
       ],
       "checks": {
@@ -124,6 +121,15 @@
       9
     ],
     "visible_palette_size": 16,
+    "lossless_compression": {
+      "mode": "png_deflate_lossless",
+      "baseline_bytes": 614,
+      "optimized_bytes": 603,
+      "selected_bytes": 603,
+      "saved_bytes": 11,
+      "decoded_rgba_sha256": "56e60f36d6dd67a333fbc53b2c7e0c84a67fcbd3e44a0c8753eaaf627811a806",
+      "pixel_identical": true
+    },
     "output_path": "resources/texture/materials/plank.png",
     "canvas_size": [
       32,

@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+from io import BytesIO
 from pathlib import Path
 
 from PIL import Image
@@ -28,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BUILDING_SOURCE = (
     ROOT
     / "dev_assets/source_images/plant_defense/wood_processing_station"
-    / "wood_processing_station_selected_imagegen_magenta.png"
+    / "wood_processing_station_selected_imagegen_magenta_v4.png"
 )
 PANEL_SOURCE = (
     ROOT
@@ -65,6 +67,7 @@ def _build_building() -> tuple[Image.Image, dict]:
     subject = normalize_imagegen_subject(
         BUILDING_SOURCE,
         max_subject_size=BUILDING_MAX_SIZE,
+        fit_oversized=False,
     )
     registered, paste_origin = place_bottom_center(
         subject.image,
@@ -77,6 +80,7 @@ def _build_building() -> tuple[Image.Image, dict]:
         "paste_origin": list(paste_origin),
         "foot_target": list(BUILDING_FOOT_TARGET),
         "measured_foot_anchor": list(foot_anchor(output)),
+        "oversized_source_policy": "reject_and_regenerate_without_logical_resize",
         "visible_palette_size": len(palette),
     }
 
@@ -113,6 +117,42 @@ def _build_plank() -> tuple[Image.Image, dict]:
     }
 
 
+def _lossless_png_payload(image: Image.Image) -> tuple[bytes, dict]:
+    baseline_buffer = BytesIO()
+    image.save(baseline_buffer, format="PNG")
+    baseline_payload = baseline_buffer.getvalue()
+
+    optimized_buffer = BytesIO()
+    image.save(
+        optimized_buffer,
+        format="PNG",
+        optimize=True,
+        compress_level=9,
+    )
+    optimized_payload = optimized_buffer.getvalue()
+
+    baseline_decoded = Image.open(BytesIO(baseline_payload)).convert("RGBA").tobytes()
+    optimized_decoded = Image.open(BytesIO(optimized_payload)).convert("RGBA").tobytes()
+    pixel_identical = baseline_decoded == optimized_decoded
+    if not pixel_identical:
+        raise RuntimeError("Lossless plank PNG optimization changed decoded pixels")
+
+    selected_payload = (
+        optimized_payload
+        if len(optimized_payload) <= len(baseline_payload)
+        else baseline_payload
+    )
+    return selected_payload, {
+        "mode": "png_deflate_lossless",
+        "baseline_bytes": len(baseline_payload),
+        "optimized_bytes": len(optimized_payload),
+        "selected_bytes": len(selected_payload),
+        "saved_bytes": len(baseline_payload) - len(selected_payload),
+        "decoded_rgba_sha256": hashlib.sha256(baseline_decoded).hexdigest(),
+        "pixel_identical": pixel_identical,
+    }
+
+
 def _build_panel() -> Image.Image:
     with Image.open(PANEL_SOURCE) as source:
         panel = source.convert("RGB")
@@ -132,6 +172,7 @@ def _build_panel() -> Image.Image:
 def main() -> None:
     building, building_context = _build_building()
     plank, plank_context = _build_plank()
+    plank_payload, plank_compression = _lossless_png_payload(plank)
     panel = _build_panel()
     building_audit = audit_image(
         building,
@@ -156,12 +197,14 @@ def main() -> None:
             "built-in imagegen reference-guided masters",
             "flat #FF00FF chroma key",
             "project pixel-grid review and nearest logical-cell sampling",
+            "oversized building sources rejected instead of fitted",
             "palette reduction without dithering",
             "binary-alpha and footprint audit",
         ],
         "building": {**building_context, "audit": building_audit},
         "plank": {
             **plank_context,
+            "lossless_compression": plank_compression,
             "output_path": portable_path(PLANK_OUTPUT),
             "canvas_size": list(plank.size),
             "alpha_values": plank_alpha,
@@ -182,7 +225,7 @@ def main() -> None:
     PLANK_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     building.save(BUILDING_OUTPUT)
     panel.save(PANEL_OUTPUT)
-    plank.save(PLANK_OUTPUT)
+    PLANK_OUTPUT.write_bytes(plank_payload)
     AUDIT_OUTPUT.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

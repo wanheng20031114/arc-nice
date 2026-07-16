@@ -4,12 +4,11 @@
   "assets": [
     {
       "id": "wood_processing_station",
-      "source": "wood_processing_station_selected_imagegen_magenta.png",
+      "source": "wood_processing_station_selected_imagegen_magenta_v4.png",
       "references": [
-        "resources/texture/plant_defense/vegetation_stake/vegetation_stake.png",
-        "resources/texture/plant_defense/oak_warehouse/oak_warehouse.png"
+        "wood_processing_station_selected_imagegen_magenta_v3.png"
       ],
-      "prompt": "One tiny freestanding wood-processing station for a cozy top-down fantasy pixel-art game: timber workbench, readable circular saw housing, two short boards, small gear-and-belt mechanism, and a tiny pitched canopy. Match the supplied one-tile scale and warm hand-authored pixel-art perspective. Single isolated sprite, bottom-center foot anchor, about 26-30 by 28-32 logical pixels, dark one-pixel outline, no antialiasing or dithering, on a perfectly flat solid #FF00FF chroma-key background; no terrain, character, shadow, text, UI, logo, or watermark."
+      "prompt": "Image 1 is the edit target. Preserve its exact appealing wood-processing-station design, composition, silhouette, palette family, large silver saw, bench, exactly two boards, posts, and leafy canopy. Make exactly one change: redraw it at HALF the current logical resolution. Merge every current 2x2 group of visible pixel cells into one single flat-color square cell. The result must be genuinely about 21 logical cells wide by 24 logical cells tall, never more than 28 wide or 30 tall. On the 1254x1254 delivered image, every logical pixel cell must be a perfectly solid square approximately 40-48 physical pixels across. Never divide a logical cell into lighter and darker halves. All color boundaries and outlines must align to this same coarse grid. Use at most 20 flat colors total. No gradients, antialiasing, dithering, tiny highlights, thin stripes, or sub-cell shading. Keep a perfectly flat uniform solid #FF00FF chroma-key background with generous padding. No terrain, shadow, floor, clutter, character, text, UI, logo, watermark, or #FF00FF inside the building."
     },
     {
       "id": "production_panel_background",
