@@ -5642,6 +5642,7 @@ func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
 func _on_host_revive_all_requested() -> void:
 	if not net_manager.is_host() or game == null:
 		return
+	_clear_pending_player_revives()
 	var revive_positions := _collect_living_player_revive_positions()
 	for peer_id_variant in game.peer_players:
 		var peer_id := int(peer_id_variant)

@@ -1,6 +1,7 @@
 extends SceneTree
 
 const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 
 var failures: Array[String] = []
 
@@ -11,6 +12,10 @@ func _init() -> void:
 
 func _run() -> void:
 	await _test_singleplayer_flow_and_respawn()
+	await _test_singleplayer_transition_revive_policy()
+	await _test_host_transition_revive_signal_policy()
+	await _test_host_authoritative_revive_all()
+	await _test_client_view_waits_for_authoritative_revive()
 	await _test_multiplayer_all_dead_is_not_defeat()
 	await _test_client_gate_warning_replication()
 	if failures.is_empty():
@@ -350,6 +355,429 @@ func _test_singleplayer_flow_and_respawn() -> void:
 		await physics_frame
 
 
+func _test_singleplayer_transition_revive_policy() -> void:
+	var intermission_game := TOWER_SCENE.instantiate() as GameTowerDefense
+	root.add_child(intermission_game)
+	current_scene = intermission_game
+	await process_frame
+	await physics_frame
+	var intermission_step := intermission_game.call("_get_start_flow_step") as FlowStepConfig
+	var intermission_revives := {"count": 0}
+	intermission_game.player.revived.connect(
+		func() -> void:
+			intermission_revives["count"] = int(intermission_revives["count"]) + 1
+	)
+	intermission_game.player.call("_die")
+	_expect(intermission_game.player.is_dead, "The intermission revive test must begin with a dead single-player character.")
+	intermission_game.call("_enter_intermission", intermission_step)
+	_expect(not intermission_game.player.is_dead, "Entering a tower-defense intermission must revive a dead single-player character immediately.")
+	_expect(int(intermission_revives["count"]) == 1, "Intermission entry must emit exactly one single-player revive transition.")
+	_expect(
+		intermission_game.player.global_position.is_equal_approx(intermission_game.player_spawn.global_position),
+		"An intermission revive must use the authored tower-defense player spawn."
+	)
+	_expect(
+		intermission_game.player.current_health == intermission_game.player.max_health
+		and intermission_game.player.invincibility_time_left > 0.0,
+		"An intermission revive must restore full health and the normal revive protection."
+	)
+	_expect(
+		intermission_game.singleplayer_respawn_time_left < 0.0
+		and intermission_game.singleplayer_respawn_last_seconds < 0
+		and intermission_game.tower_defense_status_hud.respawn_entries.is_empty(),
+		"An immediate intermission revive must clear its pending timer and death HUD entry."
+	)
+
+	var living_position := intermission_game.player_spawn.global_position + Vector2(23.0, -11.0)
+	var living_health := intermission_game.player.max_health - 9
+	var living_velocity := Vector2(7.0, -3.0)
+	var living_invincibility := 0.75
+	intermission_game.player.global_position = living_position
+	intermission_game.player.current_health = living_health
+	intermission_game.player.velocity = living_velocity
+	intermission_game.player.invincibility_time_left = living_invincibility
+	intermission_game.call("_enter_intermission", intermission_step)
+	_expect(
+		intermission_game.player.global_position.is_equal_approx(living_position)
+		and intermission_game.player.current_health == living_health
+		and intermission_game.player.velocity.is_equal_approx(living_velocity)
+		and is_equal_approx(
+			intermission_game.player.invincibility_time_left,
+			living_invincibility
+		),
+		"Intermission entry must not heal, teleport, stop, or replace protection on a living player."
+	)
+	_expect(int(intermission_revives["count"]) == 1, "A living player must not emit a synthetic revive during intermission entry.")
+	await _cleanup_tower_game(intermission_game)
+
+	var zero_rest_game := TOWER_SCENE.instantiate() as GameTowerDefense
+	root.add_child(zero_rest_game)
+	current_scene = zero_rest_game
+	await process_frame
+	await physics_frame
+	var zero_rest_step := zero_rest_game.call("_get_start_flow_step") as FlowStepConfig
+	var zero_rest_revives := {"count": 0}
+	zero_rest_game.player.revived.connect(
+		func() -> void:
+			zero_rest_revives["count"] = int(zero_rest_revives["count"]) + 1
+	)
+	zero_rest_game.player.call("_die")
+	zero_rest_game.pre_wave_duration = 0.0
+	zero_rest_game.call("_enter_intermission", zero_rest_step)
+	zero_rest_game.enemy_spawn_timer.stop()
+	_expect(
+		zero_rest_game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE,
+		"A zero-second intermission must continue directly into the next wave."
+	)
+	_expect(not zero_rest_game.player.is_dead, "A zero-second intermission must still revive a dead single-player character before the next wave begins.")
+	_expect(int(zero_rest_revives["count"]) == 1, "The zero-second intermission path must revive exactly once.")
+	_expect(
+		zero_rest_game.singleplayer_respawn_time_left < 0.0
+		and zero_rest_game.tower_defense_status_hud.respawn_entries.is_empty(),
+		"The zero-second intermission path must not carry a stale respawn timer into the next wave."
+	)
+	await _cleanup_tower_game(zero_rest_game)
+
+	var victory_game := TOWER_SCENE.instantiate() as GameTowerDefense
+	root.add_child(victory_game)
+	current_scene = victory_game
+	await process_frame
+	await physics_frame
+	var victory_revives := {"count": 0}
+	victory_game.player.revived.connect(
+		func() -> void:
+			victory_revives["count"] = int(victory_revives["count"]) + 1
+	)
+	victory_game.player.call("_die")
+	victory_game.call("_enter_victory")
+	_expect(victory_game.wave_state == GameRuntimeBase.WaveState.VICTORY, "The single-player revive policy test must enter victory.")
+	_expect(not victory_game.player.is_dead, "Victory must revive a dead single-player character immediately.")
+	_expect(int(victory_revives["count"]) == 1, "Victory must perform exactly one single-player revive transition.")
+	_expect(
+		victory_game.singleplayer_respawn_time_left < 0.0
+		and victory_game.tower_defense_status_hud.respawn_entries.is_empty(),
+		"Victory revival must clear every pending single-player respawn state."
+	)
+	await _cleanup_tower_game(victory_game)
+
+	var defeat_game := TOWER_SCENE.instantiate() as GameTowerDefense
+	root.add_child(defeat_game)
+	current_scene = defeat_game
+	await process_frame
+	await physics_frame
+	var defeat_revives := {"count": 0}
+	defeat_game.player.revived.connect(
+		func() -> void:
+			defeat_revives["count"] = int(defeat_revives["count"]) + 1
+	)
+	defeat_game.player.call("_die")
+	var defeat_position := defeat_game.player.global_position
+	var defeat_health := defeat_game.player.current_health
+	defeat_game.call("_enter_defeat")
+	_expect(defeat_game.wave_state == GameRuntimeBase.WaveState.DEFEAT, "The single-player defeat policy test must enter defeat.")
+	_expect(
+		defeat_game.player.is_dead
+		and defeat_game.player.current_health == defeat_health
+		and defeat_game.player.global_position.is_equal_approx(defeat_position),
+		"Defeat must preserve the dead player state instead of reviving, healing, or teleporting it."
+	)
+	_expect(int(defeat_revives["count"]) == 0, "Defeat must never emit a player revive transition.")
+	_expect(
+		defeat_game.singleplayer_respawn_time_left < 0.0
+		and defeat_game.tower_defense_status_hud.respawn_entries.is_empty(),
+		"Defeat must cancel pending respawn state without reviving the player."
+	)
+	await _cleanup_tower_game(defeat_game)
+
+
+func _test_host_transition_revive_signal_policy() -> void:
+	var player_names := {1: "主机", 2: "队友"}
+	var character_ids := {1: &"weishidaier", 2: &"tiyi"}
+
+	var living_game := TOWER_SCENE.instantiate() as GameTowerDefense
+	living_game.auto_start_waves = false
+	living_game.configure_multiplayer(
+		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		1,
+		player_names,
+		character_ids
+	)
+	root.add_child(living_game)
+	current_scene = living_game
+	await process_frame
+	await physics_frame
+	var living_signals := {"count": 0}
+	living_game.multiplayer_revive_all_requested.connect(
+		func() -> void:
+			living_signals["count"] = int(living_signals["count"]) + 1
+	)
+	var living_step := living_game.call("_get_start_flow_step") as FlowStepConfig
+	living_game.call("_enter_intermission", living_step)
+	living_game.call("_enter_victory")
+	_expect(
+		int(living_signals["count"]) == 0,
+		"A Host must not broadcast revive-all when every multiplayer player is already alive."
+	)
+	await _cleanup_tower_game(living_game)
+
+	var intermission_game := TOWER_SCENE.instantiate() as GameTowerDefense
+	intermission_game.auto_start_waves = false
+	intermission_game.configure_multiplayer(
+		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		1,
+		player_names,
+		character_ids
+	)
+	root.add_child(intermission_game)
+	current_scene = intermission_game
+	await process_frame
+	await physics_frame
+	var intermission_signals := {"count": 0}
+	intermission_game.multiplayer_revive_all_requested.connect(
+		func() -> void:
+			intermission_signals["count"] = int(intermission_signals["count"]) + 1
+	)
+	for peer_id in [1, 2]:
+		intermission_game.get_player_for_peer(peer_id).apply_multiplayer_death_state()
+	var intermission_step := intermission_game.call("_get_start_flow_step") as FlowStepConfig
+	intermission_game.pre_wave_duration = 0.0
+	intermission_game.call("_enter_intermission", intermission_step)
+	intermission_game.enemy_spawn_timer.stop()
+	_expect(
+		int(intermission_signals["count"]) == 1,
+		"A Host zero-second intermission with multiple dead players must broadcast one revive-all event, not one per player."
+	)
+	_expect(
+		_all_multiplayer_players_dead(intermission_game, [1, 2]),
+		"The Host gameplay scene must leave multiplayer revival to the authoritative MpGame listener."
+	)
+	await _cleanup_tower_game(intermission_game)
+
+	var victory_game := TOWER_SCENE.instantiate() as GameTowerDefense
+	victory_game.auto_start_waves = false
+	victory_game.configure_multiplayer(
+		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		1,
+		player_names,
+		character_ids
+	)
+	root.add_child(victory_game)
+	current_scene = victory_game
+	await process_frame
+	await physics_frame
+	var victory_signals := {"count": 0}
+	victory_game.multiplayer_revive_all_requested.connect(
+		func() -> void:
+			victory_signals["count"] = int(victory_signals["count"]) + 1
+	)
+	for peer_id in [1, 2]:
+		victory_game.get_player_for_peer(peer_id).apply_multiplayer_death_state()
+	victory_game.call("_enter_victory")
+	_expect(
+		int(victory_signals["count"]) == 1,
+		"A Host victory with multiple dead players must broadcast exactly one revive-all event."
+	)
+	_expect(
+		_all_multiplayer_players_dead(victory_game, [1, 2]),
+		"Host victory must not bypass MpGame by reviving multiplayer Player nodes directly."
+	)
+	await _cleanup_tower_game(victory_game)
+
+	var defeat_game := TOWER_SCENE.instantiate() as GameTowerDefense
+	defeat_game.auto_start_waves = false
+	defeat_game.configure_multiplayer(
+		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		1,
+		player_names,
+		character_ids
+	)
+	root.add_child(defeat_game)
+	current_scene = defeat_game
+	await process_frame
+	await physics_frame
+	var defeat_signals := {"count": 0}
+	defeat_game.multiplayer_revive_all_requested.connect(
+		func() -> void:
+			defeat_signals["count"] = int(defeat_signals["count"]) + 1
+	)
+	for peer_id in [1, 2]:
+		defeat_game.get_player_for_peer(peer_id).apply_multiplayer_death_state()
+	defeat_game.call("_enter_defeat")
+	_expect(int(defeat_signals["count"]) == 0, "A Host defeat must not broadcast revive-all.")
+	_expect(
+		_all_multiplayer_players_dead(defeat_game, [1, 2]),
+		"A Host defeat must preserve every dead multiplayer player state."
+	)
+	await _cleanup_tower_game(defeat_game)
+
+
+func _test_host_authoritative_revive_all() -> void:
+	var net_manager := root.get_node_or_null("NetManager")
+	_expect(net_manager != null, "The authoritative revive-all test requires NetManager.")
+	if net_manager == null:
+		return
+	var previous_role := int(net_manager.get("net_role"))
+	net_manager.set("net_role", 1)
+
+	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	game.auto_start_waves = false
+	game.configure_multiplayer(
+		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		1,
+		{1: "主机", 2: "存活队友"},
+		{1: &"weishidaier", 2: &"tiyi"}
+	)
+	root.add_child(game)
+	current_scene = game
+	await process_frame
+	await physics_frame
+
+	var dead_player := game.get_player_for_peer(1)
+	var living_player := game.get_player_for_peer(2)
+	var living_position := living_player.global_position + Vector2(19.0, -7.0)
+	var living_health := living_player.max_health - 11
+	living_player.global_position = living_position
+	living_player.current_health = living_health
+	dead_player.apply_multiplayer_death_state()
+	game.update_player_respawn_countdown(1, 5)
+
+	var mp_game := MP_GAME_SCENE.instantiate()
+	mp_game.set("game", game)
+	mp_game.set("net_manager", net_manager)
+	var revive_times := mp_game.get("_dead_player_revive_times") as Dictionary
+	var revive_seconds := mp_game.get("_dead_player_revive_last_seconds") as Dictionary
+	revive_times[1] = 1000.0
+	revive_times[77] = 2000.0
+	revive_seconds[1] = 5
+	revive_seconds[77] = 9
+	var revive_events := {"dead": 0, "living": 0}
+	var revive_all_requests := {"count": 0}
+	dead_player.revived.connect(
+		func() -> void:
+			revive_events["dead"] = int(revive_events["dead"]) + 1
+	)
+	living_player.revived.connect(
+		func() -> void:
+			revive_events["living"] = int(revive_events["living"]) + 1
+	)
+	game.multiplayer_revive_all_requested.connect(
+		func() -> void:
+			revive_all_requests["count"] = int(revive_all_requests["count"]) + 1
+	)
+	game.multiplayer_revive_all_requested.connect(
+		Callable(mp_game, "_on_host_revive_all_requested")
+	)
+
+	var next_step := game.call("_get_start_flow_step") as FlowStepConfig
+	game.call("_enter_intermission", next_step)
+	var fixed_spawn: Variant = game.get_fixed_multiplayer_respawn_position(1)
+	_expect(
+		not dead_player.is_dead
+		and dead_player.current_health == dead_player.max_health
+		and dead_player.invincibility_time_left > 0.0
+		and fixed_spawn is Vector2
+		and dead_player.global_position.is_equal_approx(fixed_spawn as Vector2),
+		"Host revive-all must restore each dead player at its fixed tower-defense slot with full health and protection."
+	)
+	_expect(
+		living_player.global_position.is_equal_approx(living_position)
+		and living_player.current_health == living_health,
+		"Host revive-all must not heal or teleport a living multiplayer player."
+	)
+	_expect(
+		revive_times.is_empty()
+		and revive_seconds.is_empty()
+		and game.tower_defense_status_hud.respawn_entries.is_empty(),
+		"Host revive-all must clear every pending revive timer and death HUD entry before completing."
+	)
+	_expect(
+		int(revive_events["dead"]) == 1 and int(revive_events["living"]) == 0,
+		"Host revive-all must emit one revive transition only for the dead player."
+	)
+	_expect(
+		int(revive_all_requests["count"]) == 1,
+		"A Host intermission must issue exactly one authoritative revive-all request."
+	)
+	var revision_after_revive := int(
+		(mp_game.get("_player_health_revisions") as Dictionary).get(1, 0)
+	)
+	game.call("_enter_intermission", next_step)
+	_expect(
+		int(revive_events["dead"]) == 1
+		and int((mp_game.get("_player_health_revisions") as Dictionary).get(1, 0))
+		== revision_after_revive
+		and int(revive_all_requests["count"]) == 1,
+		"A repeated Host intermission must not request or perform revival for an already-living player."
+	)
+
+	mp_game.free()
+	net_manager.set("net_role", previous_role)
+	await _cleanup_tower_game(game)
+
+
+func _test_client_view_waits_for_authoritative_revive() -> void:
+	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	game.auto_start_waves = false
+	game.configure_multiplayer(
+		GameRuntimeBase.RuntimeMode.CLIENT_VIEW,
+		2,
+		{1: "主机", 2: "客户端"},
+		{1: &"weishidaier", 2: &"tiyi"}
+	)
+	root.add_child(game)
+	current_scene = game
+	await process_frame
+	await physics_frame
+	var revive_events := {"count": 0}
+	var revive_all_events := {"count": 0}
+	game.multiplayer_revive_all_requested.connect(
+		func() -> void:
+			revive_all_events["count"] = int(revive_all_events["count"]) + 1
+	)
+	for peer_id in [1, 2]:
+		var player_instance := game.get_player_for_peer(peer_id)
+		player_instance.revived.connect(
+			func() -> void:
+				revive_events["count"] = int(revive_events["count"]) + 1
+		)
+		player_instance.apply_multiplayer_death_state()
+	var flow_step := game.call("_get_start_flow_step") as FlowStepConfig
+	game.apply_remote_flow_state(
+		flow_step.step_id,
+		GameRuntimeBase.WaveState.INTERMISSION,
+		30
+	)
+	_expect(
+		_all_multiplayer_players_dead(game, [1, 2]),
+		"A ClientView intermission snapshot must wait for reliable authoritative revive events."
+	)
+	game.apply_remote_flow_state(
+		flow_step.step_id,
+		GameRuntimeBase.WaveState.INTERMISSION,
+		0
+	)
+	_expect(
+		_all_multiplayer_players_dead(game, [1, 2]),
+		"A zero-second ClientView intermission must not infer or perform revival locally."
+	)
+	game.apply_remote_victory()
+	_expect(
+		_all_multiplayer_players_dead(game, [1, 2]),
+		"A ClientView victory presentation must still wait for the Host's reliable revive confirmations."
+	)
+	game.apply_remote_defeat()
+	_expect(
+		_all_multiplayer_players_dead(game, [1, 2]),
+		"A ClientView defeat must preserve dead player state."
+	)
+	_expect(
+		int(revive_events["count"]) == 0
+		and int(revive_all_events["count"]) == 0,
+		"ClientView flow updates must neither revive Player nodes nor originate revive-all requests."
+	)
+	await _cleanup_tower_game(game)
+
+
 func _test_client_gate_warning_replication() -> void:
 	var game := TOWER_SCENE.instantiate() as GameTowerDefense
 	game.auto_start_waves = false
@@ -507,6 +935,24 @@ func _all_control_descendants_ignore_mouse(node: Node) -> bool:
 		if not _all_control_descendants_ignore_mouse(child):
 			return false
 	return true
+
+
+func _all_multiplayer_players_dead(game: GameTowerDefense, peer_ids: Array[int]) -> bool:
+	for peer_id in peer_ids:
+		var player_instance := game.get_player_for_peer(peer_id)
+		if player_instance == null or not player_instance.is_dead:
+			return false
+	return true
+
+
+func _cleanup_tower_game(game: GameTowerDefense) -> void:
+	_stop_audio_players(game)
+	if current_scene == game:
+		current_scene = null
+	game.queue_free()
+	for _frame in range(4):
+		await process_frame
+		await physics_frame
 
 
 func _expect(condition: bool, message: String) -> void:

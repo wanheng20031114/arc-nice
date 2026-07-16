@@ -2524,6 +2524,7 @@ func _enter_intermission(next_step: FlowStepConfig = null) -> void:
 	_update_post_wave_music(current_flow_step)
 	wave_hud.show_countdown(countdown_seconds, true)
 	_emit_multiplayer_flow_state(WaveState.INTERMISSION)
+	_force_revive_dead_players()
 
 	if countdown_seconds <= 0:
 		_begin_flow_step(next_flow_step_after_rest)
@@ -3140,9 +3141,8 @@ func _enter_victory(emit_multiplayer: bool = true) -> void:
 		defeat_camera_tween.kill()
 		defeat_camera_tween = null
 	_restore_camera_after_boss_intro()
-	if emit_multiplayer and runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_revive_all_requested.emit()
 	wave_state = WaveState.VICTORY
+	_force_revive_dead_players(emit_multiplayer)
 	_clear_respawn_runtime_for_result()
 	if tower_defense_status_hud != null:
 		tower_defense_status_hud.stop_gate_damage_warning()
@@ -3483,6 +3483,35 @@ func clear_player_respawn_countdown(peer_id: int) -> void:
 
 func _reset_player_wave_death_counts() -> void:
 	player_wave_death_counts.clear()
+
+
+func _force_revive_dead_players(emit_multiplayer: bool = true) -> void:
+	match runtime_mode:
+		RuntimeMode.SINGLEPLAYER:
+			singleplayer_respawn_time_left = -1.0
+			singleplayer_respawn_last_seconds = -1
+			clear_player_respawn_countdown(0)
+			if player == null or not is_instance_valid(player) or not player.is_dead:
+				return
+			player.revive_multiplayer(
+				player_spawn.global_position,
+				player.max_health,
+				PLAYER_RESPAWN_INVINCIBILITY_SECONDS
+			)
+		RuntimeMode.HOST_AUTHORITY:
+			if not emit_multiplayer:
+				return
+			for player_variant in peer_players.values():
+				var player_instance := player_variant as Player
+				if (
+					player_instance != null
+					and is_instance_valid(player_instance)
+					and player_instance.is_dead
+				):
+					multiplayer_revive_all_requested.emit()
+					return
+		RuntimeMode.CLIENT_VIEW:
+			return
 
 
 func _update_singleplayer_respawn(delta: float) -> void:
