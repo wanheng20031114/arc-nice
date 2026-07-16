@@ -10,11 +10,15 @@ const BASIC_ENEMY_CONFIG := preload(
 const MAX_ENEMIES := 160
 const MIN_SOURCE_DISTANCE_CELLS := 12
 const MAX_BUILD_FRAMES := 600
+const FLOW_RADIUS_ENV := "ARC_NAV_DYNAMIC_FLOW_RADIUS"
+const SOURCE_RADIUS_ENV := "ARC_NAV_SOURCE_RADIUS"
+const PACKED_BUILD_ENV := "ARC_NAV_PACKED_FLOW_BUILD"
 
 var game: GameTowerDefense
 var pathfinder: GridPathfinder
 var enemies: Array[Enemy] = []
 var failures: Array[String] = []
+var source_collection_radius_cells: int = 0
 
 
 func _init() -> void:
@@ -39,6 +43,7 @@ func _run() -> void:
 		push_error("WALL_DYNAMIC_FLOW_DIAGNOSTIC requires a built pathfinder and player.")
 		await _finish(1)
 		return
+	_apply_ab_overrides()
 
 	var probe_enemy := BASIC_ENEMY_CONFIG.enemy_scene.instantiate() as Enemy
 	game.enemy_container.add_child(probe_enemy)
@@ -80,6 +85,7 @@ func _run() -> void:
 		push_error("WALL_DYNAMIC_FLOW_DIAGNOSTIC found no wall-occluded enemy sources.")
 		await _finish(1)
 		return
+	var source_cohort_signature := _get_source_cohort_signature(source_cells)
 	probe_enemy.queue_free()
 	await process_frame
 	_spawn_enemies(source_cells)
@@ -92,6 +98,21 @@ func _run() -> void:
 		return
 	var slot := _get_only_dynamic_slot()
 	var initial_revision := slot.published_revision if slot != null else -1
+	var initial_field_cells := (
+		(
+			slot.published_field.get("next_cells", {}) as Dictionary
+		).size()
+		if slot != null
+		else 0
+	)
+	var initial_field_signature := (
+		_get_flow_field_signature(slot.published_field) if slot != null else ""
+	)
+	var initial_region_cells := (
+		slot.published_build_region.size.x * slot.published_build_region.size.y
+		if slot != null
+		else 0
+	)
 	_expect(
 		pathfinder.dynamic_flow_target_slots.size() == 1 and slot != null,
 		"The initial pursuing cohort must share exactly one dynamic target slot."
@@ -189,27 +210,52 @@ func _run() -> void:
 		recovery_wait_frames += 1
 		recovered_snapshot = _sample_enemy_flow_directions()
 	var final_slot := _get_only_dynamic_slot()
+	var replacement_field_cells := (
+		(
+			final_slot.published_field.get("next_cells", {}) as Dictionary
+		).size()
+		if final_slot != null
+		else 0
+	)
+	var replacement_field_signature := (
+		_get_flow_field_signature(final_slot.published_field)
+		if final_slot != null
+		else ""
+	)
+	var replacement_region_cells := (
+		final_slot.published_build_region.size.x
+			* final_slot.published_build_region.size.y
+		if final_slot != null
+		else 0
+	)
 	var local_goal_region := _collect_local_goal_region(profile, wall_cell)
 	var profile_resolution_summary := _get_profile_resolution_summary(wall_cell)
 
 	print(
 		(
-			"WALL_DYNAMIC_FLOW_DIAGNOSTIC enemies=%d initial_cell=%s wall_cell=%s "
+			"WALL_DYNAMIC_FLOW_DIAGNOSTIC radius=%d source_radius=%d packed=%s cohort=%s "
+			+ "enemies=%d initial_cell=%s wall_cell=%s "
 			+ "initial_build_frames=%d stale=%d zero=%d ready=%d deferred=%d "
 			+ "old_flow_nonzero=%d old_flow_shape_safe=%d far_from_old_anchor=%d "
 			+ "outside_old_anchor_influence=%d remaining_range=%d..%d anchor_lag=%d "
 			+ "uncertified_live_corridor=%d pending_job_target=%s "
 			+ "replacement_frames=%d recovered_nonzero=%d final_revision=%d "
 			+ "final_anchor=%s desired=%s "
-			+ "initial_expansions_avg=%.1f initial_expansions_peak=%d "
-			+ "initial_usec_avg=%.1f initial_usec_peak=%d initial_caps=%d/%d "
-			+ "replacement_expansions_avg=%.1f replacement_expansions_peak=%d "
-			+ "replacement_usec_avg=%.1f replacement_usec_peak=%d replacement_caps=%d/%d"
+			+ "initial_field_cells=%d initial_field_signature=%s initial_region_cells=%d "
+			+ "initial_expansions_total=%d initial_expansions_avg=%.1f initial_expansions_peak=%d "
+			+ "initial_usec_total=%d initial_usec_avg=%.1f initial_usec_peak=%d initial_caps=%d/%d "
+			+ "replacement_field_cells=%d replacement_field_signature=%s replacement_region_cells=%d "
+			+ "replacement_expansions_total=%d replacement_expansions_avg=%.1f replacement_expansions_peak=%d "
+			+ "replacement_usec_total=%d replacement_usec_avg=%.1f replacement_usec_peak=%d replacement_caps=%d/%d"
 			+ " wall_direction=%s frozen_published=%s frozen_desired_original=%s "
 			+ "frozen_desired_resolved=%s local_goal_region=%s profile_resolutions=%s"
 			+ " production_zero=%d production_nonzero=%d production_direct=%d production_stale=%d"
 		)
 		% [
+			pathfinder.dynamic_target_flow_radius_cells,
+			source_collection_radius_cells,
+			str(pathfinder.runtime_flow_use_packed_build_storage).to_lower(),
+			source_cohort_signature,
 			enemies.size(),
 			str(initial_cell),
 			str(wall_cell),
@@ -232,14 +278,24 @@ func _run() -> void:
 			final_slot.published_revision if final_slot != null else -1,
 			str(final_slot.published_anchor_cell if final_slot != null else Vector2i.MAX),
 			str(final_slot.desired_resolved_cell if final_slot != null else Vector2i.MAX),
+			initial_field_cells,
+			initial_field_signature,
+			initial_region_cells,
+			int(initial_build["expansion_sum"]),
 			float(initial_build["expansion_sum"]) / maxf(initial_build_frames, 1),
 			int(initial_build["expansion_peak"]),
+			int(initial_build["usec_sum"]),
 			float(initial_build["usec_sum"]) / maxf(initial_build_frames, 1),
 			int(initial_build["usec_peak"]),
 			int(initial_build["expansion_capped_frames"]),
 			int(initial_build["deadline_capped_frames"]),
+			replacement_field_cells,
+			replacement_field_signature,
+			replacement_region_cells,
+			replacement_expansion_sum,
 			float(replacement_expansion_sum) / maxf(replacement_frames, 1),
 			replacement_expansion_peak,
+			replacement_usec_sum,
 			float(replacement_usec_sum) / maxf(replacement_frames, 1),
 			replacement_usec_peak,
 			replacement_expansion_capped_frames,
@@ -293,6 +349,56 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	await _finish(1)
+
+
+func _apply_ab_overrides() -> void:
+	var radius_text := OS.get_environment(FLOW_RADIUS_ENV).strip_edges()
+	if radius_text.is_valid_int():
+		pathfinder.dynamic_target_flow_radius_cells = maxi(int(radius_text), 1)
+	source_collection_radius_cells = pathfinder.dynamic_target_flow_radius_cells
+	var source_radius_text := OS.get_environment(SOURCE_RADIUS_ENV).strip_edges()
+	if source_radius_text.is_valid_int():
+		source_collection_radius_cells = maxi(int(source_radius_text), 1)
+	var packed_build_text := OS.get_environment(PACKED_BUILD_ENV).strip_edges().to_lower()
+	match packed_build_text:
+		"1", "true", "yes", "on":
+			pathfinder.runtime_flow_use_packed_build_storage = true
+		"0", "false", "no", "off":
+			pathfinder.runtime_flow_use_packed_build_storage = false
+		"":
+			pass
+		_:
+			push_warning(
+				"Ignoring invalid %s=%s; expected true/false or 1/0."
+				% [PACKED_BUILD_ENV, packed_build_text]
+			)
+
+
+func _get_source_cohort_signature(source_cells: Array[Vector2i]) -> String:
+	var encoded_cells := PackedStringArray()
+	for cell in source_cells:
+		encoded_cells.append("%d,%d" % [cell.x, cell.y])
+	return ";".join(encoded_cells).sha256_text().left(16)
+
+
+func _get_flow_field_signature(field: Dictionary) -> String:
+	var next_cells := field.get("next_cells", {}) as Dictionary
+	var distances := field.get("distances", {}) as Dictionary
+	var encoded_cells := PackedStringArray()
+	for cell_variant in next_cells:
+		var cell := cell_variant as Vector2i
+		var next_cell := next_cells.get(cell, Vector2i.MAX) as Vector2i
+		encoded_cells.append(
+			"%d,%d>%d,%d:%d" % [
+				cell.x,
+				cell.y,
+				next_cell.x,
+				next_cell.y,
+				int(distances.get(cell, -1)),
+			]
+		)
+	encoded_cells.sort()
+	return ";".join(encoded_cells).sha256_text().left(16)
 
 
 func _stop_background_gameplay() -> void:
@@ -356,7 +462,7 @@ func _collect_sources(
 			var initial_delta := (cell - initial_target_cell).abs()
 			if (
 				maxi(initial_delta.x, initial_delta.y)
-				>= pathfinder.dynamic_target_flow_radius_cells
+				>= source_collection_radius_cells
 			):
 				continue
 			if Vector2(cell - wall_cell).length_squared() > 16.0 * 16.0:

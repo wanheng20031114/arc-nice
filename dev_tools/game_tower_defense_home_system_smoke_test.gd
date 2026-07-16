@@ -356,25 +356,46 @@ func _verify_target_selection(game: GameTowerDefense) -> void:
 			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS / logical_tile_width,
 			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS
 		),
-		"The player aggro radius must equal 16 logical tiles."
+		"The player aggro radius must equal 10 logical tiles."
 	)
 	_expect(
 		is_equal_approx(
 			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS * game.map_camera.zoom.x,
-			512.0
+			320.0
 		),
-		"At tower-defense zoom 2, the player aggro radius must appear as 512 screen pixels."
+		"At tower-defense zoom 2, the player aggro radius must appear as 320 screen pixels."
+	)
+	_expect(
+		is_equal_approx(
+			GameTowerDefense.PLAYER_NEAR_MOVING_DIRECT_DISTANCE / logical_tile_width,
+			GameTowerDefense.PLAYER_NEAR_MOVING_DIRECT_DISTANCE_CELLS
+		)
+		and is_equal_approx(
+			GameTowerDefense.PLAYER_NEAR_MOVING_DIRECT_DISTANCE_CELLS,
+			16.0
+		),
+		"The direct-moving tier must remain an independently configured 16 logical tiles."
+	)
+	_expect(
+		game.grid_pathfinder.dynamic_target_flow_radius_cells == 16
+		and float(game.grid_pathfinder.dynamic_target_flow_radius_cells)
+			> GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS,
+		"The 10-tile player aggro must retain an independent 16-tile detour field."
 	)
 	var gate := targets[0]
 	var near_gate := gate.global_position + Vector2(-2.0, 0.0)
-	game.player.global_position = near_gate + Vector2(logical_tile_width * 16.01, 0.0)
+	game.player.global_position = near_gate + Vector2(logical_tile_width * 10.01, 0.0)
 	var picked_gate: Node2D = game.call("_pick_enemy_objective", near_gate, game.player) as Node2D
 	_expect(picked_gate == gate, "Without a nearby plant or player, enemies must choose Home.")
+	_expect(
+		game.call("_pick_enemy_target", near_gate) == game.player,
+		"Combat target selection must still find a living player beyond objective aggro range."
+	)
 
-	game.player.global_position = near_gate + Vector2(logical_tile_width * 16.0, 0.0)
+	game.player.global_position = near_gate + Vector2(logical_tile_width * 10.0, 0.0)
 	_expect(
 		game.call("_pick_enemy_objective", near_gate, game.player) == game.player,
-		"A player exactly 16 tiles away must outrank even a much closer Home gate."
+		"A player exactly 10 tiles away must outrank even a much closer Home gate."
 	)
 
 	var boundary_plant := _register_target_probe_plant(
@@ -419,10 +440,10 @@ func _verify_target_selection(game: GameTowerDefense) -> void:
 		"A player death must request an immediate budgeted retarget sweep."
 	)
 
-	game.player.global_position = near_gate + Vector2(logical_tile_width * 16.01, 0.0)
+	game.player.global_position = near_gate + Vector2(logical_tile_width * 10.01, 0.0)
 	_expect(
 		game.call("_pick_enemy_objective", near_gate, game.player) == gate,
-		"A player beyond 16 tiles must not pull an enemy away from Home."
+		"A player beyond 10 tiles must not pull an enemy away from Home."
 	)
 	# Leave enough margin for the retarget probe itself, which starts four world
 	# pixels to the other side of near_gate.
@@ -446,9 +467,9 @@ func _verify_target_selection(game: GameTowerDefense) -> void:
 	_expect(
 		is_equal_approx(
 			retarget_enemy.near_moving_target_direct_distance,
-			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS
+			GameTowerDefense.PLAYER_NEAR_MOVING_DIRECT_DISTANCE
 		),
-		"Tower defense must scope its 16-tile direct-player tier without changing other modes."
+		"Tower defense must keep its independent 16-tile direct-player tier."
 	)
 	retarget_enemy.global_position = game.player.global_position + Vector2(2.0, 0.0)
 	game.call("_update_tower_defense_enemy_targets", 0.4)

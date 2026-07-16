@@ -39,6 +39,8 @@ class FakeDynamicPathfinder:
 	var dynamic_from_cell := Vector2i.ZERO
 	var dynamic_next_cell := Vector2i(1, 0)
 	var requested_contact_radius_world := 0.0
+	var open_plain_query_count := 0
+	var segment_query_deltas: Array[Vector2] = []
 
 	func _ready() -> void:
 		is_built = true
@@ -79,6 +81,7 @@ class FakeDynamicPathfinder:
 		_agent_half_extents: Vector2 = Vector2.ZERO,
 		_traversal_types: int = DualGridTilemap.TraversalType.LAND
 	) -> Variant:
+		open_plain_query_count += 1
 		return open_plain_is_clear
 
 	func try_is_navigation_segment_walkable(
@@ -87,15 +90,8 @@ class FakeDynamicPathfinder:
 		_agent_half_extents: Vector2 = Vector2.ZERO,
 		_traversal_types: int = DualGridTilemap.TraversalType.LAND
 	) -> Variant:
-		if not segment_is_clear:
-			return false
-		if open_plain_is_clear:
-			return true
-		# Model a vertical wall: a short horizontal correction toward the live
-		# player is blocked, while the old flow waypoint may safely continue down
-		# the wall. This distinguishes the two certificates used by Enemy.
-		var delta := to_global_position - from_global_position
-		return absf(delta.y) > absf(delta.x)
+		segment_query_deltas.append(to_global_position - from_global_position)
+		return segment_is_clear
 
 
 func _init() -> void:
@@ -146,7 +142,11 @@ func _test_near_clear_player_uses_certified_short_probe() -> void:
 	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
 	_expect(
 		not pathfinder.requested_dynamic_step,
-		"A nearby player with an O(1) open-plain certificate must bypass flow navigation."
+		"A nearby player with a clear bounded short-step certificate must bypass flow navigation."
+	)
+	_expect(
+		pathfinder.open_plain_query_count == 0,
+		"Ordinary nearby pursuit must use only its bounded short-step certificate."
 	)
 	_expect(
 		move_direction.is_equal_approx(Vector2(64.0, 32.0).normalized()),
@@ -267,6 +267,10 @@ func _test_outdated_dynamic_flow_prefers_live_player_on_open_plain() -> void:
 	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
 	_expect(pathfinder.requested_dynamic_step, "A far live player must use the shared dynamic slot API.")
 	_expect(
+		pathfinder.open_plain_query_count == 1,
+		"Bypassing a stale dynamic field must request one complete-corridor certificate."
+	)
+	_expect(
 		move_direction.is_equal_approx(player.global_position.normalized()),
 		"An outdated open-terrain flow must immediately correct toward the live player."
 	)
@@ -292,6 +296,22 @@ func _test_outdated_dynamic_flow_keeps_obstacle_route_when_not_certified() -> vo
 			"A materially stale dynamic anchor must keep following its complete, "
 			+ "collision-safe flow waypoint while the replacement builds; field "
 			+ "freshness must never freeze the pursuing cohort."
+		)
+	)
+	_expect(
+		pathfinder.open_plain_query_count == 1,
+		"A stale live-target correction must consult the complete-corridor certificate."
+	)
+	var queried_live_target_short_step := false
+	for query_delta in pathfinder.segment_query_deltas:
+		if absf(query_delta.x) > absf(query_delta.y):
+			queried_live_target_short_step = true
+			break
+	_expect(
+		not queried_live_target_short_step,
+		(
+			"A rejected complete corridor must not be replaced by a locally clear "
+			+ "short probe toward the live player."
 		)
 	)
 	_expect(

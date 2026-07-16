@@ -1390,11 +1390,10 @@ func _get_safe_navigation_move_direction_unprofiled(
 				)
 			)
 	elif _is_near_moving_target(target_node):
-		# A moving horde must never pay one full target-distance physics sweep per
-		# enemy beside a wall. The immutable profile either certifies the complete
-		# corridor in O(1), after which physics probes only the short cached motion,
-		# or the shared flow field handles the obstacle route.
-		var direct_direction := _get_collision_safe_precomputed_open_plain_direction(
+		# Ordinary pursuit only certifies the distance that can be travelled before
+		# the next staggered refresh. This stays cheap even near a wall: once the
+		# short step is blocked, the shared flow field takes over obstacle routing.
+		var direct_direction := _get_collision_safe_short_navigation_step_direction(
 			target_node.global_position
 		)
 		if direct_direction != Vector2.ZERO:
@@ -1408,10 +1407,10 @@ func _get_safe_navigation_move_direction_unprofiled(
 				true
 			)
 	elif target_node != target_player:
-		# Between the near and far tiers, only take a straight static route when
-		# the shared profile snapshot can certify the complete rectangle as open.
-		# Cluttered or not-yet-built profiles keep using the complete flow field.
-		var direct_direction := _get_collision_safe_precomputed_open_plain_direction(
+		# Between the near and far tiers, keep using the same bounded short-step
+		# certificate. Static obstacles hand the enemy to the complete flow route
+		# as soon as the next staggered probe reaches them.
+		var direct_direction := _get_collision_safe_short_navigation_step_direction(
 			target_node.global_position
 		)
 		if direct_direction != Vector2.ZERO:
@@ -1632,7 +1631,7 @@ func _get_outdated_dynamic_flow_direct_correction(
 	# This O(1) integral certificate is deliberately stricter than a local
 	# steering probe: it cannot pull an enemy back into a wall or U-shaped trap
 	# merely because the newest reverse field has not finished publishing yet.
-	return _get_collision_safe_precomputed_open_plain_direction(
+	return _get_collision_safe_full_open_corridor_direction(
 		target_node.global_position
 	)
 
@@ -1792,7 +1791,7 @@ func _get_collision_safe_near_static_objective_direction(
 	objective_position: Vector2
 ) -> Vector2:
 	var precomputed_direction := (
-		_get_collision_safe_precomputed_open_plain_direction(objective_position)
+		_get_collision_safe_short_navigation_step_direction(objective_position)
 	)
 	if precomputed_direction != Vector2.ZERO:
 		return precomputed_direction
@@ -1812,7 +1811,7 @@ func _get_collision_safe_near_moving_target_direction(
 	objective_position: Vector2
 ) -> Vector2:
 	var precomputed_direction := (
-		_get_collision_safe_precomputed_open_plain_direction(objective_position)
+		_get_collision_safe_short_navigation_step_direction(objective_position)
 	)
 	if precomputed_direction != Vector2.ZERO:
 		return precomputed_direction
@@ -1824,7 +1823,7 @@ func _get_collision_safe_near_moving_target_direction(
 	return offset.normalized()
 
 
-func _get_collision_safe_precomputed_open_plain_direction(
+func _get_collision_safe_short_navigation_step_direction(
 	objective_position: Vector2
 ) -> Vector2:
 	var offset := objective_position - global_position
@@ -1851,6 +1850,22 @@ func _get_collision_safe_precomputed_open_plain_direction(
 	):
 		return Vector2.ZERO
 	return direct_direction
+
+
+# A stale dynamic field may point at a superseded player position. Bypassing
+# that complete route is safe only when the immutable agent-solid integral can
+# conservatively prove the whole endpoint rectangle open. The O(1) certificate
+# deliberately has no exact long-segment fallback; after it succeeds, the usual
+# short grid/physics probe still protects against dynamic bodies and sub-cell
+# collision geometry until the next staggered navigation refresh.
+func _get_collision_safe_full_open_corridor_direction(
+	objective_position: Vector2
+) -> Vector2:
+	if _try_get_navigation_open_plain(objective_position) != true:
+		return Vector2.ZERO
+	return _get_collision_safe_short_navigation_step_direction(
+		objective_position
+	)
 
 
 func _try_get_navigation_open_plain(objective_position: Vector2) -> Variant:

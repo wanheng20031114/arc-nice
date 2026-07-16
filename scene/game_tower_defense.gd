@@ -67,9 +67,16 @@ const ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME := 16
 # authored 16 px grid and remain useful to UI/tests.
 const AUTHORED_LOGICAL_TILE_SIZE := 16.0
 const PLANT_OBJECTIVE_AGGRO_RADIUS_CELLS := 8.0
-const PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS := 16.0
+const PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS := 10.0
 const PLAYER_OBJECTIVE_AGGRO_RADIUS := (
 	PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS * AUTHORED_LOGICAL_TILE_SIZE
+)
+# Keep navigation's nearby-moving-target tier independent from the gameplay
+# aggro radius. This lets target acquisition shrink without silently changing
+# how an already-selected moving objective is navigated.
+const PLAYER_NEAR_MOVING_DIRECT_DISTANCE_CELLS := 16.0
+const PLAYER_NEAR_MOVING_DIRECT_DISTANCE := (
+	PLAYER_NEAR_MOVING_DIRECT_DISTANCE_CELLS * AUTHORED_LOGICAL_TILE_SIZE
 )
 const PLANT_PLACEMENT_REJECT_INVALID_REQUEST := &"invalid_request"
 const PLANT_PLACEMENT_REJECT_INVALID_PLAYER := &"invalid_player"
@@ -3950,7 +3957,7 @@ func _process_enemy_retarget_budget() -> void:
 func _assign_enemy_targets(enemy: Enemy, from_position: Vector2) -> void:
 	if enemy == null or enemy.is_dead:
 		return
-	enemy.set_near_moving_target_direct_distance(PLAYER_OBJECTIVE_AGGRO_RADIUS)
+	enemy.set_near_moving_target_direct_distance(PLAYER_NEAR_MOVING_DIRECT_DISTANCE)
 	var combat_player := _pick_enemy_target(from_position)
 	var objective := _pick_enemy_objective(from_position, combat_player)
 	enemy.set_target_player(combat_player)

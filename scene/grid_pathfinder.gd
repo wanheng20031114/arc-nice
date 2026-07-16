@@ -26,6 +26,9 @@ const FLOW_DIRECTIONS: Array[Vector2i] = [
 const FLOW_ORTHOGONAL_COST := 10
 const FLOW_DIAGONAL_COST := 14
 const FLOW_BUCKET_COUNT := FLOW_DIAGONAL_COST + 1
+const FLOW_DISTANCE_INFINITY := 2147483647
+const FLOW_NO_CELL_INDEX := -1
+const RUNTIME_FLOW_MATERIALIZE_BATCH_CELLS := 16
 const MAX_FLOW_RECOVERY_CACHE_ENTRIES := 512
 const DEFAULT_TRAVERSAL_TYPES := DualGridTilemap.TraversalType.LAND
 const NAVIGATION_CELL_OBSTACLE_FLAG := 1 << 7
@@ -143,6 +146,17 @@ class RuntimeFlowBuildJob:
 	var path_grid: AStarGrid2D = null
 	var next_cells: Dictionary = {}
 	var distances: Dictionary = {}
+	# Runtime Dijkstra builds use region-local packed indices while they are hot.
+	# The published compatibility field is materialized in bounded batches after
+	# search, avoiding Vector2i hash lookups without creating a completion spike.
+	var uses_packed_storage: bool = false
+	var packed_region_width: int = 0
+	var packed_distances: PackedInt32Array = PackedInt32Array()
+	var packed_next_indices: PackedInt32Array = PackedInt32Array()
+	var discovered_cell_count: int = 0
+	var solid_snapshot: AgentSolidIntegralSnapshot = null
+	var search_completed: bool = false
+	var next_materialize_cell_index: int = 0
 	var pending_buckets: Array = []
 	var pending_entry_count: int = 0
 	var current_distance: int = 0
@@ -160,6 +174,10 @@ class AgentSolidIntegralSnapshot:
 	var region: Rect2i = Rect2i()
 	var stride: int = 0
 	var values: PackedInt32Array = PackedInt32Array()
+	# Runtime flow jobs need the same per-agent solidity data without repeated
+	# AStarGrid2D method calls. It is built atomically beside the prefix sums.
+	var solid_cells: PackedByteArray = PackedByteArray()
+	var transition_masks: PackedByteArray = PackedByteArray()
 
 
 class AgentNavigationProfile:
@@ -182,6 +200,7 @@ class RuntimeAgentGridBuildJob:
 	var grid_cells_completed: bool = false
 	var solid_integral_snapshot: AgentSolidIntegralSnapshot = null
 	var next_integral_cell_index: int = 0
+	var next_transition_cell_index: int = 0
 
 @export var obstacle_tile_layer_path: NodePath = ^"../GroundTileMapLayer"
 @export var terrain_map_path: NodePath
@@ -207,6 +226,10 @@ class RuntimeAgentGridBuildJob:
 # 同步遍历整张地图。格数与时间任一先到即让出主线程。
 @export_range(16, 4096, 1, "or_greater") var runtime_navigation_max_expansions_per_frame: int = 192
 @export_range(100, 8000, 50, "or_greater") var runtime_navigation_time_budget_usec: int = 1000
+# Keep an explicit A/B switch until the real-map probes have compared identical
+# cohorts. Only in-progress job storage changes; published flow fields retain
+# their established Dictionary contract.
+@export var runtime_flow_use_packed_build_storage: bool = true
 # Integral-certified segments are O(1). Only exact fallbacks near an obstacle
 # consume this per-render-frame budget; when exhausted, runtime callers receive
 # null and fall back to their shared flow field.
@@ -220,10 +243,11 @@ class RuntimeAgentGridBuildJob:
 # consumer should prefer a separately certified live correction and exposes
 # diagnostics; the old complete field remains a valid obstacle route meanwhile.
 @export_range(2, 32, 1, "or_greater") var dynamic_target_max_usable_anchor_lag_cells: int = 6
-# Tower-defense enemies only select a moving player inside a 16-cell radius.
-# Keep a small handoff margin for the budgeted retarget sweep, but never spend
-# runtime frames integrating a player field across the entire authored map.
-@export_range(8, 64, 1, "or_greater") var dynamic_target_flow_radius_cells: int = 20
+# Tower-defense enemies now select a moving player inside a 10-cell radius. The
+# 16-cell field keeps six cells for wall detours and the budgeted retarget
+# handoff. Real-map A/B found 14 cells caused an extra coverage publication,
+# while 16 cut field work by roughly one third without that churn.
+@export_range(8, 64, 1, "or_greater") var dynamic_target_flow_radius_cells: int = 16
 # Cell-center clearance grids depend on how many neighboring rows/columns an
 # AABB reaches, not on every individual sprite size. Canonicalizing only the
 # moving-target profile makes equivalent enemy bodies share one field while
@@ -1104,6 +1128,23 @@ func prewarm_agent_grid_staged(
 				or navigation_generation != build_generation
 			):
 				return
+	completed_rows = 0
+	for local_y in range(agent_grid.region.size.y):
+		for local_x in range(agent_grid.region.size.x):
+			_write_agent_transition_mask_cell(
+				solid_integral_snapshot,
+				local_y * agent_grid.region.size.x + local_x
+			)
+		completed_rows += 1
+		if completed_rows >= maxi(rows_per_frame, 1):
+			completed_rows = 0
+			await get_tree().process_frame
+			if (
+				not is_inside_tree()
+				or not is_built
+				or navigation_generation != build_generation
+			):
+				return
 	if navigation_generation != build_generation:
 		return
 	_store_agent_open_plain_integral_snapshot(
@@ -1464,6 +1505,19 @@ func _get_or_create_runtime_flow_build_job(
 	job.traversal_types = traversal_types
 	job.path_grid = path_grid
 	job.urgent = urgent
+	job.uses_packed_storage = runtime_flow_use_packed_build_storage
+	if job.uses_packed_storage:
+		job.solid_snapshot = _get_agent_open_plain_integral_snapshot(
+			_get_agent_grid_cache_key(normalized_extents, traversal_types)
+		)
+		job.packed_region_width = job.expansion_region.size.x
+		var packed_cell_count := (
+			job.expansion_region.size.x * job.expansion_region.size.y
+		)
+		job.packed_distances.resize(packed_cell_count)
+		job.packed_distances.fill(FLOW_DISTANCE_INFINITY)
+		job.packed_next_indices.resize(packed_cell_count)
+		job.packed_next_indices.fill(FLOW_NO_CELL_INDEX)
 	for _bucket_index in range(FLOW_BUCKET_COUNT):
 		job.pending_buckets.append([])
 	var first_bucket := job.pending_buckets[0] as Array
@@ -1472,11 +1526,24 @@ func _get_or_create_runtime_flow_build_job(
 			continue
 		if not _is_cell_walkable(seed_cell, path_grid):
 			continue
-		if job.next_cells.has(seed_cell):
-			continue
-		job.next_cells[seed_cell] = seed_cell
-		job.distances[seed_cell] = 0
-		first_bucket.append(seed_cell)
+		if job.uses_packed_storage:
+			var seed_index := _get_runtime_flow_job_cell_index(job, seed_cell)
+			if (
+				seed_index == FLOW_NO_CELL_INDEX
+				or job.packed_distances[seed_index] != FLOW_DISTANCE_INFINITY
+			):
+				continue
+			job.packed_distances[seed_index] = 0
+			job.packed_next_indices[seed_index] = seed_index
+			job.discovered_cell_count += 1
+			first_bucket.append(seed_index)
+		else:
+			if job.next_cells.has(seed_cell):
+				continue
+			job.next_cells[seed_cell] = seed_cell
+			job.distances[seed_cell] = 0
+			job.discovered_cell_count += 1
+			first_bucket.append(seed_cell)
 		job.pending_entry_count += 1
 	runtime_flow_build_jobs[cache_key] = job
 	_insert_runtime_flow_job_key(cache_key, urgent)
@@ -1607,6 +1674,15 @@ func _advance_first_runtime_agent_grid_job() -> bool:
 		if job.next_integral_cell_index < total_cells:
 			return true
 
+	if job.next_transition_cell_index < total_cells:
+		_write_agent_transition_mask_cell(
+			job.solid_integral_snapshot,
+			job.next_transition_cell_index
+		)
+		job.next_transition_cell_index += 1
+		if job.next_transition_cell_index < total_cells:
+			return true
+
 	_store_agent_open_plain_integral_snapshot(
 		cache_key,
 		job.solid_integral_snapshot
@@ -1617,6 +1693,90 @@ func _advance_first_runtime_agent_grid_job() -> bool:
 	return true
 
 
+func _get_runtime_flow_job_cell_index(
+	job: RuntimeFlowBuildJob,
+	cell: Vector2i
+) -> int:
+	if job == null or not job.expansion_region.has_point(cell):
+		return FLOW_NO_CELL_INDEX
+	var local_cell := cell - job.expansion_region.position
+	return local_cell.y * job.packed_region_width + local_cell.x
+
+
+func _get_runtime_flow_job_cell_from_index(
+	job: RuntimeFlowBuildJob,
+	cell_index: int
+) -> Vector2i:
+	if (
+		job == null
+		or job.packed_region_width <= 0
+		or cell_index < 0
+		or cell_index >= job.packed_distances.size()
+	):
+		return Vector2i.MAX
+	return job.expansion_region.position + Vector2i(
+		cell_index % job.packed_region_width,
+		cell_index / job.packed_region_width
+	)
+
+
+func _get_runtime_flow_job_discovered_cell_count(job: RuntimeFlowBuildJob) -> int:
+	if job == null:
+		return 0
+	return job.discovered_cell_count if job.uses_packed_storage else job.next_cells.size()
+
+
+func _get_runtime_flow_job_distance(
+	job: RuntimeFlowBuildJob,
+	cell: Vector2i
+) -> int:
+	if job == null:
+		return -1
+	if not job.uses_packed_storage:
+		return int(job.distances.get(cell, -1))
+	var cell_index := _get_runtime_flow_job_cell_index(job, cell)
+	if cell_index == FLOW_NO_CELL_INDEX:
+		return -1
+	var distance := job.packed_distances[cell_index]
+	return -1 if distance == FLOW_DISTANCE_INFINITY else distance
+
+
+func _advance_runtime_flow_job_materialization(job: RuntimeFlowBuildJob) -> bool:
+	if job == null or not job.uses_packed_storage:
+		return true
+	if job.next_materialize_cell_index == 0:
+		job.next_cells.clear()
+		job.distances.clear()
+	var scanned_cells := 0
+	while (
+		job.next_materialize_cell_index < job.packed_distances.size()
+		and scanned_cells < RUNTIME_FLOW_MATERIALIZE_BATCH_CELLS
+	):
+		var cell_index := job.next_materialize_cell_index
+		job.next_materialize_cell_index += 1
+		scanned_cells += 1
+		var distance := job.packed_distances[cell_index]
+		if distance == FLOW_DISTANCE_INFINITY:
+			continue
+		var cell := _get_runtime_flow_job_cell_from_index(job, cell_index)
+		var next_index := job.packed_next_indices[cell_index]
+		var next_cell := _get_runtime_flow_job_cell_from_index(job, next_index)
+		if cell == Vector2i.MAX or next_cell == Vector2i.MAX:
+			continue
+		job.distances[cell] = distance
+		job.next_cells[cell] = next_cell
+	return job.next_materialize_cell_index >= job.packed_distances.size()
+
+
+func _finish_runtime_flow_job_search(job: RuntimeFlowBuildJob) -> void:
+	if job == null:
+		return
+	if job.uses_packed_storage:
+		job.search_completed = true
+		return
+	_complete_runtime_flow_build_job(job)
+
+
 func _advance_first_runtime_flow_job() -> bool:
 	if runtime_flow_build_order.is_empty():
 		return false
@@ -1625,54 +1785,116 @@ func _advance_first_runtime_flow_job() -> bool:
 	if job == null or job.generation != navigation_generation:
 		_cancel_runtime_flow_build_job(cache_key)
 		return false
+	if job.search_completed:
+		if _advance_runtime_flow_job_materialization(job):
+			_complete_runtime_flow_build_job(job)
+		# Dictionary materialization is bounded by the same wall-clock deadline but
+		# is not a path expansion, so keep the existing expansion telemetry exact.
+		return false
 	if _runtime_flow_job_reached_all_required_sources(job):
 		job.completed_by_required_coverage = true
-		_complete_runtime_flow_build_job(job)
-		return true
+		_finish_runtime_flow_job_search(job)
+		return false
 	while job.pending_entry_count > 0:
 		var bucket_index := job.current_distance % FLOW_BUCKET_COUNT
 		var bucket := job.pending_buckets[bucket_index] as Array
 		if bucket.is_empty():
 			job.current_distance += 1
 			continue
-		var current_cell := bucket.pop_back() as Vector2i
+		var current_entry: Variant = bucket.pop_back()
 		job.pending_entry_count -= 1
-		if int(job.distances.get(current_cell, -1)) != job.current_distance:
+		var current_cell := Vector2i.ZERO
+		var current_index := FLOW_NO_CELL_INDEX
+		var stored_current_distance := -1
+		if job.uses_packed_storage:
+			current_index = int(current_entry)
+			current_cell = _get_runtime_flow_job_cell_from_index(job, current_index)
+			if current_index != FLOW_NO_CELL_INDEX:
+				stored_current_distance = job.packed_distances[current_index]
+		else:
+			current_cell = current_entry as Vector2i
+			stored_current_distance = int(job.distances.get(current_cell, -1))
+		if stored_current_distance != job.current_distance:
 			# A cell whose tentative distance improved leaves one stale bucket
 			# entry behind. Consume only one entry per scheduler step so a large
 			# stale tail can never escape the global time/expansion budget.
 			if job.pending_entry_count <= 0:
-				_complete_runtime_flow_build_job(job)
+				_finish_runtime_flow_job_search(job)
 			return true
 		if job.remaining_required_source_cells.has(current_cell):
 			job.remaining_required_source_cells.erase(current_cell)
-		for direction in FLOW_DIRECTIONS:
+		var uses_packed_transitions := (
+			job.uses_packed_storage
+			and job.solid_snapshot != null
+			and job.solid_snapshot.generation == navigation_generation
+			and not job.solid_snapshot.transition_masks.is_empty()
+		)
+		var packed_transition_mask := 0
+		if uses_packed_transitions:
+			var snapshot_local := (
+				current_cell - job.solid_snapshot.region.position
+			)
+			var snapshot_index := (
+				snapshot_local.y * job.solid_snapshot.region.size.x
+				+ snapshot_local.x
+			)
+			packed_transition_mask = (
+				job.solid_snapshot.transition_masks[snapshot_index]
+			)
+		for direction_index in range(FLOW_DIRECTIONS.size()):
+			var direction := FLOW_DIRECTIONS[direction_index]
 			var neighbor := current_cell + direction
 			if not job.expansion_region.has_point(neighbor):
 				continue
-			if not _is_safe_flow_transition(current_cell, direction, job.path_grid):
+			if uses_packed_transitions:
+				if (packed_transition_mask & (1 << direction_index)) == 0:
+					continue
+			elif not _is_safe_flow_transition(current_cell, direction, job.path_grid):
 				continue
 			var candidate_distance := (
-				job.current_distance + _get_flow_transition_cost(direction)
+				job.current_distance
+				+ (
+					FLOW_ORTHOGONAL_COST
+					if direction_index < FLOW_CARDINAL_DIRECTIONS.size()
+					else FLOW_DIAGONAL_COST
+				)
 			)
-			if candidate_distance >= int(job.distances.get(neighbor, 2147483647)):
-				continue
-			job.distances[neighbor] = candidate_distance
-			job.next_cells[neighbor] = current_cell
 			var target_bucket := (
 				job.pending_buckets[candidate_distance % FLOW_BUCKET_COUNT] as Array
 			)
-			target_bucket.append(neighbor)
+			if job.uses_packed_storage:
+				var neighbor_local := neighbor - job.expansion_region.position
+				var neighbor_index := (
+					neighbor_local.y * job.packed_region_width + neighbor_local.x
+				)
+				var previous_distance := job.packed_distances[neighbor_index]
+				if candidate_distance >= previous_distance:
+					continue
+				if previous_distance == FLOW_DISTANCE_INFINITY:
+					job.discovered_cell_count += 1
+				job.packed_distances[neighbor_index] = candidate_distance
+				job.packed_next_indices[neighbor_index] = current_index
+				target_bucket.append(neighbor_index)
+			else:
+				if candidate_distance >= int(
+					job.distances.get(neighbor, FLOW_DISTANCE_INFINITY)
+				):
+					continue
+				if not job.distances.has(neighbor):
+					job.discovered_cell_count += 1
+				job.distances[neighbor] = candidate_distance
+				job.next_cells[neighbor] = current_cell
+				target_bucket.append(neighbor)
 			job.pending_entry_count += 1
 		if _runtime_flow_job_reached_all_required_sources(job):
 			job.completed_by_required_coverage = true
-			_complete_runtime_flow_build_job(job)
+			_finish_runtime_flow_job_search(job)
 			return true
 		if job.pending_entry_count <= 0:
-			_complete_runtime_flow_build_job(job)
+			_finish_runtime_flow_job_search(job)
 		return true
 
-	_complete_runtime_flow_build_job(job)
+	_finish_runtime_flow_job_search(job)
 	return false
 
 
@@ -1694,11 +1916,25 @@ func _add_required_source_to_runtime_flow_job(
 	if job == null or job.required_source_cells.has(source_cell):
 		return
 	job.required_source_cells[source_cell] = true
-	var known_distance := int(job.distances.get(source_cell, -1))
+	var known_distance := _get_runtime_flow_job_distance(job, source_cell)
 	# Positive transition costs make any discovered distance final once the
 	# Dijkstra cursor reaches it. This keeps source completion O(1) per expansion.
 	if known_distance < 0 or known_distance > job.current_distance:
 		job.remaining_required_source_cells[source_cell] = true
+	# Packed publication is staged for a few render frames. A new consumer can
+	# join that narrow window after the previous required set finished. If the
+	# frontier still has work, resume Dijkstra instead of publishing a field that
+	# never reached the newly registered source.
+	if (
+		job.search_completed
+		and not job.remaining_required_source_cells.is_empty()
+		and job.pending_entry_count > 0
+	):
+		job.search_completed = false
+		job.completed_by_required_coverage = false
+		job.next_materialize_cell_index = 0
+		job.next_cells.clear()
+		job.distances.clear()
 
 
 func _complete_runtime_flow_build_job(job: RuntimeFlowBuildJob) -> void:
@@ -3399,6 +3635,8 @@ func _build_agent_solid_integral_snapshot(
 	var total_cells := path_grid.region.size.x * path_grid.region.size.y
 	for cell_index in range(total_cells):
 		_write_agent_solid_integral_cell(snapshot, path_grid, cell_index)
+	for cell_index in range(total_cells):
+		_write_agent_transition_mask_cell(snapshot, cell_index)
 	return snapshot
 
 
@@ -3415,6 +3653,14 @@ func _create_empty_agent_solid_integral_snapshot(
 		(path_grid.region.size.x + 1) * (path_grid.region.size.y + 1)
 	)
 	snapshot.values.fill(0)
+	snapshot.solid_cells.resize(
+		path_grid.region.size.x * path_grid.region.size.y
+	)
+	snapshot.solid_cells.fill(0)
+	snapshot.transition_masks.resize(
+		path_grid.region.size.x * path_grid.region.size.y
+	)
+	snapshot.transition_masks.fill(0)
 	return snapshot
 
 
@@ -3436,12 +3682,56 @@ func _write_agent_solid_integral_cell(
 	var prefix_y := local_y + 1
 	var destination_index := prefix_y * snapshot.stride + prefix_x
 	var solid_value := 1 if path_grid.is_point_solid(cell) else 0
+	snapshot.solid_cells[cell_index] = solid_value
 	snapshot.values[destination_index] = (
 		solid_value
 		+ snapshot.values[(prefix_y - 1) * snapshot.stride + prefix_x]
 		+ snapshot.values[prefix_y * snapshot.stride + prefix_x - 1]
 		- snapshot.values[(prefix_y - 1) * snapshot.stride + prefix_x - 1]
 	)
+
+
+func _write_agent_transition_mask_cell(
+	snapshot: AgentSolidIntegralSnapshot,
+	cell_index: int
+) -> void:
+	if snapshot == null:
+		return
+	var width := snapshot.region.size.x
+	var height := snapshot.region.size.y
+	var total_cells := width * height
+	if cell_index < 0 or cell_index >= total_cells:
+		return
+	if snapshot.solid_cells[cell_index] != 0:
+		snapshot.transition_masks[cell_index] = 0
+		return
+	var local_x := cell_index % width
+	var local_y := floori(float(cell_index) / float(width))
+	var transition_mask := 0
+	for direction_index in range(FLOW_DIRECTIONS.size()):
+		var direction := FLOW_DIRECTIONS[direction_index]
+		var target_x := local_x + direction.x
+		var target_y := local_y + direction.y
+		if (
+			target_x < 0
+			or target_y < 0
+			or target_x >= width
+			or target_y >= height
+		):
+			continue
+		var target_index := target_y * width + target_x
+		if snapshot.solid_cells[target_index] != 0:
+			continue
+		if direction.x != 0 and direction.y != 0:
+			var horizontal_index := local_y * width + target_x
+			var vertical_index := target_y * width + local_x
+			if (
+				snapshot.solid_cells[horizontal_index] != 0
+				or snapshot.solid_cells[vertical_index] != 0
+			):
+				continue
+		transition_mask |= 1 << direction_index
+	snapshot.transition_masks[cell_index] = transition_mask
 
 
 func _store_agent_open_plain_integral_snapshot(
@@ -3470,6 +3760,10 @@ func _get_agent_open_plain_integral_snapshot(
 		or snapshot.stride != snapshot.region.size.x + 1
 		or snapshot.values.size()
 			!= (snapshot.region.size.x + 1) * (snapshot.region.size.y + 1)
+		or snapshot.solid_cells.size()
+			!= snapshot.region.size.x * snapshot.region.size.y
+		or snapshot.transition_masks.size()
+			!= snapshot.region.size.x * snapshot.region.size.y
 	):
 		return null
 	return snapshot

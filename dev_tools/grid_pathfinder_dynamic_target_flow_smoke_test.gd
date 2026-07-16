@@ -159,6 +159,8 @@ func _run() -> void:
 		adjacent_cell
 	)
 	_test_public_api_auto_extends_long_wall_coverage(game)
+	_test_late_required_source_resumes_packed_coverage_search(game)
+	_test_rebuild_cancels_partial_packed_materialization(game)
 	_finish(game, build_frames + static_build_frames)
 
 
@@ -211,8 +213,10 @@ func _test_cold_miss_and_deduplication(
 	if initial_job != null:
 		_expect(
 			int(initial_job.get("pending_entry_count")) == 1
-			and (initial_job.get("next_cells") as Dictionary).size() == 1
-			and (initial_job.get("distances") as Dictionary).size() == 1,
+			and int(pathfinder.call(
+				"_get_runtime_flow_job_discovered_cell_count",
+				initial_job
+			)) == 1,
 			"The caller must observe only the staged job seed, never a synchronously expanded field."
 		)
 
@@ -873,7 +877,10 @@ func _test_rebuild_cancels_flow_and_agent_grid_jobs(
 	var flow_job_before: Variant = _only_value(pathfinder.runtime_flow_build_jobs)
 	var grid_job_before: Variant = _only_value(pathfinder.runtime_agent_grid_build_jobs)
 	var flow_entries_before := int(
-		(flow_job_before.get("next_cells") as Dictionary).size()
+		pathfinder.call(
+			"_get_runtime_flow_job_discovered_cell_count",
+			flow_job_before
+		)
 	)
 	var grid_index_before := int(grid_job_before.get("next_cell_index"))
 	pathfinder.set_process(false)
@@ -884,8 +891,10 @@ func _test_rebuild_cancels_flow_and_agent_grid_jobs(
 	_expect(
 		flow_job_after != null
 		and grid_job_after != null
-		and int((flow_job_after.get("next_cells") as Dictionary).size())
-			> flow_entries_before
+		and int(pathfinder.call(
+			"_get_runtime_flow_job_discovered_cell_count",
+			flow_job_after
+		)) > flow_entries_before
 		and int(grid_job_after.get("next_cell_index")) > grid_index_before,
 		"One bounded slice must make fair progress on an urgent flow and a cold profile grid."
 	)
@@ -1126,6 +1135,280 @@ func _test_public_api_auto_extends_long_wall_coverage(
 
 	synthetic_pathfinder.set_process(false)
 	synthetic_pathfinder.queue_free()
+
+
+func _test_late_required_source_resumes_packed_coverage_search(
+	game: GameTowerDefense
+) -> void:
+	var fixture := _stage_packed_coverage_materialization(
+		game,
+		"LateRequiredSourceMaterializationPathfinder"
+	)
+	var pathfinder := fixture.get("pathfinder") as SyntheticGridPathfinder
+	var target := fixture.get("target") as Node2D
+	var job: Variant = fixture.get("job")
+	if pathfinder == null or target == null or job == null:
+		if pathfinder != null:
+			pathfinder.queue_free()
+		return
+
+	var late_source_cell := Vector2i(20, 20)
+	var late_result := GridPathfinder.NavigationStepResult.new()
+	var late_context := GridPathfinder.FlowQueryContext.new()
+	pathfinder.try_write_dynamic_target_navigation_step(
+		late_result,
+		late_context,
+		pathfinder.call("_map_to_global", late_source_cell) as Vector2,
+		target,
+		Vector2.ZERO,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+		0.0
+	)
+	_expect(
+		late_result.status == GridPathfinder.NavigationStepStatus.DEFERRED,
+		"A source joining during packed materialization must remain DEFERRED until the resumed search publishes."
+	)
+	_expect(
+		(job.get("required_source_cells") as Dictionary).has(late_source_cell)
+		and (job.get("remaining_required_source_cells") as Dictionary).has(
+			late_source_cell
+		)
+		and not bool(job.get("search_completed")),
+		"A not-yet-finalized required source must reopen a packed coverage search."
+	)
+	_expect(
+		int(job.get("next_materialize_cell_index")) == 0
+		and (job.get("next_cells") as Dictionary).is_empty()
+		and (job.get("distances") as Dictionary).is_empty(),
+		"Reopening search must discard the obsolete partial materialization before continuing."
+	)
+
+	_drain_runtime_flow_jobs(pathfinder, 10000)
+	var slot: Variant = _only_value(pathfinder.dynamic_flow_target_slots)
+	var published_field := (
+		slot.get("published_field") as Dictionary if slot != null else {}
+	)
+	var published_next_cells := published_field.get("next_cells", {}) as Dictionary
+	var published_distances := published_field.get("distances", {}) as Dictionary
+	_expect(
+		slot != null
+		and int(slot.get("published_revision")) == 2
+		and published_next_cells.has(late_source_cell)
+		and published_distances.has(late_source_cell),
+		"The resumed packed coverage job must publish a complete route for the late required source."
+	)
+	late_result = GridPathfinder.NavigationStepResult.new()
+	late_context = GridPathfinder.FlowQueryContext.new()
+	pathfinder.try_write_dynamic_target_navigation_step(
+		late_result,
+		late_context,
+		pathfinder.call("_map_to_global", late_source_cell) as Vector2,
+		target,
+		Vector2.ZERO,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+		0.0
+	)
+	_expect(
+		late_result.status == GridPathfinder.NavigationStepStatus.READY
+		and late_result.is_complete_route,
+		"The public query must become READY after the late-source coverage publication."
+	)
+
+	pathfinder.set_process(false)
+	pathfinder.queue_free()
+
+
+func _test_rebuild_cancels_partial_packed_materialization(
+	game: GameTowerDefense
+) -> void:
+	var fixture := _stage_packed_coverage_materialization(
+		game,
+		"RebuildDuringMaterializationPathfinder"
+	)
+	var pathfinder := fixture.get("pathfinder") as SyntheticGridPathfinder
+	var job: Variant = fixture.get("job")
+	var slot: Variant = fixture.get("slot")
+	if pathfinder == null or job == null or slot == null:
+		if pathfinder != null:
+			pathfinder.queue_free()
+		return
+
+	var generation_before := pathfinder.navigation_generation
+	var cancellations_before := pathfinder.runtime_flow_builds_cancelled
+	var completions_before := pathfinder.runtime_flow_builds_completed
+	var published_revision_before := int(slot.get("published_revision"))
+	var published_field_before := slot.get("published_field") as Dictionary
+	var partial_distances := job.get("distances") as Dictionary
+	_expect(
+		not partial_distances.is_empty()
+		and int(job.get("next_materialize_cell_index")) > 0,
+		"The rebuild race must begin after a non-empty partial Dictionary batch exists."
+	)
+
+	pathfinder.rebuild()
+	_expect(
+		pathfinder.navigation_generation == generation_before + 1
+		and pathfinder.is_built,
+		"A rebuild during materialization must atomically start and publish a new navigation generation."
+	)
+	_expect(
+		pathfinder.runtime_flow_build_jobs.is_empty()
+		and pathfinder.runtime_flow_build_order.is_empty()
+		and pathfinder.dynamic_flow_target_slots.is_empty()
+		and pathfinder.runtime_flow_builds_cancelled == cancellations_before + 1,
+		"A rebuild must cancel and detach the packed job that was still materializing."
+	)
+	_expect(
+		pathfinder.runtime_flow_builds_completed == completions_before
+		and int(slot.get("published_revision")) == published_revision_before
+		and (slot.get("published_field") as Dictionary) == published_field_before,
+		"A partial materialization from the old generation must never publish a new slot revision."
+	)
+
+	pathfinder.set_process(false)
+	pathfinder.queue_free()
+
+
+func _stage_packed_coverage_materialization(
+	game: GameTowerDefense,
+	pathfinder_name: String
+) -> Dictionary:
+	var pathfinder := _create_open_synthetic_pathfinder(
+		game,
+		pathfinder_name,
+		Vector2i(24, 24),
+		3
+	)
+	var target_cell := Vector2i(4, 4)
+	var initial_source_cell := Vector2i(5, 4)
+	var first_coverage_source_cell := Vector2i(10, 4)
+	var target := Node2D.new()
+	target.name = "%sTarget" % pathfinder_name
+	pathfinder.add_child(target)
+	target.global_position = pathfinder.call("_map_to_global", target_cell) as Vector2
+
+	var result := GridPathfinder.NavigationStepResult.new()
+	var context := GridPathfinder.FlowQueryContext.new()
+	pathfinder.try_write_dynamic_target_navigation_step(
+		result,
+		context,
+		pathfinder.call("_map_to_global", initial_source_cell) as Vector2,
+		target,
+		Vector2.ZERO,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+		0.0
+	)
+	_expect(
+		result.status == GridPathfinder.NavigationStepStatus.DEFERRED
+		and pathfinder.runtime_flow_build_jobs.size() == 1,
+		"The packed materialization fixture must begin with one bounded cold job."
+	)
+	_drain_runtime_flow_jobs(pathfinder, 5000)
+
+	var slot: Variant = _only_value(pathfinder.dynamic_flow_target_slots)
+	_expect(
+		slot != null and int(slot.get("published_revision")) == 1,
+		"The packed materialization fixture must first publish its bounded revision."
+	)
+	result = GridPathfinder.NavigationStepResult.new()
+	context = GridPathfinder.FlowQueryContext.new()
+	pathfinder.try_write_dynamic_target_navigation_step(
+		result,
+		context,
+		pathfinder.call(
+			"_map_to_global",
+			first_coverage_source_cell
+		) as Vector2,
+		target,
+		Vector2.ZERO,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+		0.0
+	)
+	var job: Variant = _only_value(pathfinder.runtime_flow_build_jobs)
+	_expect(
+		result.status == GridPathfinder.NavigationStepStatus.DEFERRED
+		and job != null
+		and bool(job.get("uses_packed_storage"))
+		and bool(job.get("complete_when_required_sources_reached")),
+		"A source outside the bounded field must stage one packed coverage job."
+	)
+	if job == null:
+		return {
+			"pathfinder": pathfinder,
+			"target": target,
+			"slot": slot,
+			"job": null,
+		}
+
+	var search_steps := 0
+	while (
+		not bool(job.get("search_completed"))
+		and search_steps < 5000
+	):
+		pathfinder.call("_advance_first_runtime_flow_job")
+		search_steps += 1
+	_expect(
+		bool(job.get("search_completed"))
+		and int(job.get("pending_entry_count")) > 0,
+		"Coverage search must stop at its first required source while a resumable frontier remains."
+	)
+	pathfinder.call("_advance_first_runtime_flow_job")
+	_expect(
+		bool(job.get("search_completed"))
+		and int(job.get("next_materialize_cell_index")) > 0
+		and int(job.get("next_materialize_cell_index"))
+			< (job.get("packed_distances") as PackedInt32Array).size()
+		and not (job.get("distances") as Dictionary).is_empty()
+		and pathfinder.runtime_flow_build_jobs.size() == 1
+		and int(slot.get("published_revision")) == 1,
+		"One bounded materialization batch must remain partial and unpublished."
+	)
+	return {
+		"pathfinder": pathfinder,
+		"target": target,
+		"slot": slot,
+		"job": job,
+	}
+
+
+func _create_open_synthetic_pathfinder(
+	game: GameTowerDefense,
+	pathfinder_name: String,
+	region_size: Vector2i,
+	flow_radius_cells: int
+) -> SyntheticGridPathfinder:
+	var synthetic_grid := AStarGrid2D.new()
+	synthetic_grid.region = Rect2i(Vector2i.ZERO, region_size)
+	synthetic_grid.cell_size = Vector2(16.0, 16.0)
+	synthetic_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	synthetic_grid.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
+	synthetic_grid.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
+	synthetic_grid.update()
+
+	var pathfinder := SyntheticGridPathfinder.new()
+	pathfinder.name = pathfinder_name
+	game.add_child(pathfinder)
+	pathfinder.navigation_generation = 1
+	pathfinder.astar_grid = synthetic_grid
+	pathfinder.is_built = true
+	pathfinder.dynamic_target_flow_radius_cells = flow_radius_cells
+	pathfinder.coalesce_dynamic_target_profiles_by_grid_topology = false
+	pathfinder.runtime_flow_use_packed_build_storage = true
+	var default_cache_key := pathfinder.call(
+		"_get_agent_grid_cache_key",
+		Vector2.ZERO,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES
+	) as String
+	var default_snapshot: Variant = pathfinder.call(
+		"_build_agent_solid_integral_snapshot",
+		synthetic_grid
+	)
+	pathfinder.call(
+		"_store_agent_open_plain_integral_snapshot",
+		default_cache_key,
+		default_snapshot
+	)
+	return pathfinder
 
 
 func _drain_runtime_flow_jobs(pathfinder: GridPathfinder, maximum_steps: int) -> void:
