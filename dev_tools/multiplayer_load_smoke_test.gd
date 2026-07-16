@@ -595,22 +595,49 @@ func _test_delta_snapshot_peer_cache_cleanup() -> void:
 			peer_12_baseline == null or not peer_12_baseline.has(11),
 			"Peer cleanup must remove the departed peer from other player send baselines."
 		)
+	var cohort_peers: Dictionary = {}
+	var keyframe_times: Dictionary = {}
+	var ready_peers: Array[int] = [12]
 	_expect(
-		bool(mp_game.call("_should_force_player_delta_keyframe", 12, 0.0)),
-		"Unknown player snapshot receiver must force a keyframe."
+		bool(mp_game.call(
+			"_snapshot_cohort_requires_keyframe",
+			cohort_peers,
+			keyframe_times,
+			ready_peers,
+			0.0,
+			0.5
+		)),
+		"A receiver outside the shared snapshot cohort must force a keyframe."
 	)
-	mp_game.set("_last_player_keyframe_time_by_peer", {12: 0.0})
-	_expect(
-		not bool(mp_game.call("_should_force_player_delta_keyframe", 12, 0.25)),
-		"Player delta keyframe interval must not fire early."
+	mp_game.call(
+		"_commit_snapshot_cohort_send",
+		cohort_peers,
+		keyframe_times,
+		ready_peers,
+		0.0,
+		true
 	)
 	_expect(
-		bool(mp_game.call("_should_force_player_delta_keyframe", 12, 0.5)),
-		"Player delta keyframe interval must force a full snapshot at 0.5 seconds."
+		not bool(mp_game.call(
+			"_snapshot_cohort_requires_keyframe",
+			cohort_peers,
+			keyframe_times,
+			ready_peers,
+			0.25,
+			0.5
+		)),
+		"A stable cohort must retain deltas before the periodic keyframe interval."
 	)
 	_expect(
-		bool(mp_game.call("_should_force_enemy_delta_keyframe", 12, 0.0)),
-		"Unknown enemy snapshot receiver must force a keyframe."
+		bool(mp_game.call(
+			"_snapshot_cohort_requires_keyframe",
+			cohort_peers,
+			keyframe_times,
+			ready_peers,
+			0.5,
+			0.5
+		)),
+		"A stable cohort must force a full snapshot at the 0.5 second boundary."
 	)
 	mp_game.free()
 

@@ -86,10 +86,11 @@ class PlayerState:
 	var effective_move_speed_multiplier: float = 1.0
 
 
-## 每个接收端独立维护发送基线，避免丢包/晚加入导致不同客户端共用错误基准。
+## 按接收端或经过调用方认证的共享 cohort 维护玩家发送基线。
+## cohort 成员必须拥有相同发送历史；缺席/晚加入成员须先收到 full keyframe。
 var player_send_baselines_by_peer: Dictionary = {}
 
-## 每个接收端独立维护敌人发送基线。
+## 按接收端或共享 cohort 维护敌人发送基线，成员约束同上。
 var enemy_send_baselines_by_peer: Dictionary = {}
 
 ## Client 接收端玩家还原基线，用于把 delta 快照恢复为完整状态。
@@ -612,6 +613,16 @@ func encode_player_snapshots_for_peer(
 	return buf
 
 
+## 按共享发送 cohort 编码玩家快照。cohort 中的所有接收端必须拥有完全相同的
+## 发送历史；成员缺席或恢复时由调用方先强制 keyframe，再允许复用该基线。
+func encode_player_snapshots_for_cohort(
+	cohort_id: int,
+	players: Array[PlayerState],
+	force_keyframe: bool = false
+) -> PackedByteArray:
+	return encode_player_snapshots_for_peer(cohort_id, players, force_keyframe)
+
+
 ## 解码一批玩家快照
 static func decode_all_player_snapshots(data: PackedByteArray) -> Array[PlayerState]:
 	var result: Array[PlayerState] = []
@@ -727,6 +738,24 @@ func encode_enemy_snapshot_range_for_peer(
 		entity_count,
 		force_keyframe,
 		false
+	)
+
+
+## 按共享发送 cohort 编码连续敌人区间。与玩家 cohort 一样，调用方负责保证
+## 所有成员拥有同一发送历史；整批结束后统一 prune。
+func encode_enemy_snapshot_range_for_cohort(
+	cohort_id: int,
+	enemies: Array[EnemyState],
+	start_index: int,
+	entity_count: int,
+	force_keyframe: bool = false
+) -> PackedByteArray:
+	return encode_enemy_snapshot_range_for_peer(
+		cohort_id,
+		enemies,
+		start_index,
+		entity_count,
+		force_keyframe
 	)
 
 
@@ -849,6 +878,18 @@ func decode_enemy_snapshots_with_baseline(
 func prune_enemy_send_baseline_to_ids(receiver_peer_id: int, live_ids: Dictionary) -> void:
 	var baseline := _get_enemy_send_baseline(receiver_peer_id)
 	_prune_dictionary_to_ids(baseline, live_ids)
+
+
+func prune_enemy_send_cohort_baseline_to_ids(cohort_id: int, live_ids: Dictionary) -> void:
+	prune_enemy_send_baseline_to_ids(cohort_id, live_ids)
+
+
+func clear_player_send_baseline(receiver_or_cohort_id: int) -> void:
+	player_send_baselines_by_peer.erase(receiver_or_cohort_id)
+
+
+func clear_enemy_send_baseline(receiver_or_cohort_id: int) -> void:
+	enemy_send_baselines_by_peer.erase(receiver_or_cohort_id)
 
 
 func prune_enemy_receive_baseline_to_ids(live_ids: Dictionary) -> void:

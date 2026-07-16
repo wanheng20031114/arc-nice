@@ -92,6 +92,7 @@ func _run() -> void:
 	_test_runtime_state_send_order()
 	_test_plant_removal_restore_order()
 	_test_player_codec_and_reuse()
+	_test_shared_snapshot_cohort_lifecycle()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
 		print("PROTOCOL_V8_SNAPSHOT_SMOKE_TEST_OK")
@@ -318,6 +319,194 @@ func _test_player_codec_and_reuse() -> void:
 		and receiver.player_receive_output_states.is_empty(),
 		"Player reset must release baseline and output-object caches."
 	)
+
+
+func _test_shared_snapshot_cohort_lifecycle() -> void:
+	const cohort_id := -1
+	var sender := SnapshotManager.new()
+	var player_state := SnapshotManager.PlayerState.new()
+	player_state.peer_id = 2
+	player_state.sequence = 1
+	player_state.position = Vector2(8.0, 12.0)
+	player_state.velocity = Vector2.RIGHT * 4.0
+	player_state.current_health = 90
+	player_state.max_health = 100
+	var keyframe := sender.encode_player_snapshots_for_cohort(
+		cohort_id,
+		[player_state],
+		true
+	)
+	var receivers: Array[SnapshotManager] = []
+	for _peer_index in range(3):
+		var receiver := SnapshotManager.new()
+		receivers.append(receiver)
+		var decoded := receiver.decode_player_snapshots_with_baseline(keyframe)
+		_expect(
+			decoded.size() == 1
+			and decoded[0].peer_id == player_state.peer_id
+			and decoded[0].position.distance_to(player_state.position) <= 0.11,
+			"Every member must decode the same shared player keyframe."
+		)
+	player_state.sequence = 2
+	player_state.position += Vector2(3.0, -2.0)
+	var delta := sender.encode_player_snapshots_for_cohort(
+		cohort_id,
+		[player_state],
+		false
+	)
+	for receiver in receivers:
+		var decoded := receiver.decode_player_snapshots_with_baseline(delta)
+		_expect(
+			decoded.size() == 1
+			and decoded[0].position.distance_to(player_state.position) <= 0.11,
+			"Every member must restore an identical delta from the shared baseline."
+		)
+	_expect(
+		sender.player_send_baselines_by_peer.size() == 1
+		and sender.player_send_baselines_by_peer.has(cohort_id),
+		"One shared cohort must retain one player baseline instead of one per member."
+	)
+
+	var mp_game := MpGameScript.new()
+	var cohort_peers := mp_game.get("_player_snapshot_cohort_peers") as Dictionary
+	var keyframe_times := mp_game.get("_last_player_keyframe_time_by_peer") as Dictionary
+	var ready_peers: Array[int] = [2, 3, 4]
+	mp_game.call(
+		"_commit_snapshot_cohort_send",
+		cohort_peers,
+		keyframe_times,
+		ready_peers,
+		0.0,
+		true
+	)
+	var mp_snapshot_mgr := mp_game.get("snapshot_mgr") as SnapshotManager
+	mp_snapshot_mgr.encode_player_snapshots_for_cohort(
+		cohort_id,
+		[player_state],
+		true
+	)
+	var enemy_state := SnapshotManager.EnemyState.new()
+	enemy_state.net_id = 11
+	enemy_state.position = Vector2(20.0, 30.0)
+	mp_snapshot_mgr.encode_enemy_snapshot_range_for_cohort(
+		cohort_id,
+		[enemy_state],
+		0,
+		1,
+		true
+	)
+	var enemy_cohort_peers := mp_game.get("_enemy_snapshot_cohort_peers") as Dictionary
+	var enemy_keyframe_times := mp_game.get("_last_enemy_keyframe_time_by_peer") as Dictionary
+	mp_game.call(
+		"_commit_snapshot_cohort_send",
+		enemy_cohort_peers,
+		enemy_keyframe_times,
+		ready_peers,
+		0.0,
+		true
+	)
+
+	var temporarily_ready: Array[int] = [2, 4]
+	mp_game.call("_sync_snapshot_cohort_readiness", temporarily_ready)
+	_expect(
+		cohort_peers.size() == 2
+		and cohort_peers.has(2)
+		and cohort_peers.has(4)
+		and not cohort_peers.has(3)
+		and not keyframe_times.has(3),
+		"A send-unready peer must detach immediately without disturbing ready members."
+	)
+	_expect(
+		not bool(mp_game.call(
+			"_snapshot_cohort_requires_keyframe",
+			cohort_peers,
+			keyframe_times,
+			temporarily_ready,
+			0.25,
+			0.5
+		)),
+		"The remaining continuously-ready members must keep using their shared delta."
+	)
+	var same_size_replacement: Array[int] = [2, 5]
+	_expect(
+		bool(mp_game.call(
+			"_snapshot_cohort_requires_keyframe",
+			cohort_peers,
+			keyframe_times,
+			same_size_replacement,
+			0.25,
+			0.5
+		)),
+		"Replacing one member must force a keyframe even when cohort size is unchanged."
+	)
+	_expect(
+		bool(mp_game.call(
+			"_snapshot_cohort_requires_keyframe",
+			cohort_peers,
+			keyframe_times,
+			ready_peers,
+			0.25,
+			0.5
+		)),
+		"A recovered peer must force a full frame before rejoining the cohort."
+	)
+	mp_game.call(
+		"_commit_snapshot_cohort_send",
+		cohort_peers,
+		keyframe_times,
+		ready_peers,
+		0.25,
+		true
+	)
+	_expect(
+		cohort_peers.size() == 3
+		and is_equal_approx(float(keyframe_times.get(3, -1.0)), 0.25),
+		"A shared recovery keyframe must atomically readmit every ready member."
+	)
+	_expect(
+		bool(mp_game.call(
+			"_snapshot_cohort_requires_keyframe",
+			cohort_peers,
+			keyframe_times,
+			ready_peers,
+			0.75,
+			0.5
+		)),
+		"A stable cohort must still emit its periodic 0.5-second keyframe."
+	)
+
+	mp_game.call("_clear_peer_network_state", 3)
+	_expect(
+		not cohort_peers.has(3)
+		and not enemy_cohort_peers.has(3)
+		and not keyframe_times.has(3)
+		and not enemy_keyframe_times.has(3)
+		and mp_snapshot_mgr.player_send_baselines_by_peer.has(cohort_id)
+		and mp_snapshot_mgr.enemy_send_baselines_by_peer.has(cohort_id),
+		"Disconnect cleanup must detach one member while preserving a live shared baseline."
+	)
+	var no_ready_peers: Array[int] = []
+	mp_game.call("_sync_snapshot_cohort_readiness", no_ready_peers)
+	_expect(
+		cohort_peers.is_empty()
+		and enemy_cohort_peers.is_empty()
+		and not mp_snapshot_mgr.player_send_baselines_by_peer.has(cohort_id)
+		and not mp_snapshot_mgr.enemy_send_baselines_by_peer.has(cohort_id),
+		"An empty cohort must release both shared send baselines."
+	)
+	var empty_enemy_packet := mp_snapshot_mgr.encode_enemy_snapshot_range_for_cohort(
+		cohort_id,
+		[],
+		0,
+		0,
+		true
+	)
+	_expect(
+		empty_enemy_packet.size() == 2
+		and SnapshotManager.decode_all_enemy_snapshots(empty_enemy_packet).is_empty(),
+		"An empty enemy cohort frame must remain a valid zero-roster packet."
+	)
+	mp_game.free()
 
 
 func _test_terrain_payload_contract() -> void:

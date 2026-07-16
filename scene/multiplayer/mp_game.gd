@@ -115,6 +115,9 @@ const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
+## 协议 v8 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
+## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
+const SHARED_SNAPSHOT_COHORT_ID := -1
 const ENEMY_ACTION_SNAPSHOT_REORDER_TOLERANCE_SECONDS := 0.075
 const ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES := 56
 const ENEMY_HIGH_PRESSURE_THRESHOLD := 200
@@ -254,6 +257,12 @@ var _enemy_snapshot_incomplete_batch_evict_count: int = 0
 var _enemy_snapshot_stale_chunk_count: int = 0
 var _last_player_keyframe_time_by_peer: Dictionary = {}
 var _last_enemy_keyframe_time_by_peer: Dictionary = {}
+var _player_snapshot_cohort_peers: Dictionary = {}
+var _enemy_snapshot_cohort_peers: Dictionary = {}
+# Session-lifetime encode work counters. Peer detach/rejoin does not reset them;
+# returning to the lobby does, and a new MpGame instance always starts at zero.
+var _player_snapshot_encode_count: int = 0
+var _enemy_snapshot_chunk_encode_count: int = 0
 var _last_plant_placement_request_ids: Dictionary = {}
 var _plant_placement_rate_buckets: Dictionary = {}
 var _client_projectile_request_rate_buckets: Dictionary = {}
@@ -357,6 +366,8 @@ func _exit_tree() -> void:
 		if public_room_keepalive_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
 			public_room_keepalive_request.cancel_request()
 	snapshot_mgr.reset_delta_cache()
+	_player_snapshot_cohort_peers.clear()
+	_enemy_snapshot_cohort_peers.clear()
 	_pending_enemy_snapshot_batches.clear()
 	_host_enemy_snapshot_live_ids.clear()
 	_processed_collectible_effect_event_ids.clear()
@@ -1589,11 +1600,13 @@ func _host_physics_tick(frame: int, _delta: float) -> void:
 			0.0
 		)
 		return
+	var client_peer_ids := _get_connected_client_peer_ids()
+	_sync_snapshot_cohort_readiness(client_peer_ids)
 	if frame % _NetConstants.PLAYER_SNAPSHOT_INTERVAL_FRAMES == 0:
-		_host_broadcast_player_snapshots()
+		_host_broadcast_player_snapshots(client_peer_ids)
 	var enemy_snapshot_interval_frames := _get_enemy_snapshot_interval_frames()
 	if frame % enemy_snapshot_interval_frames == 0:
-		_host_broadcast_enemy_snapshots()
+		_host_broadcast_enemy_snapshots(client_peer_ids)
 	_flush_pending_enemy_spawns()
 
 
@@ -1609,7 +1622,12 @@ func _get_enemy_snapshot_interval_frames() -> int:
 	return maxi(roundi(float(_NetConstants.HOST_PHYSICS_HZ) / float(target_hz)), 1)
 
 
-func _host_broadcast_player_snapshots() -> void:
+func _host_broadcast_player_snapshots(client_peer_ids: Array[int] = []) -> void:
+	if client_peer_ids.is_empty():
+		client_peer_ids = _get_connected_client_peer_ids()
+		_sync_snapshot_cohort_readiness(client_peer_ids)
+	if client_peer_ids.is_empty():
+		return
 	var states: Array[SnapshotManager.PlayerState] = game.collect_player_snapshot_states()
 	if states.is_empty():
 		return
@@ -1618,11 +1636,27 @@ func _host_broadcast_player_snapshots() -> void:
 	for state in states:
 		state.sequence = _host_player_snapshot_sequence
 	var snapshot_time := _get_net_time()
-	for peer_id in _get_connected_client_peer_ids():
-		var force_keyframe := _should_force_player_delta_keyframe(peer_id, snapshot_time)
-		var data := snapshot_mgr.encode_player_snapshots_for_peer(peer_id, states, force_keyframe)
-		if force_keyframe:
-			_last_player_keyframe_time_by_peer[peer_id] = snapshot_time
+	var force_keyframe := _snapshot_cohort_requires_keyframe(
+		_player_snapshot_cohort_peers,
+		_last_player_keyframe_time_by_peer,
+		client_peer_ids,
+		snapshot_time,
+		PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS
+	)
+	var data := snapshot_mgr.encode_player_snapshots_for_cohort(
+		SHARED_SNAPSHOT_COHORT_ID,
+		states,
+		force_keyframe
+	)
+	_player_snapshot_encode_count += 1
+	_commit_snapshot_cohort_send(
+		_player_snapshot_cohort_peers,
+		_last_player_keyframe_time_by_peer,
+		client_peer_ids,
+		snapshot_time,
+		force_keyframe
+	)
+	for peer_id in client_peer_ids:
 		_record_snapshot_packet_size(&"player", data.size(), states.size())
 		_rpc_receive_player_snapshot.rpc_id(peer_id, snapshot_time, data)
 
@@ -1645,8 +1679,10 @@ func _apply_latest_client_player_snapshot_states(states: Array[SnapshotManager.P
 		state.anim_state = int(latest["anim_state"])
 
 
-func _host_broadcast_enemy_snapshots() -> void:
-	var client_peer_ids := _get_connected_client_peer_ids()
+func _host_broadcast_enemy_snapshots(client_peer_ids: Array[int] = []) -> void:
+	if client_peer_ids.is_empty():
+		client_peer_ids = _get_connected_client_peer_ids()
+		_sync_snapshot_cohort_readiness(client_peer_ids)
 	if client_peer_ids.is_empty():
 		return
 	var states: Array[SnapshotManager.EnemyState] = game.collect_enemy_snapshot_states()
@@ -1666,23 +1702,30 @@ func _host_broadcast_enemy_snapshots() -> void:
 	for state in states:
 		if state != null and state.net_id > 0:
 			_host_enemy_snapshot_live_ids[state.net_id] = true
-	for peer_id in client_peer_ids:
-		_enemy_snapshot_batch_count += 1
-		var force_keyframe := _should_force_enemy_delta_keyframe(peer_id, snapshot_time)
-		for chunk_index in range(chunk_count):
-			var chunk_start := chunk_index * ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES
-			var chunk_end := mini(
-				chunk_start + ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES,
-				states.size()
-			)
-			var chunk_entity_count := chunk_end - chunk_start
-			var data := snapshot_mgr.encode_enemy_snapshot_range_for_peer(
-				peer_id,
-				states,
-				chunk_start,
-				chunk_entity_count,
-				force_keyframe
-			)
+	var force_keyframe := _snapshot_cohort_requires_keyframe(
+		_enemy_snapshot_cohort_peers,
+		_last_enemy_keyframe_time_by_peer,
+		client_peer_ids,
+		snapshot_time,
+		ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS
+	)
+	_enemy_snapshot_batch_count += client_peer_ids.size()
+	for chunk_index in range(chunk_count):
+		var chunk_start := chunk_index * ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES
+		var chunk_end := mini(
+			chunk_start + ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES,
+			states.size()
+		)
+		var chunk_entity_count := chunk_end - chunk_start
+		var data := snapshot_mgr.encode_enemy_snapshot_range_for_cohort(
+			SHARED_SNAPSHOT_COHORT_ID,
+			states,
+			chunk_start,
+			chunk_entity_count,
+			force_keyframe
+		)
+		_enemy_snapshot_chunk_encode_count += 1
+		for peer_id in client_peer_ids:
 			_record_snapshot_packet_size(&"enemy", data.size(), chunk_entity_count)
 			_rpc_receive_enemy_snapshot.rpc_id(
 				peer_id,
@@ -1693,30 +1736,92 @@ func _host_broadcast_enemy_snapshots() -> void:
 				chunk_count,
 				snapshot_hz
 			)
-		snapshot_mgr.prune_enemy_send_baseline_to_ids(
-			peer_id,
-			_host_enemy_snapshot_live_ids
-		)
-		if force_keyframe:
-			_last_enemy_keyframe_time_by_peer[peer_id] = snapshot_time
+	snapshot_mgr.prune_enemy_send_cohort_baseline_to_ids(
+		SHARED_SNAPSHOT_COHORT_ID,
+		_host_enemy_snapshot_live_ids
+	)
+	_commit_snapshot_cohort_send(
+		_enemy_snapshot_cohort_peers,
+		_last_enemy_keyframe_time_by_peer,
+		client_peer_ids,
+		snapshot_time,
+		force_keyframe
+	)
 
 
-func _should_force_player_delta_keyframe(peer_id: int, snapshot_time: float) -> bool:
-	if peer_id <= 0:
-		return true
-	if not _last_player_keyframe_time_by_peer.has(peer_id):
-		return true
-	var last_keyframe_time := float(_last_player_keyframe_time_by_peer.get(peer_id, -INF))
-	return snapshot_time - last_keyframe_time >= PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS
+func _sync_snapshot_cohort_readiness(ready_peer_ids: Array[int]) -> void:
+	var ready_lookup: Dictionary = {}
+	for peer_id in ready_peer_ids:
+		if peer_id > 0:
+			ready_lookup[peer_id] = true
+	_detach_unready_snapshot_cohort_peers(
+		_player_snapshot_cohort_peers,
+		_last_player_keyframe_time_by_peer,
+		ready_lookup,
+		true
+	)
+	_detach_unready_snapshot_cohort_peers(
+		_enemy_snapshot_cohort_peers,
+		_last_enemy_keyframe_time_by_peer,
+		ready_lookup,
+		false
+	)
 
 
-func _should_force_enemy_delta_keyframe(peer_id: int, snapshot_time: float) -> bool:
-	if peer_id <= 0:
+func _detach_unready_snapshot_cohort_peers(
+	cohort_peers: Dictionary,
+	last_keyframe_times: Dictionary,
+	ready_lookup: Dictionary,
+	is_player_stream: bool
+) -> void:
+	for peer_id_variant in cohort_peers.keys():
+		var peer_id := int(peer_id_variant)
+		if ready_lookup.has(peer_id):
+			continue
+		cohort_peers.erase(peer_id)
+		last_keyframe_times.erase(peer_id)
+	if not cohort_peers.is_empty():
+		return
+	if is_player_stream:
+		snapshot_mgr.clear_player_send_baseline(SHARED_SNAPSHOT_COHORT_ID)
+	else:
+		snapshot_mgr.clear_enemy_send_baseline(SHARED_SNAPSHOT_COHORT_ID)
+
+
+func _snapshot_cohort_requires_keyframe(
+	cohort_peers: Dictionary,
+	last_keyframe_times: Dictionary,
+	ready_peer_ids: Array[int],
+	snapshot_time: float,
+	keyframe_interval_seconds: float
+) -> bool:
+	if ready_peer_ids.is_empty():
+		return false
+	if cohort_peers.size() != ready_peer_ids.size():
 		return true
-	if not _last_enemy_keyframe_time_by_peer.has(peer_id):
-		return true
-	var last_keyframe_time := float(_last_enemy_keyframe_time_by_peer.get(peer_id, -INF))
-	return snapshot_time - last_keyframe_time >= ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS
+	for peer_id in ready_peer_ids:
+		if not cohort_peers.has(peer_id) or not last_keyframe_times.has(peer_id):
+			return true
+		var last_keyframe_time := float(last_keyframe_times.get(peer_id, -INF))
+		if snapshot_time - last_keyframe_time >= keyframe_interval_seconds:
+			return true
+	return false
+
+
+func _commit_snapshot_cohort_send(
+	cohort_peers: Dictionary,
+	last_keyframe_times: Dictionary,
+	ready_peer_ids: Array[int],
+	snapshot_time: float,
+	was_keyframe: bool
+) -> void:
+	cohort_peers.clear()
+	for peer_id in ready_peer_ids:
+		if peer_id <= 0:
+			continue
+		cohort_peers[peer_id] = true
+		if was_keyframe:
+			last_keyframe_times[peer_id] = snapshot_time
 
 
 func _get_connected_client_peer_ids() -> Array[int]:
@@ -1856,6 +1961,10 @@ func get_snapshot_packet_metrics() -> Dictionary:
 		"enemy_snapshot_payload_bytes_total": _enemy_snapshot_payload_bytes_total,
 		"enemy_snapshot_packet_count": _enemy_snapshot_packet_count,
 		"enemy_snapshot_batch_count": _enemy_snapshot_batch_count,
+		"player_snapshot_encode_count": _player_snapshot_encode_count,
+		"enemy_snapshot_chunk_encode_count": _enemy_snapshot_chunk_encode_count,
+		"player_snapshot_cohort_size": _player_snapshot_cohort_peers.size(),
+		"enemy_snapshot_cohort_size": _enemy_snapshot_cohort_peers.size(),
 		"enemy_snapshot_completed_batch_count": _enemy_snapshot_completed_batch_count,
 		"enemy_snapshot_incomplete_batch_evict_count": _enemy_snapshot_incomplete_batch_evict_count,
 		"enemy_snapshot_stale_chunk_count": _enemy_snapshot_stale_chunk_count,
@@ -8123,8 +8232,14 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	if active_tiyi_activation_id > 0 and net_manager != null and net_manager.is_host():
 		_cancel_authoritative_tiyi_high_noon(peer_id, active_tiyi_activation_id, true)
 	snapshot_mgr.clear_peer_delta_cache(peer_id)
+	_player_snapshot_cohort_peers.erase(peer_id)
+	_enemy_snapshot_cohort_peers.erase(peer_id)
 	_last_player_keyframe_time_by_peer.erase(peer_id)
 	_last_enemy_keyframe_time_by_peer.erase(peer_id)
+	if _player_snapshot_cohort_peers.is_empty():
+		snapshot_mgr.clear_player_send_baseline(SHARED_SNAPSHOT_COHORT_ID)
+	if _enemy_snapshot_cohort_peers.is_empty():
+		snapshot_mgr.clear_enemy_send_baseline(SHARED_SNAPSHOT_COHORT_ID)
 	_last_plant_placement_request_ids.erase(peer_id)
 	player_visual_interpolators.erase(peer_id)
 	_last_player_state_sequences.erase(peer_id)
@@ -8196,6 +8311,10 @@ func _clear_projectile_records_for_peer(peer_id: int) -> void:
 
 func _return_to_lobby() -> void:
 	snapshot_mgr.reset_delta_cache()
+	_player_snapshot_cohort_peers.clear()
+	_enemy_snapshot_cohort_peers.clear()
+	_player_snapshot_encode_count = 0
+	_enemy_snapshot_chunk_encode_count = 0
 	_pending_enemy_snapshot_batches.clear()
 	_processed_collectible_effect_event_ids.clear()
 	_last_completed_enemy_snapshot_batch_id = 0
