@@ -86,7 +86,7 @@ func _test_config_and_scene(config: PlantDefenseConfig, warehouse: OakWarehouse)
 		"橡木仓库必须继续由scene/plant_defense下的独立场景实例化。"
 	)
 	_expect(config.supports_multiplayer, "共享仓库权威事务就绪后，橡木仓库必须允许多人放置。")
-	_expect(PlantDefenseRegistry.get_all_configs().size() == 4, "植物选择必须包含四种建筑。")
+	_expect(PlantDefenseRegistry.get_all_configs().size() == 5, "植物选择必须包含四种既有建筑与木头加工站。")
 	_expect(warehouse.storage_items.size() == 20, "仓库必须拥有20个物品格。")
 	_expect(
 		warehouse.get_node_or_null("OakWarehousePanel") == null

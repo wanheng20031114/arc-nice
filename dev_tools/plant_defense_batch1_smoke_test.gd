@@ -155,16 +155,27 @@ func _test_config_and_scene_contracts() -> void:
 		return
 	var oak_config := PlantDefenseRegistry.get_config(&"oak_warehouse")
 	_expect(oak_config != null and oak_config.is_valid(), "橡木仓库配置必须有效。")
-	if oak_config == null:
+	var wood_station_config := PlantDefenseRegistry.get_config(&"wood_processing_station")
+	_expect(wood_station_config != null and wood_station_config.is_valid(), "木头加工站配置必须有效。")
+	if oak_config == null or wood_station_config == null:
 		return
 	var registered_configs := PlantDefenseRegistry.get_all_configs()
 	_expect(
-		registered_configs.size() == 4
+		registered_configs.size() == 5
 		and registered_configs.has(agave_config)
 		and registered_configs.has(corn_config)
 		and registered_configs.has(oak_config)
-		and registered_configs.has(vegetation_stake_config),
-		"植物注册表必须公开龙舌兰、玉米机枪塔、橡木仓库与植被桩四项。"
+		and registered_configs.has(vegetation_stake_config)
+		and registered_configs.has(wood_station_config),
+		"植物注册表必须公开四种既有植物与木头加工站。"
+	)
+	_expect(
+		wood_station_config.max_health == 2000
+		and wood_station_config.physical_defense == 10
+		and wood_station_config.magic_defense == 0
+		and wood_station_config.footprint_size == Vector2i.ONE
+		and not wood_station_config.supports_multiplayer,
+		"木头加工站必须拥有2000生命、10物防、0法防、占1格且暂不进入多人放置。"
 	)
 	_expect(agave_config.max_health == 2000, "龙舌兰生命值必须为2000。")
 	_expect(
@@ -1180,15 +1191,18 @@ func _test_realtime_selection_and_cancel() -> void:
 	_expect(controller.is_selecting(), "打开后状态必须为SELECTING。")
 	_expect(controller.selection_hud.is_open(), "真实plant动作输入必须显示植物选择界面。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 4
+		controller.selection_hud.available_configs.size() == 5
 		and controller.selection_hud.available_configs.has(agave_config)
 		and controller.selection_hud.available_configs.has(corn_config)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"oak_warehouse")
 		)
 		and controller.selection_hud.available_configs.has(vegetation_stake_config)
-		and controller.selection_hud.cards.size() == 4,
-		"单人植物选择界面必须生成龙舌兰、玉米机枪塔、橡木仓库与植被桩四张卡片。"
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"wood_processing_station")
+		)
+		and controller.selection_hud.cards.size() == 5,
+		"单人植物选择界面必须生成四张既有卡片与木头加工站卡片。"
 	)
 	var agave_card: PlantSelectionCard = null
 	var corn_card: PlantSelectionCard = null

@@ -1,0 +1,156 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/production_building.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/wood_processing_station/wood_processing_station.png" id="2_sprite"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
+[ext_resource type="ShaderMaterial" path="res://resources/shader/plant_lifecycle_material.tres" id="5_lifecycle_material"]
+[ext_resource type="Resource" path="res://resources/config/production/wood_to_plank.tres" id="6_recipe"]
+[ext_resource type="Script" path="res://resources/config/production/production_recipe.gd" id="7_recipe_script"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+resource_local_to_scene = true
+size = Vector2(9, 10)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_player_core"]
+resource_local_to_scene = true
+radius = 3.5
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_interaction"]
+resource_local_to_scene = true
+radius = 28.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_prompt"]
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+bg_color = Color(0.129, 0.082, 0.051, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.788, 0.529, 0.2, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+shadow_color = Color(0.035, 0.018, 0.008, 0.55)
+shadow_size = 2
+shadow_offset = Vector2(0, 2)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_keycap"]
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+bg_color = Color(0.827, 0.612, 0.267, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.824, 0.443, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="LabelSettings" id="LabelSettings_keycap"]
+font = ExtResource("4_font")
+font_size = 12
+font_color = Color(0.153, 0.086, 0.035, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_action"]
+font = ExtResource("4_font")
+font_size = 13
+font_color = Color(0.965, 0.867, 0.667, 1)
+outline_size = 1
+outline_color = Color(0.055, 0.027, 0.012, 1)
+
+[node name="WoodProcessingStation" type="StaticBody2D"]
+collision_layer = 512
+collision_mask = 0
+script = ExtResource("1_script")
+recipes = Array[ExtResource("7_recipe_script")]([ExtResource("6_recipe")])
+enemy_approach_depth = 2.0
+lifecycle_visual_paths = Array[NodePath]([NodePath("MainSprite")])
+lifecycle_effect_top_y = -9.0
+lifecycle_effect_bottom_y = 7.0
+lifecycle_particle_scale = 0.65
+
+[node name="MainSprite" type="Sprite2D" parent="."]
+z_index = 1
+texture_filter = 1
+material = ExtResource("5_lifecycle_material")
+position = Vector2(0, -1)
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("2_sprite")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 2)
+shape = SubResource("RectangleShape2D_body")
+
+[node name="PlayerCoreBody" type="StaticBody2D" parent="."]
+position = Vector2(0, 3)
+collision_layer = 1024
+collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody"]
+shape = SubResource("CircleShape2D_player_core")
+
+[node name="InteractionArea" type="Area2D" parent="."]
+collision_layer = 0
+collision_mask = 2
+monitoring = false
+monitorable = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea"]
+shape = SubResource("CircleShape2D_interaction")
+
+[node name="InteractionPrompt" type="PanelContainer" parent="."]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(112, 26)
+offset_left = -28.0
+offset_top = -26.0
+offset_right = 84.0
+scale = Vector2(0.5, 0.5)
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_prompt")
+
+[node name="PromptMargin" type="MarginContainer" parent="InteractionPrompt"]
+layout_mode = 2
+theme_override_constants/margin_left = 4
+theme_override_constants/margin_top = 3
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = 3
+
+[node name="PromptRow" type="HBoxContainer" parent="InteractionPrompt/PromptMargin"]
+layout_mode = 2
+theme_override_constants/separation = 4
+alignment = 1
+
+[node name="Keycap" type="PanelContainer" parent="InteractionPrompt/PromptMargin/PromptRow"]
+custom_minimum_size = Vector2(18, 18)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_keycap")
+
+[node name="KeyLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow/Keycap"]
+layout_mode = 2
+text = "F"
+label_settings = SubResource("LabelSettings_keycap")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ActionLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow"]
+layout_mode = 2
+text = "打开加工站"
+label_settings = SubResource("LabelSettings_action")
+vertical_alignment = 1
+
+[node name="HealthBar" parent="." instance=ExtResource("3_health_bar")]
+offset_left = -16.0
+offset_top = -13.0
+offset_right = 16.0
+offset_bottom = -8.0
+damage_trail_color = Color(0.92156863, 0.28235295, 0.18039216, 1)

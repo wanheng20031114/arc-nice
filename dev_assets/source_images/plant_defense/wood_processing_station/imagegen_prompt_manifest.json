@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "mode": "built-in imagegen",
+  "assets": [
+    {
+      "id": "wood_processing_station",
+      "source": "wood_processing_station_selected_imagegen_magenta.png",
+      "references": [
+        "resources/texture/plant_defense/vegetation_stake/vegetation_stake.png",
+        "resources/texture/plant_defense/oak_warehouse/oak_warehouse.png"
+      ],
+      "prompt": "One tiny freestanding wood-processing station for a cozy top-down fantasy pixel-art game: timber workbench, readable circular saw housing, two short boards, small gear-and-belt mechanism, and a tiny pitched canopy. Match the supplied one-tile scale and warm hand-authored pixel-art perspective. Single isolated sprite, bottom-center foot anchor, about 26-30 by 28-32 logical pixels, dark one-pixel outline, no antialiasing or dithering, on a perfectly flat solid #FF00FF chroma-key background; no terrain, character, shadow, text, UI, logo, or watermark."
+    },
+    {
+      "id": "production_panel_background",
+      "source": "production_panel_background_imagegen.png",
+      "references": [
+        "resources/texture/plant_defense/oak_warehouse/oak_warehouse_panel_background.png"
+      ],
+      "prompt": "Reusable landscape 4:3 production-management panel background in polished fantasy pixel-art UI style. Neutral dark workshop frame with aged bronze, muted iron and walnut accents; a large left workspace, tall right recipe-list workspace, header strip, vertical divider, and clean top-right toggle recess. Preserve dark uncluttered content areas for native Godot controls; use only generic gears, bolts and bracing. No text, item icons, material-specific motifs, fake buttons, logo, or watermark."
+    },
+    {
+      "id": "plank_material_v2",
+      "source": "../../materials/plank/plank_selected_imagegen_magenta_v2.png",
+      "references": [],
+      "prompt": "One tiny inventory icon of exactly two processed oak planks stacked with a small offset, squared ends, one knot and only a few grain marks. Strict uniform square low-resolution pixel grid, about 16-20 by 10-13 logical pixels, dark one-pixel outline, at most 12 warm oak colors. Centered on a square perfectly uniform #FF00FF chroma-key background; no antialiasing, dithering, shadows, tools, bark logs, text, UI border, logo, or watermark."
+    }
+  ]
+}

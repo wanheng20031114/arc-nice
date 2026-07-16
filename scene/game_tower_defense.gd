@@ -118,6 +118,7 @@ signal base_health_changed(current_health: int, maximum_health: int, revision: i
 @onready var tower_defense_status_hud: TowerDefenseStatusHUD = $TowerDefenseStatusHUD
 @onready var tower_defense_minimap: TowerDefenseMinimap = $TowerDefenseMinimap
 @onready var oak_warehouse_panel: OakWarehousePanel = $OakWarehousePanel
+@onready var production_building_panel: ProductionBuildingPanel = $ProductionBuildingPanel
 @onready var player_profile_panel: PlayerProfilePanel = $PlayerProfilePanel
 @onready var settings_panel: SettingsPanel = $SettingsLayer/SettingsPanel
 @onready var debug_collectible_window: DebugCollectibleWindow = $SettingsLayer/DebugCollectibleWindow
@@ -127,6 +128,7 @@ signal base_health_changed(current_health: int, maximum_health: int, revision: i
 @onready var plant_container: Node2D = $PlantContainer
 @onready var plant_system: PlantSystem = $PlantSystem
 @onready var vegetation_spread_system: VegetationSpreadSystem = $VegetationSpreadSystem
+@onready var production_coordinator: ProductionCoordinator = $ProductionCoordinator
 @onready var plant_placement_controller: PlantPlacementController = $PlantPlacementController
 @onready var plant_lifecycle_shader_prewarm: Sprite2D = $PlantLifecycleShaderPrewarm
 @onready var damage_number_pool: DamageNumberPool = $DamageNumberPool
@@ -284,6 +286,9 @@ func _ready() -> void:
 	wave_hud.configure_tower_defense(current_base_health, maximum_base_health)
 	_configure_home_defense()
 	_configure_plant_defense_system()
+	production_coordinator.set_authoritative_processing_enabled(
+		runtime_mode != RuntimeMode.CLIENT_VIEW
+	)
 	_configure_minimap()
 	_apply_initial_player_xirang()
 	currency_hud.bind_player(player)
@@ -804,6 +809,10 @@ func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 	var oak_warehouse := plant as OakWarehouse
 	if oak_warehouse != null:
 		oak_warehouse.set_shared_storage_panel(oak_warehouse_panel)
+	production_coordinator.register_plant(plant)
+	var production_building := plant as ProductionBuilding
+	if production_building != null:
+		production_building.set_shared_production_panel(production_building_panel)
 	if not plant.modal_ui_visibility_changed.is_connected(_on_plant_modal_ui_visibility_changed):
 		plant.modal_ui_visibility_changed.connect(_on_plant_modal_ui_visibility_changed)
 	var vegetation_stake := plant as VegetationStake
@@ -1087,6 +1096,7 @@ func _on_authoritative_plant_health_changed(
 func _on_plant_removed(plant: PlantDefense) -> void:
 	if plant == null:
 		return
+	production_coordinator.unregister_plant(plant)
 	_clear_enemy_references_to_removed_plant(plant)
 	_request_enemy_retarget_after_objective_change()
 	if plant.removal_mode == PlantDefense.RemovalMode.ANIMATED:
@@ -1094,6 +1104,9 @@ func _on_plant_removed(plant: PlantDefense) -> void:
 	var oak_warehouse := plant as OakWarehouse
 	if oak_warehouse != null:
 		oak_warehouse.close_storage_panel()
+	var production_building := plant as ProductionBuilding
+	if production_building != null:
+		production_building.close_production_panel()
 	var net_id := int(plant.get_meta(&"net_id", 0))
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY and net_id > 0:
 		multiplayer_plant_removed.emit(net_id)

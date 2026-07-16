@@ -15,6 +15,7 @@ signal removal_started(mode: RemovalMode)
 
 const CONSTRUCTION_DURATION_SECONDS: float = 0.7
 const REMOVAL_DURATION_SECONDS: float = 0.7
+const BUILDING_INTERACTION_GROUP := &"plant_building_interaction"
 
 @export_range(0.0, 12.0, 0.5, "or_greater") var enemy_approach_depth: float = 3.0
 
@@ -165,6 +166,16 @@ func get_enemy_approach_depth() -> float:
 
 func is_modal_ui_open() -> bool:
 	return false
+
+
+## Interactive plant buildings override these hooks so every building type can
+## participate in one nearest-target selection without runtime duck typing.
+func get_interaction_player() -> Player:
+	return null
+
+
+func set_interaction_target_selected(_selected: bool) -> void:
+	pass
 
 
 func apply_remote_health(
