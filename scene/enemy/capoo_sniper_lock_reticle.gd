@@ -6,7 +6,6 @@ const RING_WIDTH := 2.0
 const RING_POINTS := 56
 const RING_BACKGROUND := Color(0.24, 0.04, 0.02, 0.5)
 const RING_PROGRESS := Color(1.0, 0.2, 0.08, 0.9)
-const COORDINATOR_GROUP_NAME := &"capoo_sniper_lock_visual_coordinators"
 
 @onready var center_mark: Sprite2D = $CenterMark
 
@@ -191,6 +190,38 @@ func clear_coordinator_slot() -> void:
 	_coordinator_slot_index = -1
 
 
+func release_coordinator_binding(
+	coordinator: CapooSniperLockVisualCoordinator
+) -> void:
+	if _coordinator != coordinator:
+		return
+	_coordinator = null
+	_uses_coordinated_arbitration = false
+	clear_coordinator_slot()
+
+
+func try_restore_coordinator_binding() -> bool:
+	if _uses_coordinated_arbitration and is_instance_valid(_coordinator):
+		return true
+	_coordinator = null
+	_uses_coordinated_arbitration = _try_register_with_coordinator()
+	if _uses_coordinated_arbitration:
+		return true
+	# No owning coordinator remains. Keep the reticle functional instead of
+	# retaining a half-bound state; every sibling in this scope will use the same
+	# fallback once its coordinator is absent.
+	_refresh_target_reticles()
+	if progress_display_active:
+		queue_redraw()
+	return false
+
+
+func refresh_uncoordinated_target_reticles() -> void:
+	if _uses_coordinated_arbitration:
+		return
+	_refresh_target_reticles()
+
+
 func uses_coordinated_arbitration() -> bool:
 	return _uses_coordinated_arbitration
 
@@ -199,14 +230,29 @@ func _try_register_with_coordinator() -> bool:
 	var parent_node := get_parent()
 	if parent_node == null:
 		return false
-	var coordinator_node := get_tree().get_first_node_in_group(COORDINATOR_GROUP_NAME)
-	_coordinator = coordinator_node as CapooSniperLockVisualCoordinator
+	_coordinator = _find_runtime_coordinator(parent_node)
 	if _coordinator == null:
 		return false
 	if not _coordinator.register_reticle(self):
 		_coordinator = null
 		return false
 	return true
+
+
+func _find_runtime_coordinator(
+	start_node: Node
+) -> CapooSniperLockVisualCoordinator:
+	# Gameplay scenes author one coordinator as a direct child of their runtime
+	# root. Walking upward and inspecting only direct children selects the
+	# nearest owning runtime and cannot cross into a sibling game instance.
+	var scope := start_node
+	while scope != null:
+		for child in scope.get_children():
+			var coordinator := child as CapooSniperLockVisualCoordinator
+			if coordinator != null and coordinator.is_inside_tree():
+				return coordinator
+		scope = scope.get_parent()
+	return null
 
 
 func _quantize_progress_segment(progress: float) -> int:

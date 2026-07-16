@@ -40,10 +40,9 @@ var reserved_cells: Dictionary = {}
 var plants_by_net_id: Dictionary[int, PlantDefense] = {}
 # search_radius -> center_cell -> (plant instance id -> PlantDefense)
 #
-# A radius-specific inverse index preserves the public method's arbitrary
-# max_radius_cells contract. The gameplay radius is created eagerly; uncommon
-# radii are materialized once and then participate in the same event-driven
-# placement/removal updates.
+# Only the fixed gameplay radius is resident. Arbitrary public-query radii use a
+# one-shot O(plant count) candidate list instead of permanently multiplying the
+# inverse index and every later placement/removal update.
 var _plant_influence_cells_by_radius: Dictionary = {}
 
 
@@ -381,6 +380,7 @@ func find_nearest_living_plant(
 		or ground_tile_map.tile_set == null
 		or occupied_cells.is_empty()
 		or max_radius_cells < 0.0
+		or not is_finite(max_radius_cells)
 	):
 		return null
 
@@ -394,7 +394,10 @@ func find_nearest_living_plant(
 	var center_cell := ground_tile_map.local_to_map(from_local)
 	# One extra cell covers sub-cell source positions and even-sized footprints
 	# whose authored anchor lies between two logical cells.
-	var search_radius := ceili(max_radius_cells) + 1
+	var search_radius := _get_bounded_plant_candidate_search_radius(
+		center_cell,
+		max_radius_cells
+	)
 	var maximum_distance_squared := max_radius_cells * max_radius_cells
 	var nearest_plant: PlantDefense = null
 	var nearest_distance_squared := INF
@@ -437,17 +440,43 @@ func find_nearest_living_plant(
 	return nearest_plant
 
 
+func _get_bounded_plant_candidate_search_radius(
+	center_cell: Vector2i,
+	max_radius_cells: float
+) -> int:
+	if max_radius_cells <= float(DEFAULT_PLANT_INFLUENCE_SEARCH_RADIUS_CELLS - 1):
+		return ceili(max_radius_cells) + 1
+	# Non-gameplay radii already use an O(plant count) candidate pass. Bound the
+	# tie-order scan radius to the farthest occupied cell before converting the
+	# public float to int, so a huge but finite caller value cannot overflow.
+	var maximum_relevant_radius := 1
+	for occupied_cell_variant in occupied_cells:
+		var occupied_cell := occupied_cell_variant as Vector2i
+		var delta := (occupied_cell - center_cell).abs()
+		maximum_relevant_radius = maxi(
+			maximum_relevant_radius,
+			maxi(delta.x, delta.y) + 1
+		)
+	if max_radius_cells >= float(maximum_relevant_radius):
+		return maximum_relevant_radius
+	return ceili(max_radius_cells) + 1
+
+
 func _get_plant_influence_candidates(
 	center_cell: Vector2i,
 	search_radius: int
 ) -> Dictionary:
 	var safe_search_radius := maxi(search_radius, 0)
+	if safe_search_radius != DEFAULT_PLANT_INFLUENCE_SEARCH_RADIUS_CELLS:
+		return _collect_uncached_plant_influence_candidates()
 	var influence_index := _ensure_plant_influence_index(safe_search_radius)
 	return influence_index.get(center_cell, {}) as Dictionary
 
 
 func _ensure_plant_influence_index(search_radius: int) -> Dictionary:
 	var safe_search_radius := maxi(search_radius, 0)
+	if safe_search_radius != DEFAULT_PLANT_INFLUENCE_SEARCH_RADIUS_CELLS:
+		return {}
 	if _plant_influence_cells_by_radius.has(safe_search_radius):
 		return _plant_influence_cells_by_radius[safe_search_radius] as Dictionary
 
@@ -467,6 +496,22 @@ func _ensure_plant_influence_index(search_radius: int) -> Dictionary:
 	return influence_index
 
 
+func _collect_uncached_plant_influence_candidates() -> Dictionary:
+	var candidates: Dictionary = {}
+	for plant_variant in plant_footprints:
+		var plant := plant_variant as PlantDefense
+		if (
+			plant == null
+			or not is_instance_valid(plant)
+			or plant.is_dead
+			or plant.is_removing
+			or plant.is_queued_for_deletion()
+		):
+			continue
+		candidates[plant.get_instance_id()] = plant
+	return candidates
+
+
 func _reset_plant_influence_indices() -> void:
 	_plant_influence_cells_by_radius.clear()
 	# Materialize the 8-cell gameplay query's 9-cell broad phase before enemies
@@ -478,34 +523,31 @@ func _add_plant_to_all_influence_indices(
 	plant: PlantDefense,
 	footprint: Array
 ) -> void:
-	for search_radius_variant in _plant_influence_cells_by_radius:
-		var search_radius := int(search_radius_variant)
-		var influence_index := (
-			_plant_influence_cells_by_radius[search_radius_variant] as Dictionary
-		)
-		_add_plant_to_influence_index(
-			influence_index,
-			search_radius,
-			plant,
-			footprint
-		)
+	var influence_index := _ensure_plant_influence_index(
+		DEFAULT_PLANT_INFLUENCE_SEARCH_RADIUS_CELLS
+	)
+	_add_plant_to_influence_index(
+		influence_index,
+		DEFAULT_PLANT_INFLUENCE_SEARCH_RADIUS_CELLS,
+		plant,
+		footprint
+	)
 
 
 func _remove_plant_from_all_influence_indices(
 	plant: PlantDefense,
 	footprint: Array
 ) -> void:
-	for search_radius_variant in _plant_influence_cells_by_radius:
-		var search_radius := int(search_radius_variant)
-		var influence_index := (
-			_plant_influence_cells_by_radius[search_radius_variant] as Dictionary
-		)
-		_remove_plant_from_influence_index(
-			influence_index,
-			search_radius,
-			plant,
-			footprint
-		)
+	var influence_index := _plant_influence_cells_by_radius.get(
+		DEFAULT_PLANT_INFLUENCE_SEARCH_RADIUS_CELLS,
+		{}
+	) as Dictionary
+	_remove_plant_from_influence_index(
+		influence_index,
+		DEFAULT_PLANT_INFLUENCE_SEARCH_RADIUS_CELLS,
+		plant,
+		footprint
+	)
 
 
 func _add_plant_to_influence_index(

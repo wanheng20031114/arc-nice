@@ -52,6 +52,11 @@ const DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES := 3
 # Once that lag reaches two cells, prefer the live target immediately whenever
 # the immutable agent profile can prove the entire correction corridor open.
 const DYNAMIC_FLOW_DIRECT_CORRECTION_DISTANCE_CELLS := 2
+const DYNAMIC_FLOW_PREFETCH_LOOKAHEAD_CELLS := 3.0
+# Three cells of lookahead provide substantially more warning than one 10 Hz
+# sample interval even for the fastest current pursuer. Throttling independently
+# of its ordinary direction refresh halves the open-ground certificate cost.
+const DYNAMIC_FLOW_PREFETCH_INTERVAL_PHYSICS_FRAMES := 6
 const DYNAMIC_TARGET_FINAL_ALIGNMENT_MARGIN := 2.0
 const BLOCKED_WORLD_LOS_RETRY_MIN_MSEC := 80
 const BLOCKED_WORLD_LOS_RETRY_MAX_MSEC := 120
@@ -68,8 +73,11 @@ enum DeathSequenceStage {
 }
 
 static var performance_metrics_enabled := false
+static var dynamic_flow_obstacle_lookahead_enabled := true
 # Explicit A/B switch for the former behavior where every movement modifier,
 # including a visually static slow, enabled one render-frame callback per enemy.
+# Configure it before creating/applying the measured cohort; it deliberately
+# does not walk every live enemy to migrate process state during a benchmark.
 static var slow_only_status_process_optimization_enabled := true
 static var _next_navigation_phase_offset := 0
 static var _performance_metrics := {
@@ -77,6 +85,10 @@ static var _performance_metrics := {
 	"touch_damage_usec": 0,
 	"navigation_calls": 0,
 	"navigation_usec": 0,
+	"navigation_lookahead_calls": 0,
+	"navigation_lookahead_usec": 0,
+	"navigation_flow_prefetches": 0,
+	"navigation_flow_prefetch_deduplicated": 0,
 	"test_move_calls": 0,
 	"test_move_usec": 0,
 	"move_and_slide_calls": 0,
@@ -148,6 +160,7 @@ var cached_navigation_verified_direct_motion_clearance: float = 0.0
 var cached_navigation_generation: int = -1
 var cached_navigation_tracks_live_target_direction: bool = false
 var navigation_zero_direction_retry_frame: int = 0
+var navigation_flow_prefetch_next_physics_frame: int = 0
 var navigation_collision_probe := KinematicCollision2D.new()
 var navigation_step_result: GridPathfinder.NavigationStepResult = null
 var _world_los_query: PhysicsRayQueryParameters2D = null
@@ -174,6 +187,12 @@ var burn_overlay_strength := 0.0
 var bleed_overlay_strength := 0.0
 var speed_trail_effect: Node2D = null
 var speed_trail_owner_pool: SessionObjectPool = null
+var combat_target_index_binding: CombatTargetIndex = null
+var combat_target_index_net_id: int = 0
+var combat_target_index_bucket := Vector2i.MAX
+var combat_target_index_bucket_size := 0.0
+var combat_target_index_bucket_minimum := Vector2.ZERO
+var combat_target_index_bucket_maximum := Vector2.ZERO
 
 
 static func set_performance_metrics_enabled(enabled: bool) -> void:
@@ -190,6 +209,10 @@ static func reset_performance_metrics() -> void:
 	_performance_metrics["touch_damage_usec"] = 0
 	_performance_metrics["navigation_calls"] = 0
 	_performance_metrics["navigation_usec"] = 0
+	_performance_metrics["navigation_lookahead_calls"] = 0
+	_performance_metrics["navigation_lookahead_usec"] = 0
+	_performance_metrics["navigation_flow_prefetches"] = 0
+	_performance_metrics["navigation_flow_prefetch_deduplicated"] = 0
 	_performance_metrics["test_move_calls"] = 0
 	_performance_metrics["test_move_usec"] = 0
 	_performance_metrics["move_and_slide_calls"] = 0
@@ -257,6 +280,112 @@ func _ready() -> void:
 	_refresh_status_process_enabled()
 
 
+func _notification(what: int) -> void:
+	if what != NOTIFICATION_LOCAL_TRANSFORM_CHANGED:
+		return
+	if (
+		combat_target_index_binding == null
+		or combat_target_index_net_id <= 0
+	):
+		return
+	# Transform notifications still occur on every physics movement. Keep the hot
+	# path entirely local: four comparisons against the current bucket bounds.
+	# Shared dictionaries are touched only when the body really crosses a 96 px
+	# bucket boundary or teleports beyond it.
+	var current_position := global_position
+	if (
+		current_position.x >= combat_target_index_bucket_minimum.x
+		and current_position.x < combat_target_index_bucket_maximum.x
+		and current_position.y >= combat_target_index_bucket_minimum.y
+		and current_position.y < combat_target_index_bucket_maximum.y
+	):
+		return
+	var safe_bucket_size := maxf(combat_target_index_bucket_size, 1.0)
+	var next_bucket := Vector2i(
+		floori(current_position.x / safe_bucket_size),
+		floori(current_position.y / safe_bucket_size)
+	)
+	var bound_index := combat_target_index_binding
+	var bound_net_id := combat_target_index_net_id
+	if bound_index.update_enemy_bucket(bound_net_id, self, next_bucket):
+		_cache_combat_target_index_bucket(next_bucket, safe_bucket_size)
+		return
+	# A replaced/pruned entry must not keep paying transform-notification cost or
+	# retain the old RefCounted index for the rest of this enemy's lifetime.
+	unbind_combat_target_index(bound_index, bound_net_id)
+
+
+func bind_combat_target_index(index: CombatTargetIndex, net_id: int) -> void:
+	if index == null or net_id <= 0:
+		return
+	if (
+		combat_target_index_binding != null
+		and (
+			combat_target_index_binding != index
+			or combat_target_index_net_id != net_id
+		)
+	):
+		var previous_index := combat_target_index_binding
+		var previous_net_id := combat_target_index_net_id
+		previous_index.unregister_enemy(previous_net_id, self)
+	combat_target_index_binding = index
+	combat_target_index_net_id = net_id
+	var safe_bucket_size := maxf(index.bucket_size, 1.0)
+	var initial_bucket := Vector2i(
+		floori(global_position.x / safe_bucket_size),
+		floori(global_position.y / safe_bucket_size)
+	)
+	_cache_combat_target_index_bucket(initial_bucket, safe_bucket_size)
+	# Enemies live under a stationary gameplay container. Local notifications are
+	# synchronous for move_and_slide(), direct movement and snapshot teleports;
+	# enabling global notifications as well would dispatch this hot callback twice
+	# for every ordinary move. The bounded round-robin repair audit covers an
+	# unexpected ancestor transform change without a full-cohort scan.
+	set_notify_local_transform(true)
+
+
+func sync_combat_target_index_bucket(
+	index: CombatTargetIndex,
+	net_id: int,
+	bucket: Vector2i,
+	bucket_size: float
+) -> void:
+	if (
+		combat_target_index_binding != index
+		or combat_target_index_net_id != net_id
+	):
+		return
+	_cache_combat_target_index_bucket(bucket, bucket_size)
+
+
+func unbind_combat_target_index(index: CombatTargetIndex, net_id: int) -> void:
+	if (
+		combat_target_index_binding != index
+		or combat_target_index_net_id != net_id
+	):
+		return
+	combat_target_index_binding = null
+	combat_target_index_net_id = 0
+	combat_target_index_bucket = Vector2i.MAX
+	combat_target_index_bucket_size = 0.0
+	combat_target_index_bucket_minimum = Vector2.ZERO
+	combat_target_index_bucket_maximum = Vector2.ZERO
+	set_notify_local_transform(false)
+
+
+func _cache_combat_target_index_bucket(
+	bucket: Vector2i,
+	bucket_size: float
+) -> void:
+	var safe_bucket_size := maxf(bucket_size, 1.0)
+	combat_target_index_bucket = bucket
+	combat_target_index_bucket_size = safe_bucket_size
+	combat_target_index_bucket_minimum = Vector2(bucket) * safe_bucket_size
+	combat_target_index_bucket_maximum = (
+		combat_target_index_bucket_minimum + Vector2.ONE * safe_bucket_size
+	)
+
+
 func _apply_terrain_collision_profile() -> void:
 	var can_traverse_water := (
 		terrain_traversal_types & DualGridTilemap.TraversalType.WATER
@@ -316,6 +445,7 @@ func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = 
 	objective_target = player
 	pathfinder = shared_pathfinder
 	navigation_agent_profile = null
+	navigation_flow_prefetch_next_physics_frame = 0
 	_invalidate_blocked_world_los_cache()
 	near_moving_target_direct_distance = DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE
 	near_moving_target_direct_distance_squared = (
@@ -335,6 +465,7 @@ func set_target_player(player: Player) -> void:
 
 	var previous_target := target_player
 	target_player = player
+	navigation_flow_prefetch_next_physics_frame = 0
 	_invalidate_blocked_world_los_cache()
 	if objective_target == null or objective_target == previous_target:
 		objective_target = player
@@ -400,6 +531,7 @@ func set_pathfinder(shared_pathfinder: Node) -> void:
 		return
 	pathfinder = shared_pathfinder
 	navigation_agent_profile = null
+	navigation_flow_prefetch_next_physics_frame = 0
 	_clear_cached_navigation_move_direction()
 
 
@@ -700,6 +832,10 @@ func _release_speed_trail_effect() -> void:
 
 
 func _exit_tree() -> void:
+	if combat_target_index_binding != null and combat_target_index_net_id > 0:
+		var bound_index := combat_target_index_binding
+		var bound_net_id := combat_target_index_net_id
+		bound_index.unregister_enemy(bound_net_id, self)
 	_release_speed_trail_effect()
 
 
@@ -1435,6 +1571,7 @@ func _get_safe_navigation_move_direction_unprofiled(
 			target_node.global_position
 		)
 		if direct_direction != Vector2.ZERO:
+			_prefetch_dynamic_player_flow_if_obstacle_ahead(target_node)
 			return _cache_navigation_move_direction(
 				direct_direction,
 				true,
@@ -1459,6 +1596,66 @@ func _get_safe_navigation_move_direction_unprofiled(
 		shared_pathfinder,
 		waypoint_arrival_distance
 	)
+
+
+func _prefetch_dynamic_player_flow_if_obstacle_ahead(
+	target_node: Node2D
+) -> void:
+	if (
+		not Enemy.dynamic_flow_obstacle_lookahead_enabled
+		or target_node == null
+		or target_node != target_player
+		or not is_instance_valid(target_node)
+	):
+		return
+	var grid_pathfinder := pathfinder as GridPathfinder
+	if grid_pathfinder == null or not grid_pathfinder.is_built:
+		return
+	var profile := _get_navigation_agent_profile()
+	if profile == null:
+		return
+	var current_physics_frame := Engine.get_physics_frames()
+	if current_physics_frame < navigation_flow_prefetch_next_physics_frame:
+		return
+	navigation_flow_prefetch_next_physics_frame = (
+		current_physics_frame + DYNAMIC_FLOW_PREFETCH_INTERVAL_PHYSICS_FRAMES
+	)
+	var probe_distance := _get_far_direct_objective_probe_distance()
+	var started_usec := Time.get_ticks_usec() if Enemy.performance_metrics_enabled else 0
+	var obstacle_ahead: Variant = (
+		grid_pathfinder.try_has_navigation_obstacle_ahead_with_profile(
+			global_position,
+			target_node.global_position,
+			probe_distance,
+			DYNAMIC_FLOW_PREFETCH_LOOKAHEAD_CELLS,
+			profile
+		)
+	)
+	if Enemy.performance_metrics_enabled:
+		Enemy._performance_metrics["navigation_lookahead_calls"] = (
+			int(Enemy._performance_metrics["navigation_lookahead_calls"]) + 1
+		)
+		Enemy._performance_metrics["navigation_lookahead_usec"] = (
+			int(Enemy._performance_metrics["navigation_lookahead_usec"])
+			+ maxi(Time.get_ticks_usec() - started_usec, 0)
+		)
+	if obstacle_ahead != true:
+		return
+	var issued_prefetch := grid_pathfinder.try_prefetch_dynamic_target_flow_with_profile(
+		global_position,
+		target_node,
+		get_dynamic_target_contact_goal_radius(target_node),
+		profile
+	)
+	if Enemy.performance_metrics_enabled:
+		var metric_key := (
+			"navigation_flow_prefetches"
+			if issued_prefetch
+			else "navigation_flow_prefetch_deduplicated"
+		)
+		Enemy._performance_metrics[metric_key] = (
+			int(Enemy._performance_metrics[metric_key]) + 1
+		)
 
 
 func _get_flow_navigation_move_direction(

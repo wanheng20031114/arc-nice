@@ -127,10 +127,12 @@ const DODGE_UPGRADE_CHANCE_STEP := 0.02
 const DEFAULT_MAGIC_DEFENSE_LIMIT := 100
 const RANGED_DIRECTION_SIDE_THRESHOLD := 0.35
 const DEFAULT_SKILL1_DISPLAY_NAME := "技能"
+const STATUS_EFFECT_EXPIRY_SCHEDULER_PATH := NodePath("/root/StatusEffectExpiryScheduler")
 
 static var _collectible_temporary_source_serial: int = 0
 # Keep the former one-SceneTreeTimer-per-enemy path available for deterministic
-# A/B probes while production uses one expiry timer per area-slow application.
+# A/B probes. Production uses one expiry timer per area-slow application; its
+# timeout only enqueues the cohort into the shared frame-budgeted scheduler.
 static var collectible_slow_batch_expiry_enabled := true
 static var collectible_slow_expiry_metrics_enabled := false
 static var _collectible_slow_expiry_metrics := {
@@ -2816,8 +2818,15 @@ static func _remove_collectible_enemy_slow_batch(
 	source_id: int
 ) -> void:
 	Player._increment_collectible_slow_expiry_metric("expiry_callback_count")
-	for enemy_ref in enemy_refs:
-		Player._remove_collectible_enemy_slow_from_ref(enemy_ref, source_id)
+	var scene_tree := Engine.get_main_loop() as SceneTree
+	assert(scene_tree != null)
+	var scheduler := scene_tree.root.get_node(STATUS_EFFECT_EXPIRY_SCHEDULER_PATH)
+	scheduler.call(
+		"enqueue_weak_ref_batch",
+		enemy_refs,
+		source_id,
+		Player._remove_collectible_enemy_slow_from_ref
+	)
 
 
 static func _remove_collectible_enemy_slow(enemy_ref: WeakRef, source_id: int) -> void:

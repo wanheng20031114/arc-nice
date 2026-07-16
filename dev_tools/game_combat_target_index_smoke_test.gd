@@ -30,6 +30,7 @@ func _run() -> void:
 	root.add_child(test_root)
 	_test_game_source_enables_shared_index()
 	_test_singleplayer_container_lifecycle()
+	_test_same_physics_frame_bucket_migration()
 	_test_tower_defense_forced_policy()
 	_run_ab_case(300)
 	_run_ab_case(1000)
@@ -119,8 +120,9 @@ func _test_singleplayer_container_lifecycle() -> void:
 	)
 	_expect(
 		not nearest.has(spawned_enemy)
-		and not game.combat_target_index.enemies_by_net_id.has(spawned_instance_id),
-		"A dead enemy must be pruned from both query results and index storage."
+		and not game.combat_target_index.enemies_by_net_id.has(spawned_instance_id)
+		and spawned_enemy.combat_target_index_binding == null,
+		"A dead enemy must be pruned from index storage and release its notification binding."
 	)
 	spawned_enemy.is_dead = false
 	enemy_container.remove_child(spawned_enemy)
@@ -174,6 +176,85 @@ func _count_index_bucket_occurrences(game: Game, net_id: int) -> int:
 	return occurrences
 
 
+func _test_same_physics_frame_bucket_migration() -> void:
+	var game := Game.new()
+	game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	var enemy := _new_tree_safe_test_enemy()
+	test_root.add_child(enemy)
+	enemy.global_position = Vector2(95.5, 12.0)
+	game.register_combat_target(701, enemy)
+	var result: Array[Enemy] = []
+	game.combat_target_index.query_radius_into(enemy.global_position, 1.0, result, 1)
+	var audit_count: int = game.combat_target_index.full_bucket_audits_total
+	_expect(result == [enemy], "跨桶测试必须先从旧桶查询到目标。")
+
+	# This remains the same physics frame. The transform notification must migrate
+	# the net id immediately instead of waiting for another full O(enemy count)
+	# reconciliation or leaking a one-frame false negative at the query boundary.
+	enemy.global_position = Vector2(96.5, 12.0)
+	game.combat_target_index.query_radius_into(enemy.global_position, 0.75, result, 1)
+	_expect(
+		result == [enemy]
+		and game.combat_target_index.bucket_by_net_id.get(701) == Vector2i(1, 0)
+		and game.combat_target_index.event_bucket_migrations_total == 1
+		and game.combat_target_index.full_bucket_audits_total == audit_count,
+		"同一物理帧内跨过96px桶边界后必须O(1)迁移且后续查询不得漏掉目标。"
+	)
+
+	# Teleports are also transform changes and may cross more than one bucket.
+	enemy.global_position = Vector2(-193.0, 12.0)
+	game.combat_target_index.query_radius_into(enemy.global_position, 0.75, result, 1)
+	_expect(
+		result == [enemy]
+		and game.combat_target_index.bucket_by_net_id.get(701) == Vector2i(-3, 0)
+		and game.combat_target_index.event_bucket_migrations_total == 2,
+		"事件驱动索引必须在同帧正确处理跨多个桶的传送。"
+	)
+
+	var replacement := _new_tree_safe_test_enemy()
+	test_root.add_child(replacement)
+	replacement.global_position = Vector2(12.0, 12.0)
+	var refresh_frame_before_replacement: int = (
+		game.combat_target_index._last_refresh_physics_frame
+	)
+	game.register_combat_target(701, replacement)
+	var migrations_before_old_move: int = (
+		game.combat_target_index.event_bucket_migrations_total
+	)
+	enemy.global_position = Vector2(500.0, 12.0)
+	_expect(
+		enemy.combat_target_index_binding == null
+		and replacement.combat_target_index_binding == game.combat_target_index
+		and game.combat_target_index.get_enemy(701) == replacement
+		and game.combat_target_index.event_bucket_migrations_total
+			== migrations_before_old_move
+		and game.combat_target_index._last_refresh_physics_frame
+			== refresh_frame_before_replacement,
+		(
+			"Replacing one net id must detach the old enemy, retain only the new "
+			+ "binding, and avoid scheduling a full-index spawn audit."
+		)
+	)
+
+	game.combat_target_index.clear()
+	_expect(
+		replacement.combat_target_index_binding == null
+		and game.combat_target_index.enemies_by_net_id.is_empty()
+		and game.combat_target_index.buckets.is_empty(),
+		"CombatTargetIndex.clear() must detach every surviving enemy binding."
+	)
+	game.register_combat_target(702, replacement)
+	test_root.remove_child(replacement)
+	_expect(
+		replacement.combat_target_index_binding == null
+		and not game.combat_target_index.enemies_by_net_id.has(702),
+		"Enemy tree exit must synchronously unregister its index entry."
+	)
+	replacement.free()
+	enemy.queue_free()
+	game.free()
+
+
 func _test_tower_defense_forced_policy() -> void:
 	var game := GameTowerDefense.new()
 	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
@@ -195,13 +276,13 @@ func _test_tower_defense_forced_policy() -> void:
 	game.query_combat_targets_into(Vector2.ZERO, 128.0, result, 1)
 	_expect(
 		game.combat_target_index._last_refresh_physics_frame == physics_frame,
-		"Tower-defense bounded queries must use the index even when query density is sparse."
+		"Tower-defense bounded queries must use the maintained index even when query density is sparse."
 	)
 	game.combat_target_index._last_refresh_physics_frame = -777
 	game.query_combat_targets_into(Vector2.ZERO, 0.0, result, 1)
 	_expect(
 		game.combat_target_index._last_refresh_physics_frame == -777,
-		"Tower-defense global queries must also skip redundant bucket reconciliation."
+		"Tower-defense global queries must skip irrelevant bucket maintenance."
 	)
 	game.free()
 
@@ -343,33 +424,27 @@ func _same_enemy_membership(a: Array[Enemy], b: Array[Enemy]) -> bool:
 func _assert_adaptive_routing(game: Game, enemy_count: int) -> void:
 	var result: Array[Enemy] = []
 	var physics_frame := Engine.get_physics_frames()
-	game._singleplayer_combat_query_physics_frame = physics_frame
-	game._singleplayer_combat_queries_this_frame = 0
-	game._singleplayer_combat_queries_previous_frame = 1
-	game.combat_target_index._last_refresh_physics_frame = -777
-	game.query_combat_targets_into(Vector2.ZERO, 128.0, result, 1)
-	_expect(
-		game.combat_target_index._last_refresh_physics_frame == -777,
-		"A sparse local nearest query must stay on the lower-overhead container scan."
-	)
-
-	game._singleplayer_combat_queries_previous_frame = 8
 	game.combat_target_index._last_refresh_physics_frame = -777
 	game.query_combat_targets_into(Vector2.ZERO, 128.0, result, 1)
 	_expect(
 		game.combat_target_index._last_refresh_physics_frame == physics_frame,
-		"A dense local nearest workload must activate the amortized spatial index."
+		"Even one local nearest query must use the event-maintained spatial index."
 	)
 
-	game._singleplayer_combat_queries_previous_frame = 8
+	game.combat_target_index._last_refresh_physics_frame = -777
+	game.query_combat_targets_into(Vector2.ZERO, 128.0, result, 1)
+	_expect(
+		game.combat_target_index._last_refresh_physics_frame == physics_frame,
+		"Repeated local nearest queries must remain on the spatial index."
+	)
+
 	game.combat_target_index._last_refresh_physics_frame = -777
 	game.query_combat_targets_into(Vector2.ZERO, 0.0, result, 1)
 	_expect(
 		game.combat_target_index._last_refresh_physics_frame == -777,
-		"Global queries must avoid the index's redundant full moving-bucket refresh."
+		"Global queries must avoid irrelevant bucket maintenance."
 	)
 
-	game._singleplayer_combat_queries_previous_frame = 8
 	game.combat_target_index._last_refresh_physics_frame = -777
 	game.query_combat_targets_into(Vector2.ZERO, 128.0, result, 0)
 	var bulk_used_index: bool = (
@@ -377,7 +452,7 @@ func _assert_adaptive_routing(game: Game, enemy_count: int) -> void:
 	)
 	_expect(
 		bulk_used_index == (enemy_count >= 512),
-		"Dense local bulk routing must use the measured 512-target break-even guard."
+		"Local bulk routing must use the measured 512-target break-even guard."
 	)
 
 
@@ -473,7 +548,7 @@ func _measure_indexed_frame_groups(
 	var checksum := 0
 	var started_usec := Time.get_ticks_usec()
 	for simulated_frame in range(SIMULATED_BENCHMARK_FRAMES):
-		# One forced reconciliation per group models a new physics frame without
+		# One bounded repair slice per group models a new physics frame without
 		# making this deterministic smoke test wait for wall-clock physics ticks.
 		game.combat_target_index._last_refresh_physics_frame = -1
 		for query_in_frame in range(queries_per_frame):
@@ -500,12 +575,8 @@ func _measure_adaptive_frame_groups(
 ) -> int:
 	var result: Array[Enemy] = []
 	var checksum := 0
-	var physics_frame := Engine.get_physics_frames()
 	var started_usec := Time.get_ticks_usec()
 	for simulated_frame in range(SIMULATED_BENCHMARK_FRAMES):
-		game._singleplayer_combat_query_physics_frame = physics_frame
-		game._singleplayer_combat_queries_previous_frame = queries_per_frame
-		game._singleplayer_combat_queries_this_frame = 0
 		game.combat_target_index._last_refresh_physics_frame = -1
 		for query_in_frame in range(queries_per_frame):
 			var query_index := simulated_frame * queries_per_frame + query_in_frame

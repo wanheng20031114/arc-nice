@@ -2,14 +2,22 @@ extends RefCounted
 class_name CombatTargetIndex
 
 const DEFAULT_BUCKET_SIZE := 96.0
+const SAFETY_AUDIT_ENTRIES_PER_PHYSICS_FRAME := 16
 
 var bucket_size: float = DEFAULT_BUCKET_SIZE
 var enemies_by_net_id: Dictionary[int, Enemy] = {}
 var buckets: Dictionary[Vector2i, Array] = {}
 var bucket_by_net_id: Dictionary[int, Vector2i] = {}
 var bucket_slot_by_net_id: Dictionary[int, int] = {}
+var safety_audit_net_ids: Array[int] = []
+var safety_audit_slot_by_net_id: Dictionary[int, int] = {}
+var safety_audit_cursor := 0
 var _stale_enemy_net_ids: Array[int] = []
 var _last_refresh_physics_frame: int = -1
+var event_bucket_migrations_total := 0
+var full_bucket_audits_total := 0
+var safety_audit_entries_total := 0
+var safety_audit_max_entries_per_frame := 0
 
 
 func register_enemy(net_id: int, enemy: Enemy) -> void:
@@ -19,14 +27,49 @@ func register_enemy(net_id: int, enemy: Enemy) -> void:
 		_remove_enemy_entry(net_id)
 	enemies_by_net_id[net_id] = enemy
 	_add_net_id_to_bucket(net_id, _to_bucket(enemy.global_position))
-	# child_entered_tree can register before the spawner assigns its final position.
-	# Force the next query to reconcile that immediate bucket within the same frame.
-	_last_refresh_physics_frame = -1
+	_add_net_id_to_safety_audit(net_id)
+	# Binding happens after the initial slot exists. A spawner may assign the final
+	# position after child_entered_tree; the transform notification then migrates
+	# only that entry instead of forcing the next query to audit every enemy.
+	enemy.bind_combat_target_index(self, net_id)
+	if _last_refresh_physics_frame < 0:
+		_last_refresh_physics_frame = Engine.get_physics_frames()
 
 
-func unregister_enemy(net_id: int) -> void:
+func update_enemy_bucket(
+	net_id: int,
+	enemy: Enemy = null,
+	known_bucket: Vector2i = Vector2i.MAX
+) -> bool:
+	if net_id <= 0 or not enemies_by_net_id.has(net_id):
+		return false
+	var registered_enemy := enemies_by_net_id.get(net_id) as Enemy
+	if (
+		registered_enemy == null
+		or not is_instance_valid(registered_enemy)
+		or (enemy != null and registered_enemy != enemy)
+	):
+		return false
+	var next_cell := known_bucket
+	if next_cell == Vector2i.MAX:
+		next_cell = _to_bucket(registered_enemy.global_position)
+	var previous_cell: Vector2i = bucket_by_net_id.get(net_id, Vector2i.MAX)
+	if previous_cell == next_cell:
+		return true
+	_remove_net_id_from_bucket(net_id)
+	_add_net_id_to_bucket(net_id, next_cell)
+	event_bucket_migrations_total += 1
+	return true
+
+
+func unregister_enemy(net_id: int, expected_enemy: Enemy = null) -> void:
 	if net_id <= 0:
 		return
+	if expected_enemy != null:
+		var registered_enemy := enemies_by_net_id.get(net_id) as Enemy
+		if registered_enemy != expected_enemy:
+			expected_enemy.unbind_combat_target_index(self, net_id)
+			return
 	_remove_enemy_entry(net_id)
 
 
@@ -66,7 +109,7 @@ func query_radius_into(
 	var safe_radius := maxf(radius, 0.0)
 	if max_count == 1:
 		if safe_radius > 0.0:
-			_refresh_buckets_once_per_physics_frame()
+			_advance_safety_audit_once_per_physics_frame()
 		_append_nearest_alive(result, center, safe_radius)
 		return
 	if safe_radius <= 0.0:
@@ -74,7 +117,7 @@ func query_radius_into(
 		_sort_by_distance(result, center)
 		_limit_result(result, max_count)
 		return
-	_refresh_buckets_once_per_physics_frame()
+	_advance_safety_audit_once_per_physics_frame()
 	query_radius_unordered_into(center, safe_radius, result)
 	_sort_by_distance(result, center)
 	_limit_result(result, max_count)
@@ -90,7 +133,7 @@ func query_radius_unordered_into(
 	if safe_radius <= 0.0:
 		_append_all_alive(result)
 		return
-	_refresh_buckets_once_per_physics_frame()
+	_advance_safety_audit_once_per_physics_frame()
 	var radius_squared := safe_radius * safe_radius
 	var minimum_cell := _to_bucket(center - Vector2.ONE * safe_radius)
 	var maximum_cell := _to_bucket(center + Vector2.ONE * safe_radius)
@@ -162,31 +205,70 @@ static func sort_candidates_by_distance(
 
 
 func clear() -> void:
+	for net_id_variant in enemies_by_net_id:
+		var net_id := int(net_id_variant)
+		var enemy_variant: Variant = enemies_by_net_id.get(net_id)
+		if enemy_variant != null and is_instance_valid(enemy_variant):
+			var enemy := enemy_variant as Enemy
+			if enemy != null:
+				enemy.unbind_combat_target_index(self, net_id)
 	enemies_by_net_id.clear()
 	buckets.clear()
 	bucket_by_net_id.clear()
 	bucket_slot_by_net_id.clear()
+	safety_audit_net_ids.clear()
+	safety_audit_slot_by_net_id.clear()
+	safety_audit_cursor = 0
 	_stale_enemy_net_ids.clear()
 	_last_refresh_physics_frame = -1
+	event_bucket_migrations_total = 0
+	full_bucket_audits_total = 0
+	safety_audit_entries_total = 0
+	safety_audit_max_entries_per_frame = 0
 
 
-func _refresh_buckets_once_per_physics_frame() -> void:
+func _advance_safety_audit_once_per_physics_frame() -> void:
 	var physics_frame := Engine.get_physics_frames()
 	if _last_refresh_physics_frame == physics_frame:
 		return
 	_last_refresh_physics_frame = physics_frame
-	_stale_enemy_net_ids.clear()
-	for net_id_variant in enemies_by_net_id:
-		var net_id := int(net_id_variant)
+	if safety_audit_net_ids.is_empty():
+		safety_audit_cursor = 0
+		return
+	# Transform notifications are authoritative. This bounded round-robin slice is
+	# only a repair net for unexpected ancestor transforms or lifecycle mistakes;
+	# it must never reintroduce an O(enemy count) periodic query-frame spike.
+	var initial_entry_count := safety_audit_net_ids.size()
+	var maximum_entries := mini(
+		SAFETY_AUDIT_ENTRIES_PER_PHYSICS_FRAME,
+		initial_entry_count
+	)
+	var audited_entries := 0
+	while (
+		audited_entries < maximum_entries
+		and not safety_audit_net_ids.is_empty()
+	):
+		if safety_audit_cursor >= safety_audit_net_ids.size():
+			safety_audit_cursor = 0
+			full_bucket_audits_total += 1
+		var net_id := safety_audit_net_ids[safety_audit_cursor]
+		safety_audit_cursor += 1
+		audited_entries += 1
 		var enemy_variant: Variant = enemies_by_net_id.get(net_id)
 		if enemy_variant == null or not is_instance_valid(enemy_variant):
-			_stale_enemy_net_ids.append(net_id)
+			_remove_enemy_entry(net_id)
 			continue
 		var enemy := enemy_variant as Enemy
 		if enemy == null or enemy.is_dead:
-			_stale_enemy_net_ids.append(net_id)
+			_remove_enemy_entry(net_id)
 			continue
 		var next_cell := _to_bucket(enemy.global_position)
+		enemy.sync_combat_target_index_bucket(
+			self,
+			net_id,
+			next_cell,
+			bucket_size
+		)
 		if not bucket_by_net_id.has(net_id):
 			_add_net_id_to_bucket(net_id, next_cell)
 			continue
@@ -195,8 +277,17 @@ func _refresh_buckets_once_per_physics_frame() -> void:
 			continue
 		_remove_net_id_from_bucket(net_id)
 		_add_net_id_to_bucket(net_id, next_cell)
-	for net_id in _stale_enemy_net_ids:
-		_remove_enemy_entry(net_id)
+	if (
+		not safety_audit_net_ids.is_empty()
+		and safety_audit_cursor >= safety_audit_net_ids.size()
+	):
+		safety_audit_cursor = 0
+		full_bucket_audits_total += 1
+	safety_audit_entries_total += audited_entries
+	safety_audit_max_entries_per_frame = maxi(
+		safety_audit_max_entries_per_frame,
+		audited_entries
+	)
 
 
 func _append_all_alive(result: Array[Enemy]) -> void:
@@ -411,8 +502,40 @@ func _remove_net_id_from_bucket(net_id: int) -> void:
 
 
 func _remove_enemy_entry(net_id: int) -> void:
+	var enemy_variant: Variant = enemies_by_net_id.get(net_id)
+	if enemy_variant != null and is_instance_valid(enemy_variant):
+		var enemy := enemy_variant as Enemy
+		if enemy != null:
+			enemy.unbind_combat_target_index(self, net_id)
 	_remove_net_id_from_bucket(net_id)
+	_remove_net_id_from_safety_audit(net_id)
 	enemies_by_net_id.erase(net_id)
+
+
+func _add_net_id_to_safety_audit(net_id: int) -> void:
+	if safety_audit_slot_by_net_id.has(net_id):
+		return
+	safety_audit_slot_by_net_id[net_id] = safety_audit_net_ids.size()
+	safety_audit_net_ids.append(net_id)
+
+
+func _remove_net_id_from_safety_audit(net_id: int) -> void:
+	if not safety_audit_slot_by_net_id.has(net_id):
+		return
+	var slot := int(safety_audit_slot_by_net_id[net_id])
+	var last_slot := safety_audit_net_ids.size() - 1
+	safety_audit_slot_by_net_id.erase(net_id)
+	if slot != last_slot:
+		var moved_net_id := safety_audit_net_ids[last_slot]
+		safety_audit_net_ids[slot] = moved_net_id
+		safety_audit_slot_by_net_id[moved_net_id] = slot
+	safety_audit_net_ids.pop_back()
+	# Revisit the swap-filled slot instead of skipping it until the next complete
+	# cycle. This can repeat a few checks during mass removals, but the hard slice
+	# cap remains unchanged.
+	safety_audit_cursor = mini(safety_audit_cursor, slot)
+	if safety_audit_cursor >= safety_audit_net_ids.size():
+		safety_audit_cursor = 0
 
 
 func _sort_by_distance(result: Array[Enemy], center: Vector2) -> void:

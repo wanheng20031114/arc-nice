@@ -5,6 +5,7 @@ const CONTEXT_COUNT := 300
 const TEST_AGENT_HALF_EXTENTS := Vector2(8.0, 4.0)
 const TEST_EXPANSIONS_PER_FRAME := 64
 const MAX_MANUAL_BUILD_FRAMES := 10000
+const FLOW_PRIORITY_SELECTOR_AB_ITERATIONS := 10000
 
 var failures: Array[String] = []
 
@@ -161,6 +162,11 @@ func _run() -> void:
 	_test_public_api_auto_extends_long_wall_coverage(game)
 	_test_late_required_source_resumes_packed_coverage_search(game)
 	_test_rebuild_cancels_partial_packed_materialization(game)
+	_test_player_flow_priority_and_round_robin(game)
+	_test_flow_priority_selector_performance_ab(game)
+	_test_integral_forward_obstacle_lookahead(game)
+	_test_dynamic_prefetch_cohort_deduplication(game)
+	_test_prefetch_preserves_unique_coverage_sources(game)
 	_finish(game, build_frames + static_build_frames)
 
 
@@ -1266,6 +1272,545 @@ func _test_rebuild_cancels_partial_packed_materialization(
 	)
 
 	pathfinder.set_process(false)
+	pathfinder.queue_free()
+
+
+func _test_player_flow_priority_and_round_robin(game: GameTowerDefense) -> void:
+	for packed_storage in [false, true]:
+		var suffix := "Packed" if packed_storage else "Legacy"
+		var pathfinder := _create_open_synthetic_pathfinder(
+			game,
+			"PriorityRoundRobin%s" % suffix,
+			Vector2i(48, 48),
+			8
+		)
+		pathfinder.runtime_flow_use_packed_build_storage = packed_storage
+		var grid := pathfinder.astar_grid
+		var static_key := "priority-static-%s" % suffix
+		var background_key := "priority-background-%s" % suffix
+		var dynamic_a_key := "priority-dynamic-a-%s" % suffix
+		var dynamic_b_key := "priority-dynamic-b-%s" % suffix
+		var static_targets: Array[Vector2i] = [Vector2i(40, 40)]
+		var background_targets: Array[Vector2i] = [Vector2i(8, 40)]
+		var dynamic_a_targets: Array[Vector2i] = [Vector2i(8, 8)]
+		var dynamic_b_targets: Array[Vector2i] = [Vector2i(32, 8)]
+		var static_job: Variant = pathfinder.call(
+			"_get_or_create_runtime_flow_build_job",
+			Vector2i(40, 40),
+			Vector2.ZERO,
+			GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+			grid,
+			GridPathfinder.RuntimeFlowJobPriority.STATIC_OBJECTIVE,
+			static_targets,
+			grid.region,
+			Vector2i.MAX,
+			static_key
+		)
+		var dynamic_a: Variant = pathfinder.call(
+			"_get_or_create_runtime_flow_build_job",
+			Vector2i(8, 8),
+			Vector2.ZERO,
+			GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+			grid,
+			GridPathfinder.RuntimeFlowJobPriority.DYNAMIC_TARGET,
+			dynamic_a_targets,
+			grid.region,
+			Vector2i(8, 8),
+			dynamic_a_key
+		)
+		var dynamic_b: Variant = pathfinder.call(
+			"_get_or_create_runtime_flow_build_job",
+			Vector2i(32, 8),
+			Vector2.ZERO,
+			GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+			grid,
+			GridPathfinder.RuntimeFlowJobPriority.DYNAMIC_TARGET,
+			dynamic_b_targets,
+			grid.region,
+			Vector2i(32, 8),
+			dynamic_b_key
+		)
+		var background_job: Variant = pathfinder.call(
+			"_get_or_create_runtime_flow_build_job",
+			Vector2i(8, 40),
+			Vector2.ZERO,
+			GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+			grid,
+			GridPathfinder.RuntimeFlowJobPriority.BACKGROUND,
+			background_targets,
+			grid.region,
+			Vector2i.MAX,
+			background_key
+		)
+		_expect(
+			pathfinder.runtime_flow_build_order == [
+				dynamic_a_key,
+				dynamic_b_key,
+				static_key,
+				background_key,
+			],
+			"Player flow jobs must sort ahead of static-objective flow work (%s)."
+			% suffix
+		)
+		for _step in range(GridPathfinder.RUNTIME_FLOW_JOB_QUANTUM_STEPS * 2):
+			pathfinder.call("_advance_scheduled_runtime_flow_job")
+		_expect(
+			int(pathfinder.call(
+				"_get_runtime_flow_job_discovered_cell_count",
+				dynamic_a
+			)) > 1
+			and int(pathfinder.call(
+				"_get_runtime_flow_job_discovered_cell_count",
+				dynamic_b
+			)) > 1,
+			"Equal-priority player jobs must both advance within two scheduler quanta (%s)."
+			% suffix
+		)
+		_expect(
+			int(pathfinder.call(
+				"_get_runtime_flow_job_discovered_cell_count",
+				static_job
+			)) > 1
+			and int(pathfinder.call(
+				"_get_runtime_flow_job_discovered_cell_count",
+				background_job
+			)) > 1,
+			(
+				"Sustained player-flow work must still service static and background "
+				+ "bands within two scheduler cycles (%s)."
+			) % suffix
+		)
+		var dynamic_discovered := (
+			int(pathfinder.call(
+				"_get_runtime_flow_job_discovered_cell_count",
+				dynamic_a
+			))
+			+ int(pathfinder.call(
+				"_get_runtime_flow_job_discovered_cell_count",
+				dynamic_b
+			))
+		)
+		var lower_priority_discovered := (
+			int(pathfinder.call(
+				"_get_runtime_flow_job_discovered_cell_count",
+				static_job
+			))
+			+ int(pathfinder.call(
+				"_get_runtime_flow_job_discovered_cell_count",
+				background_job
+			))
+		)
+		_expect(
+			dynamic_discovered > lower_priority_discovered,
+			"Weighted service must retain a measurable player-flow preference (%s)."
+			% suffix
+		)
+		_expect(
+			pathfinder.runtime_flow_priority_counts == [1, 1, 2]
+			and pathfinder.runtime_flow_build_order.size() == 4,
+			"Quantum rotation must preserve exact priority-band counts (%s)." % suffix
+		)
+		pathfinder.call(
+			"_get_or_create_runtime_flow_build_job",
+			Vector2i(8, 40),
+			Vector2.ZERO,
+			GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+			grid,
+			GridPathfinder.RuntimeFlowJobPriority.STATIC_OBJECTIVE,
+			background_targets,
+			grid.region,
+			Vector2i.MAX,
+			background_key
+		)
+		_expect(
+			pathfinder.runtime_flow_priority_counts == [0, 2, 2]
+			and int(background_job.get("priority"))
+				== GridPathfinder.RuntimeFlowJobPriority.STATIC_OBJECTIVE,
+			"Priority promotion must atomically move one counted band entry (%s)."
+			% suffix
+		)
+		pathfinder.call("_remove_runtime_flow_build_job", dynamic_a_key)
+		_expect(
+			pathfinder.runtime_flow_priority_counts == [0, 2, 1]
+			and pathfinder.runtime_flow_build_order.size() == 3,
+			"Completion/removal must decrement the owning priority band once (%s)."
+			% suffix
+		)
+		pathfinder.call("_cancel_all_runtime_navigation_jobs")
+		_expect(
+			pathfinder.runtime_flow_priority_counts == [0, 0, 0]
+			and pathfinder.runtime_flow_build_order.is_empty(),
+			"Bulk cancellation must reset every priority-band invariant (%s)." % suffix
+		)
+		pathfinder.queue_free()
+
+
+func _test_flow_priority_selector_performance_ab(
+	game: GameTowerDefense
+) -> void:
+	var pathfinder := _create_open_synthetic_pathfinder(
+		game,
+		"FlowPrioritySelectorPerformanceAB",
+		Vector2i(8, 8),
+		4
+	)
+	for job_index in range(64):
+		var priority := GridPathfinder.RuntimeFlowJobPriority.BACKGROUND
+		if job_index < 48:
+			priority = GridPathfinder.RuntimeFlowJobPriority.DYNAMIC_TARGET
+		elif job_index < 56:
+			priority = GridPathfinder.RuntimeFlowJobPriority.STATIC_OBJECTIVE
+		var cache_key := "selector-ab-%d" % job_index
+		var job := GridPathfinder.RuntimeFlowBuildJob.new()
+		job.generation = pathfinder.navigation_generation
+		job.cache_key = cache_key
+		job.priority = priority
+		pathfinder.runtime_flow_build_jobs[cache_key] = job
+		pathfinder.call("_insert_runtime_flow_job_key", cache_key, priority)
+	_expect(
+		pathfinder.runtime_flow_priority_counts == [8, 8, 48]
+		and pathfinder.runtime_flow_build_order.size() == 64,
+		"The O(1) selector fixture must retain exact contiguous priority-band counts."
+	)
+	var optimized_samples: Array[int] = []
+	var legacy_samples: Array[int] = []
+	var optimized_checksum := -1
+	var legacy_checksum := -2
+	for sample_index in range(7):
+		var first_optimized := sample_index % 2 == 0
+		var first := _measure_flow_priority_selector(
+			pathfinder,
+			first_optimized
+		)
+		var second := _measure_flow_priority_selector(
+			pathfinder,
+			not first_optimized
+		)
+		for measurement in [first, second]:
+			if bool(measurement["optimized"]):
+				optimized_samples.append(int(measurement["usec"]))
+				optimized_checksum = int(measurement["checksum"])
+			else:
+				legacy_samples.append(int(measurement["usec"]))
+				legacy_checksum = int(measurement["checksum"])
+	optimized_samples.sort()
+	legacy_samples.sort()
+	var optimized_median := optimized_samples[optimized_samples.size() / 2]
+	var legacy_median := legacy_samples[legacy_samples.size() / 2]
+	print(
+		"FLOW_PRIORITY_SELECTOR_AB jobs=64 iterations=%d optimized_usec=%d legacy_scan_usec=%d ratio=%.3f"
+		% [
+			FLOW_PRIORITY_SELECTOR_AB_ITERATIONS,
+			optimized_median,
+			legacy_median,
+			float(optimized_median) / maxf(float(legacy_median), 1.0),
+		]
+	)
+	_expect(
+		optimized_checksum == legacy_checksum,
+		"The O(1) priority-band selector must match the retired full-scan result."
+	)
+	_expect(
+		optimized_median <= 50000
+		and optimized_median * 2 < legacy_median,
+		"64-job selector A/B must stay below 5us/call and beat full scans by >2x."
+	)
+	pathfinder.queue_free()
+
+
+func _measure_flow_priority_selector(
+	pathfinder: SyntheticGridPathfinder,
+	optimized: bool
+) -> Dictionary:
+	var checksum := 0
+	var started_usec := Time.get_ticks_usec()
+	for iteration in range(FLOW_PRIORITY_SELECTOR_AB_ITERATIONS):
+		var priority := GridPathfinder.RUNTIME_FLOW_PRIORITY_SERVICE_CYCLE[
+			iteration % GridPathfinder.RUNTIME_FLOW_PRIORITY_SERVICE_CYCLE.size()
+		]
+		var order_index := (
+			pathfinder._get_runtime_flow_service_order_index(priority)
+			if optimized
+			else _legacy_flow_priority_service_order_index(pathfinder, priority)
+		)
+		checksum += order_index
+	return {
+		"optimized": optimized,
+		"usec": Time.get_ticks_usec() - started_usec,
+		"checksum": checksum,
+	}
+
+
+func _legacy_flow_priority_service_order_index(
+	pathfinder: SyntheticGridPathfinder,
+	requested_priority: int
+) -> int:
+	var selected_index := -1
+	for order_index in range(pathfinder.runtime_flow_build_order.size()):
+		var queued_job := pathfinder.runtime_flow_build_jobs.get(
+			pathfinder.runtime_flow_build_order[order_index]
+		) as GridPathfinder.RuntimeFlowBuildJob
+		if queued_job == null or queued_job.generation != pathfinder.navigation_generation:
+			return order_index
+		if selected_index < 0 and queued_job.priority == requested_priority:
+			selected_index = order_index
+	return selected_index if selected_index >= 0 else 0
+
+
+func _test_integral_forward_obstacle_lookahead(game: GameTowerDefense) -> void:
+	var pathfinder := _create_open_synthetic_pathfinder(
+		game,
+		"IntegralForwardObstacleLookahead",
+		Vector2i(24, 24),
+		8
+	)
+	var grid := pathfinder.astar_grid
+	grid.set_point_solid(Vector2i(8, 10), true)
+	var cache_key := pathfinder.call(
+		"_get_agent_grid_cache_key",
+		Vector2.ZERO,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES
+	) as String
+	var snapshot: Variant = pathfinder.call(
+		"_build_agent_solid_integral_snapshot",
+		grid
+	)
+	pathfinder.call(
+		"_store_agent_open_plain_integral_snapshot",
+		cache_key,
+		snapshot
+	)
+	var profile := GridPathfinder.AgentNavigationProfile.new()
+	profile.generation = pathfinder.navigation_generation
+	profile.cache_key = cache_key
+	profile.normalized_extents = Vector2.ZERO
+	profile.traversal_types = GridPathfinder.DEFAULT_TRAVERSAL_TYPES
+	profile.path_grid = grid
+	profile.solid_integral_snapshot = snapshot
+	var source := pathfinder.call("_map_to_global", Vector2i(5, 10)) as Vector2
+	var blocked_target := pathfinder.call("_map_to_global", Vector2i(12, 10)) as Vector2
+	var open_target := pathfinder.call("_map_to_global", Vector2i(5, 16)) as Vector2
+	_expect(
+		pathfinder.try_has_navigation_obstacle_ahead_with_profile(
+			source,
+			blocked_target,
+			2.0,
+			3.0,
+			profile
+		) == true,
+		"The O(1) forward lookahead must see a wall beyond the current short probe."
+	)
+	_expect(
+		pathfinder.try_has_navigation_obstacle_ahead_with_profile(
+			source,
+			open_target,
+			2.0,
+			3.0,
+			profile
+		) == false
+		and pathfinder.runtime_flow_build_jobs.is_empty(),
+		"An open lookahead must stay allocation-free and enqueue no flow work."
+	)
+	pathfinder.queue_free()
+
+
+func _test_dynamic_prefetch_cohort_deduplication(
+	game: GameTowerDefense
+) -> void:
+	var pathfinder := _create_open_synthetic_pathfinder(
+		game,
+		"DynamicPrefetchCohortDeduplication",
+		Vector2i(48, 48),
+		16
+	)
+	var target := Node2D.new()
+	target.name = "SharedPrefetchTarget"
+	pathfinder.add_child(target)
+	target.global_position = pathfinder.call(
+		"_map_to_global",
+		Vector2i(24, 24)
+	) as Vector2
+	var cache_key := pathfinder.call(
+		"_get_agent_grid_cache_key",
+		Vector2.ZERO,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES
+	) as String
+	var profile := GridPathfinder.AgentNavigationProfile.new()
+	profile.generation = pathfinder.navigation_generation
+	profile.cache_key = cache_key
+	profile.normalized_extents = Vector2.ZERO
+	profile.traversal_types = GridPathfinder.DEFAULT_TRAVERSAL_TYPES
+	profile.path_grid = pathfinder.astar_grid
+	profile.solid_integral_snapshot = pathfinder.call(
+		"_get_agent_open_plain_integral_snapshot",
+		cache_key
+	)
+	_expect(profile != null, "The shared-prefetch fixture must resolve one agent profile.")
+	var issued_count := 0
+	var request_count_before := pathfinder.dynamic_flow_prefetch_requests_total
+	var full_count_before := pathfinder.dynamic_flow_prefetch_full_requests_total
+	var dedupe_count_before := pathfinder.dynamic_flow_prefetch_deduplicated_total
+	for enemy_index in range(160):
+		var source_cell := Vector2i(
+			4 + enemy_index % 16,
+			4 + floori(float(enemy_index) / 16.0) % 10
+		)
+		if pathfinder.try_prefetch_dynamic_target_flow_with_profile(
+			pathfinder.call("_map_to_global", source_cell) as Vector2,
+			target,
+			0.0,
+			profile
+		):
+			issued_count += 1
+	_expect(
+		issued_count == 1
+		and pathfinder.dynamic_flow_prefetch_requests_total
+			- request_count_before == 160
+		and pathfinder.dynamic_flow_prefetch_full_requests_total
+			- full_count_before == 1
+		and pathfinder.dynamic_flow_prefetch_deduplicated_total
+			- dedupe_count_before == 159,
+		"A 160-enemy cohort must issue one full prefetch and merge the other 159."
+	)
+	_expect(
+		pathfinder.dynamic_flow_target_slots.size() == 1
+		and pathfinder.runtime_flow_build_jobs.size() == 1,
+		"Same-frame cohort prefetch must allocate exactly one slot and one flow job."
+	)
+	pathfinder.queue_free()
+
+
+func _test_prefetch_preserves_unique_coverage_sources(
+	game: GameTowerDefense
+) -> void:
+	var pathfinder := _create_open_synthetic_pathfinder(
+		game,
+		"DynamicPrefetchCoverageSources",
+		Vector2i(24, 24),
+		3
+	)
+	var target_cell := Vector2i(4, 4)
+	var target := Node2D.new()
+	pathfinder.add_child(target)
+	target.global_position = pathfinder.call("_map_to_global", target_cell) as Vector2
+	var initial_result := GridPathfinder.NavigationStepResult.new()
+	pathfinder.try_write_dynamic_target_navigation_step(
+		initial_result,
+		GridPathfinder.FlowQueryContext.new(),
+		pathfinder.call("_map_to_global", Vector2i(5, 4)) as Vector2,
+		target,
+		Vector2.ZERO,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+		0.0
+	)
+	_drain_runtime_flow_jobs(pathfinder, 5000)
+	var cache_key := pathfinder.call(
+		"_get_agent_grid_cache_key",
+		Vector2.ZERO,
+		GridPathfinder.DEFAULT_TRAVERSAL_TYPES
+	) as String
+	var profile := GridPathfinder.AgentNavigationProfile.new()
+	profile.generation = pathfinder.navigation_generation
+	profile.cache_key = cache_key
+	profile.normalized_extents = Vector2.ZERO
+	profile.traversal_types = GridPathfinder.DEFAULT_TRAVERSAL_TYPES
+	profile.path_grid = pathfinder.astar_grid
+	profile.solid_integral_snapshot = pathfinder.call(
+		"_get_agent_open_plain_integral_snapshot",
+		cache_key
+	)
+	var source_a := Vector2i(10, 4)
+	var source_b := Vector2i(10, 6)
+	var full_before := pathfinder.dynamic_flow_prefetch_full_requests_total
+	var dedupe_before := pathfinder.dynamic_flow_prefetch_deduplicated_total
+	for source_cell in [source_a, source_b, source_b]:
+		pathfinder.try_prefetch_dynamic_target_flow_with_profile(
+			pathfinder.call("_map_to_global", source_cell) as Vector2,
+			target,
+			0.0,
+			profile
+		)
+	var job: Variant = _only_value(pathfinder.runtime_flow_build_jobs)
+	_expect(
+		job != null
+		and bool(job.get("complete_when_required_sources_reached"))
+		and (job.get("required_source_cells") as Dictionary).has(source_a)
+		and (job.get("required_source_cells") as Dictionary).has(source_b),
+		"Same-frame prefetch must retain every unique out-of-region coverage source."
+	)
+	_expect(
+		pathfinder.dynamic_flow_prefetch_full_requests_total - full_before == 2
+		and pathfinder.dynamic_flow_prefetch_deduplicated_total - dedupe_before == 1
+		and pathfinder.runtime_flow_build_jobs.size() == 1,
+		"Coverage prefetch must merge duplicate cells while sharing one continuation job."
+	)
+	_drain_runtime_flow_jobs(pathfinder, 10000)
+	var slot: Variant = _only_value(pathfinder.dynamic_flow_target_slots)
+	var published_next_cells := (
+		(slot.get("published_field") as Dictionary).get("next_cells", {}) as Dictionary
+		if slot != null
+		else {}
+	)
+	_expect(
+		published_next_cells.has(source_a) and published_next_cells.has(source_b),
+		"The shared coverage publication must contain both prefetched sources."
+	)
+	for source_cell in [source_a, source_b]:
+		var result := GridPathfinder.NavigationStepResult.new()
+		pathfinder.try_write_dynamic_target_navigation_step(
+			result,
+			GridPathfinder.FlowQueryContext.new(),
+			pathfinder.call("_map_to_global", source_cell) as Vector2,
+			target,
+			Vector2.ZERO,
+			GridPathfinder.DEFAULT_TRAVERSAL_TYPES,
+			0.0
+		)
+		_expect(
+			result.status == GridPathfinder.NavigationStepStatus.READY,
+			"Every prefetched coverage source must be READY after publication."
+		)
+	var invalid_full_before := pathfinder.dynamic_flow_prefetch_full_requests_total
+	var invalid_dedupe_before := pathfinder.dynamic_flow_prefetch_deduplicated_total
+	var invalid_jobs_before := pathfinder.runtime_flow_build_jobs.size()
+	for invalid_source in [Vector2i(-1, -1), Vector2i(-2, -2)]:
+		pathfinder.try_prefetch_dynamic_target_flow_with_profile(
+			pathfinder.call("_map_to_global", invalid_source) as Vector2,
+			target,
+			0.0,
+			profile
+		)
+	var invalid_full_delta := (
+		pathfinder.dynamic_flow_prefetch_full_requests_total - invalid_full_before
+	)
+	var invalid_dedupe_delta := (
+		pathfinder.dynamic_flow_prefetch_deduplicated_total - invalid_dedupe_before
+	)
+	var invalid_job: Variant = _only_value(pathfinder.runtime_flow_build_jobs)
+	var invalid_job_summary := (
+		{
+			"key": invalid_job.get("cache_key"),
+			"coverage": invalid_job.get("complete_when_required_sources_reached"),
+			"required": invalid_job.get("required_source_cells"),
+		}
+		if invalid_job != null
+		else {}
+	)
+	_expect(
+		invalid_full_delta == 1
+		and invalid_dedupe_delta == 1
+		and pathfinder.runtime_flow_build_jobs.size() == invalid_jobs_before,
+		(
+			"Distinct unwalkable/out-of-region sources must share the slot-level "
+			+ "dedupe key and never create useless coverage work: full=%d dedupe=%d jobs=%d->%d %s."
+		) % [
+			invalid_full_delta,
+			invalid_dedupe_delta,
+			invalid_jobs_before,
+			pathfinder.runtime_flow_build_jobs.size(),
+			str(invalid_job_summary),
+		]
+	)
 	pathfinder.queue_free()
 
 

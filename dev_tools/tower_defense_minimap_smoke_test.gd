@@ -53,6 +53,7 @@ func _run() -> void:
 	_verify_static_topology(minimap.minimap_canvas)
 	_verify_projection_and_coordinate(game, minimap)
 	await _verify_dynamic_markers(game, minimap.minimap_canvas)
+	await _verify_multimesh_ab_isolation(minimap.minimap_canvas)
 
 	game.queue_free()
 	await process_frame
@@ -575,6 +576,151 @@ func _verify_enemy_marker_aggregation(
 		and dynamic_layer._enemy_canvas_bucket_counts[replacement_bucket_index] == 1
 		and dynamic_layer._touched_enemy_bucket_indices.size() == 1,
 		"Touched-index cleanup must zero old packed slots without retaining stale buckets."
+	)
+
+
+func _verify_multimesh_ab_isolation(
+	canvas: TowerDefenseMinimapCanvas
+) -> void:
+	var dynamic_layer := canvas.dynamic_layer
+	var dynamic_sync_count := dynamic_layer._multimesh_sync_count
+	var stale_dynamic_visible_count := (
+		dynamic_layer.enemy_marker_multimesh.visible_instance_count
+	)
+	var stale_dynamic_transform := Transform2D.IDENTITY
+	if stale_dynamic_visible_count > 0:
+		stale_dynamic_transform = (
+			dynamic_layer.enemy_marker_multimesh.get_instance_transform_2d(0)
+		)
+	dynamic_layer.use_multimesh_batches = false
+	await process_frame
+	await process_frame
+	_expect(
+		not dynamic_layer._last_draw_used_multimesh_batches
+		and dynamic_layer._multimesh_sync_count == dynamic_sync_count,
+		(
+			"Disabling dynamic batches alone must redraw immediately without "
+			+ "uploading a replacement MultiMesh snapshot."
+		)
+	)
+	var replacement_enemy_positions := PackedVector2Array([
+		dynamic_layer.world_center + Vector2(-32.0, 0.0),
+		dynamic_layer.world_center + Vector2(32.0, 0.0),
+	])
+	dynamic_layer.set_world_entities(
+		PackedVector2Array(),
+		replacement_enemy_positions,
+		PackedVector2Array()
+	)
+	await process_frame
+	await process_frame
+	var dynamic_buffer_unchanged := (
+		dynamic_layer.enemy_marker_multimesh.visible_instance_count
+		== stale_dynamic_visible_count
+	)
+	if stale_dynamic_visible_count > 0:
+		dynamic_buffer_unchanged = (
+			dynamic_buffer_unchanged
+			and dynamic_layer.enemy_marker_multimesh.get_instance_transform_2d(0)
+			== stale_dynamic_transform
+		)
+	_expect(
+		dynamic_layer._multimesh_sync_count == dynamic_sync_count
+		and dynamic_buffer_unchanged
+		and not dynamic_layer._last_draw_used_multimesh_batches,
+		"Legacy dynamic update+draw must not upload or draw the stale enemy MultiMesh."
+	)
+	dynamic_layer.use_multimesh_batches = true
+	var rebuilt_dynamic_marker_count := dynamic_layer._touched_enemy_bucket_indices.size()
+	_expect(
+		dynamic_layer._multimesh_sync_count == dynamic_sync_count + 1
+		and dynamic_layer.enemy_marker_multimesh.visible_instance_count
+		== rebuilt_dynamic_marker_count,
+		(
+			"Re-enabling dynamic batches must rebuild the latest snapshot exactly once "
+			+ "(sync %d -> %d, visible %d, expected %d)."
+		)
+		% [
+			dynamic_sync_count,
+			dynamic_layer._multimesh_sync_count,
+			dynamic_layer.enemy_marker_multimesh.visible_instance_count,
+			rebuilt_dynamic_marker_count,
+		]
+	)
+	await process_frame
+	await process_frame
+	_expect(
+		dynamic_layer._last_draw_used_multimesh_batches,
+		"Re-enabled dynamic rendering must return to the MultiMesh draw path."
+	)
+
+	var static_layer := canvas.static_layer
+	var static_upload_pass_count := static_layer._multimesh_upload_pass_count
+	var stale_wall_count := static_layer.wall_multimesh.instance_count
+	var stale_wall_transform := Transform2D.IDENTITY
+	if stale_wall_count > 0:
+		stale_wall_transform = static_layer.wall_multimesh.get_instance_transform_2d(0)
+	static_layer.use_multimesh_batches = false
+	await process_frame
+	await process_frame
+	_expect(
+		not static_layer._last_draw_used_multimesh_batches
+		and static_layer._multimesh_upload_pass_count == static_upload_pass_count,
+		(
+			"Disabling static batches alone must redraw immediately without "
+			+ "uploading replacement topology buffers."
+		)
+	)
+	var replacement_walls := PackedVector2Array([
+		static_layer.world_center + Vector2(-16.0, 0.0),
+		static_layer.world_center + Vector2(16.0, 0.0),
+		static_layer.world_center + Vector2(0.0, -16.0),
+	])
+	static_layer.set_topology(
+		static_layer.tile_world_size,
+		replacement_walls,
+		PackedVector2Array([static_layer.world_center + Vector2(0.0, 16.0)]),
+		PackedVector2Array(),
+		PackedVector2Array()
+	)
+	await process_frame
+	await process_frame
+	var static_buffer_unchanged := (
+		static_layer.wall_multimesh.instance_count == stale_wall_count
+	)
+	if stale_wall_count > 0:
+		static_buffer_unchanged = (
+			static_buffer_unchanged
+			and static_layer.wall_multimesh.get_instance_transform_2d(0)
+			== stale_wall_transform
+		)
+	_expect(
+		static_layer._multimesh_upload_pass_count == static_upload_pass_count
+		and static_buffer_unchanged
+		and not static_layer._last_draw_used_multimesh_batches,
+		"Legacy static update+draw must not upload or draw any topology MultiMesh."
+	)
+	static_layer.use_multimesh_batches = true
+	_expect(
+		static_layer._multimesh_upload_pass_count == static_upload_pass_count + 1
+		and static_layer.wall_multimesh.instance_count == replacement_walls.size()
+		and static_layer._wall_batch_world_positions == replacement_walls,
+		(
+			"Re-enabling static batches must rebuild the latest topology exactly once "
+			+ "(pass %d -> %d, walls %d, expected %d)."
+		)
+		% [
+			static_upload_pass_count,
+			static_layer._multimesh_upload_pass_count,
+			static_layer.wall_multimesh.instance_count,
+			replacement_walls.size(),
+		]
+	)
+	await process_frame
+	await process_frame
+	_expect(
+		static_layer._last_draw_used_multimesh_batches,
+		"Re-enabled static rendering must return to the MultiMesh draw path."
 	)
 
 

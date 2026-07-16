@@ -18,7 +18,21 @@ const ENEMY_HIGH_RADIUS := 1.8
 const ENEMY_MEDIUM_DENSITY := 2
 const ENEMY_HIGH_DENSITY := 5
 
-@export var use_multimesh_batches := true
+@export var use_multimesh_batches := true:
+	set(value):
+		if use_multimesh_batches == value:
+			return
+		use_multimesh_batches = value
+		if not is_node_ready():
+			return
+		if use_multimesh_batches:
+			# The disabled path intentionally leaves the GPU buffer stale. Re-enable
+			# with one rebuild from the latest CPU-side entity snapshot.
+			_rebuild_enemy_canvas_bucket_counts(_cached_overview_rect)
+		# CanvasItem retains its previous draw commands until the next redraw. Both
+		# directions must redraw so disabling batches cannot leave the last
+		# MultiMesh command visible until some unrelated entity update arrives.
+		_request_redraw()
 @export var enemy_marker_multimesh: MultiMesh = null
 
 var tile_world_size := Vector2(16.0, 16.0)
@@ -42,16 +56,22 @@ var _enemy_marker_canvas_centers := PackedVector2Array()
 var _enemy_marker_radii := PackedFloat32Array()
 var _redraw_request_count := 0
 var _last_draw_elapsed_usec := 0
+var _last_draw_used_multimesh_batches := true
+var _multimesh_sync_count := 0
 
 
 func _ready() -> void:
 	_refresh_projection_cache()
+	if use_multimesh_batches:
+		_rebuild_enemy_canvas_bucket_counts(_cached_overview_rect)
 
 
 func _notification(what: int) -> void:
 	if what != NOTIFICATION_RESIZED:
 		return
 	_refresh_projection_cache()
+	if use_multimesh_batches:
+		_rebuild_enemy_canvas_bucket_counts(_cached_overview_rect)
 	_request_redraw()
 
 
@@ -71,7 +91,8 @@ func set_projection(new_world_center: Vector2, new_overview_world_size: Vector2)
 	world_center = new_world_center
 	overview_world_size = new_overview_world_size
 	_refresh_projection_cache()
-	_rebuild_enemy_canvas_bucket_counts(_cached_overview_rect)
+	if use_multimesh_batches:
+		_rebuild_enemy_canvas_bucket_counts(_cached_overview_rect)
 	_request_redraw()
 
 
@@ -97,13 +118,14 @@ func set_world_entities(
 	remote_player_world_positions = new_remote_player_world_positions
 	enemy_world_positions = new_enemy_world_positions
 	plant_world_positions = new_plant_world_positions
-	if enemies_changed:
+	if enemies_changed and use_multimesh_batches:
 		_rebuild_enemy_canvas_bucket_counts(_cached_overview_rect)
 	_request_redraw()
 
 
 func _draw() -> void:
 	var started_usec := Time.get_ticks_usec()
+	_last_draw_used_multimesh_batches = use_multimesh_batches
 	var plant_size := _projected_tile_size()
 	for world_position in plant_world_positions:
 		if not _cached_overview_rect.has_point(world_position):
@@ -203,7 +225,7 @@ func _rebuild_enemy_canvas_bucket_counts(
 		if _enemy_canvas_bucket_counts[bucket_index] == 0:
 			_touched_enemy_bucket_indices.append(bucket_index)
 		_enemy_canvas_bucket_counts[bucket_index] += 1
-	if sync_multimesh:
+	if sync_multimesh and use_multimesh_batches:
 		_sync_enemy_marker_multimesh()
 
 
@@ -227,6 +249,9 @@ func _get_enemy_bucket_canvas_position(bucket_coordinate: Vector2i) -> Vector2:
 
 
 func _sync_enemy_marker_multimesh() -> void:
+	if not use_multimesh_batches:
+		return
+	_multimesh_sync_count += 1
 	var required_capacity := _enemy_canvas_bucket_counts.size()
 	if enemy_marker_multimesh.instance_count != required_capacity:
 		enemy_marker_multimesh.instance_count = 0
@@ -329,7 +354,6 @@ func _resize_enemy_bucket_storage_if_needed() -> void:
 				(float(bucket_x) + 0.5) * ENEMY_BUCKET_SIZE_PX,
 				(float(bucket_y) + 0.5) * ENEMY_BUCKET_SIZE_PX
 			)
-	_sync_enemy_marker_multimesh()
 
 
 func _request_redraw() -> void:

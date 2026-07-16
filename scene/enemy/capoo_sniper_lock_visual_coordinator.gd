@@ -1,15 +1,16 @@
 extends Node
 class_name CapooSniperLockVisualCoordinator
 
-const GROUP_NAME := &"capoo_sniper_lock_visual_coordinators"
-
 ## Keeps the old per-reticle sibling scans available for deterministic A/B
-## probes and emergency regression isolation. Gameplay scenes leave this on.
+## fixtures. Configure this before reticles enter the tree; it is deliberately
+## not a live migration switch. Gameplay scenes leave this on.
 @export var use_batched_arbitration: bool = true
 
 var _reticles_by_target: Dictionary[int, Array] = {}
 var _winner_by_target: Dictionary[int, WeakRef] = {}
 var _dirty_targets: Dictionary[int, bool] = {}
+var _pending_rebind_reticles: Array[WeakRef] = []
+var _pending_rebind_ids: Dictionary[int, bool] = {}
 
 var arbitration_pass_count: int = 0
 var candidate_visit_count: int = 0
@@ -18,28 +19,42 @@ var unregister_count: int = 0
 var unregister_slot_lookup_count: int = 0
 var unregister_swap_count: int = 0
 var invalid_cleanup_count: int = 0
+var repaired_binding_count: int = 0
 var tracked_reticle_count: int = 0
 
 
 func _ready() -> void:
-	add_to_group(GROUP_NAME)
 	set_process(false)
 
 
 func _exit_tree() -> void:
-	for winner_ref_variant in _winner_by_target.values():
-		var winner_ref := winner_ref_variant as WeakRef
-		var winner := winner_ref.get_ref() as CapooSniperLockReticle if winner_ref != null else null
-		if winner != null and is_instance_valid(winner):
-			winner.apply_coordinated_winner_state(false)
+	# The coordinator can leave before the target/player subtree. Release every
+	# local binding immediately so surviving reticles fall back to their sibling
+	# arbitration instead of retaining a dead coordinator reference.
+	for reticles_variant in _reticles_by_target.values():
+		var reticles := reticles_variant as Array
+		var refresh_source: CapooSniperLockReticle = null
+		for reticle_variant in reticles:
+			var reticle := reticle_variant as CapooSniperLockReticle
+			if reticle == null or not is_instance_valid(reticle):
+				continue
+			reticle.release_coordinator_binding(self)
+			refresh_source = reticle
+		if refresh_source != null:
+			refresh_source.refresh_uncoordinated_target_reticles()
 	_reticles_by_target.clear()
 	_winner_by_target.clear()
 	_dirty_targets.clear()
+	_pending_rebind_reticles.clear()
+	_pending_rebind_ids.clear()
 	tracked_reticle_count = 0
 
 
 func register_reticle(reticle: CapooSniperLockReticle) -> bool:
 	if not use_batched_arbitration or reticle == null or not is_instance_valid(reticle):
+		return false
+	var runtime_root := get_parent()
+	if runtime_root == null or not runtime_root.is_ancestor_of(reticle):
 		return false
 	var target := reticle.get_parent()
 	if target == null:
@@ -72,7 +87,7 @@ func unregister_reticle(reticle: CapooSniperLockReticle, _target: Node = null) -
 	if not _reticles_by_target.has(target_id):
 		# The coordinator may leave the tree before a later sibling during scene
 		# teardown. Its registry is already gone, so only clear the local binding.
-		reticle.clear_coordinator_slot()
+		reticle.release_coordinator_binding(self)
 		return
 	var reticles := _reticles_by_target[target_id] as Array
 	if slot_index >= reticles.size() or reticles[slot_index] != reticle:
@@ -95,7 +110,7 @@ func notify_progress_changed(reticle: CapooSniperLockReticle) -> void:
 
 
 func flush_pending_updates() -> void:
-	if _dirty_targets.is_empty():
+	if _dirty_targets.is_empty() and _pending_rebind_reticles.is_empty():
 		set_process(false)
 		return
 	# No keys() copy: progress changes are already coalesced in this persistent
@@ -103,7 +118,11 @@ func flush_pending_updates() -> void:
 	for target_id_variant in _dirty_targets:
 		_refresh_target(int(target_id_variant))
 	_dirty_targets.clear()
-	set_process(false)
+	_rebind_repaired_reticles()
+	# Re-registration marks the reticle's real parent target dirty. Arbitrate that
+	# target on the next process slice rather than mutating the Dictionary while
+	# it is being traversed above.
+	set_process(not _dirty_targets.is_empty())
 
 
 func reset_metrics() -> void:
@@ -114,6 +133,7 @@ func reset_metrics() -> void:
 	unregister_slot_lookup_count = 0
 	unregister_swap_count = 0
 	invalid_cleanup_count = 0
+	repaired_binding_count = 0
 
 
 func get_metrics() -> Dictionary:
@@ -125,6 +145,7 @@ func get_metrics() -> Dictionary:
 		"unregister_slot_lookups": unregister_slot_lookup_count,
 		"unregister_swaps": unregister_swap_count,
 		"invalid_cleanups": invalid_cleanup_count,
+		"repaired_bindings": repaired_binding_count,
 		"tracked_reticles": tracked_reticle_count,
 		"tracked_targets": _reticles_by_target.size(),
 		"dirty_targets": _dirty_targets.size(),
@@ -159,6 +180,8 @@ func _refresh_target(target_id: int) -> void:
 		):
 			invalid_cleanup_count += 1
 			_swap_pop_slot(reticles, index, candidate)
+			if candidate != null and is_instance_valid(candidate):
+				_queue_reticle_rebind(candidate)
 			continue
 		candidate_visit_count += 1
 		if _has_higher_priority(candidate, best_reticle):
@@ -182,6 +205,35 @@ func _refresh_target(target_id: int) -> void:
 		best_reticle.apply_coordinated_winner_state(true)
 
 
+func _queue_reticle_rebind(reticle: CapooSniperLockReticle) -> void:
+	if reticle == null or not is_instance_valid(reticle):
+		return
+	var instance_id := reticle.get_instance_id()
+	if _pending_rebind_ids.has(instance_id):
+		return
+	_pending_rebind_ids[instance_id] = true
+	_pending_rebind_reticles.append(weakref(reticle))
+
+
+func _rebind_repaired_reticles() -> void:
+	if _pending_rebind_reticles.is_empty():
+		return
+	var pending := _pending_rebind_reticles
+	_pending_rebind_reticles = []
+	_pending_rebind_ids.clear()
+	for reticle_ref in pending:
+		var reticle := reticle_ref.get_ref() as CapooSniperLockReticle
+		if (
+			reticle == null
+			or not is_instance_valid(reticle)
+			or not reticle.is_inside_tree()
+			or reticle.is_queued_for_deletion()
+		):
+			continue
+		if reticle.try_restore_coordinator_binding():
+			repaired_binding_count += 1
+
+
 func _swap_pop_slot(
 	reticles: Array,
 	slot_index: int,
@@ -200,7 +252,10 @@ func _swap_pop_slot(
 	reticles.pop_back()
 	tracked_reticle_count = maxi(tracked_reticle_count - 1, 0)
 	if removed_reticle != null and is_instance_valid(removed_reticle):
-		removed_reticle.clear_coordinator_slot()
+		# A valid reticle can reach this path after a stale target/slot binding is
+		# detected. Release the complete coordinator state, not just its numeric
+		# slot, so subsequent progress changes use the safe sibling fallback.
+		removed_reticle.release_coordinator_binding(self)
 
 
 func _get_winner(target_id: int) -> CapooSniperLockReticle:

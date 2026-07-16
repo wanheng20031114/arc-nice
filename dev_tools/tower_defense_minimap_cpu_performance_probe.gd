@@ -14,6 +14,7 @@ const DYNAMIC_ITERATIONS := 160
 const STATIC_ITERATIONS := 120
 const SAMPLE_COUNT := 5
 const DRAW_SAMPLE_COUNT := 17
+const FULL_PATH_SAMPLE_COUNT := 9
 
 var failures: Array[String] = []
 var projection_sink := 0.0
@@ -132,6 +133,24 @@ func _run() -> void:
 	var dynamic_legacy_draw_usec := _median(dynamic_draw_samples["legacy"])
 	var static_batch_draw_usec := _median(static_draw_samples["batch"])
 	var static_legacy_draw_usec := _median(static_draw_samples["legacy"])
+	var dynamic_full_path_samples := await _measure_interleaved_dynamic_full_paths(
+		dynamic_layer,
+		enemy_positions
+	)
+	var static_full_path_samples := await _measure_interleaved_static_full_paths(
+		static_layer,
+		static_positions
+	)
+	var dynamic_batch_full_path_usec := _median(dynamic_full_path_samples["batch"])
+	var dynamic_legacy_full_path_usec := _median(dynamic_full_path_samples["legacy"])
+	var static_batch_full_path_usec := _median(static_full_path_samples["batch"])
+	var static_legacy_full_path_usec := _median(static_full_path_samples["legacy"])
+	var static_batch_amortized_usec := (
+		static_batch_full_path_usec + static_batch_draw_usec
+	)
+	var static_legacy_amortized_usec := (
+		static_legacy_full_path_usec + static_legacy_draw_usec
+	)
 	var synced_bucket_usec_per_update := (
 		synced_bucket_ms * 1000.0 / float(DYNAMIC_ITERATIONS)
 	)
@@ -155,6 +174,17 @@ func _run() -> void:
 	_expect(
 		static_batch_draw_usec < static_legacy_draw_usec,
 		"Four topology MultiMesh draws must beat one draw_rect command per static cell."
+	)
+	_expect(
+		dynamic_batch_full_path_usec < dynamic_legacy_full_path_usec,
+		"Dynamic MultiMesh snapshot upload plus draw must beat the complete legacy update+draw path."
+	)
+	_expect(
+		static_batch_amortized_usec < static_legacy_amortized_usec,
+		(
+			"Static MultiMesh topology upload must amortize by the next camera/projection redraw; "
+			+ "topology rebuilds are event-driven rather than part of the steady draw loop."
+		)
 	)
 	_expect(
 		dynamic_layer._enemy_marker_bucket_indices.size()
@@ -182,7 +212,11 @@ func _run() -> void:
 			+ "dynamic_legacy_draw_us=%.1f dynamic_draw_speedup=%.2fx "
 			+ "dynamic_combined_batch_us=%.1f dynamic_combined_speedup=%.2fx "
 			+ "static_batch_draw_us=%.1f static_legacy_draw_us=%.1f "
-			+ "static_draw_speedup=%.2fx sink=%.1f"
+			+ "static_draw_speedup=%.2fx dynamic_batch_full_us=%.1f "
+			+ "dynamic_legacy_full_us=%.1f dynamic_full_speedup=%.2fx "
+			+ "static_batch_full_us=%.1f static_legacy_full_us=%.1f "
+			+ "static_full_speedup=%.2fx static_batch_two_draw_us=%.1f "
+			+ "static_legacy_two_draw_us=%.1f static_two_draw_speedup=%.2fx sink=%.1f"
 		)
 		% [
 			ENEMY_COUNT,
@@ -202,6 +236,15 @@ func _run() -> void:
 			static_batch_draw_usec,
 			static_legacy_draw_usec,
 			static_legacy_draw_usec / maxf(static_batch_draw_usec, 0.001),
+			dynamic_batch_full_path_usec,
+			dynamic_legacy_full_path_usec,
+			dynamic_legacy_full_path_usec / maxf(dynamic_batch_full_path_usec, 0.001),
+			static_batch_full_path_usec,
+			static_legacy_full_path_usec,
+			static_legacy_full_path_usec / maxf(static_batch_full_path_usec, 0.001),
+			static_batch_amortized_usec,
+			static_legacy_amortized_usec,
+			static_legacy_amortized_usec / maxf(static_batch_amortized_usec, 0.001),
 			projection_sink,
 		]
 	)
@@ -275,6 +318,127 @@ func _capture_static_draw(
 	return float(static_layer._last_draw_elapsed_usec)
 
 
+func _measure_interleaved_dynamic_full_paths(
+	dynamic_layer: TowerDefenseMinimapDynamicLayer,
+	enemy_positions: PackedVector2Array
+) -> Dictionary:
+	var batch_samples: Array[float] = []
+	var legacy_samples: Array[float] = []
+	for sample_index in range(FULL_PATH_SAMPLE_COUNT):
+		var batch_first := sample_index % 4 == 0 or sample_index % 4 == 3
+		if batch_first:
+			batch_samples.append(await _capture_dynamic_full_path(
+				dynamic_layer,
+				true,
+				enemy_positions
+			))
+			legacy_samples.append(await _capture_dynamic_full_path(
+				dynamic_layer,
+				false,
+				enemy_positions
+			))
+		else:
+			legacy_samples.append(await _capture_dynamic_full_path(
+				dynamic_layer,
+				false,
+				enemy_positions
+			))
+			batch_samples.append(await _capture_dynamic_full_path(
+				dynamic_layer,
+				true,
+				enemy_positions
+			))
+	return {"batch": batch_samples, "legacy": legacy_samples}
+
+
+func _capture_dynamic_full_path(
+	dynamic_layer: TowerDefenseMinimapDynamicLayer,
+	use_batches: bool,
+	enemy_positions: PackedVector2Array
+) -> float:
+	dynamic_layer.use_multimesh_batches = use_batches
+	# Reset outside the timed region so both modes receive the same non-empty
+	# snapshot change during the measured update.
+	dynamic_layer.set_world_entities(
+		PackedVector2Array(),
+		PackedVector2Array(),
+		PackedVector2Array()
+	)
+	await process_frame
+	await process_frame
+	var started_usec := Time.get_ticks_usec()
+	dynamic_layer.set_world_entities(
+		PackedVector2Array(),
+		enemy_positions,
+		PackedVector2Array()
+	)
+	var update_elapsed_usec := Time.get_ticks_usec() - started_usec
+	await process_frame
+	await process_frame
+	return float(update_elapsed_usec + dynamic_layer._last_draw_elapsed_usec)
+
+
+func _measure_interleaved_static_full_paths(
+	static_layer: TowerDefenseMinimapStaticLayer,
+	static_positions: PackedVector2Array
+) -> Dictionary:
+	var batch_samples: Array[float] = []
+	var legacy_samples: Array[float] = []
+	for sample_index in range(FULL_PATH_SAMPLE_COUNT):
+		var batch_first := sample_index % 4 == 0 or sample_index % 4 == 3
+		if batch_first:
+			batch_samples.append(await _capture_static_full_path(
+				static_layer,
+				true,
+				static_positions
+			))
+			legacy_samples.append(await _capture_static_full_path(
+				static_layer,
+				false,
+				static_positions
+			))
+		else:
+			legacy_samples.append(await _capture_static_full_path(
+				static_layer,
+				false,
+				static_positions
+			))
+			batch_samples.append(await _capture_static_full_path(
+				static_layer,
+				true,
+				static_positions
+			))
+	return {"batch": batch_samples, "legacy": legacy_samples}
+
+
+func _capture_static_full_path(
+	static_layer: TowerDefenseMinimapStaticLayer,
+	use_batches: bool,
+	static_positions: PackedVector2Array
+) -> float:
+	static_layer.use_multimesh_batches = use_batches
+	# Reset outside the timed region for the same reason as the dynamic probe.
+	static_layer.set_topology(
+		Vector2(16.0, 16.0),
+		PackedVector2Array(),
+		PackedVector2Array(),
+		PackedVector2Array(),
+		PackedVector2Array()
+	)
+	await process_frame
+	await process_frame
+	var started_usec := Time.get_ticks_usec()
+	static_layer.set_topology(
+		Vector2(16.0, 16.0),
+		static_positions,
+		PackedVector2Array(),
+		PackedVector2Array(),
+		PackedVector2Array()
+	)
+	var update_elapsed_usec := Time.get_ticks_usec() - started_usec
+	await process_frame
+	await process_frame
+	return float(update_elapsed_usec + static_layer._last_draw_elapsed_usec)
 func _build_enemy_positions() -> PackedVector2Array:
 	var positions := PackedVector2Array()
 	positions.resize(ENEMY_COUNT)

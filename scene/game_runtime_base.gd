@@ -18,8 +18,6 @@ const ENEMY_SPAWN_EFFECT_RETAINED_CAPACITY := 32
 const BULLET_HIT_EFFECT_CAPACITY := 64
 const ENEMY_HIT_EFFECT_CAPACITY := 128
 const MOVE_SPEED_TRAIL_EFFECT_RETAINED_CAPACITY := 32
-const SINGLEPLAYER_NEAREST_INDEX_QUERY_THRESHOLD := 3
-const SINGLEPLAYER_BULK_INDEX_QUERY_THRESHOLD := 8
 const SINGLEPLAYER_BULK_INDEX_MIN_TARGETS := 512
 
 signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
@@ -118,9 +116,6 @@ var multiplayer_enemies_by_net_id: Dictionary = {}
 var combat_target_index = CombatTargetIndexScript.new()
 var _singleplayer_combat_target_index_enabled := false
 var _singleplayer_combat_target_index_force_local_queries := false
-var _singleplayer_combat_query_physics_frame := -1
-var _singleplayer_combat_queries_this_frame := 0
-var _singleplayer_combat_queries_previous_frame := 0
 var _enemy_snapshot_states_by_net_id: Dictionary = {}
 var _enemy_snapshot_output: Array[SnapshotManager.EnemyState] = []
 var _enemy_snapshot_live_ids: Dictionary = {}
@@ -283,8 +278,9 @@ func _on_singleplayer_combat_target_exiting(child: Node) -> void:
 
 
 func get_all_combat_targets() -> Array[Enemy]:
-	# A global result still has to visit and return every enemy. The index would
-	# add its full moving-bucket reconciliation before doing the same O(n) work.
+	# A global result still has to visit and return every enemy. Direct container
+	# iteration avoids bucket/dictionary indirection that cannot prune this O(n)
+	# result; local-radius consumers use the maintained index below.
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		var result: Array[Enemy] = []
 		_collect_combat_targets_from_container(enemy_container, result)
@@ -373,40 +369,24 @@ func _should_use_singleplayer_combat_target_index(
 	unordered: bool = false
 ) -> bool:
 	# A non-positive radius means a global query. Buckets cannot prune it, so the
-	# container scan avoids paying an additional full moving-bucket refresh.
+	# direct container scan avoids index indirection without changing complexity.
 	if not _singleplayer_combat_target_index_enabled or radius <= 0.0:
 		return false
 	if _singleplayer_combat_target_index_force_local_queries:
 		return true
-	_update_singleplayer_combat_query_density()
+	# The index now stays current through per-enemy bucket-boundary events, while
+	# its repair audit is capped at 16 entries. There is no longer an O(n) first
+	# query charge to amortize, so every local nearest/unordered query should use
+	# the already-maintained buckets even when it is the only query this frame.
 	if unordered or max_count == 1:
-		return (
-			_singleplayer_combat_queries_previous_frame
-			>= SINGLEPLAYER_NEAREST_INDEX_QUERY_THRESHOLD
-		)
-	# Local sorted/bulk queries only broke even at high density in the A/B. Keep
-	# small encounters on the cheaper scan and reserve this path for large waves.
+		return true
+	# Local sorted/bulk queries still have result sorting/output costs. Keep small
+	# encounters on direct iteration and switch large waves once bucket pruning
+	# consistently wins even for one query per frame.
 	return (
 		combat_target_index.enemies_by_net_id.size()
 		>= SINGLEPLAYER_BULK_INDEX_MIN_TARGETS
-		and _singleplayer_combat_queries_previous_frame
-		>= SINGLEPLAYER_BULK_INDEX_QUERY_THRESHOLD
 	)
-
-
-func _update_singleplayer_combat_query_density() -> void:
-	var physics_frame := Engine.get_physics_frames()
-	if physics_frame != _singleplayer_combat_query_physics_frame:
-		if physics_frame == _singleplayer_combat_query_physics_frame + 1:
-			_singleplayer_combat_queries_previous_frame = (
-				_singleplayer_combat_queries_this_frame
-			)
-		else:
-			# Do not keep a stale high-density certificate across an idle gap.
-			_singleplayer_combat_queries_previous_frame = 0
-		_singleplayer_combat_query_physics_frame = physics_frame
-		_singleplayer_combat_queries_this_frame = 0
-	_singleplayer_combat_queries_this_frame += 1
 
 
 func get_multiplayer_plant_node(_net_id: int) -> PlantDefense:

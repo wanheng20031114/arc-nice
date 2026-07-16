@@ -242,8 +242,26 @@ func _test_coordinated_behavior() -> void:
 		var cleanup_metrics := coordinator.get_metrics()
 		_expect(
 			slot_survivor.get_coordinator_slot_index() == 0
-			and int(cleanup_metrics.get("invalid_cleanups", 0)) == 1,
-			"Invalid-entry swap-pop must repair the moved survivor slot."
+			and int(cleanup_metrics.get("invalid_cleanups", 0)) == 1
+			and int(cleanup_metrics.get("repaired_bindings", 0)) == 1
+			and stale_reticle.uses_coordinated_arbitration()
+			and stale_reticle.get_coordinator_slot_index() == 1,
+			"Invalid-entry cleanup must repair the survivor and rebind the valid stale reticle."
+		)
+		stale_reticle.set_progress(0.99)
+		coordinator.flush_pending_updates()
+		_expect(
+			stale_reticle.is_progress_display_active()
+			and _visible_reticle_count(reticles) == 1,
+			"A repaired reticle must remain in coordinated arbitration."
+		)
+		slot_survivor.set_progress(1.0)
+		coordinator.flush_pending_updates()
+		_expect(
+			slot_survivor.is_progress_display_active()
+			and not stale_reticle.is_progress_display_active()
+			and _visible_reticle_count(reticles) == 1,
+			"Bidirectional progress updates must never mix coordinated and fallback winners."
 		)
 
 	current_scene = null

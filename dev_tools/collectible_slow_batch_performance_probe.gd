@@ -5,9 +5,7 @@ extends SceneTree
 # 2. one render-frame Enemy._process callback per static slow overlay.
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
-const ENEMY_COUNT := 300
-# Leave enough headroom for the first post-fixture frame, whose delta includes
-# the deliberate 300-instance construction burst in a headless probe.
+const ENEMY_COUNT := 1000
 const SLOW_DURATION := 1.0
 const SAMPLE_RENDER_FRAMES := 8
 
@@ -20,6 +18,10 @@ func _init() -> void:
 
 
 func _run() -> void:
+	var previous_max_fps := Engine.max_fps
+	# A capped 60 FPS probe hides sub-16ms CPU spikes inside the frame limiter.
+	# Uncapped expiry-frame samples expose the actual callback/drain cost.
+	Engine.max_fps = 0
 	test_root = Node2D.new()
 	test_root.name = "CollectibleSlowBatchPerformanceProbe"
 	root.add_child(test_root)
@@ -34,6 +36,8 @@ func _run() -> void:
 	Player.set_collectible_slow_expiry_metrics_enabled(false)
 	Enemy.set_slow_only_status_process_optimization_enabled(true)
 	Enemy.set_performance_metrics_enabled(false)
+	root.get_node("StatusEffectExpiryScheduler").call("set_metrics_enabled", false)
+	Engine.max_fps = previous_max_fps
 	test_root.queue_free()
 	for _cleanup_frame in range(4):
 		await process_frame
@@ -53,6 +57,8 @@ func _run_case(optimized: bool) -> Dictionary:
 	Player.set_collectible_slow_expiry_metrics_enabled(true)
 	Enemy.set_slow_only_status_process_optimization_enabled(optimized)
 	Enemy.set_performance_metrics_enabled(true)
+	var scheduler := root.get_node("StatusEffectExpiryScheduler")
+	scheduler.call("set_metrics_enabled", optimized)
 
 	var player := PLAYER_SCENE.instantiate() as Player
 	test_root.add_child(player)
@@ -99,8 +105,29 @@ func _run_case(optimized: bool) -> Dictionary:
 	var active_modifier_count := _count_enemies_with_source(enemies, source_id)
 	var active_process_count := _count_processing_enemies(enemies)
 
-	await create_timer(SLOW_DURATION + 0.05).timeout
+	# Record only frames in which one or more modifiers were actually removed.
+	# Observation begins immediately because fixture/render cost is itself large
+	# enough that a second approximate timer could wake after the real expiry.
+	var expiry_frame_samples_usec: Array[int] = []
+	var previous_removed_count := int(
+		Player.get_collectible_slow_expiry_metrics().get("removed_modifier_count", 0)
+	)
+	var expiry_observation_deadline_usec := Time.get_ticks_usec() + 2_000_000
+	while (
+		previous_removed_count < ENEMY_COUNT
+		and Time.get_ticks_usec() < expiry_observation_deadline_usec
+	):
+		var expiry_frame_started_usec := Time.get_ticks_usec()
+		await process_frame
+		var expiry_frame_usec := Time.get_ticks_usec() - expiry_frame_started_usec
+		var current_removed_count := int(
+			Player.get_collectible_slow_expiry_metrics().get("removed_modifier_count", 0)
+		)
+		if current_removed_count > previous_removed_count:
+			expiry_frame_samples_usec.append(expiry_frame_usec)
+		previous_removed_count = current_removed_count
 	var expired_metrics := Player.get_collectible_slow_expiry_metrics()
+	var scheduler_metrics := scheduler.call("get_metrics") as Dictionary
 	var remaining_modifier_count := _count_enemies_with_source(enemies, source_id)
 	var remaining_process_count := _count_processing_enemies(enemies)
 
@@ -119,6 +146,10 @@ func _run_case(optimized: bool) -> Dictionary:
 		"status_process_usec": int(enemy_metrics.get("status_process_usec", -1)),
 		"frame_p50_usec": _percentile(frame_samples_usec, 0.50),
 		"frame_p95_usec": _percentile(frame_samples_usec, 0.95),
+		"expiry_frame_p95_usec": _percentile(expiry_frame_samples_usec, 0.95),
+		"expiry_frame_max_usec": _maximum(expiry_frame_samples_usec),
+		"expiry_frame_sample_count": expiry_frame_samples_usec.size(),
+		"scheduler_metrics": scheduler_metrics,
 		"active_modifier_count": active_modifier_count,
 		"active_process_count": active_process_count,
 		"remaining_modifier_count": remaining_modifier_count,
@@ -182,6 +213,26 @@ func _verify_ab_contract(legacy: Dictionary, optimized: Dictionary) -> void:
 		int(optimized_expired.get("expiry_callback_count", -1)) == 1,
 		"Optimized A/B must execute exactly one batch callback: %s." % [optimized_expired]
 	)
+	var optimized_scheduler := optimized.get("scheduler_metrics", {}) as Dictionary
+	_expect(
+		int(optimized_scheduler.get("visited_targets", -1)) == ENEMY_COUNT
+		and int(optimized_scheduler.get("max_targets_per_frame", 0)) <= 128
+		and int(optimized.get("expiry_frame_sample_count", 0)) >= 8,
+		"Optimized expiry must drain 1000 targets over multiple bounded real frames: %s."
+		% [optimized]
+	)
+	_expect(
+		int(optimized_scheduler.get("max_frame_usec", 0)) <= 3000,
+		"The real Enemy expiry scheduler slice must stay below 3ms: %s."
+		% [optimized_scheduler]
+	)
+	_expect(
+		int(optimized.get("expiry_frame_max_usec", 0)) < 15000
+		and int(optimized.get("expiry_frame_max_usec", 0))
+			< int(legacy.get("expiry_frame_max_usec", 0)),
+		"Budgeted expiry must stay below one 60Hz frame and beat the legacy peak: legacy=%s optimized=%s."
+		% [legacy, optimized]
+	)
 	_expect(
 		int(optimized.get("active_process_count", -1)) == 0
 		and int(optimized.get("status_process_calls", -1)) == 0,
@@ -196,7 +247,10 @@ func _print_ab_result(legacy: Dictionary, optimized: Dictionary) -> void:
 			+ "legacy_callbacks=%d optimized_callbacks=%d legacy_process_calls=%d "
 			+ "optimized_process_calls=%d legacy_process_usec=%d optimized_process_usec=%d "
 			+ "legacy_schedule_usec=%d optimized_schedule_usec=%d legacy_frame_p50_usec=%d "
-			+ "optimized_frame_p50_usec=%d legacy_frame_p95_usec=%d optimized_frame_p95_usec=%d"
+			+ "optimized_frame_p50_usec=%d legacy_frame_p95_usec=%d optimized_frame_p95_usec=%d "
+			+ "legacy_expiry_p95_usec=%d optimized_expiry_p95_usec=%d "
+			+ "legacy_expiry_max_usec=%d optimized_expiry_max_usec=%d "
+			+ "optimized_expiry_frames=%d scheduler_max_usec=%d"
 		)
 		% [
 			ENEMY_COUNT,
@@ -214,6 +268,12 @@ func _print_ab_result(legacy: Dictionary, optimized: Dictionary) -> void:
 			int(optimized.get("frame_p50_usec", -1)),
 			int(legacy.get("frame_p95_usec", -1)),
 			int(optimized.get("frame_p95_usec", -1)),
+			int(legacy.get("expiry_frame_p95_usec", -1)),
+			int(optimized.get("expiry_frame_p95_usec", -1)),
+			int(legacy.get("expiry_frame_max_usec", -1)),
+			int(optimized.get("expiry_frame_max_usec", -1)),
+			int(optimized.get("expiry_frame_sample_count", -1)),
+			int((optimized.get("scheduler_metrics", {}) as Dictionary).get("max_frame_usec", -1)),
 		]
 	)
 
@@ -241,6 +301,13 @@ func _percentile(samples: Array[int], ratio: float) -> int:
 	sorted_samples.sort()
 	var index := clampi(ceili(float(sorted_samples.size()) * ratio) - 1, 0, sorted_samples.size() - 1)
 	return sorted_samples[index]
+
+
+func _maximum(samples: Array[int]) -> int:
+	var result := 0
+	for sample in samples:
+		result = maxi(result, sample)
+	return result
 
 
 func _expect(condition: bool, message: String) -> void:

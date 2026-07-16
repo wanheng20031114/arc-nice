@@ -42,6 +42,7 @@ func _run() -> void:
 
 	_test_resource_contract()
 	await _test_reticle_highest_progress_priority()
+	await _test_reticle_coordinator_runtime_scope()
 	await _test_mage_windup_fireball_and_obstruction()
 	await _test_fireball_impact_damage_and_release()
 	await _test_sniper_lock_cancel_and_damage()
@@ -213,6 +214,82 @@ func _test_reticle_highest_progress_priority() -> void:
 	)
 
 	player.queue_free()
+	await process_frame
+
+
+func _test_reticle_coordinator_runtime_scope() -> void:
+	var runtime_a := Node2D.new()
+	var runtime_b := Node2D.new()
+	runtime_a.name = "SniperRuntimeA"
+	runtime_b.name = "SniperRuntimeB"
+	test_root.add_child(runtime_a)
+	test_root.add_child(runtime_b)
+
+	var coordinator_a := RETICLE_COORDINATOR_SCRIPT.new() as CapooSniperLockVisualCoordinator
+	var coordinator_b := RETICLE_COORDINATOR_SCRIPT.new() as CapooSniperLockVisualCoordinator
+	coordinator_a.name = "SniperLockVisualCoordinator"
+	coordinator_b.name = "SniperLockVisualCoordinator"
+	runtime_a.add_child(coordinator_a)
+	runtime_b.add_child(coordinator_b)
+	var target_a := Node2D.new()
+	var target_b := Node2D.new()
+	target_a.name = "TargetA"
+	target_b.name = "TargetB"
+	runtime_a.add_child(target_a)
+	runtime_b.add_child(target_b)
+
+	var reticle_a_low := RETICLE_SCENE.instantiate() as CapooSniperLockReticle
+	var reticle_a_high := RETICLE_SCENE.instantiate() as CapooSniperLockReticle
+	var reticle_b_low := RETICLE_SCENE.instantiate() as CapooSniperLockReticle
+	var reticle_b_high := RETICLE_SCENE.instantiate() as CapooSniperLockReticle
+	target_a.add_child(reticle_a_low)
+	target_a.add_child(reticle_a_high)
+	target_b.add_child(reticle_b_low)
+	target_b.add_child(reticle_b_high)
+	reticle_a_low.set_progress(0.2)
+	reticle_a_high.set_progress(0.8)
+	reticle_b_low.set_progress(0.3)
+	reticle_b_high.set_progress(0.7)
+	await process_frame
+
+	_expect(
+		coordinator_a.tracked_reticle_count == 2
+		and coordinator_b.tracked_reticle_count == 2
+		and reticle_a_low.uses_coordinated_arbitration()
+		and reticle_b_low.uses_coordinated_arbitration(),
+		"Each game runtime must register sniper reticles only with its nearest coordinator."
+	)
+	_expect(
+		reticle_a_high.is_progress_display_active()
+		and reticle_b_high.is_progress_display_active(),
+		"Independent runtime coordinators must arbitrate their own winners."
+	)
+
+	runtime_a.remove_child(coordinator_a)
+	coordinator_a.free()
+	await process_frame
+	_expect(
+		not reticle_a_low.uses_coordinated_arbitration()
+		and not reticle_a_high.uses_coordinated_arbitration()
+		and reticle_a_high.is_progress_display_active(),
+		"Coordinator exit must clear local bindings and preserve sibling fallback arbitration."
+	)
+	_expect(
+		reticle_b_low.uses_coordinated_arbitration()
+		and reticle_b_high.uses_coordinated_arbitration()
+		and coordinator_b.tracked_reticle_count == 2,
+		"Removing one game runtime coordinator must not detach a surviving runtime."
+	)
+
+	reticle_b_low.set_progress(0.95)
+	await process_frame
+	_expect(
+		reticle_b_low.is_progress_display_active()
+		and not reticle_b_high.is_progress_display_active(),
+		"A surviving runtime coordinator must continue processing after its sibling exits."
+	)
+	runtime_a.queue_free()
+	runtime_b.queue_free()
 	await process_frame
 
 

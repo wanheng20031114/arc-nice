@@ -9,7 +9,21 @@ const ENEMY_GATE_COLOR := Color(1.0, 0.22, 0.18, 1.0)
 const VIEW_FRAME_COLOR := Color(0.22, 1.0, 0.42, 0.96)
 const VIEW_FRAME_WIDTH := 1.25
 
-@export var use_multimesh_batches := true
+@export var use_multimesh_batches := true:
+	set(value):
+		if use_multimesh_batches == value:
+			return
+		use_multimesh_batches = value
+		if not is_node_ready():
+			return
+		if use_multimesh_batches:
+			# Topology continues to update its CPU snapshot while disabled. One
+			# upload pass restores all four batches when the renderer is re-enabled.
+			_sync_static_multimeshes()
+		# CanvasItem retains its previous draw commands until the next redraw. Both
+		# directions must redraw so disabling batches immediately drops the prior
+		# MultiMesh draw commands even when topology remains unchanged.
+		_request_redraw()
 @export var static_tile_mesh: QuadMesh = null
 @export var water_multimesh: MultiMesh = null
 @export var wall_multimesh: MultiMesh = null
@@ -38,6 +52,8 @@ var _enemy_gate_batch_world_positions := PackedVector2Array()
 var _home_gate_batch_world_positions := PackedVector2Array()
 var _redraw_request_count := 0
 var _last_draw_elapsed_usec := 0
+var _last_draw_used_multimesh_batches := true
+var _multimesh_upload_pass_count := 0
 
 
 func _ready() -> void:
@@ -76,18 +92,8 @@ func set_topology(
 	_enemy_gate_batch_world_positions = enemy_gate_world_positions.duplicate()
 	_home_gate_batch_world_positions = home_gate_world_positions.duplicate()
 	static_tile_mesh.size = tile_world_size
-	_upload_static_batch(water_multimesh, _water_batch_world_positions, WATER_COLOR)
-	_upload_static_batch(wall_multimesh, _wall_batch_world_positions, WALL_COLOR)
-	_upload_static_batch(
-		enemy_gate_multimesh,
-		_enemy_gate_batch_world_positions,
-		ENEMY_GATE_COLOR
-	)
-	_upload_static_batch(
-		home_gate_multimesh,
-		_home_gate_batch_world_positions,
-		HOME_GATE_COLOR
-	)
+	if use_multimesh_batches:
+		_sync_static_multimeshes()
 	_refresh_projected_tile_cache()
 	_request_redraw()
 
@@ -118,6 +124,7 @@ func get_projected_view_rect() -> Rect2:
 
 func _draw() -> void:
 	var started_usec := Time.get_ticks_usec()
+	_last_draw_used_multimesh_batches = use_multimesh_batches
 	draw_rect(Rect2(Vector2.ZERO, size), BACKGROUND_COLOR)
 	if use_multimesh_batches:
 		draw_set_transform(
@@ -200,6 +207,24 @@ func _upload_static_batch(
 			Transform2D(0.0, positions[index])
 		)
 		multimesh.set_instance_color(index, color)
+
+
+func _sync_static_multimeshes() -> void:
+	if not use_multimesh_batches:
+		return
+	_multimesh_upload_pass_count += 1
+	_upload_static_batch(water_multimesh, _water_batch_world_positions, WATER_COLOR)
+	_upload_static_batch(wall_multimesh, _wall_batch_world_positions, WALL_COLOR)
+	_upload_static_batch(
+		enemy_gate_multimesh,
+		_enemy_gate_batch_world_positions,
+		ENEMY_GATE_COLOR
+	)
+	_upload_static_batch(
+		home_gate_multimesh,
+		_home_gate_batch_world_positions,
+		HOME_GATE_COLOR
+	)
 
 
 func _request_redraw() -> void:

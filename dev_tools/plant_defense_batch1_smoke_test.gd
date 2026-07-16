@@ -56,6 +56,9 @@ class InfluenceIndexInspectingPlantSystem:
 	func get_influence_candidate_count(center_cell: Vector2i, search_radius: int) -> int:
 		return _get_plant_influence_candidates(center_cell, search_radius).size()
 
+	func get_uncached_influence_candidate_count(search_radius: int) -> int:
+		return _get_plant_influence_candidates(Vector2i.ZERO, search_radius).size()
+
 
 func _init() -> void:
 	call_deferred("_run")
@@ -1085,6 +1088,40 @@ func _test_event_driven_plant_influence_index() -> void:
 		and cache_system.get_influence_cell_count(9) == indexed_cell_count_before_query,
 		"重复查询必须只读事件索引，不得按敌人中心格新增缓存状态。"
 	)
+	var short_radius_target := cache_system.find_nearest_living_plant(center_world, 4.0)
+	_expect(
+		short_radius_target == left_stake
+		and cache_system.get_influence_radius_count() == 1
+		and cache_system.get_uncached_influence_candidate_count(5) == 2,
+		"非生产半径必须按植物数量一次性查询且不得永久创建第二套influence index。"
+	)
+	var oversized_radius_target := cache_system.find_nearest_living_plant(
+		center_world,
+		100000.0
+	)
+	_expect(
+		oversized_radius_target == left_stake
+		and cache_system.get_influence_radius_count() == 1,
+		"超大半径查询必须保持O(植物数)且不得扩大常驻索引。"
+	)
+	for radius_variant in [0.0, 7.5, 8.0, 8.001, 9.0, 100000.0]:
+		var radius := float(radius_variant)
+		var expected_target: PlantDefense = left_stake if radius >= 1.0 else null
+		_expect(
+			cache_system.find_nearest_living_plant(center_world, radius)
+				== expected_target
+			and cache_system.get_influence_radius_count() == 1,
+			(
+				"半径边界 %.3f 必须保持精确结果且不能物化额外常驻索引。"
+				% radius
+			)
+		)
+	_expect(
+		cache_system.find_nearest_living_plant(center_world, NAN) == null
+		and cache_system.find_nearest_living_plant(center_world, INF) == null
+		and cache_system.get_influence_radius_count() == 1,
+		"NaN/INF 半径必须被拒绝，且不能污染常驻 influence index。"
+	)
 
 	_set_player_cell(right_anchor + Vector2i(0, 3))
 	await physics_frame
@@ -1145,36 +1182,36 @@ func _test_event_driven_plant_influence_index() -> void:
 
 	_expect(
 		cache_system.find_nearest_living_plant(center_world, 4.0) == left_stake
-		and cache_system.get_influence_radius_count() == 2
+		and cache_system.get_influence_radius_count() == 1
 		and cache_system.get_influence_candidate_count(center_cell, 5) == 3,
-		"不同搜索半径必须拥有独立influence index并保持精确距离语义。"
+		"非默认搜索半径必须使用临时候选并保持精确距离语义。"
 	)
 	_expect(
 		cache_system.find_nearest_living_plant(center_world, 8.0) == left_stake
-		and cache_system.get_influence_radius_count() == 2,
-		"建立其他半径索引后，原搜索半径必须保持可用且不重复物化。"
+		and cache_system.get_influence_radius_count() == 1,
+		"任意半径查询后，默认常驻索引必须保持可用且不重复物化。"
 	)
 
 	right_stake.receive_damage(99999)
 	_expect(
-		cache_system.get_influence_radius_count() == 2
+		cache_system.get_influence_radius_count() == 1
 		and cache_system.get_influence_candidate_count(center_cell, 9) == 2
 		and cache_system.get_influence_candidate_count(center_cell, 5) == 2,
-		"植物死亡释放footprint时必须立即从所有已物化半径索引移除。"
+		"植物死亡释放footprint时必须立即更新常驻索引和临时候选。"
 	)
 	_expect(
 		cache_system.find_nearest_living_plant(right_biased_world, 8.0) == left_stake
-		and cache_system.get_influence_radius_count() == 2,
+		and cache_system.get_influence_radius_count() == 1,
 		"死亡后的查询不得返回已移除植物，也不得触发索引重建。"
 	)
 
 	cache_system.clear_all_plants()
 	_expect(
-		cache_system.get_influence_radius_count() == 2
+		cache_system.get_influence_radius_count() == 1
 		and cache_system.get_influence_cell_count(9) == 0
 		and cache_system.get_influence_cell_count(5) == 0
 		and cache_system.find_nearest_living_plant(center_world, 8.0) == null,
-		"清空全部植物必须同步清空每个bucket，同时保留可增量恢复的半径索引。"
+		"清空全部植物必须清空默认bucket且不能创建非默认常驻索引。"
 	)
 
 	_set_player_cell(left_anchor + Vector2i(0, 3))
@@ -1188,14 +1225,14 @@ func _test_event_driven_plant_influence_index() -> void:
 		and cache_system.find_nearest_living_plant(center_world, 8.0) == restored_stake
 		and cache_system.get_influence_candidate_count(center_cell, 9) == 1
 		and cache_system.get_influence_candidate_count(center_cell, 5) == 1,
-		"清理后重新放置必须增量恢复全部已物化半径索引。"
+		"清理后重新放置必须增量恢复默认索引和临时候选查询。"
 	)
 	if restored_stake != null:
 		restored_stake.begin_removal(PlantDefense.RemovalMode.SILENT)
 	_expect(
 		cache_system.get_influence_cell_count(9) == 0
 		and cache_system.get_influence_cell_count(5) == 0,
-		"静默撤除必须在同一帧从全部influence index释放。"
+		"静默撤除必须在同一帧从默认索引及临时候选释放。"
 	)
 	cache_system.queue_free()
 	cache_container.queue_free()

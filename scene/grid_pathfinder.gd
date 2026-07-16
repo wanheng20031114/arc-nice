@@ -29,6 +29,8 @@ const FLOW_BUCKET_COUNT := FLOW_DIAGONAL_COST + 1
 const FLOW_DISTANCE_INFINITY := 2147483647
 const FLOW_NO_CELL_INDEX := -1
 const RUNTIME_FLOW_MATERIALIZE_BATCH_CELLS := 16
+const RUNTIME_FLOW_JOB_QUANTUM_STEPS := 8
+const FORWARD_OBSTACLE_LOOKAHEAD_SEGMENTS := 2
 const MAX_FLOW_RECOVERY_CACHE_ENTRIES := 512
 const DEFAULT_TRAVERSAL_TYPES := DualGridTilemap.TraversalType.LAND
 const NAVIGATION_CELL_OBSTACLE_FLAG := 1 << 7
@@ -40,6 +42,27 @@ enum NavigationStepStatus {
 	DEFERRED,
 	UNREACHABLE,
 }
+
+enum RuntimeFlowJobPriority {
+	BACKGROUND,
+	STATIC_OBJECTIVE,
+	DYNAMIC_TARGET,
+}
+
+# Preserve the latency advantage of moving-player fields without allowing a
+# continuously retargeting cohort to starve fixed objectives or optional
+# coverage forever. Missing bands fall back to the highest queued priority, so
+# a dynamic-only queue still receives every scheduler slice.
+const RUNTIME_FLOW_PRIORITY_SERVICE_CYCLE: Array[int] = [
+	RuntimeFlowJobPriority.DYNAMIC_TARGET,
+	RuntimeFlowJobPriority.DYNAMIC_TARGET,
+	RuntimeFlowJobPriority.DYNAMIC_TARGET,
+	RuntimeFlowJobPriority.STATIC_OBJECTIVE,
+	RuntimeFlowJobPriority.DYNAMIC_TARGET,
+	RuntimeFlowJobPriority.DYNAMIC_TARGET,
+	RuntimeFlowJobPriority.DYNAMIC_TARGET,
+	RuntimeFlowJobPriority.BACKGROUND,
+]
 
 
 class NavigationStepResult:
@@ -163,6 +186,8 @@ class RuntimeFlowBuildJob:
 	var waiting_dynamic_slots: Dictionary = {}
 	var publish_to_fixed_cache: bool = false
 	var urgent: bool = false
+	var priority: int = RuntimeFlowJobPriority.BACKGROUND
+	var scheduler_steps_since_yield: int = 0
 	var complete_when_required_sources_reached: bool = false
 	var required_source_cells: Dictionary = {}
 	var remaining_required_source_cells: Dictionary = {}
@@ -296,8 +321,19 @@ var flow_field_cache_order: Array[String] = []
 var flow_recovery_route_cache: Dictionary = {}
 var flow_recovery_cache_order: Array[String] = []
 var dynamic_flow_target_slots: Dictionary = {}
+var dynamic_flow_prefetch_dedupe_frame: int = -1
+var dynamic_flow_prefetch_dedupe_generation: int = -1
+var dynamic_flow_prefetch_keys_this_frame: Dictionary = {}
+var dynamic_flow_prefetch_requests_total: int = 0
+var dynamic_flow_prefetch_full_requests_total: int = 0
+var dynamic_flow_prefetch_deduplicated_total: int = 0
+var dynamic_flow_prefetch_result_scratch := NavigationStepResult.new()
 var runtime_flow_build_jobs: Dictionary = {}
 var runtime_flow_build_order: Array[String] = []
+# Counts for the three contiguous priority bands make every scheduler selection
+# O(1). Array movement happens only at an eight-step same-band quantum boundary,
+# never once per flow expansion.
+var runtime_flow_priority_counts: Array[int] = [0, 0, 0]
 var runtime_agent_grid_build_jobs: Dictionary = {}
 var runtime_agent_grid_build_order: Array[String] = []
 var region_local_rect: Rect2 = Rect2()
@@ -317,6 +353,7 @@ var runtime_navigation_build_usec_peak: int = 0
 var runtime_flow_builds_completed: int = 0
 var runtime_flow_builds_cancelled: int = 0
 var runtime_navigation_prefers_urgent_flow: bool = true
+var runtime_flow_priority_service_cursor: int = 0
 
 
 # 在节点进入场景树时调用，初始化寻路网格
@@ -614,6 +651,93 @@ func try_write_dynamic_target_navigation_step(
 	)
 
 
+# Lightweight cohort prefetch used while a short direct probe is still clear.
+# The first enemy for one target/profile performs the normal slot update; every
+# equivalent enemy in the same physics frame stops at the dedupe key instead of
+# repeating goal-cell resolution and slot/job Dictionary work.
+func try_prefetch_dynamic_target_flow_with_profile(
+	from_global_position: Vector2,
+	target_node: Node2D,
+	target_contact_radius_world: float,
+	profile: AgentNavigationProfile
+) -> bool:
+	dynamic_flow_prefetch_requests_total += 1
+	if (
+		not is_built
+		or target_node == null
+		or not is_instance_valid(target_node)
+		or not _is_agent_navigation_profile_valid(profile)
+	):
+		return false
+	var dynamic_profile_extents := _get_dynamic_target_profile_extents(
+		profile.normalized_extents
+	)
+	var current_physics_frame := Engine.get_physics_frames()
+	if (
+		dynamic_flow_prefetch_dedupe_frame != current_physics_frame
+		or dynamic_flow_prefetch_dedupe_generation != navigation_generation
+	):
+		dynamic_flow_prefetch_dedupe_frame = current_physics_frame
+		dynamic_flow_prefetch_dedupe_generation = navigation_generation
+		dynamic_flow_prefetch_keys_this_frame.clear()
+	var normalized_contact_radius := maxf(target_contact_radius_world, 0.0)
+	var slot_key := _get_dynamic_flow_slot_key(
+		target_node.get_instance_id(),
+		dynamic_profile_extents,
+		profile.traversal_types,
+		normalized_contact_radius
+	)
+	var target_position := target_node.global_position
+	# Match the two-pixel desired-state threshold used by the slot updater. A
+	# same-frame teleport or meaningful target correction must not inherit an
+	# earlier prefetch key merely because the Node instance stayed the same.
+	var dedupe_key := "%s:t%d,%d" % [
+		slot_key,
+		floori(target_position.x * 0.5),
+		floori(target_position.y * 0.5),
+	]
+	var existing_slot := dynamic_flow_target_slots.get(
+		slot_key
+	) as DynamicFlowTargetSlot
+	if (
+		existing_slot != null
+		and existing_slot.generation == navigation_generation
+		and not existing_slot.published_field.is_empty()
+	):
+		var source_cell := _global_to_map(from_global_position)
+		var published_next_cells := existing_slot.published_field.get(
+			"next_cells",
+			{}
+		) as Dictionary
+		if (
+			not published_next_cells.has(source_cell)
+			and not bool(existing_slot.published_field.get(
+				"coverage_is_exhaustive",
+				true
+			))
+			and _is_cell_walkable(source_cell, existing_slot.path_grid)
+		):
+			# A bounded published field can need several distinct out-of-region
+			# sources. Merge identical enemies in one cell, but let every unique
+			# source join the shared coverage continuation before actual handoff.
+			dedupe_key += ":s%d,%d" % [source_cell.x, source_cell.y]
+	if dynamic_flow_prefetch_keys_this_frame.has(dedupe_key):
+		dynamic_flow_prefetch_deduplicated_total += 1
+		return false
+	dynamic_flow_prefetch_keys_this_frame[dedupe_key] = true
+	dynamic_flow_prefetch_full_requests_total += 1
+	_write_dynamic_target_navigation_step(
+		dynamic_flow_prefetch_result_scratch,
+		null,
+		from_global_position,
+		target_node,
+		profile.normalized_extents,
+		profile.traversal_types,
+		normalized_contact_radius
+	)
+	return true
+
+
 # Unbudgeted form for prewarming, validation and deterministic tests.
 func get_safe_navigation_step(
 	from_global_position: Vector2,
@@ -845,6 +969,86 @@ func try_is_navigation_open_plain_with_profile(
 		minimum_cell,
 		maximum_cell
 	) == 0
+
+
+# Fixed-cost static-obstacle lookahead for direct-moving agents. The shared
+# profile grid is already inflated for the caller's body, so two summed-area
+# rectangle reads are enough to conservatively notice a wall several cells
+# before the normal short movement probe reaches it. A fully open corridor
+# always returns false and therefore never creates runtime flow work.
+func try_has_navigation_obstacle_ahead_with_profile(
+	from_global_position: Vector2,
+	toward_global_position: Vector2,
+	known_clear_distance_world: float,
+	lookahead_distance_cells: float,
+	profile: AgentNavigationProfile
+) -> Variant:
+	if not _is_agent_navigation_profile_valid(profile):
+		return null
+	var offset := toward_global_position - from_global_position
+	var total_distance := offset.length()
+	var clear_distance := maxf(known_clear_distance_world, 0.0)
+	if total_distance <= clear_distance + 0.0001:
+		return false
+	var minimum_cell_size := maxf(
+		minf(absf(astar_grid.cell_size.x), absf(astar_grid.cell_size.y)),
+		1.0
+	)
+	var lookahead_world := maxf(lookahead_distance_cells, 0.0) * minimum_cell_size
+	if lookahead_world <= 0.0001:
+		return false
+	var corridor_end_distance := minf(
+		total_distance,
+		clear_distance + lookahead_world
+	)
+	if corridor_end_distance <= clear_distance + 0.0001:
+		return false
+
+	var direction := offset / total_distance
+	var snapshot := profile.solid_integral_snapshot
+	for segment_index in range(FORWARD_OBSTACLE_LOOKAHEAD_SEGMENTS):
+		var start_weight := (
+			float(segment_index) / float(FORWARD_OBSTACLE_LOOKAHEAD_SEGMENTS)
+		)
+		var end_weight := (
+			float(segment_index + 1) / float(FORWARD_OBSTACLE_LOOKAHEAD_SEGMENTS)
+		)
+		var segment_start_distance := lerpf(
+			clear_distance,
+			corridor_end_distance,
+			start_weight
+		)
+		var segment_end_distance := lerpf(
+			clear_distance,
+			corridor_end_distance,
+			end_weight
+		)
+		var start_cell := _global_to_map(
+			from_global_position + direction * segment_start_distance
+		)
+		var end_cell := _global_to_map(
+			from_global_position + direction * segment_end_distance
+		)
+		var minimum_cell := Vector2i(
+			mini(start_cell.x, end_cell.x),
+			mini(start_cell.y, end_cell.y)
+		)
+		var maximum_cell := Vector2i(
+			maxi(start_cell.x, end_cell.x),
+			maxi(start_cell.y, end_cell.y)
+		)
+		if (
+			not snapshot.region.has_point(minimum_cell)
+			or not snapshot.region.has_point(maximum_cell)
+		):
+			return true
+		if _get_agent_solid_count_in_cell_rect(
+			snapshot,
+			minimum_cell,
+			maximum_cell
+		) > 0:
+			return true
+	return false
 
 
 func _is_navigation_segment_walkable_with_grid(
@@ -1382,7 +1586,7 @@ func _request_runtime_dynamic_flow_build(
 		slot.normalized_extents,
 		slot.traversal_types,
 		slot.path_grid,
-		true,
+		RuntimeFlowJobPriority.DYNAMIC_TARGET,
 		target_cells,
 		requested_region,
 		original_target_cell,
@@ -1401,6 +1605,7 @@ func _request_runtime_dynamic_flow_coverage_build(
 		slot == null
 		or slot.generation != navigation_generation
 		or slot.path_grid == null
+		or not _is_cell_walkable(original_source_cell, slot.path_grid)
 		or slot.desired_resolved_cell == Vector2i.MAX
 		or slot.desired_goal_cells.is_empty()
 	):
@@ -1412,11 +1617,10 @@ func _request_runtime_dynamic_flow_coverage_build(
 		if pending_job == null:
 			slot.pending_job_key = ""
 		elif pending_job.complete_when_required_sources_reached:
-			if _is_cell_walkable(original_source_cell, slot.path_grid):
-				_add_required_source_to_runtime_flow_job(
-					pending_job,
-					original_source_cell
-				)
+			_add_required_source_to_runtime_flow_job(
+				pending_job,
+				original_source_cell
+			)
 			pending_job.waiting_dynamic_slots[slot.slot_key] = true
 			set_process(true)
 			return
@@ -1433,15 +1637,14 @@ func _request_runtime_dynamic_flow_coverage_build(
 		slot.normalized_extents,
 		slot.traversal_types,
 		slot.path_grid,
-		false,
+		RuntimeFlowJobPriority.BACKGROUND,
 		slot.desired_goal_cells,
 		slot.path_grid.region,
 		slot.desired_original_cell,
 		job_key
 	)
 	job.complete_when_required_sources_reached = true
-	if _is_cell_walkable(original_source_cell, slot.path_grid):
-		_add_required_source_to_runtime_flow_job(job, original_source_cell)
+	_add_required_source_to_runtime_flow_job(job, original_source_cell)
 	job.waiting_dynamic_slots[slot.slot_key] = true
 	slot.pending_job_key = job.cache_key
 	set_process(true)
@@ -1458,7 +1661,7 @@ func _request_runtime_fixed_flow_build(
 		normalized_extents,
 		traversal_types,
 		path_grid,
-		true
+		RuntimeFlowJobPriority.STATIC_OBJECTIVE
 	)
 	job.publish_to_fixed_cache = true
 	set_process(true)
@@ -1469,7 +1672,7 @@ func _get_or_create_runtime_flow_build_job(
 	normalized_extents: Vector2,
 	traversal_types: int,
 	path_grid: AStarGrid2D,
-	urgent: bool,
+	priority: int,
 	target_cells: Array[Vector2i] = [],
 	expansion_region: Rect2i = Rect2i(),
 	dynamic_target_original_cell: Vector2i = Vector2i.MAX,
@@ -1484,10 +1687,12 @@ func _get_or_create_runtime_flow_build_job(
 		)
 	var job := runtime_flow_build_jobs.get(cache_key) as RuntimeFlowBuildJob
 	if job != null:
-		if urgent and not job.urgent:
-			job.urgent = true
-			runtime_flow_build_order.erase(cache_key)
-			_insert_runtime_flow_job_key(cache_key, true)
+		if priority > job.priority:
+			_remove_runtime_flow_job_key_from_order(cache_key, job.priority)
+			job.priority = priority
+			job.urgent = priority > RuntimeFlowJobPriority.BACKGROUND
+			job.scheduler_steps_since_yield = 0
+			_insert_runtime_flow_job_key(cache_key, priority)
 		return job
 
 	job = RuntimeFlowBuildJob.new()
@@ -1504,7 +1709,8 @@ func _get_or_create_runtime_flow_build_job(
 	job.normalized_extents = normalized_extents
 	job.traversal_types = traversal_types
 	job.path_grid = path_grid
-	job.urgent = urgent
+	job.priority = priority
+	job.urgent = priority > RuntimeFlowJobPriority.BACKGROUND
 	job.uses_packed_storage = runtime_flow_use_packed_build_storage
 	if job.uses_packed_storage:
 		job.solid_snapshot = _get_agent_open_plain_integral_snapshot(
@@ -1546,26 +1752,91 @@ func _get_or_create_runtime_flow_build_job(
 			first_bucket.append(seed_cell)
 		job.pending_entry_count += 1
 	runtime_flow_build_jobs[cache_key] = job
-	_insert_runtime_flow_job_key(cache_key, urgent)
+	_insert_runtime_flow_job_key(cache_key, priority)
 	return job
 
 
-func _insert_runtime_flow_job_key(cache_key: String, urgent: bool) -> void:
-	if not urgent:
-		runtime_flow_build_order.append(cache_key)
-		return
-	# Urgent jobs remain FIFO among themselves and are inserted immediately
-	# before refresh jobs. A stream of newly joined profiles therefore cannot
-	# perpetually restart or starve the first cold target.
-	var insertion_index := 0
-	while insertion_index < runtime_flow_build_order.size():
-		var queued_job := runtime_flow_build_jobs.get(
-			runtime_flow_build_order[insertion_index]
-		) as RuntimeFlowBuildJob
-		if queued_job == null or not queued_job.urgent:
-			break
-		insertion_index += 1
+func _insert_runtime_flow_job_key(cache_key: String, priority: int) -> void:
+	# Counts preserve a stable tail insertion for each sorted priority band
+	# without scanning every queued job.
+	var normalized_priority := clampi(
+		priority,
+		RuntimeFlowJobPriority.BACKGROUND,
+		RuntimeFlowJobPriority.DYNAMIC_TARGET
+	)
+	var insertion_index := _get_runtime_flow_priority_band_start(
+		normalized_priority
+	) + runtime_flow_priority_counts[normalized_priority]
+	insertion_index = clampi(insertion_index, 0, runtime_flow_build_order.size())
 	runtime_flow_build_order.insert(insertion_index, cache_key)
+	runtime_flow_priority_counts[normalized_priority] += 1
+
+
+func _get_runtime_flow_priority_band_start(priority: int) -> int:
+	match priority:
+		RuntimeFlowJobPriority.DYNAMIC_TARGET:
+			return 0
+		RuntimeFlowJobPriority.STATIC_OBJECTIVE:
+			return runtime_flow_priority_counts[
+				RuntimeFlowJobPriority.DYNAMIC_TARGET
+			]
+		_:
+			return (
+				runtime_flow_priority_counts[
+					RuntimeFlowJobPriority.DYNAMIC_TARGET
+				]
+				+ runtime_flow_priority_counts[
+					RuntimeFlowJobPriority.STATIC_OBJECTIVE
+				]
+			)
+
+
+func _get_runtime_flow_service_order_index(priority: int) -> int:
+	if runtime_flow_build_order.is_empty():
+		return -1
+	var normalized_priority := clampi(
+		priority,
+		RuntimeFlowJobPriority.BACKGROUND,
+		RuntimeFlowJobPriority.DYNAMIC_TARGET
+	)
+	if runtime_flow_priority_counts[normalized_priority] <= 0:
+		return 0
+	return _get_runtime_flow_priority_band_start(normalized_priority)
+
+
+func _remove_runtime_flow_job_key_from_order(
+	cache_key: String,
+	priority: int
+) -> void:
+	var order_index := runtime_flow_build_order.find(cache_key)
+	if order_index < 0:
+		return
+	runtime_flow_build_order.remove_at(order_index)
+	var normalized_priority := clampi(
+		priority,
+		RuntimeFlowJobPriority.BACKGROUND,
+		RuntimeFlowJobPriority.DYNAMIC_TARGET
+	)
+	runtime_flow_priority_counts[normalized_priority] = maxi(
+		runtime_flow_priority_counts[normalized_priority] - 1,
+		0
+	)
+
+
+func _rebuild_runtime_flow_priority_counts() -> void:
+	runtime_flow_priority_counts.fill(0)
+	for cache_key in runtime_flow_build_order:
+		var queued_job := runtime_flow_build_jobs.get(
+			cache_key
+		) as RuntimeFlowBuildJob
+		if queued_job == null:
+			continue
+		var normalized_priority := clampi(
+			queued_job.priority,
+			RuntimeFlowJobPriority.BACKGROUND,
+			RuntimeFlowJobPriority.DYNAMIC_TARGET
+		)
+		runtime_flow_priority_counts[normalized_priority] += 1
 
 
 func _advance_runtime_navigation_jobs() -> void:
@@ -1588,27 +1859,28 @@ func _advance_runtime_navigation_jobs() -> void:
 			# urgent. Alternate individual scheduler steps so neither can starve
 			# the other while both still share the same global time deadline.
 			if runtime_navigation_prefers_urgent_flow:
-				advanced = _advance_first_runtime_flow_job()
+				advanced = _advance_scheduled_runtime_flow_job()
 			else:
 				advanced = _advance_first_runtime_agent_grid_job()
 			runtime_navigation_prefers_urgent_flow = (
 				not runtime_navigation_prefers_urgent_flow
 			)
 		elif urgent_flow_waiting:
-			advanced = _advance_first_runtime_flow_job()
+			advanced = _advance_scheduled_runtime_flow_job()
 		elif not runtime_agent_grid_build_order.is_empty():
 			advanced = _advance_first_runtime_agent_grid_job()
 		elif not runtime_flow_build_order.is_empty():
-			advanced = _advance_first_runtime_flow_job()
+			advanced = _advance_scheduled_runtime_flow_job()
 		else:
 			break
 		if advanced:
 			expansions += 1
 		attempts_since_time_check += 1
-		# Checking every four expansions keeps overshoot close to the authored
-		# deadline even on Dictionary-heavy corner cells. These jobs are rare and
-		# staged, so the tiny clock-read cost is preferable to a hidden 2 ms spike.
-		if attempts_since_time_check >= 4:
+		# Search reads the clock every four expansions. Packed materialization does
+		# Dictionary writes in 16-cell batches and returns false by design, so read
+		# immediately after each such batch to cap its deadline overshoot at one
+		# batch without polluting path-expansion telemetry.
+		if not advanced or attempts_since_time_check >= 4:
 			attempts_since_time_check = 0
 			if Time.get_ticks_usec() >= deadline_usec:
 				break
@@ -1780,11 +2052,39 @@ func _finish_runtime_flow_job_search(job: RuntimeFlowBuildJob) -> void:
 func _advance_first_runtime_flow_job() -> bool:
 	if runtime_flow_build_order.is_empty():
 		return false
-	var cache_key := runtime_flow_build_order[0]
+	return _advance_runtime_flow_job_at_order_index(0)
+
+
+func _advance_scheduled_runtime_flow_job() -> bool:
+	if runtime_flow_build_order.is_empty():
+		return false
+	var requested_priority := RUNTIME_FLOW_PRIORITY_SERVICE_CYCLE[
+		runtime_flow_priority_service_cursor
+	]
+	runtime_flow_priority_service_cursor = (
+		(runtime_flow_priority_service_cursor + 1)
+		% RUNTIME_FLOW_PRIORITY_SERVICE_CYCLE.size()
+	)
+	var selected_index := _get_runtime_flow_service_order_index(
+		requested_priority
+	)
+	return _advance_runtime_flow_job_at_order_index(selected_index)
+
+
+func _advance_runtime_flow_job_at_order_index(order_index: int) -> bool:
+	if order_index < 0 or order_index >= runtime_flow_build_order.size():
+		return false
+	var cache_key := runtime_flow_build_order[order_index]
 	var job := runtime_flow_build_jobs.get(cache_key) as RuntimeFlowBuildJob
 	if job == null or job.generation != navigation_generation:
 		_cancel_runtime_flow_build_job(cache_key)
 		return false
+	var advanced := _advance_runtime_flow_job(job)
+	_yield_runtime_flow_job_after_quantum(cache_key, job)
+	return advanced
+
+
+func _advance_runtime_flow_job(job: RuntimeFlowBuildJob) -> bool:
 	if job.search_completed:
 		if _advance_runtime_flow_job_materialization(job):
 			_complete_runtime_flow_build_job(job)
@@ -1896,6 +2196,26 @@ func _advance_first_runtime_flow_job() -> bool:
 
 	_finish_runtime_flow_job_search(job)
 	return false
+
+
+func _yield_runtime_flow_job_after_quantum(
+	cache_key: String,
+	job: RuntimeFlowBuildJob
+) -> void:
+	if (
+		job == null
+		or not runtime_flow_build_jobs.has(cache_key)
+		or runtime_flow_build_order.is_empty()
+	):
+		return
+	job.scheduler_steps_since_yield += 1
+	if job.scheduler_steps_since_yield < RUNTIME_FLOW_JOB_QUANTUM_STEPS:
+		return
+	job.scheduler_steps_since_yield = 0
+	# Move to the tail of the same priority band. Lower-priority work remains
+	# behind it, while another player/profile job cannot monopolize every slice.
+	_remove_runtime_flow_job_key_from_order(cache_key, job.priority)
+	_insert_runtime_flow_job_key(cache_key, job.priority)
 
 
 func _runtime_flow_job_reached_all_required_sources(
@@ -2024,8 +2344,15 @@ func _remove_runtime_agent_grid_job(cache_key: String) -> void:
 
 
 func _remove_runtime_flow_build_job(cache_key: String) -> void:
+	var job := runtime_flow_build_jobs.get(cache_key) as RuntimeFlowBuildJob
+	if job != null:
+		_remove_runtime_flow_job_key_from_order(cache_key, job.priority)
+	else:
+		# Defensive repair for an externally corrupted queue. Production mutation
+		# always owns both structures and therefore takes the counted branch above.
+		runtime_flow_build_order.erase(cache_key)
+		_rebuild_runtime_flow_priority_counts()
 	runtime_flow_build_jobs.erase(cache_key)
-	runtime_flow_build_order.erase(cache_key)
 
 
 func _cancel_runtime_flow_build_job(cache_key: String) -> void:
@@ -2045,9 +2372,14 @@ func _cancel_all_runtime_navigation_jobs() -> void:
 	runtime_flow_builds_cancelled += runtime_flow_build_jobs.size()
 	runtime_flow_build_jobs.clear()
 	runtime_flow_build_order.clear()
+	runtime_flow_priority_counts.fill(0)
 	runtime_agent_grid_build_jobs.clear()
 	runtime_agent_grid_build_order.clear()
 	runtime_navigation_prefers_urgent_flow = true
+	runtime_flow_priority_service_cursor = 0
+	dynamic_flow_prefetch_dedupe_frame = -1
+	dynamic_flow_prefetch_dedupe_generation = -1
+	dynamic_flow_prefetch_keys_this_frame.clear()
 	set_process(false)
 
 

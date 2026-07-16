@@ -41,6 +41,7 @@ func _run() -> void:
 
 	await _test_frost_sources_stack_and_expire_independently()
 	await _test_frost_expiry_outlives_source_player()
+	await _test_frost_expiry_tolerates_removed_enemy()
 	await _test_status_expiry_precedes_same_frame_tick_damage()
 	await _test_every_collectible_runtime_effect()
 
@@ -126,6 +127,11 @@ func _test_frost_sources_stack_and_expire_independently() -> void:
 	)
 
 	await create_timer(0.09).timeout
+	# Budgeted expiry is enqueued by a SceneTreeTimer after node processing. Two
+	# process-frame signals allow the shared scheduler to run once and then make
+	# that result observable to this coroutine.
+	await process_frame
+	await process_frame
 	_expect(
 		enemy.move_speed_modifiers.size() == 1,
 		"The earlier frost timer must remove only its own source."
@@ -141,6 +147,8 @@ func _test_frost_sources_stack_and_expire_independently() -> void:
 		)
 
 	await create_timer(0.14).timeout
+	await process_frame
+	await process_frame
 	_expect(
 		enemy.move_speed_modifiers.is_empty() and second_enemy.move_speed_modifiers.is_empty(),
 		"Each frost source must expire independently at the end of its own duration."
@@ -179,6 +187,8 @@ func _test_frost_expiry_outlives_source_player() -> void:
 		player.queue_free()
 		await process_frame
 		await create_timer(0.09).timeout
+		await process_frame
+		await process_frame
 		_expect(
 			enemy.move_speed_modifiers.is_empty(),
 			(
@@ -191,6 +201,37 @@ func _test_frost_expiry_outlives_source_player() -> void:
 		await process_frame
 	Player.set_collectible_slow_batch_expiry_enabled(true)
 	_cleanup_test_children()
+	await process_frame
+
+
+func _test_frost_expiry_tolerates_removed_enemy() -> void:
+	Player.set_collectible_slow_batch_expiry_enabled(true)
+	var player := _spawn_player()
+	var enemy := _spawn_enemy(Vector2(20.0, 0.0), player)
+	await process_frame
+	enemy.current_health = 500
+	player.call(
+		"_apply_collectible_area_frost",
+		Vector2.ZERO,
+		48.0,
+		1,
+		0.5,
+		0.05
+	)
+	_expect(
+		enemy.move_speed_modifiers.size() == 1,
+		"Frost must register its expiry before the target enemy is removed."
+	)
+	enemy.queue_free()
+	await process_frame
+	await create_timer(0.09).timeout
+	await process_frame
+	await process_frame
+	_expect(
+		int(root.get_node("StatusEffectExpiryScheduler").call("get_pending_job_count")) == 0,
+		"A freed enemy WeakRef must not strand its shared expiry job."
+	)
+	player.queue_free()
 	await process_frame
 
 
