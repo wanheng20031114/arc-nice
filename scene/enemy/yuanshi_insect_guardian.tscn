@@ -13,6 +13,9 @@ height = 22.0
 radius = 6.0
 height = 22.0
 
+[sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_guardian_halo"]
+blend_mode = 1
+
 [node name="YuanshiInsectGuardian" unique_id=359098456 instance=ExtResource("1_base")]
 script = ExtResource("2_script")
 
@@ -24,6 +27,7 @@ animation = &"move"
 [node name="GuardianLightHalo" type="Sprite2D" parent="."]
 position = Vector2(0, -1)
 texture_filter = 2
+material = SubResource("CanvasItemMaterial_guardian_halo")
 modulate = Color(0.2, 0.78, 1, 0.78)
 texture = ExtResource("4_guardian_light")
 scale = Vector2(0.95, 0.95)

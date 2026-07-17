@@ -363,10 +363,16 @@ func _test_guardian_aura_visual_configuration() -> void:
 	)
 	_expect(not guardian.has_node("GuardianGlowSprite"), "Guardian must not use the previous baked glow sprite.")
 	if guardian_halo != null:
+		var halo_material := guardian_halo.material as CanvasItemMaterial
 		_expect(
 			guardian_halo.texture != null
 			and guardian_halo.texture.resource_path.ends_with("guardian_point_light.png"),
 			"Guardian halo sprite must use the same soft radial light texture."
+		)
+		_expect(
+			halo_material != null
+			and halo_material.blend_mode == CanvasItemMaterial.BLEND_MODE_ADD,
+			"Guardian halo must use additive blending so its transparent fringe cannot darken the ground."
 		)
 		_expect(
 			guardian_halo.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR,
