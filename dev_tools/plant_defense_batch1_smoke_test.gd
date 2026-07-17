@@ -182,7 +182,7 @@ func _test_config_and_scene_contracts() -> void:
 	_expect(is_equal_approx(agave_config.attack_speed, 50.0), "龙舌兰攻速必须为50。")
 	_expect(agave_config.supports_multiplayer, "龙舌兰必须继续支持多人权威放置。")
 	_expect(is_equal_approx(agave_config.get_attack_interval(), 2.0), "龙舌兰攻击间隔必须为2秒。")
-	_expect(is_equal_approx(agave_config.attack_range, 176.0), "龙舌兰索敌半径必须为176。")
+	_expect(is_equal_approx(agave_config.attack_range, 140.8), "龙舌兰索敌半径必须为140.8。")
 	_expect(
 		agave_config.attack_burst_count == 1
 		and is_zero_approx(agave_config.attack_burst_shot_interval),
@@ -529,7 +529,7 @@ func _test_config_and_scene_contracts() -> void:
 		)
 		var target_shape := agave.get_node("TargetingArea/CollisionShape2D") as CollisionShape2D
 		var target_circle := target_shape.shape as CircleShape2D
-		_expect(target_circle != null and is_equal_approx(target_circle.radius, 176.0), "索敌Area半径必须为176。")
+		_expect(target_circle != null and is_equal_approx(target_circle.radius, 140.8), "索敌Area半径必须为140.8。")
 		var plant_health_bar := agave.get_node("HealthBar") as Control
 		_expect(
 			plant_health_bar != null
@@ -1280,8 +1280,8 @@ func _test_realtime_selection_and_cancel() -> void:
 			corn_card = card
 	_expect(
 		agave_card != null
-		and agave_card.stats_label.text == "生命 2000  ·  伤害 25  ·  间隔 2 秒  ·  半径 176",
-		"单发旧植物的属性文案必须保持原样。"
+		and agave_card.stats_label.text == "生命 2000  ·  伤害 25  ·  间隔 2 秒  ·  半径 140.8",
+		"龙舌兰属性文案必须显示下调后的索敌半径。"
 	)
 	_expect(
 		corn_card != null

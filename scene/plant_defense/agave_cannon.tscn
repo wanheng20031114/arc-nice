@@ -16,7 +16,7 @@ height = 14.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_targeting"]
 resource_local_to_scene = true
-radius = 176.0
+radius = 140.8
 
 [node name="AgaveCannon" type="StaticBody2D" unique_id=877900]
 collision_layer = 512

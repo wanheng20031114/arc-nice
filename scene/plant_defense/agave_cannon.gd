@@ -4,7 +4,7 @@ class_name AgaveCannon
 const CANNONBALL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
 const WORLD_COLLISION_MASK := 1
 const DEFAULT_ATTACK_DAMAGE := 25
-const DEFAULT_ATTACK_RANGE := 176.0
+const DEFAULT_ATTACK_RANGE := 140.8
 const DEFAULT_ATTACK_INTERVAL := 2.0
 const CANNONBALL_SPEED := 180.0
 const CANNONBALL_EXPLOSION_RADIUS := 18.0
