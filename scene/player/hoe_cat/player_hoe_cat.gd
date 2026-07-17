@@ -13,6 +13,7 @@ const PRIMARY_VISUAL_DURATION := 0.3125
 const PRIMARY_IMPACT_DELAY := 0.1125
 const WHIRLWIND_VISUAL_DURATION := 0.5
 const WHIRLWIND_IMPACT_DELAY := 0.125
+const RESEARCH_DEFENSE_DURATION := 2.0
 
 @export var basic_attack_query_shape: CircleShape2D
 @export var whirlwind_query_shape: CircleShape2D
@@ -21,6 +22,7 @@ const WHIRLWIND_IMPACT_DELAY := 0.125
 @onready var whirlwind_body_effect: AnimatedSprite2D = $WhirlwindBodyEffect
 @onready var primary_impact_timer: Timer = $PrimaryImpactTimer
 @onready var whirlwind_impact_timer: Timer = $WhirlwindImpactTimer
+@onready var research_defense_timer: Timer = $ResearchDefenseTimer
 @onready var primary_attack_audio: AudioStreamPlayer2D = $PrimaryAttackAudio
 @onready var skill1_audio: AudioStreamPlayer2D = $Skill1Audio
 var _primary_visual_time_left: float = 0.0
@@ -335,6 +337,9 @@ func _cleanup_character_combat_on_death() -> void:
 		primary_impact_timer.stop()
 	if whirlwind_impact_timer != null:
 		whirlwind_impact_timer.stop()
+	if research_defense_timer != null:
+		research_defense_timer.stop()
+	set_research_temporary_physical_defense_bonus(0)
 	if basic_slash_effect != null:
 		basic_slash_effect.hide()
 		basic_slash_effect.stop()
@@ -476,6 +481,19 @@ func _on_whirlwind_impact_timer_timeout() -> void:
 	)
 	_apply_authoritative_player_heal(self, WHIRLWIND_HEAL_AMOUNT)
 	_activate_collectible_skill_effects()
+	_activate_research_whirlwind_defense()
+
+
+func _activate_research_whirlwind_defense() -> void:
+	var bonus := get_research_hoe_physical_defense_bonus()
+	if bonus <= 0:
+		return
+	set_research_temporary_physical_defense_bonus(bonus)
+	research_defense_timer.start(RESEARCH_DEFENSE_DURATION)
+
+
+func _on_research_defense_timer_timeout() -> void:
+	set_research_temporary_physical_defense_bonus(0)
 
 
 func _play_primary_attack_audio() -> void:

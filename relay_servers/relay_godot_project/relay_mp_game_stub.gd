@@ -432,6 +432,10 @@ func net_production_command_requested(command: Dictionary) -> void:
 	pass
 
 @rpc("any_peer", "call_remote", "reliable", 6)
+func net_research_command_requested(command: Dictionary) -> void:
+	pass
+
+@rpc("any_peer", "call_remote", "reliable", 6)
 func net_production_snapshot_requested(building_net_id: int) -> void:
 	pass
 
@@ -448,6 +452,23 @@ func net_production_state_batch(
 	net_ids: PackedInt32Array,
 	states: Array,
 	host_sample_times: PackedFloat64Array
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 6)
+func net_research_command_result(
+	request_id: int,
+	building_net_id: int,
+	success: bool,
+	reason: StringName
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 6)
+func net_research_state_updated(
+	state: Dictionary,
+	changed_player_peer_id: int,
+	current_xirang: int
 ) -> void:
 	pass
 

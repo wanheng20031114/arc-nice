@@ -1,0 +1,9 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/research_coordinator.gd" id="1_script"]
+
+[node name="ResearchCoordinator" type="Node"]
+script = ExtResource("1_script")
+
+[node name="ResearchTickTimer" type="Timer" parent="."]
+wait_time = 0.25

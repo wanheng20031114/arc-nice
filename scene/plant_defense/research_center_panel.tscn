@@ -1,0 +1,480 @@
+[gd_scene load_steps=14 format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/research_center_panel.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/research/research_center_panel_background.png" id="2_background"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_font"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/oak_warehouse_inventory_slot.tscn" id="4_slot"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font = ExtResource("3_font")
+font_size = 22
+font_color = Color(0.72, 0.92, 1, 1)
+outline_size = 4
+outline_color = Color(0.015, 0.05, 0.12, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_section"]
+font = ExtResource("3_font")
+font_size = 17
+font_color = Color(0.58, 0.86, 1, 1)
+outline_size = 2
+outline_color = Color(0.01, 0.04, 0.1, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_body"]
+font = ExtResource("3_font")
+font_size = 13
+font_color = Color(0.68, 0.79, 0.9, 1)
+outline_size = 1
+outline_color = Color(0.01, 0.035, 0.08, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_small"]
+font = ExtResource("3_font")
+font_size = 12
+font_color = Color(0.68, 0.86, 0.96, 1)
+outline_size = 1
+outline_color = Color(0.01, 0.035, 0.08, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tab"]
+bg_color = Color(0.045, 0.12, 0.23, 0.8)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.16, 0.36, 0.58, 0.9)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tab_active"]
+bg_color = Color(0.08, 0.28, 0.48, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.25, 0.8, 1, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_progress_bg"]
+bg_color = Color(0.008, 0.025, 0.065, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.12, 0.34, 0.56, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_progress_fill"]
+bg_color = Color(0.08, 0.68, 0.95, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.48, 0.94, 1, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_action"]
+bg_color = Color(0.055, 0.25, 0.43, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.22, 0.7, 0.96, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_action_hover"]
+bg_color = Color(0.08, 0.4, 0.64, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.48, 0.93, 1, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_node"]
+bg_color = Color(0.035, 0.1, 0.18, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.28, 0.72, 0.95, 1)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+shadow_color = Color(0.05, 0.55, 0.9, 0.55)
+shadow_size = 7
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_close"]
+
+[node name="ResearchCenterPanel" type="CanvasLayer"]
+visible = false
+layer = 70
+script = ExtResource("1_script")
+
+[node name="Overlay" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Dim" type="ColorRect" parent="Overlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.005, 0.012, 0.03, 0.76)
+
+[node name="PanelRoot" type="Control" parent="Overlay"]
+texture_filter = 1
+offset_right = 728.0
+offset_bottom = 544.0
+
+[node name="Background" type="TextureRect" parent="Overlay/PanelRoot"]
+offset_right = 728.0
+offset_bottom = 544.0
+mouse_filter = 2
+texture = ExtResource("2_background")
+
+[node name="Title" type="Label" parent="Overlay/PanelRoot"]
+offset_left = 168.0
+offset_top = 22.0
+offset_right = 560.0
+offset_bottom = 66.0
+text = "科研中心"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="GlobalTab" type="Button" parent="Overlay/PanelRoot"]
+offset_left = 96.0
+offset_top = 73.0
+offset_right = 211.0
+offset_bottom = 114.0
+toggle_mode = true
+theme_override_colors/font_color = Color(0.62, 0.82, 0.95, 1)
+theme_override_colors/font_pressed_color = Color(0.82, 0.98, 1, 1)
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_tab")
+theme_override_styles/hover = SubResource("StyleBoxFlat_tab_active")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_tab_active")
+theme_override_styles/focus = SubResource("StyleBoxFlat_tab_active")
+text = "全局科技"
+
+[node name="PlayerTab" type="Button" parent="Overlay/PanelRoot"]
+offset_left = 214.0
+offset_top = 73.0
+offset_right = 345.0
+offset_bottom = 114.0
+toggle_mode = true
+theme_override_colors/font_color = Color(0.62, 0.82, 0.95, 1)
+theme_override_colors/font_pressed_color = Color(0.82, 0.98, 1, 1)
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_tab")
+theme_override_styles/hover = SubResource("StyleBoxFlat_tab_active")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_tab_active")
+theme_override_styles/focus = SubResource("StyleBoxFlat_tab_active")
+text = "玩家技术"
+
+[node name="CloseButton" type="Button" parent="Overlay/PanelRoot"]
+offset_left = 670.0
+offset_top = 16.0
+offset_right = 711.0
+offset_bottom = 57.0
+tooltip_text = "关闭"
+theme_override_styles/normal = SubResource("StyleBoxEmpty_close")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_close")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_close")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_close")
+
+[node name="GlobalPage" type="Control" parent="Overlay/PanelRoot"]
+offset_right = 728.0
+offset_bottom = 544.0
+
+[node name="ResearchName" type="Label" parent="Overlay/PanelRoot/GlobalPage"]
+offset_left = 58.0
+offset_top = 139.0
+offset_right = 510.0
+offset_bottom = 170.0
+text = "结构强化理论"
+label_settings = SubResource("LabelSettings_section")
+
+[node name="Description" type="Label" parent="Overlay/PanelRoot/GlobalPage"]
+offset_left = 58.0
+offset_top = 174.0
+offset_right = 668.0
+offset_bottom = 218.0
+text = "提交研究材料，完成后本局所有建筑物理防御 +10。"
+label_settings = SubResource("LabelSettings_body")
+autowrap_mode = 2
+
+[node name="PlankSlot" parent="Overlay/PanelRoot/GlobalPage" instance=ExtResource("4_slot")]
+offset_left = 104.0
+offset_top = 236.0
+offset_right = 168.0
+offset_bottom = 306.0
+mouse_filter = 2
+
+[node name="SaplingSlot" parent="Overlay/PanelRoot/GlobalPage" instance=ExtResource("4_slot")]
+offset_left = 252.0
+offset_top = 236.0
+offset_right = 316.0
+offset_bottom = 306.0
+mouse_filter = 2
+
+[node name="WaterBottleSlot" parent="Overlay/PanelRoot/GlobalPage" instance=ExtResource("4_slot")]
+offset_left = 400.0
+offset_top = 236.0
+offset_right = 464.0
+offset_bottom = 306.0
+mouse_filter = 2
+
+[node name="PlankCount" type="Label" parent="Overlay/PanelRoot/GlobalPage"]
+offset_left = 68.0
+offset_top = 311.0
+offset_right = 204.0
+offset_bottom = 339.0
+label_settings = SubResource("LabelSettings_small")
+horizontal_alignment = 1
+
+[node name="SaplingCount" type="Label" parent="Overlay/PanelRoot/GlobalPage"]
+offset_left = 216.0
+offset_top = 311.0
+offset_right = 352.0
+offset_bottom = 339.0
+label_settings = SubResource("LabelSettings_small")
+horizontal_alignment = 1
+
+[node name="WaterBottleCount" type="Label" parent="Overlay/PanelRoot/GlobalPage"]
+offset_left = 364.0
+offset_top = 311.0
+offset_right = 500.0
+offset_bottom = 339.0
+label_settings = SubResource("LabelSettings_small")
+horizontal_alignment = 1
+
+[node name="ResultBadge" type="Label" parent="Overlay/PanelRoot/GlobalPage"]
+offset_left = 520.0
+offset_top = 245.0
+offset_right = 662.0
+offset_bottom = 322.0
+text = "全建筑\n物理防御 +10"
+label_settings = SubResource("LabelSettings_section")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ProgressBar" type="ProgressBar" parent="Overlay/PanelRoot/GlobalPage"]
+offset_left = 93.0
+offset_top = 372.0
+offset_right = 635.0
+offset_bottom = 400.0
+mouse_filter = 2
+theme_override_styles/background = SubResource("StyleBoxFlat_progress_bg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_progress_fill")
+show_percentage = false
+
+[node name="ProgressLabel" type="Label" parent="Overlay/PanelRoot/GlobalPage"]
+offset_left = 180.0
+offset_top = 405.0
+offset_right = 548.0
+offset_bottom = 432.0
+text = "尚未开始"
+label_settings = SubResource("LabelSettings_small")
+horizontal_alignment = 1
+
+[node name="PlayerPage" type="Control" parent="Overlay/PanelRoot"]
+visible = false
+offset_right = 728.0
+offset_bottom = 544.0
+
+[node name="TechName" type="Label" parent="Overlay/PanelRoot/PlayerPage"]
+offset_left = 58.0
+offset_top = 139.0
+offset_right = 410.0
+offset_bottom = 170.0
+text = "玩家技术"
+label_settings = SubResource("LabelSettings_section")
+
+[node name="TechDescription" type="Label" parent="Overlay/PanelRoot/PlayerPage"]
+offset_left = 58.0
+offset_top = 174.0
+offset_right = 520.0
+offset_bottom = 218.0
+label_settings = SubResource("LabelSettings_body")
+autowrap_mode = 2
+
+[node name="XirangLabel" type="Label" parent="Overlay/PanelRoot/PlayerPage"]
+offset_left = 500.0
+offset_top = 145.0
+offset_right = 666.0
+offset_bottom = 174.0
+text = "个人息壤：0"
+label_settings = SubResource("LabelSettings_small")
+horizontal_alignment = 2
+
+[node name="BranchLeft" type="Line2D" parent="Overlay/PanelRoot/PlayerPage"]
+points = PackedVector2Array(364, 358, 242, 302)
+width = 4.0
+default_color = Color(0.13, 0.28, 0.42, 0.8)
+
+[node name="BranchTop" type="Line2D" parent="Overlay/PanelRoot/PlayerPage"]
+points = PackedVector2Array(364, 358, 364, 242)
+width = 4.0
+default_color = Color(0.13, 0.28, 0.42, 0.8)
+
+[node name="BranchRight" type="Line2D" parent="Overlay/PanelRoot/PlayerPage"]
+points = PackedVector2Array(364, 358, 486, 302)
+width = 4.0
+default_color = Color(0.13, 0.28, 0.42, 0.8)
+
+[node name="RootCore" type="Panel" parent="Overlay/PanelRoot/PlayerPage"]
+offset_left = 342.0
+offset_top = 336.0
+offset_right = 386.0
+offset_bottom = 380.0
+rotation = 0.785398
+pivot_offset = Vector2(22, 22)
+theme_override_styles/panel = SubResource("StyleBoxFlat_node")
+
+[node name="TechNode1" type="Panel" parent="Overlay/PanelRoot/PlayerPage"]
+offset_left = 214.0
+offset_top = 274.0
+offset_right = 270.0
+offset_bottom = 330.0
+rotation = 0.785398
+pivot_offset = Vector2(28, 28)
+theme_override_styles/panel = SubResource("StyleBoxFlat_node")
+
+[node name="Level" type="Label" parent="Overlay/PanelRoot/PlayerPage/TechNode1"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+rotation = -0.785398
+pivot_offset = Vector2(28, 28)
+text = "I"
+label_settings = SubResource("LabelSettings_section")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TechNode2" type="Panel" parent="Overlay/PanelRoot/PlayerPage"]
+offset_left = 336.0
+offset_top = 214.0
+offset_right = 392.0
+offset_bottom = 270.0
+rotation = 0.785398
+pivot_offset = Vector2(28, 28)
+theme_override_styles/panel = SubResource("StyleBoxFlat_node")
+
+[node name="Level" type="Label" parent="Overlay/PanelRoot/PlayerPage/TechNode2"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+rotation = -0.785398
+pivot_offset = Vector2(28, 28)
+text = "II"
+label_settings = SubResource("LabelSettings_section")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TechNode3" type="Panel" parent="Overlay/PanelRoot/PlayerPage"]
+offset_left = 458.0
+offset_top = 274.0
+offset_right = 514.0
+offset_bottom = 330.0
+rotation = 0.785398
+pivot_offset = Vector2(28, 28)
+theme_override_styles/panel = SubResource("StyleBoxFlat_node")
+
+[node name="Level" type="Label" parent="Overlay/PanelRoot/PlayerPage/TechNode3"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+rotation = -0.785398
+pivot_offset = Vector2(28, 28)
+text = "III"
+label_settings = SubResource("LabelSettings_section")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="NodeEffect1" type="Label" parent="Overlay/PanelRoot/PlayerPage"]
+offset_left = 176.0
+offset_top = 345.0
+offset_right = 300.0
+offset_bottom = 374.0
+label_settings = SubResource("LabelSettings_small")
+horizontal_alignment = 1
+
+[node name="NodeEffect2" type="Label" parent="Overlay/PanelRoot/PlayerPage"]
+offset_left = 302.0
+offset_top = 279.0
+offset_right = 426.0
+offset_bottom = 308.0
+label_settings = SubResource("LabelSettings_small")
+horizontal_alignment = 1
+
+[node name="NodeEffect3" type="Label" parent="Overlay/PanelRoot/PlayerPage"]
+offset_left = 428.0
+offset_top = 345.0
+offset_right = 552.0
+offset_bottom = 374.0
+label_settings = SubResource("LabelSettings_small")
+horizontal_alignment = 1
+
+[node name="CostProgression" type="Label" parent="Overlay/PanelRoot/PlayerPage"]
+offset_left = 196.0
+offset_top = 401.0
+offset_right = 532.0
+offset_bottom = 430.0
+text = "升级消耗：2000  →  5000  →  15000 息壤"
+label_settings = SubResource("LabelSettings_small")
+horizontal_alignment = 1
+
+[node name="StatusLabel" type="Label" parent="Overlay/PanelRoot"]
+offset_left = 86.0
+offset_top = 472.0
+offset_right = 432.0
+offset_bottom = 516.0
+text = "科研中心就绪。"
+label_settings = SubResource("LabelSettings_small")
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="ActionButton" type="Button" parent="Overlay/PanelRoot"]
+offset_left = 466.0
+offset_top = 468.0
+offset_right = 639.0
+offset_bottom = 516.0
+theme_override_colors/font_color = Color(0.75, 0.94, 1, 1)
+theme_override_colors/font_disabled_color = Color(0.35, 0.48, 0.6, 1)
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_action_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_action_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_action_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_tab")
+text = "开始研究"

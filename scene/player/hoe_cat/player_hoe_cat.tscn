@@ -153,6 +153,10 @@ one_shot = true
 [node name="WhirlwindImpactTimer" type="Timer" parent="." unique_id=747958036]
 one_shot = true
 
+[node name="ResearchDefenseTimer" type="Timer" parent="."]
+wait_time = 2.0
+one_shot = true
+
 [node name="AttackIntervalBar" parent="." unique_id=387439191 instance=ExtResource("14_interval_bar")]
 z_index = 8
 
@@ -237,3 +241,4 @@ max_polyphony = 2
 [connection signal="timeout" from="DashCooldownTimer" to="." method="_on_dash_cooldown_timer_timeout"]
 [connection signal="timeout" from="PrimaryImpactTimer" to="." method="_on_primary_impact_timer_timeout"]
 [connection signal="timeout" from="WhirlwindImpactTimer" to="." method="_on_whirlwind_impact_timer_timeout"]
+[connection signal="timeout" from="ResearchDefenseTimer" to="." method="_on_research_defense_timer_timeout"]

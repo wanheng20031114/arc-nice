@@ -39,6 +39,8 @@
 [ext_resource type="PackedScene" path="res://scene/plant_defense/production_building_panel.tscn" id="40_production_panel"]
 [ext_resource type="Script" uid="uid://dfuccjc7ww0jj" path="res://scene/enemy/capoo_sniper_lock_visual_coordinator.gd" id="41_sniper_lock_visuals"]
 [ext_resource type="PackedScene" path="res://scene/enemy/capoo_projectile_motion_system.tscn" id="42_capoo_projectile_motion"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/research_coordinator.tscn" id="43_research_coordinator"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/research_center_panel.tscn" id="44_research_panel"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -265,6 +267,8 @@ terrain_map_path = NodePath("../DualGridTerrain")
 
 [node name="ProductionCoordinator" parent="." unique_id=1845180523 instance=ExtResource("39_production_coordinator")]
 
+[node name="ResearchCoordinator" parent="." instance=ExtResource("43_research_coordinator")]
+
 [node name="OverlayTileMapLayer" type="TileMapLayer" parent="." unique_id=852138298]
 z_index = 1
 tile_map_data = PackedByteArray("AAA5ACsAAAAAAAAAAAA6ACsAAAAAAAAAAAA7ACsAAAAAAAAAAAA8ACsAAAAAAAAAAAA5AAIAAAAAAAAAAAA6AAIAAAAAAAAAAAA7AAIAAAAAAAAAAAA8AAIAAAAAAAAAAABHAAwAAAAAAAAAAABHAA0AAAAAAAAAAABHAB4AAAAAAAAAAABHAB8AAAAAAAAAAABHACAAAAAAAAAAAABHACEAAAAAAAAAAABHAA4AAAAAAAAAAABHAA8AAAAAAAAAAAAdAAIAAAAAAAAAAAAeAAIAAAAAAAAAAAAfAAIAAAAAAAAAAAAgAAIAAAAAAAAAAAAdACsAAAAAAAAAAAAeACsAAAAAAAAAAAAfACsAAAAAAAAAAAAgACsAAAAAAAAAAAACABYAAAAAAAMAAAADABYAAAAAAAMAAAADABcAAAAAAAMAAAACABcAAAAAAAMAAAA=")
@@ -293,6 +297,8 @@ visible = false
 visible = false
 
 [node name="ProductionBuildingPanel" parent="." unique_id=1542121819 instance=ExtResource("40_production_panel")]
+
+[node name="ResearchCenterPanel" parent="." instance=ExtResource("44_research_panel")]
 
 [node name="PlayerProfilePanel" parent="." unique_id=1216528429 instance=ExtResource("13_profile_panel")]
 

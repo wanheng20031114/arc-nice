@@ -143,11 +143,35 @@ func _apply_damage_to_enemy(enemy: Enemy, damaged_ids: Dictionary) -> void:
 			EnemyConfig.DamageType.PHYSICAL,
 			true
 		)
+		_apply_research_burn(enemy)
 		return
 	enemy.apply_damage(
 		resolved_damage,
 		impact_direction,
 		EnemyConfig.DamageType.PHYSICAL
+	)
+	_apply_research_burn(enemy)
+
+
+func _apply_research_burn(enemy: Enemy) -> void:
+	if (
+		enemy == null
+		or not is_instance_valid(enemy)
+		or enemy.is_dead
+		or owner_player == null
+		or not is_instance_valid(owner_player)
+	):
+		return
+	var burn_damage := owner_player.get_research_burn_tick_damage()
+	if burn_damage <= 0:
+		return
+	enemy.apply_collectible_status(
+		&"burn",
+		maxi(int(get_instance_id()), 1),
+		5.0,
+		burn_damage,
+		0.5,
+		EnemyConfig.DamageType.MAGIC
 	)
 
 

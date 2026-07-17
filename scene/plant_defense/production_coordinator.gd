@@ -82,6 +82,70 @@ func get_total_item_count(item: PickupConfig) -> int:
 	return total
 
 
+func try_consume_item_requirements(requirements: Array[Dictionary]) -> StringName:
+	if not authoritative_processing_enabled or requirements.is_empty():
+		return RESULT_UNAVAILABLE
+	var ordered_warehouses := _get_ordered_operational_warehouses()
+	if ordered_warehouses.is_empty():
+		return RESULT_MISSING_INPUT
+	var states: Array[Dictionary] = []
+	for warehouse in ordered_warehouses:
+		states.append(warehouse.export_production_storage_snapshot())
+	for requirement in requirements:
+		var item := requirement.get("item") as PickupConfig
+		var remaining := int(requirement.get("count", 0))
+		if item == null or remaining <= 0:
+			return RESULT_UNAVAILABLE
+		for state in states:
+			var items: Array = state["items"]
+			var counts: Array = state["counts"]
+			for slot_index in items.size():
+				if remaining <= 0:
+					break
+				var stored_item := items[slot_index] as PickupConfig
+				if not _items_share_stack(stored_item, item):
+					continue
+				var taken := mini(int(counts[slot_index]), remaining)
+				var next_count := int(counts[slot_index]) - taken
+				remaining -= taken
+				if next_count <= 0:
+					items[slot_index] = null
+					counts[slot_index] = 0
+				else:
+					counts[slot_index] = next_count
+				state["changed"] = true
+		if remaining > 0:
+			return RESULT_MISSING_INPUT
+	for state in states:
+		var warehouse := state["warehouse"] as OakWarehouse
+		if (
+			warehouse == null
+			or not is_instance_valid(warehouse)
+			or warehouse.get_storage_revision() != int(state["revision"])
+		):
+			return RESULT_UNAVAILABLE
+	var previous_transaction_state := _storage_transaction_in_progress
+	_storage_transaction_in_progress = true
+	var changed_warehouses: Array[OakWarehouse] = []
+	for state in states:
+		if not bool(state["changed"]):
+			continue
+		var warehouse := state["warehouse"] as OakWarehouse
+		if not warehouse.apply_production_storage_snapshot(
+			state["items"],
+			state["counts"],
+			int(state["revision"]),
+			false
+		):
+			_storage_transaction_in_progress = previous_transaction_state
+			return RESULT_UNAVAILABLE
+		changed_warehouses.append(warehouse)
+	for warehouse in changed_warehouses:
+		warehouse.notify_production_storage_changed()
+	_storage_transaction_in_progress = previous_transaction_state
+	return RESULT_SUCCESS
+
+
 func try_commit_recipe(recipe: ProductionRecipe) -> StringName:
 	if not authoritative_processing_enabled or recipe == null or not recipe.is_valid():
 		return RESULT_UNAVAILABLE

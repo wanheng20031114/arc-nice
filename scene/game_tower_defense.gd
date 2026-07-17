@@ -141,6 +141,7 @@ static var expanded_projectile_pool_prewarm_enabled := true
 @onready var tower_defense_minimap: TowerDefenseMinimap = $TowerDefenseMinimap
 @onready var oak_warehouse_panel: OakWarehousePanel = $OakWarehousePanel
 @onready var production_building_panel: ProductionBuildingPanel = $ProductionBuildingPanel
+@onready var research_center_panel: ResearchCenterPanel = $ResearchCenterPanel
 @onready var player_profile_panel: PlayerProfilePanel = $PlayerProfilePanel
 @onready var settings_panel: SettingsPanel = $SettingsLayer/SettingsPanel
 @onready var debug_collectible_window: DebugCollectibleWindow = $SettingsLayer/DebugCollectibleWindow
@@ -152,6 +153,7 @@ static var expanded_projectile_pool_prewarm_enabled := true
 @onready var plant_system: PlantSystem = $PlantSystem
 @onready var vegetation_spread_system: VegetationSpreadSystem = $VegetationSpreadSystem
 @onready var production_coordinator: ProductionCoordinator = $ProductionCoordinator
+@onready var research_coordinator: ResearchCoordinator = $ResearchCoordinator
 @onready var plant_placement_controller: PlantPlacementController = $PlantPlacementController
 @onready var plant_lifecycle_shader_prewarm: Sprite2D = $PlantLifecycleShaderPrewarm
 @onready var damage_number_pool: DamageNumberPool = $DamageNumberPool
@@ -343,6 +345,11 @@ func _ready() -> void:
 	production_coordinator.set_authoritative_processing_enabled(
 		runtime_mode != RuntimeMode.CLIENT_VIEW
 	)
+	research_coordinator.setup(production_coordinator, plant_system, self)
+	research_coordinator.set_authoritative_processing_enabled(
+		runtime_mode != RuntimeMode.CLIENT_VIEW
+	)
+	_register_research_players()
 	_configure_minimap()
 	_apply_initial_player_xirang()
 	currency_hud.bind_player(player)
@@ -800,6 +807,12 @@ func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 	var production_building := plant as ProductionBuilding
 	if production_building != null:
 		production_building.set_shared_production_panel(production_building_panel)
+	var research_center := plant as ResearchCenter
+	if research_center != null:
+		research_center.set_research_services(
+			research_coordinator,
+			research_center_panel
+		)
 	if not plant.modal_ui_visibility_changed.is_connected(_on_plant_modal_ui_visibility_changed):
 		plant.modal_ui_visibility_changed.connect(_on_plant_modal_ui_visibility_changed)
 	var vegetation_stake := plant as VegetationStake
@@ -1464,6 +1477,18 @@ func _apply_initial_player_xirang() -> void:
 			continue
 		player_instance.current_xirang = INITIAL_PLAYER_XIRANG
 		player_instance.xirang_changed.emit(player_instance.current_xirang, 0)
+
+
+func _register_research_players() -> void:
+	if research_coordinator == null:
+		return
+	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		research_coordinator.register_player(player)
+		return
+	for player_variant in peer_players.values():
+		var player_instance := player_variant as Player
+		if player_instance != null:
+			research_coordinator.register_player(player_instance)
 
 
 func _on_currency_hud_settings_requested() -> void:

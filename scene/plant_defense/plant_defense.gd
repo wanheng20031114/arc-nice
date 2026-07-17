@@ -38,6 +38,7 @@ var current_health: int = 0
 var max_health: int = 0
 var physical_defense: int = 0
 var magic_defense: int = 0
+var global_physical_defense_bonus: int = 0
 var is_dead: bool = false
 var is_multiplayer_proxy: bool = false
 var health_revision: int = 0
@@ -177,7 +178,11 @@ func get_health_ratio() -> float:
 
 
 func get_effective_physical_defense() -> int:
-	return maxi(physical_defense, 0)
+	return maxi(physical_defense + global_physical_defense_bonus, 0)
+
+
+func set_global_physical_defense_bonus(bonus: int) -> void:
+	global_physical_defense_bonus = maxi(bonus, 0)
 
 
 func get_effective_magic_defense() -> int:

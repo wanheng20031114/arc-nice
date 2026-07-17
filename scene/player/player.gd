@@ -6,6 +6,7 @@ signal xirang_changed(total: int, added_amount: int)
 signal health_changed(current: int, maximum: int)
 signal attack_speed_changed(attack_speed: float)
 signal dodge_changed(chance: float)
+signal research_technology_level_changed(level: int)
 signal died
 signal revived
 
@@ -88,6 +89,11 @@ const CHEAT_XIRANG_AMOUNT := 1000
 const SKILL1_MAX_UPGRADE_LEVEL := 4
 const SKILL1_UPGRADE_CHARGE_REDUCTION := 2.0
 const SKILL1_UPGRADE_COSTS := [500, 750, 1000, 2000]
+const RESEARCH_TECHNOLOGY_MAX_LEVEL := 3
+const RESEARCH_TECHNOLOGY_COSTS := [2000, 5000, 15000]
+const RESEARCH_WEISHIDAIER_BURN_DAMAGE := [10, 20, 30]
+const RESEARCH_TIYI_SLOW_MULTIPLIERS := [0.75, 0.5, 0.2]
+const RESEARCH_HOE_DEFENSE_BONUSES := [15, 30, 50]
 const MAX_MULTIPLAYER_NAME_LENGTH := 12
 const NAMEPLATE_SIZE := Vector2(160.0, 30.0)
 const NAMEPLATE_WORLD_OFFSET := Vector2(0.0, -19.0)
@@ -164,6 +170,8 @@ var dodge_chance: float = 0.0
 var skill1_unlocked: bool = false
 var skill1_charge: float = 0.0
 var skill1_upgrade_level: int = 0
+var research_technology_level: int = 0
+var research_temporary_physical_defense_bonus: int = 0
 var skill1_base_charge_duration: float = 0.0
 var last_attack_direction: Vector2 = Vector2.RIGHT
 var dodge_feedback_tween: Tween = null
@@ -1570,6 +1578,55 @@ func get_xirang() -> int:
 	return current_xirang
 
 
+func try_spend_xirang(amount: int) -> bool:
+	if amount <= 0 or current_xirang < amount:
+		return false
+	current_xirang -= amount
+	xirang_changed.emit(current_xirang, -amount)
+	return true
+
+
+func get_research_technology_level() -> int:
+	return research_technology_level
+
+
+func set_research_technology_level(level: int) -> void:
+	var resolved_level := clampi(level, 0, RESEARCH_TECHNOLOGY_MAX_LEVEL)
+	if research_technology_level == resolved_level:
+		return
+	research_technology_level = resolved_level
+	research_technology_level_changed.emit(research_technology_level)
+
+
+func get_next_research_technology_cost() -> int:
+	if research_technology_level >= RESEARCH_TECHNOLOGY_MAX_LEVEL:
+		return 0
+	return int(RESEARCH_TECHNOLOGY_COSTS[research_technology_level])
+
+
+func get_research_burn_tick_damage() -> int:
+	if character_id != &"weishidaier" or research_technology_level <= 0:
+		return 0
+	return int(RESEARCH_WEISHIDAIER_BURN_DAMAGE[research_technology_level - 1])
+
+
+func get_research_tiyi_slow_multiplier() -> float:
+	if character_id != &"tiyi" or research_technology_level <= 0:
+		return 1.0
+	return float(RESEARCH_TIYI_SLOW_MULTIPLIERS[research_technology_level - 1])
+
+
+func get_research_hoe_physical_defense_bonus() -> int:
+	if character_id != &"hoe_cat" or research_technology_level <= 0:
+		return 0
+	return int(RESEARCH_HOE_DEFENSE_BONUSES[research_technology_level - 1])
+
+
+func set_research_temporary_physical_defense_bonus(bonus: int) -> void:
+	research_temporary_physical_defense_bonus = maxi(bonus, 0)
+	_refresh_collectible_stats(false)
+
+
 func _grant_xirang_unrestricted(amount: int) -> bool:
 	if amount <= 0:
 		return false
@@ -1995,7 +2052,12 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	)
 	max_health = maxi(_base_max_health + max_health_bonus, 1)
 	move_speed = maxf(_base_move_speed + move_speed_bonus, 0.0)
-	physical_defense = maxi(_base_physical_defense + physical_defense_bonus, 0)
+	physical_defense = maxi(
+		_base_physical_defense
+		+ physical_defense_bonus
+		+ research_temporary_physical_defense_bonus,
+		0
+	)
 	magic_defense = clampi(_base_magic_defense + magic_defense_bonus, 0, DEFAULT_MAGIC_DEFENSE_LIMIT)
 	fire_interval = maxf(_base_fire_interval, 0.01)
 	collectible_physical_damage_bonus = physical_damage_bonus

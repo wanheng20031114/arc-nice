@@ -73,6 +73,7 @@ CORN_FLASH_FRAMES = tuple(
 VEGETATION_STAKE_ASSET = TEXTURE_ROOT / "vegetation_stake/vegetation_stake.png"
 VEGETATION_STAKE_GLOW = TEXTURE_ROOT / "vegetation_stake/vegetation_stake_glow.png"
 WATER_COLLECTOR_ASSET = TEXTURE_ROOT / "water_collector/water_collector.png"
+RESEARCH_CENTER_ASSET = TEXTURE_ROOT / "research_center/research_center.png"
 BUILDING_ASSETS = (
     WAREHOUSE_ASSET,
     AGAVE_ICON,
@@ -85,6 +86,7 @@ BUILDING_ASSETS = (
     VEGETATION_STAKE_ASSET,
     VEGETATION_STAKE_GLOW,
     WATER_COLLECTOR_ASSET,
+    RESEARCH_CENTER_ASSET,
 )
 
 

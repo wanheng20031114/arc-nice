@@ -32,6 +32,7 @@ var ground_tile_map: TileMapLayer = null
 var terrain_map: DualGridTilemap = null
 var owner_player: Player = null
 var plant_container: Node2D = null
+var global_physical_defense_bonus := 0
 var placement_area: Rect2i = DEFAULT_PLACEMENT_AREA
 
 var occupied_cells: Dictionary = {}
@@ -307,10 +308,23 @@ func _instantiate_registered_plant(
 		initial_maximum_health,
 		play_placement_effect
 	)
+	plant.set_global_physical_defense_bonus(global_physical_defense_bonus)
 	if plant.is_dead:
 		return null
 	plant_placed.emit(plant)
 	return plant
+
+
+func set_global_physical_defense_bonus(bonus: int) -> void:
+	global_physical_defense_bonus = maxi(bonus, 0)
+	for plant_variant in plant_footprints.keys():
+		var plant := plant_variant as PlantDefense
+		if plant != null and is_instance_valid(plant):
+			plant.set_global_physical_defense_bonus(global_physical_defense_bonus)
+
+
+func get_global_physical_defense_bonus() -> int:
+	return global_physical_defense_bonus
 
 
 func try_place_by_id(plant_id: StringName, top_left_cell: Vector2i) -> PlantDefense:

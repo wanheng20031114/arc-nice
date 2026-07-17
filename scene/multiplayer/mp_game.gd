@@ -18,6 +18,8 @@ const TRANSACTION_RPC_METHODS := {
 	&"net_warehouse_storage_snapshot": true,
 	&"net_production_command_result": true,
 	&"net_production_state_batch": true,
+	&"net_research_command_result": true,
+	&"net_research_state_updated": true,
 	&"net_cheat_xirang_confirmed": true,
 	&"net_debug_collectible_granted": true,
 }
@@ -167,6 +169,9 @@ const PRODUCTION_SNAPSHOT_REQUEST_RATE_PER_SECOND := 2.0
 const PRODUCTION_SNAPSHOT_REQUEST_RATE_BURST := 4.0
 const PRODUCTION_COMMAND_RESULT_CACHE_SIZE := 256
 const PRODUCTION_STATE_BATCH_MAX_BUILDINGS := 24
+const RESEARCH_INTERACTION_MAX_DISTANCE := 48.0
+const RESEARCH_COMMAND_RATE_PER_SECOND := 4.0
+const RESEARCH_COMMAND_RATE_BURST := 6.0
 const TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS := 96
 const TERRAIN_SNAPSHOT_MAX_CHUNKS := 4096
 const TERRAIN_DELTA_MAX_CELLS := 96
@@ -295,6 +300,9 @@ var _production_command_results_by_peer: Dictionary = {}
 var _pending_production_state_updates: Dictionary = {}
 var _pending_remote_production_states: Dictionary = {}
 var _shared_production_state_flush_scheduled := false
+var _research_command_rate_buckets: Dictionary = {}
+var _last_research_request_ids: Dictionary = {}
+var _research_milestone_connected := false
 var _luoxi_offer_states_by_peer: Dictionary = {}
 var _luoxi_offer_revision_counters: Dictionary = {}
 var _pending_enemy_snapshot_batches: Dictionary = {}
@@ -1111,6 +1119,180 @@ func _configure_production_network(plant: PlantDefense, snapshot_ready: bool) ->
 		_pending_remote_production_states.erase(net_id)
 
 
+func _configure_research_network(plant: PlantDefense) -> void:
+	var building := plant as ResearchCenter
+	if building == null or game == null:
+		return
+	var net_id := int(building.get_meta("net_id", building.building_net_id))
+	if net_id <= 0:
+		return
+	building.configure_multiplayer_research(net_id, _get_local_peer_id())
+	var callback := _on_research_command_requested.bind(building)
+	if not building.research_command_requested.is_connected(callback):
+		building.research_command_requested.connect(callback)
+	if (
+		net_manager.is_host()
+		and not _research_milestone_connected
+		and game.research_coordinator != null
+	):
+		game.research_coordinator.research_milestone_changed.connect(
+			_on_authoritative_research_milestone_changed
+		)
+		_research_milestone_connected = true
+
+
+func _on_research_command_requested(
+	command: Dictionary,
+	building: ResearchCenter
+) -> void:
+	if building == null or not is_instance_valid(building):
+		return
+	if net_manager.is_host():
+		_apply_authoritative_research_command(_get_local_peer_id(), command)
+	elif net_manager.is_client():
+		net_research_command_requested.rpc_id(_get_host_peer_id(), command)
+
+
+func _apply_authoritative_research_command(
+	peer_id: int,
+	raw_command: Dictionary
+) -> void:
+	if not net_manager.is_host() or game == null or peer_id <= 0:
+		return
+	var schema_value: Variant = raw_command.get("schema")
+	var request_id_value: Variant = raw_command.get("request_id")
+	var building_net_id_value: Variant = raw_command.get("building_net_id")
+	var declared_peer_id_value: Variant = raw_command.get("peer_id")
+	var operation_value: Variant = raw_command.get("operation")
+	var fields_are_valid := (
+		typeof(schema_value) == TYPE_INT
+		and typeof(request_id_value) == TYPE_INT
+		and typeof(building_net_id_value) == TYPE_INT
+		and typeof(declared_peer_id_value) == TYPE_INT
+		and (
+			typeof(operation_value) == TYPE_STRING
+			or typeof(operation_value) == TYPE_STRING_NAME
+		)
+	)
+	var request_id := int(request_id_value) if fields_are_valid else 0
+	var building_net_id := int(building_net_id_value) if fields_are_valid else 0
+	var operation := StringName(operation_value) if fields_are_valid else &""
+	var result := ResearchCoordinator.RESULT_UNAVAILABLE
+	var peer_request_ids := _last_research_request_ids.get(peer_id, {}) as Dictionary
+	var last_request_id := int(peer_request_ids.get(building_net_id, 0))
+	var player_node := game.get_player_for_peer(peer_id)
+	var building := game.get_multiplayer_plant_node(building_net_id) as ResearchCenter
+	if (
+		not fields_are_valid
+		or int(schema_value) != 1
+		or int(declared_peer_id_value) != peer_id
+		or request_id <= last_request_id
+		or building_net_id <= 0
+		or (operation != &"global" and operation != &"player")
+	):
+		result = ResearchCoordinator.RESULT_UNAVAILABLE
+	elif player_node == null or not is_instance_valid(player_node) or player_node.is_dead:
+		result = ResearchCoordinator.RESULT_UNAVAILABLE
+	elif (
+		building == null
+		or not is_instance_valid(building)
+		or building.is_dead
+		or building.is_removing
+		or not building.is_operational
+		or not _is_authoritative_nearest_research_center(player_node, building)
+	):
+		result = ResearchCoordinator.RESULT_UNAVAILABLE
+	elif not _consume_peer_rate_token(
+		_research_command_rate_buckets,
+		peer_id,
+		RESEARCH_COMMAND_RATE_PER_SECOND,
+		RESEARCH_COMMAND_RATE_BURST
+	):
+		result = ResearchCoordinator.RESULT_UNAVAILABLE
+	else:
+		peer_request_ids[building_net_id] = request_id
+		_last_research_request_ids[peer_id] = peer_request_ids
+		result = (
+			building.try_start_global_research()
+			if operation == &"global"
+			else building.try_purchase_player_technology(player_node)
+		)
+	var success := result == ResearchCoordinator.RESULT_SUCCESS
+	if net_manager.is_peer_send_ready(peer_id):
+		net_research_command_result.rpc_id(
+			peer_id,
+			request_id,
+			building_net_id,
+			success,
+			result
+		)
+
+
+func _is_authoritative_nearest_research_center(
+	player_node: Player,
+	requested_building: ResearchCenter
+) -> bool:
+	if player_node == null or requested_building == null:
+		return false
+	if not requested_building.is_player_within_multiplayer_interaction_distance(
+		player_node,
+		RESEARCH_INTERACTION_MAX_DISTANCE
+	):
+		return false
+	var nearest: ResearchCenter = null
+	var nearest_distance := INF
+	var nearest_net_id := 0
+	var maximum_distance_squared := (
+		RESEARCH_INTERACTION_MAX_DISTANCE * RESEARCH_INTERACTION_MAX_DISTANCE
+	)
+	for plant_snapshot in game.get_multiplayer_plant_snapshots():
+		var net_id := int(plant_snapshot.get("net_id", 0))
+		var candidate := game.get_multiplayer_plant_node(net_id) as ResearchCenter
+		if (
+			candidate == null
+			or not is_instance_valid(candidate)
+			or candidate.is_dead
+			or candidate.is_removing
+			or not candidate.is_operational
+		):
+			continue
+		var distance := player_node.global_position.distance_squared_to(
+			candidate.global_position
+		)
+		if distance > maximum_distance_squared:
+			continue
+		if (
+			distance < nearest_distance
+			or (is_equal_approx(distance, nearest_distance) and net_id < nearest_net_id)
+		):
+			nearest = candidate
+			nearest_distance = distance
+			nearest_net_id = net_id
+	return nearest == requested_building
+
+
+func _on_authoritative_research_milestone_changed(player_key: int) -> void:
+	if (
+		not net_manager.is_host()
+		or game == null
+		or game.research_coordinator == null
+	):
+		return
+	var current_xirang := -1
+	if player_key > 0:
+		var changed_player := game.get_player_for_peer(player_key)
+		if changed_player != null:
+			current_xirang = changed_player.get_xirang()
+	_rpc_to_connected_clients(
+		&"net_research_state_updated",
+		[
+			game.research_coordinator.export_runtime_state(),
+			player_key,
+			current_xirang,
+		]
+	)
+
+
 func _on_production_command_requested(
 	command: Dictionary,
 	building: ProductionBuilding
@@ -1722,6 +1904,7 @@ func _send_live_plant_roster_to_peer(peer_id: int) -> void:
 		var plant := game.get_multiplayer_plant_node(plant_net_id)
 		_configure_warehouse_network(plant, true)
 		_configure_production_network(plant, true)
+		_configure_research_network(plant)
 		var runtime_state := _export_plant_runtime_state(plant)
 		var host_sample_time := _get_net_time()
 		net_plant_spawned.rpc_id(
@@ -1744,6 +1927,13 @@ func _send_live_plant_roster_to_peer(peer_id: int) -> void:
 				plant_net_id,
 				warehouse.export_storage_snapshot()
 			)
+	if game.research_coordinator != null:
+		net_research_state_updated.rpc_id(
+			peer_id,
+			game.research_coordinator.export_runtime_state(),
+			0,
+			-1
+		)
 
 
 func _send_terrain_snapshot_to_peer(peer_id: int) -> void:
@@ -6549,6 +6739,7 @@ func _on_host_plant_spawned(
 	var plant := game.get_multiplayer_plant_node(net_id)
 	_configure_warehouse_network(plant, true)
 	_configure_production_network(plant, true)
+	_configure_research_network(plant)
 	var runtime_state := _export_plant_runtime_state(plant)
 	var host_sample_time := _get_net_time()
 	_rpc_to_connected_clients(
@@ -7209,6 +7400,16 @@ func net_production_command_requested(command: Dictionary) -> void:
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
+func net_research_command_requested(command: Dictionary) -> void:
+	if not net_manager.is_host() or game == null:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
+	_apply_authoritative_research_command(sender_id, command)
+
+
+@rpc("any_peer", "call_remote", "reliable", 6)
 func net_production_snapshot_requested(building_net_id: int) -> void:
 	if not net_manager.is_host() or game == null or building_net_id <= 0:
 		return
@@ -7421,6 +7622,40 @@ func net_warehouse_storage_snapshot(warehouse_net_id: int, snapshot: Dictionary)
 	_apply_warehouse_storage_snapshot(warehouse_net_id, snapshot)
 
 
+@rpc("authority", "call_remote", "reliable", 6)
+func net_research_command_result(
+	request_id: int,
+	building_net_id: int,
+	success: bool,
+	reason: StringName
+) -> void:
+	if game == null or building_net_id <= 0:
+		return
+	var building := game.get_multiplayer_plant_node(building_net_id) as ResearchCenter
+	if building == null or not is_instance_valid(building):
+		return
+	building.complete_multiplayer_research_request(request_id, success, reason)
+
+
+@rpc("authority", "call_remote", "reliable", 6)
+func net_research_state_updated(
+	state: Dictionary,
+	changed_player_peer_id: int,
+	current_xirang: int
+) -> void:
+	if game == null or game.research_coordinator == null or state.is_empty():
+		return
+	game.research_coordinator.apply_multiplayer_runtime_state(state)
+	if changed_player_peer_id <= 0 or current_xirang < 0:
+		return
+	var changed_player := game.get_player_for_peer(changed_player_peer_id)
+	if changed_player == null or not is_instance_valid(changed_player):
+		return
+	var delta := current_xirang - changed_player.current_xirang
+	changed_player.current_xirang = current_xirang
+	changed_player.xirang_changed.emit(current_xirang, delta)
+
+
 func _apply_warehouse_storage_snapshot(
 	warehouse_net_id: int,
 	snapshot: Dictionary
@@ -7622,6 +7857,7 @@ func net_plant_spawned(
 	)
 	var plant := game.get_multiplayer_plant_node(net_id)
 	_configure_production_network(plant, false)
+	_configure_research_network(plant)
 	_apply_plant_runtime_state(plant, runtime_state, host_sample_time)
 	var production_building := plant as ProductionBuilding
 	if (
@@ -9099,6 +9335,8 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_warehouse_snapshot_request_rate_buckets.erase(peer_id)
 	_production_command_rate_buckets.erase(peer_id)
 	_production_snapshot_request_rate_buckets.erase(peer_id)
+	_research_command_rate_buckets.erase(peer_id)
+	_last_research_request_ids.erase(peer_id)
 	_terrain_snapshot_request_rate_buckets.erase(peer_id)
 	_warehouse_transaction_results_by_peer.erase(peer_id)
 	_production_command_results_by_peer.erase(peer_id)
@@ -9182,6 +9420,9 @@ func _return_to_lobby() -> void:
 	_production_command_rate_buckets.clear()
 	_production_snapshot_request_rate_buckets.clear()
 	_production_command_results_by_peer.clear()
+	_research_command_rate_buckets.clear()
+	_last_research_request_ids.clear()
+	_research_milestone_connected = false
 	_warehouse_transaction_started_usec.clear()
 	_last_player_keyframe_time_by_peer.clear()
 	_last_enemy_keyframe_time_by_peer.clear()

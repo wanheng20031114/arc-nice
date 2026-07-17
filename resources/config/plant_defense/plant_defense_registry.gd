@@ -7,6 +7,7 @@ const OAK_WAREHOUSE_ID: StringName = &"oak_warehouse"
 const VEGETATION_STAKE_ID: StringName = &"vegetation_stake"
 const WOOD_PROCESSING_STATION_ID: StringName = &"wood_processing_station"
 const WATER_COLLECTOR_ID: StringName = &"water_collector"
+const RESEARCH_CENTER_ID: StringName = &"research_center"
 
 const AGAVE_CANNON_CONFIG: PlantDefenseConfig = preload(
 	"res://resources/config/plant_defense/agave_cannon.tres"
@@ -26,6 +27,9 @@ const WOOD_PROCESSING_STATION_CONFIG: PlantDefenseConfig = preload(
 const WATER_COLLECTOR_CONFIG: PlantDefenseConfig = preload(
 	"res://resources/config/plant_defense/water_collector.tres"
 )
+const RESEARCH_CENTER_CONFIG: PlantDefenseConfig = preload(
+	"res://resources/config/plant_defense/research_center.tres"
+)
 
 const PLANT_CONFIGS := {
 	AGAVE_CANNON_ID: AGAVE_CANNON_CONFIG,
@@ -34,6 +38,7 @@ const PLANT_CONFIGS := {
 	VEGETATION_STAKE_ID: VEGETATION_STAKE_CONFIG,
 	WOOD_PROCESSING_STATION_ID: WOOD_PROCESSING_STATION_CONFIG,
 	WATER_COLLECTOR_ID: WATER_COLLECTOR_CONFIG,
+	RESEARCH_CENTER_ID: RESEARCH_CENTER_CONFIG,
 }
 
 
@@ -49,6 +54,7 @@ static func get_all_configs() -> Array[PlantDefenseConfig]:
 		VEGETATION_STAKE_CONFIG,
 		WOOD_PROCESSING_STATION_CONFIG,
 		WATER_COLLECTOR_CONFIG,
+		RESEARCH_CENTER_CONFIG,
 	]
 
 

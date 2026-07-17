@@ -330,6 +330,7 @@ func _acquire_next_high_noon_target() -> bool:
 	var target := candidates[0]
 	_high_noon_target_refs.append(weakref(target))
 	_high_noon_locked_instance_ids[target.get_instance_id()] = true
+	_apply_research_lock_slow(target)
 	_refresh_high_noon_lock_lines()
 	_notify_high_noon_targets_changed()
 	return true
@@ -369,6 +370,8 @@ func _prune_high_noon_targets() -> bool:
 			or not target.is_inside_tree()
 			or target.is_dead
 		):
+			if target != null and is_instance_valid(target):
+				target.remove_move_speed_modifier(_get_research_lock_slow_source_id())
 			continue
 		valid_refs.append(target_ref)
 		_high_noon_locked_instance_ids[target.get_instance_id()] = true
@@ -481,6 +484,7 @@ func _cancel_high_noon(notify_scene: bool) -> void:
 
 
 func _clear_high_noon_state() -> void:
+	_remove_research_lock_slow_from_all_targets()
 	_high_noon_active = false
 	_high_noon_authoritative = false
 	_high_noon_activation_id = 0
@@ -495,6 +499,33 @@ func _clear_high_noon_state() -> void:
 	high_noon_cast_effect_sprite.hide()
 	if high_noon_lock_lines != null and is_instance_valid(high_noon_lock_lines):
 		high_noon_lock_lines.clear_targets()
+
+
+func _get_research_lock_slow_source_id() -> int:
+	return maxi(int(get_instance_id()) + 700000, 1)
+
+
+func _apply_research_lock_slow(target: Enemy) -> void:
+	if (
+		target == null
+		or not is_instance_valid(target)
+		or not _high_noon_authoritative
+	):
+		return
+	var multiplier := get_research_tiyi_slow_multiplier()
+	if multiplier < 1.0:
+		target.add_move_speed_modifier(
+			_get_research_lock_slow_source_id(),
+			multiplier
+		)
+
+
+func _remove_research_lock_slow_from_all_targets() -> void:
+	var source_id := _get_research_lock_slow_source_id()
+	for target_ref in _high_noon_target_refs:
+		var target := target_ref.get_ref() as Enemy
+		if target != null and is_instance_valid(target):
+			target.remove_move_speed_modifier(source_id)
 
 
 func _has_high_noon_scene_bridge() -> bool:
