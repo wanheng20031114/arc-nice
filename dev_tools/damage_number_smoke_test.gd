@@ -3,6 +3,7 @@ extends SceneTree
 const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 const ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
+const TIYI_PLAYER_SCRIPT := preload("res://scene/player/tiyi/player_tiyi.gd")
 const AGAVE_CONFIG := preload("res://resources/config/plant_defense/agave_cannon.tres")
 const DAMAGE_NUMBER_POOL_SCRIPT := preload("res://scene/damage_number_pool.gd")
 
@@ -125,6 +126,14 @@ func _run() -> void:
 		)
 		_expect(not magic_snapshot.is_empty(), "Magic damage slot should be inspectable.")
 		_test_magic_damage_number_style(magic_snapshot)
+		var tiyi := TIYI_PLAYER_SCRIPT.new() as PlayerTiyi
+		_expect(tiyi != null, "Tiyi should instantiate for the shared magic-style contract.")
+		if tiyi != null:
+			_expect(
+				tiyi._get_primary_attack_damage_type() == EnemyConfig.DamageType.MAGIC,
+				"Tiyi's primary attack must keep using the shared magic damage type."
+			)
+			tiyi.free()
 	if damage_number_pool != null:
 		await process_frame
 		await _test_player_and_plant_damage_numbers(owner, damage_number_pool)
@@ -181,9 +190,32 @@ func _test_damage_number_style(damage_number_pool: Node2D, snapshot: Dictionary)
 
 func _test_magic_damage_number_style(snapshot: Dictionary) -> void:
 	var font_color := snapshot.get("font_color", Color.TRANSPARENT) as Color
-	_expect(font_color.b > 0.9 and font_color.r > 0.55 and font_color.g < 0.5, "Magic DamageNumber should be purple.")
+	_expect(
+		font_color.is_equal_approx(DamageNumberPool.MAGIC_FONT_COLOR),
+		"Magic DamageNumber must use the exact shared purple used by Tiyi's basic attack."
+	)
 	var outline_color := snapshot.get("outline_color", Color.TRANSPARENT) as Color
-	_expect(outline_color.b > outline_color.r and outline_color.b > outline_color.g, "Magic DamageNumber outline should be dark purple.")
+	_expect(
+		outline_color.is_equal_approx(DamageNumberPool.MAGIC_OUTLINE_COLOR),
+		"Magic DamageNumber must use the exact shared dark-purple outline."
+	)
+
+
+func _find_active_damage_snapshot(
+	damage_number_pool: DamageNumberPool,
+	expected_text: String,
+	damage_type: EnemyConfig.DamageType
+) -> Dictionary:
+	for slot_index in range(damage_number_pool.slot_active.size()):
+		if (
+			damage_number_pool.slot_active[slot_index] != 0
+			and damage_number_pool.slot_number_kinds[slot_index]
+			== DamageNumberPool.CombatNumberKind.DAMAGE
+			and damage_number_pool.slot_texts[slot_index] == expected_text
+			and damage_number_pool.slot_damage_types[slot_index] == damage_type
+		):
+			return damage_number_pool.call("_get_slot_debug_snapshot", slot_index)
+	return {}
 
 
 func _test_healing_number_style(snapshot: Dictionary) -> void:
@@ -237,6 +269,17 @@ func _test_player_and_plant_damage_numbers(
 			and damage_number_pool.has_active_text("13"),
 			"Player feedback must display the actual post-defense health loss."
 		)
+		var player_magic_snapshot := _find_active_damage_snapshot(
+			damage_number_pool,
+			"13",
+			EnemyConfig.DamageType.MAGIC
+		)
+		_expect(
+			not player_magic_snapshot.is_empty(),
+			"Enemy magic damage to a player must retain its magic type in the shared pool."
+		)
+		if not player_magic_snapshot.is_empty():
+			_test_magic_damage_number_style(player_magic_snapshot)
 		var player_count_before_overheal := damage_number_pool.get_active_count()
 		_expect(
 			player._try_heal(999)
@@ -344,6 +387,29 @@ func _test_player_and_plant_damage_numbers(
 		and aggregate_uses_dominant_type,
 		"Same-turn mixed plant hits must create one sum colored by the dominant type."
 	)
+	var plant_magic_count_before := damage_number_pool.get_active_count()
+	_expect(
+		plant.receive_damage(
+			10,
+			null,
+			Vector2.RIGHT,
+			EnemyConfig.DamageType.MAGIC
+		),
+		"An authoritative plant must accept a standalone enemy magic hit."
+	)
+	await process_frame
+	var plant_magic_snapshot := _find_active_damage_snapshot(
+		damage_number_pool,
+		"5",
+		EnemyConfig.DamageType.MAGIC
+	)
+	_expect(
+		damage_number_pool.get_active_count() == plant_magic_count_before + 1
+		and not plant_magic_snapshot.is_empty(),
+		"Enemy magic damage to a building must retain its magic type in the shared pool."
+	)
+	if not plant_magic_snapshot.is_empty():
+		_test_magic_damage_number_style(plant_magic_snapshot)
 	var count_before_mixed_feedback := damage_number_pool.get_active_count()
 	var child_count_before_mixed_feedback := damage_number_pool.get_child_count()
 	_expect(
