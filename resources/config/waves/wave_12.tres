@@ -17,6 +17,7 @@
 [ext_resource type="Resource" uid="uid://uaeho5a1060p" path="res://resources/config/enemies/capoo_rpg.tres" id="15_rpg"]
 [ext_resource type="Resource" uid="uid://c8fsbfbwadt63" path="res://resources/config/enemies/capoo_mage.tres" id="16_mage"]
 [ext_resource type="Resource" uid="uid://cqlpqyrs5d7d2" path="res://resources/config/enemies/capoo_sniper.tres" id="17_sniper"]
+[ext_resource type="Resource" uid="uid://klao2nkyv20m" path="res://resources/config/enemies/stone_golem.tres" id="18_stone_golem"]
 [ext_resource type="AudioStream" uid="uid://c164munr8xpwj" path="res://resources/audio/shenmu_town_combat.ogg" id="18_music"]
 [ext_resource type="AudioStream" uid="uid://d0sjivcq682gn" path="res://resources/audio/shenmu_town_intermission.ogg" id="19_post_music"]
 
@@ -71,7 +72,13 @@ metadata/_custom_type_script = "uid://x110ar7nhdqa"
 [sub_resource type="Resource" id="WaveEnemyEntry_elite_knight"]
 script = ExtResource("2_entry")
 enemy_config = ExtResource("12_elite_knight")
-count = 80
+count = 72
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="WaveEnemyEntry_stone_golem"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("18_stone_golem")
+count = 8
 metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [sub_resource type="Resource" id="WaveEnemyEntry_swordsman"]
@@ -112,7 +119,7 @@ metadata/_custom_type_script = "uid://blcjxtu575ki5"
 [resource]
 script = ExtResource("1_wave")
 wave_name = "第12波"
-enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic"), SubResource("WaveEnemyEntry_fast"), SubResource("WaveEnemyEntry_shell"), SubResource("WaveEnemyEntry_bomber"), SubResource("WaveEnemyEntry_purple"), SubResource("WaveEnemyEntry_guardian"), SubResource("WaveEnemyEntry_ak47"), SubResource("WaveEnemyEntry_knight"), SubResource("WaveEnemyEntry_elite_knight"), SubResource("WaveEnemyEntry_swordsman"), SubResource("WaveEnemyEntry_smg"), SubResource("WaveEnemyEntry_rpg"), SubResource("WaveEnemyEntry_mage"), SubResource("WaveEnemyEntry_sniper")])
+enemy_entries = Array[ExtResource("2_entry")]([SubResource("WaveEnemyEntry_basic"), SubResource("WaveEnemyEntry_fast"), SubResource("WaveEnemyEntry_shell"), SubResource("WaveEnemyEntry_bomber"), SubResource("WaveEnemyEntry_purple"), SubResource("WaveEnemyEntry_guardian"), SubResource("WaveEnemyEntry_ak47"), SubResource("WaveEnemyEntry_knight"), SubResource("WaveEnemyEntry_elite_knight"), SubResource("WaveEnemyEntry_stone_golem"), SubResource("WaveEnemyEntry_swordsman"), SubResource("WaveEnemyEntry_smg"), SubResource("WaveEnemyEntry_rpg"), SubResource("WaveEnemyEntry_mage"), SubResource("WaveEnemyEntry_sniper")])
 spawn_interval = 0.26
 spawn_count_per_tick = 2
 max_alive_enemies = 70

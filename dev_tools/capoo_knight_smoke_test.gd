@@ -16,7 +16,7 @@ const WAVES := [
 	preload("res://resources/config/waves/wave_11.tres"),
 ]
 const EXPECTED_KNIGHT_COUNTS := [60, 50, 0, 20, 20, 10]
-const EXPECTED_ELITE_KNIGHT_COUNTS := [0, 0, 0, 20, 20, 60]
+const EXPECTED_ELITE_KNIGHT_COUNTS := [0, 0, 0, 20, 20, 54]
 const EXPECTED_WAVE_TOTALS := [470, 440, 420, 400, 465, 480]
 const WINDUP_WARNING_ONLY_ARG := "--windup-warning-only"
 var failures: Array[String] = []

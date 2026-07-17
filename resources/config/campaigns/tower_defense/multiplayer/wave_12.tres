@@ -10,6 +10,7 @@
 [ext_resource type="Resource" uid="uid://bwc31dxuxgnhs" path="res://resources/config/enemies/capoo_ak47.tres" id="8_fm4dj"]
 [ext_resource type="Resource" uid="uid://b361vcg4kkw13" path="res://resources/config/enemies/capoo_knight.tres" id="9_lq6eh"]
 [ext_resource type="Resource" uid="uid://vfkjlbk30xa2" path="res://resources/config/enemies/capoo_knight_elite.tres" id="10_74tqp"]
+[ext_resource type="Resource" uid="uid://klao2nkyv20m" path="res://resources/config/enemies/stone_golem.tres" id="stone_golem"]
 [ext_resource type="Resource" uid="uid://57jdvc0bd7r8" path="res://resources/config/enemies/capoo_swordsman.tres" id="11_4uukp"]
 [ext_resource type="Resource" uid="uid://drv4a8xgl4k2c" path="res://resources/config/enemies/capoo_smg.tres" id="12_ce6e8"]
 [ext_resource type="Resource" uid="uid://uaeho5a1060p" path="res://resources/config/enemies/capoo_rpg.tres" id="13_y7q2v"]
@@ -71,7 +72,13 @@ metadata/_custom_type_script = "uid://x110ar7nhdqa"
 [sub_resource type="Resource" id="Resource_egr2g"]
 script = ExtResource("1_eyvc6")
 enemy_config = ExtResource("10_74tqp")
-count = 171
+count = 154
+metadata/_custom_type_script = "uid://x110ar7nhdqa"
+
+[sub_resource type="Resource" id="Resource_stone_golem"]
+script = ExtResource("1_eyvc6")
+enemy_config = ExtResource("stone_golem")
+count = 17
 metadata/_custom_type_script = "uid://x110ar7nhdqa"
 
 [sub_resource type="Resource" id="Resource_p0mrb"]
@@ -107,7 +114,7 @@ metadata/_custom_type_script = "uid://x110ar7nhdqa"
 [resource]
 script = ExtResource("19_cg836")
 wave_name = "第12波"
-enemy_entries = Array[ExtResource("1_eyvc6")]([SubResource("Resource_ngj0o"), SubResource("Resource_vfa32"), SubResource("Resource_i4si1"), SubResource("Resource_wokfe"), SubResource("Resource_v0omt"), SubResource("Resource_geg44"), SubResource("Resource_gsovm"), SubResource("Resource_7uvg4"), SubResource("Resource_egr2g"), SubResource("Resource_p0mrb"), SubResource("Resource_gm6ps"), SubResource("Resource_tqswq"), SubResource("Resource_5o8bi"), SubResource("Resource_78num")])
+enemy_entries = Array[ExtResource("1_eyvc6")]([SubResource("Resource_ngj0o"), SubResource("Resource_vfa32"), SubResource("Resource_i4si1"), SubResource("Resource_wokfe"), SubResource("Resource_v0omt"), SubResource("Resource_geg44"), SubResource("Resource_gsovm"), SubResource("Resource_7uvg4"), SubResource("Resource_egr2g"), SubResource("Resource_stone_golem"), SubResource("Resource_p0mrb"), SubResource("Resource_gm6ps"), SubResource("Resource_tqswq"), SubResource("Resource_5o8bi"), SubResource("Resource_78num")])
 spawn_point_mask = 63
 spawn_interval = 0.1
 spawn_count_per_tick = 4

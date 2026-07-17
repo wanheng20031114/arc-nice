@@ -44,6 +44,7 @@ const TOWER_DEFENSE_STRESS_SPAWN_INTERVAL := 0.1
 const TOWER_DEFENSE_STRESS_SPAWN_COUNT_PER_TICK := 4
 const TOWER_DEFENSE_FOREST_COMBAT_BGM := "res://resources/audio/shenmu_forest_combat.ogg"
 const TOWER_DEFENSE_FOREST_INTERMISSION_BGM := "res://resources/audio/shenmu_forest_intermission.ogg"
+const STONE_GOLEM_CONFIG_PATH := "res://resources/config/enemies/stone_golem.tres"
 const FIRST_WAVE_EXPECTED_COUNTS := {
 	"res://resources/config/enemies/yuanshi_insect_basic.tres": 850,
 	"res://resources/config/enemies/yuanshi_insect_shell.tres": 320,
@@ -147,6 +148,14 @@ func _test_campaign_resources() -> void:
 			)
 			if is_tower_defense:
 				_verify_tower_defense_stress_wave(wave_config, wave_index)
+			elif (
+				definition["campaign_id"] == &"standard_singleplayer"
+				and wave_index == 0
+			):
+				_verify_standard_singleplayer_stone_golem_test_wave(
+					wave_config,
+					source_wave
+				)
 			else:
 				_expect(
 					_wave_content_matches_source(wave_config, source_wave),
@@ -317,6 +326,62 @@ func _verify_tower_defense_stress_wave(
 		actual_counts == FIRST_WAVE_EXPECTED_COUNTS,
 		"First pressure wave must be 850 basic, 320 shell, and 30 AK Capoo."
 	)
+
+
+func _verify_standard_singleplayer_stone_golem_test_wave(
+	wave_config: WaveConfig,
+	source_wave: WaveConfig
+) -> void:
+	_expect(
+		wave_config.enemy_entries.size() == 1
+		and wave_config.get_total_enemy_count() == 1,
+		"Standard singleplayer wave 1 must contain exactly one enemy."
+	)
+	if wave_config.enemy_entries.size() == 1:
+		var entry := wave_config.enemy_entries[0]
+		_expect(
+			entry != null
+			and entry.count == 1
+			and _resource_path(entry.enemy_config) == STONE_GOLEM_CONFIG_PATH,
+			"Standard singleplayer wave 1 must contain only one stone golem."
+		)
+	_expect(
+		wave_config.max_alive_enemies == 1,
+		"Standard singleplayer stone-golem test wave must cap alive enemies at one."
+	)
+	_expect(
+		wave_config.wave_name == "第1波 石头人测试"
+		and wave_config.display_name == "第1波 石头人测试",
+		"Standard singleplayer stone-golem test wave must use its explicit test label."
+	)
+	_expect(
+		source_wave != null
+		and wave_config.step_id == source_wave.step_id
+		and is_equal_approx(wave_config.spawn_interval, source_wave.spawn_interval)
+		and wave_config.spawn_count_per_tick == source_wave.spawn_count_per_tick
+		and is_equal_approx(
+			wave_config.post_clear_rest_duration,
+			source_wave.post_clear_rest_duration
+		)
+		and _resource_path(wave_config.music) == _resource_path(source_wave.music)
+		and _resource_path(wave_config.post_wave_music)
+		== _resource_path(source_wave.post_wave_music)
+		and wave_config.exits.size() == source_wave.exits.size(),
+		"Standard singleplayer stone-golem test wave must preserve its flow and audio."
+	)
+	if source_wave != null and wave_config.exits.size() == source_wave.exits.size():
+		for exit_index in range(wave_config.exits.size()):
+			var campaign_exit := wave_config.exits[exit_index]
+			var source_exit := source_wave.exits[exit_index]
+			_expect(
+				campaign_exit != null
+				and source_exit != null
+				and campaign_exit.exit_name == source_exit.exit_name
+				and campaign_exit.get_target_step_id()
+				== source_exit.get_target_step_id(),
+				"Standard singleplayer stone-golem test wave must preserve its exit."
+			)
+
 
 func _wave_content_matches_source(wave_config: WaveConfig, source_wave: WaveConfig) -> bool:
 	if wave_config == null or source_wave == null:

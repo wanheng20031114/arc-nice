@@ -1,0 +1,52 @@
+[gd_scene format=3 uid="uid://dsy0ic0dhqdil"]
+
+[ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy/enemy.tscn" id="1_base"]
+[ext_resource type="Script" uid="uid://bs1r7mkg2d2gw" path="res://scene/enemy/stone_golem.gd" id="2_script"]
+[ext_resource type="SpriteFrames" uid="uid://bdxw6606tvpsf" path="res://resources/animation/stone_golem.tres" id="3_frames"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+resource_local_to_scene = true
+size = Vector2(20, 20)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_touch"]
+resource_local_to_scene = true
+size = Vector2(20, 20)
+
+[node name="StoneGolem" instance=ExtResource("1_base")]
+script = ExtResource("2_script")
+
+[node name="AnimatedSprite2D" parent="." index="0"]
+position = Vector2(0, -14)
+texture_filter = 1
+scale = Vector2(1, 1)
+sprite_frames = ExtResource("3_frames")
+animation = &"move"
+
+[node name="CollisionShape2D" parent="." index="1"]
+position = Vector2(0, 1)
+shape = SubResource("RectangleShape2D_body")
+
+[node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0"]
+position = Vector2(0, 1)
+shape = SubResource("RectangleShape2D_touch")
+
+[node name="WindupWarning" type="Polygon2D" parent="."]
+visible = false
+z_index = 0
+color = Color(0.78, 0.67, 0.5, 0.08)
+polygon = PackedVector2Array(44, 0, 40.6504, 16.8388, 31.1127, 31.1127, 16.8388, 40.6504, 0, 44, -16.8388, 40.6504, -31.1127, 31.1127, -40.6504, 16.8388, -44, 0, -40.6504, -16.8388, -31.1127, -31.1127, -16.8388, -40.6504, 0, -44, 16.8388, -40.6504, 31.1127, -31.1127, 40.6504, -16.8388)
+
+[node name="SlamImpactRing" type="Line2D" parent="."]
+visible = false
+z_index = 0
+points = PackedVector2Array(44, 0, 40.6504, 16.8388, 31.1127, 31.1127, 16.8388, 40.6504, 0, 44, -16.8388, 40.6504, -31.1127, 31.1127, -40.6504, 16.8388, -44, 0, -40.6504, -16.8388, -31.1127, -31.1127, -16.8388, -40.6504, 0, -44, 16.8388, -40.6504, 31.1127, -31.1127, 40.6504, -16.8388)
+width = 2.0
+default_color = Color(0.84, 0.76, 0.62, 0.82)
+closed = true
+antialiased = false
+
+[node name="AttackAudio" type="AudioStreamPlayer2D" parent="."]
+bus = &"SFX"
+volume_db = -14.0
+max_distance = 176.0
+max_polyphony = 2

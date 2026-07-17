@@ -23,6 +23,7 @@ const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 const CAPOO_MAGE_FIREBALL_SCRIPT := preload(
 	"res://scene/enemy/capoo_mage_fireball.gd"
 )
+const STONE_GOLEM_SCRIPT := preload("res://scene/enemy/stone_golem.gd")
 const CORN_CONFIG := preload(
 	"res://resources/config/plant_defense/corn_machine_gun.tres"
 )
@@ -883,6 +884,10 @@ func _measure_sample_window(
 ) -> Dictionary:
 	Enemy.reset_performance_metrics()
 	Enemy.performance_metrics_enabled = requested_enemy_hot_metrics
+	STONE_GOLEM_SCRIPT.reset_slam_performance_metrics()
+	STONE_GOLEM_SCRIPT.slam_performance_metrics_enabled = (
+		requested_enemy_hot_metrics
+	)
 	CapooAK47Bullet.reset_performance_metrics()
 	CapooAK47Bullet.performance_metrics_enabled = requested_projectile_hot_metrics
 	ENEMY_ATTACK_AUDIO_LIMITER.reset_metrics()
@@ -1040,6 +1045,10 @@ func _measure_sample_window(
 
 	Enemy.performance_metrics_enabled = false
 	var enemy_metrics := Enemy.get_performance_metrics(true)
+	STONE_GOLEM_SCRIPT.slam_performance_metrics_enabled = false
+	var stone_golem_slam_metrics: Dictionary = (
+		STONE_GOLEM_SCRIPT.get_slam_performance_metrics(true)
+	)
 	CapooAK47Bullet.performance_metrics_enabled = false
 	var projectile_metrics := CapooAK47Bullet.get_performance_metrics(true)
 	var guardian_aura_metrics := {}
@@ -1175,6 +1184,7 @@ func _measure_sample_window(
 		"boss_peak_counters": boss_peak_counters,
 		"boss_runtime_state": _get_boss_runtime_state(),
 		"enemy_hot_segments": _format_enemy_hot_segments(enemy_metrics),
+		"stone_golem_slam": stone_golem_slam_metrics,
 		"projectile_hot_segments": projectile_metrics,
 		"guardian_aura": guardian_aura_metrics,
 		"pool_before": pool_before,
@@ -1606,6 +1616,7 @@ func _phase_name() -> String:
 func _finish() -> void:
 	_release_movement_input()
 	Enemy.performance_metrics_enabled = false
+	STONE_GOLEM_SCRIPT.slam_performance_metrics_enabled = false
 	CapooAK47Bullet.performance_metrics_enabled = false
 	Enemy.navigation_render_frame_dedupe_enabled = original_navigation_render_dedupe
 	Enemy.navigation_process_frame_budget_enabled = original_navigation_refresh_budget
