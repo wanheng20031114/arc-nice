@@ -39,12 +39,14 @@ var building: ProductionBuilding = null
 var tracked_player: Player = null
 var bound_coordinator: ProductionCoordinator = null
 var transient_status := ""
+var _last_visual_remaining_seconds := -1
 
 
 func _ready() -> void:
 	overlay.hide()
 	material_list.hide()
 	set_process_input(false)
+	set_process(false)
 	input_slot.pressed.connect(_on_input_slot_pressed)
 	toggle_button.pressed.connect(_on_toggle_pressed)
 	close_button.pressed.connect(close)
@@ -89,6 +91,7 @@ func open() -> void:
 	show()
 	overlay.show()
 	set_process_input(true)
+	set_process(true)
 	tracked_player.set_controls_locked(true)
 	material_list.hide()
 	_refresh_all()
@@ -106,6 +109,7 @@ func close() -> void:
 	material_list.hide()
 	hide()
 	set_process_input(false)
+	set_process(false)
 	transient_status_timer.stop()
 	transient_status = ""
 	_unbind_building()
@@ -135,9 +139,20 @@ func is_bound_to_building(candidate: ProductionBuilding) -> bool:
 func _input(event: InputEvent) -> void:
 	if not overlay.visible:
 		return
-	if event.is_action_pressed(&"ui_cancel"):
+	if PlantDefense.is_building_modal_close_event(event):
 		get_viewport().set_input_as_handled()
 		close()
+
+
+func _process(_delta: float) -> void:
+	if (
+		not overlay.visible
+		or building == null
+		or not is_instance_valid(building)
+	):
+		set_process(false)
+		return
+	_refresh_visual_progress()
 
 
 func _refresh_all() -> void:
@@ -169,8 +184,8 @@ func _refresh_all() -> void:
 				display_recipe.output_amounts[output_index]
 			)
 
-	progress_bar.value = building.get_progress_ratio() * 100.0
-	_refresh_progress_text()
+	_last_visual_remaining_seconds = -1
+	_refresh_visual_progress()
 	_refresh_recipe_rows()
 	_refresh_material_rows()
 	_refresh_status()
@@ -184,11 +199,22 @@ func _refresh_progress_text() -> void:
 	if not building.production_enabled:
 		progress_label.text = "已暂停 · 本轮进度已清空"
 		return
-	var remaining := ceili(building.get_remaining_seconds())
+	var remaining := ceili(building.get_visual_remaining_seconds())
 	if remaining <= 0:
 		progress_label.text = "剩余 0 秒 · 等待仓库结算"
 	else:
 		progress_label.text = "剩余 %d 秒" % remaining
+
+
+func _refresh_visual_progress() -> void:
+	if building == null or not is_instance_valid(building):
+		return
+	progress_bar.value = building.get_visual_progress_ratio() * 100.0
+	var remaining := ceili(building.get_visual_remaining_seconds())
+	if remaining == _last_visual_remaining_seconds:
+		return
+	_last_visual_remaining_seconds = remaining
+	_refresh_progress_text()
 
 
 func _refresh_recipe_rows() -> void:

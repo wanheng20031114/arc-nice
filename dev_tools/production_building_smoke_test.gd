@@ -26,15 +26,23 @@ func _run() -> void:
 	var warehouse := WAREHOUSE_SCENE.instantiate() as OakWarehouse
 	var config := PlantDefenseRegistry.get_config(&"wood_processing_station")
 	var station := config.plant_scene.instantiate() as ProductionBuilding if config != null else null
+	var second_station := (
+		config.plant_scene.instantiate() as ProductionBuilding
+		if config != null
+		else null
+	)
 	var panel := PANEL_SCENE.instantiate() as ProductionBuildingPanel
 	var player := PLAYER_SCENE.instantiate() as Player
 	test_root.add_child(coordinator)
 	test_root.add_child(warehouse)
 	if station != null:
 		test_root.add_child(station)
+	if second_station != null:
+		test_root.add_child(second_station)
 	test_root.add_child(panel)
 	test_root.add_child(player)
 	await process_frame
+	coordinator.production_tick_timer.stop()
 
 	_expect(config != null and config.is_valid(), "木头加工站配置必须有效。")
 	_expect(
@@ -53,8 +61,12 @@ func _run() -> void:
 	var warehouse_config := PlantDefenseRegistry.get_config(&"oak_warehouse")
 	warehouse.setup(warehouse_config, null, [Vector2i.ZERO])
 	station.setup(config, null, [Vector2i.ONE])
+	if second_station != null:
+		second_station.setup(config, null, [Vector2i(2, 0)])
 	coordinator.register_plant(warehouse)
 	coordinator.register_plant(station)
+	if second_station != null:
+		coordinator.register_plant(second_station)
 	station.set_shared_production_panel(panel)
 
 	_expect(
@@ -62,6 +74,45 @@ func _run() -> void:
 		and station.find_children("*", "Timer", true, false).is_empty(),
 		"全场生产必须只有协调器的共享Timer，加工站实例不得自带生产Timer。"
 	)
+	var health_bar := station.get_node("HealthBar") as PlantHealthBar
+	_expect(
+		health_bar != null
+		and health_bar.size == Vector2(12, 3)
+		and health_bar.position == Vector2(-6, -13)
+		and health_bar.scale == Vector2.ONE,
+		"木头加工站必须使用与植被桩一致的12×3原生像素血条，不得比例缩放。"
+	)
+	var production_border := station.get_node("ProductionBorder") as MeshInstance2D
+	var border_mesh := production_border.mesh as QuadMesh if production_border != null else null
+	var border_material := production_border.material as ShaderMaterial if production_border != null else null
+	_expect(
+		production_border != null
+		and border_mesh != null
+		and border_mesh.size == Vector2(16, 16)
+		and border_material != null
+		and border_material.shader.resource_path
+		== "res://resources/shader/wood_processing_station_border.gdshader",
+		"木头加工站必须拥有16×16独立棕色噪波像素外圈。"
+	)
+	if production_border != null:
+		_expect(
+			not bool(production_border.get_instance_shader_parameter(&"working_active")),
+			"未选择配方时加工站外圈必须保持棕色非工作模式。"
+		)
+	var second_production_border := (
+		second_station.get_node("ProductionBorder") as MeshInstance2D
+		if second_station != null
+		else null
+	)
+	if production_border != null and second_production_border != null:
+		_expect(
+			production_border.material == second_production_border.material
+			and not is_equal_approx(
+				float(production_border.get_instance_shader_parameter(&"noise_seed")),
+				float(second_production_border.get_instance_shader_parameter(&"noise_seed"))
+			),
+			"同类加工站必须共享材质但使用独立噪波相位，避免复制材质或同步闪烁。"
+		)
 	_expect(not panel.visible and not panel.is_open(), "常驻生产面板必须默认隐藏。")
 	_expect(
 		panel.has_node("Overlay/PanelRoot/InputSlot")
@@ -93,6 +144,31 @@ func _run() -> void:
 	)
 	panel.close()
 	_expect(not panel.is_open() and not player.controls_locked, "关闭生产面板必须恢复玩家控制。")
+	station.nearby_player = player
+	station.call("_set_interaction_target", true)
+	var interact_event := InputEventKey.new()
+	interact_event.physical_keycode = KEY_F
+	interact_event.pressed = true
+	_expect(interact_event.is_action_pressed(&"interact"), "键盘F必须映射到建筑interact动作。")
+	station._unhandled_input(interact_event)
+	_expect(panel.is_open() and player.controls_locked, "第一次按F必须打开木头加工站并锁定玩家。")
+	panel._input(interact_event)
+	_expect(
+		not panel.is_open() and not player.controls_locked,
+		"木头加工站打开后第二次按F必须关闭并解除玩家锁定。"
+	)
+	station.call("_set_interaction_target", true)
+	station._unhandled_input(interact_event)
+	_expect(panel.is_open(), "同一建筑UI关闭后必须能再次按F打开。")
+	var joypad_y := InputEventJoypadButton.new()
+	joypad_y.button_index = JOY_BUTTON_Y
+	joypad_y.pressed = true
+	_expect(joypad_y.is_action_pressed(&"interact"), "手柄Y必须复用建筑UI开关动作。")
+	panel._input(joypad_y)
+	_expect(
+		not panel.is_open() and not player.controls_locked,
+		"所有建筑面板必须通过统一关闭规则支持第二次交互键关闭。"
+	)
 	_expect(
 		station.recipes.size() == 1
 		and station.recipes[0].input_item == WOOD
@@ -103,9 +179,68 @@ func _run() -> void:
 		"木材锯切配方必须为1木头、10秒、产出2木板。"
 	)
 
+	station.set_production_enabled(false)
+	station.set_production_enabled(true)
 	_expect(warehouse.try_add_storage_item_count(WOOD, 1), "仓库必须能加入测试木头。")
 	_expect(station.select_recipe(&"wood_to_plank"), "玩家必须能选择木材锯切配方。")
+	if production_border != null:
+		_expect(
+			bool(production_border.get_instance_shader_parameter(&"working_active"))
+			and is_zero_approx(
+				float(production_border.get_instance_shader_parameter(&"progress_value"))
+			),
+			"开始生产时外圈必须从顶部起按一秒一个逻辑步长顺时针平滑推进。"
+		)
+	if second_production_border != null:
+		_expect(
+			not bool(
+				second_production_border.get_instance_shader_parameter(&"working_active")
+			),
+			"一个加工站开始生产时不得串改另一个实例的边框状态。"
+		)
+	await create_timer(0.05).timeout
+	_expect(
+		is_zero_approx(station.get_progress_ratio())
+		and station.get_visual_progress_ratio() > 0.0
+		and station.get_visual_progress_ratio() < 0.1,
+		"生产权威值必须仍按秒推进，而显示值必须在两个逻辑刻度之间连续插值。"
+	)
+	if production_border != null:
+		var first_segment_progress := float(
+			production_border.get_instance_shader_parameter(&"progress_value")
+		)
+		_expect(
+			first_segment_progress > 0.0 and first_segment_progress < 0.1,
+			(
+				"加工站shader实例进度必须跨渲染帧连续推进，"
+				+ "不能混用脚本与渲染时钟后瞬间跳到目标，实际为%.4f。"
+				% first_segment_progress
+			)
+		)
 	station.advance_shared_production_tick(9.0)
+	if production_border != null:
+		var final_segment_start := float(
+			production_border.get_instance_shader_parameter(&"progress_value")
+		)
+		_expect(
+			is_equal_approx(final_segment_start, 0.9),
+			(
+				"最后一个逻辑秒必须从90%开始，不能提前跳满一整圈，"
+				+ "实际为%.4f。" % final_segment_start
+			)
+		)
+	await create_timer(0.05).timeout
+	if production_border != null:
+		var final_segment_progress := float(
+			production_border.get_instance_shader_parameter(&"progress_value")
+		)
+		_expect(
+			final_segment_progress > 0.9 and final_segment_progress < 1.0,
+			(
+				"最后一个逻辑秒必须跨渲染帧从90%连续走满，"
+				+ "实际为%.4f。" % final_segment_progress
+			)
+		)
 	_expect(
 		coordinator.get_total_item_count(WOOD) == 1
 		and coordinator.get_total_item_count(PLANK) == 0,
@@ -118,6 +253,13 @@ func _run() -> void:
 		and is_zero_approx(station.progress_elapsed_seconds),
 		"第10秒必须在同一事务中扣1木头并向仓库加入2木板。"
 	)
+	if production_border != null:
+		_expect(
+			is_zero_approx(
+				float(production_border.get_instance_shader_parameter(&"progress_value"))
+			),
+			"一轮完成后环形进度必须从零开始平滑显示下一轮，不能改变权威生产事务。"
+		)
 
 	station.advance_shared_production_tick(10.0)
 	_expect(
@@ -144,6 +286,11 @@ func _run() -> void:
 		and coordinator.get_total_item_count(SAPLING) == 1,
 		"关闭生产必须清空半轮进度，且木头和无效树苗都继续留在仓库。"
 	)
+	if production_border != null:
+		_expect(
+			not bool(production_border.get_instance_shader_parameter(&"working_active")),
+			"暂停生产后像素外圈必须立即回到棕色噪波常态。"
+		)
 	for slot_index in OakWarehouse.STORAGE_CAPACITY:
 		if warehouse.get_storage_item(slot_index) == WOOD:
 			warehouse.discard_storage_item(slot_index)

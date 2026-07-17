@@ -281,12 +281,7 @@ func _input(event: InputEvent) -> void:
 	):
 		get_viewport().set_input_as_handled()
 		return
-	if (
-		event.is_action_pressed(&"quit")
-		or event.is_action_pressed(&"ui_cancel")
-		or event.is_action_pressed(&"bag")
-		or event.is_action_pressed(&"interact")
-	):
+	if PlantDefense.is_building_modal_close_event(event):
 		close()
 		get_viewport().set_input_as_handled()
 

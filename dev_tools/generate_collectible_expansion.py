@@ -243,7 +243,7 @@ CONFIG_FIELD_ORDER = [
 ]
 
 EXISTING_RARITIES = {
-    "collectible_apple.tres": RARE,
+    "collectible_apple.tres": EPIC,
     "collectible_ruby.tres": COMMON,
     "collectible_emerald.tres": COMMON,
     "collectible_topaz.tres": COMMON,

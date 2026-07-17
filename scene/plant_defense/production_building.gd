@@ -6,6 +6,7 @@ signal production_state_changed
 const RUNTIME_STATE_SCHEMA := 1
 const INTERACTION_GROUP := PlantDefense.BUILDING_INTERACTION_GROUP
 const INTERACTION_SELECTION_REFRESH_SECONDS := 0.08
+const VISUAL_PROJECTION_WINDOW_SECONDS := 1.0
 
 @export_group("生产配置")
 @export var recipes: Array[ProductionRecipe] = []
@@ -27,6 +28,9 @@ var production_revision := 0
 var interaction_selection_refresh_left := 0.0
 var prompt_rest_position := Vector2.ZERO
 var prompt_tween: Tween = null
+var _visual_progress_elapsed_at_sync := 0.0
+var _visual_progress_sync_msec: int = 0
+var _visual_projection_duration_seconds := VISUAL_PROJECTION_WINDOW_SECONDS
 
 
 func _ready() -> void:
@@ -74,12 +78,14 @@ func _on_setup_completed() -> void:
 	production_enabled = true
 	active_recipe_id = &""
 	production_revision = 0
+	_sync_visual_progress_clock()
 	health_bar.setup(max_health, current_health)
 	if not health_changed.is_connected(_on_health_changed):
 		health_changed.connect(_on_health_changed)
 
 
 func _on_operational_started() -> void:
+	_sync_visual_progress_clock()
 	interaction_area.set_deferred("monitoring", true)
 
 
@@ -228,6 +234,63 @@ func get_progress_ratio() -> float:
 	return clampf(progress_elapsed_seconds / recipe.duration_seconds, 0.0, 1.0)
 
 
+## Smooth display state projected only until the next shared one-second logic
+## tick. It cannot advance authoritative production, consume items or emit
+## network state, so a stalled tick never grants progress.
+func get_visual_progress_elapsed_seconds() -> float:
+	var recipe := get_active_recipe()
+	if recipe == null or not recipe.is_valid():
+		return 0.0
+	var visual_elapsed := clampf(
+		_visual_progress_elapsed_at_sync,
+		0.0,
+		recipe.duration_seconds
+	)
+	if _should_project_visual_progress(recipe):
+		var elapsed_since_sync := maxf(
+			float(Time.get_ticks_msec() - _visual_progress_sync_msec) / 1000.0,
+			0.0
+		)
+		var projection_fraction := clampf(
+			elapsed_since_sync / maxf(_visual_projection_duration_seconds, 0.001),
+			0.0,
+			1.0
+		)
+		visual_elapsed += minf(
+			VISUAL_PROJECTION_WINDOW_SECONDS,
+			maxf(
+				recipe.duration_seconds - visual_elapsed,
+				0.0
+			)
+		) * projection_fraction
+	return clampf(visual_elapsed, 0.0, recipe.duration_seconds)
+
+
+func get_visual_progress_ratio() -> float:
+	var recipe := get_active_recipe()
+	if recipe == null or not recipe.is_valid():
+		return 0.0
+	return clampf(
+		get_visual_progress_elapsed_seconds() / recipe.duration_seconds,
+		0.0,
+		1.0
+	)
+
+
+func get_visual_remaining_seconds() -> float:
+	var recipe := get_active_recipe()
+	if recipe == null:
+		return 0.0
+	return maxf(
+		recipe.duration_seconds - get_visual_progress_elapsed_seconds(),
+		0.0
+	)
+
+
+func get_visual_projection_duration_seconds() -> float:
+	return _visual_projection_duration_seconds
+
+
 func get_remaining_seconds() -> float:
 	var recipe := get_active_recipe()
 	if recipe == null:
@@ -265,6 +328,7 @@ func apply_multiplayer_runtime_state(state: Dictionary, _mapped_sample_time: flo
 		recipe.duration_seconds if recipe != null else 0.0
 	)
 	completion_wait_reason = StringName(state.get("wait_reason", ""))
+	_sync_visual_progress_clock()
 	production_state_changed.emit()
 
 
@@ -296,7 +360,36 @@ func _has_bound_production_panel() -> bool:
 
 func _bump_production_state() -> void:
 	production_revision += 1
+	_sync_visual_progress_clock()
 	production_state_changed.emit()
+
+
+func _sync_visual_progress_clock() -> void:
+	var recipe := get_active_recipe()
+	var maximum_elapsed := recipe.duration_seconds if recipe != null else 0.0
+	_visual_progress_elapsed_at_sync = clampf(
+		progress_elapsed_seconds,
+		0.0,
+		maximum_elapsed
+	)
+	_visual_progress_sync_msec = Time.get_ticks_msec()
+	_visual_projection_duration_seconds = (
+		production_coordinator.get_seconds_until_next_tick()
+		if production_coordinator != null
+		else VISUAL_PROJECTION_WINDOW_SECONDS
+	)
+
+
+func _should_project_visual_progress(recipe: ProductionRecipe) -> bool:
+	return (
+		recipe != null
+		and is_operational
+		and not is_dead
+		and not is_removing
+		and production_enabled
+		and completion_wait_reason == &""
+		and _visual_progress_elapsed_at_sync + 0.0001 < recipe.duration_seconds
+	)
 
 
 func _on_interaction_area_body_entered(body: Node2D) -> void:

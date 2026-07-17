@@ -506,8 +506,11 @@ func _test_multiplayer_lifecycle_effect_routing(game: GameTowerDefense) -> void:
 	_expect(
 		roster_plant != null
 		and roster_plant.is_operational
-		and not roster_plant.is_construction_visual_active(),
-		"迟加入roster与修复包的request_id=0必须直接显示完整建筑。"
+		and not roster_plant.is_construction_visual_active()
+		and game.get_tree().get_nodes_in_group(
+			PlantPlacementParticles.PLACEMENT_AUDIO_GROUP
+		).is_empty(),
+		"迟加入roster与修复包的request_id=0必须直接显示完整建筑且保持静音。"
 	)
 	game.apply_remote_plant_removed_silently(ROSTER_PLANT_NET_ID)
 	_expect(
@@ -538,14 +541,20 @@ func _test_multiplayer_lifecycle_effect_routing(game: GameTowerDefense) -> void:
 		and realtime_plant.is_construction_visual_active()
 		and int(game.session_object_pool.get_metrics(
 			"res://scene/plant_defense/effects/plant_placement_particles.tscn"
-		).get("in_use", 0)) == 1,
-		"实时客户端request_id>0必须播放0.7秒生成效果。"
+		).get("in_use", 0)) == 1
+		and game.get_tree().get_nodes_in_group(
+			PlantPlacementParticles.PLACEMENT_AUDIO_GROUP
+		).size() == 1,
+		"实时客户端request_id>0必须播放0.7秒生成效果与一次空间放置声。"
 	)
 	if realtime_plant == null:
 		game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
 		return
 
-	await create_timer(0.18).timeout
+	# Keep ample distance from the 0.305 s cue's natural finish so a slow
+	# headless frame cannot turn the duplicate-spawn assertion into a timing
+	# false negative.
+	await create_timer(0.08).timeout
 	var main_sprite := realtime_plant.get_node("MainSprite") as Sprite2D
 	var progress_before_duplicate := float(
 		main_sprite.get_instance_shader_parameter(&"construction_progress")
@@ -565,8 +574,11 @@ func _test_multiplayer_lifecycle_effect_routing(game: GameTowerDefense) -> void:
 		and is_equal_approx(
 			float(main_sprite.get_instance_shader_parameter(&"construction_progress")),
 			progress_before_duplicate
-		),
-		"重复spawn必须复用现有副本且不能重启生成效果。"
+		)
+		and game.get_tree().get_nodes_in_group(
+			PlantPlacementParticles.PLACEMENT_AUDIO_GROUP
+		).size() == 1,
+		"重复spawn必须复用现有副本，且不能重启生成视觉或放置声。"
 	)
 
 	var enemy := ENEMY_CONFIG.enemy_scene.instantiate() as Enemy
@@ -613,8 +625,11 @@ func _test_multiplayer_lifecycle_effect_routing(game: GameTowerDefense) -> void:
 		int(placement_metrics.get("in_use", -1)) == 0
 		and int(placement_metrics.get("pending_release", -1)) == 0
 		and int(smoke_metrics.get("in_use", -1)) == 0
-		and int(smoke_metrics.get("pending_release", -1)) == 0,
-		"实时生成后提前撤除时，两套生命周期粒子租约最终都必须归还对象池。"
+		and int(smoke_metrics.get("pending_release", -1)) == 0
+		and game.get_tree().get_nodes_in_group(
+			PlantPlacementParticles.PLACEMENT_AUDIO_GROUP
+		).is_empty(),
+		"实时生成后提前撤除时，两套粒子租约与放置声部最终都必须完整释放。"
 	)
 	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
 

@@ -27,6 +27,21 @@ func set_authoritative_processing_enabled(enabled: bool) -> void:
 	_refresh_timer_state()
 
 
+func get_seconds_until_next_tick() -> float:
+	if (
+		not is_node_ready()
+		or production_tick_timer == null
+		or production_tick_timer.is_stopped()
+		or production_tick_timer.time_left <= 0.001
+	):
+		return TICK_INTERVAL_SECONDS
+	return clampf(
+		production_tick_timer.time_left,
+		0.001,
+		TICK_INTERVAL_SECONDS
+	)
+
+
 func register_plant(plant: PlantDefense) -> void:
 	var production_building := plant as ProductionBuilding
 	if production_building != null:

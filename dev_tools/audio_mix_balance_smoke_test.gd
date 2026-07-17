@@ -8,6 +8,9 @@ const YUANSHI_PURPLE_BOMBER_SCENE := preload("res://scene/enemy/yuanshi_insect_p
 const YUANSHI_FIRE_RANGED_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_ranged.tscn")
 const RPG_EXPLOSION_SCENE := preload("res://scene/enemy/capoo_rpg_explosion.tscn")
 const SKILL1_EXPLOSION_SCENE := preload("res://scene/player/weishidaier/weishidaier_skill1_explosion.tscn")
+const PLANT_PLACEMENT_SCENE := preload(
+	"res://scene/plant_defense/effects/plant_placement_particles.tscn"
+)
 const MERCHANT_BUBBLE_SCENE := preload("res://scene/merchant_dialogue_bubble.tscn")
 const MULTIPLAYER_LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const UPGRADE_ROW_SCENE := preload("res://scene/upgrade_row.tscn")
@@ -37,6 +40,7 @@ func _run() -> void:
 	await _test_game_mix()
 	await _test_player_mix()
 	await _test_enemy_mix()
+	await _test_plant_placement_mix()
 	await _test_combat_audio_limiter()
 	await _test_limited_audio_replay_lifecycle()
 	await _test_spatial_audio_priority()
@@ -114,6 +118,62 @@ func _test_enemy_mix() -> void:
 	await _expect_scene_audio_volume(RPG_EXPLOSION_SCENE, "ExplosionAudio", -9.0, "RPG explosion mix mismatch.")
 	await _expect_scene_audio_volume(SKILL1_EXPLOSION_SCENE, "ExplosionAudio", -9.0, "Skill1 explosion mix mismatch.")
 	await _expect_scene_audio_volume(YUANSHI_FIRE_RANGED_SCENE, "AttackAudio", -10.0, "Yuanshi fire attack cue mix mismatch.")
+
+
+func _test_plant_placement_mix() -> void:
+	var effect := PLANT_PLACEMENT_SCENE.instantiate() as PlantPlacementParticles
+	_expect(effect != null, "Plant placement effect must instantiate for audio mix test.")
+	if effect == null:
+		return
+	root.add_child(effect)
+	await process_frame
+	var audio := effect.get_node_or_null("PlacementAudio") as AudioStreamPlayer2D
+	_expect_volume(
+		effect,
+		"PlacementAudio",
+		-8.0,
+		"Plant placement must sit near the existing explosion mix without overpowering it."
+	)
+	_expect(
+		audio != null
+		and audio.bus == &"SFX"
+		and is_equal_approx(audio.max_distance, 300.0)
+		and audio.max_polyphony == 1,
+		"Plant placement must remain a restrained one-voice spatial SFX."
+	)
+
+	var placement_effects: Array[PlantPlacementParticles] = [effect]
+	for _index in range(PlantPlacementParticles.MAX_SIMULTANEOUS_PLACEMENT_VOICES):
+		var stacked_effect := PLANT_PLACEMENT_SCENE.instantiate() as PlantPlacementParticles
+		root.add_child(stacked_effect)
+		placement_effects.append(stacked_effect)
+	await process_frame
+	for stacked_effect in placement_effects:
+		stacked_effect.call("_play_placement_audio")
+	var active_placement_voices := get_nodes_in_group(
+		PlantPlacementParticles.PLACEMENT_AUDIO_GROUP
+	)
+	_expect(
+		active_placement_voices.size()
+		== PlantPlacementParticles.MAX_SIMULTANEOUS_PLACEMENT_VOICES
+		and placement_effects[0].placement_audio.playing
+		and placement_effects[1].placement_audio.playing
+		and placement_effects[2].placement_audio.playing
+		and placement_effects[3].placement_audio.playing
+		and not placement_effects[4].placement_audio.playing,
+		"Five simultaneous placements must retain exactly four logical audio voices."
+	)
+	_expect(
+		_float_close(placement_effects[0].placement_audio.volume_db, -8.0)
+		and _float_close(placement_effects[1].placement_audio.volume_db, -10.5)
+		and _float_close(placement_effects[2].placement_audio.volume_db, -13.0)
+		and _float_close(placement_effects[3].placement_audio.volume_db, -15.5),
+		"Stacked placement voices must use the configured 2.5 dB attenuation ladder."
+	)
+	for stacked_effect in placement_effects:
+		_stop_audio_players(stacked_effect)
+		stacked_effect.queue_free()
+	await _drain_cleanup_frames()
 
 
 func _test_combat_audio_limiter() -> void:

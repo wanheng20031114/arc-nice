@@ -1,20 +1,31 @@
 extends GPUParticles2D
 class_name PlantPlacementParticles
 
+const SPATIAL_AUDIO_VOICE_LIMITER := preload(
+	"res://scene/spatial_audio_voice_limiter.gd"
+)
 const FULL_EMISSION_DURATION := 0.7
 const EMISSION_FADE_DURATION := 0.9
 const PARTICLE_TAIL_DURATION := 0.6
 const REMOVAL_STARTED_SIGNAL: StringName = &"removal_started"
+const PLACEMENT_AUDIO_GROUP := &"limited_plant_placement_audio_players"
+const MAX_SIMULTANEOUS_PLACEMENT_VOICES := 4
+const PLACEMENT_STACK_ATTENUATION_DB := 2.5
+const MAX_PLACEMENT_STACK_ATTENUATION_DB := 7.5
+
+@onready var placement_audio: AudioStreamPlayer2D = $PlacementAudio
 
 var _effect_tween: Tween = null
 var _source: PlantDefense = null
 var _effect_active := false
+var _placement_audio_base_volume_db := 0.0
 
 
 func _ready() -> void:
 	one_shot = false
 	emitting = false
 	amount_ratio = 0.0
+	_placement_audio_base_volume_db = placement_audio.volume_db
 
 
 func _exit_tree() -> void:
@@ -48,6 +59,7 @@ func restart_effect(source: PlantDefense, effect_scale: float) -> void:
 	amount_ratio = 1.0
 	restart()
 	emitting = true
+	_play_placement_audio()
 
 	_effect_tween = create_tween()
 	_effect_tween.tween_interval(FULL_EMISSION_DURATION)
@@ -102,10 +114,50 @@ func _stop_emitting() -> void:
 func _reset_effect_state() -> void:
 	_kill_effect_tween()
 	_disconnect_source_removal()
+	_stop_placement_audio()
 	_effect_active = false
 	emitting = false
 	amount_ratio = 0.0
 	scale = Vector2.ONE
+
+
+func _play_placement_audio() -> void:
+	_stop_placement_audio()
+	var active_voice_count := SPATIAL_AUDIO_VOICE_LIMITER.claim_voice(
+		placement_audio,
+		PLACEMENT_AUDIO_GROUP,
+		MAX_SIMULTANEOUS_PLACEMENT_VOICES
+	)
+	if active_voice_count == SPATIAL_AUDIO_VOICE_LIMITER.REJECTED_ACTIVE_COUNT:
+		return
+	placement_audio.add_to_group(PLACEMENT_AUDIO_GROUP)
+	placement_audio.volume_db = (
+		_placement_audio_base_volume_db
+		- minf(
+			active_voice_count * PLACEMENT_STACK_ATTENUATION_DB,
+			MAX_PLACEMENT_STACK_ATTENUATION_DB
+		)
+	)
+	placement_audio.play()
+	if not placement_audio.playing:
+		_remove_placement_audio_voice()
+
+
+func _stop_placement_audio() -> void:
+	placement_audio.stop()
+	placement_audio.volume_db = _placement_audio_base_volume_db
+	_remove_placement_audio_voice()
+
+
+func _on_placement_audio_finished() -> void:
+	if placement_audio.playing:
+		return
+	_remove_placement_audio_voice()
+
+
+func _remove_placement_audio_voice() -> void:
+	if placement_audio.is_in_group(PLACEMENT_AUDIO_GROUP):
+		placement_audio.remove_from_group(PLACEMENT_AUDIO_GROUP)
 
 
 func _kill_effect_tween() -> void:

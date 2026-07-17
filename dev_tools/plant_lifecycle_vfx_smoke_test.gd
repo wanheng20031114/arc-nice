@@ -331,6 +331,14 @@ func _test_lethal_removal() -> void:
 func _test_particle_scenes_and_pool_release() -> void:
 	var placement := PLACEMENT_PARTICLES_SCENE.instantiate() as PlantPlacementParticles
 	var placement_material := placement.process_material as ParticleProcessMaterial
+	var placement_audio := placement.get_node_or_null(
+		"PlacementAudio"
+	) as AudioStreamPlayer2D
+	var placement_stream := (
+		placement_audio.stream as AudioStreamWAV
+		if placement_audio != null
+		else null
+	)
 	_expect(
 		placement.amount == 20
 		and is_equal_approx(placement.lifetime, 0.6)
@@ -349,6 +357,19 @@ func _test_particle_scenes_and_pool_release() -> void:
 		"生成粒子必须使用20粒子、5~9半径环带、8~18径向速度、随机初色与生命周期渐隐。"
 	)
 	_expect(
+		placement_audio != null
+		and placement_stream != null
+		and placement_audio.bus == &"SFX"
+		and is_equal_approx(placement_audio.volume_db, -8.0)
+		and is_equal_approx(placement_audio.max_distance, 300.0)
+		and placement_audio.max_polyphony == 1
+		and placement_stream.mix_rate == 44100
+		and not placement_stream.stereo
+		and placement_stream.get_length() >= 0.29
+		and placement_stream.get_length() <= 0.32,
+		"建筑放置声必须使用SFX总线、克制空间混音与约0.3秒的44.1kHz单声道短音效。"
+	)
+	_expect(
 		is_equal_approx(PlantPlacementParticles.FULL_EMISSION_DURATION, 0.7)
 		and is_equal_approx(PlantPlacementParticles.EMISSION_FADE_DURATION, 0.9)
 		and is_equal_approx(PlantPlacementParticles.PARTICLE_TAIL_DURATION, 0.6)
@@ -358,6 +379,12 @@ func _test_particle_scenes_and_pool_release() -> void:
 			1.5
 		),
 		"生成主体完成后的发射衰减与粒子尾迹必须合计1.5秒。"
+	)
+	_expect(
+		PlantPlacementParticles.MAX_SIMULTANEOUS_PLACEMENT_VOICES == 4
+		and PlantPlacementParticles.PLACEMENT_AUDIO_GROUP
+		!= PlantAttackAudioLimiter.AUDIO_GROUP,
+		"放置声必须拥有独立的四声部空间限制，不能与植物攻击音效互相抢占。"
 	)
 	placement.free()
 
@@ -408,14 +435,21 @@ func _test_particle_scenes_and_pool_release() -> void:
 		PLACEMENT_PARTICLES_SCENE
 	) as PlantPlacementParticles
 	placement_lease.restart_effect(source, 0.65)
+	var lease_audio := placement_lease.get_node(
+		"PlacementAudio"
+	) as AudioStreamPlayer2D
 	_expect(
 		placement_lease.emitting
 		and is_equal_approx(placement_lease.amount_ratio, 1.0)
 		and placement_lease.scale == Vector2(0.65, 0.65)
+		and lease_audio.playing
+		and lease_audio.is_in_group(
+			PlantPlacementParticles.PLACEMENT_AUDIO_GROUP
+		)
 		and int(pool.get_metrics(PLACEMENT_PARTICLES_SCENE.resource_path).get(
 			"in_use", 0
 		)) == 1,
-		"池化生成粒子租约必须按建筑比例启动。"
+		"池化生成效果必须按建筑比例启动粒子，并同时播放一次空间放置声。"
 	)
 	await create_timer(0.08).timeout
 	source.begin_removal(PlantDefense.RemovalMode.ANIMATED)
@@ -432,6 +466,13 @@ func _test_particle_scenes_and_pool_release() -> void:
 		and int(placement_metrics.get("pending_release", -1)) == 0
 		and int(placement_metrics.get("inactive", -1)) == 1,
 		"提前停止后的生成粒子租约必须在尾迹结束后完整归还对象池。"
+	)
+	_expect(
+		not lease_audio.playing
+		and not lease_audio.is_in_group(
+			PlantPlacementParticles.PLACEMENT_AUDIO_GROUP
+		),
+		"生成效果归还对象池时必须停止放置声并释放空间声部。"
 	)
 
 	var smoke_lease := pool.acquire(REMOVAL_SMOKE_SCENE) as PlantRemovalSmoke

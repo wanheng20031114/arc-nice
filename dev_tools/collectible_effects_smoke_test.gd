@@ -172,6 +172,10 @@ func _test_collectible_resources() -> void:
 			_expect(config.icon_texture.get_height() <= 32, "%s icon height must be <= 32." % config.display_name)
 	_expect(projectile_requirement_count == 8, "Exactly eight collectibles must require projectile primary attacks.")
 	_expect(APPLE.icon_texture.get_width() == 32 and APPLE.icon_texture.get_height() == 32, "Apple icon must remain 32x32.")
+	_expect(
+		APPLE.collectible_rarity == PickupConfig.CollectibleRarity.EPIC,
+		"Apple must remain an epic collectible."
+	)
 	_expect(APPLE.collectible_stacks_by_copy and APPLE.collectible_max_copies == 5, "Apple effects must stack from up to five active copies.")
 	_expect(
 		APPLE.description == "普通子弹有20%概率穿透敌人（可叠加）。",

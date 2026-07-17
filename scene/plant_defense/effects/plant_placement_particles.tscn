@@ -1,6 +1,7 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scene/plant_defense/effects/plant_placement_particles.gd" id="1_script"]
+[ext_resource type="AudioStream" path="res://resources/audio/plant_placement.wav" id="2_audio"]
 
 [sub_resource type="Gradient" id="Gradient_particle_texture"]
 colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 1)
@@ -64,3 +65,12 @@ interpolate = true
 process_material = SubResource("ParticleProcessMaterial_placement")
 texture = SubResource("GradientTexture2D_particle")
 script = ExtResource("1_script")
+
+[node name="PlacementAudio" type="AudioStreamPlayer2D" parent="."]
+bus = &"SFX"
+stream = ExtResource("2_audio")
+volume_db = -8.0
+max_distance = 300.0
+max_polyphony = 1
+
+[connection signal="finished" from="PlacementAudio" to="." method="_on_placement_audio_finished"]

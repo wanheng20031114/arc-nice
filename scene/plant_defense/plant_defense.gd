@@ -196,6 +196,21 @@ func is_modal_ui_open() -> bool:
 	return false
 
 
+## Every modal building panel uses the same second-press toggle contract.
+## Keeping the action set here prevents future interactive buildings from
+## silently diverging from the warehouse's F / controller-Y behavior.
+static func is_building_modal_close_event(event: InputEvent) -> bool:
+	return (
+		event != null
+		and (
+			event.is_action_pressed(&"quit")
+			or event.is_action_pressed(&"ui_cancel")
+			or event.is_action_pressed(&"bag")
+			or event.is_action_pressed(&"interact")
+		)
+	)
+
+
 ## Interactive plant buildings override these hooks so every building type can
 ## participate in one nearest-target selection without runtime duck typing.
 func get_interaction_player() -> Player:

@@ -1,12 +1,19 @@
 [gd_scene format=3]
 
-[ext_resource type="Script" path="res://scene/plant_defense/production_building.gd" id="1_script"]
+[ext_resource type="Script" path="res://scene/plant_defense/wood_processing_station.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/plant_defense/wood_processing_station/wood_processing_station.png" id="2_sprite"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
 [ext_resource type="ShaderMaterial" path="res://resources/shader/plant_lifecycle_material.tres" id="5_lifecycle_material"]
 [ext_resource type="Resource" path="res://resources/config/production/wood_to_plank.tres" id="6_recipe"]
 [ext_resource type="Script" path="res://resources/config/production/production_recipe.gd" id="7_recipe_script"]
+[ext_resource type="Shader" path="res://resources/shader/wood_processing_station_border.gdshader" id="8_border_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_production_border"]
+shader = ExtResource("8_border_shader")
+
+[sub_resource type="QuadMesh" id="QuadMesh_production_border"]
+size = Vector2(16, 16)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 resource_local_to_scene = true
@@ -77,6 +84,12 @@ lifecycle_visual_paths = Array[NodePath]([NodePath("MainSprite")])
 lifecycle_effect_top_y = -9.0
 lifecycle_effect_bottom_y = 7.0
 lifecycle_particle_scale = 0.65
+
+[node name="ProductionBorder" type="MeshInstance2D" parent="."]
+z_index = -1
+texture_filter = 1
+material = SubResource("ShaderMaterial_production_border")
+mesh = SubResource("QuadMesh_production_border")
 
 [node name="MainSprite" type="Sprite2D" parent="."]
 z_index = 1
@@ -149,8 +162,9 @@ label_settings = SubResource("LabelSettings_action")
 vertical_alignment = 1
 
 [node name="HealthBar" parent="." instance=ExtResource("3_health_bar")]
-offset_left = -16.0
+custom_minimum_size = Vector2(12, 3)
+offset_left = -6.0
 offset_top = -13.0
-offset_right = 16.0
-offset_bottom = -8.0
+offset_right = 6.0
+offset_bottom = -10.0
 damage_trail_color = Color(0.92156863, 0.28235295, 0.18039216, 1)
