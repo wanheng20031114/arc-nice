@@ -239,7 +239,7 @@ func _refresh_recipe_rows() -> void:
 			continue
 		row.show()
 		row.set_meta(&"recipe_id", recipe.recipe_id)
-		row.icon = recipe.input_item.icon_texture
+		row.icon = recipe.output_items[0].icon_texture
 		row.text = "%s ×%d  →  %s\n约 %.1f 秒" % [
 			recipe.input_item.display_name,
 			recipe.input_amount,

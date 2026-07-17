@@ -701,12 +701,12 @@ func _flush_xirang_kill_rewards() -> void:
 		return
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		if player != null and is_instance_valid(player):
-			player.grant_xirang_reward(amount)
+			player.grant_xirang_reward(amount, false)
 		return
 	for peer_id_variant in peer_players:
 		var player_node := peer_players[peer_id_variant] as Player
 		if player_node != null and is_instance_valid(player_node):
-			player_node.grant_xirang_reward(amount)
+			player_node.grant_xirang_reward(amount, false)
 
 
 func supports_tower_defense() -> bool:

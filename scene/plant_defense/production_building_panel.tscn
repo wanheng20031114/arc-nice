@@ -396,7 +396,7 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_active")
 
 [node name="StatusLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
-offset_left = 45.0
+offset_left = 61.0
 offset_top = 440.0
 offset_right = 466.0
 offset_bottom = 492.0
@@ -408,9 +408,9 @@ vertical_alignment = 1
 [node name="CloseButton" type="Button" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 548.0
-offset_top = 456.0
+offset_top = 440.0
 offset_right = 657.0
-offset_bottom = 493.0
+offset_bottom = 477.0
 theme_override_font_sizes/font_size = 15
 theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
 theme_override_styles/hover = SubResource("StyleBoxFlat_recipe_active")

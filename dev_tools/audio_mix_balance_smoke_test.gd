@@ -92,7 +92,7 @@ func _test_player_mix() -> void:
 	_expect_volume(player, "DeathAudio", -4.0, "Player death cue must remain prominent but not spike.")
 	_expect_volume(player, "PowerupAudio", 6.0, "Powerup cue needs gain because the source file is very quiet.")
 	_expect_volume(player, "SecretAudio", -1.0, "Secret cue must remain the loudest reward cue.")
-	_expect_volume(player, "XirangPickupAudio", -4.0, "Frequent xirang pickup cue must be audible but restrained.")
+	_expect_volume(player, "XirangPickupAudio", -4.0, "Reserved xirang pickup cue must remain audible but restrained.")
 
 	_stop_audio_players(player)
 	player.queue_free()

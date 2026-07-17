@@ -135,9 +135,19 @@ func _run() -> void:
 		and panel.has_node("Overlay/PanelRoot/ToggleButton"),
 		"生产面板必须原生搭建1个原料槽、3个产物槽、物资列表与右上角开关。"
 	)
+	_expect(
+		panel.status_label.position == Vector2(61.0, 440.0)
+		and panel.close_button.position == Vector2(548.0, 440.0),
+		"生产面板底部状态文字必须留出左侧内边距，关闭按钮必须上移避开底框。"
+	)
 	panel.open_for(station, player)
 	await process_frame
 	_expect(panel.is_open() and panel.visible and player.controls_locked, "靠近交互打开生产面板后必须锁定玩家控制。")
+	_expect(
+		panel.recipe_rows[0].icon == PLANK.icon_texture
+		and panel.recipe_rows[0].icon != WOOD.icon_texture,
+		"右侧配方列表必须显示产物木板图标，而不是待加工的木头图标。"
+	)
 	panel.call("_on_input_slot_pressed")
 	_expect(
 		panel.material_list.visible

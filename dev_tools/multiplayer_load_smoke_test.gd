@@ -1833,6 +1833,7 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		for peer_id in [1, 2, 3, 4]:
 			var initial_reward_player := game.get_player_for_peer(peer_id) as Player
 			if initial_reward_player != null:
+				initial_reward_player.xirang_pickup_audio.stop()
 				xirang_before_by_peer[peer_id] = initial_reward_player.current_xirang
 		peer_two.is_dead = true
 		_expect(
@@ -1849,6 +1850,11 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 				+ BASIC_CONFIG.xirang_kill_reward,
 				"A multiplayer enemy kill reward must settle for peer %d by frame end."
 				% peer_id
+			)
+			_expect(
+				settled_reward_player != null
+				and not settled_reward_player.xirang_pickup_audio.playing,
+				"A direct enemy kill reward must not imitate an absorbed Xirang orb."
 			)
 		peer_two.is_dead = false
 		_expect(run_state.try_add_item_for_peer(3, HEALTH_PICKUP), "Peer 3 health pickup must fit for inventory use confirmation testing.")

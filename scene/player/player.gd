@@ -1535,14 +1535,19 @@ func _cleanup_character_combat_on_death() -> void:
 	pass
 
 
-func grant_xirang_reward(amount: int) -> bool:
+func grant_xirang_reward(
+	amount: int,
+	play_pickup_audio: bool = false
+) -> bool:
 	if amount <= 0:
 		return false
 	current_xirang += amount
 	xirang_changed.emit(current_xirang, amount)
-	if uses_local_input:
-		xirang_pickup_audio.pitch_scale = randf_range(1.12, 1.26)
-		xirang_pickup_audio.play()
+	# Enemy kill rewards are deposited directly and have no physical orb to
+	# absorb, so their default path must stay silent. Keep the cue available for
+	# a future explicit pickup mechanic instead of coupling it to every grant.
+	if play_pickup_audio:
+		_play_xirang_pickup_audio()
 	return true
 
 
@@ -1571,10 +1576,15 @@ func _grant_xirang_unrestricted(amount: int) -> bool:
 
 	current_xirang += amount
 	xirang_changed.emit(current_xirang, amount)
-	if uses_local_input:
-		xirang_pickup_audio.pitch_scale = randf_range(1.12, 1.26)
-		xirang_pickup_audio.play()
+	_play_xirang_pickup_audio()
 	return true
+
+
+func _play_xirang_pickup_audio() -> void:
+	if not uses_local_input:
+		return
+	xirang_pickup_audio.pitch_scale = randf_range(1.12, 1.26)
+	xirang_pickup_audio.play()
 
 
 func _apply_cheat_xirang() -> void:
