@@ -402,10 +402,13 @@ func _test_particle_scenes_and_pool_release() -> void:
 		and smoke_material.direction == Vector3(0, -1, 0)
 		and is_equal_approx(smoke_material.initial_velocity_min, 4.0)
 		and is_equal_approx(smoke_material.initial_velocity_max, 9.0)
+		and is_equal_approx(smoke_material.radial_velocity_min, 8.0)
+		and is_equal_approx(smoke_material.radial_velocity_max, 16.0)
+		and smoke.visibility_rect == Rect2(-48, -48, 96, 96)
 		and smoke_material.scale_curve != null
 		and smoke_material.color_initial_ramp != null
 		and smoke_material.color_ramp != null,
-		"消亡烟雾必须保持10粒子、0.7秒、低速向上且颜色与透明度不均。"
+		"消亡烟雾必须保持10粒子、0.7秒，并以径向速度向更远处扩散且不被裁切。"
 	)
 	smoke.free()
 	_expect(
