@@ -23,4 +23,4 @@ move_speed = 16.0
 home_damage = 5
 explosion_radius = 44.0
 xirang_kill_reward = 24
-pickup_drop_chance = 0.2
+pickup_drop_chance = 0.1

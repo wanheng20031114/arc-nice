@@ -22,4 +22,4 @@ attack_damage = 35
 move_speed = 24.0
 home_damage = 5
 xirang_kill_reward = 30
-pickup_drop_chance = 0.2
+pickup_drop_chance = 0.1

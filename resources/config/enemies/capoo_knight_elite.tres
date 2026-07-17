@@ -24,4 +24,4 @@ physical_defense = 15
 move_speed = 34.0
 home_damage = 8
 xirang_kill_reward = 20
-pickup_drop_chance = 0.2
+pickup_drop_chance = 0.1

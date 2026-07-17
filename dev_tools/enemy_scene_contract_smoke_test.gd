@@ -30,6 +30,35 @@ const ADVANCED_YUANSHI_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/yuanshi_insect_green_shell.tres"),
 	preload("res://resources/config/enemies/yuanshi_insect_guardian.tres"),
 ]
+const HORDE_PICKUP_DROP_CONFIGS: Array[EnemyConfig] = [
+	preload("res://resources/config/enemies/yuanshi_insect_basic.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_fast.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_bomber.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_shell.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_purple_bomber.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres"),
+]
+const SPECIAL_PICKUP_DROP_CONFIGS: Array[EnemyConfig] = [
+	preload("res://resources/config/enemies/yuanshi_insect_green_shell.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_guardian.tres"),
+	preload("res://resources/config/enemies/capoo_ak47.tres"),
+	preload("res://resources/config/enemies/capoo_knight.tres"),
+	preload("res://resources/config/enemies/capoo_knight_elite.tres"),
+	preload("res://resources/config/enemies/capoo_swordsman.tres"),
+	preload("res://resources/config/enemies/capoo_rpg.tres"),
+	preload("res://resources/config/enemies/capoo_mage.tres"),
+	preload("res://resources/config/enemies/capoo_sniper.tres"),
+	preload("res://resources/config/enemies/capoo_smg.tres"),
+]
+const LINGLAN_BOSS_CONFIG := preload(
+	"res://resources/config/enemies/linglan_boss.tres"
+)
+const MATERIAL_WOOD := preload(
+	"res://resources/config/materials/material_wood.tres"
+)
+const MATERIAL_SAPLING := preload(
+	"res://resources/config/materials/material_sapling.tres"
+)
 const ENEMY_VISUAL_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
 const PLAYER_BULLET_SCENE := preload("res://scene/bullet.tscn")
 const PLAYER_COLLISION_LAYER := 1 << 1
@@ -52,6 +81,7 @@ func _run() -> void:
 	current_scene = test_root
 
 	_test_yuanshi_xirang_reward_tiers()
+	_test_enemy_pickup_drop_rates()
 	for enemy_config in ENEMY_CONFIGS:
 		await _test_enemy_scene_contract(enemy_config)
 	await _test_player_bullet_body_hit_path()
@@ -84,6 +114,47 @@ func _test_yuanshi_xirang_reward_tiers() -> void:
 			enemy_config.xirang_kill_reward == 2,
 			"%s must grant two Xirang per kill." % enemy_config.display_name
 		)
+
+
+func _test_enemy_pickup_drop_rates() -> void:
+	var default_config := EnemyConfig.new()
+	_expect(
+		is_equal_approx(default_config.pickup_drop_chance, 0.15),
+		"New enemy configs must inherit the halved fifteen-percent authoring default."
+	)
+	for enemy_config in HORDE_PICKUP_DROP_CONFIGS:
+		_expect(
+			is_equal_approx(enemy_config.pickup_drop_chance, 0.04),
+			"%s must use the reduced four-percent horde pickup rate."
+			% enemy_config.display_name
+		)
+	for enemy_config in SPECIAL_PICKUP_DROP_CONFIGS:
+		_expect(
+			is_equal_approx(enemy_config.pickup_drop_chance, 0.1),
+			"%s must use the reduced ten-percent special-enemy pickup rate."
+			% enemy_config.display_name
+		)
+	_expect(
+		is_equal_approx(Enemy.MATERIAL_DROP_CHANCE, 0.03),
+		"Ordinary pickup tuning must not change the independent material drop rate."
+	)
+	_expect(
+		is_equal_approx(MATERIAL_WOOD.drop_weight, 80.0)
+		and is_equal_approx(MATERIAL_SAPLING.drop_weight, 20.0),
+		"Ordinary pickup tuning must preserve the 80/20 wood-to-sapling weights."
+	)
+	_expect(
+		is_equal_approx(LINGLAN_BOSS_CONFIG.pickup_drop_chance, 0.0),
+		"Linglan must remain excluded from ordinary pickup drops."
+	)
+	for enemy_config in ENEMY_CONFIGS:
+		for pickup_config in enemy_config.pickup_drop_configs:
+			_expect(
+				pickup_config != null
+				and pickup_config.pickup_type != PickupConfig.PickupType.MATERIAL,
+				"%s ordinary pickup pool must stay independent from material drops."
+				% enemy_config.display_name
+			)
 
 
 func _test_enemy_scene_contract(enemy_config: EnemyConfig) -> void:
