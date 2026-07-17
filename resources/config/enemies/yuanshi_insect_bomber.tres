@@ -21,6 +21,6 @@ explode_on_death = true
 explosion_damage = 30
 explosion_radius = 30.0
 explosion_animation_scale = 1.76
-xirang_kill_reward = 2
+xirang_kill_reward = 1
 pickup_drop_chance = 0.08
 metadata/_custom_type_script = "uid://cxt041wfb1usj"

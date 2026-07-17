@@ -14,6 +14,7 @@ enemy_scene = ExtResource("enemy_scene")
 max_health = 40
 attack_damage = 10
 move_speed = 20.0
+xirang_kill_reward = 1
 pickup_drop_chance = 0.08
 pickup_drop_configs = Array[ExtResource("1_myn7r")]([ExtResource("2_ca4gr"), ExtResource("3_dw0wd"), ExtResource("4_0vk2e"), ExtResource("4_health")])
 metadata/_custom_type_script = "uid://cxt041wfb1usj"

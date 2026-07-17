@@ -18,6 +18,18 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/capoo_sniper.tres"),
 	preload("res://resources/config/enemies/capoo_smg.tres"),
 ]
+const STANDARD_YUANSHI_CONFIGS: Array[EnemyConfig] = [
+	preload("res://resources/config/enemies/yuanshi_insect_basic.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_fast.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_bomber.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres"),
+]
+const ADVANCED_YUANSHI_CONFIGS: Array[EnemyConfig] = [
+	preload("res://resources/config/enemies/yuanshi_insect_shell.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_purple_bomber.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_green_shell.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_guardian.tres"),
+]
 const ENEMY_VISUAL_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
 const PLAYER_BULLET_SCENE := preload("res://scene/bullet.tscn")
 const PLAYER_COLLISION_LAYER := 1 << 1
@@ -39,6 +51,7 @@ func _run() -> void:
 	root.add_child(test_root)
 	current_scene = test_root
 
+	_test_yuanshi_xirang_reward_tiers()
 	for enemy_config in ENEMY_CONFIGS:
 		await _test_enemy_scene_contract(enemy_config)
 	await _test_player_bullet_body_hit_path()
@@ -58,6 +71,19 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_yuanshi_xirang_reward_tiers() -> void:
+	for enemy_config in STANDARD_YUANSHI_CONFIGS:
+		_expect(
+			enemy_config.xirang_kill_reward == 1,
+			"%s must grant one Xirang per kill." % enemy_config.display_name
+		)
+	for enemy_config in ADVANCED_YUANSHI_CONFIGS:
+		_expect(
+			enemy_config.xirang_kill_reward == 2,
+			"%s must grant two Xirang per kill." % enemy_config.display_name
+		)
 
 
 func _test_enemy_scene_contract(enemy_config: EnemyConfig) -> void:

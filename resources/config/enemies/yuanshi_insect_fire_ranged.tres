@@ -22,5 +22,5 @@ max_health = 40
 attack_damage = 10
 move_speed = 22.0
 home_damage = 2
-xirang_kill_reward = 2
+xirang_kill_reward = 1
 pickup_drop_chance = 0.08
