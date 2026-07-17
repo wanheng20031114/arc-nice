@@ -1,0 +1,2 @@
+extends StoneGolemConfig
+class_name StoneGolemEliteConfig

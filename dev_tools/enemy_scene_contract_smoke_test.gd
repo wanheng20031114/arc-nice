@@ -18,6 +18,7 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/capoo_sniper.tres"),
 	preload("res://resources/config/enemies/capoo_smg.tres"),
 	preload("res://resources/config/enemies/stone_golem.tres"),
+	preload("res://resources/config/enemies/stone_golem_elite.tres"),
 ]
 const STANDARD_YUANSHI_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/yuanshi_insect_basic.tres"),
@@ -51,6 +52,7 @@ const SPECIAL_PICKUP_DROP_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/capoo_sniper.tres"),
 	preload("res://resources/config/enemies/capoo_smg.tres"),
 	preload("res://resources/config/enemies/stone_golem.tres"),
+	preload("res://resources/config/enemies/stone_golem_elite.tres"),
 ]
 const LINGLAN_BOSS_CONFIG := preload(
 	"res://resources/config/enemies/linglan_boss.tres"

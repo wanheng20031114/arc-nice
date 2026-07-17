@@ -35,6 +35,7 @@ var slam_impact_time_left := 0.0
 var slam_impact_visual_token := 0
 var initial_attack_stagger_applied := false
 var authored_slam_warning_polygon := PackedVector2Array()
+var authored_slam_warning_color := Color(0.78, 0.67, 0.5, 0.08)
 
 
 static func set_slam_performance_metrics_enabled(enabled: bool) -> void:
@@ -61,6 +62,7 @@ static func get_slam_performance_metrics(reset_after_read := false) -> Dictionar
 
 func _ready() -> void:
 	authored_slam_warning_polygon = windup_warning.polygon.duplicate()
+	authored_slam_warning_color = windup_warning.color
 	super._ready()
 
 
@@ -169,7 +171,7 @@ func _apply_slash_damage() -> void:
 				player,
 				golem_config.attack_damage,
 				_get_multiplayer_damage_source_id(action_sequence),
-				&"stone_golem_slam"
+				_get_slam_damage_source_type()
 			)
 		else:
 			plant.receive_damage(
@@ -214,6 +216,10 @@ func _apply_slash_damage() -> void:
 # one transient effect node per slam.
 func _play_slash_effect(_direction: Vector2) -> void:
 	return
+
+
+func _get_slam_damage_source_type() -> StringName:
+	return &"stone_golem_slam"
 
 
 func play_multiplayer_enemy_action(
@@ -268,9 +274,9 @@ func _set_windup_warning(progress: float, _direction: Vector2) -> void:
 		* lerpf(0.76, 1.0, clamped_progress)
 	)
 	windup_warning.color = Color(
-		0.78,
-		0.67,
-		0.5,
+		authored_slam_warning_color.r,
+		authored_slam_warning_color.g,
+		authored_slam_warning_color.b,
 		lerpf(0.08, 0.3, clamped_progress)
 	)
 

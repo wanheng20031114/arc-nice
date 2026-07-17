@@ -45,6 +45,13 @@ const TOWER_DEFENSE_STRESS_SPAWN_COUNT_PER_TICK := 4
 const TOWER_DEFENSE_FOREST_COMBAT_BGM := "res://resources/audio/shenmu_forest_combat.ogg"
 const TOWER_DEFENSE_FOREST_INTERMISSION_BGM := "res://resources/audio/shenmu_forest_intermission.ogg"
 const STONE_GOLEM_CONFIG_PATH := "res://resources/config/enemies/stone_golem.tres"
+const STONE_GOLEM_ELITE_CONFIG_PATH := (
+	"res://resources/config/enemies/stone_golem_elite.tres"
+)
+const STANDARD_SINGLEPLAYER_FIRST_WAVE_EXPECTED_COUNTS := {
+	STONE_GOLEM_CONFIG_PATH: 1,
+	STONE_GOLEM_ELITE_CONFIG_PATH: 1,
+}
 const FIRST_WAVE_EXPECTED_COUNTS := {
 	"res://resources/config/enemies/yuanshi_insect_basic.tres": 850,
 	"res://resources/config/enemies/yuanshi_insect_shell.tres": 320,
@@ -333,21 +340,23 @@ func _verify_standard_singleplayer_stone_golem_test_wave(
 	source_wave: WaveConfig
 ) -> void:
 	_expect(
-		wave_config.enemy_entries.size() == 1
-		and wave_config.get_total_enemy_count() == 1,
-		"Standard singleplayer wave 1 must contain exactly one enemy."
+		wave_config.enemy_entries.size()
+		== STANDARD_SINGLEPLAYER_FIRST_WAVE_EXPECTED_COUNTS.size()
+		and wave_config.get_total_enemy_count() == 2,
+		"Standard singleplayer wave 1 must contain exactly two enemies."
 	)
-	if wave_config.enemy_entries.size() == 1:
-		var entry := wave_config.enemy_entries[0]
-		_expect(
-			entry != null
-			and entry.count == 1
-			and _resource_path(entry.enemy_config) == STONE_GOLEM_CONFIG_PATH,
-			"Standard singleplayer wave 1 must contain only one stone golem."
-		)
+	var actual_counts := {}
+	for entry in wave_config.enemy_entries:
+		if entry != null and entry.enemy_config != null:
+			actual_counts[entry.enemy_config.resource_path] = entry.count
 	_expect(
-		wave_config.max_alive_enemies == 1,
-		"Standard singleplayer stone-golem test wave must cap alive enemies at one."
+		actual_counts == STANDARD_SINGLEPLAYER_FIRST_WAVE_EXPECTED_COUNTS,
+		"Standard singleplayer wave 1 must contain one stone golem "
+		+ "and one elite stone golem."
+	)
+	_expect(
+		wave_config.max_alive_enemies == 2,
+		"Standard singleplayer stone-golem test wave must allow both enemies."
 	)
 	_expect(
 		wave_config.wave_name == "第1波 石头人测试"

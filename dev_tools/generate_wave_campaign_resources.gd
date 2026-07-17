@@ -18,6 +18,12 @@ const TOWER_DEFENSE_STRESS_SHELL := preload(
 const TOWER_DEFENSE_STRESS_AK47 := preload(
 	"res://resources/config/enemies/capoo_ak47.tres"
 )
+const STANDARD_TEST_STONE_GOLEM := preload(
+	"res://resources/config/enemies/stone_golem.tres"
+)
+const STANDARD_TEST_STONE_GOLEM_ELITE := preload(
+	"res://resources/config/enemies/stone_golem_elite.tres"
+)
 
 const FORCE_ARGUMENT := "--force"
 const TOWER_DEFENSE_STRESS_TOTAL_ENEMIES := 1200
@@ -108,7 +114,14 @@ func _generate_campaign(definition: Dictionary, failures: PackedStringArray) -> 
 			return
 		var campaign_wave := source_wave.duplicate(true) as WaveConfig
 		campaign_wave.spawn_point_mask = int(definition["spawn_point_mask"])
-		if bool(definition["tower_defense_stress_test"]):
+		if (
+			definition["campaign_id"] == &"standard_singleplayer"
+			and wave_number == 1
+		):
+			_configure_standard_singleplayer_stone_golem_test_wave(
+				campaign_wave
+			)
+		elif bool(definition["tower_defense_stress_test"]):
 			_configure_tower_defense_stress_wave(campaign_wave, wave_number)
 		var wave_path := "%s/wave_%02d.tres" % [directory, wave_number]
 		var wave_error := ResourceSaver.save(campaign_wave, wave_path)
@@ -139,6 +152,18 @@ func _generate_campaign(definition: Dictionary, failures: PackedStringArray) -> 
 	var campaign_error := ResourceSaver.save(campaign, campaign_path)
 	if campaign_error != OK:
 		failures.append("无法保存 %s：%s" % [campaign_path, error_string(campaign_error)])
+
+
+func _configure_standard_singleplayer_stone_golem_test_wave(
+	wave_config: WaveConfig
+) -> void:
+	wave_config.wave_name = "第1波 石头人测试"
+	wave_config.display_name = wave_config.wave_name
+	wave_config.enemy_entries = [
+		_create_wave_entry(STANDARD_TEST_STONE_GOLEM, 1),
+		_create_wave_entry(STANDARD_TEST_STONE_GOLEM_ELITE, 1),
+	]
+	wave_config.max_alive_enemies = 2
 
 
 func _configure_tower_defense_stress_wave(
