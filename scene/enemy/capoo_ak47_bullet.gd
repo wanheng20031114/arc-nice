@@ -8,6 +8,17 @@ const DAMAGEABLE_COLLISION_MASK := 2 | 512
 const HIT_EFFECT_SCENE := preload("res://scene/bullet_hit_effect.tscn")
 const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
 
+static var world_collision_certificate_enabled := false
+static var batched_motion_enabled := true
+static var performance_metrics_enabled := false
+static var _performance_metrics := {
+	"world_segment_calls": 0,
+	"certified_clear_calls": 0,
+	"physics_ray_calls": 0,
+	"physics_ray_hits": 0,
+	"world_segment_usec": 0,
+}
+
 @export var speed: float = 142.5
 @export var max_lifetime: float = 2.0
 
@@ -25,6 +36,10 @@ var _authored_speed: float = 142.5
 var _authored_max_lifetime: float = 2.0
 var _authored_collision_layer: int = 128
 var _authored_collision_mask: int = DAMAGEABLE_COLLISION_MASK
+var world_collision_pathfinder: GridPathfinder = null
+var batched_motion_system = null
+var requested_batched_motion_system: Node = null
+var batched_activation_physics_frame := -1
 var world_collision_query := PhysicsRayQueryParameters2D.create(
 	Vector2.ZERO,
 	Vector2.ZERO,
@@ -46,7 +61,12 @@ func _ready() -> void:
 		animated_sprite.play(&"fly")
 
 
+func _enter_tree() -> void:
+	_try_attach_requested_batched_motion_system()
+
+
 func on_pool_acquired(_generation: int) -> void:
+	_detach_batched_motion_system()
 	pool_active = true
 	has_hit = false
 	direction = Vector2.RIGHT
@@ -57,6 +77,8 @@ func on_pool_acquired(_generation: int) -> void:
 	projectile_id = 0
 	owner_peer_id = 0
 	source_type = &"capoo_ak47_bullet"
+	world_collision_pathfinder = null
+	batched_activation_physics_frame = -1
 	rotation = 0.0
 	collision_layer = _authored_collision_layer
 	collision_mask = _authored_collision_mask
@@ -72,8 +94,10 @@ func on_pool_acquired(_generation: int) -> void:
 
 
 func on_pool_released(_generation: int) -> void:
+	_detach_batched_motion_system()
 	pool_active = false
 	has_hit = true
+	world_collision_pathfinder = null
 	set_physics_process(false)
 	set_deferred("monitoring", false)
 	set_deferred("monitorable", false)
@@ -85,8 +109,11 @@ func setup(
 	initial_direction: Vector2,
 	initial_damage: int,
 	initial_speed: float,
-	initial_lifetime: float
+	initial_lifetime: float,
+	shared_pathfinder: GridPathfinder = null,
+	shared_motion_system: Node = null
 ) -> void:
+	_detach_batched_motion_system()
 	if initial_direction != Vector2.ZERO:
 		direction = initial_direction.normalized()
 		rotation = direction.angle()
@@ -94,6 +121,17 @@ func setup(
 	speed = maxf(initial_speed, 0.0)
 	max_lifetime = maxf(initial_lifetime, 0.01)
 	remaining_lifetime = max_lifetime
+	world_collision_pathfinder = shared_pathfinder
+	if (
+		CapooAK47Bullet.batched_motion_enabled
+		and shared_motion_system != null
+		and is_instance_valid(shared_motion_system)
+	):
+		requested_batched_motion_system = shared_motion_system
+		set_physics_process(false)
+		_try_attach_requested_batched_motion_system()
+	else:
+		set_physics_process(true)
 
 
 func setup_multiplayer(
@@ -107,6 +145,18 @@ func setup_multiplayer(
 
 
 func _physics_process(delta: float) -> void:
+	if batched_motion_system != null:
+		return
+	_advance_projectile(delta)
+
+
+func advance_batched(delta: float) -> void:
+	if batched_motion_system == null:
+		return
+	_advance_projectile(delta)
+
+
+func _advance_projectile(delta: float) -> void:
 	if has_hit or not pool_active:
 		return
 
@@ -123,11 +173,65 @@ func _physics_process(delta: float) -> void:
 
 
 func _will_hit_world(from_position: Vector2, to_position: Vector2) -> bool:
+	var started_usec := (
+		Time.get_ticks_usec()
+		if CapooAK47Bullet.performance_metrics_enabled
+		else 0
+	)
+	if CapooAK47Bullet.performance_metrics_enabled:
+		CapooAK47Bullet._performance_metrics["world_segment_calls"] = (
+			int(CapooAK47Bullet._performance_metrics["world_segment_calls"]) + 1
+		)
+	if (
+		CapooAK47Bullet.world_collision_certificate_enabled
+		and world_collision_pathfinder != null
+		and world_collision_pathfinder.is_world_collision_segment_certified_clear(
+			from_position,
+			to_position
+		)
+	):
+		if CapooAK47Bullet.performance_metrics_enabled:
+			CapooAK47Bullet._performance_metrics["certified_clear_calls"] = (
+				int(CapooAK47Bullet._performance_metrics["certified_clear_calls"]) + 1
+			)
+			_record_world_segment_usec(started_usec)
+		return false
+
+	if CapooAK47Bullet.performance_metrics_enabled:
+		CapooAK47Bullet._performance_metrics["physics_ray_calls"] = (
+			int(CapooAK47Bullet._performance_metrics["physics_ray_calls"]) + 1
+		)
 	world_collision_query.from = from_position
 	world_collision_query.to = to_position
-	return not get_world_2d().direct_space_state.intersect_ray(
+	var did_hit := not get_world_2d().direct_space_state.intersect_ray(
 		world_collision_query
 	).is_empty()
+	if CapooAK47Bullet.performance_metrics_enabled:
+		if did_hit:
+			CapooAK47Bullet._performance_metrics["physics_ray_hits"] = (
+				int(CapooAK47Bullet._performance_metrics["physics_ray_hits"]) + 1
+			)
+		_record_world_segment_usec(started_usec)
+	return did_hit
+
+
+static func reset_performance_metrics() -> void:
+	for key in _performance_metrics:
+		_performance_metrics[key] = 0
+
+
+static func get_performance_metrics(reset_after_read: bool = false) -> Dictionary:
+	var result := _performance_metrics.duplicate()
+	if reset_after_read:
+		reset_performance_metrics()
+	return result
+
+
+static func _record_world_segment_usec(started_usec: int) -> void:
+	_performance_metrics["world_segment_usec"] = (
+		int(_performance_metrics["world_segment_usec"])
+		+ maxi(Time.get_ticks_usec() - started_usec, 0)
+	)
 
 
 func _on_body_entered(body: Node2D) -> void:
@@ -159,6 +263,7 @@ func _on_body_entered(body: Node2D) -> void:
 func _consume(play_hit_effect: bool = true) -> void:
 	if has_hit or not pool_active:
 		return
+	_detach_batched_motion_system()
 	has_hit = true
 	pool_active = false
 	set_physics_process(false)
@@ -174,6 +279,30 @@ func _consume(play_hit_effect: bool = true) -> void:
 
 func retire(play_hit_effect: bool = false) -> void:
 	_consume(play_hit_effect)
+
+
+func _exit_tree() -> void:
+	_detach_batched_motion_system()
+
+
+func _detach_batched_motion_system() -> void:
+	requested_batched_motion_system = null
+	var system = batched_motion_system
+	batched_motion_system = null
+	batched_activation_physics_frame = -1
+	if system != null and is_instance_valid(system):
+		system.unregister_projectile(self)
+
+
+func _try_attach_requested_batched_motion_system() -> void:
+	if (
+		batched_motion_system != null
+		or requested_batched_motion_system == null
+		or not is_inside_tree()
+		or not is_instance_valid(requested_batched_motion_system)
+	):
+		return
+	requested_batched_motion_system.call("register_projectile", self)
 
 
 func _spawn_hit_effect() -> void:

@@ -4,6 +4,9 @@ class_name CapooRPG
 const WORLD_COLLISION_MASK := 1
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const CapooRPGConfigScript := preload("res://resources/config/enemies/capoo_rpg_config.gd")
+const ENEMY_ATTACK_AUDIO_LIMITER := preload(
+	"res://scene/enemy_attack_audio_limiter.gd"
+)
 
 enum CombatState {
 	CHASE,
@@ -174,7 +177,7 @@ func _start_fire(direction: Vector2) -> void:
 	_broadcast_enemy_action(&"fire", fire_direction)
 	if rpg_config.attack_audio_stream != null:
 		attack_audio.pitch_scale = random_generator.randf_range(0.96, 1.04)
-		attack_audio.play()
+		ENEMY_ATTACK_AUDIO_LIMITER.play_heavy_attack(attack_audio)
 
 
 func _update_fire(delta: float) -> void:

@@ -18,6 +18,7 @@ const WAVES := [
 const EXPECTED_KNIGHT_COUNTS := [60, 50, 0, 20, 20, 10]
 const EXPECTED_ELITE_KNIGHT_COUNTS := [0, 0, 0, 20, 20, 60]
 const EXPECTED_WAVE_TOTALS := [470, 440, 420, 400, 465, 480]
+const WINDUP_WARNING_ONLY_ARG := "--windup-warning-only"
 var failures: Array[String] = []
 var test_root: Node2D
 
@@ -58,17 +59,21 @@ func _run() -> void:
 	root.add_child(test_root)
 	current_scene = test_root
 
-	_test_resource_contract()
-	_test_elite_resource_contract()
-	await _test_knight_runtime_facing()
-	await _test_elite_runtime_facing()
-	await _test_slash_geometry()
-	await _test_windup_delays_damage()
-	await _test_death_interrupts_attack()
-	await _test_proxy_action_visuals()
-	await _test_swordsman_uses_path_when_corner_blocks_direct_chase()
-	await _test_path_waypoint_motion_does_not_cut_corners()
-	await _test_navigation_budget_retry_keeps_existing_path()
+	if OS.get_cmdline_user_args().has(WINDUP_WARNING_ONLY_ARG):
+		await _test_windup_warning_geometry_and_progress()
+	else:
+		_test_resource_contract()
+		_test_elite_resource_contract()
+		await _test_windup_warning_geometry_and_progress()
+		await _test_knight_runtime_facing()
+		await _test_elite_runtime_facing()
+		await _test_slash_geometry()
+		await _test_windup_delays_damage()
+		await _test_death_interrupts_attack()
+		await _test_proxy_action_visuals()
+		await _test_swordsman_uses_path_when_corner_blocks_direct_chase()
+		await _test_path_waypoint_motion_does_not_cut_corners()
+		await _test_navigation_budget_retry_keeps_existing_path()
 
 	test_root.queue_free()
 	await process_frame
@@ -194,6 +199,109 @@ func _test_elite_resource_contract() -> void:
 
 	elite_instance.free()
 	knight_instance.free()
+
+
+func _test_windup_warning_geometry_and_progress() -> void:
+	await _expect_windup_warning_geometry(KNIGHT_SCENE, KNIGHT_CONFIG, "Knight")
+	await _expect_windup_warning_geometry(
+		ELITE_KNIGHT_SCENE,
+		ELITE_KNIGHT_CONFIG,
+		"Elite knight"
+	)
+	await _expect_windup_warning_geometry(SWORDSMAN_SCENE, SWORDSMAN_CONFIG, "Swordsman")
+
+
+func _expect_windup_warning_geometry(
+	enemy_scene: PackedScene,
+	enemy_config: CapooKnightConfig,
+	label: String
+) -> void:
+	var enemy := enemy_scene.instantiate() as CapooKnight
+	_expect(enemy != null, "%s windup geometry test must instantiate CapooKnight." % label)
+	if enemy == null:
+		return
+
+	test_root.add_child(enemy)
+	enemy.setup(enemy_config, null)
+	var warning := enemy.windup_warning
+	var initial_polygon := warning.polygon
+	var expected_point_count := (CapooKnight.WINDUP_WARNING_SEGMENTS + 1) * 2
+	_expect(
+		initial_polygon.size() == expected_point_count,
+		"%s warning must precompute the full %d-point slash arc." % [
+			label,
+			expected_point_count,
+		]
+	)
+	if initial_polygon.size() == expected_point_count:
+		var half_angle := deg_to_rad(enemy_config.slash_angle_degrees) * 0.5
+		_expect(
+			initial_polygon[0].is_equal_approx(
+				Vector2.RIGHT.rotated(-half_angle) * enemy_config.slash_outer_radius
+			),
+			"%s warning outer arc start changed." % label
+		)
+		_expect(
+			initial_polygon[CapooKnight.WINDUP_WARNING_SEGMENTS].is_equal_approx(
+				Vector2.RIGHT.rotated(half_angle) * enemy_config.slash_outer_radius
+			),
+			"%s warning outer arc end changed." % label
+		)
+		_expect(
+			initial_polygon[CapooKnight.WINDUP_WARNING_SEGMENTS + 1].is_equal_approx(
+				Vector2.RIGHT.rotated(half_angle) * enemy_config.slash_inner_radius
+			),
+			"%s warning inner arc start changed." % label
+		)
+		_expect(
+			initial_polygon[expected_point_count - 1].is_equal_approx(
+				Vector2.RIGHT.rotated(-half_angle) * enemy_config.slash_inner_radius
+			),
+			"%s warning inner arc end changed." % label
+		)
+
+	enemy.call("_set_windup_warning", 0.25, Vector2.RIGHT)
+	_expect(warning.visible, "%s warning must appear for positive windup progress." % label)
+	_expect(
+		_packed_vectors_equal(warning.polygon, initial_polygon),
+		"%s warning progress updates must reuse its precomputed geometry." % label
+	)
+	_expect(is_zero_approx(warning.rotation), "%s warning must face right." % label)
+	_expect(
+		is_equal_approx(warning.color.a, lerpf(0.08, 0.34, 0.25)),
+		"%s warning alpha progression changed." % label
+	)
+	_expect(
+		warning.scale.is_equal_approx(Vector2.ONE * lerpf(0.88, 1.0, 0.25)),
+		"%s warning scale progression changed." % label
+	)
+
+	enemy.call("_set_windup_warning", 0.75, Vector2.DOWN)
+	_expect(
+		_packed_vectors_equal(warning.polygon, initial_polygon),
+		"%s warning direction updates must not rebuild its geometry." % label
+	)
+	_expect(
+		is_equal_approx(warning.rotation, Vector2.DOWN.angle()),
+		"%s warning must rotate toward its current slash direction." % label
+	)
+	_expect(
+		is_equal_approx(warning.color.a, lerpf(0.08, 0.34, 0.75)),
+		"%s warning later alpha progression changed." % label
+	)
+	_expect(
+		warning.scale.is_equal_approx(Vector2.ONE * lerpf(0.88, 1.0, 0.75)),
+		"%s warning later scale progression changed." % label
+	)
+
+	enemy.call("_set_windup_warning", 0.0, Vector2.LEFT)
+	_expect(not warning.visible, "%s warning must hide when windup progress reaches zero." % label)
+	_expect(
+		_packed_vectors_equal(warning.polygon, initial_polygon),
+		"%s warning hiding must preserve its precomputed geometry." % label
+	)
+	enemy.queue_free()
+	await process_frame
 
 
 func _test_knight_runtime_facing() -> void:
@@ -353,7 +461,11 @@ func _test_swordsman_uses_path_when_corner_blocks_direct_chase() -> void:
 
 func _test_path_waypoint_motion_does_not_cut_corners() -> void:
 	var player := _spawn_player(Vector2(128.0, 128.0))
-	var wall := _spawn_wall(Vector2(16.0, 0.0), Vector2(8.0, 64.0))
+	# Keep a sub-pixel clearance beside the authored 12 px body extent. Placing
+	# the wall at exactly x=16 made the shapes initially touch, so test_move()
+	# could report a pre-existing contact for both axes instead of testing the
+	# intended "horizontal blocked, vertical open" corner.
+	var wall := _spawn_wall(Vector2(16.5, 0.0), Vector2(8.0, 64.0))
 	await physics_frame
 	var pathfinder := FakePathfinder.new()
 	test_root.add_child(pathfinder)
@@ -361,6 +473,8 @@ func _test_path_waypoint_motion_does_not_cut_corners() -> void:
 	enemy.pathfinder = pathfinder
 	enemy.navigation_update_interval_frames = 1
 	pathfinder.path = PackedVector2Array([Vector2(32.0, 32.0)])
+	enemy.set_physics_process(false)
+	await physics_frame
 
 	var move_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
 	_expect(is_zero_approx(move_direction.x) or is_zero_approx(move_direction.y), "Knight path following must not move diagonally into obstacle corners.")
@@ -481,6 +595,18 @@ func _count_slash_effects() -> int:
 func _wait_physics_frames(frame_count: int) -> void:
 	for _frame_index in range(frame_count):
 		await physics_frame
+
+
+func _packed_vectors_equal(
+	actual: PackedVector2Array,
+	expected: PackedVector2Array
+) -> bool:
+	if actual.size() != expected.size():
+		return false
+	for index in range(expected.size()):
+		if not actual[index].is_equal_approx(expected[index]):
+			return false
+	return true
 
 
 func _collect_direct_collision_shapes(parent_node: Node) -> Array[CollisionShape2D]:

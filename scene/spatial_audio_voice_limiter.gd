@@ -2,6 +2,7 @@ extends RefCounted
 class_name SpatialAudioVoiceLimiter
 
 const REJECTED_ACTIVE_COUNT := -1
+const VOICE_PREEMPTED_CALLBACK_META := &"spatial_audio_voice_preempted_callback"
 
 
 ## Reserves one logical AudioStreamPlayer2D voice and returns the number of
@@ -79,4 +80,13 @@ static func claim_voice(
 	# stop() does not emit finished, so release the logical slot explicitly.
 	farthest_player.stop()
 	farthest_player.remove_from_group(audio_group)
+	var preempted_callback: Variant = farthest_player.get_meta(
+		VOICE_PREEMPTED_CALLBACK_META,
+		Callable()
+	)
+	if (
+		preempted_callback is Callable
+		and (preempted_callback as Callable).is_valid()
+	):
+		(preempted_callback as Callable).call()
 	return active_count - 1

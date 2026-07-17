@@ -38,6 +38,7 @@
 [ext_resource type="PackedScene" path="res://scene/plant_defense/production_coordinator.tscn" id="39_production_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/production_building_panel.tscn" id="40_production_panel"]
 [ext_resource type="Script" uid="uid://dfuccjc7ww0jj" path="res://scene/enemy/capoo_sniper_lock_visual_coordinator.gd" id="41_sniper_lock_visuals"]
+[ext_resource type="PackedScene" path="res://scene/enemy/capoo_projectile_motion_system.tscn" id="42_capoo_projectile_motion"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -312,6 +313,8 @@ script = ExtResource("41_sniper_lock_visuals")
 
 [node name="SessionObjectPool" type="Node2D" parent="." unique_id=501179968]
 script = ExtResource("29_session_pool")
+
+[node name="CapooProjectileMotionSystem" parent="." instance=ExtResource("42_capoo_projectile_motion")]
 
 [node name="ZhuangfangyiMerchant" parent="." unique_id=112812860 instance=ExtResource("15_merchant")]
 position = Vector2(96, 81)

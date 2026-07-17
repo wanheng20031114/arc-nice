@@ -86,6 +86,14 @@ const TERRAIN_NETWORK_BATCH_MAX_CELLS := 96
 const UNSUPPORTED_PLANT_DAMAGE_INTERVAL_SECONDS := 1.0
 const PLANT_LIFECYCLE_VFX_PREWARM_COUNT := 8
 const PLANT_LIFECYCLE_VFX_RETAINED_CAPACITY := 32
+# Wave 9 can have roughly 120 AK rounds and more than 30 mage fireballs alive
+# concurrently. Instantiate that steady-state set while the loading mask is
+# active instead of growing the elastic gameplay pools on synchronized attacks.
+# The retained capacities are deliberately unchanged.
+const LEGACY_CAPOO_AK47_BULLET_PREWARM_COUNT := 32
+const EXPANDED_CAPOO_AK47_BULLET_PREWARM_COUNT := 128
+const LEGACY_CAPOO_MAGE_FIREBALL_PREWARM_COUNT := 24
+const EXPANDED_CAPOO_MAGE_FIREBALL_PREWARM_COUNT := 64
 const LINGLAN_SKILL_REFERENCE_ARENA_POSITION := Vector2i(-3, -1)
 const MULTIPLAYER_SPAWN_OFFSETS: Array[Vector2] = [
 	Vector2.ZERO,
@@ -99,6 +107,10 @@ const MULTIPLAYER_SPAWN_OFFSETS: Array[Vector2] = [
 ]
 
 signal base_health_changed(current_health: int, maximum_health: int, revision: int)
+
+# Production defaults to loading-time prewarming. The cohort performance probe
+# can disable it before scene instantiation for a strict old/new A/B.
+static var expanded_projectile_pool_prewarm_enabled := true
 
 @export_group("战役资源")
 @export var singleplayer_campaign: WaveCampaignConfig = null
@@ -135,6 +147,7 @@ signal base_health_changed(current_health: int, maximum_health: int, revision: i
 @onready var merchant: ZhuangfangyiMerchant = $ZhuangfangyiMerchant
 @onready var luoxi_merchant: LuoxiMerchant = $LuoxiMerchant
 @onready var boss_container: Node2D = $BossContainer
+@onready var guardian_aura_system: GuardianAuraSystem = $GuardianAuraSystem
 @onready var plant_container: Node2D = $PlantContainer
 @onready var plant_system: PlantSystem = $PlantSystem
 @onready var vegetation_spread_system: VegetationSpreadSystem = $VegetationSpreadSystem
@@ -209,6 +222,7 @@ var player_wave_death_counts: Dictionary = {}
 var singleplayer_respawn_time_left := -1.0
 var singleplayer_respawn_last_seconds := -1
 var spectator_camera_active := false
+var projectile_pool_registration_ms := 0.0
 
 
 func _enter_tree() -> void:
@@ -250,11 +264,36 @@ func _ready() -> void:
 		PLANT_LIFECYCLE_VFX_PREWARM_COUNT,
 		PLANT_LIFECYCLE_VFX_RETAINED_CAPACITY
 	)
+	var projectile_pool_registration_started_usec := Time.get_ticks_usec()
 	session_object_pool.register_scene(PLAYER_BULLET_POOL_SCENE, 64, 768)
-	session_object_pool.register_scene(CAPOO_AK47_BULLET_POOL_SCENE, 32, 384)
+	session_object_pool.register_scene(
+		CAPOO_AK47_BULLET_POOL_SCENE,
+		(
+			EXPANDED_CAPOO_AK47_BULLET_PREWARM_COUNT
+			if expanded_projectile_pool_prewarm_enabled
+			else LEGACY_CAPOO_AK47_BULLET_PREWARM_COUNT
+		),
+		384
+	)
 	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
 	session_object_pool.register_scene(CAPOO_RPG_ROCKET_POOL_SCENE, 24, 192)
-	session_object_pool.register_scene(CAPOO_MAGE_FIREBALL_POOL_SCENE, 24, 192)
+	session_object_pool.register_scene(
+		CAPOO_MAGE_FIREBALL_POOL_SCENE,
+		(
+			EXPANDED_CAPOO_MAGE_FIREBALL_PREWARM_COUNT
+			if expanded_projectile_pool_prewarm_enabled
+			else LEGACY_CAPOO_MAGE_FIREBALL_PREWARM_COUNT
+		),
+		192
+	)
+	GameRuntimeBase.register_capoo_mage_fireball_impact_pool(
+		session_object_pool,
+		48,
+		64
+	)
+	projectile_pool_registration_ms = float(
+		Time.get_ticks_usec() - projectile_pool_registration_started_usec
+	) / 1000.0
 	session_object_pool.register_scene(YUANSHI_FIRE_PROJECTILE_POOL_SCENE, 48, 384)
 	session_object_pool.register_scene(AGAVE_CANNONBALL_POOL_SCENE, 48, 384)
 	session_object_pool.register_scene(COLLECTIBLE_ARROW_POOL_SCENE, 48, 384)
@@ -268,6 +307,9 @@ func _ready() -> void:
 	# Tower-defense batteries issue independently staggered target queries. Keep
 	# its already-validated policy of forcing every bounded query through buckets.
 	enable_singleplayer_combat_target_index(true)
+	guardian_aura_system.set_authoritative_processing_enabled(
+		runtime_mode != RuntimeMode.CLIENT_VIEW
+	)
 	if not enemy_container.child_entered_tree.is_connected(
 		_on_dynamic_pickup_container_child_entered
 	):

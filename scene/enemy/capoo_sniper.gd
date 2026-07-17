@@ -2,6 +2,9 @@ extends "res://scene/enemy/capoo_ranged_enemy.gd"
 class_name CapooSniper
 
 const SniperConfig := preload("res://resources/config/enemies/capoo_sniper_config.gd")
+const ENEMY_ATTACK_AUDIO_LIMITER := preload(
+	"res://scene/enemy_attack_audio_limiter.gd"
+)
 const AIM_LINE_START_DISTANCE := 10.0
 const AIM_LINE_TARGET_PADDING := 10.0
 const AIM_LINE_MIN_LENGTH := 8.0
@@ -216,7 +219,7 @@ func _fire_locked_shot(direction: Vector2) -> void:
 			)
 	if sniper_config.attack_audio_stream != null:
 		attack_audio.pitch_scale = random_generator.randf_range(0.96, 1.03)
-		attack_audio.play()
+		ENEMY_ATTACK_AUDIO_LIMITER.play_heavy_attack(attack_audio)
 	if locked_player != null:
 		_broadcast_enemy_target_action(&"sniper_lock_fire", locked_player.peer_id)
 	else:

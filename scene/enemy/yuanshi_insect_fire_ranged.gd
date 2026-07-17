@@ -3,6 +3,9 @@ class_name YuanshiInsectFireRanged
 
 const WORLD_COLLISION_MASK := 1
 const FireConfig := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged_config.gd")
+const ENEMY_ATTACK_AUDIO_LIMITER := preload(
+	"res://scene/enemy_attack_audio_limiter.gd"
+)
 
 enum CombatState {
 	CHASE,
@@ -176,7 +179,7 @@ func _try_fire_ranged_projectile() -> bool:
 			fire_config.projectile_lifetime
 		)
 	attack_audio.pitch_scale = random_generator.randf_range(0.94, 1.06)
-	attack_audio.play()
+	ENEMY_ATTACK_AUDIO_LIMITER.play_heavy_attack(attack_audio)
 	return true
 
 

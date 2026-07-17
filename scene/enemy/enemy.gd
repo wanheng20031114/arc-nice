@@ -46,7 +46,7 @@ const BLEED_OVERLAY_ACTIVE_STRENGTH := 0.42
 const BURN_STATUS_TICK_INTERVAL := 1.0
 const WATER_TERRAIN_COLLISION_LAYER := 1 << 11
 const DEATH_ANIMATION_SPEED_SCALES: Array[float] = [0.92, 0.96, 1.0, 1.04, 1.08]
-const DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES := 3
+const DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES := 6
 # A moving flow field is rebuilt in bounded slices. While the replacement is
 # pending, its published anchor may legitimately lag behind the live player.
 # Once that lag reaches two cells, prefer the live target immediately whenever
@@ -54,8 +54,8 @@ const DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES := 3
 const DYNAMIC_FLOW_DIRECT_CORRECTION_DISTANCE_CELLS := 2
 const DYNAMIC_FLOW_PREFETCH_LOOKAHEAD_CELLS := 3.0
 # Three cells of lookahead provide substantially more warning than one 10 Hz
-# sample interval even for the fastest current pursuer. Throttling independently
-# of its ordinary direction refresh halves the open-ground certificate cost.
+# sample interval even for the fastest current pursuer. The per-agent throttle
+# prevents retries outside an admitted navigation refresh after cache invalidation.
 const DYNAMIC_FLOW_PREFETCH_INTERVAL_PHYSICS_FRAMES := 6
 const DYNAMIC_TARGET_FINAL_ALIGNMENT_MARGIN := 2.0
 const BLOCKED_WORLD_LOS_RETRY_MIN_MSEC := 80
@@ -74,6 +74,8 @@ enum DeathSequenceStage {
 
 static var performance_metrics_enabled := false
 static var dynamic_flow_obstacle_lookahead_enabled := true
+static var navigation_render_frame_dedupe_enabled := true
+static var navigation_process_frame_budget_enabled := true
 # Explicit A/B switch for the former behavior where every movement modifier,
 # including a visually static slow, enabled one render-frame callback per enemy.
 # Configure it before creating/applying the measured cohort; it deliberately
@@ -85,6 +87,9 @@ static var _performance_metrics := {
 	"touch_damage_usec": 0,
 	"navigation_calls": 0,
 	"navigation_usec": 0,
+	"navigation_refresh_calls": 0,
+	"navigation_same_render_skips": 0,
+	"navigation_budget_deferrals": 0,
 	"navigation_lookahead_calls": 0,
 	"navigation_lookahead_usec": 0,
 	"navigation_flow_prefetches": 0,
@@ -102,8 +107,8 @@ static var _performance_metrics := {
 @export var config: EnemyConfig
 @export var touch_damage_interval: float = 0.5
 @export var sprite_faces_left_by_default: bool = false
-# Navigation direction is refreshed at 20 Hz by default. Instance offsets split
-# a 60 Hz physics cadence into three deterministic groups; movement itself stays
+# Navigation direction is refreshed at 10 Hz by default. Instance offsets split
+# a 60 Hz physics cadence into six deterministic groups; movement itself stays
 # at the authored physics rate so animation, contact and multiplayer state remain
 # smooth between direction samples.
 @export_range(1, 8, 1, "or_greater") var navigation_update_interval_frames: int = (
@@ -121,6 +126,7 @@ static var _performance_metrics := {
 var target_player: Player = null
 var objective_target: Node2D = null
 var pathfinder: Node = null
+var projectile_motion_system: Node = null
 var current_health: int = 1
 var is_dead: bool = false
 var touch_damage_cooldown_left: float = 0.0
@@ -132,6 +138,7 @@ var touching_plant_entry_distances: Dictionary[int, float] = {}
 var death_sequence_stage: DeathSequenceStage = DeathSequenceStage.NONE
 var death_animation_name_in_use: StringName = &""
 var physical_defense_modifiers: Dictionary = {}
+var physical_defense_modifier_total := 0
 var move_speed_modifiers: Dictionary = {}
 var damage_taken_multiplier_modifiers: Dictionary = {}
 var collectible_status_effects: Dictionary = {}
@@ -154,6 +161,9 @@ var facing_left: bool = false
 var proxy_action_animation_name_in_use: StringName = &""
 var proxy_action_restore_token: int = 0
 var navigation_update_frame_offset: int = 0
+var last_navigation_update_render_frame: int = -1
+var last_navigation_refresh_process_frame: int = -1
+var navigation_refresh_deferred: bool = false
 var cached_navigation_move_direction := Vector2.ZERO
 var cached_navigation_uses_direct_objective_approach: bool = false
 var cached_navigation_verified_direct_motion_clearance: float = 0.0
@@ -209,6 +219,9 @@ static func reset_performance_metrics() -> void:
 	_performance_metrics["touch_damage_usec"] = 0
 	_performance_metrics["navigation_calls"] = 0
 	_performance_metrics["navigation_usec"] = 0
+	_performance_metrics["navigation_refresh_calls"] = 0
+	_performance_metrics["navigation_same_render_skips"] = 0
+	_performance_metrics["navigation_budget_deferrals"] = 0
 	_performance_metrics["navigation_lookahead_calls"] = 0
 	_performance_metrics["navigation_lookahead_usec"] = 0
 	_performance_metrics["navigation_flow_prefetches"] = 0
@@ -252,9 +265,8 @@ func _ready() -> void:
 			% (BLOCKED_WORLD_LOS_RETRY_MAX_MSEC - BLOCKED_WORLD_LOS_RETRY_MIN_MSEC + 1)
 		)
 	)
-	# Allocate offsets round-robin instead of folding them through the 8-frame
-	# far-objective interval. The latter produced 3/3/2 normal-navigation groups;
-	# an unbounded sequence stays uniform for both the 3-frame and 8-frame tiers.
+	# Allocate offsets from one unbounded sequence so every authored navigation
+	# interval receives uniform deterministic phase groups.
 	navigation_update_frame_offset = Enemy._next_navigation_phase_offset
 	Enemy._next_navigation_phase_offset += 1
 	navigation_zero_direction_retry_frame = _get_next_navigation_phase_frame(
@@ -444,8 +456,12 @@ func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = 
 	target_player = player
 	objective_target = player
 	pathfinder = shared_pathfinder
+	_refresh_projectile_motion_system()
 	navigation_agent_profile = null
 	navigation_flow_prefetch_next_physics_frame = 0
+	last_navigation_update_render_frame = -1
+	last_navigation_refresh_process_frame = -1
+	navigation_refresh_deferred = false
 	_invalidate_blocked_world_los_cache()
 	near_moving_target_direct_distance = DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE
 	near_moving_target_direct_distance_squared = (
@@ -530,6 +546,7 @@ func set_pathfinder(shared_pathfinder: Node) -> void:
 	if pathfinder == shared_pathfinder:
 		return
 	pathfinder = shared_pathfinder
+	_refresh_projectile_motion_system()
 	navigation_agent_profile = null
 	navigation_flow_prefetch_next_physics_frame = 0
 	_clear_cached_navigation_move_direction()
@@ -545,6 +562,7 @@ func configure_multiplayer_proxy() -> void:
 	target_player = null
 	objective_target = null
 	pathfinder = null
+	projectile_motion_system = null
 	touched_player = null
 	touching_players.clear()
 	touched_plant = null
@@ -559,6 +577,15 @@ func configure_multiplayer_proxy() -> void:
 	collision_mask = 0
 	_disable_proxy_area_collisions(self)
 	_ensure_multiplayer_proxy_move_animation()
+
+
+func _refresh_projectile_motion_system() -> void:
+	projectile_motion_system = null
+	if pathfinder == null:
+		return
+	var runtime := pathfinder.get_parent() as GameRuntimeBase
+	if runtime != null:
+		projectile_motion_system = runtime.capoo_projectile_motion_system
 
 
 func remove_for_home_escape() -> bool:
@@ -684,16 +711,19 @@ func add_physical_defense_modifier(source_id: int, amount: int) -> void:
 		return
 	if amount == 0:
 		return
-	if int(physical_defense_modifiers.get(source_id, 0)) == amount:
+	var previous_amount := int(physical_defense_modifiers.get(source_id, 0))
+	if previous_amount == amount:
 		return
 
 	physical_defense_modifiers[source_id] = amount
+	physical_defense_modifier_total += amount - previous_amount
 	_refresh_effective_physical_defense_cache()
 
 
 func remove_physical_defense_modifier(source_id: int) -> void:
 	if not physical_defense_modifiers.has(source_id):
 		return
+	physical_defense_modifier_total -= int(physical_defense_modifiers[source_id])
 	physical_defense_modifiers.erase(source_id)
 	_refresh_effective_physical_defense_cache()
 
@@ -703,10 +733,11 @@ func get_effective_physical_defense() -> int:
 
 
 func _refresh_effective_physical_defense_cache() -> void:
-	var total := config.physical_defense if config != null else 0
-	for source_id in physical_defense_modifiers:
-		total += int(physical_defense_modifiers[source_id])
-	cached_effective_physical_defense = maxi(total, 0)
+	var base_defense := config.physical_defense if config != null else 0
+	cached_effective_physical_defense = maxi(
+		base_defense + physical_defense_modifier_total,
+		0
+	)
 
 
 func get_effective_magic_defense() -> int:
@@ -2237,12 +2268,51 @@ func _get_far_direct_objective_probe_distance() -> float:
 
 
 func _should_update_navigation_direction(target_node: Node2D = objective_target) -> bool:
-	if cached_navigation_move_direction == Vector2.ZERO:
-		return Engine.get_physics_frames() >= navigation_zero_direction_retry_frame
-	var interval := _get_navigation_update_interval_frames(target_node)
-	if interval <= 1:
-		return true
-	return (Engine.get_physics_frames() + navigation_update_frame_offset) % interval == 0
+	if not navigation_refresh_deferred:
+		if cached_navigation_move_direction == Vector2.ZERO:
+			if Engine.get_physics_frames() < navigation_zero_direction_retry_frame:
+				return false
+		else:
+			var interval := _get_navigation_update_interval_frames(target_node)
+			if (
+				interval > 1
+				and (
+					Engine.get_physics_frames() + navigation_update_frame_offset
+				) % interval != 0
+			):
+				return false
+
+	if Enemy.navigation_render_frame_dedupe_enabled:
+		var render_frame := Engine.get_process_frames()
+		if render_frame == last_navigation_update_render_frame:
+			if Enemy.performance_metrics_enabled:
+				Enemy._performance_metrics["navigation_same_render_skips"] = (
+					int(Enemy._performance_metrics["navigation_same_render_skips"]) + 1
+				)
+			return false
+		last_navigation_update_render_frame = render_frame
+	if (
+		Enemy.navigation_process_frame_budget_enabled
+		and pathfinder != null
+		and pathfinder.has_method("try_acquire_agent_navigation_refresh")
+		and not bool(pathfinder.call(
+			"try_acquire_agent_navigation_refresh",
+			get_instance_id()
+		))
+	):
+		navigation_refresh_deferred = true
+		if Enemy.performance_metrics_enabled:
+			Enemy._performance_metrics["navigation_budget_deferrals"] = (
+				int(Enemy._performance_metrics["navigation_budget_deferrals"]) + 1
+			)
+		return false
+	navigation_refresh_deferred = false
+	if Enemy.performance_metrics_enabled:
+		Enemy._performance_metrics["navigation_refresh_calls"] = (
+			int(Enemy._performance_metrics["navigation_refresh_calls"]) + 1
+		)
+	last_navigation_refresh_process_frame = Engine.get_process_frames()
+	return true
 
 
 func _get_next_navigation_phase_frame(interval: int) -> int:
@@ -2326,6 +2396,8 @@ func _cache_navigation_move_direction(
 
 
 func _clear_cached_navigation_move_direction() -> void:
+	last_navigation_update_render_frame = -1
+	navigation_refresh_deferred = false
 	cached_navigation_move_direction = Vector2.ZERO
 	cached_navigation_uses_direct_objective_approach = false
 	cached_navigation_verified_direct_motion_clearance = 0.0

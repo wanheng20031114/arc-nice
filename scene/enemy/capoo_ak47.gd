@@ -4,6 +4,9 @@ class_name CapooAK47
 const WORLD_COLLISION_MASK := 1
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const CapooConfig := preload("res://resources/config/enemies/capoo_ak47_config.gd")
+const ENEMY_ATTACK_AUDIO_LIMITER := preload(
+	"res://scene/enemy_attack_audio_limiter.gd"
+)
 
 enum CombatState {
 	CHASE,
@@ -227,7 +230,9 @@ func _fire_locked_bullet() -> bool:
 		burst_shot_direction,
 		capoo_config.attack_damage,
 		capoo_config.projectile_speed,
-		capoo_config.projectile_lifetime
+		capoo_config.projectile_lifetime,
+		pathfinder as GridPathfinder,
+		projectile_motion_system
 	)
 	if projectile.get_parent() == null:
 		spawn_parent.add_child(projectile)
@@ -247,7 +252,7 @@ func _fire_locked_bullet() -> bool:
 		)
 	if burst_audio_step % 2 == 0:
 		attack_audio.pitch_scale = random_generator.randf_range(0.98, 1.03)
-		attack_audio.play()
+		ENEMY_ATTACK_AUDIO_LIMITER.play_rapid_fire(attack_audio)
 	burst_audio_step += 1
 	return true
 

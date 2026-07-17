@@ -11,6 +11,13 @@ func _init() -> void:
 
 
 func _run() -> void:
+	var original_navigation_refresh_budget := (
+		Enemy.navigation_process_frame_budget_enabled
+	)
+	# The route matrix deliberately evaluates every authored spawn/config pair in
+	# one synthetic process frame. Keep that exhaustive contract independent from
+	# the production frame cap; the dedicated fixture below turns the cap back on.
+	Enemy.navigation_process_frame_budget_enabled = false
 	var game := TOWER_SCENE.instantiate() as GameTowerDefense
 	game.auto_start_waves = false
 	root.add_child(game)
@@ -35,6 +42,7 @@ func _run() -> void:
 
 	if pathfinder != null and pathfinder.is_built and not enemy_configs.is_empty():
 		_verify_navigation_phase_distribution(game, enemy_configs[0])
+		_verify_same_render_navigation_dedupe(game, pathfinder, enemy_configs[0])
 		for enemy_config in enemy_configs:
 			_verify_config_navigation_matrix(
 				game,
@@ -75,6 +83,7 @@ func _run() -> void:
 		)
 		await _verify_spawn_recovery_motion(game, pathfinder, enemy_configs)
 
+	Enemy.navigation_process_frame_budget_enabled = original_navigation_refresh_budget
 	game.queue_free()
 	await process_frame
 	await physics_frame
@@ -97,7 +106,7 @@ func _verify_navigation_phase_distribution(
 	enemy_config: EnemyConfig
 ) -> void:
 	const SAMPLE_COUNT := 24
-	var normal_groups: Array[int] = [0, 0, 0]
+	var normal_groups: Array[int] = [0, 0, 0, 0, 0, 0]
 	var far_groups: Array[int] = [0, 0, 0, 0, 0, 0, 0, 0]
 	var retry_frame_counts: Dictionary[int, int] = {}
 	var current_frame := Engine.get_physics_frames()
@@ -127,22 +136,155 @@ func _verify_navigation_phase_distribution(
 		)
 
 	_expect(
-		normal_groups == [8, 8, 8],
-		"Twenty-four enemies must split evenly across three 20 Hz navigation groups."
+		normal_groups == [4, 4, 4, 4, 4, 4],
+		"Twenty-four enemies must split evenly across six 10 Hz navigation groups."
 	)
 	_expect(
 		far_groups == [3, 3, 3, 3, 3, 3, 3, 3],
 		"Twenty-four enemies must split evenly across the eight-frame far-objective tier."
 	)
-	var retries_are_balanced := retry_frame_counts.size() == 3
+	var retries_are_balanced := retry_frame_counts.size() == 6
 	for count_variant in retry_frame_counts.values():
-		retries_are_balanced = retries_are_balanced and int(count_variant) == 8
+		retries_are_balanced = retries_are_balanced and int(count_variant) == 4
 	_expect(
 		retries_are_balanced,
-		"Initial zero-direction retries must be spread evenly over three physics frames."
+		"Initial zero-direction retries must be spread evenly over six physics frames."
 	)
 	for enemy in fixtures:
 		enemy.free()
+
+
+func _verify_same_render_navigation_dedupe(
+	game: GameTowerDefense,
+	pathfinder: GridPathfinder,
+	enemy_config: EnemyConfig
+) -> void:
+	var saved_budget_switch := Enemy.navigation_process_frame_budget_enabled
+	Enemy.navigation_process_frame_budget_enabled = true
+	var enemy := enemy_config.enemy_scene.instantiate() as Enemy
+	game.enemy_container.add_child(enemy)
+	enemy.set_physics_process(false)
+	enemy.setup(enemy_config, game.player, pathfinder)
+	enemy.navigation_update_interval_frames = 1
+	enemy.cached_navigation_move_direction = Vector2.RIGHT
+	enemy.last_navigation_update_render_frame = -1
+	pathfinder.agent_navigation_refresh_budget_process_frame = -1
+	pathfinder.agent_navigation_refreshes_used_this_frame = 0
+	var first_refresh := bool(enemy.call(
+		"_should_update_navigation_direction",
+		game.player
+	))
+	var duplicate_refresh := bool(enemy.call(
+		"_should_update_navigation_direction",
+		game.player
+	))
+	_expect(
+		first_refresh and not duplicate_refresh,
+		(
+			"One enemy must not perform two expensive navigation refreshes in one "
+			+ "render frame (first=%s duplicate=%s render=%d last=%d cached=%s)."
+		)
+		% [
+			first_refresh,
+			duplicate_refresh,
+			Engine.get_process_frames(),
+			enemy.last_navigation_update_render_frame,
+			enemy.cached_navigation_move_direction,
+		]
+	)
+	enemy.free()
+
+	var saved_refresh_cap := pathfinder.max_agent_navigation_refreshes_per_process_frame
+	pathfinder.max_agent_navigation_refreshes_per_process_frame = 2
+	pathfinder.agent_navigation_refresh_budget_process_frame = -1
+	pathfinder.agent_navigation_refreshes_used_this_frame = 0
+	pathfinder.agent_navigation_refresh_deferred_queue.clear()
+	pathfinder.agent_navigation_refresh_deferred_queue_head = 0
+	pathfinder.agent_navigation_refresh_deferred_ids.clear()
+	pathfinder.agent_navigation_refresh_deferred_since_frame.clear()
+	pathfinder.agent_navigation_refresh_last_request_frame.clear()
+	pathfinder.agent_navigation_refresh_reserved_order.clear()
+	pathfinder.agent_navigation_refresh_reserved_ids.clear()
+	pathfinder.agent_navigation_refresh_max_wait_process_frames = 0
+	var budget_fixtures: Array[Enemy] = []
+	var first_frame_admissions: Array[bool] = []
+	for _index in range(4):
+		var fixture := enemy_config.enemy_scene.instantiate() as Enemy
+		game.enemy_container.add_child(fixture)
+		fixture.set_physics_process(false)
+		fixture.setup(enemy_config, game.player, pathfinder)
+		fixture.navigation_update_interval_frames = 1
+		fixture.cached_navigation_move_direction = Vector2.RIGHT
+		fixture.last_navigation_update_render_frame = -1
+		budget_fixtures.append(fixture)
+		first_frame_admissions.append(bool(fixture.call(
+			"_should_update_navigation_direction",
+			game.player
+		)))
+	_expect(
+		first_frame_admissions == [true, true, false, false]
+		and budget_fixtures[2].navigation_refresh_deferred
+		and budget_fixtures[3].navigation_refresh_deferred,
+		(
+			"A process-frame navigation budget must admit only its cap and mark "
+			+ "overflow work for next-render retry: %s."
+		) % [first_frame_admissions]
+	)
+	# Emulate entry into the next rendered frame without introducing an unrelated
+	# full scene tick into this deterministic contract test. Calling all fixtures
+	# in the same stable tree order proves deferred FIFO reservations cannot be
+	# stolen by the two agents that were admitted first.
+	pathfinder.agent_navigation_refresh_budget_process_frame = -1
+	pathfinder.agent_navigation_refreshes_used_this_frame = 0
+	var second_frame_admissions: Array[bool] = []
+	for fixture in budget_fixtures:
+		fixture.last_navigation_update_render_frame = -1
+		second_frame_admissions.append(bool(fixture.call(
+			"_should_update_navigation_direction",
+			game.player
+		)))
+	_expect(
+		second_frame_admissions == [false, false, true, true]
+		and not budget_fixtures[2].navigation_refresh_deferred
+		and not budget_fixtures[3].navigation_refresh_deferred,
+		(
+			"Deferred FIFO reservations must rotate the grant to later tree-order "
+			+ "agents on the next render frame: %s."
+		) % [second_frame_admissions]
+	)
+	pathfinder.agent_navigation_refresh_budget_process_frame = -1
+	pathfinder.agent_navigation_refreshes_used_this_frame = 0
+	var third_frame_admissions: Array[bool] = []
+	for fixture in budget_fixtures:
+		fixture.last_navigation_update_render_frame = -1
+		third_frame_admissions.append(bool(fixture.call(
+			"_should_update_navigation_direction",
+			game.player
+		)))
+	_expect(
+		third_frame_admissions == [true, true, false, false]
+		and pathfinder.agent_navigation_refresh_max_wait_process_frames <= 1,
+		(
+			"FIFO navigation grants must remain fair in a sustained overload "
+			+ "(third=%s max_wait=%d)."
+		) % [
+			third_frame_admissions,
+			pathfinder.agent_navigation_refresh_max_wait_process_frames,
+		]
+	)
+	for fixture in budget_fixtures:
+		fixture.free()
+	pathfinder.max_agent_navigation_refreshes_per_process_frame = saved_refresh_cap
+	pathfinder.agent_navigation_refresh_budget_process_frame = -1
+	pathfinder.agent_navigation_refreshes_used_this_frame = 0
+	pathfinder.agent_navigation_refresh_deferred_queue.clear()
+	pathfinder.agent_navigation_refresh_deferred_queue_head = 0
+	pathfinder.agent_navigation_refresh_deferred_ids.clear()
+	pathfinder.agent_navigation_refresh_deferred_since_frame.clear()
+	pathfinder.agent_navigation_refresh_last_request_frame.clear()
+	pathfinder.agent_navigation_refresh_reserved_order.clear()
+	pathfinder.agent_navigation_refresh_reserved_ids.clear()
+	Enemy.navigation_process_frame_budget_enabled = saved_budget_switch
 
 
 func _collect_actual_enemy_configs(game: GameTowerDefense) -> Array[EnemyConfig]:
@@ -842,7 +984,7 @@ func _verify_near_moving_verified_motion_contract(
 	_expect(
 		enemy.navigation_update_interval_frames
 			== Enemy.DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES,
-		"Normal enemies must stagger navigation direction updates across three 20 Hz groups."
+		"Normal enemies must stagger navigation direction updates across six 10 Hz groups."
 	)
 
 	enemy.velocity = direct_direction * enemy.get_effective_move_speed()

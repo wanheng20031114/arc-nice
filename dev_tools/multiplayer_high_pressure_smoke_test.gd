@@ -7,6 +7,9 @@ const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const PICKUP_CONFIG := preload("res://resources/config/pickups/pickup_health.tres")
 const HOE_CAT_SCENE := preload("res://scene/player/hoe_cat/player_hoe_cat.tscn")
 const TIYI_SCENE := preload("res://scene/player/tiyi/player_tiyi.tscn")
+const CAPOO_PROJECTILE_MOTION_SYSTEM_SCENE := preload(
+	"res://scene/enemy/capoo_projectile_motion_system.tscn"
+)
 
 
 class ClientNetManagerStub:
@@ -274,6 +277,7 @@ func _run() -> void:
 	var pathfinder_stub := Node.new()
 	pathfinder_stub.name = "GridPathfinder"
 	fixture.add_child(pathfinder_stub)
+	fixture.add_child(CAPOO_PROJECTILE_MOTION_SYSTEM_SCENE.instantiate())
 	root.add_child(fixture)
 	current_scene = fixture
 	await process_frame

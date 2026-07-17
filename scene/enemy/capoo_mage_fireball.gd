@@ -5,9 +5,14 @@ signal projectile_finished(projectile_id: int, projectile: Node)
 
 const IMPACT_SCENE := preload("res://scene/enemy/capoo_mage_fireball_impact.tscn")
 const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/complete_shape_query_2d.gd")
+const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
 const WORLD_COLLISION_MASK := 1
 const DAMAGEABLE_COLLISION_MASK := 2 | 512
 const EXPLOSION_QUERY_BATCH_SIZE := 64
+
+# Focused performance probes can restore the old direct-instantiation path for
+# a strict A/B. Production uses a bounded, strict visual-effect lease.
+static var pooled_impact_effect_enabled := true
 
 @export var speed: float = 155.0
 @export var max_lifetime: float = 4.0
@@ -278,12 +283,33 @@ func _spawn_impact_effect() -> void:
 		spawn_parent = get_parent()
 	if spawn_parent == null:
 		return
-	var impact := IMPACT_SCENE.instantiate() as Node2D
+	var impact: CapooMageFireballImpact = null
+	if pooled_impact_effect_enabled:
+		if not WORLD_EFFECT_VISIBILITY.is_position_near_viewport(self, global_position):
+			return
+		if (
+			not spawn_parent.has_method("has_session_object_pool_scene")
+			or not bool(spawn_parent.call("has_session_object_pool_scene", IMPACT_SCENE))
+		):
+			return
+		impact = spawn_parent.call(
+			"acquire_session_object",
+			IMPACT_SCENE,
+			true
+		) as CapooMageFireballImpact
+		# Strict acquisition deliberately omits the feedback when its visual
+		# budget is exhausted. Explosion damage was already resolved above.
+		if impact == null:
+			return
+	else:
+		impact = IMPACT_SCENE.instantiate() as CapooMageFireballImpact
 	if impact == null:
 		return
 	impact.top_level = true
-	spawn_parent.add_child(impact)
+	if impact.get_parent() == null:
+		spawn_parent.add_child(impact)
 	impact.global_position = global_position
+	impact.restart()
 
 
 func _try_report_multiplayer_player_hit(player: Player) -> bool:

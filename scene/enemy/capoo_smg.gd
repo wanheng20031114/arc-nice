@@ -2,6 +2,14 @@ extends "res://scene/enemy/capoo_ranged_enemy.gd"
 class_name CapooSMG
 
 const SMGConfig := preload("res://resources/config/enemies/capoo_smg_config.gd")
+const ENEMY_ATTACK_AUDIO_LIMITER := preload(
+	"res://scene/enemy_attack_audio_limiter.gd"
+)
+const HITSCAN_COLLISION_MASK := 1 | 2 | 512
+
+static var short_range_targeting_enabled := true
+static var hitscan_attack_enabled := true
+static var allocation_free_proxy_visuals_enabled := true
 
 @onready var muzzle_flash: Polygon2D = $MuzzleFlash
 @onready var attack_audio: AudioStreamPlayer2D = $AttackAudio
@@ -10,10 +18,29 @@ var fire_time_left: float = 0.0
 var last_move_direction := Vector2.RIGHT
 var muzzle_flash_time_left: float = 0.0
 var latest_proxy_action_id: int = 0
+var smg_config_cache: SMGConfig = null
+var attack_range_squared: float = 0.0
+var hitscan_shots_fired: int = 0
+var last_shot_direction := Vector2.RIGHT
+var proxy_muzzle_flash_time_left := 0.0
+var proxy_action_restore_time_left := 0.0
+var proxy_action_restore_animation_name: StringName = &""
+var proxy_action_restore_token_snapshot := 0
+var proxy_visual_direction := Vector2.RIGHT
+var proxy_visual_timer_action_count := 0
+var proxy_visual_tween_action_count := 0
+var proxy_visual_token := 0
+var hitscan_query := PhysicsRayQueryParameters2D.create(
+	Vector2.ZERO,
+	Vector2.ZERO,
+	HITSCAN_COLLISION_MASK
+)
 
 
 func _ready() -> void:
 	super._ready()
+	hitscan_query.collide_with_bodies = true
+	hitscan_query.collide_with_areas = false
 	_set_muzzle_flash(0.0, Vector2.RIGHT)
 
 
@@ -24,8 +51,11 @@ func _physics_process(delta: float) -> void:
 
 	_update_touch_damage(delta)
 	fire_time_left = maxf(fire_time_left - delta, 0.0)
-	muzzle_flash_time_left = maxf(muzzle_flash_time_left - delta, 0.0)
-	_set_muzzle_flash(muzzle_flash_time_left / 0.05, last_move_direction)
+	if muzzle_flash_time_left > 0.0:
+		muzzle_flash_time_left = maxf(muzzle_flash_time_left - delta, 0.0)
+		_set_muzzle_flash(muzzle_flash_time_left / 0.05, last_move_direction)
+	elif muzzle_flash.visible:
+		_set_muzzle_flash(0.0, last_move_direction)
 
 	if not is_instance_valid(objective_target):
 		velocity = Vector2.ZERO
@@ -33,13 +63,11 @@ func _physics_process(delta: float) -> void:
 		return
 	if _has_player_contact():
 		velocity = Vector2.ZERO
-		var attack_target := get_attackable_objective()
-		if attack_target != null:
-			var contact_aim_direction := global_position.direction_to(attack_target.global_position)
-			if contact_aim_direction != Vector2.ZERO:
-				last_move_direction = contact_aim_direction
-			_update_facing(contact_aim_direction)
-			_try_fire_scatter(last_move_direction)
+		if fire_time_left <= 0.0:
+			var attack_target := get_attackable_objective()
+			if attack_target == null:
+				return
+			_try_fire_scatter(last_move_direction, attack_target)
 		return
 
 	var move_direction := _get_navigation_move_direction(delta)
@@ -48,17 +76,73 @@ func _physics_process(delta: float) -> void:
 	_update_facing(move_direction)
 	velocity = move_direction * _get_move_speed()
 	_move_until_player_contact()
-	if has_attackable_objective():
-		_try_fire_scatter(last_move_direction if move_direction != Vector2.ZERO else Vector2.ZERO)
+	_try_fire_scatter(
+		last_move_direction if move_direction != Vector2.ZERO else Vector2.ZERO
+	)
+
+
+func _process(delta: float) -> void:
+	if not is_multiplayer_proxy:
+		super._process(delta)
+		return
+	if is_dead:
+		set_process(false)
+		return
+
+	var needs_next_frame := false
+	if proxy_muzzle_flash_time_left > 0.0:
+		proxy_muzzle_flash_time_left = maxf(
+			proxy_muzzle_flash_time_left - delta,
+			0.0
+		)
+		_set_muzzle_flash(
+			proxy_muzzle_flash_time_left / 0.08,
+			proxy_visual_direction
+		)
+		needs_next_frame = proxy_muzzle_flash_time_left > 0.0
+	elif muzzle_flash.visible:
+		_set_muzzle_flash(0.0, proxy_visual_direction)
+
+	if proxy_action_restore_time_left > 0.0:
+		proxy_action_restore_time_left = maxf(
+			proxy_action_restore_time_left - delta,
+			0.0
+		)
+		if proxy_action_restore_time_left <= 0.0:
+			_restore_multiplayer_proxy_move_animation(
+				proxy_action_restore_token_snapshot,
+				proxy_action_restore_animation_name
+			)
+			proxy_action_restore_animation_name = &""
+		else:
+			needs_next_frame = true
+	if not needs_next_frame:
+		set_process(false)
 
 
 func _apply_config() -> void:
 	super._apply_config()
 	fire_time_left = 0.0
 	muzzle_flash_time_left = 0.0
-	var smg_config := config as SMGConfig
-	if smg_config != null:
-		attack_audio.stream = smg_config.attack_audio_stream
+	hitscan_shots_fired = 0
+	last_shot_direction = Vector2.RIGHT
+	proxy_muzzle_flash_time_left = 0.0
+	proxy_action_restore_time_left = 0.0
+	proxy_action_restore_animation_name = &""
+	proxy_action_restore_token_snapshot = 0
+	proxy_visual_direction = Vector2.RIGHT
+	proxy_visual_timer_action_count = 0
+	proxy_visual_tween_action_count = 0
+	proxy_visual_token = 0
+	smg_config_cache = config as SMGConfig
+	if smg_config_cache != null:
+		attack_audio.stream = smg_config_cache.attack_audio_stream
+		attack_range_squared = (
+			maxf(smg_config_cache.attack_range, 0.0)
+			* maxf(smg_config_cache.attack_range, 0.0)
+		)
+	else:
+		attack_range_squared = 0.0
 
 
 func _die() -> void:
@@ -68,39 +152,88 @@ func _die() -> void:
 
 func play_multiplayer_death_sequence() -> void:
 	latest_proxy_action_id += 1
+	proxy_visual_token += 1
+	proxy_muzzle_flash_time_left = 0.0
+	proxy_action_restore_time_left = 0.0
+	proxy_action_restore_animation_name = &""
 	_set_muzzle_flash(0.0, last_move_direction)
 	super.play_multiplayer_death_sequence()
 
 
-func _try_fire_scatter(base_direction: Vector2) -> bool:
-	if not has_attackable_objective():
-		return false
-	var smg_config := config as SMGConfig
-	if smg_config == null or smg_config.projectile_scene == null:
-		return false
+func set_multiplayer_proxy_visual_active(active: bool) -> void:
+	super.set_multiplayer_proxy_visual_active(active)
+	if active or not is_multiplayer_proxy:
+		return
+	proxy_visual_token += 1
+	if proxy_action_animation_name_in_use != &"":
+		_restore_multiplayer_proxy_move_animation(
+			proxy_action_restore_token,
+			proxy_action_animation_name_in_use
+		)
+	proxy_muzzle_flash_time_left = 0.0
+	proxy_action_restore_time_left = 0.0
+	proxy_action_restore_animation_name = &""
+	proxy_action_restore_token_snapshot = 0
+	_set_muzzle_flash(0.0, proxy_visual_direction)
+	set_process(false)
+
+
+func _try_fire_scatter(
+	base_direction: Vector2,
+	attack_target: Node2D = null
+) -> bool:
 	if fire_time_left > 0.0:
 		return false
-	if base_direction == Vector2.ZERO:
+	if smg_config_cache == null:
+		return false
+	if (
+		not CapooSMG.hitscan_attack_enabled
+		and smg_config_cache.projectile_scene == null
+	):
+		return false
+	if attack_target == null:
+		attack_target = get_attackable_objective()
+		if attack_target == null:
+			return false
+
+	var aim_direction := base_direction
+	if CapooSMG.short_range_targeting_enabled:
+		var target_offset := attack_target.global_position - global_position
+		if target_offset.length_squared() > attack_range_squared:
+			return false
+		aim_direction = target_offset.normalized()
+	if aim_direction == Vector2.ZERO:
 		return false
 
-	var spread := deg_to_rad(smg_config.spread_angle_degrees)
-	var shot_direction := base_direction.rotated(random_generator.randf_range(-spread, spread)).normalized()
+	var spread := deg_to_rad(smg_config_cache.spread_angle_degrees)
+	var shot_direction := aim_direction.rotated(
+		random_generator.randf_range(-spread, spread)
+	).normalized()
 	if not _fire_bullet(shot_direction):
 		return false
-	fire_time_left = maxf(smg_config.fire_interval, 0.01)
+	last_shot_direction = shot_direction
+	fire_time_left = maxf(smg_config_cache.fire_interval, 0.01)
 	muzzle_flash_time_left = 0.05
+	_update_facing(aim_direction)
 	_set_muzzle_flash(1.0, shot_direction)
-	_play_config_animation(smg_config.attack_animation_name)
+	_play_config_animation(smg_config_cache.attack_animation_name)
 	_broadcast_enemy_action(&"fire", shot_direction)
-	if smg_config.attack_audio_stream != null and random_generator.randi_range(0, 1) == 0:
+	if (
+		smg_config_cache.attack_audio_stream != null
+		and random_generator.randi_range(0, 1) == 0
+	):
 		attack_audio.pitch_scale = random_generator.randf_range(0.98, 1.04)
-		attack_audio.play()
+		ENEMY_ATTACK_AUDIO_LIMITER.play_rapid_fire(attack_audio)
 	return true
 
 
 func _fire_bullet(shoot_direction: Vector2) -> bool:
-	var smg_config := config as SMGConfig
-	if smg_config == null or smg_config.projectile_scene == null:
+	if smg_config_cache == null:
+		return false
+	if CapooSMG.hitscan_attack_enabled:
+		_fire_hitscan(shoot_direction)
+		return true
+	if smg_config_cache.projectile_scene == null:
 		return false
 	var spawn_parent := get_tree().current_scene
 	if spawn_parent == null:
@@ -111,31 +244,36 @@ func _fire_bullet(shoot_direction: Vector2) -> bool:
 		and bool(
 			spawn_parent.call(
 				"has_session_object_pool_scene",
-				smg_config.projectile_scene
+				smg_config_cache.projectile_scene
 			)
 		)
 	)
 	if uses_registered_pool:
 		projectile = spawn_parent.call(
 			"acquire_session_object",
-			smg_config.projectile_scene,
+			smg_config_cache.projectile_scene,
 			false
 		) as CapooAK47Bullet
 	else:
-		projectile = smg_config.projectile_scene.instantiate() as CapooAK47Bullet
+		projectile = smg_config_cache.projectile_scene.instantiate() as CapooAK47Bullet
 	if projectile == null:
 		push_warning("SMG Capoo projectile scene must instantiate CapooAK47Bullet.")
 		return false
 	projectile.top_level = true
 	projectile.setup(
 		shoot_direction,
-		smg_config.attack_damage,
-		smg_config.projectile_speed,
-		smg_config.projectile_lifetime
+		smg_config_cache.attack_damage,
+		smg_config_cache.projectile_speed,
+		smg_config_cache.projectile_lifetime,
+		pathfinder as GridPathfinder,
+		projectile_motion_system
 	)
 	if projectile.get_parent() == null:
 		spawn_parent.add_child(projectile)
-	projectile.global_position = global_position + shoot_direction * smg_config.projectile_spawn_distance
+	projectile.global_position = (
+		global_position
+		+ shoot_direction * smg_config_cache.projectile_spawn_distance
+	)
 	projectile.reset_physics_interpolation()
 	if spawn_parent.has_method("register_local_projectile"):
 		spawn_parent.call(
@@ -145,30 +283,123 @@ func _fire_bullet(shoot_direction: Vector2) -> bool:
 			0,
 			projectile.global_position,
 			shoot_direction,
-			smg_config.attack_damage,
-			smg_config.projectile_speed,
-			smg_config.projectile_lifetime
+			smg_config_cache.attack_damage,
+			smg_config_cache.projectile_speed,
+			smg_config_cache.projectile_lifetime
 		)
 	return true
 
 
+func _fire_hitscan(shoot_direction: Vector2) -> void:
+	var safe_direction := (
+		shoot_direction.normalized()
+		if shoot_direction != Vector2.ZERO
+		else Vector2.RIGHT
+	)
+	var travel_distance := maxf(
+		smg_config_cache.projectile_spawn_distance
+		+ smg_config_cache.projectile_speed * smg_config_cache.projectile_lifetime,
+		0.0
+	)
+	hitscan_query.from = global_position
+	hitscan_query.to = global_position + safe_direction * travel_distance
+	var hit := get_world_2d().direct_space_state.intersect_ray(hitscan_query)
+	hitscan_shots_fired += 1
+	if hit.is_empty():
+		return
+	var collider := hit.get("collider") as Node
+	var hit_player := collider as Player
+	if hit_player != null:
+		if hit_player.is_dead:
+			return
+		_apply_hitscan_player_damage(hit_player, safe_direction)
+		return
+	var hit_plant := collider as PlantDefense
+	if hit_plant == null or hit_plant.is_dead or hit_plant.is_removing:
+		return
+	hit_plant.receive_damage(
+		smg_config_cache.attack_damage,
+		self,
+		safe_direction,
+		EnemyConfig.DamageType.PHYSICAL
+	)
+
+
+func _apply_hitscan_player_damage(
+	hit_player: Player,
+	shoot_direction: Vector2
+) -> void:
+	var source_id := _get_multiplayer_damage_source_id(action_sequence + 1)
+	var current_scene := get_tree().current_scene
+	var reported := false
+	if (
+		current_scene != null
+		and current_scene.has_method("request_multiplayer_player_damage")
+	):
+		reported = bool(current_scene.call(
+			"request_multiplayer_player_damage",
+			source_id,
+			hit_player.peer_id,
+			smg_config_cache.attack_damage,
+			&"capoo_smg_hitscan",
+			-shoot_direction,
+			true
+		))
+	if reported:
+		return
+	hit_player.apply_damage(
+		smg_config_cache.attack_damage,
+		EnemyConfig.DamageType.PHYSICAL,
+		{
+			"is_ranged": true,
+			"source_direction": -shoot_direction,
+		}
+	)
+
+
 func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, action_id: int) -> void:
+	if not is_multiplayer_proxy or is_dead:
+		return
 	if action_id <= latest_proxy_action_id:
 		return
 	latest_proxy_action_id = action_id
 	if action_name != &"fire":
 		return
+	if not multiplayer_proxy_visual_active:
+		return
+	proxy_visual_token += 1
 	var safe_direction := direction.normalized() if direction != Vector2.ZERO else Vector2.RIGHT
 	var smg_config := config as SMGConfig
-	if smg_config != null:
-		_play_multiplayer_proxy_action_animation(smg_config.attack_animation_name, 0.14)
 	_update_facing(safe_direction)
 	_set_muzzle_flash(1.0, safe_direction)
-	var fire_action_id := action_id
+	if CapooSMG.allocation_free_proxy_visuals_enabled:
+		if smg_config != null:
+			_play_multiplayer_proxy_action_animation(
+				smg_config.attack_animation_name,
+				-1.0
+			)
+			proxy_action_restore_animation_name = smg_config.attack_animation_name
+			proxy_action_restore_token_snapshot = proxy_action_restore_token
+		else:
+			proxy_action_restore_animation_name = &""
+		proxy_action_restore_time_left = 0.14
+		proxy_visual_direction = safe_direction
+		proxy_muzzle_flash_time_left = 0.08
+		proxy_visual_timer_action_count += 1
+		set_process(true)
+		return
+
+	if smg_config != null:
+		_play_multiplayer_proxy_action_animation(smg_config.attack_animation_name, 0.14)
+	proxy_visual_tween_action_count += 1
+	var fire_visual_token := proxy_visual_token
 	var tween := create_tween()
 	tween.tween_method(
 		func(progress: float) -> void:
-			if fire_action_id != latest_proxy_action_id:
+			if (
+				fire_visual_token != proxy_visual_token
+				or not multiplayer_proxy_visual_active
+			):
 				return
 			_set_muzzle_flash(progress, safe_direction),
 		1.0,

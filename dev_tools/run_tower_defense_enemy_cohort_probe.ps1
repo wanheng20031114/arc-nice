@@ -26,6 +26,45 @@ param(
     [ValidateRange(0, 1000)]
     [int]$MaxFps = 60,
 
+    [ValidateRange(0, 60)]
+    [int]$NavigationInterval = 0,
+
+    [bool]$NavigationRenderDedupe = $true,
+
+    [bool]$NavigationRefreshBudget = $true,
+
+    [ValidateRange(0, 512)]
+    [int]$NavigationRefreshCap = 0,
+
+    [bool]$EnemyHotMetrics = $false,
+
+    [bool]$GuardianOverlapMetrics = $false,
+
+    [bool]$GuardianUnchangedDiffFastPath = $true,
+
+    [ValidateRange(0.0, 1.0)]
+    [double]$GuardianRefreshInterval = 0.0,
+
+    [bool]$RuntimeCountScans = $false,
+
+    [bool]$ProjectileWorldCertificate = $false,
+
+    [bool]$ProjectileHotMetrics = $false,
+
+    [bool]$BatchedProjectileMotion = $true,
+
+    [bool]$SmgShortRangeTargeting = $true,
+
+    [bool]$SmgHitscanAttack = $true,
+
+    [bool]$DisableSmgProjectiles = $false,
+
+    [bool]$ExpandedProjectilePrewarm = $true,
+
+    [bool]$EnemyAttackAudioLimiter = $true,
+
+    [bool]$PooledMageImpactEffect = $true,
+
     [string]$GodotExe = "C:\Program Files\Godot\Godot_console.exe",
 
     [string]$ProjectRoot = (Split-Path -Parent $PSScriptRoot),
@@ -60,7 +99,25 @@ $godotArguments = @(
     "--seed=$Seed",
     "--corn=$CornCount",
     "--agave=$AgaveCount",
-    "--max-fps=$MaxFps"
+    "--max-fps=$MaxFps",
+    "--navigation-interval=$NavigationInterval",
+    "--navigation-render-dedupe=$($NavigationRenderDedupe.ToString().ToLowerInvariant())",
+    "--navigation-refresh-budget=$($NavigationRefreshBudget.ToString().ToLowerInvariant())",
+    "--navigation-refresh-cap=$NavigationRefreshCap",
+    "--enemy-hot-metrics=$($EnemyHotMetrics.ToString().ToLowerInvariant())",
+    "--guardian-overlap-metrics=$($GuardianOverlapMetrics.ToString().ToLowerInvariant())",
+    "--guardian-unchanged-diff-fast-path=$($GuardianUnchangedDiffFastPath.ToString().ToLowerInvariant())",
+    "--guardian-refresh-interval=$GuardianRefreshInterval",
+    "--runtime-count-scans=$($RuntimeCountScans.ToString().ToLowerInvariant())",
+    "--projectile-world-certificate=$($ProjectileWorldCertificate.ToString().ToLowerInvariant())",
+    "--projectile-hot-metrics=$($ProjectileHotMetrics.ToString().ToLowerInvariant())",
+    "--batched-projectile-motion=$($BatchedProjectileMotion.ToString().ToLowerInvariant())",
+    "--smg-short-range-targeting=$($SmgShortRangeTargeting.ToString().ToLowerInvariant())",
+    "--smg-hitscan-attack=$($SmgHitscanAttack.ToString().ToLowerInvariant())",
+    "--disable-smg-projectiles=$($DisableSmgProjectiles.ToString().ToLowerInvariant())",
+    "--expanded-projectile-prewarm=$($ExpandedProjectilePrewarm.ToString().ToLowerInvariant())",
+    "--enemy-attack-audio-limiter=$($EnemyAttackAudioLimiter.ToString().ToLowerInvariant())",
+    "--pooled-mage-impact-effect=$($PooledMageImpactEffect.ToString().ToLowerInvariant())"
 )
 if ([string]::IsNullOrWhiteSpace($WaveConfig)) {
     $godotArguments += "--enemy=$EnemyConfig"

@@ -62,7 +62,7 @@ func _verify_ranged_enemy_target_contract() -> void:
 	if warehouse != null:
 		warehouse.free()
 	var player := _spawn_player(Vector2(600.0, 0.0))
-	var plant := _spawn_agave(Vector2(100.0, 0.0))
+	var plant := _spawn_agave(Vector2(40.0, 0.0))
 	var gate := Node2D.new()
 	test_root.add_child(gate)
 	gate.global_position = Vector2(80.0, 0.0)
@@ -89,11 +89,26 @@ func _verify_ranged_enemy_target_contract() -> void:
 		"Fire-ranged insect must begin its attack against a plant."
 	)
 
-	var smg := _spawn_enemy(SMG_CONFIG, player) as CapooSMG
+	var smg_test_config := SMG_CONFIG.duplicate(true) as CapooSMGConfig
+	smg_test_config.spread_angle_degrees = 0.0
+	var smg := _spawn_enemy(smg_test_config, player) as CapooSMG
 	smg.set_objective_target(plant)
+	await physics_frame
+	var plant_health_before_smg := plant.current_health
 	_expect(
-		bool(smg.call("_try_fire_scatter", Vector2.RIGHT)),
-		"SMG Capoo must fire while its objective is a plant."
+		bool(smg.call("_try_fire_scatter", Vector2.ZERO)),
+		"SMG Capoo must aim and fire at a nearby plant without a movement direction."
+	)
+	_expect(
+		plant.current_health < plant_health_before_smg
+		and smg.hitscan_shots_fired == 1,
+		"SMG close-range hitscan must damage its determined plant target without spawning a bullet."
+	)
+	smg.fire_time_left = 0.0
+	plant.global_position = Vector2(100.0, 0.0)
+	_expect(
+		not bool(smg.call("_try_fire_scatter", Vector2.RIGHT)),
+		"SMG Capoo must not fire when its plant target leaves close range."
 	)
 	plant.begin_removal(PlantDefense.RemovalMode.ANIMATED)
 	_expect(

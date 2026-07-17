@@ -2,6 +2,9 @@ extends "res://scene/enemy/capoo_ranged_enemy.gd"
 class_name CapooMage
 
 const MageConfig := preload("res://resources/config/enemies/capoo_mage_config.gd")
+const ENEMY_ATTACK_AUDIO_LIMITER := preload(
+	"res://scene/enemy_attack_audio_limiter.gd"
+)
 
 enum CombatState {
 	CHASE,
@@ -160,7 +163,7 @@ func _start_fire(direction: Vector2) -> void:
 	_broadcast_enemy_action(&"fire", fire_direction)
 	if mage_config.attack_audio_stream != null:
 		attack_audio.pitch_scale = random_generator.randf_range(0.95, 1.05)
-		attack_audio.play()
+		ENEMY_ATTACK_AUDIO_LIMITER.play_heavy_attack(attack_audio)
 
 
 func _update_fire(delta: float) -> void:

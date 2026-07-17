@@ -17,6 +17,12 @@ extends SceneTree
 # budgets. Timings are diagnostic; semantic/lifecycle invariants are the gates.
 const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
 const TELEMETRY_SCRIPT := preload("res://scene/runtime_performance_telemetry.gd")
+const ENEMY_ATTACK_AUDIO_LIMITER := preload(
+	"res://scene/enemy_attack_audio_limiter.gd"
+)
+const CAPOO_MAGE_FIREBALL_SCRIPT := preload(
+	"res://scene/enemy/capoo_mage_fireball.gd"
+)
 const CORN_CONFIG := preload(
 	"res://resources/config/plant_defense/corn_machine_gun.tres"
 )
@@ -34,6 +40,9 @@ const DEFAULT_FIXED_SEED := 20260717
 const LINGLAN_BOSS_CONFIG_PATH := (
 	"res://resources/config/bosses/boss_01_linglan.tres"
 )
+const CAPOO_AK47_BULLET_POOL_PATH := "res://scene/enemy/capoo_ak47_bullet.tscn"
+const CAPOO_MAGE_FIREBALL_POOL_PATH := "res://scene/enemy/capoo_mage_fireball.tscn"
+const BULLET_HIT_EFFECT_POOL_PATH := "res://scene/bullet_hit_effect.tscn"
 const ENEMY_HIT_EFFECT_POOL_PATH := "res://scene/enemy/enemy_hit_effect.tscn"
 const FIXTURE_CENTER := Vector2(512.0, 352.0)
 const PLAYER_PROBE_HEALTH := 1_000_000_000
@@ -77,7 +86,36 @@ var fixed_seed := DEFAULT_FIXED_SEED
 var requested_corn_count := 0
 var requested_agave_count := 0
 var requested_max_fps := 60
+var requested_navigation_interval := 0
+var requested_navigation_render_dedupe := true
+var requested_navigation_refresh_budget := true
+var requested_navigation_refresh_cap := 0
+var requested_enemy_hot_metrics := false
+var requested_guardian_overlap_metrics := false
+var requested_guardian_unchanged_diff_fast_path := true
+var requested_guardian_refresh_interval := 0.0
+var requested_runtime_count_scans := false
+var requested_projectile_world_certificate := false
+var effective_projectile_world_certificate := false
+var requested_projectile_hot_metrics := false
+var requested_batched_projectile_motion := true
+var requested_smg_short_range_targeting := true
+var requested_smg_hitscan_attack := true
+var requested_disable_smg_projectiles := false
+var requested_expanded_projectile_prewarm := true
+var requested_enemy_attack_audio_limiter := true
+var requested_pooled_mage_impact_effect := true
 var original_max_fps := 0
+var original_navigation_render_dedupe := true
+var original_navigation_refresh_budget := true
+var original_guardian_unchanged_diff_fast_path := true
+var original_projectile_world_certificate := true
+var original_batched_projectile_motion := true
+var original_smg_short_range_targeting := true
+var original_smg_hitscan_attack := true
+var original_expanded_projectile_prewarm := true
+var original_enemy_attack_audio_limiter := true
+var original_pooled_mage_impact_effect := true
 var original_vsync_mode := DisplayServer.VSYNC_ENABLED
 var vsync_overridden := false
 var movement_start_physics_frame := 0
@@ -111,6 +149,78 @@ func _parse_user_arguments() -> void:
 			requested_agave_count = maxi(int(argument.get_slice("=", 1)), 0)
 		elif argument.begins_with("--max-fps="):
 			requested_max_fps = maxi(int(argument.get_slice("=", 1)), 0)
+		elif argument.begins_with("--navigation-interval="):
+			requested_navigation_interval = maxi(int(argument.get_slice("=", 1)), 0)
+		elif argument.begins_with("--navigation-render-dedupe="):
+			requested_navigation_render_dedupe = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
+		elif argument.begins_with("--navigation-refresh-budget="):
+			requested_navigation_refresh_budget = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
+		elif argument.begins_with("--navigation-refresh-cap="):
+			requested_navigation_refresh_cap = maxi(
+				int(argument.get_slice("=", 1)),
+				0
+			)
+		elif argument.begins_with("--enemy-hot-metrics="):
+			requested_enemy_hot_metrics = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
+		elif argument.begins_with("--guardian-overlap-metrics="):
+			requested_guardian_overlap_metrics = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
+		elif argument.begins_with("--guardian-unchanged-diff-fast-path="):
+			requested_guardian_unchanged_diff_fast_path = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
+		elif argument.begins_with("--guardian-refresh-interval="):
+			requested_guardian_refresh_interval = maxf(
+				float(argument.get_slice("=", 1)),
+				0.0
+			)
+		elif argument.begins_with("--runtime-count-scans="):
+			requested_runtime_count_scans = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
+		elif argument.begins_with("--projectile-world-certificate="):
+			requested_projectile_world_certificate = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
+		elif argument.begins_with("--projectile-hot-metrics="):
+			requested_projectile_hot_metrics = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
+		elif argument.begins_with("--batched-projectile-motion="):
+			requested_batched_projectile_motion = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
+		elif argument.begins_with("--smg-short-range-targeting="):
+			requested_smg_short_range_targeting = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
+		elif argument.begins_with("--smg-hitscan-attack="):
+			requested_smg_hitscan_attack = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
+		elif argument.begins_with("--disable-smg-projectiles="):
+			requested_disable_smg_projectiles = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
+		elif argument.begins_with("--expanded-projectile-prewarm="):
+			requested_expanded_projectile_prewarm = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
+		elif argument.begins_with("--enemy-attack-audio-limiter="):
+			requested_enemy_attack_audio_limiter = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
+		elif argument.begins_with("--pooled-mage-impact-effect="):
+			requested_pooled_mage_impact_effect = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
 
 	if phase == ProbePhase.BURST:
 		# The first frames are the workload for self-destruct enemies. Warming
@@ -135,6 +245,44 @@ func _parse_phase(value: String) -> ProbePhase:
 
 func _run() -> void:
 	original_max_fps = Engine.max_fps
+	original_navigation_render_dedupe = Enemy.navigation_render_frame_dedupe_enabled
+	original_navigation_refresh_budget = Enemy.navigation_process_frame_budget_enabled
+	original_guardian_unchanged_diff_fast_path = (
+		GuardianAuraSystem.unchanged_source_diff_fast_path_enabled
+	)
+	original_projectile_world_certificate = (
+		CapooAK47Bullet.world_collision_certificate_enabled
+	)
+	original_batched_projectile_motion = CapooAK47Bullet.batched_motion_enabled
+	original_smg_short_range_targeting = CapooSMG.short_range_targeting_enabled
+	original_smg_hitscan_attack = CapooSMG.hitscan_attack_enabled
+	original_expanded_projectile_prewarm = (
+		GameTowerDefense.expanded_projectile_pool_prewarm_enabled
+	)
+	original_enemy_attack_audio_limiter = ENEMY_ATTACK_AUDIO_LIMITER.limiting_enabled
+	original_pooled_mage_impact_effect = (
+		CAPOO_MAGE_FIREBALL_SCRIPT.pooled_impact_effect_enabled
+	)
+	Enemy.navigation_render_frame_dedupe_enabled = requested_navigation_render_dedupe
+	Enemy.navigation_process_frame_budget_enabled = requested_navigation_refresh_budget
+	GuardianAuraSystem.unchanged_source_diff_fast_path_enabled = (
+		requested_guardian_unchanged_diff_fast_path
+	)
+	# The production scene contract is checked after GridPathfinder is ready.
+	# Keep the static switch disabled until both halves of the certificate agree.
+	CapooAK47Bullet.world_collision_certificate_enabled = false
+	CapooAK47Bullet.batched_motion_enabled = requested_batched_projectile_motion
+	CapooSMG.short_range_targeting_enabled = requested_smg_short_range_targeting
+	CapooSMG.hitscan_attack_enabled = requested_smg_hitscan_attack
+	GameTowerDefense.expanded_projectile_pool_prewarm_enabled = (
+		requested_expanded_projectile_prewarm
+	)
+	ENEMY_ATTACK_AUDIO_LIMITER.limiting_enabled = (
+		requested_enemy_attack_audio_limiter
+	)
+	CAPOO_MAGE_FIREBALL_SCRIPT.pooled_impact_effect_enabled = (
+		requested_pooled_mage_impact_effect
+	)
 	Engine.max_fps = requested_max_fps
 	if requested_max_fps == 0:
 		original_vsync_mode = DisplayServer.window_get_vsync_mode()
@@ -164,7 +312,10 @@ func _run() -> void:
 	if cohort_configs.size() != requested_enemy_count:
 		await _finish()
 		return
+	if requested_disable_smg_projectiles:
+		_disable_smg_projectiles_in_cohort()
 
+	var runtime_setup_started_usec := Time.get_ticks_usec()
 	game = TOWER_SCENE.instantiate() as GameTowerDefense
 	_expect(game != null, "Enemy cohort probe must instantiate GameTowerDefense.")
 	if game == null:
@@ -176,6 +327,19 @@ func _run() -> void:
 	current_scene = game
 	await process_frame
 	await physics_frame
+	var runtime_setup_ms := float(
+		Time.get_ticks_usec() - runtime_setup_started_usec
+	) / 1000.0
+	var guardian_aura_system := game.get_node_or_null(
+		"GuardianAuraSystem"
+	) as GuardianAuraSystem
+	if (
+		guardian_aura_system != null
+		and requested_guardian_refresh_interval > 0.0
+	):
+		guardian_aura_system.refresh_interval_seconds = (
+			requested_guardian_refresh_interval
+		)
 
 	pathfinder = game.grid_pathfinder as GridPathfinder
 	_expect(pathfinder != null and pathfinder.is_built, "Production GridPathfinder must be built.")
@@ -183,6 +347,31 @@ func _run() -> void:
 	if pathfinder == null or not pathfinder.is_built or game.player == null:
 		await _finish()
 		return
+	effective_projectile_world_certificate = (
+		requested_projectile_world_certificate
+		and pathfinder.world_collision_layer_exclusive_to_authored_tiles
+	)
+	CapooAK47Bullet.world_collision_certificate_enabled = (
+		effective_projectile_world_certificate
+	)
+	_expect(
+		not requested_projectile_world_certificate
+		or effective_projectile_world_certificate,
+		(
+			"Projectile world certificate A/B requires a fixture whose world "
+			+ "collision layer is exclusive to authored tiles; the production "
+			+ "tower-defense scene contains additional StaticBody2D colliders."
+		)
+	)
+	if requested_projectile_world_certificate and not effective_projectile_world_certificate:
+		await _finish()
+		return
+	if requested_navigation_refresh_cap > 0:
+		pathfinder.max_agent_navigation_refreshes_per_process_frame = (
+			requested_navigation_refresh_cap
+		)
+	var projectile_pool_startup := _get_projectile_pool_metrics()
+	_validate_projectile_pool_startup(projectile_pool_startup)
 
 	telemetry = TELEMETRY_SCRIPT.new() as RuntimePerformanceTelemetry
 	root.add_child(telemetry)
@@ -223,7 +412,8 @@ func _run() -> void:
 		(
 			"TOWER_DEFENSE_ENEMY_COHORT_FIXTURE source=%s display_name=%s "
 			+ "phase=%s enemies=%d corn=%d agave=%d warmup=%d samples=%d "
-			+ "setup_ms=%.3f tower_setup_ms=%.3f "
+			+ "setup_ms=%.3f tower_setup_ms=%.3f runtime_setup_ms=%.3f "
+			+ "projectile_pool_registration_ms=%.3f expanded_prewarm=%s "
 			+ "seed=%d max_fps=%d physics_hz=%d renderer=%s driver=%s gpu=%s"
 		)
 		% [
@@ -237,6 +427,9 @@ func _run() -> void:
 			sample_frames,
 			setup_ms,
 			tower_setup_ms,
+			runtime_setup_ms,
+			game.projectile_pool_registration_ms,
+			str(requested_expanded_projectile_prewarm),
 			fixed_seed,
 			Engine.max_fps,
 			Engine.physics_ticks_per_second,
@@ -250,7 +443,12 @@ func _run() -> void:
 		await process_frame
 		_drive_player_movement()
 
-	var result := await _measure_sample_window(setup_ms, tower_setup_ms)
+	var result := await _measure_sample_window(
+		setup_ms,
+		tower_setup_ms,
+		runtime_setup_ms,
+		projectile_pool_startup
+	)
 	print("TOWER_DEFENSE_ENEMY_COHORT_RESULT %s" % JSON.stringify(result))
 	await _finish()
 
@@ -361,6 +559,25 @@ func _build_scaled_wave_configs(source_wave: WaveConfig) -> Array[EnemyConfig]:
 		configs[source_index] = configs[target_index]
 		configs[target_index] = temporary
 	return configs
+
+
+func _disable_smg_projectiles_in_cohort() -> void:
+	var duplicates_by_config_id: Dictionary[int, CapooSMGConfig] = {}
+	for config_index in range(cohort_configs.size()):
+		var smg_config := cohort_configs[config_index] as CapooSMGConfig
+		if smg_config == null:
+			continue
+		var config_id := smg_config.get_instance_id()
+		var duplicate_config := duplicates_by_config_id.get(
+			config_id
+		) as CapooSMGConfig
+		if duplicate_config == null:
+			duplicate_config = smg_config.duplicate() as CapooSMGConfig
+			if duplicate_config == null:
+				continue
+			duplicate_config.projectile_scene = null
+			duplicates_by_config_id[config_id] = duplicate_config
+		cohort_configs[config_index] = duplicate_config
 
 
 func _get_cohort_source_path() -> String:
@@ -521,15 +738,24 @@ func _stagger_tower_attack_timers() -> void:
 
 func _spawn_cohort() -> void:
 	var positions := _build_candidate_positions()
+	var minimum_unique_positions := requested_enemy_count
+	if phase == ProbePhase.ENGAGEMENT:
+		# The authored combat ring contains fewer than 300 distinct walkable cells.
+		# Enemies do not collide with one another, so reusing at least 128 cells
+		# with the small deterministic offsets below preserves a dense real-combat
+		# fixture without weakening the requested 300-enemy workload.
+		minimum_unique_positions = mini(requested_enemy_count, 128)
+	elif phase == ProbePhase.BURST:
+		minimum_unique_positions = 1
 	_expect(
-		positions.size() >= requested_enemy_count
-		or (phase == ProbePhase.BURST and not positions.is_empty()),
-		"The production map must provide enough deterministic walkable cohort cells."
+		positions.size() >= minimum_unique_positions,
+		(
+			"The production map must provide enough deterministic walkable "
+			+ "cohort cells (required=%d actual=%d phase=%s)."
+		)
+		% [minimum_unique_positions, positions.size(), _phase_name()]
 	)
-	if (
-		positions.is_empty()
-		or (positions.size() < requested_enemy_count and phase != ProbePhase.BURST)
-	):
+	if positions.size() < minimum_unique_positions:
 		return
 
 	for enemy_index in range(requested_enemy_count):
@@ -551,6 +777,8 @@ func _spawn_cohort() -> void:
 		)
 		enemy.global_position = positions[position_index] + stacked_offset
 		enemy.setup(current_enemy_config, game.player, pathfinder)
+		if requested_navigation_interval > 0:
+			enemy.navigation_update_interval_frames = requested_navigation_interval
 		enemy.current_health = ENEMY_PROBE_HEALTH if not is_boss else enemy.current_health
 		enemy.set_near_moving_target_direct_distance(
 			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS
@@ -647,16 +875,44 @@ func _build_candidate_positions() -> PackedVector2Array:
 	return candidates
 
 
-func _measure_sample_window(setup_ms: float, tower_setup_ms: float) -> Dictionary:
+func _measure_sample_window(
+	setup_ms: float,
+	tower_setup_ms: float,
+	runtime_setup_ms: float,
+	projectile_pool_startup: Dictionary
+) -> Dictionary:
 	Enemy.reset_performance_metrics()
-	Enemy.performance_metrics_enabled = true
+	Enemy.performance_metrics_enabled = requested_enemy_hot_metrics
+	CapooAK47Bullet.reset_performance_metrics()
+	CapooAK47Bullet.performance_metrics_enabled = requested_projectile_hot_metrics
+	ENEMY_ATTACK_AUDIO_LIMITER.reset_metrics()
+	var guardian_aura_system := game.get_node_or_null(
+		"GuardianAuraSystem"
+	) as GuardianAuraSystem
+	if guardian_aura_system != null:
+		guardian_aura_system.collect_overlap_query_metrics = (
+			requested_guardian_overlap_metrics
+		)
+		guardian_aura_system.reset_runtime_performance_metrics()
 	telemetry.reset()
 	var corn_locks_before := _get_corn_target_lock_count()
 	var corn_rays_before := _get_corn_hitscan_ray_count()
 	var pool_before := _aggregate_pool_metrics()
 	var pool_buckets_before := _get_pool_bucket_metrics()
+	var projectile_pool_before := _get_projectile_pool_metrics()
 	var player_health_before := game.player.current_health
 	var base_health_before := game.current_base_health
+	var physics_frames_before := Engine.get_physics_frames()
+	pathfinder.agent_navigation_refresh_max_wait_process_frames = 0
+	var navigation_refresh_admitted_before := (
+		pathfinder.agent_navigation_refreshes_admitted_total
+	)
+	var navigation_refresh_deferred_before := (
+		pathfinder.agent_navigation_refreshes_deferred_total
+	)
+	var navigation_refresh_saturated_frames_before := (
+		pathfinder.agent_navigation_refresh_budget_saturated_frames_total
+	)
 	var alive_start := _count_alive_enemies()
 	var minimum_alive := alive_start
 	var peak_projectiles := 0
@@ -691,6 +947,9 @@ func _measure_sample_window(setup_ms: float, tower_setup_ms: float) -> Dictionar
 	)
 	var previous_enemy_hit_effect_drops := _get_pool_dropped_count(
 		ENEMY_HIT_EFFECT_POOL_PATH
+	)
+	var previous_navigation_refresh_deferrals := (
+		pathfinder.agent_navigation_refreshes_deferred_total
 	)
 	var previous_tick_usec := Time.get_ticks_usec()
 
@@ -736,6 +995,9 @@ func _measure_sample_window(setup_ms: float, tower_setup_ms: float) -> Dictionar
 		var current_enemy_hit_effect_drops := _get_pool_dropped_count(
 			ENEMY_HIT_EFFECT_POOL_PATH
 		)
+		var current_navigation_refresh_deferrals := (
+			pathfinder.agent_navigation_refreshes_deferred_total
+		)
 		frame_diagnostics.append({
 			"sample_index": sample_index,
 			"wall_ms": wall_ms,
@@ -747,6 +1009,10 @@ func _measure_sample_window(setup_ms: float, tower_setup_ms: float) -> Dictionar
 			),
 			"enemy_hit_effect_drops": (
 				current_enemy_hit_effect_drops - previous_enemy_hit_effect_drops
+			),
+			"navigation_refresh_deferrals": (
+				current_navigation_refresh_deferrals
+				- previous_navigation_refresh_deferrals
 			),
 			"process_ms": process_samples.back(),
 			"physics_ms": physics_samples.back(),
@@ -761,20 +1027,31 @@ func _measure_sample_window(setup_ms: float, tower_setup_ms: float) -> Dictionar
 		previous_corn_rays = current_corn_rays
 		previous_combat_index_size = current_combat_index_size
 		previous_enemy_hit_effect_drops = current_enemy_hit_effect_drops
+		previous_navigation_refresh_deferrals = current_navigation_refresh_deferrals
 		_sample_boss_runtime(boss_phase_observations, boss_peak_counters)
 
-		if sample_index % COUNT_SAMPLE_INTERVAL_FRAMES == 0:
+		if (
+			requested_runtime_count_scans
+			and sample_index % COUNT_SAMPLE_INTERVAL_FRAMES == 0
+		):
 			var counts := telemetry.sample_runtime_counts(game)
 			peak_projectiles = maxi(peak_projectiles, int(counts["active_projectiles"]))
 			minimum_alive = mini(minimum_alive, int(counts["active_enemies"]))
 
 	Enemy.performance_metrics_enabled = false
 	var enemy_metrics := Enemy.get_performance_metrics(true)
+	CapooAK47Bullet.performance_metrics_enabled = false
+	var projectile_metrics := CapooAK47Bullet.get_performance_metrics(true)
+	var guardian_aura_metrics := {}
+	if guardian_aura_system != null:
+		guardian_aura_system.collect_overlap_query_metrics = false
+		guardian_aura_metrics = guardian_aura_system.get_runtime_performance_metrics()
 	var final_counts := telemetry.sample_runtime_counts(game)
 	peak_projectiles = maxi(peak_projectiles, telemetry.peak_active_projectiles)
 	minimum_alive = mini(minimum_alive, int(final_counts["active_enemies"]))
 	var pool_after := _aggregate_pool_metrics()
 	var pool_buckets_after := _get_pool_bucket_metrics()
+	var projectile_pool_after := _get_projectile_pool_metrics()
 	var wall_summary := _summarize(wall_samples)
 
 	var result := {
@@ -797,9 +1074,69 @@ func _measure_sample_window(setup_ms: float, tower_setup_ms: float) -> Dictionar
 		"alive_end": int(final_counts["active_enemies"]),
 		"setup_ms": setup_ms,
 		"tower_setup_ms": tower_setup_ms,
+		"runtime_setup_ms": runtime_setup_ms,
+		"projectile_pool_registration_ms": game.projectile_pool_registration_ms,
 		"burst_trigger_ms": burst_trigger_ms,
 		"warmup_frames": warmup_frames,
 		"sample_frames": sample_frames,
+		"navigation_interval": (
+			requested_navigation_interval
+			if requested_navigation_interval > 0
+			else Enemy.DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES
+		),
+		"navigation_render_dedupe": requested_navigation_render_dedupe,
+		"navigation_refresh_budget": requested_navigation_refresh_budget,
+		"navigation_refresh_budget_runtime": {
+			"cap_per_process_frame": (
+				pathfinder.max_agent_navigation_refreshes_per_process_frame
+			),
+			"admitted": (
+				pathfinder.agent_navigation_refreshes_admitted_total
+				- navigation_refresh_admitted_before
+			),
+			"deferred": (
+				pathfinder.agent_navigation_refreshes_deferred_total
+				- navigation_refresh_deferred_before
+			),
+			"saturated_process_frames": (
+				pathfinder.agent_navigation_refresh_budget_saturated_frames_total
+				- navigation_refresh_saturated_frames_before
+			),
+			"max_wait_process_frames": (
+				pathfinder.agent_navigation_refresh_max_wait_process_frames
+			),
+			"pending_agents": (
+				pathfinder.agent_navigation_refresh_deferred_ids.size()
+			),
+		},
+		"enemy_hot_metrics": requested_enemy_hot_metrics,
+		"guardian_overlap_metrics": requested_guardian_overlap_metrics,
+		"guardian_unchanged_diff_fast_path": (
+			requested_guardian_unchanged_diff_fast_path
+		),
+		"guardian_refresh_interval": (
+			requested_guardian_refresh_interval
+			if requested_guardian_refresh_interval > 0.0
+			else (
+				guardian_aura_system.refresh_interval_seconds
+				if guardian_aura_system != null
+				else 0.0
+			)
+		),
+		"runtime_count_scans": requested_runtime_count_scans,
+		"projectile_world_certificate_requested": (
+			requested_projectile_world_certificate
+		),
+		"projectile_world_certificate": effective_projectile_world_certificate,
+		"projectile_hot_metrics": requested_projectile_hot_metrics,
+		"batched_projectile_motion": requested_batched_projectile_motion,
+		"smg_short_range_targeting": requested_smg_short_range_targeting,
+		"smg_hitscan_attack": requested_smg_hitscan_attack,
+		"disable_smg_projectiles": requested_disable_smg_projectiles,
+		"expanded_projectile_prewarm": requested_expanded_projectile_prewarm,
+		"enemy_attack_audio_limiter": requested_enemy_attack_audio_limiter,
+		"enemy_attack_audio": ENEMY_ATTACK_AUDIO_LIMITER.get_metrics(),
+		"pooled_mage_impact_effect": requested_pooled_mage_impact_effect,
 		"frame_budget": {
 			"over_16_667_count": _count_over_budget(wall_samples, FRAME_BUDGET_60_FPS_MS),
 			"over_16_667_ratio": _ratio_over_budget(wall_samples, FRAME_BUDGET_60_FPS_MS),
@@ -826,6 +1163,11 @@ func _measure_sample_window(setup_ms: float, tower_setup_ms: float) -> Dictionar
 		"static_memory_mib": _summarize(static_memory_mib_samples),
 		"player_damage": maxi(player_health_before - game.player.current_health, 0),
 		"base_damage": maxi(base_health_before - game.current_base_health, 0),
+		"physics_frames_elapsed": Engine.get_physics_frames() - physics_frames_before,
+		"simulation_seconds_elapsed": (
+			float(Engine.get_physics_frames() - physics_frames_before)
+			/ float(maxi(Engine.physics_ticks_per_second, 1))
+		),
 		"peak_projectiles": peak_projectiles,
 		"corn_target_locks": _get_corn_target_lock_count() - corn_locks_before,
 		"corn_hitscan_rays": _get_corn_hitscan_ray_count() - corn_rays_before,
@@ -833,12 +1175,19 @@ func _measure_sample_window(setup_ms: float, tower_setup_ms: float) -> Dictionar
 		"boss_peak_counters": boss_peak_counters,
 		"boss_runtime_state": _get_boss_runtime_state(),
 		"enemy_hot_segments": _format_enemy_hot_segments(enemy_metrics),
+		"projectile_hot_segments": projectile_metrics,
+		"guardian_aura": guardian_aura_metrics,
 		"pool_before": pool_before,
 		"pool_after": pool_after,
 		"pool_delta": _subtract_pool_metrics(pool_after, pool_before),
 		"pool_bucket_changes": _diff_pool_bucket_metrics(
 			pool_buckets_before,
 			pool_buckets_after
+		),
+		"projectile_pool_startup": projectile_pool_startup,
+		"projectile_pool_window": _build_pool_metric_window(
+			projectile_pool_before,
+			projectile_pool_after
 		),
 		"combat_index_size": game.combat_target_index.enemies_by_net_id.size(),
 		"renderer": RenderingServer.get_current_rendering_method(),
@@ -975,6 +1324,15 @@ func _format_enemy_hot_segments(metrics: Dictionary) -> Dictionary:
 	result["navigation_flow_prefetch_deduplicated"] = int(
 		metrics.get("navigation_flow_prefetch_deduplicated", 0)
 	)
+	result["navigation_refresh_calls"] = int(
+		metrics.get("navigation_refresh_calls", 0)
+	)
+	result["navigation_same_render_skips"] = int(
+		metrics.get("navigation_same_render_skips", 0)
+	)
+	result["navigation_budget_deferrals"] = int(
+		metrics.get("navigation_budget_deferrals", 0)
+	)
 	return result
 
 
@@ -1008,6 +1366,70 @@ func _get_pool_bucket_metrics() -> Dictionary:
 	if game == null or game.session_object_pool == null:
 		return {}
 	return game.session_object_pool.get_all_metrics()
+
+
+func _get_projectile_pool_metrics() -> Dictionary:
+	var result := {}
+	if game == null or game.session_object_pool == null:
+		return result
+	for scene_path in [
+		CAPOO_AK47_BULLET_POOL_PATH,
+		CAPOO_MAGE_FIREBALL_POOL_PATH,
+		BULLET_HIT_EFFECT_POOL_PATH,
+	]:
+		result[scene_path] = game.session_object_pool.get_metrics(scene_path)
+	return result
+
+
+func _validate_projectile_pool_startup(metrics_by_path: Dictionary) -> void:
+	var expected_ak47_prewarm := (
+		GameTowerDefense.EXPANDED_CAPOO_AK47_BULLET_PREWARM_COUNT
+		if requested_expanded_projectile_prewarm
+		else GameTowerDefense.LEGACY_CAPOO_AK47_BULLET_PREWARM_COUNT
+	)
+	var expected_mage_prewarm := (
+		GameTowerDefense.EXPANDED_CAPOO_MAGE_FIREBALL_PREWARM_COUNT
+		if requested_expanded_projectile_prewarm
+		else GameTowerDefense.LEGACY_CAPOO_MAGE_FIREBALL_PREWARM_COUNT
+	)
+	var ak47_metrics := metrics_by_path.get(
+		CAPOO_AK47_BULLET_POOL_PATH,
+		{}
+	) as Dictionary
+	var mage_metrics := metrics_by_path.get(
+		CAPOO_MAGE_FIREBALL_POOL_PATH,
+		{}
+	) as Dictionary
+	_expect(
+		int(ak47_metrics.get("created", -1)) == expected_ak47_prewarm,
+		"AK projectile pool startup count must match the selected A/B variant."
+	)
+	_expect(
+		int(mage_metrics.get("created", -1)) == expected_mage_prewarm,
+		"Mage projectile pool startup count must match the selected A/B variant."
+	)
+	_expect(
+		int(ak47_metrics.get("retained_capacity", -1)) == 384
+		and int(mage_metrics.get("retained_capacity", -1)) == 192,
+		"Expanded prewarming must not change projectile retained capacities."
+	)
+
+
+func _build_pool_metric_window(before: Dictionary, after: Dictionary) -> Dictionary:
+	var result := {}
+	for scene_path in [
+		CAPOO_AK47_BULLET_POOL_PATH,
+		CAPOO_MAGE_FIREBALL_POOL_PATH,
+		BULLET_HIT_EFFECT_POOL_PATH,
+	]:
+		var before_metrics := before.get(scene_path, {}) as Dictionary
+		var after_metrics := after.get(scene_path, {}) as Dictionary
+		result[scene_path] = {
+			"before": before_metrics,
+			"after": after_metrics,
+			"delta": _subtract_pool_metrics(after_metrics, before_metrics),
+		}
+	return result
 
 
 func _get_pool_dropped_count(scene_path: String) -> int:
@@ -1184,6 +1606,27 @@ func _phase_name() -> String:
 func _finish() -> void:
 	_release_movement_input()
 	Enemy.performance_metrics_enabled = false
+	CapooAK47Bullet.performance_metrics_enabled = false
+	Enemy.navigation_render_frame_dedupe_enabled = original_navigation_render_dedupe
+	Enemy.navigation_process_frame_budget_enabled = original_navigation_refresh_budget
+	GuardianAuraSystem.unchanged_source_diff_fast_path_enabled = (
+		original_guardian_unchanged_diff_fast_path
+	)
+	CapooAK47Bullet.world_collision_certificate_enabled = (
+		original_projectile_world_certificate
+	)
+	CapooAK47Bullet.batched_motion_enabled = original_batched_projectile_motion
+	CapooSMG.short_range_targeting_enabled = original_smg_short_range_targeting
+	CapooSMG.hitscan_attack_enabled = original_smg_hitscan_attack
+	GameTowerDefense.expanded_projectile_pool_prewarm_enabled = (
+		original_expanded_projectile_prewarm
+	)
+	ENEMY_ATTACK_AUDIO_LIMITER.limiting_enabled = (
+		original_enemy_attack_audio_limiter
+	)
+	CAPOO_MAGE_FIREBALL_SCRIPT.pooled_impact_effect_enabled = (
+		original_pooled_mage_impact_effect
+	)
 	Engine.max_fps = original_max_fps
 	if vsync_overridden:
 		DisplayServer.window_set_vsync_mode(original_vsync_mode)

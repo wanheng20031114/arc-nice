@@ -55,15 +55,20 @@ func _run() -> void:
 	boss_container.name = "BossContainer"
 	test_root.add_child(boss_container)
 	guardian_aura_system = GUARDIAN_AURA_SYSTEM_SCENE.instantiate()
+	guardian_aura_system.allow_tracked_enemy_fallback_scan = true
 	test_root.add_child(guardian_aura_system)
 
 	_test_authored_game_scene_installation()
 	_test_resource_contract()
+	await _test_authoritative_processing_gate()
+	await _test_first_source_refresh_keeps_boundary_overlap()
 	await _test_damage_defense_formulas()
 	await _test_guardian_aura_visual_configuration()
 	await _test_green_shell_keeps_player_area_contract()
 	await _test_guardian_chase_and_collision_contract()
 	await _test_guardian_aura_matches_legacy_overlap()
+	await _test_source_driven_index_and_fixture_fallback()
+	await _test_pending_source_refresh_survives_guardian_compaction()
 	await _test_boss_container_target_semantics()
 	await _test_guardian_aura_defense_lifecycle()
 	await _test_multiplayer_proxy_guardian_values()
@@ -98,7 +103,8 @@ func _test_authored_game_scene_installation() -> void:
 		_expect(
 			system != null
 			and game_instance.get_node_or_null("EnemyContainer") != null
-			and game_instance.get_node_or_null("BossContainer") != null,
+			and game_instance.get_node_or_null("BossContainer") != null
+			and not system.allow_tracked_enemy_fallback_scan,
 			"%s game scene must author GuardianAuraSystem beside both target containers."
 			% String(scene_entry["label"])
 		)
@@ -115,6 +121,14 @@ func _test_resource_contract() -> void:
 		"GuardianAuraSystem must use fixed physics processing."
 	)
 	_expect(
+		guardian_aura_system.limit_refresh_to_once_per_render_frame,
+		"GuardianAuraSystem must shed duplicate physics catch-up work per render frame."
+	)
+	_expect(
+		guardian_aura_system.use_extent_overlap_certificates,
+		"GuardianAuraSystem must default to exact broadphase overlap certificates."
+	)
+	_expect(
 		guardian_aura_system.target_containers.size() == 2,
 		"GuardianAuraSystem must author EnemyContainer and BossContainer targets."
 	)
@@ -122,6 +136,15 @@ func _test_resource_contract() -> void:
 		guardian_aura_system.use_snapshot_coverage_grid,
 		"GuardianAuraSystem must default to the compact snapshot coverage grid."
 	)
+	_expect(
+		GuardianAuraSystem.source_driven_refresh_enabled,
+		"GuardianAuraSystem must default to source-driven refresh."
+	)
+	_expect(
+		is_equal_approx(guardian_aura_system.refresh_interval_seconds, 0.2),
+		"GuardianAuraSystem must use the measured 5 Hz production refresh."
+	)
+	_test_render_frame_refresh_limit()
 	_expect(
 		GUARDIAN_CONFIG is YuanshiInsectGuardianConfig,
 		"Guardian config must use YuanshiInsectGuardianConfig."
@@ -133,6 +156,7 @@ func _test_resource_contract() -> void:
 	_expect(BASIC_CONFIG.enemy_scene != null, "Basic Yuanshi insect must use its own scene.")
 	_expect(GUARDIAN_CONFIG.enemy_scene != null, "Guardian must use its own scene.")
 	_expect(GUARDIAN_CONFIG.max_health >= 16, "Guardian health is not high enough.")
+
 	_expect(GUARDIAN_CONFIG.attack_damage == 10, "Guardian attack damage must be 10.")
 	_expect(
 		is_equal_approx(GUARDIAN_CONFIG.move_speed, BASIC_CONFIG.move_speed),
@@ -172,6 +196,94 @@ func _test_resource_contract() -> void:
 	var texture := load("res://resources/texture/yuanshi_insect_guardian.png") as Texture2D
 	var image := texture.get_image() if texture != null else null
 	_expect(image != null and image.get_size() == Vector2i(96, 64), "Guardian sprite sheet size is incorrect.")
+
+
+func _test_authoritative_processing_gate() -> void:
+	var player := _spawn_player(Vector2(160.0, 0.0))
+	guardian_aura_system.set_authoritative_processing_enabled(false)
+	_expect(
+		not guardian_aura_system.is_physics_processing()
+		and guardian_aura_system.tracked_enemy_ids.is_empty(),
+		"Client-view GuardianAuraSystem must stop physics work and release tracking."
+	)
+	var proxy := _spawn_enemy(Vector2.ZERO, BASIC_CONFIG, player)
+	proxy.set_physics_process(false)
+	await process_frame
+	_expect(
+		not guardian_aura_system.tracked_enemies.has(proxy.get_instance_id()),
+		"Disabled GuardianAuraSystem must not track newly replicated enemies."
+	)
+	guardian_aura_system.set_authoritative_processing_enabled(true)
+	await process_frame
+	_expect(
+		guardian_aura_system.is_physics_processing()
+		and guardian_aura_system.tracked_enemies.has(proxy.get_instance_id()),
+		"Re-enabled GuardianAuraSystem must rebuild tracking from authored containers."
+	)
+	proxy.queue_free()
+	player.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_render_frame_refresh_limit() -> void:
+	var original_limit: bool = guardian_aura_system.limit_refresh_to_once_per_render_frame
+	guardian_aura_system.limit_refresh_to_once_per_render_frame = false
+	var unrestricted_start: int = guardian_aura_system.refresh_service_step_count
+	for _tick in range(8):
+		guardian_aura_system.call("_physics_process", 1.0 / 60.0)
+	_expect(
+		guardian_aura_system.refresh_service_step_count - unrestricted_start == 8,
+		"Unrestricted A/B scheduler fixture must execute every physics catch-up tick."
+	)
+
+	guardian_aura_system.limit_refresh_to_once_per_render_frame = true
+	guardian_aura_system.last_refresh_render_frame = -1
+	var limited_start: int = guardian_aura_system.refresh_service_step_count
+	for _tick in range(8):
+		guardian_aura_system.call("_physics_process", 1.0 / 60.0)
+	_expect(
+		guardian_aura_system.refresh_service_step_count - limited_start == 1,
+		"Render-frame limiter must admit exactly one guardian refresh service step."
+	)
+	guardian_aura_system.limit_refresh_to_once_per_render_frame = original_limit
+
+
+func _test_first_source_refresh_keeps_boundary_overlap() -> void:
+	var player := _spawn_player(Vector2(240.0, 0.0))
+	var guardian := _spawn_enemy(Vector2.ZERO, GUARDIAN_CONFIG, player)
+	var boundary_target := _spawn_enemy(Vector2(53.0, 0.0), BASIC_CONFIG, player)
+	guardian.set_physics_process(false)
+	boundary_target.set_physics_process(false)
+
+	var combat_index := CombatTargetIndex.new()
+	combat_index.register_enemy(1, guardian)
+	combat_index.register_enemy(2, boundary_target)
+	guardian_aura_system.call("_classify_pending_guardians")
+	guardian_aura_system.refresh_guardian_debt = 1.0
+	guardian_aura_system.call("_service_refresh_target_debt")
+	_expect(
+		guardian_aura_system.maximum_tracked_target_extent
+			>= boundary_target.body_collision_extent_radius
+		and guardian_aura_system.has_guardian_source(boundary_target, guardian),
+		(
+			"The first source-driven refresh must include a ready-time collision "
+			+ "extent when the target center is outside the aura but its body overlaps "
+			+ "(maximum=%.2f target=%.2f covered=%s)."
+		)
+		% [
+			guardian_aura_system.maximum_tracked_target_extent,
+			boundary_target.body_collision_extent_radius,
+			guardian_aura_system.has_guardian_source(boundary_target, guardian),
+		]
+	)
+
+	combat_index.clear()
+	guardian.queue_free()
+	boundary_target.queue_free()
+	player.queue_free()
+	await process_frame
+	await physics_frame
 
 
 func _test_damage_defense_formulas() -> void:
@@ -381,6 +493,8 @@ func _test_guardian_chase_and_collision_contract() -> void:
 
 
 func _test_guardian_aura_matches_legacy_overlap() -> void:
+	var original_source_driven := GuardianAuraSystem.source_driven_refresh_enabled
+	GuardianAuraSystem.source_driven_refresh_enabled = false
 	var player := _spawn_player(Vector2(240.0, 0.0))
 	var guardian := _spawn_enemy(Vector2.ZERO, GUARDIAN_CONFIG, player)
 	var target := _spawn_enemy(Vector2.ZERO, BASIC_CONFIG, player)
@@ -423,6 +537,7 @@ func _test_guardian_aura_matches_legacy_overlap() -> void:
 			]
 		)
 	guardian_aura_system.use_snapshot_coverage_grid = true
+	await _test_offset_shape_larger_than_aura_certificate(guardian, target)
 
 	target.collision_layer = 0
 	guardian_aura_system.force_refresh_all()
@@ -448,6 +563,292 @@ func _test_guardian_aura_matches_legacy_overlap() -> void:
 	player.queue_free()
 	await process_frame
 	await physics_frame
+	GuardianAuraSystem.source_driven_refresh_enabled = original_source_driven
+
+
+func _test_source_driven_index_and_fixture_fallback() -> void:
+	var original_source_driven := GuardianAuraSystem.source_driven_refresh_enabled
+	var player := _spawn_player(Vector2(240.0, 0.0))
+	var guardian := _spawn_enemy(Vector2.ZERO, GUARDIAN_CONFIG, player)
+	var near_target := _spawn_enemy(Vector2(34.0, 0.0), BASIC_CONFIG, player)
+	var boundary_target := _spawn_enemy(Vector2(54.0, 0.0), BASIC_CONFIG, player)
+	var far_target := _spawn_enemy(Vector2(120.0, 0.0), BASIC_CONFIG, player)
+	var cohort: Array[Enemy] = [guardian, near_target, boundary_target, far_target]
+	for enemy in cohort:
+		enemy.set_physics_process(false)
+	await _wait_physics_frames(2)
+
+	GuardianAuraSystem.source_driven_refresh_enabled = false
+	guardian_aura_system.force_refresh_all()
+	var reference_membership := PackedByteArray()
+	for target in cohort:
+		reference_membership.append(
+			1 if guardian_aura_system.has_guardian_source(target, guardian) else 0
+		)
+
+	guardian_aura_system.reset_runtime_performance_metrics()
+	GuardianAuraSystem.source_driven_refresh_enabled = true
+	guardian_aura_system.force_refresh_all()
+	var fallback_matches := true
+	for target_index in range(cohort.size()):
+		var actual: bool = guardian_aura_system.has_guardian_source(
+			cohort[target_index],
+			guardian
+		)
+		if actual != (reference_membership[target_index] == 1):
+			fallback_matches = false
+			break
+	_expect(
+		fallback_matches
+		and guardian_aura_system.source_fallback_scan_count > 0
+		and guardian_aura_system.source_index_query_count == 0,
+		"Source-driven fixture fallback must exactly match target-driven membership."
+	)
+
+	var combat_index := CombatTargetIndex.new()
+	for target_index in range(cohort.size()):
+		combat_index.register_enemy(target_index + 1, cohort[target_index])
+	guardian_aura_system.reset_runtime_performance_metrics()
+	guardian_aura_system.force_refresh_all()
+	var indexed_matches := true
+	for target_index in range(cohort.size()):
+		var actual: bool = guardian_aura_system.has_guardian_source(
+			cohort[target_index],
+			guardian
+		)
+		if actual != (reference_membership[target_index] == 1):
+			indexed_matches = false
+			break
+	_expect(
+		indexed_matches
+		and guardian_aura_system.source_index_query_count == 1
+		and guardian_aura_system.source_fallback_scan_count == 0,
+		"Indexed source refresh must match target-driven membership without a full scan."
+	)
+
+	var original_service_budget: int = guardian_aura_system.max_refresh_service_usec
+	guardian_aura_system.max_refresh_service_usec = 0
+	guardian_aura_system.reset_runtime_performance_metrics()
+	guardian_aura_system.refresh_guardian_debt = 1.0
+	var deferred_cursor_before: int = guardian_aura_system.refresh_guardian_cursor
+	guardian_aura_system.call("_service_refresh_target_debt")
+	_expect(
+		guardian_aura_system.source_deferred_refresh_count == 1
+		and guardian_aura_system.refresh_guardian_debt == 1.0
+		and guardian_aura_system.last_refresh_guardian_count == 0
+		and guardian_aura_system.refresh_guardian_cursor == deferred_cursor_before
+		and guardian_aura_system.pending_source_refresh_id
+			== guardian.get_instance_id()
+		and guardian_aura_system.has_guardian_source(near_target, guardian),
+		"A deferred source query must preserve coverage, debt, and cursor ownership."
+	)
+	guardian_aura_system.max_refresh_service_usec = original_service_budget
+	guardian_aura_system.call("_service_refresh_target_debt")
+	_expect(
+		guardian_aura_system.pending_source_refresh_id == 0
+		and guardian_aura_system.refresh_guardian_debt == 0.0
+		and guardian_aura_system.last_refresh_guardian_count == 1,
+		"A resumed source query must finish without repeating its completed chunk."
+	)
+
+	# Production must preserve the last complete coverage and defer when a
+	# registration race makes the index temporarily incomplete. It may neither
+	# publish partial coverage nor fall back to an O(enemy_count) scan.
+	guardian_aura_system.allow_tracked_enemy_fallback_scan = false
+	combat_index.unregister_enemy(2, near_target)
+	guardian_aura_system.reset_runtime_performance_metrics()
+	guardian_aura_system.refresh_guardian_cursor = 0
+	guardian_aura_system.refresh_guardian_debt = 1.0
+	guardian_aura_system.call("_service_refresh_target_debt")
+	_expect(
+		guardian_aura_system.source_index_query_count == 0
+		and guardian_aura_system.source_fallback_scan_count == 0
+		and guardian_aura_system.source_deferred_refresh_count == 1
+		and guardian_aura_system.refresh_guardian_debt == 1.0
+		and guardian_aura_system.last_refresh_guardian_count == 0
+		and guardian_aura_system.refresh_guardian_cursor == 0
+		and guardian_aura_system.has_guardian_source(near_target, guardian),
+		"An incomplete production index must defer while preserving complete coverage."
+	)
+	combat_index.register_enemy(2, near_target)
+	guardian_aura_system.call("_service_refresh_target_debt")
+	_expect(
+		guardian_aura_system.source_index_query_count == 1
+		and guardian_aura_system.refresh_guardian_debt == 0.0
+		and guardian_aura_system.last_refresh_guardian_count == 1,
+		"A repaired index must resume the deferred guardian on the next service step."
+	)
+	guardian_aura_system.allow_tracked_enemy_fallback_scan = true
+
+	combat_index.clear()
+	for enemy in cohort:
+		enemy.queue_free()
+	player.queue_free()
+	await process_frame
+	await physics_frame
+	GuardianAuraSystem.source_driven_refresh_enabled = original_source_driven
+
+
+func _test_pending_source_refresh_survives_guardian_compaction() -> void:
+	var original_source_driven := GuardianAuraSystem.source_driven_refresh_enabled
+	var original_service_budget: int = guardian_aura_system.max_refresh_service_usec
+	GuardianAuraSystem.source_driven_refresh_enabled = true
+	var player := _spawn_player(Vector2(240.0, 0.0))
+	var predecessor := _spawn_enemy(Vector2(-12.0, 0.0), GUARDIAN_CONFIG, player)
+	var pending_guardian := _spawn_enemy(Vector2.ZERO, GUARDIAN_CONFIG, player)
+	var trailing_guardian := _spawn_enemy(Vector2(12.0, 0.0), GUARDIAN_CONFIG, player)
+	var cohort: Array[Enemy] = [
+		predecessor,
+		pending_guardian,
+		trailing_guardian,
+	]
+	for target_index in range(20):
+		var angle := TAU * float(target_index) / 20.0
+		cohort.append(
+			_spawn_enemy(
+				Vector2(cos(angle), sin(angle)) * 30.0,
+				BASIC_CONFIG,
+				player
+			)
+		)
+	for enemy in cohort:
+		enemy.set_physics_process(false)
+	await _wait_physics_frames(2)
+
+	var combat_index := CombatTargetIndex.new()
+	for target_index in range(cohort.size()):
+		combat_index.register_enemy(target_index + 1, cohort[target_index])
+	guardian_aura_system.force_refresh_all()
+
+	var pending_id := pending_guardian.get_instance_id()
+	var predecessor_id := predecessor.get_instance_id()
+	var pending_config := (
+		pending_guardian.config as YuanshiInsectGuardianConfig
+	)
+	var world_radius := float(
+		guardian_aura_system.call(
+			"_get_guardian_world_radius",
+			pending_guardian,
+			pending_config
+		)
+	)
+	guardian_aura_system.reset_runtime_performance_metrics()
+	guardian_aura_system.call("_clear_pending_source_refresh")
+	var collected := bool(
+		guardian_aura_system.call(
+			"_collect_source_query_candidates",
+			pending_guardian,
+			world_radius
+		)
+	)
+	var candidate_count: int = guardian_aura_system.source_candidate_scratch.size()
+	var completed_chunk_size := mini(8, candidate_count - 1)
+	_expect(
+		collected and completed_chunk_size > 0,
+		"Guardian compaction fixture must collect more than one candidate."
+	)
+	if not collected or completed_chunk_size <= 0:
+		combat_index.clear()
+		for enemy in cohort:
+			enemy.queue_free()
+		player.queue_free()
+		await process_frame
+		await physics_frame
+		guardian_aura_system.max_refresh_service_usec = original_service_budget
+		GuardianAuraSystem.source_driven_refresh_enabled = original_source_driven
+		return
+
+	var complete_coverage_before: Dictionary = (
+		guardian_aura_system.covered_enemy_ids_by_guardian
+		.get(pending_id, {})
+		.duplicate()
+	)
+	guardian_aura_system.desired_covered_enemy_ids_scratch.clear()
+	for candidate_index in range(completed_chunk_size):
+		var candidate := (
+			guardian_aura_system.source_candidate_scratch[candidate_index]
+			as Enemy
+		)
+		if (
+			candidate != null
+			and complete_coverage_before.has(candidate.get_instance_id())
+		):
+			guardian_aura_system.desired_covered_enemy_ids_scratch[
+				candidate.get_instance_id()
+			] = true
+	guardian_aura_system.pending_source_refresh_id = pending_id
+	guardian_aura_system.pending_source_refresh_candidate_cursor = (
+		completed_chunk_size
+	)
+	guardian_aura_system.pending_source_refresh_position = (
+		pending_guardian.global_position
+	)
+	guardian_aura_system.pending_source_refresh_world_radius = world_radius
+	guardian_aura_system.pending_source_refresh_defense_bonus = (
+		pending_config.aura_physical_defense_bonus
+	)
+	guardian_aura_system.source_candidate_visit_count = completed_chunk_size
+	guardian_aura_system.refresh_guardian_cursor = int(
+		guardian_aura_system.guardian_slot_by_id[pending_id]
+	)
+	guardian_aura_system.refresh_guardian_debt = 1.0
+	var index_queries_before_removal: int = (
+		guardian_aura_system.source_index_query_count
+	)
+
+	# Removing a source before the pending cursor compacts [A, B, C] to [C, B].
+	# B must retain the service slot even though the numeric cursor moves to C.
+	enemy_container.remove_child(predecessor)
+	# The removed guardian also ceases to be a valid aura target immediately;
+	# all other completed membership must remain identical after the resume.
+	complete_coverage_before.erase(predecessor_id)
+	_expect(
+		not guardian_aura_system.guardians.has(predecessor_id)
+		and guardian_aura_system.pending_source_refresh_id == pending_id
+		and guardian_aura_system.pending_source_refresh_candidate_cursor
+			== completed_chunk_size
+		and guardian_aura_system.refresh_guardian_cursor
+			== int(guardian_aura_system.guardian_slot_by_id[pending_id])
+		and guardian_aura_system.source_index_query_count
+			== index_queries_before_removal,
+		"Removing an earlier guardian must preserve the pending source snapshot."
+	)
+
+	guardian_aura_system.max_refresh_service_usec = 1_000_000
+	guardian_aura_system.call("_service_refresh_target_debt")
+	var resumed_coverage: Dictionary = (
+		guardian_aura_system.covered_enemy_ids_by_guardian.get(pending_id, {})
+	)
+	var coverage_matches := (
+		resumed_coverage.size() == complete_coverage_before.size()
+	)
+	if coverage_matches:
+		for enemy_id_variant in complete_coverage_before:
+			if not resumed_coverage.has(int(enemy_id_variant)):
+				coverage_matches = false
+				break
+	_expect(
+		guardian_aura_system.pending_source_refresh_id == 0
+		and guardian_aura_system.refresh_guardian_debt == 0.0
+		and guardian_aura_system.last_refresh_guardian_count == 1
+		and guardian_aura_system.source_index_query_count
+			== index_queries_before_removal
+		and guardian_aura_system.source_candidate_visit_count == candidate_count
+		and coverage_matches,
+		"A compacted pending source must resume first without re-querying or "
+		+ "publishing incomplete coverage."
+	)
+
+	guardian_aura_system.max_refresh_service_usec = original_service_budget
+	combat_index.clear()
+	predecessor.queue_free()
+	for enemy in cohort:
+		if enemy != predecessor:
+			enemy.queue_free()
+	player.queue_free()
+	await process_frame
+	await physics_frame
+	GuardianAuraSystem.source_driven_refresh_enabled = original_source_driven
 
 
 func _test_boss_container_target_semantics() -> void:
@@ -567,20 +968,20 @@ func _test_guardian_aura_defense_lifecycle() -> void:
 	_expect(ally.get_effective_physical_defense() == 6, "Guardian aura bonuses from multiple guardians must stack.")
 
 	second_guardian.global_position = Vector2(120.0, 0.0)
-	await _wait_physics_frames(8)
+	await _wait_physics_frames(16)
 	_expect(ally.get_effective_physical_defense() == 3, "Guardian aura stack did not remove one source on exit.")
 	ally.apply_damage(4)
 	_expect(ally.current_health == 19, "Guardian aura did not reduce physical damage by 3.")
 
 	ally.global_position = Vector2(240.0, 0.0)
-	await _wait_physics_frames(8)
+	await _wait_physics_frames(16)
 	_expect(ally.get_effective_physical_defense() == 0, "Guardian aura defense did not clear on exit.")
 	ally.apply_damage(4)
 	_expect(ally.current_health == 15, "Enemy kept guardian defense after leaving aura.")
 
 	ally.global_position = Vector2(20.0, 0.0)
 	second_guardian.global_position = Vector2(32.0, 0.0)
-	await _wait_physics_frames(8)
+	await _wait_physics_frames(16)
 	_expect(ally.get_effective_physical_defense() == 6, "Guardian aura did not reapply overlapping sources after movement.")
 	guardian.apply_damage(
 		GUARDIAN_CONFIG.max_health
@@ -617,7 +1018,7 @@ func _test_guardian_aura_defense_lifecycle() -> void:
 	# Production removals still use those synchronous paths; this verifies the
 	# batched cursor remains a bounded safety net without a per-frame full scan.
 	audited_guardian.is_dead = true
-	await _wait_physics_frames(8)
+	await _wait_physics_frames(16)
 	_expect(
 		ally.get_effective_physical_defense() == 0
 		and not guardian_aura_system.tracked_enemies.has(
@@ -669,6 +1070,38 @@ func _test_multiplayer_proxy_guardian_values() -> void:
 	ally.queue_free()
 	player.queue_free()
 	await process_frame
+	await physics_frame
+
+
+func _test_offset_shape_larger_than_aura_certificate(
+	guardian: YuanshiInsect,
+	target: YuanshiInsect
+) -> void:
+	var original_shape_position := target.collision_shape.position
+	target.global_position = guardian.global_position
+	target.collision_shape.position = Vector2(GUARDIAN_CONFIG.aura_radius + 24.0, 0.0)
+	target.call("_refresh_collision_shape_cache")
+	await physics_frame
+
+	guardian_aura_system.use_extent_overlap_certificates = false
+	guardian_aura_system.force_refresh_all()
+	var exact_overlap: bool = guardian_aura_system.has_guardian_source(target, guardian)
+	guardian_aura_system.use_extent_overlap_certificates = true
+	guardian_aura_system.force_refresh_all()
+	var certified_overlap: bool = guardian_aura_system.has_guardian_source(target, guardian)
+	var legacy_overlap := _legacy_guardian_area_overlaps(guardian, target)
+	_expect(
+		not exact_overlap and not certified_overlap and not legacy_overlap,
+		(
+			"Containment certificate must not accept an offset body whose "
+			+ "conservative extent is larger than the aura "
+			+ "(exact=%s certified=%s area=%s)."
+		)
+		% [exact_overlap, certified_overlap, legacy_overlap]
+	)
+
+	target.collision_shape.position = original_shape_position
+	target.call("_refresh_collision_shape_cache")
 	await physics_frame
 
 

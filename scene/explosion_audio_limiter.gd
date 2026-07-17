@@ -27,6 +27,16 @@ static func play(audio_player: AudioStreamPlayer2D) -> void:
 	)
 
 
+## Stops an explosion voice and releases its logical limiter slot immediately.
+## AudioStreamPlayer2D.stop() does not emit finished, so pooled effects must use
+## this before a lease is hidden or restarted.
+static func stop(audio_player: AudioStreamPlayer2D) -> void:
+	if audio_player == null:
+		return
+	audio_player.stop()
+	_remove_audio_player_from_group(audio_player, EXPLOSION_AUDIO_GROUP)
+
+
 static func play_enemy_hit(audio_player: AudioStreamPlayer2D) -> void:
 	_play_limited_audio(
 		audio_player,

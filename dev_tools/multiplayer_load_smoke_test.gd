@@ -3526,6 +3526,14 @@ func _test_game_runtime_modes() -> void:
 	root.add_child(host_game)
 	await process_frame
 	_expect(host_game.peer_players.size() == 2, "Host authority game must create peer players.")
+	var host_guardian_system := host_game.get_node(
+		"GuardianAuraSystem"
+	) as GuardianAuraSystem
+	_expect(
+		host_guardian_system.authoritative_processing_enabled
+		and host_guardian_system.is_physics_processing(),
+		"Host authority must keep Guardian aura processing enabled."
+	)
 	_expect(host_game.get_player_for_peer(1) != null, "Host player must exist.")
 	_expect(host_game.get_player_for_peer(2) != null, "Remote player must exist on host.")
 	var host_player := host_game.get_player_for_peer(1) as Player
@@ -3572,6 +3580,15 @@ func _test_game_runtime_modes() -> void:
 	await process_frame
 	_expect(client_game.peer_players.size() == 2, "Client view game must create visual peer players.")
 	_expect(not client_game.auto_start_waves, "Client view must not start local waves.")
+	var client_guardian_system := client_game.get_node(
+		"GuardianAuraSystem"
+	) as GuardianAuraSystem
+	_expect(
+		not client_guardian_system.authoritative_processing_enabled
+		and not client_guardian_system.is_physics_processing()
+		and client_guardian_system.tracked_enemy_ids.is_empty(),
+		"Client view must not spend CPU maintaining authoritative Guardian auras."
+	)
 	var client_local_player := client_game.get_player_for_peer(2) as Player
 	var client_remote_player := client_game.get_player_for_peer(1) as Player
 	_expect(
@@ -3592,6 +3609,28 @@ func _test_game_runtime_modes() -> void:
 	)
 	_stop_audio_players(client_game)
 	client_game.queue_free()
+	await process_frame
+
+	var tower_client_game := TOWER_DEFENSE_GAME_SCENE.instantiate() as GameTowerDefense
+	tower_client_game.configure_multiplayer(
+		GameRuntimeBase.RuntimeMode.CLIENT_VIEW,
+		2,
+		{1: "Host", 2: "Client"}
+	)
+	tower_client_game.set("auto_start_waves", false)
+	root.add_child(tower_client_game)
+	await process_frame
+	var tower_client_guardian_system := tower_client_game.get_node(
+		"GuardianAuraSystem"
+	) as GuardianAuraSystem
+	_expect(
+		not tower_client_guardian_system.authoritative_processing_enabled
+		and not tower_client_guardian_system.is_physics_processing()
+		and tower_client_guardian_system.tracked_enemy_ids.is_empty(),
+		"Tower-defense client view must disable Guardian aura processing."
+	)
+	_stop_audio_players(tower_client_game)
+	tower_client_game.queue_free()
 	await process_frame
 
 

@@ -9,6 +9,9 @@ const SAKURA_HIT_EFFECT_SCENE := preload(
 	"res://scene/boss/linglan/linglan_sakura_hit_effect.tscn"
 )
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
+const CAPOO_PROJECTILE_MOTION_SYSTEM_SCENE := preload(
+	"res://scene/enemy/capoo_projectile_motion_system.tscn"
+)
 
 
 class PoolRuntime:
@@ -24,6 +27,7 @@ class PoolRuntime:
 		var pathfinder := Node.new()
 		pathfinder.name = "GridPathfinder"
 		add_child(pathfinder)
+		add_child(CAPOO_PROJECTILE_MOTION_SYSTEM_SCENE.instantiate())
 		session_object_pool = SessionObjectPool.new()
 		session_object_pool.name = "SessionObjectPool"
 		add_child(session_object_pool)

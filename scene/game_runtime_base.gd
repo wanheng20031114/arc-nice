@@ -12,6 +12,9 @@ const ENEMY_HIT_EFFECT_POOL_SCENE := preload("res://scene/enemy/enemy_hit_effect
 const MOVE_SPEED_TRAIL_EFFECT_POOL_SCENE := preload(
 	"res://scene/move_speed_trail_effect.tscn"
 )
+const CAPOO_MAGE_FIREBALL_IMPACT_POOL_SCENE := preload(
+	"res://scene/enemy/capoo_mage_fireball_impact.tscn"
+)
 
 const ENEMY_SPAWN_EFFECT_PREWARM_COUNT := 16
 const ENEMY_SPAWN_EFFECT_RETAINED_CAPACITY := 32
@@ -117,6 +120,7 @@ enum WaveState {
 
 @onready var enemy_container: Node2D = $EnemyContainer
 @onready var grid_pathfinder: Node = $GridPathfinder
+@onready var capoo_projectile_motion_system: Node = $CapooProjectileMotionSystem
 
 var player: Player = null
 var wave_state: WaveState = WaveState.PRE_WAVE
@@ -219,6 +223,20 @@ static func register_common_visual_effect_pools(pool: SessionObjectPool) -> void
 		ENEMY_HIT_EFFECT_POOL_SCENE,
 		ENEMY_HIT_EFFECT_CAPACITY,
 		ENEMY_HIT_EFFECT_CAPACITY
+	)
+
+
+static func register_capoo_mage_fireball_impact_pool(
+	pool: SessionObjectPool,
+	prewarm_count: int,
+	retained_capacity: int
+) -> void:
+	if pool == null:
+		return
+	pool.register_scene(
+		CAPOO_MAGE_FIREBALL_IMPACT_POOL_SCENE,
+		maxi(prewarm_count, 0),
+		maxi(retained_capacity, 1)
 	)
 
 

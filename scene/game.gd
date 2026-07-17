@@ -70,6 +70,7 @@ const MULTIPLAYER_CAMPAIGN_PATH := (
 @onready var merchant: ZhuangfangyiMerchant = $ZhuangfangyiMerchant
 @onready var luoxi_merchant: LuoxiMerchant = $LuoxiMerchant
 @onready var boss_container: Node2D = $BossContainer
+@onready var guardian_aura_system: GuardianAuraSystem = $GuardianAuraSystem
 @onready var damage_number_pool: DamageNumberPool = $DamageNumberPool
 @onready var session_object_pool: SessionObjectPool = $SessionObjectPool
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
@@ -135,6 +136,11 @@ func _ready() -> void:
 	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
 	session_object_pool.register_scene(CAPOO_RPG_ROCKET_POOL_SCENE, 12, 96)
 	session_object_pool.register_scene(CAPOO_MAGE_FIREBALL_POOL_SCENE, 12, 96)
+	GameRuntimeBase.register_capoo_mage_fireball_impact_pool(
+		session_object_pool,
+		12,
+		24
+	)
 	session_object_pool.register_scene(YUANSHI_FIRE_PROJECTILE_POOL_SCENE, 24, 192)
 	session_object_pool.register_scene(AGAVE_CANNONBALL_POOL_SCENE, 16, 128)
 	session_object_pool.register_scene(COLLECTIBLE_ARROW_POOL_SCENE, 24, 192)
@@ -146,6 +152,9 @@ func _ready() -> void:
 	# A 0.16 s effect at the same peak fire rate needs about 58 concurrent leases.
 	session_object_pool.register_scene(LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE, 16, 96)
 	enable_singleplayer_combat_target_index()
+	guardian_aura_system.set_authoritative_processing_enabled(
+		runtime_mode != RuntimeMode.CLIENT_VIEW
+	)
 	if not enemy_container.child_entered_tree.is_connected(
 		_on_dynamic_pickup_container_child_entered
 	):

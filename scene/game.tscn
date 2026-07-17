@@ -21,6 +21,7 @@
 [ext_resource type="Script" path="res://scene/session_object_pool.gd" id="22_session_pool"]
 [ext_resource type="PackedScene" path="res://scene/enemy/guardian_aura_system.tscn" id="24_guardian_aura_system"]
 [ext_resource type="Script" uid="uid://dfuccjc7ww0jj" path="res://scene/enemy/capoo_sniper_lock_visual_coordinator.gd" id="25_sniper_lock_visuals"]
+[ext_resource type="PackedScene" path="res://scene/enemy/capoo_projectile_motion_system.tscn" id="26_capoo_projectile_motion"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -181,6 +182,8 @@ script = ExtResource("25_sniper_lock_visuals")
 
 [node name="SessionObjectPool" type="Node2D" parent="."]
 script = ExtResource("22_session_pool")
+
+[node name="CapooProjectileMotionSystem" parent="." instance=ExtResource("26_capoo_projectile_motion")]
 
 [node name="ZhuangfangyiMerchant" parent="." unique_id=112812860 instance=ExtResource("15_merchant")]
 position = Vector2(167, 94)

@@ -231,6 +231,10 @@ class RuntimeAgentGridBuildJob:
 @export var terrain_map_path: NodePath
 # 用于检测阻挡的碰撞层索引
 @export var tile_physics_layer_index: int = 0
+# Only an isolated fixture whose World layer contains no non-TileMap bodies may
+# enable this. Production scenes also contain merchant/boundary StaticBody2D
+# nodes, so projectile collision must retain its exact Physics2D fallback.
+@export var world_collision_layer_exclusive_to_authored_tiles := false
 # Legacy full-path callers are complete-only by default. Partial routes remain
 # opt-in for diagnostics and are never accepted by the safe-step API.
 @export var allow_partial_path: bool = false
@@ -245,6 +249,12 @@ class RuntimeAgentGridBuildJob:
 # Likewise, registrations are capped per rendered/process frame rather than per
 # physics tick. Actual construction remains governed by the microsecond budget.
 @export_range(1, 128, 1, "or_greater") var max_flow_field_builds_per_physics_frame: int = 4
+# Direction refreshes are normally spread over six physics phases (about 50
+# refreshes per render frame for 300 enemies). A visible frame that catches up
+# several physics ticks must not merge all six phases into one 300-agent spike.
+# Deferred agents retain their last verified direction and retry next render
+# frame, while movement itself continues at the authored physics rate.
+@export_range(1, 512, 1, "or_greater") var max_agent_navigation_refreshes_per_process_frame: int = 64
 # flow field 按“敌人体型 + 目标格”缓存，限制上限避免长局无限增长。
 @export_range(1, 256, 1, "or_greater") var max_flow_field_cache_entries: int = 48
 # 动态目标的运行期建图必须切成有上限的小片，绝不允许在敌人物理帧中
@@ -299,6 +309,20 @@ var path_queries_used_this_frame: int = 0
 var path_query_budget_frame: int = -1
 var flow_field_builds_used_this_frame: int = 0
 var flow_field_budget_frame: int = -1
+var agent_navigation_refresh_budget_process_frame: int = -1
+var agent_navigation_refreshes_used_this_frame: int = 0
+var agent_navigation_refreshes_admitted_total: int = 0
+var agent_navigation_refreshes_deferred_total: int = 0
+var agent_navigation_refresh_budget_saturated_frames_total: int = 0
+var agent_navigation_refresh_last_saturated_process_frame: int = -1
+var agent_navigation_refresh_deferred_queue: Array[int] = []
+var agent_navigation_refresh_deferred_queue_head: int = 0
+var agent_navigation_refresh_deferred_ids: Dictionary[int, bool] = {}
+var agent_navigation_refresh_deferred_since_frame: Dictionary[int, int] = {}
+var agent_navigation_refresh_last_request_frame: Dictionary[int, int] = {}
+var agent_navigation_refresh_reserved_order: Array[int] = []
+var agent_navigation_refresh_reserved_ids: Dictionary[int, bool] = {}
+var agent_navigation_refresh_max_wait_process_frames: int = 0
 var exact_segment_budget_process_frame: int = -1
 var exact_segment_fallbacks_used_this_frame: int = 0
 var exact_segment_fallback_usec_used_this_frame: int = 0
@@ -346,6 +370,11 @@ var navigation_generation: int = 0
 var raw_navigation_snapshot_generation: int = -1
 var raw_navigation_snapshot_region: Rect2i = Rect2i()
 var raw_navigation_cell_snapshot: PackedByteArray = PackedByteArray()
+# Prefix sums of only the authored TileMap collision bit. Short projectiles can
+# use this immutable snapshot to prove an open world segment in O(1), while any
+# obstacle, boundary or stale generation retains the exact Physics2D ray.
+var raw_obstacle_integral_snapshot: PackedInt32Array = PackedInt32Array()
+var raw_obstacle_integral_stride: int = 0
 var legacy_navigation_step_scratch := NavigationStepResult.new()
 var runtime_navigation_expansions_last_frame: int = 0
 var runtime_navigation_build_usec_last_frame: int = 0
@@ -414,6 +443,17 @@ func _rebuild_navigation_snapshot(invalidate_generation: bool) -> void:
 	if rebuilt_cell_snapshot.size() != used_rect.size.x * used_rect.size.y:
 		push_warning("GridPathfinder 无法构建基础导航快照。")
 		return
+	var rebuilt_obstacle_integral := _build_raw_obstacle_integral_snapshot(
+		used_rect,
+		rebuilt_cell_snapshot
+	)
+	var rebuilt_obstacle_integral_stride := used_rect.size.x + 1
+	if (
+		rebuilt_obstacle_integral.size()
+		!= rebuilt_obstacle_integral_stride * (used_rect.size.y + 1)
+	):
+		push_warning("GridPathfinder 无法构建世界碰撞积分快照。")
+		return
 
 	# Publish the base grid and its byte snapshot as one generation. is_built
 	# remains false until all dependent default-profile data is ready, so runtime
@@ -423,6 +463,8 @@ func _rebuild_navigation_snapshot(invalidate_generation: bool) -> void:
 	raw_navigation_snapshot_generation = navigation_generation
 	raw_navigation_snapshot_region = used_rect
 	raw_navigation_cell_snapshot = rebuilt_cell_snapshot
+	raw_obstacle_integral_snapshot = rebuilt_obstacle_integral
+	raw_obstacle_integral_stride = rebuilt_obstacle_integral_stride
 	_update_region_local_rect()
 
 	for y in range(used_rect.position.y, used_rect.end.y):
@@ -797,6 +839,45 @@ func is_navigation_segment_walkable(
 		traversal_types,
 		path_grid
 	)
+
+
+func is_world_collision_segment_certified_clear(
+	from_global_position: Vector2,
+	to_global_position: Vector2
+) -> bool:
+	# This certificate covers only the authored TileMap collision layer represented
+	# by NAVIGATION_CELL_OBSTACLE_FLAG. Dynamic damageable bodies remain handled by
+	# each projectile's Area2D. A one-cell guard band makes the proof conservative
+	# for segments touching cell boundaries and for polygons authored up to a tile
+	# edge; uncertainty always falls back to the original Physics2D ray.
+	if (
+		not world_collision_layer_exclusive_to_authored_tiles
+		or not is_built
+		or obstacle_tile_layer == null
+		or raw_navigation_snapshot_generation != navigation_generation
+		or raw_obstacle_integral_snapshot.is_empty()
+		or raw_obstacle_integral_stride != raw_navigation_snapshot_region.size.x + 1
+	):
+		return false
+	var from_cell := _global_to_map(from_global_position)
+	var to_cell := _global_to_map(to_global_position)
+	var minimum_cell := Vector2i(
+		mini(from_cell.x, to_cell.x) - 1,
+		mini(from_cell.y, to_cell.y) - 1
+	)
+	var maximum_cell := Vector2i(
+		maxi(from_cell.x, to_cell.x) + 1,
+		maxi(from_cell.y, to_cell.y) + 1
+	)
+	if (
+		not raw_navigation_snapshot_region.has_point(minimum_cell)
+		or not raw_navigation_snapshot_region.has_point(maximum_cell)
+	):
+		return false
+	return _get_raw_obstacle_count_in_cell_rect(
+		minimum_cell,
+		maximum_cell
+	) == 0
 
 
 # Budget-aware runtime variant. A null result means the agent grid is being
@@ -1468,6 +1549,143 @@ func _refresh_flow_field_budget_frame() -> void:
 		return
 	flow_field_budget_frame = current_frame
 	flow_field_builds_used_this_frame = 0
+
+
+func try_acquire_agent_navigation_refresh(agent_instance_id: int) -> bool:
+	var current_frame := Engine.get_process_frames()
+	if current_frame != agent_navigation_refresh_budget_process_frame:
+		_begin_agent_navigation_refresh_process_frame(current_frame)
+	if not agent_navigation_refresh_reserved_ids.is_empty():
+		if not agent_navigation_refresh_reserved_ids.has(agent_instance_id):
+			var unreserved_capacity := (
+				maxi(max_agent_navigation_refreshes_per_process_frame, 1)
+				- agent_navigation_refresh_reserved_ids.size()
+			)
+			if agent_navigation_refreshes_used_this_frame < unreserved_capacity:
+				agent_navigation_refreshes_used_this_frame += 1
+				agent_navigation_refreshes_admitted_total += 1
+				return true
+			_defer_agent_navigation_refresh(agent_instance_id, current_frame)
+			return false
+		agent_navigation_refresh_reserved_ids.erase(agent_instance_id)
+		_admit_deferred_agent_navigation_refresh(agent_instance_id, current_frame)
+		agent_navigation_refreshes_used_this_frame += 1
+		agent_navigation_refreshes_admitted_total += 1
+		return true
+	if (
+		agent_navigation_refreshes_used_this_frame
+		>= maxi(max_agent_navigation_refreshes_per_process_frame, 1)
+	):
+		_defer_agent_navigation_refresh(agent_instance_id, current_frame)
+		return false
+	agent_navigation_refreshes_used_this_frame += 1
+	agent_navigation_refreshes_admitted_total += 1
+	return true
+
+
+func _begin_agent_navigation_refresh_process_frame(current_frame: int) -> void:
+	agent_navigation_refresh_budget_process_frame = current_frame
+	agent_navigation_refreshes_used_this_frame = 0
+
+	# Reservations that were not consumed (normally only an enemy removed or
+	# paused before its physics callback) keep their age and return to the front.
+	var rebuilt_queue: Array[int] = []
+	for agent_id in agent_navigation_refresh_reserved_order:
+		if (
+			agent_navigation_refresh_reserved_ids.has(agent_id)
+			and agent_navigation_refresh_deferred_ids.has(agent_id)
+		):
+			rebuilt_queue.append(agent_id)
+	for queue_index in range(
+		agent_navigation_refresh_deferred_queue_head,
+		agent_navigation_refresh_deferred_queue.size()
+	):
+		var queued_id := agent_navigation_refresh_deferred_queue[queue_index]
+		if agent_navigation_refresh_deferred_ids.has(queued_id):
+			rebuilt_queue.append(queued_id)
+	agent_navigation_refresh_deferred_queue = rebuilt_queue
+	agent_navigation_refresh_deferred_queue_head = 0
+	agent_navigation_refresh_reserved_order.clear()
+	agent_navigation_refresh_reserved_ids.clear()
+
+	var reservation_cap := maxi(
+		max_agent_navigation_refreshes_per_process_frame,
+		1
+	)
+	while (
+		agent_navigation_refresh_reserved_order.size() < reservation_cap
+		and (
+			agent_navigation_refresh_deferred_queue_head
+			< agent_navigation_refresh_deferred_queue.size()
+		)
+	):
+		var agent_id := agent_navigation_refresh_deferred_queue[
+			agent_navigation_refresh_deferred_queue_head
+		]
+		agent_navigation_refresh_deferred_queue_head += 1
+		if not agent_navigation_refresh_deferred_ids.has(agent_id):
+			continue
+		var last_request_frame := int(
+			agent_navigation_refresh_last_request_frame.get(agent_id, -1)
+		)
+		if last_request_frame < current_frame - 1:
+			# An enemy that entered contact/attack/death no longer asks for a
+			# navigation direction. Do not let its stale reservation consume a
+			# slot forever; it can enqueue again if movement later resumes.
+			_forget_deferred_agent_navigation_refresh(agent_id)
+			continue
+		var agent_object := instance_from_id(agent_id)
+		if not is_instance_valid(agent_object):
+			_forget_deferred_agent_navigation_refresh(agent_id)
+			continue
+		var enemy := agent_object as Enemy
+		if enemy != null and enemy.is_dead:
+			_forget_deferred_agent_navigation_refresh(agent_id)
+			continue
+		agent_navigation_refresh_reserved_order.append(agent_id)
+		agent_navigation_refresh_reserved_ids[agent_id] = true
+
+
+func _defer_agent_navigation_refresh(
+	agent_instance_id: int,
+	current_frame: int
+) -> void:
+	agent_navigation_refreshes_deferred_total += 1
+	if current_frame != agent_navigation_refresh_last_saturated_process_frame:
+		agent_navigation_refresh_last_saturated_process_frame = current_frame
+		agent_navigation_refresh_budget_saturated_frames_total += 1
+	if agent_instance_id <= 0:
+		return
+	agent_navigation_refresh_last_request_frame[agent_instance_id] = current_frame
+	if agent_navigation_refresh_deferred_ids.has(agent_instance_id):
+		return
+	agent_navigation_refresh_deferred_ids[agent_instance_id] = true
+	agent_navigation_refresh_deferred_since_frame[agent_instance_id] = current_frame
+	agent_navigation_refresh_deferred_queue.append(agent_instance_id)
+
+
+func _admit_deferred_agent_navigation_refresh(
+	agent_instance_id: int,
+	current_frame: int
+) -> void:
+	var deferred_since := int(
+		agent_navigation_refresh_deferred_since_frame.get(
+			agent_instance_id,
+			current_frame
+		)
+	)
+	agent_navigation_refresh_max_wait_process_frames = maxi(
+		agent_navigation_refresh_max_wait_process_frames,
+		maxi(current_frame - deferred_since, 0)
+	)
+	_forget_deferred_agent_navigation_refresh(agent_instance_id)
+
+
+func _forget_deferred_agent_navigation_refresh(agent_instance_id: int) -> void:
+	agent_navigation_refresh_deferred_ids.erase(agent_instance_id)
+	agent_navigation_refresh_deferred_since_frame.erase(agent_instance_id)
+	agent_navigation_refresh_last_request_frame.erase(agent_instance_id)
+	agent_navigation_refresh_reserved_ids.erase(agent_instance_id)
 
 
 func _refresh_exact_segment_budget_frame() -> void:
@@ -4451,6 +4669,62 @@ func _build_raw_navigation_cell_snapshot(region: Rect2i) -> PackedByteArray:
 				flags |= NAVIGATION_CELL_OBSTACLE_FLAG
 			snapshot[local_y * region.size.x + local_x] = flags
 	return snapshot
+
+
+func _build_raw_obstacle_integral_snapshot(
+	region: Rect2i,
+	cell_snapshot: PackedByteArray
+) -> PackedInt32Array:
+	var integral := PackedInt32Array()
+	var width := region.size.x
+	var height := region.size.y
+	if (
+		width <= 0
+		or height <= 0
+		or cell_snapshot.size() != width * height
+	):
+		return integral
+	var stride := width + 1
+	integral.resize(stride * (height + 1))
+	for local_y in range(height):
+		var row_obstacle_count := 0
+		for local_x in range(width):
+			var cell_flags := int(cell_snapshot[local_y * width + local_x])
+			if (cell_flags & NAVIGATION_CELL_OBSTACLE_FLAG) != 0:
+				row_obstacle_count += 1
+			var integral_index := (local_y + 1) * stride + local_x + 1
+			integral[integral_index] = (
+				integral[local_y * stride + local_x + 1]
+				+ row_obstacle_count
+			)
+	return integral
+
+
+func _get_raw_obstacle_count_in_cell_rect(
+	minimum_cell: Vector2i,
+	maximum_cell: Vector2i
+) -> int:
+	var local_minimum := minimum_cell - raw_navigation_snapshot_region.position
+	var local_maximum_exclusive := (
+		maximum_cell - raw_navigation_snapshot_region.position + Vector2i.ONE
+	)
+	var stride := raw_obstacle_integral_stride
+	var top_left := local_minimum.y * stride + local_minimum.x
+	var top_right := (
+		local_minimum.y * stride + local_maximum_exclusive.x
+	)
+	var bottom_left := (
+		local_maximum_exclusive.y * stride + local_minimum.x
+	)
+	var bottom_right := (
+		local_maximum_exclusive.y * stride + local_maximum_exclusive.x
+	)
+	return (
+		int(raw_obstacle_integral_snapshot[bottom_right])
+		- int(raw_obstacle_integral_snapshot[top_right])
+		- int(raw_obstacle_integral_snapshot[bottom_left])
+		+ int(raw_obstacle_integral_snapshot[top_left])
+	)
 
 
 func _get_live_terrain_traversal_flags(cell: Vector2i) -> int:

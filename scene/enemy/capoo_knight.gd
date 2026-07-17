@@ -5,6 +5,10 @@ const PLAYER_COLLISION_MASK := 2
 const WORLD_COLLISION_MASK := 1
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const CapooKnightConfigScript := preload("res://resources/config/enemies/capoo_knight_config.gd")
+const ENEMY_ATTACK_AUDIO_LIMITER := preload(
+	"res://scene/enemy_attack_audio_limiter.gd"
+)
+const WINDUP_WARNING_SEGMENTS := 12
 
 enum CombatState {
 	CHASE,
@@ -86,6 +90,12 @@ func _apply_config() -> void:
 	if knight_config != null:
 		attack_audio.stream = knight_config.attack_audio_stream
 		slash_query_shape.radius = knight_config.slash_outer_radius
+		windup_warning.polygon = _build_slash_arc_polygon(
+			knight_config.slash_inner_radius,
+			knight_config.slash_outer_radius,
+			deg_to_rad(knight_config.slash_angle_degrees),
+			WINDUP_WARNING_SEGMENTS
+		)
 		_set_windup_warning(0.0, Vector2.RIGHT)
 
 
@@ -180,7 +190,7 @@ func _start_slash(direction: Vector2) -> void:
 	_broadcast_enemy_action(&"slash", slash_direction)
 	if knight_config.attack_audio_stream != null:
 		attack_audio.pitch_scale = random_generator.randf_range(0.96, 1.04)
-		attack_audio.play()
+		ENEMY_ATTACK_AUDIO_LIMITER.play_heavy_attack(attack_audio)
 
 
 func _update_slash(delta: float) -> void:
@@ -331,15 +341,12 @@ func _set_windup_warning(progress: float, direction: Vector2) -> void:
 	if knight_config == null or windup_warning == null:
 		return
 	var clamped_progress := clampf(progress, 0.0, 1.0)
-	windup_warning.visible = clamped_progress > 0.0
-	if not windup_warning.visible:
+	if clamped_progress <= 0.0:
+		if windup_warning.visible:
+			windup_warning.visible = false
 		return
-	windup_warning.polygon = _build_slash_arc_polygon(
-		knight_config.slash_inner_radius,
-		knight_config.slash_outer_radius,
-		deg_to_rad(knight_config.slash_angle_degrees),
-		12
-	)
+	if not windup_warning.visible:
+		windup_warning.visible = true
 	windup_warning.rotation = direction.angle()
 	windup_warning.color = Color(1.0, 0.38, 0.32, lerpf(0.08, 0.34, clamped_progress))
 	windup_warning.scale = Vector2.ONE * lerpf(0.88, 1.0, clamped_progress)

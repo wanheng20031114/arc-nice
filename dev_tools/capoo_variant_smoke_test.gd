@@ -23,6 +23,7 @@ var failures: Array[String] = []
 var test_root: Node2D
 var spawned_fireballs: Array[CapooMageFireball] = []
 var spawned_smg_bullets: Array[CapooAK47Bullet] = []
+var spawned_smg_bullet_directions := PackedVector2Array()
 var reticle_coordinator: CapooSniperLockVisualCoordinator = null
 
 
@@ -110,6 +111,10 @@ func _test_resource_contract() -> void:
 	_expect(SMG_CONFIG.attack_damage == 30, "SMG damage mismatch.")
 	_expect(is_equal_approx(SMG_CONFIG.move_speed, 100.0), "SMG move speed mismatch.")
 	_expect(is_equal_approx(SMG_CONFIG.fire_interval, 0.1), "SMG fire interval must represent 600 attack speed.")
+	_expect(
+		is_equal_approx(SMG_CONFIG.attack_range, 48.0),
+		"SMG attack range must stay at its authored three-tile close range."
+	)
 	_expect(is_equal_approx(SMG_CONFIG.projectile_lifetime, 0.18), "SMG bullet lifetime must stay short.")
 	_expect(is_equal_approx(SMG_CONFIG.spread_angle_degrees, 20.0), "SMG spread angle mismatch.")
 
@@ -331,6 +336,11 @@ func _test_mage_windup_fireball_and_obstruction() -> void:
 
 
 func _test_fireball_impact_damage_and_release() -> void:
+	var original_pool_mode := CapooMageFireball.pooled_impact_effect_enabled
+	# This lightweight scene intentionally has no session pool. Exercise the
+	# explicit legacy A/B path while the focused impact-pool smoke covers strict
+	# production leasing.
+	CapooMageFireball.pooled_impact_effect_enabled = false
 	var near_player := _spawn_player(Vector2(5.0, 0.0), 100)
 	var far_player := _spawn_player(Vector2(48.0, 0.0), 100)
 	await physics_frame
@@ -366,6 +376,7 @@ func _test_fireball_impact_damage_and_release() -> void:
 	near_player.queue_free()
 	far_player.queue_free()
 	await physics_frame
+	CapooMageFireball.pooled_impact_effect_enabled = original_pool_mode
 
 
 func _test_sniper_lock_cancel_and_damage() -> void:
@@ -433,15 +444,29 @@ func _test_sniper_lock_cancel_and_damage() -> void:
 
 func _test_smg_scatter_fire() -> void:
 	spawned_smg_bullets.clear()
-	var player := _spawn_player(Vector2(140.0, 0.0), 200)
+	spawned_smg_bullet_directions.clear()
+	var player := _spawn_player(Vector2(40.0, 0.0), 200)
 	var smg := _spawn_smg(Vector2.ZERO, player)
 	var smg_guard_frames := 0
-	while spawned_smg_bullets.size() < 2 and smg_guard_frames < 36:
+	while smg.hitscan_shots_fired < 2 and smg_guard_frames < 36:
 		await physics_frame
 		smg_guard_frames += 1
-	_expect(spawned_smg_bullets.size() >= 2, "SMG Capoo did not fire repeatedly while moving.")
-	if not spawned_smg_bullets.is_empty() and is_instance_valid(spawned_smg_bullets[0]):
-		_expect(is_equal_approx(spawned_smg_bullets[0].max_lifetime, SMG_CONFIG.projectile_lifetime), "SMG bullet lifetime mismatch.")
+	_expect(smg.hitscan_shots_fired >= 2, "SMG Capoo did not fire repeatedly while moving.")
+	_expect(
+		absf(smg.last_shot_direction.angle_to(Vector2.RIGHT))
+			<= deg_to_rad(SMG_CONFIG.spread_angle_degrees) + 0.001,
+		"SMG hitscan must aim at the nearby target with only the authored scatter."
+	)
+	_expect(
+		spawned_smg_bullets.is_empty(),
+		"Production SMG fire must not allocate one Area2D projectile per shot."
+	)
+	smg.fire_time_left = 0.0
+	smg.set_objective_target(null)
+	_expect(
+		not bool(smg.call("_try_fire_scatter", Vector2.RIGHT)),
+		"SMG Capoo must not fire without a determined combat target."
+	)
 	smg.queue_free()
 	player.queue_free()
 	await physics_frame
@@ -455,8 +480,8 @@ func _test_smg_no_pathfinder_direct_chase_respects_world_wall() -> void:
 	var smg := _spawn_smg(Vector2.ZERO, player)
 	await _wait_physics_frames(12)
 	_expect(
-		spawned_smg_bullets.is_empty(),
-		"SMG Capoo must not use no-pathfinder direct chase through a world wall."
+		spawned_smg_bullets.is_empty() and smg.hitscan_shots_fired == 0,
+		"SMG Capoo must not fire at a far target while its chase line is blocked."
 	)
 	_expect(
 		smg.global_position.distance_squared_to(Vector2.ZERO) < 0.01,
@@ -492,20 +517,108 @@ func _test_proxy_action_visuals() -> void:
 	var smg_player := _spawn_player(Vector2(140.0, 0.0), 200)
 	var smg := _spawn_smg(Vector2.ZERO, smg_player)
 	smg.configure_multiplayer_proxy()
+	_expect(
+		CapooSMG.allocation_free_proxy_visuals_enabled,
+		"Production SMG proxy visuals must use the allocation-free timer path."
+	)
 	smg.play_multiplayer_enemy_action(&"fire", Vector2.RIGHT, 1)
-	await process_frame
 	_expect(smg.muzzle_flash.visible, "Proxy SMG muzzle flash did not appear.")
+	smg.call("_process", 0.10)
+	_expect(
+		smg.animated_sprite.animation == SMG_CONFIG.attack_animation_name
+		and smg.is_processing(),
+		"Proxy SMG attack animation must outlive its shorter muzzle flash."
+	)
 	smg.play_multiplayer_enemy_action(&"fire", Vector2.LEFT, 2)
-	await process_frame
+	smg.call("_process", 0.05)
 	_expect(
 		Vector2.RIGHT.rotated(smg.muzzle_flash.rotation).dot(Vector2.LEFT) > 0.99,
-		"Stale proxy SMG fire tween must not override newer fire direction."
+		"Later proxy SMG fire must replace the previous shot direction."
 	)
+	_expect(
+		smg.animated_sprite.animation == SMG_CONFIG.attack_animation_name
+		and smg.is_processing(),
+		"Later proxy SMG fire must restart the complete action restore interval."
+	)
+	_expect(
+		smg.proxy_visual_timer_action_count == 2
+		and smg.proxy_visual_tween_action_count == 0,
+		"Proxy SMG fire must not allocate per-action Tweens in production."
+	)
+	smg.call("_process", 0.10)
+	_expect(
+		not smg.muzzle_flash.visible
+		and smg.animated_sprite.animation == SMG_CONFIG.move_animation_name
+		and not smg.is_processing(),
+		"Proxy SMG timer path must hide the flash, restore movement, and go dormant."
+	)
+	smg.play_multiplayer_enemy_action(&"fire", Vector2.RIGHT, 3)
+	smg.set_multiplayer_proxy_visual_active(false)
+	_expect(
+		not smg.muzzle_flash.visible
+		and not smg.is_processing()
+		and smg.animated_sprite.animation == SMG_CONFIG.move_animation_name
+		and smg.proxy_visual_timer_action_count == 3,
+		"Culling an active proxy SMG shot must cancel and restore its visual state."
+	)
+	smg.play_multiplayer_enemy_action(&"fire", Vector2.LEFT, 4)
+	_expect(
+		not smg.muzzle_flash.visible
+		and not smg.is_processing()
+		and smg.latest_proxy_action_id == 4
+		and smg.proxy_visual_timer_action_count == 3,
+		"Offscreen proxy SMG fire must advance ordering without scheduling visuals."
+	)
+	smg.set_multiplayer_proxy_visual_active(true)
+	_expect(
+		not smg.muzzle_flash.visible
+		and not smg.is_processing()
+		and smg.animated_sprite.animation == SMG_CONFIG.move_animation_name,
+		"Reactivated proxy SMG must remain in its restored dormant move state."
+	)
+	smg.play_multiplayer_enemy_action(&"fire", Vector2.LEFT, 5)
 	smg.play_multiplayer_death_sequence()
-	await process_frame
-	_expect(not smg.muzzle_flash.visible, "Proxy SMG death must clear muzzle flash.")
+	var death_animation_after_start := smg.animated_sprite.animation
+	var action_count_after_death := smg.proxy_visual_timer_action_count
+	smg.play_multiplayer_enemy_action(
+		&"fire",
+		Vector2.RIGHT,
+		smg.latest_proxy_action_id + 1
+	)
+	_expect(
+		not smg.muzzle_flash.visible
+		and not smg.is_processing()
+		and is_zero_approx(smg.proxy_muzzle_flash_time_left)
+		and is_zero_approx(smg.proxy_action_restore_time_left)
+		and smg.animated_sprite.animation == death_animation_after_start
+		and smg.proxy_visual_timer_action_count == action_count_after_death,
+		"Proxy SMG death must clear timers and reject every late action."
+	)
 	smg.queue_free()
 	smg_player.queue_free()
+	await physics_frame
+
+	CapooSMG.allocation_free_proxy_visuals_enabled = false
+	var legacy_smg_player := _spawn_player(Vector2(140.0, 0.0), 200)
+	var legacy_smg := _spawn_smg(Vector2.ZERO, legacy_smg_player)
+	legacy_smg.configure_multiplayer_proxy()
+	legacy_smg.play_multiplayer_enemy_action(&"fire", Vector2.RIGHT, 1)
+	_expect(
+		legacy_smg.muzzle_flash.visible
+		and legacy_smg.proxy_visual_tween_action_count == 1,
+		"Legacy SMG A/B fixture must start its Tween visual path."
+	)
+	legacy_smg.set_multiplayer_proxy_visual_active(false)
+	legacy_smg.set_multiplayer_proxy_visual_active(true)
+	await create_timer(0.18).timeout
+	_expect(
+		not legacy_smg.muzzle_flash.visible
+		and legacy_smg.animated_sprite.animation == SMG_CONFIG.move_animation_name,
+		"Culled legacy SMG Tween callbacks must not revive stale attack visuals."
+	)
+	legacy_smg.queue_free()
+	legacy_smg_player.queue_free()
+	CapooSMG.allocation_free_proxy_visuals_enabled = true
 	await physics_frame
 
 	var sniper_player := _spawn_player(Vector2(240.0, 0.0), 200)
@@ -859,6 +972,7 @@ func _on_child_entered_tree(child: Node) -> void:
 	var smg_bullet := child as CapooAK47Bullet
 	if smg_bullet != null:
 		spawned_smg_bullets.append(smg_bullet)
+		spawned_smg_bullet_directions.append(smg_bullet.direction)
 
 
 func _wait_physics_frames(frame_count: int) -> void:

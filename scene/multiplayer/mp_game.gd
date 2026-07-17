@@ -4157,7 +4157,14 @@ func _instantiate_projectile(
 			if capoo_bullet == null:
 				return null
 			capoo_bullet.top_level = true
-			capoo_bullet.setup(direction, damage, speed, lifetime)
+			capoo_bullet.setup(
+				direction,
+				damage,
+				speed,
+				lifetime,
+				game.grid_pathfinder as GridPathfinder if game != null else null,
+				game.capoo_projectile_motion_system if game != null else null
+			)
 			return capoo_bullet
 		&"capoo_rpg_rocket":
 			var rpg_rocket := (
@@ -4187,7 +4194,14 @@ func _instantiate_projectile(
 			if smg_bullet == null:
 				return null
 			smg_bullet.top_level = true
-			smg_bullet.setup(direction, damage, speed, lifetime)
+			smg_bullet.setup(
+				direction,
+				damage,
+				speed,
+				lifetime,
+				game.grid_pathfinder as GridPathfinder if game != null else null,
+				game.capoo_projectile_motion_system if game != null else null
+			)
 			return smg_bullet
 		&"yuanshi_fire_projectile":
 			var fire_projectile := (

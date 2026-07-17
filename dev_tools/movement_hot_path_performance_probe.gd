@@ -202,7 +202,7 @@ func _measure_allocating_facing_mirror(enemies: Array[Enemy]) -> float:
 func _measure_batched_guardian_ticks(system: GuardianAuraSystem) -> float:
 	var started := Time.get_ticks_usec()
 	for _iteration in range(GUARDIAN_ITERATIONS):
-		system.call("_physics_process", 1.0 / 60.0)
+		system.call("_run_refresh_service_step", 1.0 / 60.0)
 	return float(Time.get_ticks_usec() - started) / 1000.0
 
 
@@ -210,7 +210,7 @@ func _measure_legacy_guardian_ticks(system: GuardianAuraSystem) -> float:
 	var started := Time.get_ticks_usec()
 	for _iteration in range(GUARDIAN_ITERATIONS):
 		system.call("_prune_dead_or_invalid_enemies")
-		system.call("_physics_process", 1.0 / 60.0)
+		system.call("_run_refresh_service_step", 1.0 / 60.0)
 	return float(Time.get_ticks_usec() - started) / 1000.0
 
 

@@ -5,6 +5,9 @@ const CORN_SCENE := preload("res://scene/plant_defense/corn_machine_gun.tscn")
 const CORN_CONFIG := preload(
 	"res://resources/config/plant_defense/corn_machine_gun.tres"
 )
+const CAPOO_PROJECTILE_MOTION_SYSTEM_SCENE := preload(
+	"res://scene/enemy/capoo_projectile_motion_system.tscn"
+)
 
 const SEND_RECORD_COUNT := 513
 const SEND_PACKET_CAPACITY := 32
@@ -296,6 +299,7 @@ func _test_production_receive_boundary() -> void:
 	var grid_pathfinder := Node.new()
 	grid_pathfinder.name = "GridPathfinder"
 	runtime.add_child(grid_pathfinder)
+	runtime.add_child(CAPOO_PROJECTILE_MOTION_SYSTEM_SCENE.instantiate())
 	root.add_child(runtime)
 	current_scene = runtime
 
