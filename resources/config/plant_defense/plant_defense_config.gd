@@ -4,6 +4,11 @@ class_name PlantDefenseConfig
 const ATTACK_SPEED_UNITS_PER_SECOND: float = 100.0
 const REQUIRED_FOOTPRINT_SIZE: Vector2i = Vector2i(2, 2)
 
+enum PlacementSurface {
+	GRASS,
+	WATER,
+}
+
 @export_group("基础信息")
 @export var plant_id: StringName = &""
 @export var display_name: String = "植物"
@@ -24,6 +29,7 @@ const REQUIRED_FOOTPRINT_SIZE: Vector2i = Vector2i(2, 2)
 
 @export_group("占格")
 @export var footprint_size: Vector2i = REQUIRED_FOOTPRINT_SIZE
+@export var placement_surface: PlacementSurface = PlacementSurface.GRASS
 
 
 func get_attack_interval() -> float:

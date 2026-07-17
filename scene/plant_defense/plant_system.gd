@@ -173,7 +173,7 @@ func is_placement_valid_for_player(
 			return false
 		if reserved_cells.has(cell) or occupied_cells.has(cell):
 			return false
-		if not _is_floor_cell_available(cell):
+		if not _is_floor_cell_available(cell, config):
 			return false
 
 	return _is_entity_space_clear(top_left_cell, config)
@@ -352,7 +352,7 @@ func apply_unsupported_terrain_damage_tick() -> int:
 		var footprint: Array = plant_footprints.get(plant, [])
 		for cell_variant in footprint:
 			var cell: Vector2i = cell_variant
-			if not terrain_map.is_cell_plantable(cell):
+			if not _is_terrain_supported_for_config(cell, plant.config):
 				unsupported_plants.append(plant)
 				break
 
@@ -783,14 +783,40 @@ func _get_footprint_manhattan_distance(
 	return x_distance + y_distance
 
 
-func _is_floor_cell_available(cell: Vector2i) -> bool:
+func _is_floor_cell_available(
+	cell: Vector2i,
+	config: PlantDefenseConfig
+) -> bool:
 	var tile_data := ground_tile_map.get_cell_tile_data(cell)
 	if tile_data != null and tile_data.get_collision_polygons_count(0) > 0:
 		return false
 	if terrain_map == null:
-		return tile_data != null
+		return (
+			tile_data != null
+			and config != null
+			and config.placement_surface == PlantDefenseConfig.PlacementSurface.GRASS
+		)
 	var world_cell_center := ground_tile_map.to_global(ground_tile_map.map_to_local(cell))
-	return terrain_map.is_world_position_plantable(world_cell_center)
+	return _is_terrain_supported_for_config(
+		terrain_map.world_to_map(world_cell_center),
+		config
+	)
+
+
+func _is_terrain_supported_for_config(
+	cell: Vector2i,
+	config: PlantDefenseConfig
+) -> bool:
+	if terrain_map == null or config == null:
+		return false
+	match config.placement_surface:
+		PlantDefenseConfig.PlacementSurface.WATER:
+			return (
+				terrain_map.get_terrain_type(cell)
+				== DualGridTilemap.TerrainType.WATER
+			)
+		_:
+			return terrain_map.is_cell_plantable(cell)
 
 
 func _is_entity_space_clear(

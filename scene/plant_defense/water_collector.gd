@@ -1,0 +1,2 @@
+extends ProductionBuilding
+class_name WaterCollector

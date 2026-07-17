@@ -1,0 +1,24 @@
+{
+  "tool": "built-in imagegen",
+  "mode": "edit and generate raster assets",
+  "assets": [
+    {
+      "name": "water_collector",
+      "source": "water_collector_selected_imagegen_magenta.png",
+      "reference": "user-provided lotus and reed collector concept",
+      "prompt_summary": "Precise pixel-art object edit on a strict 64x64 logical grid: preserve the broad lotus leaf with visible cyan water, thick bent green reed pouring water, squat glass bottle with wooden cork, and compact wood raft; use coarse readable pixels and a flat magenta key background."
+    },
+    {
+      "name": "water_bottle",
+      "source": "../../items/water_bottle/water_bottle_imagegen_magenta.png",
+      "reference": "res://resources/texture/pickup_health.png",
+      "prompt_summary": "Create a strict 32x32 pixel-art inventory bottle matching the health bottle silhouette, replacing the liquid with bright blue water and using a brown wooden cork on a flat magenta key background."
+    },
+    {
+      "name": "water_collector_panel_background",
+      "source": "water_collector_panel_background_imagegen.png",
+      "reference": "res://resources/texture/production/production_panel_background.png",
+      "prompt_summary": "UI mockup edit at 728x544: retain the production panel's wooden pixel-art language, remove the recipe column and gears, create one wide dark work area, and add restrained lotus, reed, vine, and water inlays without text."
+    }
+  ]
+}

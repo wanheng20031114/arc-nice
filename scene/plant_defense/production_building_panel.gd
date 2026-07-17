@@ -5,13 +5,19 @@ signal opened
 signal closed
 
 const DESIGN_SIZE := Vector2(728.0, 544.0)
+const DEFAULT_PANEL_BACKGROUND := preload(
+	"res://resources/texture/production/production_panel_background.png"
+)
 const WOOD := preload("res://resources/config/materials/material_wood.tres")
 const SAPLING := preload("res://resources/config/materials/material_sapling.tres")
 
 @onready var overlay: Control = $Overlay
 @onready var panel_root: Control = $Overlay/PanelRoot
+@onready var background: TextureRect = $Overlay/PanelRoot/Background
 @onready var building_title: Label = $Overlay/PanelRoot/BuildingTitle
 @onready var toggle_button: Button = $Overlay/PanelRoot/ToggleButton
+@onready var input_title: Label = $Overlay/PanelRoot/InputTitle
+@onready var output_title: Label = $Overlay/PanelRoot/OutputTitle
 @onready var input_slot: InventorySlot = $Overlay/PanelRoot/InputSlot
 @onready var output_slots: Array[InventorySlot] = [
 	$Overlay/PanelRoot/OutputSlot1,
@@ -23,6 +29,8 @@ const SAPLING := preload("res://resources/config/materials/material_sapling.tres
 @onready var material_list: PanelContainer = $Overlay/PanelRoot/MaterialList
 @onready var wood_button: Button = $Overlay/PanelRoot/MaterialList/ListMargin/Rows/WoodButton
 @onready var sapling_button: Button = $Overlay/PanelRoot/MaterialList/ListMargin/Rows/SaplingButton
+@onready var recipe_title: Label = $Overlay/PanelRoot/RecipeTitle
+@onready var recipe_scroll: ScrollContainer = $Overlay/PanelRoot/RecipeScroll
 @onready var recipe_rows: Array[Button] = [
 	$Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow1,
 	$Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow2,
@@ -174,9 +182,10 @@ func _refresh_all() -> void:
 	toggle_button.disabled = _is_multiplayer_control_locked()
 
 	var display_recipe := building.get_display_recipe()
+	_apply_panel_layout(display_recipe)
 	var coordinator := building.production_coordinator
 	if display_recipe != null:
-		var input_count := (
+		var input_count := 1 if display_recipe.uses_environment_source() else (
 			coordinator.get_total_item_count(display_recipe.input_item)
 			if coordinator != null
 			else 0
@@ -211,9 +220,17 @@ func _refresh_progress_text() -> void:
 		return
 	var remaining := ceili(building.get_visual_remaining_seconds())
 	if remaining <= 0:
-		progress_label.text = "剩余 0 秒 · 等待仓库结算"
+		progress_label.text = (
+			"采集完成 · 等待仓库接收"
+			if recipe.uses_environment_source()
+			else "剩余 0 秒 · 等待仓库结算"
+		)
 	else:
-		progress_label.text = "剩余 %d 秒" % remaining
+		progress_label.text = (
+			"采集中 · 剩余 %d 秒" % remaining
+			if recipe.uses_environment_source()
+			else "剩余 %d 秒" % remaining
+		)
 
 
 func _refresh_visual_progress() -> void:
@@ -228,6 +245,10 @@ func _refresh_visual_progress() -> void:
 
 
 func _refresh_recipe_rows() -> void:
+	if building.uses_environment_source():
+		for row in recipe_rows:
+			row.hide()
+		return
 	for row_index in recipe_rows.size():
 		var row := recipe_rows[row_index]
 		if row_index >= building.recipes.size():
@@ -251,6 +272,8 @@ func _refresh_recipe_rows() -> void:
 
 
 func _refresh_material_rows() -> void:
+	if building.uses_environment_source():
+		return
 	var coordinator := building.production_coordinator
 	var wood_count := coordinator.get_total_item_count(WOOD) if coordinator != null else 0
 	var sapling_count := coordinator.get_total_item_count(SAPLING) if coordinator != null else 0
@@ -266,6 +289,23 @@ func _refresh_status() -> void:
 		return
 	if not transient_status.is_empty():
 		status_label.text = transient_status
+		return
+	if building.uses_environment_source():
+		if building.get_active_recipe() == null:
+			status_label.text = "采集配方未启用。"
+			return
+		if not building.production_enabled:
+			status_label.text = "水源采集器已暂停；重新启动后从 0 秒开始。"
+			return
+		match building.completion_wait_reason:
+			ProductionCoordinator.RESULT_MISSING_INPUT:
+				status_label.text = "采集完成，等待至少一座可用仓库接收水瓶。"
+			ProductionCoordinator.RESULT_STORAGE_FULL:
+				status_label.text = "采集完成，等待任意仓库腾出水瓶空间。"
+			ProductionCoordinator.RESULT_UNAVAILABLE:
+				status_label.text = "仓库网络刚刚变化，将在下个同步周期重试。"
+			_:
+				status_label.text = "水面持续供水；每轮完成后自动向全场仓库存入 1 个水瓶。"
 		return
 	if building.get_active_recipe() == null:
 		status_label.text = "点击右侧配方后开始生产；高亮项为当前方案。"
@@ -291,12 +331,20 @@ func _on_toggle_pressed() -> void:
 		if not building.request_multiplayer_enabled_change(
 			not building.production_enabled
 		):
-			_show_transient_status("加工站状态尚未同步，请稍后重试。")
+			_show_transient_status(
+				"采集器状态尚未同步，请稍后重试。"
+				if building.uses_environment_source()
+				else "加工站状态尚未同步，请稍后重试。"
+			)
 		return
 	building.set_production_enabled(not building.production_enabled)
 
 
 func _on_input_slot_pressed() -> void:
+	if building != null and building.uses_environment_source():
+		material_list.hide()
+		_show_transient_status("水面是环境来源，不会消耗仓库内的任何物品。")
+		return
 	material_list.visible = not material_list.visible
 	if material_list.visible:
 		wood_button.grab_focus()
@@ -407,6 +455,66 @@ func _clear_slots() -> void:
 		input_slot.set_item(null, 0)
 	for output_slot in output_slots:
 		output_slot.set_item(null, 0)
+
+
+func _apply_panel_layout(recipe: ProductionRecipe) -> void:
+	var environment_layout := (
+		building != null
+		and recipe != null
+		and recipe.uses_environment_source()
+	)
+	background.texture = (
+		building.production_panel_background_override
+		if building != null and building.production_panel_background_override != null
+		else DEFAULT_PANEL_BACKGROUND
+	)
+	if environment_layout:
+		material_list.hide()
+		recipe_title.hide()
+		recipe_scroll.hide()
+		output_slots[1].hide()
+		output_slots[2].hide()
+		input_slot.disabled = false
+		input_title.text = "水源"
+		output_title.text = "采集产物"
+		_set_control_rect(building_title, Rect2(128, 112, 472, 38))
+		_set_control_rect(input_title, Rect2(126, 190, 128, 28))
+		_set_control_rect(output_title, Rect2(478, 190, 128, 28))
+		_set_control_rect(input_slot, Rect2(160, 247, 64, 70))
+		_set_control_rect(progress_bar, Rect2(254, 268, 220, 28))
+		_set_control_rect(progress_label, Rect2(240, 306, 248, 28))
+		_set_control_rect(output_slots[0], Rect2(508, 247, 64, 70))
+		_set_control_rect(status_label, Rect2(120, 386, 488, 54))
+		_set_control_rect(close_button, Rect2(660, 480, 48, 48))
+		close_button.text = ""
+		close_button.tooltip_text = "关闭"
+		close_button.modulate = Color(1, 1, 1, 0)
+		return
+
+	recipe_title.show()
+	recipe_scroll.show()
+	output_slots[1].show()
+	output_slots[2].show()
+	input_slot.disabled = false
+	input_title.text = "原材料"
+	output_title.text = "产物槽位"
+	_set_control_rect(building_title, Rect2(84, 23, 536, 39))
+	_set_control_rect(input_title, Rect2(44, 196, 80, 28))
+	_set_control_rect(output_title, Rect2(298, 196, 147, 28))
+	_set_control_rect(input_slot, Rect2(57, 257, 52, 58))
+	_set_control_rect(progress_bar, Rect2(122, 271, 164, 25))
+	_set_control_rect(progress_label, Rect2(115, 304, 179, 27))
+	_set_control_rect(output_slots[0], Rect2(301, 257, 52, 58))
+	_set_control_rect(status_label, Rect2(61, 440, 405, 52))
+	_set_control_rect(close_button, Rect2(548, 440, 109, 37))
+	close_button.text = "关闭"
+	close_button.tooltip_text = ""
+	close_button.modulate = Color.WHITE
+
+
+func _set_control_rect(control: Control, rect: Rect2) -> void:
+	control.position = rect.position
+	control.size = rect.size
 
 
 func _update_panel_transform() -> void:

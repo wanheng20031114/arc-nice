@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ProductionRecipe" format=3]
+
+[ext_resource type="Script" path="res://resources/config/production/production_recipe.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/production/water_source.tres" id="2_water_source"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_water_bottle.tres" id="3_water_bottle"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="4_pickup_script"]
+
+[resource]
+script = ExtResource("1_script")
+recipe_id = &"water_to_bottle"
+display_name = "清水采集"
+input_item = ExtResource("2_water_source")
+input_amount = 0
+output_items = Array[ExtResource("4_pickup_script")]([ExtResource("3_water_bottle")])
+output_amounts = Array[int]([1])
+duration_seconds = 20.0

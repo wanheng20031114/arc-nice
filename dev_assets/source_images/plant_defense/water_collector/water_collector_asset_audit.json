@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "asset_family": "water_collector",
+  "status": "passed",
+  "pipeline": [
+    "built-in imagegen reference-guided masters",
+    "flat #FF00FF chroma key for sprite assets",
+    "pixel_grid_analyzer measured logical grid",
+    "nearest logical-cell selection without smoothing",
+    "palette reduction without dithering",
+    "binary-alpha and footprint audit"
+  ],
+  "visual_contract": {
+    "building_source_canvas_px": [
+      64,
+      64
+    ],
+    "building_footprint_cells": [
+      2,
+      2
+    ],
+    "building_world_scale": [
+      0.5,
+      0.5
+    ],
+    "building_world_size_px": [
+      32,
+      32
+    ],
+    "bottle_canvas_px": [
+      32,
+      32
+    ],
+    "panel_size_px": [
+      728,
+      544
+    ]
+  },
+  "building": {
+    "source": {
+      "path": "dev_assets/source_images/plant_defense/water_collector/water_collector_selected_imagegen_magenta.png",
+      "normalization_mode": "measured_grid_center_sample",
+      "detected_logical_subject_size": [
+        47,
+        61
+      ],
+      "logical_subject_size": [
+        47,
+        61
+      ],
+      "logical_fit_scale": 1.0,
+      "grid_analysis": {
+        "image_width": 1254,
+        "image_height": 1254,
+        "image_mode": "RGBA",
+        "detection_mode": "approximate",
+        "grid_cell_width": 16.45,
+        "grid_cell_height": 16.35,
+        "grid_cell_size": 16,
+        "confidence": 0.906,
+        "subject_bbox": {
+          "left": 242,
+          "top": 129,
+          "right": 1013,
+          "bottom": 1128
+        },
+        "subject_pixel_width": 771,
+        "subject_pixel_height": 999,
+        "subject_grid_width": 47,
+        "subject_grid_height": 61,
+        "recommended_canvas_grid_width": 76,
+        "recommended_canvas_grid_height": 77
+      }
+    },
+    "registration": {
+      "mode": "bottom_center",
+      "paste_origin": [
+        8,
+        2
+      ],
+      "foot_target": [
+        32,
+        62
+      ],
+      "measured_foot_anchor": [
+        31.0,
+        62.0
+      ]
+    },
+    "visible_palette_size": 44,
+    "audit": {
+      "label": "water_collector",
+      "path": "resources/texture/plant_defense/water_collector/water_collector.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        8,
+        2,
+        55,
+        63
+      ],
+      "subject_size": [
+        47,
+        61
+      ],
+      "visible_color_count": 44,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -12.0,
+        -15.0,
+        11.5,
+        15.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    }
+  },
+  "water_bottle": {
+    "source": {
+      "path": "dev_assets/source_images/items/water_bottle/water_bottle_imagegen_magenta.png",
+      "normalization_mode": "measured_grid_center_sample",
+      "detected_logical_subject_size": [
+        16,
+        24
+      ],
+      "logical_subject_size": [
+        16,
+        24
+      ],
+      "logical_fit_scale": 1.0,
+      "grid_analysis": {
+        "image_width": 1254,
+        "image_height": 1254,
+        "image_mode": "RGBA",
+        "detection_mode": "approximate",
+        "grid_cell_width": 21.9,
+        "grid_cell_height": 22.1,
+        "grid_cell_size": 22,
+        "confidence": 0.958,
+        "subject_bbox": {
+          "left": 453,
+          "top": 333,
+          "right": 802,
+          "bottom": 863
+        },
+        "subject_pixel_width": 349,
+        "subject_pixel_height": 530,
+        "subject_grid_width": 16,
+        "subject_grid_height": 24,
+        "recommended_canvas_grid_width": 57,
+        "recommended_canvas_grid_height": 57
+      }
+    },
+    "registration": {
+      "mode": "bottom_center_32px_canvas",
+      "paste_origin": [
+        8,
+        7
+      ],
+      "bottom_y": 30
+    },
+    "visible_palette_size": 15,
+    "audit": {
+      "path": "resources/texture/materials/water_bottle.png",
+      "canvas_size": [
+        32,
+        32
+      ],
+      "subject_bbox_exclusive": [
+        8,
+        7,
+        24,
+        31
+      ],
+      "subject_size": [
+        16,
+        24
+      ],
+      "visible_color_count": 15,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "checks": {
+        "canvas_32x32": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_within_limit": true,
+        "subject_within_declared_limit": true
+      },
+      "passed": true
+    }
+  },
+  "panel": {
+    "source_path": "dev_assets/source_images/plant_defense/water_collector/water_collector_panel_background_imagegen.png",
+    "output_path": "resources/texture/production/water_collector_panel_background.png",
+    "output_size": [
+      728,
+      544
+    ],
+    "visible_color_limit": 128
+  },
+  "validation": {
+    "passed": true,
+    "failures": []
+  }
+}

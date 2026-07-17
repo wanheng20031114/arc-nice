@@ -14,6 +14,8 @@ const MULTIPLAYER_PRODUCTION_REQUEST_TIMEOUT_SECONDS := 4.0
 
 @export_group("生产配置")
 @export var recipes: Array[ProductionRecipe] = []
+@export var auto_select_first_recipe := false
+@export var production_panel_background_override: Texture2D = null
 
 @onready var interaction_area: Area2D = $InteractionArea
 @onready var interaction_prompt: Control = $InteractionPrompt
@@ -92,6 +94,11 @@ func _on_setup_completed() -> void:
 	completion_wait_reason = &""
 	production_enabled = true
 	active_recipe_id = &""
+	if auto_select_first_recipe:
+		for recipe in recipes:
+			if recipe != null and recipe.is_valid():
+				active_recipe_id = recipe.recipe_id
+				break
 	production_revision = 0
 	_sync_visual_progress_clock()
 	health_bar.setup(max_health, current_health)
@@ -162,6 +169,11 @@ func get_display_recipe() -> ProductionRecipe:
 		if recipe != null and recipe.is_valid():
 			return recipe
 	return null
+
+
+func uses_environment_source() -> bool:
+	var recipe := get_display_recipe()
+	return recipe != null and recipe.uses_environment_source()
 
 
 func is_player_within_multiplayer_interaction_distance(

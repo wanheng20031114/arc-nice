@@ -7,7 +7,8 @@ class_name ProductionRecipe
 
 @export_group("投入")
 @export var input_item: PickupConfig = null
-@export_range(1, 999, 1, "or_greater") var input_amount: int = 1
+# 0 表示环境来源：只在界面中展示 input_item，不从仓库消耗。
+@export_range(0, 999, 1, "or_greater") var input_amount: int = 1
 
 @export_group("产出")
 @export var output_items: Array[PickupConfig] = []
@@ -21,8 +22,8 @@ func is_valid() -> bool:
 	if (
 		recipe_id == &""
 		or display_name.is_empty()
-		or input_item == null
-		or input_amount <= 0
+		or input_amount < 0
+		or (input_amount > 0 and input_item == null)
 		or output_items.is_empty()
 		or output_items.size() != output_amounts.size()
 		or not is_finite(duration_seconds)
@@ -33,6 +34,10 @@ func is_valid() -> bool:
 		if output_items[output_index] == null or output_amounts[output_index] <= 0:
 			return false
 	return true
+
+
+func uses_environment_source() -> bool:
+	return input_amount == 0
 
 
 func get_output_summary() -> String:
