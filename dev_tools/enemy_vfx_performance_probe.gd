@@ -41,6 +41,8 @@ var sample_frames := DEFAULT_SAMPLE_FRAMES
 var fixed_seed := DEFAULT_SEED
 var current_cohort := &"none"
 var guardian_physics_only := false
+var guardian_only := false
+var green_only := false
 
 
 func _init() -> void:
@@ -90,6 +92,14 @@ func _run() -> void:
 		await _run_guardian_cohort()
 		await _finish()
 		return
+	if guardian_only:
+		await _run_guardian_cohort()
+		await _finish()
+		return
+	if green_only:
+		await _run_green_cohort()
+		await _finish()
+		return
 
 	await _run_basic_cohort()
 	await _run_green_cohort()
@@ -111,6 +121,10 @@ func _parse_user_arguments() -> void:
 			fixed_seed = int(argument.get_slice("=", 1))
 		elif argument == "--guardian-physics-only":
 			guardian_physics_only = true
+		elif argument == "--guardian-only":
+			guardian_only = true
+		elif argument == "--green-only":
+			green_only = true
 
 
 func _stop_background_gameplay() -> void:
@@ -170,21 +184,32 @@ func _run_green_cohort() -> void:
 
 func _run_guardian_cohort() -> void:
 	var setup_ms := await _replace_with_uniform_cohort(GUARDIAN_CONFIG, &"guardian")
-	_configure_guardian_light(true)
-	# A/B only: reconstruct the retired per-guardian enemy-monitoring Area2D.
-	_configure_guardian_area(true)
-	await _measure_phase("guardian_legacy_area_on", setup_ms)
-	_assert_guardian_state(enemy_count, enemy_count)
+	# Authored production state: each guardian keeps a lightweight halo, while
+	# YuanshiInsectAura admits at most MAX_ACTIVE_GUARDIAN_LIGHTS PointLight2D
+	# nodes. GuardianAuraSystem owns defense membership; guardian scenes no
+	# longer contain the retired per-instance AuraArea at all.
+	await _measure_phase("guardian_production_light_budget", setup_ms)
+	_assert_guardian_state(
+		mini(enemy_count, YuanshiInsectAura.MAX_ACTIVE_GUARDIAN_LIGHTS),
+		0
+	)
+
+	_configure_guardian_light_budget(8)
+	await _measure_phase("guardian_eight_lights", 0.0)
+	_assert_guardian_state(mini(enemy_count, 8), 0)
+
+	_configure_guardian_light_budget(4)
+	await _measure_phase("guardian_four_lights", 0.0)
+	_assert_guardian_state(mini(enemy_count, 4), 0)
 
 	_configure_guardian_light(false)
-	_configure_guardian_area(true)
-	await _measure_phase("guardian_legacy_area_on_light_off", 0.0)
-	_assert_guardian_state(0, enemy_count)
+	await _measure_phase("guardian_all_lights_off", 0.0)
+	_assert_guardian_state(0, 0)
 
-	# Production state: GuardianAuraSystem owns defense and every guardian Area2D is inert.
+	# Diagnostic ceiling only: bypass the production light budget to quantify the
+	# failure mode if every guardian PointLight2D were enabled at once.
 	_configure_guardian_light(true)
-	_configure_guardian_area(false)
-	await _measure_phase("guardian_centralized_area_off", 0.0)
+	await _measure_phase("guardian_all_lights_on_stress", 0.0)
 	_assert_guardian_state(enemy_count, 0)
 
 
@@ -353,6 +378,7 @@ func _configure_green_visuals(
 			continue
 		var aura_particles := enemy.get_node_or_null("AuraParticles") as GPUParticles2D
 		if aura_particles != null:
+			aura_particles.visible = particles_enabled
 			if particles_enabled:
 				aura_particles.process_mode = Node.PROCESS_MODE_INHERIT
 				aura_particles.restart()
@@ -375,15 +401,18 @@ func _configure_guardian_light(enabled: bool) -> void:
 			guardian_light.enabled = enabled
 
 
-func _configure_guardian_area(enabled: bool) -> void:
+func _configure_guardian_light_budget(max_enabled: int) -> void:
+	var enabled_count := 0
 	for enemy in enemies:
 		if not _is_guardian_enemy(enemy):
 			continue
-		var aura_area := enemy.get_node_or_null("AuraArea") as Area2D
-		if aura_area == null:
+		var guardian_light := enemy.get_node_or_null("GuardianLight") as PointLight2D
+		if guardian_light == null:
 			continue
-		aura_area.collision_mask = 4 if enabled else 0
-		_set_aura_area_enabled(enemy, enabled)
+		var should_enable := enabled_count < maxi(max_enabled, 0)
+		guardian_light.enabled = should_enable
+		if should_enable:
+			enabled_count += 1
 
 
 func _set_aura_area_enabled(enemy: Enemy, enabled: bool) -> void:
