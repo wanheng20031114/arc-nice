@@ -34,6 +34,7 @@ const COUNTDOWN_PULSE_SECONDS := 0.22
 @onready var gate_warning_audio: AudioStreamPlayer = $GateWarningAudio
 
 var respawn_entries: Dictionary = {}
+var _dead_player_list_enabled := true
 var local_dead_peer_id := -1
 var local_death_top_position := Vector2.ZERO
 var local_death_top_size := Vector2.ZERO
@@ -89,6 +90,13 @@ func set_player_respawn(
 	_refresh_dead_player_list()
 
 
+func set_dead_player_list_enabled(enabled: bool) -> void:
+	if _dead_player_list_enabled == enabled:
+		return
+	_dead_player_list_enabled = enabled
+	_refresh_dead_player_list()
+
+
 func clear_player_respawn(peer_id: int) -> void:
 	respawn_entries.erase(peer_id)
 	if peer_id == local_dead_peer_id:
@@ -101,6 +109,10 @@ func clear_all_respawns() -> void:
 	respawn_entries.clear()
 	local_dead_peer_id = -1
 	_stop_local_death_presentation()
+	_hide_dead_player_list()
+
+
+func _hide_dead_player_list() -> void:
 	if dead_players_tween != null:
 		dead_players_tween.kill()
 		dead_players_tween = null
@@ -140,13 +152,8 @@ func stop_gate_damage_warning() -> void:
 
 
 func _refresh_dead_player_list() -> void:
-	if respawn_entries.is_empty():
-		if dead_players_tween != null:
-			dead_players_tween.kill()
-			dead_players_tween = null
-		dead_players_panel.hide()
-		dead_players_panel.modulate.a = 0.0
-		dead_players_label.text = ""
+	if not _dead_player_list_enabled or respawn_entries.is_empty():
+		_hide_dead_player_list()
 		return
 	var was_visible := dead_players_panel.visible
 	var peer_ids: Array[int] = []
@@ -272,6 +279,9 @@ func _play_local_death_intro() -> void:
 
 
 func _play_dead_players_intro(delay_seconds: float) -> void:
+	if not _dead_player_list_enabled:
+		_hide_dead_player_list()
+		return
 	if dead_players_tween != null:
 		dead_players_tween.kill()
 	dead_players_panel.show()
@@ -371,7 +381,8 @@ func _on_local_death_intro_finished() -> void:
 	local_death_compact_content.show()
 	local_death_compact_content.modulate.a = 1.0
 	if (
-		not respawn_entries.is_empty()
+		_dead_player_list_enabled
+		and not respawn_entries.is_empty()
 		and dead_players_panel.visible
 		and dead_players_panel.modulate.a < 1.0
 		and dead_players_tween == null

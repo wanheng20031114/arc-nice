@@ -332,6 +332,9 @@ func _ready() -> void:
 		set_process(false)
 		set_physics_process(false)
 		return
+	tower_defense_status_hud.set_dead_player_list_enabled(
+		runtime_mode != RuntimeMode.SINGLEPLAYER
+	)
 	tower_defense_status_hud.show()
 	_attach_camera_to_local_player()
 	wave_hud.configure_tower_defense(current_base_health, maximum_base_health)

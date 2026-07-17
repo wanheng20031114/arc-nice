@@ -143,8 +143,9 @@ func _test_singleplayer_flow_and_respawn() -> void:
 		"The local death card must begin transparent instead of appearing instantly."
 	)
 	_expect(
-		status_hud.dead_players_panel.modulate.a < 0.05,
-		"The dead-player list must remain transparent until the local death card reaches the top."
+		not status_hud.dead_players_panel.visible
+		and status_hud.dead_players_panel.modulate.a < 0.05,
+		"Single-player death must keep the multiplayer dead-player list hidden."
 	)
 	_expect(
 		float(death_shader.get_shader_parameter(&"intensity")) < 0.05,
@@ -163,7 +164,10 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	_expect(game.player.collision_shape.disabled, "A dead tower-defense player must have no world collision.")
 	_expect(game.map_camera.get_parent() == game, "The local camera must detach from the dead player for spectator movement.")
 	_expect(status_hud.local_death_center.visible, "The local death HUD must be visible.")
-	_expect(status_hud.dead_players_panel.visible, "The right-side dead-player HUD must be visible.")
+	_expect(
+		not status_hud.dead_players_panel.visible,
+		"Single-player death must not show the right-side dead-player HUD."
+	)
 	_expect(game.singleplayer_respawn_last_seconds == 5, "The first death in a wave must use a five-second revive.")
 	_expect(
 		status_hud.local_death_center.position.y
@@ -187,9 +191,11 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	)
 	status_hud.set_player_respawn(77, "队友", 9, false)
 	_expect(
-		status_hud.dead_players_label.text.contains("队友：9秒后复活")
+		status_hud.respawn_entries.has(77)
+		and status_hud.dead_players_label.text.is_empty()
+		and not status_hud.dead_players_panel.visible
 		and status_hud.dead_players_panel.modulate.a < 0.05,
-		"A teammate update during the local intro must refresh data without fading the list in early."
+		"Single-player mode must retain respawn data without rendering the multiplayer list."
 	)
 	var local_death_intro_position := status_hud.local_death_center.position
 
@@ -231,8 +237,10 @@ func _test_singleplayer_flow_and_respawn() -> void:
 		"The local death card must finish fully visible."
 	)
 	_expect(
-		status_hud.dead_players_panel.modulate.a > 0.99,
-		"The dead-player list must fade in after the local death card moves upward."
+		not status_hud.dead_players_panel.visible
+		and status_hud.dead_players_panel.modulate.a < 0.05
+		and status_hud.dead_players_label.text.is_empty(),
+		"The multiplayer dead-player list must remain hidden after the local intro finishes."
 	)
 	_expect(
 		float(death_shader.get_shader_parameter(&"intensity")) > 0.99,
@@ -640,6 +648,13 @@ func _test_host_authoritative_revive_all() -> void:
 	living_player.current_health = living_health
 	dead_player.apply_multiplayer_death_state()
 	game.update_player_respawn_countdown(1, 5)
+	_expect(
+		game.tower_defense_status_hud.dead_players_panel.visible
+		and game.tower_defense_status_hud.dead_players_label.text.contains(
+			"主机：5秒后复活"
+		),
+		"Host mode must keep the right-side multiplayer dead-player list enabled."
+	)
 
 	var mp_game := MP_GAME_SCENE.instantiate()
 	mp_game.set("game", game)
@@ -741,6 +756,14 @@ func _test_client_view_waits_for_authoritative_revive() -> void:
 				revive_events["count"] = int(revive_events["count"]) + 1
 		)
 		player_instance.apply_multiplayer_death_state()
+	game.update_player_respawn_countdown(1, 7)
+	_expect(
+		game.tower_defense_status_hud.dead_players_panel.visible
+		and game.tower_defense_status_hud.dead_players_label.text.contains(
+			"主机：7秒后复活"
+		),
+		"ClientView mode must keep the right-side multiplayer dead-player list enabled."
+	)
 	var flow_step := game.call("_get_start_flow_step") as FlowStepConfig
 	game.apply_remote_flow_state(
 		flow_step.step_id,
