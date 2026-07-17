@@ -40,7 +40,7 @@ PANEL_SOURCE = (
 PLANK_SOURCE = (
     ROOT
     / "dev_assets/source_images/materials/plank"
-    / "plank_selected_imagegen_magenta_v2.png"
+    / "plank_selected_imagegen_magenta_v4.png"
 )
 BUILDING_OUTPUT = (
     ROOT
@@ -58,7 +58,8 @@ AUDIT_OUTPUT = (
 BUILDING_MAX_SIZE = (30, 31)
 BUILDING_FOOT_TARGET = (32, 47)
 BUILDING_COLOR_LIMIT = 48
-PLANK_LOGICAL_SIZE = (19, 14)
+PLANK_LOGICAL_SIZE = (29, 26)
+PLANK_COLOR_LIMIT = 8
 PLANK_CANVAS_SIZE = (32, 32)
 PANEL_SIZE = (728, 544)
 
@@ -91,13 +92,13 @@ def _build_plank() -> tuple[Image.Image, dict]:
     if bbox is None:
         raise RuntimeError("Plank chroma-key source contains no visible subject")
     cropped = keyed.crop(bbox)
-    # The generated master visibly resolves to a uniform 19x14 block grid.
-    # The general analyzer rejects its broad intra-cell lighting gradients, so
-    # this asset records the manually reviewed visual grid instead of using an
-    # unsafe automatic compression override.
+    # The generated master was reviewed as one intact board whose diagonal
+    # silhouette needs a near-full 32x32 footprint for inventory readability.
+    # Sample it directly into the reviewed 29x26 target grid so the source
+    # aspect ratio and hard pixel edges survive without filtered scaling.
     logical = cropped.resize(PLANK_LOGICAL_SIZE, Image.Resampling.NEAREST)
     logical = clean_transparency(logical)
-    palette = build_shared_palette([logical], max_colors=16)
+    palette = build_shared_palette([logical], max_colors=PLANK_COLOR_LIMIT)
     logical = apply_palette(logical, palette)
     output = Image.new("RGBA", PLANK_CANVAS_SIZE, TRANSPARENT)
     paste_origin = (

@@ -19,10 +19,12 @@
       "prompt": "Reusable landscape 4:3 production-management panel background in polished fantasy pixel-art UI style. Neutral dark workshop frame with aged bronze, muted iron and walnut accents; a large left workspace, tall right recipe-list workspace, header strip, vertical divider, and clean top-right toggle recess. Preserve dark uncluttered content areas for native Godot controls; use only generic gears, bolts and bracing. No text, item icons, material-specific motifs, fake buttons, logo, or watermark."
     },
     {
-      "id": "plank_material_v2",
-      "source": "../../materials/plank/plank_selected_imagegen_magenta_v2.png",
-      "references": [],
-      "prompt": "One tiny inventory icon of exactly two processed oak planks stacked with a small offset, squared ends, one knot and only a few grain marks. Strict uniform square low-resolution pixel grid, about 16-20 by 10-13 logical pixels, dark one-pixel outline, at most 12 warm oak colors. Centered on a square perfectly uniform #FF00FF chroma-key background; no antialiasing, dithering, shadows, tools, bark logs, text, UI border, logo, or watermark."
+      "id": "plank_material_v4",
+      "source": "../../materials/plank/plank_selected_imagegen_magenta_v4.png",
+      "references": [
+        "../../materials/plank/plank_selected_imagegen_magenta_v3.png"
+      ],
+      "prompt": "Image 1 is the edit target. Preserve its exact single intact wooden-plank design, diagonal composition, warm oak palette, thick side face, and large canvas coverage, but redraw it at half the current logical resolution so it survives cleanly as a 32x32 icon. Keep exactly one centered plank filling about 84% of the canvas width, with straight square pristine ends, one consistent dark-brown outline, at most 8 flat colors, and a perfectly uniform #FF00FF background. No breaks, cracks, chips, splinters, holes, bent areas, stacked boards, second board, nails, rope, ground, cast shadow, text, watermark, antialiasing, gradients, dithering, soft edges, tiny highlights, sub-cell detail, or magenta within the plank."
     }
   ]
 }

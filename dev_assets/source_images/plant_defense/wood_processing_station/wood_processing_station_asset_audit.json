@@ -100,34 +100,34 @@
     }
   },
   "plank": {
-    "source_path": "dev_assets/source_images/materials/plank/plank_selected_imagegen_magenta_v2.png",
+    "source_path": "dev_assets/source_images/materials/plank/plank_selected_imagegen_magenta_v4.png",
     "source_subject_bbox": [
-      283,
-      372,
-      966,
-      897
+      121,
+      164,
+      1181,
+      1118
     ],
     "source_subject_size": [
-      683,
-      525
+      1060,
+      954
     ],
     "reviewed_visual_grid": [
-      19,
-      14
+      29,
+      26
     ],
     "normalization_mode": "manual_visual_grid_center_sample",
     "paste_origin": [
-      6,
-      9
+      1,
+      3
     ],
-    "visible_palette_size": 16,
+    "visible_palette_size": 7,
     "lossless_compression": {
       "mode": "png_deflate_lossless",
-      "baseline_bytes": 614,
-      "optimized_bytes": 603,
-      "selected_bytes": 603,
-      "saved_bytes": 11,
-      "decoded_rgba_sha256": "56e60f36d6dd67a333fbc53b2c7e0c84a67fcbd3e44a0c8753eaaf627811a806",
+      "baseline_bytes": 612,
+      "optimized_bytes": 595,
+      "selected_bytes": 595,
+      "saved_bytes": 17,
+      "decoded_rgba_sha256": "dd07c6542f1049facea259a42de45abfee7889b35342e1ba6db27008dcb9de75",
       "pixel_identical": true
     },
     "output_path": "resources/texture/materials/plank.png",
