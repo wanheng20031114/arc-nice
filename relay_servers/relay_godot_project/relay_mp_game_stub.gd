@@ -427,8 +427,28 @@ func net_warehouse_command_requested(command: Dictionary) -> void:
 func net_warehouse_snapshot_requested(warehouse_net_id: int) -> void:
 	pass
 
+@rpc("any_peer", "call_remote", "reliable", 6)
+func net_production_command_requested(command: Dictionary) -> void:
+	pass
+
+@rpc("any_peer", "call_remote", "reliable", 6)
+func net_production_snapshot_requested(building_net_id: int) -> void:
+	pass
+
 @rpc("authority", "call_remote", "reliable", 6)
 func net_warehouse_command_result(result: Dictionary) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 6)
+func net_production_command_result(result: Dictionary) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 6)
+func net_production_state_batch(
+	net_ids: PackedInt32Array,
+	states: Array,
+	host_sample_times: PackedFloat64Array
+) -> void:
 	pass
 
 @rpc("authority", "call_remote", "reliable", 6)

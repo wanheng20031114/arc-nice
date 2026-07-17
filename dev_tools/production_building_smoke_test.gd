@@ -6,6 +6,7 @@ const COORDINATOR_SCENE := preload(
 const WAREHOUSE_SCENE := preload("res://scene/plant_defense/oak_warehouse.tscn")
 const PANEL_SCENE := preload("res://scene/plant_defense/production_building_panel.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
+const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const WOOD := preload("res://resources/config/materials/material_wood.tres")
 const SAPLING := preload("res://resources/config/materials/material_sapling.tres")
 const PLANK := preload("res://resources/config/materials/material_plank.tres")
@@ -46,6 +47,10 @@ func _run() -> void:
 
 	_expect(config != null and config.is_valid(), "木头加工站配置必须有效。")
 	_expect(
+		config != null and config.supports_multiplayer,
+		"木头加工站必须允许进入多人建造与生产网络。"
+	)
+	_expect(
 		config != null
 		and config.max_health == 2000
 		and config.physical_defense == 10
@@ -69,10 +74,17 @@ func _run() -> void:
 		coordinator.register_plant(second_station)
 	station.set_shared_production_panel(panel)
 
+	var station_timers := station.find_children("*", "Timer", true, false)
+	var request_timer := station.get_node_or_null(
+		"MultiplayerProductionRequestTimer"
+	) as Timer
 	_expect(
 		coordinator.get_node("ProductionTickTimer") is Timer
-		and station.find_children("*", "Timer", true, false).is_empty(),
-		"全场生产必须只有协调器的共享Timer，加工站实例不得自带生产Timer。"
+		and station_timers.size() == 1
+		and request_timer != null
+		and request_timer.one_shot
+		and is_equal_approx(request_timer.wait_time, 4.0),
+		"加工站只能预置4秒一次性多人请求超时Timer，生产刻度仍必须由全场协调器统一推进。"
 	)
 	var health_bar := station.get_node("HealthBar") as PlantHealthBar
 	_expect(
@@ -333,7 +345,234 @@ func _run() -> void:
 	if game_instance != null:
 		game_instance.free()
 
+	await _test_multiplayer_production_contract(test_root, config)
+
 	_finish(test_root)
+
+
+func _test_multiplayer_production_contract(
+	test_root: Node,
+	config: PlantDefenseConfig
+) -> void:
+	_expect(
+		not ProductionBuildingProtocol.is_valid_command({
+			"operation": ProductionBuildingProtocol.OPERATION_SET_ENABLED,
+			"request_id": "1",
+			"building_net_id": 7,
+			"peer_id": 2,
+			"expected_production_revision": 0,
+			"enabled": true,
+		}),
+		"生产协议必须拒绝伪装成字符串的请求ID。"
+	)
+	_expect(
+		not ProductionBuildingProtocol.is_valid_command({
+			"operation": ProductionBuildingProtocol.OPERATION_SELECT_RECIPE,
+			"request_id": 1,
+			"building_net_id": 7,
+			"peer_id": 2,
+			"expected_production_revision": 0,
+			"recipe_id": 123,
+		}),
+		"生产协议必须严格拒绝类型非法的配方ID。"
+	)
+	var authority := config.plant_scene.instantiate() as ProductionBuilding
+	test_root.add_child(authority)
+	await process_frame
+	authority.setup(config, null, [Vector2i(4, 0)])
+	var first_command := ProductionBuildingProtocol.make_select_recipe_command(
+		1,
+		8,
+		2,
+		0,
+		&"wood_to_plank"
+	)
+	var forged_peer_command := first_command.duplicate(true)
+	forged_peer_command["peer_id"] = 99
+	_expect(
+		ProductionBuildingProtocol.command_peer_matches(first_command, 2)
+		and not ProductionBuildingProtocol.command_peer_matches(
+			forged_peer_command,
+			2
+		),
+		"主机必须拒绝命令内伪造或类型不匹配的peer ID。"
+	)
+	var interaction_player := PLAYER_SCENE.instantiate() as Player
+	test_root.add_child(interaction_player)
+	await process_frame
+	authority.global_position = Vector2.ZERO
+	interaction_player.global_position = Vector2(48, 0)
+	var edge_is_allowed := authority.is_player_within_multiplayer_interaction_distance(
+		interaction_player,
+		48.0
+	)
+	interaction_player.global_position = Vector2(48.01, 0)
+	_expect(
+		edge_is_allowed
+		and not authority.is_player_within_multiplayer_interaction_distance(
+			interaction_player,
+			48.0
+		),
+		"多人生产交互必须严格限制在48像素内。"
+	)
+	var competing_command := ProductionBuildingProtocol.make_set_enabled_command(
+		2,
+		8,
+		3,
+		0,
+		false
+	)
+	_expect(
+		authority.apply_authoritative_multiplayer_production_command(first_command)
+		== ProductionBuildingProtocol.RESULT_SUCCESS
+		and authority.apply_authoritative_multiplayer_production_command(
+			competing_command
+		) == ProductionBuildingProtocol.RESULT_STALE_STATE
+		and authority.production_enabled
+		and authority.production_revision == 1,
+		"相同revision的并发命令必须只接受首个有效命令，后到者返回stale_state且零写入。"
+	)
+	var invalid_recipe_command := ProductionBuildingProtocol.make_select_recipe_command(
+		3,
+		8,
+		2,
+		1,
+		&"missing_recipe"
+	)
+	_expect(
+		authority.apply_authoritative_multiplayer_production_command(
+			invalid_recipe_command
+		) == ProductionBuildingProtocol.RESULT_INVALID_RECIPE
+		and authority.production_revision == 1,
+		"非法配方必须返回invalid_recipe且不得写入生产状态。"
+	)
+	var mp_game := MP_GAME_SCENE.instantiate()
+	var rate_buckets: Dictionary = {}
+	var burst_was_accepted := true
+	for _request_index in 12:
+		burst_was_accepted = burst_was_accepted and bool(mp_game.call(
+			"_consume_peer_rate_token",
+			rate_buckets,
+			2,
+			8.0,
+			12.0
+		))
+	_expect(
+		burst_was_accepted
+		and not bool(mp_game.call(
+			"_consume_peer_rate_token",
+			rate_buckets,
+			2,
+			8.0,
+			12.0
+		)),
+		"每名玩家的生产命令限流必须允许突发12次并拒绝紧随其后的第13次。"
+	)
+	var cached_result := ProductionBuildingProtocol.make_result(
+		first_command,
+		true,
+		ProductionBuildingProtocol.RESULT_SUCCESS,
+		1,
+		authority.export_multiplayer_runtime_state(),
+		0.0
+	)
+	mp_game.call(
+		"_cache_production_command_result",
+		2,
+		8,
+		1,
+		cached_result
+	)
+	_expect(
+		mp_game.call("_get_cached_production_command_result", 2, 8, 1)
+		== cached_result,
+		"重复生产请求必须命中幂等结果缓存而不是再次执行。"
+	)
+	mp_game.free()
+	var proxy := config.plant_scene.instantiate() as ProductionBuilding
+	test_root.add_child(proxy)
+	await process_frame
+	proxy.setup(config, null, [Vector2i(3, 0)], true, config.max_health, 1)
+	proxy.configure_multiplayer_production(7, 2, true)
+	var requested_commands: Array[Dictionary] = []
+	var snapshot_requests: Array[int] = []
+	proxy.production_command_requested.connect(
+		func(command: Dictionary) -> void: requested_commands.append(command)
+	)
+	proxy.production_snapshot_requested.connect(
+		func(building_net_id: int) -> void: snapshot_requests.append(building_net_id)
+	)
+	_expect(
+		not proxy.select_recipe(&"wood_to_plank")
+		and not proxy.set_production_enabled(false)
+		and proxy.active_recipe_id == &""
+		and proxy.production_enabled,
+		"客户端生产副本不得通过单人接口直接改配方或开关。"
+	)
+	proxy.advance_shared_production_tick(10.0)
+	_expect(
+		is_zero_approx(proxy.progress_elapsed_seconds),
+		"客户端生产副本不得自行推进权威进度。"
+	)
+	_expect(
+		proxy.request_multiplayer_recipe_selection(&"wood_to_plank")
+		and requested_commands.size() == 1
+		and int(requested_commands[0]["expected_production_revision"]) == 0
+		and proxy.multiplayer_production_request_pending,
+		"客户端选择配方必须携带当前revision并进入等待主机状态。"
+	)
+	var authoritative_state := {
+		"schema": ProductionBuilding.RUNTIME_STATE_SCHEMA,
+		"enabled": true,
+		"active_recipe_id": "wood_to_plank",
+		"progress_elapsed_seconds": 4.0,
+		"wait_reason": "",
+		"revision": 1,
+		"projection_duration_seconds": 0.5,
+	}
+	var result := ProductionBuildingProtocol.make_result(
+		requested_commands[0],
+		true,
+		ProductionBuildingProtocol.RESULT_SUCCESS,
+		1,
+		authoritative_state,
+		Time.get_ticks_msec() / 1000.0
+	)
+	proxy.apply_multiplayer_runtime_state(
+		authoritative_state,
+		Time.get_ticks_msec() / 1000.0
+	)
+	_expect(
+		proxy.complete_multiplayer_production_request(result)
+		and not proxy.multiplayer_production_request_pending
+		and proxy.active_recipe_id == &"wood_to_plank"
+		and proxy.production_revision == 1
+		and is_equal_approx(proxy.progress_elapsed_seconds, 4.0),
+		"成功或失败结果都必须以完整权威状态结束请求。"
+	)
+	var stale_state := authoritative_state.duplicate(true)
+	stale_state["revision"] = 0
+	stale_state["enabled"] = false
+	proxy.apply_multiplayer_runtime_state(
+		stale_state,
+		Time.get_ticks_msec() / 1000.0
+	)
+	_expect(
+		proxy.production_enabled and proxy.production_revision == 1,
+		"过期状态包不得覆盖客户端已应用的较新权威状态。"
+	)
+	_expect(
+		proxy.request_multiplayer_enabled_change(false),
+		"同步完成后客户端必须能提交下一条开关命令。"
+	)
+	proxy.call("_on_multiplayer_production_request_timeout")
+	_expect(
+		not proxy.multiplayer_production_request_pending
+		and not proxy.multiplayer_production_snapshot_ready
+		and snapshot_requests == [7],
+		"4秒命令超时必须取消假操作并请求权威快照。"
+	)
+	proxy.multiplayer_production_request_timer.stop()
 
 
 func _expect(condition: bool, message: String) -> void:

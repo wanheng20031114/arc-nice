@@ -18,7 +18,7 @@ func _run() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 9, "Authoritative damage feedback requires multiplayer protocol v9.")
+	_expect(NetConstants.PROTOCOL_VERSION == 10, "Shared production requires multiplayer protocol v10.")
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),
 		"A disconnected future Host must be able to select tower defense."

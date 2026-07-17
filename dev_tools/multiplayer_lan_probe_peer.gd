@@ -4,6 +4,7 @@ const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const LINGLAN_BOSS_ENTRY := preload("res://resources/config/bosses/boss_01_linglan.tres")
 const WOOD_MATERIAL := preload("res://resources/config/materials/material_wood.tres")
+const PLANK_MATERIAL := preload("res://resources/config/materials/material_plank.tres")
 
 const STATE_HOSTING_LAN := 1
 const STATE_LOADING_GAME := 4
@@ -591,6 +592,9 @@ func _run_host_tower_defense_runtime_probe(
 	if not warehouse.try_add_storage_item_count(WOOD_MATERIAL, 1):
 		_fail("Host could not seed the shared warehouse transaction probe.")
 		return
+	# Keep the original warehouse competition setup deterministic; the second
+	# seed below is intentionally left to storage_changed so production verifies
+	# the new automatic warehouse broadcast path.
 	mp_game.call("_broadcast_warehouse_snapshot", warehouse)
 	await _wait_seconds(0.75)
 	if not await _wait_for_host_warehouse_transactions(mp_game, net_manager, 5.0):
@@ -604,6 +608,58 @@ func _run_host_tower_defense_runtime_probe(
 		_fail("Shared-warehouse competition duplicated or lost the authoritative stack.")
 		return
 	print("LAN_PROBE_EVENT host_td_warehouse_atomic net_id=2")
+
+	if not await _wait_for_host_plant_requests(mp_game, net_manager, 103, 5.0):
+		_fail("Host did not receive every client's wood-station placement request.")
+		return
+	var station := game.plant_system.get_plant_by_net_id(3) as ProductionBuilding
+	if station == null or not is_instance_valid(station):
+		_fail("Competing wood-station placement did not create authoritative net_id 3.")
+		return
+	if not warehouse.try_add_storage_item_count(WOOD_MATERIAL, 1):
+		_fail("Host could not seed the multiplayer production cycle.")
+		return
+	var remote_client_count := _get_connected_player_count(net_manager) - 1
+	if not await _wait_for_host_production_results(
+		mp_game,
+		remote_client_count,
+		8.0
+	):
+		_fail("Host did not settle every competing recipe selection.")
+		return
+	var recipe_outcomes := _count_host_production_result_reasons(mp_game, 1)
+	if (
+		int(recipe_outcomes.get(ProductionBuildingProtocol.RESULT_SUCCESS, 0)) != 1
+		or int(recipe_outcomes.get(ProductionBuildingProtocol.RESULT_STALE_STATE, 0))
+		!= remote_client_count - 1
+	):
+		_fail(
+			"Concurrent recipe selection did not accept exactly one revision winner: %s"
+			% str(recipe_outcomes)
+		)
+		return
+	station.advance_shared_production_tick(10.0)
+	if (
+		warehouse.get_storage_item_total(WOOD_MATERIAL) != 0
+		or warehouse.get_storage_item_total(PLANK_MATERIAL) != 2
+	):
+		_fail("Authoritative multiplayer production did not atomically consume 1 wood and create 2 planks.")
+		return
+	print("LAN_PROBE_EVENT host_td_production_atomic station=3 warehouse=2")
+	if not await _wait_for_authoritative_production_enabled(station, false, 5.0):
+		_fail("Host did not accept a revision-current production pause command.")
+		return
+	if station.production_enabled or not is_zero_approx(station.progress_elapsed_seconds):
+		_fail("Multiplayer production pause did not clear the authoritative cycle.")
+		return
+	if not await _wait_for_authoritative_production_enabled(station, true, 5.0):
+		_fail("Host did not receive the designated production resume command.")
+		return
+	if not station.production_enabled:
+		_fail("Multiplayer production did not resume from the Host-confirmed state.")
+		return
+	await _wait_seconds(0.75)
+	game.plant_system.remove_plant_by_net_id(3)
 	game.plant_system.remove_plant_by_net_id(2)
 	await _wait_seconds(0.75)
 
@@ -726,10 +782,102 @@ func _run_client_tower_defense_runtime_probe(
 	if _count_peer_item_stacks(run_state, net_manager.connected_players, WOOD_MATERIAL) != 1:
 		_fail("Client inventory snapshots did not converge on one warehouse winner.")
 		return
+	var station_config := PlantDefenseRegistry.get_config(&"wood_processing_station")
+	var station_anchor := _find_shared_multiplayer_plant_anchor(game, station_config)
+	if station_anchor == Vector2i.MAX:
+		_fail("Client could not resolve a valid shared wood-station anchor.")
+		return
+	mp_game.call(
+		"_on_local_plant_placement_requested",
+		103,
+		&"wood_processing_station",
+		station_anchor
+	)
+	var station_plant: PlantDefense = await _wait_for_client_plant(game, 3, 5.0)
+	var station := station_plant as ProductionBuilding
+	if station == null:
+		_fail("Client did not spawn the authoritative wood-station replica.")
+		return
+	# Capture the shared pre-command revision before any peer may submit. Relay
+	# peers can otherwise receive the first result while still repairing their
+	# initial snapshot and would legitimately issue a newer no-op command.
+	var competing_recipe_revision := station.production_revision
+	await _wait_seconds(1.0)
+	var station_approach := station.global_position.direction_to(local_player.global_position)
+	if station_approach == Vector2.ZERO:
+		station_approach = Vector2.DOWN
+	local_player.global_position = (
+		station.global_position + station_approach.normalized() * 24.0
+	)
+	local_player.velocity = Vector2.ZERO
+	mp_game.set("_has_sent_input", false)
+	mp_game.call("_client_send_input_if_needed", 0)
+	await _wait_seconds(0.5)
+	if not await _wait_for_warehouse_item_total(
+		warehouse,
+		WOOD_MATERIAL,
+		1,
+		5.0
+	):
+		_fail("Client did not receive the production input warehouse snapshot.")
+		return
+	if not await _wait_for_production_ready(station, 6.0):
+		_fail(
+			"Client production snapshot did not become ready: ready=%s pending=%s revision=%d"
+			% [
+				station.multiplayer_production_snapshot_ready,
+				station.multiplayer_production_request_pending,
+				station.production_revision,
+			]
+		)
+		return
+	var recipe_command := ProductionBuildingProtocol.make_select_recipe_command(
+		station.next_multiplayer_production_request_id,
+		station.building_net_id,
+		station.multiplayer_production_peer_id,
+		competing_recipe_revision,
+		&"wood_to_plank"
+	)
+	if not bool(station.call("_submit_multiplayer_production_command", recipe_command)):
+		_fail("Client could not submit the multiplayer production recipe command.")
+		return
+	if not await _wait_for_production_request_settled(station, 5.0):
+		_fail("Client recipe command did not receive a Host result.")
+		return
+	if not await _wait_for_warehouse_item_total(
+		warehouse,
+		PLANK_MATERIAL,
+		2,
+		5.0
+	):
+		_fail("Client warehouse did not converge on the two produced planks.")
+		return
+	if (
+		station.active_recipe_id != &"wood_to_plank"
+		or station.production_revision < 2
+		or station.production_coordinator.get_total_item_count(WOOD_MATERIAL) != 0
+		or station.production_coordinator.get_total_item_count(PLANK_MATERIAL) != 2
+	):
+		_fail("Client production and proxy-warehouse state did not converge.")
+		return
+	if not await _request_production_enabled_until(station, false, 5.0):
+		_fail("Client did not converge on the paused production state.")
+		return
+	if str(net_manager.get("local_player_name")) == CLIENT2_PLAYER_NAME:
+		await _wait_seconds(0.5)
+		if not await _request_production_enabled_until(station, true, 5.0):
+			_fail("Designated client could not confirm the production resume command.")
+			return
+	if not await _wait_for_production_enabled(station, true, 5.0):
+		_fail("Client did not converge on the resumed production state.")
+		return
+	if not await _wait_for_client_plant_removed(game, 3, 5.0):
+		_fail("Client did not remove the wood station after Host teardown.")
+		return
 	if not await _wait_for_client_plant_removed(game, 2, 5.0):
 		_fail("Client did not remove the shared warehouse after Host teardown.")
 		return
-	print("LAN_PROBE_EVENT client_td_warehouse_atomic net_id=2")
+	print("LAN_PROBE_EVENT client_td_production_atomic station=3 warehouse=2")
 	_validate_and_print_runtime_metrics(
 		mp_game,
 		false,
@@ -1506,6 +1654,45 @@ func _wait_for_host_warehouse_transactions(
 	return false
 
 
+func _wait_for_host_production_results(
+	mp_game: Node,
+	minimum_result_count: int,
+	timeout_seconds: float
+) -> bool:
+	var end_time := _now_seconds() + timeout_seconds
+	while _now_seconds() <= end_time:
+		var results_by_peer := mp_game.get(
+			"_production_command_results_by_peer"
+		) as Dictionary
+		var result_count := 0
+		for peer_results_variant in results_by_peer.values():
+			var peer_results := peer_results_variant as Dictionary
+			result_count += peer_results.size()
+		if result_count >= minimum_result_count:
+			return true
+		await process_frame
+	return false
+
+
+func _count_host_production_result_reasons(
+	mp_game: Node,
+	request_id: int
+) -> Dictionary:
+	var counts: Dictionary = {}
+	var results_by_peer := mp_game.get(
+		"_production_command_results_by_peer"
+	) as Dictionary
+	for peer_results_variant in results_by_peer.values():
+		var peer_results := peer_results_variant as Dictionary
+		for result_variant in peer_results.values():
+			var result := result_variant as Dictionary
+			if int(result.get("request_id", 0)) != request_id:
+				continue
+			var reason := StringName(result.get("reason", &""))
+			counts[reason] = int(counts.get(reason, 0)) + 1
+	return counts
+
+
 func _wait_for_warehouse_request_settled(
 	warehouse: OakWarehouse,
 	timeout_seconds: float
@@ -1538,6 +1725,126 @@ func _wait_for_warehouse_storage_count(
 		var now := _now_seconds()
 		if now >= next_snapshot_request_time:
 			warehouse.request_multiplayer_storage_snapshot()
+			next_snapshot_request_time = now + 0.6
+		await process_frame
+	return false
+
+
+func _wait_for_warehouse_item_total(
+	warehouse: OakWarehouse,
+	item: PickupConfig,
+	expected_count: int,
+	timeout_seconds: float
+) -> bool:
+	var end_time := _now_seconds() + timeout_seconds
+	var next_snapshot_request_time := 0.0
+	while _now_seconds() <= end_time:
+		if warehouse == null or not is_instance_valid(warehouse):
+			return false
+		if warehouse.get_storage_item_total(item) == expected_count:
+			return true
+		var now := _now_seconds()
+		if now >= next_snapshot_request_time:
+			warehouse.request_multiplayer_storage_snapshot()
+			next_snapshot_request_time = now + 0.6
+		await process_frame
+	return false
+
+
+func _wait_for_production_request_settled(
+	station: ProductionBuilding,
+	timeout_seconds: float
+) -> bool:
+	var end_time := _now_seconds() + timeout_seconds
+	while _now_seconds() <= end_time:
+		if station == null or not is_instance_valid(station):
+			return false
+		if not station.multiplayer_production_request_pending:
+			return true
+		await process_frame
+	return false
+
+
+func _wait_for_production_ready(
+	station: ProductionBuilding,
+	timeout_seconds: float
+) -> bool:
+	var end_time := _now_seconds() + timeout_seconds
+	var next_snapshot_request_time := 0.0
+	while _now_seconds() <= end_time:
+		if station == null or not is_instance_valid(station):
+			return false
+		if station.is_multiplayer_production_ready():
+			return true
+		var now := _now_seconds()
+		if (
+			now >= next_snapshot_request_time
+			and not station.multiplayer_production_request_pending
+		):
+			station.request_multiplayer_production_snapshot()
+			next_snapshot_request_time = now + 0.6
+		await process_frame
+	return false
+
+
+func _request_production_enabled_until(
+	station: ProductionBuilding,
+	expected_enabled: bool,
+	timeout_seconds: float
+) -> bool:
+	var end_time := _now_seconds() + timeout_seconds
+	while _now_seconds() <= end_time:
+		if station == null or not is_instance_valid(station):
+			return false
+		if (
+			station.production_enabled == expected_enabled
+			and station.multiplayer_production_snapshot_ready
+			and not station.multiplayer_production_request_pending
+		):
+			return true
+		if station.is_multiplayer_production_ready():
+			station.request_multiplayer_enabled_change(expected_enabled)
+		await process_frame
+	return false
+
+
+func _wait_for_authoritative_production_enabled(
+	station: ProductionBuilding,
+	expected_enabled: bool,
+	timeout_seconds: float
+) -> bool:
+	var end_time := _now_seconds() + timeout_seconds
+	while _now_seconds() <= end_time:
+		if station == null or not is_instance_valid(station):
+			return false
+		if station.production_enabled == expected_enabled:
+			return true
+		await process_frame
+	return false
+
+
+func _wait_for_production_enabled(
+	station: ProductionBuilding,
+	expected_enabled: bool,
+	timeout_seconds: float
+) -> bool:
+	var end_time := _now_seconds() + timeout_seconds
+	var next_snapshot_request_time := 0.0
+	while _now_seconds() <= end_time:
+		if station == null or not is_instance_valid(station):
+			return false
+		if (
+			station.production_enabled == expected_enabled
+			and station.multiplayer_production_snapshot_ready
+			and not station.multiplayer_production_request_pending
+		):
+			return true
+		var now := _now_seconds()
+		if (
+			now >= next_snapshot_request_time
+			and not station.multiplayer_production_request_pending
+		):
+			station.request_multiplayer_production_snapshot()
 			next_snapshot_request_time = now + 0.6
 		await process_frame
 	return false

@@ -16,6 +16,8 @@ const TRANSACTION_RPC_METHODS := {
 	&"net_luoxi_collectible_refresh_confirmed": true,
 	&"net_warehouse_command_result": true,
 	&"net_warehouse_storage_snapshot": true,
+	&"net_production_command_result": true,
+	&"net_production_state_batch": true,
 	&"net_cheat_xirang_confirmed": true,
 	&"net_debug_collectible_granted": true,
 }
@@ -64,6 +66,9 @@ const LINGLAN_SKILL4_CONFIG_PATH := "res://resources/config/bosses/linglan_skill
 const LINGLAN_SKILL4_ORB_SCENE_PATH := "res://scene/boss/linglan/linglan_skill4_light_orb.tscn"
 const LINGLAN_SKILL4_ORB_SCRIPT_PATH := "res://scene/boss/linglan/linglan_skill4_light_orb.gd"
 const OakWarehouseProtocolScript := preload("res://scene/plant_defense/oak_warehouse_protocol.gd")
+const ProductionBuildingProtocolScript := preload(
+	"res://scene/plant_defense/production_building_protocol.gd"
+)
 
 const INPUT_BUTTON_RELOAD := 2
 const INPUT_BUTTON_DASH := 4
@@ -115,7 +120,7 @@ const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
-## 协议 v9 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
+## 协议 v10 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
 ## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
 const SHARED_SNAPSHOT_COHORT_ID := -1
 const ENEMY_ACTION_SNAPSHOT_REORDER_TOLERANCE_SECONDS := 0.075
@@ -135,7 +140,7 @@ const CLIENT_PROXY_VISUAL_BUDGET_MARGIN := 192.0
 const CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_HZ := 15.0
 const CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_PHASE_COUNT := 64
 const COMBAT_FEEDBACK_MAX_RECORDS_PER_PACKET := 40
-# v9 plant records carry 41 raw packed bytes before RPC/ENet framing. Twenty-four
+# v10 plant records carry 41 raw packed bytes before RPC/ENet framing. Twenty-four
 # records stay near 984 bytes and below the project's 1200-byte packet budget.
 const PLANT_HEALTH_MAX_RECORDS_PER_PACKET := 24
 const CORN_MACHINE_GUN_BURST_MAX_RECORDS_PER_PACKET := 32
@@ -145,6 +150,7 @@ const ENEMY_TERMINAL_ESCAPED := 1
 const ENEMY_TERMINAL_REMOVED := 2
 const MULTIPLAYER_TEAM_PLANT_LIMIT := 256
 const CLIENT_PENDING_PLANT_HEALTH_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT
+const CLIENT_PENDING_PRODUCTION_STATE_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT
 const CLIENT_REMOVED_PLANT_TOMBSTONE_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT * 2
 const PLANT_PLACEMENT_RATE_PER_SECOND := 4.0
 const PLANT_PLACEMENT_RATE_BURST := 8.0
@@ -154,6 +160,13 @@ const WAREHOUSE_TRANSACTION_RATE_BURST := 20.0
 const WAREHOUSE_SNAPSHOT_REQUEST_RATE_PER_SECOND := 2.0
 const WAREHOUSE_SNAPSHOT_REQUEST_RATE_BURST := 4.0
 const WAREHOUSE_TRANSACTION_RESULT_CACHE_SIZE := 256
+const PRODUCTION_INTERACTION_MAX_DISTANCE := 48.0
+const PRODUCTION_COMMAND_RATE_PER_SECOND := 8.0
+const PRODUCTION_COMMAND_RATE_BURST := 12.0
+const PRODUCTION_SNAPSHOT_REQUEST_RATE_PER_SECOND := 2.0
+const PRODUCTION_SNAPSHOT_REQUEST_RATE_BURST := 4.0
+const PRODUCTION_COMMAND_RESULT_CACHE_SIZE := 256
+const PRODUCTION_STATE_BATCH_MAX_BUILDINGS := 24
 const TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS := 96
 const TERRAIN_SNAPSHOT_MAX_CHUNKS := 4096
 const TERRAIN_DELTA_MAX_CELLS := 96
@@ -275,6 +288,13 @@ var _terrain_snapshot_request_rate_buckets: Dictionary = {}
 var _warehouse_transaction_results_by_peer: Dictionary = {}
 var _warehouse_transaction_started_usec: Dictionary = {}
 var _pending_warehouse_snapshots: Dictionary = {}
+var _pending_authoritative_warehouse_snapshots: Dictionary = {}
+var _production_command_rate_buckets: Dictionary = {}
+var _production_snapshot_request_rate_buckets: Dictionary = {}
+var _production_command_results_by_peer: Dictionary = {}
+var _pending_production_state_updates: Dictionary = {}
+var _pending_remote_production_states: Dictionary = {}
+var _shared_production_state_flush_scheduled := false
 var _luoxi_offer_states_by_peer: Dictionary = {}
 var _luoxi_offer_revision_counters: Dictionary = {}
 var _pending_enemy_snapshot_batches: Dictionary = {}
@@ -1044,6 +1064,12 @@ func _configure_warehouse_network(plant: PlantDefense, snapshot_ready: bool) -> 
 	var snapshot_callback := _on_warehouse_storage_snapshot_requested.bind(warehouse)
 	if not warehouse.storage_snapshot_requested.is_connected(snapshot_callback):
 		warehouse.storage_snapshot_requested.connect(snapshot_callback)
+	if net_manager.is_host():
+		var storage_changed_callback := (
+			_on_authoritative_warehouse_storage_changed.bind(warehouse)
+		)
+		if not warehouse.storage_changed.is_connected(storage_changed_callback):
+			warehouse.storage_changed.connect(storage_changed_callback)
 	if _pending_warehouse_snapshots.has(net_id):
 		warehouse.apply_storage_snapshot(
 			_pending_warehouse_snapshots.get(net_id, {}) as Dictionary
@@ -1051,6 +1077,308 @@ func _configure_warehouse_network(plant: PlantDefense, snapshot_ready: bool) -> 
 		_pending_warehouse_snapshots.erase(net_id)
 	if net_manager.is_client() and not warehouse.multiplayer_storage_snapshot_ready:
 		warehouse.request_multiplayer_storage_snapshot()
+
+
+func _configure_production_network(plant: PlantDefense, snapshot_ready: bool) -> void:
+	var building := plant as ProductionBuilding
+	if building == null or game == null:
+		return
+	var net_id := int(building.get_meta("net_id", building.building_net_id))
+	if net_id <= 0:
+		return
+	building.configure_multiplayer_production(
+		net_id,
+		_get_local_peer_id(),
+		snapshot_ready
+	)
+	var command_callback := _on_production_command_requested.bind(building)
+	if not building.production_command_requested.is_connected(command_callback):
+		building.production_command_requested.connect(command_callback)
+	var snapshot_callback := _on_production_snapshot_requested.bind(building)
+	if not building.production_snapshot_requested.is_connected(snapshot_callback):
+		building.production_snapshot_requested.connect(snapshot_callback)
+	if net_manager.is_host():
+		var state_callback := _on_authoritative_production_state_changed.bind(building)
+		if not building.production_state_changed.is_connected(state_callback):
+			building.production_state_changed.connect(state_callback)
+	if _pending_remote_production_states.has(net_id):
+		var pending := _pending_remote_production_states.get(net_id, {}) as Dictionary
+		_apply_plant_runtime_state(
+			building,
+			pending.get("state", {}) as Dictionary,
+			float(pending.get("host_sample_time", 0.0))
+		)
+		_pending_remote_production_states.erase(net_id)
+
+
+func _on_production_command_requested(
+	command: Dictionary,
+	building: ProductionBuilding
+) -> void:
+	if building == null or not is_instance_valid(building):
+		return
+	if net_manager.is_host():
+		_apply_authoritative_production_command(_get_local_peer_id(), command)
+	elif net_manager.is_client():
+		net_production_command_requested.rpc_id(_get_host_peer_id(), command)
+
+
+func _on_production_snapshot_requested(
+	building_net_id: int,
+	building: ProductionBuilding
+) -> void:
+	if building == null or not is_instance_valid(building) or building_net_id <= 0:
+		return
+	if net_manager.is_host():
+		building.set_multiplayer_production_snapshot_ready(true)
+	elif net_manager.is_client():
+		net_production_snapshot_requested.rpc_id(
+			_get_host_peer_id(),
+			building_net_id
+		)
+
+
+func _apply_authoritative_production_command(
+	peer_id: int,
+	raw_command: Dictionary
+) -> void:
+	if not net_manager.is_host() or game == null or peer_id <= 0:
+		return
+	var command := raw_command.duplicate(true)
+	var request_id := ProductionBuildingProtocolScript.get_int_field(
+		command,
+		"request_id",
+		0
+	)
+	var building_net_id := ProductionBuildingProtocolScript.get_int_field(
+		command,
+		"building_net_id",
+		0
+	)
+	var cached_result := _get_cached_production_command_result(
+		peer_id,
+		building_net_id,
+		request_id
+	)
+	if not cached_result.is_empty():
+		_send_production_command_result(peer_id, cached_result)
+		return
+	var peer_field_matches := ProductionBuildingProtocolScript.command_peer_matches(
+		command,
+		peer_id
+	)
+	command["peer_id"] = peer_id
+	var building := game.get_multiplayer_plant_node(
+		building_net_id
+	) as ProductionBuilding
+	var player_node := game.get_player_for_peer(peer_id)
+	var success := false
+	var reason := ProductionBuildingProtocolScript.RESULT_INVALID_COMMAND
+	if not peer_field_matches or not ProductionBuildingProtocolScript.is_valid_command(command):
+		reason = ProductionBuildingProtocolScript.RESULT_INVALID_COMMAND
+	elif player_node == null or not is_instance_valid(player_node) or player_node.is_dead:
+		reason = ProductionBuildingProtocolScript.RESULT_INVALID_PLAYER
+	elif (
+		building == null
+		or not is_instance_valid(building)
+		or building.is_dead
+		or building.is_removing
+		or not building.is_operational
+	):
+		reason = ProductionBuildingProtocolScript.RESULT_BUILDING_MISSING
+	elif not _is_authoritative_nearest_production_building(player_node, building):
+		reason = ProductionBuildingProtocolScript.RESULT_OUT_OF_RANGE
+	elif not _consume_peer_rate_token(
+		_production_command_rate_buckets,
+		peer_id,
+		PRODUCTION_COMMAND_RATE_PER_SECOND,
+		PRODUCTION_COMMAND_RATE_BURST
+	):
+		reason = ProductionBuildingProtocolScript.RESULT_RATE_LIMITED
+	else:
+		reason = building.apply_authoritative_multiplayer_production_command(command)
+		success = reason == ProductionBuildingProtocolScript.RESULT_SUCCESS
+	var host_sample_time := _get_net_time()
+	var state := (
+		building.export_multiplayer_runtime_state()
+		if building != null and is_instance_valid(building)
+		else {}
+	)
+	var result := ProductionBuildingProtocolScript.make_result(
+		command,
+		success,
+		reason,
+		(
+			building.production_revision
+			if building != null and is_instance_valid(building)
+			else 0
+		),
+		state,
+		host_sample_time
+	)
+	_cache_production_command_result(
+		peer_id,
+		building_net_id,
+		request_id,
+		result
+	)
+	_send_production_command_result(peer_id, result)
+
+
+func _is_authoritative_nearest_production_building(
+	player_node: Player,
+	requested_building: ProductionBuilding
+) -> bool:
+	if player_node == null or requested_building == null:
+		return false
+	var maximum_distance_squared := (
+		PRODUCTION_INTERACTION_MAX_DISTANCE * PRODUCTION_INTERACTION_MAX_DISTANCE
+	)
+	if not requested_building.is_player_within_multiplayer_interaction_distance(
+		player_node,
+		PRODUCTION_INTERACTION_MAX_DISTANCE
+	):
+		return false
+	var nearest: ProductionBuilding = null
+	var nearest_distance := INF
+	var nearest_net_id := 0
+	for plant_snapshot in game.get_multiplayer_plant_snapshots():
+		var net_id := int(plant_snapshot.get("net_id", 0))
+		var building := game.get_multiplayer_plant_node(net_id) as ProductionBuilding
+		if (
+			building == null
+			or not is_instance_valid(building)
+			or building.is_dead
+			or building.is_removing
+			or not building.is_operational
+		):
+			continue
+		var distance := player_node.global_position.distance_squared_to(
+			building.global_position
+		)
+		if distance > maximum_distance_squared:
+			continue
+		if (
+			distance < nearest_distance
+			or (is_equal_approx(distance, nearest_distance) and net_id < nearest_net_id)
+		):
+			nearest = building
+			nearest_distance = distance
+			nearest_net_id = net_id
+	return nearest == requested_building
+
+
+func _get_cached_production_command_result(
+	peer_id: int,
+	building_net_id: int,
+	request_id: int
+) -> Dictionary:
+	if building_net_id <= 0 or request_id <= 0:
+		return {}
+	var peer_cache := _production_command_results_by_peer.get(peer_id, {}) as Dictionary
+	var cache_key := "%d:%d" % [building_net_id, request_id]
+	return (peer_cache.get(cache_key, {}) as Dictionary).duplicate(true)
+
+
+func _cache_production_command_result(
+	peer_id: int,
+	building_net_id: int,
+	request_id: int,
+	result: Dictionary
+) -> void:
+	if peer_id <= 0 or building_net_id <= 0 or request_id <= 0:
+		return
+	var peer_cache := _production_command_results_by_peer.get(peer_id, {}) as Dictionary
+	peer_cache["%d:%d" % [building_net_id, request_id]] = result.duplicate(true)
+	while peer_cache.size() > PRODUCTION_COMMAND_RESULT_CACHE_SIZE:
+		peer_cache.erase(peer_cache.keys()[0])
+	_production_command_results_by_peer[peer_id] = peer_cache
+
+
+func _send_production_command_result(peer_id: int, result: Dictionary) -> void:
+	if peer_id == _get_local_peer_id():
+		net_production_command_result(result)
+	elif net_manager.is_peer_send_ready(peer_id):
+		net_production_command_result.rpc_id(peer_id, result)
+
+
+func _on_authoritative_warehouse_storage_changed(warehouse: OakWarehouse) -> void:
+	if not net_manager.is_host() or warehouse == null or not is_instance_valid(warehouse):
+		return
+	var net_id := int(warehouse.get_meta("net_id", warehouse.warehouse_net_id))
+	if net_id <= 0:
+		return
+	_pending_authoritative_warehouse_snapshots[net_id] = (
+		warehouse.export_storage_snapshot()
+	)
+	_schedule_shared_production_state_flush()
+
+
+func _on_authoritative_production_state_changed(
+	building: ProductionBuilding
+) -> void:
+	if not net_manager.is_host() or building == null or not is_instance_valid(building):
+		return
+	var net_id := int(building.get_meta("net_id", building.building_net_id))
+	if net_id <= 0:
+		return
+	_pending_production_state_updates[net_id] = {
+		"state": building.export_multiplayer_runtime_state(),
+		"host_sample_time": _get_net_time(),
+	}
+	_schedule_shared_production_state_flush()
+
+
+func _schedule_shared_production_state_flush() -> void:
+	if _shared_production_state_flush_scheduled:
+		return
+	_shared_production_state_flush_scheduled = true
+	call_deferred("_flush_shared_production_network_state")
+
+
+func _flush_shared_production_network_state() -> void:
+	_shared_production_state_flush_scheduled = false
+	if not is_inside_tree() or not net_manager.is_host():
+		_pending_authoritative_warehouse_snapshots.clear()
+		_pending_production_state_updates.clear()
+		return
+	var warehouse_ids := _pending_authoritative_warehouse_snapshots.keys()
+	warehouse_ids.sort()
+	for warehouse_id_variant in warehouse_ids:
+		var warehouse_net_id := int(warehouse_id_variant)
+		var snapshot := _pending_authoritative_warehouse_snapshots.get(
+			warehouse_net_id,
+			{}
+		) as Dictionary
+		if not snapshot.is_empty():
+			_rpc_to_connected_clients(
+				&"net_warehouse_storage_snapshot",
+				[warehouse_net_id, snapshot]
+			)
+	_pending_authoritative_warehouse_snapshots.clear()
+	var production_ids := _pending_production_state_updates.keys()
+	production_ids.sort()
+	var offset := 0
+	while offset < production_ids.size():
+		var net_ids := PackedInt32Array()
+		var states: Array = []
+		var sample_times := PackedFloat64Array()
+		var chunk_end := mini(
+			offset + PRODUCTION_STATE_BATCH_MAX_BUILDINGS,
+			production_ids.size()
+		)
+		for index in range(offset, chunk_end):
+			var net_id := int(production_ids[index])
+			var update := _pending_production_state_updates.get(net_id, {}) as Dictionary
+			net_ids.append(net_id)
+			states.append((update.get("state", {}) as Dictionary).duplicate(true))
+			sample_times.append(float(update.get("host_sample_time", 0.0)))
+		_rpc_to_connected_clients(
+			&"net_production_state_batch",
+			[net_ids, states, sample_times]
+		)
+		offset = chunk_end
+	_pending_production_state_updates.clear()
 
 
 func _on_warehouse_storage_command_requested(
@@ -1155,7 +1483,6 @@ func _apply_authoritative_warehouse_command(peer_id: int, raw_command: Dictionar
 	_cache_warehouse_transaction_result(peer_id, warehouse_net_id, request_id, result)
 	if bool(result.get("success", false)):
 		_broadcast_inventory_snapshot(peer_id)
-		_broadcast_warehouse_snapshot(warehouse)
 	_send_warehouse_command_result(peer_id, result)
 
 
@@ -1393,6 +1720,8 @@ func _send_live_plant_roster_to_peer(peer_id: int) -> void:
 	for plant_snapshot in game.get_multiplayer_plant_snapshots():
 		var plant_net_id := int(plant_snapshot.get("net_id", 0))
 		var plant := game.get_multiplayer_plant_node(plant_net_id)
+		_configure_warehouse_network(plant, true)
+		_configure_production_network(plant, true)
 		var runtime_state := _export_plant_runtime_state(plant)
 		var host_sample_time := _get_net_time()
 		net_plant_spawned.rpc_id(
@@ -5674,7 +6003,7 @@ func net_player_healed(
 	player_node.queue_healing_number(confirmed_healing)
 
 
-# Legacy compatibility shells retained in protocol v9. Xirang orbs no longer exist, but keeping the
+# Legacy compatibility shells retained in protocol v10. Xirang orbs no longer exist, but keeping the
 # annotated signatures avoids a partial wire-protocol break until the next
 # coordinated protocol-version upgrade.
 @rpc("authority", "call_remote", "reliable", 5)
@@ -6205,6 +6534,7 @@ func _on_host_plant_spawned(
 		return
 	var plant := game.get_multiplayer_plant_node(net_id)
 	_configure_warehouse_network(plant, true)
+	_configure_production_network(plant, true)
 	var runtime_state := _export_plant_runtime_state(plant)
 	var host_sample_time := _get_net_time()
 	_rpc_to_connected_clients(
@@ -6349,6 +6679,8 @@ func _on_host_plant_removed(net_id: int) -> void:
 	if _pending_plant_health_updates.has(net_id):
 		_send_pending_plant_health_updates(PackedInt32Array([net_id]))
 	_pending_plant_health_updates.erase(net_id)
+	_pending_authoritative_warehouse_snapshots.erase(net_id)
+	_pending_production_state_updates.erase(net_id)
 	_rpc_to_connected_clients(&"net_plant_removed", [net_id])
 
 
@@ -6399,7 +6731,11 @@ func _apply_plant_runtime_state(
 		corrected_state["spread_elapsed_seconds"] = maxf(spread_elapsed, 0.0) + sample_age
 	plant.apply_multiplayer_runtime_state(
 		corrected_state,
-		Time.get_ticks_msec() / 1000.0
+		(
+			Time.get_ticks_msec() / 1000.0 - sample_age
+			if plant is ProductionBuilding
+			else Time.get_ticks_msec() / 1000.0
+		)
 	)
 
 
@@ -6760,6 +7096,7 @@ func net_runtime_world_manifest(
 			var plant_net_id := int(plant_snapshot.get("net_id", 0))
 			if plant_net_id > 0 and not plant_id_set.has(plant_net_id):
 				_pending_warehouse_snapshots.erase(plant_net_id)
+				_pending_remote_production_states.erase(plant_net_id)
 				_mark_remote_plant_removed(plant_net_id)
 				game.apply_remote_plant_removed_silently(plant_net_id)
 			elif plant_net_id > 0:
@@ -6768,6 +7105,10 @@ func net_runtime_world_manifest(
 			var pending_net_id := int(pending_net_id_variant)
 			if not plant_id_set.has(pending_net_id):
 				_pending_warehouse_snapshots.erase(pending_net_id)
+		for pending_net_id_variant in _pending_remote_production_states.keys():
+			var pending_net_id := int(pending_net_id_variant)
+			if not plant_id_set.has(pending_net_id):
+				_pending_remote_production_states.erase(pending_net_id)
 		for pending_net_id_variant in _pending_remote_plant_health_updates.keys():
 			var pending_net_id := int(pending_net_id_variant)
 			if not plant_id_set.has(pending_net_id):
@@ -6843,6 +7184,70 @@ func net_warehouse_snapshot_requested(warehouse_net_id: int) -> void:
 	)
 
 
+@rpc("any_peer", "call_remote", "reliable", 6)
+func net_production_command_requested(command: Dictionary) -> void:
+	if not net_manager.is_host() or game == null:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
+	_apply_authoritative_production_command(sender_id, command)
+
+
+@rpc("any_peer", "call_remote", "reliable", 6)
+func net_production_snapshot_requested(building_net_id: int) -> void:
+	if not net_manager.is_host() or game == null or building_net_id <= 0:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	var player_node := game.get_player_for_peer(sender_id)
+	if (
+		sender_id <= 0
+		or player_node == null
+		or not is_instance_valid(player_node)
+		or player_node.is_dead
+	):
+		return
+	if not _consume_peer_rate_token(
+		_production_snapshot_request_rate_buckets,
+		sender_id,
+		PRODUCTION_SNAPSHOT_REQUEST_RATE_PER_SECOND,
+		PRODUCTION_SNAPSHOT_REQUEST_RATE_BURST
+	):
+		return
+	var building := game.get_multiplayer_plant_node(
+		building_net_id
+	) as ProductionBuilding
+	if (
+		building == null
+		or not is_instance_valid(building)
+		or building.is_dead
+		or building.is_removing
+		or not building.is_operational
+		or not _is_authoritative_nearest_production_building(
+			player_node,
+			building
+		)
+		or not net_manager.is_peer_send_ready(sender_id)
+	):
+		return
+	var state := building.export_multiplayer_runtime_state()
+	var sample_time := _get_net_time()
+	_record_outbound_rpc(
+		&"net_production_state_batch",
+		[
+			PackedInt32Array([building_net_id]),
+			[state],
+			PackedFloat64Array([sample_time]),
+		]
+	)
+	net_production_state_batch.rpc_id(
+		sender_id,
+		PackedInt32Array([building_net_id]),
+		[state],
+		PackedFloat64Array([sample_time])
+	)
+
+
 @rpc("authority", "call_remote", "reliable", 6)
 func net_warehouse_command_result(result: Dictionary) -> void:
 	if game == null:
@@ -6883,6 +7288,103 @@ func net_warehouse_command_result(result: Dictionary) -> void:
 	var storage_snapshot := result.get("storage_snapshot", {}) as Dictionary
 	if warehouse_net_id > 0 and not storage_snapshot.is_empty():
 		_apply_warehouse_storage_snapshot(warehouse_net_id, storage_snapshot)
+
+
+@rpc("authority", "call_remote", "reliable", 6)
+func net_production_command_result(result: Dictionary) -> void:
+	if game == null:
+		return
+	if (
+		typeof(result.get("success")) != TYPE_BOOL
+		or typeof(result.get("reason")) not in [TYPE_STRING, TYPE_STRING_NAME]
+		or typeof(result.get("state")) != TYPE_DICTIONARY
+		or typeof(result.get("host_sample_time")) not in [TYPE_INT, TYPE_FLOAT]
+	):
+		return
+	var host_sample_time := float(result["host_sample_time"])
+	if not is_finite(host_sample_time):
+		return
+	var building_net_id := ProductionBuildingProtocolScript.get_int_field(
+		result,
+		"building_net_id",
+		0
+	)
+	if building_net_id <= 0 or _removed_remote_plant_ids.has(building_net_id):
+		return
+	var building := game.get_multiplayer_plant_node(
+		building_net_id
+	) as ProductionBuilding
+	if (
+		building == null
+		or not is_instance_valid(building)
+		or not building.is_current_multiplayer_production_result(result)
+	):
+		return
+	var state := result["state"] as Dictionary
+	if not state.is_empty():
+		_apply_plant_runtime_state(building, state, host_sample_time)
+	building.complete_multiplayer_production_request(result)
+
+
+@rpc("authority", "call_remote", "reliable", 6)
+func net_production_state_batch(
+	net_ids: PackedInt32Array,
+	states: Array,
+	host_sample_times: PackedFloat64Array
+) -> void:
+	if (
+		game == null
+		or net_manager.is_host()
+		or net_ids.is_empty()
+		or net_ids.size() > PRODUCTION_STATE_BATCH_MAX_BUILDINGS
+		or states.size() != net_ids.size()
+		or host_sample_times.size() != net_ids.size()
+	):
+		return
+	var previous_net_id := 0
+	for index in net_ids.size():
+		var net_id := int(net_ids[index])
+		var sample_time := float(host_sample_times[index])
+		if (
+			net_id <= previous_net_id
+			or not is_finite(sample_time)
+			or typeof(states[index]) != TYPE_DICTIONARY
+		):
+			return
+		previous_net_id = net_id
+	for index in net_ids.size():
+		var net_id := int(net_ids[index])
+		if _removed_remote_plant_ids.has(net_id):
+			continue
+		var state := (states[index] as Dictionary).duplicate(true)
+		if (
+			typeof(state.get("schema")) != TYPE_INT
+			or typeof(state.get("revision")) != TYPE_INT
+		):
+			continue
+		var building := game.get_multiplayer_plant_node(net_id) as ProductionBuilding
+		if building == null or not is_instance_valid(building):
+			var previous := _pending_remote_production_states.get(net_id, {}) as Dictionary
+			var previous_state := previous.get("state", {}) as Dictionary
+			if int(state["revision"]) >= int(previous_state.get("revision", -1)):
+				if (
+					not _pending_remote_production_states.has(net_id)
+					and _pending_remote_production_states.size()
+					>= CLIENT_PENDING_PRODUCTION_STATE_MAX_ENTRIES
+				):
+					_pending_remote_production_states.erase(
+						_pending_remote_production_states.keys()[0]
+					)
+				_pending_remote_production_states[net_id] = {
+					"state": state,
+					"host_sample_time": float(host_sample_times[index]),
+				}
+			continue
+		_apply_plant_runtime_state(
+			building,
+			state,
+			float(host_sample_times[index])
+		)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -7105,7 +7607,14 @@ func net_plant_spawned(
 		health_revision
 	)
 	var plant := game.get_multiplayer_plant_node(net_id)
+	_configure_production_network(plant, false)
 	_apply_plant_runtime_state(plant, runtime_state, host_sample_time)
+	var production_building := plant as ProductionBuilding
+	if (
+		production_building != null
+		and not production_building.multiplayer_production_snapshot_ready
+	):
+		production_building.request_multiplayer_production_snapshot()
 	_configure_warehouse_network(plant, false)
 	_apply_pending_remote_plant_health(net_id)
 
@@ -7139,6 +7648,7 @@ func net_plant_removed(net_id: int) -> void:
 	if game == null or net_manager.is_host():
 		return
 	_pending_warehouse_snapshots.erase(net_id)
+	_pending_remote_production_states.erase(net_id)
 	_mark_remote_plant_removed(net_id)
 	game.apply_remote_plant_removed(net_id)
 
@@ -8573,8 +9083,11 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_client_projectile_request_rate_buckets.erase(peer_id)
 	_warehouse_transaction_rate_buckets.erase(peer_id)
 	_warehouse_snapshot_request_rate_buckets.erase(peer_id)
+	_production_command_rate_buckets.erase(peer_id)
+	_production_snapshot_request_rate_buckets.erase(peer_id)
 	_terrain_snapshot_request_rate_buckets.erase(peer_id)
 	_warehouse_transaction_results_by_peer.erase(peer_id)
+	_production_command_results_by_peer.erase(peer_id)
 	_clear_projectiles_for_peer(peer_id)
 	_clear_projectile_records_for_peer(peer_id)
 
@@ -8630,6 +9143,11 @@ func _return_to_lobby() -> void:
 	_pending_enemy_damage_feedback.clear()
 	_pending_plant_health_updates.clear()
 	_clear_remote_plant_health_state()
+	_pending_warehouse_snapshots.clear()
+	_pending_authoritative_warehouse_snapshots.clear()
+	_pending_production_state_updates.clear()
+	_pending_remote_production_states.clear()
+	_shared_production_state_flush_scheduled = false
 	_pending_wave_progress.clear()
 	_pending_enemy_spawns.clear()
 	_host_terminal_enemy_ids.clear()
@@ -8645,6 +9163,11 @@ func _return_to_lobby() -> void:
 	_luoxi_offer_states_by_peer.clear()
 	_luoxi_offer_revision_counters.clear()
 	_warehouse_snapshot_request_rate_buckets.clear()
+	_warehouse_transaction_rate_buckets.clear()
+	_warehouse_transaction_results_by_peer.clear()
+	_production_command_rate_buckets.clear()
+	_production_snapshot_request_rate_buckets.clear()
+	_production_command_results_by_peer.clear()
 	_warehouse_transaction_started_usec.clear()
 	_last_player_keyframe_time_by_peer.clear()
 	_last_enemy_keyframe_time_by_peer.clear()

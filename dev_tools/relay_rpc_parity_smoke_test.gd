@@ -57,6 +57,10 @@ func _run() -> void:
 		"net_warehouse_snapshot_requested",
 		"net_warehouse_command_result",
 		"net_warehouse_storage_snapshot",
+		"net_production_command_requested",
+		"net_production_snapshot_requested",
+		"net_production_command_result",
+		"net_production_state_batch",
 	]:
 		_expect(main_rpcs.has(required_method), "Gameplay RPC %s must be registered." % required_method)
 	if main_rpcs.has("net_tiyi_high_noon_requested"):
@@ -68,7 +72,7 @@ func _run() -> void:
 		not main_rpcs.has("net_wave_started"),
 		"Legacy wave-index RPC must stay removed; flow step_id is the sole lifecycle source."
 	)
-	_test_gameplay_v9_transaction_contract(main_rpcs)
+	_test_gameplay_v10_transaction_contract(main_rpcs)
 	_test_gameplay_channel_contract(main_rpcs)
 
 	var main_net_manager_rpcs := _extract_rpc_surface(MAIN_NET_MANAGER_PATH)
@@ -108,8 +112,8 @@ func _run() -> void:
 			"Start-game sync must carry both authoritative mode and loading session."
 		)
 	_test_registration_protocol_handshake_source()
-	_expect(NetConstants.PROTOCOL_VERSION == 9, "Authoritative damage feedback requires protocol version 9.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v9 must provision eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 10, "Shared production requires protocol version 10.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v10 must provision eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -202,11 +206,11 @@ func _test_relay_channel_count() -> void:
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
 		and relay_source.contains("create_server(_port, MAX_CLIENTS, CHANNEL_COUNT)"),
-		"Relay server must provision the same eight ENet channels as protocol v9 clients."
+		"Relay server must provision the same eight ENet channels as protocol v10 clients."
 	)
 
 
-func _test_gameplay_v9_transaction_contract(rpcs: Dictionary) -> void:
+func _test_gameplay_v10_transaction_contract(rpcs: Dictionary) -> void:
 	_expect_rpc_signature_contains(
 		rpcs,
 		"net_terrain_snapshot_requested",
@@ -230,7 +234,7 @@ func _test_gameplay_v9_transaction_contract(rpcs: Dictionary) -> void:
 		and mp_game_source.contains("const TERRAIN_TYPE_EMPTY := -1")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_PER_SECOND := 1.0")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_BURST := 2.0"),
-		"Protocol v9 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
+		"Protocol v10 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
 	)
 	for signature_fragment in [
 		"plant_net_ids:PackedInt32Array",
@@ -322,6 +326,31 @@ func _test_gameplay_v9_transaction_contract(rpcs: Dictionary) -> void:
 		"net_warehouse_command_result",
 		"result:Dictionary"
 	)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_production_command_requested",
+		"command:Dictionary"
+	)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_production_snapshot_requested",
+		"building_net_id:int"
+	)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_production_command_result",
+		"result:Dictionary"
+	)
+	for signature_fragment in [
+		"net_ids:PackedInt32Array",
+		"states:Array",
+		"host_sample_times:PackedFloat64Array",
+	]:
+		_expect_rpc_signature_contains(
+			rpcs,
+			"net_production_state_batch",
+			signature_fragment
+		)
 
 
 func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
@@ -383,6 +412,10 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		"net_warehouse_snapshot_requested",
 		"net_warehouse_command_result",
 		"net_warehouse_storage_snapshot",
+		"net_production_command_requested",
+		"net_production_snapshot_requested",
+		"net_production_command_result",
+		"net_production_state_batch",
 	]:
 		_expect_rpc_channel(rpcs, transaction_method, NetConstants.CH_TRANSACTION)
 	for feedback_method in [

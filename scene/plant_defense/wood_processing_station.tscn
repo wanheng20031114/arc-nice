@@ -168,3 +168,7 @@ offset_top = -13.0
 offset_right = 6.0
 offset_bottom = -10.0
 damage_trail_color = Color(0.92156863, 0.28235295, 0.18039216, 1)
+
+[node name="MultiplayerProductionRequestTimer" type="Timer" parent="."]
+wait_time = 4.0
+one_shot = true

@@ -170,8 +170,8 @@ func _test_config_and_scene_contracts() -> void:
 		and wood_station_config.physical_defense == 10
 		and wood_station_config.magic_defense == 0
 		and wood_station_config.footprint_size == Vector2i.ONE
-		and not wood_station_config.supports_multiplayer,
-		"木头加工站必须拥有2000生命、10物防、0法防、占1格且暂不进入多人放置。"
+		and wood_station_config.supports_multiplayer,
+		"木头加工站必须拥有2000生命、10物防、0法防、占1格且支持多人放置。"
 	)
 	_expect(agave_config.max_health == 2000, "龙舌兰生命值必须为2000。")
 	_expect(
@@ -1509,15 +1509,18 @@ func _test_multiplayer_authority_contracts() -> void:
 	controller.set_multiplayer_request_mode(true)
 	_expect(controller.open_selection(), "多人植物选择必须仍可打开。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 4
+		controller.selection_hud.available_configs.size() == 5
 		and controller.selection_hud.available_configs.has(agave_config)
 		and controller.selection_hud.available_configs.has(corn_config)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"oak_warehouse")
 		)
 		and controller.selection_hud.available_configs.has(vegetation_stake_config)
-		and controller.selection_hud.cards.size() == 4,
-		"多人植物选择必须公开龙舌兰、玉米机枪塔、共享仓库与植被桩四张卡片。"
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"wood_processing_station")
+		)
+		and controller.selection_hud.cards.size() == 5,
+		"多人植物选择必须公开龙舌兰、玉米机枪塔、共享仓库、植被桩与木头加工站五张卡片。"
 	)
 	controller.cancel_placement()
 	var placement_requests: Array[Dictionary] = []

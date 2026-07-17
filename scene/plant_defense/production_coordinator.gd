@@ -77,7 +77,7 @@ func get_total_item_count(item: PickupConfig) -> int:
 	if item == null:
 		return 0
 	var total := 0
-	for warehouse in _get_ordered_operational_warehouses():
+	for warehouse in _get_ordered_visible_warehouses():
 		total += warehouse.get_storage_item_total(item)
 	return total
 
@@ -209,6 +209,23 @@ func _get_ordered_operational_warehouses() -> Array[OakWarehouse]:
 			or warehouse.is_dead
 			or warehouse.is_removing
 			or warehouse.is_multiplayer_proxy
+			or not warehouse.is_operational
+		):
+			continue
+		result.append(warehouse)
+	result.sort_custom(_warehouse_precedes)
+	return result
+
+
+func _get_ordered_visible_warehouses() -> Array[OakWarehouse]:
+	var result: Array[OakWarehouse] = []
+	for warehouse in warehouses:
+		if (
+			warehouse == null
+			or not is_instance_valid(warehouse)
+			or warehouse.is_queued_for_deletion()
+			or warehouse.is_dead
+			or warehouse.is_removing
 			or not warehouse.is_operational
 		):
 			continue

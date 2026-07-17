@@ -74,6 +74,9 @@ func bind_building(new_building: ProductionBuilding, player: Player) -> void:
 	tracked_player = player
 	if building != null:
 		building.production_state_changed.connect(_refresh_all)
+		building.multiplayer_production_result.connect(
+			_on_multiplayer_production_result
+		)
 		bound_coordinator = building.production_coordinator
 		if bound_coordinator != null:
 			bound_coordinator.storage_totals_changed.connect(_refresh_all)
@@ -95,6 +98,12 @@ func open() -> void:
 	tracked_player.set_controls_locked(true)
 	material_list.hide()
 	_refresh_all()
+	if (
+		building.multiplayer_production_enabled
+		and not building.multiplayer_production_snapshot_ready
+		and not building.multiplayer_production_request_pending
+	):
+		building.request_multiplayer_production_snapshot()
 	building.on_shared_production_panel_opened(self)
 	opened.emit()
 
@@ -162,6 +171,7 @@ func _refresh_all() -> void:
 	toggle_button.text = "Ⅱ" if building.production_enabled else "▶"
 	toggle_button.tooltip_text = "暂停生产并清空本轮进度" if building.production_enabled else "启动生产"
 	toggle_button.button_pressed = building.production_enabled
+	toggle_button.disabled = _is_multiplayer_control_locked()
 
 	var display_recipe := building.get_display_recipe()
 	var coordinator := building.production_coordinator
@@ -237,6 +247,7 @@ func _refresh_recipe_rows() -> void:
 			recipe.duration_seconds,
 		]
 		row.button_pressed = building.active_recipe_id == recipe.recipe_id
+		row.disabled = _is_multiplayer_control_locked()
 
 
 func _refresh_material_rows() -> void:
@@ -250,6 +261,9 @@ func _refresh_material_rows() -> void:
 
 
 func _refresh_status() -> void:
+	if _is_multiplayer_control_locked():
+		status_label.text = "等待主机确认"
+		return
 	if not transient_status.is_empty():
 		status_label.text = transient_status
 		return
@@ -273,6 +287,12 @@ func _refresh_status() -> void:
 func _on_toggle_pressed() -> void:
 	if building == null:
 		return
+	if building.multiplayer_production_enabled:
+		if not building.request_multiplayer_enabled_change(
+			not building.production_enabled
+		):
+			_show_transient_status("加工站状态尚未同步，请稍后重试。")
+		return
 	building.set_production_enabled(not building.production_enabled)
 
 
@@ -295,10 +315,52 @@ func _on_recipe_row_pressed(row_index: int) -> void:
 	if building == null or row_index < 0 or row_index >= recipe_rows.size():
 		return
 	var recipe_id := StringName(recipe_rows[row_index].get_meta(&"recipe_id", ""))
-	if building.select_recipe(recipe_id):
+	var accepted := (
+		building.request_multiplayer_recipe_selection(recipe_id)
+		if building.multiplayer_production_enabled
+		else building.select_recipe(recipe_id)
+	)
+	if accepted:
 		material_list.hide()
 		_refresh_recipe_rows()
-		_show_transient_status("已选择配方；当前方案保持高亮。")
+		if building.multiplayer_production_enabled:
+			_refresh_status()
+		else:
+			_show_transient_status("已选择配方；当前方案保持高亮。")
+	else:
+		_show_transient_status("配方无效或加工站状态尚未同步。")
+
+
+func _on_multiplayer_production_result(success: bool, reason: StringName) -> void:
+	if success:
+		_show_transient_status("主机已确认，加工站状态已同步。")
+		return
+	match reason:
+		ProductionBuildingProtocol.RESULT_STALE_STATE:
+			_show_transient_status("状态已被队友更新，已刷新为主机最新状态。")
+		ProductionBuildingProtocol.RESULT_OUT_OF_RANGE:
+			_show_transient_status("距离加工站过远，操作未执行。")
+		ProductionBuildingProtocol.RESULT_RATE_LIMITED:
+			_show_transient_status("操作过于频繁，请稍后再试。")
+		ProductionBuildingProtocol.RESULT_BUILDING_MISSING:
+			_show_transient_status("加工站已被移除。")
+		ProductionBuildingProtocol.RESULT_INVALID_RECIPE:
+			_show_transient_status("配方无效，操作未执行。")
+		ProductionBuildingProtocol.RESULT_INVALID_PLAYER:
+			_show_transient_status("当前玩家无法操作加工站。")
+		_:
+			_show_transient_status("主机拒绝了本次操作，状态已重新同步。")
+
+
+func _is_multiplayer_control_locked() -> bool:
+	return (
+		building != null
+		and building.multiplayer_production_enabled
+		and (
+			not building.multiplayer_production_snapshot_ready
+			or building.multiplayer_production_request_pending
+		)
+	)
 
 
 func _show_transient_status(message: String) -> void:
@@ -320,6 +382,12 @@ func _unbind_building() -> void:
 	if building != null and is_instance_valid(building):
 		if building.production_state_changed.is_connected(_refresh_all):
 			building.production_state_changed.disconnect(_refresh_all)
+		if building.multiplayer_production_result.is_connected(
+			_on_multiplayer_production_result
+		):
+			building.multiplayer_production_result.disconnect(
+				_on_multiplayer_production_result
+			)
 	if (
 		bound_coordinator != null
 		and is_instance_valid(bound_coordinator)

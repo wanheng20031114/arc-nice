@@ -2,11 +2,15 @@ extends PlantDefense
 class_name ProductionBuilding
 
 signal production_state_changed
+signal production_command_requested(command: Dictionary)
+signal production_snapshot_requested(building_net_id: int)
+signal multiplayer_production_result(success: bool, reason: StringName)
 
-const RUNTIME_STATE_SCHEMA := 1
+const RUNTIME_STATE_SCHEMA := 2
 const INTERACTION_GROUP := PlantDefense.BUILDING_INTERACTION_GROUP
 const INTERACTION_SELECTION_REFRESH_SECONDS := 0.08
 const VISUAL_PROJECTION_WINDOW_SECONDS := 1.0
+const MULTIPLAYER_PRODUCTION_REQUEST_TIMEOUT_SECONDS := 4.0
 
 @export_group("生产配置")
 @export var recipes: Array[ProductionRecipe] = []
@@ -15,6 +19,7 @@ const VISUAL_PROJECTION_WINDOW_SECONDS := 1.0
 @onready var interaction_prompt: Control = $InteractionPrompt
 @onready var prompt_keycap: Control = $InteractionPrompt/PromptMargin/PromptRow/Keycap
 @onready var health_bar: PlantHealthBar = $HealthBar
+@onready var multiplayer_production_request_timer: Timer = $MultiplayerProductionRequestTimer
 
 var production_coordinator: ProductionCoordinator = null
 var production_panel: ProductionBuildingPanel = null
@@ -25,6 +30,13 @@ var active_recipe_id: StringName = &""
 var progress_elapsed_seconds := 0.0
 var completion_wait_reason: StringName = &""
 var production_revision := 0
+var building_net_id := 0
+var multiplayer_production_peer_id := 0
+var multiplayer_production_enabled := false
+var multiplayer_production_snapshot_ready := true
+var multiplayer_production_request_pending := false
+var multiplayer_production_pending_request_id := 0
+var next_multiplayer_production_request_id := 1
 var interaction_selection_refresh_left := 0.0
 var prompt_rest_position := Vector2.ZERO
 var prompt_tween: Tween = null
@@ -42,6 +54,9 @@ func _ready() -> void:
 	set_process_unhandled_input(false)
 	interaction_area.body_entered.connect(_on_interaction_area_body_entered)
 	interaction_area.body_exited.connect(_on_interaction_area_body_exited)
+	multiplayer_production_request_timer.timeout.connect(
+		_on_multiplayer_production_request_timeout
+	)
 
 
 func _process(delta: float) -> void:
@@ -149,7 +164,135 @@ func get_display_recipe() -> ProductionRecipe:
 	return null
 
 
+func is_player_within_multiplayer_interaction_distance(
+	player: Player,
+	maximum_distance: float
+) -> bool:
+	return (
+		player != null
+		and is_instance_valid(player)
+		and maximum_distance >= 0.0
+		and player.global_position.distance_squared_to(global_position)
+		<= maximum_distance * maximum_distance
+	)
+
+
+func configure_multiplayer_production(
+	new_building_net_id: int,
+	peer_id: int,
+	snapshot_ready: bool = false
+) -> void:
+	var normalized_building_net_id := maxi(new_building_net_id, 0)
+	var normalized_peer_id := maxi(peer_id, 0)
+	var will_be_enabled := normalized_building_net_id > 0 and normalized_peer_id > 0
+	var identity_changed := (
+		building_net_id != normalized_building_net_id
+		or multiplayer_production_peer_id != normalized_peer_id
+	)
+	if not identity_changed and multiplayer_production_enabled == will_be_enabled:
+		if snapshot_ready and not multiplayer_production_snapshot_ready:
+			set_multiplayer_production_snapshot_ready(true)
+		return
+	building_net_id = normalized_building_net_id
+	multiplayer_production_peer_id = normalized_peer_id
+	multiplayer_production_enabled = will_be_enabled
+	multiplayer_production_snapshot_ready = snapshot_ready or not will_be_enabled
+	multiplayer_production_request_pending = false
+	multiplayer_production_pending_request_id = 0
+	multiplayer_production_request_timer.stop()
+	production_state_changed.emit()
+
+
+func set_multiplayer_production_snapshot_ready(is_ready: bool) -> void:
+	multiplayer_production_snapshot_ready = is_ready or not multiplayer_production_enabled
+	if multiplayer_production_snapshot_ready and not multiplayer_production_request_pending:
+		multiplayer_production_request_timer.stop()
+	production_state_changed.emit()
+
+
+func is_multiplayer_production_ready() -> bool:
+	return (
+		is_operational
+		and not is_dead
+		and not is_removing
+		and multiplayer_production_enabled
+		and multiplayer_production_snapshot_ready
+		and not multiplayer_production_request_pending
+	)
+
+
+func request_multiplayer_recipe_selection(recipe_id: StringName) -> bool:
+	var recipe := get_recipe(recipe_id)
+	if not is_multiplayer_production_ready() or recipe == null or not recipe.is_valid():
+		return false
+	var command := ProductionBuildingProtocol.make_select_recipe_command(
+		next_multiplayer_production_request_id,
+		building_net_id,
+		multiplayer_production_peer_id,
+		production_revision,
+		recipe_id
+	)
+	return _submit_multiplayer_production_command(command)
+
+
+func request_multiplayer_enabled_change(enabled: bool) -> bool:
+	if not is_multiplayer_production_ready():
+		return false
+	var command := ProductionBuildingProtocol.make_set_enabled_command(
+		next_multiplayer_production_request_id,
+		building_net_id,
+		multiplayer_production_peer_id,
+		production_revision,
+		enabled
+	)
+	return _submit_multiplayer_production_command(command)
+
+
+func request_multiplayer_production_snapshot() -> bool:
+	if not multiplayer_production_enabled or building_net_id <= 0:
+		return false
+	set_multiplayer_production_snapshot_ready(false)
+	multiplayer_production_request_timer.start(
+		MULTIPLAYER_PRODUCTION_REQUEST_TIMEOUT_SECONDS
+	)
+	production_snapshot_requested.emit(building_net_id)
+	return true
+
+
+func complete_multiplayer_production_request(result: Dictionary) -> bool:
+	if not is_current_multiplayer_production_result(result):
+		return false
+	multiplayer_production_request_pending = false
+	multiplayer_production_pending_request_id = 0
+	multiplayer_production_snapshot_ready = true
+	multiplayer_production_request_timer.stop()
+	multiplayer_production_result.emit(
+		bool(result.get("success", false)),
+		StringName(result.get(
+			"reason",
+			ProductionBuildingProtocol.RESULT_INVALID_COMMAND
+		))
+	)
+	production_state_changed.emit()
+	return true
+
+
+func is_current_multiplayer_production_result(result: Dictionary) -> bool:
+	return (
+		multiplayer_production_enabled
+		and multiplayer_production_request_pending
+		and ProductionBuildingProtocol.get_int_field(result, "request_id", 0)
+		== multiplayer_production_pending_request_id
+		and ProductionBuildingProtocol.get_int_field(result, "building_net_id", 0)
+		== building_net_id
+		and ProductionBuildingProtocol.get_int_field(result, "peer_id", 0)
+		== multiplayer_production_peer_id
+	)
+
+
 func select_recipe(recipe_id: StringName) -> bool:
+	if is_multiplayer_proxy:
+		return false
 	var recipe := get_recipe(recipe_id)
 	if recipe == null or not recipe.is_valid():
 		return false
@@ -162,15 +305,48 @@ func select_recipe(recipe_id: StringName) -> bool:
 	return true
 
 
-func set_production_enabled(enabled: bool) -> void:
+func set_production_enabled(enabled: bool) -> bool:
+	if is_multiplayer_proxy:
+		return false
 	if production_enabled == enabled:
-		return
+		return true
 	production_enabled = enabled
 	# Pausing always discards the partial cycle, including a ready-but-blocked
 	# cycle at zero remaining time.
 	progress_elapsed_seconds = 0.0
 	completion_wait_reason = &""
 	_bump_production_state()
+	return true
+
+
+func apply_authoritative_multiplayer_production_command(
+	command: Dictionary
+) -> StringName:
+	if not ProductionBuildingProtocol.is_valid_command(command):
+		return ProductionBuildingProtocol.RESULT_INVALID_COMMAND
+	if is_multiplayer_proxy or is_dead or is_removing or not is_operational:
+		return ProductionBuildingProtocol.RESULT_UNAVAILABLE
+	if int(command["expected_production_revision"]) != production_revision:
+		return ProductionBuildingProtocol.RESULT_STALE_STATE
+	match ProductionBuildingProtocol.get_operation(command):
+		ProductionBuildingProtocol.OPERATION_SELECT_RECIPE:
+			var recipe_id := StringName(command["recipe_id"])
+			var recipe := get_recipe(recipe_id)
+			if recipe == null or not recipe.is_valid():
+				return ProductionBuildingProtocol.RESULT_INVALID_RECIPE
+			return (
+				ProductionBuildingProtocol.RESULT_SUCCESS
+				if select_recipe(recipe_id)
+				else ProductionBuildingProtocol.RESULT_UNAVAILABLE
+			)
+		ProductionBuildingProtocol.OPERATION_SET_ENABLED:
+			return (
+				ProductionBuildingProtocol.RESULT_SUCCESS
+				if set_production_enabled(bool(command["enabled"]))
+				else ProductionBuildingProtocol.RESULT_UNAVAILABLE
+			)
+		_:
+			return ProductionBuildingProtocol.RESULT_INVALID_COMMAND
 
 
 func advance_shared_production_tick(delta_seconds: float) -> void:
@@ -306,29 +482,63 @@ func export_multiplayer_runtime_state() -> Dictionary:
 		"progress_elapsed_seconds": progress_elapsed_seconds,
 		"wait_reason": String(completion_wait_reason),
 		"revision": production_revision,
+		"projection_duration_seconds": get_visual_projection_duration_seconds(),
 	}
 
 
-func apply_multiplayer_runtime_state(state: Dictionary, _mapped_sample_time: float) -> void:
-	if int(state.get("schema", 0)) != RUNTIME_STATE_SCHEMA:
+func apply_multiplayer_runtime_state(state: Dictionary, mapped_sample_time: float) -> void:
+	if not is_multiplayer_proxy:
 		return
-	var received_revision := int(state.get("revision", 0))
+	if (
+		typeof(state.get("schema")) != TYPE_INT
+		or int(state["schema"]) != RUNTIME_STATE_SCHEMA
+		or typeof(state.get("revision")) != TYPE_INT
+		or typeof(state.get("enabled")) != TYPE_BOOL
+		or typeof(state.get("active_recipe_id")) not in [TYPE_STRING, TYPE_STRING_NAME]
+		or typeof(state.get("progress_elapsed_seconds")) not in [TYPE_INT, TYPE_FLOAT]
+		or typeof(state.get("wait_reason")) not in [TYPE_STRING, TYPE_STRING_NAME]
+		or typeof(state.get("projection_duration_seconds")) not in [TYPE_INT, TYPE_FLOAT]
+	):
+		return
+	var received_progress := float(state["progress_elapsed_seconds"])
+	var received_projection := float(state["projection_duration_seconds"])
+	if not is_finite(received_progress) or not is_finite(received_projection):
+		return
+	var received_revision := int(state["revision"])
+	if received_revision < 0:
+		return
 	if received_revision < production_revision:
 		return
-	var received_recipe_id := StringName(state.get("active_recipe_id", ""))
+	var received_recipe_id := StringName(state["active_recipe_id"])
 	if received_recipe_id != &"" and get_recipe(received_recipe_id) == null:
 		return
 	production_revision = received_revision
-	production_enabled = bool(state.get("enabled", true))
+	production_enabled = bool(state["enabled"])
 	active_recipe_id = received_recipe_id
 	var recipe := get_active_recipe()
 	progress_elapsed_seconds = clampf(
-		float(state.get("progress_elapsed_seconds", 0.0)),
+		received_progress,
 		0.0,
 		recipe.duration_seconds if recipe != null else 0.0
 	)
-	completion_wait_reason = StringName(state.get("wait_reason", ""))
+	completion_wait_reason = StringName(state["wait_reason"])
 	_sync_visual_progress_clock()
+	_visual_projection_duration_seconds = clampf(
+		received_projection,
+		0.001,
+		VISUAL_PROJECTION_WINDOW_SECONDS
+	)
+	var sample_age_seconds := maxf(
+		float(Time.get_ticks_msec()) / 1000.0 - mapped_sample_time,
+		0.0
+	)
+	_visual_progress_sync_msec -= int(
+		minf(sample_age_seconds, _visual_projection_duration_seconds) * 1000.0
+	)
+	if multiplayer_production_enabled:
+		multiplayer_production_snapshot_ready = true
+		if not multiplayer_production_request_pending:
+			multiplayer_production_request_timer.stop()
 	production_state_changed.emit()
 
 
@@ -362,6 +572,46 @@ func _bump_production_state() -> void:
 	production_revision += 1
 	_sync_visual_progress_clock()
 	production_state_changed.emit()
+
+
+func _submit_multiplayer_production_command(command: Dictionary) -> bool:
+	if not ProductionBuildingProtocol.is_valid_command(command):
+		return false
+	var request_id := ProductionBuildingProtocol.get_int_field(
+		command,
+		"request_id",
+		0
+	)
+	multiplayer_production_request_pending = true
+	multiplayer_production_pending_request_id = request_id
+	next_multiplayer_production_request_id = maxi(
+		next_multiplayer_production_request_id,
+		request_id + 1
+	)
+	multiplayer_production_request_timer.start(
+		MULTIPLAYER_PRODUCTION_REQUEST_TIMEOUT_SECONDS
+	)
+	production_state_changed.emit()
+	production_command_requested.emit(command)
+	return true
+
+
+func _on_multiplayer_production_request_timeout() -> void:
+	if not multiplayer_production_enabled:
+		return
+	if (
+		not multiplayer_production_request_pending
+		and multiplayer_production_snapshot_ready
+	):
+		return
+	multiplayer_production_request_pending = false
+	multiplayer_production_pending_request_id = 0
+	multiplayer_production_snapshot_ready = false
+	production_state_changed.emit()
+	multiplayer_production_request_timer.start(
+		MULTIPLAYER_PRODUCTION_REQUEST_TIMEOUT_SECONDS
+	)
+	production_snapshot_requested.emit(building_net_id)
 
 
 func _sync_visual_progress_clock() -> void:
