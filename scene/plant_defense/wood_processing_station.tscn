@@ -11,9 +11,10 @@
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_production_border"]
 shader = ExtResource("8_border_shader")
-shader_parameter/idle_brown = Color(0.48, 0.255, 0.105, 1)
-shader_parameter/idle_shadow = Color(0.19, 0.075, 0.025, 1)
+shader_parameter/idle_brown = Color(0.68, 0.39, 0.16, 1)
+shader_parameter/idle_shadow = Color(0.34, 0.15, 0.045, 1)
 shader_parameter/progress_brown = Color(1, 0.64, 0.285, 1)
+shader_parameter/grain_speed = 1.8
 
 [sub_resource type="QuadMesh" id="QuadMesh_production_border"]
 size = Vector2(16, 16)

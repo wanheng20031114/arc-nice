@@ -106,6 +106,23 @@ func _run() -> void:
 		== "res://resources/shader/wood_processing_station_border.gdshader",
 		"木头加工站必须拥有16×16独立棕色噪波像素外圈。"
 	)
+	if border_material != null:
+		var idle_brown: Color = border_material.get_shader_parameter(&"idle_brown")
+		var idle_shadow: Color = border_material.get_shader_parameter(&"idle_shadow")
+		var progress_brown: Color = border_material.get_shader_parameter(
+			&"progress_brown"
+		)
+		_expect(
+			idle_brown.get_luminance() >= 0.4
+			and idle_shadow.get_luminance() >= 0.15
+			and progress_brown.get_luminance()
+				- idle_brown.get_luminance() >= 0.2,
+			"默认棕色外圈必须清晰可见，同时与高亮生产进度保持足够亮度差。"
+		)
+		_expect(
+			float(border_material.get_shader_parameter(&"grain_speed")) >= 1.5,
+			"木纹噪波必须保持清晰而活跃的流动速度。"
+		)
 	if production_border != null:
 		_expect(
 			not bool(production_border.get_instance_shader_parameter(&"working_active")),

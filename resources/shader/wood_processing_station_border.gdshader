@@ -1,9 +1,10 @@
 shader_type canvas_item;
 render_mode unshaded;
 
-uniform vec4 idle_brown : source_color = vec4(0.48, 0.255, 0.105, 1.0);
-uniform vec4 idle_shadow : source_color = vec4(0.19, 0.075, 0.025, 1.0);
+uniform vec4 idle_brown : source_color = vec4(0.68, 0.39, 0.16, 1.0);
+uniform vec4 idle_shadow : source_color = vec4(0.34, 0.15, 0.045, 1.0);
 uniform vec4 progress_brown : source_color = vec4(1.0, 0.64, 0.285, 1.0);
+uniform float grain_speed : hint_range(0.25, 4.0, 0.05) = 1.8;
 
 instance uniform bool working_active = false;
 instance uniform float progress_value : hint_range(0.0, 1.0) = 0.0;
@@ -39,14 +40,14 @@ void fragment() {
 	bool border = pixel.x < 2.0 || pixel.y < 2.0 || pixel.x >= 14.0 || pixel.y >= 14.0;
 	COLOR = vec4(0.0);
 	if (border) {
-		// A slow, banded wood-grain shimmer deliberately differs from the
+		// A banded wood-grain shimmer deliberately differs from the
 		// stake's independent per-pixel sine noise while retaining the same
 		// pixel-art life.
 		float grain_seed = wood_hash(floor(pixel * vec2(0.5, 1.0)));
 		float grain_wave = sin(
 			pixel.x * 1.13
 			+ pixel.y * 0.47
-			+ TIME * mix(0.55, 1.05, grain_seed)
+			+ TIME * grain_speed * mix(0.55, 1.05, grain_seed)
 			+ (grain_seed + noise_seed) * TAU
 		) * 0.5 + 0.5;
 		float idle_mix = mix(0.28, 0.72, grain_wave);
