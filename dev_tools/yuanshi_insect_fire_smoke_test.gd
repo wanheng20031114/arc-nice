@@ -67,7 +67,7 @@ func _test_resource_contract() -> void:
 		is_equal_approx(FIRE_CONFIG.projectile_speed, 142.5),
 		"Projectile speed must be 142.5."
 	)
-	_expect(FIRE_CONFIG.attack_damage == 10, "Fire projectile damage mismatch.")
+	_expect(FIRE_CONFIG.attack_damage == 25, "Fire projectile damage must be 25.")
 	_expect(is_equal_approx(FIRE_CONFIG.attack_interval, 1.35), "Attack interval must be 1.35.")
 	_expect(FIRE_CONFIG.attack_fire_frame == 2, "Attack must fire on frame 2.")
 
