@@ -9,6 +9,13 @@ const RPG_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
 const MAGE_CONFIG := preload("res://resources/config/enemies/capoo_mage.tres")
 const SNIPER_CONFIG := preload("res://resources/config/enemies/capoo_sniper.tres")
 const SMG_CONFIG := preload("res://resources/config/enemies/capoo_smg.tres")
+const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres")
+const ELITE_KNIGHT_CONFIG := preload(
+	"res://resources/config/enemies/capoo_knight_elite.tres"
+)
+const SWORDSMAN_CONFIG := preload(
+	"res://resources/config/enemies/capoo_swordsman.tres"
+)
 const FIRE_INSECT_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_fire_ranged.tres"
 )
@@ -35,6 +42,7 @@ func _run() -> void:
 	current_scene = test_root
 
 	await _verify_ranged_enemy_target_contract()
+	await _verify_melee_enemy_plant_attack_contract()
 	await _verify_projectile_plant_damage_contract()
 	await _verify_sniper_plant_damage_contract()
 
@@ -127,6 +135,101 @@ func _verify_ranged_enemy_target_contract() -> void:
 	plant.begin_removal(PlantDefense.RemovalMode.SILENT)
 	player.queue_free()
 	gate.queue_free()
+	await physics_frame
+
+
+func _verify_melee_enemy_plant_attack_contract() -> void:
+	var player := _spawn_player(Vector2(600.0, 0.0))
+	var gate := Node2D.new()
+	test_root.add_child(gate)
+	gate.global_position = Vector2(42.0, 0.0)
+	var melee_configs: Array[CapooKnightConfig] = [
+		KNIGHT_CONFIG,
+		ELITE_KNIGHT_CONFIG,
+		SWORDSMAN_CONFIG,
+	]
+	for melee_config in melee_configs:
+		var plant := _spawn_agave(Vector2(42.0, 0.0))
+		var enemy := _spawn_enemy(melee_config, player) as CapooKnight
+		await physics_frame
+		var health_before := plant.current_health
+		enemy.set_objective_target(plant)
+		enemy.call("_on_touch_damage_area_body_entered", plant)
+		_expect(
+			plant.current_health == health_before,
+			"%s must not deal an invisible contact hit before its slash."
+			% melee_config.display_name
+		)
+		_expect(
+			bool(enemy.call("_try_start_windup"))
+			and enemy.combat_state == CapooKnight.CombatState.WINDUP
+			and enemy.animated_sprite.animation == melee_config.windup_animation_name,
+			"%s must enter its windup animation against a plant."
+			% melee_config.display_name
+		)
+		enemy.call("_update_windup", melee_config.attack_windup)
+		_expect(
+			enemy.combat_state == CapooKnight.CombatState.SLASH
+			and enemy.animated_sprite.animation == melee_config.attack_animation_name,
+			"%s must use its slash animation against a plant."
+			% melee_config.display_name
+		)
+		var early_slash_delta := melee_config.slash_damage_delay * 0.5
+		enemy.call("_update_slash", early_slash_delta)
+		_expect(
+			plant.current_health == health_before,
+			"%s must not damage the plant before its authored slash frame."
+			% melee_config.display_name
+		)
+		enemy.call(
+			"_update_slash",
+			melee_config.slash_damage_delay - early_slash_delta
+		)
+		var health_after_slash := plant.current_health
+		enemy.call("_update_slash", 0.0)
+		_expect(
+			health_after_slash
+			== health_before
+				- maxi(melee_config.attack_damage - plant.physical_defense, 1),
+			"%s slash must apply exactly one mitigated hit to the plant."
+			% melee_config.display_name
+		)
+		_expect(
+			plant.current_health == health_after_slash,
+			"%s must not apply its committed slash to the same plant twice."
+			% melee_config.display_name
+		)
+		enemy.call("_cancel_attack")
+		enemy.set_objective_target(gate)
+		_expect(
+			not bool(enemy.call("_try_start_windup")),
+			"%s must not slash a navigation-only Home gate."
+			% melee_config.display_name
+		)
+		var removing_plant := _spawn_agave(Vector2(42.0, 0.0))
+		enemy.set_objective_target(removing_plant)
+		_expect(
+			bool(enemy.call("_try_start_windup")),
+			"%s removal fixture must begin a plant windup."
+			% melee_config.display_name
+		)
+		var removing_health_before := removing_plant.current_health
+		removing_plant.begin_removal(PlantDefense.RemovalMode.ANIMATED)
+		enemy.call("_physics_process", 0.0)
+		_expect(
+			enemy.combat_state == CapooKnight.CombatState.CHASE
+			and not enemy.windup_warning.visible
+			and enemy.animated_sprite.animation == melee_config.move_animation_name
+			and removing_plant.current_health == removing_health_before,
+			"%s must cancel a plant windup without damage when the building disappears."
+			% melee_config.display_name
+		)
+		enemy.queue_free()
+		plant.begin_removal(PlantDefense.RemovalMode.SILENT)
+		removing_plant.begin_removal(PlantDefense.RemovalMode.SILENT)
+		await physics_frame
+	gate.queue_free()
+	player.queue_free()
 	await physics_frame
 
 

@@ -2,6 +2,8 @@ extends Enemy
 class_name CapooKnight
 
 const PLAYER_COLLISION_MASK := 2
+const PLANT_COLLISION_MASK := 1 << 9
+const SLASH_COLLISION_MASK := PLAYER_COLLISION_MASK | PLANT_COLLISION_MASK
 const WORLD_COLLISION_MASK := 1
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const CapooKnightConfigScript := preload("res://resources/config/enemies/capoo_knight_config.gd")
@@ -47,9 +49,8 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 
-	_update_touch_damage(delta)
 	_update_attack_cooldown(delta)
-	if combat_state != CombatState.CHASE and not is_objective_targeting_player():
+	if combat_state != CombatState.CHASE and not has_attackable_objective():
 		_cancel_attack()
 
 	match combat_state:
@@ -65,7 +66,7 @@ func _physics_process(delta: float) -> void:
 		_move_until_player_contact()
 		return
 
-	if is_objective_targeting_player() and _try_start_windup():
+	if has_attackable_objective() and _try_start_windup():
 		return
 	if _has_player_contact():
 		velocity = Vector2.ZERO
@@ -118,23 +119,22 @@ func _update_attack_cooldown(delta: float) -> void:
 
 
 func _try_start_windup() -> bool:
-	if not is_objective_targeting_player():
-		return false
 	var knight_config := config as CapooKnightConfigScript
 	if knight_config == null:
 		return false
 	if attack_cooldown_left > 0.0:
 		return false
-	if not is_instance_valid(target_player):
+	var attack_target := get_attackable_objective()
+	if attack_target == null:
 		return false
-	if global_position.distance_to(target_player.global_position) > knight_config.attack_range:
+	if not is_attackable_objective_in_range(knight_config.attack_range):
 		return false
 	if not _has_clear_world_line_to_target():
 		return false
 
 	combat_state = CombatState.WINDUP
 	windup_time_left = maxf(knight_config.attack_windup, 0.0)
-	slash_direction = global_position.direction_to(target_player.global_position)
+	slash_direction = global_position.direction_to(attack_target.global_position)
 	if slash_direction == Vector2.ZERO:
 		slash_direction = Vector2.RIGHT
 	velocity = Vector2.ZERO
@@ -148,16 +148,13 @@ func _try_start_windup() -> bool:
 
 func _update_windup(delta: float) -> void:
 	var knight_config := config as CapooKnightConfigScript
-	if (
-		knight_config == null
-		or not is_objective_targeting_player()
-		or not is_instance_valid(target_player)
-	):
+	var attack_target := get_attackable_objective()
+	if knight_config == null or attack_target == null:
 		_cancel_attack()
 		return
 
 	velocity = Vector2.ZERO
-	slash_direction = global_position.direction_to(target_player.global_position)
+	slash_direction = global_position.direction_to(attack_target.global_position)
 	if slash_direction == Vector2.ZERO:
 		slash_direction = Vector2.RIGHT
 	_update_facing(slash_direction)
@@ -226,32 +223,48 @@ func _apply_slash_damage() -> void:
 	var query := PhysicsShapeQueryParameters2D.new()
 	query.shape = slash_query_shape
 	query.transform = Transform2D(0.0, global_position)
-	query.collision_mask = PLAYER_COLLISION_MASK
+	query.collision_mask = SLASH_COLLISION_MASK
 	query.collide_with_bodies = true
 	query.collide_with_areas = false
 	var results := get_world_2d().direct_space_state.intersect_shape(query, 16)
 	var half_angle := deg_to_rad(knight_config.slash_angle_degrees * 0.5)
-	var hit_players: Dictionary = {}
+	var hit_targets: Dictionary = {}
 	for result in results:
-		var player := result.get("collider") as Player
-		if player == null or player.is_dead:
+		var hit_target := result.get("collider") as Node2D
+		if hit_target == null:
 			continue
-		var player_id := player.get_instance_id()
-		if hit_players.has(player_id):
+		var player := hit_target as Player
+		var plant := hit_target as PlantDefense
+		if (
+			(player != null and player.is_dead)
+			or (plant != null and (plant.is_dead or plant.is_removing))
+			or (player == null and plant == null)
+		):
 			continue
-		var offset := player.global_position - global_position
+		var target_id := hit_target.get_instance_id()
+		if hit_targets.has(target_id):
+			continue
+		var offset := hit_target.global_position - global_position
 		var distance := offset.length()
 		if distance < knight_config.slash_inner_radius or distance > knight_config.slash_outer_radius:
 			continue
 		if offset == Vector2.ZERO or abs(slash_direction.angle_to(offset.normalized())) > half_angle:
 			continue
-		hit_players[player_id] = true
-		_apply_multiplayer_player_damage(
-			player,
-			knight_config.attack_damage,
-			_get_multiplayer_damage_source_id(action_sequence),
-			&"capoo_knight_slash"
-		)
+		hit_targets[target_id] = true
+		if player != null:
+			_apply_multiplayer_player_damage(
+				player,
+				knight_config.attack_damage,
+				_get_multiplayer_damage_source_id(action_sequence),
+				&"capoo_knight_slash"
+			)
+		elif plant != null:
+			plant.receive_damage(
+				knight_config.attack_damage,
+				self,
+				offset.normalized(),
+				EnemyConfig.DamageType.PHYSICAL
+			)
 
 
 func _finish_slash() -> void:
@@ -271,6 +284,9 @@ func _cancel_attack() -> void:
 	slash_damage_time_left = 0.0
 	slash_damage_done = false
 	_set_windup_warning(0.0, slash_direction)
+	var knight_config := config as CapooKnightConfigScript
+	if knight_config != null and not is_dead:
+		_play_config_animation(knight_config.move_animation_name)
 
 
 func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, action_id: int) -> void:
@@ -407,9 +423,17 @@ func _get_multiplayer_damage_source_id(source_suffix: int) -> int:
 
 
 func _has_clear_world_line_to_target() -> bool:
-	if not is_instance_valid(target_player):
+	var attack_target := get_attackable_objective()
+	if attack_target == null:
 		return false
-	return _has_throttled_world_line_of_sight(target_player, WORLD_COLLISION_MASK)
+	return _has_throttled_world_line_of_sight(attack_target, WORLD_COLLISION_MASK)
+
+
+# Knight-family enemies commit damage through the authored windup/slash action.
+# The inherited contact callback still tracks overlaps for movement stopping,
+# but must never deal a second invisible touch hit.
+func _try_deal_touch_damage() -> void:
+	return
 
 
 func _get_attack_interval() -> float:
