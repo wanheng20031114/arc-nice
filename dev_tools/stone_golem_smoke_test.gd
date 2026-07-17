@@ -51,6 +51,10 @@ const PLAYER_SCENE := preload(
 const FRAME_SIZE := Vector2(64.0, 64.0)
 const FRAME_GRID_SIZE := 4
 const REQUIRED_FRAME_PADDING := 4
+const MIN_ACTION_TOP_PADDING := 14
+const MOVE_FOOT_BAND_TOP := 48
+const MOVE_FOOT_BAND_BOTTOM := 58
+const MIN_FOOT_RUN_WIDTH := 4
 const TEST_HEALTH := 1000
 const DENSE_TARGET_COUNT := 70
 
@@ -162,7 +166,9 @@ func _test_resource_contract() -> void:
 		"Stone golem sheet must be a native 4x4 grid of 64 px frames."
 	)
 	if texture != null:
-		_test_frame_alpha_padding(texture.get_image())
+		var texture_image := texture.get_image()
+		_test_frame_alpha_padding(texture_image)
+		_test_move_leg_silhouette(texture_image)
 
 	var instance := GOLEM_SCENE.instantiate() as StoneGolem
 	_expect(instance != null, "Stone golem scene must instantiate StoneGolem.")
@@ -197,9 +203,12 @@ func _test_resource_contract() -> void:
 		"Body and touch rectangles must be independent scene resources."
 	)
 	var body_rect := body_shape.shape as RectangleShape2D
+	var touch_rect := touch_shape.shape as RectangleShape2D
 	_expect(
 		body_rect.size == Vector2(20.0, 20.0)
-		and body_shape.position == Vector2(0.0, 1.0),
+		and touch_rect.size == Vector2(20.0, 20.0)
+		and body_shape.position == touch_shape.position
+		and body_shape.position.length() <= 2.0,
 		"Stone golem must retain the medium Capoo-like navigation footprint."
 	)
 	_expect(
@@ -321,6 +330,43 @@ func _test_frame_alpha_padding(image: Image) -> void:
 				"Frame %d,%d safety padding is %d px; expected at least %d."
 				% [row, column, padding, REQUIRED_FRAME_PADDING]
 			)
+			if row == 1 or row == 2:
+				_expect(
+					minimum.y >= MIN_ACTION_TOP_PADDING,
+					"Action frame %d,%d contains cross-row ghost pixels at y=%d."
+					% [row, column, minimum.y]
+				)
+
+
+func _test_move_leg_silhouette(image: Image) -> void:
+	if image == null or image.get_size() != Vector2i(256, 256):
+		return
+	for frame_index in range(4):
+		var occupied_columns: Array[bool] = []
+		occupied_columns.resize(64)
+		occupied_columns.fill(false)
+		for local_x in range(64):
+			for local_y in range(MOVE_FOOT_BAND_TOP, MOVE_FOOT_BAND_BOTTOM):
+				if image.get_pixel(frame_index * 64 + local_x, local_y).a > 0.0:
+					occupied_columns[local_x] = true
+					break
+		var meaningful_runs := 0
+		var run_start := -1
+		for local_x in range(65):
+			var occupied := (
+				local_x < 64 and occupied_columns[local_x]
+			)
+			if occupied and run_start < 0:
+				run_start = local_x
+			elif not occupied and run_start >= 0:
+				if local_x - run_start >= MIN_FOOT_RUN_WIDTH:
+					meaningful_runs += 1
+				run_start = -1
+		_expect(
+			meaningful_runs >= 2,
+			"Move frame %d must retain two separated lower-leg/foot silhouettes."
+			% frame_index
+		)
 
 
 func _test_defense_contract() -> void:

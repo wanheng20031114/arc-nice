@@ -17,8 +17,8 @@
 [ext_resource type="Resource" uid="uid://uaeho5a1060p" path="res://resources/config/enemies/capoo_rpg.tres" id="15_rpg"]
 [ext_resource type="Resource" uid="uid://c8fsbfbwadt63" path="res://resources/config/enemies/capoo_mage.tres" id="16_mage"]
 [ext_resource type="Resource" uid="uid://cqlpqyrs5d7d2" path="res://resources/config/enemies/capoo_sniper.tres" id="17_sniper"]
-[ext_resource type="Resource" uid="uid://klao2nkyv20m" path="res://resources/config/enemies/stone_golem.tres" id="18_stone_golem"]
 [ext_resource type="AudioStream" uid="uid://c164munr8xpwj" path="res://resources/audio/shenmu_town_combat.ogg" id="18_music"]
+[ext_resource type="Resource" uid="uid://klao2nkyv20m" path="res://resources/config/enemies/stone_golem.tres" id="18_stone_golem"]
 [ext_resource type="AudioStream" uid="uid://d0sjivcq682gn" path="res://resources/audio/shenmu_town_intermission.ogg" id="19_post_music"]
 
 [sub_resource type="Resource" id="WaveEnemyEntry_basic"]
