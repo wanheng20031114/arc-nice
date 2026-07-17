@@ -25,6 +25,7 @@ var open_tween: Tween
 
 
 func _ready() -> void:
+	visible = false
 	root_control.hide()
 	confirm_button.pressed.connect(_confirm_selection)
 	back_button.pressed.connect(close)
@@ -33,7 +34,7 @@ func _ready() -> void:
 
 
 func open(initial_character_id: StringName = PlayerCharacterRegistry.DEFAULT_CHARACTER_ID) -> void:
-	if root_control.visible:
+	if is_open():
 		return
 	selected_character_id = (
 		initial_character_id
@@ -45,6 +46,7 @@ func open(initial_character_id: StringName = PlayerCharacterRegistry.DEFAULT_CHA
 	confirm_button.disabled = false
 	back_button.disabled = false
 	_build_character_cards()
+	visible = true
 	root_control.show()
 	set_process(true)
 	set_process_unhandled_input(true)
@@ -59,13 +61,14 @@ func close() -> void:
 		open_tween.kill()
 		open_tween = null
 	root_control.hide()
+	visible = false
 	set_process(false)
 	set_process_unhandled_input(false)
 	selection_closed.emit()
 
 
 func is_open() -> bool:
-	return root_control.visible
+	return visible and root_control.visible
 
 
 func _process(delta: float) -> void:

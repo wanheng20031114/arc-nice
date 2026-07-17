@@ -1,7 +1,6 @@
-[gd_resource type="NoiseTexture2D" load_steps=2 format=3]
+[gd_resource type="NoiseTexture2D" format=3 uid="uid://bca3nn3au8i4u"]
 
 [sub_resource type="FastNoiseLite" id="FastNoiseLite_lifecycle"]
-noise_type = 1
 seed = 28741
 frequency = 0.085
 fractal_octaves = 3
@@ -9,7 +8,7 @@ fractal_octaves = 3
 [resource]
 width = 64
 height = 64
-seamless = true
-seamless_blend_skirt = 0.2
 generate_mipmaps = false
 noise = SubResource("FastNoiseLite_lifecycle")
+seamless = true
+seamless_blend_skirt = 0.2

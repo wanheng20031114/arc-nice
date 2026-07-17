@@ -90,7 +90,7 @@ func _run() -> void:
 	_expect(
 		health_bar != null
 		and health_bar.size == Vector2(12, 3)
-		and health_bar.position == Vector2(-6, -13)
+		and health_bar.position == Vector2(-6, -9)
 		and health_bar.scale == Vector2.ONE,
 		"木头加工站必须使用与植被桩一致的12×3原生像素血条，不得比例缩放。"
 	)

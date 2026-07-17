@@ -1,23 +1,26 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://b5tdindv58eg5"]
 
-[ext_resource type="Script" path="res://scene/plant_defense/wood_processing_station.gd" id="1_script"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/wood_processing_station/wood_processing_station.png" id="2_sprite"]
-[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
-[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
-[ext_resource type="ShaderMaterial" path="res://resources/shader/plant_lifecycle_material.tres" id="5_lifecycle_material"]
+[ext_resource type="Script" uid="uid://d03u0oqrvaet1" path="res://scene/plant_defense/wood_processing_station.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://etkyjri3jk8w" path="res://resources/texture/plant_defense/wood_processing_station/wood_processing_station.png" id="2_sprite"]
+[ext_resource type="PackedScene" uid="uid://by1igl2yc3ch0" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
+[ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
+[ext_resource type="Material" path="res://resources/shader/plant_lifecycle_material.tres" id="5_lifecycle_material"]
 [ext_resource type="Resource" path="res://resources/config/production/wood_to_plank.tres" id="6_recipe"]
-[ext_resource type="Script" path="res://resources/config/production/production_recipe.gd" id="7_recipe_script"]
-[ext_resource type="Shader" path="res://resources/shader/wood_processing_station_border.gdshader" id="8_border_shader"]
+[ext_resource type="Script" uid="uid://bqe4uxp0um77k" path="res://resources/config/production/production_recipe.gd" id="7_recipe_script"]
+[ext_resource type="Shader" uid="uid://du6bl8vksnlqd" path="res://resources/shader/wood_processing_station_border.gdshader" id="8_border_shader"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_production_border"]
 shader = ExtResource("8_border_shader")
+shader_parameter/idle_brown = Color(0.48, 0.255, 0.105, 1)
+shader_parameter/idle_shadow = Color(0.19, 0.075, 0.025, 1)
+shader_parameter/progress_brown = Color(1, 0.64, 0.285, 1)
 
 [sub_resource type="QuadMesh" id="QuadMesh_production_border"]
 size = Vector2(16, 16)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 resource_local_to_scene = true
-size = Vector2(9, 10)
+size = Vector2(9, 11)
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_player_core"]
 resource_local_to_scene = true
@@ -25,7 +28,7 @@ radius = 3.5
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_interaction"]
 resource_local_to_scene = true
-radius = 28.0
+radius = 15.033297
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_prompt"]
 content_margin_left = 0.0
@@ -74,7 +77,7 @@ font_color = Color(0.965, 0.867, 0.667, 1)
 outline_size = 1
 outline_color = Color(0.055, 0.027, 0.012, 1)
 
-[node name="WoodProcessingStation" type="StaticBody2D"]
+[node name="WoodProcessingStation" type="StaticBody2D" unique_id=264057700]
 collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
@@ -85,13 +88,13 @@ lifecycle_effect_top_y = -9.0
 lifecycle_effect_bottom_y = 7.0
 lifecycle_particle_scale = 0.65
 
-[node name="ProductionBorder" type="MeshInstance2D" parent="."]
+[node name="ProductionBorder" type="MeshInstance2D" parent="." unique_id=367799717]
 z_index = -1
 texture_filter = 1
 material = SubResource("ShaderMaterial_production_border")
 mesh = SubResource("QuadMesh_production_border")
 
-[node name="MainSprite" type="Sprite2D" parent="."]
+[node name="MainSprite" type="Sprite2D" parent="." unique_id=1081452852]
 z_index = 1
 texture_filter = 1
 material = ExtResource("5_lifecycle_material")
@@ -99,76 +102,75 @@ position = Vector2(0, -1)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("2_sprite")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-position = Vector2(0, 2)
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1334096848]
 shape = SubResource("RectangleShape2D_body")
 
-[node name="PlayerCoreBody" type="StaticBody2D" parent="."]
-position = Vector2(0, 3)
+[node name="PlayerCoreBody" type="StaticBody2D" parent="." unique_id=1369299251]
+position = Vector2(0, 1)
 collision_layer = 1024
 collision_mask = 2
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody" unique_id=1017255045]
 shape = SubResource("CircleShape2D_player_core")
 
-[node name="InteractionArea" type="Area2D" parent="."]
+[node name="InteractionArea" type="Area2D" parent="." unique_id=32630459]
 collision_layer = 0
 collision_mask = 2
 monitoring = false
 monitorable = false
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea" unique_id=9952570]
 shape = SubResource("CircleShape2D_interaction")
 
-[node name="InteractionPrompt" type="PanelContainer" parent="."]
+[node name="InteractionPrompt" type="PanelContainer" parent="." unique_id=448283339]
 z_index = 10
 texture_filter = 1
 custom_minimum_size = Vector2(112, 26)
 offset_left = -28.0
-offset_top = -26.0
+offset_top = -23.0
 offset_right = 84.0
+offset_bottom = 3.0
 scale = Vector2(0.5, 0.5)
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_prompt")
 
-[node name="PromptMargin" type="MarginContainer" parent="InteractionPrompt"]
+[node name="PromptMargin" type="MarginContainer" parent="InteractionPrompt" unique_id=915308228]
 layout_mode = 2
 theme_override_constants/margin_left = 4
 theme_override_constants/margin_top = 3
 theme_override_constants/margin_right = 4
 theme_override_constants/margin_bottom = 3
 
-[node name="PromptRow" type="HBoxContainer" parent="InteractionPrompt/PromptMargin"]
+[node name="PromptRow" type="HBoxContainer" parent="InteractionPrompt/PromptMargin" unique_id=946565756]
 layout_mode = 2
 theme_override_constants/separation = 4
 alignment = 1
 
-[node name="Keycap" type="PanelContainer" parent="InteractionPrompt/PromptMargin/PromptRow"]
+[node name="Keycap" type="PanelContainer" parent="InteractionPrompt/PromptMargin/PromptRow" unique_id=412765617]
 custom_minimum_size = Vector2(18, 18)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_keycap")
 
-[node name="KeyLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow/Keycap"]
+[node name="KeyLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow/Keycap" unique_id=1449719185]
 layout_mode = 2
 text = "F"
 label_settings = SubResource("LabelSettings_keycap")
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="ActionLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow"]
+[node name="ActionLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow" unique_id=1764985218]
 layout_mode = 2
 text = "打开加工站"
 label_settings = SubResource("LabelSettings_action")
 vertical_alignment = 1
 
-[node name="HealthBar" parent="." instance=ExtResource("3_health_bar")]
+[node name="HealthBar" parent="." unique_id=2051412181 instance=ExtResource("3_health_bar")]
 custom_minimum_size = Vector2(12, 3)
 offset_left = -6.0
-offset_top = -13.0
+offset_top = -9.0
 offset_right = 6.0
-offset_bottom = -10.0
-damage_trail_color = Color(0.92156863, 0.28235295, 0.18039216, 1)
+offset_bottom = -6.0
 
-[node name="MultiplayerProductionRequestTimer" type="Timer" parent="."]
+[node name="MultiplayerProductionRequestTimer" type="Timer" parent="." unique_id=1541973560]
 wait_time = 4.0
 one_shot = true

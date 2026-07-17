@@ -210,11 +210,18 @@ func _test_choice_overlay() -> void:
 	var overlay := CHOICE_OVERLAY_SCENE.instantiate() as PlayerCharacterChoiceOverlay
 	root.add_child(overlay)
 	await process_frame
+	_expect(
+		not overlay.visible and not overlay.is_open(),
+		"Character choice overlay must remain hidden until selection is requested."
+	)
 	overlay.open(PlayerCharacterRegistry.HOE_CAT_ID)
 	for _frame in range(4):
 		await process_frame
 
-	_expect(overlay.is_open(), "Character choice overlay must become visible when opened.")
+	_expect(
+		overlay.visible and overlay.is_open(),
+		"Character choice overlay must become visible when opened."
+	)
 	_expect(overlay.cards.size() == 3, "Character choice overlay must build three character cards.")
 	_expect(
 		overlay.root_control.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR,

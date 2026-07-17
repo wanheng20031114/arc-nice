@@ -2,8 +2,8 @@
 
 [ext_resource type="Script" uid="uid://c5lyhldap105w" path="res://scene/main_menu.gd" id="1_2fwvj"]
 [ext_resource type="Texture2D" uid="uid://q1v73vx6yokg" path="res://resources/texture/ui/menu_rooftop_garden_background.png" id="2_0iwki"]
-[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_sepwh"]
-[ext_resource type="Script" path="res://scene/settings/settings_gear_icon.gd" id="4_settings_icon"]
+[ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_sepwh"]
+[ext_resource type="Script" uid="uid://01h4g7s3b8oo" path="res://scene/settings/settings_gear_icon.gd" id="4_settings_icon"]
 [ext_resource type="PackedScene" path="res://scene/settings/settings_panel.tscn" id="5_settings_panel"]
 [ext_resource type="PackedScene" path="res://scene/character_selection/player_character_choice_overlay.tscn" id="6_character_choice"]
 
@@ -35,7 +35,7 @@ corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hover"]
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_pressed"]
 content_margin_left = 12.0
 content_margin_top = 8.0
 content_margin_right = 12.0
@@ -51,7 +51,7 @@ corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_pressed"]
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hover"]
 content_margin_left = 12.0
 content_margin_top = 8.0
 content_margin_right = 12.0
@@ -83,7 +83,7 @@ corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
-[node name="MainMenu" type="Control"]
+[node name="MainMenu" type="Control" unique_id=1751326443]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -92,14 +92,13 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_2fwvj")
 
-[node name="Background" type="ColorRect" parent="."]
+[node name="Background" type="ColorRect" parent="." unique_id=2107602415]
 layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 color = Color(0.055, 0.06, 0.07, 1)
 
-[node name="TilePattern" type="TextureRect" parent="."]
-modulate = Color(1, 1, 1, 1)
+[node name="TilePattern" type="TextureRect" parent="." unique_id=437038203]
 texture_filter = 1
 texture_repeat = 1
 layout_mode = 0
@@ -108,35 +107,35 @@ anchor_bottom = 1.0
 texture = ExtResource("2_0iwki")
 stretch_mode = 6
 
-[node name="Shade" type="ColorRect" parent="."]
+[node name="Shade" type="ColorRect" parent="." unique_id=1881119590]
 layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 color = Color(0, 0, 0, 0.18)
 
-[node name="MenuCenter" type="CenterContainer" parent="."]
+[node name="MenuCenter" type="CenterContainer" parent="." unique_id=56813918]
 layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 
-[node name="MenuPanel" type="PanelContainer" parent="MenuCenter"]
+[node name="MenuPanel" type="PanelContainer" parent="MenuCenter" unique_id=523533853]
 custom_minimum_size = Vector2(360, 440)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
-[node name="MarginContainer" type="MarginContainer" parent="MenuCenter/MenuPanel"]
+[node name="MarginContainer" type="MarginContainer" parent="MenuCenter/MenuPanel" unique_id=141648210]
 layout_mode = 2
 theme_override_constants/margin_left = 34
 theme_override_constants/margin_top = 34
 theme_override_constants/margin_right = 34
 theme_override_constants/margin_bottom = 34
 
-[node name="MenuStack" type="VBoxContainer" parent="MenuCenter/MenuPanel/MarginContainer"]
+[node name="MenuStack" type="VBoxContainer" parent="MenuCenter/MenuPanel/MarginContainer" unique_id=250161274]
 layout_mode = 2
 theme_override_constants/separation = 14
 alignment = 1
 
-[node name="Title" type="Label" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack"]
+[node name="Title" type="Label" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack" unique_id=1181603264]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.96, 0.88, 0.62, 1)
 theme_override_fonts/font = ExtResource("3_sepwh")
@@ -144,11 +143,11 @@ theme_override_font_sizes/font_size = 34
 text = "ARC NICE"
 horizontal_alignment = 1
 
-[node name="Spacer" type="Control" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack"]
+[node name="Spacer" type="Control" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack" unique_id=1502425269]
 custom_minimum_size = Vector2(1, 12)
 layout_mode = 2
 
-[node name="SinglePlayer" type="Button" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack"]
+[node name="SinglePlayer" type="Button" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack" unique_id=1803847702]
 custom_minimum_size = Vector2(260, 42)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
@@ -161,7 +160,7 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
 text = "单人模式"
 
-[node name="TowerDefense" type="Button" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack"]
+[node name="TowerDefense" type="Button" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack" unique_id=1334307674]
 custom_minimum_size = Vector2(260, 42)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
@@ -174,7 +173,7 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
 text = "塔防模式"
 
-[node name="Multiplayer" type="Button" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack"]
+[node name="Multiplayer" type="Button" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack" unique_id=1195666777]
 custom_minimum_size = Vector2(260, 42)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
@@ -187,7 +186,7 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
 text = "多人模式"
 
-[node name="Settings" type="Button" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack"]
+[node name="Settings" type="Button" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack" unique_id=1975040599]
 custom_minimum_size = Vector2(260, 42)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
@@ -200,8 +199,8 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
 text = "设置"
 
-[node name="GearIcon" type="Control" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack/Settings"]
-layout_mode = 0
+[node name="GearIcon" type="Control" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack/Settings" unique_id=536456453]
+anchors_preset = 0
 offset_left = 18.0
 offset_top = 8.0
 offset_right = 44.0
@@ -209,7 +208,7 @@ offset_bottom = 34.0
 mouse_filter = 2
 script = ExtResource("4_settings_icon")
 
-[node name="Quit" type="Button" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack"]
+[node name="Quit" type="Button" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack" unique_id=213159327]
 custom_minimum_size = Vector2(260, 42)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
@@ -222,9 +221,11 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
 text = "结束游戏"
 
-[node name="SettingsPanel" parent="." instance=ExtResource("5_settings_panel")]
+[node name="SettingsPanel" parent="." unique_id=838437475 instance=ExtResource("5_settings_panel")]
+layout_mode = 1
 
-[node name="PlayerCharacterChoiceOverlay" parent="." instance=ExtResource("6_character_choice")]
+[node name="PlayerCharacterChoiceOverlay" parent="." unique_id=626649155 instance=ExtResource("6_character_choice")]
+visible = false
 
 [connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/SinglePlayer" to="." method="_on_singleplayer_pressed"]
 [connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/TowerDefense" to="." method="_on_tower_defense_pressed"]

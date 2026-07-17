@@ -67,6 +67,7 @@ corner_radius_bottom_left = 5
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_focus"]
 
 [node name="PlayerCharacterChoiceOverlay" type="CanvasLayer"]
+visible = false
 layer = 40
 script = ExtResource("1_script")
 
