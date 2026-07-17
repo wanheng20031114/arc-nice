@@ -431,9 +431,16 @@ func _has_clear_world_line_to_target() -> bool:
 
 # Knight-family enemies commit damage through the authored windup/slash action.
 # The inherited contact callback still tracks overlaps for movement stopping,
-# but must never deal a second invisible touch hit.
+# but must never deal a second invisible touch hit unless a concrete enemy
+# explicitly authors a damaging core.
 func _try_deal_touch_damage() -> void:
-	return
+	if not _uses_inherited_touch_damage():
+		return
+	super._try_deal_touch_damage()
+
+
+func _uses_inherited_touch_damage() -> bool:
+	return false
 
 
 func _get_attack_interval() -> float:

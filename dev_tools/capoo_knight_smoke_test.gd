@@ -74,6 +74,7 @@ func _run() -> void:
 		await _test_swordsman_uses_path_when_corner_blocks_direct_chase()
 		await _test_path_waypoint_motion_does_not_cut_corners()
 		await _test_navigation_budget_retry_keeps_existing_path()
+		await _test_knight_touch_damage_remains_disabled()
 
 	test_root.queue_free()
 	await process_frame
@@ -524,6 +525,20 @@ func _expect_slash_result(player_position: Vector2, should_hit: bool, message: S
 	await physics_frame
 	var was_hit := player.current_health == 72
 	_expect(was_hit == should_hit, message)
+	enemy.queue_free()
+	player.queue_free()
+	await physics_frame
+
+
+func _test_knight_touch_damage_remains_disabled() -> void:
+	var player := _spawn_player(Vector2.ZERO)
+	var enemy := _spawn_knight(Vector2.ZERO, player)
+	enemy.set_physics_process(false)
+	await _wait_physics_frames(2)
+	_expect(
+		player.current_health == 100,
+		"Knight contact tracking must not add an invisible touch hit."
+	)
 	enemy.queue_free()
 	player.queue_free()
 	await physics_frame

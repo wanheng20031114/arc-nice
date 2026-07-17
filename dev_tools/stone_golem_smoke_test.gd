@@ -100,6 +100,7 @@ func _run() -> void:
 	_test_resource_contract()
 	_test_wave_integration()
 	await _test_defense_contract()
+	await _test_core_touch_damage()
 	await _test_windup_and_physical_slam()
 	await _test_committed_slam_preserves_cooldown_and_impact()
 	await _test_radial_range_and_single_hit()
@@ -140,7 +141,7 @@ func _test_resource_contract() -> void:
 	)
 	_expect(GOLEM_CONFIG.magic_defense == 0, "Magic defense must be 0.")
 	_expect(
-		is_equal_approx(GOLEM_CONFIG.move_speed, 16.0),
+		is_equal_approx(GOLEM_CONFIG.move_speed, 15.0),
 		"Stone golem must use the authored slow movement speed."
 	)
 	_expect(
@@ -193,8 +194,17 @@ func _test_resource_contract() -> void:
 		"Stone golem sprite scale must stay at the lossless integer scale 1."
 	)
 	_expect(
+		sprite.position == Vector2(0.0, -6.0),
+		"Stone golem sprite must retain the reviewed core-aligned offset."
+	)
+	_expect(
 		warning != null and impact_ring != null,
 		"Warning and reusable impact nodes must be authored in the scene."
+	)
+	_expect(
+		warning.position == Vector2.ZERO
+		and impact_ring.position == Vector2.ZERO,
+		"Slam warning and impact ring must stay centered on the damage query."
 	)
 	_expect(
 		body_shape.shape is RectangleShape2D
@@ -214,6 +224,10 @@ func _test_resource_contract() -> void:
 	_expect(
 		body_rect.size.x <= 64.0 and body_rect.size.y <= 64.0,
 		"Navigation footprint must stay inside four 16 px cells."
+	)
+	_expect(
+		instance.navigation_update_interval_frames == 8,
+		"Slow stone golems must use the profiled 7.5 Hz navigation cadence."
 	)
 
 	var frames := sprite.sprite_frames
@@ -407,6 +421,53 @@ func _test_defense_contract() -> void:
 	await process_frame
 
 
+func _test_core_touch_damage() -> void:
+	var plant := _spawn_test_plant(Vector2.ZERO, 30, 0)
+	var enemy := _spawn_golem(Vector2.ZERO, null)
+	enemy.set_physics_process(false)
+	await _wait_physics_frames(2)
+	_expect(
+		plant.current_health == TEST_HEALTH - 70,
+		"Core contact must deal 100 physical damage minus plant defense."
+	)
+	_expect(
+		is_equal_approx(
+			enemy.touch_damage_cooldown_left,
+			enemy.touch_damage_interval
+		),
+		"Core contact must start the shared touch-damage interval."
+	)
+	enemy.call(
+		"_physics_process",
+		enemy.touch_damage_interval - 0.01
+	)
+	_expect(
+		plant.current_health == TEST_HEALTH - 70,
+		"Core contact must not repeat before its 0.5 second interval."
+	)
+	enemy.call("_physics_process", 0.02)
+	_expect(
+		plant.current_health == TEST_HEALTH - 140,
+		"Sustained core contact must repeat at the authored interval."
+	)
+	enemy.queue_free()
+	plant.queue_free()
+	await _wait_physics_frames(2)
+
+	var player := _spawn_player(Vector2(96.0, 0.0))
+	var player_enemy := _spawn_golem(Vector2(96.0, 0.0), player)
+	player_enemy.set_physics_process(false)
+	await _wait_physics_frames(2)
+	_expect(
+		player.current_health == TEST_HEALTH - GOLEM_CONFIG.attack_damage
+		and player.last_damage_taken == GOLEM_CONFIG.attack_damage,
+		"Player core contact must deal the configured 100 physical damage."
+	)
+	player_enemy.queue_free()
+	player.queue_free()
+	await _wait_physics_frames(2)
+
+
 func _test_windup_and_physical_slam() -> void:
 	var plant := _spawn_test_plant(Vector2(36.0, 0.0), 30, 80)
 	var enemy := _spawn_golem(Vector2.ZERO, null)
@@ -415,10 +476,9 @@ func _test_windup_and_physical_slam() -> void:
 	enemy.attack_cooldown_left = 0.0
 	await _wait_physics_frames(2)
 	var health_before := plant.current_health
-	enemy.call("_on_touch_damage_area_body_entered", plant)
 	_expect(
 		plant.current_health == health_before,
-		"Touch overlap must not deal an invisible hit before the slam."
+		"A target outside the 20 px core must not take contact damage."
 	)
 	_expect(
 		bool(enemy.call("_try_start_windup")),

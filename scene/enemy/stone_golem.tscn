@@ -12,6 +12,7 @@ resource_local_to_scene = true
 
 [node name="StoneGolem" unique_id=1165731167 instance=ExtResource("1_base")]
 script = ExtResource("2_script")
+navigation_update_interval_frames = 8
 path_refresh_interval = 0.25
 waypoint_arrival_distance = 6.0
 direct_chase_extra_distance = 2.0

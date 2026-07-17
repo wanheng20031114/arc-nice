@@ -65,8 +65,22 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if (
+		not is_dead
+		and (
+			touch_damage_cooldown_left > 0.0
+			or not touching_players.is_empty()
+			or not touching_plants.is_empty()
+		)
+	):
+		_update_touch_damage(delta)
 	super._physics_process(delta)
-	_update_slam_impact_visual(delta)
+	if slam_impact_time_left > 0.0:
+		_update_slam_impact_visual(delta)
+
+
+func _uses_inherited_touch_damage() -> bool:
+	return true
 
 
 func _apply_config() -> void:
