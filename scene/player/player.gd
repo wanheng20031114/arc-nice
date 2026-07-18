@@ -615,7 +615,10 @@ func notify_primary_attack_performed() -> void:
 func apply_pickup(config: PickupConfig, apply_healing: bool = true) -> bool:
 	if config == null:
 		return false
-	if config.pickup_type == PickupConfig.PickupType.MATERIAL:
+	if config.pickup_type in [
+		PickupConfig.PickupType.MATERIAL,
+		PickupConfig.PickupType.BUILDING,
+	]:
 		return false
 		
 	var applied := false

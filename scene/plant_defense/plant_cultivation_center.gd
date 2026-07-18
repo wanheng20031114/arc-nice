@@ -1,2 +1,2 @@
 extends ProductionProgressBorderBuilding
-class_name WoodProcessingStation
+class_name PlantCultivationCenter

@@ -1,0 +1,216 @@
+{
+  "schema_version": 1,
+  "asset_family": "plant_cultivation_center",
+  "status": "passed",
+  "pipeline": [
+    "built-in imagegen selected concept",
+    "built-in imagegen logical-grid compactness correction",
+    "flat #FF00FF chroma key",
+    "pixel_grid_analyzer measured logical grid",
+    "nearest logical-cell selection without smoothing",
+    "palette reduction without dithering",
+    "binary-alpha and footprint audit",
+    "building item icons reduced by exact integer 1/2 sampling"
+  ],
+  "visual_contract": {
+    "building_source_canvas_px": [
+      64,
+      64
+    ],
+    "building_subject_limit_px": [
+      60,
+      60
+    ],
+    "building_footprint_cells": [
+      2,
+      2
+    ],
+    "building_world_scale": [
+      0.5,
+      0.5
+    ],
+    "building_world_size_px": [
+      32,
+      32
+    ],
+    "building_item_icon_canvas_px": [
+      32,
+      32
+    ],
+    "panel_size_px": [
+      728,
+      544
+    ]
+  },
+  "building": {
+    "source": {
+      "path": "dev_assets/source_images/plant_defense/plant_cultivation_center/plant_cultivation_center_compact_imagegen_magenta.png",
+      "normalization_mode": "measured_grid_center_sample",
+      "detected_logical_subject_size": [
+        60,
+        59
+      ],
+      "logical_subject_size": [
+        60,
+        59
+      ],
+      "logical_fit_scale": 1.0,
+      "grid_analysis": {
+        "image_width": 1254,
+        "image_height": 1254,
+        "image_mode": "RGBA",
+        "detection_mode": "approximate",
+        "grid_cell_width": 13.05,
+        "grid_cell_height": 13.45,
+        "grid_cell_size": 13,
+        "confidence": 0.691,
+        "subject_bbox": {
+          "left": 235,
+          "top": 240,
+          "right": 1020,
+          "bottom": 1035
+        },
+        "subject_pixel_width": 785,
+        "subject_pixel_height": 795,
+        "subject_grid_width": 60,
+        "subject_grid_height": 59,
+        "recommended_canvas_grid_width": 96,
+        "recommended_canvas_grid_height": 93
+      }
+    },
+    "registration": {
+      "mode": "bottom_center",
+      "paste_origin": [
+        2,
+        4
+      ],
+      "foot_target": [
+        32,
+        62
+      ],
+      "measured_foot_anchor": [
+        31.5,
+        62.0
+      ]
+    },
+    "visible_palette_size": 61,
+    "audit": {
+      "label": "plant_cultivation_center",
+      "path": "resources/texture/plant_defense/plant_cultivation_center/plant_cultivation_center.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        2,
+        4,
+        62,
+        63
+      ],
+      "subject_size": [
+        60,
+        59
+      ],
+      "visible_color_count": 61,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -15.0,
+        -14.0,
+        15.0,
+        15.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    }
+  },
+  "building_items": {
+    "agave_cannon": {
+      "label": "agave_cannon_building_item",
+      "source_path": "resources/texture/plant_defense/agave_cannon/icon.png",
+      "output_path": "resources/texture/building_items/agave_cannon.png",
+      "conversion": "exact integer 1/2 nearest-neighbour sampling",
+      "canvas_size": [
+        32,
+        32
+      ],
+      "subject_bbox_exclusive": [
+        3,
+        8,
+        29,
+        31
+      ],
+      "subject_size": [
+        26,
+        23
+      ],
+      "visible_color_count": 62,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "checks": {
+        "canvas_32x32": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "subject_within_32x32": true
+      },
+      "passed": true
+    },
+    "corn_machine_gun": {
+      "label": "corn_machine_gun_building_item",
+      "source_path": "resources/texture/plant_defense/corn_machine_gun/icon.png",
+      "output_path": "resources/texture/building_items/corn_machine_gun.png",
+      "conversion": "exact integer 1/2 nearest-neighbour sampling",
+      "canvas_size": [
+        32,
+        32
+      ],
+      "subject_bbox_exclusive": [
+        2,
+        7,
+        30,
+        31
+      ],
+      "subject_size": [
+        28,
+        24
+      ],
+      "visible_color_count": 48,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "checks": {
+        "canvas_32x32": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "subject_within_32x32": true
+      },
+      "passed": true
+    }
+  },
+  "panel": {
+    "source_path": "dev_assets/source_images/plant_defense/plant_cultivation_center/plant_cultivation_center_panel_background_imagegen.png",
+    "output_path": "resources/texture/production/plant_cultivation_center_panel_background.png",
+    "output_size": [
+      728,
+      544
+    ],
+    "visible_color_limit": 128,
+    "contains_baked_item_slots": false
+  },
+  "validation": {
+    "passed": true,
+    "failures": []
+  }
+}

@@ -653,6 +653,29 @@ func _on_use_pressed() -> void:
 	var item := _get_selected_item()
 	if not _is_consumable_item(item) or tracked_player == null:
 		return
+	if item.pickup_type == PickupConfig.PickupType.BUILDING:
+		var current_scene := get_tree().current_scene
+		if (
+			current_scene == null
+			or not current_scene.has_method(
+				"begin_inventory_building_placement"
+			)
+		):
+			status_label.text = "当前场景不支持建造"
+			return
+		var opening_warehouse := warehouse
+		var opening_player := tracked_player
+		var building_slot_index := selected_slot_index
+		var expected_revision := _get_panel_inventory_revision()
+		close()
+		var started := bool(current_scene.call(
+			"begin_inventory_building_placement",
+			building_slot_index,
+			expected_revision
+		))
+		if not started and is_instance_valid(opening_warehouse):
+			open_for(opening_warehouse, opening_player)
+		return
 	if run_state.try_use_item(selected_slot_index, tracked_player):
 		status_label.text = "已使用 %s" % item.display_name
 	else:
@@ -796,6 +819,7 @@ func _refresh_detail() -> void:
 		item_description.text = "双击可快速移动；也可拖拽到目标格。手柄长按 A 后用左摇杆移动。"
 		item_description.tooltip_text = item_description.text
 		use_button.disabled = true
+		use_button.text = "使用"
 		move_button.disabled = true
 		discard_button.disabled = true
 		move_button.text = "移动"
@@ -819,10 +843,23 @@ func _refresh_detail() -> void:
 		or selected_source != ItemSource.PLAYER
 		or not _is_consumable_item(item)
 	)
+	use_button.text = (
+		"建造"
+		if item.pickup_type == PickupConfig.PickupType.BUILDING
+		else "使用"
+	)
 	move_button.disabled = network_locked
 	discard_button.disabled = _is_multiplayer_inventory_context() or network_locked
 	move_button.text = "移入背包" if selected_source == ItemSource.STORAGE else "移入仓库"
-	discard_button.text = "删除" if item.pickup_type == PickupConfig.PickupType.MATERIAL else "丢弃"
+	discard_button.text = (
+		"销毁"
+		if item.pickup_type == PickupConfig.PickupType.BUILDING
+		else (
+			"删除"
+			if item.pickup_type == PickupConfig.PickupType.MATERIAL
+			else "丢弃"
+		)
+	)
 
 
 func _on_tracked_player_died() -> void:
@@ -955,6 +992,8 @@ func _get_item_type_label(item: PickupConfig) -> String:
 		return "收藏品"
 	if item.pickup_type == PickupConfig.PickupType.MATERIAL:
 		return "物资"
+	if item.pickup_type == PickupConfig.PickupType.BUILDING:
+		return "建筑"
 	return "道具"
 
 

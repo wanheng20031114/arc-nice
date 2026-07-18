@@ -6,16 +6,22 @@ signal production_command_requested(command: Dictionary)
 signal production_snapshot_requested(building_net_id: int)
 signal multiplayer_production_result(success: bool, reason: StringName)
 
-const RUNTIME_STATE_SCHEMA := 2
+const RUNTIME_STATE_SCHEMA := 3
 const INTERACTION_GROUP := PlantDefense.BUILDING_INTERACTION_GROUP
 const INTERACTION_SELECTION_REFRESH_SECONDS := 0.08
 const VISUAL_PROJECTION_WINDOW_SECONDS := 1.0
 const MULTIPLAYER_PRODUCTION_REQUEST_TIMEOUT_SECONDS := 4.0
 
+enum PanelTheme {
+	DEFAULT,
+	PLANT,
+}
+
 @export_group("生产配置")
 @export var recipes: Array[ProductionRecipe] = []
 @export var auto_select_first_recipe := false
 @export var production_panel_background_override: Texture2D = null
+@export var production_panel_theme: PanelTheme = PanelTheme.DEFAULT
 
 @onready var interaction_area: Area2D = $InteractionArea
 @onready var interaction_prompt: Control = $InteractionPrompt
@@ -31,6 +37,7 @@ var production_enabled := true
 var active_recipe_id: StringName = &""
 var progress_elapsed_seconds := 0.0
 var completion_wait_reason: StringName = &""
+var personal_output_peer_id := 0
 var production_revision := 0
 var building_net_id := 0
 var multiplayer_production_peer_id := 0
@@ -94,6 +101,7 @@ func _on_setup_completed() -> void:
 	completion_wait_reason = &""
 	production_enabled = true
 	active_recipe_id = &""
+	personal_output_peer_id = 0
 	if auto_select_first_recipe:
 		for recipe in recipes:
 			if recipe != null and recipe.is_valid():
@@ -302,15 +310,27 @@ func is_current_multiplayer_production_result(result: Dictionary) -> bool:
 	)
 
 
-func select_recipe(recipe_id: StringName) -> bool:
+func select_recipe(
+	recipe_id: StringName,
+	output_peer_id: int = 0
+) -> bool:
 	if is_multiplayer_proxy:
 		return false
 	var recipe := get_recipe(recipe_id)
 	if recipe == null or not recipe.is_valid():
 		return false
-	if active_recipe_id == recipe_id:
+	var next_output_peer_id := (
+		maxi(output_peer_id, 0)
+		if recipe.outputs_to_player_inventory()
+		else 0
+	)
+	if (
+		active_recipe_id == recipe_id
+		and personal_output_peer_id == next_output_peer_id
+	):
 		return true
 	active_recipe_id = recipe_id
+	personal_output_peer_id = next_output_peer_id
 	progress_elapsed_seconds = 0.0
 	completion_wait_reason = &""
 	_bump_production_state()
@@ -348,7 +368,14 @@ func apply_authoritative_multiplayer_production_command(
 				return ProductionBuildingProtocol.RESULT_INVALID_RECIPE
 			return (
 				ProductionBuildingProtocol.RESULT_SUCCESS
-				if select_recipe(recipe_id)
+				if select_recipe(
+					recipe_id,
+					ProductionBuildingProtocol.get_int_field(
+						command,
+						"peer_id",
+						0
+					)
+				)
 				else ProductionBuildingProtocol.RESULT_UNAVAILABLE
 			)
 		ProductionBuildingProtocol.OPERATION_SET_ENABLED:
@@ -403,7 +430,10 @@ func try_complete_ready_production() -> bool:
 		or progress_elapsed_seconds + 0.0001 < recipe.duration_seconds
 	):
 		return false
-	var result := production_coordinator.try_commit_recipe(recipe)
+	var result := production_coordinator.try_commit_recipe(
+		recipe,
+		personal_output_peer_id
+	)
 	if result == ProductionCoordinator.RESULT_SUCCESS:
 		progress_elapsed_seconds = 0.0
 		completion_wait_reason = &""
@@ -493,6 +523,7 @@ func export_multiplayer_runtime_state() -> Dictionary:
 		"active_recipe_id": String(active_recipe_id),
 		"progress_elapsed_seconds": progress_elapsed_seconds,
 		"wait_reason": String(completion_wait_reason),
+		"personal_output_peer_id": personal_output_peer_id,
 		"revision": production_revision,
 		"projection_duration_seconds": get_visual_projection_duration_seconds(),
 	}
@@ -509,6 +540,7 @@ func apply_multiplayer_runtime_state(state: Dictionary, mapped_sample_time: floa
 		or typeof(state.get("active_recipe_id")) not in [TYPE_STRING, TYPE_STRING_NAME]
 		or typeof(state.get("progress_elapsed_seconds")) not in [TYPE_INT, TYPE_FLOAT]
 		or typeof(state.get("wait_reason")) not in [TYPE_STRING, TYPE_STRING_NAME]
+		or typeof(state.get("personal_output_peer_id")) != TYPE_INT
 		or typeof(state.get("projection_duration_seconds")) not in [TYPE_INT, TYPE_FLOAT]
 	):
 		return
@@ -517,7 +549,8 @@ func apply_multiplayer_runtime_state(state: Dictionary, mapped_sample_time: floa
 	if not is_finite(received_progress) or not is_finite(received_projection):
 		return
 	var received_revision := int(state["revision"])
-	if received_revision < 0:
+	var received_output_peer_id := int(state["personal_output_peer_id"])
+	if received_revision < 0 or received_output_peer_id < 0:
 		return
 	if received_revision < production_revision:
 		return
@@ -527,6 +560,7 @@ func apply_multiplayer_runtime_state(state: Dictionary, mapped_sample_time: floa
 	production_revision = received_revision
 	production_enabled = bool(state["enabled"])
 	active_recipe_id = received_recipe_id
+	personal_output_peer_id = received_output_peer_id
 	var recipe := get_active_recipe()
 	progress_elapsed_seconds = clampf(
 		received_progress,

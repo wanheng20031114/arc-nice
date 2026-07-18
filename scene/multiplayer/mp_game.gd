@@ -143,7 +143,7 @@ const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
-## 协议 v10 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
+## 协议 v11 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
 ## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
 const SHARED_SNAPSHOT_COHORT_ID := -1
 const ENEMY_ACTION_SNAPSHOT_REORDER_TOLERANCE_SECONDS := 0.075
@@ -164,7 +164,7 @@ const CLIENT_PROXY_VISUAL_BUDGET_MARGIN := 192.0
 const CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_HZ := 15.0
 const CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_PHASE_COUNT := 64
 const COMBAT_FEEDBACK_MAX_RECORDS_PER_PACKET := 40
-# v10 plant records carry 41 raw packed bytes before RPC/ENet framing. Twenty-four
+# v11 plant records carry 41 raw packed bytes before RPC/ENet framing. Twenty-four
 # records stay near 984 bytes and below the project's 1200-byte packet budget.
 const PLANT_HEALTH_MAX_RECORDS_PER_PACKET := 24
 const BAMBOO_MORTAR_VISUAL_MAX_RECORDS_PER_PACKET := 24
@@ -584,6 +584,23 @@ func request_multiplayer_inventory_item_discard(slot_index: int) -> void:
 		)
 
 
+func begin_inventory_building_placement(
+	slot_index: int,
+	expected_inventory_revision: int = -1
+) -> bool:
+	if (
+		game == null
+		or not game.supports_tower_defense()
+		or not game.has_method("begin_inventory_building_placement")
+	):
+		return false
+	return bool(game.call(
+		"begin_inventory_building_placement",
+		slot_index,
+		expected_inventory_revision
+	))
+
+
 func request_multiplayer_skill1_purchase() -> void:
 	if net_manager.is_host():
 		_apply_skill1_purchase_for_peer(_get_local_peer_id())
@@ -915,6 +932,38 @@ func _on_local_plant_placement_requested(
 		)
 
 
+func _on_local_inventory_plant_placement_requested(
+	request_id: int,
+	plant_id: StringName,
+	anchor: Vector2i,
+	slot_index: int,
+	expected_inventory_revision: int,
+	item_config_path: String
+) -> void:
+	if game == null or not game.supports_tower_defense():
+		return
+	if net_manager.is_host():
+		_handle_authoritative_inventory_plant_placement_request(
+			_get_local_peer_id(),
+			request_id,
+			plant_id,
+			anchor,
+			slot_index,
+			expected_inventory_revision,
+			item_config_path
+		)
+	elif net_manager.is_client():
+		net_inventory_plant_placement_requested.rpc_id(
+			_get_host_peer_id(),
+			request_id,
+			String(plant_id),
+			anchor,
+			slot_index,
+			expected_inventory_revision,
+			item_config_path
+		)
+
+
 func _handle_authoritative_plant_placement_request(
 	requester_peer_id: int,
 	request_id: int,
@@ -944,6 +993,58 @@ func _handle_authoritative_plant_placement_request(
 		request_id,
 		plant_id,
 		anchor
+	)
+
+
+func _handle_authoritative_inventory_plant_placement_request(
+	requester_peer_id: int,
+	request_id: int,
+	plant_id: StringName,
+	anchor: Vector2i,
+	slot_index: int,
+	expected_inventory_revision: int,
+	item_config_path: String
+) -> void:
+	if not net_manager.is_host() or game == null or not game.supports_tower_defense():
+		return
+	var last_request_id := int(
+		_last_plant_placement_request_ids.get(requester_peer_id, 0)
+	)
+	if request_id <= last_request_id:
+		_send_plant_placement_rejected(
+			requester_peer_id,
+			request_id,
+			&"stale_request"
+		)
+		return
+	_last_plant_placement_request_ids[requester_peer_id] = request_id
+	if not _consume_peer_rate_token(
+		_plant_placement_rate_buckets,
+		requester_peer_id,
+		PLANT_PLACEMENT_RATE_PER_SECOND,
+		PLANT_PLACEMENT_RATE_BURST
+	):
+		_send_plant_placement_rejected(
+			requester_peer_id,
+			request_id,
+			&"rate_limited"
+		)
+		return
+	if _get_authoritative_team_plant_count() >= MULTIPLAYER_TEAM_PLANT_LIMIT:
+		_send_plant_placement_rejected(
+			requester_peer_id,
+			request_id,
+			&"team_limit_reached"
+		)
+		return
+	game.request_multiplayer_inventory_plant_placement(
+		requester_peer_id,
+		request_id,
+		plant_id,
+		anchor,
+		slot_index,
+		expected_inventory_revision,
+		item_config_path
 	)
 
 
@@ -1837,6 +1938,12 @@ func _broadcast_inventory_snapshot(peer_id: int) -> void:
 	_rpc_to_connected_clients(&"net_inventory_snapshot", [peer_id, snapshot])
 
 
+func _on_host_multiplayer_inventory_changed(peer_id: int) -> void:
+	if not net_manager.is_host() or peer_id <= 0:
+		return
+	_broadcast_inventory_snapshot(peer_id)
+
+
 func _broadcast_warehouse_snapshot(warehouse: OakWarehouse) -> void:
 	if warehouse == null or not is_instance_valid(warehouse):
 		return
@@ -1905,8 +2012,14 @@ func _setup_game(mode: int) -> bool:
 		game.multiplayer_plant_healing_applied.connect(_on_host_plant_healing_applied)
 		game.multiplayer_plant_removed.connect(_on_host_plant_removed)
 		game.multiplayer_terrain_delta.connect(_on_host_terrain_delta)
+		game.multiplayer_inventory_changed.connect(
+			_on_host_multiplayer_inventory_changed
+		)
 	game.multiplayer_plant_placement_requested.connect(
 		_on_local_plant_placement_requested
+	)
+	game.multiplayer_inventory_plant_placement_requested.connect(
+		_on_local_inventory_plant_placement_requested
 	)
 	game.return_to_lobby_requested.connect(_on_game_return_to_lobby_requested)
 	add_child(game)
@@ -6767,7 +6880,7 @@ func net_player_healed(
 	player_node.queue_healing_number(confirmed_healing)
 
 
-# Legacy compatibility shells retained in protocol v10. Xirang orbs no longer exist, but keeping the
+# Legacy compatibility shells retained in protocol v11. Xirang orbs no longer exist, but keeping the
 # annotated signatures avoids a partial wire-protocol break until the next
 # coordinated protocol-version upgrade.
 @rpc("authority", "call_remote", "reliable", 5)
@@ -7908,6 +8021,29 @@ func net_plant_placement_requested(
 		request_id,
 		StringName(plant_id),
 		anchor
+	)
+
+
+@rpc("any_peer", "call_remote", "reliable", 5)
+func net_inventory_plant_placement_requested(
+	request_id: int,
+	plant_id: String,
+	anchor: Vector2i,
+	slot_index: int,
+	expected_inventory_revision: int,
+	item_config_path: String
+) -> void:
+	if not net_manager.is_host() or game == null:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	_handle_authoritative_inventory_plant_placement_request(
+		sender_id,
+		request_id,
+		StringName(plant_id),
+		anchor,
+		slot_index,
+		expected_inventory_revision,
+		item_config_path
 	)
 
 

@@ -6,6 +6,14 @@ signal placement_mode_changed(active: bool)
 signal player_lock_requested(locked: bool)
 signal plant_placed(plant: PlantDefense, config: PlantDefenseConfig)
 signal multiplayer_placement_requested(request_id: int, plant_id: StringName, anchor: Vector2i)
+signal inventory_placement_requested(
+	request_id: int,
+	plant_id: StringName,
+	anchor: Vector2i,
+	slot_index: int,
+	expected_inventory_revision: int,
+	item_config_path: String
+)
 signal placement_cancelled
 signal selection_unavailable
 
@@ -13,6 +21,11 @@ enum PlacementState {
 	IDLE,
 	SELECTING,
 	PLACING,
+}
+
+enum PlacementSource {
+	DEBUG_FREE,
+	INVENTORY_ITEM,
 }
 
 const PLACEMENT_MARKER_SCENE := preload(
@@ -40,6 +53,10 @@ var has_hovered_anchor := false
 var marker_refresh_time_left := 0.0
 var multiplayer_request_mode := false
 var next_multiplayer_request_id := 1
+var placement_source := PlacementSource.DEBUG_FREE
+var inventory_slot_index := -1
+var inventory_expected_revision := -1
+var inventory_item_config_path := ""
 
 
 func _ready() -> void:
@@ -95,6 +112,7 @@ func open_selection() -> bool:
 	if configs.is_empty():
 		selection_unavailable.emit()
 		return false
+	_clear_inventory_placement_source()
 	_set_placement_state(PlacementState.SELECTING)
 	placement_mode_changed.emit(true)
 	player_lock_requested.emit(true)
@@ -103,6 +121,37 @@ func open_selection() -> bool:
 	cancel_placement()
 	selection_unavailable.emit()
 	return false
+
+
+func begin_inventory_placement(
+	config: PlantDefenseConfig,
+	slot_index: int,
+	expected_inventory_revision: int,
+	item_config_path: String
+) -> bool:
+	if (
+		placement_state != PlacementState.IDLE
+		or plant_system == null
+		or config == null
+		or not config.is_valid()
+		or slot_index < 0
+		or expected_inventory_revision < 0
+		or item_config_path.is_empty()
+	):
+		return false
+	if owner_player != null and owner_player.is_dead:
+		return false
+	if multiplayer_request_mode and not config.supports_multiplayer:
+		return false
+	placement_source = PlacementSource.INVENTORY_ITEM
+	inventory_slot_index = slot_index
+	inventory_expected_revision = expected_inventory_revision
+	inventory_item_config_path = item_config_path
+	_set_placement_state(PlacementState.PLACING)
+	placement_mode_changed.emit(true)
+	player_lock_requested.emit(true)
+	_start_placing(config)
+	return true
 
 
 func _get_available_configs_for_current_mode() -> Array[PlantDefenseConfig]:
@@ -123,6 +172,7 @@ func cancel_placement() -> void:
 	selection_hud.close()
 	_clear_world_preview()
 	selected_config = null
+	_clear_inventory_placement_source()
 	_set_placement_state(PlacementState.IDLE)
 	placement_mode_changed.emit(false)
 	player_lock_requested.emit(false)
@@ -180,9 +230,14 @@ func _unhandled_input(event: InputEvent) -> void:
 func _begin_placing(config: PlantDefenseConfig) -> void:
 	if placement_state != PlacementState.SELECTING or config == null:
 		return
-	selected_config = config
 	selection_hud.close()
 	_set_placement_state(PlacementState.PLACING)
+	placement_source = PlacementSource.DEBUG_FREE
+	_start_placing(config)
+
+
+func _start_placing(config: PlantDefenseConfig) -> void:
+	selected_config = config
 	preview.configure(selected_config, _get_placement_tile_size())
 	placement_hint_layer.show()
 	placement_hint_root.show()
@@ -261,6 +316,24 @@ func _set_hovered_anchor(anchor: Vector2i, has_anchor: bool) -> void:
 func _try_place_hovered() -> void:
 	if not has_hovered_anchor or plant_system == null or selected_config == null:
 		return
+	if placement_source == PlacementSource.INVENTORY_ITEM:
+		var item_request_id := next_multiplayer_request_id
+		next_multiplayer_request_id += 1
+		var requested_item_config := selected_config
+		var requested_item_anchor := hovered_anchor
+		var requested_slot_index := inventory_slot_index
+		var requested_revision := inventory_expected_revision
+		var requested_item_path := inventory_item_config_path
+		_finish_placement_interaction()
+		inventory_placement_requested.emit(
+			item_request_id,
+			requested_item_config.plant_id,
+			requested_item_anchor,
+			requested_slot_index,
+			requested_revision,
+			requested_item_path
+		)
+		return
 	if multiplayer_request_mode:
 		var request_id := next_multiplayer_request_id
 		next_multiplayer_request_id += 1
@@ -286,6 +359,7 @@ func _finish_placement_interaction() -> void:
 	selection_hud.close()
 	_clear_world_preview()
 	selected_config = null
+	_clear_inventory_placement_source()
 	_set_placement_state(PlacementState.IDLE)
 	placement_mode_changed.emit(false)
 	player_lock_requested.emit(false)
@@ -312,9 +386,15 @@ func _clear_markers() -> void:
 func _update_hint_text() -> void:
 	if selected_config == null:
 		return
-	placement_hint_label.text = "%s  ·  %d 个可放置位置  ·  左键放置  ·  右键 / Esc / 植物键取消" % [
+	var cost_hint := (
+		"  ·  落地消耗 1 个建筑物品"
+		if placement_source == PlacementSource.INVENTORY_ITEM
+		else ""
+	)
+	placement_hint_label.text = "%s  ·  %d 个可放置位置%s  ·  左键放置  ·  右键 / Esc / 植物键取消" % [
 		selected_config.display_name,
 		valid_anchors.size(),
+		cost_hint,
 	]
 
 
@@ -334,6 +414,13 @@ func _set_placement_state(next_state: PlacementState) -> void:
 	var previous_state := placement_state
 	placement_state = next_state
 	state_changed.emit(previous_state, placement_state)
+
+
+func _clear_inventory_placement_source() -> void:
+	placement_source = PlacementSource.DEBUG_FREE
+	inventory_slot_index = -1
+	inventory_expected_revision = -1
+	inventory_item_config_path = ""
 
 
 func _disconnect_owner_player() -> void:

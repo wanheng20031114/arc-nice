@@ -177,9 +177,9 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 	_expect(
 		PlantDefenseRegistry.get_config(&"bamboo_mortar")
 		== MORTAR_CONFIG
-		and PlantDefenseRegistry.get_all_configs().size() == 8
+		and PlantDefenseRegistry.get_all_configs().size() == 9
 		and PlantDefenseRegistry.get_all_configs().back() == MORTAR_CONFIG,
-		"迫击炮必须作为第八种植物进入公共注册表。"
+		"迫击炮必须作为第九种植物进入公共注册表。"
 	)
 	_expect(
 		mortar.main_sprite.sprite_frames.get_frame_count(&"charge") == 8

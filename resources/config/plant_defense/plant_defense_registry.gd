@@ -9,6 +9,7 @@ const VEGETATION_STAKE_ID: StringName = &"vegetation_stake"
 const WOOD_PROCESSING_STATION_ID: StringName = &"wood_processing_station"
 const WATER_COLLECTOR_ID: StringName = &"water_collector"
 const RESEARCH_CENTER_ID: StringName = &"research_center"
+const PLANT_CULTIVATION_CENTER_ID: StringName = &"plant_cultivation_center"
 
 const AGAVE_CANNON_CONFIG: PlantDefenseConfig = preload(
 	"res://resources/config/plant_defense/agave_cannon.tres"
@@ -34,6 +35,9 @@ const WATER_COLLECTOR_CONFIG: PlantDefenseConfig = preload(
 const RESEARCH_CENTER_CONFIG: PlantDefenseConfig = preload(
 	"res://resources/config/plant_defense/research_center.tres"
 )
+const PLANT_CULTIVATION_CENTER_CONFIG: PlantDefenseConfig = preload(
+	"res://resources/config/plant_defense/plant_cultivation_center.tres"
+)
 
 const PLANT_CONFIGS := {
 	AGAVE_CANNON_ID: AGAVE_CANNON_CONFIG,
@@ -43,6 +47,7 @@ const PLANT_CONFIGS := {
 	WOOD_PROCESSING_STATION_ID: WOOD_PROCESSING_STATION_CONFIG,
 	WATER_COLLECTOR_ID: WATER_COLLECTOR_CONFIG,
 	RESEARCH_CENTER_ID: RESEARCH_CENTER_CONFIG,
+	PLANT_CULTIVATION_CENTER_ID: PLANT_CULTIVATION_CENTER_CONFIG,
 	BAMBOO_MORTAR_ID: BAMBOO_MORTAR_CONFIG,
 }
 
@@ -60,6 +65,7 @@ static func get_all_configs() -> Array[PlantDefenseConfig]:
 		WOOD_PROCESSING_STATION_CONFIG,
 		WATER_COLLECTOR_CONFIG,
 		RESEARCH_CENTER_CONFIG,
+		PLANT_CULTIVATION_CENTER_CONFIG,
 		BAMBOO_MORTAR_CONFIG,
 	]
 

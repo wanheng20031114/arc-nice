@@ -315,6 +315,17 @@ func net_plant_placement_requested(
 ) -> void:
 	pass
 
+@rpc("any_peer", "call_remote", "reliable", 5)
+func net_inventory_plant_placement_requested(
+	request_id: int,
+	plant_id: String,
+	anchor: Vector2i,
+	slot_index: int,
+	expected_inventory_revision: int,
+	item_config_path: String
+) -> void:
+	pass
+
 @rpc("authority", "call_remote", "reliable", 5)
 func net_enemy_spawned(
 	net_id: int,

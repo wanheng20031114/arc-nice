@@ -2,6 +2,7 @@ extends Node
 class_name ProductionCoordinator
 
 signal storage_totals_changed
+signal personal_inventory_output_committed(peer_id: int)
 
 const TICK_INTERVAL_SECONDS := 1.0
 const RESULT_SUCCESS := &"success"
@@ -10,6 +11,9 @@ const RESULT_STORAGE_FULL := &"storage_full"
 const RESULT_UNAVAILABLE := &"unavailable"
 
 @onready var production_tick_timer: Timer = $ProductionTickTimer
+@onready var run_state: RunStateStore = get_node_or_null(
+	"/root/RunState"
+) as RunStateStore
 
 var authoritative_processing_enabled := true
 var production_buildings: Array[ProductionBuilding] = []
@@ -128,7 +132,10 @@ func try_consume_item_requirements(requirements: Array[Dictionary]) -> StringNam
 	return RESULT_SUCCESS
 
 
-func try_commit_recipe(recipe: ProductionRecipe) -> StringName:
+func try_commit_recipe(
+	recipe: ProductionRecipe,
+	output_peer_id: int = 0
+) -> StringName:
 	if not authoritative_processing_enabled or recipe == null or not recipe.is_valid():
 		return RESULT_UNAVAILABLE
 	var ordered_warehouses := _get_ordered_operational_warehouses()
@@ -150,13 +157,38 @@ func try_commit_recipe(recipe: ProductionRecipe) -> StringName:
 		):
 			return RESULT_MISSING_INPUT
 
-	for output_index in recipe.output_items.size():
-		if not _simulate_add_item_count(
-			states,
-			recipe.output_items[output_index],
-			recipe.output_amounts[output_index]
-		):
+	var outputs_to_inventory := recipe.outputs_to_player_inventory()
+	var inventory_revision := -1
+	if outputs_to_inventory:
+		if run_state == null or output_peer_id < 0:
+			return RESULT_UNAVAILABLE
+		inventory_revision = (
+			run_state.get_inventory_revision_for_peer(output_peer_id)
+			if output_peer_id > 0
+			else run_state.get_inventory_revision()
+		)
+		var inventory_has_capacity := (
+			run_state.can_add_item_counts_for_peer(
+				output_peer_id,
+				recipe.output_items,
+				recipe.output_amounts
+			)
+			if output_peer_id > 0
+			else run_state.can_add_item_counts(
+				recipe.output_items,
+				recipe.output_amounts
+			)
+		)
+		if not inventory_has_capacity:
 			return RESULT_STORAGE_FULL
+	else:
+		for output_index in recipe.output_items.size():
+			if not _simulate_add_item_count(
+				states,
+				recipe.output_items[output_index],
+				recipe.output_amounts[output_index]
+			):
+				return RESULT_STORAGE_FULL
 
 	# No method above yields control. Revisions can therefore be checked for all
 	# warehouses before any write, producing one atomic game-frame transaction.
@@ -167,6 +199,14 @@ func try_commit_recipe(recipe: ProductionRecipe) -> StringName:
 			or not is_instance_valid(warehouse)
 			or warehouse.get_storage_revision() != int(state["revision"])
 		):
+			return RESULT_UNAVAILABLE
+	if outputs_to_inventory:
+		var current_inventory_revision := (
+			run_state.get_inventory_revision_for_peer(output_peer_id)
+			if output_peer_id > 0
+			else run_state.get_inventory_revision()
+		)
+		if current_inventory_revision != inventory_revision:
 			return RESULT_UNAVAILABLE
 	var transaction_was_already_in_progress := _storage_transaction_in_progress
 	_storage_transaction_in_progress = true
@@ -185,10 +225,36 @@ func try_commit_recipe(recipe: ProductionRecipe) -> StringName:
 			push_error("Production storage transaction changed after revision validation.")
 			return RESULT_UNAVAILABLE
 		changed_warehouses.append(warehouse)
+	if outputs_to_inventory:
+		var inventory_committed := (
+			run_state.try_add_item_counts_for_peer_if_revision(
+				output_peer_id,
+				recipe.output_items,
+				recipe.output_amounts,
+				inventory_revision,
+				false
+			)
+			if output_peer_id > 0
+			else run_state.try_add_item_counts_if_revision(
+				recipe.output_items,
+				recipe.output_amounts,
+				inventory_revision,
+				false
+			)
+		)
+		if not inventory_committed:
+			_storage_transaction_in_progress = transaction_was_already_in_progress
+			push_error(
+				"Production inventory transaction changed after revision validation."
+			)
+			return RESULT_UNAVAILABLE
 	# Publish only after every warehouse array and revision has committed. Signal
-	# listeners can therefore never observe a half-applied cross-warehouse cycle.
+	# listeners can therefore never observe a half-applied cross-store cycle.
 	for warehouse in changed_warehouses:
 		warehouse.notify_production_storage_changed()
+	if outputs_to_inventory:
+		run_state.notify_inventory_transaction_completed()
+		personal_inventory_output_committed.emit(output_peer_id)
 	_storage_transaction_in_progress = transaction_was_already_in_progress
 	return RESULT_SUCCESS
 

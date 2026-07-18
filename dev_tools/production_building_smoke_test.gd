@@ -636,6 +636,7 @@ func _test_multiplayer_production_contract(
 		"active_recipe_id": "wood_to_plank",
 		"progress_elapsed_seconds": 4.0,
 		"wait_reason": "",
+		"personal_output_peer_id": 0,
 		"revision": 1,
 		"projection_duration_seconds": 0.5,
 	}

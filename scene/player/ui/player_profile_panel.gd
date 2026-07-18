@@ -262,6 +262,10 @@ func _try_use_slot(slot_index: int) -> void:
 		_clear_inventory_selection()
 		return
 	selected_slot_index = slot_index
+	var item := run_state.get_item(slot_index)
+	if item.pickup_type == PickupConfig.PickupType.BUILDING:
+		_try_begin_building_placement(slot_index)
+		return
 	if _request_multiplayer_inventory_item_use(slot_index):
 		return
 	if run_state.try_use_item(slot_index, tracked_player):
@@ -420,6 +424,7 @@ func _refresh_item_detail() -> void:
 
 	var is_consumable := _is_consumable_item(item)
 	var is_material := item.pickup_type == PickupConfig.PickupType.MATERIAL
+	var is_building := item.pickup_type == PickupConfig.PickupType.BUILDING
 	var stack_count := run_state.get_item_count(selected_slot_index)
 	item_detail_title.text = (
 		"%s ×%d" % [item.display_name, stack_count]
@@ -434,10 +439,19 @@ func _refresh_item_detail() -> void:
 	)
 	item_detail_description.text = item.description if not item.description.is_empty() else "暂无描述"
 	item_detail_hint.visible = is_consumable
-	item_detail_hint.text = "也可以双击槽位使用"
+	item_detail_hint.text = (
+		"也可以双击槽位进入建造模式"
+		if is_building
+		else "也可以双击槽位使用"
+	)
 	item_detail_use_button.visible = is_consumable
+	item_detail_use_button.text = "建造" if is_building else "使用"
 	item_detail_discard_button.visible = true
-	item_detail_discard_button.text = "删除" if is_material else "丢弃"
+	item_detail_discard_button.text = (
+		"销毁"
+		if is_building
+		else ("删除" if is_material else "丢弃")
+	)
 	item_detail_panel.visible = true
 	item_detail_panel.move_to_front()
 	_update_item_detail_position(slots[selected_slot_index])
@@ -497,7 +511,34 @@ func _get_item_type_label(item: PickupConfig) -> String:
 		return "收藏品"
 	if item != null and item.pickup_type == PickupConfig.PickupType.MATERIAL:
 		return "物资"
+	if item != null and item.pickup_type == PickupConfig.PickupType.BUILDING:
+		return "建筑"
 	return "道具"
+
+
+func _try_begin_building_placement(slot_index: int) -> void:
+	var current_scene := get_tree().current_scene
+	if (
+		current_scene == null
+		or not current_scene.has_method("begin_inventory_building_placement")
+	):
+		_refresh_item_detail()
+		return
+	var expected_revision := (
+		run_state.get_inventory_revision_for_peer(
+			run_state.active_multiplayer_peer_id
+		)
+		if run_state.active_multiplayer_peer_id > 0
+		else run_state.get_inventory_revision()
+	)
+	close()
+	var started := bool(current_scene.call(
+		"begin_inventory_building_placement",
+		slot_index,
+		expected_revision
+	))
+	if not started:
+		open()
 
 
 func _request_multiplayer_inventory_item_use(slot_index: int) -> bool:

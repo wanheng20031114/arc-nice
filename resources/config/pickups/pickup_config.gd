@@ -9,7 +9,7 @@ enum PickupType {
 	HEALTH,
 	COLLECTIBLE,
 	MATERIAL,
-	
+	BUILDING,
 }
 
 enum PlayerFormMode {
@@ -126,6 +126,9 @@ const MAX_DASH_COOLDOWN_REDUCTION_PER_COLLECTIBLE := 0.5
 @export var icon_scale: Vector2 = Vector2.ONE
 @export_range(0.0, 300.0, 1.0, "or_greater") var world_lifetime: float = 12.0
 
+@export_group("建筑物品")
+# 建筑物品被使用时进入指定植物建筑的放置模式；真正落地后才消耗 1 个。
+@export var placeable_plant_id: StringName = &""
 
 @export_group("Buff 效果")
 # 拾取后回复的生命值，0 表示该道具不回复生命。

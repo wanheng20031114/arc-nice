@@ -17,6 +17,9 @@ const PLANT_VISUAL_PIXEL_SNAP_SHADER := preload(
 const PLANT_LIFECYCLE_SHADER := preload(
 	"res://resources/shader/plant_lifecycle.gdshader"
 )
+const AGAVE_BUILDING_ITEM := preload(
+	"res://resources/config/buildings/building_agave_cannon.tres"
+)
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -169,16 +172,24 @@ func _test_config_and_scene_contracts() -> void:
 	_expect(water_collector_config != null and water_collector_config.is_valid(), "水源采集器配置必须有效。")
 	var research_center_config := PlantDefenseRegistry.get_config(&"research_center")
 	_expect(research_center_config != null and research_center_config.is_valid(), "科研中心配置必须有效。")
+	var cultivation_center_config := PlantDefenseRegistry.get_config(
+		&"plant_cultivation_center"
+	)
+	_expect(
+		cultivation_center_config != null and cultivation_center_config.is_valid(),
+		"植物培育中心配置必须有效。"
+	)
 	if (
 		oak_config == null
 		or wood_station_config == null
 		or water_collector_config == null
 		or research_center_config == null
+		or cultivation_center_config == null
 	):
 		return
 	var registered_configs := PlantDefenseRegistry.get_all_configs()
 	_expect(
-		registered_configs.size() == 8
+		registered_configs.size() == 9
 		and registered_configs.has(agave_config)
 		and registered_configs.has(bamboo_mortar_config)
 		and registered_configs.has(corn_config)
@@ -187,8 +198,9 @@ func _test_config_and_scene_contracts() -> void:
 		and registered_configs.has(wood_station_config)
 		and registered_configs.has(water_collector_config)
 		and registered_configs.has(research_center_config)
+		and registered_configs.has(cultivation_center_config)
 		and registered_configs.back() == bamboo_mortar_config,
-		"植物注册表必须公开七种既有植物与全新的竹筒迫击炮。"
+		"植物注册表必须公开全部9种建筑，包括植物培育中心与竹筒迫击炮。"
 	)
 	_expect(
 		bamboo_mortar_config.max_health == 2000
@@ -208,6 +220,13 @@ func _test_config_and_scene_contracts() -> void:
 		== PlantDefenseConfig.PlacementSurface.GRASS
 		and bamboo_mortar_config.supports_multiplayer,
 		"竹筒迫击炮必须拥有2000生命、10物防、20法防、100中心伤害、2秒冷却、160范围并占草地2×2格。"
+	)
+	_expect(
+		cultivation_center_config.max_health == 1500
+		and cultivation_center_config.physical_defense == 10
+		and cultivation_center_config.magic_defense == 10
+		and cultivation_center_config.footprint_size == Vector2i(2, 2),
+		"植物培育中心必须拥有1500生命、10物防、10法防并占2×2格。"
 	)
 	_expect(
 		research_center_config.max_health == 2800
@@ -1349,7 +1368,7 @@ func _test_realtime_selection_and_cancel() -> void:
 	_expect(controller.is_selecting(), "打开后状态必须为SELECTING。")
 	_expect(controller.selection_hud.is_open(), "真实plant动作输入必须显示植物选择界面。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 8
+		controller.selection_hud.available_configs.size() == 9
 		and controller.selection_hud.available_configs.has(agave_config)
 		and controller.selection_hud.available_configs.has(
 			bamboo_mortar_config
@@ -1368,8 +1387,11 @@ func _test_realtime_selection_and_cancel() -> void:
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"research_center")
 		)
-		and controller.selection_hud.cards.size() == 8,
-		"单人植物选择界面必须生成七张既有卡片与竹筒迫击炮卡片。"
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"plant_cultivation_center")
+		)
+		and controller.selection_hud.cards.size() == 9,
+		"单人T键调试界面必须显示全部9种建筑，包括植物培育中心与竹筒迫击炮。"
 	)
 	var agave_card: PlantSelectionCard = null
 	var corn_card: PlantSelectionCard = null
@@ -1609,7 +1631,7 @@ func _test_multiplayer_authority_contracts() -> void:
 	controller.set_multiplayer_request_mode(true)
 	_expect(controller.open_selection(), "多人植物选择必须仍可打开。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 8
+		controller.selection_hud.available_configs.size() == 9
 		and controller.selection_hud.available_configs.has(agave_config)
 		and controller.selection_hud.available_configs.has(
 			bamboo_mortar_config
@@ -1628,8 +1650,11 @@ func _test_multiplayer_authority_contracts() -> void:
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"research_center")
 		)
-		and controller.selection_hud.cards.size() == 8,
-		"多人植物选择必须公开七张既有卡片与竹筒迫击炮，共八张卡片。"
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"plant_cultivation_center")
+		)
+		and controller.selection_hud.cards.size() == 9,
+		"多人T键调试界面必须显示全部9种支持联机的建筑。"
 	)
 	controller.cancel_placement()
 	var placement_requests: Array[Dictionary] = []
@@ -1660,6 +1685,75 @@ func _test_multiplayer_authority_contracts() -> void:
 		and not plant_system.is_cell_occupied(anchor),
 		"客户端提交放置请求时不得本地预测生成植物。"
 	)
+
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.ensure_multiplayer_peer_state(2)
+	_expect(
+		run_state.try_add_item_for_peer(2, AGAVE_BUILDING_ITEM),
+		"权威背包建造测试必须能向请求玩家加入加农炮建筑物品。"
+	)
+	var building_item_slot := -1
+	for slot_index in RunStateStore.INVENTORY_CAPACITY:
+		if run_state.get_item_for_peer(2, slot_index) == AGAVE_BUILDING_ITEM:
+			building_item_slot = slot_index
+			break
+	var building_item_revision := run_state.get_inventory_revision_for_peer(2)
+	var host_game := GameTowerDefense.new()
+	host_game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	host_game.run_state = run_state
+	host_game.plant_system = plant_system
+	host_game.peer_players = {2: requesting_player}
+	host_game.next_multiplayer_plant_net_id = 5101
+	var spawned_building_records: Array[Dictionary] = []
+	var changed_inventory_peers: Array[int] = []
+	host_game.multiplayer_plant_spawned.connect(
+		func(
+			request_id: int,
+			owner_peer_id: int,
+			net_id: int,
+			plant_id: StringName,
+			requested_anchor: Vector2i,
+			_current_health: int,
+			_maximum_health: int,
+			_health_revision: int
+		) -> void:
+			spawned_building_records.append({
+				"request_id": request_id,
+				"owner_peer_id": owner_peer_id,
+				"net_id": net_id,
+				"plant_id": plant_id,
+				"anchor": requested_anchor,
+			})
+	)
+	host_game.multiplayer_inventory_changed.connect(
+		func(peer_id: int) -> void: changed_inventory_peers.append(peer_id)
+	)
+	host_game.request_multiplayer_inventory_plant_placement(
+		2,
+		2,
+		&"agave_cannon",
+		anchor,
+		building_item_slot,
+		building_item_revision,
+		AGAVE_BUILDING_ITEM.resource_path
+	)
+	_expect(
+		spawned_building_records.size() == 1
+		and int(spawned_building_records[0]["request_id"]) == 2
+		and int(spawned_building_records[0]["owner_peer_id"]) == 2
+		and int(spawned_building_records[0]["net_id"]) == 5101
+		and spawned_building_records[0]["plant_id"] == &"agave_cannon"
+		and spawned_building_records[0]["anchor"] == anchor
+		and run_state.get_item_count_for_peer(2, building_item_slot) == 0
+		and changed_inventory_peers == [2]
+		and plant_system.get_plant_by_net_id(5101) != null,
+		"主机必须校验背包revision后消费1个建筑物品、权威生成建筑并广播背包变更。"
+	)
+	_expect(
+		plant_system.remove_plant_by_net_id(5101),
+		"权威背包建造测试结束时必须释放已生成建筑。"
+	)
+	host_game.free()
 	controller.queue_free()
 	requesting_player.queue_free()
 	await process_frame

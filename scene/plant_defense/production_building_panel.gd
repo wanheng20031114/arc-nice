@@ -53,6 +53,8 @@ var tracked_player: Player = null
 var bound_coordinator: ProductionCoordinator = null
 var transient_status := ""
 var _last_visual_remaining_seconds := -1
+var _default_styles: Dictionary = {}
+var _plant_styles: Dictionary = {}
 
 
 func _ready() -> void:
@@ -76,6 +78,7 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_update_panel_transform)
 	_update_panel_transform()
 	_clear_slots()
+	_prepare_panel_themes()
 
 
 func open_for(new_building: ProductionBuilding, player: Player) -> void:
@@ -235,9 +238,13 @@ func _refresh_progress_text() -> void:
 	var remaining := ceili(building.get_visual_remaining_seconds())
 	if remaining <= 0:
 		progress_label.text = (
-			"采集完成 · 等待仓库接收"
-			if recipe.uses_environment_source()
-			else "剩余 0 秒 · 等待仓库结算"
+			"制作完成 · 等待背包接收"
+			if recipe.outputs_to_player_inventory()
+			else (
+				"采集完成 · 等待仓库接收"
+				if recipe.uses_environment_source()
+				else "剩余 0 秒 · 等待仓库结算"
+			)
 		)
 	else:
 		progress_label.text = (
@@ -364,11 +371,19 @@ func _refresh_status() -> void:
 		ProductionCoordinator.RESULT_MISSING_INPUT:
 			status_label.text = "进度已到 0 秒，等待任意仓库出现所需原料。"
 		ProductionCoordinator.RESULT_STORAGE_FULL:
-			status_label.text = "进度已到 0 秒，等待任意仓库腾出产物空间。"
+			status_label.text = (
+				"制作已完成，但配方选择者的背包空间不足。"
+				if building.get_active_recipe().outputs_to_player_inventory()
+				else "进度已到 0 秒，等待任意仓库腾出产物空间。"
+			)
 		ProductionCoordinator.RESULT_UNAVAILABLE:
 			status_label.text = "仓库网络刚刚发生变化，将在下个同步周期重试。"
 		_:
-			status_label.text = "原料和产物只在一轮完成瞬间于全场仓库中结算。"
+			status_label.text = (
+				"完成时从共享仓库扣除原料，并将建筑物品存入配方选择者背包。"
+				if building.get_active_recipe().outputs_to_player_inventory()
+				else "原料和产物只在一轮完成瞬间于全场仓库中结算。"
+			)
 
 
 func _on_toggle_pressed() -> void:
@@ -442,7 +457,15 @@ func _on_recipe_row_pressed(row_index: int) -> void:
 		if building.multiplayer_production_enabled:
 			_refresh_status()
 		else:
-			_show_transient_status("已选择配方；当前方案保持高亮。")
+			var selected_recipe := building.get_recipe(recipe_id)
+			_show_transient_status(
+				"已选择配方；完成后的建筑物品将进入你的背包。"
+				if (
+					selected_recipe != null
+					and selected_recipe.outputs_to_player_inventory()
+				)
+				else "已选择配方；当前方案保持高亮。"
+			)
 	else:
 		_show_transient_status("配方无效或加工站状态尚未同步。")
 
@@ -536,6 +559,7 @@ func _apply_panel_layout(recipe: ProductionRecipe) -> void:
 		if building != null and building.production_panel_background_override != null
 		else DEFAULT_PANEL_BACKGROUND
 	)
+	_apply_panel_theme()
 	if environment_layout:
 		material_list.hide()
 		recipe_title.hide()
@@ -564,7 +588,11 @@ func _apply_panel_layout(recipe: ProductionRecipe) -> void:
 	recipe_title.show()
 	recipe_scroll.show()
 	input_title.text = "原材料"
-	output_title.text = "产物"
+	output_title.text = (
+		"背包产物"
+		if recipe != null and recipe.outputs_to_player_inventory()
+		else "产物"
+	)
 	_set_control_rect(building_title, Rect2(84, 23, 536, 39))
 	_set_control_rect(input_title, Rect2(42, 196, 164, 28))
 	_set_control_rect(output_title, Rect2(304, 196, 164, 28))
@@ -645,6 +673,154 @@ func _get_input_tooltip(
 func _set_control_rect(control: Control, rect: Rect2) -> void:
 	control.position = rect.position
 	control.size = rect.size
+
+
+func _prepare_panel_themes() -> void:
+	_default_styles = {
+		"toggle_normal": toggle_button.get_theme_stylebox("normal"),
+		"toggle_active": toggle_button.get_theme_stylebox("hover"),
+		"recipe_normal": recipe_rows[0].get_theme_stylebox("normal"),
+		"recipe_active": recipe_rows[0].get_theme_stylebox("hover"),
+		"material_list": material_list.get_theme_stylebox("panel"),
+		"material_normal": material_buttons[0].get_theme_stylebox("normal"),
+		"material_active": material_buttons[0].get_theme_stylebox("hover"),
+		"progress_background": progress_bar.get_theme_stylebox("background"),
+		"progress_fill": progress_bar.get_theme_stylebox("fill"),
+		"close_normal": close_button.get_theme_stylebox("normal"),
+		"close_active": close_button.get_theme_stylebox("hover"),
+	}
+	_plant_styles = {
+		"toggle_normal": _make_plant_style(
+			_default_styles["toggle_normal"],
+			Color("#17351d"),
+			Color("#5f9341")
+		),
+		"toggle_active": _make_plant_style(
+			_default_styles["toggle_active"],
+			Color("#285424"),
+			Color("#b4ef5b")
+		),
+		"recipe_normal": _make_plant_style(
+			_default_styles["recipe_normal"],
+			Color("#0b1c10"),
+			Color("#365d34")
+		),
+		"recipe_active": _make_plant_style(
+			_default_styles["recipe_active"],
+			Color("#234a20"),
+			Color("#b7f15a")
+		),
+		"material_list": _make_plant_style(
+			_default_styles["material_list"],
+			Color("#08170d"),
+			Color("#5d8c3e")
+		),
+		"material_normal": _make_plant_style(
+			_default_styles["material_normal"],
+			Color("#102618"),
+			Color("#42663a")
+		),
+		"material_active": _make_plant_style(
+			_default_styles["material_active"],
+			Color("#285026"),
+			Color("#a9e856")
+		),
+		"progress_background": _make_plant_style(
+			_default_styles["progress_background"],
+			Color("#06130b"),
+			Color("#315c35")
+		),
+		"progress_fill": _make_plant_style(
+			_default_styles["progress_fill"],
+			Color("#8ee632"),
+			Color("#d6ff7a")
+		),
+		"close_normal": _make_plant_style(
+			_default_styles["close_normal"],
+			Color("#17351d"),
+			Color("#5f9341")
+		),
+		"close_active": _make_plant_style(
+			_default_styles["close_active"],
+			Color("#285424"),
+			Color("#b4ef5b")
+		),
+	}
+
+
+func _make_plant_style(
+	source: StyleBox,
+	background_color: Color,
+	border_color: Color
+) -> StyleBox:
+	var style := source.duplicate() as StyleBox
+	var flat_style := style as StyleBoxFlat
+	if flat_style != null:
+		flat_style.bg_color = background_color
+		flat_style.border_color = border_color
+	return style
+
+
+func _apply_panel_theme() -> void:
+	if _default_styles.is_empty() or _plant_styles.is_empty():
+		return
+	var uses_plant_theme := (
+		building != null
+		and building.production_panel_theme
+		== ProductionBuilding.PanelTheme.PLANT
+	)
+	var styles := _plant_styles if uses_plant_theme else _default_styles
+	toggle_button.add_theme_stylebox_override(
+		"normal",
+		styles["toggle_normal"]
+	)
+	for state_name in ["hover", "pressed", "focus"]:
+		toggle_button.add_theme_stylebox_override(
+			state_name,
+			styles["toggle_active"]
+		)
+	material_list.add_theme_stylebox_override("panel", styles["material_list"])
+	progress_bar.add_theme_stylebox_override(
+		"background",
+		styles["progress_background"]
+	)
+	progress_bar.add_theme_stylebox_override("fill", styles["progress_fill"])
+	for row in recipe_rows:
+		row.add_theme_stylebox_override("normal", styles["recipe_normal"])
+		for state_name in ["hover", "pressed", "focus"]:
+			row.add_theme_stylebox_override(
+				state_name,
+				styles["recipe_active"]
+			)
+	for button in material_buttons:
+		button.add_theme_stylebox_override(
+			"normal",
+			styles["material_normal"]
+		)
+		for state_name in ["hover", "pressed", "focus"]:
+			button.add_theme_stylebox_override(
+				state_name,
+				styles["material_active"]
+			)
+	close_button.add_theme_stylebox_override("normal", styles["close_normal"])
+	for state_name in ["hover", "pressed", "focus"]:
+		close_button.add_theme_stylebox_override(
+			state_name,
+			styles["close_active"]
+		)
+	var title_tint := Color("#c8ff72") if uses_plant_theme else Color.WHITE
+	var section_tint := Color("#dcff9c") if uses_plant_theme else Color.WHITE
+	var text_tint := Color("#d8f2c5") if uses_plant_theme else Color.WHITE
+	building_title.modulate = title_tint
+	input_title.modulate = section_tint
+	output_title.modulate = section_tint
+	recipe_title.modulate = section_tint
+	progress_label.modulate = text_tint
+	status_label.modulate = text_tint
+	toggle_button.add_theme_color_override(
+		"font_color",
+		Color("#eaffb4") if uses_plant_theme else Color(1, 0.92, 0.65, 1)
+	)
 
 
 func _update_panel_transform() -> void:

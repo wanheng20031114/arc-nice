@@ -281,6 +281,7 @@ func _test_multiplayer_water_collector_contract(test_root: Node) -> void:
 		"active_recipe_id": "water_to_bottle",
 		"progress_elapsed_seconds": 0.0,
 		"wait_reason": "",
+		"personal_output_peer_id": 0,
 		"revision": 1,
 		"projection_duration_seconds": 0.5,
 	}

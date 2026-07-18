@@ -4,6 +4,11 @@ class_name ProductionRecipe
 const MAX_INPUT_ITEMS := 3
 const MAX_OUTPUT_ITEMS := 3
 
+enum OutputDestination {
+	SHARED_STORAGE,
+	PLAYER_INVENTORY,
+}
+
 @export_group("基础信息")
 @export var recipe_id: StringName = &""
 @export var display_name: String = "生产配方"
@@ -16,6 +21,7 @@ const MAX_OUTPUT_ITEMS := 3
 @export_group("产出")
 @export var output_items: Array[PickupConfig] = []
 @export var output_amounts: Array[int] = []
+@export var output_destination: OutputDestination = OutputDestination.SHARED_STORAGE
 
 @export_group("生产")
 @export_range(0.1, 3600.0, 0.1, "or_greater") var duration_seconds: float = 10.0
@@ -31,6 +37,8 @@ func is_valid() -> bool:
 		or output_items.is_empty()
 		or output_items.size() != output_amounts.size()
 		or output_items.size() > MAX_OUTPUT_ITEMS
+		or output_destination < OutputDestination.SHARED_STORAGE
+		or output_destination > OutputDestination.PLAYER_INVENTORY
 		or not is_finite(duration_seconds)
 		or duration_seconds <= 0.0
 	):
@@ -57,6 +65,10 @@ func uses_environment_source() -> bool:
 		and input_amounts.size() == 1
 		and input_amounts[0] == 0
 	)
+
+
+func outputs_to_player_inventory() -> bool:
+	return output_destination == OutputDestination.PLAYER_INVENTORY
 
 
 func get_input_summary() -> String:

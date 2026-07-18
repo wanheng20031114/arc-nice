@@ -119,6 +119,75 @@ func try_add_item_count(item: PickupConfig, count: int = 1) -> bool:
 	return true
 
 
+func can_add_item_counts(
+	items: Array[PickupConfig],
+	counts: Array[int]
+) -> bool:
+	ensure_run_started()
+	if active_multiplayer_peer_id > 0:
+		return can_add_item_counts_for_peer(
+			active_multiplayer_peer_id,
+			items,
+			counts
+		)
+	_ensure_local_inventory_shape()
+	return not _simulate_add_item_counts(
+		inventory,
+		inventory_stack_counts,
+		items,
+		counts
+	).is_empty()
+
+
+func try_add_item_counts_if_revision(
+	items: Array[PickupConfig],
+	counts: Array[int],
+	expected_revision: int,
+	emit_change: bool = true
+) -> bool:
+	ensure_run_started()
+	_ensure_local_inventory_shape()
+	if expected_revision != inventory_revision:
+		return false
+	var simulated := _simulate_add_item_counts(
+		inventory,
+		inventory_stack_counts,
+		items,
+		counts
+	)
+	if simulated.is_empty():
+		return false
+	inventory.assign(simulated["items"] as Array)
+	inventory_stack_counts.assign(simulated["counts"] as Array)
+	_bump_local_inventory_revision()
+	if emit_change:
+		inventory_changed.emit()
+	return true
+
+
+func try_consume_item_at_slot_if_revision(
+	slot_index: int,
+	expected_item: PickupConfig,
+	expected_revision: int,
+	emit_change: bool = true
+) -> bool:
+	ensure_run_started()
+	_ensure_local_inventory_shape()
+	if expected_revision != inventory_revision:
+		return false
+	if not _can_consume_expected_item(inventory, slot_index, expected_item):
+		return false
+	_consume_one_item_from_arrays(
+		inventory,
+		inventory_stack_counts,
+		slot_index
+	)
+	_bump_local_inventory_revision()
+	if emit_change:
+		inventory_changed.emit()
+	return true
+
+
 func try_use_item(slot_index: int, player: Player) -> bool:
 	if active_multiplayer_peer_id > 0:
 		return try_use_item_for_peer(active_multiplayer_peer_id, slot_index, player)
@@ -290,6 +359,76 @@ func try_add_item_count_for_peer(peer_id: int, item: PickupConfig, count: int = 
 	_add_item_count_to_arrays(peer_inventory, peer_counts, item, count)
 	_bump_inventory_revision_for_peer(peer_id)
 	inventory_changed.emit()
+	return true
+
+
+func can_add_item_counts_for_peer(
+	peer_id: int,
+	items: Array[PickupConfig],
+	counts: Array[int]
+) -> bool:
+	ensure_run_started()
+	ensure_multiplayer_peer_state(peer_id)
+	return not _simulate_add_item_counts(
+		multiplayer_inventories[peer_id] as Array,
+		multiplayer_inventory_stack_counts[peer_id] as Array,
+		items,
+		counts
+	).is_empty()
+
+
+func try_add_item_counts_for_peer_if_revision(
+	peer_id: int,
+	items: Array[PickupConfig],
+	counts: Array[int],
+	expected_revision: int,
+	emit_change: bool = true
+) -> bool:
+	ensure_run_started()
+	ensure_multiplayer_peer_state(peer_id)
+	if expected_revision != get_inventory_revision_for_peer(peer_id):
+		return false
+	var simulated := _simulate_add_item_counts(
+		multiplayer_inventories[peer_id] as Array,
+		multiplayer_inventory_stack_counts[peer_id] as Array,
+		items,
+		counts
+	)
+	if simulated.is_empty():
+		return false
+	var peer_inventory := multiplayer_inventories[peer_id] as Array
+	var peer_counts := multiplayer_inventory_stack_counts[peer_id] as Array
+	peer_inventory.assign(simulated["items"] as Array)
+	peer_counts.assign(simulated["counts"] as Array)
+	_bump_inventory_revision_for_peer(peer_id)
+	if emit_change:
+		inventory_changed.emit()
+	return true
+
+
+func try_consume_item_at_slot_for_peer_if_revision(
+	peer_id: int,
+	slot_index: int,
+	expected_item: PickupConfig,
+	expected_revision: int,
+	emit_change: bool = true
+) -> bool:
+	ensure_run_started()
+	ensure_multiplayer_peer_state(peer_id)
+	if expected_revision != get_inventory_revision_for_peer(peer_id):
+		return false
+	var peer_inventory := multiplayer_inventories[peer_id] as Array
+	if not _can_consume_expected_item(
+		peer_inventory,
+		slot_index,
+		expected_item
+	):
+		return false
+	var peer_counts := multiplayer_inventory_stack_counts[peer_id] as Array
+	_consume_one_item_from_arrays(peer_inventory, peer_counts, slot_index)
+	_bump_inventory_revision_for_peer(peer_id)
+	if emit_change:
+		inventory_changed.emit()
 	return true
 
 
@@ -908,6 +1047,48 @@ func _items_share_stack(existing_item: PickupConfig, incoming_item: PickupConfig
 	)
 
 
+func _items_match_identity(
+	existing_item: PickupConfig,
+	expected_item: PickupConfig
+) -> bool:
+	if existing_item == null or expected_item == null:
+		return false
+	if existing_item == expected_item:
+		return true
+	return (
+		not existing_item.resource_path.is_empty()
+		and existing_item.resource_path == expected_item.resource_path
+	)
+
+
+func _can_consume_expected_item(
+	items: Array,
+	slot_index: int,
+	expected_item: PickupConfig
+) -> bool:
+	return (
+		slot_index >= 0
+		and slot_index < items.size()
+		and _items_match_identity(
+			items[slot_index] as PickupConfig,
+			expected_item
+		)
+	)
+
+
+func _consume_one_item_from_arrays(
+	items: Array,
+	counts: Array,
+	slot_index: int
+) -> void:
+	var current_count := maxi(int(counts[slot_index]), 1)
+	if current_count > 1:
+		counts[slot_index] = current_count - 1
+		return
+	items[slot_index] = null
+	counts[slot_index] = 0
+
+
 func _get_item_stack_limit(item: PickupConfig) -> int:
 	if item == null or not item.stackable:
 		return 1
@@ -1043,6 +1224,42 @@ func _add_item_count_to_arrays(
 		remaining -= added
 		if remaining <= 0:
 			return
+
+
+func _simulate_add_item_counts(
+	current_items: Array,
+	current_counts: Array,
+	items: Array[PickupConfig],
+	counts: Array[int]
+) -> Dictionary:
+	if items.is_empty() or items.size() != counts.size():
+		return {}
+	var simulated_items := current_items.duplicate()
+	var simulated_counts := current_counts.duplicate()
+	for item_index in items.size():
+		var item := items[item_index]
+		var count := counts[item_index]
+		if (
+			item == null
+			or not item.can_store_in_inventory
+			or count <= 0
+			or _get_available_item_capacity(
+				simulated_items,
+				simulated_counts,
+				item
+			) < count
+		):
+			return {}
+		_add_item_count_to_arrays(
+			simulated_items,
+			simulated_counts,
+			item,
+			count
+		)
+	return {
+		"items": simulated_items,
+		"counts": simulated_counts,
+	}
 
 
 func try_upgrade_for_peer(peer_id: int, stat_type: int, player: Player) -> bool:

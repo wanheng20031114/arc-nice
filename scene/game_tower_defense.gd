@@ -91,6 +91,8 @@ const PLANT_PLACEMENT_REJECT_INVALID_REQUEST := &"invalid_request"
 const PLANT_PLACEMENT_REJECT_INVALID_PLAYER := &"invalid_player"
 const PLANT_PLACEMENT_REJECT_INVALID_CONFIG := &"invalid_config"
 const PLANT_PLACEMENT_REJECT_INVALID_POSITION := &"invalid_position"
+const PLANT_PLACEMENT_REJECT_INVALID_INVENTORY_ITEM := &"invalid_inventory_item"
+const PLANT_PLACEMENT_REJECT_STALE_INVENTORY := &"stale_inventory"
 const TERRAIN_NETWORK_BATCH_MAX_CELLS := 96
 const UNSUPPORTED_PLANT_DAMAGE_INTERVAL_SECONDS := 1.0
 const PLANT_LIFECYCLE_VFX_PREWARM_COUNT := 8
@@ -367,6 +369,12 @@ func _ready() -> void:
 	production_coordinator.set_authoritative_processing_enabled(
 		runtime_mode != RuntimeMode.CLIENT_VIEW
 	)
+	if not production_coordinator.personal_inventory_output_committed.is_connected(
+		_on_personal_inventory_output_committed
+	):
+		production_coordinator.personal_inventory_output_committed.connect(
+			_on_personal_inventory_output_committed
+		)
 	research_coordinator.setup(production_coordinator, plant_system, self)
 	research_coordinator.set_authoritative_processing_enabled(
 		runtime_mode != RuntimeMode.CLIENT_VIEW
@@ -793,6 +801,12 @@ func _configure_plant_defense_system() -> void:
 		plant_placement_controller.multiplayer_placement_requested.connect(
 			_on_multiplayer_plant_placement_requested
 		)
+	if not plant_placement_controller.inventory_placement_requested.is_connected(
+		_on_inventory_plant_placement_requested
+	):
+		plant_placement_controller.inventory_placement_requested.connect(
+			_on_inventory_plant_placement_requested
+		)
 	if not plant_system.plant_placed.is_connected(_on_runtime_plant_placed):
 		plant_system.plant_placed.connect(_on_runtime_plant_placed)
 	_update_plant_placement_input_state()
@@ -1011,6 +1025,160 @@ func _cancel_plant_placement() -> void:
 		plant_placement_controller.cancel_placement()
 
 
+func begin_inventory_building_placement(
+	slot_index: int,
+	expected_inventory_revision: int = -1
+) -> bool:
+	if (
+		plant_placement_controller == null
+		or plant_system == null
+		or player == null
+		or player.is_dead
+		or _has_exclusive_modal_open()
+	):
+		return false
+	var inventory_peer_id := (
+		multiplayer_local_peer_id
+		if runtime_mode != RuntimeMode.SINGLEPLAYER
+		else 0
+	)
+	var item := (
+		run_state.get_item_for_peer(inventory_peer_id, slot_index)
+		if inventory_peer_id > 0
+		else run_state.get_item(slot_index)
+	)
+	var current_revision := (
+		run_state.get_inventory_revision_for_peer(inventory_peer_id)
+		if inventory_peer_id > 0
+		else run_state.get_inventory_revision()
+	)
+	if (
+		item == null
+		or item.pickup_type != PickupConfig.PickupType.BUILDING
+		or item.placeable_plant_id == &""
+		or item.resource_path.is_empty()
+		or (
+			expected_inventory_revision >= 0
+			and expected_inventory_revision != current_revision
+		)
+	):
+		return false
+	var config := plant_system.get_config(item.placeable_plant_id)
+	if (
+		config == null
+		or not config.is_valid()
+		or (
+			runtime_mode != RuntimeMode.SINGLEPLAYER
+			and not config.supports_multiplayer
+		)
+	):
+		return false
+	var started := plant_placement_controller.begin_inventory_placement(
+		config,
+		slot_index,
+		current_revision,
+		item.resource_path
+	)
+	if started:
+		_refresh_player_modal_ui_lock()
+		_update_plant_placement_input_state()
+	return started
+
+
+func _on_inventory_plant_placement_requested(
+	request_id: int,
+	plant_id: StringName,
+	anchor: Vector2i,
+	slot_index: int,
+	expected_inventory_revision: int,
+	item_config_path: String
+) -> void:
+	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		_request_singleplayer_inventory_plant_placement(
+			request_id,
+			plant_id,
+			anchor,
+			slot_index,
+			expected_inventory_revision,
+			item_config_path
+		)
+		return
+	multiplayer_inventory_plant_placement_requested.emit(
+		request_id,
+		plant_id,
+		anchor,
+		slot_index,
+		expected_inventory_revision,
+		item_config_path
+	)
+
+
+func _request_singleplayer_inventory_plant_placement(
+	request_id: int,
+	plant_id: StringName,
+	anchor: Vector2i,
+	slot_index: int,
+	expected_inventory_revision: int,
+	item_config_path: String
+) -> void:
+	var stored_item := run_state.get_item(slot_index)
+	var config := plant_system.get_config(plant_id) if plant_system != null else null
+	if (
+		request_id <= 0
+		or stored_item == null
+		or stored_item.resource_path != item_config_path
+		or stored_item.pickup_type != PickupConfig.PickupType.BUILDING
+		or stored_item.placeable_plant_id != plant_id
+		or config == null
+		or not config.is_valid()
+		or not plant_system.is_placement_valid_for_player(
+			anchor,
+			config,
+			player
+		)
+	):
+		plant_placement_controller.notify_multiplayer_placement_rejected(
+			request_id
+		)
+		return
+	if not run_state.try_consume_item_at_slot_if_revision(
+		slot_index,
+		stored_item,
+		expected_inventory_revision,
+		false
+	):
+		plant_placement_controller.notify_multiplayer_placement_rejected(
+			request_id
+		)
+		return
+	var placed_plant := plant_system.try_place_for_player(
+		config,
+		anchor,
+		player
+	)
+	if placed_plant == null:
+		var restored := run_state.try_add_item_count_to_slot_if_revision(
+			stored_item,
+			1,
+			slot_index,
+			run_state.get_inventory_revision(),
+			false
+		)
+		if not restored:
+			push_error("Failed to restore a consumed building item after placement.")
+		run_state.notify_inventory_transaction_completed()
+		plant_placement_controller.notify_multiplayer_placement_rejected(
+			request_id
+		)
+		return
+	run_state.notify_inventory_transaction_completed()
+
+
+func _on_personal_inventory_output_committed(peer_id: int) -> void:
+	if runtime_mode == RuntimeMode.HOST_AUTHORITY and peer_id > 0:
+		multiplayer_inventory_changed.emit(peer_id)
+
+
 func _on_multiplayer_plant_placement_requested(
 	request_id: int,
 	plant_id: StringName,
@@ -1056,6 +1224,147 @@ func request_multiplayer_plant_placement(
 			PLANT_PLACEMENT_REJECT_INVALID_CONFIG
 		)
 		return
+	_spawn_authoritative_multiplayer_plant(
+		requester_peer_id,
+		request_id,
+		plant_config,
+		anchor,
+		placement_player
+	)
+
+
+func request_multiplayer_inventory_plant_placement(
+	requester_peer_id: int,
+	request_id: int,
+	plant_id: StringName,
+	anchor: Vector2i,
+	slot_index: int,
+	expected_inventory_revision: int,
+	item_config_path: String
+) -> void:
+	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
+		return
+	if (
+		request_id <= 0
+		or requester_peer_id <= 0
+		or slot_index < 0
+		or expected_inventory_revision < 0
+		or item_config_path.is_empty()
+	):
+		_reject_multiplayer_plant_placement(
+			request_id,
+			requester_peer_id,
+			PLANT_PLACEMENT_REJECT_INVALID_REQUEST
+		)
+		return
+	var placement_player := get_player_for_peer(requester_peer_id)
+	if (
+		placement_player == null
+		or not is_instance_valid(placement_player)
+		or placement_player.is_dead
+	):
+		_reject_multiplayer_plant_placement(
+			request_id,
+			requester_peer_id,
+			PLANT_PLACEMENT_REJECT_INVALID_PLAYER
+		)
+		return
+	if (
+		run_state.get_inventory_revision_for_peer(requester_peer_id)
+		!= expected_inventory_revision
+	):
+		_reject_multiplayer_plant_placement(
+			request_id,
+			requester_peer_id,
+			PLANT_PLACEMENT_REJECT_STALE_INVENTORY
+		)
+		return
+	var stored_item := run_state.get_item_for_peer(
+		requester_peer_id,
+		slot_index
+	)
+	if (
+		stored_item == null
+		or stored_item.resource_path != item_config_path
+		or stored_item.pickup_type != PickupConfig.PickupType.BUILDING
+		or stored_item.placeable_plant_id != plant_id
+	):
+		_reject_multiplayer_plant_placement(
+			request_id,
+			requester_peer_id,
+			PLANT_PLACEMENT_REJECT_INVALID_INVENTORY_ITEM
+		)
+		return
+	var plant_config := plant_system.get_config(plant_id) if plant_system != null else null
+	if (
+		plant_config == null
+		or not plant_config.is_valid()
+		or not plant_config.supports_multiplayer
+	):
+		_reject_multiplayer_plant_placement(
+			request_id,
+			requester_peer_id,
+			PLANT_PLACEMENT_REJECT_INVALID_CONFIG
+		)
+		return
+	if not plant_system.is_placement_valid_for_player(
+		anchor,
+		plant_config,
+		placement_player
+	):
+		_reject_multiplayer_plant_placement(
+			request_id,
+			requester_peer_id,
+			PLANT_PLACEMENT_REJECT_INVALID_POSITION
+		)
+		return
+	if not run_state.try_consume_item_at_slot_for_peer_if_revision(
+		requester_peer_id,
+		slot_index,
+		stored_item,
+		expected_inventory_revision,
+		false
+	):
+		_reject_multiplayer_plant_placement(
+			request_id,
+			requester_peer_id,
+			PLANT_PLACEMENT_REJECT_STALE_INVENTORY
+		)
+		return
+	var placed_plant := _spawn_authoritative_multiplayer_plant(
+		requester_peer_id,
+		request_id,
+		plant_config,
+		anchor,
+		placement_player
+	)
+	if placed_plant == null:
+		var restored := run_state.try_add_item_count_to_slot_for_peer_if_revision(
+			requester_peer_id,
+			stored_item,
+			1,
+			slot_index,
+			run_state.get_inventory_revision_for_peer(requester_peer_id),
+			false
+		)
+		if not restored:
+			push_error(
+				"Failed to restore a peer building item after placement."
+			)
+		run_state.notify_inventory_transaction_completed()
+		multiplayer_inventory_changed.emit(requester_peer_id)
+		return
+	run_state.notify_inventory_transaction_completed()
+	multiplayer_inventory_changed.emit(requester_peer_id)
+
+
+func _spawn_authoritative_multiplayer_plant(
+	requester_peer_id: int,
+	request_id: int,
+	plant_config: PlantDefenseConfig,
+	anchor: Vector2i,
+	placement_player: Player
+) -> PlantDefense:
 	var plant_net_id := next_multiplayer_plant_net_id
 	var plant := plant_system.try_place_for_player(
 		plant_config,
@@ -1069,7 +1378,7 @@ func request_multiplayer_plant_placement(
 			requester_peer_id,
 			PLANT_PLACEMENT_REJECT_INVALID_POSITION
 		)
-		return
+		return null
 	next_multiplayer_plant_net_id += 1
 	if not plant.authoritative_health_changed.is_connected(
 		_on_authoritative_plant_health_changed.bind(plant_net_id)
@@ -1081,12 +1390,13 @@ func request_multiplayer_plant_placement(
 		request_id,
 		requester_peer_id,
 		plant_net_id,
-		plant_id,
+		plant_config.plant_id,
 		anchor,
 		plant.current_health,
 		plant.max_health,
 		plant.health_revision
 	)
+	return plant
 
 
 func _reject_multiplayer_plant_placement(

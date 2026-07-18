@@ -96,6 +96,15 @@ signal multiplayer_plant_placement_requested(
 	plant_id: StringName,
 	anchor: Vector2i
 )
+signal multiplayer_inventory_plant_placement_requested(
+	request_id: int,
+	plant_id: StringName,
+	anchor: Vector2i,
+	slot_index: int,
+	expected_inventory_revision: int,
+	item_config_path: String
+)
+signal multiplayer_inventory_changed(peer_id: int)
 signal return_to_lobby_requested
 signal runtime_preparation_progress_changed(stage: String, completed: int, total: int)
 signal runtime_preparation_completed
@@ -819,6 +828,18 @@ func request_multiplayer_plant_placement(
 	_request_id: int,
 	_plant_id: StringName,
 	_anchor: Vector2i
+) -> void:
+	pass
+
+
+func request_multiplayer_inventory_plant_placement(
+	_requester_peer_id: int,
+	_request_id: int,
+	_plant_id: StringName,
+	_anchor: Vector2i,
+	_slot_index: int,
+	_expected_inventory_revision: int,
+	_item_config_path: String
 ) -> void:
 	pass
 
