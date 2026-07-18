@@ -17,6 +17,7 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://scene/enemy/yuanshi_insect_shell.tscn",
 	"res://scene/enemy/capoo_ak47.tscn",
 	"res://scene/enemy/capoo_ak47_bullet.tscn",
+	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn",
 	"res://resources/animation/yuanshi_insect_basic.tres",
 	"res://resources/animation/capoo_ak47.tres",
 	"res://resources/audio/capoo_ak47_fire.wav",
@@ -133,6 +134,7 @@ func _test_runtime_activation_gate() -> void:
 		and game.process_mode == Node.PROCESS_MODE_INHERIT,
 		"Barrier completion must reactivate gameplay exactly once."
 	)
+	_expect_fire_sorcerer_projectile_pool(game, 48, 704)
 	game.queue_free()
 	await process_frame
 
@@ -157,6 +159,22 @@ func _test_mode_specific_mp_game_source() -> void:
 		and not source.contains("const TIYI_SNIPER_HIT_EFFECT_SCENE := preload")
 		and not source.contains("const SKILL1_BOMB_SCENE := preload"),
 		"MpGame must let the active mode and frozen character roster own projectile loading."
+	)
+	_expect(
+		source.contains("FIRE_SORCERER_FIREBALL_VOLLEY_SCENE")
+		and source.contains('&"fire_sorcerer_fireball_volley"')
+		and source.contains(
+			"fireball_target = game.get_player_for_peer(target_peer_id)"
+		)
+		and source.contains(
+			"fireball_target = game.get_multiplayer_plant_node("
+		)
+		and source.contains("projectile as FireSorcererFireballVolley")
+		and source.contains('projectile.has_method("simulate_compensated_motion")'),
+		(
+			"MpGame must instantiate, target, time-compensate, and lifetime-compensate "
+			+ "Fire Sorcerer volleys."
+		)
 	)
 	var player_source := FileAccess.get_file_as_string("res://scene/player/player.gd")
 	_expect(
@@ -282,6 +300,7 @@ func _test_singleplayer_coordinator_flow() -> void:
 		and bool(tower_runtime.get("plant_lifecycle_shader_prewarmed")),
 		"Tower-defense loading must finish staged preparation before activation."
 	)
+	_expect_fire_sorcerer_projectile_pool(tower_runtime, 48, 704)
 	await physics_frame
 	await physics_frame
 	_expect_lifecycle_prewarm_pool_released(tower_runtime)
@@ -350,6 +369,34 @@ func _expect_lifecycle_prewarm_pool_released(runtime: GameRuntimeBase) -> void:
 			and int(metrics.get("pending_release", -1)) == 0,
 			"Lifecycle VFX prewarm lease must return to its pool: %s" % scene_path
 		)
+
+
+func _expect_fire_sorcerer_projectile_pool(
+	runtime: GameRuntimeBase,
+	expected_prewarm_count: int,
+	expected_retained_capacity: int
+) -> void:
+	if runtime == null:
+		return
+	var object_pool := runtime.get_node_or_null("SessionObjectPool") as SessionObjectPool
+	_expect(object_pool != null, "Runtime must expose its projectile object pool.")
+	if object_pool == null:
+		return
+	var scene_path := "res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
+	var metrics := object_pool.get_metrics(scene_path)
+	_expect(
+		int(metrics.get("created", -1)) == expected_prewarm_count
+		and int(metrics.get("inactive", -1)) == expected_prewarm_count
+		and int(metrics.get("in_use", -1)) == 0
+		and int(metrics.get("pending_release", -1)) == 0
+		and int(metrics.get("overflow", -1)) == 0
+		and int(metrics.get("dropped", -1)) == 0
+		and int(metrics.get("retained_capacity", -1)) == expected_retained_capacity,
+		(
+			"Fire Sorcerer volley pool must prewarm %d leases with capacity %d."
+			% [expected_prewarm_count, expected_retained_capacity]
+		)
+	)
 
 
 func _finish() -> void:

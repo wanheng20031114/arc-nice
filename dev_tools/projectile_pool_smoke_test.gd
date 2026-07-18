@@ -5,6 +5,9 @@ const AK_BULLET_SCENE := preload("res://scene/enemy/capoo_ak47_bullet.tscn")
 const SMG_BULLET_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
 const RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo_rpg_rocket.tscn")
 const MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
+const FIRE_SORCERER_FIREBALL_VOLLEY_SCENE := preload(
+	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
+)
 const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
 const AGAVE_CANNONBALL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
 const COLLECTIBLE_ARROW_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
@@ -46,6 +49,7 @@ func _run() -> void:
 	pool.register_scene(SMG_BULLET_SCENE, 1, 2)
 	pool.register_scene(RPG_ROCKET_SCENE, 1, 2)
 	pool.register_scene(MAGE_FIREBALL_SCENE, 1, 2)
+	pool.register_scene(FIRE_SORCERER_FIREBALL_VOLLEY_SCENE, 1, 2)
 	pool.register_scene(YUANSHI_FIRE_PROJECTILE_SCENE, 1, 2)
 	pool.register_scene(AGAVE_CANNONBALL_SCENE, 1, 2)
 	pool.register_scene(COLLECTIBLE_ARROW_SCENE, 1, 2)
@@ -552,6 +556,7 @@ func _verify_extended_projectile_reuse() -> void:
 	var scenes: Array[PackedScene] = [
 		RPG_ROCKET_SCENE,
 		MAGE_FIREBALL_SCENE,
+		FIRE_SORCERER_FIREBALL_VOLLEY_SCENE,
 		YUANSHI_FIRE_PROJECTILE_SCENE,
 		AGAVE_CANNONBALL_SCENE,
 		COLLECTIBLE_ARROW_SCENE,
@@ -589,6 +594,26 @@ func _verify_extended_projectile_reuse() -> void:
 			projectile.set("max_lifetime", 0.25)
 			projectile.set("explosion_radius", 9.0)
 			projectile.set("homing_turn_rate", 0.2)
+		if projectile_scene == FIRE_SORCERER_FIREBALL_VOLLEY_SCENE:
+			var dirty_volley := projectile as FireSorcererFireballVolley
+			dirty_volley.active_ball_mask = 0
+			dirty_volley.visible_effect_mask = (
+				FireSorcererFireballVolley.ALL_BALLS_ACTIVE_MASK
+			)
+			dirty_volley.target_runtime = fixture
+			dirty_volley.target_refresh_left = 9.0
+			for ball_index in range(
+				FireSorcererFireballVolley.BALL_COUNT
+			):
+				dirty_volley.ball_directions[ball_index] = Vector2.DOWN
+				dirty_volley.ball_effect_times[ball_index] = 9.0
+				dirty_volley.ball_areas[ball_index].position = Vector2(
+					90.0 + ball_index,
+					90.0
+				)
+				dirty_volley.ball_areas[ball_index].collision_layer = 0
+				dirty_volley.ball_areas[ball_index].collision_mask = 0
+				dirty_volley.ball_sprites[ball_index].hide()
 		if projectile is Area2D:
 			(projectile as Area2D).collision_layer = 0
 			(projectile as Area2D).collision_mask = 0
@@ -645,6 +670,53 @@ func _verify_extended_projectile_reuse() -> void:
 				and is_equal_approx(sakura_rocket.explosion_radius, 47.0)
 				and is_equal_approx(sakura_rocket.homing_turn_rate, 1.2),
 				"Pooled collectible Sakura rockets must retain their isolated effect and authored movement defaults."
+			)
+		if projectile_scene == FIRE_SORCERER_FIREBALL_VOLLEY_SCENE:
+			var reused_volley := reused as FireSorcererFireballVolley
+			reused_volley.set_physics_process(false)
+			await physics_frame
+			_expect(
+				reused_volley.active_ball_mask
+					== FireSorcererFireballVolley.ALL_BALLS_ACTIVE_MASK
+				and reused_volley.visible_effect_mask == 0
+				and reused_volley.target_runtime == null
+				and is_zero_approx(reused_volley.target_refresh_left),
+				"Reused Fire Sorcerer volleys must restore all three live balls "
+				+ "and clear stale visual and target-query state."
+			)
+			var unique_ball_positions := {}
+			for ball_index in range(
+				FireSorcererFireballVolley.BALL_COUNT
+			):
+				var ball := reused_volley.ball_areas[ball_index]
+				var shape := reused_volley.ball_collision_shapes[ball_index]
+				var sprite := reused_volley.ball_sprites[ball_index]
+				unique_ball_positions[ball.position] = true
+				_expect(
+					ball.collision_layer
+						== FireSorcererFireballVolley.AUTHORED_COLLISION_LAYER
+					and ball.collision_mask
+						== FireSorcererFireballVolley.AUTHORED_COLLISION_MASK
+					and ball.monitoring
+					and ball.monitorable
+					and not shape.disabled
+					and sprite.visible
+					and sprite.animation == &"fly"
+					and reused_volley.ball_directions[ball_index]
+						== Vector2.RIGHT
+					and is_zero_approx(
+						reused_volley.ball_effect_times[ball_index]
+					),
+					(
+						"Reused Fire Sorcerer ball %d must restore collision, "
+						+ "visual, direction, and timing state."
+					) % ball_index
+				)
+			_expect(
+				unique_ball_positions.size()
+					== FireSorcererFireballVolley.BALL_COUNT,
+				"Reused Fire Sorcerer volleys must restore three distinct "
+				+ "authored offsets."
 			)
 		if reused is Area2D:
 			_expect(

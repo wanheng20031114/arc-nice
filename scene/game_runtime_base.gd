@@ -259,6 +259,68 @@ func unregister_combat_target(net_id: int) -> void:
 	combat_target_index.unregister_enemy(net_id)
 
 
+func find_nearest_enemy_attack_target(
+	from_position: Vector2,
+	max_distance: float
+) -> Node2D:
+	if max_distance < 0.0 or not is_finite(max_distance):
+		return null
+	var maximum_distance_squared := max_distance * max_distance
+	var nearest_player: Player = null
+	var nearest_distance_squared := maximum_distance_squared
+	var nearest_instance_id := 0
+	if (
+		player != null
+		and is_instance_valid(player)
+		and not player.is_dead
+		and not player.is_queued_for_deletion()
+	):
+		var player_distance_squared := from_position.distance_squared_to(
+			player.global_position
+		)
+		if player_distance_squared <= maximum_distance_squared:
+			nearest_player = player
+			nearest_distance_squared = player_distance_squared
+			nearest_instance_id = int(player.get_instance_id())
+	for peer_id_variant in peer_players:
+		var candidate := peer_players[peer_id_variant] as Player
+		if (
+			candidate == null
+			or candidate == player
+			or not is_instance_valid(candidate)
+			or candidate.is_dead
+			or candidate.is_queued_for_deletion()
+		):
+			continue
+		var distance_squared := from_position.distance_squared_to(
+			candidate.global_position
+		)
+		if distance_squared > maximum_distance_squared:
+			continue
+		var instance_id := int(candidate.get_instance_id())
+		if (
+			nearest_player == null
+			or (
+				distance_squared < nearest_distance_squared
+				and not is_equal_approx(
+					distance_squared,
+					nearest_distance_squared
+				)
+			)
+			or (
+				is_equal_approx(
+					distance_squared,
+					nearest_distance_squared
+				)
+				and instance_id < nearest_instance_id
+			)
+		):
+			nearest_player = candidate
+			nearest_distance_squared = distance_squared
+			nearest_instance_id = instance_id
+	return nearest_player
+
+
 func enable_singleplayer_combat_target_index(force_local_queries: bool = false) -> void:
 	if runtime_mode != RuntimeMode.SINGLEPLAYER:
 		return

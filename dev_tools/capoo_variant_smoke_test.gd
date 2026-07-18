@@ -315,9 +315,15 @@ func _test_mage_windup_fireball_and_obstruction() -> void:
 	spawned_fireballs.clear()
 	var player := _spawn_player(Vector2(240.0, 0.0), 200)
 	var mage := _spawn_mage(Vector2.ZERO, player)
-	await _wait_physics_frames(3)
+	await _wait_physics_frames(8)
 	_expect(mage.combat_state == CapooMage.CombatState.WINDUP, "Mage Capoo did not enter windup.")
 	_expect(spawned_fireballs.is_empty(), "Mage Capoo fired before windup.")
+	var replacement_player := _spawn_player(Vector2(220.0, 80.0), 200)
+	mage.set_target_player(replacement_player)
+	_expect(
+		mage.attack_target == player,
+		"Mage windup must retain the explicit target chosen at attack start."
+	)
 	var fireball_guard_frames := 0
 	while spawned_fireballs.is_empty() and fireball_guard_frames < 90:
 		await physics_frame
@@ -325,13 +331,35 @@ func _test_mage_windup_fireball_and_obstruction() -> void:
 	_expect(spawned_fireballs.size() == 1, "Mage Capoo did not fire exactly one fireball after windup.")
 	if not spawned_fireballs.is_empty() and is_instance_valid(spawned_fireballs[0]):
 		_expect(is_equal_approx(spawned_fireballs[0].fireball_radius, MAGE_CONFIG.fireball_radius), "Fireball radius did not use config.")
-		_expect(spawned_fireballs[0].target_player == player, "Fireball did not keep its soft-homing target.")
+		_expect(
+			spawned_fireballs[0].target_player == player,
+			"Fireball must keep the attack's explicit soft-homing target."
+		)
+	var post_fire_guard_frames := 0
+	while mage.combat_state != CapooMage.CombatState.CHASE and post_fire_guard_frames < 30:
+		await physics_frame
+		post_fire_guard_frames += 1
+	var cooldown_hold_guard_frames := 0
+	while (
+		not bool(mage.get("_ranged_attack_position_held"))
+		and cooldown_hold_guard_frames < 8
+	):
+		await physics_frame
+		cooldown_hold_guard_frames += 1
+	var cooldown_position := mage.global_position
+	await _wait_physics_frames(6)
+	_expect(
+		bool(mage.get("_ranged_attack_position_held"))
+		and mage.global_position.distance_squared_to(cooldown_position) < 0.01,
+		"Mage Capoo must stand at clear attack range throughout cooldown."
+	)
 	for fireball in spawned_fireballs:
 		if is_instance_valid(fireball):
 			fireball.queue_free()
 	spawned_fireballs.clear()
 	mage.queue_free()
 	player.queue_free()
+	replacement_player.queue_free()
 	await physics_frame
 
 
@@ -381,8 +409,9 @@ func _test_fireball_impact_damage_and_release() -> void:
 
 func _test_sniper_lock_cancel_and_damage() -> void:
 	var blocked_player := _spawn_player(Vector2(360.0, 0.0), 260)
+	Enemy.set_performance_metrics_enabled(true)
 	var sniper := _spawn_sniper(Vector2.ZERO, blocked_player)
-	await _wait_physics_frames(3)
+	await _wait_physics_frames(8)
 	_expect(sniper.combat_state == CapooSniper.CombatState.LOCK, "Sniper Capoo did not enter lock state.")
 	_expect(_count_reticles(blocked_player) == 1, "Sniper lock did not attach one reticle to the player.")
 	_expect(
@@ -392,10 +421,42 @@ func _test_sniper_lock_cancel_and_damage() -> void:
 		"Authoritative sniper must be the sole driver of lock-reticle progress."
 	)
 	_expect(_has_sniper_aim_line(sniper), "Sniper lock must show a thin source-to-target aim line.")
+	var lock_start_metrics := Enemy.get_performance_metrics()
+	var lock_start_los_calls := int(lock_start_metrics["ranged_los_calls"])
+	_expect(
+		lock_start_los_calls >= 1,
+		"Sniper lock start must publish its exact ranged LOS commit."
+	)
 	var wall := _spawn_wall(Vector2(180.0, 0.0), 12.0)
 	await _wait_physics_frames(6)
-	_expect(sniper.combat_state == CapooSniper.CombatState.CHASE, "Sniper Capoo did not cancel lock when LOS was blocked.")
-	_expect(_count_reticles(blocked_player) == 0, "Sniper reticle remained after lock cancel.")
+	_expect(
+		sniper.combat_state == CapooSniper.CombatState.LOCK
+		and _count_reticles(blocked_player) == 1,
+		"Sniper lock must not perform a World ray every physics frame."
+	)
+	var mid_lock_metrics := Enemy.get_performance_metrics()
+	_expect(
+		int(mid_lock_metrics["ranged_los_calls"]) == lock_start_los_calls,
+		"Sniper lock progress unexpectedly cast an additional ranged LOS ray."
+	)
+	var blocked_health_before := blocked_player.current_health
+	sniper.lock_time_left = 0.0
+	await physics_frame
+	_expect(
+		sniper.combat_state == CapooSniper.CombatState.CHASE,
+		"Sniper must cancel when the exact pre-fire LOS recheck is blocked."
+	)
+	_expect(
+		_count_reticles(blocked_player) == 0
+		and blocked_player.current_health == blocked_health_before,
+		"A blocked sniper pre-fire recheck must remove the reticle without damage."
+	)
+	var blocked_commit_metrics := Enemy.get_performance_metrics()
+	_expect(
+		int(blocked_commit_metrics["ranged_los_calls"]) == lock_start_los_calls + 1,
+		"Sniper pre-fire validation must add exactly one measurable LOS query."
+	)
+	Enemy.set_performance_metrics_enabled(false)
 	sniper.queue_free()
 	wall.queue_free()
 	blocked_player.queue_free()
@@ -409,7 +470,7 @@ func _test_sniper_lock_cancel_and_damage() -> void:
 	player.health_bar.setup(player.max_health, player.current_health)
 	var expected_health_after_shot := player.current_health - SNIPER_CONFIG.attack_damage
 	var firing_sniper := _spawn_sniper(Vector2.ZERO, player)
-	await _wait_physics_frames(3)
+	await _wait_physics_frames(8)
 	_expect(firing_sniper.combat_state == CapooSniper.CombatState.LOCK, "Sniper Capoo did not lock before damage test.")
 	_expect(
 		firing_sniper.lock_reticle != null

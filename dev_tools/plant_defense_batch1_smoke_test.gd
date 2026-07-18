@@ -1102,9 +1102,34 @@ func _test_event_driven_plant_influence_index() -> void:
 		return
 
 	var center_world := tile_map.to_global(tile_map.map_to_local(center_cell))
+	var tile_width := float(tile_map.tile_set.tile_size.x)
 	var indexed_cell_count_before_query := cache_system.get_influence_cell_count(9)
 	var initial_target := cache_system.find_nearest_living_plant(center_world, 8.0)
 	_expect(initial_target == left_stake, "事件驱动索引首次查询必须返回真实最近植物。")
+	var left_world_distance := center_world.distance_to(
+		left_stake.global_position
+	)
+	_expect(
+		cache_system.find_nearest_living_plant_world(
+			center_world,
+			left_world_distance
+		) == left_stake
+		and cache_system.find_nearest_living_plant_world(
+			center_world,
+			maxf(left_world_distance - 0.01, 0.0)
+		) == null
+		and cache_system.find_nearest_living_plant_world(
+			center_world,
+			NAN
+		) == null
+		and cache_system.find_nearest_living_plant_world(
+			center_world,
+			INF
+		) == null
+		and cache_system.get_influence_radius_count() == 1,
+		"远程敌人的世界半径查询必须精确包含边界、拒绝非法半径，"
+		+ "且不得物化新的influence index。"
+	)
 	_expect(
 		cache_system.get_influence_candidate_count(center_cell, 9) == 2,
 		"2×2植物在同一influence bucket中必须去重为单个植物引用。"
@@ -1176,6 +1201,13 @@ func _test_event_driven_plant_influence_index() -> void:
 		"事件索引必须保持旧19×19行优先扫描的等距目标顺序。"
 	)
 	_expect(
+		cache_system.find_nearest_living_plant_world(
+			center_world,
+			tile_width * 8.0
+		) == left_stake,
+		"远程敌人的等距世界查询必须按稳定实例顺序选择同一个最近植物。"
+	)
+	_expect(
 		cache_system.get_influence_candidate_count(center_cell, 9) == 3,
 		"中心bucket必须包含两个单格植物和一个去重后的多格植物。"
 	)
@@ -1185,7 +1217,6 @@ func _test_event_driven_plant_influence_index() -> void:
 			"等距最近目标在连续事件索引查询间必须保持确定性。"
 		)
 
-	var tile_width := float(tile_map.tile_set.tile_size.x)
 	var left_biased_world := tile_map.to_global(
 		tile_map.map_to_local(center_cell) + Vector2(-tile_width * 0.4, 0.0)
 	)

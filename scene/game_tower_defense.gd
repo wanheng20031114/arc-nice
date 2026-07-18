@@ -6,6 +6,9 @@ const CAPOO_AK47_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo_ak47_bull
 const CAPOO_SMG_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
 const CAPOO_RPG_ROCKET_POOL_SCENE := preload("res://scene/enemy/capoo_rpg_rocket.tscn")
 const CAPOO_MAGE_FIREBALL_POOL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
+const FIRE_SORCERER_FIREBALL_VOLLEY_POOL_SCENE := preload(
+	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
+)
 const YUANSHI_FIRE_PROJECTILE_POOL_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
 const AGAVE_CANNONBALL_POOL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
 const PLANT_PLACEMENT_PARTICLES_SCENE := preload(
@@ -287,6 +290,13 @@ func _ready() -> void:
 			else LEGACY_CAPOO_MAGE_FIREBALL_PREWARM_COUNT
 		),
 		192
+	)
+	# A 7 s flight plus expiry visuals slightly overlaps a third 3.6 s attack
+	# cycle. Capacity includes those visual-only leases and release quarantine.
+	session_object_pool.register_scene(
+		FIRE_SORCERER_FIREBALL_VOLLEY_POOL_SCENE,
+		48,
+		704
 	)
 	GameRuntimeBase.register_capoo_mage_fireball_impact_pool(
 		session_object_pool,
@@ -4055,6 +4065,59 @@ func _pick_enemy_target(from_position: Vector2) -> Player:
 			best_distance = distance
 			best_player = candidate
 	return best_player
+
+
+func find_nearest_enemy_attack_target(
+	from_position: Vector2,
+	max_distance: float
+) -> Node2D:
+	var nearest_target := super.find_nearest_enemy_attack_target(
+		from_position,
+		max_distance
+	)
+	if (
+		plant_system == null
+		or max_distance < 0.0
+		or not is_finite(max_distance)
+	):
+		return nearest_target
+	var nearest_plant := plant_system.find_nearest_living_plant_world(
+		from_position,
+		max_distance
+	)
+	if nearest_plant == null:
+		return nearest_target
+	# PlantSystem already uses an allocation-free exact world-space pass here.
+	# Keep this defensive comparison beside the player/plant merge so the public
+	# runtime API retains one pixel-radius contract.
+	var plant_distance_squared := from_position.distance_squared_to(
+		nearest_plant.global_position
+	)
+	if plant_distance_squared > max_distance * max_distance:
+		return nearest_target
+	if nearest_target == null:
+		return nearest_plant
+	var target_distance_squared := from_position.distance_squared_to(
+		nearest_target.global_position
+	)
+	if (
+		plant_distance_squared < target_distance_squared
+		and not is_equal_approx(
+			plant_distance_squared,
+			target_distance_squared
+		)
+	):
+		return nearest_plant
+	if (
+		is_equal_approx(
+			plant_distance_squared,
+			target_distance_squared
+		)
+		and nearest_plant.get_instance_id()
+			< nearest_target.get_instance_id()
+	):
+		return nearest_plant
+	return nearest_target
 
 
 func _pick_enemy_objective(from_position: Vector2, combat_player: Player) -> Node2D:

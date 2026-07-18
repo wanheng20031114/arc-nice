@@ -31,6 +31,7 @@ var burst_fire_time_left: float = 0.0
 var burst_audio_step: int = 0
 var action_sequence: int = 0
 var latest_proxy_action_id: int = 0
+var attack_target: Node2D = null
 
 
 func _ready() -> void:
@@ -46,8 +47,6 @@ func _physics_process(delta: float) -> void:
 
 	_update_touch_damage(delta)
 	_update_attack_cooldown(delta)
-	if combat_state != CombatState.CHASE and not has_attackable_objective():
-		_cancel_attack()
 
 	match combat_state:
 		CombatState.WINDUP:
@@ -57,15 +56,36 @@ func _physics_process(delta: float) -> void:
 			_update_burst(delta)
 			return
 
+	if _has_player_contact():
+		velocity = Vector2.ZERO
+		return
+	var capoo_config := config as CapooConfig
+	var preferred_target := _get_preferred_ranged_combat_target()
+	if (
+		capoo_config != null
+		and _try_hold_ranged_attack_position(
+			preferred_target,
+			capoo_config.attack_range,
+			WORLD_COLLISION_MASK
+		)
+	):
+		if _try_start_windup(preferred_target):
+			return
+		# The attack commit performs an exact LOS query. If that invalidated a
+		# previously clear sampled line, leave standoff in the same tick.
+		if _try_hold_ranged_attack_position(
+			preferred_target,
+			capoo_config.attack_range,
+			WORLD_COLLISION_MASK
+		):
+			_update_facing(global_position.direction_to(preferred_target.global_position))
+			return
+	else:
+		_reset_ranged_attack_position_state()
+
 	if not is_instance_valid(objective_target):
 		velocity = Vector2.ZERO
 		_move_until_player_contact()
-		return
-
-	if has_attackable_objective() and _try_start_windup():
-		return
-	if _has_player_contact():
-		velocity = Vector2.ZERO
 		return
 
 	var move_direction := _get_navigation_move_direction(delta)
@@ -82,6 +102,8 @@ func _apply_config() -> void:
 	burst_shots_fired = 0
 	burst_fire_time_left = 0.0
 	burst_audio_step = 0
+	attack_target = null
+	_reset_ranged_attack_position_state()
 
 	var capoo_config := config as CapooConfig
 	if capoo_config != null:
@@ -90,6 +112,8 @@ func _apply_config() -> void:
 
 func _die() -> void:
 	combat_state = CombatState.CHASE
+	attack_target = null
+	_reset_ranged_attack_position_state()
 	_set_muzzle_heat(0.0, burst_shot_direction)
 	_try_drop_pickup()
 	super._die()
@@ -107,26 +131,36 @@ func _update_attack_cooldown(delta: float) -> void:
 	attack_cooldown_left = maxf(attack_cooldown_left - delta, 0.0)
 
 
-func _try_start_windup() -> bool:
+func _try_start_windup(candidate_target: Node2D = null) -> bool:
 	var capoo_config := config as CapooConfig
 	if capoo_config == null:
 		return false
 	if attack_cooldown_left > 0.0:
 		return false
-	var attack_target := get_attackable_objective()
-	if attack_target == null:
+	if candidate_target == null:
+		candidate_target = _get_preferred_ranged_combat_target()
+	if candidate_target == null:
 		return false
 	if capoo_config.projectile_scene == null:
 		return false
-	if not is_attackable_objective_in_range(capoo_config.attack_range):
+	if not _is_ranged_combat_target_in_range(
+		candidate_target,
+		capoo_config.attack_range
+	):
 		return false
-	if not _has_clear_world_line_to_target():
+	if not _has_ranged_combat_line(
+		candidate_target,
+		WORLD_COLLISION_MASK,
+		true
+	):
+		_reset_ranged_attack_position_state()
 		return false
 
+	attack_target = candidate_target
 	combat_state = CombatState.WINDUP
 	windup_time_left = maxf(capoo_config.attack_windup, 0.0)
 	velocity = Vector2.ZERO
-	_clear_navigation_path()
+	_set_ranged_attack_position_held(true)
 	var target_direction := global_position.direction_to(attack_target.global_position)
 	_update_facing(target_direction)
 	_play_config_animation(capoo_config.windup_animation_name)
@@ -137,8 +171,13 @@ func _try_start_windup() -> bool:
 
 func _update_windup(delta: float) -> void:
 	var capoo_config := config as CapooConfig
-	var attack_target := get_attackable_objective()
-	if capoo_config == null or attack_target == null:
+	if (
+		capoo_config == null
+		or not _is_ranged_combat_target_in_range(
+			attack_target,
+			capoo_config.attack_range
+		)
+	):
 		_cancel_attack()
 		return
 
@@ -151,7 +190,11 @@ func _update_windup(delta: float) -> void:
 
 	if windup_time_left > 0.0:
 		return
-	if not _has_clear_world_line_to_target():
+	if not _has_ranged_combat_line(
+		attack_target,
+		WORLD_COLLISION_MASK,
+		true
+	):
 		_cancel_attack()
 		return
 
@@ -259,6 +302,7 @@ func _fire_locked_bullet() -> bool:
 
 func _finish_burst() -> void:
 	combat_state = CombatState.CHASE
+	attack_target = null
 	burst_shots_fired = 0
 	burst_fire_time_left = 0.0
 	burst_audio_step = 0
@@ -270,10 +314,12 @@ func _finish_burst() -> void:
 
 func _cancel_attack() -> void:
 	combat_state = CombatState.CHASE
+	attack_target = null
 	burst_shots_fired = 0
 	burst_fire_time_left = 0.0
 	burst_audio_step = 0
 	_set_muzzle_heat(0.0, burst_shot_direction)
+	_reset_ranged_attack_position_state()
 
 
 func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, action_id: int) -> void:

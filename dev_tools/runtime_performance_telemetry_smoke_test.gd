@@ -2,6 +2,9 @@ extends SceneTree
 
 const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
+const FIRE_SORCERER_FIREBALL_VOLLEY_SCENE := preload(
+	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
+)
 const TELEMETRY_SCRIPT := preload("res://scene/runtime_performance_telemetry.gd")
 const EXPECTED_WAVE_TOTAL := 1200
 const EXPECTED_MAX_ALIVE := 300
@@ -177,12 +180,23 @@ func _verify_runtime_classification() -> void:
 
 	bullet.set_physics_process(false)
 	game.add_child(bullet)
+	var fire_sorcerer_volley := FIRE_SORCERER_FIREBALL_VOLLEY_SCENE.instantiate()
+	_expect(
+		fire_sorcerer_volley != null,
+		"Telemetry classifier requires a Fire Sorcerer volley fixture."
+	)
+	if fire_sorcerer_volley != null:
+		fire_sorcerer_volley.set_process(false)
+		fire_sorcerer_volley.set_physics_process(false)
+		game.add_child(fire_sorcerer_volley)
 	var counts: Dictionary = telemetry.sample_runtime_counts(game)
 	_expect(
-		int(counts["active_projectiles"]) == 1,
-		"Telemetry must recognize a live production Bullet."
+		int(counts["active_projectiles"]) == 2,
+		"Telemetry must recognize live player and Fire Sorcerer projectiles."
 	)
 	bullet.queue_free()
+	if fire_sorcerer_volley != null:
+		fire_sorcerer_volley.queue_free()
 	await process_frame
 	await physics_frame
 

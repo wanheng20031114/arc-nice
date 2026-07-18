@@ -454,6 +454,64 @@ func find_nearest_living_plant(
 	return nearest_plant
 
 
+## Exact world-space query for long-range enemy attacks. Unlike the placement
+## aggro query above, this deliberately walks the authoritative plant dictionary
+## without first allocating a temporary candidate Dictionary. Fire Sorcerers
+## throttle this O(plant count) pass per caster, so wide attack radii do not
+## multiply the resident nine-cell influence index or its placement updates.
+func find_nearest_living_plant_world(
+	from_global_position: Vector2,
+	max_world_distance: float
+) -> PlantDefense:
+	if (
+		plant_footprints.is_empty()
+		or max_world_distance < 0.0
+		or not is_finite(max_world_distance)
+	):
+		return null
+	var maximum_distance_squared := max_world_distance * max_world_distance
+	var nearest_plant: PlantDefense = null
+	var nearest_distance_squared := maximum_distance_squared
+	var nearest_instance_id := 0
+	for plant_variant in plant_footprints:
+		var plant := plant_variant as PlantDefense
+		if (
+			plant == null
+			or not is_instance_valid(plant)
+			or plant.is_dead
+			or plant.is_removing
+			or plant.is_queued_for_deletion()
+		):
+			continue
+		var distance_squared := from_global_position.distance_squared_to(
+			plant.global_position
+		)
+		if distance_squared > maximum_distance_squared:
+			continue
+		var instance_id := int(plant.get_instance_id())
+		if (
+			nearest_plant == null
+			or (
+				distance_squared < nearest_distance_squared
+				and not is_equal_approx(
+					distance_squared,
+					nearest_distance_squared
+				)
+			)
+			or (
+				is_equal_approx(
+					distance_squared,
+					nearest_distance_squared
+				)
+				and instance_id < nearest_instance_id
+			)
+		):
+			nearest_plant = plant
+			nearest_distance_squared = distance_squared
+			nearest_instance_id = instance_id
+	return nearest_plant
+
+
 func _get_bounded_plant_candidate_search_radius(
 	center_cell: Vector2i,
 	max_radius_cells: float

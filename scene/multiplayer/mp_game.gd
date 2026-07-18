@@ -56,6 +56,9 @@ const COLLECTIBLE_MOON_SHIELD_VISUAL_SCENE := preload("res://scene/collectible_m
 const CAPOO_AK47_BULLET_SCENE := preload("res://scene/enemy/capoo_ak47_bullet.tscn")
 const CAPOO_RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo_rpg_rocket.tscn")
 const CAPOO_MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
+const FIRE_SORCERER_FIREBALL_VOLLEY_SCENE := preload(
+	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
+)
 const CAPOO_SMG_BULLET_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
 const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
 const LINGLAN_SAKURA_BULLET_SCENE_PATH := "res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn"
@@ -112,6 +115,12 @@ const CLIENT_PROJECTILE_DIRECTION_MAX_LENGTH := 1.5
 const CLIENT_PROJECTILE_REQUEST_RATE_PER_SECOND := 256.0
 const CLIENT_PROJECTILE_REQUEST_RATE_BURST := 64.0
 const PROJECTILE_TIME_COMPENSATION_MAX_SECONDS := 0.25
+const FIRE_SORCERER_FIREBALL_VOLLEY_TYPE: StringName = (
+	&"fire_sorcerer_fireball_volley"
+)
+const FIRE_SORCERER_CONSUMED_SOURCE_MASK_KEY: StringName = (
+	&"fire_sorcerer_consumed_source_mask"
+)
 const LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET := 32
 const TIYI_SNIPER_PROJECTILE_TYPE: StringName = &"tiyi_sniper_bullet"
 const TIYI_HIGH_NOON_MAX_TARGETS := 25
@@ -4232,6 +4241,10 @@ func _apply_projectile_lifetime_compensation(
 	if fireball != null:
 		fireball.remaining_lifetime = remaining
 		return
+	var fire_sorcerer_volley := projectile as FireSorcererFireballVolley
+	if fire_sorcerer_volley != null:
+		fire_sorcerer_volley.remaining_lifetime = remaining
+		return
 	var fire_projectile := projectile as YuanshiInsectFireProjectile
 	if fire_projectile != null:
 		fire_projectile.remaining_lifetime = remaining
@@ -4397,6 +4410,34 @@ func _instantiate_projectile(
 			fireball.top_level = true
 			fireball.setup(direction, damage, speed, lifetime)
 			return fireball
+		&"fire_sorcerer_fireball_volley":
+			var fire_sorcerer_volley := (
+				_acquire_or_instantiate_projectile(
+					FIRE_SORCERER_FIREBALL_VOLLEY_SCENE
+				)
+				as FireSorcererFireballVolley
+			)
+			if fire_sorcerer_volley == null:
+				return null
+			fire_sorcerer_volley.top_level = true
+			var fireball_target: Node2D = null
+			if game != null:
+				if target_peer_id > 0:
+					fireball_target = game.get_player_for_peer(target_peer_id)
+				elif target_enemy_net_id > 0:
+					fireball_target = game.get_multiplayer_plant_node(
+						target_enemy_net_id
+					)
+			fire_sorcerer_volley.setup(
+				direction,
+				damage,
+				speed,
+				lifetime,
+				fireball_target,
+				6.0,
+				game
+			)
+			return fire_sorcerer_volley
 		&"capoo_smg_bullet":
 			var smg_bullet := (
 				_acquire_or_instantiate_projectile(CAPOO_SMG_BULLET_SCENE)
@@ -4722,7 +4763,7 @@ func _remember_projectile_record(
 ) -> void:
 	if projectile_id <= 0:
 		return
-	_projectile_records[projectile_id] = {
+	var projectile_record := {
 		"owner_peer_id": owner_peer_id,
 		"projectile_type": projectile_type,
 		"damage": maxi(damage, 0),
@@ -4730,6 +4771,84 @@ func _remember_projectile_record(
 		"confirmed_hit_consumed": false,
 		"expires_at": _get_net_time() + maxf(lifetime, 0.0) + PROJECTILE_RECORD_RETENTION_SECONDS,
 	}
+	if projectile_type == FIRE_SORCERER_FIREBALL_VOLLEY_TYPE:
+		projectile_record[FIRE_SORCERER_CONSUMED_SOURCE_MASK_KEY] = 0
+	_projectile_records[projectile_id] = projectile_record
+
+
+func _get_fire_sorcerer_fireball_source_bit(source_type: StringName) -> int:
+	match source_type:
+		&"fire_sorcerer_fireball_a":
+			return 1
+		&"fire_sorcerer_fireball_b":
+			return 2
+		&"fire_sorcerer_fireball_c":
+			return 4
+		_:
+			return 0
+
+
+func _is_fire_sorcerer_fireball_contact_consumed(
+	projectile_id: int,
+	source_type: StringName
+) -> bool:
+	var source_bit := _get_fire_sorcerer_fireball_source_bit(source_type)
+	if projectile_id <= 0 or source_bit == 0:
+		return false
+	var record_variant: Variant = _projectile_records.get(projectile_id)
+	if not (record_variant is Dictionary):
+		return false
+	var projectile_record := record_variant as Dictionary
+	if (
+		StringName(projectile_record.get("projectile_type", &""))
+		!= FIRE_SORCERER_FIREBALL_VOLLEY_TYPE
+	):
+		return false
+	return (
+		int(projectile_record.get(FIRE_SORCERER_CONSUMED_SOURCE_MASK_KEY, 0))
+		& source_bit
+	) != 0
+
+
+## 每颗火球的协议 source type 在本进程内只接受一次首碰。
+## Host 记录是最终权威；Client 使用同一入口抑制本地重复预测。
+func try_consume_fire_sorcerer_fireball_contact(
+	projectile_id: int,
+	source_type: StringName
+) -> bool:
+	var source_bit := _get_fire_sorcerer_fireball_source_bit(source_type)
+	if projectile_id <= 0 or source_bit == 0:
+		return false
+	var record_variant: Variant = _projectile_records.get(projectile_id)
+	if not (record_variant is Dictionary):
+		return false
+	var projectile_record := record_variant as Dictionary
+	if (
+		StringName(projectile_record.get("projectile_type", &""))
+		!= FIRE_SORCERER_FIREBALL_VOLLEY_TYPE
+	):
+		return false
+	var consumed_mask := int(projectile_record.get(
+		FIRE_SORCERER_CONSUMED_SOURCE_MASK_KEY,
+		0
+	))
+	if (consumed_mask & source_bit) != 0:
+		return false
+	projectile_record[FIRE_SORCERER_CONSUMED_SOURCE_MASK_KEY] = (
+		consumed_mask | source_bit
+	)
+	_projectile_records[projectile_id] = projectile_record
+	return true
+
+
+func _get_multiplayer_player_hit_key(
+	source_id: int,
+	target_peer_id: int,
+	source_type: StringName
+) -> String:
+	if _get_fire_sorcerer_fireball_source_bit(source_type) != 0:
+		return "%d:%s" % [source_id, String(source_type)]
+	return "%d:%d:%s" % [source_id, target_peer_id, String(source_type)]
 
 
 func _get_authoritative_projectile_damage(
@@ -5862,7 +5981,8 @@ func request_multiplayer_player_damage(
 	source_type: StringName,
 	damage_type_or_source_direction: Variant = EnemyConfig.DamageType.PHYSICAL,
 	source_direction_or_is_ranged: Variant = Vector2.ZERO,
-	is_ranged: bool = false
+	is_ranged: bool = false,
+	fire_contact_preconsumed: bool = false
 ) -> bool:
 	if source_id <= 0 or target_peer_id <= 0 or damage <= 0:
 		return false
@@ -5883,7 +6003,11 @@ func request_multiplayer_player_damage(
 	var impact_direction := Vector2.ZERO
 	if source_direction.is_finite() and source_direction.length_squared() > 0.001:
 		impact_direction = -source_direction.normalized()
-	var hit_key := "%d:%d:%s" % [source_id, target_peer_id, String(source_type)]
+	var hit_key := _get_multiplayer_player_hit_key(
+		source_id,
+		target_peer_id,
+		source_type
+	)
 	var now := _get_net_time()
 	var player_node: Player = null
 	if game != null:
@@ -5892,12 +6016,35 @@ func request_multiplayer_player_damage(
 		return false
 	if _is_recent_event_cached(_processed_player_hit_ids, hit_key, now):
 		return true
+	var fire_source_bit := _get_fire_sorcerer_fireball_source_bit(source_type)
+	var fire_contact_was_consumed := false
+	if fire_source_bit != 0:
+		fire_contact_was_consumed = (
+			_is_fire_sorcerer_fireball_contact_consumed(source_id, source_type)
+			if fire_contact_preconsumed
+			else try_consume_fire_sorcerer_fireball_contact(
+				source_id,
+				source_type
+			)
+		)
+		if not fire_contact_was_consumed:
+			return true
 	if net_manager.is_client():
 		if target_peer_id != _get_local_peer_id():
 			return true
 		if player_node.is_dead:
 			return true
-		if player_node.apply_damage(damage, resolved_damage_type, damage_context):
+		var damage_was_applied := player_node.apply_damage(
+			damage,
+			resolved_damage_type,
+			damage_context
+		)
+		if damage_was_applied or fire_contact_was_consumed:
+			var applied_damage_for_report := (
+				player_node.last_damage_taken
+				if damage_was_applied
+				else 0
+			)
 			_remember_recent_event(_processed_player_hit_ids, hit_key, HIT_DEDUP_RETENTION_SECONDS, now)
 			request_player_hit_report(
 				source_id,
@@ -5906,7 +6053,7 @@ func request_multiplayer_player_damage(
 				source_type,
 				player_node.current_health,
 				player_node.is_dead,
-				player_node.last_damage_taken,
+				applied_damage_for_report,
 				impact_direction,
 				resolved_damage_type
 			)
@@ -5914,7 +6061,17 @@ func request_multiplayer_player_damage(
 	if net_manager.is_host():
 		if player_node.is_dead:
 			return true
-		if player_node.apply_damage(damage, resolved_damage_type, damage_context):
+		var damage_was_applied := player_node.apply_damage(
+			damage,
+			resolved_damage_type,
+			damage_context
+		)
+		if damage_was_applied or fire_contact_was_consumed:
+			var applied_damage_for_report := (
+				player_node.last_damage_taken
+				if damage_was_applied
+				else 0
+			)
 			_apply_player_hit_report(
 				source_id,
 				target_peer_id,
@@ -5923,9 +6080,10 @@ func request_multiplayer_player_damage(
 				player_node.current_health,
 				player_node.is_dead,
 				_next_player_hit_revision(),
-				player_node.last_damage_taken,
+				applied_damage_for_report,
 				impact_direction,
-				resolved_damage_type
+				resolved_damage_type,
+				fire_contact_was_consumed
 			)
 		return true
 	return false
@@ -6027,13 +6185,23 @@ func _apply_player_hit_report(
 	_hit_revision: int,
 	reported_applied_damage: int,
 	impact_direction: Vector2,
-	damage_type: EnemyConfig.DamageType
+	damage_type: EnemyConfig.DamageType,
+	fire_contact_preconsumed: bool = false
 ) -> void:
 	if source_id <= 0 or player_peer_id <= 0 or damage <= 0:
 		return
-	var hit_key := "%d:%d:%s" % [source_id, player_peer_id, String(source_type)]
+	var is_fire_sorcerer_fireball := (
+		_get_fire_sorcerer_fireball_source_bit(source_type) != 0
+	)
+	var hit_key := _get_multiplayer_player_hit_key(
+		source_id,
+		player_peer_id,
+		source_type
+	)
 	var now := _get_net_time()
 	if _is_recent_event_cached(_processed_player_hit_ids, hit_key, now):
+		if is_fire_sorcerer_fireball:
+			_send_authoritative_player_health_correction(player_peer_id)
 		return
 	var player_node: Player = null
 	if game != null:
@@ -6042,6 +6210,24 @@ func _apply_player_hit_report(
 		return
 	if player_node.is_dead and not reported_is_dead:
 		return
+	if is_fire_sorcerer_fireball:
+		var contact_consumed := (
+			_is_fire_sorcerer_fireball_contact_consumed(
+				source_id,
+				source_type
+			)
+			if fire_contact_preconsumed
+			else try_consume_fire_sorcerer_fireball_contact(
+				source_id,
+				source_type
+			)
+		)
+		if not contact_consumed:
+			_send_authoritative_player_health_correction(
+				player_peer_id,
+				player_node
+			)
+			return
 	_remember_recent_event(_processed_player_hit_ids, hit_key, HIT_DEDUP_RETENTION_SECONDS, now)
 	var confirmed_health := clampi(reported_health_after, 0, player_node.max_health)
 	if player_node.current_health > 0:
@@ -6089,6 +6275,30 @@ func _apply_player_hit_report(
 		confirmed_damage,
 		confirmed_impact_direction,
 		int(confirmed_damage_type)
+	)
+
+
+func _send_authoritative_player_health_correction(
+	player_peer_id: int,
+	player_node_override: Player = null
+) -> void:
+	var player_node := player_node_override
+	if player_node == null and game != null:
+		player_node = game.get_player_for_peer(player_peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	var health_revision := _next_player_health_revision(player_peer_id)
+	_rpc_to_connected_clients(
+		&"net_player_damage_applied",
+		[
+			player_peer_id,
+			player_node.current_health,
+			player_node.is_dead,
+			health_revision,
+			0,
+			Vector2.ZERO,
+			int(EnemyConfig.DamageType.MAGIC),
+		]
 	)
 
 

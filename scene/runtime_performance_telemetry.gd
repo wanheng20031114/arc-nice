@@ -16,6 +16,7 @@ const PROJECTILE_SCRIPT_PATHS := {
 	"res://scene/enemy/capoo_ak47_bullet.gd": true,
 	"res://scene/enemy/capoo_mage_fireball.gd": true,
 	"res://scene/enemy/capoo_rpg_rocket.gd": true,
+	"res://scene/enemy/fire_sorcerer_fireball_volley.gd": true,
 	"res://scene/enemy/yuanshi_insect_fire_projectile.gd": true,
 	"res://scene/plant_defense/agave_cannonball.gd": true,
 	"res://scene/player/tiyi/tiyi_sniper_bullet.gd": true,

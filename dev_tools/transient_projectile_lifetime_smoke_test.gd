@@ -31,6 +31,15 @@ const PROJECTILE_CASES := [
 		"scene": preload("res://scene/collectible_sakura_rocket.tscn"),
 		"expected_lifetime": 5.0,
 	},
+	{
+		"label": "fire_sorcerer_fireball_volley",
+		"scene": preload(
+			"res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
+		),
+		"expected_lifetime": 7.0,
+		"maximum_allowed_lifetime": 7.0,
+		"retire_visual_delay": 0.5,
+	},
 ]
 
 var failures: Array[String] = []
@@ -51,6 +60,12 @@ func _run() -> void:
 		var label := str(case_data["label"])
 		var projectile_scene := case_data["scene"] as PackedScene
 		var expected_lifetime := float(case_data["expected_lifetime"])
+		var maximum_allowed_lifetime := float(
+			case_data.get("maximum_allowed_lifetime", 5.0)
+		)
+		var retire_visual_delay := float(
+			case_data.get("retire_visual_delay", 0.0)
+		)
 		var projectile := projectile_scene.instantiate() as Node2D
 		_expect(projectile != null, "%s must instantiate." % label)
 		if projectile == null:
@@ -64,8 +79,10 @@ func _run() -> void:
 			"%s lifetime must remain explicitly bounded at %.2fs." % [label, expected_lifetime]
 		)
 		_expect(
-			configured_lifetime > 0.0 and configured_lifetime <= 5.0,
-			"%s must not exceed the current five-second projectile ceiling." % label
+			configured_lifetime > 0.0
+			and configured_lifetime <= maximum_allowed_lifetime,
+			"%s must not exceed its explicit %.2fs projectile ceiling."
+			% [label, maximum_allowed_lifetime]
 		)
 		envelope_parts.append(
 			"%s=%.2fs/%.1fpx" % [
@@ -75,9 +92,17 @@ func _run() -> void:
 			]
 		)
 		projectile.call("_physics_process", configured_lifetime + 0.1)
+		if (
+			not projectile.is_queued_for_deletion()
+			and retire_visual_delay > 0.0
+		):
+			projectile.call("_physics_process", retire_visual_delay)
 		_expect(
 			projectile.is_queued_for_deletion(),
-			"%s must reach queue_free when its lifetime is exhausted." % label
+			(
+				"%s must reach queue_free after its lifetime and bounded "
+				+ "retire visual are exhausted."
+			) % label
 		)
 		await process_frame
 		_expect(not is_instance_valid(projectile), "%s must leave the tree after release." % label)

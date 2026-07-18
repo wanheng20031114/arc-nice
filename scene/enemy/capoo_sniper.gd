@@ -44,22 +44,39 @@ func _physics_process(delta: float) -> void:
 
 	_update_touch_damage(delta)
 	_update_attack_cooldown(delta)
-	if combat_state == CombatState.LOCK and not has_attackable_objective():
-		_cancel_lock()
 
 	if combat_state == CombatState.LOCK:
 		_update_lock(delta)
 		return
 
+	if _has_player_contact():
+		velocity = Vector2.ZERO
+		return
+	var sniper_config := config as SniperConfig
+	var preferred_target := _get_preferred_ranged_combat_target()
+	if (
+		sniper_config != null
+		and _try_hold_ranged_attack_position(
+			preferred_target,
+			sniper_config.attack_range,
+			WORLD_COLLISION_MASK
+		)
+	):
+		if _try_start_lock(preferred_target):
+			return
+		if _try_hold_ranged_attack_position(
+			preferred_target,
+			sniper_config.attack_range,
+			WORLD_COLLISION_MASK
+		):
+			_update_facing(global_position.direction_to(preferred_target.global_position))
+			return
+	else:
+		_reset_ranged_attack_position_state()
+
 	if not is_instance_valid(objective_target):
 		velocity = Vector2.ZERO
 		_move_until_player_contact()
-		return
-
-	if has_attackable_objective() and _try_start_lock():
-		return
-	if _has_player_contact():
-		velocity = Vector2.ZERO
 		return
 
 	var move_direction := _get_navigation_move_direction(delta)
@@ -86,6 +103,7 @@ func _apply_config() -> void:
 	lock_time_left = 0.0
 	locked_target = null
 	locked_player = null
+	_reset_ranged_attack_position_state()
 	_clear_lock_reticle()
 	_clear_proxy_lock_visual()
 	var sniper_config := config as SniperConfig
@@ -108,26 +126,35 @@ func _update_attack_cooldown(delta: float) -> void:
 		attack_cooldown_left = maxf(attack_cooldown_left - delta, 0.0)
 
 
-func _try_start_lock() -> bool:
+func _try_start_lock(candidate_target: Node2D = null) -> bool:
 	var sniper_config := config as SniperConfig
 	if sniper_config == null or sniper_config.lock_reticle_scene == null:
 		return false
 	if attack_cooldown_left > 0.0:
 		return false
-	var attack_target := get_attackable_objective()
-	if attack_target == null:
+	if candidate_target == null:
+		candidate_target = _get_preferred_ranged_combat_target()
+	if candidate_target == null:
 		return false
-	if not is_attackable_objective_in_range(sniper_config.attack_range):
+	if not _is_ranged_combat_target_in_range(
+		candidate_target,
+		sniper_config.attack_range
+	):
 		return false
-	if not _has_clear_world_line_to_target():
+	if not _has_ranged_combat_line(
+		candidate_target,
+		WORLD_COLLISION_MASK,
+		true
+	):
+		_reset_ranged_attack_position_state()
 		return false
 
 	combat_state = CombatState.LOCK
-	locked_target = attack_target
-	locked_player = attack_target as Player
+	locked_target = candidate_target
+	locked_player = candidate_target as Player
 	lock_time_left = maxf(sniper_config.lock_duration, 0.01)
 	velocity = Vector2.ZERO
-	_clear_navigation_path()
+	_set_ranged_attack_position_held(true)
 	var lock_direction := global_position.direction_to(locked_target.global_position)
 	_update_facing(lock_direction)
 	_play_config_animation(sniper_config.aim_animation_name)
@@ -170,18 +197,26 @@ func _update_lock(delta: float) -> void:
 
 
 func _is_lock_target_valid(sniper_config: SniperConfig) -> bool:
-	if locked_target == null or not is_instance_valid(locked_target):
-		return false
-	if locked_target != get_attackable_objective():
-		return false
-	if global_position.distance_to(locked_target.global_position) > sniper_config.attack_range:
-		return false
-	return _has_clear_world_line_to_position(locked_target.global_position)
+	return _is_ranged_combat_target_in_range(
+		locked_target,
+		sniper_config.attack_range
+	)
 
 
 func _fire_locked_shot(direction: Vector2) -> void:
 	var sniper_config := config as SniperConfig
-	if sniper_config == null or locked_target == null or not is_instance_valid(locked_target):
+	if (
+		sniper_config == null
+		or not _is_ranged_combat_target_in_range(
+			locked_target,
+			sniper_config.attack_range
+		)
+		or not _has_ranged_combat_line(
+			locked_target,
+			WORLD_COLLISION_MASK,
+			true
+		)
+	):
 		_cancel_lock()
 		return
 
@@ -249,6 +284,7 @@ func _cancel_lock() -> void:
 	locked_player = null
 	_clear_lock_reticle()
 	_set_aim_glow(0.0, global_position + Vector2.RIGHT)
+	_reset_ranged_attack_position_state()
 	var sniper_config := config as SniperConfig
 	if sniper_config != null:
 		_play_config_animation(sniper_config.move_animation_name)

@@ -1,13 +1,14 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://cuw1xpnfm8nv3"]
 
-[ext_resource type="Script" path="res://scene/plant_defense/water_collector.gd" id="1_script"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/water_collector/water_collector.png" id="2_sprite"]
-[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
-[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
+[ext_resource type="Script" uid="uid://bedfln2u4cvq7" path="res://scene/plant_defense/water_collector.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://4vl5oufhgjme" path="res://resources/texture/plant_defense/water_collector/water_collector.png" id="2_sprite"]
+[ext_resource type="PackedScene" uid="uid://by1igl2yc3ch0" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
+[ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
 [ext_resource type="Material" path="res://resources/shader/plant_lifecycle_material.tres" id="5_lifecycle_material"]
 [ext_resource type="Resource" path="res://resources/config/production/water_to_bottle.tres" id="6_recipe"]
-[ext_resource type="Script" path="res://resources/config/production/production_recipe.gd" id="7_recipe_script"]
-[ext_resource type="Texture2D" path="res://resources/texture/production/water_collector_panel_background.png" id="8_panel_background"]
+[ext_resource type="Script" uid="uid://bqe4uxp0um77k" path="res://resources/config/production/production_recipe.gd" id="7_recipe_script"]
+[ext_resource type="Texture2D" uid="uid://dthood4sh23ov" path="res://resources/texture/production/water_collector_panel_background.png" id="8_panel_background"]
+[ext_resource type="Texture2D" uid="uid://c3bj80vdjrpu4" path="res://resources/texture/plant_defense/water_collector/water_collector_progress_ring.svg" id="9_progress_ring"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 resource_local_to_scene = true
@@ -69,7 +70,7 @@ font_color = Color(0.78, 0.96, 0.82, 1)
 outline_size = 1
 outline_color = Color(0.015, 0.055, 0.04, 1)
 
-[node name="WaterCollector" type="StaticBody2D"]
+[node name="WaterCollector" type="StaticBody2D" unique_id=237459697]
 collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
@@ -82,86 +83,104 @@ lifecycle_effect_top_y = -15.0
 lifecycle_effect_bottom_y = 16.0
 lifecycle_particle_scale = 1.0
 
-[node name="VisualRoot" type="Node2D" parent="."]
+[node name="VisualRoot" type="Node2D" parent="." unique_id=1152625587]
 scale = Vector2(0.5, 0.5)
 
-[node name="MainSprite" type="Sprite2D" parent="VisualRoot"]
+[node name="MainSprite" type="Sprite2D" parent="VisualRoot" unique_id=1537105872]
 z_index = 1
 texture_filter = 1
 material = ExtResource("5_lifecycle_material")
 texture = ExtResource("2_sprite")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollectionProgressRing" type="TextureProgressBar" parent="VisualRoot"]
+z_index = 2
+texture_filter = 1
+custom_minimum_size = Vector2(12, 12)
+offset_left = -9.0
+offset_top = 1.0
+offset_right = 3.0
+offset_bottom = 13.0
+mouse_filter = 2
+max_value = 1.0
+step = 0.001
+fill_mode = 4
+radial_initial_angle = -90.0
+texture_under = ExtResource("9_progress_ring")
+texture_progress = ExtResource("9_progress_ring")
+tint_under = Color(0.015, 0.16, 0.3, 0.72)
+tint_progress = Color(0, 0.72, 1, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=2134714439]
 position = Vector2(0, 1.5)
 shape = SubResource("RectangleShape2D_body")
 
-[node name="PlayerCoreBody" type="StaticBody2D" parent="."]
+[node name="PlayerCoreBody" type="StaticBody2D" parent="." unique_id=1928624960]
 position = Vector2(0, 1)
 collision_layer = 1024
 collision_mask = 2
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody" unique_id=248688049]
 position = Vector2(0, 2)
 shape = SubResource("CapsuleShape2D_player_core")
 
-[node name="InteractionArea" type="Area2D" parent="."]
+[node name="InteractionArea" type="Area2D" parent="." unique_id=813967088]
 collision_layer = 0
 collision_mask = 2
 monitoring = false
 monitorable = false
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea" unique_id=709090372]
 shape = SubResource("CircleShape2D_interaction")
 
-[node name="InteractionPrompt" type="PanelContainer" parent="."]
+[node name="InteractionPrompt" type="PanelContainer" parent="." unique_id=1192369578]
 z_index = 10
 texture_filter = 1
 custom_minimum_size = Vector2(112, 26)
-offset_left = -56.0
-offset_top = -28.0
-offset_right = 56.0
-offset_bottom = -2.0
+offset_left = -28.0
+offset_top = -32.0
+offset_right = 84.0
+offset_bottom = -6.0
 scale = Vector2(0.5, 0.5)
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_prompt")
 
-[node name="PromptMargin" type="MarginContainer" parent="InteractionPrompt"]
+[node name="PromptMargin" type="MarginContainer" parent="InteractionPrompt" unique_id=739418148]
 layout_mode = 2
 theme_override_constants/margin_left = 4
 theme_override_constants/margin_top = 3
 theme_override_constants/margin_right = 4
 theme_override_constants/margin_bottom = 3
 
-[node name="PromptRow" type="HBoxContainer" parent="InteractionPrompt/PromptMargin"]
+[node name="PromptRow" type="HBoxContainer" parent="InteractionPrompt/PromptMargin" unique_id=2146651662]
 layout_mode = 2
 theme_override_constants/separation = 4
 alignment = 1
 
-[node name="Keycap" type="PanelContainer" parent="InteractionPrompt/PromptMargin/PromptRow"]
+[node name="Keycap" type="PanelContainer" parent="InteractionPrompt/PromptMargin/PromptRow" unique_id=758719292]
 custom_minimum_size = Vector2(18, 18)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_keycap")
 
-[node name="KeyLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow/Keycap"]
+[node name="KeyLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow/Keycap" unique_id=55818557]
 layout_mode = 2
 text = "F"
 label_settings = SubResource("LabelSettings_keycap")
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="ActionLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow"]
+[node name="ActionLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow" unique_id=226440690]
 layout_mode = 2
 text = "打开采集器"
 label_settings = SubResource("LabelSettings_action")
 vertical_alignment = 1
 
-[node name="HealthBar" parent="." instance=ExtResource("3_health_bar")]
+[node name="HealthBar" parent="." unique_id=1502599125 instance=ExtResource("3_health_bar")]
 custom_minimum_size = Vector2(32, 5)
 offset_left = -16.0
-offset_top = -17.0
+offset_top = -18.0
 offset_right = 16.0
-offset_bottom = -12.0
+offset_bottom = -13.0
 
-[node name="MultiplayerProductionRequestTimer" type="Timer" parent="."]
+[node name="MultiplayerProductionRequestTimer" type="Timer" parent="." unique_id=1067307529]
 wait_time = 4.0
 one_shot = true

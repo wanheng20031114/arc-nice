@@ -10,7 +10,6 @@ display_name = "雪狼破军"
 drop_weight = 0.5
 description = "5秒内进入专属强化：远程角色武装螺旋射击（射速x10）；锄头猫猫召出双剑，接触造成30点物理伤害。"
 icon_texture = ExtResource("1_fvkqp")
-duration = 5.0
 fire_rate_multiplier = 10.0
 player_form_mode = 1
 shot_pattern = 1

@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="FireSorcererConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/enemies/fire_sorcerer_config.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/enemy/fire_sorcerer.tscn" id="2_scene"]
+[ext_resource type="PackedScene" path="res://scene/enemy/fire_sorcerer_fireball_volley.tscn" id="3_volley"]
+[ext_resource type="AudioStream" path="res://resources/audio/capoo_mage_fireball_cast.wav" id="4_audio"]
+
+[resource]
+script = ExtResource("1_script")
+attack_range = 672.0
+summon_duration = 0.6
+attack_interval = 3.0
+initial_attack_stagger_window = 0.9
+volley_scene = ExtResource("3_volley")
+projectile_speed = 155.0
+projectile_lifetime = 7.0
+homing_turn_rate = 6.0
+attack_audio_stream = ExtResource("4_audio")
+display_name = "火焰术士"
+enemy_scene = ExtResource("2_scene")
+max_health = 200
+attack_damage = 50
+physical_defense = 20
+magic_defense = 80
+move_speed = 24.0
+home_damage = 5
+xirang_kill_reward = 35
+pickup_drop_chance = 0.1

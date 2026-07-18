@@ -28,6 +28,7 @@ func _run() -> void:
 	_test_resource_contract()
 	await _test_windup_and_locked_burst()
 	await _test_plant_targeting_and_contact_depth()
+	await _test_ranged_standoff_cache_and_fallback()
 	await _test_projectile_damage_and_world_collision()
 	await _test_death_interrupts_attack()
 	await _test_proxy_action_visuals()
@@ -99,7 +100,7 @@ func _test_windup_and_locked_burst() -> void:
 	spawned_projectiles.clear()
 	var player := _spawn_player(Vector2(120.0, 0.0))
 	var enemy := _spawn_capoo(Vector2.ZERO, player)
-	await _wait_physics_frames(3)
+	await _wait_physics_frames(8)
 
 	_expect(enemy.combat_state == CapooAK47.CombatState.WINDUP, "AK Capoo did not enter windup at medium range.")
 	_expect(spawned_projectiles.is_empty(), "AK Capoo fired during early windup.")
@@ -212,11 +213,110 @@ func _test_plant_targeting_and_contact_depth() -> void:
 	await physics_frame
 
 
+func _test_ranged_standoff_cache_and_fallback() -> void:
+	var player := _spawn_player(Vector2(120.0, 0.0))
+	var enemy := _spawn_capoo(Vector2.ZERO, player)
+	enemy.set_physics_process(false)
+	var gate := Node2D.new()
+	test_root.add_child(gate)
+	enemy.set_objective_target(gate)
+	var preferred_target := enemy.call("_get_preferred_ranged_combat_target") as Node2D
+	_expect(
+		preferred_target == player,
+		"A navigation-only objective must fall back to the living player for ranged combat."
+	)
+	_expect(
+		bool(enemy.call(
+			"_is_ranged_combat_target_in_range",
+			player,
+			CAPOO_CONFIG.attack_range
+		)),
+		"Ranged combat range checks must accept the fallback player."
+	)
+
+	Enemy.set_performance_metrics_enabled(true)
+	_expect(
+		bool(enemy.call("_has_ranged_combat_line", player, 1, true)),
+		"An exact ranged LOS commit must accept an unobstructed player."
+	)
+	var first_metrics := Enemy.get_performance_metrics()
+	_expect(
+		int(first_metrics["ranged_los_calls"]) == 1,
+		"An exact ranged LOS commit must publish one measurable ray query."
+	)
+	_expect(
+		bool(enemy.call("_has_ranged_combat_line", player, 1, false)),
+		"A clear ranged LOS result must be cached."
+	)
+	var cached_metrics := Enemy.get_performance_metrics()
+	_expect(
+		int(cached_metrics["ranged_los_calls"]) == 1,
+		"Reading a seeded ranged LOS cache in the same frame must not cast again."
+	)
+	enemy.cached_navigation_move_direction = Vector2.RIGHT
+	_expect(
+		bool(enemy.call(
+			"_try_hold_ranged_attack_position",
+			player,
+			CAPOO_CONFIG.attack_range,
+			1
+		))
+		and enemy.cached_navigation_move_direction == Vector2.ZERO,
+		"Entering ranged standoff must clear the previous navigation direction once."
+	)
+	enemy.cached_navigation_move_direction = Vector2.LEFT
+	enemy.call(
+		"_try_hold_ranged_attack_position",
+		player,
+		CAPOO_CONFIG.attack_range,
+		1
+	)
+	_expect(
+		enemy.cached_navigation_move_direction == Vector2.LEFT,
+		"Remaining in ranged standoff must not clear navigation every physics tick."
+	)
+
+	var wall := _spawn_world_wall(Vector2(60.0, 0.0), 8.0)
+	await physics_frame
+	_expect(
+		not bool(enemy.call("_has_ranged_combat_line", player, 1, true)),
+		"A forced attack commit must replace a clear cache when a wall appears."
+	)
+	var blocked_metrics := Enemy.get_performance_metrics()
+	_expect(
+		int(blocked_metrics["ranged_los_calls"]) == 2
+		and not bool(enemy.call("_has_ranged_combat_line", player, 1, false)),
+		"Blocked ranged LOS must be cached and included in performance metrics."
+	)
+	_expect(
+		not bool(enemy.call(
+			"_try_hold_ranged_attack_position",
+			player,
+			CAPOO_CONFIG.attack_range,
+			1
+		)),
+		"A blocked ranged target must release standoff so navigation can resume."
+	)
+	enemy.cached_navigation_move_direction = Vector2.UP
+	enemy.call("_reset_ranged_attack_position_state")
+	_expect(
+		enemy.cached_navigation_move_direction == Vector2.UP,
+		"Resetting an already released standoff must not clear navigation again."
+	)
+	Enemy.set_performance_metrics_enabled(false)
+
+	enemy.queue_free()
+	wall.queue_free()
+	gate.queue_free()
+	player.queue_free()
+	await physics_frame
+
+
 func _test_death_interrupts_attack() -> void:
 	spawned_projectiles.clear()
 	var player := _spawn_player(Vector2(120.0, 0.0))
 	var enemy := _spawn_capoo(Vector2.ZERO, player)
-	await _wait_physics_frames(3)
+	await _wait_physics_frames(8)
 
 	_expect(enemy.combat_state == CapooAK47.CombatState.WINDUP, "Death test enemy did not enter windup.")
 	enemy.apply_damage(CAPOO_CONFIG.max_health + 10)
@@ -280,6 +380,20 @@ func _spawn_projectile(position: Vector2, direction: Vector2) -> CapooAK47Bullet
 	projectile.global_position = position
 	projectile.setup(direction, 1, CAPOO_CONFIG.projectile_speed, CAPOO_CONFIG.projectile_lifetime)
 	return projectile
+
+
+func _spawn_world_wall(position: Vector2, radius: float) -> StaticBody2D:
+	var wall := StaticBody2D.new()
+	wall.collision_layer = 1
+	wall.collision_mask = 0
+	var shape_node := CollisionShape2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = radius
+	shape_node.shape = circle
+	wall.add_child(shape_node)
+	test_root.add_child(wall)
+	wall.global_position = position
+	return wall
 
 
 func _count_wave_entries(wave_config: WaveConfig) -> int:

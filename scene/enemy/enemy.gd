@@ -65,6 +65,12 @@ const BLOCKED_WORLD_LOS_MOTION_INVALIDATION_DISTANCE_SQUARED := (
 	BLOCKED_WORLD_LOS_MOTION_INVALIDATION_DISTANCE
 	* BLOCKED_WORLD_LOS_MOTION_INVALIDATION_DISTANCE
 )
+const RANGED_COMBAT_LOS_REFRESH_INTERVAL_PHYSICS_FRAMES := 6
+const RANGED_COMBAT_LOS_MOTION_INVALIDATION_DISTANCE := 8.0
+const RANGED_COMBAT_LOS_MOTION_INVALIDATION_DISTANCE_SQUARED := (
+	RANGED_COMBAT_LOS_MOTION_INVALIDATION_DISTANCE
+	* RANGED_COMBAT_LOS_MOTION_INVALIDATION_DISTANCE
+)
 
 enum DeathSequenceStage {
 	NONE,
@@ -102,6 +108,8 @@ static var _performance_metrics := {
 	"verified_direct_move_distance": 0.0,
 	"status_process_calls": 0,
 	"status_process_usec": 0,
+	"ranged_los_calls": 0,
+	"ranged_los_usec": 0,
 }
 
 @export var config: EnemyConfig
@@ -181,6 +189,16 @@ var _blocked_world_los_source_position := Vector2.ZERO
 var _blocked_world_los_collision_mask: int = 0
 var _blocked_world_los_retry_after_msec: int = 0
 var _blocked_world_los_retry_interval_msec: int = BLOCKED_WORLD_LOS_RETRY_MIN_MSEC
+var _ranged_combat_los_target_instance_id: int = 0
+var _ranged_combat_los_target_position := Vector2.ZERO
+var _ranged_combat_los_source_position := Vector2.ZERO
+var _ranged_combat_los_collision_mask: int = 0
+var _ranged_combat_los_navigation_generation: int = -1
+var _ranged_combat_los_result := false
+var _ranged_combat_los_has_result := false
+var _ranged_combat_los_last_query_physics_frame: int = -1
+var _ranged_combat_los_next_query_physics_frame: int = 0
+var _ranged_attack_position_held := false
 var navigation_flow_context: GridPathfinder.FlowQueryContext = null
 var navigation_agent_profile: GridPathfinder.AgentNavigationProfile = null
 var near_moving_target_direct_distance := DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE
@@ -234,6 +252,8 @@ static func reset_performance_metrics() -> void:
 	_performance_metrics["verified_direct_move_distance"] = 0.0
 	_performance_metrics["status_process_calls"] = 0
 	_performance_metrics["status_process_usec"] = 0
+	_performance_metrics["ranged_los_calls"] = 0
+	_performance_metrics["ranged_los_usec"] = 0
 
 
 static func get_performance_metrics(reset_after_read: bool = false) -> Dictionary:
@@ -269,6 +289,9 @@ func _ready() -> void:
 	# interval receives uniform deterministic phase groups.
 	navigation_update_frame_offset = Enemy._next_navigation_phase_offset
 	Enemy._next_navigation_phase_offset += 1
+	_ranged_combat_los_next_query_physics_frame = (
+		_get_next_ranged_combat_los_phase_frame(Engine.get_physics_frames())
+	)
 	navigation_zero_direction_retry_frame = _get_next_navigation_phase_frame(
 		_get_navigation_update_interval_frames(objective_target)
 	)
@@ -463,6 +486,8 @@ func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = 
 	last_navigation_refresh_process_frame = -1
 	navigation_refresh_deferred = false
 	_invalidate_blocked_world_los_cache()
+	_invalidate_ranged_combat_line_cache()
+	_ranged_attack_position_held = false
 	near_moving_target_direct_distance = DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE
 	near_moving_target_direct_distance_squared = (
 		DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE_SQUARED
@@ -476,6 +501,8 @@ func set_target_player(player: Player) -> void:
 	if target_player == player:
 		if objective_target == null:
 			objective_target = player
+			_invalidate_ranged_combat_line_cache()
+			_ranged_attack_position_held = false
 			_clear_cached_navigation_move_direction()
 		return
 
@@ -483,6 +510,8 @@ func set_target_player(player: Player) -> void:
 	target_player = player
 	navigation_flow_prefetch_next_physics_frame = 0
 	_invalidate_blocked_world_los_cache()
+	_invalidate_ranged_combat_line_cache()
+	_ranged_attack_position_held = false
 	if objective_target == null or objective_target == previous_target:
 		objective_target = player
 		_clear_cached_navigation_move_direction()
@@ -493,6 +522,8 @@ func set_objective_target(target: Node2D) -> void:
 		return
 	objective_target = target
 	_invalidate_blocked_world_los_cache()
+	_invalidate_ranged_combat_line_cache()
+	_ranged_attack_position_held = false
 	_clear_cached_navigation_move_direction()
 
 
@@ -542,6 +573,144 @@ func is_attackable_objective_in_range(attack_range: float) -> bool:
 	)
 
 
+func _get_preferred_ranged_combat_target() -> Node2D:
+	# Tower-defense navigation may point at a Home gate which is deliberately not
+	# damageable. Ranged enemies opt into this combat target without replacing
+	# their navigation objective: a live plant/player objective wins, otherwise
+	# the live session player remains a valid ranged target.
+	var attackable_objective := get_attackable_objective()
+	if attackable_objective != null:
+		return attackable_objective
+	if (
+		target_player != null
+		and is_instance_valid(target_player)
+		and not target_player.is_dead
+	):
+		return target_player
+	return null
+
+
+func _is_ranged_combat_target_in_range(
+	target: Node2D,
+	attack_range: float
+) -> bool:
+	if not _is_ranged_combat_target_valid(target):
+		return false
+	var safe_attack_range := maxf(attack_range, 0.0)
+	return (
+		global_position.distance_squared_to(target.global_position)
+		<= safe_attack_range * safe_attack_range
+	)
+
+
+func _is_ranged_combat_target_valid(target: Node2D) -> bool:
+	return _is_live_ranged_combat_target(target)
+
+
+func _has_ranged_combat_line(
+	target: Node2D,
+	collision_mask_value: int = 1,
+	force_refresh: bool = false
+) -> bool:
+	if not _is_live_ranged_combat_target(target):
+		_invalidate_ranged_combat_line_cache()
+		return false
+
+	var physics_frame := Engine.get_physics_frames()
+	var target_position := target.global_position
+	var navigation_generation := _get_current_navigation_generation()
+	var cache_is_current := (
+		_ranged_combat_los_has_result
+		and _ranged_combat_los_target_instance_id == target.get_instance_id()
+		and _ranged_combat_los_collision_mask == collision_mask_value
+		and _ranged_combat_los_navigation_generation == navigation_generation
+		and global_position.distance_squared_to(_ranged_combat_los_source_position)
+			< RANGED_COMBAT_LOS_MOTION_INVALIDATION_DISTANCE_SQUARED
+		and target_position.distance_squared_to(_ranged_combat_los_target_position)
+			< RANGED_COMBAT_LOS_MOTION_INVALIDATION_DISTANCE_SQUARED
+	)
+	if (
+		not force_refresh
+		and cache_is_current
+		and (
+			physics_frame < _ranged_combat_los_next_query_physics_frame
+			or physics_frame == _ranged_combat_los_last_query_physics_frame
+		)
+	):
+		return _ranged_combat_los_result
+	if (
+		not force_refresh
+		and (
+			physics_frame + navigation_update_frame_offset
+		) % RANGED_COMBAT_LOS_REFRESH_INTERVAL_PHYSICS_FRAMES != 0
+	):
+		# A stale clear result must never hold an enemy after either endpoint has
+		# moved eight pixels, the target changed, or navigation was rebuilt.
+		return _ranged_combat_los_result if cache_is_current else false
+
+	var started_usec := Time.get_ticks_usec() if Enemy.performance_metrics_enabled else 0
+	var has_clear_line := _is_world_segment_clear(
+		target_position,
+		collision_mask_value
+	)
+	if Enemy.performance_metrics_enabled:
+		Enemy._record_performance_metric(
+			"ranged_los_calls",
+			"ranged_los_usec",
+			started_usec
+		)
+	_seed_ranged_combat_line_cache(
+		target,
+		target_position,
+		collision_mask_value,
+		navigation_generation,
+		has_clear_line,
+		physics_frame
+	)
+	return has_clear_line
+
+
+func _try_hold_ranged_attack_position(
+	target: Node2D,
+	attack_range: float,
+	collision_mask_value: int = 1
+) -> bool:
+	var should_hold := (
+		_is_ranged_combat_target_in_range(target, attack_range)
+		and _has_ranged_combat_line(target, collision_mask_value)
+	)
+	_set_ranged_attack_position_held(should_hold)
+	if should_hold:
+		velocity = Vector2.ZERO
+	return should_hold
+
+
+func _reset_ranged_attack_position_state() -> void:
+	_set_ranged_attack_position_held(false)
+
+
+func _is_live_ranged_combat_target(target: Node2D) -> bool:
+	if target == null or not is_instance_valid(target):
+		return false
+	var player_target := target as Player
+	if player_target != null:
+		return not player_target.is_dead
+	var plant_target := target as PlantDefense
+	if plant_target != null:
+		return not plant_target.is_dead and not plant_target.is_removing
+	return false
+
+
+func _set_ranged_attack_position_held(held: bool) -> void:
+	if _ranged_attack_position_held == held:
+		return
+	_ranged_attack_position_held = held
+	# Entering discards a now-unneeded route; exiting discards the cached zero so
+	# the next movement tick can immediately reacquire a route. No per-frame path
+	# invalidation occurs while a ranged cohort is standing through cooldown.
+	_clear_navigation_path()
+
+
 func set_pathfinder(shared_pathfinder: Node) -> void:
 	if pathfinder == shared_pathfinder:
 		return
@@ -549,6 +718,8 @@ func set_pathfinder(shared_pathfinder: Node) -> void:
 	_refresh_projectile_motion_system()
 	navigation_agent_profile = null
 	navigation_flow_prefetch_next_physics_frame = 0
+	_invalidate_ranged_combat_line_cache()
+	_ranged_attack_position_held = false
 	_clear_cached_navigation_move_direction()
 
 
@@ -562,6 +733,8 @@ func configure_multiplayer_proxy() -> void:
 	target_player = null
 	objective_target = null
 	pathfinder = null
+	_invalidate_ranged_combat_line_cache()
+	_ranged_attack_position_held = false
 	projectile_motion_system = null
 	touched_player = null
 	touching_players.clear()
@@ -1384,6 +1557,52 @@ func _invalidate_blocked_world_los_cache() -> void:
 	_blocked_world_los_target_instance_id = 0
 	_blocked_world_los_collision_mask = 0
 	_blocked_world_los_retry_after_msec = 0
+
+
+func _seed_ranged_combat_line_cache(
+	target: Node2D,
+	target_position: Vector2,
+	collision_mask_value: int,
+	navigation_generation: int,
+	has_clear_line: bool,
+	physics_frame: int
+) -> void:
+	_ranged_combat_los_target_instance_id = target.get_instance_id()
+	_ranged_combat_los_target_position = target_position
+	_ranged_combat_los_source_position = global_position
+	_ranged_combat_los_collision_mask = collision_mask_value
+	_ranged_combat_los_navigation_generation = navigation_generation
+	_ranged_combat_los_result = has_clear_line
+	_ranged_combat_los_has_result = true
+	_ranged_combat_los_last_query_physics_frame = physics_frame
+	_ranged_combat_los_next_query_physics_frame = (
+		_get_next_ranged_combat_los_phase_frame(physics_frame + 1)
+	)
+
+
+func _invalidate_ranged_combat_line_cache() -> void:
+	_ranged_combat_los_target_instance_id = 0
+	_ranged_combat_los_collision_mask = 0
+	_ranged_combat_los_navigation_generation = -1
+	_ranged_combat_los_result = false
+	_ranged_combat_los_has_result = false
+	_ranged_combat_los_last_query_physics_frame = -1
+	_ranged_combat_los_next_query_physics_frame = (
+		_get_next_ranged_combat_los_phase_frame(Engine.get_physics_frames())
+	)
+
+
+func _get_next_ranged_combat_los_phase_frame(start_frame: int) -> int:
+	var next_frame := maxi(start_frame, 0)
+	var phase_remainder := (
+		next_frame + navigation_update_frame_offset
+	) % RANGED_COMBAT_LOS_REFRESH_INTERVAL_PHYSICS_FRAMES
+	if phase_remainder != 0:
+		next_frame += (
+			RANGED_COMBAT_LOS_REFRESH_INTERVAL_PHYSICS_FRAMES
+			- phase_remainder
+		)
+	return next_frame
 
 
 func _cache_collision_shape_mirror_states() -> void:

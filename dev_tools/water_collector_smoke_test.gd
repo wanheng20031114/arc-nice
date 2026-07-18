@@ -73,6 +73,7 @@ func _run() -> void:
 		"水源采集器必须在完成搭建时自动选择唯一的环境采集配方。"
 	)
 	collector.advance_shared_production_tick(19.0)
+	_test_collection_progress_ring(collector, 0.95)
 	_expect(
 		coordinator.get_total_item_count(WATER_BOTTLE) == 0
 		and is_equal_approx(collector.progress_elapsed_seconds, 19.0),
@@ -81,15 +82,18 @@ func _run() -> void:
 	collector.advance_shared_production_tick(1.0)
 	_expect(
 		coordinator.get_total_item_count(WATER_BOTTLE) == 1
-		and is_zero_approx(collector.progress_elapsed_seconds),
+		and is_zero_approx(collector.progress_elapsed_seconds)
+		and is_zero_approx(collector.collection_progress_ring.value),
 		"第20秒必须无原料消耗地向仓库存入1个水瓶。"
 	)
 	collector.advance_shared_production_tick(7.0)
 	collector.set_production_enabled(false)
 	_expect(
 		is_zero_approx(collector.progress_elapsed_seconds)
+		and collector.collection_progress_ring.visible
+		and is_zero_approx(collector.collection_progress_ring.value)
 		and coordinator.get_total_item_count(WATER_BOTTLE) == 1,
-		"暂停采集必须清空本轮进度且不能额外产出。"
+		"暂停采集必须清空本轮进度与瓶身进度环，且不能额外产出。"
 	)
 	collector.set_production_enabled(true)
 
@@ -170,9 +174,62 @@ func _test_config_and_assets(collector: WaterCollector) -> void:
 		"采集器必须使用64×64源图，水瓶必须使用32×32物资图标。"
 	)
 	var visual_root := collector.get_node_or_null("VisualRoot") as Node2D
+	var progress_ring := collector.get_node_or_null(
+		"VisualRoot/CollectionProgressRing"
+	) as TextureProgressBar
 	_expect(
 		visual_root != null and visual_root.scale == Vector2(0.5, 0.5),
 		"2×2采集器必须按现有建筑规范以0.5缩放显示为32×32世界像素。"
+	)
+	_expect(
+		progress_ring != null
+		and progress_ring.fill_mode == TextureProgressBar.FILL_CLOCKWISE
+		and is_equal_approx(
+			fposmod(progress_ring.radial_initial_angle, 360.0),
+			270.0
+		)
+		and is_equal_approx(progress_ring.max_value, 1.0)
+		and progress_ring.texture_under != null
+		and progress_ring.texture_progress != null
+		and progress_ring.texture_progress.get_size() == Vector2(12, 12)
+		and progress_ring.size == Vector2(12, 12)
+		and progress_ring.position == Vector2(-9, 1)
+		and progress_ring.tint_progress.b >= 0.99
+		and progress_ring.tint_progress.s >= 0.99,
+		"瓶身中央必须预置12×12顺时针中空高饱和蓝色收集进度环。"
+	)
+
+
+func _test_collection_progress_ring(
+	collector: WaterCollector,
+	expected_authoritative_ratio: float
+) -> void:
+	var progress_ring := collector.collection_progress_ring
+	var progress_tween := collector.get("_collection_progress_tween") as Tween
+	_expect(
+		progress_ring != null
+		and progress_ring.visible
+		and is_equal_approx(
+			progress_ring.value,
+			expected_authoritative_ratio
+		)
+		and progress_tween != null
+		and progress_tween.is_valid(),
+		"瓶身进度环必须从真实采集进度开始，并仅在状态变化后启动平滑Tween。"
+	)
+	if progress_tween == null or not progress_tween.is_valid():
+		return
+	progress_tween.custom_step(
+		collector.get_visual_projection_duration_seconds() * 0.5
+	)
+	var expected_half_step := lerpf(
+		expected_authoritative_ratio,
+		1.0,
+		0.5
+	)
+	_expect(
+		is_equal_approx(progress_ring.value, expected_half_step),
+		"瓶身进度环Tween必须线性平滑补间到下一次真实采集进度。"
 	)
 
 

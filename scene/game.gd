@@ -6,6 +6,9 @@ const CAPOO_AK47_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo_ak47_bull
 const CAPOO_SMG_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
 const CAPOO_RPG_ROCKET_POOL_SCENE := preload("res://scene/enemy/capoo_rpg_rocket.tscn")
 const CAPOO_MAGE_FIREBALL_POOL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
+const FIRE_SORCERER_FIREBALL_VOLLEY_POOL_SCENE := preload(
+	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
+)
 const YUANSHI_FIRE_PROJECTILE_POOL_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
 const AGAVE_CANNONBALL_POOL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
 const COLLECTIBLE_ARROW_POOL_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
@@ -136,6 +139,13 @@ func _ready() -> void:
 	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
 	session_object_pool.register_scene(CAPOO_RPG_ROCKET_POOL_SCENE, 12, 96)
 	session_object_pool.register_scene(CAPOO_MAGE_FIREBALL_POOL_SCENE, 12, 96)
+	# A 7 s flight plus expiry visuals slightly overlaps a third 3.6 s attack
+	# cycle. Capacity includes those visual-only leases and release quarantine.
+	session_object_pool.register_scene(
+		FIRE_SORCERER_FIREBALL_VOLLEY_POOL_SCENE,
+		48,
+		704
+	)
 	GameRuntimeBase.register_capoo_mage_fireball_impact_pool(
 		session_object_pool,
 		12,
