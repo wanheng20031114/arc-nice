@@ -596,6 +596,7 @@ func _verify_extended_projectile_reuse() -> void:
 			projectile.set("homing_turn_rate", 0.2)
 		if projectile_scene == FIRE_SORCERER_FIREBALL_VOLLEY_SCENE:
 			var dirty_volley := projectile as FireSorcererFireballVolley
+			dirty_volley.speed = 13.0
 			dirty_volley.active_ball_mask = 0
 			dirty_volley.visible_effect_mask = (
 				FireSorcererFireballVolley.ALL_BALLS_ACTIVE_MASK
@@ -680,9 +681,10 @@ func _verify_extended_projectile_reuse() -> void:
 					== FireSorcererFireballVolley.ALL_BALLS_ACTIVE_MASK
 				and reused_volley.visible_effect_mask == 0
 				and reused_volley.target_runtime == null
-				and is_zero_approx(reused_volley.target_refresh_left),
+				and is_zero_approx(reused_volley.target_refresh_left)
+				and is_equal_approx(reused_volley.speed, 125.0),
 				"Reused Fire Sorcerer volleys must restore all three live balls "
-				+ "and clear stale visual and target-query state."
+				+ "and authored speed while clearing stale visual and target-query state."
 			)
 			var unique_ball_positions := {}
 			for ball_index in range(

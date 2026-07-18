@@ -18,7 +18,8 @@ class_name FireSorcererConfig
 @export_range(0.0, 2.0, 0.01, "or_greater") var initial_attack_stagger_window: float = 0.9
 # 独立的三火球齐射场景。
 @export var volley_scene: PackedScene
-@export_range(0.0, 2000.0, 0.1, "or_greater") var projectile_speed: float = 155.0
+# 固定比玩家 120 的默认移动速度高 5。
+@export_range(0.0, 2000.0, 0.1, "or_greater") var projectile_speed: float = 125.0
 @export_range(0.01, 30.0, 0.01, "or_greater") var projectile_lifetime: float = 7.0
 # 每秒最大转向弧度。6 rad/s 明显强于法师 Capoo 的 0.65 rad/s。
 @export_range(0.0, 16.0, 0.05, "or_greater") var homing_turn_rate: float = 6.0

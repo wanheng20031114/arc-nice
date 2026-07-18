@@ -1,13 +1,12 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://boy3jlcqqmlo2"]
 
 [ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy/enemy.tscn" id="1_base"]
-[ext_resource type="Script" path="res://scene/enemy/fire_sorcerer.gd" id="2_script"]
+[ext_resource type="Script" uid="uid://u26fh5b8jwpx" path="res://scene/enemy/fire_sorcerer.gd" id="2_script"]
 [ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="3_shader"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/fire_sorcerer.tres" id="4_frames"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/fire_sorcerer_fireball.tres" id="5_fireball_frames"]
+[ext_resource type="SpriteFrames" uid="uid://fq4hw782ls7f" path="res://resources/animation/fire_sorcerer.tres" id="4_frames"]
+[ext_resource type="SpriteFrames" uid="uid://clyqfauajs7ku" path="res://resources/animation/fire_sorcerer_fireball.tres" id="5_fireball_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_fire_sorcerer"]
-resource_local_to_scene = false
 shader = ExtResource("3_shader")
 shader_parameter/blink_enabled = false
 shader_parameter/blink_speed = 12.0
@@ -17,23 +16,28 @@ shader_parameter/dodge_sweep = 0.0
 shader_parameter/dodge_color = Color(0.42, 0.95, 1, 1)
 shader_parameter/dodge_flash_color = Color(1, 1, 1, 1)
 shader_parameter/dodge_outline_width = 3.0
-shader_parameter/slow_overlay_strength = 0.0
+shader_parameter/dash_effect_strength = 0.0
+shader_parameter/dash_direction = Vector2(1, 0)
+shader_parameter/dash_color = Color(0.12, 1.45, 1.3, 1)
+shader_parameter/dash_trail_pixels = 4.0
 shader_parameter/slow_overlay_color = Color(0.55, 0.86, 1, 1)
-shader_parameter/burn_overlay_strength = 0.0
 shader_parameter/burn_overlay_color = Color(1, 0.56, 0.18, 0.46)
+shader_parameter/burn_edge_width = 2.0
+shader_parameter/bleed_overlay_color = Color(0.95, 0.02, 0.08, 0.58)
+shader_parameter/bleed_outline_width = 2.0
 shader_parameter/revive_glow_strength = 0.0
 shader_parameter/revive_glow_color = Color(3.2, 3.2, 3.2, 1)
 shader_parameter/revive_glow_outline_width = 4.5
 
-[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_body"]
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_7m0sc"]
 resource_local_to_scene = true
 radius = 5.5
-height = 15.0
+height = 18.0
 
-[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_touch"]
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_1dtrw"]
 resource_local_to_scene = true
 radius = 5.5
-height = 15.0
+height = 18.0
 
 [sub_resource type="Animation" id="Animation_summon"]
 resource_name = "summon"
@@ -80,69 +84,71 @@ _data = {
 &"summon": SubResource("Animation_summon")
 }
 
-[node name="FireSorcerer" instance=ExtResource("1_base")]
+[node name="FireSorcerer" unique_id=1949179777 instance=ExtResource("1_base")]
 script = ExtResource("2_script")
 path_refresh_interval = 0.25
 waypoint_arrival_distance = 6.0
 direct_chase_extra_distance = 2.0
-navigation_update_interval_frames = 6
 
-[node name="AnimatedSprite2D" parent="." index="0"]
+[node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
 texture_filter = 1
 material = SubResource("ShaderMaterial_fire_sorcerer")
-position = Vector2(4, -10)
+position = Vector2(3, -7)
 sprite_frames = ExtResource("4_frames")
 animation = &"move"
+frame_progress = 0.85000134
 
-[node name="CollisionShape2D" parent="." index="1"]
-shape = SubResource("CapsuleShape2D_body")
+[node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
+visible = false
+shape = SubResource("CapsuleShape2D_7m0sc")
 
-[node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0"]
-shape = SubResource("CapsuleShape2D_touch")
+[node name="TouchDamageArea" parent="." index="2" unique_id=738698124]
+visible = false
 
-[node name="SummonPivot" type="Node2D" parent="." index="5"]
+[node name="CollisionShape2D" parent="TouchDamageArea" index="0" unique_id=1983778379]
+shape = SubResource("CapsuleShape2D_1dtrw")
+
+[node name="SummonPivot" type="Node2D" parent="." index="5" unique_id=695719200]
 position = Vector2(0, -6)
 
-[node name="SpawnA" type="Marker2D" parent="SummonPivot"]
-position = Vector2(16, 0)
+[node name="SpawnA" type="Marker2D" parent="SummonPivot" index="0" unique_id=278222534]
+position = Vector2(24, 1)
 
-[node name="SpawnB" type="Marker2D" parent="SummonPivot"]
-position = Vector2(11, -9)
+[node name="SpawnB" type="Marker2D" parent="SummonPivot" index="1" unique_id=1874361014]
+position = Vector2(15, -5)
 
-[node name="SpawnC" type="Marker2D" parent="SummonPivot"]
-position = Vector2(11, 9)
+[node name="SpawnC" type="Marker2D" parent="SummonPivot" index="2" unique_id=1559812473]
+position = Vector2(23, 13)
 
-[node name="FireballPreviewA" type="AnimatedSprite2D" parent="SummonPivot"]
+[node name="FireballPreviewA" type="AnimatedSprite2D" parent="SummonPivot" index="3" unique_id=1650897927]
 visible = false
 texture_filter = 1
 position = Vector2(16, 0)
-scale = Vector2(0, 0)
+scale = Vector2(1e-05, 1e-05)
 sprite_frames = ExtResource("5_fireball_frames")
 animation = &"spawn"
 
-[node name="FireballPreviewB" type="AnimatedSprite2D" parent="SummonPivot"]
+[node name="FireballPreviewB" type="AnimatedSprite2D" parent="SummonPivot" index="4" unique_id=1713479548]
 visible = false
 texture_filter = 1
 position = Vector2(11, -9)
-scale = Vector2(0, 0)
+scale = Vector2(1e-05, 1e-05)
 sprite_frames = ExtResource("5_fireball_frames")
 animation = &"spawn"
 
-[node name="FireballPreviewC" type="AnimatedSprite2D" parent="SummonPivot"]
+[node name="FireballPreviewC" type="AnimatedSprite2D" parent="SummonPivot" index="5" unique_id=1643251001]
 visible = false
 texture_filter = 1
 position = Vector2(11, 9)
-scale = Vector2(0, 0)
+scale = Vector2(1e-05, 1e-05)
 sprite_frames = ExtResource("5_fireball_frames")
 animation = &"spawn"
 
-[node name="SummonAnimationPlayer" type="AnimationPlayer" parent="." index="6"]
-libraries = {
-&"": SubResource("AnimationLibrary_summon")
-}
+[node name="SummonAnimationPlayer" type="AnimationPlayer" parent="." index="6" unique_id=1697409622]
+libraries/ = SubResource("AnimationLibrary_summon")
 
-[node name="AttackAudio" type="AudioStreamPlayer2D" parent="." index="7"]
-bus = &"SFX"
+[node name="AttackAudio" type="AudioStreamPlayer2D" parent="." index="7" unique_id=294464165]
 volume_db = -11.0
 max_distance = 260.0
 max_polyphony = 3
+bus = &"SFX"

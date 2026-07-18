@@ -523,7 +523,7 @@ func _spawn_volley(
 	volley.setup(
 		Vector2.RIGHT,
 		FIREBALL_DAMAGE,
-		155.0,
+		125.0,
 		7.0,
 		null,
 		0.0

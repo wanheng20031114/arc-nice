@@ -15,6 +15,9 @@ const MAGE_CONFIG := preload(
 const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
+const PLAYER_CONFIG := preload(
+	"res://resources/config/players/player_weishidaier.tres"
+)
 
 const CHARACTER_FRAME_LIMIT := Vector2(40.0, 40.0)
 const FIREBALL_FRAME_LIMIT := Vector2(40.0, 40.0)
@@ -163,6 +166,16 @@ func _test_resource_and_scene_contract() -> void:
 	_expect(
 		is_equal_approx(FIRE_SORCERER_CONFIG.projectile_lifetime, 7.0),
 		"Fire Sorcerer projectile lifetime must be 7 seconds."
+	)
+	_expect(
+		is_equal_approx(FIRE_SORCERER_CONFIG.projectile_speed, 125.0)
+		and is_equal_approx(
+			FIRE_SORCERER_CONFIG.projectile_speed
+				- PLAYER_CONFIG.starting_move_speed,
+			5.0
+		),
+		"Fire Sorcerer projectile speed must stay exactly 5 above the "
+		+ "player's default movement speed."
 	)
 	_expect(
 		is_equal_approx(
