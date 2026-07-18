@@ -14,6 +14,8 @@ const IDLE_AIM_LIMIT := 0.26179939 # 15 degrees; 30 degrees across the full arc.
 const IDLE_AIM_MIN_TARGET_OFFSET := 0.05235988 # 3 degrees from the center.
 const IDLE_AIM_INTERVAL_MIN := 0.75
 const IDLE_AIM_INTERVAL_MAX := 1.15
+const AIM_RETURN_DELAY_SECONDS := 1.0
+const AIM_RETURN_DURATION_SECONDS := 0.25
 const TRACER_MAX_LENGTH := 20.0
 const BURST_TIME_EPSILON := 0.00001
 const PROXY_BURST_EXPIRY_SECONDS := 0.32
@@ -31,6 +33,7 @@ const LINEAR_BLOCKED_TARGET_ATTEMPTS := 3
 @onready var tracer_fade: AnimationPlayer = $TracerFade
 @onready var attack_timer: Timer = $AttackTimer
 @onready var idle_aim_timer: Timer = $IdleAimTimer
+@onready var aim_return_timer: Timer = $AimReturnTimer
 @onready var health_bar: Control = $HealthBar
 @onready var fire_audio: AudioStreamPlayer2D = $FireAudio
 
@@ -64,6 +67,7 @@ var idle_aim_random := RandomNumberGenerator.new()
 var idle_aim_center_rotation := 0.0
 var idle_aim_last_direction := 0
 var idle_aim_active := false
+var _aim_return_tween: Tween = null
 
 
 func _ready() -> void:
@@ -129,6 +133,7 @@ func _disable_proxy_combat_runtime() -> void:
 func _on_removal_started(_mode: RemovalMode) -> void:
 	attack_timer.stop()
 	_stop_idle_aim()
+	_cancel_aim_return()
 	health_bar.hide()
 	_cancel_burst(false)
 	tracer_fade.stop()
@@ -147,7 +152,12 @@ func _on_attack_timer_timeout() -> void:
 		return
 	var target := _select_nearest_visible_enemy()
 	if target == null:
-		_start_idle_aim()
+		if (
+			not idle_aim_active
+			and aim_return_timer.is_stopped()
+			and _aim_return_tween == null
+		):
+			_schedule_aim_return()
 		return
 	var locked_direction := aim_pivot.global_position.direction_to(target.global_position)
 	if locked_direction == Vector2.ZERO:
@@ -200,6 +210,7 @@ func _begin_burst(
 	elapsed_seconds: float,
 	authoritative: bool
 ) -> void:
+	_cancel_aim_return()
 	_stop_idle_aim()
 	_cancel_burst(false)
 	burst_active = true
@@ -371,7 +382,7 @@ func _finish_burst() -> void:
 	burst_authoritative = false
 	set_physics_process(false)
 	turret_sprite.play(&"idle")
-	_start_idle_aim()
+	_schedule_aim_return()
 
 
 func _cancel_burst(restart_idle: bool) -> void:
@@ -390,7 +401,7 @@ func _cancel_burst(restart_idle: bool) -> void:
 		muzzle_flash_sprite.stop()
 		muzzle_flash_sprite.visible = false
 	if restart_idle:
-		_start_idle_aim()
+		_schedule_aim_return()
 
 
 func _select_nearest_visible_enemy() -> Enemy:
@@ -491,6 +502,7 @@ func _on_idle_aim_timer_timeout() -> void:
 func _start_idle_aim() -> void:
 	if is_dead or burst_active or idle_aim_active:
 		return
+	_cancel_aim_return()
 	idle_aim_active = true
 	idle_aim_last_direction = 0
 	aim_pivot.rotation = idle_aim_center_rotation
@@ -501,6 +513,55 @@ func _stop_idle_aim() -> void:
 	idle_aim_timer.stop()
 	idle_aim_active = false
 	idle_aim_last_direction = 0
+
+
+func _schedule_aim_return(
+	delay_seconds: float = AIM_RETURN_DELAY_SECONDS
+) -> void:
+	if is_dead or burst_active:
+		return
+	# Hold the last combat direction without any per-frame script work. Only the
+	# short visible recenter transition below uses a native SceneTreeTween.
+	_stop_idle_aim()
+	_cancel_aim_return()
+	aim_return_timer.start(maxf(delay_seconds, 0.001))
+
+
+func _cancel_aim_return() -> void:
+	aim_return_timer.stop()
+	if _aim_return_tween != null:
+		_aim_return_tween.kill()
+		_aim_return_tween = null
+
+
+func _on_aim_return_timer_timeout() -> void:
+	if is_dead or burst_active:
+		return
+	_cancel_aim_return()
+	var shortest_center_rotation := (
+		aim_pivot.rotation
+		+ angle_difference(aim_pivot.rotation, idle_aim_center_rotation)
+	)
+	if is_zero_approx(shortest_center_rotation - aim_pivot.rotation):
+		_finish_aim_return()
+		return
+	_aim_return_tween = create_tween()
+	_aim_return_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	_aim_return_tween.tween_property(
+		aim_pivot,
+		^"rotation",
+		shortest_center_rotation,
+		AIM_RETURN_DURATION_SECONDS
+	)
+	_aim_return_tween.finished.connect(_finish_aim_return)
+
+
+func _finish_aim_return() -> void:
+	_aim_return_tween = null
+	if is_dead or burst_active:
+		return
+	aim_pivot.rotation = idle_aim_center_rotation
+	_start_idle_aim()
 
 
 func _apply_idle_aim_step() -> void:

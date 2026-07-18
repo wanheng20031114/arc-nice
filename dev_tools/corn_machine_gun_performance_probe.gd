@@ -264,11 +264,15 @@ func _finish() -> void:
 		if tower != null and is_instance_valid(tower):
 			tower.attack_timer.stop()
 			tower.idle_aim_timer.stop()
+			tower.aim_return_timer.stop()
+			tower.call("_cancel_aim_return")
 			tower.fire_audio.stop()
 	for tower in proxies:
 		if tower != null and is_instance_valid(tower):
 			tower.attack_timer.stop()
 			tower.idle_aim_timer.stop()
+			tower.aim_return_timer.stop()
+			tower.call("_cancel_aim_return")
 			tower.fire_audio.stop()
 	authorities.clear()
 	proxies.clear()

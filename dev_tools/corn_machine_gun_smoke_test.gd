@@ -77,6 +77,7 @@ func _run() -> void:
 		_test_scene_contract(authority)
 		_test_physical_defense_round_totals()
 		_test_six_shot_frame_catchup(authority)
+		await _test_delayed_aim_return(authority)
 		_test_proxy_elapsed_and_monotonic_actions(proxy)
 		_test_idle_aim_alternation(authority)
 		await _test_target_and_ray_query_reuse(authority)
@@ -186,6 +187,14 @@ func _test_scene_contract(tower: CornMachineGun) -> void:
 		AUDIO_LIMITER.MAX_SIMULTANEOUS_VOICES == 6,
 		"植物攻击音频限制器必须共享最多6个声部。"
 	)
+	_expect(
+		tower.aim_return_timer.one_shot
+		and is_equal_approx(
+			tower.aim_return_timer.wait_time,
+			CornMachineGun.AIM_RETURN_DELAY_SECONDS
+		),
+		"攻击后回正必须由场景内单次 Timer 延迟1秒触发。"
+	)
 
 
 func _test_six_shot_frame_catchup(tower: CornMachineGun) -> void:
@@ -204,6 +213,7 @@ func _test_six_shot_frame_catchup(tower: CornMachineGun) -> void:
 	var hitscan_queries_before := tower.get_hitscan_query_count()
 	var authored_idle_center := tower.idle_aim_center_rotation
 	tower.call("_begin_burst", Vector2.RIGHT, 1, 0.0, true)
+	var locked_burst_rotation := tower.aim_pivot.rotation
 	_expect(emitted_indices == [0], "权威 Burst 必须在 t=0 立即发射第一发。")
 	_expect(
 		absf(angle_difference(tower.aim_pivot.rotation, authored_idle_center)) > 0.01,
@@ -243,10 +253,68 @@ func _test_six_shot_frame_catchup(tower: CornMachineGun) -> void:
 		))
 		and is_zero_approx(angle_difference(
 			tower.aim_pivot.rotation,
-			authored_idle_center
+			locked_burst_rotation
 		))
-		and tower.idle_aim_active,
-		"战斗结束后必须回到场景默认角，再从该中心恢复待机摆动。"
+		and not tower.idle_aim_active
+		and not tower.aim_return_timer.is_stopped(),
+		"战斗结束后必须保持最后瞄准角，并进入延迟回正阶段。"
+	)
+	tower.call("_cancel_aim_return")
+	tower.call("_start_idle_aim")
+
+
+func _test_delayed_aim_return(tower: CornMachineGun) -> void:
+	tower.call("_stop_idle_aim")
+	tower.call("_cancel_aim_return")
+	tower.call("_point_aim_at_direction", Vector2.UP)
+	var held_rotation := tower.aim_pivot.rotation
+	tower.call("_schedule_aim_return")
+	_expect(
+		not tower.aim_return_timer.is_stopped()
+		and not tower.idle_aim_active
+		and not tower.is_physics_processing()
+		and is_zero_approx(angle_difference(
+			tower.aim_pivot.rotation,
+			held_rotation
+		)),
+		"回正延迟期间必须保持攻击方向，且不得启动待机摆动或物理帧处理。"
+	)
+
+	tower.call("_begin_burst", Vector2.LEFT, 9001, 0.0, false)
+	_expect(
+		tower.burst_active
+		and tower.aim_return_timer.is_stopped()
+		and tower.get("_aim_return_tween") == null,
+		"延迟期间出现新攻击时，必须取消旧的回正 Timer 和补间。"
+	)
+	tower.call("_cancel_burst", false)
+
+	tower.call("_point_aim_at_direction", Vector2.UP)
+	held_rotation = tower.aim_pivot.rotation
+	tower.call("_schedule_aim_return")
+	tower.aim_return_timer.stop()
+	tower.call("_on_aim_return_timer_timeout")
+	_expect(
+		tower.get("_aim_return_tween") is Tween
+		and not tower.idle_aim_active
+		and not tower.is_physics_processing()
+		and is_zero_approx(angle_difference(
+			tower.aim_pivot.rotation,
+			held_rotation
+		)),
+		"延迟结束只能启动短时原生补间，不得瞬移或重新开启物理帧处理。"
+	)
+	await create_timer(
+		CornMachineGun.AIM_RETURN_DURATION_SECONDS + 0.08
+	).timeout
+	_expect(
+		tower.get("_aim_return_tween") == null
+		and tower.idle_aim_active
+		and is_zero_approx(angle_difference(
+			tower.aim_pivot.rotation,
+			tower.idle_aim_center_rotation
+		)),
+		"回正补间完成后必须精确落到场景默认角，并恢复 Timer 驱动的待机摆动。"
 	)
 
 
@@ -323,12 +391,13 @@ func _test_proxy_elapsed_and_monotonic_actions(proxy: CornMachineGun) -> void:
 	_expect(proxy_indices == [3, 4, 5], "代理必须继续播放其余未来发次。")
 	_expect(
 		not proxy.burst_active
-		and proxy.idle_aim_active
-		and is_zero_approx(angle_difference(
+		and not proxy.idle_aim_active
+		and not proxy.aim_return_timer.is_stopped()
+		and not is_zero_approx(angle_difference(
 			proxy.aim_pivot.rotation,
 			authored_idle_center
 		)),
-		"代理播放完未来发次后必须回到默认角的待机状态。"
+		"代理播放完未来发次后也必须保持攻击角，并进入本地延迟回正阶段。"
 	)
 	_expect(
 		not proxy_authority.has(true),
@@ -367,17 +436,20 @@ func _test_proxy_elapsed_and_monotonic_actions(proxy: CornMachineGun) -> void:
 		proxy.latest_proxy_action_id == 13
 		and not proxy.burst_active
 		and not proxy.is_physics_processing()
-		and proxy.idle_aim_active
+		and not proxy.idle_aim_active
+		and not proxy.aim_return_timer.is_stopped()
 		and is_zero_approx(angle_difference(
 			proxy.idle_aim_center_rotation,
 			authored_idle_center
 		))
-		and is_zero_approx(angle_difference(
+		and not is_zero_approx(angle_difference(
 			proxy.aim_pivot.rotation,
 			authored_idle_center
 		)),
-		"更新且已过期的动作必须终止旧表现、回到默认角并保持物理处理关闭。"
+		"更新且已过期的动作必须终止旧表现、延迟回正并保持物理处理关闭。"
 	)
+	proxy.call("_cancel_aim_return")
+	proxy.call("_start_idle_aim")
 
 
 func _test_idle_aim_alternation(tower: CornMachineGun) -> void:
@@ -448,6 +520,11 @@ func _test_target_and_ray_query_reuse(tower: CornMachineGun) -> void:
 	enemy.global_position = tower.aim_pivot.global_position + Vector2(40.0, 0.0)
 	runtime.candidate = enemy
 	tower.set("_combat_runtime", runtime)
+	# The signal is emitted at the start of a physics step. When an earlier test
+	# resumes from a SceneTreeTimer, one signal alone can still precede the
+	# PhysicsServer registration of this newly added collider. Cross one complete
+	# step before asserting ray-query semantics.
+	await physics_frame
 	await physics_frame
 
 	var ray_query_before: PhysicsRayQueryParameters2D = tower.get("_ray_query")

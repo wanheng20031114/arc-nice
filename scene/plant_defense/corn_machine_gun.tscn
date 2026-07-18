@@ -209,6 +209,10 @@ wait_time = 0.9
 wait_time = 0.9
 one_shot = true
 
+[node name="AimReturnTimer" type="Timer" parent="."]
+wait_time = 1.0
+one_shot = true
+
 [node name="HealthBar" parent="." unique_id=1342771048 instance=ExtResource("13_health_bar")]
 offset_left = -16.0
 offset_top = -15.0
@@ -225,3 +229,4 @@ max_distance = 180.0
 [connection signal="animation_finished" from="TracerFade" to="." method="_on_tracer_fade_animation_finished"]
 [connection signal="timeout" from="AttackTimer" to="." method="_on_attack_timer_timeout"]
 [connection signal="timeout" from="IdleAimTimer" to="." method="_on_idle_aim_timer_timeout"]
+[connection signal="timeout" from="AimReturnTimer" to="." method="_on_aim_return_timer_timeout"]
