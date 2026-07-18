@@ -18,11 +18,8 @@ const TOWER_DEFENSE_STRESS_SHELL := preload(
 const TOWER_DEFENSE_STRESS_AK47 := preload(
 	"res://resources/config/enemies/capoo_ak47.tres"
 )
-const STANDARD_TEST_STONE_GOLEM := preload(
-	"res://resources/config/enemies/stone_golem.tres"
-)
-const STANDARD_TEST_STONE_GOLEM_ELITE := preload(
-	"res://resources/config/enemies/stone_golem_elite.tres"
+const STANDARD_TEST_FIRE_SORCERER := preload(
+	"res://resources/config/enemies/fire_sorcerer.tres"
 )
 
 const FORCE_ARGUMENT := "--force"
@@ -118,7 +115,7 @@ func _generate_campaign(definition: Dictionary, failures: PackedStringArray) -> 
 			definition["campaign_id"] == &"standard_singleplayer"
 			and wave_number == 1
 		):
-			_configure_standard_singleplayer_stone_golem_test_wave(
+			_configure_standard_singleplayer_fire_sorcerer_test_wave(
 				campaign_wave
 			)
 		elif bool(definition["tower_defense_stress_test"]):
@@ -154,16 +151,15 @@ func _generate_campaign(definition: Dictionary, failures: PackedStringArray) -> 
 		failures.append("无法保存 %s：%s" % [campaign_path, error_string(campaign_error)])
 
 
-func _configure_standard_singleplayer_stone_golem_test_wave(
+func _configure_standard_singleplayer_fire_sorcerer_test_wave(
 	wave_config: WaveConfig
 ) -> void:
-	wave_config.wave_name = "第1波 石头人测试"
+	wave_config.wave_name = "第1波 火焰术士测试"
 	wave_config.display_name = wave_config.wave_name
 	wave_config.enemy_entries = [
-		_create_wave_entry(STANDARD_TEST_STONE_GOLEM, 1),
-		_create_wave_entry(STANDARD_TEST_STONE_GOLEM_ELITE, 1),
+		_create_wave_entry(STANDARD_TEST_FIRE_SORCERER, 1),
 	]
-	wave_config.max_alive_enemies = 2
+	wave_config.max_alive_enemies = 1
 
 
 func _configure_tower_defense_stress_wave(
