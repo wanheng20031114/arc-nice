@@ -34,7 +34,7 @@ const SPAWN_POINT_NAMES: Array[StringName] = [
 var spawn_point_mask: int = STANDARD_SPAWN_POINT_MASK
 
 @export_group("生成节奏")
-@export_range(0.1, 60.0, 0.05) var spawn_interval: float = 1.0
+@export_range(0.025, 60.0, 0.025) var spawn_interval: float = 1.0
 @export_range(1, 4, 1) var spawn_count_per_tick: int = 1
 @export_range(1, 300, 1, "or_greater") var max_alive_enemies: int = 10
 

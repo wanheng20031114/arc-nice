@@ -108,8 +108,8 @@ func _run() -> void:
 		"Pressure telemetry must collect a useful frame-time distribution."
 	)
 	_expect(
-		int(spawn_summary["sample_count"]) >= 70,
-		"Pressure telemetry must collect every measured four-enemy spawn batch."
+		int(spawn_summary["sample_count"]) >= 250,
+		"Pressure telemetry must collect the measured single-enemy spawn ticks."
 	)
 	_expect_percentile_order(frame_summary, "frame")
 	_expect_percentile_order(spawn_summary, "spawn")
