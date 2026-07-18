@@ -90,7 +90,7 @@ func _test_resource_independence_and_stats() -> void:
 	_expect(ELITE_CONFIG.enemy_scene != BASE_SCENE, "Elite scene must be independent.")
 	_expect(ELITE_CONFIG.max_health == 1800, "Elite health must be 1800.")
 	_expect(ELITE_CONFIG.attack_damage == 150, "Elite attack must be 150.")
-	_expect(ELITE_CONFIG.physical_defense == 50, "Elite physical defense must be 50.")
+	_expect(ELITE_CONFIG.physical_defense == 75, "Elite physical defense must be 75.")
 	_expect(ELITE_CONFIG.magic_defense == 0, "Elite magic defense must be 0.")
 	_expect(
 		is_equal_approx(ELITE_CONFIG.move_speed, BASE_CONFIG.move_speed),
