@@ -50,6 +50,7 @@ func _run() -> void:
 	coordinator.production_tick_timer.stop()
 
 	_test_config_and_assets(collector)
+	await _test_multiplayer_water_collector_contract(test_root)
 	warehouse.setup(WAREHOUSE_CONFIG, player, [Vector2i(-1, 0)])
 	collector.setup(
 		WATER_COLLECTOR_CONFIG,
@@ -131,6 +132,7 @@ func _run() -> void:
 func _test_config_and_assets(collector: WaterCollector) -> void:
 	_expect(
 		WATER_COLLECTOR_CONFIG.is_valid()
+		and WATER_COLLECTOR_CONFIG.supports_multiplayer
 		and WATER_COLLECTOR_CONFIG.max_health == 2000
 		and WATER_COLLECTOR_CONFIG.physical_defense == 10
 		and WATER_COLLECTOR_CONFIG.magic_defense == 0
@@ -172,6 +174,98 @@ func _test_config_and_assets(collector: WaterCollector) -> void:
 		visual_root != null and visual_root.scale == Vector2(0.5, 0.5),
 		"2×2采集器必须按现有建筑规范以0.5缩放显示为32×32世界像素。"
 	)
+
+
+func _test_multiplayer_water_collector_contract(test_root: Node) -> void:
+	var proxy := WATER_COLLECTOR_CONFIG.plant_scene.instantiate() as WaterCollector
+	test_root.add_child(proxy)
+	await process_frame
+	proxy.setup(
+		WATER_COLLECTOR_CONFIG,
+		null,
+		[Vector2i(4, 0), Vector2i(5, 0), Vector2i(4, 1), Vector2i(5, 1)],
+		true,
+		WATER_COLLECTOR_CONFIG.max_health,
+		1
+	)
+	proxy.configure_multiplayer_production(41, 2, true)
+	var requested_commands: Array[Dictionary] = []
+	var snapshot_requests: Array[int] = []
+	proxy.production_command_requested.connect(
+		func(command: Dictionary) -> void: requested_commands.append(command)
+	)
+	proxy.production_snapshot_requested.connect(
+		func(building_net_id: int) -> void: snapshot_requests.append(building_net_id)
+	)
+	proxy.advance_shared_production_tick(20.0)
+	_expect(
+		proxy.is_multiplayer_proxy
+		and proxy.active_recipe_id == &"water_to_bottle"
+		and is_zero_approx(proxy.progress_elapsed_seconds),
+		"多人水源采集器副本必须保留自动配方，且不得自行推进20秒权威采集。"
+	)
+	_expect(
+		proxy.request_multiplayer_enabled_change(false)
+		and requested_commands.size() == 1
+		and requested_commands[0]["operation"]
+		== ProductionBuildingProtocol.OPERATION_SET_ENABLED
+		and int(requested_commands[0]["building_net_id"]) == 41
+		and int(requested_commands[0]["peer_id"]) == 2
+		and int(requested_commands[0]["expected_production_revision"]) == 0,
+		"客户端暂停水源采集器必须发送带建筑、玩家与revision的多人命令。"
+	)
+	var authoritative_state := {
+		"schema": ProductionBuilding.RUNTIME_STATE_SCHEMA,
+		"enabled": false,
+		"active_recipe_id": "water_to_bottle",
+		"progress_elapsed_seconds": 0.0,
+		"wait_reason": "",
+		"revision": 1,
+		"projection_duration_seconds": 0.5,
+	}
+	var result := ProductionBuildingProtocol.make_result(
+		requested_commands[0],
+		true,
+		ProductionBuildingProtocol.RESULT_SUCCESS,
+		1,
+		authoritative_state,
+		Time.get_ticks_msec() / 1000.0
+	)
+	proxy.apply_multiplayer_runtime_state(
+		authoritative_state,
+		Time.get_ticks_msec() / 1000.0
+	)
+	_expect(
+		proxy.complete_multiplayer_production_request(result)
+		and not proxy.multiplayer_production_request_pending
+		and not proxy.production_enabled
+		and proxy.production_revision == 1,
+		"Host确认后水源采集器副本必须以完整权威状态解除请求锁。"
+	)
+	var stale_state := authoritative_state.duplicate(true)
+	stale_state["revision"] = 0
+	stale_state["enabled"] = true
+	proxy.apply_multiplayer_runtime_state(
+		stale_state,
+		Time.get_ticks_msec() / 1000.0
+	)
+	_expect(
+		not proxy.production_enabled and proxy.production_revision == 1,
+		"过期水源采集器状态不得覆盖客户端较新的暂停状态。"
+	)
+	_expect(
+		proxy.request_multiplayer_enabled_change(true),
+		"同步完成后客户端必须能请求恢复水源采集。"
+	)
+	proxy.call("_on_multiplayer_production_request_timeout")
+	_expect(
+		not proxy.multiplayer_production_request_pending
+		and not proxy.multiplayer_production_snapshot_ready
+		and snapshot_requests == [41],
+		"水源采集命令超时必须解除假操作并请求Host权威快照。"
+	)
+	proxy.multiplayer_production_request_timer.stop()
+	proxy.free()
 
 
 func _test_four_water_cell_support(test_root: Node) -> void:

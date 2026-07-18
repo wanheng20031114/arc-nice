@@ -1609,6 +1609,10 @@ func _apply_authoritative_warehouse_command(peer_id: int, raw_command: Dictionar
 	if not net_manager.is_host() or game == null or peer_id <= 0:
 		return
 	var command := raw_command.duplicate(true)
+	var peer_field_matches := OakWarehouseProtocolScript.command_peer_matches(
+		command,
+		peer_id
+	)
 	command["peer_id"] = peer_id
 	var request_id := OakWarehouseProtocolScript.get_int_field(command, "request_id", 0)
 	var warehouse_net_id := OakWarehouseProtocolScript.get_int_field(
@@ -1616,10 +1620,14 @@ func _apply_authoritative_warehouse_command(peer_id: int, raw_command: Dictionar
 		"warehouse_net_id",
 		0
 	)
-	var cached_result := _get_cached_warehouse_transaction_result(
-		peer_id,
-		warehouse_net_id,
-		request_id
+	var cached_result := (
+		_get_cached_warehouse_transaction_result(
+			peer_id,
+			warehouse_net_id,
+			request_id
+		)
+		if peer_field_matches
+		else {}
 	)
 	if not cached_result.is_empty():
 		_send_warehouse_command_result(peer_id, cached_result)
@@ -1628,7 +1636,7 @@ func _apply_authoritative_warehouse_command(peer_id: int, raw_command: Dictionar
 	var warehouse := game.get_multiplayer_plant_node(warehouse_net_id) as OakWarehouse
 	var player_node := game.get_player_for_peer(peer_id)
 	var rejection_reason := &"invalid_command"
-	if not OakWarehouseProtocolScript.is_valid_command(command):
+	if not peer_field_matches or not OakWarehouseProtocolScript.is_valid_command(command):
 		rejection_reason = &"invalid_command"
 	elif player_node == null or not is_instance_valid(player_node) or player_node.is_dead:
 		rejection_reason = &"invalid_player"
@@ -1662,7 +1670,8 @@ func _apply_authoritative_warehouse_command(peer_id: int, raw_command: Dictionar
 		result["inventory_snapshot"] = run_state.export_inventory_snapshot_for_peer(peer_id)
 		if warehouse != null:
 			result["storage_snapshot"] = warehouse.export_storage_snapshot()
-	_cache_warehouse_transaction_result(peer_id, warehouse_net_id, request_id, result)
+	if peer_field_matches:
+		_cache_warehouse_transaction_result(peer_id, warehouse_net_id, request_id, result)
 	if bool(result.get("success", false)):
 		_broadcast_inventory_snapshot(peer_id)
 	_send_warehouse_command_result(peer_id, result)
@@ -1688,7 +1697,7 @@ func _is_authoritative_nearest_warehouse(
 	for plant_snapshot in game.get_multiplayer_plant_snapshots():
 		var net_id := int(plant_snapshot.get("net_id", 0))
 		var warehouse := game.get_multiplayer_plant_node(net_id) as OakWarehouse
-		if warehouse == null or not is_instance_valid(warehouse) or warehouse.is_dead:
+		if not _is_authoritative_warehouse_interaction_candidate(warehouse):
 			continue
 		var distance := player_node.global_position.distance_squared_to(warehouse.global_position)
 		if distance > maximum_distance_squared:
@@ -1698,6 +1707,18 @@ func _is_authoritative_nearest_warehouse(
 			nearest_distance = distance
 			nearest_net_id = net_id
 	return nearest == requested_warehouse
+
+
+func _is_authoritative_warehouse_interaction_candidate(
+	warehouse: OakWarehouse
+) -> bool:
+	return (
+		warehouse != null
+		and is_instance_valid(warehouse)
+		and not warehouse.is_dead
+		and not warehouse.is_removing
+		and warehouse.is_operational
+	)
 
 
 func _get_cached_warehouse_transaction_result(
@@ -7352,20 +7373,43 @@ func net_warehouse_snapshot_requested(warehouse_net_id: int) -> void:
 	if not net_manager.is_host() or game == null or warehouse_net_id <= 0:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0 or game.get_player_for_peer(sender_id) == null:
-		return
+	_handle_authoritative_warehouse_snapshot_request(sender_id, warehouse_net_id)
+
+
+func _handle_authoritative_warehouse_snapshot_request(
+	sender_id: int,
+	warehouse_net_id: int
+) -> bool:
+	if (
+		net_manager == null
+		or not net_manager.is_host()
+		or game == null
+		or sender_id <= 0
+		or warehouse_net_id <= 0
+	):
+		return false
+	var player_node := game.get_player_for_peer(sender_id)
+	if (
+		player_node == null
+		or not is_instance_valid(player_node)
+		or player_node.is_dead
+	):
+		return false
 	if not _consume_peer_rate_token(
 		_warehouse_snapshot_request_rate_buckets,
 		sender_id,
 		WAREHOUSE_SNAPSHOT_REQUEST_RATE_PER_SECOND,
 		WAREHOUSE_SNAPSHOT_REQUEST_RATE_BURST
 	):
-		return
+		return false
 	var warehouse := game.get_multiplayer_plant_node(warehouse_net_id) as OakWarehouse
-	if warehouse == null or not is_instance_valid(warehouse) or warehouse.is_dead:
-		return
+	if (
+		not _is_authoritative_warehouse_interaction_candidate(warehouse)
+		or not _is_authoritative_nearest_warehouse(player_node, warehouse)
+	):
+		return false
 	if not net_manager.is_peer_send_ready(sender_id):
-		return
+		return false
 	var inventory_snapshot := run_state.export_inventory_snapshot_for_peer(sender_id)
 	_record_outbound_rpc(
 		&"net_inventory_snapshot",
@@ -7387,6 +7431,7 @@ func net_warehouse_snapshot_requested(warehouse_net_id: int) -> void:
 		warehouse_net_id,
 		snapshot
 	)
+	return true
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)

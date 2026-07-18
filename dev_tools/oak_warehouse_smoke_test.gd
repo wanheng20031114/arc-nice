@@ -6,8 +6,26 @@ const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier
 const WOOD := preload("res://resources/config/materials/material_wood.tres")
 const APPLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 const PLANT_HEALTH_BAR_SCRIPT := preload("res://scene/plant_defense/ui/plant_health_bar.gd")
+const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
 
 var failures: Array[String] = []
+
+
+class HostNetManagerStub:
+	extends Node
+
+	var local_peer_id := 2
+	var peer_send_ready_checks := 0
+
+	func is_host() -> bool:
+		return true
+
+	func get_local_peer_id() -> int:
+		return local_peer_id
+
+	func is_peer_send_ready(_peer_id: int) -> bool:
+		peer_send_ready_checks += 1
+		return false
 
 
 func _init() -> void:
@@ -890,14 +908,173 @@ func _test_drag_and_controller_slot_moves(
 	_expect(run_state.discard_item(0), "拖拽测试物资必须能在验证后清理。")
 
 
+func _test_authoritative_warehouse_candidate_filter(warehouse: OakWarehouse) -> void:
+	var mp_game := MP_GAME_SCRIPT.new()
+	_expect(
+		bool(mp_game.call(
+			"_is_authoritative_warehouse_interaction_candidate",
+			warehouse
+		)),
+		"正常运作的仓库必须能参与Host最近交互目标选择。"
+	)
+	warehouse.is_operational = false
+	_expect(
+		not bool(mp_game.call(
+			"_is_authoritative_warehouse_interaction_candidate",
+			warehouse
+		)),
+		"尚未完成搭建的仓库不得遮挡Host对其他正常仓库的交互授权。"
+	)
+	warehouse.is_operational = true
+	warehouse.is_removing = true
+	_expect(
+		not bool(mp_game.call(
+			"_is_authoritative_warehouse_interaction_candidate",
+			warehouse
+		)),
+		"正在拆除的仓库不得遮挡Host对其他正常仓库的交互授权。"
+	)
+	warehouse.is_removing = false
+	mp_game.free()
+
+
+func _test_authoritative_warehouse_sender_guard(
+	run_state: RunStateStore,
+	warehouse: OakWarehouse,
+	peer_id: int,
+	warehouse_net_id: int
+) -> void:
+	var mp_game := MP_GAME_SCRIPT.new()
+	var net_manager_stub := HostNetManagerStub.new()
+	var game_stub := GameTowerDefense.new()
+	var plant_system_stub := PlantSystem.new()
+	mp_game.net_manager = net_manager_stub
+	mp_game.run_state = run_state
+	mp_game.game = game_stub
+	game_stub.plant_system = plant_system_stub
+	game_stub.peer_players[peer_id] = warehouse.owner_player
+	plant_system_stub.plants_by_net_id[warehouse_net_id] = warehouse
+	var inventory_before := run_state.export_inventory_snapshot_for_peer(peer_id)
+	var storage_before := warehouse.export_storage_snapshot()
+	var legitimate_command := OakWarehouseProtocol.make_transfer_command(
+		101,
+		warehouse_net_id,
+		peer_id,
+		OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE,
+		0,
+		run_state.get_inventory_revision_for_peer(peer_id),
+		warehouse.get_storage_revision()
+	)
+	var original_cached_result := OakWarehouseProtocol.make_result(
+		legitimate_command,
+		false,
+		OakWarehouseProtocol.RESULT_STALE_INVENTORY,
+		run_state.get_inventory_revision_for_peer(peer_id),
+		warehouse.get_storage_revision()
+	)
+	original_cached_result["cache_sentinel"] = &"legitimate_result"
+	mp_game.call(
+		"_cache_warehouse_transaction_result",
+		peer_id,
+		warehouse_net_id,
+		101,
+		original_cached_result
+	)
+	var forged_command := OakWarehouseProtocol.make_transfer_command(
+		101,
+		warehouse_net_id,
+		peer_id + 1,
+		OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE,
+		0,
+		run_state.get_inventory_revision_for_peer(peer_id),
+		warehouse.get_storage_revision()
+	)
+	mp_game.call("_apply_authoritative_warehouse_command", peer_id, forged_command)
+	var cached_result := mp_game.call(
+		"_get_cached_warehouse_transaction_result",
+		peer_id,
+		warehouse_net_id,
+		101
+	) as Dictionary
+	_expect(
+		cached_result == original_cached_result
+		and run_state.export_inventory_snapshot_for_peer(peer_id) == inventory_before
+		and warehouse.export_storage_snapshot() == storage_before,
+		"Host必须拒绝伪造peer ID的仓库命令，且不得覆盖同请求号的合法幂等缓存。"
+	)
+	var player_position_before := warehouse.owner_player.global_position
+	var warehouse_position_before := warehouse.global_position
+	warehouse.owner_player.global_position = warehouse_position_before + Vector2(256.0, 0.0)
+	_expect(
+		not bool(mp_game.call(
+			"_handle_authoritative_warehouse_snapshot_request",
+			peer_id,
+			warehouse_net_id
+		)),
+		"远离仓库的客户端不得主动索取仓库与背包权威快照。"
+	)
+	var snapshot_rate_buckets := mp_game.get(
+		"_warehouse_snapshot_request_rate_buckets"
+	) as Dictionary
+	var snapshot_rate_bucket := snapshot_rate_buckets.get(peer_id, {}) as Dictionary
+	_expect(
+		not snapshot_rate_bucket.is_empty()
+		and float(snapshot_rate_bucket.get("tokens", 4.0)) < 4.0,
+		"无效的远距离仓库快照请求也必须消耗限流令牌。"
+	)
+	warehouse.owner_player.global_position = warehouse_position_before
+	warehouse.is_operational = false
+	_expect(
+		not bool(mp_game.call(
+			"_handle_authoritative_warehouse_snapshot_request",
+			peer_id,
+			warehouse_net_id
+		)),
+		"尚未完成搭建的仓库不得响应客户端快照请求。"
+	)
+	warehouse.is_operational = true
+	warehouse.is_removing = true
+	_expect(
+		not bool(mp_game.call(
+			"_handle_authoritative_warehouse_snapshot_request",
+			peer_id,
+			warehouse_net_id
+		)),
+		"正在拆除的仓库不得响应客户端快照请求。"
+	)
+	warehouse.is_removing = false
+	_expect(
+		not bool(mp_game.call(
+			"_handle_authoritative_warehouse_snapshot_request",
+			peer_id,
+			warehouse_net_id
+		))
+		and net_manager_stub.peer_send_ready_checks == 1,
+		"合法近距仓库快照请求必须通过交互授权并抵达发送就绪检查。"
+	)
+	warehouse.owner_player.global_position = player_position_before
+	plant_system_stub.plants_by_net_id.clear()
+	plant_system_stub.free()
+	game_stub.free()
+	net_manager_stub.free()
+	mp_game.free()
+
+
 func _test_authoritative_shared_storage(
 	run_state: RunStateStore,
 	warehouse: OakWarehouse
 ) -> void:
 	const PEER_ID := 2
 	const WAREHOUSE_NET_ID := 44
+	_test_authoritative_warehouse_candidate_filter(warehouse)
 	warehouse.storage_panel.open_for(warehouse, warehouse.owner_player)
 	warehouse.configure_multiplayer_storage(WAREHOUSE_NET_ID, PEER_ID, true)
+	_test_authoritative_warehouse_sender_guard(
+		run_state,
+		warehouse,
+		PEER_ID,
+		WAREHOUSE_NET_ID
+	)
 	var malformed_inventory_snapshot := run_state.export_inventory_snapshot_for_peer(PEER_ID)
 	var malformed_storage_snapshot := warehouse.export_storage_snapshot()
 	var malformed_command := OakWarehouseProtocol.make_transfer_command(
@@ -912,8 +1089,40 @@ func _test_authoritative_shared_storage(
 	malformed_command["operation"] = []
 	malformed_command["peer_id"] = {}
 	_expect(
-		not OakWarehouseProtocol.is_valid_command(malformed_command),
+		not OakWarehouseProtocol.is_valid_command(malformed_command)
+		and not OakWarehouseProtocol.command_peer_matches(
+			malformed_command,
+			PEER_ID
+		),
 		"多人仓库协议必须安全拒绝字段类型畸形的命令。"
+	)
+	var forged_peer_command := OakWarehouseProtocol.make_transfer_command(
+		100,
+		WAREHOUSE_NET_ID,
+		PEER_ID + 1,
+		OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE,
+		0,
+		run_state.get_inventory_revision_for_peer(PEER_ID),
+		warehouse.get_storage_revision()
+	)
+	_expect(
+		OakWarehouseProtocol.command_peer_matches(
+			OakWarehouseProtocol.make_transfer_command(
+				100,
+				WAREHOUSE_NET_ID,
+				PEER_ID,
+				OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE,
+				0,
+				run_state.get_inventory_revision_for_peer(PEER_ID),
+				warehouse.get_storage_revision()
+			),
+			PEER_ID
+		)
+		and not OakWarehouseProtocol.command_peer_matches(
+			forged_peer_command,
+			PEER_ID
+		),
+		"仓库权威入口必须只接受严格整数且与RPC发送者一致的peer ID。"
 	)
 	var malformed_result := warehouse.apply_transfer_command(malformed_command, run_state)
 	_expect(

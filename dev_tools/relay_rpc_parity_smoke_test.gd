@@ -61,6 +61,9 @@ func _run() -> void:
 		"net_production_snapshot_requested",
 		"net_production_command_result",
 		"net_production_state_batch",
+		"net_research_command_requested",
+		"net_research_command_result",
+		"net_research_state_updated",
 	]:
 		_expect(main_rpcs.has(required_method), "Gameplay RPC %s must be registered." % required_method)
 	if main_rpcs.has("net_tiyi_high_noon_requested"):
@@ -351,6 +354,32 @@ func _test_gameplay_v10_transaction_contract(rpcs: Dictionary) -> void:
 			"net_production_state_batch",
 			signature_fragment
 		)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_research_command_requested",
+		"command:Dictionary"
+	)
+	for signature_fragment in [
+		"request_id:int",
+		"building_net_id:int",
+		"success:bool",
+		"reason:StringName",
+	]:
+		_expect_rpc_signature_contains(
+			rpcs,
+			"net_research_command_result",
+			signature_fragment
+		)
+	for signature_fragment in [
+		"state:Dictionary",
+		"changed_player_peer_id:int",
+		"current_xirang:int",
+	]:
+		_expect_rpc_signature_contains(
+			rpcs,
+			"net_research_state_updated",
+			signature_fragment
+		)
 
 
 func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
@@ -416,6 +445,9 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		"net_production_snapshot_requested",
 		"net_production_command_result",
 		"net_production_state_batch",
+		"net_research_command_requested",
+		"net_research_command_result",
+		"net_research_state_updated",
 	]:
 		_expect_rpc_channel(rpcs, transaction_method, NetConstants.CH_TRANSACTION)
 	for feedback_method in [

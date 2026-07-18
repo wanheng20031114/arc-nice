@@ -155,6 +155,14 @@ static func get_int_field(command: Dictionary, key: String, default_value: int) 
 	return int(value)
 
 
+static func command_peer_matches(command: Dictionary, expected_peer_id: int) -> bool:
+	return (
+		expected_peer_id > 0
+		and typeof(command.get("peer_id")) == TYPE_INT
+		and int(command["peer_id"]) == expected_peer_id
+	)
+
+
 static func _get_command_operation(
 	command: Dictionary,
 	default_operation: StringName = &""

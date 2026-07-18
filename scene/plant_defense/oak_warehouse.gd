@@ -1121,32 +1121,12 @@ func _refresh_interaction_selection(player: Player) -> void:
 		var distance_squared := player.global_position.distance_squared_to(
 			building.global_position
 		)
-		var wins_distance_tie := false
-		if is_equal_approx(distance_squared, nearest_distance_squared):
-			wins_distance_tie = (
-				nearest_building == null
-				or building.global_position.y < nearest_building.global_position.y
-				or (
-					is_equal_approx(
-						building.global_position.y,
-						nearest_building.global_position.y
-					)
-					and (
-						building.global_position.x < nearest_building.global_position.x
-						or (
-							is_equal_approx(
-								building.global_position.x,
-								nearest_building.global_position.x
-							)
-							and (
-								building.get_instance_id()
-								< nearest_building.get_instance_id()
-							)
-						)
-					)
-				)
-			)
-		if distance_squared < nearest_distance_squared or wins_distance_tie:
+		if PlantDefense.is_interaction_candidate_preferred(
+			building,
+			distance_squared,
+			nearest_building,
+			nearest_distance_squared
+		):
 			nearest_building = building
 			nearest_distance_squared = distance_squared
 

@@ -216,6 +216,39 @@ static func is_building_modal_close_event(event: InputEvent) -> bool:
 	)
 
 
+## Chooses one interaction target deterministically. Multiplayer replicas use
+## their authoritative network IDs for distance ties; local buildings without
+## two usable IDs retain the stable scene-space ordering used in single player.
+static func is_interaction_candidate_preferred(
+	candidate: PlantDefense,
+	candidate_distance_squared: float,
+	current: PlantDefense,
+	current_distance_squared: float
+) -> bool:
+	if candidate == null or not is_instance_valid(candidate):
+		return false
+	if current == null or not is_instance_valid(current):
+		return true
+	if candidate_distance_squared < current_distance_squared:
+		return true
+	if not is_equal_approx(candidate_distance_squared, current_distance_squared):
+		return false
+
+	var candidate_net_id := maxi(int(candidate.get_meta(&"net_id", 0)), 0)
+	var current_net_id := maxi(int(current.get_meta(&"net_id", 0)), 0)
+	if (
+		candidate_net_id > 0
+		and current_net_id > 0
+		and candidate_net_id != current_net_id
+	):
+		return candidate_net_id < current_net_id
+	if not is_equal_approx(candidate.global_position.y, current.global_position.y):
+		return candidate.global_position.y < current.global_position.y
+	if not is_equal_approx(candidate.global_position.x, current.global_position.x):
+		return candidate.global_position.x < current.global_position.x
+	return candidate.get_instance_id() < current.get_instance_id()
+
+
 ## Interactive plant buildings override these hooks so every building type can
 ## participate in one nearest-target selection without runtime duck typing.
 func get_interaction_player() -> Player:

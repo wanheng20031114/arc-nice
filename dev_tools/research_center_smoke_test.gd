@@ -67,6 +67,7 @@ func _run() -> void:
 	research.research_tick_timer.stop()
 
 	_test_config_and_scene(config, center, panel)
+	_test_interaction_candidate_ordering(test_root)
 	if config == null or center == null:
 		_finish(test_root)
 		return
@@ -273,6 +274,61 @@ func _test_player_technology(
 	_expect(
 		hoe_cat.physical_defense == defense_before,
 		"锄头猫猫的科研临时物防必须在2秒计时结束时完全移除。"
+	)
+
+
+func _test_interaction_candidate_ordering(test_root: Node) -> void:
+	var first := PlantDefense.new()
+	var second := PlantDefense.new()
+	test_root.add_child(first)
+	test_root.add_child(second)
+
+	first.global_position = Vector2(8.0, 8.0)
+	second.global_position = Vector2(-8.0, -8.0)
+	first.set_meta(&"net_id", 4)
+	second.set_meta(&"net_id", 9)
+	_expect(
+		PlantDefense.is_interaction_candidate_preferred(first, 64.0, second, 64.0)
+		and not PlantDefense.is_interaction_candidate_preferred(
+			second,
+			64.0,
+			first,
+			64.0
+		),
+		"多人等距交互必须忽略节点遍历顺序，并稳定选择较小的正net_id。"
+	)
+	_expect(
+		PlantDefense.is_interaction_candidate_preferred(second, 63.0, first, 64.0),
+		"真实距离更近的建筑必须始终优先于net_id。"
+	)
+
+	first.set_meta(&"net_id", 4)
+	second.set_meta(&"net_id", 0)
+	_expect(
+		PlantDefense.is_interaction_candidate_preferred(second, 64.0, first, 64.0),
+		"只有一侧具备正net_id时，等距交互必须回退到稳定的y坐标排序。"
+	)
+	first.set_meta(&"net_id", 0)
+	first.global_position = Vector2(8.0, -8.0)
+	second.global_position = Vector2(-8.0, -8.0)
+	_expect(
+		PlantDefense.is_interaction_candidate_preferred(second, 64.0, first, 64.0),
+		"单人等距且y坐标相同时，交互必须稳定选择较小的x坐标。"
+	)
+	first.global_position = Vector2.ZERO
+	second.global_position = Vector2.ZERO
+	var lower_instance := (
+		first if first.get_instance_id() < second.get_instance_id() else second
+	)
+	var higher_instance := second if lower_instance == first else first
+	_expect(
+		PlantDefense.is_interaction_candidate_preferred(
+			lower_instance,
+			64.0,
+			higher_instance,
+			64.0
+		),
+		"单人等距且坐标相同时，交互必须以instance_id完成稳定排序。"
 	)
 
 

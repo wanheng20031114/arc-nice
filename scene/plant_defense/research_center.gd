@@ -315,7 +315,12 @@ func _refresh_interaction_selection(player: Player) -> void:
 		var distance_squared := player.global_position.distance_squared_to(
 			building.global_position
 		)
-		if distance_squared < nearest_distance_squared:
+		if PlantDefense.is_interaction_candidate_preferred(
+			building,
+			distance_squared,
+			nearest_building,
+			nearest_distance_squared
+		):
 			nearest_building = building
 			nearest_distance_squared = distance_squared
 	var can_select := (
