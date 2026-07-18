@@ -15,6 +15,11 @@ enum CombatState {
 	SUMMON,
 }
 
+@export_group("投射物身份")
+@export var projectile_source_type: StringName = (
+	&"fire_sorcerer_fireball_volley"
+)
+
 @onready var summon_pivot: Node2D = $SummonPivot
 @onready var summon_markers: Array[Marker2D] = [
 	$SummonPivot/SpawnA,
@@ -43,6 +48,10 @@ var attack_target_refresh_left: float = 0.0
 func _ready() -> void:
 	super._ready()
 	_hide_summon_previews()
+
+
+func _get_touch_damage_type() -> EnemyConfig.DamageType:
+	return EnemyConfig.DamageType.MAGIC
 
 
 func _get_preferred_ranged_combat_target() -> Node2D:
@@ -401,7 +410,9 @@ func _spawn_fireball_volley(fire_config: FireConfig) -> bool:
 		fire_config.projectile_lifetime,
 		summon_target,
 		fire_config.homing_turn_rate,
-		_get_attack_target_runtime()
+		_get_attack_target_runtime(),
+		fire_config.burn_duration,
+		fire_config.burn_level
 	)
 	if volley.get_parent() == null:
 		spawn_parent.add_child(volley)
@@ -422,7 +433,7 @@ func _spawn_fireball_volley(fire_config: FireConfig) -> bool:
 		spawn_parent.call(
 			"register_local_projectile",
 			volley,
-			&"fire_sorcerer_fireball_volley",
+			_get_fireball_projectile_type(),
 			0,
 			volley.global_position,
 			summon_direction,
@@ -434,6 +445,10 @@ func _spawn_fireball_volley(fire_config: FireConfig) -> bool:
 			target_plant_net_id
 		)
 	return true
+
+
+func _get_fireball_projectile_type() -> StringName:
+	return projectile_source_type
 
 
 func _start_summon_preview(duration: float, direction: Vector2) -> void:

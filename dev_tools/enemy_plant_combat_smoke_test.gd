@@ -299,6 +299,8 @@ func _verify_projectile_plant_damage_contract() -> void:
 	await physics_frame
 
 	var fireball_plant := _spawn_agave(Vector2(3000.0, 0.0))
+	fireball_plant.physical_defense = 49
+	fireball_plant.magic_defense = 20
 	var fireball_health_before := fireball_plant.current_health
 	var fireball := MAGE_FIREBALL_SCENE.instantiate() as CapooMageFireball
 	test_root.add_child(fireball)
@@ -310,7 +312,7 @@ func _verify_projectile_plant_damage_contract() -> void:
 	fireball.call("_apply_explosion_damage")
 	_expect(
 		fireball_plant.current_health == fireball_health_before - 40,
-		"Mage fireball explosion must include PlantDefense bodies (before=%d, after=%d)." % [
+		"Mage fireball must use 20 magic defense (40 damage), not 49 physical defense (before=%d, after=%d)." % [
 			fireball_health_before,
 			fireball_plant.current_health,
 		]

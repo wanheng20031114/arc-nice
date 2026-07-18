@@ -5,6 +5,9 @@ const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const FIRE_SORCERER_FIREBALL_VOLLEY_SCENE := preload(
 	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
 )
+const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE := preload(
+	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn"
+)
 const TELEMETRY_SCRIPT := preload("res://scene/runtime_performance_telemetry.gd")
 const EXPECTED_WAVE_TOTAL := 1200
 const EXPECTED_MAX_ALIVE := 300
@@ -189,14 +192,27 @@ func _verify_runtime_classification() -> void:
 		fire_sorcerer_volley.set_process(false)
 		fire_sorcerer_volley.set_physics_process(false)
 		game.add_child(fire_sorcerer_volley)
+	var elite_fire_sorcerer_volley := (
+		FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE.instantiate()
+	)
+	_expect(
+		elite_fire_sorcerer_volley != null,
+		"Telemetry classifier requires an elite Fire Sorcerer volley fixture."
+	)
+	if elite_fire_sorcerer_volley != null:
+		elite_fire_sorcerer_volley.set_process(false)
+		elite_fire_sorcerer_volley.set_physics_process(false)
+		game.add_child(elite_fire_sorcerer_volley)
 	var counts: Dictionary = telemetry.sample_runtime_counts(game)
 	_expect(
-		int(counts["active_projectiles"]) == 2,
-		"Telemetry must recognize live player and Fire Sorcerer projectiles."
+		int(counts["active_projectiles"]) == 3,
+		"Telemetry must recognize player, normal and elite Fire Sorcerer projectiles."
 	)
 	bullet.queue_free()
 	if fire_sorcerer_volley != null:
 		fire_sorcerer_volley.queue_free()
+	if elite_fire_sorcerer_volley != null:
+		elite_fire_sorcerer_volley.queue_free()
 	await process_frame
 	await physics_frame
 

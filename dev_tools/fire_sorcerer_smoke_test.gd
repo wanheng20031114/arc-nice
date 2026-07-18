@@ -92,6 +92,7 @@ func _run() -> void:
 	await _test_ranged_standoff_and_resume()
 	await _test_proxy_preview_timeout()
 
+	root.get_node("BurnStatusScheduler").call("clear_all")
 	current_scene = null
 	test_root.queue_free()
 	await process_frame
@@ -130,8 +131,8 @@ func _test_resource_and_scene_contract() -> void:
 		"Fire Sorcerer health must be 200."
 	)
 	_expect(
-		FIRE_SORCERER_CONFIG.attack_damage == 50,
-		"Every Fire Sorcerer fireball must use 50 base damage."
+		FIRE_SORCERER_CONFIG.attack_damage == 40,
+		"Every Fire Sorcerer fireball must use 40 base damage."
 	)
 	_expect(
 		FIRE_SORCERER_CONFIG.physical_defense == 20
@@ -162,6 +163,11 @@ func _test_resource_and_scene_contract() -> void:
 			0.9
 		),
 		"Large Fire Sorcerer cohorts must use the authored 0.9 s first-attack stagger."
+	)
+	_expect(
+		is_equal_approx(FIRE_SORCERER_CONFIG.burn_duration, 5.0)
+		and FIRE_SORCERER_CONFIG.burn_level == 5,
+		"Fire Sorcerer hits must apply five seconds of level-5 burn."
 	)
 	_expect(
 		is_equal_approx(FIRE_SORCERER_CONFIG.projectile_lifetime, 7.0),
@@ -224,6 +230,11 @@ func _test_resource_and_scene_contract() -> void:
 			and sprite.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
 			and sprite.scale == Vector2.ONE,
 			"Fire Sorcerer must use nearest filtering and lossless scale 1."
+		)
+		_expect(
+			instance.call("_get_touch_damage_type")
+				== EnemyConfig.DamageType.MAGIC,
+			"Fire Sorcerer body contact must use magic damage."
 		)
 		if sprite != null:
 			_expect_animation_frames_within_limit(
@@ -326,6 +337,11 @@ func _test_resource_and_scene_contract() -> void:
 		_expect(
 			unique_positions.size() == FireSorcererFireballVolley.BALL_COUNT,
 			"Volley scene must preserve three distinct fireball offsets."
+		)
+		_expect(
+			is_equal_approx(volley.burn_duration, 5.0)
+			and volley.burn_level == 5,
+			"The normal volley must author the level-5 burn profile."
 		)
 		volley.free()
 
@@ -510,10 +526,20 @@ func _test_magic_first_contact_without_aoe() -> void:
 	)
 	volley.call("_on_ball_body_entered", primary, 0)
 	_expect(
-		primary.current_health == TEST_HEALTH - 40
-		and primary.last_damage_taken == 40,
-		"50 magic damage must become 40 against 20 magic defense; "
+		primary.current_health == TEST_HEALTH - 32
+		and primary.last_damage_taken == 32,
+		"40 magic damage must become 32 against 20 magic defense; "
 		+ "physical defense must not be used."
+	)
+	var burn_scheduler := root.get_node("BurnStatusScheduler")
+	_expect(
+		bool(burn_scheduler.call(
+			"has_burn",
+			primary,
+			&"fire_sorcerer_fireball_volley"
+		))
+		and int(burn_scheduler.call("get_source_count", primary)) == 1,
+		"A successful normal fireball hit must register one refreshed burn family."
 	)
 	_expect(
 		secondary.current_health == TEST_HEALTH,
@@ -530,14 +556,25 @@ func _test_magic_first_contact_without_aoe() -> void:
 	primary.invincibility_time_left = 0.0
 	volley.call("_on_ball_body_entered", primary, 0)
 	_expect(
-		primary.current_health == TEST_HEALTH - 40,
+		primary.current_health == TEST_HEALTH - 32,
 		"The same fireball must never damage a target twice after first contact."
 	)
 	volley.call("_on_ball_body_entered", secondary, 1)
 	_expect(
-		secondary.current_health == TEST_HEALTH - 40
+		secondary.current_health == TEST_HEALTH - 32
 		and bool(volley.call("_is_ball_active", 2)),
 		"Each remaining fireball must independently deal one first-contact hit."
+	)
+	# apply_damage refreshes config-derived defenses after the initial hit; set
+	# the differentiated probe defense again so the periodic path remains
+	# observably magic rather than physical.
+	primary.magic_defense = 20
+	secondary.magic_defense = 20
+	burn_scheduler.call("_advance_active_burns", 1.01)
+	_expect(
+		primary.current_health == TEST_HEALTH - 36
+		and secondary.current_health == TEST_HEALTH - 36,
+		"Level-5 burn must tick as 4 magic damage against 20 magic defense."
 	)
 	volley.call(
 		"_update_effects",

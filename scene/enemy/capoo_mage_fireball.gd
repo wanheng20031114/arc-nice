@@ -9,6 +9,7 @@ const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd
 const WORLD_COLLISION_MASK := 1
 const DAMAGEABLE_COLLISION_MASK := 2 | 512
 const EXPLOSION_QUERY_BATCH_SIZE := 64
+const DAMAGE_TYPE := EnemyConfig.DamageType.MAGIC
 
 # Focused performance probes can restore the old direct-instantiation path for
 # a strict A/B. Production uses a bounded, strict visual-effect lease.
@@ -259,7 +260,7 @@ func _apply_explosion_damage_to_body(body: Node2D, damaged_bodies: Dictionary) -
 		if not player.is_dead and not _try_report_multiplayer_player_hit(player):
 			player.apply_damage(
 				damage,
-				EnemyConfig.DamageType.PHYSICAL,
+				DAMAGE_TYPE,
 				_get_player_damage_context(player)
 			)
 		return
@@ -273,7 +274,7 @@ func _apply_explosion_damage_to_body(body: Node2D, damaged_bodies: Dictionary) -
 		damage,
 		self,
 		global_position.direction_to(plant.global_position),
-		EnemyConfig.DamageType.PHYSICAL
+		DAMAGE_TYPE
 	)
 
 
@@ -324,6 +325,7 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 		player.peer_id,
 		damage,
 		source_type,
+		DAMAGE_TYPE,
 		_get_source_direction_to_player(player),
 		true
 	))

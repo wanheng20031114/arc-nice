@@ -1,0 +1,68 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" uid="uid://nbkujia5pqld" path="res://scene/enemy/fire_sorcerer_fireball_volley.gd" id="1_script"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/fire_sorcerer_elite_fireball.tres" id="2_frames"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_fireball"]
+radius = 3.5
+
+[node name="FireSorcererEliteFireballVolley" type="Node2D"]
+z_index = 3
+script = ExtResource("1_script")
+speed = 140.0
+burn_level = 10
+projectile_source_type = &"fire_sorcerer_elite_fireball_volley"
+ball_source_type_a = &"fire_sorcerer_elite_fireball_a"
+ball_source_type_b = &"fire_sorcerer_elite_fireball_b"
+ball_source_type_c = &"fire_sorcerer_elite_fireball_c"
+
+[node name="FireballA" type="Area2D" parent="."]
+position = Vector2(24, 1)
+collision_layer = 128
+collision_mask = 515
+
+[node name="VisualRoot" type="Node2D" parent="FireballA"]
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="FireballA/VisualRoot"]
+texture_filter = 1
+sprite_frames = ExtResource("2_frames")
+animation = &"fly"
+autoplay = "fly"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="FireballA"]
+position = Vector2(5, 0)
+shape = SubResource("CircleShape2D_fireball")
+
+[node name="FireballB" type="Area2D" parent="."]
+position = Vector2(15, -5)
+collision_layer = 128
+collision_mask = 515
+
+[node name="VisualRoot" type="Node2D" parent="FireballB"]
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="FireballB/VisualRoot"]
+texture_filter = 1
+sprite_frames = ExtResource("2_frames")
+animation = &"fly"
+autoplay = "fly"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="FireballB"]
+position = Vector2(5, 0)
+shape = SubResource("CircleShape2D_fireball")
+
+[node name="FireballC" type="Area2D" parent="."]
+position = Vector2(23, 13)
+collision_layer = 128
+collision_mask = 515
+
+[node name="VisualRoot" type="Node2D" parent="FireballC"]
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="FireballC/VisualRoot"]
+texture_filter = 1
+sprite_frames = ExtResource("2_frames")
+animation = &"fly"
+autoplay = "fly"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="FireballC"]
+position = Vector2(5, 0)
+shape = SubResource("CircleShape2D_fireball")

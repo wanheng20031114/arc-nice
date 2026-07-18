@@ -138,6 +138,7 @@ const DEFAULT_MAGIC_DEFENSE_LIMIT := 100
 const RANGED_DIRECTION_SIDE_THRESHOLD := 0.35
 const DEFAULT_SKILL1_DISPLAY_NAME := "技能"
 const STATUS_EFFECT_EXPIRY_SCHEDULER_PATH := NodePath("/root/StatusEffectExpiryScheduler")
+const BURN_STATUS_SCHEDULER_PATH := NodePath("/root/BurnStatusScheduler")
 
 static var _collectible_temporary_source_serial: int = 0
 # Keep the former one-SceneTreeTimer-per-enemy path available for deterministic
@@ -721,6 +722,98 @@ func apply_damage(
 	_trigger_collectible_hurt_effects()
 	_start_invincibility()
 	return true
+
+
+## Applies an already-established periodic effect. It still respects the
+## matching defense and damage-reduction rules, but intentionally cannot be
+## dodged and neither consumes nor grants ordinary hit invincibility.
+func apply_periodic_damage(
+	amount: int,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.MAGIC
+) -> bool:
+	last_damage_taken = 0
+	if is_dead or amount <= 0:
+		return false
+
+	var final_damage := _calculate_incoming_damage(amount, damage_type)
+	var health_before_damage := maxi(current_health, 0)
+	current_health = maxi(current_health - final_damage, 0)
+	last_damage_taken = maxi(health_before_damage - current_health, 0)
+	if peer_id <= 0:
+		show_damage_number(
+			last_damage_taken,
+			Vector2.ZERO,
+			damage_type
+		)
+	health_bar.set_health(current_health, max_health)
+	health_changed.emit(current_health, max_health)
+	_refresh_collectible_stats(false)
+	if current_health <= 0:
+		_die()
+		return true
+
+	_trigger_collectible_hurt_effects()
+	return true
+
+
+func apply_burn_status(
+	source_family: StringName,
+	duration: float,
+	tick_damage: int
+) -> bool:
+	if (
+		is_dead
+		or not is_inside_tree()
+		or source_family == &""
+		or duration <= 0.0
+		or tick_damage <= 0
+	):
+		return false
+	var scheduler := get_node_or_null(BURN_STATUS_SCHEDULER_PATH)
+	if scheduler == null:
+		push_error("BurnStatusScheduler autoload is missing.")
+		return false
+	return bool(scheduler.call(
+		"apply_burn",
+		self,
+		Callable(self, "_receive_incoming_burn_tick"),
+		source_family,
+		duration,
+		tick_damage
+	))
+
+
+func clear_burn_status() -> void:
+	if not is_inside_tree():
+		return
+	var scheduler := get_node_or_null(BURN_STATUS_SCHEDULER_PATH)
+	if scheduler != null:
+		scheduler.call("clear_target", self)
+
+
+func _receive_incoming_burn_tick(
+	source_family: StringName,
+	tick_damage: int
+) -> bool:
+	if is_dead:
+		return false
+	if peer_id > 0:
+		var current_scene := get_tree().current_scene
+		if (
+			current_scene != null
+			and current_scene.has_method(
+				"request_multiplayer_player_burn_tick"
+			)
+		):
+			return bool(current_scene.call(
+				"request_multiplayer_player_burn_tick",
+				peer_id,
+				source_family
+			))
+	return apply_periodic_damage(
+		tick_damage,
+		EnemyConfig.DamageType.MAGIC
+	)
 
 
 func _try_collectible_ranged_dodge(damage_context: Dictionary) -> bool:
@@ -1401,6 +1494,7 @@ func set_multiplayer_health_state(new_health: int, new_is_dead: bool) -> void:
 
 func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invincible_seconds: float = 0.0) -> void:
 	var was_dead := is_dead
+	clear_burn_status()
 	tower_defense_death_presentation_active = false
 	global_position = revive_position
 	reset_physics_interpolation()
@@ -1448,6 +1542,7 @@ func apply_multiplayer_death_state() -> void:
 	var was_dead := is_dead
 	_set_multiplayer_visual_offset(Vector2.ZERO)
 	is_dead = true
+	clear_burn_status()
 	controls_locked = true
 	_finish_dash()
 	_stop_remote_dash_visual()
@@ -3985,6 +4080,7 @@ func _die() -> void:
 		apply_multiplayer_death_state()
 		return
 	is_dead = true
+	clear_burn_status()
 	_finish_dash()
 	_stop_remote_dash_visual()
 	multiplayer_dash_protection_time_left = 0.0

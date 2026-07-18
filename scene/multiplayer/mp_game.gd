@@ -59,6 +59,9 @@ const CAPOO_MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_firebal
 const FIRE_SORCERER_FIREBALL_VOLLEY_SCENE := preload(
 	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
 )
+const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE := preload(
+	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn"
+)
 const CAPOO_SMG_BULLET_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
 const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
 const LINGLAN_SAKURA_BULLET_SCENE_PATH := "res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn"
@@ -118,6 +121,12 @@ const PROJECTILE_TIME_COMPENSATION_MAX_SECONDS := 0.25
 const FIRE_SORCERER_FIREBALL_VOLLEY_TYPE: StringName = (
 	&"fire_sorcerer_fireball_volley"
 )
+const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_TYPE: StringName = (
+	&"fire_sorcerer_elite_fireball_volley"
+)
+const FIRE_SORCERER_BURN_DURATION_SECONDS := 5.0
+const FIRE_SORCERER_BURN_LEVEL := 5
+const FIRE_SORCERER_ELITE_BURN_LEVEL := 10
 const FIRE_SORCERER_CONSUMED_SOURCE_MASK_KEY: StringName = (
 	&"fire_sorcerer_consumed_source_mask"
 )
@@ -4438,6 +4447,36 @@ func _instantiate_projectile(
 				game
 			)
 			return fire_sorcerer_volley
+		&"fire_sorcerer_elite_fireball_volley":
+			var elite_fire_sorcerer_volley := (
+				_acquire_or_instantiate_projectile(
+					FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE
+				)
+				as FireSorcererFireballVolley
+			)
+			if elite_fire_sorcerer_volley == null:
+				return null
+			elite_fire_sorcerer_volley.top_level = true
+			var elite_fireball_target: Node2D = null
+			if game != null:
+				if target_peer_id > 0:
+					elite_fireball_target = game.get_player_for_peer(
+						target_peer_id
+					)
+				elif target_enemy_net_id > 0:
+					elite_fireball_target = game.get_multiplayer_plant_node(
+						target_enemy_net_id
+					)
+			elite_fire_sorcerer_volley.setup(
+				direction,
+				damage,
+				speed,
+				lifetime,
+				elite_fireball_target,
+				6.0,
+				game
+			)
+			return elite_fire_sorcerer_volley
 		&"capoo_smg_bullet":
 			var smg_bullet := (
 				_acquire_or_instantiate_projectile(CAPOO_SMG_BULLET_SCENE)
@@ -4771,18 +4810,65 @@ func _remember_projectile_record(
 		"confirmed_hit_consumed": false,
 		"expires_at": _get_net_time() + maxf(lifetime, 0.0) + PROJECTILE_RECORD_RETENTION_SECONDS,
 	}
-	if projectile_type == FIRE_SORCERER_FIREBALL_VOLLEY_TYPE:
+	if _is_fire_sorcerer_volley_type(projectile_type):
 		projectile_record[FIRE_SORCERER_CONSUMED_SOURCE_MASK_KEY] = 0
 	_projectile_records[projectile_id] = projectile_record
 
 
+func _is_fire_sorcerer_volley_type(projectile_type: StringName) -> bool:
+	return (
+		projectile_type == FIRE_SORCERER_FIREBALL_VOLLEY_TYPE
+		or projectile_type == FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_TYPE
+	)
+
+
+func _get_fire_sorcerer_projectile_type_for_source(
+	source_type: StringName
+) -> StringName:
+	match source_type:
+		&"fire_sorcerer_fireball_a", \
+		&"fire_sorcerer_fireball_b", \
+		&"fire_sorcerer_fireball_c":
+			return FIRE_SORCERER_FIREBALL_VOLLEY_TYPE
+		&"fire_sorcerer_elite_fireball_a", \
+		&"fire_sorcerer_elite_fireball_b", \
+		&"fire_sorcerer_elite_fireball_c":
+			return FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_TYPE
+		_:
+			return &""
+
+
+func _get_fire_sorcerer_burn_family(
+	source_type: StringName
+) -> StringName:
+	if (
+		source_type == FIRE_SORCERER_FIREBALL_VOLLEY_TYPE
+		or source_type == FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_TYPE
+	):
+		return source_type
+	return _get_fire_sorcerer_projectile_type_for_source(source_type)
+
+
+func _get_fire_sorcerer_burn_level(source_type: StringName) -> int:
+	match _get_fire_sorcerer_burn_family(source_type):
+		FIRE_SORCERER_FIREBALL_VOLLEY_TYPE:
+			return FIRE_SORCERER_BURN_LEVEL
+		FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_TYPE:
+			return FIRE_SORCERER_ELITE_BURN_LEVEL
+		_:
+			return 0
+
+
 func _get_fire_sorcerer_fireball_source_bit(source_type: StringName) -> int:
 	match source_type:
-		&"fire_sorcerer_fireball_a":
+		&"fire_sorcerer_fireball_a", \
+		&"fire_sorcerer_elite_fireball_a":
 			return 1
-		&"fire_sorcerer_fireball_b":
+		&"fire_sorcerer_fireball_b", \
+		&"fire_sorcerer_elite_fireball_b":
 			return 2
-		&"fire_sorcerer_fireball_c":
+		&"fire_sorcerer_fireball_c", \
+		&"fire_sorcerer_elite_fireball_c":
 			return 4
 		_:
 			return 0
@@ -4799,9 +4885,12 @@ func _is_fire_sorcerer_fireball_contact_consumed(
 	if not (record_variant is Dictionary):
 		return false
 	var projectile_record := record_variant as Dictionary
+	var projectile_type := StringName(
+		projectile_record.get("projectile_type", &"")
+	)
 	if (
-		StringName(projectile_record.get("projectile_type", &""))
-		!= FIRE_SORCERER_FIREBALL_VOLLEY_TYPE
+		projectile_type
+		!= _get_fire_sorcerer_projectile_type_for_source(source_type)
 	):
 		return false
 	return (
@@ -4823,9 +4912,12 @@ func try_consume_fire_sorcerer_fireball_contact(
 	if not (record_variant is Dictionary):
 		return false
 	var projectile_record := record_variant as Dictionary
+	var projectile_type := StringName(
+		projectile_record.get("projectile_type", &"")
+	)
 	if (
-		StringName(projectile_record.get("projectile_type", &""))
-		!= FIRE_SORCERER_FIREBALL_VOLLEY_TYPE
+		projectile_type
+		!= _get_fire_sorcerer_projectile_type_for_source(source_type)
 	):
 		return false
 	var consumed_mask := int(projectile_record.get(
@@ -6089,6 +6181,75 @@ func request_multiplayer_player_damage(
 	return false
 
 
+func request_multiplayer_player_burn_tick(
+	player_peer_id: int,
+	source_family: StringName
+) -> bool:
+	if (
+		net_manager == null
+		or not net_manager.is_host()
+		or game == null
+		or player_peer_id <= 0
+	):
+		return false
+	var trusted_family := _get_fire_sorcerer_burn_family(source_family)
+	var trusted_burn_level := _get_fire_sorcerer_burn_level(trusted_family)
+	if trusted_family == &"" or trusted_burn_level <= 0:
+		return false
+	var player_node := game.get_player_for_peer(player_peer_id)
+	if (
+		player_node == null
+		or not is_instance_valid(player_node)
+		or player_node.is_dead
+	):
+		return false
+	if not player_node.apply_periodic_damage(
+		trusted_burn_level,
+		EnemyConfig.DamageType.MAGIC
+	):
+		return false
+
+	var confirmed_damage := player_node.last_damage_taken
+	var confirmed_dead := player_node.is_dead
+	_show_confirmed_player_damage_number(
+		player_node,
+		confirmed_damage,
+		Vector2.ZERO,
+		EnemyConfig.DamageType.MAGIC
+	)
+	if confirmed_dead and _is_valid_tiyi_player(player_node):
+		_clear_projectiles_for_peer(player_peer_id)
+		_clear_projectile_records_for_peer(player_peer_id)
+	var health_revision := _next_player_health_revision(player_peer_id)
+	if confirmed_dead:
+		_schedule_player_revive(player_peer_id)
+	var event_arguments := [
+		player_peer_id,
+		player_node.current_health,
+		confirmed_dead,
+		health_revision,
+		confirmed_damage,
+		Vector2.ZERO,
+		int(EnemyConfig.DamageType.MAGIC),
+		false,
+	]
+	_rpc_to_connected_clients(
+		&"net_player_damage_applied",
+		event_arguments
+	)
+	net_player_damage_applied(
+		player_peer_id,
+		player_node.current_health,
+		confirmed_dead,
+		health_revision,
+		confirmed_damage,
+		Vector2.ZERO,
+		int(EnemyConfig.DamageType.MAGIC),
+		false
+	)
+	return true
+
+
 func _build_player_damage_context(source_direction: Vector2, is_ranged: bool) -> Dictionary:
 	if not is_ranged:
 		return {}
@@ -6243,6 +6404,15 @@ func _apply_player_hit_report(
 		else EnemyConfig.DamageType.PHYSICAL
 	)
 	player_node.set_multiplayer_health_state(confirmed_health, confirmed_dead)
+	if confirmed_damage > 0 and not confirmed_dead:
+		var burn_family := _get_fire_sorcerer_burn_family(source_type)
+		var burn_level := _get_fire_sorcerer_burn_level(burn_family)
+		if burn_family != &"" and burn_level > 0:
+			player_node.apply_burn_status(
+				burn_family,
+				FIRE_SORCERER_BURN_DURATION_SECONDS,
+				burn_level
+			)
 	_show_confirmed_player_damage_number(
 		player_node,
 		confirmed_damage,
@@ -6310,7 +6480,8 @@ func net_player_damage_applied(
 	health_revision: int,
 	confirmed_damage: int,
 	impact_direction: Vector2,
-	damage_type: int
+	damage_type: int,
+	grant_hit_invincibility: bool = true
 ) -> void:
 	if player_peer_id <= 0:
 		return
@@ -6339,7 +6510,8 @@ func net_player_damage_applied(
 		_clear_projectiles_for_peer(player_peer_id)
 		_clear_projectile_records_for_peer(player_peer_id)
 	if (
-		is_client_view_runtime()
+		grant_hit_invincibility
+		and is_client_view_runtime()
 		and player_peer_id == _get_client_view_local_peer_id()
 		and not player_node.is_dead
 		and player_node.current_health < player_node.max_health

@@ -22,6 +22,7 @@ signal removal_started(mode: RemovalMode)
 const CONSTRUCTION_DURATION_SECONDS: float = 0.7
 const REMOVAL_DURATION_SECONDS: float = 0.7
 const BUILDING_INTERACTION_GROUP := &"plant_building_interaction"
+const BURN_STATUS_SCHEDULER_PATH := NodePath("/root/BurnStatusScheduler")
 
 @export_range(0.0, 12.0, 0.5, "or_greater") var enemy_approach_depth: float = 3.0
 
@@ -76,6 +77,7 @@ func setup(
 	if new_config == null or not new_config.is_valid():
 		push_error("PlantDefense setup requires a valid config.")
 		return
+	clear_burn_status()
 
 	config = new_config
 	owner_player = new_owner_player
@@ -129,6 +131,55 @@ func receive_damage(
 	if current_health <= 0:
 		_begin_death()
 	return true
+
+
+func apply_burn_status(
+	source_family: StringName,
+	duration: float,
+	tick_damage: int
+) -> bool:
+	if (
+		is_multiplayer_proxy
+		or is_dead
+		or is_removing
+		or not is_inside_tree()
+		or source_family == &""
+		or duration <= 0.0
+		or tick_damage <= 0
+	):
+		return false
+	var scheduler := get_node_or_null(BURN_STATUS_SCHEDULER_PATH)
+	if scheduler == null:
+		push_error("BurnStatusScheduler autoload is missing.")
+		return false
+	return bool(scheduler.call(
+		"apply_burn",
+		self,
+		Callable(self, "_receive_incoming_burn_tick"),
+		source_family,
+		duration,
+		tick_damage
+	))
+
+
+func clear_burn_status() -> void:
+	if not is_inside_tree():
+		return
+	var scheduler := get_node_or_null(BURN_STATUS_SCHEDULER_PATH)
+	if scheduler != null:
+		scheduler.call("clear_target", self)
+
+
+func _receive_incoming_burn_tick(
+	_source_family: StringName,
+	tick_damage: int
+) -> bool:
+	return receive_damage(
+		tick_damage,
+		null,
+		Vector2.ZERO,
+		EnemyConfig.DamageType.MAGIC
+	)
 
 
 ## Applies damage without physical or magic mitigation while preserving the
@@ -412,6 +463,7 @@ func _begin_death() -> void:
 	if is_dead or is_removing:
 		return
 	is_dead = true
+	clear_burn_status()
 	current_health = 0
 	died.emit()
 	begin_removal(RemovalMode.ANIMATED)
@@ -426,6 +478,7 @@ func begin_removal(mode: RemovalMode = RemovalMode.ANIMATED) -> void:
 		return
 
 	is_removing = true
+	clear_burn_status()
 	removal_mode = mode
 	is_operational = false
 	_stop_construction_tween()

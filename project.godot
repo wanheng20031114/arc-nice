@@ -28,6 +28,7 @@ NetManager="*res://scene/multiplayer/net_manager.gd"
 UIAudio="*res://scene/ui_click_audio.tscn"
 GameLoadCoordinator="*res://scene/loading/game_load_coordinator.tscn"
 StatusEffectExpiryScheduler="*res://scene/status_effect_expiry_scheduler.gd"
+BurnStatusScheduler="*res://scene/burn_status_scheduler.gd"
 
 [display]
 

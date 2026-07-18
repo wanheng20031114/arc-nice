@@ -18,6 +18,7 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://scene/enemy/capoo_ak47.tscn",
 	"res://scene/enemy/capoo_ak47_bullet.tscn",
 	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn",
+	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn",
 	"res://resources/animation/yuanshi_insect_basic.tres",
 	"res://resources/animation/capoo_ak47.tres",
 	"res://resources/audio/capoo_ak47_fire.wav",
@@ -162,7 +163,13 @@ func _test_mode_specific_mp_game_source() -> void:
 	)
 	_expect(
 		source.contains("FIRE_SORCERER_FIREBALL_VOLLEY_SCENE")
+		and source.contains(
+			"FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE"
+		)
 		and source.contains('&"fire_sorcerer_fireball_volley"')
+		and source.contains(
+			'&"fire_sorcerer_elite_fireball_volley"'
+		)
 		and source.contains(
 			"fireball_target = game.get_player_for_peer(target_peer_id)"
 		)
@@ -382,21 +389,29 @@ func _expect_fire_sorcerer_projectile_pool(
 	_expect(object_pool != null, "Runtime must expose its projectile object pool.")
 	if object_pool == null:
 		return
-	var scene_path := "res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
-	var metrics := object_pool.get_metrics(scene_path)
-	_expect(
-		int(metrics.get("created", -1)) == expected_prewarm_count
-		and int(metrics.get("inactive", -1)) == expected_prewarm_count
-		and int(metrics.get("in_use", -1)) == 0
-		and int(metrics.get("pending_release", -1)) == 0
-		and int(metrics.get("overflow", -1)) == 0
-		and int(metrics.get("dropped", -1)) == 0
-		and int(metrics.get("retained_capacity", -1)) == expected_retained_capacity,
-		(
-			"Fire Sorcerer volley pool must prewarm %d leases with capacity %d."
-			% [expected_prewarm_count, expected_retained_capacity]
+	for scene_path in [
+		"res://scene/enemy/fire_sorcerer_fireball_volley.tscn",
+		"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn",
+	]:
+		var metrics := object_pool.get_metrics(scene_path)
+		_expect(
+			int(metrics.get("created", -1)) == expected_prewarm_count
+			and int(metrics.get("inactive", -1)) == expected_prewarm_count
+			and int(metrics.get("in_use", -1)) == 0
+			and int(metrics.get("pending_release", -1)) == 0
+			and int(metrics.get("overflow", -1)) == 0
+			and int(metrics.get("dropped", -1)) == 0
+			and int(metrics.get("retained_capacity", -1))
+				== expected_retained_capacity,
+			(
+				"%s pool must prewarm %d leases with capacity %d."
+				% [
+					scene_path,
+					expected_prewarm_count,
+					expected_retained_capacity,
+				]
+			)
 		)
-	)
 
 
 func _finish() -> void:

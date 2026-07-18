@@ -3,12 +3,19 @@ extends SceneTree
 const FIREBALL_VOLLEY_SCENE := preload(
 	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
 )
+const ELITE_FIREBALL_VOLLEY_SCENE := preload(
+	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn"
+)
 const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
 const TEST_HEALTH := 1000
-const FIREBALL_DAMAGE := 50
+const FIREBALL_DAMAGE := 40
+const ELITE_FIREBALL_DAMAGE := 70
 const FIREBALL_TYPE: StringName = &"fire_sorcerer_fireball_volley"
+const ELITE_FIREBALL_TYPE: StringName = (
+	&"fire_sorcerer_elite_fireball_volley"
+)
 
 
 class TestMpGame:
@@ -19,6 +26,8 @@ class TestMpGame:
 	var last_reported_peer_id := 0
 	var last_reported_health := -1
 	var last_reported_applied_damage := -1
+	var sent_methods: Array[StringName] = []
+	var sent_arguments: Array[Array] = []
 
 	func request_player_hit_report(
 		source_id: int,
@@ -36,6 +45,13 @@ class TestMpGame:
 		last_reported_peer_id = player_peer_id
 		last_reported_health = reported_health_after
 		last_reported_applied_damage = reported_applied_damage
+
+	func _rpc_to_connected_clients(
+		method_name: StringName,
+		args: Array = []
+	) -> void:
+		sent_methods.append(method_name)
+		sent_arguments.append(args.duplicate(true))
 
 
 class TestNetManager:
@@ -64,6 +80,8 @@ class ContactAuthorityScene:
 	var authority: Node = null
 	var player_damage_request_count := 0
 	var every_player_request_was_preconsumed := true
+	var every_player_request_used_magic_damage := true
+	var last_player_damage_type := int(EnemyConfig.DamageType.PHYSICAL)
 
 	func try_consume_fire_sorcerer_fireball_contact(
 		projectile_id: int,
@@ -88,6 +106,14 @@ class ContactAuthorityScene:
 		fire_contact_preconsumed: bool = false
 	) -> bool:
 		player_damage_request_count += 1
+		var resolved_damage_type := int(EnemyConfig.DamageType.PHYSICAL)
+		if _damage_type_or_source_direction is int:
+			resolved_damage_type = int(_damage_type_or_source_direction)
+		last_player_damage_type = resolved_damage_type
+		every_player_request_used_magic_damage = (
+			every_player_request_used_magic_damage
+			and resolved_damage_type == int(EnemyConfig.DamageType.MAGIC)
+		)
 		every_player_request_was_preconsumed = (
 			every_player_request_was_preconsumed
 			and fire_contact_preconsumed
@@ -111,14 +137,19 @@ func _run() -> void:
 	test_scene.authority = contact_authority
 	root.add_child(test_scene)
 	current_scene = test_scene
+	root.get_node("BurnStatusScheduler").call("clear_all")
 
 	_test_dedup_key_and_source_mask_contract()
+	_test_elite_projectile_instantiation_contract()
+	_test_elite_volley_source_family_and_first_contact()
+	_test_host_successful_hits_register_burn_statuses()
 	_test_host_invincible_first_contact_is_consumed()
 	_test_client_invincible_first_contact_reports_zero()
 	_test_volley_player_plant_and_world_first_contact()
 	await _test_compensation_sweep_and_normal_path_cost()
 
 	FireSorcererFireballVolley.set_performance_metrics_enabled(false)
+	root.get_node("BurnStatusScheduler").call("clear_all")
 	current_scene = null
 	test_scene.queue_free()
 	contact_authority.free()
@@ -139,12 +170,21 @@ func _run() -> void:
 func _test_dedup_key_and_source_mask_contract() -> void:
 	var mp_game := TestMpGame.new()
 	var projectile_id := 81001
+	var elite_projectile_id := 81011
 	mp_game.call(
 		"_remember_projectile_record",
 		projectile_id,
 		1,
 		FIREBALL_TYPE,
 		FIREBALL_DAMAGE,
+		7.0
+	)
+	mp_game.call(
+		"_remember_projectile_record",
+		elite_projectile_id,
+		1,
+		ELITE_FIREBALL_TYPE,
+		ELITE_FIREBALL_DAMAGE,
 		7.0
 	)
 	var fire_key_peer_two := String(mp_game.call(
@@ -171,11 +211,25 @@ func _test_dedup_key_and_source_mask_contract() -> void:
 		3,
 		&"capoo_mage_fireball"
 	))
+	var elite_fire_key_peer_two := String(mp_game.call(
+		"_get_multiplayer_player_hit_key",
+		elite_projectile_id,
+		2,
+		&"fire_sorcerer_elite_fireball_a"
+	))
+	var elite_fire_key_peer_three := String(mp_game.call(
+		"_get_multiplayer_player_hit_key",
+		elite_projectile_id,
+		3,
+		&"fire_sorcerer_elite_fireball_a"
+	))
 	_expect(
 		fire_key_peer_two == fire_key_peer_three
+		and elite_fire_key_peer_two == elite_fire_key_peer_three
 		and not fire_key_peer_two.contains(":2:")
+		and not elite_fire_key_peer_two.contains(":2:")
 		and ordinary_key_peer_two != ordinary_key_peer_three,
-		"Fire A/B/C dedupe keys must omit target_peer_id while ordinary projectile keys retain it."
+		"Normal and Elite Fire A/B/C dedupe keys must omit target_peer_id while ordinary projectile keys retain it."
 	)
 	_expect(
 		bool(mp_game.call(
@@ -188,6 +242,11 @@ func _test_dedup_key_and_source_mask_contract() -> void:
 			projectile_id,
 			&"fire_sorcerer_fireball_a"
 		))
+		and not bool(mp_game.call(
+			"try_consume_fire_sorcerer_fireball_contact",
+			projectile_id,
+			&"fire_sorcerer_elite_fireball_b"
+		))
 		and bool(mp_game.call(
 			"try_consume_fire_sorcerer_fireball_contact",
 			projectile_id,
@@ -198,12 +257,247 @@ func _test_dedup_key_and_source_mask_contract() -> void:
 			projectile_id,
 			&"fire_sorcerer_fireball_c"
 		)),
-		"One volley record must independently consume A, B and C exactly once."
+		"A normal volley record must consume normal A/B/C once and reject Elite sources without poisoning its source mask."
+	)
+	_expect(
+		bool(mp_game.call(
+			"try_consume_fire_sorcerer_fireball_contact",
+			elite_projectile_id,
+			&"fire_sorcerer_elite_fireball_a"
+		))
+		and not bool(mp_game.call(
+			"try_consume_fire_sorcerer_fireball_contact",
+			elite_projectile_id,
+			&"fire_sorcerer_fireball_a"
+		))
+		and not bool(mp_game.call(
+			"try_consume_fire_sorcerer_fireball_contact",
+			elite_projectile_id,
+			&"fire_sorcerer_elite_fireball_a"
+		))
+		and bool(mp_game.call(
+			"try_consume_fire_sorcerer_fireball_contact",
+			elite_projectile_id,
+			&"fire_sorcerer_elite_fireball_b"
+		))
+		and bool(mp_game.call(
+			"try_consume_fire_sorcerer_fireball_contact",
+			elite_projectile_id,
+			&"fire_sorcerer_elite_fireball_c"
+		)),
+		"An Elite volley record must consume Elite A/B/C once and reject normal sources without poisoning its source mask."
 	)
 	mp_game.free()
 
 
+func _test_elite_projectile_instantiation_contract() -> void:
+	var mp_game := TestMpGame.new()
+	var projectile := mp_game.call(
+		"_instantiate_projectile",
+		ELITE_FIREBALL_TYPE,
+		1,
+		Vector2.RIGHT,
+		ELITE_FIREBALL_DAMAGE,
+		140.0,
+		7.0,
+		false,
+		0,
+		0
+	) as FireSorcererFireballVolley
+	_expect(
+		projectile != null,
+		"Multiplayer projectile dispatch must instantiate the independent Elite Fire volley."
+	)
+	if projectile == null:
+		mp_game.free()
+		return
+	mp_game.call(
+		"_setup_projectile_network_identity",
+		projectile,
+		81012,
+		1,
+		ELITE_FIREBALL_TYPE
+	)
+	test_scene.add_child(projectile)
+	var projectile_script := projectile.get_script() as Script
+	_expect(
+		projectile_script != null
+		and projectile_script.resource_path
+			== "res://scene/enemy/fire_sorcerer_fireball_volley.gd"
+		and projectile.scene_file_path
+			== "res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn"
+		and projectile.source_type == ELITE_FIREBALL_TYPE
+		and projectile.damage == ELITE_FIREBALL_DAMAGE
+		and is_equal_approx(projectile.speed, 140.0)
+		and projectile.call("_get_ball_source_type", 0)
+			== &"fire_sorcerer_elite_fireball_a"
+		and projectile.call("_get_ball_source_type", 1)
+			== &"fire_sorcerer_elite_fireball_b"
+		and projectile.call("_get_ball_source_type", 2)
+			== &"fire_sorcerer_elite_fireball_c",
+		"Elite network dispatch must preserve its independent scene, root source "
+		+ "type, 70 damage, 140 speed, and Elite A/B/C sources."
+	)
+	projectile.free()
+	mp_game.free()
+
+
+func _test_elite_volley_source_family_and_first_contact() -> void:
+	var projectile_id := 81013
+	contact_authority.call(
+		"_remember_projectile_record",
+		projectile_id,
+		1,
+		ELITE_FIREBALL_TYPE,
+		ELITE_FIREBALL_DAMAGE,
+		7.0
+	)
+	var first_player := _spawn_player(Vector2(-600.0, -300.0), 12)
+	var second_player := _spawn_player(Vector2(-700.0, -300.0), 13)
+	var first_volley := _spawn_elite_volley(Vector2.ZERO, projectile_id)
+	var second_volley := _spawn_elite_volley(Vector2.ZERO, projectile_id)
+	var request_count_before := test_scene.player_damage_request_count
+	first_volley.call("_on_ball_body_entered", first_player, 0)
+	second_volley.call("_on_ball_body_entered", second_player, 0)
+	_expect(
+		test_scene.player_damage_request_count == request_count_before + 1
+		and test_scene.every_player_request_was_preconsumed
+		and test_scene.every_player_request_used_magic_damage
+		and test_scene.last_player_damage_type
+			== int(EnemyConfig.DamageType.MAGIC)
+		and bool(contact_authority.call(
+			"_is_fire_sorcerer_fireball_contact_consumed",
+			projectile_id,
+			&"fire_sorcerer_elite_fireball_a"
+		))
+		and not bool(contact_authority.call(
+			"_is_fire_sorcerer_fireball_contact_consumed",
+			projectile_id,
+			&"fire_sorcerer_fireball_a"
+		))
+		and not bool(first_volley.call("_is_ball_active", 0))
+		and not bool(second_volley.call("_is_ball_active", 0)),
+		"Elite Fire A must claim exactly one Elite-family network contact across replicas without aliasing normal Fire A."
+	)
+	test_scene.player_damage_request_count = request_count_before
+	test_scene.every_player_request_was_preconsumed = true
+	test_scene.every_player_request_used_magic_damage = true
+	test_scene.last_player_damage_type = int(EnemyConfig.DamageType.PHYSICAL)
+
+
+func _test_host_successful_hits_register_burn_statuses() -> void:
+	var burn_scheduler := root.get_node("BurnStatusScheduler")
+	burn_scheduler.call("clear_all")
+	var mp_game := TestMpGame.new()
+	var net_manager := TestNetManager.new()
+	var game := Game.new()
+	var normal_player := _spawn_player(Vector2(-800.0, -300.0), 20)
+	var elite_player := _spawn_player(Vector2(-900.0, -300.0), 21)
+	normal_player.physical_defense = 999
+	normal_player.set("_base_physical_defense", 999)
+	elite_player.physical_defense = 999
+	elite_player.set("_base_physical_defense", 999)
+	game.peer_players[20] = normal_player
+	game.peer_players[21] = elite_player
+	mp_game.set("net_manager", net_manager)
+	mp_game.set("game", game)
+
+	var normal_projectile_id := 81020
+	var elite_projectile_id := 81021
+	mp_game.call(
+		"_remember_projectile_record",
+		normal_projectile_id,
+		1,
+		FIREBALL_TYPE,
+		FIREBALL_DAMAGE,
+		7.0
+	)
+	mp_game.call(
+		"_remember_projectile_record",
+		elite_projectile_id,
+		1,
+		ELITE_FIREBALL_TYPE,
+		ELITE_FIREBALL_DAMAGE,
+		7.0
+	)
+	var normal_was_handled := mp_game.request_multiplayer_player_damage(
+		normal_projectile_id,
+		20,
+		FIREBALL_DAMAGE,
+		&"fire_sorcerer_fireball_a",
+		EnemyConfig.DamageType.MAGIC,
+		Vector2.RIGHT,
+		true
+	)
+	var elite_was_handled := mp_game.request_multiplayer_player_damage(
+		elite_projectile_id,
+		21,
+		ELITE_FIREBALL_DAMAGE,
+		&"fire_sorcerer_elite_fireball_a",
+		EnemyConfig.DamageType.MAGIC,
+		Vector2.RIGHT,
+		true
+	)
+	var normal_burn := _get_burn_source_snapshot(normal_player, FIREBALL_TYPE)
+	var elite_burn := _get_burn_source_snapshot(
+		elite_player,
+		ELITE_FIREBALL_TYPE
+	)
+	_expect(
+		normal_was_handled
+		and normal_player.current_health == TEST_HEALTH - FIREBALL_DAMAGE
+		and int(normal_burn.get("tick_damage", 0)) == 5
+		and is_equal_approx(float(normal_burn.get("time_left", 0.0)), 5.0),
+		"A successful Host normal Fire hit must deal 40 magic damage and register a 5-second level-5 burn."
+	)
+	_expect(
+		elite_was_handled
+		and elite_player.current_health
+			== TEST_HEALTH - ELITE_FIREBALL_DAMAGE
+		and int(elite_burn.get("tick_damage", 0)) == 10
+		and is_equal_approx(float(elite_burn.get("time_left", 0.0)), 5.0),
+		"A successful Host Elite Fire hit must deal 70 magic damage and register a 5-second level-10 burn."
+	)
+
+	normal_player.magic_defense = 20
+	normal_player.set("_base_magic_defense", 20)
+	normal_player.invincibility_time_left = 0.37
+	var health_before_burn_tick := normal_player.current_health
+	mp_game.sent_methods.clear()
+	mp_game.sent_arguments.clear()
+	var burn_tick_was_handled := (
+		mp_game.request_multiplayer_player_burn_tick(20, FIREBALL_TYPE)
+	)
+	var burn_event_index := mp_game.sent_methods.find(
+		&"net_player_damage_applied"
+	)
+	var burn_event_arguments: Array = (
+		mp_game.sent_arguments[burn_event_index]
+		if burn_event_index >= 0
+		else []
+	)
+	_expect(
+		burn_tick_was_handled
+		and normal_player.current_health == health_before_burn_tick - 4
+		and is_equal_approx(normal_player.invincibility_time_left, 0.37)
+		and burn_event_arguments.size() == 8
+		and int(burn_event_arguments[4]) == 4
+		and int(burn_event_arguments[6])
+			== int(EnemyConfig.DamageType.MAGIC)
+		and not bool(burn_event_arguments[7]),
+		"A Host burn tick must use magic defense, synchronize one magic-damage event with grant_hit_invincibility=false, and preserve the Player invincibility timer."
+	)
+
+	burn_scheduler.call("clear_all")
+	game.peer_players.clear()
+	mp_game.free()
+	net_manager.free()
+	game.free()
+
+
 func _test_host_invincible_first_contact_is_consumed() -> void:
+	var burn_scheduler := root.get_node("BurnStatusScheduler")
+	burn_scheduler.call("clear_all")
 	var mp_game := TestMpGame.new()
 	var net_manager := TestNetManager.new()
 	var game := Game.new()
@@ -248,8 +542,13 @@ func _test_host_invincible_first_contact_is_consumed() -> void:
 			projectile_id,
 			&"fire_sorcerer_fireball_a"
 		))
-		and processed_hits.has(global_hit_key),
-		"Host invincibility must still consume and cache the Fire A first contact with zero damage."
+		and processed_hits.has(global_hit_key)
+		and not bool(burn_scheduler.call(
+			"has_burn",
+			invincible_player,
+			FIREBALL_TYPE
+		)),
+		"Host invincibility must consume and cache the Fire A first contact with zero damage without registering burn."
 	)
 	invincible_player.invincibility_time_left = 0.0
 	mp_game.request_multiplayer_player_damage(
@@ -265,6 +564,7 @@ func _test_host_invincible_first_contact_is_consumed() -> void:
 		second_player.current_health == TEST_HEALTH,
 		"An invincibility-consumed Host fireball must not damage a second player."
 	)
+	burn_scheduler.call("clear_all")
 	game.peer_players.clear()
 	mp_game.free()
 	net_manager.free()
@@ -272,6 +572,8 @@ func _test_host_invincible_first_contact_is_consumed() -> void:
 
 
 func _test_client_invincible_first_contact_reports_zero() -> void:
+	var burn_scheduler := root.get_node("BurnStatusScheduler")
+	burn_scheduler.call("clear_all")
 	var mp_game := TestMpGame.new()
 	var net_manager := TestNetManager.new()
 	net_manager.host_mode = false
@@ -308,8 +610,13 @@ func _test_client_invincible_first_contact_reports_zero() -> void:
 		and mp_game.last_reported_source_id == projectile_id
 		and mp_game.last_reported_peer_id == 4
 		and mp_game.last_reported_health == TEST_HEALTH
-		and mp_game.last_reported_applied_damage == 0,
-		"Client invincibility must report one zero-damage consumption event without leaking stale damage."
+		and mp_game.last_reported_applied_damage == 0
+		and not bool(burn_scheduler.call(
+			"has_burn",
+			invincible_player,
+			FIREBALL_TYPE
+		)),
+		"Client invincibility must report one zero-damage consumption event without leaking stale damage or registering burn."
 	)
 	mp_game.request_multiplayer_player_damage(
 		projectile_id,
@@ -325,6 +632,7 @@ func _test_client_invincible_first_contact_reports_zero() -> void:
 		and second_player.current_health == TEST_HEALTH,
 		"Client global Fire B consumption must suppress every later target for the same source tuple."
 	)
+	burn_scheduler.call("clear_all")
 	game.peer_players.clear()
 	mp_game.free()
 	net_manager.free()
@@ -332,6 +640,8 @@ func _test_client_invincible_first_contact_reports_zero() -> void:
 
 
 func _test_volley_player_plant_and_world_first_contact() -> void:
+	var burn_scheduler := root.get_node("BurnStatusScheduler")
+	burn_scheduler.call("clear_all")
 	var player_projectile_id := 81004
 	_remember_contact_record(player_projectile_id)
 	var first_player := _spawn_player(Vector2(-200.0, -300.0), 6)
@@ -343,25 +653,40 @@ func _test_volley_player_plant_and_world_first_contact() -> void:
 	_expect(
 		test_scene.player_damage_request_count == 1
 		and test_scene.every_player_request_was_preconsumed
+		and test_scene.every_player_request_used_magic_damage
+		and test_scene.last_player_damage_type
+			== int(EnemyConfig.DamageType.MAGIC)
 		and not bool(first_player_volley.call("_is_ball_active", 0))
 		and not bool(second_player_volley.call("_is_ball_active", 0)),
-		"Player contact must claim Fire A before reporting, and every replica must expire immediately."
+		"Player contact must claim Fire A before reporting magic damage, and every replica must expire immediately."
 	)
 
 	var plant_projectile_id := 81005
 	_remember_contact_record(plant_projectile_id)
 	var first_plant := _spawn_plant(Vector2(-200.0, -200.0), false)
 	var second_plant := _spawn_plant(Vector2(-300.0, -200.0), false)
+	first_plant.physical_defense = 99
+	first_plant.magic_defense = 20
 	var first_plant_volley := _spawn_volley(Vector2.ZERO, plant_projectile_id)
 	var second_plant_volley := _spawn_volley(Vector2.ZERO, plant_projectile_id)
 	first_plant_volley.call("_on_ball_body_entered", first_plant, 1)
 	second_plant_volley.call("_on_ball_body_entered", second_plant, 1)
 	_expect(
-		first_plant.current_health == TEST_HEALTH - FIREBALL_DAMAGE
+		first_plant.current_health == TEST_HEALTH - 32
 		and second_plant.current_health == TEST_HEALTH
+		and bool(burn_scheduler.call(
+			"has_burn",
+			first_plant,
+			FIREBALL_TYPE
+		))
 		and not bool(first_plant_volley.call("_is_ball_active", 1))
 		and not bool(second_plant_volley.call("_is_ball_active", 1)),
-		"Plant contact must globally consume Fire B before any damage is applied."
+		"Plant contact must deal magic damage, register burn, and globally consume Fire B."
+	)
+	burn_scheduler.call("_advance_active_burns", 1.01)
+	_expect(
+		first_plant.current_health == TEST_HEALTH - 36,
+		"Plant level-5 burn must tick as 4 magic damage against 20 magic defense."
 	)
 
 	var world_projectile_id := 81006
@@ -380,6 +705,7 @@ func _test_volley_player_plant_and_world_first_contact() -> void:
 		and not bool(later_plant_volley.call("_is_ball_active", 2)),
 		"World contact must globally consume Fire C and block a later plant hit."
 	)
+	burn_scheduler.call("clear_all")
 
 
 func _test_compensation_sweep_and_normal_path_cost() -> void:
@@ -450,6 +776,18 @@ func _remember_contact_record(projectile_id: int) -> void:
 		FIREBALL_DAMAGE,
 		7.0
 	)
+
+
+func _get_burn_source_snapshot(
+	target: Object,
+	source_family: StringName
+) -> Dictionary:
+	var burn_scheduler := root.get_node("BurnStatusScheduler")
+	return burn_scheduler.call(
+		"get_source_snapshot",
+		target,
+		source_family
+	) as Dictionary
 
 
 func _spawn_player(position: Vector2, peer_id: int) -> Player:
@@ -529,6 +867,29 @@ func _spawn_volley(
 		0.0
 	)
 	volley.setup_multiplayer(projectile_id, 1, FIREBALL_TYPE)
+	volley.set_physics_process(false)
+	return volley
+
+
+func _spawn_elite_volley(
+	position: Vector2,
+	projectile_id: int
+) -> FireSorcererFireballVolley:
+	var volley := (
+		ELITE_FIREBALL_VOLLEY_SCENE.instantiate()
+		as FireSorcererFireballVolley
+	)
+	test_scene.add_child(volley)
+	volley.global_position = position
+	volley.setup(
+		Vector2.RIGHT,
+		ELITE_FIREBALL_DAMAGE,
+		140.0,
+		7.0,
+		null,
+		0.0
+	)
+	volley.setup_multiplayer(projectile_id, 1, ELITE_FIREBALL_TYPE)
 	volley.set_physics_process(false)
 	return volley
 

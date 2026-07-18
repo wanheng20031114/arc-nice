@@ -8,6 +8,9 @@ const MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn
 const FIRE_SORCERER_FIREBALL_VOLLEY_SCENE := preload(
 	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
 )
+const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE := preload(
+	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn"
+)
 const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
 const AGAVE_CANNONBALL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
 const COLLECTIBLE_ARROW_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
@@ -50,6 +53,11 @@ func _run() -> void:
 	pool.register_scene(RPG_ROCKET_SCENE, 1, 2)
 	pool.register_scene(MAGE_FIREBALL_SCENE, 1, 2)
 	pool.register_scene(FIRE_SORCERER_FIREBALL_VOLLEY_SCENE, 1, 2)
+	pool.register_scene(
+		FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE,
+		1,
+		2
+	)
 	pool.register_scene(YUANSHI_FIRE_PROJECTILE_SCENE, 1, 2)
 	pool.register_scene(AGAVE_CANNONBALL_SCENE, 1, 2)
 	pool.register_scene(COLLECTIBLE_ARROW_SCENE, 1, 2)
@@ -557,6 +565,7 @@ func _verify_extended_projectile_reuse() -> void:
 		RPG_ROCKET_SCENE,
 		MAGE_FIREBALL_SCENE,
 		FIRE_SORCERER_FIREBALL_VOLLEY_SCENE,
+		FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE,
 		YUANSHI_FIRE_PROJECTILE_SCENE,
 		AGAVE_CANNONBALL_SCENE,
 		COLLECTIBLE_ARROW_SCENE,
@@ -594,9 +603,14 @@ func _verify_extended_projectile_reuse() -> void:
 			projectile.set("max_lifetime", 0.25)
 			projectile.set("explosion_radius", 9.0)
 			projectile.set("homing_turn_rate", 0.2)
-		if projectile_scene == FIRE_SORCERER_FIREBALL_VOLLEY_SCENE:
+		if projectile_scene in [
+			FIRE_SORCERER_FIREBALL_VOLLEY_SCENE,
+			FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE,
+		]:
 			var dirty_volley := projectile as FireSorcererFireballVolley
 			dirty_volley.speed = 13.0
+			dirty_volley.burn_duration = 0.25
+			dirty_volley.burn_level = 99
 			dirty_volley.active_ball_mask = 0
 			dirty_volley.visible_effect_mask = (
 				FireSorcererFireballVolley.ALL_BALLS_ACTIVE_MASK
@@ -672,19 +686,46 @@ func _verify_extended_projectile_reuse() -> void:
 				and is_equal_approx(sakura_rocket.homing_turn_rate, 1.2),
 				"Pooled collectible Sakura rockets must retain their isolated effect and authored movement defaults."
 			)
-		if projectile_scene == FIRE_SORCERER_FIREBALL_VOLLEY_SCENE:
+		if projectile_scene in [
+			FIRE_SORCERER_FIREBALL_VOLLEY_SCENE,
+			FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE,
+		]:
 			var reused_volley := reused as FireSorcererFireballVolley
 			reused_volley.set_physics_process(false)
 			await physics_frame
+			var expected_speed := (
+				140.0
+				if projectile_scene
+					== FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE
+				else 125.0
+			)
+			var expected_source_type := (
+				&"fire_sorcerer_elite_fireball_volley"
+				if projectile_scene
+					== FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE
+				else &"fire_sorcerer_fireball_volley"
+			)
+			var expected_burn_level := (
+				10
+				if projectile_scene
+					== FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE
+				else 5
+			)
 			_expect(
 				reused_volley.active_ball_mask
 					== FireSorcererFireballVolley.ALL_BALLS_ACTIVE_MASK
 				and reused_volley.visible_effect_mask == 0
 				and reused_volley.target_runtime == null
 				and is_zero_approx(reused_volley.target_refresh_left)
-				and is_equal_approx(reused_volley.speed, 125.0),
-				"Reused Fire Sorcerer volleys must restore all three live balls "
-				+ "and authored speed while clearing stale visual and target-query state."
+				and is_equal_approx(reused_volley.speed, expected_speed)
+				and is_equal_approx(reused_volley.burn_duration, 5.0)
+				and reused_volley.burn_level == expected_burn_level
+				and reused_volley.source_type == expected_source_type,
+				(
+					"%s must restore all three live balls, its authored speed "
+					+ "burn profile and independent source type while clearing stale "
+					+ "visual and target-query state."
+				) % projectile_scene.resource_path
 			)
 			var unique_ball_positions := {}
 			for ball_index in range(

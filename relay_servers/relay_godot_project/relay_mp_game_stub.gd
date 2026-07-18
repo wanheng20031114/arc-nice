@@ -228,7 +228,8 @@ func net_player_damage_applied(
 	health_revision: int,
 	confirmed_damage: int,
 	impact_direction: Vector2,
-	damage_type: int
+	damage_type: int,
+	grant_hit_invincibility: bool = true
 ) -> void:
 	pass
 

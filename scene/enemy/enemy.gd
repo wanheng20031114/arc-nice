@@ -2924,6 +2924,7 @@ func _try_deal_touch_damage() -> void:
 		return
 	if config == null:
 		return
+	var touch_damage_type := _get_touch_damage_type()
 	if (
 		touched_plant != null
 		and is_instance_valid(touched_plant)
@@ -2935,7 +2936,7 @@ func _try_deal_touch_damage() -> void:
 			config.attack_damage,
 			self,
 			impact_direction,
-			EnemyConfig.DamageType.PHYSICAL
+			touch_damage_type
 		):
 			touch_damage_cooldown_left = touch_damage_interval
 		return
@@ -2949,12 +2950,20 @@ func _try_deal_touch_damage() -> void:
 			_get_multiplayer_touch_source_id(),
 			touched_player.peer_id,
 			config.attack_damage,
-			&"enemy_touch"
+			&"enemy_touch",
+			touch_damage_type
 		)
 		touch_damage_cooldown_left = touch_damage_interval
 		return
-	touched_player.apply_damage(config.attack_damage)
+	touched_player.apply_damage(
+		config.attack_damage,
+		touch_damage_type
+	)
 	touch_damage_cooldown_left = touch_damage_interval
+
+
+func _get_touch_damage_type() -> EnemyConfig.DamageType:
+	return EnemyConfig.DamageType.PHYSICAL
 
 
 func _get_multiplayer_touch_source_id() -> int:

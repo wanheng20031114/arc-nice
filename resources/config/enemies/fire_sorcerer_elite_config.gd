@@ -1,0 +1,2 @@
+extends FireSorcererConfig
+class_name FireSorcererEliteConfig

@@ -29,6 +29,10 @@ func _ready() -> void:
 	_set_spell_glow(0.0, Vector2.RIGHT)
 
 
+func _get_touch_damage_type() -> EnemyConfig.DamageType:
+	return EnemyConfig.DamageType.MAGIC
+
+
 func _physics_process(delta: float) -> void:
 	if is_dead:
 		velocity = Vector2.ZERO

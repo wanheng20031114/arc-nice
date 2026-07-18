@@ -19,6 +19,33 @@ const WAVE_10 := preload("res://resources/config/waves/wave_10.tres")
 const WAVE_11 := preload("res://resources/config/waves/wave_11.tres")
 const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
 
+
+class DamageRequestTestRoot:
+	extends Node2D
+
+	var damage_requests: Array[Dictionary] = []
+
+	func request_multiplayer_player_damage(
+		source_id: int,
+		target_peer_id: int,
+		damage: int,
+		source_type: StringName,
+		damage_type: EnemyConfig.DamageType,
+		source_direction: Vector2,
+		is_ranged: bool
+	) -> bool:
+		damage_requests.append({
+			"source_id": source_id,
+			"target_peer_id": target_peer_id,
+			"damage": damage,
+			"source_type": source_type,
+			"damage_type": damage_type,
+			"source_direction": source_direction,
+			"is_ranged": is_ranged,
+		})
+		return true
+
+
 var failures: Array[String] = []
 var test_root: Node2D
 var spawned_fireballs: Array[CapooMageFireball] = []
@@ -315,6 +342,11 @@ func _test_mage_windup_fireball_and_obstruction() -> void:
 	spawned_fireballs.clear()
 	var player := _spawn_player(Vector2(240.0, 0.0), 200)
 	var mage := _spawn_mage(Vector2.ZERO, player)
+	_expect(
+		mage.call("_get_touch_damage_type")
+			== EnemyConfig.DamageType.MAGIC,
+		"Mage Capoo body contact must use magic damage."
+	)
 	await _wait_physics_frames(8)
 	_expect(mage.combat_state == CapooMage.CombatState.WINDUP, "Mage Capoo did not enter windup.")
 	_expect(spawned_fireballs.is_empty(), "Mage Capoo fired before windup.")
@@ -371,6 +403,8 @@ func _test_fireball_impact_damage_and_release() -> void:
 	CapooMageFireball.pooled_impact_effect_enabled = false
 	var near_player := _spawn_player(Vector2(5.0, 0.0), 100)
 	var far_player := _spawn_player(Vector2(48.0, 0.0), 100)
+	near_player.physical_defense = 34
+	near_player.magic_defense = 50
 	await physics_frame
 	var fireball := FIREBALL_SCENE.instantiate() as CapooMageFireball
 	test_root.add_child(fireball)
@@ -379,7 +413,10 @@ func _test_fireball_impact_damage_and_release() -> void:
 	fireball.call("_explode")
 	await process_frame
 
-	_expect(near_player.current_health == 65, "Fireball impact did not damage the player inside radius.")
+	_expect(
+		near_player.current_health == 83,
+		"Fireball must use 50 magic defense (17 damage), not 34 physical defense."
+	)
 	_expect(far_player.current_health == 100, "Fireball impact damaged a player outside radius.")
 	_expect(not is_instance_valid(fireball), "Fireball projectile must release immediately after impact damage.")
 	var impact := _find_fireball_impact_effect()
@@ -401,6 +438,35 @@ func _test_fireball_impact_damage_and_release() -> void:
 		await process_frame
 		release_guard_frames += 1
 	_expect(impact == null or not is_instance_valid(impact), "Fireball impact visual/audio did not release.")
+
+	var damage_request_scene := DamageRequestTestRoot.new()
+	root.add_child(damage_request_scene)
+	var previous_current_scene := current_scene
+	current_scene = damage_request_scene
+	var network_fireball := FIREBALL_SCENE.instantiate() as CapooMageFireball
+	damage_request_scene.add_child(network_fireball)
+	network_fireball.global_position = Vector2.ZERO
+	network_fireball.setup(
+		Vector2.RIGHT,
+		MAGE_CONFIG.attack_damage,
+		0.0,
+		3.0,
+		MAGE_CONFIG.fireball_radius
+	)
+	network_fireball.setup_multiplayer(902, 1, &"capoo_mage_fireball")
+	var network_request_handled := bool(
+		network_fireball.call("_try_report_multiplayer_player_hit", near_player)
+	)
+	_expect(network_request_handled, "Multiplayer mage fireball damage request was not handled.")
+	_expect(
+		damage_request_scene.damage_requests.size() == 1
+		and damage_request_scene.damage_requests[0].get("damage_type")
+			== EnemyConfig.DamageType.MAGIC,
+		"Multiplayer mage fireball request must explicitly report magic damage."
+	)
+	network_fireball.queue_free()
+	current_scene = previous_current_scene
+	damage_request_scene.queue_free()
 	near_player.queue_free()
 	far_player.queue_free()
 	await physics_frame

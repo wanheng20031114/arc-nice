@@ -14,12 +14,6 @@ const EXPIRE_VISUAL_DURATION := 4.0 / 12.0
 const COMPENSATION_STEP := 1.0 / 60.0
 const TARGET_REFRESH_INTERVAL := 0.35
 const TARGET_QUERY_METHOD := &"find_nearest_enemy_attack_target"
-const BALL_SOURCE_TYPES: Array[StringName] = [
-	&"fire_sorcerer_fireball_a",
-	&"fire_sorcerer_fireball_b",
-	&"fire_sorcerer_fireball_c",
-]
-
 static var performance_metrics_enabled := false
 static var _performance_metrics := {
 	"physics_calls": 0,
@@ -33,6 +27,16 @@ static var _compensation_ray_query: PhysicsRayQueryParameters2D = null
 @export var speed: float = 125.0
 @export var max_lifetime: float = 7.0
 @export var homing_turn_rate: float = 6.0
+@export_group("燃烧")
+@export var burn_duration: float = 5.0
+@export var burn_level: int = 5
+@export_group("多人投射物身份")
+@export var projectile_source_type: StringName = (
+	&"fire_sorcerer_fireball_volley"
+)
+@export var ball_source_type_a: StringName = &"fire_sorcerer_fireball_a"
+@export var ball_source_type_b: StringName = &"fire_sorcerer_fireball_b"
+@export var ball_source_type_c: StringName = &"fire_sorcerer_fireball_c"
 
 @onready var ball_areas: Array[Area2D] = [
 	$FireballA,
@@ -72,6 +76,8 @@ var authored_ball_positions := PackedVector2Array()
 var _authored_speed: float = 125.0
 var _authored_max_lifetime: float = 7.0
 var _authored_homing_turn_rate: float = 6.0
+var _authored_burn_duration: float = 5.0
+var _authored_burn_level: int = 5
 var _pending_setup := false
 
 
@@ -109,9 +115,12 @@ static func _get_compensation_ray_query() -> PhysicsRayQueryParameters2D:
 
 
 func _ready() -> void:
+	source_type = _get_default_projectile_source_type()
 	_authored_speed = speed
 	_authored_max_lifetime = max_lifetime
 	_authored_homing_turn_rate = homing_turn_rate
+	_authored_burn_duration = burn_duration
+	_authored_burn_level = burn_level
 	authored_ball_positions.resize(BALL_COUNT)
 	for ball_index in range(BALL_COUNT):
 		authored_ball_positions[ball_index] = ball_areas[ball_index].position
@@ -130,6 +139,8 @@ func on_pool_acquired(_generation: int) -> void:
 	speed = _authored_speed
 	max_lifetime = _authored_max_lifetime
 	homing_turn_rate = _authored_homing_turn_rate
+	burn_duration = _authored_burn_duration
+	burn_level = _authored_burn_level
 	direction = Vector2.RIGHT
 	damage = 1
 	remaining_lifetime = maxf(max_lifetime, 0.01)
@@ -138,7 +149,7 @@ func on_pool_acquired(_generation: int) -> void:
 	target_refresh_left = 0.0
 	projectile_id = 0
 	owner_peer_id = 0
-	source_type = &"fire_sorcerer_fireball_volley"
+	source_type = _get_default_projectile_source_type()
 	_pending_setup = false
 	rotation = 0.0
 	_activate_balls()
@@ -163,7 +174,9 @@ func setup(
 	initial_lifetime: float,
 	initial_target: Node2D = null,
 	initial_homing_turn_rate: float = 6.0,
-	initial_target_runtime: Node = null
+	initial_target_runtime: Node = null,
+	initial_burn_duration: float = -1.0,
+	initial_burn_level: int = -1
 ) -> void:
 	pool_active = true
 	direction = (
@@ -186,6 +199,10 @@ func setup(
 	)
 	target_refresh_left = 0.0
 	homing_turn_rate = maxf(initial_homing_turn_rate, 0.0)
+	if initial_burn_duration >= 0.0:
+		burn_duration = maxf(initial_burn_duration, 0.0)
+	if initial_burn_level >= 0:
+		burn_level = maxi(initial_burn_level, 0)
 	rotation = direction.angle()
 	_pending_setup = true
 	if is_node_ready():
@@ -410,25 +427,33 @@ func _on_ball_body_entered(body: Node2D, ball_index: int) -> void:
 	var contact_consumed := _try_consume_multiplayer_contact(ball_index)
 	var player := body as Player
 	if player != null:
-		if (
-			contact_consumed
-			and not player.is_dead
-			and not _try_report_multiplayer_player_hit(
-				player,
-				ball_index,
-				true
+		if contact_consumed and not player.is_dead:
+			var handled_by_multiplayer := (
+				_try_report_multiplayer_player_hit(
+					player,
+					ball_index,
+					true
+				)
 			)
-		):
-			player.apply_damage(
-				damage,
-				EnemyConfig.DamageType.MAGIC,
-				{
-					"is_ranged": true,
-					"source_direction": player.global_position.direction_to(
-						ball_areas[ball_index].global_position
-					),
-				}
-			)
+			if not handled_by_multiplayer:
+				var damage_was_applied := player.apply_damage(
+					damage,
+					EnemyConfig.DamageType.MAGIC,
+					{
+						"is_ranged": true,
+						"source_direction": (
+							player.global_position.direction_to(
+								ball_areas[ball_index].global_position
+							)
+						),
+					}
+				)
+				if damage_was_applied and not player.is_dead:
+					player.apply_burn_status(
+						source_type,
+						burn_duration,
+						burn_level
+					)
 		_begin_ball_effect(ball_index, &"impact", IMPACT_VISUAL_DURATION)
 		return
 	var plant := body as PlantDefense
@@ -438,7 +463,7 @@ func _on_ball_body_entered(body: Node2D, ball_index: int) -> void:
 			and not plant.is_dead
 			and not plant.is_removing
 		):
-			plant.receive_damage(
+			var damage_was_applied := plant.receive_damage(
 				damage,
 				self,
 				ball_areas[ball_index].global_position.direction_to(
@@ -446,6 +471,12 @@ func _on_ball_body_entered(body: Node2D, ball_index: int) -> void:
 				),
 				EnemyConfig.DamageType.MAGIC
 			)
+			if damage_was_applied and not plant.is_dead and not plant.is_removing:
+				plant.apply_burn_status(
+					source_type,
+					burn_duration,
+					burn_level
+				)
 		_begin_ball_effect(ball_index, &"impact", IMPACT_VISUAL_DURATION)
 		return
 	# 世界碰撞只熄灭当前火球，不产生范围查询或伤害。
@@ -560,7 +591,7 @@ func _try_report_multiplayer_player_hit(
 		projectile_id,
 		player.peer_id,
 		damage,
-		BALL_SOURCE_TYPES[ball_index],
+		_get_ball_source_type(ball_index),
 		EnemyConfig.DamageType.MAGIC,
 		player.global_position.direction_to(
 			ball_areas[ball_index].global_position
@@ -584,8 +615,24 @@ func _try_consume_multiplayer_contact(ball_index: int) -> bool:
 	return bool(current_scene.call(
 		"try_consume_fire_sorcerer_fireball_contact",
 		projectile_id,
-		BALL_SOURCE_TYPES[ball_index]
+		_get_ball_source_type(ball_index)
 	))
+
+
+func _get_default_projectile_source_type() -> StringName:
+	return projectile_source_type
+
+
+func _get_ball_source_type(ball_index: int) -> StringName:
+	match ball_index:
+		0:
+			return ball_source_type_a
+		1:
+			return ball_source_type_b
+		2:
+			return ball_source_type_c
+		_:
+			return &""
 
 
 func _retire() -> void:

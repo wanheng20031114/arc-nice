@@ -53,8 +53,12 @@ const TOWER_DEFENSE_FOREST_INTERMISSION_BGM := "res://resources/audio/shenmu_for
 const FIRE_SORCERER_CONFIG_PATH := (
 	"res://resources/config/enemies/fire_sorcerer.tres"
 )
+const FIRE_SORCERER_ELITE_CONFIG_PATH := (
+	"res://resources/config/enemies/fire_sorcerer_elite.tres"
+)
 const STANDARD_SINGLEPLAYER_FIRST_WAVE_EXPECTED_COUNTS := {
 	FIRE_SORCERER_CONFIG_PATH: 1,
+	FIRE_SORCERER_ELITE_CONFIG_PATH: 1,
 }
 const FIRST_WAVE_EXPECTED_COUNTS := {
 	"res://resources/config/enemies/yuanshi_insect_basic.tres": 850,
@@ -355,8 +359,8 @@ func _verify_standard_singleplayer_fire_sorcerer_test_wave(
 	_expect(
 		wave_config.enemy_entries.size()
 		== STANDARD_SINGLEPLAYER_FIRST_WAVE_EXPECTED_COUNTS.size()
-		and wave_config.get_total_enemy_count() == 1,
-		"Standard singleplayer wave 1 must contain exactly one enemy."
+		and wave_config.get_total_enemy_count() == 2,
+		"Standard singleplayer wave 1 must contain exactly two enemies."
 	)
 	var actual_counts := {}
 	for entry in wave_config.enemy_entries:
@@ -364,11 +368,11 @@ func _verify_standard_singleplayer_fire_sorcerer_test_wave(
 			actual_counts[entry.enemy_config.resource_path] = entry.count
 	_expect(
 		actual_counts == STANDARD_SINGLEPLAYER_FIRST_WAVE_EXPECTED_COUNTS,
-		"Standard singleplayer wave 1 must contain one Fire Sorcerer."
+		"Standard singleplayer wave 1 must contain one normal and one Elite Fire Sorcerer."
 	)
 	_expect(
-		wave_config.max_alive_enemies == 1,
-		"Standard singleplayer Fire Sorcerer test wave must allow one enemy."
+		wave_config.max_alive_enemies == 2,
+		"Standard singleplayer Fire Sorcerer test wave must allow both enemies."
 	)
 	_expect(
 		wave_config.wave_name == "第1波 火焰术士测试"

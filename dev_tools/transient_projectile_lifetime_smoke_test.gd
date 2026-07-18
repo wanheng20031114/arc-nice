@@ -40,6 +40,15 @@ const PROJECTILE_CASES := [
 		"maximum_allowed_lifetime": 7.0,
 		"retire_visual_delay": 0.5,
 	},
+	{
+		"label": "fire_sorcerer_elite_fireball_volley",
+		"scene": preload(
+			"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn"
+		),
+		"expected_lifetime": 7.0,
+		"maximum_allowed_lifetime": 7.0,
+		"retire_visual_delay": 0.5,
+	},
 ]
 
 var failures: Array[String] = []

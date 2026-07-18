@@ -9,6 +9,9 @@ const CAPOO_MAGE_FIREBALL_POOL_SCENE := preload("res://scene/enemy/capoo_mage_fi
 const FIRE_SORCERER_FIREBALL_VOLLEY_POOL_SCENE := preload(
 	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
 )
+const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_POOL_SCENE := preload(
+	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn"
+)
 const YUANSHI_FIRE_PROJECTILE_POOL_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
 const AGAVE_CANNONBALL_POOL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
 const PLANT_PLACEMENT_PARTICLES_SCENE := preload(
@@ -295,6 +298,11 @@ func _ready() -> void:
 	# cycle. Capacity includes those visual-only leases and release quarantine.
 	session_object_pool.register_scene(
 		FIRE_SORCERER_FIREBALL_VOLLEY_POOL_SCENE,
+		48,
+		704
+	)
+	session_object_pool.register_scene(
+		FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_POOL_SCENE,
 		48,
 		704
 	)

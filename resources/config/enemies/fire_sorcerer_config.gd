@@ -23,4 +23,8 @@ class_name FireSorcererConfig
 @export_range(0.01, 30.0, 0.01, "or_greater") var projectile_lifetime: float = 7.0
 # 每秒最大转向弧度。6 rad/s 明显强于法师 Capoo 的 0.65 rad/s。
 @export_range(0.0, 16.0, 0.05, "or_greater") var homing_turn_rate: float = 6.0
+@export_group("燃烧")
+# 等级等同于每秒一次、经过目标法抗结算的基础法术伤害。
+@export_range(0.05, 30.0, 0.05, "or_greater") var burn_duration: float = 5.0
+@export_range(1, 1000, 1, "or_greater") var burn_level: int = 5
 @export var attack_audio_stream: AudioStream
