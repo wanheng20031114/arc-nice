@@ -27,6 +27,10 @@ func _ready() -> void:
 	animated_sprite.frame_changed.connect(_on_attack_animation_frame_changed)
 
 
+func can_target_water_plant_objectives() -> bool:
+	return true
+
+
 func _physics_process(delta: float) -> void:
 	_update_attack_cooldown(delta)
 

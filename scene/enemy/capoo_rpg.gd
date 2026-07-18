@@ -37,6 +37,10 @@ func _ready() -> void:
 	_set_muzzle_heat(0.0, Vector2.RIGHT)
 
 
+func can_target_water_plant_objectives() -> bool:
+	return true
+
+
 func _physics_process(delta: float) -> void:
 	if is_dead:
 		velocity = Vector2.ZERO

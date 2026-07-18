@@ -4,6 +4,9 @@ const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const FIRE_RANGED_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres")
 const AGAVE_CONFIG := preload("res://resources/config/plant_defense/agave_cannon.tres")
+const WATER_COLLECTOR_CONFIG := preload(
+	"res://resources/config/plant_defense/water_collector.tres"
+)
 const RETARGET_STRESS_ENEMY_COUNT := 300
 const EXPECTED_HOME_CELLS: Array[Vector2i] = [
 	Vector2i(2, 22),
@@ -445,6 +448,55 @@ func _verify_target_selection(game: GameTowerDefense) -> void:
 		game.call("_pick_enemy_objective", near_gate, game.player) == gate,
 		"A player beyond 10 tiles must not pull an enemy away from Home."
 	)
+	var water_plant := _register_target_probe_plant(
+		game,
+		near_gate + Vector2(logical_tile_width * 2.0, 0.0),
+		WATER_COLLECTOR_CONFIG
+	)
+	var grass_plant := _register_target_probe_plant(
+		game,
+		near_gate + Vector2(logical_tile_width * 4.0, 0.0),
+		AGAVE_CONFIG
+	)
+	_expect(
+		game.call(
+			"_pick_enemy_objective",
+			near_gate,
+			game.player,
+			false
+		) == grass_plant,
+		"A land-only melee enemy must skip a nearer water building and pursue an eligible grass building."
+	)
+	_expect(
+		game.call(
+			"_pick_enemy_objective",
+			near_gate,
+			game.player,
+			true
+		) == water_plant,
+		"A ranged enemy must retain the nearer water building as an attack objective."
+	)
+	grass_plant.is_dead = true
+	_expect(
+		game.call(
+			"_pick_enemy_objective",
+			near_gate,
+			game.player,
+			false
+		) == gate,
+		"A land-only melee enemy must fall back to Home instead of wandering around the only water building."
+	)
+	_expect(
+		game.call(
+			"_pick_enemy_objective",
+			near_gate,
+			game.player,
+			true
+		) == water_plant,
+		"A ranged enemy must still pursue a living water building when no grass building remains."
+	)
+	_release_target_probe_plant(game, grass_plant)
+	_release_target_probe_plant(game, water_plant)
 	# Leave enough margin for the retarget probe itself, which starts four world
 	# pixels to the other side of near_gate.
 	game.player.global_position = gate.global_position + Vector2(logical_tile_width * 17.0, 0.0)
@@ -497,11 +549,13 @@ func _verify_target_selection(game: GameTowerDefense) -> void:
 
 func _register_target_probe_plant(
 	game: GameTowerDefense,
-	global_position: Vector2
+	global_position: Vector2,
+	plant_config: PlantDefenseConfig = AGAVE_CONFIG
 ) -> PlantDefense:
 	var plant := PlantDefense.new()
 	game.plant_container.add_child(plant)
 	plant.global_position = global_position
+	plant.config = plant_config
 	var cell := game.ground_tile_map_layer.local_to_map(
 		game.ground_tile_map_layer.to_local(global_position)
 	)
@@ -727,6 +781,10 @@ func _verify_enemy_contract(game: GameTowerDefense) -> void:
 		return
 	game.enemy_container.add_child(enemy)
 	enemy.setup(BASIC_CONFIG, game.player, game.grid_pathfinder)
+	_expect(
+		not enemy.can_target_water_plant_objectives(),
+		"A land-only melee enemy must reject water-building objectives."
+	)
 	game.call(
 		"_finalize_authoritative_enemy_spawn",
 		enemy,
@@ -752,6 +810,10 @@ func _verify_enemy_contract(game: GameTowerDefense) -> void:
 		return
 	game.enemy_container.add_child(ranged)
 	ranged.setup(FIRE_RANGED_CONFIG, game.player, game.grid_pathfinder)
+	_expect(
+		ranged.can_target_water_plant_objectives(),
+		"A ranged enemy must advertise water-building objective support."
+	)
 	if not gate_targets.is_empty():
 		ranged.set_objective_target(gate_targets[0])
 		_expect(not bool(ranged.call("_try_start_ranged_attack")), "Ranged enemies must not attack while pursuing a gate.")

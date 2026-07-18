@@ -387,7 +387,8 @@ func apply_unsupported_terrain_damage_tick() -> int:
 
 func find_nearest_living_plant(
 	from_global_position: Vector2,
-	max_radius_cells: float
+	max_radius_cells: float,
+	include_water_plants: bool = true
 ) -> PlantDefense:
 	if (
 		ground_tile_map == null
@@ -426,6 +427,16 @@ func find_nearest_living_plant(
 			or plant.is_queued_for_deletion()
 		):
 			continue
+		if (
+			not include_water_plants
+			and plant.config != null
+			and plant.config.placement_surface
+				== PlantDefenseConfig.PlacementSurface.WATER
+		):
+			continue
+		# Surface eligibility deliberately stays in this exact-distance pass.
+		# Maintaining a second resident influence index would double placement
+		# and removal writes to save only this cheap comparison at retarget time.
 		# Candidate membership is cached by logical cell topology, but distance
 		# always uses the current world positions. Enemies sharing a cell can
 		# therefore reuse the broad candidate set without sharing a target result.

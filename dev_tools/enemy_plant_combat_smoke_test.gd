@@ -100,6 +100,14 @@ func _verify_ranged_enemy_target_contract() -> void:
 	var smg_test_config := SMG_CONFIG.duplicate(true) as CapooSMGConfig
 	smg_test_config.spread_angle_degrees = 0.0
 	var smg := _spawn_enemy(smg_test_config, player) as CapooSMG
+	_expect(
+		ak.can_target_water_plant_objectives()
+		and rpg.can_target_water_plant_objectives()
+		and mage.can_target_water_plant_objectives()
+		and fire_insect.can_target_water_plant_objectives()
+		and smg.can_target_water_plant_objectives(),
+		"Every independent and shared ranged enemy family must retain water-building objectives."
+	)
 	smg.set_objective_target(plant)
 	await physics_frame
 	var plant_health_before_smg := plant.current_health
@@ -152,6 +160,11 @@ func _verify_melee_enemy_plant_attack_contract() -> void:
 		var plant := _spawn_agave(Vector2(42.0, 0.0))
 		var enemy := _spawn_enemy(melee_config, player) as CapooKnight
 		await physics_frame
+		_expect(
+			not enemy.can_target_water_plant_objectives(),
+			"%s must remain a land-only melee objective selector."
+			% melee_config.display_name
+		)
 		var health_before := plant.current_health
 		enemy.set_objective_target(plant)
 		enemy.call("_on_touch_damage_area_body_entered", plant)

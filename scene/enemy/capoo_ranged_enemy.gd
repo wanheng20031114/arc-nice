@@ -21,6 +21,10 @@ func _ready() -> void:
 	random_generator.randomize()
 
 
+func can_target_water_plant_objectives() -> bool:
+	return true
+
+
 func _die() -> void:
 	_try_drop_pickup()
 	super._die()

@@ -564,6 +564,15 @@ func has_attackable_objective() -> bool:
 	return get_attackable_objective() != null
 
 
+## Land-only melee enemies must not navigate toward water buildings they cannot
+## reach. Amphibious enemies can still use them as objectives; ranged enemy
+## families override this capability because they can attack from the shore.
+func can_target_water_plant_objectives() -> bool:
+	return (
+		terrain_traversal_types & DualGridTilemap.TraversalType.WATER
+	) != 0
+
+
 func is_attackable_objective_in_range(attack_range: float) -> bool:
 	var attack_target := get_attackable_objective()
 	return (

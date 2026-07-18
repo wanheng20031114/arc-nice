@@ -4054,7 +4054,14 @@ func _assign_enemy_targets(enemy: Enemy, from_position: Vector2) -> void:
 		return
 	enemy.set_near_moving_target_direct_distance(PLAYER_NEAR_MOVING_DIRECT_DISTANCE)
 	var combat_player := _pick_enemy_target(from_position)
-	var objective := _pick_enemy_objective(from_position, combat_player)
+	# Resolve the capability once in this budgeted 0.60-second retarget pass.
+	# PlantSystem then reuses its existing influence candidates and only adds one
+	# enum comparison per candidate; movement ticks perform no type probing.
+	var objective := _pick_enemy_objective(
+		from_position,
+		combat_player,
+		enemy.can_target_water_plant_objectives()
+	)
 	enemy.set_target_player(combat_player)
 	enemy.set_objective_target(objective)
 
@@ -4128,11 +4135,16 @@ func find_nearest_enemy_attack_target(
 	return nearest_target
 
 
-func _pick_enemy_objective(from_position: Vector2, combat_player: Player) -> Node2D:
+func _pick_enemy_objective(
+	from_position: Vector2,
+	combat_player: Player,
+	include_water_plants: bool = false
+) -> Node2D:
 	if plant_system != null:
 		var nearest_plant := plant_system.find_nearest_living_plant(
 			from_position,
-			PLANT_OBJECTIVE_AGGRO_RADIUS_CELLS
+			PLANT_OBJECTIVE_AGGRO_RADIUS_CELLS,
+			include_water_plants
 		)
 		if nearest_plant != null:
 			return nearest_plant
