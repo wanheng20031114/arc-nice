@@ -42,7 +42,7 @@ func _run() -> void:
 
 	game.call("_begin_flow_step", game.waves[0])
 	game.enemy_spawn_timer.stop()
-	for _batch_index in range(100):
+	for _spawn_index in range(EXPECTED_ENEMY_COUNT):
 		game.call("_spawn_wave_batch")
 	game.set_physics_process(false)
 

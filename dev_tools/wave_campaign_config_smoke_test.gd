@@ -40,8 +40,14 @@ const CAMPAIGN_DEFINITIONS := [
 
 const TOWER_DEFENSE_STRESS_TOTAL_ENEMIES := 1200
 const TOWER_DEFENSE_STRESS_MAX_ALIVE := 300
-const TOWER_DEFENSE_STRESS_SPAWN_INTERVAL := 0.1
-const TOWER_DEFENSE_STRESS_SPAWN_COUNT_PER_TICK := 4
+const TOWER_DEFENSE_EARLY_WAVE_COUNT := 2
+const TOWER_DEFENSE_EARLY_WAVE_SPAWN_INTERVAL := 0.5
+const TOWER_DEFENSE_ORIGINAL_BATCH_INTERVAL := 0.1
+const TOWER_DEFENSE_ORIGINAL_BATCH_SIZE := 4.0
+const TOWER_DEFENSE_SEQUENTIAL_SPAWN_INTERVAL := (
+	TOWER_DEFENSE_ORIGINAL_BATCH_INTERVAL / TOWER_DEFENSE_ORIGINAL_BATCH_SIZE
+)
+const TOWER_DEFENSE_SEQUENTIAL_SPAWN_COUNT_PER_TICK := 1
 const TOWER_DEFENSE_FOREST_COMBAT_BGM := "res://resources/audio/shenmu_forest_combat.ogg"
 const TOWER_DEFENSE_FOREST_INTERMISSION_BGM := "res://resources/audio/shenmu_forest_intermission.ogg"
 const STONE_GOLEM_CONFIG_PATH := "res://resources/config/enemies/stone_golem.tres"
@@ -289,10 +295,19 @@ func _verify_tower_defense_stress_wave(
 		wave_config.max_alive_enemies == TOWER_DEFENSE_STRESS_MAX_ALIVE,
 		"Tower-defense maximum simultaneous enemies must be 300."
 	)
+	var expected_spawn_interval := (
+		TOWER_DEFENSE_EARLY_WAVE_SPAWN_INTERVAL
+		if wave_index < TOWER_DEFENSE_EARLY_WAVE_COUNT
+		else TOWER_DEFENSE_SEQUENTIAL_SPAWN_INTERVAL
+	)
 	_expect(
-		is_equal_approx(wave_config.spawn_interval, TOWER_DEFENSE_STRESS_SPAWN_INTERVAL)
-		and wave_config.spawn_count_per_tick == TOWER_DEFENSE_STRESS_SPAWN_COUNT_PER_TICK,
-		"Tower-defense pressure waves must spawn four enemies every 0.1 seconds."
+		is_equal_approx(wave_config.spawn_interval, expected_spawn_interval)
+		and wave_config.spawn_count_per_tick
+		== TOWER_DEFENSE_SEQUENTIAL_SPAWN_COUNT_PER_TICK,
+		(
+			"Tower-defense waves 1-2 must spawn one enemy every 0.5 seconds; "
+			+ "later waves must spawn enemies individually at the original total rate."
+		)
 	)
 	if wave_index < 8:
 		_expect(

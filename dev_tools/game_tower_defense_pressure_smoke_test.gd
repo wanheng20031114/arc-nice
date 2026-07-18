@@ -3,6 +3,10 @@ extends SceneTree
 const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
 const EXPECTED_WAVE_TOTAL := 1200
 const EXPECTED_MAX_ALIVE := 300
+const EXPECTED_EARLY_WAVE_INTERVAL := 0.5
+const EXPECTED_SEQUENTIAL_WAVE_INTERVAL := 0.025
+const EXPECTED_SEQUENTIAL_SPAWNS_PER_SECOND := 40
+const SPAWN_RATE_TOLERANCE := 2
 
 var failures: Array[String] = []
 
@@ -32,20 +36,51 @@ func _run() -> void:
 		_finish(0)
 		return
 
-	var first_wave := game.waves[0]
+	for early_wave_index in range(2):
+		var early_wave := game.waves[early_wave_index]
+		_expect(
+			is_equal_approx(early_wave.spawn_interval, EXPECTED_EARLY_WAVE_INTERVAL)
+			and early_wave.spawn_count_per_tick == 1,
+			"Tower-defense waves 1-2 must spawn one enemy every 0.5 seconds."
+		)
+
+	var sequential_wave := game.waves[2]
 	_expect(
-		first_wave.get_total_enemy_count() == EXPECTED_WAVE_TOTAL,
+		sequential_wave.get_total_enemy_count() == EXPECTED_WAVE_TOTAL,
 		"Pressure wave must queue exactly 1200 enemies."
 	)
 	_expect(
-		first_wave.max_alive_enemies == EXPECTED_MAX_ALIVE,
+		sequential_wave.max_alive_enemies == EXPECTED_MAX_ALIVE,
 		"Pressure wave simultaneous-enemy cap must be 300."
+	)
+	_expect(
+		is_equal_approx(
+			sequential_wave.spawn_interval,
+			EXPECTED_SEQUENTIAL_WAVE_INTERVAL
+		)
+		and sequential_wave.spawn_count_per_tick == 1,
+		"Tower-defense waves 3-12 must spawn enemies one at a time at 40 per second."
 	)
 
 	var started_at_msec := Time.get_ticks_msec()
-	game.call("_begin_flow_step", first_wave)
+	game.call("_begin_flow_step", sequential_wave)
+	_expect(
+		is_equal_approx(
+			game.enemy_spawn_timer.wait_time,
+			EXPECTED_SEQUENTIAL_WAVE_INTERVAL
+		),
+		"Tower-defense runtime must preserve the configured 0.025-second interval."
+	)
+	var timed_spawn_start := game.current_wave_spawned
+	await create_timer(1.0).timeout
 	game.enemy_spawn_timer.stop()
-	for _batch_index in range(100):
+	var timed_spawn_count := game.current_wave_spawned - timed_spawn_start
+	_expect(
+		absi(timed_spawn_count - EXPECTED_SEQUENTIAL_SPAWNS_PER_SECOND)
+		<= SPAWN_RATE_TOLERANCE,
+		"Sequential spawning must preserve the original total rate of 40 enemies per second."
+	)
+	for _spawn_index in range(EXPECTED_MAX_ALIVE):
 		game.call("_spawn_wave_batch")
 	var fill_elapsed_msec := Time.get_ticks_msec() - started_at_msec
 
