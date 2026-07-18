@@ -2,16 +2,25 @@
 
 生成模式：Codex 内置 `imagegen`。
 
-最终生产管线只使用以下三份源图：
+最终生产管线使用以下源图：
 
 - `fire_sorcerer_generated_v2.png`
 - `fire_sorcerer_attack_1_generated_v1.png`
+- `fire_sorcerer_move_generated_v1.png`
+- `fire_sorcerer_move_native_v1.png`（由上一项视觉验收后生成的原生 160×40 条带）
 - `fire_sorcerer_fireball_generated_v1.png`
 
 `fire_sorcerer_generated_v1.png` 是首次生成但被像素网格硬门槛拒绝的留档，
 没有进入任何运行时素材。最终源图由
 `dev_tools/process_fire_sorcerer_assets.py` 做绿幕移除、逐帧逻辑网格分析和
-整数像素采样；脚本不存在跳过分析或强行缩放的入口。
+整数像素采样。
+
+移动条带的生图源是独立的 1983×793 四帧横条，近似网格置信度不足以进入
+通用压缩入口，因此由 `dev_tools/process_fire_sorcerer_move_asset.py` 锁定
+原图 SHA-256、四格边界和目标原生尺寸，并在人工视觉验收后使用最近邻采样。
+脚本把前两帧构造成“接触/通过”，只镜像 `y>=23` 的下半身得到反相两帧，
+随后验证二值 alpha、`y=38` 基线、质心漂移、落地段数量、脚带宽度和 RGBA
+指纹。安装时只无掩码覆盖角色表第一行，其余三行由解码后 RGBA 哈希保护。
 
 ## 角色初稿（已拒绝）
 
@@ -57,6 +66,29 @@ Critical pixel correction: rebuild EVERY visible contour and fill on one globall
 This is exactly ONE sprite frame, not a sheet. The intended native canvas is exactly 40×40 logical pixels. Keep all visible content, including the entire attached crescent flame arc and ember specks, within at most 38 logical pixels wide × 34 logical pixels tall, with at least 1 logical pixel of empty background on all four edges. Simplify the flame arc into chunky 2–4 logical-pixel-wide clusters so it shares the same logical grid as the character; use no isolated specks smaller than one full logical pixel.
 
 Use one perfectly uniform flat #00FF00 background everywhere outside the sprite, with no gradient, noise, shadow, text, border, grid line, scenery, second character, or detached projectile. Feet remain on the same baseline as the reference. The goal is measurable native low pixel density that can be losslessly center-sampled to one 40×40 frame, not additional detail.
+```
+
+## 移动动画重制（最终独立源图）
+
+前两轮整表编辑仍让第 0/2 帧和第 1/3 帧过于相似，因此最终改为只生成四帧
+横条，并在原生像素阶段明确构造反相下半身。内置 `imagegen` 的最终提示词：
+
+```text
+Use case: precise-object-edit
+Asset type: standalone four-frame native pixel-art MOVE strip for a Godot sprite sheet
+Input images: Image 1 is the authoritative fire sorcerer identity/style reference. Image 2 shows the latest draft, but its first and third contact poses still look too similar.
+Primary request: Create ONE HORIZONTAL ROW ONLY containing exactly four equal square animation cells. Draw the same right-facing fire sorcerer walking in place. No other animation rows and no extra sprites.
+Critical leg readability: the robe must part enough to show TWO distinct boots/legs. Track the same two legs by color across the cycle: the NEAR leg has a brighter orange-brown boot with a small gold toe highlight; the FAR leg has a darker purple-brown boot with no gold toe. The colors identify the leg and must not randomly change.
+Frames left to right:
+1. CONTACT A, wide: bright NEAR boot is farthest forward on screen-right and planted; dark FAR boot is back on screen-left and planted.
+2. PASSING A, narrow: bright NEAR boot is planted directly under the pelvis; dark FAR boot is clearly airborne moving forward, with at least one full logical transparent pixel between its sole and the ground.
+3. CONTACT B, wide and truly opposite: dark FAR boot is now farthest forward on screen-right and planted; bright NEAR boot is back on screen-left and planted. The screen positions of the bright and dark boots are visibly exchanged from frame 1.
+4. PASSING B, narrow and truly opposite: dark FAR boot is planted directly under the pelvis; bright NEAR boot is clearly airborne moving forward, with at least one full logical transparent pixel between its sole and the ground.
+Anchor invariants: hat, face, chest, pelvis, staff hand and staff base stay on the same horizontal anchor; maximum one logical pixel horizontal drift. Regular vertical bob only [0,-1,0,-1]. Every planted boot uses the same ground line. Staff and robe hem may counter-swing by only one logical pixel.
+Identity/style: exactly match Image 1's dark-purple pointed hat, gray shadowed face, orange-red robe/armor, purple accents, brown staff and orange-yellow flame, chunky low-detail native pixels, outline thickness, proportions and apparent size. Facing right in all frames.
+Layout: four clearly separated equal square cells in one row, equivalent to four 40x40 logical frames, generous padding, nothing crosses cell boundaries.
+Scene/backdrop: perfectly flat solid #00ff00 chroma-key background, uniform with no shadows, gradients, texture, reflections or lighting variation. Do not use #00ff00 in the character.
+Constraints: crisp hard-edged pixel art; no antialiasing, blur, smooth vector curves, text, labels, arrows, grid lines, watermark, extra rows or extra characters. Avoid fused boots, both boots touching ground in passing poses, repeated contact silhouette, skating, hopping, random body drift, staff-side changes or character redesign.
 ```
 
 ## 火球动画（最终源图）

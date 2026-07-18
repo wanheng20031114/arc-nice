@@ -123,7 +123,7 @@ position = Vector2(23, 13)
 [node name="FireballPreviewA" type="AnimatedSprite2D" parent="SummonPivot" index="3" unique_id=1650897927]
 visible = false
 texture_filter = 1
-position = Vector2(16, 0)
+position = Vector2(24, 1)
 scale = Vector2(1e-05, 1e-05)
 sprite_frames = ExtResource("5_fireball_frames")
 animation = &"spawn"
@@ -131,7 +131,7 @@ animation = &"spawn"
 [node name="FireballPreviewB" type="AnimatedSprite2D" parent="SummonPivot" index="4" unique_id=1713479548]
 visible = false
 texture_filter = 1
-position = Vector2(11, -9)
+position = Vector2(15, -5)
 scale = Vector2(1e-05, 1e-05)
 sprite_frames = ExtResource("5_fireball_frames")
 animation = &"spawn"
@@ -139,7 +139,7 @@ animation = &"spawn"
 [node name="FireballPreviewC" type="AnimatedSprite2D" parent="SummonPivot" index="5" unique_id=1643251001]
 visible = false
 texture_filter = 1
-position = Vector2(11, 9)
+position = Vector2(23, 13)
 scale = Vector2(1e-05, 1e-05)
 sprite_frames = ExtResource("5_fireball_frames")
 animation = &"spawn"

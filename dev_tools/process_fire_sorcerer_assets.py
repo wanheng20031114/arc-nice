@@ -5,8 +5,9 @@ The raw imagegen files are intentionally retained under
 ``dev_assets/source_images/fire_sorcerer``.  This pipeline removes their
 connected green screen, validates every source cell with
 ``pixel_grid_analyzer.analyze_image``, and only then samples the detected
-logical grid.  There is no unsafe compression path: an unreliable or oversized
-source frame is a hard error and must be regenerated.
+logical grid.  The visually approved move row is supplied as a separate native
+160x40 strip; this script validates it without resampling and replaces row zero
+with an unmasked paste so transparent pixels cannot retain stale artwork.
 
 Output contracts:
 
@@ -20,6 +21,7 @@ Output contracts:
 from __future__ import annotations
 
 from collections import OrderedDict
+import hashlib
 from pathlib import Path
 from statistics import median
 
@@ -39,6 +41,9 @@ CHARACTER_REPLACEMENT_SOURCE = (
     SOURCE_DIR / "fire_sorcerer_attack_1_generated_v1.png"
 )
 FIREBALL_SOURCE = SOURCE_DIR / "fire_sorcerer_fireball_generated_v1.png"
+CHARACTER_MOVE_NATIVE_SOURCE = (
+    SOURCE_DIR / "fire_sorcerer_move_native_v1.png"
+)
 
 CHARACTER_OUTPUT = TEXTURE_DIR / "fire_sorcerer.png"
 FIREBALL_OUTPUT = TEXTURE_DIR / "fire_sorcerer_fireball.png"
@@ -56,6 +61,12 @@ CHARACTER_REPLACEMENT_CELL = (2, 1)
 OPTIONAL_EMPTY_CHARACTER_CELL = (3, 3)
 OPTIONAL_EMPTY_FIREBALL_CELL = (3, 3)
 CHARACTER_FOOT_BASELINE_Y = 38
+STATIC_CHARACTER_ROWS_RGBA_SHA256 = (
+    "aae16cb9b2c06bf23af3737668fa59476aff1392fde46cfbd5b8c4b1e435c75a"
+)
+CHARACTER_MOVE_RGBA_SHA256 = (
+    "48ae80987f34df9a9e97c2061690b48ed1e2ef91ed090bbad8f0ce8b60e8d070"
+)
 
 CHARACTER_ANIMATIONS = OrderedDict(
     [
@@ -86,6 +97,7 @@ def _require_sources() -> None:
             CHARACTER_SOURCE,
             CHARACTER_REPLACEMENT_SOURCE,
             FIREBALL_SOURCE,
+            CHARACTER_MOVE_NATIVE_SOURCE,
         )
         if not source.is_file()
     ]
@@ -261,9 +273,172 @@ def _place_fireball_subject(subject: Image.Image) -> Image.Image:
     return frame
 
 
+def _decoded_rgba_sha256(image: Image.Image) -> str:
+    return hashlib.sha256(image.convert("RGBA").tobytes()).hexdigest()
+
+
+def _horizontal_runs(mask_row: np.ndarray) -> list[tuple[int, int]]:
+    runs: list[tuple[int, int]] = []
+    run_start: int | None = None
+    for x, visible in enumerate(mask_row):
+        if bool(visible) and run_start is None:
+            run_start = x
+        elif not bool(visible) and run_start is not None:
+            runs.append((run_start, x - 1))
+            run_start = None
+    if run_start is not None:
+        runs.append((run_start, len(mask_row) - 1))
+    return runs
+
+
+def _audit_character_move_strip(move_strip: Image.Image) -> None:
+    if move_strip.size != (
+        CHARACTER_FRAME_SIZE * GRID_COLUMNS,
+        CHARACTER_FRAME_SIZE,
+    ):
+        raise AssetContractError(
+            f"Move strip is {move_strip.size}, expected 160x40"
+        )
+    _assert_binary_alpha(move_strip, "character move strip")
+    rgba = np.array(move_strip.convert("RGBA"), dtype=np.uint8)
+    transparent = rgba[:, :, 3] == 0
+    if np.any(rgba[:, :, :3][transparent] != 0):
+        raise AssetContractError(
+            "Move strip transparent pixels must have zero RGB payload"
+        )
+
+    masks: list[np.ndarray] = []
+    centroids: list[tuple[float, float]] = []
+    foot_spans: list[int] = []
+    bottom_run_counts: list[int] = []
+    for frame_index in range(GRID_COLUMNS):
+        frame_rgba = rgba[
+            :,
+            frame_index * CHARACTER_FRAME_SIZE:
+                (frame_index + 1) * CHARACTER_FRAME_SIZE,
+            :,
+        ]
+        mask = frame_rgba[:, :, 3] > 0
+        visible_y, visible_x = np.nonzero(mask)
+        if visible_x.size == 0:
+            raise AssetContractError(
+                f"Move frame {frame_index} is empty"
+            )
+        bbox = (
+            int(visible_x.min()),
+            int(visible_y.min()),
+            int(visible_x.max()) + 1,
+            int(visible_y.max()) + 1,
+        )
+        if (
+            bbox[0] < 1
+            or bbox[1] < 1
+            or bbox[2] > CHARACTER_FRAME_SIZE - 1
+            or bbox[3] > CHARACTER_FRAME_SIZE - 1
+        ):
+            raise AssetContractError(
+                f"Move frame {frame_index} lacks one-pixel cell padding: "
+                f"{bbox}"
+            )
+        if bbox[3] - 1 != CHARACTER_FOOT_BASELINE_Y:
+            raise AssetContractError(
+                f"Move frame {frame_index} baseline is {bbox[3] - 1}, "
+                f"expected {CHARACTER_FOOT_BASELINE_Y}"
+            )
+        bbox_center_x = (bbox[0] + bbox[2] - 1) * 0.5
+        if abs(bbox_center_x - 19.5) > 1.0:
+            raise AssetContractError(
+                f"Move frame {frame_index} bbox center {bbox_center_x:.2f} "
+                "drifted from the authored axis"
+            )
+        centroids.append(
+            (float(visible_x.mean()), float(visible_y.mean()))
+        )
+        foot_y, foot_x = np.nonzero(
+            mask[CHARACTER_FOOT_BASELINE_Y - 5:
+                CHARACTER_FOOT_BASELINE_Y + 1, :]
+        )
+        if foot_x.size == 0:
+            raise AssetContractError(
+                f"Move frame {frame_index} has no readable foot band"
+            )
+        foot_spans.append(int(foot_x.max() - foot_x.min() + 1))
+        bottom_run_counts.append(
+            len(_horizontal_runs(mask[CHARACTER_FOOT_BASELINE_Y, :]))
+        )
+        masks.append(mask)
+
+    centroid_x_span = max(value[0] for value in centroids) - min(
+        value[0] for value in centroids
+    )
+    centroid_y_span = max(value[1] for value in centroids) - min(
+        value[1] for value in centroids
+    )
+    if centroid_x_span > 1.5 or centroid_y_span > 1.25:
+        raise AssetContractError(
+            "Move animation center drift exceeds the reviewed limit: "
+            f"x={centroid_x_span:.3f}, y={centroid_y_span:.3f}"
+        )
+    contact_spans = (foot_spans[0], foot_spans[2])
+    passing_spans = (foot_spans[1], foot_spans[3])
+    if min(contact_spans) < max(passing_spans) + 3:
+        raise AssetContractError(
+            "Contact poses must remain visibly wider than passing poses: "
+            f"contact={contact_spans}, passing={passing_spans}"
+        )
+    if (
+        bottom_run_counts[0] < 2
+        or bottom_run_counts[2] < 2
+        or bottom_run_counts[1] != 1
+        or bottom_run_counts[3] != 1
+    ):
+        raise AssetContractError(
+            "Move gait must keep two grounded boots in contact poses and "
+            "one grounded boot in passing poses: "
+            f"runs={bottom_run_counts}"
+        )
+    for first, second, label in (
+        (0, 2, "contact"),
+        (1, 3, "passing"),
+    ):
+        xor_pixels = int(np.logical_xor(
+            masks[first],
+            masks[second],
+        ).sum())
+        intersection = int(np.logical_and(
+            masks[first],
+            masks[second],
+        ).sum())
+        union = int(np.logical_or(
+            masks[first],
+            masks[second],
+        ).sum())
+        iou = float(intersection) / float(max(union, 1))
+        if xor_pixels < 32 or iou < 0.60:
+            raise AssetContractError(
+                f"Opposite {label} poses are not a coherent leg swap: "
+                f"xor={xor_pixels}, iou={iou:.3f}"
+            )
+
+    rgba_sha256 = _decoded_rgba_sha256(move_strip)
+    if rgba_sha256 != CHARACTER_MOVE_RGBA_SHA256:
+        raise AssetContractError(
+            "Move strip RGBA fingerprint changed without visual approval: "
+            f"{rgba_sha256}"
+        )
+    print(
+        "MOVE_STRIP_OK "
+        f"centroid_x_span={centroid_x_span:.3f} "
+        f"centroid_y_span={centroid_y_span:.3f} "
+        f"foot_spans={foot_spans} bottom_runs={bottom_run_counts} "
+        f"rgba_sha256={rgba_sha256}"
+    )
+
+
 def _build_character_sheet(
     source: Image.Image,
     replacement: Image.Image,
+    move_strip: Image.Image,
 ) -> Image.Image:
     sheet = Image.new(
         "RGBA",
@@ -281,6 +456,8 @@ def _build_character_sheet(
 
     for row in range(GRID_ROWS):
         for column in range(GRID_COLUMNS):
+            if row == 0:
+                continue
             label = f"character r{row}c{column}"
             if (row, column) == CHARACTER_REPLACEMENT_CELL:
                 cell = replacement
@@ -305,6 +482,32 @@ def _build_character_sheet(
                     row * CHARACTER_FRAME_SIZE,
                 ),
             )
+    static_rows = sheet.crop(
+        (
+            0,
+            CHARACTER_FRAME_SIZE,
+            CHARACTER_FRAME_SIZE * GRID_COLUMNS,
+            CHARACTER_FRAME_SIZE * GRID_ROWS,
+        )
+    )
+    static_rows_sha256 = _decoded_rgba_sha256(static_rows)
+    if static_rows_sha256 != STATIC_CHARACTER_ROWS_RGBA_SHA256:
+        raise AssetContractError(
+            "Windup/attack/death rows changed while rebuilding move: "
+            f"{static_rows_sha256}"
+        )
+    _audit_character_move_strip(move_strip)
+    static_rows_before = static_rows.tobytes()
+    sheet.paste(move_strip, (0, 0))
+    if sheet.crop((0, 0, 160, 40)).tobytes() != move_strip.tobytes():
+        raise AssetContractError("Move row replacement was not pixel exact")
+    if (
+        sheet.crop((0, 40, 160, 160)).tobytes()
+        != static_rows_before
+    ):
+        raise AssetContractError(
+            "Move row replacement mutated a non-move animation row"
+        )
     return sheet
 
 
@@ -505,6 +708,9 @@ def main() -> None:
     replacement_source, replacement_key = _remove_green_screen(
         Image.open(CHARACTER_REPLACEMENT_SOURCE)
     )
+    move_strip_source = Image.open(
+        CHARACTER_MOVE_NATIVE_SOURCE
+    ).convert("RGBA")
     fireball_source, fireball_key = _remove_green_screen(
         Image.open(FIREBALL_SOURCE)
     )
@@ -521,6 +727,7 @@ def main() -> None:
     character_sheet = _build_character_sheet(
         character_source,
         replacement_source,
+        move_strip_source,
     )
     fireball_sheet = _build_fireball_sheet(fireball_source)
     _audit_character_output(character_sheet)
@@ -546,6 +753,7 @@ def main() -> None:
         f"character={character_sheet.width}x{character_sheet.height} "
         f"frame={CHARACTER_FRAME_SIZE}x{CHARACTER_FRAME_SIZE} "
         f"foot_baseline={CHARACTER_FOOT_BASELINE_Y} "
+        f"move_rgba_sha256={CHARACTER_MOVE_RGBA_SHA256} "
         f"fireball={fireball_sheet.width}x{fireball_sheet.height} "
         f"fireball_frame={FIREBALL_FRAME_SIZE}x{FIREBALL_FRAME_SIZE} "
         "alpha=binary sampling=nearest unsafe_compression=false"
