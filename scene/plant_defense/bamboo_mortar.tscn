@@ -1,0 +1,89 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/bamboo_mortar.gd" id="1_script"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/plant_defense/bamboo_mortar_sprite_frames.tres" id="2_frames"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/glow_mask.png" id="3_glow"]
+[ext_resource type="Shader" path="res://resources/shader/bamboo_mortar_glow.gdshader" id="4_glow_shader"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="5_health_bar"]
+[ext_resource type="ShaderMaterial" path="res://resources/shader/plant_lifecycle_material.tres" id="6_lifecycle_material"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_glow"]
+shader = ExtResource("4_glow_shader")
+shader_parameter/glow_color = Color(0.48, 1, 0.24, 1)
+shader_parameter/glow_strength = 1.0
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+resource_local_to_scene = true
+size = Vector2(28, 27)
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_core"]
+resource_local_to_scene = true
+radius = 7.0
+height = 14.0
+
+[node name="BambooMortar" type="StaticBody2D"]
+collision_layer = 512
+collision_mask = 0
+script = ExtResource("1_script")
+enemy_approach_depth = 6.0
+lifecycle_visual_paths = Array[NodePath]([NodePath("VisualRoot/MainSprite")])
+lifecycle_effect_top_y = -15.0
+lifecycle_effect_bottom_y = 16.0
+lifecycle_particle_scale = 1.0
+
+[node name="VisualRoot" type="Node2D" parent="."]
+scale = Vector2(0.5, 0.5)
+
+[node name="MainSprite" type="AnimatedSprite2D" parent="VisualRoot"]
+z_index = 1
+texture_filter = 1
+material = ExtResource("6_lifecycle_material")
+sprite_frames = ExtResource("2_frames")
+animation = &"idle"
+autoplay = "idle"
+
+[node name="GlowSprite" type="Sprite2D" parent="VisualRoot"]
+z_index = 2
+texture_filter = 1
+material = SubResource("ShaderMaterial_glow")
+texture = ExtResource("3_glow")
+
+[node name="Muzzle" type="Marker2D" parent="VisualRoot"]
+position = Vector2(10, -24)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 3.5)
+shape = SubResource("RectangleShape2D_body")
+
+[node name="PlayerCoreBody" type="StaticBody2D" parent="."]
+position = Vector2(0, 1)
+collision_layer = 1024
+collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody"]
+position = Vector2(0, 2)
+shape = SubResource("CapsuleShape2D_core")
+
+[node name="AttackTimer" type="Timer" parent="."]
+wait_time = 2.0
+one_shot = true
+
+[node name="TargetTrackTimer" type="Timer" parent="."]
+wait_time = 0.5
+
+[node name="FireAudio" type="AudioStreamPlayer2D" parent="."]
+bus = &"SFX"
+volume_db = -10.0
+max_polyphony = 2
+
+[node name="HealthBar" parent="." instance=ExtResource("5_health_bar")]
+offset_left = -16.0
+offset_top = -17.0
+offset_right = 16.0
+offset_bottom = -12.0
+damage_trail_color = Color(0.92156863, 0.28235295, 0.18039216, 1)
+
+[connection signal="animation_finished" from="VisualRoot/MainSprite" to="." method="_on_main_sprite_animation_finished"]
+[connection signal="frame_changed" from="VisualRoot/MainSprite" to="." method="_on_main_sprite_frame_changed"]
+[connection signal="timeout" from="AttackTimer" to="." method="_on_attack_timer_timeout"]
+[connection signal="timeout" from="TargetTrackTimer" to="." method="_on_target_track_timer_timeout"]

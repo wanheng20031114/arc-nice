@@ -37,6 +37,9 @@ const FEEDBACK_RPC_METHODS := {
 const STANDARD_GAME_SCENE_PATH := "res://scene/game.tscn"
 const TOWER_DEFENSE_GAME_SCENE_PATH := "res://scene/game_tower_defense.tscn"
 const AGAVE_CANNONBALL_SCENE_PATH := "res://scene/plant_defense/agave_cannonball.tscn"
+const BAMBOO_MORTAR_SCRIPT := preload(
+	"res://scene/plant_defense/bamboo_mortar.gd"
+)
 const CORN_MACHINE_GUN_SCRIPT := preload("res://scene/plant_defense/corn_machine_gun.gd")
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const BULLET_SCENE_PATH := "res://scene/bullet.tscn"
@@ -148,6 +151,7 @@ const ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES := 56
 const ENEMY_HIGH_PRESSURE_THRESHOLD := 200
 const ENEMY_HIGH_PRESSURE_SNAPSHOT_HZ := 20
 const COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS := 0.05
+const BAMBOO_MORTAR_VISUAL_FLUSH_INTERVAL_SECONDS := 0.05
 const CORN_MACHINE_GUN_BURST_FLUSH_INTERVAL_SECONDS := 0.05
 const WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS := 0.1
 const PLANT_HEALTH_FLUSH_INTERVAL_SECONDS := 0.05
@@ -163,6 +167,7 @@ const COMBAT_FEEDBACK_MAX_RECORDS_PER_PACKET := 40
 # v10 plant records carry 41 raw packed bytes before RPC/ENet framing. Twenty-four
 # records stay near 984 bytes and below the project's 1200-byte packet budget.
 const PLANT_HEALTH_MAX_RECORDS_PER_PACKET := 24
+const BAMBOO_MORTAR_VISUAL_MAX_RECORDS_PER_PACKET := 24
 const CORN_MACHINE_GUN_BURST_MAX_RECORDS_PER_PACKET := 32
 const ENEMY_SPAWN_BATCH_MAX_RECORDS := 16
 const ENEMY_TERMINAL_DEFEATED := 0
@@ -329,6 +334,15 @@ var _latest_enemy_snapshot_batch_seen: int = 0
 var _current_enemy_snapshot_hz: int = _NetConstants.ENEMY_SNAPSHOT_HZ
 var _pending_enemy_damage_feedback: Dictionary = {}
 var _combat_feedback_flush_time_left: float = COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS
+var _pending_bamboo_mortar_visuals := PackedInt32Array()
+var _pending_bamboo_mortar_action_ids := PackedInt32Array()
+var _pending_bamboo_mortar_stages := PackedByteArray()
+var _pending_bamboo_mortar_spawn_positions := PackedVector2Array()
+var _pending_bamboo_mortar_landing_positions := PackedVector2Array()
+var _pending_bamboo_mortar_host_times := PackedFloat64Array()
+var _bamboo_mortar_visual_flush_time_left: float = (
+	BAMBOO_MORTAR_VISUAL_FLUSH_INTERVAL_SECONDS
+)
 var _pending_corn_machine_gun_burst_visuals := PackedInt32Array()
 var _pending_corn_machine_gun_burst_action_ids := PackedInt32Array()
 var _pending_corn_machine_gun_burst_directions := PackedVector2Array()
@@ -423,6 +437,7 @@ func _exit_tree() -> void:
 	_host_enemy_snapshot_live_ids.clear()
 	_processed_collectible_effect_event_ids.clear()
 	_pending_enemy_damage_feedback.clear()
+	_clear_bamboo_mortar_visuals()
 	_pending_corn_machine_gun_burst_visuals.clear()
 	_pending_corn_machine_gun_burst_action_ids.clear()
 	_pending_corn_machine_gun_burst_directions.clear()
@@ -997,6 +1012,49 @@ func broadcast_plant_projectile_visual(
 			maxf(lifetime, 0.01),
 		]
 	)
+
+
+func queue_bamboo_mortar_visual(
+	plant_net_id: int,
+	action_id: int,
+	stage: int,
+	spawn_position: Vector2,
+	landing_position: Vector2
+) -> void:
+	if (
+		not is_inside_tree()
+		or not net_manager.is_host()
+		or game == null
+		or plant_net_id <= 0
+		or action_id <= 0
+		or stage < 0
+		or stage > 1
+		or not _is_finite_vector2(spawn_position)
+		or not _is_finite_vector2(landing_position)
+	):
+		return
+	var mortar := game.get_multiplayer_plant_node(plant_net_id)
+	if (
+		mortar == null
+		or not is_instance_valid(mortar)
+		or mortar.get_script() != BAMBOO_MORTAR_SCRIPT
+	):
+		return
+	_pending_bamboo_mortar_visuals.append(plant_net_id)
+	_pending_bamboo_mortar_action_ids.append(action_id)
+	_pending_bamboo_mortar_stages.append(stage)
+	_pending_bamboo_mortar_spawn_positions.append(spawn_position)
+	_pending_bamboo_mortar_landing_positions.append(landing_position)
+	_pending_bamboo_mortar_host_times.append(_get_net_time())
+
+
+func _clear_bamboo_mortar_visuals() -> void:
+	_pending_bamboo_mortar_visuals.clear()
+	_pending_bamboo_mortar_action_ids.clear()
+	_pending_bamboo_mortar_stages.clear()
+	_pending_bamboo_mortar_spawn_positions.clear()
+	_pending_bamboo_mortar_landing_positions.clear()
+	_pending_bamboo_mortar_host_times.clear()
 
 
 func queue_corn_machine_gun_burst_visual(
@@ -5194,6 +5252,43 @@ func _is_valid_linglan_skill1_ring_payload(
 	return true
 
 
+func _is_valid_bamboo_mortar_visual_payload(
+	plant_net_ids: PackedInt32Array,
+	action_ids: PackedInt32Array,
+	stages: PackedByteArray,
+	spawn_positions: PackedVector2Array,
+	landing_positions: PackedVector2Array,
+	host_action_times: PackedFloat64Array
+) -> bool:
+	var record_count := plant_net_ids.size()
+	if (
+		record_count <= 0
+		or record_count > BAMBOO_MORTAR_VISUAL_MAX_RECORDS_PER_PACKET
+		or action_ids.size() != record_count
+		or stages.size() != record_count
+		or spawn_positions.size() != record_count
+		or landing_positions.size() != record_count
+		or host_action_times.size() != record_count
+	):
+		return false
+	for record_index in range(record_count):
+		if (
+			plant_net_ids[record_index] <= 0
+			or action_ids[record_index] <= 0
+			or stages[record_index] > 1
+			or not _is_finite_vector2(
+				spawn_positions[record_index]
+			)
+			or not _is_finite_vector2(
+				landing_positions[record_index]
+			)
+			or not is_finite(host_action_times[record_index])
+			or host_action_times[record_index] < 0.0
+		):
+			return false
+	return true
+
+
 func _is_valid_corn_machine_gun_burst_payload(
 	plant_net_ids: PackedInt32Array,
 	action_ids: PackedInt32Array,
@@ -5608,6 +5703,12 @@ func _update_batched_network_events(delta: float) -> void:
 	if _combat_feedback_flush_time_left <= 0.0:
 		_combat_feedback_flush_time_left = COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS
 		_flush_enemy_damage_feedback()
+	_bamboo_mortar_visual_flush_time_left -= maxf(delta, 0.0)
+	if _bamboo_mortar_visual_flush_time_left <= 0.0:
+		_bamboo_mortar_visual_flush_time_left = (
+			BAMBOO_MORTAR_VISUAL_FLUSH_INTERVAL_SECONDS
+		)
+		_flush_bamboo_mortar_visuals()
 	_corn_machine_gun_burst_flush_time_left -= maxf(delta, 0.0)
 	if _corn_machine_gun_burst_flush_time_left <= 0.0:
 		_corn_machine_gun_burst_flush_time_left = (
@@ -5623,6 +5724,62 @@ func _update_batched_network_events(delta: float) -> void:
 		_wave_progress_flush_time_left = WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS
 		_flush_wave_progress()
 		_flush_tiyi_target_updates()
+
+
+func _flush_bamboo_mortar_visuals() -> void:
+	if _pending_bamboo_mortar_visuals.is_empty():
+		return
+	assert(
+		_pending_bamboo_mortar_action_ids.size()
+		== _pending_bamboo_mortar_visuals.size()
+		and _pending_bamboo_mortar_stages.size()
+		== _pending_bamboo_mortar_visuals.size()
+		and _pending_bamboo_mortar_spawn_positions.size()
+		== _pending_bamboo_mortar_visuals.size()
+		and _pending_bamboo_mortar_landing_positions.size()
+		== _pending_bamboo_mortar_visuals.size()
+		and _pending_bamboo_mortar_host_times.size()
+		== _pending_bamboo_mortar_visuals.size()
+	)
+	for chunk_start in range(
+		0,
+		_pending_bamboo_mortar_visuals.size(),
+		BAMBOO_MORTAR_VISUAL_MAX_RECORDS_PER_PACKET
+	):
+		var chunk_end := mini(
+			chunk_start + BAMBOO_MORTAR_VISUAL_MAX_RECORDS_PER_PACKET,
+			_pending_bamboo_mortar_visuals.size()
+		)
+		_rpc_to_connected_clients(
+			&"net_bamboo_mortar_visual_batch",
+			[
+				_pending_bamboo_mortar_visuals.slice(
+					chunk_start,
+					chunk_end
+				),
+				_pending_bamboo_mortar_action_ids.slice(
+					chunk_start,
+					chunk_end
+				),
+				_pending_bamboo_mortar_stages.slice(
+					chunk_start,
+					chunk_end
+				),
+				_pending_bamboo_mortar_spawn_positions.slice(
+					chunk_start,
+					chunk_end
+				),
+				_pending_bamboo_mortar_landing_positions.slice(
+					chunk_start,
+					chunk_end
+				),
+				_pending_bamboo_mortar_host_times.slice(
+					chunk_start,
+					chunk_end
+				),
+			]
+		)
+	_clear_bamboo_mortar_visuals()
 
 
 func _flush_corn_machine_gun_burst_visuals() -> void:
@@ -7289,6 +7446,10 @@ func _on_host_plant_removed(net_id: int) -> void:
 	_pending_plant_health_updates.erase(net_id)
 	_pending_authoritative_warehouse_snapshots.erase(net_id)
 	_pending_production_state_updates.erase(net_id)
+	# Bamboo shells are independent pooled visuals after FIRE. Flush their
+	# reliable CH_WORLD_EVENT records before the plant removal on that same
+	# ordered channel, so clients instantiate the shell while its proxy exists.
+	_flush_bamboo_mortar_visuals()
 	_rpc_to_connected_clients(&"net_plant_removed", [net_id])
 
 
@@ -7337,6 +7498,16 @@ func _apply_plant_runtime_state(
 		if not is_finite(spread_elapsed):
 			return
 		corrected_state["spread_elapsed_seconds"] = maxf(spread_elapsed, 0.0) + sample_age
+	for elapsed_key in [
+		"windup_elapsed_seconds",
+		"projectile_elapsed_seconds",
+	]:
+		if not corrected_state.has(elapsed_key):
+			continue
+		var elapsed_seconds := float(corrected_state.get(elapsed_key, 0.0))
+		if not is_finite(elapsed_seconds):
+			return
+		corrected_state[elapsed_key] = maxf(elapsed_seconds, 0.0) + sample_age
 	plant.apply_multiplayer_runtime_state(
 		corrected_state,
 		(
@@ -8370,6 +8541,58 @@ func net_plant_projectile_visual(
 		0
 	)
 	projectile.reset_physics_interpolation()
+
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_bamboo_mortar_visual_batch(
+	plant_net_ids: PackedInt32Array,
+	action_ids: PackedInt32Array,
+	stages: PackedByteArray,
+	spawn_positions: PackedVector2Array,
+	landing_positions: PackedVector2Array,
+	host_action_times: PackedFloat64Array
+) -> void:
+	if (
+		game == null
+		or net_manager.is_host()
+		or not _is_valid_bamboo_mortar_visual_payload(
+			plant_net_ids,
+			action_ids,
+			stages,
+			spawn_positions,
+			landing_positions,
+			host_action_times
+		)
+	):
+		return
+	for record_index in range(plant_net_ids.size()):
+		var mortar := game.get_multiplayer_plant_node(
+			plant_net_ids[record_index]
+		)
+		if (
+			mortar == null
+			or not is_instance_valid(mortar)
+			or mortar.get_script() != BAMBOO_MORTAR_SCRIPT
+		):
+			continue
+		var mapped_action_time := _map_host_timestamp_to_client_time(
+			host_action_times[record_index],
+			false
+		)
+		var elapsed := maxf(
+			_get_net_time() - mapped_action_time,
+			0.0
+		)
+		if not is_finite(elapsed):
+			continue
+		mortar.call(
+			"play_multiplayer_action",
+			int(stages[record_index]),
+			action_ids[record_index],
+			spawn_positions[record_index],
+			landing_positions[record_index],
+			elapsed
+		)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 4)

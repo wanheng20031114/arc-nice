@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "anchor_sha256": "b2f727b3c044a76ea643b617b4cf3f3fe7f53f92d9f6d12fd63c297803ad6ca1",
+  "imagegen_charge_sha256": "04d546f9924d297193c8ad8f5309aeea119ca30f84e9df4bc3a20c37a145ed78",
+  "imagegen_explosion_sha256": "cc82f45391ceb3d6bd22a7e985704361640a27a42c0eeb8e9a0c99f7e2eb65ec",
+  "building_frame_visible_colors": [
+    10,
+    12,
+    12,
+    12,
+    13,
+    12,
+    12,
+    12,
+    12
+  ],
+  "explosion_frame_visible_colors": [
+    8,
+    10,
+    10,
+    8,
+    8,
+    6,
+    6,
+    6
+  ],
+  "building_subject_bboxes": [
+    [
+      4,
+      2,
+      60,
+      62
+    ],
+    [
+      4,
+      2,
+      60,
+      62
+    ],
+    [
+      4,
+      2,
+      60,
+      62
+    ],
+    [
+      4,
+      2,
+      60,
+      62
+    ],
+    [
+      4,
+      2,
+      60,
+      62
+    ],
+    [
+      4,
+      2,
+      60,
+      62
+    ],
+    [
+      4,
+      2,
+      60,
+      62
+    ],
+    [
+      4,
+      2,
+      60,
+      62
+    ],
+    [
+      4,
+      2,
+      60,
+      62
+    ]
+  ],
+  "explosion_subject_bboxes": [
+    [
+      25,
+      26,
+      38,
+      37
+    ],
+    [
+      14,
+      16,
+      45,
+      47
+    ],
+    [
+      8,
+      9,
+      53,
+      54
+    ],
+    [
+      5,
+      10,
+      55,
+      55
+    ],
+    [
+      6,
+      7,
+      60,
+      53
+    ],
+    [
+      6,
+      8,
+      59,
+      51
+    ],
+    [
+      9,
+      11,
+      54,
+      50
+    ],
+    [
+      11,
+      13,
+      52,
+      46
+    ]
+  ],
+  "charge_immutable_pixels_preserved": true,
+  "binary_alpha": true,
+  "transparent_rgb_clean": true,
+  "imagegen_role": "Eight-stage muzzle/indicator heat direction and eight-stage bamboo-fire-dust explosion source."
+}

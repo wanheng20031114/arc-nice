@@ -14,6 +14,9 @@ const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_POOL_SCENE := preload(
 )
 const YUANSHI_FIRE_PROJECTILE_POOL_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
 const AGAVE_CANNONBALL_POOL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
+const BAMBOO_MORTAR_SHELL_POOL_SCENE := preload(
+	"res://scene/plant_defense/bamboo_mortar_shell.tscn"
+)
 const PLANT_PLACEMENT_PARTICLES_SCENE := preload(
 	"res://scene/plant_defense/effects/plant_placement_particles.tscn"
 )
@@ -316,6 +319,7 @@ func _ready() -> void:
 	) / 1000.0
 	session_object_pool.register_scene(YUANSHI_FIRE_PROJECTILE_POOL_SCENE, 48, 384)
 	session_object_pool.register_scene(AGAVE_CANNONBALL_POOL_SCENE, 48, 384)
+	session_object_pool.register_scene(BAMBOO_MORTAR_SHELL_POOL_SCENE, 64, 384)
 	session_object_pool.register_scene(COLLECTIBLE_ARROW_POOL_SCENE, 48, 384)
 	session_object_pool.register_scene(COLLECTIBLE_SAKURA_ROCKET_POOL_SCENE, 16, 128)
 	# 18 rings/s * 20 directions * 2 s lifetime = 720 live bullets. The extra

@@ -2,6 +2,7 @@ extends RefCounted
 class_name PlantDefenseRegistry
 
 const AGAVE_CANNON_ID: StringName = &"agave_cannon"
+const BAMBOO_MORTAR_ID: StringName = &"bamboo_mortar"
 const CORN_MACHINE_GUN_ID: StringName = &"corn_machine_gun"
 const OAK_WAREHOUSE_ID: StringName = &"oak_warehouse"
 const VEGETATION_STAKE_ID: StringName = &"vegetation_stake"
@@ -11,6 +12,9 @@ const RESEARCH_CENTER_ID: StringName = &"research_center"
 
 const AGAVE_CANNON_CONFIG: PlantDefenseConfig = preload(
 	"res://resources/config/plant_defense/agave_cannon.tres"
+)
+const BAMBOO_MORTAR_CONFIG: PlantDefenseConfig = preload(
+	"res://resources/config/plant_defense/bamboo_mortar.tres"
 )
 const CORN_MACHINE_GUN_CONFIG: PlantDefenseConfig = preload(
 	"res://resources/config/plant_defense/corn_machine_gun.tres"
@@ -39,6 +43,7 @@ const PLANT_CONFIGS := {
 	WOOD_PROCESSING_STATION_ID: WOOD_PROCESSING_STATION_CONFIG,
 	WATER_COLLECTOR_ID: WATER_COLLECTOR_CONFIG,
 	RESEARCH_CENTER_ID: RESEARCH_CENTER_CONFIG,
+	BAMBOO_MORTAR_ID: BAMBOO_MORTAR_CONFIG,
 }
 
 
@@ -55,6 +60,7 @@ static func get_all_configs() -> Array[PlantDefenseConfig]:
 		WOOD_PROCESSING_STATION_CONFIG,
 		WATER_COLLECTOR_CONFIG,
 		RESEARCH_CENTER_CONFIG,
+		BAMBOO_MORTAR_CONFIG,
 	]
 
 

@@ -36,6 +36,7 @@ func _run() -> void:
 		"net_plant_health_changed",
 		"net_plant_removed",
 		"net_plant_projectile_visual",
+		"net_bamboo_mortar_visual_batch",
 		"net_corn_machine_gun_burst_batch",
 		"net_linglan_skill1_ring_batch",
 		"net_runtime_state_requested",
@@ -242,6 +243,19 @@ func _test_gameplay_v10_transaction_contract(rpcs: Dictionary) -> void:
 	for signature_fragment in [
 		"plant_net_ids:PackedInt32Array",
 		"action_ids:PackedInt32Array",
+		"stages:PackedByteArray",
+		"spawn_positions:PackedVector2Array",
+		"landing_positions:PackedVector2Array",
+		"host_action_times:PackedFloat64Array",
+	]:
+		_expect_rpc_signature_contains(
+			rpcs,
+			"net_bamboo_mortar_visual_batch",
+			signature_fragment
+		)
+	for signature_fragment in [
+		"plant_net_ids:PackedInt32Array",
+		"action_ids:PackedInt32Array",
 		"directions:PackedVector2Array",
 		"host_action_times:PackedFloat64Array",
 	]:
@@ -406,6 +420,11 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 	_expect_rpc_channel(rpcs, "_rpc_receive_player_snapshot", NetConstants.CH_PLAYER_STATE)
 	_expect_rpc_channel(rpcs, "_rpc_receive_enemy_snapshot", NetConstants.CH_ENEMY_STATE)
 	_expect_rpc_channel(rpcs, "_rpc_projectile_fired_from_client", NetConstants.CH_PROJECTILE)
+	_expect_rpc_channel(
+		rpcs,
+		"net_bamboo_mortar_visual_batch",
+		NetConstants.CH_WORLD_EVENT
+	)
 	_expect_rpc_channel(
 		rpcs,
 		"net_corn_machine_gun_burst_batch",

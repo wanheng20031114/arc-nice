@@ -1,0 +1,51 @@
+[gd_resource type="SpriteFrames" load_steps=10 format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/shell.png" id="1_shell"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/explosion_0.png" id="2_explosion_0"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/explosion_1.png" id="3_explosion_1"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/explosion_2.png" id="4_explosion_2"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/explosion_3.png" id="5_explosion_3"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/explosion_4.png" id="6_explosion_4"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/explosion_5.png" id="7_explosion_5"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/explosion_6.png" id="8_explosion_6"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/explosion_7.png" id="9_explosion_7"]
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("2_explosion_0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_explosion_1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_explosion_2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_explosion_3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("6_explosion_4")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_explosion_5")
+}, {
+"duration": 1.0,
+"texture": ExtResource("8_explosion_6")
+}, {
+"duration": 1.0,
+"texture": ExtResource("9_explosion_7")
+}],
+"loop": false,
+"name": &"explosion",
+"speed": 14.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("1_shell")
+}],
+"loop": true,
+"name": &"flight",
+"speed": 1.0
+}]

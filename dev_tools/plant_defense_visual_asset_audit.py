@@ -39,6 +39,15 @@ CORN_HEAD_PIVOT_IN_TEXTURE = (32, 32)
 CORN_MUZZLE_IN_HEAD_TEXTURE = (57, 33)
 CORN_FLASH_ANCHOR = (32, 32)
 CORN_SPIN_MUTABLE_BBOX = (33, 24, 55, 41)
+BAMBOO_BUILDING_MAX_VISIBLE_COLORS = 14
+BAMBOO_EXPLOSION_MAX_VISIBLE_COLORS = 12
+BAMBOO_BUILDING_SUBJECT_BBOX = (4, 2, 60, 62)
+BAMBOO_CHARGE_MUTABLE_RECTS = (
+    (16, 16, 27, 25),
+    (10, 24, 22, 35),
+    (32, 1, 54, 18),
+    (28, 37, 37, 46),
+)
 PREVIEW_ALIGNMENT_TOLERANCE_WORLD = 0.5
 
 WAREHOUSE_ASSET = TEXTURE_ROOT / "oak_warehouse/oak_warehouse.png"
@@ -74,6 +83,27 @@ VEGETATION_STAKE_ASSET = TEXTURE_ROOT / "vegetation_stake/vegetation_stake.png"
 VEGETATION_STAKE_GLOW = TEXTURE_ROOT / "vegetation_stake/vegetation_stake_glow.png"
 WATER_COLLECTOR_ASSET = TEXTURE_ROOT / "water_collector/water_collector.png"
 RESEARCH_CENTER_ASSET = TEXTURE_ROOT / "research_center/research_center.png"
+BAMBOO_SOURCE_ANCHOR = (
+    ROOT
+    / "dev_assets/source_images/plant_defense/bamboo_mortar"
+    / "bamboo_mortar_anchor_alpha.png"
+)
+BAMBOO_IDLE = TEXTURE_ROOT / "bamboo_mortar/idle.png"
+BAMBOO_CHARGE_FRAMES = tuple(
+    TEXTURE_ROOT / f"bamboo_mortar/charge_{index}.png"
+    for index in range(8)
+)
+BAMBOO_EXPLOSION_FRAMES = tuple(
+    TEXTURE_ROOT / f"bamboo_mortar/explosion_{index}.png"
+    for index in range(8)
+)
+BAMBOO_GLOW_MASK = TEXTURE_ROOT / "bamboo_mortar/glow_mask.png"
+BAMBOO_SHELL = TEXTURE_ROOT / "bamboo_mortar/shell.png"
+BAMBOO_BUILDING_FRAMES = (BAMBOO_IDLE, *BAMBOO_CHARGE_FRAMES)
+BAMBOO_FRAME_ASSETS = (
+    *BAMBOO_BUILDING_FRAMES,
+    *BAMBOO_EXPLOSION_FRAMES,
+)
 BUILDING_ASSETS = (
     WAREHOUSE_ASSET,
     AGAVE_ICON,
@@ -87,7 +117,9 @@ BUILDING_ASSETS = (
     VEGETATION_STAKE_GLOW,
     WATER_COLLECTOR_ASSET,
     RESEARCH_CENTER_ASSET,
+    *BAMBOO_FRAME_ASSETS,
 )
+AUDITED_ASSETS = (*BUILDING_ASSETS, BAMBOO_GLOW_MASK, BAMBOO_SHELL)
 
 
 def _relative(path: Path) -> str:
@@ -302,6 +334,88 @@ def _corn_family_metrics() -> dict[str, Any]:
     }
 
 
+def _inside_any_rect(
+    point: tuple[int, int],
+    rects: tuple[tuple[int, int, int, int], ...],
+) -> bool:
+    x, y = point
+    return any(
+        left <= x < right and top <= y < bottom
+        for left, top, right, bottom in rects
+    )
+
+
+def _visible_color_set(image: Image.Image) -> set[tuple[int, int, int]]:
+    return {
+        (red, green, blue)
+        for red, green, blue, alpha in image.convert("RGBA").getdata()
+        if alpha == 255
+    }
+
+
+def _bamboo_mortar_metrics() -> dict[str, Any]:
+    anchor = _load_rgba(BAMBOO_SOURCE_ANCHOR)
+    building_frames = [_load_rgba(path) for path in BAMBOO_BUILDING_FRAMES]
+    explosion_frames = [_load_rgba(path) for path in BAMBOO_EXPLOSION_FRAMES]
+    glow_mask = _load_rgba(BAMBOO_GLOW_MASK)
+    shell = _load_rgba(BAMBOO_SHELL)
+    immutable_change_counts = []
+    for frame in building_frames:
+        immutable_change_counts.append(
+            sum(
+                not _inside_any_rect(point, BAMBOO_CHARGE_MUTABLE_RECTS)
+                for point in _pixel_difference_positions(anchor, frame)
+            )
+        )
+    indicator_points = {
+        (x, y)
+        for y in range(glow_mask.height)
+        for x in range(glow_mask.width)
+        if glow_mask.getpixel((x, y))[3] > 0
+    }
+    return {
+        "anchor_size": list(anchor.size),
+        "anchor_subject_bbox": list(
+            anchor.getchannel("A").getbbox() or ()
+        ),
+        "building_union_visible_color_count": len(
+            set().union(
+                *(_visible_color_set(frame) for frame in building_frames)
+            )
+        ),
+        "explosion_union_visible_color_count": len(
+            set().union(
+                *(_visible_color_set(frame) for frame in explosion_frames)
+            )
+        ),
+        "immutable_change_counts": immutable_change_counts,
+        "upper_storage_loaded_in_idle": (
+            building_frames[0].getpixel((21, 20))[3] == 255
+            and building_frames[0].getpixel((21, 20))[:3] != (75, 58, 18)
+        ),
+        "upper_storage_empty_in_all_charge_frames": all(
+            frame.getpixel((21, 20)) == (75, 58, 18, 255)
+            for frame in building_frames[1:]
+        ),
+        "lower_decorative_bomb_preserved": all(
+            frame.getpixel((15, 29)) == building_frames[0].getpixel((15, 29))
+            for frame in building_frames[1:]
+        ),
+        "glow_mask_subset_of_all_building_frames": all(
+            all(frame.getpixel(point)[3] == 255 for point in indicator_points)
+            for frame in building_frames
+        ),
+        "glow_alpha_values": sorted(
+            {pixel[3] for pixel in glow_mask.getdata()}
+        ),
+        "shell_size": list(shell.size),
+        "shell_visible_color_count": len(_visible_color_set(shell)),
+        "shell_binary_alpha": {
+            pixel[3] for pixel in shell.getdata()
+        }.issubset({0, 255}),
+    }
+
+
 def _collect_failures(report: dict[str, Any]) -> list[str]:
     failures: list[str] = []
     audits = {entry["path"]: entry for entry in report["assets"]}
@@ -479,11 +593,135 @@ def _collect_failures(report: dict[str, Any]) -> list[str]:
             "Corn body/head pivot recomposition must match its placement icon exactly"
         )
 
+    failures.extend(_collect_bamboo_failures(report))
+    return failures
+
+
+def _collect_bamboo_failures(report: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    audits = {entry["path"]: entry for entry in report["assets"]}
+    for path in BAMBOO_FRAME_ASSETS:
+        audit = audits[_relative(path)]
+        if audit["size"] != [SOURCE_SIDE, SOURCE_SIDE]:
+            failures.append(f"{audit['path']} must be exactly 64x64")
+        if not audit["non_empty"]:
+            failures.append(f"{audit['path']} must contain visible pixels")
+        if not audit["binary_alpha"]:
+            failures.append(f"{audit['path']} must use strict binary alpha")
+        if not audit["transparent_rgb_clean"]:
+            failures.append(
+                f"{audit['path']} contains RGB data in transparent texels"
+            )
+        failed_import_keys = [
+            key for key, passed in audit["import_contract"].items() if not passed
+        ]
+        if failed_import_keys:
+            failures.append(
+                f"{audit['path']} violates import contract: "
+                f"{', '.join(failed_import_keys)}"
+            )
+    for path in BAMBOO_BUILDING_FRAMES:
+        audit = audits[_relative(path)]
+        if tuple(audit["subject_bbox"] or ()) != BAMBOO_BUILDING_SUBJECT_BBOX:
+            failures.append(
+                f"{audit['path']} must retain Bamboo Mortar bbox "
+                f"{BAMBOO_BUILDING_SUBJECT_BBOX}; got {audit['subject_bbox']}"
+            )
+        if audit["visible_color_count"] > BAMBOO_BUILDING_MAX_VISIBLE_COLORS:
+            failures.append(
+                f"{audit['path']} exceeds the Bamboo Mortar "
+                f"{BAMBOO_BUILDING_MAX_VISIBLE_COLORS}-color limit"
+            )
+    for path in BAMBOO_EXPLOSION_FRAMES:
+        audit = audits[_relative(path)]
+        if audit["visible_color_count"] > BAMBOO_EXPLOSION_MAX_VISIBLE_COLORS:
+            failures.append(
+                f"{audit['path']} exceeds the Bamboo Mortar explosion "
+                f"{BAMBOO_EXPLOSION_MAX_VISIBLE_COLORS}-color limit"
+            )
+
+    bamboo_metrics = report["bamboo_mortar_metrics"]
+    if bamboo_metrics["anchor_size"] != [SOURCE_SIDE, SOURCE_SIDE]:
+        failures.append("Bamboo Mortar approved anchor must remain exactly 64x64")
+    if (
+        tuple(bamboo_metrics["anchor_subject_bbox"])
+        != BAMBOO_BUILDING_SUBJECT_BBOX
+    ):
+        failures.append(
+            "Bamboo Mortar approved anchor and runtime frames must share "
+            "the same stable subject bbox"
+        )
+    if bamboo_metrics["building_union_visible_color_count"] > 14:
+        failures.append(
+            "The complete Bamboo Mortar building family must share no more "
+            "than 14 visible colors"
+        )
+    if bamboo_metrics["explosion_union_visible_color_count"] > 12:
+        failures.append(
+            "The complete Bamboo Mortar explosion family must share no more "
+            "than 12 visible colors"
+        )
+    if any(bamboo_metrics["immutable_change_counts"]):
+        failures.append(
+            "Bamboo Mortar idle/charge frames changed approved anchor pixels "
+            "outside the four declared gameplay regions"
+        )
+    if not bamboo_metrics["upper_storage_loaded_in_idle"]:
+        failures.append(
+            "Bamboo Mortar idle frame must visibly retain the upper decorative bomb"
+        )
+    if not bamboo_metrics["upper_storage_empty_in_all_charge_frames"]:
+        failures.append(
+            "Every Bamboo Mortar charge frame must show the upper storage tube empty"
+        )
+    if not bamboo_metrics["lower_decorative_bomb_preserved"]:
+        failures.append(
+            "Every Bamboo Mortar charge frame must preserve the lower decorative bomb"
+        )
+    if not bamboo_metrics["glow_mask_subset_of_all_building_frames"]:
+        failures.append(
+            "Bamboo Mortar glow mask must remain inside the indicator pixels "
+            "of every building frame"
+        )
+    if bamboo_metrics["shell_size"][0] > 12 or bamboo_metrics["shell_size"][1] > 12:
+        failures.append("Bamboo Mortar shell must fit within a native 12x12 canvas")
+    if (
+        not bamboo_metrics["shell_binary_alpha"]
+        or bamboo_metrics["shell_visible_color_count"] > 10
+    ):
+        failures.append(
+            "Bamboo Mortar shell must use binary alpha and no more than 10 colors"
+        )
+    for path, expected_size in (
+        (BAMBOO_GLOW_MASK, [64, 64]),
+        (BAMBOO_SHELL, [12, 12]),
+    ):
+        audit = audits[_relative(path)]
+        if audit["size"] != expected_size:
+            failures.append(
+                f"{audit['path']} must be exactly "
+                f"{expected_size[0]}x{expected_size[1]}"
+            )
+        if not audit["non_empty"] or not audit["transparent_rgb_clean"]:
+            failures.append(
+                f"{audit['path']} must be non-empty with clean transparent RGB"
+            )
+        if not audit["binary_alpha"]:
+            failures.append(f"{audit['path']} must use strict binary alpha")
+        failed_import_keys = [
+            key for key, passed in audit["import_contract"].items() if not passed
+        ]
+        if failed_import_keys:
+            failures.append(
+                f"{audit['path']} violates import contract: "
+                f"{', '.join(failed_import_keys)}"
+            )
+
     return failures
 
 
 def build_report() -> dict[str, Any]:
-    asset_audits = [_audit_png(path) for path in BUILDING_ASSETS]
+    asset_audits = [_audit_png(path) for path in AUDITED_ASSETS]
     audits = {entry["path"]: entry for entry in asset_audits}
     body_footpoints = {
         _relative(path): list(_footpoint(audits[_relative(path)]))
@@ -509,6 +747,18 @@ def build_report() -> dict[str, Any]:
             "corn_muzzle": list(CORN_MUZZLE_IN_HEAD_TEXTURE),
             "corn_flash_anchor": list(CORN_FLASH_ANCHOR),
             "corn_spin_mutable_bbox_exclusive": list(CORN_SPIN_MUTABLE_BBOX),
+            "bamboo_building_max_visible_colors": (
+                BAMBOO_BUILDING_MAX_VISIBLE_COLORS
+            ),
+            "bamboo_explosion_max_visible_colors": (
+                BAMBOO_EXPLOSION_MAX_VISIBLE_COLORS
+            ),
+            "bamboo_building_subject_bbox": list(
+                BAMBOO_BUILDING_SUBJECT_BBOX
+            ),
+            "bamboo_charge_mutable_rects_exclusive": [
+                list(rect) for rect in BAMBOO_CHARGE_MUTABLE_RECTS
+            ],
             "preview_alignment_tolerance_world": PREVIEW_ALIGNMENT_TOLERANCE_WORLD,
         },
         "assets": asset_audits,
@@ -519,11 +769,18 @@ def build_report() -> dict[str, Any]:
             for path in CORN_BODY_FRAMES
         },
         "corn_family_metrics": _corn_family_metrics(),
+        "bamboo_mortar_metrics": _bamboo_mortar_metrics(),
     }
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--scope",
+        choices=("all", "bamboo"),
+        default="all",
+        help="Audit every plant asset or only the Bamboo Mortar family.",
+    )
     parser.add_argument(
         "--report",
         type=Path,
@@ -532,7 +789,12 @@ def main() -> None:
     args = parser.parse_args()
 
     report = build_report()
-    failures = _collect_failures(report)
+    failures = (
+        _collect_bamboo_failures(report)
+        if args.scope == "bamboo"
+        else _collect_failures(report)
+    )
+    report["scope"] = args.scope
     report["passed"] = not failures
     report["failures"] = failures
     if args.report is not None:

@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "generation_mode": "built-in imagegen",
+  "use_case": "stylized-concept",
+  "asset_family": "bamboo_mortar",
+  "anchor": {
+    "path": "dev_assets/source_images/plant_defense/bamboo_mortar/bamboo_mortar_anchor_alpha.png",
+    "role": "用户确认的64×64唯一主体基准；动画中除炮口、前方呼吸灯与两个储弹筒开口外均不可改动。"
+  },
+  "generated_sources": [
+    {
+      "path": "dev_assets/source_images/plant_defense/bamboo_mortar/bamboo_mortar_charge_imagegen_magenta.png",
+      "role": "8帧炮口升温、橙色呼吸灯和储弹筒装填语义参考；不直接覆盖主体像素。"
+    },
+    {
+      "path": "dev_assets/source_images/plant_defense/bamboo_mortar/bamboo_mortar_explosion_imagegen_magenta.png",
+      "role": "8帧黄橙冲击、棕色尘环与绿色竹叶碎片的逐格爆炸源。"
+    }
+  ],
+  "production_contract": {
+    "building_canvas": [64, 64],
+    "world_scale": [0.5, 0.5],
+    "charge_frames": 8,
+    "charge_fps": 2,
+    "explosion_canvas": [64, 64],
+    "explosion_frames": 8,
+    "explosion_fps": 14,
+    "building_visible_color_limit": 14,
+    "explosion_visible_color_limit": 12,
+    "alpha": "binary; transparent RGB zero",
+    "filter": "nearest; no mipmaps; lossless"
+  },
+  "processor": {
+    "path": "dev_tools/build_bamboo_mortar_assets.py",
+    "write_command": "python dev_tools/build_bamboo_mortar_assets.py",
+    "check_command": "python dev_tools/build_bamboo_mortar_assets.py --check-only",
+    "unsafe_grid_compression": false
+  }
+}

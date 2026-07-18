@@ -19,6 +19,7 @@ const PROJECTILE_SCRIPT_PATHS := {
 	"res://scene/enemy/fire_sorcerer_fireball_volley.gd": true,
 	"res://scene/enemy/yuanshi_insect_fire_projectile.gd": true,
 	"res://scene/plant_defense/agave_cannonball.gd": true,
+	"res://scene/plant_defense/bamboo_mortar_shell.gd": true,
 	"res://scene/player/tiyi/tiyi_sniper_bullet.gd": true,
 	"res://scene/player/weishidaier/weishidaier_skill1_bomb.gd": true,
 	"res://scene/boss/linglan/linglan_skill1_sakura_bullet.gd": true,

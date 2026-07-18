@@ -1,8 +1,9 @@
 extends SceneTree
 
 # Integrated regression probe for the reported high-pressure hitch: a real
-# GameTowerDefense scene, live pathfinding enemies, real Corn/Agave plants,
-# pooled projectiles/effects and the production follow camera all run together.
+# GameTowerDefense scene, live pathfinding enemies, real Corn/Agave/Bamboo
+# plants, pooled projectiles/effects and the production follow camera all run
+# together.
 #
 # Run with --headless --fixed-fps 60. Timings are diagnostic rather than tied
 # to a machine-specific pass threshold; semantic and lifecycle invariants are
@@ -20,8 +21,14 @@ const CORN_CONFIG := preload(
 const AGAVE_CONFIG := preload(
 	"res://resources/config/plant_defense/agave_cannon.tres"
 )
+const BAMBOO_MORTAR_CONFIG := preload(
+	"res://resources/config/plant_defense/bamboo_mortar.tres"
+)
 const AGAVE_CANNONBALL_SCENE := preload(
 	"res://scene/plant_defense/agave_cannonball.tscn"
+)
+const BAMBOO_MORTAR_SHELL_SCENE := preload(
+	"res://scene/plant_defense/bamboo_mortar_shell.tscn"
 )
 const ENEMY_HIT_EFFECT_SCENE := preload(
 	"res://scene/enemy/enemy_hit_effect.tscn"
@@ -32,7 +39,10 @@ const BASIC_ENEMY_COUNT := 240
 const SHELL_ENEMY_COUNT := ENEMY_COUNT - BASIC_ENEMY_COUNT
 const CORN_TOWER_COUNT := 64
 const AGAVE_TOWER_COUNT := 32
-const TOTAL_TOWER_COUNT := CORN_TOWER_COUNT + AGAVE_TOWER_COUNT
+const BAMBOO_MORTAR_COUNT := 32
+const TOTAL_TOWER_COUNT := (
+	CORN_TOWER_COUNT + AGAVE_TOWER_COUNT + BAMBOO_MORTAR_COUNT
+)
 const FIXTURE_CENTER := Vector2(512.0, 352.0)
 const FIXED_SEED := 20260715
 const PROBE_ENEMY_HEALTH := 1_000_000_000
@@ -52,6 +62,7 @@ var enemies: Array[Enemy] = []
 var initial_enemy_positions := PackedVector2Array()
 var corn_towers: Array[CornMachineGun] = []
 var agave_towers: Array[AgaveCannon] = []
+var bamboo_mortars: Array[BambooMortar] = []
 var tower_cells: Array[Vector2i] = []
 var forbidden_enemy_cells: Dictionary[Vector2i, bool] = {}
 var phase_results: Dictionary = {}
@@ -96,6 +107,10 @@ func _run() -> void:
 	_prewarm_enemy_profiles()
 	_expect(corn_towers.size() == CORN_TOWER_COUNT, "Fixture must create 64 Corn towers.")
 	_expect(agave_towers.size() == AGAVE_TOWER_COUNT, "Fixture must create 32 Agave towers.")
+	_expect(
+		bamboo_mortars.size() == BAMBOO_MORTAR_COUNT,
+		"Fixture must create 32 Bamboo Mortars."
+	)
 	_expect(enemies.size() == ENEMY_COUNT, "Fixture must create 300 live enemies.")
 	_expect(
 		game.combat_target_index.enemies_by_net_id.size() == ENEMY_COUNT,
@@ -104,6 +119,7 @@ func _run() -> void:
 	if (
 		corn_towers.size() != CORN_TOWER_COUNT
 		or agave_towers.size() != AGAVE_TOWER_COUNT
+		or bamboo_mortars.size() != BAMBOO_MORTAR_COUNT
 		or enemies.size() != ENEMY_COUNT
 	):
 		await _finish()
@@ -125,7 +141,7 @@ func _run() -> void:
 	print(
 		(
 			"COMBINED_HORDE_TURRET_FIXTURE enemies=%d basic=%d shell=%d "
-			+ "towers=%d corn=%d agave=%d samples=%d warmup=%d "
+			+ "towers=%d corn=%d agave=%d bamboo=%d samples=%d warmup=%d "
 			+ "physics_hz=%d renderer=%s nodes=%d pools=%s"
 		)
 		% [
@@ -135,6 +151,7 @@ func _run() -> void:
 			TOTAL_TOWER_COUNT,
 			corn_towers.size(),
 			agave_towers.size(),
+			bamboo_mortars.size(),
 			SAMPLE_FRAMES,
 			PHASE_WARMUP_FRAMES,
 			Engine.physics_ticks_per_second,
@@ -171,17 +188,19 @@ func _run() -> void:
 	var moving_p95 := float(moving_summary["p95"])
 	var total_target_locks := 0
 	var total_hitscan_rays := 0
+	var total_bamboo_fires := 0
 	for phase_result_variant in phase_results.values():
 		var phase_result := phase_result_variant as Dictionary
 		total_target_locks += int(phase_result.get("corn_target_locks", 0))
 		total_hitscan_rays += int(phase_result.get("corn_hitscan_rays", 0))
+		total_bamboo_fires += int(phase_result.get("bamboo_fires", 0))
 
 	print(
 		(
 			"COMBINED_HORDE_TURRET_SUMMARY stationary_wall_ms=%s moving_wall_ms=%s "
 			+ "movement_increment_p50_ms=%.3f movement_increment_p95_ms=%.3f "
 			+ "movement_ratio_p50=%.3f corn_target_locks=%d corn_hitscan_rays=%d "
-			+ "nodes_stable=%d/%d index_size=%d pools_final=%s"
+			+ "bamboo_fires=%d nodes_stable=%d/%d index_size=%d pools_final=%s"
 		)
 		% [
 			_format_summary(stationary_summary),
@@ -191,6 +210,7 @@ func _run() -> void:
 			moving_p50 / maxf(stationary_p50, 0.001),
 			total_target_locks,
 			total_hitscan_rays,
+			total_bamboo_fires,
 			stable_node_baseline,
 			stable_node_final,
 			game.combat_target_index.enemies_by_net_id.size(),
@@ -208,11 +228,15 @@ func _run() -> void:
 	)
 	_expect(
 		_gameplay_projectile_pool_outstanding(stable_pool_final) == 0,
-		"Agave gameplay projectiles must fully return after quiescing."
+		"Agave and Bamboo gameplay projectiles must fully return after quiescing."
 	)
 	_expect(
 		game.combat_target_index.enemies_by_net_id.size() == ENEMY_COUNT,
 		"CombatTargetIndex membership must remain stable across all phases."
+	)
+	_expect(
+		total_bamboo_fires > 0,
+		"Integrated phases must complete at least one real Bamboo Mortar launch."
 	)
 	_expect(_count_alive_enemies() == ENEMY_COUNT, "No stress-fixture enemy may die.")
 	_expect(_count_alive_towers() == TOTAL_TOWER_COUNT, "No stress-fixture tower may die.")
@@ -246,7 +270,7 @@ func _prepare_player_and_camera() -> void:
 
 func _build_tower_fixture() -> void:
 	var positions := _build_tower_positions()
-	_expect(positions.size() >= TOTAL_TOWER_COUNT, "Map must provide 96 walkable tower cells.")
+	_expect(positions.size() >= TOTAL_TOWER_COUNT, "Map must provide 128 walkable tower cells.")
 	if positions.size() < TOTAL_TOWER_COUNT:
 		return
 	var empty_footprint: Array[Vector2i] = []
@@ -274,18 +298,40 @@ func _build_tower_fixture() -> void:
 			corn_towers.append(corn)
 			continue
 
-		var agave := AGAVE_CONFIG.plant_scene.instantiate() as AgaveCannon
-		if agave == null:
+		if tower_index < CORN_TOWER_COUNT + AGAVE_TOWER_COUNT:
+			var agave := AGAVE_CONFIG.plant_scene.instantiate() as AgaveCannon
+			if agave == null:
+				continue
+			game.plant_container.add_child(agave)
+			agave.global_position = tower_position
+			agave.set_meta(&"net_id", tower_index + 1)
+			agave.setup(AGAVE_CONFIG, game.player, empty_footprint)
+			agave.max_health = PROBE_PLANT_HEALTH
+			agave.current_health = PROBE_PLANT_HEALTH
+			agave.set_idle_aim_random_seed(FIXED_SEED + tower_index)
+			agave.attack_timer.stop()
+			agave_towers.append(agave)
 			continue
-		game.plant_container.add_child(agave)
-		agave.global_position = tower_position
-		agave.set_meta(&"net_id", tower_index + 1)
-		agave.setup(AGAVE_CONFIG, game.player, empty_footprint)
-		agave.max_health = PROBE_PLANT_HEALTH
-		agave.current_health = PROBE_PLANT_HEALTH
-		agave.set_idle_aim_random_seed(FIXED_SEED + tower_index)
-		agave.attack_timer.stop()
-		agave_towers.append(agave)
+
+		var mortar := (
+			BAMBOO_MORTAR_CONFIG.plant_scene.instantiate()
+			as BambooMortar
+		)
+		if mortar == null:
+			continue
+		game.plant_container.add_child(mortar)
+		mortar.global_position = tower_position
+		mortar.set_meta(&"net_id", tower_index + 1)
+		mortar.setup(
+			BAMBOO_MORTAR_CONFIG,
+			game.player,
+			empty_footprint
+		)
+		mortar.max_health = PROBE_PLANT_HEALTH
+		mortar.current_health = PROBE_PLANT_HEALTH
+		mortar.attack_timer.stop()
+		mortar.target_track_timer.stop()
+		bamboo_mortars.append(mortar)
 
 
 func _build_tower_positions() -> PackedVector2Array:
@@ -401,6 +447,7 @@ func _measure_phase(label: String, should_move: bool) -> void:
 
 	var target_locks_before := _get_corn_target_lock_count()
 	var hitscan_rays_before := _get_corn_hitscan_ray_count()
+	var bamboo_fires_before := _get_bamboo_fire_count()
 	var enemy_health_before := _get_total_enemy_health()
 	var node_count_before := _count_subtree_nodes(game)
 	var wall_samples: Array[float] = []
@@ -444,6 +491,7 @@ func _measure_phase(label: String, should_move: bool) -> void:
 	_release_movement_input()
 	var target_locks := _get_corn_target_lock_count() - target_locks_before
 	var hitscan_rays := _get_corn_hitscan_ray_count() - hitscan_rays_before
+	var bamboo_fires := _get_bamboo_fire_count() - bamboo_fires_before
 	var enemy_damage := enemy_health_before - _get_total_enemy_health()
 	var node_count_live := _count_subtree_nodes(game)
 	var pool_metrics_live := _capture_relevant_pool_metrics()
@@ -465,6 +513,7 @@ func _measure_phase(label: String, should_move: bool) -> void:
 		"collision_pairs": collision_summary,
 		"corn_target_locks": target_locks,
 		"corn_hitscan_rays": hitscan_rays,
+		"bamboo_fires": bamboo_fires,
 		"enemy_damage": enemy_damage,
 		"flow_builds": flow_builds,
 		"target_cell_transitions": target_cell_transitions,
@@ -478,7 +527,7 @@ func _measure_phase(label: String, should_move: bool) -> void:
 			"COMBINED_HORDE_TURRET_PHASE label=%s moving=%s wall_ms=%s "
 			+ "physics_ms=%s collision_pairs=%s displacement=%.1f cell_transitions=%d "
 			+ "flow_builds=%d corn_target_locks=%d corn_hitscan_rays=%d enemy_damage=%d "
-			+ "nodes=%d/%d/%d pools_live=%s pools_drained=%s"
+			+ "bamboo_fires=%d nodes=%d/%d/%d pools_live=%s pools_drained=%s"
 		)
 		% [
 			label,
@@ -492,6 +541,7 @@ func _measure_phase(label: String, should_move: bool) -> void:
 			target_locks,
 			hitscan_rays,
 			enemy_damage,
+			bamboo_fires,
 			node_count_before,
 			node_count_live,
 			node_count_drained,
@@ -528,7 +578,7 @@ func _measure_phase(label: String, should_move: bool) -> void:
 	)
 	_expect(
 		_gameplay_projectile_pool_outstanding(pool_metrics_drained) == 0,
-		"%s must return all Agave gameplay projectiles." % label
+		"%s must return all Agave and Bamboo gameplay projectiles." % label
 	)
 
 
@@ -842,6 +892,26 @@ func _start_staggered_tower_combat(synchronize_corn: bool = false) -> void:
 		agave.attack_timer.start(agave_delay)
 		agave.attack_timer.wait_time = authored_interval
 
+	for mortar_index in range(bamboo_mortars.size()):
+		var mortar := bamboo_mortars[mortar_index]
+		mortar.max_health = PROBE_PLANT_HEALTH
+		mortar.current_health = PROBE_PLANT_HEALTH
+		mortar.pending_target = null
+		mortar.combat_phase = BambooMortar.CombatPhase.IDLE
+		mortar.main_sprite.play(&"idle")
+		mortar.call("_set_glow_state", false, 0)
+		mortar.target_track_timer.stop()
+		var authored_interval := BAMBOO_MORTAR_CONFIG.get_attack_interval()
+		var mortar_cycle := (
+			authored_interval + BambooMortar.WINDUP_DURATION_SECONDS
+		)
+		var mortar_delay := 0.10 + fposmod(
+			float(mortar_index) * 0.61803398875 * mortar_cycle,
+			maxf(mortar_cycle - 0.10, 0.10)
+		)
+		mortar.attack_timer.start(mortar_delay)
+		mortar.attack_timer.wait_time = authored_interval
+
 
 func _stop_tower_combat() -> void:
 	for corn in corn_towers:
@@ -856,6 +926,13 @@ func _stop_tower_combat() -> void:
 		agave.projectile_spawned_for_current_attack = false
 		agave.cannon_sprite.play(&"idle")
 		agave.fire_audio.stop()
+	for mortar in bamboo_mortars:
+		mortar.attack_timer.stop()
+		mortar.target_track_timer.stop()
+		mortar.pending_target = null
+		mortar.combat_phase = BambooMortar.CombatPhase.IDLE
+		mortar.main_sprite.play(&"idle")
+		mortar.call("_set_glow_state", false, 0)
 
 
 func _quiesce_fixture() -> void:
@@ -943,6 +1020,13 @@ func _get_corn_hitscan_ray_count() -> int:
 	return result
 
 
+func _get_bamboo_fire_count() -> int:
+	var result := 0
+	for mortar in bamboo_mortars:
+		result += mortar.get_completed_authoritative_launch_count()
+	return result
+
+
 func _count_alive_enemies() -> int:
 	var result := 0
 	for enemy in enemies:
@@ -967,6 +1051,9 @@ func _count_alive_towers() -> int:
 	for agave in agave_towers:
 		if agave != null and is_instance_valid(agave) and not agave.is_dead:
 			result += 1
+	for mortar in bamboo_mortars:
+		if mortar != null and is_instance_valid(mortar) and not mortar.is_dead:
+			result += 1
 	return result
 
 
@@ -977,6 +1064,9 @@ func _capture_relevant_pool_metrics() -> Dictionary:
 		"agave": game.session_object_pool.get_metrics(
 			AGAVE_CANNONBALL_SCENE.resource_path
 		),
+		"bamboo": game.session_object_pool.get_metrics(
+			BAMBOO_MORTAR_SHELL_SCENE.resource_path
+		),
 		"enemy_hit": game.session_object_pool.get_metrics(
 			ENEMY_HIT_EFFECT_SCENE.resource_path
 		),
@@ -985,7 +1075,7 @@ func _capture_relevant_pool_metrics() -> Dictionary:
 
 func _format_relevant_pool_metrics(metrics_by_label: Dictionary) -> String:
 	var parts := PackedStringArray()
-	for label in [&"agave", &"enemy_hit"]:
+	for label in [&"agave", &"bamboo", &"enemy_hit"]:
 		var metrics := metrics_by_label.get(String(label), {}) as Dictionary
 		parts.append(
 			"%s(c=%d,use=%d,peak=%d,over=%d,drop=%d,pending=%d)"
@@ -1003,7 +1093,7 @@ func _format_relevant_pool_metrics(metrics_by_label: Dictionary) -> String:
 
 
 func _relevant_pool_created_counts_match(before: Dictionary, after: Dictionary) -> bool:
-	for label in ["agave", "enemy_hit"]:
+	for label in ["agave", "bamboo", "enemy_hit"]:
 		var before_metrics := before.get(label, {}) as Dictionary
 		var after_metrics := after.get(label, {}) as Dictionary
 		if int(before_metrics.get("created", -1)) != int(after_metrics.get("created", -2)):
@@ -1012,8 +1102,14 @@ func _relevant_pool_created_counts_match(before: Dictionary, after: Dictionary) 
 
 
 func _gameplay_projectile_pool_outstanding(metrics_by_label: Dictionary) -> int:
-	var metrics := metrics_by_label.get("agave", {}) as Dictionary
-	return int(metrics.get("in_use", 0)) + int(metrics.get("pending_release", 0))
+	var agave_metrics := metrics_by_label.get("agave", {}) as Dictionary
+	var bamboo_metrics := metrics_by_label.get("bamboo", {}) as Dictionary
+	return (
+		int(agave_metrics.get("in_use", 0))
+		+ int(agave_metrics.get("pending_release", 0))
+		+ int(bamboo_metrics.get("in_use", 0))
+		+ int(bamboo_metrics.get("pending_release", 0))
+	)
 
 
 func _count_subtree_nodes(node: Node) -> int:

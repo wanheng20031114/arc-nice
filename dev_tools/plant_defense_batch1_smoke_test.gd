@@ -25,6 +25,7 @@ var player: Player
 var plant_system: PlantSystem
 var plant_container: Node2D
 var agave_config: PlantDefenseConfig
+var bamboo_mortar_config: PlantDefenseConfig
 var corn_config: PlantDefenseConfig
 var vegetation_stake_config: PlantDefenseConfig
 
@@ -88,6 +89,7 @@ func _run() -> void:
 	plant_system = null
 	plant_container = null
 	agave_config = null
+	bamboo_mortar_config = null
 	corn_config = null
 	vegetation_stake_config = null
 	Input.action_release(&"plant")
@@ -136,18 +138,28 @@ func _build_fixture() -> void:
 		PlantSystem.DEFAULT_PLACEMENT_AREA
 	)
 	agave_config = PlantDefenseRegistry.get_config(&"agave_cannon")
+	bamboo_mortar_config = PlantDefenseRegistry.get_config(&"bamboo_mortar")
 	corn_config = PlantDefenseRegistry.get_config(&"corn_machine_gun")
 	vegetation_stake_config = PlantDefenseRegistry.get_config(&"vegetation_stake")
 
 
 func _test_config_and_scene_contracts() -> void:
 	_expect(agave_config != null and agave_config.is_valid(), "龙舌兰配置必须有效。")
+	_expect(
+		bamboo_mortar_config != null and bamboo_mortar_config.is_valid(),
+		"竹筒迫击炮配置必须有效。"
+	)
 	_expect(corn_config != null and corn_config.is_valid(), "玉米机枪塔配置必须有效。")
 	_expect(
 		vegetation_stake_config != null and vegetation_stake_config.is_valid(),
 		"植被桩配置必须有效。"
 	)
-	if agave_config == null or corn_config == null or vegetation_stake_config == null:
+	if (
+		agave_config == null
+		or bamboo_mortar_config == null
+		or corn_config == null
+		or vegetation_stake_config == null
+	):
 		return
 	var oak_config := PlantDefenseRegistry.get_config(&"oak_warehouse")
 	_expect(oak_config != null and oak_config.is_valid(), "橡木仓库配置必须有效。")
@@ -166,15 +178,36 @@ func _test_config_and_scene_contracts() -> void:
 		return
 	var registered_configs := PlantDefenseRegistry.get_all_configs()
 	_expect(
-		registered_configs.size() == 7
+		registered_configs.size() == 8
 		and registered_configs.has(agave_config)
+		and registered_configs.has(bamboo_mortar_config)
 		and registered_configs.has(corn_config)
 		and registered_configs.has(oak_config)
 		and registered_configs.has(vegetation_stake_config)
 		and registered_configs.has(wood_station_config)
 		and registered_configs.has(water_collector_config)
-		and registered_configs.has(research_center_config),
-		"植物注册表必须公开五种既有植物、水源采集器与科研中心。"
+		and registered_configs.has(research_center_config)
+		and registered_configs.back() == bamboo_mortar_config,
+		"植物注册表必须公开七种既有植物与全新的竹筒迫击炮。"
+	)
+	_expect(
+		bamboo_mortar_config.max_health == 2000
+		and bamboo_mortar_config.physical_defense == 10
+		and bamboo_mortar_config.magic_defense == 20
+		and bamboo_mortar_config.attack_damage == 100
+		and is_equal_approx(
+			bamboo_mortar_config.get_attack_interval(),
+			2.0
+		)
+		and is_equal_approx(
+			bamboo_mortar_config.attack_range,
+			160.0
+		)
+		and bamboo_mortar_config.footprint_size == Vector2i(2, 2)
+		and bamboo_mortar_config.placement_surface
+		== PlantDefenseConfig.PlacementSurface.GRASS
+		and bamboo_mortar_config.supports_multiplayer,
+		"竹筒迫击炮必须拥有2000生命、10物防、20法防、100中心伤害、2秒冷却、160范围并占草地2×2格。"
 	)
 	_expect(
 		research_center_config.max_health == 2800
@@ -1316,8 +1349,11 @@ func _test_realtime_selection_and_cancel() -> void:
 	_expect(controller.is_selecting(), "打开后状态必须为SELECTING。")
 	_expect(controller.selection_hud.is_open(), "真实plant动作输入必须显示植物选择界面。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 7
+		controller.selection_hud.available_configs.size() == 8
 		and controller.selection_hud.available_configs.has(agave_config)
+		and controller.selection_hud.available_configs.has(
+			bamboo_mortar_config
+		)
 		and controller.selection_hud.available_configs.has(corn_config)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"oak_warehouse")
@@ -1332,8 +1368,8 @@ func _test_realtime_selection_and_cancel() -> void:
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"research_center")
 		)
-		and controller.selection_hud.cards.size() == 7,
-		"单人植物选择界面必须生成五张既有卡片、水源采集器与科研中心卡片。"
+		and controller.selection_hud.cards.size() == 8,
+		"单人植物选择界面必须生成七张既有卡片与竹筒迫击炮卡片。"
 	)
 	var agave_card: PlantSelectionCard = null
 	var corn_card: PlantSelectionCard = null
@@ -1573,8 +1609,11 @@ func _test_multiplayer_authority_contracts() -> void:
 	controller.set_multiplayer_request_mode(true)
 	_expect(controller.open_selection(), "多人植物选择必须仍可打开。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 7
+		controller.selection_hud.available_configs.size() == 8
 		and controller.selection_hud.available_configs.has(agave_config)
+		and controller.selection_hud.available_configs.has(
+			bamboo_mortar_config
+		)
 		and controller.selection_hud.available_configs.has(corn_config)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"oak_warehouse")
@@ -1589,8 +1628,8 @@ func _test_multiplayer_authority_contracts() -> void:
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"research_center")
 		)
-		and controller.selection_hud.cards.size() == 7,
-		"多人植物选择必须公开五张既有卡片、水源采集器与科研中心，共七张卡片。"
+		and controller.selection_hud.cards.size() == 8,
+		"多人植物选择必须公开七张既有卡片与竹筒迫击炮，共八张卡片。"
 	)
 	controller.cancel_placement()
 	var placement_requests: Array[Dictionary] = []

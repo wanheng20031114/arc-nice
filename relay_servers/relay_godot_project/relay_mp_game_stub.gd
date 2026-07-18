@@ -499,6 +499,17 @@ func net_plant_projectile_visual(
 ) -> void:
 	pass
 
+@rpc("authority", "call_remote", "reliable", 5)
+func net_bamboo_mortar_visual_batch(
+	plant_net_ids: PackedInt32Array,
+	action_ids: PackedInt32Array,
+	stages: PackedByteArray,
+	spawn_positions: PackedVector2Array,
+	landing_positions: PackedVector2Array,
+	host_action_times: PackedFloat64Array
+) -> void:
+	pass
+
 @rpc("authority", "call_remote", "unreliable_ordered", 4)
 func net_corn_machine_gun_burst_batch(
 	plant_net_ids: PackedInt32Array,
