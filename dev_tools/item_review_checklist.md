@@ -11,7 +11,7 @@
 | [ ] | `pickup_health` | 生命药瓶 | 生命 | 0.0 | 恢复10点生命值；满血拾取时放入背包。 | `resources/config/pickups/pickup_health.tres` |  |
 | [ ] | `pickup_rapid` | 射速道具 | 射速 | 5.0 | 5秒内射速x2。 | `resources/config/pickups/pickup_rapid.tres` |  |
 | [ ] | `pickup_speed` | 移速道具 | 移速 | 5.0 | 5秒内移动速度+25%。 | `resources/config/pickups/pickup_speed.tres` |  |
-| [ ] | `pickup_spiral` | 雪狼破军 | 螺旋弹幕 | 5.0 | 5秒内进入武装螺旋射击，射速x10。 | `resources/config/pickups/pickup_spiral.tres` |  |
+| [ ] | `pickup_spiral` | 雪狼破军 | 专属强化 | 5.0 | 远程角色武装螺旋射击；锄头猫猫召出双剑，接触造成30点物理伤害。 | `resources/config/pickups/pickup_spiral.tres` |  |
 | [ ] | `pickup_tenpura` | 天妇罗道具 | 天妇罗 | 5.0 | 5秒内移动速度变为20%。 | `resources/config/pickups/pickup_tenpura.tres` |  |
 
 ## 收藏品

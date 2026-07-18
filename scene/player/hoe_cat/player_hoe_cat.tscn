@@ -21,12 +21,18 @@
 [ext_resource type="AudioStream" uid="uid://cag0ma8vmfwx7" path="res://resources/audio/capoo_sword_slash_heavy.wav" id="19_whirlwind_audio"]
 [ext_resource type="Shader" uid="uid://cci1u78jt4lto" path="res://scene/player/hoe_cat/player_hoe_cat_basic_slash_glow.gdshader" id="20_basic_slash_glow"]
 [ext_resource type="PackedScene" path="res://scene/player/effects/dash_ready_indicator.tscn" id="21_dash_ready"]
+[ext_resource type="Script" path="res://scene/player/hoe_cat/hoe_cat_snow_wolf_sword_orbit.gd" id="22_sword_orbit_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/player/hoe_cat/snow_wolf_pojun_sword.png" id="23_sword_texture"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_basic_attack"]
 radius = 48.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_whirlwind"]
 radius = 62.4
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_snow_wolf_sword"]
+resource_local_to_scene = true
+size = Vector2(22, 6)
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_hoe_cat"]
 resource_local_to_scene = true
@@ -129,6 +135,41 @@ texture_filter = 1
 material = SubResource("ShaderMaterial_hoe_cat")
 sprite_frames = ExtResource("18_whirlwind_body_frames")
 animation = &"whirlwind"
+
+[node name="SnowWolfSwordOrbit" type="Area2D" parent="."]
+visible = false
+z_index = 5
+collision_layer = 0
+collision_mask = 4
+monitoring = false
+monitorable = false
+script = ExtResource("22_sword_orbit_script")
+
+[node name="VisualRoot" type="Node2D" parent="SnowWolfSwordOrbit"]
+
+[node name="SwordA" type="Sprite2D" parent="SnowWolfSwordOrbit/VisualRoot"]
+texture_filter = 1
+position = Vector2(72, 0)
+rotation = 1.5708
+texture = ExtResource("23_sword_texture")
+
+[node name="SwordB" type="Sprite2D" parent="SnowWolfSwordOrbit/VisualRoot"]
+texture_filter = 1
+position = Vector2(-72, 0)
+rotation = -1.5708
+texture = ExtResource("23_sword_texture")
+
+[node name="SwordAShape" type="CollisionShape2D" parent="SnowWolfSwordOrbit"]
+position = Vector2(72, 0)
+rotation = 1.5708
+shape = SubResource("RectangleShape2D_snow_wolf_sword")
+disabled = true
+
+[node name="SwordBShape" type="CollisionShape2D" parent="SnowWolfSwordOrbit"]
+position = Vector2(-72, 0)
+rotation = -1.5708
+shape = SubResource("RectangleShape2D_snow_wolf_sword")
+disabled = true
 
 [node name="MoveSpeedTrailEffect" parent="." unique_id=168713375 instance=ExtResource("11_speed_trail")]
 
@@ -242,3 +283,5 @@ max_polyphony = 2
 [connection signal="timeout" from="PrimaryImpactTimer" to="." method="_on_primary_impact_timer_timeout"]
 [connection signal="timeout" from="WhirlwindImpactTimer" to="." method="_on_whirlwind_impact_timer_timeout"]
 [connection signal="timeout" from="ResearchDefenseTimer" to="." method="_on_research_defense_timer_timeout"]
+[connection signal="body_entered" from="SnowWolfSwordOrbit" to="SnowWolfSwordOrbit" method="_on_body_entered"]
+[connection signal="body_exited" from="SnowWolfSwordOrbit" to="SnowWolfSwordOrbit" method="_on_body_exited"]

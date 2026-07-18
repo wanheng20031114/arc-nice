@@ -3,6 +3,8 @@ extends SceneTree
 const HOE_CAT_SCENE_PATH := "res://scene/player/hoe_cat/player_hoe_cat.tscn"
 const SPIRAL_PICKUP := preload("res://resources/config/pickups/pickup_spiral.tres")
 const RAPID_PICKUP := preload("res://resources/config/pickups/pickup_rapid.tres")
+const PICKUP_SCENE := preload("res://scene/pickup.tscn")
+const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 const TEST_PRIMARY_DIRECTION := Vector2(0.9396926, 0.34202015)
 
 
@@ -10,6 +12,8 @@ class TestEnemy:
 	extends Enemy
 
 	var total_damage_taken: int = 0
+	var last_requested_damage: int = 0
+	var last_damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
 
 	func _ready() -> void:
 		pass
@@ -20,13 +24,16 @@ class TestEnemy:
 	func apply_damage(
 		amount: int,
 		_impact_direction: Vector2 = Vector2.ZERO,
-		_damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
 		_show_hit_particles: bool = true
 	) -> bool:
 		if is_dead or amount <= 0:
 			return false
-		total_damage_taken += amount
-		current_health -= amount
+		last_requested_damage = amount
+		last_damage_type = damage_type
+		var applied_damage := _calculate_incoming_damage(amount, damage_type)
+		total_damage_taken += applied_damage
+		current_health -= applied_damage
 		if current_health <= 0:
 			is_dead = true
 		return true
@@ -47,6 +54,8 @@ var outside_radius_enemy: TestEnemy = null
 var whirlwind_radius_boundary_enemy: TestEnemy = null
 var whirlwind_outside_radius_enemy: TestEnemy = null
 var dense_cone_enemies: Array[TestEnemy] = []
+var snow_wolf_pickup_consumed: bool = false
+var snow_wolf_pickup_applied_immediately: bool = false
 
 
 func _init() -> void:
@@ -119,7 +128,8 @@ func _run() -> void:
 
 	_test_starting_stats_and_attack_speed_contract()
 	await _test_attack_upgrade_progression()
-	_test_projectile_only_pickup_is_rejected()
+	await _test_snow_wolf_sword_pickup()
+	_test_snow_wolf_dense_contact_bookkeeping()
 	_test_free_attack_direction_preservation()
 	await _test_generic_collectible_hooks_for_both_characters()
 	await _test_primary_cone_attack()
@@ -208,13 +218,318 @@ func _test_attack_upgrade_progression() -> void:
 	await process_frame
 
 
-func _test_projectile_only_pickup_is_rejected() -> void:
-	var applied := player.apply_pickup(SPIRAL_PICKUP)
-	_expect(not applied, "Pure projectile spiral pickup must not apply to Hoe Cat.")
+func _test_snow_wolf_sword_pickup() -> void:
+	var orbit := player.get_node_or_null("SnowWolfSwordOrbit") as HoeCatSnowWolfSwordOrbit
+	var visual_root := player.get_node_or_null("SnowWolfSwordOrbit/VisualRoot") as Node2D
+	var sword_a := player.get_node_or_null(
+		"SnowWolfSwordOrbit/VisualRoot/SwordA"
+	) as Sprite2D
+	var sword_b := player.get_node_or_null(
+		"SnowWolfSwordOrbit/VisualRoot/SwordB"
+	) as Sprite2D
+	var shape_a_node := player.get_node_or_null(
+		"SnowWolfSwordOrbit/SwordAShape"
+	) as CollisionShape2D
+	var shape_b_node := player.get_node_or_null(
+		"SnowWolfSwordOrbit/SwordBShape"
+	) as CollisionShape2D
+	_expect(orbit != null, "Snow Wolf Po Jun orbit must be prebuilt in the Hoe Cat scene.")
+	_expect(visual_root != null, "Snow Wolf Po Jun must use a separate visual root.")
+	_expect(sword_a != null and sword_b != null, "Snow Wolf Po Jun must prebuild two sword sprites.")
+	_expect(
+		shape_a_node != null and shape_b_node != null,
+		"Snow Wolf Po Jun must prebuild two sword collision shapes."
+	)
+	if (
+		orbit == null
+		or visual_root == null
+		or sword_a == null
+		or sword_b == null
+		or shape_a_node == null
+		or shape_b_node == null
+	):
+		return
+	var shape_a := shape_a_node.shape as RectangleShape2D
+	var shape_b := shape_b_node.shape as RectangleShape2D
+	_expect(orbit.collision_layer == 0, "Orbit swords must not occupy a collision layer.")
+	_expect(orbit.collision_mask == 4, "Orbit swords must only scan EnemyBody layer 4.")
+	_expect(not orbit.monitorable, "Orbit swords must not be monitorable by other areas.")
+	_expect(
+		shape_a != null
+		and shape_b != null
+		and shape_a.size == Vector2(22.0, 6.0)
+		and shape_b.size == Vector2(22.0, 6.0),
+		"Both sword hitboxes must use the authored 22x6 footprint."
+	)
+	_expect(
+		is_equal_approx(sword_a.position.length(), 72.0)
+		and sword_b.position.is_equal_approx(-sword_a.position),
+		"The two swords must sit opposite each other on a radius-72 orbit."
+	)
+	_expect(
+		is_equal_approx(
+			absf(wrapf(sword_a.rotation - sword_b.rotation, -PI, PI)),
+			PI
+		),
+		"The two sword tips must remain 180 degrees apart."
+	)
+	_expect(
+		sword_a.texture != null
+		and sword_a.texture.get_size() == Vector2(24.0, 24.0)
+		and sword_a.texture == sword_b.texture,
+		"Both swords must reuse the same native 24x24 pixel texture."
+	)
+	_expect(
+		sword_a.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+		and sword_b.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
+		"Orbit sword textures must use nearest-neighbor sampling."
+	)
+	_expect(
+		is_equal_approx(orbit.contact_damage_interval, 0.5)
+		and orbit.contact_damage == 30
+		and is_equal_approx(orbit.angular_speed, TAU * 2.0),
+		"Orbit swords must deal base 30 damage every 0.5 seconds and complete two turns each second."
+	)
+
+	var ground_pickup := PICKUP_SCENE.instantiate() as Pickup
+	_expect(ground_pickup != null, "Snow Wolf Po Jun ground pickup must instantiate.")
+	if ground_pickup == null:
+		return
+	snow_wolf_pickup_consumed = false
+	snow_wolf_pickup_applied_immediately = false
+	ground_pickup.config = SPIRAL_PICKUP
+	ground_pickup.consumed.connect(_on_snow_wolf_pickup_consumed)
+	test_root.add_child(ground_pickup)
+	await process_frame
+	ground_pickup.call("_on_body_entered", player)
+	_expect(snow_wolf_pickup_consumed, "Hoe Cat must consume Snow Wolf Po Jun from the ground.")
+	_expect(
+		snow_wolf_pickup_applied_immediately,
+		"Snow Wolf Po Jun must apply immediately instead of falling through to inventory."
+	)
+	_expect(ground_pickup.is_queued_for_deletion(), "Consumed Snow Wolf Po Jun must leave the ground.")
+	await process_frame
+	await physics_frame
+	_expect(orbit.is_active() and orbit.visible, "Snow Wolf Po Jun must reveal the two orbit swords.")
+	_expect(orbit.monitoring, "Single-player orbit swords must enable authoritative collision.")
+	_expect(
+		not shape_a_node.disabled and not shape_b_node.disabled,
+		"Authoritative orbit sword hitboxes must be enabled while the pickup is active."
+	)
+	_expect(
+		absf(orbit.duration_left - SPIRAL_PICKUP.duration) <= 0.1,
+		"Snow Wolf Po Jun must retain the authored five-second duration."
+	)
+	_expect(
+		player.get_multiplayer_form_mode() == PickupConfig.PlayerFormMode.ARMED,
+		"Active Hoe Cat orbit swords must reuse ARMED for multiplayer snapshots."
+	)
 	_expect(
 		player.get_multiplayer_shot_pattern() == PickupConfig.ShotPattern.NORMAL,
-		"Rejected projectile pickup must not change Hoe Cat shot pattern."
+		"Hoe Cat Snow Wolf Po Jun must not enable projectile spiral shots."
 	)
+
+	orbit.set_physics_process(false)
+	orbit.rotation = 0.0
+	await physics_frame
+	var authored_contact_enemy := _spawn_authored_test_enemy(
+		Vector2(72.0, 0.0),
+		5
+	)
+	await physics_frame
+	await process_frame
+	var sword_overlaps := orbit.get_overlapping_bodies()
+	_expect(
+		sword_overlaps.has(authored_contact_enemy),
+		(
+			"The authored sword Area2D must physically overlap the authored Enemy scene "
+			+ "at its radius-72 center."
+		)
+	)
+	_expect(
+		authored_contact_enemy != null
+		and authored_contact_enemy.current_health == 975
+		and authored_contact_enemy.last_damage_taken == 25,
+		"An authored enemy with five physical defense must take 25 from the sword's 30 damage."
+	)
+
+	var contact_enemy := _spawn_test_enemy(Vector2(180.0, 0.0))
+	contact_enemy.add_physical_defense_modifier(1001, 5)
+	var first_contact_elapsed := orbit.elapsed
+	orbit.call("_on_body_entered", contact_enemy)
+	_expect(
+		contact_enemy.last_requested_damage == 30,
+		"First sword contact must submit exactly 30 base damage."
+	)
+	_expect(
+		contact_enemy.total_damage_taken == 25,
+		"Thirty physical sword damage must become 25 against five physical defense."
+	)
+	_expect(
+		contact_enemy.last_damage_type == EnemyConfig.DamageType.PHYSICAL,
+		"Snow Wolf Po Jun sword damage must be physical."
+	)
+	var contact_enemy_id := contact_enemy.get_instance_id()
+	var first_contact_deadline := float(
+		orbit.enemy_next_damage_times.get(contact_enemy_id, -1.0)
+	)
+	var elapsed_before_refresh := orbit.elapsed
+	orbit.activate(SPIRAL_PICKUP.duration, true)
+	_expect(
+		is_equal_approx(orbit.elapsed, elapsed_before_refresh)
+		and orbit.overlapping_enemies.has(contact_enemy_id)
+		and is_equal_approx(
+			float(orbit.enemy_next_damage_times.get(contact_enemy_id, -1.0)),
+			first_contact_deadline
+		)
+		and contact_enemy.total_damage_taken == 25,
+		"Refreshing active swords must preserve orbit phase, contact tracking, and cooldown."
+	)
+	var second_contact_enemy := _spawn_test_enemy(Vector2(-180.0, 0.0))
+	orbit.call("_on_body_entered", second_contact_enemy)
+	_expect(
+		second_contact_enemy.total_damage_taken == 30,
+		"Per-enemy cooldowns must allow two enemies to take damage in the same frame."
+	)
+	orbit.call("_on_body_exited", contact_enemy)
+	orbit.call("_on_body_entered", contact_enemy)
+	_expect(
+		contact_enemy.total_damage_taken == 25,
+		"Leaving and immediately re-entering must not bypass the 0.5-second cooldown."
+	)
+	orbit.elapsed = first_contact_elapsed + 0.49
+	orbit.call("_try_damage_enemy", contact_enemy)
+	_expect(contact_enemy.total_damage_taken == 25, "A contact must not tick again at 0.49 seconds.")
+	orbit.elapsed = first_contact_elapsed + 0.5
+	orbit.call("_try_damage_enemy", contact_enemy)
+	_expect(contact_enemy.total_damage_taken == 50, "A sustained contact must tick again at 0.5 seconds.")
+	orbit.call("_on_body_exited", contact_enemy)
+	orbit.elapsed = first_contact_elapsed + 1.0
+	orbit.call("_prune_expired_damage_cooldowns")
+	_expect(
+		not orbit.enemy_next_damage_times.has(contact_enemy_id)
+		and not orbit.detached_cooldown_enemy_ids.has(contact_enemy_id),
+		"An exited enemy's cooldown bookkeeping must be reclaimed after it expires."
+	)
+
+	player.call("_set_character_visual_offset", Vector2(4.0, -3.0))
+	_expect(
+		visual_root.position == Vector2(4.0, -3.0)
+		and orbit.position == Vector2.ZERO,
+		"Multiplayer visual smoothing must offset only sword sprites, not authoritative hitboxes."
+	)
+	player.call("_set_character_visual_offset", Vector2.ZERO)
+
+	orbit.duration_left = 0.1
+	orbit.call("_physics_process", 0.11)
+	await process_frame
+	_expect(not orbit.is_active() and not orbit.visible, "Orbit swords must disappear when the pickup expires.")
+	_expect(not orbit.monitoring, "Expired orbit swords must stop collision monitoring.")
+	_expect(
+		shape_a_node.disabled and shape_b_node.disabled,
+		"Expired orbit sword shapes must leave the physics broad phase."
+	)
+	_expect(
+		player.get_multiplayer_form_mode() == PickupConfig.PlayerFormMode.NORMAL,
+		"Expired Hoe Cat orbit swords must restore the normal multiplayer form."
+	)
+	player.call(
+		"_apply_multiplayer_character_realtime_state",
+		PickupConfig.PlayerFormMode.ARMED,
+		PickupConfig.ShotPattern.NORMAL,
+		-1,
+		-1,
+		false,
+		0.0
+	)
+	await process_frame
+	_expect(
+		orbit.is_active() and orbit.visible and not orbit.monitoring,
+		"A remote ARMED/NORMAL snapshot must restore visual-only orbit swords."
+	)
+	_expect(
+		shape_a_node.disabled and shape_b_node.disabled,
+		"Remote visual-only orbit swords must keep both physics shapes disabled."
+	)
+	var damage_before_visual_only_contact := contact_enemy.total_damage_taken
+	orbit.call("_on_body_entered", contact_enemy)
+	_expect(
+		contact_enemy.total_damage_taken == damage_before_visual_only_contact,
+		"Remote visual-only orbit swords must never submit enemy damage."
+	)
+	player.call(
+		"_apply_multiplayer_character_realtime_state",
+		PickupConfig.PlayerFormMode.NORMAL,
+		PickupConfig.ShotPattern.NORMAL,
+		-1,
+		-1,
+		false,
+		0.0
+	)
+	_expect(
+		not orbit.is_active() and not orbit.visible,
+		"A remote NORMAL snapshot must remove the orbit sword presentation."
+	)
+	if authored_contact_enemy != null:
+		authored_contact_enemy.queue_free()
+	contact_enemy.queue_free()
+	second_contact_enemy.queue_free()
+	await process_frame
+
+
+func _on_snow_wolf_pickup_consumed(
+	_pickup: Pickup,
+	_collector_peer_id: int,
+	applied_immediately: bool
+) -> void:
+	snow_wolf_pickup_consumed = true
+	snow_wolf_pickup_applied_immediately = applied_immediately
+
+
+func _test_snow_wolf_dense_contact_bookkeeping() -> void:
+	var orbit := player.get_node(
+		"SnowWolfSwordOrbit"
+	) as HoeCatSnowWolfSwordOrbit
+	var dense_contacts: Array[TestEnemy] = []
+	orbit.deactivate()
+	orbit.elapsed = 0.0
+	for index in range(300):
+		var enemy := TestEnemy.new()
+		enemy.current_health = 1000
+		dense_contacts.append(enemy)
+		var enemy_id := enemy.get_instance_id()
+		orbit.overlapping_enemies[enemy_id] = enemy
+		orbit.enemy_next_damage_times[enemy_id] = 1000.0
+	var benchmark_started_usec := Time.get_ticks_usec()
+	for _frame in range(600):
+		orbit.elapsed += 1.0 / 60.0
+		orbit.call("_update_overlapping_enemy_damage")
+		orbit.call("_prune_expired_damage_cooldowns")
+	var benchmark_elapsed_usec := maxi(
+		Time.get_ticks_usec() - benchmark_started_usec,
+		0
+	)
+	_expect(
+		orbit.overlapping_enemies.size() == 300
+		and orbit.enemy_next_damage_times.size() == 300
+		and orbit.detached_cooldown_enemy_ids.is_empty(),
+		"Dense sword bookkeeping must retain 300 live contacts without false pruning."
+	)
+	print(
+		"SNOW_WOLF_SWORD_DENSE_BOOKKEEPING_300_AVG_USEC=%.2f"
+		% (float(benchmark_elapsed_usec) / 600.0)
+	)
+	for enemy in dense_contacts:
+		enemy.is_dead = true
+	orbit.call("_update_overlapping_enemy_damage")
+	_expect(
+		orbit.overlapping_enemies.is_empty()
+		and orbit.enemy_next_damage_times.is_empty()
+		and orbit.detached_cooldown_enemy_ids.is_empty(),
+		"Dead dense contacts must be reclaimed without retaining cooldown entries."
+	)
+	for enemy in dense_contacts:
+		enemy.free()
 
 
 func _test_free_attack_direction_preservation() -> void:
@@ -626,6 +941,30 @@ func _spawn_test_enemy(spawn_position: Vector2, collision_radius: float = 1.0) -
 	enemy.add_child(death_audio)
 	test_root.add_child(enemy)
 	enemy.position = spawn_position
+	return enemy
+
+
+func _spawn_authored_test_enemy(
+	spawn_position: Vector2,
+	physical_defense: int
+) -> Enemy:
+	var enemy := ENEMY_SCENE.instantiate() as Enemy
+	_expect(enemy != null, "The authored base Enemy scene must instantiate.")
+	if enemy == null:
+		return null
+	var enemy_config := EnemyConfig.new()
+	enemy_config.max_health = 1000
+	enemy_config.attack_damage = 0
+	enemy_config.physical_defense = physical_defense
+	enemy_config.magic_defense = 0
+	enemy_config.move_speed = 0.0
+	enemy_config.xirang_kill_reward = 0
+	enemy_config.pickup_drop_chance = 0.0
+	enemy.config = enemy_config
+	enemy.position = spawn_position
+	test_root.add_child(enemy)
+	enemy.set_process(false)
+	enemy.set_physics_process(false)
 	return enemy
 
 

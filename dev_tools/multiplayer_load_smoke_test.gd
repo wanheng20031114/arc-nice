@@ -1964,6 +1964,7 @@ func _test_multiplayer_character_scene_registry() -> void:
 	await process_frame
 	var host_player := game.get_player_for_peer(1)
 	var local_player := game.get_player_for_peer(2)
+	var local_hoe_player := local_player as PlayerHoeCat
 	var tiyi_player := game.get_player_for_peer(3) as PlayerTiyi
 	_expect(
 		host_player != null and host_player.get_character_id() == &"weishidaier",
@@ -2055,6 +2056,88 @@ func _test_multiplayer_character_scene_registry() -> void:
 		)
 		tiyi_player.set_controls_locked(false)
 		mp_game.free()
+	if local_hoe_player != null:
+		var remote_orbit := local_hoe_player.get_node(
+			"SnowWolfSwordOrbit"
+		) as HoeCatSnowWolfSwordOrbit
+		var remote_shape_a := remote_orbit.get_node("SwordAShape") as CollisionShape2D
+		var remote_shape_b := remote_orbit.get_node("SwordBShape") as CollisionShape2D
+		local_hoe_player.apply_multiplayer_realtime_state(
+			local_hoe_player.current_health,
+			local_hoe_player.max_health,
+			local_hoe_player.current_xirang,
+			false,
+			0.0,
+			local_hoe_player.skill1_unlocked,
+			local_hoe_player.skill1_charge,
+			local_hoe_player.skill1_charge_duration,
+			PickupConfig.PlayerFormMode.ARMED,
+			PickupConfig.ShotPattern.NORMAL,
+			local_hoe_player.skill1_upgrade_level
+		)
+		_expect(
+			remote_orbit.is_active()
+			and remote_orbit.visible
+			and not remote_orbit.monitoring
+			and remote_shape_a.disabled
+			and remote_shape_b.disabled,
+			"A client Hoe Cat ARMED/NORMAL snapshot must show visual-only orbit swords."
+		)
+		remote_orbit.duration_left = 2.5
+		local_hoe_player.apply_multiplayer_realtime_state(
+			local_hoe_player.current_health,
+			local_hoe_player.max_health,
+			local_hoe_player.current_xirang,
+			false,
+			0.0,
+			local_hoe_player.skill1_unlocked,
+			local_hoe_player.skill1_charge,
+			local_hoe_player.skill1_charge_duration,
+			PickupConfig.PlayerFormMode.ARMED,
+			PickupConfig.ShotPattern.NORMAL,
+			local_hoe_player.skill1_upgrade_level
+		)
+		_expect(
+			is_equal_approx(remote_orbit.duration_left, 2.5),
+			"Repeated Hoe Cat ARMED/NORMAL snapshots must not restart the client timer."
+		)
+		local_hoe_player.apply_multiplayer_realtime_state(
+			local_hoe_player.current_health,
+			local_hoe_player.max_health,
+			local_hoe_player.current_xirang,
+			false,
+			0.0,
+			local_hoe_player.skill1_unlocked,
+			local_hoe_player.skill1_charge,
+			local_hoe_player.skill1_charge_duration,
+			PickupConfig.PlayerFormMode.NORMAL,
+			PickupConfig.ShotPattern.NORMAL,
+			local_hoe_player.skill1_upgrade_level
+		)
+		_expect(
+			not remote_orbit.is_active() and not remote_orbit.visible,
+			"A client Hoe Cat NORMAL snapshot must clear the orbit swords."
+		)
+		local_hoe_player.death_audio.stream = null
+		local_hoe_player.apply_multiplayer_realtime_state(
+			0,
+			local_hoe_player.max_health,
+			local_hoe_player.current_xirang,
+			true,
+			0.0,
+			local_hoe_player.skill1_unlocked,
+			local_hoe_player.skill1_charge,
+			local_hoe_player.skill1_charge_duration,
+			PickupConfig.PlayerFormMode.ARMED,
+			PickupConfig.ShotPattern.NORMAL,
+			local_hoe_player.skill1_upgrade_level
+		)
+		_expect(
+			not remote_orbit.is_active()
+			and not remote_orbit.visible
+			and not remote_orbit.monitoring,
+			"A dead client Hoe Cat must not retain swords reopened by the same snapshot."
+		)
 	_expect(
 		game.player == local_player,
 		"Game.player must reference the local peer even when the host sorts first."
@@ -2102,6 +2185,38 @@ func _test_host_authoritative_hoe_actions() -> void:
 	connected_players[1] = "Host"
 	mp_game.set("game", host_game)
 	mp_game.set("net_manager", net_manager)
+	var host_orbit := hoe_player.get_node(
+		"SnowWolfSwordOrbit"
+	) as HoeCatSnowWolfSwordOrbit
+	var host_shape_a := host_orbit.get_node("SwordAShape") as CollisionShape2D
+	var host_shape_b := host_orbit.get_node("SwordBShape") as CollisionShape2D
+	_expect(
+		hoe_player.apply_pickup(PICKUP_SPIRAL_CONFIG),
+		"Host Hoe Cat must apply Snow Wolf Po Jun through the public pickup path."
+	)
+	await process_frame
+	await physics_frame
+	_expect(
+		host_orbit.is_active()
+		and host_orbit.monitoring
+		and not host_shape_a.disabled
+		and not host_shape_b.disabled,
+		"Host Hoe Cat Snow Wolf Po Jun must enable authoritative sword collision."
+	)
+	var host_hoe_snapshot: SnapshotManager.PlayerState = null
+	for state in host_game.collect_player_snapshot_states():
+		if state.peer_id == 1:
+			host_hoe_snapshot = state
+			break
+	_expect(
+		host_hoe_snapshot != null
+		and host_hoe_snapshot.form_mode == PickupConfig.PlayerFormMode.ARMED
+		and host_hoe_snapshot.shot_pattern == PickupConfig.ShotPattern.NORMAL,
+		"Host Hoe Cat snapshots must encode active swords as ARMED/NORMAL."
+	)
+	host_orbit.deactivate()
+	await process_frame
+	_stop_audio_players(hoe_player)
 	var free_aim_direction := Vector2(2.0, 1.0).normalized()
 	_expect(
 		(mp_game.call(
@@ -3663,6 +3778,8 @@ func _test_snapshot_round_trip() -> void:
 	player_state.current_ammo = 17
 	player_state.is_reloading = true
 	player_state.reload_progress = 0.4
+	player_state.form_mode = PickupConfig.PlayerFormMode.ARMED
+	player_state.shot_pattern = PickupConfig.ShotPattern.NORMAL
 	player_state.primary_cooldown_ratio = 0.37
 	player_state.effective_move_speed_multiplier = 1.375
 	var player_data := snapshot_mgr.encode_all_player_snapshots([player_state])
@@ -3676,6 +3793,11 @@ func _test_snapshot_round_trip() -> void:
 		_expect(player_states[0].current_ammo == 17, "Player snapshot current ammo mismatch.")
 		_expect(player_states[0].is_reloading, "Player snapshot reload state mismatch.")
 		_expect(is_equal_approx(player_states[0].reload_progress, 0.4), "Player snapshot reload progress mismatch.")
+		_expect(
+			player_states[0].form_mode == PickupConfig.PlayerFormMode.ARMED
+			and player_states[0].shot_pattern == PickupConfig.ShotPattern.NORMAL,
+			"Hoe Cat sword form must round-trip as ARMED/NORMAL."
+		)
 		_expect(player_states[0].character_id == &"hoe_cat", "Player snapshot character id mismatch.")
 		_expect(
 			absf(player_states[0].primary_cooldown_ratio - 0.37) <= 1.0 / 255.0,
@@ -3732,6 +3854,11 @@ func _test_snapshot_round_trip() -> void:
 		_expect(repeated_player_states[0].current_ammo == 17, "Player delta must preserve current ammo through baseline.")
 		_expect(repeated_player_states[0].is_reloading, "Player delta must preserve reload state through baseline.")
 		_expect(is_equal_approx(repeated_player_states[0].reload_progress, 0.4), "Player delta must preserve reload progress through baseline.")
+		_expect(
+			repeated_player_states[0].form_mode == PickupConfig.PlayerFormMode.ARMED
+			and repeated_player_states[0].shot_pattern == PickupConfig.ShotPattern.NORMAL,
+			"Player delta must preserve the active Hoe Cat sword form."
+		)
 		_expect(repeated_player_states[0].character_id == &"hoe_cat", "Player delta must preserve character id through baseline.")
 		_expect(
 			absf(repeated_player_states[0].primary_cooldown_ratio - 0.37) <= 1.0 / 255.0,
@@ -3798,6 +3925,11 @@ func _test_snapshot_round_trip() -> void:
 		_expect(moved_player_states[0].current_health == 42, "Moved player delta must preserve unchanged health.")
 		_expect(moved_player_states[0].skill1_upgrade_level == 2, "Moved player delta must preserve unchanged skill state.")
 		_expect(moved_player_states[0].current_ammo == 17, "Moved player delta must preserve unchanged ammo state.")
+		_expect(
+			moved_player_states[0].form_mode == PickupConfig.PlayerFormMode.NORMAL
+			and moved_player_states[0].shot_pattern == PickupConfig.ShotPattern.NORMAL,
+			"Player delta must carry the Hoe Cat sword form transition back to NORMAL."
+		)
 	var peer_11_player_data := delta_player_mgr.encode_player_snapshots_for_peer(11, [moved_player_state], false)
 	_expect(
 		peer_11_player_data.size() == player_keyframe.size(),

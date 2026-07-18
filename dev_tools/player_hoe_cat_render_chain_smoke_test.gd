@@ -59,6 +59,8 @@ func _test_pixel_render_settings() -> void:
 		NodePath("BodySprite"),
 		NodePath("WhirlwindRangeEffect"),
 		NodePath("WhirlwindBodyEffect"),
+		NodePath("SnowWolfSwordOrbit/VisualRoot/SwordA"),
+		NodePath("SnowWolfSwordOrbit/VisualRoot/SwordB"),
 	]:
 		var sprite := player.get_node(node_path) as CanvasItem
 		_expect(sprite != null, "%s must be a CanvasItem." % node_path)
@@ -327,14 +329,62 @@ func _test_scene_action_node_contract() -> void:
 	)
 	var primary_timer := player.get_node_or_null("PrimaryImpactTimer") as Timer
 	var whirlwind_timer := player.get_node_or_null("WhirlwindImpactTimer") as Timer
+	var sword_orbit := player.get_node_or_null(
+		"SnowWolfSwordOrbit"
+	) as HoeCatSnowWolfSwordOrbit
+	var sword_a := player.get_node_or_null(
+		"SnowWolfSwordOrbit/VisualRoot/SwordA"
+	) as Sprite2D
+	var sword_b := player.get_node_or_null(
+		"SnowWolfSwordOrbit/VisualRoot/SwordB"
+	) as Sprite2D
+	var sword_a_shape_node := player.get_node_or_null(
+		"SnowWolfSwordOrbit/SwordAShape"
+	) as CollisionShape2D
+	var sword_b_shape_node := player.get_node_or_null(
+		"SnowWolfSwordOrbit/SwordBShape"
+	) as CollisionShape2D
 	_expect(primary_timer != null, "PrimaryImpactTimer must be prebuilt in the Hoe Cat scene.")
 	_expect(whirlwind_timer != null, "WhirlwindImpactTimer must be prebuilt in the Hoe Cat scene.")
+	_expect(sword_orbit != null, "SnowWolfSwordOrbit must be prebuilt in the Hoe Cat scene.")
+	_expect(sword_a != null and sword_b != null, "SnowWolfSwordOrbit must prebuild two sword sprites.")
+	_expect(
+		sword_a_shape_node != null and sword_b_shape_node != null,
+		"SnowWolfSwordOrbit must prebuild two collision shapes."
+	)
 	if primary_timer != null:
 		_expect(primary_timer.one_shot, "PrimaryImpactTimer must be one-shot.")
 		_expect(primary_timer.is_stopped(), "PrimaryImpactTimer must start inactive.")
 	if whirlwind_timer != null:
 		_expect(whirlwind_timer.one_shot, "WhirlwindImpactTimer must be one-shot.")
 		_expect(whirlwind_timer.is_stopped(), "WhirlwindImpactTimer must start inactive.")
+	if sword_orbit != null:
+		_expect(
+			not sword_orbit.visible and not sword_orbit.monitoring,
+			"SnowWolfSwordOrbit must start hidden and outside collision monitoring."
+		)
+		_expect(
+			sword_orbit.collision_layer == 0
+			and sword_orbit.collision_mask == 4
+			and not sword_orbit.monitorable,
+			"SnowWolfSwordOrbit must only query EnemyBody layer 4."
+		)
+	if sword_a != null and sword_b != null:
+		_expect(
+			sword_a.position == Vector2(72.0, 0.0)
+			and sword_b.position == Vector2(-72.0, 0.0),
+			"The authored sword sprites must be opposite on the radius-72 orbit."
+		)
+	if sword_a_shape_node != null and sword_b_shape_node != null:
+		var sword_a_shape := sword_a_shape_node.shape as RectangleShape2D
+		var sword_b_shape := sword_b_shape_node.shape as RectangleShape2D
+		_expect(
+			sword_a_shape != null
+			and sword_b_shape != null
+			and sword_a_shape.size == Vector2(22.0, 6.0)
+			and sword_b_shape.size == Vector2(22.0, 6.0),
+			"Both sword collision shapes must use the authored 22x6 size."
+		)
 
 
 func _test_visual_offset_and_bar_contract() -> void:
@@ -344,6 +394,7 @@ func _test_visual_offset_and_bar_contract() -> void:
 		NodePath("BasicSlashEffect"),
 		NodePath("WhirlwindRangeEffect"),
 		NodePath("WhirlwindBodyEffect"),
+		NodePath("SnowWolfSwordOrbit/VisualRoot"),
 	]
 	var base_positions: Dictionary = {}
 	player.call("_cache_multiplayer_visual_base_positions")
@@ -360,15 +411,20 @@ func _test_visual_offset_and_bar_contract() -> void:
 			actual_position.is_equal_approx(expected_position),
 			"%s must follow the same multiplayer visual smoothing offset." % node_path
 		)
+	var sword_orbit := player.get_node("SnowWolfSwordOrbit") as Area2D
+	_expect(
+		sword_orbit.position == Vector2.ZERO,
+		"Authoritative SnowWolfSwordOrbit hitboxes must not inherit visual smoothing."
+	)
 	player.call("_set_multiplayer_visual_offset", Vector2.ZERO)
 
 	var attack_bar := player.get_node("AttackIntervalBar") as Control
 	var skill_bar := player.get_node("Skill1ChargeBar") as Control
 	var slash := player.get_node("BasicSlashEffect") as CanvasItem
 	_expect(
-		is_equal_approx(attack_bar.offset_top, 13.0)
-		and is_equal_approx(attack_bar.offset_bottom, 15.0),
-		"Attack recovery bar must stay below the raised Hoe Cat body."
+		is_equal_approx(attack_bar.offset_top, 9.0)
+		and is_equal_approx(attack_bar.offset_bottom, 11.0),
+		"Attack recovery bar must retain its authored Hoe Cat position."
 	)
 	_expect(
 		attack_bar.offset_bottom <= skill_bar.offset_top,
@@ -411,7 +467,11 @@ func _test_death_animation_contract() -> void:
 	var slash := player.get_node("BasicSlashEffect") as AnimatedSprite2D
 	var whirlwind_range := player.get_node("WhirlwindRangeEffect") as AnimatedSprite2D
 	var whirlwind_body := player.get_node("WhirlwindBodyEffect") as AnimatedSprite2D
+	var sword_orbit := player.get_node(
+		"SnowWolfSwordOrbit"
+	) as HoeCatSnowWolfSwordOrbit
 
+	sword_orbit.activate(5.0, false)
 	player.call("_play_whirlwind_visual")
 	player.primary_impact_timer.start(1.0)
 	_expect(not body.visible, "Whirlwind setup must hide the base body before the death transition test.")
@@ -423,6 +483,10 @@ func _test_death_animation_contract() -> void:
 	_expect(body.visible, "Death must keep the body visible instead of freezing or disappearing.")
 	_expect(body.animation == &"death" and body.is_playing(), "Death must start the authored non-looping animation.")
 	_expect(not slash.visible and not whirlwind_range.visible and not whirlwind_body.visible, "Death must clear every attack VFX layer.")
+	_expect(
+		not sword_orbit.is_active() and not sword_orbit.visible and not sword_orbit.monitoring,
+		"Death must clear the Snow Wolf Po Jun orbit swords and collision state."
+	)
 	_expect(player.primary_impact_timer.is_stopped(), "Death must cancel a pending primary impact.")
 	_expect(player.whirlwind_impact_timer.is_stopped(), "Death must cancel a pending whirlwind impact.")
 	await create_timer(0.65).timeout

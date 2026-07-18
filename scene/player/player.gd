@@ -620,11 +620,11 @@ func apply_pickup(config: PickupConfig, apply_healing: bool = true) -> bool:
 	var applied := false
 	var should_refresh_shooting_timer := false
 	var buff_duration := maxf(config.duration, 0.0)
-	var requests_projectile_form_override := (
+	var requests_character_form_override := (
 		config.player_form_mode != PickupConfig.PlayerFormMode.NORMAL
 		or config.shot_pattern != PickupConfig.ShotPattern.NORMAL
 	)
-	var has_form_override := requests_projectile_form_override and supports_projectile_attack_patterns()
+	var character_pickup_applied := false
 
 	var has_fire_rate_override := not is_equal_approx(
 		config.fire_rate_multiplier,
@@ -647,7 +647,7 @@ func apply_pickup(config: PickupConfig, apply_healing: bool = true) -> bool:
 		applied = true
 
 	# 普通射速道具与形态专属射速提升维护，避免螺旋形态的射速被其他 Buff 状态覆盖。
-	if has_fire_rate_override and not requests_projectile_form_override:
+	if has_fire_rate_override and not requests_character_form_override:
 		rapid_fire_rate_multiplier = config.fire_rate_multiplier
 		rapid_buff_time_left = buff_duration
 		should_refresh_shooting_timer = true
@@ -657,15 +657,17 @@ func apply_pickup(config: PickupConfig, apply_healing: bool = true) -> bool:
 		attack_buff_time_left = buff_duration
 		_refresh_collectible_stats(false)
 		applied = true
-	if has_form_override:
-		var character_pickup_applied := _apply_character_pickup(config, buff_duration)
+	# Form-pattern pickups may have a character-specific non-projectile
+	# interpretation, so the character hook decides whether it can consume one.
+	if requests_character_form_override:
+		character_pickup_applied = _apply_character_pickup(config, buff_duration)
 		should_refresh_shooting_timer = character_pickup_applied
 		applied = character_pickup_applied or applied
 
 	if should_refresh_shooting_timer:
 		_refresh_shooting_timer_wait_time()
 	if applied:
-		_play_pickup_audio(config, has_form_override)
+		_play_pickup_audio(config, character_pickup_applied)
 	return applied
 
 

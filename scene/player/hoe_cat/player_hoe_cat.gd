@@ -14,6 +14,7 @@ const PRIMARY_IMPACT_DELAY := 0.1125
 const WHIRLWIND_VISUAL_DURATION := 0.5
 const WHIRLWIND_IMPACT_DELAY := 0.125
 const RESEARCH_DEFENSE_DURATION := 2.0
+const SNOW_WOLF_SWORD_REMOTE_DURATION_FALLBACK := 5.0
 
 @export var basic_attack_query_shape: CircleShape2D
 @export var whirlwind_query_shape: CircleShape2D
@@ -23,6 +24,7 @@ const RESEARCH_DEFENSE_DURATION := 2.0
 @onready var primary_impact_timer: Timer = $PrimaryImpactTimer
 @onready var whirlwind_impact_timer: Timer = $WhirlwindImpactTimer
 @onready var research_defense_timer: Timer = $ResearchDefenseTimer
+@onready var snow_wolf_sword_orbit: HoeCatSnowWolfSwordOrbit = $SnowWolfSwordOrbit
 @onready var primary_attack_audio: AudioStreamPlayer2D = $PrimaryAttackAudio
 @onready var skill1_audio: AudioStreamPlayer2D = $Skill1Audio
 var _primary_visual_time_left: float = 0.0
@@ -72,6 +74,8 @@ func _set_character_visual_offset(offset: Vector2) -> void:
 		whirlwind_range_effect.position = _whirlwind_range_effect_base_position + offset
 	if whirlwind_body_effect != null:
 		whirlwind_body_effect.position = _whirlwind_body_effect_base_position + offset
+	if snow_wolf_sword_orbit != null:
+		snow_wolf_sword_orbit.set_visual_offset(offset)
 
 
 func get_hoe_primary_attack_damage() -> int:
@@ -83,6 +87,55 @@ func get_hoe_whirlwind_damage() -> int:
 		floori(float(attack_damage) * WHIRLWIND_DAMAGE_MULTIPLIER),
 		EnemyConfig.DamageType.PHYSICAL
 	)
+
+
+func _apply_character_pickup(config: PickupConfig, buff_duration: float) -> bool:
+	if (
+		config == null
+		or config.pickup_type != PickupConfig.PickupType.SPIRAL
+		or config.shot_pattern != PickupConfig.ShotPattern.SPIRAL
+		or snow_wolf_sword_orbit == null
+	):
+		return false
+	snow_wolf_sword_orbit.activate(
+		buff_duration,
+		_should_run_authoritative_collectible_effects()
+	)
+	return true
+
+
+func has_active_multiplayer_character_state() -> bool:
+	return snow_wolf_sword_orbit != null and snow_wolf_sword_orbit.is_active()
+
+
+func get_multiplayer_form_mode() -> int:
+	if snow_wolf_sword_orbit != null and snow_wolf_sword_orbit.is_active():
+		return PickupConfig.PlayerFormMode.ARMED
+	return PickupConfig.PlayerFormMode.NORMAL
+
+
+func _apply_multiplayer_character_realtime_state(
+	form_mode: int,
+	shot_pattern: int,
+	_ammo_capacity: int,
+	_current_ammo: int,
+	_is_reloading: bool,
+	_reload_progress: float
+) -> void:
+	if snow_wolf_sword_orbit == null:
+		return
+	var should_show_remote_swords := (
+		form_mode == PickupConfig.PlayerFormMode.ARMED
+		and shot_pattern == PickupConfig.ShotPattern.NORMAL
+	)
+	if should_show_remote_swords:
+		if not snow_wolf_sword_orbit.is_active():
+			snow_wolf_sword_orbit.activate(
+				SNOW_WOLF_SWORD_REMOTE_DURATION_FALLBACK,
+				false
+			)
+	elif snow_wolf_sword_orbit.is_active():
+		snow_wolf_sword_orbit.deactivate()
 
 
 func _perform_primary_attack(attack_direction: Vector2) -> bool:
@@ -349,6 +402,8 @@ func _cleanup_character_combat_on_death() -> void:
 	if whirlwind_body_effect != null:
 		whirlwind_body_effect.hide()
 		whirlwind_body_effect.stop()
+	if snow_wolf_sword_orbit != null:
+		snow_wolf_sword_orbit.deactivate()
 
 
 func _play_death_animation() -> void:

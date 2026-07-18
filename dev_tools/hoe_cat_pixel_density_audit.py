@@ -13,6 +13,16 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 HOE_DIR = ROOT / "resources" / "texture" / "player" / "hoe_cat"
 WEISH_PATH = ROOT / "resources" / "texture" / "player" / "weishidaier" / "body.png"
+SNOW_WOLF_SWORD_PALETTE = {
+    (55, 24, 8),
+    (111, 74, 18),
+    (169, 104, 25),
+    (216, 151, 40),
+    (240, 200, 74),
+    (255, 228, 119),
+    (255, 241, 166),
+    (255, 248, 215),
+}
 
 
 def _split(
@@ -553,6 +563,7 @@ def main() -> None:
     whirlwind_path = HOE_DIR / "hoe_cat_whirlwind_vfx.png"
     whirlwind_icon_path = HOE_DIR / "whirlwind_icon.png"
     portrait_path = HOE_DIR / "portrait.png"
+    snow_wolf_sword_path = HOE_DIR / "snow_wolf_pojun_sword.png"
     binary_output_paths = (
         movement_path,
         attack_path,
@@ -560,6 +571,7 @@ def main() -> None:
         death_path,
         whirlwind_icon_path,
         portrait_path,
+        snow_wolf_sword_path,
     )
     for path in binary_output_paths:
         _assert_binary_alpha(path)
@@ -611,6 +623,20 @@ def main() -> None:
         raise AssertionError(f"Whirlwind icon must be 128x128: {whirlwind_icon.size}")
     if len(_palette(whirlwind_icon_path)) > 14:
         raise AssertionError("Whirlwind icon palette exceeds fourteen colors")
+
+    snow_wolf_sword = Image.open(snow_wolf_sword_path).convert("RGBA")
+    if snow_wolf_sword.size != (24, 24):
+        raise AssertionError(
+            f"Snow Wolf Po Jun sword must be 24x24: {snow_wolf_sword.size}"
+        )
+    if snow_wolf_sword.getchannel("A").getbbox() != (1, 8, 23, 16):
+        raise AssertionError(
+            "Snow Wolf Po Jun sword must retain its authored 22x8 footprint"
+        )
+    if not _palette(snow_wolf_sword_path).issubset(SNOW_WOLF_SWORD_PALETTE):
+        raise AssertionError(
+            "Snow Wolf Po Jun sword drifted outside its fixed pale-yellow palette"
+        )
 
     portrait = Image.open(portrait_path).convert("RGBA")
     front_bbox = movement_frames[0].getchannel("A").getbbox()
