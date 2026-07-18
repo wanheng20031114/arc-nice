@@ -10,13 +10,21 @@
       "slug": "sapling",
       "prompt": "Use case: stylized-concept\nAsset type: clean source sprite for a final 32x32 pixel-art inventory icon\nPrimary request: one tiny tree sapling consisting ONLY of a short slender brown stem and three simple green leaves\nScene/backdrop: perfectly flat solid #FF00FF chroma-key background for removal\nStyle/medium: true low-resolution 16x16 logical pixel art enlarged with nearest-neighbor blocks; deliberately simple game sprite; hard square pixels; one-pixel dark outline; only 7 flat colors total\nComposition/framing: one centered upright sapling, compact readable silhouette, generous even padding; the stem ends cleanly at the bottom\nConstraints: NO SOIL; NO DIRT; NO ROOT BALL; NO ROOTS; NO POT; NO GROUND; no shadow; no flowers; no fruit; no extra plants; no text; no watermark; no antialiasing; no gradients; no subpixel detail; perfectly uniform #FF00FF background; do not use magenta on the sapling\nAvoid: detailed illustration, bushy tree, many leaves, many color shades, noisy texture, smooth rendering, extra objects",
       "output": "resources/texture/materials/sapling.png"
+    },
+    {
+      "slug": "wooden_core",
+      "prompt": "Use case: stylized-concept\nAsset type: 32×32 pixel-art inventory material icon for a Godot game\nInput images: wood, plank, sapling, and water bottle icons used only as references for the project's crisp low-resolution pixel style, outline weight, simple palette, and readable silhouette.\nPrimary request: Create one wooden core item, a compact crafted wooden energy core made from layered planks, a living sapling, and water. It must read as one cohesive object: a warm brown faceted wooden ring/core with a small vivid green living center and a tiny cyan water glint. No separate ingredient objects.\nScene/backdrop: perfectly flat solid #ff00ff chroma-key background for removal.\nStyle/medium: authentic hand-placed retro pixel art, hard square pixels, binary silhouette edges, no antialiasing.\nComposition/framing: single centered icon, front three-quarter view, square silhouette, generous padding on all sides, fitting inside a final 32×32 canvas.\nConstraints: one object only; strong readable outline; match the reference icons' visual density; perfectly uniform #ff00ff background; no shadow, text, or watermark.\nAvoid: smooth curves, blur, soft shading, photorealism, and 3D rendering.",
+      "selection_reason": "The user preferred the more detailed first draft. Its measured subject is 30×31 logical pixels, so it fits the 32×32 contract without a density-reduction redraw.",
+      "source": "dev_assets/source_images/materials/wooden_core/wooden_core_selected_imagegen_magenta.png",
+      "output": "resources/texture/materials/wooden_core.png"
     }
   ],
   "local_processing": [
-    "remove_chroma_key.py --auto-key border --soft-matte --transparent-threshold 12 --opaque-threshold 220 --edge-contract 1 --despill",
+    "remove_chroma_key.py preview followed by connected_background_remover.py hard alpha for color-faithful pixel output",
     "dev_tools/pixel_grid_analyzer.py visual-grid audit",
-    "dev_tools/pixel_crop_tool.py --compress-grid --logical-size 26 --allow-unsafe-grid-compression after manual review",
-    "dev_tools/normalize_collectible_icons.py --write to center without rescaling on a transparent 32x32 canvas",
+    "regenerate with built-in imagegen when the visual grid exceeds the declared contract; never hide it with unsafe compression",
+    "measured 30x31 logical-cell center sampling for the selected Wooden Core first draft",
+    "no palette quantization or secondary logical resize; center on a transparent 32x32 canvas",
     "Godot --import to create texture import metadata"
   ]
 }

@@ -93,28 +93,10 @@ func try_consume_item_requirements(requirements: Array[Dictionary]) -> StringNam
 		states.append(warehouse.export_production_storage_snapshot())
 	for requirement in requirements:
 		var item := requirement.get("item") as PickupConfig
-		var remaining := int(requirement.get("count", 0))
-		if item == null or remaining <= 0:
+		var count := int(requirement.get("count", 0))
+		if item == null or count <= 0:
 			return RESULT_UNAVAILABLE
-		for state in states:
-			var items: Array = state["items"]
-			var counts: Array = state["counts"]
-			for slot_index in items.size():
-				if remaining <= 0:
-					break
-				var stored_item := items[slot_index] as PickupConfig
-				if not _items_share_stack(stored_item, item):
-					continue
-				var taken := mini(int(counts[slot_index]), remaining)
-				var next_count := int(counts[slot_index]) - taken
-				remaining -= taken
-				if next_count <= 0:
-					items[slot_index] = null
-					counts[slot_index] = 0
-				else:
-					counts[slot_index] = next_count
-				state["changed"] = true
-		if remaining > 0:
+		if not _simulate_consume_item_count(states, item, count):
 			return RESULT_MISSING_INPUT
 	for state in states:
 		var warehouse := state["warehouse"] as OakWarehouse
@@ -157,27 +139,16 @@ func try_commit_recipe(recipe: ProductionRecipe) -> StringName:
 	for warehouse in ordered_warehouses:
 		states.append(warehouse.export_production_storage_snapshot())
 
-	var input_remaining := recipe.input_amount
-	for state in states:
-		var items: Array = state["items"]
-		var counts: Array = state["counts"]
-		for slot_index in items.size():
-			if input_remaining <= 0:
-				break
-			var slot_item := items[slot_index] as PickupConfig
-			if not _items_share_stack(slot_item, recipe.input_item):
-				continue
-			var taken := mini(int(counts[slot_index]), input_remaining)
-			var next_count := int(counts[slot_index]) - taken
-			input_remaining -= taken
-			if next_count <= 0:
-				items[slot_index] = null
-				counts[slot_index] = 0
-			else:
-				counts[slot_index] = next_count
-			state["changed"] = true
-	if input_remaining > 0:
-		return RESULT_MISSING_INPUT
+	for input_index in recipe.input_items.size():
+		var input_amount := recipe.input_amounts[input_index]
+		if input_amount == 0:
+			continue
+		if not _simulate_consume_item_count(
+			states,
+			recipe.input_items[input_index],
+			input_amount
+		):
+			return RESULT_MISSING_INPUT
 
 	for output_index in recipe.output_items.size():
 		if not _simulate_add_item_count(
@@ -220,6 +191,35 @@ func try_commit_recipe(recipe: ProductionRecipe) -> StringName:
 		warehouse.notify_production_storage_changed()
 	_storage_transaction_in_progress = transaction_was_already_in_progress
 	return RESULT_SUCCESS
+
+
+func _simulate_consume_item_count(
+	states: Array[Dictionary],
+	item: PickupConfig,
+	count: int
+) -> bool:
+	if item == null or count <= 0:
+		return false
+	var remaining := count
+	for state in states:
+		var items: Array = state["items"]
+		var counts: Array = state["counts"]
+		for slot_index in items.size():
+			if remaining <= 0:
+				return true
+			var stored_item := items[slot_index] as PickupConfig
+			if not _items_share_stack(stored_item, item):
+				continue
+			var taken := mini(int(counts[slot_index]), remaining)
+			var next_count := int(counts[slot_index]) - taken
+			remaining -= taken
+			if next_count <= 0:
+				items[slot_index] = null
+				counts[slot_index] = 0
+			else:
+				counts[slot_index] = next_count
+			state["changed"] = true
+	return remaining <= 0
 
 
 func _simulate_add_item_count(

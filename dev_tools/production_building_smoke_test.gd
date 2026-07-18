@@ -10,6 +10,12 @@ const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const WOOD := preload("res://resources/config/materials/material_wood.tres")
 const SAPLING := preload("res://resources/config/materials/material_sapling.tres")
 const PLANK := preload("res://resources/config/materials/material_plank.tres")
+const WATER_BOTTLE := preload(
+	"res://resources/config/materials/material_water_bottle.tres"
+)
+const WOODEN_CORE := preload(
+	"res://resources/config/materials/material_wooden_core.tres"
+)
 
 var failures: PackedStringArray = []
 
@@ -144,13 +150,15 @@ func _run() -> void:
 		)
 	_expect(not panel.visible and not panel.is_open(), "常驻生产面板必须默认隐藏。")
 	_expect(
-		panel.has_node("Overlay/PanelRoot/InputSlot")
+		panel.has_node("Overlay/PanelRoot/InputSlot1")
+		and panel.has_node("Overlay/PanelRoot/InputSlot2")
+		and panel.has_node("Overlay/PanelRoot/InputSlot3")
 		and panel.has_node("Overlay/PanelRoot/OutputSlot1")
 		and panel.has_node("Overlay/PanelRoot/OutputSlot2")
 		and panel.has_node("Overlay/PanelRoot/OutputSlot3")
 		and panel.has_node("Overlay/PanelRoot/MaterialList")
 		and panel.has_node("Overlay/PanelRoot/ToggleButton"),
-		"生产面板必须原生搭建1个原料槽、3个产物槽、物资列表与右上角开关。"
+		"生产面板必须原生搭建左右各3个候选槽位、物资列表与右上角开关。"
 	)
 	_expect(
 		panel.status_label.position == Vector2(61.0, 440.0)
@@ -162,18 +170,61 @@ func _run() -> void:
 	_expect(panel.is_open() and panel.visible and player.controls_locked, "靠近交互打开生产面板后必须锁定玩家控制。")
 	_expect(
 		panel.recipe_rows[0].icon == PLANK.icon_texture
-		and panel.recipe_rows[0].icon != WOOD.icon_texture,
-		"右侧配方列表必须显示产物木板图标，而不是待加工的木头图标。"
+		and panel.recipe_rows[0].icon != WOOD.icon_texture
+		and panel.recipe_rows[1].icon == WOODEN_CORE.icon_texture,
+		"右侧配方列表必须分别显示木板和木制核心的产物图标。"
 	)
-	panel.call("_on_input_slot_pressed")
+	_expect(
+		panel.input_slots[0].visible
+		and not panel.input_slots[1].visible
+		and not panel.input_slots[2].visible
+		and panel.output_slots[0].visible
+		and not panel.output_slots[1].visible
+		and not panel.output_slots[2].visible
+		and panel.input_slots[0].position.x == 98.0
+		and panel.output_slots[0].position.x == 360.0,
+		"木头转木板配方必须左右各只显示1个居中槽位。"
+	)
+	panel.call("_on_input_slot_pressed", 0)
 	_expect(
 		panel.material_list.visible
-		and panel.wood_button.text.contains("木头")
-		and panel.sapling_button.text.contains("树苗"),
-		"点击原料槽必须显示带图像与名称的木头、树苗列表。"
+		and panel.material_buttons[0].visible
+		and panel.material_buttons[0].text.contains("木头")
+		and not panel.material_buttons[1].visible
+		and not panel.material_buttons[2].visible,
+		"单投入配方的原料详情必须只列出当前所需木头。"
 	)
-	panel.call("_on_sapling_pressed")
-	_expect(panel.status_label.text.contains("不匹配"), "选择树苗必须明确显示无效且不改变配方。")
+	panel.call("_on_material_button_pressed", 0)
+	_expect(panel.status_label.text.contains("每轮需要 1 个木头"), "原料详情必须说明配方需求量。")
+	panel.call("_on_recipe_row_pressed", 1)
+	_expect(
+		station.active_recipe_id == &"wooden_core_assembly"
+		and panel.input_slots.all(func(slot: InventorySlot) -> bool: return slot.visible)
+		and panel.input_slots[0].item == PLANK
+		and panel.input_slots[0].stack_count == 10
+		and panel.input_slots[1].item == SAPLING
+		and panel.input_slots[1].stack_count == 1
+		and panel.input_slots[2].item == WATER_BOTTLE
+		and panel.input_slots[2].stack_count == 5
+		and panel.output_slots[0].item == WOODEN_CORE
+		and panel.output_slots[0].visible
+		and not panel.output_slots[1].visible
+		and not panel.output_slots[2].visible
+		and panel.input_slots[0].position.x == 42.0
+		and panel.input_slots[1].position.x == 98.0
+		and panel.input_slots[2].position.x == 154.0
+		and panel.output_slots[0].position.x == 360.0,
+		"木制核心配方必须显示3个投入槽和1个居中产物槽，并标出10/1/5需求量。"
+	)
+	panel.call("_on_input_slot_pressed", 2)
+	_expect(
+		panel.material_list.visible
+		and panel.material_buttons.all(func(button: Button) -> bool: return button.visible)
+		and panel.material_buttons[0].text.contains("木板")
+		and panel.material_buttons[1].text.contains("树苗")
+		and panel.material_buttons[2].text.contains("水瓶"),
+		"多投入配方的原料详情必须恰好列出木板、树苗和水瓶。"
+	)
 	panel.call("_on_recipe_row_pressed", 0)
 	panel.call("_on_recipe_row_pressed", 0)
 	_expect(
@@ -209,13 +260,17 @@ func _run() -> void:
 		"所有建筑面板必须通过统一关闭规则支持第二次交互键关闭。"
 	)
 	_expect(
-		station.recipes.size() == 1
-		and station.recipes[0].input_item == WOOD
-		and station.recipes[0].input_amount == 1
+		station.recipes.size() == 2
+		and station.recipes[0].input_items == [WOOD]
+		and station.recipes[0].input_amounts == [1]
 		and station.recipes[0].output_items == [PLANK]
 		and station.recipes[0].output_amounts == [2]
-		and is_equal_approx(station.recipes[0].duration_seconds, 10.0),
-		"木材锯切配方必须为1木头、10秒、产出2木板。"
+		and is_equal_approx(station.recipes[0].duration_seconds, 10.0)
+		and station.recipes[1].input_items == [PLANK, SAPLING, WATER_BOTTLE]
+		and station.recipes[1].input_amounts == [10, 1, 5]
+		and station.recipes[1].output_items == [WOODEN_CORE]
+		and station.recipes[1].output_amounts == [1],
+		"加工站必须保留木材锯切，并新增10木板、1树苗、5水瓶制作1木制核心的配方。"
 	)
 
 	station.set_production_enabled(false)
@@ -349,16 +404,43 @@ func _run() -> void:
 		and coordinator.get_total_item_count(SAPLING) == 1,
 		"加工站必须能跨仓扣料并把产物自动写入全场仓库网络，且不影响树苗。"
 	)
+	_expect(second_warehouse.try_add_storage_item_count(PLANK, 4), "核心配方必须能准备余下4份木板。")
+	_expect(warehouse.try_add_storage_item_count(WATER_BOTTLE, 4), "核心配方缺料测试必须先准备4瓶水。")
+	_expect(station.select_recipe(&"wooden_core_assembly"), "玩家必须能选择木制核心组装配方。")
+	station.advance_shared_production_tick(10.0)
+	_expect(
+		coordinator.get_total_item_count(PLANK) == 10
+		and coordinator.get_total_item_count(SAPLING) == 1
+		and coordinator.get_total_item_count(WATER_BOTTLE) == 4
+		and coordinator.get_total_item_count(WOODEN_CORE) == 0
+		and station.completion_wait_reason == ProductionCoordinator.RESULT_MISSING_INPUT,
+		"缺少任一投入时，核心配方不得部分扣除木板、树苗或水瓶。"
+	)
+	_expect(second_warehouse.try_add_storage_item_count(WATER_BOTTLE, 1), "补入第5瓶水必须成功。")
+	_expect(
+		coordinator.get_total_item_count(PLANK) == 0
+		and coordinator.get_total_item_count(SAPLING) == 0
+		and coordinator.get_total_item_count(WATER_BOTTLE) == 0
+		and coordinator.get_total_item_count(WOODEN_CORE) == 1
+		and is_zero_approx(station.progress_elapsed_seconds),
+		"三种投入跨仓凑齐时必须在同一事务中扣除10/1/5并产出1个木制核心。"
+	)
 
 	var building_texture := load(
 		"res://resources/texture/plant_defense/wood_processing_station/wood_processing_station.png"
 	) as Texture2D
 	var plank_texture := PLANK.icon_texture
+	var wooden_core_texture := WOODEN_CORE.icon_texture
 	var panel_texture := load(
 		"res://resources/texture/production/production_panel_background.png"
 	) as Texture2D
 	_expect(building_texture != null and building_texture.get_size() == Vector2(64, 64), "加工站必须使用64×64像素画。")
 	_expect(plank_texture != null and plank_texture.get_size() == Vector2(32, 32), "木板必须使用32×32物资图标。")
+	_expect(
+		wooden_core_texture != null
+		and wooden_core_texture.get_size() == Vector2(32, 32),
+		"木制核心必须使用32×32物资图标。"
+	)
 	_expect(panel_texture != null and panel_texture.get_size() == Vector2(728, 544), "通用生产面板背景必须为728×544。")
 	var game_scene := load("res://scene/game_tower_defense.tscn") as PackedScene
 	var game_instance := game_scene.instantiate() if game_scene != null else null

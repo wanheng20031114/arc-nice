@@ -8,6 +8,7 @@
 [ext_resource type="Resource" path="res://resources/config/production/wood_to_plank.tres" id="6_recipe"]
 [ext_resource type="Script" uid="uid://bqe4uxp0um77k" path="res://resources/config/production/production_recipe.gd" id="7_recipe_script"]
 [ext_resource type="Shader" uid="uid://du6bl8vksnlqd" path="res://resources/shader/wood_processing_station_border.gdshader" id="8_border_shader"]
+[ext_resource type="Resource" path="res://resources/config/production/wooden_core_assembly.tres" id="9_core_recipe"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_production_border"]
 shader = ExtResource("8_border_shader")
@@ -82,7 +83,7 @@ outline_color = Color(0.055, 0.027, 0.012, 1)
 collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
-recipes = Array[ExtResource("7_recipe_script")]([ExtResource("6_recipe")])
+recipes = Array[ExtResource("7_recipe_script")]([ExtResource("6_recipe"), ExtResource("9_core_recipe")])
 enemy_approach_depth = 2.0
 lifecycle_visual_paths = Array[NodePath]([NodePath("MainSprite")])
 lifecycle_effect_top_y = -9.0

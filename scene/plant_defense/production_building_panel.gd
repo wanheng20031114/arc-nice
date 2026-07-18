@@ -8,8 +8,6 @@ const DESIGN_SIZE := Vector2(728.0, 544.0)
 const DEFAULT_PANEL_BACKGROUND := preload(
 	"res://resources/texture/production/production_panel_background.png"
 )
-const WOOD := preload("res://resources/config/materials/material_wood.tres")
-const SAPLING := preload("res://resources/config/materials/material_sapling.tres")
 
 @onready var overlay: Control = $Overlay
 @onready var panel_root: Control = $Overlay/PanelRoot
@@ -18,7 +16,11 @@ const SAPLING := preload("res://resources/config/materials/material_sapling.tres
 @onready var toggle_button: Button = $Overlay/PanelRoot/ToggleButton
 @onready var input_title: Label = $Overlay/PanelRoot/InputTitle
 @onready var output_title: Label = $Overlay/PanelRoot/OutputTitle
-@onready var input_slot: InventorySlot = $Overlay/PanelRoot/InputSlot
+@onready var input_slots: Array[InventorySlot] = [
+	$Overlay/PanelRoot/InputSlot1,
+	$Overlay/PanelRoot/InputSlot2,
+	$Overlay/PanelRoot/InputSlot3,
+]
 @onready var output_slots: Array[InventorySlot] = [
 	$Overlay/PanelRoot/OutputSlot1,
 	$Overlay/PanelRoot/OutputSlot2,
@@ -27,8 +29,11 @@ const SAPLING := preload("res://resources/config/materials/material_sapling.tres
 @onready var progress_bar: ProgressBar = $Overlay/PanelRoot/ProgressBar
 @onready var progress_label: Label = $Overlay/PanelRoot/ProgressLabel
 @onready var material_list: PanelContainer = $Overlay/PanelRoot/MaterialList
-@onready var wood_button: Button = $Overlay/PanelRoot/MaterialList/ListMargin/Rows/WoodButton
-@onready var sapling_button: Button = $Overlay/PanelRoot/MaterialList/ListMargin/Rows/SaplingButton
+@onready var material_buttons: Array[Button] = [
+	$Overlay/PanelRoot/MaterialList/ListMargin/Rows/MaterialButton1,
+	$Overlay/PanelRoot/MaterialList/ListMargin/Rows/MaterialButton2,
+	$Overlay/PanelRoot/MaterialList/ListMargin/Rows/MaterialButton3,
+]
 @onready var recipe_title: Label = $Overlay/PanelRoot/RecipeTitle
 @onready var recipe_scroll: ScrollContainer = $Overlay/PanelRoot/RecipeScroll
 @onready var recipe_rows: Array[Button] = [
@@ -55,11 +60,16 @@ func _ready() -> void:
 	material_list.hide()
 	set_process_input(false)
 	set_process(false)
-	input_slot.pressed.connect(_on_input_slot_pressed)
+	for input_index in input_slots.size():
+		input_slots[input_index].pressed.connect(
+			_on_input_slot_pressed.bind(input_index)
+		)
 	toggle_button.pressed.connect(_on_toggle_pressed)
 	close_button.pressed.connect(close)
-	wood_button.pressed.connect(_on_wood_pressed)
-	sapling_button.pressed.connect(_on_sapling_pressed)
+	for material_index in material_buttons.size():
+		material_buttons[material_index].pressed.connect(
+			_on_material_button_pressed.bind(material_index)
+		)
 	for row_index in recipe_rows.size():
 		recipe_rows[row_index].pressed.connect(_on_recipe_row_pressed.bind(row_index))
 	transient_status_timer.timeout.connect(_on_transient_status_timeout)
@@ -184,19 +194,23 @@ func _refresh_all() -> void:
 	var display_recipe := building.get_display_recipe()
 	_apply_panel_layout(display_recipe)
 	var coordinator := building.production_coordinator
+	_clear_slots()
 	if display_recipe != null:
-		var input_count := 1 if display_recipe.uses_environment_source() else (
-			coordinator.get_total_item_count(display_recipe.input_item)
-			if coordinator != null
-			else 0
-		)
-		input_slot.set_item(display_recipe.input_item, input_count)
-	else:
-		input_slot.set_item(null, 0)
-
-	for output_slot in output_slots:
-		output_slot.set_item(null, 0)
-	if display_recipe != null:
+		for input_index in mini(
+			display_recipe.input_items.size(),
+			input_slots.size()
+		):
+			var input_item := display_recipe.input_items[input_index]
+			var input_amount := display_recipe.input_amounts[input_index]
+			input_slots[input_index].set_item(
+				input_item,
+				1 if input_amount == 0 else input_amount
+			)
+			input_slots[input_index].tooltip_text = _get_input_tooltip(
+				input_item,
+				input_amount,
+				coordinator
+			)
 		for output_index in mini(display_recipe.output_items.size(), output_slots.size()):
 			output_slots[output_index].set_item(
 				display_recipe.output_items[output_index],
@@ -261,9 +275,24 @@ func _refresh_recipe_rows() -> void:
 		row.show()
 		row.set_meta(&"recipe_id", recipe.recipe_id)
 		row.icon = recipe.output_items[0].icon_texture
-		row.text = "%s ×%d  →  %s\n约 %.1f 秒" % [
-			recipe.input_item.display_name,
-			recipe.input_amount,
+		var input_label := (
+			recipe.get_input_summary()
+			if recipe.input_items.size() == 1
+			else "%d 种原料" % recipe.input_items.size()
+		)
+		var output_label := (
+			recipe.get_output_summary()
+			if recipe.output_items.size() == 1
+			else "%d 种产物" % recipe.output_items.size()
+		)
+		row.text = "%s\n%s → %s" % [
+			recipe.display_name,
+			input_label,
+			output_label,
+		]
+		row.tooltip_text = "%s\n%s → %s\n约 %.1f 秒" % [
+			recipe.display_name,
+			recipe.get_input_summary(),
 			recipe.get_output_summary(),
 			recipe.duration_seconds,
 		]
@@ -272,15 +301,33 @@ func _refresh_recipe_rows() -> void:
 
 
 func _refresh_material_rows() -> void:
-	if building.uses_environment_source():
+	for button in material_buttons:
+		button.hide()
+	var recipe := building.get_display_recipe()
+	if recipe == null or recipe.uses_environment_source():
+		material_list.hide()
 		return
 	var coordinator := building.production_coordinator
-	var wood_count := coordinator.get_total_item_count(WOOD) if coordinator != null else 0
-	var sapling_count := coordinator.get_total_item_count(SAPLING) if coordinator != null else 0
-	wood_button.icon = WOOD.icon_texture
-	wood_button.text = "木头    仓库共 %d" % wood_count
-	sapling_button.icon = SAPLING.icon_texture
-	sapling_button.text = "树苗    仓库共 %d" % sapling_count
+	var visible_count := mini(recipe.input_items.size(), material_buttons.size())
+	for input_index in visible_count:
+		var item := recipe.input_items[input_index]
+		var required := recipe.input_amounts[input_index]
+		var stored := (
+			coordinator.get_total_item_count(item)
+			if coordinator != null
+			else 0
+		)
+		var button := material_buttons[input_index]
+		button.show()
+		button.icon = item.icon_texture
+		button.text = "%s    需求 %d · 仓库 %d" % [
+			item.display_name,
+			required,
+			stored,
+		]
+		button.tooltip_text = item.description
+	var list_height := 12.0 + visible_count * 45.0 + maxi(visible_count - 1, 0) * 4.0
+	_set_control_rect(material_list, Rect2(43, 322, 207, list_height))
 
 
 func _refresh_status() -> void:
@@ -340,23 +387,44 @@ func _on_toggle_pressed() -> void:
 	building.set_production_enabled(not building.production_enabled)
 
 
-func _on_input_slot_pressed() -> void:
+func _on_input_slot_pressed(input_index: int) -> void:
 	if building != null and building.uses_environment_source():
 		material_list.hide()
 		_show_transient_status("水面是环境来源，不会消耗仓库内的任何物品。")
 		return
 	material_list.visible = not material_list.visible
-	if material_list.visible:
-		wood_button.grab_focus()
+	if (
+		material_list.visible
+		and input_index >= 0
+		and input_index < material_buttons.size()
+		and material_buttons[input_index].visible
+	):
+		material_buttons[input_index].grab_focus()
 
 
-func _on_wood_pressed() -> void:
+func _on_material_button_pressed(input_index: int) -> void:
+	if building == null:
+		return
+	var recipe := building.get_display_recipe()
+	if (
+		recipe == null
+		or input_index < 0
+		or input_index >= recipe.input_items.size()
+	):
+		return
+	var item := recipe.input_items[input_index]
+	var required := recipe.input_amounts[input_index]
+	var coordinator := building.production_coordinator
+	var stored := (
+		coordinator.get_total_item_count(item)
+		if coordinator != null
+		else 0
+	)
 	material_list.hide()
-	_show_transient_status("木头可用于当前加工站；实际用量会在完成瞬间从全场仓库扣除。")
-
-
-func _on_sapling_pressed() -> void:
-	_show_transient_status("树苗与当前配方不匹配，未放入、未消耗任何物品。")
+	_show_transient_status(
+		"每轮需要 %d 个%s；全场仓库当前共有 %d 个。"
+		% [required, item.display_name, stored]
+	)
 
 
 func _on_recipe_row_pressed(row_index: int) -> void:
@@ -451,7 +519,7 @@ func _unbind_building() -> void:
 
 
 func _clear_slots() -> void:
-	if input_slot != null:
+	for input_slot in input_slots:
 		input_slot.set_item(null, 0)
 	for output_slot in output_slots:
 		output_slot.set_item(null, 0)
@@ -472,15 +540,17 @@ func _apply_panel_layout(recipe: ProductionRecipe) -> void:
 		material_list.hide()
 		recipe_title.hide()
 		recipe_scroll.hide()
-		output_slots[1].hide()
-		output_slots[2].hide()
-		input_slot.disabled = false
+		for input_index in input_slots.size():
+			input_slots[input_index].visible = input_index == 0
+			input_slots[input_index].disabled = false
+		for output_index in output_slots.size():
+			output_slots[output_index].visible = output_index == 0
 		input_title.text = "水源"
 		output_title.text = "采集产物"
 		_set_control_rect(building_title, Rect2(128, 112, 472, 38))
 		_set_control_rect(input_title, Rect2(126, 190, 128, 28))
 		_set_control_rect(output_title, Rect2(478, 190, 128, 28))
-		_set_control_rect(input_slot, Rect2(160, 247, 64, 70))
+		_set_control_rect(input_slots[0], Rect2(160, 247, 64, 70))
 		_set_control_rect(progress_bar, Rect2(254, 268, 220, 28))
 		_set_control_rect(progress_label, Rect2(240, 306, 248, 28))
 		_set_control_rect(output_slots[0], Rect2(508, 247, 64, 70))
@@ -493,23 +563,83 @@ func _apply_panel_layout(recipe: ProductionRecipe) -> void:
 
 	recipe_title.show()
 	recipe_scroll.show()
-	output_slots[1].show()
-	output_slots[2].show()
-	input_slot.disabled = false
 	input_title.text = "原材料"
-	output_title.text = "产物槽位"
+	output_title.text = "产物"
 	_set_control_rect(building_title, Rect2(84, 23, 536, 39))
-	_set_control_rect(input_title, Rect2(44, 196, 80, 28))
-	_set_control_rect(output_title, Rect2(298, 196, 147, 28))
-	_set_control_rect(input_slot, Rect2(57, 257, 52, 58))
-	_set_control_rect(progress_bar, Rect2(122, 271, 164, 25))
-	_set_control_rect(progress_label, Rect2(115, 304, 179, 27))
-	_set_control_rect(output_slots[0], Rect2(301, 257, 52, 58))
+	_set_control_rect(input_title, Rect2(42, 196, 164, 28))
+	_set_control_rect(output_title, Rect2(304, 196, 164, 28))
+	_layout_slot_group(
+		input_slots,
+		recipe.input_items.size() if recipe != null else 0,
+		Rect2(42, 257, 164, 58)
+	)
+	_layout_slot_group(
+		output_slots,
+		recipe.output_items.size() if recipe != null else 0,
+		Rect2(304, 257, 164, 58)
+	)
+	_set_control_rect(progress_bar, Rect2(214, 271, 82, 25))
+	_set_control_rect(progress_label, Rect2(204, 304, 102, 27))
 	_set_control_rect(status_label, Rect2(61, 440, 405, 52))
 	_set_control_rect(close_button, Rect2(548, 440, 109, 37))
 	close_button.text = "关闭"
 	close_button.tooltip_text = ""
 	close_button.modulate = Color.WHITE
+
+
+func _layout_slot_group(
+	slots: Array[InventorySlot],
+	requested_count: int,
+	bounds: Rect2
+) -> void:
+	var visible_count := clampi(requested_count, 0, slots.size())
+	var slot_size := Vector2(52, 58)
+	var separation := 4.0
+	var total_width := (
+		visible_count * slot_size.x
+		+ maxi(visible_count - 1, 0) * separation
+	)
+	var start_x := bounds.position.x + (bounds.size.x - total_width) * 0.5
+	for slot_index in slots.size():
+		var slot := slots[slot_index]
+		slot.visible = slot_index < visible_count
+		slot.disabled = false
+		if not slot.visible:
+			continue
+		_set_control_rect(
+			slot,
+			Rect2(
+				start_x + slot_index * (slot_size.x + separation),
+				bounds.position.y + (bounds.size.y - slot_size.y) * 0.5,
+				slot_size.x,
+				slot_size.y
+			)
+		)
+
+
+func _get_input_tooltip(
+	item: PickupConfig,
+	required: int,
+	coordinator: ProductionCoordinator
+) -> String:
+	if item == null:
+		return "空槽位"
+	if required == 0:
+		return "%s\n环境来源，不消耗仓库物品。\n%s" % [
+			item.display_name,
+			item.description,
+		]
+	var stored := (
+		coordinator.get_total_item_count(item)
+		if coordinator != null
+		else 0
+	)
+	return "%s\n每轮需要 %d · 全场仓库共有 %d\n%s" % [
+		item.display_name,
+		required,
+		stored,
+		item.description,
+	]
 
 
 func _set_control_rect(control: Control, rect: Rect2) -> void:

@@ -108,7 +108,9 @@ func _run() -> void:
 		"采集器面板必须隐藏配方栏并呈现水源—进度—产物的单行布局。"
 	)
 	_expect(
-		panel.input_slot.item == WATER_SOURCE
+		panel.input_slots[0].item == WATER_SOURCE
+		and not panel.input_slots[1].visible
+		and not panel.input_slots[2].visible
 		and panel.output_slots[0].item == WATER_BOTTLE
 		and not panel.output_slots[1].visible
 		and not panel.output_slots[2].visible,
@@ -148,8 +150,8 @@ func _test_config_and_assets(collector: WaterCollector) -> void:
 	_expect(
 		collector != null
 		and collector.recipes.size() == 1
-		and collector.recipes[0].input_item == WATER_SOURCE
-		and collector.recipes[0].input_amount == 0
+		and collector.recipes[0].input_items == [WATER_SOURCE]
+		and collector.recipes[0].input_amounts == [0]
 		and collector.recipes[0].output_items == [WATER_BOTTLE]
 		and collector.recipes[0].output_amounts == [1]
 		and is_equal_approx(collector.recipes[0].duration_seconds, 20.0),

@@ -9,8 +9,8 @@
 script = ExtResource("1_script")
 recipe_id = &"wood_to_plank"
 display_name = "木材锯切"
-input_item = ExtResource("2_wood")
-input_amount = 1
+input_items = Array[ExtResource("4_pickup_script")]([ExtResource("2_wood")])
+input_amounts = Array[int]([1])
 output_items = Array[ExtResource("4_pickup_script")]([ExtResource("3_plank")])
 output_amounts = Array[int]([2])
 duration_seconds = 10.0

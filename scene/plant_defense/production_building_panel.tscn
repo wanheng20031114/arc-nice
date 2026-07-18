@@ -217,17 +217,35 @@ offset_left = 298.0
 offset_top = 196.0
 offset_right = 445.0
 offset_bottom = 224.0
-text = "产物槽位"
+text = "产物"
 label_settings = SubResource("LabelSettings_section")
 horizontal_alignment = 1
 
-[node name="InputSlot" parent="Overlay/PanelRoot" instance=ExtResource("3_slot")]
+[node name="InputSlot1" parent="Overlay/PanelRoot" instance=ExtResource("3_slot")]
 layout_mode = 0
 offset_left = 57.0
 offset_top = 257.0
 offset_right = 109.0
 offset_bottom = 315.0
-tooltip_text = "点击查看可选物资"
+tooltip_text = "点击查看配方原料"
+
+[node name="InputSlot2" parent="Overlay/PanelRoot" instance=ExtResource("3_slot")]
+visible = false
+layout_mode = 0
+offset_left = 113.0
+offset_top = 257.0
+offset_right = 165.0
+offset_bottom = 315.0
+tooltip_text = "点击查看配方原料"
+
+[node name="InputSlot3" parent="Overlay/PanelRoot" instance=ExtResource("3_slot")]
+visible = false
+layout_mode = 0
+offset_left = 169.0
+offset_top = 257.0
+offset_right = 221.0
+offset_bottom = 315.0
+tooltip_text = "点击查看配方原料"
 
 [node name="ProgressBar" type="ProgressBar" parent="Overlay/PanelRoot"]
 layout_mode = 0
@@ -259,6 +277,7 @@ offset_bottom = 315.0
 mouse_filter = 2
 
 [node name="OutputSlot2" parent="Overlay/PanelRoot" instance=ExtResource("3_slot")]
+visible = false
 layout_mode = 0
 offset_left = 350.0
 offset_top = 257.0
@@ -267,6 +286,7 @@ offset_bottom = 315.0
 mouse_filter = 2
 
 [node name="OutputSlot3" parent="Overlay/PanelRoot" instance=ExtResource("3_slot")]
+visible = false
 layout_mode = 0
 offset_left = 399.0
 offset_top = 257.0
@@ -281,7 +301,7 @@ layout_mode = 0
 offset_left = 43.0
 offset_top = 322.0
 offset_right = 250.0
-offset_bottom = 432.0
+offset_bottom = 477.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_material_list")
 
 [node name="ListMargin" type="MarginContainer" parent="Overlay/PanelRoot/MaterialList"]
@@ -295,7 +315,7 @@ theme_override_constants/margin_bottom = 6
 layout_mode = 2
 theme_override_constants/separation = 4
 
-[node name="WoodButton" type="Button" parent="Overlay/PanelRoot/MaterialList/ListMargin/Rows"]
+[node name="MaterialButton1" type="Button" parent="Overlay/PanelRoot/MaterialList/ListMargin/Rows"]
 custom_minimum_size = Vector2(0, 45)
 layout_mode = 2
 theme_override_font_sizes/font_size = 14
@@ -306,7 +326,8 @@ text = "木头"
 icon_max_width = 32
 alignment = 0
 
-[node name="SaplingButton" type="Button" parent="Overlay/PanelRoot/MaterialList/ListMargin/Rows"]
+[node name="MaterialButton2" type="Button" parent="Overlay/PanelRoot/MaterialList/ListMargin/Rows"]
+visible = false
 custom_minimum_size = Vector2(0, 45)
 layout_mode = 2
 theme_override_font_sizes/font_size = 14
@@ -314,6 +335,18 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_material_row")
 theme_override_styles/hover = SubResource("StyleBoxFlat_material_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_material_hover")
 text = "树苗"
+icon_max_width = 32
+alignment = 0
+
+[node name="MaterialButton3" type="Button" parent="Overlay/PanelRoot/MaterialList/ListMargin/Rows"]
+visible = false
+custom_minimum_size = Vector2(0, 45)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_material_row")
+theme_override_styles/hover = SubResource("StyleBoxFlat_material_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_material_hover")
+text = "水瓶"
 icon_max_width = 32
 alignment = 0
 
@@ -359,40 +392,70 @@ visible = false
 custom_minimum_size = Vector2(184, 72)
 layout_mode = 2
 toggle_mode = true
+theme_override_colors/font_color = Color(0.92, 0.84, 0.7, 1)
+theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/hover = SubResource("StyleBoxFlat_recipe_active")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_active")
+theme_override_styles/focus = SubResource("StyleBoxFlat_recipe_active")
+icon_max_width = 34
+alignment = 0
 
 [node name="RecipeRow3" type="Button" parent="Overlay/PanelRoot/RecipeScroll/RecipeRows"]
 visible = false
 custom_minimum_size = Vector2(184, 72)
 layout_mode = 2
 toggle_mode = true
+theme_override_colors/font_color = Color(0.92, 0.84, 0.7, 1)
+theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/hover = SubResource("StyleBoxFlat_recipe_active")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_active")
+theme_override_styles/focus = SubResource("StyleBoxFlat_recipe_active")
+icon_max_width = 34
+alignment = 0
 
 [node name="RecipeRow4" type="Button" parent="Overlay/PanelRoot/RecipeScroll/RecipeRows"]
 visible = false
 custom_minimum_size = Vector2(184, 72)
 layout_mode = 2
 toggle_mode = true
+theme_override_colors/font_color = Color(0.92, 0.84, 0.7, 1)
+theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/hover = SubResource("StyleBoxFlat_recipe_active")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_active")
+theme_override_styles/focus = SubResource("StyleBoxFlat_recipe_active")
+icon_max_width = 34
+alignment = 0
 
 [node name="RecipeRow5" type="Button" parent="Overlay/PanelRoot/RecipeScroll/RecipeRows"]
 visible = false
 custom_minimum_size = Vector2(184, 72)
 layout_mode = 2
 toggle_mode = true
+theme_override_colors/font_color = Color(0.92, 0.84, 0.7, 1)
+theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/hover = SubResource("StyleBoxFlat_recipe_active")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_active")
+theme_override_styles/focus = SubResource("StyleBoxFlat_recipe_active")
+icon_max_width = 34
+alignment = 0
 
 [node name="RecipeRow6" type="Button" parent="Overlay/PanelRoot/RecipeScroll/RecipeRows"]
 visible = false
 custom_minimum_size = Vector2(184, 72)
 layout_mode = 2
 toggle_mode = true
+theme_override_colors/font_color = Color(0.92, 0.84, 0.7, 1)
+theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/hover = SubResource("StyleBoxFlat_recipe_active")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_active")
+theme_override_styles/focus = SubResource("StyleBoxFlat_recipe_active")
+icon_max_width = 34
+alignment = 0
 
 [node name="StatusLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0

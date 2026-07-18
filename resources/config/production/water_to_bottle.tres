@@ -9,8 +9,8 @@
 script = ExtResource("1_script")
 recipe_id = &"water_to_bottle"
 display_name = "清水采集"
-input_item = ExtResource("2_water_source")
-input_amount = 0
+input_items = Array[ExtResource("4_pickup_script")]([ExtResource("2_water_source")])
+input_amounts = Array[int]([0])
 output_items = Array[ExtResource("4_pickup_script")]([ExtResource("3_water_bottle")])
 output_amounts = Array[int]([1])
 duration_seconds = 20.0

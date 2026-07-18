@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ProductionRecipe" format=3]
+
+[ext_resource type="Script" path="res://resources/config/production/production_recipe.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_plank.tres" id="2_plank"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_sapling.tres" id="3_sapling"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_water_bottle.tres" id="4_water_bottle"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_wooden_core.tres" id="5_wooden_core"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="6_pickup_script"]
+
+[resource]
+script = ExtResource("1_script")
+recipe_id = &"wooden_core_assembly"
+display_name = "木制核心组装"
+input_items = Array[ExtResource("6_pickup_script")]([ExtResource("2_plank"), ExtResource("3_sapling"), ExtResource("4_water_bottle")])
+input_amounts = Array[int]([10, 1, 5])
+output_items = Array[ExtResource("6_pickup_script")]([ExtResource("5_wooden_core")])
+output_amounts = Array[int]([1])
+duration_seconds = 10.0
