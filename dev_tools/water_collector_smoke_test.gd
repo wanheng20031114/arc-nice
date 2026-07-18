@@ -194,11 +194,13 @@ func _test_config_and_assets(collector: WaterCollector) -> void:
 		and progress_ring.texture_under != null
 		and progress_ring.texture_progress != null
 		and progress_ring.texture_progress.get_size() == Vector2(12, 12)
-		and progress_ring.size == Vector2(12, 12)
-		and progress_ring.position == Vector2(-9, 1)
+		and progress_ring.size == Vector2(16, 16)
+		and progress_ring.position == Vector2(-8, 12)
+		and progress_ring.position.y > 8.0
+		and progress_ring.tint_under.a >= 0.9
 		and progress_ring.tint_progress.b >= 0.99
-		and progress_ring.tint_progress.s >= 0.99,
-		"瓶身中央必须预置12×12顺时针中空高饱和蓝色收集进度环。"
+		and progress_ring.tint_progress.g >= 0.9,
+		"采集器底座必须预置16×16顺时针高对比度青色收集进度环。"
 	)
 
 
@@ -217,7 +219,7 @@ func _test_collection_progress_ring(
 		)
 		and progress_tween != null
 		and progress_tween.is_valid(),
-		"瓶身进度环必须从真实采集进度开始，并仅在状态变化后启动平滑Tween。"
+		"底座进度环必须从真实采集进度开始，并仅在状态变化后启动平滑Tween。"
 	)
 	if progress_tween == null or not progress_tween.is_valid():
 		return
@@ -231,7 +233,7 @@ func _test_collection_progress_ring(
 	)
 	_expect(
 		is_equal_approx(progress_ring.value, expected_half_step),
-		"瓶身进度环Tween必须线性平滑补间到下一次真实采集进度。"
+		"底座进度环Tween必须线性平滑补间到下一次真实采集进度。"
 	)
 
 
