@@ -41,7 +41,7 @@ const CAMPAIGN_DEFINITIONS := [
 const TOWER_DEFENSE_STRESS_TOTAL_ENEMIES := 1200
 const TOWER_DEFENSE_STRESS_MAX_ALIVE := 300
 const TOWER_DEFENSE_EARLY_WAVE_COUNT := 2
-const TOWER_DEFENSE_EARLY_WAVE_SPAWN_INTERVAL := 0.5
+const TOWER_DEFENSE_EARLY_WAVE_SPAWN_INTERVAL := 0.1
 const TOWER_DEFENSE_ORIGINAL_BATCH_INTERVAL := 0.1
 const TOWER_DEFENSE_ORIGINAL_BATCH_SIZE := 4.0
 const TOWER_DEFENSE_SEQUENTIAL_SPAWN_INTERVAL := (
@@ -307,7 +307,7 @@ func _verify_tower_defense_stress_wave(
 		and wave_config.spawn_count_per_tick
 		== TOWER_DEFENSE_SEQUENTIAL_SPAWN_COUNT_PER_TICK,
 		(
-			"Tower-defense waves 1-2 must spawn one enemy every 0.5 seconds; "
+			"Tower-defense waves 1-2 must spawn one enemy every 0.1 seconds; "
 			+ "later waves must spawn enemies individually at the original total rate."
 		)
 	)

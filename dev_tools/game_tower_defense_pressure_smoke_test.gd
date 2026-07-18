@@ -3,7 +3,7 @@ extends SceneTree
 const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
 const EXPECTED_WAVE_TOTAL := 1200
 const EXPECTED_MAX_ALIVE := 300
-const EXPECTED_EARLY_WAVE_INTERVAL := 0.5
+const EXPECTED_EARLY_WAVE_INTERVAL := 0.1
 const EXPECTED_SEQUENTIAL_WAVE_INTERVAL := 0.025
 const EXPECTED_SEQUENTIAL_SPAWNS_PER_SECOND := 40
 const SPAWN_RATE_TOLERANCE := 2
@@ -41,7 +41,7 @@ func _run() -> void:
 		_expect(
 			is_equal_approx(early_wave.spawn_interval, EXPECTED_EARLY_WAVE_INTERVAL)
 			and early_wave.spawn_count_per_tick == 1,
-			"Tower-defense waves 1-2 must spawn one enemy every 0.5 seconds."
+			"Tower-defense waves 1-2 must spawn one enemy every 0.1 seconds."
 		)
 
 	var sequential_wave := game.waves[2]
