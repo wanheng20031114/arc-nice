@@ -24,7 +24,7 @@ static var _performance_metrics := {
 }
 static var _compensation_ray_query: PhysicsRayQueryParameters2D = null
 
-@export var speed: float = 125.0
+@export var speed: float = 100.0
 @export var max_lifetime: float = 7.0
 @export var homing_turn_rate: float = 6.0
 @export_group("燃烧")
@@ -73,7 +73,7 @@ var ball_directions := PackedVector2Array([
 ])
 var ball_effect_times := PackedFloat32Array([0.0, 0.0, 0.0])
 var authored_ball_positions := PackedVector2Array()
-var _authored_speed: float = 125.0
+var _authored_speed: float = 100.0
 var _authored_max_lifetime: float = 7.0
 var _authored_homing_turn_rate: float = 6.0
 var _authored_burn_duration: float = 5.0

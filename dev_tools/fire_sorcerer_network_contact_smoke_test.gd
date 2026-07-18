@@ -298,7 +298,7 @@ func _test_elite_projectile_instantiation_contract() -> void:
 		1,
 		Vector2.RIGHT,
 		ELITE_FIREBALL_DAMAGE,
-		140.0,
+		115.0,
 		7.0,
 		false,
 		0,
@@ -328,7 +328,7 @@ func _test_elite_projectile_instantiation_contract() -> void:
 			== "res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn"
 		and projectile.source_type == ELITE_FIREBALL_TYPE
 		and projectile.damage == ELITE_FIREBALL_DAMAGE
-		and is_equal_approx(projectile.speed, 140.0)
+		and is_equal_approx(projectile.speed, 115.0)
 		and projectile.call("_get_ball_source_type", 0)
 			== &"fire_sorcerer_elite_fireball_a"
 		and projectile.call("_get_ball_source_type", 1)
@@ -336,7 +336,7 @@ func _test_elite_projectile_instantiation_contract() -> void:
 		and projectile.call("_get_ball_source_type", 2)
 			== &"fire_sorcerer_elite_fireball_c",
 		"Elite network dispatch must preserve its independent scene, root source "
-		+ "type, 70 damage, 140 speed, and Elite A/B/C sources."
+		+ "type, 70 damage, 115 speed, and Elite A/B/C sources."
 	)
 	projectile.free()
 	mp_game.free()
@@ -861,7 +861,7 @@ func _spawn_volley(
 	volley.setup(
 		Vector2.RIGHT,
 		FIREBALL_DAMAGE,
-		125.0,
+		100.0,
 		7.0,
 		null,
 		0.0
@@ -884,7 +884,7 @@ func _spawn_elite_volley(
 	volley.setup(
 		Vector2.RIGHT,
 		ELITE_FIREBALL_DAMAGE,
-		140.0,
+		115.0,
 		7.0,
 		null,
 		0.0

@@ -694,10 +694,10 @@ func _verify_extended_projectile_reuse() -> void:
 			reused_volley.set_physics_process(false)
 			await physics_frame
 			var expected_speed := (
-				140.0
+				115.0
 				if projectile_scene
 					== FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE
-				else 125.0
+				else 100.0
 			)
 			var expected_source_type := (
 				&"fire_sorcerer_elite_fireball_volley"

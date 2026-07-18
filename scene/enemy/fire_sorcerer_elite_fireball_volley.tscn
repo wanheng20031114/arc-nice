@@ -9,7 +9,7 @@ radius = 3.5
 [node name="FireSorcererEliteFireballVolley" type="Node2D"]
 z_index = 3
 script = ExtResource("1_script")
-speed = 140.0
+speed = 115.0
 burn_level = 10
 projectile_source_type = &"fire_sorcerer_elite_fireball_volley"
 ball_source_type_a = &"fire_sorcerer_elite_fireball_a"

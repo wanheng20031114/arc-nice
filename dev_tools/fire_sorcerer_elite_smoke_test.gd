@@ -127,13 +127,13 @@ func _test_config_contract() -> void:
 		"Elite magic defense must remain 80."
 	)
 	_expect(
-		is_equal_approx(ELITE_CONFIG.projectile_speed, 140.0)
+		is_equal_approx(ELITE_CONFIG.projectile_speed, 115.0)
 		and is_equal_approx(
 			ELITE_CONFIG.projectile_speed
 				- BASE_CONFIG.projectile_speed,
 			15.0
 		),
-		"Elite blue fireballs must be exactly 15 faster: 140."
+		"Elite blue fireballs must be exactly 15 faster: 115."
 	)
 	_expect(
 		is_equal_approx(
@@ -336,12 +336,12 @@ func _test_volley_scene_and_magic_damage() -> void:
 	)
 	_expect(
 		volley.damage == 70
-		and is_equal_approx(volley.speed, 140.0)
+		and is_equal_approx(volley.speed, 115.0)
 		and is_equal_approx(volley.max_lifetime, 7.0)
 		and is_equal_approx(volley.homing_turn_rate, 6.0)
 		and is_equal_approx(volley.burn_duration, 5.0)
 		and volley.burn_level == 10,
-		"Elite volley setup must preserve 70 damage, 140 speed, and level-10 burn."
+		"Elite volley setup must preserve 70 damage, 115 speed, and level-10 burn."
 	)
 	_expect(
 		volley.call("_get_default_projectile_source_type")

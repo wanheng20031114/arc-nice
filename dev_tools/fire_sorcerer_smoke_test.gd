@@ -174,13 +174,13 @@ func _test_resource_and_scene_contract() -> void:
 		"Fire Sorcerer projectile lifetime must be 7 seconds."
 	)
 	_expect(
-		is_equal_approx(FIRE_SORCERER_CONFIG.projectile_speed, 125.0)
+		is_equal_approx(FIRE_SORCERER_CONFIG.projectile_speed, 100.0)
 		and is_equal_approx(
 			FIRE_SORCERER_CONFIG.projectile_speed
 				- PLAYER_CONFIG.starting_move_speed,
-			5.0
+			-20.0
 		),
-		"Fire Sorcerer projectile speed must stay exactly 5 above the "
+		"Fire Sorcerer projectile speed must be 100, exactly 20 below the "
 		+ "player's default movement speed."
 	)
 	_expect(
