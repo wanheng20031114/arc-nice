@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Prepare and install the visually approved Fire Sorcerer move row.
 
-The imagegen source is retained verbatim for provenance.  Its approximate
-pixel grid is deliberately not passed through the generic unsafe compressor:
-this source-specific pipeline locks the raw fingerprint and cell geometry,
-samples two reviewed 29px-tall poses with nearest-neighbor resampling, and
-constructs their opposite leg phases by mirroring only the lower body.
+The imagegen sources are retained verbatim for provenance.  Their approximate
+pixel grids are deliberately not passed through the generic unsafe compressor:
+this source-specific pipeline locks every raw fingerprint and reviewed cell
+geometry, then samples four complete 29px-tall character poses with
+nearest-neighbor resampling.  No body region is mirrored or spliced.
 
 The resulting 160x40 native strip is audited before it replaces row zero of
 ``resources/texture/fire_sorcerer.png``.  Rows one through three are protected
@@ -36,27 +36,48 @@ from process_fire_sorcerer_assets import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RAW_SOURCE = (
+BASE_RAW_SOURCE = (
     ROOT
     / "dev_assets/source_images/fire_sorcerer"
     / "fire_sorcerer_move_generated_v1.png"
 )
+OPPOSITE_CONTACT_RAW_SOURCE = (
+    ROOT
+    / "dev_assets/source_images/fire_sorcerer"
+    / "fire_sorcerer_move_opposite_contact_generated_v1.png"
+)
+OPPOSITE_PASSING_RAW_SOURCE = (
+    ROOT
+    / "dev_assets/source_images/fire_sorcerer"
+    / "fire_sorcerer_move_opposite_generated_v1.png"
+)
 EXPECTED_RAW_SIZE = (1983, 793)
-EXPECTED_RAW_SHA256 = (
+EXPECTED_BASE_RAW_SHA256 = (
     "1d0cd4b33eb6bbf7a792fec2db03386fda0e402a8d550164d2b55a7d848e3a08"
 )
-EXPECTED_CELL_BBOXES = (
+EXPECTED_OPPOSITE_CONTACT_RAW_SHA256 = (
+    "84dcbd6f93cdcb3b979bd5f6d298b144d5c5e4a6fa5a76747b5dec81cb754c59"
+)
+EXPECTED_OPPOSITE_PASSING_RAW_SHA256 = (
+    "2701f157bc22d7ff80c67236c03c0bbded97031d09a25ebb9a46f08e8b8affc2"
+)
+EXPECTED_BASE_CELL_BBOXES = (
     (103, 186, 457, 555),
     (95, 186, 439, 555),
     (58, 186, 413, 555),
     (54, 186, 399, 555),
 )
+OPPOSITE_CONTACT_CELL_RECT = (12, 12, 980, 781)
+OPPOSITE_PASSING_CELL_RECT = (1003, 12, 1971, 781)
+EXPECTED_OPPOSITE_CONTACT_CELL_BBOX = (229, 111, 727, 601)
+EXPECTED_OPPOSITE_PASSING_CELL_BBOX = (232, 110, 716, 598)
 SOURCE_FRAME_SIZES = (
     (28, 29),
     (27, 29),
+    (28, 29),
+    (27, 29),
 )
-LOWER_BODY_START_Y = 23
-LOWER_BODY_MIRROR_SUM = 34
+FRAME_X_OFFSETS = (0, 1, -1, 0)
 
 
 def _file_sha256(path: Path) -> str:
@@ -72,16 +93,18 @@ def _crop_horizontal_cell(
     return strip.crop((left, 0, right, strip.height))
 
 
-def _load_and_validate_raw_source() -> Image.Image:
-    if not RAW_SOURCE.is_file():
-        raise FileNotFoundError(f"Missing move imagegen source: {RAW_SOURCE}")
-    source_sha256 = _file_sha256(RAW_SOURCE)
-    if source_sha256 != EXPECTED_RAW_SHA256:
+def _load_and_validate_base_source() -> Image.Image:
+    if not BASE_RAW_SOURCE.is_file():
+        raise FileNotFoundError(
+            f"Missing move imagegen source: {BASE_RAW_SOURCE}"
+        )
+    source_sha256 = _file_sha256(BASE_RAW_SOURCE)
+    if source_sha256 != EXPECTED_BASE_RAW_SHA256:
         raise AssetContractError(
             "Move imagegen source fingerprint changed: "
             f"{source_sha256}"
         )
-    raw = Image.open(RAW_SOURCE).convert("RGBA")
+    raw = Image.open(BASE_RAW_SOURCE).convert("RGBA")
     if raw.size != EXPECTED_RAW_SIZE:
         raise AssetContractError(
             f"Move imagegen source is {raw.size}, expected {EXPECTED_RAW_SIZE}"
@@ -94,10 +117,10 @@ def _load_and_validate_raw_source() -> Image.Image:
     for column in range(4):
         cell = _crop_horizontal_cell(source, column)
         bbox = cell.getchannel("A").getbbox()
-        if bbox != EXPECTED_CELL_BBOXES[column]:
+        if bbox != EXPECTED_BASE_CELL_BBOXES[column]:
             raise AssetContractError(
                 f"Move source cell {column} bbox {bbox} changed from "
-                f"{EXPECTED_CELL_BBOXES[column]}"
+                f"{EXPECTED_BASE_CELL_BBOXES[column]}"
             )
         if (
             bbox[0] < 16
@@ -124,6 +147,58 @@ def _load_and_validate_raw_source() -> Image.Image:
     return source
 
 
+def _load_and_validate_opposite_cell(
+    path: Path,
+    expected_sha256: str,
+    cell_rect: tuple[int, int, int, int],
+    expected_bbox: tuple[int, int, int, int],
+    label: str,
+) -> Image.Image:
+    if not path.is_file():
+        raise FileNotFoundError(f"Missing {label} imagegen source: {path}")
+    source_sha256 = _file_sha256(path)
+    if source_sha256 != expected_sha256:
+        raise AssetContractError(
+            f"{label} source fingerprint changed: {source_sha256}"
+        )
+    raw = Image.open(path).convert("RGBA")
+    if raw.size != EXPECTED_RAW_SIZE:
+        raise AssetContractError(
+            f"{label} source is {raw.size}, expected {EXPECTED_RAW_SIZE}"
+        )
+    source, key = _remove_green_screen(raw.crop(cell_rect))
+    if key[1] <= key[0] + 80 or key[1] <= key[2] + 80:
+        raise AssetContractError(
+            f"{label} source border is not a dominant green key: {key}"
+        )
+    bbox = source.getchannel("A").getbbox()
+    if bbox != expected_bbox:
+        raise AssetContractError(
+            f"{label} source bbox {bbox} changed from {expected_bbox}"
+        )
+    if (
+        bbox[0] < 16
+        or bbox[1] < 16
+        or bbox[2] > source.width - 16
+        or bbox[3] > source.height - 16
+    ):
+        raise AssetContractError(f"{label} source touches its safety margin")
+    analysis = analyze_image(source)
+    print(
+        f"MOVE_SOURCE_CELL label={label} "
+        f"confidence={analysis['confidence']:.3f} "
+        f"mode={analysis['detection_mode']} "
+        f"bbox={bbox}"
+    )
+    print(
+        f"MOVE_SOURCE_OK label={label} "
+        f"size={raw.width}x{raw.height} "
+        f"key=#{key[0]:02x}{key[1]:02x}{key[2]:02x} "
+        f"sha256={source_sha256}"
+    )
+    return source
+
+
 def _sample_reviewed_frame(
     cell: Image.Image,
     logical_size: tuple[int, int],
@@ -138,38 +213,62 @@ def _sample_reviewed_frame(
     return _place_character_subject(_despill_logical_pixels(subject))
 
 
-def _mirror_lower_body(frame: Image.Image) -> Image.Image:
+def _offset_complete_frame(frame: Image.Image, offset_x: int) -> Image.Image:
     source = frame.convert("RGBA")
-    result = source.copy()
-    source_pixels = source.load()
-    result_pixels = result.load()
-    for y in range(LOWER_BODY_START_Y, CHARACTER_FRAME_SIZE):
-        for x in range(CHARACTER_FRAME_SIZE):
-            result_pixels[x, y] = (0, 0, 0, 0)
-        for x in range(CHARACTER_FRAME_SIZE):
-            mirrored_x = LOWER_BODY_MIRROR_SUM - x
-            if (
-                0 <= mirrored_x < CHARACTER_FRAME_SIZE
-                and source_pixels[x, y][3] > 0
-            ):
-                result_pixels[mirrored_x, y] = source_pixels[x, y]
+    bbox = source.getchannel("A").getbbox()
+    if bbox is None:
+        raise AssetContractError("Cannot offset an empty move frame")
+    if bbox[0] + offset_x < 0 or bbox[2] + offset_x > CHARACTER_FRAME_SIZE:
+        raise AssetContractError(
+            f"Complete-frame offset {offset_x} would clip bbox {bbox}"
+        )
+    result = Image.new(
+        "RGBA",
+        (CHARACTER_FRAME_SIZE, CHARACTER_FRAME_SIZE),
+        (0, 0, 0, 0),
+    )
+    result.paste(source, (offset_x, 0))
+    if (
+        result.getchannel("A").getbbox() is None
+        or sum(result.getchannel("A").getdata())
+        != sum(source.getchannel("A").getdata())
+    ):
+        raise AssetContractError(
+            f"Complete-frame offset {offset_x} lost visible pixels"
+        )
     return result
 
 
-def _build_native_move_strip(source: Image.Image) -> Image.Image:
+def _build_native_move_strip(
+    base_source: Image.Image,
+    opposite_contact_cell: Image.Image,
+    opposite_passing_cell: Image.Image,
+) -> Image.Image:
     contact_a = _sample_reviewed_frame(
-        _crop_horizontal_cell(source, 0),
+        _crop_horizontal_cell(base_source, 0),
         SOURCE_FRAME_SIZES[0],
     )
     passing_a = _sample_reviewed_frame(
-        _crop_horizontal_cell(source, 1),
+        _crop_horizontal_cell(base_source, 1),
         SOURCE_FRAME_SIZES[1],
     )
-    frames = (
+    contact_b = _sample_reviewed_frame(
+        opposite_contact_cell,
+        SOURCE_FRAME_SIZES[2],
+    )
+    passing_b = _sample_reviewed_frame(
+        opposite_passing_cell,
+        SOURCE_FRAME_SIZES[3],
+    )
+    sampled_frames = (
         contact_a,
         passing_a,
-        _mirror_lower_body(contact_a),
-        _mirror_lower_body(passing_a),
+        contact_b,
+        passing_b,
+    )
+    frames = tuple(
+        _offset_complete_frame(frame, FRAME_X_OFFSETS[frame_index])
+        for frame_index, frame in enumerate(sampled_frames)
     )
     strip = Image.new(
         "RGBA",
@@ -215,8 +314,26 @@ def _install_move_row(move_strip: Image.Image) -> None:
 
 
 def main() -> None:
-    source = _load_and_validate_raw_source()
-    move_strip = _build_native_move_strip(source)
+    base_source = _load_and_validate_base_source()
+    opposite_contact_cell = _load_and_validate_opposite_cell(
+        OPPOSITE_CONTACT_RAW_SOURCE,
+        EXPECTED_OPPOSITE_CONTACT_RAW_SHA256,
+        OPPOSITE_CONTACT_CELL_RECT,
+        EXPECTED_OPPOSITE_CONTACT_CELL_BBOX,
+        "opposite contact",
+    )
+    opposite_passing_cell = _load_and_validate_opposite_cell(
+        OPPOSITE_PASSING_RAW_SOURCE,
+        EXPECTED_OPPOSITE_PASSING_RAW_SHA256,
+        OPPOSITE_PASSING_CELL_RECT,
+        EXPECTED_OPPOSITE_PASSING_CELL_BBOX,
+        "opposite passing",
+    )
+    move_strip = _build_native_move_strip(
+        base_source,
+        opposite_contact_cell,
+        opposite_passing_cell,
+    )
     CHARACTER_MOVE_NATIVE_SOURCE.parent.mkdir(
         parents=True,
         exist_ok=True,

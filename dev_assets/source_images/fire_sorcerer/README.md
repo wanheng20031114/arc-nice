@@ -7,7 +7,9 @@
 - `fire_sorcerer_generated_v2.png`
 - `fire_sorcerer_attack_1_generated_v1.png`
 - `fire_sorcerer_move_generated_v1.png`
-- `fire_sorcerer_move_native_v1.png`（由上一项视觉验收后生成的原生 160×40 条带）
+- `fire_sorcerer_move_opposite_contact_generated_v1.png`
+- `fire_sorcerer_move_opposite_generated_v1.png`
+- `fire_sorcerer_move_native_v1.png`（由上述三项移动源图逐帧视觉验收后生成）
 - `fire_sorcerer_fireball_generated_v1.png`
 
 `fire_sorcerer_generated_v1.png` 是首次生成但被像素网格硬门槛拒绝的留档，
@@ -15,12 +17,15 @@
 `dev_tools/process_fire_sorcerer_assets.py` 做绿幕移除、逐帧逻辑网格分析和
 整数像素采样。
 
-移动条带的生图源是独立的 1983×793 四帧横条，近似网格置信度不足以进入
-通用压缩入口，因此由 `dev_tools/process_fire_sorcerer_move_asset.py` 锁定
-原图 SHA-256、四格边界和目标原生尺寸，并在人工视觉验收后使用最近邻采样。
-脚本把前两帧构造成“接触/通过”，只镜像 `y>=23` 的下半身得到反相两帧，
-随后验证二值 alpha、`y=38` 基线、质心漂移、落地段数量、脚带宽度和 RGBA
-指纹。安装时只无掩码覆盖角色表第一行，其余三行由解码后 RGBA 哈希保护。
+移动条带的生图源是三张 1983×793 横条，近似网格置信度不足以进入通用压缩
+入口，因此由 `dev_tools/process_fire_sorcerer_move_asset.py` 锁定每张原图的
+SHA-256、验收格边界和目标原生尺寸，并使用最近邻采样。第 0/1 帧取自主横条
+中的完整“接触/通过”人物，第 2 帧取自反相接触重绘的完整人物，第 3 帧取自
+反相通过重绘的完整人物。严禁对腰部以下做局部镜像或在人物内部拼接。
+
+脚本验证二值 alpha、单一四邻接连通块、相邻腰线的中心/重叠连续性、`y=38`
+基线、质心漂移、落地段数量、接触/通过姿势的落地宽度和 RGBA 指纹。安装时
+只无掩码覆盖角色表第一行，其余三行由解码后 RGBA 哈希保护。
 
 ## 角色初稿（已拒绝）
 
@@ -68,10 +73,11 @@ This is exactly ONE sprite frame, not a sheet. The intended native canvas is exa
 Use one perfectly uniform flat #00FF00 background everywhere outside the sprite, with no gradient, noise, shadow, text, border, grid line, scenery, second character, or detached projectile. Feet remain on the same baseline as the reference. The goal is measurable native low pixel density that can be losslessly center-sampled to one 40×40 frame, not additional detail.
 ```
 
-## 移动动画重制（最终独立源图）
+## 移动动画初次重制（保留前两帧）
 
-前两轮整表编辑仍让第 0/2 帧和第 1/3 帧过于相似，因此最终改为只生成四帧
-横条，并在原生像素阶段明确构造反相下半身。内置 `imagegen` 的最终提示词：
+前两轮整表编辑仍让第 0/2 帧和第 1/3 帧过于相似，因此改为只生成四帧
+横条。该图最终只提供第 0/1 帧；曾经在原生像素阶段局部镜像下半身的方案会
+撕裂腰部，已经完全移除。内置 `imagegen` 的提示词：
 
 ```text
 Use case: precise-object-edit
@@ -89,6 +95,59 @@ Identity/style: exactly match Image 1's dark-purple pointed hat, gray shadowed f
 Layout: four clearly separated equal square cells in one row, equivalent to four 40x40 logical frames, generous padding, nothing crosses cell boundaries.
 Scene/backdrop: perfectly flat solid #00ff00 chroma-key background, uniform with no shadows, gradients, texture, reflections or lighting variation. Do not use #00ff00 in the character.
 Constraints: crisp hard-edged pixel art; no antialiasing, blur, smooth vector curves, text, labels, arrows, grid lines, watermark, extra rows or extra characters. Avoid fused boots, both boots touching ground in passing poses, repeated contact silhouette, skating, hopping, random body drift, staff-side changes or character redesign.
+```
+
+## 移动动画反相帧完整重绘（最终第 2/3 帧）
+
+首先生成两个完整人物帧，明确禁止局部翻转和上下身拼接：
+
+```text
+Use case: precise-object-edit
+Asset type: two full-body replacement frames for a native pixel-art MOVE animation
+Input images: Image 1 is the authoritative Fire Sorcerer sprite sheet and identity/palette reference. Image 2 is the previous four-frame walk strip and size/composition reference.
+Primary request: Create ONE HORIZONTAL ROW ONLY with exactly TWO equal square cells. These are complete replacement frames for the third and fourth frames of the right-facing Fire Sorcerer's walk loop. Redraw the WHOLE character in each cell from hat tip through torso, belt, robe, pelvis, both legs, and both boots. Do not copy, reflect, flip, paste, or splice only the lower body.
+
+Frame 1 — opposite CONTACT pose: the dark far boot is clearly forward on screen-right and planted; the brighter orange-brown near boot is clearly back on screen-left and planted. Both boots share one ground line. The robe opening and folds must flow naturally and continuously from the belt/pelvis into the two legs.
+Frame 2 — opposite PASSING pose: the dark far boot is planted under the pelvis; the brighter orange-brown near boot swings forward and is clearly airborne with at least one logical transparent pixel beneath its sole. The belt, pelvis, robe panels, legs, and boots must form one coherent anatomy.
+
+Critical structural constraints: no horizontal tear at the waist, no seam at the belt, no disconnected torso and lower body, no inverted lower half, no mirrored-only legs, no backward knees, no duplicate leg emerging from the robe. The centerline of chest, belt, pelvis, and planted foot must read as one connected pose. Robe folds must continue across the waist without an abrupt left/right reversal.
+
+Anchor invariants: match Image 1 exactly for the same eyeless dark helmet/face, crooked purple hat and orange band, orange-red robe, purple accents, brown staff and yellow-orange flame. Same character proportions, apparent scale, outline thickness, right-facing orientation, staff hand, and staff direction. Keep hat, helmet, chest, belt, staff hand, and staff base on the same horizontal anchor with at most one logical pixel of drift. Allow only subtle one-pixel vertical walking bob.
+
+Style/medium: strict chunky low-resolution pixel art intended to be reduced with nearest-neighbor sampling into 40×40 native frames. Use hard-edged square pixel clusters, restrained existing palette, near-black one-logical-pixel outline, no anti-aliasing, no gradients, no smooth vector curves, no texture noise.
+Layout: exactly two clearly separated equal square cells in one row, generous padding, nothing crosses the cell boundary, no extra sprites or rows.
+Scene/backdrop: perfectly flat uniform solid #00ff00 chroma-key background, with no shadow, gradient, floor plane, reflection, texture, labels, grid lines, text, or watermark. Do not use #00ff00 inside the character.
+```
+
+随后单独收紧通过帧的单脚离地结构；最终第 3 帧取自这次完整人物重绘：
+
+```text
+Use case: precise-object-edit
+Input image: Image 1 is a two-cell pixel-art walk strip.
+Primary request: Keep the ENTIRE LEFT CELL exactly unchanged. In the RIGHT CELL only, redraw the same complete Fire Sorcerer as a coherent passing-step pose.
+
+Right-cell pose correction: the dark brown/purple FAR boot must be the only planted boot, directly under the pelvis on the common ground line. The bright orange-red NEAR boot must swing forward toward screen-right and be visibly AIRBORNE: its entire sole must have a clear band of at least one full logical green pixel between it and the ground line. Bend that lifted leg naturally from the pelvis. The robe opening and folds must connect continuously from belt to pelvis to both legs.
+
+Critical integrity constraints: redraw the whole right-cell character as one connected figure from hat through boots; no partial reflection, no lower-body-only flip, no waist seam, no horizontal tear, no inverted lower half, no backward knee, no duplicated leg. Chest, belt, pelvis, planted leg and planted foot must form one readable centerline. Preserve the exact eyeless helmet, purple hat, orange-red robe, palette, staff, flame, proportions, scale, outline thickness, right-facing direction, and upper-body anchor from Image 1.
+
+Keep exactly two equal square cells in one horizontal row. Preserve the perfectly flat uniform solid #00ff00 background. No shadow, floor plane, gradient, texture, grid, text, watermark, extra frame or extra character. Strict chunky hard-edged low-resolution pixel art; no antialiasing or smooth curves.
+```
+
+最后单独收紧反相接触帧的腿部身份；最终第 2 帧取自这次完整人物重绘：
+
+```text
+Use case: precise-object-edit
+Input image: Image 1 is a two-cell pixel-art walk strip.
+Primary request: Keep the ENTIRE RIGHT CELL exactly unchanged. In the LEFT CELL only, redraw the same COMPLETE character as one coherent full-body opposite contact pose. Do not make a local cut-and-paste edit.
+
+Mandatory leg identity and screen placement in the LEFT CELL:
+- SCREEN-LEFT / rear leg and boot: BRIGHT ORANGE-RED with a GOLD toe highlight, planted behind.
+- SCREEN-RIGHT / forward leg and boot: DARK PURPLE-BROWN with NO gold highlight, extended forward and planted.
+The two boots must visibly exchange both screen positions AND colors compared with a normal contact pose. The dark boot must be the rightmost boot. The bright boot must be the leftmost boot. Both soles share one ground line.
+
+Redraw the whole left-cell figure from hat through chest, belt, robe, pelvis, legs and boots so anatomy remains continuous. The robe opening must lead naturally from the belt to these swapped leg positions. No waist seam, no horizontal tear, no lower-body-only flip, no inverted lower half, no backward knee, no duplicated leg, no disconnected body. Preserve the exact eyeless helmet, purple hat, orange-red robe, palette, staff, flame, proportions, scale, outline thickness, right-facing direction, and upper-body anchor.
+
+Keep exactly two equal square cells in one horizontal row and preserve the flat solid #00ff00 background. No shadow, gradient, floor, grid, text, watermark, extra sprite or extra row. Strict chunky hard-edged low-resolution pixel art; no antialiasing or smooth curves.
 ```
 
 ## 火球动画（最终源图）

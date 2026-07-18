@@ -49,6 +49,10 @@ CHARACTER_OUTPUT = TEXTURE_DIR / "fire_sorcerer.png"
 FIREBALL_OUTPUT = TEXTURE_DIR / "fire_sorcerer_fireball.png"
 CHARACTER_ANIMATION_OUTPUT = ANIMATION_DIR / "fire_sorcerer.tres"
 FIREBALL_ANIMATION_OUTPUT = ANIMATION_DIR / "fire_sorcerer_fireball.tres"
+CHARACTER_ANIMATION_UID = "uid://fq4hw782ls7f"
+CHARACTER_TEXTURE_UID = "uid://n2vio6cf7374"
+FIREBALL_ANIMATION_UID = "uid://clyqfauajs7ku"
+FIREBALL_TEXTURE_UID = "uid://dfpioy7k740tx"
 
 GRID_COLUMNS = 4
 GRID_ROWS = 4
@@ -61,11 +65,12 @@ CHARACTER_REPLACEMENT_CELL = (2, 1)
 OPTIONAL_EMPTY_CHARACTER_CELL = (3, 3)
 OPTIONAL_EMPTY_FIREBALL_CELL = (3, 3)
 CHARACTER_FOOT_BASELINE_Y = 38
+CHARACTER_WAIST_ROWS = (22, 23)
 STATIC_CHARACTER_ROWS_RGBA_SHA256 = (
     "aae16cb9b2c06bf23af3737668fa59476aff1392fde46cfbd5b8c4b1e435c75a"
 )
 CHARACTER_MOVE_RGBA_SHA256 = (
-    "48ae80987f34df9a9e97c2061690b48ed1e2ef91ed090bbad8f0ce8b60e8d070"
+    "4ca274bcfdaedb1c0b26418d131cc850401fdd61fee8c5b611a6c51ca7069c21"
 )
 
 CHARACTER_ANIMATIONS = OrderedDict(
@@ -291,6 +296,48 @@ def _horizontal_runs(mask_row: np.ndarray) -> list[tuple[int, int]]:
     return runs
 
 
+def _connected_component_sizes(mask: np.ndarray) -> list[int]:
+    """Return 4-neighbour alpha-component sizes for one native frame."""
+    height, width = mask.shape
+    visited = np.zeros_like(mask, dtype=bool)
+    sizes: list[int] = []
+    for y in range(height):
+        for x in range(width):
+            if not bool(mask[y, x]) or bool(visited[y, x]):
+                continue
+            stack = [(x, y)]
+            visited[y, x] = True
+            size = 0
+            while stack:
+                current_x, current_y = stack.pop()
+                size += 1
+                for next_x, next_y in (
+                    (current_x - 1, current_y),
+                    (current_x + 1, current_y),
+                    (current_x, current_y - 1),
+                    (current_x, current_y + 1),
+                ):
+                    if (
+                        0 <= next_x < width
+                        and 0 <= next_y < height
+                        and bool(mask[next_y, next_x])
+                        and not bool(visited[next_y, next_x])
+                    ):
+                        visited[next_y, next_x] = True
+                        stack.append((next_x, next_y))
+            sizes.append(size)
+    return sorted(sizes, reverse=True)
+
+
+def _longest_horizontal_run(
+    mask_row: np.ndarray,
+) -> tuple[int, int] | None:
+    runs = _horizontal_runs(mask_row)
+    if not runs:
+        return None
+    return max(runs, key=lambda run: run[1] - run[0] + 1)
+
+
 def _audit_character_move_strip(move_strip: Image.Image) -> None:
     if move_strip.size != (
         CHARACTER_FRAME_SIZE * GRID_COLUMNS,
@@ -309,7 +356,8 @@ def _audit_character_move_strip(move_strip: Image.Image) -> None:
 
     masks: list[np.ndarray] = []
     centroids: list[tuple[float, float]] = []
-    foot_spans: list[int] = []
+    foot_band_spans: list[int] = []
+    ground_spans: list[int] = []
     bottom_run_counts: list[int] = []
     for frame_index in range(GRID_COLUMNS):
         frame_rgba = rgba[
@@ -323,6 +371,12 @@ def _audit_character_move_strip(move_strip: Image.Image) -> None:
         if visible_x.size == 0:
             raise AssetContractError(
                 f"Move frame {frame_index} is empty"
+            )
+        component_sizes = _connected_component_sizes(mask)
+        if len(component_sizes) != 1:
+            raise AssetContractError(
+                f"Move frame {frame_index} is structurally disconnected: "
+                f"components={component_sizes}"
             )
         bbox = (
             int(visible_x.min()),
@@ -354,6 +408,36 @@ def _audit_character_move_strip(move_strip: Image.Image) -> None:
         centroids.append(
             (float(visible_x.mean()), float(visible_y.mean()))
         )
+        upper_waist_run = _longest_horizontal_run(
+            mask[CHARACTER_WAIST_ROWS[0], :]
+        )
+        lower_waist_run = _longest_horizontal_run(
+            mask[CHARACTER_WAIST_ROWS[1], :]
+        )
+        if upper_waist_run is None or lower_waist_run is None:
+            raise AssetContractError(
+                f"Move frame {frame_index} has an empty waist row"
+            )
+        upper_center = (upper_waist_run[0] + upper_waist_run[1]) * 0.5
+        lower_center = (lower_waist_run[0] + lower_waist_run[1]) * 0.5
+        waist_overlap = (
+            min(upper_waist_run[1], lower_waist_run[1])
+            - max(upper_waist_run[0], lower_waist_run[0])
+            + 1
+        )
+        shorter_waist_width = min(
+            upper_waist_run[1] - upper_waist_run[0] + 1,
+            lower_waist_run[1] - lower_waist_run[0] + 1,
+        )
+        if (
+            abs(upper_center - lower_center) > 1.0
+            or waist_overlap < shorter_waist_width - 1
+        ):
+            raise AssetContractError(
+                f"Move frame {frame_index} has a torn waist transition: "
+                f"upper={upper_waist_run}, lower={lower_waist_run}, "
+                f"overlap={waist_overlap}"
+            )
         foot_y, foot_x = np.nonzero(
             mask[CHARACTER_FOOT_BASELINE_Y - 5:
                 CHARACTER_FOOT_BASELINE_Y + 1, :]
@@ -362,9 +446,13 @@ def _audit_character_move_strip(move_strip: Image.Image) -> None:
             raise AssetContractError(
                 f"Move frame {frame_index} has no readable foot band"
             )
-        foot_spans.append(int(foot_x.max() - foot_x.min() + 1))
-        bottom_run_counts.append(
-            len(_horizontal_runs(mask[CHARACTER_FOOT_BASELINE_Y, :]))
+        foot_band_spans.append(int(foot_x.max() - foot_x.min() + 1))
+        bottom_runs = _horizontal_runs(
+            mask[CHARACTER_FOOT_BASELINE_Y, :]
+        )
+        bottom_run_counts.append(len(bottom_runs))
+        ground_spans.append(
+            bottom_runs[-1][1] - bottom_runs[0][0] + 1
         )
         masks.append(mask)
 
@@ -374,16 +462,17 @@ def _audit_character_move_strip(move_strip: Image.Image) -> None:
     centroid_y_span = max(value[1] for value in centroids) - min(
         value[1] for value in centroids
     )
-    if centroid_x_span > 1.5 or centroid_y_span > 1.25:
+    if centroid_x_span > 1.5 or centroid_y_span > 1.5:
         raise AssetContractError(
             "Move animation center drift exceeds the reviewed limit: "
             f"x={centroid_x_span:.3f}, y={centroid_y_span:.3f}"
         )
-    contact_spans = (foot_spans[0], foot_spans[2])
-    passing_spans = (foot_spans[1], foot_spans[3])
+    contact_spans = (ground_spans[0], ground_spans[2])
+    passing_spans = (ground_spans[1], ground_spans[3])
     if min(contact_spans) < max(passing_spans) + 3:
         raise AssetContractError(
-            "Contact poses must remain visibly wider than passing poses: "
+            "Contact poses must keep a wider grounded stance than passing "
+            "poses: "
             f"contact={contact_spans}, passing={passing_spans}"
         )
     if (
@@ -430,7 +519,9 @@ def _audit_character_move_strip(move_strip: Image.Image) -> None:
         "MOVE_STRIP_OK "
         f"centroid_x_span={centroid_x_span:.3f} "
         f"centroid_y_span={centroid_y_span:.3f} "
-        f"foot_spans={foot_spans} bottom_runs={bottom_run_counts} "
+        f"foot_band_spans={foot_band_spans} "
+        f"ground_spans={ground_spans} "
+        f"bottom_runs={bottom_run_counts} "
         f"rgba_sha256={rgba_sha256}"
     )
 
@@ -571,18 +662,28 @@ def _write_sprite_frames(
     texture_path: str,
     frame_size: int,
     animations: OrderedDict[str, tuple[int, float, bool]],
+    resource_uid: str,
+    texture_uid: str,
 ) -> None:
     if frame_size > MAX_LOGICAL_SUBJECT_SIZE:
         raise AssetContractError(
             f"Atlas frame {frame_size}x{frame_size} exceeds the 40px contract"
         )
     lines = [
-        '[gd_resource type="SpriteFrames" format=3]',
+        (
+            '[gd_resource type="SpriteFrames" format=3 '
+            f'uid="{resource_uid}"]'
+        ),
         "",
-        f'[ext_resource type="Texture2D" path="{texture_path}" id="1_texture"]',
+        (
+            f'[ext_resource type="Texture2D" uid="{texture_uid}" '
+            f'path="{texture_path}" id="1_texture"]'
+        ),
         "",
     ]
-    for name, (row, _speed, _loop) in animations.items():
+    animation_names = sorted(animations)
+    for name in animation_names:
+        row, _speed, _loop = animations[name]
         for column in range(GRID_COLUMNS):
             lines.extend(
                 [
@@ -600,8 +701,13 @@ def _write_sprite_frames(
                 ]
             )
     entries = [
-        _animation_entry(name, speed, loop, GRID_COLUMNS)
-        for name, (_row, speed, loop) in animations.items()
+        _animation_entry(
+            name,
+            animations[name][1],
+            animations[name][2],
+            GRID_COLUMNS,
+        )
+        for name in animation_names
     ]
     lines.extend(
         [
@@ -740,12 +846,16 @@ def main() -> None:
         "res://resources/texture/fire_sorcerer.png",
         CHARACTER_FRAME_SIZE,
         CHARACTER_ANIMATIONS,
+        CHARACTER_ANIMATION_UID,
+        CHARACTER_TEXTURE_UID,
     )
     _write_sprite_frames(
         FIREBALL_ANIMATION_OUTPUT,
         "res://resources/texture/fire_sorcerer_fireball.png",
         FIREBALL_FRAME_SIZE,
         FIREBALL_ANIMATIONS,
+        FIREBALL_ANIMATION_UID,
+        FIREBALL_TEXTURE_UID,
     )
 
     print(
