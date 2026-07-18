@@ -1,6 +1,26 @@
-[gd_resource type="SpriteFrames" format=3]
+[gd_resource type="SpriteFrames" format=3 uid="uid://clyqfauajs7ku"]
 
-[ext_resource type="Texture2D" path="res://resources/texture/fire_sorcerer_fireball.png" id="1_texture"]
+[ext_resource type="Texture2D" uid="uid://dfpioy7k740tx" path="res://resources/texture/fire_sorcerer_fireball.png" id="1_texture"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_expire_0"]
+atlas = ExtResource("1_texture")
+region = Rect2(0, 96, 32, 32)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_expire_1"]
+atlas = ExtResource("1_texture")
+region = Rect2(32, 96, 32, 32)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_expire_2"]
+atlas = ExtResource("1_texture")
+region = Rect2(64, 96, 32, 32)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_expire_3"]
+atlas = ExtResource("1_texture")
+region = Rect2(96, 96, 32, 32)
+filter_clip = true
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_fly_0"]
 atlas = ExtResource("1_texture")
@@ -20,26 +40,6 @@ filter_clip = true
 [sub_resource type="AtlasTexture" id="AtlasTexture_fly_3"]
 atlas = ExtResource("1_texture")
 region = Rect2(96, 0, 32, 32)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_spawn_0"]
-atlas = ExtResource("1_texture")
-region = Rect2(0, 32, 32, 32)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_spawn_1"]
-atlas = ExtResource("1_texture")
-region = Rect2(32, 32, 32, 32)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_spawn_2"]
-atlas = ExtResource("1_texture")
-region = Rect2(64, 32, 32, 32)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_spawn_3"]
-atlas = ExtResource("1_texture")
-region = Rect2(96, 32, 32, 32)
 filter_clip = true
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_impact_0"]
@@ -62,28 +62,45 @@ atlas = ExtResource("1_texture")
 region = Rect2(96, 64, 32, 32)
 filter_clip = true
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_expire_0"]
+[sub_resource type="AtlasTexture" id="AtlasTexture_spawn_0"]
 atlas = ExtResource("1_texture")
-region = Rect2(0, 96, 32, 32)
+region = Rect2(0, 32, 32, 32)
 filter_clip = true
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_expire_1"]
+[sub_resource type="AtlasTexture" id="AtlasTexture_spawn_1"]
 atlas = ExtResource("1_texture")
-region = Rect2(32, 96, 32, 32)
+region = Rect2(32, 32, 32, 32)
 filter_clip = true
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_expire_2"]
+[sub_resource type="AtlasTexture" id="AtlasTexture_spawn_2"]
 atlas = ExtResource("1_texture")
-region = Rect2(64, 96, 32, 32)
+region = Rect2(64, 32, 32, 32)
 filter_clip = true
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_expire_3"]
+[sub_resource type="AtlasTexture" id="AtlasTexture_spawn_3"]
 atlas = ExtResource("1_texture")
-region = Rect2(96, 96, 32, 32)
+region = Rect2(96, 32, 32, 32)
 filter_clip = true
 
 [resource]
 animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_expire_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_expire_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_expire_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_expire_3")
+}],
+"loop": false,
+"name": &"expire",
+"speed": 12.0
+}, {
 "frames": [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_fly_0")
@@ -100,23 +117,6 @@ animations = [{
 "loop": true,
 "name": &"fly",
 "speed": 12.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_spawn_0")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_spawn_1")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_spawn_2")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_spawn_3")
-}],
-"loop": false,
-"name": &"spawn",
-"speed": 8.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -137,18 +137,18 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_expire_0")
+"texture": SubResource("AtlasTexture_spawn_0")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_expire_1")
+"texture": SubResource("AtlasTexture_spawn_1")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_expire_2")
+"texture": SubResource("AtlasTexture_spawn_2")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_expire_3")
+"texture": SubResource("AtlasTexture_spawn_3")
 }],
 "loop": false,
-"name": &"expire",
-"speed": 12.0
+"name": &"spawn",
+"speed": 8.0
 }]
