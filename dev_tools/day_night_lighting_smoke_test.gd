@@ -55,6 +55,11 @@ func _test_controller_and_day_suppression() -> void:
 	root.add_child(test_root)
 	var controller := DAY_NIGHT_SCENE.instantiate() as DayNightController
 	var light := NIGHT_LIGHT_SCENE.instantiate() as NightPointLight2D
+	var factor_signal_count: Array[int] = [0]
+	controller.night_factor_changed.connect(
+		func(_factor: float) -> void:
+			factor_signal_count[0] += 1
+	)
 	test_root.add_child(controller)
 	test_root.add_child(light)
 	await process_frame
@@ -65,6 +70,13 @@ func _test_controller_and_day_suppression() -> void:
 		and is_zero_approx(controller.night_factor)
 		and is_equal_approx(controller.transition_duration, 5.0),
 		"昼夜控制器必须以纯白白天状态启动，并使用5秒默认渐变。"
+	)
+	var signal_count_before_repeated_factor: int = factor_signal_count[0]
+	controller.set_night_factor_immediate(0.0)
+	light.set_night_factor(0.0)
+	_expect(
+		factor_signal_count[0] == signal_count_before_repeated_factor,
+		"重复写入相同昼夜因子时不得产生冗余的全灯广播。"
 	)
 	_expect(
 		light != null
@@ -85,6 +97,12 @@ func _test_controller_and_day_suppression() -> void:
 		and light.enabled
 		and is_equal_approx(light.energy, light.night_energy),
 		"立即切换黑夜时必须应用#577B9E环境色与完整灯光能量。"
+	)
+	var signal_count_at_night: int = factor_signal_count[0]
+	controller.set_night_factor_immediate(1.0)
+	_expect(
+		factor_signal_count[0] == signal_count_at_night,
+		"重复写入夜间终点不得再次广播所有局部灯。"
 	)
 	controller.transition_to_day(0.0)
 	_expect(

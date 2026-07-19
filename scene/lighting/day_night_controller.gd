@@ -21,7 +21,7 @@ var _transition_tween: Tween = null
 
 
 func _ready() -> void:
-	_apply_night_factor(night_factor)
+	_apply_night_factor(night_factor, true)
 
 
 func transition_to_night(duration_seconds: float = -1.0) -> void:
@@ -83,10 +83,16 @@ func _transition_to_factor(
 	)
 
 
-func _apply_night_factor(value: float) -> void:
-	night_factor = clampf(value, 0.0, 1.0)
+func _apply_night_factor(
+	value: float,
+	force_emit: bool = false
+) -> void:
+	var safe_factor := clampf(value, 0.0, 1.0)
+	var factor_changed := night_factor != safe_factor
+	night_factor = safe_factor
 	color = day_color.lerp(night_color, night_factor)
-	night_factor_changed.emit(night_factor)
+	if force_emit or factor_changed:
+		night_factor_changed.emit(night_factor)
 
 
 func _finish_transition(target_factor: float) -> void:

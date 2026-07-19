@@ -16,7 +16,7 @@ const VEGETATION_RING_TEXTURE := preload(
 
 const EXPECTED_AUTHORED_LIGHT_COUNT := 8
 const DEFAULT_STRESS_LIGHT_COUNT := 100
-const MICRO_BENCHMARK_LIGHT_COUNT := 300
+const MICRO_BENCHMARK_LIGHT_COUNT := 512
 const DEFAULT_WARMUP_FRAMES := 60
 const DEFAULT_SAMPLE_FRAMES := 180
 const DEFAULT_MICRO_SAMPLE_COUNT := 360
@@ -48,6 +48,45 @@ var sample_frames := DEFAULT_SAMPLE_FRAMES
 var micro_sample_count := DEFAULT_MICRO_SAMPLE_COUNT
 var stress_light_count := DEFAULT_STRESS_LIGHT_COUNT
 var save_screenshot := false
+
+
+class LegacyBroadcastLight:
+	extends PointLight2D
+
+	var benchmark_night_energy := 0.0
+	var _benchmark_night_factor := 0.0
+	var _benchmark_emission_allowed := true
+
+	func set_benchmark_night_factor(value: float) -> void:
+		_benchmark_night_factor = clampf(value, 0.0, 1.0)
+		_refresh_benchmark_emission()
+
+	func _refresh_benchmark_emission() -> void:
+		var effective_factor := (
+			_benchmark_night_factor
+			if _benchmark_emission_allowed
+			else 0.0
+		)
+		energy = benchmark_night_energy * effective_factor
+		enabled = energy > NightPointLight2D.ENABLE_EPSILON
+
+
+class LegacyBroadcastController:
+	extends CanvasModulate
+
+	signal benchmark_night_factor_changed(night_factor: float)
+
+	var benchmark_day_color := Color.WHITE
+	var benchmark_night_color := DayNightController.REFERENCE_NIGHT_COLOR
+	var benchmark_night_factor := 0.0
+
+	func set_benchmark_night_factor(value: float) -> void:
+		benchmark_night_factor = clampf(value, 0.0, 1.0)
+		color = benchmark_day_color.lerp(
+			benchmark_night_color,
+			benchmark_night_factor
+		)
+		benchmark_night_factor_changed.emit(benchmark_night_factor)
 
 
 func _init() -> void:
@@ -541,8 +580,8 @@ func _measure_transition(
 		% [label, TRANSITION_TIMEOUT_FRAMES]
 	)
 	_expect(
-		elapsed_ms >= 2800.0,
-		"%s completed too quickly to represent the authored 3-second tween."
+		elapsed_ms >= 4800.0,
+		"%s completed too quickly to represent the authored 5-second tween."
 		% label
 	)
 	_expect(
@@ -884,21 +923,20 @@ func _save_spread_screenshot() -> void:
 
 
 func _run_broadcast_microbenchmark() -> void:
-	var micro_viewport := SubViewport.new()
-	micro_viewport.name = "LightingBroadcastMicroViewport"
-	micro_viewport.disable_3d = true
-	micro_viewport.size = Vector2i(64, 64)
-	micro_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
-	root.add_child(micro_viewport)
-
-	var micro_world := Node2D.new()
-	micro_world.name = "LightingBroadcastMicroWorld"
-	micro_viewport.add_child(micro_world)
-	var micro_controller := (
+	var optimized_viewport := SubViewport.new()
+	optimized_viewport.name = "OptimizedLightingBroadcastViewport"
+	optimized_viewport.disable_3d = true
+	optimized_viewport.size = Vector2i(64, 64)
+	optimized_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	root.add_child(optimized_viewport)
+	var optimized_world := Node2D.new()
+	optimized_world.name = "OptimizedLightingBroadcastWorld"
+	optimized_viewport.add_child(optimized_world)
+	var optimized_controller := (
 		DAY_NIGHT_SCENE.instantiate() as DayNightController
 	)
-	micro_world.add_child(micro_controller)
-	var micro_lights: Array[NightPointLight2D] = []
+	optimized_world.add_child(optimized_controller)
+	var optimized_lights: Array[NightPointLight2D] = []
 	for light_index in range(MICRO_BENCHMARK_LIGHT_COUNT):
 		var light := (
 			NIGHT_LIGHT_SCENE.instantiate() as NightPointLight2D
@@ -910,84 +948,311 @@ func _run_broadcast_microbenchmark() -> void:
 		light.color = GREEN_RING_COLOR
 		light.texture_scale = GREEN_RING_TEXTURE_SCALE
 		light.night_energy = GREEN_RING_NIGHT_ENERGY
-		micro_world.add_child(light)
-		micro_lights.append(light)
+		optimized_world.add_child(light)
+		optimized_lights.append(light)
+
+	var legacy_viewport := SubViewport.new()
+	legacy_viewport.name = "LegacyLightingBroadcastViewport"
+	legacy_viewport.disable_3d = true
+	legacy_viewport.size = Vector2i(64, 64)
+	legacy_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	root.add_child(legacy_viewport)
+	var legacy_world := Node2D.new()
+	legacy_world.name = "LegacyLightingBroadcastWorld"
+	legacy_viewport.add_child(legacy_world)
+	var legacy_controller := LegacyBroadcastController.new()
+	legacy_world.add_child(legacy_controller)
+	var legacy_lights: Array[LegacyBroadcastLight] = []
+	for light_index in range(MICRO_BENCHMARK_LIGHT_COUNT):
+		var light := LegacyBroadcastLight.new()
+		light.name = "LegacyMicroLight%03d" % light_index
+		light.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		light.enabled = false
+		light.energy = 0.0
+		light.texture = VEGETATION_RING_TEXTURE
+		light.color = GREEN_RING_COLOR
+		light.texture_scale = GREEN_RING_TEXTURE_SCALE
+		light.shadow_enabled = false
+		light.benchmark_night_energy = GREEN_RING_NIGHT_ENERGY
+		legacy_world.add_child(light)
+		legacy_controller.benchmark_night_factor_changed.connect(
+			light.set_benchmark_night_factor
+		)
+		legacy_lights.append(light)
 	await process_frame
 	await process_frame
 
 	_expect(
-		micro_controller != null
-		and micro_lights.size() == MICRO_BENCHMARK_LIGHT_COUNT,
-		"Broadcast microbenchmark must instantiate exactly three hundred lights."
+		optimized_controller != null
+		and legacy_controller != null
+		and optimized_lights.size()
+		== MICRO_BENCHMARK_LIGHT_COUNT
+		and legacy_lights.size() == MICRO_BENCHMARK_LIGHT_COUNT,
+		"Broadcast A/B microbenchmark must instantiate two sets of %d lights."
+		% MICRO_BENCHMARK_LIGHT_COUNT
 	)
 	if (
-		micro_controller == null
-		or micro_lights.size() != MICRO_BENCHMARK_LIGHT_COUNT
+		optimized_controller == null
+		or legacy_controller == null
+		or optimized_lights.size()
+		!= MICRO_BENCHMARK_LIGHT_COUNT
+		or legacy_lights.size() != MICRO_BENCHMARK_LIGHT_COUNT
 	):
-		micro_viewport.queue_free()
+		optimized_viewport.queue_free()
+		legacy_viewport.queue_free()
 		await process_frame
 		return
 
 	for warmup_index in range(24):
-		micro_controller.call(
-			"_apply_night_factor",
+		var warmup_factor := (
 			0.35 if warmup_index % 2 == 0 else 0.85
 		)
-	_expect(
-		_count_enabled_lights(micro_lights)
-			== MICRO_BENCHMARK_LIGHT_COUNT,
-		"All microbenchmark lights must receive the night-factor broadcast."
-	)
-
-	var broadcast_samples_usec: Array[float] = []
-	var total_started_usec := Time.get_ticks_usec()
-	for sample_index in range(micro_sample_count):
-		var sample_started_usec := Time.get_ticks_usec()
-		micro_controller.call(
+		optimized_controller.call(
 			"_apply_night_factor",
-			0.35 if sample_index % 2 == 0 else 0.85
+			warmup_factor
 		)
-		broadcast_samples_usec.append(
-			float(Time.get_ticks_usec() - sample_started_usec)
-		)
-	var total_usec := Time.get_ticks_usec() - total_started_usec
-	var summary := _summarize(broadcast_samples_usec)
+		legacy_controller.set_benchmark_night_factor(warmup_factor)
 	_expect(
-		float(summary["p95"]) <= 1000.0,
-		"Three hundred light broadcasts exceeded the 1 ms CPU p95 budget."
-	)
-	_expect(
-		float(summary["max"]) <= 2000.0,
-		"Three hundred light broadcasts exceeded the 2 ms CPU maximum budget."
+		_count_enabled_lights(optimized_lights)
+			== MICRO_BENCHMARK_LIGHT_COUNT,
+		"All optimized microbenchmark lights must receive the broadcast."
 	)
 
-	micro_controller.set_night_factor_immediate(0.0)
-	_expect(
-		_all_lights_disabled(micro_lights),
-		"Microbenchmark teardown must return all three hundred lights to day."
+	var optimized_apply := Callable(
+		optimized_controller,
+		"_apply_night_factor"
 	)
+	var legacy_apply := Callable(
+		legacy_controller,
+		"set_benchmark_night_factor"
+	)
+	var changing_result := _measure_interleaved_broadcast_pair(
+		optimized_apply,
+		legacy_apply,
+		true
+	)
+	var changing_optimized_summary: Dictionary = (
+		changing_result["optimized_summary"]
+	)
+	var changing_legacy_total_usec: int = (
+		changing_result["legacy_total_usec"]
+	)
+	var changing_optimized_total_usec: int = (
+		changing_result["optimized_total_usec"]
+	)
+	_expect(
+		float(changing_optimized_summary["p95"]) <= 1000.0,
+		"%d-light broadcasts exceeded the 1 ms CPU p95 budget."
+		% MICRO_BENCHMARK_LIGHT_COUNT
+	)
+	_expect(
+		float(changing_optimized_summary["max"]) <= 2000.0,
+		"%d-light broadcasts exceeded the 2 ms CPU maximum budget."
+		% MICRO_BENCHMARK_LIGHT_COUNT
+	)
+	_expect(
+		changing_optimized_total_usec
+		<= int(round(float(changing_legacy_total_usec) * 1.05)),
+		"Optimized broadcasts regressed more than 5% against the in-process legacy path."
+	)
+	_expect(
+		_broadcast_light_states_match(
+			optimized_lights,
+			legacy_lights
+		),
+		"Changing-factor A/B paths must produce identical light states."
+	)
+	_print_broadcast_pair("changing_factor", changing_result)
+
+	optimized_apply.call(0.65)
+	legacy_apply.call(0.65)
+	var repeated_result := _measure_interleaved_broadcast_pair(
+		optimized_apply,
+		legacy_apply,
+		false
+	)
+	var repeated_legacy_total_usec: int = (
+		repeated_result["legacy_total_usec"]
+	)
+	var repeated_optimized_total_usec: int = (
+		repeated_result["optimized_total_usec"]
+	)
+	_expect(
+		repeated_optimized_total_usec
+		<= int(round(float(repeated_legacy_total_usec) * 1.05)),
+		"Repeated-factor optimization regressed against the legacy full broadcast."
+	)
+	_expect(
+		_broadcast_light_states_match(
+			optimized_lights,
+			legacy_lights
+		),
+		"Repeated-factor A/B paths must preserve identical light states."
+	)
+	_print_broadcast_pair("repeated_factor", repeated_result)
+
+	optimized_controller.set_night_factor_immediate(0.0)
+	legacy_controller.set_benchmark_night_factor(0.0)
+	var legacy_lights_disabled := true
+	for light in legacy_lights:
+		if light.enabled or not is_zero_approx(light.energy):
+			legacy_lights_disabled = false
+			break
+	_expect(
+		_all_lights_disabled(optimized_lights)
+		and legacy_lights_disabled,
+		"Microbenchmark teardown must return all %d lights to day."
+		% MICRO_BENCHMARK_LIGHT_COUNT
+	)
+
+	optimized_viewport.queue_free()
+	legacy_viewport.queue_free()
+	await process_frame
+	await process_frame
+
+
+func _measure_interleaved_broadcast_pair(
+	optimized_apply: Callable,
+	legacy_apply: Callable,
+	use_changing_factor: bool
+) -> Dictionary:
+	var optimized_samples_usec: Array[float] = []
+	var legacy_samples_usec: Array[float] = []
+	var optimized_total_usec := 0
+	var legacy_total_usec := 0
+	for sample_index in range(micro_sample_count):
+		var sample_factor := 0.65
+		if use_changing_factor:
+			sample_factor = (
+				0.35 if sample_index % 2 == 0 else 0.85
+			)
+		if sample_index % 2 == 0:
+			var optimized_started_usec := Time.get_ticks_usec()
+			optimized_apply.call(sample_factor)
+			var optimized_elapsed_usec := (
+				Time.get_ticks_usec() - optimized_started_usec
+			)
+			optimized_total_usec += optimized_elapsed_usec
+			optimized_samples_usec.append(
+				float(optimized_elapsed_usec)
+			)
+			var legacy_started_usec := Time.get_ticks_usec()
+			legacy_apply.call(sample_factor)
+			var legacy_elapsed_usec := (
+				Time.get_ticks_usec() - legacy_started_usec
+			)
+			legacy_total_usec += legacy_elapsed_usec
+			legacy_samples_usec.append(float(legacy_elapsed_usec))
+		else:
+			var legacy_started_usec := Time.get_ticks_usec()
+			legacy_apply.call(sample_factor)
+			var legacy_elapsed_usec := (
+				Time.get_ticks_usec() - legacy_started_usec
+			)
+			legacy_total_usec += legacy_elapsed_usec
+			legacy_samples_usec.append(float(legacy_elapsed_usec))
+			var optimized_started_usec := Time.get_ticks_usec()
+			optimized_apply.call(sample_factor)
+			var optimized_elapsed_usec := (
+				Time.get_ticks_usec() - optimized_started_usec
+			)
+			optimized_total_usec += optimized_elapsed_usec
+			optimized_samples_usec.append(
+				float(optimized_elapsed_usec)
+			)
+	return {
+		"optimized_total_usec": optimized_total_usec,
+		"legacy_total_usec": legacy_total_usec,
+		"optimized_summary": _summarize(optimized_samples_usec),
+		"legacy_summary": _summarize(legacy_samples_usec),
+	}
+
+
+func _broadcast_light_states_match(
+	optimized_lights: Array[NightPointLight2D],
+	legacy_lights: Array[LegacyBroadcastLight]
+) -> bool:
+	if optimized_lights.size() != legacy_lights.size():
+		return false
+	for light_index in range(optimized_lights.size()):
+		var optimized_light := optimized_lights[light_index]
+		var legacy_light := legacy_lights[light_index]
+		if (
+			optimized_light.enabled != legacy_light.enabled
+			or not is_equal_approx(
+				optimized_light.energy,
+				legacy_light.energy
+			)
+		):
+			return false
+	return true
+
+
+func _print_broadcast_pair(
+	phase: String,
+	result: Dictionary
+) -> void:
+	var optimized_total_usec: int = result["optimized_total_usec"]
+	var legacy_total_usec: int = result["legacy_total_usec"]
+	var optimized_summary: Dictionary = result["optimized_summary"]
+	var legacy_summary: Dictionary = result["legacy_summary"]
 	print(
 		(
-			"DAY_NIGHT_LIGHTING_BROADCAST_CPU lights=%d samples=%d "
+			"DAY_NIGHT_LIGHTING_BROADCAST_CPU phase=%s "
+			+ "variant=optimized lights=%d samples=%d "
 			+ "total_us=%d per_broadcast_p50_us=%.1f "
 			+ "per_broadcast_p95_us=%.1f per_broadcast_max_us=%.1f "
 			+ "p95_per_light_ns=%.1f"
 		)
 		% [
+			phase,
 			MICRO_BENCHMARK_LIGHT_COUNT,
 			micro_sample_count,
-			total_usec,
-			summary["p50"],
-			summary["p95"],
-			summary["max"],
-			float(summary["p95"]) * 1000.0
+			optimized_total_usec,
+			optimized_summary["p50"],
+			optimized_summary["p95"],
+			optimized_summary["max"],
+			float(optimized_summary["p95"]) * 1000.0
 				/ float(MICRO_BENCHMARK_LIGHT_COUNT),
 		]
 	)
-
-	micro_viewport.queue_free()
-	await process_frame
-	await process_frame
+	print(
+		(
+			"DAY_NIGHT_LIGHTING_BROADCAST_CPU phase=%s "
+			+ "variant=legacy lights=%d samples=%d "
+			+ "total_us=%d per_broadcast_p50_us=%.1f "
+			+ "per_broadcast_p95_us=%.1f per_broadcast_max_us=%.1f "
+			+ "p95_per_light_ns=%.1f"
+		)
+		% [
+			phase,
+			MICRO_BENCHMARK_LIGHT_COUNT,
+			micro_sample_count,
+			legacy_total_usec,
+			legacy_summary["p50"],
+			legacy_summary["p95"],
+			legacy_summary["max"],
+			float(legacy_summary["p95"]) * 1000.0
+				/ float(MICRO_BENCHMARK_LIGHT_COUNT),
+		]
+	)
+	print(
+		(
+			"DAY_NIGHT_LIGHTING_BROADCAST_AB phase=%s "
+			+ "optimized_total_us=%d legacy_total_us=%d "
+			+ "total_reduction_percent=%.2f"
+		)
+		% [
+			phase,
+			optimized_total_usec,
+			legacy_total_usec,
+			(
+				float(legacy_total_usec - optimized_total_usec)
+				* 100.0
+				/ maxf(float(legacy_total_usec), 1.0)
+			),
+		]
+	)
 
 
 func _fixture_visible_rect() -> Rect2:

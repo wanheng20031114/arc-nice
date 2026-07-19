@@ -34,7 +34,10 @@ func set_emission_allowed(allowed: bool) -> void:
 
 
 func set_night_energy(value: float) -> void:
-	night_energy = maxf(value, 0.0)
+	var safe_energy := maxf(value, 0.0)
+	if night_energy == safe_energy:
+		return
+	night_energy = safe_energy
 	_refresh_emission()
 
 
@@ -84,5 +87,8 @@ func _unbind_controller() -> void:
 
 func _refresh_emission() -> void:
 	var effective_factor := _night_factor if _emission_allowed else 0.0
-	energy = night_energy * effective_factor
-	enabled = energy > ENABLE_EPSILON
+	var next_energy := night_energy * effective_factor
+	energy = next_energy
+	var should_enable := next_energy > ENABLE_EPSILON
+	if enabled != should_enable:
+		enabled = should_enable
