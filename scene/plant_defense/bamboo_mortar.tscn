@@ -42,7 +42,7 @@ z_index = 2
 texture_filter = 1
 material = SubResource("ShaderMaterial_glow")
 position = Vector2(0, 10)
-polygon = PackedVector2Array(-6, -6, 6, -6, 6, 6, -6, 6)
+polygon = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
 uv = PackedVector2Array(0, 0, 1, 0, 1, 1, 0, 1)
 
 [node name="Muzzle" type="Marker2D" parent="VisualRoot" unique_id=2013561457]
