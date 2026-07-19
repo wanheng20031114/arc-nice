@@ -167,13 +167,13 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		and MORTAR_CONFIG.physical_defense == 10
 		and MORTAR_CONFIG.magic_defense == 20
 		and MORTAR_CONFIG.attack_damage == 100
-		and is_equal_approx(MORTAR_CONFIG.get_attack_interval(), 2.0)
+		and is_zero_approx(MORTAR_CONFIG.get_attack_interval())
 		and is_equal_approx(MORTAR_CONFIG.attack_range, 160.0)
 		and MORTAR_CONFIG.footprint_size == Vector2i(2, 2)
 		and MORTAR_CONFIG.placement_surface
 		== PlantDefenseConfig.PlacementSurface.GRASS
 		and MORTAR_CONFIG.supports_multiplayer,
-		"迫击炮数值必须为2000生命、10物防、20法防、100中心伤害、2秒冷却、160范围、草地2×2且支持多人。"
+		"迫击炮数值必须为2000生命、10物防、20法防、100中心伤害、无额外攻击间隔、160范围、草地2×2且支持多人。"
 	)
 	_expect(
 		PlantDefenseRegistry.get_config(&"bamboo_mortar")
@@ -217,7 +217,7 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 			mortar.target_track_timer.wait_time,
 			0.5
 		),
-		"场景计时器必须保持2秒冷却和0.5秒目标位置采样。"
+		"场景计时器必须仅保留2秒无目标重试和0.5秒目标位置采样。"
 	)
 	_expect(
 		mortar.get_node("VisualRoot").scale == Vector2(0.5, 0.5)
@@ -342,6 +342,25 @@ func _test_target_ring_and_tracking(mortar: BambooMortar) -> void:
 		and is_equal_approx(runtime.last_query_radius, 160.0),
 		"边界样本与160像素共享索引查询必须完整建立。"
 	)
+	var saved_candidates: Array[Enemy] = []
+	saved_candidates.assign(runtime.candidates)
+	runtime.candidates.clear()
+	mortar.combat_phase = BambooMortar.CombatPhase.IDLE
+	mortar.attack_timer.stop()
+	var empty_query_count := runtime.query_count
+	mortar.call("_try_begin_windup")
+	_expect(
+		runtime.query_count == empty_query_count + 1
+		and mortar.combat_phase == BambooMortar.CombatPhase.IDLE
+		and not mortar.attack_timer.is_stopped()
+		and is_equal_approx(
+			mortar.attack_timer.time_left,
+			BambooMortar.TARGET_RETRY_INTERVAL_SECONDS
+		),
+		"2秒计时器只能在没有目标时承担低频重试，不能成为攻击后的额外间隔。"
+	)
+	mortar.attack_timer.stop()
+	runtime.candidates.assign(saved_candidates)
 	runtime.queued_visuals.clear()
 	mortar.pending_target = null
 	mortar.combat_phase = BambooMortar.CombatPhase.IDLE
@@ -390,10 +409,7 @@ func _test_windup_fire_and_fixed_landing(
 		== BambooMortar.FIRE_LAUNCH_FRAME
 		and mortar.main_sprite.position
 		== BambooMortar.FIRE_RECOIL_OFFSET
-		and is_equal_approx(
-			mortar.attack_timer.time_left,
-			BambooMortar.ATTACK_COOLDOWN_SECONDS
-		)
+		and mortar.attack_timer.is_stopped()
 		and runtime.queued_visuals.size() == 2
 		and int(runtime.queued_visuals[1].get("stage", -1))
 		== BambooMortar.NETWORK_STAGE_FIRE
@@ -401,7 +417,7 @@ func _test_windup_fire_and_fixed_landing(
 			"landing_position",
 			Vector2.ZERO
 		) == Vector2(96.0, 0.0),
-		"目标死亡后仍须在可见爆闪/后坐帧向最后有效位置出膛，并从出膛时开始2秒冷却。"
+		"目标死亡后仍须在可见爆闪/后坐帧向最后有效位置出膛，且出膛时不能启动额外攻击冷却。"
 	)
 	var active_shell := _find_active_shell()
 	var expected_flight_duration := (
@@ -478,13 +494,28 @@ func _test_windup_fire_and_fixed_landing(
 			),
 			"飞行中点必须让根节点和影子沿地面前进，炮弹视觉独立到达抛物线顶点，并随高度淡化影子。"
 		)
+	var query_count_before_fire_finished := runtime.query_count
 	mortar.call("_finish_fire_visual")
 	_expect(
-		mortar.combat_phase == BambooMortar.CombatPhase.COOLDOWN
+		runtime.query_count == query_count_before_fire_finished
+		and mortar.combat_phase == BambooMortar.CombatPhase.IDLE
 		and mortar.main_sprite.animation == &"idle"
 		and mortar.main_sprite.position == Vector2.ZERO,
-		"开火动画结束后必须复位主体并进入冷却，不得从蓄热直接跳回待机。"
+		"开火动画结束时必须先完整复位主体，并把下一轮索敌放到安全的延迟调用点。"
 	)
+	await process_frame
+	_expect(
+		runtime.query_count == query_count_before_fire_finished + 1
+		and mortar.combat_phase == BambooMortar.CombatPhase.WINDUP
+		and mortar.main_sprite.animation == &"charge"
+		and mortar.attack_timer.is_stopped(),
+		"安全延迟调用必须立即开始下一次4秒前摇，不能再插入2秒攻击间隔。"
+	)
+	mortar.target_track_timer.stop()
+	mortar.pending_target = null
+	mortar.combat_phase = BambooMortar.CombatPhase.IDLE
+	mortar.main_sprite.play(&"idle")
+	mortar.call("_set_glow_state", false, 0)
 	await _finish_active_shells()
 
 

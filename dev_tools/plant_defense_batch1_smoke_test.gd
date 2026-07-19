@@ -207,9 +207,8 @@ func _test_config_and_scene_contracts() -> void:
 		and bamboo_mortar_config.physical_defense == 10
 		and bamboo_mortar_config.magic_defense == 20
 		and bamboo_mortar_config.attack_damage == 100
-		and is_equal_approx(
-			bamboo_mortar_config.get_attack_interval(),
-			2.0
+		and is_zero_approx(
+			bamboo_mortar_config.get_attack_interval()
 		)
 		and is_equal_approx(
 			bamboo_mortar_config.attack_range,
@@ -219,7 +218,7 @@ func _test_config_and_scene_contracts() -> void:
 		and bamboo_mortar_config.placement_surface
 		== PlantDefenseConfig.PlacementSurface.GRASS
 		and bamboo_mortar_config.supports_multiplayer,
-		"竹筒迫击炮必须拥有2000生命、10物防、20法防、100中心伤害、2秒冷却、160范围并占草地2×2格。"
+		"竹筒迫击炮必须拥有2000生命、10物防、20法防、100中心伤害、无额外攻击间隔、160范围并占草地2×2格。"
 	)
 	_expect(
 		cultivation_center_config.max_health == 1500
@@ -1394,16 +1393,25 @@ func _test_realtime_selection_and_cancel() -> void:
 		"单人T键调试界面必须显示全部9种建筑，包括植物培育中心与竹筒迫击炮。"
 	)
 	var agave_card: PlantSelectionCard = null
+	var bamboo_mortar_card: PlantSelectionCard = null
 	var corn_card: PlantSelectionCard = null
 	for card in controller.selection_hud.cards:
 		if card.plant_config == agave_config:
 			agave_card = card
+		elif card.plant_config == bamboo_mortar_config:
+			bamboo_mortar_card = card
 		elif card.plant_config == corn_config:
 			corn_card = card
 	_expect(
 		agave_card != null
 		and agave_card.stats_label.text == "生命 2000  ·  伤害 25  ·  间隔 2 秒  ·  半径 130",
 		"龙舌兰属性文案必须显示下调后的索敌半径。"
+	)
+	_expect(
+		bamboo_mortar_card != null
+		and bamboo_mortar_card.stats_label.text
+		== "生命 2000  ·  伤害 100  ·  半径 160",
+		"竹筒迫击炮卡片不得继续显示已经取消的额外攻击间隔。"
 	)
 	_expect(
 		corn_card != null

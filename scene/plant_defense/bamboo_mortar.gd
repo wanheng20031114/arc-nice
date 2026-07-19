@@ -11,7 +11,7 @@ const DEFAULT_ATTACK_DAMAGE := 100
 const OUTER_ATTACK_DAMAGE := 50
 const DEFAULT_ATTACK_RANGE := 160.0
 const MINIMUM_ATTACK_RANGE := 64.0
-const ATTACK_COOLDOWN_SECONDS := 2.0
+const TARGET_RETRY_INTERVAL_SECONDS := 2.0
 const WINDUP_DURATION_SECONDS := 4.0
 const TARGET_TRACK_INTERVAL_SECONDS := 0.5
 const WINDUP_FRAME_COUNT := 8
@@ -173,7 +173,7 @@ func _try_begin_windup() -> void:
 	var target := _select_nearest_target_in_ring()
 	if target == null:
 		combat_phase = CombatPhase.IDLE
-		attack_timer.start(ATTACK_COOLDOWN_SECONDS)
+		attack_timer.start(TARGET_RETRY_INTERVAL_SECONDS)
 		return
 	_begin_authoritative_windup(target)
 
@@ -192,7 +192,7 @@ func _on_bamboo_mortar_target_resolved(target: Variant) -> void:
 		return
 	if not _is_valid_target(target):
 		combat_phase = CombatPhase.IDLE
-		attack_timer.start(ATTACK_COOLDOWN_SECONDS)
+		attack_timer.start(TARGET_RETRY_INTERVAL_SECONDS)
 		return
 	_begin_authoritative_windup(target as Enemy)
 
@@ -364,15 +364,19 @@ func _fire_authoritative_shell() -> void:
 		landing_position
 	)
 	pending_target = null
-	attack_timer.start(ATTACK_COOLDOWN_SECONDS)
 
 
 func _finish_fire_visual() -> void:
 	main_sprite.position = MAIN_SPRITE_REST_POSITION
 	main_sprite.play(&"idle")
 	_set_glow_state(false, 0)
-	if combat_phase == CombatPhase.FIRING:
+	if combat_phase != CombatPhase.FIRING:
+		return
+	if is_multiplayer_proxy:
 		combat_phase = CombatPhase.COOLDOWN
+		return
+	combat_phase = CombatPhase.IDLE
+	call_deferred("_try_begin_windup")
 
 
 func _set_fire_recoil_for_frame(frame_index: int) -> void:

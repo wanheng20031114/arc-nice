@@ -51,10 +51,17 @@ func _build_stats_text() -> String:
 					plant_config.attack_burst_count,
 				]
 			)
-			parts.append("轮间隔 %s 秒" % _format_number(plant_config.get_attack_interval()))
 		else:
 			parts.append("伤害 %s" % _format_number(plant_config.attack_damage))
-			parts.append("间隔 %s 秒" % _format_number(plant_config.get_attack_interval()))
+		var attack_interval := plant_config.get_attack_interval()
+		if attack_interval > 0.0:
+			parts.append(
+				"%s %s 秒"
+				% [
+					"轮间隔" if plant_config.attack_burst_count > 1 else "间隔",
+					_format_number(attack_interval),
+				]
+			)
 	if plant_config.attack_range > 0.0:
 		parts.append("半径 %s" % _format_number(plant_config.attack_range))
 	return "  ·  ".join(parts)

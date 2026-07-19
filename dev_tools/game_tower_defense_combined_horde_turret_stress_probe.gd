@@ -901,16 +901,18 @@ func _start_staggered_tower_combat(synchronize_corn: bool = false) -> void:
 		mortar.main_sprite.play(&"idle")
 		mortar.call("_set_glow_state", false, 0)
 		mortar.target_track_timer.stop()
-		var authored_interval := BAMBOO_MORTAR_CONFIG.get_attack_interval()
 		var mortar_cycle := (
-			authored_interval + BambooMortar.WINDUP_DURATION_SECONDS
+			BambooMortar.WINDUP_DURATION_SECONDS
+			+ BambooMortar.FIRE_DURATION_SECONDS
 		)
 		var mortar_delay := 0.10 + fposmod(
 			float(mortar_index) * 0.61803398875 * mortar_cycle,
 			maxf(mortar_cycle - 0.10, 0.10)
 		)
 		mortar.attack_timer.start(mortar_delay)
-		mortar.attack_timer.wait_time = authored_interval
+		mortar.attack_timer.wait_time = (
+			BambooMortar.TARGET_RETRY_INTERVAL_SECONDS
+		)
 
 
 func _stop_tower_combat() -> void:

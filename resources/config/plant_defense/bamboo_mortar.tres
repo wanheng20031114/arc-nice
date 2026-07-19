@@ -8,7 +8,7 @@
 script = ExtResource("1_config")
 plant_id = &"bamboo_mortar"
 display_name = "竹筒迫击炮"
-description = "锁定4至10格内的敌人，蓄热4秒后发射炮弹；中心造成100点、外围造成50点物理伤害。"
+description = "锁定4至10格内的敌人，蓄热4秒后发射炮弹且无额外攻击间隔；中心造成100点、外围造成50点物理伤害。"
 icon = ExtResource("2_icon")
 plant_scene = ExtResource("3_scene")
 supports_multiplayer = true
@@ -16,7 +16,7 @@ max_health = 2000
 physical_defense = 10
 magic_defense = 20
 attack_damage = 100
-attack_speed = 50.0
+attack_speed = 0.0
 attack_range = 160.0
 footprint_size = Vector2i(2, 2)
 placement_surface = 0
