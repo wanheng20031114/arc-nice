@@ -224,12 +224,19 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		== CanvasItem.TEXTURE_FILTER_NEAREST
 		and mortar.status_light.polygon
 		== PackedVector2Array([
-			Vector2(-2, -2),
-			Vector2(2, -2),
-			Vector2(2, 2),
-			Vector2(-2, 2),
+			Vector2(-6, -6),
+			Vector2(6, -6),
+			Vector2(6, 6),
+			Vector2(-6, 6),
+		])
+		and mortar.status_light.uv
+		== PackedVector2Array([
+			Vector2(0, 0),
+			Vector2(1, 0),
+			Vector2(1, 1),
+			Vector2(0, 1),
 		]),
-		"64×64主体必须以0.5缩放和邻近过滤显示，状态灯必须是独立4×4方形Godot节点。"
+		"64×64主体必须以0.5缩放和邻近过滤显示，状态灯必须以单个12×12逻辑像素节点同时绘制4×4核心与分层光晕。"
 	)
 	var mortar_source := FileAccess.get_file_as_string(
 		"res://scene/plant_defense/bamboo_mortar.gd"
@@ -261,10 +268,13 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		)
 		and glow_shader_source.contains("instance uniform")
 		and glow_shader_source.contains("blend_add")
+		and glow_shader_source.contains("core_mask")
+		and glow_shader_source.contains("inner_halo_mask")
+		and glow_shader_source.contains("outer_halo_mask")
 		and not FileAccess.file_exists(
 			"res://resources/texture/plant_defense/bamboo_mortar/glow_mask.png"
 		),
-		"中下部状态灯必须仅由独立方形Godot节点和HDR加色Shader绘制，不能残留贴图灯或逐实例材质复制。"
+		"中下部状态灯必须由一个Godot节点以对应颜色绘制亮核、内外光晕与HDR加色，不能残留贴图灯或逐实例材质复制。"
 	)
 
 
