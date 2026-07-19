@@ -8,6 +8,11 @@ class_name PlantHealthBar
 @export_range(0.0, 1.0, 0.01) var damage_trail_delay: float = 0.10
 @export_range(0.0, 1.0, 0.01) var damage_trail_duration: float = 0.24
 
+@export_group("受伤后弱化")
+@export_range(1.0, 60.0, 0.5, "or_greater") var idle_fade_delay: float = 15.0
+@export_range(0.0, 2.0, 0.05) var idle_fade_duration: float = 0.8
+@export_range(0.0, 1.0, 0.01) var idle_alpha: float = 0.18
+
 @export_group("配色")
 @export var frame_color: Color = Color(0.16, 0.09, 0.045, 1.0):
 	set(value):
@@ -43,6 +48,8 @@ var _fill_tween: Tween = null
 var _trail_tween: Tween = null
 var _visibility_tween: Tween = null
 
+@onready var _idle_fade_timer: Timer = $IdleFadeTimer
+
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -63,6 +70,7 @@ func _notification(what: int) -> void:
 func setup(max_health: int, current_health: int) -> void:
 	_stop_value_tweens()
 	_stop_visibility_tween()
+	_stop_idle_fade_timer()
 
 	max_health_value = maxi(max_health, 1)
 	_target_health = clampi(current_health, 0, max_health_value)
@@ -70,6 +78,8 @@ func setup(max_health: int, current_health: int) -> void:
 	delayed_health = float(_target_health)
 	_is_initialized = true
 	_set_visible_immediate(_target_health < max_health_value)
+	if _target_health < max_health_value:
+		_restart_idle_fade_timer()
 	queue_redraw()
 
 
@@ -79,6 +89,7 @@ func set_health(current_health: int, max_health: int) -> void:
 		return
 
 	var previous_target := _target_health
+	var previous_maximum := max_health_value
 	max_health_value = maxi(max_health, 1)
 	_target_health = clampi(current_health, 0, max_health_value)
 
@@ -90,6 +101,7 @@ func set_health(current_health: int, max_health: int) -> void:
 		return
 
 	if _target_health >= max_health_value and not visible:
+		_stop_idle_fade_timer()
 		_stop_value_tweens()
 		displayed_health = float(_target_health)
 		delayed_health = float(_target_health)
@@ -97,12 +109,18 @@ func set_health(current_health: int, max_health: int) -> void:
 		return
 
 	var took_damage := _target_health < previous_target
+	var became_damaged := (
+		previous_target >= previous_maximum
+		and _target_health < max_health_value
+	)
 	_animate_current_fill(_target_health)
 	_animate_damage_trail(_target_health, took_damage)
 	if _target_health >= max_health_value:
+		_stop_idle_fade_timer()
 		_fade_out_after(maxf(fill_duration, damage_trail_duration))
-	else:
+	elif took_damage or became_damaged:
 		_fade_in()
+		_restart_idle_fade_timer()
 
 
 func _draw() -> void:
@@ -178,7 +196,7 @@ func _set_delayed_health(value: float) -> void:
 func _fade_in() -> void:
 	_stop_visibility_tween()
 	visible = true
-	if fade_duration <= 0.0:
+	if fade_duration <= 0.0 or is_equal_approx(modulate.a, 1.0):
 		modulate.a = 1.0
 		return
 
@@ -189,6 +207,7 @@ func _fade_in() -> void:
 
 func _fade_out_after(delay: float) -> void:
 	_stop_visibility_tween()
+	_stop_idle_fade_timer()
 	if not visible:
 		modulate.a = 0.0
 		return
@@ -204,9 +223,50 @@ func _fade_out_after(delay: float) -> void:
 	_visibility_tween.tween_callback(func() -> void: visible = false)
 
 
+func _on_idle_fade_timer_timeout() -> void:
+	if not visible or _target_health >= max_health_value:
+		return
+	_stop_visibility_tween()
+	var target_alpha := clampf(idle_alpha, 0.0, 1.0)
+	if (
+		idle_fade_duration <= 0.0
+		or is_equal_approx(modulate.a, target_alpha)
+	):
+		modulate.a = target_alpha
+		return
+	_visibility_tween = create_tween()
+	_visibility_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	_visibility_tween.tween_property(
+		self,
+		"modulate:a",
+		target_alpha,
+		idle_fade_duration
+	)
+
+
+func _restart_idle_fade_timer() -> void:
+	if (
+		Engine.is_editor_hint()
+		or not is_inside_tree()
+		or _idle_fade_timer == null
+	):
+		return
+	if idle_fade_delay <= 0.0:
+		_on_idle_fade_timer_timeout()
+		return
+	_idle_fade_timer.start(idle_fade_delay)
+
+
+func _stop_idle_fade_timer() -> void:
+	if _idle_fade_timer != null:
+		_idle_fade_timer.stop()
+
+
 func _set_visible_immediate(should_show: bool) -> void:
 	visible = should_show
 	modulate.a = 1.0 if should_show else 0.0
+	if not should_show:
+		_stop_idle_fade_timer()
 
 
 func _stop_value_tweens() -> void:

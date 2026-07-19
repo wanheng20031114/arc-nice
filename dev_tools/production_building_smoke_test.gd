@@ -80,25 +80,40 @@ func _run() -> void:
 		coordinator.register_plant(second_station)
 	station.set_shared_production_panel(panel)
 
-	var station_timers := station.find_children("*", "Timer", true, false)
+	var station_direct_timers := station.find_children(
+		"*",
+		"Timer",
+		false,
+		false
+	)
 	var request_timer := station.get_node_or_null(
 		"MultiplayerProductionRequestTimer"
 	) as Timer
 	_expect(
 		coordinator.get_node("ProductionTickTimer") is Timer
-		and station_timers.size() == 1
+		and station_direct_timers.size() == 1
 		and request_timer != null
 		and request_timer.one_shot
 		and is_equal_approx(request_timer.wait_time, 4.0),
-		"加工站只能预置4秒一次性多人请求超时Timer，生产刻度仍必须由全场协调器统一推进。"
+		"加工站直属节点只能预置4秒多人请求Timer，生产刻度仍必须由全场协调器统一推进。"
 	)
 	var health_bar := station.get_node("HealthBar") as PlantHealthBar
+	var health_bar_idle_timer := (
+		health_bar.get_node_or_null("IdleFadeTimer") as Timer
+		if health_bar != null
+		else null
+	)
 	_expect(
 		health_bar != null
 		and health_bar.size == Vector2(12, 3)
 		and health_bar.position == Vector2(-6, -9)
-		and health_bar.scale == Vector2.ONE,
-		"木头加工站必须使用与植被桩一致的12×3原生像素血条，不得比例缩放。"
+		and health_bar.scale == Vector2.ONE
+		and health_bar_idle_timer != null
+		and health_bar_idle_timer.one_shot
+		and health_bar_idle_timer.is_stopped()
+		and not health_bar.is_processing()
+		and not health_bar.is_physics_processing(),
+		"木头加工站必须使用12×3公共血条；满血计时器停止且不得注册脚本逐帧处理。"
 	)
 	var production_border := station.get_node("ProductionBorder") as MeshInstance2D
 	var border_mesh := production_border.mesh as QuadMesh if production_border != null else null

@@ -12,3 +12,9 @@ offset_bottom = 5.0
 mouse_filter = 2
 script = ExtResource("1_script")
 damage_trail_color = Color(0.92156863, 0.28235295, 0.18039216, 1)
+
+[node name="IdleFadeTimer" type="Timer" parent="."]
+wait_time = 15.0
+one_shot = true
+
+[connection signal="timeout" from="IdleFadeTimer" to="." method="_on_idle_fade_timer_timeout"]
