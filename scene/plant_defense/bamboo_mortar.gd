@@ -4,6 +4,15 @@ class_name BambooMortar
 const SHELL_SCENE := preload(
 	"res://scene/plant_defense/bamboo_mortar_shell.tscn"
 )
+const LOWER_IDLE_TEXTURE := preload(
+	"res://resources/texture/plant_defense/bamboo_mortar/layers/lower_idle.png"
+)
+const LOWER_ACTIVE_TEXTURE := preload(
+	"res://resources/texture/plant_defense/bamboo_mortar/layers/lower_active.png"
+)
+const SPLIT_LIFECYCLE_MATERIAL := preload(
+	"res://resources/shader/bamboo_mortar_split_lifecycle_material.tres"
+)
 const AUDIO_LIMITER := preload(
 	"res://scene/plant_defense/plant_attack_audio_limiter.gd"
 )
@@ -37,6 +46,7 @@ enum CombatPhase {
 }
 
 @onready var main_sprite: AnimatedSprite2D = $VisualRoot/MainSprite
+@onready var lower_body: Sprite2D = $VisualRoot/LowerBody
 @onready var status_light: Polygon2D = $VisualRoot/StatusLight
 @onready var muzzle: Marker2D = $VisualRoot/Muzzle
 @onready var attack_timer: Timer = $AttackTimer
@@ -64,10 +74,15 @@ var _last_projectile_action_id := 0
 var _last_projectile_started_at_seconds := -INF
 var _last_projectile_spawn_position := Vector2.ZERO
 var _last_projectile_landing_position := Vector2.ZERO
+var _split_lifecycle_state := Vector4(1.0, 0.0, -1.0, 0.0)
+var _split_removal_progress := 0.0
+var _split_removal_enabled := false
+var _transition_lifecycle_material: ShaderMaterial = null
 
 
 func _ready() -> void:
 	super._ready()
+	_sync_lower_body_texture()
 	set_process(false)
 
 
@@ -85,10 +100,12 @@ func _on_setup_completed() -> void:
 
 
 func _on_construction_started() -> void:
+	_activate_transition_lifecycle_material()
 	status_light.visible = false
 
 
 func _on_construction_finished(_was_animated: bool) -> void:
+	_release_transition_lifecycle_material()
 	status_light.visible = true
 
 
@@ -113,7 +130,9 @@ func _disable_proxy_combat_runtime() -> void:
 	main_sprite.position = MAIN_SPRITE_REST_POSITION
 
 
-func _on_removal_started(_mode: RemovalMode) -> void:
+func _on_removal_started(mode: RemovalMode) -> void:
+	if mode == RemovalMode.ANIMATED:
+		_activate_transition_lifecycle_material()
 	attack_timer.stop()
 	target_track_timer.stop()
 	_cancel_scheduled_target_request()
@@ -124,6 +143,73 @@ func _on_removal_started(_mode: RemovalMode) -> void:
 	status_light.visible = false
 	fire_audio.stop()
 	health_bar.hide()
+
+
+func _on_lifecycle_parameter_changed(
+	parameter_name: StringName,
+	value: Variant
+) -> void:
+	var state_changed := true
+	match parameter_name:
+		&"construction_progress":
+			_split_lifecycle_state.x = clampf(float(value), 0.0, 1.0)
+		&"construction_front_strength":
+			_split_lifecycle_state.y = clampf(float(value), 0.0, 1.0)
+		&"removal_enabled":
+			_split_removal_enabled = bool(value)
+			_split_lifecycle_state.z = (
+				_split_removal_progress
+				if _split_removal_enabled
+				else -1.0
+			)
+		&"removal_progress":
+			_split_removal_progress = clampf(float(value), 0.0, 1.0)
+			if _split_removal_enabled:
+				_split_lifecycle_state.z = _split_removal_progress
+		&"noise_offset":
+			var noise_offset: Vector2 = value
+			var noise_x_index := clampi(
+				roundi(noise_offset.x * 997.0),
+				0,
+				996
+			)
+			var noise_y_index := clampi(
+				roundi(noise_offset.y * 991.0),
+				0,
+				990
+			)
+			_split_lifecycle_state.w = float(
+				noise_x_index * 1024 + noise_y_index
+			)
+		_:
+			state_changed = false
+	if state_changed:
+		if _transition_lifecycle_material != null:
+			_transition_lifecycle_material.set_shader_parameter(
+				&"lifecycle_state",
+				_split_lifecycle_state
+			)
+
+
+func _activate_transition_lifecycle_material() -> void:
+	if _transition_lifecycle_material == null:
+		_transition_lifecycle_material = (
+			SPLIT_LIFECYCLE_MATERIAL.duplicate() as ShaderMaterial
+		)
+		lower_body.material = _transition_lifecycle_material
+		main_sprite.material = _transition_lifecycle_material
+	_transition_lifecycle_material.set_shader_parameter(
+		&"lifecycle_state",
+		_split_lifecycle_state
+	)
+
+
+func _release_transition_lifecycle_material() -> void:
+	if _transition_lifecycle_material == null:
+		return
+	lower_body.material = SPLIT_LIFECYCLE_MATERIAL
+	main_sprite.material = SPLIT_LIFECYCLE_MATERIAL
+	_transition_lifecycle_material = null
 
 
 func _on_health_changed(new_health: int, new_max_health: int) -> void:
@@ -276,6 +362,20 @@ func _on_main_sprite_frame_changed() -> void:
 		!= next_authoritative_action_id
 	):
 		_fire_authoritative_shell()
+
+
+func _on_main_sprite_animation_changed() -> void:
+	_sync_lower_body_texture()
+
+
+func _sync_lower_body_texture() -> void:
+	var expected_texture: Texture2D = (
+		LOWER_IDLE_TEXTURE
+		if main_sprite.animation == &"idle"
+		else LOWER_ACTIVE_TEXTURE
+	)
+	if lower_body.texture != expected_texture:
+		lower_body.texture = expected_texture
 
 
 func _on_main_sprite_animation_finished() -> void:
@@ -795,18 +895,20 @@ func apply_multiplayer_runtime_state(
 
 func _set_glow_state(charging: bool, frame_index: int) -> void:
 	var safe_frame := clampi(frame_index, 0, WINDUP_FRAME_COUNT - 1)
-	status_light.set_instance_shader_parameter(
-		&"glow_color",
+	var glow_strength := (
+		1.0 + 0.55 * float(safe_frame)
+		/ float(WINDUP_FRAME_COUNT - 1)
+		if charging
+		else 1.0
+	)
+	var glow_color := (
 		CHARGE_GLOW_COLOR if charging else IDLE_GLOW_COLOR
 	)
-	status_light.set_instance_shader_parameter(
-		&"glow_strength",
-		(
-			1.0 + 0.55 * float(safe_frame)
-			/ float(WINDUP_FRAME_COUNT - 1)
-			if charging
-			else 1.0
-		)
+	status_light.color = Color(
+		glow_color.r * glow_strength,
+		glow_color.g * glow_strength,
+		glow_color.b * glow_strength,
+		1.0
 	)
 
 

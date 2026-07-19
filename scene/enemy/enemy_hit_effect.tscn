@@ -17,7 +17,7 @@ scale_max = 0.55
 color = Color(0.92, 0.76, 0.38, 1)
 
 [node name="EnemyHitEffect" type="GPUParticles2D"]
-z_index = 2
+z_index = 4
 emitting = false
 amount = 5
 lifetime = 0.18

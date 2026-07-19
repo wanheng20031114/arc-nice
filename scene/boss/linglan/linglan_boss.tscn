@@ -33,7 +33,7 @@ radius = 12.0
 height = 42.0
 
 [node name="LinglanBoss" unique_id=674623717 instance=ExtResource("1_base")]
-z_index = 2
+z_index = 1
 collision_layer = 260
 script = ExtResource("2_script")
 starts_active = false

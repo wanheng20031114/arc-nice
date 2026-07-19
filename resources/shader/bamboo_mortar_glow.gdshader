@@ -1,9 +1,6 @@
 shader_type canvas_item;
 render_mode unshaded, blend_mix;
 
-instance uniform vec4 glow_color : source_color = vec4(0.34, 1.65, 0.18, 1.0);
-instance uniform float glow_strength : hint_range(0.0, 3.0) = 1.0;
-
 const float CORE_HALF_EXTENT = 3.0 / 16.0;
 const float CORE_BORDER_HALF_EXTENT = 5.0 / 16.0;
 const float INNER_HALO_HALF_EXTENT = 7.0 / 16.0;
@@ -32,10 +29,12 @@ void fragment() {
 	float inner_area = 1.0 - step(INNER_HALO_HALF_EXTENT, square_radius);
 	float inner_halo_mask = max(inner_area - core_border_area, 0.0);
 	float outer_halo_mask = max(1.0 - inner_area, 0.0);
-	vec3 active_color = glow_color.rgb * glow_strength;
+	// Polygon2D's vertex RGB already carries the selected color multiplied by
+	// its frame strength. Vertex alpha remains free for loading-screen masking.
+	vec3 active_color = COLOR.rgb;
 	vec3 output_color = (
 		active_color * core_mask
-		+ glow_color.rgb * 0.16 * core_border_mask
+		+ active_color * 0.16 * core_border_mask
 		+ active_color * pulse * 0.28 * inner_halo_mask
 		+ active_color * pulse * 0.10 * outer_halo_mask
 	);
@@ -45,5 +44,5 @@ void fragment() {
 		+ inner_halo_mask * 0.26
 		+ outer_halo_mask * 0.08
 	);
-	COLOR = vec4(output_color, glow_color.a * output_alpha);
+	COLOR = vec4(output_color, COLOR.a * output_alpha);
 }

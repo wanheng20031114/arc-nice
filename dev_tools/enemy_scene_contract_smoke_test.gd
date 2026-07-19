@@ -69,10 +69,18 @@ const MATERIAL_SAPLING := preload(
 )
 const ENEMY_VISUAL_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
 const PLAYER_BULLET_SCENE := preload("res://scene/bullet.tscn")
+const CAPOO_AK47_BULLET_SCENE := preload(
+	"res://scene/enemy/capoo_ak47_bullet.tscn"
+)
+const CAPOO_SMG_BULLET_SCENE := preload(
+	"res://scene/enemy/capoo_smg_bullet.tscn"
+)
 const PLAYER_COLLISION_LAYER := 1 << 1
 const ENEMY_BODY_COLLISION_LAYER := 1 << 2
 const BULLET_COLLISION_LAYER := 1 << 4
 const PLANT_BODY_COLLISION_LAYER := 1 << 9
+const PLAYER_BODY_VISUAL_Z_INDEX := 1
+const ENEMY_BODY_VISUAL_Z_INDEX := 2
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -92,6 +100,7 @@ func _run() -> void:
 	_test_enemy_pickup_drop_rates()
 	for enemy_config in ENEMY_CONFIGS:
 		await _test_enemy_scene_contract(enemy_config)
+	_test_enemy_projectile_z_contract()
 	await _test_player_bullet_body_hit_path()
 
 	current_scene = null
@@ -109,6 +118,22 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_enemy_projectile_z_contract() -> void:
+	for projectile_scene in [
+		CAPOO_AK47_BULLET_SCENE,
+		CAPOO_SMG_BULLET_SCENE,
+	]:
+		var projectile := projectile_scene.instantiate() as Area2D
+		_expect(
+			projectile != null
+			and projectile.z_index == 3
+			and projectile.z_index > ENEMY_BODY_VISUAL_Z_INDEX,
+			"AK与SMG弹体必须使用z=3，严格位于普通敌人身体z=2之上。"
+		)
+		if projectile != null:
+			projectile.free()
 
 
 func _test_yuanshi_xirang_reward_tiers() -> void:
@@ -185,6 +210,13 @@ func _test_enemy_scene_contract(enemy_config: EnemyConfig) -> void:
 	var body_shape_nodes := _collect_direct_collision_shapes(enemy)
 	var touch_shape_nodes := _collect_direct_collision_shapes(touch_damage_area)
 	_expect(animated_sprite != null, "%s scene must include AnimatedSprite2D." % enemy_config.resource_path)
+	_expect(
+		animated_sprite != null
+		and animated_sprite.z_index == ENEMY_BODY_VISUAL_Z_INDEX
+		and animated_sprite.z_index > PLAYER_BODY_VISUAL_Z_INDEX,
+		"%s enemy body must use z=2, explicitly above player body z=1 without overtaking z=4 projectiles."
+		% enemy_config.resource_path
+	)
 	_expect(touch_damage_area != null, "%s scene must include TouchDamageArea." % enemy_config.resource_path)
 	_expect(
 		(enemy.collision_layer & ENEMY_BODY_COLLISION_LAYER) != 0,

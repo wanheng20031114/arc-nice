@@ -167,6 +167,12 @@ static var expanded_projectile_pool_prewarm_enabled := true
 @onready var research_coordinator: ResearchCoordinator = $ResearchCoordinator
 @onready var plant_placement_controller: PlantPlacementController = $PlantPlacementController
 @onready var plant_lifecycle_shader_prewarm: Sprite2D = $PlantLifecycleShaderPrewarm
+@onready var bamboo_mortar_lifecycle_shader_prewarm: Sprite2D = (
+	$BambooMortarLifecycleShaderPrewarm
+)
+@onready var bamboo_mortar_glow_shader_prewarm: Polygon2D = (
+	$BambooMortarGlowShaderPrewarm
+)
 @onready var damage_number_pool: DamageNumberPool = $DamageNumberPool
 @onready var session_object_pool: SessionObjectPool = $SessionObjectPool
 @onready var bamboo_mortar_combat_system: BambooMortarCombatSystem = (
@@ -2814,11 +2820,17 @@ func _prewarm_plant_lifecycle_shader() -> void:
 		plant_lifecycle_shader_prewarmed
 		or not runtime_activation_deferred
 		or plant_lifecycle_shader_prewarm == null
+		or bamboo_mortar_lifecycle_shader_prewarm == null
+		or bamboo_mortar_glow_shader_prewarm == null
 	):
 		return
 	update_runtime_preparation_progress("预热植物生命周期特效…", 0, 1)
 	var prewarm_position := map_camera.get_screen_center_position()
 	plant_lifecycle_shader_prewarm.global_position = prewarm_position
+	bamboo_mortar_lifecycle_shader_prewarm.global_position = (
+		prewarm_position
+	)
+	bamboo_mortar_glow_shader_prewarm.global_position = prewarm_position
 	plant_lifecycle_shader_prewarm.set_instance_shader_parameter(
 		&"construction_progress",
 		0.5
@@ -2830,6 +2842,8 @@ func _prewarm_plant_lifecycle_shader() -> void:
 	plant_lifecycle_shader_prewarm.set_instance_shader_parameter(&"removal_enabled", true)
 	plant_lifecycle_shader_prewarm.set_instance_shader_parameter(&"removal_progress", 0.5)
 	plant_lifecycle_shader_prewarm.show()
+	bamboo_mortar_lifecycle_shader_prewarm.show()
+	bamboo_mortar_glow_shader_prewarm.show()
 
 	# The pre-authored Sprite2D compiles the lifecycle shader. Briefly drawing
 	# one pooled instance of each particle effect in the same masked frame also
@@ -2858,6 +2872,8 @@ func _prewarm_plant_lifecycle_shader() -> void:
 	else:
 		await RenderingServer.frame_post_draw
 	plant_lifecycle_shader_prewarm.hide()
+	bamboo_mortar_lifecycle_shader_prewarm.hide()
+	bamboo_mortar_glow_shader_prewarm.hide()
 	if placement_particles != null:
 		placement_particles.emitting = false
 		placement_particles.amount_ratio = 0.0

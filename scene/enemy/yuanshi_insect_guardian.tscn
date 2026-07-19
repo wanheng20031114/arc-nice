@@ -20,7 +20,7 @@ blend_mode = 1
 script = ExtResource("2_script")
 
 [node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
-z_index = 1
+z_index = 2
 sprite_frames = ExtResource("3_frames")
 animation = &"move"
 

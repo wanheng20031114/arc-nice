@@ -602,6 +602,7 @@ func _set_removal_progress(value: float) -> void:
 func _set_lifecycle_parameter(parameter_name: StringName, value: Variant) -> void:
 	for visual in _lifecycle_visuals:
 		visual.set_instance_shader_parameter(parameter_name, value)
+	_on_lifecycle_parameter_changed(parameter_name, value)
 
 
 func _stop_construction_tween() -> void:
@@ -614,6 +615,13 @@ func _stop_removal_tween() -> void:
 	if _removal_tween != null and _removal_tween.is_valid():
 		_removal_tween.kill()
 	_removal_tween = null
+
+
+func _on_lifecycle_parameter_changed(
+	_parameter_name: StringName,
+	_value: Variant
+) -> void:
+	pass
 
 
 func _on_setup_completed() -> void:

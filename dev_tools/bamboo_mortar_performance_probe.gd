@@ -907,9 +907,18 @@ func _run_explosion_cycle(
 	):
 		var mortar := mortars[mortar_index]
 		mortar.call("_finish_fire_visual")
+		# Production immediately defers the next four-second windup. This probe
+		# measures one explicitly forced fire cycle at a time, so hold the phase
+		# behind the normal re-entry guard until that deferred call has drained.
+		mortar.combat_phase = BambooMortar.CombatPhase.WINDUP
 		mortar.attack_timer.stop()
 	await physics_frame
 	await physics_frame
+	for mortar_index in range(
+		start_mortar_index,
+		start_mortar_index + mortar_count
+	):
+		_reset_mortar_after_sample(mortars[mortar_index])
 	return {
 		"spawn_ms": spawn_ms,
 		"submit_ms": submit_ms,

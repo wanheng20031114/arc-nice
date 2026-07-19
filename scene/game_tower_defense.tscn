@@ -42,11 +42,16 @@
 [ext_resource type="PackedScene" path="res://scene/plant_defense/research_coordinator.tscn" id="43_research_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/research_center_panel.tscn" id="44_research_panel"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/bamboo_mortar_combat_system.tscn" id="45_bamboo_mortar_combat"]
+[ext_resource type="Material" path="res://resources/shader/bamboo_mortar_split_lifecycle_material.tres" id="46_bamboo_mortar_lifecycle_material"]
+[ext_resource type="Shader" uid="uid://d1dea7fqpou23" path="res://resources/shader/bamboo_mortar_glow.gdshader" id="47_bamboo_mortar_glow_shader"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
 glow_bloom = 0.08
 glow_hdr_scale = 1.6
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_bamboo_mortar_glow_prewarm"]
+shader = ExtResource("47_bamboo_mortar_glow_shader")
 
 [sub_resource type="TileMapPattern" id="TileMapPattern_33cqm"]
 tile_data = PackedInt32Array(0, 0, 0, 65536, 131072, 2, 1, 0, 0, 65537, 0, 0)
@@ -342,6 +347,25 @@ texture_filter = 1
 material = ExtResource("38_plant_lifecycle_material")
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("37_plant_lifecycle_prewarm_texture")
+
+[node name="BambooMortarLifecycleShaderPrewarm" type="Sprite2D" parent="."]
+visible = false
+modulate = Color(1, 1, 1, 0.01)
+z_index = 4095
+texture_filter = 1
+material = ExtResource("46_bamboo_mortar_lifecycle_material")
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("37_plant_lifecycle_prewarm_texture")
+
+[node name="BambooMortarGlowShaderPrewarm" type="Polygon2D" parent="."]
+visible = false
+modulate = Color(1, 1, 1, 0.01)
+z_index = 4095
+texture_filter = 1
+material = SubResource("ShaderMaterial_bamboo_mortar_glow_prewarm")
+color = Color(0.34, 1.65, 0.18, 1)
+polygon = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
+uv = PackedVector2Array(0, 0, 1, 0, 1, 1, 0, 1)
 
 [node name="PlantSystem" type="Node" parent="." unique_id=92727624]
 script = ExtResource("22_plant_system")

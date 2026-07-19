@@ -101,6 +101,29 @@ UPPER_STORAGE_RECT = (15, 15, 26, 27)
 MUZZLE_RECT = (31, 3, 54, 20)
 FIRE_EFFECT_RECT = (31, 0, 64, 22)
 STATUS_LIGHT_REGION = (28, 39, 36, 47)
+# Pixel-edge spans for the user-approved upper draw layer.  The long top
+# spans retain every muzzle flash/smoke pixel, while the stepped lower edge
+# follows the rope and keeps the side tubes, knot, leaves and base below
+# players and enemies.  Values are (y_begin, y_end, x_begin, x_end), all with
+# exclusive end coordinates.
+UPPER_BARREL_LAYER_SPANS = (
+    (0, 18, 31, 64),
+    (18, 20, 30, 64),
+    (20, 22, 29, 64),
+    (22, 23, 28, 50),
+    (23, 24, 28, 49),
+    (24, 25, 27, 49),
+    (25, 26, 27, 48),
+    (26, 27, 26, 48),
+    (27, 28, 25, 47),
+    (28, 29, 26, 47),
+    (29, 31, 25, 46),
+    (31, 33, 26, 45),
+    (33, 34, 27, 44),
+    (34, 35, 28, 44),
+    (35, 36, 29, 42),
+    (36, 38, 31, 41),
+)
 APPROVED_ROPE_TAIL_PIXELS = {
     (41, 44): RIM,
     (42, 44): RIM,
@@ -556,6 +579,68 @@ def _validate_approved_anchor(
             )
 
 
+def _upper_barrel_span_for_row(y: int) -> tuple[int, int] | None:
+    for y_begin, y_end, x_begin, x_end in UPPER_BARREL_LAYER_SPANS:
+        if y_begin <= y < y_end:
+            return x_begin, x_end
+    return None
+
+
+def _split_semantic_layers(
+    frame: Image.Image,
+) -> tuple[Image.Image, Image.Image]:
+    upper = Image.new("RGBA", CANVAS_SIZE, TRANSPARENT)
+    lower = Image.new("RGBA", CANVAS_SIZE, TRANSPARENT)
+    source_pixels = frame.load()
+    upper_pixels = upper.load()
+    lower_pixels = lower.load()
+    for y in range(CANVAS_SIZE[1]):
+        upper_span = _upper_barrel_span_for_row(y)
+        for x in range(CANVAS_SIZE[0]):
+            pixel = source_pixels[x, y]
+            if (
+                upper_span is not None
+                and upper_span[0] <= x < upper_span[1]
+            ):
+                upper_pixels[x, y] = pixel
+            else:
+                lower_pixels[x, y] = pixel
+    return upper, lower
+
+
+def _build_layer_assets(
+    idle: Image.Image,
+    charge_frames: list[Image.Image],
+    fire_frames: list[Image.Image],
+) -> dict[str, Image.Image]:
+    upper_idle, lower_idle = _split_semantic_layers(idle)
+    layer_assets = {
+        "upper_idle": upper_idle,
+        "lower_idle": lower_idle,
+    }
+    lower_active: Image.Image | None = None
+    for frame_group_name, frames in (
+        ("charge", charge_frames),
+        ("fire", fire_frames),
+    ):
+        for frame_index, frame in enumerate(frames):
+            upper, lower = _split_semantic_layers(frame)
+            layer_assets[
+                f"upper_{frame_group_name}_{frame_index}"
+            ] = upper
+            if lower_active is None:
+                lower_active = lower
+            elif _image_sha256(lower) != _image_sha256(lower_active):
+                raise RuntimeError(
+                    "Every active Bamboo Mortar frame must share one "
+                    "identical static lower layer"
+                )
+    if lower_active is None:
+        raise RuntimeError("Bamboo Mortar active lower layer was not built")
+    layer_assets["lower_active"] = lower_active
+    return layer_assets
+
+
 def _validate(
     reference: Image.Image,
     native_imagegen_source: Image.Image,
@@ -564,6 +649,7 @@ def _validate(
     idle: Image.Image,
     charge_frames: list[Image.Image],
     fire_frames: list[Image.Image],
+    layer_assets: dict[str, Image.Image],
 ) -> dict:
     if reference.size != (1254, 1254):
         raise RuntimeError(
@@ -612,6 +698,76 @@ def _validate(
         if len(_visible_colors(frame)) > 20:
             raise RuntimeError(
                 f"Body frame {index} exceeds the 20-color limit"
+            )
+
+    upper_frames = [
+        layer_assets["upper_idle"],
+        *[
+            layer_assets[f"upper_charge_{index}"]
+            for index in range(len(charge_frames))
+        ],
+        *[
+            layer_assets[f"upper_fire_{index}"]
+            for index in range(len(fire_frames))
+        ],
+    ]
+    lower_frames = [
+        layer_assets["lower_idle"],
+        *([layer_assets["lower_active"]] * (
+            len(charge_frames) + len(fire_frames)
+        )),
+    ]
+    expected_upper_visible_counts = [
+        622,
+        *([622] * len(charge_frames)),
+        665,
+        719,
+        684,
+        649,
+    ]
+    expected_lower_visible_counts = [
+        1278,
+        *([1254] * (len(charge_frames) + len(fire_frames))),
+    ]
+    for frame_index, source in enumerate(body_frames):
+        upper = upper_frames[frame_index]
+        lower = lower_frames[frame_index]
+        _assert_clean(f"upper_layer_{frame_index}", upper)
+        _assert_clean(f"lower_layer_{frame_index}", lower)
+        for y in range(CANVAS_SIZE[1]):
+            for x in range(CANVAS_SIZE[0]):
+                source_pixel = source.getpixel((x, y))
+                upper_pixel = upper.getpixel((x, y))
+                lower_pixel = lower.getpixel((x, y))
+                if upper_pixel[3] > 0 and lower_pixel[3] > 0:
+                    raise RuntimeError(
+                        "Bamboo Mortar layers overlap: "
+                        f"frame={frame_index} point=({x},{y})"
+                    )
+                recomposed_pixel = (
+                    upper_pixel if upper_pixel[3] > 0 else lower_pixel
+                )
+                if recomposed_pixel != source_pixel:
+                    raise RuntimeError(
+                        "Bamboo Mortar layers do not losslessly recompose: "
+                        f"frame={frame_index} point=({x},{y})"
+                    )
+        upper_visible_count = sum(
+            1 for pixel in upper.getdata() if pixel[3] > 0
+        )
+        lower_visible_count = sum(
+            1 for pixel in lower.getdata() if pixel[3] > 0
+        )
+        if (
+            upper_visible_count
+            != expected_upper_visible_counts[frame_index]
+            or lower_visible_count
+            != expected_lower_visible_counts[frame_index]
+        ):
+            raise RuntimeError(
+                "Bamboo Mortar semantic layer pixel counts changed: "
+                f"frame={frame_index} "
+                f"upper={upper_visible_count} lower={lower_visible_count}"
             )
 
     anchor_pixels = anchor.load()
@@ -796,6 +952,16 @@ def _validate(
             "Independent small square Godot node with HDR/shader emission; "
             "this builder emits no status-light bitmap."
         ),
+        "semantic_draw_layers": {
+            "upper_barrel_row_spans": [
+                list(span) for span in UPPER_BARREL_LAYER_SPANS
+            ],
+            "upper_visible_pixel_counts": expected_upper_visible_counts,
+            "lower_visible_pixel_counts": expected_lower_visible_counts,
+            "active_lower_shared_across_all_frames": True,
+            "binary_non_overlapping": True,
+            "lossless_rgba_recomposition": True,
+        },
         "shell_baked_into_fire_frames": False,
         "binary_alpha": True,
         "transparent_rgb_clean": True,
@@ -821,6 +987,7 @@ def _managed_outputs(
     idle: Image.Image,
     charge_frames: list[Image.Image],
     fire_frames: list[Image.Image],
+    layer_assets: dict[str, Image.Image],
     audit: dict,
 ) -> dict[Path, bytes]:
     outputs: dict[Path, bytes] = {
@@ -833,6 +1000,10 @@ def _managed_outputs(
         outputs[OUTPUT_ROOT / f"charge_{index}.png"] = _encode_png(frame)
     for index, frame in enumerate(fire_frames):
         outputs[OUTPUT_ROOT / f"fire_{index}.png"] = _encode_png(frame)
+    for layer_name, layer_image in layer_assets.items():
+        outputs[
+            OUTPUT_ROOT / "layers" / f"{layer_name}.png"
+        ] = _encode_png(layer_image)
     return outputs
 
 
@@ -859,6 +1030,11 @@ def main() -> int:
     idle = _build_idle(anchor)
     charge_frames = _build_charge_frames(anchor)
     fire_frames = _build_fire_frames(anchor)
+    layer_assets = _build_layer_assets(
+        idle,
+        charge_frames,
+        fire_frames,
+    )
     audit = _validate(
         reference,
         native_imagegen_source,
@@ -867,11 +1043,13 @@ def main() -> int:
         idle,
         charge_frames,
         fire_frames,
+        layer_assets,
     )
     outputs = _managed_outputs(
         idle,
         charge_frames,
         fire_frames,
+        layer_assets,
         audit,
     )
 

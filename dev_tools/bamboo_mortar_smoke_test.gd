@@ -10,9 +10,28 @@ const SHELL_SCENE := preload(
 	"res://scene/plant_defense/bamboo_mortar_shell.tscn"
 )
 const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
+const ENEMY_HIT_EFFECT_SCENE := preload(
+	"res://scene/enemy/enemy_hit_effect.tscn"
+)
+const LINGLAN_BOSS_SCENE := preload(
+	"res://scene/boss/linglan/linglan_boss.tscn"
+)
+const SPLIT_LIFECYCLE_SHADER := preload(
+	"res://resources/shader/bamboo_mortar_split_lifecycle.gdshader"
+)
+const SPLIT_LIFECYCLE_MATERIAL := preload(
+	"res://resources/shader/bamboo_mortar_split_lifecycle_material.tres"
+)
 const ARMORED_ENEMY_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_shell.tres"
 )
+const PLAYER_SCENES: Array[PackedScene] = [
+	preload("res://scene/player/hoe_cat/player_hoe_cat.tscn"),
+	preload("res://scene/player/tiyi/player_tiyi.tscn"),
+	preload(
+		"res://scene/player/weishidaier/player_weishidaier.tscn"
+	),
+]
 
 var failures: Array[String] = []
 var runtime: MortarRuntimeStub = null
@@ -127,6 +146,8 @@ func _run() -> void:
 	var proxy := _create_mortar(true, 702)
 	if authority != null and proxy != null:
 		_test_config_and_scene_contract(authority)
+		_test_semantic_layers_and_z_order(authority)
+		await _test_split_lifecycle_transition_contract()
 		await _test_target_ring_and_tracking(authority)
 		await _test_windup_fire_and_fixed_landing(authority)
 		await _test_shell_duration_and_late_join(authority)
@@ -204,6 +225,7 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		mortar.get_node_or_null("TargetingArea") == null
 		and mortar.get_node_or_null("VisualRoot/Muzzle") is Marker2D
 		and mortar.get_node_or_null("VisualRoot/StatusLight") is Polygon2D
+		and mortar.get_node_or_null("VisualRoot/LowerBody") is Sprite2D
 		and mortar.get_node_or_null("VisualRoot/GlowSprite") == null
 		and mortar.get_node_or_null("AttackTimer") is Timer
 		and mortar.get_node_or_null("TargetTrackTimer") is Timer
@@ -267,7 +289,11 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 				false
 			)
 		)
-		and glow_shader_source.contains("instance uniform")
+		and glow_shader_source.count("\ninstance uniform ") == 0
+		and glow_shader_source.contains("vec3 active_color = COLOR.rgb")
+		and glow_shader_source.contains(
+			"COLOR.a * output_alpha"
+		)
 		and glow_shader_source.contains("blend_mix")
 		and glow_shader_source.contains("varying vec2 shape_uv")
 		and glow_shader_source.contains(
@@ -284,6 +310,405 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 			"res://resources/texture/plant_defense/bamboo_mortar/glow_mask.png"
 		),
 		"中下部状态灯必须由一个Godot节点以对应颜色绘制不透明亮核、深色边界与内外光晕，不能用纯加色吞掉核心，也不能残留贴图灯或逐实例材质复制。"
+	)
+	mortar.call("_set_glow_state", true, 7)
+	_expect(
+		mortar.status_light.color.is_equal_approx(
+			Color(3.4875, 0.961, 0.155, 1.0)
+		),
+		"满蓄热状态灯必须以Polygon2D顶点色保留1.55倍橙色强度。"
+	)
+	mortar.call("_set_glow_state", false, 0)
+	_expect(
+		mortar.status_light.color.is_equal_approx(
+			Color(0.34, 1.65, 0.18, 1.0)
+		),
+		"待机状态灯必须以Polygon2D顶点色恢复嫩绿色常亮强度。"
+	)
+
+
+func _test_semantic_layers_and_z_order(mortar: BambooMortar) -> void:
+	var visual_root := mortar.get_node("VisualRoot") as Node2D
+	var animated_sprite_count := _count_animated_sprites(mortar)
+	_expect(
+		animated_sprite_count == 1
+		and mortar.lower_body.texture_filter
+		== CanvasItem.TEXTURE_FILTER_NEAREST
+		and mortar.lower_body.material == SPLIT_LIFECYCLE_MATERIAL
+		and mortar.main_sprite.material == SPLIT_LIFECYCLE_MATERIAL
+		and mortar.lifecycle_visual_paths.is_empty()
+		and SPLIT_LIFECYCLE_MATERIAL.shader
+		== SPLIT_LIFECYCLE_SHADER,
+		"分层迫击炮必须只保留一个动画播放器；上下互补层须共享迫击炮专用的压缩生命周期材质。"
+	)
+	var split_shader_source := SPLIT_LIFECYCLE_SHADER.code
+	_expect(
+		split_shader_source.count("\ninstance uniform ") == 0
+		and split_shader_source.contains(
+			"uniform vec4 lifecycle_state"
+		)
+		and split_shader_source.contains(
+			"noise_x_index / NOISE_X_DENOMINATOR"
+		)
+		and split_shader_source.contains(
+			"lifecycle_world_position / 64.0"
+		)
+		and split_shader_source.contains(
+			"lifecycle_origin_world_y + EFFECT_TOP_LOCAL_Y"
+		),
+		"上下层必须完全避开实例参数，并从一个过渡材质状态中无损解码同一世界坐标溶解噪波，避免Compatibility渲染器为每个CanvasItem固定预留16项。"
+	)
+	_expect(
+		visual_root.z_index == 0
+		and mortar.lower_body.z_index == 0
+		and mortar.status_light.z_index == 0
+		and mortar.main_sprite.z_index == 4,
+		"迫击炮必须使用下层0、状态灯0、上炮管4的显式局部层级，使炮管严格高于敌我身体且不抬高到战斗特效层之上。"
+	)
+
+	var base_enemy := ENEMY_SCENE.instantiate() as Enemy
+	var enemy_sprite := (
+		base_enemy.get_node_or_null("AnimatedSprite2D")
+		as AnimatedSprite2D
+		if base_enemy != null
+		else null
+	)
+	_expect(
+		enemy_sprite != null
+		and _effective_z_index(enemy_sprite) == 2,
+		"基础敌人身体必须显式位于玩家之上的有效z=2。"
+	)
+	if base_enemy != null:
+		base_enemy.free()
+
+	var boss := LINGLAN_BOSS_SCENE.instantiate() as Enemy
+	var boss_sprite := (
+		boss.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
+		if boss != null
+		else null
+	)
+	_expect(
+		boss_sprite != null
+		and _effective_z_index(boss_sprite) == 3
+		and _effective_z_index(boss_sprite)
+		< _effective_z_index(mortar.main_sprite),
+		"Boss身体必须保持有效z=3，位于上炮管z=4之下并继续低于既有z=4弹体。"
+	)
+	if boss != null:
+		boss.free()
+
+	var shell := SHELL_SCENE.instantiate() as Node2D
+	var enemy_hit_effect := (
+		ENEMY_HIT_EFFECT_SCENE.instantiate() as GPUParticles2D
+	)
+	_expect(
+		shell != null
+		and enemy_hit_effect != null
+		and shell.z_index == 4
+		and enemy_hit_effect.z_index == 4
+		and shell.z_index == mortar.main_sprite.z_index
+		and enemy_hit_effect.z_index == mortar.main_sprite.z_index,
+		"迫击炮上管、既有迫击炮弹与敌人命中特效必须同处z=4，均高于有效z=3的Boss身体且不越过z=5以上战斗特效。"
+	)
+	if shell != null:
+		shell.free()
+	if enemy_hit_effect != null:
+		enemy_hit_effect.free()
+
+	for player_scene in PLAYER_SCENES:
+		var player := player_scene.instantiate()
+		var body_sprite := (
+			player.get_node_or_null("BodySprite") as AnimatedSprite2D
+			if player != null
+			else null
+		)
+		_expect(
+			body_sprite != null
+			and _effective_z_index(mortar.lower_body)
+			< _effective_z_index(body_sprite)
+			and _effective_z_index(body_sprite) == 1
+			and _effective_z_index(body_sprite)
+			< _effective_z_index(mortar.main_sprite),
+			"三名玩家身体必须稳定夹在迫击炮下层z=0与上炮管z=4之间。"
+		)
+		if player != null:
+			player.free()
+
+	var original_noise_offset: Vector2 = mortar.call(
+		"_make_lifecycle_noise_offset"
+	)
+	var lifecycle_probe_noise := Vector2(
+		125.0 / 997.0,
+		619.0 / 991.0
+	)
+	mortar.call("_activate_transition_lifecycle_material")
+	mortar.call(
+		"_set_lifecycle_parameter",
+		&"construction_progress",
+		0.35
+	)
+	mortar.call(
+		"_set_lifecycle_parameter",
+		&"construction_front_strength",
+		0.6
+	)
+	mortar.call("_set_lifecycle_parameter", &"removal_enabled", true)
+	mortar.call("_set_lifecycle_parameter", &"removal_progress", 0.4)
+	mortar.call(
+		"_set_lifecycle_parameter",
+		&"noise_offset",
+		lifecycle_probe_noise
+	)
+	var transition_material := (
+		mortar.lower_body.material as ShaderMaterial
+	)
+	var lower_lifecycle_state: Vector4 = (
+		transition_material.get_shader_parameter(
+			&"lifecycle_state"
+		)
+	)
+	_expect(
+		transition_material != SPLIT_LIFECYCLE_MATERIAL
+		and mortar.main_sprite.material == transition_material
+		and is_equal_approx(lower_lifecycle_state.x, 0.35)
+		and is_equal_approx(lower_lifecycle_state.y, 0.6)
+		and is_equal_approx(lower_lifecycle_state.z, 0.4)
+		and is_equal_approx(
+			lower_lifecycle_state.w,
+			float(125 * 1024 + 619)
+		),
+		"基类生命周期变化必须只更新上下层共享的临时普通材质，并精确保留两维噪波索引。"
+	)
+	mortar.call(
+		"_set_lifecycle_parameter",
+		&"construction_progress",
+		1.0
+	)
+	mortar.call(
+		"_set_lifecycle_parameter",
+		&"construction_front_strength",
+		0.0
+	)
+	mortar.call("_set_lifecycle_parameter", &"removal_enabled", false)
+	mortar.call("_set_lifecycle_parameter", &"removal_progress", 0.0)
+	mortar.call(
+		"_set_lifecycle_parameter",
+		&"noise_offset",
+		original_noise_offset
+	)
+	mortar.call("_release_transition_lifecycle_material")
+	_expect(
+		mortar.lower_body.material == SPLIT_LIFECYCLE_MATERIAL
+		and mortar.main_sprite.material == SPLIT_LIFECYCLE_MATERIAL
+		and (
+			SPLIT_LIFECYCLE_MATERIAL.get_shader_parameter(
+				&"lifecycle_state"
+			) as Vector4
+		).is_equal_approx(Vector4(1.0, 0.0, -1.0, 0.0)),
+		"生命周期结束后上下层必须恢复只读共享材质，且不得污染其默认状态。"
+	)
+
+	var source_names := PackedStringArray([
+		"idle",
+		"charge_0",
+		"charge_1",
+		"charge_2",
+		"charge_3",
+		"charge_4",
+		"charge_5",
+		"charge_6",
+		"charge_7",
+		"fire_0",
+		"fire_1",
+		"fire_2",
+		"fire_3",
+	])
+	for source_index in range(source_names.size()):
+		var source_name := source_names[source_index]
+		var animation_name := (
+			&"idle"
+			if source_index == 0
+			else (&"charge" if source_index <= 8 else &"fire")
+		)
+		var frame_index := (
+			0
+			if source_index == 0
+			else (
+				source_index - 1
+				if source_index <= 8
+				else source_index - 9
+			)
+		)
+		var full_texture := load(
+			"res://resources/texture/plant_defense/bamboo_mortar/"
+			+ source_name
+			+ ".png"
+		) as Texture2D
+		var upper_texture := (
+			mortar.main_sprite.sprite_frames.get_frame_texture(
+				animation_name,
+				frame_index
+			)
+		)
+		var lower_texture := (
+			BambooMortar.LOWER_IDLE_TEXTURE
+			if source_index == 0
+			else BambooMortar.LOWER_ACTIVE_TEXTURE
+		)
+		_expect(
+			full_texture != null
+			and upper_texture != null
+			and _layers_losslessly_recompose(
+				full_texture,
+				upper_texture,
+				lower_texture
+			),
+			"迫击炮%s帧必须由互不重叠的上炮管与下部图层逐像素无损重组。"
+			% source_name
+		)
+
+	mortar.main_sprite.play(&"charge")
+	_expect(
+		mortar.lower_body.texture
+		== BambooMortar.LOWER_ACTIVE_TEXTURE,
+		"进入蓄热时静态下层必须切到空置侧管版本。"
+	)
+	mortar.main_sprite.play(&"fire")
+	_expect(
+		mortar.lower_body.texture
+		== BambooMortar.LOWER_ACTIVE_TEXTURE,
+		"进入开火时必须继续复用同一张静态活动下层。"
+	)
+	mortar.main_sprite.play(&"idle")
+	_expect(
+		mortar.lower_body.texture
+		== BambooMortar.LOWER_IDLE_TEXTURE,
+		"回到待机时静态下层必须恢复装填版本。"
+	)
+
+
+func _layers_losslessly_recompose(
+	full_texture: Texture2D,
+	upper_texture: Texture2D,
+	lower_texture: Texture2D
+) -> bool:
+	var full_image := full_texture.get_image()
+	var upper_image := upper_texture.get_image()
+	var lower_image := lower_texture.get_image()
+	if (
+		full_image == null
+		or upper_image == null
+		or lower_image == null
+		or full_image.get_size() != Vector2i(64, 64)
+		or upper_image.get_size() != full_image.get_size()
+		or lower_image.get_size() != full_image.get_size()
+	):
+		return false
+	for y in range(64):
+		for x in range(64):
+			var full_pixel := full_image.get_pixel(x, y)
+			var upper_pixel := upper_image.get_pixel(x, y)
+			var lower_pixel := lower_image.get_pixel(x, y)
+			if upper_pixel.a > 0.5 and lower_pixel.a > 0.5:
+				return false
+			if full_pixel.a <= 0.5:
+				if upper_pixel.a > 0.5 or lower_pixel.a > 0.5:
+					return false
+				continue
+			var recomposed_pixel := (
+				upper_pixel
+				if upper_pixel.a > 0.5
+				else lower_pixel
+			)
+			if not recomposed_pixel.is_equal_approx(full_pixel):
+				return false
+	return true
+
+
+func _effective_z_index(item: CanvasItem) -> int:
+	var effective_z := 0
+	var current: CanvasItem = item
+	while current != null:
+		effective_z += current.z_index
+		if not current.z_as_relative:
+			break
+		current = current.get_parent() as CanvasItem
+	return effective_z
+
+
+func _count_animated_sprites(node: Node) -> int:
+	var count := 1 if node is AnimatedSprite2D else 0
+	for child in node.get_children():
+		count += _count_animated_sprites(child)
+	return count
+
+
+func _test_split_lifecycle_transition_contract() -> void:
+	var mortar := MORTAR_SCENE.instantiate() as BambooMortar
+	_expect(
+		mortar != null,
+		"生命周期夹具必须实例化竹迫击炮。"
+	)
+	if mortar == null:
+		return
+	mortar.set_meta(&"net_id", 703)
+	runtime.add_child(mortar)
+	mortar.setup(
+		MORTAR_CONFIG,
+		null,
+		[],
+		true,
+		-1,
+		0,
+		-1,
+		true
+	)
+	mortar.attack_timer.stop()
+	mortar.target_track_timer.stop()
+	var build_material := mortar.lower_body.material as ShaderMaterial
+	var build_state: Vector4 = build_material.get_shader_parameter(
+		&"lifecycle_state"
+	)
+	_expect(
+		not mortar.is_operational
+		and mortar.is_construction_visual_active()
+		and not mortar.status_light.visible
+		and build_material != SPLIT_LIFECYCLE_MATERIAL
+		and mortar.main_sprite.material == build_material
+		and is_zero_approx(build_state.x)
+		and is_equal_approx(build_state.y, 1.0)
+		and build_state.z < 0.0,
+		"0.7秒构建期间上下层必须共享一份独立普通材质，且状态灯保持隐藏。"
+	)
+	await create_timer(0.75).timeout
+	await process_frame
+	_expect(
+		mortar.is_operational
+		and not mortar.is_construction_visual_active()
+		and mortar.status_light.visible
+		and mortar.lower_body.material == SPLIT_LIFECYCLE_MATERIAL
+		and mortar.main_sprite.material == SPLIT_LIFECYCLE_MATERIAL,
+		"构建完成后必须释放临时材质并恢复上下层共享运行态材质。"
+	)
+
+	mortar.begin_removal(PlantDefense.RemovalMode.ANIMATED)
+	var removal_material := mortar.lower_body.material as ShaderMaterial
+	var removal_state: Vector4 = removal_material.get_shader_parameter(
+		&"lifecycle_state"
+	)
+	_expect(
+		mortar.is_removing
+		and not mortar.status_light.visible
+		and removal_material != SPLIT_LIFECYCLE_MATERIAL
+		and mortar.main_sprite.material == removal_material
+		and is_zero_approx(removal_state.z),
+		"动画移除必须重新租用一份上下层共享普通材质，并从零进度同步溶解。"
+	)
+	await create_timer(0.75).timeout
+	await process_frame
+	_expect(
+		not is_instance_valid(mortar),
+		"竹迫击炮动画移除结束后必须正常释放节点。"
 	)
 
 
