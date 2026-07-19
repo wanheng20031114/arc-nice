@@ -25,6 +25,15 @@ const SPLIT_LIFECYCLE_MATERIAL := preload(
 const SOFT_MICRO_LIGHT_TEXTURE := preload(
 	"res://resources/lighting/soft_micro_point_light.tres"
 )
+const MORTAR_FIRE_AUDIO := preload(
+	"res://resources/audio/capoo_rpg_launch.wav"
+)
+const MORTAR_EXPLOSION_AUDIO := preload(
+	"res://resources/audio/cowboy_explosion.wav"
+)
+const EXPLOSION_AUDIO_LIMITER := preload(
+	"res://scene/explosion_audio_limiter.gd"
+)
 const ARMORED_ENEMY_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_shell.tres"
 )
@@ -186,6 +195,9 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 	var status_glow_texture := (
 		SOFT_MICRO_LIGHT_TEXTURE as GradientTexture2D
 	)
+	var fire_audio := (
+		mortar.get_node_or_null("FireAudio") as AudioStreamPlayer2D
+	)
 	_expect(MORTAR_CONFIG.is_valid(), "竹筒迫击炮配置必须有效。")
 	_expect(
 		MORTAR_CONFIG.plant_id == &"bamboo_mortar"
@@ -238,7 +250,12 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		and mortar.get_node_or_null("VisualRoot/GlowSprite") == null
 		and mortar.get_node_or_null("AttackTimer") is Timer
 		and mortar.get_node_or_null("TargetTrackTimer") is Timer
-		and mortar.get_node_or_null("FireAudio") is AudioStreamPlayer2D,
+		and fire_audio != null
+		and fire_audio.stream == MORTAR_FIRE_AUDIO
+		and fire_audio.bus == &"SFX"
+		and is_equal_approx(fire_audio.volume_db, -10.0)
+		and is_equal_approx(fire_audio.max_distance, 300.0)
+		and fire_audio.max_polyphony == 2,
 		"迫击炮必须用预建Marker、独立方形状态灯及其原生微光、Timer与音效节点，且不能常驻TargetingArea。"
 	)
 	_expect(
@@ -392,6 +409,9 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 func _test_semantic_layers_and_z_order(mortar: BambooMortar) -> void:
 	var visual_root := mortar.get_node("VisualRoot") as Node2D
 	var animated_sprite_count := _count_animated_sprites(mortar)
+	var shell_source := FileAccess.get_file_as_string(
+		"res://scene/plant_defense/bamboo_mortar_shell.gd"
+	)
 	_expect(
 		animated_sprite_count == 1
 		and mortar.lower_body.texture_filter
@@ -459,9 +479,14 @@ func _test_semantic_layers_and_z_order(mortar: BambooMortar) -> void:
 	if boss != null:
 		boss.free()
 
-	var shell := SHELL_SCENE.instantiate() as Node2D
+	var shell := SHELL_SCENE.instantiate() as BambooMortarShell
 	var enemy_hit_effect := (
 		ENEMY_HIT_EFFECT_SCENE.instantiate() as GPUParticles2D
+	)
+	var impact_audio := (
+		shell.get_node_or_null("ImpactAudio") as AudioStreamPlayer2D
+		if shell != null
+		else null
 	)
 	_expect(
 		shell != null
@@ -471,6 +496,27 @@ func _test_semantic_layers_and_z_order(mortar: BambooMortar) -> void:
 		and shell.z_index == mortar.main_sprite.z_index
 		and enemy_hit_effect.z_index == mortar.main_sprite.z_index,
 		"迫击炮上管、既有迫击炮弹与敌人命中特效必须同处z=4，均高于有效z=3的Boss身体且不越过z=5以上战斗特效。"
+	)
+	_expect(
+		impact_audio != null
+		and impact_audio.stream == MORTAR_EXPLOSION_AUDIO
+		and impact_audio.bus == &"SFX"
+		and is_equal_approx(impact_audio.volume_db, -9.0)
+		and is_equal_approx(impact_audio.max_distance, 300.0)
+		and impact_audio.max_polyphony == 1
+		and shell_source.contains(
+			"EXPLOSION_AUDIO_LIMITER.play(impact_audio)"
+		)
+		and shell_source.count(
+			"EXPLOSION_AUDIO_LIMITER.stop(impact_audio)"
+		) == 3
+		and shell_source.contains(
+			"VOICE_PREEMPTED_CALLBACK_META"
+		)
+		and shell_source.contains(
+			"func _try_finish_explosion()"
+		),
+		"炮弹爆炸必须复用原石虫爆炸音效，并通过共享爆炸限流器播放及释放池化语音。"
 	)
 	if shell != null:
 		shell.free()
@@ -897,6 +943,7 @@ func _test_windup_fire_and_fixed_landing(
 		and mortar.main_sprite.position
 		== BambooMortar.FIRE_RECOIL_OFFSET
 		and mortar.attack_timer.is_stopped()
+		and mortar.fire_audio.playing
 		and runtime.queued_visuals.size() == 2
 		and int(runtime.queued_visuals[1].get("stage", -1))
 		== BambooMortar.NETWORK_STAGE_FIRE
@@ -904,7 +951,7 @@ func _test_windup_fire_and_fixed_landing(
 			"landing_position",
 			Vector2.ZERO
 		) == Vector2(96.0, 0.0),
-		"目标死亡后仍须在可见爆闪/后坐帧向最后有效位置出膛，且出膛时不能启动额外攻击冷却。"
+		"目标死亡后仍须伴随砰声在可见爆闪/后坐帧向最后有效位置出膛，且出膛时不能启动额外攻击冷却。"
 	)
 	var active_shell := _find_active_shell()
 	var expected_flight_duration := (
@@ -1032,7 +1079,26 @@ func _test_shell_duration_and_late_join(
 			"近距离炮弹必须使用0.28秒下限，既加速又保留可读的飞行帧。"
 		)
 		short_shell.call("_impact")
+		_expect(
+			short_shell.impact_audio.playing,
+			"正常落点必须立即播放迫击炮爆炸音效。"
+		)
 		short_shell.call("_on_visual_animation_finished")
+		_expect(
+			bool(
+				short_shell.get_meta(
+					SessionObjectPool.POOL_ACTIVE_META,
+					false
+				)
+			)
+			and bool(
+				short_shell.get("_explosion_completion_pending")
+			)
+			and not short_shell.visual.visible
+			and short_shell.impact_audio.playing,
+			"爆炸画面结束后必须先隐藏画面并等待长音效完成，不能提前回池截断声音。"
+		)
+		_finish_shell_audio(short_shell)
 	await physics_frame
 	await physics_frame
 
@@ -1057,7 +1123,7 @@ func _test_shell_duration_and_late_join(
 			"远距离炮弹必须受0.55秒上限约束，不能恢复为长时间滞空。"
 		)
 		far_shell.call("_impact")
-		far_shell.call("_on_visual_animation_finished")
+		_finish_shell_effect(far_shell)
 	await physics_frame
 	await physics_frame
 
@@ -1092,7 +1158,7 @@ func _test_shell_duration_and_late_join(
 			and not late_shell.ground_shadow.visible,
 			"客户端晚到飞行事件若已进入爆炸阶段，必须直接在落点恢复爆炸并隐藏地影。"
 		)
-		late_shell.call("_on_visual_animation_finished")
+		_finish_shell_effect(late_shell)
 	await physics_frame
 	await physics_frame
 
@@ -1205,7 +1271,7 @@ func _test_explosion_damage_boundaries() -> void:
 		and damage_by_enemy.size() == 3,
 		"0至16像素必须造成100伤害，(16,32]造成50伤害，32外不得受伤。"
 	)
-	shell.call("_on_visual_animation_finished")
+	_finish_shell_effect(shell)
 	await physics_frame
 	await physics_frame
 
@@ -1259,7 +1325,7 @@ func _test_physical_defense_settlement() -> void:
 	)
 	runtime.apply_real_damage = false
 	if shell != null:
-		shell.call("_on_visual_animation_finished")
+		_finish_shell_effect(shell)
 	await physics_frame
 	await physics_frame
 
@@ -1444,7 +1510,7 @@ func _test_pool_reuse() -> void:
 	var first_id := first.get_instance_id()
 	first.setup(Vector2.ZERO, Vector2(80.0, 0.0), 100, 50, false, 0, 0.0)
 	first.call("_impact")
-	first.call("_on_visual_animation_finished")
+	_finish_shell_effect(first)
 	await physics_frame
 	await physics_frame
 	var second := pool.acquire(SHELL_SCENE) as BambooMortarShell
@@ -1459,7 +1525,7 @@ func _test_pool_reuse() -> void:
 	if second != null:
 		second.setup(Vector2.ZERO, Vector2(80.0, 0.0), 100, 50, false, 0, 0.0)
 		second.call("_impact")
-		second.call("_on_visual_animation_finished")
+		_finish_shell_effect(second)
 	await physics_frame
 	await physics_frame
 	var after := pool.get_metrics(SHELL_SCENE.resource_path)
@@ -1545,9 +1611,26 @@ func _finish_active_shells() -> void:
 			continue
 		if not bool(shell.get("_has_impacted")):
 			shell.call("_impact")
-		shell.call("_on_visual_animation_finished")
+		_finish_shell_effect(shell)
 	await physics_frame
 	await physics_frame
+
+
+func _finish_shell_effect(shell: BambooMortarShell) -> void:
+	if shell == null:
+		return
+	shell.call("_on_visual_animation_finished")
+	_finish_shell_audio(shell)
+
+
+func _finish_shell_audio(shell: BambooMortarShell) -> void:
+	if (
+		shell == null
+		or not bool(shell.get("_explosion_completion_pending"))
+	):
+		return
+	EXPLOSION_AUDIO_LIMITER.stop(shell.impact_audio)
+	shell.call("_on_impact_audio_preempted")
 
 
 func _cleanup() -> void:

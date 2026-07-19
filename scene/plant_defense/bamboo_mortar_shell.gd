@@ -3,8 +3,11 @@ class_name BambooMortarShell
 
 signal projectile_finished(projectile_id: int, projectile: Node)
 
-const AUDIO_LIMITER := preload(
-	"res://scene/plant_defense/plant_attack_audio_limiter.gd"
+const EXPLOSION_AUDIO_LIMITER := preload(
+	"res://scene/explosion_audio_limiter.gd"
+)
+const SPATIAL_AUDIO_VOICE_LIMITER := preload(
+	"res://scene/spatial_audio_voice_limiter.gd"
 )
 const PROJECTILE_SPEED_PIXELS_PER_SECOND := 300.0
 const MIN_FLIGHT_DURATION_SECONDS := 0.28
@@ -46,6 +49,9 @@ var pool_active := true
 var _has_impacted := false
 var _combat_runtime: Node = null
 var _explosion_targets: Array[Enemy] = []
+var _explosion_completion_pending := false
+var _explosion_visual_done := true
+var _explosion_audio_done := true
 
 
 static func get_flight_duration_seconds(
@@ -75,6 +81,10 @@ static func get_total_visual_duration_seconds(
 
 func _ready() -> void:
 	add_to_group(&"runtime_projectiles")
+	impact_audio.set_meta(
+		SPATIAL_AUDIO_VOICE_LIMITER.VOICE_PREEMPTED_CALLBACK_META,
+		_on_impact_audio_preempted
+	)
 	pool_active = not has_meta(SessionObjectPool.POOL_OWNER_META)
 	if pool_active:
 		_reset_visual_state()
@@ -91,6 +101,9 @@ func on_pool_released(_generation: int) -> void:
 	pool_active = false
 	_explosion_targets.clear()
 	_has_impacted = true
+	_explosion_completion_pending = false
+	_explosion_visual_done = true
+	_explosion_audio_done = true
 	set_physics_process(false)
 	if visual != null:
 		visual.stop()
@@ -99,7 +112,7 @@ func on_pool_released(_generation: int) -> void:
 	if ground_shadow != null:
 		ground_shadow.visible = false
 	if impact_audio != null:
-		impact_audio.stop()
+		EXPLOSION_AUDIO_LIMITER.stop(impact_audio)
 
 
 func setup(
@@ -149,8 +162,9 @@ func setup(
 		return
 	if _has_impacted:
 		global_position = landing_position
-		_begin_explosion_visual(
-			flight_elapsed_seconds - flight_duration_seconds
+		_start_explosion(
+			flight_elapsed_seconds - flight_duration_seconds,
+			false
 		)
 		return
 	visual.visible = true
@@ -219,8 +233,22 @@ func _impact() -> void:
 	set_physics_process(false)
 	if authoritative_damage:
 		_apply_explosion_damage()
-	AUDIO_LIMITER.play_burst(impact_audio)
-	_begin_explosion_visual(0.0)
+	_start_explosion(0.0, true)
+
+
+func _start_explosion(
+	elapsed_seconds: float,
+	play_impact_audio: bool
+) -> void:
+	_explosion_completion_pending = true
+	_explosion_visual_done = true
+	_explosion_audio_done = true
+	if play_impact_audio and impact_audio.stream != null:
+		EXPLOSION_AUDIO_LIMITER.play(impact_audio)
+		# The shared limiter can reject distant or over-budget voices.
+		_explosion_audio_done = not impact_audio.playing
+	_begin_explosion_visual(elapsed_seconds)
+	_try_finish_explosion()
 
 
 func _begin_explosion_visual(elapsed_seconds: float) -> void:
@@ -231,11 +259,11 @@ func _begin_explosion_visual(elapsed_seconds: float) -> void:
 		visual.sprite_frames == null
 		or not visual.sprite_frames.has_animation(&"explosion")
 	):
-		_retire()
+		visual.visible = false
 		return
 	var safe_elapsed := maxf(elapsed_seconds, 0.0)
 	if safe_elapsed >= EXPLOSION_DURATION_SECONDS:
-		_retire()
+		visual.visible = false
 		return
 	var frame_position := safe_elapsed * EXPLOSION_FPS
 	var frame_index := clampi(
@@ -243,6 +271,7 @@ func _begin_explosion_visual(elapsed_seconds: float) -> void:
 		0,
 		EXPLOSION_FRAME_COUNT - 1
 	)
+	_explosion_visual_done = false
 	visual.visible = true
 	visual.play(&"explosion")
 	visual.set_frame_and_progress(
@@ -337,7 +366,35 @@ func _apply_explosion_damage_sync_for_fixture() -> void:
 
 func _on_visual_animation_finished() -> void:
 	if visual.animation == &"explosion":
-		_retire()
+		visual.stop()
+		visual.visible = false
+		_explosion_visual_done = true
+		_try_finish_explosion()
+
+
+func _on_impact_audio_finished() -> void:
+	if not _explosion_completion_pending:
+		return
+	_explosion_audio_done = true
+	_try_finish_explosion()
+
+
+func _on_impact_audio_preempted() -> void:
+	if not _explosion_completion_pending:
+		return
+	_explosion_audio_done = true
+	_try_finish_explosion()
+
+
+func _try_finish_explosion() -> void:
+	if (
+		not _explosion_completion_pending
+		or not _explosion_visual_done
+		or not _explosion_audio_done
+	):
+		return
+	_explosion_completion_pending = false
+	_retire()
 
 
 func _retire() -> void:
@@ -366,6 +423,9 @@ func _reset_visual_state() -> void:
 	_has_impacted = false
 	_combat_runtime = null
 	_explosion_targets.clear()
+	_explosion_completion_pending = false
+	_explosion_visual_done = true
+	_explosion_audio_done = true
 	set_physics_process(false)
 	if visual != null:
 		visual.stop()
@@ -379,4 +439,9 @@ func _reset_visual_state() -> void:
 		ground_shadow.visible = false
 		ground_shadow.modulate = Color.WHITE
 	if impact_audio != null:
-		impact_audio.stop()
+		EXPLOSION_AUDIO_LIMITER.stop(impact_audio)
+
+
+func _exit_tree() -> void:
+	if impact_audio != null:
+		EXPLOSION_AUDIO_LIMITER.stop(impact_audio)

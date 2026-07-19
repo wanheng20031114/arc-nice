@@ -8,6 +8,12 @@ const YUANSHI_PURPLE_BOMBER_SCENE := preload("res://scene/enemy/yuanshi_insect_p
 const YUANSHI_FIRE_RANGED_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_ranged.tscn")
 const RPG_EXPLOSION_SCENE := preload("res://scene/enemy/capoo_rpg_explosion.tscn")
 const SKILL1_EXPLOSION_SCENE := preload("res://scene/player/weishidaier/weishidaier_skill1_explosion.tscn")
+const BAMBOO_MORTAR_SCENE := preload(
+	"res://scene/plant_defense/bamboo_mortar.tscn"
+)
+const BAMBOO_MORTAR_SHELL_SCENE := preload(
+	"res://scene/plant_defense/bamboo_mortar_shell.tscn"
+)
 const PLANT_PLACEMENT_SCENE := preload(
 	"res://scene/plant_defense/effects/plant_placement_particles.tscn"
 )
@@ -40,6 +46,7 @@ func _run() -> void:
 	await _test_game_mix()
 	await _test_player_mix()
 	await _test_enemy_mix()
+	_test_bamboo_mortar_mix()
 	await _test_plant_placement_mix()
 	await _test_combat_audio_limiter()
 	await _test_limited_audio_replay_lifecycle()
@@ -174,6 +181,47 @@ func _test_plant_placement_mix() -> void:
 		_stop_audio_players(stacked_effect)
 		stacked_effect.queue_free()
 	await _drain_cleanup_frames()
+
+
+func _test_bamboo_mortar_mix() -> void:
+	var mortar := BAMBOO_MORTAR_SCENE.instantiate()
+	var shell := BAMBOO_MORTAR_SHELL_SCENE.instantiate()
+	var fire_audio := (
+		mortar.get_node_or_null("FireAudio") as AudioStreamPlayer2D
+		if mortar != null
+		else null
+	)
+	var impact_audio := (
+		shell.get_node_or_null("ImpactAudio") as AudioStreamPlayer2D
+		if shell != null
+		else null
+	)
+	_expect(
+		fire_audio != null
+		and _resource_path(fire_audio.stream).ends_with(
+			"capoo_rpg_launch.wav"
+		)
+		and fire_audio.bus == &"SFX"
+		and _float_close(fire_audio.volume_db, -10.0)
+		and _float_close(fire_audio.max_distance, 300.0)
+		and fire_audio.max_polyphony == 2,
+		"Bamboo mortar launch must use the restrained spatial heavy-launch mix."
+	)
+	_expect(
+		impact_audio != null
+		and _resource_path(impact_audio.stream).ends_with(
+			"cowboy_explosion.wav"
+		)
+		and impact_audio.bus == &"SFX"
+		and _float_close(impact_audio.volume_db, -9.0)
+		and _float_close(impact_audio.max_distance, 300.0)
+		and impact_audio.max_polyphony == 1,
+		"Bamboo mortar impact must match the established Yuanshi explosion mix."
+	)
+	if mortar != null:
+		mortar.free()
+	if shell != null:
+		shell.free()
 
 
 func _test_combat_audio_limiter() -> void:
