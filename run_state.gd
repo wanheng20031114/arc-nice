@@ -6,6 +6,11 @@ signal upgrade_changed
 signal selected_character_changed(character_id: StringName)
 
 const INVENTORY_CAPACITY := 20
+const CRAFT_RESULT_SUCCESS := &"success"
+const CRAFT_RESULT_INVALID_RECIPE := &"invalid_recipe"
+const CRAFT_RESULT_MISSING_INPUT := &"missing_input"
+const CRAFT_RESULT_INVENTORY_FULL := &"inventory_full"
+const CRAFT_RESULT_STALE_REVISION := &"stale_revision"
 
 enum StatType {
 	ATTACK,
@@ -163,6 +168,66 @@ func try_add_item_counts_if_revision(
 	if emit_change:
 		inventory_changed.emit()
 	return true
+
+
+func get_simple_crafting_result(recipe: ProductionRecipe) -> StringName:
+	ensure_run_started()
+	if active_multiplayer_peer_id > 0:
+		return get_simple_crafting_result_for_peer(
+			active_multiplayer_peer_id,
+			recipe
+		)
+	_ensure_local_inventory_shape()
+	return _get_crafting_simulation_result(
+		_simulate_simple_crafting(inventory, inventory_stack_counts, recipe)
+	)
+
+
+func try_craft_inventory_recipe_if_revision(
+	recipe: ProductionRecipe,
+	expected_revision: int,
+	emit_change: bool = true
+) -> StringName:
+	ensure_run_started()
+	if active_multiplayer_peer_id > 0:
+		return try_craft_inventory_recipe_for_peer_if_revision(
+			active_multiplayer_peer_id,
+			recipe,
+			expected_revision,
+			emit_change
+		)
+	_ensure_local_inventory_shape()
+	if expected_revision != inventory_revision:
+		return CRAFT_RESULT_STALE_REVISION
+	var simulation := _simulate_simple_crafting(
+		inventory,
+		inventory_stack_counts,
+		recipe
+	)
+	var result := _get_crafting_simulation_result(simulation)
+	if result != CRAFT_RESULT_SUCCESS:
+		return result
+	inventory.assign(simulation["items"] as Array)
+	inventory_stack_counts.assign(simulation["counts"] as Array)
+	_bump_local_inventory_revision()
+	if emit_change:
+		inventory_changed.emit()
+	return CRAFT_RESULT_SUCCESS
+
+
+func get_inventory_item_total(item: PickupConfig) -> int:
+	ensure_run_started()
+	if active_multiplayer_peer_id > 0:
+		return get_inventory_item_total_for_peer(
+			active_multiplayer_peer_id,
+			item
+		)
+	_ensure_local_inventory_shape()
+	return _get_item_total_in_arrays(
+		inventory,
+		inventory_stack_counts,
+		item
+	)
 
 
 func try_consume_item_at_slot_if_revision(
@@ -404,6 +469,62 @@ func try_add_item_counts_for_peer_if_revision(
 	if emit_change:
 		inventory_changed.emit()
 	return true
+
+
+func get_simple_crafting_result_for_peer(
+	peer_id: int,
+	recipe: ProductionRecipe
+) -> StringName:
+	ensure_run_started()
+	ensure_multiplayer_peer_state(peer_id)
+	return _get_crafting_simulation_result(
+		_simulate_simple_crafting(
+			multiplayer_inventories[peer_id] as Array,
+			multiplayer_inventory_stack_counts[peer_id] as Array,
+			recipe
+		)
+	)
+
+
+func try_craft_inventory_recipe_for_peer_if_revision(
+	peer_id: int,
+	recipe: ProductionRecipe,
+	expected_revision: int,
+	emit_change: bool = true
+) -> StringName:
+	ensure_run_started()
+	ensure_multiplayer_peer_state(peer_id)
+	if expected_revision != get_inventory_revision_for_peer(peer_id):
+		return CRAFT_RESULT_STALE_REVISION
+	var peer_inventory := multiplayer_inventories[peer_id] as Array
+	var peer_counts := multiplayer_inventory_stack_counts[peer_id] as Array
+	var simulation := _simulate_simple_crafting(
+		peer_inventory,
+		peer_counts,
+		recipe
+	)
+	var result := _get_crafting_simulation_result(simulation)
+	if result != CRAFT_RESULT_SUCCESS:
+		return result
+	peer_inventory.assign(simulation["items"] as Array)
+	peer_counts.assign(simulation["counts"] as Array)
+	_bump_inventory_revision_for_peer(peer_id)
+	if emit_change:
+		inventory_changed.emit()
+	return CRAFT_RESULT_SUCCESS
+
+
+func get_inventory_item_total_for_peer(
+	peer_id: int,
+	item: PickupConfig
+) -> int:
+	ensure_run_started()
+	ensure_multiplayer_peer_state(peer_id)
+	return _get_item_total_in_arrays(
+		multiplayer_inventories[peer_id] as Array,
+		multiplayer_inventory_stack_counts[peer_id] as Array,
+		item
+	)
 
 
 func try_consume_item_at_slot_for_peer_if_revision(
@@ -1260,6 +1381,88 @@ func _simulate_add_item_counts(
 		"items": simulated_items,
 		"counts": simulated_counts,
 	}
+
+
+func _simulate_simple_crafting(
+	current_items: Array,
+	current_counts: Array,
+	recipe: ProductionRecipe
+) -> Dictionary:
+	if not SimpleCraftingRegistry.is_simple_crafting_recipe(recipe):
+		return {"result": CRAFT_RESULT_INVALID_RECIPE}
+	var simulated_items := current_items.duplicate()
+	var simulated_counts := current_counts.duplicate()
+	for input_index in recipe.input_items.size():
+		if not _consume_item_count_from_arrays(
+			simulated_items,
+			simulated_counts,
+			recipe.input_items[input_index],
+			recipe.input_amounts[input_index]
+		):
+			return {"result": CRAFT_RESULT_MISSING_INPUT}
+	var output_simulation := _simulate_add_item_counts(
+		simulated_items,
+		simulated_counts,
+		recipe.output_items,
+		recipe.output_amounts
+	)
+	if output_simulation.is_empty():
+		return {"result": CRAFT_RESULT_INVENTORY_FULL}
+	return {
+		"result": CRAFT_RESULT_SUCCESS,
+		"items": output_simulation["items"],
+		"counts": output_simulation["counts"],
+	}
+
+
+func _consume_item_count_from_arrays(
+	items: Array,
+	counts: Array,
+	item: PickupConfig,
+	count: int
+) -> bool:
+	if item == null or count <= 0:
+		return false
+	var remaining := count
+	for slot_index in items.size():
+		if not _items_match_identity(items[slot_index] as PickupConfig, item):
+			continue
+		var stored_count := maxi(int(counts[slot_index]), 1)
+		var consumed := mini(stored_count, remaining)
+		var next_count := stored_count - consumed
+		if next_count > 0:
+			counts[slot_index] = next_count
+		else:
+			items[slot_index] = null
+			counts[slot_index] = 0
+		remaining -= consumed
+		if remaining <= 0:
+			return true
+	return false
+
+
+func _get_item_total_in_arrays(
+	items: Array,
+	counts: Array,
+	item: PickupConfig
+) -> int:
+	if item == null:
+		return 0
+	var total := 0
+	for slot_index in items.size():
+		if _items_match_identity(items[slot_index] as PickupConfig, item):
+			total += maxi(int(counts[slot_index]), 1)
+	return total
+
+
+func _get_crafting_simulation_result(simulation: Dictionary) -> StringName:
+	var result: Variant = simulation.get(
+		"result",
+		CRAFT_RESULT_INVALID_RECIPE
+	)
+	if typeof(result) not in [TYPE_STRING, TYPE_STRING_NAME]:
+		return CRAFT_RESULT_INVALID_RECIPE
+	return StringName(result)
 
 
 func try_upgrade_for_peer(peer_id: int, stat_type: int, player: Player) -> bool:

@@ -136,7 +136,12 @@ func try_commit_recipe(
 	recipe: ProductionRecipe,
 	output_peer_id: int = 0
 ) -> StringName:
-	if not authoritative_processing_enabled or recipe == null or not recipe.is_valid():
+	if (
+		not authoritative_processing_enabled
+		or recipe == null
+		or not recipe.is_valid()
+		or recipe.inputs_from_player_inventory()
+	):
 		return RESULT_UNAVAILABLE
 	var ordered_warehouses := _get_ordered_operational_warehouses()
 	if ordered_warehouses.is_empty():

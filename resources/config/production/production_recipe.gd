@@ -4,6 +4,11 @@ class_name ProductionRecipe
 const MAX_INPUT_ITEMS := 3
 const MAX_OUTPUT_ITEMS := 3
 
+enum InputSource {
+	SHARED_STORAGE,
+	PLAYER_INVENTORY,
+}
+
 enum OutputDestination {
 	SHARED_STORAGE,
 	PLAYER_INVENTORY,
@@ -17,6 +22,7 @@ enum OutputDestination {
 @export var input_items: Array[PickupConfig] = []
 # 单一投入且数量为 0 表示环境来源：只展示，不从仓库消耗。
 @export var input_amounts: Array[int] = []
+@export var input_source: InputSource = InputSource.SHARED_STORAGE
 
 @export_group("产出")
 @export var output_items: Array[PickupConfig] = []
@@ -34,6 +40,8 @@ func is_valid() -> bool:
 		or input_items.is_empty()
 		or input_items.size() != input_amounts.size()
 		or input_items.size() > MAX_INPUT_ITEMS
+		or input_source < InputSource.SHARED_STORAGE
+		or input_source > InputSource.PLAYER_INVENTORY
 		or output_items.is_empty()
 		or output_items.size() != output_amounts.size()
 		or output_items.size() > MAX_OUTPUT_ITEMS
@@ -50,7 +58,9 @@ func is_valid() -> bool:
 		if input_amounts[input_index] == 0:
 			environment_source_count += 1
 	if environment_source_count > 0 and (
-		environment_source_count != 1 or input_items.size() != 1
+		environment_source_count != 1
+		or input_items.size() != 1
+		or input_source != InputSource.SHARED_STORAGE
 	):
 		return false
 	for output_index in output_items.size():
@@ -69,6 +79,10 @@ func uses_environment_source() -> bool:
 
 func outputs_to_player_inventory() -> bool:
 	return output_destination == OutputDestination.PLAYER_INVENTORY
+
+
+func inputs_from_player_inventory() -> bool:
+	return input_source == InputSource.PLAYER_INVENTORY
 
 
 func get_input_summary() -> String:

@@ -8,6 +8,7 @@ const TRANSACTION_RPC_METHODS := {
 	&"net_inventory_snapshot": true,
 	&"net_inventory_item_used": true,
 	&"net_inventory_item_discarded": true,
+	&"net_simple_crafting_result": true,
 	&"net_pickup_collected": true,
 	&"net_upgrade_confirmed": true,
 	&"net_skill1_purchase_confirmed": true,
@@ -143,7 +144,7 @@ const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
-## 协议 v11 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
+## 协议 v12 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
 ## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
 const SHARED_SNAPSHOT_COHORT_ID := -1
 const ENEMY_ACTION_SNAPSHOT_REORDER_TOLERANCE_SECONDS := 0.075
@@ -164,7 +165,7 @@ const CLIENT_PROXY_VISUAL_BUDGET_MARGIN := 192.0
 const CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_HZ := 15.0
 const CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_PHASE_COUNT := 64
 const COMBAT_FEEDBACK_MAX_RECORDS_PER_PACKET := 40
-# v11 plant records carry 41 raw packed bytes before RPC/ENet framing. Twenty-four
+# v12 plant records carry 41 raw packed bytes before RPC/ENet framing. Twenty-four
 # records stay near 984 bytes and below the project's 1200-byte packet budget.
 const PLANT_HEALTH_MAX_RECORDS_PER_PACKET := 24
 const BAMBOO_MORTAR_VISUAL_MAX_RECORDS_PER_PACKET := 24
@@ -185,6 +186,9 @@ const WAREHOUSE_TRANSACTION_RATE_BURST := 20.0
 const WAREHOUSE_SNAPSHOT_REQUEST_RATE_PER_SECOND := 2.0
 const WAREHOUSE_SNAPSHOT_REQUEST_RATE_BURST := 4.0
 const WAREHOUSE_TRANSACTION_RESULT_CACHE_SIZE := 256
+const SIMPLE_CRAFTING_RATE_PER_SECOND := 8.0
+const SIMPLE_CRAFTING_RATE_BURST := 12.0
+const SIMPLE_CRAFTING_RESULT_CACHE_SIZE := 32
 const PRODUCTION_INTERACTION_MAX_DISTANCE := 48.0
 const PRODUCTION_COMMAND_RATE_PER_SECOND := 8.0
 const PRODUCTION_COMMAND_RATE_BURST := 12.0
@@ -315,6 +319,11 @@ var _warehouse_snapshot_request_rate_buckets: Dictionary = {}
 var _terrain_snapshot_request_rate_buckets: Dictionary = {}
 var _warehouse_transaction_results_by_peer: Dictionary = {}
 var _warehouse_transaction_started_usec: Dictionary = {}
+var _local_simple_crafting_request_id: int = 0
+var _last_simple_crafting_request_ids: Dictionary = {}
+var _last_simple_crafting_result_ids: Dictionary = {}
+var _simple_crafting_rate_buckets: Dictionary = {}
+var _simple_crafting_results_by_peer: Dictionary = {}
 var _pending_warehouse_snapshots: Dictionary = {}
 var _pending_authoritative_warehouse_snapshots: Dictionary = {}
 var _production_command_rate_buckets: Dictionary = {}
@@ -455,6 +464,11 @@ func _exit_tree() -> void:
 	_luoxi_offer_states_by_peer.clear()
 	_luoxi_offer_revision_counters.clear()
 	_warehouse_transaction_started_usec.clear()
+	_local_simple_crafting_request_id = 0
+	_last_simple_crafting_request_ids.clear()
+	_last_simple_crafting_result_ids.clear()
+	_simple_crafting_rate_buckets.clear()
+	_simple_crafting_results_by_peer.clear()
 	_public_room_keepalive_in_flight = false
 
 
@@ -582,6 +596,33 @@ func request_multiplayer_inventory_item_discard(slot_index: int) -> void:
 			slot_index,
 			expected_revision
 		)
+
+
+func request_multiplayer_simple_crafting(recipe_id: StringName) -> void:
+	var peer_id := _get_local_peer_id()
+	if peer_id <= 0 or game == null:
+		if game != null:
+			game.show_simple_crafting_result(recipe_id, &"invalid_player")
+		return
+	_local_simple_crafting_request_id += 1
+	var request_id := _local_simple_crafting_request_id
+	var expected_revision := run_state.get_inventory_revision_for_peer(peer_id)
+	if net_manager.is_host():
+		_apply_authoritative_simple_crafting_request(
+			peer_id,
+			request_id,
+			String(recipe_id),
+			expected_revision
+		)
+	elif net_manager.is_client():
+		net_simple_crafting_requested.rpc_id(
+			_get_host_peer_id(),
+			request_id,
+			String(recipe_id),
+			expected_revision
+		)
+	else:
+		game.show_simple_crafting_result(recipe_id, &"invalid_player")
 
 
 func begin_inventory_building_placement(
@@ -1780,6 +1821,144 @@ func _get_warehouse_transaction_metric_key(
 	request_id: int
 ) -> String:
 	return "%d:%d" % [warehouse_net_id, request_id]
+
+
+func _apply_authoritative_simple_crafting_request(
+	peer_id: int,
+	request_id: int,
+	recipe_id: String,
+	expected_inventory_revision: int
+) -> void:
+	if not net_manager.is_host() or game == null or peer_id <= 0:
+		return
+	var cached_result := _get_cached_simple_crafting_result(peer_id, request_id)
+	if not cached_result.is_empty():
+		cached_result["inventory_snapshot"] = (
+			run_state.export_inventory_snapshot_for_peer(peer_id)
+		)
+		_cache_simple_crafting_result(peer_id, request_id, cached_result)
+		_send_simple_crafting_result(cached_result)
+		return
+	var player_node := game.get_player_for_peer(peer_id)
+	var last_request_id := int(
+		_last_simple_crafting_request_ids.get(peer_id, 0)
+	)
+	var recipe := SimpleCraftingRegistry.get_recipe_by_wire_id(recipe_id)
+	var canonical_recipe_id := (
+		recipe.recipe_id
+		if recipe != null
+		else &""
+	)
+	var result := RunStateStore.CRAFT_RESULT_INVALID_RECIPE
+	var should_cache := false
+	if request_id <= 0 or request_id <= last_request_id:
+		result = &"stale_request"
+	else:
+		_last_simple_crafting_request_ids[peer_id] = request_id
+		should_cache = true
+		if not _consume_peer_rate_token(
+			_simple_crafting_rate_buckets,
+			peer_id,
+			SIMPLE_CRAFTING_RATE_PER_SECOND,
+			SIMPLE_CRAFTING_RATE_BURST
+		):
+			result = &"rate_limited"
+		elif (
+			player_node == null
+			or not is_instance_valid(player_node)
+			or player_node.is_dead
+		):
+			result = &"invalid_player"
+		elif recipe == null:
+			result = RunStateStore.CRAFT_RESULT_INVALID_RECIPE
+		else:
+			result = run_state.try_craft_inventory_recipe_for_peer_if_revision(
+				peer_id,
+				recipe,
+				expected_inventory_revision
+			)
+	var transaction_result := {
+		"peer_id": peer_id,
+		"request_id": request_id,
+		"recipe_id": String(canonical_recipe_id),
+		"result": String(result),
+		"inventory_snapshot": run_state.export_inventory_snapshot_for_peer(
+			peer_id
+		),
+		"force_inventory_repair": (
+			result == RunStateStore.CRAFT_RESULT_STALE_REVISION
+		),
+	}
+	if should_cache:
+		_cache_simple_crafting_result(peer_id, request_id, transaction_result)
+	_send_simple_crafting_result(transaction_result)
+
+
+func _get_cached_simple_crafting_result(
+	peer_id: int,
+	request_id: int
+) -> Dictionary:
+	if peer_id <= 0 or request_id <= 0:
+		return {}
+	var peer_cache := _simple_crafting_results_by_peer.get(
+		peer_id,
+		{}
+	) as Dictionary
+	return (peer_cache.get(request_id, {}) as Dictionary).duplicate(true)
+
+
+func _cache_simple_crafting_result(
+	peer_id: int,
+	request_id: int,
+	result: Dictionary
+) -> void:
+	if peer_id <= 0 or request_id <= 0 or result.is_empty():
+		return
+	var peer_cache := _simple_crafting_results_by_peer.get(
+		peer_id,
+		{}
+	) as Dictionary
+	peer_cache[request_id] = result.duplicate(true)
+	while peer_cache.size() > SIMPLE_CRAFTING_RESULT_CACHE_SIZE:
+		peer_cache.erase(peer_cache.keys()[0])
+	_simple_crafting_results_by_peer[peer_id] = peer_cache
+
+
+func _send_simple_crafting_result(result: Dictionary) -> void:
+	var peer_id := int(result.get("peer_id", 0))
+	var request_id := int(result.get("request_id", 0))
+	var recipe_id := str(result.get("recipe_id", ""))
+	var result_code := str(result.get(
+		"result",
+		RunStateStore.CRAFT_RESULT_INVALID_RECIPE
+	))
+	var inventory_snapshot := result.get(
+		"inventory_snapshot",
+		{}
+	) as Dictionary
+	var force_inventory_repair := bool(
+		result.get("force_inventory_repair", false)
+	)
+	_rpc_to_connected_clients(
+		&"net_simple_crafting_result",
+		[
+			peer_id,
+			request_id,
+			recipe_id,
+			result_code,
+			inventory_snapshot,
+			force_inventory_repair,
+		]
+	)
+	if peer_id == _get_local_peer_id():
+		net_simple_crafting_result(
+			peer_id,
+			request_id,
+			recipe_id,
+			result_code,
+			inventory_snapshot,
+			force_inventory_repair
+		)
 
 
 func _apply_authoritative_warehouse_command(peer_id: int, raw_command: Dictionary) -> void:
@@ -6880,7 +7059,7 @@ func net_player_healed(
 	player_node.queue_healing_number(confirmed_healing)
 
 
-# Legacy compatibility shells retained in protocol v11. Xirang orbs no longer exist, but keeping the
+# Legacy compatibility shells retained in protocol v12. Xirang orbs no longer exist, but keeping the
 # annotated signatures avoids a partial wire-protocol break until the next
 # coordinated protocol-version upgrade.
 @rpc("authority", "call_remote", "reliable", 5)
@@ -9094,6 +9273,25 @@ func net_inventory_item_discard_requested(
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
+func net_simple_crafting_requested(
+	request_id: int,
+	recipe_id: String,
+	expected_inventory_revision: int
+) -> void:
+	if not net_manager.is_host() or game == null:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
+	_apply_authoritative_simple_crafting_request(
+		sender_id,
+		request_id,
+		recipe_id,
+		expected_inventory_revision
+	)
+
+
+@rpc("any_peer", "call_remote", "reliable", 6)
 func net_skill1_purchase_requested() -> void:
 	if not net_manager.is_host():
 		return
@@ -9263,6 +9461,62 @@ func net_inventory_item_discarded(
 	if inventory_snapshot.is_empty():
 		# Compatibility for confirmations produced before authoritative snapshots.
 		run_state.discard_item_for_peer(peer_id, slot_index)
+
+
+@rpc("authority", "call_remote", "reliable", 6)
+func net_simple_crafting_result(
+	peer_id: int,
+	request_id: int,
+	recipe_id: String,
+	result: String,
+	inventory_snapshot: Dictionary,
+	force_inventory_repair: bool = false
+) -> void:
+	if (
+		peer_id <= 0
+		or request_id <= 0
+		or inventory_snapshot.is_empty()
+		or game == null
+	):
+		return
+	var player_node := game.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	var last_result_id := int(
+		_last_simple_crafting_result_ids.get(peer_id, 0)
+	)
+	if request_id <= last_result_id:
+		return
+	_last_simple_crafting_result_ids[peer_id] = request_id
+	if not net_manager.is_host():
+		run_state.apply_inventory_snapshot_for_peer(
+			peer_id,
+			inventory_snapshot,
+			force_inventory_repair and peer_id == _get_local_peer_id()
+		)
+	if peer_id != _get_local_peer_id():
+		return
+	var result_code := StringName(result)
+	match result_code:
+		RunStateStore.CRAFT_RESULT_SUCCESS:
+			pass
+		RunStateStore.CRAFT_RESULT_INVALID_RECIPE:
+			pass
+		RunStateStore.CRAFT_RESULT_MISSING_INPUT:
+			pass
+		RunStateStore.CRAFT_RESULT_INVENTORY_FULL:
+			pass
+		RunStateStore.CRAFT_RESULT_STALE_REVISION:
+			pass
+		&"rate_limited":
+			pass
+		&"invalid_player":
+			pass
+		&"stale_request":
+			pass
+		_:
+			result_code = RunStateStore.CRAFT_RESULT_INVALID_RECIPE
+	game.show_simple_crafting_result(StringName(recipe_id), result_code)
 
 
 func _apply_confirmed_upgrade_to_player(player_node: Player, stat_type: int) -> void:
@@ -10119,6 +10373,10 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_client_projectile_request_rate_buckets.erase(peer_id)
 	_warehouse_transaction_rate_buckets.erase(peer_id)
 	_warehouse_snapshot_request_rate_buckets.erase(peer_id)
+	_last_simple_crafting_request_ids.erase(peer_id)
+	_last_simple_crafting_result_ids.erase(peer_id)
+	_simple_crafting_rate_buckets.erase(peer_id)
+	_simple_crafting_results_by_peer.erase(peer_id)
 	_production_command_rate_buckets.erase(peer_id)
 	_production_snapshot_request_rate_buckets.erase(peer_id)
 	_research_command_rate_buckets.erase(peer_id)
@@ -10203,6 +10461,11 @@ func _return_to_lobby() -> void:
 	_warehouse_snapshot_request_rate_buckets.clear()
 	_warehouse_transaction_rate_buckets.clear()
 	_warehouse_transaction_results_by_peer.clear()
+	_local_simple_crafting_request_id = 0
+	_last_simple_crafting_request_ids.clear()
+	_last_simple_crafting_result_ids.clear()
+	_simple_crafting_rate_buckets.clear()
+	_simple_crafting_results_by_peer.clear()
 	_production_command_rate_buckets.clear()
 	_production_snapshot_request_rate_buckets.clear()
 	_production_command_results_by_peer.clear()

@@ -609,6 +609,14 @@ func net_inventory_item_discard_requested(
 	pass
 
 @rpc("any_peer", "call_remote", "reliable", 6)
+func net_simple_crafting_requested(
+	request_id: int,
+	recipe_id: String,
+	expected_inventory_revision: int
+) -> void:
+	pass
+
+@rpc("any_peer", "call_remote", "reliable", 6)
 func net_skill1_purchase_requested() -> void:
 	pass
 
@@ -667,6 +675,17 @@ func net_inventory_item_discarded(
 	slot_index: int,
 	success: bool,
 	inventory_snapshot: Dictionary = {},
+	force_inventory_repair: bool = false
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 6)
+func net_simple_crafting_result(
+	peer_id: int,
+	request_id: int,
+	recipe_id: String,
+	result: String,
+	inventory_snapshot: Dictionary,
 	force_inventory_repair: bool = false
 ) -> void:
 	pass

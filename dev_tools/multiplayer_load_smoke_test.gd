@@ -14,6 +14,8 @@ const PICKUP_SPEED_CONFIG := preload("res://resources/config/pickups/pickup_spee
 const PICKUP_SPIRAL_CONFIG := preload("res://resources/config/pickups/pickup_spiral.tres")
 const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
 const WOOD_MATERIAL := preload("res://resources/config/materials/material_wood.tres")
+const SAPLING_MATERIAL := preload("res://resources/config/materials/material_sapling.tres")
+const WATER_BOTTLE_MATERIAL := preload("res://resources/config/materials/material_water_bottle.tres")
 const LINGLAN_SKILL2_ROCKET_SCENE := preload("res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn")
 const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 const ARCHER_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_archer.tres")
@@ -202,14 +204,16 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 11, "The multiplayer protocol version must be 11.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v11 must provision eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 12, "The multiplayer protocol version must be 12.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v12 must provision eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
 	)
 	_expect(
-		not bool(net_manager.call("_is_protocol_version_compatible", 9))
+		not bool(net_manager.call("_is_protocol_version_compatible", 11))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 10))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 9))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 8))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 7))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 6))
@@ -218,7 +222,7 @@ func _test_net_manager_protocol_version_gate() -> void:
 		and not bool(net_manager.call("_is_protocol_version_compatible", 3))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 2))
 		and not bool(net_manager.call("_is_protocol_version_compatible", -1)),
-		"NetManager must reject protocol versions 9/8/7/6/5/4/3/2 and registrations with no version."
+		"NetManager must reject protocol versions 11/10/9/8/7/6/5/4/3/2 and registrations with no version."
 	)
 
 	var rejection_reasons: Array[String] = []
@@ -1647,6 +1651,127 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			not (run_state.get("multiplayer_upgrade_levels") as Dictionary).has(99),
 			"Upgrade confirms for missing peers must not create run state."
 		)
+		var typed_run_state := run_state as RunStateStore
+		var previous_net_role := (
+			int(net_manager.get("net_role"))
+			if net_manager != null
+			else 0
+		)
+		if net_manager != null and typed_run_state != null:
+			net_manager.set("net_role", NetManagerStore.NetRole.HOST)
+			_expect(
+				typed_run_state.try_add_item_count_for_peer(
+					4,
+					SAPLING_MATERIAL,
+					1
+				)
+				and typed_run_state.try_add_item_count_for_peer(
+					4,
+					WATER_BOTTLE_MATERIAL,
+					1
+				),
+				"Host简易制造测试必须能为目标Peer准备背包材料。"
+			)
+			var crafting_revision := (
+				typed_run_state.get_inventory_revision_for_peer(4)
+			)
+			mp_game.call(
+				"_apply_authoritative_simple_crafting_request",
+				4,
+				101,
+				String(SimpleCraftingRegistry.HERBAL_HEALTH_POTION_ID),
+				crafting_revision
+			)
+			var committed_revision := (
+				typed_run_state.get_inventory_revision_for_peer(4)
+			)
+			_expect(
+				typed_run_state.get_inventory_item_total_for_peer(
+					4,
+					SAPLING_MATERIAL
+				) == 0
+				and typed_run_state.get_inventory_item_total_for_peer(
+					4,
+					WATER_BOTTLE_MATERIAL
+				) == 0
+				and typed_run_state.get_inventory_item_total_for_peer(
+					4,
+					HEALTH_PICKUP
+				) == 1
+				and committed_revision == crafting_revision + 1,
+				"Host必须只为请求Peer原子扣料、发放产物并推进一次revision。"
+			)
+			mp_game.call(
+				"_apply_authoritative_simple_crafting_request",
+				4,
+				101,
+				String(SimpleCraftingRegistry.HERBAL_HEALTH_POTION_ID),
+				crafting_revision
+			)
+			_expect(
+				typed_run_state.get_inventory_revision_for_peer(4)
+				== committed_revision
+				and typed_run_state.get_inventory_item_total_for_peer(
+					4,
+					HEALTH_PICKUP
+				) == 1,
+				"重复的简易制造request_id必须命中幂等缓存，不能重复产出。"
+			)
+			mp_game.call(
+				"_apply_authoritative_simple_crafting_request",
+				4,
+				102,
+				String(SimpleCraftingRegistry.HERBAL_HEALTH_POTION_ID),
+				crafting_revision
+			)
+			var crafting_cache := (
+				mp_game.get("_simple_crafting_results_by_peer") as Dictionary
+			)
+			var peer_crafting_cache := (
+				crafting_cache.get(4, {}) as Dictionary
+			)
+			var stale_result := (
+				peer_crafting_cache.get(102, {}) as Dictionary
+			)
+			_expect(
+				typed_run_state.get_inventory_revision_for_peer(4)
+				== committed_revision
+				and str(stale_result.get("result", ""))
+				== String(RunStateStore.CRAFT_RESULT_STALE_REVISION)
+				and bool(stale_result.get("force_inventory_repair", false)),
+				"Host必须拒绝过期revision，并缓存带强制背包修复标记的结果。"
+			)
+			_expect(
+				typed_run_state.discard_item_for_peer(4, 0),
+				"Host简易制造测试结束后必须清理目标Peer的测试产物。"
+			)
+			var revision_after_cleanup := (
+				typed_run_state.get_inventory_revision_for_peer(4)
+			)
+			mp_game.call(
+				"_apply_authoritative_simple_crafting_request",
+				4,
+				102,
+				String(SimpleCraftingRegistry.HERBAL_HEALTH_POTION_ID),
+				crafting_revision
+			)
+			peer_crafting_cache = (
+				(mp_game.get(
+					"_simple_crafting_results_by_peer"
+				) as Dictionary).get(4, {}) as Dictionary
+			)
+			stale_result = (
+				peer_crafting_cache.get(102, {}) as Dictionary
+			)
+			var replay_snapshot := (
+				stale_result.get("inventory_snapshot", {}) as Dictionary
+			)
+			_expect(
+				int(replay_snapshot.get("revision", -1))
+				== revision_after_cleanup,
+				"重放缓存的过期请求必须改用Host当前快照，不能携带旧revision回退背包。"
+			)
+			net_manager.set("net_role", previous_net_role)
 
 	var peer_four := game.get_player_for_peer(4) as Player
 	_expect(peer_four != null, "Peer 4 must exist for confirmed event test.")

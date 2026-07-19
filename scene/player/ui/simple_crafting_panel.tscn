@@ -1,0 +1,381 @@
+[gd_scene load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://scene/player/ui/simple_crafting_panel.gd" id="1_script"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+[ext_resource type="PackedScene" path="res://scene/player/ui/simple_crafting_item_slot.tscn" id="3_slot"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_background"]
+bg_color = Color(0.025, 0.045, 0.045, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.19, 0.39, 0.35, 1)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_section"]
+bg_color = Color(0.018, 0.032, 0.032, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.16, 0.32, 0.29, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_recipe"]
+bg_color = Color(0.045, 0.075, 0.07, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.18, 0.34, 0.3, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_recipe_selected"]
+bg_color = Color(0.08, 0.18, 0.15, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.35, 0.82, 0.65, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_craft"]
+bg_color = Color(0.12, 0.38, 0.29, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.45, 0.9, 0.69, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_craft_hover"]
+bg_color = Color(0.17, 0.52, 0.38, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.65, 1, 0.82, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_craft_disabled"]
+bg_color = Color(0.055, 0.08, 0.073, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.15, 0.23, 0.21, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_focus"]
+
+[node name="SimpleCraftingPanel" type="Control"]
+custom_minimum_size = Vector2(418, 444)
+layout_mode = 3
+anchors_preset = 0
+offset_right = 418.0
+offset_bottom = 444.0
+mouse_filter = 1
+script = ExtResource("1_script")
+
+[node name="Background" type="Panel" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+theme_override_styles/panel = SubResource("StyleBoxFlat_background")
+
+[node name="CraftArea" type="PanelContainer" parent="Background"]
+layout_mode = 0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = 262.0
+offset_bottom = 434.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_section")
+
+[node name="Margin" type="MarginContainer" parent="Background/CraftArea"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="Content" type="VBoxContainer" parent="Background/CraftArea/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="RecipeName" type="Label" parent="Background/CraftArea/Margin/Content"]
+custom_minimum_size = Vector2(0, 28)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.62, 1, 0.82, 1)
+text = "简易制造"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="RecipeSummary" type="RichTextLabel" parent="Background/CraftArea/Margin/Content"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+mouse_filter = 2
+bbcode_enabled = true
+fit_content = false
+scroll_active = false
+autowrap_mode = 2
+theme_override_fonts/normal_font = ExtResource("2_font")
+theme_override_font_sizes/normal_font_size = 12
+theme_override_colors/default_color = Color(0.72, 0.8, 0.74, 1)
+
+[node name="InputTitle" type="Label" parent="Background/CraftArea/Margin/Content"]
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.78, 0.94, 0.83, 1)
+text = "背包材料"
+vertical_alignment = 1
+
+[node name="InputSlots" type="HBoxContainer" parent="Background/CraftArea/Margin/Content"]
+custom_minimum_size = Vector2(0, 74)
+layout_mode = 2
+theme_override_constants/separation = 6
+alignment = 1
+
+[node name="InputSlot0" parent="Background/CraftArea/Margin/Content/InputSlots" instance=ExtResource("3_slot")]
+layout_mode = 2
+
+[node name="InputSlot1" parent="Background/CraftArea/Margin/Content/InputSlots" instance=ExtResource("3_slot")]
+layout_mode = 2
+
+[node name="InputSlot2" parent="Background/CraftArea/Margin/Content/InputSlots" instance=ExtResource("3_slot")]
+layout_mode = 2
+
+[node name="Arrow" type="Label" parent="Background/CraftArea/Margin/Content"]
+custom_minimum_size = Vector2(0, 18)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.36, 0.82, 0.65, 1)
+text = "↓  瞬间制造"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="OutputTitle" type="Label" parent="Background/CraftArea/Margin/Content"]
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.78, 0.94, 0.83, 1)
+text = "背包产物"
+vertical_alignment = 1
+
+[node name="OutputSlots" type="HBoxContainer" parent="Background/CraftArea/Margin/Content"]
+custom_minimum_size = Vector2(0, 74)
+layout_mode = 2
+theme_override_constants/separation = 6
+alignment = 1
+
+[node name="OutputSlot0" parent="Background/CraftArea/Margin/Content/OutputSlots" instance=ExtResource("3_slot")]
+layout_mode = 2
+
+[node name="OutputSlot1" parent="Background/CraftArea/Margin/Content/OutputSlots" instance=ExtResource("3_slot")]
+layout_mode = 2
+
+[node name="OutputSlot2" parent="Background/CraftArea/Margin/Content/OutputSlots" instance=ExtResource("3_slot")]
+layout_mode = 2
+
+[node name="Spacer" type="Control" parent="Background/CraftArea/Margin/Content"]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="CraftButton" type="Button" parent="Background/CraftArea/Margin/Content"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.93, 1, 0.95, 1)
+theme_override_colors/font_disabled_color = Color(0.38, 0.46, 0.42, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_craft")
+theme_override_styles/hover = SubResource("StyleBoxFlat_craft_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_craft_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_craft_disabled")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
+text = "制造"
+
+[node name="Status" type="Label" parent="Background/CraftArea/Margin/Content"]
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.69, 0.82, 0.72, 1)
+text = "材料充足，可立即制造"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="RecipeArea" type="PanelContainer" parent="Background"]
+layout_mode = 0
+offset_left = 270.0
+offset_top = 10.0
+offset_right = 408.0
+offset_bottom = 434.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_section")
+
+[node name="Margin" type="MarginContainer" parent="Background/RecipeArea"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 10
+
+[node name="Content" type="VBoxContainer" parent="Background/RecipeArea/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="Background/RecipeArea/Margin/Content"]
+custom_minimum_size = Vector2(0, 28)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 17
+theme_override_colors/font_color = Color(0.62, 1, 0.82, 1)
+text = "配方"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Hint" type="Label" parent="Background/RecipeArea/Margin/Content"]
+custom_minimum_size = Vector2(0, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.55, 0.65, 0.59, 1)
+text = "选择后在左侧制造"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="Recipe0" type="Button" parent="Background/RecipeArea/Margin/Content"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+toggle_mode = true
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.82, 0.9, 0.84, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/hover = SubResource("StyleBoxFlat_recipe_selected")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_selected")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
+text = "配方"
+icon_max_width = 28
+expand_icon = true
+
+[node name="Recipe1" type="Button" parent="Background/RecipeArea/Margin/Content"]
+visible = false
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+toggle_mode = true
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.82, 0.9, 0.84, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/hover = SubResource("StyleBoxFlat_recipe_selected")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_selected")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
+text = "配方"
+icon_max_width = 28
+expand_icon = true
+
+[node name="Recipe2" type="Button" parent="Background/RecipeArea/Margin/Content"]
+visible = false
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+toggle_mode = true
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.82, 0.9, 0.84, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/hover = SubResource("StyleBoxFlat_recipe_selected")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_selected")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
+text = "配方"
+icon_max_width = 28
+expand_icon = true
+
+[node name="Recipe3" type="Button" parent="Background/RecipeArea/Margin/Content"]
+visible = false
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+toggle_mode = true
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.82, 0.9, 0.84, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/hover = SubResource("StyleBoxFlat_recipe_selected")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_selected")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
+text = "配方"
+icon_max_width = 28
+expand_icon = true
+
+[node name="Recipe4" type="Button" parent="Background/RecipeArea/Margin/Content"]
+visible = false
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+toggle_mode = true
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.82, 0.9, 0.84, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/hover = SubResource("StyleBoxFlat_recipe_selected")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_selected")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
+text = "配方"
+icon_max_width = 28
+expand_icon = true
+
+[node name="Recipe5" type="Button" parent="Background/RecipeArea/Margin/Content"]
+visible = false
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+toggle_mode = true
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.82, 0.9, 0.84, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/hover = SubResource("StyleBoxFlat_recipe_selected")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_selected")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
+text = "配方"
+icon_max_width = 28
+expand_icon = true

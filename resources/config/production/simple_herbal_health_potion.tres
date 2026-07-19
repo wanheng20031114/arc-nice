@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ProductionRecipe" format=3]
+
+[ext_resource type="Script" path="res://resources/config/production/production_recipe.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_sapling.tres" id="2_sapling"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_water_bottle.tres" id="3_water"]
+[ext_resource type="Resource" path="res://resources/config/pickups/pickup_health.tres" id="4_health"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="5_pickup_script"]
+
+[resource]
+script = ExtResource("1_script")
+recipe_id = &"herbal_health_potion"
+display_name = "草药生命药瓶"
+input_items = Array[ExtResource("5_pickup_script")]([ExtResource("2_sapling"), ExtResource("3_water")])
+input_amounts = Array[int]([1, 1])
+input_source = 1
+output_items = Array[ExtResource("5_pickup_script")]([ExtResource("4_health")])
+output_amounts = Array[int]([1])
+output_destination = 1
+duration_seconds = 0.1

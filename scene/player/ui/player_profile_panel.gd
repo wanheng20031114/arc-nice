@@ -39,6 +39,8 @@ const ITEM_CATEGORY_ITEM_TEXTURE := preload("res://resources/texture/item_catego
 @onready var item_detail_discard_button: Button = $Overlay/PanelRoot/ItemDetailPanel/Margin/Content/ButtonRow/DiscardButton
 @onready var upgrade_surface: NinePatchRect = $Overlay/PanelRoot/UpgradeSurface
 @onready var upgrade_panel: VBoxContainer = $Overlay/PanelRoot/UpgradePanel
+@onready var craft_surface: NinePatchRect = $Overlay/PanelRoot/CraftSurface
+@onready var simple_crafting_panel: SimpleCraftingPanel = $Overlay/PanelRoot/SimpleCraftingPanel
 @onready var tab_bar: TabBar = $Overlay/PanelRoot/TabBar
 @onready var attack_row: UpgradeRow = $Overlay/PanelRoot/UpgradePanel/AttackRow
 @onready var health_row: UpgradeRow = $Overlay/PanelRoot/UpgradePanel/HealthRow
@@ -50,7 +52,7 @@ const ITEM_CATEGORY_ITEM_TEXTURE := preload("res://resources/texture/item_catego
 var tracked_player: Player = null
 var slots: Array[InventorySlot] = []
 var selected_slot_index := -1
-var current_tab := 0  # 0 = 背包, 1 = 升级
+var current_tab := 0  # 0 = 背包, 1 = 升级, 2 = 简易制造
 
 
 func _ready() -> void:
@@ -69,6 +71,7 @@ func _ready() -> void:
 	run_state.upgrade_changed.connect(_refresh_upgrades)
 
 	tab_bar.tab_changed.connect(_on_tab_changed)
+	simple_crafting_panel.craft_requested.connect(_on_simple_crafting_requested)
 
 	# 升级行信号
 	attack_row.upgrade_requested.connect(_on_upgrade_requested)
@@ -214,6 +217,8 @@ func _refresh_inventory() -> void:
 		)
 		slots[slot_index].set_selected(slot_index == selected_slot_index)
 	_refresh_item_detail()
+	if current_tab == 2:
+		simple_crafting_panel.refresh()
 
 
 func _refresh_upgrades() -> void:
@@ -395,21 +400,62 @@ func _on_tab_changed(tab_index: int) -> void:
 		return
 	current_tab = tab_index
 	_apply_tab_state()
-	if current_tab == 0:
-		_clear_inventory_selection()
-	else:
-		_refresh_upgrades()
+	match current_tab:
+		0:
+			_clear_inventory_selection()
+		1:
+			_refresh_upgrades()
+		2:
+			simple_crafting_panel.refresh()
 
 
 func _apply_tab_state() -> void:
 	inventory_grid.visible = current_tab == 0
 	upgrade_surface.visible = current_tab == 1
 	upgrade_panel.visible = current_tab == 1
+	craft_surface.visible = current_tab == 2
+	simple_crafting_panel.set_panel_active(current_tab == 2)
 	tab_bar.current_tab = current_tab
 	if current_tab == 0:
 		_refresh_item_detail()
 	else:
 		_hide_item_detail()
+
+
+func _on_simple_crafting_requested(recipe_id: StringName) -> void:
+	var recipe := SimpleCraftingRegistry.get_recipe(recipe_id)
+	if recipe == null:
+		simple_crafting_panel.show_result(
+			recipe_id,
+			RunStateStore.CRAFT_RESULT_INVALID_RECIPE
+		)
+		return
+	var current_scene := get_tree().current_scene
+	if (
+		current_scene != null
+		and current_scene.has_method("request_multiplayer_simple_crafting")
+	):
+		current_scene.call("request_multiplayer_simple_crafting", recipe_id)
+		return
+	var expected_revision := (
+		run_state.get_inventory_revision_for_peer(
+			run_state.active_multiplayer_peer_id
+		)
+		if run_state.active_multiplayer_peer_id > 0
+		else run_state.get_inventory_revision()
+	)
+	var result := run_state.try_craft_inventory_recipe_if_revision(
+		recipe,
+		expected_revision
+	)
+	simple_crafting_panel.show_result(recipe_id, result)
+
+
+func show_simple_crafting_result(
+	recipe_id: StringName,
+	result: StringName
+) -> void:
+	simple_crafting_panel.show_result(recipe_id, result)
 
 
 func _refresh_item_detail() -> void:

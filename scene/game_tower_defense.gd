@@ -1941,6 +1941,15 @@ func show_debug_collectible_grant_result(config_path: String, success: bool) -> 
 	debug_collectible_window.show_grant_result(config_path, success)
 
 
+func show_simple_crafting_result(
+	recipe_id: StringName,
+	result: StringName
+) -> void:
+	if player_profile_panel == null:
+		return
+	player_profile_panel.show_simple_crafting_result(recipe_id, result)
+
+
 func apply_remote_merchant_active(active: bool) -> void:
 	_set_local_merchants_active(active)
 

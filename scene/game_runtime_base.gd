@@ -207,6 +207,11 @@ var _xirang_kill_reward_flush_queued: bool = false
 	current_xirang: int
 ) -> void
 @abstract func show_debug_collectible_grant_result(config_path: String, success: bool) -> void
+func show_simple_crafting_result(
+	_recipe_id: StringName,
+	_result: StringName
+) -> void:
+	pass
 
 
 static func register_common_visual_effect_pools(pool: SessionObjectPool) -> void:
