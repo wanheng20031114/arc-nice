@@ -44,6 +44,8 @@
 [ext_resource type="PackedScene" path="res://scene/plant_defense/bamboo_mortar_combat_system.tscn" id="45_bamboo_mortar_combat"]
 [ext_resource type="Material" path="res://resources/shader/bamboo_mortar_split_lifecycle_material.tres" id="46_bamboo_mortar_lifecycle_material"]
 [ext_resource type="Shader" uid="uid://d1dea7fqpou23" path="res://resources/shader/bamboo_mortar_glow.gdshader" id="47_bamboo_mortar_glow_shader"]
+[ext_resource type="PackedScene" path="res://scene/lighting/day_night_controller.tscn" id="48_day_night"]
+[ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="49_night_light"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -144,6 +146,8 @@ script = ExtResource("1_17rxn")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2059488462]
 environment = SubResource("Environment_revive_glow")
+
+[node name="DayNightController" parent="." instance=ExtResource("48_day_night")]
 
 [node name="TowerDefenseAmbientVfx" parent="." unique_id=2116045322 instance=ExtResource("34_ambient_vfx")]
 
@@ -283,6 +287,11 @@ tile_set = SubResource("TileSet_7jktm")
 [node name="HomeGateController" type="Node2D" parent="." unique_id=2028487867]
 script = ExtResource("27_home_gate_controller")
 
+[node name="BlueGateNightLight" parent="HomeGateController" instance=ExtResource("49_night_light")]
+position = Vector2(48, 368)
+texture_scale = 0.3375
+night_energy = 0.34
+
 [node name="Camera2D" type="Camera2D" parent="." unique_id=945169532]
 position = Vector2(286, 160)
 zoom = Vector2(2, 2)
@@ -391,20 +400,44 @@ config = ExtResource("8_rrr3j")
 [node name="Spawn1" type="Marker2D" parent="EnemySpawnPoints" unique_id=1332941577]
 position = Vector2(496, 48)
 
+[node name="NightLight" parent="EnemySpawnPoints/Spawn1" instance=ExtResource("49_night_light")]
+texture_scale = 0.3375
+night_energy = 0.3
+
 [node name="Spawn2" type="Marker2D" parent="EnemySpawnPoints" unique_id=2023864982]
 position = Vector2(496, 689)
+
+[node name="NightLight" parent="EnemySpawnPoints/Spawn2" instance=ExtResource("49_night_light")]
+texture_scale = 0.3375
+night_energy = 0.3
 
 [node name="Spawn3" type="Marker2D" parent="EnemySpawnPoints" unique_id=2118085749]
 position = Vector2(944, 47)
 
+[node name="NightLight" parent="EnemySpawnPoints/Spawn3" instance=ExtResource("49_night_light")]
+texture_scale = 0.3375
+night_energy = 0.3
+
 [node name="Spawn4" type="Marker2D" parent="EnemySpawnPoints" unique_id=1503864728]
 position = Vector2(944, 689)
+
+[node name="NightLight" parent="EnemySpawnPoints/Spawn4" instance=ExtResource("49_night_light")]
+texture_scale = 0.3375
+night_energy = 0.3
 
 [node name="Spawn5" type="Marker2D" parent="EnemySpawnPoints" unique_id=1595012356]
 position = Vector2(1137, 224)
 
+[node name="NightLight" parent="EnemySpawnPoints/Spawn5" instance=ExtResource("49_night_light")]
+texture_scale = 0.3375
+night_energy = 0.3
+
 [node name="Spawn6" type="Marker2D" parent="EnemySpawnPoints" unique_id=1043502730]
 position = Vector2(1137, 513)
+
+[node name="NightLight" parent="EnemySpawnPoints/Spawn6" instance=ExtResource("49_night_light")]
+texture_scale = 0.3375
+night_energy = 0.3
 
 [node name="EnemySpawnTimer" type="Timer" parent="." unique_id=1007421203]
 

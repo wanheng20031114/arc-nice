@@ -6,6 +6,8 @@
 [ext_resource type="Shader" uid="uid://d1dea7fqpou23" path="res://resources/shader/bamboo_mortar_glow.gdshader" id="4_glow_shader"]
 [ext_resource type="PackedScene" uid="uid://by1igl2yc3ch0" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="5_health_bar"]
 [ext_resource type="Material" path="res://resources/shader/bamboo_mortar_split_lifecycle_material.tres" id="6_split_lifecycle_material"]
+[ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="7_night_light"]
+[ext_resource type="Texture2D" path="res://resources/lighting/soft_micro_point_light.tres" id="8_micro_light_texture"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_glow"]
 shader = ExtResource("4_glow_shader")
@@ -49,6 +51,12 @@ position = Vector2(0, 10)
 color = Color(0.34, 1.65, 0.18, 1)
 polygon = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
 uv = PackedVector2Array(0, 0, 1, 0, 1, 1, 0, 1)
+
+[node name="MicroGlow" parent="VisualRoot/StatusLight" instance=ExtResource("7_night_light")]
+color = Color(0.2060606, 1, 0.1090909, 1)
+texture = ExtResource("8_micro_light_texture")
+texture_scale = 1.35
+night_energy = 0.8
 
 [node name="Muzzle" type="Marker2D" parent="VisualRoot" unique_id=2013561457]
 position = Vector2(10, -24)

@@ -10,6 +10,9 @@ const TIYI_SCENE := preload("res://scene/player/tiyi/player_tiyi.tscn")
 const CAPOO_PROJECTILE_MOTION_SYSTEM_SCENE := preload(
 	"res://scene/enemy/capoo_projectile_motion_system.tscn"
 )
+const DAY_NIGHT_SCENE := preload(
+	"res://scene/lighting/day_night_controller.tscn"
+)
 
 
 class ClientNetManagerStub:
@@ -278,6 +281,7 @@ func _run() -> void:
 	pathfinder_stub.name = "GridPathfinder"
 	fixture.add_child(pathfinder_stub)
 	fixture.add_child(CAPOO_PROJECTILE_MOTION_SYSTEM_SCENE.instantiate())
+	fixture.add_child(DAY_NIGHT_SCENE.instantiate())
 	root.add_child(fixture)
 	current_scene = fixture
 	await process_frame

@@ -1,0 +1,7 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scene/lighting/day_night_controller.gd" id="1_script"]
+
+[node name="DayNightController" type="CanvasModulate"]
+color = Color(1, 1, 1, 1)
+script = ExtResource("1_script")

@@ -467,10 +467,12 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 			current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
 	match typed_state:
 		WaveState.PRE_WAVE, WaveState.INTERMISSION:
+			transition_world_to_day()
 			_start_client_flow_countdown(typed_state, step_id, seconds)
 		WaveState.WAVE_ACTIVE:
 			state_timer.stop()
 			wave_state = WaveState.WAVE_ACTIVE
+			_apply_wave_start_lighting(maxi(current_wave_index + 1, 1))
 			_set_local_merchants_active(false)
 			var wave_config := flow_step as WaveConfig
 			if wave_config != null:
@@ -1268,6 +1270,7 @@ func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
 		_enter_victory()
 		return
 	wave_state = WaveState.PRE_WAVE
+	transition_world_to_day()
 	current_flow_step = flow_step
 	next_flow_step_after_rest = flow_step
 	if flow_step is WaveConfig:
@@ -1292,6 +1295,7 @@ func _enter_intermission(next_step: FlowStepConfig = null) -> void:
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_revive_all_requested.emit()
 	wave_state = WaveState.INTERMISSION
+	transition_world_to_day()
 	enemy_spawn_timer.stop()
 	_set_merchant_active(true)
 	next_flow_step_after_rest = next_step
@@ -1342,6 +1346,7 @@ func _begin_wave_config(wave_config: WaveConfig) -> void:
 
 	wave_state = WaveState.WAVE_ACTIVE
 	current_wave_index = _get_wave_number_for_step(wave_config) - 1
+	_apply_wave_start_lighting(current_wave_index + 1)
 	state_timer.stop()
 	_set_merchant_active(false)
 	current_wave_spawned = 0

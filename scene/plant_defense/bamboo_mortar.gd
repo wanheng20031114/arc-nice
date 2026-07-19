@@ -35,6 +35,11 @@ const NETWORK_STAGE_WINDUP := 0
 const NETWORK_STAGE_FIRE := 1
 const IDLE_GLOW_COLOR := Color(0.34, 1.65, 0.18, 1.0)
 const CHARGE_GLOW_COLOR := Color(2.25, 0.62, 0.10, 1.0)
+const IDLE_LIGHT_COLOR := Color(0.2060606, 1.0, 0.1090909, 1.0)
+const CHARGE_LIGHT_COLOR := Color(1.0, 0.2755556, 0.0444444, 1.0)
+const IDLE_LIGHT_ENERGY := 0.8
+const CHARGE_LIGHT_ENERGY_MIN := 0.85
+const CHARGE_LIGHT_ENERGY_MAX := 1.1
 const MAIN_SPRITE_REST_POSITION := Vector2.ZERO
 const FIRE_RECOIL_OFFSET := Vector2(-1.0, 1.0)
 
@@ -48,6 +53,9 @@ enum CombatPhase {
 @onready var main_sprite: AnimatedSprite2D = $VisualRoot/MainSprite
 @onready var lower_body: Sprite2D = $VisualRoot/LowerBody
 @onready var status_light: Polygon2D = $VisualRoot/StatusLight
+@onready var status_glow_light: NightPointLight2D = (
+	$VisualRoot/StatusLight/MicroGlow
+)
 @onready var muzzle: Marker2D = $VisualRoot/Muzzle
 @onready var attack_timer: Timer = $AttackTimer
 @onready var target_track_timer: Timer = $TargetTrackTimer
@@ -895,9 +903,13 @@ func apply_multiplayer_runtime_state(
 
 func _set_glow_state(charging: bool, frame_index: int) -> void:
 	var safe_frame := clampi(frame_index, 0, WINDUP_FRAME_COUNT - 1)
+	var charge_progress := (
+		float(safe_frame) / float(WINDUP_FRAME_COUNT - 1)
+		if charging
+		else 0.0
+	)
 	var glow_strength := (
-		1.0 + 0.55 * float(safe_frame)
-		/ float(WINDUP_FRAME_COUNT - 1)
+		1.0 + 0.55 * charge_progress
 		if charging
 		else 1.0
 	)
@@ -909,6 +921,20 @@ func _set_glow_state(charging: bool, frame_index: int) -> void:
 		glow_color.g * glow_strength,
 		glow_color.b * glow_strength,
 		1.0
+	)
+	status_glow_light.color = (
+		CHARGE_LIGHT_COLOR
+		if charging
+		else IDLE_LIGHT_COLOR
+	)
+	status_glow_light.set_night_energy(
+		lerpf(
+			CHARGE_LIGHT_ENERGY_MIN,
+			CHARGE_LIGHT_ENERGY_MAX,
+			charge_progress
+		)
+		if charging
+		else IDLE_LIGHT_ENERGY
 	)
 
 

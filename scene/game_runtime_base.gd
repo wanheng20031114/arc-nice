@@ -130,6 +130,7 @@ enum WaveState {
 @onready var enemy_container: Node2D = $EnemyContainer
 @onready var grid_pathfinder: Node = $GridPathfinder
 @onready var capoo_projectile_motion_system: Node = $CapooProjectileMotionSystem
+@onready var day_night_controller: DayNightController = $DayNightController
 
 var player: Player = null
 var wave_state: WaveState = WaveState.PRE_WAVE
@@ -154,6 +155,23 @@ var runtime_preparation_completed_steps := 0
 var runtime_preparation_total_steps := 1
 var _pending_xirang_kill_reward: int = 0
 var _xirang_kill_reward_flush_queued: bool = false
+
+
+func transition_world_to_night(duration_seconds: float = -1.0) -> void:
+	day_night_controller.transition_to_night(duration_seconds)
+
+
+func transition_world_to_day(duration_seconds: float = -1.0) -> void:
+	day_night_controller.transition_to_day(duration_seconds)
+
+
+func _apply_wave_start_lighting(wave_number: int) -> void:
+	# Wave 1 is the authored test trigger for the new night presentation.
+	# Later schedules can call the public transition methods without coupling
+	# time-of-day policy to enemy spawning.
+	if wave_number != 1:
+		return
+	transition_world_to_night()
 
 
 @abstract func configure_multiplayer(

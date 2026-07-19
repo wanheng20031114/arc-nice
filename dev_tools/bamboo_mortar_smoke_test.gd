@@ -22,6 +22,9 @@ const SPLIT_LIFECYCLE_SHADER := preload(
 const SPLIT_LIFECYCLE_MATERIAL := preload(
 	"res://resources/shader/bamboo_mortar_split_lifecycle_material.tres"
 )
+const SOFT_MICRO_LIGHT_TEXTURE := preload(
+	"res://resources/lighting/soft_micro_point_light.tres"
+)
 const ARMORED_ENEMY_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_shell.tres"
 )
@@ -180,6 +183,9 @@ func _create_mortar(as_proxy: bool, net_id: int) -> BambooMortar:
 
 
 func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
+	var status_glow_texture := (
+		SOFT_MICRO_LIGHT_TEXTURE as GradientTexture2D
+	)
 	_expect(MORTAR_CONFIG.is_valid(), "竹筒迫击炮配置必须有效。")
 	_expect(
 		MORTAR_CONFIG.plant_id == &"bamboo_mortar"
@@ -225,12 +231,36 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		mortar.get_node_or_null("TargetingArea") == null
 		and mortar.get_node_or_null("VisualRoot/Muzzle") is Marker2D
 		and mortar.get_node_or_null("VisualRoot/StatusLight") is Polygon2D
+		and mortar.get_node_or_null(
+			"VisualRoot/StatusLight/MicroGlow"
+		) is NightPointLight2D
 		and mortar.get_node_or_null("VisualRoot/LowerBody") is Sprite2D
 		and mortar.get_node_or_null("VisualRoot/GlowSprite") == null
 		and mortar.get_node_or_null("AttackTimer") is Timer
 		and mortar.get_node_or_null("TargetTrackTimer") is Timer
 		and mortar.get_node_or_null("FireAudio") is AudioStreamPlayer2D,
-		"迫击炮必须用预建Marker、独立方形状态灯、Timer与音效节点，且不能常驻TargetingArea或纹理灯遮罩。"
+		"迫击炮必须用预建Marker、独立方形状态灯及其原生微光、Timer与音效节点，且不能常驻TargetingArea。"
+	)
+	_expect(
+		mortar.status_glow_light.texture == SOFT_MICRO_LIGHT_TEXTURE
+		and status_glow_texture != null
+		and status_glow_texture.fill
+		== GradientTexture2D.FILL_RADIAL
+		and status_glow_texture.fill_from == Vector2(0.5, 0.5)
+		and status_glow_texture.fill_to == Vector2(1.0, 0.5)
+		and status_glow_texture.gradient.sample(0.0).r > 0.95
+		and status_glow_texture.gradient.sample(1.0).r < 0.01
+		and is_equal_approx(
+			mortar.status_glow_light.texture_scale,
+			1.35
+		)
+		and mortar.status_glow_light.texture_filter
+		== CanvasItem.TEXTURE_FILTER_LINEAR
+		and mortar.status_glow_light.blend_mode
+		== Light2D.BLEND_MODE_ADD
+		and not mortar.status_glow_light.shadow_enabled
+		and mortar.status_glow_light.get_parent() == mortar.status_light,
+		"攻击状态方格必须拥有随可见性继承、线性采样且径向衰减的小半径PointLight2D微光。"
 	)
 	_expect(
 		mortar.attack_timer.one_shot
@@ -259,7 +289,7 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 			Vector2(1, 1),
 			Vector2(0, 1),
 		]),
-		"64×64主体必须以0.5缩放和邻近过滤显示，状态灯必须以单个16×16逻辑像素节点绘制清晰6×6核心、深色边界与分层光晕。"
+		"64×64主体必须以0.5缩放和邻近过滤显示，状态灯必须以单个16×16逻辑像素节点承载清晰6×6核心。"
 	)
 	var mortar_source := FileAccess.get_file_as_string(
 		"res://scene/plant_defense/bamboo_mortar.gd"
@@ -291,9 +321,6 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		)
 		and glow_shader_source.count("\ninstance uniform ") == 0
 		and glow_shader_source.contains("vec3 active_color = COLOR.rgb")
-		and glow_shader_source.contains(
-			"COLOR.a * output_alpha"
-		)
 		and glow_shader_source.contains("blend_mix")
 		and glow_shader_source.contains("varying vec2 shape_uv")
 		and glow_shader_source.contains(
@@ -303,27 +330,62 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 			"abs(UV - vec2(0.5))"
 		)
 		and glow_shader_source.contains("core_mask")
-		and glow_shader_source.contains("core_border_mask")
-		and glow_shader_source.contains("inner_halo_mask")
-		and glow_shader_source.contains("outer_halo_mask")
+		and not glow_shader_source.contains("core_border_mask")
+		and not glow_shader_source.contains("inner_halo_mask")
+		and not glow_shader_source.contains("outer_halo_mask")
+		and not glow_shader_source.contains("pulse")
+		and glow_shader_source.contains(
+			"COLOR = vec4(active_color, COLOR.a) * core_mask"
+		)
 		and not FileAccess.file_exists(
 			"res://resources/texture/plant_defense/bamboo_mortar/glow_mask.png"
 		),
-		"中下部状态灯必须由一个Godot节点以对应颜色绘制不透明亮核、深色边界与内外光晕，不能用纯加色吞掉核心，也不能残留贴图灯或逐实例材质复制。"
+		"中下部状态灯shader只能绘制对应颜色的实心亮核，外围渐变必须交给PointLight2D，不能残留离散方环或贴图灯遮罩。"
 	)
 	mortar.call("_set_glow_state", true, 7)
+	mortar.status_glow_light.set_night_factor(1.0)
 	_expect(
 		mortar.status_light.color.is_equal_approx(
 			Color(3.4875, 0.961, 0.155, 1.0)
+		)
+		and mortar.status_glow_light.color.is_equal_approx(
+			BambooMortar.CHARGE_LIGHT_COLOR
+		)
+		and is_equal_approx(
+			mortar.status_glow_light.night_energy,
+			BambooMortar.CHARGE_LIGHT_ENERGY_MAX
+		)
+		and mortar.status_glow_light.enabled
+		and is_equal_approx(
+			mortar.status_glow_light.energy,
+			BambooMortar.CHARGE_LIGHT_ENERGY_MAX
 		),
-		"满蓄热状态灯必须以Polygon2D顶点色保留1.55倍橙色强度。"
+		"满蓄热状态灯必须保留1.55倍橙色亮核，并同步增强小范围橙色外溢光。"
 	)
 	mortar.call("_set_glow_state", false, 0)
 	_expect(
 		mortar.status_light.color.is_equal_approx(
 			Color(0.34, 1.65, 0.18, 1.0)
+		)
+		and mortar.status_glow_light.color.is_equal_approx(
+			BambooMortar.IDLE_LIGHT_COLOR
+		)
+		and is_equal_approx(
+			mortar.status_glow_light.night_energy,
+			BambooMortar.IDLE_LIGHT_ENERGY
+		)
+		and mortar.status_glow_light.enabled
+		and is_equal_approx(
+			mortar.status_glow_light.energy,
+			BambooMortar.IDLE_LIGHT_ENERGY
 		),
-		"待机状态灯必须以Polygon2D顶点色恢复嫩绿色常亮强度。"
+		"待机状态灯必须恢复嫩绿色亮核与更克制的小范围外溢光。"
+	)
+	mortar.status_glow_light.set_night_factor(0.0)
+	_expect(
+		not mortar.status_glow_light.enabled
+		and is_zero_approx(mortar.status_glow_light.energy),
+		"白天必须关闭状态格PointLight2D，只保留中心方格本身。"
 	)
 
 

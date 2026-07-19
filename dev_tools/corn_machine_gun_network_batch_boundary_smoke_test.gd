@@ -8,6 +8,9 @@ const CORN_CONFIG := preload(
 const CAPOO_PROJECTILE_MOTION_SYSTEM_SCENE := preload(
 	"res://scene/enemy/capoo_projectile_motion_system.tscn"
 )
+const DAY_NIGHT_SCENE := preload(
+	"res://scene/lighting/day_night_controller.tscn"
+)
 
 const SEND_RECORD_COUNT := 513
 const SEND_PACKET_CAPACITY := 32
@@ -300,6 +303,7 @@ func _test_production_receive_boundary() -> void:
 	grid_pathfinder.name = "GridPathfinder"
 	runtime.add_child(grid_pathfinder)
 	runtime.add_child(CAPOO_PROJECTILE_MOTION_SYSTEM_SCENE.instantiate())
+	runtime.add_child(DAY_NIGHT_SCENE.instantiate())
 	root.add_child(runtime)
 	current_scene = runtime
 

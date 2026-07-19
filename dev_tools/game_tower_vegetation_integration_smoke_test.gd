@@ -84,6 +84,11 @@ func _test_vegetation_stake_scene_contract() -> void:
 	_expect(main_sprite != null and main_sprite.scale == Vector2(0.5, 0.5), "植被桩主体必须沿用0.5像素素材缩放。")
 	_expect(top_glow != null and top_glow.texture != null, "植被桩必须预置独立顶部发光层。")
 	_expect(glow_motes != null and glow_motes.amount > 0, "植被桩必须预置少量GPU飘光粒子。")
+	_expect(
+		stake.get_node_or_null("CoreNightLight") == null
+		and stake.get_node_or_null("NightRingLight") == null,
+		"植被桩只能让自身粒子在夜间保持清晰，不能再预置真实光源。"
+	)
 	_expect(health_bar != null, "植被桩必须预置并绑定公共植物血条。")
 	root.add_child(stake)
 	_expect(

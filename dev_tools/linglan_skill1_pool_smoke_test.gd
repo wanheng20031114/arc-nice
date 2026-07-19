@@ -12,6 +12,9 @@ const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier
 const CAPOO_PROJECTILE_MOTION_SYSTEM_SCENE := preload(
 	"res://scene/enemy/capoo_projectile_motion_system.tscn"
 )
+const DAY_NIGHT_SCENE := preload(
+	"res://scene/lighting/day_night_controller.tscn"
+)
 
 
 class PoolRuntime:
@@ -183,6 +186,7 @@ func _run() -> void:
 	runtime = PoolRuntime.new()
 	runtime.name = "LinglanSkill1PoolRuntime"
 	runtime.install_pool()
+	runtime.add_child(DAY_NIGHT_SCENE.instantiate())
 	root.add_child(runtime)
 	current_scene = runtime
 	pool = runtime.session_object_pool
