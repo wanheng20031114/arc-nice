@@ -75,6 +75,7 @@ func _run() -> void:
 	var proxy := _create_tower(true)
 	if authority != null and proxy != null:
 		_test_scene_contract(authority)
+		_test_attack_timer_phase_stagger(authority, proxy)
 		_test_physical_defense_round_totals()
 		_test_six_shot_frame_catchup(authority)
 		await _test_delayed_aim_return(authority)
@@ -194,6 +195,69 @@ func _test_scene_contract(tower: CornMachineGun) -> void:
 			CornMachineGun.AIM_RETURN_DELAY_SECONDS
 		),
 		"攻击后回正必须由场景内单次 Timer 延迟1秒触发。"
+	)
+
+
+func _test_attack_timer_phase_stagger(
+	authority: CornMachineGun,
+	proxy: CornMachineGun
+) -> void:
+	var authored_interval := CORN_CONFIG.get_attack_interval()
+	var frame_bucket_counts: Dictionary[int, int] = {}
+	var minimum_delay := INF
+	var maximum_delay := 0.0
+	for phase_identity in range(1, 65):
+		var initial_delay := (
+			CornMachineGun.calculate_initial_attack_delay_seconds(
+				authored_interval,
+				phase_identity
+			)
+		)
+		minimum_delay = minf(minimum_delay, initial_delay)
+		maximum_delay = maxf(maximum_delay, initial_delay)
+		var physics_frame_bucket := floori(initial_delay * 60.0)
+		frame_bucket_counts[physics_frame_bucket] = (
+			frame_bucket_counts.get(physics_frame_bucket, 0) + 1
+		)
+	var peak_locks_per_frame := 0
+	for bucket_count in frame_bucket_counts.values():
+		peak_locks_per_frame = maxi(
+			peak_locks_per_frame,
+			int(bucket_count)
+		)
+	_expect(
+		minimum_delay >= CornMachineGun.INITIAL_ATTACK_DELAY_MIN_SECONDS
+		and maximum_delay < authored_interval,
+		"权威玉米塔首轮索敌必须确定性分散在一个0.9秒攻击周期内。"
+	)
+	_expect(
+		frame_bucket_counts.size() >= 40
+		and peak_locks_per_frame <= 2,
+		(
+			"连续64个网络ID必须分散到至少40个60Hz帧，"
+			+ "且任一帧最多2次锁定；实际为%d帧/峰值%d。"
+		)
+		% [frame_bucket_counts.size(), peak_locks_per_frame]
+	)
+
+	authority.set_meta(&"net_id", 37)
+	authority.attack_timer.stop()
+	authority.call("_on_operational_started")
+	var expected_initial_delay := authority.get_initial_attack_delay_seconds()
+	_expect(
+		absf(authority.attack_timer.time_left - expected_initial_delay) < 0.001
+		and is_equal_approx(
+			authority.attack_timer.wait_time,
+			authored_interval
+		),
+		"自定义首轮延迟不得改变后续严格0.9秒的重复周期。"
+	)
+	authority.attack_timer.stop()
+
+	proxy.call("_on_operational_started")
+	_expect(
+		proxy.attack_timer.is_stopped(),
+		"联机代理只能回放Host Burst，禁止启动本地索敌Timer。"
 	)
 
 

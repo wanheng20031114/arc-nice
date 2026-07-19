@@ -162,7 +162,10 @@ func _run() -> void:
 		"A stable physics refresh must retain bucket arrays and reuse the stale-id buffer."
 	)
 
-	middle_enemy.position = Vector2(250.0, 0.0)
+	_move_out_of_tree_fixture_enemy(
+		middle_enemy,
+		Vector2(250.0, 0.0)
+	)
 	await physics_frame
 	target_index.call("query_radius", Vector2.ZERO, 100.0, 0)
 	var middle_cell: Vector2i = target_index.call("_to_bucket", middle_enemy.global_position)
@@ -180,7 +183,10 @@ func _run() -> void:
 	# position. The next same-frame query must still see the reconciled position.
 	var late_enemy := Enemy.new()
 	target_index.call("register_enemy", 6, late_enemy)
-	late_enemy.position = Vector2(350.0, 0.0)
+	_move_out_of_tree_fixture_enemy(
+		late_enemy,
+		Vector2(350.0, 0.0)
+	)
 	_expect(
 		(target_index.call("query_radius", Vector2(350.0, 0.0), 1.0, 0) as Array).has(
 			late_enemy
@@ -244,7 +250,10 @@ func _run() -> void:
 		crowded_enemies.append(crowded_enemy)
 		crowded_index.call("register_enemy", net_id, crowded_enemy)
 	for crowded_enemy in crowded_enemies:
-		crowded_enemy.position = Vector2(65.0, 1.0)
+		_move_out_of_tree_fixture_enemy(
+			crowded_enemy,
+			Vector2(65.0, 1.0)
+		)
 	await physics_frame
 	var crowded_result := crowded_index.call(
 		"query_radius",
@@ -289,6 +298,19 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _move_out_of_tree_fixture_enemy(
+	enemy: Enemy,
+	new_position: Vector2
+) -> void:
+	enemy.position = new_position
+	# These lightweight Enemy.new() fixtures intentionally never enter a scene
+	# tree, so Godot does not dispatch CanvasItem transform notifications for
+	# them. Deliver the same notification explicitly to exercise the production
+	# event-driven bucket migration instead of waiting for the bounded repair
+	# audit to visit an arbitrary subset.
+	enemy.notification(CanvasItem.NOTIFICATION_LOCAL_TRANSFORM_CHANGED)
 
 
 func _expect(condition: bool, message: String) -> void:

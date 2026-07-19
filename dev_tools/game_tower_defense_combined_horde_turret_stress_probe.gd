@@ -585,8 +585,8 @@ func _measure_phase(label: String, should_move: bool) -> void:
 func _measure_synchronized_corn_peak() -> void:
 	# This phase deliberately gives all 64 real AttackTimers the same initial
 	# delay and repeat interval. It quantifies the exact worst case where every
-	# tower queries and sort_custom runs in one frame instead of hiding that peak
-	# behind the normal deterministic staggering used by the control phases.
+	# tower performs its indexed nearest query, LOS check and first shot in one
+	# frame instead of hiding that peak behind the normal deterministic stagger.
 	await _reset_fixture(true, true)
 	var wall_samples: Array[float] = []
 	var lock_frame_wall_samples: Array[float] = []

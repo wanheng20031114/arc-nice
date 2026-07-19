@@ -15,6 +15,9 @@ const PROXY_TOWER_COUNT := 128
 const ENEMY_COUNT := 300
 const BURST_CATCHUP_SECONDS := 0.30
 const TARGET_POSITION := Vector2(80.0, 0.0)
+# At 60 Hz this 0.93 s window includes every authored initial delay (<0.9 s)
+# while ending before the earliest tower can repeat at roughly 0.96 s.
+const PHASE_SAMPLE_FRAMES := 56
 
 var failures: Array[String] = []
 var runtime: CornRuntimeStub = null
@@ -117,12 +120,14 @@ func _run() -> void:
 	var proxy_burst_ms := _measure_proxy_bursts()
 	var nodes_after_proxy := _count_subtree_nodes(runtime)
 	var expected_shots := authorities.size() * CORN_CONFIG.attack_burst_count
+	var direct_queued_burst_count := runtime.queued_burst_count
+	var direct_damage_call_count := runtime.damage_call_count
 	_expect(
-		runtime.queued_burst_count == authorities.size(),
+		direct_queued_burst_count == authorities.size(),
 		"Dense Host fire must queue exactly one network visual record per six-shot burst."
 	)
 	_expect(
-		runtime.damage_call_count == expected_shots,
+		direct_damage_call_count == expected_shots,
 		"Dense Host fire must preserve exactly six authoritative hits per tower."
 	)
 	_expect(
@@ -130,12 +135,32 @@ func _run() -> void:
 		and nodes_before_bursts == nodes_after_proxy,
 		"Corn bursts must reuse authored visuals and create no projectile/effect nodes."
 	)
+	var synchronized_phase := await _measure_attack_timer_phase(true)
+	var production_phase := await _measure_attack_timer_phase(false)
+	_expect(
+		int(synchronized_phase.get("total_locks", 0)) == authorities.size()
+		and int(synchronized_phase.get("peak_locks", 0))
+		== authorities.size(),
+		"The synchronized control must place every Corn lock in one frame."
+	)
+	_expect(
+		int(production_phase.get("total_locks", 0)) == authorities.size()
+		and int(production_phase.get("peak_locks", 0)) <= 4,
+		"Production phase staggering must cap 128 restored Corn towers at four locks per frame."
+	)
+	var nodes_after_phase_probe := _count_subtree_nodes(runtime)
+	_expect(
+		nodes_after_phase_probe == nodes_after_proxy,
+		"Timer phase staggering must not create runtime nodes."
+	)
 
 	print(
 		(
 			"CORN_MACHINE_GUN_DENSITY_PROBE authority_towers=%d proxy_towers=%d "
 			+ "enemies=%d acquisition_ms=%.3f/%.3f authority_bursts_ms=%.3f "
-			+ "proxy_bursts_ms=%.3f host_rays=%d host_hits=%d queued_actions=%d nodes=%d"
+			+ "proxy_bursts_ms=%.3f host_rays=%d host_hits=%d queued_actions=%d "
+			+ "sync_phase_locks/peak/max_frame_ms=%d/%d/%.3f "
+			+ "production_phase_locks/peak/max_frame_ms=%d/%d/%.3f nodes=%d"
 		)
 		% [
 			authorities.size(),
@@ -146,9 +171,15 @@ func _run() -> void:
 			authority_burst_ms,
 			proxy_burst_ms,
 			expected_shots,
-			runtime.damage_call_count,
-			runtime.queued_burst_count,
-			nodes_after_proxy,
+			direct_damage_call_count,
+			direct_queued_burst_count,
+			int(synchronized_phase.get("total_locks", 0)),
+			int(synchronized_phase.get("peak_locks", 0)),
+			float(synchronized_phase.get("max_frame_ms", 0.0)),
+			int(production_phase.get("total_locks", 0)),
+			int(production_phase.get("peak_locks", 0)),
+			float(production_phase.get("max_frame_ms", 0.0)),
+			nodes_after_phase_probe,
 		]
 	)
 	await _finish()
@@ -250,6 +281,49 @@ func _measure_proxy_bursts() -> float:
 			"Completed proxy bursts must immediately leave the per-frame physics path."
 		)
 	return float(Time.get_ticks_usec() - started_usec) / 1000.0
+
+
+func _measure_attack_timer_phase(synchronized: bool) -> Dictionary:
+	var authored_interval := CORN_CONFIG.get_attack_interval()
+	for tower in authorities:
+		tower.attack_timer.stop()
+		tower.call("_cancel_burst", false)
+		var initial_delay := (
+			authored_interval
+			if synchronized
+			else tower.get_initial_attack_delay_seconds()
+		)
+		tower.attack_timer.start(initial_delay)
+		tower.attack_timer.wait_time = authored_interval
+
+	var queries_before := runtime.query_call_count
+	var previous_query_count := queries_before
+	var previous_tick_usec := Time.get_ticks_usec()
+	var peak_locks := 0
+	var max_frame_ms := 0.0
+	for _sample_index in range(PHASE_SAMPLE_FRAMES):
+		await physics_frame
+		var now_usec := Time.get_ticks_usec()
+		max_frame_ms = maxf(
+			max_frame_ms,
+			float(now_usec - previous_tick_usec) / 1000.0
+		)
+		previous_tick_usec = now_usec
+		var current_query_count := runtime.query_call_count
+		peak_locks = maxi(
+			peak_locks,
+			current_query_count - previous_query_count
+		)
+		previous_query_count = current_query_count
+
+	for tower in authorities:
+		tower.attack_timer.stop()
+		tower.call("_cancel_burst", false)
+	return {
+		"total_locks": runtime.query_call_count - queries_before,
+		"peak_locks": peak_locks,
+		"max_frame_ms": max_frame_ms,
+	}
 
 
 func _count_subtree_nodes(node: Node) -> int:
