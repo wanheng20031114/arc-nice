@@ -22,6 +22,9 @@ const SOFT_WHITE_TEXTURE := preload(
 const SOFT_MICRO_TEXTURE := preload(
 	"res://resources/lighting/soft_micro_point_light.tres"
 )
+const VEGETATION_RING_TEXTURE := preload(
+	"res://resources/lighting/vegetation_ring_point_light.tres"
+)
 
 var failures: Array[String] = []
 
@@ -33,6 +36,7 @@ func _init() -> void:
 func _run() -> void:
 	await _test_controller_and_day_suppression()
 	await _test_parallel_world_isolation()
+	await _test_vegetation_ring_night_behavior()
 	_test_authored_scene_contracts()
 	await _test_wave_one_gradual_transition()
 	await _test_tower_wave_lighting()
@@ -140,6 +144,54 @@ func _test_parallel_world_isolation() -> void:
 	await process_frame
 
 
+func _test_vegetation_ring_night_behavior() -> void:
+	var test_root := Node2D.new()
+	root.add_child(test_root)
+	var controller := DAY_NIGHT_SCENE.instantiate() as DayNightController
+	var stake := VEGETATION_STAKE_SCENE.instantiate() as VegetationStake
+	test_root.add_child(controller)
+	test_root.add_child(stake)
+	await process_frame
+
+	var border := stake.get_node("CellBorder") as MeshInstance2D
+	var ring_light := (
+		stake.get_node_or_null(
+			"CellBorder/NightRingLight"
+		) as NightPointLight2D
+	)
+	_expect(
+		ring_light != null,
+		"植被桩场景必须预置绿色夜间环灯。"
+	)
+	if ring_light == null:
+		test_root.queue_free()
+		await process_frame
+		return
+	_expect(
+		not ring_light.enabled
+		and is_zero_approx(ring_light.energy),
+		"植被桩环灯在白天必须彻底关闭。"
+	)
+	controller.transition_to_night(0.0)
+	_expect(
+		ring_light.enabled
+		and is_equal_approx(
+			ring_light.energy,
+			ring_light.night_energy
+		)
+		and ring_light.is_visible_in_tree(),
+		"植被桩绿色环灯必须只在夜间以完整配置能量显示。"
+	)
+	border.hide()
+	_expect(
+		not ring_light.is_visible_in_tree(),
+		"植被桩建造或拆除隐藏边框时必须同步隐藏夜间光环。"
+	)
+
+	test_root.queue_free()
+	await process_frame
+
+
 func _test_authored_scene_contracts() -> void:
 	_expect(
 		SOFT_WHITE_TEXTURE is GradientTexture2D
@@ -187,16 +239,27 @@ func _test_authored_scene_contracts() -> void:
 		stake.get_node_or_null("GlowMotes") as GPUParticles2D
 	)
 	var mote_material := motes.material as CanvasItemMaterial
-	var stake_has_light := false
-	for candidate in stake.find_children("*", "", true, false):
-		if candidate is Light2D:
-			stake_has_light = true
-			break
+	var ring_light := (
+		stake.get_node_or_null(
+			"CellBorder/NightRingLight"
+		) as NightPointLight2D
+	)
+	var stake_lights := _collect_night_lights(stake)
 	_expect(
-		not stake_has_light
+		stake_lights.size() == 1
+		and ring_light != null
+		and ring_light.get_parent()
+		== stake.get_node_or_null("CellBorder")
+		and ring_light.texture == VEGETATION_RING_TEXTURE
+		and ring_light.color.is_equal_approx(
+			Color(0.52, 1.0, 0.24, 1.0)
+		)
+		and is_equal_approx(ring_light.texture_scale, 0.52)
+		and is_equal_approx(ring_light.night_energy, 0.38)
+		and not ring_light.shadow_enabled
 		and stake.get_node_or_null("CoreNightLight") == null
 		and stake.get_node_or_null("NightRingLight") == null,
-		"植被桩不能包含会照亮周围场景的Light2D。"
+		"植被桩必须只保留一盏贴合地块边缘的柔和绿色夜间环灯。"
 	)
 	_expect(
 		motes.texture == null

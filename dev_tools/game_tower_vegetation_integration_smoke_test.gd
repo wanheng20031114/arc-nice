@@ -4,6 +4,9 @@ const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
 const VEGETATION_STAKE_CONFIG := preload(
 	"res://resources/config/plant_defense/vegetation_stake.tres"
 )
+const VEGETATION_RING_TEXTURE := preload(
+	"res://resources/lighting/vegetation_ring_point_light.tres"
+)
 const AGAVE_CONFIG := preload("res://resources/config/plant_defense/agave_cannon.tres")
 const ENEMY_CONFIG := preload("res://resources/config/enemies/capoo_ak47.tres")
 const AUTHORITATIVE_BATCH_CELL_COUNT := 193
@@ -74,6 +77,11 @@ func _test_vegetation_stake_scene_contract() -> void:
 	var main_sprite := stake.get_node_or_null("MainSprite") as Sprite2D
 	var top_glow := stake.get_node_or_null("TopGlow") as Sprite2D
 	var glow_motes := stake.get_node_or_null("GlowMotes") as GPUParticles2D
+	var ring_light := (
+		stake.get_node_or_null(
+			"CellBorder/NightRingLight"
+		) as NightPointLight2D
+	)
 	var health_bar := stake.get_node_or_null("HealthBar") as PlantHealthBar
 	_expect(border != null and border.mesh is QuadMesh, "植被桩场景必须预置地面边框QuadMesh。")
 	if border != null and border.mesh is QuadMesh:
@@ -86,8 +94,17 @@ func _test_vegetation_stake_scene_contract() -> void:
 	_expect(glow_motes != null and glow_motes.amount > 0, "植被桩必须预置少量GPU飘光粒子。")
 	_expect(
 		stake.get_node_or_null("CoreNightLight") == null
-		and stake.get_node_or_null("NightRingLight") == null,
-		"植被桩只能让自身粒子在夜间保持清晰，不能再预置真实光源。"
+		and stake.get_node_or_null("NightRingLight") == null
+		and ring_light != null
+		and ring_light.get_parent() == border
+		and ring_light.texture == VEGETATION_RING_TEXTURE
+		and ring_light.color.is_equal_approx(
+			Color(0.52, 1.0, 0.24, 1.0)
+		)
+		and is_equal_approx(ring_light.texture_scale, 0.52)
+		and is_equal_approx(ring_light.night_energy, 0.38)
+		and not ring_light.shadow_enabled,
+		"植被桩必须只预置一盏由地块边框控制可见性的柔和绿色夜间环灯。"
 	)
 	_expect(health_bar != null, "植被桩必须预置并绑定公共植物血条。")
 	root.add_child(stake)
