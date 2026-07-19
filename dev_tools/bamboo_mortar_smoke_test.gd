@@ -847,7 +847,21 @@ func _test_proxy_actions_and_runtime_state(
 		"_windup_started_at_seconds",
 		Time.get_ticks_msec() / 1000.0 - 1.5
 	)
+	authority.set("_last_projectile_action_id", 22)
+	authority.set(
+		"_last_projectile_started_at_seconds",
+		Time.get_ticks_msec() / 1000.0 - 0.1
+	)
+	authority.set(
+		"_last_projectile_spawn_position",
+		authority.muzzle.global_position
+	)
+	authority.set(
+		"_last_projectile_landing_position",
+		Vector2(104.0, 8.0)
+	)
 	var snapshot := authority.export_multiplayer_runtime_state()
+	var overlapping_shell_count := _count_active_shells()
 	var fresh_proxy := _create_mortar(true, 703)
 	if fresh_proxy != null:
 		fresh_proxy.apply_multiplayer_runtime_state(
@@ -858,8 +872,77 @@ func _test_proxy_actions_and_runtime_state(
 			fresh_proxy.latest_proxy_action_id == 23
 			and fresh_proxy.combat_phase
 			== BambooMortar.CombatPhase.WINDUP
-			and fresh_proxy.main_sprite.frame >= 2,
-			"中途加入的客户端必须从运行时快照恢复当前action与蓄热进度。"
+			and fresh_proxy.main_sprite.frame >= 2
+			and int(
+				fresh_proxy.get("_latest_proxy_shell_action_id")
+			) == 22
+			and _count_active_shells()
+			== overlapping_shell_count + 1,
+			"中途加入的客户端必须同时恢复当前前摇与上一枚仍在飞行的炮弹。"
+		)
+	var dropped_fire_proxy := _create_mortar(true, 704)
+	if dropped_fire_proxy != null:
+		dropped_fire_proxy.play_multiplayer_action(
+			BambooMortar.NETWORK_STAGE_WINDUP,
+			23,
+			dropped_fire_proxy.muzzle.global_position,
+			Vector2(112.0, 8.0),
+			1.5
+		)
+		var dropped_fire_shell_count := _count_active_shells()
+		dropped_fire_proxy.apply_multiplayer_runtime_state(
+			snapshot,
+			Time.get_ticks_msec() / 1000.0
+		)
+		_expect(
+			dropped_fire_proxy.latest_proxy_action_id == 23
+			and dropped_fire_proxy.latest_proxy_stage
+			== BambooMortar.NETWORK_STAGE_WINDUP
+			and int(
+				dropped_fire_proxy.get(
+					"_latest_proxy_shell_action_id"
+				)
+			) == 22
+			and dropped_fire_proxy.main_sprite.animation == &"charge"
+			and _count_active_shells()
+			== dropped_fire_shell_count + 1,
+			"已收到新前摇但漏收旧出膛事件的客户端，必须由快照补回旧炮弹且不能回滚主体。"
+		)
+		dropped_fire_proxy.apply_multiplayer_runtime_state(
+			snapshot,
+			Time.get_ticks_msec() / 1000.0
+		)
+		_expect(
+			_count_active_shells()
+			== dropped_fire_shell_count + 1,
+			"重复快照不得为同一旧action补生成第二枚炮弹。"
+		)
+	var newer_action_proxy := _create_mortar(true, 705)
+	if newer_action_proxy != null:
+		newer_action_proxy.play_multiplayer_action(
+			BambooMortar.NETWORK_STAGE_WINDUP,
+			24,
+			newer_action_proxy.muzzle.global_position,
+			Vector2(128.0, 8.0),
+			0.5
+		)
+		var stale_snapshot_shell_count := _count_active_shells()
+		newer_action_proxy.apply_multiplayer_runtime_state(
+			snapshot,
+			Time.get_ticks_msec() / 1000.0
+		)
+		_expect(
+			newer_action_proxy.latest_proxy_action_id == 24
+			and newer_action_proxy.latest_proxy_stage
+			== BambooMortar.NETWORK_STAGE_WINDUP
+			and int(
+				newer_action_proxy.get(
+					"_latest_proxy_shell_action_id"
+				)
+			) == 0
+			and _count_active_shells()
+			== stale_snapshot_shell_count,
+			"客户端推进到更新action后，旧快照不得倒灌已经过期的飞行炮弹。"
 		)
 	await _finish_active_shells()
 

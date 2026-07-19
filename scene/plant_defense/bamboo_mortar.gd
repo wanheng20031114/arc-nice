@@ -639,6 +639,23 @@ func _spawn_proxy_shell_once(
 	)
 
 
+func _restore_snapshot_proxy_shell_once(
+	action_id: int,
+	spawn_position: Vector2,
+	landing_position: Vector2,
+	elapsed_seconds: float
+) -> void:
+	if action_id <= _latest_proxy_shell_action_id:
+		return
+	AUDIO_LIMITER.play_burst(fire_audio, elapsed_seconds)
+	_spawn_proxy_shell_once(
+		action_id,
+		spawn_position,
+		landing_position,
+		elapsed_seconds
+	)
+
+
 func export_multiplayer_runtime_state() -> Dictionary:
 	var now := _now_seconds()
 	var state := {
@@ -689,72 +706,91 @@ func apply_multiplayer_runtime_state(
 		CombatPhase.IDLE,
 		CombatPhase.FIRING
 	)
-	if phase == CombatPhase.WINDUP and action_id > 0:
-		var target_position := state.get(
-			"windup_target_position",
-			global_position
-		) as Vector2
-		play_multiplayer_action(
-			NETWORK_STAGE_WINDUP,
-			action_id,
-			muzzle.global_position,
-			target_position,
-			maxf(
-				float(
-					state.get(
-						"windup_elapsed_seconds",
-						0.0
-					)
-				),
-				0.0
-			)
-		)
 	var projectile_action_id := maxi(
 		int(state.get("projectile_action_id", 0)),
 		0
 	)
-	if projectile_action_id <= 0:
+	if projectile_action_id > 0:
+		var spawn_position := state.get(
+			"projectile_spawn_position",
+			muzzle.global_position
+		) as Vector2
+		var landing_position := state.get(
+			"projectile_landing_position",
+			global_position
+		) as Vector2
+		var projectile_elapsed := maxf(
+			float(state.get("projectile_elapsed_seconds", 0.0)),
+			0.0
+		)
 		if (
-			phase != CombatPhase.WINDUP
-			and (
-				action_id > latest_proxy_action_id
-				or (
-					action_id == latest_proxy_action_id
-					and latest_proxy_stage < NETWORK_STAGE_FIRE
+			spawn_position.is_finite()
+			and landing_position.is_finite()
+			and is_finite(projectile_elapsed)
+		):
+			if (
+				phase == CombatPhase.WINDUP
+				and action_id > projectile_action_id
+				and (
+					action_id > latest_proxy_action_id
+					or (
+						action_id == latest_proxy_action_id
+						and latest_proxy_stage
+						<= NETWORK_STAGE_WINDUP
+					)
+				)
+			):
+				_restore_snapshot_proxy_shell_once(
+					projectile_action_id,
+					spawn_position,
+					landing_position,
+					projectile_elapsed
+				)
+			else:
+				play_multiplayer_action(
+					NETWORK_STAGE_FIRE,
+					projectile_action_id,
+					spawn_position,
+					landing_position,
+					projectile_elapsed
+				)
+	if phase == CombatPhase.WINDUP:
+		if action_id > 0:
+			var target_position := state.get(
+				"windup_target_position",
+				global_position
+			) as Vector2
+			play_multiplayer_action(
+				NETWORK_STAGE_WINDUP,
+				action_id,
+				muzzle.global_position,
+				target_position,
+				maxf(
+					float(
+						state.get(
+							"windup_elapsed_seconds",
+							0.0
+						)
+					),
+					0.0
 				)
 			)
-		):
-			latest_proxy_action_id = action_id
-			latest_proxy_stage = NETWORK_STAGE_FIRE
-			combat_phase = phase
-			main_sprite.position = MAIN_SPRITE_REST_POSITION
-			main_sprite.play(&"idle")
-			_set_glow_state(false, 0)
 		return
-	var spawn_position := state.get(
-		"projectile_spawn_position",
-		muzzle.global_position
-	) as Vector2
-	var landing_position := state.get(
-		"projectile_landing_position",
-		global_position
-	) as Vector2
-	var projectile_elapsed := maxf(
-		float(state.get("projectile_elapsed_seconds", 0.0)),
-		0.0
-	)
+	if projectile_action_id > 0:
+		return
 	if (
-		spawn_position.is_finite()
-		and landing_position.is_finite()
-		and is_finite(projectile_elapsed)
-	):
-		play_multiplayer_action(
-			NETWORK_STAGE_FIRE,
-			projectile_action_id,
-			spawn_position,
-			landing_position,
-			projectile_elapsed
+		action_id > latest_proxy_action_id
+		or (
+			action_id == latest_proxy_action_id
+			and latest_proxy_stage < NETWORK_STAGE_FIRE
 		)
+	):
+		latest_proxy_action_id = action_id
+		latest_proxy_stage = NETWORK_STAGE_FIRE
+		combat_phase = phase
+		main_sprite.position = MAIN_SPRITE_REST_POSITION
+		main_sprite.play(&"idle")
+		_set_glow_state(false, 0)
 
 
 func _set_glow_state(charging: bool, frame_index: int) -> void:
