@@ -4,12 +4,13 @@
 [ext_resource type="Texture2D" uid="uid://uinefbl1ycc7" path="res://resources/texture/plant_defense/plant_cultivation_center/plant_cultivation_center.png" id="2_sprite"]
 [ext_resource type="PackedScene" uid="uid://by1igl2yc3ch0" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
 [ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
-[ext_resource type="Material" path="res://resources/shader/plant_lifecycle_material.tres" id="5_lifecycle_material"]
+[ext_resource type="Shader" path="res://resources/shader/plant_cultivation_center_lifecycle_glow.gdshader" id="5_lifecycle_glow_shader"]
 [ext_resource type="Resource" path="res://resources/config/production/wooden_core_to_agave_cannon.tres" id="6_agave_recipe"]
 [ext_resource type="Resource" path="res://resources/config/production/wooden_core_to_corn_machine_gun.tres" id="7_corn_recipe"]
 [ext_resource type="Script" uid="uid://bqe4uxp0um77k" path="res://resources/config/production/production_recipe.gd" id="8_recipe_script"]
 [ext_resource type="Texture2D" uid="uid://c7mn0lidpp3eq" path="res://resources/texture/production/plant_cultivation_center_panel_background.png" id="9_panel_background"]
 [ext_resource type="Shader" uid="uid://dsxkvh3u24ove" path="res://resources/shader/plant_cultivation_center_border.gdshader" id="10_border_shader"]
+[ext_resource type="Texture2D" path="res://resources/shader/plant_lifecycle_noise.tres" id="11_lifecycle_noise"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_production_border"]
 shader = ExtResource("10_border_shader")
@@ -17,6 +18,16 @@ shader_parameter/idle_green = Color(0.18, 0.45, 0.19, 1)
 shader_parameter/idle_shadow = Color(0.055, 0.19, 0.075, 1)
 shader_parameter/progress_green = Color(0.56, 0.94, 0.18, 1)
 shader_parameter/leaf_noise_speed = 1.55
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_lifecycle_glow"]
+shader = ExtResource("5_lifecycle_glow_shader")
+shader_parameter/lifecycle_noise = ExtResource("11_lifecycle_noise")
+shader_parameter/glow_color = Color(0.52, 1.08, 0.18, 1)
+shader_parameter/glow_core_strength = 0.3
+shader_parameter/glow_halo_strength = 0.05
+shader_parameter/glow_halo_alpha = 0.045
+shader_parameter/glow_pulse_amount = 0.006
+shader_parameter/glow_pulse_speed = 0.85
 
 [sub_resource type="QuadMesh" id="QuadMesh_production_border"]
 size = Vector2(32, 32)
@@ -104,7 +115,7 @@ scale = Vector2(0.5, 0.5)
 [node name="MainSprite" type="Sprite2D" parent="VisualRoot" unique_id=1430086103]
 z_index = 1
 texture_filter = 1
-material = ExtResource("5_lifecycle_material")
+material = SubResource("ShaderMaterial_lifecycle_glow")
 texture = ExtResource("2_sprite")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=483902308]

@@ -161,6 +161,7 @@ func _run() -> void:
 			progress_green.get_luminance() > idle_green.get_luminance() + 0.2,
 			"工作进度必须使用明显亮于默认深绿色的嫩绿色。"
 		)
+	_test_world_glow_contract(center, config)
 
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run()
@@ -274,6 +275,99 @@ func _run() -> void:
 		player
 	)
 	_finish(test_root)
+
+
+func _test_world_glow_contract(
+	center: PlantCultivationCenter,
+	config: PlantDefenseConfig
+) -> void:
+	var visual_root := center.get_node_or_null("VisualRoot") as Node2D
+	var main_sprite := center.get_node_or_null(
+		"VisualRoot/MainSprite"
+	) as Sprite2D
+	var glow_material := (
+		main_sprite.material as ShaderMaterial
+		if main_sprite != null
+		else null
+	)
+	_expect(
+		visual_root != null
+		and visual_root.scale == Vector2(0.5, 0.5)
+		and main_sprite != null
+		and main_sprite.z_index == 1
+		and main_sprite.texture_filter
+		== CanvasItem.TEXTURE_FILTER_NEAREST
+		and center.lifecycle_visual_paths
+		== [NodePath("VisualRoot/MainSprite")]
+		and center.get_node_or_null("VisualRoot/GlowOverlay") == null,
+		"五处常亮微光必须并入0.5整数缩放的主体单次绘制，不能新增独立Overlay破坏像素或图层。"
+	)
+	_expect(
+		glow_material != null
+		and not glow_material.resource_local_to_scene
+		and glow_material.shader.resource_path
+		== "res://resources/shader/plant_cultivation_center_lifecycle_glow.gdshader"
+		and is_equal_approx(
+			float(
+				glow_material.get_shader_parameter(
+					&"glow_pulse_amount"
+				)
+			),
+			0.006
+		)
+		and (
+			glow_material.get_shader_parameter(&"glow_color") as Color
+		).g > 1.0,
+		"培育中心主体必须共享嫩草绿HDR材质，常亮呼吸幅度只能为±0.6%。"
+	)
+	var second_center := (
+		config.plant_scene.instantiate() as PlantCultivationCenter
+	)
+	if second_center != null:
+		var second_sprite := second_center.get_node_or_null(
+			"VisualRoot/MainSprite"
+		) as Sprite2D
+		_expect(
+			second_sprite != null
+			and second_sprite.material == glow_material,
+			"多个培育中心必须共享同一不可变ShaderMaterial，不能逐实例复制材质。"
+		)
+		second_center.free()
+	var shader_source := FileAccess.get_file_as_string(
+		"res://resources/shader/plant_cultivation_center_lifecycle_glow.gdshader"
+	)
+	_expect(
+		shader_source.contains(
+			"small_light_core(pixel_position, vec2(32.0, 12.0))"
+		)
+		and shader_source.contains(
+			"small_light_core(pixel_position, vec2(10.0, 32.0))"
+		)
+		and shader_source.contains(
+			"small_light_core(pixel_position, vec2(54.0, 32.0))"
+		)
+		and shader_source.contains(
+			"small_light_core(pixel_position, vec2(22.0, 40.0))"
+		)
+		and shader_source.contains(
+			"pixel_position - vec2(32.5, 52.5)"
+		)
+		and not shader_source.contains("vec2(42.0, 40.0)"),
+		"微光遮罩必须严格对应截图圈出的顶部、左右立柱、左内侧与底部面板五处。"
+	)
+	_expect(
+		shader_source.contains("vec4 result = COLOR")
+		and shader_source.contains(
+			"instance uniform float construction_progress"
+		)
+		and shader_source.contains("instance uniform bool removal_enabled")
+		and shader_source.contains("uniform sampler2D lifecycle_noise")
+		and shader_source.contains("varying float glow_pulse")
+		and shader_source.contains(
+			"glow_pulse_amount * sin("
+		),
+		"专用发光Shader必须完整保留建造/拆除生命周期，并在顶点阶段计算极弱呼吸。"
+	)
 
 
 func _test_asset_contracts() -> void:
