@@ -356,12 +356,12 @@ func _fire_bullets(base_direction: Vector2) -> bool:
 		var has_spawned_forward_bullet := _spawn_bullet(base_direction, false)
 		var has_spawned_backward_bullet := _spawn_bullet(base_direction.rotated(PI), false)
 		spiral_phase = wrapf(spiral_phase + SPIRAL_PHASE_STEP, 0.0, TAU)
-		var has_spawned_bullet := (
+		var has_spawned_spiral_bullet := (
 			has_spawned_forward_bullet or has_spawned_backward_bullet
 		)
-		if has_spawned_bullet:
+		if has_spawned_spiral_bullet:
 			notify_primary_attack_performed()
-		return has_spawned_bullet
+		return has_spawned_spiral_bullet
 
 	var has_spawned_bullet := _spawn_bullet(base_direction)
 	if has_spawned_bullet:

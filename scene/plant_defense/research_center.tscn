@@ -1,9 +1,9 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://bg3h6ma4lbbqd"]
 
-[ext_resource type="Script" path="res://scene/plant_defense/research_center.gd" id="1_script"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/research_center/research_center.png" id="2_sprite"]
-[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
-[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
+[ext_resource type="Script" uid="uid://chreaye2uaddt" path="res://scene/plant_defense/research_center.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://cx5577bfmgaln" path="res://resources/texture/plant_defense/research_center/research_center.png" id="2_sprite"]
+[ext_resource type="PackedScene" uid="uid://by1igl2yc3ch0" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
+[ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
 [ext_resource type="Material" path="res://resources/shader/plant_lifecycle_material.tres" id="5_lifecycle_material"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
@@ -12,8 +12,8 @@ size = Vector2(28, 27)
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_player_core"]
 resource_local_to_scene = true
-radius = 7.0
-height = 16.0
+radius = 6.0
+height = 18.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_interaction"]
 resource_local_to_scene = true
@@ -66,97 +66,95 @@ font_color = Color(0.78, 0.94, 1, 1)
 outline_size = 1
 outline_color = Color(0.01, 0.035, 0.09, 1)
 
-[node name="ResearchCenter" type="StaticBody2D"]
+[node name="ResearchCenter" type="StaticBody2D" unique_id=911317458]
 collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
 enemy_approach_depth = 7.0
 lifecycle_visual_paths = Array[NodePath]([NodePath("VisualRoot/MainSprite")])
 lifecycle_effect_top_y = -15.0
-lifecycle_effect_bottom_y = 16.0
-lifecycle_particle_scale = 1.0
 
-[node name="VisualRoot" type="Node2D" parent="."]
+[node name="VisualRoot" type="Node2D" parent="." unique_id=144664990]
 scale = Vector2(0.5, 0.5)
 
-[node name="MainSprite" type="Sprite2D" parent="VisualRoot"]
+[node name="MainSprite" type="Sprite2D" parent="VisualRoot" unique_id=1870545017]
 z_index = 1
 texture_filter = 1
 material = ExtResource("5_lifecycle_material")
 texture = ExtResource("2_sprite")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=245206535]
 position = Vector2(0, 1.5)
 shape = SubResource("RectangleShape2D_body")
 
-[node name="PlayerCoreBody" type="StaticBody2D" parent="."]
+[node name="PlayerCoreBody" type="StaticBody2D" parent="." unique_id=1295660534]
 position = Vector2(0, 1)
 collision_layer = 1024
 collision_mask = 2
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody"]
-position = Vector2(0, 2)
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody" unique_id=2019779733]
+position = Vector2(0, 6)
+rotation = 1.5707964
 shape = SubResource("CapsuleShape2D_player_core")
 
-[node name="InteractionArea" type="Area2D" parent="."]
+[node name="InteractionArea" type="Area2D" parent="." unique_id=1628437528]
 collision_layer = 0
 collision_mask = 2
 monitoring = false
 monitorable = false
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea" unique_id=1989927772]
 shape = SubResource("CircleShape2D_interaction")
 
-[node name="InteractionPrompt" type="PanelContainer" parent="."]
+[node name="InteractionPrompt" type="PanelContainer" parent="." unique_id=1894976082]
 z_index = 10
 texture_filter = 1
 custom_minimum_size = Vector2(112, 26)
-offset_left = -56.0
+offset_left = -28.0
 offset_top = -30.0
-offset_right = 56.0
+offset_right = 84.0
 offset_bottom = -4.0
 scale = Vector2(0.5, 0.5)
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_prompt")
 
-[node name="PromptMargin" type="MarginContainer" parent="InteractionPrompt"]
+[node name="PromptMargin" type="MarginContainer" parent="InteractionPrompt" unique_id=234887773]
 layout_mode = 2
 theme_override_constants/margin_left = 4
 theme_override_constants/margin_top = 3
 theme_override_constants/margin_right = 4
 theme_override_constants/margin_bottom = 3
 
-[node name="PromptRow" type="HBoxContainer" parent="InteractionPrompt/PromptMargin"]
+[node name="PromptRow" type="HBoxContainer" parent="InteractionPrompt/PromptMargin" unique_id=306466019]
 layout_mode = 2
 theme_override_constants/separation = 4
 alignment = 1
 
-[node name="Keycap" type="PanelContainer" parent="InteractionPrompt/PromptMargin/PromptRow"]
+[node name="Keycap" type="PanelContainer" parent="InteractionPrompt/PromptMargin/PromptRow" unique_id=966172615]
 custom_minimum_size = Vector2(18, 18)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_keycap")
 
-[node name="KeyLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow/Keycap"]
+[node name="KeyLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow/Keycap" unique_id=1592940108]
 layout_mode = 2
 text = "F"
 label_settings = SubResource("LabelSettings_keycap")
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="ActionLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow"]
+[node name="ActionLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow" unique_id=726416724]
 layout_mode = 2
 text = "打开科研中心"
 label_settings = SubResource("LabelSettings_action")
 vertical_alignment = 1
 
-[node name="HealthBar" parent="." instance=ExtResource("3_health_bar")]
-custom_minimum_size = Vector2(32, 5)
+[node name="HealthBar" parent="." unique_id=615407543 instance=ExtResource("3_health_bar")]
 offset_left = -16.0
 offset_top = -17.0
 offset_right = 16.0
 offset_bottom = -12.0
 
-[node name="MultiplayerResearchRequestTimer" type="Timer" parent="."]
+[node name="MultiplayerResearchRequestTimer" type="Timer" parent="." unique_id=1239602788]
 wait_time = 4.0
 one_shot = true
 
