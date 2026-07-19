@@ -18,6 +18,12 @@ const SAPLING := preload("res://resources/config/materials/material_sapling.tres
 const WATER_BOTTLE := preload(
 	"res://resources/config/materials/material_water_bottle.tres"
 )
+const BUILDING_DEFENSE_RESEARCH_ID := (
+	GlobalResearchRegistry.BUILDING_DEFENSE_ID
+)
+const PLAYER_MOVE_SPEED_RESEARCH_ID := (
+	GlobalResearchRegistry.PLAYER_MOVE_SPEED_ID
+)
 
 var failures: PackedStringArray = []
 
@@ -120,15 +126,31 @@ func _run() -> void:
 		and production.get_total_item_count(WATER_BOTTLE) == 5,
 		"开始研究的同一帧必须原子扣除50木板、20树苗与20水瓶。"
 	)
+	var water_before_conflicting_request := production.get_total_item_count(
+		WATER_BOTTLE
+	)
+	_expect(
+		center.try_start_global_research(PLAYER_MOVE_SPEED_RESEARCH_ID)
+		== ResearchCoordinator.RESULT_IN_PROGRESS
+		and production.get_total_item_count(WATER_BOTTLE)
+		== water_before_conflicting_request,
+		"同一时刻只能进行一项全局研究，冲突请求不得预扣材料。"
+	)
 	research.advance_global_research(59.0)
 	_expect(
-		research.global_state == ResearchCoordinator.GlobalResearchState.RESEARCHING
+		research.get_global_research_state(BUILDING_DEFENSE_RESEARCH_ID)
+		== ResearchCoordinator.GlobalResearchState.RESEARCHING
+		and is_equal_approx(
+			research.get_global_elapsed_seconds(BUILDING_DEFENSE_RESEARCH_ID),
+			59.0
+		)
 		and center.get_effective_physical_defense() == 5,
 		"研究未满60秒时不得提前提供建筑物防。"
 	)
 	research.advance_global_research(1.0)
 	_expect(
-		research.global_state == ResearchCoordinator.GlobalResearchState.COMPLETED
+		research.get_global_research_state(BUILDING_DEFENSE_RESEARCH_ID)
+		== ResearchCoordinator.GlobalResearchState.COMPLETED
 		and plant_system.get_global_physical_defense_bonus() == 10
 		and center.get_effective_physical_defense() == 15,
 		"研究完成后必须永久给现有建筑增加10点物防。"
@@ -138,6 +160,16 @@ func _run() -> void:
 		"完成的全局科技必须不可重复提交。"
 	)
 
+	await _test_global_move_speed_research(
+		research,
+		center,
+		production,
+		warehouse,
+		second_warehouse,
+		plant_system,
+		[weishidaier, tiyi, hoe_cat],
+		test_root
+	)
 	await _test_player_technology(research, center, panel, weishidaier, tiyi, hoe_cat)
 	_test_multiplayer_request_contract(config, research, panel, test_root)
 	_finish(test_root)
@@ -148,6 +180,34 @@ func _test_config_and_scene(
 	center: ResearchCenter,
 	panel: ResearchCenterPanel
 ) -> void:
+	var defense_research := GlobalResearchRegistry.get_config(
+		BUILDING_DEFENSE_RESEARCH_ID
+	)
+	var move_speed_research := GlobalResearchRegistry.get_config(
+		PLAYER_MOVE_SPEED_RESEARCH_ID
+	)
+	_expect(
+		defense_research != null
+		and defense_research.is_valid()
+		and is_equal_approx(defense_research.duration_seconds, 60.0)
+		and defense_research.effect_type
+		== GlobalResearchConfig.EffectType.BUILDING_PHYSICAL_DEFENSE
+		and is_equal_approx(defense_research.effect_amount, 10.0)
+		and defense_research.input_items.size() == 3
+		and defense_research.input_amounts == [50, 20, 20],
+		"建筑结构强化必须是60秒、三种材料与全建筑物防+10的数据配置。"
+	)
+	_expect(
+		move_speed_research != null
+		and move_speed_research.is_valid()
+		and is_equal_approx(move_speed_research.duration_seconds, 60.0)
+		and move_speed_research.effect_type
+		== GlobalResearchConfig.EffectType.PLAYER_MOVE_SPEED
+		and is_equal_approx(move_speed_research.effect_amount, 15.0)
+		and move_speed_research.input_items == [WATER_BOTTLE]
+		and move_speed_research.input_amounts == [50],
+		"全员移动训练必须消耗50水瓶、持续60秒并提供全员移速+15。"
+	)
 	_expect(
 		config != null
 		and config.is_valid()
@@ -181,6 +241,15 @@ func _test_config_and_scene(
 		)
 	_expect(
 		panel != null
+		and panel.has_node(
+			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll"
+		)
+		and panel.has_node(
+			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/DefenseResearchButton"
+		)
+		and panel.has_node(
+			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/MoveSpeedResearchButton"
+		)
 		and panel.has_node("Overlay/PanelRoot/GlobalPage/PlankSlot")
 		and panel.has_node("Overlay/PanelRoot/GlobalPage/SaplingSlot")
 		and panel.has_node("Overlay/PanelRoot/GlobalPage/WaterBottleSlot")
@@ -190,6 +259,27 @@ func _test_config_and_scene(
 		and not panel.has_node("Overlay/PanelRoot/ToggleButton"),
 		"科研UI必须原生包含双页与三处技术节点，并且不能有开关。"
 	)
+	_expect(
+		is_equal_approx(
+			ResearchCenterPanel.get_pixel_perfect_panel_scale(
+				Vector2(1920.0, 1080.0)
+			),
+			1.0
+		)
+		and is_equal_approx(
+			ResearchCenterPanel.get_pixel_perfect_panel_scale(
+				Vector2(2560.0, 1440.0)
+			),
+			2.0
+		)
+		and is_equal_approx(
+			ResearchCenterPanel.get_pixel_perfect_panel_scale(
+				Vector2(640.0, 480.0)
+			),
+			0.5
+		),
+		"科研UI必须只使用整数放大或整数倒数缩小，避免模糊且不能在小窗口裁切。"
+	)
 	if panel != null:
 		var background := panel.get_node("Overlay/PanelRoot/Background") as TextureRect
 		_expect(
@@ -197,6 +287,153 @@ func _test_config_and_scene(
 			and background.texture.get_size() == Vector2(728, 544),
 			"科研UI必须使用独立生成的728×544蓝色科技背景。"
 		)
+
+
+func _test_global_move_speed_research(
+	research: ResearchCoordinator,
+	center: ResearchCenter,
+	production: ProductionCoordinator,
+	warehouse: OakWarehouse,
+	second_warehouse: OakWarehouse,
+	plant_system: PlantSystem,
+	players: Array,
+	test_root: Node
+) -> void:
+	var speeds_before: Dictionary = {}
+	for player_variant in players:
+		var player := player_variant as Player
+		speeds_before[player.get_instance_id()] = player.move_speed
+
+	_expect(
+		warehouse.try_add_storage_item_count(WATER_BOTTLE, 44),
+		"移动研究测试必须能把共享水瓶补到49个。"
+	)
+	_expect(
+		production.get_total_item_count(WATER_BOTTLE) == 49
+		and center.try_start_global_research(PLAYER_MOVE_SPEED_RESEARCH_ID)
+		== ResearchCoordinator.RESULT_MISSING_INPUT
+		and production.get_total_item_count(WATER_BOTTLE) == 49,
+		"全员移动训练缺少第50个水瓶时必须原子失败且不得扣料。"
+	)
+	_expect(
+		second_warehouse.try_add_storage_item_count(WATER_BOTTLE, 1),
+		"移动研究测试必须能补入最后1个水瓶。"
+	)
+	_expect(
+		center.try_start_global_research(PLAYER_MOVE_SPEED_RESEARCH_ID)
+		== ResearchCoordinator.RESULT_SUCCESS
+		and production.get_total_item_count(WATER_BOTTLE) == 0,
+		"全员移动训练开始时必须一次且仅一次扣除50个水瓶。"
+	)
+	research.advance_global_research(59.0)
+	for player_variant in players:
+		var player := player_variant as Player
+		_expect(
+			is_equal_approx(
+				player.move_speed,
+				float(speeds_before[player.get_instance_id()])
+			),
+			"全员移动训练未满60秒时不得提前增加玩家移速。"
+		)
+	research.advance_global_research(1.0)
+	_expect(
+		research.get_global_research_state(PLAYER_MOVE_SPEED_RESEARCH_ID)
+		== ResearchCoordinator.GlobalResearchState.COMPLETED
+		and research.get_active_global_research_id().is_empty()
+		and plant_system.get_global_physical_defense_bonus() == 10,
+		"移动研究完成后必须保留已完成的建筑防御研究，并清空研究队列。"
+	)
+	for player_variant in players:
+		var player := player_variant as Player
+		var expected_speed := (
+			float(speeds_before[player.get_instance_id()])
+			+ ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
+		)
+		_expect(
+			is_equal_approx(player.move_speed, expected_speed),
+			"移动研究完成后必须给每个已注册玩家增加15点移速。"
+		)
+		player.call("_refresh_collectible_stats", false)
+		_expect(
+			is_equal_approx(player.move_speed, expected_speed),
+			"收藏品属性刷新后必须保留科研提供的15点移速。"
+		)
+	_expect(
+		center.try_start_global_research(PLAYER_MOVE_SPEED_RESEARCH_ID)
+		== ResearchCoordinator.RESULT_COMPLETED,
+		"全员移动训练完成后不得重复扣水瓶或重复叠加。"
+	)
+
+	var late_player := WEISHIDAIER_SCENE.instantiate() as Player
+	test_root.add_child(late_player)
+	await process_frame
+	late_player.peer_id = 4
+	var late_base_speed := late_player.move_speed
+	research.register_player(late_player)
+	_expect(
+		is_equal_approx(
+			late_player.move_speed,
+			late_base_speed + ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
+		),
+		"移动研究完成后注册的新玩家必须立即获得15点移速。"
+	)
+
+	var remote_research := (
+		RESEARCH_COORDINATOR_SCENE.instantiate() as ResearchCoordinator
+	)
+	var remote_plant_system := PlantSystem.new()
+	var remote_player := TIYI_SCENE.instantiate() as Player
+	test_root.add_child(remote_research)
+	test_root.add_child(remote_plant_system)
+	test_root.add_child(remote_player)
+	await process_frame
+	remote_research.research_tick_timer.stop()
+	remote_research.setup(null, remote_plant_system, null)
+	remote_research.set_authoritative_processing_enabled(false)
+	remote_player.peer_id = 8
+	var remote_base_speed := remote_player.move_speed
+	remote_research.register_player(remote_player)
+	var snapshot := research.export_runtime_state()
+	remote_research.apply_multiplayer_runtime_state(snapshot)
+	_expect(
+		int(snapshot.get("schema", 0))
+		== ResearchCoordinator.RUNTIME_STATE_SCHEMA
+		and remote_research.get_global_research_state(
+			BUILDING_DEFENSE_RESEARCH_ID
+		) == ResearchCoordinator.GlobalResearchState.COMPLETED
+		and remote_research.get_global_research_state(
+			PLAYER_MOVE_SPEED_RESEARCH_ID
+		) == ResearchCoordinator.GlobalResearchState.COMPLETED
+		and remote_plant_system.get_global_physical_defense_bonus() == 10
+		and is_equal_approx(
+			remote_player.move_speed,
+			remote_base_speed + ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
+		),
+		"多人科研快照必须同时同步两项全局效果。"
+	)
+	var replayed_snapshot := snapshot.duplicate(true)
+	replayed_snapshot["revision"] = int(snapshot["revision"]) + 1
+	remote_research.apply_multiplayer_runtime_state(replayed_snapshot)
+	_expect(
+		is_equal_approx(
+			remote_player.move_speed,
+			remote_base_speed + ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
+		),
+		"重复应用更高revision的完成态快照也不得重复叠加移速。"
+	)
+	var accepted_revision := remote_research.research_revision
+	var forged_snapshot := replayed_snapshot.duplicate(true)
+	forged_snapshot["revision"] = accepted_revision + 1
+	forged_snapshot["active_global_research_id"] = "forged_research"
+	remote_research.apply_multiplayer_runtime_state(forged_snapshot)
+	_expect(
+		remote_research.research_revision == accepted_revision
+		and is_equal_approx(
+			remote_player.move_speed,
+			remote_base_speed + ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
+		),
+		"客户端必须拒绝未知研究ID的多人快照且不能污染既有效果。"
+	)
 
 
 func _test_player_technology(
@@ -354,18 +591,35 @@ func _test_multiplayer_request_contract(
 	proxy.multiplayer_research_request_pending = false
 	proxy.multiplayer_research_pending_request_id = 0
 	var captured: Array[Dictionary] = []
+	var result_contexts: Array[Dictionary] = []
 	proxy.research_command_requested.connect(
 		func(command: Dictionary) -> void: captured.append(command)
+	)
+	proxy.multiplayer_research_result.connect(
+		func(
+			success: bool,
+			reason: StringName,
+			operation: StringName,
+			research_id: StringName
+		) -> void:
+			result_contexts.append({
+				"success": success,
+				"reason": reason,
+				"operation": operation,
+				"research_id": research_id,
+			})
 	)
 	var result := proxy.try_purchase_player_technology(null)
 	_expect(
 		result == ResearchCoordinator.RESULT_REQUEST_SENT
 		and proxy.multiplayer_research_request_pending
 		and captured.size() == 1
+		and int(captured[0].get("schema", 0)) == 2
 		and int(captured[0].get("building_net_id", 0)) == 37
 		and int(captured[0].get("peer_id", 0)) == 9
-		and str(captured[0].get("operation", "")) == "player",
-		"多人客户端研究必须只发送带建筑、玩家与操作类型的权威请求。"
+		and str(captured[0].get("operation", "")) == "player"
+		and str(captured[0].get("research_id", "")).is_empty(),
+		"多人客户端个人研究必须发送schema2、建筑、玩家与操作类型。"
 	)
 	proxy.complete_multiplayer_research_request(
 		int(captured[0].get("request_id", 0)),
@@ -373,8 +627,35 @@ func _test_multiplayer_request_contract(
 		ResearchCoordinator.RESULT_INSUFFICIENT_XIRANG
 	)
 	_expect(
-		not proxy.multiplayer_research_request_pending,
-		"主机结果返回后必须解除客户端研究请求锁。"
+		not proxy.multiplayer_research_request_pending
+		and result_contexts.size() == 1
+		and result_contexts[0].get("operation", &"") == &"player"
+		and result_contexts[0].get("research_id", &"") == &"",
+		"主机结果返回后必须解除请求锁，并保留个人研究请求类型。"
+	)
+	var global_result := proxy.try_start_global_research(
+		PLAYER_MOVE_SPEED_RESEARCH_ID
+	)
+	_expect(
+		global_result == ResearchCoordinator.RESULT_REQUEST_SENT
+		and captured.size() == 2
+		and int(captured[1].get("schema", 0)) == 2
+		and str(captured[1].get("operation", "")) == "global"
+		and str(captured[1].get("research_id", ""))
+		== String(PLAYER_MOVE_SPEED_RESEARCH_ID),
+		"多人全局研究请求必须只携带白名单研究ID，由主机决定材料与效果。"
+	)
+	proxy.complete_multiplayer_research_request(
+		int(captured[1].get("request_id", 0)),
+		true,
+		ResearchCoordinator.RESULT_SUCCESS
+	)
+	_expect(
+		result_contexts.size() == 2
+		and result_contexts[1].get("operation", &"") == &"global"
+		and result_contexts[1].get("research_id", &"")
+		== PLAYER_MOVE_SPEED_RESEARCH_ID,
+		"多人回包必须携带原全局研究ID，面板重开后也能显示正确项目。"
 	)
 
 

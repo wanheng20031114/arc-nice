@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="GlobalResearchConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/research/global_research_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_plank.tres" id="2_plank"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_sapling.tres" id="3_sapling"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_water_bottle.tres" id="4_water"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="5_pickup_script"]
+
+[resource]
+script = ExtResource("1_script")
+research_id = &"building_defense"
+display_name = "建筑结构强化"
+description = "提交共享仓库材料，完成后本局所有建筑永久获得10点物理防御。"
+result_summary = "全建筑物防 +10"
+input_items = Array[ExtResource("5_pickup_script")]([ExtResource("2_plank"), ExtResource("3_sapling"), ExtResource("4_water")])
+input_amounts = Array[int]([50, 20, 20])
+duration_seconds = 60.0
+effect_type = 0
+effect_amount = 10.0

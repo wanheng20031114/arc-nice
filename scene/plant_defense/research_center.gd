@@ -2,11 +2,17 @@ extends PlantDefense
 class_name ResearchCenter
 
 signal research_command_requested(command: Dictionary)
-signal multiplayer_research_result(success: bool, reason: StringName)
+signal multiplayer_research_result(
+	success: bool,
+	reason: StringName,
+	operation: StringName,
+	research_id: StringName
+)
 
 const INTERACTION_GROUP := PlantDefense.BUILDING_INTERACTION_GROUP
 const INTERACTION_SELECTION_REFRESH_SECONDS := 0.08
 const MULTIPLAYER_RESEARCH_REQUEST_TIMEOUT_SECONDS := 4.0
+const MULTIPLAYER_RESEARCH_COMMAND_SCHEMA := 2
 
 @onready var interaction_area: Area2D = $InteractionArea
 @onready var interaction_prompt: Control = $InteractionPrompt
@@ -26,6 +32,8 @@ var multiplayer_research_peer_id := 0
 var multiplayer_research_enabled := false
 var multiplayer_research_request_pending := false
 var multiplayer_research_pending_request_id := 0
+var multiplayer_research_pending_operation: StringName = &""
+var multiplayer_research_pending_research_id: StringName = &""
 var next_multiplayer_research_request_id := 1
 
 
@@ -125,17 +133,21 @@ func set_interaction_target_selected(selected: bool) -> void:
 	_set_interaction_target(selected)
 
 
-func try_start_global_research() -> StringName:
+func try_start_global_research(
+	research_id: StringName = ResearchCoordinator.BUILDING_DEFENSE_RESEARCH_ID
+) -> StringName:
+	if GlobalResearchRegistry.get_config(research_id) == null:
+		return ResearchCoordinator.RESULT_UNAVAILABLE
 	if is_multiplayer_proxy:
-		return _request_multiplayer_research(&"global")
+		return _request_multiplayer_research(&"global", research_id)
 	if research_coordinator == null:
 		return ResearchCoordinator.RESULT_UNAVAILABLE
-	return research_coordinator.try_start_global_research()
+	return research_coordinator.try_start_global_research(research_id)
 
 
 func try_purchase_player_technology(player: Player) -> StringName:
 	if is_multiplayer_proxy:
-		return _request_multiplayer_research(&"player")
+		return _request_multiplayer_research(&"player", &"")
 	if research_coordinator == null:
 		return ResearchCoordinator.RESULT_UNAVAILABLE
 	return research_coordinator.try_purchase_player_technology(player)
@@ -156,6 +168,8 @@ func configure_multiplayer_research(new_building_net_id: int, peer_id: int) -> v
 	multiplayer_research_enabled = will_be_enabled
 	multiplayer_research_request_pending = false
 	multiplayer_research_pending_request_id = 0
+	multiplayer_research_pending_operation = &""
+	multiplayer_research_pending_research_id = &""
 	multiplayer_research_request_timer.stop()
 
 
@@ -169,10 +183,19 @@ func complete_multiplayer_research_request(
 		or request_id != multiplayer_research_pending_request_id
 	):
 		return
+	var completed_operation := multiplayer_research_pending_operation
+	var completed_research_id := multiplayer_research_pending_research_id
 	multiplayer_research_request_pending = false
 	multiplayer_research_pending_request_id = 0
+	multiplayer_research_pending_operation = &""
+	multiplayer_research_pending_research_id = &""
 	multiplayer_research_request_timer.stop()
-	multiplayer_research_result.emit(success, reason)
+	multiplayer_research_result.emit(
+		success,
+		reason,
+		completed_operation,
+		completed_research_id
+	)
 
 
 func is_player_within_multiplayer_interaction_distance(
@@ -188,27 +211,39 @@ func is_player_within_multiplayer_interaction_distance(
 	)
 
 
-func _request_multiplayer_research(operation: StringName) -> StringName:
+func _request_multiplayer_research(
+	operation: StringName,
+	research_id: StringName
+) -> StringName:
 	if (
 		not multiplayer_research_enabled
 		or multiplayer_research_request_pending
 		or building_net_id <= 0
 		or multiplayer_research_peer_id <= 0
+		or (
+			operation == &"global"
+			and GlobalResearchRegistry.get_config(research_id) == null
+		)
+		or (operation == &"player" and not research_id.is_empty())
+		or (operation != &"global" and operation != &"player")
 	):
 		return ResearchCoordinator.RESULT_UNAVAILABLE
 	var request_id := next_multiplayer_research_request_id
 	next_multiplayer_research_request_id += 1
 	multiplayer_research_request_pending = true
 	multiplayer_research_pending_request_id = request_id
+	multiplayer_research_pending_operation = operation
+	multiplayer_research_pending_research_id = research_id
 	multiplayer_research_request_timer.start(
 		MULTIPLAYER_RESEARCH_REQUEST_TIMEOUT_SECONDS
 	)
 	research_command_requested.emit({
-		"schema": 1,
+		"schema": MULTIPLAYER_RESEARCH_COMMAND_SCHEMA,
 		"request_id": request_id,
 		"building_net_id": building_net_id,
 		"peer_id": multiplayer_research_peer_id,
 		"operation": String(operation),
+		"research_id": String(research_id),
 	})
 	return ResearchCoordinator.RESULT_REQUEST_SENT
 
@@ -216,9 +251,18 @@ func _request_multiplayer_research(operation: StringName) -> StringName:
 func _on_multiplayer_research_request_timeout() -> void:
 	if not multiplayer_research_request_pending:
 		return
+	var timed_out_operation := multiplayer_research_pending_operation
+	var timed_out_research_id := multiplayer_research_pending_research_id
 	multiplayer_research_request_pending = false
 	multiplayer_research_pending_request_id = 0
-	multiplayer_research_result.emit(false, ResearchCoordinator.RESULT_UNAVAILABLE)
+	multiplayer_research_pending_operation = &""
+	multiplayer_research_pending_research_id = &""
+	multiplayer_research_result.emit(
+		false,
+		ResearchCoordinator.RESULT_UNAVAILABLE,
+		timed_out_operation,
+		timed_out_research_id
+	)
 
 
 func export_multiplayer_runtime_state() -> Dictionary:

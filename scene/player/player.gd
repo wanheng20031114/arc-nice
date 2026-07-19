@@ -172,6 +172,7 @@ var skill1_unlocked: bool = false
 var skill1_charge: float = 0.0
 var skill1_upgrade_level: int = 0
 var research_technology_level: int = 0
+var research_global_move_speed_bonus: float = 0.0
 var research_temporary_physical_defense_bonus: int = 0
 var skill1_base_charge_duration: float = 0.0
 var last_attack_direction: Vector2 = Vector2.RIGHT
@@ -1698,6 +1699,14 @@ func set_research_technology_level(level: int) -> void:
 	research_technology_level_changed.emit(research_technology_level)
 
 
+func set_research_global_move_speed_bonus(bonus: float) -> void:
+	var resolved_bonus := maxf(bonus, 0.0)
+	if is_equal_approx(research_global_move_speed_bonus, resolved_bonus):
+		return
+	research_global_move_speed_bonus = resolved_bonus
+	_refresh_collectible_stats(false)
+
+
 func get_next_research_technology_cost() -> int:
 	if research_technology_level >= RESEARCH_TECHNOLOGY_MAX_LEVEL:
 		return 0
@@ -2151,7 +2160,12 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 		1
 	)
 	max_health = maxi(_base_max_health + max_health_bonus, 1)
-	move_speed = maxf(_base_move_speed + move_speed_bonus, 0.0)
+	move_speed = maxf(
+		_base_move_speed
+		+ move_speed_bonus
+		+ research_global_move_speed_bonus,
+		0.0
+	)
 	physical_defense = maxi(
 		_base_physical_defense
 		+ physical_defense_bonus

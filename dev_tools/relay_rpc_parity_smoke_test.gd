@@ -79,7 +79,7 @@ func _run() -> void:
 		not main_rpcs.has("net_wave_started"),
 		"Legacy wave-index RPC must stay removed; flow step_id is the sole lifecycle source."
 	)
-	_test_gameplay_v14_transaction_contract(main_rpcs)
+	_test_gameplay_v15_transaction_contract(main_rpcs)
 	_test_gameplay_channel_contract(main_rpcs)
 
 	var main_net_manager_rpcs := _extract_rpc_surface(MAIN_NET_MANAGER_PATH)
@@ -120,10 +120,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 14,
-		"Distance-timed Bamboo Mortar projectiles require protocol version 14."
+		NetConstants.PROTOCOL_VERSION == 15,
+		"Global research selection requires protocol version 15."
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v14 must provision eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v15 must provision eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -216,11 +216,11 @@ func _test_relay_channel_count() -> void:
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
 		and relay_source.contains("create_server(_port, MAX_CLIENTS, CHANNEL_COUNT)"),
-		"Relay server must provision the same eight ENet channels as protocol v14 clients."
+		"Relay server must provision the same eight ENet channels as protocol v15 clients."
 	)
 
 
-func _test_gameplay_v14_transaction_contract(rpcs: Dictionary) -> void:
+func _test_gameplay_v15_transaction_contract(rpcs: Dictionary) -> void:
 	_expect_rpc_signature_contains(
 		rpcs,
 		"net_terrain_snapshot_requested",
@@ -244,7 +244,19 @@ func _test_gameplay_v14_transaction_contract(rpcs: Dictionary) -> void:
 		and mp_game_source.contains("const TERRAIN_TYPE_EMPTY := -1")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_PER_SECOND := 1.0")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_BURST := 2.0"),
-		"Protocol v14 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
+		"Protocol v15 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
+	)
+	_expect(
+		mp_game_source.contains(
+			"GlobalResearchRegistry.get_config_by_wire_id(research_id_wire)"
+		)
+		and mp_game_source.contains(
+			"or int(schema_value) != ResearchCenter.MULTIPLAYER_RESEARCH_COMMAND_SCHEMA"
+		)
+		and mp_game_source.contains(
+			"building.try_start_global_research(research_config.research_id)"
+		),
+		"Protocol v15 research commands must use schema2 and resolve a Host-owned research whitelist."
 	)
 	for signature_fragment in [
 		"plant_net_ids:PackedInt32Array",

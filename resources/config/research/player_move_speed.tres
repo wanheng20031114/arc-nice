@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="GlobalResearchConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/research/global_research_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_water_bottle.tres" id="2_water"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="3_pickup_script"]
+
+[resource]
+script = ExtResource("1_script")
+research_id = &"player_move_speed"
+display_name = "全员移动训练"
+description = "消耗共享仓库中的50个水瓶；完成后本局全体玩家移动速度永久增加15。"
+result_summary = "全体玩家移速 +15"
+input_items = Array[ExtResource("3_pickup_script")]([ExtResource("2_water")])
+input_amounts = Array[int]([50])
+duration_seconds = 60.0
+effect_type = 1
+effect_amount = 15.0

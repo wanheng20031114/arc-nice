@@ -144,7 +144,7 @@ const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
-## 协议 v14 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
+## 协议 v15 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
 ## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
 const SHARED_SNAPSHOT_COHORT_ID := -1
 const ENEMY_ACTION_SNAPSHOT_REORDER_TOLERANCE_SECONDS := 0.075
@@ -1513,6 +1513,7 @@ func _apply_authoritative_research_command(
 	var building_net_id_value: Variant = raw_command.get("building_net_id")
 	var declared_peer_id_value: Variant = raw_command.get("peer_id")
 	var operation_value: Variant = raw_command.get("operation")
+	var research_id_value: Variant = raw_command.get("research_id")
 	var fields_are_valid := (
 		typeof(schema_value) == TYPE_INT
 		and typeof(request_id_value) == TYPE_INT
@@ -1522,10 +1523,20 @@ func _apply_authoritative_research_command(
 			typeof(operation_value) == TYPE_STRING
 			or typeof(operation_value) == TYPE_STRING_NAME
 		)
+		and (
+			typeof(research_id_value) == TYPE_STRING
+			or typeof(research_id_value) == TYPE_STRING_NAME
+		)
 	)
 	var request_id := int(request_id_value) if fields_are_valid else 0
 	var building_net_id := int(building_net_id_value) if fields_are_valid else 0
-	var operation := StringName(operation_value) if fields_are_valid else &""
+	var operation_wire := String(operation_value) if fields_are_valid else ""
+	var research_id_wire := String(research_id_value) if fields_are_valid else ""
+	var research_config: GlobalResearchConfig = (
+		GlobalResearchRegistry.get_config_by_wire_id(research_id_wire)
+		if fields_are_valid and operation_wire == "global"
+		else null
+	)
 	var result := ResearchCoordinator.RESULT_UNAVAILABLE
 	var peer_request_ids := _last_research_request_ids.get(peer_id, {}) as Dictionary
 	var last_request_id := int(peer_request_ids.get(building_net_id, 0))
@@ -1533,11 +1544,13 @@ func _apply_authoritative_research_command(
 	var building := game.get_multiplayer_plant_node(building_net_id) as ResearchCenter
 	if (
 		not fields_are_valid
-		or int(schema_value) != 1
+		or int(schema_value) != ResearchCenter.MULTIPLAYER_RESEARCH_COMMAND_SCHEMA
 		or int(declared_peer_id_value) != peer_id
 		or request_id <= last_request_id
 		or building_net_id <= 0
-		or (operation != &"global" and operation != &"player")
+		or (operation_wire != "global" and operation_wire != "player")
+		or (operation_wire == "global" and research_config == null)
+		or (operation_wire == "player" and not research_id_wire.is_empty())
 	):
 		result = ResearchCoordinator.RESULT_UNAVAILABLE
 	elif player_node == null or not is_instance_valid(player_node) or player_node.is_dead:
@@ -1562,8 +1575,8 @@ func _apply_authoritative_research_command(
 		peer_request_ids[building_net_id] = request_id
 		_last_research_request_ids[peer_id] = peer_request_ids
 		result = (
-			building.try_start_global_research()
-			if operation == &"global"
+			building.try_start_global_research(research_config.research_id)
+			if operation_wire == "global"
 			else building.try_purchase_player_technology(player_node)
 		)
 	var success := result == ResearchCoordinator.RESULT_SUCCESS
@@ -7252,7 +7265,7 @@ func net_player_healed(
 	player_node.queue_healing_number(confirmed_healing)
 
 
-# Legacy compatibility shells retained in protocol v14. Xirang orbs no longer exist, but keeping the
+# Legacy compatibility shells retained in protocol v15. Xirang orbs no longer exist, but keeping the
 # annotated signatures avoids a partial wire-protocol break until the next
 # coordinated protocol-version upgrade.
 @rpc("authority", "call_remote", "reliable", 5)

@@ -111,7 +111,7 @@ func _run() -> void:
 	_test_shared_snapshot_cohort_lifecycle()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V14_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V15_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -120,7 +120,7 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 14, "Protocol must be v14.")
+	_expect(NetConstants.PROTOCOL_VERSION == 15, "Protocol must be v15.")
 	_expect(NetConstants.CHANNEL_COUNT == 8, "ENet must provision eight channels.")
 	_expect(NetConstants.MAX_PLAYERS == 8, "Protocol capacity must accept an eight-player roster.")
 	_expect(
@@ -132,7 +132,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v14 channel assignments must remain stable."
+		"Protocol v15 channel assignments must remain stable."
 	)
 func _test_terrain_delta_revision_repair_contract() -> void:
 	var mp_game := TerrainRepairMpGame.new()

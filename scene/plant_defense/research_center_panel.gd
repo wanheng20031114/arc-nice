@@ -10,11 +10,15 @@ enum Page {
 }
 
 const DESIGN_SIZE := Vector2(728.0, 544.0)
-const PLANK := ResearchCoordinator.PLANK
-const SAPLING := ResearchCoordinator.SAPLING
-const WATER_BOTTLE := ResearchCoordinator.WATER_BOTTLE
-const REQUIREMENT_ITEMS: Array[PickupConfig] = [PLANK, SAPLING, WATER_BOTTLE]
-const REQUIREMENT_COUNTS := [50, 20, 20]
+const BUILDING_DEFENSE_RESEARCH_ID := GlobalResearchRegistry.BUILDING_DEFENSE_ID
+const PLAYER_MOVE_SPEED_RESEARCH_ID := GlobalResearchRegistry.PLAYER_MOVE_SPEED_ID
+const DEFAULT_RESEARCH_ID := BUILDING_DEFENSE_RESEARCH_ID
+const MATERIAL_SLOT_POSITIONS: Array[Vector2] = [
+	Vector2(258.0, 259.0),
+	Vector2(374.0, 259.0),
+	Vector2(490.0, 259.0),
+]
+const SINGLE_MATERIAL_SLOT_POSITION := Vector2(374.0, 259.0)
 const NODE_OFF_COLOR := Color(0.32, 0.43, 0.56, 0.82)
 const NODE_ON_COLORS := [
 	Color(0.25, 0.8, 1.35, 1.0),
@@ -31,7 +35,22 @@ const LINE_ON_COLOR := Color(0.18, 0.88, 1.35, 1.0)
 @onready var player_tab: Button = $Overlay/PanelRoot/PlayerTab
 @onready var close_button: Button = $Overlay/PanelRoot/CloseButton
 @onready var global_page: Control = $Overlay/PanelRoot/GlobalPage
+@onready var defense_research_button: Button = (
+	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/DefenseResearchButton
+)
+@onready var move_speed_research_button: Button = (
+	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/MoveSpeedResearchButton
+)
+@onready var global_research_name: Label = (
+	$Overlay/PanelRoot/GlobalPage/ResearchName
+)
+@onready var global_duration_badge: Label = (
+	$Overlay/PanelRoot/GlobalPage/DurationBadge
+)
 @onready var global_description: Label = $Overlay/PanelRoot/GlobalPage/Description
+@onready var global_result_badge: Label = (
+	$Overlay/PanelRoot/GlobalPage/ResultBadge
+)
 @onready var material_slots: Array[InventorySlot] = [
 	$Overlay/PanelRoot/GlobalPage/PlankSlot,
 	$Overlay/PanelRoot/GlobalPage/SaplingSlot,
@@ -70,6 +89,7 @@ const LINE_ON_COLOR := Color(0.18, 0.88, 1.35, 1.0)
 var building: ResearchCenter = null
 var tracked_player: Player = null
 var active_page: Page = Page.GLOBAL_TECH
+var selected_global_research_id: StringName = DEFAULT_RESEARCH_ID
 var transient_status := ""
 var transient_status_token := 0
 var pending_multiplayer_player_level := -1
@@ -78,20 +98,17 @@ var pending_multiplayer_player_level := -1
 func _ready() -> void:
 	global_tab.pressed.connect(_switch_page.bind(Page.GLOBAL_TECH))
 	player_tab.pressed.connect(_switch_page.bind(Page.PLAYER_TECH))
+	defense_research_button.pressed.connect(
+		_select_global_research.bind(BUILDING_DEFENSE_RESEARCH_ID)
+	)
+	move_speed_research_button.pressed.connect(
+		_select_global_research.bind(PLAYER_MOVE_SPEED_RESEARCH_ID)
+	)
 	close_button.pressed.connect(close)
 	action_button.pressed.connect(_on_action_pressed)
-	for slot_index in material_slots.size():
-		material_slots[slot_index].set_item(
-			REQUIREMENT_ITEMS[slot_index],
-			REQUIREMENT_COUNTS[slot_index]
-		)
+	get_viewport().size_changed.connect(_update_panel_transform)
+	_apply_global_research_presentation()
 	_set_open_state(false)
-
-
-func _process(_delta: float) -> void:
-	if not is_open():
-		return
-	_refresh_dynamic_state()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -108,6 +125,7 @@ func open_for(new_building: ResearchCenter, player: Player) -> void:
 	building = new_building
 	tracked_player = player
 	active_page = Page.GLOBAL_TECH
+	selected_global_research_id = DEFAULT_RESEARCH_ID
 	transient_status = ""
 	pending_multiplayer_player_level = -1
 	_bind_runtime_signals()
@@ -150,6 +168,19 @@ func _switch_page(page: Page) -> void:
 	_refresh_all()
 
 
+func _select_global_research(research_id: StringName) -> void:
+	if (
+		research_id == selected_global_research_id
+		or GlobalResearchRegistry.get_config(research_id) == null
+	):
+		_refresh_global_research_buttons()
+		return
+	selected_global_research_id = research_id
+	transient_status = ""
+	_apply_global_research_presentation()
+	_refresh_dynamic_state()
+
+
 func _refresh_all() -> void:
 	if building == null or tracked_player == null:
 		return
@@ -158,6 +189,9 @@ func _refresh_all() -> void:
 	player_page.visible = active_page == Page.PLAYER_TECH
 	global_tab.button_pressed = active_page == Page.GLOBAL_TECH
 	player_tab.button_pressed = active_page == Page.PLAYER_TECH
+	if active_page == Page.GLOBAL_TECH:
+		_apply_global_research_presentation()
+	_refresh_global_research_buttons()
 	_refresh_dynamic_state()
 
 
@@ -175,14 +209,66 @@ func _refresh_dynamic_state() -> void:
 		_refresh_player_page(coordinator)
 
 
+func _apply_global_research_presentation() -> void:
+	var config := _get_selected_research_config()
+	if config == null:
+		return
+	global_research_name.text = config.display_name
+	global_description.text = config.description
+	global_result_badge.text = config.result_summary.replace(" +", "\n+")
+	global_duration_badge.text = "耗时 %d 秒" % int(
+		roundf(config.duration_seconds)
+	)
+	for index in material_slots.size():
+		var is_used := index < config.input_items.size()
+		material_slots[index].visible = is_used
+		material_labels[index].visible = is_used
+		if not is_used:
+			material_slots[index].set_item(null, 0)
+			material_labels[index].text = ""
+			continue
+		var item := config.input_items[index]
+		var required := config.input_amounts[index]
+		material_slots[index].set_item(item, required)
+		var slot_position := (
+			SINGLE_MATERIAL_SLOT_POSITION
+			if config.input_items.size() == 1
+			else MATERIAL_SLOT_POSITIONS[index]
+		)
+		material_slots[index].position = slot_position
+		material_labels[index].position = Vector2(
+			slot_position.x - 14.0,
+			327.0
+		)
+	_refresh_global_research_buttons()
+
+
+func _refresh_global_research_buttons() -> void:
+	defense_research_button.button_pressed = (
+		selected_global_research_id == BUILDING_DEFENSE_RESEARCH_ID
+	)
+	move_speed_research_button.button_pressed = (
+		selected_global_research_id == PLAYER_MOVE_SPEED_RESEARCH_ID
+	)
+
+
+func _get_selected_research_config() -> GlobalResearchConfig:
+	return GlobalResearchRegistry.get_config(selected_global_research_id)
+
+
 func _refresh_global_page(coordinator: ResearchCoordinator) -> void:
-	global_description.text = "提交50木板、20树苗和20水瓶；完成后本局所有建筑永久获得物理防御+10。点击开始时立即扣除材料。"
+	var config := _get_selected_research_config()
+	if config == null:
+		action_button.disabled = true
+		_set_status("该研究方案不存在。")
+		return
 	var all_materials_ready := true
-	for index in REQUIREMENT_ITEMS.size():
-		var total := coordinator.get_global_material_total(REQUIREMENT_ITEMS[index])
-		var required := int(REQUIREMENT_COUNTS[index])
+	for index in config.input_items.size():
+		var item := config.input_items[index]
+		var total := coordinator.get_global_material_total(item)
+		var required := config.input_amounts[index]
 		material_labels[index].text = "%s  %d / %d" % [
-			REQUIREMENT_ITEMS[index].display_name,
+			item.display_name,
 			total,
 			required,
 		]
@@ -192,30 +278,100 @@ func _refresh_global_page(coordinator: ResearchCoordinator) -> void:
 			else Color(1.0, 0.6, 0.55, 1.0)
 		)
 		all_materials_ready = all_materials_ready and total >= required
-	global_progress.value = coordinator.get_global_progress_ratio() * 100.0
-	match coordinator.global_state:
+	var research_supported := coordinator.get_global_research_config(
+		selected_global_research_id
+	) != null
+	var research_state := coordinator.get_global_research_state(
+		selected_global_research_id
+	)
+	var active_research_id := coordinator.get_active_global_research_id()
+	var another_research_is_active := (
+		not active_research_id.is_empty()
+		and active_research_id != selected_global_research_id
+	)
+	var duration_seconds := coordinator.get_global_research_duration(
+		selected_global_research_id
+	)
+	_refresh_global_research_entry_statuses(coordinator)
+	global_duration_badge.text = "耗时 %d 秒" % int(roundf(duration_seconds))
+	global_progress.value = coordinator.get_global_progress_ratio(
+		selected_global_research_id
+	) * 100.0
+	match research_state:
 		ResearchCoordinator.GlobalResearchState.AVAILABLE:
 			global_progress_label.text = "尚未开始"
 			action_button.text = "开始研究"
 			action_button.disabled = (
 				not all_materials_ready
+				or not research_supported
+				or another_research_is_active
 				or building.multiplayer_research_request_pending
 			)
-			_set_status("材料将在点击后立即从共享仓库扣除。")
+			_set_status(
+				"另一项全局研究正在进行，请等待其完成。"
+				if another_research_is_active
+				else (
+					"材料将在点击后立即从共享仓库扣除。"
+					if research_supported
+					else "该研究方案尚未接入科研网络。"
+				)
+			)
 		ResearchCoordinator.GlobalResearchState.RESEARCHING:
 			var remaining := ceili(
-				ResearchCoordinator.GLOBAL_RESEARCH_DURATION_SECONDS
-				- coordinator.global_elapsed_seconds
+				duration_seconds
+				- coordinator.get_global_elapsed_seconds(
+					selected_global_research_id
+				)
 			)
 			global_progress_label.text = "研究中 · 剩余 %d 秒" % maxi(remaining, 0)
 			action_button.text = "研究进行中"
 			action_button.disabled = true
 			_set_status("全局科技正在推演，已提交材料不会退还。")
 		ResearchCoordinator.GlobalResearchState.COMPLETED:
-			global_progress_label.text = "研究完成 · 全建筑物防 +10"
+			global_progress_label.text = "研究完成 · %s" % str(
+				config.result_summary
+			)
 			action_button.text = "已完成"
 			action_button.disabled = true
-			_set_status("全局科技已永久生效，不能重复研究。")
+			_set_status("该项全局科技已永久生效，不能重复研究。")
+
+
+func _refresh_global_research_entry_statuses(
+	coordinator: ResearchCoordinator
+) -> void:
+	var entries := [
+		{
+			"id": BUILDING_DEFENSE_RESEARCH_ID,
+			"button": defense_research_button,
+		},
+		{
+			"id": PLAYER_MOVE_SPEED_RESEARCH_ID,
+			"button": move_speed_research_button,
+		},
+	]
+	for entry in entries:
+		var research_id := entry["id"] as StringName
+		var config := coordinator.get_global_research_config(research_id)
+		var button := entry["button"] as Button
+		if config == null:
+			button.visible = false
+			continue
+		button.visible = true
+		var state_text := "待研究 · %d秒" % int(
+			roundf(config.duration_seconds)
+		)
+		match coordinator.get_global_research_state(research_id):
+			ResearchCoordinator.GlobalResearchState.RESEARCHING:
+				state_text = "研究中 · 剩余%d秒" % maxi(
+					ceili(
+						config.duration_seconds
+						- coordinator.get_global_elapsed_seconds(research_id)
+					),
+					0
+				)
+			ResearchCoordinator.GlobalResearchState.COMPLETED:
+				state_text = "已完成"
+		button.text = "%s\n%s" % [config.display_name, state_text]
 
 
 func _refresh_player_page(coordinator: ResearchCoordinator) -> void:
@@ -261,7 +417,18 @@ func _on_action_pressed() -> void:
 	if building == null or tracked_player == null:
 		return
 	if active_page == Page.GLOBAL_TECH:
-		var result := building.try_start_global_research()
+		var coordinator := building.research_coordinator
+		if (
+			coordinator == null
+			or coordinator.get_global_research_config(
+				selected_global_research_id
+			) == null
+		):
+			_show_result(ResearchCoordinator.RESULT_UNAVAILABLE, true)
+			return
+		var result := building.try_start_global_research(
+			selected_global_research_id
+		)
 		_show_result(result, true)
 		return
 	var previous_level := tracked_player.get_research_technology_level()
@@ -418,12 +585,24 @@ func _on_level_changed(_level: int) -> void:
 	_refresh_dynamic_state()
 
 
-func _on_multiplayer_research_result(success: bool, reason: StringName) -> void:
+func _on_multiplayer_research_result(
+	success: bool,
+	reason: StringName,
+	operation: StringName,
+	research_id: StringName
+) -> void:
 	var level_to_animate := pending_multiplayer_player_level
 	pending_multiplayer_player_level = -1
+	var was_global_action := operation == &"global"
+	if (
+		was_global_action
+		and GlobalResearchRegistry.get_config(research_id) != null
+	):
+		selected_global_research_id = research_id
+		_apply_global_research_presentation()
 	_show_result(
 		ResearchCoordinator.RESULT_SUCCESS if success else reason,
-		active_page == Page.GLOBAL_TECH
+		was_global_action
 	)
 	if success and level_to_animate >= 0:
 		_animate_unlocked_level(level_to_animate)
@@ -431,7 +610,6 @@ func _on_multiplayer_research_result(success: bool, reason: StringName) -> void:
 
 func _set_open_state(open: bool) -> void:
 	visible = open
-	set_process(open)
 	set_process_unhandled_input(open)
 	if open:
 		_update_panel_transform()
@@ -439,9 +617,18 @@ func _set_open_state(open: bool) -> void:
 
 func _update_panel_transform() -> void:
 	var viewport_size := Vector2(get_viewport().get_visible_rect().size)
-	var scale_factor := minf(
-		viewport_size.x / DESIGN_SIZE.x,
-		viewport_size.y / DESIGN_SIZE.y
+	var pixel_perfect_scale := get_pixel_perfect_panel_scale(viewport_size)
+	panel_root.scale = Vector2.ONE * pixel_perfect_scale
+	panel_root.position = (
+		(viewport_size - DESIGN_SIZE * pixel_perfect_scale) * 0.5
+	).round()
+
+
+static func get_pixel_perfect_panel_scale(viewport_size: Vector2) -> float:
+	var fit_scale := minf(
+		maxf(viewport_size.x, 1.0) / DESIGN_SIZE.x,
+		maxf(viewport_size.y, 1.0) / DESIGN_SIZE.y
 	)
-	panel_root.scale = Vector2.ONE * scale_factor
-	panel_root.position = (viewport_size - DESIGN_SIZE * scale_factor) * 0.5
+	if fit_scale >= 1.0:
+		return maxf(floorf(fit_scale), 1.0)
+	return 1.0 / ceilf(1.0 / maxf(fit_scale, 0.001))

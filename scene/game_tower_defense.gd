@@ -4182,6 +4182,8 @@ func _configure_multiplayer_players() -> void:
 		if not player_instance.revived.is_connected(_on_player_revived.bind(peer_id)):
 			player_instance.revived.connect(_on_player_revived.bind(peer_id))
 		peer_players[peer_id] = player_instance
+		if research_coordinator != null:
+			research_coordinator.register_player(player_instance)
 		if peer_id == multiplayer_local_peer_id:
 			player = player_instance
 	if player == null and not peer_ids.is_empty():

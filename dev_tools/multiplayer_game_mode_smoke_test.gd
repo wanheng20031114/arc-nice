@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 14,
-		"Distance-timed Bamboo Mortar projectiles require multiplayer protocol v14."
+		NetConstants.PROTOCOL_VERSION == 15,
+		"Global research selection requires multiplayer protocol v15."
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),

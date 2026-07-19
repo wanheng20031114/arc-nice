@@ -43,9 +43,17 @@ func _initialize() -> void:
 	root.get_texture().get_image().save_png(
 		OUTPUT_DIRECTORY + "/research_center_panel_global_preview.png"
 	)
+	panel._select_global_research(
+		GlobalResearchRegistry.PLAYER_MOVE_SPEED_ID
+	)
+	await process_frame
+	await process_frame
+	root.get_texture().get_image().save_png(
+		OUTPUT_DIRECTORY + "/research_center_panel_move_speed_preview.png"
+	)
 	research.player_technology_levels[0] = 3
 	player.set_research_technology_level(3)
-	panel.call("_switch_page", ResearchCenterPanel.Page.PLAYER_TECH)
+	panel._switch_page(ResearchCenterPanel.Page.PLAYER_TECH)
 	await process_frame
 	await process_frame
 	root.get_texture().get_image().save_png(
