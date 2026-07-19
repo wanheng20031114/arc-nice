@@ -197,6 +197,38 @@
         "subject_within_32x32": true
       },
       "passed": true
+    },
+    "bamboo_mortar": {
+      "label": "bamboo_mortar_building_item",
+      "source_path": "resources/texture/plant_defense/bamboo_mortar/idle.png",
+      "output_path": "resources/texture/building_items/bamboo_mortar.png",
+      "conversion": "exact integer 1/2 nearest-neighbour sampling",
+      "canvas_size": [
+        32,
+        32
+      ],
+      "subject_bbox_exclusive": [
+        2,
+        2,
+        29,
+        31
+      ],
+      "subject_size": [
+        27,
+        29
+      ],
+      "visible_color_count": 12,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "checks": {
+        "canvas_32x32": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "subject_within_32x32": true
+      },
+      "passed": true
     }
   },
   "panel": {

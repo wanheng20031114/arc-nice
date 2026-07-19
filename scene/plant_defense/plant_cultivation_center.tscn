@@ -11,6 +11,7 @@
 [ext_resource type="Texture2D" uid="uid://c7mn0lidpp3eq" path="res://resources/texture/production/plant_cultivation_center_panel_background.png" id="9_panel_background"]
 [ext_resource type="Shader" uid="uid://dsxkvh3u24ove" path="res://resources/shader/plant_cultivation_center_border.gdshader" id="10_border_shader"]
 [ext_resource type="Texture2D" path="res://resources/shader/plant_lifecycle_noise.tres" id="11_lifecycle_noise"]
+[ext_resource type="Resource" path="res://resources/config/production/wooden_core_to_bamboo_mortar.tres" id="12_bamboo_mortar_recipe"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_production_border"]
 shader = ExtResource("10_border_shader")
@@ -96,7 +97,7 @@ outline_color = Color(0.01, 0.045, 0.018, 1)
 collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
-recipes = Array[ExtResource("8_recipe_script")]([ExtResource("6_agave_recipe"), ExtResource("7_corn_recipe")])
+recipes = Array[ExtResource("8_recipe_script")]([ExtResource("6_agave_recipe"), ExtResource("7_corn_recipe"), ExtResource("12_bamboo_mortar_recipe")])
 production_panel_background_override = ExtResource("9_panel_background")
 production_panel_theme = 1
 enemy_approach_depth = 7.0

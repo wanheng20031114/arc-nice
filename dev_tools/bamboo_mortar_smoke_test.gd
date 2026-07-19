@@ -189,12 +189,12 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		and MORTAR_CONFIG.magic_defense == 20
 		and MORTAR_CONFIG.attack_damage == 100
 		and is_zero_approx(MORTAR_CONFIG.get_attack_interval())
-		and is_equal_approx(MORTAR_CONFIG.attack_range, 160.0)
+		and is_equal_approx(MORTAR_CONFIG.attack_range, 192.0)
 		and MORTAR_CONFIG.footprint_size == Vector2i(2, 2)
 		and MORTAR_CONFIG.placement_surface
 		== PlantDefenseConfig.PlacementSurface.GRASS
 		and MORTAR_CONFIG.supports_multiplayer,
-		"迫击炮数值必须为2000生命、10物防、20法防、100中心伤害、无额外攻击间隔、160范围、草地2×2且支持多人。"
+		"迫击炮数值必须为2000生命、10物防、20法防、100中心伤害、无额外攻击间隔、192范围、草地2×2且支持多人。"
 	)
 	_expect(
 		PlantDefenseRegistry.get_config(&"bamboo_mortar")
@@ -717,15 +717,15 @@ func _test_target_ring_and_tracking(mortar: BambooMortar) -> void:
 	var too_close := _spawn_enemy(Vector2(64.0, 0.0))
 	var nearest_valid := _spawn_enemy(Vector2(64.25, 0.0))
 	var farther_valid := _spawn_enemy(Vector2(120.0, 0.0))
-	var outer_edge := _spawn_enemy(Vector2(160.0, 0.0))
-	var outside := _spawn_enemy(Vector2(160.25, 0.0))
+	var outer_edge := _spawn_enemy(Vector2(192.0, 0.0))
+	var outside := _spawn_enemy(Vector2(192.25, 0.0))
 	runtime.candidates.assign(enemies)
 	var selected := mortar.call(
 		"_select_nearest_target_in_ring"
 	) as Enemy
 	_expect(
 		selected == nearest_valid,
-		"索敌必须排除64像素边界并选择(64,160]内最近敌人。"
+		"索敌必须排除64像素边界并选择(64,192]内最近敌人。"
 	)
 	nearest_valid.is_dead = true
 	selected = mortar.call("_select_nearest_target_in_ring") as Enemy
@@ -764,8 +764,8 @@ func _test_target_ring_and_tracking(mortar: BambooMortar) -> void:
 		too_close != null
 		and outer_edge != null
 		and outside != null
-		and is_equal_approx(runtime.last_query_radius, 160.0),
-		"边界样本与160像素共享索引查询必须完整建立。"
+		and is_equal_approx(runtime.last_query_radius, 192.0),
+		"边界样本与192像素共享索引查询必须完整建立。"
 	)
 	var saved_candidates: Array[Enemy] = []
 	saved_candidates.assign(runtime.candidates)

@@ -14,4 +14,4 @@ input_amounts = Array[int]([1])
 output_items = Array[ExtResource("4_pickup_script")]([ExtResource("3_building")])
 output_amounts = Array[int]([1])
 output_destination = 1
-duration_seconds = 10.0
+duration_seconds = 20.0

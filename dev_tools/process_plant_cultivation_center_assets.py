@@ -45,11 +45,17 @@ AGAVE_ICON_SOURCE = (
 CORN_ICON_SOURCE = (
     ROOT / "resources/texture/plant_defense/corn_machine_gun/icon.png"
 )
+BAMBOO_MORTAR_ICON_SOURCE = (
+    ROOT / "resources/texture/plant_defense/bamboo_mortar/idle.png"
+)
 AGAVE_ITEM_ICON_OUTPUT = (
     ROOT / "resources/texture/building_items/agave_cannon.png"
 )
 CORN_ITEM_ICON_OUTPUT = (
     ROOT / "resources/texture/building_items/corn_machine_gun.png"
+)
+BAMBOO_MORTAR_ITEM_ICON_OUTPUT = (
+    ROOT / "resources/texture/building_items/bamboo_mortar.png"
 )
 PANEL_SOURCE = (
     SOURCE_DIR / "plant_cultivation_center_panel_background_imagegen.png"
@@ -126,6 +132,20 @@ def _build_panel() -> Image.Image:
     ).convert("RGB")
 
 
+def _save_image_if_changed(image: Image.Image, output_path: Path) -> bool:
+    if output_path.is_file():
+        with Image.open(output_path) as existing_image:
+            existing = existing_image.convert("RGBA")
+            generated = image.convert("RGBA")
+            if (
+                existing.size == generated.size
+                and existing.tobytes() == generated.tobytes()
+            ):
+                return False
+    image.save(output_path)
+    return True
+
+
 def _audit_item_icon(
     image: Image.Image,
     *,
@@ -175,6 +195,9 @@ def build_assets() -> tuple[dict[str, Image.Image], dict]:
     building, building_context = _build_building()
     agave_icon = _build_half_scale_icon(AGAVE_ICON_SOURCE)
     corn_icon = _build_half_scale_icon(CORN_ICON_SOURCE)
+    bamboo_mortar_icon = _build_half_scale_icon(
+        BAMBOO_MORTAR_ICON_SOURCE
+    )
     panel = _build_panel()
 
     building_audit = audit_image(
@@ -195,9 +218,19 @@ def build_assets() -> tuple[dict[str, Image.Image], dict]:
         source_path=CORN_ICON_SOURCE,
         output_path=CORN_ITEM_ICON_OUTPUT,
     )
+    bamboo_mortar_audit = _audit_item_icon(
+        bamboo_mortar_icon,
+        label="bamboo_mortar_building_item",
+        source_path=BAMBOO_MORTAR_ICON_SOURCE,
+        output_path=BAMBOO_MORTAR_ITEM_ICON_OUTPUT,
+    )
 
     failures = validation_failures([building_audit])
-    for item_audit in (agave_audit, corn_audit):
+    for item_audit in (
+        agave_audit,
+        corn_audit,
+        bamboo_mortar_audit,
+    ):
         for check_name, passed in item_audit["checks"].items():
             if not passed:
                 failures.append(f"{item_audit['label']}: {check_name}")
@@ -231,6 +264,7 @@ def build_assets() -> tuple[dict[str, Image.Image], dict]:
         "building_items": {
             "agave_cannon": agave_audit,
             "corn_machine_gun": corn_audit,
+            "bamboo_mortar": bamboo_mortar_audit,
         },
         "panel": {
             "source_path": portable_path(PANEL_SOURCE),
@@ -247,6 +281,7 @@ def build_assets() -> tuple[dict[str, Image.Image], dict]:
         "building": building,
         "agave_icon": agave_icon,
         "corn_icon": corn_icon,
+        "bamboo_mortar_icon": bamboo_mortar_icon,
         "panel": panel,
     }, report
 
@@ -264,10 +299,17 @@ def main() -> None:
     BUILDING_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     AGAVE_ITEM_ICON_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     PANEL_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    assets["building"].save(BUILDING_OUTPUT)
-    assets["agave_icon"].save(AGAVE_ITEM_ICON_OUTPUT)
-    assets["corn_icon"].save(CORN_ITEM_ICON_OUTPUT)
-    assets["panel"].save(PANEL_OUTPUT)
+    _save_image_if_changed(assets["building"], BUILDING_OUTPUT)
+    _save_image_if_changed(assets["agave_icon"], AGAVE_ITEM_ICON_OUTPUT)
+    _save_image_if_changed(
+        assets["corn_icon"],
+        CORN_ITEM_ICON_OUTPUT,
+    )
+    _save_image_if_changed(
+        assets["bamboo_mortar_icon"],
+        BAMBOO_MORTAR_ITEM_ICON_OUTPUT,
+    )
+    _save_image_if_changed(assets["panel"], PANEL_OUTPUT)
     AUDIT_OUTPUT.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
@@ -275,6 +317,10 @@ def main() -> None:
     print(f"Built Plant Cultivation Center: {BUILDING_OUTPUT}")
     print(f"Built Agave Cannon item icon: {AGAVE_ITEM_ICON_OUTPUT}")
     print(f"Built Corn Machine Gun item icon: {CORN_ITEM_ICON_OUTPUT}")
+    print(
+        "Built Bamboo Mortar item icon: "
+        f"{BAMBOO_MORTAR_ITEM_ICON_OUTPUT}"
+    )
     print(f"Built Plant Cultivation Center panel: {PANEL_OUTPUT}")
     print(f"Audit report: {AUDIT_OUTPUT}")
 

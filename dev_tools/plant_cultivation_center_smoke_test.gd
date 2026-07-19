@@ -27,6 +27,9 @@ const AGAVE_BUILDING_ITEM := preload(
 const CORN_BUILDING_ITEM := preload(
 	"res://resources/config/buildings/building_corn_machine_gun.tres"
 )
+const BAMBOO_MORTAR_BUILDING_ITEM := preload(
+	"res://resources/config/buildings/building_bamboo_mortar.tres"
+)
 
 
 class PlacementRollbackPlantSystem:
@@ -117,18 +120,27 @@ func _run() -> void:
 	center.set_shared_production_panel(panel)
 
 	_expect(
-		center.recipes.size() == 2
+		center.recipes.size() == 3
 		and center.recipes[0].input_items == [WOODEN_CORE]
 		and center.recipes[0].input_amounts == [1]
 		and center.recipes[0].output_items == [AGAVE_BUILDING_ITEM]
 		and center.recipes[0].output_amounts == [1]
+		and is_equal_approx(center.recipes[0].duration_seconds, 20.0)
 		and center.recipes[0].outputs_to_player_inventory()
 		and center.recipes[1].input_items == [WOODEN_CORE]
 		and center.recipes[1].input_amounts == [1]
 		and center.recipes[1].output_items == [CORN_BUILDING_ITEM]
 		and center.recipes[1].output_amounts == [1]
-		and center.recipes[1].outputs_to_player_inventory(),
-		"培育中心必须提供两个消耗1个木制核心、产物进入个人背包的建筑配方。"
+		and is_equal_approx(center.recipes[1].duration_seconds, 20.0)
+		and center.recipes[1].outputs_to_player_inventory()
+		and center.recipes[2].input_items == [WOODEN_CORE]
+		and center.recipes[2].input_amounts == [1]
+		and center.recipes[2].output_items
+		== [BAMBOO_MORTAR_BUILDING_ITEM]
+		and center.recipes[2].output_amounts == [1]
+		and is_equal_approx(center.recipes[2].duration_seconds, 30.0)
+		and center.recipes[2].outputs_to_player_inventory(),
+		"培育中心必须提供三个消耗1个木制核心的个人背包配方，并使用20、20、30秒培育时间。"
 	)
 	_expect(
 		AGAVE_BUILDING_ITEM.pickup_type == PickupConfig.PickupType.BUILDING
@@ -136,8 +148,13 @@ func _run() -> void:
 		and AGAVE_BUILDING_ITEM.stackable
 		and CORN_BUILDING_ITEM.pickup_type == PickupConfig.PickupType.BUILDING
 		and CORN_BUILDING_ITEM.placeable_plant_id == &"corn_machine_gun"
-		and CORN_BUILDING_ITEM.stackable,
-		"两种产物必须是可叠加且指向正确建筑配置的建筑物品。"
+		and CORN_BUILDING_ITEM.stackable
+		and BAMBOO_MORTAR_BUILDING_ITEM.pickup_type
+		== PickupConfig.PickupType.BUILDING
+		and BAMBOO_MORTAR_BUILDING_ITEM.placeable_plant_id
+		== &"bamboo_mortar"
+		and BAMBOO_MORTAR_BUILDING_ITEM.stackable,
+		"三种产物必须是可叠加且指向正确建筑配置的建筑物品。"
 	)
 
 	var border := center.get_node_or_null("ProductionBorder") as MeshInstance2D
@@ -170,7 +187,7 @@ func _run() -> void:
 		and center.select_recipe(&"wooden_core_to_agave_cannon"),
 		"培育测试必须能准备木制核心并选择加农炮配方。"
 	)
-	center.advance_shared_production_tick(10.0)
+	center.advance_shared_production_tick(20.0)
 	_expect(
 		coordinator.get_total_item_count(WOODEN_CORE) == 0
 		and run_state.get_item(0) == AGAVE_BUILDING_ITEM
@@ -182,8 +199,8 @@ func _run() -> void:
 		warehouse.try_add_storage_item_count(WOODEN_CORE, 2),
 		"堆叠测试必须能准备两个木制核心。"
 	)
-	center.advance_shared_production_tick(10.0)
-	center.advance_shared_production_tick(10.0)
+	center.advance_shared_production_tick(20.0)
+	center.advance_shared_production_tick(20.0)
 	_expect(
 		run_state.get_item(0) == AGAVE_BUILDING_ITEM
 		and run_state.get_item_count(0) == 3,
@@ -194,11 +211,29 @@ func _run() -> void:
 		and center.select_recipe(&"wooden_core_to_corn_machine_gun"),
 		"培育测试必须能切换至玉米机枪塔配方。"
 	)
-	center.advance_shared_production_tick(10.0)
+	center.advance_shared_production_tick(20.0)
 	_expect(
 		run_state.get_item(1) == CORN_BUILDING_ITEM
 		and run_state.get_item_count(1) == 1,
 		"玉米机枪塔必须作为独立可叠加建筑物品进入背包。"
+	)
+	_expect(
+		warehouse.try_add_storage_item_count(WOODEN_CORE, 1)
+		and center.select_recipe(&"wooden_core_to_bamboo_mortar"),
+		"培育测试必须能切换至竹筒迫击炮配方。"
+	)
+	center.advance_shared_production_tick(29.0)
+	_expect(
+		run_state.get_item(2) == null
+		and is_equal_approx(center.progress_elapsed_seconds, 29.0),
+		"迫击炮培育到29秒时不得提前完成。"
+	)
+	center.advance_shared_production_tick(1.0)
+	_expect(
+		run_state.get_item(2) == BAMBOO_MORTAR_BUILDING_ITEM
+		and run_state.get_item_count(2) == 1
+		and is_zero_approx(center.progress_elapsed_seconds),
+		"迫击炮必须在累计30秒时完成并进入独立背包槽位。"
 	)
 	var profile_panel := (
 		PROFILE_PANEL_SCENE.instantiate() as PlayerProfilePanel
@@ -229,7 +264,7 @@ func _run() -> void:
 		and center.select_recipe(&"wooden_core_to_agave_cannon", 2),
 		"联机权威建筑必须记录选择配方的玩家。"
 	)
-	center.advance_shared_production_tick(10.0)
+	center.advance_shared_production_tick(20.0)
 	_expect(
 		run_state.get_item_for_peer(2, 0) == AGAVE_BUILDING_ITEM
 		and run_state.get_item_count_for_peer(2, 0) == 1
@@ -261,9 +296,16 @@ func _run() -> void:
 		and panel.output_slots[0].visible
 		and not panel.output_slots[1].visible
 		and not panel.output_slots[2].visible
+		and panel.recipe_rows[0].visible
+		and panel.recipe_rows[0].tooltip_text.contains("约 20.0 秒")
+		and panel.recipe_rows[1].visible
+		and panel.recipe_rows[1].tooltip_text.contains("约 20.0 秒")
+		and panel.recipe_rows[2].visible
+		and panel.recipe_rows[2].tooltip_text.contains("约 30.0 秒")
+		and not panel.recipe_rows[3].visible
 		and progress_fill != null
 		and progress_fill.bg_color.g > 0.75,
-		"培育中心UI必须使用植物面板、嫩绿进度条，并按1投入1产物自适配槽位。"
+		"培育中心UI必须使用植物面板、嫩绿进度条，显示三条正确耗时的1投入1产物配方。"
 	)
 	panel.close()
 
@@ -379,7 +421,11 @@ func _test_asset_contracts() -> void:
 		and building_texture.get_size() == Vector2(64, 64),
 		"培育中心正式世界素材必须为64×64。"
 	)
-	for item in [AGAVE_BUILDING_ITEM, CORN_BUILDING_ITEM]:
+	for item in [
+		AGAVE_BUILDING_ITEM,
+		CORN_BUILDING_ITEM,
+		BAMBOO_MORTAR_BUILDING_ITEM,
+	]:
 		_expect(
 			item.icon_texture != null
 			and item.icon_texture.get_size() == Vector2(32, 32),

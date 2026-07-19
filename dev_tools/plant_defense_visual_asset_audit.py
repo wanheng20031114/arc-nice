@@ -42,14 +42,44 @@ CORN_SPIN_MUTABLE_BBOX = (33, 24, 55, 41)
 BAMBOO_BUILDING_MAX_VISIBLE_COLORS = 20
 BAMBOO_BUILDING_UNION_MAX_VISIBLE_COLORS = 20
 BAMBOO_EXPLOSION_MAX_VISIBLE_COLORS = 12
-BAMBOO_BUILDING_SUBJECT_BBOX = (4, 4, 59, 62)
+BAMBOO_IDLE_CHARGE_SUBJECT_BBOX = (4, 4, 59, 62)
+BAMBOO_FIRE_SUBJECT_BBOXES = (
+    (4, 2, 60, 62),
+    (4, 2, 62, 62),
+    (4, 2, 62, 62),
+    (4, 2, 62, 62),
+)
+BAMBOO_UPPER_STORAGE_MUTABLE_RECT = (15, 15, 26, 27)
+BAMBOO_MUZZLE_MUTABLE_RECT = (31, 3, 54, 20)
+BAMBOO_FIRE_EFFECT_MUTABLE_RECT = (31, 0, 64, 22)
 BAMBOO_CHARGE_MUTABLE_RECTS = (
-    (15, 15, 26, 27),
-    (31, 3, 54, 20),
+    BAMBOO_UPPER_STORAGE_MUTABLE_RECT,
+    BAMBOO_MUZZLE_MUTABLE_RECT,
 )
 BAMBOO_FIRE_MUTABLE_RECTS = (
-    (15, 15, 26, 27),
-    (31, 0, 64, 22),
+    BAMBOO_UPPER_STORAGE_MUTABLE_RECT,
+    BAMBOO_FIRE_EFFECT_MUTABLE_RECT,
+)
+BAMBOO_UPPER_STORAGE_LOADED_MARKERS = (
+    ((20, 17), (7, 25, 9, 255)),
+    ((18, 20), (91, 169, 45, 255)),
+    ((20, 21), (126, 92, 28, 255)),
+)
+BAMBOO_UPPER_STORAGE_EMPTY_MARKERS = (
+    ((20, 17), (0, 0, 0, 0)),
+    ((18, 20), (241, 203, 99, 255)),
+    ((20, 21), (66, 48, 15, 255)),
+)
+BAMBOO_LOWER_DECORATIVE_BOMB_RECT = (11, 26, 18, 32)
+BAMBOO_APPROVED_ROPE_TAIL_PIXELS = (
+    ((41, 44), (241, 203, 99, 255)),
+    ((42, 44), (241, 203, 99, 255)),
+    ((41, 45), (190, 151, 48, 255)),
+    ((42, 45), (190, 151, 48, 255)),
+    ((43, 45), (241, 203, 99, 255)),
+    ((44, 45), (190, 151, 48, 255)),
+    ((43, 46), (66, 48, 15, 255)),
+    ((44, 46), (66, 48, 15, 255)),
 )
 BAMBOO_STATUS_LIGHT_REGION = (28, 39, 36, 47)
 PREVIEW_ALIGNMENT_TOLERANCE_WORLD = 0.5
@@ -373,19 +403,64 @@ def _bamboo_mortar_metrics() -> dict[str, Any]:
     building_frames = [idle, *charge_frames, *fire_frames]
     explosion_frames = [_load_rgba(path) for path in BAMBOO_EXPLOSION_FRAMES]
     shell = _load_rgba(BAMBOO_SHELL)
+    charge_differences = [
+        _pixel_difference_positions(anchor, frame)
+        for frame in charge_frames
+    ]
+    fire_differences = [
+        _pixel_difference_positions(anchor, frame)
+        for frame in fire_frames
+    ]
     charge_immutable_change_counts = [
         sum(
             not _inside_any_rect(point, BAMBOO_CHARGE_MUTABLE_RECTS)
-            for point in _pixel_difference_positions(anchor, frame)
+            for point in differences
         )
-        for frame in charge_frames
+        for differences in charge_differences
     ]
     fire_immutable_change_counts = [
         sum(
             not _inside_any_rect(point, BAMBOO_FIRE_MUTABLE_RECTS)
-            for point in _pixel_difference_positions(anchor, frame)
+            for point in differences
         )
-        for frame in fire_frames
+        for differences in fire_differences
+    ]
+    charge_storage_change_counts = [
+        sum(
+            _inside_any_rect(
+                point,
+                (BAMBOO_UPPER_STORAGE_MUTABLE_RECT,),
+            )
+            for point in differences
+        )
+        for differences in charge_differences
+    ]
+    charge_muzzle_change_counts = [
+        sum(
+            _inside_any_rect(point, (BAMBOO_MUZZLE_MUTABLE_RECT,))
+            for point in differences
+        )
+        for differences in charge_differences
+    ]
+    fire_storage_change_counts = [
+        sum(
+            _inside_any_rect(
+                point,
+                (BAMBOO_UPPER_STORAGE_MUTABLE_RECT,),
+            )
+            for point in differences
+        )
+        for differences in fire_differences
+    ]
+    fire_effect_change_counts = [
+        sum(
+            _inside_any_rect(
+                point,
+                (BAMBOO_FIRE_EFFECT_MUTABLE_RECT,),
+            )
+            for point in differences
+        )
+        for differences in fire_differences
     ]
     status_region_static = all(
         all(
@@ -401,23 +476,39 @@ def _bamboo_mortar_metrics() -> dict[str, Any]:
         )
         for frame in (*charge_frames, *fire_frames)
     )
-    lower_bomb_rect = (11, 26, 18, 32)
     lower_bomb_preserved = all(
         all(
             frame.getpixel(point) == idle.getpixel(point)
             for point in (
                 (x, y)
-                for y in range(lower_bomb_rect[1], lower_bomb_rect[3])
-                for x in range(lower_bomb_rect[0], lower_bomb_rect[2])
+                for y in range(
+                    BAMBOO_LOWER_DECORATIVE_BOMB_RECT[1],
+                    BAMBOO_LOWER_DECORATIVE_BOMB_RECT[3],
+                )
+                for x in range(
+                    BAMBOO_LOWER_DECORATIVE_BOMB_RECT[0],
+                    BAMBOO_LOWER_DECORATIVE_BOMB_RECT[2],
+                )
             )
         )
         for frame in (*charge_frames, *fire_frames)
+    )
+    rope_tail_preserved = all(
+        all(
+            frame.getpixel(point) == color
+            for point, color in BAMBOO_APPROVED_ROPE_TAIL_PIXELS
+        )
+        for frame in building_frames
     )
     return {
         "anchor_size": list(anchor.size),
         "anchor_subject_bbox": list(
             anchor.getchannel("A").getbbox() or ()
         ),
+        "building_subject_bboxes": [
+            list(frame.getchannel("A").getbbox() or ())
+            for frame in building_frames
+        ],
         "idle_matches_approved_anchor": (
             len(_pixel_difference_positions(anchor, idle)) == 0
         ),
@@ -433,21 +524,32 @@ def _bamboo_mortar_metrics() -> dict[str, Any]:
         ),
         "charge_immutable_change_counts": charge_immutable_change_counts,
         "fire_immutable_change_counts": fire_immutable_change_counts,
+        "charge_storage_change_counts": charge_storage_change_counts,
+        "charge_muzzle_change_counts": charge_muzzle_change_counts,
+        "fire_storage_change_counts": fire_storage_change_counts,
+        "fire_effect_change_counts": fire_effect_change_counts,
         "charge_unique_frame_count": len(
             {frame.tobytes() for frame in charge_frames}
         ),
         "fire_unique_frame_count": len(
             {frame.tobytes() for frame in fire_frames}
         ),
-        "upper_storage_loaded_in_idle": (
-            idle.getpixel((18, 20)) == (91, 169, 45, 255)
+        "upper_storage_loaded_marker_matches": sum(
+            idle.getpixel(point) == color
+            for point, color in BAMBOO_UPPER_STORAGE_LOADED_MARKERS
         ),
-        "upper_storage_empty_in_all_active_frames": all(
-            frame.getpixel((20, 17))[3] == 0
-            and frame.getpixel((20, 21)) == (66, 48, 15, 255)
+        "upper_storage_empty_marker_matches": [
+            sum(
+                frame.getpixel(point) == color
+                for point, color in BAMBOO_UPPER_STORAGE_EMPTY_MARKERS
+            )
             for frame in (*charge_frames, *fire_frames)
-        ),
+        ],
         "lower_decorative_bomb_preserved": lower_bomb_preserved,
+        "approved_short_rope_tail_pixel_count": len(
+            BAMBOO_APPROVED_ROPE_TAIL_PIXELS
+        ),
+        "approved_short_rope_tail_preserved": rope_tail_preserved,
         "status_light_region_static": status_region_static,
         "status_light_bitmap_absent_from_contract": (
             not BAMBOO_OBSOLETE_GLOW_MASK.exists()
@@ -666,10 +768,24 @@ def _collect_bamboo_failures(report: dict[str, Any]) -> list[str]:
             )
     for path in (BAMBOO_IDLE, *BAMBOO_CHARGE_FRAMES):
         audit = audits[_relative(path)]
-        if tuple(audit["subject_bbox"] or ()) != BAMBOO_BUILDING_SUBJECT_BBOX:
+        if (
+            tuple(audit["subject_bbox"] or ())
+            != BAMBOO_IDLE_CHARGE_SUBJECT_BBOX
+        ):
             failures.append(
                 f"{audit['path']} must retain Bamboo Mortar body bbox "
-                f"{BAMBOO_BUILDING_SUBJECT_BBOX}; got {audit['subject_bbox']}"
+                f"{BAMBOO_IDLE_CHARGE_SUBJECT_BBOX}; "
+                f"got {audit['subject_bbox']}"
+            )
+    for path, expected_bbox in zip(
+        BAMBOO_FIRE_FRAMES,
+        BAMBOO_FIRE_SUBJECT_BBOXES,
+    ):
+        audit = audits[_relative(path)]
+        if tuple(audit["subject_bbox"] or ()) != expected_bbox:
+            failures.append(
+                f"{audit['path']} must retain Bamboo Mortar fire bbox "
+                f"{expected_bbox}; got {audit['subject_bbox']}"
             )
     for path in BAMBOO_BUILDING_FRAMES:
         audit = audits[_relative(path)]
@@ -691,11 +807,11 @@ def _collect_bamboo_failures(report: dict[str, Any]) -> list[str]:
         failures.append("Bamboo Mortar approved anchor must remain exactly 64x64")
     if (
         tuple(bamboo_metrics["anchor_subject_bbox"])
-        != BAMBOO_BUILDING_SUBJECT_BBOX
+        != BAMBOO_IDLE_CHARGE_SUBJECT_BBOX
     ):
         failures.append(
-            "Bamboo Mortar approved anchor and runtime frames must share "
-            "the same stable subject bbox"
+            "Bamboo Mortar approved anchor, idle frame and charge frames "
+            "must share the same stable subject bbox"
         )
     if (
         bamboo_metrics["building_union_visible_color_count"]
@@ -724,15 +840,52 @@ def _collect_bamboo_failures(report: dict[str, Any]) -> list[str]:
             "Bamboo Mortar fire frames changed approved-anchor pixels "
             "outside upper storage and muzzle-effect regions"
         )
+    if bamboo_metrics["charge_storage_change_counts"] != [62] * 8:
+        failures.append(
+            "Every Bamboo Mortar charge frame must replace exactly the same "
+            "62 upper-storage pixels"
+        )
+    if bamboo_metrics["fire_storage_change_counts"] != [62] * 4:
+        failures.append(
+            "Every Bamboo Mortar fire frame must replace exactly the same "
+            "62 upper-storage pixels"
+        )
+    if not all(
+        later > earlier
+        for earlier, later in zip(
+            bamboo_metrics["charge_muzzle_change_counts"],
+            bamboo_metrics["charge_muzzle_change_counts"][1:],
+        )
+    ):
+        failures.append(
+            "Bamboo Mortar charge frames must progressively heat more "
+            "pixels inside the native-64 muzzle region"
+        )
+    if any(
+        change_count <= 0
+        for change_count in bamboo_metrics["fire_effect_change_counts"]
+    ):
+        failures.append(
+            "Every Bamboo Mortar fire frame must visibly change the "
+            "native-64 muzzle-effect region"
+        )
     if bamboo_metrics["charge_unique_frame_count"] != 8:
         failures.append("All eight Bamboo Mortar charge frames must be unique")
     if bamboo_metrics["fire_unique_frame_count"] != 4:
         failures.append("All four Bamboo Mortar fire frames must be unique")
-    if not bamboo_metrics["upper_storage_loaded_in_idle"]:
+    if (
+        bamboo_metrics["upper_storage_loaded_marker_matches"]
+        != len(BAMBOO_UPPER_STORAGE_LOADED_MARKERS)
+    ):
         failures.append(
             "Bamboo Mortar idle frame must visibly retain the upper decorative bomb"
         )
-    if not bamboo_metrics["upper_storage_empty_in_all_active_frames"]:
+    if any(
+        marker_matches != len(BAMBOO_UPPER_STORAGE_EMPTY_MARKERS)
+        for marker_matches in bamboo_metrics[
+            "upper_storage_empty_marker_matches"
+        ]
+    ):
         failures.append(
             "Every Bamboo Mortar charge/fire frame must show the upper storage "
             "tube empty"
@@ -741,6 +894,14 @@ def _collect_bamboo_failures(report: dict[str, Any]) -> list[str]:
         failures.append(
             "Every Bamboo Mortar charge/fire frame must preserve the lower "
             "decorative bomb"
+        )
+    if (
+        bamboo_metrics["approved_short_rope_tail_pixel_count"] != 8
+        or not bamboo_metrics["approved_short_rope_tail_preserved"]
+    ):
+        failures.append(
+            "Every Bamboo Mortar body frame must retain the approved "
+            "eight-pixel short rope tail"
         )
     if not bamboo_metrics["status_light_region_static"]:
         failures.append(
@@ -822,8 +983,20 @@ def build_report() -> dict[str, Any]:
             "bamboo_explosion_max_visible_colors": (
                 BAMBOO_EXPLOSION_MAX_VISIBLE_COLORS
             ),
-            "bamboo_building_subject_bbox": list(
-                BAMBOO_BUILDING_SUBJECT_BBOX
+            "bamboo_idle_charge_subject_bbox": list(
+                BAMBOO_IDLE_CHARGE_SUBJECT_BBOX
+            ),
+            "bamboo_fire_subject_bboxes": [
+                list(bbox) for bbox in BAMBOO_FIRE_SUBJECT_BBOXES
+            ],
+            "bamboo_upper_storage_mutable_rect_exclusive": list(
+                BAMBOO_UPPER_STORAGE_MUTABLE_RECT
+            ),
+            "bamboo_muzzle_mutable_rect_exclusive": list(
+                BAMBOO_MUZZLE_MUTABLE_RECT
+            ),
+            "bamboo_fire_effect_mutable_rect_exclusive": list(
+                BAMBOO_FIRE_EFFECT_MUTABLE_RECT
             ),
             "bamboo_charge_mutable_rects_exclusive": [
                 list(rect) for rect in BAMBOO_CHARGE_MUTABLE_RECTS
