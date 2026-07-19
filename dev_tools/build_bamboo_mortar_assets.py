@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Build the strict native-pixel Bamboo Mortar asset family.
+"""Build the Bamboo Mortar's strict native-64 pixel asset family.
 
-The approved 64x64 anchor remains immutable outside a few declared gameplay
-regions.  Imagegen supplies the animation language for muzzle heat and the
-eight-stage explosion; this processor converts that direction into a shared,
-auditable logical grid with binary alpha and fixed palettes.
+The user-approved 64x64 transparent anchor is the sole production authority for
+all stable body pixels.  The high-resolution imagegen images are retained only
+as visual/provenance references; a normal build must never re-sample them or
+overwrite the approved anchor.
+
+Every animation frame copies that anchor byte-for-byte before changing only the
+upper storage-tube contents and muzzle during charge/fire.  The shell and small
+square HDR status lamp remain separate Godot nodes.
 """
 
 from __future__ import annotations
@@ -12,70 +16,101 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
+from io import BytesIO
 from pathlib import Path
 
 from PIL import Image
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_ROOT = (
-    ROOT / "dev_assets/source_images/plant_defense/bamboo_mortar"
-)
+SOURCE_ROOT = ROOT / "dev_assets/source_images/plant_defense/bamboo_mortar"
 OUTPUT_ROOT = ROOT / "resources/texture/plant_defense/bamboo_mortar"
+
+REFERENCE_PATH = SOURCE_ROOT / "bamboo_mortar_reference.png"
+NATIVE_IMAGEGEN_PATH = (
+    SOURCE_ROOT / "bamboo_mortar_native64_imagegen_magenta.png"
+)
+APPROVED_IMAGEGEN_PATH = (
+    SOURCE_ROOT
+    / "bamboo_mortar_approved_rope_tail_imagegen_magenta.png"
+)
 ANCHOR_PATH = SOURCE_ROOT / "bamboo_mortar_anchor_alpha.png"
-CHARGE_SOURCE_PATH = (
+CHARGE_REFERENCE_PATH = (
     SOURCE_ROOT / "bamboo_mortar_charge_imagegen_magenta.png"
 )
-EXPLOSION_SOURCE_PATH = (
-    SOURCE_ROOT / "bamboo_mortar_explosion_imagegen_magenta.png"
+FIRE_REFERENCE_PATH = (
+    SOURCE_ROOT / "bamboo_mortar_fire_imagegen_magenta.png"
 )
 AUDIT_PATH = SOURCE_ROOT / "bamboo_mortar_asset_audit.json"
 
+CANVAS_SIZE = (64, 64)
+NATIVE_LOGICAL_SIZE = (64, 64)
+EXPECTED_NATIVE_SOURCE_SIZE = (1254, 1254)
+EXPECTED_BODY_BBOX = (4, 4, 59, 62)
+MAX_BODY_SIZE = (60, 60)
 TRANSPARENT = (0, 0, 0, 0)
+EXPECTED_APPROVED_REFERENCE_SHA256 = (
+    "5ef40a0a56b8b76b3d466bf23226271234715573c13c832813e1d559019c3412"
+)
+EXPECTED_APPROVED_ANCHOR_RGBA_SHA256 = (
+    "98b4dd99cedea45fa919268c992e59c80199542eb5b3edcc1db4df1f10fc5b24"
+)
+
+# Twelve base colors are enough to retain the reference's bamboo, leaf, rope,
+# rim, bomb, and bore hierarchy without the source image's thousands of nearly
+# identical greens.
 OUTLINE = (7, 25, 9, 255)
-DEEP_GREEN = (15, 60, 28, 255)
-MID_GREEN = (26, 96, 37, 255)
-GREEN = (52, 134, 42, 255)
-LIGHT_GREEN = (112, 183, 45, 255)
-HIGHLIGHT_GREEN = (184, 219, 56, 255)
-DARK_BROWN = (75, 58, 18, 255)
-BROWN = (154, 114, 36, 255)
+DEEP_GREEN = (14, 52, 22, 255)
+DARK_GREEN = (22, 83, 31, 255)
+MID_GREEN = (43, 125, 39, 255)
+GREEN = (91, 169, 45, 255)
+LIGHT_GREEN = (151, 205, 52, 255)
+LIME_HIGHLIGHT = (202, 227, 73, 255)
+DARK_BROWN = (66, 48, 15, 255)
+BROWN = (126, 92, 28, 255)
+GOLD = (190, 151, 48, 255)
 RIM = (241, 203, 99, 255)
-GOLD = (212, 162, 60, 255)
+RIM_HIGHLIGHT = (255, 226, 132, 255)
 
-WARM_COLORS = (
-    (176, 70, 18, 255),
-    (222, 94, 18, 255),
-    (246, 145, 28, 255),
-    (255, 215, 82, 255),
-)
-EXPLOSION_PALETTE = (
-    (53, 31, 19),
-    (93, 53, 28),
-    (139, 86, 43),
-    (189, 130, 71),
-    (205, 70, 18),
-    (241, 103, 17),
-    (255, 153, 24),
-    (255, 204, 38),
-    (255, 240, 135),
-    (113, 174, 48),
-    (179, 218, 74),
+BASE_PALETTE = (
+    OUTLINE,
+    DEEP_GREEN,
+    DARK_GREEN,
+    MID_GREEN,
+    GREEN,
+    LIGHT_GREEN,
+    LIME_HIGHLIGHT,
+    DARK_BROWN,
+    BROWN,
+    GOLD,
+    RIM,
+    RIM_HIGHLIGHT,
 )
 
-CHARGE_MUTABLE_RECTS = (
-    (16, 16, 27, 25),  # upper storage tube / loaded bomb
-    (10, 24, 22, 35),  # lower storage tube / decorative bomb
-    (32, 1, 54, 18),  # real muzzle interior
-    (28, 37, 37, 46),  # front-center indicator
-)
+EMBER = (174, 57, 16, 255)
+ORANGE = (227, 86, 15, 255)
+AMBER = (255, 146, 24, 255)
+PALE_FLAME = (255, 217, 76, 255)
+WHITE_HOT = (255, 244, 184, 255)
+SMOKE_DARK = (70, 66, 57, 255)
+SMOKE_LIGHT = (127, 119, 98, 255)
+HEAT_PALETTE = (EMBER, ORANGE, AMBER, PALE_FLAME, WHITE_HOT)
 
-
-def _inside_mutable_region(x: int, y: int) -> bool:
-    return any(
-        left <= x < right and top <= y < bottom
-        for left, top, right, bottom in CHARGE_MUTABLE_RECTS
-    )
+UPPER_STORAGE_RECT = (15, 15, 26, 27)
+MUZZLE_RECT = (31, 3, 54, 20)
+FIRE_EFFECT_RECT = (31, 0, 64, 22)
+STATUS_LIGHT_REGION = (28, 39, 36, 47)
+APPROVED_ROPE_TAIL_PIXELS = {
+    (41, 44): RIM,
+    (42, 44): RIM,
+    (41, 45): GOLD,
+    (42, 45): GOLD,
+    (43, 45): RIM,
+    (44, 45): GOLD,
+    (43, 46): DARK_BROWN,
+    (44, 46): DARK_BROWN,
+}
 
 
 def _load_rgba(path: Path) -> Image.Image:
@@ -92,207 +127,349 @@ def _clean(image: Image.Image) -> Image.Image:
         for x in range(cleaned.width):
             red, green, blue, alpha = pixels[x, y]
             pixels[x, y] = (
-                (red, green, blue, 255) if alpha >= 128 else TRANSPARENT
+                (red, green, blue, 255)
+                if alpha >= 128
+                else TRANSPARENT
             )
     return cleaned
 
 
-def _paint_bomb(
-    image: Image.Image,
-    center: tuple[int, int],
-) -> None:
-    """Paint one compact bomb inside an existing bamboo storage rim."""
-    cx, cy = center
-    pixels = image.load()
-    shape = {
-        (-2, -1): OUTLINE,
-        (-1, -2): OUTLINE,
-        (0, -2): OUTLINE,
-        (1, -2): OUTLINE,
-        (2, -1): OUTLINE,
-        (-3, 0): OUTLINE,
-        (3, 0): OUTLINE,
-        (-2, 1): OUTLINE,
-        (2, 1): OUTLINE,
-        (-1, 2): OUTLINE,
-        (0, 2): OUTLINE,
-        (1, 2): OUTLINE,
-        (-2, 0): MID_GREEN,
-        (-1, -1): LIGHT_GREEN,
-        (0, -1): GREEN,
-        (1, -1): GREEN,
-        (2, 0): DEEP_GREEN,
-        (-1, 0): GREEN,
-        (0, 0): GREEN,
-        (1, 0): MID_GREEN,
-        (-1, 1): MID_GREEN,
-        (0, 1): MID_GREEN,
-        (1, 1): DEEP_GREEN,
-    }
-    for (dx, dy), color in shape.items():
-        x = cx + dx
-        y = cy + dy
-        if 0 <= x < image.width and 0 <= y < image.height:
-            pixels[x, y] = color
-
-
-def _empty_upper_storage_tube(image: Image.Image) -> None:
-    """Restore a clearly hollow opening where the loaded bomb was stored."""
-    pixels = image.load()
-    for y, x_min, x_max in (
-        (18, 19, 23),
-        (19, 18, 24),
-        (20, 18, 24),
-        (21, 19, 23),
-        (22, 20, 22),
-    ):
-        for x in range(x_min, x_max + 1):
-            pixels[x, y] = DARK_BROWN
-    pixels[19, 19] = BROWN
-    pixels[20, 18] = BROWN
-
-
-def _paint_indicator(
-    image: Image.Image,
-    color: tuple[int, int, int, int],
-) -> None:
-    pixels = image.load()
-    for x, y in (
-        (31, 40),
-        (32, 40),
-        (30, 41),
-        (31, 41),
-        (32, 41),
-        (33, 41),
-        (31, 42),
-        (32, 42),
-    ):
-        pixels[x, y] = color
-    pixels[30, 40] = OUTLINE
-    pixels[33, 40] = OUTLINE
-    pixels[30, 42] = OUTLINE
-    pixels[33, 42] = OUTLINE
-
-
-def _build_idle(anchor: Image.Image) -> Image.Image:
-    idle = anchor.copy()
-    _paint_bomb(idle, (21, 20))
-    _paint_bomb(idle, (15, 29))
-    _paint_indicator(idle, HIGHLIGHT_GREEN)
-    return _clean(idle)
-
-
-def _build_charge_frames(anchor: Image.Image) -> list[Image.Image]:
-    frames: list[Image.Image] = []
-    interior_colors = {DARK_BROWN, BROWN, GOLD}
-    for frame_index in range(8):
-        frame = anchor.copy()
-        _empty_upper_storage_tube(frame)
-        _paint_bomb(frame, (15, 29))
-
-        pixels = frame.load()
-        heat_level = min(3, frame_index // 2)
-        for y in range(2, 17):
-            for x in range(33, 53):
-                current = pixels[x, y]
-                if current not in interior_colors:
-                    continue
-                # Preserve a dark inner rim while the central bore becomes
-                # brighter, matching the imagegen eight-stage heat direction.
-                distance = abs(x - 43) + abs(y - 9)
-                local_level = max(0, heat_level - (1 if distance > 9 else 0))
-                if current == DARK_BROWN and frame_index < 4:
-                    pixels[x, y] = WARM_COLORS[0]
-                else:
-                    pixels[x, y] = WARM_COLORS[local_level]
-        if frame_index >= 6:
-            for point in ((43, 8), (44, 8), (42, 9), (43, 9), (44, 9)):
-                x, y = point
-                if pixels[x, y][3] > 0:
-                    pixels[x, y] = WARM_COLORS[3]
-
-        indicator_level = min(3, 1 + frame_index // 3)
-        _paint_indicator(frame, WARM_COLORS[indicator_level])
-        frames.append(_clean(frame))
-    return frames
-
-
-def _build_glow_mask() -> Image.Image:
-    mask = Image.new("RGBA", (64, 64), TRANSPARENT)
-    pixels = mask.load()
-    for x, y in (
-        (31, 40),
-        (32, 40),
-        (30, 41),
-        (31, 41),
-        (32, 41),
-        (33, 41),
-        (31, 42),
-        (32, 42),
-    ):
-        pixels[x, y] = (255, 255, 255, 255)
-    return mask
-
-
 def _is_chroma(pixel: tuple[int, int, int, int]) -> bool:
-    red, green, blue, _alpha = pixel
-    return red >= 205 and green <= 105 and blue >= 180
+    """Reject magenta key/outline remnants without eating warm brown pixels."""
+    red, green, blue, alpha = pixel
+    return (
+        alpha >= 128
+        and red >= 70
+        and blue >= 60
+        and red > green * 1.35
+        and blue > green * 1.12
+    )
 
 
-def _nearest_palette_color(
+def _nearest_palette_index(
     rgb: tuple[int, int, int],
-    palette: tuple[tuple[int, int, int], ...],
-) -> tuple[int, int, int]:
+    palette: tuple[tuple[int, int, int, int], ...],
+) -> int:
     red, green, blue = rgb
     return min(
-        palette,
-        key=lambda color: (
-            (red - color[0]) ** 2
-            + (green - color[1]) ** 2
-            + (blue - color[2]) ** 2
+        range(len(palette)),
+        key=lambda index: (
+            (red - palette[index][0]) ** 2 * 2
+            + (green - palette[index][1]) ** 2 * 3
+            + (blue - palette[index][2]) ** 2
         ),
     )
 
 
-def _build_explosion_frames() -> list[Image.Image]:
-    sheet = _load_rgba(EXPLOSION_SOURCE_PATH)
+def _decode_native64_anchor(source: Image.Image) -> Image.Image:
+    """Fold the imagegen-authored 64-cell lattice without resizing geometry."""
+    if source.size != EXPECTED_NATIVE_SOURCE_SIZE:
+        raise RuntimeError(
+            "Native imagegen source must remain "
+            f"{EXPECTED_NATIVE_SOURCE_SIZE[0]}x"
+            f"{EXPECTED_NATIVE_SOURCE_SIZE[1]}, got "
+            f"{source.width}x{source.height}"
+        )
+    result = Image.new("RGBA", NATIVE_LOGICAL_SIZE, TRANSPARENT)
+    pixels = result.load()
+    for logical_y in range(NATIVE_LOGICAL_SIZE[1]):
+        source_y = min(
+            source.height - 1,
+            int((logical_y + 0.5) * source.height / NATIVE_LOGICAL_SIZE[1]),
+        )
+        for logical_x in range(NATIVE_LOGICAL_SIZE[0]):
+            source_x = min(
+                source.width - 1,
+                int(
+                    (logical_x + 0.5)
+                    * source.width
+                    / NATIVE_LOGICAL_SIZE[0]
+                ),
+            )
+            source_pixel = source.getpixel((source_x, source_y))
+            if source_pixel[3] < 128 or _is_chroma(source_pixel):
+                continue
+            palette_index = _nearest_palette_index(
+                source_pixel[:3],
+                BASE_PALETTE,
+            )
+            pixels[logical_x, logical_y] = BASE_PALETTE[palette_index]
+    return _clean(result)
+
+
+def _empty_upper_storage_tube(image: Image.Image) -> None:
+    pixels = image.load()
+    # Remove only the raised bomb and rebuild a compact rim/cavity attached to
+    # the existing tube body.  The lower decorative bomb is left untouched.
+    for y in range(15, 25):
+        for x in range(15, 26):
+            pixels[x, y] = TRANSPARENT
+    opening = {
+        (19, 19): OUTLINE,
+        (20, 19): OUTLINE,
+        (21, 19): OUTLINE,
+        (22, 19): OUTLINE,
+        (17, 20): OUTLINE,
+        (18, 20): RIM,
+        (19, 20): BROWN,
+        (20, 20): DARK_BROWN,
+        (21, 20): DARK_BROWN,
+        (22, 20): BROWN,
+        (23, 20): RIM,
+        (24, 20): OUTLINE,
+        (16, 21): OUTLINE,
+        (17, 21): RIM_HIGHLIGHT,
+        (18, 21): BROWN,
+        (19, 21): DARK_BROWN,
+        (20, 21): DARK_BROWN,
+        (21, 21): DARK_BROWN,
+        (22, 21): BROWN,
+        (23, 21): RIM,
+        (24, 21): OUTLINE,
+        (16, 22): OUTLINE,
+        (17, 22): RIM,
+        (18, 22): DARK_BROWN,
+        (19, 22): DARK_BROWN,
+        (20, 22): DARK_BROWN,
+        (21, 22): DARK_BROWN,
+        (22, 22): DARK_BROWN,
+        (23, 22): RIM,
+        (24, 22): OUTLINE,
+        (17, 23): OUTLINE,
+        (18, 23): RIM_HIGHLIGHT,
+        (19, 23): RIM,
+        (20, 23): RIM,
+        (21, 23): RIM,
+        (22, 23): RIM,
+        (23, 23): OUTLINE,
+        (17, 24): OUTLINE,
+        (18, 24): GREEN,
+        (19, 24): GREEN,
+        (20, 24): MID_GREEN,
+        (21, 24): MID_GREEN,
+        (22, 24): DARK_GREEN,
+        (23, 24): OUTLINE,
+    }
+    for point, color in opening.items():
+        pixels[point] = color
+
+
+def _muzzle_interior_points(anchor: Image.Image) -> list[tuple[int, int]]:
+    points: list[tuple[int, int]] = []
+    for y in range(MUZZLE_RECT[1], MUZZLE_RECT[3]):
+        for x in range(MUZZLE_RECT[0], MUZZLE_RECT[2]):
+            if anchor.getpixel((x, y)) not in (DARK_BROWN, BROWN):
+                continue
+            normalized = (
+                ((x - 43.0) / 10.5) ** 2
+                + ((y - 9.5) / 7.5) ** 2
+            )
+            if normalized <= 1.0:
+                points.append((x, y))
+    if len(points) < 40:
+        raise RuntimeError(
+            "Reconstructed muzzle interior is unexpectedly small: "
+            f"{len(points)} texels"
+        )
+    return sorted(
+        points,
+        key=lambda point: (
+            (point[0] - 47) ** 2 + (point[1] - 8) ** 2,
+            point[1],
+            point[0],
+        ),
+    )
+
+
+def _heat_muzzle(
+    image: Image.Image,
+    anchor: Image.Image,
+    stage: int,
+) -> None:
+    if not 0 <= stage <= 7:
+        raise ValueError(f"Heat stage must be 0..7, got {stage}")
+    points = _muzzle_interior_points(anchor)
+    heated_count = max(
+        1,
+        math.ceil(len(points) * (stage + 1) / 8.0),
+    )
+    pixels = image.load()
+    for order, point in enumerate(points):
+        if order >= heated_count:
+            continue
+        relative = order / max(1, heated_count - 1)
+        intensity = min(
+            4,
+            max(0, stage // 2 + (1 if relative < 0.28 else 0)),
+        )
+        pixels[point] = HEAT_PALETTE[intensity]
+    if stage == 7:
+        for point in ((46, 7), (47, 7), (46, 8), (47, 8), (48, 8)):
+            if point in points:
+                pixels[point] = WHITE_HOT
+
+
+def _build_idle(anchor: Image.Image) -> Image.Image:
+    return _clean(anchor.copy())
+
+
+def _build_charge_frames(anchor: Image.Image) -> list[Image.Image]:
     frames: list[Image.Image] = []
-    for frame_index in range(8):
-        column = frame_index % 4
-        row = frame_index // 4
-        left = round(column * sheet.width / 4.0)
-        right = round((column + 1) * sheet.width / 4.0)
-        top = round(row * sheet.height / 2.0)
-        bottom = round((row + 1) * sheet.height / 2.0)
-        cell = sheet.crop((left, top, right, bottom))
-        logical = cell.resize((64, 64), Image.Resampling.NEAREST)
-        source_pixels = logical.load()
-        result = Image.new("RGBA", (64, 64), TRANSPARENT)
-        target_pixels = result.load()
-        for y in range(64):
-            for x in range(64):
-                pixel = source_pixels[x, y]
-                if _is_chroma(pixel):
-                    continue
-                chosen = _nearest_palette_color(
-                    pixel[:3],
-                    EXPLOSION_PALETTE,
-                )
-                target_pixels[x, y] = (*chosen, 255)
-        frames.append(_clean(result))
+    for stage in range(8):
+        frame = anchor.copy()
+        _empty_upper_storage_tube(frame)
+        _heat_muzzle(frame, anchor, stage)
+        frames.append(_clean(frame))
     return frames
 
 
-def _build_shell() -> Image.Image:
-    shell = Image.new("RGBA", (12, 12), TRANSPARENT)
-    _paint_bomb(shell, (6, 6))
-    pixels = shell.load()
-    pixels[5, 3] = RIM
-    pixels[6, 3] = GOLD
-    return _clean(shell)
+def _paint_points(
+    image: Image.Image,
+    points: dict[tuple[int, int], tuple[int, int, int, int]],
+) -> None:
+    pixels = image.load()
+    for (x, y), color in points.items():
+        if 0 <= x < image.width and 0 <= y < image.height:
+            pixels[x, y] = color
 
 
-def _visible_colors(image: Image.Image) -> set[tuple[int, int, int]]:
+def _paint_muzzle_flash(image: Image.Image, large: bool) -> None:
+    """Paint one connected, jagged flame cone without a projectile sprite."""
+    if large:
+        rows = {
+            1: (61, 62),
+            2: (59, 62),
+            3: (57, 62),
+            4: (55, 61),
+            5: (53, 60),
+            6: (51, 59),
+            7: (50, 57),
+            8: (49, 56),
+            9: (48, 54),
+            10: (47, 53),
+            11: (46, 51),
+            12: (46, 49),
+        }
+    else:
+        rows = {
+            3: (57, 57),
+            4: (55, 58),
+            5: (53, 57),
+            6: (51, 56),
+            7: (50, 55),
+            8: (49, 54),
+            9: (48, 52),
+            10: (47, 51),
+            11: (47, 49),
+        }
+
+    points: dict[tuple[int, int], tuple[int, int, int, int]] = {}
+    for y, (left, right) in rows.items():
+        for x in range(left, right + 1):
+            distance = abs(x - 49) + abs(y - 9)
+            if distance <= 3:
+                color = WHITE_HOT
+            elif distance <= 7:
+                color = PALE_FLAME
+            elif distance <= 11:
+                color = AMBER
+            elif x >= 61 or distance >= 16:
+                color = EMBER
+            else:
+                color = ORANGE
+            points[(x, y)] = color
+    _paint_points(image, points)
+
+
+def _paint_afterglow_wedge(image: Image.Image) -> None:
+    """Keep the third fire frame readable while the main flash collapses."""
+    rows = {
+        4: (56, 56),
+        5: (54, 57),
+        6: (52, 56),
+        7: (50, 55),
+        8: (49, 54),
+        9: (48, 52),
+        10: (47, 50),
+        11: (47, 49),
+    }
+    points: dict[tuple[int, int], tuple[int, int, int, int]] = {}
+    for y, (left, right) in rows.items():
+        for x in range(left, right + 1):
+            distance = abs(x - 49) + abs(y - 9)
+            if distance <= 3:
+                color = PALE_FLAME
+            elif distance <= 7:
+                color = AMBER
+            elif distance <= 11:
+                color = ORANGE
+            else:
+                color = EMBER
+            points[(x, y)] = color
+    _paint_points(image, points)
+
+
+def _build_fire_frames(anchor: Image.Image) -> list[Image.Image]:
+    frames: list[Image.Image] = []
+
+    ignition = anchor.copy()
+    _empty_upper_storage_tube(ignition)
+    _heat_muzzle(ignition, anchor, 7)
+    _paint_muzzle_flash(ignition, False)
+    frames.append(_clean(ignition))
+
+    blast = anchor.copy()
+    _empty_upper_storage_tube(blast)
+    _heat_muzzle(blast, anchor, 7)
+    _paint_muzzle_flash(blast, True)
+    frames.append(_clean(blast))
+
+    afterglow = anchor.copy()
+    _empty_upper_storage_tube(afterglow)
+    _heat_muzzle(afterglow, anchor, 4)
+    _paint_afterglow_wedge(afterglow)
+    _paint_points(
+        afterglow,
+        {
+            (57, 1): SMOKE_DARK,
+            (58, 1): SMOKE_LIGHT,
+            (59, 1): SMOKE_DARK,
+            (56, 2): SMOKE_DARK,
+            (57, 2): SMOKE_LIGHT,
+            (58, 2): SMOKE_LIGHT,
+            (59, 2): SMOKE_DARK,
+            (57, 3): SMOKE_DARK,
+            (58, 3): SMOKE_DARK,
+        },
+    )
+    frames.append(_clean(afterglow))
+
+    smoke = anchor.copy()
+    _empty_upper_storage_tube(smoke)
+    _heat_muzzle(smoke, anchor, 1)
+    _paint_points(
+        smoke,
+        {
+            (52, 7): EMBER,
+            (55, 2): SMOKE_DARK,
+            (56, 1): SMOKE_DARK,
+            (57, 1): SMOKE_LIGHT,
+            (58, 1): SMOKE_DARK,
+            (55, 3): SMOKE_DARK,
+            (56, 2): SMOKE_LIGHT,
+            (57, 2): SMOKE_LIGHT,
+            (58, 2): SMOKE_DARK,
+            (56, 3): SMOKE_DARK,
+            (57, 3): SMOKE_DARK,
+        },
+    )
+    frames.append(_clean(smoke))
+    return frames
+
+
+def _visible_colors(
+    image: Image.Image,
+) -> set[tuple[int, int, int]]:
     return {
         (red, green, blue)
         for red, green, blue, alpha in image.getdata()
@@ -300,101 +477,277 @@ def _visible_colors(image: Image.Image) -> set[tuple[int, int, int]]:
     }
 
 
+def _inside_rect(
+    x: int,
+    y: int,
+    rect: tuple[int, int, int, int],
+) -> bool:
+    left, top, right, bottom = rect
+    return left <= x < right and top <= y < bottom
+
+
+def _assert_clean(label: str, image: Image.Image) -> None:
+    alpha_values = {pixel[3] for pixel in image.getdata()}
+    if not alpha_values.issubset({0, 255}):
+        raise RuntimeError(f"{label} has non-binary alpha")
+    if any(
+        alpha == 0 and (red != 0 or green != 0 or blue != 0)
+        for red, green, blue, alpha in image.getdata()
+    ):
+        raise RuntimeError(f"{label} has dirty transparent RGB")
+    if any(
+        _is_chroma((red, green, blue, alpha))
+        for red, green, blue, alpha in image.getdata()
+    ):
+        raise RuntimeError(f"{label} retains magenta chroma pixels")
+
+
+def _image_sha256(image: Image.Image) -> str:
+    return hashlib.sha256(_encode_png(image)).hexdigest()
+
+
+def _rgba_sha256(image: Image.Image) -> str:
+    return hashlib.sha256(image.convert("RGBA").tobytes()).hexdigest()
+
+
+def _validate_approved_anchor(
+    native_imagegen_source: Image.Image,
+    anchor: Image.Image,
+) -> None:
+    """Lock the approved pixels and prove the rope-tail edit stayed local."""
+    _assert_clean("approved_anchor", anchor)
+    anchor_rgba_sha256 = _rgba_sha256(anchor)
+    if anchor_rgba_sha256 != EXPECTED_APPROVED_ANCHOR_RGBA_SHA256:
+        raise RuntimeError(
+            "Approved Bamboo Mortar anchor pixels changed: "
+            f"{anchor_rgba_sha256}"
+        )
+
+    unedited_baseline = _decode_native64_anchor(native_imagegen_source)
+    changed_points = {
+        (x, y)
+        for y in range(CANVAS_SIZE[1])
+        for x in range(CANVAS_SIZE[0])
+        if anchor.getpixel((x, y)) != unedited_baseline.getpixel((x, y))
+    }
+    expected_points = set(APPROVED_ROPE_TAIL_PIXELS)
+    if changed_points != expected_points:
+        raise RuntimeError(
+            "Approved anchor must differ from the clean baseline at exactly "
+            f"the eight rope-tail pixels; got {sorted(changed_points)}"
+        )
+    for point, expected_color in APPROVED_ROPE_TAIL_PIXELS.items():
+        if anchor.getpixel(point) != expected_color:
+            raise RuntimeError(
+                "Approved rope-tail pixel changed: "
+                f"point={point} actual={anchor.getpixel(point)}"
+            )
+
+
 def _validate(
+    reference: Image.Image,
+    native_imagegen_source: Image.Image,
+    approved_imagegen_source: Image.Image,
     anchor: Image.Image,
     idle: Image.Image,
     charge_frames: list[Image.Image],
-    explosion_frames: list[Image.Image],
-    glow_mask: Image.Image,
-    shell: Image.Image,
+    fire_frames: list[Image.Image],
 ) -> dict:
-    if anchor.size != (64, 64):
+    if reference.size != (1254, 1254):
+        raise RuntimeError(
+            f"Design reference must be 1254x1254, got {reference.size}"
+        )
+    if native_imagegen_source.size != EXPECTED_NATIVE_SOURCE_SIZE:
+        raise RuntimeError(
+            "Native imagegen source dimensions changed: "
+            f"{native_imagegen_source.size}"
+        )
+    if approved_imagegen_source.size != EXPECTED_NATIVE_SOURCE_SIZE:
+        raise RuntimeError(
+            "Approved rope-tail imagegen reference dimensions changed: "
+            f"{approved_imagegen_source.size}"
+        )
+    approved_reference_sha256 = hashlib.sha256(
+        APPROVED_IMAGEGEN_PATH.read_bytes()
+    ).hexdigest()
+    if approved_reference_sha256 != EXPECTED_APPROVED_REFERENCE_SHA256:
+        raise RuntimeError(
+            "Approved rope-tail imagegen reference changed: "
+            f"{approved_reference_sha256}"
+        )
+    if anchor.size != CANVAS_SIZE:
         raise RuntimeError(f"Anchor must be 64x64, got {anchor.size}")
-    building_frames = [idle, *charge_frames]
-    for index, frame in enumerate(building_frames):
-        if frame.size != (64, 64):
-            raise RuntimeError(f"Building frame {index} is not 64x64")
-        alpha_values = {pixel[3] for pixel in frame.getdata()}
-        if not alpha_values.issubset({0, 255}):
-            raise RuntimeError(f"Building frame {index} has non-binary alpha")
-        if len(_visible_colors(frame)) > 14:
+    _validate_approved_anchor(native_imagegen_source, anchor)
+    if anchor.getchannel("A").getbbox() != EXPECTED_BODY_BBOX:
+        raise RuntimeError(
+            "Native-64 anchor bbox changed: "
+            f"{anchor.getchannel('A').getbbox()}"
+        )
+    body_width = EXPECTED_BODY_BBOX[2] - EXPECTED_BODY_BBOX[0]
+    body_height = EXPECTED_BODY_BBOX[3] - EXPECTED_BODY_BBOX[1]
+    if body_width > MAX_BODY_SIZE[0] or body_height > MAX_BODY_SIZE[1]:
+        raise RuntimeError(
+            "Bamboo Mortar native composition exceeds the 60x60 body budget"
+        )
+    if len(charge_frames) != 8 or len(fire_frames) != 4:
+        raise RuntimeError("Expected exactly 8 charge and 4 fire frames")
+
+    body_frames = [idle, *charge_frames, *fire_frames]
+    for index, frame in enumerate(body_frames):
+        if frame.size != CANVAS_SIZE:
+            raise RuntimeError(f"Body frame {index} is not 64x64")
+        _assert_clean(f"body_{index}", frame)
+        if len(_visible_colors(frame)) > 20:
             raise RuntimeError(
-                f"Building frame {index} exceeds the 14-color limit"
+                f"Body frame {index} exceeds the 20-color limit"
             )
+
     anchor_pixels = anchor.load()
     for frame_index, frame in enumerate(charge_frames):
         frame_pixels = frame.load()
         for y in range(64):
             for x in range(64):
-                if _inside_mutable_region(x, y):
+                if (
+                    _inside_rect(x, y, UPPER_STORAGE_RECT)
+                    or _inside_rect(x, y, MUZZLE_RECT)
+                ):
                     continue
                 if frame_pixels[x, y] != anchor_pixels[x, y]:
                     raise RuntimeError(
-                        "Charge frame changed an immutable anchor pixel: "
+                        "Charge frame changed a stable body pixel: "
                         f"frame={frame_index} point=({x},{y})"
                     )
-    for index, frame in enumerate(explosion_frames):
-        if frame.size != (64, 64):
-            raise RuntimeError(f"Explosion frame {index} is not 64x64")
-        if len(_visible_colors(frame)) > 12:
-            raise RuntimeError(
-                f"Explosion frame {index} exceeds the 12-color limit"
-            )
-    for label, image in (
-        ("glow_mask", glow_mask),
-        ("shell", shell),
-        *(
-            (f"building_{index}", image)
-            for index, image in enumerate(building_frames)
-        ),
-        *(
-            (f"explosion_{index}", image)
-            for index, image in enumerate(explosion_frames)
-        ),
+
+    for frame_index, frame in enumerate(fire_frames):
+        frame_pixels = frame.load()
+        for y in range(64):
+            for x in range(64):
+                if (
+                    _inside_rect(x, y, UPPER_STORAGE_RECT)
+                    or _inside_rect(x, y, FIRE_EFFECT_RECT)
+                ):
+                    continue
+                if frame_pixels[x, y] != anchor_pixels[x, y]:
+                    raise RuntimeError(
+                        "Fire frame changed a stable body pixel: "
+                        f"frame={frame_index} point=({x},{y})"
+                    )
+
+    if len({_image_sha256(frame) for frame in charge_frames}) != 8:
+        raise RuntimeError("All eight charge frames must be visually unique")
+    if len({_image_sha256(frame) for frame in fire_frames}) != 4:
+        raise RuntimeError("All four fire frames must be visually unique")
+    if not all(
+        frame.getpixel((20, 17)) == TRANSPARENT
+        and frame.getpixel((20, 21)) == DARK_BROWN
+        for frame in (*charge_frames, *fire_frames)
     ):
-        if not {pixel[3] for pixel in image.getdata()}.issubset({0, 255}):
-            raise RuntimeError(f"{label} has non-binary alpha")
-        if any(
-            alpha == 0 and (red != 0 or green != 0 or blue != 0)
-            for red, green, blue, alpha in image.getdata()
-        ):
-            raise RuntimeError(f"{label} has dirty transparent RGB")
+        raise RuntimeError(
+            "Upper storage tube must be empty throughout charge/fire"
+        )
+    if not all(
+        frame.getpixel((14, 29)) == idle.getpixel((14, 29))
+        for frame in (*charge_frames, *fire_frames)
+    ):
+        raise RuntimeError("Lower decorative bomb must remain loaded")
+
+    # Nothing in the front-center status-light area may animate in the body
+    # textures.  The square mask is composited by its own Godot node.
+    for frame in (*charge_frames, *fire_frames):
+        for y in range(STATUS_LIGHT_REGION[1], STATUS_LIGHT_REGION[3]):
+            for x in range(STATUS_LIGHT_REGION[0], STATUS_LIGHT_REGION[2]):
+                if frame.getpixel((x, y)) != idle.getpixel((x, y)):
+                    raise RuntimeError(
+                        "Status-light pixels were baked into a body frame"
+                    )
+
     return {
-        "schema_version": 1,
-        "anchor_sha256": hashlib.sha256(ANCHOR_PATH.read_bytes()).hexdigest(),
-        "imagegen_charge_sha256": hashlib.sha256(
-            CHARGE_SOURCE_PATH.read_bytes()
+        "schema_version": 4,
+        "design_reference_sha256": hashlib.sha256(
+            REFERENCE_PATH.read_bytes()
         ).hexdigest(),
-        "imagegen_explosion_sha256": hashlib.sha256(
-            EXPLOSION_SOURCE_PATH.read_bytes()
+        "approved_rope_tail_imagegen_reference_sha256": (
+            approved_reference_sha256
+        ),
+        "native64_imagegen_source_sha256": hashlib.sha256(
+            NATIVE_IMAGEGEN_PATH.read_bytes()
         ).hexdigest(),
+        "approved_anchor_png_sha256": hashlib.sha256(
+            ANCHOR_PATH.read_bytes()
+        ).hexdigest(),
+        "approved_anchor_rgba_sha256": _rgba_sha256(anchor),
+        "imagegen_charge_reference_sha256": hashlib.sha256(
+            CHARGE_REFERENCE_PATH.read_bytes()
+        ).hexdigest(),
+        "imagegen_fire_reference_sha256": hashlib.sha256(
+            FIRE_REFERENCE_PATH.read_bytes()
+        ).hexdigest(),
+        "pixel_grid_analyzer": {
+            "command": (
+                "python dev_tools/pixel_grid_analyzer.py "
+                "bamboo_mortar_native64_imagegen_magenta.png --json"
+            ),
+            "detection_mode": "approximate",
+            "grid_cell_width": 19.55,
+            "grid_cell_height": 19.5,
+            "confidence": 0.959,
+            "logical_canvas_size": list(NATIVE_LOGICAL_SIZE),
+        },
+        "native64_baseline_decode": {
+            "method": (
+                "One center sample from each imagegen-authored logical cell; "
+                "used only to audit the eight-pixel rope-tail delta."
+            ),
+            "source_size": list(native_imagegen_source.size),
+            "logical_source_size": list(NATIVE_LOGICAL_SIZE),
+            "canvas_size": list(CANVAS_SIZE),
+            "geometric_resize": False,
+            "merged_source_cells": False,
+            "base_palette_size": len(BASE_PALETTE),
+        },
+        "approved_rope_tail_delta": {
+            "changed_pixel_count": len(APPROVED_ROPE_TAIL_PIXELS),
+            "highlight_points": [[41, 44], [42, 44], [43, 45]],
+            "gold_points": [[44, 45], [41, 45], [42, 45]],
+            "shadow_points": [[43, 46], [44, 46]],
+        },
         "building_frame_visible_colors": [
-            len(_visible_colors(frame)) for frame in building_frames
-        ],
-        "explosion_frame_visible_colors": [
-            len(_visible_colors(frame)) for frame in explosion_frames
+            len(_visible_colors(frame)) for frame in body_frames
         ],
         "building_subject_bboxes": [
             list(frame.getchannel("A").getbbox() or ())
-            for frame in building_frames
+            for frame in body_frames
         ],
-        "explosion_subject_bboxes": [
-            list(frame.getchannel("A").getbbox() or ())
-            for frame in explosion_frames
+        "charge_frame_hashes": [
+            _image_sha256(frame) for frame in charge_frames
         ],
-        "charge_immutable_pixels_preserved": True,
+        "fire_frame_hashes": [
+            _image_sha256(frame) for frame in fire_frames
+        ],
+        "body_width": body_width,
+        "body_height": body_height,
+        "upper_storage_empty_during_charge_and_fire": True,
+        "lower_decorative_bomb_preserved": True,
+        "status_light_baked_into_body_frames": False,
+        "status_light_rendering": (
+            "Independent small square Godot node with HDR/shader emission; "
+            "this builder emits no status-light bitmap."
+        ),
+        "shell_baked_into_fire_frames": False,
         "binary_alpha": True,
         "transparent_rgb_clean": True,
+        "magenta_pixels_removed": True,
         "imagegen_role": (
-            "Eight-stage muzzle/indicator heat direction and eight-stage "
-            "bamboo-fire-dust explosion source."
+            "The approved high-resolution image is retained as visual "
+            "provenance. The approved transparent 64x64 anchor is the sole "
+            "production authority. Charge/fire sheets supply motion language; "
+            "only storage and muzzle regions are changed per frame."
         ),
+        "production_anchor_read_only": True,
     }
 
 
-def _encode_png(image: Image.Image, destination: Path) -> bytes:
-    from io import BytesIO
-
+def _encode_png(image: Image.Image) -> bytes:
     buffer = BytesIO()
     image.save(buffer, format="PNG", optimize=False)
     return buffer.getvalue()
@@ -403,35 +756,19 @@ def _encode_png(image: Image.Image, destination: Path) -> bytes:
 def _managed_outputs(
     idle: Image.Image,
     charge_frames: list[Image.Image],
-    explosion_frames: list[Image.Image],
-    glow_mask: Image.Image,
-    shell: Image.Image,
+    fire_frames: list[Image.Image],
     audit: dict,
 ) -> dict[Path, bytes]:
     outputs: dict[Path, bytes] = {
-        OUTPUT_ROOT / "idle.png": _encode_png(idle, OUTPUT_ROOT / "idle.png"),
-        OUTPUT_ROOT / "glow_mask.png": _encode_png(
-            glow_mask,
-            OUTPUT_ROOT / "glow_mask.png",
-        ),
-        OUTPUT_ROOT / "shell.png": _encode_png(
-            shell,
-            OUTPUT_ROOT / "shell.png",
-        ),
+        OUTPUT_ROOT / "idle.png": _encode_png(idle),
         AUDIT_PATH: (
             json.dumps(audit, ensure_ascii=False, indent=2) + "\n"
         ).encode("utf-8"),
     }
     for index, frame in enumerate(charge_frames):
-        outputs[OUTPUT_ROOT / f"charge_{index}.png"] = _encode_png(
-            frame,
-            OUTPUT_ROOT / f"charge_{index}.png",
-        )
-    for index, frame in enumerate(explosion_frames):
-        outputs[OUTPUT_ROOT / f"explosion_{index}.png"] = _encode_png(
-            frame,
-            OUTPUT_ROOT / f"explosion_{index}.png",
-        )
+        outputs[OUTPUT_ROOT / f"charge_{index}.png"] = _encode_png(frame)
+    for index, frame in enumerate(fire_frames):
+        outputs[OUTPUT_ROOT / f"fire_{index}.png"] = _encode_png(frame)
     return outputs
 
 
@@ -444,26 +781,33 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    anchor = _clean(_load_rgba(ANCHOR_PATH))
+    reference = _load_rgba(REFERENCE_PATH)
+    native_imagegen_source = _load_rgba(NATIVE_IMAGEGEN_PATH)
+    approved_imagegen_source = _load_rgba(APPROVED_IMAGEGEN_PATH)
+    # Their hashes establish the exact imagegen animation references used to
+    # author the local storage/muzzle changes without replacing stable pixels.
+    _load_rgba(CHARGE_REFERENCE_PATH)
+    _load_rgba(FIRE_REFERENCE_PATH)
+
+    # This is an approved input, never a managed output.  Validate before any
+    # cleanup so dirty transparency or softened alpha cannot be silently fixed.
+    anchor = _load_rgba(ANCHOR_PATH)
     idle = _build_idle(anchor)
     charge_frames = _build_charge_frames(anchor)
-    explosion_frames = _build_explosion_frames()
-    glow_mask = _build_glow_mask()
-    shell = _build_shell()
+    fire_frames = _build_fire_frames(anchor)
     audit = _validate(
+        reference,
+        native_imagegen_source,
+        approved_imagegen_source,
         anchor,
         idle,
         charge_frames,
-        explosion_frames,
-        glow_mask,
-        shell,
+        fire_frames,
     )
     outputs = _managed_outputs(
         idle,
         charge_frames,
-        explosion_frames,
-        glow_mask,
-        shell,
+        fire_frames,
         audit,
     )
 

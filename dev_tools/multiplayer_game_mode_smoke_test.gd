@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 12,
-		"Simple crafting requires multiplayer protocol v12."
+		NetConstants.PROTOCOL_VERSION == 13,
+		"Reliable terminal feedback on the simple-crafting baseline requires protocol v13."
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),

@@ -41,6 +41,7 @@
 [ext_resource type="PackedScene" path="res://scene/enemy/capoo_projectile_motion_system.tscn" id="42_capoo_projectile_motion"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/research_coordinator.tscn" id="43_research_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/research_center_panel.tscn" id="44_research_panel"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/bamboo_mortar_combat_system.tscn" id="45_bamboo_mortar_combat"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -320,6 +321,8 @@ script = ExtResource("41_sniper_lock_visuals")
 script = ExtResource("29_session_pool")
 
 [node name="CapooProjectileMotionSystem" parent="." unique_id=1401613609 instance=ExtResource("42_capoo_projectile_motion")]
+
+[node name="BambooMortarCombatSystem" parent="." instance=ExtResource("45_bamboo_mortar_combat")]
 
 [node name="ZhuangfangyiMerchant" parent="." unique_id=112812860 instance=ExtResource("15_merchant")]
 position = Vector2(96, 81)

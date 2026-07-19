@@ -16,20 +16,28 @@ const WINDUP_DURATION_SECONDS := 4.0
 const TARGET_TRACK_INTERVAL_SECONDS := 0.5
 const WINDUP_FRAME_COUNT := 8
 const WINDUP_FPS := 2.0
+const FIRE_FRAME_COUNT := 4
+const FIRE_FPS := 12.0
+const FIRE_LAUNCH_FRAME := 1
+const FIRE_DURATION_SECONDS := FIRE_FRAME_COUNT / FIRE_FPS
+const FIRE_LAUNCH_LEAD_SECONDS := FIRE_LAUNCH_FRAME / FIRE_FPS
 const RUNTIME_STATE_SCHEMA := 1
 const NETWORK_STAGE_WINDUP := 0
 const NETWORK_STAGE_FIRE := 1
-const IDLE_GLOW_COLOR := Color(0.48, 1.0, 0.24, 1.0)
-const CHARGE_GLOW_COLOR := Color(1.0, 0.48, 0.12, 1.0)
+const IDLE_GLOW_COLOR := Color(0.34, 1.65, 0.18, 1.0)
+const CHARGE_GLOW_COLOR := Color(2.25, 0.62, 0.10, 1.0)
+const MAIN_SPRITE_REST_POSITION := Vector2.ZERO
+const FIRE_RECOIL_OFFSET := Vector2(-1.0, 1.0)
 
 enum CombatPhase {
 	IDLE,
 	WINDUP,
 	COOLDOWN,
+	FIRING,
 }
 
 @onready var main_sprite: AnimatedSprite2D = $VisualRoot/MainSprite
-@onready var glow_sprite: Sprite2D = $VisualRoot/GlowSprite
+@onready var status_light: Polygon2D = $VisualRoot/StatusLight
 @onready var muzzle: Marker2D = $VisualRoot/Muzzle
 @onready var attack_timer: Timer = $AttackTimer
 @onready var target_track_timer: Timer = $TargetTrackTimer
@@ -48,7 +56,9 @@ var completed_authoritative_launch_count := 0
 
 var _combat_runtime: Node = null
 var _target_candidates: Array[Enemy] = []
+var _target_request_pending := false
 var _windup_started_at_seconds := 0.0
+var _authoritative_fire_action_id := 0
 var _latest_proxy_shell_action_id := 0
 var _last_projectile_action_id := 0
 var _last_projectile_started_at_seconds := -INF
@@ -70,15 +80,16 @@ func _on_setup_completed() -> void:
 	if not health_changed.is_connected(_on_health_changed):
 		health_changed.connect(_on_health_changed)
 	main_sprite.play(&"idle")
+	main_sprite.position = MAIN_SPRITE_REST_POSITION
 	_set_glow_state(false, 0)
 
 
 func _on_construction_started() -> void:
-	glow_sprite.visible = false
+	status_light.visible = false
 
 
 func _on_construction_finished(_was_animated: bool) -> void:
-	glow_sprite.visible = true
+	status_light.visible = true
 
 
 func _on_operational_started() -> void:
@@ -95,18 +106,22 @@ func _on_multiplayer_proxy_configured() -> void:
 func _disable_proxy_combat_runtime() -> void:
 	attack_timer.stop()
 	target_track_timer.stop()
+	_cancel_scheduled_target_request()
 	pending_target = null
 	_target_candidates.clear()
 	combat_phase = CombatPhase.IDLE
+	main_sprite.position = MAIN_SPRITE_REST_POSITION
 
 
 func _on_removal_started(_mode: RemovalMode) -> void:
 	attack_timer.stop()
 	target_track_timer.stop()
+	_cancel_scheduled_target_request()
 	pending_target = null
 	_target_candidates.clear()
 	main_sprite.stop()
-	glow_sprite.visible = false
+	main_sprite.position = MAIN_SPRITE_REST_POSITION
+	status_light.visible = false
 	fire_audio.stop()
 	health_bar.hide()
 
@@ -127,8 +142,34 @@ func _try_begin_windup() -> void:
 		or is_dead
 		or is_removing
 		or combat_phase == CombatPhase.WINDUP
+		or combat_phase == CombatPhase.FIRING
+		or _target_request_pending
 	):
 		return
+	if (
+		_combat_runtime != null
+		and is_instance_valid(_combat_runtime)
+		and _combat_runtime.has_method(
+			"request_bamboo_mortar_target"
+		)
+	):
+		_target_request_pending = true
+		attack_timer.stop()
+		var accepted := bool(
+			_combat_runtime.call(
+				"request_bamboo_mortar_target",
+				self,
+				MINIMUM_ATTACK_RANGE,
+				configured_attack_range,
+				Callable(
+					self,
+					"_on_bamboo_mortar_target_resolved"
+				)
+			)
+		)
+		if accepted:
+			return
+		_target_request_pending = false
 	var target := _select_nearest_target_in_ring()
 	if target == null:
 		combat_phase = CombatPhase.IDLE
@@ -137,14 +178,54 @@ func _try_begin_windup() -> void:
 	_begin_authoritative_windup(target)
 
 
+func _on_bamboo_mortar_target_resolved(target: Variant) -> void:
+	if not _target_request_pending:
+		return
+	_target_request_pending = false
+	if (
+		is_multiplayer_proxy
+		or is_dead
+		or is_removing
+		or combat_phase == CombatPhase.WINDUP
+		or combat_phase == CombatPhase.FIRING
+	):
+		return
+	if not _is_valid_target(target):
+		combat_phase = CombatPhase.IDLE
+		attack_timer.start(ATTACK_COOLDOWN_SECONDS)
+		return
+	_begin_authoritative_windup(target as Enemy)
+
+
+func _cancel_scheduled_target_request() -> void:
+	if not _target_request_pending:
+		return
+	_target_request_pending = false
+	if (
+		_combat_runtime == null
+		or not is_instance_valid(_combat_runtime)
+		or not _combat_runtime.has_method(
+			"cancel_bamboo_mortar_target_request"
+		)
+	):
+		return
+	_combat_runtime.call(
+		"cancel_bamboo_mortar_target_request",
+		self
+	)
+
+
 func _begin_authoritative_windup(target: Enemy) -> void:
+	_target_request_pending = false
 	pending_target = target
 	last_valid_target_position = target.global_position
 	next_authoritative_action_id += 1
 	combat_phase = CombatPhase.WINDUP
+	_authoritative_fire_action_id = 0
 	_windup_started_at_seconds = _now_seconds()
 	attack_timer.stop()
 	target_track_timer.start(TARGET_TRACK_INTERVAL_SECONDS)
+	main_sprite.position = MAIN_SPRITE_REST_POSITION
 	main_sprite.play(&"charge")
 	main_sprite.set_frame_and_progress(0, 0.0)
 	_set_glow_state(true, 0)
@@ -164,37 +245,103 @@ func _on_target_track_timer_timeout() -> void:
 
 
 func _update_last_valid_target_position() -> void:
-	if not _is_valid_target(pending_target):
+	var tracked_target: Variant = pending_target
+	if not _is_valid_target(tracked_target):
+		pending_target = null
 		return
+	var valid_target := tracked_target as Enemy
 	var distance_squared := global_position.distance_squared_to(
-		pending_target.global_position
+		valid_target.global_position
 	)
 	if (
 		distance_squared <= configured_attack_range * configured_attack_range
 		and distance_squared
 		> MINIMUM_ATTACK_RANGE * MINIMUM_ATTACK_RANGE
 	):
-		last_valid_target_position = pending_target.global_position
+		last_valid_target_position = valid_target.global_position
 
 
 func _on_main_sprite_frame_changed() -> void:
 	if main_sprite.animation == &"charge":
 		_set_glow_state(true, main_sprite.frame)
+		return
+	if main_sprite.animation != &"fire":
+		return
+	_set_glow_state(true, WINDUP_FRAME_COUNT - 1)
+	_set_fire_recoil_for_frame(main_sprite.frame)
+	if (
+		main_sprite.frame == FIRE_LAUNCH_FRAME
+		and not is_multiplayer_proxy
+		and _authoritative_fire_action_id
+		!= next_authoritative_action_id
+	):
+		_fire_authoritative_shell()
 
 
 func _on_main_sprite_animation_finished() -> void:
+	if main_sprite.animation == &"charge":
+		if combat_phase != CombatPhase.WINDUP:
+			return
+		if is_multiplayer_proxy:
+			# The authoritative launch event is emitted on fire frame 1. Let
+			# proxies locally show frame 0 when their synchronized charge ends,
+			# then let the event correct them to the projectile timeline.
+			combat_phase = CombatPhase.FIRING
+			main_sprite.position = MAIN_SPRITE_REST_POSITION
+			main_sprite.play(&"fire")
+			main_sprite.set_frame_and_progress(0, 0.0)
+			_set_glow_state(true, WINDUP_FRAME_COUNT - 1)
+			return
+		_begin_authoritative_fire_animation()
+		return
+	if main_sprite.animation != &"fire":
+		return
 	if (
-		main_sprite.animation != &"charge"
+		not is_multiplayer_proxy
+		and _authoritative_fire_action_id
+		!= next_authoritative_action_id
+		and not is_dead
+		and not is_removing
+	):
+		_fire_authoritative_shell()
+	_finish_fire_visual()
+
+
+func _begin_authoritative_fire_animation() -> void:
+	if (
+		is_multiplayer_proxy
+		or is_dead
+		or is_removing
 		or combat_phase != CombatPhase.WINDUP
-		or is_multiplayer_proxy
 	):
 		return
-	_fire_authoritative_shell()
+	main_sprite.position = MAIN_SPRITE_REST_POSITION
+	main_sprite.play(&"fire")
+	main_sprite.set_frame_and_progress(0, 0.0)
+	_set_glow_state(true, WINDUP_FRAME_COUNT - 1)
 
 
 func _fire_authoritative_shell() -> void:
+	if (
+		is_multiplayer_proxy
+		or is_dead
+		or is_removing
+		or _authoritative_fire_action_id
+		== next_authoritative_action_id
+	):
+		return
+	_authoritative_fire_action_id = next_authoritative_action_id
+	combat_phase = CombatPhase.FIRING
 	_update_last_valid_target_position()
 	target_track_timer.stop()
+	if main_sprite.animation != &"fire":
+		main_sprite.play(&"fire")
+		main_sprite.set_frame_and_progress(
+			FIRE_LAUNCH_FRAME,
+			0.0
+		)
+	_set_fire_recoil_for_frame(FIRE_LAUNCH_FRAME)
+	_set_glow_state(true, WINDUP_FRAME_COUNT - 1)
 	var action_id := next_authoritative_action_id
 	var spawn_position := muzzle.global_position
 	var landing_position := last_valid_target_position
@@ -217,10 +364,23 @@ func _fire_authoritative_shell() -> void:
 		landing_position
 	)
 	pending_target = null
-	combat_phase = CombatPhase.COOLDOWN
+	attack_timer.start(ATTACK_COOLDOWN_SECONDS)
+
+
+func _finish_fire_visual() -> void:
+	main_sprite.position = MAIN_SPRITE_REST_POSITION
 	main_sprite.play(&"idle")
 	_set_glow_state(false, 0)
-	attack_timer.start(ATTACK_COOLDOWN_SECONDS)
+	if combat_phase == CombatPhase.FIRING:
+		combat_phase = CombatPhase.COOLDOWN
+
+
+func _set_fire_recoil_for_frame(frame_index: int) -> void:
+	main_sprite.position = (
+		FIRE_RECOIL_OFFSET
+		if frame_index == 1 or frame_index == 2
+		else MAIN_SPRITE_REST_POSITION
+	)
 
 
 func get_completed_authoritative_launch_count() -> int:
@@ -332,12 +492,14 @@ func _select_nearest_target_in_ring() -> Enemy:
 	return nearest
 
 
-func _is_valid_target(enemy: Enemy) -> bool:
+func _is_valid_target(enemy: Variant) -> bool:
+	if enemy == null or not is_instance_valid(enemy):
+		return false
+	var valid_enemy := enemy as Enemy
 	return (
-		enemy != null
-		and is_instance_valid(enemy)
-		and enemy.is_inside_tree()
-		and not enemy.is_dead
+		valid_enemy != null
+		and valid_enemy.is_inside_tree()
+		and not valid_enemy.is_dead
 	)
 
 
@@ -394,9 +556,7 @@ func play_multiplayer_action(
 	if stage == NETWORK_STAGE_WINDUP:
 		_play_proxy_windup(elapsed_seconds)
 		return
-	main_sprite.play(&"idle")
-	_set_glow_state(false, 0)
-	combat_phase = CombatPhase.COOLDOWN
+	_play_proxy_fire(elapsed_seconds)
 	AUDIO_LIMITER.play_burst(fire_audio, elapsed_seconds)
 	_spawn_proxy_shell_once(
 		action_id,
@@ -419,12 +579,40 @@ func _play_proxy_windup(elapsed_seconds: float) -> void:
 		WINDUP_FRAME_COUNT - 1
 	)
 	combat_phase = CombatPhase.WINDUP
+	main_sprite.position = MAIN_SPRITE_REST_POSITION
 	main_sprite.play(&"charge")
 	main_sprite.set_frame_and_progress(
 		frame_index,
 		clampf(frame_position - float(frame_index), 0.0, 0.999)
 	)
 	_set_glow_state(true, frame_index)
+
+
+func _play_proxy_fire(projectile_elapsed_seconds: float) -> void:
+	var fire_elapsed := (
+		maxf(projectile_elapsed_seconds, 0.0)
+		+ FIRE_LAUNCH_LEAD_SECONDS
+	)
+	if fire_elapsed >= FIRE_DURATION_SECONDS:
+		main_sprite.position = MAIN_SPRITE_REST_POSITION
+		main_sprite.play(&"idle")
+		_set_glow_state(false, 0)
+		combat_phase = CombatPhase.COOLDOWN
+		return
+	var frame_position := fire_elapsed * FIRE_FPS
+	var frame_index := clampi(
+		floori(frame_position),
+		0,
+		FIRE_FRAME_COUNT - 1
+	)
+	combat_phase = CombatPhase.FIRING
+	main_sprite.play(&"fire")
+	main_sprite.set_frame_and_progress(
+		frame_index,
+		clampf(frame_position - float(frame_index), 0.0, 0.999)
+	)
+	_set_glow_state(true, WINDUP_FRAME_COUNT - 1)
+	_set_fire_recoil_for_frame(frame_index)
 
 
 func _spawn_proxy_shell_once(
@@ -489,7 +677,7 @@ func apply_multiplayer_runtime_state(
 	var phase := clampi(
 		int(state.get("combat_phase", CombatPhase.IDLE)),
 		CombatPhase.IDLE,
-		CombatPhase.COOLDOWN
+		CombatPhase.FIRING
 	)
 	if phase == CombatPhase.WINDUP and action_id > 0:
 		var target_position := state.get(
@@ -529,6 +717,7 @@ func apply_multiplayer_runtime_state(
 			latest_proxy_action_id = action_id
 			latest_proxy_stage = NETWORK_STAGE_FIRE
 			combat_phase = phase
+			main_sprite.position = MAIN_SPRITE_REST_POSITION
 			main_sprite.play(&"idle")
 			_set_glow_state(false, 0)
 		return
@@ -560,11 +749,11 @@ func apply_multiplayer_runtime_state(
 
 func _set_glow_state(charging: bool, frame_index: int) -> void:
 	var safe_frame := clampi(frame_index, 0, WINDUP_FRAME_COUNT - 1)
-	glow_sprite.set_instance_shader_parameter(
+	status_light.set_instance_shader_parameter(
 		&"glow_color",
 		CHARGE_GLOW_COLOR if charging else IDLE_GLOW_COLOR
 	)
-	glow_sprite.set_instance_shader_parameter(
+	status_light.set_instance_shader_parameter(
 		&"glow_strength",
 		(
 			1.0 + 0.55 * float(safe_frame)

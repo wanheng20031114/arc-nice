@@ -39,15 +39,19 @@ CORN_HEAD_PIVOT_IN_TEXTURE = (32, 32)
 CORN_MUZZLE_IN_HEAD_TEXTURE = (57, 33)
 CORN_FLASH_ANCHOR = (32, 32)
 CORN_SPIN_MUTABLE_BBOX = (33, 24, 55, 41)
-BAMBOO_BUILDING_MAX_VISIBLE_COLORS = 14
+BAMBOO_BUILDING_MAX_VISIBLE_COLORS = 20
+BAMBOO_BUILDING_UNION_MAX_VISIBLE_COLORS = 20
 BAMBOO_EXPLOSION_MAX_VISIBLE_COLORS = 12
-BAMBOO_BUILDING_SUBJECT_BBOX = (4, 2, 60, 62)
+BAMBOO_BUILDING_SUBJECT_BBOX = (4, 4, 59, 62)
 BAMBOO_CHARGE_MUTABLE_RECTS = (
-    (16, 16, 27, 25),
-    (10, 24, 22, 35),
-    (32, 1, 54, 18),
-    (28, 37, 37, 46),
+    (15, 15, 26, 27),
+    (31, 3, 54, 20),
 )
+BAMBOO_FIRE_MUTABLE_RECTS = (
+    (15, 15, 26, 27),
+    (31, 0, 64, 22),
+)
+BAMBOO_STATUS_LIGHT_REGION = (28, 39, 36, 47)
 PREVIEW_ALIGNMENT_TOLERANCE_WORLD = 0.5
 
 WAREHOUSE_ASSET = TEXTURE_ROOT / "oak_warehouse/oak_warehouse.png"
@@ -93,13 +97,21 @@ BAMBOO_CHARGE_FRAMES = tuple(
     TEXTURE_ROOT / f"bamboo_mortar/charge_{index}.png"
     for index in range(8)
 )
+BAMBOO_FIRE_FRAMES = tuple(
+    TEXTURE_ROOT / f"bamboo_mortar/fire_{index}.png"
+    for index in range(4)
+)
 BAMBOO_EXPLOSION_FRAMES = tuple(
     TEXTURE_ROOT / f"bamboo_mortar/explosion_{index}.png"
     for index in range(8)
 )
-BAMBOO_GLOW_MASK = TEXTURE_ROOT / "bamboo_mortar/glow_mask.png"
+BAMBOO_OBSOLETE_GLOW_MASK = TEXTURE_ROOT / "bamboo_mortar/glow_mask.png"
 BAMBOO_SHELL = TEXTURE_ROOT / "bamboo_mortar/shell.png"
-BAMBOO_BUILDING_FRAMES = (BAMBOO_IDLE, *BAMBOO_CHARGE_FRAMES)
+BAMBOO_BUILDING_FRAMES = (
+    BAMBOO_IDLE,
+    *BAMBOO_CHARGE_FRAMES,
+    *BAMBOO_FIRE_FRAMES,
+)
 BAMBOO_FRAME_ASSETS = (
     *BAMBOO_BUILDING_FRAMES,
     *BAMBOO_EXPLOSION_FRAMES,
@@ -119,7 +131,7 @@ BUILDING_ASSETS = (
     RESEARCH_CENTER_ASSET,
     *BAMBOO_FRAME_ASSETS,
 )
-AUDITED_ASSETS = (*BUILDING_ASSETS, BAMBOO_GLOW_MASK, BAMBOO_SHELL)
+AUDITED_ASSETS = (*BUILDING_ASSETS, BAMBOO_SHELL)
 
 
 def _relative(path: Path) -> str:
@@ -355,28 +367,59 @@ def _visible_color_set(image: Image.Image) -> set[tuple[int, int, int]]:
 
 def _bamboo_mortar_metrics() -> dict[str, Any]:
     anchor = _load_rgba(BAMBOO_SOURCE_ANCHOR)
-    building_frames = [_load_rgba(path) for path in BAMBOO_BUILDING_FRAMES]
+    idle = _load_rgba(BAMBOO_IDLE)
+    charge_frames = [_load_rgba(path) for path in BAMBOO_CHARGE_FRAMES]
+    fire_frames = [_load_rgba(path) for path in BAMBOO_FIRE_FRAMES]
+    building_frames = [idle, *charge_frames, *fire_frames]
     explosion_frames = [_load_rgba(path) for path in BAMBOO_EXPLOSION_FRAMES]
-    glow_mask = _load_rgba(BAMBOO_GLOW_MASK)
     shell = _load_rgba(BAMBOO_SHELL)
-    immutable_change_counts = []
-    for frame in building_frames:
-        immutable_change_counts.append(
-            sum(
-                not _inside_any_rect(point, BAMBOO_CHARGE_MUTABLE_RECTS)
-                for point in _pixel_difference_positions(anchor, frame)
+    charge_immutable_change_counts = [
+        sum(
+            not _inside_any_rect(point, BAMBOO_CHARGE_MUTABLE_RECTS)
+            for point in _pixel_difference_positions(anchor, frame)
+        )
+        for frame in charge_frames
+    ]
+    fire_immutable_change_counts = [
+        sum(
+            not _inside_any_rect(point, BAMBOO_FIRE_MUTABLE_RECTS)
+            for point in _pixel_difference_positions(anchor, frame)
+        )
+        for frame in fire_frames
+    ]
+    status_region_static = all(
+        all(
+            frame.getpixel((x, y)) == idle.getpixel((x, y))
+            for y in range(
+                BAMBOO_STATUS_LIGHT_REGION[1],
+                BAMBOO_STATUS_LIGHT_REGION[3],
+            )
+            for x in range(
+                BAMBOO_STATUS_LIGHT_REGION[0],
+                BAMBOO_STATUS_LIGHT_REGION[2],
             )
         )
-    indicator_points = {
-        (x, y)
-        for y in range(glow_mask.height)
-        for x in range(glow_mask.width)
-        if glow_mask.getpixel((x, y))[3] > 0
-    }
+        for frame in (*charge_frames, *fire_frames)
+    )
+    lower_bomb_rect = (11, 26, 18, 32)
+    lower_bomb_preserved = all(
+        all(
+            frame.getpixel(point) == idle.getpixel(point)
+            for point in (
+                (x, y)
+                for y in range(lower_bomb_rect[1], lower_bomb_rect[3])
+                for x in range(lower_bomb_rect[0], lower_bomb_rect[2])
+            )
+        )
+        for frame in (*charge_frames, *fire_frames)
+    )
     return {
         "anchor_size": list(anchor.size),
         "anchor_subject_bbox": list(
             anchor.getchannel("A").getbbox() or ()
+        ),
+        "idle_matches_approved_anchor": (
+            len(_pixel_difference_positions(anchor, idle)) == 0
         ),
         "building_union_visible_color_count": len(
             set().union(
@@ -388,25 +431,26 @@ def _bamboo_mortar_metrics() -> dict[str, Any]:
                 *(_visible_color_set(frame) for frame in explosion_frames)
             )
         ),
-        "immutable_change_counts": immutable_change_counts,
+        "charge_immutable_change_counts": charge_immutable_change_counts,
+        "fire_immutable_change_counts": fire_immutable_change_counts,
+        "charge_unique_frame_count": len(
+            {frame.tobytes() for frame in charge_frames}
+        ),
+        "fire_unique_frame_count": len(
+            {frame.tobytes() for frame in fire_frames}
+        ),
         "upper_storage_loaded_in_idle": (
-            building_frames[0].getpixel((21, 20))[3] == 255
-            and building_frames[0].getpixel((21, 20))[:3] != (75, 58, 18)
+            idle.getpixel((18, 20)) == (91, 169, 45, 255)
         ),
-        "upper_storage_empty_in_all_charge_frames": all(
-            frame.getpixel((21, 20)) == (75, 58, 18, 255)
-            for frame in building_frames[1:]
+        "upper_storage_empty_in_all_active_frames": all(
+            frame.getpixel((20, 17))[3] == 0
+            and frame.getpixel((20, 21)) == (66, 48, 15, 255)
+            for frame in (*charge_frames, *fire_frames)
         ),
-        "lower_decorative_bomb_preserved": all(
-            frame.getpixel((15, 29)) == building_frames[0].getpixel((15, 29))
-            for frame in building_frames[1:]
-        ),
-        "glow_mask_subset_of_all_building_frames": all(
-            all(frame.getpixel(point)[3] == 255 for point in indicator_points)
-            for frame in building_frames
-        ),
-        "glow_alpha_values": sorted(
-            {pixel[3] for pixel in glow_mask.getdata()}
+        "lower_decorative_bomb_preserved": lower_bomb_preserved,
+        "status_light_region_static": status_region_static,
+        "status_light_bitmap_absent_from_contract": (
+            not BAMBOO_OBSOLETE_GLOW_MASK.exists()
         ),
         "shell_size": list(shell.size),
         "shell_visible_color_count": len(_visible_color_set(shell)),
@@ -620,13 +664,15 @@ def _collect_bamboo_failures(report: dict[str, Any]) -> list[str]:
                 f"{audit['path']} violates import contract: "
                 f"{', '.join(failed_import_keys)}"
             )
-    for path in BAMBOO_BUILDING_FRAMES:
+    for path in (BAMBOO_IDLE, *BAMBOO_CHARGE_FRAMES):
         audit = audits[_relative(path)]
         if tuple(audit["subject_bbox"] or ()) != BAMBOO_BUILDING_SUBJECT_BBOX:
             failures.append(
-                f"{audit['path']} must retain Bamboo Mortar bbox "
+                f"{audit['path']} must retain Bamboo Mortar body bbox "
                 f"{BAMBOO_BUILDING_SUBJECT_BBOX}; got {audit['subject_bbox']}"
             )
+    for path in BAMBOO_BUILDING_FRAMES:
+        audit = audits[_relative(path)]
         if audit["visible_color_count"] > BAMBOO_BUILDING_MAX_VISIBLE_COLORS:
             failures.append(
                 f"{audit['path']} exceeds the Bamboo Mortar "
@@ -651,37 +697,60 @@ def _collect_bamboo_failures(report: dict[str, Any]) -> list[str]:
             "Bamboo Mortar approved anchor and runtime frames must share "
             "the same stable subject bbox"
         )
-    if bamboo_metrics["building_union_visible_color_count"] > 14:
+    if (
+        bamboo_metrics["building_union_visible_color_count"]
+        > BAMBOO_BUILDING_UNION_MAX_VISIBLE_COLORS
+    ):
         failures.append(
             "The complete Bamboo Mortar building family must share no more "
-            "than 14 visible colors"
+            f"than {BAMBOO_BUILDING_UNION_MAX_VISIBLE_COLORS} visible colors"
         )
     if bamboo_metrics["explosion_union_visible_color_count"] > 12:
         failures.append(
             "The complete Bamboo Mortar explosion family must share no more "
             "than 12 visible colors"
         )
-    if any(bamboo_metrics["immutable_change_counts"]):
+    if not bamboo_metrics["idle_matches_approved_anchor"]:
         failures.append(
-            "Bamboo Mortar idle/charge frames changed approved anchor pixels "
-            "outside the four declared gameplay regions"
+            "Bamboo Mortar idle frame must exactly match its approved anchor"
         )
+    if any(bamboo_metrics["charge_immutable_change_counts"]):
+        failures.append(
+            "Bamboo Mortar charge frames changed approved-anchor pixels "
+            "outside upper storage and muzzle regions"
+        )
+    if any(bamboo_metrics["fire_immutable_change_counts"]):
+        failures.append(
+            "Bamboo Mortar fire frames changed approved-anchor pixels "
+            "outside upper storage and muzzle-effect regions"
+        )
+    if bamboo_metrics["charge_unique_frame_count"] != 8:
+        failures.append("All eight Bamboo Mortar charge frames must be unique")
+    if bamboo_metrics["fire_unique_frame_count"] != 4:
+        failures.append("All four Bamboo Mortar fire frames must be unique")
     if not bamboo_metrics["upper_storage_loaded_in_idle"]:
         failures.append(
             "Bamboo Mortar idle frame must visibly retain the upper decorative bomb"
         )
-    if not bamboo_metrics["upper_storage_empty_in_all_charge_frames"]:
+    if not bamboo_metrics["upper_storage_empty_in_all_active_frames"]:
         failures.append(
-            "Every Bamboo Mortar charge frame must show the upper storage tube empty"
+            "Every Bamboo Mortar charge/fire frame must show the upper storage "
+            "tube empty"
         )
     if not bamboo_metrics["lower_decorative_bomb_preserved"]:
         failures.append(
-            "Every Bamboo Mortar charge frame must preserve the lower decorative bomb"
+            "Every Bamboo Mortar charge/fire frame must preserve the lower "
+            "decorative bomb"
         )
-    if not bamboo_metrics["glow_mask_subset_of_all_building_frames"]:
+    if not bamboo_metrics["status_light_region_static"]:
         failures.append(
-            "Bamboo Mortar glow mask must remain inside the indicator pixels "
-            "of every building frame"
+            "Bamboo Mortar body frames must not bake animation into the "
+            "Godot-rendered status-light region"
+        )
+    if not bamboo_metrics["status_light_bitmap_absent_from_contract"]:
+        failures.append(
+            "Bamboo Mortar status light must not retain a bitmap mask; "
+            "the authored square Godot node owns this visual"
         )
     if bamboo_metrics["shell_size"][0] > 12 or bamboo_metrics["shell_size"][1] > 12:
         failures.append("Bamboo Mortar shell must fit within a native 12x12 canvas")
@@ -692,10 +761,7 @@ def _collect_bamboo_failures(report: dict[str, Any]) -> list[str]:
         failures.append(
             "Bamboo Mortar shell must use binary alpha and no more than 10 colors"
         )
-    for path, expected_size in (
-        (BAMBOO_GLOW_MASK, [64, 64]),
-        (BAMBOO_SHELL, [12, 12]),
-    ):
+    for path, expected_size in ((BAMBOO_SHELL, [12, 12]),):
         audit = audits[_relative(path)]
         if audit["size"] != expected_size:
             failures.append(
@@ -750,6 +816,9 @@ def build_report() -> dict[str, Any]:
             "bamboo_building_max_visible_colors": (
                 BAMBOO_BUILDING_MAX_VISIBLE_COLORS
             ),
+            "bamboo_building_union_max_visible_colors": (
+                BAMBOO_BUILDING_UNION_MAX_VISIBLE_COLORS
+            ),
             "bamboo_explosion_max_visible_colors": (
                 BAMBOO_EXPLOSION_MAX_VISIBLE_COLORS
             ),
@@ -759,6 +828,12 @@ def build_report() -> dict[str, Any]:
             "bamboo_charge_mutable_rects_exclusive": [
                 list(rect) for rect in BAMBOO_CHARGE_MUTABLE_RECTS
             ],
+            "bamboo_fire_mutable_rects_exclusive": [
+                list(rect) for rect in BAMBOO_FIRE_MUTABLE_RECTS
+            ],
+            "bamboo_status_light_region_exclusive": list(
+                BAMBOO_STATUS_LIGHT_REGION
+            ),
             "preview_alignment_tolerance_world": PREVIEW_ALIGNMENT_TOLERANCE_WORLD,
         },
         "assets": asset_audits,

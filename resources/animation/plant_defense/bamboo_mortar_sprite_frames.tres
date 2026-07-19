@@ -1,4 +1,4 @@
-[gd_resource type="SpriteFrames" load_steps=10 format=3]
+[gd_resource type="SpriteFrames" load_steps=14 format=3]
 
 [ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/idle.png" id="1_idle"]
 [ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/charge_0.png" id="2_charge_0"]
@@ -9,6 +9,10 @@
 [ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/charge_5.png" id="7_charge_5"]
 [ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/charge_6.png" id="8_charge_6"]
 [ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/charge_7.png" id="9_charge_7"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/fire_0.png" id="10_fire_0"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/fire_1.png" id="11_fire_1"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/fire_2.png" id="12_fire_2"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/fire_3.png" id="13_fire_3"]
 
 [resource]
 animations = [{
@@ -40,6 +44,23 @@ animations = [{
 "loop": false,
 "name": &"charge",
 "speed": 2.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("10_fire_0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("11_fire_1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("12_fire_2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("13_fire_3")
+}],
+"loop": false,
+"name": &"fire",
+"speed": 12.0
 }, {
 "frames": [{
 "duration": 1.0,

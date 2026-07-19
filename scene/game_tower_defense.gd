@@ -169,6 +169,9 @@ static var expanded_projectile_pool_prewarm_enabled := true
 @onready var plant_lifecycle_shader_prewarm: Sprite2D = $PlantLifecycleShaderPrewarm
 @onready var damage_number_pool: DamageNumberPool = $DamageNumberPool
 @onready var session_object_pool: SessionObjectPool = $SessionObjectPool
+@onready var bamboo_mortar_combat_system: BambooMortarCombatSystem = (
+	$BambooMortarCombatSystem
+)
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
 var random_generator := RandomNumberGenerator.new()
@@ -252,6 +255,10 @@ func _exit_tree() -> void:
 
 func _ready() -> void:
 	random_generator.randomize()
+	bamboo_mortar_combat_system.setup(self)
+	bamboo_mortar_combat_system.set_authoritative_processing_enabled(
+		runtime_mode != RuntimeMode.CLIENT_VIEW
+	)
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		var load_coordinator := get_node_or_null("/root/GameLoadCoordinator")
 		if load_coordinator != null and bool(load_coordinator.call("is_loading")):
@@ -321,7 +328,9 @@ func _ready() -> void:
 	) / 1000.0
 	session_object_pool.register_scene(YUANSHI_FIRE_PROJECTILE_POOL_SCENE, 48, 384)
 	session_object_pool.register_scene(AGAVE_CANNONBALL_POOL_SCENE, 48, 384)
-	session_object_pool.register_scene(BAMBOO_MORTAR_SHELL_POOL_SCENE, 64, 384)
+	# The formal synchronized ceiling is 100 mortars. Prewarm the complete
+	# first volley during loading so gameplay never pays a 64 -> 100 expansion.
+	session_object_pool.register_scene(BAMBOO_MORTAR_SHELL_POOL_SCENE, 100, 384)
 	session_object_pool.register_scene(COLLECTIBLE_ARROW_POOL_SCENE, 48, 384)
 	session_object_pool.register_scene(COLLECTIBLE_SAKURA_ROCKET_POOL_SCENE, 16, 128)
 	# 18 rings/s * 20 directions * 2 s lifetime = 720 live bullets. The extra
@@ -469,6 +478,103 @@ func supports_tower_defense() -> bool:
 
 func supports_multiplayer_terrain_state() -> bool:
 	return true
+
+
+func request_bamboo_mortar_target(
+	owner: Node2D,
+	minimum_range: float,
+	maximum_range: float,
+	callback: Callable
+) -> bool:
+	if (
+		runtime_mode == RuntimeMode.CLIENT_VIEW
+		or bamboo_mortar_combat_system == null
+	):
+		return false
+	return bamboo_mortar_combat_system.request_target(
+		owner,
+		minimum_range,
+		maximum_range,
+		callback
+	)
+
+
+func cancel_bamboo_mortar_target_request(owner: Node) -> void:
+	if bamboo_mortar_combat_system == null:
+		return
+	bamboo_mortar_combat_system.cancel_target_request(owner)
+
+
+func select_bamboo_mortar_target_sync_for_fixture(
+	center: Vector2,
+	minimum_range: float,
+	maximum_range: float
+) -> Enemy:
+	if bamboo_mortar_combat_system == null:
+		return null
+	return bamboo_mortar_combat_system.select_target_sync_for_fixture(
+		center,
+		minimum_range,
+		maximum_range
+	)
+
+
+func queue_bamboo_mortar_explosion(
+	landing_position: Vector2,
+	inner_radius: float,
+	outer_radius: float,
+	inner_damage: int,
+	outer_damage: int,
+	damage_source_id: int
+) -> bool:
+	if (
+		runtime_mode == RuntimeMode.CLIENT_VIEW
+		or bamboo_mortar_combat_system == null
+	):
+		return false
+	return bamboo_mortar_combat_system.queue_explosion(
+		landing_position,
+		inner_radius,
+		outer_radius,
+		inner_damage,
+		outer_damage,
+		damage_source_id
+	)
+
+
+func apply_authoritative_plant_enemy_damage_batch(
+	_damage_source_id: int,
+	enemy: Enemy,
+	damage_amounts: PackedInt32Array,
+	hit_counts: PackedInt32Array,
+	impact_direction: Vector2,
+	damage_type: EnemyConfig.DamageType
+) -> bool:
+	if (
+		runtime_mode == RuntimeMode.CLIENT_VIEW
+		or enemy == null
+		or not is_instance_valid(enemy)
+		or enemy.is_dead
+		or damage_amounts.is_empty()
+	):
+		return false
+	var safe_direction := (
+		impact_direction
+		if impact_direction.is_finite()
+		else Vector2.ZERO
+	)
+	return enemy.apply_damage_batch(
+		damage_amounts,
+		hit_counts,
+		safe_direction,
+		damage_type
+	)
+
+
+func get_bamboo_mortar_combat_metrics() -> Dictionary:
+	if bamboo_mortar_combat_system == null:
+		return {}
+	return bamboo_mortar_combat_system.get_metrics_snapshot()
 
 
 func get_fixed_multiplayer_respawn_position(peer_id: int) -> Variant:

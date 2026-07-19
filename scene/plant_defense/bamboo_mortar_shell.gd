@@ -183,6 +183,29 @@ func _begin_explosion_visual(elapsed_seconds: float) -> void:
 
 
 func _apply_explosion_damage() -> void:
+	if (
+		_combat_runtime != null
+		and is_instance_valid(_combat_runtime)
+		and _combat_runtime.has_method(
+			"queue_bamboo_mortar_explosion"
+		)
+	):
+		# A runtime that owns the authoritative queue also owns rejection. Do
+		# not bypass a disabled/rejected service with synchronous direct damage.
+		_combat_runtime.call(
+			"queue_bamboo_mortar_explosion",
+			landing_position,
+			INNER_RADIUS,
+			OUTER_RADIUS,
+			inner_damage,
+			outer_damage,
+			damage_source_id
+		)
+		return
+	_apply_explosion_damage_sync_for_fixture()
+
+
+func _apply_explosion_damage_sync_for_fixture() -> void:
 	_explosion_targets.clear()
 	if (
 		_combat_runtime == null

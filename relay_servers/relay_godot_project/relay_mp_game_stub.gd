@@ -346,7 +346,16 @@ func net_enemy_spawned_batch(
 	pass
 
 @rpc("authority", "call_remote", "reliable", 5)
-func net_enemy_terminal(net_id: int, reason: int, event_position: Vector2) -> void:
+func net_enemy_terminal(
+	net_id: int,
+	reason: int,
+	event_position: Vector2,
+	current_health: int = 0,
+	confirmed_damage: int = 0,
+	impact_direction: Vector2 = Vector2.ZERO,
+	damage_type: int = 0,
+	show_hit_particles: bool = false
+) -> void:
 	pass
 
 @rpc("authority", "call_remote", "reliable", 5)

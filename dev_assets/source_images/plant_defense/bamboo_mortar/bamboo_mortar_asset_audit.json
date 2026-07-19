@@ -1,137 +1,203 @@
 {
-  "schema_version": 1,
-  "anchor_sha256": "b2f727b3c044a76ea643b617b4cf3f3fe7f53f92d9f6d12fd63c297803ad6ca1",
-  "imagegen_charge_sha256": "04d546f9924d297193c8ad8f5309aeea119ca30f84e9df4bc3a20c37a145ed78",
-  "imagegen_explosion_sha256": "cc82f45391ceb3d6bd22a7e985704361640a27a42c0eeb8e9a0c99f7e2eb65ec",
+  "schema_version": 4,
+  "design_reference_sha256": "39df9a8c37c264a7452d7b1fbd562e25214c0643ab900a3e6d2e65bae5ef1928",
+  "approved_rope_tail_imagegen_reference_sha256": "5ef40a0a56b8b76b3d466bf23226271234715573c13c832813e1d559019c3412",
+  "native64_imagegen_source_sha256": "443ea3b98cc01aca9ac35cc9c111add4cb601cfb883327e6b942f01642f5d7b7",
+  "approved_anchor_png_sha256": "2bfb8a6c633d7dc334470f19b97e9b6cd7f0e093f9c43e55b9df849c23958e58",
+  "approved_anchor_rgba_sha256": "98b4dd99cedea45fa919268c992e59c80199542eb5b3edcc1db4df1f10fc5b24",
+  "imagegen_charge_reference_sha256": "1cdf5ce6ae227aaeac3099c310b1338ae3af0531caf04a320233bb4fc4d1cf04",
+  "imagegen_fire_reference_sha256": "be0e4f958063410195635d85389b8268dd3dacdf5847669891f9f035c47c577c",
+  "pixel_grid_analyzer": {
+    "command": "python dev_tools/pixel_grid_analyzer.py bamboo_mortar_native64_imagegen_magenta.png --json",
+    "detection_mode": "approximate",
+    "grid_cell_width": 19.55,
+    "grid_cell_height": 19.5,
+    "confidence": 0.959,
+    "logical_canvas_size": [
+      64,
+      64
+    ]
+  },
+  "native64_baseline_decode": {
+    "method": "One center sample from each imagegen-authored logical cell; used only to audit the eight-pixel rope-tail delta.",
+    "source_size": [
+      1254,
+      1254
+    ],
+    "logical_source_size": [
+      64,
+      64
+    ],
+    "canvas_size": [
+      64,
+      64
+    ],
+    "geometric_resize": false,
+    "merged_source_cells": false,
+    "base_palette_size": 12
+  },
+  "approved_rope_tail_delta": {
+    "changed_pixel_count": 8,
+    "highlight_points": [
+      [
+        41,
+        44
+      ],
+      [
+        42,
+        44
+      ],
+      [
+        43,
+        45
+      ]
+    ],
+    "gold_points": [
+      [
+        44,
+        45
+      ],
+      [
+        41,
+        45
+      ],
+      [
+        42,
+        45
+      ]
+    ],
+    "shadow_points": [
+      [
+        43,
+        46
+      ],
+      [
+        44,
+        46
+      ]
+    ]
+  },
   "building_frame_visible_colors": [
-    10,
     12,
-    12,
-    12,
-    13,
-    12,
-    12,
-    12,
-    12
-  ],
-  "explosion_frame_visible_colors": [
-    8,
-    10,
-    10,
-    8,
-    8,
-    6,
-    6,
-    6
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    16,
+    17,
+    18,
+    16
   ],
   "building_subject_bboxes": [
     [
       4,
-      2,
-      60,
-      62
-    ],
-    [
       4,
-      2,
-      60,
-      62
-    ],
-    [
-      4,
-      2,
-      60,
-      62
-    ],
-    [
-      4,
-      2,
-      60,
-      62
-    ],
-    [
-      4,
-      2,
-      60,
-      62
-    ],
-    [
-      4,
-      2,
-      60,
-      62
-    ],
-    [
-      4,
-      2,
-      60,
-      62
-    ],
-    [
-      4,
-      2,
-      60,
-      62
-    ],
-    [
-      4,
-      2,
-      60,
-      62
-    ]
-  ],
-  "explosion_subject_bboxes": [
-    [
-      25,
-      26,
-      38,
-      37
-    ],
-    [
-      14,
-      16,
-      45,
-      47
-    ],
-    [
-      8,
-      9,
-      53,
-      54
-    ],
-    [
-      5,
-      10,
-      55,
-      55
-    ],
-    [
-      6,
-      7,
-      60,
-      53
-    ],
-    [
-      6,
-      8,
       59,
-      51
+      62
     ],
     [
-      9,
-      11,
-      54,
-      50
+      4,
+      4,
+      59,
+      62
     ],
     [
-      11,
-      13,
-      52,
-      46
+      4,
+      4,
+      59,
+      62
+    ],
+    [
+      4,
+      4,
+      59,
+      62
+    ],
+    [
+      4,
+      4,
+      59,
+      62
+    ],
+    [
+      4,
+      4,
+      59,
+      62
+    ],
+    [
+      4,
+      4,
+      59,
+      62
+    ],
+    [
+      4,
+      4,
+      59,
+      62
+    ],
+    [
+      4,
+      4,
+      59,
+      62
+    ],
+    [
+      4,
+      3,
+      59,
+      62
+    ],
+    [
+      4,
+      1,
+      63,
+      62
+    ],
+    [
+      4,
+      1,
+      60,
+      62
+    ],
+    [
+      4,
+      1,
+      59,
+      62
     ]
   ],
-  "charge_immutable_pixels_preserved": true,
+  "charge_frame_hashes": [
+    "415b553671edb46e068552369c72deda09b55a5debb644ea74c4591290feb1e6",
+    "8affab3f381adb4b86eaac0ad407616c555f60a774ac01d6ed494f25a87656f4",
+    "61547ebc6441a3e7f62db44002c23e2e24267d4ce8acb64d4ec5b05a9b354f2d",
+    "0affee0abfbafbc5dcd7fda668a1f0ecb083187e7a84cd36a7edda66b7ca42b4",
+    "7d1fe4a641ddd6f41d4f5fb28d0fe97461d3ebfd1ac3a5d0dbe307bf1d7a41cb",
+    "94b433d85407541352ea342cee0d8dd8b7af518c16e94f14a0bcc4c40828ba9b",
+    "47a0a3314a2dabab740dfe193322c8bd0fa11c4919c073c52d94fd525d106236",
+    "e26b59a45b8234f7457f5885a10df0a8e47312d4b0677c4b3da5057f0b7aad93"
+  ],
+  "fire_frame_hashes": [
+    "84302af6be8156184baea9d08a26b344bc776da8f8627e5b6c549d58009c3a9e",
+    "e6434f44df9e66eb5c9b83854bd2ceacd70a0839acae092f34afe82cd23a5ec3",
+    "4638eca59c7ed9257a8877f6025921bd608457a54ce3c4a66ee6d25b866fca6b",
+    "82eb0cc91748457269f310ff7495772b03adda0eab65d35849ebcf0395b8cf7a"
+  ],
+  "body_width": 55,
+  "body_height": 58,
+  "upper_storage_empty_during_charge_and_fire": true,
+  "lower_decorative_bomb_preserved": true,
+  "status_light_baked_into_body_frames": false,
+  "status_light_rendering": "Independent small square Godot node with HDR/shader emission; this builder emits no status-light bitmap.",
+  "shell_baked_into_fire_frames": false,
   "binary_alpha": true,
   "transparent_rgb_clean": true,
-  "imagegen_role": "Eight-stage muzzle/indicator heat direction and eight-stage bamboo-fire-dust explosion source."
+  "magenta_pixels_removed": true,
+  "imagegen_role": "The approved high-resolution image is retained as visual provenance. The approved transparent 64x64 anchor is the sole production authority. Charge/fire sheets supply motion language; only storage and muzzle regions are changed per frame.",
+  "production_anchor_read_only": true
 }

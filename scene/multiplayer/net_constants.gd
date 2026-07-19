@@ -1,7 +1,7 @@
 extends RefCounted
 
 ## 协议与版本
-const PROTOCOL_VERSION := 12
+const PROTOCOL_VERSION := 13
 
 ## 玩家限制
 const MAX_PLAYERS := 8

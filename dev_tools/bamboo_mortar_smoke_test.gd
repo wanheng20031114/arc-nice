@@ -191,12 +191,23 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		"蓄热必须是8帧、2 FPS、非循环动画，总时长4秒。"
 	)
 	_expect(
+		mortar.main_sprite.sprite_frames.get_frame_count(&"fire") == 4
+		and is_equal_approx(
+			mortar.main_sprite.sprite_frames.get_animation_speed(&"fire"),
+			12.0
+		)
+		and not mortar.main_sprite.sprite_frames.get_animation_loop(&"fire"),
+		"蓄热后必须播放4帧、12 FPS、非循环的明确出膛动画。"
+	)
+	_expect(
 		mortar.get_node_or_null("TargetingArea") == null
 		and mortar.get_node_or_null("VisualRoot/Muzzle") is Marker2D
+		and mortar.get_node_or_null("VisualRoot/StatusLight") is Polygon2D
+		and mortar.get_node_or_null("VisualRoot/GlowSprite") == null
 		and mortar.get_node_or_null("AttackTimer") is Timer
 		and mortar.get_node_or_null("TargetTrackTimer") is Timer
 		and mortar.get_node_or_null("FireAudio") is AudioStreamPlayer2D,
-		"迫击炮必须用预建Marker、Timer与音效节点，且不能常驻TargetingArea。"
+		"迫击炮必须用预建Marker、独立方形状态灯、Timer与音效节点，且不能常驻TargetingArea或纹理灯遮罩。"
 	)
 	_expect(
 		mortar.attack_timer.one_shot
@@ -211,15 +222,23 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		mortar.get_node("VisualRoot").scale == Vector2(0.5, 0.5)
 		and mortar.main_sprite.texture_filter
 		== CanvasItem.TEXTURE_FILTER_NEAREST
-		and mortar.glow_sprite.texture_filter
-		== CanvasItem.TEXTURE_FILTER_NEAREST,
-		"64×64主体与发光遮罩必须以0.5缩放并使用邻近过滤。"
+		and mortar.status_light.polygon
+		== PackedVector2Array([
+			Vector2(-2, -2),
+			Vector2(2, -2),
+			Vector2(2, 2),
+			Vector2(-2, 2),
+		]),
+		"64×64主体必须以0.5缩放和邻近过滤显示，状态灯必须是独立4×4方形Godot节点。"
 	)
 	var mortar_source := FileAccess.get_file_as_string(
 		"res://scene/plant_defense/bamboo_mortar.gd"
 	)
 	var shell_source := FileAccess.get_file_as_string(
 		"res://scene/plant_defense/bamboo_mortar_shell.gd"
+	)
+	var glow_shader_source := FileAccess.get_file_as_string(
+		"res://resources/shader/bamboo_mortar_glow.gdshader"
 	)
 	_expect(
 		not mortar_source.contains("func _process(")
@@ -232,6 +251,20 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		)
 		and not shell_source.contains("intersect_shape"),
 		"迫击炮不得常驻逐帧脚本、视线射线或物理分页爆炸查询，索敌与爆炸必须复用共享索引。"
+	)
+	_expect(
+		bool(
+			ProjectSettings.get_setting(
+				"rendering/viewport/hdr_2d",
+				false
+			)
+		)
+		and glow_shader_source.contains("instance uniform")
+		and glow_shader_source.contains("blend_add")
+		and not FileAccess.file_exists(
+			"res://resources/texture/plant_defense/bamboo_mortar/glow_mask.png"
+		),
+		"中下部状态灯必须仅由独立方形Godot节点和HDR加色Shader绘制，不能残留贴图灯或逐实例材质复制。"
 	)
 
 
@@ -271,6 +304,17 @@ func _test_target_ring_and_tracking(mortar: BambooMortar) -> void:
 	_expect(
 		mortar.last_valid_target_position == Vector2(100.0, 0.0),
 		"目标离开范围或死亡后必须保留最后一次有效落点。"
+	)
+	var freed_during_windup := _spawn_enemy(Vector2(112.0, 0.0))
+	mortar.pending_target = freed_during_windup
+	var preserved_position := mortar.last_valid_target_position
+	freed_during_windup.queue_free()
+	await process_frame
+	mortar.call("_update_last_valid_target_position")
+	_expect(
+		mortar.pending_target == null
+		and mortar.last_valid_target_position == preserved_position,
+		"目标在4秒前摇期间被释放时，必须安全清空引用并保留最后有效落点。"
 	)
 	_expect(
 		too_close != null
@@ -321,8 +365,12 @@ func _test_windup_fire_and_fixed_landing(
 	target.is_dead = true
 	mortar.call("_fire_authoritative_shell")
 	_expect(
-		mortar.combat_phase == BambooMortar.CombatPhase.COOLDOWN
-		and mortar.main_sprite.animation == &"idle"
+		mortar.combat_phase == BambooMortar.CombatPhase.FIRING
+		and mortar.main_sprite.animation == &"fire"
+		and mortar.main_sprite.frame
+		== BambooMortar.FIRE_LAUNCH_FRAME
+		and mortar.main_sprite.position
+		== BambooMortar.FIRE_RECOIL_OFFSET
 		and is_equal_approx(
 			mortar.attack_timer.time_left,
 			BambooMortar.ATTACK_COOLDOWN_SECONDS
@@ -334,7 +382,7 @@ func _test_windup_fire_and_fixed_landing(
 			"landing_position",
 			Vector2.ZERO
 		) == Vector2(96.0, 0.0),
-		"目标死亡后仍须向最后有效位置出膛，并从出膛时开始2秒冷却。"
+		"目标死亡后仍须在可见爆闪/后坐帧向最后有效位置出膛，并从出膛时开始2秒冷却。"
 	)
 	var active_shell := _find_active_shell()
 	_expect(
@@ -355,6 +403,13 @@ func _test_windup_fire_and_fixed_landing(
 			)
 		),
 		"炮弹必须锁定落点并使用1秒、距离系数0.35且高度24至48的固定抛物线。"
+	)
+	mortar.call("_finish_fire_visual")
+	_expect(
+		mortar.combat_phase == BambooMortar.CombatPhase.COOLDOWN
+		and mortar.main_sprite.animation == &"idle"
+		and mortar.main_sprite.position == Vector2.ZERO,
+		"开火动画结束后必须复位主体并进入冷却，不得从蓄热直接跳回待机。"
 	)
 	await _finish_active_shells()
 
@@ -464,6 +519,7 @@ func _test_proxy_actions_and_runtime_state(
 	authority: BambooMortar,
 	proxy: BambooMortar
 ) -> void:
+	proxy.main_sprite.position = BambooMortar.FIRE_RECOIL_OFFSET
 	proxy.play_multiplayer_action(
 		BambooMortar.NETWORK_STAGE_WINDUP,
 		17,
@@ -482,17 +538,33 @@ func _test_proxy_actions_and_runtime_state(
 	_expect(
 		first_frame == 2
 		and proxy.main_sprite.frame == first_frame
+		and proxy.main_sprite.position
+		== BambooMortar.MAIN_SPRITE_REST_POSITION
 		and proxy.latest_proxy_action_id == 17,
-		"客户端必须按Host时间快进至对应蓄热帧，并拒绝重复阶段回滚。"
+		"客户端必须复位旧后坐位移、按Host时间快进至对应蓄热帧，并拒绝重复阶段回滚。"
+	)
+	proxy.call("_on_main_sprite_animation_finished")
+	_expect(
+		proxy.main_sprite.animation == &"fire"
+		and proxy.main_sprite.frame == 0
+		and proxy.combat_phase == BambooMortar.CombatPhase.FIRING,
+		"客户端蓄热结束后必须先显示与Host一致的fire_0预备帧，不能停在charge末帧等待出膛事件。"
 	)
 	proxy.play_multiplayer_action(
 		BambooMortar.NETWORK_STAGE_FIRE,
 		17,
 		proxy.muzzle.global_position,
 		Vector2(88.0, 0.0),
-		0.4
+		0.0
 	)
 	var proxy_shell_count := _count_active_shells()
+	_expect(
+		proxy.main_sprite.animation == &"fire"
+		and proxy.main_sprite.frame
+		== BambooMortar.FIRE_LAUNCH_FRAME
+		and proxy.combat_phase == BambooMortar.CombatPhase.FIRING,
+		"客户端收到出膛事件时必须显示对应爆闪/后坐帧，不能直接跳回idle。"
+	)
 	proxy.play_multiplayer_action(
 		BambooMortar.NETWORK_STAGE_FIRE,
 		17,

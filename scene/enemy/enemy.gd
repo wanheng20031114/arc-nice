@@ -840,6 +840,77 @@ func apply_damage(
 	return true
 
 
+func apply_damage_batch(
+	damage_amounts: PackedInt32Array,
+	hit_counts: PackedInt32Array,
+	impact_direction: Vector2 = Vector2.ZERO,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+	show_hit_particles: bool = true
+) -> bool:
+	last_damage_taken = 0
+	if is_dead or damage_amounts.is_empty():
+		return false
+	var damage_group_count := mini(
+		damage_amounts.size(),
+		hit_counts.size()
+	)
+	if damage_group_count <= 0:
+		return false
+
+	# Each group's mitigation is calculated for one hit before multiplication.
+	# Physical/magic defense, damage multipliers and the one-point minimum stay
+	# identical to repeated hits. The lethal aggregate is capped to remaining
+	# health so merged damage groups cannot produce order-dependent overkill
+	# health or multiplayer damage numbers.
+	var accumulated_damage := 0
+	for group_index in range(damage_group_count):
+		var raw_damage := damage_amounts[group_index]
+		var requested_hit_count := hit_counts[group_index]
+		if raw_damage <= 0 or requested_hit_count <= 0:
+			continue
+		var damage_per_hit := _calculate_incoming_damage(
+			raw_damage,
+			damage_type
+		)
+		var remaining_health := current_health - accumulated_damage
+		if remaining_health <= 0:
+			break
+		var hits_until_lethal := ceili(
+			float(remaining_health) / float(damage_per_hit)
+		)
+		var accepted_hit_count := mini(
+			requested_hit_count,
+			hits_until_lethal
+		)
+		accumulated_damage += mini(
+			damage_per_hit * accepted_hit_count,
+			remaining_health
+		)
+		if accumulated_damage >= current_health:
+			break
+	if accumulated_damage <= 0:
+		return false
+
+	last_damage_taken = accumulated_damage
+	current_health -= accumulated_damage
+	show_damage_number(
+		accumulated_damage,
+		impact_direction,
+		damage_type
+	)
+	play_multiplayer_damage_feedback(
+		impact_direction,
+		show_hit_particles
+	)
+
+	if current_health <= 0:
+		_die()
+		return true
+
+	AUDIO_LIMITER.play_enemy_hit(hit_audio)
+	return true
+
+
 func show_damage_number(
 	amount: int,
 	impact_direction: Vector2 = Vector2.ZERO,

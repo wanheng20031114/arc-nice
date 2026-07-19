@@ -144,7 +144,7 @@ const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
-## 协议 v12 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
+## 协议 v13 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
 ## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
 const SHARED_SNAPSHOT_COHORT_ID := -1
 const ENEMY_ACTION_SNAPSHOT_REORDER_TOLERANCE_SECONDS := 0.075
@@ -165,7 +165,7 @@ const CLIENT_PROXY_VISUAL_BUDGET_MARGIN := 192.0
 const CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_HZ := 15.0
 const CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_PHASE_COUNT := 64
 const COMBAT_FEEDBACK_MAX_RECORDS_PER_PACKET := 40
-# v12 plant records carry 41 raw packed bytes before RPC/ENet framing. Twenty-four
+# Plant records carry 41 raw packed bytes before RPC/ENet framing. Twenty-four
 # records stay near 984 bytes and below the project's 1200-byte packet budget.
 const PLANT_HEALTH_MAX_RECORDS_PER_PACKET := 24
 const BAMBOO_MORTAR_VISUAL_MAX_RECORDS_PER_PACKET := 24
@@ -342,6 +342,7 @@ var _last_completed_enemy_snapshot_batch_id: int = 0
 var _latest_enemy_snapshot_batch_seen: int = 0
 var _current_enemy_snapshot_hz: int = _NetConstants.ENEMY_SNAPSHOT_HZ
 var _pending_enemy_damage_feedback: Dictionary = {}
+var _active_enemy_damage_feedback_context: Dictionary = {}
 var _combat_feedback_flush_time_left: float = COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS
 var _pending_bamboo_mortar_visuals := PackedInt32Array()
 var _pending_bamboo_mortar_action_ids := PackedInt32Array()
@@ -446,6 +447,7 @@ func _exit_tree() -> void:
 	_host_enemy_snapshot_live_ids.clear()
 	_processed_collectible_effect_event_ids.clear()
 	_pending_enemy_damage_feedback.clear()
+	_active_enemy_damage_feedback_context.clear()
 	_clear_bamboo_mortar_visuals()
 	_pending_corn_machine_gun_burst_visuals.clear()
 	_pending_corn_machine_gun_burst_action_ids.clear()
@@ -1270,6 +1272,135 @@ func apply_authoritative_plant_enemy_damage(
 		safe_direction,
 		damage_type
 	)
+
+
+func request_bamboo_mortar_target(
+	owner: Node2D,
+	minimum_range: float,
+	maximum_range: float,
+	callback: Callable
+) -> bool:
+	if (
+		not net_manager.is_host()
+		or game == null
+		or not game.has_method("request_bamboo_mortar_target")
+	):
+		return false
+	return bool(
+		game.call(
+			"request_bamboo_mortar_target",
+			owner,
+			minimum_range,
+			maximum_range,
+			callback
+		)
+	)
+
+
+func cancel_bamboo_mortar_target_request(owner: Node) -> void:
+	if (
+		game == null
+		or not game.has_method(
+			"cancel_bamboo_mortar_target_request"
+		)
+	):
+		return
+	game.call("cancel_bamboo_mortar_target_request", owner)
+
+
+func select_bamboo_mortar_target_sync_for_fixture(
+	center: Vector2,
+	minimum_range: float,
+	maximum_range: float
+) -> Enemy:
+	if (
+		not net_manager.is_host()
+		or game == null
+		or not game.has_method(
+			"select_bamboo_mortar_target_sync_for_fixture"
+		)
+	):
+		return null
+	return game.call(
+		"select_bamboo_mortar_target_sync_for_fixture",
+		center,
+		minimum_range,
+		maximum_range
+	) as Enemy
+
+
+func queue_bamboo_mortar_explosion(
+	landing_position: Vector2,
+	inner_radius: float,
+	outer_radius: float,
+	inner_damage: int,
+	outer_damage: int,
+	damage_source_id: int
+) -> bool:
+	if (
+		not net_manager.is_host()
+		or game == null
+		or not game.has_method("queue_bamboo_mortar_explosion")
+	):
+		return false
+	return bool(
+		game.call(
+			"queue_bamboo_mortar_explosion",
+			landing_position,
+			inner_radius,
+			outer_radius,
+			inner_damage,
+			outer_damage,
+			damage_source_id
+		)
+	)
+
+
+func apply_authoritative_plant_enemy_damage_batch(
+	_damage_source_id: int,
+	enemy: Enemy,
+	damage_amounts: PackedInt32Array,
+	hit_counts: PackedInt32Array,
+	impact_direction: Vector2,
+	damage_type: EnemyConfig.DamageType
+) -> bool:
+	if (
+		not net_manager.is_host()
+		or game == null
+		or enemy == null
+		or damage_amounts.is_empty()
+	):
+		return false
+	var enemy_net_id := int(
+		game.multiplayer_enemy_ids_by_instance.get(
+			enemy.get_instance_id(),
+			0
+		)
+	)
+	if enemy_net_id <= 0:
+		return false
+	var safe_direction := (
+		impact_direction
+		if _is_finite_vector2(impact_direction)
+		else Vector2.ZERO
+	)
+	return _apply_confirmed_enemy_damage_batch(
+		enemy_net_id,
+		enemy,
+		damage_amounts,
+		hit_counts,
+		safe_direction,
+		damage_type
+	)
+
+
+func get_bamboo_mortar_combat_metrics() -> Dictionary:
+	if (
+		game == null
+		or not game.has_method("get_bamboo_mortar_combat_metrics")
+	):
+		return {}
+	return game.call("get_bamboo_mortar_combat_metrics") as Dictionary
 
 
 func _configure_warehouse_network(plant: PlantDefense, snapshot_ready: bool) -> void:
@@ -5945,8 +6076,70 @@ func _apply_confirmed_enemy_damage(
 ) -> bool:
 	if enemy_net_id <= 0 or enemy == null or not is_instance_valid(enemy):
 		return false
-	if not enemy.apply_damage(damage, impact_direction, damage_type, show_hit_particles):
+	_active_enemy_damage_feedback_context[enemy_net_id] = {
+		"impact_direction": impact_direction,
+		"damage_type": int(damage_type),
+		"show_hit_particles": show_hit_particles,
+	}
+	var applied := enemy.apply_damage(
+		damage,
+		impact_direction,
+		damage_type,
+		show_hit_particles
+	)
+	_active_enemy_damage_feedback_context.erase(enemy_net_id)
+	if not applied:
 		return false
+	if enemy.is_dead:
+		# The synchronous defeated signal already sent a reliable terminal
+		# event containing this final confirmed hit.
+		return true
+	var confirmed_damage := enemy.last_damage_taken
+	_queue_enemy_damage_feedback(
+		enemy_net_id,
+		enemy.current_health,
+		confirmed_damage,
+		impact_direction,
+		damage_type,
+		show_hit_particles
+	)
+	return true
+
+
+func _apply_confirmed_enemy_damage_batch(
+	enemy_net_id: int,
+	enemy: Enemy,
+	damage_amounts: PackedInt32Array,
+	hit_counts: PackedInt32Array,
+	impact_direction: Vector2,
+	damage_type: EnemyConfig.DamageType,
+	show_hit_particles: bool = true
+) -> bool:
+	if (
+		enemy_net_id <= 0
+		or enemy == null
+		or not is_instance_valid(enemy)
+	):
+		return false
+	_active_enemy_damage_feedback_context[enemy_net_id] = {
+		"impact_direction": impact_direction,
+		"damage_type": int(damage_type),
+		"show_hit_particles": show_hit_particles,
+	}
+	var applied := enemy.apply_damage_batch(
+		damage_amounts,
+		hit_counts,
+		impact_direction,
+		damage_type,
+		show_hit_particles
+	)
+	_active_enemy_damage_feedback_context.erase(enemy_net_id)
+	if not applied:
+		return false
+	if enemy.is_dead:
+		# The synchronous defeated signal already sent a reliable terminal
+		# event containing this final confirmed batch.
+		return true
 	var confirmed_damage := enemy.last_damage_taken
 	_queue_enemy_damage_feedback(
 		enemy_net_id,
@@ -7059,7 +7252,7 @@ func net_player_healed(
 	player_node.queue_healing_number(confirmed_healing)
 
 
-# Legacy compatibility shells retained in protocol v12. Xirang orbs no longer exist, but keeping the
+# Legacy compatibility shells retained in protocol v13. Xirang orbs no longer exist, but keeping the
 # annotated signatures avoids a partial wire-protocol break until the next
 # coordinated protocol-version upgrade.
 @rpc("authority", "call_remote", "reliable", 5)
@@ -7513,7 +7706,103 @@ func _broadcast_enemy_terminal(net_id: int, reason: int, event_position: Vector2
 			_host_terminal_enemy_ids.erase(net_id)
 		_:
 			return
-	_rpc_to_connected_clients(&"net_enemy_terminal", [net_id, reason, event_position])
+	var terminal_feedback := (
+		_collect_enemy_terminal_feedback(net_id)
+		if reason == ENEMY_TERMINAL_DEFEATED
+		else {}
+	)
+	_rpc_to_connected_clients(
+		&"net_enemy_terminal",
+		[
+			net_id,
+			reason,
+			event_position,
+			int(terminal_feedback.get("current_health", 0)),
+			int(terminal_feedback.get("damage", 0)),
+			terminal_feedback.get(
+				"impact_direction",
+				Vector2.ZERO
+			) as Vector2,
+			int(
+				terminal_feedback.get(
+					"damage_type",
+					EnemyConfig.DamageType.PHYSICAL
+				)
+			),
+			bool(
+				terminal_feedback.get(
+					"show_hit_particles",
+					false
+				)
+			),
+		]
+	)
+
+
+func _collect_enemy_terminal_feedback(enemy_net_id: int) -> Dictionary:
+	var pending_feedback := _pending_enemy_damage_feedback.get(
+		enemy_net_id,
+		{}
+	) as Dictionary
+	_pending_enemy_damage_feedback.erase(enemy_net_id)
+	var active_context := _active_enemy_damage_feedback_context.get(
+		enemy_net_id,
+		{}
+	) as Dictionary
+	var enemy: Enemy = null
+	if game != null:
+		enemy = game.multiplayer_enemies_by_net_id.get(
+			enemy_net_id
+		) as Enemy
+	var current_health := int(
+		pending_feedback.get("current_health", 0)
+	)
+	var confirmed_damage := maxi(
+		int(pending_feedback.get("damage", 0)),
+		0
+	)
+	if enemy != null and is_instance_valid(enemy):
+		current_health = maxi(enemy.current_health, 0)
+		# defeated is emitted synchronously from Enemy._die(), before the
+		# normal feedback queue call returns, so the lethal hit lives here.
+		confirmed_damage += maxi(enemy.last_damage_taken, 0)
+	var impact_direction := pending_feedback.get(
+		"impact_direction",
+		Vector2.ZERO
+	) as Vector2
+	var damage_type := int(
+		pending_feedback.get(
+			"damage_type",
+			EnemyConfig.DamageType.PHYSICAL
+		)
+	)
+	var show_hit_particles := bool(
+		pending_feedback.get("show_hit_particles", false)
+	)
+	if not active_context.is_empty():
+		impact_direction = active_context.get(
+			"impact_direction",
+			impact_direction
+		) as Vector2
+		damage_type = int(
+			active_context.get("damage_type", damage_type)
+		)
+		show_hit_particles = (
+			show_hit_particles
+			or bool(
+				active_context.get(
+					"show_hit_particles",
+					false
+				)
+			)
+		)
+	return {
+		"current_health": current_health,
+		"damage": confirmed_damage,
+		"impact_direction": impact_direction,
+		"damage_type": damage_type,
+		"show_hit_particles": show_hit_particles,
+	}
 
 
 func _on_host_base_health_changed(
@@ -8655,7 +8944,16 @@ func net_enemy_spawned_batch(
 
 
 @rpc("authority", "call_remote", "reliable", 5)
-func net_enemy_terminal(net_id: int, reason: int, event_position: Vector2) -> void:
+func net_enemy_terminal(
+	net_id: int,
+	reason: int,
+	event_position: Vector2,
+	current_health: int = 0,
+	confirmed_damage: int = 0,
+	impact_direction: Vector2 = Vector2.ZERO,
+	damage_type: int = EnemyConfig.DamageType.PHYSICAL,
+	show_hit_particles: bool = false
+) -> void:
 	if game == null or net_manager.is_host() or net_id <= 0:
 		return
 	match reason:
@@ -8663,6 +8961,18 @@ func net_enemy_terminal(net_id: int, reason: int, event_position: Vector2) -> vo
 			var enemy := _get_valid_client_enemy_for_net_id(net_id)
 			if enemy != null and is_instance_valid(enemy):
 				enemy.global_position = event_position
+				_apply_enemy_network_health(enemy, current_health)
+				if confirmed_damage > 0:
+					enemy.show_damage_number(
+						confirmed_damage,
+						impact_direction,
+						damage_type as EnemyConfig.DamageType
+					)
+					if impact_direction != Vector2.ZERO:
+						enemy.play_multiplayer_damage_feedback(
+							impact_direction,
+							show_hit_particles
+						)
 			_remove_client_enemy(net_id, true)
 		ENEMY_TERMINAL_ESCAPED:
 			game.apply_remote_enemy_escape(net_id)
@@ -10437,6 +10747,7 @@ func _return_to_lobby() -> void:
 	_last_completed_enemy_snapshot_batch_id = 0
 	_latest_enemy_snapshot_batch_seen = 0
 	_pending_enemy_damage_feedback.clear()
+	_active_enemy_damage_feedback_context.clear()
 	_pending_plant_health_updates.clear()
 	_clear_remote_plant_health_state()
 	_pending_warehouse_snapshots.clear()

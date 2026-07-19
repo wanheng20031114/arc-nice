@@ -1,39 +1,72 @@
 {
-  "schema_version": 1,
-  "generation_mode": "built-in imagegen",
-  "use_case": "stylized-concept",
+  "schema_version": 3,
+  "generation_mode": "built-in imagegen plus approved native-64 production anchor",
+  "use_case": "pixel-art-building-animation",
   "asset_family": "bamboo_mortar",
-  "anchor": {
-    "path": "dev_assets/source_images/plant_defense/bamboo_mortar/bamboo_mortar_anchor_alpha.png",
-    "role": "用户确认的64×64唯一主体基准；动画中除炮口、前方呼吸灯与两个储弹筒开口外均不可改动。"
+  "design_reference": {
+    "path": "dev_assets/source_images/plant_defense/bamboo_mortar/bamboo_mortar_reference.png",
+    "role": "最初的1254×1254造型参考，仅用于设计溯源。"
   },
-  "generated_sources": [
+  "approved_visual_reference": {
+    "path": "dev_assets/source_images/plant_defense/bamboo_mortar/bamboo_mortar_approved_rope_tail_imagegen_magenta.png",
+    "role": "用户确认的1254×1254视觉批准稿；只在右下结扣增加短金色绳尾，作为视觉溯源，不直接重采样为运行时贴图。"
+  },
+  "logical_reference": {
+    "path": "dev_assets/source_images/plant_defense/bamboo_mortar/bamboo_mortar_reference_grid75.png",
+    "role": "pixel_crop_tool.py 提取的旧版75×75分析参考，不参与生产构建。"
+  },
+  "production_anchor": {
+    "path": "dev_assets/source_images/plant_defense/bamboo_mortar/bamboo_mortar_anchor_alpha.png",
+    "role": "用户批准的64×64透明主体，是所有稳定主体像素的唯一生产权威；构建器只读且以RGBA哈希锁定。"
+  },
+  "motion_references": [
     {
       "path": "dev_assets/source_images/plant_defense/bamboo_mortar/bamboo_mortar_charge_imagegen_magenta.png",
-      "role": "8帧炮口升温、橙色呼吸灯和储弹筒装填语义参考；不直接覆盖主体像素。"
+      "role": "8级炮口升温与装填语义参考；不直接缩放或覆盖主体像素。"
     },
     {
-      "path": "dev_assets/source_images/plant_defense/bamboo_mortar/bamboo_mortar_explosion_imagegen_magenta.png",
-      "role": "8帧黄橙冲击、棕色尘环与绿色竹叶碎片的逐格爆炸源。"
+      "path": "dev_assets/source_images/plant_defense/bamboo_mortar/bamboo_mortar_fire_imagegen_magenta.png",
+      "role": "4帧点火、主爆闪、余焰与散烟节奏参考；独立炮弹不烘焙进建筑帧。"
     }
   ],
+  "preserved_external_family": {
+    "path": "dev_assets/source_images/plant_defense/bamboo_mortar/bamboo_mortar_explosion_imagegen_magenta.png",
+    "role": "既有爆炸素材族，本次主体重抠图不重编码其运行时PNG。"
+  },
   "production_contract": {
-    "building_canvas": [64, 64],
-    "world_scale": [0.5, 0.5],
+    "building_canvas": [
+      64,
+      64
+    ],
+    "body_bbox": [
+      4,
+      4,
+      59,
+      62
+    ],
+    "body_height_max": 60,
+    "idle_frames": 1,
     "charge_frames": 8,
-    "charge_fps": 2,
-    "explosion_canvas": [64, 64],
-    "explosion_frames": 8,
-    "explosion_fps": 14,
-    "building_visible_color_limit": 14,
-    "explosion_visible_color_limit": 12,
+    "fire_frames": 4,
+    "base_palette_colors": 12,
+    "frame_visible_color_limit": 20,
     "alpha": "binary; transparent RGB zero",
-    "filter": "nearest; no mipmaps; lossless"
+    "magenta": "fully removed",
+    "filter": "nearest at runtime; no mipmaps; lossless",
+    "status_light": "not baked into any bitmap; independent small square Godot HDR/shader node"
+  },
+  "reconstruction": {
+    "source_grid": [
+      64,
+      64
+    ],
+    "method": "read approved 64x64 anchor directly; copy stable pixels exactly",
+    "whole_image_nearest_resize": false
   },
   "processor": {
     "path": "dev_tools/build_bamboo_mortar_assets.py",
+    "managed_outputs": "idle, charge_0..7, fire_0..3, audit（批准anchor为只读输入）",
     "write_command": "python dev_tools/build_bamboo_mortar_assets.py",
-    "check_command": "python dev_tools/build_bamboo_mortar_assets.py --check-only",
-    "unsafe_grid_compression": false
+    "check_command": "python dev_tools/build_bamboo_mortar_assets.py --check-only"
   }
 }

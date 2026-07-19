@@ -147,6 +147,25 @@ func apply_damage(
 	return accepted
 
 
+func apply_damage_batch(
+	damage_amounts: PackedInt32Array,
+	hit_counts: PackedInt32Array,
+	impact_direction: Vector2 = Vector2.ZERO,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+	show_hit_particles: bool = true
+) -> bool:
+	var accepted := super.apply_damage_batch(
+		damage_amounts,
+		hit_counts,
+		impact_direction,
+		damage_type,
+		show_hit_particles
+	)
+	if accepted:
+		_emit_health_changed()
+	return accepted
+
+
 func _physics_process(delta: float) -> void:
 	if not is_active or is_dead:
 		velocity = Vector2.ZERO

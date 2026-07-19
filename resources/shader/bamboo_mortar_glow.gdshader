@@ -1,8 +1,8 @@
 shader_type canvas_item;
 render_mode unshaded, blend_add;
 
-uniform vec4 glow_color : source_color = vec4(0.48, 1.0, 0.24, 1.0);
-uniform float glow_strength : hint_range(0.0, 3.0) = 1.0;
+instance uniform vec4 glow_color : source_color = vec4(0.34, 1.65, 0.18, 1.0);
+instance uniform float glow_strength : hint_range(0.0, 3.0) = 1.0;
 
 void vertex() {
 	mat4 model_to_canvas = CANVAS_MATRIX * MODEL_MATRIX;
@@ -13,10 +13,9 @@ void vertex() {
 }
 
 void fragment() {
-	vec4 mask = texture(TEXTURE, UV) * COLOR;
-	float pulse = 1.0 + 0.16 * sin(TIME * 3.1);
+	float pulse = 1.0 + 0.06 * sin(TIME * 3.1);
 	COLOR = vec4(
 		glow_color.rgb * glow_strength * pulse,
-		mask.a * glow_color.a * 0.82
+		glow_color.a * 0.88
 	);
 }
