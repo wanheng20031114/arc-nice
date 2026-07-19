@@ -1,12 +1,12 @@
 {
-  "schema_version": 4,
+  "schema_version": 6,
   "design_reference_sha256": "39df9a8c37c264a7452d7b1fbd562e25214c0643ab900a3e6d2e65bae5ef1928",
   "approved_rope_tail_imagegen_reference_sha256": "5ef40a0a56b8b76b3d466bf23226271234715573c13c832813e1d559019c3412",
   "native64_imagegen_source_sha256": "443ea3b98cc01aca9ac35cc9c111add4cb601cfb883327e6b942f01642f5d7b7",
   "approved_anchor_png_sha256": "2bfb8a6c633d7dc334470f19b97e9b6cd7f0e093f9c43e55b9df849c23958e58",
   "approved_anchor_rgba_sha256": "98b4dd99cedea45fa919268c992e59c80199542eb5b3edcc1db4df1f10fc5b24",
   "imagegen_charge_reference_sha256": "1cdf5ce6ae227aaeac3099c310b1338ae3af0531caf04a320233bb4fc4d1cf04",
-  "imagegen_fire_reference_sha256": "be0e4f958063410195635d85389b8268dd3dacdf5847669891f9f035c47c577c",
+  "imagegen_fire_reference_sha256": "de3ea765e6b4e36b683be814d4f01dd1d847a131ba86e393f95fcdad9d4dcabb",
   "pixel_grid_analyzer": {
     "command": "python dev_tools/pixel_grid_analyzer.py bamboo_mortar_native64_imagegen_magenta.png --json",
     "detection_mode": "approximate",
@@ -87,8 +87,8 @@
     14,
     14,
     14,
-    16,
     17,
+    16,
     18,
     16
   ],
@@ -149,26 +149,26 @@
     ],
     [
       4,
-      3,
-      59,
-      62
-    ],
-    [
-      4,
-      1,
-      63,
-      62
-    ],
-    [
-      4,
-      1,
+      2,
       60,
       62
     ],
     [
       4,
-      1,
-      59,
+      2,
+      62,
+      62
+    ],
+    [
+      4,
+      2,
+      62,
+      62
+    ],
+    [
+      4,
+      2,
+      62,
       62
     ]
   ],
@@ -183,10 +183,28 @@
     "e26b59a45b8234f7457f5885a10df0a8e47312d4b0677c4b3da5057f0b7aad93"
   ],
   "fire_frame_hashes": [
-    "84302af6be8156184baea9d08a26b344bc776da8f8627e5b6c549d58009c3a9e",
-    "e6434f44df9e66eb5c9b83854bd2ceacd70a0839acae092f34afe82cd23a5ec3",
-    "4638eca59c7ed9257a8877f6025921bd608457a54ce3c4a66ee6d25b866fca6b",
-    "82eb0cc91748457269f310ff7495772b03adda0eab65d35849ebcf0395b8cf7a"
+    "1808ae865684652e8a119a29ee46c88a816bf20d44b2644dd31a619d1b2bc840",
+    "d1fe45143831056713c4e88ff80d8c9c9e141948f16d841b877932e03c3914e0",
+    "10e71f83ac0a2b16f89c36c4c29134df961a1d42f057847d4c66af9ddc023db0",
+    "df36c4728fc2636dabc3cb7944c6296aab8c57a6bfd54d022faf4fe8c94a3c77"
+  ],
+  "fire_effect_changed_pixel_counts": [
+    140,
+    205,
+    119,
+    50
+  ],
+  "fire_effect_new_pixel_counts": [
+    43,
+    97,
+    62,
+    27
+  ],
+  "fire_sequence": [
+    "compact_ignition_star",
+    "dominant_white_hot_blast",
+    "hollow_pressure_smoke_ring",
+    "fading_separated_smoke"
   ],
   "body_width": 55,
   "body_height": 58,
@@ -198,6 +216,6 @@
   "binary_alpha": true,
   "transparent_rgb_clean": true,
   "magenta_pixels_removed": true,
-  "imagegen_role": "The approved high-resolution image is retained as visual provenance. The approved transparent 64x64 anchor is the sole production authority. Charge/fire sheets supply motion language; only storage and muzzle regions are changed per frame.",
+  "imagegen_role": "The approved high-resolution image is retained as visual provenance. The approved transparent 64x64 anchor is the sole production authority. Charge/fire sheets supply motion language; the enhanced fire reference contributes only the four-stage eruption rhythm, and only storage/muzzle regions change.",
   "production_anchor_read_only": true
 }

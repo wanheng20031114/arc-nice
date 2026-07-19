@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 13,
-		"Reliable terminal feedback on the simple-crafting baseline requires protocol v13."
+		NetConstants.PROTOCOL_VERSION == 14,
+		"Distance-timed Bamboo Mortar projectiles require multiplayer protocol v14."
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),

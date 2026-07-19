@@ -40,7 +40,7 @@ CHARGE_REFERENCE_PATH = (
     SOURCE_ROOT / "bamboo_mortar_charge_imagegen_magenta.png"
 )
 FIRE_REFERENCE_PATH = (
-    SOURCE_ROOT / "bamboo_mortar_fire_imagegen_magenta.png"
+    SOURCE_ROOT / "bamboo_mortar_fire_burst_imagegen_magenta.png"
 )
 AUDIT_PATH = SOURCE_ROOT / "bamboo_mortar_asset_audit.json"
 
@@ -333,80 +333,121 @@ def _paint_points(
             pixels[x, y] = color
 
 
-def _paint_muzzle_flash(image: Image.Image, large: bool) -> None:
-    """Paint one connected, jagged flame cone without a projectile sprite."""
-    if large:
-        rows = {
-            1: (61, 62),
-            2: (59, 62),
-            3: (57, 62),
-            4: (55, 61),
-            5: (53, 60),
-            6: (51, 59),
-            7: (50, 57),
-            8: (49, 56),
-            9: (48, 54),
-            10: (47, 53),
-            11: (46, 51),
-            12: (46, 49),
-        }
-    else:
-        rows = {
-            3: (57, 57),
-            4: (55, 58),
-            5: (53, 57),
-            6: (51, 56),
-            7: (50, 55),
-            8: (49, 54),
-            9: (48, 52),
-            10: (47, 51),
-            11: (47, 49),
-        }
-
+def _paint_logical_cells(
+    image: Image.Image,
+    cells: dict[tuple[int, int], tuple[int, int, int, int]],
+) -> None:
+    """Expand one 32x32 logical pixel into an aligned native 2x2 block."""
     points: dict[tuple[int, int], tuple[int, int, int, int]] = {}
-    for y, (left, right) in rows.items():
-        for x in range(left, right + 1):
-            distance = abs(x - 49) + abs(y - 9)
-            if distance <= 3:
-                color = WHITE_HOT
-            elif distance <= 7:
-                color = PALE_FLAME
-            elif distance <= 11:
-                color = AMBER
-            elif x >= 61 or distance >= 16:
-                color = EMBER
-            else:
-                color = ORANGE
-            points[(x, y)] = color
+    for (logical_x, logical_y), color in cells.items():
+        native_x = logical_x * 2
+        native_y = logical_y * 2
+        for offset_y in range(2):
+            for offset_x in range(2):
+                points[(native_x + offset_x, native_y + offset_y)] = color
     _paint_points(image, points)
 
 
-def _paint_afterglow_wedge(image: Image.Image) -> None:
-    """Keep the third fire frame readable while the main flash collapses."""
+def _paint_ignition_star(image: Image.Image) -> None:
+    """Paint a compact pressure-star that survives the in-game 0.5 scale."""
+    _paint_logical_cells(
+        image,
+        {
+            (25, 3): WHITE_HOT,
+            (25, 4): WHITE_HOT,
+            (24, 3): PALE_FLAME,
+            (24, 4): PALE_FLAME,
+            (26, 3): PALE_FLAME,
+            (26, 4): PALE_FLAME,
+            (25, 2): PALE_FLAME,
+            (25, 5): PALE_FLAME,
+            (27, 2): ORANGE,
+            (27, 5): ORANGE,
+            (28, 3): AMBER,
+            (28, 4): AMBER,
+            (29, 1): EMBER,
+        },
+    )
+
+
+def _paint_main_blast(image: Image.Image) -> None:
+    """Paint an inset, connected white-hot jet on the logical 32px grid."""
     rows = {
-        4: (56, 56),
-        5: (54, 57),
-        6: (52, 56),
-        7: (50, 55),
-        8: (49, 54),
-        9: (48, 52),
-        10: (47, 50),
-        11: (47, 49),
+        1: (29, 30),
+        2: (27, 30),
+        3: (26, 30),
+        4: (25, 29),
+        5: (24, 28),
+        6: (23, 27),
+        7: (23, 26),
     }
-    points: dict[tuple[int, int], tuple[int, int, int, int]] = {}
+    cells: dict[tuple[int, int], tuple[int, int, int, int]] = {}
     for y, (left, right) in rows.items():
         for x in range(left, right + 1):
-            distance = abs(x - 49) + abs(y - 9)
-            if distance <= 3:
+            edge_distance = min(x - left, right - x)
+            if edge_distance >= 2:
+                color = WHITE_HOT
+            elif edge_distance >= 1:
                 color = PALE_FLAME
-            elif distance <= 7:
-                color = AMBER
-            elif distance <= 11:
-                color = ORANGE
-            else:
+            elif x == right:
                 color = EMBER
-            points[(x, y)] = color
-    _paint_points(image, points)
+            else:
+                color = ORANGE
+            cells[(x, y)] = color
+    cells.update(
+        {
+            (30, 6): PALE_FLAME,
+            (28, 8): ORANGE,
+            (26, 9): EMBER,
+        }
+    )
+    _paint_logical_cells(image, cells)
+
+
+def _paint_smoke_ring(image: Image.Image) -> None:
+    """Paint a 2-native-pixel hollow ring that reads at 0.5 scale."""
+    ring_rows = {
+        1: (27, 29),
+        2: (26, 26, 30, 30),
+        3: (25, 25, 30, 30),
+        4: (25, 25, 30, 30),
+        5: (26, 26, 30, 30),
+        6: (27, 29),
+    }
+    cells: dict[tuple[int, int], tuple[int, int, int, int]] = {}
+    for y, spans in ring_rows.items():
+        for span_index in range(0, len(spans), 2):
+            left = spans[span_index]
+            right = spans[span_index + 1]
+            for x in range(left, right + 1):
+                cells[(x, y)] = (
+                    SMOKE_LIGHT
+                    if (x + y) % 3 != 0
+                    else SMOKE_DARK
+                )
+    cells.update(
+        {
+            (29, 7): ORANGE,
+            (26, 8): EMBER,
+        }
+    )
+    _paint_logical_cells(image, cells)
+
+
+def _paint_fading_smoke(image: Image.Image) -> None:
+    """Paint two aligned smoke clusters instead of subpixel-sized noise."""
+    _paint_logical_cells(
+        image,
+        {
+            (26, 3): SMOKE_DARK,
+            (27, 2): SMOKE_LIGHT,
+            (27, 3): SMOKE_LIGHT,
+            (26, 4): SMOKE_DARK,
+            (29, 1): SMOKE_DARK,
+            (30, 1): SMOKE_LIGHT,
+            (26, 6): EMBER,
+        },
+    )
 
 
 def _build_fire_frames(anchor: Image.Image) -> list[Image.Image]:
@@ -415,54 +456,25 @@ def _build_fire_frames(anchor: Image.Image) -> list[Image.Image]:
     ignition = anchor.copy()
     _empty_upper_storage_tube(ignition)
     _heat_muzzle(ignition, anchor, 7)
-    _paint_muzzle_flash(ignition, False)
+    _paint_ignition_star(ignition)
     frames.append(_clean(ignition))
 
     blast = anchor.copy()
     _empty_upper_storage_tube(blast)
     _heat_muzzle(blast, anchor, 7)
-    _paint_muzzle_flash(blast, True)
+    _paint_main_blast(blast)
     frames.append(_clean(blast))
 
-    afterglow = anchor.copy()
-    _empty_upper_storage_tube(afterglow)
-    _heat_muzzle(afterglow, anchor, 4)
-    _paint_afterglow_wedge(afterglow)
-    _paint_points(
-        afterglow,
-        {
-            (57, 1): SMOKE_DARK,
-            (58, 1): SMOKE_LIGHT,
-            (59, 1): SMOKE_DARK,
-            (56, 2): SMOKE_DARK,
-            (57, 2): SMOKE_LIGHT,
-            (58, 2): SMOKE_LIGHT,
-            (59, 2): SMOKE_DARK,
-            (57, 3): SMOKE_DARK,
-            (58, 3): SMOKE_DARK,
-        },
-    )
-    frames.append(_clean(afterglow))
+    pressure_ring = anchor.copy()
+    _empty_upper_storage_tube(pressure_ring)
+    _heat_muzzle(pressure_ring, anchor, 4)
+    _paint_smoke_ring(pressure_ring)
+    frames.append(_clean(pressure_ring))
 
     smoke = anchor.copy()
     _empty_upper_storage_tube(smoke)
     _heat_muzzle(smoke, anchor, 1)
-    _paint_points(
-        smoke,
-        {
-            (52, 7): EMBER,
-            (55, 2): SMOKE_DARK,
-            (56, 1): SMOKE_DARK,
-            (57, 1): SMOKE_LIGHT,
-            (58, 1): SMOKE_DARK,
-            (55, 3): SMOKE_DARK,
-            (56, 2): SMOKE_LIGHT,
-            (57, 2): SMOKE_LIGHT,
-            (58, 2): SMOKE_DARK,
-            (56, 3): SMOKE_DARK,
-            (57, 3): SMOKE_DARK,
-        },
-    )
+    _paint_fading_smoke(smoke)
     frames.append(_clean(smoke))
     return frames
 
@@ -651,6 +663,47 @@ def _validate(
     ):
         raise RuntimeError("Lower decorative bomb must remain loaded")
 
+    fire_effect_changed_pixel_counts: list[int] = []
+    fire_effect_new_pixel_counts: list[int] = []
+    for frame in fire_frames:
+        changed_count = 0
+        new_pixel_count = 0
+        for y in range(FIRE_EFFECT_RECT[1], FIRE_EFFECT_RECT[3]):
+            for x in range(FIRE_EFFECT_RECT[0], FIRE_EFFECT_RECT[2]):
+                frame_pixel = frame.getpixel((x, y))
+                anchor_pixel = anchor.getpixel((x, y))
+                if frame_pixel != anchor_pixel:
+                    changed_count += 1
+                if frame_pixel[3] > 0 and anchor_pixel[3] == 0:
+                    new_pixel_count += 1
+        fire_effect_changed_pixel_counts.append(changed_count)
+        fire_effect_new_pixel_counts.append(new_pixel_count)
+    if not (
+        fire_effect_new_pixel_counts[0] >= 24
+        and fire_effect_new_pixel_counts[1] >= 96
+        and fire_effect_new_pixel_counts[1]
+        > fire_effect_new_pixel_counts[0] * 2
+        and 48 <= fire_effect_new_pixel_counts[2] <= 80
+        and fire_effect_new_pixel_counts[3] >= 16
+        and fire_effect_new_pixel_counts[3]
+        < fire_effect_new_pixel_counts[2]
+        and all(
+            fire_frames[2].getpixel(point) == TRANSPARENT
+            for point in ((56, 6), (57, 6), (56, 7), (57, 7))
+        )
+        and all(
+            frame.getchannel("A").getbbox()[1] >= 2
+            and frame.getchannel("A").getbbox()[2] <= 62
+            for frame in fire_frames
+        )
+    ):
+        raise RuntimeError(
+            "Fire sequence must read as ignition, dominant blast, hollow "
+            "pressure ring, then fading smoke without edge clipping; got "
+            "new-pixel counts "
+            f"{fire_effect_new_pixel_counts}"
+        )
+
     # Nothing in the front-center status-light area may animate in the body
     # textures.  The square mask is composited by its own Godot node.
     for frame in (*charge_frames, *fire_frames):
@@ -662,7 +715,7 @@ def _validate(
                     )
 
     return {
-        "schema_version": 4,
+        "schema_version": 6,
         "design_reference_sha256": hashlib.sha256(
             REFERENCE_PATH.read_bytes()
         ).hexdigest(),
@@ -724,6 +777,16 @@ def _validate(
         "fire_frame_hashes": [
             _image_sha256(frame) for frame in fire_frames
         ],
+        "fire_effect_changed_pixel_counts": (
+            fire_effect_changed_pixel_counts
+        ),
+        "fire_effect_new_pixel_counts": fire_effect_new_pixel_counts,
+        "fire_sequence": [
+            "compact_ignition_star",
+            "dominant_white_hot_blast",
+            "hollow_pressure_smoke_ring",
+            "fading_separated_smoke",
+        ],
         "body_width": body_width,
         "body_height": body_height,
         "upper_storage_empty_during_charge_and_fire": True,
@@ -741,7 +804,8 @@ def _validate(
             "The approved high-resolution image is retained as visual "
             "provenance. The approved transparent 64x64 anchor is the sole "
             "production authority. Charge/fire sheets supply motion language; "
-            "only storage and muzzle regions are changed per frame."
+            "the enhanced fire reference contributes only the four-stage "
+            "eruption rhythm, and only storage/muzzle regions change."
         ),
         "production_anchor_read_only": True,
     }

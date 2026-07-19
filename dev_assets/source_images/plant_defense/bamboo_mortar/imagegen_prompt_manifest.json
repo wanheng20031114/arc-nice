@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "generation_mode": "built-in imagegen plus approved native-64 production anchor",
   "use_case": "pixel-art-building-animation",
   "asset_family": "bamboo_mortar",
@@ -26,7 +26,11 @@
     },
     {
       "path": "dev_assets/source_images/plant_defense/bamboo_mortar/bamboo_mortar_fire_imagegen_magenta.png",
-      "role": "4帧点火、主爆闪、余焰与散烟节奏参考；独立炮弹不烘焙进建筑帧。"
+      "role": "旧版4帧点火、主爆闪、余焰与散烟节奏参考；保留用于历史溯源。"
+    },
+    {
+      "path": "dev_assets/source_images/plant_defense/bamboo_mortar/bamboo_mortar_fire_burst_imagegen_magenta.png",
+      "role": "强化后的4帧点火星芒、宽喷流、烟环和淡烟节奏参考；生产帧只提取效果语言，主体仍逐像素复制批准anchor，独立炮弹不烘焙进建筑帧。"
     }
   ],
   "preserved_external_family": {

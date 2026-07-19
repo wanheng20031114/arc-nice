@@ -129,6 +129,7 @@ func _run() -> void:
 		_test_config_and_scene_contract(authority)
 		await _test_target_ring_and_tracking(authority)
 		await _test_windup_fire_and_fixed_landing(authority)
+		await _test_shell_duration_and_late_join(authority)
 		await _test_explosion_damage_boundaries()
 		await _test_physical_defense_settlement()
 		await _test_proxy_actions_and_runtime_state(authority, proxy)
@@ -395,25 +396,80 @@ func _test_windup_fire_and_fixed_landing(
 		"目标死亡后仍须在可见爆闪/后坐帧向最后有效位置出膛，并从出膛时开始2秒冷却。"
 	)
 	var active_shell := _find_active_shell()
+	var expected_flight_duration := (
+		clampf(
+			active_shell.start_position.distance_to(
+				active_shell.landing_position
+			) / BambooMortarShell.PROJECTILE_SPEED_PIXELS_PER_SECOND,
+			BambooMortarShell.MIN_FLIGHT_DURATION_SECONDS,
+			BambooMortarShell.MAX_FLIGHT_DURATION_SECONDS
+		)
+		if active_shell != null
+		else 0.0
+	)
 	_expect(
 		active_shell != null
 		and active_shell.landing_position == Vector2(96.0, 0.0)
 		and is_equal_approx(
-			BambooMortarShell.FLIGHT_DURATION_SECONDS,
-			1.0
+			active_shell.flight_duration_seconds,
+			expected_flight_duration
 		)
+		and active_shell.flight_duration_seconds <= 0.55
 		and is_equal_approx(
 			active_shell.arc_height,
 			clampf(
 				active_shell.start_position.distance_to(
 					active_shell.landing_position
-				) * 0.35,
-				24.0,
-				48.0
+				) * BambooMortarShell.ARC_HEIGHT_DISTANCE_FACTOR,
+				BambooMortarShell.MIN_ARC_HEIGHT,
+				BambooMortarShell.MAX_ARC_HEIGHT
 			)
-		),
-		"炮弹必须锁定落点并使用1秒、距离系数0.35且高度24至48的固定抛物线。"
+		)
+		and active_shell.ground_shadow is Polygon2D
+		and active_shell.ground_shadow.visible
+		and active_shell.ground_shadow.polygon
+		== PackedVector2Array([
+			Vector2(-3, 0),
+			Vector2(-2, -1),
+			Vector2(2, -1),
+			Vector2(3, 0),
+			Vector2(2, 1),
+			Vector2(-2, 1),
+		]),
+		"炮弹必须以300像素/秒和0.28至0.55秒距离限幅锁定落点，采用更低更快的抛物线，并复用场景内预建的像素地面影子。"
 	)
+	if active_shell != null:
+		active_shell.set_physics_process(false)
+		active_shell.flight_elapsed_seconds = (
+			active_shell.flight_duration_seconds * 0.5
+		)
+		active_shell.call("_update_flight_position")
+		var expected_shadow_midpoint := (
+			active_shell.shadow_start_position.lerp(
+				active_shell.landing_position,
+				0.5
+			)
+		)
+		var expected_projectile_apex := (
+			active_shell.start_position.lerp(
+				active_shell.landing_position,
+				0.5
+			)
+			+ Vector2.UP * active_shell.arc_height
+		)
+		_expect(
+			active_shell.global_position.is_equal_approx(
+				expected_shadow_midpoint
+			)
+			and active_shell.visual.global_position.is_equal_approx(
+				expected_projectile_apex
+			)
+			and is_equal_approx(
+				active_shell.ground_shadow.modulate.a,
+				BambooMortarShell.SHADOW_APEX_ALPHA_FACTOR
+			),
+			"飞行中点必须让根节点和影子沿地面前进，炮弹视觉独立到达抛物线顶点，并随高度淡化影子。"
+		)
 	mortar.call("_finish_fire_visual")
 	_expect(
 		mortar.combat_phase == BambooMortar.CombatPhase.COOLDOWN
@@ -422,6 +478,163 @@ func _test_windup_fire_and_fixed_landing(
 		"开火动画结束后必须复位主体并进入冷却，不得从蓄热直接跳回待机。"
 	)
 	await _finish_active_shells()
+
+
+func _test_shell_duration_and_late_join(
+	mortar: BambooMortar
+) -> void:
+	var pool := runtime.session_object_pool
+	var start := Vector2(12.0, 18.0)
+	var short_landing := start + Vector2(24.0, 0.0)
+	var short_shell := pool.acquire(SHELL_SCENE) as BambooMortarShell
+	_expect(short_shell != null, "短程飞行测试必须成功租用炮弹。")
+	if short_shell != null:
+		short_shell.setup(
+			start,
+			short_landing,
+			100,
+			50,
+			false,
+			0,
+			0.0
+		)
+		_expect(
+			is_equal_approx(
+				short_shell.flight_duration_seconds,
+				BambooMortarShell.MIN_FLIGHT_DURATION_SECONDS
+			),
+			"近距离炮弹必须使用0.28秒下限，既加速又保留可读的飞行帧。"
+		)
+		short_shell.call("_impact")
+		short_shell.call("_on_visual_animation_finished")
+	await physics_frame
+	await physics_frame
+
+	var far_landing := start + Vector2(300.0, 0.0)
+	var far_shell := pool.acquire(SHELL_SCENE) as BambooMortarShell
+	_expect(far_shell != null, "远程飞行测试必须成功复用炮弹。")
+	if far_shell != null:
+		far_shell.setup(
+			start,
+			far_landing,
+			100,
+			50,
+			false,
+			0,
+			0.0
+		)
+		_expect(
+			is_equal_approx(
+				far_shell.flight_duration_seconds,
+				BambooMortarShell.MAX_FLIGHT_DURATION_SECONDS
+			),
+			"远距离炮弹必须受0.55秒上限约束，不能恢复为长时间滞空。"
+		)
+		far_shell.call("_impact")
+		far_shell.call("_on_visual_animation_finished")
+	await physics_frame
+	await physics_frame
+
+	var late_landing := start + Vector2(160.0, 0.0)
+	var late_flight_duration := (
+		BambooMortarShell.get_flight_duration_seconds(
+			start,
+			late_landing
+		)
+	)
+	var late_elapsed := (
+		late_flight_duration
+		+ BambooMortarShell.EXPLOSION_DURATION_SECONDS * 0.25
+	)
+	var late_shell := pool.acquire(SHELL_SCENE) as BambooMortarShell
+	_expect(late_shell != null, "延迟加入爆炸恢复测试必须成功复用炮弹。")
+	if late_shell != null:
+		late_shell.setup(
+			start,
+			late_landing,
+			100,
+			50,
+			false,
+			0,
+			late_elapsed
+		)
+		_expect(
+			bool(late_shell.get("_has_impacted"))
+			and late_shell.global_position == late_landing
+			and late_shell.visual.position == Vector2.ZERO
+			and late_shell.visual.animation == &"explosion"
+			and not late_shell.ground_shadow.visible,
+			"客户端晚到飞行事件若已进入爆炸阶段，必须直接在落点恢复爆炸并隐藏地影。"
+		)
+		late_shell.call("_on_visual_animation_finished")
+	await physics_frame
+	await physics_frame
+
+	var snapshot_action_id := 8801
+	var snapshot_landing := start + Vector2(120.0, 16.0)
+	var snapshot_total_duration := (
+		BambooMortarShell.get_total_visual_duration_seconds(
+			start,
+			snapshot_landing
+		)
+	)
+	mortar.set("_last_projectile_action_id", snapshot_action_id)
+	mortar.set("_last_projectile_spawn_position", start)
+	mortar.set(
+		"_last_projectile_landing_position",
+		snapshot_landing
+	)
+	mortar.set(
+		"_last_projectile_started_at_seconds",
+		Time.get_ticks_msec() / 1000.0 - 0.1
+	)
+	var active_snapshot := mortar.export_multiplayer_runtime_state()
+	mortar.set(
+		"_last_projectile_started_at_seconds",
+		Time.get_ticks_msec() / 1000.0
+		- snapshot_total_duration
+		- 0.01
+	)
+	var expired_snapshot := mortar.export_multiplayer_runtime_state()
+	_expect(
+		int(active_snapshot.get("projectile_action_id", 0))
+		== snapshot_action_id
+		and active_snapshot.get(
+			"projectile_landing_position",
+			Vector2.ZERO
+		) == snapshot_landing
+		and not expired_snapshot.has("projectile_action_id"),
+		"运行时快照必须按本次端点的实际总时长保留飞行事件，并在视觉结束后立即停止同步。"
+	)
+	mortar.set("_last_projectile_action_id", 0)
+	mortar.set("_last_projectile_started_at_seconds", -INF)
+	mortar.set("_last_projectile_spawn_position", Vector2.ZERO)
+	mortar.set("_last_projectile_landing_position", Vector2.ZERO)
+
+	var metrics_before_expired := pool.get_metrics(
+		SHELL_SCENE.resource_path
+	)
+	var expired_shell := mortar.call(
+		"_spawn_shell",
+		start,
+		late_landing,
+		false,
+		BambooMortarShell.get_total_visual_duration_seconds(
+			start,
+			late_landing
+		)
+	) as BambooMortarShell
+	var metrics_after_expired := pool.get_metrics(
+		SHELL_SCENE.resource_path
+	)
+	_expect(
+		expired_shell == null
+		and int(metrics_after_expired.get("in_use", -1))
+		== int(metrics_before_expired.get("in_use", -2))
+		and int(metrics_after_expired.get("created", -1))
+		== int(metrics_before_expired.get("created", -2)),
+		"已超过实际总时长的联机事件必须在租池前丢弃，不能短暂激活或扩容炮弹。"
+	)
 
 
 func _test_explosion_damage_boundaries() -> void:

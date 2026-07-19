@@ -6,14 +6,18 @@ signal projectile_finished(projectile_id: int, projectile: Node)
 const AUDIO_LIMITER := preload(
 	"res://scene/plant_defense/plant_attack_audio_limiter.gd"
 )
-const FLIGHT_DURATION_SECONDS := 1.0
+const PROJECTILE_SPEED_PIXELS_PER_SECOND := 300.0
+const MIN_FLIGHT_DURATION_SECONDS := 0.28
+const MAX_FLIGHT_DURATION_SECONDS := 0.55
+const ARC_HEIGHT_DISTANCE_FACTOR := 0.25
+const MIN_ARC_HEIGHT := 18.0
+const MAX_ARC_HEIGHT := 36.0
+const SHADOW_START_GROUND_OFFSET := Vector2(0.0, 12.0)
+const SHADOW_APEX_ALPHA_FACTOR := 0.45
 const EXPLOSION_FRAME_COUNT := 8
 const EXPLOSION_FPS := 14.0
 const EXPLOSION_DURATION_SECONDS := (
 	float(EXPLOSION_FRAME_COUNT) / EXPLOSION_FPS
-)
-const TOTAL_VISUAL_DURATION_SECONDS := (
-	FLIGHT_DURATION_SECONDS + EXPLOSION_DURATION_SECONDS
 )
 const INNER_RADIUS := 16.0
 const OUTER_RADIUS := 32.0
@@ -23,12 +27,15 @@ const DEFAULT_INNER_DAMAGE := 100
 const DEFAULT_OUTER_DAMAGE := 50
 
 @onready var visual: AnimatedSprite2D = $Visual
+@onready var ground_shadow: Polygon2D = $GroundShadow
 @onready var impact_audio: AudioStreamPlayer2D = $ImpactAudio
 
 var start_position := Vector2.ZERO
 var landing_position := Vector2.ZERO
+var shadow_start_position := Vector2.ZERO
 var flight_elapsed_seconds := 0.0
-var arc_height := 24.0
+var flight_duration_seconds := MAX_FLIGHT_DURATION_SECONDS
+var arc_height := MIN_ARC_HEIGHT
 var inner_damage := DEFAULT_INNER_DAMAGE
 var outer_damage := DEFAULT_OUTER_DAMAGE
 var authoritative_damage := true
@@ -39,6 +46,31 @@ var pool_active := true
 var _has_impacted := false
 var _combat_runtime: Node = null
 var _explosion_targets: Array[Enemy] = []
+
+
+static func get_flight_duration_seconds(
+	new_start_position: Vector2,
+	new_landing_position: Vector2
+) -> float:
+	return clampf(
+		new_start_position.distance_to(new_landing_position)
+		/ PROJECTILE_SPEED_PIXELS_PER_SECOND,
+		MIN_FLIGHT_DURATION_SECONDS,
+		MAX_FLIGHT_DURATION_SECONDS
+	)
+
+
+static func get_total_visual_duration_seconds(
+	new_start_position: Vector2,
+	new_landing_position: Vector2
+) -> float:
+	return (
+		get_flight_duration_seconds(
+			new_start_position,
+			new_landing_position
+		)
+		+ EXPLOSION_DURATION_SECONDS
+	)
 
 
 func _ready() -> void:
@@ -63,6 +95,9 @@ func on_pool_released(_generation: int) -> void:
 	if visual != null:
 		visual.stop()
 		visual.visible = false
+		visual.position = Vector2.ZERO
+	if ground_shadow != null:
+		ground_shadow.visible = false
 	if impact_audio != null:
 		impact_audio.stop()
 
@@ -79,6 +114,18 @@ func setup(
 	pool_active = true
 	start_position = new_start_position
 	landing_position = new_landing_position
+	shadow_start_position = (
+		start_position + SHADOW_START_GROUND_OFFSET
+	)
+	var travel_distance := start_position.distance_to(landing_position)
+	flight_duration_seconds = get_flight_duration_seconds(
+		start_position,
+		landing_position
+	)
+	var total_visual_duration_seconds := get_total_visual_duration_seconds(
+		start_position,
+		landing_position
+	)
 	inner_damage = maxi(new_inner_damage, 0)
 	outer_damage = maxi(new_outer_damage, 0)
 	authoritative_damage = can_apply_damage
@@ -86,27 +133,30 @@ func setup(
 	flight_elapsed_seconds = clampf(
 		initial_elapsed_seconds,
 		0.0,
-		TOTAL_VISUAL_DURATION_SECONDS
+		total_visual_duration_seconds
 	)
 	arc_height = clampf(
-		start_position.distance_to(landing_position) * 0.35,
-		24.0,
-		48.0
+		travel_distance * ARC_HEIGHT_DISTANCE_FACTOR,
+		MIN_ARC_HEIGHT,
+		MAX_ARC_HEIGHT
 	)
 	_combat_runtime = get_tree().current_scene
-	_has_impacted = flight_elapsed_seconds >= FLIGHT_DURATION_SECONDS
-	if flight_elapsed_seconds >= TOTAL_VISUAL_DURATION_SECONDS:
+	_has_impacted = (
+		flight_elapsed_seconds >= flight_duration_seconds
+	)
+	if flight_elapsed_seconds >= total_visual_duration_seconds:
 		_retire()
 		return
 	if _has_impacted:
 		global_position = landing_position
 		_begin_explosion_visual(
-			flight_elapsed_seconds - FLIGHT_DURATION_SECONDS
+			flight_elapsed_seconds - flight_duration_seconds
 		)
 		return
 	visual.visible = true
 	visual.rotation = 0.0
 	visual.play(&"flight")
+	ground_shadow.visible = true
 	_update_flight_position()
 	set_physics_process(true)
 
@@ -124,7 +174,7 @@ func _physics_process(delta: float) -> void:
 		set_physics_process(false)
 		return
 	flight_elapsed_seconds += maxf(delta, 0.0)
-	if flight_elapsed_seconds >= FLIGHT_DURATION_SECONDS:
+	if flight_elapsed_seconds >= flight_duration_seconds:
 		_impact()
 		return
 	_update_flight_position()
@@ -132,23 +182,40 @@ func _physics_process(delta: float) -> void:
 
 func _update_flight_position() -> void:
 	var progress := clampf(
-		flight_elapsed_seconds / FLIGHT_DURATION_SECONDS,
+		flight_elapsed_seconds / flight_duration_seconds,
 		0.0,
 		1.0
 	)
-	global_position = (
-		start_position.lerp(landing_position, progress)
-		+ Vector2.UP * sin(PI * progress) * arc_height
+	var height_factor := 4.0 * progress * (1.0 - progress)
+	var flight_base_position := start_position.lerp(
+		landing_position,
+		progress
 	)
-	visual.rotation = lerpf(-0.35, 0.35, progress)
+	global_position = shadow_start_position.lerp(
+		landing_position,
+		progress
+	)
+	visual.position = (
+		flight_base_position
+		- global_position
+		+ Vector2.UP * height_factor * arc_height
+	)
+	visual.rotation = lerpf(-0.45, 0.45, progress)
+	ground_shadow.modulate.a = lerpf(
+		1.0,
+		SHADOW_APEX_ALPHA_FACTOR,
+		height_factor
+	)
 
 
 func _impact() -> void:
 	if _has_impacted or not pool_active:
 		return
 	_has_impacted = true
-	flight_elapsed_seconds = FLIGHT_DURATION_SECONDS
+	flight_elapsed_seconds = flight_duration_seconds
 	global_position = landing_position
+	visual.position = Vector2.ZERO
+	ground_shadow.visible = false
 	set_physics_process(false)
 	if authoritative_damage:
 		_apply_explosion_damage()
@@ -157,6 +224,8 @@ func _impact() -> void:
 
 
 func _begin_explosion_visual(elapsed_seconds: float) -> void:
+	ground_shadow.visible = false
+	visual.position = Vector2.ZERO
 	visual.rotation = 0.0
 	if (
 		visual.sprite_frames == null
@@ -285,8 +354,10 @@ func _retire() -> void:
 func _reset_visual_state() -> void:
 	start_position = Vector2.ZERO
 	landing_position = Vector2.ZERO
+	shadow_start_position = Vector2.ZERO
 	flight_elapsed_seconds = 0.0
-	arc_height = 24.0
+	flight_duration_seconds = MAX_FLIGHT_DURATION_SECONDS
+	arc_height = MIN_ARC_HEIGHT
 	inner_damage = DEFAULT_INNER_DAMAGE
 	outer_damage = DEFAULT_OUTER_DAMAGE
 	authoritative_damage = true
@@ -301,7 +372,11 @@ func _reset_visual_state() -> void:
 		visual.animation = &"flight"
 		visual.frame = 0
 		visual.frame_progress = 0.0
+		visual.position = Vector2.ZERO
 		visual.rotation = 0.0
 		visual.visible = false
+	if ground_shadow != null:
+		ground_shadow.visible = false
+		ground_shadow.modulate = Color.WHITE
 	if impact_audio != null:
 		impact_audio.stop()

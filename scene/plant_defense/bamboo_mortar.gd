@@ -395,7 +395,10 @@ func _spawn_shell(
 ) -> BambooMortarShell:
 	if (
 		initial_elapsed_seconds
-		>= BambooMortarShell.TOTAL_VISUAL_DURATION_SECONDS
+		>= BambooMortarShell.get_total_visual_duration_seconds(
+			spawn_position,
+			landing_position
+		)
 	):
 		return null
 	var spawn_parent := get_tree().current_scene
@@ -651,7 +654,10 @@ func export_multiplayer_runtime_state() -> Dictionary:
 		_last_projectile_action_id > 0
 		and projectile_elapsed >= 0.0
 		and projectile_elapsed
-		< BambooMortarShell.TOTAL_VISUAL_DURATION_SECONDS
+		< BambooMortarShell.get_total_visual_duration_seconds(
+			_last_projectile_spawn_position,
+			_last_projectile_landing_position
+		)
 	):
 		state["projectile_action_id"] = _last_projectile_action_id
 		state["projectile_elapsed_seconds"] = projectile_elapsed

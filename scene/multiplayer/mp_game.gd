@@ -144,7 +144,7 @@ const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
-## 协议 v13 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
+## 协议 v14 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
 ## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
 const SHARED_SNAPSHOT_COHORT_ID := -1
 const ENEMY_ACTION_SNAPSHOT_REORDER_TOLERANCE_SECONDS := 0.075
@@ -7252,7 +7252,7 @@ func net_player_healed(
 	player_node.queue_healing_number(confirmed_healing)
 
 
-# Legacy compatibility shells retained in protocol v13. Xirang orbs no longer exist, but keeping the
+# Legacy compatibility shells retained in protocol v14. Xirang orbs no longer exist, but keeping the
 # annotated signatures avoids a partial wire-protocol break until the next
 # coordinated protocol-version upgrade.
 @rpc("authority", "call_remote", "reliable", 5)

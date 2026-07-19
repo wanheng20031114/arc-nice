@@ -7,6 +7,12 @@
 z_index = 4
 script = ExtResource("1_script")
 
+[node name="GroundShadow" type="Polygon2D" parent="."]
+show_behind_parent = true
+z_index = -4
+color = Color(0.015, 0.04, 0.012, 0.34)
+polygon = PackedVector2Array(-3, 0, -2, -1, 2, -1, 3, 0, 2, 1, -2, 1)
+
 [node name="Visual" type="AnimatedSprite2D" parent="."]
 texture_filter = 1
 sprite_frames = ExtResource("2_frames")
