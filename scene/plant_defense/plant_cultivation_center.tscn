@@ -12,6 +12,8 @@
 [ext_resource type="Shader" uid="uid://dsxkvh3u24ove" path="res://resources/shader/plant_cultivation_center_border.gdshader" id="10_border_shader"]
 [ext_resource type="Texture2D" path="res://resources/shader/plant_lifecycle_noise.tres" id="11_lifecycle_noise"]
 [ext_resource type="Resource" path="res://resources/config/production/wooden_core_to_bamboo_mortar.tres" id="12_bamboo_mortar_recipe"]
+[ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="13_night_light"]
+[ext_resource type="Texture2D" uid="uid://gs85ud857sbr" path="res://resources/lighting/plant_cultivation_center_hotspots.svg" id="14_hotspot_texture"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_production_border"]
 shader = ExtResource("10_border_shader")
@@ -118,6 +120,13 @@ z_index = 1
 texture_filter = 1
 material = SubResource("ShaderMaterial_lifecycle_glow")
 texture = ExtResource("2_sprite")
+
+[node name="HotspotGlow" parent="." instance=ExtResource("13_night_light")]
+color = Color(0.4814815, 1, 0.1666667, 1)
+texture = ExtResource("14_hotspot_texture")
+texture_scale = 0.25
+night_energy = 0.2
+starts_emitting = false
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=483902308]
 position = Vector2(0, 1.5)

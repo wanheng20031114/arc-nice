@@ -30,6 +30,9 @@ const CORN_BUILDING_ITEM := preload(
 const BAMBOO_MORTAR_BUILDING_ITEM := preload(
 	"res://resources/config/buildings/building_bamboo_mortar.tres"
 )
+const HOTSPOT_LIGHT_TEXTURE := preload(
+	"res://resources/lighting/plant_cultivation_center_hotspots.svg"
+)
 
 
 class PlacementRollbackPlantSystem:
@@ -332,6 +335,17 @@ func _test_world_glow_contract(
 		if main_sprite != null
 		else null
 	)
+	var hotspot_glow := (
+		center.get_node_or_null(
+			"HotspotGlow"
+		) as NightPointLight2D
+	)
+	var authored_lights: Array[Node] = center.find_children(
+		"*",
+		"Light2D",
+		true,
+		false
+	)
 	_expect(
 		visual_root != null
 		and visual_root.scale == Vector2(0.5, 0.5)
@@ -343,6 +357,20 @@ func _test_world_glow_contract(
 		== [NodePath("VisualRoot/MainSprite")]
 		and center.get_node_or_null("VisualRoot/GlowOverlay") == null,
 		"五处常亮微光必须并入0.5整数缩放的主体单次绘制，不能新增独立Overlay破坏像素或图层。"
+	)
+	_expect(
+		hotspot_glow != null
+		and authored_lights.size() == 1
+		and hotspot_glow.texture == HOTSPOT_LIGHT_TEXTURE
+		and hotspot_glow.color.is_equal_approx(
+			Color(0.4814815, 1.0, 0.1666667, 1.0)
+		)
+		and HOTSPOT_LIGHT_TEXTURE.get_size() == Vector2(256, 256)
+		and is_equal_approx(hotspot_glow.texture_scale, 0.25)
+		and is_equal_approx(hotspot_glow.night_energy, 0.2)
+		and not hotspot_glow.shadow_enabled
+		and hotspot_glow.is_emission_allowed(),
+		"五处亮核必须共用一盏低能量嫩绿色夜间PointLight2D，避免每个亮点各占一灯。"
 	)
 	_expect(
 		glow_material != null
@@ -369,14 +397,39 @@ func _test_world_glow_contract(
 		var second_sprite := second_center.get_node_or_null(
 			"VisualRoot/MainSprite"
 		) as Sprite2D
+		var second_hotspot_glow := (
+			second_center.get_node_or_null(
+				"HotspotGlow"
+			) as NightPointLight2D
+		)
 		_expect(
 			second_sprite != null
 			and second_sprite.material == glow_material,
 			"多个培育中心必须共享同一不可变ShaderMaterial，不能逐实例复制材质。"
 		)
+		_expect(
+			second_hotspot_glow != null
+			and not second_hotspot_glow.starts_emitting,
+			"未完成建造的培育中心热点灯必须默认禁止发光。"
+		)
 		second_center.free()
+	center.call("_on_construction_started")
+	_expect(
+		hotspot_glow != null
+		and not hotspot_glow.is_emission_allowed(),
+		"培育中心建造期间必须关闭五热点环境微光。"
+	)
+	center.call("_on_construction_finished", false)
+	_expect(
+		hotspot_glow != null
+		and hotspot_glow.is_emission_allowed(),
+		"培育中心建造完成后必须恢复五热点环境微光。"
+	)
 	var shader_source := FileAccess.get_file_as_string(
 		"res://resources/shader/plant_cultivation_center_lifecycle_glow.gdshader"
+	)
+	var hotspot_texture_source := FileAccess.get_file_as_string(
+		"res://resources/lighting/plant_cultivation_center_hotspots.svg"
 	)
 	_expect(
 		shader_source.contains(
@@ -396,6 +449,25 @@ func _test_world_glow_contract(
 		)
 		and not shader_source.contains("vec2(42.0, 40.0)"),
 		"微光遮罩必须严格对应截图圈出的顶部、左右立柱、左内侧与底部面板五处。"
+	)
+	_expect(
+		hotspot_texture_source.count("<circle ") == 5
+		and hotspot_texture_source.contains(
+			"cx=\"32\" cy=\"22\""
+		)
+		and hotspot_texture_source.contains(
+			"cx=\"21\" cy=\"32\""
+		)
+		and hotspot_texture_source.contains(
+			"cx=\"43\" cy=\"32\""
+		)
+		and hotspot_texture_source.contains(
+			"cx=\"27\" cy=\"36\""
+		)
+		and hotspot_texture_source.contains(
+			"cx=\"32.25\" cy=\"42.25\""
+		),
+		"单灯纹理必须把截图五处亮核映射到正确的世界坐标。"
 	)
 	_expect(
 		shader_source.contains("vec4 result = COLOR")

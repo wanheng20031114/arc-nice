@@ -62,8 +62,9 @@ func _test_controller_and_day_suppression() -> void:
 	_expect(
 		controller != null
 		and controller.color.is_equal_approx(Color.WHITE)
-		and is_zero_approx(controller.night_factor),
-		"昼夜控制器必须以纯白CanvasModulate和白天状态启动。"
+		and is_zero_approx(controller.night_factor)
+		and is_equal_approx(controller.transition_duration, 5.0),
+		"昼夜控制器必须以纯白白天状态启动，并使用5秒默认渐变。"
 	)
 	_expect(
 		light != null

@@ -13,7 +13,7 @@ const REFERENCE_NIGHT_COLOR := Color(
 
 @export var day_color := Color.WHITE
 @export var night_color := REFERENCE_NIGHT_COLOR
-@export_range(0.0, 10.0, 0.1, "or_greater") var transition_duration := 3.0
+@export_range(0.0, 10.0, 0.1, "or_greater") var transition_duration := 5.0
 
 var night_factor := 0.0
 var _target_night_factor := 0.0
