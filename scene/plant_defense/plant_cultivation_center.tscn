@@ -125,7 +125,7 @@ texture = ExtResource("2_sprite")
 color = Color(0.4814815, 1, 0.1666667, 1)
 texture = ExtResource("14_hotspot_texture")
 texture_scale = 0.25
-night_energy = 0.2
+night_energy = 0.65
 starts_emitting = false
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=483902308]

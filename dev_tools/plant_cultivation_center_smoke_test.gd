@@ -33,6 +33,9 @@ const BAMBOO_MORTAR_BUILDING_ITEM := preload(
 const HOTSPOT_LIGHT_TEXTURE := preload(
 	"res://resources/lighting/plant_cultivation_center_hotspots.svg"
 )
+const DAY_NIGHT_CONTROLLER_SCENE := preload(
+	"res://scene/lighting/day_night_controller.tscn"
+)
 
 
 class PlacementRollbackPlantSystem:
@@ -98,6 +101,10 @@ func _run() -> void:
 	var center := config.plant_scene.instantiate() as PlantCultivationCenter
 	var panel := PANEL_SCENE.instantiate() as ProductionBuildingPanel
 	var player := PLAYER_SCENE.instantiate() as Player
+	var day_night_controller := (
+		DAY_NIGHT_CONTROLLER_SCENE.instantiate() as DayNightController
+	)
+	test_root.add_child(day_night_controller)
 	test_root.add_child(coordinator)
 	test_root.add_child(warehouse)
 	test_root.add_child(center)
@@ -105,6 +112,7 @@ func _run() -> void:
 	test_root.add_child(player)
 	await process_frame
 	coordinator.production_tick_timer.stop()
+	day_night_controller.set_night_factor_immediate(1.0)
 
 	var warehouse_config := PlantDefenseRegistry.get_config(&"oak_warehouse")
 	warehouse.setup(warehouse_config, null, [Vector2i.ZERO])
@@ -181,7 +189,7 @@ func _run() -> void:
 			progress_green.get_luminance() > idle_green.get_luminance() + 0.2,
 			"工作进度必须使用明显亮于默认深绿色的嫩绿色。"
 		)
-	_test_world_glow_contract(center, config)
+	_test_world_glow_contract(center, config, day_night_controller)
 
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run()
@@ -324,7 +332,8 @@ func _run() -> void:
 
 func _test_world_glow_contract(
 	center: PlantCultivationCenter,
-	config: PlantDefenseConfig
+	config: PlantDefenseConfig,
+	day_night_controller: DayNightController
 ) -> void:
 	var visual_root := center.get_node_or_null("VisualRoot") as Node2D
 	var main_sprite := center.get_node_or_null(
@@ -367,10 +376,15 @@ func _test_world_glow_contract(
 		)
 		and HOTSPOT_LIGHT_TEXTURE.get_size() == Vector2(256, 256)
 		and is_equal_approx(hotspot_glow.texture_scale, 0.25)
-		and is_equal_approx(hotspot_glow.night_energy, 0.2)
+		and is_equal_approx(hotspot_glow.night_energy, 0.65)
 		and not hotspot_glow.shadow_enabled
-		and hotspot_glow.is_emission_allowed(),
-		"五处亮核必须共用一盏低能量嫩绿色夜间PointLight2D，避免每个亮点各占一灯。"
+		and hotspot_glow.visible
+		and hotspot_glow.is_visible_in_tree()
+		and hotspot_glow.is_emission_allowed()
+		and hotspot_glow.get("_controller") == day_night_controller
+		and hotspot_glow.enabled
+		and is_equal_approx(hotspot_glow.energy, 0.65),
+		"五处亮核必须共用一盏可见、已绑定昼夜系统且强度足够的嫩绿色夜间PointLight2D。"
 	)
 	_expect(
 		glow_material != null
@@ -416,13 +430,17 @@ func _test_world_glow_contract(
 	center.call("_on_construction_started")
 	_expect(
 		hotspot_glow != null
-		and not hotspot_glow.is_emission_allowed(),
+		and not hotspot_glow.is_emission_allowed()
+		and not hotspot_glow.enabled
+		and is_zero_approx(hotspot_glow.energy),
 		"培育中心建造期间必须关闭五热点环境微光。"
 	)
 	center.call("_on_construction_finished", false)
 	_expect(
 		hotspot_glow != null
-		and hotspot_glow.is_emission_allowed(),
+		and hotspot_glow.is_emission_allowed()
+		and hotspot_glow.enabled
+		and is_equal_approx(hotspot_glow.energy, 0.65),
 		"培育中心建造完成后必须恢复五热点环境微光。"
 	)
 	var shader_source := FileAccess.get_file_as_string(
