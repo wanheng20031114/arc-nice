@@ -24,6 +24,7 @@
 [ext_resource type="Script" path="res://scene/player/hoe_cat/hoe_cat_snow_wolf_sword_orbit.gd" id="22_sword_orbit_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/player/hoe_cat/snow_wolf_pojun_sword.png" id="23_sword_texture"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="24_night_light"]
+[ext_resource type="Texture2D" path="res://resources/lighting/soft_player_point_light.tres" id="25_player_light_texture"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_basic_attack"]
 radius = 48.0
@@ -110,8 +111,9 @@ animation = &"idle_down"
 autoplay = "idle_down"
 
 [node name="NightLight" parent="." instance=ExtResource("24_night_light")]
-texture_scale = 0.4125
-night_energy = 0.65
+texture = ExtResource("25_player_light_texture")
+texture_scale = 0.46875
+night_energy = 0.56
 
 [node name="BasicSlashEffect" type="AnimatedSprite2D" parent="." unique_id=649061775]
 visible = false

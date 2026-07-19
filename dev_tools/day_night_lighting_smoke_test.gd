@@ -19,6 +19,9 @@ const PLAYER_SCENES: Array[PackedScene] = [
 const SOFT_WHITE_TEXTURE := preload(
 	"res://resources/lighting/soft_white_point_light.tres"
 )
+const SOFT_PLAYER_TEXTURE := preload(
+	"res://resources/lighting/soft_player_point_light.tres"
+)
 const SOFT_MICRO_TEXTURE := preload(
 	"res://resources/lighting/soft_micro_point_light.tres"
 )
@@ -216,6 +219,26 @@ func _test_authored_scene_contracts() -> void:
 		and SOFT_MICRO_TEXTURE.gradient.sample(1.0).r < 0.01,
 		"状态格微光必须使用独立的小半径连续径向纹理。"
 	)
+	_expect(
+		SOFT_PLAYER_TEXTURE is GradientTexture2D
+		and SOFT_PLAYER_TEXTURE.width == 256
+		and SOFT_PLAYER_TEXTURE.height == 256
+		and SOFT_PLAYER_TEXTURE.fill
+		== GradientTexture2D.FILL_RADIAL
+		and SOFT_PLAYER_TEXTURE.gradient.sample(0.82).r
+		> 0.06
+		and SOFT_PLAYER_TEXTURE.gradient.sample(0.82).r
+		< 0.07
+		and SOFT_PLAYER_TEXTURE.gradient.sample(0.9).r
+		> 0.015
+		and SOFT_PLAYER_TEXTURE.gradient.sample(0.9).r
+		< 0.02
+		and SOFT_PLAYER_TEXTURE.gradient.sample(0.96).r
+		< 0.005
+		and SOFT_PLAYER_TEXTURE.gradient.sample(1.0).r
+		< 0.001,
+		"玩家柔光必须使用低亮度长尾径向渐变，让最外缘连续衰减至不可见。"
+	)
 
 	for player_scene in PLAYER_SCENES:
 		var player := player_scene.instantiate() as Player
@@ -224,13 +247,15 @@ func _test_authored_scene_contracts() -> void:
 		)
 		_expect(
 			player_light != null
-			and player_light.texture == SOFT_WHITE_TEXTURE
+			and player_light.texture == SOFT_PLAYER_TEXTURE
 			and is_equal_approx(
-				SOFT_WHITE_TEXTURE.width * player_light.texture_scale,
-				105.6
+				SOFT_PLAYER_TEXTURE.width
+				* player_light.texture_scale,
+				120.0
 			)
+			and is_equal_approx(player_light.night_energy, 0.56)
 			and not player_light.shadow_enabled,
-			"玩家灯光必须在提高采样分辨率后保持原有105.6像素直径与亮度。"
+			"玩家灯光必须使用120像素低能量长尾柔光，弱化最外圈边界。"
 		)
 		player.free()
 

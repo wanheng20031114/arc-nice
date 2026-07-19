@@ -21,6 +21,7 @@
 [ext_resource type="PackedScene" path="res://scene/player/tiyi/tiyi_high_noon_lock_lines.tscn" id="19_lock_lines"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/player_tiyi_high_noon_cast.tres" id="20_high_noon_cast"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="21_night_light"]
+[ext_resource type="Texture2D" path="res://resources/lighting/soft_player_point_light.tres" id="22_player_light_texture"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_status"]
 resource_local_to_scene = true
@@ -142,8 +143,9 @@ animation = &"normal_down"
 autoplay = "normal_down"
 
 [node name="NightLight" parent="." instance=ExtResource("21_night_light")]
-texture_scale = 0.4125
-night_energy = 0.65
+texture = ExtResource("22_player_light_texture")
+texture_scale = 0.46875
+night_energy = 0.56
 
 [node name="ArmedEffectSprite" type="AnimatedSprite2D" parent="." unique_id=609654268]
 visible = false

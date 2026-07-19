@@ -19,6 +19,7 @@
 [ext_resource type="PackedScene" uid="uid://d10vpuylyb4ty" path="res://scene/player/ui/player_ammo_bar.tscn" id="16_ammo_bar"]
 [ext_resource type="PackedScene" path="res://scene/player/effects/dash_ready_indicator.tscn" id="17_dash_ready"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="18_night_light"]
+[ext_resource type="Texture2D" path="res://resources/lighting/soft_player_point_light.tres" id="19_player_light_texture"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_s4jxa"]
 resource_local_to_scene = true
@@ -134,8 +135,9 @@ animation = &"armed_left"
 autoplay = "normal_right"
 
 [node name="NightLight" parent="." instance=ExtResource("18_night_light")]
-texture_scale = 0.4125
-night_energy = 0.65
+texture = ExtResource("19_player_light_texture")
+texture_scale = 0.46875
+night_energy = 0.56
 
 [node name="ArmedEffectSprite" type="AnimatedSprite2D" parent="." unique_id=1363416270]
 visible = false
