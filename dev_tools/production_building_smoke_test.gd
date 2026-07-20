@@ -176,9 +176,11 @@ func _run() -> void:
 		"生产面板必须原生搭建左右各3个候选槽位、物资列表与右上角开关。"
 	)
 	_expect(
-		panel.status_label.position == Vector2(61.0, 440.0)
-		and panel.close_button.position == Vector2(548.0, 440.0),
-		"生产面板底部状态文字必须留出左侧内边距，关闭按钮必须上移避开底框。"
+		panel.status_label.position == Vector2(61.0, 420.0)
+		and panel.status_label.size == Vector2(392.0, 48.0)
+		and panel.close_button.position == Vector2(540.0, 431.0)
+		and panel.close_button.size == Vector2(108.0, 37.0),
+		"生产面板底部状态文字和关闭按钮必须完整收进背景安全区。"
 	)
 	panel.open_for(station, player)
 	await process_frame
@@ -308,6 +310,9 @@ func _run() -> void:
 			"一个加工站开始生产时不得串改另一个实例的边框状态。"
 		)
 	await create_timer(0.05).timeout
+	# A long headless startup frame can fire SceneTreeTimer before that same
+	# frame's Tween phase. Wait for the next process boundary before sampling.
+	await process_frame
 	_expect(
 		is_zero_approx(station.get_progress_ratio())
 		and station.get_visual_progress_ratio() > 0.0

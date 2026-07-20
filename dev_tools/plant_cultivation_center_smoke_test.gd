@@ -295,6 +295,7 @@ func _run() -> void:
 	var progress_fill := panel.progress_bar.get_theme_stylebox(
 		"fill"
 	) as StyleBoxFlat
+	var recipe_rows_container := panel.recipe_rows[0].get_parent() as VBoxContainer
 	_expect(
 		panel.background.texture != null
 		and panel.background.texture.resource_path
@@ -317,6 +318,89 @@ func _run() -> void:
 		and progress_fill != null
 		and progress_fill.bg_color.g > 0.75,
 		"培育中心UI必须使用植物面板、嫩绿进度条，显示三条正确耗时的1投入1产物配方。"
+	)
+	_expect(
+		panel.building_title.position == Vector2(96.0, 23.0)
+		and panel.building_title.size == Vector2(536.0, 39.0)
+		and is_equal_approx(
+			panel.building_title.position.x + panel.building_title.size.x * 0.5,
+			364.0
+		)
+		and panel.recipe_title.position == Vector2(504.0, 112.0)
+		and panel.recipe_title.size == Vector2(180.0, 31.0)
+		and is_equal_approx(
+			panel.recipe_title.position.x + panel.recipe_title.size.x * 0.5,
+			594.0
+		),
+		"培育中心主标题和配方标题必须分别对齐背景徽章与右栏中心。"
+	)
+	_expect(
+		panel.recipe_scroll.position == Vector2(504.0, 151.0)
+		and panel.recipe_scroll.size == Vector2(180.0, 270.0)
+		and panel.recipe_scroll.clip_contents
+		and panel.recipe_scroll.follow_focus
+		and panel.recipe_scroll.horizontal_scroll_mode
+			== ScrollContainer.SCROLL_MODE_DISABLED
+		and not panel.recipe_scroll.get_h_scroll_bar().visible
+		and recipe_rows_container != null
+		and recipe_rows_container.custom_minimum_size.x == 0.0
+		and recipe_rows_container.size_flags_horizontal
+			== Control.SIZE_EXPAND_FILL,
+		"培育中心配方滚动区必须完整收进右栏，禁止横滚并让内容横向填满。"
+	)
+	var recipe_scroll_rect := panel.recipe_scroll.get_global_rect()
+	for row_index in 3:
+		var row := panel.recipe_rows[row_index]
+		_expect(
+			row.visible
+			and row.custom_minimum_size == Vector2(0.0, 72.0)
+			and row.size_flags_horizontal == Control.SIZE_EXPAND_FILL
+			and row.clip_text
+			and row.autowrap_mode == TextServer.AUTOWRAP_WORD_SMART
+			and recipe_scroll_rect.encloses(row.get_global_rect()),
+			"培育中心第%d条配方必须换行收缩且不得越出滚动区。"
+			% (row_index + 1)
+		)
+	_expect(
+		panel.recipe_rows[0].text
+			== "培育龙舌兰加农炮\n木制核心 ×1 · 20秒"
+		and panel.recipe_rows[1].text
+			== "培育玉米机枪塔\n木制核心 ×1 · 20秒"
+		and panel.recipe_rows[2].text
+			== "培育竹筒迫击炮\n木制核心 ×1 · 30秒",
+		"背包产物配方摘要必须只显示投入与耗时，避免在窄栏重复长产物名。"
+	)
+	_expect(
+		panel.progress_label.position == Vector2(165.0, 314.0)
+		and panel.progress_label.size == Vector2(180.0, 34.0)
+		and panel.progress_label.autowrap_mode
+			== TextServer.AUTOWRAP_WORD_SMART
+		and panel.progress_label.clip_text
+		and panel.status_label.position == Vector2(61.0, 420.0)
+		and panel.status_label.size == Vector2(392.0, 48.0)
+		and panel.status_label.position.y + panel.status_label.size.y <= 468.0
+		and panel.close_button.position == Vector2(540.0, 431.0)
+		and panel.close_button.size == Vector2(108.0, 37.0)
+		and is_equal_approx(
+			panel.close_button.position.x + panel.close_button.size.x * 0.5,
+			594.0
+		)
+		and panel.close_button.position.y + panel.close_button.size.y <= 468.0,
+		"培育中心进度、状态与关闭控件必须完整落在各自背景安全区。"
+	)
+	await _click_panel_control(panel.recipe_rows[1])
+	_expect(
+		root.gui_get_hovered_control() == panel.recipe_rows[1]
+		and center.active_recipe_id == &"wooden_core_to_corn_machine_gun"
+		and panel.recipe_rows[1].button_pressed,
+		"真实点击右栏可见配方必须命中按钮并切换培育方案。"
+	)
+	await _click_panel_control(panel.close_button)
+	_expect(
+		not panel.is_open()
+		and not panel.visible
+		and not player.controls_locked,
+		"真实点击培育中心关闭按钮必须关闭面板并恢复玩家控制。"
 	)
 	panel.close()
 
@@ -667,6 +751,33 @@ func _test_authoritative_placement_rollback_sync(
 	)
 	host_game.free()
 	plant_system.free()
+
+
+func _click_panel_control(control: Control) -> void:
+	var position := control.get_global_rect().get_center()
+	var motion := InputEventMouseMotion.new()
+	motion.position = position
+	motion.global_position = position
+	root.push_input(motion, true)
+	await process_frame
+
+	var press := InputEventMouseButton.new()
+	press.position = position
+	press.global_position = position
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.button_mask = MOUSE_BUTTON_MASK_LEFT
+	press.pressed = true
+	root.push_input(press, true)
+	await process_frame
+
+	var release := InputEventMouseButton.new()
+	release.position = position
+	release.global_position = position
+	release.button_index = MOUSE_BUTTON_LEFT
+	release.button_mask = 0
+	release.pressed = false
+	root.push_input(release, true)
+	await process_frame
 
 
 func _finish(test_root: Node) -> void:

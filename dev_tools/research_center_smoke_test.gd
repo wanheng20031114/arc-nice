@@ -115,6 +115,7 @@ func _run() -> void:
 	research.register_player(tiyi)
 	research.register_player(hoe_cat)
 	center.set_research_services(research, panel)
+	await _test_panel_mouse_navigation(panel, center, weishidaier)
 	plant_system.plant_footprints[center] = center.footprint_cells.duplicate()
 	center.call("_sync_research_border")
 	_expect_research_border_state(
@@ -446,11 +447,167 @@ func _test_config_and_scene(
 	)
 	if panel != null:
 		var background := panel.get_node("Overlay/PanelRoot/Background") as TextureRect
+		var title_label := panel.get_node(
+			"Overlay/PanelRoot/Title"
+		) as Label
+		var global_page := panel.get_node(
+			"Overlay/PanelRoot/GlobalPage"
+		) as Control
+		var player_page := panel.get_node(
+			"Overlay/PanelRoot/PlayerPage"
+		) as Control
+		var global_tab := panel.get_node(
+			"Overlay/PanelRoot/GlobalTab"
+		) as Button
+		var player_tab := panel.get_node(
+			"Overlay/PanelRoot/PlayerTab"
+		) as Button
+		var close_button := panel.get_node(
+			"Overlay/PanelRoot/CloseButton"
+		) as Button
+		var research_list_frame := panel.get_node(
+			"Overlay/PanelRoot/GlobalPage/ResearchListFrame"
+		) as Panel
+		var research_scroll := panel.get_node(
+			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll"
+		) as ScrollContainer
+		var list_hint := panel.get_node(
+			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ListHint"
+		) as Label
+		var research_detail_frame := panel.get_node(
+			"Overlay/PanelRoot/GlobalPage/ResearchDetailFrame"
+		) as Panel
+		var status_label := panel.get_node(
+			"Overlay/PanelRoot/StatusLabel"
+		) as Label
+		var action_button := panel.get_node(
+			"Overlay/PanelRoot/ActionButton"
+		) as Button
 		_expect(
 			background.texture != null
 			and background.texture.get_size() == Vector2(728, 544),
 			"科研UI必须使用独立生成的728×544蓝色科技背景。"
 		)
+		_expect(
+			global_page.mouse_filter == Control.MOUSE_FILTER_IGNORE
+			and player_page.mouse_filter == Control.MOUSE_FILTER_IGNORE
+			and global_tab.z_index > global_page.z_index
+			and player_tab.z_index > player_page.z_index
+			and close_button.z_index > global_page.z_index,
+			"科研UI内容页必须忽略自身空白区鼠标，页签与关闭键必须显式位于内容页上层。"
+		)
+		_expect(
+			title_label.get_rect().is_equal_approx(
+				Rect2(168.0, 15.0, 392.0, 46.0)
+			)
+			and global_tab.get_rect().is_equal_approx(
+				Rect2(50.0, 66.0, 151.0, 48.0)
+			)
+			and player_tab.get_rect().is_equal_approx(
+				Rect2(205.0, 66.0, 143.0, 48.0)
+			)
+			and close_button.get_rect().is_equal_approx(
+				Rect2(666.0, 18.0, 40.0, 41.0)
+			),
+			"科研UI标题、双页签与关闭热区必须贴合背景原生槽位。"
+		)
+		_expect(
+			research_list_frame.get_rect().is_equal_approx(
+				Rect2(42.0, 129.0, 182.0, 321.0)
+			)
+			and research_scroll.get_rect().is_equal_approx(
+				Rect2(8.0, 40.0, 166.0, 246.0)
+			)
+			and list_hint.get_rect().is_equal_approx(
+				Rect2(12.0, 294.0, 156.0, 19.0)
+			)
+			and research_detail_frame.get_rect().is_equal_approx(
+				Rect2(234.0, 129.0, 452.0, 321.0)
+			),
+			"科研UI主内容框与研究列表底部必须保留一致的背景呼吸空间。"
+		)
+		_expect(
+			status_label.get_rect().is_equal_approx(
+				Rect2(96.0, 474.0, 326.0, 32.0)
+			)
+			and action_button.get_rect().is_equal_approx(
+				Rect2(469.0, 470.0, 165.0, 40.0)
+			),
+			"科研UI状态文字与动作按钮必须完整落入底部背景槽。"
+		)
+
+
+func _test_panel_mouse_navigation(
+	panel: ResearchCenterPanel,
+	center: ResearchCenter,
+	player: Player
+) -> void:
+	panel.open_for(center, player)
+	await process_frame
+	await process_frame
+	_expect(
+		panel.is_open()
+		and player.controls_locked
+		and panel.active_page == ResearchCenterPanel.Page.GLOBAL_TECH
+		and panel.global_page.visible
+		and not panel.player_page.visible,
+		"科研面板打开时必须默认显示全局科技页并锁定玩家控制。"
+	)
+
+	await _click_panel_control(panel.player_tab)
+	_expect(
+		root.gui_get_hovered_control() == panel.player_tab
+		and panel.active_page == ResearchCenterPanel.Page.PLAYER_TECH
+		and not panel.global_page.visible
+		and panel.player_page.visible
+		and panel.player_tab.button_pressed,
+		"真实点击玩家技术页签必须命中按钮并切换到玩家技术页。"
+	)
+
+	await _click_panel_control(panel.global_tab)
+	_expect(
+		root.gui_get_hovered_control() == panel.global_tab
+		and panel.active_page == ResearchCenterPanel.Page.GLOBAL_TECH
+		and panel.global_page.visible
+		and not panel.player_page.visible
+		and panel.global_tab.button_pressed,
+		"真实点击全局科技页签必须命中按钮并切回全局科技页。"
+	)
+
+	await _click_panel_control(panel.close_button)
+	_expect(
+		not panel.is_open()
+		and not panel.visible
+		and not player.controls_locked,
+		"真实点击右上关闭键必须关闭科研面板并恢复玩家控制。"
+	)
+
+
+func _click_panel_control(control: Control) -> void:
+	var position := control.get_global_rect().get_center()
+	var motion := InputEventMouseMotion.new()
+	motion.position = position
+	motion.global_position = position
+	root.push_input(motion, true)
+	await process_frame
+
+	var press := InputEventMouseButton.new()
+	press.position = position
+	press.global_position = position
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.button_mask = MOUSE_BUTTON_MASK_LEFT
+	press.pressed = true
+	root.push_input(press, true)
+	await process_frame
+
+	var release := InputEventMouseButton.new()
+	release.position = position
+	release.global_position = position
+	release.button_index = MOUSE_BUTTON_LEFT
+	release.button_mask = 0
+	release.pressed = false
+	root.push_input(release, true)
+	await process_frame
 
 
 func _test_operational_night_visuals(

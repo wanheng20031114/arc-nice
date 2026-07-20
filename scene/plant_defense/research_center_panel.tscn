@@ -1,4 +1,4 @@
-[gd_scene load_steps=24 format=3]
+[gd_scene load_steps=25 format=3]
 
 [ext_resource type="Script" path="res://scene/plant_defense/research_center_panel.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/research/research_center_panel_background.png" id="2_background"]
@@ -206,6 +206,18 @@ shadow_size = 7
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_close"]
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_close_feedback"]
+bg_color = Color(0.08, 0.3, 0.5, 0.28)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.3, 0.8, 1, 0.55)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
 [node name="ResearchCenterPanel" type="CanvasLayer"]
 visible = false
 layer = 70
@@ -245,18 +257,19 @@ texture = ExtResource("2_background")
 
 [node name="Title" type="Label" parent="Overlay/PanelRoot"]
 offset_left = 168.0
-offset_top = 20.0
+offset_top = 15.0
 offset_right = 560.0
-offset_bottom = 66.0
+offset_bottom = 61.0
 text = "科研中心"
 label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="GlobalTab" type="Button" parent="Overlay/PanelRoot"]
-offset_left = 96.0
-offset_top = 73.0
-offset_right = 211.0
+z_index = 2
+offset_left = 50.0
+offset_top = 66.0
+offset_right = 201.0
 offset_bottom = 114.0
 toggle_mode = true
 theme_override_colors/font_color = Color(0.65, 0.84, 0.95, 1)
@@ -270,9 +283,10 @@ theme_override_styles/focus = SubResource("StyleBoxFlat_tab_active")
 text = "全局科技"
 
 [node name="PlayerTab" type="Button" parent="Overlay/PanelRoot"]
-offset_left = 214.0
-offset_top = 73.0
-offset_right = 345.0
+z_index = 2
+offset_left = 205.0
+offset_top = 66.0
+offset_right = 348.0
 offset_bottom = 114.0
 toggle_mode = true
 theme_override_colors/font_color = Color(0.65, 0.84, 0.95, 1)
@@ -286,25 +300,27 @@ theme_override_styles/focus = SubResource("StyleBoxFlat_tab_active")
 text = "玩家技术"
 
 [node name="CloseButton" type="Button" parent="Overlay/PanelRoot"]
-offset_left = 670.0
-offset_top = 16.0
-offset_right = 711.0
-offset_bottom = 57.0
+z_index = 2
+offset_left = 666.0
+offset_top = 18.0
+offset_right = 706.0
+offset_bottom = 59.0
 tooltip_text = "关闭"
 theme_override_styles/normal = SubResource("StyleBoxEmpty_close")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_close")
-theme_override_styles/pressed = SubResource("StyleBoxEmpty_close")
-theme_override_styles/focus = SubResource("StyleBoxEmpty_close")
+theme_override_styles/hover = SubResource("StyleBoxFlat_close_feedback")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_close_feedback")
+theme_override_styles/focus = SubResource("StyleBoxFlat_close_feedback")
 
 [node name="GlobalPage" type="Control" parent="Overlay/PanelRoot"]
 offset_right = 728.0
 offset_bottom = 544.0
+mouse_filter = 2
 
 [node name="ResearchListFrame" type="Panel" parent="Overlay/PanelRoot/GlobalPage"]
 offset_left = 42.0
 offset_top = 129.0
 offset_right = 224.0
-offset_bottom = 456.0
+offset_bottom = 450.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_list_frame")
 
 [node name="ListTitle" type="Label" parent="Overlay/PanelRoot/GlobalPage/ResearchListFrame"]
@@ -319,9 +335,9 @@ label_settings = SubResource("LabelSettings_small")
 [node name="ListHint" type="Label" parent="Overlay/PanelRoot/GlobalPage/ResearchListFrame"]
 layout_mode = 0
 offset_left = 12.0
-offset_top = 301.0
+offset_top = 294.0
 offset_right = 168.0
-offset_bottom = 320.0
+offset_bottom = 313.0
 mouse_filter = 2
 text = "可滚动浏览全部方案"
 label_settings = SubResource("LabelSettings_muted")
@@ -332,7 +348,7 @@ layout_mode = 0
 offset_left = 8.0
 offset_top = 40.0
 offset_right = 174.0
-offset_bottom = 297.0
+offset_bottom = 286.0
 horizontal_scroll_mode = 0
 
 [node name="ResearchList" type="VBoxContainer" parent="Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll"]
@@ -378,7 +394,7 @@ alignment = 0
 offset_left = 234.0
 offset_top = 129.0
 offset_right = 686.0
-offset_bottom = 456.0
+offset_bottom = 450.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_detail_frame")
 
@@ -505,6 +521,7 @@ horizontal_alignment = 1
 visible = false
 offset_right = 728.0
 offset_bottom = 544.0
+mouse_filter = 2
 
 [node name="TechName" type="Label" parent="Overlay/PanelRoot/PlayerPage"]
 offset_left = 58.0
@@ -658,20 +675,20 @@ label_settings = SubResource("LabelSettings_small")
 horizontal_alignment = 1
 
 [node name="StatusLabel" type="Label" parent="Overlay/PanelRoot"]
-offset_left = 86.0
-offset_top = 472.0
-offset_right = 453.0
-offset_bottom = 516.0
+offset_left = 96.0
+offset_top = 474.0
+offset_right = 422.0
+offset_bottom = 506.0
 text = "科研中心就绪。"
 label_settings = SubResource("LabelSettings_small")
 vertical_alignment = 1
 autowrap_mode = 2
 
 [node name="ActionButton" type="Button" parent="Overlay/PanelRoot"]
-offset_left = 466.0
-offset_top = 468.0
-offset_right = 639.0
-offset_bottom = 516.0
+offset_left = 469.0
+offset_top = 470.0
+offset_right = 634.0
+offset_bottom = 510.0
 theme_override_colors/font_color = Color(0.78, 0.95, 1, 1)
 theme_override_colors/font_disabled_color = Color(0.35, 0.48, 0.6, 1)
 theme_override_fonts/font = ExtResource("3_font")

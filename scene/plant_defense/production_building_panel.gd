@@ -292,11 +292,19 @@ func _refresh_recipe_rows() -> void:
 			if recipe.output_items.size() == 1
 			else "%d 种产物" % recipe.output_items.size()
 		)
-		row.text = "%s\n%s → %s" % [
-			recipe.display_name,
-			input_label,
-			output_label,
-		]
+		row.text = (
+			"%s\n%s · %.0f秒" % [
+				recipe.display_name,
+				input_label,
+				recipe.duration_seconds,
+			]
+			if recipe.outputs_to_player_inventory()
+			else "%s\n%s → %s" % [
+				recipe.display_name,
+				input_label,
+				output_label,
+			]
+		)
 		row.tooltip_text = "%s\n%s → %s\n约 %.1f 秒" % [
 			recipe.display_name,
 			recipe.get_input_summary(),
@@ -593,7 +601,7 @@ func _apply_panel_layout(recipe: ProductionRecipe) -> void:
 		if recipe != null and recipe.outputs_to_player_inventory()
 		else "产物"
 	)
-	_set_control_rect(building_title, Rect2(84, 23, 536, 39))
+	_set_control_rect(building_title, Rect2(96, 23, 536, 39))
 	_set_control_rect(input_title, Rect2(42, 196, 164, 28))
 	_set_control_rect(output_title, Rect2(304, 196, 164, 28))
 	_layout_slot_group(
@@ -607,9 +615,11 @@ func _apply_panel_layout(recipe: ProductionRecipe) -> void:
 		Rect2(304, 257, 164, 58)
 	)
 	_set_control_rect(progress_bar, Rect2(214, 271, 82, 25))
-	_set_control_rect(progress_label, Rect2(204, 304, 102, 27))
-	_set_control_rect(status_label, Rect2(61, 440, 405, 52))
-	_set_control_rect(close_button, Rect2(548, 440, 109, 37))
+	_set_control_rect(progress_label, Rect2(165, 314, 180, 34))
+	_set_control_rect(recipe_title, Rect2(504, 112, 180, 31))
+	_set_control_rect(recipe_scroll, Rect2(504, 151, 180, 270))
+	_set_control_rect(status_label, Rect2(61, 420, 392, 48))
+	_set_control_rect(close_button, Rect2(540, 431, 108, 37))
 	close_button.text = "关闭"
 	close_button.tooltip_text = ""
 	close_button.modulate = Color.WHITE

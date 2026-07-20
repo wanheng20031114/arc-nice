@@ -175,9 +175,9 @@ texture = ExtResource("2_background")
 
 [node name="BuildingTitle" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
-offset_left = 84.0
+offset_left = 96.0
 offset_top = 23.0
-offset_right = 620.0
+offset_right = 632.0
 offset_bottom = 62.0
 text = "生产建筑"
 label_settings = SubResource("LabelSettings_title")
@@ -260,13 +260,16 @@ show_percentage = false
 
 [node name="ProgressLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
-offset_left = 115.0
-offset_top = 304.0
-offset_right = 294.0
-offset_bottom = 331.0
+offset_left = 165.0
+offset_top = 314.0
+offset_right = 345.0
+offset_bottom = 348.0
 text = "请选择右侧配方"
 label_settings = SubResource("LabelSettings_small")
 horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+clip_text = true
 
 [node name="OutputSlot1" parent="Overlay/PanelRoot" instance=ExtResource("3_slot")]
 layout_mode = 0
@@ -352,30 +355,34 @@ alignment = 0
 
 [node name="RecipeTitle" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
-offset_left = 500.0
+offset_left = 504.0
 offset_top = 112.0
-offset_right = 688.0
+offset_right = 684.0
 offset_bottom = 143.0
 text = "配方方案"
 label_settings = SubResource("LabelSettings_section")
 horizontal_alignment = 1
 
 [node name="RecipeScroll" type="ScrollContainer" parent="Overlay/PanelRoot"]
+clip_contents = true
 layout_mode = 0
-offset_left = 499.0
-offset_top = 150.0
-offset_right = 691.0
-offset_bottom = 430.0
+offset_left = 504.0
+offset_top = 151.0
+offset_right = 684.0
+offset_bottom = 421.0
+follow_focus = true
 horizontal_scroll_mode = 0
 
 [node name="RecipeRows" type="VBoxContainer" parent="Overlay/PanelRoot/RecipeScroll"]
-custom_minimum_size = Vector2(184, 0)
+custom_minimum_size = Vector2(0, 0)
 layout_mode = 2
+size_flags_horizontal = 3
 theme_override_constants/separation = 7
 
 [node name="RecipeRow1" type="Button" parent="Overlay/PanelRoot/RecipeScroll/RecipeRows"]
-custom_minimum_size = Vector2(184, 72)
+custom_minimum_size = Vector2(0, 72)
 layout_mode = 2
+size_flags_horizontal = 3
 toggle_mode = true
 theme_override_colors/font_color = Color(0.92, 0.84, 0.7, 1)
 theme_override_font_sizes/font_size = 13
@@ -386,11 +393,14 @@ theme_override_styles/focus = SubResource("StyleBoxFlat_recipe_active")
 text = "木头 → 木板"
 icon_max_width = 34
 alignment = 0
+autowrap_mode = 3
+clip_text = true
 
 [node name="RecipeRow2" type="Button" parent="Overlay/PanelRoot/RecipeScroll/RecipeRows"]
 visible = false
-custom_minimum_size = Vector2(184, 72)
+custom_minimum_size = Vector2(0, 72)
 layout_mode = 2
+size_flags_horizontal = 3
 toggle_mode = true
 theme_override_colors/font_color = Color(0.92, 0.84, 0.7, 1)
 theme_override_font_sizes/font_size = 13
@@ -400,11 +410,14 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_active")
 theme_override_styles/focus = SubResource("StyleBoxFlat_recipe_active")
 icon_max_width = 34
 alignment = 0
+autowrap_mode = 3
+clip_text = true
 
 [node name="RecipeRow3" type="Button" parent="Overlay/PanelRoot/RecipeScroll/RecipeRows"]
 visible = false
-custom_minimum_size = Vector2(184, 72)
+custom_minimum_size = Vector2(0, 72)
 layout_mode = 2
+size_flags_horizontal = 3
 toggle_mode = true
 theme_override_colors/font_color = Color(0.92, 0.84, 0.7, 1)
 theme_override_font_sizes/font_size = 13
@@ -414,11 +427,14 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_active")
 theme_override_styles/focus = SubResource("StyleBoxFlat_recipe_active")
 icon_max_width = 34
 alignment = 0
+autowrap_mode = 3
+clip_text = true
 
 [node name="RecipeRow4" type="Button" parent="Overlay/PanelRoot/RecipeScroll/RecipeRows"]
 visible = false
-custom_minimum_size = Vector2(184, 72)
+custom_minimum_size = Vector2(0, 72)
 layout_mode = 2
+size_flags_horizontal = 3
 toggle_mode = true
 theme_override_colors/font_color = Color(0.92, 0.84, 0.7, 1)
 theme_override_font_sizes/font_size = 13
@@ -428,11 +444,14 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_active")
 theme_override_styles/focus = SubResource("StyleBoxFlat_recipe_active")
 icon_max_width = 34
 alignment = 0
+autowrap_mode = 3
+clip_text = true
 
 [node name="RecipeRow5" type="Button" parent="Overlay/PanelRoot/RecipeScroll/RecipeRows"]
 visible = false
-custom_minimum_size = Vector2(184, 72)
+custom_minimum_size = Vector2(0, 72)
 layout_mode = 2
+size_flags_horizontal = 3
 toggle_mode = true
 theme_override_colors/font_color = Color(0.92, 0.84, 0.7, 1)
 theme_override_font_sizes/font_size = 13
@@ -442,11 +461,14 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_active")
 theme_override_styles/focus = SubResource("StyleBoxFlat_recipe_active")
 icon_max_width = 34
 alignment = 0
+autowrap_mode = 3
+clip_text = true
 
 [node name="RecipeRow6" type="Button" parent="Overlay/PanelRoot/RecipeScroll/RecipeRows"]
 visible = false
-custom_minimum_size = Vector2(184, 72)
+custom_minimum_size = Vector2(0, 72)
 layout_mode = 2
+size_flags_horizontal = 3
 toggle_mode = true
 theme_override_colors/font_color = Color(0.92, 0.84, 0.7, 1)
 theme_override_font_sizes/font_size = 13
@@ -456,13 +478,15 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_active")
 theme_override_styles/focus = SubResource("StyleBoxFlat_recipe_active")
 icon_max_width = 34
 alignment = 0
+autowrap_mode = 3
+clip_text = true
 
 [node name="StatusLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 61.0
-offset_top = 440.0
-offset_right = 466.0
-offset_bottom = 492.0
+offset_top = 420.0
+offset_right = 453.0
+offset_bottom = 468.0
 text = "原料和产物只在一轮完成瞬间于全场仓库中结算。"
 label_settings = SubResource("LabelSettings_small")
 autowrap_mode = 2
@@ -470,10 +494,10 @@ vertical_alignment = 1
 
 [node name="CloseButton" type="Button" parent="Overlay/PanelRoot"]
 layout_mode = 0
-offset_left = 548.0
-offset_top = 440.0
-offset_right = 657.0
-offset_bottom = 477.0
+offset_left = 540.0
+offset_top = 431.0
+offset_right = 648.0
+offset_bottom = 468.0
 theme_override_font_sizes/font_size = 15
 theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
 theme_override_styles/hover = SubResource("StyleBoxFlat_recipe_active")
