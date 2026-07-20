@@ -1871,7 +1871,7 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			"Luoxi must reject a second collectible choice in the same intermission."
 		)
 		for _slot_index in range(RunStateStore.INVENTORY_CAPACITY):
-			_expect(run_state.try_add_item_for_peer(2, HEALTH_PICKUP), "Peer 2 inventory must fill before testing Luoxi's full bag result.")
+			_expect(run_state.try_add_item_for_peer(2, APPLE_COLLECTIBLE), "Peer 2 inventory must fill with non-stackable apples before testing Luoxi's full bag result.")
 		var full_luoxi_claim_result := game.try_claim_luoxi_collectible_for_peer(2, APPLE_COLLECTIBLE.resource_path)
 		_expect(
 			full_luoxi_claim_result == LuoxiMerchant.COLLECTIBLE_RESULT_INVENTORY_FULL,

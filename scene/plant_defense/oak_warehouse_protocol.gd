@@ -19,6 +19,7 @@ const RESULT_STALE_INVENTORY := &"stale_inventory"
 const RESULT_STALE_STORAGE := &"stale_storage"
 const RESULT_SOURCE_EMPTY := &"source_empty"
 const RESULT_TARGET_FULL := &"target_full"
+const RESULT_INVALID_AMOUNT := &"invalid_amount"
 
 
 static func make_transfer_command(
@@ -27,6 +28,7 @@ static func make_transfer_command(
 	peer_id: int,
 	direction: int,
 	slot_index: int,
+	transfer_count: int,
 	expected_inventory_revision: int,
 	expected_storage_revision: int
 ) -> Dictionary:
@@ -37,6 +39,7 @@ static func make_transfer_command(
 		"peer_id": peer_id,
 		"direction": int(direction),
 		"slot_index": slot_index,
+		"transfer_count": transfer_count,
 		"expected_inventory_revision": expected_inventory_revision,
 		"expected_storage_revision": expected_storage_revision,
 	}
@@ -82,6 +85,7 @@ static func is_valid_transfer_command(command: Dictionary) -> bool:
 	var peer_id := get_int_field(command, "peer_id", 0)
 	var direction := get_int_field(command, "direction", -1)
 	var slot_index := get_int_field(command, "slot_index", -1)
+	var transfer_count := get_int_field(command, "transfer_count", 0)
 	var inventory_revision := get_int_field(command, "expected_inventory_revision", -1)
 	var storage_revision := get_int_field(command, "expected_storage_revision", -1)
 	return (
@@ -93,6 +97,8 @@ static func is_valid_transfer_command(command: Dictionary) -> bool:
 		and direction <= TransferDirection.STORAGE_TO_PLAYER
 		and slot_index >= 0
 		and slot_index < RunStateStore.INVENTORY_CAPACITY
+		and transfer_count > 0
+		and transfer_count <= 999
 		and inventory_revision >= 0
 		and storage_revision >= 0
 	)

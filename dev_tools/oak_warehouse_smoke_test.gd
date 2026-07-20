@@ -521,6 +521,36 @@ func _test_detail_layout(panel: OakWarehousePanel) -> void:
 					style_name,
 				]
 			)
+	var half_button := panel.get_node("Overlay/PanelRoot/HalfButton") as Button
+	var quantity_button := panel.get_node("Overlay/PanelRoot/QuantityButton") as Button
+	_expect(
+		half_button.text == "取一半"
+		and Rect2(half_button.position, half_button.size)
+		== Rect2(331.0, 302.0, 62.0, 26.0),
+		"取一半按钮必须作为原生场景节点固定在双容器之间。"
+	)
+	_expect(
+		quantity_button.text == "取固定数量"
+		and Rect2(quantity_button.position, quantity_button.size)
+		== Rect2(331.0, 334.0, 62.0, 26.0),
+		"取固定数量按钮必须作为原生场景节点固定在双容器之间。"
+	)
+	var quantity_dialog := panel.get_node("QuantityDialog") as ConfirmationDialog
+	var quantity_input := quantity_dialog.get_node(
+		"ContentMargin/Content/QuantityInput"
+	) as LineEdit
+	_expect(
+		not quantity_dialog.dialog_hide_on_ok
+		and quantity_dialog.exclusive
+		and quantity_dialog.get_ok_button().text == "确认"
+		and quantity_dialog.get_cancel_button().text == "取消",
+		"数量输入必须使用不会在无效确认时自动关闭的独占ConfirmationDialog。"
+	)
+	_expect(
+		quantity_input.virtual_keyboard_type == LineEdit.KEYBOARD_TYPE_NUMBER
+		and quantity_input.max_length >= 4,
+		"固定数量输入框必须提供数字键盘，并允许输入超上限值后由事务层明确拒绝。"
+	)
 
 
 func _test_slot_transfer_interactions(run_state: RunStateStore, warehouse: OakWarehouse) -> void:
@@ -531,6 +561,7 @@ func _test_slot_transfer_interactions(run_state: RunStateStore, warehouse: OakWa
 	_expect(run_state.try_add_item_count(WOOD, 17), "测试物资必须能整叠加入背包。")
 	_expect(run_state.get_item_count(0) == 17, "背包测试木头数量必须为17。")
 	panel.call("_refresh_all")
+	await _test_partial_quantity_controls(run_state, warehouse, panel)
 	await _test_reopened_panel_click_session(run_state, warehouse, panel)
 	panel.player_slots[0].call("_on_pressed")
 	_expect(
@@ -606,6 +637,99 @@ func _test_slot_transfer_interactions(run_state: RunStateStore, warehouse: OakWa
 		"真实双击回归测试结束后必须能恢复测试物品。"
 	)
 	run_state.discard_item(0)
+
+
+func _test_partial_quantity_controls(
+	run_state: RunStateStore,
+	warehouse: OakWarehouse,
+	panel: OakWarehousePanel
+) -> void:
+	panel.player_slots[0].call("_on_pressed")
+	_expect(
+		not panel.half_button.disabled and not panel.quantity_button.disabled,
+		"可堆叠且数量大于1的物品必须启用取一半与取固定数量。"
+	)
+	var inventory_revision := run_state.get_inventory_revision()
+	var storage_revision := warehouse.get_storage_revision()
+	panel.half_button.pressed.emit()
+	_expect(
+		run_state.get_item_count(0) == 8
+		and warehouse.get_storage_item_count(0) == 9,
+		"17个物品取一半必须按向上取整移动9个，并在来源保留8个。"
+	)
+	_expect(
+		run_state.get_inventory_revision() == inventory_revision + 1
+		and warehouse.get_storage_revision() == storage_revision + 1,
+		"本地部分转移必须让背包与仓库revision各只递增一次。"
+	)
+
+	panel.storage_slots[0].call("_on_pressed")
+	panel.quantity_button.pressed.emit()
+	_expect(
+		panel.quantity_dialog.visible
+		and panel.quantity_prompt.text.contains("9"),
+		"取固定数量必须打开原生输入对话框并显示当前来源数量。"
+	)
+	var invalid_inventory_snapshot := run_state.export_inventory_snapshot()
+	var invalid_storage_snapshot := warehouse.export_storage_snapshot()
+	panel.quantity_input.text = "10"
+	panel.quantity_dialog.confirmed.emit()
+	_expect(
+		panel.quantity_dialog.visible
+		and panel.quantity_error.text.contains("超过")
+		and run_state.export_inventory_snapshot() == invalid_inventory_snapshot
+		and warehouse.export_storage_snapshot() == invalid_storage_snapshot,
+		"输入超过来源数量时必须保留对话框、显示错误且两端零写入。"
+	)
+	panel.quantity_input.text = "abc"
+	panel.quantity_dialog.confirmed.emit()
+	_expect(
+		panel.quantity_dialog.visible
+		and panel.quantity_error.text.contains("正整数")
+		and run_state.export_inventory_snapshot() == invalid_inventory_snapshot
+		and warehouse.export_storage_snapshot() == invalid_storage_snapshot,
+		"非数字固定数量必须被拒绝且两端零写入。"
+	)
+
+	inventory_revision = run_state.get_inventory_revision()
+	storage_revision = warehouse.get_storage_revision()
+	panel.quantity_input.text = "4"
+	panel.quantity_dialog.confirmed.emit()
+	_expect(
+		not panel.quantity_dialog.visible
+		and run_state.get_item_count(0) == 12
+		and warehouse.get_storage_item_count(0) == 5,
+		"合法固定数量必须只移动输入的4个物品并关闭对话框。"
+	)
+	_expect(
+		run_state.get_inventory_revision() == inventory_revision + 1
+		and warehouse.get_storage_revision() == storage_revision + 1,
+		"固定数量转移成功时双方revision必须各只递增一次。"
+	)
+	_expect(
+		warehouse.transfer_storage_stack_to_player(0, run_state)
+		and run_state.get_item_count(0) == 17
+		and warehouse.get_storage_item(0) == null,
+		"部分转移交互测试结束后必须无损恢复17个测试物品。"
+	)
+	_expect(
+		warehouse.try_add_storage_item_count(
+			APPLE,
+			1,
+			warehouse.get_storage_revision()
+		),
+		"不可叠加按钮状态测试必须准备一个收藏品。"
+	)
+	panel.call("_refresh_all")
+	panel.storage_slots[0].call("_on_pressed")
+	_expect(
+		panel.half_button.disabled and panel.quantity_button.disabled,
+		"不可叠加物品即使可在仓库中保存，也必须禁用两种数量拆分按钮。"
+	)
+	warehouse.discard_storage_item(0)
+	panel.call("_clear_selection")
+	panel.call("_refresh_all")
+	await process_frame
 
 
 func _test_reopened_panel_click_session(
@@ -962,6 +1086,7 @@ func _test_authoritative_warehouse_sender_guard(
 		peer_id,
 		OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE,
 		0,
+		1,
 		run_state.get_inventory_revision_for_peer(peer_id),
 		warehouse.get_storage_revision()
 	)
@@ -986,6 +1111,7 @@ func _test_authoritative_warehouse_sender_guard(
 		peer_id + 1,
 		OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE,
 		0,
+		1,
 		run_state.get_inventory_revision_for_peer(peer_id),
 		warehouse.get_storage_revision()
 	)
@@ -1083,6 +1209,7 @@ func _test_authoritative_shared_storage(
 		PEER_ID,
 		OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE,
 		0,
+		1,
 		run_state.get_inventory_revision_for_peer(PEER_ID),
 		warehouse.get_storage_revision()
 	)
@@ -1102,6 +1229,7 @@ func _test_authoritative_shared_storage(
 		PEER_ID + 1,
 		OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE,
 		0,
+		1,
 		run_state.get_inventory_revision_for_peer(PEER_ID),
 		warehouse.get_storage_revision()
 	)
@@ -1113,6 +1241,7 @@ func _test_authoritative_shared_storage(
 				PEER_ID,
 				OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE,
 				0,
+				1,
 				run_state.get_inventory_revision_for_peer(PEER_ID),
 				warehouse.get_storage_revision()
 			),
@@ -1133,6 +1262,30 @@ func _test_authoritative_shared_storage(
 		and warehouse.export_storage_snapshot() == malformed_storage_snapshot,
 		"字段类型畸形的多人命令必须零写入并返回invalid_command。"
 	)
+	var invalid_amount_command := OakWarehouseProtocol.make_transfer_command(
+		102,
+		WAREHOUSE_NET_ID,
+		PEER_ID,
+		OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE,
+		0,
+		1,
+		run_state.get_inventory_revision_for_peer(PEER_ID),
+		warehouse.get_storage_revision()
+	)
+	invalid_amount_command["transfer_count"] = 0
+	_expect(
+		not OakWarehouseProtocol.is_valid_command(invalid_amount_command)
+		and not bool(
+			warehouse.apply_transfer_command(invalid_amount_command, run_state).get(
+				"success",
+				false
+			)
+		)
+		and run_state.export_inventory_snapshot_for_peer(PEER_ID)
+		== malformed_inventory_snapshot
+		and warehouse.export_storage_snapshot() == malformed_storage_snapshot,
+		"协议层必须拒绝非正整数转移数量，且Host两端零写入。"
+	)
 	_expect(
 		run_state.try_add_item_count_for_peer(PEER_ID, WOOD, 17),
 		"多人测试物资必须能整叠加入指定玩家背包。"
@@ -1145,6 +1298,7 @@ func _test_authoritative_shared_storage(
 		PEER_ID,
 		OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE,
 		0,
+		17,
 		first_inventory_revision,
 		first_storage_revision
 	)
@@ -1172,21 +1326,70 @@ func _test_authoritative_shared_storage(
 		"拒绝重复命令后共享仓库数量不得翻倍。"
 	)
 
-	var retrieve_command := OakWarehouseProtocol.make_transfer_command(
+	var partial_inventory_revision := run_state.get_inventory_revision_for_peer(PEER_ID)
+	var partial_storage_revision := warehouse.get_storage_revision()
+	var partial_retrieve_command := OakWarehouseProtocol.make_transfer_command(
 		2,
 		WAREHOUSE_NET_ID,
 		PEER_ID,
 		OakWarehouseProtocol.TransferDirection.STORAGE_TO_PLAYER,
 		0,
+		9,
+		partial_inventory_revision,
+		partial_storage_revision
+	)
+	var partial_retrieve_result := warehouse.apply_transfer_command(
+		partial_retrieve_command,
+		run_state
+	)
+	_expect(
+		bool(partial_retrieve_result.get("success", false))
+		and run_state.get_item_count_for_peer(PEER_ID, 0) == 9
+		and warehouse.get_storage_item_count(0) == 8
+		and run_state.get_inventory_revision_for_peer(PEER_ID)
+		== partial_inventory_revision + 1
+		and warehouse.get_storage_revision() == partial_storage_revision + 1,
+		"Host必须原子取回指定的9个物资，并在共享仓库保留8个。"
+	)
+
+	var overage_inventory_snapshot := run_state.export_inventory_snapshot_for_peer(PEER_ID)
+	var overage_storage_snapshot := warehouse.export_storage_snapshot()
+	var overage_command := OakWarehouseProtocol.make_transfer_command(
+		3,
+		WAREHOUSE_NET_ID,
+		PEER_ID,
+		OakWarehouseProtocol.TransferDirection.STORAGE_TO_PLAYER,
+		0,
+		9,
+		run_state.get_inventory_revision_for_peer(PEER_ID),
+		warehouse.get_storage_revision()
+	)
+	var overage_result := warehouse.apply_transfer_command(overage_command, run_state)
+	_expect(
+		not bool(overage_result.get("success", false))
+		and overage_result.get("reason") == OakWarehouseProtocol.RESULT_INVALID_AMOUNT
+		and run_state.export_inventory_snapshot_for_peer(PEER_ID)
+		== overage_inventory_snapshot
+		and warehouse.export_storage_snapshot() == overage_storage_snapshot,
+		"请求数量超过来源实际8个时，Host必须返回invalid_amount且两端零写入。"
+	)
+
+	var retrieve_command := OakWarehouseProtocol.make_transfer_command(
+		4,
+		WAREHOUSE_NET_ID,
+		PEER_ID,
+		OakWarehouseProtocol.TransferDirection.STORAGE_TO_PLAYER,
+		0,
+		8,
 		run_state.get_inventory_revision_for_peer(PEER_ID),
 		warehouse.get_storage_revision()
 	)
 	var retrieve_result := warehouse.apply_transfer_command(retrieve_command, run_state)
-	_expect(bool(retrieve_result.get("success", false)), "Host必须原子确认从共享仓库取回整叠物资。")
 	_expect(
-		run_state.get_item_count_for_peer(PEER_ID, 0) == 17
+		bool(retrieve_result.get("success", false))
+		and run_state.get_item_count_for_peer(PEER_ID, 0) == 17
 		and warehouse.get_storage_item(0) == null,
-		"取回事务必须完整恢复背包堆叠并清空仓库来源槽。"
+		"取回剩余8个物资后必须完整恢复17个背包堆叠并清空来源槽。"
 	)
 	_expect(
 		(retrieve_result.get("inventory_snapshot", {}) as Dictionary).get("revision", -1)
@@ -1207,11 +1410,12 @@ func _test_authoritative_shared_storage(
 	var sixth_apple_storage_revision := warehouse.get_storage_revision()
 	var sixth_apple_inventory_revision := run_state.get_inventory_revision_for_peer(PEER_ID)
 	var sixth_apple_retrieve_command := OakWarehouseProtocol.make_transfer_command(
-		3,
+		5,
 		WAREHOUSE_NET_ID,
 		PEER_ID,
 		OakWarehouseProtocol.TransferDirection.STORAGE_TO_PLAYER,
 		0,
+		1,
 		sixth_apple_inventory_revision,
 		sixth_apple_storage_revision
 	)
@@ -1235,6 +1439,7 @@ func _test_authoritative_shared_storage(
 
 	_test_authoritative_slot_moves(run_state, warehouse, PEER_ID, WAREHOUSE_NET_ID)
 	_test_multiplayer_result_correlation(run_state, warehouse)
+	_test_synchronous_host_panel_result(run_state, warehouse, PEER_ID)
 
 	var requested_snapshot_ids: Array[int] = []
 	var snapshot_request_callback := func(requested_net_id: int) -> void:
@@ -1287,7 +1492,7 @@ func _test_multiplayer_result_correlation(
 	_expect(
 		warehouse.request_multiplayer_stack_transfer(
 			OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE,
-			19
+			1
 		),
 		"多人结果关联测试必须发出一个权威请求。"
 	)
@@ -1347,6 +1552,61 @@ func _test_multiplayer_result_correlation(
 		and not warehouse.multiplayer_storage_request_pending,
 		"完成结果后应用仓库快照不得重新清除或错配请求状态。"
 	)
+
+
+func _test_synchronous_host_panel_result(
+	run_state: RunStateStore,
+	warehouse: OakWarehouse,
+	peer_id: int
+) -> void:
+	for slot_index in range(RunStateStore.INVENTORY_CAPACITY):
+		if run_state.get_item_for_peer(peer_id, slot_index) != null:
+			run_state.discard_item_for_peer(peer_id, slot_index)
+		if warehouse.get_storage_item(slot_index) != null:
+			warehouse.discard_storage_item(slot_index)
+	run_state.set_active_multiplayer_peer(peer_id)
+	_expect(
+		run_state.try_add_item_count_for_peer(peer_id, WOOD, 4),
+		"同步Host结果测试必须准备4份可拆分木头。"
+	)
+	var panel := warehouse.storage_panel
+	panel.call("_refresh_all")
+	var command_callback := func(command: Dictionary) -> void:
+		var result := warehouse.apply_transfer_command(command, run_state)
+		var inventory_snapshot := result.get("inventory_snapshot", {}) as Dictionary
+		if not inventory_snapshot.is_empty():
+			run_state.apply_inventory_snapshot_for_peer(peer_id, inventory_snapshot)
+		warehouse.complete_multiplayer_storage_request(result)
+		var storage_snapshot := result.get("storage_snapshot", {}) as Dictionary
+		if not storage_snapshot.is_empty():
+			warehouse.apply_storage_snapshot(storage_snapshot)
+	warehouse.storage_command_requested.connect(command_callback)
+
+	panel.player_slots[0].call("_on_pressed")
+	panel.half_button.pressed.emit()
+	_expect(
+		run_state.get_item_count_for_peer(peer_id, 0) == 2
+		and warehouse.get_storage_item_count(0) == 2
+		and not warehouse.multiplayer_storage_request_pending
+		and panel.status_label.text == "物品已移动",
+		"Host同步完成取一半后，成功提示不得被覆盖成等待确认。"
+	)
+
+	panel.player_slots[0].call("_on_pressed")
+	panel.move_button.pressed.emit()
+	_expect(
+		run_state.get_item_for_peer(peer_id, 0) == null
+		and warehouse.get_storage_item_count(0) == 4
+		and not warehouse.multiplayer_storage_request_pending
+		and panel.status_label.text == "物品已移动",
+		"Host同步完成整叠移动后，成功提示不得被覆盖成等待确认。"
+	)
+	warehouse.storage_command_requested.disconnect(command_callback)
+	for slot_index in range(OakWarehouse.STORAGE_CAPACITY):
+		if warehouse.get_storage_item(slot_index) != null:
+			warehouse.discard_storage_item(slot_index)
+	run_state.set_active_multiplayer_peer(0)
+	panel.call("_refresh_all")
 
 
 func _test_authoritative_slot_moves(

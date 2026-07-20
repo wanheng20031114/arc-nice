@@ -156,16 +156,19 @@ func _run() -> void:
 	_expect(
 		AGAVE_BUILDING_ITEM.pickup_type == PickupConfig.PickupType.BUILDING
 		and AGAVE_BUILDING_ITEM.placeable_plant_id == &"agave_cannon"
-		and AGAVE_BUILDING_ITEM.stackable
+		and not AGAVE_BUILDING_ITEM.stackable
+		and AGAVE_BUILDING_ITEM.inventory_stack_limit == 1
 		and CORN_BUILDING_ITEM.pickup_type == PickupConfig.PickupType.BUILDING
 		and CORN_BUILDING_ITEM.placeable_plant_id == &"corn_machine_gun"
-		and CORN_BUILDING_ITEM.stackable
+		and not CORN_BUILDING_ITEM.stackable
+		and CORN_BUILDING_ITEM.inventory_stack_limit == 1
 		and BAMBOO_MORTAR_BUILDING_ITEM.pickup_type
 		== PickupConfig.PickupType.BUILDING
 		and BAMBOO_MORTAR_BUILDING_ITEM.placeable_plant_id
 		== &"bamboo_mortar"
-		and BAMBOO_MORTAR_BUILDING_ITEM.stackable,
-		"三种产物必须是可叠加且指向正确建筑配置的建筑物品。"
+		and not BAMBOO_MORTAR_BUILDING_ITEM.stackable
+		and BAMBOO_MORTAR_BUILDING_ITEM.inventory_stack_limit == 1,
+		"三种产物必须是不可叠加且指向正确建筑配置的建筑物品。"
 	)
 
 	var border := center.get_node_or_null("ProductionBorder") as MeshInstance2D
@@ -214,8 +217,12 @@ func _run() -> void:
 	center.advance_shared_production_tick(20.0)
 	_expect(
 		run_state.get_item(0) == AGAVE_BUILDING_ITEM
-		and run_state.get_item_count(0) == 3,
-		"相同建筑产物必须在背包同一槽位叠加。"
+		and run_state.get_item_count(0) == 1
+		and run_state.get_item(1) == AGAVE_BUILDING_ITEM
+		and run_state.get_item_count(1) == 1
+		and run_state.get_item(2) == AGAVE_BUILDING_ITEM
+		and run_state.get_item_count(2) == 1,
+		"相同建筑产物必须各自占用独立背包槽且数量固定为1。"
 	)
 	_expect(
 		warehouse.try_add_storage_item_count(WOODEN_CORE, 1)
@@ -224,9 +231,9 @@ func _run() -> void:
 	)
 	center.advance_shared_production_tick(20.0)
 	_expect(
-		run_state.get_item(1) == CORN_BUILDING_ITEM
-		and run_state.get_item_count(1) == 1,
-		"玉米机枪塔必须作为独立可叠加建筑物品进入背包。"
+		run_state.get_item(3) == CORN_BUILDING_ITEM
+		and run_state.get_item_count(3) == 1,
+		"玉米机枪塔必须作为独立且不可叠加的建筑物品进入背包。"
 	)
 	_expect(
 		warehouse.try_add_storage_item_count(WOODEN_CORE, 1)
@@ -235,14 +242,14 @@ func _run() -> void:
 	)
 	center.advance_shared_production_tick(29.0)
 	_expect(
-		run_state.get_item(2) == null
+		run_state.get_item(4) == null
 		and is_equal_approx(center.progress_elapsed_seconds, 29.0),
 		"迫击炮培育到29秒时不得提前完成。"
 	)
 	center.advance_shared_production_tick(1.0)
 	_expect(
-		run_state.get_item(2) == BAMBOO_MORTAR_BUILDING_ITEM
-		and run_state.get_item_count(2) == 1
+		run_state.get_item(4) == BAMBOO_MORTAR_BUILDING_ITEM
+		and run_state.get_item_count(4) == 1
 		and is_zero_approx(center.progress_elapsed_seconds),
 		"迫击炮必须在累计30秒时完成并进入独立背包槽位。"
 	)
@@ -628,6 +635,13 @@ func _test_inventory_placement_request(
 		run_state.try_add_item_count(AGAVE_BUILDING_ITEM, 2),
 		"放置测试必须能加入2个加农炮建筑物品。"
 	)
+	_expect(
+		run_state.get_item(0) == AGAVE_BUILDING_ITEM
+		and run_state.get_item_count(0) == 1
+		and run_state.get_item(1) == AGAVE_BUILDING_ITEM
+		and run_state.get_item_count(1) == 1,
+		"不可叠加建筑物品必须各占一个背包槽。"
+	)
 	var initial_revision := run_state.get_inventory_revision()
 	_expect(
 		run_state.try_consume_item_at_slot_if_revision(
@@ -635,13 +649,20 @@ func _test_inventory_placement_request(
 			AGAVE_BUILDING_ITEM,
 			initial_revision
 		)
-		and run_state.get_item_count(0) == 1
+		and run_state.get_item(0) == null
+		and run_state.get_item(1) == AGAVE_BUILDING_ITEM
+		and run_state.get_item_count(1) == 1
 		and not run_state.try_consume_item_at_slot_if_revision(
-			0,
+			1,
 			AGAVE_BUILDING_ITEM,
 			initial_revision
 		),
-		"建筑物品必须一次只消耗1个，并拒绝过期背包revision。"
+		"建筑物品必须一次清空一个独立槽，并拒绝过期背包revision。"
+	)
+	run_state.begin_new_run()
+	_expect(
+		run_state.try_add_item(AGAVE_BUILDING_ITEM),
+		"放置请求测试必须重新准备一个加农炮建筑物品。"
 	)
 
 	var controller := (

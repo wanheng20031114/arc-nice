@@ -273,15 +273,29 @@ func request_multiplayer_storage_snapshot() -> bool:
 	return true
 
 
-func request_multiplayer_stack_transfer(direction: int, slot_index: int) -> bool:
+func request_multiplayer_stack_transfer(
+	direction: int,
+	slot_index: int,
+	transfer_count: int = -1
+) -> bool:
 	if (
 		not is_multiplayer_storage_ready()
+		or direction < OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE
+		or direction > OakWarehouseProtocol.TransferDirection.STORAGE_TO_PLAYER
 		or slot_index < 0
 		or slot_index >= STORAGE_CAPACITY
 	):
 		return false
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if run_state == null:
+		return false
+	var source_count := (
+		get_storage_item_count(slot_index)
+		if direction == OakWarehouseProtocol.TransferDirection.STORAGE_TO_PLAYER
+		else run_state.get_item_count_for_peer(multiplayer_storage_peer_id, slot_index)
+	)
+	var requested_count := source_count if transfer_count < 0 else transfer_count
+	if requested_count <= 0 or requested_count > source_count:
 		return false
 	var request_id := next_multiplayer_storage_request_id
 	next_multiplayer_storage_request_id += 1
@@ -291,6 +305,7 @@ func request_multiplayer_stack_transfer(direction: int, slot_index: int) -> bool
 		multiplayer_storage_peer_id,
 		direction,
 		slot_index,
+		requested_count,
 		run_state.get_inventory_revision_for_peer(multiplayer_storage_peer_id),
 		storage_revision
 	)
@@ -419,22 +434,39 @@ func discard_storage_item(slot_index: int, expected_revision: int = -1) -> bool:
 
 
 func transfer_player_stack_to_storage(slot_index: int, run_state: RunStateStore) -> bool:
+	if run_state == null:
+		return false
+	return transfer_player_item_count_to_storage(
+		slot_index,
+		run_state.get_item_count(slot_index),
+		run_state
+	)
+
+
+func transfer_player_item_count_to_storage(
+	slot_index: int,
+	transfer_count: int,
+	run_state: RunStateStore
+) -> bool:
 	if run_state == null or run_state.active_multiplayer_peer_id > 0:
 		return false
 	var item := run_state.get_item(slot_index)
-	var count := run_state.get_item_count(slot_index)
-	if not can_add_storage_item_count(item, count):
+	var source_count := run_state.get_item_count(slot_index)
+	if transfer_count <= 0 or transfer_count > source_count:
+		return false
+	if not can_add_storage_item_count(item, transfer_count):
 		return false
 	var inventory_revision := run_state.get_inventory_revision()
 	var expected_storage_revision := storage_revision
-	var taken_stack := run_state.take_item_stack_if_revision(
+	var taken_stack := run_state.take_item_count_at_slot_if_revision(
 		slot_index,
+		transfer_count,
 		inventory_revision,
 		false
 	)
 	if not bool(taken_stack.get("success", false)):
 		return false
-	_add_storage_item_count_unchecked(item, count)
+	_add_storage_item_count_unchecked(item, transfer_count)
 	storage_revision = expected_storage_revision + 1
 	storage_changed.emit()
 	run_state.notify_inventory_transaction_completed()
@@ -442,24 +474,40 @@ func transfer_player_stack_to_storage(slot_index: int, run_state: RunStateStore)
 
 
 func transfer_storage_stack_to_player(slot_index: int, run_state: RunStateStore) -> bool:
+	if run_state == null:
+		return false
+	return transfer_storage_item_count_to_player(
+		slot_index,
+		get_storage_item_count(slot_index),
+		run_state
+	)
+
+
+func transfer_storage_item_count_to_player(
+	slot_index: int,
+	transfer_count: int,
+	run_state: RunStateStore
+) -> bool:
 	if run_state == null or run_state.active_multiplayer_peer_id > 0:
 		return false
 	var item := get_storage_item(slot_index)
-	var count := get_storage_item_count(slot_index)
-	if item == null or count <= 0:
+	var source_count := get_storage_item_count(slot_index)
+	if (
+		item == null
+		or transfer_count <= 0
+		or transfer_count > source_count
+	):
 		return false
 	var expected_inventory_revision := run_state.get_inventory_revision()
-	var expected_storage_revision := storage_revision
 	var item_added := run_state.try_add_item_count_if_revision(
 		item,
-		count,
+		transfer_count,
 		expected_inventory_revision,
 		false
 	)
 	if not item_added:
 		return false
-	storage_items[slot_index] = null
-	storage_stack_counts[slot_index] = 0
+	_take_storage_item_count_unchecked(slot_index, transfer_count)
 	storage_revision += 1
 	storage_changed.emit()
 	run_state.notify_inventory_transaction_completed()
@@ -634,26 +682,30 @@ func apply_transfer_command(command: Dictionary, run_state: RunStateStore) -> Di
 
 	var slot_index := int(command["slot_index"])
 	var direction := int(command["direction"])
+	var transfer_count := int(command["transfer_count"])
 	var item: PickupConfig = null
-	var count := 0
+	var source_count := 0
 	if direction == OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE:
 		item = run_state.get_item_for_peer(peer_id, slot_index)
-		count = run_state.get_item_count_for_peer(peer_id, slot_index)
-		if item == null or count <= 0:
+		source_count = run_state.get_item_count_for_peer(peer_id, slot_index)
+		if item == null or source_count <= 0:
 			result_reason = OakWarehouseProtocol.RESULT_SOURCE_EMPTY
-		elif not can_add_storage_item_count(item, count):
+		elif transfer_count <= 0 or transfer_count > source_count:
+			result_reason = OakWarehouseProtocol.RESULT_INVALID_AMOUNT
+		elif not can_add_storage_item_count(item, transfer_count):
 			result_reason = OakWarehouseProtocol.RESULT_TARGET_FULL
 		else:
-			var taken_stack := run_state.take_item_stack_for_peer_if_revision(
-			peer_id,
-			slot_index,
+			var taken_stack := run_state.take_item_count_at_slot_for_peer_if_revision(
+				peer_id,
+				slot_index,
+				transfer_count,
 				expected_inventory_revision,
 				false
 			)
 			if not bool(taken_stack.get("success", false)):
 				result_reason = OakWarehouseProtocol.RESULT_STALE_INVENTORY
 			else:
-				_add_storage_item_count_unchecked(item, count)
+				_add_storage_item_count_unchecked(item, transfer_count)
 				storage_revision += 1
 				run_state.notify_inventory_transaction_completed()
 				storage_changed.emit()
@@ -666,22 +718,23 @@ func apply_transfer_command(command: Dictionary, run_state: RunStateStore) -> Di
 				)
 	else:
 		item = get_storage_item(slot_index)
-		count = get_storage_item_count(slot_index)
-		if item == null or count <= 0:
+		source_count = get_storage_item_count(slot_index)
+		if item == null or source_count <= 0:
 			result_reason = OakWarehouseProtocol.RESULT_SOURCE_EMPTY
-		elif not run_state.can_add_item_count_for_peer(peer_id, item, count):
+		elif transfer_count <= 0 or transfer_count > source_count:
+			result_reason = OakWarehouseProtocol.RESULT_INVALID_AMOUNT
+		elif not run_state.can_add_item_count_for_peer(peer_id, item, transfer_count):
 			result_reason = OakWarehouseProtocol.RESULT_TARGET_FULL
 		elif not run_state.try_add_item_count_for_peer_if_revision(
 			peer_id,
 			item,
-			count,
+			transfer_count,
 			expected_inventory_revision,
 			false
 		):
 			result_reason = OakWarehouseProtocol.RESULT_STALE_INVENTORY
 		else:
-			storage_items[slot_index] = null
-			storage_stack_counts[slot_index] = 0
+			_take_storage_item_count_unchecked(slot_index, transfer_count)
 			storage_revision += 1
 			run_state.notify_inventory_transaction_completed()
 			storage_changed.emit()
@@ -1008,6 +1061,15 @@ func _add_storage_item_count_to_slot_unchecked(
 		storage_stack_counts[target_slot_index] = count
 	else:
 		storage_stack_counts[target_slot_index] += count
+
+
+func _take_storage_item_count_unchecked(slot_index: int, count: int) -> void:
+	var remaining_count := get_storage_item_count(slot_index) - count
+	if remaining_count > 0:
+		storage_stack_counts[slot_index] = remaining_count
+		return
+	storage_items[slot_index] = null
+	storage_stack_counts[slot_index] = 0
 
 
 func _bump_storage_revision() -> void:

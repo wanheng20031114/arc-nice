@@ -12,7 +12,6 @@ const RUBY_COLLECTIBLE := preload("res://resources/config/collectibles/collectib
 const ARCHER_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_archer.tres")
 const ROLLER_SKATES_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_roller_skates.tres")
 const POWER_WHEEL_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_power_wheel.tres")
-const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -383,7 +382,7 @@ func _test_full_inventory_keeps_luoxi_choice_available() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run()
 	for _slot_index in range(RunStateStore.INVENTORY_CAPACITY):
-		_expect(run_state.try_add_item(HEALTH_PICKUP), "Inventory setup must fill every slot before testing Luoxi's full bag result.")
+		_expect(run_state.try_add_item(RUBY_COLLECTIBLE), "Non-stackable ruby setup must fill every slot before testing Luoxi's full bag result.")
 
 	var luoxi := LUOXI_SCENE.instantiate() as LuoxiMerchant
 	var player := PLAYER_SCENE.instantiate() as Player
@@ -410,7 +409,7 @@ func _test_full_inventory_keeps_luoxi_choice_available() -> void:
 		"Luoxi must clearly explain that a full inventory blocks collectible pickup."
 	)
 	_expect(not bool(luoxi.call("_is_player_claimed", player)), "A full inventory must not spend Luoxi's collectible choices.")
-	_expect(run_state.get_item(0) == HEALTH_PICKUP, "A failed Luoxi claim must not replace existing inventory items.")
+	_expect(run_state.get_item(0) == RUBY_COLLECTIBLE, "A failed Luoxi claim must not replace existing inventory items.")
 
 	_expect(run_state.discard_item(0), "Discarding one item must free a slot for the original Luoxi choice.")
 	bubble.finish_line()

@@ -55,10 +55,10 @@ stretch_mode = 5
 
 [node name="Amount" type="Label" parent="Content"]
 layout_mode = 0
-offset_left = 32.0
-offset_top = 25.0
-offset_right = 61.0
-offset_bottom = 44.0
+offset_left = 27.0
+offset_top = 23.0
+offset_right = 65.0
+offset_bottom = 45.0
 mouse_filter = 2
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 12
@@ -72,10 +72,10 @@ vertical_alignment = 2
 
 [node name="Detail" type="Label" parent="Content"]
 layout_mode = 0
-offset_left = 3.0
-offset_top = 48.0
-offset_right = 63.0
-offset_bottom = 68.0
+offset_left = 2.0
+offset_top = 47.0
+offset_right = 64.0
+offset_bottom = 69.0
 mouse_filter = 2
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 11

@@ -5,9 +5,19 @@ const HERBAL_HEALTH_POTION_ID: StringName = &"herbal_health_potion"
 const HERBAL_HEALTH_POTION_RECIPE: ProductionRecipe = preload(
 	"res://resources/config/production/simple_herbal_health_potion.tres"
 )
+const WOOD_PROCESSING_STATION_ID: StringName = &"wood_processing_station"
+const WOOD_PROCESSING_STATION_RECIPE: ProductionRecipe = preload(
+	"res://resources/config/production/simple_wood_processing_station.tres"
+)
+const VEGETATION_STAKE_ID: StringName = &"vegetation_stake"
+const VEGETATION_STAKE_RECIPE: ProductionRecipe = preload(
+	"res://resources/config/production/simple_vegetation_stake.tres"
+)
 
 const RECIPES := {
 	HERBAL_HEALTH_POTION_ID: HERBAL_HEALTH_POTION_RECIPE,
+	WOOD_PROCESSING_STATION_ID: WOOD_PROCESSING_STATION_RECIPE,
+	VEGETATION_STAKE_ID: VEGETATION_STAKE_RECIPE,
 }
 const MAX_WIRE_RECIPE_ID_LENGTH := 64
 

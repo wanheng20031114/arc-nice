@@ -8,7 +8,7 @@
 script = ExtResource("1_config")
 plant_id = &"plant_cultivation_center"
 display_name = "植物培育中心"
-description = "两格见方的植物生产建筑。消耗1个木制核心，可培育龙舌兰加农炮、玉米机枪塔或竹筒迫击炮，并制成可叠加的背包建筑物品。"
+description = "两格见方的植物生产建筑。消耗1个木制核心，可培育龙舌兰加农炮、玉米机枪塔或竹筒迫击炮，并制成不可叠加的背包建筑物品。"
 icon = ExtResource("2_icon")
 plant_scene = ExtResource("3_scene")
 supports_multiplayer = true

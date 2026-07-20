@@ -750,6 +750,40 @@ func take_item_stack_if_revision(
 	}
 
 
+func take_item_count_at_slot_if_revision(
+	slot_index: int,
+	count: int,
+	expected_revision: int,
+	emit_change: bool = true
+) -> Dictionary:
+	_ensure_local_inventory_shape()
+	if expected_revision != inventory_revision:
+		return {"success": false}
+	if slot_index < 0 or slot_index >= inventory.size() or count <= 0:
+		return {"success": false}
+	var item := inventory[slot_index]
+	if item == null:
+		return {"success": false}
+	var stored_count := maxi(inventory_stack_counts[slot_index], 1)
+	if count > stored_count:
+		return {"success": false}
+	_take_item_count_from_slot_unchecked(
+		inventory,
+		inventory_stack_counts,
+		slot_index,
+		count
+	)
+	_bump_local_inventory_revision()
+	if emit_change:
+		inventory_changed.emit()
+	return {
+		"success": true,
+		"item": item,
+		"stack_count": count,
+		"revision": inventory_revision,
+	}
+
+
 func try_add_item_count_if_revision(
 	item: PickupConfig,
 	count: int,
@@ -883,6 +917,43 @@ func take_item_stack_for_peer_if_revision(
 	var count := maxi(int(peer_counts[slot_index]), 1)
 	peer_inventory[slot_index] = null
 	peer_counts[slot_index] = 0
+	_bump_inventory_revision_for_peer(peer_id)
+	if emit_change:
+		inventory_changed.emit()
+	return {
+		"success": true,
+		"item": item,
+		"stack_count": count,
+		"revision": get_inventory_revision_for_peer(peer_id),
+	}
+
+
+func take_item_count_at_slot_for_peer_if_revision(
+	peer_id: int,
+	slot_index: int,
+	count: int,
+	expected_revision: int,
+	emit_change: bool = true
+) -> Dictionary:
+	ensure_multiplayer_peer_state(peer_id)
+	if expected_revision != get_inventory_revision_for_peer(peer_id):
+		return {"success": false}
+	var peer_inventory := multiplayer_inventories[peer_id] as Array
+	var peer_counts := multiplayer_inventory_stack_counts[peer_id] as Array
+	if slot_index < 0 or slot_index >= peer_inventory.size() or count <= 0:
+		return {"success": false}
+	var item := peer_inventory[slot_index] as PickupConfig
+	if item == null:
+		return {"success": false}
+	var stored_count := maxi(int(peer_counts[slot_index]), 1)
+	if count > stored_count:
+		return {"success": false}
+	_take_item_count_from_slot_unchecked(
+		peer_inventory,
+		peer_counts,
+		slot_index,
+		count
+	)
 	_bump_inventory_revision_for_peer(peer_id)
 	if emit_change:
 		inventory_changed.emit()
@@ -1205,6 +1276,20 @@ func _consume_one_item_from_arrays(
 	var current_count := maxi(int(counts[slot_index]), 1)
 	if current_count > 1:
 		counts[slot_index] = current_count - 1
+		return
+	items[slot_index] = null
+	counts[slot_index] = 0
+
+
+func _take_item_count_from_slot_unchecked(
+	items: Array,
+	counts: Array,
+	slot_index: int,
+	count: int
+) -> void:
+	var remaining_count := maxi(int(counts[slot_index]), 1) - count
+	if remaining_count > 0:
+		counts[slot_index] = remaining_count
 		return
 	items[slot_index] = null
 	counts[slot_index] = 0

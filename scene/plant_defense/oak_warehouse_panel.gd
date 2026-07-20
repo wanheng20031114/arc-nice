@@ -27,10 +27,16 @@ const PANEL_MOUSE_PRESS_SEQUENCE_META := &"_oak_warehouse_mouse_press_sequence"
 @onready var status_label: Label = $Overlay/PanelRoot/StatusLabel
 @onready var use_button: Button = $Overlay/PanelRoot/UseButton
 @onready var move_button: Button = $Overlay/PanelRoot/MoveButton
+@onready var half_button: Button = $Overlay/PanelRoot/HalfButton
+@onready var quantity_button: Button = $Overlay/PanelRoot/QuantityButton
 @onready var discard_button: Button = $Overlay/PanelRoot/DiscardButton
 @onready var close_button: Button = $Overlay/PanelRoot/CloseButton
 @onready var virtual_cursor: Control = $Overlay/PanelRoot/VirtualCursor
 @onready var controller_hold_timer: Timer = $ControllerHoldTimer
+@onready var quantity_dialog: ConfirmationDialog = $QuantityDialog
+@onready var quantity_prompt: Label = $QuantityDialog/ContentMargin/Content/Prompt
+@onready var quantity_input: LineEdit = $QuantityDialog/ContentMargin/Content/QuantityInput
+@onready var quantity_error: Label = $QuantityDialog/ContentMargin/Content/Error
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
 var warehouse: OakWarehouse = null
@@ -54,6 +60,9 @@ var multiplayer_slot_drop_target_index := -1
 var queued_quick_moves: Array[Dictionary] = []
 var panel_mouse_press_sequence := 0
 var panel_session_generation := 0
+var quantity_dialog_source := ItemSource.NONE
+var quantity_dialog_slot_index := -1
+var quantity_dialog_item_path := ""
 
 
 func _ready() -> void:
@@ -66,8 +75,14 @@ func _ready() -> void:
 	_collect_slots(player_grid, player_slots, ItemSource.PLAYER)
 	use_button.pressed.connect(_on_use_pressed)
 	move_button.pressed.connect(_on_move_pressed)
+	half_button.pressed.connect(_on_half_pressed)
+	quantity_button.pressed.connect(_on_quantity_pressed)
 	discard_button.pressed.connect(_on_discard_pressed)
 	close_button.pressed.connect(close)
+	quantity_dialog.confirmed.connect(_on_quantity_dialog_confirmed)
+	quantity_dialog.canceled.connect(_reset_quantity_dialog_context)
+	quantity_dialog.register_text_enter(quantity_input)
+	quantity_input.text_changed.connect(_on_quantity_input_changed)
 	overlay.gui_input.connect(_on_overlay_gui_input)
 	controller_hold_timer.timeout.connect(_on_controller_hold_timeout)
 	Input.joy_connection_changed.connect(_on_joy_connection_changed)
@@ -120,6 +135,9 @@ func set_multiplayer_storage_state(
 	multiplayer_storage_request_pending = request_pending and enabled
 	if _is_network_locked() and controller_accept_held:
 		_cancel_controller_drag()
+	if _is_network_locked() and quantity_dialog.visible:
+		quantity_dialog.hide()
+		_reset_quantity_dialog_context()
 	if not _is_network_locked() and not queued_quick_moves.is_empty():
 		call_deferred("_process_next_queued_quick_move")
 	if _is_waiting_for_multiplayer_storage_configuration():
@@ -219,6 +237,8 @@ func is_bound_to_warehouse(candidate: OakWarehouse) -> bool:
 
 func _reset_transient_state() -> void:
 	_cancel_controller_drag()
+	quantity_dialog.hide()
+	_reset_quantity_dialog_context()
 	queued_quick_moves.clear()
 	clear_multiplayer_slot_drop_pending()
 	if get_viewport().gui_is_dragging():
@@ -704,7 +724,8 @@ func _on_move_pressed() -> void:
 			else OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE
 		)
 		if warehouse.request_multiplayer_stack_transfer(direction, selected_slot_index):
-			status_label.text = "正在等待主机确认…"
+			if multiplayer_storage_request_pending:
+				status_label.text = "正在等待主机确认…"
 		else:
 			status_label.text = "共享仓库当前不可操作"
 		_refresh_detail()
@@ -718,6 +739,167 @@ func _on_move_pressed() -> void:
 	if moved:
 		_clear_selection()
 	_refresh_all()
+
+
+func _on_half_pressed() -> void:
+	if not _can_split_selected_stack():
+		return
+	var transfer_count := ceili(float(_get_selected_count()) * 0.5)
+	if not _transfer_selected_item_count(transfer_count):
+		status_label.text = "目标容器空间不足"
+
+
+func _on_quantity_pressed() -> void:
+	if not _can_split_selected_stack():
+		return
+	var item := _get_selected_item()
+	var count := _get_selected_count()
+	quantity_dialog_source = selected_source
+	quantity_dialog_slot_index = selected_slot_index
+	quantity_dialog_item_path = item.resource_path
+	quantity_prompt.text = "输入要移动的数量（当前共有 %d 个）" % count
+	quantity_input.text = "1"
+	quantity_error.text = ""
+	quantity_dialog.popup_centered(Vector2i(360, 190))
+	call_deferred("_focus_quantity_input")
+
+
+func _focus_quantity_input() -> void:
+	if not quantity_dialog.visible:
+		return
+	quantity_input.grab_focus()
+	quantity_input.select_all()
+
+
+func _on_quantity_dialog_confirmed() -> void:
+	var text := quantity_input.text.strip_edges()
+	if not text.is_valid_int():
+		_show_quantity_error("请输入正整数")
+		return
+	var transfer_count := text.to_int()
+	if transfer_count <= 0:
+		_show_quantity_error("数量必须大于 0")
+		return
+	var item := _get_item(quantity_dialog_source, quantity_dialog_slot_index)
+	var source_count := _get_item_count(
+		quantity_dialog_source,
+		quantity_dialog_slot_index
+	)
+	if (
+		item == null
+		or item.resource_path != quantity_dialog_item_path
+		or not item.stackable
+		or source_count <= 1
+	):
+		_show_quantity_error("物品数量已变化，请重新选择")
+		return
+	if transfer_count > source_count:
+		_show_quantity_error("数量超过当前持有数量（%d）" % source_count)
+		return
+	if not _transfer_item_count(
+		quantity_dialog_source,
+		quantity_dialog_slot_index,
+		transfer_count
+	):
+		_show_quantity_error(
+			"正在等待主机确认"
+			if _is_network_locked()
+			else "目标容器空间不足"
+		)
+		return
+	quantity_dialog.hide()
+	_reset_quantity_dialog_context()
+
+
+func _on_quantity_input_changed(_new_text: String) -> void:
+	quantity_error.text = ""
+
+
+func _show_quantity_error(message: String) -> void:
+	quantity_error.text = message
+	status_label.text = message
+	quantity_input.grab_focus()
+	quantity_input.select_all()
+
+
+func _reset_quantity_dialog_context() -> void:
+	quantity_dialog_source = ItemSource.NONE
+	quantity_dialog_slot_index = -1
+	quantity_dialog_item_path = ""
+	quantity_error.text = ""
+
+
+func _transfer_selected_item_count(transfer_count: int) -> bool:
+	return _transfer_item_count(
+		selected_source,
+		selected_slot_index,
+		transfer_count
+	)
+
+
+func _transfer_item_count(
+	source: int,
+	slot_index: int,
+	transfer_count: int
+) -> bool:
+	if (
+		warehouse == null
+		or source == ItemSource.NONE
+		or slot_index < 0
+		or transfer_count <= 0
+		or _is_network_locked()
+	):
+		return false
+	var source_count := _get_item_count(source, slot_index)
+	if transfer_count > source_count:
+		return false
+	if multiplayer_storage_enabled:
+		var direction := (
+			OakWarehouseProtocol.TransferDirection.STORAGE_TO_PLAYER
+			if source == ItemSource.STORAGE
+			else OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE
+		)
+		if not warehouse.request_multiplayer_stack_transfer(
+			direction,
+			slot_index,
+			transfer_count
+		):
+			return false
+		if multiplayer_storage_request_pending:
+			status_label.text = "正在等待主机确认…"
+		_refresh_detail()
+		return true
+	var moved := (
+		warehouse.transfer_storage_item_count_to_player(
+			slot_index,
+			transfer_count,
+			run_state
+		)
+		if source == ItemSource.STORAGE
+		else warehouse.transfer_player_item_count_to_storage(
+			slot_index,
+			transfer_count,
+			run_state
+		)
+	)
+	if not moved:
+		return false
+	status_label.text = "已移动 %d 个物品" % transfer_count
+	if transfer_count >= source_count:
+		_clear_selection()
+	else:
+		_refresh_all()
+	return true
+
+
+func _can_split_selected_stack() -> bool:
+	var item := _get_selected_item()
+	return (
+		item != null
+		and item.stackable
+		and _get_selected_count() > 1
+		and not _is_network_locked()
+	)
 
 
 func _queue_selected_quick_move() -> void:
@@ -821,6 +1003,8 @@ func _refresh_detail() -> void:
 		use_button.disabled = true
 		use_button.text = "使用"
 		move_button.disabled = true
+		half_button.disabled = true
+		quantity_button.disabled = true
 		discard_button.disabled = true
 		move_button.text = "移动"
 		return
@@ -849,6 +1033,9 @@ func _refresh_detail() -> void:
 		else "使用"
 	)
 	move_button.disabled = network_locked
+	var can_split := item.stackable and count > 1 and not network_locked
+	half_button.disabled = not can_split
+	quantity_button.disabled = not can_split
 	discard_button.disabled = _is_multiplayer_inventory_context() or network_locked
 	move_button.text = "移入背包" if selected_source == ItemSource.STORAGE else "移入仓库"
 	discard_button.text = (
@@ -872,6 +1059,8 @@ func _get_multiplayer_failure_text(reason: StringName) -> String:
 			return "内容已变化，已刷新最新状态"
 		OakWarehouseProtocol.RESULT_SOURCE_EMPTY:
 			return "来源物品已不存在"
+		OakWarehouseProtocol.RESULT_INVALID_AMOUNT:
+			return "数量无效或已超过来源数量"
 		OakWarehouseProtocol.RESULT_TARGET_FULL:
 			return "目标容器空间不足"
 		_:
