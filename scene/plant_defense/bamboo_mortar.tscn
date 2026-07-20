@@ -2,12 +2,12 @@
 
 [ext_resource type="Script" uid="uid://b7d5j33n8u2qt" path="res://scene/plant_defense/bamboo_mortar.gd" id="1_script"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/plant_defense/bamboo_mortar_sprite_frames.tres" id="2_frames"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/bamboo_mortar/layers/lower_idle.png" id="3_lower_idle_texture"]
+[ext_resource type="Texture2D" uid="uid://nsyc3w5ubdjd" path="res://resources/texture/plant_defense/bamboo_mortar/layers/lower_idle.png" id="3_lower_idle_texture"]
 [ext_resource type="Shader" uid="uid://d1dea7fqpou23" path="res://resources/shader/bamboo_mortar_glow.gdshader" id="4_glow_shader"]
 [ext_resource type="PackedScene" uid="uid://by1igl2yc3ch0" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="5_health_bar"]
 [ext_resource type="Material" path="res://resources/shader/bamboo_mortar_split_lifecycle_material.tres" id="6_split_lifecycle_material"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="7_night_light"]
-[ext_resource type="Texture2D" path="res://resources/lighting/soft_micro_point_light.tres" id="8_micro_light_texture"]
+[ext_resource type="Texture2D" uid="uid://t1raffrqo5wd" path="res://resources/lighting/soft_micro_point_light.tres" id="8_micro_light_texture"]
 [ext_resource type="AudioStream" uid="uid://312idcw43nv8" path="res://resources/audio/capoo_rpg_launch.wav" id="9_fire_audio"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_glow"]
@@ -32,7 +32,7 @@ lifecycle_effect_top_y = -15.0
 [node name="VisualRoot" type="Node2D" parent="." unique_id=1745246685]
 scale = Vector2(0.5, 0.5)
 
-[node name="LowerBody" type="Sprite2D" parent="VisualRoot"]
+[node name="LowerBody" type="Sprite2D" parent="VisualRoot" unique_id=914093307]
 texture_filter = 1
 material = ExtResource("6_split_lifecycle_material")
 texture = ExtResource("3_lower_idle_texture")
@@ -53,7 +53,7 @@ color = Color(0.34, 1.65, 0.18, 1)
 polygon = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
 uv = PackedVector2Array(0, 0, 1, 0, 1, 1, 0, 1)
 
-[node name="MicroGlow" parent="VisualRoot/StatusLight" instance=ExtResource("7_night_light")]
+[node name="MicroGlow" parent="VisualRoot/StatusLight" unique_id=1803156477 instance=ExtResource("7_night_light")]
 color = Color(0.2060606, 1, 0.1090909, 1)
 texture = ExtResource("8_micro_light_texture")
 texture_scale = 1.35
@@ -95,8 +95,8 @@ offset_top = -20.0
 offset_right = 16.0
 offset_bottom = -15.0
 
-[connection signal="animation_finished" from="VisualRoot/MainSprite" to="." method="_on_main_sprite_animation_finished"]
 [connection signal="animation_changed" from="VisualRoot/MainSprite" to="." method="_on_main_sprite_animation_changed"]
+[connection signal="animation_finished" from="VisualRoot/MainSprite" to="." method="_on_main_sprite_animation_finished"]
 [connection signal="frame_changed" from="VisualRoot/MainSprite" to="." method="_on_main_sprite_frame_changed"]
 [connection signal="timeout" from="AttackTimer" to="." method="_on_attack_timer_timeout"]
 [connection signal="timeout" from="TargetTrackTimer" to="." method="_on_target_track_timer_timeout"]

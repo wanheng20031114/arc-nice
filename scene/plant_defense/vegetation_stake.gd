@@ -11,6 +11,7 @@ const AMBIENT_REVEAL_SECONDS := 0.15
 @onready var cell_border: MeshInstance2D = $CellBorder
 @onready var top_glow: Sprite2D = $TopGlow
 @onready var glow_motes: GPUParticles2D = $GlowMotes
+@onready var night_ring_light: NightPointLight2D = $CellBorder/NightRingLight
 
 var _spread_elapsed_at_sync: float = 0.0
 var _spread_sync_ticks: float = 0.0
@@ -27,6 +28,7 @@ func _on_setup_completed() -> void:
 
 func _on_construction_started() -> void:
 	_stop_ambient_reveal_tween()
+	night_ring_light.set_emission_allowed(false)
 	cell_border.hide()
 	top_glow.hide()
 	glow_motes.emitting = false
@@ -34,6 +36,7 @@ func _on_construction_started() -> void:
 
 
 func _on_construction_finished(was_animated: bool) -> void:
+	night_ring_light.set_emission_allowed(true)
 	if not was_animated:
 		_show_ambient_visuals_immediate()
 		return
@@ -75,6 +78,7 @@ func _on_operational_started() -> void:
 
 func _on_removal_started(_mode: RemovalMode) -> void:
 	_stop_ambient_reveal_tween()
+	night_ring_light.set_emission_allowed(false)
 	health_bar.hide()
 	cell_border.hide()
 	top_glow.hide()

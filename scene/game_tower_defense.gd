@@ -3694,6 +3694,7 @@ func _enter_victory(emit_multiplayer: bool = true) -> void:
 		defeat_camera_tween = null
 	_restore_camera_after_boss_intro()
 	wave_state = WaveState.VICTORY
+	transition_world_to_day()
 	_force_revive_dead_players(emit_multiplayer)
 	_clear_respawn_runtime_for_result()
 	if tower_defense_status_hud != null:
@@ -3716,6 +3717,7 @@ func _enter_defeat(emit_multiplayer: bool = true) -> void:
 		return
 	_cancel_plant_placement()
 	wave_state = WaveState.DEFEAT
+	transition_world_to_day()
 	defeat_presentation_completed = false
 	_clear_respawn_runtime_for_result()
 	enemy_spawn_timer.stop()

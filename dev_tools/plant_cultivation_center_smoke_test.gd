@@ -376,14 +376,14 @@ func _test_world_glow_contract(
 		)
 		and HOTSPOT_LIGHT_TEXTURE.get_size() == Vector2(256, 256)
 		and is_equal_approx(hotspot_glow.texture_scale, 0.25)
-		and is_equal_approx(hotspot_glow.night_energy, 0.65)
+		and is_equal_approx(hotspot_glow.night_energy, 0.84)
 		and not hotspot_glow.shadow_enabled
 		and hotspot_glow.visible
 		and hotspot_glow.is_visible_in_tree()
 		and hotspot_glow.is_emission_allowed()
 		and hotspot_glow.get("_controller") == day_night_controller
 		and hotspot_glow.enabled
-		and is_equal_approx(hotspot_glow.energy, 0.65),
+		and is_equal_approx(hotspot_glow.energy, 0.84),
 		"五处亮核必须共用一盏可见、已绑定昼夜系统且强度足够的嫩绿色夜间PointLight2D。"
 	)
 	_expect(
@@ -440,7 +440,7 @@ func _test_world_glow_contract(
 		hotspot_glow != null
 		and hotspot_glow.is_emission_allowed()
 		and hotspot_glow.enabled
-		and is_equal_approx(hotspot_glow.energy, 0.65),
+		and is_equal_approx(hotspot_glow.energy, 0.84),
 		"培育中心建造完成后必须恢复五热点环境微光。"
 	)
 	var shader_source := FileAccess.get_file_as_string(

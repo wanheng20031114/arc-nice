@@ -13,11 +13,17 @@ const INTERACTION_GROUP := PlantDefense.BUILDING_INTERACTION_GROUP
 const INTERACTION_SELECTION_REFRESH_SECONDS := 0.08
 const MULTIPLAYER_RESEARCH_REQUEST_TIMEOUT_SECONDS := 4.0
 const MULTIPLAYER_RESEARCH_COMMAND_SCHEMA := 2
+const BORDER_REVEAL_SECONDS := 0.15
+const BORDER_WORKING_ACTIVE_PARAMETER := &"working_active"
+const BORDER_PROGRESS_VALUE_PARAMETER := &"progress_value"
+const BORDER_NOISE_SEED_PARAMETER := &"noise_seed"
 
 @onready var interaction_area: Area2D = $InteractionArea
 @onready var interaction_prompt: Control = $InteractionPrompt
 @onready var prompt_keycap: Control = $InteractionPrompt/PromptMargin/PromptRow/Keycap
 @onready var health_bar: PlantHealthBar = $HealthBar
+@onready var research_border: MeshInstance2D = $ResearchBorder
+@onready var hotspot_glow: NightPointLight2D = $HotspotGlow
 @onready var multiplayer_research_request_timer: Timer = $MultiplayerResearchRequestTimer
 
 var research_coordinator: ResearchCoordinator = null
@@ -35,6 +41,8 @@ var multiplayer_research_pending_request_id := 0
 var multiplayer_research_pending_operation: StringName = &""
 var multiplayer_research_pending_research_id: StringName = &""
 var next_multiplayer_research_request_id := 1
+var _border_reveal_tween: Tween = null
+var _border_working_active := false
 
 
 func _ready() -> void:
@@ -46,6 +54,21 @@ func _ready() -> void:
 	set_process_unhandled_input(false)
 	interaction_area.body_entered.connect(_on_interaction_area_body_entered)
 	interaction_area.body_exited.connect(_on_interaction_area_body_exited)
+	var seed_source := int(get_instance_id())
+	research_border.set_instance_shader_parameter(
+		BORDER_NOISE_SEED_PARAMETER,
+		float(posmod(seed_source * 43 + 17, 997)) / 997.0
+	)
+	research_border.set_instance_shader_parameter(
+		BORDER_WORKING_ACTIVE_PARAMETER,
+		false
+	)
+	_sync_research_border()
+
+
+func _exit_tree() -> void:
+	_disconnect_research_coordinator()
+	_stop_border_reveal_tween()
 
 
 func _process(delta: float) -> void:
@@ -80,15 +103,47 @@ func _on_setup_completed() -> void:
 	health_bar.setup(max_health, current_health)
 	if not health_changed.is_connected(_on_health_changed):
 		health_changed.connect(_on_health_changed)
+	_sync_research_border()
+
+
+func _on_construction_started() -> void:
+	_stop_border_reveal_tween()
+	research_border.hide()
+	hotspot_glow.set_emission_allowed(false)
+
+
+func _on_construction_finished(was_animated: bool) -> void:
+	_sync_research_border()
+	hotspot_glow.set_emission_allowed(true)
+	if not was_animated:
+		research_border.modulate.a = 1.0
+		research_border.show()
+		return
+	research_border.modulate.a = 0.0
+	research_border.show()
+	_border_reveal_tween = create_tween()
+	_border_reveal_tween.set_trans(Tween.TRANS_SINE).set_ease(
+		Tween.EASE_OUT
+	)
+	_border_reveal_tween.tween_property(
+		research_border,
+		"modulate:a",
+		1.0,
+		BORDER_REVEAL_SECONDS
+	)
 
 
 func _on_operational_started() -> void:
 	interaction_area.set_deferred("monitoring", true)
+	_sync_research_border()
 
 
 func _on_removal_started(_mode: RemovalMode) -> void:
 	var interaction_player := nearby_player
 	nearby_player = null
+	_stop_border_reveal_tween()
+	research_border.hide()
+	hotspot_glow.set_emission_allowed(false)
 	health_bar.hide()
 	set_process(false)
 	interaction_area.set_deferred("monitoring", false)
@@ -98,7 +153,21 @@ func _on_removal_started(_mode: RemovalMode) -> void:
 
 
 func set_research_coordinator(coordinator: ResearchCoordinator) -> void:
+	if research_coordinator == coordinator:
+		_sync_research_border()
+		return
+	_disconnect_research_coordinator()
 	research_coordinator = coordinator
+	if (
+		research_coordinator != null
+		and not research_coordinator.research_state_changed.is_connected(
+			_sync_research_border
+		)
+	):
+		research_coordinator.research_state_changed.connect(
+			_sync_research_border
+		)
+	_sync_research_border()
 
 
 func set_shared_research_panel(panel: ResearchCenterPanel) -> void:
@@ -114,6 +183,68 @@ func set_research_services(
 ) -> void:
 	set_research_coordinator(coordinator)
 	set_shared_research_panel(panel)
+
+
+func _sync_research_border() -> void:
+	if not is_node_ready():
+		return
+	var active_research_id := (
+		research_coordinator.get_active_global_research_id()
+		if research_coordinator != null
+		else &""
+	)
+	var working := (
+		research_coordinator != null
+		and not active_research_id.is_empty()
+		and is_operational
+		and not is_dead
+		and not is_removing
+		and (
+			research_coordinator.get_global_research_state(
+				active_research_id
+			)
+			== ResearchCoordinator.GlobalResearchState.RESEARCHING
+		)
+	)
+	var progress_start := (
+		research_coordinator.get_global_progress_ratio(
+			active_research_id
+		)
+		if working
+		else 0.0
+	)
+	if _border_working_active != working:
+		_border_working_active = working
+		research_border.set_instance_shader_parameter(
+			BORDER_WORKING_ACTIVE_PARAMETER,
+			working
+		)
+	research_border.set_instance_shader_parameter(
+		BORDER_PROGRESS_VALUE_PARAMETER,
+		progress_start
+	)
+
+
+func _disconnect_research_coordinator() -> void:
+	if (
+		research_coordinator != null
+		and is_instance_valid(research_coordinator)
+		and research_coordinator.research_state_changed.is_connected(
+			_sync_research_border
+		)
+	):
+		research_coordinator.research_state_changed.disconnect(
+			_sync_research_border
+		)
+
+
+func _stop_border_reveal_tween() -> void:
+	if (
+		_border_reveal_tween != null
+		and _border_reveal_tween.is_valid()
+	):
+		_border_reveal_tween.kill()
+	_border_reveal_tween = null
 
 
 func close_research_panel() -> void:

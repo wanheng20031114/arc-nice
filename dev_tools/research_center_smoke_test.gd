@@ -6,6 +6,9 @@ const PRODUCTION_COORDINATOR_SCENE := preload(
 const RESEARCH_COORDINATOR_SCENE := preload(
 	"res://scene/plant_defense/research_coordinator.tscn"
 )
+const DAY_NIGHT_CONTROLLER_SCENE := preload(
+	"res://scene/lighting/day_night_controller.tscn"
+)
 const WAREHOUSE_SCENE := preload("res://scene/plant_defense/oak_warehouse.tscn")
 const PANEL_SCENE := preload("res://scene/plant_defense/research_center_panel.tscn")
 const WEISHIDAIER_SCENE := preload(
@@ -41,6 +44,9 @@ func _run() -> void:
 		PRODUCTION_COORDINATOR_SCENE.instantiate() as ProductionCoordinator
 	)
 	var research := RESEARCH_COORDINATOR_SCENE.instantiate() as ResearchCoordinator
+	var day_night := (
+		DAY_NIGHT_CONTROLLER_SCENE.instantiate() as DayNightController
+	)
 	var warehouse := WAREHOUSE_SCENE.instantiate() as OakWarehouse
 	var second_warehouse := WAREHOUSE_SCENE.instantiate() as OakWarehouse
 	var plant_system := PlantSystem.new()
@@ -55,6 +61,7 @@ func _run() -> void:
 		else null
 	)
 	for node in [
+		day_night,
 		production,
 		research,
 		warehouse,
@@ -69,10 +76,16 @@ func _run() -> void:
 		if node != null:
 			test_root.add_child(node)
 	await process_frame
+	day_night.set_night_factor_immediate(1.0)
+	await process_frame
 	production.production_tick_timer.stop()
 	research.research_tick_timer.stop()
+	_expect(
+		is_equal_approx(research.research_tick_timer.wait_time, 0.25),
+		"科研进度必须以4Hz权威事件步进，使外框无需逐帧CPU Tween。"
+	)
 
-	_test_config_and_scene(config, center, panel)
+	_test_config_and_scene(config, center, panel, day_night)
 	_test_interaction_candidate_ordering(test_root)
 	if config == null or center == null:
 		_finish(test_root)
@@ -94,6 +107,7 @@ func _run() -> void:
 			Vector2i.ONE,
 		]
 	)
+	_test_operational_night_visuals(center, day_night)
 	production.register_plant(warehouse)
 	production.register_plant(second_warehouse)
 	research.setup(production, plant_system, null)
@@ -102,6 +116,13 @@ func _run() -> void:
 	research.register_player(hoe_cat)
 	center.set_research_services(research, panel)
 	plant_system.plant_footprints[center] = center.footprint_cells.duplicate()
+	center.call("_sync_research_border")
+	_expect_research_border_state(
+		center,
+		false,
+		0.0,
+		"没有全局研究时科研中心外框必须保持淡蓝噪波空闲态。"
+	)
 
 	_expect(warehouse.try_add_storage_item_count(PLANK, 30), "第一测试仓库必须能加入30木板。")
 	_expect(warehouse.try_add_storage_item_count(SAPLING, 10), "第一测试仓库必须能加入10树苗。")
@@ -120,6 +141,14 @@ func _run() -> void:
 	_expect(second_warehouse.try_add_storage_item_count(SAPLING, 11), "第二测试仓库必须能补入11树苗。")
 	var start_result := center.try_start_global_research()
 	_expect(start_result == ResearchCoordinator.RESULT_SUCCESS, "材料足够时必须立即开始全局研究。")
+	center.call("_sync_research_border")
+	_expect_research_border_state(
+		center,
+		true,
+		0.0,
+		"研究开始时科研中心外框必须立即切换为从顶部零点起步的进度态。"
+	)
+	await _test_research_border_event_step(center)
 	_expect(
 		production.get_total_item_count(PLANK) == 20
 		and production.get_total_item_count(SAPLING) == 10
@@ -137,6 +166,13 @@ func _run() -> void:
 		"同一时刻只能进行一项全局研究，冲突请求不得预扣材料。"
 	)
 	research.advance_global_research(59.0)
+	center.call("_sync_research_border")
+	_expect_research_border_state(
+		center,
+		true,
+		59.0 / 60.0,
+		"研究未完成时科研中心外框必须准确采用最新权威进度。"
+	)
 	_expect(
 		research.get_global_research_state(BUILDING_DEFENSE_RESEARCH_ID)
 		== ResearchCoordinator.GlobalResearchState.RESEARCHING
@@ -148,6 +184,13 @@ func _run() -> void:
 		"研究未满60秒时不得提前提供建筑物防。"
 	)
 	research.advance_global_research(1.0)
+	center.call("_sync_research_border")
+	_expect_research_border_state(
+		center,
+		false,
+		0.0,
+		"研究完成后科研中心外框必须退出进度态并恢复淡蓝空闲态。"
+	)
 	_expect(
 		research.get_global_research_state(BUILDING_DEFENSE_RESEARCH_ID)
 		== ResearchCoordinator.GlobalResearchState.COMPLETED
@@ -178,7 +221,8 @@ func _run() -> void:
 func _test_config_and_scene(
 	config: PlantDefenseConfig,
 	center: ResearchCenter,
-	panel: ResearchCenterPanel
+	panel: ResearchCenterPanel,
+	day_night: DayNightController
 ) -> void:
 	var defense_research := GlobalResearchRegistry.get_config(
 		BUILDING_DEFENSE_RESEARCH_ID
@@ -221,6 +265,33 @@ func _test_config_and_scene(
 	if center != null:
 		var visual_root := center.get_node_or_null("VisualRoot") as Node2D
 		var sprite := center.get_node_or_null("VisualRoot/MainSprite") as Sprite2D
+		var sprite_material := (
+			sprite.material as ShaderMaterial
+			if sprite != null
+			else null
+		)
+		var research_border := center.get_node_or_null(
+			"ResearchBorder"
+		) as MeshInstance2D
+		var border_mesh := (
+			research_border.mesh as QuadMesh
+			if research_border != null
+			else null
+		)
+		var border_material := (
+			research_border.material as ShaderMaterial
+			if research_border != null
+			else null
+		)
+		var hotspot_glow := center.get_node_or_null(
+			"HotspotGlow"
+		) as NightPointLight2D
+		var authored_lights: Array[Node] = center.find_children(
+			"*",
+			"Light2D",
+			true,
+			false
+		)
 		var request_timer := center.get_node_or_null(
 			"MultiplayerResearchRequestTimer"
 		) as Timer
@@ -232,6 +303,99 @@ func _test_config_and_scene(
 			and sprite.texture.get_size() == Vector2(64, 64)
 			and sprite.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
 			"科研中心必须以64×64源图、0.5世界缩放和nearest采样显示。"
+		)
+		_expect(
+			sprite_material != null
+			and not sprite_material.resource_local_to_scene
+			and sprite_material.shader != null
+			and sprite_material.shader.resource_path
+			== "res://resources/shader/research_center_lifecycle_glow.gdshader"
+			and (
+				sprite_material.get_shader_parameter(&"lifecycle_noise")
+				is Texture2D
+			)
+			and float(
+				sprite_material.get_shader_parameter(&"glow_core_strength")
+			) > float(
+				sprite_material.get_shader_parameter(&"glow_halo_strength")
+			)
+			and float(
+				sprite_material.get_shader_parameter(&"glow_pulse_amount")
+			) > 0.0,
+			"科研中心主体必须使用只强化三处蓝色像素的专用生命周期微光材质。"
+		)
+		_expect(
+			research_border != null
+			and research_border.get_parent() == center
+			and research_border.z_index == -1
+			and research_border.texture_filter
+			== CanvasItem.TEXTURE_FILTER_NEAREST
+			and border_mesh != null
+			and border_mesh.size == Vector2(32, 32)
+			and border_material != null
+			and not border_material.resource_local_to_scene
+			and border_material.shader != null
+			and border_material.shader.resource_path
+			== "res://resources/shader/research_center_border.gdshader",
+			"科研中心必须在未缩放根节点预建32×32、两个像素宽的独立科研进度外框。"
+		)
+		if border_material != null:
+			var idle_blue: Color = border_material.get_shader_parameter(
+				&"idle_blue"
+			)
+			var idle_shadow: Color = border_material.get_shader_parameter(
+				&"idle_shadow"
+			)
+			var progress_cyan: Color = border_material.get_shader_parameter(
+				&"progress_cyan"
+			)
+			var progress_aquamarine: Color = (
+				border_material.get_shader_parameter(
+					&"progress_aquamarine"
+				)
+			)
+			_expect(
+				idle_blue.is_equal_approx(
+					Color(0.0, 191.0 / 255.0, 1.0, 1.0)
+				)
+				and idle_shadow.b > idle_shadow.g
+				and progress_cyan.g >= 0.99
+				and progress_cyan.b >= 0.99
+				and progress_aquamarine.get_luminance()
+				> idle_blue.get_luminance()
+				and float(
+					border_material.get_shader_parameter(
+						&"data_noise_speed"
+					)
+				) > 0.0,
+				"科研外框必须以#00BFFF为默认蓝，并以更明亮的青色噪波显示已完成进度。"
+			)
+		_expect(
+			not center.has_method("_set_research_border_progress")
+			and not center.has_method("_stop_border_progress_tween"),
+			"科研外框进度必须只跟随低频权威研究事件更新，不能保留逐帧写参数的Tween回调。"
+		)
+		_expect(
+			hotspot_glow != null
+			and authored_lights.size() == 1
+			and hotspot_glow.texture != null
+			and hotspot_glow.texture.resource_path
+			== "res://resources/lighting/research_center_hotspots.svg"
+			and hotspot_glow.color.is_equal_approx(
+				Color(112.0 / 255.0, 217.0 / 255.0, 1.0, 1.0)
+			)
+			and hotspot_glow.texture.get_size() == Vector2(256, 256)
+			and is_equal_approx(hotspot_glow.texture_scale, 0.25)
+			and is_equal_approx(hotspot_glow.night_energy, 0.45)
+			and not hotspot_glow.starts_emitting
+			and not hotspot_glow.shadow_enabled
+			and not hotspot_glow.is_processing()
+			and not hotspot_glow.is_physics_processing()
+			and not hotspot_glow.is_emission_allowed()
+			and not hotspot_glow.enabled
+			and is_zero_approx(hotspot_glow.energy)
+			and hotspot_glow.get("_controller") == day_night,
+			"科研中心必须原生预建一盏绑定昼夜控制器、覆盖三处热点的淡蓝夜间灯。"
 		)
 		_expect(
 			request_timer != null
@@ -287,6 +451,113 @@ func _test_config_and_scene(
 			and background.texture.get_size() == Vector2(728, 544),
 			"科研UI必须使用独立生成的728×544蓝色科技背景。"
 		)
+
+
+func _test_operational_night_visuals(
+	center: ResearchCenter,
+	day_night: DayNightController
+) -> void:
+	var hotspot_glow := center.get_node_or_null(
+		"HotspotGlow"
+	) as NightPointLight2D
+	_expect(
+		hotspot_glow != null
+		and center.is_operational
+		and day_night.is_night()
+		and hotspot_glow.visible
+		and hotspot_glow.is_visible_in_tree()
+		and hotspot_glow.is_emission_allowed()
+		and hotspot_glow.enabled
+		and is_equal_approx(hotspot_glow.energy, 0.45),
+		"科研中心完成建造后，三处淡蓝热点必须在黑夜立即启用额定微光。"
+	)
+	day_night.set_night_factor_immediate(0.0)
+	_expect(
+		hotspot_glow != null
+		and not hotspot_glow.enabled
+		and is_zero_approx(hotspot_glow.energy),
+		"科研中心三处热点必须在白昼关闭真实灯光，不能常驻耗费灯光预算。"
+	)
+	day_night.set_night_factor_immediate(1.0)
+	_expect(
+		hotspot_glow != null
+		and hotspot_glow.enabled
+		and is_equal_approx(hotspot_glow.energy, 0.45),
+		"科研中心三处热点必须能随昼夜控制器重新进入淡蓝夜间微光态。"
+	)
+	var research_border := center.get_node_or_null(
+		"ResearchBorder"
+	) as MeshInstance2D
+	center.call("_on_construction_started")
+	_expect(
+		research_border != null
+		and not research_border.visible
+		and hotspot_glow != null
+		and not hotspot_glow.is_emission_allowed()
+		and not hotspot_glow.enabled
+		and is_zero_approx(hotspot_glow.energy),
+		"科研中心建造过程中必须同时隐藏科研外框并关闭三热点灯。"
+	)
+	center.call("_on_construction_finished", false)
+	_expect(
+		research_border != null
+		and research_border.visible
+		and is_equal_approx(research_border.modulate.a, 1.0)
+		and hotspot_glow != null
+		and hotspot_glow.is_emission_allowed()
+		and hotspot_glow.enabled
+		and is_equal_approx(hotspot_glow.energy, 0.45),
+		"科研中心建造完成后必须恢复科研外框与三热点夜间微光。"
+	)
+
+
+func _expect_research_border_state(
+	center: ResearchCenter,
+	expected_working: bool,
+	expected_progress: float,
+	message: String
+) -> void:
+	var research_border := center.get_node_or_null(
+		"ResearchBorder"
+	) as MeshInstance2D
+	if research_border == null:
+		_expect(false, message)
+		return
+	var actual_working := bool(
+		research_border.get_instance_shader_parameter(&"working_active")
+	)
+	var actual_progress := float(
+		research_border.get_instance_shader_parameter(&"progress_value")
+	)
+	_expect(
+		actual_working == expected_working
+		and absf(actual_progress - expected_progress) <= 0.0001,
+		"%s（working=%s，progress=%.4f）" % [
+			message,
+			str(actual_working),
+			actual_progress,
+		]
+	)
+
+
+func _test_research_border_event_step(center: ResearchCenter) -> void:
+	var research_border := center.get_node_or_null(
+		"ResearchBorder"
+	) as MeshInstance2D
+	if research_border == null:
+		_expect(false, "科研外框事件步进测试必须找到ResearchBorder节点。")
+		return
+	var progress_anchor := float(
+		research_border.get_instance_shader_parameter(&"progress_value")
+	)
+	await create_timer(0.05).timeout
+	var progress_after_time := float(
+		research_border.get_instance_shader_parameter(&"progress_value")
+	)
+	_expect(
+		absf(progress_after_time - progress_anchor) <= 0.000001,
+		"没有权威研究事件时外框进度必须保持不变，不能保留逐帧CPU Tween。"
+	)
 
 
 func _test_global_move_speed_research(

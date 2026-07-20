@@ -4,7 +4,33 @@
 [ext_resource type="Texture2D" uid="uid://cx5577bfmgaln" path="res://resources/texture/plant_defense/research_center/research_center.png" id="2_sprite"]
 [ext_resource type="PackedScene" uid="uid://by1igl2yc3ch0" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
 [ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
-[ext_resource type="Material" path="res://resources/shader/plant_lifecycle_material.tres" id="5_lifecycle_material"]
+[ext_resource type="Shader" path="res://resources/shader/research_center_lifecycle_glow.gdshader" id="5_lifecycle_glow_shader"]
+[ext_resource type="Texture2D" path="res://resources/shader/plant_lifecycle_noise.tres" id="6_lifecycle_noise"]
+[ext_resource type="Shader" path="res://resources/shader/research_center_border.gdshader" id="7_border_shader"]
+[ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="8_night_light"]
+[ext_resource type="Texture2D" path="res://resources/lighting/research_center_hotspots.svg" id="9_hotspot_texture"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_research_border"]
+shader = ExtResource("7_border_shader")
+shader_parameter/idle_blue = Color(0, 0.7490196, 1, 1)
+shader_parameter/idle_shadow = Color(0, 0.4, 0.62, 1)
+shader_parameter/progress_cyan = Color(0, 1, 1, 1)
+shader_parameter/progress_aquamarine = Color(0.49803922, 1, 0.83137256, 1)
+shader_parameter/progress_turquoise = Color(0.2509804, 0.8784314, 0.8156863, 1)
+shader_parameter/data_noise_speed = 1.65
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_lifecycle_glow"]
+shader = ExtResource("5_lifecycle_glow_shader")
+shader_parameter/lifecycle_noise = ExtResource("6_lifecycle_noise")
+shader_parameter/glow_color = Color(0.3, 0.9, 1.18, 1)
+shader_parameter/glow_core_strength = 0.22
+shader_parameter/glow_halo_strength = 0.04
+shader_parameter/glow_halo_alpha = 0.035
+shader_parameter/glow_pulse_amount = 0.004
+shader_parameter/glow_pulse_speed = 0.72
+
+[sub_resource type="QuadMesh" id="QuadMesh_research_border"]
+size = Vector2(32, 32)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 resource_local_to_scene = true
@@ -74,14 +100,27 @@ enemy_approach_depth = 7.0
 lifecycle_visual_paths = Array[NodePath]([NodePath("VisualRoot/MainSprite")])
 lifecycle_effect_top_y = -15.0
 
+[node name="ResearchBorder" type="MeshInstance2D" parent="."]
+z_index = -1
+texture_filter = 1
+material = SubResource("ShaderMaterial_research_border")
+mesh = SubResource("QuadMesh_research_border")
+
 [node name="VisualRoot" type="Node2D" parent="." unique_id=144664990]
 scale = Vector2(0.5, 0.5)
 
 [node name="MainSprite" type="Sprite2D" parent="VisualRoot" unique_id=1870545017]
 z_index = 1
 texture_filter = 1
-material = ExtResource("5_lifecycle_material")
+material = SubResource("ShaderMaterial_lifecycle_glow")
 texture = ExtResource("2_sprite")
+
+[node name="HotspotGlow" parent="." instance=ExtResource("8_night_light")]
+color = Color(0.4392157, 0.8509804, 1, 1)
+texture = ExtResource("9_hotspot_texture")
+texture_scale = 0.25
+night_energy = 0.45
+starts_emitting = false
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=245206535]
 position = Vector2(0, 1.5)

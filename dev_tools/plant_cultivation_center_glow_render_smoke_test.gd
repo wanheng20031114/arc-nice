@@ -91,7 +91,7 @@ func _run() -> void:
 		hotspot_glow.visible
 		and hotspot_glow.is_visible_in_tree()
 		and hotspot_glow.enabled
-		and is_equal_approx(hotspot_glow.energy, 0.65),
+		and is_equal_approx(hotspot_glow.energy, 0.84),
 		"真实渲染前，五热点灯必须处于可见且满强度的夜间状态。"
 	)
 

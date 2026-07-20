@@ -88,7 +88,8 @@ func _unbind_controller() -> void:
 func _refresh_emission() -> void:
 	var effective_factor := _night_factor if _emission_allowed else 0.0
 	var next_energy := night_energy * effective_factor
-	energy = next_energy
+	if energy != next_energy:
+		energy = next_energy
 	var should_enable := next_energy > ENABLE_EPSILON
 	if enabled != should_enable:
 		enabled = should_enable

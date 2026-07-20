@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 64 64">
+  <defs>
+    <radialGradient id="beacon">
+      <stop offset="0" stop-color="#fff" stop-opacity=".62"/>
+      <stop offset=".3" stop-color="#fff" stop-opacity=".44"/>
+      <stop offset=".6" stop-color="#fff" stop-opacity=".17"/>
+      <stop offset=".84" stop-color="#fff" stop-opacity=".04"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="panel">
+      <stop offset="0" stop-color="#fff" stop-opacity=".56"/>
+      <stop offset=".32" stop-color="#fff" stop-opacity=".39"/>
+      <stop offset=".62" stop-color="#fff" stop-opacity=".15"/>
+      <stop offset=".84" stop-color="#fff" stop-opacity=".035"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" fill="#000"/>
+  <circle cx="41.25" cy="28.85" r="4.5" fill="url(#beacon)"/>
+  <circle cx="22.63" cy="41.55" r="5.5" fill="url(#panel)"/>
+  <circle cx="41.5" cy="41.35" r="5.5" fill="url(#panel)"/>
+</svg>

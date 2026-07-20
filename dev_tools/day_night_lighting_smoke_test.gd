@@ -41,7 +41,7 @@ func _run() -> void:
 	await _test_parallel_world_isolation()
 	await _test_vegetation_ring_night_behavior()
 	_test_authored_scene_contracts()
-	await _test_wave_one_gradual_transition()
+	await _test_every_wave_gradual_transition()
 	await _test_tower_wave_lighting()
 	await _test_fresh_client_remote_flow_lighting()
 	for _cleanup_frame in range(4):
@@ -175,7 +175,6 @@ func _test_vegetation_ring_night_behavior() -> void:
 	test_root.add_child(stake)
 	await process_frame
 
-	var border := stake.get_node("CellBorder") as MeshInstance2D
 	var ring_light := (
 		stake.get_node_or_null(
 			"CellBorder/NightRingLight"
@@ -204,10 +203,29 @@ func _test_vegetation_ring_night_behavior() -> void:
 		and ring_light.is_visible_in_tree(),
 		"植被桩绿色环灯必须只在夜间以完整配置能量显示。"
 	)
-	border.hide()
+	stake.call("_on_construction_started")
 	_expect(
-		not ring_light.is_visible_in_tree(),
-		"植被桩建造或拆除隐藏边框时必须同步隐藏夜间光环。"
+		not ring_light.is_emission_allowed()
+		and not ring_light.enabled
+		and is_zero_approx(ring_light.energy)
+		and not ring_light.is_visible_in_tree(),
+		"植被桩建造时必须同时隐藏环灯并停止其夜间能量更新。"
+	)
+	stake.call("_on_construction_finished", false)
+	_expect(
+		ring_light.is_emission_allowed()
+		and ring_light.enabled
+		and is_equal_approx(ring_light.energy, ring_light.night_energy)
+		and ring_light.is_visible_in_tree(),
+		"植被桩建造完成后必须恢复夜间光环与额定能量。"
+	)
+	stake.call("_on_removal_started", PlantDefense.RemovalMode.SILENT)
+	_expect(
+		not ring_light.is_emission_allowed()
+		and not ring_light.enabled
+		and is_zero_approx(ring_light.energy)
+		and not ring_light.is_visible_in_tree(),
+		"植被桩拆除时必须立即禁用隐藏的夜间环灯。"
 	)
 
 	test_root.queue_free()
@@ -364,7 +382,7 @@ func _test_authored_scene_contracts() -> void:
 	tower.free()
 
 
-func _test_wave_one_gradual_transition() -> void:
+func _test_every_wave_gradual_transition() -> void:
 	var run_state := root.get_node_or_null("RunState") as RunStateStore
 	if run_state != null:
 		run_state.set_selected_character(
@@ -447,12 +465,36 @@ func _test_wave_one_gradual_transition() -> void:
 			and is_zero_approx(player_light.energy),
 			"白天渐变结束后必须恢复纯白且玩家灯光无能耗。"
 		)
-		game.call("_apply_wave_start_lighting", 2)
-		await create_timer(0.05).timeout
+		game.call("_begin_flow_step", next_wave)
+		game.enemy_spawn_timer.stop()
+		await create_timer(0.06).timeout
 		_expect(
-			is_zero_approx(controller.night_factor)
-			and controller.color.is_equal_approx(Color.WHITE),
-			"当前测试策略只能由第一波自动触发黑夜，后续波次不得擅自改写昼夜安排。"
+			game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE
+			and controller.night_factor > 0.0
+			and controller.night_factor < 1.0
+			and not controller.color.is_equal_approx(Color.WHITE),
+			"第二波战斗开始后也必须从白天平滑进入黑夜。"
+		)
+		await create_timer(0.22).timeout
+		_expect(
+			controller.is_night()
+			and controller.color.is_equal_approx(
+				DayNightController.REFERENCE_NIGHT_COLOR
+			)
+			and player_light != null
+			and player_light.enabled
+			and player_light.energy > 0.0,
+			"第二波夜幕渐变结束后必须恢复完整黑夜与玩家照明。"
+		)
+		game.call("_enter_intermission", next_wave)
+		await create_timer(0.22).timeout
+		_expect(
+			game.wave_state == GameRuntimeBase.WaveState.INTERMISSION
+			and is_zero_approx(controller.night_factor)
+			and controller.color.is_equal_approx(Color.WHITE)
+			and player_light != null
+			and not player_light.enabled,
+			"第二波结算休整也必须重新回到白昼并关闭夜间玩家灯。"
 		)
 
 	game.state_timer.stop()
@@ -606,6 +648,36 @@ func _test_fresh_client_remote_flow_lighting() -> void:
 				and controller.color.is_equal_approx(Color.WHITE)
 				and _all_lights_disabled(player_lights),
 				"%s客户端收到休整状态时必须同步回白天并关闭玩家灯。"
+				% label
+			)
+			controller.set_night_factor_immediate(1.0)
+			game.call(
+				"apply_remote_flow_state",
+				&"",
+				GameRuntimeBase.WaveState.VICTORY,
+				0
+			)
+			await create_timer(0.18).timeout
+			_expect(
+				is_zero_approx(controller.night_factor)
+				and controller.color.is_equal_approx(Color.WHITE)
+				and _all_lights_disabled(player_lights),
+				"%s客户端进入胜利结果态时必须离开战斗黑夜。"
+				% label
+			)
+			controller.set_night_factor_immediate(1.0)
+			game.call(
+				"apply_remote_flow_state",
+				&"",
+				GameRuntimeBase.WaveState.DEFEAT,
+				0
+			)
+			await create_timer(0.18).timeout
+			_expect(
+				is_zero_approx(controller.night_factor)
+				and controller.color.is_equal_approx(Color.WHITE)
+				and _all_lights_disabled(player_lights),
+				"%s客户端进入失败结果态时也必须离开战斗黑夜。"
 				% label
 			)
 

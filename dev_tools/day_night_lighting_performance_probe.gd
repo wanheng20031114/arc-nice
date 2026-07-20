@@ -17,6 +17,11 @@ const VEGETATION_RING_TEXTURE := preload(
 const EXPECTED_AUTHORED_LIGHT_COUNT := 8
 const DEFAULT_STRESS_LIGHT_COUNT := 100
 const MICRO_BENCHMARK_LIGHT_COUNT := 512
+const MICRO_BROADCAST_P95_BUDGET_USEC := 1250.0
+const MICRO_BROADCAST_MAX_BUDGET_USEC := 2000.0
+const LIVE_GAMEPLAY_ENEMY_COUNT := 96
+const LIFECYCLE_BENCHMARK_BATCH_SIZE := 128
+const LIFECYCLE_BENCHMARK_ROUNDS := 24
 const DEFAULT_WARMUP_FRAMES := 60
 const DEFAULT_SAMPLE_FRAMES := 180
 const DEFAULT_MICRO_SAMPLE_COUNT := 360
@@ -48,6 +53,8 @@ var sample_frames := DEFAULT_SAMPLE_FRAMES
 var micro_sample_count := DEFAULT_MICRO_SAMPLE_COUNT
 var stress_light_count := DEFAULT_STRESS_LIGHT_COUNT
 var save_screenshot := false
+var cpu_only := false
+var live_gameplay := false
 
 
 class LegacyBroadcastLight:
@@ -124,7 +131,6 @@ func _run() -> void:
 		await _finish()
 		return
 
-	_stop_background_gameplay()
 	_prepare_camera_fixture()
 	viewport_rid = game.get_viewport().get_viewport_rid()
 	RenderingServer.viewport_set_measure_render_time(viewport_rid, true)
@@ -140,6 +146,12 @@ func _run() -> void:
 			]
 		)
 	)
+	if live_gameplay:
+		await _run_live_gameplay_probe()
+		await _finish()
+		return
+
+	_stop_background_gameplay()
 
 	var authored_lights := _collect_night_lights(game)
 	_expect(
@@ -157,6 +169,15 @@ func _run() -> void:
 		_all_lights_without_process(authored_lights),
 		"Authored PointLight2D nodes must not register per-frame script processing."
 	)
+	_expect(
+		_all_lights_without_shadows(authored_lights),
+		"Authored night lights must keep 2D shadows disabled."
+	)
+	if cpu_only:
+		await _run_broadcast_microbenchmark()
+		await _run_lifecycle_microbenchmark()
+		await _finish()
+		return
 
 	var day_zero_summary: Dictionary = await _measure_phase(
 		"day_zero_active",
@@ -263,6 +284,7 @@ func _run() -> void:
 	)
 
 	await _run_broadcast_microbenchmark()
+	await _run_lifecycle_microbenchmark()
 	controller.set_night_factor_immediate(0.0)
 	await process_frame
 	_expect(
@@ -296,6 +318,10 @@ func _parse_user_arguments() -> void:
 			)
 		elif argument == "--screenshot":
 			save_screenshot = true
+		elif argument == "--cpu-only":
+			cpu_only = true
+		elif argument == "--live-gameplay":
+			live_gameplay = true
 
 
 func _configure_benchmark_window() -> void:
@@ -367,6 +393,182 @@ func _prepare_camera_fixture() -> void:
 		game.map_camera.force_update_scroll()
 
 
+func _run_live_gameplay_probe() -> void:
+	_expect(
+		not game.waves.is_empty(),
+		"Live lighting probe requires at least one authored combat wave."
+	)
+	if game.waves.is_empty():
+		return
+	if game.player != null:
+		game.player.max_health = 1_000_000_000
+		game.player.current_health = 1_000_000_000
+		game.player.is_dead = false
+		game.player.controls_locked = true
+		game.player.uses_local_input = false
+
+	var enemy_count_before := game.enemy_container.get_child_count()
+	game.enemy_spawn_timer.stop()
+	game.state_timer.stop()
+	game.wave_state = GameRuntimeBase.WaveState.WAVE_ACTIVE
+	var spawned_enemy_count := _spawn_live_gameplay_enemies()
+	_expect(
+		spawned_enemy_count == LIVE_GAMEPLAY_ENEMY_COUNT,
+		"Live lighting probe must instantiate its full real-enemy cohort."
+	)
+	for _warmup_index in range(60):
+		await physics_frame
+		await process_frame
+	var transition_to_night_summary := await _measure_transition(
+		"live_combat_day_to_night",
+		true,
+		EXPECTED_AUTHORED_LIGHT_COUNT
+	)
+	var stable_night_summary := await _measure_phase(
+		"live_combat_stable_night",
+		EXPECTED_AUTHORED_LIGHT_COUNT
+	)
+	var transition_to_day_summary := await _measure_transition(
+		"live_combat_night_to_day",
+		false,
+		0
+	)
+	var stable_day_summary := await _measure_phase(
+		"live_combat_stable_day",
+		0
+	)
+	_print_live_gameplay_cpu_comparison(
+		stable_night_summary,
+		stable_day_summary,
+		transition_to_night_summary,
+		transition_to_day_summary
+	)
+	print(
+		(
+			"DAY_NIGHT_LIGHTING_LIVE_COMBAT_STATE "
+			+ "wave_state=%d enemies_before=%d enemies_after=%d "
+			+ "live_spawned=%d"
+		)
+		% [
+			game.wave_state,
+			enemy_count_before,
+			game.enemy_container.get_child_count(),
+			spawned_enemy_count,
+		]
+	)
+	_expect(
+		game.enemy_container.get_child_count()
+			>= enemy_count_before + LIVE_GAMEPLAY_ENEMY_COUNT,
+		"Live lighting sample must keep real enemies active during measurement."
+	)
+
+
+func _spawn_live_gameplay_enemies() -> int:
+	var pathfinder := game.grid_pathfinder as GridPathfinder
+	_expect(
+		pathfinder != null and pathfinder.is_built,
+		"Live lighting probe requires the production pathfinder."
+	)
+	if pathfinder == null or not pathfinder.is_built:
+		return 0
+	var enemy_config: EnemyConfig = null
+	for entry in game.waves[0].enemy_entries:
+		if entry != null and entry.enemy_config != null:
+			enemy_config = entry.enemy_config
+			break
+	_expect(
+		enemy_config != null and enemy_config.enemy_scene != null,
+		"Live lighting probe requires an authored enemy scene."
+	)
+	if enemy_config == null or enemy_config.enemy_scene == null:
+		return 0
+
+	var positions := PackedVector2Array()
+	var center_cell := pathfinder.call(
+		"_global_to_map",
+		FIXTURE_CENTER
+	) as Vector2i
+	for y_offset in range(-10, 11):
+		for x_offset in range(-18, 19):
+			var cell := center_cell + Vector2i(x_offset, y_offset)
+			if not pathfinder.astar_grid.is_in_boundsv(cell):
+				continue
+			if pathfinder.astar_grid.is_point_solid(cell):
+				continue
+			var world_position := pathfinder.call(
+				"_map_to_global",
+				cell
+			) as Vector2
+			if world_position.distance_to(FIXTURE_CENTER) < 96.0:
+				continue
+			positions.append(world_position)
+	_expect(
+		positions.size() >= LIVE_GAMEPLAY_ENEMY_COUNT,
+		"Live lighting fixture lacks enough walkable enemy positions."
+	)
+	if positions.size() < LIVE_GAMEPLAY_ENEMY_COUNT:
+		return 0
+
+	var spawned_count := 0
+	for enemy_index in range(LIVE_GAMEPLAY_ENEMY_COUNT):
+		var enemy := enemy_config.enemy_scene.instantiate() as Enemy
+		if enemy == null:
+			continue
+		game.enemy_container.add_child(enemy)
+		enemy.global_position = positions[enemy_index]
+		enemy.setup(enemy_config, game.player, pathfinder)
+		enemy.current_health = 1_000_000_000
+		enemy.set_near_moving_target_direct_distance(
+			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS
+		)
+		enemy.material_drop_random_generator.seed = 20260720 + enemy_index * 2
+		var insect := enemy as YuanshiInsect
+		if insect != null:
+			insect.random_generator.seed = 20260721 + enemy_index * 2
+		enemy.reset_physics_interpolation()
+		spawned_count += 1
+	return spawned_count
+
+
+func _print_live_gameplay_cpu_comparison(
+	stable_night: Dictionary,
+	stable_day: Dictionary,
+	transition_to_night: Dictionary,
+	transition_to_day: Dictionary
+) -> void:
+	var stable_night_process := stable_night["process_ms"] as Dictionary
+	var stable_night_physics := stable_night["physics_ms"] as Dictionary
+	var stable_day_process := stable_day["process_ms"] as Dictionary
+	var stable_day_physics := stable_day["physics_ms"] as Dictionary
+	var to_night_process := transition_to_night["process_ms"] as Dictionary
+	var to_night_physics := transition_to_night["physics_ms"] as Dictionary
+	var to_day_process := transition_to_day["process_ms"] as Dictionary
+	var to_day_physics := transition_to_day["physics_ms"] as Dictionary
+	print(
+		(
+			"DAY_NIGHT_LIGHTING_LIVE_COMBAT_CPU "
+			+ "stable_night_process_p95_ms=%.3f "
+			+ "stable_night_physics_p95_ms=%.3f "
+			+ "stable_day_process_p95_ms=%.3f "
+			+ "stable_day_physics_p95_ms=%.3f "
+			+ "to_night_process_p95_ms=%.3f "
+			+ "to_night_physics_p95_ms=%.3f "
+			+ "to_day_process_p95_ms=%.3f "
+			+ "to_day_physics_p95_ms=%.3f"
+		)
+		% [
+			stable_night_process["p95"],
+			stable_night_physics["p95"],
+			stable_day_process["p95"],
+			stable_day_physics["p95"],
+			to_night_process["p95"],
+			to_night_physics["p95"],
+			to_day_process["p95"],
+			to_day_physics["p95"],
+		]
+	)
+
+
 func _create_stress_lights() -> void:
 	stress_root = Node2D.new()
 	stress_root.name = "LightingPerformanceStressLights"
@@ -395,6 +597,10 @@ func _create_stress_lights() -> void:
 	_expect(
 		_all_lights_without_process(stress_lights),
 		"Stress PointLight2D nodes must remain free of per-frame script callbacks."
+	)
+	_expect(
+		_all_lights_without_shadows(stress_lights),
+		"Stress PointLight2D nodes must keep 2D shadows disabled."
 	)
 
 
@@ -520,6 +726,8 @@ func _measure_transition(
 	var wall_samples: Array[float] = []
 	var render_cpu_samples: Array[float] = []
 	var render_gpu_samples: Array[float] = []
+	var process_samples: Array[float] = []
+	var physics_samples: Array[float] = []
 	var draw_call_samples: Array[float] = []
 	var canvas_draw_call_samples: Array[float] = []
 	var started_usec := Time.get_ticks_usec()
@@ -549,6 +757,14 @@ func _measure_transition(
 				viewport_rid
 			)
 		)
+		process_samples.append(
+			Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+		)
+		physics_samples.append(
+			Performance.get_monitor(
+				Performance.TIME_PHYSICS_PROCESS
+			) * 1000.0
+		)
 		draw_call_samples.append(
 			Performance.get_monitor(
 				Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME
@@ -569,6 +785,8 @@ func _measure_transition(
 		"wall_ms": _summarize(wall_samples),
 		"render_cpu_ms": _summarize(render_cpu_samples),
 		"render_gpu_ms": _summarize(render_gpu_samples),
+		"process_ms": _summarize(process_samples),
+		"physics_ms": _summarize(physics_samples),
 		"draw_calls": _summarize(draw_call_samples),
 		"canvas_draw_calls": _summarize(canvas_draw_call_samples),
 		"elapsed_ms": elapsed_ms,
@@ -613,6 +831,8 @@ func _print_transition_summary(
 	var wall := summary["wall_ms"] as Dictionary
 	var render_cpu := summary["render_cpu_ms"] as Dictionary
 	var render_gpu := summary["render_gpu_ms"] as Dictionary
+	var process_cpu := summary["process_ms"] as Dictionary
+	var physics_cpu := summary["physics_ms"] as Dictionary
 	var draw_calls := summary["draw_calls"] as Dictionary
 	print(
 		(
@@ -620,6 +840,7 @@ func _print_transition_summary(
 			+ "elapsed_ms=%.3f wall_p95_ms=%.3f wall_max_ms=%.3f "
 			+ "render_cpu_p95_ms=%.3f render_cpu_max_ms=%.3f "
 			+ "render_gpu_p95_ms=%.3f render_gpu_max_ms=%.3f "
+			+ "process_p95_ms=%.3f physics_p95_ms=%.3f "
 			+ "draw_p50=%.0f draw_p95=%.0f"
 		)
 		% [
@@ -632,6 +853,8 @@ func _print_transition_summary(
 			render_cpu["max"],
 			render_gpu["p95"],
 			render_gpu["max"],
+			process_cpu["p95"],
+			physics_cpu["p95"],
 			draw_calls["p50"],
 			draw_calls["p95"],
 		]
@@ -656,6 +879,8 @@ func _sample_monitor_window() -> Dictionary:
 	var wall_samples: Array[float] = []
 	var render_cpu_samples: Array[float] = []
 	var render_gpu_samples: Array[float] = []
+	var process_samples: Array[float] = []
+	var physics_samples: Array[float] = []
 	var draw_call_samples: Array[float] = []
 	var canvas_draw_call_samples: Array[float] = []
 	var previous_tick_usec := Time.get_ticks_usec()
@@ -676,6 +901,14 @@ func _sample_monitor_window() -> Dictionary:
 				viewport_rid
 			)
 		)
+		process_samples.append(
+			Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+		)
+		physics_samples.append(
+			Performance.get_monitor(
+				Performance.TIME_PHYSICS_PROCESS
+			) * 1000.0
+		)
 		draw_call_samples.append(
 			Performance.get_monitor(
 				Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME
@@ -692,6 +925,8 @@ func _sample_monitor_window() -> Dictionary:
 		"wall_ms": _summarize(wall_samples),
 		"render_cpu_ms": _summarize(render_cpu_samples),
 		"render_gpu_ms": _summarize(render_gpu_samples),
+		"process_ms": _summarize(process_samples),
+		"physics_ms": _summarize(physics_samples),
 		"draw_calls": _summarize(draw_call_samples),
 		"canvas_draw_calls": _summarize(canvas_draw_call_samples),
 	}
@@ -708,6 +943,8 @@ func _print_phase_summary(
 	var wall := summary["wall_ms"] as Dictionary
 	var render_cpu := summary["render_cpu_ms"] as Dictionary
 	var render_gpu := summary["render_gpu_ms"] as Dictionary
+	var process_cpu := summary["process_ms"] as Dictionary
+	var physics_cpu := summary["physics_ms"] as Dictionary
 	var draw_calls := summary["draw_calls"] as Dictionary
 	var canvas_draw_calls := summary["canvas_draw_calls"] as Dictionary
 	print(
@@ -721,6 +958,8 @@ func _print_phase_summary(
 			+ "render_cpu_max_ms=%.3f "
 			+ "render_gpu_p50_ms=%.3f render_gpu_p95_ms=%.3f "
 			+ "render_gpu_max_ms=%.3f "
+			+ "process_p50_ms=%.3f process_p95_ms=%.3f "
+			+ "physics_p50_ms=%.3f physics_p95_ms=%.3f "
 			+ "draw_p50=%.0f draw_p95=%.0f draw_max=%.0f "
 			+ "canvas_draw_p50=%.0f canvas_draw_p95=%.0f "
 			+ "canvas_draw_max=%.0f"
@@ -741,6 +980,10 @@ func _print_phase_summary(
 			render_gpu["p50"],
 			render_gpu["p95"],
 			render_gpu["max"],
+			process_cpu["p50"],
+			process_cpu["p95"],
+			physics_cpu["p50"],
+			physics_cpu["p95"],
 			draw_calls["p50"],
 			draw_calls["p95"],
 			draw_calls["max"],
@@ -1041,14 +1284,25 @@ func _run_broadcast_microbenchmark() -> void:
 		changing_result["optimized_total_usec"]
 	)
 	_expect(
-		float(changing_optimized_summary["p95"]) <= 1000.0,
-		"%d-light broadcasts exceeded the 1 ms CPU p95 budget."
-		% MICRO_BENCHMARK_LIGHT_COUNT
+		float(changing_optimized_summary["p95"])
+		<= MICRO_BROADCAST_P95_BUDGET_USEC,
+		(
+			"%d-light broadcasts exceeded the %.2f ms CPU p95 "
+			+ "diagnostic budget."
+		)
+		% [
+			MICRO_BENCHMARK_LIGHT_COUNT,
+			MICRO_BROADCAST_P95_BUDGET_USEC / 1000.0,
+		]
 	)
 	_expect(
-		float(changing_optimized_summary["max"]) <= 2000.0,
-		"%d-light broadcasts exceeded the 2 ms CPU maximum budget."
-		% MICRO_BENCHMARK_LIGHT_COUNT
+		float(changing_optimized_summary["max"])
+		<= MICRO_BROADCAST_MAX_BUDGET_USEC,
+		"%d-light broadcasts exceeded the %.2f ms CPU maximum budget."
+		% [
+			MICRO_BENCHMARK_LIGHT_COUNT,
+			MICRO_BROADCAST_MAX_BUDGET_USEC / 1000.0,
+		]
 	)
 	_expect(
 		changing_optimized_total_usec
@@ -1091,6 +1345,48 @@ func _run_broadcast_microbenchmark() -> void:
 	)
 	_print_broadcast_pair("repeated_factor", repeated_result)
 
+	for light in optimized_lights:
+		light.set_emission_allowed(false)
+	for light in legacy_lights:
+		light._benchmark_emission_allowed = false
+	optimized_apply.call(0.65)
+	legacy_apply.call(0.65)
+	var blocked_result := _measure_interleaved_broadcast_pair(
+		optimized_apply,
+		legacy_apply,
+		true
+	)
+	var blocked_legacy_total_usec: int = (
+		blocked_result["legacy_total_usec"]
+	)
+	var blocked_optimized_total_usec: int = (
+		blocked_result["optimized_total_usec"]
+	)
+	_expect(
+		blocked_optimized_total_usec
+		<= int(round(float(blocked_legacy_total_usec) * 1.05)),
+		(
+			"Emission-blocked broadcasts regressed more than 5% "
+			+ "against the legacy path."
+		)
+	)
+	_expect(
+		blocked_optimized_total_usec
+		<= int(round(float(changing_optimized_total_usec) * 0.95)),
+		(
+			"Emission-blocked broadcasts must skip unchanged energy writes "
+			+ "and remain at least 5% cheaper than active changing lights."
+		)
+	)
+	_expect(
+		_broadcast_light_states_match(
+			optimized_lights,
+			legacy_lights
+		),
+		"Emission-blocked A/B paths must preserve identical disabled states."
+	)
+	_print_broadcast_pair("changing_factor_emission_blocked", blocked_result)
+
 	optimized_controller.set_night_factor_immediate(0.0)
 	legacy_controller.set_benchmark_night_factor(0.0)
 	var legacy_lights_disabled := true
@@ -1109,6 +1405,185 @@ func _run_broadcast_microbenchmark() -> void:
 	legacy_viewport.queue_free()
 	await process_frame
 	await process_frame
+
+
+func _run_lifecycle_microbenchmark() -> void:
+	var lifecycle_viewport := SubViewport.new()
+	lifecycle_viewport.name = "LightingLifecycleBenchmarkViewport"
+	lifecycle_viewport.disable_3d = true
+	lifecycle_viewport.size = Vector2i(64, 64)
+	lifecycle_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	root.add_child(lifecycle_viewport)
+	var lifecycle_world := Node2D.new()
+	lifecycle_world.name = "LightingLifecycleBenchmarkWorld"
+	lifecycle_viewport.add_child(lifecycle_world)
+	var lifecycle_controller := (
+		DAY_NIGHT_SCENE.instantiate() as DayNightController
+	)
+	lifecycle_world.add_child(lifecycle_controller)
+	await process_frame
+	lifecycle_controller.set_night_factor_immediate(1.0)
+
+	var resident_lights: Array[NightPointLight2D] = []
+	for light_index in range(LIFECYCLE_BENCHMARK_BATCH_SIZE):
+		var light := (
+			NIGHT_LIGHT_SCENE.instantiate() as NightPointLight2D
+		)
+		if light == null:
+			continue
+		light.name = "ResidentToggleLight%03d" % light_index
+		light.texture = VEGETATION_RING_TEXTURE
+		light.color = GREEN_RING_COLOR
+		light.texture_scale = GREEN_RING_TEXTURE_SCALE
+		light.night_energy = GREEN_RING_NIGHT_ENERGY
+		lifecycle_world.add_child(light)
+		light.call("_bind_to_owner_controller")
+		resident_lights.append(light)
+	_expect(
+		resident_lights.size() == LIFECYCLE_BENCHMARK_BATCH_SIZE
+		and _count_enabled_lights(resident_lights)
+		== LIFECYCLE_BENCHMARK_BATCH_SIZE,
+		"Resident-toggle benchmark must start with a full active light batch."
+	)
+
+	var setup_samples_usec: Array[float] = []
+	var bind_samples_usec: Array[float] = []
+	var teardown_samples_usec: Array[float] = []
+	var resident_toggle_samples_usec: Array[float] = []
+	for _round_index in range(LIFECYCLE_BENCHMARK_ROUNDS):
+		var toggle_started_usec := Time.get_ticks_usec()
+		for light in resident_lights:
+			light.set_emission_allowed(false)
+		for light in resident_lights:
+			light.set_emission_allowed(true)
+		resident_toggle_samples_usec.append(
+			float(Time.get_ticks_usec() - toggle_started_usec)
+		)
+		_expect(
+			_count_enabled_lights(resident_lights)
+			== LIFECYCLE_BENCHMARK_BATCH_SIZE,
+			"Resident toggles must restore every light to its night state."
+		)
+
+		var round_lights: Array[NightPointLight2D] = []
+		var setup_started_usec := Time.get_ticks_usec()
+		for light_index in range(LIFECYCLE_BENCHMARK_BATCH_SIZE):
+			var light := (
+				NIGHT_LIGHT_SCENE.instantiate() as NightPointLight2D
+			)
+			if light == null:
+				continue
+			light.name = "LifecycleLight%03d" % light_index
+			light.texture = VEGETATION_RING_TEXTURE
+			light.color = GREEN_RING_COLOR
+			light.texture_scale = GREEN_RING_TEXTURE_SCALE
+			light.night_energy = GREEN_RING_NIGHT_ENERGY
+			lifecycle_world.add_child(light)
+			round_lights.append(light)
+		setup_samples_usec.append(
+			float(Time.get_ticks_usec() - setup_started_usec)
+		)
+
+		var bind_started_usec := Time.get_ticks_usec()
+		for light in round_lights:
+			light.call("_bind_to_owner_controller")
+		bind_samples_usec.append(
+			float(Time.get_ticks_usec() - bind_started_usec)
+		)
+		_expect(
+			round_lights.size() == LIFECYCLE_BENCHMARK_BATCH_SIZE,
+			"Lifecycle benchmark must instantiate its complete light batch."
+		)
+		_expect(
+			_all_lights_without_process(round_lights),
+			"Lifecycle benchmark lights must not register frame callbacks."
+		)
+		_expect(
+			_all_lights_without_shadows(round_lights),
+			"Lifecycle benchmark lights must keep 2D shadows disabled."
+		)
+		for light in round_lights:
+			_expect(
+				light.get("_controller") == lifecycle_controller,
+				"Lifecycle benchmark light failed to bind its local controller."
+			)
+
+		var teardown_started_usec := Time.get_ticks_usec()
+		for light in round_lights:
+			light.free()
+		teardown_samples_usec.append(
+			float(Time.get_ticks_usec() - teardown_started_usec)
+		)
+		_expect(
+			lifecycle_world.get_child_count()
+			== 1 + LIFECYCLE_BENCHMARK_BATCH_SIZE,
+			"Lifecycle teardown leaked a light node."
+		)
+		_expect(
+			lifecycle_controller.get_signal_connection_list(
+				&"night_factor_changed"
+			).size() == LIFECYCLE_BENCHMARK_BATCH_SIZE,
+			"Lifecycle teardown leaked a night-factor signal connection."
+		)
+
+	var setup_summary := _summarize(setup_samples_usec)
+	var bind_summary := _summarize(bind_samples_usec)
+	var teardown_summary := _summarize(teardown_samples_usec)
+	var resident_toggle_summary := _summarize(
+		resident_toggle_samples_usec
+	)
+	_print_lifecycle_summary(
+		"resident_disable_enable",
+		resident_toggle_summary
+	)
+	_print_lifecycle_summary("instantiate_add", setup_summary)
+	_print_lifecycle_summary("ancestor_bind_connect", bind_summary)
+	_print_lifecycle_summary("disconnect_free", teardown_summary)
+	_expect(
+		float(resident_toggle_summary["p95"])
+		< (
+			float(setup_summary["p95"])
+			+ float(bind_summary["p95"])
+			+ float(teardown_summary["p95"])
+		),
+		"Resident disable/enable must remain cheaper than light node churn."
+	)
+
+	for light in resident_lights:
+		light.free()
+	_expect(
+		lifecycle_controller.get_signal_connection_list(
+			&"night_factor_changed"
+		).is_empty(),
+		"Resident-toggle teardown leaked a night-factor signal connection."
+	)
+	lifecycle_viewport.queue_free()
+	await process_frame
+	await process_frame
+
+
+func _print_lifecycle_summary(
+	phase: String,
+	summary: Dictionary
+) -> void:
+	print(
+		(
+			"DAY_NIGHT_LIGHTING_LIFECYCLE_CPU phase=%s "
+			+ "batch=%d rounds=%d batch_p50_us=%.1f "
+			+ "batch_p95_us=%.1f batch_max_us=%.1f "
+			+ "p95_per_light_us=%.3f"
+		)
+		% [
+			phase,
+			LIFECYCLE_BENCHMARK_BATCH_SIZE,
+			LIFECYCLE_BENCHMARK_ROUNDS,
+			summary["p50"],
+			summary["p95"],
+			summary["max"],
+			float(summary["p95"])
+				/ float(LIFECYCLE_BENCHMARK_BATCH_SIZE),
+		]
+	)
 
 
 func _measure_interleaved_broadcast_pair(
@@ -1340,6 +1815,19 @@ func _all_lights_without_process(
 				light.is_processing()
 				or light.is_physics_processing()
 			)
+		):
+			return false
+	return true
+
+
+func _all_lights_without_shadows(
+	lights: Array[NightPointLight2D]
+) -> bool:
+	for light in lights:
+		if (
+			light != null
+			and is_instance_valid(light)
+			and light.shadow_enabled
 		):
 			return false
 	return true

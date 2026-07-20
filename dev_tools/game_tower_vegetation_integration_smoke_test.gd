@@ -393,15 +393,24 @@ func _test_real_plant_lifecycle(game: GameTowerDefense) -> void:
 	if plant == null:
 		spread.set_process(was_processing)
 		return
+	var lifecycle_ring_light := plant.get_node_or_null(
+		"CellBorder/NightRingLight"
+	) as NightPointLight2D
 	_expect(
 		not plant.is_operational
-		and not spread.has_source(LIFECYCLE_PLANT_NET_ID),
-		"植被桩构建完成前必须占格，但不能提前注册传播来源。"
+		and not spread.has_source(LIFECYCLE_PLANT_NET_ID)
+		and lifecycle_ring_light != null
+		and not lifecycle_ring_light.is_emission_allowed()
+		and not lifecycle_ring_light.enabled,
+		"植被桩构建完成前必须占格但不能注册传播来源或启用隐藏环灯。"
 	)
 	await create_timer(PlantDefense.CONSTRUCTION_DURATION_SECONDS + 0.08).timeout
 	_expect(
-		plant.is_operational and spread.has_source(LIFECYCLE_PLANT_NET_ID),
-		"植被桩0.7秒构建完成后必须注册对应net_id传播来源。"
+		plant.is_operational
+		and spread.has_source(LIFECYCLE_PLANT_NET_ID)
+		and lifecycle_ring_light != null
+		and lifecycle_ring_light.is_emission_allowed(),
+		"植被桩0.7秒构建完成后必须注册传播来源并开放昼夜环灯。"
 	)
 	_expect(spread.get_source_origin(LIFECYCLE_PLANT_NET_ID) == anchor, "传播来源原点必须等于1x1放置锚点。")
 	var health_bar := plant.get_node_or_null("HealthBar") as PlantHealthBar
@@ -463,6 +472,12 @@ func _test_real_plant_lifecycle(game: GameTowerDefense) -> void:
 	)
 	record_lifecycle_events = false
 	_expect(plant.is_dead, "致死伤害必须进入真实PlantDefense死亡流程。")
+	_expect(
+		lifecycle_ring_light != null
+		and not lifecycle_ring_light.is_emission_allowed()
+		and not lifecycle_ring_light.enabled,
+		"植被桩进入拆除生命周期时必须立即关闭隐藏环灯。"
+	)
 	_expect(
 		plant_system.get_plant_by_net_id(LIFECYCLE_PLANT_NET_ID) == null,
 		"PlantSystem死亡回调必须立即释放真实植被桩net_id。"

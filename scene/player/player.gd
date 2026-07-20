@@ -56,6 +56,7 @@ var _healing_number_flush_queued := false
 @export var skill1_charge_duration: float = 18.0
 
 @onready var body_sprite: AnimatedSprite2D = $BodySprite
+@onready var night_light: NightPointLight2D = $NightLight
 @onready var speed_trail_effect: Node2D = $MoveSpeedTrailEffect
 @onready var dash_ready_indicator: Control = $DashReadyIndicator
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
@@ -323,6 +324,7 @@ func _ready() -> void:
 	_update_character_visual_state()
 	_update_skill1_charge_bar()
 	_update_attack_interval_bar()
+	night_light.set_emission_allowed(not is_dead)
 	body_sprite.animation_finished.connect(_on_body_sprite_animation_finished)
 	get_window().focus_exited.connect(_on_window_focus_exited)
 
@@ -1504,6 +1506,7 @@ func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invi
 	reset_physics_interpolation()
 	_set_multiplayer_visual_offset(Vector2.ZERO)
 	is_dead = false
+	night_light.set_emission_allowed(true)
 	controls_locked = false
 	mouse_fire_held = false
 	velocity = Vector2.ZERO
@@ -1546,6 +1549,7 @@ func apply_multiplayer_death_state() -> void:
 	var was_dead := is_dead
 	_set_multiplayer_visual_offset(Vector2.ZERO)
 	is_dead = true
+	night_light.set_emission_allowed(false)
 	clear_burn_status()
 	controls_locked = true
 	_finish_dash()
@@ -4097,6 +4101,7 @@ func _die() -> void:
 		apply_multiplayer_death_state()
 		return
 	is_dead = true
+	night_light.set_emission_allowed(false)
 	clear_burn_status()
 	_finish_dash()
 	_stop_remote_dash_visual()

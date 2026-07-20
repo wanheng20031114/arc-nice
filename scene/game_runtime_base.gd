@@ -165,12 +165,9 @@ func transition_world_to_day(duration_seconds: float = -1.0) -> void:
 	day_night_controller.transition_to_day(duration_seconds)
 
 
-func _apply_wave_start_lighting(wave_number: int) -> void:
-	# Wave 1 is the authored test trigger for the new night presentation.
-	# Later schedules can call the public transition methods without coupling
-	# time-of-day policy to enemy spawning.
-	if wave_number != 1:
-		return
+func _apply_wave_start_lighting(_wave_number: int) -> void:
+	# Every normal wave uses night only while its combat state is active.
+	# PRE_WAVE and INTERMISSION own the matching transition back to daylight.
 	transition_world_to_night()
 
 

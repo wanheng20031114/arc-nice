@@ -589,6 +589,7 @@ func apply_remote_defeat() -> void:
 	if wave_state == WaveState.DEFEAT:
 		return
 	wave_state = WaveState.DEFEAT
+	transition_world_to_day()
 	enemy_spawn_timer.stop()
 	state_timer.stop()
 	_set_merchant_active(false)
@@ -1826,6 +1827,7 @@ func _enter_victory(emit_multiplayer: bool = true) -> void:
 	if emit_multiplayer and runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_revive_all_requested.emit()
 	wave_state = WaveState.VICTORY
+	transition_world_to_day()
 	enemy_spawn_timer.stop()
 	state_timer.stop()
 	_set_merchant_active(false)
@@ -1843,6 +1845,7 @@ func _enter_defeat() -> void:
 	if wave_state == WaveState.DEFEAT:
 		return
 	wave_state = WaveState.DEFEAT
+	transition_world_to_day()
 	enemy_spawn_timer.stop()
 	state_timer.stop()
 	_set_merchant_active(false)

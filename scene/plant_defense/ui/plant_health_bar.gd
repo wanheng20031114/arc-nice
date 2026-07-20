@@ -11,7 +11,8 @@ class_name PlantHealthBar
 @export_group("受伤后弱化")
 @export_range(1.0, 60.0, 0.5, "or_greater") var idle_fade_delay: float = 15.0
 @export_range(0.0, 2.0, 0.05) var idle_fade_duration: float = 0.8
-@export_range(0.0, 1.0, 0.01) var idle_alpha: float = 0.18
+@export_range(0.65, 1.0, 0.01) var idle_color_brightness: float = 0.90
+@export_range(0.65, 1.0, 0.01) var idle_slot_alpha: float = 0.82
 
 @export_group("配色")
 @export var frame_color: Color = Color(0.16, 0.09, 0.045, 1.0):
@@ -47,6 +48,8 @@ var _is_initialized := false
 var _fill_tween: Tween = null
 var _trail_tween: Tween = null
 var _visibility_tween: Tween = null
+var _idle_style_tween: Tween = null
+var _idle_style_amount := 0.0
 
 @onready var _idle_fade_timer: Timer = $IdleFadeTimer
 
@@ -70,7 +73,9 @@ func _notification(what: int) -> void:
 func setup(max_health: int, current_health: int) -> void:
 	_stop_value_tweens()
 	_stop_visibility_tween()
+	_stop_idle_style_tween()
 	_stop_idle_fade_timer()
+	_set_idle_style_amount(0.0)
 
 	max_health_value = maxi(max_health, 1)
 	_target_health = clampi(current_health, 0, max_health_value)
@@ -128,11 +133,60 @@ func _draw() -> void:
 	var bar_height := maxi(floori(size.y), 3)
 	var frame_rect := Rect2(Vector2.ZERO, Vector2(bar_width, bar_height))
 	var slot_rect := Rect2(Vector2.ONE, Vector2(bar_width - 2, bar_height - 2))
+	var frame_draw_color := _resolve_idle_color(
+		frame_color,
+		idle_color_brightness,
+		1.0,
+		0.96
+	)
+	var slot_draw_color := _resolve_idle_color(
+		slot_color,
+		idle_color_brightness,
+		idle_slot_alpha,
+		1.0
+	)
+	var trail_draw_color := _resolve_idle_color(
+		damage_trail_color,
+		idle_color_brightness,
+		1.0,
+		1.04
+	)
+	var fill_draw_color := _resolve_idle_color(
+		health_fill_color,
+		idle_color_brightness,
+		1.0,
+		1.08
+	)
 
-	draw_rect(frame_rect, frame_color, true)
-	draw_rect(slot_rect, slot_color, true)
-	_draw_fill(slot_rect, delayed_health, damage_trail_color)
-	_draw_fill(slot_rect, displayed_health, health_fill_color)
+	_draw_frame(frame_rect, frame_draw_color)
+	draw_rect(slot_rect, slot_draw_color, true)
+	_draw_fill(slot_rect, delayed_health, trail_draw_color)
+	_draw_fill(slot_rect, displayed_health, fill_draw_color)
+
+
+func _draw_frame(frame_rect: Rect2, color: Color) -> void:
+	draw_rect(
+		frame_rect.grow(-0.5),
+		color,
+		false,
+		1.0,
+		false
+	)
+
+
+func _resolve_idle_color(
+	source: Color,
+	brightness_scale: float,
+	alpha_scale: float,
+	saturation_scale: float
+) -> Color:
+	var target := Color.from_hsv(
+		source.h,
+		clampf(source.s * saturation_scale, 0.0, 1.0),
+		clampf(source.v * brightness_scale, 0.0, 1.0),
+		clampf(source.a * alpha_scale, 0.0, 1.0)
+	)
+	return source.lerp(target, clampf(_idle_style_amount, 0.0, 1.0))
 
 
 func _draw_fill(slot_rect: Rect2, health_value: float, color: Color) -> void:
@@ -195,6 +249,7 @@ func _set_delayed_health(value: float) -> void:
 
 func _fade_in() -> void:
 	_stop_visibility_tween()
+	_restore_active_style()
 	visible = true
 	if fade_duration <= 0.0 or is_equal_approx(modulate.a, 1.0):
 		modulate.a = 1.0
@@ -207,9 +262,10 @@ func _fade_in() -> void:
 
 func _fade_out_after(delay: float) -> void:
 	_stop_visibility_tween()
+	_stop_idle_style_tween()
 	_stop_idle_fade_timer()
 	if not visible:
-		modulate.a = 0.0
+		_set_visible_immediate(false)
 		return
 	if fade_duration <= 0.0:
 		_set_visible_immediate(false)
@@ -220,26 +276,30 @@ func _fade_out_after(delay: float) -> void:
 		_visibility_tween.tween_interval(delay)
 	_visibility_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	_visibility_tween.tween_property(self, "modulate:a", 0.0, fade_duration)
-	_visibility_tween.tween_callback(func() -> void: visible = false)
+	_visibility_tween.tween_callback(_finish_fade_out)
+
+
+func _finish_fade_out() -> void:
+	_visibility_tween = null
+	_set_visible_immediate(false)
 
 
 func _on_idle_fade_timer_timeout() -> void:
 	if not visible or _target_health >= max_health_value:
 		return
-	_stop_visibility_tween()
-	var target_alpha := clampf(idle_alpha, 0.0, 1.0)
+	_stop_idle_style_tween()
 	if (
 		idle_fade_duration <= 0.0
-		or is_equal_approx(modulate.a, target_alpha)
+		or is_equal_approx(_idle_style_amount, 1.0)
 	):
-		modulate.a = target_alpha
+		_set_idle_style_amount(1.0)
 		return
-	_visibility_tween = create_tween()
-	_visibility_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	_visibility_tween.tween_property(
-		self,
-		"modulate:a",
-		target_alpha,
+	_idle_style_tween = create_tween()
+	_idle_style_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	_idle_style_tween.tween_method(
+		_set_idle_style_amount,
+		_idle_style_amount,
+		1.0,
 		idle_fade_duration
 	)
 
@@ -267,6 +327,18 @@ func _set_visible_immediate(should_show: bool) -> void:
 	modulate.a = 1.0 if should_show else 0.0
 	if not should_show:
 		_stop_idle_fade_timer()
+		_stop_idle_style_tween()
+		_set_idle_style_amount(0.0)
+
+
+func _restore_active_style() -> void:
+	_stop_idle_style_tween()
+	_set_idle_style_amount(0.0)
+
+
+func _set_idle_style_amount(value: float) -> void:
+	_idle_style_amount = clampf(value, 0.0, 1.0)
+	queue_redraw()
 
 
 func _stop_value_tweens() -> void:
@@ -284,6 +356,12 @@ func _stop_visibility_tween() -> void:
 	_visibility_tween = null
 
 
+func _stop_idle_style_tween() -> void:
+	if _idle_style_tween != null and _idle_style_tween.is_valid():
+		_idle_style_tween.kill()
+	_idle_style_tween = null
+
+
 func _apply_editor_preview() -> void:
 	max_health_value = 100
 	_target_health = roundi(float(max_health_value) * editor_preview_ratio)
@@ -291,4 +369,5 @@ func _apply_editor_preview() -> void:
 	delayed_health = minf(float(max_health_value), displayed_health + 14.0)
 	visible = true
 	modulate.a = 1.0
+	_idle_style_amount = 0.0
 	queue_redraw()
