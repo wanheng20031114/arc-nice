@@ -16,7 +16,7 @@
     </radialGradient>
   </defs>
   <rect width="64" height="64" fill="#000"/>
-  <circle cx="41.25" cy="28.85" r="4.5" fill="url(#beacon)"/>
-  <circle cx="22.63" cy="41.55" r="5.5" fill="url(#panel)"/>
-  <circle cx="41.5" cy="41.35" r="5.5" fill="url(#panel)"/>
+  <circle cx="41.25" cy="28.85" r="5.5" fill="url(#beacon)"/>
+  <circle cx="22.63" cy="41.55" r="6.5" fill="url(#panel)"/>
+  <circle cx="41.5" cy="41.35" r="6.5" fill="url(#panel)"/>
 </svg>

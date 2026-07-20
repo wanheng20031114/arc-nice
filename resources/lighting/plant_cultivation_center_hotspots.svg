@@ -30,9 +30,9 @@
     </radialGradient>
   </defs>
   <rect width="64" height="64" fill="#000"/>
-  <circle cx="32" cy="22" r="6.5" fill="url(#top)"/>
-  <circle cx="21" cy="32" r="6" fill="url(#side)"/>
-  <circle cx="43" cy="32" r="6" fill="url(#side)"/>
-  <circle cx="27" cy="36" r="5" fill="url(#inner)"/>
-  <circle cx="32.25" cy="42.25" r="8" fill="url(#panel)"/>
+  <circle cx="32" cy="22" r="8" fill="url(#top)"/>
+  <circle cx="21" cy="32" r="7.5" fill="url(#side)"/>
+  <circle cx="43" cy="32" r="7.5" fill="url(#side)"/>
+  <circle cx="27" cy="36" r="6.25" fill="url(#inner)"/>
+  <circle cx="32.25" cy="42.25" r="9.5" fill="url(#panel)"/>
 </svg>

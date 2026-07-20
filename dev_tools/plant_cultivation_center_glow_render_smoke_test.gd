@@ -153,7 +153,7 @@ func _verify_hotspot_deltas(
 				visibly_changed_pixels += 1
 
 	_expect(
-		visibly_changed_pixels >= 180,
+		visibly_changed_pixels >= 800,
 		(
 			"五热点灯必须让足够多的像素产生肉眼可辨变化，当前仅%d像素。"
 			% visibly_changed_pixels

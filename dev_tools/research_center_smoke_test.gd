@@ -293,6 +293,9 @@ func _test_config_and_scene(
 			true,
 			false
 		)
+		var hotspot_texture_source := FileAccess.get_file_as_string(
+			"res://resources/lighting/research_center_hotspots.svg"
+		)
 		var request_timer := center.get_node_or_null(
 			"MultiplayerResearchRequestTimer"
 		) as Timer
@@ -387,7 +390,7 @@ func _test_config_and_scene(
 			)
 			and hotspot_glow.texture.get_size() == Vector2(256, 256)
 			and is_equal_approx(hotspot_glow.texture_scale, 0.25)
-			and is_equal_approx(hotspot_glow.night_energy, 0.45)
+			and is_equal_approx(hotspot_glow.night_energy, 0.72)
 			and not hotspot_glow.starts_emitting
 			and not hotspot_glow.shadow_enabled
 			and not hotspot_glow.is_processing()
@@ -397,6 +400,19 @@ func _test_config_and_scene(
 			and is_zero_approx(hotspot_glow.energy)
 			and hotspot_glow.get("_controller") == day_night,
 			"科研中心必须原生预建一盏绑定昼夜控制器、覆盖三处热点的淡蓝夜间灯。"
+		)
+		_expect(
+			hotspot_texture_source.count("<circle ") == 3
+			and hotspot_texture_source.contains(
+				"cx=\"41.25\" cy=\"28.85\" r=\"5.5\""
+			)
+			and hotspot_texture_source.contains(
+				"cx=\"22.63\" cy=\"41.55\" r=\"6.5\""
+			)
+			and hotspot_texture_source.contains(
+				"cx=\"41.5\" cy=\"41.35\" r=\"6.5\""
+			),
+			"科研中心三处淡蓝热点必须保持光心位置并使用扩大的扩散半径。"
 		)
 		_expect(
 			request_timer != null
@@ -625,7 +641,7 @@ func _test_operational_night_visuals(
 		and hotspot_glow.is_visible_in_tree()
 		and hotspot_glow.is_emission_allowed()
 		and hotspot_glow.enabled
-		and is_equal_approx(hotspot_glow.energy, 0.45),
+		and is_equal_approx(hotspot_glow.energy, 0.72),
 		"科研中心完成建造后，三处淡蓝热点必须在黑夜立即启用额定微光。"
 	)
 	day_night.set_night_factor_immediate(0.0)
@@ -639,7 +655,7 @@ func _test_operational_night_visuals(
 	_expect(
 		hotspot_glow != null
 		and hotspot_glow.enabled
-		and is_equal_approx(hotspot_glow.energy, 0.45),
+		and is_equal_approx(hotspot_glow.energy, 0.72),
 		"科研中心三处热点必须能随昼夜控制器重新进入淡蓝夜间微光态。"
 	)
 	var research_border := center.get_node_or_null(
@@ -663,7 +679,7 @@ func _test_operational_night_visuals(
 		and hotspot_glow != null
 		and hotspot_glow.is_emission_allowed()
 		and hotspot_glow.enabled
-		and is_equal_approx(hotspot_glow.energy, 0.45),
+		and is_equal_approx(hotspot_glow.energy, 0.72),
 		"科研中心建造完成后必须恢复科研外框与三热点夜间微光。"
 	)
 

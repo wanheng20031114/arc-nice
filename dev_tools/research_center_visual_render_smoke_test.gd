@@ -109,7 +109,7 @@ func _run() -> void:
 		hotspot_glow.visible
 		and hotspot_glow.is_visible_in_tree()
 		and hotspot_glow.enabled
-		and is_equal_approx(hotspot_glow.energy, 0.45),
+		and is_equal_approx(hotspot_glow.energy, 0.72),
 		"真实渲染前，科研中心三热点灯必须处于可见且满强度的夜间状态。"
 	)
 
@@ -172,7 +172,7 @@ func _verify_hotspot_deltas(
 				visibly_changed_pixels += 1
 
 	_expect(
-		visibly_changed_pixels >= 50,
+		visibly_changed_pixels >= 180,
 		(
 			"科研中心三热点灯必须让足够多的像素产生淡蓝色变化，当前仅%d像素。"
 			% visibly_changed_pixels

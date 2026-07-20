@@ -562,21 +562,21 @@ func _test_world_glow_contract(
 	_expect(
 		hotspot_texture_source.count("<circle ") == 5
 		and hotspot_texture_source.contains(
-			"cx=\"32\" cy=\"22\""
+			"cx=\"32\" cy=\"22\" r=\"8\""
 		)
 		and hotspot_texture_source.contains(
-			"cx=\"21\" cy=\"32\""
+			"cx=\"21\" cy=\"32\" r=\"7.5\""
 		)
 		and hotspot_texture_source.contains(
-			"cx=\"43\" cy=\"32\""
+			"cx=\"43\" cy=\"32\" r=\"7.5\""
 		)
 		and hotspot_texture_source.contains(
-			"cx=\"27\" cy=\"36\""
+			"cx=\"27\" cy=\"36\" r=\"6.25\""
 		)
 		and hotspot_texture_source.contains(
-			"cx=\"32.25\" cy=\"42.25\""
+			"cx=\"32.25\" cy=\"42.25\" r=\"9.5\""
 		),
-		"单灯纹理必须把截图五处亮核映射到正确的世界坐标。"
+		"单灯纹理必须保持五处亮核坐标，并使用扩大的嫩绿扩散半径。"
 	)
 	_expect(
 		shader_source.contains("vec4 result = COLOR")
