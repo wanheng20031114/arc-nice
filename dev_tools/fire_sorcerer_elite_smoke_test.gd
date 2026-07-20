@@ -174,10 +174,8 @@ func _test_config_contract() -> void:
 		ELITE_CONFIG.home_damage == BASE_CONFIG.home_damage
 		and ELITE_CONFIG.xirang_kill_reward
 			== BASE_CONFIG.xirang_kill_reward
-		and is_equal_approx(
-			ELITE_CONFIG.pickup_drop_chance,
-			BASE_CONFIG.pickup_drop_chance
-		),
+		and ELITE_CONFIG.drop_table == BASE_CONFIG.drop_table
+		and ELITE_CONFIG.drop_tags == BASE_CONFIG.drop_tags,
 		"Unspecified elite reward/home/drop values must remain unchanged."
 	)
 

@@ -27,4 +27,4 @@ magic_defense = 80
 move_speed = 24.0
 home_damage = 5
 xirang_kill_reward = 35
-pickup_drop_chance = 0.1
+drop_tags = PackedStringArray("sorcerer")

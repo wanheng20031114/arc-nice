@@ -114,6 +114,7 @@ const MAX_DASH_COOLDOWN_REDUCTION_PER_COLLECTIBLE := 0.5
 @export_group("基础信息")
 @export var pickup_type:PickupType = PickupType.SPEED
 @export var display_name : String = "移速道具"
+# 兼容旧资源的权重元数据；敌人掉落现由 EnemyDropTable 的独立 chance 规则决定。
 @export_range(0.0 , 1000.0 , 0.1, "or_greater") var drop_weight:float = 1.0
 @export_multiline var description: String = ""
 @export var can_store_in_inventory: bool = false

@@ -1,12 +1,6 @@
 [gd_resource type="Resource" script_class="YuanshiInsectConfig" format=3 uid="uid://cpjc7spicocg8"]
 
-[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="2_amff3"]
 [ext_resource type="Script" uid="uid://cxt041wfb1usj" path="res://resources/config/enemies/yuanshi_insect_config.gd" id="2_script"]
-[ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="3_ahoyw"]
-[ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="4_l7mkx"]
-[ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="5_4gucm"]
-[ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="6_qurg6"]
-[ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="7_465hc"]
 [ext_resource type="PackedScene" uid="uid://m17avh70k6cu" path="res://scene/enemy/yuanshi_insect_purple_bomber.tscn" id="enemy_scene"]
 
 [resource]
@@ -22,4 +16,3 @@ explosion_damage = 30
 explosion_radius = 40.0
 explosion_animation_scale = 2.35
 xirang_kill_reward = 2
-pickup_drop_chance = 0.04

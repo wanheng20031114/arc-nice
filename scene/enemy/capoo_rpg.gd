@@ -2,7 +2,6 @@ extends Enemy
 class_name CapooRPG
 
 const WORLD_COLLISION_MASK := 1
-const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const CapooRPGConfigScript := preload("res://resources/config/enemies/capoo_rpg_config.gd")
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/enemy_attack_audio_limiter.gd"
@@ -21,7 +20,6 @@ enum CombatState {
 @onready var muzzle_heat: Polygon2D = $MuzzleHeat
 @onready var attack_audio: AudioStreamPlayer2D = $AttackAudio
 
-var random_generator := RandomNumberGenerator.new()
 var combat_state: CombatState = CombatState.CHASE
 var attack_cooldown_left: float = 0.0
 var windup_time_left: float = 0.0
@@ -33,7 +31,6 @@ var latest_proxy_action_id: int = 0
 
 func _ready() -> void:
 	super._ready()
-	random_generator.randomize()
 	_set_muzzle_heat(0.0, Vector2.RIGHT)
 
 
@@ -92,7 +89,6 @@ func _apply_config() -> void:
 func _die() -> void:
 	combat_state = CombatState.CHASE
 	_set_muzzle_heat(0.0, fire_direction)
-	_try_drop_pickup()
 	super._die()
 
 
@@ -369,44 +365,3 @@ func _set_muzzle_heat(progress: float, direction: Vector2) -> void:
 	muzzle_heat.rotation = safe_direction.angle()
 	muzzle_heat.scale = Vector2.ONE * lerpf(0.75, 1.55, clamped_progress)
 	muzzle_heat.color = Color(1.0, lerpf(0.28, 0.78, clamped_progress), 0.08, lerpf(0.18, 0.74, clamped_progress))
-
-
-func _try_drop_pickup() -> void:
-	if config == null or config.pickup_drop_configs.is_empty():
-		return
-	if random_generator.randf() > config.pickup_drop_chance:
-		return
-	var pickup_config := _pick_pickup_drop_config()
-	if pickup_config != null:
-		call_deferred("_spawn_dropped_pickup", pickup_config, global_position)
-
-
-func _pick_pickup_drop_config() -> PickupConfig:
-	var available_pickup_configs: Array[PickupConfig] = []
-	var total_weight := 0.0
-	for pickup_config in config.pickup_drop_configs:
-		if pickup_config == null or pickup_config.drop_weight <= 0.0:
-			continue
-		available_pickup_configs.append(pickup_config)
-		total_weight += pickup_config.drop_weight
-	if available_pickup_configs.is_empty() or total_weight <= 0.0:
-		return null
-	var target_weight := random_generator.randf_range(0.0, total_weight)
-	var accumulated_weight := 0.0
-	for pickup_config in available_pickup_configs:
-		accumulated_weight += pickup_config.drop_weight
-		if target_weight <= accumulated_weight:
-			return pickup_config
-	return available_pickup_configs.back()
-
-
-func _spawn_dropped_pickup(pickup_config: PickupConfig, spawn_position: Vector2) -> void:
-	var drop_parent := get_parent()
-	if drop_parent == null:
-		return
-	var pickup_instance := PICKUP_SCENE.instantiate() as Pickup
-	if pickup_instance == null:
-		return
-	pickup_instance.config = pickup_config
-	drop_parent.add_child(pickup_instance)
-	pickup_instance.global_position = spawn_position

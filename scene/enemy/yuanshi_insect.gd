@@ -1,8 +1,6 @@
 extends Enemy
 class_name YuanshiInsect
 
-const PICKUP_SCENE := preload("res://scene/pickup.tscn")
-
 # 寻路路径刷新间隔。多只敌人共享 GridPathfinder，但各自按这个节奏更新目标路径。
 @export var path_refresh_interval: float = 0.25
 
@@ -11,13 +9,6 @@ const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 
 # 足够接近玩家时直接追踪玩家当前位置，避免围绕玩家所在格子中心反复寻路。
 @export var direct_chase_extra_distance: float = 2.0
-
-# 敌人实例自己的随机数生成器，用于掉落判定。
-var random_generator: RandomNumberGenerator = RandomNumberGenerator.new()
-func _ready() -> void:
-	super._ready()
-	random_generator.randomize()
-
 
 func _physics_process(delta: float) -> void:
 	if is_dead:
@@ -83,75 +74,3 @@ func _apply_multiplayer_player_damage(
 func _get_multiplayer_damage_source_id(source_suffix: int) -> int:
 	var net_id := int(get_meta("net_id", get_instance_id()))
 	return maxi(net_id, 1) * 1000000 + maxi(source_suffix, 0)
-
-
-func _die() -> void:
-	if is_dead:
-		return
-
-	_try_drop_pickup()
-	super._die()
-
-
-# 敌人死亡后按概率掉落一个随机道具。
-func _try_drop_pickup() -> void:
-	if config == null:
-		return
-
-	if config.pickup_drop_configs.is_empty():
-		return
-
-	if random_generator.randf() > config.pickup_drop_chance:
-		return
-
-	var pickup_config := _pick_pickup_drop_config()
-	if pickup_config == null:
-		return
-
-	call_deferred("_spawn_dropped_pickup", pickup_config, global_position)
-
-
-func _pick_pickup_drop_config() -> PickupConfig:
-	if config == null:
-		return null
-
-	var available_pickup_configs: Array[PickupConfig] = []
-	var total_weight := 0.0
-
-	for pickup_config in config.pickup_drop_configs:
-		if pickup_config == null:
-			continue
-		if pickup_config.drop_weight <= 0.0:
-			continue
-
-		available_pickup_configs.append(pickup_config)
-		total_weight += pickup_config.drop_weight
-
-	if available_pickup_configs.is_empty():
-		return null
-	if total_weight <= 0.0:
-		return null
-
-	var target_weight := random_generator.randf_range(0.0, total_weight)
-	var accumulated_weight := 0.0
-
-	for pickup_config in available_pickup_configs:
-		accumulated_weight += pickup_config.drop_weight
-		if target_weight <= accumulated_weight:
-			return pickup_config
-
-	return available_pickup_configs.back()
-
-
-func _spawn_dropped_pickup(pickup_config: PickupConfig, spawn_position: Vector2) -> void:
-	var drop_parent := get_parent()
-	if drop_parent == null:
-		return
-
-	var pickup_instance := PICKUP_SCENE.instantiate() as Pickup
-	if pickup_instance == null:
-		return
-
-	pickup_instance.config = pickup_config
-	drop_parent.add_child(pickup_instance)
-	pickup_instance.global_position = spawn_position

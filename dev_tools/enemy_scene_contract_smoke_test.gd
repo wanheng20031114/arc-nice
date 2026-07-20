@@ -34,17 +34,7 @@ const ADVANCED_YUANSHI_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/yuanshi_insect_green_shell.tres"),
 	preload("res://resources/config/enemies/yuanshi_insect_guardian.tres"),
 ]
-const HORDE_PICKUP_DROP_CONFIGS: Array[EnemyConfig] = [
-	preload("res://resources/config/enemies/yuanshi_insect_basic.tres"),
-	preload("res://resources/config/enemies/yuanshi_insect_fast.tres"),
-	preload("res://resources/config/enemies/yuanshi_insect_bomber.tres"),
-	preload("res://resources/config/enemies/yuanshi_insect_shell.tres"),
-	preload("res://resources/config/enemies/yuanshi_insect_purple_bomber.tres"),
-	preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres"),
-]
-const SPECIAL_PICKUP_DROP_CONFIGS: Array[EnemyConfig] = [
-	preload("res://resources/config/enemies/yuanshi_insect_green_shell.tres"),
-	preload("res://resources/config/enemies/yuanshi_insect_guardian.tres"),
+const CAPOO_DROP_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/capoo_ak47.tres"),
 	preload("res://resources/config/enemies/capoo_knight.tres"),
 	preload("res://resources/config/enemies/capoo_knight_elite.tres"),
@@ -53,19 +43,20 @@ const SPECIAL_PICKUP_DROP_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/capoo_mage.tres"),
 	preload("res://resources/config/enemies/capoo_sniper.tres"),
 	preload("res://resources/config/enemies/capoo_smg.tres"),
-	preload("res://resources/config/enemies/stone_golem.tres"),
-	preload("res://resources/config/enemies/stone_golem_elite.tres"),
+]
+const SORCERER_DROP_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/fire_sorcerer.tres"),
 	preload("res://resources/config/enemies/fire_sorcerer_elite.tres"),
 ]
-const LINGLAN_BOSS_CONFIG := preload(
+const STONE_GOLEM_CONFIGS: Array[EnemyConfig] = [
+	preload("res://resources/config/enemies/stone_golem.tres"),
+	preload("res://resources/config/enemies/stone_golem_elite.tres"),
+]
+const DEFAULT_ENEMY_DROP_TABLE: EnemyDropTable = preload(
+	"res://resources/config/enemies/default_enemy_drop_table.tres"
+)
+const LINGLAN_BOSS_CONFIG: EnemyConfig = preload(
 	"res://resources/config/enemies/linglan_boss.tres"
-)
-const MATERIAL_WOOD := preload(
-	"res://resources/config/materials/material_wood.tres"
-)
-const MATERIAL_SAPLING := preload(
-	"res://resources/config/materials/material_sapling.tres"
 )
 const ENEMY_VISUAL_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
 const PLAYER_BULLET_SCENE := preload("res://scene/bullet.tscn")
@@ -97,7 +88,7 @@ func _run() -> void:
 	current_scene = test_root
 
 	_test_yuanshi_xirang_reward_tiers()
-	_test_enemy_pickup_drop_rates()
+	_test_enemy_drop_contract()
 	for enemy_config in ENEMY_CONFIGS:
 		await _test_enemy_scene_contract(enemy_config)
 	_test_enemy_projectile_z_contract()
@@ -149,45 +140,152 @@ func _test_yuanshi_xirang_reward_tiers() -> void:
 		)
 
 
-func _test_enemy_pickup_drop_rates() -> void:
+func _test_enemy_drop_contract() -> void:
 	var default_config := EnemyConfig.new()
+	var all_drop_configs: Array[EnemyConfig] = ENEMY_CONFIGS.duplicate()
+	all_drop_configs.append(LINGLAN_BOSS_CONFIG)
+	var expected_config_paths: Array[String] = []
+	for enemy_config in all_drop_configs:
+		expected_config_paths.append(enemy_config.resource_path)
+	expected_config_paths.sort()
+	var discovered_config_paths := _get_authored_enemy_config_paths()
 	_expect(
-		is_equal_approx(default_config.pickup_drop_chance, 0.15),
-		"New enemy configs must inherit the halved fifteen-percent authoring default."
+		discovered_config_paths == expected_config_paths,
+		"The drop-contract audit must dynamically cover every authored EnemyConfig resource."
 	)
-	for enemy_config in HORDE_PICKUP_DROP_CONFIGS:
+	_expect(
+		default_config.drop_table == DEFAULT_ENEMY_DROP_TABLE,
+		"New enemy configs must inherit the shared data-driven drop table."
+	)
+	_expect(
+		all_drop_configs.size() == 21,
+		"The drop-contract audit must cover all 21 authored enemy configs, including Linglan."
+	)
+
+	var expected_paths: Array[String] = [
+		"res://resources/config/materials/material_wood.tres",
+		"res://resources/config/materials/material_white_crystal.tres",
+		"res://resources/config/materials/material_sapling.tres",
+		"res://resources/config/materials/material_capoo_blue_crystal.tres",
+		"res://resources/config/materials/material_sorcerer_violet_powder.tres",
+		"res://resources/config/pickups/pickup_speed.tres",
+		"res://resources/config/pickups/pickup_rapid.tres",
+		"res://resources/config/pickups/pickup_tenpura.tres",
+		"res://resources/config/pickups/pickup_health.tres",
+		"res://resources/config/pickups/pickup_spiral.tres",
+	]
+	var expected_chances: Array[float] = [
+		0.02,
+		0.002,
+		0.01,
+		0.01,
+		# 紫粉未指定概率；暂按同为标签专属素材的蓝晶 1% 配置。
+		0.01,
+		0.004,
+		0.004,
+		0.004,
+		0.004,
+		0.002,
+	]
+	var expected_tags: Array[PackedStringArray] = [
+		PackedStringArray(),
+		PackedStringArray(),
+		PackedStringArray(),
+		PackedStringArray(["capoo"]),
+		PackedStringArray(["sorcerer"]),
+		PackedStringArray(),
+		PackedStringArray(),
+		PackedStringArray(),
+		PackedStringArray(),
+		PackedStringArray(),
+	]
+	_expect(
+		DEFAULT_ENEMY_DROP_TABLE.rules.size() == expected_paths.size(),
+		"The shared enemy drop table must contain exactly ten independent rules."
+	)
+	for index in range(
+		mini(DEFAULT_ENEMY_DROP_TABLE.rules.size(), expected_paths.size())
+	):
+		var rule := DEFAULT_ENEMY_DROP_TABLE.rules[index]
 		_expect(
-			is_equal_approx(enemy_config.pickup_drop_chance, 0.04),
-			"%s must use the reduced four-percent horde pickup rate."
-			% enemy_config.display_name
+			rule != null and rule.pickup_config != null,
+			"Default enemy drop rule %d must reference a pickup config." % index
 		)
-	for enemy_config in SPECIAL_PICKUP_DROP_CONFIGS:
+		if rule == null or rule.pickup_config == null:
+			continue
 		_expect(
-			is_equal_approx(enemy_config.pickup_drop_chance, 0.1),
-			"%s must use the reduced ten-percent special-enemy pickup rate."
-			% enemy_config.display_name
+			rule.pickup_config.resource_path == expected_paths[index],
+			"Default enemy drop rule %d must keep its exact configured item path."
+			% index
 		)
-	_expect(
-		is_equal_approx(Enemy.MATERIAL_DROP_CHANCE, 0.03),
-		"Ordinary pickup tuning must not change the independent material drop rate."
-	)
-	_expect(
-		is_equal_approx(MATERIAL_WOOD.drop_weight, 80.0)
-		and is_equal_approx(MATERIAL_SAPLING.drop_weight, 20.0),
-		"Ordinary pickup tuning must preserve the 80/20 wood-to-sapling weights."
-	)
-	_expect(
-		is_equal_approx(LINGLAN_BOSS_CONFIG.pickup_drop_chance, 0.0),
-		"Linglan must remain excluded from ordinary pickup drops."
-	)
-	for enemy_config in ENEMY_CONFIGS:
-		for pickup_config in enemy_config.pickup_drop_configs:
+		_expect(
+			is_equal_approx(rule.chance, expected_chances[index]),
+			"Default enemy drop rule %d must keep its exact independent probability."
+			% index
+		)
+		_expect(
+			rule.required_tags == expected_tags[index],
+			"Default enemy drop rule %d must keep its exact tag filter." % index
+		)
+
+	var capoo_tagged_count := 0
+	var sorcerer_tagged_count := 0
+	for enemy_config in all_drop_configs:
+		_expect(
+			enemy_config.drop_table == DEFAULT_ENEMY_DROP_TABLE,
+			"%s must inherit the complete shared table so global drops cannot be removed."
+			% enemy_config.resource_path
+		)
+		for drop_tag in enemy_config.drop_tags:
 			_expect(
-				pickup_config != null
-				and pickup_config.pickup_type != PickupConfig.PickupType.MATERIAL,
-				"%s ordinary pickup pool must stay independent from material drops."
-				% enemy_config.display_name
+				drop_tag == "capoo" or drop_tag == "sorcerer",
+				"%s must not introduce an unrecognized enemy drop tag."
+				% enemy_config.resource_path
 			)
+		if "capoo" in enemy_config.drop_tags:
+			capoo_tagged_count += 1
+		if "sorcerer" in enemy_config.drop_tags:
+			sorcerer_tagged_count += 1
+	_expect(
+		capoo_tagged_count == 8,
+		"Exactly the eight Capoo configs must carry the capoo drop tag."
+	)
+	_expect(
+		sorcerer_tagged_count == 2,
+		"Exactly the base and elite fire sorcerers must carry the sorcerer tag."
+	)
+	for enemy_config in CAPOO_DROP_CONFIGS:
+		_expect(
+			enemy_config.drop_tags == PackedStringArray(["capoo"]),
+			"%s must carry only the capoo drop tag." % enemy_config.resource_path
+		)
+	for enemy_config in SORCERER_DROP_CONFIGS:
+		_expect(
+			enemy_config.drop_tags == PackedStringArray(["sorcerer"]),
+			"%s must carry only the sorcerer drop tag." % enemy_config.resource_path
+		)
+	for enemy_config in STONE_GOLEM_CONFIGS:
+		_expect(
+			enemy_config.drop_tags.is_empty(),
+			"%s must not be misclassified as Capoo or sorcerer."
+			% enemy_config.resource_path
+		)
+
+
+func _get_authored_enemy_config_paths() -> Array[String]:
+	var config_paths: Array[String] = []
+	for file_name in DirAccess.get_files_at(
+		"res://resources/config/enemies"
+	):
+		if not file_name.ends_with(".tres"):
+			continue
+		var resource_path := (
+			"res://resources/config/enemies/" + file_name
+		)
+		if load(resource_path) is EnemyConfig:
+			config_paths.append(resource_path)
+	config_paths.sort()
+	return config_paths
 
 
 func _test_enemy_scene_contract(enemy_config: EnemyConfig) -> void:

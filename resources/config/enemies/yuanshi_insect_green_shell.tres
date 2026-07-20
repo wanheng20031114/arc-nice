@@ -1,12 +1,6 @@
 [gd_resource type="Resource" script_class="YuanshiInsectGreenShellConfig" format=3 uid="uid://yefrqmv7b306"]
 
 [ext_resource type="Script" uid="uid://ddvjjkxmc4m3i" path="res://resources/config/enemies/yuanshi_insect_green_shell_config.gd" id="2_script"]
-[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="2_u8owp"]
-[ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="3_1by86"]
-[ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="4_2atwk"]
-[ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="5_tna6s"]
-[ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="6_frdp7"]
-[ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="7_3pf0l"]
 [ext_resource type="Texture2D" uid="uid://gpwpt2glrhpb" path="res://resources/texture/yuanshi_insect_green_aura_particle.tres" id="8_aura_particle"]
 [ext_resource type="Texture2D" uid="uid://04o6ofntabvg" path="res://resources/texture/yuanshi_insect_green_aura_colors.tres" id="9_aura_colors"]
 [ext_resource type="PackedScene" uid="uid://bsowy8xf3lvlm" path="res://scene/enemy/yuanshi_insect_green_shell.tscn" id="enemy_scene"]
@@ -26,4 +20,3 @@ physical_defense = 5
 move_speed = 15.0
 home_damage = 5
 xirang_kill_reward = 2
-pickup_drop_chance = 0.1

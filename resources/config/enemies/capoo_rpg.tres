@@ -3,13 +3,7 @@
 [ext_resource type="Script" uid="uid://be7g6by0cqgwy" path="res://resources/config/enemies/capoo_rpg_config.gd" id="1_script"]
 [ext_resource type="PackedScene" uid="uid://1uo3tgiyibgn" path="res://scene/enemy/capoo_rpg.tscn" id="2_scene"]
 [ext_resource type="PackedScene" uid="uid://dnt5crchqe16v" path="res://scene/enemy/capoo_rpg_rocket.tscn" id="3_rocket"]
-[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="3_uo1ti"]
-[ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="4_77gch"]
-[ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="5_5sym6"]
 [ext_resource type="AudioStream" uid="uid://312idcw43nv8" path="res://resources/audio/capoo_rpg_launch.wav" id="5_audio"]
-[ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="6_u2cl2"]
-[ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="7_mi0rm"]
-[ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="8_65xjt"]
 
 [resource]
 script = ExtResource("1_script")
@@ -23,4 +17,4 @@ move_speed = 16.0
 home_damage = 5
 explosion_radius = 44.0
 xirang_kill_reward = 24
-pickup_drop_chance = 0.1
+drop_tags = PackedStringArray("capoo")

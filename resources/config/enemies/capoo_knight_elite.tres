@@ -2,13 +2,7 @@
 
 [ext_resource type="Script" uid="uid://bhv1077xeatxy" path="res://resources/config/enemies/capoo_knight_config.gd" id="1_script"]
 [ext_resource type="PackedScene" uid="uid://spxkfxnaf3d1" path="res://scene/enemy/capoo_knight_elite.tscn" id="2_scene"]
-[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="2_w76to"]
-[ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="3_15shx"]
-[ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="4_kwmrv"]
 [ext_resource type="PackedScene" path="res://scene/enemy/capoo_knight_slash_effect.tscn" id="4_slash"]
-[ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="5_k2ch7"]
-[ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="6_05xvq"]
-[ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="7_y4pg1"]
 [ext_resource type="AudioStream" uid="uid://cag0ma8vmfwx7" path="res://resources/audio/capoo_sword_slash_heavy.wav" id="8_slash_audio"]
 
 [resource]
@@ -24,4 +18,4 @@ physical_defense = 15
 move_speed = 34.0
 home_damage = 8
 xirang_kill_reward = 20
-pickup_drop_chance = 0.1
+drop_tags = PackedStringArray("capoo")

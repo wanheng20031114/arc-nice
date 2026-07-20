@@ -3,9 +3,45 @@ extends SceneTree
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const PROFILE_PANEL_SCENE := preload("res://scene/player/ui/player_profile_panel.tscn")
 const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
+const SPEED := preload("res://resources/config/pickups/pickup_speed.tres")
+const RAPID := preload("res://resources/config/pickups/pickup_rapid.tres")
 const TEMPURA := preload("res://resources/config/pickups/pickup_tenpura.tres")
+const HEALTH := preload("res://resources/config/pickups/pickup_health.tres")
+const SPIRAL := preload("res://resources/config/pickups/pickup_spiral.tres")
 const WOOD := preload("res://resources/config/materials/material_wood.tres")
 const SAPLING := preload("res://resources/config/materials/material_sapling.tres")
+const WHITE_CRYSTAL := preload(
+	"res://resources/config/materials/material_white_crystal.tres"
+)
+const CAPOO_BLUE_CRYSTAL := preload(
+	"res://resources/config/materials/material_capoo_blue_crystal.tres"
+)
+const SORCERER_VIOLET_POWDER := preload(
+	"res://resources/config/materials/material_sorcerer_violet_powder.tres"
+)
+const DEFAULT_ENEMY_DROP_TABLE: EnemyDropTable = preload(
+	"res://resources/config/enemies/default_enemy_drop_table.tres"
+)
+const EnemyDropRuleScript := preload(
+	"res://resources/config/enemies/enemy_drop_rule.gd"
+)
+const ALL_MATERIALS: Array[PickupConfig] = [
+	WOOD,
+	SAPLING,
+	WHITE_CRYSTAL,
+	CAPOO_BLUE_CRYSTAL,
+	SORCERER_VIOLET_POWDER,
+]
+const GLOBAL_DROP_CONFIGS: Array[PickupConfig] = [
+	WOOD,
+	WHITE_CRYSTAL,
+	SAPLING,
+	SPEED,
+	RAPID,
+	TEMPURA,
+	HEALTH,
+	SPIRAL,
+]
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -24,9 +60,11 @@ func _run() -> void:
 	run_state = root.get_node("RunState") as RunStateStore
 
 	await _test_tempura_attack_buff()
-	_test_material_config_and_weighting()
+	_test_material_config_and_icons()
+	_test_deterministic_independent_drop_resolution()
 	_test_local_and_peer_stack_limits()
-	await _test_material_drop_spawn()
+	await _test_authoritative_death_drop_gate()
+	await _test_material_drop_batch_spawn()
 	await _test_material_inventory_detail()
 
 	test_root.queue_free()
@@ -67,27 +105,203 @@ func _test_tempura_attack_buff() -> void:
 	await physics_frame
 
 
-func _test_material_config_and_weighting() -> void:
-	for material in [WOOD, SAPLING]:
+func _test_material_config_and_icons() -> void:
+	for material in ALL_MATERIALS:
 		_expect(material.pickup_type == PickupConfig.PickupType.MATERIAL, "%s must use the material pickup category." % material.display_name)
 		_expect(material.can_store_in_inventory and material.stackable, "%s must be a stackable inventory item." % material.display_name)
 		_expect(material.inventory_stack_limit == 999, "%s must cap each slot at 999." % material.display_name)
 		_expect(material.icon_scale == Vector2(0.625, 0.625), "%s world drop must match the visual size of ordinary pickups." % material.display_name)
 		_expect(is_equal_approx(material.world_lifetime, 24.0), "%s world drop must survive for 24 seconds." % material.display_name)
 	_audit_material_icon(WOOD, 8, 115.0)
-	_audit_material_icon(SAPLING, 8, 115.0)
+	# The legacy sapling source predates the binary-alpha material contract.
+	# Keep auditing it without making this unrelated task rewrite its artwork.
+	_audit_material_icon(SAPLING, 32, 115.0, false)
+	_audit_material_icon(WHITE_CRYSTAL, 32, 90.0, true, "white")
+	_audit_material_icon(CAPOO_BLUE_CRYSTAL, 32, 65.0, true, "blue")
+	_audit_material_icon(
+		SORCERER_VIOLET_POWDER,
+		32,
+		50.0,
+		true,
+		"violet"
+	)
+	_audit_refined_generated_icon(
+		CAPOO_BLUE_CRYSTAL,
+		Rect2i(10, 3, 12, 25)
+	)
+	_audit_refined_generated_icon(
+		WHITE_CRYSTAL,
+		Rect2i(8, 1, 16, 29)
+	)
+	_audit_refined_generated_icon(
+		SORCERER_VIOLET_POWDER,
+		Rect2i(7, 8, 18, 16)
+	)
 	_expect(is_equal_approx(TEMPURA.world_lifetime, 12.0), "Ordinary pickups must retain the default 12-second lifetime.")
-	_expect(is_equal_approx(Enemy.MATERIAL_DROP_CHANCE, 0.03), "Every enemy must have an independent 3% material drop chance.")
-	_expect(is_equal_approx(WOOD.drop_weight, 80.0) and is_equal_approx(SAPLING.drop_weight, 20.0), "Material weights must be 80 wood to 20 sapling.")
-	var selector := Enemy.new()
-	_expect(selector.call("_pick_material_drop_config", 0.0) == WOOD, "The start of the material weight range must select wood.")
-	_expect(selector.call("_pick_material_drop_config", 79.999) == WOOD, "Wood must occupy 80% of the material weight range.")
-	_expect(selector.call("_pick_material_drop_config", 80.0) == SAPLING, "Sapling must begin at the final 20% of the material weight range.")
-	_expect(selector.call("_pick_material_drop_config", 99.999) == SAPLING, "Sapling must occupy the remainder of the material weight range.")
-	selector.free()
+
+
+func _test_deterministic_independent_drop_resolution() -> void:
+	var global_rules := DEFAULT_ENEMY_DROP_TABLE.get_eligible_rules(
+		PackedStringArray()
+	)
+	_expect(
+		global_rules.size() == 8,
+		"An untagged enemy must independently evaluate three common materials and five consumables."
+	)
+
+	var successful_rolls: Array[float] = []
+	var boundary_rolls: Array[float] = []
+	for rule in global_rules:
+		successful_rolls.append(rule.chance * 0.5)
+		boundary_rolls.append(rule.chance)
+	var simultaneous_drops := (
+		DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs_from_rolls(
+			PackedStringArray(),
+			successful_rolls
+		)
+	)
+	_expect(
+		simultaneous_drops.size() == global_rules.size(),
+		"Independent rolls must allow one enemy to drop every eligible item at once."
+	)
+	for expected_config in GLOBAL_DROP_CONFIGS:
+		_expect(
+			expected_config in simultaneous_drops,
+			"Successful independent global rolls must include %s."
+			% expected_config.resource_path
+		)
+	_expect(
+		DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs_from_rolls(
+			PackedStringArray(),
+			boundary_rolls
+		).is_empty(),
+		"A roll equal to its configured chance must fail the strict probability boundary."
+	)
+	var production_rng := RandomNumberGenerator.new()
+	var reference_rng := RandomNumberGenerator.new()
+	production_rng.seed = 20260720
+	reference_rng.seed = production_rng.seed
+	var seeded_rolls: Array[float] = []
+	for _rule in global_rules:
+		seeded_rolls.append(reference_rng.randf())
+	var expected_seeded_drops := (
+		DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs_from_rolls(
+			PackedStringArray(),
+			seeded_rolls
+		)
+	)
+	var actual_seeded_drops := DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs(
+		PackedStringArray(),
+		production_rng
+	)
+	_expect(
+		actual_seeded_drops == expected_seeded_drops,
+		"The production RNG path must use the same independent resolver as deterministic tests."
+	)
+	_expect(
+		production_rng.state == reference_rng.state,
+		"The production RNG path must consume exactly one roll per eligible rule."
+	)
+
+	var endpoint_table := EnemyDropTable.new()
+	var never_rule := EnemyDropRuleScript.new()
+	never_rule.pickup_config = WOOD
+	never_rule.chance = 0.0
+	endpoint_table.rules.append(never_rule)
+	var always_rule := EnemyDropRuleScript.new()
+	always_rule.pickup_config = WHITE_CRYSTAL
+	always_rule.chance = 1.0
+	endpoint_table.rules.append(always_rule)
+	_expect(
+		endpoint_table.resolve_drop_configs_from_rolls(
+			PackedStringArray(),
+			[0.0, 1.0]
+		) == [WHITE_CRYSTAL],
+		"Zero-percent rules must always fail and 100-percent rules must always succeed, including RNG endpoints."
+	)
+
+	var capoo_drops := DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs_from_rolls(
+		PackedStringArray(["capoo"]),
+		_zero_rolls(9)
+	)
+	_expect(
+		capoo_drops.size() == 9
+		and CAPOO_BLUE_CRYSTAL in capoo_drops
+		and SORCERER_VIOLET_POWDER not in capoo_drops,
+		"Capoo tags must add only the independent blue-crystal rule."
+	)
+	var sorcerer_drops := (
+		DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs_from_rolls(
+			PackedStringArray(["sorcerer"]),
+			_zero_rolls(9)
+		)
+	)
+	_expect(
+		sorcerer_drops.size() == 9
+		and SORCERER_VIOLET_POWDER in sorcerer_drops
+		and CAPOO_BLUE_CRYSTAL not in sorcerer_drops,
+		"Sorcerer tags must add only the independent violet-powder rule."
+	)
+	_expect(
+		CAPOO_BLUE_CRYSTAL not in simultaneous_drops
+		and SORCERER_VIOLET_POWDER not in simultaneous_drops,
+		"Untagged enemies must not receive either tag-exclusive material rule."
+	)
+	var all_tagged_drops := (
+		DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs_from_rolls(
+			PackedStringArray(["capoo", "sorcerer"]),
+			_zero_rolls(10)
+		)
+	)
+	_expect(
+		all_tagged_drops.size() == 10,
+		"Tag filters must remain composable without turning the table into a weighted choice."
+	)
+
+	var violet_rule = _find_drop_rule(SORCERER_VIOLET_POWDER)
+	_expect(
+		violet_rule != null
+		and is_equal_approx(violet_rule.chance, 0.01)
+		and violet_rule.required_tags == PackedStringArray(["sorcerer"]),
+		"The documented assumption must keep violet powder at a sorcerer-only 1% chance."
+	)
+	var powder_rule_count := 0
+	for rule in DEFAULT_ENEMY_DROP_TABLE.rules:
+		if (
+			rule != null
+			and rule.pickup_config != null
+			and rule.pickup_config.resource_path.contains("powder")
+		):
+			powder_rule_count += 1
+			_expect(
+				rule.pickup_config == SORCERER_VIOLET_POWDER,
+				"The reserved pale-blue powder must not appear in an active enemy drop rule."
+			)
+	_expect(
+		powder_rule_count == 1,
+		"Only the violet sorcerer powder may have an active powder drop rule."
+	)
 
 
 func _test_local_and_peer_stack_limits() -> void:
+	run_state.begin_new_run()
+	for material_index in range(ALL_MATERIALS.size()):
+		var material := ALL_MATERIALS[material_index]
+		_expect(
+			run_state.try_add_item(material)
+			and run_state.try_add_item(material),
+			"%s must accept repeated inventory copies." % material.display_name
+		)
+		_expect(
+			run_state.get_item(material_index) == material
+			and run_state.get_item_count(material_index) == 2,
+			"%s copies must share one material stack." % material.display_name
+		)
+		_expect(
+			not run_state.try_use_item(material_index, null),
+			"%s must remain non-consumable." % material.display_name
+		)
+
 	run_state.begin_new_run()
 	for _index in range(999):
 		_expect(run_state.try_add_item(WOOD), "Wood copy must fit before the first stack reaches 999.")
@@ -109,25 +323,58 @@ func _test_local_and_peer_stack_limits() -> void:
 	_expect(run_state.get_item_count_for_peer(7, 1) == 1, "Peer material overflow must use a second slot.")
 
 
-func _test_material_drop_spawn() -> void:
+func _test_material_drop_batch_spawn() -> void:
 	var player := PLAYER_SCENE.instantiate() as Player
 	var enemy := BASIC_ENEMY_CONFIG.enemy_scene.instantiate() as Enemy
 	test_root.add_child(player)
 	test_root.add_child(enemy)
 	enemy.setup(BASIC_ENEMY_CONFIG, player, null)
 	await process_frame
-	enemy.call("_spawn_material_drop", WOOD, Vector2(12.0, 18.0))
+	var spawn_position := Vector2(12.0, 18.0)
+	var drop_configs: Array[PickupConfig] = [
+		WOOD,
+		WHITE_CRYSTAL,
+		CAPOO_BLUE_CRYSTAL,
+		SORCERER_VIOLET_POWDER,
+	]
+	enemy.call("_spawn_dropped_pickups", drop_configs, spawn_position)
 	await process_frame
-	var spawned_material: Pickup = null
+	_expect(
+		enemy.call("_get_dropped_pickup_offset", 0, 1) == Vector2.ZERO,
+		"A single drop must stay exactly at the defeated enemy position."
+	)
+	var spawned_by_path: Dictionary = {}
+	var spawned_materials: Array[Pickup] = []
 	for child in test_root.get_children():
 		var pickup := child as Pickup
-		if pickup != null and pickup.config == WOOD:
-			spawned_material = pickup
-			break
-	_expect(spawned_material != null, "The base Enemy material path must create a normal pickup for every enemy subclass.")
-	if spawned_material != null:
-		_expect(spawned_material.global_position == Vector2(12.0, 18.0), "Material pickup must spawn at the defeated enemy position.")
-		_expect(spawned_material.sprite.scale == WOOD.icon_scale, "The spawned material must apply its world-only icon scale.")
+		if pickup == null or pickup.config not in drop_configs:
+			continue
+		spawned_materials.append(pickup)
+		var config_path := pickup.config.resource_path
+		spawned_by_path[config_path] = int(
+			spawned_by_path.get(config_path, 0)
+		) + 1
+	_expect(
+		spawned_materials.size() == drop_configs.size(),
+		"The base Enemy batch path must instantiate every independently resolved drop."
+	)
+	for drop_config in drop_configs:
+		_expect(
+			int(spawned_by_path.get(drop_config.resource_path, 0)) == 1,
+			"Batch spawning must create exactly one pickup for %s."
+			% drop_config.resource_path
+		)
+	var unique_positions: Dictionary = {}
+	var position_sum := Vector2.ZERO
+	for spawned_material in spawned_materials:
+		unique_positions[spawned_material.global_position] = true
+		position_sum += spawned_material.global_position
+		_expect(
+			spawned_material.global_position.distance_to(spawn_position)
+			<= Enemy.ENEMY_DROP_OUTER_RING_RADIUS + 0.01,
+			"Every material pickup must remain in a compact ring around the defeated enemy."
+		)
+		_expect(spawned_material.sprite.scale == spawned_material.config.icon_scale, "Each spawned material must apply its world-only icon scale.")
 		_expect(
 			spawned_material.sprite.modulate == Color.WHITE
 			and spawned_material.sprite.self_modulate == Color.WHITE,
@@ -137,13 +384,107 @@ func _test_material_drop_spawn() -> void:
 		var blink_material := spawned_material.sprite.material as ShaderMaterial
 		_expect(blink_material != null and not bool(blink_material.get_shader_parameter(&"blink_enabled")), "The pickup blink shader must stay visually inactive before expiry.")
 		spawned_material.queue_free()
+	_expect(
+		unique_positions.size() == spawned_materials.size(),
+		"Independent simultaneous drops must use distinct deterministic positions instead of hiding under one another."
+	)
+	if not spawned_materials.is_empty():
+		_expect(
+			(position_sum / float(spawned_materials.size())).distance_to(
+				spawn_position
+			) <= 0.01,
+			"The deterministic drop spread must remain centered on the defeated enemy."
+		)
 	enemy.queue_free()
 	player.queue_free()
 	await process_frame
 	await physics_frame
 
 
-func _audit_material_icon(material: PickupConfig, max_visible_colors: int, minimum_mean_luminance: float) -> void:
+func _test_authoritative_death_drop_gate() -> void:
+	var always_drop_table := EnemyDropTable.new()
+	for drop_config in [WOOD, WHITE_CRYSTAL]:
+		var rule := EnemyDropRuleScript.new()
+		rule.pickup_config = drop_config
+		rule.chance = 1.0
+		always_drop_table.rules.append(rule)
+	var always_drop_config := BASIC_ENEMY_CONFIG.duplicate(true) as EnemyConfig
+	always_drop_config.drop_table = always_drop_table
+	always_drop_config.xirang_kill_reward = 0
+
+	var player := PLAYER_SCENE.instantiate() as Player
+	var enemy := always_drop_config.enemy_scene.instantiate() as Enemy
+	test_root.add_child(player)
+	test_root.add_child(enemy)
+	player.global_position = Vector2(1000.0, 1000.0)
+	enemy.global_position = Vector2(100.0, 100.0)
+	enemy.setup(always_drop_config, player, null)
+	await process_frame
+	enemy.call("_die")
+	enemy.call("_die")
+	await process_frame
+	var authoritative_drop_count := _count_pickups_for_configs(
+		[WOOD, WHITE_CRYSTAL]
+	)
+	_expect(
+		authoritative_drop_count == 2,
+		"One authoritative death must defer exactly one batch, and repeated death calls must not duplicate it."
+	)
+
+	var proxy_enemy := always_drop_config.enemy_scene.instantiate() as Enemy
+	test_root.add_child(proxy_enemy)
+	proxy_enemy.global_position = Vector2(200.0, 100.0)
+	proxy_enemy.setup(always_drop_config, player, null)
+	proxy_enemy.is_multiplayer_proxy = true
+	await process_frame
+	proxy_enemy.call("_die")
+	await process_frame
+	_expect(
+		_count_pickups_for_configs([WOOD, WHITE_CRYSTAL])
+		== authoritative_drop_count,
+		"A multiplayer proxy death must never perform a local drop roll or spawn."
+	)
+	for child in test_root.get_children():
+		var pickup := child as Pickup
+		if pickup != null and pickup.config in [WOOD, WHITE_CRYSTAL]:
+			pickup.queue_free()
+	enemy.queue_free()
+	proxy_enemy.queue_free()
+	player.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _count_pickups_for_configs(configs: Array) -> int:
+	var count := 0
+	for child in test_root.get_children():
+		var pickup := child as Pickup
+		if pickup != null and pickup.config in configs:
+			count += 1
+	return count
+
+
+func _zero_rolls(count: int) -> Array[float]:
+	var rolls: Array[float] = []
+	rolls.resize(count)
+	rolls.fill(0.0)
+	return rolls
+
+
+func _find_drop_rule(pickup_config: PickupConfig):
+	for rule in DEFAULT_ENEMY_DROP_TABLE.rules:
+		if rule != null and rule.pickup_config == pickup_config:
+			return rule
+	return null
+
+
+func _audit_material_icon(
+	material: PickupConfig,
+	max_visible_colors: int,
+	minimum_mean_luminance: float,
+	require_binary_alpha: bool = true,
+	color_family: String = ""
+) -> void:
 	var image := Image.load_from_file(ProjectSettings.globalize_path(material.icon_texture.resource_path))
 	_expect(image != null and image.get_size() == Vector2i(32, 32), "%s icon must remain a native 32x32 texture." % material.display_name)
 	if image == null:
@@ -151,6 +492,9 @@ func _audit_material_icon(material: PickupConfig, max_visible_colors: int, minim
 	var visible_colors: Dictionary = {}
 	var visible_pixel_count := 0
 	var luminance_sum := 0.0
+	var red_sum := 0.0
+	var green_sum := 0.0
+	var blue_sum := 0.0
 	var has_partial_alpha := false
 	var has_dirty_transparent_rgb := false
 	for y in range(image.get_height()):
@@ -164,12 +508,84 @@ func _audit_material_icon(material: PickupConfig, max_visible_colors: int, minim
 			visible_colors[pixel.to_rgba32()] = true
 			visible_pixel_count += 1
 			luminance_sum += (0.2126 * pixel.r + 0.7152 * pixel.g + 0.0722 * pixel.b) * 255.0
+			red_sum += pixel.r * 255.0
+			green_sum += pixel.g * 255.0
+			blue_sum += pixel.b * 255.0
 	_expect(visible_pixel_count > 0, "%s icon must contain visible pixels." % material.display_name)
 	_expect(visible_colors.size() <= max_visible_colors, "%s icon must use a compact pixel-art palette." % material.display_name)
-	_expect(not has_partial_alpha, "%s icon must keep binary alpha for crisp nearest-neighbour rendering." % material.display_name)
+	_expect(
+		not require_binary_alpha or not has_partial_alpha,
+		"%s icon must keep binary alpha for crisp nearest-neighbour rendering."
+		% material.display_name
+	)
 	_expect(not has_dirty_transparent_rgb, "%s icon must keep transparent RGB clear." % material.display_name)
 	if visible_pixel_count > 0:
 		_expect(luminance_sum / float(visible_pixel_count) >= minimum_mean_luminance, "%s icon source palette must be bright enough without runtime compensation." % material.display_name)
+		var mean_red := red_sum / float(visible_pixel_count)
+		var mean_green := green_sum / float(visible_pixel_count)
+		var mean_blue := blue_sum / float(visible_pixel_count)
+		match color_family:
+			"blue":
+				_expect(
+					mean_blue > mean_red + 30.0
+					and mean_green > mean_red + 20.0,
+					"%s must retain its cyan-blue crystal color family."
+					% material.display_name
+				)
+			"white":
+				_expect(
+					minf(mean_red, minf(mean_green, mean_blue)) > 120.0,
+					"%s must retain bright near-neutral opalescent facets."
+					% material.display_name
+				)
+			"violet":
+				_expect(
+					mean_blue > mean_green + 35.0
+					and mean_red > mean_green + 15.0,
+					"%s must remain violet rather than reverting to reserved pale blue."
+					% material.display_name
+				)
+
+
+func _audit_refined_generated_icon(
+	material: PickupConfig,
+	expected_bbox: Rect2i
+) -> void:
+	var image := Image.load_from_file(
+		ProjectSettings.globalize_path(material.icon_texture.resource_path)
+	)
+	if image == null:
+		return
+	_expect(
+		image.get_used_rect() == expected_bbox,
+		"%s must retain the approved generated subject size and centering."
+		% material.display_name
+	)
+	if image.get_used_rect() != expected_bbox:
+		return
+	var mixed_alpha_blocks := 0
+	for local_y in range(0, expected_bbox.size.y - 1, 2):
+		for local_x in range(0, expected_bbox.size.x - 1, 2):
+			var alpha_states: Dictionary = {}
+			for offset_y in range(2):
+				for offset_x in range(2):
+					var pixel_position := (
+						expected_bbox.position
+						+ Vector2i(local_x + offset_x, local_y + offset_y)
+					)
+					alpha_states[
+						image.get_pixelv(pixel_position).a > 0.5
+					] = true
+			if alpha_states.size() > 1:
+				mixed_alpha_blocks += 1
+	_expect(
+		mixed_alpha_blocks > 0,
+		(
+			"%s silhouette must keep the refined generated edge instead of "
+			+ "collapsing into mechanically duplicated 2x pixels."
+		)
+		% material.display_name
+	)
 
 
 func _test_material_inventory_detail() -> void:

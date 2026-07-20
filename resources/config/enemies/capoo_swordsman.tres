@@ -3,11 +3,6 @@
 [ext_resource type="Script" uid="uid://cre3hul67afql" path="res://resources/config/enemies/capoo_swordsman_config.gd" id="1_script"]
 [ext_resource type="PackedScene" uid="uid://ckp580otbuq37" path="res://scene/enemy/capoo_swordsman.tscn" id="2_scene"]
 [ext_resource type="PackedScene" uid="uid://brxwxwvrrbp6m" path="res://scene/enemy/capoo_swordsman_slash_effect.tscn" id="4_slash"]
-[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="5_pickup_script"]
-[ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="6_speed"]
-[ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="7_rapid"]
-[ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="8_spiral"]
-[ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="10_health"]
 [ext_resource type="AudioStream" uid="uid://druowpv8vg1x0" path="res://resources/audio/capoo_sword_slash_light.wav" id="11_slash_audio"]
 
 [resource]
@@ -26,5 +21,4 @@ physical_defense = 5
 move_speed = 38.0
 home_damage = 5
 xirang_kill_reward = 20
-pickup_drop_chance = 0.1
-pickup_drop_configs = Array[ExtResource("5_pickup_script")]([ExtResource("6_speed"), ExtResource("7_rapid"), ExtResource("8_spiral"), ExtResource("10_health")])
+drop_tags = PackedStringArray("capoo")

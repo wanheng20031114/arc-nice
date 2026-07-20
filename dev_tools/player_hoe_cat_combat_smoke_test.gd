@@ -978,7 +978,7 @@ func _spawn_authored_test_enemy(
 	enemy_config.magic_defense = 0
 	enemy_config.move_speed = 0.0
 	enemy_config.xirang_kill_reward = 0
-	enemy_config.pickup_drop_chance = 0.0
+	enemy_config.drop_table = null
 	enemy.config = enemy_config
 	enemy.position = spawn_position
 	test_root.add_child(enemy)

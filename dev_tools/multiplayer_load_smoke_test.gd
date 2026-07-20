@@ -15,6 +15,9 @@ const PICKUP_SPIRAL_CONFIG := preload("res://resources/config/pickups/pickup_spi
 const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
 const WOOD_MATERIAL := preload("res://resources/config/materials/material_wood.tres")
 const SAPLING_MATERIAL := preload("res://resources/config/materials/material_sapling.tres")
+const WHITE_CRYSTAL_MATERIAL := preload(
+	"res://resources/config/materials/material_white_crystal.tres"
+)
 const WATER_BOTTLE_MATERIAL := preload("res://resources/config/materials/material_water_bottle.tres")
 const LINGLAN_SKILL2_ROCKET_SCENE := preload("res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn")
 const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
@@ -3005,9 +3008,18 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 		client_mp_game.call(
 			"net_pickup_spawned",
 			9002,
-			HEALTH_PICKUP.resource_path,
+			WHITE_CRYSTAL_MATERIAL.resource_path,
 			45.0,
 			56.0
+		)
+		var spawned_material := client_game.get_pickup_for_net_id(9002)
+		_expect(
+			spawned_material != null
+			and spawned_material.config == WHITE_CRYSTAL_MATERIAL
+			and spawned_material.global_position.is_equal_approx(
+				Vector2(45.0, 56.0)
+			),
+			"New crystal resource paths must recreate the correct network pickup."
 		)
 		var pickup_inventory_snapshot: Dictionary = (
 			client_run_state.export_inventory_snapshot_for_peer(2)
@@ -3017,7 +3029,7 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 		)
 		var pickup_slots := pickup_inventory_snapshot.get("slots", []) as Array
 		var pickup_slot := pickup_slots[0] as Dictionary
-		pickup_slot["config_path"] = HEALTH_PICKUP.resource_path
+		pickup_slot["config_path"] = WHITE_CRYSTAL_MATERIAL.resource_path
 		pickup_slot["stack_count"] = 1
 		for pickup_slot_value in pickup_slots:
 			var authoritative_pickup_slot := pickup_slot_value as Dictionary
@@ -3028,15 +3040,17 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			"net_pickup_collected",
 			9002,
 			2,
-			HEALTH_PICKUP.resource_path,
+			WHITE_CRYSTAL_MATERIAL.resource_path,
 			false,
 			pickup_inventory_snapshot
 		)
 		await process_frame
 		_expect(not client_game.multiplayer_pickups.has(9002), "Stored pickup confirm must erase pickup index.")
 		_expect(
-			client_run_state != null and client_run_state.get_item_for_peer(2, 0) == HEALTH_PICKUP,
-			"Stored pickup confirm must add the item to the collector inventory."
+			client_run_state != null
+			and client_run_state.get_item_for_peer(2, 0)
+				== WHITE_CRYSTAL_MATERIAL,
+			"Stored material confirm must load the new crystal path and add it to inventory."
 		)
 		var revision_before_malformed_pickup := (
 			client_run_state.get_inventory_revision_for_peer(2)

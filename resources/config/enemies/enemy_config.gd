@@ -54,13 +54,7 @@ enum DamageType {
 @export_group("奖励与掉落")
 # 敌人被击杀时直接发给每位当前玩家的息壤奖金；0 表示没有奖金。
 @export_range(0, 999, 1, "or_greater") var xirang_kill_reward: int = 1
-# 敌人死亡后尝试掉落道具的概率。
-@export_range(0.0, 1.0, 0.01) var pickup_drop_chance: float = 0.15
-# 当前敌人允许掉落的道具配置列表；为空时表示该敌人不会掉落道具。
-@export var pickup_drop_configs: Array[PickupConfig] = [
-	preload("res://resources/config/pickups/pickup_speed.tres"),
-	preload("res://resources/config/pickups/pickup_rapid.tres"),
-	preload("res://resources/config/pickups/pickup_spiral.tres"),
-	preload("res://resources/config/pickups/pickup_tenpura.tres"),
-	preload("res://resources/config/pickups/pickup_health.tres"),
-]
+# 稳定的敌人类别标签，供掉落规则筛选；空数组表示只应用面向全部敌人的规则。
+@export var drop_tags: PackedStringArray = PackedStringArray()
+# 敌人死亡时使用的数据驱动掉落表；表内每条规则都会独立判定。
+@export var drop_table: EnemyDropTable = preload("res://resources/config/enemies/default_enemy_drop_table.tres")

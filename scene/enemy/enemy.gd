@@ -35,11 +35,9 @@ const AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const HIT_EFFECT_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")
 const MOVE_SPEED_TRAIL_EFFECT_SCENE := preload("res://scene/move_speed_trail_effect.tscn")
 const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
-const MATERIAL_PICKUP_SCENE := preload("res://scene/pickup.tscn")
-const MATERIAL_WOOD := preload("res://resources/config/materials/material_wood.tres")
-const MATERIAL_SAPLING := preload("res://resources/config/materials/material_sapling.tres")
-const MATERIAL_DROP_CHANCE := 0.03
-const MATERIAL_DROP_CONFIGS: Array[PickupConfig] = [MATERIAL_WOOD, MATERIAL_SAPLING]
+const ENEMY_DROP_PICKUP_SCENE := preload("res://scene/pickup.tscn")
+const ENEMY_DROP_INNER_RING_RADIUS := 10.0
+const ENEMY_DROP_OUTER_RING_RADIUS := 20.0
 const SLOW_OVERLAY_ACTIVE_STRENGTH := 0.36
 const BURN_OVERLAY_ACTIVE_STRENGTH := 0.26
 const BLEED_OVERLAY_ACTIVE_STRENGTH := 0.42
@@ -206,6 +204,9 @@ var near_moving_target_direct_distance_squared := (
 	DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE_SQUARED
 )
 var animated_sprite_base_position := Vector2.ZERO
+# Per-enemy combat variation (spread, attack-side choice, and audio pitch).
+# Pickup drops deliberately use the separate material_drop_random_generator.
+var random_generator := RandomNumberGenerator.new()
 var material_drop_random_generator := RandomNumberGenerator.new()
 var cached_effective_physical_defense := 0
 var cached_effective_move_speed := 0.0
@@ -277,6 +278,7 @@ static func _record_performance_metric(
 
 func _ready() -> void:
 	_apply_terrain_collision_profile()
+	random_generator.randomize()
 	material_drop_random_generator.randomize()
 	_blocked_world_los_retry_interval_msec = (
 		BLOCKED_WORLD_LOS_RETRY_MIN_MSEC
@@ -3089,9 +3091,11 @@ func _die() -> void:
 	if is_dead:
 		return
 
-	_queue_configured_xirang_kill_reward()
-	_try_drop_material()
+	# Mark the death before rewards or drop resolution so any future callback
+	# that re-enters _die cannot enqueue the same side effects twice.
 	is_dead = true
+	_queue_configured_xirang_kill_reward()
+	_queue_configured_pickup_drops()
 	defeated.emit(self)
 	velocity = Vector2.ZERO
 	_update_movement_status_visuals()
@@ -3119,54 +3123,69 @@ func _queue_configured_xirang_kill_reward() -> void:
 	current_scene.call("grant_xirang_kill_reward", config.xirang_kill_reward)
 
 
-func _try_drop_material() -> void:
-	if is_multiplayer_proxy:
+func _queue_configured_pickup_drops() -> void:
+	if is_multiplayer_proxy or config == null or config.drop_table == null:
 		return
-	if material_drop_random_generator.randf() >= MATERIAL_DROP_CHANCE:
-		return
-	var material := _pick_material_drop_config(
-		material_drop_random_generator.randf_range(0.0, _get_material_drop_total_weight())
+	var drop_configs := config.drop_table.resolve_drop_configs(
+		config.drop_tags,
+		material_drop_random_generator
 	)
-	if material == null:
+	if drop_configs.is_empty():
 		return
-	call_deferred("_spawn_material_drop", material, global_position)
+	call_deferred("_spawn_dropped_pickups", drop_configs, global_position)
 
 
-func _pick_material_drop_config(target_weight: float) -> PickupConfig:
-	var total_weight := _get_material_drop_total_weight()
-	if total_weight <= 0.0:
-		return null
-	var clamped_target := clampf(target_weight, 0.0, total_weight)
-	var accumulated_weight := 0.0
-	for material in MATERIAL_DROP_CONFIGS:
-		if material == null or material.drop_weight <= 0.0:
-			continue
-		accumulated_weight += material.drop_weight
-		if clamped_target < accumulated_weight:
-			return material
-	return MATERIAL_DROP_CONFIGS.back()
-
-
-func _get_material_drop_total_weight() -> float:
-	var total_weight := 0.0
-	for material in MATERIAL_DROP_CONFIGS:
-		if material != null:
-			total_weight += maxf(material.drop_weight, 0.0)
-	return total_weight
-
-
-func _spawn_material_drop(material: PickupConfig, spawn_position: Vector2) -> void:
-	if material == null:
+func _spawn_dropped_pickups(
+	drop_configs: Array[PickupConfig],
+	spawn_position: Vector2
+) -> void:
+	if drop_configs.is_empty():
 		return
 	var drop_parent := get_parent()
 	if drop_parent == null:
 		return
-	var pickup := MATERIAL_PICKUP_SCENE.instantiate() as Pickup
-	if pickup == null:
-		return
-	pickup.config = material
-	drop_parent.add_child(pickup)
-	pickup.global_position = spawn_position
+	var valid_drop_configs: Array[PickupConfig] = []
+	for drop_config in drop_configs:
+		if drop_config != null:
+			valid_drop_configs.append(drop_config)
+	for drop_index in range(valid_drop_configs.size()):
+		var drop_config := valid_drop_configs[drop_index]
+		var pickup := ENEMY_DROP_PICKUP_SCENE.instantiate() as Pickup
+		if pickup == null:
+			continue
+		pickup.config = drop_config
+		drop_parent.add_child(pickup)
+		pickup.global_position = (
+			spawn_position
+			+ _get_dropped_pickup_offset(
+				drop_index,
+				valid_drop_configs.size()
+			)
+		)
+
+
+func _get_dropped_pickup_offset(drop_index: int, drop_count: int) -> Vector2:
+	if drop_count <= 1:
+		return Vector2.ZERO
+	var ring_index := drop_index
+	var ring_count := drop_count
+	var radius := 9.0 + float(drop_count)
+	var angle_offset := -PI * 0.5
+	if drop_count > 6:
+		var inner_count := drop_count >> 1
+		if drop_index < inner_count:
+			ring_count = inner_count
+			radius = ENEMY_DROP_INNER_RING_RADIUS
+		else:
+			ring_index -= inner_count
+			ring_count = drop_count - inner_count
+			radius = ENEMY_DROP_OUTER_RING_RADIUS
+			angle_offset += PI / float(ring_count)
+	var angle := (
+		angle_offset
+		+ TAU * float(ring_index) / float(ring_count)
+	)
+	return Vector2.from_angle(angle) * radius
 
 
 func _set_collision_shapes_disabled(shape_nodes: Array[CollisionShape2D], disabled: bool) -> void:
