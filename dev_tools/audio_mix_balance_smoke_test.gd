@@ -138,8 +138,8 @@ func _test_plant_placement_mix() -> void:
 	_expect_volume(
 		effect,
 		"PlacementAudio",
-		-8.0,
-		"Plant placement must sit near the existing explosion mix without overpowering it."
+		-6.0,
+		"Plant placement must stay clearly audible without overpowering nearby combat SFX."
 	)
 	_expect(
 		audio != null
@@ -171,10 +171,10 @@ func _test_plant_placement_mix() -> void:
 		"Five simultaneous placements must retain exactly four logical audio voices."
 	)
 	_expect(
-		_float_close(placement_effects[0].placement_audio.volume_db, -8.0)
-		and _float_close(placement_effects[1].placement_audio.volume_db, -10.5)
-		and _float_close(placement_effects[2].placement_audio.volume_db, -13.0)
-		and _float_close(placement_effects[3].placement_audio.volume_db, -15.5),
+		_float_close(placement_effects[0].placement_audio.volume_db, -6.0)
+		and _float_close(placement_effects[1].placement_audio.volume_db, -8.5)
+		and _float_close(placement_effects[2].placement_audio.volume_db, -11.0)
+		and _float_close(placement_effects[3].placement_audio.volume_db, -13.5),
 		"Stacked placement voices must use the configured 2.5 dB attenuation ladder."
 	)
 	for stacked_effect in placement_effects:

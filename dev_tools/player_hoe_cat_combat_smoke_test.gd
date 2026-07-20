@@ -160,7 +160,22 @@ func _test_starting_stats_and_attack_speed_contract() -> void:
 	_expect(player.uses_attack_interval_bar(), "Hoe Cat must expose the attack interval bar.")
 	_expect(player.get_node_or_null("ArmedEffectSprite") == null, "Hoe Cat must not carry Weishidaier's armed-effect placeholder.")
 	_expect(player.get_node_or_null("AmmoBar") == null, "Hoe Cat must not carry a hidden ammunition bar.")
-	_expect(player.get_node_or_null("PrimaryAttackAudio") is AudioStreamPlayer2D, "Hoe Cat primary audio must use a character-neutral node name.")
+	var primary_audio := player.get_node_or_null(
+		"PrimaryAttackAudio"
+	) as AudioStreamPlayer2D
+	var primary_audio_stream := (
+		primary_audio.stream as AudioStreamWAV
+		if primary_audio != null
+		else null
+	)
+	_expect(primary_audio != null, "Hoe Cat primary audio must use a character-neutral node name.")
+	_expect(
+		primary_audio_stream != null
+		and primary_audio_stream.resource_path
+		== "res://resources/audio/hoe_cat_sword_slash_light.wav"
+		and is_equal_approx(primary_audio_stream.get_length(), 0.25),
+		"Hoe Cat must use its dedicated 0.25-second front-trimmed light sword cue."
+	)
 	_expect(player.get_node_or_null("Skill1Audio") is AudioStreamPlayer2D, "Hoe Cat skill audio must use a character-neutral node name.")
 	_expect(
 		player.basic_attack_query_shape != null
@@ -605,6 +620,10 @@ func _test_primary_cone_attack() -> void:
 	var diagonal_request := TEST_PRIMARY_DIRECTION
 	var attacked := player.try_authoritative_hoe_primary_attack(diagonal_request)
 	_expect(attacked, "Hoe Cat primary attack must execute when its timer is ready.")
+	_expect(
+		player.primary_attack_audio.playing,
+		"Hoe Cat light sword cue must begin with the swing instead of waiting for impact."
+	)
 	_expect(
 		player.last_attack_direction.is_equal_approx(diagonal_request),
 		"A diagonal primary request must remain the exact free-aim attack axis."

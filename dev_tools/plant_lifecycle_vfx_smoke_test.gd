@@ -360,14 +360,14 @@ func _test_particle_scenes_and_pool_release() -> void:
 		placement_audio != null
 		and placement_stream != null
 		and placement_audio.bus == &"SFX"
-		and is_equal_approx(placement_audio.volume_db, -8.0)
+		and is_equal_approx(placement_audio.volume_db, -6.0)
 		and is_equal_approx(placement_audio.max_distance, 300.0)
 		and placement_audio.max_polyphony == 1
 		and placement_stream.mix_rate == 44100
 		and not placement_stream.stereo
 		and placement_stream.get_length() >= 0.29
 		and placement_stream.get_length() <= 0.32,
-		"建筑放置声必须使用SFX总线、克制空间混音与约0.3秒的44.1kHz单声道短音效。"
+		"建筑放置声必须使用SFX总线、清晰空间混音与约0.3秒的44.1kHz单声道短音效。"
 	)
 	_expect(
 		is_equal_approx(PlantPlacementParticles.FULL_EMISSION_DURATION, 0.7)

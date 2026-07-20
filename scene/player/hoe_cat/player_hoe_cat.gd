@@ -435,6 +435,7 @@ func _play_primary_attack_visual(attack_direction: Vector2) -> void:
 	basic_slash_effect.frame = 0
 	basic_slash_effect.show()
 	basic_slash_effect.play(&"slash")
+	_play_primary_attack_audio()
 	primary_impact_timer.start(PRIMARY_IMPACT_DELAY)
 
 
@@ -499,7 +500,6 @@ func _finish_whirlwind_visual() -> void:
 
 
 func _on_primary_impact_timer_timeout() -> void:
-	_play_primary_attack_audio()
 	if not _pending_primary_attack:
 		return
 	var impact_direction := _pending_primary_direction
