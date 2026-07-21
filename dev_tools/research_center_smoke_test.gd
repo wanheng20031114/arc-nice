@@ -478,6 +478,9 @@ func _test_config_and_scene(
 		var player_tab := panel.get_node(
 			"Overlay/PanelRoot/PlayerTab"
 		) as Button
+		var tab_style := global_tab.get_theme_stylebox(
+			&"normal"
+		) as StyleBoxFlat
 		var close_button := panel.get_node(
 			"Overlay/PanelRoot/CloseButton"
 		) as Button
@@ -517,15 +520,27 @@ func _test_config_and_scene(
 				Rect2(168.0, 15.0, 392.0, 46.0)
 			)
 			and global_tab.get_rect().is_equal_approx(
-				Rect2(50.0, 66.0, 151.0, 48.0)
+				Rect2(49.0, 76.0, 155.0, 38.0)
 			)
 			and player_tab.get_rect().is_equal_approx(
-				Rect2(205.0, 66.0, 143.0, 48.0)
+				Rect2(204.0, 76.0, 145.0, 38.0)
+			)
+			and is_equal_approx(
+				global_tab.position.x + global_tab.size.x,
+				player_tab.position.x
 			)
 			and close_button.get_rect().is_equal_approx(
 				Rect2(666.0, 18.0, 40.0, 41.0)
 			),
 			"科研UI标题、双页签与关闭热区必须贴合背景原生槽位。"
+		)
+		_expect(
+			tab_style != null
+			and tab_style.corner_radius_top_left == 9
+			and tab_style.corner_radius_top_right == 9
+			and tab_style.corner_radius_bottom_left == 2
+			and tab_style.corner_radius_bottom_right == 2,
+			"科研UI页签上沿必须贴合背景槽斜角，下沿保持近似直角。"
 		)
 		_expect(
 			research_list_frame.get_rect().is_equal_approx(

@@ -41,10 +41,10 @@ border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
 border_color = Color(0.13, 0.32, 0.52, 1)
-corner_radius_top_left = 3
-corner_radius_top_right = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
+corner_radius_top_left = 9
+corner_radius_top_right = 9
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tab_active"]
 bg_color = Color(0.065, 0.25, 0.43, 1)
@@ -53,10 +53,10 @@ border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
 border_color = Color(0.28, 0.82, 1, 1)
-corner_radius_top_left = 3
-corner_radius_top_right = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
+corner_radius_top_left = 9
+corner_radius_top_right = 9
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_list_frame"]
 bg_color = Color(0.012, 0.045, 0.085, 0.96)
@@ -267,9 +267,9 @@ vertical_alignment = 1
 
 [node name="GlobalTab" type="Button" parent="Overlay/PanelRoot"]
 z_index = 2
-offset_left = 50.0
-offset_top = 66.0
-offset_right = 201.0
+offset_left = 49.0
+offset_top = 76.0
+offset_right = 204.0
 offset_bottom = 114.0
 toggle_mode = true
 theme_override_colors/font_color = Color(0.65, 0.84, 0.95, 1)
@@ -284,9 +284,9 @@ text = "全局科技"
 
 [node name="PlayerTab" type="Button" parent="Overlay/PanelRoot"]
 z_index = 2
-offset_left = 205.0
-offset_top = 66.0
-offset_right = 348.0
+offset_left = 204.0
+offset_top = 76.0
+offset_right = 349.0
 offset_bottom = 114.0
 toggle_mode = true
 theme_override_colors/font_color = Color(0.65, 0.84, 0.95, 1)
