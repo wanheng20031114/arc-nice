@@ -16,6 +16,9 @@ Output contracts:
 * ``frost_sorcerer_ice_spike.png`` is 128x128 (4x4 frames of 32x32).
 * output alpha is binary and transparent pixels have zero RGB payload.
 * living Frost Sorcerer frames share a fixed y=38 ground baseline.
+* living frames use one fixed character scale and reviewed lower-body anchors;
+  oversized spell VFX are clipped by the 40x40 canvas, never allowed to shrink
+  the character from one action frame to the next.
 * the projectile uses one fixed visual scale, so spawn/impact fragments never
   grow merely because their source bounding box is smaller.
 """
@@ -48,6 +51,19 @@ CHARACTER_FRAME_SIZE = 40
 CHARACTER_MAX_WIDTH = 36
 CHARACTER_MAX_HEIGHT = 38
 CHARACTER_BASELINE_Y = 38
+# The lower-body anchors mirror the corresponding Fire Sorcerer action phases.
+# In particular, attack frame 2 keeps the deliberate forward-cast weight shift
+# without letting the much wider ice blast determine the actor's scale.
+CHARACTER_LIVING_GROUND_ANCHOR_X = (
+    (16, 18, 15, 15),
+    (16, 23, 18, 18),
+    (15, 17, 10, 15),
+)
+CHARACTER_GROUND_ANCHOR_DEPTH_RATIO = 1.0 / 6.0
+DETACHED_BELOW_GAP = 8
+DETACHED_BELOW_MAX_AREA_RATIO = 0.01
+LIVING_HEIGHT_TOLERANCE = 2
+ATTACK_MIN_VISIBLE_AREA_RATIO = 0.75
 ICE_SPIKE_FRAME_SIZE = 32
 ICE_SPIKE_MAX_WIDTH = 18
 ICE_SPIKE_MAX_HEIGHT = 14
@@ -122,9 +138,92 @@ def _resize_subject(subject: Image.Image, scale: float) -> Image.Image:
     return native.crop(bbox)
 
 
+def _alpha_components(alpha: np.ndarray) -> list[list[tuple[int, int]]]:
+    """Return 8-connected visible components as ``(y, x)`` coordinates."""
+
+    height, width = alpha.shape
+    visited = np.zeros_like(alpha, dtype=bool)
+    components: list[list[tuple[int, int]]] = []
+    for start_y, start_x in zip(*np.where(alpha)):
+        if visited[start_y, start_x]:
+            continue
+        visited[start_y, start_x] = True
+        pending = [(int(start_y), int(start_x))]
+        component: list[tuple[int, int]] = []
+        while pending:
+            y, x = pending.pop()
+            component.append((y, x))
+            for offset_y in (-1, 0, 1):
+                for offset_x in (-1, 0, 1):
+                    if offset_y == 0 and offset_x == 0:
+                        continue
+                    next_y = y + offset_y
+                    next_x = x + offset_x
+                    if not (0 <= next_y < height and 0 <= next_x < width):
+                        continue
+                    if not alpha[next_y, next_x] or visited[next_y, next_x]:
+                        continue
+                    visited[next_y, next_x] = True
+                    pending.append((next_y, next_x))
+        components.append(component)
+    return components
+
+
+def _remove_detached_below_subject(subject: Image.Image) -> Image.Image:
+    """Discard tiny extraction debris isolated well below a living actor.
+
+    Legitimate frost motes beside or above the actor remain untouched.  This
+    specifically prevents a few orphan pixels below the feet from becoming a
+    false baseline and making an otherwise normal frame appear much smaller.
+    """
+
+    rgba = np.asarray(subject.convert("RGBA"), dtype=np.uint8).copy()
+    components = _alpha_components(rgba[:, :, 3] == 255)
+    if not components:
+        raise AssetContractError("living character subject is empty")
+    primary = max(components, key=len)
+    primary_bottom = max(y for y, _x in primary)
+    max_detached_area = max(
+        1,
+        round(len(primary) * DETACHED_BELOW_MAX_AREA_RATIO),
+    )
+    for component in components:
+        if component is primary or len(component) > max_detached_area:
+            continue
+        component_top = min(y for y, _x in component)
+        if component_top <= primary_bottom + DETACHED_BELOW_GAP:
+            continue
+        for y, x in component:
+            rgba[y, x] = (0, 0, 0, 0)
+    cleaned = Image.fromarray(rgba, "RGBA")
+    bbox = cleaned.getchannel("A").getbbox()
+    if bbox is None:
+        raise AssetContractError("living character cleanup erased the subject")
+    return cleaned.crop(bbox)
+
+
+def _lower_body_anchor_x(native: Image.Image) -> float:
+    """Measure a stable horizontal actor anchor from the grounded robe/feet."""
+
+    alpha = np.asarray(native.getchannel("A"), dtype=np.uint8) == 255
+    visible_y, _visible_x = np.where(alpha)
+    if visible_y.size == 0:
+        raise AssetContractError("native character frame is empty")
+    bottom = int(visible_y.max())
+    depth = max(
+        3,
+        round(native.height * CHARACTER_GROUND_ANCHOR_DEPTH_RATIO),
+    )
+    strip_top = max(0, bottom - depth + 1)
+    _strip_y, strip_x = np.where(alpha[strip_top : bottom + 1])
+    if strip_x.size == 0:
+        raise AssetContractError("native character lower-body anchor is empty")
+    return float(np.median(strip_x))
+
+
 def _character_base_scale(subjects: list[Image.Image]) -> float:
-    # The four walking frames are the identity/scale anchor.  Wider attack VFX
-    # may scale down to fit, but compact death fragments must never scale up.
+    # The four walking frames are the identity/scale anchor.  Every living
+    # frame uses this exact scale; compact death fragments must never scale up.
     widths = [subject.width for subject in subjects[:GRID_SIZE]]
     heights = [subject.height for subject in subjects[:GRID_SIZE]]
     return min(
@@ -163,6 +262,35 @@ def _place_character(subject: Image.Image, base_scale: float) -> Image.Image:
             f"character frame {native.size} cannot fit the fixed native canvas"
         )
     frame.alpha_composite(native, (left, top))
+    return frame
+
+
+def _place_living_character(
+    subject: Image.Image,
+    base_scale: float,
+    ground_anchor_x: int,
+) -> Image.Image:
+    """Place a living frame without VFX-dependent per-frame fitting.
+
+    The accepted source is sampled at exactly the walking identity scale.  A
+    wide staff sweep or a tall frost mote may therefore extend beyond the
+    native canvas; Pillow clips that peripheral VFX while the actor retains
+    its authored pixel density, baseline and reviewed action-phase anchor.
+    """
+
+    native = _resize_subject(subject, base_scale)
+    frame = Image.new(
+        "RGBA",
+        (CHARACTER_FRAME_SIZE, CHARACTER_FRAME_SIZE),
+        (0, 0, 0, 0),
+    )
+    left = round(ground_anchor_x - _lower_body_anchor_x(native))
+    top = CHARACTER_BASELINE_Y - native.height + 1
+    frame.alpha_composite(native, (left, top))
+    if frame.getchannel("A").getbbox() is None:
+        raise AssetContractError(
+            f"living character frame {native.size} lies outside the native canvas"
+        )
     return frame
 
 
@@ -274,6 +402,52 @@ def _assert_output_contract(
                 )
 
 
+def _assert_living_character_scale(sheet: Image.Image) -> None:
+    """Reject the former VFX-bbox fitting regression with pixel metrics."""
+
+    move_heights: list[int] = []
+    move_areas: list[int] = []
+    living_metrics: list[tuple[int, int, int, int]] = []
+    for row in range(3):
+        for column in range(GRID_SIZE):
+            frame = sheet.crop(
+                (
+                    column * CHARACTER_FRAME_SIZE,
+                    row * CHARACTER_FRAME_SIZE,
+                    (column + 1) * CHARACTER_FRAME_SIZE,
+                    (row + 1) * CHARACTER_FRAME_SIZE,
+                )
+            )
+            alpha = np.asarray(frame.getchannel("A"), dtype=np.uint8) == 255
+            visible_y, _visible_x = np.where(alpha)
+            if visible_y.size == 0:
+                raise AssetContractError(
+                    f"living character frame {row}:{column} is empty"
+                )
+            height = int(visible_y.max() - visible_y.min() + 1)
+            area = int(np.count_nonzero(alpha))
+            living_metrics.append((row, column, height, area))
+            if row == 0:
+                move_heights.append(height)
+                move_areas.append(area)
+
+    move_height = float(median(move_heights))
+    move_area = float(median(move_areas))
+    minimum_height = move_height - LIVING_HEIGHT_TOLERANCE
+    minimum_attack_area = move_area * ATTACK_MIN_VISIBLE_AREA_RATIO
+    for row, column, height, area in living_metrics:
+        if height < minimum_height:
+            raise AssetContractError(
+                f"living character frame {row}:{column} height {height} is below "
+                f"the walking identity threshold {minimum_height:.1f}"
+            )
+        if row == 2 and area < minimum_attack_area:
+            raise AssetContractError(
+                f"attack frame {column} visible area {area} is below the walking "
+                f"identity threshold {minimum_attack_area:.1f}"
+            )
+
+
 def _load_subjects(path: Path, label: str) -> list[Image.Image]:
     if not path.is_file():
         raise FileNotFoundError(path)
@@ -315,20 +489,38 @@ def main() -> None:
     )
     character_subjects[2 * GRID_SIZE : 3 * GRID_SIZE] = attack_row
     character_scale = _character_base_scale(character_subjects)
-    character_frames = [
-        _place_character(subject, character_scale)
-        for subject in character_subjects
+    living_subjects = [
+        _remove_detached_below_subject(subject)
+        for subject in character_subjects[: 3 * GRID_SIZE]
     ]
+    character_frames = []
+    for index, subject in enumerate(living_subjects):
+        row = index // GRID_SIZE
+        column = index % GRID_SIZE
+        character_frames.append(
+            _place_living_character(
+                subject,
+                character_scale,
+                CHARACTER_LIVING_GROUND_ANCHOR_X[row][column],
+            )
+        )
+    # Defeat fragments are not a coherent standing actor.  Retain the original
+    # fit-without-upscaling behavior for that row only.
+    character_frames.extend(
+        _place_character(subject, character_scale)
+        for subject in character_subjects[3 * GRID_SIZE :]
+    )
     character_sheet = _quantize_visible_colors(
         _assemble_sheet(character_frames, CHARACTER_FRAME_SIZE),
         CHARACTER_PALETTE_COLORS,
     )
+    _assert_living_character_scale(character_sheet)
     _assert_output_contract(
         character_sheet,
         "frost sorcerer",
         CHARACTER_FRAME_SIZE,
-        CHARACTER_MAX_WIDTH,
-        CHARACTER_MAX_HEIGHT,
+        CHARACTER_FRAME_SIZE,
+        CHARACTER_BASELINE_Y + 1,
         True,
     )
 
