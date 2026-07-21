@@ -50,11 +50,15 @@ const TOWER_DEFENSE_SEQUENTIAL_SPAWN_INTERVAL := (
 const TOWER_DEFENSE_SEQUENTIAL_SPAWN_COUNT_PER_TICK := 1
 const TOWER_DEFENSE_FOREST_COMBAT_BGM := "res://resources/audio/shenmu_forest_combat.ogg"
 const TOWER_DEFENSE_FOREST_INTERMISSION_BGM := "res://resources/audio/shenmu_forest_intermission.ogg"
+const FIRE_SORCERER_CONFIG_PATH := (
+	"res://resources/config/enemies/fire_sorcerer.tres"
+)
 const FROST_SORCERER_CONFIG_PATH := (
 	"res://resources/config/enemies/frost_sorcerer.tres"
 )
 const STANDARD_SINGLEPLAYER_FIRST_WAVE_EXPECTED_COUNTS := {
 	FROST_SORCERER_CONFIG_PATH: 1,
+	FIRE_SORCERER_CONFIG_PATH: 1,
 }
 const FIRST_WAVE_EXPECTED_COUNTS := {
 	"res://resources/config/enemies/yuanshi_insect_basic.tres": 850,
@@ -163,7 +167,7 @@ func _test_campaign_resources() -> void:
 				definition["campaign_id"] == &"standard_singleplayer"
 				and wave_index == 0
 			):
-				_verify_standard_singleplayer_frost_sorcerer_test_wave(
+				_verify_standard_singleplayer_sorcerer_test_wave(
 					wave_config,
 					source_wave
 				)
@@ -348,15 +352,15 @@ func _verify_tower_defense_stress_wave(
 	)
 
 
-func _verify_standard_singleplayer_frost_sorcerer_test_wave(
+func _verify_standard_singleplayer_sorcerer_test_wave(
 	wave_config: WaveConfig,
 	source_wave: WaveConfig
 ) -> void:
 	_expect(
 		wave_config.enemy_entries.size()
 		== STANDARD_SINGLEPLAYER_FIRST_WAVE_EXPECTED_COUNTS.size()
-		and wave_config.get_total_enemy_count() == 1,
-		"Standard singleplayer wave 1 must contain exactly one Frost Sorcerer."
+		and wave_config.get_total_enemy_count() == 2,
+		"Standard singleplayer wave 1 must contain one Frost and one Fire Sorcerer."
 	)
 	var actual_counts := {}
 	for entry in wave_config.enemy_entries:
@@ -364,16 +368,16 @@ func _verify_standard_singleplayer_frost_sorcerer_test_wave(
 			actual_counts[entry.enemy_config.resource_path] = entry.count
 	_expect(
 		actual_counts == STANDARD_SINGLEPLAYER_FIRST_WAVE_EXPECTED_COUNTS,
-		"Standard singleplayer wave 1 must contain one Frost Sorcerer."
+		"Standard singleplayer wave 1 must contain one Frost and one Fire Sorcerer."
 	)
 	_expect(
-		wave_config.max_alive_enemies == 1,
-		"Standard singleplayer Frost Sorcerer test wave must allow its only enemy."
+		wave_config.max_alive_enemies == 2,
+		"Standard singleplayer Sorcerer test wave must allow both enemies together."
 	)
 	_expect(
-		wave_config.wave_name == "第1波 寒冰术士测试"
-		and wave_config.display_name == "第1波 寒冰术士测试",
-		"Standard singleplayer Frost Sorcerer test wave must use its explicit test label."
+		wave_config.wave_name == "第1波 冰火术士测试"
+		and wave_config.display_name == "第1波 冰火术士测试",
+		"Standard singleplayer Sorcerer test wave must use its explicit test label."
 	)
 	_expect(
 		source_wave != null
@@ -400,7 +404,7 @@ func _verify_standard_singleplayer_frost_sorcerer_test_wave(
 				and campaign_exit.exit_name == source_exit.exit_name
 				and campaign_exit.get_target_step_id()
 				== source_exit.get_target_step_id(),
-				"Standard singleplayer Frost Sorcerer test wave must preserve its exit."
+				"Standard singleplayer Sorcerer test wave must preserve its exit."
 			)
 
 
