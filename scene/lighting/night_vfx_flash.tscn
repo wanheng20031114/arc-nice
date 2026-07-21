@@ -1,0 +1,14 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scene/lighting/night_vfx_flash.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/lighting/soft_white_point_light.tres" id="2_texture"]
+
+[node name="NightVfxFlash" type="PointLight2D"]
+texture_filter = 2
+enabled = false
+energy = 0.0
+texture = ExtResource("2_texture")
+texture_scale = 0.4
+shadow_enabled = false
+script = ExtResource("1_script")
+starts_emitting = false

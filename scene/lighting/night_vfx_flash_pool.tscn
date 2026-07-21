@@ -1,0 +1,31 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scene/lighting/night_vfx_flash_pool.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/lighting/night_vfx_flash.tscn" id="2_flash"]
+
+[node name="NightVfxFlashPool" type="Node2D"]
+script = ExtResource("1_script")
+
+[node name="Flash01" parent="." instance=ExtResource("2_flash")]
+auto_play = false
+
+[node name="Flash02" parent="." instance=ExtResource("2_flash")]
+auto_play = false
+
+[node name="Flash03" parent="." instance=ExtResource("2_flash")]
+auto_play = false
+
+[node name="Flash04" parent="." instance=ExtResource("2_flash")]
+auto_play = false
+
+[node name="Flash05" parent="." instance=ExtResource("2_flash")]
+auto_play = false
+
+[node name="Flash06" parent="." instance=ExtResource("2_flash")]
+auto_play = false
+
+[node name="Flash07" parent="." instance=ExtResource("2_flash")]
+auto_play = false
+
+[node name="Flash08" parent="." instance=ExtResource("2_flash")]
+auto_play = false

@@ -2,6 +2,15 @@
 
 [ext_resource type="Script" uid="uid://ks2jmj4oq4v2" path="res://scene/player/tiyi/tiyi_sniper_hit_effect.gd" id="1_script"]
 [ext_resource type="Texture2D" uid="uid://dfl56fa0ctgsf" path="res://resources/texture/player/tiyi/sniper_hit.png" id="2_texture"]
+[ext_resource type="Shader" path="res://resources/shader/night_vfx_emission_mask.gdshader" id="3_emission_shader"]
+[ext_resource type="Material" path="res://resources/shader/night_vfx_emission_additive.tres" id="4_particle_emission"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_hit_emission"]
+shader = ExtResource("3_emission_shader")
+shader_parameter/luminance_threshold = 0.38
+shader_parameter/threshold_softness = 0.16
+shader_parameter/emission_strength = 0.78
+shader_parameter/emission_tint = Color(1.08, 0.76, 1.28, 0.56)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_hit_0"]
 atlas = ExtResource("2_texture")
@@ -89,10 +98,15 @@ script = ExtResource("1_script")
 [node name="HitSprite" type="AnimatedSprite2D" parent="." unique_id=1438657468]
 sprite_frames = SubResource("SpriteFrames_hit")
 animation = &"hit"
-frame = 5
-frame_progress = 1.0
+
+[node name="EmissionOverlay" type="AnimatedSprite2D" parent="HitSprite"]
+material = SubResource("ShaderMaterial_hit_emission")
+sprite_frames = SubResource("SpriteFrames_hit")
+animation = &"hit"
 
 [node name="FragmentParticles" type="GPUParticles2D" parent="." unique_id=226229886]
+material = ExtResource("4_particle_emission")
+self_modulate = Color(1.34, 0.88, 1.56, 1)
 emitting = false
 texture = SubResource("GradientTexture2D_fragment")
 lifetime = 0.24

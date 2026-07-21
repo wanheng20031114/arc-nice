@@ -9,6 +9,9 @@ const EXPLOSION_AUDIO_LIMITER := preload(
 const SPATIAL_AUDIO_VOICE_LIMITER := preload(
 	"res://scene/spatial_audio_voice_limiter.gd"
 )
+const NIGHT_VFX_FLASH_POOL := preload(
+	"res://scene/lighting/night_vfx_flash_pool.gd"
+)
 const PROJECTILE_SPEED_PIXELS_PER_SECOND := 300.0
 const MIN_FLIGHT_DURATION_SECONDS := 0.28
 const MAX_FLIGHT_DURATION_SECONDS := 0.55
@@ -30,6 +33,7 @@ const DEFAULT_INNER_DAMAGE := 100
 const DEFAULT_OUTER_DAMAGE := 50
 
 @onready var visual: AnimatedSprite2D = $Visual
+@onready var emission_overlay: AnimatedSprite2D = $Visual/EmissionOverlay
 @onready var ground_shadow: Polygon2D = $GroundShadow
 @onready var impact_audio: AudioStreamPlayer2D = $ImpactAudio
 
@@ -109,6 +113,9 @@ func on_pool_released(_generation: int) -> void:
 		visual.stop()
 		visual.visible = false
 		visual.position = Vector2.ZERO
+	if emission_overlay != null:
+		emission_overlay.stop()
+		emission_overlay.visible = false
 	if ground_shadow != null:
 		ground_shadow.visible = false
 	if impact_audio != null:
@@ -248,6 +255,18 @@ func _start_explosion(
 		# The shared limiter can reject distant or over-budget voices.
 		_explosion_audio_done = not impact_audio.playing
 	_begin_explosion_visual(elapsed_seconds)
+	NIGHT_VFX_FLASH_POOL.request_from(
+		self,
+		global_position,
+		Color(1.0, 0.58, 0.24, 1.0),
+		1.05,
+		0.78,
+		0.035,
+		0.055,
+		0.28,
+		2,
+		maxf(elapsed_seconds, 0.0)
+	)
 	_try_finish_explosion()
 
 
@@ -260,10 +279,12 @@ func _begin_explosion_visual(elapsed_seconds: float) -> void:
 		or not visual.sprite_frames.has_animation(&"explosion")
 	):
 		visual.visible = false
+		emission_overlay.visible = false
 		return
 	var safe_elapsed := maxf(elapsed_seconds, 0.0)
 	if safe_elapsed >= EXPLOSION_DURATION_SECONDS:
 		visual.visible = false
+		emission_overlay.visible = false
 		return
 	var frame_position := safe_elapsed * EXPLOSION_FPS
 	var frame_index := clampi(
@@ -275,6 +296,10 @@ func _begin_explosion_visual(elapsed_seconds: float) -> void:
 	visual.visible = true
 	visual.play(&"explosion")
 	visual.set_frame_and_progress(
+		frame_index,
+		clampf(frame_position - float(frame_index), 0.0, 0.999)
+	)
+	_play_explosion_emission(
 		frame_index,
 		clampf(frame_position - float(frame_index), 0.0, 0.999)
 	)
@@ -368,6 +393,8 @@ func _on_visual_animation_finished() -> void:
 	if visual.animation == &"explosion":
 		visual.stop()
 		visual.visible = false
+		emission_overlay.stop()
+		emission_overlay.visible = false
 		_explosion_visual_done = true
 		_try_finish_explosion()
 
@@ -435,6 +462,12 @@ func _reset_visual_state() -> void:
 		visual.position = Vector2.ZERO
 		visual.rotation = 0.0
 		visual.visible = false
+	if emission_overlay != null:
+		emission_overlay.stop()
+		emission_overlay.animation = &"explosion"
+		emission_overlay.frame = 0
+		emission_overlay.frame_progress = 0.0
+		emission_overlay.visible = false
 	if ground_shadow != null:
 		ground_shadow.visible = false
 		ground_shadow.modulate = Color.WHITE
@@ -445,3 +478,21 @@ func _reset_visual_state() -> void:
 func _exit_tree() -> void:
 	if impact_audio != null:
 		EXPLOSION_AUDIO_LIMITER.stop(impact_audio)
+
+
+func _play_explosion_emission(
+	frame_index: int,
+	frame_progress: float
+) -> void:
+	if (
+		emission_overlay == null
+		or emission_overlay.sprite_frames == null
+		or not emission_overlay.sprite_frames.has_animation(&"explosion")
+	):
+		return
+	emission_overlay.visible = true
+	emission_overlay.play(&"explosion")
+	emission_overlay.set_frame_and_progress(
+		frame_index,
+		clampf(frame_progress, 0.0, 0.999)
+	)

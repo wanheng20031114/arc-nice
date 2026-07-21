@@ -5,6 +5,7 @@
 [ext_resource type="Script" uid="uid://cok25qb0meq4j" path="res://scene/enemy/yuanshi_insect_exploder.gd" id="2_script"]
 [ext_resource type="SpriteFrames" uid="uid://b5wdos2x826w2" path="res://resources/animation/yuanshi_insect_bomber.tres" id="3_frames"]
 [ext_resource type="AudioStream" uid="uid://bogl46dtqkano" path="res://resources/audio/cowboy_explosion.wav" id="4_explosion_audio"]
+[ext_resource type="Shader" path="res://resources/shader/night_vfx_emission_mask.gdshader" id="5_emission_shader"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_qjjxk"]
 shader = ExtResource("2_qjjxk")
@@ -41,6 +42,13 @@ height = 16.0
 resource_local_to_scene = true
 radius = 30.0
 
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_explosion_emission"]
+shader = ExtResource("5_emission_shader")
+shader_parameter/luminance_threshold = 0.5
+shader_parameter/threshold_softness = 0.15
+shader_parameter/emission_strength = 0.78
+shader_parameter/emission_tint = Color(1.08, 0.74, 0.4, 0.6)
+
 [node name="YuanshiInsectBomber" unique_id=1685334405 instance=ExtResource("1_base")]
 script = ExtResource("2_script")
 
@@ -48,6 +56,12 @@ script = ExtResource("2_script")
 material = SubResource("ShaderMaterial_qjjxk")
 sprite_frames = ExtResource("3_frames")
 animation = &"move"
+
+[node name="ExplosionEmissionOverlay" type="AnimatedSprite2D" parent="AnimatedSprite2D" index="0"]
+visible = false
+material = SubResource("ShaderMaterial_explosion_emission")
+sprite_frames = ExtResource("3_frames")
+animation = &"explode"
 
 [node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
 position = Vector2(0, 1)

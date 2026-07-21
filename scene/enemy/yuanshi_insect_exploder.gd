@@ -3,11 +3,19 @@ class_name YuanshiInsectExploder
 
 const EXPLOSION_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/complete_shape_query_2d.gd")
+const NIGHT_VFX_FLASH_POOL := preload("res://scene/lighting/night_vfx_flash_pool.gd")
 const EXPLOSION_QUERY_BATCH_SIZE := 64
+
+@export var explosion_flash_color := Color(1.0, 0.52, 0.2, 1.0)
+@export_range(0.0, 4.0, 0.01, "or_greater") var explosion_flash_energy := 0.9
+@export_range(0.01, 2.0, 0.01, "or_greater") var explosion_flash_texture_scale := 0.65
 
 @onready var explosion_area: Area2D = $ExplosionArea
 @onready var explosion_shape: CollisionShape2D = $ExplosionArea/CollisionShape2D
 @onready var explosion_audio: AudioStreamPlayer2D = $ExplosionAudio
+@onready var explosion_emission_overlay: AnimatedSprite2D = (
+	$AnimatedSprite2D/ExplosionEmissionOverlay
+)
 
 var explosion_damage_done := false
 
@@ -48,6 +56,19 @@ func _start_explosion_sequence() -> void:
 
 	animated_sprite.scale = Vector2.ONE * maxf(config.explosion_animation_scale, 0.1)
 	animated_sprite.z_index = 8
+	explosion_emission_overlay.visible = true
+	explosion_emission_overlay.play(config.explosion_animation_name)
+	NIGHT_VFX_FLASH_POOL.request_from(
+		self,
+		global_position,
+		explosion_flash_color,
+		explosion_flash_energy,
+		explosion_flash_texture_scale,
+		0.035,
+		0.05,
+		0.25,
+		2
+	)
 	EXPLOSION_AUDIO_LIMITER.play(explosion_audio)
 	if not is_multiplayer_proxy:
 		_try_apply_explosion_damage()

@@ -1775,7 +1775,10 @@ func _collect_night_lights(search_root: Node) -> Array[NightPointLight2D]:
 	if search_root == null:
 		return result
 	for candidate in search_root.find_children("*", "", true, false):
-		if candidate is NightPointLight2D:
+		if (
+			candidate is NightPointLight2D
+			and not candidate is NightVfxFlash2D
+		):
 			result.append(candidate as NightPointLight2D)
 	return result
 

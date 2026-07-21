@@ -3,6 +3,14 @@
 [ext_resource type="Script" path="res://scene/player/weishidaier/weishidaier_skill1_explosion.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/player/weishidaier/skill1_explosion.png" id="2_texture"]
 [ext_resource type="AudioStream" path="res://resources/audio/cowboy_explosion.wav" id="3_audio"]
+[ext_resource type="Shader" path="res://resources/shader/night_vfx_emission_mask.gdshader" id="4_emission_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_emission"]
+shader = ExtResource("4_emission_shader")
+shader_parameter/luminance_threshold = 0.55
+shader_parameter/threshold_softness = 0.13
+shader_parameter/emission_strength = 0.82
+shader_parameter/emission_tint = Color(1.08, 0.76, 0.42, 0.62)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_0"]
 atlas = ExtResource("2_texture")
@@ -73,6 +81,11 @@ z_index = 5
 script = ExtResource("1_script")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+sprite_frames = SubResource("SpriteFrames_explosion")
+animation = &"explode"
+
+[node name="EmissionOverlay" type="AnimatedSprite2D" parent="AnimatedSprite2D"]
+material = SubResource("ShaderMaterial_emission")
 sprite_frames = SubResource("SpriteFrames_explosion")
 animation = &"explode"
 

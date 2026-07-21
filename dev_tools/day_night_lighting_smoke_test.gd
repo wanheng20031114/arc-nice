@@ -715,7 +715,10 @@ func _await_runtime_preparation(game: GameRuntimeBase) -> void:
 func _collect_night_lights(node: Node) -> Array[NightPointLight2D]:
 	var result: Array[NightPointLight2D] = []
 	for candidate in node.find_children("*", "", true, false):
-		if candidate is NightPointLight2D:
+		if (
+			candidate is NightPointLight2D
+			and not candidate is NightVfxFlash2D
+		):
 			result.append(candidate as NightPointLight2D)
 	return result
 

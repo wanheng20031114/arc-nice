@@ -3,12 +3,25 @@
 [ext_resource type="Script" path="res://scene/collectible_sakura_explosion.gd" id="1_script"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/collectible_sakura_explosion.tres" id="2_frames"]
 [ext_resource type="AudioStream" path="res://resources/audio/cowboy_explosion.wav" id="3_audio"]
+[ext_resource type="Shader" path="res://resources/shader/night_vfx_emission_mask.gdshader" id="4_emission_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_emission"]
+shader = ExtResource("4_emission_shader")
+shader_parameter/luminance_threshold = 0.56
+shader_parameter/threshold_softness = 0.14
+shader_parameter/emission_strength = 0.64
+shader_parameter/emission_tint = Color(1.12, 0.72, 0.98, 0.58)
 
 [node name="CollectibleSakuraExplosion" type="Node2D"]
 z_index = 5
 script = ExtResource("1_script")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+sprite_frames = ExtResource("2_frames")
+animation = &"explode"
+
+[node name="EmissionOverlay" type="AnimatedSprite2D" parent="AnimatedSprite2D"]
+material = SubResource("ShaderMaterial_emission")
 sprite_frames = ExtResource("2_frames")
 animation = &"explode"
 

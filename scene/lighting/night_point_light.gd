@@ -8,6 +8,7 @@ const ENABLE_EPSILON := 0.001
 
 var _night_factor := 0.0
 var _emission_allowed := true
+var _emission_strength := 1.0
 var _controller: DayNightController = null
 
 
@@ -39,6 +40,18 @@ func set_night_energy(value: float) -> void:
 		return
 	night_energy = safe_energy
 	_refresh_emission()
+
+
+func set_emission_strength(value: float) -> void:
+	var safe_strength := maxf(value, 0.0)
+	if is_equal_approx(_emission_strength, safe_strength):
+		return
+	_emission_strength = safe_strength
+	_refresh_emission()
+
+
+func get_emission_strength() -> float:
+	return _emission_strength
 
 
 func is_emission_allowed() -> bool:
@@ -87,7 +100,7 @@ func _unbind_controller() -> void:
 
 func _refresh_emission() -> void:
 	var effective_factor := _night_factor if _emission_allowed else 0.0
-	var next_energy := night_energy * effective_factor
+	var next_energy := night_energy * effective_factor * _emission_strength
 	if energy != next_energy:
 		energy = next_energy
 	var should_enable := next_energy > ENABLE_EPSILON

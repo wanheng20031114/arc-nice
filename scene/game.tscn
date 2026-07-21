@@ -24,6 +24,7 @@
 [ext_resource type="PackedScene" path="res://scene/enemy/capoo_projectile_motion_system.tscn" id="26_capoo_projectile_motion"]
 [ext_resource type="PackedScene" path="res://scene/lighting/day_night_controller.tscn" id="27_day_night"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="28_night_light"]
+[ext_resource type="PackedScene" path="res://scene/lighting/night_vfx_flash_pool.tscn" id="29_night_vfx_flash_pool"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -129,6 +130,8 @@ script = ExtResource("1_17rxn")
 environment = SubResource("Environment_revive_glow")
 
 [node name="DayNightController" parent="." instance=ExtResource("27_day_night")]
+
+[node name="NightVfxFlashPool" parent="." instance=ExtResource("29_night_vfx_flash_pool")]
 
 [node name="MusicPlayer" type="AudioStreamPlayer" parent="." unique_id=707834306]
 bus = &"Music"

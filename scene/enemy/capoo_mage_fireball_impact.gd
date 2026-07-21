@@ -3,8 +3,10 @@ class_name CapooMageFireballImpact
 
 const EXPLOSION_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const SPATIAL_AUDIO_VOICE_LIMITER := preload("res://scene/spatial_audio_voice_limiter.gd")
+const NIGHT_VFX_FLASH_POOL := preload("res://scene/lighting/night_vfx_flash_pool.gd")
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
+@onready var emission_overlay: AnimatedSprite2D = $AnimatedSprite2D/EmissionOverlay
 @onready var impact_audio: AudioStreamPlayer2D = $ImpactAudio
 
 var pool_active: bool = true
@@ -50,6 +52,10 @@ func restart() -> void:
 		_animation_done = false
 		animated_sprite.visible = true
 		animated_sprite.play(&"impact")
+		emission_overlay.stop()
+		emission_overlay.frame = 0
+		emission_overlay.frame_progress = 0.0
+		emission_overlay.play(&"impact")
 	else:
 		_animation_done = true
 
@@ -60,6 +66,17 @@ func restart() -> void:
 		_audio_done = not impact_audio.playing
 	else:
 		_audio_done = true
+	NIGHT_VFX_FLASH_POOL.request_from(
+		self,
+		global_position,
+		Color(1.0, 0.56, 0.24, 1.0),
+		0.78,
+		0.34,
+		0.025,
+		0.035,
+		0.18,
+		1
+	)
 	_try_release()
 
 
@@ -103,6 +120,10 @@ func _reset_playback() -> void:
 		animated_sprite.frame = 0
 		animated_sprite.frame_progress = 0.0
 		animated_sprite.visible = false
+	if emission_overlay != null:
+		emission_overlay.stop()
+		emission_overlay.frame = 0
+		emission_overlay.frame_progress = 0.0
 	if impact_audio != null:
 		EXPLOSION_AUDIO_LIMITER.stop(impact_audio)
 

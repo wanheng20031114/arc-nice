@@ -46,6 +46,7 @@
 [ext_resource type="Shader" uid="uid://d1dea7fqpou23" path="res://resources/shader/bamboo_mortar_glow.gdshader" id="47_bamboo_mortar_glow_shader"]
 [ext_resource type="PackedScene" path="res://scene/lighting/day_night_controller.tscn" id="48_day_night"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="49_night_light"]
+[ext_resource type="PackedScene" path="res://scene/lighting/night_vfx_flash_pool.tscn" id="50_night_vfx_flash_pool"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -148,6 +149,8 @@ script = ExtResource("1_17rxn")
 environment = SubResource("Environment_revive_glow")
 
 [node name="DayNightController" parent="." instance=ExtResource("48_day_night")]
+
+[node name="NightVfxFlashPool" parent="." instance=ExtResource("50_night_vfx_flash_pool")]
 
 [node name="TowerDefenseAmbientVfx" parent="." unique_id=2116045322 instance=ExtResource("34_ambient_vfx")]
 
