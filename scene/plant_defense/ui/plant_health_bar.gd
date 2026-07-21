@@ -11,8 +11,12 @@ class_name PlantHealthBar
 @export_group("受伤后弱化")
 @export_range(1.0, 60.0, 0.5, "or_greater") var idle_fade_delay: float = 15.0
 @export_range(0.0, 2.0, 0.05) var idle_fade_duration: float = 0.8
-@export_range(0.65, 1.0, 0.01) var idle_color_brightness: float = 0.90
-@export_range(0.65, 1.0, 0.01) var idle_slot_alpha: float = 0.82
+@export_range(0.65, 1.0, 0.01) var idle_color_brightness: float = 0.94
+@export_range(0.4, 1.0, 0.01) var active_slot_alpha: float = 0.82
+@export_range(0.4, 1.0, 0.01) var idle_frame_alpha: float = 0.82
+@export_range(0.4, 1.0, 0.01) var idle_fill_alpha: float = 0.74
+@export_range(0.4, 1.0, 0.01) var idle_trail_alpha: float = 0.82
+@export_range(0.4, 1.0, 0.01) var idle_slot_alpha: float = 0.68
 
 @export_group("配色")
 @export var frame_color: Color = Color(0.16, 0.09, 0.045, 1.0):
@@ -133,35 +137,51 @@ func _draw() -> void:
 	var bar_height := maxi(floori(size.y), 3)
 	var frame_rect := Rect2(Vector2.ZERO, Vector2(bar_width, bar_height))
 	var slot_rect := Rect2(Vector2.ONE, Vector2(bar_width - 2, bar_height - 2))
-	var frame_draw_color := _resolve_idle_color(
+	var frame_draw_color := _resolve_style_color(
 		frame_color,
-		idle_color_brightness,
 		1.0,
+		idle_frame_alpha,
 		0.96
 	)
-	var slot_draw_color := _resolve_idle_color(
+	var slot_draw_color := _resolve_style_color(
 		slot_color,
-		idle_color_brightness,
+		active_slot_alpha,
 		idle_slot_alpha,
 		1.0
 	)
-	var trail_draw_color := _resolve_idle_color(
+	var trail_draw_color := _resolve_style_color(
 		damage_trail_color,
-		idle_color_brightness,
 		1.0,
+		idle_trail_alpha,
 		1.04
 	)
-	var fill_draw_color := _resolve_idle_color(
+	var fill_draw_color := _resolve_style_color(
 		health_fill_color,
-		idle_color_brightness,
 		1.0,
+		idle_fill_alpha,
 		1.08
 	)
 
 	_draw_frame(frame_rect, frame_draw_color)
-	draw_rect(slot_rect, slot_draw_color, true)
-	_draw_fill(slot_rect, delayed_health, trail_draw_color)
-	_draw_fill(slot_rect, displayed_health, fill_draw_color)
+	var trail_end := maxf(displayed_health, delayed_health)
+	_draw_health_segment(
+		slot_rect,
+		0.0,
+		displayed_health,
+		fill_draw_color
+	)
+	_draw_health_segment(
+		slot_rect,
+		displayed_health,
+		trail_end,
+		trail_draw_color
+	)
+	_draw_health_segment(
+		slot_rect,
+		trail_end,
+		float(max_health_value),
+		slot_draw_color
+	)
 
 
 func _draw_frame(frame_rect: Rect2, color: Color) -> void:
@@ -174,27 +194,56 @@ func _draw_frame(frame_rect: Rect2, color: Color) -> void:
 	)
 
 
-func _resolve_idle_color(
+func _resolve_style_color(
 	source: Color,
-	brightness_scale: float,
-	alpha_scale: float,
+	active_alpha_scale: float,
+	idle_alpha_scale: float,
 	saturation_scale: float
 ) -> Color:
-	var target := Color.from_hsv(
+	var active_color := source
+	active_color.a = clampf(source.a * active_alpha_scale, 0.0, 1.0)
+	var idle_color := Color.from_hsv(
 		source.h,
 		clampf(source.s * saturation_scale, 0.0, 1.0),
-		clampf(source.v * brightness_scale, 0.0, 1.0),
-		clampf(source.a * alpha_scale, 0.0, 1.0)
+		clampf(source.v * idle_color_brightness, 0.0, 1.0),
+		clampf(source.a * idle_alpha_scale, 0.0, 1.0)
 	)
-	return source.lerp(target, clampf(_idle_style_amount, 0.0, 1.0))
+	return active_color.lerp(
+		idle_color,
+		clampf(_idle_style_amount, 0.0, 1.0)
+	)
 
 
-func _draw_fill(slot_rect: Rect2, health_value: float, color: Color) -> void:
-	if health_value <= 0.0:
+func _draw_health_segment(
+	slot_rect: Rect2,
+	start_health: float,
+	end_health: float,
+	color: Color
+) -> void:
+	var start_pixel := _health_to_pixel(slot_rect, start_health)
+	var end_pixel := _health_to_pixel(slot_rect, end_health)
+	if end_pixel <= start_pixel:
 		return
-	var ratio := clampf(health_value / float(maxi(max_health_value, 1)), 0.0, 1.0)
-	var fill_width := clampi(roundi(slot_rect.size.x * ratio), 1, roundi(slot_rect.size.x))
-	draw_rect(Rect2(slot_rect.position, Vector2(fill_width, slot_rect.size.y)), color, true)
+	draw_rect(
+		Rect2(
+			slot_rect.position + Vector2(start_pixel, 0.0),
+			Vector2(end_pixel - start_pixel, slot_rect.size.y)
+		),
+		color,
+		true
+	)
+
+
+func _health_to_pixel(slot_rect: Rect2, health_value: float) -> int:
+	if health_value <= 0.0:
+		return 0
+	var pixel_width := maxi(roundi(slot_rect.size.x), 1)
+	var ratio := clampf(
+		health_value / float(maxi(max_health_value, 1)),
+		0.0,
+		1.0
+	)
+	return clampi(maxi(roundi(pixel_width * ratio), 1), 0, pixel_width)
 
 
 func _animate_current_fill(target_health: int) -> void:

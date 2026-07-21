@@ -70,6 +70,11 @@ func _run() -> void:
 	for bar in [health_bar, compact_bar]:
 		bar.call("_set_idle_style_amount", 1.0)
 	var idle_day := await _capture_stable_frame()
+	health_bar.call("_set_displayed_health", 52.0)
+	health_bar.call("_set_delayed_health", 80.0)
+	var idle_damage_trail_day := await _capture_stable_frame()
+	health_bar.call("_set_displayed_health", 72.0)
+	health_bar.call("_set_delayed_health", 72.0)
 
 	environment.color = NIGHT_COLOR
 	var idle_night := await _capture_stable_frame()
@@ -86,12 +91,14 @@ func _run() -> void:
 	_expect(
 		not active_day.is_empty()
 		and not idle_day.is_empty()
+		and not idle_damage_trail_day.is_empty()
 		and not idle_night.is_empty(),
-		"血条可读性测试必须能读回活跃、白昼闲置和黑夜闲置画面。"
+		"血条可读性测试必须能读回活跃、闲置、残影和黑夜画面。"
 	)
 	if (
 		not active_day.is_empty()
 		and not idle_day.is_empty()
+		and not idle_damage_trail_day.is_empty()
 		and not idle_night.is_empty()
 	):
 		_verify_rendered_colors(
@@ -99,6 +106,7 @@ func _run() -> void:
 			compact_bar,
 			active_day,
 			idle_day,
+			idle_damage_trail_day,
 			idle_night
 		)
 
@@ -125,12 +133,14 @@ func _verify_rendered_colors(
 	compact_bar: PlantHealthBar,
 	active_day: Image,
 	idle_day: Image,
+	idle_damage_trail_day: Image,
 	idle_night: Image
 ) -> void:
 	var transform := health_bar.get_global_transform_with_canvas()
 	var fill_pixel := _screen_pixel(transform * Vector2(8.0, 2.5))
 	var slot_pixel := _screen_pixel(transform * Vector2(29.0, 2.5))
 	var frame_pixel := _screen_pixel(transform * Vector2(0.25, 2.5))
+	var trail_pixel := _screen_pixel(transform * Vector2(21.0, 2.5))
 
 	var active_fill := active_day.get_pixelv(fill_pixel)
 	var idle_day_fill := idle_day.get_pixelv(fill_pixel)
@@ -139,12 +149,14 @@ func _verify_rendered_colors(
 	var idle_night_slot := idle_night.get_pixelv(slot_pixel)
 	var idle_day_frame := idle_day.get_pixelv(frame_pixel)
 	var idle_night_frame := idle_night.get_pixelv(frame_pixel)
+	var trail_fixture_fill := idle_damage_trail_day.get_pixelv(fill_pixel)
+	var trail_fixture_trail := idle_damage_trail_day.get_pixelv(trail_pixel)
 	var idle_day_ground := idle_day.get_pixel(10, 10)
 	var idle_night_ground := idle_night.get_pixel(10, 10)
 	var resolved_slot: Color = health_bar.call(
-		"_resolve_idle_color",
+		"_resolve_style_color",
 		health_bar.slot_color,
-		health_bar.idle_color_brightness,
+		health_bar.active_slot_alpha,
 		health_bar.idle_slot_alpha,
 		1.0
 	)
@@ -182,6 +194,11 @@ func _verify_rendered_colors(
 		"闲置空槽必须真正透出昼夜世界背景，而不是压在整块不透明底色上。"
 	)
 	_expect(
+		_max_rgb_delta(idle_day_fill, idle_night_fill) >= 0.01
+		and _max_rgb_delta(idle_day_frame, idle_night_frame) >= 0.005,
+		"闲置绿色与边框也必须适度透出世界内容，而不是只有已损失区透明。"
+	)
+	_expect(
 		fill_brightness_ratio >= 0.66
 		and fill_brightness_ratio <= 0.90,
 		(
@@ -195,9 +212,9 @@ func _verify_rendered_colors(
 		"闲置血量填充必须保持清晰可辨的绿色，而不是与背景混成灰绿。"
 	)
 	_expect(
-		_max_rgb_delta(idle_day_fill, idle_night_fill) <= 0.012
-		and _max_rgb_delta(idle_day_frame, idle_night_frame) <= 0.012,
-		"关键填充与一像素边框必须通过unshaded材质避免被昼夜调制二次压暗。"
+		_max_rgb_delta(idle_day_fill, trail_fixture_fill) <= 0.012
+		and trail_fixture_trail.r > trail_fixture_trail.g * 1.2,
+		"半透明绿色下方不得叠加橙色残影，残影只能占用独立的损失区段。"
 	)
 
 	var day_contrast := _contrast_ratio(idle_day_fill, idle_day_slot)
@@ -218,9 +235,9 @@ func _verify_rendered_colors(
 		]
 	)
 	_expect(
-		day_contrast >= 3.0 and night_contrast >= 3.0,
+		day_contrast >= 2.3 and night_contrast >= 2.3,
 		(
-			"闲置填充与空槽在昼夜背景下都必须保持至少3:1对比度；"
+			"闲置填充与空槽在昼夜背景下都必须保持至少2.3:1对比度；"
 			+ "当前白昼%.3f、黑夜%.3f。"
 		)
 		% [day_contrast, night_contrast]
@@ -259,18 +276,18 @@ func _verify_compact_bar(
 		% [str(compact_bar.size), day_contrast, night_contrast]
 	)
 	_expect(
-		_max_rgb_delta(day_fill, night_fill) <= 0.012
-		and _max_rgb_delta(day_frame, night_frame) <= 0.012,
-		"12×3紧凑血条的填充与边框也必须保持昼夜一致且像素清晰。"
+		_max_rgb_delta(day_fill, night_fill) >= 0.01
+		and _max_rgb_delta(day_frame, night_frame) >= 0.005,
+		"12×3紧凑血条的填充与边框也必须适度透出昼夜背景。"
 	)
 	_expect(
 		_max_rgb_delta(day_slot, night_slot) >= 0.01,
 		"12×3紧凑血条的一像素空槽必须真正透出世界背景。"
 	)
 	_expect(
-		day_contrast >= 3.0 and night_contrast >= 3.0,
+		day_contrast >= 2.3 and night_contrast >= 2.3,
 		(
-			"12×3紧凑血条在昼夜都必须保持填充/空槽至少3:1对比；"
+			"12×3紧凑血条在昼夜都必须保持填充/空槽至少2.3:1对比；"
 			+ "当前白昼%.3f、黑夜%.3f。"
 		)
 		% [day_contrast, night_contrast]

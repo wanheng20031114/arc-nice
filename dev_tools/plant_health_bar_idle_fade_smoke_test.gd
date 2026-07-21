@@ -27,8 +27,12 @@ func _run() -> void:
 		and is_equal_approx(idle_timer.wait_time, 15.0)
 		and is_equal_approx(health_bar.idle_fade_delay, 15.0)
 		and is_equal_approx(health_bar.idle_fade_duration, 0.8)
-		and is_equal_approx(health_bar.idle_color_brightness, 0.90)
-		and is_equal_approx(health_bar.idle_slot_alpha, 0.82)
+		and is_equal_approx(health_bar.idle_color_brightness, 0.94)
+		and is_equal_approx(health_bar.active_slot_alpha, 0.82)
+		and is_equal_approx(health_bar.idle_frame_alpha, 0.82)
+		and is_equal_approx(health_bar.idle_fill_alpha, 0.74)
+		and is_equal_approx(health_bar.idle_trail_alpha, 0.82)
+		and is_equal_approx(health_bar.idle_slot_alpha, 0.68)
 		and health_bar_material != null
 		and health_bar_material.light_mode
 		== CanvasItemMaterial.LIGHT_MODE_UNSHADED,
@@ -59,28 +63,49 @@ func _run() -> void:
 		and not idle_timer.is_stopped(),
 		"建筑受伤后血条必须立即清晰显示并启动单次弱化计时。"
 	)
+	var active_fill: Color = health_bar.call(
+		"_resolve_style_color",
+		health_bar.health_fill_color,
+		1.0,
+		health_bar.idle_fill_alpha,
+		1.08
+	)
+	var active_frame: Color = health_bar.call(
+		"_resolve_style_color",
+		health_bar.frame_color,
+		1.0,
+		health_bar.idle_frame_alpha,
+		0.96
+	)
+	var active_slot: Color = health_bar.call(
+		"_resolve_style_color",
+		health_bar.slot_color,
+		health_bar.active_slot_alpha,
+		health_bar.idle_slot_alpha,
+		1.0
+	)
 
 	if idle_timer != null:
 		idle_timer.stop()
 		idle_timer.timeout.emit()
 	var idle_fill: Color = health_bar.call(
-		"_resolve_idle_color",
+		"_resolve_style_color",
 		health_bar.health_fill_color,
-		health_bar.idle_color_brightness,
 		1.0,
+		health_bar.idle_fill_alpha,
 		1.08
 	)
 	var idle_frame: Color = health_bar.call(
-		"_resolve_idle_color",
+		"_resolve_style_color",
 		health_bar.frame_color,
-		health_bar.idle_color_brightness,
 		1.0,
+		health_bar.idle_frame_alpha,
 		0.96
 	)
 	var idle_slot: Color = health_bar.call(
-		"_resolve_idle_color",
+		"_resolve_style_color",
 		health_bar.slot_color,
-		health_bar.idle_color_brightness,
+		health_bar.active_slot_alpha,
 		health_bar.idle_slot_alpha,
 		1.0
 	)
@@ -93,16 +118,33 @@ func _run() -> void:
 		)
 		and idle_timer != null
 		and idle_timer.is_stopped(),
-		"无新伤害超时后必须保持整体不透明，只弱化各绘制层的颜色。"
+		"无新伤害超时后根节点必须保持稳定，只弱化各独立绘制层。"
 	)
 	_expect(
-		is_equal_approx(idle_fill.a, health_bar.health_fill_color.a)
-		and is_equal_approx(idle_frame.a, health_bar.frame_color.a)
-		and idle_slot.a < health_bar.slot_color.a
-		and idle_slot.a >= 0.75
+		is_equal_approx(active_fill.a, health_bar.health_fill_color.a)
+		and is_equal_approx(active_frame.a, health_bar.frame_color.a)
+		and is_equal_approx(
+			active_slot.a,
+			health_bar.slot_color.a * health_bar.active_slot_alpha
+		)
+		and is_equal_approx(
+			idle_fill.a,
+			health_bar.health_fill_color.a * health_bar.idle_fill_alpha
+		)
+		and is_equal_approx(
+			idle_frame.a,
+			health_bar.frame_color.a * health_bar.idle_frame_alpha
+		)
+		and is_equal_approx(
+			idle_slot.a,
+			health_bar.slot_color.a * health_bar.idle_slot_alpha
+		)
+		and idle_fill.a < active_fill.a
+		and idle_frame.a < active_frame.a
+		and idle_slot.a < active_slot.a
 		and idle_fill.g > idle_fill.r
 		and idle_fill.g > idle_fill.b,
-		"闲置样式只能让空槽略微透出背景，关键边框和绿色填充必须保持不透明且颜色明确。"
+		"底槽从活跃态起就应透底，闲置后边框、绿色与底槽还要分层淡化且颜色明确。"
 	)
 
 	health_bar.set_health(90, 100)
