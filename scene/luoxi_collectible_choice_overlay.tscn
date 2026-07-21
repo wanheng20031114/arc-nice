@@ -2,6 +2,10 @@
 
 [ext_resource type="Script" uid="uid://chqhyqkbrpo7d" path="res://scene/luoxi_collectible_choice_overlay.gd" id="1_script"]
 [ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+[ext_resource type="Shader" path="res://resources/shader/luoxi_collectible_card_aura.gdshader" id="3_card_aura"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_card_aura"]
+shader = ExtResource("3_card_aura")
 
 [sub_resource type="LabelSettings" id="LabelSettings_hint"]
 font = ExtResource("2_font")
@@ -14,12 +18,12 @@ border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(1, 0.13, 0.18, 0.9)
+border_color = Color(0.94, 0.96, 1, 1)
 corner_radius_top_left = 8
 corner_radius_top_right = 8
 corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
-shadow_color = Color(0, 0, 0, 0.28)
+shadow_color = Color(0.94, 0.96, 1, 0.18)
 shadow_size = 8
 shadow_offset = Vector2(0, 3)
 
@@ -156,6 +160,7 @@ layout_mode = 2
 theme_override_constants/separation = 24
 
 [node name="Card0" type="PanelContainer" parent="Root/Center/Content/CardRow" unique_id=291548480]
+material = SubResource("ShaderMaterial_card_aura")
 custom_minimum_size = Vector2(216, 310)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")
@@ -209,6 +214,7 @@ theme_override_styles/focus = SubResource("StyleBoxEmpty_button_focus")
 text = "选择"
 
 [node name="Card1" type="PanelContainer" parent="Root/Center/Content/CardRow" unique_id=720937956]
+material = SubResource("ShaderMaterial_card_aura")
 custom_minimum_size = Vector2(216, 310)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")
@@ -262,6 +268,7 @@ theme_override_styles/focus = SubResource("StyleBoxEmpty_button_focus")
 text = "选择"
 
 [node name="Card2" type="PanelContainer" parent="Root/Center/Content/CardRow" unique_id=1836196567]
+material = SubResource("ShaderMaterial_card_aura")
 custom_minimum_size = Vector2(216, 310)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")

@@ -28,7 +28,7 @@ OUTPUT_PATH = PROJECT_ROOT / "收藏品全量详表.xlsx"
 INVENTORY_CAPACITY = 20
 
 RARITY_COLORS = {0: "F0E3C2", 1: "68D8FF", 2: "C987FF", 3: "FFD75A"}
-RARITY_WEIGHTS = {0: 58.0, 1: 28.0, 2: 11.0, 3: 3.0}
+RARITY_CARD_MARGINAL_PROBABILITIES = {0: 0.50, 1: 0.30, 2: 0.15, 3: 0.05}
 BASE_DEFAULTS: dict[str, Any] = {
     "pickup_type": 0,
     "display_name": "移速道具",
@@ -262,7 +262,7 @@ def main() -> None:
         ("配置目录", "res://resources/config/collectibles"), ("背包容量", INVENTORY_CAPACITY),
         ("每轮洛曦可领取次数", 1), ("每次候选数", 3),
         ("每轮洛曦刷新", "最多4次，费用依次为100、200、500、1000息壤；下次休整期重置。"),
-        ("抽取方式", "先按当前可用稀有度权重抽稀有度，再在该稀有度收藏品中等概率抽取；同次3选不重复。"),
+        ("抽取方式", "先抽整组三卡品质：普通×3占50%、稀有×3占30%、史诗×3占12%、2史诗+1传说占3%、1史诗+2传说占3%、传说×3占2%；再在目标品质池内无重复抽具体收藏品。"),
         ("工作簿口径", "有效值=配置显式值，否则使用PickupConfig/审计脚本默认值；底层倍率与自然语言换算同时保留。"),
     ]
     for i, (k, v) in enumerate(summary, 3): ws.cell(i, 1, k); ws.cell(i, 2, v)
@@ -281,7 +281,7 @@ def main() -> None:
         for cell in row: cell.alignment = Alignment(vertical="top", wrap_text=True)
 
     ws = wb.create_sheet("收藏品总表")
-    headers = ["序号", "世代", "名称", "稀有度", "稀有度权重", "效果ID", "玩家可见描述", "效果摘要", "主机制类别", "运行时处理入口", "逐份生效", "配置最大份数", "单背包实际最多份数", "重复获取规则", "要求投射物普攻", "要求弹药机制", "兼容锄头猫", "兼容维什戴尔", "兼容缇伊", "显式配置字段数", "非默认效果字段", "设计ID", "设计说明", "配置路径", "图标路径", "专项测试引用", "审计结论"]
+    headers = ["序号", "世代", "名称", "稀有度", "单卡边际概率", "效果ID", "玩家可见描述", "效果摘要", "主机制类别", "运行时处理入口", "逐份生效", "配置最大份数", "单背包实际最多份数", "重复获取规则", "要求投射物普攻", "要求弹药机制", "兼容锄头猫", "兼容维什戴尔", "兼容缇伊", "显式配置字段数", "非默认效果字段", "设计ID", "设计说明", "配置路径", "图标路径", "专项测试引用", "审计结论"]
     rows = []
     for index, item in enumerate(audits, 1):
         data = item.data; rarity = int(data["collectible_rarity"]); stacks = bool(data.get("collectible_stacks_by_copy", False)); cap = int(data.get("collectible_max_copies", 0))
@@ -291,9 +291,10 @@ def main() -> None:
         refs = specific_test_refs(item.path.name)
         requires_projectile = bool(data.get("requires_projectile_primary_attack", False))
         requires_ammunition = bool(data.get("requires_ammunition", False))
-        rows.append([index, "原有" if item.path.name in audit.ORIGINAL_CONFIG_NAMES else "扩展", data["display_name"], audit.RARITY_LABELS[rarity], RARITY_WEIGHTS[rarity], data["collectible_effect_id"], data["description"], item.effect_summary, "；".join(categories), "；".join(handlers), stacks, cap if stacks else 1, actual_cap, "可重复至上限" if stacks else "同效果ID仅一份", requires_projectile, requires_ammunition, not (requires_projectile or requires_ammunition), True, True, len(explicit_by_name[item.path.name]), json.dumps(dict(item.effect_signature), ensure_ascii=False), data.get("collectible_design_id", ""), data.get("collectible_design_note", ""), "res://" + item.path.relative_to(PROJECT_ROOT).as_posix(), "res://" + item.icon_path.relative_to(PROJECT_ROOT).as_posix(), "；".join(refs) or "无单件预载专项；由全量运行时审计覆盖", "通过" if not item.issues else "；".join(item.issues)])
+        rows.append([index, "原有" if item.path.name in audit.ORIGINAL_CONFIG_NAMES else "扩展", data["display_name"], audit.RARITY_LABELS[rarity], RARITY_CARD_MARGINAL_PROBABILITIES[rarity], data["collectible_effect_id"], data["description"], item.effect_summary, "；".join(categories), "；".join(handlers), stacks, cap if stacks else 1, actual_cap, "可重复至上限" if stacks else "同效果ID仅一份", requires_projectile, requires_ammunition, not (requires_projectile or requires_ammunition), True, True, len(explicit_by_name[item.path.name]), json.dumps(dict(item.effect_signature), ensure_ascii=False), data.get("collectible_design_id", ""), data.get("collectible_design_note", ""), "res://" + item.path.relative_to(PROJECT_ROOT).as_posix(), "res://" + item.icon_path.relative_to(PROJECT_ROOT).as_posix(), "；".join(refs) or "无单件预载专项；由全量运行时审计覆盖", "通过" if not item.issues else "；".join(item.issues)])
     write_rows(ws, headers, rows); style_sheet(ws); add_table(ws, "CollectiblesSummary"); autosize(ws, 52)
     ws.column_dimensions["G"].width = 58; ws.column_dimensions["H"].width = 44; ws.column_dimensions["U"].width = 52; ws.column_dimensions["W"].width = 46
+    for row in range(2, ws.max_row + 1): ws.cell(row, 5).number_format = "0%"
     for row in range(2, ws.max_row + 1):
         rarity = int(audits[row - 2].data["collectible_rarity"]); ws.cell(row, 4).fill = PatternFill("solid", fgColor=RARITY_COLORS[rarity])
         for col in [7, 8, 9, 10, 21, 23, 26, 27]: ws.cell(row, col).alignment = Alignment(vertical="top", wrap_text=True)
@@ -340,8 +341,14 @@ def main() -> None:
     ws = wb.create_sheet("统计分析")
     ws.sheet_view.showGridLines = False
     rarity_counts = Counter(int(i.data["collectible_rarity"]) for i in audits)
-    write_rows(ws, ["稀有度", "数量", "占比", "抽取权重", "当前全池单次抽到该稀有度概率"], [[audit.RARITY_LABELS[r], rarity_counts[r], rarity_counts[r] / len(audits), RARITY_WEIGHTS[r], RARITY_WEIGHTS[r] / sum(RARITY_WEIGHTS.values())] for r in range(4)])
-    for row in range(2, 6): ws.cell(row, 3).number_format = ws.cell(row, 5).number_format = "0.00%"; ws.cell(row, 1).fill = PatternFill("solid", fgColor=RARITY_COLORS[row - 2])
+    offer_paths = {
+        0: "普通×3（50%）",
+        1: "稀有×3（30%）",
+        2: "史诗×3（12%）；与传说混合（6%）",
+        3: "1传说（3%）；2传说（3%）；3传说（2%）",
+    }
+    write_rows(ws, ["稀有度", "数量", "占比", "单卡边际概率", "整组三卡出现方式"], [[audit.RARITY_LABELS[r], rarity_counts[r], rarity_counts[r] / len(audits), RARITY_CARD_MARGINAL_PROBABILITIES[r], offer_paths[r]] for r in range(4)])
+    for row in range(2, 6): ws.cell(row, 3).number_format = ws.cell(row, 4).number_format = "0.00%"; ws.cell(row, 1).fill = PatternFill("solid", fgColor=RARITY_COLORS[row - 2])
     category_counts = Counter(c for i in audits for c in (audit.primary_affix_categories(i.data) or ["特殊"]))
     start = 8; ws.cell(start, 1, "机制类别"); ws.cell(start, 2, "涉及收藏品数")
     for offset, (cat, count) in enumerate(sorted(category_counts.items(), key=lambda x: (-x[1], x[0])), 1): ws.cell(start + offset, 1, cat); ws.cell(start + offset, 2, count)
@@ -362,8 +369,8 @@ def main() -> None:
     ws = wb.create_sheet("系统与运行时")
     rules = [
         ("配置发现", "LuoxiMerchant._get_collectible_config_paths", "扫描res://resources/config/collectibles下以collectible_开头的.tres并按路径排序。"),
-        ("候选生成", "LuoxiMerchant._build_random_collectible_choices", "每次生成3个不重复候选；先抽稀有度，再抽同稀有度中的具体收藏品。"),
-        ("稀有度权重", "LuoxiMerchant.get_collectible_rarity_roll_weight", "普通58、稀有28、史诗11、传说3；仅在当前可用稀有度之间归一化。"),
+        ("候选生成", "LuoxiMerchant._build_collectible_choices_from_pool", "每次先抽整组三卡品质模式，再按目标品质从兼容池内无放回抽3个具体收藏品；本地、刷新和多人主机共用。"),
+        ("整组品质概率", "LuoxiMerchant.get_collectible_offer_rarity_pattern_for_roll", "普通×3为50%、稀有×3为30%、史诗×3为12%、2史诗+1传说为3%、1史诗+2传说为3%、传说×3为2%。"),
         ("每轮领取", "COLLECTIBLE_CLAIMS_PER_ROUND", "每名玩家每段场间时间最多成功领取1次；失败领取不消耗次数。"),
         ("付费刷新", "LuoxiMerchant.REFRESH_COSTS", "每段场间最多刷新4次，依次花费100、200、500、1000息壤；由单机游戏或多人主机权威扣费。"),
         ("刷新重置", "LuoxiMerchant.reset_intermission_state", "进入下一段休整期时同时清空领取计数、刷新计数和候选缓存。"),

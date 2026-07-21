@@ -234,7 +234,7 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	_expect(is_equal_approx(second_card.scale.x, 1.0) and is_equal_approx(second_card.scale.y, 1.0), "Luoxi card chooser hover must not scale card text.")
 	_expect(second_card.position.y < second_base_position.y, "Luoxi card chooser hover must gently lift the hovered card.")
 	_expect(second_hover_style.shadow_size > second_base_style.shadow_size, "Luoxi card chooser hover must add a visible glow.")
-	_expect(second_hover_style.border_color.g > second_base_style.border_color.g, "Luoxi card chooser hover must brighten the red border.")
+	_expect(second_hover_style.border_color.g > second_base_style.border_color.g, "Luoxi card chooser hover must brighten the current rarity border.")
 	choice_overlay._on_card_mouse_exited(1)
 	await create_timer(0.18).timeout
 	_expect(is_equal_approx(second_card.position.y, second_base_position.y), "Luoxi card chooser hover must restore the card position.")

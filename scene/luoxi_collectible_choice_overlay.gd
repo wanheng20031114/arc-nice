@@ -41,10 +41,15 @@ signal refresh_requested
 @onready var refresh_progress: Label = $Root/Center/Content/RefreshPanel/Margin/Layout/Info/RefreshProgress
 
 const CARD_BACK_TINT := Color(0.52, 0.47, 0.39, 1.0)
+const CARD_COMMON_COLOR := Color(0.94, 0.96, 1.0, 1.0)
+const CARD_RARE_COLOR := Color(0.17, 0.56, 1.0, 1.0)
+const CARD_EPIC_COLOR := Color(0.70, 0.25, 1.0, 1.0)
+const CARD_LEGENDARY_COLOR := Color(1.0, 0.46, 0.08, 1.0)
 const CARD_EDGE_SCALE_X := 0.04
 const CARD_FLIP_IN_DURATION := 0.14
 const CARD_FLIP_OUT_DURATION := 0.24
 const CARD_OPEN_STAGGER := 0.08
+const CARD_REVEAL_AURA_DURATION := 0.72
 const CARD_HOVER_LIFT := 4.0
 const CARD_HOVER_DURATION := 0.12
 const DESCRIPTION_SCROLL_SPEED := 10.0
@@ -56,8 +61,10 @@ var selected_index: int = 0
 var choices: Array = []
 var open_tween: Tween
 var hover_tweens: Array[Tween] = []
+var reveal_aura_tweens: Array[Tween] = []
 var card_base_styles: Array[StyleBoxFlat] = []
 var card_hover_styles: Array[StyleBoxFlat] = []
+var card_rarities: Array[int] = []
 var card_base_positions: Array[Vector2] = []
 var card_base_positions_captured := false
 var description_scroll_offsets: Array[float] = []
@@ -75,6 +82,8 @@ func _ready() -> void:
 	root_control.hide()
 	_build_card_hover_styles()
 	hover_tweens.resize(cards.size())
+	reveal_aura_tweens.resize(cards.size())
+	card_rarities.resize(cards.size())
 	card_base_positions.resize(cards.size())
 	description_scroll_offsets.resize(descriptions.size())
 	description_scroll_pauses.resize(descriptions.size())
@@ -87,6 +96,7 @@ func _ready() -> void:
 	for index in range(cards.size()):
 		cards[index].mouse_entered.connect(_on_card_mouse_entered.bind(index))
 		cards[index].mouse_exited.connect(_on_card_mouse_exited.bind(index))
+		_apply_card_rarity_visuals(index, PickupConfig.CollectibleRarity.COMMON)
 	refresh_button.pressed.connect(_emit_refresh_requested)
 	set_process(false)
 
@@ -110,6 +120,7 @@ func hide_choices() -> void:
 		open_tween.kill()
 		open_tween = null
 	for index in range(cards.size()):
+		_stop_card_reveal_aura(index)
 		_reset_card_hover(index)
 		card_fronts[index].show()
 		cards[index].scale = Vector2.ONE
@@ -237,6 +248,12 @@ func _update_cards() -> void:
 		descriptions[index].text = _build_description_text(item) if has_item else ""
 		buttons[index].disabled = not has_item
 		buttons[index].text = "选择"
+		_apply_card_rarity_visuals(
+			index,
+			int(item.collectible_rarity)
+			if has_item
+			else PickupConfig.CollectibleRarity.COMMON
+		)
 		_reset_description_scroll(index)
 	_update_selection()
 
@@ -311,6 +328,7 @@ func _prepare_open_animation() -> void:
 		open_tween = null
 	for index in range(cards.size()):
 		var card := cards[index]
+		_stop_card_reveal_aura(index)
 		_reset_card_hover(index)
 		card.scale = Vector2.ONE
 		card.modulate = Color.WHITE
@@ -319,6 +337,8 @@ func _prepare_open_animation() -> void:
 
 
 func _play_open_animation() -> void:
+	if not root_control.visible:
+		return
 	if open_tween != null:
 		open_tween.kill()
 	open_tween = create_tween()
@@ -346,6 +366,7 @@ func _reveal_card_front(index: int) -> void:
 	card_fronts[index].show()
 	cards[index].self_modulate = Color.WHITE
 	cards[index].modulate = Color.WHITE
+	_play_card_reveal_aura(index)
 
 
 func _build_card_hover_styles() -> void:
@@ -355,13 +376,150 @@ func _build_card_hover_styles() -> void:
 		var base_style := (card.get_theme_stylebox("panel") as StyleBoxFlat).duplicate() as StyleBoxFlat
 		var hover_style := base_style.duplicate() as StyleBoxFlat
 		hover_style.bg_color = Color(1.0, 0.975, 0.93, 1.0)
-		hover_style.border_color = Color(1.0, 0.25, 0.3, 1.0)
-		hover_style.shadow_color = Color(1.0, 0.15, 0.18, 0.3)
-		hover_style.shadow_size = 14
 		hover_style.shadow_offset = Vector2(0, 2)
 		card.add_theme_stylebox_override("panel", base_style)
 		card_base_styles.append(base_style)
 		card_hover_styles.append(hover_style)
+
+
+static func get_card_rarity_color(rarity: int) -> Color:
+	match rarity:
+		PickupConfig.CollectibleRarity.RARE:
+			return CARD_RARE_COLOR
+		PickupConfig.CollectibleRarity.EPIC:
+			return CARD_EPIC_COLOR
+		PickupConfig.CollectibleRarity.LEGENDARY:
+			return CARD_LEGENDARY_COLOR
+		_:
+			return CARD_COMMON_COLOR
+
+
+static func get_card_aura_strength(rarity: int) -> float:
+	match rarity:
+		PickupConfig.CollectibleRarity.RARE:
+			return 0.05
+		PickupConfig.CollectibleRarity.EPIC:
+			return 0.22
+		PickupConfig.CollectibleRarity.LEGENDARY:
+			return 0.34
+		_:
+			return 0.02
+
+
+static func get_card_reveal_power(rarity: int) -> float:
+	match rarity:
+		PickupConfig.CollectibleRarity.RARE:
+			return 0.14
+		PickupConfig.CollectibleRarity.EPIC:
+			return 1.05
+		PickupConfig.CollectibleRarity.LEGENDARY:
+			return 1.42
+		_:
+			return 0.08
+
+
+static func get_card_shadow_size(rarity: int) -> int:
+	match rarity:
+		PickupConfig.CollectibleRarity.RARE:
+			return 9
+		PickupConfig.CollectibleRarity.EPIC:
+			return 14
+		PickupConfig.CollectibleRarity.LEGENDARY:
+			return 18
+		_:
+			return 8
+
+
+func _apply_card_rarity_visuals(index: int, rarity: int) -> void:
+	if index < 0 or index >= cards.size():
+		return
+	card_rarities[index] = rarity
+	var rarity_color := get_card_rarity_color(rarity)
+	var shadow_size := get_card_shadow_size(rarity)
+	var shadow_alpha := 0.18
+	if rarity == PickupConfig.CollectibleRarity.RARE:
+		shadow_alpha = 0.22
+	elif rarity == PickupConfig.CollectibleRarity.EPIC:
+		shadow_alpha = 0.42
+	elif rarity == PickupConfig.CollectibleRarity.LEGENDARY:
+		shadow_alpha = 0.52
+
+	var base_style := card_base_styles[index]
+	base_style.border_color = rarity_color
+	base_style.border_width_left = 3 if rarity >= PickupConfig.CollectibleRarity.EPIC else 2
+	base_style.border_width_top = base_style.border_width_left
+	base_style.border_width_right = base_style.border_width_left
+	base_style.border_width_bottom = base_style.border_width_left
+	base_style.shadow_color = Color(
+		rarity_color.r,
+		rarity_color.g,
+		rarity_color.b,
+		shadow_alpha
+	)
+	base_style.shadow_size = shadow_size
+	base_style.shadow_offset = Vector2(0, 2 if rarity >= PickupConfig.CollectibleRarity.EPIC else 3)
+
+	var hover_style := card_hover_styles[index]
+	hover_style.border_color = rarity_color.lerp(Color.WHITE, 0.2)
+	hover_style.border_width_left = base_style.border_width_left
+	hover_style.border_width_top = base_style.border_width_top
+	hover_style.border_width_right = base_style.border_width_right
+	hover_style.border_width_bottom = base_style.border_width_bottom
+	hover_style.shadow_color = Color(
+		rarity_color.r,
+		rarity_color.g,
+		rarity_color.b,
+		minf(shadow_alpha + 0.14, 0.72)
+	)
+	hover_style.shadow_size = shadow_size + 6
+	hover_style.shadow_offset = Vector2(0, 2)
+	cards[index].add_theme_stylebox_override("panel", base_style)
+	cards[index].set_instance_shader_parameter(&"rarity_color", rarity_color)
+	cards[index].set_instance_shader_parameter(
+		&"aura_strength",
+		get_card_aura_strength(rarity)
+	)
+	cards[index].set_instance_shader_parameter(
+		&"reveal_power",
+		get_card_reveal_power(rarity)
+	)
+	cards[index].set_instance_shader_parameter(&"reveal_progress", 0.0)
+	cards[index].set_instance_shader_parameter(&"time_offset", float(index) * 1.71)
+
+
+func _play_card_reveal_aura(index: int) -> void:
+	if index < 0 or index >= cards.size():
+		return
+	_stop_card_reveal_aura(index)
+	_set_card_reveal_progress(0.001, index)
+	var reveal_tween := create_tween()
+	reveal_aura_tweens[index] = reveal_tween
+	reveal_tween.tween_method(
+		_set_card_reveal_progress.bind(index),
+		0.001,
+		1.0,
+		CARD_REVEAL_AURA_DURATION
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	reveal_tween.finished.connect(func() -> void:
+		if reveal_aura_tweens[index] == reveal_tween:
+			reveal_aura_tweens[index] = null
+		_set_card_reveal_progress(0.0, index)
+	)
+
+
+func _stop_card_reveal_aura(index: int) -> void:
+	if index < 0 or index >= reveal_aura_tweens.size():
+		return
+	if reveal_aura_tweens[index] != null:
+		reveal_aura_tweens[index].kill()
+		reveal_aura_tweens[index] = null
+	_set_card_reveal_progress(0.0, index)
+
+
+func _set_card_reveal_progress(progress: float, index: int) -> void:
+	if index < 0 or index >= cards.size():
+		return
+	cards[index].set_instance_shader_parameter(&"reveal_progress", progress)
 
 
 func _refresh_card_hover_from_mouse() -> void:

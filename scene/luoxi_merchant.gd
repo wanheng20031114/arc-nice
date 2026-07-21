@@ -8,6 +8,20 @@ const DIALOGUE_LINES := [
 	"我能为你提供收藏品来强化自己。",
 ]
 const CHOICE_COUNT := 3
+const OFFER_ALL_COMMON_WEIGHT := 50
+const OFFER_ALL_RARE_WEIGHT := 30
+const OFFER_ALL_EPIC_WEIGHT := 12
+const OFFER_ONE_LEGENDARY_WEIGHT := 3
+const OFFER_TWO_LEGENDARY_WEIGHT := 3
+const OFFER_ALL_LEGENDARY_WEIGHT := 2
+const COLLECTIBLE_OFFER_ROLL_TOTAL := (
+	OFFER_ALL_COMMON_WEIGHT
+	+ OFFER_ALL_RARE_WEIGHT
+	+ OFFER_ALL_EPIC_WEIGHT
+	+ OFFER_ONE_LEGENDARY_WEIGHT
+	+ OFFER_TWO_LEGENDARY_WEIGHT
+	+ OFFER_ALL_LEGENDARY_WEIGHT
+)
 const COLLECTIBLE_CLAIMS_PER_ROUND := 1
 const REFRESH_COSTS := [100, 200, 500, 1000]
 const CLAIMED_LINE := "这段场间时间已经选择过一件收藏品。"
@@ -144,18 +158,59 @@ static func is_collectible_available_for_inventory(
 	return item != null
 
 
-static func get_collectible_rarity_roll_weight(rarity: int) -> float:
-	match rarity:
-		PickupConfig.CollectibleRarity.COMMON:
-			return 58.0
-		PickupConfig.CollectibleRarity.RARE:
-			return 28.0
-		PickupConfig.CollectibleRarity.EPIC:
-			return 11.0
-		PickupConfig.CollectibleRarity.LEGENDARY:
-			return 3.0
-		_:
-			return 58.0
+static func get_collectible_offer_rarity_pattern_for_roll(
+	roll: int,
+	mixed_rarity_position: int = 0
+) -> Array[int]:
+	var normalized_roll := posmod(roll, COLLECTIBLE_OFFER_ROLL_TOTAL)
+	var roll_end := OFFER_ALL_COMMON_WEIGHT
+	if normalized_roll < roll_end:
+		return _build_uniform_rarity_pattern(PickupConfig.CollectibleRarity.COMMON)
+
+	roll_end += OFFER_ALL_RARE_WEIGHT
+	if normalized_roll < roll_end:
+		return _build_uniform_rarity_pattern(PickupConfig.CollectibleRarity.RARE)
+
+	roll_end += OFFER_ALL_EPIC_WEIGHT
+	if normalized_roll < roll_end:
+		return _build_uniform_rarity_pattern(PickupConfig.CollectibleRarity.EPIC)
+
+	var featured_position := posmod(mixed_rarity_position, CHOICE_COUNT)
+	roll_end += OFFER_ONE_LEGENDARY_WEIGHT
+	if normalized_roll < roll_end:
+		var one_legendary := _build_uniform_rarity_pattern(
+			PickupConfig.CollectibleRarity.EPIC
+		)
+		one_legendary[featured_position] = PickupConfig.CollectibleRarity.LEGENDARY
+		return one_legendary
+
+	roll_end += OFFER_TWO_LEGENDARY_WEIGHT
+	if normalized_roll < roll_end:
+		var two_legendary := _build_uniform_rarity_pattern(
+			PickupConfig.CollectibleRarity.LEGENDARY
+		)
+		two_legendary[featured_position] = PickupConfig.CollectibleRarity.EPIC
+		return two_legendary
+
+	return _build_uniform_rarity_pattern(PickupConfig.CollectibleRarity.LEGENDARY)
+
+
+static func roll_collectible_offer_rarity_pattern(
+	rng: RandomNumberGenerator
+) -> Array[int]:
+	if rng == null:
+		return []
+	return get_collectible_offer_rarity_pattern_for_roll(
+		rng.randi_range(0, COLLECTIBLE_OFFER_ROLL_TOTAL - 1),
+		rng.randi_range(0, CHOICE_COUNT - 1)
+	)
+
+
+static func _build_uniform_rarity_pattern(rarity: int) -> Array[int]:
+	var result: Array[int] = []
+	for _choice_index in range(CHOICE_COUNT):
+		result.append(rarity)
+	return result
 
 
 static func get_result_line(result_code: int) -> String:
@@ -399,14 +454,15 @@ func build_authoritative_offer_paths(
 	if pool.size() < CHOICE_COUNT:
 		return []
 
+	var selected_items := _build_collectible_choices_from_pool(pool, rng)
+	if selected_items.size() != CHOICE_COUNT:
+		return []
 	var result: Array[String] = []
-	for _choice_index in range(CHOICE_COUNT):
-		var pool_index := _pick_weighted_collectible_index(pool, rng)
-		var item := pool[pool_index] as PickupConfig
+	for item_variant in selected_items:
+		var item := item_variant as PickupConfig
 		if item == null or item.resource_path.is_empty():
 			return []
 		result.append(item.resource_path)
-		pool.remove_at(pool_index)
 	return result
 
 
@@ -553,7 +609,6 @@ func _build_collectible_choices() -> Array:
 
 
 func _build_random_collectible_choices(excluded_paths: Array[String] = []) -> Array:
-	var choices: Array = []
 	var pool := _get_collectible_pool_for_player(active_player)
 	if not excluded_paths.is_empty():
 		var filtered_pool: Array = []
@@ -565,11 +620,7 @@ func _build_random_collectible_choices(excluded_paths: Array[String] = []) -> Ar
 			pool = filtered_pool
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
-	for _choice_index in range(mini(CHOICE_COUNT, pool.size())):
-		var pool_index := _pick_weighted_collectible_index(pool, rng)
-		choices.append(pool[pool_index])
-		pool.remove_at(pool_index)
-	return choices
+	return _build_collectible_choices_from_pool(pool, rng)
 
 
 func _replace_current_choices_after_refresh(player_key: int) -> void:
@@ -625,51 +676,36 @@ func _request_collectible_refresh() -> void:
 	)
 
 
-func _pick_weighted_collectible_index(pool: Array, rng: RandomNumberGenerator) -> int:
-	var available_rarities := _get_available_rarities(pool)
-	if available_rarities.is_empty():
-		return rng.randi_range(0, pool.size() - 1)
+func _build_collectible_choices_from_pool(
+	pool: Array,
+	rng: RandomNumberGenerator
+) -> Array:
+	if pool.size() < CHOICE_COUNT or rng == null:
+		return []
+	var rarity_pattern := roll_collectible_offer_rarity_pattern(rng)
+	var result: Array = []
+	for rarity in rarity_pattern:
+		var pool_index := _pick_collectible_index_for_rarity(pool, rarity, rng)
+		if pool_index < 0:
+			return []
+		result.append(pool[pool_index])
+		pool.remove_at(pool_index)
+	return result
 
-	var total_weight := 0.0
-	for rarity in available_rarities:
-		total_weight += get_collectible_rarity_roll_weight(int(rarity))
 
-	var roll := rng.randf_range(0.0, total_weight)
-	var chosen_rarity := int(available_rarities[available_rarities.size() - 1])
-	for rarity in available_rarities:
-		roll -= get_collectible_rarity_roll_weight(int(rarity))
-		if roll <= 0.0:
-			chosen_rarity = int(rarity)
-			break
-
+func _pick_collectible_index_for_rarity(
+	pool: Array,
+	rarity: int,
+	rng: RandomNumberGenerator
+) -> int:
 	var matching_indices: Array[int] = []
 	for index in range(pool.size()):
 		var item := pool[index] as PickupConfig
-		if item != null and item.collectible_rarity == chosen_rarity:
+		if item != null and int(item.collectible_rarity) == rarity:
 			matching_indices.append(index)
 	if matching_indices.is_empty():
-		return rng.randi_range(0, pool.size() - 1)
+		return -1
 	return matching_indices[rng.randi_range(0, matching_indices.size() - 1)]
-
-
-func _get_available_rarities(pool: Array) -> Array[int]:
-	var seen: Dictionary = {}
-	for item_variant in pool:
-		var item := item_variant as PickupConfig
-		if item == null:
-			continue
-		seen[int(item.collectible_rarity)] = true
-
-	var result: Array[int] = []
-	for rarity in [
-		PickupConfig.CollectibleRarity.COMMON,
-		PickupConfig.CollectibleRarity.RARE,
-		PickupConfig.CollectibleRarity.EPIC,
-		PickupConfig.CollectibleRarity.LEGENDARY,
-	]:
-		if seen.has(int(rarity)):
-			result.append(int(rarity))
-	return result
 
 
 func _get_collectible_pool_for_player(player: Player) -> Array:
