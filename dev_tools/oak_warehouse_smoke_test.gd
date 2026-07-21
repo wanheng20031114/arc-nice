@@ -105,8 +105,8 @@ func _test_config_and_scene(config: PlantDefenseConfig, warehouse: OakWarehouse)
 	)
 	_expect(config.supports_multiplayer, "共享仓库权威事务就绪后，橡木仓库必须允许多人放置。")
 	_expect(
-		PlantDefenseRegistry.get_all_configs().size() == 9,
-		"植物选择必须包含全部9种建筑，包括植物培育中心与竹筒迫击炮。"
+		PlantDefenseRegistry.get_all_configs().size() == 10,
+		"植物选择必须包含全部10种建筑，包括植物培育中心、竹筒迫击炮与种植基地。"
 	)
 	_expect(warehouse.storage_items.size() == 20, "仓库必须拥有20个物品格。")
 	_expect(
@@ -211,38 +211,36 @@ func _test_config_and_scene(config: PlantDefenseConfig, warehouse: OakWarehouse)
 	var action_label := prompt.get_node("PromptMargin/PromptRow/ActionLabel") as Label
 	_expect(prompt.scale == Vector2(0.5, 0.5), "仓库提示必须用0.5静态缩放抵消塔防镜头放大。")
 	_expect(
-		warehouse.prompt_rest_position == Vector2(-22, -30),
-		"仓库提示静止位置必须降低到紧贴屋顶的世界坐标。"
+		warehouse.prompt_rest_position == Vector2(-22, -33),
+		"仓库提示静止位置必须位于血条正上方。"
 	)
 	_expect(prompt.custom_minimum_size == Vector2(88, 26), "仓库提示内部画布必须压缩为88×26。")
 	_expect(key_label.text == "F" and action_label.text == "打开仓库", "仓库提示必须使用独立F键帽与精简文案。")
 	_expect(
-		warehouse.health_bar.position == Vector2(-16, -38)
+		warehouse.health_bar.position == Vector2(-16, -20)
 		and warehouse.health_bar.size == Vector2(32, 5),
-		"仓库血条必须位于提示上方的-38..-33世界坐标。"
+		"仓库血条必须贴近屋顶并保持32×5世界尺寸。"
 	)
-	var health_bottom := warehouse.health_bar.position.y + warehouse.health_bar.size.y
-	var health_prompt_gap := warehouse.prompt_rest_position.y - health_bottom
 	var prompt_bottom := (
 		warehouse.prompt_rest_position.y + prompt.size.y * prompt.scale.y
 	)
-	var prompt_roof_gap := subject_rect.position.y - prompt_bottom
+	var prompt_health_gap := warehouse.health_bar.position.y - prompt_bottom
+	var health_bottom := warehouse.health_bar.position.y + warehouse.health_bar.size.y
+	var health_roof_gap := subject_rect.position.y - health_bottom
 	_expect(
-		health_prompt_gap >= 1.0
-		and health_prompt_gap <= 4.0
-		and prompt_roof_gap >= 1.0
-		and prompt_roof_gap <= 3.0,
-		"仓库提示必须位于血条与屋顶之间，并与屋顶保持约1至2像素间距。"
+		absf(prompt_health_gap) <= 0.01
+		and absf(health_roof_gap) <= 1.0,
+		"仓库提示、血条与屋顶必须自上而下紧密衔接且不留异常空隙。"
 	)
 	warehouse.call("_set_prompt_reveal_offset", 1.0)
-	_expect(prompt.position == Vector2(-22, -29), "仓库提示入场只能使用-29整数Y坐标。")
+	_expect(prompt.position == Vector2(-22, -32), "仓库提示入场只能使用-32整数Y坐标。")
 	var reveal_prompt_bottom := prompt.position.y + prompt.size.y * prompt.scale.y
 	_expect(
-		subject_rect.position.y - reveal_prompt_bottom >= 0.0,
-		"仓库提示入场的-29位置也不得压住屋顶。"
+		reveal_prompt_bottom <= warehouse.health_bar.position.y + 1.0,
+		"仓库提示入场最多与血条相接1像素，不得压入建筑主体。"
 	)
 	warehouse.call("_set_prompt_reveal_offset", 0.0)
-	_expect(prompt.position == Vector2(-22, -30), "仓库提示静止时必须回到-30整数Y坐标。")
+	_expect(prompt.position == Vector2(-22, -33), "仓库提示静止时必须回到-33整数Y坐标。")
 
 
 func _test_interaction_lock(player: Player, warehouse: OakWarehouse) -> void:

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ProductionRecipe" format=3]
+
+[ext_resource type="Script" path="res://resources/config/production/production_recipe.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_sapling.tres" id="2_sapling"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_wood.tres" id="3_wood"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="4_pickup_script"]
+
+[resource]
+script = ExtResource("1_script")
+recipe_id = &"sapling_to_wood"
+display_name = "林木培育"
+input_items = Array[ExtResource("4_pickup_script")]([ExtResource("2_sapling")])
+input_amounts = Array[int]([1])
+input_source = 0
+output_items = Array[ExtResource("4_pickup_script")]([ExtResource("3_wood")])
+output_amounts = Array[int]([5])
+output_destination = 0
+duration_seconds = 60.0

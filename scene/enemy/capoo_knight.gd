@@ -63,7 +63,11 @@ func _physics_process(delta: float) -> void:
 		_move_until_player_contact()
 		return
 
-	if has_attackable_objective() and _try_start_windup():
+	if (
+		_is_combat_sense_refresh_due()
+		and has_attackable_objective()
+		and _try_start_windup()
+	):
 		return
 	if _has_player_contact():
 		velocity = Vector2.ZERO

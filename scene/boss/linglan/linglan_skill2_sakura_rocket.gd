@@ -41,6 +41,9 @@ const EXPLOSION_QUERY_BATCH_SIZE := 64
 @export_range(1.0, 30.0, 0.1, "or_greater") var flash_frequency: float = 9.0
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
+@onready var emission_overlay: AnimatedSprite2D = (
+	$AnimatedSprite2D/EmissionOverlay
+)
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var explosion_shape: CollisionShape2D = $ExplosionShape
 
@@ -94,6 +97,7 @@ func _ready() -> void:
 	base_sprite_modulate = animated_sprite.modulate
 	if animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"fly"):
 		animated_sprite.play(&"fly")
+		_restart_emission_animation()
 	_update_flash_visual()
 	pool_active = not has_meta(SessionObjectPool.POOL_OWNER_META)
 
@@ -130,6 +134,7 @@ func on_pool_acquired(_generation: int) -> void:
 		animated_sprite.frame_progress = 0.0
 		if animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"fly"):
 			animated_sprite.play(&"fly")
+			_restart_emission_animation()
 	_apply_collision_masks()
 	_apply_explosion_radius()
 	set_physics_process(true)
@@ -149,6 +154,20 @@ func on_pool_released(_generation: int) -> void:
 	if animated_sprite != null:
 		animated_sprite.modulate = base_sprite_modulate
 		animated_sprite.stop()
+	if emission_overlay != null:
+		emission_overlay.stop()
+
+
+func _restart_emission_animation() -> void:
+	if emission_overlay == null:
+		return
+	emission_overlay.stop()
+	emission_overlay.animation = animated_sprite.animation
+	emission_overlay.set_frame_and_progress(
+		animated_sprite.frame,
+		animated_sprite.frame_progress
+	)
+	emission_overlay.play(animated_sprite.animation)
 
 
 func setup(

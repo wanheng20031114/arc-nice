@@ -33,6 +33,7 @@ const DEFAULT_INNER_DAMAGE := 100
 const DEFAULT_OUTER_DAMAGE := 50
 
 @onready var visual: AnimatedSprite2D = $Visual
+@onready var projectile_halo: Sprite2D = $Visual/ProjectileHalo
 @onready var emission_overlay: AnimatedSprite2D = $Visual/EmissionOverlay
 @onready var ground_shadow: Polygon2D = $GroundShadow
 @onready var impact_audio: AudioStreamPlayer2D = $ImpactAudio
@@ -116,6 +117,8 @@ func on_pool_released(_generation: int) -> void:
 	if emission_overlay != null:
 		emission_overlay.stop()
 		emission_overlay.visible = false
+	if projectile_halo != null:
+		projectile_halo.visible = false
 	if ground_shadow != null:
 		ground_shadow.visible = false
 	if impact_audio != null:
@@ -175,8 +178,10 @@ func setup(
 		)
 		return
 	visual.visible = true
+	projectile_halo.visible = true
 	visual.rotation = 0.0
 	visual.play(&"flight")
+	_play_emission_animation(&"flight", 0, 0.0)
 	ground_shadow.visible = true
 	_update_flight_position()
 	set_physics_process(true)
@@ -272,6 +277,7 @@ func _start_explosion(
 
 func _begin_explosion_visual(elapsed_seconds: float) -> void:
 	ground_shadow.visible = false
+	projectile_halo.visible = false
 	visual.position = Vector2.ZERO
 	visual.rotation = 0.0
 	if (
@@ -299,7 +305,8 @@ func _begin_explosion_visual(elapsed_seconds: float) -> void:
 		frame_index,
 		clampf(frame_position - float(frame_index), 0.0, 0.999)
 	)
-	_play_explosion_emission(
+	_play_emission_animation(
+		&"explosion",
 		frame_index,
 		clampf(frame_position - float(frame_index), 0.0, 0.999)
 	)
@@ -464,10 +471,12 @@ func _reset_visual_state() -> void:
 		visual.visible = false
 	if emission_overlay != null:
 		emission_overlay.stop()
-		emission_overlay.animation = &"explosion"
+		emission_overlay.animation = &"flight"
 		emission_overlay.frame = 0
 		emission_overlay.frame_progress = 0.0
 		emission_overlay.visible = false
+	if projectile_halo != null:
+		projectile_halo.visible = true
 	if ground_shadow != null:
 		ground_shadow.visible = false
 		ground_shadow.modulate = Color.WHITE
@@ -480,18 +489,19 @@ func _exit_tree() -> void:
 		EXPLOSION_AUDIO_LIMITER.stop(impact_audio)
 
 
-func _play_explosion_emission(
+func _play_emission_animation(
+	animation_name: StringName,
 	frame_index: int,
 	frame_progress: float
 ) -> void:
 	if (
 		emission_overlay == null
 		or emission_overlay.sprite_frames == null
-		or not emission_overlay.sprite_frames.has_animation(&"explosion")
+		or not emission_overlay.sprite_frames.has_animation(animation_name)
 	):
 		return
 	emission_overlay.visible = true
-	emission_overlay.play(&"explosion")
+	emission_overlay.play(animation_name)
 	emission_overlay.set_frame_and_progress(
 		frame_index,
 		clampf(frame_progress, 0.0, 0.999)

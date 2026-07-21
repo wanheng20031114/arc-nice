@@ -49,7 +49,7 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 
-	if _try_start_ranged_attack():
+	if _is_combat_sense_refresh_due() and _try_start_ranged_attack():
 		_update_touch_damage(delta)
 		velocity = Vector2.ZERO
 		return

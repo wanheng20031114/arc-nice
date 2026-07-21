@@ -86,6 +86,7 @@ func _run() -> void:
 			damage_number_pool.slot_text_lines.size() == damage_number_pool.pool_size,
 			"Every fixed slot must own one persistent TextLine shaping cache."
 		)
+		await _test_visual_redraw_cadence()
 
 	var enemy := ENEMY_SCENE.instantiate() as Enemy
 	_expect(enemy != null, "Enemy scene must instantiate.")
@@ -166,6 +167,39 @@ func _run() -> void:
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
+
+
+func _test_visual_redraw_cadence() -> void:
+	var cadence_pool := DAMAGE_NUMBER_POOL_SCRIPT.new() as DamageNumberPool
+	_expect(cadence_pool != null, "Cadence fixture must instantiate a damage-number pool.")
+	if cadence_pool == null:
+		return
+	cadence_pool.name = "DamageNumberCadencePool"
+	test_root.add_child(cadence_pool)
+	await process_frame
+
+	for sample_index in range(30):
+		# The loop models one admitted number every 60 Hz frame without awaiting
+		# real time. Reset only the per-render admission window; the one-second
+		# budget and fixed slot capacity remain active.
+		cadence_pool.budget_frame = -1
+		_expect(
+			cadence_pool.show_damage_number(
+				sample_index + 1,
+				Vector2(64.0, 64.0)
+			),
+			"Cadence fixture must admit every in-view pressure sample."
+		)
+		cadence_pool._process(1.0 / 60.0)
+
+	var redraws := cadence_pool.get_redraw_request_count()
+	_expect(
+		redraws >= 14 and redraws <= 17,
+		"Continuous 60 Hz admissions must rebuild the shared draw list at about 30 Hz, got %d redraws."
+		% redraws
+	)
+	cadence_pool.queue_free()
+	await process_frame
 
 
 func _test_damage_number_style(damage_number_pool: Node2D, snapshot: Dictionary) -> void:

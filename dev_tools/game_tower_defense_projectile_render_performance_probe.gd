@@ -8,6 +8,9 @@ const ENEMY_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"
 )
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
+const RAPID_PROJECTILE_SINGLE_PASS_MATERIAL := preload(
+	"res://resources/shader/rapid_projectile_single_pass.tres"
+)
 const ENEMY_HIT_EFFECT_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")
 
 const ENEMY_COUNT := 300
@@ -44,6 +47,7 @@ var hits_per_physics_frame := DEFAULT_HITS_PER_PHYSICS_FRAME
 var fixed_seed := DEFAULT_SEED
 var hdr_2d_enabled := true
 var glow_enabled := true
+var projectile_single_pass_enabled := true
 var hit_pressure_cursor := 0
 
 
@@ -98,6 +102,8 @@ func _run() -> void:
 			"TOWER_DEFENSE_PROJECTILE_RENDER_FIXTURE enemies=%d "
 			+ "enemy_setup_ms=%.3f projectiles=%d samples=%d warmup=%d "
 			+ "hits_per_physics_frame=%d seed=%d hdr_2d=%s glow=%s "
+			+ "ab_variant=%s projectile_render=%s projectile_scene=generic "
+			+ "shared_single_pass_material=%s "
 			+ "window=%s viewport=%s renderer=%s driver=%s gpu=%s"
 		)
 		% [
@@ -110,6 +116,9 @@ func _run() -> void:
 			fixed_seed,
 			str(hdr_2d_enabled),
 			str(glow_enabled),
+			_get_ab_variant(),
+			_get_projectile_render_mode(),
+			str(projectile_single_pass_enabled),
 			str(DisplayServer.window_get_size()),
 			str(game.get_viewport().get_visible_rect().size),
 			RenderingServer.get_current_rendering_method(),
@@ -158,6 +167,22 @@ func _parse_user_arguments() -> void:
 			hdr_2d_enabled = _parse_bool(argument.get_slice("=", 1), true)
 		elif argument.begins_with("--glow="):
 			glow_enabled = _parse_bool(argument.get_slice("=", 1), true)
+		elif argument.begins_with("--projectile-single-pass="):
+			projectile_single_pass_enabled = _parse_bool(
+				argument.get_slice("=", 1),
+				true
+			)
+		elif argument.begins_with("--projectile-vfx="):
+			projectile_single_pass_enabled = _parse_bool(
+				argument.get_slice("=", 1),
+				true
+			)
+		elif argument.begins_with("--projectile-halos="):
+			# Backward-compatible alias for older probe launch commands.
+			projectile_single_pass_enabled = _parse_bool(
+				argument.get_slice("=", 1),
+				true
+			)
 
 
 func _parse_bool(value: String, default_value: bool) -> bool:
@@ -237,7 +262,10 @@ func _spawn_projectiles(mode: ProjectileMode) -> void:
 	var visible_grid_origin := FIXTURE_CENTER - visible_grid_size * 0.5
 	for projectile_index in range(projectile_count):
 		var bullet := game.acquire_session_object(BULLET_SCENE, false) as Bullet
-		_expect(bullet != null, "Every projectile pressure fixture must acquire Bullet.")
+		_expect(
+			bullet != null,
+			"Every projectile pressure fixture must acquire Bullet."
+		)
 		if bullet == null:
 			continue
 		var direction := Vector2.RIGHT.rotated(
@@ -247,6 +275,10 @@ func _spawn_projectiles(mode: ProjectileMode) -> void:
 		bullet.max_lifetime = LONG_PROJECTILE_LIFETIME
 		bullet.speed = 0.0 if mode != ProjectileMode.ACTIVE_HIDDEN else 320.0
 		bullet.setup(direction, 1, false)
+		_set_projectile_single_pass_enabled(
+			bullet,
+			projectile_single_pass_enabled
+		)
 		if mode == ProjectileMode.STATIC_VISIBLE:
 			bullet.set_physics_process(false)
 			bullet.monitoring = false
@@ -275,6 +307,53 @@ func _spawn_projectiles(mode: ProjectileMode) -> void:
 		bullet.remaining_lifetime = LONG_PROJECTILE_LIFETIME
 		bullet.reset_physics_interpolation()
 		projectiles.append(bullet)
+	_validate_projectile_render_fixture()
+
+
+func _set_projectile_single_pass_enabled(
+	bullet: Bullet,
+	enabled: bool
+) -> void:
+	var sprite := bullet.get_node("Sprite2D") as Sprite2D
+	sprite.material = RAPID_PROJECTILE_SINGLE_PASS_MATERIAL if enabled else null
+
+
+func _validate_projectile_render_fixture() -> void:
+	var material_mismatches := 0
+	var legacy_auxiliary_nodes := 0
+	for bullet in projectiles:
+		var sprite := bullet.get_node("Sprite2D") as Sprite2D
+		var expected_material: Material = (
+			RAPID_PROJECTILE_SINGLE_PASS_MATERIAL
+			if projectile_single_pass_enabled
+			else null
+		)
+		if sprite.material != expected_material:
+			material_mismatches += 1
+		if sprite.get_node_or_null("ProjectileHalo") != null:
+			legacy_auxiliary_nodes += 1
+		if sprite.get_node_or_null("EmissionOverlay") != null:
+			legacy_auxiliary_nodes += 1
+	_expect(
+		material_mismatches == 0,
+		"Every rapid projectile must use the selected shared render path."
+	)
+	_expect(
+		legacy_auxiliary_nodes == 0,
+		"Optimized rapid projectiles must not retain per-round Halo/Emission nodes."
+	)
+
+
+func _get_ab_variant() -> String:
+	return (
+		"single_pass_emission"
+		if projectile_single_pass_enabled
+		else "body_only"
+	)
+
+
+func _get_projectile_render_mode() -> String:
+	return "single_pass_hdr" if projectile_single_pass_enabled else "body_only"
 
 
 func _measure_phase(label: String, setup_ms: float, drive_hit_particles: bool) -> void:
@@ -483,6 +562,8 @@ func _print_phase_summary(
 ) -> void:
 	var parts := PackedStringArray([
 		"phase=%s" % label,
+		"ab_variant=%s" % _get_ab_variant(),
+		"projectile_render=%s" % _get_projectile_render_mode(),
 		"enemies=%d" % enemies.size(),
 		"projectiles=%d" % _count_live_projectiles(),
 		"setup_ms=%.3f" % setup_ms,

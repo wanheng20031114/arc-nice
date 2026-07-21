@@ -42,6 +42,7 @@ func _run() -> void:
 
 	if pathfinder != null and pathfinder.is_built and not enemy_configs.is_empty():
 		_verify_navigation_phase_distribution(game, enemy_configs[0])
+		_verify_navigation_next_refresh_cache(game, pathfinder, enemy_configs[0])
 		_verify_same_render_navigation_dedupe(game, pathfinder, enemy_configs[0])
 		for enemy_config in enemy_configs:
 			_verify_config_navigation_matrix(
@@ -123,11 +124,13 @@ func _verify_navigation_phase_distribution(
 		normal_groups[offset % Enemy.DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES] += 1
 		far_groups[offset % Enemy.FAR_STATIC_OBJECTIVE_UPDATE_INTERVAL_FRAMES] += 1
 		var retry_frame := enemy.navigation_zero_direction_retry_frame
+		var next_refresh_frame := enemy.navigation_next_refresh_physics_frame
 		retry_frame_counts[retry_frame] = int(
 			retry_frame_counts.get(retry_frame, 0)
 		) + 1
 		_expect(
 			retry_frame > current_frame
+			and next_refresh_frame == retry_frame
 			and retry_frame <= current_frame + Enemy.DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES
 			and (
 				retry_frame + offset
@@ -152,6 +155,114 @@ func _verify_navigation_phase_distribution(
 	)
 	for enemy in fixtures:
 		enemy.free()
+
+
+func _verify_navigation_next_refresh_cache(
+	game: GameTowerDefense,
+	pathfinder: GridPathfinder,
+	enemy_config: EnemyConfig
+) -> void:
+	var enemy := enemy_config.enemy_scene.instantiate() as Enemy
+	_expect(enemy != null, "Next-refresh cache fixture must instantiate an enemy.")
+	if enemy == null:
+		return
+	game.enemy_container.add_child(enemy)
+	enemy.set_physics_process(false)
+	enemy.setup(enemy_config, game.player, pathfinder)
+	enemy.cached_navigation_move_direction = Vector2.RIGHT
+	enemy.navigation_zero_direction_retry_frame = 0
+	enemy.navigation_next_refresh_physics_frame = Engine.get_physics_frames() + 6
+	enemy.navigation_scheduled_refresh_interval_frames = (
+		enemy.navigation_update_interval_frames
+	)
+
+	var saved_metrics_enabled := Enemy.performance_metrics_enabled
+	Enemy.set_performance_metrics_enabled(true)
+	var cached_direction := enemy.call(
+		"_get_safe_navigation_move_direction",
+		game.player,
+		pathfinder,
+		1.0
+	) as Vector2
+	var cached_metrics := Enemy.get_performance_metrics()
+	_expect(
+		cached_direction == Vector2.RIGHT
+		and int(cached_metrics.get("navigation_calls", -1)) == 0
+		and int(cached_metrics.get("navigation_refresh_calls", -1)) == 0,
+		"A future next-refresh frame must return the cached direction before profiling or path work."
+	)
+
+	enemy.navigation_refresh_deferred = true
+	enemy.last_navigation_update_render_frame = -1
+	var deferred_direction := enemy.call(
+		"_get_safe_navigation_move_direction",
+		null,
+		null,
+		1.0
+	) as Vector2
+	var deferred_metrics := Enemy.get_performance_metrics()
+	_expect(
+		deferred_direction == Vector2.ZERO
+		and not enemy.navigation_refresh_deferred
+		and int(deferred_metrics.get("navigation_calls", 0)) == 1
+		and int(deferred_metrics.get("navigation_refresh_calls", 0)) == 1
+		and enemy.navigation_next_refresh_physics_frame > Engine.get_physics_frames()
+		and enemy.navigation_zero_direction_retry_frame
+			== enemy.navigation_next_refresh_physics_frame,
+		"Deferred work must bypass the future cache once, then zero results must schedule a phased retry."
+	)
+
+	enemy.set_objective_target(null)
+	_expect(
+		enemy.navigation_next_refresh_physics_frame == 0
+		and enemy.navigation_scheduled_refresh_interval_frames == 0
+		and enemy.navigation_zero_direction_retry_frame == 0,
+		"Changing the objective must invalidate the next-refresh cache immediately."
+	)
+	enemy.set_objective_target(game.player)
+	enemy.call("_cache_navigation_move_direction", Vector2.RIGHT)
+	_expect(
+		enemy.navigation_next_refresh_physics_frame > Engine.get_physics_frames(),
+		"A non-zero navigation result must schedule its next phased refresh."
+	)
+	var navigation_calls_before_interval_change := int(
+		Enemy.get_performance_metrics().get("navigation_calls", 0)
+	)
+	enemy.navigation_update_interval_frames = 1
+	enemy.last_navigation_update_render_frame = -1
+	var saved_refresh_budget := Enemy.navigation_process_frame_budget_enabled
+	Enemy.navigation_process_frame_budget_enabled = false
+	enemy.call(
+		"_get_safe_navigation_move_direction",
+		game.player,
+		pathfinder,
+		1.0
+	)
+	Enemy.navigation_process_frame_budget_enabled = saved_refresh_budget
+	var interval_change_metrics := Enemy.get_performance_metrics()
+	_expect(
+		int(interval_change_metrics.get("navigation_calls", 0))
+			== navigation_calls_before_interval_change + 1
+		and enemy.navigation_scheduled_refresh_interval_frames == 1,
+		(
+			"Changing the runtime navigation interval must invalidate a future deadline "
+			+ "and refresh immediately (calls_before=%d calls_after=%d scheduled=%d "
+			+ "next=%d physics=%d)."
+		) % [
+			navigation_calls_before_interval_change,
+			int(interval_change_metrics.get("navigation_calls", 0)),
+			enemy.navigation_scheduled_refresh_interval_frames,
+			enemy.navigation_next_refresh_physics_frame,
+			Engine.get_physics_frames(),
+		]
+	)
+	enemy.set_pathfinder(null)
+	_expect(
+		enemy.navigation_next_refresh_physics_frame == 0,
+		"Changing the pathfinder must invalidate the next-refresh cache immediately."
+	)
+	Enemy.set_performance_metrics_enabled(saved_metrics_enabled)
+	enemy.free()
 
 
 func _verify_same_render_navigation_dedupe(

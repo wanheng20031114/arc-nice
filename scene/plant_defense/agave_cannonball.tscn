@@ -1,7 +1,8 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scene/plant_defense/agave_cannonball.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/plant_defense/agave_cannon/agave_cannonball.png" id="2_texture"]
+[ext_resource type="PackedScene" path="res://scene/lighting/projectile_emission_halo.tscn" id="3_halo"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_flight"]
 resource_local_to_scene = true
@@ -19,6 +20,10 @@ script = ExtResource("1_script")
 texture_filter = 1
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("2_texture")
+
+[node name="ProjectileHalo" parent="CannonballSprite" instance=ExtResource("3_halo")]
+self_modulate = Color(0.62, 0.82, 0.52, 0.045)
+scale = Vector2(0.13, 0.13)
 
 [node name="FlightCast" type="ShapeCast2D" parent="."]
 target_position = Vector2(1, 0)

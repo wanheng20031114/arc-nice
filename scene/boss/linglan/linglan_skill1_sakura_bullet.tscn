@@ -2,6 +2,8 @@
 
 [ext_resource type="Script" uid="uid://85lx4c8q01hb" path="res://scene/boss/linglan/linglan_skill1_sakura_bullet.gd" id="1_script"]
 [ext_resource type="SpriteFrames" uid="uid://dnqggj1bi0dl2" path="res://resources/animation/linglan_skill1_sakura_bullet.tres" id="2_frames"]
+[ext_resource type="Material" path="res://resources/shader/night_vfx_emission_additive.tres" id="3_emission"]
+[ext_resource type="PackedScene" path="res://scene/lighting/projectile_emission_halo.tscn" id="4_halo"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_body"]
 radius = 1.5
@@ -19,6 +21,17 @@ sprite_frames = ExtResource("2_frames")
 animation = &"fly"
 autoplay = "fly"
 frame_progress = 0.37551698
+
+[node name="ProjectileHalo" parent="AnimatedSprite2D" instance=ExtResource("4_halo")]
+self_modulate = Color(1, 0.34, 0.78, 0.1)
+scale = Vector2(0.38, 0.38)
+
+[node name="EmissionOverlay" type="AnimatedSprite2D" parent="AnimatedSprite2D"]
+material = ExtResource("3_emission")
+self_modulate = Color(1.65, 0.84, 1.18, 0.38)
+sprite_frames = ExtResource("2_frames")
+animation = &"fly"
+autoplay = "fly"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=251277228]
 shape = SubResource("CircleShape2D_body")

@@ -250,6 +250,8 @@ func _run() -> void:
 			motion_system,
 			open_center
 		)
+	await _test_interleaved_world_ray_schedule(pathfinder, open_center)
+	await _test_interleaved_thin_wall_guards(pathfinder, open_center)
 
 	CapooAK47Bullet.performance_metrics_enabled = false
 	CapooAK47Bullet.world_collision_certificate_enabled = false
@@ -407,6 +409,145 @@ func _test_batched_natural_expiry(
 		int(motion_system.call("get_active_projectile_count")) == active_before,
 		"Natural expiry must return the motion-system slot to its prior count."
 	)
+
+
+func _test_interleaved_world_ray_schedule(
+	pathfinder: GridPathfinder,
+	start_position: Vector2
+) -> void:
+	var phase_zero := BULLET_SCENE.instantiate() as CapooAK47Bullet
+	var phase_one := BULLET_SCENE.instantiate() as CapooAK47Bullet
+	_expect(
+		phase_zero != null and phase_one != null,
+		"Interleaved World-ray fixture requires two projectiles."
+	)
+	if phase_zero == null or phase_one == null:
+		return
+	game.add_child(phase_zero)
+	game.add_child(phase_one)
+	for bullet in [phase_zero, phase_one]:
+		bullet.global_position = start_position
+		bullet.setup(Vector2.RIGHT, 1, 0.0, 10.0, pathfinder, null)
+		bullet.set_physics_process(false)
+	phase_zero.world_collision_check_phase = 0
+	phase_one.world_collision_check_phase = 1
+
+	CapooAK47Bullet.world_collision_certificate_enabled = false
+	CapooAK47Bullet.performance_metrics_enabled = true
+	CapooAK47Bullet.reset_performance_metrics()
+	const TEST_TICKS := 120
+	var test_delta := 1.0 / 60.0
+	for tick_index in range(TEST_TICKS):
+		phase_zero.call("_advance_projectile", test_delta)
+		phase_one.call("_advance_projectile", test_delta)
+		var tick_metrics := CapooAK47Bullet.get_performance_metrics()
+		_expect(
+			int(tick_metrics["world_segment_calls"]) == tick_index + 1,
+			(
+				"Opposite projectile phases must distribute exactly one World ray "
+				+ "per physics tick (tick=%d calls=%d)."
+			)
+			% [tick_index, int(tick_metrics["world_segment_calls"])]
+		)
+	var metrics := CapooAK47Bullet.get_performance_metrics()
+	_expect(
+		int(metrics["world_segment_calls"]) == TEST_TICKS
+		and int(metrics["physics_ray_calls"]) == TEST_TICKS,
+		(
+			"Two 60 Hz projectiles over %d ticks must issue %d interleaved "
+			+ "World rays instead of %d."
+		)
+		% [TEST_TICKS, TEST_TICKS, TEST_TICKS * 2]
+	)
+	_expect(
+		is_equal_approx(phase_zero.remaining_lifetime, 8.0)
+		and is_equal_approx(phase_one.remaining_lifetime, 8.0),
+		"World-ray interleaving must not reduce 60 Hz projectile lifetime updates."
+	)
+	phase_zero.retire(false)
+	phase_one.retire(false)
+	await process_frame
+
+
+func _test_interleaved_thin_wall_guards(
+	pathfinder: GridPathfinder,
+	open_center: Vector2
+) -> void:
+	var start_position := open_center + Vector2(-4.0, 0.0)
+	var wall_position := start_position + Vector2(1.0, 0.0)
+	var thin_wall := StaticBody2D.new()
+	thin_wall.collision_layer = WORLD_COLLISION_MASK
+	thin_wall.collision_mask = 0
+	var shape_node := CollisionShape2D.new()
+	var shape := CircleShape2D.new()
+	shape.radius = 0.25
+	shape_node.shape = shape
+	thin_wall.add_child(shape_node)
+	game.add_child(thin_wall)
+	thin_wall.global_position = wall_position
+	await physics_frame
+
+	var scheduled_bullet := BULLET_SCENE.instantiate() as CapooAK47Bullet
+	_expect(scheduled_bullet != null, "Thin-wall schedule fixture must instantiate.")
+	if scheduled_bullet != null:
+		game.add_child(scheduled_bullet)
+		scheduled_bullet.global_position = start_position
+		scheduled_bullet.setup(Vector2.RIGHT, 1, 120.0, 1.0, pathfinder, null)
+		scheduled_bullet.set_physics_process(false)
+		scheduled_bullet.world_collision_check_phase = 1
+		CapooAK47Bullet.reset_performance_metrics()
+		scheduled_bullet.call("_advance_projectile", 1.0 / 60.0)
+		_expect(
+			not scheduled_bullet.has_hit
+			and scheduled_bullet.global_position.is_equal_approx(
+				start_position + Vector2(2.0, 0.0)
+			),
+			"The interleaved tick must retain the authored 60 Hz projectile movement."
+		)
+		scheduled_bullet.call("_advance_projectile", 1.0 / 60.0)
+		var scheduled_metrics := CapooAK47Bullet.get_performance_metrics()
+		_expect(
+			scheduled_bullet.has_hit
+			and scheduled_bullet.global_position.distance_to(wall_position) <= 0.5,
+			"The next 30 Hz check must sweep the accumulated segment into a thin wall."
+		)
+		_expect(
+			int(scheduled_metrics["physics_ray_calls"]) == 1
+			and int(scheduled_metrics["physics_ray_hits"]) == 1,
+			"An accumulated two-tick thin-wall collision must use one exact World ray."
+		)
+
+	var guarded_bullet := BULLET_SCENE.instantiate() as CapooAK47Bullet
+	_expect(guarded_bullet != null, "Thin-wall damage guard fixture must instantiate.")
+	if guarded_bullet != null:
+		game.add_child(guarded_bullet)
+		guarded_bullet.global_position = start_position
+		guarded_bullet.setup(Vector2.RIGHT, 7, 120.0, 1.0, pathfinder, null)
+		guarded_bullet.set_physics_process(false)
+		guarded_bullet.world_collision_check_phase = 1
+		CapooAK47Bullet.reset_performance_metrics()
+		guarded_bullet.call("_advance_projectile", 1.0 / 60.0)
+		var player_health_before := game.player.current_health
+		guarded_bullet.call("_on_body_entered", game.player)
+		var guard_metrics := CapooAK47Bullet.get_performance_metrics()
+		_expect(
+			guarded_bullet.has_hit
+			and game.player.current_health == player_health_before,
+			"A damage contact on the skipped tick must not hit a player behind a wall."
+		)
+		_expect(
+			int(guard_metrics["physics_ray_calls"]) == 1
+			and int(guard_metrics["physics_ray_hits"]) == 1,
+			"Damage preflight must validate exactly the unchecked World suffix."
+		)
+		_expect(
+			guarded_bullet.global_position.distance_to(wall_position) <= 0.5,
+			"A blocked damage contact must place its hit at the World intersection."
+		)
+
+	thin_wall.queue_free()
+	await physics_frame
+	await process_frame
 
 
 func _find_guarded_open_cell(pathfinder: GridPathfinder) -> Vector2i:

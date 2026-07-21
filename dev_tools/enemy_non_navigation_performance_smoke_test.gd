@@ -197,14 +197,29 @@ func _verify_empty_touch_fast_path(enemies: Array[Enemy]) -> void:
 		enemy.touching_players.is_empty() and enemy.touching_plants.is_empty(),
 		"Touch fast-path fixture must start without contacts."
 	)
+	var saved_metrics_enabled := Enemy.performance_metrics_enabled
+	Enemy.set_performance_metrics_enabled(true)
+	enemy.touch_damage_cooldown_left = 0.0
+	enemy.touched_player = enemy.target_player
+	enemy.call("_update_touch_damage", 0.1)
+	var idle_metrics := Enemy.get_performance_metrics()
+	_expect(
+		int(idle_metrics.get("touch_damage_calls", -1)) == 0
+		and enemy.touched_player == null
+		and enemy.touched_plant == null,
+		"Zero-cooldown enemies without contacts must return before touch-damage profiling."
+	)
 	enemy.touch_damage_cooldown_left = 0.2
 	enemy.call("_update_touch_damage", 0.1)
+	var cooldown_metrics := Enemy.get_performance_metrics()
 	_expect(
 		is_equal_approx(enemy.touch_damage_cooldown_left, 0.1)
 		and enemy.touched_player == null
-		and enemy.touched_plant == null,
+		and enemy.touched_plant == null
+		and int(cooldown_metrics.get("touch_damage_calls", 0)) == 1,
 		"Empty-contact fast path must still advance cooldown without inventing contacts."
 	)
+	Enemy.set_performance_metrics_enabled(saved_metrics_enabled)
 
 
 func _verify_source_allocation_contract() -> void:
@@ -220,6 +235,21 @@ func _verify_source_allocation_contract() -> void:
 	_expect(
 		source.contains("cached_effective_move_speed"),
 		"Enemy must cache effective move speed between modifier changes."
+	)
+	var movement_function_offset := source.find("func _move_until_player_contact()")
+	var zero_velocity_guard_offset := source.find(
+		"if velocity == Vector2.ZERO:",
+		movement_function_offset
+	)
+	var contact_guard_offset := source.find(
+		"if _has_player_contact():",
+		movement_function_offset
+	)
+	_expect(
+		movement_function_offset >= 0
+		and zero_velocity_guard_offset > movement_function_offset
+		and contact_guard_offset > zero_velocity_guard_offset,
+		"Zero-velocity movement must return before scanning player or plant contacts."
 	)
 	for runtime_source_path in [
 		"res://scene/game.gd",
@@ -244,6 +274,7 @@ func _verify_segmented_enemy_metrics(enemies: Array[Enemy]) -> void:
 	var enemy := enemies[2]
 	Enemy.set_performance_metrics_enabled(true)
 	Enemy.reset_performance_metrics()
+	enemy.touch_damage_cooldown_left = 0.1
 	enemy.call("_update_touch_damage", 1.0 / 60.0)
 	enemy.call("_get_safe_navigation_move_direction", null, null, 1.0)
 	enemy.call("_test_navigation_motion", enemy.global_transform, Vector2.ZERO)
@@ -253,6 +284,7 @@ func _verify_segmented_enemy_metrics(enemies: Array[Enemy]) -> void:
 	enemy.velocity = Vector2.ZERO
 	var metrics := Enemy.get_performance_metrics()
 	Enemy.set_performance_metrics_enabled(false)
+	enemy.touch_damage_cooldown_left = 0.0
 	_expect(
 		int(metrics.get("touch_damage_calls", 0)) == 1,
 		"Opt-in enemy telemetry must count touch-damage segments exactly."

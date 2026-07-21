@@ -23,6 +23,13 @@ const MAGIC_OUTLINE_COLOR := Color(0.16, 0.04, 0.30, 0.98)
 const HEALING_FONT_COLOR := Color("#AFDD22")
 const HEALING_OUTLINE_COLOR := Color(0.08, 0.20, 0.015, 0.98)
 const OUTLINE_SIZE := 2
+# Floating combat text is feedback, not authoritative simulation. Rebuilding up
+# to 96 shaped TextLine draw commands every render frame was visible in the
+# profiler during burst damage. Keep the CanvasItem render loop smooth while
+# advancing and rebuilding this short-lived batch at 30 Hz. The first number
+# after an idle period appears immediately; further admissions join the next
+# scheduled redraw, at most one 30 Hz interval later.
+const VISUAL_UPDATE_INTERVAL := 1.0 / 30.0
 
 @export_range(1, 256, 1, "or_greater") var pool_size: int = 96
 @export_range(1, 240, 1, "or_greater") var max_numbers_per_second: int = 120
@@ -43,6 +50,8 @@ var slot_number_kinds := PackedByteArray()
 var slot_damage_types := PackedByteArray()
 var slot_text_lines: Array[TextLine] = []
 var active_count: int = 0
+var visual_update_accumulator := 0.0
+var redraw_request_count: int = 0
 
 var budget_frame: int = -1
 var shown_this_frame: int = 0
@@ -126,6 +135,9 @@ func show_combat_number(
 	if slot_index < 0:
 		return false
 	var was_active := slot_active[slot_index] != 0
+	var was_pool_idle := active_count <= 0
+	if was_pool_idle:
+		visual_update_accumulator = 0.0
 	slot_active[slot_index] = 1
 	slot_elapsed[slot_index] = 0.0
 	slot_start_positions[slot_index] = (
@@ -151,7 +163,8 @@ func show_combat_number(
 	if not was_active:
 		active_count += 1
 	set_process(true)
-	queue_redraw()
+	if was_pool_idle:
+		_request_visual_redraw()
 	return true
 
 
@@ -161,6 +174,10 @@ func get_active_count() -> int:
 
 func get_slot_capacity() -> int:
 	return slot_active.size()
+
+
+func get_redraw_request_count() -> int:
+	return redraw_request_count
 
 
 func has_active_text(expected_text: String) -> bool:
@@ -217,9 +234,14 @@ func _get_slot_debug_snapshot(index: int) -> Dictionary:
 
 func _process(delta: float) -> void:
 	if active_count <= 0:
+		visual_update_accumulator = 0.0
 		set_process(false)
 		return
-	var safe_delta := maxf(delta, 0.0)
+	visual_update_accumulator += maxf(delta, 0.0)
+	if visual_update_accumulator < VISUAL_UPDATE_INTERVAL:
+		return
+	var safe_delta := visual_update_accumulator
+	visual_update_accumulator = 0.0
 	for index in range(slot_active.size()):
 		if slot_active[index] == 0:
 			continue
@@ -231,9 +253,10 @@ func _process(delta: float) -> void:
 			active_count -= 1
 			continue
 		slot_elapsed[index] = next_elapsed
-	queue_redraw()
+	_request_visual_redraw()
 	if active_count <= 0:
 		active_count = 0
+		visual_update_accumulator = 0.0
 		set_process(false)
 
 
@@ -303,6 +326,13 @@ func _initialize_slots() -> void:
 		text_line.alignment = HORIZONTAL_ALIGNMENT_CENTER
 		slot_text_lines[index] = text_line
 	active_count = 0
+	visual_update_accumulator = 0.0
+	redraw_request_count = 0
+
+
+func _request_visual_redraw() -> void:
+	redraw_request_count += 1
+	queue_redraw()
 
 
 func _consume_display_budget(display_priority: DisplayPriority) -> bool:

@@ -1,9 +1,10 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scene/plant_defense/bamboo_mortar_shell.gd" id="1_script"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/plant_defense/bamboo_mortar_shell_sprite_frames.tres" id="2_frames"]
 [ext_resource type="AudioStream" uid="uid://bogl46dtqkano" path="res://resources/audio/cowboy_explosion.wav" id="3_explosion_audio"]
 [ext_resource type="Shader" path="res://resources/shader/night_vfx_emission_mask.gdshader" id="4_emission_shader"]
+[ext_resource type="PackedScene" path="res://scene/lighting/projectile_emission_halo.tscn" id="5_halo"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_emission"]
 shader = ExtResource("4_emission_shader")
@@ -27,12 +28,17 @@ texture_filter = 1
 sprite_frames = ExtResource("2_frames")
 animation = &"flight"
 
+[node name="ProjectileHalo" parent="Visual" instance=ExtResource("5_halo")]
+visible = false
+self_modulate = Color(1, 0.64, 0.18, 0.11)
+scale = Vector2(0.065, 0.065)
+
 [node name="EmissionOverlay" type="AnimatedSprite2D" parent="Visual"]
 visible = false
 material = SubResource("ShaderMaterial_emission")
 texture_filter = 1
 sprite_frames = ExtResource("2_frames")
-animation = &"explosion"
+animation = &"flight"
 
 [node name="ImpactAudio" type="AudioStreamPlayer2D" parent="."]
 bus = &"SFX"

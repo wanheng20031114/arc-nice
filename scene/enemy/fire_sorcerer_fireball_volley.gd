@@ -48,6 +48,11 @@ static var _compensation_ray_query: PhysicsRayQueryParameters2D = null
 	$FireballB/VisualRoot/AnimatedSprite2D,
 	$FireballC/VisualRoot/AnimatedSprite2D,
 ]
+@onready var ball_emission_sprites: Array[AnimatedSprite2D] = [
+	$FireballA/VisualRoot/AnimatedSprite2D/EmissionOverlay,
+	$FireballB/VisualRoot/AnimatedSprite2D/EmissionOverlay,
+	$FireballC/VisualRoot/AnimatedSprite2D/EmissionOverlay,
+]
 @onready var ball_collision_shapes: Array[CollisionShape2D] = [
 	$FireballA/CollisionShape2D,
 	$FireballB/CollisionShape2D,
@@ -417,6 +422,7 @@ func _update_effects(delta: float) -> void:
 			continue
 		visible_effect_mask &= ~bit
 		ball_sprites[ball_index].hide()
+		ball_emission_sprites[ball_index].hide()
 	if active_ball_mask == 0 and visible_effect_mask == 0:
 		_retire()
 
@@ -510,6 +516,7 @@ func _begin_ball_effect(
 		and sprite.sprite_frames.has_animation(animation_name)
 	):
 		sprite.play(animation_name)
+	_play_emission_animation(ball_index, animation_name)
 
 
 func _activate_balls() -> void:
@@ -539,6 +546,7 @@ func _activate_balls() -> void:
 			and sprite.sprite_frames.has_animation(&"fly")
 		):
 			sprite.play(&"fly")
+		_play_emission_animation(ball_index, &"fly")
 
 
 func _disable_all_balls() -> void:
@@ -553,6 +561,24 @@ func _disable_all_balls() -> void:
 		ball_collision_shapes[ball_index].set_deferred("disabled", true)
 		ball_sprites[ball_index].stop()
 		ball_sprites[ball_index].hide()
+		ball_emission_sprites[ball_index].stop()
+		ball_emission_sprites[ball_index].hide()
+
+
+func _play_emission_animation(
+	ball_index: int,
+	animation_name: StringName
+) -> void:
+	var emission := ball_emission_sprites[ball_index]
+	emission.show()
+	emission.stop()
+	emission.frame = 0
+	emission.frame_progress = 0.0
+	if (
+		emission.sprite_frames != null
+		and emission.sprite_frames.has_animation(animation_name)
+	):
+		emission.play(animation_name)
 
 
 func _is_ball_active(ball_index: int) -> bool:

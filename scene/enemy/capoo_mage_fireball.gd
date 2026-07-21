@@ -21,6 +21,9 @@ static var pooled_impact_effect_enabled := true
 @export var homing_turn_rate: float = 0.65
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
+@onready var emission_overlay: AnimatedSprite2D = (
+	$AnimatedSprite2D/EmissionOverlay
+)
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var explosion_shape: CollisionShape2D = $ExplosionShape
 
@@ -70,6 +73,7 @@ func _ready() -> void:
 	_apply_radius()
 	if animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"fly"):
 		animated_sprite.play(&"fly")
+		_restart_emission_animation()
 
 
 func on_pool_acquired(_generation: int) -> void:
@@ -101,6 +105,7 @@ func on_pool_acquired(_generation: int) -> void:
 		animated_sprite.frame_progress = 0.0
 		if animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"fly"):
 			animated_sprite.play(&"fly")
+			_restart_emission_animation()
 
 
 func on_pool_released(_generation: int) -> void:
@@ -114,6 +119,20 @@ func on_pool_released(_generation: int) -> void:
 	collision_shape.set_deferred("disabled", true)
 	if animated_sprite != null:
 		animated_sprite.stop()
+	if emission_overlay != null:
+		emission_overlay.stop()
+
+
+func _restart_emission_animation() -> void:
+	if emission_overlay == null:
+		return
+	emission_overlay.stop()
+	emission_overlay.animation = animated_sprite.animation
+	emission_overlay.set_frame_and_progress(
+		animated_sprite.frame,
+		animated_sprite.frame_progress
+	)
+	emission_overlay.play(animated_sprite.animation)
 
 
 func setup(

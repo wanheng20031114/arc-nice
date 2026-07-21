@@ -2,6 +2,8 @@
 
 [ext_resource type="Script" uid="uid://04kxsg7vum4h" path="res://scene/player/tiyi/tiyi_sniper_bullet.gd" id="1_script"]
 [ext_resource type="Texture2D" uid="uid://dh8j4kgrt231q" path="res://resources/texture/player/tiyi/sniper_bullet.png" id="2_texture"]
+[ext_resource type="Material" path="res://resources/shader/night_vfx_emission_additive.tres" id="3_emission"]
+[ext_resource type="PackedScene" path="res://scene/lighting/projectile_emission_halo.tscn" id="4_halo"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_bullet_0"]
 atlas = ExtResource("2_texture")
@@ -42,6 +44,17 @@ max_lifetime = 0.35
 [node name="BulletSprite" type="AnimatedSprite2D" parent="." unique_id=2114218884]
 sprite_frames = SubResource("SpriteFrames_bullet")
 animation = &"fly"
+
+[node name="ProjectileHalo" parent="BulletSprite" instance=ExtResource("4_halo")]
+self_modulate = Color(0.62, 0.26, 1, 0.12)
+scale = Vector2(0.16, 0.06)
+
+[node name="EmissionOverlay" type="AnimatedSprite2D" parent="BulletSprite"]
+material = ExtResource("3_emission")
+self_modulate = Color(1.36, 0.86, 1.82, 0.52)
+sprite_frames = SubResource("SpriteFrames_bullet")
+animation = &"fly"
+autoplay = "fly"
 
 [node name="ShapeCast2D" type="ShapeCast2D" parent="." unique_id=832001351]
 scale = Vector2(1.3, 1.3)

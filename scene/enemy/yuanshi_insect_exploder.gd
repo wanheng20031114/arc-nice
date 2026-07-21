@@ -56,6 +56,8 @@ func _start_explosion_sequence() -> void:
 
 	animated_sprite.scale = Vector2.ONE * maxf(config.explosion_animation_scale, 0.1)
 	animated_sprite.z_index = 8
+	explosion_emission_overlay.flip_h = animated_sprite.flip_h
+	explosion_emission_overlay.flip_v = animated_sprite.flip_v
 	explosion_emission_overlay.visible = true
 	explosion_emission_overlay.play(config.explosion_animation_name)
 	NIGHT_VFX_FLASH_POOL.request_from(

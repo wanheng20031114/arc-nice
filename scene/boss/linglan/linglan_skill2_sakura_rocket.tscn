@@ -3,6 +3,15 @@
 [ext_resource type="Script" uid="uid://dtymveli2x8uk" path="res://scene/boss/linglan/linglan_skill2_sakura_rocket.gd" id="1_script"]
 [ext_resource type="SpriteFrames" uid="uid://cdgq5f6m41228" path="res://resources/animation/linglan_skill2_sakura_rocket.tres" id="2_frames"]
 [ext_resource type="PackedScene" path="res://scene/boss/linglan/linglan_skill2_sakura_explosion.tscn" id="3_explosion"]
+[ext_resource type="Shader" path="res://resources/shader/night_vfx_emission_mask.gdshader" id="4_emission_shader"]
+[ext_resource type="PackedScene" path="res://scene/lighting/projectile_emission_halo.tscn" id="5_halo"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_emission"]
+shader = ExtResource("4_emission_shader")
+shader_parameter/luminance_threshold = 0.57
+shader_parameter/threshold_softness = 0.14
+shader_parameter/emission_strength = 1.6
+shader_parameter/emission_tint = Color(1.15, 0.72, 0.98, 0.5)
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_body"]
 radius = 2.0
@@ -23,6 +32,16 @@ explosion_scene = ExtResource("3_explosion")
 texture_filter = 2
 position = Vector2(-4, 0)
 scale = Vector2(0.15, 0.15)
+sprite_frames = ExtResource("2_frames")
+animation = &"fly"
+autoplay = "fly"
+
+[node name="ProjectileHalo" parent="AnimatedSprite2D" instance=ExtResource("5_halo")]
+self_modulate = Color(1, 0.32, 0.78, 0.12)
+scale = Vector2(0.52, 0.52)
+
+[node name="EmissionOverlay" type="AnimatedSprite2D" parent="AnimatedSprite2D"]
+material = SubResource("ShaderMaterial_emission")
 sprite_frames = ExtResource("2_frames")
 animation = &"fly"
 autoplay = "fly"

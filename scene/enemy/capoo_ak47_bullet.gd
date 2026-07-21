@@ -5,6 +5,7 @@ signal projectile_finished(projectile_id: int, projectile: Node)
 
 const WORLD_COLLISION_MASK := 1
 const DAMAGEABLE_COLLISION_MASK := 2 | 512
+const WORLD_COLLISION_CHECK_INTERVAL_FRAMES := 2
 const HIT_EFFECT_SCENE := preload("res://scene/bullet_hit_effect.tscn")
 const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
 
@@ -40,6 +41,11 @@ var world_collision_pathfinder: GridPathfinder = null
 var batched_motion_system = null
 var requested_batched_motion_system: Node = null
 var batched_activation_physics_frame := -1
+var world_collision_check_phase: int = 0
+var world_collision_step_index: int = 0
+var world_collision_anchor := Vector2.ZERO
+var world_collision_anchor_initialized := false
+var last_world_collision_position := Vector2.ZERO
 var world_collision_query := PhysicsRayQueryParameters2D.create(
 	Vector2.ZERO,
 	Vector2.ZERO,
@@ -67,6 +73,7 @@ func _enter_tree() -> void:
 
 func on_pool_acquired(_generation: int) -> void:
 	_detach_batched_motion_system()
+	_reset_world_collision_schedule()
 	pool_active = true
 	has_hit = false
 	direction = Vector2.RIGHT
@@ -95,6 +102,7 @@ func on_pool_acquired(_generation: int) -> void:
 
 func on_pool_released(_generation: int) -> void:
 	_detach_batched_motion_system()
+	_reset_world_collision_schedule()
 	pool_active = false
 	has_hit = true
 	world_collision_pathfinder = null
@@ -114,6 +122,7 @@ func setup(
 	shared_motion_system: Node = null
 ) -> void:
 	_detach_batched_motion_system()
+	_reset_world_collision_schedule()
 	if initial_direction != Vector2.ZERO:
 		direction = initial_direction.normalized()
 		rotation = direction.angle()
@@ -142,6 +151,11 @@ func setup_multiplayer(
 	projectile_id = maxi(new_projectile_id, 0)
 	owner_peer_id = new_owner_peer_id
 	source_type = new_source_type
+	if projectile_id > 0:
+		world_collision_check_phase = posmod(
+			projectile_id,
+			WORLD_COLLISION_CHECK_INTERVAL_FRAMES
+		)
 
 
 func _physics_process(delta: float) -> void:
@@ -162,17 +176,34 @@ func _advance_projectile(delta: float) -> void:
 
 	var current_position := global_position
 	var next_position := current_position + direction * speed * delta
-	if _will_hit_world(current_position, next_position):
-		_consume(true)
-		return
+	if not world_collision_anchor_initialized:
+		world_collision_anchor = current_position
+		world_collision_anchor_initialized = true
+	var remaining_after_step := remaining_lifetime - delta
+	var current_check_phase := world_collision_step_index
+	world_collision_step_index += 1
+	if world_collision_step_index >= WORLD_COLLISION_CHECK_INTERVAL_FRAMES:
+		world_collision_step_index = 0
+	var should_check_world := current_check_phase == world_collision_check_phase
+	# Never discard the final unchecked segment when lifetime ends on an
+	# interleaved frame. Normal flight still performs one World ray per two
+	# physics ticks, while position, lifetime and Area2D contacts remain 60 Hz.
+	if should_check_world or remaining_after_step <= 0.0:
+		if _will_hit_world(world_collision_anchor, next_position):
+			global_position = last_world_collision_position
+			world_collision_anchor = last_world_collision_position
+			_consume(true)
+			return
+		world_collision_anchor = next_position
 
 	global_position = next_position
-	remaining_lifetime -= delta
+	remaining_lifetime = remaining_after_step
 	if remaining_lifetime <= 0.0:
 		_consume(false)
 
 
 func _will_hit_world(from_position: Vector2, to_position: Vector2) -> bool:
+	last_world_collision_position = to_position
 	var started_usec := (
 		Time.get_ticks_usec()
 		if CapooAK47Bullet.performance_metrics_enabled
@@ -203,15 +234,18 @@ func _will_hit_world(from_position: Vector2, to_position: Vector2) -> bool:
 		)
 	world_collision_query.from = from_position
 	world_collision_query.to = to_position
-	var did_hit := not get_world_2d().direct_space_state.intersect_ray(
+	var hit_result := get_world_2d().direct_space_state.intersect_ray(
 		world_collision_query
-	).is_empty()
+	)
+	var did_hit := not hit_result.is_empty()
 	if CapooAK47Bullet.performance_metrics_enabled:
 		if did_hit:
 			CapooAK47Bullet._performance_metrics["physics_ray_hits"] = (
 				int(CapooAK47Bullet._performance_metrics["physics_ray_hits"]) + 1
 			)
 		_record_world_segment_usec(started_usec)
+	if did_hit:
+		last_world_collision_position = hit_result["position"] as Vector2
 	return did_hit
 
 
@@ -237,6 +271,11 @@ static func _record_world_segment_usec(started_usec: int) -> void:
 func _on_body_entered(body: Node2D) -> void:
 	if has_hit or not pool_active:
 		return
+	# Damageable bodies are still monitored at 60 Hz. If contact happens on the
+	# interleaved frame, certify the unchecked suffix before applying damage so
+	# a player or plant immediately behind a thin wall can never be hit through it.
+	if _consume_if_unchecked_world_blocked():
+		return
 
 	var player := body as Player
 	if player != null:
@@ -258,6 +297,37 @@ func _on_body_entered(body: Node2D) -> void:
 				EnemyConfig.DamageType.PHYSICAL
 			)
 	_consume(true)
+
+
+func _reset_world_collision_schedule() -> void:
+	world_collision_check_phase = posmod(
+		int(get_instance_id()),
+		WORLD_COLLISION_CHECK_INTERVAL_FRAMES
+	)
+	world_collision_step_index = 0
+	world_collision_anchor = Vector2.ZERO
+	world_collision_anchor_initialized = false
+	last_world_collision_position = Vector2.ZERO
+
+
+func _ensure_world_collision_anchor(current_position: Vector2) -> void:
+	if world_collision_anchor_initialized:
+		return
+	world_collision_anchor = current_position
+	world_collision_anchor_initialized = true
+
+
+func _consume_if_unchecked_world_blocked() -> bool:
+	_ensure_world_collision_anchor(global_position)
+	if world_collision_anchor.is_equal_approx(global_position):
+		return false
+	if _will_hit_world(world_collision_anchor, global_position):
+		global_position = last_world_collision_position
+		world_collision_anchor = last_world_collision_position
+		_consume(true)
+		return true
+	world_collision_anchor = global_position
+	return false
 
 
 func _consume(play_hit_effect: bool = true) -> void:

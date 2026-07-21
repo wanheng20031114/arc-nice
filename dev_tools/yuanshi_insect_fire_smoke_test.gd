@@ -26,6 +26,7 @@ func _run() -> void:
 	current_scene = test_root
 
 	_test_resource_contract()
+	await _test_combat_sense_phase_semantics()
 	await _test_bomber_explosion_query_contract()
 	await _test_legacy_bomber_unchanged()
 	await _test_attack_and_live_aim()
@@ -89,6 +90,94 @@ func _test_resource_contract() -> void:
 			"Projectile Area must scan Player and PlantDefense; its cached sweep owns World collision."
 		)
 		projectile.free()
+
+
+func _test_combat_sense_phase_semantics() -> void:
+	var saved_sensing_enabled := Enemy.combat_sense_throttling_enabled
+	Enemy.combat_sense_throttling_enabled = true
+	var phase_players: Array[Player] = []
+	var phase_enemies: Array[YuanshiInsect] = []
+	for phase_delay in range(Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES):
+		var fixture_y := float(phase_delay) * 256.0
+		var player := _spawn_player(Vector2(100.0, fixture_y))
+		var enemy := _spawn_enemy(Vector2(0.0, fixture_y), player)
+		enemy.set_physics_process(false)
+		enemy.combat_sense_update_interval_frames = (
+			Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES
+		)
+		phase_players.append(player)
+		phase_enemies.append(enemy)
+
+	await _wait_physics_frames(2)
+	var anchor_frame := Engine.get_physics_frames()
+	for phase_delay in range(phase_enemies.size()):
+		phase_enemies[phase_delay].navigation_update_frame_offset = posmod(
+			-(anchor_frame + phase_delay),
+			Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES
+		)
+
+	var observed_delays: Array[int] = [-1, -1, -1]
+	for tick_offset in range(Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES):
+		for enemy_index in range(phase_enemies.size()):
+			var enemy := phase_enemies[enemy_index]
+			enemy.call("_physics_process", 1.0 / 60.0)
+			if (
+				observed_delays[enemy_index] < 0
+				and int(enemy.get("combat_state")) != COMBAT_STATE_CHASE
+			):
+				observed_delays[enemy_index] = tick_offset
+		if tick_offset + 1 < Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES:
+			await physics_frame
+	_expect(
+		observed_delays == [0, 1, 2],
+		(
+			"Yuanshi ranged 20 Hz combat sensing must distribute attack acquisition "
+			+ "over offsets 0, 1 and 2; observed=%s."
+		) % [observed_delays]
+	)
+
+	Enemy.combat_sense_throttling_enabled = false
+	var unthrottled_player := _spawn_player(Vector2(100.0, 768.0))
+	var unthrottled_enemy := _spawn_enemy(Vector2(0.0, 768.0), unthrottled_player)
+	unthrottled_enemy.set_physics_process(false)
+	await _wait_physics_frames(2)
+	unthrottled_enemy.navigation_update_frame_offset = posmod(
+		1 - Engine.get_physics_frames(),
+		Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES
+	)
+	_expect(
+		(
+			Engine.get_physics_frames()
+			+ unthrottled_enemy.navigation_update_frame_offset
+		) % Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES != 0,
+		"Unthrottled Yuanshi fixture must begin on a normally skipped sensing phase."
+	)
+	unthrottled_enemy.call("_physics_process", 1.0 / 60.0)
+	_expect(
+		int(unthrottled_enemy.get("combat_state")) == COMBAT_STATE_ATTACK,
+		"Disabling combat-sense throttling must restore Yuanshi ranged attack acquisition on the current tick."
+	)
+	var sensed_every_tick := true
+	for tick_index in range(3):
+		sensed_every_tick = (
+			sensed_every_tick
+			and bool(unthrottled_enemy.call("_is_combat_sense_refresh_due"))
+		)
+		if tick_index < 2:
+			await physics_frame
+	_expect(
+		sensed_every_tick,
+		"Disabling combat-sense throttling must make the Yuanshi ranged sensing gate due every physics tick."
+	)
+
+	Enemy.combat_sense_throttling_enabled = saved_sensing_enabled
+	for enemy in phase_enemies:
+		enemy.queue_free()
+	for player in phase_players:
+		player.queue_free()
+	unthrottled_enemy.queue_free()
+	unthrottled_player.queue_free()
+	await physics_frame
 
 
 func _test_bomber_explosion_query_contract() -> void:
@@ -205,10 +294,20 @@ func _test_legacy_bomber_unchanged() -> void:
 		visual_bomber.global_position = Vector2.ZERO
 		visual_bomber.setup(BOMBER_CONFIG, player)
 		await process_frame
+		visual_bomber.animated_sprite.flip_h = true
+		visual_bomber.animated_sprite.flip_v = true
 		visual_bomber.call("_start_explosion_sequence")
+		var emission_overlay := visual_bomber.get_node(
+			"AnimatedSprite2D/ExplosionEmissionOverlay"
+		) as AnimatedSprite2D
 		_expect(
 			visual_bomber.animated_sprite.z_index >= 8,
 			"Bomber explosion animation must render above enemy body sprites."
+		)
+		_expect(
+			emission_overlay.flip_h == visual_bomber.animated_sprite.flip_h
+			and emission_overlay.flip_v == visual_bomber.animated_sprite.flip_v,
+			"Bomber explosion emission overlay must follow the body sprite orientation."
 		)
 		visual_bomber.queue_free()
 		await process_frame
@@ -253,8 +352,7 @@ func _test_legacy_bomber_unchanged() -> void:
 func _test_attack_and_live_aim() -> void:
 	var player := _spawn_player(Vector2(100, 0))
 	var enemy := _spawn_enemy(Vector2.ZERO, player)
-	await physics_frame
-	await physics_frame
+	await _wait_physics_frames(4)
 
 	_expect(enemy.get("combat_state") == COMBAT_STATE_ATTACK, "Enemy did not enter attack in clear range.")
 	player.global_position = Vector2(100, 60)
@@ -317,7 +415,7 @@ func _test_death_interrupts_attack() -> void:
 	var existing_projectile_ids := _get_projectile_ids()
 	var player := _spawn_player(Vector2(100, 0))
 	var enemy := _spawn_enemy(Vector2.ZERO, player)
-	await _wait_physics_frames(3)
+	await _wait_physics_frames(4)
 	_expect(enemy.get("combat_state") == COMBAT_STATE_ATTACK, "Death test enemy did not begin attacking.")
 
 	enemy.apply_damage(FIRE_CONFIG.max_health)

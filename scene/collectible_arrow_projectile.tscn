@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://oo0t1vwci7l8" path="res://scene/collectible_arrow_projectile.gd" id="1_script"]
 [ext_resource type="Texture2D" uid="uid://c1wi47m1igolh" path="res://resources/texture/collectible_arrow_projectile.png" id="2_texture"]
+[ext_resource type="PackedScene" path="res://scene/lighting/projectile_emission_halo.tscn" id="3_halo"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_arrow"]
 size = Vector2(26, 2)
@@ -14,6 +15,10 @@ script = ExtResource("1_script")
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=1374914368]
 texture = ExtResource("2_texture")
+
+[node name="ProjectileHalo" parent="Sprite2D" instance=ExtResource("3_halo")]
+self_modulate = Color(1, 0.78, 0.4, 0.055)
+scale = Vector2(0.13, 0.03)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1961211233]
 shape = SubResource("RectangleShape2D_arrow")

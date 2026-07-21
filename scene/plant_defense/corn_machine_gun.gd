@@ -31,7 +31,11 @@ const ATTACK_PHASE_GOLDEN_RATIO := 0.61803398875
 @onready var muzzle_flash_sprite: AnimatedSprite2D = (
 	$VisualRoot/AimPivot/MuzzleFlashSprite
 )
+@onready var muzzle_emission_overlay: AnimatedSprite2D = (
+	$VisualRoot/AimPivot/MuzzleFlashSprite/EmissionOverlay
+)
 @onready var tracer: Line2D = $Tracer
+@onready var tracer_halo: Line2D = $Tracer/ProjectileHalo
 @onready var tracer_fade: AnimationPlayer = $TracerFade
 @onready var attack_timer: Timer = $AttackTimer
 @onready var idle_aim_timer: Timer = $IdleAimTimer
@@ -77,6 +81,7 @@ func _ready() -> void:
 	set_physics_process(false)
 	tracer.visible = false
 	muzzle_flash_sprite.visible = false
+	muzzle_emission_overlay.visible = false
 
 
 func _physics_process(delta: float) -> void:
@@ -193,6 +198,8 @@ func _on_removal_started(_mode: RemovalMode) -> void:
 	tracer_fade.stop()
 	tracer.visible = false
 	muzzle_flash_sprite.visible = false
+	muzzle_emission_overlay.stop()
+	muzzle_emission_overlay.visible = false
 	fire_audio.stop()
 	_target_candidates.clear()
 
@@ -421,8 +428,13 @@ func _restart_shot_visual(tracer_length: float) -> void:
 	muzzle_flash_sprite.frame = 0
 	muzzle_flash_sprite.visible = true
 	muzzle_flash_sprite.play(&"flash")
+	muzzle_emission_overlay.stop()
+	muzzle_emission_overlay.frame = 0
+	muzzle_emission_overlay.visible = true
+	muzzle_emission_overlay.play(&"flash")
 
 	tracer.set_point_position(1, Vector2(tracer_length, 0.0))
+	tracer_halo.set_point_position(1, Vector2(tracer_length, 0.0))
 	tracer.visible = tracer_length > 0.0
 	tracer.modulate.a = 1.0
 	tracer_fade.stop()
@@ -454,6 +466,8 @@ func _cancel_burst(restart_idle: bool) -> void:
 		tracer.visible = false
 		muzzle_flash_sprite.stop()
 		muzzle_flash_sprite.visible = false
+		muzzle_emission_overlay.stop()
+		muzzle_emission_overlay.visible = false
 	if restart_idle:
 		_schedule_aim_return()
 
@@ -641,6 +655,8 @@ func set_idle_aim_random_seed(seed_value: int) -> void:
 func _on_muzzle_flash_animation_finished() -> void:
 	if muzzle_flash_sprite.animation == &"flash":
 		muzzle_flash_sprite.visible = false
+		muzzle_emission_overlay.stop()
+		muzzle_emission_overlay.visible = false
 
 
 func _on_tracer_fade_animation_finished(animation_name: StringName) -> void:

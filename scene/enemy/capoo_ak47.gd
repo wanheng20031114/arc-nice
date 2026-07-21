@@ -6,6 +6,11 @@ const CapooConfig := preload("res://resources/config/enemies/capoo_ak47_config.g
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/enemy_attack_audio_limiter.gd"
 )
+# Center-first ordering keeps every complete five-agent group at zero mean while
+# spreading the five-physics-tick authored burst cadence across all five phases.
+const ATTACK_PHASE_OFFSETS_PHYSICS_FRAMES: Array[int] = [0, -1, 1, -2, 2]
+
+static var attack_phase_stagger_enabled := true
 
 enum CombatState {
 	CHASE,
@@ -30,6 +35,8 @@ var burst_audio_step: int = 0
 var action_sequence: int = 0
 var latest_proxy_action_id: int = 0
 var attack_target: Node2D = null
+var committed_attack_phase_offset_seconds: float = 0.0
+var committed_windup_duration_seconds: float = 0.0
 
 
 func _ready() -> void:
@@ -39,6 +46,22 @@ func _ready() -> void:
 
 func can_target_water_plant_objectives() -> bool:
 	return true
+
+
+static func calculate_attack_phase_offset_physics_frames(phase_identity: int) -> int:
+	return ATTACK_PHASE_OFFSETS_PHYSICS_FRAMES[
+		posmod(phase_identity, ATTACK_PHASE_OFFSETS_PHYSICS_FRAMES.size())
+	]
+
+
+static func calculate_attack_phase_offset_seconds(
+	phase_identity: int,
+	physics_ticks_per_second: int
+) -> float:
+	return (
+		float(calculate_attack_phase_offset_physics_frames(phase_identity))
+		/ float(maxi(physics_ticks_per_second, 1))
+	)
 
 
 func _physics_process(delta: float) -> void:
@@ -61,28 +84,36 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 	var capoo_config := config as CapooConfig
-	var preferred_target := _get_preferred_ranged_combat_target()
-	if (
-		capoo_config != null
-		and _try_hold_ranged_attack_position(
-			preferred_target,
-			capoo_config.attack_range,
-			WORLD_COLLISION_MASK
-		)
-	):
-		if _try_start_windup(preferred_target):
-			return
-		# The attack commit performs an exact LOS query. If that invalidated a
-		# previously clear sampled line, leave standoff in the same tick.
-		if _try_hold_ranged_attack_position(
-			preferred_target,
-			capoo_config.attack_range,
-			WORLD_COLLISION_MASK
+	if _is_combat_sense_refresh_due():
+		var preferred_target := _get_preferred_ranged_combat_target()
+		if (
+			capoo_config != null
+			and _try_hold_ranged_attack_position(
+				preferred_target,
+				capoo_config.attack_range,
+				WORLD_COLLISION_MASK
+			)
 		):
-			_update_facing(global_position.direction_to(preferred_target.global_position))
-			return
-	else:
-		_reset_ranged_attack_position_state()
+			if _try_start_windup(preferred_target):
+				return
+			# The attack commit performs an exact LOS query. If that invalidated a
+			# previously clear sampled line, leave standoff in the same tick.
+			if _try_hold_ranged_attack_position(
+				preferred_target,
+				capoo_config.attack_range,
+				WORLD_COLLISION_MASK
+			):
+				_update_facing(
+					global_position.direction_to(preferred_target.global_position)
+				)
+				return
+		else:
+			_reset_ranged_attack_position_state()
+	elif _ranged_attack_position_held:
+		# Reuse the sampled standoff decision between 20 Hz sensing ticks. Active
+		# windup/burst states returned above and therefore retain their 60 Hz timing.
+		velocity = Vector2.ZERO
+		return
 
 	if not is_instance_valid(objective_target):
 		velocity = Vector2.ZERO
@@ -104,6 +135,7 @@ func _apply_config() -> void:
 	burst_fire_time_left = 0.0
 	burst_audio_step = 0
 	attack_target = null
+	_clear_committed_attack_timing()
 	_reset_ranged_attack_position_state()
 
 	var capoo_config := config as CapooConfig
@@ -114,6 +146,7 @@ func _apply_config() -> void:
 func _die() -> void:
 	combat_state = CombatState.CHASE
 	attack_target = null
+	_clear_committed_attack_timing()
 	_reset_ranged_attack_position_state()
 	_set_muzzle_heat(0.0, burst_shot_direction)
 	super._die()
@@ -121,6 +154,7 @@ func _die() -> void:
 
 func play_multiplayer_death_sequence() -> void:
 	latest_proxy_action_id += 1
+	_clear_committed_attack_timing()
 	_set_muzzle_heat(0.0, burst_shot_direction)
 	super.play_multiplayer_death_sequence()
 
@@ -158,7 +192,19 @@ func _try_start_windup(candidate_target: Node2D = null) -> bool:
 
 	attack_target = candidate_target
 	combat_state = CombatState.WINDUP
-	windup_time_left = maxf(capoo_config.attack_windup, 0.0)
+	committed_attack_phase_offset_seconds = (
+		calculate_attack_phase_offset_seconds(
+			navigation_update_frame_offset,
+			Engine.physics_ticks_per_second
+		)
+		if CapooAK47.attack_phase_stagger_enabled
+		else 0.0
+	)
+	committed_windup_duration_seconds = maxf(
+		capoo_config.attack_windup + committed_attack_phase_offset_seconds,
+		0.0
+	)
+	windup_time_left = committed_windup_duration_seconds
 	velocity = Vector2.ZERO
 	_set_ranged_attack_position_held(true)
 	var target_direction := global_position.direction_to(attack_target.global_position)
@@ -185,7 +231,9 @@ func _update_windup(delta: float) -> void:
 	var target_direction := global_position.direction_to(attack_target.global_position)
 	_update_facing(target_direction)
 	windup_time_left = maxf(windup_time_left - delta, 0.0)
-	var progress := 1.0 - (windup_time_left / maxf(capoo_config.attack_windup, 0.001))
+	var progress := 1.0 - (
+		windup_time_left / maxf(committed_windup_duration_seconds, 0.001)
+	)
 	_set_muzzle_heat(progress, target_direction)
 
 	if windup_time_left > 0.0:
@@ -212,7 +260,11 @@ func _start_burst(shoot_direction: Vector2) -> void:
 	burst_shots_fired = 0
 	burst_fire_time_left = 0.0
 	burst_audio_step = 0
-	attack_cooldown_left = maxf(capoo_config.attack_interval, 0.01)
+	attack_cooldown_left = maxf(
+		capoo_config.attack_interval - committed_attack_phase_offset_seconds,
+		0.01
+	)
+	_clear_committed_attack_timing()
 	_update_facing(burst_shot_direction)
 	_play_config_animation(capoo_config.attack_animation_name)
 	_set_muzzle_heat(1.0, burst_shot_direction)
@@ -315,11 +367,18 @@ func _finish_burst() -> void:
 func _cancel_attack() -> void:
 	combat_state = CombatState.CHASE
 	attack_target = null
+	_clear_committed_attack_timing()
 	burst_shots_fired = 0
 	burst_fire_time_left = 0.0
 	burst_audio_step = 0
 	_set_muzzle_heat(0.0, burst_shot_direction)
 	_reset_ranged_attack_position_state()
+
+
+func _clear_committed_attack_timing() -> void:
+	windup_time_left = 0.0
+	committed_attack_phase_offset_seconds = 0.0
+	committed_windup_duration_seconds = 0.0
 
 
 func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, action_id: int) -> void:

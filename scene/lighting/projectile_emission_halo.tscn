@@ -1,0 +1,13 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://resources/shader/night_vfx_emission_additive.tres" id="1_material"]
+[ext_resource type="Texture2D" path="res://resources/lighting/soft_white_point_light.tres" id="2_texture"]
+
+[node name="ProjectileHalo" type="Sprite2D"]
+show_behind_parent = true
+texture_filter = 2
+material = ExtResource("1_material")
+self_modulate = Color(1, 0.62, 0.22, 0.1)
+z_index = -1
+scale = Vector2(0.05, 0.05)
+texture = ExtResource("2_texture")

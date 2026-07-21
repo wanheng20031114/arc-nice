@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 64 64">
+  <defs>
+    <radialGradient id="top">
+      <stop offset="0" stop-color="#fff" stop-opacity=".75"/>
+      <stop offset=".3" stop-color="#fff" stop-opacity=".56"/>
+      <stop offset=".58" stop-color="#fff" stop-opacity=".23"/>
+      <stop offset=".82" stop-color="#fff" stop-opacity=".055"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="middle">
+      <stop offset="0" stop-color="#fff" stop-opacity=".65"/>
+      <stop offset=".3" stop-color="#fff" stop-opacity=".46"/>
+      <stop offset=".58" stop-color="#fff" stop-opacity=".19"/>
+      <stop offset=".82" stop-color="#fff" stop-opacity=".045"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="front">
+      <stop offset="0" stop-color="#fff" stop-opacity=".55"/>
+      <stop offset=".32" stop-color="#fff" stop-opacity=".38"/>
+      <stop offset=".62" stop-color="#fff" stop-opacity=".14"/>
+      <stop offset=".84" stop-color="#fff" stop-opacity=".03"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" fill="#000"/>
+  <circle cx="31.75" cy="23.25" r="6.5" fill="url(#top)"/>
+  <circle cx="31.75" cy="29.75" r="6" fill="url(#middle)"/>
+  <circle cx="31.75" cy="36.75" r="5" fill="url(#front)"/>
+</svg>

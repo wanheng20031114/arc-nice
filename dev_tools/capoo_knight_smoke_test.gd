@@ -28,6 +28,7 @@ class FakePathfinder:
 
 	var is_built := true
 	var requested_path := false
+	var path_request_count := 0
 	var budget_available := true
 	var path := PackedVector2Array()
 
@@ -38,6 +39,7 @@ class FakePathfinder:
 		_traversal_types: int = DualGridTilemap.TraversalType.LAND
 	) -> Dictionary:
 		requested_path = true
+		path_request_count += 1
 		if not budget_available:
 			return {"status": GridPathfinder.NavigationStepStatus.DEFERRED}
 		if path.is_empty():
@@ -64,6 +66,7 @@ func _run() -> void:
 	else:
 		_test_resource_contract()
 		_test_elite_resource_contract()
+		await _test_combat_sense_phase_semantics()
 		await _test_windup_warning_geometry_and_progress()
 		await _test_knight_runtime_facing()
 		await _test_elite_runtime_facing()
@@ -200,6 +203,94 @@ func _test_elite_resource_contract() -> void:
 
 	elite_instance.free()
 	knight_instance.free()
+
+
+func _test_combat_sense_phase_semantics() -> void:
+	var saved_sensing_enabled := Enemy.combat_sense_throttling_enabled
+	Enemy.combat_sense_throttling_enabled = true
+	var phase_players: Array[Player] = []
+	var phase_enemies: Array[CapooKnight] = []
+	for phase_delay in range(Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES):
+		var fixture_y := float(phase_delay) * 160.0
+		var player := _spawn_player(Vector2(40.0, fixture_y))
+		var enemy := _spawn_knight(Vector2(0.0, fixture_y), player)
+		enemy.set_physics_process(false)
+		enemy.combat_sense_update_interval_frames = (
+			Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES
+		)
+		phase_players.append(player)
+		phase_enemies.append(enemy)
+
+	await _wait_physics_frames(2)
+	var anchor_frame := Engine.get_physics_frames()
+	for phase_delay in range(phase_enemies.size()):
+		phase_enemies[phase_delay].navigation_update_frame_offset = posmod(
+			-(anchor_frame + phase_delay),
+			Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES
+		)
+
+	var observed_delays: Array[int] = [-1, -1, -1]
+	for tick_offset in range(Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES):
+		for enemy_index in range(phase_enemies.size()):
+			var enemy := phase_enemies[enemy_index]
+			enemy.call("_physics_process", 1.0 / 60.0)
+			if (
+				observed_delays[enemy_index] < 0
+				and enemy.combat_state != CapooKnight.CombatState.CHASE
+			):
+				observed_delays[enemy_index] = tick_offset
+		if tick_offset + 1 < Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES:
+			await physics_frame
+	_expect(
+		observed_delays == [0, 1, 2],
+		(
+			"Knight 20 Hz combat sensing must distribute attack acquisition over "
+			+ "offsets 0, 1 and 2; observed=%s."
+		) % [observed_delays]
+	)
+
+	Enemy.combat_sense_throttling_enabled = false
+	var unthrottled_player := _spawn_player(Vector2(40.0, 480.0))
+	var unthrottled_enemy := _spawn_knight(Vector2(0.0, 480.0), unthrottled_player)
+	unthrottled_enemy.set_physics_process(false)
+	await _wait_physics_frames(2)
+	unthrottled_enemy.navigation_update_frame_offset = posmod(
+		1 - Engine.get_physics_frames(),
+		Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES
+	)
+	_expect(
+		(
+			Engine.get_physics_frames()
+			+ unthrottled_enemy.navigation_update_frame_offset
+		) % Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES != 0,
+		"Unthrottled Knight fixture must begin on a normally skipped sensing phase."
+	)
+	unthrottled_enemy.call("_physics_process", 1.0 / 60.0)
+	_expect(
+		unthrottled_enemy.combat_state == CapooKnight.CombatState.WINDUP,
+		"Disabling combat-sense throttling must restore Knight attack acquisition on the current tick."
+	)
+	var sensed_every_tick := true
+	for tick_index in range(3):
+		sensed_every_tick = (
+			sensed_every_tick
+			and bool(unthrottled_enemy.call("_is_combat_sense_refresh_due"))
+		)
+		if tick_index < 2:
+			await physics_frame
+	_expect(
+		sensed_every_tick,
+		"Disabling combat-sense throttling must make the Knight sensing gate due every physics tick."
+	)
+
+	Enemy.combat_sense_throttling_enabled = saved_sensing_enabled
+	for enemy in phase_enemies:
+		enemy.queue_free()
+	for player in phase_players:
+		player.queue_free()
+	unthrottled_enemy.queue_free()
+	unthrottled_player.queue_free()
+	await physics_frame
 
 
 func _test_windup_warning_geometry_and_progress() -> void:
@@ -471,7 +562,7 @@ func _test_path_waypoint_motion_does_not_cut_corners() -> void:
 	var pathfinder := FakePathfinder.new()
 	test_root.add_child(pathfinder)
 	var enemy := _spawn_knight(Vector2.ZERO, player)
-	enemy.pathfinder = pathfinder
+	enemy.set_pathfinder(pathfinder)
 	enemy.navigation_update_interval_frames = 1
 	pathfinder.path = PackedVector2Array([Vector2(32.0, 32.0)])
 	enemy.set_physics_process(false)
@@ -495,17 +586,34 @@ func _test_navigation_budget_retry_keeps_existing_path() -> void:
 	pathfinder.path = PackedVector2Array([Vector2(16.0, 0.0), Vector2(32.0, 0.0)])
 	test_root.add_child(pathfinder)
 	var enemy := _spawn_knight(Vector2.ZERO, player)
-	enemy.pathfinder = pathfinder
+	enemy.set_pathfinder(pathfinder)
 	enemy.navigation_update_interval_frames = 1
 	enemy.cached_navigation_move_direction = Vector2.RIGHT
+	enemy.set_physics_process(false)
 
 	pathfinder.budget_available = false
 	var deferred_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
-	_expect(deferred_direction == Vector2.RIGHT, "Knight must keep only its shape-safe cached direction while navigation is DEFERRED.")
+	_expect(
+		deferred_direction == Vector2.RIGHT
+		and pathfinder.path_request_count == 1
+		and enemy.navigation_next_refresh_physics_frame
+			> Engine.get_physics_frames(),
+		"Knight must keep its shape-safe cached direction and schedule the next phase while navigation is DEFERRED."
+	)
 
 	pathfinder.budget_available = true
+	var cached_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
+	_expect(
+		cached_direction == Vector2.RIGHT and pathfinder.path_request_count == 1,
+		"Knight must not re-enter the deferred pathfinder before its scheduled phase."
+	)
+	await physics_frame
+	enemy.last_navigation_update_render_frame = -1
 	var ready_direction := enemy.call("_get_navigation_move_direction", 0.016) as Vector2
-	_expect(ready_direction == Vector2.RIGHT, "Knight must consume the READY safe waypoint when budget returns.")
+	_expect(
+		ready_direction == Vector2.RIGHT and pathfinder.path_request_count == 2,
+		"Knight must consume the READY safe waypoint when the next phase arrives."
+	)
 
 	enemy.queue_free()
 	pathfinder.queue_free()

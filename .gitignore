@@ -4,3 +4,4 @@
 /临时资源库(只取不写)/
 settings.cfg
 __pycache__/
+/dev_tools/output/

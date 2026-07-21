@@ -89,8 +89,8 @@ func _run() -> void:
 		"植物培育中心必须占2×2格，拥有1500生命、10物防、10法防并支持联机。"
 	)
 	_expect(
-		PlantDefenseRegistry.get_all_configs().size() == 9,
-		"公共注册表必须同时包含植物培育中心与竹筒迫击炮，共9种建筑。"
+		PlantDefenseRegistry.get_all_configs().size() == 10,
+		"公共注册表必须同时包含植物培育中心、竹筒迫击炮与种植基地，共10种建筑。"
 	)
 	if config == null:
 		_finish(test_root)
@@ -720,8 +720,8 @@ func _test_inventory_placement_request(
 	)
 	_expect(
 		controller.open_selection()
-		and controller.selection_hud.available_configs.size() == 9,
-		"T键免费调试入口必须继续展示全部9种建筑。"
+		and controller.selection_hud.available_configs.size() == 10,
+		"T键免费调试入口必须继续展示全部10种建筑。"
 	)
 	controller.cancel_placement()
 

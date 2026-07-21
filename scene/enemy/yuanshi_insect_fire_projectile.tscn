@@ -2,6 +2,8 @@
 
 [ext_resource type="Script" uid="uid://t41jeaklxwd1" path="res://scene/enemy/yuanshi_insect_fire_projectile.gd" id="1_script"]
 [ext_resource type="Texture2D" uid="uid://bd8l8aj80xmt7" path="res://resources/texture/yuanshi_insect_fire_projectile.png" id="2_texture"]
+[ext_resource type="Material" path="res://resources/shader/night_vfx_emission_additive.tres" id="3_emission"]
+[ext_resource type="PackedScene" path="res://scene/lighting/projectile_emission_halo.tscn" id="4_halo"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_fire_0"]
 atlas = ExtResource("2_texture")
@@ -42,6 +44,17 @@ collision_mask = 514
 script = ExtResource("1_script")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=1935926836]
+sprite_frames = SubResource("SpriteFrames_fire")
+animation = &"fly"
+autoplay = "fly"
+
+[node name="ProjectileHalo" parent="AnimatedSprite2D" instance=ExtResource("4_halo")]
+self_modulate = Color(1, 0.38, 0.08, 0.13)
+scale = Vector2(0.065, 0.065)
+
+[node name="EmissionOverlay" type="AnimatedSprite2D" parent="AnimatedSprite2D"]
+material = ExtResource("3_emission")
+self_modulate = Color(1.72, 1.02, 0.42, 0.52)
 sprite_frames = SubResource("SpriteFrames_fire")
 animation = &"fly"
 autoplay = "fly"

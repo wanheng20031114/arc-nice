@@ -12,6 +12,7 @@ static var hitscan_attack_enabled := true
 static var allocation_free_proxy_visuals_enabled := true
 
 @onready var muzzle_flash: Polygon2D = $MuzzleFlash
+@onready var muzzle_halo: Sprite2D = $MuzzleFlash/ProjectileHalo
 @onready var attack_audio: AudioStreamPlayer2D = $AttackAudio
 
 var fire_time_left: float = 0.0
@@ -418,3 +419,6 @@ func _set_muzzle_flash(progress: float, direction: Vector2) -> void:
 	muzzle_flash.rotation = safe_direction.angle()
 	muzzle_flash.scale = Vector2.ONE * lerpf(0.65, 1.25, clamped_progress)
 	muzzle_flash.color = Color(1.0, 0.55, 0.08, lerpf(0.2, 0.82, clamped_progress))
+	var halo_color := muzzle_halo.self_modulate
+	halo_color.a = lerpf(0.035, 0.105, clamped_progress)
+	muzzle_halo.self_modulate = halo_color

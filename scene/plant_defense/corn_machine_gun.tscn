@@ -16,6 +16,7 @@
 [ext_resource type="Shader" uid="uid://k6uttyelrjo6" path="res://resources/shader/plant_visual_pixel_snap.gdshader" id="14_pixel_snap_shader"]
 [ext_resource type="AudioStream" uid="uid://chx8qq8m532lm" path="res://resources/audio/capoo_smg_fire.wav" id="15_fire_audio"]
 [ext_resource type="ShaderMaterial" path="res://resources/shader/plant_lifecycle_material.tres" id="16_lifecycle_material"]
+[ext_resource type="Material" path="res://resources/shader/night_vfx_emission_additive.tres" id="17_emission"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_pixel_snap"]
 shader = ExtResource("14_pixel_snap_shader")
@@ -177,14 +178,30 @@ position = Vector2(20, 1)
 sprite_frames = SubResource("SpriteFrames_flash")
 animation = &"flash"
 
+[node name="EmissionOverlay" type="AnimatedSprite2D" parent="VisualRoot/AimPivot/MuzzleFlashSprite"]
+material = ExtResource("17_emission")
+self_modulate = Color(1.68, 1.08, 0.48, 0.5)
+sprite_frames = SubResource("SpriteFrames_flash")
+animation = &"flash"
+
 [node name="Tracer" type="Line2D" parent="." unique_id=931404967]
 visible = false
+material = ExtResource("17_emission")
+self_modulate = Color(1.35, 1.08, 0.56, 1)
 modulate = Color(1, 1, 1, 0)
 top_level = true
 z_index = 4
 points = PackedVector2Array(0, 0, 20, 0)
 width = 0.5
 default_color = Color(1, 0.83, 0.24, 0.92)
+
+[node name="ProjectileHalo" type="Line2D" parent="Tracer"]
+show_behind_parent = true
+material = ExtResource("17_emission")
+points = PackedVector2Array(0, 0, 20, 0)
+width = 2.2
+default_color = Color(1, 0.48, 0.12, 0.16)
+antialiased = true
 
 [node name="TracerFade" type="AnimationPlayer" parent="." unique_id=446632180]
 libraries/ = SubResource("AnimationLibrary_tracer")

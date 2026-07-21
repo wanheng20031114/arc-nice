@@ -6,6 +6,7 @@ class_name NightVfxFlashPool
 ## flashes receive real world illumination.
 
 const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
+const POOL_GROUP := &"night_vfx_flash_pool"
 
 var _slots: Array[NightVfxFlash2D] = []
 var _slot_priorities: PackedInt32Array = PackedInt32Array()
@@ -14,6 +15,7 @@ var _request_serial := 0
 
 
 func _ready() -> void:
+	add_to_group(POOL_GROUP)
 	for child in get_children():
 		var flash := child as NightVfxFlash2D
 		if flash == null:
@@ -119,6 +121,30 @@ static func find_for(source: Node) -> NightVfxFlashPool:
 		if candidate != null:
 			return candidate
 		branch = branch.get_parent()
+
+	# Multiplayer effects are commonly attached to MpGame (the current scene),
+	# while the pool belongs to its embedded Game/GameTowerDefense child. That
+	# topology is not reachable by walking only upward from the effect. Pools
+	# register once with SceneTree so this fallback remains bounded and avoids a
+	# recursive scene scan on every explosion.
+	var tree := source.get_tree()
+	if tree == null:
+		return null
+	var current_scene := tree.current_scene
+	for candidate_node in tree.get_nodes_in_group(POOL_GROUP):
+		var candidate_pool := candidate_node as NightVfxFlashPool
+		if candidate_pool == null or not candidate_pool.is_inside_tree():
+			continue
+		if current_scene == null:
+			return candidate_pool
+		if (
+			candidate_pool == current_scene
+			or current_scene.is_ancestor_of(candidate_pool)
+		):
+			return candidate_pool
+	# A pool owned by another viewport, test world or outgoing scene must never
+	# receive this world's flash. Only SceneTree-only fixtures without an active
+	# current scene may use the first registered pool as a compatibility fallback.
 	return null
 
 

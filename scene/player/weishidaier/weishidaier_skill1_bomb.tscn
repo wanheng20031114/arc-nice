@@ -2,6 +2,8 @@
 
 [ext_resource type="Script" uid="uid://dscknhg4tjsdp" path="res://scene/player/weishidaier/weishidaier_skill1_bomb.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/player/weishidaier/skill1_projectile.png" id="2_projectile"]
+[ext_resource type="Material" path="res://resources/shader/night_vfx_emission_additive.tres" id="3_emission"]
+[ext_resource type="PackedScene" path="res://scene/lighting/projectile_emission_halo.tscn" id="4_halo"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_projectile_0"]
 atlas = ExtResource("2_projectile")
@@ -53,6 +55,17 @@ collision_mask = 7
 script = ExtResource("1_script")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=1813255478]
+sprite_frames = SubResource("SpriteFrames_projectile")
+animation = &"fly"
+autoplay = "fly"
+
+[node name="ProjectileHalo" parent="AnimatedSprite2D" instance=ExtResource("4_halo")]
+self_modulate = Color(1, 0.52, 0.14, 0.12)
+scale = Vector2(0.085, 0.085)
+
+[node name="EmissionOverlay" type="AnimatedSprite2D" parent="AnimatedSprite2D"]
+material = ExtResource("3_emission")
+self_modulate = Color(1.7, 1.08, 0.54, 0.44)
 sprite_frames = SubResource("SpriteFrames_projectile")
 animation = &"fly"
 autoplay = "fly"

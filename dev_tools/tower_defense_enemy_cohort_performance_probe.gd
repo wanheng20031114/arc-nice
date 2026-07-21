@@ -38,6 +38,8 @@ const DEFAULT_ENEMY_COUNT := 300
 const DEFAULT_WARMUP_FRAMES := 60
 const DEFAULT_SAMPLE_FRAMES := 240
 const DEFAULT_FIXED_SEED := 20260717
+const LINGLAN_SKILL_RANDOM_SEED_OFFSET := 1_000_000
+const LINGLAN_SKILL_RANDOM_SEED_STRIDE := 3
 const LINGLAN_BOSS_CONFIG_PATH := (
 	"res://resources/config/bosses/boss_01_linglan.tres"
 )
@@ -91,6 +93,7 @@ var requested_navigation_interval := 0
 var requested_navigation_render_dedupe := true
 var requested_navigation_refresh_budget := true
 var requested_navigation_refresh_cap := 0
+var requested_combat_sense_throttling := true
 var requested_enemy_hot_metrics := false
 var requested_guardian_overlap_metrics := false
 var requested_guardian_unchanged_diff_fast_path := true
@@ -100,6 +103,7 @@ var requested_projectile_world_certificate := false
 var effective_projectile_world_certificate := false
 var requested_projectile_hot_metrics := false
 var requested_batched_projectile_motion := true
+var requested_ak_attack_phase_stagger := true
 var requested_smg_short_range_targeting := true
 var requested_smg_hitscan_attack := true
 var requested_disable_smg_projectiles := false
@@ -109,9 +113,11 @@ var requested_pooled_mage_impact_effect := true
 var original_max_fps := 0
 var original_navigation_render_dedupe := true
 var original_navigation_refresh_budget := true
+var original_combat_sense_throttling := true
 var original_guardian_unchanged_diff_fast_path := true
 var original_projectile_world_certificate := true
 var original_batched_projectile_motion := true
+var original_ak_attack_phase_stagger := true
 var original_smg_short_range_targeting := true
 var original_smg_hitscan_attack := true
 var original_expanded_projectile_prewarm := true
@@ -165,6 +171,10 @@ func _parse_user_arguments() -> void:
 				int(argument.get_slice("=", 1)),
 				0
 			)
+		elif argument.begins_with("--combat-sense-throttling="):
+			requested_combat_sense_throttling = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
 		elif argument.begins_with("--enemy-hot-metrics="):
 			requested_enemy_hot_metrics = (
 				argument.get_slice("=", 1).to_lower() == "true"
@@ -196,6 +206,10 @@ func _parse_user_arguments() -> void:
 			)
 		elif argument.begins_with("--batched-projectile-motion="):
 			requested_batched_projectile_motion = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
+		elif argument.begins_with("--ak-attack-phase-stagger="):
+			requested_ak_attack_phase_stagger = (
 				argument.get_slice("=", 1).to_lower() == "true"
 			)
 		elif argument.begins_with("--smg-short-range-targeting="):
@@ -248,6 +262,7 @@ func _run() -> void:
 	original_max_fps = Engine.max_fps
 	original_navigation_render_dedupe = Enemy.navigation_render_frame_dedupe_enabled
 	original_navigation_refresh_budget = Enemy.navigation_process_frame_budget_enabled
+	original_combat_sense_throttling = Enemy.combat_sense_throttling_enabled
 	original_guardian_unchanged_diff_fast_path = (
 		GuardianAuraSystem.unchanged_source_diff_fast_path_enabled
 	)
@@ -255,6 +270,7 @@ func _run() -> void:
 		CapooAK47Bullet.world_collision_certificate_enabled
 	)
 	original_batched_projectile_motion = CapooAK47Bullet.batched_motion_enabled
+	original_ak_attack_phase_stagger = CapooAK47.attack_phase_stagger_enabled
 	original_smg_short_range_targeting = CapooSMG.short_range_targeting_enabled
 	original_smg_hitscan_attack = CapooSMG.hitscan_attack_enabled
 	original_expanded_projectile_prewarm = (
@@ -266,6 +282,7 @@ func _run() -> void:
 	)
 	Enemy.navigation_render_frame_dedupe_enabled = requested_navigation_render_dedupe
 	Enemy.navigation_process_frame_budget_enabled = requested_navigation_refresh_budget
+	Enemy.combat_sense_throttling_enabled = requested_combat_sense_throttling
 	GuardianAuraSystem.unchanged_source_diff_fast_path_enabled = (
 		requested_guardian_unchanged_diff_fast_path
 	)
@@ -273,6 +290,7 @@ func _run() -> void:
 	# Keep the static switch disabled until both halves of the certificate agree.
 	CapooAK47Bullet.world_collision_certificate_enabled = false
 	CapooAK47Bullet.batched_motion_enabled = requested_batched_projectile_motion
+	CapooAK47.attack_phase_stagger_enabled = requested_ak_attack_phase_stagger
 	CapooSMG.short_range_targeting_enabled = requested_smg_short_range_targeting
 	CapooSMG.hitscan_attack_enabled = requested_smg_hitscan_attack
 	GameTowerDefense.expanded_projectile_pool_prewarm_enabled = (
@@ -770,6 +788,10 @@ func _spawn_cohort() -> void:
 		var is_boss := enemy is LinglanBoss
 		var container: Node = game.boss_container if is_boss else game.enemy_container
 		container.add_child(enemy)
+		# add_child() has completed _ready(), including every randomize() call.
+		# Override all streams before setup/activate can consume them so A/B
+		# pressure runs retain identical gameplay, drop and Boss-skill choices.
+		_seed_enemy_random_streams(enemy, enemy_index)
 		var position_index := enemy_index % positions.size()
 		var stacked_row := int(enemy_index / positions.size())
 		var stacked_offset := Vector2(
@@ -790,7 +812,6 @@ func _spawn_cohort() -> void:
 		else:
 			game.call("_assign_enemy_targets", enemy, enemy.global_position)
 		game.call("_configure_authoritative_enemy_physics_interpolation", enemy)
-		enemy.material_drop_random_generator.seed = fixed_seed + enemy_index * 2 + 1
 		if is_boss:
 			(enemy as LinglanBoss).activate_boss(game.player, pathfinder)
 		enemy.velocity = Vector2.ZERO
@@ -816,6 +837,71 @@ func _spawn_cohort() -> void:
 	for _settle_index in range(3):
 		await process_frame
 		await physics_frame
+
+
+func _seed_enemy_random_streams(enemy: Enemy, enemy_index: int) -> void:
+	var behavior_seed := fixed_seed + enemy_index * 2
+	var material_drop_seed := behavior_seed + 1
+	enemy.random_generator.seed = behavior_seed
+	enemy.material_drop_random_generator.seed = material_drop_seed
+	_assert_random_stream_matches_seed(
+		enemy.random_generator,
+		behavior_seed,
+		"Enemy behavior RNG"
+	)
+	_assert_random_stream_matches_seed(
+		enemy.material_drop_random_generator,
+		material_drop_seed,
+		"Enemy material-drop RNG"
+	)
+
+	var boss := enemy as LinglanBoss
+	if boss == null:
+		return
+	var skill_seed_base := (
+		fixed_seed
+		+ LINGLAN_SKILL_RANDOM_SEED_OFFSET
+		+ enemy_index * LINGLAN_SKILL_RANDOM_SEED_STRIDE
+	)
+	boss.skill3_random.seed = skill_seed_base
+	boss.skill4_random.seed = skill_seed_base + 1
+	boss.skill_order_random.seed = skill_seed_base + 2
+	_assert_random_stream_matches_seed(
+		boss.skill3_random,
+		skill_seed_base,
+		"Linglan skill-3 RNG"
+	)
+	_assert_random_stream_matches_seed(
+		boss.skill4_random,
+		skill_seed_base + 1,
+		"Linglan skill-4 RNG"
+	)
+	_assert_random_stream_matches_seed(
+		boss.skill_order_random,
+		skill_seed_base + 2,
+		"Linglan skill-order RNG"
+	)
+
+
+func _assert_random_stream_matches_seed(
+	random_stream: RandomNumberGenerator,
+	expected_seed: int,
+	stream_name: String
+) -> void:
+	var original_state := random_stream.state
+	var verifier := RandomNumberGenerator.new()
+	verifier.seed = expected_seed
+	var first_value_matches := random_stream.randi() == verifier.randi()
+	var second_value_matches := random_stream.randi() == verifier.randi()
+	random_stream.state = original_state
+	_expect(
+		random_stream.seed == expected_seed
+		and random_stream.state == original_state
+		and first_value_matches
+		and second_value_matches,
+		"%s must match its deterministic probe seed without advancing its state."
+		% stream_name
+	)
 
 
 func _build_candidate_positions() -> PackedVector2Array:
@@ -944,6 +1030,7 @@ func _measure_sample_window(
 	var physics_active_samples: Array[float] = []
 	var node_count_samples: Array[float] = []
 	var static_memory_mib_samples: Array[float] = []
+	var physics_steps_per_render_sample: Array[float] = []
 	var frame_diagnostics: Array[Dictionary] = []
 	var previous_corn_locks := _get_corn_target_lock_count()
 	var previous_corn_rays := _get_corn_hitscan_ray_count()
@@ -956,6 +1043,7 @@ func _measure_sample_window(
 	var previous_navigation_refresh_deferrals := (
 		pathfinder.agent_navigation_refreshes_deferred_total
 	)
+	var previous_sample_physics_frame := Engine.get_physics_frames()
 	var previous_tick_usec := Time.get_ticks_usec()
 
 	for sample_index in range(sample_frames):
@@ -965,6 +1053,13 @@ func _measure_sample_window(
 		var wall_ms := float(now_usec - previous_tick_usec) / 1000.0
 		wall_samples.append(wall_ms)
 		previous_tick_usec = now_usec
+		var current_sample_physics_frame := Engine.get_physics_frames()
+		var physics_steps_this_sample := maxi(
+			current_sample_physics_frame - previous_sample_physics_frame,
+			0
+		)
+		physics_steps_per_render_sample.append(float(physics_steps_this_sample))
+		previous_sample_physics_frame = current_sample_physics_frame
 		process_samples.append(Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0)
 		physics_samples.append(
 			Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
@@ -1006,6 +1101,7 @@ func _measure_sample_window(
 		frame_diagnostics.append({
 			"sample_index": sample_index,
 			"wall_ms": wall_ms,
+			"physics_steps": physics_steps_this_sample,
 			"corn_locks": current_corn_locks - previous_corn_locks,
 			"corn_rays": current_corn_rays - previous_corn_rays,
 			"combat_index_size": current_combat_index_size,
@@ -1095,6 +1191,7 @@ func _measure_sample_window(
 		),
 		"navigation_render_dedupe": requested_navigation_render_dedupe,
 		"navigation_refresh_budget": requested_navigation_refresh_budget,
+		"combat_sense_throttling": requested_combat_sense_throttling,
 		"navigation_refresh_budget_runtime": {
 			"cap_per_process_frame": (
 				pathfinder.max_agent_navigation_refreshes_per_process_frame
@@ -1139,6 +1236,7 @@ func _measure_sample_window(
 		"projectile_world_certificate": effective_projectile_world_certificate,
 		"projectile_hot_metrics": requested_projectile_hot_metrics,
 		"batched_projectile_motion": requested_batched_projectile_motion,
+		"ak_attack_phase_stagger": requested_ak_attack_phase_stagger,
 		"smg_short_range_targeting": requested_smg_short_range_targeting,
 		"smg_hitscan_attack": requested_smg_hitscan_attack,
 		"disable_smg_projectiles": requested_disable_smg_projectiles,
@@ -1173,6 +1271,23 @@ func _measure_sample_window(
 		"player_damage": maxi(player_health_before - game.player.current_health, 0),
 		"base_damage": maxi(base_health_before - game.current_base_health, 0),
 		"physics_frames_elapsed": Engine.get_physics_frames() - physics_frames_before,
+		"physics_catchup": {
+			"max_steps_per_render_sample": int(
+				_summarize(physics_steps_per_render_sample).get("max", 0.0)
+			),
+			"samples_with_multiple_steps": _count_over_budget(
+				physics_steps_per_render_sample,
+				1.0
+			),
+			"multiple_step_ratio": _ratio_over_budget(
+				physics_steps_per_render_sample,
+				1.0
+			),
+			"steps_per_render_sample": _summarize(
+				physics_steps_per_render_sample
+			),
+			"configured_max_steps_per_frame": Engine.max_physics_steps_per_frame,
+		},
 		"simulation_seconds_elapsed": (
 			float(Engine.get_physics_frames() - physics_frames_before)
 			/ float(maxi(Engine.physics_ticks_per_second, 1))
@@ -1237,8 +1352,13 @@ func _sample_boss_runtime(
 		"skill4_orb_spawn_ticks_completed": 0,
 	}
 	for enemy in enemies:
+		# The burst phase intentionally frees the entire cohort. Validate the
+		# retained typed reference before casting it; casting a freed Object emits
+		# one script error per sample even though the probe can otherwise finish.
+		if not is_instance_valid(enemy):
+			continue
 		var boss := enemy as LinglanBoss
-		if boss == null or not is_instance_valid(boss):
+		if boss == null:
 			continue
 		var phase_name := str(
 			LinglanBoss.BossSkillPhase.keys()[int(boss.boss_skill_phase)]
@@ -1270,8 +1390,10 @@ func _sample_boss_runtime(
 func _get_boss_runtime_state() -> Array[Dictionary]:
 	var states: Array[Dictionary] = []
 	for enemy in enemies:
+		if not is_instance_valid(enemy):
+			continue
 		var boss := enemy as LinglanBoss
-		if boss == null or not is_instance_valid(boss):
+		if boss == null:
 			continue
 		var slide_colliders: Array[String] = []
 		for collision_index in range(boss.get_slide_collision_count()):
@@ -1620,6 +1742,7 @@ func _finish() -> void:
 	CapooAK47Bullet.performance_metrics_enabled = false
 	Enemy.navigation_render_frame_dedupe_enabled = original_navigation_render_dedupe
 	Enemy.navigation_process_frame_budget_enabled = original_navigation_refresh_budget
+	Enemy.combat_sense_throttling_enabled = original_combat_sense_throttling
 	GuardianAuraSystem.unchanged_source_diff_fast_path_enabled = (
 		original_guardian_unchanged_diff_fast_path
 	)
@@ -1627,6 +1750,7 @@ func _finish() -> void:
 		original_projectile_world_certificate
 	)
 	CapooAK47Bullet.batched_motion_enabled = original_batched_projectile_motion
+	CapooAK47.attack_phase_stagger_enabled = original_ak_attack_phase_stagger
 	CapooSMG.short_range_targeting_enabled = original_smg_short_range_targeting
 	CapooSMG.hitscan_attack_enabled = original_smg_hitscan_attack
 	GameTowerDefense.expanded_projectile_pool_prewarm_enabled = (

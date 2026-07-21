@@ -33,6 +33,8 @@ param(
 
     [bool]$NavigationRefreshBudget = $true,
 
+    [bool]$CombatSenseThrottling = $true,
+
     [ValidateRange(0, 512)]
     [int]$NavigationRefreshCap = 0,
 
@@ -52,6 +54,8 @@ param(
     [bool]$ProjectileHotMetrics = $false,
 
     [bool]$BatchedProjectileMotion = $true,
+
+    [bool]$AkAttackPhaseStagger = $true,
 
     [bool]$SmgShortRangeTargeting = $true,
 
@@ -103,6 +107,7 @@ $godotArguments = @(
     "--navigation-interval=$NavigationInterval",
     "--navigation-render-dedupe=$($NavigationRenderDedupe.ToString().ToLowerInvariant())",
     "--navigation-refresh-budget=$($NavigationRefreshBudget.ToString().ToLowerInvariant())",
+    "--combat-sense-throttling=$($CombatSenseThrottling.ToString().ToLowerInvariant())",
     "--navigation-refresh-cap=$NavigationRefreshCap",
     "--enemy-hot-metrics=$($EnemyHotMetrics.ToString().ToLowerInvariant())",
     "--guardian-overlap-metrics=$($GuardianOverlapMetrics.ToString().ToLowerInvariant())",
@@ -112,6 +117,7 @@ $godotArguments = @(
     "--projectile-world-certificate=$($ProjectileWorldCertificate.ToString().ToLowerInvariant())",
     "--projectile-hot-metrics=$($ProjectileHotMetrics.ToString().ToLowerInvariant())",
     "--batched-projectile-motion=$($BatchedProjectileMotion.ToString().ToLowerInvariant())",
+    "--ak-attack-phase-stagger=$($AkAttackPhaseStagger.ToString().ToLowerInvariant())",
     "--smg-short-range-targeting=$($SmgShortRangeTargeting.ToString().ToLowerInvariant())",
     "--smg-hitscan-attack=$($SmgHitscanAttack.ToString().ToLowerInvariant())",
     "--disable-smg-projectiles=$($DisableSmgProjectiles.ToString().ToLowerInvariant())",
@@ -173,12 +179,15 @@ try {
         $cpuSeconds = $engine.TotalProcessorTime.TotalSeconds
         if ($null -ne $lastCpuSeconds) {
             $wallSeconds = [Math]::Max(($nowUtc - $lastSampleUtc).TotalSeconds, 0.001)
-            $cpuPercent = (
-                [Math]::Max($cpuSeconds - $lastCpuSeconds, 0.0) /
-                ($wallSeconds * [Environment]::ProcessorCount)
+            $wholeProcessCpuCoreEquivalentPercent = (
+                [Math]::Max($cpuSeconds - $lastCpuSeconds, 0.0) / $wallSeconds
             ) * 100.0
+            $wholeProcessCpuPercent = (
+                $wholeProcessCpuCoreEquivalentPercent / [Environment]::ProcessorCount
+            )
             $samples.Add([pscustomobject]@{
-                CpuPercent = $cpuPercent
+                WholeProcessCpuPercent = $wholeProcessCpuPercent
+                WholeProcessCpuCoreEquivalentPercent = $wholeProcessCpuCoreEquivalentPercent
                 WorkingMiB = $engine.WorkingSet64 / 1MB
                 PrivateMiB = $engine.PrivateMemorySize64 / 1MB
                 Threads = $engine.Threads.Count
@@ -223,8 +232,12 @@ try {
     $external = [ordered]@{
         engine_pid = $enginePid
         sample_count = $samples.Count
-        cpu_average_percent = 0.0
-        cpu_max_percent = 0.0
+        logical_processor_count = [Environment]::ProcessorCount
+        cpu_measurement_scope = "whole_process"
+        whole_process_cpu_average_percent = 0.0
+        whole_process_cpu_max_percent = 0.0
+        whole_process_cpu_core_equivalent_average_percent = 0.0
+        whole_process_cpu_core_equivalent_max_percent = 0.0
         working_average_mib = 0.0
         working_max_mib = 0.0
         private_average_mib = 0.0
@@ -233,13 +246,33 @@ try {
         handles_max = 0
     }
     if ($samples.Count -gt 0) {
-        $cpu = $samples | Measure-Object CpuPercent -Average -Maximum
+        $wholeProcessCpu = (
+            $samples | Measure-Object WholeProcessCpuPercent -Average -Maximum
+        )
+        $wholeProcessCpuCoreEquivalent = (
+            $samples |
+                Measure-Object WholeProcessCpuCoreEquivalentPercent -Average -Maximum
+        )
         $working = $samples | Measure-Object WorkingMiB -Average -Maximum
         $private = $samples | Measure-Object PrivateMiB -Average -Maximum
         $threads = $samples | Measure-Object Threads -Maximum
         $handles = $samples | Measure-Object Handles -Maximum
-        $external.cpu_average_percent = [Math]::Round($cpu.Average, 3)
-        $external.cpu_max_percent = [Math]::Round($cpu.Maximum, 3)
+        $external.whole_process_cpu_average_percent = [Math]::Round(
+            $wholeProcessCpu.Average,
+            3
+        )
+        $external.whole_process_cpu_max_percent = [Math]::Round(
+            $wholeProcessCpu.Maximum,
+            3
+        )
+        $external.whole_process_cpu_core_equivalent_average_percent = [Math]::Round(
+            $wholeProcessCpuCoreEquivalent.Average,
+            3
+        )
+        $external.whole_process_cpu_core_equivalent_max_percent = [Math]::Round(
+            $wholeProcessCpuCoreEquivalent.Maximum,
+            3
+        )
         $external.working_average_mib = [Math]::Round($working.Average, 3)
         $external.working_max_mib = [Math]::Round($working.Maximum, 3)
         $external.private_average_mib = [Math]::Round($private.Average, 3)

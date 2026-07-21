@@ -35,6 +35,7 @@ const TOWER_DEFENSE_RUNTIME_RESOURCE_PATHS: Array[String] = [
 	"res://scene/plant_defense/oak_warehouse.tscn",
 	"res://scene/plant_defense/wood_processing_station.tscn",
 	"res://scene/plant_defense/plant_cultivation_center.tscn",
+	"res://scene/plant_defense/planting_base.tscn",
 	"res://scene/collectible_arrow_projectile.tscn",
 	"res://scene/collectible_sakura_rocket.tscn",
 	"res://scene/collectible_sakura_explosion.tscn",

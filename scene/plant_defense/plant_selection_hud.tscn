@@ -156,6 +156,7 @@ color = Color(0.58, 0.82, 0.56, 0.24)
 [node name="CardScroll" type="ScrollContainer" parent="Root/Center/Content/Margin/Layout"]
 custom_minimum_size = Vector2(1040, 362)
 layout_mode = 2
+follow_focus = true
 horizontal_scroll_mode = 1
 vertical_scroll_mode = 0
 theme_override_styles/panel = SubResource("StyleBoxEmpty_scroll")

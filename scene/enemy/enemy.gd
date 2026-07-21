@@ -47,6 +47,9 @@ const COLD_MOVE_SPEED_SOURCE_ID := -2_147_400_001
 const WATER_TERRAIN_COLLISION_LAYER := 1 << 11
 const DEATH_ANIMATION_SPEED_SCALES: Array[float] = [0.92, 0.96, 1.0, 1.04, 1.08]
 const DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES := 6
+# Attack acquisition may lag by at most two physics ticks while committed
+# windups, bursts, movement and hit resolution continue at 60 Hz.
+const DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES := 3
 # A moving flow field is rebuilt in bounded slices. While the replacement is
 # pending, its published anchor may legitimately lag behind the live player.
 # Once that lag reaches two cells, prefer the live target immediately whenever
@@ -82,6 +85,7 @@ static var performance_metrics_enabled := false
 static var dynamic_flow_obstacle_lookahead_enabled := true
 static var navigation_render_frame_dedupe_enabled := true
 static var navigation_process_frame_budget_enabled := true
+static var combat_sense_throttling_enabled := true
 # Explicit A/B switch for the former behavior where every movement modifier,
 # including a visually static slow, enabled one render-frame callback per enemy.
 # Configure it before creating/applying the measured cohort; it deliberately
@@ -121,6 +125,9 @@ static var _performance_metrics := {
 # smooth between direction samples.
 @export_range(1, 8, 1, "or_greater") var navigation_update_interval_frames: int = (
 	DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES
+)
+@export_range(1, 8, 1, "or_greater") var combat_sense_update_interval_frames: int = (
+	DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES
 )
 @export_flags("Land", "Water") var terrain_traversal_types: int = DualGridTilemap.TraversalType.LAND
 
@@ -178,6 +185,8 @@ var cached_navigation_uses_direct_objective_approach: bool = false
 var cached_navigation_verified_direct_motion_clearance: float = 0.0
 var cached_navigation_generation: int = -1
 var cached_navigation_tracks_live_target_direction: bool = false
+var navigation_next_refresh_physics_frame: int = 0
+var navigation_scheduled_refresh_interval_frames: int = 0
 var navigation_zero_direction_retry_frame: int = 0
 var navigation_flow_prefetch_next_physics_frame: int = 0
 var navigation_collision_probe := KinematicCollision2D.new()
@@ -298,9 +307,14 @@ func _ready() -> void:
 	_ranged_combat_los_next_query_physics_frame = (
 		_get_next_ranged_combat_los_phase_frame(Engine.get_physics_frames())
 	)
-	navigation_zero_direction_retry_frame = _get_next_navigation_phase_frame(
-		_get_navigation_update_interval_frames(objective_target)
+	var initial_navigation_interval := _get_navigation_update_interval_frames(
+		objective_target
 	)
+	navigation_zero_direction_retry_frame = _get_next_navigation_phase_frame(
+		initial_navigation_interval
+	)
+	navigation_next_refresh_physics_frame = navigation_zero_direction_retry_frame
+	navigation_scheduled_refresh_interval_frames = initial_navigation_interval
 	_refresh_collision_shape_cache()
 	_cache_collision_shape_mirror_states()
 	if animated_sprite != null:
@@ -1906,6 +1920,15 @@ func _get_safe_navigation_move_direction(
 	shared_pathfinder: Node,
 	waypoint_arrival_distance: float
 ) -> Vector2:
+	var current_refresh_interval := _get_navigation_update_interval_frames(
+		objective_target
+	)
+	if (
+		not navigation_refresh_deferred
+		and navigation_next_refresh_physics_frame > Engine.get_physics_frames()
+		and navigation_scheduled_refresh_interval_frames == current_refresh_interval
+	):
+		return cached_navigation_move_direction
 	if not Enemy.performance_metrics_enabled:
 		return _get_safe_navigation_move_direction_unprofiled(
 			target_node,
@@ -2201,6 +2224,13 @@ func _get_flow_navigation_move_direction(
 			)
 		GridPathfinder.NavigationStepStatus.DEFERRED:
 			if _is_cached_navigation_direction_shape_safe():
+				var refresh_interval := _get_navigation_update_interval_frames(
+					target_node
+				)
+				navigation_next_refresh_physics_frame = (
+					_get_next_navigation_phase_frame(refresh_interval)
+				)
+				navigation_scheduled_refresh_interval_frames = refresh_interval
 				return cached_navigation_move_direction
 			return _cache_navigation_move_direction(Vector2.ZERO)
 		GridPathfinder.NavigationStepStatus.ARRIVED:
@@ -2688,6 +2718,18 @@ func _should_update_navigation_direction(target_node: Node2D = objective_target)
 	return true
 
 
+func _is_combat_sense_refresh_due() -> bool:
+	if not Enemy.combat_sense_throttling_enabled:
+		return true
+	var interval := maxi(combat_sense_update_interval_frames, 1)
+	return (
+		interval <= 1
+		or (
+			Engine.get_physics_frames() + navigation_update_frame_offset
+		) % interval == 0
+	)
+
+
 func _get_next_navigation_phase_frame(interval: int) -> int:
 	var safe_interval := maxi(interval, 1)
 	var next_frame := Engine.get_physics_frames() + 1
@@ -2759,10 +2801,13 @@ func _cache_navigation_move_direction(
 		tracks_live_target_direction
 		and cached_navigation_uses_direct_objective_approach
 	)
+	var refresh_interval := _get_navigation_update_interval_frames(objective_target)
+	navigation_next_refresh_physics_frame = _get_next_navigation_phase_frame(
+		refresh_interval
+	)
+	navigation_scheduled_refresh_interval_frames = refresh_interval
 	if move_direction == Vector2.ZERO:
-		navigation_zero_direction_retry_frame = _get_next_navigation_phase_frame(
-			_get_navigation_update_interval_frames(objective_target)
-		)
+		navigation_zero_direction_retry_frame = navigation_next_refresh_physics_frame
 	else:
 		navigation_zero_direction_retry_frame = 0
 	return move_direction
@@ -2776,6 +2821,8 @@ func _clear_cached_navigation_move_direction() -> void:
 	cached_navigation_verified_direct_motion_clearance = 0.0
 	cached_navigation_generation = -1
 	cached_navigation_tracks_live_target_direction = false
+	navigation_next_refresh_physics_frame = 0
+	navigation_scheduled_refresh_interval_frames = 0
 	navigation_zero_direction_retry_frame = 0
 	if navigation_flow_context != null:
 		navigation_flow_context.invalidate()
@@ -2818,10 +2865,10 @@ func _is_navigation_motion_shape_safe(direction: Vector2, probe_distance: float)
 
 
 func _move_until_player_contact() -> void:
+	if velocity == Vector2.ZERO:
+		return
 	if _has_player_contact():
 		velocity = Vector2.ZERO
-		return
-	if velocity == Vector2.ZERO:
 		return
 	if (
 		cached_navigation_tracks_live_target_direction
@@ -3025,6 +3072,14 @@ func _on_touched_plant_removal_started(_mode: int, plant: PlantDefense) -> void:
 
 
 func _update_touch_damage(delta: float) -> void:
+	if (
+		touch_damage_cooldown_left <= 0.0
+		and touching_plants.is_empty()
+		and touching_players.is_empty()
+	):
+		touched_plant = null
+		touched_player = null
+		return
 	if not Enemy.performance_metrics_enabled:
 		_update_touch_damage_unprofiled(delta)
 		return

@@ -26,6 +26,10 @@ func _run() -> void:
 	test_root.child_entered_tree.connect(_on_child_entered_tree)
 
 	_test_resource_contract()
+	await _test_combat_sense_phase_semantics()
+	_test_attack_phase_stagger_contract()
+	await _test_two_round_attack_phase_stability()
+	await _test_attack_timing_lock_cleanup()
 	await _test_windup_and_locked_burst()
 	await _test_plant_targeting_and_contact_depth()
 	await _test_ranged_standoff_cache_and_fallback()
@@ -94,6 +98,386 @@ func _test_resource_contract() -> void:
 		_expect(bullet_shape != null, "AK bullet collision shape must be a direct child of the Area2D.")
 		_expect(bullet_shape != null and bullet_shape.shape is RectangleShape2D, "AK bullet collision should use the configured rectangle shape.")
 		bullet_instance.free()
+
+
+func _test_combat_sense_phase_semantics() -> void:
+	var saved_sensing_enabled := Enemy.combat_sense_throttling_enabled
+	Enemy.combat_sense_throttling_enabled = true
+	var phase_players: Array[Player] = []
+	var phase_enemies: Array[CapooAK47] = []
+	for phase_delay in range(Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES):
+		var fixture_y := float(phase_delay) * 256.0
+		var player := _spawn_player(Vector2(100.0, fixture_y))
+		var enemy := _spawn_capoo(Vector2(0.0, fixture_y), player)
+		enemy.set_physics_process(false)
+		enemy.combat_sense_update_interval_frames = (
+			Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES
+		)
+		phase_players.append(player)
+		phase_enemies.append(enemy)
+
+	# Spawn helpers attach scenes before assigning their test coordinates. Allow
+	# transient origin overlaps to emit their matching body_exited signal first.
+	await _wait_physics_frames(2)
+	var anchor_frame := Engine.get_physics_frames()
+	for phase_delay in range(phase_enemies.size()):
+		_expect(
+			bool(phase_enemies[phase_delay].call(
+				"_has_ranged_combat_line",
+				phase_players[phase_delay],
+				1,
+				true
+			)),
+			"AK sensing phase fixture must start with a clear cached combat line."
+		)
+		phase_enemies[phase_delay].navigation_update_frame_offset = posmod(
+			-(anchor_frame + phase_delay),
+			Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES
+		)
+
+	var observed_delays: Array[int] = [-1, -1, -1]
+	for tick_offset in range(Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES):
+		for enemy_index in range(phase_enemies.size()):
+			var enemy := phase_enemies[enemy_index]
+			enemy.call("_physics_process", 1.0 / 60.0)
+			if (
+				observed_delays[enemy_index] < 0
+				and enemy.combat_state != CapooAK47.CombatState.CHASE
+			):
+				observed_delays[enemy_index] = tick_offset
+		if tick_offset + 1 < Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES:
+			await physics_frame
+	_expect(
+		observed_delays == [0, 1, 2],
+		(
+			"AK 20 Hz combat sensing must distribute attack acquisition over "
+			+ "offsets 0, 1 and 2; observed=%s."
+		) % [observed_delays]
+	)
+
+	Enemy.combat_sense_throttling_enabled = false
+	var unthrottled_player := _spawn_player(Vector2(100.0, 768.0))
+	var unthrottled_enemy := _spawn_capoo(Vector2(0.0, 768.0), unthrottled_player)
+	unthrottled_enemy.set_physics_process(false)
+	await _wait_physics_frames(2)
+	unthrottled_enemy.navigation_update_frame_offset = posmod(
+		1 - Engine.get_physics_frames(),
+		Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES
+	)
+	_expect(
+		(
+			Engine.get_physics_frames()
+			+ unthrottled_enemy.navigation_update_frame_offset
+		) % Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES != 0,
+		"Unthrottled AK fixture must begin on a normally skipped sensing phase."
+	)
+	_expect(
+		bool(unthrottled_enemy.call(
+			"_has_ranged_combat_line",
+			unthrottled_player,
+			1,
+			true
+		)),
+		"Unthrottled AK fixture must start with a clear cached combat line."
+	)
+	unthrottled_enemy.call("_physics_process", 1.0 / 60.0)
+	_expect(
+		unthrottled_enemy.combat_state == CapooAK47.CombatState.WINDUP,
+		"Disabling combat-sense throttling must restore AK attack acquisition on the current tick."
+	)
+	var sensed_every_tick := true
+	for tick_index in range(3):
+		sensed_every_tick = (
+			sensed_every_tick
+			and bool(unthrottled_enemy.call("_is_combat_sense_refresh_due"))
+		)
+		if tick_index < 2:
+			await physics_frame
+	_expect(
+		sensed_every_tick,
+		"Disabling combat-sense throttling must make the AK sensing gate due every physics tick."
+	)
+
+	Enemy.combat_sense_throttling_enabled = saved_sensing_enabled
+	for enemy in phase_enemies:
+		enemy.queue_free()
+	for player in phase_players:
+		player.queue_free()
+	unthrottled_enemy.queue_free()
+	unthrottled_player.queue_free()
+	await physics_frame
+
+
+func _test_attack_phase_stagger_contract() -> void:
+	_expect(
+		CapooAK47.attack_phase_stagger_enabled,
+		"AK deterministic attack phase staggering must be enabled by default."
+	)
+	var offsets: Array[int] = []
+	var offset_sum := 0
+	var minimum_offset := 100
+	var maximum_offset := -100
+	var authored_cycles_preserved := true
+	for phase_identity in range(5):
+		var offset := CapooAK47.calculate_attack_phase_offset_physics_frames(
+			phase_identity
+		)
+		var offset_seconds := CapooAK47.calculate_attack_phase_offset_seconds(
+			phase_identity,
+			60
+		)
+		offsets.append(offset)
+		offset_sum += offset
+		minimum_offset = mini(minimum_offset, offset)
+		maximum_offset = maxi(maximum_offset, offset)
+		authored_cycles_preserved = (
+			authored_cycles_preserved
+			and is_equal_approx(
+				CAPOO_CONFIG.attack_windup
+				+ offset_seconds
+				+ CAPOO_CONFIG.attack_interval
+				- offset_seconds,
+				CAPOO_CONFIG.attack_windup + CAPOO_CONFIG.attack_interval
+			)
+		)
+	_expect(
+		offsets == [0, -1, 1, -2, 2]
+		and offset_sum == 0
+		and minimum_offset == -2
+		and maximum_offset == 2
+		and authored_cycles_preserved,
+		"AK attack phases must be center-first, zero-mean, and bounded to +/-2 physics ticks."
+	)
+
+	var baseline_buckets: Dictionary[int, int] = {}
+	var staggered_buckets: Dictionary[int, int] = {}
+	var baseline_first_tick_sum := 0
+	var staggered_first_tick_sum := 0
+	var windup_ticks := roundi(CAPOO_CONFIG.attack_windup * 60.0)
+	for phase_identity in range(15):
+		var sensing_delay := posmod(
+			-phase_identity,
+			Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES
+		)
+		var baseline_first_tick := sensing_delay + windup_ticks + 1
+		var staggered_first_tick := (
+			baseline_first_tick
+			+ CapooAK47.calculate_attack_phase_offset_physics_frames(phase_identity)
+		)
+		baseline_first_tick_sum += baseline_first_tick
+		staggered_first_tick_sum += staggered_first_tick
+		baseline_buckets[baseline_first_tick] = int(
+			baseline_buckets.get(baseline_first_tick, 0)
+		) + 1
+		staggered_buckets[staggered_first_tick] = int(
+			staggered_buckets.get(staggered_first_tick, 0)
+		) + 1
+	_expect(
+		baseline_first_tick_sum == staggered_first_tick_sum,
+		"Combining three sensing phases with five attack phases must preserve average first-fire delay."
+	)
+	_expect(
+		_get_peak_bucket_count(baseline_buckets) == 5
+		and _get_peak_bucket_count(staggered_buckets) <= 3,
+		"Five centered attack phases must lower a synchronized first-fire bucket from 5/15 to at most 3/15."
+	)
+
+
+func _test_two_round_attack_phase_stability() -> void:
+	var saved_stagger_enabled := CapooAK47.attack_phase_stagger_enabled
+	var saved_sensing_enabled := Enemy.combat_sense_throttling_enabled
+	CapooAK47.attack_phase_stagger_enabled = true
+	Enemy.combat_sense_throttling_enabled = true
+	var fast_config := CAPOO_CONFIG.duplicate(true) as CapooAK47Config
+	fast_config.attack_windup = 0.1
+	fast_config.attack_interval = 0.2
+	fast_config.burst_count = 1
+	fast_config.projectile_lifetime = 0.1
+
+	var player := _spawn_player(Vector2(120.0, 0.0))
+	player.max_health = 1_000_000
+	player.current_health = player.max_health
+	var phase_minus_two := _spawn_capoo_with_config(Vector2(0.0, -24.0), player, fast_config)
+	var phase_zero := _spawn_capoo_with_config(Vector2.ZERO, player, fast_config)
+	var phase_plus_two := _spawn_capoo_with_config(Vector2(0.0, 24.0), player, fast_config)
+	phase_minus_two.set_physics_process(false)
+	phase_zero.set_physics_process(false)
+	phase_plus_two.set_physics_process(false)
+	# Offsets 3, 0 and 9 share the same 20 Hz sensing phase while selecting
+	# attack offsets -2, 0 and +2 respectively.
+	phase_minus_two.navigation_update_frame_offset = 3
+	phase_zero.navigation_update_frame_offset = 0
+	phase_plus_two.navigation_update_frame_offset = 9
+	await physics_frame
+	while Engine.get_physics_frames() % Enemy.DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES != 0:
+		await physics_frame
+
+	_expect(
+		bool(phase_minus_two.call("_try_start_windup", player))
+		and bool(phase_zero.call("_try_start_windup", player))
+		and bool(phase_plus_two.call("_try_start_windup", player)),
+		"All two-round phase fixtures must enter windup on the same sensing tick."
+	)
+	var minus_two_cycle_sum := (
+		phase_minus_two.committed_windup_duration_seconds
+		+ fast_config.attack_interval
+		- phase_minus_two.committed_attack_phase_offset_seconds
+	)
+	var zero_cycle_sum := (
+		phase_zero.committed_windup_duration_seconds
+		+ fast_config.attack_interval
+		- phase_zero.committed_attack_phase_offset_seconds
+	)
+	var plus_two_cycle_sum := (
+		phase_plus_two.committed_windup_duration_seconds
+		+ fast_config.attack_interval
+		- phase_plus_two.committed_attack_phase_offset_seconds
+	)
+	_expect(
+		is_equal_approx(
+			minus_two_cycle_sum,
+			fast_config.attack_windup + fast_config.attack_interval
+		)
+		and is_equal_approx(
+			zero_cycle_sum,
+			fast_config.attack_windup + fast_config.attack_interval
+		)
+		and is_equal_approx(
+			plus_two_cycle_sum,
+			fast_config.attack_windup + fast_config.attack_interval
+		),
+		"Windup phase offsets and cooldown compensation must preserve the authored cycle sum."
+	)
+	phase_minus_two.set_physics_process(true)
+	phase_zero.set_physics_process(true)
+	phase_plus_two.set_physics_process(true)
+
+	var minus_two_burst_frames: Array[int] = []
+	var zero_burst_frames: Array[int] = []
+	var plus_two_burst_frames: Array[int] = []
+	for _frame_index in range(180):
+		await physics_frame
+		var current_frame := Engine.get_physics_frames()
+		if phase_minus_two.action_sequence >= 2 and minus_two_burst_frames.is_empty():
+			minus_two_burst_frames.append(current_frame)
+		elif (
+			phase_minus_two.action_sequence >= 4
+			and minus_two_burst_frames.size() == 1
+		):
+			minus_two_burst_frames.append(current_frame)
+		if phase_zero.action_sequence >= 2 and zero_burst_frames.is_empty():
+			zero_burst_frames.append(current_frame)
+		elif phase_zero.action_sequence >= 4 and zero_burst_frames.size() == 1:
+			zero_burst_frames.append(current_frame)
+		if phase_plus_two.action_sequence >= 2 and plus_two_burst_frames.is_empty():
+			plus_two_burst_frames.append(current_frame)
+		elif (
+			phase_plus_two.action_sequence >= 4
+			and plus_two_burst_frames.size() == 1
+		):
+			plus_two_burst_frames.append(current_frame)
+		if (
+			minus_two_burst_frames.size() == 2
+			and zero_burst_frames.size() == 2
+			and plus_two_burst_frames.size() == 2
+		):
+			break
+	_expect(
+		minus_two_burst_frames.size() == 2
+		and zero_burst_frames.size() == 2
+		and plus_two_burst_frames.size() == 2,
+		"All three attack phases must commit two complete burst starts."
+	)
+	if (
+		minus_two_burst_frames.size() == 2
+		and zero_burst_frames.size() == 2
+		and plus_two_burst_frames.size() == 2
+	):
+		var first_minus_phase_gap := minus_two_burst_frames[0] - zero_burst_frames[0]
+		var second_minus_phase_gap := minus_two_burst_frames[1] - zero_burst_frames[1]
+		var first_phase_gap := plus_two_burst_frames[0] - zero_burst_frames[0]
+		var second_phase_gap := plus_two_burst_frames[1] - zero_burst_frames[1]
+		var minus_two_period := minus_two_burst_frames[1] - minus_two_burst_frames[0]
+		var zero_period := zero_burst_frames[1] - zero_burst_frames[0]
+		var plus_two_period := plus_two_burst_frames[1] - plus_two_burst_frames[0]
+		_expect(
+			first_minus_phase_gap == -2
+			and second_minus_phase_gap == first_minus_phase_gap
+			and first_phase_gap == 2
+			and second_phase_gap == first_phase_gap
+			and minus_two_period == zero_period
+			and zero_period == plus_two_period,
+			"The -2/+2 phases must persist through round two without changing or drifting the authored attack period."
+		)
+
+	phase_minus_two.queue_free()
+	phase_zero.queue_free()
+	phase_plus_two.queue_free()
+	player.queue_free()
+	await physics_frame
+	CapooAK47.attack_phase_stagger_enabled = saved_stagger_enabled
+	Enemy.combat_sense_throttling_enabled = saved_sensing_enabled
+
+
+func _test_attack_timing_lock_cleanup() -> void:
+	var saved_stagger_enabled := CapooAK47.attack_phase_stagger_enabled
+	CapooAK47.attack_phase_stagger_enabled = true
+	var player := _spawn_player(Vector2(120.0, 0.0))
+	var enemy := _spawn_capoo(Vector2.ZERO, player)
+	enemy.set_physics_process(false)
+	enemy.navigation_update_frame_offset = 9
+	await physics_frame
+
+	_expect(
+		bool(enemy.call("_try_start_windup", player))
+		and enemy.committed_attack_phase_offset_seconds > 0.0,
+		"Cleanup fixture must lock a non-zero attack phase."
+	)
+	enemy.call("_cancel_attack")
+	_expect(
+		enemy.windup_time_left == 0.0
+		and enemy.committed_attack_phase_offset_seconds == 0.0
+		and enemy.committed_windup_duration_seconds == 0.0,
+		"Cancelling an attack must clear every committed timing field."
+	)
+
+	CapooAK47.attack_phase_stagger_enabled = false
+	_expect(
+		bool(enemy.call("_try_start_windup", player))
+		and enemy.committed_attack_phase_offset_seconds == 0.0,
+		"The static A/B switch must make the next windup use the authored zero phase."
+	)
+	CapooAK47.attack_phase_stagger_enabled = true
+	enemy.call("_update_windup", CAPOO_CONFIG.attack_windup)
+	_expect(
+		is_equal_approx(enemy.attack_cooldown_left, CAPOO_CONFIG.attack_interval),
+		"Changing the A/B switch mid-windup must not break the locked windup/cooldown pair."
+	)
+
+	enemy.setup(CAPOO_CONFIG, player)
+	enemy.set_physics_process(false)
+	_expect(
+		enemy.combat_state == CapooAK47.CombatState.CHASE
+		and enemy.committed_attack_phase_offset_seconds == 0.0
+		and enemy.committed_windup_duration_seconds == 0.0,
+		"Reapplying configuration must clear committed attack timing."
+	)
+	_expect(
+		bool(enemy.call("_try_start_windup", player)),
+		"Reconfigured cleanup fixture must be able to enter windup again."
+	)
+	enemy.apply_damage(CAPOO_CONFIG.max_health + 10)
+	_expect(
+		enemy.committed_attack_phase_offset_seconds == 0.0
+		and enemy.committed_windup_duration_seconds == 0.0,
+		"Death must clear committed attack timing immediately."
+	)
+
+	if is_instance_valid(enemy):
+		enemy.queue_free()
+	player.queue_free()
+	await physics_frame
+	CapooAK47.attack_phase_stagger_enabled = saved_stagger_enabled
 
 
 func _test_windup_and_locked_burst() -> void:
@@ -332,6 +716,7 @@ func _test_death_interrupts_attack() -> void:
 func _test_proxy_action_visuals() -> void:
 	var player := _spawn_player(Vector2(120.0, 0.0))
 	var enemy := _spawn_capoo(Vector2.ZERO, player)
+	var projectile_count_before := spawned_projectiles.size()
 	enemy.configure_multiplayer_proxy()
 	enemy.play_multiplayer_enemy_action(&"windup", Vector2.RIGHT, 1)
 	await process_frame
@@ -343,9 +728,20 @@ func _test_proxy_action_visuals() -> void:
 		Vector2.RIGHT.rotated(enemy.muzzle_heat.rotation).dot(Vector2.LEFT) > 0.99,
 		"Stale proxy AK windup tween must not override newer burst direction."
 	)
+	await physics_frame
+	_expect(
+		spawned_projectiles.size() == projectile_count_before
+		and not enemy.is_physics_processing(),
+		"A multiplayer proxy must remain presentation-only and never emit authoritative bullets."
+	)
 	enemy.play_multiplayer_death_sequence()
 	await process_frame
-	_expect(not enemy.muzzle_heat.visible, "Proxy AK death must clear muzzle heat.")
+	_expect(
+		not enemy.muzzle_heat.visible
+		and enemy.committed_attack_phase_offset_seconds == 0.0
+		and enemy.committed_windup_duration_seconds == 0.0,
+		"Proxy AK death must clear muzzle heat and any local timing lock."
+	)
 	enemy.queue_free()
 	player.queue_free()
 	await physics_frame
@@ -359,10 +755,18 @@ func _spawn_player(position: Vector2) -> Player:
 
 
 func _spawn_capoo(position: Vector2, player: Player) -> CapooAK47:
+	return _spawn_capoo_with_config(position, player, CAPOO_CONFIG)
+
+
+func _spawn_capoo_with_config(
+	position: Vector2,
+	player: Player,
+	enemy_config: CapooAK47Config
+) -> CapooAK47:
 	var enemy := CAPOO_SCENE.instantiate() as CapooAK47
 	test_root.add_child(enemy)
 	enemy.global_position = position
-	enemy.setup(CAPOO_CONFIG, player)
+	enemy.setup(enemy_config, player)
 	return enemy
 
 
@@ -402,6 +806,13 @@ func _count_wave_entries(wave_config: WaveConfig) -> int:
 		if entry != null and entry.enemy_config == CAPOO_CONFIG:
 			total += entry.count
 	return total
+
+
+func _get_peak_bucket_count(buckets: Dictionary[int, int]) -> int:
+	var peak := 0
+	for count in buckets.values():
+		peak = maxi(peak, int(count))
+	return peak
 
 
 func _on_child_entered_tree(child: Node) -> void:

@@ -2,6 +2,7 @@
 
 [ext_resource type="Texture2D" uid="uid://bg46042bpug12" path="res://resources/texture/道具ui.png" id="1_qwydi"]
 [ext_resource type="Script" uid="uid://muapvv1sjolt" path="res://scene/bullet.gd" id="1_xw300"]
+[ext_resource type="Material" path="res://resources/shader/rapid_projectile_single_pass.tres" id="3_single_pass"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_xw300"]
 atlas = ExtResource("1_qwydi")
@@ -17,6 +18,7 @@ collision_mask = 4
 script = ExtResource("1_xw300")
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=341073763]
+material = ExtResource("3_single_pass")
 texture = SubResource("AtlasTexture_xw300")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=761498432]

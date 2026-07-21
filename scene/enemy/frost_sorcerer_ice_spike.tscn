@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://scene/enemy/frost_sorcerer_ice_spike.gd" id="1_script"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/frost_sorcerer_ice_spike.tres" id="2_frames"]
+[ext_resource type="Material" path="res://resources/shader/frost_projectile_single_pass.tres" id="3_single_pass"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_ice_spike"]
 radius = 3.0
@@ -15,6 +16,7 @@ script = ExtResource("1_script")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
 texture_filter = 1
+material = ExtResource("3_single_pass")
 sprite_frames = ExtResource("2_frames")
 animation = &"fly"
 autoplay = "fly"

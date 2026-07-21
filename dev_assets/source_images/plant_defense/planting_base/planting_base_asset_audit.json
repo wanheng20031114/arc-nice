@@ -1,0 +1,411 @@
+{
+  "schema_version": 1,
+  "asset_family": "planting_base",
+  "status": "passed",
+  "pipeline": [
+    "sampled magenta global chroma key including enclosed holes",
+    "pixel_grid_analyzer baseline measurement",
+    "independent periodic-phase grid measurement with strict source-specific gate",
+    "single measured-cell center sample with one source logical cell per output pixel",
+    "hard failure when the detected logical subject exceeds 60x60",
+    "palette reduction to at most 64 colors without dithering",
+    "reviewed blue-outline semantic split into complementary lower and upper draw layers",
+    "binary-alpha, transparent-RGB, footprint, and foot-anchor audit"
+  ],
+  "visual_contract": {
+    "building_canvas_px": [
+      64,
+      64
+    ],
+    "building_subject_limit_px": [
+      60,
+      60
+    ],
+    "building_footprint_cells": [
+      2,
+      2
+    ],
+    "building_world_scale": [
+      0.5,
+      0.5
+    ],
+    "building_world_size_px": [
+      32,
+      32
+    ],
+    "foot_target_px": [
+      31.5,
+      62
+    ],
+    "visible_color_limit": 64
+  },
+  "source": {
+    "path": "dev_assets/source_images/plant_defense/planting_base/planting_base_selected_native_coarse_imagegen_magenta.png",
+    "sha256": "df27994904675f1764866447d7fec45e58b75842d11f631006eb6c1061b8bb3e",
+    "source_canvas_px": [
+      1254,
+      1254
+    ],
+    "subject_bbox_exclusive": [
+      152,
+      141,
+      1100,
+      1154
+    ],
+    "subject_physical_size_px": [
+      948,
+      1013
+    ],
+    "chroma_key": {
+      "mode": "global_sampled_magenta_candidate_mask",
+      "sample_rgb": [
+        229,
+        12,
+        218
+      ],
+      "rgb_tolerance": 72,
+      "hue_tolerance": 0.035,
+      "removed_pixel_count": 942486,
+      "visible_pixel_count": 630030,
+      "reason": "selected arch and channels contain enclosed background holes"
+    },
+    "grid_analysis": {
+      "detection_mode": "periodic_phase_fallback",
+      "grid_cell_width": 17.0,
+      "grid_cell_height": 16.9,
+      "grid_cell_size": 17,
+      "confidence": 0.902,
+      "subject_grid_width": 56,
+      "subject_grid_height": 60,
+      "fallback_axis_scores": [
+        0.851,
+        0.952
+      ],
+      "fallback_period_ratio": 1.006,
+      "general_analyzer_result": {
+        "image_width": 1254,
+        "image_height": 1254,
+        "image_mode": "RGBA",
+        "detection_mode": "approximate",
+        "grid_cell_width": 17.0,
+        "grid_cell_height": 16.9,
+        "grid_cell_size": 17,
+        "confidence": 0.902,
+        "subject_bbox": {
+          "left": 152,
+          "top": 141,
+          "right": 1100,
+          "bottom": 1154
+        },
+        "subject_pixel_width": 948,
+        "subject_pixel_height": 1013,
+        "subject_grid_width": 56,
+        "subject_grid_height": 60,
+        "recommended_canvas_grid_width": 74,
+        "recommended_canvas_grid_height": 74
+      },
+      "safety_gate": {
+        "period_range_px": [
+          15.5,
+          18.5
+        ],
+        "minimum_axis_phase_score": 0.65,
+        "maximum_xy_period_ratio": 1.05,
+        "passed": true
+      }
+    }
+  },
+  "normalization": {
+    "mode": "single_stage_measured_cell_center_sample",
+    "detected_logical_subject_size": [
+      56,
+      60
+    ],
+    "output_logical_subject_size": [
+      56,
+      60
+    ],
+    "interpolation": "none",
+    "secondary_resampling": false,
+    "one_source_logical_cell_per_output_pixel": true,
+    "logical_fit_reason": "the imagegen repair is natively within the <=60x60 subject contract, so no fitting resample is permitted"
+  },
+  "registration": {
+    "mode": "bottom_center",
+    "paste_origin": [
+      4,
+      3
+    ],
+    "foot_target": [
+      31.5,
+      62
+    ],
+    "measured_foot_anchor": [
+      31.5,
+      62.0
+    ]
+  },
+  "palette": {
+    "mode": "median_cut_no_dither_then_nearest_palette_assignment",
+    "visible_palette_size": 62
+  },
+  "semantic_draw_layers": {
+    "mode": "reviewed_blue_outline_logical_row_spans",
+    "upper_canopy_row_spans": [
+      [
+        0,
+        1,
+        23,
+        34
+      ],
+      [
+        1,
+        2,
+        20,
+        39
+      ],
+      [
+        2,
+        3,
+        18,
+        42
+      ],
+      [
+        3,
+        4,
+        16,
+        43
+      ],
+      [
+        4,
+        5,
+        15,
+        44
+      ],
+      [
+        5,
+        7,
+        14,
+        45
+      ],
+      [
+        7,
+        9,
+        14,
+        46
+      ],
+      [
+        9,
+        15,
+        13,
+        47
+      ],
+      [
+        15,
+        16,
+        14,
+        47
+      ],
+      [
+        16,
+        17,
+        15,
+        47
+      ],
+      [
+        17,
+        18,
+        16,
+        47
+      ],
+      [
+        18,
+        19,
+        17,
+        46
+      ],
+      [
+        19,
+        20,
+        19,
+        46
+      ],
+      [
+        20,
+        21,
+        20,
+        45
+      ],
+      [
+        21,
+        22,
+        21,
+        43
+      ],
+      [
+        22,
+        23,
+        22,
+        41
+      ],
+      [
+        23,
+        24,
+        23,
+        40
+      ],
+      [
+        24,
+        25,
+        23,
+        27
+      ],
+      [
+        24,
+        25,
+        36,
+        40
+      ],
+      [
+        25,
+        26,
+        23,
+        26
+      ],
+      [
+        25,
+        26,
+        37,
+        40
+      ]
+    ],
+    "upper_z_index": 4,
+    "lower_z_index": 0,
+    "upper_visible_pixel_count": 383,
+    "lower_visible_pixel_count": 1823,
+    "checks": {
+      "binary_non_overlapping": true,
+      "lossless_rgba_recomposition": true,
+      "reviewed_upper_visible_pixel_count": true
+    },
+    "lower_output": {
+      "label": "planting_base_lower_body",
+      "path": "resources/texture/plant_defense/planting_base/layers/lower_body.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        4,
+        19,
+        60,
+        63
+      ],
+      "subject_size": [
+        56,
+        44
+      ],
+      "visible_color_count": 62,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -14.0,
+        -6.5,
+        14.0,
+        15.5
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    },
+    "upper_output": {
+      "label": "planting_base_upper_canopy",
+      "path": "resources/texture/plant_defense/planting_base/layers/upper_canopy.png",
+      "canvas_size": [
+        64,
+        64
+      ],
+      "subject_bbox_exclusive": [
+        18,
+        3,
+        46,
+        26
+      ],
+      "subject_size": [
+        28,
+        23
+      ],
+      "visible_color_count": 54,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "world_bounds_at_scale_0_5": [
+        -7.0,
+        -14.5,
+        7.0,
+        -3.0
+      ],
+      "checks": {
+        "canvas_64x64": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "visible_colors_at_most_64": true,
+        "subject_within_declared_limit": true,
+        "world_bounds_within_32x32": true
+      },
+      "passed": true
+    }
+  },
+  "output": {
+    "label": "planting_base",
+    "path": "resources/texture/plant_defense/planting_base/planting_base.png",
+    "canvas_size": [
+      64,
+      64
+    ],
+    "subject_bbox_exclusive": [
+      4,
+      3,
+      60,
+      63
+    ],
+    "subject_size": [
+      56,
+      60
+    ],
+    "visible_color_count": 62,
+    "alpha_values": [
+      0,
+      255
+    ],
+    "world_bounds_at_scale_0_5": [
+      -14.0,
+      -14.5,
+      14.0,
+      15.5
+    ],
+    "checks": {
+      "canvas_64x64": true,
+      "binary_alpha": true,
+      "transparent_rgb_clean": true,
+      "visible_colors_at_most_64": true,
+      "subject_within_declared_limit": true,
+      "world_bounds_within_32x32": true,
+      "exact_bottom_center_foot_target": true
+    },
+    "passed": true
+  },
+  "validation": {
+    "passed": true,
+    "failures": []
+  }
+}

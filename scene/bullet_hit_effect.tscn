@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://scene/bullet_hit_effect.gd" id="1_script"]
 [ext_resource type="Texture2D" uid="uid://bg46042bpug12" path="res://resources/texture/道具ui.png" id="2_texture"]
+[ext_resource type="Material" path="res://resources/shader/night_vfx_emission_additive.tres" id="3_emission"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_particle"]
 atlas = ExtResource("2_texture")
@@ -19,6 +20,8 @@ color = Color(0.92, 0.76, 0.38, 1)
 
 [node name="BulletHitEffect" type="GPUParticles2D"]
 z_index = 2
+material = ExtResource("3_emission")
+self_modulate = Color(1.36, 1.08, 0.66, 1)
 emitting = false
 amount = 5
 lifetime = 0.18
