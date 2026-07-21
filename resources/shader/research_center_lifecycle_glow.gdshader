@@ -15,6 +15,9 @@ uniform float glow_halo_strength : hint_range(0.0, 0.25) = 0.04;
 uniform float glow_halo_alpha : hint_range(0.0, 0.25) = 0.035;
 uniform float glow_pulse_amount : hint_range(0.0, 0.02) = 0.004;
 uniform float glow_pulse_speed : hint_range(0.0, 4.0) = 0.72;
+// Complementary foreground layers still need their visible blue cores, but
+// only one layer may paint halo alpha into otherwise transparent texels.
+uniform float transparent_halo_weight : hint_range(0.0, 1.0) = 1.0;
 
 varying vec2 lifecycle_world_position;
 varying float glow_pulse;
@@ -116,6 +119,10 @@ void fragment() {
 		)
 	);
 	float authored_halo = max(authored_profile - authored_core, 0.0);
+	float transparent_halo_gate = max(
+		step(0.01, result.a),
+		transparent_halo_weight
+	);
 	float blue_surface = (
 		smoothstep(0.08, 0.36, result.b - result.r)
 		* smoothstep(0.16, 0.72, result.b)
@@ -129,6 +136,7 @@ void fragment() {
 	result.a = max(
 		result.a,
 		authored_halo * glow_halo_alpha * glow_color.a
+			* transparent_halo_gate
 	);
 
 	float build_progress = clamp(construction_progress, 0.0, 1.0);

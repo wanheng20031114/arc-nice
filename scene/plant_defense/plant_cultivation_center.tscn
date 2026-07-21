@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://d1al1mi7twbsv"]
 
 [ext_resource type="Script" uid="uid://bks728vlnlt73" path="res://scene/plant_defense/plant_cultivation_center.gd" id="1_script"]
-[ext_resource type="Texture2D" uid="uid://uinefbl1ycc7" path="res://resources/texture/plant_defense/plant_cultivation_center/plant_cultivation_center.png" id="2_sprite"]
+[ext_resource type="Texture2D" uid="uid://dcww12ag8r038" path="res://resources/texture/plant_defense/plant_cultivation_center/layers/lower_body.png" id="2_lower_body"]
 [ext_resource type="PackedScene" uid="uid://by1igl2yc3ch0" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
 [ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
 [ext_resource type="Shader" path="res://resources/shader/plant_cultivation_center_lifecycle_glow.gdshader" id="5_lifecycle_glow_shader"]
@@ -14,6 +14,7 @@
 [ext_resource type="Resource" path="res://resources/config/production/wooden_core_to_bamboo_mortar.tres" id="12_bamboo_mortar_recipe"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="13_night_light"]
 [ext_resource type="Texture2D" uid="uid://gs85ud857sbr" path="res://resources/lighting/plant_cultivation_center_hotspots.svg" id="14_hotspot_texture"]
+[ext_resource type="Texture2D" uid="uid://j6ye48p2kdf6" path="res://resources/texture/plant_defense/plant_cultivation_center/layers/upper_foreground.png" id="15_upper_foreground"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_production_border"]
 shader = ExtResource("10_border_shader")
@@ -31,6 +32,18 @@ shader_parameter/glow_halo_strength = 0.05
 shader_parameter/glow_halo_alpha = 0.045
 shader_parameter/glow_pulse_amount = 0.006
 shader_parameter/glow_pulse_speed = 0.85
+shader_parameter/transparent_halo_weight = 1.0
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_lifecycle_glow_foreground"]
+shader = ExtResource("5_lifecycle_glow_shader")
+shader_parameter/lifecycle_noise = ExtResource("11_lifecycle_noise")
+shader_parameter/glow_color = Color(0.52, 1.08, 0.18, 1)
+shader_parameter/glow_core_strength = 0.3
+shader_parameter/glow_halo_strength = 0.05
+shader_parameter/glow_halo_alpha = 0.045
+shader_parameter/glow_pulse_amount = 0.006
+shader_parameter/glow_pulse_speed = 0.85
+shader_parameter/transparent_halo_weight = 0.0
 
 [sub_resource type="QuadMesh" id="QuadMesh_production_border"]
 size = Vector2(32, 32)
@@ -103,7 +116,7 @@ recipes = Array[ExtResource("8_recipe_script")]([ExtResource("6_agave_recipe"), 
 production_panel_background_override = ExtResource("9_panel_background")
 production_panel_theme = 1
 enemy_approach_depth = 7.0
-lifecycle_visual_paths = Array[NodePath]([NodePath("VisualRoot/MainSprite")])
+lifecycle_visual_paths = Array[NodePath]([NodePath("VisualRoot/LowerBody"), NodePath("VisualRoot/UpperForeground")])
 lifecycle_effect_top_y = -15.0
 
 [node name="ProductionBorder" type="MeshInstance2D" parent="." unique_id=1194988036]
@@ -115,11 +128,16 @@ mesh = SubResource("QuadMesh_production_border")
 [node name="VisualRoot" type="Node2D" parent="." unique_id=1021732489]
 scale = Vector2(0.5, 0.5)
 
-[node name="MainSprite" type="Sprite2D" parent="VisualRoot" unique_id=1430086103]
-z_index = 1
+[node name="LowerBody" type="Sprite2D" parent="VisualRoot" unique_id=1430086103]
 texture_filter = 1
 material = SubResource("ShaderMaterial_lifecycle_glow")
-texture = ExtResource("2_sprite")
+texture = ExtResource("2_lower_body")
+
+[node name="UpperForeground" type="Sprite2D" parent="VisualRoot"]
+z_index = 4
+texture_filter = 1
+material = SubResource("ShaderMaterial_lifecycle_glow_foreground")
+texture = ExtResource("15_upper_foreground")
 
 [node name="HotspotGlow" parent="." instance=ExtResource("13_night_light")]
 color = Color(0.4814815, 1, 0.1666667, 1)

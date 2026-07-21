@@ -17,6 +17,9 @@ uniform float glow_halo_strength : hint_range(0.0, 0.25) = 0.05;
 uniform float glow_halo_alpha : hint_range(0.0, 0.25) = 0.045;
 uniform float glow_pulse_amount : hint_range(0.0, 0.02) = 0.006;
 uniform float glow_pulse_speed : hint_range(0.0, 4.0) = 0.85;
+// Split sprites keep emissive pixels on both layers. Only the back layer paints
+// the soft halo into transparent texels, preventing a doubled full-canvas glow.
+uniform float transparent_halo_weight : hint_range(0.0, 1.0) = 1.0;
 
 varying vec2 lifecycle_world_position;
 varying float glow_pulse;
@@ -110,6 +113,10 @@ void fragment() {
 		panel_profile(pixel_position)
 	);
 	float authored_halo = max(authored_profile - authored_core, 0.0);
+	float transparent_halo_gate = max(
+		step(0.01, result.a),
+		transparent_halo_weight
+	);
 
 	float green_dominance = result.g - max(result.r, result.b);
 	float green_surface = (
@@ -125,11 +132,12 @@ void fragment() {
 	vec3 active_glow = glow_color.rgb * glow_pulse;
 	result.rgb += active_glow * (
 		authored_core * emissive_surface * glow_core_strength
-		+ authored_halo * glow_halo_strength
+		+ authored_halo * glow_halo_strength * transparent_halo_gate
 	);
 	result.a = max(
 		result.a,
 		authored_halo * glow_halo_alpha * glow_color.a
+			* transparent_halo_gate
 	);
 
 	float build_progress = clamp(construction_progress, 0.0, 1.0);

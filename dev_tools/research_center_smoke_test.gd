@@ -265,10 +265,20 @@ func _test_config_and_scene(
 	)
 	if center != null:
 		var visual_root := center.get_node_or_null("VisualRoot") as Node2D
-		var sprite := center.get_node_or_null("VisualRoot/MainSprite") as Sprite2D
-		var sprite_material := (
-			sprite.material as ShaderMaterial
-			if sprite != null
+		var lower_sprite := center.get_node_or_null(
+			"VisualRoot/LowerBody"
+		) as Sprite2D
+		var upper_sprite := center.get_node_or_null(
+			"VisualRoot/UpperForeground"
+		) as Sprite2D
+		var lower_material := (
+			lower_sprite.material as ShaderMaterial
+			if lower_sprite != null
+			else null
+		)
+		var upper_material := (
+			upper_sprite.material as ShaderMaterial
+			if upper_sprite != null
 			else null
 		)
 		var research_border := center.get_node_or_null(
@@ -302,31 +312,62 @@ func _test_config_and_scene(
 		_expect(
 			visual_root != null
 			and visual_root.scale == Vector2(0.5, 0.5)
-			and sprite != null
-			and sprite.texture != null
-			and sprite.texture.get_size() == Vector2(64, 64)
-			and sprite.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
-			"科研中心必须以64×64源图、0.5世界缩放和nearest采样显示。"
+			and lower_sprite != null
+			and upper_sprite != null
+			and lower_sprite.texture != null
+			and upper_sprite.texture != null
+			and lower_sprite.texture.get_size() == Vector2(64, 64)
+			and upper_sprite.texture.get_size() == Vector2(64, 64)
+			and lower_sprite.texture_filter
+			== CanvasItem.TEXTURE_FILTER_NEAREST
+			and upper_sprite.texture_filter
+			== CanvasItem.TEXTURE_FILTER_NEAREST
+			and lower_sprite.z_index == 0
+			and upper_sprite.z_index == 4
+			and center.lifecycle_visual_paths
+			== [
+				NodePath("VisualRoot/LowerBody"),
+				NodePath("VisualRoot/UpperForeground"),
+			],
+			"科研中心必须以两张互补64×64贴图、0.5世界缩放和nearest采样分层显示。"
 		)
 		_expect(
-			sprite_material != null
-			and not sprite_material.resource_local_to_scene
-			and sprite_material.shader != null
-			and sprite_material.shader.resource_path
+			lower_material != null
+			and upper_material != null
+			and not lower_material.resource_local_to_scene
+			and not upper_material.resource_local_to_scene
+			and lower_material.shader != null
+			and lower_material.shader == upper_material.shader
+			and lower_material.shader.resource_path
 			== "res://resources/shader/research_center_lifecycle_glow.gdshader"
 			and (
-				sprite_material.get_shader_parameter(&"lifecycle_noise")
+				lower_material.get_shader_parameter(&"lifecycle_noise")
 				is Texture2D
 			)
 			and float(
-				sprite_material.get_shader_parameter(&"glow_core_strength")
+				lower_material.get_shader_parameter(&"glow_core_strength")
 			) > float(
-				sprite_material.get_shader_parameter(&"glow_halo_strength")
+				lower_material.get_shader_parameter(&"glow_halo_strength")
 			)
 			and float(
-				sprite_material.get_shader_parameter(&"glow_pulse_amount")
-			) > 0.0,
-			"科研中心主体必须使用只强化三处蓝色像素的专用生命周期微光材质。"
+				lower_material.get_shader_parameter(&"glow_pulse_amount")
+			) > 0.0
+			and is_equal_approx(
+				float(
+					lower_material.get_shader_parameter(
+						&"transparent_halo_weight"
+					)
+				),
+				1.0
+			)
+			and is_zero_approx(
+				float(
+					upper_material.get_shader_parameter(
+						&"transparent_halo_weight"
+					)
+				)
+			),
+			"科研中心上下两层必须共用蓝色生命周期Shader，透明晕光只能由下层绘制。"
 		)
 		_expect(
 			research_border != null

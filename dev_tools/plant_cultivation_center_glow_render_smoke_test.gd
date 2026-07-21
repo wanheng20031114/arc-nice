@@ -76,13 +76,24 @@ func _run() -> void:
 
 	var border := center.get_node("ProductionBorder") as CanvasItem
 	border.visible = false
-	var main_sprite := center.get_node(
-		"VisualRoot/MainSprite"
+	var lower_sprite := center.get_node(
+		"VisualRoot/LowerBody"
 	) as Sprite2D
-	var stable_material := main_sprite.material.duplicate() as ShaderMaterial
-	stable_material.resource_local_to_scene = true
-	stable_material.set_shader_parameter(&"glow_pulse_amount", 0.0)
-	main_sprite.material = stable_material
+	var upper_sprite := center.get_node(
+		"VisualRoot/UpperForeground"
+	) as Sprite2D
+	var stable_lower_material := (
+		lower_sprite.material.duplicate() as ShaderMaterial
+	)
+	stable_lower_material.resource_local_to_scene = true
+	stable_lower_material.set_shader_parameter(&"glow_pulse_amount", 0.0)
+	lower_sprite.material = stable_lower_material
+	var stable_upper_material := (
+		upper_sprite.material.duplicate() as ShaderMaterial
+	)
+	stable_upper_material.resource_local_to_scene = true
+	stable_upper_material.set_shader_parameter(&"glow_pulse_amount", 0.0)
+	upper_sprite.material = stable_upper_material
 
 	var hotspot_glow := center.get_node(
 		"HotspotGlow"

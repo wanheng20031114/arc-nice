@@ -76,26 +76,41 @@ func _run() -> void:
 	)
 	day_night_controller.set_night_factor_immediate(1.0)
 
-	var main_sprite := center.get_node(
-		"VisualRoot/MainSprite"
+	var lower_sprite := center.get_node(
+		"VisualRoot/LowerBody"
+	) as Sprite2D
+	var upper_sprite := center.get_node(
+		"VisualRoot/UpperForeground"
 	) as Sprite2D
 	var research_border := center.get_node(
 		"ResearchBorder"
 	) as MeshInstance2D
-	var main_material := main_sprite.material as ShaderMaterial
+	var lower_material := lower_sprite.material as ShaderMaterial
+	var upper_material := upper_sprite.material as ShaderMaterial
 	var border_material := research_border.material as ShaderMaterial
 	_expect(
-		main_material != null and border_material != null,
-		"科研中心主体与外边框必须使用可复制的ShaderMaterial。"
+		lower_material != null
+		and upper_material != null
+		and border_material != null,
+		"科研中心上下视觉层与外边框必须使用可复制的ShaderMaterial。"
 	)
-	if main_material == null or border_material == null:
+	if (
+		lower_material == null
+		or upper_material == null
+		or border_material == null
+	):
 		await _finish(world)
 		return
 
-	var stable_main_material := main_material.duplicate() as ShaderMaterial
-	stable_main_material.resource_local_to_scene = true
-	stable_main_material.set_shader_parameter(&"glow_pulse_speed", 0.0)
-	main_sprite.material = stable_main_material
+	var stable_lower_material := lower_material.duplicate() as ShaderMaterial
+	stable_lower_material.resource_local_to_scene = true
+	stable_lower_material.set_shader_parameter(&"glow_pulse_speed", 0.0)
+	lower_sprite.material = stable_lower_material
+
+	var stable_upper_material := upper_material.duplicate() as ShaderMaterial
+	stable_upper_material.resource_local_to_scene = true
+	stable_upper_material.set_shader_parameter(&"glow_pulse_speed", 0.0)
+	upper_sprite.material = stable_upper_material
 
 	var stable_border_material := border_material.duplicate() as ShaderMaterial
 	stable_border_material.resource_local_to_scene = true

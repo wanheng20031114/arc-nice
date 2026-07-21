@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://bg3h6ma4lbbqd"]
 
 [ext_resource type="Script" uid="uid://chreaye2uaddt" path="res://scene/plant_defense/research_center.gd" id="1_script"]
-[ext_resource type="Texture2D" uid="uid://cx5577bfmgaln" path="res://resources/texture/plant_defense/research_center/research_center.png" id="2_sprite"]
+[ext_resource type="Texture2D" uid="uid://bltxers3ogvmq" path="res://resources/texture/plant_defense/research_center/layers/lower_body.png" id="2_lower_body"]
 [ext_resource type="PackedScene" uid="uid://by1igl2yc3ch0" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
 [ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
 [ext_resource type="Shader" path="res://resources/shader/research_center_lifecycle_glow.gdshader" id="5_lifecycle_glow_shader"]
@@ -9,6 +9,7 @@
 [ext_resource type="Shader" path="res://resources/shader/research_center_border.gdshader" id="7_border_shader"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="8_night_light"]
 [ext_resource type="Texture2D" path="res://resources/lighting/research_center_hotspots.svg" id="9_hotspot_texture"]
+[ext_resource type="Texture2D" uid="uid://cj0u16wwrt75s" path="res://resources/texture/plant_defense/research_center/layers/upper_foreground.png" id="10_upper_foreground"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_research_border"]
 shader = ExtResource("7_border_shader")
@@ -28,6 +29,18 @@ shader_parameter/glow_halo_strength = 0.04
 shader_parameter/glow_halo_alpha = 0.035
 shader_parameter/glow_pulse_amount = 0.004
 shader_parameter/glow_pulse_speed = 0.72
+shader_parameter/transparent_halo_weight = 1.0
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_lifecycle_glow_foreground"]
+shader = ExtResource("5_lifecycle_glow_shader")
+shader_parameter/lifecycle_noise = ExtResource("6_lifecycle_noise")
+shader_parameter/glow_color = Color(0.3, 0.9, 1.18, 1)
+shader_parameter/glow_core_strength = 0.22
+shader_parameter/glow_halo_strength = 0.04
+shader_parameter/glow_halo_alpha = 0.035
+shader_parameter/glow_pulse_amount = 0.004
+shader_parameter/glow_pulse_speed = 0.72
+shader_parameter/transparent_halo_weight = 0.0
 
 [sub_resource type="QuadMesh" id="QuadMesh_research_border"]
 size = Vector2(32, 32)
@@ -97,7 +110,7 @@ collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
 enemy_approach_depth = 7.0
-lifecycle_visual_paths = Array[NodePath]([NodePath("VisualRoot/MainSprite")])
+lifecycle_visual_paths = Array[NodePath]([NodePath("VisualRoot/LowerBody"), NodePath("VisualRoot/UpperForeground")])
 lifecycle_effect_top_y = -15.0
 
 [node name="ResearchBorder" type="MeshInstance2D" parent="."]
@@ -109,11 +122,16 @@ mesh = SubResource("QuadMesh_research_border")
 [node name="VisualRoot" type="Node2D" parent="." unique_id=144664990]
 scale = Vector2(0.5, 0.5)
 
-[node name="MainSprite" type="Sprite2D" parent="VisualRoot" unique_id=1870545017]
-z_index = 1
+[node name="LowerBody" type="Sprite2D" parent="VisualRoot" unique_id=1870545017]
 texture_filter = 1
 material = SubResource("ShaderMaterial_lifecycle_glow")
-texture = ExtResource("2_sprite")
+texture = ExtResource("2_lower_body")
+
+[node name="UpperForeground" type="Sprite2D" parent="VisualRoot"]
+z_index = 4
+texture_filter = 1
+material = SubResource("ShaderMaterial_lifecycle_glow_foreground")
+texture = ExtResource("10_upper_foreground")
 
 [node name="HotspotGlow" parent="." instance=ExtResource("8_night_light")]
 color = Color(0.4392157, 0.8509804, 1, 1)

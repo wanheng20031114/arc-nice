@@ -427,12 +427,20 @@ func _test_world_glow_contract(
 	day_night_controller: DayNightController
 ) -> void:
 	var visual_root := center.get_node_or_null("VisualRoot") as Node2D
-	var main_sprite := center.get_node_or_null(
-		"VisualRoot/MainSprite"
+	var lower_sprite := center.get_node_or_null(
+		"VisualRoot/LowerBody"
 	) as Sprite2D
-	var glow_material := (
-		main_sprite.material as ShaderMaterial
-		if main_sprite != null
+	var upper_sprite := center.get_node_or_null(
+		"VisualRoot/UpperForeground"
+	) as Sprite2D
+	var lower_material := (
+		lower_sprite.material as ShaderMaterial
+		if lower_sprite != null
+		else null
+	)
+	var upper_material := (
+		upper_sprite.material as ShaderMaterial
+		if upper_sprite != null
 		else null
 	)
 	var hotspot_glow := (
@@ -449,14 +457,21 @@ func _test_world_glow_contract(
 	_expect(
 		visual_root != null
 		and visual_root.scale == Vector2(0.5, 0.5)
-		and main_sprite != null
-		and main_sprite.z_index == 1
-		and main_sprite.texture_filter
+		and lower_sprite != null
+		and upper_sprite != null
+		and lower_sprite.z_index == 0
+		and upper_sprite.z_index == 4
+		and lower_sprite.texture_filter
+		== CanvasItem.TEXTURE_FILTER_NEAREST
+		and upper_sprite.texture_filter
 		== CanvasItem.TEXTURE_FILTER_NEAREST
 		and center.lifecycle_visual_paths
-		== [NodePath("VisualRoot/MainSprite")]
+		== [
+			NodePath("VisualRoot/LowerBody"),
+			NodePath("VisualRoot/UpperForeground"),
+		]
 		and center.get_node_or_null("VisualRoot/GlowOverlay") == null,
-		"五处常亮微光必须并入0.5整数缩放的主体单次绘制，不能新增独立Overlay破坏像素或图层。"
+		"培育中心必须以z=0下层与z=4立体前景分层，且两层保持0.5整数缩放和nearest采样。"
 	)
 	_expect(
 		hotspot_glow != null
@@ -478,29 +493,50 @@ func _test_world_glow_contract(
 		"五处亮核必须共用一盏可见、已绑定昼夜系统且强度足够的嫩绿色夜间PointLight2D。"
 	)
 	_expect(
-		glow_material != null
-		and not glow_material.resource_local_to_scene
-		and glow_material.shader.resource_path
+		lower_material != null
+		and upper_material != null
+		and not lower_material.resource_local_to_scene
+		and not upper_material.resource_local_to_scene
+		and lower_material.shader == upper_material.shader
+		and lower_material.shader.resource_path
 		== "res://resources/shader/plant_cultivation_center_lifecycle_glow.gdshader"
 		and is_equal_approx(
 			float(
-				glow_material.get_shader_parameter(
+				lower_material.get_shader_parameter(
 					&"glow_pulse_amount"
 				)
 			),
 			0.006
 		)
 		and (
-			glow_material.get_shader_parameter(&"glow_color") as Color
-		).g > 1.0,
-		"培育中心主体必须共享嫩草绿HDR材质，常亮呼吸幅度只能为±0.6%。"
+			lower_material.get_shader_parameter(&"glow_color") as Color
+		).g > 1.0
+		and is_equal_approx(
+			float(
+				lower_material.get_shader_parameter(
+					&"transparent_halo_weight"
+				)
+			),
+			1.0
+		)
+		and is_zero_approx(
+			float(
+				upper_material.get_shader_parameter(
+					&"transparent_halo_weight"
+				)
+			)
+		),
+		"培育中心上下层必须共享嫩草绿HDR Shader，透明晕光只能由下层绘制。"
 	)
 	var second_center := (
 		config.plant_scene.instantiate() as PlantCultivationCenter
 	)
 	if second_center != null:
-		var second_sprite := second_center.get_node_or_null(
-			"VisualRoot/MainSprite"
+		var second_lower := second_center.get_node_or_null(
+			"VisualRoot/LowerBody"
+		) as Sprite2D
+		var second_upper := second_center.get_node_or_null(
+			"VisualRoot/UpperForeground"
 		) as Sprite2D
 		var second_hotspot_glow := (
 			second_center.get_node_or_null(
@@ -508,9 +544,11 @@ func _test_world_glow_contract(
 			) as NightPointLight2D
 		)
 		_expect(
-			second_sprite != null
-			and second_sprite.material == glow_material,
-			"多个培育中心必须共享同一不可变ShaderMaterial，不能逐实例复制材质。"
+			second_lower != null
+			and second_upper != null
+			and second_lower.material == lower_material
+			and second_upper.material == upper_material,
+			"多个培育中心的上下层必须分别共享同一不可变ShaderMaterial。"
 		)
 		_expect(
 			second_hotspot_glow != null
