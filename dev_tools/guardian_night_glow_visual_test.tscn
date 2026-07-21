@@ -1,0 +1,93 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://dev_tools/guardian_night_glow_visual_test.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/lighting/day_night_controller.tscn" id="2_day_night"]
+[ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect_guardian.tscn" id="3_guardian"]
+
+[sub_resource type="Environment" id="Environment_glow"]
+glow_enabled = true
+glow_bloom = 0.06
+glow_hdr_scale = 1.4
+
+[node name="GuardianNightGlowVisualTest" type="Node2D"]
+script = ExtResource("1_script")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_glow")
+
+[node name="DayNightController" parent="." instance=ExtResource("2_day_night")]
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(400, 225)
+enabled = true
+
+[node name="Ground" type="Polygon2D" parent="."]
+z_index = -10
+color = Color(0.24, 0.21, 0.15, 1)
+polygon = PackedVector2Array(0, 0, 800, 0, 800, 450, 0, 450)
+
+[node name="Guardians" type="Node2D" parent="."]
+
+[node name="Guardian01" parent="Guardians" instance=ExtResource("3_guardian")]
+position = Vector2(80, 135)
+scale = Vector2(1.5, 1.5)
+
+[node name="Guardian02" parent="Guardians" instance=ExtResource("3_guardian")]
+position = Vector2(170, 135)
+scale = Vector2(1.5, 1.5)
+
+[node name="Guardian03" parent="Guardians" instance=ExtResource("3_guardian")]
+position = Vector2(260, 135)
+scale = Vector2(1.5, 1.5)
+
+[node name="Guardian04" parent="Guardians" instance=ExtResource("3_guardian")]
+position = Vector2(350, 135)
+scale = Vector2(1.5, 1.5)
+
+[node name="Guardian05" parent="Guardians" instance=ExtResource("3_guardian")]
+position = Vector2(450, 135)
+scale = Vector2(1.5, 1.5)
+
+[node name="Guardian06" parent="Guardians" instance=ExtResource("3_guardian")]
+position = Vector2(540, 135)
+scale = Vector2(1.5, 1.5)
+
+[node name="Guardian07" parent="Guardians" instance=ExtResource("3_guardian")]
+position = Vector2(630, 135)
+scale = Vector2(1.5, 1.5)
+
+[node name="Guardian08" parent="Guardians" instance=ExtResource("3_guardian")]
+position = Vector2(720, 135)
+scale = Vector2(1.5, 1.5)
+
+[node name="Guardian09" parent="Guardians" instance=ExtResource("3_guardian")]
+position = Vector2(80, 315)
+scale = Vector2(1.5, 1.5)
+
+[node name="Guardian10" parent="Guardians" instance=ExtResource("3_guardian")]
+position = Vector2(170, 315)
+scale = Vector2(1.5, 1.5)
+
+[node name="Guardian11" parent="Guardians" instance=ExtResource("3_guardian")]
+position = Vector2(260, 315)
+scale = Vector2(1.5, 1.5)
+
+[node name="Guardian12" parent="Guardians" instance=ExtResource("3_guardian")]
+position = Vector2(350, 315)
+scale = Vector2(1.5, 1.5)
+
+[node name="Guardian13" parent="Guardians" instance=ExtResource("3_guardian")]
+position = Vector2(450, 315)
+scale = Vector2(1.5, 1.5)
+
+[node name="Guardian14" parent="Guardians" instance=ExtResource("3_guardian")]
+position = Vector2(540, 315)
+scale = Vector2(1.5, 1.5)
+
+[node name="Guardian15" parent="Guardians" instance=ExtResource("3_guardian")]
+position = Vector2(630, 315)
+scale = Vector2(1.5, 1.5)
+
+[node name="Guardian16" parent="Guardians" instance=ExtResource("3_guardian")]
+position = Vector2(720, 315)
+scale = Vector2(1.5, 1.5)

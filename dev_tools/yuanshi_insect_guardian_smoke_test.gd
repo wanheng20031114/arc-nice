@@ -375,6 +375,11 @@ func _test_guardian_aura_visual_configuration() -> void:
 			"Guardian halo must use additive blending so its transparent fringe cannot darken the ground."
 		)
 		_expect(
+			halo_material != null
+			and halo_material.light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED,
+			"Every guardian halo must remain self-lit when the PointLight budget is full."
+		)
+		_expect(
 			guardian_halo.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR,
 			"Guardian halo sprite must use linear filtering."
 		)
