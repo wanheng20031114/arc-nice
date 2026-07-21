@@ -68,6 +68,9 @@ const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE := preload(
 )
 const CAPOO_SMG_BULLET_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
 const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
+const FROST_SORCERER_ICE_SPIKE_SCENE := preload(
+	"res://scene/enemy/frost_sorcerer_ice_spike.tscn"
+)
 const LINGLAN_SAKURA_BULLET_SCENE_PATH := "res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn"
 const LINGLAN_SKILL2_CONFIG_PATH := "res://resources/config/bosses/linglan_skill2.tres"
 const LINGLAN_SKILL2_ROCKET_SCENE_PATH := "res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn"
@@ -134,6 +137,7 @@ const FIRE_SORCERER_ELITE_BURN_LEVEL := 10
 const FIRE_SORCERER_CONSUMED_SOURCE_MASK_KEY: StringName = (
 	&"fire_sorcerer_consumed_source_mask"
 )
+const FROST_SORCERER_ICE_SPIKE_TYPE: StringName = &"frost_sorcerer_ice_spike"
 const LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET := 32
 const TIYI_SNIPER_PROJECTILE_TYPE: StringName = &"tiyi_sniper_bullet"
 const TIYI_HIGH_NOON_MAX_TARGETS := 25
@@ -4752,6 +4756,10 @@ func _apply_projectile_lifetime_compensation(
 	if fire_projectile != null:
 		fire_projectile.remaining_lifetime = remaining
 		return
+	var frost_ice_spike := projectile as FrostSorcererIceSpike
+	if frost_ice_spike != null:
+		frost_ice_spike.remaining_lifetime = remaining
+		return
 	var projectile_script := projectile.get_script() as Script
 	var projectile_script_path := projectile_script.resource_path if projectile_script != null else ""
 	if (
@@ -4998,6 +5006,18 @@ func _instantiate_projectile(
 			fire_projectile.top_level = true
 			fire_projectile.setup(direction, damage, speed, lifetime)
 			return fire_projectile
+		FROST_SORCERER_ICE_SPIKE_TYPE:
+			var frost_ice_spike := (
+				_acquire_or_instantiate_projectile(
+					FROST_SORCERER_ICE_SPIKE_SCENE
+				)
+				as FrostSorcererIceSpike
+			)
+			if frost_ice_spike == null:
+				return null
+			frost_ice_spike.top_level = true
+			frost_ice_spike.setup(direction, damage, speed, lifetime)
+			return frost_ice_spike
 		&"linglan_skill1":
 			_ensure_linglan_projectile_resources(projectile_type)
 			if _linglan_sakura_bullet_scene == null:
@@ -5432,9 +5452,78 @@ func _get_multiplayer_player_hit_key(
 	target_peer_id: int,
 	source_type: StringName
 ) -> String:
-	if _get_fire_sorcerer_fireball_source_bit(source_type) != 0:
+	if (
+		_get_fire_sorcerer_fireball_source_bit(source_type) != 0
+		or source_type == FROST_SORCERER_ICE_SPIKE_TYPE
+	):
 		return "%d:%s" % [source_id, String(source_type)]
 	return "%d:%d:%s" % [source_id, target_peer_id, String(source_type)]
+
+
+func _get_frost_ice_spike_record(
+	projectile_id: int,
+	source_type: StringName
+) -> Dictionary:
+	if (
+		projectile_id <= 0
+		or source_type != FROST_SORCERER_ICE_SPIKE_TYPE
+	):
+		return {}
+	var record_variant: Variant = _projectile_records.get(projectile_id)
+	if not (record_variant is Dictionary):
+		return {}
+	var projectile_record := record_variant as Dictionary
+	if (
+		StringName(projectile_record.get("projectile_type", &""))
+		!= FROST_SORCERER_ICE_SPIKE_TYPE
+	):
+		return {}
+	return projectile_record
+
+
+func _get_frost_ice_spike_record_damage(
+	projectile_id: int,
+	source_type: StringName
+) -> int:
+	var projectile_record := _get_frost_ice_spike_record(
+		projectile_id,
+		source_type
+	)
+	if projectile_record.is_empty():
+		return -1
+	return int(projectile_record.get("damage", -1))
+
+
+func _is_frost_ice_spike_contact_consumed(
+	projectile_id: int,
+	source_type: StringName
+) -> bool:
+	var projectile_record := _get_frost_ice_spike_record(
+		projectile_id,
+		source_type
+	)
+	return (
+		not projectile_record.is_empty()
+		and bool(projectile_record.get("confirmed_hit_consumed", false))
+	)
+
+
+func try_consume_frost_sorcerer_ice_spike_contact(
+	projectile_id: int,
+	source_type: StringName
+) -> bool:
+	var projectile_record := _get_frost_ice_spike_record(
+		projectile_id,
+		source_type
+	)
+	if (
+		projectile_record.is_empty()
+		or bool(projectile_record.get("confirmed_hit_consumed", false))
+	):
+		return false
+	projectile_record["confirmed_hit_consumed"] = true
+	_projectile_records[projectile_id] = projectile_record
+	return true
 
 
 func _get_authoritative_projectile_damage(
@@ -6729,7 +6818,7 @@ func request_multiplayer_player_damage(
 	damage_type_or_source_direction: Variant = EnemyConfig.DamageType.PHYSICAL,
 	source_direction_or_is_ranged: Variant = Vector2.ZERO,
 	is_ranged: bool = false,
-	fire_contact_preconsumed: bool = false
+	contact_preconsumed: bool = false
 ) -> bool:
 	if source_id <= 0 or target_peer_id <= 0 or damage <= 0:
 		return false
@@ -6746,6 +6835,16 @@ func request_multiplayer_player_damage(
 			source_direction = source_direction_or_is_ranged as Vector2
 		elif source_direction_or_is_ranged is bool:
 			resolved_is_ranged = bool(source_direction_or_is_ranged)
+	var is_frost_ice_spike := source_type == FROST_SORCERER_ICE_SPIKE_TYPE
+	if is_frost_ice_spike:
+		var authoritative_damage := _get_frost_ice_spike_record_damage(
+			source_id,
+			source_type
+		)
+		if authoritative_damage <= 0:
+			return false
+		damage = authoritative_damage
+		resolved_damage_type = EnemyConfig.DamageType.MAGIC
 	var damage_context := _build_player_damage_context(source_direction, resolved_is_ranged)
 	var impact_direction := Vector2.ZERO
 	if source_direction.is_finite() and source_direction.length_squared() > 0.001:
@@ -6764,17 +6863,28 @@ func request_multiplayer_player_damage(
 	if _is_recent_event_cached(_processed_player_hit_ids, hit_key, now):
 		return true
 	var fire_source_bit := _get_fire_sorcerer_fireball_source_bit(source_type)
-	var fire_contact_was_consumed := false
+	var contact_was_consumed := false
 	if fire_source_bit != 0:
-		fire_contact_was_consumed = (
+		contact_was_consumed = (
 			_is_fire_sorcerer_fireball_contact_consumed(source_id, source_type)
-			if fire_contact_preconsumed
+			if contact_preconsumed
 			else try_consume_fire_sorcerer_fireball_contact(
 				source_id,
 				source_type
 			)
 		)
-		if not fire_contact_was_consumed:
+		if not contact_was_consumed:
+			return true
+	elif is_frost_ice_spike:
+		contact_was_consumed = (
+			_is_frost_ice_spike_contact_consumed(source_id, source_type)
+			if contact_preconsumed
+			else try_consume_frost_sorcerer_ice_spike_contact(
+				source_id,
+				source_type
+			)
+		)
+		if not contact_was_consumed:
 			return true
 	if net_manager.is_client():
 		if target_peer_id != _get_local_peer_id():
@@ -6786,7 +6896,7 @@ func request_multiplayer_player_damage(
 			resolved_damage_type,
 			damage_context
 		)
-		if damage_was_applied or fire_contact_was_consumed:
+		if damage_was_applied or contact_was_consumed:
 			var applied_damage_for_report := (
 				player_node.last_damage_taken
 				if damage_was_applied
@@ -6813,7 +6923,7 @@ func request_multiplayer_player_damage(
 			resolved_damage_type,
 			damage_context
 		)
-		if damage_was_applied or fire_contact_was_consumed:
+		if damage_was_applied or contact_was_consumed:
 			var applied_damage_for_report := (
 				player_node.last_damage_taken
 				if damage_was_applied
@@ -6830,7 +6940,7 @@ func request_multiplayer_player_damage(
 				applied_damage_for_report,
 				impact_direction,
 				resolved_damage_type,
-				fire_contact_was_consumed
+				contact_was_consumed
 			)
 		return true
 	return false
@@ -7002,13 +7112,22 @@ func _apply_player_hit_report(
 	reported_applied_damage: int,
 	impact_direction: Vector2,
 	damage_type: EnemyConfig.DamageType,
-	fire_contact_preconsumed: bool = false
+	contact_preconsumed: bool = false
 ) -> void:
 	if source_id <= 0 or player_peer_id <= 0 or damage <= 0:
 		return
 	var is_fire_sorcerer_fireball := (
 		_get_fire_sorcerer_fireball_source_bit(source_type) != 0
 	)
+	var is_frost_ice_spike := source_type == FROST_SORCERER_ICE_SPIKE_TYPE
+	if is_frost_ice_spike:
+		var authoritative_damage := _get_frost_ice_spike_record_damage(
+			source_id,
+			source_type
+		)
+		if authoritative_damage <= 0:
+			return
+		damage = authoritative_damage
 	var hit_key := _get_multiplayer_player_hit_key(
 		source_id,
 		player_peer_id,
@@ -7016,7 +7135,7 @@ func _apply_player_hit_report(
 	)
 	var now := _get_net_time()
 	if _is_recent_event_cached(_processed_player_hit_ids, hit_key, now):
-		if is_fire_sorcerer_fireball:
+		if is_fire_sorcerer_fireball or is_frost_ice_spike:
 			_send_authoritative_player_health_correction(player_peer_id)
 		return
 	var player_node: Player = null
@@ -7032,8 +7151,23 @@ func _apply_player_hit_report(
 				source_id,
 				source_type
 			)
-			if fire_contact_preconsumed
+			if contact_preconsumed
 			else try_consume_fire_sorcerer_fireball_contact(
+				source_id,
+				source_type
+			)
+		)
+		if not contact_consumed:
+			_send_authoritative_player_health_correction(
+				player_peer_id,
+				player_node
+			)
+			return
+	elif is_frost_ice_spike:
+		var contact_consumed := (
+			_is_frost_ice_spike_contact_consumed(source_id, source_type)
+			if contact_preconsumed
+			else try_consume_frost_sorcerer_ice_spike_contact(
 				source_id,
 				source_type
 			)
@@ -7050,15 +7184,21 @@ func _apply_player_hit_report(
 		confirmed_health = mini(confirmed_health, player_node.current_health)
 	var confirmed_dead := reported_is_dead or confirmed_health <= 0
 	var confirmed_damage := clampi(reported_applied_damage, 0, player_node.max_health)
+	if is_frost_ice_spike:
+		confirmed_damage = mini(confirmed_damage, damage)
 	var confirmed_impact_direction := Vector2.ZERO
 	if impact_direction.is_finite() and impact_direction.length_squared() > 0.001:
 		confirmed_impact_direction = impact_direction.normalized()
 	var confirmed_damage_type := (
 		EnemyConfig.DamageType.MAGIC
-		if damage_type == EnemyConfig.DamageType.MAGIC
+		if (
+			is_frost_ice_spike
+			or damage_type == EnemyConfig.DamageType.MAGIC
+		)
 		else EnemyConfig.DamageType.PHYSICAL
 	)
 	player_node.set_multiplayer_health_state(confirmed_health, confirmed_dead)
+	var confirmed_cold_applied := false
 	if confirmed_damage > 0 and not confirmed_dead:
 		var burn_family := _get_fire_sorcerer_burn_family(source_type)
 		var burn_level := _get_fire_sorcerer_burn_level(burn_family)
@@ -7068,6 +7208,8 @@ func _apply_player_hit_report(
 				FIRE_SORCERER_BURN_DURATION_SECONDS,
 				burn_level
 			)
+		if is_frost_ice_spike:
+			confirmed_cold_applied = player_node.apply_cold_status()
 	_show_confirmed_player_damage_number(
 		player_node,
 		confirmed_damage,
@@ -7090,6 +7232,8 @@ func _apply_player_hit_report(
 			confirmed_damage,
 			confirmed_impact_direction,
 			int(confirmed_damage_type),
+			true,
+			confirmed_cold_applied,
 		]
 	)
 	net_player_damage_applied(
@@ -7099,7 +7243,9 @@ func _apply_player_hit_report(
 		health_revision,
 		confirmed_damage,
 		confirmed_impact_direction,
-		int(confirmed_damage_type)
+		int(confirmed_damage_type),
+		true,
+		confirmed_cold_applied
 	)
 
 
@@ -7136,7 +7282,8 @@ func net_player_damage_applied(
 	confirmed_damage: int,
 	impact_direction: Vector2,
 	damage_type: int,
-	grant_hit_invincibility: bool = true
+	grant_hit_invincibility: bool = true,
+	apply_confirmed_cold: bool = false
 ) -> void:
 	if player_peer_id <= 0:
 		return
@@ -7149,6 +7296,8 @@ func net_player_damage_applied(
 		return
 	_player_health_revisions[player_peer_id] = health_revision
 	player_node.set_multiplayer_health_state(current_health, is_dead)
+	if apply_confirmed_cold and confirmed_damage > 0 and not is_dead:
+		player_node.apply_cold_status()
 	_show_confirmed_player_damage_number(
 		player_node,
 		clampi(confirmed_damage, 0, player_node.max_health),

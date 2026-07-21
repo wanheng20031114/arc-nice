@@ -44,6 +44,7 @@ const TOWER_DEFENSE_RUNTIME_RESOURCE_PATHS: Array[String] = [
 	"res://scene/enemy/capoo_mage_fireball.tscn",
 	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn",
 	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn",
+	"res://scene/enemy/frost_sorcerer_ice_spike.tscn",
 	"res://scene/enemy/yuanshi_insect_fire_projectile.tscn",
 	"res://scene/bullet.tscn",
 	"res://scene/bullet_hit_effect.tscn",

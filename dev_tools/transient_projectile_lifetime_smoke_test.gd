@@ -49,6 +49,16 @@ const PROJECTILE_CASES := [
 		"maximum_allowed_lifetime": 7.0,
 		"retire_visual_delay": 0.5,
 	},
+	{
+		"label": "frost_sorcerer_ice_spike",
+		"scene": preload(
+			"res://scene/enemy/frost_sorcerer_ice_spike.tscn"
+		),
+		"expected_lifetime": 7.0,
+		"expected_speed": 100.0,
+		"maximum_allowed_lifetime": 7.0,
+		"retire_visual_delay": 0.5,
+	},
 ]
 
 var failures: Array[String] = []
@@ -93,6 +103,13 @@ func _run() -> void:
 			"%s must not exceed its explicit %.2fs projectile ceiling."
 			% [label, maximum_allowed_lifetime]
 		)
+		if case_data.has("expected_speed"):
+			var expected_speed := float(case_data["expected_speed"])
+			_expect(
+				is_equal_approx(configured_speed, expected_speed),
+				"%s speed must remain explicitly authored at %.1fpx/s."
+				% [label, expected_speed]
+			)
 		envelope_parts.append(
 			"%s=%.2fs/%.1fpx" % [
 				label,

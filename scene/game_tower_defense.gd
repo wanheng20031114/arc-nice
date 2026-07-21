@@ -12,6 +12,9 @@ const FIRE_SORCERER_FIREBALL_VOLLEY_POOL_SCENE := preload(
 const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_POOL_SCENE := preload(
 	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn"
 )
+const FROST_SORCERER_ICE_SPIKE_POOL_SCENE := preload(
+	"res://scene/enemy/frost_sorcerer_ice_spike.tscn"
+)
 const YUANSHI_FIRE_PROJECTILE_POOL_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
 const AGAVE_CANNONBALL_POOL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
 const BAMBOO_MORTAR_SHELL_POOL_SCENE := preload(
@@ -324,6 +327,9 @@ func _ready() -> void:
 		48,
 		704
 	)
+	# One 7 s ice spike spans two 3.6 s cast cycles.  Capacity intentionally
+	# covers the 300-enemy gameplay probe while prewarm stays loading-friendly.
+	session_object_pool.register_scene(FROST_SORCERER_ICE_SPIKE_POOL_SCENE, 48, 704)
 	GameRuntimeBase.register_capoo_mage_fireball_impact_pool(
 		session_object_pool,
 		48,
@@ -4448,8 +4454,7 @@ func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 		state.reload_progress = player_instance.get_multiplayer_reload_progress()
 		state.primary_cooldown_ratio = _get_player_primary_cooldown_ratio(player_instance)
 		state.effective_move_speed_multiplier = (
-			player_instance.current_move_speed_multiplier
-			* player_instance.collectible_swift_move_speed_multiplier
+			player_instance.get_authoritative_move_speed_multiplier()
 		)
 		states.append(state)
 	return states

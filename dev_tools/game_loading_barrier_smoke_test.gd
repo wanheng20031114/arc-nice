@@ -19,6 +19,7 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://scene/enemy/capoo_ak47_bullet.tscn",
 	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn",
 	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn",
+	"res://scene/enemy/frost_sorcerer_ice_spike.tscn",
 	"res://resources/animation/yuanshi_insect_basic.tres",
 	"res://resources/animation/capoo_ak47.tres",
 	"res://resources/audio/capoo_ak47_fire.wav",
@@ -141,7 +142,7 @@ func _test_runtime_activation_gate() -> void:
 		and game.process_mode == Node.PROCESS_MODE_INHERIT,
 		"Barrier completion must reactivate gameplay exactly once."
 	)
-	_expect_fire_sorcerer_projectile_pool(game, 48, 704)
+	_expect_sorcerer_projectile_pools(game, 48, 704)
 	game.queue_free()
 	await process_frame
 
@@ -313,7 +314,7 @@ func _test_singleplayer_coordinator_flow() -> void:
 		and bool(tower_runtime.get("plant_lifecycle_shader_prewarmed")),
 		"Tower-defense loading must finish staged preparation before activation."
 	)
-	_expect_fire_sorcerer_projectile_pool(tower_runtime, 48, 704)
+	_expect_sorcerer_projectile_pools(tower_runtime, 48, 704)
 	await physics_frame
 	await physics_frame
 	_expect_lifecycle_prewarm_pool_released(tower_runtime)
@@ -384,7 +385,7 @@ func _expect_lifecycle_prewarm_pool_released(runtime: GameRuntimeBase) -> void:
 		)
 
 
-func _expect_fire_sorcerer_projectile_pool(
+func _expect_sorcerer_projectile_pools(
 	runtime: GameRuntimeBase,
 	expected_prewarm_count: int,
 	expected_retained_capacity: int
@@ -398,6 +399,7 @@ func _expect_fire_sorcerer_projectile_pool(
 	for scene_path in [
 		"res://scene/enemy/fire_sorcerer_fireball_volley.tscn",
 		"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn",
+		"res://scene/enemy/frost_sorcerer_ice_spike.tscn",
 	]:
 		var metrics := object_pool.get_metrics(scene_path)
 		_expect(

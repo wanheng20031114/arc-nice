@@ -56,9 +56,13 @@ const FIRE_SORCERER_CONFIG_PATH := (
 const FIRE_SORCERER_ELITE_CONFIG_PATH := (
 	"res://resources/config/enemies/fire_sorcerer_elite.tres"
 )
+const FROST_SORCERER_CONFIG_PATH := (
+	"res://resources/config/enemies/frost_sorcerer.tres"
+)
 const STANDARD_SINGLEPLAYER_FIRST_WAVE_EXPECTED_COUNTS := {
 	FIRE_SORCERER_CONFIG_PATH: 1,
 	FIRE_SORCERER_ELITE_CONFIG_PATH: 1,
+	FROST_SORCERER_CONFIG_PATH: 1,
 }
 const FIRST_WAVE_EXPECTED_COUNTS := {
 	"res://resources/config/enemies/yuanshi_insect_basic.tres": 850,
@@ -167,7 +171,7 @@ func _test_campaign_resources() -> void:
 				definition["campaign_id"] == &"standard_singleplayer"
 				and wave_index == 0
 			):
-				_verify_standard_singleplayer_fire_sorcerer_test_wave(
+				_verify_standard_singleplayer_sorcerer_test_wave(
 					wave_config,
 					source_wave
 				)
@@ -352,15 +356,15 @@ func _verify_tower_defense_stress_wave(
 	)
 
 
-func _verify_standard_singleplayer_fire_sorcerer_test_wave(
+func _verify_standard_singleplayer_sorcerer_test_wave(
 	wave_config: WaveConfig,
 	source_wave: WaveConfig
 ) -> void:
 	_expect(
 		wave_config.enemy_entries.size()
 		== STANDARD_SINGLEPLAYER_FIRST_WAVE_EXPECTED_COUNTS.size()
-		and wave_config.get_total_enemy_count() == 2,
-		"Standard singleplayer wave 1 must contain exactly two enemies."
+		and wave_config.get_total_enemy_count() == 3,
+		"Standard singleplayer wave 1 must contain exactly three sorcerers."
 	)
 	var actual_counts := {}
 	for entry in wave_config.enemy_entries:
@@ -368,16 +372,16 @@ func _verify_standard_singleplayer_fire_sorcerer_test_wave(
 			actual_counts[entry.enemy_config.resource_path] = entry.count
 	_expect(
 		actual_counts == STANDARD_SINGLEPLAYER_FIRST_WAVE_EXPECTED_COUNTS,
-		"Standard singleplayer wave 1 must contain one normal and one Elite Fire Sorcerer."
+		"Standard singleplayer wave 1 must contain normal/elite Fire and normal Frost Sorcerers."
 	)
 	_expect(
-		wave_config.max_alive_enemies == 2,
-		"Standard singleplayer Fire Sorcerer test wave must allow both enemies."
+		wave_config.max_alive_enemies == 3,
+		"Standard singleplayer Sorcerer test wave must allow all three enemies."
 	)
 	_expect(
-		wave_config.wave_name == "第1波 火焰术士测试"
-		and wave_config.display_name == "第1波 火焰术士测试",
-		"Standard singleplayer Fire Sorcerer test wave must use its explicit test label."
+		wave_config.wave_name == "第1波 术士测试"
+		and wave_config.display_name == "第1波 术士测试",
+		"Standard singleplayer Sorcerer test wave must use its explicit test label."
 	)
 	_expect(
 		source_wave != null
@@ -392,7 +396,7 @@ func _verify_standard_singleplayer_fire_sorcerer_test_wave(
 		and _resource_path(wave_config.post_wave_music)
 		== _resource_path(source_wave.post_wave_music)
 		and wave_config.exits.size() == source_wave.exits.size(),
-		"Standard singleplayer Fire Sorcerer test wave must preserve its flow and audio."
+		"Standard singleplayer Sorcerer test wave must preserve its flow and audio."
 	)
 	if source_wave != null and wave_config.exits.size() == source_wave.exits.size():
 		for exit_index in range(wave_config.exits.size()):

@@ -140,6 +140,7 @@ const RANGED_DIRECTION_SIDE_THRESHOLD := 0.35
 const DEFAULT_SKILL1_DISPLAY_NAME := "技能"
 const STATUS_EFFECT_EXPIRY_SCHEDULER_PATH := NodePath("/root/StatusEffectExpiryScheduler")
 const BURN_STATUS_SCHEDULER_PATH := NodePath("/root/BurnStatusScheduler")
+const COLD_STATUS_SCHEDULER_PATH := NodePath("/root/ColdStatusScheduler")
 
 static var _collectible_temporary_source_serial: int = 0
 # Keep the former one-SceneTreeTimer-per-enemy path available for deterministic
@@ -187,6 +188,8 @@ var collectible_shot_counters: Dictionary = {}
 var collectible_trigger_cooldowns: Dictionary = {}
 var collectible_swift_time_left: float = 0.0
 var collectible_swift_move_speed_multiplier: float = 1.0
+var cold_stack_count := 0
+var cold_move_speed_multiplier := 1.0
 var network_effective_move_speed_multiplier_override: float = 0.0
 var collectible_physical_damage_bonus: int = 0
 var collectible_magic_damage_bonus: int = 0
@@ -327,6 +330,10 @@ func _ready() -> void:
 	night_light.set_emission_allowed(not is_dead)
 	body_sprite.animation_finished.connect(_on_body_sprite_animation_finished)
 	get_window().focus_exited.connect(_on_window_focus_exited)
+
+
+func _exit_tree() -> void:
+	clear_cold_status()
 
 
 func _apply_terrain_collision_profile() -> void:
@@ -795,6 +802,52 @@ func clear_burn_status() -> void:
 	var scheduler := get_node_or_null(BURN_STATUS_SCHEDULER_PATH)
 	if scheduler != null:
 		scheduler.call("clear_target", self)
+
+
+func apply_cold_status() -> bool:
+	if is_dead or not is_inside_tree():
+		return false
+	var scheduler := get_node_or_null(COLD_STATUS_SCHEDULER_PATH)
+	if scheduler == null:
+		push_error("ColdStatusScheduler autoload is missing.")
+		return false
+	return bool(scheduler.call(
+		"apply_cold",
+		self,
+		Callable(self, "_apply_cold_runtime_state")
+	))
+
+
+func clear_cold_status() -> void:
+	var scheduler := (
+		get_node_or_null(COLD_STATUS_SCHEDULER_PATH)
+		if is_inside_tree()
+		else null
+	)
+	if scheduler != null and bool(scheduler.call("clear_target", self)):
+		return
+	_apply_cold_runtime_state(0, 1.0)
+
+
+func get_cold_stack_count() -> int:
+	return cold_stack_count
+
+
+func _apply_cold_runtime_state(stack_count: int, multiplier: float) -> void:
+	var safe_stack_count := clampi(stack_count, 0, 4)
+	var safe_multiplier := (
+		clampf(multiplier, 0.0, 1.0)
+		if safe_stack_count > 0
+		else 1.0
+	)
+	if (
+		cold_stack_count == safe_stack_count
+		and is_equal_approx(cold_move_speed_multiplier, safe_multiplier)
+	):
+		return
+	cold_stack_count = safe_stack_count
+	cold_move_speed_multiplier = safe_multiplier
+	_update_movement_status_visuals(Vector2.ZERO)
 
 
 func _receive_incoming_burn_tick(
@@ -1501,6 +1554,7 @@ func set_multiplayer_health_state(new_health: int, new_is_dead: bool) -> void:
 func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invincible_seconds: float = 0.0) -> void:
 	var was_dead := is_dead
 	clear_burn_status()
+	clear_cold_status()
 	tower_defense_death_presentation_active = false
 	global_position = revive_position
 	reset_physics_interpolation()
@@ -1551,6 +1605,7 @@ func apply_multiplayer_death_state() -> void:
 	is_dead = true
 	night_light.set_emission_allowed(false)
 	clear_burn_status()
+	clear_cold_status()
 	controls_locked = true
 	_finish_dash()
 	_stop_remote_dash_visual()
@@ -3687,11 +3742,20 @@ func _on_dash_cooldown_timer_timeout() -> void:
 func _get_effective_move_speed() -> float:
 	if network_effective_move_speed_multiplier_override > 0.0:
 		return move_speed * network_effective_move_speed_multiplier_override
-	return move_speed * current_move_speed_multiplier * collectible_swift_move_speed_multiplier
+	return move_speed * get_authoritative_move_speed_multiplier()
+
+
+func get_authoritative_move_speed_multiplier() -> float:
+	return (
+		current_move_speed_multiplier
+		* collectible_swift_move_speed_multiplier
+		* cold_move_speed_multiplier
+	)
 
 
 func apply_multiplayer_effective_move_speed_multiplier(multiplier: float) -> void:
 	network_effective_move_speed_multiplier_override = clampf(multiplier, 0.05, 8.0)
+	_update_movement_status_visuals(Vector2.ZERO)
 
 
 func _get_mouse_shoot_direction() -> Vector2:
@@ -3810,9 +3874,18 @@ func _update_character_pickup_effects(_delta: float) -> void:
 # 更新临时移速增减的视觉反馈
 func _update_movement_status_visuals(move_direction: Vector2) -> void:
 	var is_slowed := (
-		speed_buff_time_left > 0.0
-		and current_move_speed_multiplier < DEFAULT_MOVE_SPEED_MULTIPLIER
+		cold_stack_count > 0
+		or (
+			speed_buff_time_left > 0.0
+			and current_move_speed_multiplier < DEFAULT_MOVE_SPEED_MULTIPLIER
+		)
 	)
+	if network_effective_move_speed_multiplier_override > 0.0:
+		is_slowed = (
+			cold_stack_count > 0
+			or network_effective_move_speed_multiplier_override
+				< DEFAULT_MOVE_SPEED_MULTIPLIER
+		)
 	_set_slow_overlay_strength(SLOW_OVERLAY_ACTIVE_STRENGTH if is_slowed else 0.0)
 
 	var is_temporarily_hasted := (
@@ -4103,6 +4176,7 @@ func _die() -> void:
 	is_dead = true
 	night_light.set_emission_allowed(false)
 	clear_burn_status()
+	clear_cold_status()
 	_finish_dash()
 	_stop_remote_dash_visual()
 	multiplayer_dash_protection_time_left = 0.0

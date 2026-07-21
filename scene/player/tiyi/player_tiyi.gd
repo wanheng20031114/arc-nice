@@ -94,6 +94,7 @@ func set_controls_locked(locked: bool) -> void:
 func _exit_tree() -> void:
 	_cancel_high_noon(true)
 	_clear_owned_sniper_bullets()
+	super._exit_tree()
 
 
 func _cache_character_visual_base_positions() -> void:

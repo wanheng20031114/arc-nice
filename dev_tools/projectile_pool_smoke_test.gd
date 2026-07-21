@@ -11,6 +11,9 @@ const FIRE_SORCERER_FIREBALL_VOLLEY_SCENE := preload(
 const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE := preload(
 	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn"
 )
+const FROST_SORCERER_ICE_SPIKE_SCENE := preload(
+	"res://scene/enemy/frost_sorcerer_ice_spike.tscn"
+)
 const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
 const AGAVE_CANNONBALL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
 const COLLECTIBLE_ARROW_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
@@ -58,6 +61,7 @@ func _run() -> void:
 		1,
 		2
 	)
+	pool.register_scene(FROST_SORCERER_ICE_SPIKE_SCENE, 1, 2)
 	pool.register_scene(YUANSHI_FIRE_PROJECTILE_SCENE, 1, 2)
 	pool.register_scene(AGAVE_CANNONBALL_SCENE, 1, 2)
 	pool.register_scene(COLLECTIBLE_ARROW_SCENE, 1, 2)
@@ -566,6 +570,7 @@ func _verify_extended_projectile_reuse() -> void:
 		MAGE_FIREBALL_SCENE,
 		FIRE_SORCERER_FIREBALL_VOLLEY_SCENE,
 		FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE,
+		FROST_SORCERER_ICE_SPIKE_SCENE,
 		YUANSHI_FIRE_PROJECTILE_SCENE,
 		AGAVE_CANNONBALL_SCENE,
 		COLLECTIBLE_ARROW_SCENE,
@@ -575,6 +580,8 @@ func _verify_extended_projectile_reuse() -> void:
 	for projectile_scene in scenes:
 		var retained_explosion_query: PhysicsShapeQueryParameters2D = null
 		var retained_explosion_targets: Dictionary = {}
+		var retained_motion_query: PhysicsRayQueryParameters2D = null
+		var retained_motion_exclude: Array = []
 		var projectile := pool.acquire(projectile_scene)
 		_expect(projectile != null, "%s must be acquirable from the elastic pool." % projectile_scene.resource_path)
 		if projectile == null:
@@ -629,6 +636,30 @@ func _verify_extended_projectile_reuse() -> void:
 				dirty_volley.ball_areas[ball_index].collision_layer = 0
 				dirty_volley.ball_areas[ball_index].collision_mask = 0
 				dirty_volley.ball_sprites[ball_index].hide()
+		if projectile_scene == FROST_SORCERER_ICE_SPIKE_SCENE:
+			var dirty_spike := projectile as FrostSorcererIceSpike
+			retained_motion_query = dirty_spike.motion_collision_query
+			retained_motion_exclude = dirty_spike.motion_collision_exclude
+			dirty_spike.setup(Vector2.UP, 17, 225.0, 0.75)
+			dirty_spike.setup_multiplayer(
+				702,
+				10,
+				&"contaminated_frost_spike"
+			)
+			_expect(
+				dirty_spike.direction == Vector2.UP
+				and dirty_spike.damage == 17
+				and is_equal_approx(dirty_spike.speed, 225.0)
+				and is_equal_approx(dirty_spike.max_lifetime, 0.75)
+				and is_equal_approx(dirty_spike.remaining_lifetime, 0.75)
+				and dirty_spike.projectile_id == 702
+				and dirty_spike.owner_peer_id == 10,
+				"Frost Sorcerer ice-spike setup must apply one straight-flight lease."
+			)
+			dirty_spike.has_hit = true
+			dirty_spike.effect_time_left = 9.0
+			dirty_spike.multiplayer_contact_consumed = true
+			dirty_spike.motion_sweep_query_count = 99
 		if projectile is Area2D:
 			(projectile as Area2D).collision_layer = 0
 			(projectile as Area2D).collision_mask = 0
@@ -760,6 +791,42 @@ func _verify_extended_projectile_reuse() -> void:
 					== FireSorcererFireballVolley.BALL_COUNT,
 				"Reused Fire Sorcerer volleys must restore three distinct "
 				+ "authored offsets."
+			)
+		if projectile_scene == FROST_SORCERER_ICE_SPIKE_SCENE:
+			var reused_spike := reused as FrostSorcererIceSpike
+			_expect(
+				not reused_spike.has_hit
+				and is_zero_approx(reused_spike.effect_time_left)
+				and is_equal_approx(reused_spike.speed, 100.0)
+				and is_equal_approx(reused_spike.max_lifetime, 7.0)
+				and is_equal_approx(reused_spike.remaining_lifetime, 7.0)
+				and reused_spike.source_type == &"frost_sorcerer_ice_spike"
+				and not reused_spike.multiplayer_contact_consumed
+				and reused_spike.motion_sweep_query_count == 0,
+				(
+					"Reused Frost Sorcerer ice spikes must restore their single-hit "
+					+ "100px/s, 7s straight-flight profile and source type."
+				)
+			)
+			_expect(
+				is_same(retained_motion_query, reused_spike.motion_collision_query)
+				and is_same(
+					retained_motion_exclude,
+					reused_spike.motion_collision_exclude
+				)
+				and retained_motion_exclude.size() == 1
+				and retained_motion_exclude[0] == reused_spike.get_rid(),
+				"Reused ice spikes must retain one self-excluding motion ray query."
+			)
+			_expect(
+				reused_spike.collision_layer
+					== FrostSorcererIceSpike.AUTHORED_COLLISION_LAYER
+				and reused_spike.collision_mask
+					== FrostSorcererIceSpike.AUTHORED_COLLISION_MASK
+				and not reused_spike.collision_shape.disabled
+				and reused_spike.animated_sprite.visible
+				and reused_spike.animated_sprite.animation == &"fly",
+				"Reused ice spikes must restore collision and the flight visual."
 			)
 		if reused is Area2D:
 			_expect(

@@ -8,6 +8,9 @@ const FIRE_SORCERER_FIREBALL_VOLLEY_SCENE := preload(
 const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE := preload(
 	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn"
 )
+const FROST_SORCERER_ICE_SPIKE_SCENE := preload(
+	"res://scene/enemy/frost_sorcerer_ice_spike.tscn"
+)
 const TELEMETRY_SCRIPT := preload("res://scene/runtime_performance_telemetry.gd")
 const EXPECTED_WAVE_TOTAL := 1200
 const EXPECTED_MAX_ALIVE := 300
@@ -203,16 +206,33 @@ func _verify_runtime_classification() -> void:
 		elite_fire_sorcerer_volley.set_process(false)
 		elite_fire_sorcerer_volley.set_physics_process(false)
 		game.add_child(elite_fire_sorcerer_volley)
+	var frost_sorcerer_ice_spike := FROST_SORCERER_ICE_SPIKE_SCENE.instantiate()
+	_expect(
+		frost_sorcerer_ice_spike != null,
+		"Telemetry classifier requires a Frost Sorcerer ice-spike fixture."
+	)
+	if frost_sorcerer_ice_spike != null:
+		frost_sorcerer_ice_spike.set_process(false)
+		frost_sorcerer_ice_spike.set_physics_process(false)
+		game.add_child(frost_sorcerer_ice_spike)
+		# Exercise the script-path fallback instead of passing only because the
+		# authored scene is also tagged with the runtime-projectiles group.
+		frost_sorcerer_ice_spike.remove_from_group(&"runtime_projectiles")
 	var counts: Dictionary = telemetry.sample_runtime_counts(game)
 	_expect(
-		int(counts["active_projectiles"]) == 3,
-		"Telemetry must recognize player, normal and elite Fire Sorcerer projectiles."
+		int(counts["active_projectiles"]) == 4,
+		(
+			"Telemetry must recognize player, normal and elite Fire Sorcerer "
+			+ "projectiles plus the Frost Sorcerer ice spike."
+		)
 	)
 	bullet.queue_free()
 	if fire_sorcerer_volley != null:
 		fire_sorcerer_volley.queue_free()
 	if elite_fire_sorcerer_volley != null:
 		elite_fire_sorcerer_volley.queue_free()
+	if frost_sorcerer_ice_spike != null:
+		frost_sorcerer_ice_spike.queue_free()
 	await process_frame
 	await physics_frame
 

@@ -42,6 +42,8 @@ const SLOW_OVERLAY_ACTIVE_STRENGTH := 0.36
 const BURN_OVERLAY_ACTIVE_STRENGTH := 0.26
 const BLEED_OVERLAY_ACTIVE_STRENGTH := 0.42
 const BURN_STATUS_TICK_INTERVAL := 1.0
+const COLD_STATUS_SCHEDULER_PATH := NodePath("/root/ColdStatusScheduler")
+const COLD_MOVE_SPEED_SOURCE_ID := -2_147_400_001
 const WATER_TERRAIN_COLLISION_LAYER := 1 << 11
 const DEATH_ANIMATION_SPEED_SCALES: Array[float] = [0.92, 0.96, 1.0, 1.04, 1.08]
 const DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES := 6
@@ -146,6 +148,7 @@ var death_animation_name_in_use: StringName = &""
 var physical_defense_modifiers: Dictionary = {}
 var physical_defense_modifier_total := 0
 var move_speed_modifiers: Dictionary = {}
+var cold_stack_count := 0
 var damage_taken_multiplier_modifiers: Dictionary = {}
 var collectible_status_effects: Dictionary = {}
 var stale_collectible_status_keys: Array = []
@@ -210,6 +213,7 @@ var random_generator := RandomNumberGenerator.new()
 var material_drop_random_generator := RandomNumberGenerator.new()
 var cached_effective_physical_defense := 0
 var cached_effective_move_speed := 0.0
+var cached_effective_move_speed_multiplier := 1.0
 var status_visual_material: ShaderMaterial = null
 var slow_overlay_strength := 0.0
 var burn_overlay_strength := 0.0
@@ -477,6 +481,7 @@ func _refresh_status_process_enabled() -> void:
 
 
 func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = null) -> void:
+	clear_cold_status()
 	config = enemy_config
 	target_player = player
 	objective_target = player
@@ -735,6 +740,7 @@ func set_pathfinder(shared_pathfinder: Node) -> void:
 
 
 func configure_multiplayer_proxy() -> void:
+	clear_cold_status()
 	is_multiplayer_proxy = true
 	# Proxy transforms are already interpolated from network snapshots during
 	# render updates. Native physics interpolation here would apply a second,
@@ -776,6 +782,7 @@ func remove_for_home_escape() -> bool:
 	if is_dead:
 		return false
 	is_dead = true
+	clear_cold_status()
 	velocity = Vector2.ZERO
 	set_process(false)
 	set_physics_process(false)
@@ -941,6 +948,7 @@ func play_multiplayer_death_sequence() -> void:
 		return
 
 	is_dead = true
+	clear_cold_status()
 	velocity = Vector2.ZERO
 	_update_movement_status_visuals()
 	set_process(false)
@@ -1018,6 +1026,60 @@ func get_damage_taken_multiplier() -> float:
 	return maxf(total, 0.0)
 
 
+func apply_cold_status() -> bool:
+	if is_dead or is_multiplayer_proxy or not is_inside_tree():
+		return false
+	var scheduler := get_node_or_null(COLD_STATUS_SCHEDULER_PATH)
+	if scheduler == null:
+		push_error("ColdStatusScheduler autoload is missing.")
+		return false
+	return bool(scheduler.call(
+		"apply_cold",
+		self,
+		Callable(self, "_apply_cold_runtime_state")
+	))
+
+
+func clear_cold_status() -> void:
+	var scheduler := (
+		get_node_or_null(COLD_STATUS_SCHEDULER_PATH)
+		if is_inside_tree()
+		else null
+	)
+	if scheduler != null and bool(scheduler.call("clear_target", self)):
+		return
+	_apply_cold_runtime_state(0, 1.0)
+
+
+func get_cold_stack_count() -> int:
+	return cold_stack_count
+
+
+func _apply_cold_runtime_state(stack_count: int, multiplier: float) -> void:
+	var safe_stack_count := clampi(stack_count, 0, 4)
+	if safe_stack_count <= 0:
+		if (
+			cold_stack_count == 0
+			and not move_speed_modifiers.has(COLD_MOVE_SPEED_SOURCE_ID)
+		):
+			return
+		cold_stack_count = 0
+		remove_move_speed_modifier(COLD_MOVE_SPEED_SOURCE_ID)
+		return
+	var safe_multiplier := clampf(multiplier, 0.0, 1.0)
+	if (
+		cold_stack_count == safe_stack_count
+		and move_speed_modifiers.has(COLD_MOVE_SPEED_SOURCE_ID)
+		and is_equal_approx(
+			float(move_speed_modifiers[COLD_MOVE_SPEED_SOURCE_ID]),
+			safe_multiplier
+		)
+	):
+		return
+	cold_stack_count = safe_stack_count
+	add_move_speed_modifier(COLD_MOVE_SPEED_SOURCE_ID, safe_multiplier)
+
+
 func add_move_speed_modifier(source_id: int, multiplier: float) -> void:
 	if source_id == 0:
 		return
@@ -1042,11 +1104,20 @@ func get_effective_move_speed() -> float:
 	return cached_effective_move_speed
 
 
+func get_effective_move_speed_multiplier() -> float:
+	return cached_effective_move_speed_multiplier
+
+
 func _refresh_effective_move_speed_cache() -> void:
-	var total := config.move_speed if config != null else 0.0
+	var total_multiplier := 1.0
 	for source_id in move_speed_modifiers:
-		total *= maxf(float(move_speed_modifiers[source_id]), 0.0)
-	cached_effective_move_speed = maxf(total, 0.0)
+		total_multiplier *= maxf(float(move_speed_modifiers[source_id]), 0.0)
+	cached_effective_move_speed_multiplier = maxf(total_multiplier, 0.0)
+	var base_move_speed := config.move_speed if config != null else 0.0
+	cached_effective_move_speed = maxf(
+		base_move_speed * cached_effective_move_speed_multiplier,
+		0.0
+	)
 
 
 func _update_movement_status_visuals() -> void:
@@ -1118,6 +1189,7 @@ func _release_speed_trail_effect() -> void:
 
 
 func _exit_tree() -> void:
+	clear_cold_status()
 	if combat_target_index_binding != null and combat_target_index_net_id > 0:
 		var bound_index := combat_target_index_binding
 		var bound_net_id := combat_target_index_net_id
@@ -1183,7 +1255,7 @@ func get_collectible_visual_status_mask() -> int:
 		result |= 1
 	if _has_collectible_status(&"bleed"):
 		result |= 2
-	if _has_collectible_status(&"chill"):
+	if cold_stack_count > 0 or _has_collectible_status(&"chill"):
 		result |= 4
 	if _has_collectible_status(&"mark"):
 		result |= 8
@@ -3094,6 +3166,7 @@ func _die() -> void:
 	# Mark the death before rewards or drop resolution so any future callback
 	# that re-enters _die cannot enqueue the same side effects twice.
 	is_dead = true
+	clear_cold_status()
 	_queue_configured_xirang_kill_reward()
 	_queue_configured_pickup_drops()
 	defeated.emit(self)

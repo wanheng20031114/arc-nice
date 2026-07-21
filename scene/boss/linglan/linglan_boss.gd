@@ -707,7 +707,9 @@ func _update_skill2_move(delta: float) -> void:
 		return
 	var offset := skill2_target_global_position - global_position
 	var distance := offset.length()
-	var move_speed := skill2_config.move_speed
+	var move_speed := (
+		skill2_config.move_speed * get_effective_move_speed_multiplier()
+	)
 	var arrival_distance := maxf(skill2_config.arrival_distance, 0.0)
 	if distance <= maxf(arrival_distance, move_speed * delta):
 		global_position = skill2_target_global_position
@@ -977,7 +979,9 @@ func _update_skill3_move(delta: float) -> void:
 		return
 	var offset := skill3_target_global_position - global_position
 	var distance := offset.length()
-	var move_speed := skill3_config.move_speed
+	var move_speed := (
+		skill3_config.move_speed * get_effective_move_speed_multiplier()
+	)
 	var arrival_distance := maxf(skill3_config.arrival_distance, 0.0)
 	if distance <= maxf(arrival_distance, move_speed * delta):
 		global_position = skill3_target_global_position
@@ -1124,7 +1128,9 @@ func _update_skill4_move(delta: float) -> void:
 		return
 	var offset := skill4_target_global_position - global_position
 	var distance := offset.length()
-	var move_speed: float = config4.move_speed
+	var move_speed: float = (
+		config4.move_speed * get_effective_move_speed_multiplier()
+	)
 	var arrival_distance := maxf(config4.arrival_distance, 0.0)
 	if distance <= maxf(arrival_distance, move_speed * delta):
 		global_position = skill4_target_global_position
