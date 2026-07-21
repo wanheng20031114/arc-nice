@@ -735,6 +735,7 @@ func _set_ranged_attack_position_held(held: bool) -> void:
 	if _ranged_attack_position_held == held:
 		return
 	_ranged_attack_position_held = held
+	_sync_move_animation_playback()
 	# Entering discards a now-unneeded route; exiting discards the cached zero so
 	# the next movement tick can immediately reacquire a route. No per-frame path
 	# invalidation occurs while a ranged cohort is standing through cooldown.
@@ -1532,6 +1533,13 @@ func _play_scene_animation(animation_name: StringName) -> bool:
 	if not _has_scene_animation(animation_name):
 		return false
 	animated_sprite.play(animation_name)
+	# Ranged enemies can restore their move animation while deliberately holding
+	# an attack position (for example, immediately after a windup/attack finishes).
+	# Apply the standing pose at that transition instead of polling every frame.
+	# Multiplayer proxies use the same path after action restoration, with their
+	# latest snapshot velocity deciding whether the walk cycle should be frozen.
+	if config != null and animation_name == config.move_animation_name:
+		_sync_move_animation_playback()
 	return true
 
 
@@ -1581,10 +1589,34 @@ func _ensure_multiplayer_proxy_move_animation() -> void:
 		return
 	if proxy_action_animation_name_in_use != &"":
 		return
-	if animated_sprite.animation == config.move_animation_name and animated_sprite.is_playing():
+	if animated_sprite.animation != config.move_animation_name:
+		_play_scene_animation(config.move_animation_name)
+		return
+	_sync_move_animation_playback()
+
+
+func _sync_move_animation_playback() -> void:
+	if is_dead or config == null or animated_sprite == null:
+		return
+	if animated_sprite.animation != config.move_animation_name:
 		return
 
-	_play_scene_animation(config.move_animation_name)
+	var should_freeze := (
+		_ranged_attack_position_held
+		or (is_multiplayer_proxy and velocity.is_zero_approx())
+	)
+	if should_freeze:
+		# pause() preserves the authored speed_scale. That distinction matters for
+		# proxy visual culling, which independently sets speed_scale to zero while
+		# the proxy is off screen and restores it when visible again.
+		if animated_sprite.frame != 0 or not is_zero_approx(animated_sprite.frame_progress):
+			animated_sprite.set_frame_and_progress(0, 0.0)
+		if animated_sprite.is_playing():
+			animated_sprite.pause()
+		return
+
+	if not animated_sprite.is_playing():
+		animated_sprite.play(config.move_animation_name)
 
 
 func _has_scene_animation(animation_name: StringName) -> bool:
