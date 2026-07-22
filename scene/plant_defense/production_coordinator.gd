@@ -20,18 +20,33 @@ var authoritative_processing_enabled := true
 var production_buildings: Array[ProductionBuilding] = []
 var warehouses: Array[OakWarehouse] = []
 var _storage_transaction_in_progress := false
+var _warehouse_state_changed_during_transaction := false
+var _inventory_state_changed_during_transaction := false
 var _multiplayer_output_validation_enabled := false
 var _active_personal_output_peers: Dictionary[int, bool] = {}
+var _warehouse_waiting_buildings: Array[ProductionBuilding] = []
+var _warehouse_waiting_indices: Dictionary[int, int] = {}
+var _inventory_waiting_buildings: Array[ProductionBuilding] = []
+var _inventory_waiting_indices: Dictionary[int, int] = {}
+var _inventory_waiting_revisions: Dictionary[int, int] = {}
 
 
 func _ready() -> void:
 	production_tick_timer.timeout.connect(_on_production_tick)
+	if (
+		run_state != null
+		and not run_state.inventory_changed.is_connected(_on_inventory_changed)
+	):
+		run_state.inventory_changed.connect(_on_inventory_changed)
 	_refresh_timer_state()
 
 
 func set_authoritative_processing_enabled(enabled: bool) -> void:
+	var was_enabled := authoritative_processing_enabled
 	authoritative_processing_enabled = enabled
 	_refresh_timer_state()
+	if enabled and not was_enabled and is_node_ready():
+		_retry_waiting_buildings(true, true, true)
 
 
 func configure_multiplayer_output_peers(peer_ids: Array) -> void:
@@ -96,7 +111,16 @@ func register_plant(plant: PlantDefense) -> void:
 	warehouses.append(warehouse)
 	if not warehouse.storage_changed.is_connected(_on_warehouse_storage_changed):
 		warehouse.storage_changed.connect(_on_warehouse_storage_changed)
-	storage_totals_changed.emit()
+	if not warehouse.is_operational:
+		var construction_callback := _on_warehouse_construction_finished.bind(
+			warehouse
+		)
+		if not warehouse.construction_finished.is_connected(construction_callback):
+			warehouse.construction_finished.connect(
+				construction_callback,
+				CONNECT_ONE_SHOT
+			)
+	_on_warehouse_storage_changed()
 
 
 func unregister_plant(plant: PlantDefense) -> void:
@@ -111,7 +135,82 @@ func unregister_plant(plant: PlantDefense) -> void:
 	warehouses.erase(warehouse)
 	if warehouse.storage_changed.is_connected(_on_warehouse_storage_changed):
 		warehouse.storage_changed.disconnect(_on_warehouse_storage_changed)
-	storage_totals_changed.emit()
+	var construction_callback := _on_warehouse_construction_finished.bind(warehouse)
+	if warehouse.construction_finished.is_connected(construction_callback):
+		warehouse.construction_finished.disconnect(construction_callback)
+	_on_warehouse_storage_changed()
+
+
+## Parks a completed cycle behind the exact external state that can unblock it.
+## Registration and cancellation are O(1); retries only traverse the relevant
+## parked cohort when that state actually changes.
+func update_ready_production_wait(
+	building: ProductionBuilding,
+	wait_reason: StringName
+) -> void:
+	if building == null or not is_instance_valid(building):
+		return
+	var instance_id := building.get_instance_id()
+	if wait_reason == RESULT_MISSING_INPUT:
+		_remove_waiting_building(
+			instance_id,
+			_inventory_waiting_buildings,
+			_inventory_waiting_indices
+		)
+		_inventory_waiting_revisions.erase(instance_id)
+		_add_waiting_building(
+			building,
+			_warehouse_waiting_buildings,
+			_warehouse_waiting_indices
+		)
+		return
+	if wait_reason != RESULT_STORAGE_FULL:
+		clear_ready_production_wait(building)
+		return
+	var recipe := building.get_active_recipe()
+	if recipe != null and recipe.outputs_to_player_inventory():
+		_remove_waiting_building(
+			instance_id,
+			_warehouse_waiting_buildings,
+			_warehouse_waiting_indices
+		)
+		_add_waiting_building(
+			building,
+			_inventory_waiting_buildings,
+			_inventory_waiting_indices
+		)
+		_inventory_waiting_revisions[instance_id] = (
+			_get_output_inventory_revision(building)
+		)
+		return
+	_remove_waiting_building(
+		instance_id,
+		_inventory_waiting_buildings,
+		_inventory_waiting_indices
+	)
+	_inventory_waiting_revisions.erase(instance_id)
+	_add_waiting_building(
+		building,
+		_warehouse_waiting_buildings,
+		_warehouse_waiting_indices
+	)
+
+
+func clear_ready_production_wait(building: ProductionBuilding) -> void:
+	if building == null or not is_instance_valid(building):
+		return
+	var instance_id := building.get_instance_id()
+	_remove_waiting_building(
+		instance_id,
+		_warehouse_waiting_buildings,
+		_warehouse_waiting_indices
+	)
+	_remove_waiting_building(
+		instance_id,
+		_inventory_waiting_buildings,
+		_inventory_waiting_indices
+	)
+	_inventory_waiting_revisions.erase(instance_id)
 
 
 func get_total_item_count(item: PickupConfig) -> int:
@@ -165,7 +264,7 @@ func try_consume_item_requirements(requirements: Array[Dictionary]) -> StringNam
 		changed_warehouses.append(warehouse)
 	for warehouse in changed_warehouses:
 		warehouse.notify_production_storage_changed()
-	_storage_transaction_in_progress = previous_transaction_state
+	_finish_storage_transaction(previous_transaction_state)
 	return RESULT_SUCCESS
 
 
@@ -299,7 +398,7 @@ func try_commit_recipe(
 	if outputs_to_inventory:
 		run_state.notify_inventory_transaction_completed()
 		personal_inventory_output_committed.emit(output_peer_id)
-	_storage_transaction_in_progress = transaction_was_already_in_progress
+	_finish_storage_transaction(transaction_was_already_in_progress)
 	return RESULT_SUCCESS
 
 
@@ -434,15 +533,141 @@ func _on_production_tick() -> void:
 
 func _on_warehouse_storage_changed() -> void:
 	storage_totals_changed.emit()
+	if _storage_transaction_in_progress:
+		_warehouse_state_changed_during_transaction = true
+		return
+	_retry_waiting_buildings(true, false)
+
+
+func _on_warehouse_construction_finished(warehouse: OakWarehouse) -> void:
+	if (
+		warehouse == null
+		or not is_instance_valid(warehouse)
+		or not warehouses.has(warehouse)
+	):
+		return
+	# Operational capacity is part of the shared storage state even when the new
+	# warehouse starts empty and therefore emits no storage_changed signal.
+	_on_warehouse_storage_changed()
+
+
+func _on_inventory_changed() -> void:
+	if _storage_transaction_in_progress:
+		_inventory_state_changed_during_transaction = true
+		return
+	_retry_waiting_buildings(false, true)
+
+
+func _retry_waiting_buildings(
+	retry_warehouse_waits: bool,
+	retry_inventory_waits: bool,
+	force_inventory_retry: bool = false
+) -> void:
 	if not authoritative_processing_enabled or _storage_transaction_in_progress:
 		return
-	# A building parked at zero remaining time completes in this same storage
-	# change frame as soon as its raw material becomes available.
+	var retry_warehouse_next := (
+		retry_warehouse_waits
+		or _warehouse_state_changed_during_transaction
+	)
+	var retry_inventory_next := (
+		retry_inventory_waits
+		or _inventory_state_changed_during_transaction
+	)
+	var force_inventory_retry_next := force_inventory_retry
+	_warehouse_state_changed_during_transaction = false
+	_inventory_state_changed_during_transaction = false
+	if not retry_warehouse_next and not retry_inventory_next:
+		return
 	_storage_transaction_in_progress = true
-	for building in production_buildings.duplicate():
-		if building != null and is_instance_valid(building):
-			building.try_complete_ready_production()
+	while retry_warehouse_next or retry_inventory_next:
+		if retry_warehouse_next:
+			_retry_warehouse_waiting_buildings()
+		if retry_inventory_next:
+			_retry_inventory_waiting_buildings(force_inventory_retry_next)
+		retry_warehouse_next = _warehouse_state_changed_during_transaction
+		retry_inventory_next = _inventory_state_changed_during_transaction
+		force_inventory_retry_next = false
+		_warehouse_state_changed_during_transaction = false
+		_inventory_state_changed_during_transaction = false
 	_storage_transaction_in_progress = false
+
+
+func _finish_storage_transaction(previous_transaction_state: bool) -> void:
+	_storage_transaction_in_progress = previous_transaction_state
+	if not previous_transaction_state:
+		# A completed building can produce the exact input of an earlier parked
+		# building. Drain those synchronous state changes before returning so an
+		# event-driven waiter never depends on a future one-second fallback tick.
+		_retry_waiting_buildings(false, false)
+
+
+func _retry_warehouse_waiting_buildings() -> void:
+	# Swap out the cohort before invoking buildings. A failed attempt registers
+	# into the fresh arrays and cannot be visited twice by the same event.
+	var waiting_buildings := _warehouse_waiting_buildings
+	_warehouse_waiting_buildings = []
+	_warehouse_waiting_indices = {}
+	for building in waiting_buildings:
+		if building == null or not is_instance_valid(building):
+			continue
+		building.try_complete_ready_production()
+
+
+func _retry_inventory_waiting_buildings(force_retry: bool) -> void:
+	var waiting_buildings := _inventory_waiting_buildings
+	var waiting_revisions := _inventory_waiting_revisions
+	_inventory_waiting_buildings = []
+	_inventory_waiting_indices = {}
+	_inventory_waiting_revisions = {}
+	for building in waiting_buildings:
+		if building == null or not is_instance_valid(building):
+			continue
+		var instance_id := building.get_instance_id()
+		if (
+			not force_retry
+			and _get_output_inventory_revision(building)
+			== int(waiting_revisions.get(instance_id, -1))
+		):
+			update_ready_production_wait(building, RESULT_STORAGE_FULL)
+			continue
+		building.try_complete_ready_production()
+
+
+func _get_output_inventory_revision(building: ProductionBuilding) -> int:
+	if run_state == null or building == null or not is_instance_valid(building):
+		return -1
+	if building.personal_output_peer_id > 0:
+		return run_state.get_inventory_revision_for_peer(
+			building.personal_output_peer_id
+		)
+	return run_state.get_inventory_revision()
+
+
+func _add_waiting_building(
+	building: ProductionBuilding,
+	waiting_buildings: Array[ProductionBuilding],
+	waiting_indices: Dictionary[int, int]
+) -> void:
+	var instance_id := building.get_instance_id()
+	if waiting_indices.has(instance_id):
+		return
+	waiting_indices[instance_id] = waiting_buildings.size()
+	waiting_buildings.append(building)
+
+
+func _remove_waiting_building(
+	instance_id: int,
+	waiting_buildings: Array[ProductionBuilding],
+	waiting_indices: Dictionary[int, int]
+) -> void:
+	var index := int(waiting_indices.get(instance_id, -1))
+	if index < 0:
+		return
+	waiting_indices.erase(instance_id)
+	if index < waiting_buildings.size():
+		# Preserve registration order for deterministic competition over newly
+		# available inputs; the next state event compacts this one tombstone.
+		waiting_buildings[index] = null
 
 
 func _refresh_timer_state() -> void:

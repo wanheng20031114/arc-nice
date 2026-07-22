@@ -124,6 +124,7 @@ func _on_operational_started() -> void:
 
 
 func _on_removal_started(_mode: RemovalMode) -> void:
+	_clear_ready_production_wait_registration()
 	var interaction_player := nearby_player
 	nearby_player = null
 	health_bar.hide()
@@ -135,7 +136,15 @@ func _on_removal_started(_mode: RemovalMode) -> void:
 
 
 func set_production_coordinator(coordinator: ProductionCoordinator) -> void:
+	if production_coordinator == coordinator:
+		return
+	_clear_ready_production_wait_registration()
 	production_coordinator = coordinator
+	if production_coordinator != null and completion_wait_reason != &"":
+		production_coordinator.update_ready_production_wait(
+			self,
+			completion_wait_reason
+		)
 
 
 func set_shared_production_panel(shared_panel: ProductionBuildingPanel) -> void:
@@ -340,6 +349,7 @@ func select_recipe(
 	personal_output_peer_id = next_output_peer_id
 	progress_elapsed_seconds = 0.0
 	completion_wait_reason = &""
+	_clear_ready_production_wait_registration()
 	_bump_production_state()
 	return true
 
@@ -351,6 +361,7 @@ func release_personal_output_peer(peer_id: int) -> bool:
 	personal_output_peer_id = 0
 	progress_elapsed_seconds = 0.0
 	completion_wait_reason = ProductionCoordinator.RESULT_OUTPUT_PEER_UNAVAILABLE
+	_clear_ready_production_wait_registration()
 	# player_left is already delivered to every endpoint. Suppressing replication
 	# here keeps the disconnect repair packet-neutral while preserving revisions.
 	_bump_production_state(false)
@@ -367,6 +378,7 @@ func set_production_enabled(enabled: bool) -> bool:
 	# cycle at zero remaining time.
 	progress_elapsed_seconds = 0.0
 	completion_wait_reason = &""
+	_clear_ready_production_wait_registration()
 	_bump_production_state()
 	return true
 
@@ -418,6 +430,13 @@ func advance_shared_production_tick(delta_seconds: float) -> void:
 		or delta_seconds <= 0.0
 	):
 		return
+	if (
+		completion_wait_reason == ProductionCoordinator.RESULT_MISSING_INPUT
+		or completion_wait_reason == ProductionCoordinator.RESULT_STORAGE_FULL
+	):
+		# These waits are parked behind warehouse/inventory change events. Keep
+		# the one-second simulation tick O(1) until an input changes.
+		return
 	var recipe := get_active_recipe()
 	if recipe == null or not recipe.is_valid():
 		return
@@ -450,6 +469,10 @@ func try_complete_ready_production() -> bool:
 		or progress_elapsed_seconds + 0.0001 < recipe.duration_seconds
 	):
 		return false
+	# Remove this attempt from the parked cohort before the coordinator publishes
+	# transaction signals. A successful output may synchronously wake other
+	# buildings without recursively committing this still-ready cycle twice.
+	_clear_ready_production_wait_registration()
 	var result := production_coordinator.try_commit_recipe(
 		recipe,
 		personal_output_peer_id
@@ -457,8 +480,10 @@ func try_complete_ready_production() -> bool:
 	if result == ProductionCoordinator.RESULT_SUCCESS:
 		progress_elapsed_seconds = 0.0
 		completion_wait_reason = &""
+		_clear_ready_production_wait_registration()
 		_bump_production_state()
 		return true
+	production_coordinator.update_ready_production_wait(self, result)
 	if completion_wait_reason != result:
 		completion_wait_reason = result
 		_bump_production_state()
@@ -653,6 +678,11 @@ func _bump_production_state(replicate: bool = true) -> void:
 	production_revision += 1
 	_sync_visual_progress_clock()
 	production_state_changed.emit(replicate)
+
+
+func _clear_ready_production_wait_registration() -> void:
+	if production_coordinator != null:
+		production_coordinator.clear_ready_production_wait(self)
 
 
 func _submit_multiplayer_production_command(command: Dictionary) -> bool:
