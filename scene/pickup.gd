@@ -17,6 +17,7 @@ enum Lifecycle {
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var lifetime_timer: Timer = $LifetimeTimer
+@onready var blink_timer: Timer = $BlinkTimer
 
 
 # Called when the node enters the scene tree for the first time.
@@ -29,22 +30,32 @@ var lifecycle := Lifecycle.AVAILABLE
 func _ready() -> void:
 	lifetime_timer.one_shot = true
 	_apply_config_to_visual()
-	# 启动生命周期定时器
-	if lifetime_timer.wait_time > 0.0:
-		lifetime_timer.start()
 	# 初始状态关闭闪烁效果
 	_set_blink_enabled(false)
+	_start_lifecycle_timers()
 
 
-# 道具临近消失时开启闪烁提示。
-func _process(_delta: float) -> void:
-	if is_expiring:
+# 分别启动权威生命周期与一次性闪烁阶段计时，避免存活期间逐帧轮询。
+func _start_lifecycle_timers() -> void:
+	if lifetime_timer.wait_time <= 0.0:
 		return
-	if lifetime_timer.is_stopped():
+	lifetime_timer.start()
+	if blink_before_expire <= 0.0:
 		return
-	if lifetime_timer.time_left > blink_before_expire:
+	var seconds_before_blink := lifetime_timer.wait_time - blink_before_expire
+	if seconds_before_blink <= 0.0:
+		_enter_expiring_state()
 		return
+	blink_timer.start(seconds_before_blink)
 
+
+func _on_blink_timer_timeout() -> void:
+	_enter_expiring_state()
+
+
+func _enter_expiring_state() -> void:
+	if lifecycle != Lifecycle.AVAILABLE or is_expiring:
+		return
 	is_expiring = true
 	_set_blink_enabled(true)
 	
@@ -93,7 +104,7 @@ func _commit_consumption(collector_peer_id: int, applied_immediately: bool) -> v
 	# a listener can apply the same world item twice during this physics frame.
 	lifecycle = Lifecycle.CONSUMED
 	lifetime_timer.stop()
-	set_process(false)
+	blink_timer.stop()
 	set_deferred("monitoring", false)
 	set_deferred("collision_mask", 0)
 	consumed.emit(self, collector_peer_id, applied_immediately)
@@ -104,7 +115,8 @@ func _on_lifetime_timer_timeout() -> void:
 	if lifecycle != Lifecycle.AVAILABLE:
 		return
 	lifecycle = Lifecycle.EXPIRED
-	set_process(false)
+	lifetime_timer.stop()
+	blink_timer.stop()
 	set_deferred("monitoring", false)
 	set_deferred("collision_mask", 0)
 	queue_free()

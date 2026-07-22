@@ -28,5 +28,9 @@ shape = SubResource("CircleShape2D_seisu")
 [node name="LifetimeTimer" type="Timer" parent="." unique_id=1532768228]
 wait_time = 12.0
 
+[node name="BlinkTimer" type="Timer" parent="."]
+one_shot = true
+
 [connection signal="body_entered" from="." to="." method="_on_body_entered"]
 [connection signal="timeout" from="LifetimeTimer" to="." method="_on_lifetime_timer_timeout"]
+[connection signal="timeout" from="BlinkTimer" to="." method="_on_blink_timer_timeout"]
