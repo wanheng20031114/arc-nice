@@ -81,6 +81,10 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 
 	profile_panel.open()
 	await process_frame
+	_expect(
+		not profile_panel.is_processing(),
+		"An open profile panel must remain event-driven instead of polling stats every frame."
+	)
 	_expect(profile_panel.selected_slot_index == -1, "Opening the inventory must not auto-select the first slot.")
 	_expect(not profile_panel.item_detail_panel.visible, "Opening the inventory must not show an item detail panel by default.")
 	_expect(not profile_panel.slots[0].button_pressed, "Opening the inventory must leave the first slot unselected.")
@@ -98,6 +102,33 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	_expect(profile_panel.move_speed_value.text == str(roundi(player.move_speed)), "Profile panel must show current movement speed.")
 	_expect(profile_panel.physical_defense_value.text == str(player.physical_defense), "Profile panel must show current physical defense.")
 	_expect(profile_panel.magic_defense_value.text == str(player.magic_defense), "Profile panel must show current magic defense.")
+
+	player.upgrade_attack()
+	_expect(
+		profile_panel.attack_value.text == str(player.attack_damage),
+		"Profile panel attack text must update from the player state-change signal."
+	)
+	player.set_research_global_move_speed_bonus(7.0)
+	_expect(
+		profile_panel.move_speed_value.text == str(roundi(player.move_speed)),
+		"Profile panel movement text must update from the player state-change signal."
+	)
+	player.set_research_temporary_physical_defense_bonus(9)
+	_expect(
+		profile_panel.physical_defense_value.text == str(player.physical_defense),
+		"Profile panel defense text must update from the player state-change signal."
+	)
+	_expect(player.unlock_skill1(), "The profile event test must unlock skill 1 once.")
+	_expect(
+		profile_panel.skill_info.visible,
+		"Profile panel skill presentation must update when the skill is unlocked."
+	)
+	var previous_skill_cost_text := profile_panel.skill_cost_label.text
+	_expect(player.try_upgrade_skill1_free(), "The profile event test must upgrade skill 1 once.")
+	_expect(
+		profile_panel.skill_cost_label.text != previous_skill_cost_text,
+		"Profile panel skill cost must update when the skill level changes."
+	)
 
 	profile_panel.slots[1].emit_signal("pressed")
 	await process_frame

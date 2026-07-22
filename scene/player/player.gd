@@ -6,6 +6,7 @@ signal xirang_changed(total: int, added_amount: int)
 signal health_changed(current: int, maximum: int)
 signal attack_speed_changed(attack_speed: float)
 signal dodge_changed(chance: float)
+signal profile_display_changed
 signal research_technology_level_changed(level: int)
 signal died
 signal revived
@@ -1412,6 +1413,8 @@ func apply_multiplayer_realtime_state(
 	var previous_health := current_health
 	var previous_max_health := max_health
 	var previous_skill1_unlocked := skill1_unlocked
+	var previous_skill1_upgrade_level := skill1_upgrade_level
+	var previous_skill1_charge_duration := skill1_charge_duration
 	max_health = maxi(new_max_health, 1)
 	var clamped_xirang := maxi(new_current_xirang, 0)
 	if current_xirang != clamped_xirang:
@@ -1476,6 +1479,15 @@ func apply_multiplayer_realtime_state(
 	_update_skill1_charge_bar()
 	_update_animation()
 	_update_character_visual_state()
+	if (
+		skill1_unlocked != previous_skill1_unlocked
+		or skill1_upgrade_level != previous_skill1_upgrade_level
+		or not is_equal_approx(
+			skill1_charge_duration,
+			previous_skill1_charge_duration
+		)
+	):
+		profile_display_changed.emit()
 
 
 func _apply_multiplayer_character_anim_state(_anim_state: int) -> void:
@@ -1848,6 +1860,7 @@ func unlock_skill1() -> bool:
 	_sync_skill1_charge_duration_to_upgrade_level()
 	_update_skill1_charge_bar()
 	_refresh_collectible_stats(false)
+	profile_display_changed.emit()
 	_play_skill_progress_feedback()
 	return true
 
@@ -1887,10 +1900,17 @@ func try_upgrade_skill1_free() -> bool:
 
 
 func apply_skill1_upgrade_state(upgrade_level: int, _charge_duration: float = -1.0) -> void:
+	var previous_level := skill1_upgrade_level
+	var previous_duration := skill1_charge_duration
 	skill1_upgrade_level = clampi(upgrade_level, 0, SKILL1_MAX_UPGRADE_LEVEL)
 	_ensure_skill1_base_charge_duration()
 	_sync_skill1_charge_duration_to_upgrade_level()
 	_update_skill1_charge_bar()
+	if (
+		skill1_upgrade_level != previous_level
+		or not is_equal_approx(skill1_charge_duration, previous_duration)
+	):
+		profile_display_changed.emit()
 
 
 func _apply_next_skill1_upgrade() -> void:
@@ -1898,6 +1918,7 @@ func _apply_next_skill1_upgrade() -> void:
 	skill1_upgrade_level = mini(skill1_upgrade_level + 1, SKILL1_MAX_UPGRADE_LEVEL)
 	_sync_skill1_charge_duration_to_upgrade_level()
 	_update_skill1_charge_bar()
+	profile_display_changed.emit()
 	_play_skill_progress_feedback()
 
 
@@ -2120,6 +2141,10 @@ func _on_collectible_xirang_changed(_total: int, _added_amount: int) -> void:
 func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	_initialize_base_stats()
 	var active_items := _get_active_collectible_items()
+	var previous_attack_damage := attack_damage
+	var previous_move_speed := move_speed
+	var previous_physical_defense := physical_defense
+	var previous_magic_defense := magic_defense
 
 	var attack_bonus := 0
 	var max_health_bonus := 0
@@ -2269,6 +2294,13 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 			health_changed.emit(current_health, max_health)
 	_on_collectible_ammunition_stats_refreshed()
 	_refresh_shooting_timer_wait_time()
+	if (
+		attack_damage != previous_attack_damage
+		or not is_equal_approx(move_speed, previous_move_speed)
+		or physical_defense != previous_physical_defense
+		or magic_defense != previous_magic_defense
+	):
+		profile_display_changed.emit()
 
 
 func _on_collectible_ammunition_stats_refreshed() -> void:

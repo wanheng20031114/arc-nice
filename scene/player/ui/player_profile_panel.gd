@@ -57,7 +57,6 @@ var current_tab := 0  # 0 = 背包, 1 = 升级, 2 = 简易制造
 
 func _ready() -> void:
 	overlay.visible = false
-	set_process(false)
 	close_button.pressed.connect(close)
 	item_detail_use_button.pressed.connect(_on_detail_use_pressed)
 	item_detail_discard_button.pressed.connect(_on_detail_discard_pressed)
@@ -104,6 +103,12 @@ func bind_player(player: Player) -> void:
 			tracked_player.xirang_changed.disconnect(_on_xirang_changed)
 		if tracked_player.dodge_changed.is_connected(_on_dodge_changed):
 			tracked_player.dodge_changed.disconnect(_on_dodge_changed)
+		if tracked_player.profile_display_changed.is_connected(
+			_on_profile_display_changed
+		):
+			tracked_player.profile_display_changed.disconnect(
+				_on_profile_display_changed
+			)
 		if tracked_player.died.is_connected(_on_player_died):
 			tracked_player.died.disconnect(_on_player_died)
 
@@ -117,6 +122,7 @@ func bind_player(player: Player) -> void:
 	tracked_player.attack_speed_changed.connect(_on_attack_speed_changed)
 	tracked_player.xirang_changed.connect(_on_xirang_changed)
 	tracked_player.dodge_changed.connect(_on_dodge_changed)
+	tracked_player.profile_display_changed.connect(_on_profile_display_changed)
 	tracked_player.died.connect(_on_player_died)
 	_refresh_skill_presentation()
 	_update_skill_tooltip()
@@ -147,7 +153,6 @@ func open() -> void:
 		return
 
 	overlay.visible = true
-	set_process(true)
 	tracked_player.set_controls_locked(true)
 	opened.emit()
 	selected_slot_index = -1
@@ -162,7 +167,6 @@ func close() -> void:
 
 	simple_crafting_panel.cancel_pending_request()
 	overlay.visible = false
-	set_process(false)
 	_clear_inventory_selection()
 	if tracked_player != null and not tracked_player.is_dead:
 		tracked_player.set_controls_locked(false)
@@ -178,11 +182,6 @@ func toggle() -> void:
 
 func is_open() -> bool:
 	return overlay.visible
-
-
-func _process(_delta: float) -> void:
-	if overlay.visible:
-		_refresh_stat_display()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -335,6 +334,11 @@ func _on_attack_speed_changed(attack_speed: float) -> void:
 
 func _on_dodge_changed(chance: float) -> void:
 	dodge_value.text = "%.0f%%" % (clampf(chance, 0.0, 1.0) * 100.0)
+
+
+func _on_profile_display_changed() -> void:
+	if overlay.visible:
+		_refresh_stat_display()
 
 
 func _refresh_skill_display() -> void:
