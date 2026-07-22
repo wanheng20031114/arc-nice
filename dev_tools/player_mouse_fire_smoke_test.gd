@@ -103,9 +103,7 @@ func _test_world_mouse_fire() -> void:
 
 
 func _test_profile_button_does_not_fire() -> void:
-	for child in game.get_children():
-		if child is Bullet:
-			child.queue_free()
+	_clear_player_bullets()
 	await process_frame
 
 	var profile_button := game.get_node(
@@ -378,25 +376,57 @@ func _send_action(action: StringName, pressed: bool) -> void:
 
 
 func _find_player_bullet() -> Bullet:
-	for child in game.get_children():
-		var bullet := child as Bullet
-		if bullet != null:
-			return bullet
-	return null
+	return _find_active_player_bullet(game)
 
 
 func _get_player_bullet_count() -> int:
-	var bullet_count := 0
-	for child in game.get_children():
-		if child is Bullet:
-			bullet_count += 1
-	return bullet_count
+	return _count_active_player_bullets(game)
 
 
 func _clear_player_bullets() -> void:
-	for child in game.get_children():
-		if child is Bullet:
-			child.queue_free()
+	_clear_active_player_bullets(game)
+
+
+func _find_active_player_bullet(node: Node) -> Bullet:
+	for child in node.get_children():
+		var bullet := child as Bullet
+		if bullet != null and _is_active_player_bullet(bullet):
+			return bullet
+		var nested_bullet := _find_active_player_bullet(child)
+		if nested_bullet != null:
+			return nested_bullet
+	return null
+
+
+func _count_active_player_bullets(node: Node) -> int:
+	var bullet_count := 0
+	for child in node.get_children():
+		var bullet := child as Bullet
+		if bullet != null and _is_active_player_bullet(bullet):
+			bullet_count += 1
+		bullet_count += _count_active_player_bullets(child)
+	return bullet_count
+
+
+func _clear_active_player_bullets(node: Node) -> void:
+	for child in node.get_children():
+		var bullet := child as Bullet
+		if bullet != null and _is_active_player_bullet(bullet):
+			if not SessionObjectPool.release_to_owner(bullet):
+				bullet.queue_free()
+			continue
+		_clear_active_player_bullets(child)
+
+
+func _is_active_player_bullet(bullet: Bullet) -> bool:
+	return (
+		bullet != null
+		and is_instance_valid(bullet)
+		and (
+			not bullet.has_meta(SessionObjectPool.POOL_ACTIVE_META)
+			or bool(bullet.get_meta(SessionObjectPool.POOL_ACTIVE_META, false))
+		)
+	)
 
 
 func _stop_audio_players(node: Node) -> void:
