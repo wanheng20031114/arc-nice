@@ -8,6 +8,7 @@ const FROST_AREA_SCENE := preload("res://scene/collectible_frost_area_effect.tsc
 const MOON_SHIELD_FRAMES := preload("res://resources/animation/moon_shield_vfx.tres")
 const LIGHTNING_FRAMES := preload("res://resources/animation/thunder_lightning_vfx.tres")
 const FROST_FRAMES := preload("res://resources/animation/frost_area_vfx.tres")
+const MOON_SHIELD_VISUAL_ALPHA := 0.42
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -72,6 +73,10 @@ func _test_vfx_resources() -> void:
 		"Moon shield collision Shapes must be local to each scene instance."
 	)
 	_expect(shield.visual.scale.is_equal_approx(Vector2.ONE), "Moon shield visual must be unscaled at a 64 px radius.")
+	_expect(
+		is_equal_approx(shield.visual.self_modulate.a, MOON_SHIELD_VISUAL_ALPHA),
+		"Persistent gameplay moon shields must remain translucent enough to preserve sightlines."
+	)
 	shield.queue_free()
 	large_shield.queue_free()
 	await process_frame
@@ -82,6 +87,13 @@ func _test_vfx_resources() -> void:
 	test_root.add_child(shield_visual)
 	await process_frame
 	_expect(shield_visual.visual.scale.is_equal_approx(Vector2(0.5, 0.5)), "Remote moon shield visual must scale from the requested radius.")
+	_expect(
+		is_equal_approx(
+			shield_visual.visual.self_modulate.a,
+			MOON_SHIELD_VISUAL_ALPHA
+		),
+		"Remote moon shield visuals must use the same sightline-safe opacity."
+	)
 	shield_visual.queue_free()
 	await process_frame
 	await physics_frame

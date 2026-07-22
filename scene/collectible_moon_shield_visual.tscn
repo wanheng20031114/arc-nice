@@ -7,6 +7,7 @@
 script = ExtResource("1_script")
 
 [node name="Visual" type="AnimatedSprite2D" parent="."]
+self_modulate = Color(1, 1, 1, 0.42)
 sprite_frames = ExtResource("2_frames")
 animation = &"pulse"
 autoplay = "pulse"
