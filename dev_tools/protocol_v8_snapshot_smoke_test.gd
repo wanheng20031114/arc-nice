@@ -1319,9 +1319,24 @@ func _test_runtime_state_send_order() -> void:
 		if request_start >= 0 and request_end > request_start
 		else ""
 	)
+	var handler_start := source.find(
+		"func _handle_authoritative_runtime_state_request("
+	)
+	var handler_end := source.find("\n\nfunc ", handler_start + 1)
+	var handler_body := (
+		source.substr(handler_start, handler_end - handler_start)
+		if handler_start >= 0 and handler_end > handler_start
+		else ""
+	)
 	_expect(
 		request_body.contains("multiplayer.get_remote_sender_id()")
-		and request_body.contains("game.get_player_for_peer(sender_id) == null"),
+		and request_body.contains(
+			"_handle_authoritative_runtime_state_request(sender_id"
+		)
+		and handler_body.contains("sender_id <= 0")
+		and handler_body.contains("_consume_peer_rate_token(")
+		and handler_body.contains("game.get_player_for_peer(sender_id) == null")
+		and handler_body.contains("_send_runtime_state_to_peer(sender_id"),
 		"Complete-state repair requests must come from a registered in-game peer."
 	)
 	var function_start := source.find("func _send_runtime_state_to_peer(")
