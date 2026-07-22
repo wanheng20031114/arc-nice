@@ -7,11 +7,13 @@ const POOL_ACTIVE_META := &"pool_active"
 const POOL_OWNER_META := &"pool_owner_id"
 const POOL_KEY_META := &"pool_scene_path"
 const POOL_GENERATION_META := &"pool_lease_generation"
+const PENDING_RELEASE_COMPACT_MIN_HEAD := 1024
 
 var _buckets: Dictionary = {}
 var _pending_nodes: Array[Node] = []
 var _pending_available_frames: Array[int] = []
 var _pending_keys: Array[String] = []
+var _pending_head := 0
 var _dirty_metric_keys: Dictionary[String, bool] = {}
 
 
@@ -141,17 +143,28 @@ func _physics_process(_delta: float) -> void:
 
 
 func _process_pending_releases() -> void:
-	if _pending_nodes.is_empty():
+	if _pending_head >= _pending_nodes.size():
 		return
 	var current_frame := Engine.get_physics_frames()
-	for index in range(_pending_nodes.size() - 1, -1, -1):
-		if current_frame < _pending_available_frames[index]:
-			continue
+	var due_end := _pending_head
+	while (
+		due_end < _pending_available_frames.size()
+		and current_frame >= _pending_available_frames[due_end]
+	):
+		due_end += 1
+	if due_end == _pending_head:
+		return
+
+	# Deadlines are appended in nondecreasing physics-frame order, so all due
+	# leases form one prefix. Preserve the previous newest-first settlement
+	# order within that prefix: this also preserves which overflow instances
+	# win the retained slots when a whole burst returns together.
+	for index in range(due_end - 1, _pending_head - 1, -1):
 		var instance := _pending_nodes[index]
 		var key := _pending_keys[index]
-		_pending_nodes.remove_at(index)
-		_pending_available_frames.remove_at(index)
-		_pending_keys.remove_at(index)
+		_pending_nodes[index] = null
+		_pending_available_frames[index] = 0
+		_pending_keys[index] = ""
 
 		var bucket := _buckets.get(key, {}) as Dictionary
 		if not bucket.is_empty():
@@ -172,6 +185,27 @@ func _process_pending_releases() -> void:
 			bucket["created"] = maxi(int(bucket["created"]) - 1, 0)
 			instance.queue_free()
 		_mark_metrics_dirty(key)
+
+	_pending_head = due_end
+	_compact_pending_releases_if_needed()
+
+
+func _compact_pending_releases_if_needed() -> void:
+	if _pending_head == _pending_nodes.size():
+		_pending_nodes.clear()
+		_pending_available_frames.clear()
+		_pending_keys.clear()
+		_pending_head = 0
+		return
+	if (
+		_pending_head < PENDING_RELEASE_COMPACT_MIN_HEAD
+		or _pending_head * 2 < _pending_nodes.size()
+	):
+		return
+	_pending_nodes = _pending_nodes.slice(_pending_head)
+	_pending_available_frames = _pending_available_frames.slice(_pending_head)
+	_pending_keys = _pending_keys.slice(_pending_head)
+	_pending_head = 0
 
 
 func _get_or_create_bucket(scene: PackedScene, retained_capacity: int) -> Dictionary:
