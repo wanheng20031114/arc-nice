@@ -43,6 +43,7 @@ func _run() -> void:
 	await _test_frost_expiry_outlives_source_player()
 	await _test_frost_expiry_tolerates_removed_enemy()
 	await _test_status_expiry_precedes_same_frame_tick_damage()
+	await _test_same_effect_neutral_overwrite_removes_modifiers()
 	await _test_every_collectible_runtime_effect()
 
 	test_root.queue_free()
@@ -296,6 +297,69 @@ func _test_status_expiry_precedes_same_frame_tick_damage() -> void:
 		enemy.get_effective_physical_defense() == 5
 		and is_equal_approx(enemy.get_damage_taken_multiplier(), 1.0),
 		"Same-frame expiry must restore defense and damage multiplier before resolving DoT."
+	)
+	_cleanup_test_children()
+	await process_frame
+
+
+func _test_same_effect_neutral_overwrite_removes_modifiers() -> void:
+	var player := _spawn_player()
+	var enemy := _spawn_enemy(Vector2(20.0, 0.0), player)
+	await process_frame
+	enemy.set_process(false)
+	const BASELINE_DEFENSE_SOURCE_ID := 991000
+	const STATUS_SOURCE_ID := 991001
+	enemy.add_physical_defense_modifier(BASELINE_DEFENSE_SOURCE_ID, 5)
+	enemy.apply_collectible_status(
+		&"overwrite_probe",
+		STATUS_SOURCE_ID,
+		1.0,
+		0,
+		0.5,
+		EnemyConfig.DamageType.MAGIC,
+		0.5,
+		-3,
+		1.75
+	)
+	_expect(
+		is_equal_approx(enemy.get_effective_move_speed_multiplier(), 0.5)
+		and enemy.get_effective_physical_defense() == 2
+		and is_equal_approx(enemy.get_damage_taken_multiplier(), 1.75),
+		"The initial collectible status must install all three non-neutral modifiers."
+	)
+
+	enemy.apply_collectible_status(
+		&"overwrite_probe",
+		STATUS_SOURCE_ID,
+		1.0,
+		0,
+		0.5,
+		EnemyConfig.DamageType.MAGIC,
+		1.0,
+		0,
+		1.0
+	)
+	_expect(
+		enemy.move_speed_modifiers.is_empty()
+		and enemy.physical_defense_modifiers.size() == 1
+		and enemy.physical_defense_modifiers.has(BASELINE_DEFENSE_SOURCE_ID)
+		and enemy.damage_taken_multiplier_modifiers.is_empty(),
+		"Replacing the same effect with neutral values must revoke every modifier owned by the previous record."
+	)
+	_expect(
+		is_equal_approx(enemy.get_effective_move_speed_multiplier(), 1.0)
+		and enemy.get_effective_physical_defense() == 5
+		and is_equal_approx(enemy.get_damage_taken_multiplier(), 1.0),
+		"Neutral overwrite must immediately restore movement, defense, and incoming-damage baselines."
+	)
+
+	enemy.call("_update_collectible_status_effects", 1.01)
+	_expect(
+		enemy.collectible_status_effects.is_empty()
+		and enemy.move_speed_modifiers.is_empty()
+		and enemy.physical_defense_modifiers.size() == 1
+		and enemy.damage_taken_multiplier_modifiers.is_empty(),
+		"The neutral replacement must expire without resurrecting or stranding its prior modifiers."
 	)
 	_cleanup_test_children()
 	await process_frame

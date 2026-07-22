@@ -1416,6 +1416,12 @@ func apply_collectible_status(
 	if status_id == &"burn":
 		normalized_tick_interval = BURN_STATUS_TICK_INTERVAL
 	var effect_key := "%s:%s" % [source_id, status_id]
+	var previous_status := collectible_status_effects.get(
+		effect_key,
+		{}
+	) as Dictionary
+	if not previous_status.is_empty():
+		_remove_collectible_status_modifiers(previous_status)
 	var status := {
 		"status_id": status_id,
 		"source_id": source_id,
@@ -1518,6 +1524,12 @@ func _get_highest_damage_status_key(status_id: StringName) -> Variant:
 
 
 func _remove_collectible_status(effect_key: Variant, status: Dictionary) -> void:
+	_remove_collectible_status_modifiers(status)
+	collectible_status_effects.erase(effect_key)
+	_refresh_status_process_enabled()
+
+
+func _remove_collectible_status_modifiers(status: Dictionary) -> void:
 	var slow_source_id := int(status.get("slow_source_id", 0))
 	if slow_source_id != 0:
 		remove_move_speed_modifier(slow_source_id)
@@ -1527,8 +1539,6 @@ func _remove_collectible_status(effect_key: Variant, status: Dictionary) -> void
 	var multiplier_source_id := int(status.get("damage_multiplier_source_id", 0))
 	if multiplier_source_id != 0:
 		remove_damage_taken_multiplier_modifier(multiplier_source_id)
-	collectible_status_effects.erase(effect_key)
-	_refresh_status_process_enabled()
 
 
 func _play_collectible_status_feedback(status_id: StringName) -> void:
