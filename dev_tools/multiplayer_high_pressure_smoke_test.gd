@@ -1110,7 +1110,16 @@ func _test_runtime_world_manifest_prunes_stale_replicas() -> void:
 	var live_plant := PlantDefense.new()
 	var stale_plant := PlantDefense.new()
 	fixture.proxy_plants = {20: live_plant, 21: stale_plant}
-	mp_game.set("_pending_warehouse_snapshots", {20: {"revision": 1}, 21: {"revision": 1}})
+	mp_game.call(
+		"_cache_pending_warehouse_snapshot",
+		20,
+		{"revision": 1}
+	)
+	mp_game.call(
+		"_cache_pending_warehouse_snapshot",
+		21,
+		{"revision": 1}
+	)
 	mp_game.call(
 		"net_runtime_world_manifest",
 		PackedInt32Array([1]),
@@ -1131,6 +1140,8 @@ func _test_runtime_world_manifest_prunes_stale_replicas() -> void:
 		and not fixture.proxy_plants.has(21)
 		and (mp_game.get("_pending_warehouse_snapshots") as Dictionary).has(20)
 		and not (mp_game.get("_pending_warehouse_snapshots") as Dictionary).has(21)
+		and int(mp_game.get("_pending_warehouse_snapshot_oldest_id")) == 20
+		and int(mp_game.get("_pending_warehouse_snapshot_newest_id")) == 20
 		and fixture.silent_plant_removal_ids.has(21)
 		and not fixture.animated_plant_removal_ids.has(21),
 		"A complete-state manifest must prune stale plants and their queued warehouse snapshots."

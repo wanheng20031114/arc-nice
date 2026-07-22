@@ -184,6 +184,7 @@ const ENEMY_TERMINAL_ESCAPED := 1
 const ENEMY_TERMINAL_REMOVED := 2
 const MULTIPLAYER_TEAM_PLANT_LIMIT := 256
 const CLIENT_PENDING_PLANT_HEALTH_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT
+const CLIENT_PENDING_WAREHOUSE_SNAPSHOT_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT
 const CLIENT_PENDING_PRODUCTION_STATE_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT
 const CLIENT_REMOVED_PLANT_TOMBSTONE_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT * 2
 const PLANT_PLACEMENT_RATE_PER_SECOND := 4.0
@@ -353,6 +354,14 @@ var _last_simple_crafting_result_ids: Dictionary = {}
 var _simple_crafting_rate_buckets: Dictionary = {}
 var _simple_crafting_results_by_peer: Dictionary = {}
 var _pending_warehouse_snapshots: Dictionary = {}
+# Snapshot-before-spawn is a valid cross-channel ordering, but the deferred
+# payloads must not grow with every unknown net id. These links form a bounded
+# insertion-order FIFO: replacement, arbitrary consumption/removal and oldest
+# eviction are all O(1), without allocating Dictionary.keys() arrays.
+var _pending_warehouse_snapshot_previous_ids: Dictionary = {}
+var _pending_warehouse_snapshot_next_ids: Dictionary = {}
+var _pending_warehouse_snapshot_oldest_id: int = 0
+var _pending_warehouse_snapshot_newest_id: int = 0
 var _pending_authoritative_warehouse_snapshots: Dictionary = {}
 var _production_command_rate_buckets: Dictionary = {}
 var _production_snapshot_request_rate_buckets: Dictionary = {}
@@ -483,6 +492,7 @@ func _exit_tree() -> void:
 	_pending_corn_machine_gun_burst_host_times.clear()
 	_pending_plant_health_updates.clear()
 	_clear_remote_plant_health_state()
+	_clear_pending_warehouse_snapshots()
 	_pending_wave_progress.clear()
 	_pending_enemy_spawns.clear()
 	_host_terminal_enemy_ids.clear()
@@ -1570,11 +1580,9 @@ func _configure_warehouse_network(plant: PlantDefense, snapshot_ready: bool) -> 
 		)
 		if not warehouse.storage_changed.is_connected(storage_changed_callback):
 			warehouse.storage_changed.connect(storage_changed_callback)
-	if _pending_warehouse_snapshots.has(net_id):
-		warehouse.apply_storage_snapshot(
-			_pending_warehouse_snapshots.get(net_id, {}) as Dictionary
-		)
-		_pending_warehouse_snapshots.erase(net_id)
+	var pending_snapshot := _take_pending_warehouse_snapshot(net_id)
+	if not pending_snapshot.is_empty():
+		warehouse.apply_storage_snapshot(pending_snapshot)
 	if net_manager.is_client() and not warehouse.multiplayer_storage_snapshot_ready:
 		warehouse.request_multiplayer_storage_snapshot()
 
@@ -8902,7 +8910,7 @@ func net_runtime_world_manifest(
 		for plant_snapshot in game.get_multiplayer_plant_snapshots():
 			var plant_net_id := int(plant_snapshot.get("net_id", 0))
 			if plant_net_id > 0 and not plant_id_set.has(plant_net_id):
-				_pending_warehouse_snapshots.erase(plant_net_id)
+				_erase_pending_warehouse_snapshot(plant_net_id)
 				_pending_remote_production_states.erase(plant_net_id)
 				_mark_remote_plant_removed(plant_net_id)
 				game.apply_remote_plant_removed_silently(plant_net_id)
@@ -8911,7 +8919,7 @@ func net_runtime_world_manifest(
 		for pending_net_id_variant in _pending_warehouse_snapshots.keys():
 			var pending_net_id := int(pending_net_id_variant)
 			if not plant_id_set.has(pending_net_id):
-				_pending_warehouse_snapshots.erase(pending_net_id)
+				_erase_pending_warehouse_snapshot(pending_net_id)
 		for pending_net_id_variant in _pending_remote_production_states.keys():
 			var pending_net_id := int(pending_net_id_variant)
 			if not plant_id_set.has(pending_net_id):
@@ -9309,11 +9317,16 @@ func _apply_warehouse_storage_snapshot(
 	warehouse_net_id: int,
 	snapshot: Dictionary
 ) -> void:
-	if game == null or warehouse_net_id <= 0 or snapshot.is_empty():
+	if (
+		game == null
+		or warehouse_net_id <= 0
+		or snapshot.is_empty()
+		or _removed_remote_plant_ids.has(warehouse_net_id)
+	):
 		return
 	var warehouse := game.get_multiplayer_plant_node(warehouse_net_id) as OakWarehouse
 	if warehouse == null or not is_instance_valid(warehouse):
-		_pending_warehouse_snapshots[warehouse_net_id] = snapshot.duplicate(true)
+		_cache_pending_warehouse_snapshot(warehouse_net_id, snapshot)
 		return
 	var already_configured := (
 		warehouse.multiplayer_storage_enabled
@@ -9323,6 +9336,79 @@ func _apply_warehouse_storage_snapshot(
 	if not already_configured:
 		_configure_warehouse_network(warehouse, true)
 	warehouse.apply_storage_snapshot(snapshot)
+
+
+func _cache_pending_warehouse_snapshot(
+	warehouse_net_id: int,
+	snapshot: Dictionary
+) -> void:
+	if (
+		warehouse_net_id <= 0
+		or snapshot.is_empty()
+		or _removed_remote_plant_ids.has(warehouse_net_id)
+	):
+		return
+	if _pending_warehouse_snapshots.has(warehouse_net_id):
+		_pending_warehouse_snapshots[warehouse_net_id] = snapshot.duplicate(true)
+		return
+	if (
+		_pending_warehouse_snapshots.size()
+		>= CLIENT_PENDING_WAREHOUSE_SNAPSHOT_MAX_ENTRIES
+	):
+		_erase_pending_warehouse_snapshot(
+			_pending_warehouse_snapshot_oldest_id
+		)
+
+	var previous_id := _pending_warehouse_snapshot_newest_id
+	_pending_warehouse_snapshots[warehouse_net_id] = snapshot.duplicate(true)
+	_pending_warehouse_snapshot_previous_ids[warehouse_net_id] = previous_id
+	_pending_warehouse_snapshot_next_ids[warehouse_net_id] = 0
+	if previous_id > 0:
+		_pending_warehouse_snapshot_next_ids[previous_id] = warehouse_net_id
+	else:
+		_pending_warehouse_snapshot_oldest_id = warehouse_net_id
+	_pending_warehouse_snapshot_newest_id = warehouse_net_id
+
+
+func _take_pending_warehouse_snapshot(warehouse_net_id: int) -> Dictionary:
+	var snapshot := (
+		_pending_warehouse_snapshots.get(warehouse_net_id, {}) as Dictionary
+	)
+	if snapshot.is_empty():
+		return {}
+	_erase_pending_warehouse_snapshot(warehouse_net_id)
+	return snapshot
+
+
+func _erase_pending_warehouse_snapshot(warehouse_net_id: int) -> bool:
+	if not _pending_warehouse_snapshots.has(warehouse_net_id):
+		return false
+	var previous_id := int(
+		_pending_warehouse_snapshot_previous_ids.get(warehouse_net_id, 0)
+	)
+	var next_id := int(
+		_pending_warehouse_snapshot_next_ids.get(warehouse_net_id, 0)
+	)
+	if previous_id > 0:
+		_pending_warehouse_snapshot_next_ids[previous_id] = next_id
+	else:
+		_pending_warehouse_snapshot_oldest_id = next_id
+	if next_id > 0:
+		_pending_warehouse_snapshot_previous_ids[next_id] = previous_id
+	else:
+		_pending_warehouse_snapshot_newest_id = previous_id
+	_pending_warehouse_snapshot_previous_ids.erase(warehouse_net_id)
+	_pending_warehouse_snapshot_next_ids.erase(warehouse_net_id)
+	_pending_warehouse_snapshots.erase(warehouse_net_id)
+	return true
+
+
+func _clear_pending_warehouse_snapshots() -> void:
+	_pending_warehouse_snapshots.clear()
+	_pending_warehouse_snapshot_previous_ids.clear()
+	_pending_warehouse_snapshot_next_ids.clear()
+	_pending_warehouse_snapshot_oldest_id = 0
+	_pending_warehouse_snapshot_newest_id = 0
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -9567,7 +9653,7 @@ func net_plant_health_changed(
 func net_plant_removed(net_id: int) -> void:
 	if game == null or net_manager.is_host():
 		return
-	_pending_warehouse_snapshots.erase(net_id)
+	_erase_pending_warehouse_snapshot(net_id)
 	_pending_remote_production_states.erase(net_id)
 	_mark_remote_plant_removed(net_id)
 	game.apply_remote_plant_removed(net_id)
@@ -11322,7 +11408,7 @@ func _return_to_lobby() -> void:
 	_active_enemy_damage_feedback_context.clear()
 	_pending_plant_health_updates.clear()
 	_clear_remote_plant_health_state()
-	_pending_warehouse_snapshots.clear()
+	_clear_pending_warehouse_snapshots()
 	_pending_authoritative_warehouse_snapshots.clear()
 	_pending_production_state_updates.clear()
 	_pending_remote_production_states.clear()
