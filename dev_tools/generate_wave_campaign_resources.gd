@@ -24,6 +24,9 @@ const STANDARD_TEST_FIRE_SORCERER := preload(
 const STANDARD_TEST_FROST_SORCERER := preload(
 	"res://resources/config/enemies/frost_sorcerer.tres"
 )
+const STANDARD_TEST_FROST_SORCERER_ELITE := preload(
+	"res://resources/config/enemies/frost_sorcerer_elite.tres"
+)
 
 const FORCE_ARGUMENT := "--force"
 const TOWER_DEFENSE_STRESS_TOTAL_ENEMIES := 1200
@@ -167,9 +170,10 @@ func _configure_standard_singleplayer_sorcerer_test_wave(
 	wave_config.display_name = wave_config.wave_name
 	wave_config.enemy_entries = [
 		_create_wave_entry(STANDARD_TEST_FROST_SORCERER, 1),
+		_create_wave_entry(STANDARD_TEST_FROST_SORCERER_ELITE, 1),
 		_create_wave_entry(STANDARD_TEST_FIRE_SORCERER, 1),
 	]
-	wave_config.max_alive_enemies = 2
+	wave_config.max_alive_enemies = 3
 
 
 func _configure_tower_defense_stress_wave(

@@ -3,6 +3,9 @@ extends SceneTree
 const FROST_SORCERER_SCENE := preload(
 	"res://scene/enemy/frost_sorcerer.tscn"
 )
+const FIRE_SORCERER_SCENE := preload(
+	"res://scene/enemy/fire_sorcerer.tscn"
+)
 const ICE_SPIKE_SCENE := preload(
 	"res://scene/enemy/frost_sorcerer_ice_spike.tscn"
 )
@@ -88,7 +91,9 @@ func _test_resource_animation_and_node_contracts() -> void:
 	)
 
 	var enemy := FROST_SORCERER_SCENE.instantiate() as FrostSorcerer
+	var fire_enemy := FIRE_SORCERER_SCENE.instantiate() as Node2D
 	_expect(enemy != null, "Frost Sorcerer scene must instantiate FrostSorcerer.")
+	_expect(fire_enemy != null, "Fire Sorcerer reference scene must instantiate.")
 	if enemy != null:
 		var sprite := enemy.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
 		var pivot := enemy.get_node_or_null("SummonPivot") as Node2D
@@ -116,6 +121,17 @@ func _test_resource_animation_and_node_contracts() -> void:
 				CHARACTER_FRAME_SIZE,
 				"Frost Sorcerer"
 			)
+		if fire_enemy != null:
+			_expect_same_visual_node_contract(enemy, fire_enemy)
+			var fire_sprite := (
+				fire_enemy.get_node_or_null("AnimatedSprite2D")
+				as AnimatedSprite2D
+			)
+			if sprite != null and fire_sprite != null:
+				_expect_same_character_alpha_bounds(
+					sprite.sprite_frames,
+					fire_sprite.sprite_frames
+				)
 		if preview != null:
 			_expect_animation_contract(
 				preview.sprite_frames,
@@ -152,6 +168,8 @@ func _test_resource_animation_and_node_contracts() -> void:
 				"Summon AnimationPlayer duration must match the 0.6 s config windup."
 			)
 		enemy.free()
+	if fire_enemy != null:
+		fire_enemy.free()
 
 	var spike := ICE_SPIKE_SCENE.instantiate() as FrostSorcererIceSpike
 	_expect(spike != null, "Ice-spike scene must instantiate FrostSorcererIceSpike.")
@@ -504,6 +522,169 @@ func _collect_fixture_spikes() -> Array[FrostSorcererIceSpike]:
 		if spike != null and is_instance_valid(spike):
 			result.append(spike)
 	return result
+
+
+func _expect_same_visual_node_contract(
+	frost_enemy: Node2D,
+	fire_enemy: Node2D
+) -> void:
+	_expect(
+		frost_enemy.transform.is_equal_approx(fire_enemy.transform),
+		"Frost and Fire Sorcerer roots must use the same authored transform."
+	)
+	for path in [
+		NodePath("AnimatedSprite2D"),
+		NodePath("CollisionShape2D"),
+		NodePath("TouchDamageArea"),
+		NodePath("TouchDamageArea/CollisionShape2D"),
+	]:
+		var frost_node := frost_enemy.get_node_or_null(path) as Node2D
+		var fire_node := fire_enemy.get_node_or_null(path) as Node2D
+		_expect(
+			frost_node != null and fire_node != null,
+			"Both Sorcerers must author shared visual/body node %s." % path
+		)
+		if frost_node != null and fire_node != null:
+			_expect(
+				frost_node.transform.is_equal_approx(fire_node.transform),
+				"Frost node %s transform must match Fire Sorcerer." % path
+			)
+
+	var frost_sprite := (
+		frost_enemy.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
+	)
+	var fire_sprite := (
+		fire_enemy.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
+	)
+	if frost_sprite != null and fire_sprite != null:
+		_expect(
+			frost_sprite.centered == fire_sprite.centered
+			and frost_sprite.offset == fire_sprite.offset
+			and frost_sprite.texture_filter == fire_sprite.texture_filter
+			and frost_sprite.z_index == fire_sprite.z_index,
+			"Frost sprite centering, filter, offset, and z-index must match Fire."
+		)
+
+	_expect_same_capsule_shape(
+		frost_enemy,
+		fire_enemy,
+		NodePath("CollisionShape2D")
+	)
+	_expect_same_capsule_shape(
+		frost_enemy,
+		fire_enemy,
+		NodePath("TouchDamageArea/CollisionShape2D")
+	)
+
+
+func _expect_same_capsule_shape(
+	frost_enemy: Node2D,
+	fire_enemy: Node2D,
+	path: NodePath
+) -> void:
+	var frost_node := frost_enemy.get_node_or_null(path) as CollisionShape2D
+	var fire_node := fire_enemy.get_node_or_null(path) as CollisionShape2D
+	var frost_capsule := (
+		frost_node.shape as CapsuleShape2D if frost_node != null else null
+	)
+	var fire_capsule := (
+		fire_node.shape as CapsuleShape2D if fire_node != null else null
+	)
+	_expect(
+		frost_capsule != null and fire_capsule != null,
+		"Both Sorcerers must use a capsule at %s." % path
+	)
+	if frost_capsule == null or fire_capsule == null:
+		return
+	_expect(
+		is_equal_approx(frost_capsule.radius, fire_capsule.radius)
+		and is_equal_approx(frost_capsule.height, fire_capsule.height)
+		and frost_node.disabled == fire_node.disabled,
+		"Frost capsule %s must match Fire radius, height, and disabled state."
+		% path
+	)
+
+
+func _expect_same_character_alpha_bounds(
+	frost_frames: SpriteFrames,
+	fire_frames: SpriteFrames
+) -> void:
+	for animation_name in [&"move", &"windup", &"attack", &"death"]:
+		_expect(
+			frost_frames.has_animation(animation_name)
+			and fire_frames.has_animation(animation_name),
+			"Both Sorcerers must author animation %s." % animation_name
+		)
+		if (
+			not frost_frames.has_animation(animation_name)
+			or not fire_frames.has_animation(animation_name)
+		):
+			continue
+		for frame_index in range(4):
+			var frost_texture := frost_frames.get_frame_texture(
+				animation_name,
+				frame_index
+			) as AtlasTexture
+			var fire_texture := fire_frames.get_frame_texture(
+				animation_name,
+				frame_index
+			) as AtlasTexture
+			_expect(
+				frost_texture != null and fire_texture != null,
+				"Both Sorcerers must use AtlasTexture character frames."
+			)
+			if frost_texture == null or fire_texture == null:
+				continue
+			var frost_bounds := _atlas_alpha_bounds(frost_texture)
+			var fire_bounds := _atlas_alpha_bounds(fire_texture)
+			_expect(
+				fire_bounds.has_area() and frost_bounds == fire_bounds,
+				(
+					"Frost %s frame %d alpha bounds must match Fire: "
+					+ "saw %s versus %s."
+				)
+				% [
+					animation_name,
+					frame_index,
+					str(frost_bounds),
+					str(fire_bounds),
+				]
+			)
+
+
+func _atlas_alpha_bounds(texture: AtlasTexture) -> Rect2i:
+	if texture.atlas == null:
+		return Rect2i()
+	var atlas_image := texture.atlas.get_image()
+	if atlas_image == null:
+		return Rect2i()
+	var region := Rect2i(
+		Vector2i(
+			roundi(texture.region.position.x),
+			roundi(texture.region.position.y)
+		),
+		Vector2i(
+			roundi(texture.region.size.x),
+			roundi(texture.region.size.y)
+		)
+	)
+	var minimum := region.size
+	var maximum := Vector2i(-1, -1)
+	for local_y in range(region.size.y):
+		for local_x in range(region.size.x):
+			var pixel := atlas_image.get_pixel(
+				region.position.x + local_x,
+				region.position.y + local_y
+			)
+			if pixel.a <= 0.0:
+				continue
+			minimum.x = mini(minimum.x, local_x)
+			minimum.y = mini(minimum.y, local_y)
+			maximum.x = maxi(maximum.x, local_x)
+			maximum.y = maxi(maximum.y, local_y)
+	if maximum.x < 0:
+		return Rect2i()
+	return Rect2i(minimum, maximum - minimum + Vector2i.ONE)
 
 
 func _expect_animation_contract(

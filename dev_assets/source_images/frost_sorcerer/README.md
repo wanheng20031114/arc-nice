@@ -1,63 +1,110 @@
 # 寒冰术士 imagegen 素材记录
 
-运行时贴图由 Codex 内置 `imagegen` 生成的独立寒冰设计构建。已有火焰术士
-只用于说明 4×4 布局、朝向、脚底锚点和动作阶段；服装、头部、法杖、配色与
-冰系法术轮廓均重新设计，未把火焰术士当作像素级身份模板。
+运行时角色贴图由 Codex 内置 `imagegen` 重新生成。2026-07-22 的尺寸修复没有
+缩放旧的 38 像素高角色，而是按火焰术士的原生占位重新绘制四条动画；运行时
+仅进行生成稿到 40×40 原生帧所必需的栅格化。火焰术士用于约束体型、脚底线、
+逐帧边界和动作阶段，寒冰服装、冰冠、法杖与法术轮廓保持独立设计。
 
-## 文件
+## 当前角色源文件
 
-- `frost_sorcerer_imagegen_source.png`：首次验收的 4×4 角色源图。
-- `frost_sorcerer_alpha.png`：首次源图去除绿色背景后的透明版本。
-- `frost_sorcerer_attack_scale_refined_imagegen_source.png`：只修正第三行
-  攻击动作角色尺度的定向编辑结果。
-- `frost_sorcerer_attack_scale_refined_alpha.png`：定向编辑的透明版本；运行时
-  仅取其第三行，其他三行仍来自首次验收源图。
-- `frost_sorcerer_ice_spike_imagegen_source.png`：4×4 冰锥源图。
-- `frost_sorcerer_ice_spike_alpha.png`：冰锥透明版本。
+每个动作同时保留 imagegen 绿色背景原稿和去背透明稿：
 
-## 角色生成约束
+- `frost_sorcerer_move_fire_scale_v2_imagegen_source.png`
+- `frost_sorcerer_move_fire_scale_v2_alpha.png`
+- `frost_sorcerer_windup_fire_scale_imagegen_source.png`
+- `frost_sorcerer_windup_fire_scale_alpha.png`
+- `frost_sorcerer_attack_fire_scale_imagegen_source.png`
+- `frost_sorcerer_attack_fire_scale_alpha.png`
+- `frost_sorcerer_death_fire_scale_imagegen_source.png`
+- `frost_sorcerer_death_fire_scale_alpha.png`
 
-生成模式：Codex 内置 `imagegen`，新图生成。
+早期的 `frost_sorcerer_imagegen_source.png`、`frost_sorcerer_alpha.png` 与攻击
+修正版保留为历史原稿，但已不参与角色运行时构建。冰锥仍使用
+`frost_sorcerer_ice_spike_imagegen_source.png` 和
+`frost_sorcerer_ice_spike_alpha.png`。
+
+## 最终角色提示词
+
+生成模式：Codex 内置 `imagegen`；`precise-object-edit`；绿色背景便于确定性去背。
+
+### 移动
 
 ```text
-Create a distinct Frost Sorcerer 4×4 pixel-art animation sheet. Use the
-provided Fire Sorcerer only as a structural reference for the right-facing
-layout, grounded center anchor and action progression; do not copy its visual
-identity. Design a faceted navy visor, pale-cyan angular crystal crown/hood,
-glacier-and-midnight robes and an ice-crystal staff. Row 1 is a genuinely
-readable four-pose walk cycle (contact, passing, opposite contact, opposite
-passing); row 2 windup; row 3 attack; row 4 non-gory defeat/dispel. Keep one
-consistent character scale, strict hard-edged low-resolution pixel art and an
-exact 4×4 grid on a flat chroma-green background, with no labels or borders.
+Using the existing Frost Sorcerer only for identity and the native Fire
+Sorcerer sheet for scale, create exactly one horizontal four-frame right-facing
+walk strip. Redraw the Frost Sorcerer with a compact near-square silhouette at
+the Fire Sorcerer's native visual size: about 27-28 pixels wide by 29 pixels
+tall after rasterization, one common ground line, four genuinely distinct walk
+poses. Keep the navy robe, pale-cyan angular ice crown/hood and short crystal
+staff. Use coarse deliberate square pixel clusters, hard edges, no glow,
+antialiasing, blur, gradients, shadows, labels or grid lines, at most 18 colors,
+and a flat #00FF00 background with generous separation between frames.
 ```
 
-第三行定向修正使用 `precise-object-edit`：保留第 1、2、4 行，只让第 3 行
-角色身体与行走帧保持相同视认尺度、锚点和脚底线，并缩短过长的法杖/冰霜
-拖尾，避免特效包围盒把角色本体整体缩小。
-
-## 冰锥生成约束
-
-生成模式：Codex 内置 `imagegen`，新图生成。
+### 蓄力
 
 ```text
-Create an exact 4×4 sprite sheet for one tiny right-facing magical ice-spike
+Use the accepted compact Frost Sorcerer move strip as the exact identity and
+scale reference and the Fire Sorcerer only for action timing. Create one
+horizontal four-frame windup strip: brace, pull back, raise/charge compact ice,
+fully charged. Keep the actor the same size as move; complete silhouette targets
+are approximately 24x29, 29x28, 26x30 and 24x33 native pixels. A raised staff
+may add height, but the crown and body must not grow. Use #00FF00, coarse square
+pixel clusters, hard edges, no antialiasing, blur, gradients, glow or labels,
+and at most 18 colors.
+```
+
+### 攻击
+
+```text
+Use the accepted compact Frost Sorcerer move strip as the exact identity and
+scale reference and the Fire Sorcerer's third row for action timing. Create one
+horizontal four-frame attack strip: low thrust, stronger extension/charge,
+release a short attached blocky ice burst, recoil. Keep the actor fixed at about
+27-29x29 native pixels; complete silhouette targets are approximately 31x29,
+33x29, 38x28 and 28x29. Do not add a detached projectile. Use #00FF00, coarse
+square pixel clusters, hard edges, no antialiasing, blur, gradients, glow or
+labels, and at most 18 colors.
+```
+
+### 消散
+
+```text
+Use the accepted compact Frost Sorcerer move strip as the exact identity and
+scale reference and the Fire Sorcerer's fourth row for timing. Create one
+horizontal four-frame non-gory death/dispel strip: hit stagger, kneel/collapse,
+compact attached blocky ice fragments, small collapsed icy heap. Complete
+silhouette targets are approximately 23x29, 28x27, 32x29 and 28x19 native
+pixels. Do not grow the body or scatter long detached particles. Use #00FF00,
+coarse square pixel clusters, hard edges, no antialiasing, blur, gradients, glow
+or labels, and at most 18 colors.
+```
+
+## 去背与确定性运行时构建
+
+四张原稿使用 imagegen 技能自带的 `remove_chroma_key.py`，以 border 自动取色、
+soft matte、12/220 阈值和 despill 生成透明稿。随后运行：
+
+```powershell
+python dev_tools/process_frost_sorcerer_assets.py
+python dev_tools/process_frost_sorcerer_assets.py --check-only
+```
+
+脚本逐帧调用 `dev_tools/pixel_grid_analyzer.py` 记录视觉网格分析，再把四条新绘制
+源图栅格化到 4×4、每帧 40×40 的运行时图集。寒冰术士 16 帧的 alpha 边界逐帧
+精确采用火焰术士对应帧的边界，因此体型、水平锚点和脚底线都不会再次漂移；输出
+强制二值 alpha、透明 RGB 清零和 24 色角色调色板。`--check-only` 会在内存中
+重建并确认角色运行时贴图逐像素没有过期；冰锥则精确比较 alpha 几何并验证输出
+契约，避免不同 Pillow 版本对等深色量化结果造成误报。
+
+冰锥仍按独立固定尺度生成 128×128 图集（每帧 32×32），不受角色边界约束影响。
+
+## 冰锥提示词
+
+```text
+Create an exact 4x4 sprite sheet for one tiny right-facing magical ice-spike
 projectile. Rows are fly, spawn, impact and expire, each with four coherent
 frames. Use crisp square pixel clusters, a compact pale-cyan core and deep-blue
 outline, consistent apparent projectile scale, no text, borders or grid lines,
 on a perfectly flat chroma-green background.
 ```
-
-## 确定性运行时构建
-
-```powershell
-python dev_tools/process_frost_sorcerer_assets.py
-```
-
-脚本会逐格调用项目的逻辑像素网格分析器，记录 imagegen 源图属于
-`native_or_unknown` 的低置信度结果，再使用人工验收后的同族固定尺度进行最近邻
-采样。最终角色为 160×160（每帧 40×40），冰锥为 128×128（每帧
-32×32）；输出强制二值 alpha、透明 RGB 清零、固定角色脚底线。角色前三行
-统一使用行走帧确定的固定尺度，并按参考火焰术士动作节奏验收过的下半身锚点
-落位；攻击冰芒超出 40×40 的部分由画布裁切，不再把「角色本体 + 特效」的
-整格包围盒逐帧缩小。脚底以下与主体远离的微小抠图残片会被确定性剔除，避免
-游离像素错误地拉高包围盒；第四行消散碎片仍只允许缩小、不允许放大。

@@ -1,0 +1,2 @@
+extends FrostSorcererConfig
+class_name FrostSorcererEliteConfig

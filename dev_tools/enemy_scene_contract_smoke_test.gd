@@ -22,6 +22,7 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/fire_sorcerer.tres"),
 	preload("res://resources/config/enemies/fire_sorcerer_elite.tres"),
 	preload("res://resources/config/enemies/frost_sorcerer.tres"),
+	preload("res://resources/config/enemies/frost_sorcerer_elite.tres"),
 ]
 const STANDARD_YUANSHI_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/yuanshi_insect_basic.tres"),
@@ -49,6 +50,7 @@ const SORCERER_DROP_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/fire_sorcerer.tres"),
 	preload("res://resources/config/enemies/fire_sorcerer_elite.tres"),
 	preload("res://resources/config/enemies/frost_sorcerer.tres"),
+	preload("res://resources/config/enemies/frost_sorcerer_elite.tres"),
 ]
 const STONE_GOLEM_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/stone_golem.tres"),
@@ -160,8 +162,8 @@ func _test_enemy_drop_contract() -> void:
 		"New enemy configs must inherit the shared data-driven drop table."
 	)
 	_expect(
-		all_drop_configs.size() == 22,
-		"The drop-contract audit must cover all 22 authored enemy configs, including Linglan."
+		all_drop_configs.size() == 23,
+		"The drop-contract audit must cover all 23 authored enemy configs, including Linglan."
 	)
 
 	var expected_paths: Array[String] = [
@@ -253,8 +255,8 @@ func _test_enemy_drop_contract() -> void:
 		"Exactly the eight Capoo configs must carry the capoo drop tag."
 	)
 	_expect(
-		sorcerer_tagged_count == 3,
-		"Exactly the two fire variants and Frost Sorcerer must carry the sorcerer tag."
+		sorcerer_tagged_count == 4,
+		"Exactly the two fire and two frost variants must carry the sorcerer tag."
 	)
 	for enemy_config in CAPOO_DROP_CONFIGS:
 		_expect(
