@@ -385,6 +385,15 @@ var _production_command_results_by_peer: Dictionary = (
 )
 var _pending_production_state_updates: Dictionary = {}
 var _pending_remote_production_states: Dictionary = {}
+# Production state batches may arrive before the reliable plant spawn channel.
+# Keep exactly one latest state per unknown building in the same bounded O(1)
+# linked FIFO shape as warehouse snapshots: replacement preserves age, while
+# spawn consumption, confirmed-node manifest removal and oldest eviction unlink
+# in O(1).
+var _pending_remote_production_state_previous_ids: Dictionary = {}
+var _pending_remote_production_state_next_ids: Dictionary = {}
+var _pending_remote_production_state_oldest_id: int = 0
+var _pending_remote_production_state_newest_id: int = 0
 var _shared_production_state_flush_scheduled := false
 var _research_command_rate_buckets: Dictionary = {}
 var _last_research_request_ids: Dictionary = {}
@@ -510,6 +519,7 @@ func _exit_tree() -> void:
 	_pending_plant_health_updates.clear()
 	_clear_remote_plant_health_state()
 	_clear_pending_warehouse_snapshots()
+	_clear_pending_remote_production_states()
 	_pending_wave_progress.clear()
 	_pending_enemy_spawns.clear()
 	_host_terminal_enemy_ids.clear()
@@ -1628,14 +1638,13 @@ func _configure_production_network(plant: PlantDefense, snapshot_ready: bool) ->
 		var state_callback := _on_authoritative_production_state_changed.bind(building)
 		if not building.production_state_changed.is_connected(state_callback):
 			building.production_state_changed.connect(state_callback)
-	if _pending_remote_production_states.has(net_id):
-		var pending := _pending_remote_production_states.get(net_id, {}) as Dictionary
+	var pending := _take_pending_remote_production_state(net_id)
+	if not pending.is_empty():
 		_apply_plant_runtime_state(
 			building,
 			pending.get("state", {}) as Dictionary,
 			float(pending.get("host_sample_time", 0.0))
 		)
-		_pending_remote_production_states.erase(net_id)
 
 
 func _configure_research_network(plant: PlantDefense) -> void:
@@ -8475,14 +8484,18 @@ func _apply_plant_runtime_state(
 		if not is_finite(elapsed_seconds):
 			return
 		corrected_state[elapsed_key] = maxf(elapsed_seconds, 0.0) + sample_age
-	plant.apply_multiplayer_runtime_state(
-		corrected_state,
-		(
-			Time.get_ticks_msec() / 1000.0 - sample_age
-			if plant is ProductionBuilding
-			else Time.get_ticks_msec() / 1000.0
+	var production_building := plant as ProductionBuilding
+	if production_building != null:
+		production_building.apply_multiplayer_runtime_state_with_host_sample(
+			corrected_state,
+			Time.get_ticks_msec() / 1000.0 - sample_age,
+			host_sample_time
 		)
-	)
+	else:
+		plant.apply_multiplayer_runtime_state(
+			corrected_state,
+			Time.get_ticks_msec() / 1000.0
+		)
 
 
 func broadcast_enemy_action(
@@ -8872,7 +8885,7 @@ func net_runtime_world_manifest(
 			var plant_net_id := int(plant_snapshot.get("net_id", 0))
 			if plant_net_id > 0 and not plant_id_set.has(plant_net_id):
 				_erase_pending_warehouse_snapshot(plant_net_id)
-				_pending_remote_production_states.erase(plant_net_id)
+				_erase_pending_remote_production_state(plant_net_id)
 				_mark_remote_plant_removed(plant_net_id)
 				game.apply_remote_plant_removed_silently(plant_net_id)
 			elif plant_net_id > 0:
@@ -8881,10 +8894,10 @@ func net_runtime_world_manifest(
 			var pending_net_id := int(pending_net_id_variant)
 			if not plant_id_set.has(pending_net_id):
 				_erase_pending_warehouse_snapshot(pending_net_id)
-		for pending_net_id_variant in _pending_remote_production_states.keys():
-			var pending_net_id := int(pending_net_id_variant)
-			if not plant_id_set.has(pending_net_id):
-				_pending_remote_production_states.erase(pending_net_id)
+		# CH5 manifests and CH6 production batches have no cross-channel total
+		# order. An unknown state missing from this manifest may belong to a spawn
+		# that is already live on the Host but still in flight on CH5. Keep it
+		# bounded until spawn, explicit removal, or FIFO eviction proves its fate.
 		for pending_net_id_variant in _pending_remote_plant_health_updates.keys():
 			var pending_net_id := int(pending_net_id_variant)
 			if not plant_id_set.has(pending_net_id):
@@ -9189,7 +9202,7 @@ func net_production_state_batch(
 		var net_id := int(net_ids[index])
 		if _removed_remote_plant_ids.has(net_id):
 			continue
-		var state := (states[index] as Dictionary).duplicate(true)
+		var state := states[index] as Dictionary
 		if (
 			typeof(state.get("schema")) != TYPE_INT
 			or typeof(state.get("revision")) != TYPE_INT
@@ -9197,25 +9210,15 @@ func net_production_state_batch(
 			continue
 		var building := game.get_multiplayer_plant_node(net_id) as ProductionBuilding
 		if building == null or not is_instance_valid(building):
-			var previous := _pending_remote_production_states.get(net_id, {}) as Dictionary
-			var previous_state := previous.get("state", {}) as Dictionary
-			if int(state["revision"]) >= int(previous_state.get("revision", -1)):
-				if (
-					not _pending_remote_production_states.has(net_id)
-					and _pending_remote_production_states.size()
-					>= CLIENT_PENDING_PRODUCTION_STATE_MAX_ENTRIES
-				):
-					_pending_remote_production_states.erase(
-						_pending_remote_production_states.keys()[0]
-					)
-				_pending_remote_production_states[net_id] = {
-					"state": state,
-					"host_sample_time": float(host_sample_times[index]),
-				}
+			_cache_pending_remote_production_state(
+				net_id,
+				state,
+				float(host_sample_times[index])
+			)
 			continue
 		_apply_plant_runtime_state(
 			building,
-			state,
+			state.duplicate(true),
 			float(host_sample_times[index])
 		)
 
@@ -9370,6 +9373,97 @@ func _clear_pending_warehouse_snapshots() -> void:
 	_pending_warehouse_snapshot_next_ids.clear()
 	_pending_warehouse_snapshot_oldest_id = 0
 	_pending_warehouse_snapshot_newest_id = 0
+
+
+func _cache_pending_remote_production_state(
+	net_id: int,
+	state: Dictionary,
+	host_sample_time: float
+) -> bool:
+	if net_id <= 0 or not is_finite(host_sample_time):
+		return false
+	if _pending_remote_production_states.has(net_id):
+		var previous := (
+			_pending_remote_production_states[net_id] as Dictionary
+		)
+		var previous_state := previous.get("state", {}) as Dictionary
+		var revision := int(state.get("revision", -1))
+		var previous_revision := int(previous_state.get("revision", -1))
+		var previous_sample_time := float(
+			previous.get("host_sample_time", -INF)
+		)
+		if (
+			revision < previous_revision
+			or (
+				revision == previous_revision
+				and host_sample_time <= previous_sample_time
+			)
+		):
+			return false
+		_pending_remote_production_states[net_id] = {
+			"state": state.duplicate(true),
+			"host_sample_time": host_sample_time,
+		}
+		return true
+	if (
+		_pending_remote_production_states.size()
+		>= CLIENT_PENDING_PRODUCTION_STATE_MAX_ENTRIES
+	):
+		_erase_pending_remote_production_state(
+			_pending_remote_production_state_oldest_id
+		)
+	var previous_id := _pending_remote_production_state_newest_id
+	_pending_remote_production_states[net_id] = {
+		"state": state.duplicate(true),
+		"host_sample_time": host_sample_time,
+	}
+	_pending_remote_production_state_previous_ids[net_id] = previous_id
+	_pending_remote_production_state_next_ids[net_id] = 0
+	if previous_id > 0:
+		_pending_remote_production_state_next_ids[previous_id] = net_id
+	else:
+		_pending_remote_production_state_oldest_id = net_id
+	_pending_remote_production_state_newest_id = net_id
+	return true
+
+
+func _take_pending_remote_production_state(net_id: int) -> Dictionary:
+	var pending := _pending_remote_production_states.get(net_id, {}) as Dictionary
+	if pending.is_empty():
+		return {}
+	_erase_pending_remote_production_state(net_id)
+	return pending
+
+
+func _erase_pending_remote_production_state(net_id: int) -> bool:
+	if not _pending_remote_production_states.has(net_id):
+		return false
+	var previous_id := int(
+		_pending_remote_production_state_previous_ids.get(net_id, 0)
+	)
+	var next_id := int(
+		_pending_remote_production_state_next_ids.get(net_id, 0)
+	)
+	if previous_id > 0:
+		_pending_remote_production_state_next_ids[previous_id] = next_id
+	else:
+		_pending_remote_production_state_oldest_id = next_id
+	if next_id > 0:
+		_pending_remote_production_state_previous_ids[next_id] = previous_id
+	else:
+		_pending_remote_production_state_newest_id = previous_id
+	_pending_remote_production_state_previous_ids.erase(net_id)
+	_pending_remote_production_state_next_ids.erase(net_id)
+	_pending_remote_production_states.erase(net_id)
+	return true
+
+
+func _clear_pending_remote_production_states() -> void:
+	_pending_remote_production_states.clear()
+	_pending_remote_production_state_previous_ids.clear()
+	_pending_remote_production_state_next_ids.clear()
+	_pending_remote_production_state_oldest_id = 0
+	_pending_remote_production_state_newest_id = 0
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -9615,7 +9709,7 @@ func net_plant_removed(net_id: int) -> void:
 	if game == null or net_manager.is_host():
 		return
 	_erase_pending_warehouse_snapshot(net_id)
-	_pending_remote_production_states.erase(net_id)
+	_erase_pending_remote_production_state(net_id)
 	_mark_remote_plant_removed(net_id)
 	game.apply_remote_plant_removed(net_id)
 
@@ -11372,7 +11466,7 @@ func _return_to_lobby() -> void:
 	_clear_pending_warehouse_snapshots()
 	_pending_authoritative_warehouse_snapshots.clear()
 	_pending_production_state_updates.clear()
-	_pending_remote_production_states.clear()
+	_clear_pending_remote_production_states()
 	_shared_production_state_flush_scheduled = false
 	_pending_wave_progress.clear()
 	_pending_enemy_spawns.clear()

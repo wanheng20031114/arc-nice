@@ -52,6 +52,8 @@ var prompt_tween: Tween = null
 var _visual_progress_elapsed_at_sync := 0.0
 var _visual_progress_sync_msec: int = 0
 var _visual_projection_duration_seconds := VISUAL_PROJECTION_WINDOW_SECONDS
+var _has_multiplayer_runtime_sample := false
+var _last_multiplayer_runtime_host_sample_time := 0.0
 
 
 func _ready() -> void:
@@ -112,6 +114,8 @@ func _on_setup_completed() -> void:
 				active_recipe_id = recipe.recipe_id
 				break
 	production_revision = 0
+	_has_multiplayer_runtime_sample = false
+	_last_multiplayer_runtime_host_sample_time = 0.0
 	_sync_visual_progress_clock()
 	health_bar.setup(max_health, current_health)
 	if not health_changed.is_connected(_on_health_changed):
@@ -226,6 +230,9 @@ func configure_multiplayer_production(
 		if snapshot_ready and not multiplayer_production_snapshot_ready:
 			set_multiplayer_production_snapshot_ready(true)
 		return
+	if identity_changed:
+		_has_multiplayer_runtime_sample = false
+		_last_multiplayer_runtime_host_sample_time = 0.0
 	building_net_id = normalized_building_net_id
 	multiplayer_production_peer_id = normalized_peer_id
 	multiplayer_production_enabled = will_be_enabled
@@ -575,6 +582,30 @@ func export_multiplayer_runtime_state() -> Dictionary:
 
 
 func apply_multiplayer_runtime_state(state: Dictionary, mapped_sample_time: float) -> void:
+	_apply_multiplayer_runtime_state_sample(
+		state,
+		mapped_sample_time,
+		mapped_sample_time
+	)
+
+
+func apply_multiplayer_runtime_state_with_host_sample(
+	state: Dictionary,
+	mapped_sample_time: float,
+	host_sample_time: float
+) -> void:
+	_apply_multiplayer_runtime_state_sample(
+		state,
+		mapped_sample_time,
+		host_sample_time
+	)
+
+
+func _apply_multiplayer_runtime_state_sample(
+	state: Dictionary,
+	mapped_sample_time: float,
+	received_host_sample_time: float
+) -> void:
 	if not is_multiplayer_proxy:
 		return
 	if (
@@ -591,13 +622,25 @@ func apply_multiplayer_runtime_state(state: Dictionary, mapped_sample_time: floa
 		return
 	var received_progress := float(state["progress_elapsed_seconds"])
 	var received_projection := float(state["projection_duration_seconds"])
-	if not is_finite(received_progress) or not is_finite(received_projection):
+	if (
+		not is_finite(received_progress)
+		or not is_finite(received_projection)
+		or not is_finite(received_host_sample_time)
+	):
 		return
 	var received_revision := int(state["revision"])
 	var received_output_peer_id := int(state["personal_output_peer_id"])
 	if received_revision < 0 or received_output_peer_id < 0:
 		return
-	if received_revision < production_revision:
+	if (
+		received_revision < production_revision
+		or (
+			received_revision == production_revision
+			and _has_multiplayer_runtime_sample
+			and received_host_sample_time
+			<= _last_multiplayer_runtime_host_sample_time
+		)
+	):
 		return
 	var received_recipe_id := StringName(state["active_recipe_id"])
 	var received_recipe := get_recipe(received_recipe_id)
@@ -617,6 +660,8 @@ func apply_multiplayer_runtime_state(state: Dictionary, mapped_sample_time: floa
 			received_output_peer_id = 0
 			received_progress = 0.0
 			received_wait_reason = ProductionCoordinator.RESULT_OUTPUT_PEER_UNAVAILABLE
+	_has_multiplayer_runtime_sample = true
+	_last_multiplayer_runtime_host_sample_time = received_host_sample_time
 	production_revision = received_revision
 	production_enabled = bool(state["enabled"])
 	active_recipe_id = received_recipe_id
