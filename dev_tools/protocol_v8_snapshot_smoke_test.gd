@@ -111,7 +111,7 @@ func _run() -> void:
 	_test_shared_snapshot_cohort_lifecycle()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V15_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V16_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -120,7 +120,7 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 15, "Protocol must be v15.")
+	_expect(NetConstants.PROTOCOL_VERSION == 16, "Protocol must be v16.")
 	_expect(NetConstants.CHANNEL_COUNT == 8, "ENet must provision eight channels.")
 	_expect(NetConstants.MAX_PLAYERS == 8, "Protocol capacity must accept an eight-player roster.")
 	_expect(
@@ -132,7 +132,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v15 channel assignments must remain stable."
+		"Protocol v16 channel assignments must remain stable."
 	)
 func _test_terrain_delta_revision_repair_contract() -> void:
 	var mp_game := TerrainRepairMpGame.new()
@@ -1242,34 +1242,71 @@ func _test_enemy_codec_reuse_and_packet_budget() -> void:
 		state.net_id = enemy_index + 1
 		state.position = Vector2(enemy_index * 2.0, enemy_index * -1.5)
 		state.velocity = Vector2(1.0, -1.0)
+		state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 		state.health = 100 + enemy_index
 		state.visual_status_mask = 0b1101 if enemy_index == 0 else 0
 		states.append(state)
 	var keyframe := sender.encode_enemy_snapshots_for_peer(8, states, true)
-	_expect(keyframe.size() <= 1200, "A 56-enemy full chunk must stay within 1200 bytes.")
+	_expect(
+		keyframe.size() == 1122,
+		"A v16 56-enemy keyframe must use 1122 bytes and stay within the 1200-byte budget."
+	)
 	var decoded_keyframe := receiver.decode_enemy_snapshots_with_baseline(keyframe)
 	_expect(decoded_keyframe.size() == 56, "The complete 56-enemy keyframe must decode.")
 	if decoded_keyframe.is_empty():
 		return
 	_expect(
-		decoded_keyframe[0].visual_status_mask == 0b1101,
-		"Enemy visual status bits must round-trip in a keyframe."
+		decoded_keyframe[0].visual_status_mask == 0b1101
+		and decoded_keyframe[0].locomotion_state
+			== SnapshotManager.ENEMY_LOCOMOTION_MOVING,
+		"Enemy visual status and locomotion bits must round-trip in a keyframe."
 	)
 	states[0].position.x += 2.0
 	states[0].visual_status_mask = 0b0100
+	states[0].locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_IDLE
 	var delta := sender.encode_enemy_snapshots_for_peer(8, states, false)
 	var decoded_delta := receiver.decode_enemy_snapshots_with_baseline(delta)
 	_expect(
 		decoded_delta.size() == 56
 		and is_same(decoded_keyframe[0], decoded_delta[0])
-		and decoded_delta[0].visual_status_mask == 0b0100,
-		"Enemy delta output must reuse per-enemy objects and update visual status bits."
+		and decoded_delta[0].visual_status_mask == 0b0100
+		and decoded_delta[0].locomotion_state
+			== SnapshotManager.ENEMY_LOCOMOTION_IDLE,
+		"Enemy delta output must reuse objects and update visual and locomotion bits."
 	)
 	receiver.prune_enemy_receive_baseline_to_ids({1: true})
 	_expect(
 		receiver.enemy_receive_baselines.size() == 1
 		and receiver.enemy_receive_output_states.size() == 1,
 		"Enemy pruning must release stale baseline and output-object entries together."
+	)
+
+	var locomotion_sender := SnapshotManager.new()
+	var locomotion_receiver := SnapshotManager.new()
+	var locomotion_state := SnapshotManager.EnemyState.new()
+	locomotion_state.net_id = 99
+	locomotion_state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
+	var locomotion_keyframe := locomotion_sender.encode_enemy_snapshots_for_peer(
+		9,
+		[locomotion_state],
+		true
+	)
+	locomotion_receiver.decode_enemy_snapshots_with_baseline(locomotion_keyframe)
+	locomotion_state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_IDLE
+	var locomotion_delta := locomotion_sender.encode_enemy_snapshots_for_peer(
+		9,
+		[locomotion_state],
+		false
+	)
+	var decoded_locomotion_delta := (
+		locomotion_receiver.decode_enemy_snapshots_with_baseline(locomotion_delta)
+	)
+	_expect(
+		locomotion_delta.size() == 8
+		and decoded_locomotion_delta.size() == 1
+		and decoded_locomotion_delta[0].locomotion_state
+			== SnapshotManager.ENEMY_LOCOMOTION_IDLE,
+		"A locomotion-only enemy delta must use exactly one payload byte and round-trip."
 	)
 
 

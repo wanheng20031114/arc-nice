@@ -618,6 +618,7 @@ func _append_enemy_snapshot_states_from_container(container: Node) -> void:
 		state.net_id = net_id
 		state.position = enemy.global_position
 		state.velocity = enemy.velocity
+		state.locomotion_state = enemy.get_locomotion_state()
 		state.health = enemy.current_health
 		state.is_dead = enemy.is_dead
 		state.visual_status_mask = enemy.get_collectible_visual_status_mask()

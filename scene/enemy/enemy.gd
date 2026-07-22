@@ -81,6 +81,11 @@ enum DeathSequenceStage {
 	EXPLOSION,
 }
 
+enum LocomotionState {
+	IDLE,
+	MOVING,
+}
+
 static var performance_metrics_enabled := false
 static var dynamic_flow_obstacle_lookahead_enabled := true
 static var navigation_render_frame_dedupe_enabled := true
@@ -163,6 +168,7 @@ var active_collectible_status_keys: Array = []
 var network_visual_status_mask: int = 0
 var multiplayer_proxy_visual_active: bool = true
 var multiplayer_proxy_authored_animation_speed: float = 1.0
+var multiplayer_proxy_locomotion_state: int = LocomotionState.IDLE
 var collectible_status_tween: Tween = null
 var is_multiplayer_proxy: bool = false
 var last_damage_taken: int = 0
@@ -508,7 +514,7 @@ func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = 
 	navigation_refresh_deferred = false
 	_invalidate_blocked_world_los_cache()
 	_invalidate_ranged_combat_line_cache()
-	_ranged_attack_position_held = false
+	_reset_ranged_attack_position_state()
 	near_moving_target_direct_distance = DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE
 	near_moving_target_direct_distance_squared = (
 		DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE_SQUARED
@@ -523,7 +529,7 @@ func set_target_player(player: Player) -> void:
 		if objective_target == null:
 			objective_target = player
 			_invalidate_ranged_combat_line_cache()
-			_ranged_attack_position_held = false
+			_reset_ranged_attack_position_state()
 			_clear_cached_navigation_move_direction()
 		return
 
@@ -532,7 +538,7 @@ func set_target_player(player: Player) -> void:
 	navigation_flow_prefetch_next_physics_frame = 0
 	_invalidate_blocked_world_los_cache()
 	_invalidate_ranged_combat_line_cache()
-	_ranged_attack_position_held = false
+	_reset_ranged_attack_position_state()
 	if objective_target == null or objective_target == previous_target:
 		objective_target = player
 		_clear_cached_navigation_move_direction()
@@ -544,7 +550,7 @@ func set_objective_target(target: Node2D) -> void:
 	objective_target = target
 	_invalidate_blocked_world_los_cache()
 	_invalidate_ranged_combat_line_cache()
-	_ranged_attack_position_held = false
+	_reset_ranged_attack_position_state()
 	_clear_cached_navigation_move_direction()
 
 
@@ -719,6 +725,27 @@ func _reset_ranged_attack_position_state() -> void:
 	_set_ranged_attack_position_held(false)
 
 
+func get_locomotion_state() -> int:
+	# Locomotion is a discrete simulation fact, not a velocity-magnitude bucket.
+	# In particular, a very slow authoritative velocity may quantize to zero on
+	# the wire while the enemy continues to advance over successive snapshots.
+	if is_dead:
+		return LocomotionState.IDLE
+	if is_multiplayer_proxy:
+		return multiplayer_proxy_locomotion_state
+	if _ranged_attack_position_held or velocity.is_zero_approx():
+		return LocomotionState.IDLE
+	return LocomotionState.MOVING
+
+
+func _normalize_locomotion_state(state: int) -> int:
+	return (
+		LocomotionState.MOVING
+		if state == LocomotionState.MOVING
+		else LocomotionState.IDLE
+	)
+
+
 func _is_live_ranged_combat_target(target: Node2D) -> bool:
 	if target == null or not is_instance_valid(target):
 		return false
@@ -750,13 +777,14 @@ func set_pathfinder(shared_pathfinder: Node) -> void:
 	navigation_agent_profile = null
 	navigation_flow_prefetch_next_physics_frame = 0
 	_invalidate_ranged_combat_line_cache()
-	_ranged_attack_position_held = false
+	_reset_ranged_attack_position_state()
 	_clear_cached_navigation_move_direction()
 
 
 func configure_multiplayer_proxy() -> void:
 	clear_cold_status()
 	is_multiplayer_proxy = true
+	multiplayer_proxy_locomotion_state = LocomotionState.IDLE
 	# Proxy transforms are already interpolated from network snapshots during
 	# render updates. Native physics interpolation here would apply a second,
 	# mismatched timeline to the same visual transform.
@@ -766,7 +794,7 @@ func configure_multiplayer_proxy() -> void:
 	objective_target = null
 	pathfinder = null
 	_invalidate_ranged_combat_line_cache()
-	_ranged_attack_position_held = false
+	_reset_ranged_attack_position_state()
 	projectile_motion_system = null
 	touched_player = null
 	touching_players.clear()
@@ -820,10 +848,21 @@ func remove_for_home_escape() -> bool:
 	return true
 
 
-func apply_multiplayer_proxy_motion(proxy_position: Vector2, proxy_velocity: Vector2) -> void:
+func apply_multiplayer_proxy_motion(
+	proxy_position: Vector2,
+	proxy_velocity: Vector2,
+	proxy_locomotion_state: int
+) -> void:
 	global_position = proxy_position
 	velocity = proxy_velocity
-	_set_facing_from_direction(proxy_velocity)
+	multiplayer_proxy_locomotion_state = _normalize_locomotion_state(
+		proxy_locomotion_state
+	)
+	if (
+		proxy_action_animation_name_in_use == &""
+		and multiplayer_proxy_locomotion_state == LocomotionState.MOVING
+	):
+		_set_facing_from_direction(proxy_velocity)
 	_ensure_multiplayer_proxy_move_animation()
 
 
@@ -1537,7 +1576,7 @@ func _play_scene_animation(animation_name: StringName) -> bool:
 	# an attack position (for example, immediately after a windup/attack finishes).
 	# Apply the standing pose at that transition instead of polling every frame.
 	# Multiplayer proxies use the same path after action restoration, with their
-	# latest snapshot velocity deciding whether the walk cycle should be frozen.
+	# delayed discrete locomotion state deciding whether the walk cycle is active.
 	if config != null and animation_name == config.move_animation_name:
 		_sync_move_animation_playback()
 	return true
@@ -1601,10 +1640,11 @@ func _sync_move_animation_playback() -> void:
 	if animated_sprite.animation != config.move_animation_name:
 		return
 
-	var should_freeze := (
-		_ranged_attack_position_held
-		or (is_multiplayer_proxy and velocity.is_zero_approx())
-	)
+	var should_freeze := _ranged_attack_position_held
+	if is_multiplayer_proxy:
+		should_freeze = (
+			multiplayer_proxy_locomotion_state == LocomotionState.IDLE
+		)
 	if should_freeze:
 		# pause() preserves the authored speed_scale. That distinction matters for
 		# proxy visual culling, which independently sets speed_scale to zero while

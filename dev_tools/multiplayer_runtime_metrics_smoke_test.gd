@@ -8,7 +8,7 @@ var failures: Array[String] = []
 
 func _init() -> void:
 	var metrics: Variant = MetricsScript.new(8)
-	metrics.call("record_packet", 3, 1066, 20)
+	metrics.call("record_packet", 3, 1122, 20)
 	metrics.call("record_packet", 6, 240, 2)
 	metrics.call("record_packet", 8, 999, 1)
 	metrics.call("record_state_repair")
@@ -17,13 +17,13 @@ func _init() -> void:
 		metrics.call("record_transaction_latency_ms", latency)
 	var summary := metrics.call("get_summary") as Dictionary
 	var channels := summary.get("channels", []) as Array
-	_expect(channels.size() == 8, "Protocol v15 telemetry must expose all eight channels.")
+	_expect(channels.size() == 8, "Protocol v16 telemetry must expose all eight channels.")
 	if channels.size() == 8:
 		var enemy_channel := channels[3] as Dictionary
 		_expect(
-			int(enemy_channel.get("payload_bytes_total", 0)) == 21_320
+			int(enemy_channel.get("payload_bytes_total", 0)) == 22_440
 			and int(enemy_channel.get("packet_count", 0)) == 20
-			and int(enemy_channel.get("max_packet_bytes", 0)) == 1066,
+			and int(enemy_channel.get("max_packet_bytes", 0)) == 1122,
 			"Enemy-channel telemetry must retain bytes, packets, and maximum packet size."
 		)
 	_expect(

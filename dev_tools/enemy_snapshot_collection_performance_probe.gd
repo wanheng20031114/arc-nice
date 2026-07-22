@@ -123,6 +123,7 @@ func _verify_collection_semantics_and_reuse() -> void:
 			state.net_id == state_index + 1
 			and state.position == enemy.global_position
 			and state.velocity == enemy.velocity
+			and state.locomotion_state == enemy.get_locomotion_state()
 			and state.health == enemy.current_health
 			and not state.is_dead,
 			"Production collection must preserve child order and every encoded field."
@@ -209,6 +210,7 @@ func _legacy_collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState
 			state.net_id = net_id
 			state.position = enemy.global_position
 			state.velocity = enemy.velocity
+			state.locomotion_state = enemy.get_locomotion_state()
 			state.health = enemy.current_health
 			state.is_dead = enemy.is_dead
 			state.visual_status_mask = enemy.get_collectible_visual_status_mask()

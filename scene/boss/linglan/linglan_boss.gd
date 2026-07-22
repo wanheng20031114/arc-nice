@@ -99,10 +99,21 @@ func configure_multiplayer_proxy() -> void:
 		touch_damage_area.set_deferred("monitorable", false)
 
 
-func apply_multiplayer_proxy_motion(proxy_position: Vector2, proxy_velocity: Vector2) -> void:
+func apply_multiplayer_proxy_motion(
+	proxy_position: Vector2,
+	proxy_velocity: Vector2,
+	proxy_locomotion_state: int
+) -> void:
 	global_position = proxy_position
 	velocity = proxy_velocity
-	_set_facing_from_direction(proxy_velocity)
+	multiplayer_proxy_locomotion_state = _normalize_locomotion_state(
+		proxy_locomotion_state
+	)
+	if (
+		proxy_action_animation_name_in_use == &""
+		and multiplayer_proxy_locomotion_state == LocomotionState.MOVING
+	):
+		_set_facing_from_direction(proxy_velocity)
 	if not skill1_warning_rays.is_empty():
 		_update_skill1_warning_ray_transforms()
 	_play_proxy_locomotion_animation()
@@ -1419,7 +1430,10 @@ func _play_proxy_locomotion_animation() -> void:
 		return
 	if proxy_action_animation_name_in_use != &"":
 		return
-	if velocity.length_squared() > 1.0 and _has_scene_animation(&"move"):
+	if (
+		multiplayer_proxy_locomotion_state == LocomotionState.MOVING
+		and _has_scene_animation(&"move")
+	):
 		_play_scene_animation(&"move")
 		return
 	_play_idle_animation()

@@ -148,7 +148,7 @@ const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
-## 协议 v15 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
+## 协议 v16 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
 ## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
 const SHARED_SNAPSHOT_COHORT_ID := -1
 const ENEMY_ACTION_SNAPSHOT_REORDER_TOLERANCE_SECONDS := 0.075
@@ -3266,9 +3266,16 @@ func _client_interpolate_entities() -> void:
 			continue
 		if not _should_interpolate_enemy_proxy(net_id, enemy_node, current_time):
 			continue
+		var enemy_frame_state: NetInterpolator.FrameSnapshot = (
+			enemy_interp.get_current_state(current_time)
+		)
 		var enemy_position: Vector2 = enemy_interp.get_interpolated_position(current_time)
 		var enemy_velocity: Vector2 = enemy_interp.get_interpolated_velocity(current_time)
-		enemy_node.apply_multiplayer_proxy_motion(enemy_position, enemy_velocity)
+		enemy_node.apply_multiplayer_proxy_motion(
+			enemy_position,
+			enemy_velocity,
+			enemy_frame_state.anim_state
+		)
 	# Dictionary mutation during direct iteration is unsafe. Prune invalid entries
 	# only after the allocation-free traversal has completed.
 	for stale_net_id in _stale_enemy_interpolator_ids:
@@ -3510,7 +3517,7 @@ func _rpc_receive_enemy_snapshot(
 			enemy_state.position,
 			enemy_state.velocity,
 			0,
-			0,
+			enemy_state.locomotion_state,
 			enemy_state.health,
 			enemy_state.is_dead
 		)
@@ -7414,7 +7421,7 @@ func net_player_healed(
 	player_node.queue_healing_number(confirmed_healing)
 
 
-# Legacy compatibility shells retained in protocol v15. Xirang orbs no longer exist, but keeping the
+# Legacy compatibility shells retained in protocol v16. Xirang orbs no longer exist, but keeping the
 # annotated signatures avoids a partial wire-protocol break until the next
 # coordinated protocol-version upgrade.
 @rpc("authority", "call_remote", "reliable", 5)
@@ -9495,7 +9502,10 @@ func _push_enemy_action_interpolator_sample(
 		action_time = _map_host_timestamp_to_client_time(host_action_timestamp, false)
 	var interp := enemy_interpolators.get(net_id) as NetInterpolator
 	var had_interpolator_samples := interp != null and interp.get_buffer_size() > 0
+	var inherited_frame_state := NetInterpolator.FrameSnapshot.new()
 	if interp != null:
+		if had_interpolator_samples:
+			inherited_frame_state = interp.get_latest_state()
 		var latest_timestamp := interp.get_latest_timestamp()
 		if latest_timestamp > 0.0 and action_time < latest_timestamp:
 			if latest_timestamp - action_time > ENEMY_ACTION_SNAPSHOT_REORDER_TOLERANCE_SECONDS:
@@ -9504,7 +9514,15 @@ func _push_enemy_action_interpolator_sample(
 	else:
 		interp = _create_enemy_interpolator()
 		enemy_interpolators[net_id] = interp
-	interp.push_snapshot(action_time, action_position, Vector2.ZERO)
+	interp.push_snapshot(
+		action_time,
+		action_position,
+		Vector2.ZERO,
+		inherited_frame_state.facing,
+		inherited_frame_state.anim_state,
+		inherited_frame_state.health,
+		inherited_frame_state.is_dead
+	)
 	return {"accepted": true, "apply_direct_position": not had_interpolator_samples}
 
 

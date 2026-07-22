@@ -31,6 +31,8 @@ var _has_position: bool = false
 var _cached_motion_time: float = 0.0
 var _cached_motion_position: Vector2 = Vector2.ZERO
 var _cached_motion_velocity: Vector2 = Vector2.ZERO
+var _empty_frame_state := FrameSnapshot.new()
+var _cached_frame_state: FrameSnapshot = _empty_frame_state
 var _has_cached_motion: bool = false
 
 
@@ -56,6 +58,7 @@ func _init(
 
 func set_snapshot_interval(snapshot_interval: float) -> void:
 	_render_delay = _delay_factor * maxf(snapshot_interval, 0.001)
+	_has_cached_motion = false
 
 
 ## 添加一帧快照到缓存
@@ -124,16 +127,19 @@ func _update_cached_motion(current_time: float) -> void:
 	if _buffer.is_empty():
 		_cached_motion_position = _last_position if _has_position else Vector2.ZERO
 		_cached_motion_velocity = Vector2.ZERO
+		_cached_frame_state = _empty_frame_state
 		return
 
 	if _buffer.size() == 1:
 		_cached_motion_position = _buffer[0].position
 		_cached_motion_velocity = _buffer[0].velocity
+		_cached_frame_state = _buffer[0]
 		return
 
 	if render_time <= _buffer[0].timestamp:
 		_cached_motion_position = _buffer[0].position
 		_cached_motion_velocity = _buffer[0].velocity
+		_cached_frame_state = _buffer[0]
 		return
 
 	var before: FrameSnapshot = null
@@ -149,41 +155,36 @@ func _update_cached_motion(current_time: float) -> void:
 	if before == null or after == null:
 		_cached_motion_position = _extrapolate_latest_position(render_time)
 		_cached_motion_velocity = _buffer[_buffer.size() - 1].velocity
+		_cached_frame_state = _buffer[_buffer.size() - 1]
 		return
 
 	var total := after.timestamp - before.timestamp
 	if total <= 0.0:
 		_cached_motion_position = after.position
 		_cached_motion_velocity = after.velocity
+		_cached_frame_state = after
 		return
 
 	var t := clampf((render_time - before.timestamp) / total, 0.0, 1.0)
 	_cached_motion_position = before.position.lerp(after.position, t)
 	_cached_motion_velocity = before.velocity.lerp(after.velocity, t)
+	_cached_frame_state = after if render_time >= after.timestamp else before
 
 
 ## 获取当前渲染时间对应的离散状态（朝向、动画、血量等不做插值）
 func get_current_state(current_time: float) -> FrameSnapshot:
-	var render_time := current_time - _render_delay
-
-	if _buffer.is_empty():
-		return FrameSnapshot.new()
-
-	# 返回 render_time 之前最近的一帧
-	var best: FrameSnapshot = _buffer[0]
-	for frame: FrameSnapshot in _buffer:
-		if frame.timestamp <= render_time:
-			best = frame
-		else:
-			break
-
-	return best
+	# Continuous motion and discrete presentation state share one render-time
+	# lookup. Position, velocity and locomotion can therefore be sampled in any
+	# order without traversing the short history more than once per render frame.
+	_update_cached_motion(current_time)
+	return _cached_frame_state
 
 
 ## 清空缓存
 func clear() -> void:
 	_buffer.clear()
 	_has_position = false
+	_cached_frame_state = _empty_frame_state
 	_has_cached_motion = false
 
 
@@ -192,6 +193,14 @@ func get_latest_timestamp() -> float:
 	if _buffer.is_empty():
 		return 0.0
 	return _buffer[_buffer.size() - 1].timestamp
+
+
+## 获取最新收到的完整帧。位置校正等辅助样本可继承其离散表现状态，
+## 避免把“本样本不携带速度”误解释成角色静止。
+func get_latest_state() -> FrameSnapshot:
+	if _buffer.is_empty():
+		return FrameSnapshot.new()
+	return _buffer[_buffer.size() - 1]
 
 
 ## 获取缓存大小

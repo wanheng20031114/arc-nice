@@ -33,6 +33,7 @@ func _run() -> void:
 		state.net_id = enemy_index + 1
 		state.position = Vector2(enemy_index * 0.5, enemy_index * 0.25)
 		state.velocity = Vector2(8.0 + float(enemy_index % 5), 0.0)
+		state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 		state.health = 100
 		states.append(state)
 
@@ -170,9 +171,27 @@ func _run() -> void:
 
 func _verify_interpolator_semantics() -> void:
 	var interpolator := NetInterpolator.new(0.1, 1.0, 0.2)
-	interpolator.push_snapshot(0.0, Vector2.ZERO, Vector2(10.0, 0.0))
-	interpolator.push_snapshot(0.1, Vector2(1.0, 0.0), Vector2(20.0, 0.0))
-	interpolator.push_snapshot(0.2, Vector2(3.0, 0.0), Vector2(30.0, 0.0))
+	interpolator.push_snapshot(
+		0.0,
+		Vector2.ZERO,
+		Vector2(10.0, 0.0),
+		0,
+		SnapshotManager.ENEMY_LOCOMOTION_IDLE
+	)
+	interpolator.push_snapshot(
+		0.1,
+		Vector2(1.0, 0.0),
+		Vector2(20.0, 0.0),
+		0,
+		SnapshotManager.ENEMY_LOCOMOTION_MOVING
+	)
+	interpolator.push_snapshot(
+		0.2,
+		Vector2(3.0, 0.0),
+		Vector2(30.0, 0.0),
+		0,
+		SnapshotManager.ENEMY_LOCOMOTION_IDLE
+	)
 	var interpolated_velocity := interpolator.get_interpolated_velocity(0.25)
 	var interpolated_position := interpolator.get_interpolated_position(0.25)
 	_expect(
@@ -180,6 +199,20 @@ func _verify_interpolator_semantics() -> void:
 		and interpolated_velocity.distance_to(Vector2(25.0, 0.0)) < 0.001,
 		"Cached interpolation must preserve position and velocity lerp semantics."
 	)
+	_expect(
+		interpolator.get_current_state(0.25).anim_state
+			== SnapshotManager.ENEMY_LOCOMOTION_MOVING
+		and interpolator.get_latest_state().anim_state
+			== SnapshotManager.ENEMY_LOCOMOTION_IDLE,
+		"Discrete locomotion must use the delayed timeline while latest-state access remains explicit."
+	)
+	interpolator.set_snapshot_interval(0.2)
+	_expect(
+		interpolator.get_current_state(0.25).anim_state
+			== SnapshotManager.ENEMY_LOCOMOTION_IDLE,
+		"Changing snapshot cadence must invalidate the shared motion/state cache immediately."
+	)
+	interpolator.set_snapshot_interval(0.1)
 
 	interpolator.push_snapshot(0.15, Vector2(1.5, 0.0), Vector2(15.0, 0.0))
 	_expect(
@@ -234,6 +267,7 @@ func _measure_state_collection_allocations(
 			state.net_id = source.net_id
 			state.position = source.position
 			state.velocity = source.velocity
+			state.locomotion_state = source.locomotion_state
 			state.health = source.health
 			state.is_dead = source.is_dead
 			collected.append(state)
@@ -263,7 +297,7 @@ func _measure_interpolator_costs(
 				source.position + source.velocity * timestamp,
 				source.velocity,
 				0,
-				0,
+				source.locomotion_state,
 				source.health,
 				source.is_dead
 			)
@@ -273,6 +307,7 @@ func _measure_interpolator_costs(
 
 	var sample_usec := 0
 	var sample_checksum := Vector2.ZERO
+	var sample_locomotion_checksum := 0
 	var latest_timestamp := float(total_ticks - 1) / float(SNAPSHOT_HZ)
 	for frame_index in range(MEASURE_TICKS):
 		var render_time := latest_timestamp + float(frame_index % 2) / 60.0
@@ -280,8 +315,12 @@ func _measure_interpolator_costs(
 		for interpolator in interpolators:
 			sample_checksum += interpolator.get_interpolated_position(render_time)
 			sample_checksum += interpolator.get_interpolated_velocity(render_time)
+			sample_locomotion_checksum += interpolator.get_current_state(render_time).anim_state
 		sample_usec += Time.get_ticks_usec() - started_usec
-	_expect(sample_checksum != Vector2.ZERO, "Interpolator benchmark must consume sampled motion.")
+	_expect(
+		sample_checksum != Vector2.ZERO and sample_locomotion_checksum > 0,
+		"Interpolator benchmark must consume continuous motion and discrete locomotion."
+	)
 	return {
 		"push_usec_per_tick": float(push_usec) / float(MEASURE_TICKS),
 		"sample_usec_per_frame": float(sample_usec) / float(MEASURE_TICKS),
@@ -396,6 +435,7 @@ func _make_enemy_states(entity_count: int) -> Array[SnapshotManager.EnemyState]:
 		state.net_id = enemy_index + 1
 		state.position = Vector2(enemy_index * 0.5, enemy_index * 0.25)
 		state.velocity = Vector2(8.0 + float(enemy_index % 5), 0.0)
+		state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 		state.health = 100 + enemy_index % 100
 		state.visual_status_mask = enemy_index % 16
 		states.append(state)
@@ -466,6 +506,8 @@ func _enemy_decoded_states_equal(
 			or shared.position.distance_to(source.position) > 0.11
 			or legacy.velocity.distance_to(source.velocity) > 0.11
 			or shared.velocity.distance_to(source.velocity) > 0.11
+			or legacy.locomotion_state != source.locomotion_state
+			or shared.locomotion_state != source.locomotion_state
 			or legacy.health != source.health
 			or shared.health != source.health
 			or legacy.is_dead != source.is_dead

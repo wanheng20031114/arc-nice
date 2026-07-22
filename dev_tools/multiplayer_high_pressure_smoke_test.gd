@@ -597,6 +597,13 @@ func _test_unordered_enemy_chunk_convergence() -> void:
 		(mp_game.get("enemy_interpolators") as Dictionary).size() == 70,
 		"A completed unordered batch must apply all seventy enemy states exactly once."
 	)
+	var unordered_frame := (
+		(mp_game.enemy_interpolators[1] as NetInterpolator).get_latest_state()
+	)
+	_expect(
+		unordered_frame.anim_state == Enemy.LocomotionState.MOVING,
+		"Unordered chunks must preserve each enemy's discrete locomotion state."
+	)
 	_expect(
 		int(mp_game.get("_current_enemy_snapshot_hz")) == 20,
 		"The client interpolator cadence must follow the Host's adaptive 20 Hz hint."
@@ -641,6 +648,13 @@ func _test_missing_delta_then_keyframe_recovery() -> void:
 		int(mp_game.get("_last_completed_enemy_snapshot_batch_id")) == 21
 		and (mp_game.get("enemy_interpolators") as Dictionary).has(900),
 		"The next keyframe must self-heal a lost baseline and converge the enemy proxy."
+	)
+	var repaired_frame := (
+		(mp_game.enemy_interpolators[900] as NetInterpolator).get_latest_state()
+	)
+	_expect(
+		repaired_frame.anim_state == Enemy.LocomotionState.MOVING,
+		"The repair keyframe must restore locomotion together with continuous motion."
 	)
 	_expect(
 		(mp_game.get("_pending_enemy_snapshot_batches") as Dictionary).is_empty(),
@@ -1296,6 +1310,7 @@ func _make_enemy_states(count: int, first_net_id: int) -> Array[SnapshotManager.
 		state.net_id = first_net_id + enemy_index
 		state.position = Vector2(enemy_index * 3.0, enemy_index * -2.0)
 		state.velocity = Vector2(1.0, -0.5)
+		state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 		state.health = 100 + enemy_index
 		state.visual_status_mask = enemy_index & 0x0f
 		states.append(state)

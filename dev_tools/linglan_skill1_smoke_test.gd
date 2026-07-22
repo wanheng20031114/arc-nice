@@ -209,7 +209,11 @@ func _test_multiplayer_proxy_warning_action() -> void:
 			"Proxy Skill1 warning rays must be positioned at remote Linglan."
 		)
 
-	boss.apply_multiplayer_proxy_motion(Vector2(48.0, -20.0), Vector2.ZERO)
+	boss.apply_multiplayer_proxy_motion(
+		Vector2(48.0, -20.0),
+		Vector2.ZERO,
+		Enemy.LocomotionState.IDLE
+	)
 	warning_rays = _get_warning_rays()
 	if not warning_rays.is_empty():
 		_expect(

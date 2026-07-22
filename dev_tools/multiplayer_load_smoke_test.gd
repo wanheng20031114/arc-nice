@@ -207,14 +207,15 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 15, "The multiplayer protocol version must be 15.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v15 must provision eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 16, "The multiplayer protocol version must be 16.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v16 must provision eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
 	)
 	_expect(
-		not bool(net_manager.call("_is_protocol_version_compatible", 14))
+		not bool(net_manager.call("_is_protocol_version_compatible", 15))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 14))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 13))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 12))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 11))
@@ -500,6 +501,7 @@ func _test_enemy_snapshot_chunk_codec() -> void:
 		state.net_id = enemy_index + 1
 		state.position = Vector2(enemy_index, enemy_index * 0.5)
 		state.velocity = Vector2.RIGHT
+		state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 		state.health = 100
 		states.append(state)
 		live_ids[state.net_id] = true
@@ -1096,24 +1098,34 @@ func _test_enemy_snapshot_roster_requires_complete_batch() -> void:
 	var state_a := SnapshotManager.EnemyState.new()
 	state_a.net_id = 7
 	state_a.position = Vector2(10.0, 20.0)
-	state_a.velocity = Vector2.RIGHT
+	state_a.velocity = Vector2.RIGHT * 0.01
+	state_a.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 	state_a.health = 12
 	var state_b := SnapshotManager.EnemyState.new()
 	state_b.net_id = 8
 	state_b.position = Vector2(30.0, 40.0)
 	state_b.velocity = Vector2.LEFT
+	state_b.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 	state_b.health = 11
 	var state_c := SnapshotManager.EnemyState.new()
 	state_c.net_id = 9
 	state_c.position = Vector2(50.0, 60.0)
 	state_c.velocity = Vector2.UP
+	state_c.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 	state_c.health = 10
 	var first_chunk := snapshot_mgr.encode_all_enemy_snapshots([state_a])
 	var second_chunk := snapshot_mgr.encode_all_enemy_snapshots([state_b, state_c])
 	mp_game.call("_rpc_receive_enemy_snapshot", 0.0, first_chunk, 10, 0, 2)
+	var state_a_frame := (
+		(mp_game.enemy_interpolators[7] as NetInterpolator).get_latest_state()
+	)
 	_expect(
-		net_enemies.has(7) and net_enemies.has(8) and net_enemies.has(9),
-		"An incomplete snapshot chunk batch must not reconcile unseen chunks."
+		net_enemies.has(7)
+		and net_enemies.has(8)
+		and net_enemies.has(9)
+		and state_a_frame.velocity == Vector2.ZERO
+		and state_a_frame.anim_state == Enemy.LocomotionState.MOVING,
+		"Incomplete chunks must retain the roster and preserve locomotion despite quantized zero velocity."
 	)
 	mp_game.call("_rpc_receive_enemy_snapshot", 0.0, second_chunk, 10, 1, 2)
 	_expect(
@@ -1421,7 +1433,13 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 		var net_enemies := mp_game.get("_net_enemies") as Dictionary
 		net_enemies[42] = enemy
 		var interp := NetInterpolator.new(0.05, 0.0)
-		interp.push_snapshot(9.5, Vector2(5.0, 5.0), Vector2.ZERO)
+		interp.push_snapshot(
+			9.5,
+			Vector2(5.0, 5.0),
+			Vector2.ZERO,
+			0,
+			Enemy.LocomotionState.MOVING
+		)
 		mp_game.enemy_interpolators[42] = interp
 		mp_game.call("net_enemy_action", 42, "windup", Vector2.RIGHT, Vector2(100.0, 100.0), 1, 9.0)
 		_expect(
@@ -1438,6 +1456,14 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 		_expect(
 			is_equal_approx(latest_timestamp, 10.0),
 			"Fresh enemy action events must enter the enemy interpolation timeline."
+		)
+		var latest_action_state := (
+			(mp_game.enemy_interpolators[42] as NetInterpolator).get_latest_state()
+		)
+		_expect(
+			latest_action_state.velocity == Vector2.ZERO
+			and latest_action_state.anim_state == Enemy.LocomotionState.MOVING,
+			"Position-only action samples must suppress extrapolation without overwriting locomotion."
 		)
 		if sprite != null:
 			_expect(
@@ -3149,12 +3175,20 @@ func _expect_proxy_action_restores_to_move(
 		await process_frame
 		return
 
+	enemy.apply_multiplayer_proxy_motion(
+		enemy.global_position,
+		Vector2.ZERO,
+		Enemy.LocomotionState.MOVING
+	)
 	sprite.speed_scale = 24.0
 	enemy.call("play_multiplayer_enemy_action", action_name, Vector2.RIGHT, 1)
 	_expect(sprite.animation == expected_action_animation, message + " Action animation did not start.")
 	await _wait_for_sprite_animation(sprite, enemy_config.move_animation_name, 1.0)
 	_expect(sprite.animation == enemy_config.move_animation_name, message)
-	_expect(sprite.is_playing(), message + " Move animation must keep playing.")
+	_expect(
+		sprite.is_playing() and sprite.get_playing_speed() > 0.0,
+		message + " Move animation must keep advancing."
+	)
 	enemy.queue_free()
 	await process_frame
 
@@ -4112,6 +4146,7 @@ func _test_snapshot_round_trip() -> void:
 	enemy_state.net_id = 7
 	enemy_state.position = Vector2(88.0, 99.0)
 	enemy_state.velocity = Vector2.LEFT
+	enemy_state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 	enemy_state.health = 3
 	enemy_state.visual_status_mask = 0b1101
 	var enemy_data := snapshot_mgr.encode_all_enemy_snapshots([enemy_state])
@@ -4121,6 +4156,10 @@ func _test_snapshot_round_trip() -> void:
 		_expect(enemy_states[0].net_id == 7, "Enemy snapshot net_id mismatch.")
 		_expect(enemy_states[0].health == 3, "Enemy snapshot health mismatch.")
 		_expect(enemy_states[0].visual_status_mask == 0b1101, "Enemy visual status mask mismatch.")
+		_expect(
+			enemy_states[0].locomotion_state == SnapshotManager.ENEMY_LOCOMOTION_MOVING,
+			"Enemy locomotion state mismatch."
+		)
 	var enemy_data_2 := snapshot_mgr.encode_all_enemy_snapshots([enemy_state])
 	var enemy_states_2 := SnapshotManager.decode_all_enemy_snapshots(enemy_data_2)
 	_expect(
@@ -4150,6 +4189,11 @@ func _test_snapshot_round_trip() -> void:
 			repeated_enemy_states[0].visual_status_mask == 0b1101,
 			"Enemy delta must preserve the visual status mask through baseline."
 		)
+		_expect(
+			repeated_enemy_states[0].locomotion_state
+				== SnapshotManager.ENEMY_LOCOMOTION_MOVING,
+			"Enemy delta must preserve locomotion through its baseline."
+		)
 	enemy_state.position += Vector2(0.01, 0.0)
 	var sub_quantum_enemy_delta := delta_enemy_mgr.encode_enemy_snapshots_for_peer(
 		20,
@@ -4174,12 +4218,14 @@ func _test_snapshot_round_trip() -> void:
 	reused_enemy_state.net_id = 19
 	reused_enemy_state.position = Vector2(7.0, 8.0)
 	reused_enemy_state.velocity = Vector2.ZERO
+	reused_enemy_state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_IDLE
 	reused_enemy_state.health = 12
 	enemy_copy_receiver.decode_enemy_snapshots_with_baseline(
 		enemy_copy_sender.encode_enemy_snapshots_for_peer(40, [reused_enemy_state], true)
 	)
 	reused_enemy_state.position = Vector2(27.0, 38.0)
 	reused_enemy_state.velocity = Vector2(-3.0, 2.0)
+	reused_enemy_state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 	reused_enemy_state.health = 9
 	var reused_enemy_delta := enemy_copy_sender.encode_enemy_snapshots_for_peer(40, [reused_enemy_state], false)
 	var reused_enemy_states := enemy_copy_receiver.decode_enemy_snapshots_with_baseline(reused_enemy_delta)
@@ -4187,6 +4233,8 @@ func _test_snapshot_round_trip() -> void:
 		reused_enemy_states.size() == 1
 		and reused_enemy_states[0].position.distance_to(reused_enemy_state.position) < 0.12
 		and reused_enemy_states[0].velocity.distance_to(reused_enemy_state.velocity) < 0.12
+		and reused_enemy_states[0].locomotion_state
+			== SnapshotManager.ENEMY_LOCOMOTION_MOVING
 		and reused_enemy_states[0].health == 9,
 		"Enemy send baselines must store state copies, not references to reused state objects."
 	)
@@ -4194,6 +4242,7 @@ func _test_snapshot_round_trip() -> void:
 	moved_enemy_state.net_id = 7
 	moved_enemy_state.position = Vector2(91.0, 100.0)
 	moved_enemy_state.velocity = Vector2.RIGHT
+	moved_enemy_state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 	moved_enemy_state.health = 3
 	var moved_enemy_delta := delta_enemy_mgr.encode_enemy_snapshots_for_peer(20, [moved_enemy_state], false)
 	_expect(

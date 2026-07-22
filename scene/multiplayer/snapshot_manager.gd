@@ -20,6 +20,10 @@ const MASK_AUXILIARY := 64
 const MASK_XIRANG := MASK_AUXILIARY
 const MASK_ENEMY_VISUAL_STATUS := MASK_AUXILIARY
 const MASK_PLAYER_META := 128
+const MASK_ENEMY_LOCOMOTION := MASK_ANIM_STATE
+
+const ENEMY_LOCOMOTION_IDLE := 0
+const ENEMY_LOCOMOTION_MOVING := 1
 
 const PLAYER_SNAPSHOT_HEADER_BYTES := 9
 const ENEMY_SNAPSHOT_HEADER_BYTES := 5
@@ -47,6 +51,7 @@ const FULL_PLAYER_MASK := (
 const FULL_ENEMY_MASK := (
 	MASK_POSITION
 	| MASK_VELOCITY
+	| MASK_ENEMY_LOCOMOTION
 	| MASK_HEALTH
 	| MASK_IS_DEAD
 	| MASK_ENEMY_VISUAL_STATUS
@@ -280,6 +285,8 @@ class EnemyState:
 	var net_id: int = 0
 	var position: Vector2 = Vector2.ZERO
 	var velocity: Vector2 = Vector2.ZERO
+	## 离散移动语义：0=静止、1=移动。不得由接收端的量化速度反推。
+	var locomotion_state: int = ENEMY_LOCOMOTION_IDLE
 	var health: int = 0
 	var is_dead: bool = false
 	## 纯表现状态位：burn=1、bleed=2、chill=4、mark=8；伤害仍只由 Host 结算。
@@ -314,6 +321,11 @@ static func _get_enemy_change_mask(current: EnemyState, previous: EnemyState) ->
 		!= _pack_scaled_i16(previous.velocity.y, VELOCITY_SCALE)
 	):
 		mask |= MASK_VELOCITY
+	if (
+		_normalize_enemy_locomotion_state(current.locomotion_state)
+		!= _normalize_enemy_locomotion_state(previous.locomotion_state)
+	):
+		mask |= MASK_ENEMY_LOCOMOTION
 	if current.health != previous.health:
 		mask |= MASK_HEALTH
 	if current.is_dead != previous.is_dead:
@@ -339,6 +351,8 @@ static func _write_enemy_snapshot(
 	if mask & MASK_VELOCITY:
 		buf.put_16(_pack_scaled_i16(current.velocity.x, VELOCITY_SCALE))
 		buf.put_16(_pack_scaled_i16(current.velocity.y, VELOCITY_SCALE))
+	if mask & MASK_ENEMY_LOCOMOTION:
+		buf.put_u8(_normalize_enemy_locomotion_state(current.locomotion_state))
 	if mask & MASK_HEALTH:
 		buf.put_32(current.health)
 	if mask & MASK_IS_DEAD:
@@ -373,6 +387,8 @@ static func _read_enemy_snapshot(buf: StreamPeerBuffer, target: EnemyState) -> v
 	if mask & MASK_VELOCITY:
 		target.velocity.x = buf.get_16() / VELOCITY_SCALE
 		target.velocity.y = buf.get_16() / VELOCITY_SCALE
+	if mask & MASK_ENEMY_LOCOMOTION:
+		target.locomotion_state = _normalize_enemy_locomotion_state(buf.get_u8())
 	if mask & MASK_HEALTH:
 		target.health = buf.get_32()
 	if mask & MASK_IS_DEAD:
@@ -390,6 +406,8 @@ static func _get_enemy_snapshot_size(data: PackedByteArray, offset: int) -> int:
 		size += PACKED_VECTOR2_BYTES
 	if mask & MASK_VELOCITY:
 		size += PACKED_VECTOR2_BYTES
+	if mask & MASK_ENEMY_LOCOMOTION:
+		size += PACKED_U8_BYTES
 	if mask & MASK_HEALTH:
 		size += PACKED_U32_BYTES
 	if mask & MASK_IS_DEAD:
@@ -429,6 +447,14 @@ static func _pack_scaled_i16(value: float, scale: float) -> int:
 
 static func _pack_scaled_u16(value: float, scale: float) -> int:
 	return clampi(roundi(maxf(value, 0.0) * scale), 0, 65535)
+
+
+static func _normalize_enemy_locomotion_state(state: int) -> int:
+	return (
+		ENEMY_LOCOMOTION_MOVING
+		if state == ENEMY_LOCOMOTION_MOVING
+		else ENEMY_LOCOMOTION_IDLE
+	)
 
 
 static func _copy_player_state(source: PlayerState) -> PlayerState:
@@ -478,6 +504,7 @@ static func _copy_enemy_state_into(source: EnemyState, target: EnemyState) -> vo
 	target.net_id = source.net_id
 	target.position = source.position
 	target.velocity = source.velocity
+	target.locomotion_state = _normalize_enemy_locomotion_state(source.locomotion_state)
 	target.health = source.health
 	target.is_dead = source.is_dead
 	target.visual_status_mask = source.visual_status_mask
@@ -521,6 +548,8 @@ static func _apply_enemy_delta(target: EnemyState, delta: EnemyState, mask: int)
 		target.position = delta.position
 	if mask & MASK_VELOCITY:
 		target.velocity = delta.velocity
+	if mask & MASK_ENEMY_LOCOMOTION:
+		target.locomotion_state = delta.locomotion_state
 	if mask & MASK_HEALTH:
 		target.health = delta.health
 	if mask & MASK_IS_DEAD:
