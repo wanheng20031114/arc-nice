@@ -772,7 +772,7 @@ func _audit_on_hit_effect(player: Player, item: PickupConfig) -> void:
 
 	for _attempt in range(240):
 		var cooldown_key := str(player.call("_get_collectible_aux_key", applied_item, "hit:%s" % applied_item.on_hit_effect_id))
-		player.collectible_trigger_cooldowns.erase(cooldown_key)
+		player.collectible_trigger_deadlines.erase(cooldown_key)
 		player.call("_apply_collectible_on_hit_effect", applied_item, enemy, 10)
 		await process_frame
 		var produced_result := _has_on_hit_effect_result(

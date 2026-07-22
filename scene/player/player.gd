@@ -75,6 +75,9 @@ var _healing_number_flush_queued := false
 @onready var name_label: Label = $NameLabel
 @onready var nameplate_layer: CanvasLayer = $NameplateLayer
 @onready var nameplate_label: Label = $NameplateLayer/NameplateLabel
+@onready var _net_manager := (
+	get_node_or_null("/root/NetManager") as NetManagerStore
+)
 
 const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/collectible_area_effect.tscn")
 const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/collectible_frost_area_effect.tscn")
@@ -185,9 +188,9 @@ var revive_glow_tween: Tween = null
 var dash_ready_reveal_tween: Tween = null
 var _dash_ready_visual_is_ready: bool = false
 var damage_reduction_modifiers: Dictionary = {}
-var collectible_periodic_cooldowns: Dictionary = {}
+var collectible_periodic_deadlines: Dictionary = {}
 var collectible_shot_counters: Dictionary = {}
-var collectible_trigger_cooldowns: Dictionary = {}
+var collectible_trigger_deadlines: Dictionary = {}
 var collectible_swift_time_left: float = 0.0
 var collectible_swift_move_speed_multiplier: float = 1.0
 var cold_stack_count := 0
@@ -213,8 +216,18 @@ var collectible_sakura_rocket_scene_cache: PackedScene = null
 var active_collectible_items_cache: Array[PickupConfig] = []
 var active_periodic_collectible_items_cache: Array[PickupConfig] = []
 var active_periodic_collectible_keys_cache: Array[String] = []
+var active_collectible_runtime_keys_cache: Dictionary = {}
 var active_collectible_cache_initialized := false
 var _expired_collectible_trigger_cooldown_keys: Array[String] = []
+# Both clocks derive only from simulation delta, so pausing the SceneTree pauses
+# cooldowns as before. Periodic time advances only while this peer is authoritative;
+# this preserves an armed host cooldown across a temporary authority transition.
+var _collectible_runtime_elapsed := 0.0
+var _collectible_periodic_elapsed := 0.0
+# Stable frames compare only these two minima. The bounded dictionaries are
+# rescanned only when the earliest deadline expires or inventory state changes.
+var _next_collectible_periodic_deadline := INF
+var _next_collectible_trigger_deadline := INF
 var _sakura_runtime_load_requested := false
 var last_base_upgrade_was_free: bool = false
 var _last_skill_activation_msec: int = -MIN_SKILL_ACTIVATION_INTERVAL_MSEC
@@ -242,6 +255,9 @@ var _wall_overlap_probe_required: bool = true
 var _wall_overlap_expected_position := Vector2.ZERO
 var _homing_target_shape := CircleShape2D.new()
 var _homing_target_query := PhysicsShapeQueryParameters2D.new()
+var _slow_overlay_strength := -1.0
+var _speed_trail_effect_active := false
+var _speed_trail_motion_direction := Vector2.ZERO
 
 
 static func set_collectible_slow_batch_expiry_enabled(enabled: bool) -> void:
@@ -2167,7 +2183,6 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	var ranged_front_damage_multiplier := 1.0
 	var ranged_back_damage_multiplier := 1.0
 	var ranged_dodge_chance := 0.0
-	var active_periodic_keys: Dictionary = {}
 	# Health-ratio conditions must use the maximum that this same refresh is
 	# about to publish. Otherwise adding/removing a max-health collectible can
 	# leave a threshold effect one refresh behind.
@@ -2228,12 +2243,6 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 			physical_damage_bonus += item.conditional_physical_damage_bonus
 			magic_damage_bonus += item.conditional_magic_damage_bonus
 			skill_charge_bonus += item.conditional_skill_charge_bonus_per_second
-		if not item.periodic_effect_id.is_empty():
-			active_periodic_keys[_get_collectible_runtime_key(item)] = true
-		if _has_collectible_trigger(item):
-			active_periodic_keys[_get_collectible_runtime_key(item)] = true
-		if _has_collectible_bullet_or_kill_effect(item):
-			active_periodic_keys[_get_collectible_runtime_key(item)] = true
 
 	var old_max_health := max_health
 	# 允许角色以半点为单位配置成长，但对外战斗伤害始终保持整数。
@@ -2276,16 +2285,6 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	collectible_ranged_back_damage_multiplier = maxf(ranged_back_damage_multiplier, 0.0)
 	collectible_ranged_dodge_chance = clampf(ranged_dodge_chance, 0.0, 1.0)
 
-	for cooldown_key in collectible_periodic_cooldowns.keys():
-		if not active_periodic_keys.has(cooldown_key):
-			collectible_periodic_cooldowns.erase(cooldown_key)
-	for counter_key in collectible_shot_counters.keys():
-		if not active_periodic_keys.has(counter_key):
-			collectible_shot_counters.erase(counter_key)
-	for trigger_key in collectible_trigger_cooldowns.keys():
-		if not active_periodic_keys.has(_get_collectible_trigger_owner_key(trigger_key)):
-			collectible_trigger_cooldowns.erase(trigger_key)
-
 	if old_max_health != max_health:
 		current_health = clampi(current_health, 0, max_health)
 		if health_bar != null:
@@ -2326,9 +2325,12 @@ func _rebuild_active_collectible_items_cache() -> void:
 	active_collectible_items_cache.clear()
 	active_periodic_collectible_items_cache.clear()
 	active_periodic_collectible_keys_cache.clear()
+	active_collectible_runtime_keys_cache.clear()
+	_next_collectible_periodic_deadline = 0.0
 	active_collectible_cache_initialized = false
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if run_state == null:
+		_prune_inactive_collectible_runtime_state()
 		return
 
 	var active_copy_counts: Dictionary = {}
@@ -2357,12 +2359,48 @@ func _rebuild_active_collectible_items_cache() -> void:
 			active_collectible_items_cache.append(item)
 		active_copy_counts[effect_key] = active_copies + copies_to_activate
 	for item in active_collectible_items_cache:
+		if (
+			not item.periodic_effect_id.is_empty()
+			or _has_collectible_trigger(item)
+			or _has_collectible_bullet_or_kill_effect(item)
+		):
+			active_collectible_runtime_keys_cache[
+				_get_collectible_runtime_key(item)
+			] = true
 		if not item.periodic_effect_id.is_empty() and item.periodic_interval > 0.0:
 			active_periodic_collectible_items_cache.append(item)
 			active_periodic_collectible_keys_cache.append(
 				_get_collectible_runtime_key(item)
 			)
+	_prune_inactive_collectible_runtime_state()
 	active_collectible_cache_initialized = true
+
+
+func _prune_inactive_collectible_runtime_state() -> void:
+	var removed_periodic_deadline := false
+	for cooldown_key in collectible_periodic_deadlines.keys():
+		if active_collectible_runtime_keys_cache.has(cooldown_key):
+			continue
+		collectible_periodic_deadlines.erase(cooldown_key)
+		removed_periodic_deadline = true
+	for counter_key in collectible_shot_counters.keys():
+		if not active_collectible_runtime_keys_cache.has(counter_key):
+			collectible_shot_counters.erase(counter_key)
+
+	var removed_trigger_deadline := false
+	for trigger_key in collectible_trigger_deadlines.keys():
+		var owner_key := _get_collectible_trigger_owner_key(trigger_key)
+		if active_collectible_runtime_keys_cache.has(owner_key):
+			continue
+		collectible_trigger_deadlines.erase(trigger_key)
+		removed_trigger_deadline = true
+
+	# Removing the earliest entry invalidates its O(1) threshold. Additions need
+	# no trigger rescan because starting a cooldown updates the threshold itself.
+	if removed_periodic_deadline:
+		_next_collectible_periodic_deadline = 0.0
+	if removed_trigger_deadline:
+		_next_collectible_trigger_deadline = 0.0
 
 
 func _get_inventory_item(run_state: RunStateStore, slot_index: int) -> PickupConfig:
@@ -2533,9 +2571,14 @@ func _try_start_collectible_trigger_cooldown(item: PickupConfig) -> bool:
 	if item.trigger_cooldown <= 0.0:
 		return true
 	var trigger_key := _get_collectible_trigger_key(item)
-	if float(collectible_trigger_cooldowns.get(trigger_key, 0.0)) > 0.0:
+	if float(collectible_trigger_deadlines.get(trigger_key, 0.0)) > _collectible_runtime_elapsed:
 		return false
-	collectible_trigger_cooldowns[trigger_key] = item.trigger_cooldown
+	var deadline := _collectible_runtime_elapsed + item.trigger_cooldown
+	collectible_trigger_deadlines[trigger_key] = deadline
+	_next_collectible_trigger_deadline = minf(
+		_next_collectible_trigger_deadline,
+		deadline
+	)
 	return true
 
 
@@ -2543,9 +2586,14 @@ func _try_start_collectible_aux_cooldown(item: PickupConfig, suffix: String, coo
 	if cooldown <= 0.0:
 		return true
 	var trigger_key := _get_collectible_aux_key(item, suffix)
-	if float(collectible_trigger_cooldowns.get(trigger_key, 0.0)) > 0.0:
+	if float(collectible_trigger_deadlines.get(trigger_key, 0.0)) > _collectible_runtime_elapsed:
 		return false
-	collectible_trigger_cooldowns[trigger_key] = cooldown
+	var deadline := _collectible_runtime_elapsed + cooldown
+	collectible_trigger_deadlines[trigger_key] = deadline
+	_next_collectible_trigger_deadline = minf(
+		_next_collectible_trigger_deadline,
+		deadline
+	)
 	return true
 
 
@@ -2737,39 +2785,57 @@ func _apply_collectible_kill_effect(item: PickupConfig, enemy: Enemy) -> void:
 
 
 func _update_collectible_runtime_effects(delta: float) -> void:
+	var safe_delta := maxf(delta, 0.0)
+	_collectible_runtime_elapsed += safe_delta
+
 	if collectible_swift_time_left > 0.0:
 		collectible_swift_time_left = maxf(collectible_swift_time_left - delta, 0.0)
 		if collectible_swift_time_left <= 0.0:
 			collectible_swift_move_speed_multiplier = 1.0
 
-	if not collectible_trigger_cooldowns.is_empty():
+	if _collectible_runtime_elapsed >= _next_collectible_trigger_deadline:
 		_expired_collectible_trigger_cooldown_keys.clear()
-		for trigger_key: String in collectible_trigger_cooldowns:
-			var cooldown := float(collectible_trigger_cooldowns.get(trigger_key, 0.0))
-			cooldown = maxf(cooldown - delta, 0.0)
-			if cooldown <= 0.0:
+		var next_trigger_deadline := INF
+		for trigger_key: String in collectible_trigger_deadlines:
+			var deadline := float(collectible_trigger_deadlines.get(trigger_key, 0.0))
+			if deadline <= _collectible_runtime_elapsed:
 				_expired_collectible_trigger_cooldown_keys.append(trigger_key)
 			else:
-				collectible_trigger_cooldowns[trigger_key] = cooldown
+				next_trigger_deadline = minf(next_trigger_deadline, deadline)
 		for trigger_key in _expired_collectible_trigger_cooldown_keys:
-			collectible_trigger_cooldowns.erase(trigger_key)
+			collectible_trigger_deadlines.erase(trigger_key)
 		_expired_collectible_trigger_cooldown_keys.clear()
+		_next_collectible_trigger_deadline = next_trigger_deadline
 
 	if not _should_run_authoritative_collectible_effects():
 		return
+	var periodic_frame_start_time := _collectible_periodic_elapsed
+	_collectible_periodic_elapsed += safe_delta
+	if active_periodic_collectible_items_cache.is_empty():
+		_next_collectible_periodic_deadline = INF
+		return
+	if _collectible_periodic_elapsed < _next_collectible_periodic_deadline:
+		return
 
+	var next_periodic_deadline := INF
 	for periodic_index in active_periodic_collectible_items_cache.size():
 		var item := active_periodic_collectible_items_cache[periodic_index]
 		var cooldown_key := active_periodic_collectible_keys_cache[periodic_index]
-		var cooldown := float(
-			collectible_periodic_cooldowns.get(cooldown_key, item.periodic_interval)
+		var deadline := float(
+			collectible_periodic_deadlines.get(
+				cooldown_key,
+				periodic_frame_start_time + item.periodic_interval
+			)
 		)
-		cooldown -= delta
-		if cooldown > 0.0:
-			collectible_periodic_cooldowns[cooldown_key] = cooldown
-			continue
-		_trigger_collectible_periodic_effect(item)
-		collectible_periodic_cooldowns[cooldown_key] = maxf(item.periodic_interval, 0.1)
+		if deadline <= _collectible_periodic_elapsed:
+			_trigger_collectible_periodic_effect(item)
+			deadline = (
+				_collectible_periodic_elapsed
+				+ maxf(item.periodic_interval, 0.1)
+			)
+		collectible_periodic_deadlines[cooldown_key] = deadline
+		next_periodic_deadline = minf(next_periodic_deadline, deadline)
+	_next_collectible_periodic_deadline = next_periodic_deadline
 
 
 func _trigger_collectible_periodic_effect(item: PickupConfig) -> void:
@@ -3462,12 +3528,11 @@ func _collect_alive_players_recursive(node: Node, result: Array[Player]) -> void
 
 
 func _should_run_authoritative_collectible_effects() -> bool:
-	var net_manager := get_node_or_null("/root/NetManager")
-	if net_manager == null or not net_manager.has_method("is_multiplayer_active"):
+	if _net_manager == null:
 		return true
-	if not bool(net_manager.call("is_multiplayer_active")):
+	if not _net_manager.is_multiplayer_active():
 		return true
-	return bool(net_manager.call("is_host"))
+	return _net_manager.is_host()
 
 
 func _spawn_collectible_area_effect(radius: float, color: Color, duration: float) -> void:
@@ -3672,8 +3737,8 @@ func _begin_dash(direction: Vector2) -> void:
 		dash_cooldown_timer.start(effective_dash_cooldown)
 	_set_dash_effect_direction(dash_direction)
 	_set_dash_effect_strength(1.0)
-	speed_trail_effect.call("set_motion_direction", dash_direction)
-	speed_trail_effect.call("set_effect_active", true)
+	_set_speed_trail_motion_direction(dash_direction)
+	_set_speed_trail_effect_active(true)
 	_refresh_dash_ready_visual()
 
 
@@ -3747,8 +3812,8 @@ func play_remote_dash_visual(direction: Vector2) -> void:
 	remote_dash_visual_time_left = maxf(dash_duration, 0.001)
 	_set_dash_effect_direction(direction.normalized())
 	_set_dash_effect_strength(1.0)
-	speed_trail_effect.call("set_motion_direction", direction)
-	speed_trail_effect.call("set_effect_active", true)
+	_set_speed_trail_motion_direction(direction)
+	_set_speed_trail_effect_active(true)
 
 
 func _update_remote_dash_visual(delta: float) -> void:
@@ -3764,8 +3829,7 @@ func _update_remote_dash_visual(delta: float) -> void:
 func _stop_remote_dash_visual() -> void:
 	remote_dash_visual_time_left = 0.0
 	_set_dash_effect_strength(0.0)
-	if speed_trail_effect != null:
-		speed_trail_effect.call("set_effect_active", false)
+	_set_speed_trail_effect_active(false)
 
 
 func _set_dash_effect_direction(direction: Vector2) -> void:
@@ -3904,6 +3968,8 @@ func _refresh_shooting_timer_wait_time() -> void:
 	var new_interval := _get_effective_fire_interval()
 	if shooting_timer == null:
 		return
+	if is_equal_approx(shooting_timer.wait_time, new_interval):
+		return
 	shooting_timer.wait_time = new_interval
 	attack_speed_changed.emit(get_attack_speed())
 	
@@ -4005,18 +4071,43 @@ func _update_movement_status_visuals(move_direction: Vector2) -> void:
 	if visual_direction.length_squared() <= 0.001:
 		visual_direction = velocity
 	var is_moving := visual_direction.length_squared() > 0.001
-	speed_trail_effect.call("set_effect_active", (is_temporarily_hasted or is_dashing()) and is_moving)
-	if is_moving:
-		speed_trail_effect.call("set_motion_direction", visual_direction)
+	var should_show_speed_trail := (
+		(is_temporarily_hasted or is_dashing())
+		and is_moving
+	)
+	if should_show_speed_trail:
+		_set_speed_trail_motion_direction(visual_direction)
+	_set_speed_trail_effect_active(should_show_speed_trail)
 
 
 func _set_slow_overlay_strength(strength: float) -> void:
 	if body_sprite.material == null:
 		return
+	var clamped_strength := clampf(strength, 0.0, 1.0)
+	if is_equal_approx(_slow_overlay_strength, clamped_strength):
+		return
 	body_sprite.set_instance_shader_parameter(
 		SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER,
-		clampf(strength, 0.0, 1.0)
+		clamped_strength
 	)
+	_slow_overlay_strength = clamped_strength
+
+
+func _set_speed_trail_effect_active(enabled: bool) -> void:
+	if _speed_trail_effect_active == enabled:
+		return
+	_speed_trail_effect_active = enabled
+	speed_trail_effect.call("set_effect_active", enabled)
+
+
+func _set_speed_trail_motion_direction(direction: Vector2) -> void:
+	if direction.length_squared() < DASH_INPUT_MIN_LENGTH_SQUARED:
+		return
+	var normalized_direction := direction.normalized()
+	if _speed_trail_motion_direction.is_equal_approx(normalized_direction):
+		return
+	_speed_trail_motion_direction = normalized_direction
+	speed_trail_effect.call("set_motion_direction", normalized_direction)
 
 
 func _try_apply_wall_overlap_escape(move_input: Vector2, delta: float) -> bool:

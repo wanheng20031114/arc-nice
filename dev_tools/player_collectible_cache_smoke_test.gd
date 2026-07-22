@@ -197,22 +197,35 @@ func _test_periodic_cache_and_allocation_free_runtime_shape() -> void:
 		"The public collectible refresh API must explicitly rebuild every cache."
 	)
 
-	player.collectible_periodic_cooldowns.clear()
+	player.collectible_periodic_deadlines.clear()
+	player._next_collectible_periodic_deadline = 0.0
 	player.call("_update_collectible_runtime_effects", 1.0)
 	var periodic_key := player.active_periodic_collectible_keys_cache[0]
 	_expect(
 		is_equal_approx(
-			float(player.collectible_periodic_cooldowns.get(periodic_key, -1.0)),
+			float(player.collectible_periodic_deadlines.get(periodic_key, -1.0))
+			- player._collectible_periodic_elapsed,
 			LIFE_CRYSTAL.periodic_interval - 1.0
 		),
 		"Periodic cooldown must advance once by the requested delta."
 	)
-	player.collectible_trigger_cooldowns["cache_probe_a"] = 0.25
-	player.collectible_trigger_cooldowns["cache_probe_b"] = 0.75
+	player.collectible_trigger_deadlines["cache_probe_a"] = (
+		player._collectible_runtime_elapsed + 0.25
+	)
+	player.collectible_trigger_deadlines["cache_probe_b"] = (
+		player._collectible_runtime_elapsed + 0.75
+	)
+	player._next_collectible_trigger_deadline = (
+		player._collectible_runtime_elapsed + 0.25
+	)
 	player.call("_update_collectible_runtime_effects", 0.5)
-	_expect(not player.collectible_trigger_cooldowns.has("cache_probe_a"), "Expired trigger cooldowns must be erased after traversal.")
+	_expect(not player.collectible_trigger_deadlines.has("cache_probe_a"), "Expired trigger cooldowns must be erased after traversal.")
 	_expect(
-		is_equal_approx(float(player.collectible_trigger_cooldowns.get("cache_probe_b", -1.0)), 0.25),
+		is_equal_approx(
+			float(player.collectible_trigger_deadlines.get("cache_probe_b", -1.0))
+			- player._collectible_runtime_elapsed,
+			0.25
+		),
 		"Live trigger cooldowns must retain exact remaining time."
 	)
 
@@ -226,8 +239,14 @@ func _test_periodic_cache_and_allocation_free_runtime_shape() -> void:
 		"The physics-frame collectible runtime must not rescan RunState."
 	)
 	_expect(
-		not hot_path_source.contains("collectible_trigger_cooldowns.keys()"),
+		not hot_path_source.contains("collectible_trigger_deadlines.keys()"),
 		"The physics-frame cooldown runtime must not allocate a keys array."
+	)
+	_expect(
+		hot_path_source.contains(
+			"_collectible_runtime_elapsed >= _next_collectible_trigger_deadline"
+		),
+		"Trigger cooldown cleanup must stay gated by the earliest absolute deadline."
 	)
 
 	var started_usec := Time.get_ticks_usec()
