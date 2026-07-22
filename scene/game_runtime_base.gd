@@ -441,7 +441,7 @@ func pick_random_combat_target(center: Vector2, radius: float = 0.0) -> Enemy:
 			continue
 		for child in target_container.get_children():
 			var enemy := child as Enemy
-			if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+			if not CombatTargetIndexScript.is_enemy_queryable(enemy):
 				continue
 			if (
 				safe_radius > 0.0
@@ -599,7 +599,7 @@ func _collect_combat_targets_from_container(container: Node, result: Array[Enemy
 		return
 	for child in container.get_children():
 		var enemy := child as Enemy
-		if enemy != null and is_instance_valid(enemy) and not enemy.is_dead:
+		if CombatTargetIndexScript.is_enemy_queryable(enemy):
 			result.append(enemy)
 
 
@@ -614,7 +614,7 @@ func _append_combat_targets_in_radius(
 		return
 	for child in container.get_children():
 		var enemy := child as Enemy
-		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+		if not CombatTargetIndexScript.is_enemy_queryable(enemy):
 			continue
 		if safe_radius > 0.0 and center.distance_squared_to(enemy.global_position) > radius_squared:
 			continue
@@ -639,12 +639,7 @@ func _find_nearest_combat_target_in_container(
 	while child_index < container.get_child_count():
 		var enemy := container.get_child(child_index) as Enemy
 		child_index += 1
-		if (
-			enemy == null
-			or not is_instance_valid(enemy)
-			or enemy.is_dead
-			or enemy.is_queued_for_deletion()
-		):
+		if not CombatTargetIndexScript.is_enemy_queryable(enemy):
 			continue
 		var instance_id := enemy.get_instance_id()
 		if excluded_instance_ids.has(instance_id):

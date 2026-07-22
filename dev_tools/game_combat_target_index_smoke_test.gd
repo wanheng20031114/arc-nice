@@ -40,6 +40,7 @@ func _run() -> void:
 	root.add_child(test_root)
 	_test_game_source_enables_shared_index()
 	_test_nearest_combat_target_contracts()
+	_test_queued_target_query_contracts()
 	_test_singleplayer_container_lifecycle()
 	_test_same_physics_frame_bucket_migration()
 	_test_tower_defense_forced_policy()
@@ -295,6 +296,77 @@ func _test_nearest_combat_target_contracts() -> void:
 	net_manager.free()
 	for enemy in [client_nearest, client_tie_a, client_tie_b, client_dead]:
 		enemy.queue_free()
+	game.free()
+	enemy_container.queue_free()
+
+
+func _test_queued_target_query_contracts() -> void:
+	var game := Game.new()
+	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
+	var enemy_container := Node2D.new()
+	enemy_container.name = "QueuedEnemyContainer"
+	test_root.add_child(enemy_container)
+	game.enemy_container = enemy_container
+	var boss_container := Node2D.new()
+	boss_container.name = "BossContainer"
+	game.add_child(boss_container)
+	game.boss_container = boss_container
+
+	var queued_enemy := _new_tree_safe_test_enemy()
+	queued_enemy.position = Vector2(8.0, 0.0)
+	enemy_container.add_child(queued_enemy)
+	queued_enemy.queue_free()
+	var sorted_targets: Array[Enemy] = []
+	var unordered_targets: Array[Enemy] = []
+	game.query_combat_targets_into(
+		Vector2.ZERO,
+		32.0,
+		sorted_targets,
+		0
+	)
+	game.query_combat_targets_unordered_into(
+		Vector2.ZERO,
+		32.0,
+		unordered_targets
+	)
+	_expect(
+		game.get_all_combat_targets().is_empty()
+		and game.pick_random_combat_target(Vector2.ZERO, 32.0) == null
+		and sorted_targets.is_empty()
+		and unordered_targets.is_empty(),
+		"Single-player container fallbacks must reject queued targets in full, random, sorted, and unordered queries."
+	)
+
+	var net_manager := TestNetManager.new()
+	var multiplayer_game: Variant = MpGameScript.new()
+	multiplayer_game.set("net_manager", net_manager)
+	multiplayer_game.set("game", game)
+	multiplayer_game.set("_net_enemies", {701: queued_enemy})
+	sorted_targets.append(queued_enemy)
+	unordered_targets.append(queued_enemy)
+	multiplayer_game.call(
+		"query_combat_targets_into",
+		Vector2.ZERO,
+		32.0,
+		sorted_targets,
+		0
+	)
+	multiplayer_game.call(
+		"query_combat_targets_unordered_into",
+		Vector2.ZERO,
+		32.0,
+		unordered_targets
+	)
+	_expect(
+		multiplayer_game.call("get_combat_target_by_net_id", 701) == null
+		and (multiplayer_game.call("get_all_combat_targets") as Array[Enemy]).is_empty()
+		and sorted_targets.is_empty()
+		and unordered_targets.is_empty(),
+		"Multiplayer client fallbacks must reject queued proxies by id and in every collection query."
+	)
+
+	multiplayer_game.free()
+	net_manager.free()
 	game.free()
 	enemy_container.queue_free()
 

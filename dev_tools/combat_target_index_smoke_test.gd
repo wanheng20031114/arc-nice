@@ -66,6 +66,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_random_target_selection()
+	_test_queued_target_query_contracts()
 	_test_nearest_alive_excluding()
 	_test_adaptive_nearest_threshold()
 	_test_three_stage_local_adaptive()
@@ -437,6 +438,68 @@ func _test_random_target_selection() -> void:
 	)
 
 
+func _test_queued_target_query_contracts() -> void:
+	var queued_index: Variant = TargetIndexScript.new()
+	var queued_get := _register_queued_enemy(queued_index, 601)
+	_expect(
+		not CombatTargetIndex.is_enemy_queryable(queued_get)
+		and queued_index.call("get_enemy", 601) == null,
+		"Direct indexed lookup must reject a still-valid enemy queued for deletion."
+	)
+
+	_register_queued_enemy(queued_index, 602)
+	_expect(
+		(queued_index.call("get_all_alive") as Array[Enemy]).is_empty(),
+		"Full indexed queries must reject queued enemies."
+	)
+	_register_queued_enemy(queued_index, 603)
+	_expect(
+		queued_index.call("pick_random_alive") == null,
+		"Global random indexed queries must reject queued enemies."
+	)
+	_register_queued_enemy(queued_index, 604)
+	_expect(
+		queued_index.call(
+			"pick_random_alive_in_radius",
+			Vector2.ZERO,
+			32.0
+		) == null,
+		"Radius-random indexed queries must reject queued enemies."
+	)
+	_register_queued_enemy(queued_index, 605)
+	_expect(
+		(queued_index.call(
+			"query_radius",
+			Vector2.ZERO,
+			32.0,
+			0
+		) as Array[Enemy]).is_empty(),
+		"Sorted radius indexed queries must reject queued enemies."
+	)
+	_register_queued_enemy(queued_index, 606)
+	var unordered: Array[Enemy] = []
+	queued_index.call(
+		"query_radius_unordered_into",
+		Vector2.ZERO,
+		32.0,
+		unordered
+	)
+	_expect(
+		unordered.is_empty()
+		and (queued_index.get("enemies_by_net_id") as Dictionary).is_empty()
+		and (queued_index.get("bucket_by_net_id") as Dictionary).is_empty(),
+		"Every indexed query path must prune queued targets from dense and spatial registries."
+	)
+
+
+func _register_queued_enemy(target_index: Variant, net_id: int) -> Enemy:
+	var enemy := Enemy.new()
+	enemy.position = Vector2(8.0, 0.0)
+	target_index.call("register_enemy", net_id, enemy)
+	enemy.queue_free()
+	return enemy
+
+
 func _test_nearest_alive_excluding() -> void:
 	var exclusion_index: Variant = TargetIndexScript.new()
 	exclusion_index.set("bucket_size", 32.0)
@@ -640,8 +703,11 @@ func _test_adaptive_nearest_threshold() -> void:
 	)
 	_expect(
 		adaptive_index.query_radius(Vector2.ZERO, 48.0, 1) == [expected_nearest]
-		and adaptive_index.ring_query_count == 2,
-		"max_count=1 queries above the threshold must reuse the ring-pruned nearest path."
+		and adaptive_index.ring_query_count == 1
+		and adaptive_index.linear_query_count == 3
+		and adaptive_index.enemies_by_net_id.size()
+			== CombatTargetIndex.NEAREST_LINEAR_TARGET_THRESHOLD,
+		"After ring pruning removes a queued entry, max_count=1 must immediately return to the cheaper threshold-linear path."
 	)
 
 	adaptive_index.clear()

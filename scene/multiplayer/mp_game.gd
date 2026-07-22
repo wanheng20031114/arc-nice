@@ -1,6 +1,7 @@
 extends Node2D
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
+const CombatTargetIndexScript := preload("res://scene/combat_target_index.gd")
 const MultiplayerRuntimeMetricsScript := preload(
 	"res://scene/multiplayer/multiplayer_runtime_metrics.gd"
 )
@@ -7553,9 +7554,12 @@ func get_local_multiplayer_player() -> Player:
 
 
 func get_combat_target_by_net_id(enemy_net_id: int) -> Enemy:
+	var enemy: Enemy
 	if net_manager.is_host():
-		return _get_host_enemy_for_net_id(enemy_net_id)
-	return _get_valid_client_enemy_for_net_id(enemy_net_id)
+		enemy = _get_host_enemy_for_net_id(enemy_net_id)
+	else:
+		enemy = _get_valid_client_enemy_for_net_id(enemy_net_id)
+	return enemy if CombatTargetIndexScript.is_enemy_queryable(enemy) else null
 
 
 func get_all_combat_targets() -> Array[Enemy]:
@@ -7569,7 +7573,7 @@ func get_all_combat_targets() -> Array[Enemy]:
 		if enemy_variant == null or not is_instance_valid(enemy_variant):
 			continue
 		var enemy := enemy_variant as Enemy
-		if enemy != null and not enemy.is_dead:
+		if CombatTargetIndexScript.is_enemy_queryable(enemy):
 			result.append(enemy)
 	return result
 
@@ -7607,11 +7611,7 @@ func find_nearest_combat_target(
 		if enemy_variant == null or not is_instance_valid(enemy_variant):
 			continue
 		var enemy := enemy_variant as Enemy
-		if (
-			enemy == null
-			or enemy.is_dead
-			or enemy.is_queued_for_deletion()
-		):
+		if not CombatTargetIndexScript.is_enemy_queryable(enemy):
 			continue
 		var instance_id := enemy.get_instance_id()
 		if excluded_instance_ids.has(instance_id):
@@ -7658,7 +7658,7 @@ func query_combat_targets_into(
 		if enemy_variant == null or not is_instance_valid(enemy_variant):
 			continue
 		var enemy := enemy_variant as Enemy
-		if enemy == null or enemy.is_dead:
+		if not CombatTargetIndexScript.is_enemy_queryable(enemy):
 			continue
 		if safe_radius > 0.0 and center.distance_squared_to(enemy.global_position) > radius_squared:
 			continue
@@ -7693,7 +7693,7 @@ func query_combat_targets_unordered_into(
 		if enemy_variant == null or not is_instance_valid(enemy_variant):
 			continue
 		var enemy := enemy_variant as Enemy
-		if enemy == null or enemy.is_dead:
+		if not CombatTargetIndexScript.is_enemy_queryable(enemy):
 			continue
 		if (
 			safe_radius > 0.0

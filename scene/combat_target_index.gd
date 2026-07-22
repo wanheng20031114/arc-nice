@@ -28,6 +28,15 @@ var safety_audit_entries_total := 0
 var safety_audit_max_entries_per_frame := 0
 
 
+static func is_enemy_queryable(enemy: Enemy) -> bool:
+	return (
+		enemy != null
+		and is_instance_valid(enemy)
+		and not enemy.is_dead
+		and not enemy.is_queued_for_deletion()
+	)
+
+
 func register_enemy(net_id: int, enemy: Enemy) -> void:
 	if net_id <= 0 or enemy == null or not is_instance_valid(enemy):
 		return
@@ -87,7 +96,7 @@ func get_enemy(net_id: int) -> Enemy:
 		_remove_enemy_entry(net_id)
 		return null
 	var enemy := enemy_variant as Enemy
-	if enemy == null or enemy.is_dead:
+	if not is_enemy_queryable(enemy):
 		_remove_enemy_entry(net_id)
 		return null
 	return enemy
@@ -125,6 +134,7 @@ func pick_random_alive_in_radius(center: Vector2, radius: float) -> Enemy:
 	var maximum_cell := _to_bucket(center + Vector2.ONE * safe_radius)
 	var selected_enemy: Enemy = null
 	var candidate_count := 0
+	_stale_enemy_net_ids.clear()
 	# Reservoir sampling keeps the result uniformly random without constructing a
 	# candidate array. For a fixed search radius, work depends on touched buckets
 	# and local occupancy rather than the total enemy count.
@@ -135,19 +145,22 @@ func pick_random_alive_in_radius(center: Vector2, radius: float) -> Enemy:
 				continue
 			var bucket := buckets[cell] as Array
 			for net_id_variant in bucket:
-				var enemy_variant: Variant = enemies_by_net_id.get(int(net_id_variant))
+				var net_id := int(net_id_variant)
+				var enemy_variant: Variant = enemies_by_net_id.get(net_id)
 				if enemy_variant == null or not is_instance_valid(enemy_variant):
+					_stale_enemy_net_ids.append(net_id)
 					continue
 				var enemy := enemy_variant as Enemy
-				if (
-					enemy == null
-					or enemy.is_dead
-					or center.distance_squared_to(enemy.global_position) > radius_squared
-				):
+				if not is_enemy_queryable(enemy):
+					_stale_enemy_net_ids.append(net_id)
+					continue
+				if center.distance_squared_to(enemy.global_position) > radius_squared:
 					continue
 				candidate_count += 1
 				if randi() % candidate_count == 0:
 					selected_enemy = enemy
+	for net_id in _stale_enemy_net_ids:
+		_remove_enemy_entry(net_id)
 	return selected_enemy
 
 
@@ -221,6 +234,7 @@ func query_radius_unordered_into(
 	var radius_squared := safe_radius * safe_radius
 	var minimum_cell := _to_bucket(center - Vector2.ONE * safe_radius)
 	var maximum_cell := _to_bucket(center + Vector2.ONE * safe_radius)
+	_stale_enemy_net_ids.clear()
 	for cell_x in range(minimum_cell.x, maximum_cell.x + 1):
 		for cell_y in range(minimum_cell.y, maximum_cell.y + 1):
 			var cell := Vector2i(cell_x, cell_y)
@@ -231,15 +245,17 @@ func query_radius_unordered_into(
 				var net_id := int(net_id_variant)
 				var enemy_variant: Variant = enemies_by_net_id.get(net_id)
 				if enemy_variant == null or not is_instance_valid(enemy_variant):
+					_stale_enemy_net_ids.append(net_id)
 					continue
 				var enemy := enemy_variant as Enemy
-				if (
-					enemy == null
-					or enemy.is_dead
-					or center.distance_squared_to(enemy.global_position) > radius_squared
-				):
+				if not is_enemy_queryable(enemy):
+					_stale_enemy_net_ids.append(net_id)
+					continue
+				if center.distance_squared_to(enemy.global_position) > radius_squared:
 					continue
 				result.append(enemy)
+	for net_id in _stale_enemy_net_ids:
+		_remove_enemy_entry(net_id)
 
 
 static func take_nearest_candidate(
@@ -342,7 +358,7 @@ func _advance_safety_audit_once_per_physics_frame() -> void:
 			_remove_enemy_entry(net_id)
 			continue
 		var enemy := enemy_variant as Enemy
-		if enemy == null or enemy.is_dead:
+		if not is_enemy_queryable(enemy):
 			_remove_enemy_entry(net_id)
 			continue
 		var next_cell := _to_bucket(enemy.global_position)
@@ -382,7 +398,7 @@ func _append_all_alive(result: Array[Enemy]) -> void:
 			_stale_enemy_net_ids.append(net_id)
 			continue
 		var enemy := enemy_variant as Enemy
-		if enemy == null or enemy.is_dead:
+		if not is_enemy_queryable(enemy):
 			_stale_enemy_net_ids.append(net_id)
 			continue
 		result.append(enemy)
@@ -490,7 +506,7 @@ func _find_nearest_alive_linear_bounded(
 			_stale_enemy_net_ids.append(net_id)
 			continue
 		var enemy := enemy_variant as Enemy
-		if enemy == null or enemy.is_dead or enemy.is_queued_for_deletion():
+		if not is_enemy_queryable(enemy):
 			_stale_enemy_net_ids.append(net_id)
 			continue
 		if excluded_instance_ids.has(enemy.get_instance_id()):
@@ -541,6 +557,7 @@ func _find_nearest_alive_ring_in_bounds(
 	maximum_cell: Vector2i,
 	center_cell: Vector2i
 ) -> Enemy:
+	_stale_enemy_net_ids.clear()
 	var nearest: Enemy = null
 	var nearest_distance := INF
 	var nearest_instance_id := 0
@@ -600,6 +617,8 @@ func _find_nearest_alive_ring_in_bounds(
 					nearest = cell_nearest
 					nearest_distance = distance
 					nearest_instance_id = instance_id
+	for net_id in _stale_enemy_net_ids:
+		_remove_enemy_entry(net_id)
 	return nearest
 
 
@@ -610,6 +629,7 @@ func _find_nearest_alive_flat(
 	minimum_cell: Vector2i = Vector2i.MAX,
 	maximum_cell: Vector2i = Vector2i.MAX
 ) -> Enemy:
+	_stale_enemy_net_ids.clear()
 	if minimum_cell == Vector2i.MAX or maximum_cell == Vector2i.MAX:
 		minimum_cell = _to_bucket(center - Vector2.ONE * radius)
 		maximum_cell = _to_bucket(center + Vector2.ONE * radius)
@@ -624,15 +644,14 @@ func _find_nearest_alive_flat(
 				continue
 			var bucket := buckets[cell] as Array
 			for net_id_variant in bucket:
-				var enemy_variant: Variant = enemies_by_net_id.get(int(net_id_variant))
+				var net_id := int(net_id_variant)
+				var enemy_variant: Variant = enemies_by_net_id.get(net_id)
 				if enemy_variant == null or not is_instance_valid(enemy_variant):
+					_stale_enemy_net_ids.append(net_id)
 					continue
 				var enemy := enemy_variant as Enemy
-				if (
-					enemy == null
-					or enemy.is_dead
-					or enemy.is_queued_for_deletion()
-				):
+				if not is_enemy_queryable(enemy):
+					_stale_enemy_net_ids.append(net_id)
 					continue
 				var instance_id := enemy.get_instance_id()
 				if excluded_instance_ids.has(instance_id):
@@ -651,6 +670,8 @@ func _find_nearest_alive_flat(
 					nearest = enemy
 					nearest_distance = distance
 					nearest_instance_id = instance_id
+	for net_id in _stale_enemy_net_ids:
+		_remove_enemy_entry(net_id)
 	return nearest
 
 
@@ -684,11 +705,14 @@ func _find_nearest_alive_in_bucket(
 	var nearest_instance_id := 0
 	var bucket := buckets[cell] as Array
 	for net_id_variant in bucket:
-		var enemy_variant: Variant = enemies_by_net_id.get(int(net_id_variant))
+		var net_id := int(net_id_variant)
+		var enemy_variant: Variant = enemies_by_net_id.get(net_id)
 		if enemy_variant == null or not is_instance_valid(enemy_variant):
+			_stale_enemy_net_ids.append(net_id)
 			continue
 		var enemy := enemy_variant as Enemy
-		if enemy == null or enemy.is_dead or enemy.is_queued_for_deletion():
+		if not is_enemy_queryable(enemy):
+			_stale_enemy_net_ids.append(net_id)
 			continue
 		if excluded_instance_ids.has(enemy.get_instance_id()):
 			continue
