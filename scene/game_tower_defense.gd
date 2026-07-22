@@ -373,6 +373,7 @@ func _ready() -> void:
 		run_state.ensure_run_started()
 		run_state.set_active_multiplayer_peer(multiplayer_local_peer_id)
 		_configure_multiplayer_players()
+		production_coordinator.configure_multiplayer_output_peers(peer_players.keys())
 		_register_static_multiplayer_pickups()
 	if player == null:
 		push_error("Game: 无法创建当前角色，停止初始化。")
@@ -4259,6 +4260,7 @@ func _update_multiplayer_remote_player_passive_state(delta: float) -> void:
 func remove_multiplayer_player(peer_id: int) -> void:
 	if peer_id <= 0 or peer_id == multiplayer_local_peer_id:
 		return
+	production_coordinator.deactivate_personal_output_peer(peer_id)
 	var player_instance := peer_players.get(peer_id) as Player
 	peer_players.erase(peer_id)
 	_request_enemy_retarget_after_objective_change()

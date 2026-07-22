@@ -1,7 +1,7 @@
 extends PlantDefense
 class_name ProductionBuilding
 
-signal production_state_changed
+signal production_state_changed(replicate: bool)
 signal production_command_requested(command: Dictionary)
 signal production_snapshot_requested(building_net_id: int)
 signal multiplayer_production_result(success: bool, reason: StringName)
@@ -104,7 +104,11 @@ func _on_setup_completed() -> void:
 	personal_output_peer_id = 0
 	if auto_select_first_recipe:
 		for recipe in recipes:
-			if recipe != null and recipe.is_valid():
+			if (
+				recipe != null
+				and recipe.is_valid()
+				and not recipe.outputs_to_player_inventory()
+			):
 				active_recipe_id = recipe.recipe_id
 				break
 	production_revision = 0
@@ -220,14 +224,14 @@ func configure_multiplayer_production(
 	multiplayer_production_request_pending = false
 	multiplayer_production_pending_request_id = 0
 	multiplayer_production_request_timer.stop()
-	production_state_changed.emit()
+	production_state_changed.emit(false)
 
 
 func set_multiplayer_production_snapshot_ready(is_ready: bool) -> void:
 	multiplayer_production_snapshot_ready = is_ready or not multiplayer_production_enabled
 	if multiplayer_production_snapshot_ready and not multiplayer_production_request_pending:
 		multiplayer_production_request_timer.stop()
-	production_state_changed.emit()
+	production_state_changed.emit(false)
 
 
 func is_multiplayer_production_ready() -> bool:
@@ -293,7 +297,7 @@ func complete_multiplayer_production_request(result: Dictionary) -> bool:
 			ProductionBuildingProtocol.RESULT_INVALID_COMMAND
 		))
 	)
-	production_state_changed.emit()
+	production_state_changed.emit(false)
 	return true
 
 
@@ -319,11 +323,14 @@ func select_recipe(
 	var recipe := get_recipe(recipe_id)
 	if recipe == null or not recipe.is_valid():
 		return false
-	var next_output_peer_id := (
-		maxi(output_peer_id, 0)
-		if recipe.outputs_to_player_inventory()
-		else 0
-	)
+	var next_output_peer_id := 0
+	if recipe.outputs_to_player_inventory():
+		if (
+			production_coordinator == null
+			or not production_coordinator.is_personal_output_peer_available(output_peer_id)
+		):
+			return false
+		next_output_peer_id = output_peer_id
 	if (
 		active_recipe_id == recipe_id
 		and personal_output_peer_id == next_output_peer_id
@@ -334,6 +341,19 @@ func select_recipe(
 	progress_elapsed_seconds = 0.0
 	completion_wait_reason = &""
 	_bump_production_state()
+	return true
+
+
+func release_personal_output_peer(peer_id: int) -> bool:
+	if peer_id <= 0 or personal_output_peer_id != peer_id:
+		return false
+	active_recipe_id = &""
+	personal_output_peer_id = 0
+	progress_elapsed_seconds = 0.0
+	completion_wait_reason = ProductionCoordinator.RESULT_OUTPUT_PEER_UNAVAILABLE
+	# player_left is already delivered to every endpoint. Suppressing replication
+	# here keeps the disconnect repair packet-neutral while preserving revisions.
+	_bump_production_state(false)
 	return true
 
 
@@ -555,8 +575,23 @@ func apply_multiplayer_runtime_state(state: Dictionary, mapped_sample_time: floa
 	if received_revision < production_revision:
 		return
 	var received_recipe_id := StringName(state["active_recipe_id"])
-	if received_recipe_id != &"" and get_recipe(received_recipe_id) == null:
+	var received_recipe := get_recipe(received_recipe_id)
+	if received_recipe_id != &"" and received_recipe == null:
 		return
+	var received_wait_reason := StringName(state["wait_reason"])
+	if received_recipe != null and received_recipe.outputs_to_player_inventory():
+		if production_coordinator == null:
+			return
+		if not production_coordinator.is_personal_output_peer_available(
+			received_output_peer_id
+		):
+			# A reliable production snapshot can cross the transport-level player_left
+			# notification. Keep the disconnect tombstone authoritative locally so an
+			# older in-flight state cannot resurrect an unavailable output binding.
+			received_recipe_id = &""
+			received_output_peer_id = 0
+			received_progress = 0.0
+			received_wait_reason = ProductionCoordinator.RESULT_OUTPUT_PEER_UNAVAILABLE
 	production_revision = received_revision
 	production_enabled = bool(state["enabled"])
 	active_recipe_id = received_recipe_id
@@ -567,7 +602,7 @@ func apply_multiplayer_runtime_state(state: Dictionary, mapped_sample_time: floa
 		0.0,
 		recipe.duration_seconds if recipe != null else 0.0
 	)
-	completion_wait_reason = StringName(state["wait_reason"])
+	completion_wait_reason = received_wait_reason
 	_sync_visual_progress_clock()
 	_visual_projection_duration_seconds = clampf(
 		received_projection,
@@ -585,7 +620,7 @@ func apply_multiplayer_runtime_state(state: Dictionary, mapped_sample_time: floa
 		multiplayer_production_snapshot_ready = true
 		if not multiplayer_production_request_pending:
 			multiplayer_production_request_timer.stop()
-	production_state_changed.emit()
+	production_state_changed.emit(false)
 
 
 func on_shared_production_panel_opened(panel: ProductionBuildingPanel) -> void:
@@ -614,10 +649,10 @@ func _has_bound_production_panel() -> bool:
 	)
 
 
-func _bump_production_state() -> void:
+func _bump_production_state(replicate: bool = true) -> void:
 	production_revision += 1
 	_sync_visual_progress_clock()
-	production_state_changed.emit()
+	production_state_changed.emit(replicate)
 
 
 func _submit_multiplayer_production_command(command: Dictionary) -> bool:
@@ -637,7 +672,7 @@ func _submit_multiplayer_production_command(command: Dictionary) -> bool:
 	multiplayer_production_request_timer.start(
 		MULTIPLAYER_PRODUCTION_REQUEST_TIMEOUT_SECONDS
 	)
-	production_state_changed.emit()
+	production_state_changed.emit(false)
 	production_command_requested.emit(command)
 	return true
 
@@ -653,7 +688,7 @@ func _on_multiplayer_production_request_timeout() -> void:
 	multiplayer_production_request_pending = false
 	multiplayer_production_pending_request_id = 0
 	multiplayer_production_snapshot_ready = false
-	production_state_changed.emit()
+	production_state_changed.emit(false)
 	multiplayer_production_request_timer.start(
 		MULTIPLAYER_PRODUCTION_REQUEST_TIMEOUT_SECONDS
 	)

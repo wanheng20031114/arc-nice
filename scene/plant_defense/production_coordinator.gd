@@ -9,6 +9,7 @@ const RESULT_SUCCESS := &"success"
 const RESULT_MISSING_INPUT := &"missing_input"
 const RESULT_STORAGE_FULL := &"storage_full"
 const RESULT_UNAVAILABLE := &"unavailable"
+const RESULT_OUTPUT_PEER_UNAVAILABLE := &"output_peer_unavailable"
 
 @onready var production_tick_timer: Timer = $ProductionTickTimer
 @onready var run_state: RunStateStore = get_node_or_null(
@@ -19,6 +20,8 @@ var authoritative_processing_enabled := true
 var production_buildings: Array[ProductionBuilding] = []
 var warehouses: Array[OakWarehouse] = []
 var _storage_transaction_in_progress := false
+var _multiplayer_output_validation_enabled := false
+var _active_personal_output_peers: Dictionary[int, bool] = {}
 
 
 func _ready() -> void:
@@ -29,6 +32,40 @@ func _ready() -> void:
 func set_authoritative_processing_enabled(enabled: bool) -> void:
 	authoritative_processing_enabled = enabled
 	_refresh_timer_state()
+
+
+func configure_multiplayer_output_peers(peer_ids: Array) -> void:
+	_multiplayer_output_validation_enabled = true
+	_active_personal_output_peers.clear()
+	for peer_id_variant in peer_ids:
+		var peer_id := int(peer_id_variant)
+		if peer_id > 0:
+			_active_personal_output_peers[peer_id] = true
+
+
+func configure_local_output_peer() -> void:
+	_multiplayer_output_validation_enabled = false
+	_active_personal_output_peers.clear()
+
+
+func is_personal_output_peer_available(peer_id: int) -> bool:
+	if not _multiplayer_output_validation_enabled:
+		return peer_id == 0
+	return peer_id > 0 and _active_personal_output_peers.has(peer_id)
+
+
+func deactivate_personal_output_peer(peer_id: int) -> void:
+	if peer_id <= 0 or not _active_personal_output_peers.has(peer_id):
+		return
+	_active_personal_output_peers.erase(peer_id)
+	# Every endpoint receives the existing player_left lifecycle event and applies
+	# this deterministic state transition locally. No production RPC is needed.
+	for index in range(production_buildings.size() - 1, -1, -1):
+		var building := production_buildings[index]
+		if building == null or not is_instance_valid(building):
+			production_buildings.remove_at(index)
+			continue
+		building.release_personal_output_peer(peer_id)
 
 
 func get_seconds_until_next_tick() -> float:
@@ -143,6 +180,9 @@ func try_commit_recipe(
 		or recipe.inputs_from_player_inventory()
 	):
 		return RESULT_UNAVAILABLE
+	var outputs_to_inventory := recipe.outputs_to_player_inventory()
+	if outputs_to_inventory and not is_personal_output_peer_available(output_peer_id):
+		return RESULT_OUTPUT_PEER_UNAVAILABLE
 	var ordered_warehouses := _get_ordered_operational_warehouses()
 	if ordered_warehouses.is_empty():
 		return RESULT_MISSING_INPUT
@@ -162,7 +202,6 @@ func try_commit_recipe(
 		):
 			return RESULT_MISSING_INPUT
 
-	var outputs_to_inventory := recipe.outputs_to_player_inventory()
 	var inventory_revision := -1
 	if outputs_to_inventory:
 		if run_state == null or output_peer_id < 0:
@@ -279,7 +318,7 @@ func _simulate_consume_item_count(
 			if remaining <= 0:
 				return true
 			var stored_item := items[slot_index] as PickupConfig
-			if not _items_share_stack(stored_item, item):
+			if not PickupConfig.inventory_identity_matches(stored_item, item):
 				continue
 			var taken := mini(int(counts[slot_index]), remaining)
 			var next_count := int(counts[slot_index]) - taken
@@ -301,7 +340,7 @@ func _simulate_add_item_count(
 	if item == null or count <= 0:
 		return false
 	var remaining := count
-	var stack_limit := clampi(item.inventory_stack_limit, 1, 999) if item.stackable else 1
+	var stack_limit := PickupConfig.get_inventory_stack_limit(item)
 	for state in states:
 		var items: Array = state["items"]
 		var counts: Array = state["counts"]
@@ -309,7 +348,7 @@ func _simulate_add_item_count(
 			if remaining <= 0:
 				return true
 			var existing := items[slot_index] as PickupConfig
-			if not _items_share_stack(existing, item):
+			if not PickupConfig.inventory_items_can_stack(existing, item):
 				continue
 			var available := stack_limit - int(counts[slot_index])
 			if available <= 0:
@@ -380,17 +419,6 @@ func _warehouse_precedes(left: OakWarehouse, right: OakWarehouse) -> bool:
 	if not is_equal_approx(left.global_position.x, right.global_position.x):
 		return left.global_position.x < right.global_position.x
 	return left.get_instance_id() < right.get_instance_id()
-
-
-func _items_share_stack(existing_item: PickupConfig, incoming_item: PickupConfig) -> bool:
-	if existing_item == null or incoming_item == null or not incoming_item.stackable:
-		return false
-	if existing_item == incoming_item:
-		return true
-	return (
-		not existing_item.resource_path.is_empty()
-		and existing_item.resource_path == incoming_item.resource_path
-	)
 
 
 func _on_production_tick() -> void:

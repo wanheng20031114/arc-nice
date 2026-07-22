@@ -42,7 +42,7 @@ func _on_removal_started(mode: RemovalMode) -> void:
 	super._on_removal_started(mode)
 
 
-func _sync_collection_progress() -> void:
+func _sync_collection_progress(_replicate: bool = false) -> void:
 	if collection_progress_ring == null:
 		return
 	_stop_collection_progress_tween()

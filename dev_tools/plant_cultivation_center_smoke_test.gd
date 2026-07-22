@@ -273,6 +273,7 @@ func _run() -> void:
 	profile_panel.queue_free()
 
 	run_state.ensure_multiplayer_peer_state(2)
+	coordinator.configure_multiplayer_output_peers([2])
 	var committed_peer_ids: Array[int] = []
 	coordinator.personal_inventory_output_committed.connect(
 		func(peer_id: int) -> void: committed_peer_ids.append(peer_id)
@@ -296,6 +297,7 @@ func _run() -> void:
 		and int(runtime_state.get("personal_output_peer_id", 0)) == 2,
 		"生产权威状态必须同步个人产物接收者。"
 	)
+	coordinator.configure_local_output_peer()
 
 	panel.open_for(center, player)
 	await process_frame

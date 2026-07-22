@@ -161,7 +161,7 @@ func get_storage_item_total(item: PickupConfig) -> int:
 		return 0
 	var total := 0
 	for slot_index in STORAGE_CAPACITY:
-		if _items_share_stack(storage_items[slot_index], item):
+		if PickupConfig.inventory_identity_matches(storage_items[slot_index], item):
 			total += get_storage_item_count(slot_index)
 	return total
 
@@ -202,7 +202,7 @@ func apply_production_storage_snapshot(
 		if (
 			not item.can_store_in_inventory
 			or count <= 0
-			or count > _get_stack_limit(item)
+			or count > PickupConfig.get_inventory_stack_limit(item)
 		):
 			return false
 	storage_items.assign(items)
@@ -817,13 +817,13 @@ func _apply_slot_move_command(
 
 
 func _get_available_storage_capacity(item: PickupConfig) -> int:
-	var stack_limit := _get_stack_limit(item)
+	var stack_limit := PickupConfig.get_inventory_stack_limit(item)
 	var capacity := 0
 	for slot_index in range(STORAGE_CAPACITY):
 		var stored_item := storage_items[slot_index]
 		if stored_item == null:
 			capacity += stack_limit
-		elif item.stackable and _items_share_stack(stored_item, item):
+		elif PickupConfig.inventory_items_can_stack(stored_item, item):
 			capacity += maxi(stack_limit - storage_stack_counts[slot_index], 0)
 	return capacity
 
@@ -864,13 +864,17 @@ func _can_place_stack_in_slot(
 	target_item: PickupConfig,
 	target_count: int
 ) -> bool:
-	if item == null or count <= 0 or count > _get_stack_limit(item):
+	if (
+		item == null
+		or count <= 0
+		or count > PickupConfig.get_inventory_stack_limit(item)
+	):
 		return false
 	if target_item == null:
 		return true
 	return (
-		_items_share_stack(target_item, item)
-		and target_count + count <= _get_stack_limit(item)
+		PickupConfig.inventory_items_can_stack(target_item, item)
+		and target_count + count <= PickupConfig.get_inventory_stack_limit(item)
 	)
 
 
@@ -1011,7 +1015,7 @@ func apply_storage_snapshot(snapshot: Dictionary) -> bool:
 			item == null
 			or not item.can_store_in_inventory
 			or count <= 0
-			or count > _get_stack_limit(item)
+			or count > PickupConfig.get_inventory_stack_limit(item)
 		):
 			return false
 		decoded_items[slot_index] = item
@@ -1029,10 +1033,13 @@ func apply_storage_snapshot(snapshot: Dictionary) -> bool:
 
 func _add_storage_item_count_unchecked(item: PickupConfig, count: int) -> void:
 	var remaining := count
-	var stack_limit := _get_stack_limit(item)
+	var stack_limit := PickupConfig.get_inventory_stack_limit(item)
 	if item.stackable:
 		for slot_index in range(STORAGE_CAPACITY):
-			if not _items_share_stack(storage_items[slot_index], item):
+			if not PickupConfig.inventory_items_can_stack(
+				storage_items[slot_index],
+				item
+			):
 				continue
 			var room := maxi(stack_limit - storage_stack_counts[slot_index], 0)
 			var added := mini(room, remaining)
@@ -1098,23 +1105,6 @@ func _make_transfer_result(
 		result["inventory_snapshot"] = run_state.export_inventory_snapshot_for_peer(peer_id)
 	result["storage_snapshot"] = export_storage_snapshot()
 	return result
-
-
-func _items_share_stack(existing_item: PickupConfig, incoming_item: PickupConfig) -> bool:
-	if existing_item == null or incoming_item == null or not incoming_item.stackable:
-		return false
-	if existing_item == incoming_item:
-		return true
-	return (
-		not existing_item.resource_path.is_empty()
-		and existing_item.resource_path == incoming_item.resource_path
-	)
-
-
-func _get_stack_limit(item: PickupConfig) -> int:
-	if item == null or not item.stackable:
-		return 1
-	return clampi(item.inventory_stack_limit, 1, 999)
 
 
 func _on_interaction_area_body_entered(body: Node2D) -> void:

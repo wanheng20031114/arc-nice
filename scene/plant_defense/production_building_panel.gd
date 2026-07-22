@@ -185,7 +185,7 @@ func _process(_delta: float) -> void:
 	_refresh_visual_progress()
 
 
-func _refresh_all() -> void:
+func _refresh_all(_replicate: bool = false) -> void:
 	if building == null or not is_instance_valid(building):
 		return
 	building_title.text = building.config.display_name if building.config != null else "生产建筑"
@@ -351,6 +351,9 @@ func _refresh_status() -> void:
 		return
 	if not transient_status.is_empty():
 		status_label.text = transient_status
+		return
+	if building.completion_wait_reason == ProductionCoordinator.RESULT_OUTPUT_PEER_UNAVAILABLE:
+		status_label.text = "原配方选择者已离开，生产已安全停止；请重新选择配方。"
 		return
 	if building.uses_environment_source():
 		if building.get_active_recipe() == null:

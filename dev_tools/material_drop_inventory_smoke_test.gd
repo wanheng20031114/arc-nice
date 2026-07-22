@@ -1,6 +1,7 @@
 extends SceneTree
 
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
+const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const PROFILE_PANEL_SCENE := preload("res://scene/player/ui/player_profile_panel.tscn")
 const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const SPEED := preload("res://resources/config/pickups/pickup_speed.tres")
@@ -60,6 +61,7 @@ func _run() -> void:
 	run_state = root.get_node("RunState") as RunStateStore
 
 	await _test_tempura_attack_buff()
+	await _test_pickup_single_consumption()
 	_test_material_config_and_icons()
 	_test_deterministic_independent_drop_resolution()
 	_test_local_and_peer_stack_limits()
@@ -101,6 +103,46 @@ func _test_tempura_attack_buff() -> void:
 	_expect(player.attack_damage == base_attack, "Tempura attack must return to its base value after expiry.")
 	_stop_audio_players(player)
 	player.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_pickup_single_consumption() -> void:
+	run_state.begin_new_run(&"weishidaier", false)
+	var first_player := PLAYER_SCENE.instantiate() as Player
+	var second_player := PLAYER_SCENE.instantiate() as Player
+	var pickup := PICKUP_SCENE.instantiate() as Pickup
+	pickup.config = WOOD
+	first_player.position = Vector2(1000.0, 0.0)
+	second_player.position = Vector2(1200.0, 0.0)
+	test_root.add_child(first_player)
+	test_root.add_child(second_player)
+	test_root.add_child(pickup)
+	await process_frame
+	await physics_frame
+
+	var consumed_peer_ids: Array[int] = []
+	pickup.consumed.connect(
+		func(_pickup: Pickup, peer_id: int, _applied_immediately: bool) -> void:
+			consumed_peer_ids.append(peer_id)
+			# Re-enter synchronously from the signal as well as through the second
+			# same-frame overlap below. Neither path may mutate authority twice.
+			pickup.call("_on_body_entered", second_player)
+	)
+	pickup.call("_on_body_entered", first_player)
+	pickup.call("_on_body_entered", second_player)
+	_expect(
+		pickup.lifecycle == Pickup.Lifecycle.CONSUMED
+		and pickup.is_queued_for_deletion()
+		and consumed_peer_ids.size() == 1
+		and run_state.get_inventory_item_total(WOOD) == 1,
+		"同一掉落物在同步信号重入和同帧双玩家重叠下都必须只写入一次。"
+	)
+
+	_stop_audio_players(first_player)
+	_stop_audio_players(second_player)
+	first_player.queue_free()
+	second_player.queue_free()
 	await process_frame
 	await physics_frame
 

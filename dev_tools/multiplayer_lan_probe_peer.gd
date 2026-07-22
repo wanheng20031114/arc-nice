@@ -409,19 +409,27 @@ func _run_tower_defense_runtime_probe(
 	if shared_plant_anchor == Vector2i.MAX:
 		_fail("Tower-defense peers could not resolve a shared valid grass anchor.")
 		return
+	var run_state := root.get_node("RunState") as RunStateStore
+	var wood_total_before_warehouse_competition := _count_peer_item_total(
+		run_state,
+		net_manager.connected_players,
+		WOOD_MATERIAL
+	)
 	if is_host_probe:
 		await _run_host_tower_defense_runtime_probe(
 			net_manager,
 			mp_game,
 			game,
-			shared_plant_anchor
+			shared_plant_anchor,
+			wood_total_before_warehouse_competition
 		)
 	else:
 		await _run_client_tower_defense_runtime_probe(
 			net_manager,
 			mp_game,
 			game,
-			shared_plant_anchor
+			shared_plant_anchor,
+			wood_total_before_warehouse_competition
 		)
 
 
@@ -488,7 +496,8 @@ func _run_host_tower_defense_runtime_probe(
 	net_manager: Node,
 	mp_game: Node,
 	game: Variant,
-	shared_plant_anchor: Vector2i
+	shared_plant_anchor: Vector2i,
+	wood_total_before_warehouse_competition: int
 ) -> void:
 	game.call("_apply_base_damage", 7)
 	if int(game.current_base_health) != 93:
@@ -600,11 +609,14 @@ func _run_host_tower_defense_runtime_probe(
 	if not await _wait_for_host_warehouse_transactions(mp_game, net_manager, 5.0):
 		_fail("Host did not settle every competing warehouse transaction.")
 		return
-	var run_state := root.get_node("RunState") as RunStateStore
 	if warehouse.get_storage_item(0) != null:
 		_fail("Competing shared-warehouse retrieval must consume its only source stack once.")
 		return
-	if _count_peer_item_stacks(run_state, net_manager.connected_players, WOOD_MATERIAL) != 1:
+	var run_state := root.get_node("RunState") as RunStateStore
+	if (
+		_count_peer_item_total(run_state, net_manager.connected_players, WOOD_MATERIAL)
+		!= wood_total_before_warehouse_competition + 1
+	):
 		_fail("Shared-warehouse competition duplicated or lost the authoritative stack.")
 		return
 	print("LAN_PROBE_EVENT host_td_warehouse_atomic net_id=2")
@@ -668,7 +680,8 @@ func _run_client_tower_defense_runtime_probe(
 	net_manager: Node,
 	mp_game: Node,
 	game: Variant,
-	shared_plant_anchor: Vector2i
+	shared_plant_anchor: Vector2i,
+	wood_total_before_warehouse_competition: int
 ) -> void:
 	if not await _wait_for_int_property(game, &"current_base_health", 93, 5.0):
 		_fail("Client did not receive the Host base-health update.")
@@ -779,7 +792,10 @@ func _run_client_tower_defense_runtime_probe(
 		_fail("Client warehouse state did not converge after competing retrievals.")
 		return
 	var run_state := root.get_node("RunState") as RunStateStore
-	if _count_peer_item_stacks(run_state, net_manager.connected_players, WOOD_MATERIAL) != 1:
+	if (
+		_count_peer_item_total(run_state, net_manager.connected_players, WOOD_MATERIAL)
+		!= wood_total_before_warehouse_competition + 1
+	):
 		_fail("Client inventory snapshots did not converge on one warehouse winner.")
 		return
 	var station_config := PlantDefenseRegistry.get_config(&"wood_processing_station")
@@ -1850,7 +1866,7 @@ func _wait_for_production_enabled(
 	return false
 
 
-func _count_peer_item_stacks(
+func _count_peer_item_total(
 	run_state: RunStateStore,
 	connected_players: Dictionary,
 	item: PickupConfig
@@ -1862,7 +1878,7 @@ func _count_peer_item_stacks(
 		var peer_id := int(peer_id_variant)
 		for slot_index in range(RunStateStore.INVENTORY_CAPACITY):
 			var stored_item := run_state.get_item_for_peer(peer_id, slot_index)
-			if stored_item != null and stored_item.resource_path == item.resource_path:
+			if PickupConfig.inventory_identity_matches(stored_item, item):
 				total += run_state.get_item_count_for_peer(peer_id, slot_index)
 	return total
 

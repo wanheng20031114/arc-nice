@@ -1866,9 +1866,15 @@ func _on_authoritative_warehouse_storage_changed(warehouse: OakWarehouse) -> voi
 
 
 func _on_authoritative_production_state_changed(
+	replicate: bool,
 	building: ProductionBuilding
 ) -> void:
-	if not net_manager.is_host() or building == null or not is_instance_valid(building):
+	if (
+		not replicate
+		or not net_manager.is_host()
+		or building == null
+		or not is_instance_valid(building)
+	):
 		return
 	var net_id := int(building.get_meta("net_id", building.building_net_id))
 	if net_id <= 0:

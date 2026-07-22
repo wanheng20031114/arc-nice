@@ -5,6 +5,12 @@ signal consumed(pickup: Pickup, collector_peer_id: int, applied_immediately: boo
 
 const BLINK_ENABLED_SHADER_PARAMETR := &"blink_enabled"
 
+enum Lifecycle {
+	AVAILABLE,
+	CONSUMED,
+	EXPIRED,
+}
+
 @export var config : PickupConfig
 
 @export_range(0.0,10.0,0.1,"or_greater") var blink_before_expire : float = 1.2
@@ -16,6 +22,7 @@ const BLINK_ENABLED_SHADER_PARAMETR := &"blink_enabled"
 # Called when the node enters the scene tree for the first time.
 # 道具消失前的闪烁状态标志位，一旦开启就保持到道具消失为止。
 var is_expiring: bool = false
+var lifecycle := Lifecycle.AVAILABLE
 
 
 # 初始化显示图标、寿命计时与拾取检测。
@@ -56,7 +63,7 @@ func _apply_config_to_visual() -> void:
 
 # 当物体进入道具区域时触发，用于处理玩家拾取
 func _on_body_entered(body: Node2D) -> void:
-	if config == null:
+	if lifecycle != Lifecycle.AVAILABLE or config == null:
 		return
 		
 	var player := body as Player
@@ -67,8 +74,7 @@ func _on_body_entered(body: Node2D) -> void:
 		return
 
 	if player.apply_pickup(config):
-		consumed.emit(self, player.peer_id, true)
-		queue_free()
+		_commit_consumption(player.peer_id, true)
 		return
 
 	var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
@@ -78,11 +84,29 @@ func _on_body_entered(body: Node2D) -> void:
 		else run_state.try_add_item(config)
 	)
 	if stored:
-		consumed.emit(self, player.peer_id, false)
-		queue_free()
+		_commit_consumption(player.peer_id, false)
+
+
+func _commit_consumption(collector_peer_id: int, applied_immediately: bool) -> void:
+	# The authoritative mutation has already succeeded. Mark the pickup before
+	# emitting its synchronous signal so neither another overlap nor re-entry from
+	# a listener can apply the same world item twice during this physics frame.
+	lifecycle = Lifecycle.CONSUMED
+	lifetime_timer.stop()
+	set_process(false)
+	set_deferred("monitoring", false)
+	set_deferred("collision_mask", 0)
+	consumed.emit(self, collector_peer_id, applied_immediately)
+	queue_free()
 
 # 生命周期定时器超时，销毁道具
 func _on_lifetime_timer_timeout() -> void:
+	if lifecycle != Lifecycle.AVAILABLE:
+		return
+	lifecycle = Lifecycle.EXPIRED
+	set_process(false)
+	set_deferred("monitoring", false)
+	set_deferred("collision_mask", 0)
 	queue_free()
 
 # 设置道具的闪烁效果开关

@@ -60,7 +60,7 @@ func _on_removal_started(mode: RemovalMode) -> void:
 	super._on_removal_started(mode)
 
 
-func _sync_production_border() -> void:
+func _sync_production_border(_replicate: bool = false) -> void:
 	if production_border == null:
 		return
 	_stop_border_progress_tween()

@@ -122,6 +122,45 @@ const MAX_DASH_COOLDOWN_REDUCTION_PER_COLLECTIBLE := 0.5
 # 可叠加物品在单个背包槽位中的数量上限；不可叠加物品固定视为 1。
 @export_range(1, 999, 1) var inventory_stack_limit: int = 1
 
+
+static func inventory_identity_matches(
+	existing_item: PickupConfig,
+	expected_item: PickupConfig
+) -> bool:
+	if existing_item == null or expected_item == null:
+		return false
+	if existing_item == expected_item:
+		return true
+	return (
+		not existing_item.resource_path.is_empty()
+		and existing_item.resource_path == expected_item.resource_path
+	)
+
+
+static func inventory_items_can_stack(
+	existing_item: PickupConfig,
+	incoming_item: PickupConfig
+) -> bool:
+	if (
+		existing_item == null
+		or incoming_item == null
+		or not existing_item.stackable
+		or not incoming_item.stackable
+	):
+		return false
+	if existing_item == incoming_item:
+		return true
+	return (
+		not existing_item.resource_path.is_empty()
+		and existing_item.resource_path == incoming_item.resource_path
+	)
+
+
+static func get_inventory_stack_limit(item: PickupConfig) -> int:
+	if item == null or not item.stackable:
+		return 1
+	return clampi(item.inventory_stack_limit, 1, 999)
+
 @export_group("显示资源")
 @export var icon_texture : Texture2D
 @export var icon_scale: Vector2 = Vector2.ONE

@@ -1207,7 +1207,7 @@ func _decode_inventory_item(config_path: String, stack_count: int) -> Dictionary
 	if (
 		item == null
 		or not item.can_store_in_inventory
-		or stack_count > _get_item_stack_limit(item)
+		or stack_count > PickupConfig.get_inventory_stack_limit(item)
 	):
 		return {"valid": false}
 	return {
@@ -1250,31 +1250,6 @@ func _seed_starting_inventory(items: Array, counts: Array) -> void:
 	_add_item_count_to_arrays(items, counts, STARTING_WOOD, STARTING_WOOD_COUNT)
 
 
-func _items_share_stack(existing_item: PickupConfig, incoming_item: PickupConfig) -> bool:
-	if existing_item == null or incoming_item == null or not incoming_item.stackable:
-		return false
-	if existing_item == incoming_item:
-		return true
-	return (
-		not existing_item.resource_path.is_empty()
-		and existing_item.resource_path == incoming_item.resource_path
-	)
-
-
-func _items_match_identity(
-	existing_item: PickupConfig,
-	expected_item: PickupConfig
-) -> bool:
-	if existing_item == null or expected_item == null:
-		return false
-	if existing_item == expected_item:
-		return true
-	return (
-		not existing_item.resource_path.is_empty()
-		and existing_item.resource_path == expected_item.resource_path
-	)
-
-
 func _can_consume_expected_item(
 	items: Array,
 	slot_index: int,
@@ -1283,7 +1258,7 @@ func _can_consume_expected_item(
 	return (
 		slot_index >= 0
 		and slot_index < items.size()
-		and _items_match_identity(
+		and PickupConfig.inventory_identity_matches(
 			items[slot_index] as PickupConfig,
 			expected_item
 		)
@@ -1317,12 +1292,6 @@ func _take_item_count_from_slot_unchecked(
 	counts[slot_index] = 0
 
 
-func _get_item_stack_limit(item: PickupConfig) -> int:
-	if item == null or not item.stackable:
-		return 1
-	return clampi(item.inventory_stack_limit, 1, 999)
-
-
 func _get_available_item_capacity(
 	items: Array,
 	counts: Array,
@@ -1331,13 +1300,13 @@ func _get_available_item_capacity(
 	if item == null:
 		return 0
 
-	var stack_limit := _get_item_stack_limit(item)
+	var stack_limit := PickupConfig.get_inventory_stack_limit(item)
 	var capacity := 0
 	for slot_index in range(items.size()):
 		var stored_item := items[slot_index] as PickupConfig
 		if stored_item == null:
 			capacity += stack_limit
-		elif item.stackable and _items_share_stack(stored_item, item):
+		elif PickupConfig.inventory_items_can_stack(stored_item, item):
 			capacity += maxi(stack_limit - int(counts[slot_index]), 0)
 	return capacity
 
@@ -1359,10 +1328,13 @@ func _can_add_item_count_to_slot_in_arrays(
 		return false
 	var target_item := items[target_slot_index] as PickupConfig
 	if target_item == null:
-		return count <= _get_item_stack_limit(item)
-	if not _items_share_stack(target_item, item):
+		return count <= PickupConfig.get_inventory_stack_limit(item)
+	if not PickupConfig.inventory_items_can_stack(target_item, item):
 		return false
-	return int(counts[target_slot_index]) + count <= _get_item_stack_limit(item)
+	return (
+		int(counts[target_slot_index]) + count
+		<= PickupConfig.get_inventory_stack_limit(item)
+	)
 
 
 func _add_item_count_to_slot_unchecked(
@@ -1431,10 +1403,13 @@ func _add_item_count_to_arrays(
 	count: int
 ) -> void:
 	var remaining := count
-	var stack_limit := _get_item_stack_limit(item)
+	var stack_limit := PickupConfig.get_inventory_stack_limit(item)
 	if item.stackable:
 		for slot_index in range(items.size()):
-			if not _items_share_stack(items[slot_index] as PickupConfig, item):
+			if not PickupConfig.inventory_items_can_stack(
+				items[slot_index] as PickupConfig,
+				item
+			):
 				continue
 			var room := maxi(stack_limit - int(counts[slot_index]), 0)
 			var added := mini(room, remaining)
@@ -1532,7 +1507,10 @@ func _consume_item_count_from_arrays(
 		return false
 	var remaining := count
 	for slot_index in items.size():
-		if not _items_match_identity(items[slot_index] as PickupConfig, item):
+		if not PickupConfig.inventory_identity_matches(
+			items[slot_index] as PickupConfig,
+			item
+		):
 			continue
 		var stored_count := maxi(int(counts[slot_index]), 1)
 		var consumed := mini(stored_count, remaining)
@@ -1557,7 +1535,10 @@ func _get_item_total_in_arrays(
 		return 0
 	var total := 0
 	for slot_index in items.size():
-		if _items_match_identity(items[slot_index] as PickupConfig, item):
+		if PickupConfig.inventory_identity_matches(
+			items[slot_index] as PickupConfig,
+			item
+		):
 			total += maxi(int(counts[slot_index]), 1)
 	return total
 

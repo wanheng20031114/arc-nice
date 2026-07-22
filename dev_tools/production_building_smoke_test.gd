@@ -566,9 +566,50 @@ func _run() -> void:
 	if game_instance != null:
 		game_instance.free()
 
-	await _test_multiplayer_production_contract(test_root, config)
+	await _test_nonstackable_production_input(test_root)
+	await _test_multiplayer_production_contract(test_root, config, coordinator)
 
 	_finish(test_root)
+
+
+func _test_nonstackable_production_input(test_root: Node) -> void:
+	var isolated_coordinator := COORDINATOR_SCENE.instantiate() as ProductionCoordinator
+	var isolated_warehouse := WAREHOUSE_SCENE.instantiate() as OakWarehouse
+	test_root.add_child(isolated_coordinator)
+	test_root.add_child(isolated_warehouse)
+	await process_frame
+	isolated_coordinator.production_tick_timer.stop()
+	isolated_warehouse.setup(
+		PlantDefenseRegistry.get_config(&"oak_warehouse"),
+		null,
+		[Vector2i(20, 0)]
+	)
+	isolated_coordinator.register_plant(isolated_warehouse)
+
+	var recipe := ProductionRecipe.new()
+	recipe.recipe_id = &"nonstackable_input_probe"
+	recipe.display_name = "非堆叠投入探针"
+	var input_items: Array[PickupConfig] = [WATER_COLLECTOR_ITEM]
+	var input_amounts: Array[int] = [2]
+	var output_items: Array[PickupConfig] = [WOOD]
+	var output_amounts: Array[int] = [1]
+	recipe.input_items = input_items
+	recipe.input_amounts = input_amounts
+	recipe.output_items = output_items
+	recipe.output_amounts = output_amounts
+	recipe.output_destination = ProductionRecipe.OutputDestination.SHARED_STORAGE
+	recipe.duration_seconds = 1.0
+
+	_expect(
+		recipe.is_valid()
+		and isolated_warehouse.try_add_storage_item_count(WATER_COLLECTOR_ITEM, 2)
+		and isolated_warehouse.get_storage_item_total(WATER_COLLECTOR_ITEM) == 2
+		and isolated_coordinator.try_commit_recipe(recipe)
+		== ProductionCoordinator.RESULT_SUCCESS
+		and isolated_warehouse.get_storage_item_total(WATER_COLLECTOR_ITEM) == 0
+		and isolated_warehouse.get_storage_item_total(WOOD) == 1,
+		"非堆叠物品必须能跨独立槽位统计并作为生产输入消费，但不能合并槽位。"
+	)
 
 
 func _recipe_matches(
@@ -710,7 +751,8 @@ func _test_utility_building_recipe_transactions(
 
 func _test_multiplayer_production_contract(
 	test_root: Node,
-	config: PlantDefenseConfig
+	config: PlantDefenseConfig,
+	coordinator: ProductionCoordinator
 ) -> void:
 	_expect(
 		not ProductionBuildingProtocol.is_valid_command({
@@ -738,6 +780,12 @@ func _test_multiplayer_production_contract(
 	test_root.add_child(authority)
 	await process_frame
 	authority.setup(config, null, [Vector2i(4, 0)])
+	coordinator.configure_multiplayer_output_peers([2, 3])
+	coordinator.register_plant(authority)
+	var replication_flags: Array[bool] = []
+	authority.production_state_changed.connect(
+		func(replicate: bool) -> void: replication_flags.append(replicate)
+	)
 	var first_command := ProductionBuildingProtocol.make_select_recipe_command(
 		1,
 		8,
@@ -806,6 +854,22 @@ func _test_multiplayer_production_contract(
 		and authority.production_revision == 1,
 		"非法配方必须返回invalid_recipe且不得写入生产状态。"
 	)
+	var run_state := root.get_node("RunState") as RunStateStore
+	var personal_recipe := authority.get_recipe(&"water_collector_assembly")
+	coordinator.deactivate_personal_output_peer(2)
+	_expect(
+		authority.active_recipe_id == &""
+		and authority.personal_output_peer_id == 0
+		and authority.completion_wait_reason
+		== ProductionCoordinator.RESULT_OUTPUT_PEER_UNAVAILABLE
+		and authority.production_revision == 2
+		and replication_flags == [true, false]
+		and not run_state.has_multiplayer_peer_state(2)
+		and coordinator.try_commit_recipe(personal_recipe, 2)
+		== ProductionCoordinator.RESULT_OUTPUT_PEER_UNAVAILABLE
+		and not run_state.has_multiplayer_peer_state(2),
+		"玩家断线必须本地撤销个人产物绑定，且不得发布生产包或创建幽灵背包。"
+	)
 	var mp_game := MP_GAME_SCENE.instantiate()
 	var rate_buckets: Dictionary = {}
 	var burst_was_accepted := true
@@ -853,6 +917,7 @@ func _test_multiplayer_production_contract(
 	test_root.add_child(proxy)
 	await process_frame
 	proxy.setup(config, null, [Vector2i(3, 0)], true, config.max_health, 1)
+	coordinator.register_plant(proxy)
 	proxy.configure_multiplayer_production(7, 2, true)
 	var requested_commands: Array[Dictionary] = []
 	var snapshot_requests: Array[int] = []
@@ -934,6 +999,24 @@ func _test_multiplayer_production_contract(
 		"4秒命令超时必须取消假操作并请求权威快照。"
 	)
 	proxy.multiplayer_production_request_timer.stop()
+	var late_disconnected_peer_state := authoritative_state.duplicate(true)
+	late_disconnected_peer_state["active_recipe_id"] = "water_collector_assembly"
+	late_disconnected_peer_state["personal_output_peer_id"] = 2
+	late_disconnected_peer_state["progress_elapsed_seconds"] = 29.0
+	late_disconnected_peer_state["revision"] = 2
+	proxy.apply_multiplayer_runtime_state(
+		late_disconnected_peer_state,
+		Time.get_ticks_msec() / 1000.0
+	)
+	_expect(
+		proxy.production_revision == 2
+		and proxy.active_recipe_id == &""
+		and proxy.personal_output_peer_id == 0
+		and is_zero_approx(proxy.progress_elapsed_seconds)
+		and proxy.completion_wait_reason
+		== ProductionCoordinator.RESULT_OUTPUT_PEER_UNAVAILABLE,
+		"断线事件之后到达的可靠旧状态不得复活已失效的个人产物绑定。"
+	)
 
 
 func _expect(condition: bool, message: String) -> void:
