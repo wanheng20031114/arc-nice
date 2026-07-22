@@ -229,6 +229,7 @@ var material_drop_random_generator := RandomNumberGenerator.new()
 var cached_effective_physical_defense := 0
 var cached_effective_move_speed := 0.0
 var cached_effective_move_speed_multiplier := 1.0
+var cached_damage_taken_multiplier := 1.0
 var status_visual_material: ShaderMaterial = null
 var slow_overlay_strength := 0.0
 var burn_overlay_strength := 0.0
@@ -1066,18 +1067,34 @@ func add_damage_taken_multiplier_modifier(source_id: int, multiplier: float) -> 
 		return
 	if multiplier <= 0.0 or is_equal_approx(multiplier, 1.0):
 		return
+	if (
+		damage_taken_multiplier_modifiers.has(source_id)
+		and is_equal_approx(
+			float(damage_taken_multiplier_modifiers[source_id]),
+			multiplier
+		)
+	):
+		return
 	damage_taken_multiplier_modifiers[source_id] = multiplier
+	_refresh_damage_taken_multiplier_cache()
 
 
 func remove_damage_taken_multiplier_modifier(source_id: int) -> void:
+	if not damage_taken_multiplier_modifiers.has(source_id):
+		return
 	damage_taken_multiplier_modifiers.erase(source_id)
+	_refresh_damage_taken_multiplier_cache()
 
 
 func get_damage_taken_multiplier() -> float:
+	return cached_damage_taken_multiplier
+
+
+func _refresh_damage_taken_multiplier_cache() -> void:
 	var total := 1.0
 	for source_id in damage_taken_multiplier_modifiers:
 		total *= maxf(float(damage_taken_multiplier_modifiers[source_id]), 0.0)
-	return maxf(total, 0.0)
+	cached_damage_taken_multiplier = maxf(total, 0.0)
 
 
 func apply_cold_status() -> bool:

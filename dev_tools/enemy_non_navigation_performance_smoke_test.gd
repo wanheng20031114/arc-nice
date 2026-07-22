@@ -8,6 +8,7 @@ const WARMUP_PHYSICS_FRAMES := 30
 const SAMPLE_PHYSICS_FRAMES := 180
 const METHOD_BENCHMARK_ITERATIONS := 600
 const LEGACY_PICKUP_SCAN_BENCHMARK_ITERATIONS := 12
+const DAMAGE_MULTIPLIER_BENCHMARK_ITERATIONS := 120000
 
 var failures: Array[String] = []
 
@@ -61,6 +62,7 @@ func _run() -> void:
 	)
 
 	_verify_cached_move_speed(enemies)
+	_verify_cached_damage_taken_multiplier(enemies)
 	_verify_empty_touch_fast_path(enemies)
 	_verify_segmented_enemy_metrics(enemies)
 	_verify_source_allocation_contract()
@@ -189,6 +191,82 @@ func _verify_cached_move_speed(enemies: Array[Enemy]) -> void:
 	enemy.remove_move_speed_modifier(900002)
 
 
+func _verify_cached_damage_taken_multiplier(enemies: Array[Enemy]) -> void:
+	if enemies.size() < 2:
+		return
+	var enemy := enemies[1]
+	var source_ids: Array[int] = []
+	for modifier_index in range(8):
+		var source_id := 910000 + modifier_index
+		source_ids.append(source_id)
+		enemy.add_damage_taken_multiplier_modifier(
+			source_id,
+			1.02 + float(modifier_index) * 0.01
+		)
+	var expected_multiplier := _calculate_legacy_damage_taken_multiplier(enemy)
+	_expect(
+		is_equal_approx(enemy.get_damage_taken_multiplier(), expected_multiplier),
+		"Cached damage multiplier must match the legacy product after insertion."
+	)
+	enemy.add_damage_taken_multiplier_modifier(source_ids[3], 1.25)
+	expected_multiplier = _calculate_legacy_damage_taken_multiplier(enemy)
+	_expect(
+		is_equal_approx(enemy.get_damage_taken_multiplier(), expected_multiplier),
+		"Cached damage multiplier must refresh after same-source replacement."
+	)
+	enemy.remove_damage_taken_multiplier_modifier(source_ids[5])
+	expected_multiplier = _calculate_legacy_damage_taken_multiplier(enemy)
+	_expect(
+		is_equal_approx(enemy.get_damage_taken_multiplier(), expected_multiplier),
+		"Cached damage multiplier must refresh after removal."
+	)
+
+	var cached_checksum := 0.0
+	var cached_started_usec := Time.get_ticks_usec()
+	for _iteration in range(DAMAGE_MULTIPLIER_BENCHMARK_ITERATIONS):
+		cached_checksum += enemy.get_damage_taken_multiplier()
+	var cached_elapsed_usec := Time.get_ticks_usec() - cached_started_usec
+	var legacy_checksum := 0.0
+	var legacy_started_usec := Time.get_ticks_usec()
+	for _iteration in range(DAMAGE_MULTIPLIER_BENCHMARK_ITERATIONS):
+		legacy_checksum += _calculate_legacy_damage_taken_multiplier(enemy)
+	var legacy_elapsed_usec := Time.get_ticks_usec() - legacy_started_usec
+	_expect(
+		is_equal_approx(cached_checksum, legacy_checksum),
+		"Cached and legacy damage-multiplier A/B checksums must remain identical."
+	)
+	_expect(
+		cached_elapsed_usec < legacy_elapsed_usec,
+		"O(1) damage-multiplier reads must outperform repeated dictionary products."
+	)
+	print(
+		"DAMAGE_MULTIPLIER_CACHE_AB reads=%d modifiers=%d cached_ms=%.3f legacy_ms=%.3f speedup=%.2fx"
+		% [
+			DAMAGE_MULTIPLIER_BENCHMARK_ITERATIONS,
+			enemy.damage_taken_multiplier_modifiers.size(),
+			float(cached_elapsed_usec) / 1000.0,
+			float(legacy_elapsed_usec) / 1000.0,
+			float(legacy_elapsed_usec) / maxf(float(cached_elapsed_usec), 1.0),
+		]
+	)
+	for source_id in source_ids:
+		enemy.remove_damage_taken_multiplier_modifier(source_id)
+	_expect(
+		is_equal_approx(enemy.get_damage_taken_multiplier(), 1.0),
+		"Removing all damage modifiers must restore the cached neutral multiplier."
+	)
+
+
+func _calculate_legacy_damage_taken_multiplier(enemy: Enemy) -> float:
+	var total := 1.0
+	for source_id in enemy.damage_taken_multiplier_modifiers:
+		total *= maxf(
+			float(enemy.damage_taken_multiplier_modifiers[source_id]),
+			0.0
+		)
+	return maxf(total, 0.0)
+
+
 func _verify_empty_touch_fast_path(enemies: Array[Enemy]) -> void:
 	if enemies.size() < 2:
 		return
@@ -235,6 +313,10 @@ func _verify_source_allocation_contract() -> void:
 	_expect(
 		source.contains("cached_effective_move_speed"),
 		"Enemy must cache effective move speed between modifier changes."
+	)
+	_expect(
+		source.contains("cached_damage_taken_multiplier"),
+		"Enemy must cache incoming damage multipliers between status changes."
 	)
 	var movement_function_offset := source.find("func _move_until_player_contact()")
 	var zero_velocity_guard_offset := source.find(
