@@ -1,7 +1,10 @@
 extends SceneTree
 
 const EXPORT_PRESETS_PATH := "res://export_presets.cfg"
-const REQUIRED_DEV_FILTER := "dev_tools/*"
+const REQUIRED_PRODUCTION_FILTERS := [
+	"dev_tools/*",
+	"tmp/*",
+]
 
 var failures: Array[String] = []
 
@@ -33,11 +36,14 @@ func _validate_export_presets(config: ConfigFile) -> void:
 		var preset_name := String(config.get_value(section, "name", section))
 		var export_filter := String(config.get_value(section, "export_filter", ""))
 		var exclude_filter := String(config.get_value(section, "exclude_filter", ""))
-		_expect(
-			export_filter != "all_resources" or _has_filter(exclude_filter, REQUIRED_DEV_FILTER),
-			"All-resource export preset '%s' must exclude dev_tools from production packages."
-			% preset_name
-		)
+		if export_filter != "all_resources":
+			continue
+		for required_filter in REQUIRED_PRODUCTION_FILTERS:
+			_expect(
+				_has_filter(exclude_filter, required_filter),
+				"All-resource export preset '%s' must exclude '%s' from production packages."
+				% [preset_name, required_filter]
+			)
 
 
 func _has_filter(filter_list: String, required_filter: String) -> bool:
