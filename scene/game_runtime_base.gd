@@ -410,6 +410,38 @@ func get_all_combat_targets() -> Array[Enemy]:
 	return combat_target_index.get_all_alive()
 
 
+func pick_random_combat_target(center: Vector2, radius: float = 0.0) -> Enemy:
+	if runtime_mode != RuntimeMode.SINGLEPLAYER or _singleplayer_combat_target_index_enabled:
+		return combat_target_index.pick_random_alive_in_radius(center, radius)
+	# Lightweight fixtures and an early pre-activation call can precede index
+	# enablement. Preserve behavior there without weakening the indexed production
+	# path used by Game and GameTowerDefense.
+	var safe_radius := maxf(radius, 0.0)
+	var radius_squared := safe_radius * safe_radius
+	var selected_enemy: Enemy = null
+	var candidate_count := 0
+	var target_containers: Array[Node] = [
+		enemy_container,
+		get_node_or_null("BossContainer"),
+	]
+	for target_container in target_containers:
+		if target_container == null:
+			continue
+		for child in target_container.get_children():
+			var enemy := child as Enemy
+			if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+				continue
+			if (
+				safe_radius > 0.0
+				and center.distance_squared_to(enemy.global_position) > radius_squared
+			):
+				continue
+			candidate_count += 1
+			if randi() % candidate_count == 0:
+				selected_enemy = enemy
+	return selected_enemy
+
+
 func query_combat_targets(center: Vector2, radius: float, max_count: int = 0) -> Array[Enemy]:
 	var result: Array[Enemy] = []
 	query_combat_targets_into(center, radius, result, max_count)

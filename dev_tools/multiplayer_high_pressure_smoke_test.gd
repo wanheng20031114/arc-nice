@@ -359,6 +359,31 @@ func _test_combat_target_query_reuse() -> void:
 		and host_returned_targets == host_reused_targets,
 		"MP host target queries must forward into caller-owned arrays with wrapper parity."
 	)
+	_expect(
+		host_mp_game.call(
+			"pick_random_combat_target",
+			Vector2.ZERO,
+			15.0
+		) == near_enemy,
+		"MP host random target selection must forward the triggering player's local center and radius."
+	)
+	_expect(
+		host_mp_game.call(
+			"pick_random_combat_target",
+			Vector2(300.0, 0.0),
+			15.0
+		) == null,
+		"MP host bounded random selection must report an empty local radius before global fallback."
+	)
+	var host_global_pick := host_mp_game.call(
+		"pick_random_combat_target",
+		Vector2.ZERO,
+		0.0
+	) as Enemy
+	_expect(
+		host_global_pick in [near_enemy, boss_enemy, far_enemy],
+		"MP host global random fallback must return one live indexed combat target."
+	)
 
 	var client_mp_game := _new_mp_game()
 	client_mp_game.set("_net_enemies", {901: near_enemy, 902: boss_enemy, 903: far_enemy})

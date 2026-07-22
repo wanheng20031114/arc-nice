@@ -14,6 +14,7 @@ from typing import Any
 
 from PIL import Image, ImageDraw
 from update_collectible_descriptions import (
+    THUNDER_LOCAL_TARGET_RADIUS,
     generate_description as generate_player_description,
     parse_value,
 )
@@ -463,7 +464,11 @@ def _build_trigger_design(slug: str, rarity: int, index: int) -> tuple[dict[str,
         radius = float(20 + tier * 8 + (index % 4) * 4)
         fields["trigger_damage"] = damage
         fields["trigger_radius"] = radius
-        effect_text = "在随机敌人处落雷，半径%s内造成%s点法术伤害" % (num(radius), num(damage))
+        effect_text = (
+            "优先在自身周围%s范围内随机选择敌人落雷，附近无目标时改选全场，"
+            "半径%s内造成%s点法术伤害"
+            % (num(THUNDER_LOCAL_TARGET_RADIUS), num(radius), num(damage))
+        )
     elif trigger_id.endswith("_frost"):
         damage = 5 + tier * 4 + (index % 5)
         radius = float(24 + tier * 8 + (index % 4) * 4)
@@ -1277,8 +1282,14 @@ def build_description(config: dict[str, Any]) -> str:
     periodic = fields.get("periodic_effect_id", "")
     if periodic == "thunder":
         segments.append(
-            "每%s秒引落闪电，对落点%s范围内敌人造成%s点法术伤害。"
-            % (num(fields["periodic_interval"]), num(fields["periodic_radius"]), num(fields["periodic_damage"]))
+            "每%s秒优先在自身周围%s范围内随机选择敌人引落闪电"
+            "，附近无目标时改选全场，对落点%s范围内敌人造成%s点法术伤害。"
+            % (
+                num(fields["periodic_interval"]),
+                num(THUNDER_LOCAL_TARGET_RADIUS),
+                num(fields["periodic_radius"]),
+                num(fields["periodic_damage"]),
+            )
         )
     elif periodic == "frost":
         segments.append(

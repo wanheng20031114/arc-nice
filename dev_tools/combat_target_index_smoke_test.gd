@@ -10,6 +10,8 @@ func _init() -> void:
 
 
 func _run() -> void:
+	_test_random_target_selection()
+
 	var target_index: Variant = TargetIndexScript.new()
 	var near_enemy := Enemy.new()
 	var middle_enemy := Enemy.new()
@@ -298,6 +300,82 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_random_target_selection() -> void:
+	var random_index: Variant = TargetIndexScript.new()
+	var local_enemy := Enemy.new()
+	var global_enemy_a := Enemy.new()
+	var global_enemy_b := Enemy.new()
+	local_enemy.position = Vector2(16.0, 0.0)
+	global_enemy_a.position = Vector2(160.0, 0.0)
+	global_enemy_b.position = Vector2(320.0, 0.0)
+	random_index.call("register_enemy", 101, local_enemy)
+	random_index.call("register_enemy", 102, global_enemy_a)
+	random_index.call("register_enemy", 103, global_enemy_b)
+
+	_expect(
+		random_index.call(
+			"pick_random_alive_in_radius",
+			Vector2.ZERO,
+			32.0
+		) == local_enemy,
+		"A bounded random query with one local target must return that target."
+	)
+	_expect(
+		random_index.call(
+			"pick_random_alive_in_radius",
+			Vector2(800.0, 0.0),
+			16.0
+		) == null,
+		"A bounded random query must return null when its local radius is empty."
+	)
+
+	seed(20260722)
+	var observed_global_ids: Dictionary[int, bool] = {}
+	var every_global_pick_was_alive := true
+	for _pick_index in range(64):
+		var picked_enemy := random_index.call("pick_random_alive") as Enemy
+		if (
+			picked_enemy == null
+			or not is_instance_valid(picked_enemy)
+			or picked_enemy.is_dead
+		):
+			every_global_pick_was_alive = false
+			continue
+		observed_global_ids[picked_enemy.get_instance_id()] = true
+	_expect(
+		every_global_pick_was_alive and observed_global_ids.size() > 1,
+		"Repeated global random picks must return live registered targets without degenerating to one fixed entry."
+	)
+	random_index.call("clear")
+	for enemy in [local_enemy, global_enemy_a, global_enemy_b]:
+		enemy.free()
+
+	var dead_index: Variant = TargetIndexScript.new()
+	var dead_enemy := Enemy.new()
+	dead_enemy.position = Vector2(8.0, 0.0)
+	dead_index.call("register_enemy", 201, dead_enemy)
+	dead_enemy.is_dead = true
+	_expect(
+		dead_index.call("pick_random_alive_in_radius", Vector2.ZERO, 32.0) == null
+		and dead_index.call("pick_random_alive") == null
+		and (dead_index.get("enemies_by_net_id") as Dictionary).is_empty()
+		and (dead_index.get("bucket_by_net_id") as Dictionary).is_empty(),
+		"Random selection must prune a dead target from both global and spatial index structures."
+	)
+	dead_enemy.free()
+
+	var freed_index: Variant = TargetIndexScript.new()
+	var freed_enemy := Enemy.new()
+	freed_index.call("register_enemy", 301, freed_enemy)
+	freed_enemy.free()
+	_expect(
+		freed_index.call("pick_random_alive") == null
+		and (freed_index.get("enemies_by_net_id") as Dictionary).is_empty()
+		and (freed_index.get("bucket_by_net_id") as Dictionary).is_empty(),
+		"Global random selection must prune a freed target instead of returning a stale reference."
+	)
 
 
 func _move_out_of_tree_fixture_enemy(

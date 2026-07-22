@@ -7471,6 +7471,12 @@ func get_all_combat_targets() -> Array[Enemy]:
 	return result
 
 
+func pick_random_combat_target(center: Vector2, radius: float = 0.0) -> Enemy:
+	if game == null:
+		return null
+	return game.pick_random_combat_target(center, radius)
+
+
 func query_combat_targets(center: Vector2, radius: float, max_count: int = 0) -> Array[Enemy]:
 	var result: Array[Enemy] = []
 	query_combat_targets_into(center, radius, result, max_count)

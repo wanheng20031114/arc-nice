@@ -11,6 +11,7 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_DIR = PROJECT_ROOT / "resources" / "config" / "collectibles"
+THUNDER_LOCAL_TARGET_RADIUS = 256.0
 
 
 def parse_value(raw_value: str) -> Any:
@@ -118,7 +119,8 @@ def describe_periodic(data: dict[str, Any]) -> str:
     radius = fmt_num(data.get("periodic_radius", 0.0))
     if effect_id == "thunder":
         return (
-            f"每{interval}秒随机雷击1名敌人，"
+            f"每{interval}秒优先随机雷击自身周围{fmt_num(THUNDER_LOCAL_TARGET_RADIUS)}范围内1名敌人"
+            "，附近无目标时改选全场，"
             f"对击中点{radius}范围敌人造成{fmt_num(data.get('periodic_damage', 0))}法术伤害"
         )
     if effect_id == "frost":
@@ -180,7 +182,9 @@ def describe_trigger(data: dict[str, Any]) -> str:
         effect_text = f"补充{fmt_num(data.get('trigger_skill_charge', 0.0))}秒技力"
     elif effect_id.endswith("_thunder"):
         effect_text = (
-            f"随机雷击1名敌人，对击中点{fmt_num(data.get('trigger_radius', 0.0))}"
+            f"优先随机雷击自身周围{fmt_num(THUNDER_LOCAL_TARGET_RADIUS)}范围内1名敌人"
+            "，附近无目标时改选全场，"
+            f"对击中点{fmt_num(data.get('trigger_radius', 0.0))}"
             f"范围敌人造成{fmt_num(data.get('trigger_damage', 0))}法术伤害"
         )
     elif effect_id.endswith("_frost"):

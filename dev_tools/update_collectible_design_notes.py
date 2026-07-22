@@ -13,7 +13,12 @@ import re
 from pathlib import Path
 from typing import Any
 
-from update_collectible_descriptions import fmt_num, parse_config, percent
+from update_collectible_descriptions import (
+    THUNDER_LOCAL_TARGET_RADIUS,
+    fmt_num,
+    parse_config,
+    percent,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -310,7 +315,9 @@ def _periodic_rule(data: dict[str, Any]) -> list[str]:
     damage = int(data.get("periodic_damage", 0))
     if effect_id == "thunder":
         return [
-            f"首次等待{interval}秒且之后每{interval}秒，从全部存活敌人中随机选择1名；"
+            f"首次等待{interval}秒且之后每{interval}秒，优先从持有者周围"
+            f"{fmt_num(THUNDER_LOCAL_TARGET_RADIUS)}范围内的存活敌人中随机选择1名；"
+            "该范围内没有目标时，改从全部存活敌人中随机选择1名；"
             f"以其位置为中心对{radius}范围内敌人造成配置值{damage}点法术伤害；"
             + _fixed_damage_formula("法术")
             + "；没有存活敌人时本次不产生伤害但仍重新开始周期计时"
@@ -404,7 +411,9 @@ def _trigger_rule(data: dict[str, Any]) -> list[str]:
         radius = fmt_num(data.get("trigger_radius", 0.0))
         damage = int(data.get("trigger_damage", 0))
         action = (
-            f"从全部存活敌人中随机选择1名，并对其位置{radius}范围内敌人造成配置值{damage}点法术伤害；"
+            f"优先从持有者周围{fmt_num(THUNDER_LOCAL_TARGET_RADIUS)}范围内的存活敌人中随机选择1名；"
+            "该范围内没有目标时，改从全部存活敌人中随机选择1名；"
+            f"对其位置{radius}范围内敌人造成配置值{damage}点法术伤害；"
             + _fixed_damage_formula("法术")
         )
     elif effect_id.endswith("_frost"):

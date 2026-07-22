@@ -104,6 +104,7 @@ const HOMING_ENEMY_BODY_MASK := 4
 const HOMING_TARGET_RADIUS := 256.0
 const HOMING_TARGET_HALF_ANGLE := PI / 3.0
 const HOMING_QUERY_MAX_RESULTS := 64
+const THUNDER_LOCAL_TARGET_RADIUS := 256.0
 const MIN_SKILL_ACTIVATION_INTERVAL_MSEC := 100
 const MULTIPLAYER_VISUAL_OFFSET_LERP_RATE := 36.0
 const MULTIPLAYER_VISUAL_OFFSET_EPSILON := 0.05
@@ -2754,10 +2755,7 @@ func _trigger_collectible_periodic_effect(item: PickupConfig) -> void:
 
 
 func _trigger_thunder_crystal(item: PickupConfig) -> void:
-	var enemies := _collect_alive_enemies()
-	if enemies.is_empty():
-		return
-	var enemy := enemies[randi() % enemies.size()]
+	var enemy := _pick_random_thunder_target()
 	if enemy == null or not is_instance_valid(enemy):
 		return
 	var impact_position := enemy.global_position
@@ -2766,20 +2764,12 @@ func _trigger_thunder_crystal(item: PickupConfig) -> void:
 		item.periodic_damage,
 		EnemyConfig.DamageType.MAGIC
 	)
-	for target_enemy in enemies:
-		if target_enemy == null or not is_instance_valid(target_enemy):
-			continue
-		if target_enemy.global_position.distance_to(impact_position) > radius:
-			continue
-		var impact_direction := impact_position.direction_to(target_enemy.global_position)
-		if impact_direction == Vector2.ZERO:
-			impact_direction = Vector2.DOWN
-		_apply_authoritative_collectible_enemy_damage(
-			target_enemy,
-			damage,
-			impact_direction,
-			EnemyConfig.DamageType.MAGIC
-		)
+	_apply_effective_collectible_area_damage(
+		impact_position,
+		radius,
+		damage,
+		EnemyConfig.DamageType.MAGIC
+	)
 	_spawn_collectible_lightning_effect(impact_position)
 
 
@@ -2818,10 +2808,7 @@ func _trigger_frost_crystal(item: PickupConfig) -> void:
 
 
 func _trigger_collectible_custom_thunder(item: PickupConfig) -> void:
-	var enemies := _collect_alive_enemies()
-	if enemies.is_empty():
-		return
-	var enemy := enemies[randi() % enemies.size()]
+	var enemy := _pick_random_thunder_target()
 	if enemy == null or not is_instance_valid(enemy):
 		return
 	var impact_position := enemy.global_position
@@ -2830,21 +2817,49 @@ func _trigger_collectible_custom_thunder(item: PickupConfig) -> void:
 		item.trigger_damage,
 		EnemyConfig.DamageType.MAGIC
 	)
-	for target_enemy in enemies:
-		if target_enemy == null or not is_instance_valid(target_enemy):
-			continue
-		if target_enemy.global_position.distance_to(impact_position) > radius:
-			continue
-		var impact_direction := impact_position.direction_to(target_enemy.global_position)
-		if impact_direction == Vector2.ZERO:
-			impact_direction = Vector2.DOWN
-		_apply_authoritative_collectible_enemy_damage(
-			target_enemy,
-			damage,
-			impact_direction,
-			EnemyConfig.DamageType.MAGIC
-		)
+	_apply_effective_collectible_area_damage(
+		impact_position,
+		radius,
+		damage,
+		EnemyConfig.DamageType.MAGIC
+	)
 	_spawn_collectible_lightning_effect(impact_position)
+
+
+func _pick_random_thunder_target() -> Enemy:
+	var current_scene := get_tree().current_scene
+	if current_scene != null and current_scene.has_method("pick_random_combat_target"):
+		var nearby_enemy := current_scene.call(
+			"pick_random_combat_target",
+			global_position,
+			THUNDER_LOCAL_TARGET_RADIUS
+		) as Enemy
+		if nearby_enemy != null:
+			return nearby_enemy
+		return current_scene.call(
+			"pick_random_combat_target",
+			global_position,
+			0.0
+		) as Enemy
+	# Non-runtime fixtures keep exact behavior with a reservoir-selected local
+	# preference. Production Game/MpGame scenes always use the indexed path above.
+	var enemies := _collect_alive_enemies()
+	var radius_squared := THUNDER_LOCAL_TARGET_RADIUS * THUNDER_LOCAL_TARGET_RADIUS
+	var nearby_choice: Enemy = null
+	var nearby_count := 0
+	for enemy in enemies:
+		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+			continue
+		if global_position.distance_squared_to(enemy.global_position) > radius_squared:
+			continue
+		nearby_count += 1
+		if randi() % nearby_count == 0:
+			nearby_choice = enemy
+	if nearby_choice != null:
+		return nearby_choice
+	if enemies.is_empty():
+		return null
+	return enemies[randi() % enemies.size()]
 
 
 func _trigger_collectible_custom_frost(item: PickupConfig) -> void:
@@ -3252,10 +3267,27 @@ func _apply_collectible_area_damage(
 ) -> void:
 	var effective_radius := maxf(radius, 1.0)
 	var effective_damage := get_collectible_outgoing_damage(maxi(damage, 1), damage_type)
-	for enemy in _collect_alive_enemies():
+	_apply_effective_collectible_area_damage(
+		center_position,
+		effective_radius,
+		effective_damage,
+		damage_type
+	)
+
+
+func _apply_effective_collectible_area_damage(
+	center_position: Vector2,
+	effective_radius: float,
+	effective_damage: int,
+	damage_type: EnemyConfig.DamageType
+) -> void:
+	var affected_enemies: Array[Enemy] = []
+	_query_alive_enemies_in_radius_into(center_position, effective_radius, affected_enemies)
+	var radius_squared := effective_radius * effective_radius
+	for enemy in affected_enemies:
 		if enemy == null or not is_instance_valid(enemy):
 			continue
-		if enemy.global_position.distance_to(center_position) > effective_radius:
+		if enemy.global_position.distance_squared_to(center_position) > radius_squared:
 			continue
 		var impact_direction := center_position.direction_to(enemy.global_position)
 		if impact_direction == Vector2.ZERO:
@@ -3266,6 +3298,32 @@ func _apply_collectible_area_damage(
 			impact_direction,
 			damage_type
 		)
+
+
+func _query_alive_enemies_in_radius_into(
+	center_position: Vector2,
+	radius: float,
+	result: Array[Enemy]
+) -> void:
+	result.clear()
+	var current_scene := get_tree().current_scene
+	if (
+		current_scene != null
+		and current_scene.has_method("query_combat_targets_unordered_into")
+	):
+		current_scene.call(
+			"query_combat_targets_unordered_into",
+			center_position,
+			maxf(radius, 0.0),
+			result
+		)
+		return
+	var radius_squared := maxf(radius, 0.0) * maxf(radius, 0.0)
+	for enemy in _collect_alive_enemies():
+		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+			continue
+		if center_position.distance_squared_to(enemy.global_position) <= radius_squared:
+			result.append(enemy)
 
 
 func _apply_collectible_area_heal(center_position: Vector2, radius: float, heal_amount: int) -> void:

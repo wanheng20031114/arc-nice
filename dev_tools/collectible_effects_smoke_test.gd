@@ -13,6 +13,7 @@ const MAGIC_RING := preload("res://resources/config/collectibles/collectible_mag
 const GOLD_WINE_CUP := preload("res://resources/config/collectibles/collectible_gold_wine_cup.tres")
 const TIANSHI_STAKE := preload("res://resources/config/collectibles/collectible_tianshi_stake.tres")
 const THUNDER_CRYSTAL := preload("res://resources/config/collectibles/collectible_thunder_crystal.tres")
+const THUNDER_CROWN := preload("res://resources/config/collectibles/collectible_thunder_crown.tres")
 const FROST_CRYSTAL := preload("res://resources/config/collectibles/collectible_frost_crystal.tres")
 const LIFE_CRYSTAL := preload("res://resources/config/collectibles/collectible_life_crystal.tres")
 const MOON_AMULET := preload("res://resources/config/collectibles/collectible_moon_amulet.tres")
@@ -50,6 +51,51 @@ class DamageNumberTestRoot:
 	extends Node2D
 
 	var damage_number_pool: DamageNumberPool = null
+	var random_target_query_centers: Array[Vector2] = []
+	var random_target_query_radii: Array[float] = []
+	var unordered_target_query_centers: Array[Vector2] = []
+	var unordered_target_query_radii: Array[float] = []
+
+	func reset_combat_target_query_metrics() -> void:
+		random_target_query_centers.clear()
+		random_target_query_radii.clear()
+		unordered_target_query_centers.clear()
+		unordered_target_query_radii.clear()
+
+	func pick_random_combat_target(center: Vector2, radius: float) -> Enemy:
+		random_target_query_centers.append(center)
+		random_target_query_radii.append(radius)
+		var radius_squared := maxf(radius, 0.0) * maxf(radius, 0.0)
+		for child in get_children():
+			var enemy := child as Enemy
+			if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+				continue
+			if radius <= 0.0:
+				return enemy
+			if center.distance_squared_to(enemy.global_position) <= radius_squared:
+				return enemy
+		return null
+
+	func query_combat_targets_unordered_into(
+		center: Vector2,
+		radius: float,
+		result: Array[Enemy]
+	) -> void:
+		unordered_target_query_centers.append(center)
+		unordered_target_query_radii.append(radius)
+		result.clear()
+		var safe_radius := maxf(radius, 0.0)
+		var radius_squared := safe_radius * safe_radius
+		for child in get_children():
+			var enemy := child as Enemy
+			if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+				continue
+			if (
+				safe_radius > 0.0
+				and center.distance_squared_to(enemy.global_position) > radius_squared
+			):
+				continue
+			result.append(enemy)
 
 	func show_combat_number(
 		amount: int,
@@ -117,6 +163,7 @@ func _run() -> void:
 	await _test_new_stack_and_skill_rules()
 	await _test_trident_and_bullet_rules()
 	await _test_admin_doll_free_upgrade()
+	await _test_thunder_target_priority()
 	await _test_combat_effects()
 
 	test_root.queue_free()
@@ -750,6 +797,98 @@ func _test_admin_doll_free_upgrade() -> void:
 	_expect(run_state.get_item(0) == ADMIN_DOLL, "Admin doll must not be consumed by a free upgrade.")
 	player.queue_free()
 	await process_frame
+
+
+func _test_thunder_target_priority() -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier", false)
+	var player := _spawn_player()
+	# Register the far enemy first so a global-first shortcut cannot accidentally
+	# satisfy the nearby-priority contract through child order.
+	var far_enemy := _spawn_enemy(Vector2(640.0, 0.0), player)
+	var nearby_enemy := _spawn_enemy(Vector2(128.0, 0.0), player)
+	await process_frame
+	far_enemy.current_health = 500
+	nearby_enemy.current_health = 500
+	test_root.reset_combat_target_query_metrics()
+	var periodic_impact_position := nearby_enemy.global_position
+	player.call("_trigger_thunder_crystal", THUNDER_CRYSTAL)
+	await process_frame
+	_expect(
+		nearby_enemy.last_damage_taken > 0 and far_enemy.last_damage_taken == 0,
+		"Periodic thunder must prefer the only enemy inside the player's nearby radius instead of a far global target."
+	)
+	_expect_thunder_query_path(
+		player.global_position,
+		periodic_impact_position,
+		THUNDER_CRYSTAL.periodic_radius,
+		"Periodic thunder"
+	)
+
+	far_enemy.last_damage_taken = 0
+	nearby_enemy.last_damage_taken = 0
+	test_root.reset_combat_target_query_metrics()
+	var trigger_impact_position := nearby_enemy.global_position
+	player.call("_trigger_collectible_custom_thunder", THUNDER_CROWN)
+	await process_frame
+	_expect(
+		nearby_enemy.last_damage_taken > 0 and far_enemy.last_damage_taken == 0,
+		"Triggered thunder must share the nearby-first target rule and leave the far global target untouched."
+	)
+	_expect_thunder_query_path(
+		player.global_position,
+		trigger_impact_position,
+		THUNDER_CROWN.trigger_radius,
+		"Triggered thunder"
+	)
+
+	nearby_enemy.global_position = Vector2(512.0, 0.0)
+	test_root.reset_combat_target_query_metrics()
+	var fallback_target := player.call("_pick_random_thunder_target") as Enemy
+	_expect(
+		fallback_target == far_enemy,
+		"Thunder target selection must fall back to a global random target when the 256px local radius is empty."
+	)
+	_expect(
+		test_root.random_target_query_centers.size() == 2
+		and test_root.random_target_query_centers[0].is_equal_approx(player.global_position)
+		and test_root.random_target_query_centers[1].is_equal_approx(player.global_position)
+		and test_root.random_target_query_radii.size() == 2
+		and is_equal_approx(test_root.random_target_query_radii[0], 256.0)
+		and is_equal_approx(test_root.random_target_query_radii[1], 0.0),
+		"Thunder fallback must issue the bounded 256px query first and exactly one global radius-0 query second."
+	)
+	_expect(
+		test_root.unordered_target_query_centers.is_empty(),
+		"Selecting a fallback thunder target alone must not run an impact-area query."
+	)
+
+	player.queue_free()
+	nearby_enemy.queue_free()
+	far_enemy.queue_free()
+	await process_frame
+
+
+func _expect_thunder_query_path(
+	player_position: Vector2,
+	impact_position: Vector2,
+	damage_radius: float,
+	context: String
+) -> void:
+	_expect(
+		test_root.random_target_query_centers.size() == 1
+		and test_root.random_target_query_centers[0].is_equal_approx(player_position)
+		and is_equal_approx(test_root.random_target_query_radii[0], 256.0),
+		"%s must request one 256px nearby-first random target query centered on its owner."
+		% context
+	)
+	_expect(
+		test_root.unordered_target_query_centers.size() == 1
+		and test_root.unordered_target_query_centers[0].is_equal_approx(impact_position)
+		and is_equal_approx(test_root.unordered_target_query_radii[0], damage_radius),
+		"%s must resolve impact damage through one unordered local-radius query."
+		% context
+	)
 
 
 func _test_combat_effects() -> void:

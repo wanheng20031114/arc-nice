@@ -93,6 +93,56 @@ func get_all_alive() -> Array[Enemy]:
 	return result
 
 
+func pick_random_alive() -> Enemy:
+	# The safety-audit order is also a dense, swap-removed registry of every live
+	# net id. Random access therefore stays O(1) in the normal lifecycle path and
+	# does not need to allocate an all-target array.
+	while not safety_audit_net_ids.is_empty():
+		var random_slot := randi() % safety_audit_net_ids.size()
+		var enemy := get_enemy(safety_audit_net_ids[random_slot])
+		if enemy != null:
+			return enemy
+		# get_enemy() removes a stale/dead entry in O(1); retry the compacted slot
+		# set until a live target is found or the registry becomes empty.
+	return null
+
+
+func pick_random_alive_in_radius(center: Vector2, radius: float) -> Enemy:
+	var safe_radius := maxf(radius, 0.0)
+	if safe_radius <= 0.0:
+		return pick_random_alive()
+	_advance_safety_audit_once_per_physics_frame()
+	var radius_squared := safe_radius * safe_radius
+	var minimum_cell := _to_bucket(center - Vector2.ONE * safe_radius)
+	var maximum_cell := _to_bucket(center + Vector2.ONE * safe_radius)
+	var selected_enemy: Enemy = null
+	var candidate_count := 0
+	# Reservoir sampling keeps the result uniformly random without constructing a
+	# candidate array. For a fixed search radius, work depends on touched buckets
+	# and local occupancy rather than the total enemy count.
+	for cell_x in range(minimum_cell.x, maximum_cell.x + 1):
+		for cell_y in range(minimum_cell.y, maximum_cell.y + 1):
+			var cell := Vector2i(cell_x, cell_y)
+			if not buckets.has(cell):
+				continue
+			var bucket := buckets[cell] as Array
+			for net_id_variant in bucket:
+				var enemy_variant: Variant = enemies_by_net_id.get(int(net_id_variant))
+				if enemy_variant == null or not is_instance_valid(enemy_variant):
+					continue
+				var enemy := enemy_variant as Enemy
+				if (
+					enemy == null
+					or enemy.is_dead
+					or center.distance_squared_to(enemy.global_position) > radius_squared
+				):
+					continue
+				candidate_count += 1
+				if randi() % candidate_count == 0:
+					selected_enemy = enemy
+	return selected_enemy
+
+
 func query_radius(center: Vector2, radius: float, max_count: int = 0) -> Array[Enemy]:
 	var result: Array[Enemy] = []
 	query_radius_into(center, radius, result, max_count)
