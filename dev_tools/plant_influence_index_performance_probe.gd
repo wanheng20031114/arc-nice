@@ -3,7 +3,7 @@ extends SceneTree
 # Headless A/B for the enemy -> plant objective broad phase. The legacy side
 # reproduces one cold query-cache miss per distinct enemy cell: a 19 x 19
 # occupied_cells scan followed by exact world-distance selection. Production
-# reads the event-driven inverse index and performs the same exact selection.
+# reads the single-membership world-anchor spatial index.
 const QUERY_COUNT := 300
 const QUERY_COLUMNS := 30
 const QUERY_CELL_SPACING := Vector2i(2, 2)
@@ -28,18 +28,24 @@ class ProbePlantSystem:
 		_register_plant_footprint(plant, cells)
 
 	func get_index_candidate_count(center_cell: Vector2i, search_radius: int) -> int:
-		return _get_plant_influence_candidates(center_cell, search_radius).size()
+		var tile_size := Vector2(ground_tile_map.tile_set.tile_size).abs()
+		var center_world := ground_tile_map.to_global(
+			ground_tile_map.map_to_local(center_cell)
+		)
+		return _query_plant_targets_for_logical_radius(
+			center_world,
+			tile_size,
+			float(search_radius)
+		).size()
 
-	func get_index_cell_count(search_radius: int) -> int:
-		return _ensure_plant_influence_index(search_radius).size()
+	func get_index_cell_count(_search_radius: int) -> int:
+		return int(get_plant_target_spatial_index_metrics().get("bucket_count", 0))
 
-	func get_index_membership_count(search_radius: int) -> int:
-		var influence_index := _ensure_plant_influence_index(search_radius)
-		var membership_count := 0
-		for center_cell_variant in influence_index:
-			var candidates := influence_index[center_cell_variant] as Dictionary
-			membership_count += candidates.size()
-		return membership_count
+	func get_index_membership_count(_search_radius: int) -> int:
+		return int(get_plant_target_spatial_index_metrics().get(
+			"membership_count",
+			0
+		))
 
 	func reset_legacy_counts() -> void:
 		legacy_cell_checks = 0

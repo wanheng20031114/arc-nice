@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 16,
-		"Enemy locomotion snapshots require multiplayer protocol v16."
+		NetConstants.PROTOCOL_VERSION == 17,
+		"Lightning-chain VFX replication requires multiplayer protocol v17."
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),

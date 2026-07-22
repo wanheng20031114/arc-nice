@@ -1,6 +1,10 @@
 extends Node
 class_name PlantSystem
 
+const PlantTargetSpatialIndexScript := preload(
+	"res://scene/plant_defense/plant_target_spatial_index.gd"
+)
+
 signal plant_placed(plant: PlantDefense)
 signal plant_removed(plant: PlantDefense)
 signal occupancy_changed
@@ -17,12 +21,11 @@ const ENTITY_BLOCKING_MASK: int = 1 | 2
 const FOOTPRINT_COLLISION_INSET: Vector2 = Vector2(4.0, 4.0)
 const UNSUPPORTED_TERRAIN_DAMAGE_RATIO: float = 0.10
 const UNSUPPORTED_TERRAIN_MIN_DAMAGE: int = 50
-# Enemy objective selection currently asks for plants within eight logical
-# cells. The former query-local cache scanned a 19 x 19 square the first time
-# every moving enemy entered a cell. Keep that hot radius resident instead:
-# placement/removal events update the inverse index once, while every enemy
-# query reads one already-populated cell bucket.
-const DEFAULT_PLANT_INFLUENCE_SEARCH_RADIUS_CELLS: int = 9
+# Three-cell chain bounces dominate repeated plant targeting. After direct-nearest
+# ring pruning, the A/B-tested 48 px bucket visits the fewest dense candidates
+# and wins the complete-chain workload. Every stationary plant owns one member;
+# longer attacks reuse the same index instead of adding radius-specific tiers.
+const PLANT_TARGET_SPATIAL_BUCKET_SIZE_PIXELS := 48.0
 
 @export_range(0, 64, 1) var max_placement_manhattan_distance: int = (
 	MAX_PLACEMENT_MANHATTAN_DISTANCE
@@ -39,12 +42,10 @@ var occupied_cells: Dictionary = {}
 var plant_footprints: Dictionary = {}
 var reserved_cells: Dictionary = {}
 var plants_by_net_id: Dictionary[int, PlantDefense] = {}
-# search_radius -> center_cell -> (plant instance id -> PlantDefense)
-#
-# Only the fixed gameplay radius is resident. Arbitrary public-query radii use a
-# one-shot O(plant count) candidate list instead of permanently multiplying the
-# inverse index and every later placement/removal update.
-var _plant_influence_cells_by_radius: Dictionary = {}
+var _plant_target_spatial_index = PlantTargetSpatialIndexScript.new(
+	PLANT_TARGET_SPATIAL_BUCKET_SIZE_PIXELS
+)
+var _plant_target_query_scratch: Array = []
 
 
 func setup(
@@ -59,7 +60,7 @@ func setup(
 	owner_player = new_owner_player
 	plant_container = new_plant_container
 	placement_area = new_placement_area
-	_reset_plant_influence_indices()
+	_rebuild_plant_target_spatial_index()
 
 
 func configure(
@@ -388,27 +389,24 @@ func apply_unsupported_terrain_damage_tick() -> int:
 func find_nearest_living_plant(
 	from_global_position: Vector2,
 	max_radius_cells: float,
-	include_water_plants: bool = true
+	include_water_plants: bool = true,
+	excluded_instance_ids: Dictionary = {}
 ) -> PlantDefense:
 	if (
 		ground_tile_map == null
 		or ground_tile_map.tile_set == null
 		or occupied_cells.is_empty()
+		or not from_global_position.is_finite()
 		or max_radius_cells < 0.0
 		or not is_finite(max_radius_cells)
 	):
 		return null
 
-	# The event-driven inverse index is authoritative for broad candidates. Exact
-	# distance still uses live world positions below, so sub-cell query movement
-	# and transformed TileMapLayer nodes retain the previous behavior.
 	var tile_size := Vector2(ground_tile_map.tile_set.tile_size).abs()
 	if tile_size.x <= 0.0 or tile_size.y <= 0.0:
 		return null
 	var from_local := ground_tile_map.to_local(from_global_position)
 	var center_cell := ground_tile_map.local_to_map(from_local)
-	# One extra cell covers sub-cell source positions and even-sized footprints
-	# whose authored anchor lies between two logical cells.
 	var search_radius := _get_bounded_plant_candidate_search_radius(
 		center_cell,
 		max_radius_cells
@@ -416,13 +414,20 @@ func find_nearest_living_plant(
 	var maximum_distance_squared := max_radius_cells * max_radius_cells
 	var nearest_plant: PlantDefense = null
 	var nearest_distance_squared := INF
-	var candidates := _get_plant_influence_candidates(center_cell, search_radius)
-	for candidate_instance_id_variant in candidates:
-		var plant := candidates[candidate_instance_id_variant] as PlantDefense
+	var candidates := _query_plant_targets_for_logical_radius(
+		from_global_position,
+		tile_size,
+		max_radius_cells
+	)
+	for candidate_variant in candidates:
+		var plant := candidate_variant as PlantDefense
+		if plant == null or not is_instance_valid(plant):
+			continue
+		var candidate_instance_id := int(plant.get_instance_id())
+		if excluded_instance_ids.has(candidate_instance_id):
+			continue
 		if (
-			plant == null
-			or not is_instance_valid(plant)
-			or plant.is_dead
+			plant.is_dead
 			or plant.is_removing
 			or plant.is_queued_for_deletion()
 		):
@@ -434,12 +439,9 @@ func find_nearest_living_plant(
 				== PlantDefenseConfig.PlacementSurface.WATER
 		):
 			continue
-		# Surface eligibility deliberately stays in this exact-distance pass.
-		# Maintaining a second resident influence index would double placement
-		# and removal writes to save only this cheap comparison at retarget time.
-		# Candidate membership is cached by logical cell topology, but distance
-		# always uses the current world positions. Enemies sharing a cell can
-		# therefore reuse the broad candidate set without sharing a target result.
+		# Eligibility and distance stay in the typed exact pass. The shared spatial
+		# index is deliberately only a broad phase, so future attack rules do not
+		# multiply resident indices or contaminate their lifecycle bookkeeping.
 		var plant_local := ground_tile_map.to_local(plant.global_position)
 		var offset_in_cells := Vector2(
 			(plant_local.x - from_local.x) / tile_size.x,
@@ -465,73 +467,67 @@ func find_nearest_living_plant(
 	return nearest_plant
 
 
-## Exact world-space query for long-range enemy attacks. Unlike the placement
-## aggro query above, this deliberately walks the authoritative plant dictionary
-## without first allocating a temporary candidate Dictionary. Fire Sorcerers
-## throttle this O(plant count) pass per caster, so wide attack radii do not
-## multiply the resident nine-cell influence index or its placement updates.
+## Exact world-space query for enemy attacks. All finite radii share the same
+## one-membership anchor index; only the number of covered coarse buckets varies.
 func find_nearest_living_plant_world(
 	from_global_position: Vector2,
-	max_world_distance: float
+	max_world_distance: float,
+	excluded_instance_ids: Dictionary = {}
 ) -> PlantDefense:
 	if (
 		plant_footprints.is_empty()
+		or not from_global_position.is_finite()
 		or max_world_distance < 0.0
 		or not is_finite(max_world_distance)
 	):
 		return null
-	var maximum_distance_squared := max_world_distance * max_world_distance
-	var nearest_plant: PlantDefense = null
-	var nearest_distance_squared := maximum_distance_squared
-	var nearest_instance_id := 0
-	for plant_variant in plant_footprints:
-		var plant := plant_variant as PlantDefense
-		if (
-			plant == null
-			or not is_instance_valid(plant)
-			or plant.is_dead
-			or plant.is_removing
-			or plant.is_queued_for_deletion()
-		):
-			continue
-		var distance_squared := from_global_position.distance_squared_to(
-			plant.global_position
-		)
-		if distance_squared > maximum_distance_squared:
-			continue
-		var instance_id := int(plant.get_instance_id())
-		if (
-			nearest_plant == null
-			or (
-				distance_squared < nearest_distance_squared
-				and not is_equal_approx(
-					distance_squared,
-					nearest_distance_squared
-				)
-			)
-			or (
-				is_equal_approx(
-					distance_squared,
-					nearest_distance_squared
-				)
-				and instance_id < nearest_instance_id
-			)
-		):
-			nearest_plant = plant
-			nearest_distance_squared = distance_squared
-			nearest_instance_id = instance_id
-	return nearest_plant
+	var nearest_plant := _plant_target_spatial_index.find_nearest_world_anchor(
+		from_global_position,
+		max_world_distance,
+		excluded_instance_ids
+	) as PlantDefense
+	if _is_living_plant_target(nearest_plant):
+		return nearest_plant
+	if nearest_plant == null or not is_instance_valid(nearest_plant):
+		return null
+
+	# Plant death marks is_dead before removal_started synchronously unregisters the
+	# footprint. A query re-entered from a died signal can therefore briefly observe
+	# that one stale-but-valid member. Allocate a retry exclusion set only on this
+	# exceptional lifecycle edge and continue exact nearest selection; the ordinary
+	# chain hot path remains one allocation-free index query.
+	var retry_exclusions: Dictionary = excluded_instance_ids.duplicate()
+	while nearest_plant != null and is_instance_valid(nearest_plant):
+		retry_exclusions[nearest_plant.get_instance_id()] = true
+		nearest_plant = _plant_target_spatial_index.find_nearest_world_anchor(
+			from_global_position,
+			max_world_distance,
+			retry_exclusions
+		) as PlantDefense
+		if _is_living_plant_target(nearest_plant):
+			return nearest_plant
+	return null
+
+
+func _is_living_plant_target(plant: PlantDefense) -> bool:
+	return (
+		plant != null
+		and is_instance_valid(plant)
+		and not plant.is_dead
+		and not plant.is_removing
+		and not plant.is_queued_for_deletion()
+	)
 
 
 func _get_bounded_plant_candidate_search_radius(
 	center_cell: Vector2i,
 	max_radius_cells: float
 ) -> int:
-	if max_radius_cells <= float(DEFAULT_PLANT_INFLUENCE_SEARCH_RADIUS_CELLS - 1):
+	# This radius is used only to reproduce the historical footprint scan-order
+	# tie break. Gameplay radii convert directly; extreme finite caller values are
+	# bounded by existing occupancy before float-to-int conversion can overflow.
+	if max_radius_cells <= 1024.0:
 		return ceili(max_radius_cells) + 1
-	# Non-gameplay radii already use an O(plant count) candidate pass. Bound the
-	# tie-order scan radius to the farthest occupied cell before converting the
-	# public float to int, so a huge but finite caller value cannot overflow.
 	var maximum_relevant_radius := 1
 	for occupied_cell_variant in occupied_cells:
 		var occupied_cell := occupied_cell_variant as Vector2i
@@ -545,160 +541,86 @@ func _get_bounded_plant_candidate_search_radius(
 	return ceili(max_radius_cells) + 1
 
 
-func _get_plant_influence_candidates(
-	center_cell: Vector2i,
-	search_radius: int
-) -> Dictionary:
-	var safe_search_radius := maxi(search_radius, 0)
-	if safe_search_radius != DEFAULT_PLANT_INFLUENCE_SEARCH_RADIUS_CELLS:
-		return _collect_uncached_plant_influence_candidates()
-	var influence_index := _ensure_plant_influence_index(safe_search_radius)
-	return influence_index.get(center_cell, {}) as Dictionary
+func _query_plant_targets_for_logical_radius(
+	from_global_position: Vector2,
+	tile_size: Vector2,
+	max_radius_cells: float
+) -> Array:
+	var local_half_extent := tile_size * max_radius_cells
+	if not local_half_extent.is_finite():
+		return _collect_all_plant_targets_into_scratch()
+	# Transform the four corners of the logical ellipse's bounding rectangle.
+	# The absolute projected axes form a conservative world AABB under rotation,
+	# non-uniform scale and skew; the caller still performs exact logical distance.
+	var world_origin := ground_tile_map.to_global(Vector2.ZERO)
+	var projected_x := (
+		ground_tile_map.to_global(Vector2(local_half_extent.x, 0.0))
+		- world_origin
+	)
+	var projected_y := (
+		ground_tile_map.to_global(Vector2(0.0, local_half_extent.y))
+		- world_origin
+	)
+	var world_half_extent := Vector2(
+		absf(projected_x.x) + absf(projected_y.x),
+		absf(projected_x.y) + absf(projected_y.y)
+	)
+	return _query_plant_targets_in_world_aabb(
+		from_global_position,
+		world_half_extent
+	)
 
 
-func _ensure_plant_influence_index(search_radius: int) -> Dictionary:
-	var safe_search_radius := maxi(search_radius, 0)
-	if safe_search_radius != DEFAULT_PLANT_INFLUENCE_SEARCH_RADIUS_CELLS:
-		return {}
-	if _plant_influence_cells_by_radius.has(safe_search_radius):
-		return _plant_influence_cells_by_radius[safe_search_radius] as Dictionary
+func _query_plant_targets_in_world_aabb(
+	center: Vector2,
+	half_extent: Vector2
+) -> Array:
+	if (
+		not center.is_finite()
+		or not half_extent.is_finite()
+		or half_extent.x < 0.0
+		or half_extent.y < 0.0
+	):
+		return _collect_all_plant_targets_into_scratch()
+	var minimum := center - half_extent
+	var size := half_extent * 2.0
+	if not minimum.is_finite() or not size.is_finite():
+		return _collect_all_plant_targets_into_scratch()
+	_plant_target_spatial_index.query_world_aabb_into(
+		Rect2(minimum, size),
+		_plant_target_query_scratch
+	)
+	return _plant_target_query_scratch
 
-	var influence_index: Dictionary = {}
-	_plant_influence_cells_by_radius[safe_search_radius] = influence_index
+
+func _collect_all_plant_targets_into_scratch() -> Array:
+	_plant_target_query_scratch.clear()
+	for plant_variant in plant_footprints:
+		_plant_target_query_scratch.append(plant_variant)
+	return _plant_target_query_scratch
+
+
+func _rebuild_plant_target_spatial_index() -> void:
+	_plant_target_spatial_index.clear()
+	_plant_target_query_scratch.clear()
 	for plant_variant in plant_footprints:
 		var plant := plant_variant as PlantDefense
 		if plant == null or not is_instance_valid(plant):
 			continue
-		var footprint: Array = plant_footprints.get(plant, [])
-		_add_plant_to_influence_index(
-			influence_index,
-			safe_search_radius,
-			plant,
-			footprint
-		)
-	return influence_index
+		if not _plant_target_spatial_index.register(plant, plant.global_position):
+			push_error("PlantSystem failed to rebuild a plant target spatial entry.")
 
 
-func _collect_uncached_plant_influence_candidates() -> Dictionary:
-	var candidates: Dictionary = {}
-	for plant_variant in plant_footprints:
-		var plant := plant_variant as PlantDefense
-		if (
-			plant == null
-			or not is_instance_valid(plant)
-			or plant.is_dead
-			or plant.is_removing
-			or plant.is_queued_for_deletion()
-		):
-			continue
-		candidates[plant.get_instance_id()] = plant
-	return candidates
+func set_plant_target_query_metrics_enabled(enabled: bool) -> void:
+	_plant_target_spatial_index.set_query_metrics_enabled(enabled)
 
 
-func _reset_plant_influence_indices() -> void:
-	_plant_influence_cells_by_radius.clear()
-	# Materialize the 8-cell gameplay query's 9-cell broad phase before enemies
-	# can request targets. Existing footprints are included when setup() is reused.
-	_ensure_plant_influence_index(DEFAULT_PLANT_INFLUENCE_SEARCH_RADIUS_CELLS)
+func get_plant_target_spatial_index_metrics() -> Dictionary:
+	return _plant_target_spatial_index.get_structure_metrics()
 
 
-func _add_plant_to_all_influence_indices(
-	plant: PlantDefense,
-	footprint: Array
-) -> void:
-	var influence_index := _ensure_plant_influence_index(
-		DEFAULT_PLANT_INFLUENCE_SEARCH_RADIUS_CELLS
-	)
-	_add_plant_to_influence_index(
-		influence_index,
-		DEFAULT_PLANT_INFLUENCE_SEARCH_RADIUS_CELLS,
-		plant,
-		footprint
-	)
-
-
-func _remove_plant_from_all_influence_indices(
-	plant: PlantDefense,
-	footprint: Array
-) -> void:
-	var influence_index := _plant_influence_cells_by_radius.get(
-		DEFAULT_PLANT_INFLUENCE_SEARCH_RADIUS_CELLS,
-		{}
-	) as Dictionary
-	_remove_plant_from_influence_index(
-		influence_index,
-		DEFAULT_PLANT_INFLUENCE_SEARCH_RADIUS_CELLS,
-		plant,
-		footprint
-	)
-
-
-func _add_plant_to_influence_index(
-	influence_index: Dictionary,
-	search_radius: int,
-	plant: PlantDefense,
-	footprint: Array
-) -> void:
-	if plant == null or footprint.is_empty():
-		return
-	var influence_rect := _get_plant_influence_rect(footprint, search_radius)
-	if influence_rect.size.x <= 0 or influence_rect.size.y <= 0:
-		return
-	var plant_instance_id := plant.get_instance_id()
-	for cell_y in range(influence_rect.position.y, influence_rect.end.y):
-		for cell_x in range(influence_rect.position.x, influence_rect.end.x):
-			var center_cell := Vector2i(cell_x, cell_y)
-			var candidates: Dictionary
-			if influence_index.has(center_cell):
-				candidates = influence_index[center_cell] as Dictionary
-			else:
-				candidates = {}
-				influence_index[center_cell] = candidates
-			candidates[plant_instance_id] = plant
-
-
-func _remove_plant_from_influence_index(
-	influence_index: Dictionary,
-	search_radius: int,
-	plant: PlantDefense,
-	footprint: Array
-) -> void:
-	if plant == null or footprint.is_empty():
-		return
-	var influence_rect := _get_plant_influence_rect(footprint, search_radius)
-	if influence_rect.size.x <= 0 or influence_rect.size.y <= 0:
-		return
-	var plant_instance_id := plant.get_instance_id()
-	for cell_y in range(influence_rect.position.y, influence_rect.end.y):
-		for cell_x in range(influence_rect.position.x, influence_rect.end.x):
-			var center_cell := Vector2i(cell_x, cell_y)
-			if not influence_index.has(center_cell):
-				continue
-			var candidates := influence_index[center_cell] as Dictionary
-			if candidates.get(plant_instance_id) != plant:
-				continue
-			candidates.erase(plant_instance_id)
-			if candidates.is_empty():
-				influence_index.erase(center_cell)
-
-
-func _get_plant_influence_rect(footprint: Array, search_radius: int) -> Rect2i:
-	if footprint.is_empty():
-		return Rect2i()
-	var minimum_cell := footprint[0] as Vector2i
-	var maximum_cell := minimum_cell
-	for cell_variant in footprint:
-		var cell := cell_variant as Vector2i
-		minimum_cell.x = mini(minimum_cell.x, cell.x)
-		minimum_cell.y = mini(minimum_cell.y, cell.y)
-		maximum_cell.x = maxi(maximum_cell.x, cell.x)
-		maximum_cell.y = maxi(maximum_cell.y, cell.y)
-	var safe_search_radius := maxi(search_radius, 0)
-	return Rect2i(
-		minimum_cell - Vector2i(safe_search_radius, safe_search_radius),
-		maximum_cell - minimum_cell
-			+ Vector2i(safe_search_radius * 2 + 1, safe_search_radius * 2 + 1)
-	)
+func get_last_plant_target_query_metrics() -> Dictionary:
+	return _plant_target_spatial_index.get_last_query_metrics()
 
 
 func _is_plant_candidate_before(
@@ -926,7 +848,8 @@ func _register_plant_footprint(plant: PlantDefense, cells: Array[Vector2i]) -> v
 	plant_footprints[plant] = cells.duplicate()
 	for cell in cells:
 		occupied_cells[cell] = plant
-	_add_plant_to_all_influence_indices(plant, cells)
+	if not _plant_target_spatial_index.register(plant, plant.global_position):
+		push_error("PlantSystem failed to register a plant target spatial entry.")
 	occupancy_changed.emit()
 
 
@@ -935,7 +858,8 @@ func _release_plant_footprint(plant: PlantDefense) -> void:
 		return
 
 	var cells: Array = plant_footprints[plant]
-	_remove_plant_from_all_influence_indices(plant, cells)
+	if not _plant_target_spatial_index.unregister(plant):
+		push_error("PlantSystem failed to unregister a plant target spatial entry.")
 	plant_footprints.erase(plant)
 	var net_id := int(plant.get_meta(&"net_id", 0)) if is_instance_valid(plant) else 0
 	if net_id > 0 and plants_by_net_id.get(net_id) == plant:

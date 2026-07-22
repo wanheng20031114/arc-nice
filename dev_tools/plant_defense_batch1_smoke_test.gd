@@ -47,22 +47,34 @@ class AnchorCountingPlantSystem:
 		return true
 
 
-class InfluenceIndexInspectingPlantSystem:
+class SpatialIndexInspectingPlantSystem:
 	extends PlantSystem
 
-	func get_influence_radius_count() -> int:
-		return _plant_influence_cells_by_radius.size()
+	func get_spatial_membership_count() -> int:
+		return int(get_plant_target_spatial_index_metrics().get(
+			"membership_count",
+			-1
+		))
 
-	func get_influence_cell_count(search_radius: int) -> int:
-		var influence_index := _ensure_plant_influence_index(search_radius)
-		return influence_index.size()
+	func get_spatial_bucket_count(_query_radius_cells: int = 0) -> int:
+		return int(get_plant_target_spatial_index_metrics().get(
+			"bucket_count",
+			-1
+		))
 
-	func get_influence_candidate_count(center_cell: Vector2i, search_radius: int) -> int:
-		return _get_plant_influence_candidates(center_cell, search_radius).size()
-
-	func get_uncached_influence_candidate_count(search_radius: int) -> int:
-		return _get_plant_influence_candidates(Vector2i.ZERO, search_radius).size()
-
+	func get_spatial_candidate_count(
+		center_cell: Vector2i,
+		query_radius_cells: int
+	) -> int:
+		var tile_size := Vector2(ground_tile_map.tile_set.tile_size).abs()
+		var center_world := ground_tile_map.to_global(
+			ground_tile_map.map_to_local(center_cell)
+		)
+		return _query_plant_targets_for_logical_radius(
+			center_world,
+			tile_size,
+			float(query_radius_cells)
+		).size()
 
 func _init() -> void:
 	call_deferred("_run")
@@ -76,7 +88,7 @@ func _run() -> void:
 	await _test_player_core_collision()
 	_test_large_area_anchor_enumeration()
 	await _test_grid_and_occupancy_rules()
-	await _test_event_driven_plant_influence_index()
+	await _test_event_driven_plant_spatial_index()
 	await _test_realtime_selection_and_cancel()
 	await _test_enemy_contact_and_release()
 	await _test_multiplayer_authority_contracts()
@@ -1123,12 +1135,12 @@ func _test_grid_and_occupancy_rules() -> void:
 	plant.set_meta(&"batch1_test_anchor", anchor)
 
 
-func _test_event_driven_plant_influence_index() -> void:
+func _test_event_driven_plant_spatial_index() -> void:
 	var cache_container := Node2D.new()
-	cache_container.name = "InfluenceIndexPlantContainer"
+	cache_container.name = "SpatialIndexPlantContainer"
 	test_root.add_child(cache_container)
-	var cache_system := InfluenceIndexInspectingPlantSystem.new()
-	cache_system.name = "InfluenceIndexPlantSystem"
+	var cache_system := SpatialIndexInspectingPlantSystem.new()
+	cache_system.name = "SpatialIndexPlantSystem"
 	test_root.add_child(cache_system)
 	cache_system.setup(
 		tile_map,
@@ -1137,9 +1149,9 @@ func _test_event_driven_plant_influence_index() -> void:
 		PlantSystem.DEFAULT_PLACEMENT_AREA
 	)
 	_expect(
-		cache_system.get_influence_radius_count() == 1
-		and cache_system.get_influence_cell_count(9) == 0,
-		"PlantSystem setup必须预建塔防8格查询所需的9格空influence index。"
+		cache_system.get_spatial_membership_count() == 0
+		and cache_system.get_spatial_bucket_count() == 0,
+		"PlantSystem setup必须创建空的单成员植物空间索引。"
 	)
 
 	var center_cell := Vector2i(8, 7)
@@ -1153,12 +1165,12 @@ func _test_event_driven_plant_influence_index() -> void:
 		vegetation_stake_config,
 		left_anchor
 	)
-	_expect(left_stake != null, "influence index测试必须成功放置左侧植被桩。")
+	_expect(left_stake != null, "空间索引测试必须成功放置左侧植被桩。")
 
 	_set_player_cell(agave_anchor + Vector2i(0, 3))
 	await physics_frame
 	var multi_cell_agave := cache_system.try_place(agave_config, agave_anchor)
-	_expect(multi_cell_agave != null, "influence index测试必须成功放置2×2龙舌兰。")
+	_expect(multi_cell_agave != null, "空间索引测试必须成功放置2×2龙舌兰。")
 	if left_stake == null or multi_cell_agave == null:
 		cache_system.clear_all_plants()
 		cache_system.queue_free()
@@ -1168,7 +1180,7 @@ func _test_event_driven_plant_influence_index() -> void:
 
 	var center_world := tile_map.to_global(tile_map.map_to_local(center_cell))
 	var tile_width := float(tile_map.tile_set.tile_size.x)
-	var indexed_cell_count_before_query := cache_system.get_influence_cell_count(9)
+	var indexed_cell_count_before_query := cache_system.get_spatial_bucket_count()
 	var initial_target := cache_system.find_nearest_living_plant(center_world, 8.0)
 	_expect(initial_target == left_stake, "事件驱动索引首次查询必须返回真实最近植物。")
 	var left_world_distance := center_world.distance_to(
@@ -1191,26 +1203,26 @@ func _test_event_driven_plant_influence_index() -> void:
 			center_world,
 			INF
 		) == null
-		and cache_system.get_influence_radius_count() == 1,
+		and cache_system.get_spatial_membership_count() == 2,
 		"远程敌人的世界半径查询必须精确包含边界、拒绝非法半径，"
-		+ "且不得物化新的influence index。"
+		+ "且不得物化新的半径专用索引。"
 	)
 	_expect(
-		cache_system.get_influence_candidate_count(center_cell, 9) == 2,
-		"2×2植物在同一influence bucket中必须去重为单个植物引用。"
+		cache_system.get_spatial_candidate_count(center_cell, 9) == 2,
+		"2×2植物必须按锚点去重为一个空间索引成员。"
 	)
 	var repeated_target := cache_system.find_nearest_living_plant(center_world, 8.0)
 	_expect(
 		repeated_target == left_stake
-		and cache_system.get_influence_cell_count(9) == indexed_cell_count_before_query,
+		and cache_system.get_spatial_bucket_count() == indexed_cell_count_before_query,
 		"重复查询必须只读事件索引，不得按敌人中心格新增缓存状态。"
 	)
 	var short_radius_target := cache_system.find_nearest_living_plant(center_world, 4.0)
 	_expect(
 		short_radius_target == left_stake
-		and cache_system.get_influence_radius_count() == 1
-		and cache_system.get_uncached_influence_candidate_count(5) == 2,
-		"非生产半径必须按植物数量一次性查询且不得永久创建第二套influence index。"
+		and cache_system.get_spatial_membership_count() == 2
+		and cache_system.get_spatial_candidate_count(center_cell, 5) == 1,
+		"较小半径必须复用同一个常驻空间索引且只返回局部AABB候选。"
 	)
 	var oversized_radius_target := cache_system.find_nearest_living_plant(
 		center_world,
@@ -1218,7 +1230,7 @@ func _test_event_driven_plant_influence_index() -> void:
 	)
 	_expect(
 		oversized_radius_target == left_stake
-		and cache_system.get_influence_radius_count() == 1,
+		and cache_system.get_spatial_membership_count() == 2,
 		"超大半径查询必须保持O(植物数)且不得扩大常驻索引。"
 	)
 	for radius_variant in [0.0, 7.5, 8.0, 8.001, 9.0, 100000.0]:
@@ -1227,7 +1239,7 @@ func _test_event_driven_plant_influence_index() -> void:
 		_expect(
 			cache_system.find_nearest_living_plant(center_world, radius)
 				== expected_target
-			and cache_system.get_influence_radius_count() == 1,
+			and cache_system.get_spatial_membership_count() == 2,
 			(
 				"半径边界 %.3f 必须保持精确结果且不能物化额外常驻索引。"
 				% radius
@@ -1236,8 +1248,8 @@ func _test_event_driven_plant_influence_index() -> void:
 	_expect(
 		cache_system.find_nearest_living_plant(center_world, NAN) == null
 		and cache_system.find_nearest_living_plant(center_world, INF) == null
-		and cache_system.get_influence_radius_count() == 1,
-		"NaN/INF 半径必须被拒绝，且不能污染常驻 influence index。"
+		and cache_system.get_spatial_membership_count() == 2,
+		"NaN/INF 半径必须被拒绝，且不能污染常驻空间索引。"
 	)
 
 	_set_player_cell(right_anchor + Vector2i(0, 3))
@@ -1246,11 +1258,11 @@ func _test_event_driven_plant_influence_index() -> void:
 		vegetation_stake_config,
 		right_anchor
 	)
-	_expect(right_stake != null, "influence index测试必须成功放置右侧植被桩。")
+	_expect(right_stake != null, "空间索引测试必须成功放置右侧植被桩。")
 	_expect(
-		cache_system.get_influence_radius_count() == 1
-		and cache_system.get_influence_candidate_count(center_cell, 9) == 3,
-		"新增植物必须立即增量更新已有influence index而不是清空后等待查询重建。"
+		cache_system.get_spatial_membership_count() == 3
+		and cache_system.get_spatial_candidate_count(center_cell, 9) == 3,
+		"新增植物必须立即以单成员方式增量更新空间索引。"
 	)
 	if right_stake == null:
 		cache_system.clear_all_plants()
@@ -1258,7 +1270,7 @@ func _test_event_driven_plant_influence_index() -> void:
 		cache_container.queue_free()
 		await process_frame
 		return
-	var indexed_cell_count_after_topology_change := cache_system.get_influence_cell_count(9)
+	var indexed_cell_count_after_topology_change := cache_system.get_spatial_bucket_count()
 
 	var tied_target := cache_system.find_nearest_living_plant(center_world, 8.0)
 	_expect(
@@ -1273,7 +1285,7 @@ func _test_event_driven_plant_influence_index() -> void:
 		"远程敌人的等距世界查询必须按稳定实例顺序选择同一个最近植物。"
 	)
 	_expect(
-		cache_system.get_influence_candidate_count(center_cell, 9) == 3,
+		cache_system.get_spatial_candidate_count(center_cell, 9) == 3,
 		"中心bucket必须包含两个单格植物和一个去重后的多格植物。"
 	)
 	for _repeat_index in range(4):
@@ -1296,43 +1308,43 @@ func _test_event_driven_plant_influence_index() -> void:
 	_expect(
 		cache_system.find_nearest_living_plant(left_biased_world, 8.0) == left_stake
 		and cache_system.find_nearest_living_plant(right_biased_world, 8.0) == right_stake,
-		"influence候选集合可以复用，但每次查询必须用真实世界位置重新选择最近植物。"
+		"空间索引候选集合可以复用，但每次查询必须用真实世界位置重新选择最近植物。"
 	)
 	_expect(
-		cache_system.get_influence_cell_count(9) == indexed_cell_count_after_topology_change,
+		cache_system.get_spatial_bucket_count() == indexed_cell_count_after_topology_change,
 		"同瓦片内实际位置变化不得扩张事件索引。"
 	)
 
 	_expect(
 		cache_system.find_nearest_living_plant(center_world, 4.0) == left_stake
-		and cache_system.get_influence_radius_count() == 1
-		and cache_system.get_influence_candidate_count(center_cell, 5) == 3,
-		"非默认搜索半径必须使用临时候选并保持精确距离语义。"
+		and cache_system.get_spatial_membership_count() == 3
+		and cache_system.get_spatial_candidate_count(center_cell, 5) == 2,
+		"非默认小半径必须复用常驻空间索引并保持精确距离语义。"
 	)
 	_expect(
 		cache_system.find_nearest_living_plant(center_world, 8.0) == left_stake
-		and cache_system.get_influence_radius_count() == 1,
+		and cache_system.get_spatial_membership_count() == 3,
 		"任意半径查询后，默认常驻索引必须保持可用且不重复物化。"
 	)
 
 	right_stake.receive_damage(99999)
 	_expect(
-		cache_system.get_influence_radius_count() == 1
-		and cache_system.get_influence_candidate_count(center_cell, 9) == 2
-		and cache_system.get_influence_candidate_count(center_cell, 5) == 2,
-		"植物死亡释放footprint时必须立即更新常驻索引和临时候选。"
+		cache_system.get_spatial_membership_count() == 2
+		and cache_system.get_spatial_candidate_count(center_cell, 9) == 2
+		and cache_system.get_spatial_candidate_count(center_cell, 5) == 1,
+		"植物死亡释放footprint时必须立即更新常驻索引及其小半径查询。"
 	)
 	_expect(
 		cache_system.find_nearest_living_plant(right_biased_world, 8.0) == left_stake
-		and cache_system.get_influence_radius_count() == 1,
+		and cache_system.get_spatial_membership_count() == 2,
 		"死亡后的查询不得返回已移除植物，也不得触发索引重建。"
 	)
 
 	cache_system.clear_all_plants()
 	_expect(
-		cache_system.get_influence_radius_count() == 1
-		and cache_system.get_influence_cell_count(9) == 0
-		and cache_system.get_influence_cell_count(5) == 0
+		cache_system.get_spatial_membership_count() == 0
+		and cache_system.get_spatial_bucket_count(9) == 0
+		and cache_system.get_spatial_bucket_count(5) == 0
 		and cache_system.find_nearest_living_plant(center_world, 8.0) == null,
 		"清空全部植物必须清空默认bucket且不能创建非默认常驻索引。"
 	)
@@ -1346,15 +1358,15 @@ func _test_event_driven_plant_influence_index() -> void:
 	_expect(
 		restored_stake != null
 		and cache_system.find_nearest_living_plant(center_world, 8.0) == restored_stake
-		and cache_system.get_influence_candidate_count(center_cell, 9) == 1
-		and cache_system.get_influence_candidate_count(center_cell, 5) == 1,
+		and cache_system.get_spatial_candidate_count(center_cell, 9) == 1
+		and cache_system.get_spatial_candidate_count(center_cell, 5) == 1,
 		"清理后重新放置必须增量恢复默认索引和临时候选查询。"
 	)
 	if restored_stake != null:
 		restored_stake.begin_removal(PlantDefense.RemovalMode.SILENT)
 	_expect(
-		cache_system.get_influence_cell_count(9) == 0
-		and cache_system.get_influence_cell_count(5) == 0,
+		cache_system.get_spatial_bucket_count(9) == 0
+		and cache_system.get_spatial_bucket_count(5) == 0,
 		"静默撤除必须在同一帧从默认索引及临时候选释放。"
 	)
 	cache_system.queue_free()

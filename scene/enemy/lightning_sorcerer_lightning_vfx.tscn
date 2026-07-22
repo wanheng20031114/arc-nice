@@ -1,0 +1,10 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scene/enemy/lightning_sorcerer_lightning_vfx.gd" id="1_script"]
+[ext_resource type="Material" path="res://resources/shader/night_vfx_emission_additive.tres" id="2_additive"]
+
+[node name="LightningSorcererLightningVfx" type="Node2D"]
+top_level = true
+z_index = 7
+material = ExtResource("2_additive")
+script = ExtResource("1_script")

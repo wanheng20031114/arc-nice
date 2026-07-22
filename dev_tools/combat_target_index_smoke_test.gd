@@ -2,6 +2,61 @@ extends SceneTree
 
 const TargetIndexScript := preload("res://scene/combat_target_index.gd")
 
+
+class AdaptiveProbeIndex:
+	extends CombatTargetIndex
+
+	var linear_query_count := 0
+	var ring_query_count := 0
+	var flat_query_count := 0
+
+	func _find_nearest_alive_linear(
+		center: Vector2,
+		radius: float,
+		excluded_instance_ids: Dictionary
+	) -> Enemy:
+		linear_query_count += 1
+		return super._find_nearest_alive_linear(
+			center,
+			radius,
+			excluded_instance_ids
+		)
+
+	func _find_nearest_alive_ring_in_bounds(
+		center: Vector2,
+		radius: float,
+		excluded_instance_ids: Dictionary,
+		minimum_cell: Vector2i,
+		maximum_cell: Vector2i,
+		center_cell: Vector2i
+	) -> Enemy:
+		ring_query_count += 1
+		return super._find_nearest_alive_ring_in_bounds(
+			center,
+			radius,
+			excluded_instance_ids,
+			minimum_cell,
+			maximum_cell,
+			center_cell
+		)
+
+	func _find_nearest_alive_flat(
+		center: Vector2,
+		radius: float,
+		excluded_instance_ids: Dictionary,
+		minimum_cell: Vector2i = Vector2i.MAX,
+		maximum_cell: Vector2i = Vector2i.MAX
+	) -> Enemy:
+		flat_query_count += 1
+		return super._find_nearest_alive_flat(
+			center,
+			radius,
+			excluded_instance_ids,
+			minimum_cell,
+			maximum_cell
+		)
+
+
 var failures: Array[String] = []
 
 
@@ -11,6 +66,10 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_random_target_selection()
+	_test_nearest_alive_excluding()
+	_test_adaptive_nearest_threshold()
+	_test_three_stage_local_adaptive()
+	_test_strict_nearest_total_order()
 
 	var target_index: Variant = TargetIndexScript.new()
 	var near_enemy := Enemy.new()
@@ -376,6 +435,344 @@ func _test_random_target_selection() -> void:
 		and (freed_index.get("bucket_by_net_id") as Dictionary).is_empty(),
 		"Global random selection must prune a freed target instead of returning a stale reference."
 	)
+
+
+func _test_nearest_alive_excluding() -> void:
+	var exclusion_index: Variant = TargetIndexScript.new()
+	exclusion_index.set("bucket_size", 32.0)
+	var nearest_enemy := Enemy.new()
+	var middle_enemy := Enemy.new()
+	var tie_enemy_a := Enemy.new()
+	var tie_enemy_b := Enemy.new()
+	var queued_enemy := Enemy.new()
+	nearest_enemy.position = Vector2(8.0, 0.0)
+	middle_enemy.position = Vector2(65.0, 0.0)
+	tie_enemy_a.position = Vector2(-130.0, 0.0)
+	tie_enemy_b.position = Vector2(130.0, 0.0)
+	queued_enemy.position = Vector2(1.0, 0.0)
+	exclusion_index.call("register_enemy", 401, nearest_enemy)
+	exclusion_index.call("register_enemy", 402, middle_enemy)
+	exclusion_index.call("register_enemy", 403, tie_enemy_a)
+	exclusion_index.call("register_enemy", 404, tie_enemy_b)
+	exclusion_index.call("register_enemy", 405, queued_enemy)
+	queued_enemy.queue_free()
+	_expect(
+		queued_enemy.is_queued_for_deletion(),
+		"Queued-target fixture must remain valid but be marked for deferred deletion."
+	)
+
+	var empty_exclusions: Dictionary = {}
+	var invalid_exclusions: Dictionary = {-1: true, 9223372036854775807: true}
+	_expect(
+		exclusion_index.call(
+			"find_nearest_alive_excluding",
+			Vector2.ZERO,
+			160.0,
+			empty_exclusions
+		) == nearest_enemy
+		and exclusion_index.call(
+			"find_nearest_alive_excluding",
+			Vector2.ZERO,
+			160.0,
+			invalid_exclusions
+		) == nearest_enemy,
+		"Empty and unknown instance-id exclusions must preserve the nearest target."
+	)
+	_expect(
+		not (exclusion_index.get("enemies_by_net_id") as Dictionary).has(405),
+		"A positive-radius adaptive linear query must prune queued registry entries."
+	)
+
+	var excluded_nearest: Dictionary = {
+		nearest_enemy.get_instance_id(): true,
+	}
+	_expect(
+		exclusion_index.call(
+			"find_nearest_alive_excluding",
+			Vector2.ZERO,
+			160.0,
+			excluded_nearest
+		) == middle_enemy,
+		"A valid exclusion must skip the nearest target without building candidates."
+	)
+
+	var excluded_first_two: Dictionary = {
+		nearest_enemy.get_instance_id(): true,
+		middle_enemy.get_instance_id(): true,
+	}
+	var expected_tie_first := (
+		tie_enemy_a
+		if tie_enemy_a.get_instance_id() < tie_enemy_b.get_instance_id()
+		else tie_enemy_b
+	)
+	_expect(
+		exclusion_index.call(
+			"find_nearest_alive_excluding",
+			Vector2.ZERO,
+			160.0,
+			excluded_first_two
+		) == expected_tie_first,
+		"Excluded nearest targets must continue across buckets and retain the instance-id tie break."
+	)
+	_expect(
+		exclusion_index.call(
+			"find_nearest_alive_excluding",
+			Vector2.ZERO,
+			-1.0,
+			excluded_nearest
+		) == null
+		and exclusion_index.call(
+			"find_nearest_alive_excluding",
+			Vector2.ZERO,
+			0.0,
+			excluded_nearest
+		) == null,
+		"A negative radius must be rejected and a zero radius must remain a closed point query."
+	)
+	_expect(
+		exclusion_index.call(
+			"find_nearest_alive_excluding",
+			Vector2(NAN, 0.0),
+			160.0,
+			empty_exclusions
+		) == null
+		and exclusion_index.call(
+			"find_nearest_alive_excluding",
+			Vector2.ZERO,
+			NAN,
+			empty_exclusions
+		) == null
+		and exclusion_index.call(
+			"find_nearest_alive_excluding",
+			Vector2.ZERO,
+			INF,
+			empty_exclusions
+		) == null,
+		"Non-finite nearest-query inputs must be rejected before spatial conversion."
+	)
+
+	var excluded_all := excluded_first_two.duplicate()
+	excluded_all[tie_enemy_a.get_instance_id()] = true
+	excluded_all[tie_enemy_b.get_instance_id()] = true
+	_expect(
+		exclusion_index.call(
+			"find_nearest_alive_excluding",
+			Vector2.ZERO,
+			160.0,
+			excluded_all
+		) == null,
+		"Excluding every in-radius target must return null."
+	)
+
+	var coincident_enemy := Enemy.new()
+	coincident_enemy.position = Vector2.ZERO
+	exclusion_index.call("register_enemy", 406, coincident_enemy)
+	_expect(
+		exclusion_index.call(
+			"find_nearest_alive_excluding",
+			Vector2.ZERO,
+			0.0,
+			empty_exclusions
+		) == coincident_enemy
+		and exclusion_index.call(
+			"find_nearest_alive_excluding",
+			Vector2.ZERO,
+			0.0,
+			{coincident_enemy.get_instance_id(): true}
+		) == null,
+		"A zero-radius closed query must include only a co-located, non-excluded target."
+	)
+
+	exclusion_index.call("clear")
+	for enemy in [
+		nearest_enemy,
+		middle_enemy,
+		tie_enemy_a,
+		tie_enemy_b,
+		queued_enemy,
+		coincident_enemy,
+	]:
+		if is_instance_valid(enemy):
+			enemy.free()
+
+
+func _test_adaptive_nearest_threshold() -> void:
+	var adaptive_index := AdaptiveProbeIndex.new()
+	var adaptive_enemies: Array[Enemy] = []
+	for enemy_index in range(CombatTargetIndex.NEAREST_LINEAR_TARGET_THRESHOLD):
+		var enemy := Enemy.new()
+		enemy.position = Vector2(16.0 + float(enemy_index) * 8.0, 0.0)
+		adaptive_enemies.append(enemy)
+		adaptive_index.register_enemy(1_001 + enemy_index, enemy)
+
+	var empty_exclusions: Dictionary = {}
+	var expected_nearest := adaptive_enemies[0]
+	_expect(
+		adaptive_index.find_nearest_alive_excluding(
+			Vector2.ZERO,
+			48.0,
+			empty_exclusions
+		) == expected_nearest
+		and adaptive_index.linear_query_count == 1
+		and adaptive_index.ring_query_count == 0,
+		"The inclusive adaptive threshold must use the no-candidate-array linear path."
+	)
+	_expect(
+		adaptive_index.query_radius(Vector2.ZERO, 48.0, 1) == [expected_nearest]
+		and adaptive_index.linear_query_count == 2,
+		"max_count=1 queries must reuse the adaptive linear nearest path."
+	)
+
+	var queued_enemy := Enemy.new()
+	queued_enemy.position = Vector2(1.0, 0.0)
+	adaptive_enemies.append(queued_enemy)
+	adaptive_index.register_enemy(2_001, queued_enemy)
+	queued_enemy.queue_free()
+	_expect(
+		adaptive_index.find_nearest_alive_excluding(
+			Vector2.ZERO,
+			48.0,
+			empty_exclusions
+		) == expected_nearest
+		and adaptive_index.linear_query_count == 2
+		and adaptive_index.ring_query_count == 1,
+		"A registry above the threshold must use ring pruning and skip a queued nearest entry."
+	)
+	_expect(
+		adaptive_index.query_radius(Vector2.ZERO, 48.0, 1) == [expected_nearest]
+		and adaptive_index.ring_query_count == 2,
+		"max_count=1 queries above the threshold must reuse the ring-pruned nearest path."
+	)
+
+	adaptive_index.clear()
+	for enemy in adaptive_enemies:
+		if enemy != null and is_instance_valid(enemy):
+			enemy.free()
+
+
+func _test_three_stage_local_adaptive() -> void:
+	var sparse_index := AdaptiveProbeIndex.new()
+	var sparse_enemies: Array[Enemy] = []
+	for local_index in range(5):
+		var local_enemy := Enemy.new()
+		local_enemy.position = Vector2(24.0 + float(local_index) * 32.0, 0.0)
+		sparse_enemies.append(local_enemy)
+		sparse_index.register_enemy(4_001 + local_index, local_enemy)
+	for far_index in range(60):
+		var far_enemy := Enemy.new()
+		far_enemy.position = Vector2(2_048.0 + float(far_index) * 16.0, 2_048.0)
+		sparse_enemies.append(far_enemy)
+		sparse_index.register_enemy(4_101 + far_index, far_enemy)
+	var queued_enemy := Enemy.new()
+	queued_enemy.position = Vector2(1.0, 0.0)
+	queued_enemy.queue_free()
+	# Register after queue_free so the flat path must explicitly reject it.
+	sparse_enemies.append(queued_enemy)
+	sparse_index.register_enemy(4_999, queued_enemy)
+	var empty_exclusions: Dictionary = {}
+	_expect(
+		sparse_index.find_nearest_alive_excluding(
+			Vector2.ZERO,
+			112.0,
+			empty_exclusions
+		) == sparse_enemies[0]
+		and sparse_index.flat_query_count == 1
+		and sparse_index.ring_query_count == 0,
+		"A large sparse registry in at most sixteen buckets must use flat local selection and skip queued entries."
+	)
+	_expect(
+		sparse_index.query_radius(Vector2.ZERO, 112.0, 1) == [sparse_enemies[0]]
+		and sparse_index.flat_query_count == 2,
+		"max_count=1 queries must reuse the three-stage flat nearest path."
+	)
+	_expect(
+		sparse_index.find_nearest_alive_excluding(
+			Vector2.ZERO,
+			1_000.0,
+			empty_exclusions
+		) == sparse_enemies[0]
+		and sparse_index.ring_query_count == 1,
+		"A query covering more than sixteen buckets must bypass the local pre-count and use ring pruning."
+	)
+
+	var dense_index := AdaptiveProbeIndex.new()
+	var dense_enemies: Array[Enemy] = []
+	for dense_index_value in range(65):
+		var dense_enemy := Enemy.new()
+		dense_enemy.position = Vector2(
+			float(dense_index_value % 9) * 8.0,
+			float(dense_index_value / 9) * 8.0
+		)
+		dense_enemies.append(dense_enemy)
+		dense_index.register_enemy(5_001 + dense_index_value, dense_enemy)
+	_expect(
+		dense_index.find_nearest_alive_excluding(
+			Vector2.ZERO,
+			112.0,
+			empty_exclusions
+		) == dense_enemies[0]
+		and dense_index.flat_query_count == 0
+		and dense_index.ring_query_count == 1,
+		"A locally dense registry must stop counting above 32 memberships and retain ring pruning."
+	)
+
+	sparse_index.clear()
+	dense_index.clear()
+	for enemy in sparse_enemies + dense_enemies:
+		if enemy != null and is_instance_valid(enemy):
+			enemy.free()
+
+
+func _test_strict_nearest_total_order() -> void:
+	var strict_index: Variant = TargetIndexScript.new()
+	strict_index.set("bucket_size", 32.0)
+	# Construct the slightly farther target first so it has the lower instance ID.
+	# The old approximate-equality comparator incorrectly preferred that ID.
+	var lower_id_farther := Enemy.new()
+	var higher_id_nearer := Enemy.new()
+	lower_id_farther.position = Vector2(-96.0001, 0.0)
+	higher_id_nearer.position = Vector2(96.0, 0.0)
+	strict_index.call("register_enemy", 3_001, lower_id_farther)
+	strict_index.call("register_enemy", 3_002, higher_id_nearer)
+	var empty_exclusions: Dictionary = {}
+	var linear_nearest := strict_index.call(
+		"_find_nearest_alive_linear",
+		Vector2.ZERO,
+		200.0,
+		empty_exclusions
+	) as Enemy
+	var ring_nearest := strict_index.call(
+		"_find_nearest_alive_ring",
+		Vector2.ZERO,
+		200.0,
+		empty_exclusions
+	) as Enemy
+	var flat_nearest := strict_index.call(
+		"_find_nearest_alive_flat",
+		Vector2.ZERO,
+		200.0,
+		empty_exclusions
+	) as Enemy
+	var extraction_candidates: Array[Enemy] = [lower_id_farther, higher_id_nearer]
+	var extracted := CombatTargetIndex.take_nearest_candidate(
+		extraction_candidates,
+		Vector2.ZERO
+	)
+	var sorted_candidates: Array[Enemy] = [lower_id_farther, higher_id_nearer]
+	CombatTargetIndex.sort_candidates_by_distance(sorted_candidates, Vector2.ZERO)
+	_expect(
+		lower_id_farther.get_instance_id() < higher_id_nearer.get_instance_id()
+		and linear_nearest == higher_id_nearer
+		and ring_nearest == higher_id_nearer
+		and flat_nearest == higher_id_nearer
+		and extracted == higher_id_nearer
+		and sorted_candidates == [higher_id_nearer, lower_id_farther],
+		"Nearest selection must use strict distance-squared ordering before the exact instance-id tie break."
+	)
+
+	strict_index.call("clear")
+	lower_id_farther.free()
+	higher_id_nearer.free()
 
 
 func _move_out_of_tree_fixture_enemy(

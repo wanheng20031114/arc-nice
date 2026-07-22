@@ -4543,11 +4543,13 @@ func _pick_enemy_target(from_position: Vector2) -> Player:
 
 func find_nearest_enemy_attack_target(
 	from_position: Vector2,
-	max_distance: float
+	max_distance: float,
+	excluded_instance_ids: Dictionary = {}
 ) -> Node2D:
 	var nearest_target := super.find_nearest_enemy_attack_target(
 		from_position,
-		max_distance
+		max_distance,
+		excluded_instance_ids
 	)
 	if (
 		plant_system == null
@@ -4557,7 +4559,8 @@ func find_nearest_enemy_attack_target(
 		return nearest_target
 	var nearest_plant := plant_system.find_nearest_living_plant_world(
 		from_position,
-		max_distance
+		max_distance,
+		excluded_instance_ids
 	)
 	if nearest_plant == null:
 		return nearest_target
@@ -4574,19 +4577,10 @@ func find_nearest_enemy_attack_target(
 	var target_distance_squared := from_position.distance_squared_to(
 		nearest_target.global_position
 	)
-	if (
-		plant_distance_squared < target_distance_squared
-		and not is_equal_approx(
-			plant_distance_squared,
-			target_distance_squared
-		)
-	):
+	if plant_distance_squared < target_distance_squared:
 		return nearest_plant
 	if (
-		is_equal_approx(
-			plant_distance_squared,
-			target_distance_squared
-		)
+		plant_distance_squared == target_distance_squared
 		and nearest_plant.get_instance_id()
 			< nearest_target.get_instance_id()
 	):

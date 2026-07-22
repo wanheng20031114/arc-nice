@@ -5,6 +5,7 @@ const QUERY_RADIUS := 80.0
 const SIMULATED_BENCHMARK_FRAMES := 16
 const EQUIVALENCE_RADII := [-8.0, 0.0, 1.0, 48.0, 80.0, 192.0]
 const EQUIVALENCE_MAX_COUNTS := [-1, 0, 1, 3, 16]
+const MpGameScript := preload("res://scene/multiplayer/mp_game.gd")
 
 
 class TestEnemy:
@@ -15,6 +16,15 @@ class TestEnemy:
 
 	func _physics_process(_delta: float) -> void:
 		pass
+
+
+class TestNetManager:
+	extends Node
+
+	var host_mode := false
+
+	func is_host() -> bool:
+		return host_mode
 
 
 var failures: Array[String] = []
@@ -29,6 +39,7 @@ func _run() -> void:
 	test_root = Node2D.new()
 	root.add_child(test_root)
 	_test_game_source_enables_shared_index()
+	_test_nearest_combat_target_contracts()
 	_test_singleplayer_container_lifecycle()
 	_test_same_physics_frame_bucket_migration()
 	_test_tower_defense_forced_policy()
@@ -58,6 +69,234 @@ func _test_game_source_enables_shared_index() -> void:
 		tower_source.contains("enable_singleplayer_combat_target_index(true)"),
 		"GameTowerDefense must preserve its forced bounded-query index policy."
 	)
+
+
+func _test_nearest_combat_target_contracts() -> void:
+	var game := Game.new()
+	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
+	var enemy_container := Node2D.new()
+	enemy_container.name = "NearestEnemyContainer"
+	test_root.add_child(enemy_container)
+	game.enemy_container = enemy_container
+	var boss_container := Node2D.new()
+	boss_container.name = "BossContainer"
+	game.add_child(boss_container)
+	game.boss_container = boss_container
+
+	var nearest_enemy := _new_tree_safe_test_enemy()
+	var middle_enemy := _new_tree_safe_test_enemy()
+	var tie_enemy_a := _new_tree_safe_test_enemy()
+	var tie_enemy_b := _new_tree_safe_test_enemy()
+	nearest_enemy.position = Vector2(8.0, 0.0)
+	middle_enemy.position = Vector2(65.0, 0.0)
+	tie_enemy_a.position = Vector2(-130.0, 0.0)
+	tie_enemy_b.position = Vector2(130.0, 0.0)
+	enemy_container.add_child(nearest_enemy)
+	boss_container.add_child(middle_enemy)
+	enemy_container.add_child(tie_enemy_a)
+	boss_container.add_child(tie_enemy_b)
+
+	var empty_exclusions: Dictionary = {}
+	var invalid_exclusions: Dictionary = {-1: true, 9223372036854775807: true}
+	_expect(
+		game.find_nearest_combat_target(
+			Vector2.ZERO,
+			160.0,
+			empty_exclusions
+		) == nearest_enemy
+		and game.find_nearest_combat_target(
+			Vector2.ZERO,
+			160.0,
+			invalid_exclusions
+		) == nearest_enemy,
+		"The direct two-container nearest scan must accept empty and unknown exclusions."
+	)
+	var excluded_nearest: Dictionary = {
+		nearest_enemy.get_instance_id(): true,
+	}
+	_expect(
+		game.find_nearest_combat_target(
+			Vector2.ZERO,
+			160.0,
+			excluded_nearest
+		) == middle_enemy,
+		"The direct single-player scan must exclude an instance without allocating candidates."
+	)
+	var excluded_first_two: Dictionary = {
+		nearest_enemy.get_instance_id(): true,
+		middle_enemy.get_instance_id(): true,
+	}
+	var expected_tie_first := (
+		tie_enemy_a
+		if tie_enemy_a.get_instance_id() < tie_enemy_b.get_instance_id()
+		else tie_enemy_b
+	)
+	_expect(
+		game.find_nearest_combat_target(
+			Vector2.ZERO,
+			160.0,
+			excluded_first_two
+		) == expected_tie_first,
+		"The direct scan must merge both containers with the stable instance-id tie break."
+	)
+	_expect(
+		game.find_nearest_combat_target(
+			Vector2(NAN, 0.0),
+			160.0,
+			empty_exclusions
+		) == null
+		and game.find_nearest_combat_target(
+			Vector2.ZERO,
+			INF,
+			empty_exclusions
+		) == null
+		and game.find_nearest_combat_target(
+			Vector2.ZERO,
+			-1.0,
+			empty_exclusions
+		) == null,
+		"The runtime nearest facade must reject non-finite and negative inputs before either query path."
+	)
+
+	game.enable_singleplayer_combat_target_index()
+	var physics_frame := Engine.get_physics_frames()
+	game.combat_target_index._last_refresh_physics_frame = -777
+	_expect(
+		game.find_nearest_combat_target(
+			Vector2.ZERO,
+			160.0,
+			excluded_first_two
+		) == expected_tie_first
+		and game.combat_target_index._last_refresh_physics_frame == physics_frame,
+		"An enabled bounded single-player nearest query must route through the maintained index."
+	)
+
+	var net_manager := TestNetManager.new()
+	net_manager.host_mode = true
+	var multiplayer_game: Variant = MpGameScript.new()
+	multiplayer_game.set("net_manager", net_manager)
+	multiplayer_game.set("game", game)
+	_expect(
+		multiplayer_game.call(
+			"find_nearest_combat_target",
+			Vector2.ZERO,
+			160.0,
+			excluded_nearest
+		) == middle_enemy,
+		"The multiplayer host nearest query must forward to its authoritative game runtime."
+	)
+
+	game.combat_target_index._last_refresh_physics_frame = -777
+	_expect(
+		game.find_nearest_combat_target(
+			Vector2.ZERO,
+			0.0,
+			excluded_nearest
+		) == null
+		and game.combat_target_index._last_refresh_physics_frame == -777,
+		"A zero-radius single-player nearest query must be a closed point query without bucket maintenance."
+	)
+
+	game._singleplayer_combat_target_index_enabled = false
+	var queued_enemy := _new_tree_safe_test_enemy()
+	queued_enemy.position = Vector2(1.0, 0.0)
+	enemy_container.add_child(queued_enemy)
+	queued_enemy.queue_free()
+	var dead_enemy := _new_tree_safe_test_enemy()
+	dead_enemy.position = Vector2(2.0, 0.0)
+	dead_enemy.is_dead = true
+	enemy_container.add_child(dead_enemy)
+	_expect(
+		game.find_nearest_combat_target(
+			Vector2.ZERO,
+			160.0,
+			empty_exclusions
+		) == nearest_enemy,
+		"The direct container scan must reject dead and queued-for-deletion enemies."
+	)
+
+	net_manager.host_mode = false
+	var client_nearest := _new_tree_safe_test_enemy()
+	var client_tie_a := _new_tree_safe_test_enemy()
+	var client_tie_b := _new_tree_safe_test_enemy()
+	var client_dead := _new_tree_safe_test_enemy()
+	var client_queued := _new_tree_safe_test_enemy()
+	client_nearest.position = Vector2(8.0, 0.0)
+	client_tie_a.position = Vector2(-80.0, 0.0)
+	client_tie_b.position = Vector2(80.0, 0.0)
+	client_dead.position = Vector2(1.0, 0.0)
+	client_dead.is_dead = true
+	client_queued.position = Vector2(2.0, 0.0)
+	for enemy in [
+		client_nearest,
+		client_tie_a,
+		client_tie_b,
+		client_dead,
+		client_queued,
+	]:
+		test_root.add_child(enemy)
+	client_queued.queue_free()
+	var freed_client_enemy := _new_tree_safe_test_enemy()
+	freed_client_enemy.free()
+	multiplayer_game.set("_net_enemies", {
+		501: client_nearest,
+		502: client_tie_a,
+		503: client_tie_b,
+		504: client_dead,
+		505: client_queued,
+		506: freed_client_enemy,
+	})
+	var client_exclusions: Dictionary = {
+		client_nearest.get_instance_id(): true,
+	}
+	var expected_client_tie := (
+		client_tie_a
+		if client_tie_a.get_instance_id() < client_tie_b.get_instance_id()
+		else client_tie_b
+	)
+	_expect(
+		multiplayer_game.call(
+			"find_nearest_combat_target",
+			Vector2.ZERO,
+			100.0,
+			empty_exclusions
+		) == client_nearest
+		and multiplayer_game.call(
+			"find_nearest_combat_target",
+			Vector2.ZERO,
+			100.0,
+			client_exclusions
+		) == expected_client_tie
+		and multiplayer_game.call(
+			"find_nearest_combat_target",
+			Vector2.ZERO,
+			0.0,
+			client_exclusions
+		) == null,
+		"The multiplayer client scan must filter invalid/dead/queued proxies and retain closed-radius exclusion semantics."
+	)
+	_expect(
+		multiplayer_game.call(
+			"find_nearest_combat_target",
+			Vector2(NAN, 0.0),
+			100.0,
+			empty_exclusions
+		) == null
+		and multiplayer_game.call(
+			"find_nearest_combat_target",
+			Vector2.ZERO,
+			INF,
+			empty_exclusions
+		) == null,
+		"The multiplayer nearest facade must reject non-finite host/client inputs."
+	)
+
+	multiplayer_game.free()
+	net_manager.free()
+	for enemy in [client_nearest, client_tie_a, client_tie_b, client_dead]:
+		enemy.queue_free()
+	game.free()
+	enemy_container.queue_free()
 
 
 func _test_singleplayer_container_lifecycle() -> void:

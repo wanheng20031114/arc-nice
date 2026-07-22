@@ -6,6 +6,9 @@ const DAY_NIGHT_CONTROLLER_SCENE := preload(
 const FLASH_POOL_SCENE := preload(
 	"res://scene/lighting/night_vfx_flash_pool.tscn"
 )
+const LIGHTNING_CHAIN_VFX_SCENE := preload(
+	"res://scene/enemy/lightning_sorcerer_lightning_vfx.tscn"
+)
 const SELF_LIT_PROJECTILE_SCENES := [
 	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn",
 	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn",
@@ -270,6 +273,23 @@ func _verify_pool_budget(
 
 
 func _verify_scene_structure() -> void:
+	var lightning_chain := LIGHTNING_CHAIN_VFX_SCENE.instantiate() as Node2D
+	_expect(
+		lightning_chain != null
+		and lightning_chain.get_child_count() == 0
+		and _count_point_lights(lightning_chain) == 0,
+		"雷电链必须保持无物理节点、无逐目标PointLight的单CanvasItem结构。"
+	)
+	if lightning_chain != null:
+		var lightning_material := lightning_chain.material as CanvasItemMaterial
+		_expect(
+			lightning_material != null
+			and lightning_material.blend_mode == CanvasItemMaterial.BLEND_MODE_ADD
+			and lightning_material.light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED,
+			"雷电链必须复用不受夜色二次压暗的加色自发光材质。"
+		)
+		lightning_chain.free()
+
 	for scene_path in SELF_LIT_PROJECTILE_SCENES:
 		var instance := _instantiate_scene(scene_path)
 		if instance == null:

@@ -15,12 +15,17 @@ const MOVE_SPEED_TRAIL_EFFECT_POOL_SCENE := preload(
 const CAPOO_MAGE_FIREBALL_IMPACT_POOL_SCENE := preload(
 	"res://scene/enemy/capoo_mage_fireball_impact.tscn"
 )
+const LIGHTNING_SORCERER_LIGHTNING_VFX_POOL_SCENE := preload(
+	"res://scene/enemy/lightning_sorcerer_lightning_vfx.tscn"
+)
 
 const ENEMY_SPAWN_EFFECT_PREWARM_COUNT := 16
 const ENEMY_SPAWN_EFFECT_RETAINED_CAPACITY := 32
 const BULLET_HIT_EFFECT_CAPACITY := 64
 const ENEMY_HIT_EFFECT_CAPACITY := 128
 const MOVE_SPEED_TRAIL_EFFECT_RETAINED_CAPACITY := 32
+const LIGHTNING_SORCERER_LIGHTNING_VFX_PREWARM_COUNT := 64
+const LIGHTNING_SORCERER_LIGHTNING_VFX_RETAINED_CAPACITY := 96
 const SINGLEPLAYER_BULK_INDEX_MIN_TARGETS := 512
 
 signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
@@ -253,6 +258,19 @@ static func register_common_visual_effect_pools(pool: SessionObjectPool) -> void
 		ENEMY_HIT_EFFECT_CAPACITY,
 		ENEMY_HIT_EFFECT_CAPACITY
 	)
+	# Chain lightning is optional feedback, never gameplay authority. A strict
+	# 96-lease ceiling bounds draw work during synchronized sorcerer volleys.
+	pool.register_scene(
+		LIGHTNING_SORCERER_LIGHTNING_VFX_POOL_SCENE,
+		LIGHTNING_SORCERER_LIGHTNING_VFX_PREWARM_COUNT,
+		LIGHTNING_SORCERER_LIGHTNING_VFX_RETAINED_CAPACITY
+	)
+
+
+## Shared singleplayer/host/client visual entry point. Multiplayer packets and
+## authoritative enemies pass the same compact world-space chain path here.
+func play_lightning_sorcerer_chain_vfx(world_path: PackedVector2Array) -> bool:
+	return LightningSorcererLightningVfx.try_spawn(self, world_path)
 
 
 static func register_capoo_mage_fireball_impact_pool(
@@ -290,7 +308,8 @@ func unregister_combat_target(net_id: int) -> void:
 
 func find_nearest_enemy_attack_target(
 	from_position: Vector2,
-	max_distance: float
+	max_distance: float,
+	excluded_instance_ids: Dictionary = {}
 ) -> Node2D:
 	if max_distance < 0.0 or not is_finite(max_distance):
 		return null
@@ -303,6 +322,7 @@ func find_nearest_enemy_attack_target(
 		and is_instance_valid(player)
 		and not player.is_dead
 		and not player.is_queued_for_deletion()
+		and not excluded_instance_ids.has(player.get_instance_id())
 	):
 		var player_distance_squared := from_position.distance_squared_to(
 			player.global_position
@@ -319,6 +339,7 @@ func find_nearest_enemy_attack_target(
 			or not is_instance_valid(candidate)
 			or candidate.is_dead
 			or candidate.is_queued_for_deletion()
+			or excluded_instance_ids.has(candidate.get_instance_id())
 		):
 			continue
 		var distance_squared := from_position.distance_squared_to(
@@ -329,18 +350,9 @@ func find_nearest_enemy_attack_target(
 		var instance_id := int(candidate.get_instance_id())
 		if (
 			nearest_player == null
+			or distance_squared < nearest_distance_squared
 			or (
-				distance_squared < nearest_distance_squared
-				and not is_equal_approx(
-					distance_squared,
-					nearest_distance_squared
-				)
-			)
-			or (
-				is_equal_approx(
-					distance_squared,
-					nearest_distance_squared
-				)
+				distance_squared == nearest_distance_squared
 				and instance_id < nearest_instance_id
 			)
 		):
@@ -442,6 +454,42 @@ func pick_random_combat_target(center: Vector2, radius: float = 0.0) -> Enemy:
 	return selected_enemy
 
 
+## Allocation-free nearest-enemy facade for instantaneous player-side chains.
+## Local instance IDs are appropriate only for one authoritative traversal;
+## cross-frame or network state must keep using stable enemy net IDs.
+func find_nearest_combat_target(
+	center: Vector2,
+	radius: float,
+	excluded_instance_ids: Dictionary = {}
+) -> Enemy:
+	if not center.is_finite() or not is_finite(radius) or radius < 0.0:
+		return null
+	if (
+		runtime_mode != RuntimeMode.SINGLEPLAYER
+		or (_singleplayer_combat_target_index_enabled and radius > 0.0)
+	):
+		return combat_target_index.find_nearest_alive_excluding(
+			center,
+			radius,
+			excluded_instance_ids
+		)
+	var radius_squared := radius * radius
+	var nearest := _find_nearest_combat_target_in_container(
+		enemy_container,
+		center,
+		radius_squared,
+		excluded_instance_ids,
+		null
+	)
+	return _find_nearest_combat_target_in_container(
+		get_node_or_null("BossContainer"),
+		center,
+		radius_squared,
+		excluded_instance_ids,
+		nearest
+	)
+
+
 func query_combat_targets(center: Vector2, radius: float, max_count: int = 0) -> Array[Enemy]:
 	var result: Array[Enemy] = []
 	query_combat_targets_into(center, radius, result, max_count)
@@ -476,7 +524,7 @@ func query_combat_targets_into(
 			func(a: Enemy, b: Enemy) -> bool:
 				var a_distance := center.distance_squared_to(a.global_position)
 				var b_distance := center.distance_squared_to(b.global_position)
-				if not is_equal_approx(a_distance, b_distance):
+				if a_distance != b_distance:
 					return a_distance < b_distance
 				return a.get_instance_id() < b.get_instance_id()
 		)
@@ -573,6 +621,51 @@ func _append_combat_targets_in_radius(
 		result.append(enemy)
 
 
+func _find_nearest_combat_target_in_container(
+	container: Node,
+	center: Vector2,
+	radius_squared: float,
+	excluded_instance_ids: Dictionary,
+	nearest: Enemy
+) -> Enemy:
+	if container == null:
+		return nearest
+	var nearest_distance_squared := INF
+	var nearest_instance_id := 0
+	if nearest != null:
+		nearest_distance_squared = center.distance_squared_to(nearest.global_position)
+		nearest_instance_id = nearest.get_instance_id()
+	var child_index := 0
+	while child_index < container.get_child_count():
+		var enemy := container.get_child(child_index) as Enemy
+		child_index += 1
+		if (
+			enemy == null
+			or not is_instance_valid(enemy)
+			or enemy.is_dead
+			or enemy.is_queued_for_deletion()
+		):
+			continue
+		var instance_id := enemy.get_instance_id()
+		if excluded_instance_ids.has(instance_id):
+			continue
+		var distance_squared := center.distance_squared_to(enemy.global_position)
+		if distance_squared > radius_squared:
+			continue
+		if (
+			nearest == null
+			or distance_squared < nearest_distance_squared
+			or (
+				distance_squared == nearest_distance_squared
+				and instance_id < nearest_instance_id
+			)
+		):
+			nearest = enemy
+			nearest_distance_squared = distance_squared
+			nearest_instance_id = instance_id
+	return nearest
+
+
 func _retain_nearest_combat_target(
 	result: Array[Enemy],
 	center: Vector2
@@ -586,11 +679,8 @@ func _retain_nearest_combat_target(
 		var candidate := result[candidate_index]
 		var candidate_distance := center.distance_squared_to(candidate.global_position)
 		var candidate_instance_id := candidate.get_instance_id()
-		if (
-			candidate_distance < nearest_distance
-			and not is_equal_approx(candidate_distance, nearest_distance)
-		) or (
-			is_equal_approx(candidate_distance, nearest_distance)
+		if candidate_distance < nearest_distance or (
+			candidate_distance == nearest_distance
 			and candidate_instance_id < nearest_instance_id
 		):
 			nearest = candidate

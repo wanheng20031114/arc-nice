@@ -81,9 +81,9 @@ func _test_config_contract() -> void:
 		"Elite health must be base + 100: 300."
 	)
 	_expect(
-		ELITE_CONFIG.attack_damage == BASE_CONFIG.attack_damage + 20
-		and ELITE_CONFIG.attack_damage == 40,
-		"Elite attack damage must be base + 20: 40."
+		ELITE_CONFIG.attack_damage == BASE_CONFIG.attack_damage + 30
+		and ELITE_CONFIG.attack_damage == 80,
+		"Elite attack damage must be base + 30: 80."
 	)
 	_expect(
 		is_equal_approx(
@@ -208,11 +208,11 @@ func _test_scene_and_projectile_values() -> void:
 	if spike != null:
 		spike.set_physics_process(false)
 		_expect(
-			spike.damage == 40
+			spike.damage == 80
 			and is_equal_approx(spike.speed, 125.0)
 			and is_equal_approx(spike.max_lifetime, 7.0)
 			and spike.source_type == &"frost_sorcerer_ice_spike",
-			"Elite ice spike must carry 40 damage and 125 speed."
+			"Elite ice spike must carry 80 damage and 125 speed."
 		)
 	_expect(
 		is_equal_approx(enemy.attack_cooldown_left, 2.0),

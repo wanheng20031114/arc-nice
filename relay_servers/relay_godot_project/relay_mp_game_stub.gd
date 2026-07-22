@@ -229,7 +229,8 @@ func net_player_damage_applied(
 	confirmed_damage: int,
 	impact_direction: Vector2,
 	damage_type: int,
-	grant_hit_invincibility: bool = true
+	grant_hit_invincibility: bool = true,
+	apply_confirmed_cold: bool = false
 ) -> void:
 	pass
 
@@ -559,6 +560,10 @@ func net_enemy_target_action(
 	action_id: int,
 	host_action_timestamp: float = -1.0
 ) -> void:
+	pass
+
+@rpc("authority", "call_remote", "unreliable_ordered", 7)
+func net_enemy_lightning_chain(points: PackedVector2Array) -> void:
 	pass
 
 @rpc("authority", "call_remote", "reliable", 5)

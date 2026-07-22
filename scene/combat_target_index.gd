@@ -3,6 +3,13 @@ class_name CombatTargetIndex
 
 const DEFAULT_BUCKET_SIZE := 96.0
 const SAFETY_AUDIT_ENTRIES_PER_PHYSICS_FRAME := 16
+# Interleaved 300-caster/five-hit probes put the direct/ring crossover between
+# 32 and 64 registered enemies. Registries through 32 use direct linear work;
+# 33..64 use ring pruning. Larger registries pre-count at most sixteen local
+# buckets, selecting flat iteration only when that local membership stays <=32.
+const NEAREST_LINEAR_TARGET_THRESHOLD := 32
+const NEAREST_LOCAL_PRECOUNT_MIN_TARGET_COUNT := 65
+const NEAREST_LOCAL_PRECOUNT_MAX_BUCKET_CELLS := 16
 
 var bucket_size: float = DEFAULT_BUCKET_SIZE
 var enemies_by_net_id: Dictionary[int, Enemy] = {}
@@ -13,6 +20,7 @@ var safety_audit_net_ids: Array[int] = []
 var safety_audit_slot_by_net_id: Dictionary[int, int] = {}
 var safety_audit_cursor := 0
 var _stale_enemy_net_ids: Array[int] = []
+var _empty_excluded_instance_ids: Dictionary = {}
 var _last_refresh_physics_frame: int = -1
 var event_bucket_migrations_total := 0
 var full_bucket_audits_total := 0
@@ -149,6 +157,32 @@ func query_radius(center: Vector2, radius: float, max_count: int = 0) -> Array[E
 	return result
 
 
+## Returns the nearest live target without allocating a candidate array.
+## The radius is a closed-circle contract: zero only matches a co-located target,
+## while negative or non-finite inputs are rejected before spatial conversion.
+func find_nearest_alive_excluding(
+	center: Vector2,
+	radius: float,
+	excluded_instance_ids: Dictionary
+) -> Enemy:
+	if not center.is_finite() or not is_finite(radius) or radius < 0.0:
+		return null
+	if radius == 0.0:
+		return _find_nearest_alive_linear_bounded(
+			center,
+			radius,
+			excluded_instance_ids,
+			true
+		)
+	if radius > 0.0:
+		_advance_safety_audit_once_per_physics_frame()
+	return _find_nearest_alive(
+		center,
+		radius,
+		excluded_instance_ids
+	)
+
+
 func query_radius_into(
 	center: Vector2,
 	radius: float,
@@ -224,9 +258,8 @@ static func take_nearest_candidate(
 		var candidate_instance_id := candidate.get_instance_id()
 		if (
 			candidate_distance < nearest_distance
-			and not is_equal_approx(candidate_distance, nearest_distance)
 		) or (
-			is_equal_approx(candidate_distance, nearest_distance)
+			candidate_distance == nearest_distance
 			and candidate_instance_id < nearest_instance_id
 		):
 			nearest_index = candidate_index
@@ -248,7 +281,7 @@ static func sort_candidates_by_distance(
 		func(a: Enemy, b: Enemy) -> bool:
 			var a_distance := center.distance_squared_to(a.global_position)
 			var b_distance := center.distance_squared_to(b.global_position)
-			if not is_equal_approx(a_distance, b_distance):
+			if a_distance != b_distance:
 				return a_distance < b_distance
 			return a.get_instance_id() < b.get_instance_id()
 	)
@@ -362,118 +395,287 @@ func _append_nearest_alive(
 	center: Vector2,
 	radius: float
 ) -> void:
+	var nearest := _find_nearest_alive(
+		center,
+		radius,
+		_empty_excluded_instance_ids
+	)
+	if nearest != null:
+		result.append(nearest)
+
+
+func _find_nearest_alive(
+	center: Vector2,
+	radius: float,
+	excluded_instance_ids: Dictionary
+) -> Enemy:
+	var registered_count := enemies_by_net_id.size()
+	if (
+		radius <= 0.0
+		or registered_count <= NEAREST_LINEAR_TARGET_THRESHOLD
+	):
+		return _find_nearest_alive_linear(
+			center,
+			radius,
+			excluded_instance_ids
+		)
+	if registered_count < NEAREST_LOCAL_PRECOUNT_MIN_TARGET_COUNT:
+		return _find_nearest_alive_ring(center, radius, excluded_instance_ids)
+
+	var minimum_cell := _to_bucket(center - Vector2.ONE * radius)
+	var maximum_cell := _to_bucket(center + Vector2.ONE * radius)
+	var bucket_columns := maximum_cell.x - minimum_cell.x + 1
+	var bucket_rows := maximum_cell.y - minimum_cell.y + 1
+	if (
+		bucket_columns <= 0
+		or bucket_rows <= 0
+		or bucket_columns > NEAREST_LOCAL_PRECOUNT_MAX_BUCKET_CELLS
+		or bucket_rows > NEAREST_LOCAL_PRECOUNT_MAX_BUCKET_CELLS
+		or bucket_columns * bucket_rows
+			> NEAREST_LOCAL_PRECOUNT_MAX_BUCKET_CELLS
+	):
+		return _find_nearest_alive_ring(center, radius, excluded_instance_ids)
+
+	var local_membership_count := _count_bucket_memberships_until(
+		minimum_cell,
+		maximum_cell,
+		NEAREST_LINEAR_TARGET_THRESHOLD
+	)
+	if local_membership_count <= NEAREST_LINEAR_TARGET_THRESHOLD:
+		return _find_nearest_alive_flat(
+			center,
+			radius,
+			excluded_instance_ids,
+			minimum_cell,
+			maximum_cell
+		)
+	return _find_nearest_alive_ring_in_bounds(
+		center,
+		radius,
+		excluded_instance_ids,
+		minimum_cell,
+		maximum_cell,
+		_to_bucket(center)
+	)
+
+
+func _find_nearest_alive_linear(
+	center: Vector2,
+	radius: float,
+	excluded_instance_ids: Dictionary
+) -> Enemy:
+	return _find_nearest_alive_linear_bounded(
+		center,
+		radius,
+		excluded_instance_ids,
+		radius > 0.0
+	)
+
+
+func _find_nearest_alive_linear_bounded(
+	center: Vector2,
+	radius: float,
+	excluded_instance_ids: Dictionary,
+	enforce_radius: bool
+) -> Enemy:
 	var nearest: Enemy = null
 	var nearest_distance := INF
 	var nearest_instance_id := 0
 	var radius_squared := radius * radius
-	if radius <= 0.0:
-		_stale_enemy_net_ids.clear()
-		for net_id_variant in enemies_by_net_id:
-			var net_id := int(net_id_variant)
-			var enemy_variant: Variant = enemies_by_net_id.get(net_id)
-			if enemy_variant == null or not is_instance_valid(enemy_variant):
-				_stale_enemy_net_ids.append(net_id)
-				continue
-			var enemy := enemy_variant as Enemy
-			if enemy == null or enemy.is_dead:
-				_stale_enemy_net_ids.append(net_id)
-				continue
-			var distance := center.distance_squared_to(enemy.global_position)
-			var instance_id := enemy.get_instance_id()
-			if (
-				nearest == null
-				or (
-					distance < nearest_distance
-					and not is_equal_approx(distance, nearest_distance)
-				)
-				or (
-					is_equal_approx(distance, nearest_distance)
-					and instance_id < nearest_instance_id
-				)
-			):
-				nearest = enemy
-				nearest_distance = distance
-				nearest_instance_id = instance_id
-		for net_id in _stale_enemy_net_ids:
-			_remove_enemy_entry(net_id)
-	else:
-		var minimum_cell := _to_bucket(center - Vector2.ONE * radius)
-		var maximum_cell := _to_bucket(center + Vector2.ONE * radius)
-		var center_cell := _to_bucket(center)
-		var maximum_ring := maxi(
-			maxi(
-				absi(minimum_cell.x - center_cell.x),
-				absi(maximum_cell.x - center_cell.x)
-			),
-			maxi(
-				absi(minimum_cell.y - center_cell.y),
-				absi(maximum_cell.y - center_cell.y)
+	_stale_enemy_net_ids.clear()
+	for net_id_variant in enemies_by_net_id:
+		var net_id := int(net_id_variant)
+		var enemy_variant: Variant = enemies_by_net_id.get(net_id)
+		if enemy_variant == null or not is_instance_valid(enemy_variant):
+			_stale_enemy_net_ids.append(net_id)
+			continue
+		var enemy := enemy_variant as Enemy
+		if enemy == null or enemy.is_dead or enemy.is_queued_for_deletion():
+			_stale_enemy_net_ids.append(net_id)
+			continue
+		if excluded_instance_ids.has(enemy.get_instance_id()):
+			continue
+		var distance := center.distance_squared_to(enemy.global_position)
+		if enforce_radius and distance > radius_squared:
+			continue
+		var instance_id := enemy.get_instance_id()
+		if (
+			nearest == null
+			or distance < nearest_distance
+			or (
+				distance == nearest_distance
+				and instance_id < nearest_instance_id
 			)
+		):
+			nearest = enemy
+			nearest_distance = distance
+			nearest_instance_id = instance_id
+	for net_id in _stale_enemy_net_ids:
+		_remove_enemy_entry(net_id)
+	return nearest
+
+
+func _find_nearest_alive_ring(
+	center: Vector2,
+	radius: float,
+	excluded_instance_ids: Dictionary
+) -> Enemy:
+	var minimum_cell := _to_bucket(center - Vector2.ONE * radius)
+	var maximum_cell := _to_bucket(center + Vector2.ONE * radius)
+	var center_cell := _to_bucket(center)
+	return _find_nearest_alive_ring_in_bounds(
+		center,
+		radius,
+		excluded_instance_ids,
+		minimum_cell,
+		maximum_cell,
+		center_cell
+	)
+
+
+func _find_nearest_alive_ring_in_bounds(
+	center: Vector2,
+	radius: float,
+	excluded_instance_ids: Dictionary,
+	minimum_cell: Vector2i,
+	maximum_cell: Vector2i,
+	center_cell: Vector2i
+) -> Enemy:
+	var nearest: Enemy = null
+	var nearest_distance := INF
+	var nearest_instance_id := 0
+	var radius_squared := radius * radius
+	var maximum_ring := maxi(
+		maxi(
+			absi(minimum_cell.x - center_cell.x),
+			absi(maximum_cell.x - center_cell.x)
+		),
+		maxi(
+			absi(minimum_cell.y - center_cell.y),
+			absi(maximum_cell.y - center_cell.y)
 		)
-		# Visit the center bucket first, then square rings. Once a target is known,
-		# a bucket whose AABB is strictly farther than that target cannot improve
-		# the exact distance/id result and its enemy array is skipped completely.
-		for ring in range(maximum_ring + 1):
-			for cell_y in range(center_cell.y - ring, center_cell.y + ring + 1):
-				for cell_x in range(center_cell.x - ring, center_cell.x + ring + 1):
-					if maxi(absi(cell_x - center_cell.x), absi(cell_y - center_cell.y)) != ring:
-						continue
-					if (
-						cell_x < minimum_cell.x
-						or cell_x > maximum_cell.x
-						or cell_y < minimum_cell.y
-						or cell_y > maximum_cell.y
-					):
-						continue
-					var cell := Vector2i(cell_x, cell_y)
-					var cell_minimum_distance := _distance_squared_to_bucket(
-						center,
-						cell
+	)
+	# Visit the center bucket first, then square rings. Once a target is known,
+	# a bucket whose AABB is strictly farther than that target cannot improve the
+	# exact distance/id result and its enemy array is skipped completely.
+	for ring in range(maximum_ring + 1):
+		for cell_y in range(center_cell.y - ring, center_cell.y + ring + 1):
+			for cell_x in range(center_cell.x - ring, center_cell.x + ring + 1):
+				if maxi(absi(cell_x - center_cell.x), absi(cell_y - center_cell.y)) != ring:
+					continue
+				if (
+					cell_x < minimum_cell.x
+					or cell_x > maximum_cell.x
+					or cell_y < minimum_cell.y
+					or cell_y > maximum_cell.y
+				):
+					continue
+				var cell := Vector2i(cell_x, cell_y)
+				var cell_minimum_distance := _distance_squared_to_bucket(center, cell)
+				if cell_minimum_distance > radius_squared:
+					continue
+				if (
+					nearest != null
+					and cell_minimum_distance > nearest_distance
+				):
+					continue
+				var cell_nearest := _find_nearest_alive_in_bucket(
+					cell,
+					center,
+					radius_squared,
+					excluded_instance_ids
+				)
+				if cell_nearest == null:
+					continue
+				var distance := center.distance_squared_to(cell_nearest.global_position)
+				var instance_id := cell_nearest.get_instance_id()
+				if (
+					nearest == null
+					or distance < nearest_distance
+					or (
+						distance == nearest_distance
+						and instance_id < nearest_instance_id
 					)
-					if cell_minimum_distance > radius_squared:
-						continue
-					if (
-						nearest != null
-						and cell_minimum_distance > nearest_distance
-						and not is_equal_approx(
-							cell_minimum_distance,
-							nearest_distance
-						)
-					):
-						continue
-					var cell_nearest := _find_nearest_alive_in_bucket(
-						cell,
-						center,
-						radius_squared
+				):
+					nearest = cell_nearest
+					nearest_distance = distance
+					nearest_instance_id = instance_id
+	return nearest
+
+
+func _find_nearest_alive_flat(
+	center: Vector2,
+	radius: float,
+	excluded_instance_ids: Dictionary,
+	minimum_cell: Vector2i = Vector2i.MAX,
+	maximum_cell: Vector2i = Vector2i.MAX
+) -> Enemy:
+	if minimum_cell == Vector2i.MAX or maximum_cell == Vector2i.MAX:
+		minimum_cell = _to_bucket(center - Vector2.ONE * radius)
+		maximum_cell = _to_bucket(center + Vector2.ONE * radius)
+	var nearest: Enemy = null
+	var nearest_distance := INF
+	var nearest_instance_id := 0
+	var radius_squared := radius * radius
+	for cell_y in range(minimum_cell.y, maximum_cell.y + 1):
+		for cell_x in range(minimum_cell.x, maximum_cell.x + 1):
+			var cell := Vector2i(cell_x, cell_y)
+			if not buckets.has(cell):
+				continue
+			var bucket := buckets[cell] as Array
+			for net_id_variant in bucket:
+				var enemy_variant: Variant = enemies_by_net_id.get(int(net_id_variant))
+				if enemy_variant == null or not is_instance_valid(enemy_variant):
+					continue
+				var enemy := enemy_variant as Enemy
+				if (
+					enemy == null
+					or enemy.is_dead
+					or enemy.is_queued_for_deletion()
+				):
+					continue
+				var instance_id := enemy.get_instance_id()
+				if excluded_instance_ids.has(instance_id):
+					continue
+				var distance := center.distance_squared_to(enemy.global_position)
+				if distance > radius_squared:
+					continue
+				if (
+					nearest == null
+					or distance < nearest_distance
+					or (
+						distance == nearest_distance
+						and instance_id < nearest_instance_id
 					)
-					if cell_nearest == null:
-						continue
-					var distance := center.distance_squared_to(
-						cell_nearest.global_position
-					)
-					var instance_id := cell_nearest.get_instance_id()
-					if (
-						nearest == null
-						or (
-							distance < nearest_distance
-							and not is_equal_approx(distance, nearest_distance)
-						)
-						or (
-							is_equal_approx(distance, nearest_distance)
-							and instance_id < nearest_instance_id
-						)
-					):
-						nearest = cell_nearest
-						nearest_distance = distance
-						nearest_instance_id = instance_id
-	if nearest != null:
-		result.append(nearest)
+				):
+					nearest = enemy
+					nearest_distance = distance
+					nearest_instance_id = instance_id
+	return nearest
+
+
+func _count_bucket_memberships_until(
+	minimum_cell: Vector2i,
+	maximum_cell: Vector2i,
+	stop_after: int
+) -> int:
+	var membership_count := 0
+	for cell_y in range(minimum_cell.y, maximum_cell.y + 1):
+		for cell_x in range(minimum_cell.x, maximum_cell.x + 1):
+			var cell := Vector2i(cell_x, cell_y)
+			if not buckets.has(cell):
+				continue
+			membership_count += (buckets[cell] as Array).size()
+			if membership_count > stop_after:
+				return membership_count
+	return membership_count
 
 
 func _find_nearest_alive_in_bucket(
 	cell: Vector2i,
 	center: Vector2,
-	radius_squared: float
+	radius_squared: float,
+	excluded_instance_ids: Dictionary
 ) -> Enemy:
 	if not buckets.has(cell):
 		return null
@@ -486,7 +688,9 @@ func _find_nearest_alive_in_bucket(
 		if enemy_variant == null or not is_instance_valid(enemy_variant):
 			continue
 		var enemy := enemy_variant as Enemy
-		if enemy == null or enemy.is_dead:
+		if enemy == null or enemy.is_dead or enemy.is_queued_for_deletion():
+			continue
+		if excluded_instance_ids.has(enemy.get_instance_id()):
 			continue
 		var distance := center.distance_squared_to(enemy.global_position)
 		if distance > radius_squared:
@@ -494,12 +698,9 @@ func _find_nearest_alive_in_bucket(
 		var instance_id := enemy.get_instance_id()
 		if (
 			nearest == null
+			or distance < nearest_distance
 			or (
-				distance < nearest_distance
-				and not is_equal_approx(distance, nearest_distance)
-			)
-			or (
-				is_equal_approx(distance, nearest_distance)
+				distance == nearest_distance
 				and instance_id < nearest_instance_id
 			)
 		):

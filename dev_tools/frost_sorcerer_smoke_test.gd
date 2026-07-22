@@ -78,11 +78,11 @@ func _test_resource_animation_and_node_contracts() -> void:
 		"Frost Sorcerer config must own its authored enemy and ice-spike scenes."
 	)
 	_expect(
-		FROST_SORCERER_CONFIG.attack_damage == 20
+		FROST_SORCERER_CONFIG.attack_damage == 50
 		and FIRE_SORCERER_CONFIG.attack_damage == 40
 		and FROST_SORCERER_CONFIG.attack_damage
-			< FIRE_SORCERER_CONFIG.attack_damage,
-		"Frost Sorcerer damage must be 20, explicitly below Fire Sorcerer's 40."
+			> FIRE_SORCERER_CONFIG.attack_damage,
+		"Frost Sorcerer damage must be 50, explicitly above Fire Sorcerer's 40."
 	)
 	_expect(
 		is_equal_approx(FROST_SORCERER_CONFIG.projectile_speed, 100.0)
@@ -254,7 +254,7 @@ func _test_one_projectile_attack_generation() -> void:
 				enemy.summon_marker.global_position
 			)
 			and spawned.direction.is_equal_approx(Vector2.RIGHT)
-			and spawned.damage == 20
+			and spawned.damage == 50
 			and is_equal_approx(spawned.speed, 100.0),
 			"The one real spike must replace its preview at the marker with configured values."
 		)
@@ -356,9 +356,9 @@ func _test_player_magic_damage_cold_and_first_contact() -> void:
 	var spike := _spawn_spike(Vector2.ZERO)
 	spike.call("_handle_collision_body", primary)
 	_expect(
-		primary.current_health == TEST_HEALTH - 16
-		and primary.last_damage_taken == 16,
-		"Twenty magic damage must become 16 against 20 magic defense."
+		primary.current_health == TEST_HEALTH - 40
+		and primary.last_damage_taken == 40,
+		"Fifty magic damage must become 40 against 20 magic defense."
 	)
 	_expect(
 		primary.get_cold_stack_count() == 1
@@ -375,7 +375,7 @@ func _test_player_magic_damage_cold_and_first_contact() -> void:
 	spike.call("_handle_collision_body", primary)
 	spike.call("_handle_collision_body", overlapping_bystander)
 	_expect(
-		primary.current_health == TEST_HEALTH - 16
+		primary.current_health == TEST_HEALTH - 40
 		and primary.get_cold_stack_count() == 1
 		and overlapping_bystander.current_health == TEST_HEALTH,
 		"A consumed ice spike must neither hit twice nor pierce into a second target."
@@ -409,7 +409,7 @@ func _test_building_magic_damage_without_cold() -> void:
 	var spike := _spawn_spike(Vector2.ZERO)
 	spike.call("_handle_collision_body", building)
 	_expect(
-		building.current_health == TEST_HEALTH - 16,
+		building.current_health == TEST_HEALTH - 40,
 		"A building must still receive the ice spike's mitigated magic damage."
 	)
 	_expect(

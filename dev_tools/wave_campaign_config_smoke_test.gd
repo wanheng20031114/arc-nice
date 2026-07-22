@@ -59,10 +59,14 @@ const FROST_SORCERER_CONFIG_PATH := (
 const FROST_SORCERER_ELITE_CONFIG_PATH := (
 	"res://resources/config/enemies/frost_sorcerer_elite.tres"
 )
+const LIGHTNING_SORCERER_CONFIG_PATH := (
+	"res://resources/config/enemies/lightning_sorcerer.tres"
+)
 const STANDARD_SINGLEPLAYER_FIRST_WAVE_EXPECTED_COUNTS := {
 	FROST_SORCERER_CONFIG_PATH: 1,
 	FROST_SORCERER_ELITE_CONFIG_PATH: 1,
 	FIRE_SORCERER_CONFIG_PATH: 1,
+	LIGHTNING_SORCERER_CONFIG_PATH: 1,
 }
 const FIRST_WAVE_EXPECTED_COUNTS := {
 	"res://resources/config/enemies/yuanshi_insect_basic.tres": 850,
@@ -363,10 +367,10 @@ func _verify_standard_singleplayer_sorcerer_test_wave(
 	_expect(
 		wave_config.enemy_entries.size()
 		== STANDARD_SINGLEPLAYER_FIRST_WAVE_EXPECTED_COUNTS.size()
-		and wave_config.get_total_enemy_count() == 3,
+		and wave_config.get_total_enemy_count() == 4,
 		(
 			"Standard singleplayer wave 1 must contain one Frost, one Elite "
-			+ "Frost, and one Fire Sorcerer."
+			+ "Frost, one Fire, and one Lightning Sorcerer."
 		)
 	)
 	var actual_counts := {}
@@ -377,16 +381,16 @@ func _verify_standard_singleplayer_sorcerer_test_wave(
 		actual_counts == STANDARD_SINGLEPLAYER_FIRST_WAVE_EXPECTED_COUNTS,
 		(
 			"Standard singleplayer wave 1 must contain one Frost, one Elite "
-			+ "Frost, and one Fire Sorcerer."
+			+ "Frost, one Fire, and one Lightning Sorcerer."
 		)
 	)
 	_expect(
-		wave_config.max_alive_enemies == 3,
-		"Standard singleplayer Sorcerer test wave must allow all three enemies together."
+		wave_config.max_alive_enemies == 4,
+		"Standard singleplayer Sorcerer test wave must allow all four enemies together."
 	)
 	_expect(
-		wave_config.wave_name == "第1波 冰火术士测试"
-		and wave_config.display_name == "第1波 冰火术士测试",
+		wave_config.wave_name == "第1波 冰火雷术士测试"
+		and wave_config.display_name == "第1波 冰火雷术士测试",
 		"Standard singleplayer Sorcerer test wave must use its explicit test label."
 	)
 	_expect(

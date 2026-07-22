@@ -32,6 +32,7 @@ const FEEDBACK_RPC_METHODS := {
 	&"net_tiyi_high_noon_targets": true,
 	&"net_enemy_action": true,
 	&"net_enemy_target_action": true,
+	&"net_enemy_lightning_chain": true,
 	&"net_plant_health_batch": true,
 	&"net_tower_defense_wave_progress_changed": true,
 }
@@ -138,6 +139,8 @@ const FIRE_SORCERER_CONSUMED_SOURCE_MASK_KEY: StringName = (
 	&"fire_sorcerer_consumed_source_mask"
 )
 const FROST_SORCERER_ICE_SPIKE_TYPE: StringName = &"frost_sorcerer_ice_spike"
+const LIGHTNING_SORCERER_CHAIN_MIN_POINTS := 2
+const LIGHTNING_SORCERER_CHAIN_MAX_POINTS := 6
 const LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET := 32
 const TIYI_SNIPER_PROJECTILE_TYPE: StringName = &"tiyi_sniper_bullet"
 const TIYI_HIGH_NOON_MAX_TARGETS := 25
@@ -148,7 +151,7 @@ const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
-## 协议 v16 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
+## 协议 v17 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
 ## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
 const SHARED_SNAPSHOT_COHORT_ID := -1
 const ENEMY_ACTION_SNAPSHOT_REORDER_TOLERANCE_SECONDS := 0.075
@@ -5739,6 +5742,19 @@ func _is_finite_vector2(value: Vector2) -> bool:
 	return is_finite(value.x) and is_finite(value.y)
 
 
+func _is_valid_enemy_lightning_chain_points(points: PackedVector2Array) -> bool:
+	var point_count := points.size()
+	if (
+		point_count < LIGHTNING_SORCERER_CHAIN_MIN_POINTS
+		or point_count > LIGHTNING_SORCERER_CHAIN_MAX_POINTS
+	):
+		return false
+	for point in points:
+		if not _is_finite_vector2(point):
+			return false
+	return true
+
+
 func _is_valid_linglan_skill1_ring_payload(
 	projectile_ids: PackedInt64Array,
 	spawn_positions: PackedVector2Array,
@@ -7421,7 +7437,7 @@ func net_player_healed(
 	player_node.queue_healing_number(confirmed_healing)
 
 
-# Legacy compatibility shells retained in protocol v16. Xirang orbs no longer exist, but keeping the
+# Legacy compatibility shells retained in protocol v17. Xirang orbs no longer exist, but keeping the
 # annotated signatures avoids a partial wire-protocol break until the next
 # coordinated protocol-version upgrade.
 @rpc("authority", "call_remote", "reliable", 5)
@@ -7477,6 +7493,59 @@ func pick_random_combat_target(center: Vector2, radius: float = 0.0) -> Enemy:
 	return game.pick_random_combat_target(center, radius)
 
 
+func find_nearest_combat_target(
+	center: Vector2,
+	radius: float,
+	excluded_instance_ids: Dictionary = {}
+) -> Enemy:
+	if (
+		game == null
+		or not center.is_finite()
+		or not is_finite(radius)
+		or radius < 0.0
+	):
+		return null
+	if net_manager.is_host():
+		return game.find_nearest_combat_target(
+			center,
+			radius,
+			excluded_instance_ids
+		)
+	var radius_squared := radius * radius
+	var nearest: Enemy = null
+	var nearest_distance_squared := INF
+	var nearest_instance_id := 0
+	for enemy_net_id_variant in _net_enemies:
+		var enemy_variant: Variant = _net_enemies.get(enemy_net_id_variant)
+		if enemy_variant == null or not is_instance_valid(enemy_variant):
+			continue
+		var enemy := enemy_variant as Enemy
+		if (
+			enemy == null
+			or enemy.is_dead
+			or enemy.is_queued_for_deletion()
+		):
+			continue
+		var instance_id := enemy.get_instance_id()
+		if excluded_instance_ids.has(instance_id):
+			continue
+		var distance_squared := center.distance_squared_to(enemy.global_position)
+		if distance_squared > radius_squared:
+			continue
+		if (
+			nearest == null
+			or distance_squared < nearest_distance_squared
+			or (
+				distance_squared == nearest_distance_squared
+				and instance_id < nearest_instance_id
+			)
+		):
+			nearest = enemy
+			nearest_distance_squared = distance_squared
+			nearest_instance_id = instance_id
+	return nearest
+
+
 func query_combat_targets(center: Vector2, radius: float, max_count: int = 0) -> Array[Enemy]:
 	var result: Array[Enemy] = []
 	query_combat_targets_into(center, radius, result, max_count)
@@ -7511,7 +7580,7 @@ func query_combat_targets_into(
 		func(a: Enemy, b: Enemy) -> bool:
 			var a_distance := center.distance_squared_to(a.global_position)
 			var b_distance := center.distance_squared_to(b.global_position)
-			if not is_equal_approx(a_distance, b_distance):
+			if a_distance != b_distance:
 				return a_distance < b_distance
 			return a.get_instance_id() < b.get_instance_id()
 	)
@@ -8302,6 +8371,15 @@ func broadcast_enemy_target_action(
 		&"net_enemy_target_action",
 		[net_id, String(action_name), target_peer_id, action_position, action_id, _get_net_time()]
 	)
+
+
+func broadcast_enemy_lightning_chain(points: PackedVector2Array) -> void:
+	if (
+		not net_manager.is_host()
+		or not _is_valid_enemy_lightning_chain_points(points)
+	):
+		return
+	_rpc_to_connected_clients(&"net_enemy_lightning_chain", [points])
 
 
 func _on_host_pickup_removed(net_id: int) -> void:
@@ -9494,6 +9572,20 @@ func net_enemy_target_action(
 			target,
 			action_id
 		)
+
+
+@rpc("authority", "call_remote", "unreliable_ordered", 7)
+func net_enemy_lightning_chain(points: PackedVector2Array) -> void:
+	if (
+		game == null
+		or net_manager.is_host()
+		or not _is_valid_enemy_lightning_chain_points(points)
+	):
+		return
+	# Damage and chain selection are Host-only. Clients replay only the accepted
+	# endpoint list as a transient visual and never resolve targets locally.
+	if game.has_method("play_lightning_sorcerer_chain_vfx"):
+		game.call("play_lightning_sorcerer_chain_vfx", points)
 
 
 func _push_enemy_action_interpolator_sample(
