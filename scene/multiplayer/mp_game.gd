@@ -8890,18 +8890,11 @@ func net_runtime_world_manifest(
 				game.apply_remote_plant_removed_silently(plant_net_id)
 			elif plant_net_id > 0:
 				_apply_pending_remote_plant_health(plant_net_id)
-		for pending_net_id_variant in _pending_warehouse_snapshots.keys():
-			var pending_net_id := int(pending_net_id_variant)
-			if not plant_id_set.has(pending_net_id):
-				_erase_pending_warehouse_snapshot(pending_net_id)
-		# CH5 manifests and CH6 production batches have no cross-channel total
-		# order. An unknown state missing from this manifest may belong to a spawn
-		# that is already live on the Host but still in flight on CH5. Keep it
-		# bounded until spawn, explicit removal, or FIFO eviction proves its fate.
-		for pending_net_id_variant in _pending_remote_plant_health_updates.keys():
-			var pending_net_id := int(pending_net_id_variant)
-			if not plant_id_set.has(pending_net_id):
-				_mark_remote_plant_removed(pending_net_id)
+		# CH5 manifests have no total order with CH6 warehouse/production state or
+		# CH7 health batches. A pending id that has no local replica yet may belong
+		# to a Host spawn still in flight on CH5. Only prune replicas whose existence
+		# has already been established locally; unknown payloads remain bounded until
+		# spawn consumption, explicit removal, or their own FIFO eviction.
 
 
 @rpc("any_peer", "call_remote", "reliable", 5)

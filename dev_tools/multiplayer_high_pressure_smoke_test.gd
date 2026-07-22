@@ -1319,8 +1319,11 @@ func _test_plant_health_before_spawn_debt() -> void:
 		PackedInt32Array([72, newest_debt_id])
 	)
 	_expect(
-		pending.size() == 1 and pending.has(newest_debt_id),
-		"The complete plant manifest must discard debt for IDs the Host no longer considers live."
+		pending.size() == limit
+		and pending.has(1005)
+		and pending.has(newest_debt_id)
+		and not removed_ids.has(1005),
+		"A CH5 manifest must not discard or tombstone unknown CH7 health debt from a future spawn."
 	)
 	mp_game.call(
 		"net_plant_spawned",
@@ -1340,7 +1343,8 @@ func _test_plant_health_before_spawn_debt() -> void:
 		newest_plant != null
 		and newest_plant.health_revision == limit + 5
 		and newest_plant.current_health == 90
-		and pending.is_empty(),
+		and pending.size() == limit - 1
+		and not pending.has(newest_debt_id),
 		"Debt retained by a live manifest entry must settle when its snapshot spawn registers."
 	)
 	var tombstone_limit := MP_GAME_SCRIPT.CLIENT_REMOVED_PLANT_TOMBSTONE_MAX_ENTRIES

@@ -149,6 +149,15 @@ class RuntimeStub:
 	) -> void:
 		pass
 
+	func supports_tower_defense() -> bool:
+		return true
+
+	func get_multiplayer_plant_snapshots() -> Array[Dictionary]:
+		var snapshots: Array[Dictionary] = []
+		for net_id_variant in plants.keys():
+			snapshots.append({"net_id": int(net_id_variant)})
+		return snapshots
+
 	func get_multiplayer_plant_node(net_id: int) -> PlantDefense:
 		return plants.get(net_id) as PlantDefense
 
@@ -220,11 +229,20 @@ func _test_snapshot_before_spawn_is_consumed() -> void:
 		warehouse_net_id,
 		snapshot
 	)
+	mp_game.call(
+		"net_runtime_world_manifest",
+		PackedInt32Array(),
+		PackedInt32Array(),
+		PackedInt32Array()
+	)
 	_expect(
 		(mp_game.get("_pending_warehouse_snapshots") as Dictionary).has(
 			warehouse_net_id
+		)
+		and not (mp_game.get("_removed_remote_plant_ids") as Dictionary).has(
+			warehouse_net_id
 		),
-		"snapshot→spawn 的合法跨通道乱序必须先保留快照。"
+		"snapshot→旧 manifest→spawn 的合法跨通道乱序必须保留快照，且不得伪造 tombstone。"
 	)
 
 	var warehouse := WAREHOUSE_SCENE.instantiate() as OakWarehouse

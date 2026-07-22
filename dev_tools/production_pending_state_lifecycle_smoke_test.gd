@@ -234,12 +234,29 @@ func _new_mp_game() -> TestMpGame:
 
 func _test_remove_then_state_is_rejected() -> void:
 	var mp_game := _new_mp_game()
-	mp_game.call("net_plant_removed", 101)
 	_send_state(mp_game, 101, 1, 1.0)
+	mp_game.call(
+		"_apply_warehouse_storage_snapshot",
+		101,
+		{"revision": 1}
+	)
+	mp_game.call("_apply_or_defer_remote_plant_health", 101, 80, 100, 1)
+	mp_game.call("net_plant_removed", 101)
+	_send_state(mp_game, 101, 2, 2.0)
+	mp_game.call(
+		"_apply_warehouse_storage_snapshot",
+		101,
+		{"revision": 2}
+	)
+	mp_game.call("_apply_or_defer_remote_plant_health", 101, 60, 100, 2)
 	_expect(
 		_is_pending_state_empty(mp_game)
+		and (mp_game.get("_pending_warehouse_snapshots") as Dictionary).is_empty()
+		and (
+			mp_game.get("_pending_remote_plant_health_updates") as Dictionary
+		).is_empty()
 		and (mp_game.get("_removed_remote_plant_ids") as Dictionary).has(101),
-		"remove→生产状态的乱序必须由 tombstone 拒绝，不能重新积累载荷。"
+		"显式 remove 必须清理生产/仓库/健康三类 pending，并由 tombstone 拒绝所有后到状态。"
 	)
 	mp_game.free()
 
@@ -390,9 +407,20 @@ func _test_bounded_fifo_removal_and_turnover() -> void:
 func _test_cross_channel_manifest_and_spawn_ordering() -> void:
 	var mp_game := _new_mp_game()
 	var net_id := 5001
-	var pending_state := _make_state(7)
-	pending_state["enabled"] = false
-	_send_state_dictionary(mp_game, net_id, pending_state, 20.0)
+	mp_game.call(
+		"net_plant_health_batch",
+		PackedInt32Array([net_id]),
+		PackedInt32Array([73]),
+		PackedInt32Array([100]),
+		PackedInt32Array([9]),
+		PackedInt32Array([0]),
+		PackedInt32Array([0]),
+		PackedVector2Array([Vector2.ZERO]),
+		PackedByteArray([EnemyConfig.DamageType.PHYSICAL]),
+		PackedVector2Array([Vector2.ZERO])
+	)
+	var pending_state := _make_state(6)
+	_send_state_dictionary(mp_game, net_id, pending_state, 15.0)
 	mp_game.call(
 		"net_runtime_world_manifest",
 		PackedInt32Array(),
@@ -401,8 +429,26 @@ func _test_cross_channel_manifest_and_spawn_ordering() -> void:
 	)
 	_expect(
 		(mp_game.get("_pending_remote_production_states") as Dictionary).has(net_id)
+		and (mp_game.get("_pending_remote_plant_health_updates") as Dictionary).has(
+			net_id
+		)
 		and not (mp_game.get("_removed_remote_plant_ids") as Dictionary).has(net_id),
-		"CH5 manifest 缺席不能删除 CH6 先到的未来状态，也不能伪造 tombstone。"
+		"CH5 manifest 缺席不能删除 CH6/CH7 先到的未来状态，也不能伪造 tombstone。"
+	)
+	var newer_pending_state := _make_state(7)
+	newer_pending_state["enabled"] = false
+	_send_state_dictionary(mp_game, net_id, newer_pending_state, 20.0)
+	var stored_after_manifest := (
+		mp_game.get("_pending_remote_production_states") as Dictionary
+	).get(net_id, {}) as Dictionary
+	_expect(
+		int(
+			(stored_after_manifest.get("state", {}) as Dictionary).get(
+				"revision",
+				-1
+			)
+		) == 7,
+		"旧 manifest 之后到达的 CH6 更新不得被 health 路径误写的全局 tombstone 拒绝。"
 	)
 
 	var config := PlantDefenseRegistry.get_config(&"wood_processing_station")
@@ -447,6 +493,12 @@ func _test_cross_channel_manifest_and_spawn_ordering() -> void:
 		)
 		and _is_pending_state_empty(mp_game),
 		"state→旧 manifest→spawn 的合法跨通道时序必须保留较新 pending，旧同 revision spawn 不得覆盖。"
+	)
+	_expect(
+		not (mp_game.get("_pending_remote_plant_health_updates") as Dictionary).has(
+			net_id
+		),
+		"spawn 必须消费 manifest 之前保留的 CH7 健康债务。"
 	)
 
 	var older_live_state := _make_state(7)
