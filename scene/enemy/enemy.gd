@@ -1337,6 +1337,8 @@ func apply_multiplayer_visual_status_mask(status_mask: int) -> void:
 	if not is_multiplayer_proxy:
 		return
 	var safe_mask := status_mask & 0x0f
+	if safe_mask == network_visual_status_mask:
+		return
 	var added_mask := safe_mask & ~network_visual_status_mask
 	network_visual_status_mask = safe_mask
 	_set_visual_shader_parameter(
@@ -1377,10 +1379,16 @@ func _set_visual_shader_parameter(parameter_name: StringName, value: Variant) ->
 	var strength := clampf(float(value), 0.0, 1.0)
 	match parameter_name:
 		SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER:
+			if is_equal_approx(slow_overlay_strength, strength):
+				return
 			slow_overlay_strength = strength
 		BURN_OVERLAY_STRENGTH_SHADER_PARAMETER:
+			if is_equal_approx(burn_overlay_strength, strength):
+				return
 			burn_overlay_strength = strength
 		BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER:
+			if is_equal_approx(bleed_overlay_strength, strength):
+				return
 			bleed_overlay_strength = strength
 		_:
 			if animated_sprite.material == null:

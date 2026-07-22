@@ -6,8 +6,11 @@ const SPEED_PICKUP := preload("res://resources/config/pickups/pickup_speed.tres"
 const TENPURA_PICKUP := preload("res://resources/config/pickups/pickup_tenpura.tres")
 const MOTION_STATUS_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
 const SLOW_OVERLAY_PARAMETER := &"slow_overlay_strength"
+const BURN_OVERLAY_PARAMETER := &"burn_overlay_strength"
+const BLEED_OVERLAY_PARAMETER := &"bleed_overlay_strength"
 const BLINK_PARAMETER := &"blink_enabled"
 const SPEED_TRAIL_SCENE := preload("res://scene/move_speed_trail_effect.tscn")
+const NETWORK_STATUS_BENCHMARK_ITERATIONS := 120000
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -221,6 +224,7 @@ func _test_enemy_movement_status_visuals() -> void:
 		int(initial_pool_metrics.get("created", -1)) == 0,
 		"The enemy speed-trail pool must stay cold until an enemy is actually hasted."
 	)
+	_benchmark_unchanged_network_status_mask(second_enemy, second_sprite)
 
 	enemy.velocity = Vector2.LEFT * 60.0
 	enemy.add_move_speed_modifier(101, 0.5)
@@ -349,6 +353,79 @@ func _test_enemy_movement_status_visuals() -> void:
 	second_enemy.queue_free()
 	player.queue_free()
 	await process_frame
+
+
+func _benchmark_unchanged_network_status_mask(
+	enemy: Enemy,
+	sprite: AnimatedSprite2D
+) -> void:
+	enemy.configure_multiplayer_proxy()
+	enemy.apply_multiplayer_visual_status_mask(0b0001)
+	_expect(
+		_get_instance_shader_float(sprite, BURN_OVERLAY_PARAMETER) > 0.0,
+		"The network-status benchmark must start with an active burn overlay."
+	)
+
+	var cached_started_usec := Time.get_ticks_usec()
+	for _iteration in range(NETWORK_STATUS_BENCHMARK_ITERATIONS):
+		enemy.apply_multiplayer_visual_status_mask(0b0001)
+	var cached_elapsed_usec := Time.get_ticks_usec() - cached_started_usec
+
+	# Reproduce the retired stable-active path: decode the mask, dispatch the
+	# three parameter setters, clamp each value and submit three renderer writes.
+	var direct_write_started_usec := Time.get_ticks_usec()
+	for _iteration in range(NETWORK_STATUS_BENCHMARK_ITERATIONS):
+		_apply_legacy_network_visual_status_mask(sprite, 0b0001)
+	var direct_write_elapsed_usec := Time.get_ticks_usec() - direct_write_started_usec
+	_expect(
+		cached_elapsed_usec < direct_write_elapsed_usec,
+		"Unchanged network status masks must beat repeated instance-shader writes."
+	)
+	print(
+		"ENEMY_STATUS_MASK_CACHE_AB updates=%d cached_ms=%.3f direct_writes_ms=%.3f speedup=%.2fx"
+		% [
+			NETWORK_STATUS_BENCHMARK_ITERATIONS,
+			float(cached_elapsed_usec) / 1000.0,
+			float(direct_write_elapsed_usec) / 1000.0,
+			float(direct_write_elapsed_usec) / maxf(float(cached_elapsed_usec), 1.0),
+		]
+	)
+	enemy.apply_multiplayer_visual_status_mask(0)
+	_expect(
+		sprite.material == null,
+		"Clearing the benchmark mask must restore the unmaterialed batching path."
+	)
+
+
+func _apply_legacy_network_visual_status_mask(
+	sprite: AnimatedSprite2D,
+	status_mask: int
+) -> void:
+	var safe_mask := status_mask & 0x0f
+	_set_legacy_visual_shader_parameter(
+		sprite,
+		SLOW_OVERLAY_PARAMETER,
+		0.6 if (safe_mask & 4) != 0 else 0.0
+	)
+	_set_legacy_visual_shader_parameter(
+		sprite,
+		BURN_OVERLAY_PARAMETER,
+		0.72 if (safe_mask & 1) != 0 else 0.0
+	)
+	_set_legacy_visual_shader_parameter(
+		sprite,
+		BLEED_OVERLAY_PARAMETER,
+		0.7 if (safe_mask & 2) != 0 else 0.0
+	)
+
+
+func _set_legacy_visual_shader_parameter(
+	sprite: AnimatedSprite2D,
+	parameter_name: StringName,
+	value: float
+) -> void:
+	var strength := clampf(value, 0.0, 1.0)
+	sprite.set_instance_shader_parameter(parameter_name, strength)
 
 
 func _test_active_enemy_speed_trail_teardown() -> void:
