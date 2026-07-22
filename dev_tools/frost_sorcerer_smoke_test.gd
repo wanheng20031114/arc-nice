@@ -45,6 +45,7 @@ func _run() -> void:
 	_test_resource_animation_and_node_contracts()
 	await _test_one_projectile_attack_generation()
 	await _test_straight_one_hundred_pixels_per_second()
+	await _test_compensated_shape_sweep_graze()
 	await _test_native_area_contact_on_ordinary_steps()
 	await _test_player_magic_damage_cold_and_first_contact()
 	await _test_building_magic_damage_without_cold()
@@ -203,7 +204,7 @@ func _test_resource_animation_and_node_contracts() -> void:
 	)
 	_expect(
 		not projectile_source.is_empty()
-		and projectile_source.contains("intersect_ray")
+		and projectile_source.contains("motion_sweep.cast")
 		and not projectile_source.contains("homing_turn_rate")
 		and not projectile_source.contains("_update_homing")
 		and not projectile_source.contains("initial_target")
@@ -312,6 +313,40 @@ func _test_straight_one_hundred_pixels_per_second() -> void:
 		"Network catch-up motion must retain an explicit sweep even for one short compensation step."
 	)
 	spike.queue_free()
+	await process_frame
+
+
+func _test_compensated_shape_sweep_graze() -> void:
+	var start := Vector2(7000.0, 7000.0)
+	var graze_body := _spawn_static_body(
+		start + Vector2(20.0, 3.5),
+		Vector2(2.0, 2.0),
+		1
+	)
+	var spike := ICE_SPIKE_SCENE.instantiate() as FrostSorcererIceSpike
+	fixture.add_child(spike)
+	spike.global_position = start
+	spike.setup(Vector2.RIGHT, 20, 100.0, 7.0)
+	spike.set_physics_process(false)
+	await physics_frame
+	var center_ray := PhysicsRayQueryParameters2D.create(
+		start,
+		start + Vector2(25.0, 0.0),
+		1
+	)
+	var ray_missed := fixture.get_world_2d().direct_space_state.intersect_ray(
+		center_ray
+	).is_empty()
+	spike.simulate_compensated_motion(0.25)
+	_expect(
+		ray_missed
+		and spike.has_hit
+		and spike.global_position.x < start.x + 25.0
+		and spike.motion_sweep_query_count > 0,
+		"The authored offset capsule sweep must catch a graze that the retired center ray misses."
+	)
+	spike.queue_free()
+	graze_body.queue_free()
 	await process_frame
 
 
@@ -513,6 +548,24 @@ func _spawn_spike(position: Vector2) -> FrostSorcererIceSpike:
 	)
 	spike.set_physics_process(false)
 	return spike
+
+
+func _spawn_static_body(
+	position: Vector2,
+	shape_size: Vector2,
+	collision_layer: int
+) -> StaticBody2D:
+	var body := StaticBody2D.new()
+	body.collision_layer = collision_layer
+	body.collision_mask = 0
+	var collision_shape := CollisionShape2D.new()
+	var rectangle := RectangleShape2D.new()
+	rectangle.size = shape_size
+	collision_shape.shape = rectangle
+	body.add_child(collision_shape)
+	fixture.add_child(body)
+	body.global_position = position
+	return body
 
 
 func _collect_fixture_spikes() -> Array[FrostSorcererIceSpike]:

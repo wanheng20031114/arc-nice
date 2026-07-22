@@ -14,6 +14,9 @@ const EXPIRE_VISUAL_DURATION := 4.0 / 12.0
 const COMPENSATION_STEP := 1.0 / 60.0
 const TARGET_REFRESH_INTERVAL := 0.35
 const TARGET_QUERY_METHOD := &"find_nearest_enemy_attack_target"
+const PROJECTILE_SHAPE_SWEEP_2D_SCRIPT := preload(
+	"res://scene/projectile_shape_sweep_2d.gd"
+)
 static var performance_metrics_enabled := false
 static var _performance_metrics := {
 	"physics_calls": 0,
@@ -22,7 +25,6 @@ static var _performance_metrics := {
 	"homing_updates": 0,
 	"compensation_sweep_calls": 0,
 }
-static var _compensation_ray_query: PhysicsRayQueryParameters2D = null
 
 @export var speed: float = 100.0
 @export var max_lifetime: float = 7.0
@@ -58,6 +60,8 @@ static var _compensation_ray_query: PhysicsRayQueryParameters2D = null
 	$FireballB/CollisionShape2D,
 	$FireballC/CollisionShape2D,
 ]
+
+var motion_sweep := PROJECTILE_SHAPE_SWEEP_2D_SCRIPT.new()
 
 var direction := Vector2.RIGHT
 var damage: int = 1
@@ -106,19 +110,6 @@ static func get_performance_metrics(reset_after_read := false) -> Dictionary:
 	return snapshot
 
 
-static func _get_compensation_ray_query() -> PhysicsRayQueryParameters2D:
-	if _compensation_ray_query == null:
-		_compensation_ray_query = PhysicsRayQueryParameters2D.create(
-			Vector2.ZERO,
-			Vector2.ZERO,
-			AUTHORED_COLLISION_MASK
-		)
-		_compensation_ray_query.collide_with_bodies = true
-		_compensation_ray_query.collide_with_areas = false
-		_compensation_ray_query.hit_from_inside = true
-	return _compensation_ray_query
-
-
 func _ready() -> void:
 	source_type = _get_default_projectile_source_type()
 	_authored_speed = speed
@@ -126,6 +117,10 @@ func _ready() -> void:
 	_authored_homing_turn_rate = homing_turn_rate
 	_authored_burn_duration = burn_duration
 	_authored_burn_level = burn_level
+	motion_sweep.configure(
+		ball_collision_shapes[0].shape,
+		AUTHORED_COLLISION_MASK
+	)
 	authored_ball_positions.resize(BALL_COUNT)
 	for ball_index in range(BALL_COUNT):
 		authored_ball_positions[ball_index] = ball_areas[ball_index].position
@@ -323,8 +318,6 @@ func _advance_compensated_ball_positions(delta: float) -> void:
 	if not is_inside_tree():
 		_advance_ball_positions(delta)
 		return
-	var direct_space_state := get_world_2d().direct_space_state
-	var query := FireSorcererFireballVolley._get_compensation_ray_query()
 	var target_is_alive := _is_target_alive()
 	for ball_index in range(BALL_COUNT):
 		if not _is_ball_active(ball_index):
@@ -336,9 +329,8 @@ func _advance_compensated_ball_positions(delta: float) -> void:
 		)
 		var ball := ball_areas[ball_index]
 		var start_position := ball.global_position
-		var end_position := start_position + ball_direction * speed * delta
-		query.from = start_position
-		query.to = end_position
+		var motion_delta := ball_direction * speed * delta
+		var end_position := start_position + motion_delta
 		if FireSorcererFireballVolley.performance_metrics_enabled:
 			FireSorcererFireballVolley._performance_metrics[
 				"compensation_sweep_calls"
@@ -349,14 +341,19 @@ func _advance_compensated_ball_positions(delta: float) -> void:
 					]
 				) + 1
 			)
-		var hit_result := direct_space_state.intersect_ray(query)
+		var hit_result := motion_sweep.cast(
+			get_world_2d().direct_space_state,
+			ball_collision_shapes[ball_index].global_transform,
+			motion_delta
+		)
 		if hit_result.is_empty():
 			ball.global_position = end_position
 			ball.global_rotation = ball_direction.angle()
 			continue
-		ball.global_position = hit_result.get("position", start_position)
-		ball.global_rotation = ball_direction.angle()
+		var unsafe_fraction := float(hit_result["fraction"])
 		var collider := hit_result.get("collider") as Node2D
+		ball.global_position = start_position + motion_delta * unsafe_fraction
+		ball.global_rotation = ball_direction.angle()
 		if collider != null and is_instance_valid(collider):
 			_on_ball_body_entered(collider, ball_index)
 		else:
@@ -525,6 +522,7 @@ func _activate_balls() -> void:
 	active_ball_mask = ALL_BALLS_ACTIVE_MASK
 	visible_effect_mask = 0
 	remaining_lifetime = maxf(max_lifetime, 0.01)
+	motion_sweep.reset_runtime_state()
 	for ball_index in range(BALL_COUNT):
 		ball_directions[ball_index] = direction
 		ball_effect_times[ball_index] = 0.0

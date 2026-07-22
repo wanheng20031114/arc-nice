@@ -580,8 +580,8 @@ func _verify_extended_projectile_reuse() -> void:
 	for projectile_scene in scenes:
 		var retained_explosion_query: PhysicsShapeQueryParameters2D = null
 		var retained_explosion_targets: Dictionary = {}
-		var retained_motion_query: PhysicsRayQueryParameters2D = null
-		var retained_motion_exclude: Array = []
+		var retained_motion_sweep: RefCounted = null
+		var retained_motion_query: PhysicsShapeQueryParameters2D = null
 		var projectile := pool.acquire(projectile_scene)
 		_expect(projectile != null, "%s must be acquirable from the elastic pool." % projectile_scene.resource_path)
 		if projectile == null:
@@ -615,6 +615,9 @@ func _verify_extended_projectile_reuse() -> void:
 			FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE,
 		]:
 			var dirty_volley := projectile as FireSorcererFireballVolley
+			retained_motion_sweep = dirty_volley.motion_sweep
+			retained_motion_query = dirty_volley.motion_sweep.query
+			retained_motion_query.motion = Vector2(90.0, 90.0)
 			dirty_volley.speed = 13.0
 			dirty_volley.burn_duration = 0.25
 			dirty_volley.burn_level = 99
@@ -638,8 +641,9 @@ func _verify_extended_projectile_reuse() -> void:
 				dirty_volley.ball_sprites[ball_index].hide()
 		if projectile_scene == FROST_SORCERER_ICE_SPIKE_SCENE:
 			var dirty_spike := projectile as FrostSorcererIceSpike
-			retained_motion_query = dirty_spike.motion_collision_query
-			retained_motion_exclude = dirty_spike.motion_collision_exclude
+			retained_motion_sweep = dirty_spike.motion_sweep
+			retained_motion_query = dirty_spike.motion_sweep.query
+			retained_motion_query.motion = Vector2(91.0, 17.0)
 			dirty_spike.setup(Vector2.UP, 17, 225.0, 0.75)
 			dirty_spike.setup_multiplayer(
 				702,
@@ -758,6 +762,15 @@ func _verify_extended_projectile_reuse() -> void:
 					+ "visual and target-query state."
 				) % projectile_scene.resource_path
 			)
+			_expect(
+				is_same(retained_motion_sweep, reused_volley.motion_sweep)
+				and is_same(
+					retained_motion_query,
+					reused_volley.motion_sweep.query
+				)
+				and retained_motion_query.motion == Vector2.ZERO,
+				"Reused Fire Sorcerer volleys must retain one clean shape query."
+			)
 			var unique_ball_positions := {}
 			for ball_index in range(
 				FireSorcererFireballVolley.BALL_COUNT
@@ -774,6 +787,7 @@ func _verify_extended_projectile_reuse() -> void:
 					and ball.monitoring
 					and ball.monitorable
 					and not shape.disabled
+					and retained_motion_query.shape == shape.shape
 					and sprite.visible
 					and sprite.animation == &"fly"
 					and reused_volley.ball_directions[ball_index]
@@ -809,14 +823,18 @@ func _verify_extended_projectile_reuse() -> void:
 				)
 			)
 			_expect(
-				is_same(retained_motion_query, reused_spike.motion_collision_query)
-				and is_same(
-					retained_motion_exclude,
-					reused_spike.motion_collision_exclude
+				is_same(
+					retained_motion_sweep,
+					reused_spike.motion_sweep
 				)
-				and retained_motion_exclude.size() == 1
-				and retained_motion_exclude[0] == reused_spike.get_rid(),
-				"Reused ice spikes must retain one self-excluding motion ray query."
+				and is_same(
+					retained_motion_query,
+					reused_spike.motion_sweep.query
+				)
+				and retained_motion_query.motion == Vector2.ZERO
+				and retained_motion_query.shape
+					== reused_spike.collision_shape.shape,
+				"Reused ice spikes must retain one clean authored motion shape query."
 			)
 			_expect(
 				reused_spike.collision_layer

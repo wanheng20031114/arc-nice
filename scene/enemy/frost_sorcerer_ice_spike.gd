@@ -15,12 +15,17 @@ const COMPENSATION_STEP := 1.0 / 60.0
 # continuous. Sweep only unusually large steps and network catch-up motion.
 const MAX_UNSWEPT_DISTANCE := 4.0
 const MAX_UNSWEPT_DISTANCE_SQUARED := MAX_UNSWEPT_DISTANCE * MAX_UNSWEPT_DISTANCE
+const PROJECTILE_SHAPE_SWEEP_2D_SCRIPT := preload(
+	"res://scene/projectile_shape_sweep_2d.gd"
+)
 
 @export var speed: float = 100.0
 @export var max_lifetime: float = 7.0
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
+
+var motion_sweep := PROJECTILE_SHAPE_SWEEP_2D_SCRIPT.new()
 
 var direction := Vector2.RIGHT
 var damage: int = 1
@@ -38,12 +43,6 @@ var _authored_max_lifetime := 7.0
 var _authored_collision_layer := AUTHORED_COLLISION_LAYER
 var _authored_collision_mask := AUTHORED_COLLISION_MASK
 var _pending_setup := false
-var motion_collision_exclude: Array[RID] = []
-var motion_collision_query := PhysicsRayQueryParameters2D.create(
-	Vector2.ZERO,
-	Vector2.ZERO,
-	AUTHORED_COLLISION_MASK
-)
 
 
 func _ready() -> void:
@@ -51,12 +50,7 @@ func _ready() -> void:
 	_authored_max_lifetime = max_lifetime
 	_authored_collision_layer = collision_layer
 	_authored_collision_mask = collision_mask
-	motion_collision_exclude.clear()
-	motion_collision_exclude.append(get_rid())
-	motion_collision_query.exclude = motion_collision_exclude
-	motion_collision_query.collide_with_bodies = true
-	motion_collision_query.collide_with_areas = false
-	motion_collision_query.hit_from_inside = true
+	motion_sweep.configure(collision_shape.shape, AUTHORED_COLLISION_MASK)
 	body_entered.connect(_on_body_entered)
 	pool_active = not has_meta(SessionObjectPool.POOL_OWNER_META)
 	if _pending_setup or pool_active:
@@ -184,11 +178,18 @@ func _advance_motion(delta: float, force_sweep: bool = false) -> void:
 
 func _get_motion_hit(from_position: Vector2, to_position: Vector2) -> Dictionary:
 	motion_sweep_query_count += 1
-	motion_collision_query.from = from_position
-	motion_collision_query.to = to_position
-	return get_world_2d().direct_space_state.intersect_ray(
-		motion_collision_query
+	var motion_delta := to_position - from_position
+	var result := motion_sweep.cast(
+		get_world_2d().direct_space_state,
+		collision_shape.global_transform,
+		motion_delta
 	)
+	if result.is_empty():
+		return {}
+	return {
+		"collider": result.get("collider"),
+		"position": from_position + motion_delta * float(result["fraction"]),
+	}
 
 
 func _on_body_entered(body: Node2D) -> void:
@@ -326,6 +327,7 @@ func _activate_projectile() -> void:
 	if not is_node_ready():
 		return
 	pool_active = true
+	motion_sweep.reset_runtime_state()
 	has_hit = false
 	effect_time_left = 0.0
 	remaining_lifetime = maxf(max_lifetime, 0.01)

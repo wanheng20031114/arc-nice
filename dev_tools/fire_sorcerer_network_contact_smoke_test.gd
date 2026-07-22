@@ -709,16 +709,26 @@ func _test_volley_player_plant_and_world_first_contact() -> void:
 
 
 func _test_compensation_sweep_and_normal_path_cost() -> void:
-	var retained_query_before := (
-		FireSorcererFireballVolley._get_compensation_ray_query()
-	)
 	FireSorcererFireballVolley.set_performance_metrics_enabled(true)
 	var normal_volley := _spawn_volley(Vector2(0.0, 400.0), 0)
+	var retained_query := normal_volley.motion_sweep.query
+	var every_ball_uses_the_authored_shape := true
+	for ball_index in range(FireSorcererFireballVolley.BALL_COUNT):
+		every_ball_uses_the_authored_shape = (
+			every_ball_uses_the_authored_shape
+			and retained_query.shape
+				== normal_volley.ball_collision_shapes[ball_index].shape
+			and retained_query.collision_mask
+				== FireSorcererFireballVolley.AUTHORED_COLLISION_MASK
+		)
 	normal_volley.call("_advance_ball_positions", 0.25)
 	var normal_metrics := FireSorcererFireballVolley.get_performance_metrics()
 	_expect(
-		int(normal_metrics.get("compensation_sweep_calls", -1)) == 0,
-		"Normal fireball movement must not issue compensation collision queries."
+		every_ball_uses_the_authored_shape
+		and retained_query.collide_with_bodies
+		and not retained_query.collide_with_areas
+		and int(normal_metrics.get("compensation_sweep_calls", -1)) == 0,
+		"Normal movement must retain one authored shape query without issuing it."
 	)
 
 	var wall := _spawn_static_body(
@@ -742,10 +752,13 @@ func _test_compensation_sweep_and_normal_path_cost() -> void:
 		wall_volley.active_ball_mask == 0
 		and all_balls_stopped_before_wall
 		and int(wall_metrics.get("compensation_sweep_calls", 0)) > 0,
-		"Compensation rays must stop every fireball at the first wall instead of tunneling through it."
+		"Compensation shape sweeps must stop every fireball at the first wall instead of tunneling through it."
 	)
 
-	var target_plant := _spawn_plant(Vector2(32.0, 200.0), true)
+	# Fire A starts overlapped, so this guards the explicit preflight required
+	# because PhysicsDirectSpaceState2D.cast_motion ignores initial overlaps.
+	# Fire B remains outside the authored 3.5 px radius.
+	var target_plant := _spawn_plant(Vector2(32.0, 202.0), true)
 	var target_volley := _spawn_volley(Vector2(0.0, 200.0), 0)
 	await physics_frame
 	await process_frame
@@ -755,16 +768,48 @@ func _test_compensation_sweep_and_normal_path_cost() -> void:
 		and not bool(target_volley.call("_is_ball_active", 0))
 		and bool(target_volley.call("_is_ball_active", 1))
 		and bool(target_volley.call("_is_ball_active", 2)),
-		"Compensation rays must catch a damageable target while leaving non-intersecting sibling balls live."
+		"Compensation shape sweeps must catch a target while leaving non-intersecting sibling balls live."
 	)
-	var retained_query_after := (
-		FireSorcererFireballVolley._get_compensation_ray_query()
-	)
+
+	var swept_plant := _spawn_plant(Vector2(42.0, 602.0), true)
+	var swept_volley := _spawn_volley(Vector2(0.0, 600.0), 0)
+	await physics_frame
+	swept_volley.simulate_compensated_motion(0.25)
 	_expect(
-		is_same(retained_query_before, retained_query_after),
-		"Every compensated volley must reuse one retained ray query object."
+		swept_plant.current_health == TEST_HEALTH - FIREBALL_DAMAGE
+		and not bool(swept_volley.call("_is_ball_active", 0))
+		and bool(swept_volley.call("_is_ball_active", 1))
+		and bool(swept_volley.call("_is_ball_active", 2)),
+		"A moving shape sweep must resolve the damageable collider at its unsafe fraction."
+	)
+
+	var graze_start := Vector2(0.0, 800.0)
+	var graze_wall := _spawn_static_body(
+		Vector2(40.0, 804.5),
+		Vector2(2.0, 2.0),
+		1
+	)
+	var graze_volley := _spawn_volley(graze_start, 0)
+	await physics_frame
+	var ball_a_start := graze_volley.ball_areas[0].global_position
+	var center_ray := PhysicsRayQueryParameters2D.create(
+		ball_a_start,
+		ball_a_start + Vector2(25.0, 0.0),
+		1
+	)
+	var center_ray_missed := test_scene.get_world_2d().direct_space_state.intersect_ray(
+		center_ray
+	).is_empty()
+	graze_volley.simulate_compensated_motion(0.25)
+	_expect(
+		center_ray_missed
+		and not bool(graze_volley.call("_is_ball_active", 0))
+		and bool(graze_volley.call("_is_ball_active", 1))
+		and bool(graze_volley.call("_is_ball_active", 2)),
+		"The authored offset circle sweep must catch a graze that the retired center ray misses."
 	)
 	wall.collision_layer = 0
+	graze_wall.collision_layer = 0
 
 
 func _remember_contact_record(projectile_id: int) -> void:
