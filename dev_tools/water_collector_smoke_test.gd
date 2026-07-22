@@ -195,12 +195,12 @@ func _test_config_and_assets(collector: WaterCollector) -> void:
 		and progress_ring.texture_progress != null
 		and progress_ring.texture_progress.get_size() == Vector2(12, 12)
 		and progress_ring.size == Vector2(16, 16)
-		and progress_ring.position == Vector2(-8, 12)
+		and progress_ring.position == Vector2(-8, 14)
 		and progress_ring.position.y > 8.0
 		and progress_ring.tint_under.a >= 0.9
 		and progress_ring.tint_progress.b >= 0.99
-		and progress_ring.tint_progress.g >= 0.9,
-		"采集器底座必须预置16×16顺时针高对比度青色收集进度环。"
+		and progress_ring.tint_progress.g >= 0.6,
+		"采集器底座必须预置16×16顺时针高对比度蓝青收集进度环。"
 	)
 
 
