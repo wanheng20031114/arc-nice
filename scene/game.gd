@@ -444,11 +444,16 @@ func show_debug_collectible_grant_result(config_path: String, success: bool) -> 
 
 func show_simple_crafting_result(
 	recipe_id: StringName,
-	result: StringName
+	result: StringName,
+	request_token: int
 ) -> void:
 	if player_profile_panel == null:
 		return
-	player_profile_panel.show_simple_crafting_result(recipe_id, result)
+	player_profile_panel.show_simple_crafting_result(
+		recipe_id,
+		result,
+		request_token
+	)
 
 
 func apply_remote_merchant_active(active: bool) -> void:

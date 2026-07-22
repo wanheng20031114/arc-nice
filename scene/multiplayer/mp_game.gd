@@ -344,6 +344,10 @@ var _terrain_snapshot_request_rate_buckets: Dictionary = {}
 var _warehouse_transaction_results_by_peer: Dictionary = {}
 var _warehouse_transaction_started_usec: Dictionary = {}
 var _local_simple_crafting_request_id: int = 0
+# Panel tokens remain local. These two indexes associate them with wire request
+# ids in O(1) without changing the RPC schema, and support O(1) timeout cleanup.
+var _local_simple_crafting_ui_tokens_by_request_id: Dictionary = {}
+var _local_simple_crafting_request_ids_by_ui_token: Dictionary = {}
 var _last_simple_crafting_request_ids: Dictionary = {}
 var _last_simple_crafting_result_ids: Dictionary = {}
 var _simple_crafting_rate_buckets: Dictionary = {}
@@ -491,6 +495,7 @@ func _exit_tree() -> void:
 	_luoxi_offer_revision_counters.clear()
 	_warehouse_transaction_started_usec.clear()
 	_local_simple_crafting_request_id = 0
+	_clear_local_simple_crafting_request_tracking()
 	_last_simple_crafting_request_ids.clear()
 	_last_simple_crafting_result_ids.clear()
 	_simple_crafting_rate_buckets.clear()
@@ -628,14 +633,22 @@ func request_multiplayer_inventory_item_discard(slot_index: int) -> void:
 		)
 
 
-func request_multiplayer_simple_crafting(recipe_id: StringName) -> void:
+func request_multiplayer_simple_crafting(
+	recipe_id: StringName,
+	ui_request_token: int
+) -> void:
 	var peer_id := _get_local_peer_id()
-	if peer_id <= 0 or game == null:
+	if peer_id <= 0 or game == null or ui_request_token <= 0:
 		if game != null:
-			game.show_simple_crafting_result(recipe_id, &"invalid_player")
+			game.show_simple_crafting_result(
+				recipe_id,
+				&"invalid_player",
+				ui_request_token
+			)
 		return
 	_local_simple_crafting_request_id += 1
 	var request_id := _local_simple_crafting_request_id
+	_track_local_simple_crafting_request(request_id, ui_request_token)
 	var expected_revision := run_state.get_inventory_revision_for_peer(peer_id)
 	if net_manager.is_host():
 		_apply_authoritative_simple_crafting_request(
@@ -652,7 +665,80 @@ func request_multiplayer_simple_crafting(recipe_id: StringName) -> void:
 			expected_revision
 		)
 	else:
-		game.show_simple_crafting_result(recipe_id, &"invalid_player")
+		_take_local_simple_crafting_request_token(request_id)
+		game.show_simple_crafting_result(
+			recipe_id,
+			&"invalid_player",
+			ui_request_token
+		)
+
+
+func cancel_multiplayer_simple_crafting_request(ui_request_token: int) -> void:
+	# The Host transaction may already be running. Only release local UI tracking;
+	# a late authoritative snapshot must still be applied by the result RPC.
+	if ui_request_token <= 0:
+		return
+	var request_id := int(
+		_local_simple_crafting_request_ids_by_ui_token.get(
+			ui_request_token,
+			0
+		)
+	)
+	if request_id <= 0:
+		return
+	_local_simple_crafting_request_ids_by_ui_token.erase(ui_request_token)
+	_local_simple_crafting_ui_tokens_by_request_id.erase(request_id)
+
+
+func _track_local_simple_crafting_request(
+	request_id: int,
+	ui_request_token: int
+) -> void:
+	if request_id <= 0 or ui_request_token <= 0:
+		return
+	var previous_request_id := int(
+		_local_simple_crafting_request_ids_by_ui_token.get(
+			ui_request_token,
+			0
+		)
+	)
+	if previous_request_id > 0:
+		_local_simple_crafting_ui_tokens_by_request_id.erase(
+			previous_request_id
+		)
+	_local_simple_crafting_ui_tokens_by_request_id[request_id] = (
+		ui_request_token
+	)
+	_local_simple_crafting_request_ids_by_ui_token[ui_request_token] = (
+		request_id
+	)
+
+
+func _take_local_simple_crafting_request_token(request_id: int) -> int:
+	if request_id <= 0:
+		return 0
+	var ui_request_token := int(
+		_local_simple_crafting_ui_tokens_by_request_id.get(request_id, 0)
+	)
+	_local_simple_crafting_ui_tokens_by_request_id.erase(request_id)
+	if (
+		ui_request_token > 0
+		and int(
+			_local_simple_crafting_request_ids_by_ui_token.get(
+				ui_request_token,
+				0
+			)
+		) == request_id
+	):
+		_local_simple_crafting_request_ids_by_ui_token.erase(
+			ui_request_token
+		)
+	return ui_request_token
+
+
+func _clear_local_simple_crafting_request_tracking() -> void:
+	_local_simple_crafting_ui_tokens_by_request_id.clear()
+	_local_simple_crafting_request_ids_by_ui_token.clear()
 
 
 func begin_inventory_building_placement(
@@ -10281,6 +10367,9 @@ func net_simple_crafting_result(
 		)
 	if peer_id != _get_local_peer_id():
 		return
+	var ui_request_token := _take_local_simple_crafting_request_token(
+		request_id
+	)
 	var result_code := StringName(result)
 	match result_code:
 		RunStateStore.CRAFT_RESULT_SUCCESS:
@@ -10301,7 +10390,11 @@ func net_simple_crafting_result(
 			pass
 		_:
 			result_code = RunStateStore.CRAFT_RESULT_INVALID_RECIPE
-	game.show_simple_crafting_result(StringName(recipe_id), result_code)
+	game.show_simple_crafting_result(
+		StringName(recipe_id),
+		result_code,
+		ui_request_token
+	)
 
 
 func _apply_confirmed_upgrade_to_player(player_node: Player, stat_type: int) -> void:
@@ -11256,6 +11349,7 @@ func _return_to_lobby() -> void:
 	_luoxi_transaction_rate_buckets.clear()
 	_runtime_state_request_rate_buckets.clear()
 	_local_simple_crafting_request_id = 0
+	_clear_local_simple_crafting_request_tracking()
 	_last_simple_crafting_request_ids.clear()
 	_last_simple_crafting_result_ids.clear()
 	_simple_crafting_rate_buckets.clear()

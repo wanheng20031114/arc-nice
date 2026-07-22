@@ -1,7 +1,8 @@
 extends Control
 class_name SimpleCraftingPanel
 
-signal craft_requested(recipe_id: StringName)
+signal craft_requested(recipe_id: StringName, request_token: int)
+signal craft_request_cancelled(request_token: int)
 
 @onready var recipe_name: Label = $Background/CraftArea/Margin/Content/RecipeName
 @onready var recipe_summary: RichTextLabel = $Background/CraftArea/Margin/Content/RecipeSummary
@@ -17,6 +18,7 @@ signal craft_requested(recipe_id: StringName)
 ]
 @onready var craft_button: Button = $Background/CraftArea/Margin/Content/CraftButton
 @onready var status_label: Label = $Background/CraftArea/Margin/Content/Status
+@onready var request_timeout: Timer = $RequestTimeout
 @onready var recipe_buttons: Array[Button] = [
 	$Background/RecipeArea/Margin/Content/Recipe0,
 	$Background/RecipeArea/Margin/Content/Recipe1,
@@ -30,6 +32,8 @@ signal craft_requested(recipe_id: StringName)
 var recipes: Array[ProductionRecipe] = []
 var selected_recipe_id: StringName = &""
 var request_pending := false
+var _next_request_token := 0
+var _pending_request_token := 0
 
 
 func _ready() -> void:
@@ -38,11 +42,14 @@ func _ready() -> void:
 			_on_recipe_pressed.bind(button_index)
 		)
 	craft_button.pressed.connect(_on_craft_pressed)
+	request_timeout.timeout.connect(_on_request_timeout)
 	_reload_recipes()
 	refresh()
 
 
 func set_panel_active(active: bool) -> void:
+	if not active:
+		cancel_pending_request()
 	visible = active
 	if active:
 		refresh()
@@ -57,8 +64,19 @@ func refresh() -> void:
 	_refresh_crafting_state(recipe)
 
 
-func show_result(recipe_id: StringName, result: StringName) -> void:
-	request_pending = false
+func show_result(
+	recipe_id: StringName,
+	result: StringName,
+	request_token: int
+) -> void:
+	if request_token > 0:
+		if not request_pending or request_token != _pending_request_token:
+			return
+	elif request_pending:
+		# A result whose local mapping was already released may arrive with token 0.
+		# It is only displayable while idle and can never unlock a newer request.
+		return
+	_clear_pending_request()
 	if SimpleCraftingRegistry.get_recipe(recipe_id) != null:
 		selected_recipe_id = recipe_id
 	_refresh_recipe_buttons()
@@ -81,6 +99,15 @@ func show_result(recipe_id: StringName, result: StringName) -> void:
 			status_label.text = "配方无效，无法制造"
 	_refresh_recipe_detail(get_selected_recipe())
 	_refresh_button_enabled_state(get_selected_recipe())
+
+
+func cancel_pending_request() -> void:
+	var request_token := _clear_pending_request()
+	if request_token <= 0:
+		return
+	craft_request_cancelled.emit(request_token)
+	_refresh_recipe_buttons()
+	_refresh_crafting_state(get_selected_recipe())
 
 
 func get_selected_recipe() -> ProductionRecipe:
@@ -174,10 +201,13 @@ func _refresh_button_enabled_state(recipe: ProductionRecipe) -> void:
 
 
 func _on_recipe_pressed(button_index: int) -> void:
-	if button_index < 0 or button_index >= recipes.size():
+	if (
+		request_pending
+		or button_index < 0
+		or button_index >= recipes.size()
+	):
 		return
 	selected_recipe_id = recipes[button_index].recipe_id
-	request_pending = false
 	refresh()
 
 
@@ -191,8 +221,31 @@ func _on_craft_pressed() -> void:
 	):
 		_refresh_crafting_state(recipe)
 		return
+	_next_request_token += 1
+	_pending_request_token = _next_request_token
 	request_pending = true
+	request_timeout.start()
 	_refresh_recipe_buttons()
 	status_label.text = "正在制造…"
 	craft_button.disabled = true
-	craft_requested.emit(recipe.recipe_id)
+	craft_requested.emit(recipe.recipe_id, _pending_request_token)
+
+
+func _on_request_timeout() -> void:
+	var request_token := _clear_pending_request()
+	if request_token <= 0:
+		return
+	craft_request_cancelled.emit(request_token)
+	_refresh_recipe_buttons()
+	status_label.text = "主机未响应，请重试"
+	_refresh_button_enabled_state(get_selected_recipe())
+
+
+func _clear_pending_request() -> int:
+	if not request_pending:
+		return 0
+	var request_token := _pending_request_token
+	request_pending = false
+	_pending_request_token = 0
+	request_timeout.stop()
+	return request_token

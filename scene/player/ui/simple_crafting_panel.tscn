@@ -99,6 +99,11 @@ offset_bottom = 444.0
 mouse_filter = 1
 script = ExtResource("1_script")
 
+[node name="RequestTimeout" type="Timer" parent="."]
+wait_time = 3.0
+one_shot = true
+ignore_time_scale = true
+
 [node name="Background" type="Panel" parent="."]
 layout_mode = 1
 anchors_preset = 15

@@ -6,6 +6,7 @@ const PROFILE_PANEL_SCENE := preload(
 const SIMPLE_CRAFTING_PANEL_SCENE := preload(
 	"res://scene/player/ui/simple_crafting_panel.tscn"
 )
+const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
 const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
@@ -39,6 +40,29 @@ const APPLE := preload(
 
 var failures: Array[String] = []
 var inventory_change_count := 0
+var panel_request_tokens: Array[int] = []
+var panel_cancelled_tokens: Array[int] = []
+
+
+class MultiplayerCraftSceneStub:
+	extends Node2D
+
+	var requests: Array[Dictionary] = []
+	var cancelled_tokens: Array[int] = []
+
+	func request_multiplayer_simple_crafting(
+		recipe_id: StringName,
+		request_token: int
+	) -> void:
+		requests.append({
+			"recipe_id": recipe_id,
+			"request_token": request_token,
+		})
+
+	func cancel_multiplayer_simple_crafting_request(
+		request_token: int
+	) -> void:
+		cancelled_tokens.append(request_token)
 
 
 func _init() -> void:
@@ -57,6 +81,7 @@ func _run() -> void:
 	_test_full_inventory_is_atomic(run_state)
 	_test_consumed_inputs_can_free_output_space(run_state)
 	_test_peer_atomic_success(run_state)
+	_test_multiplayer_request_token_tracking()
 	await _test_health_potion_stack_and_use(run_state)
 	await _test_simple_crafting_ui(run_state)
 
@@ -565,6 +590,64 @@ func _test_health_potion_stack_and_use(run_state: RunStateStore) -> void:
 	await process_frame
 
 
+func _test_multiplayer_request_token_tracking() -> void:
+	var mp_game := MP_GAME_SCRIPT.new()
+	mp_game.call("_track_local_simple_crafting_request", 11, 101)
+	mp_game.call("_track_local_simple_crafting_request", 12, 102)
+	_expect(
+		int(mp_game.call(
+			"_take_local_simple_crafting_request_token",
+			11
+		)) == 101
+		and not (
+			mp_game.get(
+				"_local_simple_crafting_ui_tokens_by_request_id"
+			) as Dictionary
+		).has(11)
+		and not (
+			mp_game.get(
+				"_local_simple_crafting_request_ids_by_ui_token"
+			) as Dictionary
+		).has(101)
+		and (
+			mp_game.get(
+				"_local_simple_crafting_ui_tokens_by_request_id"
+			) as Dictionary
+		).get(12, 0) == 102,
+		"正常回包必须按网络request_id取回对应面板token，且只清理本次映射。"
+	)
+	mp_game.cancel_multiplayer_simple_crafting_request(102)
+	_expect(
+		(
+			mp_game.get(
+				"_local_simple_crafting_ui_tokens_by_request_id"
+			) as Dictionary
+		).is_empty()
+		and (
+			mp_game.get(
+				"_local_simple_crafting_request_ids_by_ui_token"
+			) as Dictionary
+		).is_empty(),
+		"超时或关闭必须通过反向token索引O(1)释放本地请求映射。"
+	)
+	mp_game.call("_track_local_simple_crafting_request", 13, 103)
+	mp_game.call("_clear_local_simple_crafting_request_tracking")
+	_expect(
+		(
+			mp_game.get(
+				"_local_simple_crafting_ui_tokens_by_request_id"
+			) as Dictionary
+		).is_empty()
+		and (
+			mp_game.get(
+				"_local_simple_crafting_request_ids_by_ui_token"
+			) as Dictionary
+		).is_empty(),
+		"多人场景退出时必须清空尚未收到结果的本地制造token。"
+	)
+	mp_game.free()
+
+
 func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 	run_state.begin_new_run(&"weishidaier")
 	_expect(
@@ -574,7 +657,7 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 	)
 	_fill_remaining_slots_with_apples(run_state)
 
-	var ui_root := Node2D.new()
+	var ui_root := MultiplayerCraftSceneStub.new()
 	ui_root.name = "SimpleCraftingSmokeTest"
 	root.add_child(ui_root)
 	current_scene = ui_root
@@ -601,6 +684,9 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 	var craft_button := crafting_panel.get_node(
 		"Background/CraftArea/Margin/Content/CraftButton"
 	) as Button
+	var request_timeout := crafting_panel.get_node(
+		"RequestTimeout"
+	) as Timer
 	var recipe_name := crafting_panel.get_node(
 		"Background/CraftArea/Margin/Content/RecipeName"
 	) as Label
@@ -664,9 +750,13 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 		"物品数量文字必须为×10/×999及阴影保留足够横向安全区。"
 	)
 	_expect(
-		not _tree_contains_class(crafting_panel, &"Timer")
+		request_timeout != null
+		and request_timeout.one_shot
+		and request_timeout.ignore_time_scale
+		and is_equal_approx(request_timeout.wait_time, 3.0)
+		and _count_tree_nodes_by_class(crafting_panel, &"Timer") == 1
 		and not _tree_contains_class(crafting_panel, &"ProgressBar"),
-		"简易制造必须瞬间完成，界面不得引入生产计时器或进度条。"
+		"简易制造必须只使用场景常驻的3秒单次RPC超时Timer，不得引入生产进度条。"
 	)
 	var panel_source := FileAccess.get_file_as_string(
 		"res://scene/player/ui/simple_crafting_panel.gd"
@@ -683,12 +773,101 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 	)
 	crafting_panel.show_result(
 		SimpleCraftingRegistry.HERBAL_HEALTH_POTION_ID,
-		RunStateStore.CRAFT_RESULT_INVENTORY_FULL
+		RunStateStore.CRAFT_RESULT_INVENTORY_FULL,
+		0
 	)
 	_expect(
 		status_label.text == "背包剩余空间不足",
 		"Host拒绝满包制造后，结果提示必须保持明确且可见。"
 	)
+
+	run_state.begin_new_run(&"weishidaier")
+	_expect(
+		run_state.try_add_item_count(SAPLING, 2)
+		and run_state.try_add_item_count(WATER_BOTTLE, 2),
+		"RPC生命周期测试必须准备可制造材料与空余背包槽。"
+	)
+	crafting_panel.refresh()
+	panel_request_tokens.clear()
+	panel_cancelled_tokens.clear()
+	crafting_panel.craft_requested.connect(_on_panel_craft_requested)
+	crafting_panel.craft_request_cancelled.connect(
+		_on_panel_craft_request_cancelled
+	)
+	request_timeout.wait_time = 0.03
+	crafting_panel.call("_on_craft_pressed")
+	var normal_request_token: int = int(
+		panel_request_tokens.back()
+		if not panel_request_tokens.is_empty()
+		else 0
+	)
+	_expect(
+		normal_request_token > 0
+		and crafting_panel.request_pending
+		and not request_timeout.is_stopped()
+		and craft_button.disabled,
+		"制造请求发出后必须记录唯一token、启动超时Timer并锁定制造按钮。"
+	)
+	crafting_panel.show_result(
+		SimpleCraftingRegistry.HERBAL_HEALTH_POTION_ID,
+		RunStateStore.CRAFT_RESULT_SUCCESS,
+		normal_request_token
+	)
+	_expect(
+		not crafting_panel.request_pending
+		and request_timeout.is_stopped()
+		and status_label.text == "制造完成，产物已放入背包",
+		"匹配当前token的正常结果必须停止Timer并解除pending。"
+	)
+
+	crafting_panel.call("_on_craft_pressed")
+	var timed_out_token: int = int(panel_request_tokens.back())
+	await create_timer(0.08, true, false, true).timeout
+	_expect(
+		timed_out_token > normal_request_token
+		and not crafting_panel.request_pending
+		and request_timeout.is_stopped()
+		and not craft_button.disabled
+		and status_label.text == "主机未响应，请重试"
+		and panel_cancelled_tokens == [timed_out_token],
+		"共享/功能限流静默拒绝时必须在超时后恢复按钮、提示主机未响应并释放token。"
+	)
+
+	crafting_panel.call("_on_craft_pressed")
+	var retry_token: int = int(panel_request_tokens.back())
+	crafting_panel.show_result(
+		SimpleCraftingRegistry.HERBAL_HEALTH_POTION_ID,
+		RunStateStore.CRAFT_RESULT_SUCCESS,
+		timed_out_token
+	)
+	_expect(
+		retry_token > timed_out_token
+		and crafting_panel.request_pending
+		and not request_timeout.is_stopped()
+		and status_label.text == "正在制造…",
+		"超时重试必须使用新token，旧请求晚到的结果不得清理新pending。"
+	)
+	crafting_panel.show_result(
+		SimpleCraftingRegistry.HERBAL_HEALTH_POTION_ID,
+		RunStateStore.CRAFT_RESULT_SUCCESS,
+		retry_token
+	)
+	_expect(
+		not crafting_panel.request_pending
+		and request_timeout.is_stopped(),
+		"重试请求自己的结果必须正常结束pending。"
+	)
+
+	crafting_panel.call("_on_craft_pressed")
+	var closed_token: int = int(panel_request_tokens.back())
+	crafting_panel.set_panel_active(false)
+	_expect(
+		not crafting_panel.request_pending
+		and request_timeout.is_stopped()
+		and panel_cancelled_tokens == [timed_out_token, closed_token],
+		"切走或关闭简易制造面板必须停止Timer并释放当前请求token。"
+	)
+	crafting_panel.set_panel_active(true)
 
 	var profile_panel := PROFILE_PANEL_SCENE.instantiate() as PlayerProfilePanel
 	ui_root.add_child(profile_panel)
@@ -721,6 +900,39 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 			and not profile_panel.upgrade_panel.visible
 			and not profile_panel.upgrade_surface.visible,
 			"切换到第三标签时只能显示简易制造内容。"
+		)
+		embedded_panel.call("_on_craft_pressed")
+		var forwarded_request := (
+			ui_root.requests.back()
+			if not ui_root.requests.is_empty()
+			else {}
+		) as Dictionary
+		var forwarded_token := int(
+			forwarded_request.get("request_token", 0)
+		)
+		_expect(
+			forwarded_request.get("recipe_id", &"")
+			== SimpleCraftingRegistry.HERBAL_HEALTH_POTION_ID
+			and forwarded_token > 0
+			and embedded_panel.request_pending,
+			"个人数据面板必须把配方与面板token一并交给多人请求入口。"
+		)
+		profile_panel.show_simple_crafting_result(
+			SimpleCraftingRegistry.HERBAL_HEALTH_POTION_ID,
+			RunStateStore.CRAFT_RESULT_SUCCESS,
+			forwarded_token
+		)
+		embedded_panel.call("_on_craft_pressed")
+		var closing_request := ui_root.requests.back() as Dictionary
+		var closing_token := int(closing_request.get("request_token", 0))
+		profile_panel.overlay.visible = true
+		profile_panel.close()
+		_expect(
+			closing_token > forwarded_token
+			and not embedded_panel.request_pending
+			and embedded_panel.request_timeout.is_stopped()
+			and ui_root.cancelled_tokens == [closing_token],
+			"关闭个人数据面板必须向多人场景释放对应token，不能遗留本地映射。"
 		)
 
 	profile_panel.queue_free()
@@ -836,6 +1048,16 @@ func _tree_contains_class(node: Node, node_class: StringName) -> bool:
 	return false
 
 
+func _count_tree_nodes_by_class(
+	node: Node,
+	node_class: StringName
+) -> int:
+	var count := 1 if node.is_class(node_class) else 0
+	for child in node.get_children():
+		count += _count_tree_nodes_by_class(child, node_class)
+	return count
+
+
 func _count_visible_children(node: Node) -> int:
 	var visible_count := 0
 	for child in node.get_children():
@@ -861,6 +1083,17 @@ func _has_vertical_text_safety(control: Control, padding: float) -> bool:
 
 func _on_inventory_changed() -> void:
 	inventory_change_count += 1
+
+
+func _on_panel_craft_requested(
+	_recipe_id: StringName,
+	request_token: int
+) -> void:
+	panel_request_tokens.append(request_token)
+
+
+func _on_panel_craft_request_cancelled(request_token: int) -> void:
+	panel_cancelled_tokens.append(request_token)
 
 
 func _expect(condition: bool, message: String) -> void:

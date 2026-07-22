@@ -72,6 +72,9 @@ func _ready() -> void:
 
 	tab_bar.tab_changed.connect(_on_tab_changed)
 	simple_crafting_panel.craft_requested.connect(_on_simple_crafting_requested)
+	simple_crafting_panel.craft_request_cancelled.connect(
+		_on_simple_crafting_request_cancelled
+	)
 
 	# 升级行信号
 	attack_row.upgrade_requested.connect(_on_upgrade_requested)
@@ -157,6 +160,7 @@ func close() -> void:
 	if not overlay.visible:
 		return
 
+	simple_crafting_panel.cancel_pending_request()
 	overlay.visible = false
 	set_process(false)
 	_clear_inventory_selection()
@@ -422,12 +426,16 @@ func _apply_tab_state() -> void:
 		_hide_item_detail()
 
 
-func _on_simple_crafting_requested(recipe_id: StringName) -> void:
+func _on_simple_crafting_requested(
+	recipe_id: StringName,
+	request_token: int
+) -> void:
 	var recipe := SimpleCraftingRegistry.get_recipe(recipe_id)
 	if recipe == null:
 		simple_crafting_panel.show_result(
 			recipe_id,
-			RunStateStore.CRAFT_RESULT_INVALID_RECIPE
+			RunStateStore.CRAFT_RESULT_INVALID_RECIPE,
+			request_token
 		)
 		return
 	var current_scene := get_tree().current_scene
@@ -435,7 +443,11 @@ func _on_simple_crafting_requested(recipe_id: StringName) -> void:
 		current_scene != null
 		and current_scene.has_method("request_multiplayer_simple_crafting")
 	):
-		current_scene.call("request_multiplayer_simple_crafting", recipe_id)
+		current_scene.call(
+			"request_multiplayer_simple_crafting",
+			recipe_id,
+			request_token
+		)
 		return
 	var expected_revision := (
 		run_state.get_inventory_revision_for_peer(
@@ -448,14 +460,29 @@ func _on_simple_crafting_requested(recipe_id: StringName) -> void:
 		recipe,
 		expected_revision
 	)
-	simple_crafting_panel.show_result(recipe_id, result)
+	simple_crafting_panel.show_result(recipe_id, result, request_token)
+
+
+func _on_simple_crafting_request_cancelled(request_token: int) -> void:
+	var current_scene := get_tree().current_scene
+	if (
+		current_scene != null
+		and current_scene.has_method(
+			"cancel_multiplayer_simple_crafting_request"
+		)
+	):
+		current_scene.call(
+			"cancel_multiplayer_simple_crafting_request",
+			request_token
+		)
 
 
 func show_simple_crafting_result(
 	recipe_id: StringName,
-	result: StringName
+	result: StringName,
+	request_token: int
 ) -> void:
-	simple_crafting_panel.show_result(recipe_id, result)
+	simple_crafting_panel.show_result(recipe_id, result, request_token)
 
 
 func _refresh_item_detail() -> void:

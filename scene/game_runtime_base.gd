@@ -229,7 +229,8 @@ func _apply_wave_start_lighting(_wave_number: int) -> void:
 @abstract func show_debug_collectible_grant_result(config_path: String, success: bool) -> void
 func show_simple_crafting_result(
 	_recipe_id: StringName,
-	_result: StringName
+	_result: StringName,
+	_request_token: int
 ) -> void:
 	pass
 
