@@ -27,6 +27,9 @@ const HEALTH_PICKUP := preload(
 const WOOD_PROCESSING_STATION_ITEM := preload(
 	"res://resources/config/buildings/building_wood_processing_station.tres"
 )
+const OAK_WAREHOUSE_ITEM := preload(
+	"res://resources/config/buildings/building_oak_warehouse.tres"
+)
 const VEGETATION_STAKE_ITEM := preload(
 	"res://resources/config/buildings/building_vegetation_stake.tres"
 )
@@ -77,15 +80,25 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 	var wood_station_recipe := SimpleCraftingRegistry.get_recipe(
 		SimpleCraftingRegistry.WOOD_PROCESSING_STATION_ID
 	)
+	var oak_warehouse_recipe := SimpleCraftingRegistry.get_recipe(
+		SimpleCraftingRegistry.OAK_WAREHOUSE_ID
+	)
 	var vegetation_stake_recipe := SimpleCraftingRegistry.get_recipe(
 		SimpleCraftingRegistry.VEGETATION_STAKE_ID
 	)
 	_expect(recipe != null, "简易制造白名单必须能解析草药生命药瓶配方。")
 	_expect(
-		wood_station_recipe != null and vegetation_stake_recipe != null,
-		"简易制造白名单必须能解析木头加工站与植被桩配方。"
+		wood_station_recipe != null
+		and oak_warehouse_recipe != null
+		and vegetation_stake_recipe != null,
+		"简易制造白名单必须能解析木头加工站、橡木仓库与植被桩配方。"
 	)
-	if recipe == null or wood_station_recipe == null or vegetation_stake_recipe == null:
+	if (
+		recipe == null
+		or wood_station_recipe == null
+		or oak_warehouse_recipe == null
+		or vegetation_stake_recipe == null
+	):
 		return
 	_expect(
 		SimpleCraftingRegistry.get_recipe(&"unknown_simple_recipe") == null,
@@ -99,6 +112,9 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 			String(SimpleCraftingRegistry.WOOD_PROCESSING_STATION_ID)
 		) == wood_station_recipe
 		and SimpleCraftingRegistry.get_recipe_by_wire_id(
+			String(SimpleCraftingRegistry.OAK_WAREHOUSE_ID)
+		) == oak_warehouse_recipe
+		and SimpleCraftingRegistry.get_recipe_by_wire_id(
 			String(SimpleCraftingRegistry.VEGETATION_STAKE_ID)
 		) == vegetation_stake_recipe
 		and SimpleCraftingRegistry.get_recipe_by_wire_id(
@@ -108,10 +124,11 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 	)
 	var registered_recipes := SimpleCraftingRegistry.get_all_recipes()
 	_expect(
-		registered_recipes.size() == 3
+		registered_recipes.size() == 4
 		and registered_recipes[0] == recipe
 		and registered_recipes[1] == wood_station_recipe
-		and registered_recipes[2] == vegetation_stake_recipe,
+		and registered_recipes[2] == oak_warehouse_recipe
+		and registered_recipes[3] == vegetation_stake_recipe,
 		"简易制造配方列表只能暴露白名单中的有效配方。"
 	)
 	for registered_recipe in registered_recipes:
@@ -142,6 +159,13 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 		"木头加工站配方必须消耗5木头并产出1个木头加工站建筑物品。"
 	)
 	_expect(
+		oak_warehouse_recipe.input_items == [WOOD]
+		and oak_warehouse_recipe.input_amounts == [10]
+		and oak_warehouse_recipe.output_items == [OAK_WAREHOUSE_ITEM]
+		and oak_warehouse_recipe.output_amounts == [1],
+		"橡木仓库配方必须消耗10木头并产出1个橡木仓库建筑物品。"
+	)
+	_expect(
 		vegetation_stake_recipe.input_items == [PLANK, SAPLING]
 		and vegetation_stake_recipe.input_amounts == [10, 1]
 		and vegetation_stake_recipe.output_items == [VEGETATION_STAKE_ITEM]
@@ -154,10 +178,14 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 			&"wood_processing_station"
 		)
 		and _is_valid_unstackable_building_item(
+			OAK_WAREHOUSE_ITEM,
+			&"oak_warehouse"
+		)
+		and _is_valid_unstackable_building_item(
 			VEGETATION_STAKE_ITEM,
 			&"vegetation_stake"
 		),
-		"两种简易制造建筑产物必须使用32×32图标、不可堆叠并指向正确建筑。"
+		"三种简易制造建筑产物必须复用原图、以32×32有效尺寸显示并指向正确建筑。"
 	)
 
 	var shared_storage_recipe := recipe.duplicate() as ProductionRecipe
@@ -180,16 +208,23 @@ func _test_building_recipe_transactions(run_state: RunStateStore) -> void:
 	var wood_station_recipe := SimpleCraftingRegistry.get_recipe(
 		SimpleCraftingRegistry.WOOD_PROCESSING_STATION_ID
 	)
+	var oak_warehouse_recipe := SimpleCraftingRegistry.get_recipe(
+		SimpleCraftingRegistry.OAK_WAREHOUSE_ID
+	)
 	var vegetation_stake_recipe := SimpleCraftingRegistry.get_recipe(
 		SimpleCraftingRegistry.VEGETATION_STAKE_ID
 	)
-	if wood_station_recipe == null or vegetation_stake_recipe == null:
+	if (
+		wood_station_recipe == null
+		or oak_warehouse_recipe == null
+		or vegetation_stake_recipe == null
+	):
 		return
 
 	run_state.begin_new_run(&"weishidaier")
 	_expect(
-		run_state.try_add_item_count(WOOD, 5),
-		"木头加工站事务测试必须能准备5份木头。"
+		run_state.get_inventory_item_total(WOOD) == RunStateStore.STARTING_WOOD_COUNT,
+		"木头加工站事务测试必须使用新局自带的5份木头。"
 	)
 	var wood_revision := run_state.get_inventory_revision()
 	_expect(
@@ -200,6 +235,23 @@ func _test_building_recipe_transactions(run_state: RunStateStore) -> void:
 		and run_state.get_inventory_item_total(WOOD) == 0
 		and run_state.get_inventory_item_total(WOOD_PROCESSING_STATION_ITEM) == 1,
 		"木头加工站必须在一次原子事务中扣除5木头并进入背包。"
+	)
+
+	run_state.begin_new_run(&"weishidaier")
+	_expect(
+		run_state.get_inventory_item_total(WOOD) == RunStateStore.STARTING_WOOD_COUNT
+		and run_state.try_add_item_count(WOOD, 5),
+		"橡木仓库事务测试必须在初始5木头外再准备5木头。"
+	)
+	var warehouse_revision := run_state.get_inventory_revision()
+	_expect(
+		run_state.try_craft_inventory_recipe_if_revision(
+			oak_warehouse_recipe,
+			warehouse_revision
+		) == RunStateStore.CRAFT_RESULT_SUCCESS
+		and run_state.get_inventory_item_total(WOOD) == 0
+		and run_state.get_inventory_item_total(OAK_WAREHOUSE_ITEM) == 1,
+		"橡木仓库必须在一次原子事务中扣除10木头并进入背包。"
 	)
 
 	run_state.begin_new_run(&"weishidaier")
@@ -486,8 +538,8 @@ func _test_health_potion_stack_and_use(run_state: RunStateStore) -> void:
 	_expect(
 		potion_slot >= 0
 		and run_state.get_item_count(potion_slot) == 2
-		and _count_occupied_local_slots(run_state) == 1,
-		"两瓶生命药瓶必须进入同一背包槽。"
+		and _count_occupied_local_slots(run_state) == 2,
+		"两瓶生命药瓶必须在初始木头之外只占用一个背包槽。"
 	)
 	if potion_slot >= 0 and player != null:
 		var initial_health := maxi(player.max_health - 40, 1)
@@ -589,11 +641,12 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 		"物品框必须按当前配方自适应，只显示实际的2项输入和1项产出。"
 	)
 	_expect(
-		_count_visible_recipe_buttons(crafting_panel) == 3
+		_count_visible_recipe_buttons(crafting_panel) == 4
 		and crafting_panel.recipe_buttons[0].text == "草药生命药瓶"
 		and crafting_panel.recipe_buttons[1].text == "木头加工站"
-		and crafting_panel.recipe_buttons[2].text == "植被桩",
-		"简易制造界面必须展示三条已登记配方。"
+		and crafting_panel.recipe_buttons[2].text == "橡木仓库"
+		and crafting_panel.recipe_buttons[3].text == "植被桩",
+		"简易制造界面必须展示四条已登记配方。"
 	)
 	_expect(
 		_has_vertical_text_safety(recipe_name, 2.0)
@@ -714,15 +767,32 @@ func _is_valid_unstackable_building_item(
 	item: PickupConfig,
 	expected_plant_id: StringName
 ) -> bool:
+	var plant_config := PlantDefenseRegistry.get_config(expected_plant_id)
+	if item == null or plant_config == null or item.icon_texture == null:
+		return false
+	var uses_original_building_texture := false
+	if plant_config.footprint_size == Vector2i.ONE:
+		var atlas_icon := item.icon_texture as AtlasTexture
+		uses_original_building_texture = (
+			atlas_icon != null
+			and atlas_icon.atlas != null
+			and atlas_icon.atlas.resource_path
+			== plant_config.icon.resource_path
+		)
+	else:
+		uses_original_building_texture = (
+			item.icon_texture.resource_path
+			== plant_config.icon.resource_path
+		)
 	return (
-		item != null
-		and item.pickup_type == PickupConfig.PickupType.BUILDING
+		item.pickup_type == PickupConfig.PickupType.BUILDING
 		and item.can_store_in_inventory
 		and not item.stackable
 		and item.inventory_stack_limit == 1
 		and item.placeable_plant_id == expected_plant_id
-		and item.icon_texture != null
-		and item.icon_texture.get_size() == Vector2(32, 32)
+		and uses_original_building_texture
+		and item.icon_texture.get_size() * item.icon_scale
+		== Vector2(32, 32)
 	)
 
 

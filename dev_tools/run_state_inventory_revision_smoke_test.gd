@@ -19,6 +19,7 @@ func _run() -> void:
 	_test_peer_slot_state_and_snapshot(run_state)
 	_test_collectible_effect_cap_does_not_limit_carrying(run_state)
 	await _test_stacked_item_use(run_state)
+	_test_starting_inventory_opt_out(run_state)
 	run_state.begin_new_run(&"weishidaier")
 
 	if failures.is_empty():
@@ -32,6 +33,10 @@ func _run() -> void:
 
 func _test_local_revision_and_snapshot(run_state: RunStateStore) -> void:
 	_expect(run_state.get_inventory_revision() == 0, "新局本地背包revision必须从0开始。")
+	_expect(
+		run_state.get_item(0) == WOOD and run_state.get_item_count(0) == 5,
+		"新局本地背包必须自带5份木头。"
+	)
 	_expect(run_state.try_add_item_count(WOOD, 3), "本地背包必须能加入3份木材。")
 	_expect(run_state.get_inventory_revision() == 1, "一次本地加入必须只递增一次revision。")
 	var snapshot := run_state.export_inventory_snapshot()
@@ -43,18 +48,30 @@ func _test_local_revision_and_snapshot(run_state: RunStateStore) -> void:
 	repaired_snapshot["revision"] = 3
 	_expect(run_state.apply_inventory_snapshot(repaired_snapshot), "更新revision的权威快照必须可以恢复本地背包。")
 	_expect(
-		run_state.get_item_count(0) == 3 and run_state.get_inventory_revision() == 3,
+		run_state.get_item_count(0) == 8 and run_state.get_inventory_revision() == 3,
 		"完整快照恢复后物品数量与revision必须精确一致。"
 	)
 
 
 func _test_peer_slot_state_and_snapshot(run_state: RunStateStore) -> void:
 	const PEER_ID := 3
+	run_state.ensure_multiplayer_peer_state(PEER_ID)
+	_expect(
+		run_state.get_item_for_peer(PEER_ID, 0) == WOOD
+		and run_state.get_item_count_for_peer(PEER_ID, 0) == 5
+		and run_state.get_inventory_revision_for_peer(PEER_ID) == 0,
+		"每个新建Peer背包必须自带5份木头且revision保持为0。"
+	)
+	run_state.ensure_multiplayer_peer_state(PEER_ID)
+	_expect(
+		run_state.get_item_count_for_peer(PEER_ID, 0) == 5,
+		"重复确保同一Peer状态时不得再次发放初始木头。"
+	)
 	_expect(run_state.try_add_item_count_for_peer(PEER_ID, WOOD, 5), "Peer背包必须能加入堆叠物资。")
 	var initial_state := run_state.get_inventory_slot_state_for_peer(PEER_ID, 0)
 	_expect(
 		initial_state.get("config_path", "") == WOOD.resource_path
-		and int(initial_state.get("stack_count", 0)) == 5
+		and int(initial_state.get("stack_count", 0)) == 10
 		and int(initial_state.get("revision", 0)) == 1,
 		"精确槽状态必须包含路径、数量和peer revision。"
 	)
@@ -69,7 +86,7 @@ func _test_peer_slot_state_and_snapshot(run_state: RunStateStore) -> void:
 		"Host明确标记revision冲突时，权威完整快照必须能够回退并修复客户端漂移。"
 	)
 	_expect(
-		run_state.get_item_count_for_peer(PEER_ID, 0) == 5
+		run_state.get_item_count_for_peer(PEER_ID, 0) == 10
 		and run_state.get_inventory_revision_for_peer(PEER_ID) == 1,
 		"强制状态修复后Peer物品数量与Host revision必须精确一致。"
 	)
@@ -111,9 +128,9 @@ func _test_stacked_item_use(run_state: RunStateStore) -> void:
 		"测试用可堆叠消耗品必须能加入Peer背包。"
 	)
 	var before_use_revision := run_state.get_inventory_revision_for_peer(PEER_ID)
-	_expect(run_state.try_use_item_for_peer(PEER_ID, 0, player), "Host必须能使用Peer的可堆叠消耗品。")
+	_expect(run_state.try_use_item_for_peer(PEER_ID, 1, player), "Host必须能使用Peer的可堆叠消耗品。")
 	_expect(
-		run_state.get_item_count_for_peer(PEER_ID, 0) == 2,
+		run_state.get_item_count_for_peer(PEER_ID, 1) == 2,
 		"成功使用一份堆叠物品后必须保留同槽剩余2份，而不是清空整槽。"
 	)
 	_expect(
@@ -136,8 +153,23 @@ func _test_collectible_effect_cap_does_not_limit_carrying(run_state: RunStateSto
 		"收藏品效果封顶后，Host仍必须允许Peer携带第6份。"
 	)
 	_expect(
-		run_state.get_item_for_peer(PEER_ID, APPLE.collectible_max_copies) == APPLE,
+		run_state.get_item_for_peer(PEER_ID, APPLE.collectible_max_copies + 1) == APPLE,
 		"第6份苹果必须真实写入新的Peer背包槽，而不是被效果上限吞掉。"
+	)
+
+
+func _test_starting_inventory_opt_out(run_state: RunStateStore) -> void:
+	const PEER_ID := 6
+	run_state.begin_new_run(&"weishidaier", false)
+	_expect(
+		run_state.get_item(0) == null and run_state.get_inventory_revision() == 0,
+		"隔离测试必须能显式创建无初始物资且revision为0的本地背包。"
+	)
+	run_state.ensure_multiplayer_peer_state(PEER_ID)
+	_expect(
+		run_state.get_item_for_peer(PEER_ID, 0) == null
+		and run_state.get_inventory_revision_for_peer(PEER_ID) == 0,
+		"无初始物资策略必须同步应用于之后创建的Peer背包。"
 	)
 
 

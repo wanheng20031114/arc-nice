@@ -195,7 +195,7 @@ func _run() -> void:
 	_test_world_glow_contract(center, config, day_night_controller)
 
 	var run_state := root.get_node("RunState") as RunStateStore
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	_expect(
 		warehouse.try_add_storage_item_count(WOODEN_CORE, 1)
 		and center.select_recipe(&"wooden_core_to_agave_cannon"),
@@ -645,10 +645,19 @@ func _test_asset_contracts() -> void:
 		CORN_BUILDING_ITEM,
 		BAMBOO_MORTAR_BUILDING_ITEM,
 	]:
+		var plant_config := PlantDefenseRegistry.get_config(
+			item.placeable_plant_id
+		)
 		_expect(
-			item.icon_texture != null
-			and item.icon_texture.get_size() == Vector2(32, 32),
-			"2×2建筑的背包图标必须严格整数缩半为32×32。"
+			plant_config != null
+			and item.icon_texture != null
+			and item.icon_texture.resource_path
+			== plant_config.icon.resource_path
+			and item.icon_texture.get_size() == Vector2(64, 64)
+			and item.icon_scale == Vector2(0.5, 0.5)
+			and item.icon_texture.get_size() * item.icon_scale
+			== Vector2(32, 32),
+			"2×2建筑物品必须复用64×64原图，并以0.5缩放符合32×32显示规范。"
 		)
 	var image_path := ProjectSettings.globalize_path(
 		"res://resources/texture/plant_defense/plant_cultivation_center/plant_cultivation_center.png"
@@ -668,7 +677,7 @@ func _test_inventory_placement_request(
 	config: PlantDefenseConfig,
 	run_state: RunStateStore
 ) -> void:
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	_expect(
 		run_state.try_add_item_count(AGAVE_BUILDING_ITEM, 2),
 		"放置测试必须能加入2个加农炮建筑物品。"
@@ -697,7 +706,7 @@ func _test_inventory_placement_request(
 		),
 		"建筑物品必须一次清空一个独立槽，并拒绝过期背包revision。"
 	)
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	_expect(
 		run_state.try_add_item(AGAVE_BUILDING_ITEM),
 		"放置请求测试必须重新准备一个加农炮建筑物品。"
@@ -769,7 +778,7 @@ func _test_authoritative_placement_rollback_sync(
 	run_state: RunStateStore,
 	player: Player
 ) -> void:
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	run_state.ensure_multiplayer_peer_state(2)
 	_expect(
 		run_state.try_add_item_for_peer(2, AGAVE_BUILDING_ITEM),

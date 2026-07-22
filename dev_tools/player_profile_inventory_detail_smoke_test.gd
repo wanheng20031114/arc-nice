@@ -99,7 +99,7 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	_expect(profile_panel.physical_defense_value.text == str(player.physical_defense), "Profile panel must show current physical defense.")
 	_expect(profile_panel.magic_defense_value.text == str(player.magic_defense), "Profile panel must show current magic defense.")
 
-	profile_panel.slots[0].emit_signal("pressed")
+	profile_panel.slots[1].emit_signal("pressed")
 	await process_frame
 	_expect(profile_panel.item_detail_panel.visible, "Selecting an occupied inventory slot must show the item detail panel.")
 	var detail_style := profile_panel.item_detail_panel.get_theme_stylebox("panel") as StyleBoxTexture
@@ -131,14 +131,14 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	await process_frame
 	_expect(profile_panel.selected_slot_index == -1, "Clicking blank inventory space must clear the selected slot.")
 	_expect(not profile_panel.item_detail_panel.visible, "Clicking blank inventory space must hide the item detail panel.")
-	_expect(not profile_panel.slots[0].button_pressed, "Clicking blank inventory space must remove the selected slot highlight.")
+	_expect(not profile_panel.slots[1].button_pressed, "Clicking blank inventory space must remove the selected slot highlight.")
 
-	profile_panel.slots[0].emit_signal("pressed")
+	profile_panel.slots[1].emit_signal("pressed")
 	await process_frame
 	profile_panel.item_detail_discard_button.emit_signal("pressed")
 	await process_frame
-	_expect(run_state.get_item(0) == null, "Discarding a collectible from the detail panel must destroy it.")
-	_expect(run_state.get_item(1) == APPLE_COLLECTIBLE, "Discarding one apple must not remove another apple.")
+	_expect(run_state.get_item(1) == null, "Discarding a collectible from the detail panel must destroy it.")
+	_expect(run_state.get_item(2) == APPLE_COLLECTIBLE, "Discarding one apple must not remove another apple.")
 	_expect(
 		is_equal_approx(player.call("_get_inventory_bullet_pierce_chance"), 0.2),
 		"One remaining apple must keep the piercing chance at 20%."
@@ -146,7 +146,7 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	_expect(not profile_panel.item_detail_panel.visible, "The item detail panel must hide when the selected slot becomes empty.")
 	_expect(profile_panel.selected_slot_index == -1, "Discarding the selected item must clear the selected slot.")
 
-	profile_panel.slots[2].emit_signal("pressed")
+	profile_panel.slots[3].emit_signal("pressed")
 	await process_frame
 	_expect(profile_panel.item_detail_panel.visible, "Selecting a stored consumable must show the item detail panel.")
 	_expect(profile_panel.item_detail_title.text == "生命药瓶", "The item detail panel title must show only the consumable name.")
@@ -160,23 +160,23 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	player.current_health = maxi(player.max_health - HEALTH_PICKUP.heal_amount, 1)
 	profile_panel.item_detail_use_button.emit_signal("pressed")
 	await process_frame
-	_expect(run_state.get_item(2) == null, "Using a consumable from the detail panel must remove it from inventory.")
+	_expect(run_state.get_item(3) == null, "Using a consumable from the detail panel must remove it from inventory.")
 	_expect(player.current_health == player.max_health, "Using a health bottle from the detail panel must heal the player.")
 
 	_expect(run_state.try_add_item(HEALTH_PICKUP), "A replacement health pickup must fit for discard testing.")
-	profile_panel.slots[0].emit_signal("pressed")
+	profile_panel.slots[1].emit_signal("pressed")
 	await process_frame
 	profile_panel.item_detail_discard_button.emit_signal("pressed")
 	await process_frame
-	_expect(run_state.get_item(0) == null, "Discarding a consumable from the detail panel must destroy it.")
+	_expect(run_state.get_item(1) == null, "Discarding a consumable from the detail panel must destroy it.")
 
 	_expect(run_state.try_add_item(HEALTH_PICKUP), "A replacement health pickup must fit for double-click testing.")
-	profile_panel.slots[0].emit_signal("pressed")
+	profile_panel.slots[1].emit_signal("pressed")
 	await process_frame
 	player.current_health = maxi(player.max_health - HEALTH_PICKUP.heal_amount, 1)
-	_simulate_double_click(profile_panel.slots[0])
+	_simulate_double_click(profile_panel.slots[1])
 	await process_frame
-	_expect(run_state.get_item(0) == null, "Double-clicking a consumable slot must still use and remove the item.")
+	_expect(run_state.get_item(1) == null, "Double-clicking a consumable slot must still use and remove the item.")
 	_expect(player.current_health == player.max_health, "Double-clicking a health bottle must still heal the player.")
 
 	_stop_audio_players(test_root)

@@ -9,6 +9,10 @@ const WOOD_PROCESSING_STATION_ID: StringName = &"wood_processing_station"
 const WOOD_PROCESSING_STATION_RECIPE: ProductionRecipe = preload(
 	"res://resources/config/production/simple_wood_processing_station.tres"
 )
+const OAK_WAREHOUSE_ID: StringName = &"oak_warehouse"
+const OAK_WAREHOUSE_RECIPE: ProductionRecipe = preload(
+	"res://resources/config/production/simple_oak_warehouse.tres"
+)
 const VEGETATION_STAKE_ID: StringName = &"vegetation_stake"
 const VEGETATION_STAKE_RECIPE: ProductionRecipe = preload(
 	"res://resources/config/production/simple_vegetation_stake.tres"
@@ -17,6 +21,7 @@ const VEGETATION_STAKE_RECIPE: ProductionRecipe = preload(
 const RECIPES := {
 	HERBAL_HEALTH_POTION_ID: HERBAL_HEALTH_POTION_RECIPE,
 	WOOD_PROCESSING_STATION_ID: WOOD_PROCESSING_STATION_RECIPE,
+	OAK_WAREHOUSE_ID: OAK_WAREHOUSE_RECIPE,
 	VEGETATION_STAKE_ID: VEGETATION_STAKE_RECIPE,
 }
 const MAX_WIRE_RECIPE_ID_LENGTH := 64

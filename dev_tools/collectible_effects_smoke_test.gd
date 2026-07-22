@@ -289,7 +289,7 @@ func _test_burn_collectible_tiers() -> void:
 
 func _test_new_collectible_rules() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	var player := _spawn_player()
 	_expect(run_state.try_add_item(CHARGED_JADE_PENDANT), "First charged jade pendant must fit in inventory.")
 	_expect(run_state.try_add_item(CHARGED_JADE_PENDANT), "Second charged jade pendant must fit in inventory.")
@@ -301,7 +301,7 @@ func _test_new_collectible_rules() -> void:
 	player.queue_free()
 	await process_frame
 
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	player = _spawn_player()
 	_expect(run_state.try_add_item(NINE_ELEVEN), "911 must fit in inventory.")
 	_expect(run_state.try_add_item(SILVER_MASK), "Silver mask must fit in inventory.")
@@ -316,7 +316,7 @@ func _test_new_collectible_rules() -> void:
 	player.queue_free()
 	await process_frame
 
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	player = _spawn_player()
 	_expect(run_state.try_add_item(LUCKY_GEM), "Lucky gem must fit in inventory.")
 	_expect(
@@ -340,7 +340,7 @@ func _test_new_collectible_rules() -> void:
 	player.queue_free()
 	await process_frame
 
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	player = _spawn_player()
 	var enemies: Array[Enemy] = []
 	for enemy_index in range(4):
@@ -411,7 +411,7 @@ func _test_new_collectible_rules() -> void:
 
 func _test_collectible_stat_rules() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	var player := _spawn_player()
 	_expect(run_state.try_add_item(RUBY), "First ruby must fit in inventory.")
 	_expect(run_state.try_add_item(RUBY), "Second ruby must fit in inventory.")
@@ -429,7 +429,7 @@ func _test_collectible_stat_rules() -> void:
 	player.queue_free()
 	await process_frame
 
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	player = _spawn_player()
 	var base_max_health := player.max_health
 	var base_move_speed := player.move_speed
@@ -459,7 +459,7 @@ func _test_collectible_stat_rules() -> void:
 	player.queue_free()
 	await process_frame
 
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	player = _spawn_player()
 	for copy_index in range(5):
 		_expect(
@@ -494,7 +494,7 @@ func _test_collectible_stat_rules() -> void:
 
 func _test_new_stack_and_skill_rules() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	var player := _spawn_player()
 	for copy_index in range(4):
 		_expect(
@@ -520,7 +520,7 @@ func _test_new_stack_and_skill_rules() -> void:
 	player.queue_free()
 	await process_frame
 
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	player = _spawn_player()
 	for copy_index in range(10):
 		_expect(
@@ -556,7 +556,7 @@ func _test_new_stack_and_skill_rules() -> void:
 	player.queue_free()
 	await process_frame
 
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	player = _spawn_player()
 	for copy_index in range(5):
 		_expect(
@@ -626,7 +626,7 @@ func _test_new_stack_and_skill_rules() -> void:
 
 func _test_trident_and_bullet_rules() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	var player := _spawn_player()
 	_expect(run_state.try_add_item(FLAME_TRIDENT), "Flame trident must fit in inventory.")
 	_expect(run_state.try_add_item(BLOOD_TRIDENT), "Blood trident must fit in inventory.")
@@ -663,7 +663,7 @@ func _test_trident_and_bullet_rules() -> void:
 	player.queue_free()
 	await process_frame
 
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	player = _spawn_player()
 	for _copy_index in range(5):
 		_expect(run_state.try_add_item(APPLE), "Apple must fit for piercing-homing compatibility coverage.")
@@ -710,7 +710,7 @@ func _test_trident_and_bullet_rules() -> void:
 
 func _test_xirang_dynamic_rules() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	var player := _spawn_player()
 	_expect(run_state.try_add_item(GOLD_WINE_CUP), "Gold wine cup must fit in inventory.")
 	player.grant_cheat_xirang(2500)
@@ -726,7 +726,7 @@ func _test_xirang_dynamic_rules() -> void:
 	player.queue_free()
 	await process_frame
 
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	player = _spawn_player()
 	_expect(run_state.try_add_item(TIANSHI_STAKE), "Tianshi stake must fit in inventory.")
 	player.grant_cheat_xirang(4100)
@@ -739,7 +739,7 @@ func _test_xirang_dynamic_rules() -> void:
 
 func _test_admin_doll_free_upgrade() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	var player := _spawn_player()
 	_expect(run_state.try_add_item(ADMIN_DOLL), "Admin doll must fit in inventory.")
 	player.grant_cheat_xirang(ZhuangfangyiMerchant.PURCHASE_COST)
@@ -754,7 +754,7 @@ func _test_admin_doll_free_upgrade() -> void:
 
 func _test_combat_effects() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	var player := _spawn_player()
 	var enemy := _spawn_enemy(Vector2(40.0, 0.0), player)
 	var nearby_enemy := _spawn_enemy(Vector2(64.0, 0.0), player)
@@ -781,7 +781,7 @@ func _test_combat_effects() -> void:
 		"Thunder crystal enemy damage must show damage numbers."
 	)
 
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	player.refresh_collectible_stats()
 	_expect(run_state.try_add_item(PHYSICAL_RING), "Physical ring must fit for bleed scaling coverage.")
 	await process_frame
@@ -794,7 +794,7 @@ func _test_combat_effects() -> void:
 		"Bleed tick damage must include the Physical Ring damage bonus."
 	)
 
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	player.refresh_collectible_stats()
 	_expect(run_state.try_add_item(FROST_CRYSTAL), "Frost crystal must fit in inventory.")
 	await process_frame
@@ -813,7 +813,7 @@ func _test_combat_effects() -> void:
 	await create_timer(FROST_CRYSTAL.periodic_slow_duration + 0.1).timeout
 
 	var ally := _spawn_player(Vector2(24.0, 0.0))
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	player.refresh_collectible_stats()
 	_expect(run_state.try_add_item(LIFE_CRYSTAL), "Life crystal must fit in inventory.")
 	await process_frame
@@ -830,7 +830,7 @@ func _test_combat_effects() -> void:
 		"Life crystal healing must display one +10 in the same allocation-free combat-number pool."
 	)
 
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	player.refresh_collectible_stats()
 	_expect(run_state.try_add_item(MOON_AMULET), "Moon amulet must fit in inventory.")
 	_expect(run_state.try_add_item(SWIFT_CRYSTAL), "Swift crystal must fit in inventory.")

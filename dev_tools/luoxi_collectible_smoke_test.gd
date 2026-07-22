@@ -72,7 +72,11 @@ func _test_hoe_cat_collectible_compatibility_filter() -> void:
 		== LuoxiMerchant.COLLECTIBLE_RESULT_INVALID_PLAYER,
 		"Hoe Cat must not be able to claim a projectile-only collectible by path."
 	)
-	_expect(run_state.get_item(0) == null, "Rejected projectile-only collectible must not enter Hoe Cat inventory.")
+	_expect(
+		run_state.get_item(0) == RunStateStore.STARTING_WOOD
+		and run_state.get_item_count(0) == RunStateStore.STARTING_WOOD_COUNT,
+		"Rejected projectile-only collectible must not alter Hoe Cat's starting wood."
+	)
 
 	_stop_audio_players(hoe_cat)
 	luoxi.queue_free()
@@ -195,10 +199,10 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	_expect(not first_button.disabled, "Luoxi card chooser select buttons must stay visually available during hidden accidental input protection.")
 	luoxi._unhandled_input(interact)
 	_expect(choice_overlay.is_open(), "Luoxi card chooser must ignore immediate interact confirmation after opening.")
-	_expect(run_state.get_item(0) == null, "Luoxi card chooser must not add an item during accidental input protection.")
+	_expect(run_state.get_item(1) == null, "Luoxi card chooser must not add an item during accidental input protection.")
 	luoxi._unhandled_input(_make_key(KEY_2))
 	_expect(choice_overlay.is_open(), "Luoxi card chooser must ignore immediate number-key confirmation after opening.")
-	_expect(run_state.get_item(0) == null, "Luoxi number-key shortcut must not add an item during accidental input protection.")
+	_expect(run_state.get_item(1) == null, "Luoxi number-key shortcut must not add an item during accidental input protection.")
 	var description_style := first_description.get_theme_stylebox("normal") as StyleBoxFlat
 	_expect(
 		description_style != null
@@ -280,11 +284,11 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 
 	luoxi._unhandled_input(interact)
 	_expect(not choice_overlay.is_open(), "Luoxi card chooser must close after a selection.")
-	var item := run_state.get_item(0)
-	_expect(item == second_choice, "Luoxi must add the selected collectible to the first inventory slot.")
+	var item := run_state.get_item(1)
+	_expect(item == second_choice, "Luoxi must add the selected collectible after the starting wood stack.")
 
-	_expect(not run_state.try_use_item(0, player), "Apple collectible must not be consumable from inventory.")
-	_expect(run_state.get_item(0) == second_choice, "Collectibles must remain in inventory after use attempt.")
+	_expect(not run_state.try_use_item(1, player), "Apple collectible must not be consumable from inventory.")
+	_expect(run_state.get_item(1) == second_choice, "Collectibles must remain in inventory after use attempt.")
 	var slot := INVENTORY_SLOT_SCENE.instantiate() as InventorySlot
 	test_root.add_child(slot)
 	slot.set_item(second_choice)
@@ -305,7 +309,7 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 		bubble.text_label.text.contains(MerchantDialogueBubble.NO_BREAK_MARK + "。"),
 		"Luoxi dialogue punctuation must stay attached to the preceding text when wrapped."
 	)
-	_expect(run_state.get_item(1) == null, "Luoxi must not add a second collectible in the same intermission.")
+	_expect(run_state.get_item(2) == null, "Luoxi must not add a second collectible in the same intermission.")
 
 	luoxi.reset_intermission_state()
 	_expect(not bubble.visible, "Luoxi intermission reset must clear the previous claimed-result bubble.")
@@ -381,7 +385,7 @@ func _test_luoxi_keeps_owned_collectibles_available() -> void:
 func _test_full_inventory_keeps_luoxi_choice_available() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run()
-	for _slot_index in range(RunStateStore.INVENTORY_CAPACITY):
+	for _slot_index in range(RunStateStore.INVENTORY_CAPACITY - 1):
 		_expect(run_state.try_add_item(RUBY_COLLECTIBLE), "Non-stackable ruby setup must fill every slot before testing Luoxi's full bag result.")
 
 	var luoxi := LUOXI_SCENE.instantiate() as LuoxiMerchant
@@ -409,9 +413,9 @@ func _test_full_inventory_keeps_luoxi_choice_available() -> void:
 		"Luoxi must clearly explain that a full inventory blocks collectible pickup."
 	)
 	_expect(not bool(luoxi.call("_is_player_claimed", player)), "A full inventory must not spend Luoxi's collectible choices.")
-	_expect(run_state.get_item(0) == RUBY_COLLECTIBLE, "A failed Luoxi claim must not replace existing inventory items.")
+	_expect(run_state.get_item(0) == RunStateStore.STARTING_WOOD, "A failed Luoxi claim must not replace the starting wood.")
 
-	_expect(run_state.discard_item(0), "Discarding one item must free a slot for the original Luoxi choice.")
+	_expect(run_state.discard_item(1), "Discarding one item must free a slot for the original Luoxi choice.")
 	bubble.finish_line()
 	luoxi._unhandled_input(interact)
 	_open_luoxi_choice(luoxi, bubble, interact)
@@ -419,7 +423,7 @@ func _test_full_inventory_keeps_luoxi_choice_available() -> void:
 	luoxi._unhandled_input(interact)
 	_expect(_dialogue_text(bubble) == "拿好收藏品，可别小看它。", "Luoxi must allow the original choice after the player frees a slot.")
 	_expect(bool(luoxi.call("_is_player_claimed", player)), "The first successful retry must spend the only Luoxi choice.")
-	_expect(run_state.get_item(0) == first_choice, "The retried Luoxi choice must fill the freed inventory slot.")
+	_expect(run_state.get_item(1) == first_choice, "The retried Luoxi choice must fill the freed inventory slot.")
 
 	luoxi.queue_free()
 	player.queue_free()

@@ -84,7 +84,12 @@ func _test_debug_collectible_window() -> void:
 
 	window.collectible_requested.emit(APPLE_COLLECTIBLE.resource_path)
 	await process_frame
-	_expect(run_state.get_item(0) == APPLE_COLLECTIBLE, "Debug collectible request must add the selected collectible to inventory.")
+	_expect(
+		run_state.get_item(0) == RunStateStore.STARTING_WOOD
+		and run_state.get_item_count(0) == RunStateStore.STARTING_WOOD_COUNT
+		and run_state.get_item(1) == APPLE_COLLECTIBLE,
+		"Debug collectible request must preserve starting wood and add the selected collectible."
+	)
 	_expect(not game.has_luoxi_collectible_claimed(0), "Debug collectible grant must not spend Luoxi's round claim.")
 
 	window.close()

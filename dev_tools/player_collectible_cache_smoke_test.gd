@@ -48,7 +48,7 @@ func _run() -> void:
 
 
 func _test_preowned_health_condition_and_maximum_changes() -> void:
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	_expect(run_state.try_add_item(CLAY_TOTEM), "Preowned clay totem must fit.")
 	var player := await _spawn_player(Vector2.ZERO)
 	var base_defense := int(player.get("_base_physical_defense"))
@@ -92,7 +92,7 @@ func _test_preowned_health_condition_and_maximum_changes() -> void:
 
 
 func _test_peer_keyed_cache_and_first_configuration_health() -> void:
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	run_state.ensure_multiplayer_peer_state(2)
 	run_state.ensure_multiplayer_peer_state(3)
 	_expect(run_state.try_add_item_for_peer(2, LIFE_RING), "Peer 2 life ring must fit.")
@@ -174,7 +174,7 @@ func _test_peer_keyed_cache_and_first_configuration_health() -> void:
 
 
 func _test_periodic_cache_and_allocation_free_runtime_shape() -> void:
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	for copy_index in range(RunStateStore.INVENTORY_CAPACITY - 1):
 		_expect(run_state.try_add_item(RUBY), "Runtime cache ruby copy %d must fit." % (copy_index + 1))
 	_expect(run_state.try_add_item(LIFE_CRYSTAL), "Runtime cache periodic collectible must fit.")
@@ -258,7 +258,7 @@ func _test_periodic_cache_and_allocation_free_runtime_shape() -> void:
 
 
 func _test_reusable_homing_query_at_two_positions() -> void:
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	var player := await _spawn_player(Vector2.ZERO)
 	player.set_physics_process(false)
 	var near_enemy := await _spawn_enemy(Vector2(48.0, 0.0), player)

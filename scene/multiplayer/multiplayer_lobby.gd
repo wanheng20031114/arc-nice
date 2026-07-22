@@ -1008,6 +1008,8 @@ func _change_to_multiplayer_game() -> void:
 	var tree := get_tree()
 	if tree == null:
 		return
+	if run_state != null and run_state.has_method("begin_new_run"):
+		run_state.call("begin_new_run", _get_local_selected_character_id())
 	var load_coordinator := get_node_or_null("/root/GameLoadCoordinator")
 	if load_coordinator != null and load_coordinator.has_method("begin_multiplayer"):
 		load_coordinator.call("begin_multiplayer")

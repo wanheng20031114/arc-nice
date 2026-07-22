@@ -152,7 +152,7 @@ func _test_character_dash_override_contract() -> void:
 
 func _test_collectible_dash_modifiers() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	var player := WEISHIDAIER_SCENE.instantiate() as Player
 	test_root.add_child(player)
 	await process_frame
@@ -207,7 +207,7 @@ func _test_collectible_dash_modifiers() -> void:
 
 	player.queue_free()
 	await process_frame
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 
 
 func _test_player_scene(

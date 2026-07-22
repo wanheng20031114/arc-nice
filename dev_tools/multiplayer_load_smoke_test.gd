@@ -685,7 +685,7 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 	_expect(game.peer_players.has(2), "Game must create peer player 2 before cleanup.")
 	var run_state := root.get_node_or_null("RunState") as RunStateStore
 	if run_state != null:
-		run_state.begin_new_run()
+		run_state.begin_new_run(&"weishidaier", false)
 	var remote_player := game.peer_players.get(2) as PlayerWeishidaier
 	if remote_player != null:
 		remote_player.attack_damage = 37
@@ -1670,7 +1670,31 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		mp_game.set("net_manager", net_manager)
 	var run_state := root.get_node_or_null("RunState")
 	if run_state != null:
-		run_state.call("begin_new_run")
+		var typed_run_state := run_state as RunStateStore
+		typed_run_state.begin_new_run()
+		for starting_peer_id in [1, 2, 3, 4]:
+			typed_run_state.ensure_multiplayer_peer_state(starting_peer_id)
+			_expect(
+				typed_run_state.get_item_for_peer(starting_peer_id, 0)
+				== WOOD_MATERIAL
+				and typed_run_state.get_item_count_for_peer(starting_peer_id, 0)
+				== RunStateStore.STARTING_WOOD_COUNT
+				and typed_run_state.get_inventory_revision_for_peer(starting_peer_id) == 0,
+				"Every multiplayer peer must start with five wood at revision zero."
+			)
+		var starting_snapshot := typed_run_state.export_inventory_snapshot_for_peer(2)
+		var snapshot_client := RunStateStore.new()
+		root.add_child(snapshot_client)
+		snapshot_client.begin_new_run()
+		_expect(
+			snapshot_client.apply_inventory_snapshot_for_peer(2, starting_snapshot)
+			and snapshot_client.apply_inventory_snapshot_for_peer(2, starting_snapshot)
+			and snapshot_client.get_item_count_for_peer(2, 0)
+			== RunStateStore.STARTING_WOOD_COUNT,
+			"Replaying the initial peer snapshot must not duplicate starting wood."
+		)
+		snapshot_client.free()
+		typed_run_state.begin_new_run(&"weishidaier", false)
 		mp_game.set("run_state", run_state)
 		mp_game.call("_apply_upgrade_for_peer", 0, RunStateStore.StatType.ATTACK)
 		mp_game.call("_apply_skill1_purchase_for_peer", 0)
@@ -1683,7 +1707,6 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			not (run_state.get("multiplayer_upgrade_levels") as Dictionary).has(99),
 			"Upgrade confirms for missing peers must not create run state."
 		)
-		var typed_run_state := run_state as RunStateStore
 		var previous_net_role := (
 			int(net_manager.get("net_role"))
 			if net_manager != null
@@ -2940,7 +2963,7 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 		client_mp_game.set("net_manager", net_manager)
 	var client_run_state := root.get_node_or_null("RunState") as RunStateStore
 	if client_run_state != null:
-		client_run_state.begin_new_run()
+		client_run_state.begin_new_run(&"weishidaier", false)
 		client_run_state.set_active_multiplayer_peer(2)
 		client_mp_game.set("run_state", client_run_state)
 
@@ -3802,7 +3825,7 @@ func _test_multiplayer_cheat_xirang_confirm() -> void:
 		mp_game.call("net_cheat_xirang_confirmed", 2, 1015, 1000)
 		_expect(remote_player.current_xirang == 1015, "Cheat confirm must update the selected peer's xirang.")
 		var run_state := root.get_node("RunState") as RunStateStore
-		run_state.begin_new_run()
+		run_state.begin_new_run(&"weishidaier", false)
 		mp_game.set("run_state", run_state)
 		mp_game.call("net_debug_collectible_granted", 2, APPLE_COLLECTIBLE.resource_path, true)
 		_expect(

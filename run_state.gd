@@ -6,6 +6,10 @@ signal upgrade_changed
 signal selected_character_changed(character_id: StringName)
 
 const INVENTORY_CAPACITY := 20
+const STARTING_WOOD_COUNT := 5
+const STARTING_WOOD: PickupConfig = preload(
+	"res://resources/config/materials/material_wood.tres"
+)
 const CRAFT_RESULT_SUCCESS := &"success"
 const CRAFT_RESULT_INVALID_RECIPE := &"invalid_recipe"
 const CRAFT_RESULT_MISSING_INPUT := &"missing_input"
@@ -49,6 +53,7 @@ var multiplayer_inventory_stack_counts: Dictionary = {}
 var multiplayer_inventory_revisions: Dictionary = {}
 var multiplayer_upgrade_levels: Dictionary = {}
 var selected_character_id: StringName = PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
+var _include_starting_inventory_for_new_peers := true
 
 
 func set_selected_character(character_id: StringName) -> bool:
@@ -69,15 +74,21 @@ func get_selected_character_config() -> PlayerCharacterConfig:
 	return PlayerCharacterRegistry.get_config(selected_character_id)
 
 
-func begin_new_run(character_id: StringName = &"weishidaier") -> void:
+func begin_new_run(
+	character_id: StringName = &"weishidaier",
+	include_starting_inventory: bool = true
+) -> void:
 	if not set_selected_character(character_id):
 		push_error("RunState rejected invalid character id: %s" % character_id)
 		return
+	_include_starting_inventory_for_new_peers = include_starting_inventory
 	inventory.clear()
 	inventory.resize(INVENTORY_CAPACITY)
 	inventory_stack_counts.clear()
 	inventory_stack_counts.resize(INVENTORY_CAPACITY)
 	inventory_stack_counts.fill(0)
+	if include_starting_inventory:
+		_seed_starting_inventory(inventory, inventory_stack_counts)
 	inventory_revision = 0
 	for stat_type: int in upgrade_levels:
 		upgrade_levels[stat_type] = 0
@@ -378,15 +389,22 @@ func set_active_multiplayer_peer(peer_id: int) -> void:
 func ensure_multiplayer_peer_state(peer_id: int) -> void:
 	if peer_id <= 0:
 		return
+	var created_inventory := false
 	if not multiplayer_inventories.has(peer_id):
 		var peer_inventory: Array[PickupConfig] = []
 		peer_inventory.resize(INVENTORY_CAPACITY)
 		multiplayer_inventories[peer_id] = peer_inventory
+		created_inventory = true
 	if not multiplayer_inventory_stack_counts.has(peer_id):
 		var peer_counts: Array[int] = []
 		peer_counts.resize(INVENTORY_CAPACITY)
 		peer_counts.fill(0)
 		multiplayer_inventory_stack_counts[peer_id] = peer_counts
+	if created_inventory and _include_starting_inventory_for_new_peers:
+		_seed_starting_inventory(
+			multiplayer_inventories[peer_id] as Array,
+			multiplayer_inventory_stack_counts[peer_id] as Array
+		)
 	if not multiplayer_inventory_revisions.has(peer_id):
 		multiplayer_inventory_revisions[peer_id] = 0
 	if not multiplayer_upgrade_levels.has(peer_id):
@@ -1226,6 +1244,10 @@ func _ensure_local_inventory_shape() -> void:
 			inventory_stack_counts[slot_index] = 0
 		elif inventory_stack_counts[slot_index] <= 0:
 			inventory_stack_counts[slot_index] = 1
+
+
+func _seed_starting_inventory(items: Array, counts: Array) -> void:
+	_add_item_count_to_arrays(items, counts, STARTING_WOOD, STARTING_WOOD_COUNT)
 
 
 func _items_share_stack(existing_item: PickupConfig, incoming_item: PickupConfig) -> bool:

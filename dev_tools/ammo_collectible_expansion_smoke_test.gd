@@ -83,7 +83,7 @@ func _test_additive_before_multiplier_and_effect_caps() -> void:
 	_expect(tiyi.get_ammo_capacity() == 21, "Tiyi must calculate floor((5 + 1 + 3 + 5) * 1.5) = 21.")
 
 	for additive_item in ADDITIVE_ITEMS:
-		run_state.begin_new_run(&"tiyi")
+		run_state.begin_new_run(&"tiyi", false)
 		for _copy_index in range(5):
 			_expect(run_state.try_add_item(additive_item), "%s copy setup must fit." % additive_item.display_name)
 		tiyi.call("_refresh_collectible_stats", false)
@@ -202,7 +202,7 @@ func _test_multiplayer_capacity_does_not_replace_base() -> void:
 
 
 func _set_inventory(items: Array, player: Player) -> void:
-	run_state.begin_new_run()
+	run_state.begin_new_run(&"weishidaier", false)
 	for item_variant in items:
 		var item := item_variant as PickupConfig
 		_expect(run_state.try_add_item(item), "%s must fit in the test inventory." % item.display_name)

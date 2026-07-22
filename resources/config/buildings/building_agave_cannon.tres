@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="PickupConfig" format=3]
 
-[ext_resource type="Texture2D" path="res://resources/texture/building_items/agave_cannon.png" id="1_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/agave_cannon/icon.png" id="1_icon"]
 [ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
 
 [resource]
@@ -13,7 +13,7 @@ can_store_in_inventory = true
 stackable = false
 inventory_stack_limit = 1
 icon_texture = ExtResource("1_icon")
-icon_scale = Vector2(1, 1)
+icon_scale = Vector2(0.5, 0.5)
 world_lifetime = 24.0
 placeable_plant_id = &"agave_cannon"
 duration = 0.0

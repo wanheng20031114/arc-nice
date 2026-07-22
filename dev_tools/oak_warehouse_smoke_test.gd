@@ -35,7 +35,7 @@ func _init() -> void:
 func _run() -> void:
 	var inventory_only := OS.get_cmdline_user_args().has("--inventory-only")
 	var run_state := root.get_node("RunState") as RunStateStore
-	run_state.begin_new_run(&"weishidaier")
+	run_state.begin_new_run(&"weishidaier", false)
 
 	var fixture := Node2D.new()
 	root.add_child(fixture)
@@ -76,7 +76,7 @@ func _run() -> void:
 	fixture.queue_free()
 	for _frame in range(3):
 		await process_frame
-	run_state.begin_new_run(&"weishidaier")
+	run_state.begin_new_run(&"weishidaier", false)
 
 	if failures.is_empty():
 		print("OAK_WAREHOUSE_SMOKE_TEST_OK")
@@ -90,14 +90,14 @@ func _run() -> void:
 func _test_config_and_scene(config: PlantDefenseConfig, warehouse: OakWarehouse) -> void:
 	_expect(config != null and config.is_valid(), "橡木仓库配置必须有效。")
 	_expect(config.footprint_size == Vector2i(2, 2), "橡木仓库必须占用四格地砖。")
-	_expect(config.max_health == 5000, "橡木仓库生命值必须为5000。")
+	_expect(config.max_health == 2000, "橡木仓库生命值必须为2000。")
 	_expect(
-		config.physical_defense == 10 and config.magic_defense == 20,
-		"橡木仓库必须拥有10物理防御与20法术防御。"
+		config.physical_defense == 0 and config.magic_defense == 0,
+		"橡木仓库的物理防御与法术防御必须都为0。"
 	)
 	_expect(
-		warehouse.max_health == 5000 and warehouse.current_health == 5000,
-		"橡木仓库实例必须以5000点满生命生成。"
+		warehouse.max_health == 2000 and warehouse.current_health == 2000,
+		"橡木仓库实例必须以2000点满生命生成。"
 	)
 	_expect(
 		config.plant_scene.resource_path.begins_with("res://scene/plant_defense/"),
@@ -272,12 +272,12 @@ func _test_plant_health_bar(warehouse: OakWarehouse) -> void:
 	var starting_health := warehouse.current_health
 	_expect(
 		warehouse.receive_damage(50, null, Vector2.ZERO, EnemyConfig.DamageType.PHYSICAL)
-		and warehouse.current_health == starting_health - 40,
-		"仓库受到50点物理伤害时必须在10物防后实际承受40点。"
+		and warehouse.current_health == starting_health - 50,
+		"0物防仓库受到50点物理伤害时必须实际承受50点。"
 	)
 	await process_frame
 	_expect(warehouse.health_bar.visible, "植物受伤后独立血条必须淡入显示。")
-	warehouse.receive_healing(40)
+	warehouse.receive_healing(50)
 	await create_timer(0.5).timeout
 	_expect(not warehouse.health_bar.visible, "植物回满生命后独立血条必须淡出隐藏。")
 

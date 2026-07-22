@@ -1,19 +1,19 @@
 [gd_resource type="Resource" script_class="PickupConfig" format=3]
 
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/corn_machine_gun/icon.png" id="1_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/research_center/research_center.png" id="1_icon"]
 [ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
 
 [resource]
 script = ExtResource("2_script")
 pickup_type = 7
-display_name = "玉米机枪塔"
+display_name = "科研中心"
 drop_weight = 0.0
-description = "装箱后的玉米机枪塔。使用后选择合法位置建造，成功落地时消耗1个。"
+description = "装箱后的科研中心。使用后选择合法位置建造，成功落地时消耗1个。"
 can_store_in_inventory = true
 stackable = false
 inventory_stack_limit = 1
 icon_texture = ExtResource("1_icon")
 icon_scale = Vector2(0.5, 0.5)
 world_lifetime = 24.0
-placeable_plant_id = &"corn_machine_gun"
+placeable_plant_id = &"research_center"
 duration = 0.0

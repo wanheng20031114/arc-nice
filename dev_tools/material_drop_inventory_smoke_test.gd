@@ -294,7 +294,8 @@ func _test_local_and_peer_stack_limits() -> void:
 		)
 		_expect(
 			run_state.get_item(material_index) == material
-			and run_state.get_item_count(material_index) == 2,
+			and run_state.get_item_count(material_index)
+			== (RunStateStore.STARTING_WOOD_COUNT + 2 if material == WOOD else 2),
 			"%s copies must share one material stack." % material.display_name
 		)
 		_expect(
@@ -303,7 +304,7 @@ func _test_local_and_peer_stack_limits() -> void:
 		)
 
 	run_state.begin_new_run()
-	for _index in range(999):
+	for _index in range(999 - RunStateStore.STARTING_WOOD_COUNT):
 		_expect(run_state.try_add_item(WOOD), "Wood copy must fit before the first stack reaches 999.")
 	_expect(run_state.get_item(0) == WOOD and run_state.get_item_count(0) == 999, "The first wood slot must hold exactly 999 items.")
 	_expect(run_state.try_add_item(WOOD), "Wood copy 1000 must spill into another free slot.")
@@ -318,9 +319,9 @@ func _test_local_and_peer_stack_limits() -> void:
 	run_state.ensure_multiplayer_peer_state(7)
 	for _index in range(999):
 		_expect(run_state.try_add_item_for_peer(7, SAPLING), "Peer sapling copy must fit before 999.")
-	_expect(run_state.get_item_count_for_peer(7, 0) == 999, "Peer material stacks must use the same 999 limit.")
+	_expect(run_state.get_item_count_for_peer(7, 1) == 999, "Peer material stacks must use the same 999 limit.")
 	_expect(run_state.try_add_item_for_peer(7, SAPLING), "Peer material copy 1000 must spill into another slot.")
-	_expect(run_state.get_item_count_for_peer(7, 1) == 1, "Peer material overflow must use a second slot.")
+	_expect(run_state.get_item_count_for_peer(7, 2) == 1, "Peer material overflow must use a second slot.")
 
 
 func _test_material_drop_batch_spawn() -> void:
@@ -602,8 +603,8 @@ func _test_material_inventory_detail() -> void:
 	await process_frame
 	profile.slots[0].emit_signal("pressed")
 	await process_frame
-	_expect(profile.slots[0].stack_count_label.visible and profile.slots[0].stack_count_label.text == "2", "A material slot must display its stack count.")
-	_expect(profile.item_detail_title.text == "木头 ×2", "Material detail must include the selected stack count.")
+	_expect(profile.slots[0].stack_count_label.visible and profile.slots[0].stack_count_label.text == "7", "A material slot must include the five starting wood in its stack count.")
+	_expect(profile.item_detail_title.text == "木头 ×7", "Material detail must include the selected stack count.")
 	_expect(profile.item_detail_category_label.text == "物资", "Material detail must show the new material category.")
 	_expect(profile.item_detail_description.text.contains(WOOD.description), "Material detail must show its description.")
 	_expect(profile.slots[0].item_icon.modulate == Color.WHITE, "Inventory material icons must preserve their original color instead of inheriting the world tint.")
@@ -612,7 +613,7 @@ func _test_material_inventory_detail() -> void:
 	_expect(profile.item_detail_discard_button.visible and profile.item_detail_discard_button.text == "删除", "Materials must show only a delete action.")
 	_simulate_double_click(profile.slots[0])
 	await process_frame
-	_expect(run_state.get_item_count(0) == 2, "Double-clicking a material must not consume it.")
+	_expect(run_state.get_item_count(0) == 7, "Double-clicking a material must not consume it.")
 	profile.item_detail_discard_button.emit_signal("pressed")
 	await process_frame
 	_expect(run_state.get_item(0) == null, "The material delete button must remove the whole selected stack.")

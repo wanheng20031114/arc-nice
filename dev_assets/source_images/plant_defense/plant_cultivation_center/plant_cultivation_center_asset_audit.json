@@ -9,8 +9,7 @@
     "pixel_grid_analyzer measured logical grid",
     "nearest logical-cell selection without smoothing",
     "palette reduction without dithering",
-    "binary-alpha and footprint audit",
-    "building item icons reduced by exact integer 1/2 sampling"
+    "binary-alpha and footprint audit"
   ],
   "visual_contract": {
     "building_source_canvas_px": [
@@ -30,10 +29,6 @@
       0.5
     ],
     "building_world_size_px": [
-      32,
-      32
-    ],
-    "building_item_icon_canvas_px": [
       32,
       32
     ],
@@ -129,104 +124,6 @@
         "visible_colors_at_most_64": true,
         "subject_within_declared_limit": true,
         "world_bounds_within_32x32": true
-      },
-      "passed": true
-    }
-  },
-  "building_items": {
-    "agave_cannon": {
-      "label": "agave_cannon_building_item",
-      "source_path": "resources/texture/plant_defense/agave_cannon/icon.png",
-      "output_path": "resources/texture/building_items/agave_cannon.png",
-      "conversion": "exact integer 1/2 nearest-neighbour sampling",
-      "canvas_size": [
-        32,
-        32
-      ],
-      "subject_bbox_exclusive": [
-        3,
-        8,
-        29,
-        31
-      ],
-      "subject_size": [
-        26,
-        23
-      ],
-      "visible_color_count": 62,
-      "alpha_values": [
-        0,
-        255
-      ],
-      "checks": {
-        "canvas_32x32": true,
-        "binary_alpha": true,
-        "transparent_rgb_clean": true,
-        "subject_within_32x32": true
-      },
-      "passed": true
-    },
-    "corn_machine_gun": {
-      "label": "corn_machine_gun_building_item",
-      "source_path": "resources/texture/plant_defense/corn_machine_gun/icon.png",
-      "output_path": "resources/texture/building_items/corn_machine_gun.png",
-      "conversion": "exact integer 1/2 nearest-neighbour sampling",
-      "canvas_size": [
-        32,
-        32
-      ],
-      "subject_bbox_exclusive": [
-        2,
-        7,
-        30,
-        31
-      ],
-      "subject_size": [
-        28,
-        24
-      ],
-      "visible_color_count": 48,
-      "alpha_values": [
-        0,
-        255
-      ],
-      "checks": {
-        "canvas_32x32": true,
-        "binary_alpha": true,
-        "transparent_rgb_clean": true,
-        "subject_within_32x32": true
-      },
-      "passed": true
-    },
-    "bamboo_mortar": {
-      "label": "bamboo_mortar_building_item",
-      "source_path": "resources/texture/plant_defense/bamboo_mortar/idle.png",
-      "output_path": "resources/texture/building_items/bamboo_mortar.png",
-      "conversion": "exact integer 1/2 nearest-neighbour sampling",
-      "canvas_size": [
-        32,
-        32
-      ],
-      "subject_bbox_exclusive": [
-        2,
-        2,
-        29,
-        31
-      ],
-      "subject_size": [
-        27,
-        29
-      ],
-      "visible_color_count": 12,
-      "alpha_values": [
-        0,
-        255
-      ],
-      "checks": {
-        "canvas_32x32": true,
-        "binary_alpha": true,
-        "transparent_rgb_clean": true,
-        "subject_within_32x32": true
       },
       "passed": true
     }

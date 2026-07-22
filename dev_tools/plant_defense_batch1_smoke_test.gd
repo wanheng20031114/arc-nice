@@ -295,7 +295,13 @@ func _test_config_and_scene_contracts() -> void:
 		and corn_config.supports_multiplayer,
 		"玉米机枪塔必须拥有160范围、占2×2格并支持多人。"
 	)
-	_expect(oak_config.footprint_size == Vector2i(2, 2), "橡木仓库必须继续占2×2格。")
+	_expect(
+		oak_config.max_health == 2000
+		and oak_config.physical_defense == 0
+		and oak_config.magic_defense == 0
+		and oak_config.footprint_size == Vector2i(2, 2),
+		"橡木仓库必须为2000生命、0物防、0法防并继续占2×2格。"
+	)
 	_expect(
 		vegetation_stake_config.max_health == 4000
 		and vegetation_stake_config.physical_defense == 10
@@ -1568,8 +1574,8 @@ func _test_multiplayer_authority_contracts() -> void:
 		anchor,
 		requesting_player,
 		WAREHOUSE_REPLICA_NET_ID,
-		5000,
-		5000,
+		2000,
+		2000,
 		1
 	) as OakWarehouse
 	_expect(warehouse_replica != null, "共享仓库必须能生成多人客户端副本。")

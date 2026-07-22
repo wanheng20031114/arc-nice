@@ -16,6 +16,18 @@ const WATER_BOTTLE := preload(
 const WOODEN_CORE := preload(
 	"res://resources/config/materials/material_wooden_core.tres"
 )
+const WATER_COLLECTOR_ITEM := preload(
+	"res://resources/config/buildings/building_water_collector.tres"
+)
+const PLANTING_BASE_ITEM := preload(
+	"res://resources/config/buildings/building_planting_base.tres"
+)
+const PLANT_CULTIVATION_CENTER_ITEM := preload(
+	"res://resources/config/buildings/building_plant_cultivation_center.tres"
+)
+const RESEARCH_CENTER_ITEM := preload(
+	"res://resources/config/buildings/building_research_center.tres"
+)
 
 var failures: PackedStringArray = []
 
@@ -28,6 +40,8 @@ func _run() -> void:
 	var test_root := Node.new()
 	test_root.name = "ProductionBuildingSmokeTest"
 	root.add_child(test_root)
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier", false)
 
 	var coordinator := COORDINATOR_SCENE.instantiate() as ProductionCoordinator
 	var warehouse := WAREHOUSE_SCENE.instantiate() as OakWarehouse
@@ -188,8 +202,19 @@ func _run() -> void:
 	_expect(
 		panel.recipe_rows[0].icon == PLANK.icon_texture
 		and panel.recipe_rows[0].icon != WOOD.icon_texture
-		and panel.recipe_rows[1].icon == WOODEN_CORE.icon_texture,
-		"右侧配方列表必须分别显示木板和木制核心的产物图标。"
+		and panel.recipe_rows[1].icon == WOODEN_CORE.icon_texture
+		and panel.recipe_rows[2].icon == WATER_COLLECTOR_ITEM.icon_texture
+		and panel.recipe_rows[3].icon == PLANTING_BASE_ITEM.icon_texture
+		and panel.recipe_rows[4].icon == PLANT_CULTIVATION_CENTER_ITEM.icon_texture
+		and panel.recipe_rows[5].icon == RESEARCH_CENTER_ITEM.icon_texture
+		and panel.recipe_rows.all(func(row: Button) -> bool: return row.visible)
+		and panel.recipe_rows[2].text.contains("水源采集器组装")
+		and panel.recipe_rows[3].text.contains("种植基地组装")
+		and panel.recipe_rows[4].text.contains("植物培育中心组装")
+		and panel.recipe_rows[5].text.contains("科研中心组装")
+		and panel.recipe_rows[2].text.contains("30秒")
+		and panel.recipe_rows[5].text.contains("30秒"),
+		"右侧六条配方必须显示正确产物图标，四种功能建筑统一标明30秒。"
 	)
 	_expect(
 		panel.input_slots[0].visible
@@ -277,17 +302,78 @@ func _run() -> void:
 		"所有建筑面板必须通过统一关闭规则支持第二次交互键关闭。"
 	)
 	_expect(
-		station.recipes.size() == 2
-		and station.recipes[0].input_items == [WOOD]
-		and station.recipes[0].input_amounts == [1]
-		and station.recipes[0].output_items == [PLANK]
-		and station.recipes[0].output_amounts == [2]
-		and is_equal_approx(station.recipes[0].duration_seconds, 10.0)
-		and station.recipes[1].input_items == [PLANK, SAPLING, WATER_BOTTLE]
-		and station.recipes[1].input_amounts == [10, 1, 5]
-		and station.recipes[1].output_items == [WOODEN_CORE]
-		and station.recipes[1].output_amounts == [1],
-		"加工站必须保留木材锯切，并新增10木板、1树苗、5水瓶制作1木制核心的配方。"
+		station.recipes.size() == 6
+		and _recipe_matches(
+			station.recipes[0],
+			&"wood_to_plank",
+			[WOOD],
+			[1],
+			PLANK,
+			2,
+			10.0,
+			false
+		)
+		and _recipe_matches(
+			station.recipes[1],
+			&"wooden_core_assembly",
+			[PLANK, SAPLING, WATER_BOTTLE],
+			[10, 1, 5],
+			WOODEN_CORE,
+			1,
+			10.0,
+			false
+		)
+		and _recipe_matches(
+			station.recipes[2],
+			&"water_collector_assembly",
+			[PLANK],
+			[10],
+			WATER_COLLECTOR_ITEM,
+			1,
+			30.0,
+			true
+		)
+		and _recipe_matches(
+			station.recipes[3],
+			&"planting_base_assembly",
+			[PLANK, SAPLING, WATER_BOTTLE],
+			[20, 5, 5],
+			PLANTING_BASE_ITEM,
+			1,
+			30.0,
+			true
+		)
+		and _recipe_matches(
+			station.recipes[4],
+			&"plant_cultivation_center_assembly",
+			[PLANK, WATER_BOTTLE],
+			[30, 10],
+			PLANT_CULTIVATION_CENTER_ITEM,
+			1,
+			30.0,
+			true
+		)
+		and _recipe_matches(
+			station.recipes[5],
+			&"research_center_assembly",
+			[PLANK, WATER_BOTTLE],
+			[30, 10],
+			RESEARCH_CENTER_ITEM,
+			1,
+			30.0,
+			true
+		),
+		"加工站必须按固定顺序提供两条材料配方与四条30秒功能建筑配方。"
+	)
+	_expect(
+		_is_valid_building_item(WATER_COLLECTOR_ITEM, &"water_collector")
+		and _is_valid_building_item(PLANTING_BASE_ITEM, &"planting_base")
+		and _is_valid_building_item(
+			PLANT_CULTIVATION_CENTER_ITEM,
+			&"plant_cultivation_center"
+		)
+		and _is_valid_building_item(RESEARCH_CENTER_ITEM, &"research_center"),
+		"四种新增功能建筑物品必须复用原图、缩放至32×32且指向有效建筑配置。"
 	)
 
 	station.set_production_enabled(false)
@@ -445,6 +531,12 @@ func _run() -> void:
 		and is_zero_approx(station.progress_elapsed_seconds),
 		"三种投入跨仓凑齐时必须在同一事务中扣除10/1/5并产出1个木制核心。"
 	)
+	_test_utility_building_recipe_transactions(
+		station,
+		warehouse,
+		coordinator,
+		run_state
+	)
 
 	var building_texture := load(
 		"res://resources/texture/plant_defense/wood_processing_station/wood_processing_station.png"
@@ -477,6 +569,143 @@ func _run() -> void:
 	await _test_multiplayer_production_contract(test_root, config)
 
 	_finish(test_root)
+
+
+func _recipe_matches(
+	recipe: ProductionRecipe,
+	expected_recipe_id: StringName,
+	expected_input_items: Array,
+	expected_input_amounts: Array,
+	expected_output_item: PickupConfig,
+	expected_output_amount: int,
+	expected_duration_seconds: float,
+	expected_outputs_to_player_inventory: bool
+) -> bool:
+	return (
+		recipe != null
+		and recipe.is_valid()
+		and recipe.recipe_id == expected_recipe_id
+		and recipe.input_items == expected_input_items
+		and recipe.input_amounts == expected_input_amounts
+		and recipe.output_items == [expected_output_item]
+		and recipe.output_amounts == [expected_output_amount]
+		and not recipe.inputs_from_player_inventory()
+		and recipe.outputs_to_player_inventory()
+		== expected_outputs_to_player_inventory
+		and is_equal_approx(
+			recipe.duration_seconds,
+			expected_duration_seconds
+		)
+	)
+
+
+func _is_valid_building_item(
+	item: PickupConfig,
+	expected_plant_id: StringName
+) -> bool:
+	var plant_config := PlantDefenseRegistry.get_config(expected_plant_id)
+	return (
+		item != null
+		and plant_config != null
+		and item.pickup_type == PickupConfig.PickupType.BUILDING
+		and item.can_store_in_inventory
+		and not item.stackable
+		and item.inventory_stack_limit == 1
+		and item.placeable_plant_id == expected_plant_id
+		and item.icon_texture != null
+		and item.icon_texture.resource_path == plant_config.icon.resource_path
+		and item.icon_texture.get_size() == Vector2(64, 64)
+		and item.icon_scale == Vector2(0.5, 0.5)
+		and item.icon_texture.get_size() * item.icon_scale
+		== Vector2(32, 32)
+	)
+
+
+func _test_utility_building_recipe_transactions(
+	station: ProductionBuilding,
+	warehouse: OakWarehouse,
+	coordinator: ProductionCoordinator,
+	run_state: RunStateStore
+) -> void:
+	var recipe_cases: Array[Dictionary] = [
+		{
+			"recipe_id": &"water_collector_assembly",
+			"display_name": "水源采集器",
+			"input_items": [PLANK],
+			"input_amounts": [10],
+			"output_item": WATER_COLLECTOR_ITEM,
+		},
+		{
+			"recipe_id": &"planting_base_assembly",
+			"display_name": "种植基地",
+			"input_items": [PLANK, SAPLING, WATER_BOTTLE],
+			"input_amounts": [20, 5, 5],
+			"output_item": PLANTING_BASE_ITEM,
+		},
+		{
+			"recipe_id": &"plant_cultivation_center_assembly",
+			"display_name": "植物培育中心",
+			"input_items": [PLANK, WATER_BOTTLE],
+			"input_amounts": [30, 10],
+			"output_item": PLANT_CULTIVATION_CENTER_ITEM,
+		},
+		{
+			"recipe_id": &"research_center_assembly",
+			"display_name": "科研中心",
+			"input_items": [PLANK, WATER_BOTTLE],
+			"input_amounts": [30, 10],
+			"output_item": RESEARCH_CENTER_ITEM,
+		},
+	]
+	for recipe_case in recipe_cases:
+		var recipe_id := StringName(recipe_case["recipe_id"])
+		var display_name := String(recipe_case["display_name"])
+		var input_items: Array = recipe_case["input_items"]
+		var input_amounts: Array = recipe_case["input_amounts"]
+		var output_item := recipe_case["output_item"] as PickupConfig
+		var inputs_added := true
+		for input_index in input_items.size():
+			inputs_added = (
+				warehouse.try_add_storage_item_count(
+					input_items[input_index] as PickupConfig,
+					int(input_amounts[input_index])
+				)
+				and inputs_added
+			)
+		_expect(inputs_added, "%s配方必须能准备全部测试原料。" % display_name)
+		_expect(station.select_recipe(recipe_id), "必须能选择%s组装配方。" % display_name)
+		var output_total_before := run_state.get_inventory_item_total(output_item)
+		var inventory_revision_before := run_state.get_inventory_revision()
+		station.advance_shared_production_tick(29.0)
+		var inputs_unchanged := true
+		for input_index in input_items.size():
+			inputs_unchanged = (
+				coordinator.get_total_item_count(
+					input_items[input_index] as PickupConfig
+				) == int(input_amounts[input_index])
+				and inputs_unchanged
+			)
+		_expect(
+			inputs_unchanged
+			and run_state.get_inventory_item_total(output_item) == output_total_before
+			and run_state.get_inventory_revision() == inventory_revision_before
+			and is_equal_approx(station.progress_elapsed_seconds, 29.0),
+			"%s组装到29秒时不得扣料或提前进入背包。" % display_name
+		)
+		station.advance_shared_production_tick(1.0)
+		var inputs_consumed := true
+		for input_item in input_items:
+			inputs_consumed = (
+				coordinator.get_total_item_count(input_item as PickupConfig) == 0
+				and inputs_consumed
+			)
+		_expect(
+			inputs_consumed
+			and run_state.get_inventory_item_total(output_item) == output_total_before + 1
+			and run_state.get_inventory_revision() == inventory_revision_before + 1
+			and is_zero_approx(station.progress_elapsed_seconds),
+			"%s必须在第30秒原子扣料并作为建筑物品进入玩家背包。" % display_name
+		)
 
 
 func _test_multiplayer_production_contract(
@@ -514,7 +743,7 @@ func _test_multiplayer_production_contract(
 		8,
 		2,
 		0,
-		&"wood_to_plank"
+		&"water_collector_assembly"
 	)
 	var forged_peer_command := first_command.duplicate(true)
 	forged_peer_command["peer_id"] = 99
@@ -558,8 +787,10 @@ func _test_multiplayer_production_contract(
 			competing_command
 		) == ProductionBuildingProtocol.RESULT_STALE_STATE
 		and authority.production_enabled
+		and authority.active_recipe_id == &"water_collector_assembly"
+		and authority.personal_output_peer_id == 2
 		and authority.production_revision == 1,
-		"相同revision的并发命令必须只接受首个有效命令，后到者返回stale_state且零写入。"
+		"多人功能建筑配方必须绑定选择者Peer，且相同revision的后到命令必须零写入。"
 	)
 	var invalid_recipe_command := ProductionBuildingProtocol.make_select_recipe_command(
 		3,
