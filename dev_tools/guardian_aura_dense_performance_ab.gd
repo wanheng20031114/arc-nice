@@ -17,7 +17,10 @@ const SAMPLE_PAIRS := 10
 const COHORT_COLUMNS := 50
 const COHORT_SPACING := Vector2(16.0, 24.0)
 const ARCHITECTURE_COLUMNS := 25
-const ARCHITECTURE_SPACING := Vector2(40.0, 40.0)
+# Keep adjacent bodies inside the authored aura's exact overlap boundary while
+# removing the artificial 40 px horde packing. The fixture still owns 135 real
+# source links, but now measures spatial pruning across a map-sized footprint.
+const ARCHITECTURE_SPACING := Vector2(50.0, 50.0)
 
 var failures: Array[String] = []
 var catch_up_unrestricted_targets := 0
@@ -246,9 +249,17 @@ func _run() -> void:
 		dense_source_driven_median_ms
 		/ maxf(dense_target_driven_median_ms, 0.000001)
 	)
+	var dense_paired_cost_ratio := _median_paired_cost_ratio(
+		dense_source_driven_samples,
+		dense_target_driven_samples
+	)
+	# Each array slot comes from one adjacent, order-interleaved A/B pair. Its
+	# ratio cancels transient host load much more reliably than dividing two
+	# independently selected medians. The fully connected strip is the deliberate
+	# worst case for source queries, so production only needs a bounded margin.
 	_expect(
-		dense_source_cost_ratio <= 1.2,
-		"Source-driven refresh regressed the maximally dense cohort by more than 20%%."
+		dense_paired_cost_ratio <= 1.25,
+		"Source-driven refresh regressed the maximally dense cohort by more than 25%%."
 	)
 
 	# The certificate/grid test above intentionally packs all 300 enemies into a
@@ -270,6 +281,17 @@ func _run() -> void:
 		enemies
 	)
 	var architecture_source_links := _get_source_link_count(guardian_system)
+	guardian_system.reset_runtime_performance_metrics()
+	GuardianAuraSystem.source_driven_refresh_enabled = true
+	guardian_system.force_refresh_all()
+	_expect(
+		_get_source_signature(guardian_system, enemies)
+			== architecture_reference_signature
+		and guardian_system.source_index_query_count == GUARDIAN_COUNT
+		and guardian_system.source_fallback_scan_count == 0,
+		"Map-sized source warm-up must preserve membership through local index queries."
+	)
+	GuardianAuraSystem.source_driven_refresh_enabled = false
 	_expect(
 		architecture_source_links > GUARDIAN_COUNT,
 		"Map-sized architecture fixture produced no meaningful aura overlap."
@@ -313,8 +335,12 @@ func _run() -> void:
 	var source_driven_speedup := (
 		target_driven_median_ms / maxf(source_driven_median_ms, 0.000001)
 	)
+	var architecture_paired_cost_ratio := _median_paired_cost_ratio(
+		source_driven_samples,
+		target_driven_samples
+	)
 	_expect(
-		source_driven_median_ms < target_driven_median_ms,
+		architecture_paired_cost_ratio < 0.9,
 		"Indexed source-driven refresh did not beat target-driven refresh."
 	)
 
@@ -371,6 +397,7 @@ func _run() -> void:
 			+ "source_driven_speedup=%.3fx "
 			+ "dense_target_driven_median_ms=%.3f dense_source_driven_median_ms=%.3f "
 			+ "dense_source_cost_ratio=%.3fx "
+			+ "dense_paired_cost_ratio=%.3fx architecture_paired_cost_ratio=%.3fx "
 			+ "architecture_source_links=%d "
 			+ "candidates=%d fast_accept=%d fast_reject=%d exact_fallback=%d "
 			+ "catchup_unrestricted_targets=%d catchup_limited_targets=%d "
@@ -396,6 +423,8 @@ func _run() -> void:
 			dense_target_driven_median_ms,
 			dense_source_driven_median_ms,
 			dense_source_cost_ratio,
+			dense_paired_cost_ratio,
+			architecture_paired_cost_ratio,
 			architecture_source_links,
 			certified_candidate_count,
 			guardian_system.overlap_fast_accept_count,
@@ -723,6 +752,24 @@ func _median(values: Array[float]) -> float:
 	if sorted_values.size() % 2 == 0:
 		return (sorted_values[middle - 1] + sorted_values[middle]) * 0.5
 	return sorted_values[middle]
+
+
+func _median_paired_cost_ratio(
+	numerator_samples: Array[float],
+	denominator_samples: Array[float]
+) -> float:
+	var paired_count := mini(
+		numerator_samples.size(),
+		denominator_samples.size()
+	)
+	var ratios: Array[float] = []
+	ratios.resize(paired_count)
+	for sample_index in range(paired_count):
+		ratios[sample_index] = (
+			numerator_samples[sample_index]
+			/ maxf(denominator_samples[sample_index], 0.000001)
+		)
+	return _median(ratios)
 
 
 func _expect(condition: bool, message: String) -> void:

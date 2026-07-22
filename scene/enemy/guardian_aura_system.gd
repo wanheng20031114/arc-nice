@@ -78,6 +78,11 @@ var current_source_ids_scratch: Array[int] = []
 var desired_covered_enemy_ids_scratch: Dictionary[int, bool] = {}
 var current_covered_enemy_ids_scratch: Array[int] = []
 var source_candidate_scratch: Array[Enemy] = []
+# Every production guardian is bound to the same authoritative combat index.
+# Resolve and certify that index once per non-yielding service batch; individual
+# sources still verify their own binding before consuming it.
+var source_query_index_scope_active := false
+var source_query_index: CombatTargetIndex = null
 # A dense source can cross the per-frame deadline. Keep its one index result and
 # partial membership set alive until the next render frame, then publish only
 # after every candidate is processed; no repeated work or partial aura state.
@@ -86,6 +91,7 @@ var pending_source_refresh_candidate_cursor := 0
 var pending_source_refresh_position := Vector2.ZERO
 var pending_source_refresh_world_radius := 0.0
 var pending_source_refresh_defense_bonus := 0
+var pending_source_candidates_require_revalidation := false
 var maximum_guardian_radius := 0.0
 var maximum_tracked_target_extent := 0.0
 var refresh_cursor := 0
@@ -191,6 +197,7 @@ func _exit_tree() -> void:
 	desired_covered_enemy_ids_scratch.clear()
 	current_covered_enemy_ids_scratch.clear()
 	source_candidate_scratch.clear()
+	_end_source_query_index_scope()
 	_clear_pending_source_refresh()
 	maximum_tracked_target_extent = 0.0
 
@@ -282,10 +289,12 @@ func _service_source_driven_refresh() -> void:
 		return
 
 	var started_usec := Time.get_ticks_usec()
+	_begin_source_query_index_scope()
 	var processed_count := _process_source_refresh_batch(
 		batch_size,
 		started_usec + max_refresh_service_usec
 	)
+	_end_source_query_index_scope()
 	last_refresh_guardian_count = processed_count
 	source_refresh_count += processed_count
 	refresh_guardian_debt = clampf(
@@ -712,12 +721,23 @@ func _refresh_guardian_coverage(
 		):
 			source_candidate_visit_count += candidate_index - chunk_start
 			pending_source_refresh_candidate_cursor = candidate_index
+			pending_source_candidates_require_revalidation = true
 			return false
 		var enemy := source_candidate_scratch[candidate_index]
+		# CombatTargetIndex already returned a live, finite candidate in this same
+		# synchronous call stack. Only a snapshot retained past the service deadline
+		# can become stale before consumption, so keep the costly Object checks on
+		# that cross-frame path instead of repeating them for every ordinary hit.
 		if (
-			enemy == null
-			or not is_instance_valid(enemy)
-			or enemy.is_dead
+			(
+				pending_source_candidates_require_revalidation
+				and (
+					enemy == null
+					or not is_instance_valid(enemy)
+					or enemy.is_dead
+					or enemy.is_queued_for_deletion()
+				)
+			)
 			or enemy == guardian
 			or (enemy.collision_layer & ENEMY_COLLISION_LAYER) == 0
 			or not _has_enabled_body_collision_shape(enemy)
@@ -760,6 +780,7 @@ func _clear_pending_source_refresh() -> void:
 	pending_source_refresh_position = Vector2.ZERO
 	pending_source_refresh_world_radius = 0.0
 	pending_source_refresh_defense_bonus = 0
+	pending_source_candidates_require_revalidation = false
 	source_candidate_scratch.clear()
 	desired_covered_enemy_ids_scratch.clear()
 
@@ -769,7 +790,16 @@ func _collect_source_query_candidates(
 	world_radius: float
 ) -> bool:
 	source_candidate_scratch.clear()
-	var target_index := _get_complete_combat_target_index(guardian)
+	var target_index: CombatTargetIndex = null
+	if source_query_index_scope_active:
+		if (
+			source_query_index != null
+			and guardian.combat_target_index_binding == source_query_index
+			and guardian.combat_target_index_net_id > 0
+		):
+			target_index = source_query_index
+	else:
+		target_index = _get_complete_combat_target_index(guardian)
 	if target_index != null:
 		target_index.query_radius_unordered_into(
 			guardian.global_position,
@@ -789,6 +819,22 @@ func _collect_source_query_candidates(
 		if enemy != null and is_instance_valid(enemy) and not enemy.is_dead:
 			source_candidate_scratch.append(enemy)
 	return true
+
+
+func _begin_source_query_index_scope() -> void:
+	source_query_index_scope_active = true
+	source_query_index = null
+	for source_id in guardian_ids:
+		var guardian := guardians.get(source_id) as Enemy
+		if guardian == null or not is_instance_valid(guardian) or guardian.is_dead:
+			continue
+		source_query_index = _get_complete_combat_target_index(guardian)
+		return
+
+
+func _end_source_query_index_scope() -> void:
+	source_query_index_scope_active = false
+	source_query_index = null
 
 
 func _get_complete_combat_target_index(guardian: Enemy) -> CombatTargetIndex:
@@ -1272,11 +1318,13 @@ func force_refresh_all() -> void:
 	_refresh_maximum_tracked_target_extent()
 	_clear_pending_source_refresh()
 	if source_driven_refresh_enabled:
+		_begin_source_query_index_scope()
 		for source_id in guardian_ids.duplicate():
 			var guardian := guardians.get(source_id) as Enemy
 			if guardian != null and is_instance_valid(guardian) and not guardian.is_dead:
 				if not _refresh_guardian_coverage(guardian):
 					source_deferred_refresh_count += 1
+		_end_source_query_index_scope()
 	else:
 		_rebuild_guardian_grid()
 		for enemy_id in tracked_enemy_ids:

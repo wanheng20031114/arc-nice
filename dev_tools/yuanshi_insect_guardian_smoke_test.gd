@@ -584,7 +584,14 @@ func _test_source_driven_index_and_fixture_fallback() -> void:
 	var near_target := _spawn_enemy(Vector2(34.0, 0.0), BASIC_CONFIG, player)
 	var boundary_target := _spawn_enemy(Vector2(54.0, 0.0), BASIC_CONFIG, player)
 	var far_target := _spawn_enemy(Vector2(120.0, 0.0), BASIC_CONFIG, player)
-	var cohort: Array[Enemy] = [guardian, near_target, boundary_target, far_target]
+	var ephemeral_target := _spawn_enemy(Vector2(10.0, 0.0), BASIC_CONFIG, player)
+	var cohort: Array[Enemy] = [
+		guardian,
+		near_target,
+		boundary_target,
+		far_target,
+		ephemeral_target,
+	]
 	for enemy in cohort:
 		enemy.set_physics_process(false)
 	await _wait_physics_frames(2)
@@ -650,9 +657,16 @@ func _test_source_driven_index_and_fixture_fallback() -> void:
 		and guardian_aura_system.refresh_guardian_cursor == deferred_cursor_before
 		and guardian_aura_system.pending_source_refresh_id
 			== guardian.get_instance_id()
+		and guardian_aura_system.pending_source_candidates_require_revalidation
+		and guardian_aura_system.source_candidate_scratch.has(ephemeral_target)
 		and guardian_aura_system.has_guardian_source(near_target, guardian),
 		"A deferred source query must preserve coverage, debt, and cursor ownership."
 	)
+	# The retained array owns a strong candidate reference across render frames.
+	# Remove one candidate before resuming to prove that only this cross-frame path
+	# revalidates stale Objects before reading collision state.
+	cohort.erase(ephemeral_target)
+	ephemeral_target.free()
 	guardian_aura_system.max_refresh_service_usec = original_service_budget
 	guardian_aura_system.call("_service_refresh_target_debt")
 	_expect(
