@@ -37,6 +37,25 @@ func request_flash(
 	priority: int = 1,
 	elapsed_seconds: float = 0.0
 ) -> bool:
+	# Replicated combat effects may still be visually alive after their shorter
+	# light envelope has ended. Reject those late requests before visibility or
+	# slot selection: configuring an expired request would otherwise stop the
+	# selected active light and silently reduce the fixed pool capacity.
+	if (
+		not is_finite(attack_seconds)
+		or not is_finite(hold_seconds)
+		or not is_finite(decay_seconds)
+		or not is_finite(elapsed_seconds)
+	):
+		return false
+	var safe_elapsed_seconds := maxf(elapsed_seconds, 0.0)
+	if safe_elapsed_seconds >= NightVfxFlash2D.get_configured_duration_seconds(
+		attack_seconds,
+		hold_seconds,
+		decay_seconds
+	):
+		return false
+
 	# The light may still reach the camera while its center is just off-screen.
 	# soft_white_point_light.tres is 256 px wide, so half the scaled width is
 	# the world-space radius; the extra 16 px covers glow/bilinear falloff.
@@ -66,7 +85,7 @@ func request_flash(
 		hold_seconds,
 		decay_seconds
 	)
-	flash.play_flash(elapsed_seconds)
+	flash.play_flash(safe_elapsed_seconds)
 	return flash.is_flash_active()
 
 

@@ -65,8 +65,24 @@ func is_flash_active() -> bool:
 	return _flash_active
 
 
+static func get_configured_duration_seconds(
+	configured_attack_seconds: float,
+	configured_hold_seconds: float,
+	configured_decay_seconds: float
+) -> float:
+	return (
+		maxf(configured_attack_seconds, 0.0)
+		+ maxf(configured_hold_seconds, 0.0)
+		+ maxf(configured_decay_seconds, 0.01)
+	)
+
+
 func get_flash_duration() -> float:
-	return attack_seconds + hold_seconds + decay_seconds
+	return get_configured_duration_seconds(
+		attack_seconds,
+		hold_seconds,
+		decay_seconds
+	)
 
 
 func _apply_envelope() -> void:
