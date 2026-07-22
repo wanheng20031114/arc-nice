@@ -35,6 +35,7 @@ func _init() -> void:
 		is_equal_approx(float(summary.get("transaction_latency_p95_ms", 0.0)), 110.0),
 		"Transaction telemetry must report a bounded p95 sample."
 	)
+	_test_transaction_latency_ring(metrics)
 	_test_mp_game_rpc_payload_diagnostics()
 	_test_outbound_rpc_channel_classification()
 	_test_authoritative_plant_registry_count()
@@ -46,6 +47,63 @@ func _init() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_transaction_latency_ring(metrics: Variant) -> void:
+	var source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/multiplayer_runtime_metrics.gd"
+	)
+	_expect(
+		source.contains("PackedFloat64Array()")
+		and source.contains(
+			"_transaction_latency_sample_write_index += 1"
+		)
+		and not source.contains("pop_front()")
+		and not source.contains("remove_at(0)"),
+		(
+			"Transaction latency recording must use fixed storage and O(1) "
+			+ "overwrite instead of shifting its sample window."
+		)
+	)
+	metrics.call("reset", 8)
+	for sample_index in range(273):
+		metrics.call("record_transaction_latency_ms", float(sample_index))
+	metrics.call("record_transaction_latency_ms", -1.0)
+	metrics.call("record_transaction_latency_ms", NAN)
+	metrics.call("record_transaction_latency_ms", INF)
+	var retained_samples := (
+		metrics.call("get_transaction_latency_samples_ms") as PackedFloat64Array
+	)
+	var summary := metrics.call("get_summary") as Dictionary
+	_expect(
+		retained_samples.size() == 256
+		and is_equal_approx(retained_samples[0], 17.0)
+		and is_equal_approx(retained_samples[255], 272.0),
+		(
+			"Transaction telemetry must retain the newest 256 samples in "
+			+ "recording order after its ring wraps."
+		)
+	)
+	_expect(
+		int(summary.get("transaction_latency_sample_count", 0)) == 256
+		and is_equal_approx(
+			float(summary.get("transaction_latency_p95_ms", 0.0)),
+			260.0
+		),
+		(
+			"Wrapped transaction telemetry must preserve nearest-rank p95 "
+			+ "semantics and reject invalid samples."
+		)
+	)
+	metrics.call("reset", 8)
+	_expect(
+		(metrics.call("get_transaction_latency_samples_ms") as PackedFloat64Array).is_empty()
+		and int((metrics.call("get_summary") as Dictionary).get(
+			"transaction_latency_sample_count",
+			-1
+		)) == 0,
+		"Reset must empty the logical ring without exposing preallocated slots."
+	)
 
 
 func _test_mp_game_rpc_payload_diagnostics() -> void:

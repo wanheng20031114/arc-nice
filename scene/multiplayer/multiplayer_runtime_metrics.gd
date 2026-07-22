@@ -8,7 +8,11 @@ var channels: Array[Dictionary] = []
 var started_usec: int = 0
 var state_repair_count: int = 0
 var incomplete_batch_count: int = 0
-var transaction_latency_samples_ms: Array[float] = []
+# The write index always points at the next free slot, or at the oldest sample
+# once the preallocated ring is full.
+var _transaction_latency_sample_ring_ms := PackedFloat64Array()
+var _transaction_latency_sample_count := 0
+var _transaction_latency_sample_write_index := 0
 
 
 func _init(initial_channel_count: int = 8) -> void:
@@ -30,7 +34,9 @@ func reset(new_channel_count: int = -1) -> void:
 	started_usec = Time.get_ticks_usec()
 	state_repair_count = 0
 	incomplete_batch_count = 0
-	transaction_latency_samples_ms.clear()
+	_transaction_latency_sample_ring_ms.resize(MAX_TRANSACTION_LATENCY_SAMPLES)
+	_transaction_latency_sample_count = 0
+	_transaction_latency_sample_write_index = 0
 
 
 func record_packet(channel: int, payload_bytes: int, packet_count: int = 1) -> void:
@@ -59,12 +65,35 @@ func record_incomplete_batch() -> void:
 func record_transaction_latency_ms(latency_ms: float) -> void:
 	if not is_finite(latency_ms) or latency_ms < 0.0:
 		return
-	transaction_latency_samples_ms.append(latency_ms)
-	if transaction_latency_samples_ms.size() > MAX_TRANSACTION_LATENCY_SAMPLES:
-		transaction_latency_samples_ms.pop_front()
+	_transaction_latency_sample_ring_ms[
+		_transaction_latency_sample_write_index
+	] = latency_ms
+	_transaction_latency_sample_write_index += 1
+	if _transaction_latency_sample_write_index >= MAX_TRANSACTION_LATENCY_SAMPLES:
+		_transaction_latency_sample_write_index = 0
+	_transaction_latency_sample_count = mini(
+		_transaction_latency_sample_count + 1,
+		MAX_TRANSACTION_LATENCY_SAMPLES
+	)
+
+
+func get_transaction_latency_samples_ms() -> PackedFloat64Array:
+	var samples := PackedFloat64Array()
+	samples.resize(_transaction_latency_sample_count)
+	if _transaction_latency_sample_count <= 0:
+		return samples
+	var oldest_index := 0
+	if _transaction_latency_sample_count >= MAX_TRANSACTION_LATENCY_SAMPLES:
+		oldest_index = _transaction_latency_sample_write_index
+	for sample_offset in range(_transaction_latency_sample_count):
+		samples[sample_offset] = _transaction_latency_sample_ring_ms[
+			(oldest_index + sample_offset) % MAX_TRANSACTION_LATENCY_SAMPLES
+		]
+	return samples
 
 
 func get_summary() -> Dictionary:
+	var transaction_latency_samples_ms := get_transaction_latency_samples_ms()
 	var elapsed_seconds := maxf(
 		float(Time.get_ticks_usec() - started_usec) / 1_000_000.0,
 		0.001
@@ -87,12 +116,12 @@ func get_summary() -> Dictionary:
 		"channels": channel_summaries,
 		"state_repair_count": state_repair_count,
 		"incomplete_batch_count": incomplete_batch_count,
-		"transaction_latency_sample_count": transaction_latency_samples_ms.size(),
+		"transaction_latency_sample_count": _transaction_latency_sample_count,
 		"transaction_latency_p95_ms": _percentile(transaction_latency_samples_ms, 0.95),
 	}
 
 
-func _percentile(samples: Array[float], ratio: float) -> float:
+func _percentile(samples: PackedFloat64Array, ratio: float) -> float:
 	if samples.is_empty():
 		return 0.0
 	var sorted_samples := samples.duplicate()
