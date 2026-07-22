@@ -1,9 +1,9 @@
 extends SceneTree
 
 # ColdStatusScheduler pressure probe. Targets are lightweight Enemy nodes kept
-# outside the SceneTree: this isolates the scheduler's indexed min-heap from
-# rendering, navigation and collision costs while still exercising its real
-# Player/Enemy target gate.
+# outside the SceneTree: this isolates the scheduler's deadline-cohort index
+# from rendering, navigation and collision costs while still exercising its
+# real Player/Enemy target gate.
 const TARGET_COUNTS := [300, 1000]
 const HITS_PER_TARGET := 5
 const STABLE_SAMPLE_FRAMES := 120
@@ -74,8 +74,10 @@ func _run_heap_cohort(target_count: int) -> void:
 
 	print(
 		(
-			"FROST_COLD_HEAP_PERFORMANCE targets=%d "
+			"FROST_COLD_COHORT_PERFORMANCE targets=%d "
 			+ "five_hit_apply_usec=%d apply_heap_updates=%d apply_callbacks=%d "
+			+ "apply_cohorts=%d apply_deferred_updates=%d "
+			+ "flush_usec=%d flush_moves=%d flush_heap_updates=%d "
 			+ "stable_p50_usec=%d stable_p95_usec=%d stable_p99_usec=%d "
 			+ "stable_max_usec=%d "
 			+ "stable_root_checks=%d stable_physics_usec=%d "
@@ -92,6 +94,11 @@ func _run_heap_cohort(target_count: int) -> void:
 			int(same_expiry_result.get("five_hit_apply_usec", -1)),
 			int(same_expiry_result.get("apply_heap_updates", -1)),
 			int(same_expiry_result.get("apply_callbacks", -1)),
+			int(same_expiry_result.get("apply_cohorts", -1)),
+			int(same_expiry_result.get("apply_deferred_updates", -1)),
+			int(same_expiry_result.get("flush_usec", -1)),
+			int(same_expiry_result.get("flush_moves", -1)),
+			int(same_expiry_result.get("flush_heap_updates", -1)),
 			int(same_expiry_result.get("stable_p50_usec", -1)),
 			int(same_expiry_result.get("stable_p95_usec", -1)),
 			int(same_expiry_result.get("stable_p99_usec", -1)),
@@ -152,8 +159,9 @@ func _run_same_frame_five_hit_case(target_count: int) -> Dictionary:
 	)
 	_expect(
 		int(scheduler.call("get_active_target_count")) == target_count
-		and int(scheduler.call("get_heap_size")) == target_count,
-		"Five hits must update one heap node per target instead of appending five."
+		and int(scheduler.call("get_heap_size")) == 1
+		and int(scheduler.call("get_expiry_cohort_count")) == 1,
+		"Same-frame first hits must share one indexed deadline cohort."
 	)
 	_expect(
 		int(apply_metrics.get("accepted_applications", -1))
@@ -163,34 +171,63 @@ func _run_same_frame_five_hit_case(target_count: int) -> Dictionary:
 		and int(apply_metrics.get("max_stack_extensions", -1)) == target_count
 		and int(apply_metrics.get("callbacks", -1))
 			== target_count * HITS_PER_TARGET
+		and int(apply_metrics.get("deferred_expiry_updates", -1))
+			== target_count * (HITS_PER_TARGET - 1)
+		and int(apply_metrics.get("cohort_state_moves", -1)) == 0
+		and int(apply_metrics.get("heap_updates", -1)) == 1
+		and int(apply_metrics.get("active_expiry_cohorts", -1)) == 1
 		and int(apply_metrics.get("peak_active_targets", -1)) == target_count
 		and sink.callback_count == target_count * HITS_PER_TARGET
 		and sink.last_stack_count == 4
 		and is_equal_approx(sink.last_multiplier, 0.10),
 		"Five-hit metrics must distinguish first, L2-L4, and capped-L4 updates."
 	)
-	var apply_budget_usec := 16_600 if target_count <= 300 else 50_000
+	var apply_budget_usec := 14_000 if target_count <= 300 else 48_000
 	_expect(
 		five_hit_apply_usec <= apply_budget_usec,
 		"The %d-target five-hit apply burst exceeded %d usec: %d usec."
 		% [target_count, apply_budget_usec, five_hit_apply_usec]
 	)
 
-	# During a stable interval no target is due. An indexed min-heap checks only
-	# its root once per frame; target-wide scans or callbacks are regressions.
+	# Reapplications update combat state immediately but coalesce expiry-index
+	# movement until the next physics step. Each target moves once to its final
+	# deadline, rather than once per hit, and the whole flush remains bounded by
+	# one frame even for the 1000-target stress cohort.
 	scheduler.call("reset_performance_metrics")
 	sink.reset()
+	var flush_started_usec := Time.get_ticks_usec()
+	scheduler.call("_physics_process", TEST_DELTA)
+	var flush_usec := maxi(Time.get_ticks_usec() - flush_started_usec, 0)
+	var flush_metrics := _get_metrics()
+	_expect(
+		int(flush_metrics.get("cohort_state_moves", -1)) == target_count
+		and int(flush_metrics.get("callbacks", -1)) == 0
+		and int(flush_metrics.get("expired_targets", -1)) == 0
+		and int(scheduler.call("get_heap_size")) == 1
+		and int(scheduler.call("get_expiry_cohort_count")) == 1,
+		"The deferred expiry flush must move every target exactly once."
+	)
+	var flush_budget_usec := 4_000 if target_count <= 300 else 12_000
+	_expect(
+		flush_usec <= flush_budget_usec,
+		"The %d-target expiry-index flush exceeded %d usec: %d usec."
+		% [target_count, flush_budget_usec, flush_usec]
+	)
+
+	# During the rest of the stable interval no target is due. The cohort heap
+	# checks only its root once per frame; target-wide scans are regressions.
+	scheduler.call("reset_performance_metrics")
 	var stable_samples: Array[int] = []
-	for _frame_index in range(STABLE_SAMPLE_FRAMES):
+	for _frame_index in range(STABLE_SAMPLE_FRAMES - 1):
 		var started_usec := Time.get_ticks_usec()
 		scheduler.call("_physics_process", TEST_DELTA)
 		stable_samples.append(maxi(Time.get_ticks_usec() - started_usec, 0))
 	var stable_metrics := _get_metrics()
 	var stable_summary := _summarize(stable_samples)
 	_expect(
-		int(stable_metrics.get("physics_calls", -1)) == STABLE_SAMPLE_FRAMES
+		int(stable_metrics.get("physics_calls", -1)) == STABLE_SAMPLE_FRAMES - 1
 		and int(stable_metrics.get("heap_root_checks", -1))
-			<= STABLE_SAMPLE_FRAMES + 1
+			<= STABLE_SAMPLE_FRAMES
 		and int(stable_metrics.get("heap_updates", -1)) == 0
 		and int(stable_metrics.get("expired_targets", -1)) == 0
 		and int(stable_metrics.get("callbacks", -1)) == 0,
@@ -234,6 +271,13 @@ func _run_same_frame_five_hit_case(target_count: int) -> Dictionary:
 		"five_hit_apply_usec": five_hit_apply_usec,
 		"apply_heap_updates": int(apply_metrics.get("heap_updates", 0)),
 		"apply_callbacks": int(apply_metrics.get("callbacks", 0)),
+		"apply_cohorts": int(apply_metrics.get("active_expiry_cohorts", 0)),
+		"apply_deferred_updates": int(
+			apply_metrics.get("deferred_expiry_updates", 0)
+		),
+		"flush_usec": flush_usec,
+		"flush_moves": int(flush_metrics.get("cohort_state_moves", 0)),
+		"flush_heap_updates": int(flush_metrics.get("heap_updates", 0)),
 		"stable_p50_usec": int(stable_summary.get("p50", 0)),
 		"stable_p95_usec": int(stable_summary.get("p95", 0)),
 		"stable_p99_usec": int(stable_summary.get("p99", 0)),
@@ -273,8 +317,10 @@ func _run_staggered_expiry_case(target_count: int) -> Dictionary:
 
 	_expect(
 		cursor == target_count
-		and int(scheduler.call("get_heap_size")) == target_count,
-		"Stagger setup must retain exactly one heap entry per target."
+		and int(scheduler.call("get_heap_size")) == STAGGER_BUCKET_COUNT
+		and int(scheduler.call("get_expiry_cohort_count"))
+			== STAGGER_BUCKET_COUNT,
+		"Stagger setup must retain one heap entry per distinct deadline, not target."
 	)
 	scheduler.call("reset_performance_metrics")
 	sink.reset()
