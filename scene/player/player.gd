@@ -2781,10 +2781,13 @@ func _trigger_frost_crystal(item: PickupConfig) -> void:
 	)
 	var slow_source_id := _next_collectible_temporary_source_id()
 	var slow_enemy_refs: Array[WeakRef] = []
-	for enemy in _collect_alive_enemies():
+	var affected_enemies: Array[Enemy] = []
+	_query_alive_enemies_in_radius_into(global_position, radius, affected_enemies)
+	var radius_squared := radius * radius
+	for enemy in affected_enemies:
 		if enemy == null or not is_instance_valid(enemy):
 			continue
-		if global_position.distance_to(enemy.global_position) > radius:
+		if global_position.distance_squared_to(enemy.global_position) > radius_squared:
 			continue
 		_apply_authoritative_collectible_enemy_damage(
 			enemy,
@@ -2870,10 +2873,13 @@ func _trigger_collectible_custom_frost(item: PickupConfig) -> void:
 	)
 	var slow_source_id := _next_collectible_temporary_source_id()
 	var slow_enemy_refs: Array[WeakRef] = []
-	for enemy in _collect_alive_enemies():
+	var affected_enemies: Array[Enemy] = []
+	_query_alive_enemies_in_radius_into(global_position, radius, affected_enemies)
+	var radius_squared := radius * radius
+	for enemy in affected_enemies:
 		if enemy == null or not is_instance_valid(enemy):
 			continue
-		if global_position.distance_to(enemy.global_position) > radius:
+		if global_position.distance_squared_to(enemy.global_position) > radius_squared:
 			continue
 		_apply_authoritative_collectible_enemy_damage(
 			enemy,
@@ -3353,10 +3359,17 @@ func _apply_collectible_area_frost(
 	)
 	var slow_source_id := _next_collectible_temporary_source_id()
 	var slow_enemy_refs: Array[WeakRef] = []
-	for enemy in _collect_alive_enemies():
+	var affected_enemies: Array[Enemy] = []
+	_query_alive_enemies_in_radius_into(
+		center_position,
+		effective_radius,
+		affected_enemies
+	)
+	var radius_squared := effective_radius * effective_radius
+	for enemy in affected_enemies:
 		if enemy == null or not is_instance_valid(enemy):
 			continue
-		if enemy.global_position.distance_to(center_position) > effective_radius:
+		if enemy.global_position.distance_squared_to(center_position) > radius_squared:
 			continue
 		_apply_authoritative_collectible_enemy_damage(
 			enemy,

@@ -15,6 +15,7 @@ const TIANSHI_STAKE := preload("res://resources/config/collectibles/collectible_
 const THUNDER_CRYSTAL := preload("res://resources/config/collectibles/collectible_thunder_crystal.tres")
 const THUNDER_CROWN := preload("res://resources/config/collectibles/collectible_thunder_crown.tres")
 const FROST_CRYSTAL := preload("res://resources/config/collectibles/collectible_frost_crystal.tres")
+const MIRROR_SHIELD := preload("res://resources/config/collectibles/collectible_mirror_shield.tres")
 const LIFE_CRYSTAL := preload("res://resources/config/collectibles/collectible_life_crystal.tres")
 const MOON_AMULET := preload("res://resources/config/collectibles/collectible_moon_amulet.tres")
 const SWIFT_CRYSTAL := preload("res://resources/config/collectibles/collectible_swift_crystal.tres")
@@ -164,6 +165,7 @@ func _run() -> void:
 	await _test_trident_and_bullet_rules()
 	await _test_admin_doll_free_upgrade()
 	await _test_thunder_target_priority()
+	await _test_frost_local_query_path()
 	await _test_combat_effects()
 
 	test_root.queue_free()
@@ -887,6 +889,81 @@ func _expect_thunder_query_path(
 		and test_root.unordered_target_query_centers[0].is_equal_approx(impact_position)
 		and is_equal_approx(test_root.unordered_target_query_radii[0], damage_radius),
 		"%s must resolve impact damage through one unordered local-radius query."
+		% context
+	)
+
+
+func _test_frost_local_query_path() -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier", false)
+	var player := _spawn_player()
+	var nearby_enemy := _spawn_enemy(Vector2(32.0, 0.0), player)
+	var far_enemy := _spawn_enemy(Vector2(640.0, 0.0), player)
+	await process_frame
+	nearby_enemy.current_health = 500
+	far_enemy.current_health = 500
+
+	test_root.reset_combat_target_query_metrics()
+	player.call("_trigger_frost_crystal", FROST_CRYSTAL)
+	_expect(
+		nearby_enemy.last_damage_taken > 0 and far_enemy.last_damage_taken == 0,
+		"Periodic frost must affect the local enemy without touching a far global target."
+	)
+	_expect_single_unordered_query(
+		player.global_position,
+		FROST_CRYSTAL.periodic_radius,
+		"Periodic frost"
+	)
+
+	nearby_enemy.last_damage_taken = 0
+	far_enemy.last_damage_taken = 0
+	test_root.reset_combat_target_query_metrics()
+	player.call("_trigger_collectible_custom_frost", MIRROR_SHIELD)
+	_expect(
+		nearby_enemy.last_damage_taken > 0 and far_enemy.last_damage_taken == 0,
+		"Triggered frost must affect the local enemy without touching a far global target."
+	)
+	_expect_single_unordered_query(
+		player.global_position,
+		MIRROR_SHIELD.trigger_radius,
+		"Triggered frost"
+	)
+
+	var area_center := Vector2(24.0, 0.0)
+	nearby_enemy.last_damage_taken = 0
+	far_enemy.last_damage_taken = 0
+	test_root.reset_combat_target_query_metrics()
+	player.call(
+		"_apply_collectible_area_frost",
+		area_center,
+		48.0,
+		3,
+		0.8,
+		0.05
+	)
+	_expect(
+		nearby_enemy.last_damage_taken > 0 and far_enemy.last_damage_taken == 0,
+		"Centered area frost must preserve local damage filtering."
+	)
+	_expect_single_unordered_query(area_center, 48.0, "Centered area frost")
+
+	player.queue_free()
+	nearby_enemy.queue_free()
+	far_enemy.queue_free()
+	await process_frame
+
+
+func _expect_single_unordered_query(
+	center: Vector2,
+	radius: float,
+	context: String
+) -> void:
+	_expect(
+		test_root.unordered_target_query_centers.size() == 1
+		and test_root.unordered_target_query_radii.size() == 1
+		and test_root.unordered_target_query_centers[0].is_equal_approx(center)
+		and is_equal_approx(test_root.unordered_target_query_radii[0], radius),
+		"%s must resolve candidates through exactly one bounded unordered query."
 		% context
 	)
 
