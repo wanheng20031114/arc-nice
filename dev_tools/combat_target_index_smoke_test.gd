@@ -7,8 +7,14 @@ class AdaptiveProbeIndex:
 	extends CombatTargetIndex
 
 	var linear_query_count := 0
+	var linear_bounded_query_count := 0
 	var ring_query_count := 0
 	var flat_query_count := 0
+	var radius_registry_query_count := 0
+	var radius_bucket_query_count := 0
+	var random_registry_query_count := 0
+	var random_bucket_query_count := 0
+	var bucket_distance_query_count := 0
 
 	func _find_nearest_alive_linear(
 		center: Vector2,
@@ -20,6 +26,20 @@ class AdaptiveProbeIndex:
 			center,
 			radius,
 			excluded_instance_ids
+		)
+
+	func _find_nearest_alive_linear_bounded(
+		center: Vector2,
+		radius: float,
+		excluded_instance_ids: Dictionary,
+		enforce_radius: bool
+	) -> Enemy:
+		linear_bounded_query_count += 1
+		return super._find_nearest_alive_linear_bounded(
+			center,
+			radius,
+			excluded_instance_ids,
+			enforce_radius
 		)
 
 	func _find_nearest_alive_ring_in_bounds(
@@ -56,6 +76,55 @@ class AdaptiveProbeIndex:
 			maximum_cell
 		)
 
+	func _append_alive_in_radius_registry(
+		center: Vector2,
+		radius_squared: float,
+		result: Array[Enemy]
+	) -> void:
+		radius_registry_query_count += 1
+		super._append_alive_in_radius_registry(center, radius_squared, result)
+
+	func _append_alive_in_radius_buckets(
+		center: Vector2,
+		radius_squared: float,
+		minimum_cell: Vector2i,
+		maximum_cell: Vector2i,
+		result: Array[Enemy]
+	) -> void:
+		radius_bucket_query_count += 1
+		super._append_alive_in_radius_buckets(
+			center,
+			radius_squared,
+			minimum_cell,
+			maximum_cell,
+			result
+		)
+
+	func _pick_random_alive_in_radius_registry(
+		center: Vector2,
+		radius_squared: float
+	) -> Enemy:
+		random_registry_query_count += 1
+		return super._pick_random_alive_in_radius_registry(center, radius_squared)
+
+	func _pick_random_alive_in_radius_buckets(
+		center: Vector2,
+		radius_squared: float,
+		minimum_cell: Vector2i,
+		maximum_cell: Vector2i
+	) -> Enemy:
+		random_bucket_query_count += 1
+		return super._pick_random_alive_in_radius_buckets(
+			center,
+			radius_squared,
+			minimum_cell,
+			maximum_cell
+		)
+
+	func _distance_squared_to_bucket(center: Vector2, cell: Vector2i) -> float:
+		bucket_distance_query_count += 1
+		return super._distance_squared_to_bucket(center, cell)
+
 
 var failures: Array[String] = []
 
@@ -70,6 +139,8 @@ func _run() -> void:
 	_test_nearest_alive_excluding()
 	_test_adaptive_nearest_threshold()
 	_test_three_stage_local_adaptive()
+	_test_adaptive_radius_queries()
+	_test_whole_ring_nearest_cutoff()
 	_test_strict_nearest_total_order()
 
 	var target_index: Variant = TargetIndexScript.new()
@@ -757,8 +828,9 @@ func _test_three_stage_local_adaptive() -> void:
 			1_000.0,
 			empty_exclusions
 		) == sparse_enemies[0]
-		and sparse_index.ring_query_count == 1,
-		"A query covering more than sixteen buckets must bypass the local pre-count and use ring pruning."
+		and sparse_index.linear_bounded_query_count == 1
+		and sparse_index.ring_query_count == 0,
+		"A sparse broad query must scan the compact registry instead of hundreds of empty buckets."
 	)
 
 	var dense_index := AdaptiveProbeIndex.new()
@@ -787,6 +859,194 @@ func _test_three_stage_local_adaptive() -> void:
 	for enemy in sparse_enemies + dense_enemies:
 		if enemy != null and is_instance_valid(enemy):
 			enemy.free()
+
+
+func _test_adaptive_radius_queries() -> void:
+	var adaptive_index := AdaptiveProbeIndex.new()
+	adaptive_index.bucket_size = 32.0
+	var non_finite_enemy := Enemy.new()
+	non_finite_enemy.position = Vector2(NAN, 0.0)
+	adaptive_index.register_enemy(5_999, non_finite_enemy)
+	var out_of_range_enemy := Enemy.new()
+	out_of_range_enemy.position = Vector2(1.0e20, 0.0)
+	adaptive_index.register_enemy(6_000, out_of_range_enemy)
+	_expect(
+		adaptive_index.enemies_by_net_id.is_empty(),
+		"Registration must reject non-finite or non-representable bucket positions."
+	)
+	non_finite_enemy.free()
+	out_of_range_enemy.free()
+	var enemies: Array[Enemy] = []
+	for enemy_index in range(65):
+		var enemy := Enemy.new()
+		if enemy_index == 0:
+			enemy.position = Vector2.ZERO
+		else:
+			enemy.position = Vector2(
+				512.0 + float(enemy_index % 8) * 64.0,
+				512.0 + float(enemy_index / 8) * 64.0
+			)
+		enemies.append(enemy)
+		adaptive_index.register_enemy(6_001 + enemy_index, enemy)
+
+	var narrow_result: Array[Enemy] = []
+	adaptive_index.query_radius_unordered_into(
+		Vector2.ZERO,
+		20.0,
+		narrow_result
+	)
+	_expect(
+		narrow_result == [enemies[0]]
+		and adaptive_index.radius_bucket_query_count == 1
+		and adaptive_index.radius_registry_query_count == 0,
+		"A narrow local radius must retain bucket-local query work."
+	)
+
+	var broad_result: Array[Enemy] = []
+	adaptive_index.query_radius_unordered_into(
+		Vector2.ZERO,
+		4096.0,
+		broad_result
+	)
+	_expect(
+		broad_result.size() == enemies.size()
+		and adaptive_index.radius_registry_query_count == 1,
+		"A broad sparse radius must switch to one compact-registry pass with exact membership."
+	)
+	_expect(
+		adaptive_index.pick_random_alive_in_radius(Vector2.ZERO, 20.0) == enemies[0]
+		and adaptive_index.random_bucket_query_count == 1,
+		"Narrow bounded random selection must retain reservoir sampling over local buckets."
+	)
+	var broad_random := adaptive_index.pick_random_alive_in_radius(
+		Vector2.ZERO,
+		4096.0
+	)
+	_expect(
+		broad_random != null
+		and broad_result.has(broad_random)
+		and adaptive_index.random_registry_query_count == 1,
+		"Broad bounded random selection must use the compact registry without changing membership."
+	)
+
+	var invalid_result: Array[Enemy] = [enemies[0]]
+	adaptive_index.query_radius_unordered_into(
+		Vector2(NAN, 0.0),
+		64.0,
+		invalid_result
+	)
+	_expect(
+		invalid_result.is_empty()
+		and adaptive_index.query_radius(Vector2.ZERO, INF).is_empty()
+		and adaptive_index.pick_random_alive_in_radius(Vector2.ZERO, NAN) == null,
+		"Non-finite bounded queries must fail closed before bucket conversion."
+	)
+
+	const BENCHMARK_ITERATIONS := 12
+	var adaptive_checksum := 0
+	var adaptive_started_usec := Time.get_ticks_usec()
+	for _iteration in range(BENCHMARK_ITERATIONS):
+		adaptive_index.query_radius_unordered_into(
+			Vector2.ZERO,
+			4096.0,
+			broad_result
+		)
+		adaptive_checksum += broad_result.size()
+	var adaptive_elapsed_usec := Time.get_ticks_usec() - adaptive_started_usec
+	var legacy_checksum := 0
+	var legacy_started_usec := Time.get_ticks_usec()
+	for _iteration in range(BENCHMARK_ITERATIONS):
+		_legacy_bucket_radius_query(
+			adaptive_index,
+			Vector2.ZERO,
+			4096.0,
+			broad_result
+		)
+		legacy_checksum += broad_result.size()
+	var legacy_elapsed_usec := Time.get_ticks_usec() - legacy_started_usec
+	_expect(
+		adaptive_checksum == legacy_checksum
+		and adaptive_elapsed_usec < legacy_elapsed_usec,
+		"Adaptive registry and legacy bucket A/B must match exactly and avoid sparse empty-cell work."
+	)
+	print(
+		"COMBAT_TARGET_RADIUS_ADAPTIVE_AB queries=%d targets=%d adaptive_ms=%.3f legacy_ms=%.3f speedup=%.2fx"
+		% [
+			BENCHMARK_ITERATIONS,
+			enemies.size(),
+			float(adaptive_elapsed_usec) / 1000.0,
+			float(legacy_elapsed_usec) / 1000.0,
+			float(legacy_elapsed_usec) / maxf(float(adaptive_elapsed_usec), 1.0),
+		]
+	)
+
+	adaptive_index.clear()
+	for enemy in enemies:
+		enemy.free()
+
+
+func _legacy_bucket_radius_query(
+	target_index: CombatTargetIndex,
+	center: Vector2,
+	radius: float,
+	result: Array[Enemy]
+) -> void:
+	result.clear()
+	var radius_squared := radius * radius
+	var minimum_cell := target_index.call(
+		"_to_bucket",
+		center - Vector2.ONE * radius
+	) as Vector2i
+	var maximum_cell := target_index.call(
+		"_to_bucket",
+		center + Vector2.ONE * radius
+	) as Vector2i
+	for cell_x in range(minimum_cell.x, maximum_cell.x + 1):
+		for cell_y in range(minimum_cell.y, maximum_cell.y + 1):
+			var bucket_variant: Variant = target_index.buckets.get(
+				Vector2i(cell_x, cell_y)
+			)
+			if bucket_variant == null:
+				continue
+			var bucket := bucket_variant as Array
+			for net_id_variant in bucket:
+				var enemy := target_index.enemies_by_net_id.get(
+					int(net_id_variant)
+				) as Enemy
+				if (
+					CombatTargetIndex.is_enemy_queryable(enemy)
+					and center.distance_squared_to(enemy.global_position)
+						<= radius_squared
+				):
+					result.append(enemy)
+
+
+func _test_whole_ring_nearest_cutoff() -> void:
+	var cutoff_index := AdaptiveProbeIndex.new()
+	var enemies: Array[Enemy] = []
+	for enemy_index in range(500):
+		var enemy := Enemy.new()
+		enemy.position = (
+			Vector2(48.0, 48.0)
+			if enemy_index == 0
+			else Vector2(900.0, 48.0)
+		)
+		enemies.append(enemy)
+		cutoff_index.register_enemy(7_001 + enemy_index, enemy)
+	var nearest := cutoff_index.find_nearest_alive_excluding(
+		Vector2(48.0, 48.0),
+		1000.0,
+		{}
+	)
+	_expect(
+		nearest == enemies[0]
+		and cutoff_index.ring_query_count == 1
+		and cutoff_index.bucket_distance_query_count == 1,
+		"A zero-distance nearest target must terminate later square rings as one unit."
+	)
+	cutoff_index.clear()
+	for enemy in enemies:
+		enemy.free()
 
 
 func _test_strict_nearest_total_order() -> void:

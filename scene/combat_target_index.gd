@@ -7,9 +7,13 @@ const SAFETY_AUDIT_ENTRIES_PER_PHYSICS_FRAME := 16
 # 32 and 64 registered enemies. Registries through 32 use direct linear work;
 # 33..64 use ring pruning. Larger registries pre-count at most sixteen local
 # buckets, selecting flat iteration only when that local membership stays <=32.
+# Every bounded query first compares its bucket-cell span with compact registry
+# membership, so sparse broad radii never walk more empty cells than targets.
 const NEAREST_LINEAR_TARGET_THRESHOLD := 32
 const NEAREST_LOCAL_PRECOUNT_MIN_TARGET_COUNT := 65
 const NEAREST_LOCAL_PRECOUNT_MAX_BUCKET_CELLS := 16
+const MIN_VECTOR2I_COMPONENT := -2147483648.0
+const MAX_VECTOR2I_COMPONENT_EXCLUSIVE := 2147483648.0
 
 var bucket_size: float = DEFAULT_BUCKET_SIZE
 var enemies_by_net_id: Dictionary[int, Enemy] = {}
@@ -34,16 +38,20 @@ static func is_enemy_queryable(enemy: Enemy) -> bool:
 		and is_instance_valid(enemy)
 		and not enemy.is_dead
 		and not enemy.is_queued_for_deletion()
+		and enemy.global_position.is_finite()
 	)
 
 
 func register_enemy(net_id: int, enemy: Enemy) -> void:
 	if net_id <= 0 or enemy == null or not is_instance_valid(enemy):
 		return
+	var world_position := enemy.global_position
+	if not world_position.is_finite() or not _can_convert_to_bucket(world_position):
+		return
 	if enemies_by_net_id.has(net_id):
 		_remove_enemy_entry(net_id)
 	enemies_by_net_id[net_id] = enemy
-	_add_net_id_to_bucket(net_id, _to_bucket(enemy.global_position))
+	_add_net_id_to_bucket(net_id, _to_bucket(world_position))
 	_add_net_id_to_safety_audit(net_id)
 	# Binding happens after the initial slot exists. A spawner may assign the final
 	# position after child_entered_tree; the transform notification then migrates
@@ -67,9 +75,13 @@ func update_enemy_bucket(
 		or (enemy != null and registered_enemy != enemy)
 	):
 		return false
+	var world_position := registered_enemy.global_position
+	if not world_position.is_finite() or not _can_convert_to_bucket(world_position):
+		_remove_enemy_entry(net_id)
+		return false
 	var next_cell := known_bucket
 	if next_cell == Vector2i.MAX:
-		next_cell = _to_bucket(registered_enemy.global_position)
+		next_cell = _to_bucket(world_position)
 	var previous_cell: Vector2i = bucket_by_net_id.get(net_id, Vector2i.MAX)
 	if previous_cell == next_cell:
 		return true
@@ -125,19 +137,67 @@ func pick_random_alive() -> Enemy:
 
 
 func pick_random_alive_in_radius(center: Vector2, radius: float) -> Enemy:
+	if not center.is_finite() or not is_finite(radius):
+		return null
 	var safe_radius := maxf(radius, 0.0)
 	if safe_radius <= 0.0:
 		return pick_random_alive()
 	_advance_safety_audit_once_per_physics_frame()
 	var radius_squared := safe_radius * safe_radius
-	var minimum_cell := _to_bucket(center - Vector2.ONE * safe_radius)
-	var maximum_cell := _to_bucket(center + Vector2.ONE * safe_radius)
+	var radius_vector := Vector2.ONE * safe_radius
+	var minimum := center - radius_vector
+	var maximum := center + radius_vector
+	if _should_scan_radius_registry(minimum, maximum):
+		return _pick_random_alive_in_radius_registry(center, radius_squared)
+	var minimum_cell := _to_bucket(minimum)
+	var maximum_cell := _to_bucket(maximum)
+	return _pick_random_alive_in_radius_buckets(
+		center,
+		radius_squared,
+		minimum_cell,
+		maximum_cell
+	)
+
+
+func _pick_random_alive_in_radius_registry(
+	center: Vector2,
+	radius_squared: float
+) -> Enemy:
+	var selected_enemy: Enemy = null
+	var candidate_count := 0
+	_stale_enemy_net_ids.clear()
+	for net_id_variant in enemies_by_net_id:
+		var net_id := int(net_id_variant)
+		var enemy_variant: Variant = enemies_by_net_id.get(net_id)
+		if enemy_variant == null or not is_instance_valid(enemy_variant):
+			_stale_enemy_net_ids.append(net_id)
+			continue
+		var enemy := enemy_variant as Enemy
+		if not is_enemy_queryable(enemy):
+			_stale_enemy_net_ids.append(net_id)
+			continue
+		if center.distance_squared_to(enemy.global_position) > radius_squared:
+			continue
+		candidate_count += 1
+		if randi() % candidate_count == 0:
+			selected_enemy = enemy
+	for net_id in _stale_enemy_net_ids:
+		_remove_enemy_entry(net_id)
+	return selected_enemy
+
+
+func _pick_random_alive_in_radius_buckets(
+	center: Vector2,
+	radius_squared: float,
+	minimum_cell: Vector2i,
+	maximum_cell: Vector2i
+) -> Enemy:
 	var selected_enemy: Enemy = null
 	var candidate_count := 0
 	_stale_enemy_net_ids.clear()
 	# Reservoir sampling keeps the result uniformly random without constructing a
-	# candidate array. For a fixed search radius, work depends on touched buckets
-	# and local occupancy rather than the total enemy count.
+	# candidate array. Narrow searches depend only on touched buckets and local
+	# occupancy; broad sparse searches use the compact registry helper above.
 	for cell_x in range(minimum_cell.x, maximum_cell.x + 1):
 		for cell_y in range(minimum_cell.y, maximum_cell.y + 1):
 			var cell := Vector2i(cell_x, cell_y)
@@ -203,6 +263,8 @@ func query_radius_into(
 	max_count: int = 0
 ) -> void:
 	result.clear()
+	if not center.is_finite() or not is_finite(radius):
+		return
 	var safe_radius := maxf(radius, 0.0)
 	if max_count == 1:
 		if safe_radius > 0.0:
@@ -226,14 +288,60 @@ func query_radius_unordered_into(
 	result: Array[Enemy]
 ) -> void:
 	result.clear()
+	if not center.is_finite() or not is_finite(radius):
+		return
 	var safe_radius := maxf(radius, 0.0)
 	if safe_radius <= 0.0:
 		_append_all_alive(result)
 		return
 	_advance_safety_audit_once_per_physics_frame()
 	var radius_squared := safe_radius * safe_radius
-	var minimum_cell := _to_bucket(center - Vector2.ONE * safe_radius)
-	var maximum_cell := _to_bucket(center + Vector2.ONE * safe_radius)
+	var radius_vector := Vector2.ONE * safe_radius
+	var minimum := center - radius_vector
+	var maximum := center + radius_vector
+	if _should_scan_radius_registry(minimum, maximum):
+		_append_alive_in_radius_registry(center, radius_squared, result)
+		return
+	var minimum_cell := _to_bucket(minimum)
+	var maximum_cell := _to_bucket(maximum)
+	_append_alive_in_radius_buckets(
+		center,
+		radius_squared,
+		minimum_cell,
+		maximum_cell,
+		result
+	)
+
+
+func _append_alive_in_radius_registry(
+	center: Vector2,
+	radius_squared: float,
+	result: Array[Enemy]
+) -> void:
+	_stale_enemy_net_ids.clear()
+	for net_id_variant in enemies_by_net_id:
+		var net_id := int(net_id_variant)
+		var enemy_variant: Variant = enemies_by_net_id.get(net_id)
+		if enemy_variant == null or not is_instance_valid(enemy_variant):
+			_stale_enemy_net_ids.append(net_id)
+			continue
+		var enemy := enemy_variant as Enemy
+		if not is_enemy_queryable(enemy):
+			_stale_enemy_net_ids.append(net_id)
+			continue
+		if center.distance_squared_to(enemy.global_position) <= radius_squared:
+			result.append(enemy)
+	for net_id in _stale_enemy_net_ids:
+		_remove_enemy_entry(net_id)
+
+
+func _append_alive_in_radius_buckets(
+	center: Vector2,
+	radius_squared: float,
+	minimum_cell: Vector2i,
+	maximum_cell: Vector2i,
+	result: Array[Enemy]
+) -> void:
 	_stale_enemy_net_ids.clear()
 	for cell_x in range(minimum_cell.x, maximum_cell.x + 1):
 		for cell_y in range(minimum_cell.y, maximum_cell.y + 1):
@@ -435,11 +543,21 @@ func _find_nearest_alive(
 			radius,
 			excluded_instance_ids
 		)
+	var radius_vector := Vector2.ONE * radius
+	var minimum := center - radius_vector
+	var maximum := center + radius_vector
+	if _should_scan_radius_registry(minimum, maximum):
+		return _find_nearest_alive_linear_bounded(
+			center,
+			radius,
+			excluded_instance_ids,
+			true
+		)
 	if registered_count < NEAREST_LOCAL_PRECOUNT_MIN_TARGET_COUNT:
 		return _find_nearest_alive_ring(center, radius, excluded_instance_ids)
 
-	var minimum_cell := _to_bucket(center - Vector2.ONE * radius)
-	var maximum_cell := _to_bucket(center + Vector2.ONE * radius)
+	var minimum_cell := _to_bucket(minimum)
+	var maximum_cell := _to_bucket(maximum)
 	var bucket_columns := maximum_cell.x - minimum_cell.x + 1
 	var bucket_rows := maximum_cell.y - minimum_cell.y + 1
 	if (
@@ -572,10 +690,44 @@ func _find_nearest_alive_ring_in_bounds(
 			absi(maximum_cell.y - center_cell.y)
 		)
 	)
+	var safe_bucket_size := _get_safe_bucket_size()
+	var center_bucket_minimum := Vector2(center_cell) * safe_bucket_size
+	var center_bucket_maximum := (
+		center_bucket_minimum + Vector2.ONE * safe_bucket_size
+	)
 	# Visit the center bucket first, then square rings. Once a target is known,
-	# a bucket whose AABB is strictly farther than that target cannot improve the
-	# exact distance/id result and its enemy array is skipped completely.
+	# a whole later ring that is strictly farther than the radius or known nearest
+	# cannot improve the exact distance/id result and terminates the traversal.
 	for ring in range(maximum_ring + 1):
+		if ring > 0:
+			var ring_offset := float(ring - 1) * safe_bucket_size
+			var left_distance := (
+				center.x - center_bucket_minimum.x + ring_offset
+			)
+			var right_distance := (
+				center_bucket_maximum.x - center.x + ring_offset
+			)
+			var top_distance := (
+				center.y - center_bucket_minimum.y + ring_offset
+			)
+			var bottom_distance := (
+				center_bucket_maximum.y - center.y + ring_offset
+			)
+			var ring_minimum_distance := minf(
+				minf(
+					left_distance * left_distance,
+					right_distance * right_distance
+				),
+				minf(
+					top_distance * top_distance,
+					bottom_distance * bottom_distance
+				)
+			)
+			var cutoff_distance := radius_squared
+			if nearest != null:
+				cutoff_distance = nearest_distance
+			if ring_minimum_distance > cutoff_distance:
+				break
 		for cell_y in range(center_cell.y - ring, center_cell.y + ring + 1):
 			for cell_x in range(center_cell.x - ring, center_cell.x + ring + 1):
 				if maxi(absi(cell_x - center_cell.x), absi(cell_y - center_cell.y)) != ring:
@@ -735,7 +887,7 @@ func _find_nearest_alive_in_bucket(
 
 
 func _distance_squared_to_bucket(center: Vector2, cell: Vector2i) -> float:
-	var safe_bucket_size := maxf(bucket_size, 1.0)
+	var safe_bucket_size := _get_safe_bucket_size()
 	var bucket_minimum := Vector2(cell) * safe_bucket_size
 	var bucket_maximum := bucket_minimum + Vector2.ONE * safe_bucket_size
 	var closest_point := Vector2(
@@ -823,8 +975,51 @@ func _limit_result(result: Array[Enemy], max_count: int) -> void:
 
 
 func _to_bucket(world_position: Vector2) -> Vector2i:
-	var safe_bucket_size := maxf(bucket_size, 1.0)
+	var safe_bucket_size := _get_safe_bucket_size()
 	return Vector2i(
 		floori(world_position.x / safe_bucket_size),
 		floori(world_position.y / safe_bucket_size)
 	)
+
+
+func _should_scan_radius_registry(minimum: Vector2, maximum: Vector2) -> bool:
+	if (
+		not minimum.is_finite()
+		or not maximum.is_finite()
+		or not _can_convert_to_bucket(minimum)
+		or not _can_convert_to_bucket(maximum)
+	):
+		return true
+	var minimum_cell := _to_bucket(minimum)
+	var maximum_cell := _to_bucket(maximum)
+	var bucket_columns := int(maximum_cell.x) - int(minimum_cell.x) + 1
+	var bucket_rows := int(maximum_cell.y) - int(minimum_cell.y) + 1
+	var registered_count := enemies_by_net_id.size()
+	if bucket_columns <= 0 or bucket_rows <= 0 or registered_count <= 0:
+		return true
+	# Avoid multiplying the dimensions: the quotient comparison is exact and
+	# cannot overflow even for finite bounds near Vector2i's representable edge.
+	return (
+		bucket_columns >= registered_count
+		or bucket_rows > registered_count / bucket_columns
+	)
+
+
+func _can_convert_to_bucket(world_position: Vector2) -> bool:
+	var safe_bucket_size := _get_safe_bucket_size()
+	var scaled_x := float(world_position.x) / safe_bucket_size
+	var scaled_y := float(world_position.y) / safe_bucket_size
+	return (
+		is_finite(scaled_x)
+		and is_finite(scaled_y)
+		and scaled_x >= MIN_VECTOR2I_COMPONENT
+		and scaled_x < MAX_VECTOR2I_COMPONENT_EXCLUSIVE
+		and scaled_y >= MIN_VECTOR2I_COMPONENT
+		and scaled_y < MAX_VECTOR2I_COMPONENT_EXCLUSIVE
+	)
+
+
+func _get_safe_bucket_size() -> float:
+	if not is_finite(bucket_size):
+		return DEFAULT_BUCKET_SIZE
+	return maxf(bucket_size, 1.0)
