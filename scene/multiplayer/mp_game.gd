@@ -189,7 +189,7 @@ const CLIENT_PENDING_PRODUCTION_STATE_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMI
 const CLIENT_REMOVED_PLANT_TOMBSTONE_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT * 2
 const PLANT_PLACEMENT_RATE_PER_SECOND := 4.0
 const PLANT_PLACEMENT_RATE_BURST := 8.0
-const WAREHOUSE_INTERACTION_MAX_DISTANCE := 48.0
+const BUILDING_INTERACTION_MAX_DISTANCE := 48.0
 const WAREHOUSE_TRANSACTION_RATE_PER_SECOND := 12.0
 const WAREHOUSE_TRANSACTION_RATE_BURST := 20.0
 const WAREHOUSE_SNAPSHOT_REQUEST_RATE_PER_SECOND := 2.0
@@ -209,14 +209,12 @@ const RUNTIME_STATE_REQUEST_RATE_PER_SECOND := 0.5
 const RUNTIME_STATE_REQUEST_RATE_BURST := 2.0
 const PLANT_ID_WIRE_MAX_LENGTH := 128
 const INVENTORY_ITEM_CONFIG_PATH_WIRE_MAX_LENGTH := 256
-const PRODUCTION_INTERACTION_MAX_DISTANCE := 48.0
 const PRODUCTION_COMMAND_RATE_PER_SECOND := 8.0
 const PRODUCTION_COMMAND_RATE_BURST := 12.0
 const PRODUCTION_SNAPSHOT_REQUEST_RATE_PER_SECOND := 2.0
 const PRODUCTION_SNAPSHOT_REQUEST_RATE_BURST := 4.0
 const PRODUCTION_COMMAND_RESULT_CACHE_SIZE := 256
 const PRODUCTION_STATE_BATCH_MAX_BUILDINGS := 24
-const RESEARCH_INTERACTION_MAX_DISTANCE := 48.0
 const RESEARCH_COMMAND_RATE_PER_SECOND := 4.0
 const RESEARCH_COMMAND_RATE_BURST := 6.0
 const RESEARCH_COMMAND_WIRE_ID_MAX_LENGTH := 128
@@ -1769,43 +1767,20 @@ func _is_authoritative_nearest_research_center(
 	player_node: Player,
 	requested_building: ResearchCenter
 ) -> bool:
-	if player_node == null or requested_building == null:
+	if (
+		player_node == null
+		or not PlantDefense.is_operational_interaction_candidate(requested_building)
+	):
 		return false
 	if not requested_building.is_player_within_multiplayer_interaction_distance(
 		player_node,
-		RESEARCH_INTERACTION_MAX_DISTANCE
+		BUILDING_INTERACTION_MAX_DISTANCE
 	):
 		return false
-	var nearest: ResearchCenter = null
-	var nearest_distance := INF
-	var nearest_net_id := 0
-	var maximum_distance_squared := (
-		RESEARCH_INTERACTION_MAX_DISTANCE * RESEARCH_INTERACTION_MAX_DISTANCE
+	return (
+		_find_authoritative_nearest_interaction_building(player_node)
+		== requested_building
 	)
-	for plant_snapshot in game.get_multiplayer_plant_snapshots():
-		var net_id := int(plant_snapshot.get("net_id", 0))
-		var candidate := game.get_multiplayer_plant_node(net_id) as ResearchCenter
-		if (
-			candidate == null
-			or not is_instance_valid(candidate)
-			or candidate.is_dead
-			or candidate.is_removing
-			or not candidate.is_operational
-		):
-			continue
-		var distance := player_node.global_position.distance_squared_to(
-			candidate.global_position
-		)
-		if distance > maximum_distance_squared:
-			continue
-		if (
-			distance < nearest_distance
-			or (is_equal_approx(distance, nearest_distance) and net_id < nearest_net_id)
-		):
-			nearest = candidate
-			nearest_distance = distance
-			nearest_net_id = net_id
-	return nearest == requested_building
 
 
 func _on_authoritative_research_milestone_changed(player_key: int) -> void:
@@ -1950,43 +1925,20 @@ func _is_authoritative_nearest_production_building(
 	player_node: Player,
 	requested_building: ProductionBuilding
 ) -> bool:
-	if player_node == null or requested_building == null:
-		return false
-	var maximum_distance_squared := (
-		PRODUCTION_INTERACTION_MAX_DISTANCE * PRODUCTION_INTERACTION_MAX_DISTANCE
-	)
-	if not requested_building.is_player_within_multiplayer_interaction_distance(
-		player_node,
-		PRODUCTION_INTERACTION_MAX_DISTANCE
+	if (
+		player_node == null
+		or not PlantDefense.is_operational_interaction_candidate(requested_building)
 	):
 		return false
-	var nearest: ProductionBuilding = null
-	var nearest_distance := INF
-	var nearest_net_id := 0
-	for plant_snapshot in game.get_multiplayer_plant_snapshots():
-		var net_id := int(plant_snapshot.get("net_id", 0))
-		var building := game.get_multiplayer_plant_node(net_id) as ProductionBuilding
-		if (
-			building == null
-			or not is_instance_valid(building)
-			or building.is_dead
-			or building.is_removing
-			or not building.is_operational
-		):
-			continue
-		var distance := player_node.global_position.distance_squared_to(
-			building.global_position
-		)
-		if distance > maximum_distance_squared:
-			continue
-		if (
-			distance < nearest_distance
-			or (is_equal_approx(distance, nearest_distance) and net_id < nearest_net_id)
-		):
-			nearest = building
-			nearest_distance = distance
-			nearest_net_id = net_id
-	return nearest == requested_building
+	if not requested_building.is_player_within_multiplayer_interaction_distance(
+		player_node,
+		BUILDING_INTERACTION_MAX_DISTANCE
+	):
+		return false
+	return (
+		_find_authoritative_nearest_interaction_building(player_node)
+		== requested_building
+	)
 
 
 func _get_cached_production_command_result(
@@ -2370,44 +2322,49 @@ func _is_authoritative_nearest_warehouse(
 	player_node: Player,
 	requested_warehouse: OakWarehouse
 ) -> bool:
-	if player_node == null or requested_warehouse == null:
+	if (
+		player_node == null
+		or not _is_authoritative_warehouse_interaction_candidate(
+			requested_warehouse
+		)
+	):
 		return false
-	var maximum_distance_squared := (
-		WAREHOUSE_INTERACTION_MAX_DISTANCE * WAREHOUSE_INTERACTION_MAX_DISTANCE
-	)
 	var requested_distance := player_node.global_position.distance_squared_to(
 		requested_warehouse.global_position
 	)
-	if requested_distance > maximum_distance_squared:
+	if requested_distance > (
+		BUILDING_INTERACTION_MAX_DISTANCE * BUILDING_INTERACTION_MAX_DISTANCE
+	):
 		return false
-	var nearest: OakWarehouse = null
-	var nearest_distance := INF
-	var nearest_net_id := 0
-	for plant_snapshot in game.get_multiplayer_plant_snapshots():
-		var net_id := int(plant_snapshot.get("net_id", 0))
-		var warehouse := game.get_multiplayer_plant_node(net_id) as OakWarehouse
-		if not _is_authoritative_warehouse_interaction_candidate(warehouse):
-			continue
-		var distance := player_node.global_position.distance_squared_to(warehouse.global_position)
-		if distance > maximum_distance_squared:
-			continue
-		if distance < nearest_distance or (is_equal_approx(distance, nearest_distance) and net_id < nearest_net_id):
-			nearest = warehouse
-			nearest_distance = distance
-			nearest_net_id = net_id
-	return nearest == requested_warehouse
+	return (
+		_find_authoritative_nearest_interaction_building(player_node)
+		== requested_warehouse
+	)
+
+
+func _find_authoritative_nearest_interaction_building(
+	player_node: Player
+) -> PlantDefense:
+	if (
+		player_node == null
+		or not is_instance_valid(player_node)
+		or game == null
+		or not game.supports_tower_defense()
+	):
+		return null
+	var tower_defense_game := game as GameTowerDefense
+	if tower_defense_game == null or tower_defense_game.plant_system == null:
+		return null
+	return tower_defense_game.plant_system.find_nearest_operational_interaction_building_world(
+		player_node.global_position,
+		BUILDING_INTERACTION_MAX_DISTANCE
+	)
 
 
 func _is_authoritative_warehouse_interaction_candidate(
 	warehouse: OakWarehouse
 ) -> bool:
-	return (
-		warehouse != null
-		and is_instance_valid(warehouse)
-		and not warehouse.is_dead
-		and not warehouse.is_removing
-		and warehouse.is_operational
-	)
+	return PlantDefense.is_operational_interaction_candidate(warehouse)
 
 
 func _get_cached_warehouse_transaction_result(

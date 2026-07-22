@@ -300,6 +300,23 @@ static func is_interaction_candidate_preferred(
 	return candidate.get_instance_id() < current.get_instance_id()
 
 
+## Authoritative requests keep using the opened building while its modal UI is
+## visible, so modal state deliberately does not participate in availability.
+## The interaction group is the shared type contract used by warehouse,
+## production and research buildings; this avoids hard-coding every subclass in
+## the spatial query when new production buildings are added.
+static func is_operational_interaction_candidate(candidate: PlantDefense) -> bool:
+	return (
+		candidate != null
+		and is_instance_valid(candidate)
+		and not candidate.is_queued_for_deletion()
+		and not candidate.is_dead
+		and not candidate.is_removing
+		and candidate.is_operational
+		and candidate.is_in_group(BUILDING_INTERACTION_GROUP)
+	)
+
+
 ## Interactive plant buildings override these hooks so every building type can
 ## participate in one nearest-target selection without runtime duck typing.
 func get_interaction_player() -> Player:

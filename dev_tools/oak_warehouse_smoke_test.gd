@@ -28,6 +28,14 @@ class HostNetManagerStub:
 		return false
 
 
+class AuthoritativePlantSystemStub:
+	extends PlantSystem
+
+	func register_warehouse(net_id: int, warehouse: OakWarehouse) -> void:
+		plants_by_net_id[net_id] = warehouse
+		_register_plant_footprint(warehouse, [Vector2i.ZERO])
+
+
 func _init() -> void:
 	call_deferred("_run")
 
@@ -1069,13 +1077,13 @@ func _test_authoritative_warehouse_sender_guard(
 	var mp_game := MP_GAME_SCRIPT.new()
 	var net_manager_stub := HostNetManagerStub.new()
 	var game_stub := GameTowerDefense.new()
-	var plant_system_stub := PlantSystem.new()
+	var plant_system_stub := AuthoritativePlantSystemStub.new()
 	mp_game.net_manager = net_manager_stub
 	mp_game.run_state = run_state
 	mp_game.game = game_stub
 	game_stub.plant_system = plant_system_stub
 	game_stub.peer_players[peer_id] = warehouse.owner_player
-	plant_system_stub.plants_by_net_id[warehouse_net_id] = warehouse
+	plant_system_stub.register_warehouse(warehouse_net_id, warehouse)
 	var inventory_before := run_state.export_inventory_snapshot_for_peer(peer_id)
 	var storage_before := warehouse.export_storage_snapshot()
 	var legitimate_command := OakWarehouseProtocol.make_transfer_command(

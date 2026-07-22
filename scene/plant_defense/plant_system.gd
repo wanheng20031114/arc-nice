@@ -509,6 +509,53 @@ func find_nearest_living_plant_world(
 	return null
 
 
+## Exact nearest-building query for authoritative multiplayer interaction.
+##
+## Interaction commands are infrequent, but their old implementation rebuilt a
+## sorted snapshot of every plant for each warehouse/production/research request.
+## Reuse the stationary target spatial index as a broad phase, then apply the
+## exact circular distance, lifecycle contract and the same deterministic tie
+## break as local interaction selection. The shared scratch array is retained by
+## PlantSystem, so the steady path creates neither a snapshot nor a candidate
+## array and distant populations do not increase local work.
+func find_nearest_operational_interaction_building_world(
+	from_global_position: Vector2,
+	max_world_distance: float
+) -> PlantDefense:
+	if (
+		plant_footprints.is_empty()
+		or not from_global_position.is_finite()
+		or not is_finite(max_world_distance)
+		or max_world_distance < 0.0
+	):
+		return null
+	var candidates := _query_plant_targets_in_world_aabb(
+		from_global_position,
+		Vector2.ONE * max_world_distance
+	)
+	var maximum_distance_squared := max_world_distance * max_world_distance
+	var nearest: PlantDefense = null
+	var nearest_distance_squared := INF
+	for candidate_variant in candidates:
+		var candidate := candidate_variant as PlantDefense
+		if not PlantDefense.is_operational_interaction_candidate(candidate):
+			continue
+		var distance_squared := from_global_position.distance_squared_to(
+			candidate.global_position
+		)
+		if distance_squared > maximum_distance_squared:
+			continue
+		if PlantDefense.is_interaction_candidate_preferred(
+			candidate,
+			distance_squared,
+			nearest,
+			nearest_distance_squared
+		):
+			nearest = candidate
+			nearest_distance_squared = distance_squared
+	return nearest
+
+
 func _is_living_plant_target(plant: PlantDefense) -> bool:
 	return (
 		plant != null
