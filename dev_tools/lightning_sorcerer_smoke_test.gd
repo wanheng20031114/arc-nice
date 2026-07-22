@@ -13,6 +13,9 @@ const FROST_CONFIG := preload(
 const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
+const TargetWarningScript := preload(
+	"res://scene/enemy/lightning_sorcerer_target_warning.gd"
+)
 
 const TEST_HEALTH := 1000
 const EXPECTED_ATTACK_RANGE := 7.0 * 16.0
@@ -138,9 +141,19 @@ func _test_resource_and_scene_contract() -> void:
 		var sprite := enemy.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
 		var pivot := enemy.get_node_or_null("CastPivot") as Node2D
 		var marker := enemy.get_node_or_null("CastPivot/StaffTip") as Marker2D
+		var target_warning := enemy.get_node_or_null(
+			"TargetWarning"
+		) as TargetWarningScript
 		_expect(
 			sprite != null and pivot != null and marker != null,
 			"Lightning scene must author its sprite, cast pivot, and staff marker."
+		)
+		_expect(
+			target_warning != null
+			and not target_warning.visible
+			and not target_warning.is_processing()
+			and not target_warning.is_warning_active(),
+			"Lightning scene must prebuild one hidden, idle target warning."
 		)
 		if sprite != null:
 			_expect(
@@ -284,16 +297,84 @@ func _test_windup_direct_hit_and_cooldown() -> void:
 	var primary := _spawn_player(runtime, Vector2(100.0, 0.0))
 	runtime.candidates.append(primary)
 	var enemy := _spawn_enemy(runtime, primary)
+	var target_warning := enemy.get_node_or_null(
+		"TargetWarning"
+	) as TargetWarningScript
+	var authored_child_count := enemy.get_child_count()
+	var warning_instance_id := (
+		int(target_warning.get_instance_id()) if target_warning != null else 0
+	)
 	enemy.initial_attack_stagger_left = 0.0
 	var projectiles_before := get_nodes_in_group(&"runtime_projectiles").size()
 	_expect(
 		bool(enemy.call("_try_start_windup", primary, LIGHTNING_CONFIG)),
 		"An unobstructed target inside seven cells must start the Lightning windup."
 	)
+	_expect(
+		primary.current_health == TEST_HEALTH,
+		"Starting the warning must not deal damage before the windup completes."
+	)
+	_expect(
+		target_warning != null
+		and target_warning.visible
+		and not target_warning.is_processing()
+		and target_warning.is_warning_active()
+		and is_zero_approx(target_warning.get_progress_ratio())
+		and is_equal_approx(
+			target_warning.get_chain_danger_radius(),
+			EXPECTED_CHAIN_RANGE
+		)
+		and target_warning.global_position.is_equal_approx(primary.global_position),
+		"Windup start must show a zero-progress warning with the configured first-hop radius and no per-node process loop."
+	)
+
+	primary.global_position = Vector2(104.0, 8.0)
+	enemy.call("_update_windup", 0.2)
+	_expect(
+		target_warning != null
+		and target_warning.get_progress_ratio() > 0.0
+		and target_warning.get_progress_ratio() < 1.0
+		and target_warning.global_position.is_equal_approx(primary.global_position),
+		"The active warning must advance and follow a moving target."
+	)
+
+	primary.global_position = Vector2(EXPECTED_ATTACK_RANGE + 0.25, 0.0)
+	enemy.call("_update_windup", 0.01)
+	_expect(
+		primary.current_health == TEST_HEALTH
+		and enemy.combat_state == LightningSorcerer.CombatState.CHASE,
+		"Leaving the seven-cell range during windup must cancel without damage."
+	)
+	_expect(
+		target_warning != null
+		and not target_warning.visible
+		and not target_warning.is_processing()
+		and not target_warning.is_warning_active(),
+		"A cancelled windup must clear and idle the target warning immediately."
+	)
+
+	primary.global_position = Vector2(100.0, 0.0)
+	_expect(
+		bool(enemy.call("_try_start_windup", primary, LIGHTNING_CONFIG)),
+		"A cancelled Lightning attack must be able to start a new windup."
+	)
+	_expect(
+		enemy.get_child_count() == authored_child_count
+		and target_warning != null
+		and int(target_warning.get_instance_id()) == warning_instance_id,
+		"Repeated attacks must reuse the authored warning instead of adding nodes."
+	)
 	enemy.call("_update_windup", LIGHTNING_CONFIG.windup_duration + 0.01)
 	_expect(
 		primary.current_health == TEST_HEALTH - 50,
 		"Completing the windup must directly apply one full magic hit."
+	)
+	_expect(
+		target_warning != null
+		and not target_warning.visible
+		and not target_warning.is_processing()
+		and not target_warning.is_warning_active(),
+		"The warning must clear in the same frame that the direct hit commits."
 	)
 	_expect(
 		enemy.combat_state == LightningSorcerer.CombatState.CHASE
@@ -306,6 +387,29 @@ func _test_windup_direct_hit_and_cooldown() -> void:
 	_expect(
 		get_nodes_in_group(&"runtime_projectiles").size() == projectiles_before,
 		"Lightning attacks must never spawn a projectile node."
+	)
+
+	enemy.attack_cooldown_left = 0.0
+	_expect(
+		bool(enemy.call("_try_start_windup", primary, LIGHTNING_CONFIG))
+		and target_warning != null
+		and target_warning.is_warning_active(),
+		"The authored warning must remain reusable after a completed strike."
+	)
+	enemy.call("_die")
+	_expect(
+		enemy.is_dead
+		and target_warning != null
+		and not target_warning.visible
+		and not target_warning.is_processing()
+		and not target_warning.is_warning_active(),
+		"Death during windup must clear and idle the target warning."
+	)
+	_expect(
+		enemy.get_child_count() == authored_child_count
+		and target_warning != null
+		and int(target_warning.get_instance_id()) == warning_instance_id,
+		"Cancel, strike, and death paths must never replace the authored warning."
 	)
 	runtime.queue_free()
 	await process_frame

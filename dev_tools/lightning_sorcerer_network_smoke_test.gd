@@ -2,6 +2,16 @@ extends SceneTree
 
 const MP_GAME_PATH := "res://scene/multiplayer/mp_game.gd"
 const MP_GAME_SCRIPT := preload(MP_GAME_PATH)
+const LIGHTNING_SORCERER_PATH := "res://scene/enemy/lightning_sorcerer.gd"
+const LIGHTNING_SORCERER_SCENE := preload(
+	"res://scene/enemy/lightning_sorcerer.tscn"
+)
+const LIGHTNING_SORCERER_CONFIG := preload(
+	"res://resources/config/enemies/lightning_sorcerer.tres"
+)
+const PLAYER_SCENE := preload(
+	"res://scene/player/weishidaier/player_weishidaier.tscn"
+)
 
 
 class RecordingMpGame:
@@ -34,6 +44,7 @@ class LightningVfxRuntime:
 	extends GameRuntimeBase
 
 	var played_chains: Array[PackedVector2Array] = []
+	var players_by_peer_id: Dictionary = {}
 
 	func configure_multiplayer(
 		_mode: int,
@@ -43,8 +54,8 @@ class LightningVfxRuntime:
 	) -> void:
 		pass
 
-	func get_player_for_peer(_peer_id: int) -> Player:
-		return null
+	func get_player_for_peer(peer_id: int) -> Player:
+		return players_by_peer_id.get(peer_id) as Player
 
 	func get_enemy_for_net_id(_net_id: int) -> Enemy:
 		return null
@@ -159,6 +170,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_host_broadcast_contract()
+	await _test_target_warning_proxy_contract()
 	_test_client_validation_and_visual_only_contract()
 
 	if failures.is_empty():
@@ -175,16 +187,104 @@ func _test_host_broadcast_contract() -> void:
 	var net_manager := TestNetManager.new()
 	net_manager.host_mode = true
 	mp_game.set("net_manager", net_manager)
+	var enemy_position := Vector2(12.0, 18.0)
+	var plant_offset := Vector2(44.0, -8.0)
+	mp_game.broadcast_enemy_target_action(
+		73,
+		&"lightning_windup",
+		7,
+		enemy_position,
+		10
+	)
+	mp_game.broadcast_enemy_target_action(
+		73,
+		&"lightning_windup_retry",
+		7,
+		enemy_position,
+		10
+	)
+	mp_game.broadcast_enemy_action(
+		73,
+		&"lightning_plant_windup",
+		plant_offset,
+		enemy_position,
+		11
+	)
+	mp_game.broadcast_enemy_action(
+		73,
+		&"lightning_plant_windup_retry",
+		plant_offset,
+		enemy_position,
+		11
+	)
+	mp_game.broadcast_enemy_action(
+		73,
+		&"fire",
+		Vector2.RIGHT,
+		enemy_position,
+		12
+	)
+	mp_game.broadcast_enemy_action(
+		73,
+		&"cancel",
+		Vector2.RIGHT,
+		enemy_position,
+		13
+	)
+	_expect(
+		mp_game.sent_methods == [
+			&"net_enemy_target_action",
+			&"net_enemy_target_action",
+			&"net_enemy_action",
+			&"net_enemy_action",
+			&"net_enemy_action",
+			&"net_enemy_action",
+		]
+		and mp_game.sent_arguments[0].slice(0, 5) == [
+			73,
+			"lightning_windup",
+			7,
+			enemy_position,
+			10,
+		]
+		and mp_game.sent_arguments[1].slice(0, 5) == [
+			73,
+			"lightning_windup_retry",
+			7,
+			enemy_position,
+			10,
+		]
+		and mp_game.sent_arguments[2].slice(0, 5) == [
+			73,
+			"lightning_plant_windup",
+			plant_offset,
+			enemy_position,
+			11,
+		]
+		and mp_game.sent_arguments[3].slice(0, 5) == [
+			73,
+			"lightning_plant_windup_retry",
+			plant_offset,
+			enemy_position,
+			11,
+		]
+		and mp_game.sent_arguments[4][1] == "fire"
+		and mp_game.sent_arguments[4][4] == 12
+		and mp_game.sent_arguments[5][1] == "cancel"
+		and mp_game.sent_arguments[5][4] == 13,
+		"Lightning warning must reuse target-action for players and offset action for stationary plants, including one same-id retry."
+	)
 	var valid_points := PackedVector2Array([
 		Vector2(10.0, 20.0),
 		Vector2(30.0, 40.0),
 	])
 	mp_game.broadcast_enemy_lightning_chain(valid_points)
 	_expect(
-		mp_game.sent_methods == [&"net_enemy_lightning_chain"]
-		and mp_game.sent_arguments.size() == 1
-		and mp_game.sent_arguments[0].size() == 1
-		and mp_game.sent_arguments[0][0] == valid_points,
+		mp_game.sent_methods.size() == 7
+		and mp_game.sent_methods[-1] == &"net_enemy_lightning_chain"
+		and mp_game.sent_arguments.size() == 7
+		and mp_game.sent_arguments[-1].size() == 1
+		and mp_game.sent_arguments[-1][0] == valid_points,
 		"Host must send one PackedVector2Array and no gameplay payload alongside it."
 	)
 
@@ -193,11 +293,287 @@ func _test_host_broadcast_contract() -> void:
 	mp_game.broadcast_enemy_lightning_chain(_make_points(7))
 	mp_game.broadcast_enemy_lightning_chain(PackedVector2Array([Vector2(INF, 0.0)]))
 	_expect(
-		mp_game.sent_methods.size() == 1,
+		mp_game.sent_methods.size() == 7,
 		"Host must drop incomplete, oversized, and non-finite lightning visual payloads."
 	)
 	mp_game.free()
 	net_manager.free()
+
+
+func _test_target_warning_proxy_contract() -> void:
+	var fixture_root := Node2D.new()
+	fixture_root.name = "LightningWarningNetworkFixture"
+	root.add_child(fixture_root)
+	current_scene = fixture_root
+
+	var runtime := LightningVfxRuntime.new()
+	var net_manager := TestNetManager.new()
+	var mp_game := MP_GAME_SCRIPT.new()
+	mp_game.set("net_manager", net_manager)
+	mp_game.set("game", runtime)
+
+	var player := PLAYER_SCENE.instantiate() as Player
+	_expect(player != null, "Player warning fixture must instantiate a typed player.")
+	if player == null:
+		mp_game.free()
+		runtime.free()
+		net_manager.free()
+		current_scene = null
+		fixture_root.free()
+		return
+	fixture_root.add_child(player)
+	player.peer_id = 7
+	player.global_position = Vector2(96.0, 64.0)
+	runtime.players_by_peer_id[player.peer_id] = player
+
+	var lightning := LIGHTNING_SORCERER_SCENE.instantiate() as LightningSorcerer
+	_expect(lightning != null, "Lightning warning fixture must instantiate the real enemy scene.")
+	if lightning == null:
+		mp_game.free()
+		runtime.free()
+		net_manager.free()
+		current_scene = null
+		fixture_root.free()
+		return
+	fixture_root.add_child(lightning)
+	lightning.global_position = Vector2(16.0, 24.0)
+	lightning.setup(LIGHTNING_SORCERER_CONFIG, player)
+	lightning.configure_multiplayer_proxy()
+	lightning.set_meta("net_id", 73)
+	var net_enemies := mp_game.get("_net_enemies") as Dictionary
+	net_enemies[73] = lightning
+
+	var target_warning := lightning.get_node_or_null("TargetWarning") as Node2D
+	_expect(
+		target_warning != null
+		and target_warning.top_level
+		and not target_warning.visible,
+		"Lightning proxy must own one hidden, top-level, scene-authored target warning."
+	)
+	if target_warning == null:
+		mp_game.free()
+		runtime.free()
+		net_manager.free()
+		current_scene = null
+		fixture_root.free()
+		return
+	var warning_instance_id := target_warning.get_instance_id()
+	var authored_child_count := lightning.get_child_count()
+
+	mp_game.net_enemy_target_action(
+		73,
+		"lightning_windup",
+		player.peer_id,
+		lightning.global_position,
+		10
+	)
+	_expect(
+		target_warning.visible
+		and bool(target_warning.call("is_warning_active"))
+		and target_warning.global_position.is_equal_approx(
+			player.get_multiplayer_visual_global_position().round()
+		)
+		and lightning.latest_proxy_action_id == 10,
+		"Player target-action must show the prebuilt warning on the resolved player."
+	)
+	await process_frame
+	await process_frame
+	var progressed_before_retry := float(
+		target_warning.call("get_warning_progress")
+	)
+	_expect(
+		lightning.is_processing() and progressed_before_retry > 0.0,
+		"Active proxy warnings must keep their owner processing across real render frames."
+	)
+	player.global_position = Vector2(132.0, 91.0)
+	await process_frame
+	_expect(
+		target_warning.global_position.is_equal_approx(
+			player.get_multiplayer_visual_global_position().round()
+		),
+		"Player warning must follow the player's multiplayer visual position."
+	)
+	mp_game.net_enemy_target_action(
+		73,
+		"lightning_windup_retry",
+		player.peer_id,
+		lightning.global_position,
+		10
+	)
+	_expect(
+		lightning.latest_proxy_action_id == 10
+		and float(target_warning.call("get_warning_progress"))
+			>= progressed_before_retry,
+		"Same-id warning retry must be ignored after the start arrived and must not reset progress."
+	)
+	lightning.play_multiplayer_enemy_action(
+		&"lightning_plant_windup",
+		Vector2(300.0, 0.0),
+		9
+	)
+	_expect(
+		lightning.latest_proxy_action_id == 10
+		and target_warning.visible
+		and lightning.get_child_count() == authored_child_count
+		and target_warning.get_instance_id() == warning_instance_id,
+		"A stale cross-channel start must not replace the active warning or allocate another marker."
+	)
+
+	mp_game.net_enemy_action(
+		73,
+		"fire",
+		Vector2.RIGHT,
+		lightning.global_position,
+		11
+	)
+	_expect(
+		lightning.latest_proxy_action_id == 11
+		and not target_warning.visible
+		and not bool(target_warning.call("is_warning_active")),
+		"Generic fire must clear the player target warning."
+	)
+	mp_game.net_enemy_target_action(
+		73,
+		"lightning_windup",
+		player.peer_id,
+		lightning.global_position,
+		10
+	)
+	_expect(
+		not target_warning.visible and lightning.latest_proxy_action_id == 11,
+		"A start arriving after newer fire must not resurrect the warning."
+	)
+
+	lightning.play_multiplayer_enemy_target_action_with_context(
+		&"lightning_windup_retry",
+		player,
+		lightning.global_position,
+		12,
+		0.12
+	)
+	var expected_retry_progress := clampf(
+		(LightningSorcerer.TARGET_WARNING_RETRY_DELAY + 0.12)
+			/ LIGHTNING_SORCERER_CONFIG.windup_duration,
+		0.0,
+		1.0
+	)
+	_expect(
+		target_warning.visible
+		and is_equal_approx(
+			float(target_warning.call("get_warning_progress")),
+			expected_retry_progress
+		),
+		"Retry must recover a dropped player start including measured network age."
+	)
+	mp_game.net_enemy_action(
+		73,
+		"cancel",
+		Vector2.LEFT,
+		lightning.global_position,
+		13
+	)
+	_expect(
+		not target_warning.visible and lightning.latest_proxy_action_id == 13,
+		"Generic cancel must clear a retry-recovered player warning."
+	)
+
+	var plant_offset := Vector2(38.0, -14.0)
+	var authoritative_plant_caster_position := (
+		lightning.global_position + Vector2(23.0, -9.0)
+	)
+	var expected_plant_position := (
+		authoritative_plant_caster_position + plant_offset
+	).round()
+	mp_game.net_enemy_action(
+		73,
+		"lightning_plant_windup",
+		plant_offset,
+		authoritative_plant_caster_position,
+		14
+	)
+	_expect(
+		target_warning.visible
+		and target_warning.global_position.is_equal_approx(
+			expected_plant_position
+		)
+		and lightning.latest_proxy_action_id == 14,
+		"Plant warning must decode the generic action direction as a world-space offset."
+	)
+	lightning.call("_process", 0.18)
+	var plant_progress_before_retry := float(
+		target_warning.call("get_warning_progress")
+	)
+	mp_game.net_enemy_action(
+		73,
+		"lightning_plant_windup_retry",
+		plant_offset,
+		authoritative_plant_caster_position,
+		14
+	)
+	_expect(
+		float(target_warning.call("get_warning_progress"))
+			>= plant_progress_before_retry
+		and lightning.latest_proxy_action_id == 14,
+		"Same-id plant retry must share ordering with player and generic actions without resetting progress."
+	)
+	mp_game.net_enemy_action(
+		73,
+		"cancel",
+		Vector2.RIGHT,
+		lightning.global_position,
+		15
+	)
+	_expect(not target_warning.visible, "Generic cancel must clear a plant warning.")
+
+	mp_game.net_enemy_target_action(
+		73,
+		"lightning_windup",
+		player.peer_id,
+		lightning.global_position,
+		16
+	)
+	lightning.call("_expire_proxy_windup", 16)
+	_expect(
+		not target_warning.visible
+		and not lightning.is_processing()
+		and lightning.latest_proxy_action_id == 16,
+		"Proxy timeout must clear the warning and return the dormant marker path without rewinding ordering."
+	)
+	lightning.play_multiplayer_enemy_target_action(
+		&"lightning_windup_retry",
+		player,
+		16
+	)
+	_expect(
+		not target_warning.visible,
+		"A same-id retry arriving after timeout must not revive an expired warning."
+	)
+
+	lightning.play_multiplayer_enemy_action(
+		&"lightning_plant_windup",
+		plant_offset,
+		17
+	)
+	_expect(target_warning.visible, "Death cleanup fixture must start a warning first.")
+	lightning.play_multiplayer_death_sequence()
+	var ordering_after_death := lightning.latest_proxy_action_id
+	lightning.play_multiplayer_enemy_target_action(
+		&"lightning_windup",
+		player,
+		ordering_after_death + 1
+	)
+	_expect(
+		lightning.is_dead
+		and not target_warning.visible
+		and lightning.latest_proxy_action_id == ordering_after_death,
+		"Proxy death must clear the marker and reject even newer late starts."
+	)
+
+	mp_game.free()
+	runtime.free()
+	net_manager.free()
+	current_scene = null
+	fixture_root.free()
 
 
 func _test_client_validation_and_visual_only_contract() -> void:
@@ -206,6 +582,20 @@ func _test_client_validation_and_visual_only_contract() -> void:
 	var runtime := LightningVfxRuntime.new()
 	mp_game.set("net_manager", net_manager)
 	mp_game.set("game", runtime)
+	var synchronized_host_time := float(mp_game.call("_get_net_time"))
+	mp_game.call(
+		"_map_host_timestamp_to_client_time",
+		synchronized_host_time,
+		true
+	)
+	var measured_action_age := float(mp_game.call(
+		"_get_received_enemy_action_elapsed",
+		synchronized_host_time - 0.12
+	))
+	_expect(
+		measured_action_age >= 0.1 and measured_action_age <= 0.25,
+		"Enemy action context must convert the synchronized host timestamp into client-side elapsed time."
+	)
 
 	var two_points := _make_points(2)
 	var six_points := _make_points(6)
@@ -229,23 +619,77 @@ func _test_client_validation_and_visual_only_contract() -> void:
 	)
 
 	var source := FileAccess.get_file_as_string(MP_GAME_PATH)
-	var function_start := source.find("func net_enemy_lightning_chain(")
-	var function_end := -1
-	var rpc_body := ""
-	if function_start >= 0:
-		function_end = source.find("\n\nfunc ", function_start)
-		if function_end < 0:
-			function_end = source.length()
-		rpc_body = source.substr(function_start, function_end - function_start)
+	var rpc_body := _extract_function_body(
+		source,
+		"func net_enemy_lightning_chain("
+	)
 	_expect(
-		function_start >= 0
-		and function_end > function_start
+		not rpc_body.is_empty()
 		and rpc_body.contains("play_lightning_sorcerer_chain_vfx")
 		and not rpc_body.contains("find_nearest")
 		and not rpc_body.contains("take_damage")
 		and not rpc_body.contains("request_multiplayer")
 		and not rpc_body.contains("apply_authoritative"),
 		"Client RPC must replay pure VFX without target selection or damage execution."
+	)
+
+	var target_action_body := _extract_function_body(
+		source,
+		"func net_enemy_target_action("
+	)
+	var generic_action_body := _extract_function_body(
+		source,
+		"func net_enemy_action("
+	)
+	var lightning_source := FileAccess.get_file_as_string(
+		LIGHTNING_SORCERER_PATH
+	)
+	var proxy_target_body := _extract_function_body(
+		lightning_source,
+		"func play_multiplayer_enemy_target_action("
+	)
+	var proxy_generic_body := _extract_function_body(
+		lightning_source,
+		"func play_multiplayer_enemy_action("
+	)
+	var proxy_target_context_body := _extract_function_body(
+		lightning_source,
+		"func play_multiplayer_enemy_target_action_with_context("
+	)
+	var proxy_generic_context_body := _extract_function_body(
+		lightning_source,
+		"func play_multiplayer_enemy_action_with_context("
+	)
+	var client_visual_bodies := (
+		target_action_body
+		+ generic_action_body
+		+ proxy_target_body
+		+ proxy_generic_body
+		+ proxy_target_context_body
+		+ proxy_generic_context_body
+	)
+	_expect(
+		not target_action_body.is_empty()
+		and not generic_action_body.is_empty()
+		and not proxy_target_body.is_empty()
+		and not proxy_generic_body.is_empty()
+		and not proxy_target_context_body.is_empty()
+		and not proxy_generic_context_body.is_empty()
+		and not client_visual_bodies.contains("find_nearest")
+		and not client_visual_bodies.contains("_query_runtime_attack_target")
+		and not client_visual_bodies.contains("_resolve_chain_hits")
+		and not client_visual_bodies.contains("_apply_chain_damage")
+		and not client_visual_bodies.contains("take_damage")
+		and not client_visual_bodies.contains("receive_damage")
+		and not client_visual_bodies.contains("request_multiplayer_player_damage"),
+		"Target-warning receive paths must remain visual-only and never reacquire targets or apply damage on clients."
+	)
+	_expect(
+		not source.contains("net_enemy_lightning_target_warning")
+		and lightning_source.contains("_broadcast_enemy_target_action(")
+		and lightning_source.contains("PLANT_WINDUP_ACTION")
+		and lightning_source.contains("_broadcast_enemy_action("),
+		"Lightning target warnings must reuse the existing target/generic action protocol instead of adding an RPC surface."
 	)
 	mp_game.free()
 	runtime.free()
@@ -257,6 +701,16 @@ func _make_points(count: int) -> PackedVector2Array:
 	for point_index in range(count):
 		points.append(Vector2(point_index * 8.0, point_index * -4.0))
 	return points
+
+
+func _extract_function_body(source: String, signature: String) -> String:
+	var function_start := source.find(signature)
+	if function_start < 0:
+		return ""
+	var function_end := source.find("\n\nfunc ", function_start)
+	if function_end < 0:
+		function_end = source.length()
+	return source.substr(function_start, function_end - function_start)
 
 
 func _expect(condition: bool, message: String) -> void:

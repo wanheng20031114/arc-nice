@@ -9543,7 +9543,17 @@ func net_enemy_action(
 		return
 	if action_sample.get("apply_direct_position", false):
 		enemy.global_position = action_position
-	if enemy.has_method("play_multiplayer_enemy_action"):
+	var action_elapsed := _get_received_enemy_action_elapsed(host_action_timestamp)
+	if enemy.has_method("play_multiplayer_enemy_action_with_context"):
+		enemy.call(
+			"play_multiplayer_enemy_action_with_context",
+			StringName(action_name),
+			direction,
+			action_position,
+			action_id,
+			action_elapsed
+		)
+	elif enemy.has_method("play_multiplayer_enemy_action"):
 		enemy.call("play_multiplayer_enemy_action", StringName(action_name), direction, action_id)
 
 
@@ -9571,13 +9581,34 @@ func net_enemy_target_action(
 	if action_sample.get("apply_direct_position", false):
 		enemy.global_position = action_position
 	var target := game.get_player_for_peer(target_peer_id)
-	if enemy.has_method("play_multiplayer_enemy_target_action"):
+	var action_elapsed := _get_received_enemy_action_elapsed(host_action_timestamp)
+	if enemy.has_method("play_multiplayer_enemy_target_action_with_context"):
+		enemy.call(
+			"play_multiplayer_enemy_target_action_with_context",
+			StringName(action_name),
+			target,
+			action_position,
+			action_id,
+			action_elapsed
+		)
+	elif enemy.has_method("play_multiplayer_enemy_target_action"):
 		enemy.call(
 			"play_multiplayer_enemy_target_action",
 			StringName(action_name),
 			target,
 			action_id
 		)
+
+
+func _get_received_enemy_action_elapsed(host_action_timestamp: float) -> float:
+	if not is_finite(host_action_timestamp) or host_action_timestamp < 0.0:
+		return 0.0
+	var mapped_action_time := _map_host_timestamp_to_client_time(
+		host_action_timestamp,
+		false
+	)
+	var elapsed := maxf(_get_net_time() - mapped_action_time, 0.0)
+	return elapsed if is_finite(elapsed) else 0.0
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 7)
