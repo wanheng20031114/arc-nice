@@ -5,6 +5,9 @@ const CombatTargetIndexScript := preload("res://scene/combat_target_index.gd")
 const MultiplayerRuntimeMetricsScript := preload(
 	"res://scene/multiplayer/multiplayer_runtime_metrics.gd"
 )
+const PeerReplayResultCacheScript := preload(
+	"res://scene/multiplayer/peer_replay_result_cache.gd"
+)
 const TRANSACTION_RPC_METHODS := {
 	&"net_inventory_snapshot": true,
 	&"net_inventory_item_used": true,
@@ -340,7 +343,13 @@ var _luoxi_transaction_rate_buckets: Dictionary = {}
 var _runtime_state_request_rate_buckets: Dictionary = {}
 var _warehouse_snapshot_request_rate_buckets: Dictionary = {}
 var _terrain_snapshot_request_rate_buckets: Dictionary = {}
-var _warehouse_transaction_results_by_peer: Dictionary = {}
+var _warehouse_transaction_result_cache := PeerReplayResultCacheScript.new(
+	WAREHOUSE_TRANSACTION_RESULT_CACHE_SIZE
+)
+# Keep the value dictionaries visible to diagnostics and multiplayer probes.
+var _warehouse_transaction_results_by_peer: Dictionary = (
+	_warehouse_transaction_result_cache.results_by_peer
+)
 var _warehouse_transaction_started_usec: Dictionary = {}
 var _local_simple_crafting_request_id: int = 0
 # Panel tokens remain local. These two indexes associate them with wire request
@@ -350,7 +359,12 @@ var _local_simple_crafting_request_ids_by_ui_token: Dictionary = {}
 var _last_simple_crafting_request_ids: Dictionary = {}
 var _last_simple_crafting_result_ids: Dictionary = {}
 var _simple_crafting_rate_buckets: Dictionary = {}
-var _simple_crafting_results_by_peer: Dictionary = {}
+var _simple_crafting_result_cache := PeerReplayResultCacheScript.new(
+	SIMPLE_CRAFTING_RESULT_CACHE_SIZE
+)
+var _simple_crafting_results_by_peer: Dictionary = (
+	_simple_crafting_result_cache.results_by_peer
+)
 var _pending_warehouse_snapshots: Dictionary = {}
 # Snapshot-before-spawn is a valid cross-channel ordering, but the deferred
 # payloads must not grow with every unknown net id. These links form a bounded
@@ -363,7 +377,12 @@ var _pending_warehouse_snapshot_newest_id: int = 0
 var _pending_authoritative_warehouse_snapshots: Dictionary = {}
 var _production_command_rate_buckets: Dictionary = {}
 var _production_snapshot_request_rate_buckets: Dictionary = {}
-var _production_command_results_by_peer: Dictionary = {}
+var _production_command_result_cache := PeerReplayResultCacheScript.new(
+	PRODUCTION_COMMAND_RESULT_CACHE_SIZE
+)
+var _production_command_results_by_peer: Dictionary = (
+	_production_command_result_cache.results_by_peer
+)
 var _pending_production_state_updates: Dictionary = {}
 var _pending_remote_production_states: Dictionary = {}
 var _shared_production_state_flush_scheduled := false
@@ -507,7 +526,9 @@ func _exit_tree() -> void:
 	_last_simple_crafting_request_ids.clear()
 	_last_simple_crafting_result_ids.clear()
 	_simple_crafting_rate_buckets.clear()
-	_simple_crafting_results_by_peer.clear()
+	_simple_crafting_result_cache.clear()
+	_warehouse_transaction_result_cache.clear()
+	_production_command_result_cache.clear()
 	_player_transaction_ingress_rate_buckets.clear()
 	_inventory_command_rate_buckets.clear()
 	_luoxi_transaction_rate_buckets.clear()
@@ -1948,9 +1969,8 @@ func _get_cached_production_command_result(
 ) -> Dictionary:
 	if building_net_id <= 0 or request_id <= 0:
 		return {}
-	var peer_cache := _production_command_results_by_peer.get(peer_id, {}) as Dictionary
 	var cache_key := "%d:%d" % [building_net_id, request_id]
-	return (peer_cache.get(cache_key, {}) as Dictionary).duplicate(true)
+	return _production_command_result_cache.get_result(peer_id, cache_key)
 
 
 func _cache_production_command_result(
@@ -1961,11 +1981,11 @@ func _cache_production_command_result(
 ) -> void:
 	if peer_id <= 0 or building_net_id <= 0 or request_id <= 0:
 		return
-	var peer_cache := _production_command_results_by_peer.get(peer_id, {}) as Dictionary
-	peer_cache["%d:%d" % [building_net_id, request_id]] = result.duplicate(true)
-	while peer_cache.size() > PRODUCTION_COMMAND_RESULT_CACHE_SIZE:
-		peer_cache.erase(peer_cache.keys()[0])
-	_production_command_results_by_peer[peer_id] = peer_cache
+	_production_command_result_cache.store_result(
+		peer_id,
+		"%d:%d" % [building_net_id, request_id],
+		result
+	)
 
 
 func _send_production_command_result(peer_id: int, result: Dictionary) -> void:
@@ -2188,11 +2208,7 @@ func _get_cached_simple_crafting_result(
 ) -> Dictionary:
 	if peer_id <= 0 or request_id <= 0:
 		return {}
-	var peer_cache := _simple_crafting_results_by_peer.get(
-		peer_id,
-		{}
-	) as Dictionary
-	return (peer_cache.get(request_id, {}) as Dictionary).duplicate(true)
+	return _simple_crafting_result_cache.get_result(peer_id, request_id)
 
 
 func _cache_simple_crafting_result(
@@ -2202,14 +2218,7 @@ func _cache_simple_crafting_result(
 ) -> void:
 	if peer_id <= 0 or request_id <= 0 or result.is_empty():
 		return
-	var peer_cache := _simple_crafting_results_by_peer.get(
-		peer_id,
-		{}
-	) as Dictionary
-	peer_cache[request_id] = result.duplicate(true)
-	while peer_cache.size() > SIMPLE_CRAFTING_RESULT_CACHE_SIZE:
-		peer_cache.erase(peer_cache.keys()[0])
-	_simple_crafting_results_by_peer[peer_id] = peer_cache
+	_simple_crafting_result_cache.store_result(peer_id, request_id, result)
 
 
 func _send_simple_crafting_result(result: Dictionary) -> void:
@@ -2374,9 +2383,8 @@ func _get_cached_warehouse_transaction_result(
 ) -> Dictionary:
 	if warehouse_net_id <= 0 or request_id <= 0:
 		return {}
-	var peer_cache := _warehouse_transaction_results_by_peer.get(peer_id, {}) as Dictionary
 	var cache_key := _get_warehouse_transaction_metric_key(warehouse_net_id, request_id)
-	return (peer_cache.get(cache_key, {}) as Dictionary).duplicate(true)
+	return _warehouse_transaction_result_cache.get_result(peer_id, cache_key)
 
 
 func _cache_warehouse_transaction_result(
@@ -2387,12 +2395,8 @@ func _cache_warehouse_transaction_result(
 ) -> void:
 	if peer_id <= 0 or warehouse_net_id <= 0 or request_id <= 0:
 		return
-	var peer_cache := _warehouse_transaction_results_by_peer.get(peer_id, {}) as Dictionary
 	var cache_key := _get_warehouse_transaction_metric_key(warehouse_net_id, request_id)
-	peer_cache[cache_key] = result.duplicate(true)
-	while peer_cache.size() > WAREHOUSE_TRANSACTION_RESULT_CACHE_SIZE:
-		peer_cache.erase(peer_cache.keys()[0])
-	_warehouse_transaction_results_by_peer[peer_id] = peer_cache
+	_warehouse_transaction_result_cache.store_result(peer_id, cache_key, result)
 
 
 func _send_warehouse_command_result(peer_id: int, result: Dictionary) -> void:
@@ -11301,14 +11305,14 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_last_simple_crafting_request_ids.erase(peer_id)
 	_last_simple_crafting_result_ids.erase(peer_id)
 	_simple_crafting_rate_buckets.erase(peer_id)
-	_simple_crafting_results_by_peer.erase(peer_id)
+	_simple_crafting_result_cache.clear_peer(peer_id)
 	_production_command_rate_buckets.erase(peer_id)
 	_production_snapshot_request_rate_buckets.erase(peer_id)
 	_research_command_rate_buckets.erase(peer_id)
 	_last_research_request_ids.erase(peer_id)
 	_terrain_snapshot_request_rate_buckets.erase(peer_id)
-	_warehouse_transaction_results_by_peer.erase(peer_id)
-	_production_command_results_by_peer.erase(peer_id)
+	_warehouse_transaction_result_cache.clear_peer(peer_id)
+	_production_command_result_cache.clear_peer(peer_id)
 	_clear_projectiles_for_peer(peer_id)
 	_clear_projectile_records_for_peer(peer_id)
 
@@ -11386,7 +11390,7 @@ func _return_to_lobby() -> void:
 	_luoxi_offer_revision_counters.clear()
 	_warehouse_snapshot_request_rate_buckets.clear()
 	_warehouse_transaction_rate_buckets.clear()
-	_warehouse_transaction_results_by_peer.clear()
+	_warehouse_transaction_result_cache.clear()
 	_player_transaction_ingress_rate_buckets.clear()
 	_inventory_command_rate_buckets.clear()
 	_luoxi_transaction_rate_buckets.clear()
@@ -11396,10 +11400,10 @@ func _return_to_lobby() -> void:
 	_last_simple_crafting_request_ids.clear()
 	_last_simple_crafting_result_ids.clear()
 	_simple_crafting_rate_buckets.clear()
-	_simple_crafting_results_by_peer.clear()
+	_simple_crafting_result_cache.clear()
 	_production_command_rate_buckets.clear()
 	_production_snapshot_request_rate_buckets.clear()
-	_production_command_results_by_peer.clear()
+	_production_command_result_cache.clear()
 	_research_command_rate_buckets.clear()
 	_last_research_request_ids.clear()
 	_research_milestone_connected = false
