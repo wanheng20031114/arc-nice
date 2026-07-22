@@ -257,7 +257,10 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 			"GlobalResearchRegistry.get_config_by_wire_id(research_id_wire)"
 		)
 		and mp_game_source.contains(
-			"or int(schema_value) != ResearchCenter.MULTIPLAYER_RESEARCH_COMMAND_SCHEMA"
+			"or int(raw_command[\"schema\"])"
+		)
+		and mp_game_source.contains(
+			"!= ResearchCenter.MULTIPLAYER_RESEARCH_COMMAND_SCHEMA"
 		)
 		and mp_game_source.contains(
 			"building.try_start_global_research(research_config.research_id)"
