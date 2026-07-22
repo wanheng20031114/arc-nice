@@ -79,6 +79,48 @@ static func is_valid_command(command: Dictionary) -> bool:
 	return false
 
 
+## Produces a flat, fixed-field command from an untrusted RPC Dictionary.
+## The legacy omitted-operation form remains equivalent to "transfer".
+static func canonicalize_command(
+	raw_command: Dictionary,
+	expected_peer_id: int
+) -> Dictionary:
+	if not command_peer_matches(raw_command, expected_peer_id):
+		return {}
+	var operation_value: Variant = raw_command.get(
+		"operation",
+		OPERATION_TRANSFER
+	)
+	if typeof(operation_value) not in [TYPE_STRING, TYPE_STRING_NAME]:
+		return {}
+	var operation_wire := String(operation_value)
+	var command := {
+		"request_id": raw_command.get("request_id"),
+		"warehouse_net_id": raw_command.get("warehouse_net_id"),
+		"peer_id": expected_peer_id,
+		"expected_inventory_revision": raw_command.get(
+			"expected_inventory_revision"
+		),
+		"expected_storage_revision": raw_command.get(
+			"expected_storage_revision"
+		),
+	}
+	if operation_wire == String(OPERATION_TRANSFER):
+		command["operation"] = OPERATION_TRANSFER
+		command["direction"] = raw_command.get("direction")
+		command["slot_index"] = raw_command.get("slot_index")
+		command["transfer_count"] = raw_command.get("transfer_count")
+	elif operation_wire == String(OPERATION_SLOT_MOVE):
+		command["operation"] = OPERATION_SLOT_MOVE
+		command["source_container"] = raw_command.get("source_container")
+		command["source_slot_index"] = raw_command.get("source_slot_index")
+		command["target_container"] = raw_command.get("target_container")
+		command["target_slot_index"] = raw_command.get("target_slot_index")
+	else:
+		return {}
+	return command if is_valid_command(command) else {}
+
+
 static func is_valid_transfer_command(command: Dictionary) -> bool:
 	var request_id := get_int_field(command, "request_id", 0)
 	var warehouse_net_id := get_int_field(command, "warehouse_net_id", 0)

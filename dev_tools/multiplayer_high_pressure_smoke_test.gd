@@ -45,6 +45,12 @@ class CapturingMpGame:
 	extends "res://scene/multiplayer/mp_game.gd"
 
 	var outbound_calls: Array[Dictionary] = []
+	var production_command_result_send_count := 0
+	var warehouse_command_result_send_count := 0
+	var simple_crafting_result_send_count := 0
+	var runtime_state_send_count := 0
+	var plant_placement_rejection_send_count := 0
+	var test_net_time := -1.0
 
 	func _ready() -> void:
 		pass
@@ -58,6 +64,39 @@ class CapturingMpGame:
 			"args": args.duplicate(true),
 		})
 
+	func _send_production_command_result(
+		_peer_id: int,
+		_result: Dictionary
+	) -> void:
+		production_command_result_send_count += 1
+
+	func _send_warehouse_command_result(
+		_peer_id: int,
+		_result: Dictionary
+	) -> void:
+		warehouse_command_result_send_count += 1
+
+	func _send_simple_crafting_result(_result: Dictionary) -> void:
+		simple_crafting_result_send_count += 1
+
+	func _send_runtime_state_to_peer(
+		_peer_id: int,
+		_include_flow_state: bool
+	) -> void:
+		runtime_state_send_count += 1
+
+	func _send_plant_placement_rejected(
+		_requester_peer_id: int,
+		_request_id: int,
+		_reason: StringName
+	) -> void:
+		plant_placement_rejection_send_count += 1
+
+	func _get_net_time() -> float:
+		if test_net_time >= 0.0:
+			return test_net_time
+		return super._get_net_time()
+
 
 class TestRuntime:
 	extends GameRuntimeBase
@@ -68,6 +107,9 @@ class TestRuntime:
 	var animated_plant_removal_ids: Array[int] = []
 	var silent_plant_removal_ids: Array[int] = []
 	var damage_number_requests: Array[Dictionary] = []
+	var transaction_player_lookup_count := 0
+	var transaction_plant_lookup_count := 0
+	var transaction_snapshot_query_count := 0
 
 	func configure_multiplayer(
 		_mode: int,
@@ -78,6 +120,7 @@ class TestRuntime:
 		pass
 
 	func get_player_for_peer(peer_id: int) -> Player:
+		transaction_player_lookup_count += 1
 		return peer_players.get(peer_id) as Player
 
 	func get_enemy_for_net_id(net_id: int) -> Enemy:
@@ -205,12 +248,14 @@ class TestRuntime:
 		plant.apply_remote_health(current_health, maximum_health, health_revision)
 
 	func get_multiplayer_plant_node(net_id: int) -> PlantDefense:
+		transaction_plant_lookup_count += 1
 		return proxy_plants.get(net_id) as PlantDefense
 
 	func supports_tower_defense() -> bool:
 		return true
 
 	func get_multiplayer_plant_snapshots() -> Array[Dictionary]:
+		transaction_snapshot_query_count += 1
 		var snapshots: Array[Dictionary] = []
 		for net_id_variant in proxy_plants.keys():
 			var net_id := int(net_id_variant)
@@ -218,6 +263,11 @@ class TestRuntime:
 			if plant != null and is_instance_valid(plant):
 				snapshots.append({"net_id": net_id})
 		return snapshots
+
+	func reset_transaction_lookup_counts() -> void:
+		transaction_player_lookup_count = 0
+		transaction_plant_lookup_count = 0
+		transaction_snapshot_query_count = 0
 
 	func apply_remote_plant_removed(net_id: int) -> void:
 		animated_plant_removal_ids.append(net_id)
@@ -296,6 +346,7 @@ func _run() -> void:
 	_test_plant_damage_feedback_revision_and_removal_ordering()
 	_test_host_plant_damage_aggregation_and_fatal_flush()
 	_test_warehouse_transaction_cache_scope()
+	_test_transaction_rpc_admission_guards()
 	_test_corn_burst_packed_queue_pressure()
 	await _test_hoe_prediction_confirmation_reconciliation()
 	await _test_tiyi_direct_lookup_retry()
@@ -520,6 +571,357 @@ func _test_warehouse_transaction_cache_scope() -> void:
 			1
 		) as Dictionary).get("success", true)),
 		"Warehouse idempotency cache keys must include warehouse_net_id as well as request_id."
+	)
+
+
+func _test_transaction_rpc_admission_guards() -> void:
+	const REMOTE_PEER_ID := 2
+	var mp_game := _new_capturing_host_mp_game()
+	var research_command := {
+		"schema": ResearchCenter.MULTIPLAYER_RESEARCH_COMMAND_SCHEMA,
+		"request_id": 1,
+		"building_net_id": 7001,
+		"peer_id": REMOTE_PEER_ID,
+		"operation": "global",
+		"research_id": "building_defense",
+		"nested_junk": {"payload": [{"unexpected": "value"}]},
+	}
+	var canonical_research := mp_game.call(
+		"_canonicalize_research_command",
+		research_command,
+		REMOTE_PEER_ID
+	) as Dictionary
+	var oversized_research := research_command.duplicate()
+	oversized_research["research_id"] = "x".repeat(129)
+	var spoofed_research := research_command.duplicate()
+	spoofed_research["peer_id"] = REMOTE_PEER_ID + 1
+	_expect(
+		canonical_research.size() == 6
+		and not canonical_research.has("nested_junk")
+		and (mp_game.call(
+			"_canonicalize_research_command",
+			oversized_research,
+			REMOTE_PEER_ID
+		) as Dictionary).is_empty()
+		and (mp_game.call(
+			"_canonicalize_research_command",
+			spoofed_research,
+			REMOTE_PEER_ID
+		) as Dictionary).is_empty(),
+		"Research RPC decoding must copy only fixed fields and reject spoofed or oversized wire values."
+	)
+	mp_game.test_net_time = 500.0
+	fixture.reset_transaction_lookup_counts()
+	mp_game.call(
+		"_apply_authoritative_production_command",
+		REMOTE_PEER_ID,
+		{"nested_junk": {"payload": [{"unexpected": "value"}]}}
+	)
+	var malformed_ingress_bucket := (
+		mp_game.get("_player_transaction_ingress_rate_buckets") as Dictionary
+	).get(REMOTE_PEER_ID, {}) as Dictionary
+	_expect(
+		is_equal_approx(float(malformed_ingress_bucket.get("tokens", -1.0)), 47.0)
+		and (mp_game.get("_production_command_rate_buckets") as Dictionary).is_empty()
+		and fixture.transaction_player_lookup_count == 0
+		and fixture.transaction_plant_lookup_count == 0,
+		"Malformed transaction payloads must consume shared ingress before decoding while avoiding feature work."
+	)
+	mp_game.set("_player_transaction_ingress_rate_buckets", {})
+	mp_game.set("_plant_placement_rate_buckets", {})
+	fixture.reset_transaction_lookup_counts()
+	mp_game.call(
+		"_handle_authoritative_plant_placement_request",
+		REMOTE_PEER_ID,
+		1,
+		"x".repeat(129),
+		Vector2i.ZERO
+	)
+	mp_game.call(
+		"_handle_authoritative_inventory_plant_placement_request",
+		REMOTE_PEER_ID,
+		2,
+		"oak_defender",
+		Vector2i.ZERO,
+		0,
+		0,
+		"x".repeat(257)
+	)
+	var placement_ingress_bucket := (
+		mp_game.get("_player_transaction_ingress_rate_buckets") as Dictionary
+	).get(REMOTE_PEER_ID, {}) as Dictionary
+	_expect(
+		is_equal_approx(float(placement_ingress_bucket.get("tokens", -1.0)), 46.0)
+		and (mp_game.get("_plant_placement_rate_buckets") as Dictionary).is_empty()
+		and fixture.transaction_snapshot_query_count == 0,
+		"Oversized placement strings must consume shared ingress but be rejected before StringName creation or plant scans."
+	)
+
+	mp_game.set("_player_transaction_ingress_rate_buckets", {})
+	mp_game.set("_plant_placement_rate_buckets", {})
+	mp_game.set("_last_plant_placement_request_ids", {REMOTE_PEER_ID: 9})
+	_exhaust_rate_bucket(
+		mp_game,
+		mp_game.get("_plant_placement_rate_buckets") as Dictionary,
+		REMOTE_PEER_ID,
+		4.0,
+		8
+	)
+	fixture.reset_transaction_lookup_counts()
+	mp_game.call(
+		"_handle_authoritative_plant_placement_request",
+		REMOTE_PEER_ID,
+		1,
+		"oak_defender",
+		Vector2i.ZERO
+	)
+	_expect(
+		mp_game.plant_placement_rejection_send_count == 0
+		and fixture.transaction_snapshot_query_count == 0,
+		"Placement feature admission must reject stale replay before reply amplification or team scans."
+	)
+	mp_game.set("_last_plant_placement_request_ids", {})
+	mp_game.set("_plant_placement_rate_buckets", {})
+	mp_game.set("_player_transaction_ingress_rate_buckets", {})
+
+	var production_command := ProductionBuildingProtocol.make_set_enabled_command(
+		1,
+		7002,
+		REMOTE_PEER_ID,
+		0,
+		false
+	)
+	var warehouse_command := OakWarehouseProtocol.make_transfer_command(
+		1,
+		7003,
+		REMOTE_PEER_ID,
+		OakWarehouseProtocol.TransferDirection.PLAYER_TO_STORAGE,
+		0,
+		1,
+		0,
+		0
+	)
+	mp_game.call(
+		"_cache_production_command_result",
+		REMOTE_PEER_ID,
+		7002,
+		1,
+		{"cached": true}
+	)
+	mp_game.call(
+		"_cache_warehouse_transaction_result",
+		REMOTE_PEER_ID,
+		7003,
+		1,
+		{"cached": true}
+	)
+	mp_game.call(
+		"_cache_simple_crafting_result",
+		REMOTE_PEER_ID,
+		1,
+		{"cached": true}
+	)
+	_exhaust_rate_bucket(
+		mp_game,
+		mp_game.get("_production_command_rate_buckets") as Dictionary,
+		REMOTE_PEER_ID,
+		8.0,
+		12
+	)
+	_exhaust_rate_bucket(
+		mp_game,
+		mp_game.get("_warehouse_transaction_rate_buckets") as Dictionary,
+		REMOTE_PEER_ID,
+		12.0,
+		20
+	)
+	_exhaust_rate_bucket(
+		mp_game,
+		mp_game.get("_simple_crafting_rate_buckets") as Dictionary,
+		REMOTE_PEER_ID,
+		8.0,
+		12
+	)
+	_exhaust_rate_bucket(
+		mp_game,
+		mp_game.get("_research_command_rate_buckets") as Dictionary,
+		REMOTE_PEER_ID,
+		4.0,
+		6
+	)
+	fixture.reset_transaction_lookup_counts()
+	mp_game.call(
+		"_apply_authoritative_production_command",
+		REMOTE_PEER_ID,
+		production_command
+	)
+	mp_game.call(
+		"_apply_authoritative_warehouse_command",
+		REMOTE_PEER_ID,
+		warehouse_command
+	)
+	mp_game.call(
+		"_apply_authoritative_simple_crafting_request",
+		REMOTE_PEER_ID,
+		1,
+		"campfire_plank",
+		0
+	)
+	mp_game.call(
+		"_apply_authoritative_research_command",
+		REMOTE_PEER_ID,
+		research_command
+	)
+	_expect(
+		mp_game.production_command_result_send_count == 0
+		and mp_game.warehouse_command_result_send_count == 0
+		and mp_game.simple_crafting_result_send_count == 0
+		and fixture.transaction_player_lookup_count == 0
+		and fixture.transaction_plant_lookup_count == 0
+		and fixture.transaction_snapshot_query_count == 0,
+		"Feature admission must reject cache replay and new transaction work before lookups, snapshots, or full responses."
+	)
+
+	mp_game.set("_production_command_rate_buckets", {})
+	mp_game.set("_warehouse_transaction_rate_buckets", {})
+	mp_game.set("_simple_crafting_rate_buckets", {})
+	mp_game.set("_research_command_rate_buckets", {})
+	mp_game.test_net_time = 1000.0
+	_exhaust_shared_transaction_ingress(mp_game, REMOTE_PEER_ID)
+	fixture.reset_transaction_lookup_counts()
+	mp_game.call(
+		"_apply_authoritative_production_command",
+		REMOTE_PEER_ID,
+		production_command
+	)
+	mp_game.call(
+		"_apply_authoritative_warehouse_command",
+		REMOTE_PEER_ID,
+		warehouse_command
+	)
+	mp_game.call(
+		"_apply_authoritative_simple_crafting_request",
+		REMOTE_PEER_ID,
+		2,
+		"campfire_plank",
+		0
+	)
+	research_command["request_id"] = 2
+	mp_game.call(
+		"_apply_authoritative_research_command",
+		REMOTE_PEER_ID,
+		research_command
+	)
+	_expect(
+		(mp_game.get("_production_command_rate_buckets") as Dictionary).is_empty()
+		and (mp_game.get("_warehouse_transaction_rate_buckets") as Dictionary).is_empty()
+		and (mp_game.get("_simple_crafting_rate_buckets") as Dictionary).is_empty()
+		and (mp_game.get("_research_command_rate_buckets") as Dictionary).is_empty()
+		and fixture.transaction_player_lookup_count == 0
+		and fixture.transaction_plant_lookup_count == 0
+		and fixture.transaction_snapshot_query_count == 0,
+		"Shared transaction ingress must bound mixed-RPC spam before feature buckets or gameplay lookups."
+	)
+	var pressure_started_usec := Time.get_ticks_usec()
+	for _request_index in 10_000:
+		mp_game.call(
+			"_apply_authoritative_production_command",
+			REMOTE_PEER_ID,
+			production_command
+		)
+	var pressure_usec := maxi(
+		Time.get_ticks_usec() - pressure_started_usec,
+		0
+	)
+	print(
+		"TRANSACTION_ADMISSION_PRESSURE denied_requests=10000 usec=%d lookups=%d snapshots=%d sends=%d"
+		% [
+			pressure_usec,
+			fixture.transaction_player_lookup_count
+				+ fixture.transaction_plant_lookup_count,
+			fixture.transaction_snapshot_query_count,
+			mp_game.production_command_result_send_count,
+		]
+	)
+	_expect(
+		pressure_usec <= 1_000_000
+		and fixture.transaction_player_lookup_count == 0
+		and fixture.transaction_plant_lookup_count == 0
+		and fixture.transaction_snapshot_query_count == 0
+		and mp_game.production_command_result_send_count == 0,
+		"Ten thousand denied transaction requests must remain bounded before scene scans, snapshot allocation, or replies."
+	)
+
+	var runtime_player := Player.new()
+	fixture.peer_players[REMOTE_PEER_ID] = runtime_player
+	fixture.reset_transaction_lookup_counts()
+	mp_game.test_net_time = 2000.0
+	var runtime_pressure_started_usec := Time.get_ticks_usec()
+	for _request_index in 10_000:
+		mp_game.call(
+			"_handle_authoritative_runtime_state_request",
+			REMOTE_PEER_ID,
+			true
+		)
+	var runtime_pressure_usec := maxi(
+		Time.get_ticks_usec() - runtime_pressure_started_usec,
+		0
+	)
+	print(
+		"RUNTIME_STATE_ADMISSION_PRESSURE requests=10000 usec=%d lookups=%d sends=%d"
+		% [
+			runtime_pressure_usec,
+			fixture.transaction_player_lookup_count,
+			mp_game.runtime_state_send_count,
+		]
+	)
+	_expect(
+		runtime_pressure_usec <= 1_000_000
+		and fixture.transaction_player_lookup_count == 2
+		and mp_game.runtime_state_send_count == 2,
+		"Runtime-state repair admission must cap ten thousand small requests at the two-request burst before world serialization."
+	)
+	fixture.peer_players.erase(REMOTE_PEER_ID)
+	runtime_player.free()
+	mp_game.queue_free()
+
+
+func _exhaust_rate_bucket(
+	mp_game: Node,
+	bucket: Dictionary,
+	peer_id: int,
+	rate_per_second: float,
+	burst_count: int
+) -> void:
+	for _request_index in burst_count:
+		_expect(
+			bool(mp_game.call(
+				"_consume_peer_rate_token",
+				bucket,
+				peer_id,
+				rate_per_second,
+				float(burst_count)
+			)),
+			"The configured feature burst must be admitted before exhaustion."
+		)
+
+
+func _exhaust_shared_transaction_ingress(mp_game: Node, peer_id: int) -> void:
+	mp_game.set("_player_transaction_ingress_rate_buckets", {})
+	for _request_index in 48:
+		_expect(
+			bool(mp_game.call(
+				"_consume_remote_transaction_admission",
+				peer_id
+			)),
+			"The shared transaction ingress burst must admit its first 48 requests."
+		)
+	_expect(
+		not bool(mp_game.call(
+			"_consume_remote_transaction_admission",
+			peer_id
+		)),
+		"The shared transaction ingress must reject the request after its burst is exhausted."
 	)
 
 

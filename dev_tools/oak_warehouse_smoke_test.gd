@@ -1088,6 +1088,26 @@ func _test_authoritative_warehouse_sender_guard(
 		run_state.get_inventory_revision_for_peer(peer_id),
 		warehouse.get_storage_revision()
 	)
+	var command_with_untrusted_extensions := legitimate_command.duplicate()
+	command_with_untrusted_extensions["nested_junk"] = {
+		"payload": [{"unexpected": "value"}],
+	}
+	var canonical_command := OakWarehouseProtocol.canonicalize_command(
+		command_with_untrusted_extensions,
+		peer_id
+	)
+	var legacy_transfer_command := legitimate_command.duplicate()
+	legacy_transfer_command.erase("operation")
+	var canonical_legacy_command := OakWarehouseProtocol.canonicalize_command(
+		legacy_transfer_command,
+		peer_id
+	)
+	_expect(
+		canonical_command == legitimate_command
+		and not canonical_command.has("nested_junk")
+		and canonical_legacy_command == legitimate_command,
+		"Host仓库命令解码必须只复制白名单字段，并保留省略transfer操作的兼容语义。"
+	)
 	var original_cached_result := OakWarehouseProtocol.make_result(
 		legitimate_command,
 		false,

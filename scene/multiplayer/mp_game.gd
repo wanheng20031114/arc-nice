@@ -196,6 +196,17 @@ const WAREHOUSE_TRANSACTION_RESULT_CACHE_SIZE := 256
 const SIMPLE_CRAFTING_RATE_PER_SECOND := 8.0
 const SIMPLE_CRAFTING_RATE_BURST := 12.0
 const SIMPLE_CRAFTING_RESULT_CACHE_SIZE := 32
+const SIMPLE_CRAFTING_WIRE_ID_MAX_LENGTH := 128
+const PLAYER_TRANSACTION_INGRESS_RATE_PER_SECOND := 32.0
+const PLAYER_TRANSACTION_INGRESS_RATE_BURST := 48.0
+const INVENTORY_COMMAND_RATE_PER_SECOND := 12.0
+const INVENTORY_COMMAND_RATE_BURST := 20.0
+const LUOXI_TRANSACTION_RATE_PER_SECOND := 4.0
+const LUOXI_TRANSACTION_RATE_BURST := 6.0
+const RUNTIME_STATE_REQUEST_RATE_PER_SECOND := 0.5
+const RUNTIME_STATE_REQUEST_RATE_BURST := 2.0
+const PLANT_ID_WIRE_MAX_LENGTH := 128
+const INVENTORY_ITEM_CONFIG_PATH_WIRE_MAX_LENGTH := 256
 const PRODUCTION_INTERACTION_MAX_DISTANCE := 48.0
 const PRODUCTION_COMMAND_RATE_PER_SECOND := 8.0
 const PRODUCTION_COMMAND_RATE_BURST := 12.0
@@ -206,6 +217,7 @@ const PRODUCTION_STATE_BATCH_MAX_BUILDINGS := 24
 const RESEARCH_INTERACTION_MAX_DISTANCE := 48.0
 const RESEARCH_COMMAND_RATE_PER_SECOND := 4.0
 const RESEARCH_COMMAND_RATE_BURST := 6.0
+const RESEARCH_COMMAND_WIRE_ID_MAX_LENGTH := 128
 const TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS := 96
 const TERRAIN_SNAPSHOT_MAX_CHUNKS := 4096
 const TERRAIN_DELTA_MAX_CELLS := 96
@@ -322,6 +334,10 @@ var _last_plant_placement_request_ids: Dictionary = {}
 var _plant_placement_rate_buckets: Dictionary = {}
 var _client_projectile_request_rate_buckets: Dictionary = {}
 var _warehouse_transaction_rate_buckets: Dictionary = {}
+var _player_transaction_ingress_rate_buckets: Dictionary = {}
+var _inventory_command_rate_buckets: Dictionary = {}
+var _luoxi_transaction_rate_buckets: Dictionary = {}
+var _runtime_state_request_rate_buckets: Dictionary = {}
 var _warehouse_snapshot_request_rate_buckets: Dictionary = {}
 var _terrain_snapshot_request_rate_buckets: Dictionary = {}
 var _warehouse_transaction_results_by_peer: Dictionary = {}
@@ -478,6 +494,10 @@ func _exit_tree() -> void:
 	_last_simple_crafting_result_ids.clear()
 	_simple_crafting_rate_buckets.clear()
 	_simple_crafting_results_by_peer.clear()
+	_player_transaction_ingress_rate_buckets.clear()
+	_inventory_command_rate_buckets.clear()
+	_luoxi_transaction_rate_buckets.clear()
+	_runtime_state_request_rate_buckets.clear()
 	_public_room_keepalive_in_flight = false
 
 
@@ -970,7 +990,7 @@ func _on_local_plant_placement_requested(
 		_handle_authoritative_plant_placement_request(
 			_get_local_peer_id(),
 			request_id,
-			plant_id,
+			String(plant_id),
 			anchor
 		)
 	elif net_manager.is_client():
@@ -996,7 +1016,7 @@ func _on_local_inventory_plant_placement_requested(
 		_handle_authoritative_inventory_plant_placement_request(
 			_get_local_peer_id(),
 			request_id,
-			plant_id,
+			String(plant_id),
 			anchor,
 			slot_index,
 			expected_inventory_revision,
@@ -1017,31 +1037,38 @@ func _on_local_inventory_plant_placement_requested(
 func _handle_authoritative_plant_placement_request(
 	requester_peer_id: int,
 	request_id: int,
-	plant_id: StringName,
+	plant_id_wire: String,
 	anchor: Vector2i
 ) -> void:
 	if not net_manager.is_host() or game == null or not game.supports_tower_defense():
 		return
-	var last_request_id := int(_last_plant_placement_request_ids.get(requester_peer_id, 0))
-	if request_id <= last_request_id:
-		_send_plant_placement_rejected(requester_peer_id, request_id, &"stale_request")
+	if not _consume_remote_transaction_admission(requester_peer_id):
 		return
-	_last_plant_placement_request_ids[requester_peer_id] = request_id
+	if (
+		request_id <= 0
+		or plant_id_wire.is_empty()
+		or plant_id_wire.length() > PLANT_ID_WIRE_MAX_LENGTH
+	):
+		return
 	if not _consume_peer_rate_token(
 		_plant_placement_rate_buckets,
 		requester_peer_id,
 		PLANT_PLACEMENT_RATE_PER_SECOND,
 		PLANT_PLACEMENT_RATE_BURST
 	):
-		_send_plant_placement_rejected(requester_peer_id, request_id, &"rate_limited")
 		return
+	var last_request_id := int(_last_plant_placement_request_ids.get(requester_peer_id, 0))
+	if request_id <= last_request_id:
+		_send_plant_placement_rejected(requester_peer_id, request_id, &"stale_request")
+		return
+	_last_plant_placement_request_ids[requester_peer_id] = request_id
 	if _get_authoritative_team_plant_count() >= MULTIPLAYER_TEAM_PLANT_LIMIT:
 		_send_plant_placement_rejected(requester_peer_id, request_id, &"team_limit_reached")
 		return
 	game.request_multiplayer_plant_placement(
 		requester_peer_id,
 		request_id,
-		plant_id,
+		StringName(plant_id_wire),
 		anchor
 	)
 
@@ -1049,13 +1076,33 @@ func _handle_authoritative_plant_placement_request(
 func _handle_authoritative_inventory_plant_placement_request(
 	requester_peer_id: int,
 	request_id: int,
-	plant_id: StringName,
+	plant_id_wire: String,
 	anchor: Vector2i,
 	slot_index: int,
 	expected_inventory_revision: int,
 	item_config_path: String
 ) -> void:
 	if not net_manager.is_host() or game == null or not game.supports_tower_defense():
+		return
+	if not _consume_remote_transaction_admission(requester_peer_id):
+		return
+	if (
+		request_id <= 0
+		or plant_id_wire.is_empty()
+		or plant_id_wire.length() > PLANT_ID_WIRE_MAX_LENGTH
+		or slot_index < 0
+		or slot_index >= RunStateStore.INVENTORY_CAPACITY
+		or expected_inventory_revision < 0
+		or item_config_path.is_empty()
+		or item_config_path.length() > INVENTORY_ITEM_CONFIG_PATH_WIRE_MAX_LENGTH
+	):
+		return
+	if not _consume_peer_rate_token(
+		_plant_placement_rate_buckets,
+		requester_peer_id,
+		PLANT_PLACEMENT_RATE_PER_SECOND,
+		PLANT_PLACEMENT_RATE_BURST
+	):
 		return
 	var last_request_id := int(
 		_last_plant_placement_request_ids.get(requester_peer_id, 0)
@@ -1068,18 +1115,6 @@ func _handle_authoritative_inventory_plant_placement_request(
 		)
 		return
 	_last_plant_placement_request_ids[requester_peer_id] = request_id
-	if not _consume_peer_rate_token(
-		_plant_placement_rate_buckets,
-		requester_peer_id,
-		PLANT_PLACEMENT_RATE_PER_SECOND,
-		PLANT_PLACEMENT_RATE_BURST
-	):
-		_send_plant_placement_rejected(
-			requester_peer_id,
-			request_id,
-			&"rate_limited"
-		)
-		return
 	if _get_authoritative_team_plant_count() >= MULTIPLAYER_TEAM_PLANT_LIMIT:
 		_send_plant_placement_rejected(
 			requester_peer_id,
@@ -1090,7 +1125,7 @@ func _handle_authoritative_inventory_plant_placement_request(
 	game.request_multiplayer_inventory_plant_placement(
 		requester_peer_id,
 		request_id,
-		plant_id,
+		StringName(plant_id_wire),
 		anchor,
 		slot_index,
 		expected_inventory_revision,
@@ -1125,6 +1160,20 @@ func _consume_peer_rate_token(
 	bucket["tokens"] = tokens
 	bucket["last_time"] = now
 	return accepted
+
+
+func _consume_remote_transaction_admission(peer_id: int) -> bool:
+	# Local Host UI calls are trusted and already pass through each feature's own
+	# bucket. The shared ingress budget exists to prevent a remote peer from
+	# alternating transaction RPC types to multiply its admitted workload.
+	if peer_id == _get_local_peer_id():
+		return true
+	return _consume_peer_rate_token(
+		_player_transaction_ingress_rate_buckets,
+		peer_id,
+		PLAYER_TRANSACTION_INGRESS_RATE_PER_SECOND,
+		PLAYER_TRANSACTION_INGRESS_RATE_BURST
+	)
 
 
 func _get_authoritative_team_plant_count() -> int:
@@ -1515,33 +1564,25 @@ func _apply_authoritative_research_command(
 ) -> void:
 	if not net_manager.is_host() or game == null or peer_id <= 0:
 		return
-	var schema_value: Variant = raw_command.get("schema")
-	var request_id_value: Variant = raw_command.get("request_id")
-	var building_net_id_value: Variant = raw_command.get("building_net_id")
-	var declared_peer_id_value: Variant = raw_command.get("peer_id")
-	var operation_value: Variant = raw_command.get("operation")
-	var research_id_value: Variant = raw_command.get("research_id")
-	var fields_are_valid := (
-		typeof(schema_value) == TYPE_INT
-		and typeof(request_id_value) == TYPE_INT
-		and typeof(building_net_id_value) == TYPE_INT
-		and typeof(declared_peer_id_value) == TYPE_INT
-		and (
-			typeof(operation_value) == TYPE_STRING
-			or typeof(operation_value) == TYPE_STRING_NAME
-		)
-		and (
-			typeof(research_id_value) == TYPE_STRING
-			or typeof(research_id_value) == TYPE_STRING_NAME
-		)
-	)
-	var request_id := int(request_id_value) if fields_are_valid else 0
-	var building_net_id := int(building_net_id_value) if fields_are_valid else 0
-	var operation_wire := String(operation_value) if fields_are_valid else ""
-	var research_id_wire := String(research_id_value) if fields_are_valid else ""
+	if not _consume_remote_transaction_admission(peer_id):
+		return
+	var command := _canonicalize_research_command(raw_command, peer_id)
+	if command.is_empty():
+		return
+	if not _consume_peer_rate_token(
+		_research_command_rate_buckets,
+		peer_id,
+		RESEARCH_COMMAND_RATE_PER_SECOND,
+		RESEARCH_COMMAND_RATE_BURST
+	):
+		return
+	var request_id := int(command["request_id"])
+	var building_net_id := int(command["building_net_id"])
+	var operation_wire := String(command["operation"])
+	var research_id_wire := String(command["research_id"])
 	var research_config: GlobalResearchConfig = (
 		GlobalResearchRegistry.get_config_by_wire_id(research_id_wire)
-		if fields_are_valid and operation_wire == "global"
+		if operation_wire == "global"
 		else null
 	)
 	var result := ResearchCoordinator.RESULT_UNAVAILABLE
@@ -1550,14 +1591,8 @@ func _apply_authoritative_research_command(
 	var player_node := game.get_player_for_peer(peer_id)
 	var building := game.get_multiplayer_plant_node(building_net_id) as ResearchCenter
 	if (
-		not fields_are_valid
-		or int(schema_value) != ResearchCenter.MULTIPLAYER_RESEARCH_COMMAND_SCHEMA
-		or int(declared_peer_id_value) != peer_id
-		or request_id <= last_request_id
-		or building_net_id <= 0
-		or (operation_wire != "global" and operation_wire != "player")
+		request_id <= last_request_id
 		or (operation_wire == "global" and research_config == null)
-		or (operation_wire == "player" and not research_id_wire.is_empty())
 	):
 		result = ResearchCoordinator.RESULT_UNAVAILABLE
 	elif player_node == null or not is_instance_valid(player_node) or player_node.is_dead:
@@ -1569,13 +1604,6 @@ func _apply_authoritative_research_command(
 		or building.is_removing
 		or not building.is_operational
 		or not _is_authoritative_nearest_research_center(player_node, building)
-	):
-		result = ResearchCoordinator.RESULT_UNAVAILABLE
-	elif not _consume_peer_rate_token(
-		_research_command_rate_buckets,
-		peer_id,
-		RESEARCH_COMMAND_RATE_PER_SECOND,
-		RESEARCH_COMMAND_RATE_BURST
 	):
 		result = ResearchCoordinator.RESULT_UNAVAILABLE
 	else:
@@ -1595,6 +1623,51 @@ func _apply_authoritative_research_command(
 			success,
 			result
 		)
+
+
+func _canonicalize_research_command(
+	raw_command: Dictionary,
+	expected_peer_id: int
+) -> Dictionary:
+	if (
+		expected_peer_id <= 0
+		or typeof(raw_command.get("schema")) != TYPE_INT
+		or int(raw_command["schema"])
+			!= ResearchCenter.MULTIPLAYER_RESEARCH_COMMAND_SCHEMA
+		or typeof(raw_command.get("request_id")) != TYPE_INT
+		or int(raw_command["request_id"]) <= 0
+		or typeof(raw_command.get("building_net_id")) != TYPE_INT
+		or int(raw_command["building_net_id"]) <= 0
+		or typeof(raw_command.get("peer_id")) != TYPE_INT
+		or int(raw_command["peer_id"]) != expected_peer_id
+	):
+		return {}
+	var operation_value: Variant = raw_command.get("operation")
+	var research_id_value: Variant = raw_command.get("research_id")
+	if (
+		typeof(operation_value) not in [TYPE_STRING, TYPE_STRING_NAME]
+		or typeof(research_id_value) not in [TYPE_STRING, TYPE_STRING_NAME]
+	):
+		return {}
+	var operation_wire := String(operation_value)
+	var research_id_wire := String(research_id_value)
+	if (
+		operation_wire != "global"
+		and operation_wire != "player"
+	) or (
+		research_id_wire.length() > RESEARCH_COMMAND_WIRE_ID_MAX_LENGTH
+	) or (
+		operation_wire == "player" and not research_id_wire.is_empty()
+	):
+		return {}
+	return {
+		"schema": ResearchCenter.MULTIPLAYER_RESEARCH_COMMAND_SCHEMA,
+		"request_id": int(raw_command["request_id"]),
+		"building_net_id": int(raw_command["building_net_id"]),
+		"peer_id": expected_peer_id,
+		"operation": operation_wire,
+		"research_id": research_id_wire,
+	}
 
 
 func _is_authoritative_nearest_research_center(
@@ -1695,7 +1768,21 @@ func _apply_authoritative_production_command(
 ) -> void:
 	if not net_manager.is_host() or game == null or peer_id <= 0:
 		return
-	var command := raw_command.duplicate(true)
+	if not _consume_remote_transaction_admission(peer_id):
+		return
+	var command := ProductionBuildingProtocolScript.canonicalize_command(
+		raw_command,
+		peer_id
+	)
+	if command.is_empty():
+		return
+	if not _consume_peer_rate_token(
+		_production_command_rate_buckets,
+		peer_id,
+		PRODUCTION_COMMAND_RATE_PER_SECOND,
+		PRODUCTION_COMMAND_RATE_BURST
+	):
+		return
 	var request_id := ProductionBuildingProtocolScript.get_int_field(
 		command,
 		"request_id",
@@ -1714,18 +1801,13 @@ func _apply_authoritative_production_command(
 	if not cached_result.is_empty():
 		_send_production_command_result(peer_id, cached_result)
 		return
-	var peer_field_matches := ProductionBuildingProtocolScript.command_peer_matches(
-		command,
-		peer_id
-	)
-	command["peer_id"] = peer_id
 	var building := game.get_multiplayer_plant_node(
 		building_net_id
 	) as ProductionBuilding
 	var player_node := game.get_player_for_peer(peer_id)
 	var success := false
 	var reason := ProductionBuildingProtocolScript.RESULT_INVALID_COMMAND
-	if not peer_field_matches or not ProductionBuildingProtocolScript.is_valid_command(command):
+	if not ProductionBuildingProtocolScript.is_valid_command(command):
 		reason = ProductionBuildingProtocolScript.RESULT_INVALID_COMMAND
 	elif player_node == null or not is_instance_valid(player_node) or player_node.is_dead:
 		reason = ProductionBuildingProtocolScript.RESULT_INVALID_PLAYER
@@ -1739,13 +1821,6 @@ func _apply_authoritative_production_command(
 		reason = ProductionBuildingProtocolScript.RESULT_BUILDING_MISSING
 	elif not _is_authoritative_nearest_production_building(player_node, building):
 		reason = ProductionBuildingProtocolScript.RESULT_OUT_OF_RANGE
-	elif not _consume_peer_rate_token(
-		_production_command_rate_buckets,
-		peer_id,
-		PRODUCTION_COMMAND_RATE_PER_SECOND,
-		PRODUCTION_COMMAND_RATE_BURST
-	):
-		reason = ProductionBuildingProtocolScript.RESULT_RATE_LIMITED
 	else:
 		reason = building.apply_authoritative_multiplayer_production_command(command)
 		success = reason == ProductionBuildingProtocolScript.RESULT_SUCCESS
@@ -1988,6 +2063,22 @@ func _apply_authoritative_simple_crafting_request(
 ) -> void:
 	if not net_manager.is_host() or game == null or peer_id <= 0:
 		return
+	if not _consume_remote_transaction_admission(peer_id):
+		return
+	if (
+		request_id <= 0
+		or expected_inventory_revision < 0
+		or recipe_id.is_empty()
+		or recipe_id.length() > SIMPLE_CRAFTING_WIRE_ID_MAX_LENGTH
+	):
+		return
+	if not _consume_peer_rate_token(
+		_simple_crafting_rate_buckets,
+		peer_id,
+		SIMPLE_CRAFTING_RATE_PER_SECOND,
+		SIMPLE_CRAFTING_RATE_BURST
+	):
+		return
 	var cached_result := _get_cached_simple_crafting_result(peer_id, request_id)
 	if not cached_result.is_empty():
 		cached_result["inventory_snapshot"] = (
@@ -2008,19 +2099,12 @@ func _apply_authoritative_simple_crafting_request(
 	)
 	var result := RunStateStore.CRAFT_RESULT_INVALID_RECIPE
 	var should_cache := false
-	if request_id <= 0 or request_id <= last_request_id:
+	if request_id <= last_request_id:
 		result = &"stale_request"
 	else:
 		_last_simple_crafting_request_ids[peer_id] = request_id
 		should_cache = true
-		if not _consume_peer_rate_token(
-			_simple_crafting_rate_buckets,
-			peer_id,
-			SIMPLE_CRAFTING_RATE_PER_SECOND,
-			SIMPLE_CRAFTING_RATE_BURST
-		):
-			result = &"rate_limited"
-		elif (
+		if (
 			player_node == null
 			or not is_instance_valid(player_node)
 			or player_node.is_dead
@@ -2121,26 +2205,31 @@ func _send_simple_crafting_result(result: Dictionary) -> void:
 func _apply_authoritative_warehouse_command(peer_id: int, raw_command: Dictionary) -> void:
 	if not net_manager.is_host() or game == null or peer_id <= 0:
 		return
-	var command := raw_command.duplicate(true)
-	var peer_field_matches := OakWarehouseProtocolScript.command_peer_matches(
-		command,
+	if not _consume_remote_transaction_admission(peer_id):
+		return
+	var command := OakWarehouseProtocolScript.canonicalize_command(
+		raw_command,
 		peer_id
 	)
-	command["peer_id"] = peer_id
+	if command.is_empty():
+		return
+	if not _consume_peer_rate_token(
+		_warehouse_transaction_rate_buckets,
+		peer_id,
+		WAREHOUSE_TRANSACTION_RATE_PER_SECOND,
+		WAREHOUSE_TRANSACTION_RATE_BURST
+	):
+		return
 	var request_id := OakWarehouseProtocolScript.get_int_field(command, "request_id", 0)
 	var warehouse_net_id := OakWarehouseProtocolScript.get_int_field(
 		command,
 		"warehouse_net_id",
 		0
 	)
-	var cached_result := (
-		_get_cached_warehouse_transaction_result(
-			peer_id,
-			warehouse_net_id,
-			request_id
-		)
-		if peer_field_matches
-		else {}
+	var cached_result := _get_cached_warehouse_transaction_result(
+		peer_id,
+		warehouse_net_id,
+		request_id
 	)
 	if not cached_result.is_empty():
 		_send_warehouse_command_result(peer_id, cached_result)
@@ -2149,7 +2238,7 @@ func _apply_authoritative_warehouse_command(peer_id: int, raw_command: Dictionar
 	var warehouse := game.get_multiplayer_plant_node(warehouse_net_id) as OakWarehouse
 	var player_node := game.get_player_for_peer(peer_id)
 	var rejection_reason := &"invalid_command"
-	if not peer_field_matches or not OakWarehouseProtocolScript.is_valid_command(command):
+	if not OakWarehouseProtocolScript.is_valid_command(command):
 		rejection_reason = &"invalid_command"
 	elif player_node == null or not is_instance_valid(player_node) or player_node.is_dead:
 		rejection_reason = &"invalid_player"
@@ -2163,13 +2252,6 @@ func _apply_authoritative_warehouse_command(peer_id: int, raw_command: Dictionar
 		rejection_reason = &"warehouse_missing"
 	elif not _is_authoritative_nearest_warehouse(player_node, warehouse):
 		rejection_reason = &"out_of_range"
-	elif not _consume_peer_rate_token(
-		_warehouse_transaction_rate_buckets,
-		peer_id,
-		WAREHOUSE_TRANSACTION_RATE_PER_SECOND,
-		WAREHOUSE_TRANSACTION_RATE_BURST
-	):
-		rejection_reason = &"rate_limited"
 	else:
 		result = warehouse.apply_transfer_command(command, run_state)
 	if result.is_empty():
@@ -2183,8 +2265,7 @@ func _apply_authoritative_warehouse_command(peer_id: int, raw_command: Dictionar
 		result["inventory_snapshot"] = run_state.export_inventory_snapshot_for_peer(peer_id)
 		if warehouse != null:
 			result["storage_snapshot"] = warehouse.export_storage_snapshot()
-	if peer_field_matches:
-		_cache_warehouse_transaction_result(peer_id, warehouse_net_id, request_id, result)
+	_cache_warehouse_transaction_result(peer_id, warehouse_net_id, request_id, result)
 	if bool(result.get("success", false)):
 		_broadcast_inventory_snapshot(peer_id)
 	_send_warehouse_command_result(peer_id, result)
@@ -8515,9 +8596,30 @@ func net_runtime_state_requested(include_flow_state: bool = true) -> void:
 	if not net_manager.is_host() or game == null:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0 or game.get_player_for_peer(sender_id) == null:
-		return
+	_handle_authoritative_runtime_state_request(sender_id, include_flow_state)
+
+
+func _handle_authoritative_runtime_state_request(
+	sender_id: int,
+	include_flow_state: bool
+) -> bool:
+	if not net_manager.is_host() or game == null or sender_id <= 0:
+		return false
+	# A runtime repair serializes terrain, plants, every player's inventory,
+	# enemies, pickups and flow state. Rate-limit before even resolving the player
+	# so an authenticated peer cannot turn one small request into repeated full
+	# world snapshots.
+	if not _consume_peer_rate_token(
+		_runtime_state_request_rate_buckets,
+		sender_id,
+		RUNTIME_STATE_REQUEST_RATE_PER_SECOND,
+		RUNTIME_STATE_REQUEST_RATE_BURST
+	):
+		return false
+	if game.get_player_for_peer(sender_id) == null:
+		return false
 	_send_runtime_state_to_peer(sender_id, include_flow_state)
+	return true
 
 
 @rpc("any_peer", "call_remote", "reliable", 0)
@@ -8746,7 +8848,7 @@ func net_plant_placement_requested(
 	_handle_authoritative_plant_placement_request(
 		sender_id,
 		request_id,
-		StringName(plant_id),
+		plant_id,
 		anchor
 	)
 
@@ -8766,7 +8868,7 @@ func net_inventory_plant_placement_requested(
 	_handle_authoritative_inventory_plant_placement_request(
 		sender_id,
 		request_id,
-		StringName(plant_id),
+		plant_id,
 		anchor,
 		slot_index,
 		expected_inventory_revision,
@@ -9848,6 +9950,8 @@ func net_upgrade_selected(stat_type: int) -> void:
 	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id <= 0:
 		return
+	if not _consume_remote_transaction_admission(sender_id):
+		return
 	_apply_upgrade_for_peer(sender_id, stat_type)
 
 
@@ -9860,6 +9964,16 @@ func net_inventory_item_use_requested(
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id <= 0:
+		return
+	if (
+		not _consume_remote_transaction_admission(sender_id)
+		or not _consume_peer_rate_token(
+			_inventory_command_rate_buckets,
+			sender_id,
+			INVENTORY_COMMAND_RATE_PER_SECOND,
+			INVENTORY_COMMAND_RATE_BURST
+		)
+	):
 		return
 	if expected_inventory_revision < 0:
 		# An omitted revision is converted to an impossible future revision so a
@@ -9883,6 +9997,16 @@ func net_inventory_item_discard_requested(
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id <= 0:
+		return
+	if (
+		not _consume_remote_transaction_admission(sender_id)
+		or not _consume_peer_rate_token(
+			_inventory_command_rate_buckets,
+			sender_id,
+			INVENTORY_COMMAND_RATE_PER_SECOND,
+			INVENTORY_COMMAND_RATE_BURST
+		)
+	):
 		return
 	if expected_inventory_revision < 0:
 		# Keep the default callable for direct tests, but never let a remote peer
@@ -9923,6 +10047,8 @@ func net_skill1_purchase_requested() -> void:
 	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id <= 0:
 		return
+	if not _consume_remote_transaction_admission(sender_id):
+		return
 	_apply_skill1_purchase_for_peer(sender_id)
 
 
@@ -9931,7 +10057,11 @@ func net_tower_defense_start_wave_requested() -> void:
 	if not net_manager.is_host() or game == null or not game.supports_tower_defense():
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0 or game.get_player_for_peer(sender_id) == null:
+	if sender_id <= 0:
+		return
+	if not _consume_remote_transaction_admission(sender_id):
+		return
+	if game.get_player_for_peer(sender_id) == null:
 		return
 	game.request_tower_defense_wave_start(sender_id)
 
@@ -9942,6 +10072,16 @@ func net_luoxi_collectible_offer_requested() -> void:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id <= 0:
+		return
+	if (
+		not _consume_remote_transaction_admission(sender_id)
+		or not _consume_peer_rate_token(
+			_luoxi_transaction_rate_buckets,
+			sender_id,
+			LUOXI_TRANSACTION_RATE_PER_SECOND,
+			LUOXI_TRANSACTION_RATE_BURST
+		)
+	):
 		return
 	_send_or_create_luoxi_offer_for_peer(sender_id)
 
@@ -9955,6 +10095,16 @@ func net_luoxi_collectible_choice_requested(
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id <= 0:
+		return
+	if (
+		not _consume_remote_transaction_admission(sender_id)
+		or not _consume_peer_rate_token(
+			_luoxi_transaction_rate_buckets,
+			sender_id,
+			LUOXI_TRANSACTION_RATE_PER_SECOND,
+			LUOXI_TRANSACTION_RATE_BURST
+		)
+	):
 		return
 	_apply_luoxi_collectible_choice_for_peer(
 		sender_id,
@@ -9971,6 +10121,16 @@ func net_luoxi_collectible_refresh_requested(offer_revision: int = 0) -> void:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id <= 0:
+		return
+	if (
+		not _consume_remote_transaction_admission(sender_id)
+		or not _consume_peer_rate_token(
+			_luoxi_transaction_rate_buckets,
+			sender_id,
+			LUOXI_TRANSACTION_RATE_PER_SECOND,
+			LUOXI_TRANSACTION_RATE_BURST
+		)
+	):
 		return
 	_apply_luoxi_collectible_refresh_for_peer(sender_id, offer_revision, true)
 
@@ -10997,6 +11157,10 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_plant_placement_rate_buckets.erase(peer_id)
 	_client_projectile_request_rate_buckets.erase(peer_id)
 	_warehouse_transaction_rate_buckets.erase(peer_id)
+	_player_transaction_ingress_rate_buckets.erase(peer_id)
+	_inventory_command_rate_buckets.erase(peer_id)
+	_luoxi_transaction_rate_buckets.erase(peer_id)
+	_runtime_state_request_rate_buckets.erase(peer_id)
 	_warehouse_snapshot_request_rate_buckets.erase(peer_id)
 	_last_simple_crafting_request_ids.erase(peer_id)
 	_last_simple_crafting_result_ids.erase(peer_id)
@@ -11087,6 +11251,10 @@ func _return_to_lobby() -> void:
 	_warehouse_snapshot_request_rate_buckets.clear()
 	_warehouse_transaction_rate_buckets.clear()
 	_warehouse_transaction_results_by_peer.clear()
+	_player_transaction_ingress_rate_buckets.clear()
+	_inventory_command_rate_buckets.clear()
+	_luoxi_transaction_rate_buckets.clear()
+	_runtime_state_request_rate_buckets.clear()
 	_local_simple_crafting_request_id = 0
 	_last_simple_crafting_request_ids.clear()
 	_last_simple_crafting_result_ids.clear()

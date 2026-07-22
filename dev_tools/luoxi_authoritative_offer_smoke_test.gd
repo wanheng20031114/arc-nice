@@ -136,6 +136,51 @@ func _run() -> void:
 		"The same revision must not be reused for different card paths."
 	)
 
+	var request_timeout := merchant.get_node(
+		"AuthoritativeRequestTimeout"
+	) as Timer
+	merchant.begin_authoritative_offer_request()
+	_expect(
+		merchant.authoritative_offer_pending
+		and not request_timeout.is_stopped()
+		and request_timeout.one_shot
+		and request_timeout.ignore_time_scale,
+		"An authoritative offer request must arm one scene-authored, one-shot real-time timeout."
+	)
+	merchant.call("_on_authoritative_request_timeout")
+	_expect(
+		not merchant.authoritative_offer_pending
+		and not merchant.choice_visible,
+		"A dropped authoritative offer must leave its blocking pending state after timeout."
+	)
+
+	_expect(
+		merchant.apply_authoritative_offer_state(
+			8,
+			PackedStringArray(replacement_paths),
+			2,
+			900
+		),
+		"A later valid Host offer must still be accepted after a local timeout."
+	)
+	var choice_overlay := merchant.get_node(
+		"LuoxiCollectibleChoiceOverlay"
+	) as LuoxiCollectibleChoiceOverlay
+	var refresh_status := choice_overlay.get_node(
+		"Root/Center/Content/RefreshPanel/Margin/Layout/Info/RefreshStatus"
+	) as Label
+	choice_overlay.set_refresh_pending(true)
+	merchant.call(
+		"_arm_authoritative_request_timeout",
+		LuoxiMerchant.AuthoritativeRequestKind.REFRESH
+	)
+	merchant.call("_on_authoritative_request_timeout")
+	_expect(
+		not choice_overlay.refresh_pending
+		and refresh_status.text.contains("超时"),
+		"A dropped authoritative refresh must unlock the existing cards with a retryable timeout status."
+	)
+
 	merchant.set_active(false)
 	test_root.queue_free()
 	for _cleanup_frame in range(4):

@@ -32,6 +32,15 @@ const INVALID_PLAYER_LINE := "现在还不能把收藏品交给你。"
 const PLAYER_COLLISION_MASK := 2
 const BODY_PUSH_QUERY_MAX_RESULTS := 16
 const BODY_PUSH_DISTANCE := 22.0
+const AUTHORITATIVE_REQUEST_TIMEOUT_SECONDS := 3.0
+const AUTHORITATIVE_OFFER_TIMEOUT_LINE := "主机响应超时，请再次交互重试。"
+const AUTHORITATIVE_REFRESH_TIMEOUT_STATUS := "刷新请求超时，请重试"
+
+enum AuthoritativeRequestKind {
+	NONE,
+	OFFER,
+	REFRESH,
+}
 
 const COLLECTIBLE_RESULT_SUCCESS := 0
 const COLLECTIBLE_RESULT_ALREADY_CLAIMED := 1
@@ -47,6 +56,7 @@ const REFRESH_RESULT_STALE_OFFER := 4
 
 @onready var collision_shape: CollisionShape2D = $StaticBody2D/CollisionShape2D
 @onready var interaction_area: Area2D = $InteractionArea
+@onready var authoritative_request_timeout: Timer = $AuthoritativeRequestTimeout
 @onready var dialogue_bubble: MerchantDialogueBubble = $MerchantDialogueBubble
 @onready var choice_overlay: LuoxiCollectibleChoiceOverlay = $LuoxiCollectibleChoiceOverlay
 
@@ -64,6 +74,7 @@ var pending_choices_by_player_key: Dictionary = {}
 var authoritative_offer_revision: int = 0
 var authoritative_offer_paths: Array[String] = []
 var authoritative_offer_pending: bool = false
+var _authoritative_request_kind := AuthoritativeRequestKind.NONE
 
 static var _collectible_pool_cache: Array[PickupConfig] = []
 static var _collectible_by_path_cache: Dictionary = {}
@@ -231,6 +242,9 @@ func _ready() -> void:
 	choice_overlay.choice_selected.connect(_on_choice_overlay_choice_selected)
 	choice_overlay.choice_closed.connect(_on_choice_overlay_choice_closed)
 	choice_overlay.refresh_requested.connect(_on_choice_overlay_refresh_requested)
+	authoritative_request_timeout.timeout.connect(
+		_on_authoritative_request_timeout
+	)
 	set_active(visible)
 
 
@@ -240,6 +254,7 @@ func set_active(active: bool) -> void:
 	interaction_area.set_deferred("monitoring", active)
 
 	if not active:
+		_clear_authoritative_request_wait(true)
 		collision_shape.set_deferred("disabled", true)
 		nearby_players.clear()
 		active_player = null
@@ -272,6 +287,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _start_dialogue(player: Player) -> void:
 	if not is_active or player == null:
 		return
+	_clear_authoritative_request_wait(true)
 	active_player = player
 	dialogue_index = 0
 	selected_choice_index = 0
@@ -372,6 +388,7 @@ func show_refresh_result(
 
 func begin_authoritative_offer_request() -> void:
 	authoritative_offer_pending = true
+	_arm_authoritative_request_timeout(AuthoritativeRequestKind.OFFER)
 	choice_visible = true
 	dialogue_bubble.hide_bubble()
 	choice_overlay.hide_choices()
@@ -407,9 +424,9 @@ func apply_authoritative_offer_state(
 	):
 		return false
 
+	_clear_authoritative_request_wait()
 	authoritative_offer_revision = offer_revision
 	authoritative_offer_paths = normalized_paths
-	authoritative_offer_pending = false
 	var player_key := _get_player_claim_key(active_player)
 	pending_choices_by_player_key[player_key] = choices
 	refresh_counts_by_player_key[player_key] = clampi(
@@ -661,6 +678,9 @@ func _request_collectible_refresh() -> void:
 			current_scene.has_method("uses_authoritative_luoxi_offers")
 			and bool(current_scene.call("uses_authoritative_luoxi_offers"))
 		):
+			_arm_authoritative_request_timeout(
+				AuthoritativeRequestKind.REFRESH
+			)
 			current_scene.call(
 				"request_luoxi_collectible_refresh",
 				authoritative_offer_revision
@@ -817,6 +837,7 @@ func _on_interaction_area_body_exited(body: Node2D) -> void:
 	if player != active_player:
 		return
 
+	_clear_authoritative_request_wait(true)
 	active_player = _pick_nearby_player()
 	if active_player == null:
 		dialogue_bubble.hide_bubble()
@@ -863,12 +884,12 @@ func _pick_nearby_player() -> Player:
 
 
 func reset_intermission_state() -> void:
+	_clear_authoritative_request_wait(true)
 	claim_counts_by_player_key.clear()
 	refresh_counts_by_player_key.clear()
 	pending_choices_by_player_key.clear()
 	authoritative_offer_revision = 0
 	authoritative_offer_paths.clear()
-	authoritative_offer_pending = false
 	selected_choice_index = 0
 	choice_visible = false
 	result_visible = false
@@ -893,3 +914,32 @@ func _on_choice_overlay_choice_closed() -> void:
 
 func _on_choice_overlay_refresh_requested() -> void:
 	_request_collectible_refresh()
+
+
+func _arm_authoritative_request_timeout(kind: AuthoritativeRequestKind) -> void:
+	_authoritative_request_kind = kind
+	authoritative_request_timeout.start(
+		AUTHORITATIVE_REQUEST_TIMEOUT_SECONDS
+	)
+
+
+func _clear_authoritative_request_wait(clear_refresh_pending: bool = false) -> void:
+	authoritative_request_timeout.stop()
+	_authoritative_request_kind = AuthoritativeRequestKind.NONE
+	authoritative_offer_pending = false
+	if clear_refresh_pending and choice_overlay.refresh_pending:
+		choice_overlay.set_refresh_pending(false)
+
+
+func _on_authoritative_request_timeout() -> void:
+	authoritative_request_timeout.stop()
+	var expired_kind := _authoritative_request_kind
+	_authoritative_request_kind = AuthoritativeRequestKind.NONE
+	if expired_kind == AuthoritativeRequestKind.OFFER:
+		authoritative_offer_pending = false
+		choice_visible = false
+		choice_overlay.hide_choices()
+		if active_player != null:
+			dialogue_bubble.say(AUTHORITATIVE_OFFER_TIMEOUT_LINE)
+	elif expired_kind == AuthoritativeRequestKind.REFRESH:
+		_update_refresh_ui(AUTHORITATIVE_REFRESH_TIMEOUT_STATUS)

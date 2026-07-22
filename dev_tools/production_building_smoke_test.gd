@@ -793,10 +793,37 @@ func _test_multiplayer_production_contract(
 		0,
 		&"water_collector_assembly"
 	)
+	var command_with_untrusted_extensions := first_command.duplicate()
+	command_with_untrusted_extensions["nested_junk"] = {
+		"payload": [
+			{"unexpected": "value"},
+		],
+	}
+	var canonical_command := ProductionBuildingProtocol.canonicalize_command(
+		command_with_untrusted_extensions,
+		2
+	)
+	var oversized_recipe_command := first_command.duplicate()
+	oversized_recipe_command["recipe_id"] = "x".repeat(
+		ProductionBuildingProtocol.MAX_RECIPE_ID_WIRE_LENGTH + 1
+	)
+	_expect(
+		canonical_command == first_command
+		and not canonical_command.has("nested_junk")
+		and ProductionBuildingProtocol.canonicalize_command(
+			oversized_recipe_command,
+			2
+		).is_empty(),
+		"Host生产命令解码必须只复制白名单字段，并拒绝超长配方ID。"
+	)
 	var forged_peer_command := first_command.duplicate(true)
 	forged_peer_command["peer_id"] = 99
 	_expect(
 		ProductionBuildingProtocol.command_peer_matches(first_command, 2)
+		and ProductionBuildingProtocol.canonicalize_command(
+			forged_peer_command,
+			2
+		).is_empty()
 		and not ProductionBuildingProtocol.command_peer_matches(
 			forged_peer_command,
 			2
