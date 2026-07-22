@@ -246,7 +246,7 @@ func _test_status_expiry_precedes_same_frame_tick_damage() -> void:
 	enemy.apply_collectible_status(
 		&"mark",
 		990101,
-		0.05,
+		0.1,
 		0,
 		0.5,
 		EnemyConfig.DamageType.MAGIC,
@@ -257,7 +257,7 @@ func _test_status_expiry_precedes_same_frame_tick_damage() -> void:
 	enemy.apply_collectible_status(
 		&"crack",
 		990102,
-		0.05,
+		0.1,
 		0,
 		0.5,
 		EnemyConfig.DamageType.MAGIC,
@@ -272,17 +272,7 @@ func _test_status_expiry_precedes_same_frame_tick_damage() -> void:
 		0.1,
 		EnemyConfig.DamageType.PHYSICAL
 	)
-	var mark_status := enemy.collectible_status_effects["990101:mark"] as Dictionary
-	var crack_status := enemy.collectible_status_effects["990102:crack"] as Dictionary
-	var bleed_status := enemy.collectible_status_effects["990103:bleed"] as Dictionary
-	mark_status["time_left"] = 0.01
-	crack_status["time_left"] = 0.01
-	bleed_status["tick_time_left"] = 0.01
-	enemy.collectible_status_effects["990101:mark"] = mark_status
-	enemy.collectible_status_effects["990102:crack"] = crack_status
-	enemy.collectible_status_effects["990103:bleed"] = bleed_status
-
-	enemy.call("_update_collectible_status_effects", 0.02)
+	root.get_node("EnemyCollectibleStatusScheduler").call("advance_for_test", 0.1)
 	_expect(
 		enemy.current_health == 95,
 		"An expiring mark and armor break must be removed before same-frame physical DoT; expected 5 damage."
@@ -353,7 +343,7 @@ func _test_same_effect_neutral_overwrite_removes_modifiers() -> void:
 		"Neutral overwrite must immediately restore movement, defense, and incoming-damage baselines."
 	)
 
-	enemy.call("_update_collectible_status_effects", 1.01)
+	root.get_node("EnemyCollectibleStatusScheduler").call("advance_for_test", 1.01)
 	_expect(
 		enemy.collectible_status_effects.is_empty()
 		and enemy.move_speed_modifiers.is_empty()

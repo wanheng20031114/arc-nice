@@ -43,6 +43,11 @@ const BURN_OVERLAY_ACTIVE_STRENGTH := 0.26
 const BLEED_OVERLAY_ACTIVE_STRENGTH := 0.42
 const BURN_STATUS_TICK_INTERVAL := 1.0
 const COLD_STATUS_SCHEDULER_PATH := NodePath("/root/ColdStatusScheduler")
+const COLLECTIBLE_STATUS_SCHEDULER_PATH := NodePath(
+	"/root/EnemyCollectibleStatusScheduler"
+)
+const COLLECTIBLE_STATUS_DEADLINE_CALLBACK := &"_on_collectible_status_deadline"
+const COLLECTIBLE_STATUS_DEADLINE_EPSILON := 0.000001
 const COLD_MOVE_SPEED_SOURCE_ID := -2_147_400_001
 const WATER_TERRAIN_COLLISION_LAYER := 1 << 11
 const DEATH_ANIMATION_SPEED_SCALES: Array[float] = [0.92, 0.96, 1.0, 1.04, 1.08]
@@ -163,8 +168,9 @@ var move_speed_modifiers: Dictionary = {}
 var cold_stack_count := 0
 var damage_taken_multiplier_modifiers: Dictionary = {}
 var collectible_status_effects: Dictionary = {}
-var stale_collectible_status_keys: Array = []
-var active_collectible_status_keys: Array = []
+var expired_collectible_status_keys: Array = []
+var due_collectible_status_tick_keys: Array = []
+var collectible_status_clock := 0.0
 var network_visual_status_mask: int = 0
 var multiplayer_proxy_visual_active: bool = true
 var multiplayer_proxy_authored_animation_speed: float = 1.0
@@ -458,7 +464,7 @@ func _apply_terrain_collision_profile() -> void:
 		collision_mask |= WATER_TERRAIN_COLLISION_LAYER
 
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	var metrics_started_usec := Time.get_ticks_usec() if Enemy.performance_metrics_enabled else 0
 	if not _status_requires_render_process():
 		# This also makes a runtime A/B switch converge without waiting for another
@@ -471,7 +477,6 @@ func _process(delta: float) -> void:
 				metrics_started_usec
 			)
 		return
-	_update_collectible_status_effects(delta)
 	_update_movement_status_visuals()
 	if Enemy.performance_metrics_enabled:
 		Enemy._record_performance_metric(
@@ -482,8 +487,6 @@ func _process(delta: float) -> void:
 
 
 func _status_requires_render_process() -> bool:
-	if not collectible_status_effects.is_empty():
-		return true
 	if not Enemy.slow_only_status_process_optimization_enabled:
 		return not move_speed_modifiers.is_empty()
 	# Slow overlays are static instance-shader parameters and are refreshed at
@@ -784,6 +787,7 @@ func set_pathfinder(shared_pathfinder: Node) -> void:
 
 func configure_multiplayer_proxy() -> void:
 	clear_cold_status()
+	clear_collectible_statuses()
 	is_multiplayer_proxy = true
 	multiplayer_proxy_locomotion_state = LocomotionState.IDLE
 	# Proxy transforms are already interpolated from network snapshots during
@@ -827,6 +831,7 @@ func remove_for_home_escape() -> bool:
 		return false
 	is_dead = true
 	clear_cold_status()
+	clear_collectible_statuses()
 	velocity = Vector2.ZERO
 	set_process(false)
 	set_physics_process(false)
@@ -1004,6 +1009,7 @@ func play_multiplayer_death_sequence() -> void:
 
 	is_dead = true
 	clear_cold_status()
+	clear_collectible_statuses()
 	velocity = Vector2.ZERO
 	_update_movement_status_visuals()
 	set_process(false)
@@ -1261,6 +1267,7 @@ func _release_speed_trail_effect() -> void:
 
 func _exit_tree() -> void:
 	clear_cold_status()
+	clear_collectible_statuses()
 	if combat_target_index_binding != null and combat_target_index_net_id > 0:
 		var bound_index := combat_target_index_binding
 		var bound_net_id := combat_target_index_net_id
@@ -1308,9 +1315,15 @@ func _has_collectible_status(status_id: StringName) -> bool:
 		var status_data := collectible_status_effects[effect_key] as Dictionary
 		if status_data.is_empty():
 			continue
+		var remains_active := (
+			float(status_data.get("expires_at", 0.0))
+			> collectible_status_clock + COLLECTIBLE_STATUS_DEADLINE_EPSILON
+			if status_data.has("expires_at")
+			else float(status_data.get("time_left", 0.0)) > 0.0
+		)
 		if (
 			StringName(status_data.get("status_id", &"")) == status_id
-			and float(status_data.get("time_left", 0.0)) > 0.0
+			and remains_active
 		):
 			return true
 	return false
@@ -1434,8 +1447,26 @@ func apply_collectible_status(
 	physical_defense_modifier: int = 0,
 	damage_taken_multiplier: float = 1.0
 ) -> void:
-	if is_dead or source_id == 0 or status_id == &"":
+	if (
+		is_dead
+		or is_multiplayer_proxy
+		or is_queued_for_deletion()
+		or source_id == 0
+		or status_id == &""
+	):
 		return
+	var scheduler := _get_collectible_status_scheduler()
+	if scheduler == null:
+		push_error("EnemyCollectibleStatusScheduler autoload is missing.")
+		return
+	var scheduler_clock := float(scheduler.call("get_clock"))
+	if collectible_status_effects.is_empty():
+		collectible_status_clock = maxf(collectible_status_clock, scheduler_clock)
+	else:
+		_advance_collectible_status_effects_to(scheduler_clock)
+		if is_dead:
+			return
+	var applied_at := maxf(collectible_status_clock, scheduler_clock)
 	var normalized_duration := maxf(duration, 0.05)
 	var normalized_tick_interval := maxf(tick_interval, 0.1)
 	if status_id == &"burn":
@@ -1451,9 +1482,15 @@ func apply_collectible_status(
 		"status_id": status_id,
 		"source_id": source_id,
 		"time_left": normalized_duration,
+		"expires_at": applied_at + normalized_duration,
 		"tick_damage": maxi(tick_damage, 0),
 		"tick_interval": normalized_tick_interval,
 		"tick_time_left": normalized_tick_interval,
+		"next_tick_at": (
+			applied_at + normalized_tick_interval
+			if tick_damage > 0 and status_id != &"burn"
+			else 0.0
+		),
 		"damage_type": int(damage_type),
 		"slow_source_id": 0,
 		"physical_defense_source_id": 0,
@@ -1472,61 +1509,203 @@ func apply_collectible_status(
 		status["damage_multiplier_source_id"] = multiplier_source_id
 		add_damage_taken_multiplier_modifier(multiplier_source_id, damage_taken_multiplier)
 	collectible_status_effects[effect_key] = status
+	_refresh_active_burn_tick_schedule(applied_at)
+	_sync_collectible_status_relative_times(applied_at)
+	_reschedule_collectible_status_deadline()
 	_play_collectible_status_feedback(status_id)
+	_update_movement_status_visuals()
 	_refresh_status_process_enabled()
 
 
-func _update_collectible_status_effects(delta: float) -> void:
-	if collectible_status_effects.is_empty():
-		return
-	stale_collectible_status_keys.clear()
-	active_collectible_status_keys.clear()
-	# Resolve every expiry before any tick damage. This makes the boundary frame
-	# independent of Dictionary insertion order: an expiring armor break or mark
-	# cannot still modify another status whose tick is due in the same frame.
-	for effect_key in collectible_status_effects:
-		var status: Dictionary = collectible_status_effects.get(effect_key, {})
-		if status.is_empty():
-			stale_collectible_status_keys.append(effect_key)
-			continue
-		var time_left := float(status.get("time_left", 0.0)) - delta
-		if time_left <= 0.0 or is_dead:
-			stale_collectible_status_keys.append(effect_key)
-			continue
-		status["time_left"] = time_left
-		collectible_status_effects[effect_key] = status
-		active_collectible_status_keys.append(effect_key)
-	for effect_key in stale_collectible_status_keys:
-		var stale_status := collectible_status_effects.get(effect_key, {}) as Dictionary
-		if stale_status.is_empty():
-			collectible_status_effects.erase(effect_key)
-			continue
-		_remove_collectible_status(effect_key, stale_status)
-	if active_collectible_status_keys.is_empty() or is_dead:
-		return
+func _get_collectible_status_scheduler() -> Node:
+	return get_node_or_null(COLLECTIBLE_STATUS_SCHEDULER_PATH)
 
-	var active_burn_damage_key: Variant = _get_highest_damage_status_key(&"burn")
-	for effect_key in active_collectible_status_keys:
+
+func _on_collectible_status_deadline(scheduler_time: float) -> float:
+	if is_dead or is_multiplayer_proxy or is_queued_for_deletion():
+		return 0.0
+	_advance_collectible_status_effects_to(scheduler_time)
+	return _get_next_collectible_status_deadline()
+
+
+func _advance_collectible_status_effects_to(target_time: float) -> void:
+	if collectible_status_effects.is_empty():
+		collectible_status_clock = maxf(collectible_status_clock, target_time)
+		return
+	var safe_target_time := maxf(target_time, collectible_status_clock)
+	var statuses_changed := false
+	while not collectible_status_effects.is_empty() and not is_dead:
+		var event_deadline := _get_next_collectible_status_deadline()
+		if (
+			event_deadline <= 0.0
+			or event_deadline
+				> safe_target_time + COLLECTIBLE_STATUS_DEADLINE_EPSILON
+		):
+			break
+		collectible_status_clock = maxf(collectible_status_clock, event_deadline)
+
+		# Resolve every expiry at this exact deadline before any damage tick. This
+		# preserves modifier ordering and makes results independent of frame splits.
+		expired_collectible_status_keys.clear()
+		for effect_key in collectible_status_effects:
+			var status := (
+				collectible_status_effects.get(effect_key, {}) as Dictionary
+			)
+			if (
+				status.is_empty()
+				or float(status.get("expires_at", 0.0))
+					<= event_deadline + COLLECTIBLE_STATUS_DEADLINE_EPSILON
+			):
+				expired_collectible_status_keys.append(effect_key)
+		for effect_key in expired_collectible_status_keys:
+			var expired_status := (
+				collectible_status_effects.get(effect_key, {}) as Dictionary
+			)
+			if expired_status.is_empty():
+				collectible_status_effects.erase(effect_key)
+				continue
+			_remove_collectible_status(effect_key, expired_status)
+			statuses_changed = true
+		if collectible_status_effects.is_empty() or is_dead:
+			continue
+
+		# Only the strongest burn owns a live tick deadline. A stronger source
+		# pauses the weaker source's remaining phase instead of advancing it in the
+		# background; expiry resumes that saved phase.
+		_refresh_active_burn_tick_schedule(event_deadline)
+		due_collectible_status_tick_keys.clear()
+		for effect_key in collectible_status_effects:
+			var status := (
+				collectible_status_effects.get(effect_key, {}) as Dictionary
+			)
+			var next_tick_at := float(status.get("next_tick_at", 0.0))
+			if (
+				next_tick_at > 0.0
+				and next_tick_at
+					<= event_deadline + COLLECTIBLE_STATUS_DEADLINE_EPSILON
+			):
+				due_collectible_status_tick_keys.append(effect_key)
+
+		for effect_key in due_collectible_status_tick_keys:
+			var status := (
+				collectible_status_effects.get(effect_key, {}) as Dictionary
+			)
+			if status.is_empty():
+				continue
+			var tick_damage := int(status.get("tick_damage", 0))
+			var tick_interval := maxf(
+				float(status.get("tick_interval", 0.5)),
+				0.1
+			)
+			status["next_tick_at"] = (
+				float(status.get("next_tick_at", event_deadline))
+				+ tick_interval
+			)
+			status["tick_time_left"] = tick_interval
+			collectible_status_effects[effect_key] = status
+			if tick_damage <= 0:
+				continue
+			var tick_damage_type := EnemyConfig.DamageType.MAGIC
+			if (
+				int(status.get("damage_type", EnemyConfig.DamageType.MAGIC))
+				== int(EnemyConfig.DamageType.PHYSICAL)
+			):
+				tick_damage_type = EnemyConfig.DamageType.PHYSICAL
+			apply_damage(tick_damage, Vector2.ZERO, tick_damage_type)
+			if is_dead:
+				break
+
+	collectible_status_clock = maxf(collectible_status_clock, safe_target_time)
+	if is_dead:
+		return
+	_sync_collectible_status_relative_times(collectible_status_clock)
+	if statuses_changed:
+		_update_movement_status_visuals()
+		_refresh_status_process_enabled()
+
+
+func _get_next_collectible_status_deadline() -> float:
+	var next_deadline := INF
+	for effect_key in collectible_status_effects:
 		var status := collectible_status_effects.get(effect_key, {}) as Dictionary
 		if status.is_empty():
 			continue
-		var tick_damage := int(status.get("tick_damage", 0))
-		if tick_damage > 0:
-			if StringName(status.get("status_id", &"")) == &"burn" and effect_key != active_burn_damage_key:
-				collectible_status_effects[effect_key] = status
-				continue
-			var tick_time_left := float(status.get("tick_time_left", 0.1)) - delta
-			while tick_time_left <= 0.0 and tick_damage > 0 and not is_dead:
-				tick_time_left += float(status.get("tick_interval", 0.5))
-				var tick_damage_type := EnemyConfig.DamageType.MAGIC
-				if int(status.get("damage_type", EnemyConfig.DamageType.MAGIC)) == int(EnemyConfig.DamageType.PHYSICAL):
-					tick_damage_type = EnemyConfig.DamageType.PHYSICAL
-				apply_damage(
-					tick_damage,
-					Vector2.ZERO,
-					tick_damage_type
+		var expires_at := float(status.get("expires_at", 0.0))
+		if expires_at > 0.0:
+			next_deadline = minf(next_deadline, expires_at)
+		var next_tick_at := float(status.get("next_tick_at", 0.0))
+		if next_tick_at > 0.0:
+			next_deadline = minf(next_deadline, next_tick_at)
+	return 0.0 if is_inf(next_deadline) else next_deadline
+
+
+func _reschedule_collectible_status_deadline() -> void:
+	var scheduler := _get_collectible_status_scheduler()
+	if scheduler == null:
+		return
+	if collectible_status_effects.is_empty():
+		scheduler.call("clear_target", self)
+		return
+	var next_deadline := _get_next_collectible_status_deadline()
+	if next_deadline <= 0.0:
+		scheduler.call("clear_target", self)
+		return
+	scheduler.call(
+		"schedule_target",
+		self,
+		next_deadline,
+		COLLECTIBLE_STATUS_DEADLINE_CALLBACK
+	)
+
+
+func _refresh_active_burn_tick_schedule(reference_time: float) -> void:
+	var active_burn_key: Variant = _get_highest_damage_status_key(&"burn")
+	for effect_key in collectible_status_effects:
+		var status := collectible_status_effects.get(effect_key, {}) as Dictionary
+		if (
+			status.is_empty()
+			or StringName(status.get("status_id", &"")) != &"burn"
+			or int(status.get("tick_damage", 0)) <= 0
+		):
+			continue
+		var next_tick_at := float(status.get("next_tick_at", 0.0))
+		if effect_key == active_burn_key:
+			if next_tick_at <= 0.0:
+				var remaining_tick_time := maxf(
+					float(
+						status.get(
+							"tick_time_left",
+							status.get("tick_interval", BURN_STATUS_TICK_INTERVAL)
+						)
+					),
+					COLLECTIBLE_STATUS_DEADLINE_EPSILON * 2.0
 				)
-			status["tick_time_left"] = tick_time_left
+				status["next_tick_at"] = reference_time + remaining_tick_time
+		else:
+			if next_tick_at > 0.0:
+				status["tick_time_left"] = maxf(
+					next_tick_at - reference_time,
+					COLLECTIBLE_STATUS_DEADLINE_EPSILON * 2.0
+				)
+			status["next_tick_at"] = 0.0
+		collectible_status_effects[effect_key] = status
+
+
+func _sync_collectible_status_relative_times(reference_time: float) -> void:
+	for effect_key in collectible_status_effects:
+		var status := collectible_status_effects.get(effect_key, {}) as Dictionary
+		if status.is_empty():
+			continue
+		status["time_left"] = maxf(
+			float(status.get("expires_at", reference_time)) - reference_time,
+			0.0
+		)
+		var next_tick_at := float(status.get("next_tick_at", 0.0))
+		if next_tick_at > 0.0:
+			status["tick_time_left"] = maxf(
+				next_tick_at - reference_time,
+				0.0
+			)
 		collectible_status_effects[effect_key] = status
 
 
@@ -1539,7 +1718,10 @@ func _get_highest_damage_status_key(status_id: StringName) -> Variant:
 			continue
 		if StringName(status.get("status_id", &"")) != status_id:
 			continue
-		if float(status.get("time_left", 0.0)) <= 0.0:
+		if (
+			float(status.get("expires_at", 0.0))
+			<= collectible_status_clock + COLLECTIBLE_STATUS_DEADLINE_EPSILON
+		):
 			continue
 		var tick_damage := int(status.get("tick_damage", 0))
 		if tick_damage > strongest_damage:
@@ -1549,8 +1731,27 @@ func _get_highest_damage_status_key(status_id: StringName) -> Variant:
 
 
 func _remove_collectible_status(effect_key: Variant, status: Dictionary) -> void:
-	_remove_collectible_status_modifiers(status)
 	collectible_status_effects.erase(effect_key)
+	_remove_collectible_status_modifiers(status)
+
+
+func clear_collectible_statuses() -> void:
+	var scheduler := _get_collectible_status_scheduler()
+	if scheduler != null:
+		scheduler.call("clear_target", self)
+	if collectible_status_effects.is_empty():
+		return
+	expired_collectible_status_keys.clear()
+	expired_collectible_status_keys.assign(collectible_status_effects.keys())
+	for effect_key in expired_collectible_status_keys:
+		var status := collectible_status_effects.get(effect_key, {}) as Dictionary
+		if status.is_empty():
+			continue
+		_remove_collectible_status(effect_key, status)
+	collectible_status_effects.clear()
+	expired_collectible_status_keys.clear()
+	due_collectible_status_tick_keys.clear()
+	_update_movement_status_visuals()
 	_refresh_status_process_enabled()
 
 
@@ -3329,6 +3530,7 @@ func _die() -> void:
 	# that re-enters _die cannot enqueue the same side effects twice.
 	is_dead = true
 	clear_cold_status()
+	clear_collectible_statuses()
 	_queue_configured_xirang_kill_reward()
 	_queue_configured_pickup_drops()
 	defeated.emit(self)

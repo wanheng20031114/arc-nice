@@ -1027,17 +1027,17 @@ func _test_combat_effects() -> void:
 	burn_stack_enemy.current_health = 100
 	burn_stack_enemy.apply_collectible_status(&"burn", 911, 3.0, 5, 0.2)
 	burn_stack_enemy.apply_collectible_status(&"burn", 912, 1.2, 15, 0.2)
-	burn_stack_enemy.call("_update_collectible_status_effects", 1.01)
+	root.get_node("EnemyCollectibleStatusScheduler").call("advance_for_test", 1.01)
 	_expect(
 		burn_stack_enemy.current_health == 85,
 		"Burn must deal only the highest active burn damage once per second."
 	)
-	burn_stack_enemy.call("_update_collectible_status_effects", 0.25)
+	root.get_node("EnemyCollectibleStatusScheduler").call("advance_for_test", 0.25)
 	_expect(
 		burn_stack_enemy.current_health == 85,
 		"Lower burn damage must not tick during the same second when a stronger burn expires."
 	)
-	burn_stack_enemy.call("_update_collectible_status_effects", 1.0)
+	root.get_node("EnemyCollectibleStatusScheduler").call("advance_for_test", 1.0)
 	_expect(
 		burn_stack_enemy.current_health == 80,
 		"Lower burn damage must resume after the stronger burn expires."

@@ -333,13 +333,19 @@ func _test_enemy_movement_status_visuals() -> void:
 	)
 	enemy.apply_collectible_status(&"mark", 304, 0.2)
 	_expect(
-		enemy.is_processing(),
-		"A timed collectible status must keep Enemy._process enabled for expiry and ticks."
+		not enemy.is_processing()
+		and int(root.get_node("EnemyCollectibleStatusScheduler").call(
+			"get_active_target_count"
+		)) == 1,
+		"A timed collectible status must use one shared deadline entry without enabling Enemy._process."
 	)
-	enemy.call("_update_collectible_status_effects", 0.21)
+	root.get_node("EnemyCollectibleStatusScheduler").call("advance_for_test", 0.21)
 	_expect(
-		not enemy.is_processing(),
-		"Expiring the final timed status must disable Enemy._process again."
+		not enemy.is_processing()
+		and int(root.get_node("EnemyCollectibleStatusScheduler").call(
+			"get_active_target_count"
+		)) == 0,
+		"Expiring the final timed status must retire its shared deadline entry."
 	)
 	var health_before_hit := enemy.current_health
 	enemy.apply_damage(1, Vector2.RIGHT)
