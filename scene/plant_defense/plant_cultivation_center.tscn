@@ -4,13 +4,13 @@
 [ext_resource type="Texture2D" uid="uid://dcww12ag8r038" path="res://resources/texture/plant_defense/plant_cultivation_center/layers/lower_body.png" id="2_lower_body"]
 [ext_resource type="PackedScene" uid="uid://by1igl2yc3ch0" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
 [ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
-[ext_resource type="Shader" path="res://resources/shader/plant_cultivation_center_lifecycle_glow.gdshader" id="5_lifecycle_glow_shader"]
+[ext_resource type="Shader" uid="uid://dwfafcvtovpg0" path="res://resources/shader/plant_cultivation_center_lifecycle_glow.gdshader" id="5_lifecycle_glow_shader"]
 [ext_resource type="Resource" path="res://resources/config/production/wooden_core_to_agave_cannon.tres" id="6_agave_recipe"]
 [ext_resource type="Resource" path="res://resources/config/production/wooden_core_to_corn_machine_gun.tres" id="7_corn_recipe"]
 [ext_resource type="Script" uid="uid://bqe4uxp0um77k" path="res://resources/config/production/production_recipe.gd" id="8_recipe_script"]
 [ext_resource type="Texture2D" uid="uid://c7mn0lidpp3eq" path="res://resources/texture/production/plant_cultivation_center_panel_background.png" id="9_panel_background"]
 [ext_resource type="Shader" uid="uid://dsxkvh3u24ove" path="res://resources/shader/plant_cultivation_center_border.gdshader" id="10_border_shader"]
-[ext_resource type="Texture2D" path="res://resources/shader/plant_lifecycle_noise.tres" id="11_lifecycle_noise"]
+[ext_resource type="Texture2D" uid="uid://bca3nn3au8i4u" path="res://resources/shader/plant_lifecycle_noise.tres" id="11_lifecycle_noise"]
 [ext_resource type="Resource" path="res://resources/config/production/wooden_core_to_bamboo_mortar.tres" id="12_bamboo_mortar_recipe"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="13_night_light"]
 [ext_resource type="Texture2D" uid="uid://gs85ud857sbr" path="res://resources/lighting/plant_cultivation_center_hotspots.svg" id="14_hotspot_texture"]
@@ -22,6 +22,9 @@ shader_parameter/idle_green = Color(0.18, 0.45, 0.19, 1)
 shader_parameter/idle_shadow = Color(0.055, 0.19, 0.075, 1)
 shader_parameter/progress_green = Color(0.56, 0.94, 0.18, 1)
 shader_parameter/leaf_noise_speed = 1.55
+
+[sub_resource type="QuadMesh" id="QuadMesh_production_border"]
+size = Vector2(32, 32)
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_lifecycle_glow"]
 shader = ExtResource("5_lifecycle_glow_shader")
@@ -44,9 +47,6 @@ shader_parameter/glow_halo_alpha = 0.045
 shader_parameter/glow_pulse_amount = 0.006
 shader_parameter/glow_pulse_speed = 0.85
 shader_parameter/transparent_halo_weight = 0.0
-
-[sub_resource type="QuadMesh" id="QuadMesh_production_border"]
-size = Vector2(32, 32)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 resource_local_to_scene = true
@@ -133,16 +133,15 @@ texture_filter = 1
 material = SubResource("ShaderMaterial_lifecycle_glow")
 texture = ExtResource("2_lower_body")
 
-[node name="UpperForeground" type="Sprite2D" parent="VisualRoot"]
+[node name="UpperForeground" type="Sprite2D" parent="VisualRoot" unique_id=590754170]
 z_index = 4
 texture_filter = 1
 material = SubResource("ShaderMaterial_lifecycle_glow_foreground")
 texture = ExtResource("15_upper_foreground")
 
-[node name="HotspotGlow" parent="." instance=ExtResource("13_night_light")]
+[node name="HotspotGlow" parent="." unique_id=351970668 instance=ExtResource("13_night_light")]
 color = Color(0.4814815, 1, 0.1666667, 1)
 texture = ExtResource("14_hotspot_texture")
-texture_scale = 0.25
 night_energy = 0.84
 starts_emitting = false
 
@@ -212,9 +211,9 @@ vertical_alignment = 1
 
 [node name="HealthBar" parent="." unique_id=1702125570 instance=ExtResource("3_health_bar")]
 offset_left = -16.0
-offset_top = -21.0
+offset_top = -17.0
 offset_right = 16.0
-offset_bottom = -16.0
+offset_bottom = -12.0
 
 [node name="MultiplayerProductionRequestTimer" type="Timer" parent="." unique_id=1812707518]
 wait_time = 4.0

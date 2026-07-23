@@ -171,6 +171,7 @@ func _init() -> void:
 func _run() -> void:
 	_test_host_broadcast_contract()
 	await _test_target_warning_proxy_contract()
+	_test_pre_spawn_action_buffer_and_snapshot_decoupling()
 	_test_client_validation_and_visual_only_contract()
 
 	if failures.is_empty():
@@ -574,6 +575,344 @@ func _test_target_warning_proxy_contract() -> void:
 	net_manager.free()
 	current_scene = null
 	fixture_root.free()
+
+
+func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
+	var fixture_root := Node2D.new()
+	fixture_root.name = "LightningPendingActionFixture"
+	root.add_child(fixture_root)
+	current_scene = fixture_root
+
+	var runtime := LightningVfxRuntime.new()
+	var net_manager := TestNetManager.new()
+	var mp_game := MP_GAME_SCRIPT.new()
+	mp_game.set("net_manager", net_manager)
+	mp_game.set("game", runtime)
+	var player := PLAYER_SCENE.instantiate() as Player
+	_expect(player != null, "Pending-action fixture must instantiate a player.")
+	if player == null:
+		mp_game.free()
+		runtime.free()
+		net_manager.free()
+		current_scene = null
+		fixture_root.free()
+		return
+	fixture_root.add_child(player)
+	player.peer_id = 17
+	player.global_position = Vector2(120.0, 80.0)
+	runtime.players_by_peer_id[player.peer_id] = player
+
+	var synchronized_host_time := float(mp_game.call("_get_net_time"))
+	mp_game.call(
+		"_map_host_timestamp_to_client_time",
+		synchronized_host_time,
+		true
+	)
+	var retry_net_id := 401
+	mp_game.net_enemy_target_action(
+		retry_net_id,
+		"lightning_windup",
+		player.peer_id,
+		Vector2(20.0, 30.0),
+		20,
+		synchronized_host_time - 0.08
+	)
+	mp_game.net_enemy_target_action(
+		retry_net_id,
+		"lightning_windup_retry",
+		player.peer_id,
+		Vector2(24.0, 34.0),
+		20,
+		synchronized_host_time - 0.02
+	)
+	var pending_actions := mp_game.get("_pending_enemy_actions") as Dictionary
+	var retry_record := pending_actions.get(retry_net_id, {}) as Dictionary
+	_expect(
+		pending_actions.size() == 1
+		and StringName(retry_record.get("action_name", &""))
+			== &"lightning_windup_retry"
+		and int(retry_record.get("action_id", 0)) == 20,
+		"A same-id pre-spawn retry with the later Host timestamp must replace the start in O(1) storage."
+	)
+	var retry_lightning := _register_lightning_proxy(
+		fixture_root,
+		mp_game,
+		player,
+		retry_net_id
+	)
+	_expect(retry_lightning != null, "Retry fixture must register a lightning proxy.")
+	if retry_lightning != null:
+		var consumed := bool(mp_game.call(
+			"_consume_pending_enemy_action",
+			retry_net_id
+		))
+		var retry_warning := retry_lightning.get_node("TargetWarning") as Node2D
+		_expect(
+			consumed
+			and pending_actions.is_empty()
+			and retry_lightning.latest_proxy_action_id == 20
+			and retry_warning.visible
+			and float(retry_warning.call("get_warning_progress"))
+				>= LightningSorcerer.TARGET_WARNING_RETRY_DELAY
+					/ LIGHTNING_SORCERER_CONFIG.windup_duration,
+			"Proxy registration must consume the newest retry and preserve its elapsed warning progress."
+		)
+
+	var cancel_net_id := 402
+	mp_game.net_enemy_target_action(
+		cancel_net_id,
+		"lightning_windup",
+		player.peer_id,
+		Vector2.ZERO,
+		30,
+		synchronized_host_time
+	)
+	mp_game.net_enemy_action(
+		cancel_net_id,
+		"cancel",
+		Vector2.RIGHT,
+		Vector2.ZERO,
+		31,
+		synchronized_host_time + 0.01
+	)
+	var cancel_record := pending_actions.get(cancel_net_id, {}) as Dictionary
+	_expect(
+		pending_actions.size() == 1
+		and int(cancel_record.get("kind", -1))
+			== MP_GAME_SCRIPT.CLIENT_ENEMY_ACTION_KIND_GENERIC
+		and StringName(cancel_record.get("action_name", &"")) == &"cancel",
+		"Target starts and generic terminal/cancel actions must share one sequence buffer; the newer cancel wins."
+	)
+	var cancel_lightning := _register_lightning_proxy(
+		fixture_root,
+		mp_game,
+		player,
+		cancel_net_id
+	)
+	if cancel_lightning != null:
+		mp_game.call("_consume_pending_enemy_action", cancel_net_id)
+		var cancel_warning := cancel_lightning.get_node("TargetWarning") as Node2D
+		_expect(
+			cancel_lightning.latest_proxy_action_id == 31
+			and not cancel_warning.visible,
+			"A buffered generic cancel must not replay the older target warning after spawn."
+		)
+
+	if retry_lightning != null:
+		mp_game.net_enemy_action(
+			retry_net_id,
+			"cancel",
+			Vector2.RIGHT,
+			retry_lightning.global_position,
+			21,
+			synchronized_host_time
+		)
+		var interp := mp_game.call("_create_enemy_interpolator") as NetInterpolator
+		var mapped_action_time := float(mp_game.call(
+			"_map_host_timestamp_to_client_time",
+			synchronized_host_time,
+			false
+		))
+		interp.push_snapshot(
+			mapped_action_time + 0.1,
+			Vector2(900.0, 700.0),
+			Vector2.ZERO
+		)
+		var interpolators := mp_game.get("enemy_interpolators") as Dictionary
+		interpolators[retry_net_id] = interp
+		var proxy_position_before_action := retry_lightning.global_position
+		mp_game.net_enemy_target_action(
+			retry_net_id,
+			"lightning_windup",
+			player.peer_id,
+			Vector2(600.0, 500.0),
+			22,
+			synchronized_host_time
+		)
+		var reordered_warning := retry_lightning.get_node("TargetWarning") as Node2D
+		_expect(
+			retry_lightning.latest_proxy_action_id == 22
+			and reordered_warning.visible
+			and retry_lightning.global_position.is_equal_approx(
+				proxy_position_before_action
+			)
+			and is_equal_approx(
+				interp.get_latest_timestamp(),
+				mapped_action_time + 0.1
+			),
+			"A snapshot 100 ms ahead may reject the old position sample, but must still deliver the legal action."
+		)
+
+	var expired_net_id := 403
+	mp_game.net_enemy_target_action(
+		expired_net_id,
+		"lightning_windup",
+		player.peer_id,
+		Vector2.ZERO,
+		40,
+		-1.0
+	)
+	var expired_record := pending_actions.get(expired_net_id, {}) as Dictionary
+	expired_record["received_at"] = (
+		float(mp_game.call("_get_net_time"))
+		- MP_GAME_SCRIPT.CLIENT_PENDING_ENEMY_ACTION_MAX_AGE_SECONDS
+		- 0.1
+	)
+	pending_actions[expired_net_id] = expired_record
+	var expired_lightning := _register_lightning_proxy(
+		fixture_root,
+		mp_game,
+		player,
+		expired_net_id
+	)
+	if expired_lightning != null:
+		var expired_consumed := bool(mp_game.call(
+			"_consume_pending_enemy_action",
+			expired_net_id
+		))
+		var expired_warning := expired_lightning.get_node("TargetWarning") as Node2D
+		_expect(
+			not expired_consumed
+			and not pending_actions.has(expired_net_id)
+			and expired_lightning.latest_proxy_action_id == 0
+			and not expired_warning.visible,
+			"Expired pre-spawn actions must be consumed as cleanup only and never resurrect a warning."
+		)
+
+	var terminal_net_id := 404
+	mp_game.net_enemy_target_action(
+		terminal_net_id,
+		"lightning_windup",
+		player.peer_id,
+		Vector2.ZERO,
+		50,
+		synchronized_host_time
+	)
+	mp_game.net_enemy_terminal(
+		terminal_net_id,
+		2,
+		Vector2.ZERO
+	)
+	mp_game.net_enemy_target_action(
+		terminal_net_id,
+		"lightning_windup_retry",
+		player.peer_id,
+		Vector2.ZERO,
+		50,
+		synchronized_host_time + 0.1
+	)
+	var terminal_ids := mp_game.get("_client_terminal_enemy_ids") as Dictionary
+	_expect(
+		not pending_actions.has(terminal_net_id)
+		and terminal_ids.has(terminal_net_id),
+		"Reliable terminal cleanup must reject a delayed CH7 retry instead of rebuilding pending state."
+	)
+
+	mp_game.call("_clear_pending_enemy_actions")
+	mp_game.call("_clear_client_enemy_terminal_markers")
+	var pressure_start_usec := Time.get_ticks_usec()
+	var pressure_count := 10000
+	var pressure_base_id := 100000
+	for index in range(pressure_count):
+		mp_game.net_enemy_action(
+			pressure_base_id + index,
+			"cancel",
+			Vector2.RIGHT,
+			Vector2.ZERO,
+			1,
+			-1.0
+		)
+	var pressure_elapsed_ms := (
+		float(Time.get_ticks_usec() - pressure_start_usec) / 1000.0
+	)
+	var action_capacity := int(
+		MP_GAME_SCRIPT.CLIENT_PENDING_ENEMY_ACTION_MAX_ENTRIES
+	)
+	_expect(
+		pending_actions.size() == action_capacity
+		and (mp_game.get("_pending_enemy_action_previous_ids") as Dictionary).size()
+			== action_capacity
+		and (mp_game.get("_pending_enemy_action_next_ids") as Dictionary).size()
+			== action_capacity
+		and int(mp_game.get("_pending_enemy_action_oldest_id"))
+			== pressure_base_id + pressure_count - action_capacity
+		and int(mp_game.get("_pending_enemy_action_newest_id"))
+			== pressure_base_id + pressure_count - 1,
+		"10k unknown ids must retain exactly the bounded newest FIFO window with coherent O(1) links."
+	)
+	_expect(
+		pressure_elapsed_ms < 2000.0,
+		"10k unknown-id buffering exceeded a generous 2 s smoke-test budget."
+	)
+	print("LIGHTNING_PENDING_ACTION_10K_MS=%.3f" % pressure_elapsed_ms)
+	mp_game.call("_clear_pending_enemy_actions")
+	_expect(
+		pending_actions.is_empty()
+		and (mp_game.get("_pending_enemy_action_previous_ids") as Dictionary).is_empty()
+		and (mp_game.get("_pending_enemy_action_next_ids") as Dictionary).is_empty()
+		and int(mp_game.get("_pending_enemy_action_oldest_id")) == 0
+		and int(mp_game.get("_pending_enemy_action_newest_id")) == 0,
+		"Pending-action cleanup must reset records, links and endpoints together."
+	)
+
+	for index in range(10000):
+		mp_game.call("_mark_client_enemy_terminal", pressure_base_id + index)
+	var terminal_capacity := int(
+		MP_GAME_SCRIPT.CLIENT_TERMINAL_ENEMY_TOMBSTONE_MAX_ENTRIES
+	)
+	_expect(
+		terminal_ids.size() == terminal_capacity
+		and int(mp_game.get("_client_terminal_enemy_oldest_id"))
+			== pressure_base_id + 10000 - terminal_capacity
+		and int(mp_game.get("_client_terminal_enemy_newest_id"))
+			== pressure_base_id + 9999,
+		"Terminal tombstones must also remain bounded under a 10k lifecycle burst."
+	)
+	mp_game.call("_clear_client_enemy_terminal_markers")
+
+	mp_game.net_enemy_action(0, "cancel", Vector2.RIGHT, Vector2.ZERO, 1, -1.0)
+	mp_game.net_enemy_action(1, "cancel", Vector2(INF, 0.0), Vector2.ZERO, 1, -1.0)
+	mp_game.net_enemy_action(2, "cancel", Vector2.RIGHT, Vector2(NAN, 0.0), 1, -1.0)
+	mp_game.net_enemy_target_action(3, "lightning_windup", 0, Vector2.ZERO, 1, -1.0)
+	mp_game.net_enemy_target_action(4, "lightning_windup", 17, Vector2.ZERO, 1, NAN)
+	_expect(
+		pending_actions.is_empty(),
+		"Malformed and non-finite fault-injection payloads must not enter the bounded buffer."
+	)
+
+	var source := FileAccess.get_file_as_string(MP_GAME_PATH)
+	var spawn_body := _extract_function_body(source, "func net_enemy_spawned(")
+	var boss_body := _extract_function_body(source, "func net_boss_started(")
+	_expect(
+		spawn_body.contains("_consume_pending_enemy_action(net_id)")
+		and boss_body.contains("_consume_pending_enemy_action(net_id)"),
+		"Normal enemies and bosses must both consume pending actions immediately after proxy registration."
+	)
+
+	mp_game.free()
+	runtime.free()
+	net_manager.free()
+	current_scene = null
+	fixture_root.free()
+
+
+func _register_lightning_proxy(
+	fixture_root: Node2D,
+	mp_game: Node,
+	player: Player,
+	net_id: int
+) -> LightningSorcerer:
+	var lightning := LIGHTNING_SORCERER_SCENE.instantiate() as LightningSorcerer
+	if lightning == null:
+		return null
+	fixture_root.add_child(lightning)
+	lightning.global_position = Vector2(16.0, 24.0)
+	lightning.setup(LIGHTNING_SORCERER_CONFIG, player)
+	lightning.configure_multiplayer_proxy()
+	lightning.set_meta("net_id", net_id)
+	var net_enemies := mp_game.get("_net_enemies") as Dictionary
+	net_enemies[net_id] = lightning
+	return lightning
 
 
 func _test_client_validation_and_visual_only_contract() -> void:

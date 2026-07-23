@@ -213,6 +213,78 @@ func apply_production_storage_snapshot(
 	return true
 
 
+## Validates one sparse production transaction without copying the other slots.
+## The coordinator performs this pass for every touched warehouse before the
+## first write, so a malformed or stale journal cannot expose a partial commit.
+func validate_production_storage_slot_changes(
+	slot_indices: PackedInt32Array,
+	items: Array[PickupConfig],
+	counts: PackedInt32Array,
+	expected_revision: int
+) -> bool:
+	return (
+		not is_multiplayer_proxy
+		and not is_dead
+		and not is_removing
+		and is_operational
+		and expected_revision == storage_revision
+		and _is_production_storage_slot_payload_valid(
+			slot_indices,
+			items,
+			counts
+		)
+	)
+
+
+## Applies a journal that has already participated in the coordinator's
+## all-warehouse preflight. No signal is published until every store (and any
+## personal inventory output) has committed successfully.
+func apply_production_storage_slot_changes(
+	slot_indices: PackedInt32Array,
+	items: Array[PickupConfig],
+	counts: PackedInt32Array,
+	expected_revision: int,
+	emit_change_signal: bool = true
+) -> bool:
+	if not validate_production_storage_slot_changes(
+		slot_indices,
+		items,
+		counts,
+		expected_revision
+	):
+		return false
+	_write_production_storage_slots(slot_indices, items, counts)
+	storage_revision = expected_revision + 1
+	if emit_change_signal:
+		storage_changed.emit()
+	return true
+
+
+## Restores an unpublished sparse commit if a later store or inventory write
+## unexpectedly rejects the same-frame transaction. Rewinding a revision is
+## safe here because production signals are deliberately deferred until commit.
+func rollback_production_storage_slot_changes(
+	slot_indices: PackedInt32Array,
+	items: Array[PickupConfig],
+	counts: PackedInt32Array,
+	applied_revision: int,
+	restored_revision: int
+) -> bool:
+	if (
+		storage_revision != applied_revision
+		or applied_revision != restored_revision + 1
+		or not _is_production_storage_slot_payload_valid(
+			slot_indices,
+			items,
+			counts
+		)
+	):
+		return false
+	_write_production_storage_slots(slot_indices, items, counts)
+	storage_revision = restored_revision
+	return true
+
+
 func notify_production_storage_changed() -> void:
 	storage_changed.emit()
 
@@ -826,6 +898,54 @@ func _get_available_storage_capacity(item: PickupConfig) -> int:
 		elif PickupConfig.inventory_items_can_stack(stored_item, item):
 			capacity += maxi(stack_limit - storage_stack_counts[slot_index], 0)
 	return capacity
+
+
+func _is_production_storage_slot_payload_valid(
+	slot_indices: PackedInt32Array,
+	items: Array[PickupConfig],
+	counts: PackedInt32Array
+) -> bool:
+	var change_count := slot_indices.size()
+	if (
+		change_count <= 0
+		or change_count > STORAGE_CAPACITY
+		or items.size() != change_count
+		or counts.size() != change_count
+	):
+		return false
+	var visited_slot_mask := 0
+	for change_index in change_count:
+		var slot_index := int(slot_indices[change_index])
+		if slot_index < 0 or slot_index >= STORAGE_CAPACITY:
+			return false
+		var slot_bit := 1 << slot_index
+		if (visited_slot_mask & slot_bit) != 0:
+			return false
+		visited_slot_mask |= slot_bit
+		var item := items[change_index]
+		var count := int(counts[change_index])
+		if item == null:
+			if count != 0:
+				return false
+			continue
+		if (
+			not item.can_store_in_inventory
+			or count <= 0
+			or count > PickupConfig.get_inventory_stack_limit(item)
+		):
+			return false
+	return true
+
+
+func _write_production_storage_slots(
+	slot_indices: PackedInt32Array,
+	items: Array[PickupConfig],
+	counts: PackedInt32Array
+) -> void:
+	for change_index in slot_indices.size():
+		var slot_index := int(slot_indices[change_index])
+		storage_items[slot_index] = items[change_index]
+		storage_stack_counts[slot_index] = int(counts[change_index])
 
 
 func _get_container_item(

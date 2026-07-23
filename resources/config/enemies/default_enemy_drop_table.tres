@@ -1,32 +1,35 @@
-[gd_resource type="Resource" script_class="EnemyDropTable" load_steps=23 format=3]
+[gd_resource type="Resource" script_class="EnemyDropTable" format=3 uid="uid://rd6tadya5wqs"]
 
-[ext_resource type="Script" path="res://resources/config/enemies/enemy_drop_table.gd" id="1_table"]
-[ext_resource type="Script" path="res://resources/config/enemies/enemy_drop_rule.gd" id="2_rule"]
-[ext_resource type="Resource" path="res://resources/config/materials/material_wood.tres" id="3_wood"]
+[ext_resource type="Script" uid="uid://jr4vkrpwk146" path="res://resources/config/enemies/enemy_drop_table.gd" id="1_table"]
+[ext_resource type="Script" uid="uid://cwp4vev27our7" path="res://resources/config/enemies/enemy_drop_rule.gd" id="2_rule"]
+[ext_resource type="Resource" uid="uid://bele1rohr2gee" path="res://resources/config/materials/material_wood.tres" id="3_wood"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_white_crystal.tres" id="4_white"]
-[ext_resource type="Resource" path="res://resources/config/materials/material_sapling.tres" id="5_sapling"]
+[ext_resource type="Resource" uid="uid://dtf2p26npy2pd" path="res://resources/config/materials/material_sapling.tres" id="5_sapling"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_capoo_blue_crystal.tres" id="6_blue"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_sorcerer_violet_powder.tres" id="7_violet"]
-[ext_resource type="Resource" path="res://resources/config/pickups/pickup_speed.tres" id="8_speed"]
-[ext_resource type="Resource" path="res://resources/config/pickups/pickup_rapid.tres" id="9_rapid"]
-[ext_resource type="Resource" path="res://resources/config/pickups/pickup_tenpura.tres" id="10_tenpura"]
-[ext_resource type="Resource" path="res://resources/config/pickups/pickup_health.tres" id="11_health"]
-[ext_resource type="Resource" path="res://resources/config/pickups/pickup_spiral.tres" id="12_spiral"]
+[ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="8_speed"]
+[ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="9_rapid"]
+[ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="10_tenpura"]
+[ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="11_health"]
+[ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="12_spiral"]
 
 [sub_resource type="Resource" id="EnemyDropRule_wood"]
 script = ExtResource("2_rule")
 pickup_config = ExtResource("3_wood")
 chance = 0.02
+required_tags = null
 
 [sub_resource type="Resource" id="EnemyDropRule_white"]
 script = ExtResource("2_rule")
 pickup_config = ExtResource("4_white")
 chance = 0.002
+required_tags = null
 
 [sub_resource type="Resource" id="EnemyDropRule_sapling"]
 script = ExtResource("2_rule")
 pickup_config = ExtResource("5_sapling")
 chance = 0.01
+required_tags = null
 
 [sub_resource type="Resource" id="EnemyDropRule_blue"]
 script = ExtResource("2_rule")
@@ -44,26 +47,31 @@ required_tags = PackedStringArray("sorcerer")
 script = ExtResource("2_rule")
 pickup_config = ExtResource("8_speed")
 chance = 0.004
+required_tags = null
 
 [sub_resource type="Resource" id="EnemyDropRule_rapid"]
 script = ExtResource("2_rule")
 pickup_config = ExtResource("9_rapid")
 chance = 0.004
+required_tags = null
 
 [sub_resource type="Resource" id="EnemyDropRule_tenpura"]
 script = ExtResource("2_rule")
 pickup_config = ExtResource("10_tenpura")
 chance = 0.004
+required_tags = null
 
 [sub_resource type="Resource" id="EnemyDropRule_health"]
 script = ExtResource("2_rule")
 pickup_config = ExtResource("11_health")
 chance = 0.004
+required_tags = null
 
 [sub_resource type="Resource" id="EnemyDropRule_spiral"]
 script = ExtResource("2_rule")
 pickup_config = ExtResource("12_spiral")
 chance = 0.002
+required_tags = null
 
 [resource]
 script = ExtResource("1_table")
