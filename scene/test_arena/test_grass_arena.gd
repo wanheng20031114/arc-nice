@@ -1,0 +1,69 @@
+extends GameTowerDefense
+class_name TestGrassArena
+
+signal manual_day_night_changed(is_night: bool)
+
+const GRASS_RECT := Rect2i(0, 0, 16, 16)
+const BLUE_GATE_CELLS: Array[Vector2i] = [
+	Vector2i(0, 7),
+	Vector2i(0, 8),
+]
+const RED_GATE_CELLS: Array[Vector2i] = [
+	Vector2i(15, 7),
+	Vector2i(15, 8),
+]
+
+@onready var test_controls_hint: Label = $TestControlsHint/Hint
+
+var manual_night_enabled := false
+
+
+func _ready() -> void:
+	super._ready()
+	manual_night_enabled = false
+	day_night_controller.set_night_factor_immediate(0.0)
+	_update_test_controls_hint()
+
+
+## 测试场景的昼夜只接受玩家手动控制，忽略正式流程的自动入夜请求。
+func transition_world_to_night(_duration_seconds: float = -1.0) -> void:
+	pass
+
+
+## 测试场景的昼夜只接受玩家手动控制，忽略正式流程的自动回昼请求。
+func transition_world_to_day(_duration_seconds: float = -1.0) -> void:
+	pass
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	var key_event := event as InputEventKey
+	if (
+		key_event != null
+		and key_event.pressed
+		and not key_event.echo
+		and key_event.physical_keycode == KEY_L
+	):
+		set_manual_night_enabled(not manual_night_enabled)
+		get_viewport().set_input_as_handled()
+		return
+	super._unhandled_input(event)
+
+
+func set_manual_night_enabled(
+	enabled: bool,
+	duration_seconds: float = -1.0
+) -> void:
+	manual_night_enabled = enabled
+	if manual_night_enabled:
+		day_night_controller.transition_to_night(duration_seconds)
+	else:
+		day_night_controller.transition_to_day(duration_seconds)
+	_update_test_controls_hint()
+	manual_day_night_changed.emit(manual_night_enabled)
+
+
+func _update_test_controls_hint() -> void:
+	test_controls_hint.text = (
+		"草地测试场景｜当前：%s\nT：自由放置植物　L：切换昼夜"
+		% ("夜晚" if manual_night_enabled else "白天")
+	)
