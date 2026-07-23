@@ -8,6 +8,10 @@ const COLLAPSE_AUDIO_GROUP := &"limited_plant_collapse_audio_players"
 const MAX_SIMULTANEOUS_COLLAPSE_VOICES := 4
 const COLLAPSE_STACK_ATTENUATION_DB := 3.0
 const MAX_COLLAPSE_STACK_ATTENUATION_DB := 9.0
+const DESTROYED_SMOKE_AMOUNT_RATIO := 1.0
+const MANUAL_REMOVAL_SMOKE_AMOUNT_RATIO := 0.6
+const DESTROYED_SMOKE_ALPHA := 1.0
+const MANUAL_REMOVAL_SMOKE_ALPHA := 0.72
 
 @onready var collapse_audio: AudioStreamPlayer2D = $CollapseAudio
 
@@ -35,13 +39,23 @@ func on_pool_released(_generation: int) -> void:
 	_reset_effect_state()
 
 
-func restart_effect(effect_scale: float, play_collapse_audio: bool = false) -> void:
+func restart_effect(effect_scale: float, was_destroyed: bool = false) -> void:
 	_reset_effect_state()
 	_effect_active = true
 	scale = Vector2.ONE * maxf(effect_scale, 0.01)
+	amount_ratio = (
+		DESTROYED_SMOKE_AMOUNT_RATIO
+		if was_destroyed
+		else MANUAL_REMOVAL_SMOKE_AMOUNT_RATIO
+	)
+	self_modulate.a = (
+		DESTROYED_SMOKE_ALPHA
+		if was_destroyed
+		else MANUAL_REMOVAL_SMOKE_ALPHA
+	)
 	restart()
 	emitting = true
-	if play_collapse_audio:
+	if was_destroyed:
 		_play_collapse_audio()
 
 
@@ -50,6 +64,8 @@ func _reset_effect_state() -> void:
 	_effect_active = false
 	emitting = false
 	scale = Vector2.ONE
+	amount_ratio = DESTROYED_SMOKE_AMOUNT_RATIO
+	self_modulate = Color.WHITE
 
 
 func _play_collapse_audio() -> void:

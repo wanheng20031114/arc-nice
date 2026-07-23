@@ -311,14 +311,36 @@ static func get_revealed_pixel_indices(
 ) -> PackedInt32Array:
 	var result := PackedInt32Array()
 	var seeds := _cell_visual_seeds(cell)
-	var offset := int(seeds.x)
-	var odd_multiplier := int(seeds.y) * 2 + 1
 	var reveal_count := int(floor(clampf(progress, 0.0, 1.0) * MAX_REVEALED_PIXELS + 0.0001))
 	for pixel_index in range(256):
-		var rank := posmod(pixel_index * odd_multiplier + offset, 256)
+		var rank := _pixel_reveal_rank(pixel_index, seeds)
 		if rank < reveal_count:
 			result.append(pixel_index)
 	return result
+
+
+static func _pixel_reveal_rank(pixel_index: int, seeds: Vector2i) -> int:
+	var left := pixel_index & 15
+	var right := (pixel_index >> 4) & 15
+	for round_index in range(4):
+		var key_source := seeds.x if round_index < 2 else seeds.y
+		var key_shift := (
+			round_index * 4
+			if round_index < 2
+			else (round_index - 2) * 4
+		)
+		var round_key := (key_source >> key_shift) & 15
+		var round_value := posmod(
+			right * right * 5
+			+ right * (round_key * 2 + 1)
+			+ round_key * 7
+			+ round_index * 3,
+			16
+		)
+		var next_left := right
+		right = posmod(left + round_value, 16)
+		left = next_left
+	return right * 16 + left
 
 
 func _process(delta: float) -> void:

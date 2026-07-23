@@ -103,8 +103,14 @@ func _test_vegetation_stake_scene_contract() -> void:
 		and ring_light.color.is_equal_approx(
 			Color(0.52, 1.0, 0.24, 1.0)
 		)
-		and is_equal_approx(ring_light.texture_scale, 0.56)
-		and is_equal_approx(ring_light.night_energy, 0.4)
+		and is_equal_approx(ring_light.texture_scale, 0.75)
+		and is_equal_approx(ring_light.night_energy, 0.5)
+		and is_equal_approx(
+			float(VEGETATION_RING_TEXTURE.get_width())
+			* ring_light.texture_scale
+			* 0.5,
+			48.0
+		)
 		and (
 			float(VEGETATION_RING_TEXTURE.get_width())
 			* ring_light.texture_scale
@@ -112,7 +118,7 @@ func _test_vegetation_stake_scene_contract() -> void:
 			> LEGACY_VEGETATION_RING_RADIUS * 2.0
 		)
 		and not ring_light.shadow_enabled,
-		"植被桩必须只预置一盏由地块边框控制、半径超过旧版两倍的柔和绿色夜间环灯。"
+		"植被桩必须只预置一盏由地块边框控制、中心增亮且半径48像素的绿色夜间环灯。"
 	)
 	_expect(health_bar != null, "植被桩必须预置并绑定公共植物血条。")
 	root.add_child(stake)

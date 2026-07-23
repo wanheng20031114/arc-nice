@@ -390,6 +390,20 @@ func _test_particle_scenes_and_pool_release() -> void:
 
 	var smoke := REMOVAL_SMOKE_SCENE.instantiate() as PlantRemovalSmoke
 	var smoke_material := smoke.process_material as ParticleProcessMaterial
+	var smoke_canvas_material := smoke.material as CanvasItemMaterial
+	var smoke_texture := smoke.texture as GradientTexture2D
+	var smoke_initial_gradient := (
+		(smoke_material.color_initial_ramp as GradientTexture1D).gradient
+		if smoke_material != null
+		and smoke_material.color_initial_ramp is GradientTexture1D
+		else null
+	)
+	var smoke_lifetime_gradient := (
+		(smoke_material.color_ramp as GradientTexture1D).gradient
+		if smoke_material != null
+		and smoke_material.color_ramp is GradientTexture1D
+		else null
+	)
 	var collapse_audio := smoke.get_node_or_null("CollapseAudio") as AudioStreamPlayer2D
 	var collapse_stream := (
 		collapse_audio.stream as AudioStreamWAV
@@ -397,24 +411,38 @@ func _test_particle_scenes_and_pool_release() -> void:
 		else null
 	)
 	_expect(
-		smoke.amount == 10
-		and is_equal_approx(smoke.lifetime, 0.7)
+		smoke.amount == 18
+		and is_equal_approx(smoke.lifetime, 0.9)
 		and smoke.one_shot
 		and not smoke.local_coords
 		and smoke.fixed_fps == 30
+		and smoke.z_index == 8
+		and is_equal_approx(smoke.explosiveness, 0.86)
+		and smoke_canvas_material != null
+		and smoke_canvas_material.light_mode
+		== CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		and smoke_texture != null
+		and smoke_texture.width == 16
+		and smoke_texture.height == 16
 		and smoke_material != null
 		and smoke_material.emission_shape == ParticleProcessMaterial.EMISSION_SHAPE_BOX
 		and smoke_material.emission_box_extents == Vector3(8, 10, 1)
 		and smoke_material.direction == Vector3(0, -1, 0)
-		and is_equal_approx(smoke_material.initial_velocity_min, 4.0)
-		and is_equal_approx(smoke_material.initial_velocity_max, 9.0)
-		and is_equal_approx(smoke_material.radial_velocity_min, 8.0)
-		and is_equal_approx(smoke_material.radial_velocity_max, 16.0)
-		and smoke.visibility_rect == Rect2(-48, -48, 96, 96)
+		and is_equal_approx(smoke_material.initial_velocity_min, 5.0)
+		and is_equal_approx(smoke_material.initial_velocity_max, 11.0)
+		and is_equal_approx(smoke_material.radial_velocity_min, 16.0)
+		and is_equal_approx(smoke_material.radial_velocity_max, 30.0)
+		and is_equal_approx(smoke_material.scale_min, 0.75)
+		and is_equal_approx(smoke_material.scale_max, 1.35)
+		and smoke.visibility_rect == Rect2(-64, -64, 128, 128)
 		and smoke_material.scale_curve != null
-		and smoke_material.color_initial_ramp != null
-		and smoke_material.color_ramp != null,
-		"消亡烟雾必须保持10粒子、0.7秒，并以径向速度向更远处扩散且不被裁切。"
+		and smoke_initial_gradient != null
+		and smoke_initial_gradient.sample(0.0).a >= 0.49
+		and smoke_initial_gradient.sample(1.0).a >= 0.63
+		and smoke_lifetime_gradient != null
+		and smoke_lifetime_gradient.sample(0.08).a >= 0.89
+		and smoke_lifetime_gradient.sample(0.65).a >= 0.54,
+		"摧毁烟雾必须以18个可见黑灰烟团越过建筑层级，并在0.9秒内向外扩散。"
 	)
 	_expect(
 		collapse_audio != null
@@ -513,6 +541,14 @@ func _test_particle_scenes_and_pool_release() -> void:
 	var smoke_audio := smoke_lease.get_node("CollapseAudio") as AudioStreamPlayer2D
 	_expect(
 		smoke_lease.emitting
+		and is_equal_approx(
+			smoke_lease.amount_ratio,
+			PlantRemovalSmoke.DESTROYED_SMOKE_AMOUNT_RATIO
+		)
+		and is_equal_approx(
+			smoke_lease.self_modulate.a,
+			PlantRemovalSmoke.DESTROYED_SMOKE_ALPHA
+		)
 		and smoke_audio.playing
 		and smoke_audio.is_in_group(PlantRemovalSmoke.COLLAPSE_AUDIO_GROUP)
 		and int(pool.get_metrics(REMOVAL_SMOKE_SCENE.resource_path).get(
@@ -545,12 +581,29 @@ func _test_particle_scenes_and_pool_release() -> void:
 		"CollapseAudio"
 	) as AudioStreamPlayer2D
 	_expect(
-		manual_smoke_lease.emitting and not manual_smoke_audio.playing,
-		"主动撤除只能播放消散烟雾，不能误播建筑被摧毁的垮塌声。"
+		manual_smoke_lease.emitting
+		and is_equal_approx(
+			manual_smoke_lease.amount_ratio,
+			PlantRemovalSmoke.MANUAL_REMOVAL_SMOKE_AMOUNT_RATIO
+		)
+		and is_equal_approx(
+			manual_smoke_lease.self_modulate.a,
+			PlantRemovalSmoke.MANUAL_REMOVAL_SMOKE_ALPHA
+		)
+		and not manual_smoke_audio.playing,
+		"主动撤除只能播放较轻的消散烟雾，不能误播建筑被摧毁的垮塌声。"
 	)
 	manual_smoke_lease.finished.emit()
 	await physics_frame
 	await physics_frame
+	_expect(
+		is_equal_approx(
+			manual_smoke_lease.amount_ratio,
+			PlantRemovalSmoke.DESTROYED_SMOKE_AMOUNT_RATIO
+		)
+		and manual_smoke_lease.self_modulate.is_equal_approx(Color.WHITE),
+		"烟雾归还对象池时必须复位粒子比例与透明度，避免下一次摧毁继承弱效果。"
+	)
 
 	pool.queue_free()
 	await process_frame

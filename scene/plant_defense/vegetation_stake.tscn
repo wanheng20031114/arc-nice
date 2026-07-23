@@ -3,12 +3,12 @@
 [ext_resource type="Script" uid="uid://ckvxqcske210i" path="res://scene/plant_defense/vegetation_stake.gd" id="1_script"]
 [ext_resource type="Texture2D" uid="uid://7j2elewjts2l" path="res://resources/texture/plant_defense/vegetation_stake/vegetation_stake.png" id="2_sprite"]
 [ext_resource type="Texture2D" uid="uid://dkb7hqmpnqe1i" path="res://resources/texture/plant_defense/vegetation_stake/vegetation_stake_glow.png" id="3_glow"]
-[ext_resource type="ShaderMaterial" path="res://resources/shader/plant_lifecycle_material.tres" id="4_lifecycle_material"]
+[ext_resource type="Material" path="res://resources/shader/plant_lifecycle_material.tres" id="4_lifecycle_material"]
 [ext_resource type="Shader" uid="uid://dvyineny3ai08" path="res://resources/shader/vegetation_stake_glow.gdshader" id="5_glow_shader"]
 [ext_resource type="Shader" uid="uid://o4263aym3yuw" path="res://resources/shader/vegetation_stake_border.gdshader" id="6_border_shader"]
 [ext_resource type="PackedScene" uid="uid://by1igl2yc3ch0" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="7_health_bar"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="8_night_light"]
-[ext_resource type="Texture2D" path="res://resources/lighting/vegetation_ring_point_light.tres" id="9_ring_light_texture"]
+[ext_resource type="Texture2D" uid="uid://gernt1wi2pts" path="res://resources/lighting/vegetation_ring_point_light.tres" id="9_ring_light_texture"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_border"]
 shader = ExtResource("6_border_shader")
@@ -60,11 +60,11 @@ texture_filter = 1
 material = SubResource("ShaderMaterial_border")
 mesh = SubResource("QuadMesh_border")
 
-[node name="NightRingLight" parent="CellBorder" instance=ExtResource("8_night_light")]
+[node name="NightRingLight" parent="CellBorder" unique_id=1539558552 instance=ExtResource("8_night_light")]
 color = Color(0.52, 1, 0.24, 1)
 texture = ExtResource("9_ring_light_texture")
-texture_scale = 0.56
-night_energy = 0.4
+texture_scale = 0.75
+night_energy = 0.5
 
 [node name="MainSprite" type="Sprite2D" parent="." unique_id=363835597]
 z_index = 1

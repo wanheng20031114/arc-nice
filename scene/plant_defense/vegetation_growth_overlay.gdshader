@@ -23,16 +23,35 @@ void vertex() {
 	instance_data = INSTANCE_CUSTOM;
 }
 
+vec2 feistel_step(vec2 state, float round_key, float round_index) {
+	float round_value = mod(
+		state.y * state.y * 5.0
+		+ state.y * (round_key * 2.0 + 1.0)
+		+ round_key * 7.0
+		+ round_index * 3.0,
+		16.0
+	);
+	return vec2(state.y, mod(state.x + round_value, 16.0));
+}
+
+float pixel_reveal_rank(vec2 pixel, float seed_a, float seed_b) {
+	vec2 state = pixel;
+	state = feistel_step(state, mod(seed_a, 16.0), 0.0);
+	state = feistel_step(state, floor(seed_a / 16.0), 1.0);
+	state = feistel_step(state, mod(seed_b, 16.0), 2.0);
+	state = feistel_step(state, floor(seed_b / 16.0), 3.0);
+	return state.y * 16.0 + state.x;
+}
+
 void fragment() {
 	vec2 pixel = min(floor(UV * LOGICAL_PIXELS), vec2(LOGICAL_PIXELS - 1.0));
-	float pixel_index = pixel.y * LOGICAL_PIXELS + pixel.x;
-	float offset = floor(instance_data.g * 256.0);
-	float odd_multiplier = floor(instance_data.b * 128.0) * 2.0 + 1.0;
-	float reveal_rank = mod(pixel_index * odd_multiplier + offset, 256.0);
+	float seed_a = floor(instance_data.g * 256.0);
+	float seed_b = floor(instance_data.b * 128.0);
+	float reveal_rank = pixel_reveal_rank(pixel, seed_a, seed_b);
 	float reveal_count = floor(clamp(instance_data.r, 0.0, 1.0) * MAX_REVEALED_PIXELS + 0.0001);
 	if (reveal_rank >= reveal_count) {
 		discard;
 	}
-	float palette_index = mod(reveal_rank + floor(offset * 0.25), 4.0);
+	float palette_index = mod(reveal_rank + floor(seed_a * 0.25), 4.0);
 	COLOR = vec4(vegetation_color(palette_index), 1.0);
 }

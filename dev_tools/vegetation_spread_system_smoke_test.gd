@@ -117,6 +117,43 @@ func _test_ring_geometry_and_pixel_hash() -> void:
 		full == VegetationSpreadSystem.get_revealed_pixel_indices(cell, 1.0),
 		"相同世界格的绿化像素哈希必须稳定。"
 	)
+	_expect(
+		full != VegetationSpreadSystem.get_revealed_pixel_indices(
+			Vector2i(18, -9),
+			1.0
+		),
+		"不同世界格必须使用不同的离散绿化点图案。"
+	)
+	var occupied_rows: Dictionary = {}
+	var occupied_columns: Dictionary = {}
+	var row_counts: Dictionary = {}
+	var column_counts: Dictionary = {}
+	for pixel_index in full:
+		var row := pixel_index >> 4
+		var column := pixel_index & 15
+		occupied_rows[row] = true
+		occupied_columns[column] = true
+		row_counts[row] = int(row_counts.get(row, 0)) + 1
+		column_counts[column] = int(column_counts.get(column, 0)) + 1
+	_expect(
+		occupied_rows.size() == 16 and occupied_columns.size() == 16,
+		"完整临时绿化必须散布到16行与16列，不能聚成几条带状线。"
+	)
+	_expect(
+		_max_dictionary_value(row_counts) <= 4
+		and _max_dictionary_value(column_counts) <= 3,
+		"离散绿化点在任一行列都不能堆叠成明显线段。"
+	)
+	var reveal_order := _get_pixel_reveal_order(cell)
+	var delta_counts: Dictionary = {}
+	for index in range(1, reveal_order.size()):
+		var delta := posmod(reveal_order[index] - reveal_order[index - 1], 256)
+		delta_counts[delta] = int(delta_counts.get(delta, 0)) + 1
+	_expect(
+		delta_counts.size() >= 20
+		and _max_dictionary_value(delta_counts) <= 6,
+		"绿化点出现顺序必须使用多种空间步长，不能退回等差线排列。"
+	)
 
 
 func _test_overlay_coalescing_and_layout_reuse() -> void:
@@ -563,6 +600,33 @@ func _count_terrain_type(terrain_type: int) -> int:
 		if int(terrain.raw_cells[cell_variant]) == terrain_type:
 			count += 1
 	return count
+
+
+func _get_pixel_reveal_order(cell: Vector2i) -> PackedInt32Array:
+	var result := PackedInt32Array()
+	var already_revealed: Dictionary = {}
+	for reveal_count in range(1, VegetationSpreadSystem.MAX_REVEALED_PIXELS + 1):
+		var progress := (
+			float(reveal_count)
+			/ float(VegetationSpreadSystem.MAX_REVEALED_PIXELS)
+		)
+		var revealed := VegetationSpreadSystem.get_revealed_pixel_indices(
+			cell,
+			progress
+		)
+		for pixel_index in revealed:
+			if already_revealed.has(pixel_index):
+				continue
+			already_revealed[pixel_index] = true
+			result.append(pixel_index)
+	return result
+
+
+func _max_dictionary_value(values: Dictionary) -> int:
+	var maximum := 0
+	for value in values.values():
+		maximum = maxi(maximum, int(value))
+	return maximum
 
 
 func _expect(condition: bool, message: String) -> void:

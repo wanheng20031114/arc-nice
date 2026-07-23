@@ -377,22 +377,23 @@ func _test_authored_scene_contracts() -> void:
 		and VEGETATION_RING_TEXTURE.fill
 		== GradientTexture2D.FILL_RADIAL
 		and vegetation_ring_gradient != null
-		and vegetation_ring_gradient.sample(0.0).r < 0.001
-		and vegetation_ring_gradient.sample(0.13).r > 0.03
-		and vegetation_ring_gradient.sample(0.13).r < 0.04
-		and vegetation_ring_gradient.sample(0.223).r > 0.99
-		and vegetation_ring_gradient.sample(0.297).r > 0.31
-		and vegetation_ring_gradient.sample(0.297).r < 0.33
-		and vegetation_ring_gradient.sample(0.48).r > 0.17
-		and vegetation_ring_gradient.sample(0.48).r < 0.19
-		and vegetation_ring_gradient.sample(0.7).r > 0.1
-		and vegetation_ring_gradient.sample(0.7).r < 0.11
-		and vegetation_ring_gradient.sample(0.85).r > 0.045
-		and vegetation_ring_gradient.sample(0.85).r < 0.06
-		and vegetation_ring_gradient.sample(0.95).r > 0.005
-		and vegetation_ring_gradient.sample(0.95).r < 0.02
+		and vegetation_ring_gradient.sample(0.0).r > 0.41
+		and vegetation_ring_gradient.sample(0.0).r < 0.43
+		and vegetation_ring_gradient.sample(0.083).r > 0.69
+		and vegetation_ring_gradient.sample(0.083).r < 0.71
+		and vegetation_ring_gradient.sample(0.167).r > 0.99
+		and vegetation_ring_gradient.sample(0.25).r > 0.63
+		and vegetation_ring_gradient.sample(0.25).r < 0.65
+		and vegetation_ring_gradient.sample(0.375).r > 0.33
+		and vegetation_ring_gradient.sample(0.375).r < 0.35
+		and vegetation_ring_gradient.sample(0.583).r > 0.17
+		and vegetation_ring_gradient.sample(0.583).r < 0.19
+		and vegetation_ring_gradient.sample(0.792).r > 0.07
+		and vegetation_ring_gradient.sample(0.792).r < 0.09
+		and vegetation_ring_gradient.sample(0.917).r > 0.015
+		and vegetation_ring_gradient.sample(0.917).r < 0.025
 		and vegetation_ring_gradient.sample(1.0).r < 0.001,
-		"植被桩环灯必须保留核心亮环，并以128采样向两倍以上半径平滑衰减。"
+		"植被桩环灯必须照亮中心与内圈，并以128采样向扩大后的外沿平滑衰减。"
 	)
 
 	for player_scene in PLAYER_SCENES:
@@ -434,8 +435,14 @@ func _test_authored_scene_contracts() -> void:
 		and ring_light.color.is_equal_approx(
 			Color(0.52, 1.0, 0.24, 1.0)
 		)
-		and is_equal_approx(ring_light.texture_scale, 0.56)
-		and is_equal_approx(ring_light.night_energy, 0.4)
+		and is_equal_approx(ring_light.texture_scale, 0.75)
+		and is_equal_approx(ring_light.night_energy, 0.5)
+		and is_equal_approx(
+			float(VEGETATION_RING_TEXTURE.get_width())
+			* ring_light.texture_scale
+			* 0.5,
+			48.0
+		)
 		and (
 			float(VEGETATION_RING_TEXTURE.get_width())
 			* ring_light.texture_scale
@@ -445,7 +452,7 @@ func _test_authored_scene_contracts() -> void:
 		and not ring_light.shadow_enabled
 		and stake.get_node_or_null("CoreNightLight") == null
 		and stake.get_node_or_null("NightRingLight") == null,
-		"植被桩必须只保留一盏核心亮度稳定、半径超过旧版两倍的柔和绿色夜间环灯。"
+		"植被桩必须只保留一盏中心增亮、半径48像素的柔和绿色夜间环灯。"
 	)
 	_expect(
 		motes.texture == null
