@@ -606,7 +606,9 @@ func _create_stress_lights() -> void:
 
 func _position_stress_lights_spread() -> void:
 	var light_radius := (
-		64.0 * GREEN_RING_TEXTURE_SCALE * 0.5
+		float(VEGETATION_RING_TEXTURE.get_width())
+		* GREEN_RING_TEXTURE_SCALE
+		* 0.5
 	)
 	var spread_rect := _fixture_visible_rect().grow(-light_radius)
 	if spread_rect.size.x <= 0.0 or spread_rect.size.y <= 0.0:
@@ -1756,7 +1758,9 @@ func _camera_screen_center() -> Vector2:
 
 func _count_visible_stress_lights() -> int:
 	var visible_rect := _fixture_visible_rect().grow(
-		64.0 * GREEN_RING_TEXTURE_SCALE * 0.5
+		float(VEGETATION_RING_TEXTURE.get_width())
+		* GREEN_RING_TEXTURE_SCALE
+		* 0.5
 	)
 	var count := 0
 	for light in stress_lights:

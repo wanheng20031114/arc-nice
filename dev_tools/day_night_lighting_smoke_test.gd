@@ -28,6 +28,10 @@ const SOFT_MICRO_TEXTURE := preload(
 const VEGETATION_RING_TEXTURE := preload(
 	"res://resources/lighting/vegetation_ring_point_light.tres"
 )
+const LEGACY_VEGETATION_RING_RADIUS := 64.0 * 0.52 * 0.5
+const MIN_EXPANDED_VEGETATION_RING_RADIUS := (
+	LEGACY_VEGETATION_RING_RADIUS * 2.0
+)
 
 var failures: Array[String] = []
 
@@ -276,6 +280,31 @@ func _test_authored_scene_contracts() -> void:
 		< 0.001,
 		"玩家柔光必须使用低亮度长尾径向渐变，让最外缘连续衰减至不可见。"
 	)
+	var vegetation_ring_gradient := VEGETATION_RING_TEXTURE.gradient
+	_expect(
+		VEGETATION_RING_TEXTURE is GradientTexture2D
+		and VEGETATION_RING_TEXTURE.width == 128
+		and VEGETATION_RING_TEXTURE.height == 128
+		and VEGETATION_RING_TEXTURE.fill
+		== GradientTexture2D.FILL_RADIAL
+		and vegetation_ring_gradient != null
+		and vegetation_ring_gradient.sample(0.0).r < 0.001
+		and vegetation_ring_gradient.sample(0.13).r > 0.03
+		and vegetation_ring_gradient.sample(0.13).r < 0.04
+		and vegetation_ring_gradient.sample(0.223).r > 0.99
+		and vegetation_ring_gradient.sample(0.297).r > 0.31
+		and vegetation_ring_gradient.sample(0.297).r < 0.33
+		and vegetation_ring_gradient.sample(0.48).r > 0.17
+		and vegetation_ring_gradient.sample(0.48).r < 0.19
+		and vegetation_ring_gradient.sample(0.7).r > 0.1
+		and vegetation_ring_gradient.sample(0.7).r < 0.11
+		and vegetation_ring_gradient.sample(0.85).r > 0.045
+		and vegetation_ring_gradient.sample(0.85).r < 0.06
+		and vegetation_ring_gradient.sample(0.95).r > 0.005
+		and vegetation_ring_gradient.sample(0.95).r < 0.02
+		and vegetation_ring_gradient.sample(1.0).r < 0.001,
+		"植被桩环灯必须保留核心亮环，并以128采样向两倍以上半径平滑衰减。"
+	)
 
 	for player_scene in PLAYER_SCENES:
 		var player := player_scene.instantiate() as Player
@@ -316,12 +345,18 @@ func _test_authored_scene_contracts() -> void:
 		and ring_light.color.is_equal_approx(
 			Color(0.52, 1.0, 0.24, 1.0)
 		)
-		and is_equal_approx(ring_light.texture_scale, 0.52)
-		and is_equal_approx(ring_light.night_energy, 0.38)
+		and is_equal_approx(ring_light.texture_scale, 0.56)
+		and is_equal_approx(ring_light.night_energy, 0.4)
+		and (
+			float(VEGETATION_RING_TEXTURE.get_width())
+			* ring_light.texture_scale
+			* 0.5
+			> MIN_EXPANDED_VEGETATION_RING_RADIUS
+		)
 		and not ring_light.shadow_enabled
 		and stake.get_node_or_null("CoreNightLight") == null
 		and stake.get_node_or_null("NightRingLight") == null,
-		"植被桩必须只保留一盏贴合地块边缘的柔和绿色夜间环灯。"
+		"植被桩必须只保留一盏核心亮度稳定、半径超过旧版两倍的柔和绿色夜间环灯。"
 	)
 	_expect(
 		motes.texture == null

@@ -63,8 +63,8 @@ mesh = SubResource("QuadMesh_border")
 [node name="NightRingLight" parent="CellBorder" instance=ExtResource("8_night_light")]
 color = Color(0.52, 1, 0.24, 1)
 texture = ExtResource("9_ring_light_texture")
-texture_scale = 0.52
-night_energy = 0.38
+texture_scale = 0.56
+night_energy = 0.4
 
 [node name="MainSprite" type="Sprite2D" parent="." unique_id=363835597]
 z_index = 1

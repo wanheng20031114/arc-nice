@@ -7,6 +7,7 @@ const VEGETATION_STAKE_CONFIG := preload(
 const VEGETATION_RING_TEXTURE := preload(
 	"res://resources/lighting/vegetation_ring_point_light.tres"
 )
+const LEGACY_VEGETATION_RING_RADIUS := 64.0 * 0.52 * 0.5
 const AGAVE_CONFIG := preload("res://resources/config/plant_defense/agave_cannon.tres")
 const ENEMY_CONFIG := preload("res://resources/config/enemies/capoo_ak47.tres")
 const AUTHORITATIVE_BATCH_CELL_COUNT := 193
@@ -102,10 +103,16 @@ func _test_vegetation_stake_scene_contract() -> void:
 		and ring_light.color.is_equal_approx(
 			Color(0.52, 1.0, 0.24, 1.0)
 		)
-		and is_equal_approx(ring_light.texture_scale, 0.52)
-		and is_equal_approx(ring_light.night_energy, 0.38)
+		and is_equal_approx(ring_light.texture_scale, 0.56)
+		and is_equal_approx(ring_light.night_energy, 0.4)
+		and (
+			float(VEGETATION_RING_TEXTURE.get_width())
+			* ring_light.texture_scale
+			* 0.5
+			> LEGACY_VEGETATION_RING_RADIUS * 2.0
+		)
 		and not ring_light.shadow_enabled,
-		"植被桩必须只预置一盏由地块边框控制可见性的柔和绿色夜间环灯。"
+		"植被桩必须只预置一盏由地块边框控制、半径超过旧版两倍的柔和绿色夜间环灯。"
 	)
 	_expect(health_bar != null, "植被桩必须预置并绑定公共植物血条。")
 	root.add_child(stake)

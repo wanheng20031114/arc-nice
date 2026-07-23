@@ -1,11 +1,13 @@
 [gd_resource type="GradientTexture2D" format=3 uid="uid://gernt1wi2pts"]
 
 [sub_resource type="Gradient" id="Gradient_vegetation_ring"]
-offsets = PackedFloat32Array(0, 0.28, 0.48, 0.64, 1)
-colors = PackedColorArray(0, 0, 0, 1, 0.035, 0.035, 0.035, 1, 1, 1, 1, 1, 0.32, 0.32, 0.32, 1, 0, 0, 0, 1)
+offsets = PackedFloat32Array(0, 0.13, 0.223, 0.297, 0.48, 0.7, 0.85, 0.95, 1)
+colors = PackedColorArray(0, 0, 0, 1, 0.035, 0.035, 0.035, 1, 1, 1, 1, 1, 0.32, 0.32, 0.32, 1, 0.18, 0.18, 0.18, 1, 0.105, 0.105, 0.105, 1, 0.052, 0.052, 0.052, 1, 0.012, 0.012, 0.012, 1, 0, 0, 0, 1)
 
 [resource]
 gradient = SubResource("Gradient_vegetation_ring")
+width = 128
+height = 128
 fill = 1
 fill_from = Vector2(0.5, 0.5)
 fill_to = Vector2(1, 0.5)
