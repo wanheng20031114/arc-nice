@@ -9,7 +9,6 @@
 [ext_resource type="Resource" uid="uid://bwc31dxuxgnhs" path="res://resources/config/enemies/capoo_ak47.tres" id="7_7vt7b"]
 [ext_resource type="Resource" uid="uid://b361vcg4kkw13" path="res://resources/config/enemies/capoo_knight.tres" id="8_bc71k"]
 [ext_resource type="Resource" uid="uid://vfkjlbk30xa2" path="res://resources/config/enemies/capoo_knight_elite.tres" id="9_7w3ve"]
-[ext_resource type="Resource" uid="uid://klao2nkyv20m" path="res://resources/config/enemies/stone_golem.tres" id="stone_golem"]
 [ext_resource type="Resource" uid="uid://57jdvc0bd7r8" path="res://resources/config/enemies/capoo_swordsman.tres" id="10_8mab1"]
 [ext_resource type="Resource" uid="uid://drv4a8xgl4k2c" path="res://resources/config/enemies/capoo_smg.tres" id="11_h6maj"]
 [ext_resource type="Resource" uid="uid://uaeho5a1060p" path="res://resources/config/enemies/capoo_rpg.tres" id="12_pwp25"]
@@ -19,6 +18,7 @@
 [ext_resource type="AudioStream" uid="uid://c164munr8xpwj" path="res://resources/audio/shenmu_town_combat.ogg" id="16_yle0f"]
 [ext_resource type="AudioStream" uid="uid://d0sjivcq682gn" path="res://resources/audio/shenmu_town_intermission.ogg" id="17_qeo1w"]
 [ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="18_g0mn4"]
+[ext_resource type="Resource" uid="uid://klao2nkyv20m" path="res://resources/config/enemies/stone_golem.tres" id="stone_golem"]
 
 [sub_resource type="Resource" id="Resource_4qevx"]
 script = ExtResource("1_ni0i1")

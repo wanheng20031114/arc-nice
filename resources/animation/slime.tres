@@ -1,4 +1,4 @@
-[gd_resource type="SpriteFrames" format=3]
+[gd_resource type="SpriteFrames" format=3 uid="uid://bdcp6mac2788w"]
 
 [ext_resource type="Texture2D" uid="uid://bb0wjuv544tv1" path="res://resources/texture/slime.png" id="1_texture"]
 
@@ -40,7 +40,7 @@ animations = [{
 }],
 "loop": false,
 "name": &"death",
-"speed": 10.0
+"speed": 6.0
 }, {
 "frames": [{
 "duration": 1.0,

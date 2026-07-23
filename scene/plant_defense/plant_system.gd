@@ -509,6 +509,31 @@ func find_nearest_living_plant_world(
 	return null
 
 
+## Exact allocation-free world-radius query for friendly plant auras. The
+## shared stationary index performs the broad phase while the caller owns the
+## result array and the final circular filter.
+func query_living_plants_in_world_radius_into(
+	center: Vector2,
+	radius: float,
+	result: Array[PlantDefense]
+) -> void:
+	result.clear()
+	if not center.is_finite() or not is_finite(radius) or radius < 0.0:
+		return
+	var candidates := _query_plant_targets_in_world_aabb(
+		center,
+		Vector2.ONE * radius
+	)
+	var radius_squared := radius * radius
+	for candidate_variant in candidates:
+		var plant := candidate_variant as PlantDefense
+		if not _is_living_plant_target(plant):
+			continue
+		if center.distance_squared_to(plant.global_position) > radius_squared:
+			continue
+		result.append(plant)
+
+
 ## Exact nearest-building query for authoritative multiplayer interaction.
 ##
 ## Interaction commands are infrequent, but their old implementation rebuilt a

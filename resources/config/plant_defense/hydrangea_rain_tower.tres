@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="HydrangeaRainTowerConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/plant_defense/hydrangea_rain_tower_config.gd" id="1_config"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/hydrangea_rain_tower/idle.png" id="2_icon"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/hydrangea_rain_tower.tscn" id="3_scene"]
+
+[resource]
+script = ExtResource("1_config")
+plant_id = &"hydrangea_rain_tower"
+display_name = "紫阳花雨幕塔"
+description = "每10秒展开花簇并降下持续3秒的绚彩雨幕。每秒为半径160内所有友方单位恢复50点生命，对敌人造成5点法术伤害，并使其攻击力降低20%持续3秒。"
+icon = ExtResource("2_icon")
+plant_scene = ExtResource("3_scene")
+supports_multiplayer = true
+max_health = 6000
+physical_defense = 10
+magic_defense = 40
+attack_damage = 5
+attack_speed = 10.0
+attack_range = 160.0
+footprint_size = Vector2i(2, 2)
+rain_interval_seconds = 10.0
+rain_duration_seconds = 3.0
+rain_tick_interval_seconds = 1.0
+healing_per_tick = 50
+magic_damage_per_tick = 5
+enemy_attack_damage_multiplier = 0.8
+attack_reduction_duration_seconds = 3.0
+rain_radius = 160.0

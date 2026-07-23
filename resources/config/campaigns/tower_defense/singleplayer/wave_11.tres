@@ -9,7 +9,6 @@
 [ext_resource type="Resource" uid="uid://bwc31dxuxgnhs" path="res://resources/config/enemies/capoo_ak47.tres" id="7_vhbp1"]
 [ext_resource type="Resource" uid="uid://b361vcg4kkw13" path="res://resources/config/enemies/capoo_knight.tres" id="8_nesrx"]
 [ext_resource type="Resource" uid="uid://vfkjlbk30xa2" path="res://resources/config/enemies/capoo_knight_elite.tres" id="9_wbopm"]
-[ext_resource type="Resource" uid="uid://klao2nkyv20m" path="res://resources/config/enemies/stone_golem.tres" id="stone_golem"]
 [ext_resource type="Resource" uid="uid://57jdvc0bd7r8" path="res://resources/config/enemies/capoo_swordsman.tres" id="10_lw1hp"]
 [ext_resource type="Resource" uid="uid://drv4a8xgl4k2c" path="res://resources/config/enemies/capoo_smg.tres" id="11_05iqc"]
 [ext_resource type="Resource" uid="uid://uaeho5a1060p" path="res://resources/config/enemies/capoo_rpg.tres" id="12_lqcsd"]
@@ -19,6 +18,7 @@
 [ext_resource type="AudioStream" uid="uid://c164munr8xpwj" path="res://resources/audio/shenmu_town_combat.ogg" id="16_3sbc6"]
 [ext_resource type="AudioStream" uid="uid://d0sjivcq682gn" path="res://resources/audio/shenmu_town_intermission.ogg" id="17_55fso"]
 [ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="18_m0wjl"]
+[ext_resource type="Resource" uid="uid://klao2nkyv20m" path="res://resources/config/enemies/stone_golem.tres" id="stone_golem"]
 
 [sub_resource type="Resource" id="Resource_nx8ld"]
 script = ExtResource("1_r7v62")
@@ -115,7 +115,6 @@ wave_name = "第11波"
 enemy_entries = Array[ExtResource("1_r7v62")]([SubResource("Resource_nx8ld"), SubResource("Resource_obfd0"), SubResource("Resource_dt1hw"), SubResource("Resource_ibunf"), SubResource("Resource_cvstc"), SubResource("Resource_os7b6"), SubResource("Resource_lbe7i"), SubResource("Resource_0gdjs"), SubResource("Resource_stone_golem"), SubResource("Resource_fassm"), SubResource("Resource_bmckh"), SubResource("Resource_14esh"), SubResource("Resource_6nchk"), SubResource("Resource_exdp8")])
 spawn_point_mask = 63
 spawn_interval = 0.025
-spawn_count_per_tick = 1
 max_alive_enemies = 300
 music = ExtResource("16_3sbc6")
 post_wave_music = ExtResource("17_55fso")

@@ -584,6 +584,21 @@ func apply_authoritative_plant_enemy_damage_batch(
 	)
 
 
+func query_living_plants_in_radius_into(
+	center: Vector2,
+	radius: float,
+	result: Array[PlantDefense]
+) -> void:
+	result.clear()
+	if plant_system == null:
+		return
+	plant_system.query_living_plants_in_world_radius_into(
+		center,
+		radius,
+		result
+	)
+
+
 func get_bamboo_mortar_combat_metrics() -> Dictionary:
 	if bamboo_mortar_combat_system == null:
 		return {}

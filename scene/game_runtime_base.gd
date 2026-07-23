@@ -363,6 +363,66 @@ func find_nearest_enemy_attack_target(
 	return nearest_player
 
 
+## Fills caller-owned storage with every living allied player in an exact
+## world-space circle. Plant auras use this facade in both solo and Host modes
+## without rebuilding the scene tree or allocating a temporary player list.
+func query_living_players_in_radius_into(
+	center: Vector2,
+	radius: float,
+	result: Array[Player]
+) -> void:
+	result.clear()
+	if not center.is_finite() or not is_finite(radius) or radius < 0.0:
+		return
+	var radius_squared := radius * radius
+	if (
+		player != null
+		and is_instance_valid(player)
+		and not player.is_dead
+		and not player.is_queued_for_deletion()
+		and center.distance_squared_to(player.global_position) <= radius_squared
+	):
+		result.append(player)
+	for peer_id_variant in peer_players:
+		var candidate := peer_players[peer_id_variant] as Player
+		if (
+			candidate == null
+			or candidate == player
+			or not is_instance_valid(candidate)
+			or candidate.is_dead
+			or candidate.is_queued_for_deletion()
+			or center.distance_squared_to(candidate.global_position) > radius_squared
+		):
+			continue
+		result.append(candidate)
+
+
+## Standard mode has no plant population. Tower-defense runtimes override this
+## contract with their maintained plant spatial index.
+func query_living_plants_in_radius_into(
+	_center: Vector2,
+	_radius: float,
+	result: Array[PlantDefense]
+) -> void:
+	result.clear()
+
+
+## Single-player and Host-authoritative runtimes share one explicit plant-aura
+## healing gateway. Multiplayer replication wraps this method in MpGame.
+func apply_authoritative_player_heal(
+	target_player: Player,
+	heal_amount: int
+) -> bool:
+	if (
+		runtime_mode == RuntimeMode.CLIENT_VIEW
+		or target_player == null
+		or not is_instance_valid(target_player)
+		or heal_amount <= 0
+	):
+		return false
+	return target_player._try_heal(heal_amount)
+
+
 func enable_singleplayer_combat_target_index(force_local_queries: bool = false) -> void:
 	if runtime_mode != RuntimeMode.SINGLEPLAYER:
 		return

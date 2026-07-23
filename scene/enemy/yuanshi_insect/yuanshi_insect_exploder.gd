@@ -18,15 +18,28 @@ const EXPLOSION_QUERY_BATCH_SIZE := 64
 )
 
 var explosion_damage_done := false
+var outgoing_explosion_damage_snapshot := 0
 
 
 func _apply_config() -> void:
 	super._apply_config()
+	outgoing_explosion_damage_snapshot = 0
 
 	if config == null:
 		return
 
 	_apply_explosion_radius(config.explosion_radius)
+
+
+func _die() -> void:
+	if is_dead:
+		return
+	outgoing_explosion_damage_snapshot = (
+		get_effective_attack_damage(config.explosion_damage)
+		if config != null
+		else 0
+	)
+	super._die()
 
 
 # 将配置中的爆炸半径同步到一次性爆炸检测区。
@@ -92,6 +105,12 @@ func _try_apply_explosion_damage() -> void:
 		return
 	if explosion_shape.shape == null:
 		return
+	# Normal death flow snapshots before Enemy clears timed statuses. Keep direct
+	# test/editor invocation deterministic without replacing a valid death snapshot.
+	if outgoing_explosion_damage_snapshot <= 0:
+		outgoing_explosion_damage_snapshot = get_effective_attack_damage(
+			config.explosion_damage
+		)
 
 	var space_state := get_world_2d().direct_space_state
 	if space_state == null:
@@ -131,7 +150,7 @@ func _try_apply_explosion_damage() -> void:
 		if hit_player != null:
 			_apply_multiplayer_player_damage(
 				hit_player,
-				config.explosion_damage,
+				outgoing_explosion_damage_snapshot,
 				_get_multiplayer_damage_source_id(900000),
 				&"yuanshi_explosion"
 			)

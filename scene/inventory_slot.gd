@@ -12,7 +12,7 @@ signal slot_selected(slot_index: int)
 
 @export var slot_index: int = -1
 
-@onready var item_icon: TextureRect = $Icon
+@onready var item_icon: Sprite2D = $Icon
 @onready var stack_count_label: Label = $StackCount
 
 var item: PickupConfig = null
@@ -44,8 +44,10 @@ func set_item(new_item: PickupConfig, new_stack_count: int = 1) -> void:
 	item = new_item
 	stack_count = maxi(new_stack_count, 0) if item != null else 0
 	item_icon.texture = null
+	item_icon.scale = Vector2.ONE
 	if item != null:
 		item_icon.texture = item.icon_texture
+		item_icon.scale = item.icon_scale
 	stack_count_label.visible = item != null and stack_count > 1
 	stack_count_label.text = str(stack_count)
 	tooltip_text = _get_tooltip_text()

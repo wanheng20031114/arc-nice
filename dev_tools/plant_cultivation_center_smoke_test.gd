@@ -30,6 +30,9 @@ const CORN_BUILDING_ITEM := preload(
 const BAMBOO_MORTAR_BUILDING_ITEM := preload(
 	"res://resources/config/buildings/building_bamboo_mortar.tres"
 )
+const HYDRANGEA_RAIN_TOWER_BUILDING_ITEM := preload(
+	"res://resources/config/buildings/building_hydrangea_rain_tower.tres"
+)
 const HOTSPOT_LIGHT_TEXTURE := preload(
 	"res://resources/lighting/plant_cultivation_center_hotspots.svg"
 )
@@ -89,8 +92,8 @@ func _run() -> void:
 		"植物培育中心必须占2×2格，拥有1500生命、10物防、10法防并支持联机。"
 	)
 	_expect(
-		PlantDefenseRegistry.get_all_configs().size() == 10,
-		"公共注册表必须同时包含植物培育中心、竹筒迫击炮与种植基地，共10种建筑。"
+		PlantDefenseRegistry.get_all_configs().size() == 11,
+		"公共注册表必须同时包含植物培育中心、竹筒迫击炮、种植基地与紫阳花雨幕塔，共11种建筑。"
 	)
 	if config == null:
 		_finish(test_root)
@@ -131,7 +134,7 @@ func _run() -> void:
 	center.set_shared_production_panel(panel)
 
 	_expect(
-		center.recipes.size() == 3
+		center.recipes.size() == 4
 		and center.recipes[0].input_items == [WOODEN_CORE]
 		and center.recipes[0].input_amounts == [1]
 		and center.recipes[0].output_items == [AGAVE_BUILDING_ITEM]
@@ -150,8 +153,15 @@ func _run() -> void:
 		== [BAMBOO_MORTAR_BUILDING_ITEM]
 		and center.recipes[2].output_amounts == [1]
 		and is_equal_approx(center.recipes[2].duration_seconds, 30.0)
-		and center.recipes[2].outputs_to_player_inventory(),
-		"培育中心必须提供三个消耗1个木制核心的个人背包配方，并使用20、20、30秒培育时间。"
+		and center.recipes[2].outputs_to_player_inventory()
+		and center.recipes[3].input_items == [WOODEN_CORE]
+		and center.recipes[3].input_amounts == [1]
+		and center.recipes[3].output_items
+		== [HYDRANGEA_RAIN_TOWER_BUILDING_ITEM]
+		and center.recipes[3].output_amounts == [1]
+		and is_equal_approx(center.recipes[3].duration_seconds, 30.0)
+		and center.recipes[3].outputs_to_player_inventory(),
+		"培育中心必须提供四个消耗1个木制核心的个人背包配方，并使用20、20、30、30秒培育时间。"
 	)
 	_expect(
 		AGAVE_BUILDING_ITEM.pickup_type == PickupConfig.PickupType.BUILDING
@@ -167,8 +177,14 @@ func _run() -> void:
 		and BAMBOO_MORTAR_BUILDING_ITEM.placeable_plant_id
 		== &"bamboo_mortar"
 		and not BAMBOO_MORTAR_BUILDING_ITEM.stackable
-		and BAMBOO_MORTAR_BUILDING_ITEM.inventory_stack_limit == 1,
-		"三种产物必须是不可叠加且指向正确建筑配置的建筑物品。"
+		and BAMBOO_MORTAR_BUILDING_ITEM.inventory_stack_limit == 1
+		and HYDRANGEA_RAIN_TOWER_BUILDING_ITEM.pickup_type
+		== PickupConfig.PickupType.BUILDING
+		and HYDRANGEA_RAIN_TOWER_BUILDING_ITEM.placeable_plant_id
+		== &"hydrangea_rain_tower"
+		and not HYDRANGEA_RAIN_TOWER_BUILDING_ITEM.stackable
+		and HYDRANGEA_RAIN_TOWER_BUILDING_ITEM.inventory_stack_limit == 1,
+		"四种产物必须是不可叠加且指向正确建筑配置的建筑物品。"
 	)
 
 	var border := center.get_node_or_null("ProductionBorder") as MeshInstance2D
@@ -253,6 +269,24 @@ func _run() -> void:
 		and is_zero_approx(center.progress_elapsed_seconds),
 		"迫击炮必须在累计30秒时完成并进入独立背包槽位。"
 	)
+	_expect(
+		warehouse.try_add_storage_item_count(WOODEN_CORE, 1)
+		and center.select_recipe(&"wooden_core_to_hydrangea_rain_tower"),
+		"培育测试必须能切换至紫阳花雨幕塔配方。"
+	)
+	center.advance_shared_production_tick(29.0)
+	_expect(
+		run_state.get_item(5) == null
+		and is_equal_approx(center.progress_elapsed_seconds, 29.0),
+		"紫阳花雨幕塔培育到29秒时不得提前完成。"
+	)
+	center.advance_shared_production_tick(1.0)
+	_expect(
+		run_state.get_item(5) == HYDRANGEA_RAIN_TOWER_BUILDING_ITEM
+		and run_state.get_item_count(5) == 1
+		and is_zero_approx(center.progress_elapsed_seconds),
+		"紫阳花雨幕塔必须在累计30秒时完成并进入独立背包槽位。"
+	)
 	var profile_panel := (
 		PROFILE_PANEL_SCENE.instantiate() as PlayerProfilePanel
 	)
@@ -323,10 +357,12 @@ func _run() -> void:
 		and panel.recipe_rows[1].tooltip_text.contains("约 20.0 秒")
 		and panel.recipe_rows[2].visible
 		and panel.recipe_rows[2].tooltip_text.contains("约 30.0 秒")
-		and not panel.recipe_rows[3].visible
+		and panel.recipe_rows[3].visible
+		and panel.recipe_rows[3].tooltip_text.contains("约 30.0 秒")
+		and not panel.recipe_rows[4].visible
 		and progress_fill != null
 		and progress_fill.bg_color.g > 0.75,
-		"培育中心UI必须使用植物面板、嫩绿进度条，显示三条正确耗时的1投入1产物配方。"
+		"培育中心UI必须使用植物面板、嫩绿进度条，显示四条正确耗时的1投入1产物配方。"
 	)
 	_expect(
 		panel.building_title.position == Vector2(96.0, 23.0)
@@ -769,8 +805,8 @@ func _test_inventory_placement_request(
 	)
 	_expect(
 		controller.open_selection()
-		and controller.selection_hud.available_configs.size() == 10,
-		"T键免费调试入口必须继续展示全部10种建筑。"
+		and controller.selection_hud.available_configs.size() == 11,
+		"T键免费调试入口必须继续展示全部11种建筑。"
 	)
 	controller.cancel_placement()
 

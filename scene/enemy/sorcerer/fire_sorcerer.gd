@@ -402,10 +402,11 @@ func _spawn_fireball_volley(fire_config: FireConfig) -> bool:
 		push_warning("火焰术士齐射场景必须实例化 FireSorcererFireballVolley。")
 		return false
 
+	var outgoing_damage := get_effective_attack_damage(fire_config.attack_damage)
 	volley.top_level = true
 	volley.setup(
 		summon_direction,
-		fire_config.attack_damage,
+		outgoing_damage,
 		fire_config.projectile_speed,
 		fire_config.projectile_lifetime,
 		summon_target,
@@ -437,7 +438,7 @@ func _spawn_fireball_volley(fire_config: FireConfig) -> bool:
 			0,
 			volley.global_position,
 			summon_direction,
-			fire_config.attack_damage,
+			outgoing_damage,
 			fire_config.projectile_speed,
 			fire_config.projectile_lifetime,
 			false,

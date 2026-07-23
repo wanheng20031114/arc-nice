@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/hydrangea_rain_tower/idle.png" id="1_icon"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 7
+display_name = "紫阳花雨幕塔"
+drop_weight = 0.0
+description = "装箱后的紫阳花雨幕塔。使用后选择合法位置建造，成功落地时消耗1个。"
+can_store_in_inventory = true
+stackable = false
+inventory_stack_limit = 1
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(0.25, 0.25)
+world_lifetime = 24.0
+placeable_plant_id = &"hydrangea_rain_tower"
+duration = 0.0

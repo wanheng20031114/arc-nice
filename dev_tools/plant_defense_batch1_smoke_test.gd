@@ -196,6 +196,13 @@ func _test_config_and_scene_contracts() -> void:
 		planting_base_config != null and planting_base_config.is_valid(),
 		"种植基地配置必须有效。"
 	)
+	var hydrangea_config := PlantDefenseRegistry.get_config(
+		&"hydrangea_rain_tower"
+	)
+	_expect(
+		hydrangea_config != null and hydrangea_config.is_valid(),
+		"紫阳花雨幕塔配置必须有效。"
+	)
 	if (
 		oak_config == null
 		or wood_station_config == null
@@ -203,11 +210,12 @@ func _test_config_and_scene_contracts() -> void:
 		or research_center_config == null
 		or cultivation_center_config == null
 		or planting_base_config == null
+		or hydrangea_config == null
 	):
 		return
 	var registered_configs := PlantDefenseRegistry.get_all_configs()
 	_expect(
-		registered_configs.size() == 10
+		registered_configs.size() == 11
 		and registered_configs.has(agave_config)
 		and registered_configs.has(bamboo_mortar_config)
 		and registered_configs.has(corn_config)
@@ -218,9 +226,10 @@ func _test_config_and_scene_contracts() -> void:
 		and registered_configs.has(research_center_config)
 		and registered_configs.has(cultivation_center_config)
 		and registered_configs.has(planting_base_config)
+		and registered_configs.has(hydrangea_config)
 		and registered_configs[8] == bamboo_mortar_config
 		and registered_configs.back() == planting_base_config,
-		"植物注册表必须公开全部10种建筑，包括植物培育中心、竹筒迫击炮与种植基地。"
+		"植物注册表必须公开全部11种建筑，包括植物培育中心、竹筒迫击炮、种植基地与紫阳花雨幕塔。"
 	)
 	_expect(
 		bamboo_mortar_config.max_health == 2000
@@ -389,9 +398,14 @@ func _test_config_and_scene_contracts() -> void:
 		"64px植物放置幽灵必须在锚点原点以0.5静态缩放显示。"
 	)
 	for config in PlantDefenseRegistry.get_all_configs():
+		var expected_icon_size := (
+			Vector2(128, 128)
+			if config.plant_id == &"hydrangea_rain_tower"
+			else Vector2(64, 64)
+		)
 		_expect(
-			config.icon != null and config.icon.get_size() == Vector2(64, 64),
-			"每种植物配置都必须提供64×64组合图标。"
+			config.icon != null and config.icon.get_size() == expected_icon_size,
+			"旧植物必须保留64×64图标，紫阳花雨幕塔必须原生使用128×128图标。"
 		)
 
 	var vegetation_stake := vegetation_stake_config.plant_scene.instantiate() as PlantDefense
@@ -1411,7 +1425,7 @@ func _test_realtime_selection_and_cancel() -> void:
 	_expect(controller.is_selecting(), "打开后状态必须为SELECTING。")
 	_expect(controller.selection_hud.is_open(), "真实plant动作输入必须显示植物选择界面。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 10
+		controller.selection_hud.available_configs.size() == 11
 		and controller.selection_hud.available_configs.has(agave_config)
 		and controller.selection_hud.available_configs.has(
 			bamboo_mortar_config
@@ -1436,8 +1450,11 @@ func _test_realtime_selection_and_cancel() -> void:
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"planting_base")
 		)
-		and controller.selection_hud.cards.size() == 10,
-		"单人T键调试界面必须显示全部10种建筑，包括植物培育中心、竹筒迫击炮与种植基地。"
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"hydrangea_rain_tower")
+		)
+		and controller.selection_hud.cards.size() == 11,
+		"单人T键调试界面必须显示全部11种建筑，包括植物培育中心、竹筒迫击炮、种植基地与紫阳花雨幕塔。"
 	)
 	var agave_card: PlantSelectionCard = null
 	var bamboo_mortar_card: PlantSelectionCard = null
@@ -1686,7 +1703,7 @@ func _test_multiplayer_authority_contracts() -> void:
 	controller.set_multiplayer_request_mode(true)
 	_expect(controller.open_selection(), "多人植物选择必须仍可打开。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 10
+		controller.selection_hud.available_configs.size() == 11
 		and controller.selection_hud.available_configs.has(agave_config)
 		and controller.selection_hud.available_configs.has(
 			bamboo_mortar_config
@@ -1711,8 +1728,11 @@ func _test_multiplayer_authority_contracts() -> void:
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"planting_base")
 		)
-		and controller.selection_hud.cards.size() == 10,
-		"多人T键调试界面必须显示全部10种支持联机的建筑。"
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"hydrangea_rain_tower")
+		)
+		and controller.selection_hud.cards.size() == 11,
+		"多人T键调试界面必须显示全部11种支持联机的建筑。"
 	)
 	controller.cancel_placement()
 	var placement_requests: Array[Dictionary] = []

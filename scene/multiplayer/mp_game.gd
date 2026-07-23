@@ -7791,6 +7791,35 @@ func query_combat_targets_unordered_into(
 		result.append(enemy)
 
 
+func query_living_players_in_radius_into(
+	center: Vector2,
+	radius: float,
+	result: Array[Player]
+) -> void:
+	result.clear()
+	if game == null:
+		return
+	game.query_living_players_in_radius_into(center, radius, result)
+
+
+func query_living_plants_in_radius_into(
+	center: Vector2,
+	radius: float,
+	result: Array[PlantDefense]
+) -> void:
+	result.clear()
+	if game == null or not game.supports_tower_defense():
+		return
+	game.query_living_plants_in_radius_into(center, radius, result)
+
+
+func apply_authoritative_player_heal(
+	target_player: Player,
+	heal_amount: int
+) -> bool:
+	return apply_multiplayer_player_heal(target_player, heal_amount)
+
+
 func has_session_object_pool_scene(scene: PackedScene) -> bool:
 	return game != null and game.has_session_object_pool_scene(scene)
 
@@ -8501,6 +8530,8 @@ func _apply_plant_runtime_state(
 	for elapsed_key in [
 		"windup_elapsed_seconds",
 		"projectile_elapsed_seconds",
+		"cycle_elapsed_seconds",
+		"rain_elapsed_seconds",
 	]:
 		if not corrected_state.has(elapsed_key):
 			continue

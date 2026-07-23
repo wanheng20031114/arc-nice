@@ -1,6 +1,7 @@
 [gd_resource type="Resource" script_class="CapooSniperConfig" format=3 uid="uid://cqlpqyrs5d7d2"]
 
 [ext_resource type="Script" uid="uid://cc7ac136dc8l8" path="res://resources/config/enemies/capoo_sniper_config.gd" id="1_script"]
+[ext_resource type="Resource" uid="uid://rd6tadya5wqs" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="2_30c0e"]
 [ext_resource type="PackedScene" uid="uid://bv3hadhgf8c88" path="res://scene/enemy/capoo/capoo_sniper.tscn" id="2_scene"]
 [ext_resource type="PackedScene" path="res://scene/enemy/capoo/capoo_sniper_lock_reticle.tscn" id="3_reticle"]
 [ext_resource type="AudioStream" uid="uid://b0nwiuq3akcvc" path="res://resources/audio/capoo_sniper_fire.wav" id="4_audio"]
@@ -10,6 +11,7 @@ script = ExtResource("1_script")
 lock_reticle_scene = ExtResource("3_reticle")
 attack_audio_stream = ExtResource("4_audio")
 display_name = "狙击手 Capoo"
+category_tags = PackedStringArray("capoo")
 enemy_scene = ExtResource("2_scene")
 max_health = 100
 attack_damage = 200
@@ -17,4 +19,3 @@ physical_defense = 20
 move_speed = 80.0
 home_damage = 2
 xirang_kill_reward = 35
-category_tags = PackedStringArray("capoo")

@@ -310,7 +310,7 @@ func _try_deal_aura_damage() -> void:
 
 	_apply_multiplayer_player_damage(
 		aura_touched_player,
-		config.attack_damage,
+		get_effective_attack_damage(config.attack_damage),
 		_get_multiplayer_damage_source_id(int(Time.get_ticks_msec())),
 		&"yuanshi_aura"
 	)

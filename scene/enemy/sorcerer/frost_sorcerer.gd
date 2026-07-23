@@ -374,10 +374,11 @@ func _spawn_ice_spike(frost_config: FrostConfig) -> bool:
 		push_warning("寒冰术士投射物场景必须实例化 FrostSorcererIceSpike。")
 		return false
 
+	var outgoing_damage := get_effective_attack_damage(frost_config.attack_damage)
 	ice_spike.top_level = true
 	ice_spike.setup(
 		summon_direction,
-		frost_config.attack_damage,
+		outgoing_damage,
 		frost_config.projectile_speed,
 		frost_config.projectile_lifetime
 	)
@@ -402,7 +403,7 @@ func _spawn_ice_spike(frost_config: FrostConfig) -> bool:
 			0,
 			ice_spike.global_position,
 			summon_direction,
-			frost_config.attack_damage,
+			outgoing_damage,
 			frost_config.projectile_speed,
 			frost_config.projectile_lifetime,
 			false,

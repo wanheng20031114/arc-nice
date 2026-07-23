@@ -3,6 +3,7 @@
 [ext_resource type="Texture2D" uid="uid://04o6ofntabvg" path="res://resources/texture/yuanshi_insect_green_aura_colors.tres" id="1_kxoc3"]
 [ext_resource type="Texture2D" uid="uid://gpwpt2glrhpb" path="res://resources/texture/yuanshi_insect_green_aura_particle.tres" id="2_ovnnj"]
 [ext_resource type="Script" uid="uid://dvc3h01lexqkx" path="res://resources/config/enemies/yuanshi_insect_guardian_config.gd" id="2_script"]
+[ext_resource type="Resource" uid="uid://rd6tadya5wqs" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="3_03tcl"]
 [ext_resource type="PackedScene" uid="uid://cym06altmi20q" path="res://scene/enemy/yuanshi_insect/yuanshi_insect_guardian.tscn" id="enemy_scene"]
 
 [resource]
@@ -13,6 +14,7 @@ aura_fill_color = Color(0.1, 0.38, 1, 0.012)
 aura_outline_color = Color(0.36, 0.82, 1, 0.16)
 variant = 7
 display_name = "守护者原石虫"
+category_tags = PackedStringArray("yuanshi_insect")
 enemy_scene = ExtResource("enemy_scene")
 max_health = 150
 attack_damage = 10
@@ -20,4 +22,3 @@ physical_defense = 5
 move_speed = 20.0
 home_damage = 5
 xirang_kill_reward = 2
-category_tags = PackedStringArray("yuanshi_insect")

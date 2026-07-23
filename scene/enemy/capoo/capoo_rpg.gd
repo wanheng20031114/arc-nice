@@ -218,10 +218,11 @@ func _fire_rocket() -> bool:
 		push_warning("Capoo RPG projectile scene must instantiate CapooRPGRocket.")
 		return false
 
+	var outgoing_damage := get_effective_attack_damage(rpg_config.attack_damage)
 	rocket.top_level = true
 	rocket.setup(
 		fire_direction,
-		rpg_config.attack_damage,
+		outgoing_damage,
 		rpg_config.projectile_speed,
 		rpg_config.projectile_lifetime,
 		rpg_config.explosion_radius
@@ -238,7 +239,7 @@ func _fire_rocket() -> bool:
 			0,
 			rocket.global_position,
 			fire_direction,
-			rpg_config.attack_damage,
+			outgoing_damage,
 			rpg_config.projectile_speed,
 			rpg_config.projectile_lifetime
 		)

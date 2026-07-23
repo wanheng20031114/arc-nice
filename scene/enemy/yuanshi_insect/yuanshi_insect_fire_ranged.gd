@@ -157,10 +157,11 @@ func _try_fire_ranged_projectile() -> bool:
 		push_warning("Fire projectile scene must instantiate YuanshiInsectFireProjectile.")
 		return false
 
+	var outgoing_damage := get_effective_attack_damage(fire_config.attack_damage)
 	projectile.top_level = true
 	projectile.setup(
 		shoot_direction,
-		fire_config.attack_damage,
+		outgoing_damage,
 		fire_config.projectile_speed,
 		fire_config.projectile_lifetime
 	)
@@ -178,7 +179,7 @@ func _try_fire_ranged_projectile() -> bool:
 			0,
 			projectile.global_position,
 			shoot_direction,
-			fire_config.attack_damage,
+			outgoing_damage,
 			fire_config.projectile_speed,
 			fire_config.projectile_lifetime
 		)

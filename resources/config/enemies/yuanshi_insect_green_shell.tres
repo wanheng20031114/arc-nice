@@ -1,6 +1,7 @@
 [gd_resource type="Resource" script_class="YuanshiInsectGreenShellConfig" format=3 uid="uid://yefrqmv7b306"]
 
 [ext_resource type="Script" uid="uid://ddvjjkxmc4m3i" path="res://resources/config/enemies/yuanshi_insect_green_shell_config.gd" id="2_script"]
+[ext_resource type="Resource" uid="uid://rd6tadya5wqs" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="3_8s541"]
 [ext_resource type="Texture2D" uid="uid://gpwpt2glrhpb" path="res://resources/texture/yuanshi_insect_green_aura_particle.tres" id="8_aura_particle"]
 [ext_resource type="Texture2D" uid="uid://04o6ofntabvg" path="res://resources/texture/yuanshi_insect_green_aura_colors.tres" id="9_aura_colors"]
 [ext_resource type="PackedScene" uid="uid://bsowy8xf3lvlm" path="res://scene/enemy/yuanshi_insect/yuanshi_insect_green_shell.tscn" id="enemy_scene"]
@@ -13,6 +14,7 @@ aura_fill_color = Color(1, 0.16, 0.1, 0.018)
 aura_outline_color = Color(1, 0.38, 0.32, 0.22)
 variant = 5
 display_name = "翠壳原石虫"
+category_tags = PackedStringArray("yuanshi_insect")
 enemy_scene = ExtResource("enemy_scene")
 max_health = 200
 attack_damage = 20
@@ -20,4 +22,3 @@ physical_defense = 5
 move_speed = 15.0
 home_damage = 5
 xirang_kill_reward = 2
-category_tags = PackedStringArray("yuanshi_insect")

@@ -228,6 +228,7 @@ func _apply_slash_damage() -> void:
 	query.collide_with_areas = false
 	var results := get_world_2d().direct_space_state.intersect_shape(query, 16)
 	var half_angle := deg_to_rad(knight_config.slash_angle_degrees * 0.5)
+	var outgoing_damage := get_effective_attack_damage(knight_config.attack_damage)
 	var hit_targets: Dictionary = {}
 	for result in results:
 		var hit_target := result.get("collider") as Node2D
@@ -254,13 +255,13 @@ func _apply_slash_damage() -> void:
 		if player != null:
 			_apply_multiplayer_player_damage(
 				player,
-				knight_config.attack_damage,
+				outgoing_damage,
 				_get_multiplayer_damage_source_id(action_sequence),
 				&"capoo_knight_slash"
 			)
 		elif plant != null:
 			plant.receive_damage(
-				knight_config.attack_damage,
+				outgoing_damage,
 				self,
 				offset.normalized(),
 				EnemyConfig.DamageType.PHYSICAL

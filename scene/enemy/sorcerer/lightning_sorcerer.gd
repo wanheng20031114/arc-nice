@@ -384,6 +384,9 @@ func _resolve_chain_hits(
 	var current_target := first_target
 	var previous_hit_position := staff_tip.global_position
 	var maximum_hits := 1 + clampi(lightning_config.max_chain_bounces, 0, 4)
+	var outgoing_damage := get_effective_attack_damage(
+		lightning_config.attack_damage
+	)
 	for _hit_index in range(maximum_hits):
 		if not _is_ranged_combat_target_valid(current_target):
 			break
@@ -396,7 +399,7 @@ func _resolve_chain_hits(
 		# de-duplication or another ability policy must not silently stop traversal.
 		_apply_chain_damage(
 			current_target,
-			lightning_config.attack_damage,
+			outgoing_damage,
 			damage_source_id,
 			previous_hit_position
 		)

@@ -1,0 +1,198 @@
+[gd_scene load_steps=21 format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/hydrangea_rain_tower.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/hydrangea_rain_tower/idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/hydrangea_rain_tower/rain.png" id="3_rain"]
+[ext_resource type="Material" path="res://resources/shader/plant_lifecycle_material.tres" id="4_lifecycle_material"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="5_health_bar"]
+[ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="6_night_light"]
+[ext_resource type="Texture2D" path="res://resources/lighting/soft_micro_point_light.tres" id="7_core_texture"]
+[ext_resource type="Shader" path="res://resources/shader/hydrangea_rain_field.gdshader" id="8_rain_shader"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_idle_upper"]
+atlas = ExtResource("2_idle")
+region = Rect2(0, 0, 128, 88)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_rain_upper"]
+atlas = ExtResource("3_rain")
+region = Rect2(0, 0, 128, 88)
+
+[sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_core_glow"]
+blend_mode = 1
+light_mode = 1
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_rain"]
+shader = ExtResource("8_rain_shader")
+
+[sub_resource type="Gradient" id="Gradient_dew_colors"]
+offsets = PackedFloat32Array(0, 0.32, 0.66, 1)
+colors = PackedColorArray(0.45, 0.8, 1, 0.95, 0.65, 0.36, 1, 0.95, 1, 0.48, 0.9, 0.9, 0.9, 0.88, 1, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture_dew_colors"]
+gradient = SubResource("Gradient_dew_colors")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_dew"]
+particle_flag_disable_z = true
+emission_shape = 1
+emission_sphere_radius = 7.0
+direction = Vector3(0, -1, 0)
+spread = 64.0
+initial_velocity_min = 18.0
+initial_velocity_max = 34.0
+gravity = Vector3(0, 54, 0)
+scale_min = 0.7
+scale_max = 1.35
+color_ramp = SubResource("GradientTexture_dew_colors")
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+resource_local_to_scene = true
+size = Vector2(28, 27)
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_player_core"]
+resource_local_to_scene = true
+radius = 7.0
+height = 16.0
+
+[sub_resource type="Animation" id="Animation_bloom_reset"]
+resource_name = "RESET"
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("VisualRoot/UpperCanopy:scale")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(1, 1)]
+}
+
+[sub_resource type="Animation" id="Animation_bloom"]
+resource_name = "bloom"
+length = 0.42
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("VisualRoot/UpperCanopy:scale")
+tracks/0/interp = 2
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.16, 0.42),
+"transitions": PackedFloat32Array(1.4, 1.2, 1),
+"update": 0,
+"values": [Vector2(1, 1), Vector2(1.045, 1.045), Vector2(1, 1)]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_bloom"]
+_data = {
+&"RESET": SubResource("Animation_bloom_reset"),
+&"bloom": SubResource("Animation_bloom")
+}
+
+[node name="HydrangeaRainTower" type="StaticBody2D"]
+collision_layer = 512
+collision_mask = 0
+script = ExtResource("1_script")
+enemy_approach_depth = 7.0
+lifecycle_visual_paths = Array[NodePath]([NodePath("VisualRoot/MainSprite"), NodePath("VisualRoot/UpperCanopy")])
+lifecycle_effect_top_y = -16.0
+lifecycle_effect_bottom_y = 16.0
+idle_texture = ExtResource("2_idle")
+rain_texture = ExtResource("3_rain")
+idle_upper_texture = SubResource("AtlasTexture_idle_upper")
+rain_upper_texture = SubResource("AtlasTexture_rain_upper")
+
+[node name="VisualRoot" type="Node2D" parent="."]
+position = Vector2(0, -1)
+scale = Vector2(0.25, 0.25)
+
+[node name="MainSprite" type="Sprite2D" parent="VisualRoot"]
+z_index = 1
+texture_filter = 1
+material = ExtResource("4_lifecycle_material")
+texture = ExtResource("2_idle")
+
+[node name="UpperCanopy" type="Sprite2D" parent="VisualRoot"]
+z_index = 4
+texture_filter = 1
+material = ExtResource("4_lifecycle_material")
+position = Vector2(0, -20)
+texture = SubResource("AtlasTexture_idle_upper")
+
+[node name="CoreGlow" type="Sprite2D" parent="."]
+z_index = 5
+texture_filter = 1
+material = SubResource("CanvasItemMaterial_core_glow")
+position = Vector2(0, -5)
+scale = Vector2(0.3, 0.3)
+modulate = Color(0.72, 0.52, 1, 0.42)
+texture = ExtResource("7_core_texture")
+
+[node name="CoreNightLight" parent="." instance=ExtResource("6_night_light")]
+position = Vector2(0, -5)
+color = Color(0.62, 0.42, 1, 1)
+texture_scale = 0.36
+night_energy = 0.72
+starts_emitting = false
+
+[node name="RainField" type="Polygon2D" parent="."]
+visible = false
+z_index = 5
+texture_filter = 1
+material = SubResource("ShaderMaterial_rain")
+polygon = PackedVector2Array(-160, -160, 160, -160, 160, 160, -160, 160)
+uv = PackedVector2Array(0, 0, 1, 0, 1, 1, 0, 1)
+
+[node name="DewBurst" type="GPUParticles2D" parent="."]
+z_index = 6
+texture_filter = 1
+position = Vector2(0, -5)
+emitting = false
+amount = 26
+lifetime = 0.85
+one_shot = true
+explosiveness = 0.88
+randomness = 0.45
+visibility_rect = Rect2(-45, -42, 90, 82)
+process_material = SubResource("ParticleProcessMaterial_dew")
+
+[node name="BloomAnimationPlayer" type="AnimationPlayer" parent="."]
+libraries = {
+&"": SubResource("AnimationLibrary_bloom")
+}
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 1.5)
+shape = SubResource("RectangleShape2D_body")
+
+[node name="PlayerCoreBody" type="StaticBody2D" parent="."]
+position = Vector2(0, 1)
+collision_layer = 1024
+collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody"]
+position = Vector2(0, 2)
+shape = SubResource("CapsuleShape2D_player_core")
+
+[node name="HealthBar" parent="." instance=ExtResource("5_health_bar")]
+offset_left = -16.0
+offset_top = -18.0
+offset_right = 16.0
+offset_bottom = -13.0
+
+[node name="CycleTimer" type="Timer" parent="."]
+wait_time = 10.0
+one_shot = true
+
+[node name="RainTickTimer" type="Timer" parent="."]
+wait_time = 1.0
+
+[node name="RainEndTimer" type="Timer" parent="."]
+wait_time = 3.0
+one_shot = true
+
+[connection signal="timeout" from="CycleTimer" to="." method="_on_cycle_timer_timeout"]
+[connection signal="timeout" from="RainTickTimer" to="." method="_on_rain_tick_timer_timeout"]
+[connection signal="timeout" from="RainEndTimer" to="." method="_on_rain_end_timer_timeout"]

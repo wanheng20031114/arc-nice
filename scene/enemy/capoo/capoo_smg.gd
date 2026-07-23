@@ -260,10 +260,13 @@ func _fire_bullet(shoot_direction: Vector2) -> bool:
 	if projectile == null:
 		push_warning("SMG Capoo projectile scene must instantiate CapooAK47Bullet.")
 		return false
+	var outgoing_damage := get_effective_attack_damage(
+		smg_config_cache.attack_damage
+	)
 	projectile.top_level = true
 	projectile.setup(
 		shoot_direction,
-		smg_config_cache.attack_damage,
+		outgoing_damage,
 		smg_config_cache.projectile_speed,
 		smg_config_cache.projectile_lifetime,
 		pathfinder as GridPathfinder,
@@ -284,7 +287,7 @@ func _fire_bullet(shoot_direction: Vector2) -> bool:
 			0,
 			projectile.global_position,
 			shoot_direction,
-			smg_config_cache.attack_damage,
+			outgoing_damage,
 			smg_config_cache.projectile_speed,
 			smg_config_cache.projectile_lifetime
 		)
@@ -310,16 +313,23 @@ func _fire_hitscan(shoot_direction: Vector2) -> void:
 		return
 	var collider := hit.get("collider") as Node
 	var hit_player := collider as Player
+	var outgoing_damage := get_effective_attack_damage(
+		smg_config_cache.attack_damage
+	)
 	if hit_player != null:
 		if hit_player.is_dead:
 			return
-		_apply_hitscan_player_damage(hit_player, safe_direction)
+		_apply_hitscan_player_damage(
+			hit_player,
+			safe_direction,
+			outgoing_damage
+		)
 		return
 	var hit_plant := collider as PlantDefense
 	if hit_plant == null or hit_plant.is_dead or hit_plant.is_removing:
 		return
 	hit_plant.receive_damage(
-		smg_config_cache.attack_damage,
+		outgoing_damage,
 		self,
 		safe_direction,
 		EnemyConfig.DamageType.PHYSICAL
@@ -328,7 +338,8 @@ func _fire_hitscan(shoot_direction: Vector2) -> void:
 
 func _apply_hitscan_player_damage(
 	hit_player: Player,
-	shoot_direction: Vector2
+	shoot_direction: Vector2,
+	outgoing_damage: int
 ) -> void:
 	var source_id := _get_multiplayer_damage_source_id(action_sequence + 1)
 	var current_scene := get_tree().current_scene
@@ -341,7 +352,7 @@ func _apply_hitscan_player_damage(
 			"request_multiplayer_player_damage",
 			source_id,
 			hit_player.peer_id,
-			smg_config_cache.attack_damage,
+			outgoing_damage,
 			&"capoo_smg_hitscan",
 			-shoot_direction,
 			true
@@ -349,7 +360,7 @@ func _apply_hitscan_player_damage(
 	if reported:
 		return
 	hit_player.apply_damage(
-		smg_config_cache.attack_damage,
+		outgoing_damage,
 		EnemyConfig.DamageType.PHYSICAL,
 		{
 			"is_ranged": true,

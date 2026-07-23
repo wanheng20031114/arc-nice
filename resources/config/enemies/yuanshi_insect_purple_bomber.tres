@@ -1,5 +1,6 @@
 [gd_resource type="Resource" script_class="YuanshiInsectConfig" format=3 uid="uid://cpjc7spicocg8"]
 
+[ext_resource type="Resource" uid="uid://rd6tadya5wqs" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="1_22xm5"]
 [ext_resource type="Script" uid="uid://cxt041wfb1usj" path="res://resources/config/enemies/yuanshi_insect_config.gd" id="2_script"]
 [ext_resource type="PackedScene" uid="uid://m17avh70k6cu" path="res://scene/enemy/yuanshi_insect/yuanshi_insect_purple_bomber.tscn" id="enemy_scene"]
 
@@ -7,6 +8,7 @@
 script = ExtResource("2_script")
 variant = 4
 display_name = "紫晶自爆原石虫"
+category_tags = PackedStringArray("yuanshi_insect")
 enemy_scene = ExtResource("enemy_scene")
 max_health = 40
 attack_damage = 10
@@ -16,4 +18,3 @@ explosion_damage = 30
 explosion_radius = 40.0
 explosion_animation_scale = 2.35
 xirang_kill_reward = 2
-category_tags = PackedStringArray("yuanshi_insect")

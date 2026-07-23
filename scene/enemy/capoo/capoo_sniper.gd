@@ -221,10 +221,11 @@ func _fire_locked_shot(direction: Vector2) -> void:
 		return
 
 	attack_cooldown_left = maxf(sniper_config.attack_interval, 0.01)
+	var outgoing_damage := get_effective_attack_damage(sniper_config.attack_damage)
 	var locked_plant := locked_target as PlantDefense
 	if locked_plant != null:
 		locked_plant.receive_damage(
-			sniper_config.attack_damage,
+			outgoing_damage,
 			self,
 			-direction,
 			EnemyConfig.DamageType.PHYSICAL
@@ -238,14 +239,14 @@ func _fire_locked_shot(direction: Vector2) -> void:
 				"request_multiplayer_player_damage",
 				hit_source_id,
 				locked_player.peer_id,
-				sniper_config.attack_damage,
+				outgoing_damage,
 				&"capoo_sniper_lock",
 				-direction,
 				true
 			))
 		if not reported:
 			locked_player.apply_damage(
-				sniper_config.attack_damage,
+				outgoing_damage,
 				EnemyConfig.DamageType.PHYSICAL,
 				{
 					"is_ranged": true,

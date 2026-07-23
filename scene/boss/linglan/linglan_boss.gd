@@ -488,18 +488,19 @@ func _fire_skill1_ring(skill_elapsed: float) -> void:
 	var direction_count := maxi(skill1_config.ring_direction_count, 1)
 	var angle_step := TAU / float(direction_count)
 	var base_angle := _get_skill1_base_angle(skill_elapsed)
+	var outgoing_damage := get_effective_attack_damage(skill1_config.projectile_damage)
 	var projectiles: Array[Node] = []
 	var spawn_positions := PackedVector2Array()
 	var directions := PackedVector2Array()
 	for index in range(direction_count):
 		var direction := Vector2.RIGHT.rotated(base_angle + angle_step * float(index))
-		var projectile := _spawn_skill1_projectile(direction, false)
+		var projectile := _spawn_skill1_projectile(direction, false, outgoing_damage)
 		if projectile == null:
 			continue
 		projectiles.append(projectile)
 		spawn_positions.append(projectile.global_position)
 		directions.append(direction)
-	_register_multiplayer_skill1_ring(projectiles, spawn_positions, directions)
+	_register_multiplayer_skill1_ring(projectiles, spawn_positions, directions, outgoing_damage)
 
 
 func _get_skill1_base_angle(skill_elapsed: float) -> float:
@@ -511,7 +512,8 @@ func _get_skill1_base_angle(skill_elapsed: float) -> float:
 
 func _spawn_skill1_projectile(
 	direction: Vector2,
-	register_immediately: bool = true
+	register_immediately: bool = true,
+	damage_snapshot: int = -1
 ) -> LinglanSakuraBullet:
 	var spawn_parent := get_tree().current_scene
 	if spawn_parent == null:
@@ -535,10 +537,13 @@ func _spawn_skill1_projectile(
 	if projectile == null:
 		return null
 
+	var outgoing_damage := damage_snapshot
+	if outgoing_damage < 0:
+		outgoing_damage = get_effective_attack_damage(skill1_config.projectile_damage)
 	projectile.top_level = true
 	projectile.setup(
 		direction,
-		skill1_config.projectile_damage,
+		outgoing_damage,
 		skill1_config.projectile_speed,
 		skill1_config.projectile_lifetime
 	)
@@ -547,14 +552,20 @@ func _spawn_skill1_projectile(
 	projectile.global_position = global_position + direction * skill1_config.projectile_spawn_distance
 	projectile.reset_physics_interpolation()
 	if register_immediately:
-		_register_multiplayer_projectile(projectile, projectile.global_position, direction)
+		_register_multiplayer_projectile(
+			projectile,
+			projectile.global_position,
+			direction,
+			outgoing_damage
+		)
 	return projectile
 
 
 func _register_multiplayer_skill1_ring(
 	projectiles: Array[Node],
 	spawn_positions: PackedVector2Array,
-	directions: PackedVector2Array
+	directions: PackedVector2Array,
+	damage_snapshot: int
 ) -> void:
 	if projectiles.is_empty():
 		return
@@ -568,7 +579,7 @@ func _register_multiplayer_skill1_ring(
 			spawn_positions,
 			directions,
 			get_multiplayer_authority(),
-			skill1_config.projectile_damage,
+			damage_snapshot,
 			skill1_config.projectile_speed,
 			skill1_config.projectile_lifetime
 		)
@@ -580,14 +591,16 @@ func _register_multiplayer_skill1_ring(
 		_register_multiplayer_projectile(
 			projectiles[index] as LinglanSakuraBullet,
 			spawn_positions[index],
-			directions[index]
+			directions[index],
+			damage_snapshot
 		)
 
 
 func _register_multiplayer_projectile(
 	projectile: LinglanSakuraBullet,
 	spawn_position: Vector2,
-	projectile_direction: Vector2
+	projectile_direction: Vector2,
+	damage_snapshot: int
 ) -> void:
 	var current_scene := get_tree().current_scene
 	if current_scene == null or not current_scene.has_method("register_local_projectile"):
@@ -599,7 +612,7 @@ func _register_multiplayer_projectile(
 		get_multiplayer_authority(),
 		spawn_position,
 		projectile_direction,
-		skill1_config.projectile_damage,
+		damage_snapshot,
 		skill1_config.projectile_speed,
 		skill1_config.projectile_lifetime,
 		false
@@ -875,10 +888,11 @@ func _fire_skill2_rocket() -> void:
 		return
 
 	var spawn_position := global_position + skill2_pending_direction * skill2_config.rocket_spawn_distance
+	var outgoing_damage := get_effective_attack_damage(skill2_config.rocket_damage)
 	projectile.top_level = true
 	projectile.setup(
 		skill2_pending_direction,
-		skill2_config.rocket_damage,
+		outgoing_damage,
 		skill2_config.rocket_speed,
 		skill2_config.rocket_lifetime,
 		skill2_config.rocket_explosion_radius,
@@ -892,7 +906,8 @@ func _fire_skill2_rocket() -> void:
 		projectile,
 		spawn_position,
 		skill2_pending_direction,
-		skill2_pending_target_player
+		skill2_pending_target_player,
+		outgoing_damage
 	)
 
 
@@ -900,7 +915,8 @@ func _register_skill2_multiplayer_projectile(
 	projectile: LinglanSkill2SakuraRocket,
 	spawn_position: Vector2,
 	projectile_direction: Vector2,
-	projectile_target_player: Player
+	projectile_target_player: Player,
+	damage_snapshot: int
 ) -> void:
 	var current_scene := get_tree().current_scene
 	if current_scene == null or not current_scene.has_method("register_local_projectile"):
@@ -913,7 +929,7 @@ func _register_skill2_multiplayer_projectile(
 		get_multiplayer_authority(),
 		spawn_position,
 		projectile_direction,
-		skill2_config.rocket_damage,
+		damage_snapshot,
 		skill2_config.rocket_speed,
 		skill2_config.rocket_lifetime,
 		false,
@@ -1048,10 +1064,11 @@ func _fire_skill3_orb() -> void:
 
 	var direction := _get_random_skill3_direction()
 	var grow_delay := skill3_config.get_random_grow_delay(skill3_random)
+	var outgoing_damage := get_effective_attack_damage(skill3_config.orb_damage)
 	orb.top_level = true
 	orb.setup(
 		direction,
-		skill3_config.orb_damage,
+		outgoing_damage,
 		skill3_config.orb_speed,
 		grow_delay,
 		skill3_config.orb_base_radius,
@@ -1061,7 +1078,13 @@ func _fire_skill3_orb() -> void:
 	)
 	spawn_parent.add_child(orb)
 	orb.global_position = global_position
-	_register_skill3_multiplayer_projectile(orb, global_position, direction, grow_delay)
+	_register_skill3_multiplayer_projectile(
+		orb,
+		global_position,
+		direction,
+		grow_delay,
+		outgoing_damage
+	)
 
 
 func _get_random_skill3_direction() -> Vector2:
@@ -1074,7 +1097,8 @@ func _register_skill3_multiplayer_projectile(
 	projectile: LinglanSkill3LightOrb,
 	spawn_position: Vector2,
 	projectile_direction: Vector2,
-	grow_delay: float
+	grow_delay: float,
+	damage_snapshot: int
 ) -> void:
 	var current_scene := get_tree().current_scene
 	if current_scene == null or not current_scene.has_method("register_local_projectile"):
@@ -1086,7 +1110,7 @@ func _register_skill3_multiplayer_projectile(
 		get_multiplayer_authority(),
 		spawn_position,
 		projectile_direction,
-		skill3_config.orb_damage,
+		damage_snapshot,
 		skill3_config.orb_speed,
 		grow_delay,
 		false
@@ -1222,10 +1246,11 @@ func _spawn_skill4_orb(spawn_from_left: bool, y_cell: int) -> void:
 
 	var direction := Vector2.RIGHT if spawn_from_left else Vector2.LEFT
 	var spawn_position := _resolve_skill4_orb_spawn_global_position(spawn_from_left, y_cell)
+	var outgoing_damage := get_effective_attack_damage(config4.orb_damage)
 	orb.top_level = true
 	orb.setup(
 		direction,
-		config4.orb_damage,
+		outgoing_damage,
 		config4.orb_speed,
 		config4.orb_lifetime,
 		config4.orb_radius,
@@ -1233,13 +1258,14 @@ func _spawn_skill4_orb(spawn_from_left: bool, y_cell: int) -> void:
 	)
 	spawn_parent.add_child(orb)
 	orb.global_position = spawn_position
-	_register_skill4_multiplayer_projectile(orb, spawn_position, direction)
+	_register_skill4_multiplayer_projectile(orb, spawn_position, direction, outgoing_damage)
 
 
 func _register_skill4_multiplayer_projectile(
 	projectile: Node,
 	spawn_position: Vector2,
-	projectile_direction: Vector2
+	projectile_direction: Vector2,
+	damage_snapshot: int
 ) -> void:
 	var config4 := _get_skill4_config()
 	if config4 == null:
@@ -1254,7 +1280,7 @@ func _register_skill4_multiplayer_projectile(
 		get_multiplayer_authority(),
 		spawn_position,
 		projectile_direction,
-		config4.orb_damage,
+		damage_snapshot,
 		config4.orb_speed,
 		config4.orb_lifetime,
 		false
@@ -1276,12 +1302,17 @@ func _spawn_skill4_laser_field(enable_damage: bool) -> void:
 	field.top_level = true
 	spawn_parent.add_child(field)
 	field.global_position = Vector2.ZERO
+	var outgoing_damage := (
+		get_effective_attack_damage(config4.laser_damage)
+		if enable_damage
+		else config4.laser_damage
+	)
 	field.setup(
 		bounds.get("start_min", global_position) as Vector2,
 		bounds.get("start_max", global_position) as Vector2,
 		bounds.get("final_min", global_position) as Vector2,
 		bounds.get("final_max", global_position) as Vector2,
-		config4.laser_damage,
+		outgoing_damage,
 		config4.laser_core_width,
 		config4.laser_shrink_duration,
 		config4.laser_warning_duration,

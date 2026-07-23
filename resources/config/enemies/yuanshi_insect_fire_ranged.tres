@@ -1,5 +1,6 @@
 [gd_resource type="Resource" script_class="YuanshiInsectFireRangedConfig" format=3 uid="uid://c6unlgwoqktx5"]
 
+[ext_resource type="Resource" uid="uid://rd6tadya5wqs" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="2_p1awv"]
 [ext_resource type="Script" uid="uid://cgc3af0prsgtu" path="res://resources/config/enemies/yuanshi_insect_fire_ranged_config.gd" id="2_script"]
 [ext_resource type="PackedScene" uid="uid://cpurafcmqp6i1" path="res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.tscn" id="3_projectile"]
 [ext_resource type="AudioStream" uid="uid://q0xgspayk7pu" path="res://resources/audio/yuanshi_insect_fire_attack.wav" id="4_attack_audio"]
@@ -11,10 +12,9 @@ projectile_scene = ExtResource("3_projectile")
 attack_audio_stream = ExtResource("4_attack_audio")
 variant = 6
 display_name = "火焰弹原石虫"
+category_tags = PackedStringArray("yuanshi_insect")
 enemy_scene = ExtResource("5_enemy_scene")
 max_health = 40
 attack_damage = 25
 move_speed = 22.0
 home_damage = 2
-xirang_kill_reward = 1
-category_tags = PackedStringArray("yuanshi_insect")

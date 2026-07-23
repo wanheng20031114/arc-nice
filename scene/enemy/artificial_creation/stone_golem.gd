@@ -143,6 +143,7 @@ func _apply_slash_damage() -> void:
 		if metrics_enabled
 		else 0
 	)
+	var outgoing_damage := get_effective_attack_damage(golem_config.attack_damage)
 	var damage_dispatches := 0
 	for result in results:
 		var hit_target := result.get("collider") as Node2D
@@ -169,13 +170,13 @@ func _apply_slash_damage() -> void:
 		if player != null:
 			_apply_multiplayer_player_damage(
 				player,
-				golem_config.attack_damage,
+				outgoing_damage,
 				_get_multiplayer_damage_source_id(action_sequence),
 				_get_slam_damage_source_type()
 			)
 		else:
 			plant.receive_damage(
-				golem_config.attack_damage,
+				outgoing_damage,
 				self,
 				impact_direction,
 				golem_config.slam_damage_type

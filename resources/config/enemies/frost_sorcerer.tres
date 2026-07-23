@@ -1,19 +1,15 @@
-[gd_resource type="Resource" script_class="FrostSorcererConfig" format=3]
+[gd_resource type="Resource" script_class="FrostSorcererConfig" format=3 uid="uid://yl25am08m4a3"]
 
-[ext_resource type="Script" path="res://resources/config/enemies/frost_sorcerer_config.gd" id="1_script"]
+[ext_resource type="Resource" uid="uid://rd6tadya5wqs" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="1_4vc8i"]
+[ext_resource type="Script" uid="uid://bku2ipcnemln" path="res://resources/config/enemies/frost_sorcerer_config.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://scene/enemy/sorcerer/frost_sorcerer.tscn" id="2_scene"]
 [ext_resource type="PackedScene" path="res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn" id="3_ice_spike"]
 
 [resource]
 script = ExtResource("1_script")
-attack_range = 672.0
-summon_duration = 0.6
-attack_interval = 3.0
-initial_attack_stagger_window = 0.9
 ice_spike_scene = ExtResource("3_ice_spike")
-projectile_speed = 100.0
-projectile_lifetime = 7.0
 display_name = "寒冰术士"
+category_tags = PackedStringArray("sorcerer")
 enemy_scene = ExtResource("2_scene")
 max_health = 200
 attack_damage = 50
@@ -22,4 +18,3 @@ magic_defense = 80
 move_speed = 24.0
 home_damage = 5
 xirang_kill_reward = 35
-category_tags = PackedStringArray("sorcerer")

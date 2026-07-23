@@ -320,10 +320,11 @@ func _fire_locked_bullet() -> bool:
 		push_warning("AK 猫猫虫子弹场景必须实例化 CapooAK47Bullet。")
 		return false
 
+	var outgoing_damage := get_effective_attack_damage(capoo_config.attack_damage)
 	projectile.top_level = true
 	projectile.setup(
 		burst_shot_direction,
-		capoo_config.attack_damage,
+		outgoing_damage,
 		capoo_config.projectile_speed,
 		capoo_config.projectile_lifetime,
 		pathfinder as GridPathfinder,
@@ -341,7 +342,7 @@ func _fire_locked_bullet() -> bool:
 			0,
 			projectile.global_position,
 			burst_shot_direction,
-			capoo_config.attack_damage,
+			outgoing_damage,
 			capoo_config.projectile_speed,
 			capoo_config.projectile_lifetime
 		)

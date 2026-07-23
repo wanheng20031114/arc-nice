@@ -167,6 +167,7 @@ var physical_defense_modifier_total := 0
 var move_speed_modifiers: Dictionary = {}
 var cold_stack_count := 0
 var damage_taken_multiplier_modifiers: Dictionary = {}
+var outgoing_attack_damage_multiplier_modifiers: Dictionary = {}
 var collectible_status_effects: Dictionary = {}
 var expired_collectible_status_keys: Array = []
 var due_collectible_status_tick_keys: Array = []
@@ -236,6 +237,7 @@ var cached_effective_physical_defense := 0
 var cached_effective_move_speed := 0.0
 var cached_effective_move_speed_multiplier := 1.0
 var cached_damage_taken_multiplier := 1.0
+var cached_outgoing_attack_damage_multiplier := 1.0
 var status_visual_material: ShaderMaterial = null
 var slow_overlay_strength := 0.0
 var burn_overlay_strength := 0.0
@@ -506,6 +508,7 @@ func _refresh_status_process_enabled() -> void:
 
 func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = null) -> void:
 	clear_cold_status()
+	clear_collectible_statuses()
 	config = enemy_config
 	target_player = player
 	objective_target = player
@@ -1103,6 +1106,68 @@ func _refresh_damage_taken_multiplier_cache() -> void:
 	cached_damage_taken_multiplier = maxf(total, 0.0)
 
 
+## Registers one outgoing attack reduction source. Multiple concurrent sources
+## use only the strongest reduction (the lowest multiplier), so overlapping
+## fields cannot compound 20% reductions into 36%, 49% and so on.
+func add_outgoing_attack_damage_multiplier_modifier(
+	source_id: int,
+	multiplier: float
+) -> void:
+	if source_id == 0:
+		return
+	var safe_multiplier := clampf(multiplier, 0.0, 1.0)
+	if is_equal_approx(safe_multiplier, 1.0):
+		remove_outgoing_attack_damage_multiplier_modifier(source_id)
+		return
+	if (
+		outgoing_attack_damage_multiplier_modifiers.has(source_id)
+		and is_equal_approx(
+			float(outgoing_attack_damage_multiplier_modifiers[source_id]),
+			safe_multiplier
+		)
+	):
+		return
+	outgoing_attack_damage_multiplier_modifiers[source_id] = safe_multiplier
+	_refresh_outgoing_attack_damage_multiplier_cache()
+
+
+func remove_outgoing_attack_damage_multiplier_modifier(source_id: int) -> void:
+	if not outgoing_attack_damage_multiplier_modifiers.has(source_id):
+		return
+	outgoing_attack_damage_multiplier_modifiers.erase(source_id)
+	_refresh_outgoing_attack_damage_multiplier_cache()
+
+
+func get_outgoing_attack_damage_multiplier() -> float:
+	return cached_outgoing_attack_damage_multiplier
+
+
+## Resolves damage when an attack is committed. Projectiles retain this value as
+## their launch-time snapshot so local and replicated instances cannot diverge if
+## the timed reduction expires during flight.
+func get_effective_attack_damage(base_damage: int) -> int:
+	if base_damage <= 0:
+		return 0
+	return maxi(
+		roundi(float(base_damage) * cached_outgoing_attack_damage_multiplier),
+		1
+	)
+
+
+func _refresh_outgoing_attack_damage_multiplier_cache() -> void:
+	var strongest_multiplier := 1.0
+	for source_id in outgoing_attack_damage_multiplier_modifiers:
+		strongest_multiplier = minf(
+			strongest_multiplier,
+			clampf(
+				float(outgoing_attack_damage_multiplier_modifiers[source_id]),
+				0.0,
+				1.0
+			)
+		)
+	cached_outgoing_attack_damage_multiplier = strongest_multiplier
+
+
 func apply_cold_status() -> bool:
 	if is_dead or is_multiplayer_proxy or not is_inside_tree():
 		return false
@@ -1445,7 +1510,8 @@ func apply_collectible_status(
 	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.MAGIC,
 	slow_multiplier: float = 1.0,
 	physical_defense_modifier: int = 0,
-	damage_taken_multiplier: float = 1.0
+	damage_taken_multiplier: float = 1.0,
+	outgoing_attack_damage_multiplier: float = 1.0
 ) -> void:
 	if (
 		is_dead
@@ -1495,6 +1561,7 @@ func apply_collectible_status(
 		"slow_source_id": 0,
 		"physical_defense_source_id": 0,
 		"damage_multiplier_source_id": 0,
+		"outgoing_attack_multiplier_source_id": 0,
 	}
 	if slow_multiplier < 1.0:
 		var slow_source_id := source_id + absi(String(status_id).hash()) % 100000
@@ -1508,6 +1575,19 @@ func apply_collectible_status(
 		var multiplier_source_id := source_id + 400000 + absi(String(status_id).hash()) % 100000
 		status["damage_multiplier_source_id"] = multiplier_source_id
 		add_damage_taken_multiplier_modifier(multiplier_source_id, damage_taken_multiplier)
+	if not is_equal_approx(outgoing_attack_damage_multiplier, 1.0):
+		var outgoing_multiplier_source_id := (
+			source_id + 600000 + absi(String(status_id).hash()) % 100000
+		)
+		if outgoing_multiplier_source_id == 0:
+			outgoing_multiplier_source_id = source_id
+		status["outgoing_attack_multiplier_source_id"] = (
+			outgoing_multiplier_source_id
+		)
+		add_outgoing_attack_damage_multiplier_modifier(
+			outgoing_multiplier_source_id,
+			outgoing_attack_damage_multiplier
+		)
 	collectible_status_effects[effect_key] = status
 	_refresh_active_burn_tick_schedule(applied_at)
 	_sync_collectible_status_relative_times(applied_at)
@@ -1765,6 +1845,13 @@ func _remove_collectible_status_modifiers(status: Dictionary) -> void:
 	var multiplier_source_id := int(status.get("damage_multiplier_source_id", 0))
 	if multiplier_source_id != 0:
 		remove_damage_taken_multiplier_modifier(multiplier_source_id)
+	var outgoing_multiplier_source_id := int(
+		status.get("outgoing_attack_multiplier_source_id", 0)
+	)
+	if outgoing_multiplier_source_id != 0:
+		remove_outgoing_attack_damage_multiplier_modifier(
+			outgoing_multiplier_source_id
+		)
 
 
 func _play_collectible_status_feedback(status_id: StringName) -> void:
@@ -3442,6 +3529,7 @@ func _try_deal_touch_damage() -> void:
 	if config == null:
 		return
 	var touch_damage_type := _get_touch_damage_type()
+	var outgoing_damage := get_effective_attack_damage(config.attack_damage)
 	if (
 		touched_plant != null
 		and is_instance_valid(touched_plant)
@@ -3450,7 +3538,7 @@ func _try_deal_touch_damage() -> void:
 	):
 		var impact_direction := global_position.direction_to(touched_plant.global_position)
 		if touched_plant.receive_damage(
-			config.attack_damage,
+			outgoing_damage,
 			self,
 			impact_direction,
 			touch_damage_type
@@ -3466,14 +3554,14 @@ func _try_deal_touch_damage() -> void:
 			"request_multiplayer_player_damage",
 			_get_multiplayer_touch_source_id(),
 			touched_player.peer_id,
-			config.attack_damage,
+			outgoing_damage,
 			&"enemy_touch",
 			touch_damage_type
 		)
 		touch_damage_cooldown_left = touch_damage_interval
 		return
 	touched_player.apply_damage(
-		config.attack_damage,
+		outgoing_damage,
 		touch_damage_type
 	)
 	touch_damage_cooldown_left = touch_damage_interval

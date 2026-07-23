@@ -249,10 +249,11 @@ func _fire_fireball() -> bool:
 		push_warning("Mage Capoo projectile scene must instantiate CapooMageFireball.")
 		return false
 
+	var outgoing_damage := get_effective_attack_damage(mage_config.attack_damage)
 	fireball.top_level = true
 	fireball.setup(
 		fire_direction,
-		mage_config.attack_damage,
+		outgoing_damage,
 		mage_config.projectile_speed,
 		mage_config.projectile_lifetime,
 		mage_config.fireball_radius,
@@ -271,7 +272,7 @@ func _fire_fireball() -> bool:
 			0,
 			fireball.global_position,
 			fire_direction,
-			mage_config.attack_damage,
+			outgoing_damage,
 			mage_config.projectile_speed,
 			mage_config.projectile_lifetime
 		)
