@@ -3086,6 +3086,7 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			authoritative_pickup_slot["revision"] = int(
 				pickup_inventory_snapshot["revision"]
 			)
+		client_player.powerup_audio.stop()
 		client_mp_game.call(
 			"net_pickup_collected",
 			9002,
@@ -3101,6 +3102,23 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			and client_run_state.get_item_for_peer(2, 0)
 				== WHITE_CRYSTAL_MATERIAL,
 			"Stored material confirm must load the new crystal path and add it to inventory."
+		)
+		_expect(
+			client_player.powerup_audio.playing,
+			"A newly applied stored-pickup snapshot must replay the pickup cue on clients."
+		)
+		client_player.powerup_audio.stop()
+		client_mp_game.call(
+			"net_pickup_collected",
+			9002,
+			2,
+			WHITE_CRYSTAL_MATERIAL.resource_path,
+			false,
+			pickup_inventory_snapshot
+		)
+		_expect(
+			not client_player.powerup_audio.playing,
+			"A duplicate stored-pickup snapshot must not replay pickup feedback."
 		)
 		var revision_before_malformed_pickup := (
 			client_run_state.get_inventory_revision_for_peer(2)
@@ -3123,6 +3141,10 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			client_run_state.get_inventory_revision_for_peer(2)
 			== revision_before_malformed_pickup,
 			"A stored-pickup confirmation without its v8 inventory snapshot must not invent a local item."
+		)
+		_expect(
+			not client_player.powerup_audio.playing,
+			"A rejected stored-pickup confirmation must not replay pickup feedback."
 		)
 	client_mp_game.free()
 	_stop_audio_players(client_game)

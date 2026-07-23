@@ -105,6 +105,7 @@ class TestRuntime:
 	var lookup_targets: Dictionary[int, Enemy] = {}
 	var target_lookup_count: int = 0
 	var animated_plant_removal_ids: Array[int] = []
+	var destroyed_plant_removal_ids: Array[int] = []
 	var silent_plant_removal_ids: Array[int] = []
 	var damage_number_requests: Array[Dictionary] = []
 	var transaction_player_lookup_count := 0
@@ -271,6 +272,15 @@ class TestRuntime:
 
 	func apply_remote_plant_removed(net_id: int) -> void:
 		animated_plant_removal_ids.append(net_id)
+		_remove_proxy_plant(net_id)
+
+	func apply_remote_plant_removed_with_reason(
+		net_id: int,
+		was_destroyed: bool
+	) -> void:
+		animated_plant_removal_ids.append(net_id)
+		if was_destroyed:
+			destroyed_plant_removal_ids.append(net_id)
 		_remove_proxy_plant(net_id)
 
 	func apply_remote_plant_removed_silently(net_id: int) -> void:
@@ -1251,11 +1261,12 @@ func _test_plant_health_before_spawn_debt() -> void:
 		PackedByteArray([0]),
 		PackedVector2Array([Vector2.ZERO])
 	)
-	mp_game.call("net_plant_removed", 72)
+	mp_game.call("net_plant_removed", 72, true)
 	_expect(
 		fixture.animated_plant_removal_ids.has(72)
+		and fixture.destroyed_plant_removal_ids.has(72)
 		and not fixture.silent_plant_removal_ids.has(72),
-		"A reliable gameplay removal must use the animated client removal path."
+		"A reliable destroyed-building removal must preserve its reason on the animated client path."
 	)
 	mp_game.call(
 		"net_plant_health_batch",
@@ -1498,7 +1509,7 @@ func _test_host_plant_damage_aggregation_and_fatal_flush() -> void:
 		and int(aggregate.get("health_revision", 0)) == 4,
 		"Host plant damage and healing must aggregate independently by net ID without sending one packet per event."
 	)
-	mp_game.call("_on_host_plant_removed", 81)
+	mp_game.call("_on_host_plant_removed", 81, true)
 	_expect(
 		mp_game.outbound_calls.size() == 2
 		and mp_game.outbound_calls[0].get("method_name", &"")
@@ -1507,6 +1518,12 @@ func _test_host_plant_damage_aggregation_and_fatal_flush() -> void:
 		and pending.is_empty(),
 		"Plant removal must flush aggregate damage and healing before its reliable removal event."
 	)
+	if mp_game.outbound_calls.size() >= 2:
+		var removal_args := mp_game.outbound_calls[1].get("args", []) as Array
+		_expect(
+			removal_args == [81, true],
+			"Reliable plant removal must carry the destroyed-building reason."
+		)
 	if mp_game.outbound_calls.size() >= 1:
 		var batch_args := mp_game.outbound_calls[0].get("args", []) as Array
 		_expect(

@@ -390,6 +390,12 @@ func _test_particle_scenes_and_pool_release() -> void:
 
 	var smoke := REMOVAL_SMOKE_SCENE.instantiate() as PlantRemovalSmoke
 	var smoke_material := smoke.process_material as ParticleProcessMaterial
+	var collapse_audio := smoke.get_node_or_null("CollapseAudio") as AudioStreamPlayer2D
+	var collapse_stream := (
+		collapse_audio.stream as AudioStreamWAV
+		if collapse_audio != null
+		else null
+	)
 	_expect(
 		smoke.amount == 10
 		and is_equal_approx(smoke.lifetime, 0.7)
@@ -409,6 +415,30 @@ func _test_particle_scenes_and_pool_release() -> void:
 		and smoke_material.color_initial_ramp != null
 		and smoke_material.color_ramp != null,
 		"消亡烟雾必须保持10粒子、0.7秒，并以径向速度向更远处扩散且不被裁切。"
+	)
+	_expect(
+		collapse_audio != null
+		and collapse_stream != null
+		and collapse_audio.bus == &"SFX"
+		and is_equal_approx(collapse_audio.volume_db, -8.0)
+		and is_equal_approx(collapse_audio.max_distance, 300.0)
+		and collapse_audio.max_polyphony == 1
+		and collapse_stream.mix_rate == 32000
+		and not collapse_stream.stereo
+		and collapse_stream.get_length() >= 0.67
+		and collapse_stream.get_length() <= 0.69
+		and FileAccess.get_file_as_bytes(
+			"res://resources/audio/plant_collapse.wav"
+		).size() <= 50000,
+		"建筑垮塌声必须是SFX总线、短距离单声部、约0.68秒且不超过50KB的32kHz单声道素材。"
+	)
+	_expect(
+		PlantRemovalSmoke.MAX_SIMULTANEOUS_COLLAPSE_VOICES == 4
+		and PlantRemovalSmoke.COLLAPSE_AUDIO_GROUP
+		!= PlantPlacementParticles.PLACEMENT_AUDIO_GROUP
+		and PlantRemovalSmoke.COLLAPSE_AUDIO_GROUP
+		!= PlantAttackAudioLimiter.AUDIO_GROUP,
+		"垮塌声必须拥有独立的四声部空间限制。"
 	)
 	smoke.free()
 	_expect(
@@ -479,13 +509,16 @@ func _test_particle_scenes_and_pool_release() -> void:
 	)
 
 	var smoke_lease := pool.acquire(REMOVAL_SMOKE_SCENE) as PlantRemovalSmoke
-	smoke_lease.restart_effect(1.0)
+	smoke_lease.restart_effect(1.0, true)
+	var smoke_audio := smoke_lease.get_node("CollapseAudio") as AudioStreamPlayer2D
 	_expect(
 		smoke_lease.emitting
+		and smoke_audio.playing
+		and smoke_audio.is_in_group(PlantRemovalSmoke.COLLAPSE_AUDIO_GROUP)
 		and int(pool.get_metrics(REMOVAL_SMOKE_SCENE.resource_path).get(
 			"in_use", 0
 		)) == 1,
-		"死亡烟雾租约必须以one-shot状态启动。"
+		"死亡烟雾租约必须以one-shot状态启动，并播放一次空间垮塌声。"
 	)
 	# Dummy/headless rendering does not consistently advance GPU particle
 	# completion. Emitting the native completion signal deterministically checks
@@ -500,6 +533,24 @@ func _test_particle_scenes_and_pool_release() -> void:
 		and int(smoke_metrics.get("inactive", -1)) == 1,
 		"死亡烟雾finished后必须完整归还对象池。"
 	)
+	_expect(
+		not smoke_audio.playing
+		and not smoke_audio.is_in_group(PlantRemovalSmoke.COLLAPSE_AUDIO_GROUP),
+		"死亡烟雾归还对象池时必须停止垮塌声并释放空间声部。"
+	)
+
+	var manual_smoke_lease := pool.acquire(REMOVAL_SMOKE_SCENE) as PlantRemovalSmoke
+	manual_smoke_lease.restart_effect(1.0, false)
+	var manual_smoke_audio := manual_smoke_lease.get_node(
+		"CollapseAudio"
+	) as AudioStreamPlayer2D
+	_expect(
+		manual_smoke_lease.emitting and not manual_smoke_audio.playing,
+		"主动撤除只能播放消散烟雾，不能误播建筑被摧毁的垮塌声。"
+	)
+	manual_smoke_lease.finished.emit()
+	await physics_frame
+	await physics_frame
 
 	pool.queue_free()
 	await process_frame

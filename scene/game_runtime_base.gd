@@ -87,7 +87,7 @@ signal multiplayer_plant_healing_applied(
 	applied_healing: int,
 	world_position: Vector2
 )
-signal multiplayer_plant_removed(net_id: int)
+signal multiplayer_plant_removed(net_id: int, was_destroyed: bool)
 ## Authoritative terrain batches are already committed locally when emitted.
 ## Revisions must be positive, strictly monotonic, and advance exactly once per
 ## non-empty batch. cell_xy stores x/y pairs parallel to terrain_types.
@@ -1007,6 +1007,15 @@ func apply_remote_plant_health(
 
 func apply_remote_plant_removed(_net_id: int) -> void:
 	pass
+
+
+## Reliable removal events carry the terminal reason so client-only feedback does
+## not depend on an unreliable health packet arriving first.
+func apply_remote_plant_removed_with_reason(
+	net_id: int,
+	_was_destroyed: bool
+) -> void:
+	apply_remote_plant_removed(net_id)
 
 
 ## Complete-state repair uses this path to prune a stale local replica without

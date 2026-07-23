@@ -703,6 +703,13 @@ func apply_pickup(config: PickupConfig, apply_healing: bool = true) -> bool:
 	return applied
 
 
+## 播放成功收入背包的世界掉落反馈；库存生产、转移等非拾取事务不应调用此入口。
+func play_world_inventory_pickup_feedback(config: PickupConfig) -> void:
+	if config == null or not config.can_store_in_inventory:
+		return
+	_play_pickup_audio(config, false)
+
+
 func _apply_character_pickup(_config: PickupConfig, _buff_duration: float) -> bool:
 	return false
 	

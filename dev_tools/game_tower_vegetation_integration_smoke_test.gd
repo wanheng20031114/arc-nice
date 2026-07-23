@@ -19,6 +19,7 @@ var failures: Array[String] = []
 var emitted_terrain_batches: Array[Dictionary] = []
 var lifecycle_events: Array[String] = []
 var record_lifecycle_events := false
+var lifecycle_plant_was_destroyed := false
 
 
 func _init() -> void:
@@ -459,6 +460,7 @@ func _test_real_plant_lifecycle(game: GameTowerDefense) -> void:
 	)
 
 	lifecycle_events.clear()
+	lifecycle_plant_was_destroyed = false
 	record_lifecycle_events = true
 	var lethal_damage := plant.current_health + plant.get_effective_physical_defense()
 	_expect(
@@ -472,6 +474,15 @@ func _test_real_plant_lifecycle(game: GameTowerDefense) -> void:
 	)
 	record_lifecycle_events = false
 	_expect(plant.is_dead, "致死伤害必须进入真实PlantDefense死亡流程。")
+	var collapse_voices := get_nodes_in_group(
+		PlantRemovalSmoke.COLLAPSE_AUDIO_GROUP
+	)
+	_expect(
+		lifecycle_plant_was_destroyed
+		and collapse_voices.size() == 1
+		and (collapse_voices[0] as AudioStreamPlayer2D).playing,
+		"真实建筑死亡必须标记可靠摧毁原因，并启动一次池化空间垮塌声。"
+	)
 	_expect(
 		lifecycle_ring_light != null
 		and not lifecycle_ring_light.is_emission_allowed()
@@ -817,9 +828,10 @@ func _on_terrain_delta(
 		lifecycle_events.append("terrain_delta")
 
 
-func _on_lifecycle_plant_removed(net_id: int) -> void:
+func _on_lifecycle_plant_removed(net_id: int, was_destroyed: bool) -> void:
 	if record_lifecycle_events and net_id == LIFECYCLE_PLANT_NET_ID:
 		lifecycle_events.append("plant_removed")
+		lifecycle_plant_was_destroyed = was_destroyed
 
 
 func _finish() -> void:

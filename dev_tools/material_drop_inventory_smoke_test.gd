@@ -138,6 +138,11 @@ func _test_pickup_single_consumption() -> void:
 		and run_state.get_inventory_item_total(WOOD) == 1,
 		"同一掉落物在同步信号重入和同帧双玩家重叠下都必须只写入一次。"
 	)
+	_expect(
+		first_player.powerup_audio.playing
+		and not second_player.powerup_audio.playing,
+		"成功收集资源掉落的玩家必须播放现有拾取声，未收集者不能误播。"
+	)
 
 	_stop_audio_players(first_player)
 	_stop_audio_players(second_player)

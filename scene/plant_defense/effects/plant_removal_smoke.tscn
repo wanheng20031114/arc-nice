@@ -1,6 +1,7 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://scene/plant_defense/effects/plant_removal_smoke.gd" id="1_script"]
+[ext_resource type="AudioStream" path="res://resources/audio/plant_collapse.wav" id="2_audio"]
 
 [sub_resource type="Gradient" id="Gradient_smoke_texture"]
 offsets = PackedFloat32Array(0, 0.34, 0.72, 1)
@@ -80,3 +81,12 @@ interpolate = true
 process_material = SubResource("ParticleProcessMaterial_smoke")
 texture = SubResource("GradientTexture2D_smoke")
 script = ExtResource("1_script")
+
+[node name="CollapseAudio" type="AudioStreamPlayer2D" parent="."]
+bus = &"SFX"
+stream = ExtResource("2_audio")
+volume_db = -8.0
+max_distance = 300.0
+max_polyphony = 1
+
+[connection signal="finished" from="CollapseAudio" to="." method="_on_collapse_audio_finished"]

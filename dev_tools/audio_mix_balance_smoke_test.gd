@@ -17,6 +17,9 @@ const BAMBOO_MORTAR_SHELL_SCENE := preload(
 const PLANT_PLACEMENT_SCENE := preload(
 	"res://scene/plant_defense/effects/plant_placement_particles.tscn"
 )
+const PLANT_REMOVAL_SCENE := preload(
+	"res://scene/plant_defense/effects/plant_removal_smoke.tscn"
+)
 const MERCHANT_BUBBLE_SCENE := preload("res://scene/merchant_dialogue_bubble.tscn")
 const MULTIPLAYER_LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const UPGRADE_ROW_SCENE := preload("res://scene/upgrade_row.tscn")
@@ -48,6 +51,7 @@ func _run() -> void:
 	await _test_enemy_mix()
 	_test_bamboo_mortar_mix()
 	await _test_plant_placement_mix()
+	await _test_plant_collapse_mix()
 	await _test_combat_audio_limiter()
 	await _test_limited_audio_replay_lifecycle()
 	await _test_spatial_audio_priority()
@@ -180,6 +184,56 @@ func _test_plant_placement_mix() -> void:
 	for stacked_effect in placement_effects:
 		_stop_audio_players(stacked_effect)
 		stacked_effect.queue_free()
+	await _drain_cleanup_frames()
+
+
+func _test_plant_collapse_mix() -> void:
+	var collapse_effects: Array[PlantRemovalSmoke] = []
+	for _index in range(PlantRemovalSmoke.MAX_SIMULTANEOUS_COLLAPSE_VOICES + 1):
+		var effect := PLANT_REMOVAL_SCENE.instantiate() as PlantRemovalSmoke
+		root.add_child(effect)
+		collapse_effects.append(effect)
+	await process_frame
+
+	var audio := collapse_effects[0].collapse_audio
+	_expect_volume(
+		collapse_effects[0],
+		"CollapseAudio",
+		-8.0,
+		"Plant collapse must remain below prominent combat and player-death cues."
+	)
+	_expect(
+		audio.bus == &"SFX"
+		and is_equal_approx(audio.max_distance, 300.0)
+		and audio.max_polyphony == 1,
+		"Plant collapse must remain a restrained one-voice spatial SFX."
+	)
+
+	for effect in collapse_effects:
+		effect.call("_play_collapse_audio")
+	var active_collapse_voices := get_nodes_in_group(
+		PlantRemovalSmoke.COLLAPSE_AUDIO_GROUP
+	)
+	_expect(
+		active_collapse_voices.size()
+		== PlantRemovalSmoke.MAX_SIMULTANEOUS_COLLAPSE_VOICES
+		and collapse_effects[0].collapse_audio.playing
+		and collapse_effects[1].collapse_audio.playing
+		and collapse_effects[2].collapse_audio.playing
+		and collapse_effects[3].collapse_audio.playing
+		and not collapse_effects[4].collapse_audio.playing,
+		"Five simultaneous collapses must retain exactly four logical audio voices."
+	)
+	_expect(
+		_float_close(collapse_effects[0].collapse_audio.volume_db, -8.0)
+		and _float_close(collapse_effects[1].collapse_audio.volume_db, -11.0)
+		and _float_close(collapse_effects[2].collapse_audio.volume_db, -14.0)
+		and _float_close(collapse_effects[3].collapse_audio.volume_db, -17.0),
+		"Stacked collapse voices must use the configured 3 dB attenuation ladder."
+	)
+	for effect in collapse_effects:
+		_stop_audio_players(effect)
+		effect.queue_free()
 	await _drain_cleanup_frames()
 
 

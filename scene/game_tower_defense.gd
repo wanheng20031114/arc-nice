@@ -1048,7 +1048,7 @@ func _spawn_plant_removal_smoke(plant: PlantDefense) -> void:
 		return
 	effect.global_position = plant.get_lifecycle_vfx_global_position()
 	effect.reset_physics_interpolation()
-	effect.restart_effect(plant.get_lifecycle_particle_scale())
+	effect.restart_effect(plant.get_lifecycle_particle_scale(), plant.is_dead)
 
 
 func _on_plant_terrain_decay_timer_timeout() -> void:
@@ -1606,7 +1606,7 @@ func _on_plant_removed(plant: PlantDefense) -> void:
 		production_building.close_production_panel()
 	var net_id := int(plant.get_meta(&"net_id", 0))
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY and net_id > 0:
-		multiplayer_plant_removed.emit(net_id)
+		multiplayer_plant_removed.emit(net_id, plant.is_dead)
 	if plant is VegetationStake and vegetation_spread_system != null:
 		vegetation_spread_system.cancel_source(_get_vegetation_source_id(plant))
 
@@ -1666,8 +1666,19 @@ func apply_remote_plant_health(
 
 
 func apply_remote_plant_removed(net_id: int) -> void:
+	apply_remote_plant_removed_with_reason(net_id, false)
+
+
+func apply_remote_plant_removed_with_reason(
+	net_id: int,
+	was_destroyed: bool
+) -> void:
 	if runtime_mode != RuntimeMode.CLIENT_VIEW or plant_system == null:
 		return
+	var plant := plant_system.get_plant_by_net_id(net_id)
+	if plant != null and is_instance_valid(plant) and was_destroyed:
+		plant.current_health = 0
+		plant.is_dead = true
 	plant_system.remove_plant_by_net_id(net_id, PlantDefense.RemovalMode.ANIMATED)
 
 

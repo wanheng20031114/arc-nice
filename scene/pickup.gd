@@ -95,6 +95,7 @@ func _on_body_entered(body: Node2D) -> void:
 		else run_state.try_add_item(config)
 	)
 	if stored:
+		player.play_world_inventory_pickup_feedback(config)
 		_commit_consumption(player.peer_id, false)
 
 

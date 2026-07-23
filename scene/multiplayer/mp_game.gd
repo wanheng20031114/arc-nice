@@ -8438,7 +8438,7 @@ func _on_host_plant_healing_applied(
 	_pending_plant_health_updates[net_id] = update
 
 
-func _on_host_plant_removed(net_id: int) -> void:
+func _on_host_plant_removed(net_id: int, was_destroyed: bool = false) -> void:
 	if not is_inside_tree() or not net_manager.is_host() or net_id <= 0:
 		return
 	if _pending_plant_health_updates.has(net_id):
@@ -8450,7 +8450,7 @@ func _on_host_plant_removed(net_id: int) -> void:
 	# reliable CH_WORLD_EVENT records before the plant removal on that same
 	# ordered channel, so clients instantiate the shell while its proxy exists.
 	_flush_bamboo_mortar_visuals()
-	_rpc_to_connected_clients(&"net_plant_removed", [net_id])
+	_rpc_to_connected_clients(&"net_plant_removed", [net_id, was_destroyed])
 
 
 func _on_host_terrain_delta(
@@ -9731,13 +9731,13 @@ func net_plant_health_changed(
 
 
 @rpc("authority", "call_remote", "reliable", 5)
-func net_plant_removed(net_id: int) -> void:
+func net_plant_removed(net_id: int, was_destroyed: bool = false) -> void:
 	if game == null or net_manager.is_host():
 		return
 	_erase_pending_warehouse_snapshot(net_id)
 	_erase_pending_remote_production_state(net_id)
 	_mark_remote_plant_removed(net_id)
-	game.apply_remote_plant_removed(net_id)
+	game.apply_remote_plant_removed_with_reason(net_id, was_destroyed)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 4)
@@ -10360,10 +10360,19 @@ func net_pickup_collected(
 	if applied_immediately:
 		player_node.apply_pickup(pickup_config, false)
 	elif not inventory_snapshot.is_empty():
-		run_state.apply_inventory_snapshot_for_peer(
+		var inventory_revision_before := run_state.get_inventory_revision_for_peer(
+			collector_peer_id
+		)
+		var snapshot_applied := run_state.apply_inventory_snapshot_for_peer(
 			collector_peer_id,
 			inventory_snapshot
 		)
+		if (
+			snapshot_applied
+			and run_state.get_inventory_revision_for_peer(collector_peer_id)
+			> inventory_revision_before
+		):
+			player_node.play_world_inventory_pickup_feedback(pickup_config)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
