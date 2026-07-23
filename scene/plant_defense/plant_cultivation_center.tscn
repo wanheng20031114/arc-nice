@@ -15,6 +15,7 @@
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="13_night_light"]
 [ext_resource type="Texture2D" uid="uid://gs85ud857sbr" path="res://resources/lighting/plant_cultivation_center_hotspots.svg" id="14_hotspot_texture"]
 [ext_resource type="Texture2D" uid="uid://j6ye48p2kdf6" path="res://resources/texture/plant_defense/plant_cultivation_center/layers/upper_foreground.png" id="15_upper_foreground"]
+[ext_resource type="Script" path="res://scene/plant_defense/day_night_progress_border.gd" id="16_night_border"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_production_border"]
 shader = ExtResource("10_border_shader")
@@ -124,6 +125,7 @@ z_index = -1
 texture_filter = 1
 material = SubResource("ShaderMaterial_production_border")
 mesh = SubResource("QuadMesh_production_border")
+script = ExtResource("16_night_border")
 
 [node name="VisualRoot" type="Node2D" parent="." unique_id=1021732489]
 scale = Vector2(0.5, 0.5)

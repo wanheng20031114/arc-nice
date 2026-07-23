@@ -11,6 +11,7 @@ uniform float data_noise_speed : hint_range(0.25, 4.0, 0.05) = 1.65;
 instance uniform bool working_active = false;
 instance uniform float progress_value : hint_range(0.0, 1.0) = 0.0;
 instance uniform float noise_seed = 0.0;
+instance uniform vec4 environment_tint : source_color = vec4(1.0);
 
 
 float data_hash(vec2 pixel) {
@@ -61,7 +62,7 @@ void fragment() {
 			idle_shadow.rgb,
 			idle_blue.rgb,
 			idle_mix
-		);
+		) * environment_tint.rgb;
 		COLOR = vec4(idle_color, 1.0);
 		if (working_active) {
 			float displayed_progress = clamp(progress_value, 0.0, 1.0);

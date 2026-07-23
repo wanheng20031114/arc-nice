@@ -13,6 +13,7 @@
 [ext_resource type="Resource" path="res://resources/config/production/planting_base_assembly.tres" id="11_planting_base_recipe"]
 [ext_resource type="Resource" path="res://resources/config/production/plant_cultivation_center_assembly.tres" id="12_cultivation_center_recipe"]
 [ext_resource type="Resource" path="res://resources/config/production/research_center_assembly.tres" id="13_research_center_recipe"]
+[ext_resource type="Script" path="res://scene/plant_defense/day_night_progress_border.gd" id="14_night_border"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_production_border"]
 shader = ExtResource("8_border_shader")
@@ -99,6 +100,7 @@ z_index = -1
 texture_filter = 1
 material = SubResource("ShaderMaterial_production_border")
 mesh = SubResource("QuadMesh_production_border")
+script = ExtResource("14_night_border")
 
 [node name="MainSprite" type="Sprite2D" parent="." unique_id=1081452852]
 z_index = 1

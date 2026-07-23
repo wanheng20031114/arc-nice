@@ -9,6 +9,7 @@ uniform float leaf_noise_speed : hint_range(0.25, 4.0, 0.05) = 1.55;
 instance uniform bool working_active = false;
 instance uniform float progress_value : hint_range(0.0, 1.0) = 0.0;
 instance uniform float noise_seed = 0.0;
+instance uniform vec4 environment_tint : source_color = vec4(1.0);
 
 
 float leaf_hash(vec2 pixel) {
@@ -48,7 +49,10 @@ void fragment() {
 			+ (noise + noise_seed) * TAU
 		) * 0.5 + 0.5;
 		float idle_mix = mix(0.24, 0.78, wave);
-		vec3 idle_color = mix(idle_shadow.rgb, idle_green.rgb, idle_mix);
+		vec3 idle_color = (
+			mix(idle_shadow.rgb, idle_green.rgb, idle_mix)
+			* environment_tint.rgb
+		);
 		COLOR = vec4(idle_color, 1.0);
 		if (working_active) {
 			float path_progress = clockwise_progress(pixel);
