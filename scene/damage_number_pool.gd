@@ -23,13 +23,13 @@ const MAGIC_OUTLINE_COLOR := Color(0.16, 0.04, 0.30, 0.98)
 const HEALING_FONT_COLOR := Color("#AFDD22")
 const HEALING_OUTLINE_COLOR := Color(0.08, 0.20, 0.015, 0.98)
 const OUTLINE_SIZE := 2
-# Floating combat text is feedback, not authoritative simulation. Rebuilding up
-# to 96 shaped TextLine draw commands every render frame was visible in the
-# profiler during burst damage. Keep the CanvasItem render loop smooth while
-# advancing and rebuilding this short-lived batch at 30 Hz. The first number
-# after an idle period appears immediately; further admissions join the next
-# scheduled redraw, at most one 30 Hz interval later.
-const VISUAL_UPDATE_INTERVAL := 1.0 / 30.0
+# Damage, magic damage and green healing numbers share this batch and cadence.
+# Ordinary combat stays at the project's 60 Hz presentation rate; only a large
+# simultaneous burst drops the shared draw list to 30 Hz to retain the original
+# high-pressure protection without making everyday feedback look frame-stepped.
+const PRESSURE_VISUAL_UPDATE_INTERVAL := 1.0 / 30.0
+const SMOOTH_ACTIVE_LIMIT := 48
+const PRESSURE_EXIT_ACTIVE_LIMIT := 40
 
 @export_range(1, 256, 1, "or_greater") var pool_size: int = 96
 @export_range(1, 240, 1, "or_greater") var max_numbers_per_second: int = 120
@@ -51,6 +51,7 @@ var slot_damage_types := PackedByteArray()
 var slot_text_lines: Array[TextLine] = []
 var active_count: int = 0
 var visual_update_accumulator := 0.0
+var pressure_visual_cadence := false
 var redraw_request_count: int = 0
 
 var budget_frame: int = -1
@@ -138,6 +139,7 @@ func show_combat_number(
 	var was_pool_idle := active_count <= 0
 	if was_pool_idle:
 		visual_update_accumulator = 0.0
+		pressure_visual_cadence = false
 	slot_active[slot_index] = 1
 	slot_elapsed[slot_index] = 0.0
 	slot_start_positions[slot_index] = (
@@ -235,13 +237,39 @@ func _get_slot_debug_snapshot(index: int) -> Dictionary:
 func _process(delta: float) -> void:
 	if active_count <= 0:
 		visual_update_accumulator = 0.0
+		pressure_visual_cadence = false
 		set_process(false)
 		return
-	visual_update_accumulator += maxf(delta, 0.0)
-	if visual_update_accumulator < VISUAL_UPDATE_INTERVAL:
-		return
-	var safe_delta := visual_update_accumulator
-	visual_update_accumulator = 0.0
+	if pressure_visual_cadence:
+		if active_count <= PRESSURE_EXIT_ACTIVE_LIMIT:
+			pressure_visual_cadence = false
+	elif active_count > SMOOTH_ACTIVE_LIMIT:
+		pressure_visual_cadence = true
+
+	var safe_delta := maxf(delta, 0.0)
+	if pressure_visual_cadence:
+		visual_update_accumulator += safe_delta
+		if visual_update_accumulator < PRESSURE_VISUAL_UPDATE_INTERVAL:
+			return
+		safe_delta = visual_update_accumulator
+		visual_update_accumulator = fmod(
+			visual_update_accumulator,
+			PRESSURE_VISUAL_UPDATE_INTERVAL
+		)
+	else:
+		# Smooth-mode combat text follows every rendered frame, including green
+		# healing numbers and any future number kind admitted through this pool.
+		visual_update_accumulator = 0.0
+	_advance_active_slots(safe_delta)
+	_request_visual_redraw()
+	if active_count <= 0:
+		active_count = 0
+		visual_update_accumulator = 0.0
+		pressure_visual_cadence = false
+		set_process(false)
+
+
+func _advance_active_slots(safe_delta: float) -> void:
 	for index in range(slot_active.size()):
 		if slot_active[index] == 0:
 			continue
@@ -253,11 +281,6 @@ func _process(delta: float) -> void:
 			active_count -= 1
 			continue
 		slot_elapsed[index] = next_elapsed
-	_request_visual_redraw()
-	if active_count <= 0:
-		active_count = 0
-		visual_update_accumulator = 0.0
-		set_process(false)
 
 
 func _draw() -> void:
@@ -327,6 +350,7 @@ func _initialize_slots() -> void:
 		slot_text_lines[index] = text_line
 	active_count = 0
 	visual_update_accumulator = 0.0
+	pressure_visual_cadence = false
 	redraw_request_count = 0
 
 

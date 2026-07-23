@@ -179,14 +179,25 @@ func _test_visual_redraw_cadence() -> void:
 	await process_frame
 
 	for sample_index in range(30):
-		# The loop models one admitted number every 60 Hz frame without awaiting
-		# real time. Reset only the per-render admission window; the one-second
-		# budget and fixed slot capacity remain active.
+		# Damage and green healing feedback share the exact same smooth cadence.
+		var number_kind := (
+			DamageNumberPool.CombatNumberKind.HEALING
+			if sample_index % 3 == 2
+			else DamageNumberPool.CombatNumberKind.DAMAGE
+		)
+		var damage_type := (
+			EnemyConfig.DamageType.MAGIC
+			if sample_index % 3 == 1
+			else EnemyConfig.DamageType.PHYSICAL
+		)
 		cadence_pool.budget_frame = -1
 		_expect(
-			cadence_pool.show_damage_number(
+			cadence_pool.show_combat_number(
 				sample_index + 1,
-				Vector2(64.0, 64.0)
+				Vector2(64.0, 64.0),
+				number_kind,
+				Vector2.ZERO,
+				damage_type
 			),
 			"Cadence fixture must admit every in-view pressure sample."
 		)
@@ -194,11 +205,99 @@ func _test_visual_redraw_cadence() -> void:
 
 	var redraws := cadence_pool.get_redraw_request_count()
 	_expect(
-		redraws >= 14 and redraws <= 17,
-		"Continuous 60 Hz admissions must rebuild the shared draw list at about 30 Hz, got %d redraws."
+		redraws >= 30 and redraws <= 31
+		and cadence_pool.has_active_text("1")
+		and cadence_pool.has_active_text("+30"),
+		"Ordinary damage and healing feedback must rebuild smoothly at 60 Hz, got %d redraws."
 		% redraws
 	)
 	cadence_pool.queue_free()
+	await process_frame
+
+	var pressure_pool := DAMAGE_NUMBER_POOL_SCRIPT.new() as DamageNumberPool
+	pressure_pool.name = "DamageNumberPressureCadencePool"
+	pressure_pool.max_numbers_per_frame = pressure_pool.pool_size
+	pressure_pool.max_numbers_per_second = pressure_pool.pool_size * 2
+	pressure_pool.important_frame_reserve = 0
+	pressure_pool.important_per_second_reserve = 0
+	test_root.add_child(pressure_pool)
+	await process_frame
+	var pressure_count := DamageNumberPool.SMOOTH_ACTIVE_LIMIT + 18
+	for sample_index in range(pressure_count):
+		var number_kind := (
+			DamageNumberPool.CombatNumberKind.HEALING
+			if sample_index % 3 == 2
+			else DamageNumberPool.CombatNumberKind.DAMAGE
+		)
+		var damage_type := (
+			EnemyConfig.DamageType.MAGIC
+			if sample_index % 3 == 1
+			else EnemyConfig.DamageType.PHYSICAL
+		)
+		_expect(
+			pressure_pool.show_combat_number(
+				sample_index + 1,
+				Vector2(64.0, 64.0),
+				number_kind,
+				Vector2.ZERO,
+				damage_type
+			),
+			"High-pressure cadence fixture must fill every requested shared slot."
+		)
+	for _frame_index in range(30):
+		pressure_pool._process(1.0 / 60.0)
+	var pressure_redraws := pressure_pool.get_redraw_request_count()
+	var pressure_physical := pressure_pool.get_first_active_debug_snapshot(
+		EnemyConfig.DamageType.PHYSICAL
+	)
+	var pressure_magic := pressure_pool.get_first_active_debug_snapshot(
+		EnemyConfig.DamageType.MAGIC
+	)
+	var pressure_healing := pressure_pool.get_first_active_combat_number_debug_snapshot(
+		DamageNumberPool.CombatNumberKind.HEALING
+	)
+	_expect(
+		pressure_pool.get_active_count() == pressure_count
+		and pressure_pool.has_active_text("1")
+		and pressure_pool.has_active_text("+3")
+		and pressure_pool.pressure_visual_cadence
+		and pressure_redraws >= 15
+		and pressure_redraws <= 17,
+		"Large mixed combat-number bursts must retain the 30 Hz protection, got %d redraws."
+		% pressure_redraws
+	)
+	_expect(
+		not pressure_physical.is_empty()
+		and not pressure_magic.is_empty()
+		and not pressure_healing.is_empty()
+		and is_equal_approx(
+			float(pressure_physical.get("elapsed", -1.0)),
+			float(pressure_magic.get("elapsed", -2.0))
+		)
+		and is_equal_approx(
+			float(pressure_physical.get("elapsed", -1.0)),
+			float(pressure_healing.get("elapsed", -3.0))
+		),
+		"Physical, magic and healing numbers must advance through one shared cadence."
+	)
+	for slot_index in range(pressure_pool.slot_active.size()):
+		if pressure_pool.active_count <= DamageNumberPool.PRESSURE_EXIT_ACTIVE_LIMIT:
+			break
+		if pressure_pool.slot_active[slot_index] == 0:
+			continue
+		pressure_pool.slot_active[slot_index] = 0
+		pressure_pool.slot_elapsed[slot_index] = 0.0
+		pressure_pool.slot_texts[slot_index] = ""
+		pressure_pool.active_count -= 1
+	var exit_redraws_before := pressure_pool.get_redraw_request_count()
+	for _frame_index in range(6):
+		pressure_pool._process(1.0 / 60.0)
+	_expect(
+		not pressure_pool.pressure_visual_cadence
+		and pressure_pool.get_redraw_request_count() - exit_redraws_before == 6,
+		"Combat text must return to per-frame smoothing after pressure falls to the exit threshold."
+	)
+	pressure_pool.queue_free()
 	await process_frame
 
 
