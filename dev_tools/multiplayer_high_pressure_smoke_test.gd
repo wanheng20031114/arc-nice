@@ -8,7 +8,7 @@ const PICKUP_CONFIG := preload("res://resources/config/pickups/pickup_health.tre
 const HOE_CAT_SCENE := preload("res://scene/player/hoe_cat/player_hoe_cat.tscn")
 const TIYI_SCENE := preload("res://scene/player/tiyi/player_tiyi.tscn")
 const CAPOO_PROJECTILE_MOTION_SYSTEM_SCENE := preload(
-	"res://scene/enemy/capoo_projectile_motion_system.tscn"
+	"res://scene/enemy/capoo/capoo_projectile_motion_system.tscn"
 )
 const DAY_NIGHT_SCENE := preload(
 	"res://scene/lighting/day_night_controller.tscn"

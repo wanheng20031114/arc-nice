@@ -1,12 +1,12 @@
 extends SceneTree
 
 const LIGHTNING_SCENE := preload(
-	"res://scene/enemy/lightning_sorcerer.tscn"
+	"res://scene/enemy/sorcerer/lightning_sorcerer.tscn"
 )
 const LIGHTNING_CONFIG := preload(
 	"res://resources/config/enemies/lightning_sorcerer.tres"
 )
-const FIRE_SCENE := preload("res://scene/enemy/fire_sorcerer.tscn")
+const FIRE_SCENE := preload("res://scene/enemy/sorcerer/fire_sorcerer.tscn")
 const FROST_CONFIG := preload(
 	"res://resources/config/enemies/frost_sorcerer.tres"
 )
@@ -14,7 +14,7 @@ const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
 const TargetWarningScript := preload(
-	"res://scene/enemy/lightning_sorcerer_target_warning.gd"
+	"res://scene/enemy/sorcerer/lightning_sorcerer_target_warning.gd"
 )
 
 const TEST_HEALTH := 1000
@@ -200,7 +200,7 @@ func _test_resource_and_scene_contract() -> void:
 		fire_enemy.free()
 
 	var enemy_source := FileAccess.get_file_as_string(
-		"res://scene/enemy/lightning_sorcerer.gd"
+		"res://scene/enemy/sorcerer/lightning_sorcerer.gd"
 	)
 	_expect(
 		not enemy_source.contains("projectile_scene")

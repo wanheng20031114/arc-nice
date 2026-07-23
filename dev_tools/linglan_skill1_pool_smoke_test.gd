@@ -10,7 +10,7 @@ const SAKURA_HIT_EFFECT_SCENE := preload(
 )
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const CAPOO_PROJECTILE_MOTION_SYSTEM_SCENE := preload(
-	"res://scene/enemy/capoo_projectile_motion_system.tscn"
+	"res://scene/enemy/capoo/capoo_projectile_motion_system.tscn"
 )
 const DAY_NIGHT_SCENE := preload(
 	"res://scene/lighting/day_night_controller.tscn"

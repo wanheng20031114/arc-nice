@@ -34,7 +34,7 @@ const PROJECTILE_CASES := [
 	{
 		"label": "fire_sorcerer_fireball_volley",
 		"scene": preload(
-			"res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
+			"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn"
 		),
 		"expected_lifetime": 7.0,
 		"maximum_allowed_lifetime": 7.0,
@@ -43,7 +43,7 @@ const PROJECTILE_CASES := [
 	{
 		"label": "fire_sorcerer_elite_fireball_volley",
 		"scene": preload(
-			"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn"
+			"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn"
 		),
 		"expected_lifetime": 7.0,
 		"maximum_allowed_lifetime": 7.0,
@@ -52,7 +52,7 @@ const PROJECTILE_CASES := [
 	{
 		"label": "frost_sorcerer_ice_spike",
 		"scene": preload(
-			"res://scene/enemy/frost_sorcerer_ice_spike.tscn"
+			"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn"
 		),
 		"expected_lifetime": 7.0,
 		"expected_speed": 100.0,

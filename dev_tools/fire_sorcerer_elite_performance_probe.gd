@@ -4,10 +4,10 @@ extends SceneTree
 # acquisition/release path while manually timing gameplay callbacks. Pool lease
 # metrics include roots that have no live balls but still own expiry visuals.
 const FIRE_SORCERER_SCENE := preload(
-	"res://scene/enemy/fire_sorcerer_elite.tscn"
+	"res://scene/enemy/sorcerer/fire_sorcerer_elite.tscn"
 )
 const FIREBALL_VOLLEY_SCENE := preload(
-	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn"
+	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn"
 )
 const FIRE_SORCERER_CONFIG := preload(
 	"res://resources/config/enemies/fire_sorcerer_elite.tres"

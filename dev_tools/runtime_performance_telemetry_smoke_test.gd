@@ -3,13 +3,13 @@ extends SceneTree
 const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const FIRE_SORCERER_FIREBALL_VOLLEY_SCENE := preload(
-	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
+	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn"
 )
 const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE := preload(
-	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn"
+	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn"
 )
 const FROST_SORCERER_ICE_SPIKE_SCENE := preload(
-	"res://scene/enemy/frost_sorcerer_ice_spike.tscn"
+	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn"
 )
 const TELEMETRY_SCRIPT := preload("res://scene/runtime_performance_telemetry.gd")
 const EXPECTED_WAVE_TOTAL := 1200

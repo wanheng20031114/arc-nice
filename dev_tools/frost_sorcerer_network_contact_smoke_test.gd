@@ -4,7 +4,7 @@ const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
 const ICE_SPIKE_SCENE_PATH := (
-	"res://scene/enemy/frost_sorcerer_ice_spike.tscn"
+	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn"
 )
 const TEST_HEALTH := 1000
 const ICE_SPIKE_DAMAGE := 20

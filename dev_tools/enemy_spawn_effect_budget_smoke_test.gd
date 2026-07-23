@@ -2,7 +2,7 @@ extends SceneTree
 
 const BUDGET_SCRIPT := preload("res://scene/enemy_spawn_effect_budget.gd")
 const SPAWN_EFFECT_SCENE := preload(
-	"res://scene/enemy/yuanshi_insect_spawn_effect.tscn"
+	"res://scene/enemy/yuanshi_insect/yuanshi_insect_spawn_effect.tscn"
 )
 const BULLET_HIT_EFFECT_SCENE := preload("res://scene/bullet_hit_effect.tscn")
 const ENEMY_HIT_EFFECT_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")

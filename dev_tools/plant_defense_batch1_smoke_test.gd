@@ -398,30 +398,48 @@ func _test_config_and_scene_contracts() -> void:
 	_expect(vegetation_stake != null, "植被桩场景根节点必须继承PlantDefense。")
 	if vegetation_stake != null:
 		var main_sprite := vegetation_stake.get_node_or_null("MainSprite") as Sprite2D
+		var upper_canopy := vegetation_stake.get_node_or_null("UpperCanopy") as Sprite2D
 		var top_glow := vegetation_stake.get_node_or_null("TopGlow") as Sprite2D
 		var glow_motes := vegetation_stake.get_node_or_null("GlowMotes") as GPUParticles2D
 		var cell_border := vegetation_stake.get_node_or_null("CellBorder") as MeshInstance2D
 		var stake_health_bar := vegetation_stake.get_node_or_null("HealthBar") as Control
 		_expect(
 			main_sprite != null
+			and upper_canopy != null
 			and top_glow != null
 			and glow_motes != null
 			and cell_border != null,
-			"植被桩必须在场景中原生预建MainSprite、TopGlow、GlowMotes与CellBorder节点。"
+			"植被桩必须在场景中原生预建MainSprite、UpperCanopy、TopGlow、GlowMotes与CellBorder节点。"
 		)
-		if main_sprite != null and top_glow != null:
+		if main_sprite != null and upper_canopy != null and top_glow != null:
+			var canopy_region := upper_canopy.texture as AtlasTexture
 			_expect(
 				main_sprite.scale == Vector2(0.5, 0.5)
+				and upper_canopy.scale == Vector2(0.5, 0.5)
 				and top_glow.scale == Vector2(0.5, 0.5)
 				and main_sprite.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+				and upper_canopy.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
 				and top_glow.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
-				"植被桩主体与发光层必须以0.5缩放和nearest采样保持像素轮廓。"
+				"植被桩主体、顶部遮挡层与发光层必须以0.5缩放和nearest采样保持像素轮廓。"
+			)
+			_expect(
+				canopy_region != null
+				and canopy_region.atlas == main_sprite.texture
+				and canopy_region.region == Rect2(0, 0, 64, 36)
+				and upper_canopy.position == Vector2(0, -8)
+				and upper_canopy.z_index == 4
+				and top_glow.z_index == 2,
+				"植被桩必须只把不透明顶部冠层置于玩家和敌人之上，并保持透明TopGlow原图层。"
 			)
 			var stake_main_material := main_sprite.material as ShaderMaterial
+			var stake_canopy_material := upper_canopy.material as ShaderMaterial
 			_expect(
 				stake_main_material != null
-				and stake_main_material.shader == PLANT_LIFECYCLE_SHADER,
-				"植被桩主体必须使用兼具像素相位修正的生命周期shader。"
+				and stake_main_material.shader == PLANT_LIFECYCLE_SHADER
+				and stake_canopy_material != null
+				and stake_canopy_material.shader == PLANT_LIFECYCLE_SHADER
+				and vegetation_stake.lifecycle_visual_paths.has(NodePath("UpperCanopy")),
+				"植被桩主体与顶部冠层必须同步使用兼具像素相位修正的生命周期shader。"
 			)
 		if cell_border != null:
 			var border_quad := cell_border.mesh as QuadMesh

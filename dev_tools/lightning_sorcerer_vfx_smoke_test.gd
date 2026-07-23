@@ -1,7 +1,7 @@
 extends SceneTree
 
 const EFFECT_SCENE := preload(
-	"res://scene/enemy/lightning_sorcerer_lightning_vfx.tscn"
+	"res://scene/enemy/sorcerer/lightning_sorcerer_lightning_vfx.tscn"
 )
 const NIGHT_FLASH_POOL_SCENE := preload(
 	"res://scene/lighting/night_vfx_flash_pool.tscn"
@@ -81,7 +81,7 @@ func _run() -> void:
 
 func _verify_authored_scene_contract() -> void:
 	var source := FileAccess.get_file_as_string(
-		"res://scene/enemy/lightning_sorcerer_lightning_vfx.gd"
+		"res://scene/enemy/sorcerer/lightning_sorcerer_lightning_vfx.gd"
 	)
 	_expect(
 		source.count("draw_multiline(") == 2,

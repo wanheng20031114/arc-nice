@@ -13,13 +13,13 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://resources/config/enemies/yuanshi_insect_basic.tres",
 	"res://resources/config/enemies/yuanshi_insect_shell.tres",
 	"res://resources/config/enemies/capoo_ak47.tres",
-	"res://scene/enemy/yuanshi_insect_basic.tscn",
-	"res://scene/enemy/yuanshi_insect_shell.tscn",
-	"res://scene/enemy/capoo_ak47.tscn",
-	"res://scene/enemy/capoo_ak47_bullet.tscn",
-	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn",
-	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn",
-	"res://scene/enemy/frost_sorcerer_ice_spike.tscn",
+	"res://scene/enemy/yuanshi_insect/yuanshi_insect_basic.tscn",
+	"res://scene/enemy/yuanshi_insect/yuanshi_insect_shell.tscn",
+	"res://scene/enemy/capoo/capoo_ak47.tscn",
+	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn",
+	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn",
+	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn",
+	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn",
 	"res://resources/animation/yuanshi_insect_basic.tres",
 	"res://resources/animation/capoo_ak47.tres",
 	"res://resources/audio/capoo_ak47_fire.wav",
@@ -45,7 +45,7 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://resources/shader/plant_lifecycle_noise.tres",
 	"res://scene/plant_defense/effects/plant_placement_particles.tscn",
 	"res://scene/plant_defense/effects/plant_removal_smoke.tscn",
-	"res://scene/enemy/yuanshi_insect_spawn_effect.tscn",
+	"res://scene/enemy/yuanshi_insect/yuanshi_insect_spawn_effect.tscn",
 ]
 
 var failures: Array[String] = []
@@ -397,9 +397,9 @@ func _expect_sorcerer_projectile_pools(
 	if object_pool == null:
 		return
 	for scene_path in [
-		"res://scene/enemy/fire_sorcerer_fireball_volley.tscn",
-		"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn",
-		"res://scene/enemy/frost_sorcerer_ice_spike.tscn",
+		"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn",
+		"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn",
+		"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn",
 	]:
 		var metrics := object_pool.get_metrics(scene_path)
 		_expect(

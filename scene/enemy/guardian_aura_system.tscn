@@ -1,8 +1,0 @@
-[gd_scene load_steps=2 format=3]
-
-[ext_resource type="Script" path="res://scene/enemy/guardian_aura_system.gd" id="1_guardian_aura_system"]
-
-[node name="GuardianAuraSystem" type="Node"]
-process_physics_priority = 10
-script = ExtResource("1_guardian_aura_system")
-target_container_paths = Array[NodePath]([NodePath("../EnemyContainer"), NodePath("../BossContainer")])

@@ -1,8 +1,8 @@
 [gd_resource type="Resource" script_class="FrostSorcererConfig" format=3]
 
 [ext_resource type="Script" path="res://resources/config/enemies/frost_sorcerer_config.gd" id="1_script"]
-[ext_resource type="PackedScene" path="res://scene/enemy/frost_sorcerer.tscn" id="2_scene"]
-[ext_resource type="PackedScene" path="res://scene/enemy/frost_sorcerer_ice_spike.tscn" id="3_ice_spike"]
+[ext_resource type="PackedScene" path="res://scene/enemy/sorcerer/frost_sorcerer.tscn" id="2_scene"]
+[ext_resource type="PackedScene" path="res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn" id="3_ice_spike"]
 
 [resource]
 script = ExtResource("1_script")
@@ -22,4 +22,4 @@ magic_defense = 80
 move_speed = 24.0
 home_damage = 5
 xirang_kill_reward = 35
-drop_tags = PackedStringArray("sorcerer")
+category_tags = PackedStringArray("sorcerer")

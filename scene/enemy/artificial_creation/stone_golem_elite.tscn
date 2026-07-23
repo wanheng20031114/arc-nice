@@ -1,0 +1,50 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scene/enemy/enemy.tscn" id="1_base"]
+[ext_resource type="Script" path="res://scene/enemy/artificial_creation/stone_golem_elite.gd" id="2_script"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/stone_golem_elite.tres" id="3_frames"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+resource_local_to_scene = true
+size = Vector2(20, 20)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_touch"]
+resource_local_to_scene = true
+size = Vector2(20, 20)
+
+[node name="StoneGolemElite" instance=ExtResource("1_base")]
+script = ExtResource("2_script")
+path_refresh_interval = 0.25
+waypoint_arrival_distance = 6.0
+direct_chase_extra_distance = 2.0
+navigation_update_interval_frames = 8
+
+[node name="AnimatedSprite2D" parent="." index="0"]
+texture_filter = 1
+position = Vector2(0, -6)
+sprite_frames = ExtResource("3_frames")
+animation = &"move"
+
+[node name="CollisionShape2D" parent="." index="1"]
+shape = SubResource("RectangleShape2D_body")
+
+[node name="CollisionShape2D" parent="TouchDamageArea" index="0"]
+shape = SubResource("RectangleShape2D_touch")
+
+[node name="WindupWarning" type="Polygon2D" parent="." index="5"]
+visible = false
+color = Color(0.62, 0.2, 0.16, 0.08)
+polygon = PackedVector2Array(44, 0, 40.6504, 16.8388, 31.1127, 31.1127, 16.8388, 40.6504, 0, 44, -16.8388, 40.6504, -31.1127, 31.1127, -40.6504, 16.8388, -44, 0, -40.6504, -16.8388, -31.1127, -31.1127, -16.8388, -40.6504, 0, -44, 16.8388, -40.6504, 31.1127, -31.1127, 40.6504, -16.8388)
+
+[node name="SlamImpactRing" type="Line2D" parent="." index="6"]
+visible = false
+points = PackedVector2Array(44, 0, 40.6504, 16.8388, 31.1127, 31.1127, 16.8388, 40.6504, 0, 44, -16.8388, 40.6504, -31.1127, 31.1127, -40.6504, 16.8388, -44, 0, -40.6504, -16.8388, -31.1127, -31.1127, -16.8388, -40.6504, 0, -44, 16.8388, -40.6504, 31.1127, -31.1127, 40.6504, -16.8388)
+closed = true
+width = 2.0
+default_color = Color(0.88, 0.3, 0.22, 0.86)
+
+[node name="AttackAudio" type="AudioStreamPlayer2D" parent="." index="7"]
+volume_db = -14.0
+max_distance = 176.0
+max_polyphony = 2
+bus = &"SFX"

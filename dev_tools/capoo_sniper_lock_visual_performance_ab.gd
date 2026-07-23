@@ -1,8 +1,8 @@
 extends SceneTree
 
-const RETICLE_SCENE := preload("res://scene/enemy/capoo_sniper_lock_reticle.tscn")
+const RETICLE_SCENE := preload("res://scene/enemy/capoo/capoo_sniper_lock_reticle.tscn")
 const COORDINATOR_SCRIPT := preload(
-	"res://scene/enemy/capoo_sniper_lock_visual_coordinator.gd"
+	"res://scene/enemy/capoo/capoo_sniper_lock_visual_coordinator.gd"
 )
 
 const RETICLE_COUNT := 240

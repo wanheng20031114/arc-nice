@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://dev_tools/guardian_night_glow_visual_test.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://scene/lighting/day_night_controller.tscn" id="2_day_night"]
-[ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect_guardian.tscn" id="3_guardian"]
+[ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect/yuanshi_insect_guardian.tscn" id="3_guardian"]
 
 [sub_resource type="Environment" id="Environment_glow"]
 glow_enabled = true

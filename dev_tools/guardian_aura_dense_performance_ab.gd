@@ -8,7 +8,7 @@ const GUARDIAN_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_guardian.tres"
 )
 const GUARDIAN_SYSTEM_SCENE := preload(
-	"res://scene/enemy/guardian_aura_system.tscn"
+	"res://scene/enemy/yuanshi_insect/guardian_aura_system.tscn"
 )
 
 const ENEMY_COUNT := 300

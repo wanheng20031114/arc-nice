@@ -1,0 +1,2 @@
+extends YuanshiInsect
+class_name Slime

@@ -5,8 +5,8 @@ const BOSS_ROCKET_SCENE := preload(
 	"res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn"
 )
 const COLLECTIBLE_ROCKET_SCENE := preload("res://scene/collectible_sakura_rocket.tscn")
-const RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo_rpg_rocket.tscn")
-const MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
+const RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_rocket.tscn")
+const MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball.tscn")
 const AGAVE_CANNONBALL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")

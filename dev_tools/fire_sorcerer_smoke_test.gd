@@ -1,10 +1,10 @@
 extends SceneTree
 
 const FIRE_SORCERER_SCENE := preload(
-	"res://scene/enemy/fire_sorcerer.tscn"
+	"res://scene/enemy/sorcerer/fire_sorcerer.tscn"
 )
 const FIREBALL_VOLLEY_SCENE := preload(
-	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
+	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn"
 )
 const FIRE_SORCERER_CONFIG := preload(
 	"res://resources/config/enemies/fire_sorcerer.tres"

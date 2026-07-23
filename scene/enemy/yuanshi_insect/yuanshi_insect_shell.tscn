@@ -1,0 +1,34 @@
+[gd_scene format=3 uid="uid://cgxbwtl47ylr1"]
+
+[ext_resource type="PackedScene" uid="uid://ccvfm2ck2jkky" path="res://scene/enemy/yuanshi_insect/yuanshi_insect.tscn" id="1_base"]
+[ext_resource type="SpriteFrames" uid="uid://dil4bd4tna04v" path="res://resources/animation/yuanshi_insect_shell.tres" id="2_frames"]
+[ext_resource type="Shader" path="res://scene/entity_motion_status.gdshader" id="2_jukkn"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_8xji7"]
+resource_local_to_scene = false
+shader = ExtResource("2_jukkn")
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_urb56"]
+radius = 6.0
+height = 20.0
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_1h0qn"]
+radius = 6.0
+height = 20.0
+
+[node name="YuanshiInsectShell" unique_id=864150341 instance=ExtResource("1_base")]
+
+[node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
+material = SubResource("ShaderMaterial_8xji7")
+sprite_frames = ExtResource("2_frames")
+animation = &"move"
+
+[node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
+position = Vector2(1, 0)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_urb56")
+
+[node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
+position = Vector2(1, 0)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_1h0qn")

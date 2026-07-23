@@ -5,13 +5,13 @@ const RAPID_STREAM := preload("res://resources/audio/capoo_smg_fire.wav")
 const HEAVY_STREAM := preload("res://resources/audio/capoo_rpg_launch.wav")
 
 const ATTACK_AUDIO_CALL_SITES := {
-	"res://scene/enemy/capoo_smg.gd": "play_rapid_fire(attack_audio)",
-	"res://scene/enemy/capoo_ak47.gd": "play_rapid_fire(attack_audio)",
-	"res://scene/enemy/capoo_mage.gd": "play_heavy_attack(attack_audio)",
-	"res://scene/enemy/capoo_knight.gd": "play_heavy_attack(attack_audio)",
-	"res://scene/enemy/capoo_rpg.gd": "play_heavy_attack(attack_audio)",
-	"res://scene/enemy/capoo_sniper.gd": "play_heavy_attack(attack_audio)",
-	"res://scene/enemy/yuanshi_insect_fire_ranged.gd": (
+	"res://scene/enemy/capoo/capoo_smg.gd": "play_rapid_fire(attack_audio)",
+	"res://scene/enemy/capoo/capoo_ak47.gd": "play_rapid_fire(attack_audio)",
+	"res://scene/enemy/capoo/capoo_mage.gd": "play_heavy_attack(attack_audio)",
+	"res://scene/enemy/capoo/capoo_knight.gd": "play_heavy_attack(attack_audio)",
+	"res://scene/enemy/capoo/capoo_rpg.gd": "play_heavy_attack(attack_audio)",
+	"res://scene/enemy/capoo/capoo_sniper.gd": "play_heavy_attack(attack_audio)",
+	"res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_ranged.gd": (
 		"play_heavy_attack(attack_audio)"
 	),
 }

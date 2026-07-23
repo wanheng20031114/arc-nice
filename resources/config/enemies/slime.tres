@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SlimeConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/enemies/slime_config.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/enemy/slime/slime_basic.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_script")
+display_name = "史莱姆"
+enemy_scene = ExtResource("2_scene")
+max_health = 40
+attack_damage = 10
+physical_defense = 0
+magic_defense = 0
+move_speed = 20.0
+xirang_kill_reward = 1
+category_tags = PackedStringArray("slime")

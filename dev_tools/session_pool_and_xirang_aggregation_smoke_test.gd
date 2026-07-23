@@ -1,6 +1,6 @@
 extends SceneTree
 
-const SPAWN_EFFECT_SCENE := preload("res://scene/enemy/yuanshi_insect_spawn_effect.tscn")
+const SPAWN_EFFECT_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_spawn_effect.tscn")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const LINGLAN_ENEMY_CONFIG := preload("res://resources/config/enemies/linglan_boss.tres")
@@ -393,11 +393,11 @@ func _test_multiplayer_forwarding_contract() -> void:
 		"Enemy death rewards must route their configured value through the active root scene."
 	)
 	for reward_owner_path in [
-		"res://scene/enemy/yuanshi_insect.gd",
-		"res://scene/enemy/capoo_ak47.gd",
-		"res://scene/enemy/capoo_knight.gd",
+		"res://scene/enemy/yuanshi_insect/yuanshi_insect.gd",
+		"res://scene/enemy/capoo/capoo_ak47.gd",
+		"res://scene/enemy/capoo/capoo_knight.gd",
 		"res://scene/enemy/capoo_ranged_enemy.gd",
-		"res://scene/enemy/capoo_rpg.gd",
+		"res://scene/enemy/capoo/capoo_rpg.gd",
 	]:
 		var reward_owner_source := FileAccess.get_file_as_string(reward_owner_path)
 		_expect(

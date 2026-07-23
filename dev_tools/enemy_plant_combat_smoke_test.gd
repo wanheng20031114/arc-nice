@@ -19,12 +19,12 @@ const SWORDSMAN_CONFIG := preload(
 const FIRE_INSECT_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_fire_ranged.tres"
 )
-const AK_BULLET_SCENE := preload("res://scene/enemy/capoo_ak47_bullet.tscn")
-const SMG_BULLET_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
-const RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo_rpg_rocket.tscn")
-const MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
+const AK_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_ak47_bullet.tscn")
+const SMG_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_smg_bullet.tscn")
+const RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_rocket.tscn")
+const MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball.tscn")
 const FIRE_PROJECTILE_SCENE := preload(
-	"res://scene/enemy/yuanshi_insect_fire_projectile.tscn"
+	"res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.tscn"
 )
 
 var failures: Array[String] = []

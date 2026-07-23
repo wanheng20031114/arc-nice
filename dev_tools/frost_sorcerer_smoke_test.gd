@@ -1,13 +1,13 @@
 extends SceneTree
 
 const FROST_SORCERER_SCENE := preload(
-	"res://scene/enemy/frost_sorcerer.tscn"
+	"res://scene/enemy/sorcerer/frost_sorcerer.tscn"
 )
 const FIRE_SORCERER_SCENE := preload(
-	"res://scene/enemy/fire_sorcerer.tscn"
+	"res://scene/enemy/sorcerer/fire_sorcerer.tscn"
 )
 const ICE_SPIKE_SCENE := preload(
-	"res://scene/enemy/frost_sorcerer_ice_spike.tscn"
+	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn"
 )
 const FROST_SORCERER_CONFIG := preload(
 	"res://resources/config/enemies/frost_sorcerer.tres"
@@ -200,7 +200,7 @@ func _test_resource_animation_and_node_contracts() -> void:
 		spike.free()
 
 	var projectile_source := FileAccess.get_file_as_string(
-		"res://scene/enemy/frost_sorcerer_ice_spike.gd"
+		"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.gd"
 	)
 	_expect(
 		not projectile_source.is_empty()

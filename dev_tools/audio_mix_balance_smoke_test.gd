@@ -3,10 +3,10 @@ extends SceneTree
 const GAME_SCENE := preload("res://scene/game.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const ENEMY_BASE_SCENE := preload("res://scene/enemy/enemy.tscn")
-const YUANSHI_BOMBER_SCENE := preload("res://scene/enemy/yuanshi_insect_bomber.tscn")
-const YUANSHI_PURPLE_BOMBER_SCENE := preload("res://scene/enemy/yuanshi_insect_purple_bomber.tscn")
-const YUANSHI_FIRE_RANGED_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_ranged.tscn")
-const RPG_EXPLOSION_SCENE := preload("res://scene/enemy/capoo_rpg_explosion.tscn")
+const YUANSHI_BOMBER_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_bomber.tscn")
+const YUANSHI_PURPLE_BOMBER_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_purple_bomber.tscn")
+const YUANSHI_FIRE_RANGED_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_ranged.tscn")
+const RPG_EXPLOSION_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_explosion.tscn")
 const SKILL1_EXPLOSION_SCENE := preload("res://scene/player/weishidaier/weishidaier_skill1_explosion.tscn")
 const BAMBOO_MORTAR_SCENE := preload(
 	"res://scene/plant_defense/bamboo_mortar.tscn"

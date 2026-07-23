@@ -7,15 +7,15 @@ const FLASH_POOL_SCENE := preload(
 	"res://scene/lighting/night_vfx_flash_pool.tscn"
 )
 const LIGHTNING_CHAIN_VFX_SCENE := preload(
-	"res://scene/enemy/lightning_sorcerer_lightning_vfx.tscn"
+	"res://scene/enemy/sorcerer/lightning_sorcerer_lightning_vfx.tscn"
 )
 const SELF_LIT_PROJECTILE_SCENES := [
-	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn",
-	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn",
-	"res://scene/enemy/yuanshi_insect_fire_projectile.tscn",
+	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn",
+	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn",
+	"res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.tscn",
 	"res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn",
-	"res://scene/enemy/capoo_rpg_rocket.tscn",
-	"res://scene/enemy/capoo_mage_fireball.tscn",
+	"res://scene/enemy/capoo/capoo_rpg_rocket.tscn",
+	"res://scene/enemy/capoo/capoo_mage_fireball.tscn",
 	"res://scene/player/tiyi/tiyi_sniper_bullet.tscn",
 	"res://scene/player/weishidaier/weishidaier_skill1_bomb.tscn",
 	"res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn",
@@ -23,12 +23,12 @@ const SELF_LIT_PROJECTILE_SCENES := [
 	"res://scene/plant_defense/bamboo_mortar_shell.tscn",
 ]
 const PROJECTILE_HALO_SCENE_COUNTS := {
-	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn": 3,
-	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn": 3,
-	"res://scene/enemy/yuanshi_insect_fire_projectile.tscn": 1,
+	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn": 3,
+	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn": 3,
+	"res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.tscn": 1,
 	"res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn": 1,
-	"res://scene/enemy/capoo_rpg_rocket.tscn": 1,
-	"res://scene/enemy/capoo_mage_fireball.tscn": 1,
+	"res://scene/enemy/capoo/capoo_rpg_rocket.tscn": 1,
+	"res://scene/enemy/capoo/capoo_mage_fireball.tscn": 1,
 	"res://scene/player/tiyi/tiyi_sniper_bullet.tscn": 1,
 	"res://scene/player/weishidaier/weishidaier_skill1_bomb.tscn": 1,
 	"res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn": 1,
@@ -37,7 +37,7 @@ const PROJECTILE_HALO_SCENE_COUNTS := {
 	"res://scene/collectible_arrow_projectile.tscn": 1,
 	"res://scene/plant_defense/agave_cannonball.tscn": 1,
 	"res://scene/plant_defense/corn_machine_gun.tscn": 1,
-	"res://scene/enemy/capoo_smg.tscn": 1,
+	"res://scene/enemy/capoo/capoo_smg.tscn": 1,
 }
 const RAPID_PROJECTILE_MATERIAL_PATH := (
 	"res://resources/shader/rapid_projectile_single_pass.tres"
@@ -47,28 +47,28 @@ const FROST_PROJECTILE_MATERIAL_PATH := (
 )
 const SINGLE_PASS_PROJECTILE_SCENE_MATERIALS := {
 	"res://scene/bullet.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
-	"res://scene/enemy/capoo_ak47_bullet.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
-	"res://scene/enemy/capoo_smg_bullet.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
-	"res://scene/enemy/frost_sorcerer_ice_spike.tscn": FROST_PROJECTILE_MATERIAL_PATH,
+	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
+	"res://scene/enemy/capoo/capoo_smg_bullet.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
+	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn": FROST_PROJECTILE_MATERIAL_PATH,
 }
 const PREBUILT_SPATIAL_HALO_SCENES := [
 	"res://scene/boss/linglan/linglan_skill3_light_orb.tscn",
 	"res://scene/boss/linglan/linglan_skill4_light_orb.tscn",
 ]
 const SHARED_LIGHT_EXPLOSION_SCENES := [
-	"res://scene/enemy/capoo_rpg_explosion.tscn",
-	"res://scene/enemy/capoo_mage_fireball_impact.tscn",
+	"res://scene/enemy/capoo/capoo_rpg_explosion.tscn",
+	"res://scene/enemy/capoo/capoo_mage_fireball_impact.tscn",
 	"res://scene/player/weishidaier/weishidaier_skill1_explosion.tscn",
 	"res://scene/collectible_sakura_explosion.tscn",
 	"res://scene/boss/linglan/linglan_skill2_sakura_explosion.tscn",
 	"res://scene/player/tiyi/tiyi_sniper_hit_effect.tscn",
 	"res://scene/plant_defense/bamboo_mortar_shell.tscn",
-	"res://scene/enemy/yuanshi_insect_bomber.tscn",
-	"res://scene/enemy/yuanshi_insect_purple_bomber.tscn",
+	"res://scene/enemy/yuanshi_insect/yuanshi_insect_bomber.tscn",
+	"res://scene/enemy/yuanshi_insect/yuanshi_insect_purple_bomber.tscn",
 ]
 const POOLED_ANIMATED_EMISSION_SCENES := [
-	"res://scene/enemy/capoo_rpg_rocket.tscn",
-	"res://scene/enemy/capoo_mage_fireball.tscn",
+	"res://scene/enemy/capoo/capoo_rpg_rocket.tscn",
+	"res://scene/enemy/capoo/capoo_mage_fireball.tscn",
 	"res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn",
 	"res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn",
 	"res://scene/collectible_sakura_rocket.tscn",

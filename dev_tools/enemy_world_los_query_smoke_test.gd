@@ -11,10 +11,10 @@ const BENCHMARK_ITERATIONS := 12000
 const BENCHMARK_SAMPLES := 5
 const HOT_ARCHETYPE_SOURCES: Array[String] = [
 	"res://scene/enemy/capoo_ranged_enemy.gd",
-	"res://scene/enemy/capoo_ak47.gd",
-	"res://scene/enemy/capoo_rpg.gd",
-	"res://scene/enemy/capoo_knight.gd",
-	"res://scene/enemy/yuanshi_insect_fire_ranged.gd",
+	"res://scene/enemy/capoo/capoo_ak47.gd",
+	"res://scene/enemy/capoo/capoo_rpg.gd",
+	"res://scene/enemy/capoo/capoo_knight.gd",
+	"res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_ranged.gd",
 ]
 
 var failures: Array[String] = []

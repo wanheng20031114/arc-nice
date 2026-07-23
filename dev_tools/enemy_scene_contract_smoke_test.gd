@@ -24,6 +24,7 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/frost_sorcerer.tres"),
 	preload("res://resources/config/enemies/frost_sorcerer_elite.tres"),
 	preload("res://resources/config/enemies/lightning_sorcerer.tres"),
+	preload("res://resources/config/enemies/slime.tres"),
 ]
 const STANDARD_YUANSHI_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/yuanshi_insect_basic.tres"),
@@ -37,7 +38,17 @@ const ADVANCED_YUANSHI_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/yuanshi_insect_green_shell.tres"),
 	preload("res://resources/config/enemies/yuanshi_insect_guardian.tres"),
 ]
-const CAPOO_DROP_CONFIGS: Array[EnemyConfig] = [
+const YUANSHI_CATEGORY_CONFIGS: Array[EnemyConfig] = [
+	preload("res://resources/config/enemies/yuanshi_insect_basic.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_fast.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_bomber.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_shell.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_purple_bomber.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_green_shell.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_guardian.tres"),
+	preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres"),
+]
+const CAPOO_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/capoo_ak47.tres"),
 	preload("res://resources/config/enemies/capoo_knight.tres"),
 	preload("res://resources/config/enemies/capoo_knight_elite.tres"),
@@ -47,16 +58,19 @@ const CAPOO_DROP_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/capoo_sniper.tres"),
 	preload("res://resources/config/enemies/capoo_smg.tres"),
 ]
-const SORCERER_DROP_CONFIGS: Array[EnemyConfig] = [
+const SORCERER_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/fire_sorcerer.tres"),
 	preload("res://resources/config/enemies/fire_sorcerer_elite.tres"),
 	preload("res://resources/config/enemies/frost_sorcerer.tres"),
 	preload("res://resources/config/enemies/frost_sorcerer_elite.tres"),
 	preload("res://resources/config/enemies/lightning_sorcerer.tres"),
 ]
-const STONE_GOLEM_CONFIGS: Array[EnemyConfig] = [
+const ARTIFICIAL_CREATION_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/stone_golem.tres"),
 	preload("res://resources/config/enemies/stone_golem_elite.tres"),
+]
+const SLIME_CATEGORY_CONFIGS: Array[EnemyConfig] = [
+	preload("res://resources/config/enemies/slime.tres"),
 ]
 const DEFAULT_ENEMY_DROP_TABLE: EnemyDropTable = preload(
 	"res://resources/config/enemies/default_enemy_drop_table.tres"
@@ -67,10 +81,10 @@ const LINGLAN_BOSS_CONFIG: EnemyConfig = preload(
 const ENEMY_VISUAL_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
 const PLAYER_BULLET_SCENE := preload("res://scene/bullet.tscn")
 const CAPOO_AK47_BULLET_SCENE := preload(
-	"res://scene/enemy/capoo_ak47_bullet.tscn"
+	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn"
 )
 const CAPOO_SMG_BULLET_SCENE := preload(
-	"res://scene/enemy/capoo_smg_bullet.tscn"
+	"res://scene/enemy/capoo/capoo_smg_bullet.tscn"
 )
 const PLAYER_COLLISION_LAYER := 1 << 1
 const ENEMY_BODY_COLLISION_LAYER := 1 << 2
@@ -94,7 +108,7 @@ func _run() -> void:
 	current_scene = test_root
 
 	_test_yuanshi_xirang_reward_tiers()
-	_test_enemy_drop_contract()
+	_test_enemy_drop_and_category_contract()
 	for enemy_config in ENEMY_CONFIGS:
 		await _test_enemy_scene_contract(enemy_config)
 	_test_enemy_projectile_z_contract()
@@ -146,7 +160,7 @@ func _test_yuanshi_xirang_reward_tiers() -> void:
 		)
 
 
-func _test_enemy_drop_contract() -> void:
+func _test_enemy_drop_and_category_contract() -> void:
 	var default_config := EnemyConfig.new()
 	var all_drop_configs: Array[EnemyConfig] = ENEMY_CONFIGS.duplicate()
 	all_drop_configs.append(LINGLAN_BOSS_CONFIG)
@@ -164,8 +178,8 @@ func _test_enemy_drop_contract() -> void:
 		"New enemy configs must inherit the shared data-driven drop table."
 	)
 	_expect(
-		all_drop_configs.size() == 24,
-		"The drop-contract audit must cover all 24 authored enemy configs, including Linglan."
+		all_drop_configs.size() == 25,
+		"The drop-contract audit must cover all 25 authored enemy configs, including Linglan."
 	)
 
 	var expected_paths: Array[String] = [
@@ -234,47 +248,78 @@ func _test_enemy_drop_contract() -> void:
 			"Default enemy drop rule %d must keep its exact tag filter." % index
 		)
 
-	var capoo_tagged_count := 0
-	var sorcerer_tagged_count := 0
+	var category_counts := {
+		"yuanshi_insect": 0,
+		"capoo": 0,
+		"sorcerer": 0,
+		"artificial_creation": 0,
+		"slime": 0,
+	}
 	for enemy_config in all_drop_configs:
 		_expect(
 			enemy_config.drop_table == DEFAULT_ENEMY_DROP_TABLE,
 			"%s must inherit the complete shared table so global drops cannot be removed."
 			% enemy_config.resource_path
 		)
-		for drop_tag in enemy_config.drop_tags:
+		for category_tag in enemy_config.category_tags:
 			_expect(
-				drop_tag == "capoo" or drop_tag == "sorcerer",
-				"%s must not introduce an unrecognized enemy drop tag."
+				category_counts.has(category_tag),
+				"%s must not introduce an unrecognized enemy category tag."
 				% enemy_config.resource_path
 			)
-		if "capoo" in enemy_config.drop_tags:
-			capoo_tagged_count += 1
-		if "sorcerer" in enemy_config.drop_tags:
-			sorcerer_tagged_count += 1
+			if category_counts.has(category_tag):
+				category_counts[category_tag] = int(category_counts[category_tag]) + 1
+		if enemy_config == LINGLAN_BOSS_CONFIG:
+			_expect(
+				enemy_config.category_tags.is_empty(),
+				"Linglan must remain outside the five regular enemy categories."
+			)
+		else:
+			_expect(
+				enemy_config.category_tags.size() == 1,
+				"%s must carry exactly one regular enemy category tag."
+				% enemy_config.resource_path
+			)
 	_expect(
-		capoo_tagged_count == 8,
-		"Exactly the eight Capoo configs must carry the capoo drop tag."
+		int(category_counts["yuanshi_insect"]) == 8,
+		"Exactly the eight Yuanshi insect configs must carry the yuanshi_insect category tag."
 	)
 	_expect(
-		sorcerer_tagged_count == 5,
-		"Exactly the fire, frost, and lightning variants must carry the sorcerer tag."
+		int(category_counts["capoo"]) == 8,
+		"Exactly the eight Capoo configs must carry the capoo category tag."
 	)
-	for enemy_config in CAPOO_DROP_CONFIGS:
+	_expect(
+		int(category_counts["sorcerer"]) == 5,
+		"Exactly the five fire, frost, and lightning configs must carry the sorcerer category tag."
+	)
+	_expect(
+		int(category_counts["artificial_creation"]) == 2,
+		"Exactly the two stone golem configs must carry the artificial_creation category tag."
+	)
+	_expect(
+		int(category_counts["slime"]) == 1,
+		"Exactly the basic Slime config must carry the slime category tag."
+	)
+	_expect_exact_category(YUANSHI_CATEGORY_CONFIGS, "yuanshi_insect")
+	_expect_exact_category(CAPOO_CATEGORY_CONFIGS, "capoo")
+	_expect_exact_category(SORCERER_CATEGORY_CONFIGS, "sorcerer")
+	_expect_exact_category(
+		ARTIFICIAL_CREATION_CATEGORY_CONFIGS,
+		"artificial_creation"
+	)
+	_expect_exact_category(SLIME_CATEGORY_CONFIGS, "slime")
+
+
+func _expect_exact_category(
+	enemy_configs: Array[EnemyConfig],
+	expected_tag: String
+) -> void:
+	var expected_tags := PackedStringArray([expected_tag])
+	for enemy_config in enemy_configs:
 		_expect(
-			enemy_config.drop_tags == PackedStringArray(["capoo"]),
-			"%s must carry only the capoo drop tag." % enemy_config.resource_path
-		)
-	for enemy_config in SORCERER_DROP_CONFIGS:
-		_expect(
-			enemy_config.drop_tags == PackedStringArray(["sorcerer"]),
-			"%s must carry only the sorcerer drop tag." % enemy_config.resource_path
-		)
-	for enemy_config in STONE_GOLEM_CONFIGS:
-		_expect(
-			enemy_config.drop_tags.is_empty(),
-			"%s must not be misclassified as Capoo or sorcerer."
-			% enemy_config.resource_path
+			enemy_config.category_tags == expected_tags,
+			"%s must carry only the %s category tag."
+			% [enemy_config.resource_path, expected_tag]
 		)
 
 

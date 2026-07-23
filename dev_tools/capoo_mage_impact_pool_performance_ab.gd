@@ -1,7 +1,7 @@
 extends SceneTree
 
-const FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
-const IMPACT_SCENE := preload("res://scene/enemy/capoo_mage_fireball_impact.tscn")
+const FIREBALL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball.tscn")
+const IMPACT_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball_impact.tscn")
 
 const BURST_SIZE := 48
 const ROUNDS := 3

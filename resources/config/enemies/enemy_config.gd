@@ -1,6 +1,12 @@
 extends Resource
 class_name EnemyConfig
 
+const CATEGORY_YUANSHI_INSECT: StringName = &"yuanshi_insect"
+const CATEGORY_CAPOO: StringName = &"capoo"
+const CATEGORY_SORCERER: StringName = &"sorcerer"
+const CATEGORY_ARTIFICIAL_CREATION: StringName = &"artificial_creation"
+const CATEGORY_SLIME: StringName = &"slime"
+
 enum DamageType {
 	PHYSICAL,
 	MAGIC,
@@ -9,6 +15,8 @@ enum DamageType {
 @export_group("基础信息")
 
 @export var display_name: String = "敌人"
+# 稳定的敌人类别标签，供掉落、全局增益和收藏品等系统统一筛选。
+@export var category_tags: PackedStringArray = PackedStringArray()
 # 当前敌人的完整场景，包含碰撞体积、接触伤害体积和本体动画。
 @export var enemy_scene: PackedScene
 
@@ -54,7 +62,9 @@ enum DamageType {
 @export_group("奖励与掉落")
 # 敌人被击杀时直接发给每位当前玩家的息壤奖金；0 表示没有奖金。
 @export_range(0, 999, 1, "or_greater") var xirang_kill_reward: int = 1
-# 稳定的敌人类别标签，供掉落规则筛选；空数组表示只应用面向全部敌人的规则。
-@export var drop_tags: PackedStringArray = PackedStringArray()
 # 敌人死亡时使用的数据驱动掉落表；表内每条规则都会独立判定。
 @export var drop_table: EnemyDropTable = preload("res://resources/config/enemies/default_enemy_drop_table.tres")
+
+
+func has_category_tag(category: StringName) -> bool:
+	return String(category) in category_tags

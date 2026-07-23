@@ -7,16 +7,16 @@ const BASE_CONFIG := preload(
 	"res://resources/config/enemies/fire_sorcerer.tres"
 )
 const ELITE_SCENE := preload(
-	"res://scene/enemy/fire_sorcerer_elite.tscn"
+	"res://scene/enemy/sorcerer/fire_sorcerer_elite.tscn"
 )
 const BASE_SCENE := preload(
-	"res://scene/enemy/fire_sorcerer.tscn"
+	"res://scene/enemy/sorcerer/fire_sorcerer.tscn"
 )
 const ELITE_VOLLEY_SCENE := preload(
-	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn"
+	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn"
 )
 const BASE_VOLLEY_SCENE := preload(
-	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
+	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn"
 )
 const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
@@ -175,7 +175,7 @@ func _test_config_contract() -> void:
 		and ELITE_CONFIG.xirang_kill_reward
 			== BASE_CONFIG.xirang_kill_reward
 		and ELITE_CONFIG.drop_table == BASE_CONFIG.drop_table
-		and ELITE_CONFIG.drop_tags == BASE_CONFIG.drop_tags,
+		and ELITE_CONFIG.category_tags == BASE_CONFIG.category_tags,
 		"Unspecified elite reward/home/drop values must remain unchanged."
 	)
 

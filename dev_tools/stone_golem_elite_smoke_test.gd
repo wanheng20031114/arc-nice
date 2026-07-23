@@ -1,7 +1,7 @@
 extends SceneTree
 
-const ELITE_SCENE := preload("res://scene/enemy/stone_golem_elite.tscn")
-const BASE_SCENE := preload("res://scene/enemy/stone_golem.tscn")
+const ELITE_SCENE := preload("res://scene/enemy/artificial_creation/stone_golem_elite.tscn")
+const BASE_SCENE := preload("res://scene/enemy/artificial_creation/stone_golem.tscn")
 const ELITE_CONFIG := preload(
 	"res://resources/config/enemies/stone_golem_elite.tres"
 )
@@ -131,7 +131,7 @@ func _test_resource_independence_and_stats() -> void:
 	var impact := elite.get_node("SlamImpactRing") as Line2D
 	_expect(
 		elite.get_script().resource_path
-		== "res://scene/enemy/stone_golem_elite.gd",
+		== "res://scene/enemy/artificial_creation/stone_golem_elite.gd",
 		"Elite scene must own its dedicated script."
 	)
 	_expect(

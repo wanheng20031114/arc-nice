@@ -20,6 +20,10 @@ size = Vector2(16, 16)
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_glow"]
 shader = ExtResource("5_glow_shader")
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_upper_canopy"]
+atlas = ExtResource("2_sprite")
+region = Rect2(0, 0, 64, 36)
+
 [sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_mote_glow"]
 light_mode = 1
 
@@ -49,7 +53,7 @@ collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
 enemy_approach_depth = 2.0
-lifecycle_visual_paths = Array[NodePath]([NodePath("MainSprite")])
+lifecycle_visual_paths = Array[NodePath]([NodePath("MainSprite"), NodePath("UpperCanopy")])
 lifecycle_effect_top_y = -5.0
 lifecycle_effect_bottom_y = 7.0
 lifecycle_particle_scale = 0.65
@@ -73,6 +77,14 @@ material = ExtResource("4_lifecycle_material")
 position = Vector2(0, -1)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("2_sprite")
+
+[node name="UpperCanopy" type="Sprite2D" parent="."]
+z_index = 4
+texture_filter = 1
+material = ExtResource("4_lifecycle_material")
+position = Vector2(0, -8)
+scale = Vector2(0.5, 0.5)
+texture = SubResource("AtlasTexture_upper_canopy")
 
 [node name="TopGlow" type="Sprite2D" parent="." unique_id=389635076]
 z_index = 2

@@ -4,7 +4,7 @@ extends SceneTree
 # pressure. Timings are diagnostic; each optimized path is compared against its
 # former allocation/physics behavior with identical live nodes in one process.
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
-const GUARDIAN_SYSTEM_SCENE := preload("res://scene/enemy/guardian_aura_system.tscn")
+const GUARDIAN_SYSTEM_SCENE := preload("res://scene/enemy/yuanshi_insect/guardian_aura_system.tscn")
 const PLAYER_SCENE := preload("res://scene/player/tiyi/player_tiyi.tscn")
 
 const ENEMY_COUNT := 300

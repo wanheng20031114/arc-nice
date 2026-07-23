@@ -1,10 +1,10 @@
 extends SceneTree
 
 const FIREBALL_VOLLEY_SCENE := preload(
-	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
+	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn"
 )
 const ELITE_FIREBALL_VOLLEY_SCENE := preload(
-	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn"
+	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn"
 )
 const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
@@ -323,9 +323,9 @@ func _test_elite_projectile_instantiation_contract() -> void:
 	_expect(
 		projectile_script != null
 		and projectile_script.resource_path
-			== "res://scene/enemy/fire_sorcerer_fireball_volley.gd"
+			== "res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.gd"
 		and projectile.scene_file_path
-			== "res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn"
+			== "res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn"
 		and projectile.source_type == ELITE_FIREBALL_TYPE
 		and projectile.damage == ELITE_FIREBALL_DAMAGE
 		and is_equal_approx(projectile.speed, 115.0)

@@ -62,19 +62,19 @@ const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/collectible_area_eff
 const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/collectible_frost_area_effect.tscn")
 const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
 const COLLECTIBLE_MOON_SHIELD_VISUAL_SCENE := preload("res://scene/collectible_moon_shield_visual.tscn")
-const CAPOO_AK47_BULLET_SCENE := preload("res://scene/enemy/capoo_ak47_bullet.tscn")
-const CAPOO_RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo_rpg_rocket.tscn")
-const CAPOO_MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
+const CAPOO_AK47_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_ak47_bullet.tscn")
+const CAPOO_RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_rocket.tscn")
+const CAPOO_MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball.tscn")
 const FIRE_SORCERER_FIREBALL_VOLLEY_SCENE := preload(
-	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
+	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn"
 )
 const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE := preload(
-	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn"
+	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn"
 )
-const CAPOO_SMG_BULLET_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
-const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
+const CAPOO_SMG_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_smg_bullet.tscn")
+const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.tscn")
 const FROST_SORCERER_ICE_SPIKE_SCENE := preload(
-	"res://scene/enemy/frost_sorcerer_ice_spike.tscn"
+	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn"
 )
 const LINGLAN_SAKURA_BULLET_SCENE_PATH := "res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn"
 const LINGLAN_SKILL2_CONFIG_PATH := "res://resources/config/bosses/linglan_skill2.tres"

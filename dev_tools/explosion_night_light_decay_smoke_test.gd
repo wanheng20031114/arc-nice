@@ -7,15 +7,15 @@ const FLASH_POOL_SCENE := preload(
 	"res://scene/lighting/night_vfx_flash_pool.tscn"
 )
 const EXPLOSION_SCENES := [
-	"res://scene/enemy/capoo_rpg_explosion.tscn",
-	"res://scene/enemy/capoo_mage_fireball_impact.tscn",
+	"res://scene/enemy/capoo/capoo_rpg_explosion.tscn",
+	"res://scene/enemy/capoo/capoo_mage_fireball_impact.tscn",
 	"res://scene/player/weishidaier/weishidaier_skill1_explosion.tscn",
 	"res://scene/collectible_sakura_explosion.tscn",
 	"res://scene/boss/linglan/linglan_skill2_sakura_explosion.tscn",
 	"res://scene/player/tiyi/tiyi_sniper_hit_effect.tscn",
 	"res://scene/plant_defense/bamboo_mortar_shell.tscn",
-	"res://scene/enemy/yuanshi_insect_bomber.tscn",
-	"res://scene/enemy/yuanshi_insect_purple_bomber.tscn",
+	"res://scene/enemy/yuanshi_insect/yuanshi_insect_bomber.tscn",
+	"res://scene/enemy/yuanshi_insect/yuanshi_insect_purple_bomber.tscn",
 ]
 const WORLD_SCENES := [
 	"res://scene/game.tscn",

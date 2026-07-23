@@ -5,7 +5,7 @@ class_name GameRuntimeBase
 const CombatTargetIndexScript := preload("res://scene/combat_target_index.gd")
 const EnemySpawnEffectBudgetScript := preload("res://scene/enemy_spawn_effect_budget.gd")
 const ENEMY_SPAWN_EFFECT_SCENE := preload(
-	"res://scene/enemy/yuanshi_insect_spawn_effect.tscn"
+	"res://scene/enemy/yuanshi_insect/yuanshi_insect_spawn_effect.tscn"
 )
 const BULLET_HIT_EFFECT_POOL_SCENE := preload("res://scene/bullet_hit_effect.tscn")
 const ENEMY_HIT_EFFECT_POOL_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")
@@ -13,10 +13,10 @@ const MOVE_SPEED_TRAIL_EFFECT_POOL_SCENE := preload(
 	"res://scene/move_speed_trail_effect.tscn"
 )
 const CAPOO_MAGE_FIREBALL_IMPACT_POOL_SCENE := preload(
-	"res://scene/enemy/capoo_mage_fireball_impact.tscn"
+	"res://scene/enemy/capoo/capoo_mage_fireball_impact.tscn"
 )
 const LIGHTNING_SORCERER_LIGHTNING_VFX_POOL_SCENE := preload(
-	"res://scene/enemy/lightning_sorcerer_lightning_vfx.tscn"
+	"res://scene/enemy/sorcerer/lightning_sorcerer_lightning_vfx.tscn"
 )
 
 const ENEMY_SPAWN_EFFECT_PREWARM_COUNT := 16

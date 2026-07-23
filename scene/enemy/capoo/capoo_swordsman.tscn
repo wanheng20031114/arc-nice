@@ -1,0 +1,69 @@
+[gd_scene load_steps=9 format=3 uid="uid://ckp580otbuq37"]
+
+[ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy/enemy.tscn" id="1_base"]
+[ext_resource type="Script" uid="uid://46aakmbjjqsp" path="res://scene/enemy/capoo/capoo_swordsman.gd" id="2_script"]
+[ext_resource type="Shader" path="res://scene/entity_motion_status.gdshader" id="3_blink"]
+[ext_resource type="SpriteFrames" uid="uid://c6okmim07qy6i" path="res://resources/animation/capoo_swordsman.tres" id="4_frames"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_8qkd7"]
+resource_local_to_scene = false
+shader = ExtResource("3_blink")
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_lmhry"]
+resource_local_to_scene = true
+size = Vector2(16, 13)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_x5ltk"]
+resource_local_to_scene = true
+a = Vector2(6, 10)
+b = Vector2(26, 4)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_3na4v"]
+resource_local_to_scene = true
+size = Vector2(16, 13)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_touch_extra"]
+resource_local_to_scene = true
+a = Vector2(6, 10)
+b = Vector2(26, 4)
+
+[node name="CapooSwordsman" unique_id=1483813600 instance=ExtResource("1_base")]
+script = ExtResource("2_script")
+path_refresh_interval = 0.25
+waypoint_arrival_distance = 6.0
+direct_chase_extra_distance = 2.0
+
+[node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
+material = SubResource("ShaderMaterial_8qkd7")
+texture_filter = 2
+scale = Vector2(0.31, 0.31)
+sprite_frames = ExtResource("4_frames")
+animation = &"move"
+
+[node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
+position = Vector2(-2, 1.5)
+shape = SubResource("RectangleShape2D_lmhry")
+
+[node name="CollisionShape2D2" type="CollisionShape2D" parent="." index="2" unique_id=2001689211]
+scale = Vector2(0.5, 0.5)
+shape = SubResource("SegmentShape2D_x5ltk")
+
+[node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
+position = Vector2(-2, 1.5)
+shape = SubResource("RectangleShape2D_3na4v")
+
+[node name="CollisionShape2D2" type="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="1" unique_id=44832878]
+scale = Vector2(0.5, 0.5)
+shape = SubResource("SegmentShape2D_touch_extra")
+
+[node name="WindupWarning" type="Polygon2D" parent="." index="7" unique_id=1158448824]
+visible = false
+z_index = 3
+color = Color(0.55, 0.86, 1, 0.22)
+polygon = PackedVector2Array(6.5, -3, 64, -40, 64, 40, 6.5, 3)
+
+[node name="AttackAudio" type="AudioStreamPlayer2D" parent="." index="8" unique_id=749049234]
+bus = &"SFX"
+volume_db = -14.0
+max_distance = 180.0
+max_polyphony = 2

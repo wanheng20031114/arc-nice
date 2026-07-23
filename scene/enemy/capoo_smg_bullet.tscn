@@ -1,9 +1,0 @@
-[gd_scene load_steps=3 format=3]
-
-[ext_resource type="PackedScene" path="res://scene/enemy/capoo_ak47_bullet.tscn" id="1_base"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/capoo_smg_bullet.tres" id="2_frames"]
-
-[node name="CapooSMGBullet" instance=ExtResource("1_base")]
-
-[node name="AnimatedSprite2D" parent="." index="0"]
-sprite_frames = ExtResource("2_frames")

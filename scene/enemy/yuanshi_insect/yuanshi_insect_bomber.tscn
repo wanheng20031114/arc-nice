@@ -1,0 +1,90 @@
+[gd_scene format=3 uid="uid://62mdayaawmjd"]
+
+[ext_resource type="PackedScene" uid="uid://ccvfm2ck2jkky" path="res://scene/enemy/yuanshi_insect/yuanshi_insect.tscn" id="1_base"]
+[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="2_qjjxk"]
+[ext_resource type="Script" uid="uid://cok25qb0meq4j" path="res://scene/enemy/yuanshi_insect/yuanshi_insect_exploder.gd" id="2_script"]
+[ext_resource type="SpriteFrames" uid="uid://b5wdos2x826w2" path="res://resources/animation/yuanshi_insect_bomber.tres" id="3_frames"]
+[ext_resource type="AudioStream" uid="uid://bogl46dtqkano" path="res://resources/audio/cowboy_explosion.wav" id="4_explosion_audio"]
+[ext_resource type="Shader" path="res://resources/shader/night_vfx_emission_mask.gdshader" id="5_emission_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_qjjxk"]
+shader = ExtResource("2_qjjxk")
+shader_parameter/blink_enabled = false
+shader_parameter/blink_speed = 12.0
+shader_parameter/hidden_ratio = 0.5
+shader_parameter/dodge_effect_strength = 0.0
+shader_parameter/dodge_sweep = 0.0
+shader_parameter/dodge_color = Color(0.42, 0.95, 1, 1)
+shader_parameter/dodge_flash_color = Color(1, 1, 1, 1)
+shader_parameter/dodge_outline_width = 3.0
+shader_parameter/dash_effect_strength = 0.0
+shader_parameter/dash_direction = Vector2(1, 0)
+shader_parameter/dash_color = Color(0.12, 1.45, 1.3, 1)
+shader_parameter/dash_trail_pixels = 4.0
+shader_parameter/slow_overlay_color = Color(0.55, 0.86, 1, 1)
+shader_parameter/burn_overlay_color = Color(1, 0.56, 0.18, 0.46)
+shader_parameter/burn_edge_width = 2.0
+shader_parameter/bleed_overlay_color = Color(0.95, 0.02, 0.08, 0.58)
+shader_parameter/bleed_outline_width = 2.0
+shader_parameter/revive_glow_strength = 0.0
+shader_parameter/revive_glow_color = Color(3.2, 3.2, 3.2, 1)
+shader_parameter/revive_glow_outline_width = 4.5
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_2whi5"]
+radius = 5.0
+height = 16.0
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_qjjxk"]
+radius = 5.0
+height = 16.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_explosion"]
+resource_local_to_scene = true
+radius = 30.0
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_explosion_emission"]
+shader = ExtResource("5_emission_shader")
+shader_parameter/luminance_threshold = 0.5
+shader_parameter/threshold_softness = 0.15
+shader_parameter/emission_strength = 0.78
+shader_parameter/emission_tint = Color(1.08, 0.74, 0.4, 0.6)
+
+[node name="YuanshiInsectBomber" unique_id=1685334405 instance=ExtResource("1_base")]
+script = ExtResource("2_script")
+
+[node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
+material = SubResource("ShaderMaterial_qjjxk")
+sprite_frames = ExtResource("3_frames")
+animation = &"move"
+
+[node name="ExplosionEmissionOverlay" type="AnimatedSprite2D" parent="AnimatedSprite2D" index="0"]
+visible = false
+material = SubResource("ShaderMaterial_explosion_emission")
+sprite_frames = ExtResource("3_frames")
+animation = &"explode"
+
+[node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
+position = Vector2(0, 1)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_2whi5")
+
+[node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
+position = Vector2(0, 1)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_qjjxk")
+
+[node name="ExplosionArea" type="Area2D" parent="." index="6" unique_id=1412067951]
+collision_layer = 0
+collision_mask = 6
+monitoring = false
+monitorable = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ExplosionArea" index="0" unique_id=1945204364]
+shape = SubResource("CircleShape2D_explosion")
+disabled = true
+debug_color = Color(0.9764706, 0.6, 0.69803923, 0.41960785)
+
+[node name="ExplosionAudio" type="AudioStreamPlayer2D" parent="." index="7" unique_id=283508414]
+bus = &"SFX"
+stream = ExtResource("4_explosion_audio")
+volume_db = -9.0

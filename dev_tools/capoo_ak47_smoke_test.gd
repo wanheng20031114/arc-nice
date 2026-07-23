@@ -1,7 +1,7 @@
 extends SceneTree
 
-const CAPOO_SCENE := preload("res://scene/enemy/capoo_ak47.tscn")
-const BULLET_SCENE := preload("res://scene/enemy/capoo_ak47_bullet.tscn")
+const CAPOO_SCENE := preload("res://scene/enemy/capoo/capoo_ak47.tscn")
+const BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_ak47_bullet.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const AGAVE_SCENE := preload("res://scene/plant_defense/agave_cannon.tscn")
 const CAPOO_CONFIG := preload("res://resources/config/enemies/capoo_ak47.tres")

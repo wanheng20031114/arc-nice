@@ -1,8 +1,8 @@
 [gd_resource type="Resource" script_class="CapooRPGConfig" format=3 uid="uid://uaeho5a1060p"]
 
 [ext_resource type="Script" uid="uid://be7g6by0cqgwy" path="res://resources/config/enemies/capoo_rpg_config.gd" id="1_script"]
-[ext_resource type="PackedScene" uid="uid://1uo3tgiyibgn" path="res://scene/enemy/capoo_rpg.tscn" id="2_scene"]
-[ext_resource type="PackedScene" uid="uid://dnt5crchqe16v" path="res://scene/enemy/capoo_rpg_rocket.tscn" id="3_rocket"]
+[ext_resource type="PackedScene" uid="uid://1uo3tgiyibgn" path="res://scene/enemy/capoo/capoo_rpg.tscn" id="2_scene"]
+[ext_resource type="PackedScene" uid="uid://dnt5crchqe16v" path="res://scene/enemy/capoo/capoo_rpg_rocket.tscn" id="3_rocket"]
 [ext_resource type="AudioStream" uid="uid://312idcw43nv8" path="res://resources/audio/capoo_rpg_launch.wav" id="5_audio"]
 
 [resource]
@@ -17,4 +17,4 @@ move_speed = 16.0
 home_damage = 5
 explosion_radius = 44.0
 xirang_kill_reward = 24
-drop_tags = PackedStringArray("capoo")
+category_tags = PackedStringArray("capoo")

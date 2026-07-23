@@ -1,0 +1,38 @@
+[gd_scene format=3 uid="uid://b4bkabqun76rq"]
+
+[ext_resource type="PackedScene" uid="uid://ccvfm2ck2jkky" path="res://scene/enemy/yuanshi_insect/yuanshi_insect.tscn" id="1_base"]
+[ext_resource type="SpriteFrames" uid="uid://drqxmdrxt7xbe" path="res://resources/animation/yuanshi_insect_fast.tres" id="2_frames"]
+[ext_resource type="Shader" path="res://scene/entity_motion_status.gdshader" id="2_ursr2"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_ursr2"]
+resource_local_to_scene = false
+shader = ExtResource("2_ursr2")
+shader_parameter/dodge_effect_strength = 0.0
+shader_parameter/dodge_sweep = 0.0
+shader_parameter/dodge_color = Color(0.42, 0.95, 1, 1)
+shader_parameter/dodge_flash_color = Color(1, 1, 1, 1)
+shader_parameter/dodge_outline_width = 3.0
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_a7ikg"]
+radius = 3.0
+height = 12.0
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_gsn55"]
+radius = 3.0
+height = 12.0
+
+[node name="YuanshiInsectFast" unique_id=324327024 instance=ExtResource("1_base")]
+
+[node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
+material = SubResource("ShaderMaterial_ursr2")
+position = Vector2(0, -3)
+sprite_frames = ExtResource("2_frames")
+animation = &"move"
+
+[node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_a7ikg")
+
+[node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_gsn55")

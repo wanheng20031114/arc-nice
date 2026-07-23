@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="StoneGolemEliteConfig" format=3]
 
 [ext_resource type="Script" path="res://resources/config/enemies/stone_golem_elite_config.gd" id="1_script"]
-[ext_resource type="PackedScene" path="res://scene/enemy/stone_golem_elite.tscn" id="2_scene"]
+[ext_resource type="PackedScene" path="res://scene/enemy/artificial_creation/stone_golem_elite.tscn" id="2_scene"]
 
 [resource]
 script = ExtResource("1_script")
@@ -29,3 +29,4 @@ magic_defense = 0
 move_speed = 15.0
 home_damage = 25
 xirang_kill_reward = 50
+category_tags = PackedStringArray("artificial_creation")

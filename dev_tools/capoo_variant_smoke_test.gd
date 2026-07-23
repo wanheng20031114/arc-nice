@@ -1,15 +1,15 @@
 extends SceneTree
 
-const MAGE_SCENE := preload("res://scene/enemy/capoo_mage.tscn")
-const SNIPER_SCENE := preload("res://scene/enemy/capoo_sniper.tscn")
-const SMG_SCENE := preload("res://scene/enemy/capoo_smg.tscn")
-const FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
-const FIREBALL_IMPACT_SCENE := preload("res://scene/enemy/capoo_mage_fireball_impact.tscn")
-const RETICLE_SCENE := preload("res://scene/enemy/capoo_sniper_lock_reticle.tscn")
+const MAGE_SCENE := preload("res://scene/enemy/capoo/capoo_mage.tscn")
+const SNIPER_SCENE := preload("res://scene/enemy/capoo/capoo_sniper.tscn")
+const SMG_SCENE := preload("res://scene/enemy/capoo/capoo_smg.tscn")
+const FIREBALL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball.tscn")
+const FIREBALL_IMPACT_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball_impact.tscn")
+const RETICLE_SCENE := preload("res://scene/enemy/capoo/capoo_sniper_lock_reticle.tscn")
 const RETICLE_COORDINATOR_SCRIPT := preload(
-	"res://scene/enemy/capoo_sniper_lock_visual_coordinator.gd"
+	"res://scene/enemy/capoo/capoo_sniper_lock_visual_coordinator.gd"
 )
-const SMG_BULLET_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
+const SMG_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_smg_bullet.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const MAGE_CONFIG := preload("res://resources/config/enemies/capoo_mage.tres")
 const SNIPER_CONFIG := preload("res://resources/config/enemies/capoo_sniper.tres")

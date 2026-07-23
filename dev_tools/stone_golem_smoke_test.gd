@@ -1,6 +1,6 @@
 extends SceneTree
 
-const GOLEM_SCENE := preload("res://scene/enemy/stone_golem.tscn")
+const GOLEM_SCENE := preload("res://scene/enemy/artificial_creation/stone_golem.tscn")
 const GOLEM_CONFIG := preload("res://resources/config/enemies/stone_golem.tres")
 const LATE_WAVES := [
 	preload("res://resources/config/waves/wave_11.tres"),

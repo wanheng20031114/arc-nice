@@ -1,7 +1,7 @@
 extends SceneTree
 
-const FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
-const IMPACT_SCENE := preload("res://scene/enemy/capoo_mage_fireball_impact.tscn")
+const FIREBALL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball.tscn")
+const IMPACT_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball_impact.tscn")
 const IMPACT_AUDIO := preload("res://resources/audio/capoo_mage_fireball_impact.wav")
 const EXPLOSION_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 

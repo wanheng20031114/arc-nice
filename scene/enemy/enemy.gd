@@ -3564,7 +3564,7 @@ func _queue_configured_pickup_drops() -> void:
 	if is_multiplayer_proxy or config == null or config.drop_table == null:
 		return
 	var drop_configs := config.drop_table.resolve_drop_configs(
-		config.drop_tags,
+		config.category_tags,
 		material_drop_random_generator
 	)
 	if drop_configs.is_empty():

@@ -1,6 +1,6 @@
 extends SceneTree
 
-const SMG_SCENE := preload("res://scene/enemy/capoo_smg.tscn")
+const SMG_SCENE := preload("res://scene/enemy/capoo/capoo_smg.tscn")
 const SMG_CONFIG := preload("res://resources/config/enemies/capoo_smg.tres")
 
 const PROXY_COUNT := 64

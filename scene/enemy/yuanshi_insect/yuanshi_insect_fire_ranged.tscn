@@ -1,0 +1,42 @@
+[gd_scene format=3 uid="uid://cbwpmptwpso6w"]
+
+[ext_resource type="PackedScene" uid="uid://ccvfm2ck2jkky" path="res://scene/enemy/yuanshi_insect/yuanshi_insect.tscn" id="1_base"]
+[ext_resource type="Shader" path="res://scene/entity_motion_status.gdshader" id="2_g6imx"]
+[ext_resource type="Script" uid="uid://ceeavbknxsgom" path="res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_ranged.gd" id="2_script"]
+[ext_resource type="SpriteFrames" uid="uid://b0at4donk13di" path="res://resources/animation/yuanshi_insect_fire_ranged.tres" id="3_frames"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_m31cj"]
+resource_local_to_scene = false
+shader = ExtResource("2_g6imx")
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_buru2"]
+radius = 6.0
+height = 22.0
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_4u8mj"]
+radius = 6.0
+height = 22.0
+
+[node name="YuanshiInsectFireRanged" unique_id=319848050 instance=ExtResource("1_base")]
+script = ExtResource("2_script")
+
+[node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
+material = SubResource("ShaderMaterial_m31cj")
+sprite_frames = ExtResource("3_frames")
+animation = &"move"
+
+[node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
+position = Vector2(1, 0)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_buru2")
+
+[node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
+position = Vector2(1, 0)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_4u8mj")
+
+[node name="AttackAudio" type="AudioStreamPlayer2D" parent="." index="6" unique_id=496253293]
+bus = &"SFX"
+volume_db = -10.0
+max_distance = 240.0
+max_polyphony = 4

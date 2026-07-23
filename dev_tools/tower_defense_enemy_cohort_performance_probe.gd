@@ -21,9 +21,9 @@ const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/enemy_attack_audio_limiter.gd"
 )
 const CAPOO_MAGE_FIREBALL_SCRIPT := preload(
-	"res://scene/enemy/capoo_mage_fireball.gd"
+	"res://scene/enemy/capoo/capoo_mage_fireball.gd"
 )
-const STONE_GOLEM_SCRIPT := preload("res://scene/enemy/stone_golem.gd")
+const STONE_GOLEM_SCRIPT := preload("res://scene/enemy/artificial_creation/stone_golem.gd")
 const CORN_CONFIG := preload(
 	"res://resources/config/plant_defense/corn_machine_gun.tres"
 )
@@ -43,8 +43,8 @@ const LINGLAN_SKILL_RANDOM_SEED_STRIDE := 3
 const LINGLAN_BOSS_CONFIG_PATH := (
 	"res://resources/config/bosses/boss_01_linglan.tres"
 )
-const CAPOO_AK47_BULLET_POOL_PATH := "res://scene/enemy/capoo_ak47_bullet.tscn"
-const CAPOO_MAGE_FIREBALL_POOL_PATH := "res://scene/enemy/capoo_mage_fireball.tscn"
+const CAPOO_AK47_BULLET_POOL_PATH := "res://scene/enemy/capoo/capoo_ak47_bullet.tscn"
+const CAPOO_MAGE_FIREBALL_POOL_PATH := "res://scene/enemy/capoo/capoo_mage_fireball.tscn"
 const BULLET_HIT_EFFECT_POOL_PATH := "res://scene/bullet_hit_effect.tscn"
 const ENEMY_HIT_EFFECT_POOL_PATH := "res://scene/enemy/enemy_hit_effect.tscn"
 const FIXTURE_CENTER := Vector2(512.0, 352.0)

@@ -1,20 +1,20 @@
 extends SceneTree
 
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
-const AK_BULLET_SCENE := preload("res://scene/enemy/capoo_ak47_bullet.tscn")
-const SMG_BULLET_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
-const RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo_rpg_rocket.tscn")
-const MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo_mage_fireball.tscn")
+const AK_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_ak47_bullet.tscn")
+const SMG_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_smg_bullet.tscn")
+const RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_rocket.tscn")
+const MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball.tscn")
 const FIRE_SORCERER_FIREBALL_VOLLEY_SCENE := preload(
-	"res://scene/enemy/fire_sorcerer_fireball_volley.tscn"
+	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn"
 )
 const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE := preload(
-	"res://scene/enemy/fire_sorcerer_elite_fireball_volley.tscn"
+	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn"
 )
 const FROST_SORCERER_ICE_SPIKE_SCENE := preload(
-	"res://scene/enemy/frost_sorcerer_ice_spike.tscn"
+	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn"
 )
-const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect_fire_projectile.tscn")
+const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.tscn")
 const AGAVE_CANNONBALL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
 const COLLECTIBLE_ARROW_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
 const LINGLAN_SKILL1_BULLET_SCENE := preload(

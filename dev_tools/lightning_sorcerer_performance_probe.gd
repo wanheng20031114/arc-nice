@@ -5,13 +5,13 @@ extends SceneTree
 # drives 300 real enemy instances through one five-target cast, while the second
 # exercises the production 64/96 strict VFX pool and fixed eight-light budget.
 const LIGHTNING_SCENE := preload(
-	"res://scene/enemy/lightning_sorcerer.tscn"
+	"res://scene/enemy/sorcerer/lightning_sorcerer.tscn"
 )
 const LIGHTNING_CONFIG := preload(
 	"res://resources/config/enemies/lightning_sorcerer.tres"
 )
 const LIGHTNING_VFX_SCENE := preload(
-	"res://scene/enemy/lightning_sorcerer_lightning_vfx.tscn"
+	"res://scene/enemy/sorcerer/lightning_sorcerer_lightning_vfx.tscn"
 )
 const NIGHT_FLASH_POOL_SCENE := preload(
 	"res://scene/lighting/night_vfx_flash_pool.tscn"

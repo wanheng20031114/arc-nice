@@ -12,6 +12,8 @@ func _run() -> void:
 	test_root.name = "EnemyFacingAlignmentSmokeTest"
 	root.add_child(test_root)
 
+	var tested_enemy_scene_count := 0
+	var tested_nested_enemy_scene_count := 0
 	for scene_path in _enemy_scene_paths():
 		var scene := load(scene_path) as PackedScene
 		if scene == null:
@@ -21,11 +23,22 @@ func _run() -> void:
 		if enemy == null:
 			instance.free()
 			continue
+		tested_enemy_scene_count += 1
+		if scene_path.trim_prefix("res://scene/enemy/").contains("/"):
+			tested_nested_enemy_scene_count += 1
 		test_root.add_child(enemy)
 		await process_frame
 		_test_enemy_facing_alignment(enemy, scene_path)
 		enemy.queue_free()
 		await process_frame
+	if tested_enemy_scene_count <= 0:
+		failures.append(
+			"Facing-alignment discovery must cover at least one Enemy scene."
+		)
+	if tested_nested_enemy_scene_count <= 0:
+		failures.append(
+			"Facing-alignment discovery must recurse into enemy category directories."
+		)
 
 	test_root.queue_free()
 	await process_frame
@@ -42,11 +55,23 @@ func _run() -> void:
 
 func _enemy_scene_paths() -> Array[String]:
 	var paths: Array[String] = []
-	for file_name in DirAccess.get_files_at("res://scene/enemy"):
-		if file_name.ends_with(".tscn"):
-			paths.append("res://scene/enemy/%s" % file_name)
+	_append_enemy_scene_paths_recursive("res://scene/enemy", paths)
 	paths.sort()
 	return paths
+
+
+func _append_enemy_scene_paths_recursive(
+	directory_path: String,
+	paths: Array[String]
+) -> void:
+	for file_name in DirAccess.get_files_at(directory_path):
+		if file_name.ends_with(".tscn"):
+			paths.append("%s/%s" % [directory_path, file_name])
+	for directory_name in DirAccess.get_directories_at(directory_path):
+		_append_enemy_scene_paths_recursive(
+			"%s/%s" % [directory_path, directory_name],
+			paths
+		)
 
 
 func _test_enemy_facing_alignment(enemy: Enemy, scene_path: String) -> void:

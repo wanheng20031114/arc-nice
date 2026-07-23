@@ -7,10 +7,10 @@ const BASE_CONFIG := preload(
 	"res://resources/config/enemies/frost_sorcerer.tres"
 )
 const ELITE_SCENE := preload(
-	"res://scene/enemy/frost_sorcerer_elite.tscn"
+	"res://scene/enemy/sorcerer/frost_sorcerer_elite.tscn"
 )
 const BASE_SCENE := preload(
-	"res://scene/enemy/frost_sorcerer.tscn"
+	"res://scene/enemy/sorcerer/frost_sorcerer.tscn"
 )
 
 const BASE_TEXTURE_PATH := "res://resources/texture/frost_sorcerer.png"
@@ -125,7 +125,7 @@ func _test_config_contract() -> void:
 		and ELITE_CONFIG.home_damage == BASE_CONFIG.home_damage
 		and ELITE_CONFIG.xirang_kill_reward == BASE_CONFIG.xirang_kill_reward
 		and ELITE_CONFIG.drop_table == BASE_CONFIG.drop_table
-		and ELITE_CONFIG.drop_tags == BASE_CONFIG.drop_tags,
+		and ELITE_CONFIG.category_tags == BASE_CONFIG.category_tags,
 		"Unspecified elite values must remain base-identical."
 	)
 

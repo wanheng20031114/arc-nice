@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="YuanshiInsectConfig" format=3 uid="uid://gh81or2m6c2t"]
 
 [ext_resource type="Script" uid="uid://cxt041wfb1usj" path="res://resources/config/enemies/yuanshi_insect_config.gd" id="5_7pxth"]
-[ext_resource type="PackedScene" uid="uid://62mdayaawmjd" path="res://scene/enemy/yuanshi_insect_bomber.tscn" id="enemy_scene"]
+[ext_resource type="PackedScene" uid="uid://62mdayaawmjd" path="res://scene/enemy/yuanshi_insect/yuanshi_insect_bomber.tscn" id="enemy_scene"]
 
 [resource]
 script = ExtResource("5_7pxth")
@@ -16,4 +16,5 @@ explosion_damage = 30
 explosion_radius = 30.0
 explosion_animation_scale = 1.76
 xirang_kill_reward = 1
+category_tags = PackedStringArray("yuanshi_insect")
 metadata/_custom_type_script = "uid://cxt041wfb1usj"

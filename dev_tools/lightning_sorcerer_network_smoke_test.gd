@@ -2,9 +2,9 @@ extends SceneTree
 
 const MP_GAME_PATH := "res://scene/multiplayer/mp_game.gd"
 const MP_GAME_SCRIPT := preload(MP_GAME_PATH)
-const LIGHTNING_SORCERER_PATH := "res://scene/enemy/lightning_sorcerer.gd"
+const LIGHTNING_SORCERER_PATH := "res://scene/enemy/sorcerer/lightning_sorcerer.gd"
 const LIGHTNING_SORCERER_SCENE := preload(
-	"res://scene/enemy/lightning_sorcerer.tscn"
+	"res://scene/enemy/sorcerer/lightning_sorcerer.tscn"
 )
 const LIGHTNING_SORCERER_CONFIG := preload(
 	"res://resources/config/enemies/lightning_sorcerer.tres"

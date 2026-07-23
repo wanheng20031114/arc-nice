@@ -1,8 +1,8 @@
 extends SceneTree
 
-const CAPOO_SCENE := preload("res://scene/enemy/capoo_rpg.tscn")
-const ROCKET_SCENE := preload("res://scene/enemy/capoo_rpg_rocket.tscn")
-const EXPLOSION_SCENE := preload("res://scene/enemy/capoo_rpg_explosion.tscn")
+const CAPOO_SCENE := preload("res://scene/enemy/capoo/capoo_rpg.tscn")
+const ROCKET_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_rocket.tscn")
+const EXPLOSION_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_explosion.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const CAPOO_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
 const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")

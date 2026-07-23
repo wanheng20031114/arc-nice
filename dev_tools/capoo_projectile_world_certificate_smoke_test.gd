@@ -1,7 +1,7 @@
 extends SceneTree
 
 const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
-const BULLET_SCENE := preload("res://scene/enemy/capoo_smg_bullet.tscn")
+const BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_smg_bullet.tscn")
 const WORLD_COLLISION_MASK := 1
 
 var failures: Array[String] = []

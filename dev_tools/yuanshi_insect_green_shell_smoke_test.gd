@@ -5,7 +5,7 @@ const GREEN_SHELL_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_green_shell.tres"
 )
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
-const AURA_SCRIPT := preload("res://scene/enemy/yuanshi_insect_aura.gd")
+const AURA_SCRIPT := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_aura.gd")
 
 var failures: Array[String] = []
 var test_root: Node2D

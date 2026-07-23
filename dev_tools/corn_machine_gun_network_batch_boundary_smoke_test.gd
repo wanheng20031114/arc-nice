@@ -6,7 +6,7 @@ const CORN_CONFIG := preload(
 	"res://resources/config/plant_defense/corn_machine_gun.tres"
 )
 const CAPOO_PROJECTILE_MOTION_SYSTEM_SCENE := preload(
-	"res://scene/enemy/capoo_projectile_motion_system.tscn"
+	"res://scene/enemy/capoo/capoo_projectile_motion_system.tscn"
 )
 const DAY_NIGHT_SCENE := preload(
 	"res://scene/lighting/day_night_controller.tscn"

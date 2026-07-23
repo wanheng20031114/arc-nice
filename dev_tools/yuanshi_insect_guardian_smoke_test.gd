@@ -7,11 +7,11 @@ const GREEN_SHELL_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_green_shell.tres"
 )
 const GUARDIAN_AURA_SYSTEM_SCENE := preload(
-	"res://scene/enemy/guardian_aura_system.tscn"
+	"res://scene/enemy/yuanshi_insect/guardian_aura_system.tscn"
 )
 const STANDARD_GAME_SCENE := preload("res://scene/game.tscn")
 const TOWER_GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
-const AURA_SCRIPT := preload("res://scene/enemy/yuanshi_insect_aura.gd")
+const AURA_SCRIPT := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_aura.gd")
 const ENEMY_VISUAL_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
 
 class NavigationStub extends Node:

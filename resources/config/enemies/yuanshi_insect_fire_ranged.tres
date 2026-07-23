@@ -1,9 +1,9 @@
 [gd_resource type="Resource" script_class="YuanshiInsectFireRangedConfig" format=3 uid="uid://c6unlgwoqktx5"]
 
 [ext_resource type="Script" uid="uid://cgc3af0prsgtu" path="res://resources/config/enemies/yuanshi_insect_fire_ranged_config.gd" id="2_script"]
-[ext_resource type="PackedScene" uid="uid://cpurafcmqp6i1" path="res://scene/enemy/yuanshi_insect_fire_projectile.tscn" id="3_projectile"]
+[ext_resource type="PackedScene" uid="uid://cpurafcmqp6i1" path="res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.tscn" id="3_projectile"]
 [ext_resource type="AudioStream" uid="uid://q0xgspayk7pu" path="res://resources/audio/yuanshi_insect_fire_attack.wav" id="4_attack_audio"]
-[ext_resource type="PackedScene" uid="uid://cbwpmptwpso6w" path="res://scene/enemy/yuanshi_insect_fire_ranged.tscn" id="5_enemy_scene"]
+[ext_resource type="PackedScene" uid="uid://cbwpmptwpso6w" path="res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_ranged.tscn" id="5_enemy_scene"]
 
 [resource]
 script = ExtResource("2_script")
@@ -17,3 +17,4 @@ attack_damage = 25
 move_speed = 22.0
 home_damage = 2
 xirang_kill_reward = 1
+category_tags = PackedStringArray("yuanshi_insect")
