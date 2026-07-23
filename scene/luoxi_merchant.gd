@@ -59,6 +59,7 @@ const REFRESH_RESULT_STALE_OFFER := 4
 @onready var authoritative_request_timeout: Timer = $AuthoritativeRequestTimeout
 @onready var dialogue_bubble: MerchantDialogueBubble = $MerchantDialogueBubble
 @onready var choice_overlay: LuoxiCollectibleChoiceOverlay = $LuoxiCollectibleChoiceOverlay
+@onready var night_light: NightPointLight2D = $NightLight
 
 var is_active: bool = false
 var nearby_players: Dictionary = {}
@@ -250,6 +251,7 @@ func _ready() -> void:
 
 func set_active(active: bool) -> void:
 	is_active = active
+	night_light.set_emission_allowed(active)
 	visible = active
 	interaction_area.set_deferred("monitoring", active)
 

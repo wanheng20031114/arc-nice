@@ -14,7 +14,7 @@ const VEGETATION_RING_TEXTURE := preload(
 	"res://resources/lighting/vegetation_ring_point_light.tres"
 )
 
-const EXPECTED_AUTHORED_LIGHT_COUNT := 8
+const EXPECTED_AUTHORED_LIGHT_COUNT := 10
 const DEFAULT_STRESS_LIGHT_COUNT := 100
 const MICRO_BENCHMARK_LIGHT_COUNT := 512
 const MICRO_BROADCAST_P95_BUDGET_USEC := 1250.0
@@ -157,8 +157,8 @@ func _run() -> void:
 	_expect(
 		authored_lights.size() == EXPECTED_AUTHORED_LIGHT_COUNT,
 		(
-			"Tower-defense fixture must contain one player light and seven "
-			+ "authored gate lights."
+			"Tower-defense fixture must contain one player light, seven "
+			+ "authored gate lights, and two merchant lights."
 		)
 	)
 	_expect(
@@ -192,10 +192,13 @@ func _run() -> void:
 	_expect(
 		_count_enabled_lights(authored_lights)
 			== EXPECTED_AUTHORED_LIGHT_COUNT,
-		"Night baseline must enable the player and seven fixed gate lights."
+		(
+			"Night baseline must enable the player, seven fixed gate lights, "
+			+ "and two visible merchant lights."
+		)
 	)
 	var fixed_summary: Dictionary = await _measure_phase(
-		"night_fixed_gate_player",
+		"night_fixed_gate_player_merchants",
 		EXPECTED_AUTHORED_LIGHT_COUNT
 	)
 
@@ -250,20 +253,20 @@ func _run() -> void:
 	)
 
 	_print_phase_delta(
-		"night_fixed_gate_player",
+		"night_fixed_gate_player_merchants",
 		"day_zero_active",
 		fixed_summary,
 		day_zero_summary
 	)
 	_print_phase_delta(
 		"night_%d_green_spread" % stress_light_count,
-		"night_fixed_gate_player",
+		"night_fixed_gate_player_merchants",
 		spread_summary,
 		fixed_summary
 	)
 	_print_phase_delta(
 		"night_%d_green_dense" % stress_light_count,
-		"night_fixed_gate_player",
+		"night_fixed_gate_player_merchants",
 		dense_summary,
 		fixed_summary
 	)

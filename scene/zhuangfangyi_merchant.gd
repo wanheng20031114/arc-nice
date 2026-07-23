@@ -24,6 +24,7 @@ const BODY_PUSH_DISTANCE := 24.0
 @onready var collision_shape: CollisionShape2D = $StaticBody2D/CollisionShape2D
 @onready var interaction_area: Area2D = $InteractionArea
 @onready var dialogue_bubble: MerchantDialogueBubble = $MerchantDialogueBubble
+@onready var night_light: NightPointLight2D = $NightLight
 
 var is_active: bool = false
 var nearby_players: Dictionary = {}
@@ -41,6 +42,7 @@ func _ready() -> void:
 
 func set_active(active: bool) -> void:
 	is_active = active
+	night_light.set_emission_allowed(active)
 	visible = active
 	interaction_area.set_deferred("monitoring", active)
 

@@ -16,6 +16,16 @@ const PLAYER_SCENES: Array[PackedScene] = [
 	preload("res://scene/player/hoe_cat/player_hoe_cat.tscn"),
 	preload("res://scene/player/tiyi/player_tiyi.tscn"),
 ]
+const NPC_SCENE_FIXTURES: Array[Dictionary] = [
+	{
+		"label": "庄方宜",
+		"scene": preload("res://scene/zhuangfangyi_merchant.tscn"),
+	},
+	{
+		"label": "洛曦",
+		"scene": preload("res://scene/luoxi_merchant.tscn"),
+	},
+]
 const SOFT_WHITE_TEXTURE := preload(
 	"res://resources/lighting/soft_white_point_light.tres"
 )
@@ -44,6 +54,7 @@ func _run() -> void:
 	await _test_controller_and_day_suppression()
 	await _test_parallel_world_isolation()
 	await _test_vegetation_ring_night_behavior()
+	await _test_npc_night_behavior()
 	_test_authored_scene_contracts()
 	await _test_every_wave_gradual_transition()
 	await _test_tower_wave_lighting()
@@ -236,6 +247,84 @@ func _test_vegetation_ring_night_behavior() -> void:
 	await process_frame
 
 
+func _test_npc_night_behavior() -> void:
+	var test_root := Node2D.new()
+	test_root.name = "NpcNightLightingSmokeWorld"
+	root.add_child(test_root)
+	var controller := DAY_NIGHT_SCENE.instantiate() as DayNightController
+	test_root.add_child(controller)
+
+	for fixture in NPC_SCENE_FIXTURES:
+		var label := String(fixture["label"])
+		var npc_scene := fixture["scene"] as PackedScene
+		var npc := npc_scene.instantiate() as Node2D
+		test_root.add_child(npc)
+		await process_frame
+		await process_frame
+
+		var npc_light := (
+			npc.get_node_or_null("NightLight") as NightPointLight2D
+		)
+		_expect(
+			npc_light != null
+			and npc_light.texture == SOFT_PLAYER_TEXTURE
+			and is_equal_approx(
+				SOFT_PLAYER_TEXTURE.width * npc_light.texture_scale,
+				120.0
+			)
+			and is_equal_approx(npc_light.night_energy, 0.56)
+			and not npc_light.shadow_enabled,
+			"%s必须复用玩家的120像素、0.56能量无阴影柔光。" % label
+		)
+		if npc_light == null:
+			npc.queue_free()
+			await process_frame
+			continue
+		_expect(
+			bool(npc.get("is_active"))
+			and npc.visible
+			and npc_light.is_emission_allowed()
+			and not npc_light.enabled
+			and is_zero_approx(npc_light.energy),
+			"%s白天可见时应许可夜灯，但必须保持零能量关闭。" % label
+		)
+
+		controller.set_night_factor_immediate(1.0)
+		_expect(
+			npc_light.enabled
+			and is_equal_approx(npc_light.energy, 0.56),
+			"%s进入夜晚后必须达到与玩家相同的完整亮度。" % label
+		)
+		npc.call("set_active", false)
+		_expect(
+			not bool(npc.get("is_active"))
+			and not npc.visible
+			and not npc_light.is_emission_allowed()
+			and not npc_light.enabled
+			and is_zero_approx(npc_light.energy),
+			"%s隐藏时必须同步停止发光并归零能量。" % label
+		)
+		npc.call("set_active", true)
+		_expect(
+			npc.visible
+			and npc_light.is_emission_allowed()
+			and npc_light.enabled
+			and is_equal_approx(npc_light.energy, 0.56),
+			"%s在夜晚重新激活后必须立即恢复玩家同等级柔光。" % label
+		)
+		controller.set_night_factor_immediate(0.0)
+		_expect(
+			not npc_light.enabled and is_zero_approx(npc_light.energy),
+			"%s返回白天后必须关闭真实灯光。" % label
+		)
+
+		npc.queue_free()
+		await process_frame
+
+	test_root.queue_free()
+	await process_frame
+
+
 func _test_authored_scene_contracts() -> void:
 	_expect(
 		SOFT_WHITE_TEXTURE is GradientTexture2D
@@ -375,10 +464,16 @@ func _test_authored_scene_contracts() -> void:
 		game.get_node_or_null("DayNightController") is DayNightController,
 		"普通模式主场景必须直接包含昼夜CanvasModulate控制器。"
 	)
-	var standard_gate_lights := _collect_night_lights(game)
+	var standard_all_lights := _collect_night_lights(game)
+	var standard_npc_lights := _collect_merchant_night_lights(game)
+	var standard_gate_lights := _collect_night_lights(
+		game.get_node("EnemySpawnPoints")
+	)
 	_expect(
-		standard_gate_lights.size() == 5,
-		"普通模式地图的5个红门必须各预置一个PointLight2D。"
+		standard_all_lights.size() == 7
+		and standard_npc_lights.size() == 2
+		and standard_gate_lights.size() == 5,
+		"普通模式必须常驻5盏红门灯与2盏NPC灯。"
 	)
 	for gate_light in standard_gate_lights:
 		_expect(
@@ -394,12 +489,18 @@ func _test_authored_scene_contracts() -> void:
 		tower.get_node_or_null("DayNightController") is DayNightController,
 		"塔防主场景必须直接包含昼夜CanvasModulate控制器。"
 	)
-	var gate_lights := _collect_night_lights(tower)
-	_expect(
-		gate_lights.size() == 7,
-		"塔防地图必须为1个蓝门和6个红门各预置一个PointLight2D。"
+	var tower_all_lights := _collect_night_lights(tower)
+	var tower_npc_lights := _collect_merchant_night_lights(tower)
+	var red_gate_lights := _collect_night_lights(
+		tower.get_node("EnemySpawnPoints")
 	)
-	for gate_light in gate_lights:
+	_expect(
+		tower_all_lights.size() == 9
+		and tower_npc_lights.size() == 2
+		and red_gate_lights.size() == 6,
+		"塔防地图必须常驻6盏红门灯、1盏蓝门灯与2盏NPC灯。"
+	)
+	for gate_light in red_gate_lights:
 		_expect(
 			gate_light.texture == SOFT_WHITE_TEXTURE
 			and gate_light.night_energy <= 0.35
@@ -411,7 +512,10 @@ func _test_authored_scene_contracts() -> void:
 	) as NightPointLight2D
 	_expect(
 		blue_light != null
-		and blue_light.position == Vector2(48, 368),
+		and blue_light.position == Vector2(48, 368)
+		and blue_light.texture == SOFT_WHITE_TEXTURE
+		and blue_light.night_energy <= 0.35
+		and not blue_light.shadow_enabled,
 		"蓝门灯光必须位于2×2蓝门的几何中心。"
 	)
 	tower.free()
@@ -755,6 +859,19 @@ func _collect_night_lights(node: Node) -> Array[NightPointLight2D]:
 			and not candidate is NightVfxFlash2D
 		):
 			result.append(candidate as NightPointLight2D)
+	return result
+
+
+func _collect_merchant_night_lights(
+	node: Node
+) -> Array[NightPointLight2D]:
+	var result: Array[NightPointLight2D] = []
+	for merchant_name in ["ZhuangfangyiMerchant", "LuoxiMerchant"]:
+		var light := node.get_node_or_null(
+			NodePath("%s/NightLight" % merchant_name)
+		) as NightPointLight2D
+		if light != null:
+			result.append(light)
 	return result
 
 

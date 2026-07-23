@@ -4,6 +4,8 @@
 [ext_resource type="Script" uid="uid://dc6mjf0t5oj41" path="res://scene/luoxi_merchant.gd" id="2_script"]
 [ext_resource type="PackedScene" path="res://scene/luoxi_dialogue_bubble.tscn" id="3_dialogue"]
 [ext_resource type="PackedScene" uid="uid://c1ykm22bhdrww" path="res://scene/luoxi_collectible_choice_overlay.tscn" id="4_choice_overlay"]
+[ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="5_night_light"]
+[ext_resource type="Texture2D" uid="uid://clffculwmxi7k" path="res://resources/lighting/soft_player_point_light.tres" id="6_player_light_texture"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_body"]
 radius = 8.0
@@ -20,6 +22,12 @@ script = ExtResource("2_script")
 sprite_frames = ExtResource("1_frames")
 animation = &"idle"
 autoplay = "idle"
+
+[node name="NightLight" parent="." instance=ExtResource("5_night_light")]
+texture = ExtResource("6_player_light_texture")
+texture_scale = 0.46875
+night_energy = 0.56
+starts_emitting = false
 
 [node name="StaticBody2D" type="StaticBody2D" parent="." unique_id=1432385626]
 collision_mask = 0
