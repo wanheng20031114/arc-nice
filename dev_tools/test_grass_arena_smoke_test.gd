@@ -51,12 +51,15 @@ func _test_campaign() -> void:
 	if waves.size() != 1:
 		return
 	var wave := waves[0]
-	_expect(wave.get_total_enemy_count() == 20, "第一波必须正好包含20个敌人。")
+	_expect(wave.get_total_enemy_count() == 1000, "第一波必须正好包含1000个敌人。")
 	_expect(wave.enemy_entries.size() == 1, "第一波必须只有一个史莱姆条目。")
 	if wave.enemy_entries.size() == 1:
 		var entry := wave.enemy_entries[0]
 		_expect(entry.enemy_config == SLIME_CONFIG, "第一波唯一敌人必须是基础史莱姆。")
-		_expect(entry.count == 20, "史莱姆条目数量必须为20。")
+		_expect(entry.count == 1000, "史莱姆条目数量必须为1000。")
+	_expect(is_equal_approx(wave.spawn_interval, 3.0), "史莱姆生成间隔必须为3秒。")
+	_expect(wave.spawn_count_per_tick == 1, "每次生成必须只有1只史莱姆。")
+	_expect(wave.max_alive_enemies == 1000, "测试波次不得被旧的20只场上上限暂停。")
 	_expect(wave.spawn_point_mask == 3, "第一波只能使用右侧两个红门出生点。")
 	_expect(
 		wave.get_enabled_spawn_point_names() == [&"Spawn1", &"Spawn2"],
@@ -64,7 +67,7 @@ func _test_campaign() -> void:
 	)
 
 	arena.call("_build_wave_spawn_queue", wave)
-	_expect(arena.pending_enemy_configs.size() == 20, "运行时生成队列必须正好构建20项。")
+	_expect(arena.pending_enemy_configs.size() == 1000, "运行时生成队列必须正好构建1000项。")
 	for enemy_config in arena.pending_enemy_configs:
 		_expect(enemy_config == SLIME_CONFIG, "运行时生成队列不得混入非史莱姆敌人。")
 	arena.call("_clear_pending_enemy_spawn_queue")

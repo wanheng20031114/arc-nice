@@ -2,6 +2,7 @@ extends SceneTree
 
 const MAIN_MENU_SCENE := preload("res://scene/main_menu.tscn")
 const GAME_TOWER_DEFENSE_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TEST_GRASS_ARENA_SCENE_PATH := "res://scene/test_arena/test_grass_arena.tscn"
 
 var failures: Array[String] = []
 
@@ -69,6 +70,19 @@ func _test_main_menu_entry() -> void:
 		),
 		"Tower-defense button must be connected to its menu handler."
 	)
+	var test_arena_button := main_menu.get_node_or_null(
+		"MenuCenter/MenuPanel/MarginContainer/MenuStack/TestArena"
+	) as Button
+	_expect(test_arena_button != null, "Main menu must include the TestArena button.")
+	if test_arena_button == null:
+		return
+	_expect(test_arena_button.text == "测试场景", "Test-arena button text is incorrect.")
+	_expect(
+		test_arena_button.pressed.is_connected(
+			Callable(main_menu, "_on_test_arena_pressed")
+		),
+		"Test-arena button must be connected to its menu handler."
+	)
 	var singleplayer_button := main_menu.get_node(
 		"MenuCenter/MenuPanel/MarginContainer/MenuStack/SinglePlayer"
 	) as Button
@@ -87,12 +101,32 @@ func _test_main_menu_entry() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.run_started = false
 	run_state.set_selected_character(PlayerCharacterRegistry.WEISHIDAIER_ID)
-	tower_defense_button.pressed.emit()
-	await process_frame
-
 	var character_overlay := main_menu.get_node_or_null(
 		"PlayerCharacterChoiceOverlay"
 	) as PlayerCharacterChoiceOverlay
+	test_arena_button.pressed.emit()
+	await process_frame
+	_expect(
+		character_overlay != null and character_overlay.is_open(),
+		"Test-arena entry must open character selection before starting the run."
+	)
+	_expect(
+		str(main_menu.call("_get_pending_singleplayer_scene_path"))
+		== TEST_GRASS_ARENA_SCENE_PATH,
+		"Test-arena entry must resolve to test_grass_arena.tscn."
+	)
+	_expect(not run_state.run_started, "Opening test-arena selection must not start the run yet.")
+	if character_overlay == null:
+		return
+	character_overlay.close()
+	await process_frame
+	_expect(
+		test_arena_button.has_focus(),
+		"Closing test-arena character selection must restore focus to its entry button."
+	)
+
+	tower_defense_button.pressed.emit()
+	await process_frame
 	_expect(
 		character_overlay != null and character_overlay.is_open(),
 		"Tower-defense entry must open character selection before starting the run."
@@ -104,9 +138,6 @@ func _test_main_menu_entry() -> void:
 	)
 	_expect(not run_state.run_started, "Opening tower-defense selection must not start the run yet.")
 	_expect(current_scene == main_menu, "Tower-defense selection must remain on the main menu.")
-	if character_overlay == null:
-		return
-
 	character_overlay.close()
 	await process_frame
 	_expect(

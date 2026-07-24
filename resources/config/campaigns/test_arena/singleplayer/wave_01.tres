@@ -8,15 +8,15 @@
 [sub_resource type="Resource" id="Resource_slime_entry"]
 script = ExtResource("1_entry_script")
 enemy_config = ExtResource("2_slime")
-count = 20
+count = 1000
 
 [resource]
 script = ExtResource("3_wave_script")
 wave_name = "第1波 史莱姆测试"
 enemy_entries = Array[ExtResource("1_entry_script")]([SubResource("Resource_slime_entry")])
 spawn_point_mask = 3
-spawn_interval = 0.35
-spawn_count_per_tick = 2
-max_alive_enemies = 20
+spawn_interval = 3.0
+spawn_count_per_tick = 1
+max_alive_enemies = 1000
 step_id = &"wave_01"
-display_name = "第1波 20只史莱姆"
+display_name = "第1波 1000只史莱姆"

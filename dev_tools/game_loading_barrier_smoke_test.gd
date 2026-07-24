@@ -104,6 +104,16 @@ func _test_loading_scene_contract() -> void:
 	)
 	coordinator.call("_append_character_scene", manifest, &"weishidaier")
 	_expect(manifest.size() == 1, "Loading manifest must deduplicate player scenes.")
+	var test_scene_path := "res://scene/test_arena/test_grass_arena.tscn"
+	_expect(
+		str(coordinator.call("_get_singleplayer_campaign_path", test_scene_path))
+		== "res://resources/config/campaigns/test_arena/singleplayer/campaign.tres",
+		"Test-arena loading must use its dedicated single-player campaign."
+	)
+	_expect(
+		bool(coordinator.call("_uses_tower_defense_runtime", test_scene_path)),
+		"Test-arena loading must include tower-defense runtime resources."
+	)
 
 
 func _test_runtime_activation_gate() -> void:

@@ -2,15 +2,20 @@ extends Control
 
 const GAME_SCENE_PATH := "res://scene/game.tscn"
 const GAME_TOWER_DEFENSE_SCENE_PATH := "res://scene/game_tower_defense.tscn"
+const TEST_GRASS_ARENA_SCENE_PATH := (
+	"res://scene/test_arena/test_grass_arena.tscn"
+)
 
 enum SingleplayerDestination {
 	STANDARD,
 	TOWER_DEFENSE,
+	TEST_ARENA,
 }
 
 @onready var settings_panel: Control = $SettingsPanel
 @onready var singleplayer_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/SinglePlayer
 @onready var tower_defense_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/TowerDefense
+@onready var test_arena_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/TestArena
 @onready var character_choice_overlay: PlayerCharacterChoiceOverlay = $PlayerCharacterChoiceOverlay
 
 var pending_singleplayer_destination := SingleplayerDestination.STANDARD
@@ -27,6 +32,10 @@ func _on_singleplayer_pressed() -> void:
 
 func _on_tower_defense_pressed() -> void:
 	_open_singleplayer_character_selection(SingleplayerDestination.TOWER_DEFENSE)
+
+
+func _on_test_arena_pressed() -> void:
+	_open_singleplayer_character_selection(SingleplayerDestination.TEST_ARENA)
 
 
 func _open_singleplayer_character_selection(destination: SingleplayerDestination) -> void:
@@ -49,16 +58,23 @@ func _on_character_confirmed(character_id: StringName) -> void:
 
 
 func _get_pending_singleplayer_scene_path() -> String:
-	if pending_singleplayer_destination == SingleplayerDestination.TOWER_DEFENSE:
-		return GAME_TOWER_DEFENSE_SCENE_PATH
-	return GAME_SCENE_PATH
+	match pending_singleplayer_destination:
+		SingleplayerDestination.TOWER_DEFENSE:
+			return GAME_TOWER_DEFENSE_SCENE_PATH
+		SingleplayerDestination.TEST_ARENA:
+			return TEST_GRASS_ARENA_SCENE_PATH
+		_:
+			return GAME_SCENE_PATH
 
 
 func _on_character_selection_closed() -> void:
-	if pending_singleplayer_destination == SingleplayerDestination.TOWER_DEFENSE:
-		tower_defense_button.grab_focus()
-	else:
-		singleplayer_button.grab_focus()
+	match pending_singleplayer_destination:
+		SingleplayerDestination.TOWER_DEFENSE:
+			tower_defense_button.grab_focus()
+		SingleplayerDestination.TEST_ARENA:
+			test_arena_button.grab_focus()
+		_:
+			singleplayer_button.grab_focus()
 
 
 func _on_multiplayer_pressed() -> void:

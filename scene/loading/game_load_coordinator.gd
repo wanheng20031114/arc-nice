@@ -7,6 +7,7 @@ signal loading_failed(message: String)
 const MULTIPLAYER_SCENE_PATH := "res://scene/multiplayer/mp_game.tscn"
 const STANDARD_GAME_SCENE_PATH := "res://scene/game.tscn"
 const TOWER_DEFENSE_GAME_SCENE_PATH := "res://scene/game_tower_defense.tscn"
+const TEST_GRASS_ARENA_SCENE_PATH := "res://scene/test_arena/test_grass_arena.tscn"
 const STANDARD_SINGLEPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/standard/singleplayer/campaign.tres"
 )
@@ -15,6 +16,9 @@ const STANDARD_MULTIPLAYER_CAMPAIGN_PATH := (
 )
 const TOWER_DEFENSE_SINGLEPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/tower_defense/singleplayer/campaign.tres"
+)
+const TEST_ARENA_SINGLEPLAYER_CAMPAIGN_PATH := (
+	"res://resources/config/campaigns/test_arena/singleplayer/campaign.tres"
 )
 const TOWER_DEFENSE_MULTIPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/tower_defense/multiplayer/campaign.tres"
@@ -105,19 +109,32 @@ func _ready() -> void:
 func begin_singleplayer(scene_path: String) -> void:
 	if _state != LoadState.IDLE and _state != LoadState.FAILED:
 		return
-	var campaign_path := (
-		TOWER_DEFENSE_SINGLEPLAYER_CAMPAIGN_PATH
-		if scene_path == TOWER_DEFENSE_GAME_SCENE_PATH
-		else STANDARD_SINGLEPLAYER_CAMPAIGN_PATH
-	)
+	var campaign_path := _get_singleplayer_campaign_path(scene_path)
 	var manifest: Array[String] = [scene_path, campaign_path]
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if run_state != null:
 		_append_character_scene(manifest, run_state.get_selected_character_id())
 		_append_inventory_runtime_resources(manifest, run_state)
-	if scene_path == TOWER_DEFENSE_GAME_SCENE_PATH:
+	if _uses_tower_defense_runtime(scene_path):
 		_append_tower_defense_runtime_resources(manifest, false)
 	_begin_load(scene_path, manifest, false)
+
+
+func _get_singleplayer_campaign_path(scene_path: String) -> String:
+	match scene_path:
+		TOWER_DEFENSE_GAME_SCENE_PATH:
+			return TOWER_DEFENSE_SINGLEPLAYER_CAMPAIGN_PATH
+		TEST_GRASS_ARENA_SCENE_PATH:
+			return TEST_ARENA_SINGLEPLAYER_CAMPAIGN_PATH
+		_:
+			return STANDARD_SINGLEPLAYER_CAMPAIGN_PATH
+
+
+func _uses_tower_defense_runtime(scene_path: String) -> bool:
+	return (
+		scene_path == TOWER_DEFENSE_GAME_SCENE_PATH
+		or scene_path == TEST_GRASS_ARENA_SCENE_PATH
+	)
 
 
 func begin_multiplayer() -> void:
@@ -615,7 +632,11 @@ func _get_resource_weight(path: String) -> float:
 	# closure is cached.
 	if path.ends_with("campaign.tres"):
 		return 2.0
-	if path == STANDARD_GAME_SCENE_PATH or path == TOWER_DEFENSE_GAME_SCENE_PATH:
+	if (
+		path == STANDARD_GAME_SCENE_PATH
+		or path == TOWER_DEFENSE_GAME_SCENE_PATH
+		or path == TEST_GRASS_ARENA_SCENE_PATH
+	):
 		return 7.0
 	if path == MULTIPLAYER_SCENE_PATH:
 		return 4.0
