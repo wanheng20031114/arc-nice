@@ -1,38 +1,52 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://33e50y78yyi5"]
 
 [ext_resource type="PackedScene" path="res://scene/enemy/slime/slime.tscn" id="1_base"]
-[ext_resource type="Shader" path="res://scene/entity_motion_status.gdshader" id="2_status_shader"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/slime.tres" id="3_frames"]
+[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="2_status_shader"]
+[ext_resource type="SpriteFrames" uid="uid://bdcp6mac2788w" path="res://resources/animation/slime.tres" id="3_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_status"]
-resource_local_to_scene = false
 shader = ExtResource("2_status_shader")
+shader_parameter/blink_enabled = false
+shader_parameter/blink_speed = 12.0
+shader_parameter/hidden_ratio = 0.5
 shader_parameter/dodge_effect_strength = 0.0
 shader_parameter/dodge_sweep = 0.0
 shader_parameter/dodge_color = Color(0.42, 0.95, 1, 1)
 shader_parameter/dodge_flash_color = Color(1, 1, 1, 1)
 shader_parameter/dodge_outline_width = 3.0
+shader_parameter/dash_effect_strength = 0.0
+shader_parameter/dash_direction = Vector2(1, 0)
+shader_parameter/dash_color = Color(0.12, 1.45, 1.3, 1)
+shader_parameter/dash_trail_pixels = 4.0
+shader_parameter/slow_overlay_color = Color(0.55, 0.86, 1, 1)
+shader_parameter/burn_overlay_color = Color(1, 0.56, 0.18, 0.46)
+shader_parameter/burn_edge_width = 2.0
+shader_parameter/bleed_overlay_color = Color(0.95, 0.02, 0.08, 0.58)
+shader_parameter/bleed_outline_width = 2.0
+shader_parameter/revive_glow_strength = 0.0
+shader_parameter/revive_glow_color = Color(3.2, 3.2, 3.2, 1)
+shader_parameter/revive_glow_outline_width = 4.5
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_body"]
-radius = 4.0
+radius = 6.0
 height = 16.0
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_touch"]
-radius = 4.0
+radius = 6.0
 height = 16.0
 
-[node name="SlimeBasic" instance=ExtResource("1_base")]
+[node name="SlimeBasic" unique_id=1620768714 instance=ExtResource("1_base")]
 
-[node name="AnimatedSprite2D" parent="." index="0"]
+[node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
 material = SubResource("ShaderMaterial_status")
-position = Vector2(0, -2)
 sprite_frames = ExtResource("3_frames")
 animation = &"move"
+frame_progress = 0.89881986
 
-[node name="CollisionShape2D" parent="." index="1"]
+[node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
 rotation = 1.5707964
 shape = SubResource("CapsuleShape2D_body")
 
-[node name="CollisionShape2D" parent="TouchDamageArea" index="0"]
+[node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
 rotation = 1.5707964
 shape = SubResource("CapsuleShape2D_touch")

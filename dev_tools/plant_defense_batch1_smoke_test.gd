@@ -426,6 +426,7 @@ func _test_config_and_scene_contracts() -> void:
 			"植被桩必须在场景中原生预建MainSprite、UpperCanopy、TopGlow、GlowMotes与CellBorder节点。"
 		)
 		if main_sprite != null and upper_canopy != null and top_glow != null:
+			var lower_region := main_sprite.texture as AtlasTexture
 			var canopy_region := upper_canopy.texture as AtlasTexture
 			_expect(
 				main_sprite.scale == Vector2(0.5, 0.5)
@@ -437,13 +438,16 @@ func _test_config_and_scene_contracts() -> void:
 				"植被桩主体、顶部遮挡层与发光层必须以0.5缩放和nearest采样保持像素轮廓。"
 			)
 			_expect(
-				canopy_region != null
-				and canopy_region.atlas == main_sprite.texture
+				lower_region != null
+				and canopy_region != null
+				and lower_region.atlas == canopy_region.atlas
+				and lower_region.region == Rect2(0, 36, 64, 28)
 				and canopy_region.region == Rect2(0, 0, 64, 36)
+				and main_sprite.position == Vector2(0, 8)
 				and upper_canopy.position == Vector2(0, -8)
 				and upper_canopy.z_index == 4
-				and top_glow.z_index == 2,
-				"植被桩必须只把不透明顶部冠层置于玩家和敌人之上，并保持透明TopGlow原图层。"
+				and top_glow.z_index == 5,
+				"植被桩上下主体必须使用无重叠互补切片，透明TopGlow必须在完整主体之后统一叠加。"
 			)
 			var stake_main_material := main_sprite.material as ShaderMaterial
 			var stake_canopy_material := upper_canopy.material as ShaderMaterial

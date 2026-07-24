@@ -23,19 +23,48 @@ const EXPECTED_DEATH_REGIONS := [
 	Rect2(64, 32, 32, 32),
 ]
 const EXPECTED_MOVE_ALPHA_BOUNDS := [
-	Rect2i(7, 9, 17, 13),
-	Rect2i(6, 9, 18, 13),
-	Rect2i(7, 9, 17, 13),
+	Rect2i(7, 8, 18, 14),
+	Rect2i(6, 9, 20, 13),
+	Rect2i(7, 9, 18, 13),
 ]
-const EXPECTED_MOVE_ALPHA_PIXEL_COUNTS := [176, 190, 170]
-const COLLAPSE_EYE_POSITIONS := [Vector2i(13, 17), Vector2i(17, 17)]
+const EXPECTED_MOVE_ALPHA_PIXEL_COUNTS := [210, 208, 194]
+const EXPECTED_DEATH_ALPHA_BOUNDS := [
+	Rect2i(4, 11, 24, 11),
+	Rect2i(1, 15, 29, 7),
+	Rect2i(4, 18, 23, 4),
+]
+const EXPECTED_DEATH_ALPHA_PIXEL_COUNTS := [160, 136, 64]
+const EXPECTED_DEATH_COMPONENT_COUNTS := [2, 3, 3]
+const EXPECTED_EYE_CORE_PIXELS := [
+	[
+		Vector2i(14, 15),
+		Vector2i(14, 16),
+		Vector2i(18, 15),
+		Vector2i(18, 16),
+	],
+	[
+		Vector2i(14, 15),
+		Vector2i(14, 16),
+		Vector2i(18, 15),
+		Vector2i(18, 16),
+	],
+	[
+		Vector2i(14, 15),
+		Vector2i(14, 16),
+		Vector2i(18, 15),
+		Vector2i(18, 16),
+	],
+]
+const EXPECTED_COLLAPSE_EYE_CORE_PIXELS := [
+	Vector2i(14, 19),
+	Vector2i(18, 19),
+]
 const CARDINAL_NEIGHBORS: Array[Vector2i] = [
 	Vector2i.LEFT,
 	Vector2i.RIGHT,
 	Vector2i.UP,
 	Vector2i.DOWN,
 ]
-const CLEAN_OUTLINE_RGBA32 := 0x043B95FF
 
 var failures: Array[String] = []
 
@@ -47,7 +76,7 @@ func _init() -> void:
 func _run() -> void:
 	_test_config_contract()
 	_test_animation_contract()
-	_test_simple_eye_contract()
+	_test_sprite_sheet_contract()
 	_test_scene_contract()
 
 	if failures.is_empty():
@@ -64,7 +93,7 @@ func _test_config_contract() -> void:
 	_expect(SLIME_CONFIG.max_health == 40, "基础史莱姆生命值必须为 40。")
 	_expect(SLIME_CONFIG.attack_damage == 10, "基础史莱姆攻击力必须为 10。")
 	_expect(SLIME_CONFIG.physical_defense == 0, "基础史莱姆物理防御必须为 0。")
-	_expect(SLIME_CONFIG.magic_defense == 0, "基础史莱姆魔法防御必须为 0。")
+	_expect(SLIME_CONFIG.magic_defense == 0, "基础史莱姆法术防御必须为 0。")
 	_expect(
 		is_equal_approx(SLIME_CONFIG.move_speed, BASIC_YUANSHI_CONFIG.move_speed)
 		and is_equal_approx(SLIME_CONFIG.move_speed, 20.0),
@@ -125,7 +154,7 @@ func _test_animation_regions(
 		)
 
 
-func _test_simple_eye_contract() -> void:
+func _test_sprite_sheet_contract() -> void:
 	var first_frame := SLIME_FRAMES.get_frame_texture(&"move", 0) as AtlasTexture
 	_expect(first_frame != null and first_frame.atlas != null, "史莱姆移动帧必须引用有效图集。")
 	if first_frame == null or first_frame.atlas == null:
@@ -135,91 +164,154 @@ func _test_simple_eye_contract() -> void:
 	if image == null:
 		return
 	_expect(image.get_size() == SHEET_SIZE, "史莱姆图集必须严格为 96x64。")
-	_test_move_outline_contract(image)
-	for frame_index in range(3):
-		_expect(
-			_get_local_alpha_bounds(image, frame_index)
-			== EXPECTED_MOVE_ALPHA_BOUNDS[frame_index],
-			"move 第 %d 帧必须保持原石虫的中性→左展宽→右回弹轮廓节奏。"
-			% frame_index
-		)
-		var eye_columns: Array[int] = []
-		for local_y in range(14, 18):
-			for local_x in range(10, 22):
-				var color := image.get_pixel(frame_index * 32 + local_x, local_y)
-				if _is_simple_eye_color(color) and local_x not in eye_columns:
-					eye_columns.append(local_x)
-		eye_columns.sort()
-		_expect(
-			eye_columns.size() >= 2
-			and eye_columns[eye_columns.size() - 1] - eye_columns[0] >= 3,
-			"move 第 %d 帧必须保留两枚分离的简洁深色眼睛。" % frame_index
-		)
-	for eye_position in COLLAPSE_EYE_POSITIONS:
-		_expect(
-			_is_simple_eye_color(
-				image.get_pixel(
-					eye_position.x,
-					32 + eye_position.y
-				)
-			),
-			"第一帧塌缩死亡姿势必须保留两枚随身体下沉的眼睛。"
-		)
+	if image.get_size() != SHEET_SIZE:
+		return
 
-
-func _is_simple_eye_color(color: Color) -> bool:
-	return (
-		color.a > 0.9
-		and color.r < 0.08
-		and color.g < 0.4
-		and color.b < 0.75
-		)
-
-
-func _test_move_outline_contract(image: Image) -> void:
-	for frame_index in range(3):
-		var opaque_pixels := {}
-		for local_y in range(32):
-			for local_x in range(32):
-				var alpha := image.get_pixel(
-					frame_index * 32 + local_x,
-					local_y
-				).a
+	for y in range(SHEET_SIZE.y):
+		for x in range(SHEET_SIZE.x):
+			var color := image.get_pixel(x, y)
+			_expect(
+				is_zero_approx(color.a) or is_equal_approx(color.a, 1.0),
+				"史莱姆图集必须保持二值 alpha，禁止半透明破边。"
+			)
+			if color.a > 0.5:
 				_expect(
-					is_zero_approx(alpha) or is_equal_approx(alpha, 1.0),
-					"史莱姆图集必须保持二值 alpha，禁止半透明破边。"
+					not _is_magenta_key_color(color),
+					"史莱姆图集的非透明区域不得残留洋红抠图底色。"
 				)
-				if alpha > 0.5:
-					opaque_pixels[Vector2i(local_x, local_y)] = true
+
+	_test_move_frame_contract(image)
+	_test_death_frame_contract(image)
+
+
+func _test_move_frame_contract(image: Image) -> void:
+	var minimum_top := int(FRAME_SIZE.y)
+	var maximum_top := 0
+	for frame_index in range(3):
+		var opaque_pixels := _get_local_opaque_pixels(image, frame_index, 0)
+		var bounds := _get_local_alpha_bounds(image, frame_index, 0)
 		_expect(
-			opaque_pixels.size() == EXPECTED_MOVE_ALPHA_PIXEL_COUNTS[frame_index],
-			"move 第 %d 帧必须保持修复后的平滑轮廓像素数。" % frame_index
+			bounds == EXPECTED_MOVE_ALPHA_BOUNDS[frame_index]
+			and opaque_pixels.size() == EXPECTED_MOVE_ALPHA_PIXEL_COUNTS[frame_index],
+			"move 第 %d 帧必须保留指定原图压回视觉网格后的轮廓。" % frame_index
 		)
 		_expect(
 			_count_opaque_components(opaque_pixels) == 1,
-			"move 第 %d 帧轮廓必须是单一连续块。" % frame_index
+			"move 第 %d 帧主体必须保持连续，不能出现透明破洞或碎边。" % frame_index
 		)
 		_expect(
 			not _has_transparent_hole(opaque_pixels),
 			"move 第 %d 帧轮廓内部不得出现透明破洞。" % frame_index
 		)
-		for pixel_position in opaque_pixels:
-			var is_boundary := false
-			for offset in CARDINAL_NEIGHBORS:
-				if not opaque_pixels.has(pixel_position + offset):
-					is_boundary = true
-					break
-			if not is_boundary:
-				continue
-			var boundary_color := image.get_pixel(
-				frame_index * 32 + pixel_position.x,
-				pixel_position.y
-			)
-			_expect(
-				boundary_color.to_rgba32() == CLEAN_OUTLINE_RGBA32,
-				"move 第 %d 帧外边界必须使用连续统一的深蓝单像素描边。"
-				% frame_index
-			)
+		var center_x := (
+			float(bounds.position.x * 2 + bounds.size.x - 1) * 0.5
+		)
+		_expect(
+			is_equal_approx(center_x, 15.5)
+			and bounds.position.y + bounds.size.y == 22,
+			"move 第 %d 帧必须共用水平中心与落地点，避免动画剧烈偏移。" % frame_index
+		)
+		minimum_top = mini(minimum_top, bounds.position.y)
+		maximum_top = maxi(maximum_top, bounds.position.y)
+		_test_eye_core_contract(image, frame_index)
+	_expect(
+		maximum_top - minimum_top <= 1,
+		"move 动画只允许一像素的自然弹跳，不得产生明显上下抖动。"
+	)
+
+
+func _test_eye_core_contract(image: Image, frame_index: int) -> void:
+	var actual_eye_pixels := {}
+	for local_y in range(13, 18):
+		for local_x in range(12, 20):
+			var color := image.get_pixel(frame_index * 32 + local_x, local_y)
+			if _is_eye_core_color(color):
+				actual_eye_pixels[Vector2i(local_x, local_y)] = true
+	var expected_eye_pixels: Array = EXPECTED_EYE_CORE_PIXELS[frame_index]
+	_expect(
+		actual_eye_pixels.size() == expected_eye_pixels.size(),
+		"move 第 %d 帧必须保留原图眼部核心像素数量。" % frame_index
+	)
+	for eye_pixel in expected_eye_pixels:
+		_expect(
+			actual_eye_pixels.has(eye_pixel),
+			"move 第 %d 帧的两枚竖点眼睛必须保持原图位置与分离状态。" % frame_index
+		)
+
+
+func _test_death_frame_contract(image: Image) -> void:
+	for frame_index in range(3):
+		var opaque_pixels := _get_local_opaque_pixels(image, frame_index, 1)
+		var bounds := _get_local_alpha_bounds(image, frame_index, 1)
+		_expect(
+			bounds == EXPECTED_DEATH_ALPHA_BOUNDS[frame_index]
+			and opaque_pixels.size() == EXPECTED_DEATH_ALPHA_PIXEL_COUNTS[frame_index],
+			"death 第 %d 帧必须保留指定原图的塌缩与飞溅姿态。" % frame_index
+		)
+		_expect(
+			bounds.position.y + bounds.size.y == 22,
+			"death 第 %d 帧必须与移动动画共用落地点。" % frame_index
+		)
+		_expect(
+			_count_opaque_components(opaque_pixels)
+			== EXPECTED_DEATH_COMPONENT_COUNTS[frame_index],
+			"death 第 %d 帧必须保留原图中的独立飞溅液滴。" % frame_index
+		)
+	for eye_pixel in EXPECTED_COLLAPSE_EYE_CORE_PIXELS:
+		_expect(
+			_is_eye_core_color(image.get_pixel(eye_pixel.x, 32 + eye_pixel.y)),
+			"第一帧塌缩姿势必须保留原图中的两枚眼睛。"
+		)
+
+
+func _is_magenta_key_color(color: Color) -> bool:
+	return minf(color.r, color.b) - color.g >= 96.0 / 255.0
+
+
+func _is_eye_core_color(color: Color) -> bool:
+	return (
+		color.a > 0.9
+		and color.r < 20.0 / 255.0
+		and color.g < 100.0 / 255.0
+		and color.b < 180.0 / 255.0
+	)
+
+
+func _get_local_opaque_pixels(
+	image: Image,
+	frame_index: int,
+	frame_row: int
+) -> Dictionary:
+	var opaque_pixels := {}
+	for local_y in range(32):
+		for local_x in range(32):
+			if image.get_pixel(
+				frame_index * 32 + local_x,
+				frame_row * 32 + local_y
+			).a > 0.5:
+				opaque_pixels[Vector2i(local_x, local_y)] = true
+	return opaque_pixels
+
+
+func _get_local_alpha_bounds(
+	image: Image,
+	frame_index: int,
+	frame_row: int
+) -> Rect2i:
+	var minimum := Vector2i(32, 32)
+	var maximum := Vector2i(-1, -1)
+	for pixel_position in _get_local_opaque_pixels(
+		image,
+		frame_index,
+		frame_row
+	).keys():
+		minimum.x = mini(minimum.x, pixel_position.x)
+		minimum.y = mini(minimum.y, pixel_position.y)
+		maximum.x = maxi(maximum.x, pixel_position.x)
+		maximum.y = maxi(maximum.y, pixel_position.y)
+	if maximum.x < 0:
+		return Rect2i()
+	return Rect2i(minimum, maximum - minimum + Vector2i.ONE)
 
 
 func _count_opaque_components(opaque_pixels: Dictionary) -> int:
@@ -274,22 +366,6 @@ func _has_transparent_hole(opaque_pixels: Dictionary) -> bool:
 	return reachable_transparent.size() != 32 * 32 - opaque_pixels.size()
 
 
-func _get_local_alpha_bounds(image: Image, frame_index: int) -> Rect2i:
-	var minimum := Vector2i(32, 32)
-	var maximum := Vector2i(-1, -1)
-	for local_y in range(32):
-		for local_x in range(32):
-			if image.get_pixel(frame_index * 32 + local_x, local_y).a <= 0.5:
-				continue
-			minimum.x = mini(minimum.x, local_x)
-			minimum.y = mini(minimum.y, local_y)
-			maximum.x = maxi(maximum.x, local_x)
-			maximum.y = maxi(maximum.y, local_y)
-	if maximum.x < 0:
-		return Rect2i()
-	return Rect2i(minimum, maximum - minimum + Vector2i.ONE)
-
-
 func _test_scene_contract() -> void:
 	_expect(SLIME_CONFIG.enemy_scene != null, "史莱姆配置必须绑定敌人场景。")
 	if SLIME_CONFIG.enemy_scene == null:
@@ -312,6 +388,7 @@ func _test_scene_contract() -> void:
 	_expect(touch_shape != null, "史莱姆场景必须包含独立接触伤害碰撞。")
 	if sprite != null:
 		_expect(sprite.position == Vector2(0, -2), "史莱姆精灵必须与原石虫同样上移 2 像素。")
+		_expect(sprite.scale == Vector2.ONE, "32x32 原生视觉图集不得再进行二次缩放。")
 		_expect(sprite.sprite_frames == SLIME_FRAMES, "史莱姆精灵必须绑定专用 SpriteFrames。")
 	if body_shape != null and touch_shape != null:
 		var body_capsule := body_shape.shape as CapsuleShape2D

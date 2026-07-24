@@ -17,12 +17,16 @@ shader_parameter/base_color = Color(0.298, 0.961, 0.416, 1)
 [sub_resource type="QuadMesh" id="QuadMesh_border"]
 size = Vector2(16, 16)
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_glow"]
-shader = ExtResource("5_glow_shader")
+[sub_resource type="AtlasTexture" id="AtlasTexture_lower_body"]
+atlas = ExtResource("2_sprite")
+region = Rect2(0, 36, 64, 28)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_upper_canopy"]
 atlas = ExtResource("2_sprite")
 region = Rect2(0, 0, 64, 36)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_glow"]
+shader = ExtResource("5_glow_shader")
 
 [sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_mote_glow"]
 light_mode = 1
@@ -42,7 +46,7 @@ color = Color(0.741, 1, 0.278, 0.9)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 resource_local_to_scene = true
-size = Vector2(6.5, 10)
+size = Vector2(10, 10)
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_core"]
 resource_local_to_scene = true
@@ -74,11 +78,11 @@ night_energy = 0.5
 z_index = 1
 texture_filter = 1
 material = ExtResource("4_lifecycle_material")
-position = Vector2(0, -1)
+position = Vector2(0, 8)
 scale = Vector2(0.5, 0.5)
-texture = ExtResource("2_sprite")
+texture = SubResource("AtlasTexture_lower_body")
 
-[node name="UpperCanopy" type="Sprite2D" parent="."]
+[node name="UpperCanopy" type="Sprite2D" parent="." unique_id=1044897819]
 z_index = 4
 texture_filter = 1
 material = ExtResource("4_lifecycle_material")
@@ -87,7 +91,7 @@ scale = Vector2(0.5, 0.5)
 texture = SubResource("AtlasTexture_upper_canopy")
 
 [node name="TopGlow" type="Sprite2D" parent="." unique_id=389635076]
-z_index = 2
+z_index = 5
 texture_filter = 1
 material = SubResource("ShaderMaterial_glow")
 position = Vector2(0, -1)
@@ -108,7 +112,6 @@ visibility_rect = Rect2(-5.5, -2.5, 11, 3.5)
 process_material = SubResource("ParticleProcessMaterial_motes")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=369513140]
-visible = false
 position = Vector2(0, 2)
 shape = SubResource("RectangleShape2D_body")
 
