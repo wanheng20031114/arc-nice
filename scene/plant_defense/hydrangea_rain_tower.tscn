@@ -1,4 +1,4 @@
-[gd_scene load_steps=27 format=3]
+[gd_scene load_steps=35 format=3]
 
 [ext_resource type="Script" path="res://scene/plant_defense/hydrangea_rain_tower.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/plant_defense/hydrangea_rain_tower/idle.png" id="2_idle"]
@@ -8,6 +8,7 @@
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="6_night_light"]
 [ext_resource type="Texture2D" path="res://resources/lighting/soft_micro_point_light.tres" id="7_core_texture"]
 [ext_resource type="Shader" path="res://resources/shader/hydrangea_rain_field.gdshader" id="8_rain_shader"]
+[ext_resource type="Shader" path="res://resources/shader/hydrangea_rain_ripple.gdshader" id="9_ripple_shader"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_idle_upper"]
 atlas = ExtResource("2_idle")
@@ -23,11 +24,19 @@ light_mode = 1
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_rain"]
 shader = ExtResource("8_rain_shader")
-shader_parameter/rain_speed = 0.75
-shader_parameter/rain_columns = 28.0
-shader_parameter/rain_rows = 20.0
-shader_parameter/rain_spawn_threshold = 0.5
-shader_parameter/rain_line_width = 0.17
+
+[sub_resource type="Gradient" id="Gradient_ripple_texture"]
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_ripple"]
+gradient = SubResource("Gradient_ripple_texture")
+width = 24
+height = 24
+fill_from = Vector2(0, 0)
+fill_to = Vector2(1, 1)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_ripple"]
+shader = ExtResource("9_ripple_shader")
 
 [sub_resource type="Gradient" id="Gradient_dew_colors"]
 offsets = PackedFloat32Array(0, 0.32, 0.66, 1)
@@ -42,7 +51,7 @@ colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 0.96, 1, 1, 1, 0.68, 1, 1, 1, 0)
 
 [sub_resource type="GradientTexture2D" id="GradientTexture2D_dew_line"]
 gradient = SubResource("Gradient_dew_line_texture")
-width = 2
+width = 1
 height = 8
 fill_from = Vector2(0.5, 0)
 fill_to = Vector2(0.5, 1)
@@ -62,13 +71,53 @@ emission_shape = 3
 emission_box_extents = Vector3(13, 1.5, 1)
 direction = Vector3(0, -1, 0)
 spread = 0.0
-initial_velocity_min = 58.0
-initial_velocity_max = 84.0
-gravity = Vector3(0, 7, 0)
-scale_min = 0.5
+initial_velocity_min = 170.0
+initial_velocity_max = 230.0
+gravity = Vector3(0, 12, 0)
+scale_min = 0.9
 scale_max = 1.0
 color_initial_ramp = SubResource("GradientTexture_dew_colors")
 color_ramp = SubResource("GradientTexture_particle_alpha")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_target_rain"]
+resource_local_to_scene = true
+particle_flag_disable_z = true
+particle_flag_align_y = true
+emission_shape = 6
+emission_shape_offset = Vector3(0, -120, 0)
+emission_ring_axis = Vector3(0, 0, 1)
+emission_ring_height = 0.0
+emission_ring_radius = 48.0
+emission_ring_inner_radius = 0.0
+emission_ring_cone_angle = 90.0
+direction = Vector3(0, 1, 0)
+spread = 0.0
+initial_velocity_min = 272.727
+initial_velocity_max = 272.727
+gravity = Vector3(0, 0, 0)
+scale_min = 0.9
+scale_max = 1.0
+color_initial_ramp = SubResource("GradientTexture_dew_colors")
+color_ramp = SubResource("GradientTexture_particle_alpha")
+sub_emitter_mode = 2
+sub_emitter_amount_at_end = 1
+sub_emitter_keep_velocity = false
+
+[sub_resource type="Gradient" id="Gradient_ripple_alpha"]
+offsets = PackedFloat32Array(0, 0.48, 0.82, 1)
+colors = PackedColorArray(1, 1, 1, 0.94, 1, 1, 1, 0.82, 1, 1, 1, 0.36, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture_ripple_alpha"]
+gradient = SubResource("Gradient_ripple_alpha")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_ripple"]
+resource_local_to_scene = true
+particle_flag_disable_z = true
+gravity = Vector3(0, 0, 0)
+scale_min = 0.65
+scale_max = 1.1
+color_initial_ramp = SubResource("GradientTexture_dew_colors")
+color_ramp = SubResource("GradientTexture_ripple_alpha")
 
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_ground_dew"]
 resource_local_to_scene = true
@@ -215,6 +264,13 @@ texture = ExtResource("7_core_texture")
 [node name="CoreNightLight" parent="." instance=ExtResource("6_night_light")]
 position = Vector2(0, -5)
 color = Color(0.62, 0.42, 1, 1)
+texture_scale = 0.36
+night_energy = 0.72
+starts_emitting = false
+
+[node name="BloomCoreNightLight" parent="." instance=ExtResource("6_night_light")]
+position = Vector2(0, -5)
+color = Color(0.38, 0.44, 1, 1)
 texture = ExtResource("7_core_texture")
 texture_scale = 0.36
 night_energy = 0.72
@@ -231,16 +287,48 @@ uv = PackedVector2Array(0, 0, 1, 0, 1, 1, 0, 1)
 [node name="DewBurst" type="GPUParticles2D" parent="."]
 z_index = 6
 texture_filter = 1
-position = Vector2(0, -7)
+position = Vector2(0, -9)
 emitting = false
 amount = 72
-lifetime = 0.76
+lifetime = 0.38
 one_shot = true
-explosiveness = 0.42
-randomness = 0.32
-visibility_rect = Rect2(-64, -80, 128, 112)
+explosiveness = 0.35
+randomness = 0.25
+visibility_rect = Rect2(-72, -112, 144, 136)
 texture = SubResource("GradientTexture2D_dew_line")
 process_material = SubResource("ParticleProcessMaterial_dew")
+
+[node name="TargetRainRipples" type="GPUParticles2D" parent="."]
+z_index = 6
+texture_filter = 1
+material = SubResource("ShaderMaterial_ripple")
+emitting = false
+amount = 224
+lifetime = 0.56
+local_coords = false
+fixed_fps = 60
+interpolate = true
+fract_delta = true
+use_fixed_seed = true
+visibility_rect = Rect2(-76, -76, 152, 152)
+texture = SubResource("GradientTexture2D_ripple")
+process_material = SubResource("ParticleProcessMaterial_ripple")
+
+[node name="TargetRainDrops" type="GPUParticles2D" parent="."]
+z_index = 6
+texture_filter = 1
+emitting = false
+amount = 144
+lifetime = 0.44
+local_coords = false
+fixed_fps = 60
+interpolate = true
+fract_delta = true
+use_fixed_seed = true
+visibility_rect = Rect2(-76, -196, 152, 272)
+sub_emitter = NodePath("../TargetRainRipples")
+texture = SubResource("GradientTexture2D_dew_line")
+process_material = SubResource("ParticleProcessMaterial_target_rain")
 
 [node name="GroundDewRise" type="GPUParticles2D" parent="."]
 z_index = 6

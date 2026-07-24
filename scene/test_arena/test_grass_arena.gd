@@ -25,6 +25,24 @@ func _ready() -> void:
 	_update_test_controls_hint()
 
 
+## 测试波按配置条目轮询，便于连续观察每一种敌人的表现；正式波次仍保留随机顺序。
+func _build_wave_spawn_queue(wave_config: WaveConfig) -> void:
+	pending_enemy_configs.clear()
+	pending_enemy_config_index = 0
+	var maximum_entry_count := 0
+	for entry in wave_config.enemy_entries:
+		if entry != null and entry.enemy_config != null:
+			maximum_entry_count = maxi(maximum_entry_count, entry.count)
+	for cycle_index in range(maximum_entry_count):
+		for entry in wave_config.enemy_entries:
+			if (
+				entry != null
+				and entry.enemy_config != null
+				and cycle_index < maxi(entry.count, 0)
+			):
+				pending_enemy_configs.append(entry.enemy_config)
+
+
 ## 测试场景的昼夜只接受玩家手动控制，忽略正式流程的自动入夜请求。
 func transition_world_to_night(_duration_seconds: float = -1.0) -> void:
 	pass

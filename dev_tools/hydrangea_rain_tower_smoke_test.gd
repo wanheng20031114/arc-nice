@@ -30,7 +30,7 @@ const EXPECTED_EFFECT_DURATION := 5.0
 const EXPECTED_TARGET_RADIUS_CELLS := 12.0
 const EXPECTED_RAIN_RADIUS := 48.0
 const EXPECTED_BLOOM_LIGHT_COLOR := Color(0.38, 0.44, 1.0, 1.0)
-const EXPECTED_BLOOM_LIGHT_STRENGTH := 1.9
+const EXPECTED_BLOOM_LIGHT_STRENGTH := 3.2
 
 var failures: Array[String] = []
 var fixture: RainTickRuntime
@@ -218,8 +218,30 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 	var main_sprite := tower.get_node("VisualRoot/MainSprite") as Sprite2D
 	var launch_material := tower.dew_burst.process_material as ParticleProcessMaterial
 	var launch_texture := tower.dew_burst.texture as GradientTexture2D
+	var target_rain_material := (
+		tower.target_rain_drops.process_material as ParticleProcessMaterial
+	)
+	var target_rain_texture := (
+		tower.target_rain_drops.texture as GradientTexture2D
+	)
+	var ripple_material := (
+		tower.target_rain_ripples.process_material as ParticleProcessMaterial
+	)
+	var ripple_texture := (
+		tower.target_rain_ripples.texture as GradientTexture2D
+	)
+	var ripple_draw_material := (
+		tower.target_rain_ripples.material as ShaderMaterial
+	)
 	var ground_material := (
 		tower.ground_dew_rise.process_material as ParticleProcessMaterial
+	)
+	var fall_distance := float(tower.call("_get_target_rain_fall_distance"))
+	var fixed_fall_speed := fall_distance / tower.target_rain_drops.lifetime
+	var minimum_ripple_capacity := ceili(
+		float(tower.target_rain_drops.amount)
+		/ tower.target_rain_drops.lifetime
+		* tower.target_rain_ripples.lifetime
 	)
 	_expect(
 		main_sprite.texture != null
@@ -232,21 +254,108 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 	_expect(
 		launch_material != null
 		and launch_texture != null
-		and launch_texture.width == 2
+		and launch_texture.width == 1
 		and launch_texture.height == 8
 		and tower.dew_burst.amount == 72
-		and is_equal_approx(tower.dew_burst.lifetime, 0.76)
-		and is_equal_approx(tower.dew_burst.explosiveness, 0.42)
+		and is_equal_approx(tower.dew_burst.lifetime, 0.38)
+		and is_equal_approx(tower.dew_burst.explosiveness, 0.35)
 		and launch_material.particle_flag_align_y
 		and launch_material.emission_shape
 		== ParticleProcessMaterial.EMISSION_SHAPE_BOX
 		and launch_material.emission_box_extents == Vector3(13.0, 1.5, 1.0)
 		and launch_material.direction == Vector3(0.0, -1.0, 0.0)
 		and is_zero_approx(launch_material.spread)
-		and is_equal_approx(launch_material.initial_velocity_min, 58.0)
-		and is_equal_approx(launch_material.initial_velocity_max, 84.0)
+		and is_equal_approx(launch_material.initial_velocity_min, 170.0)
+		and is_equal_approx(launch_material.initial_velocity_max, 230.0)
 		and launch_material.color_initial_ramp != null
 		and launch_material.color_ramp != null
+		and target_rain_material != null
+		and target_rain_material.resource_local_to_scene
+		and target_rain_material.particle_flag_align_y
+		and target_rain_material.emission_shape
+		== ParticleProcessMaterial.EMISSION_SHAPE_RING
+		and target_rain_material.emission_ring_axis
+		== Vector3(0.0, 0.0, 1.0)
+		and is_zero_approx(target_rain_material.emission_ring_height)
+		and is_zero_approx(target_rain_material.emission_ring_inner_radius)
+		and is_equal_approx(
+			target_rain_material.emission_ring_radius,
+			EXPECTED_RAIN_RADIUS
+		)
+		and target_rain_material.emission_shape_offset
+		== Vector3(0.0, -fall_distance, 0.0)
+		and target_rain_material.direction == Vector3(0.0, 1.0, 0.0)
+		and is_zero_approx(target_rain_material.spread)
+		and is_equal_approx(
+			target_rain_material.initial_velocity_min,
+			fixed_fall_speed
+		)
+		and is_equal_approx(
+			target_rain_material.initial_velocity_max,
+			fixed_fall_speed
+		)
+		and target_rain_material.gravity == Vector3.ZERO
+		and is_zero_approx(target_rain_material.lifetime_randomness)
+		and target_rain_material.sub_emitter_mode
+		== ParticleProcessMaterial.SUB_EMITTER_AT_END
+		and target_rain_material.sub_emitter_amount_at_end == 1
+		and not target_rain_material.sub_emitter_keep_velocity
+		and target_rain_texture != null
+		and target_rain_texture.width == 1
+		and target_rain_texture.height == 8
+		and tower.target_rain_drops.amount == 144
+		and is_equal_approx(tower.target_rain_drops.lifetime, 0.44)
+		and is_zero_approx(tower.target_rain_drops.randomness)
+		and not tower.target_rain_drops.local_coords
+		and tower.target_rain_drops.fixed_fps == 60
+		and tower.target_rain_drops.use_fixed_seed
+		and tower.target_rain_drops.sub_emitter
+		== NodePath("../TargetRainRipples")
+		and tower.target_rain_drops.get_node_or_null(
+			tower.target_rain_drops.sub_emitter
+		) == tower.target_rain_ripples
+		and tower.target_rain_drops.visibility_rect.position.x
+		<= -EXPECTED_RAIN_RADIUS
+		and tower.target_rain_drops.visibility_rect.end.x
+		>= EXPECTED_RAIN_RADIUS
+		and tower.target_rain_drops.visibility_rect.position.y
+		<= -fall_distance - EXPECTED_RAIN_RADIUS
+		and tower.target_rain_drops.visibility_rect.end.y
+		>= EXPECTED_RAIN_RADIUS
+		and tower.target_rain_ripples.visibility_rect.position.x
+		<= -EXPECTED_RAIN_RADIUS
+		and tower.target_rain_ripples.visibility_rect.position.y
+		<= -EXPECTED_RAIN_RADIUS
+		and tower.target_rain_ripples.visibility_rect.end.x
+		>= EXPECTED_RAIN_RADIUS
+		and tower.target_rain_ripples.visibility_rect.end.y
+		>= EXPECTED_RAIN_RADIUS
+		and is_zero_approx(
+			target_rain_material.emission_shape_offset.y
+			+ fixed_fall_speed * tower.target_rain_drops.lifetime
+		)
+		and fall_distance > EXPECTED_RAIN_RADIUS * 2.0
+		and not tower.target_rain_drops.one_shot
+		and ripple_material != null
+		and ripple_material.resource_local_to_scene
+		and ripple_material.gravity == Vector3.ZERO
+		and is_zero_approx(ripple_material.initial_velocity_min)
+		and is_zero_approx(ripple_material.initial_velocity_max)
+		and ripple_material.color_initial_ramp != null
+		and ripple_material.color_ramp != null
+		and ripple_texture != null
+		and ripple_texture.get_size() == Vector2(24.0, 24.0)
+		and ripple_draw_material != null
+		and ripple_draw_material.shader != null
+		and ripple_draw_material.shader.code.contains("INSTANCE_CUSTOM.y")
+		and ripple_draw_material.shader.code.contains("length(centered)")
+		and ripple_draw_material.shader.code.contains("ring_radius")
+		and ripple_draw_material.shader.code.contains("fade_out")
+		and not tower.target_rain_ripples.emitting
+		and not tower.target_rain_ripples.one_shot
+		and not tower.target_rain_ripples.local_coords
+		and tower.target_rain_ripples.use_fixed_seed
+		and tower.target_rain_ripples.amount >= minimum_ripple_capacity
 		and ground_material != null
 		and ground_material.color_initial_ramp != null
 		and ground_material.color_ramp != null
@@ -256,46 +365,54 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 		)
 		and tower.ground_dew_rise.amount == 84
 		and not tower.ground_dew_rise.one_shot,
-		"源点必须从花冠宽度内持续竖直喷出72条色域线；目标地面84个上升粒子继续使用同一预设色带与3格发射盘。"
+		"目标雨必须以圆盘随机落点反推起点、固定速度垂直落地，并逐滴触发容量充足的彩色圆形波纹。"
 	)
 	var rain_material := tower.rain_field.material as ShaderMaterial
 	_expect(
 		rain_material != null
 		and rain_material.shader != null
-		and rain_material.shader.code.contains("(UV.y - time_offset)")
-		and not rain_material.shader.code.contains("sin(TIME * 0.37)")
-		and is_equal_approx(
-			float(rain_material.get_shader_parameter(&"rain_speed")),
-			0.75
-		)
-		and is_equal_approx(
-			float(rain_material.get_shader_parameter(&"rain_columns")),
-			28.0
-		)
-		and is_equal_approx(
-			float(rain_material.get_shader_parameter(&"rain_spawn_threshold")),
-			0.5
-		),
-		"目标雨幕必须使用无横向漂移、足够密集可见且持续竖直下落的随机雨线。"
+		and rain_material.shader.code.contains("ground_aura")
+		and rain_material.shader.code.contains("edge_ring")
+		and not rain_material.shader.code.contains("rain_grid")
+		and not rain_material.shader.code.contains("rain_columns"),
+		"范围着色器只能保留柔和地面湿润光，不能再叠加与真实落点脱节的程序化雨幕。"
 	)
 
 	var idle_light_color := tower.core_night_light.color
+	var idle_light_texture := tower.core_night_light.texture
 	tower.core_night_light.set_night_factor(1.0)
+	tower.bloom_core_night_light.set_night_factor(1.0)
 	var idle_night_energy := tower.core_night_light.energy
+	_expect(
+		idle_light_texture != null
+		and idle_light_texture.get_size() == Vector2(256.0, 256.0)
+		and idle_light_texture.get_size().x
+		* tower.core_night_light.texture_scale > 90.0
+		and idle_night_energy > 0.0
+		and is_zero_approx(tower.bloom_core_night_light.energy),
+		"夜间待机必须保留原有大范围扩散光，开花核心灯则保持关闭。"
+	)
 	tower.call("_set_flower_state", true)
 	_expect(
-		tower.core_night_light.color == EXPECTED_BLOOM_LIGHT_COLOR
-		and tower.core_night_light.texture != null
-		and tower.core_night_light.texture.get_size() == Vector2(32.0, 32.0)
-		and tower.core_night_light.texture.get_size().x
-		* tower.core_night_light.texture_scale <= 12.0
+		tower.core_night_light.color == idle_light_color
+		and tower.core_night_light.texture == idle_light_texture
 		and is_equal_approx(
 			tower.core_night_light.get_emission_strength(),
+			1.0
+		)
+		and is_equal_approx(tower.core_night_light.energy, idle_night_energy)
+		and tower.bloom_core_night_light.color == EXPECTED_BLOOM_LIGHT_COLOR
+		and tower.bloom_core_night_light.texture != null
+		and tower.bloom_core_night_light.texture.get_size()
+		== Vector2(32.0, 32.0)
+		and tower.bloom_core_night_light.texture.get_size().x
+		* tower.bloom_core_night_light.texture_scale <= 12.0
+		and is_equal_approx(
+			tower.bloom_core_night_light.get_emission_strength(),
 			EXPECTED_BLOOM_LIGHT_STRENGTH
 		)
-		and tower.core_night_light.energy > idle_night_energy * 1.8
-		and tower.core_night_light.energy <= idle_night_energy * 2.0,
-		"开花状态必须使用微型光纹理，只在花蕊内形成适度增强的蓝紫色夜光。"
+		and tower.bloom_core_night_light.energy > idle_night_energy * 3.0,
+		"开花时必须保留扩散灯原状，并额外点亮高强度蓝紫色微型花蕊灯。"
 	)
 	tower.call("_set_flower_state", false)
 	_expect(
@@ -304,13 +421,17 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 			tower.core_night_light.get_emission_strength(),
 			1.0
 		)
-		and is_equal_approx(tower.core_night_light.energy, idle_night_energy),
-		"花期结束后必须恢复原有夜间核心光。"
+		and is_equal_approx(tower.core_night_light.energy, idle_night_energy)
+		and not tower.bloom_core_night_light.is_emission_allowed()
+		and is_zero_approx(tower.bloom_core_night_light.energy),
+		"花期结束后必须只关闭微型核心灯，原有扩散夜光继续保留。"
 	)
 	tower.core_night_light.set_night_factor(0.0)
+	tower.bloom_core_night_light.set_night_factor(0.0)
 	tower.call("_set_flower_state", true)
 	_expect(
-		is_zero_approx(tower.core_night_light.energy),
+		is_zero_approx(tower.core_night_light.energy)
+		and is_zero_approx(tower.bloom_core_night_light.energy),
 		"白天即使处于开花状态也不得产生额外夜间光照。"
 	)
 	tower.call("_set_flower_state", false)
@@ -358,26 +479,40 @@ func _test_two_stage_launch_visual() -> void:
 		and tower.dew_burst.emitting
 		and is_zero_approx(tower.dew_burst.global_rotation)
 		and not tower.rain_field.visible
+		and not tower.target_rain_drops.emitting
+		and not tower.target_rain_ripples.emitting
 		and not tower.ground_dew_rise.emitting,
 		"施法起点必须只在塔身向上喷发线性光雨，目标雨幕和地面粒子不得同帧出现。"
 	)
-	await create_timer(0.1, true, false, false).timeout
-	await process_frame
 	_expect(
-		not tower.rain_field.visible
-		and not tower.ground_dew_rise.emitting,
-		"上射线必须先独立表现一小段时间，目标雨不能过早同帧弹出。"
+		is_equal_approx(
+			HydrangeaRainTower.TARGET_RAIN_START_DELAY_SECONDS,
+			0.24
+		),
+		"上射线必须先独立表现0.24秒，目标雨不能过早同帧弹出。"
 	)
 	await create_timer(0.32, true, false, false).timeout
 	await process_frame
 	_expect(
 		tower.rain_field.visible
-		and tower.ground_dew_rise.emitting
+		and tower.target_rain_drops.emitting
+		and not tower.ground_dew_rise.emitting
 		and is_zero_approx(tower.rain_field.global_rotation)
 		and tower.rain_field.global_position == near_target
+		and tower.target_rain_drops.global_position == near_target
+		and tower.target_rain_ripples.global_position == near_target
 		and tower.ground_dew_rise.global_position == near_target
 		and tower.dew_burst.global_position == first_source_position,
-		"约三分之一秒后目标竖直雨幕必须启动，并与上射尾段短暂重合以建立联动。"
+		"约三分之一秒后目标竖直雨必须启动；地面氛围要等首批雨滴真正到达。"
+	)
+	await create_timer(0.4, true, false, false).timeout
+	await process_frame
+	_expect(
+		tower.target_rain_drops.emitting
+		and tower.ground_dew_rise.emitting
+		and tower.target_rain_drops.sub_emitter
+		== NodePath("../TargetRainRipples"),
+		"首批雨滴到达后才可启动地面回溅氛围，并保持逐滴波纹子发射链接。"
 	)
 	tower.call("_finish_rain_visual")
 	tower.call("_hide_rain_visual_immediate")
@@ -397,6 +532,8 @@ func _test_two_stage_launch_visual() -> void:
 			launch_speed_max
 		)
 		and not tower.rain_field.visible
+		and not tower.target_rain_drops.emitting
+		and not tower.target_rain_ripples.emitting
 		and not tower.ground_dew_rise.emitting,
 		"不同距离的治疗目标不得改变源点上喷方向或速度，也不得重新形成直飞目标的投射物。"
 	)
@@ -408,9 +545,12 @@ func _test_two_stage_launch_visual() -> void:
 	_expect(
 		not tower.dew_burst.emitting
 		and tower.rain_field.visible
-		and tower.ground_dew_rise.emitting
-		and tower.rain_field.global_position == far_target,
-		"同步恢复到延迟之后的动作相位时，必须跳过源点上喷并立即恢复目标降雨。"
+		and tower.target_rain_drops.emitting
+		and not tower.ground_dew_rise.emitting
+		and tower.rain_field.global_position == far_target
+		and tower.target_rain_drops.global_position == far_target
+		and tower.target_rain_ripples.global_position == far_target,
+		"同步恢复到落雨阶段时必须跳过源点上喷，并按相位恢复首批落地延迟。"
 	)
 	tower.call("_finish_rain_visual")
 	tower.call("_hide_rain_visual_immediate")
@@ -474,7 +614,7 @@ func _test_target_cache_and_lowest_current_health_priority() -> void:
 func _test_three_second_visual_and_five_second_effect_timeline() -> void:
 	var short_config := HYDRANGEA_CONFIG.duplicate(true) as HydrangeaRainTowerConfig
 	short_config.rain_interval_seconds = 1.2
-	short_config.rain_duration_seconds = 0.6
+	short_config.rain_duration_seconds = 0.8
 	short_config.effect_duration_seconds = 1.0
 	short_config.rain_tick_interval_seconds = 0.2
 	var tower := _make_tower(short_config)
@@ -483,13 +623,17 @@ func _test_three_second_visual_and_five_second_effect_timeline() -> void:
 	fixture.plant_targets.append(tower)
 	var query_count_before := fixture.combat_query_call_count
 	tower.call("_begin_authoritative_rain", target_position, 0.0)
-	await create_timer(0.48, true, false, false).timeout
+	await create_timer(0.72, true, false, false).timeout
 	await process_frame
 	_expect(
-		tower.rain_active and tower.effect_active and tower.rain_field.visible,
+		tower.rain_active
+		and tower.effect_active
+		and tower.rain_field.visible
+		and tower.target_rain_drops.emitting
+		and tower.ground_dew_rise.emitting,
 		"3秒视觉窗口结束前，目标雨幕必须仍然可见。"
 	)
-	await create_timer(0.18, true, false, false).timeout
+	await create_timer(0.12, true, false, false).timeout
 	await process_frame
 	_expect(
 		not tower.rain_active
@@ -497,6 +641,11 @@ func _test_three_second_visual_and_five_second_effect_timeline() -> void:
 		and tower.rain_field.visible
 		and tower.rain_visual_intensity > 0.0
 		and tower.rain_visual_intensity < 1.0
+		and tower.target_rain_drops.emitting
+		and tower.target_rain_drops.amount_ratio > 0.0
+		and tower.target_rain_drops.amount_ratio < 1.0
+		and tower.target_rain_drops.self_modulate.a > 0.0
+		and tower.target_rain_drops.self_modulate.a < 1.0
 		and tower.ground_dew_rise.emitting
 		and tower.ground_dew_rise.amount_ratio > 0.0
 		and tower.ground_dew_rise.amount_ratio < 1.0
@@ -506,18 +655,22 @@ func _test_three_second_visual_and_five_second_effect_timeline() -> void:
 		and tower.upper_canopy.texture == tower.rain_upper_texture
 		and tower.upper_canopy.self_modulate.a > 0.0
 		and tower.upper_canopy.self_modulate.a < 1.0
-		and tower.core_night_light.get_emission_strength() > 1.0
-		and tower.core_night_light.get_emission_strength()
+		and is_equal_approx(
+			tower.core_night_light.get_emission_strength(),
+			1.0
+		)
+		and tower.bloom_core_night_light.get_emission_strength() > 0.0
+		and tower.bloom_core_night_light.get_emission_strength()
 		< EXPECTED_BLOOM_LIGHT_STRENGTH,
-		"第3秒结算雨幕必须结束；可见雨线、花冠、夜光与地面粒子应从该时刻进入独立柔和消散。"
+		"第3秒结算雨幕必须结束；两种雨线、花冠、核心夜光与地面粒子应从该时刻进入独立柔和消散，常驻扩散光保持不变。"
 	)
-	await create_timer(0.12, true, false, false).timeout
+	await create_timer(0.06, true, false, false).timeout
 	await process_frame
 	_expect(
 		tower.effect_active,
 		"第5秒效果窗口结束前，治疗与减攻结算必须仍保持活动。"
 	)
-	await create_timer(0.25, true, false, false).timeout
+	await create_timer(0.34, true, false, false).timeout
 	await process_frame
 	_expect(
 		tower.main_sprite.texture == tower.idle_texture
@@ -528,11 +681,17 @@ func _test_three_second_visual_and_five_second_effect_timeline() -> void:
 			tower.core_night_light.get_emission_strength(),
 			1.0
 		)
+		and not tower.bloom_core_night_light.is_emission_allowed()
+		and is_zero_approx(
+			tower.bloom_core_night_light.get_emission_strength()
+		)
 		and tower.rain_field.visible
 		and tower.rain_visual_intensity > 0.0
+		and tower.target_rain_drops.emitting
+		and tower.target_rain_drops.self_modulate.a < 1.0
 		and tower.ground_dew_rise.emitting
 		and tower.ground_dew_rise.self_modulate.a < 1.0,
-		"短时反向收缩结束后花冠与夜光必须恢复待机态，雨线和范围粒子仍应继续柔和消散。"
+		"短时反向收缩结束后花冠与核心夜光必须恢复待机态，常驻扩散光保留，雨线和范围粒子仍应继续柔和消散。"
 	)
 	var completed_tick_count := (
 		fixture.combat_query_call_count - query_count_before
@@ -567,10 +726,16 @@ func _test_three_second_visual_and_five_second_effect_timeline() -> void:
 	_expect(
 		not tower.rain_field.visible
 		and is_zero_approx(tower.rain_visual_intensity)
+		and not tower.target_rain_drops.emitting
+		and is_equal_approx(tower.target_rain_drops.amount_ratio, 1.0)
+		and tower.target_rain_drops.self_modulate == Color.WHITE
+		and not tower.target_rain_ripples.emitting
+		and is_equal_approx(tower.target_rain_ripples.amount_ratio, 1.0)
+		and tower.target_rain_ripples.self_modulate == Color.WHITE
 		and not tower.ground_dew_rise.emitting
 		and is_equal_approx(tower.ground_dew_rise.amount_ratio, 1.0)
 		and tower.ground_dew_rise.self_modulate == Color.WHITE,
-		"较长消散期结束后雨线与范围粒子必须停止，并恢复可复用的发射比例与透明度。"
+		"较长消散期结束后两端雨线与范围粒子必须停止，并恢复可复用的发射比例与透明度。"
 	)
 	fixture.plant_targets.clear()
 	tower.queue_free()
@@ -621,8 +786,14 @@ func _test_proxy_target_position_sync_and_deduplication() -> void:
 	_expect(
 		constructing_proxy.rain_active
 		and constructing_proxy.rain_field.global_position == newer_target_position
+		and constructing_proxy.target_rain_drops.emitting
+		and constructing_proxy.target_rain_drops.global_position
+		== newer_target_position
+		and constructing_proxy.target_rain_ripples.global_position
+		== newer_target_position
 		and constructing_proxy.ground_dew_rise.global_position
 		== newer_target_position
+		and not constructing_proxy.ground_dew_rise.emitting
 		and not constructing_proxy.dew_burst.emitting,
 		"代理转为可运行后必须在主机指定建筑位置恢复雨幕。"
 	)

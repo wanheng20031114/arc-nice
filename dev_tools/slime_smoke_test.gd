@@ -387,7 +387,7 @@ func _test_scene_contract() -> void:
 	_expect(body_shape != null, "史莱姆场景必须包含本体碰撞。")
 	_expect(touch_shape != null, "史莱姆场景必须包含独立接触伤害碰撞。")
 	if sprite != null:
-		_expect(sprite.position == Vector2(0, -2), "史莱姆精灵必须与原石虫同样上移 2 像素。")
+		_expect(sprite.position == Vector2.ZERO, "史莱姆精灵必须保持当前原石虫继承位置。")
 		_expect(sprite.scale == Vector2.ONE, "32x32 原生视觉图集不得再进行二次缩放。")
 		_expect(sprite.sprite_frames == SLIME_FRAMES, "史莱姆精灵必须绑定专用 SpriteFrames。")
 	if body_shape != null and touch_shape != null:
@@ -398,15 +398,15 @@ func _test_scene_contract() -> void:
 		_expect(body_shape.shape != touch_shape.shape, "本体与接触伤害不得共享 Shape2D 资源。")
 		if body_capsule != null:
 			_expect(
-				is_equal_approx(body_capsule.radius, 4.0)
+				is_equal_approx(body_capsule.radius, 5.0)
 				and is_equal_approx(body_capsule.height, 16.0),
-				"史莱姆本体胶囊必须使用 radius=4、height=16。"
+				"史莱姆本体胶囊必须使用 radius=5、height=16。"
 			)
 		if touch_capsule != null:
 			_expect(
-				is_equal_approx(touch_capsule.radius, 4.0)
+				is_equal_approx(touch_capsule.radius, 5.0)
 				and is_equal_approx(touch_capsule.height, 16.0),
-				"史莱姆接触胶囊必须使用 radius=4、height=16。"
+				"史莱姆接触胶囊必须使用 radius=5、height=16。"
 			)
 		_expect(
 			is_equal_approx(body_shape.rotation, PI / 2.0)

@@ -25,6 +25,9 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/frost_sorcerer_elite.tres"),
 	preload("res://resources/config/enemies/lightning_sorcerer.tres"),
 	preload("res://resources/config/enemies/slime.tres"),
+	preload("res://resources/config/enemies/slime_golden.tres"),
+	preload("res://resources/config/enemies/slime_fire.tres"),
+	preload("res://resources/config/enemies/slime_frost.tres"),
 ]
 const STANDARD_YUANSHI_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/yuanshi_insect_basic.tres"),
@@ -71,6 +74,9 @@ const ARTIFICIAL_CREATION_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 ]
 const SLIME_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/slime.tres"),
+	preload("res://resources/config/enemies/slime_golden.tres"),
+	preload("res://resources/config/enemies/slime_fire.tres"),
+	preload("res://resources/config/enemies/slime_frost.tres"),
 ]
 const DEFAULT_ENEMY_DROP_TABLE: EnemyDropTable = preload(
 	"res://resources/config/enemies/default_enemy_drop_table.tres"
@@ -178,8 +184,8 @@ func _test_enemy_drop_and_category_contract() -> void:
 		"New enemy configs must inherit the shared data-driven drop table."
 	)
 	_expect(
-		all_drop_configs.size() == 25,
-		"The drop-contract audit must cover all 25 authored enemy configs, including Linglan."
+		all_drop_configs.size() == ENEMY_CONFIGS.size() + 1,
+		"The drop-contract audit must cover every regular enemy config plus Linglan."
 	)
 
 	var expected_paths: Array[String] = [
@@ -297,8 +303,8 @@ func _test_enemy_drop_and_category_contract() -> void:
 		"Exactly the two stone golem configs must carry the artificial_creation category tag."
 	)
 	_expect(
-		int(category_counts["slime"]) == 1,
-		"Exactly the basic Slime config must carry the slime category tag."
+		int(category_counts["slime"]) == 4,
+		"Exactly the four Slime configs must carry the slime category tag."
 	)
 	_expect_exact_category(YUANSHI_CATEGORY_CONFIGS, "yuanshi_insect")
 	_expect_exact_category(CAPOO_CATEGORY_CONFIGS, "capoo")

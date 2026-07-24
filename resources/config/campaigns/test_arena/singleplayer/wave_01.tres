@@ -2,21 +2,39 @@
 
 [ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_entry_script"]
 [ext_resource type="Resource" uid="uid://ddijbjp2c5h04" path="res://resources/config/enemies/slime.tres" id="2_slime"]
+[ext_resource type="Resource" path="res://resources/config/enemies/slime_golden.tres" id="3_slime_golden"]
+[ext_resource type="Resource" path="res://resources/config/enemies/slime_fire.tres" id="4_slime_fire"]
+[ext_resource type="Resource" path="res://resources/config/enemies/slime_frost.tres" id="5_slime_frost"]
 [ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="3_pcesb"]
 [ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="3_wave_script"]
 
 [sub_resource type="Resource" id="Resource_slime_entry"]
 script = ExtResource("1_entry_script")
 enemy_config = ExtResource("2_slime")
-count = 1000
+count = 250
+
+[sub_resource type="Resource" id="Resource_golden_slime_entry"]
+script = ExtResource("1_entry_script")
+enemy_config = ExtResource("3_slime_golden")
+count = 250
+
+[sub_resource type="Resource" id="Resource_fire_slime_entry"]
+script = ExtResource("1_entry_script")
+enemy_config = ExtResource("4_slime_fire")
+count = 250
+
+[sub_resource type="Resource" id="Resource_frost_slime_entry"]
+script = ExtResource("1_entry_script")
+enemy_config = ExtResource("5_slime_frost")
+count = 250
 
 [resource]
 script = ExtResource("3_wave_script")
-wave_name = "第1波 史莱姆测试"
-enemy_entries = Array[ExtResource("1_entry_script")]([SubResource("Resource_slime_entry")])
+wave_name = "第1波 四种史莱姆循环测试"
+enemy_entries = Array[ExtResource("1_entry_script")]([SubResource("Resource_slime_entry"), SubResource("Resource_golden_slime_entry"), SubResource("Resource_fire_slime_entry"), SubResource("Resource_frost_slime_entry")])
 spawn_point_mask = 3
 spawn_interval = 3.0
 spawn_count_per_tick = 1
 max_alive_enemies = 1000
 step_id = &"wave_01"
-display_name = "第1波 1000只史莱姆"
+display_name = "第1波 四种史莱姆各250只"

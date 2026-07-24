@@ -3,6 +3,9 @@ class_name SlimeConfig
 
 enum Variant {
 	BASIC,
+	GOLDEN,
+	FIRE,
+	FROST,
 }
 
 @export_group("史莱姆")

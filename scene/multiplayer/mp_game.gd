@@ -142,6 +142,10 @@ const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_TYPE: StringName = (
 const FIRE_SORCERER_BURN_DURATION_SECONDS := 5.0
 const FIRE_SORCERER_BURN_LEVEL := 5
 const FIRE_SORCERER_ELITE_BURN_LEVEL := 10
+const FIRE_SLIME_TOUCH_TYPE: StringName = &"fire_slime_touch"
+const FROST_SLIME_TOUCH_TYPE: StringName = &"frost_slime_touch"
+const SLIME_ELEMENTAL_STATUS_DURATION_SECONDS := 3.0
+const FIRE_SLIME_BURN_LEVEL := 10
 const FIRE_SORCERER_CONSUMED_SOURCE_MASK_KEY: StringName = (
 	&"fire_sorcerer_consumed_source_mask"
 )
@@ -5597,6 +5601,25 @@ func _get_fire_sorcerer_burn_level(source_type: StringName) -> int:
 			return 0
 
 
+func _get_enemy_burn_family(source_type: StringName) -> StringName:
+	if source_type == FIRE_SLIME_TOUCH_TYPE:
+		return FIRE_SLIME_TOUCH_TYPE
+	return _get_fire_sorcerer_burn_family(source_type)
+
+
+func _get_enemy_burn_level(source_type: StringName) -> int:
+	var burn_family := _get_enemy_burn_family(source_type)
+	if burn_family == FIRE_SLIME_TOUCH_TYPE:
+		return FIRE_SLIME_BURN_LEVEL
+	return _get_fire_sorcerer_burn_level(burn_family)
+
+
+func _get_enemy_burn_duration(source_type: StringName) -> float:
+	if _get_enemy_burn_family(source_type) == FIRE_SLIME_TOUCH_TYPE:
+		return SLIME_ELEMENTAL_STATUS_DURATION_SECONDS
+	return FIRE_SORCERER_BURN_DURATION_SECONDS
+
+
 func _get_fire_sorcerer_fireball_source_bit(source_type: StringName) -> int:
 	match source_type:
 		&"fire_sorcerer_fireball_a", \
@@ -7073,6 +7096,8 @@ func request_multiplayer_player_damage(
 		elif source_direction_or_is_ranged is bool:
 			resolved_is_ranged = bool(source_direction_or_is_ranged)
 	var is_frost_ice_spike := source_type == FROST_SORCERER_ICE_SPIKE_TYPE
+	var is_fire_slime_touch := source_type == FIRE_SLIME_TOUCH_TYPE
+	var is_frost_slime_touch := source_type == FROST_SLIME_TOUCH_TYPE
 	if is_frost_ice_spike:
 		var authoritative_damage := _get_frost_ice_spike_record_damage(
 			source_id,
@@ -7081,6 +7106,8 @@ func request_multiplayer_player_damage(
 		if authoritative_damage <= 0:
 			return false
 		damage = authoritative_damage
+		resolved_damage_type = EnemyConfig.DamageType.MAGIC
+	elif is_fire_slime_touch or is_frost_slime_touch:
 		resolved_damage_type = EnemyConfig.DamageType.MAGIC
 	var damage_context := _build_player_damage_context(source_direction, resolved_is_ranged)
 	var impact_direction := Vector2.ZERO
@@ -7194,8 +7221,8 @@ func request_multiplayer_player_burn_tick(
 		or player_peer_id <= 0
 	):
 		return false
-	var trusted_family := _get_fire_sorcerer_burn_family(source_family)
-	var trusted_burn_level := _get_fire_sorcerer_burn_level(trusted_family)
+	var trusted_family := _get_enemy_burn_family(source_family)
+	var trusted_burn_level := _get_enemy_burn_level(trusted_family)
 	if trusted_family == &"" or trusted_burn_level <= 0:
 		return false
 	var player_node := game.get_player_for_peer(player_peer_id)
@@ -7357,6 +7384,8 @@ func _apply_player_hit_report(
 		_get_fire_sorcerer_fireball_source_bit(source_type) != 0
 	)
 	var is_frost_ice_spike := source_type == FROST_SORCERER_ICE_SPIKE_TYPE
+	var is_fire_slime_touch := source_type == FIRE_SLIME_TOUCH_TYPE
+	var is_frost_slime_touch := source_type == FROST_SLIME_TOUCH_TYPE
 	if is_frost_ice_spike:
 		var authoritative_damage := _get_frost_ice_spike_record_damage(
 			source_id,
@@ -7430,6 +7459,8 @@ func _apply_player_hit_report(
 		EnemyConfig.DamageType.MAGIC
 		if (
 			is_frost_ice_spike
+			or is_fire_slime_touch
+			or is_frost_slime_touch
 			or damage_type == EnemyConfig.DamageType.MAGIC
 		)
 		else EnemyConfig.DamageType.PHYSICAL
@@ -7437,15 +7468,15 @@ func _apply_player_hit_report(
 	player_node.set_multiplayer_health_state(confirmed_health, confirmed_dead)
 	var confirmed_cold_applied := false
 	if confirmed_damage > 0 and not confirmed_dead:
-		var burn_family := _get_fire_sorcerer_burn_family(source_type)
-		var burn_level := _get_fire_sorcerer_burn_level(burn_family)
+		var burn_family := _get_enemy_burn_family(source_type)
+		var burn_level := _get_enemy_burn_level(burn_family)
 		if burn_family != &"" and burn_level > 0:
 			player_node.apply_burn_status(
 				burn_family,
-				FIRE_SORCERER_BURN_DURATION_SECONDS,
+				_get_enemy_burn_duration(burn_family),
 				burn_level
 			)
-		if is_frost_ice_spike:
+		if is_frost_ice_spike or is_frost_slime_touch:
 			confirmed_cold_applied = player_node.apply_cold_status()
 	_show_confirmed_player_damage_number(
 		player_node,

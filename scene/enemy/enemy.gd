@@ -3544,6 +3544,7 @@ func _try_deal_touch_damage() -> void:
 			touch_damage_type
 		):
 			touch_damage_cooldown_left = touch_damage_interval
+			_on_touch_damage_applied(touched_plant)
 		return
 	if touched_player == null:
 		return
@@ -3555,20 +3556,33 @@ func _try_deal_touch_damage() -> void:
 			_get_multiplayer_touch_source_id(),
 			touched_player.peer_id,
 			outgoing_damage,
-			&"enemy_touch",
+			_get_multiplayer_touch_source_type(),
 			touch_damage_type
 		)
 		touch_damage_cooldown_left = touch_damage_interval
 		return
-	touched_player.apply_damage(
+	var damage_was_applied := touched_player.apply_damage(
 		outgoing_damage,
 		touch_damage_type
 	)
+	if damage_was_applied:
+		_on_touch_damage_applied(touched_player)
 	touch_damage_cooldown_left = touch_damage_interval
 
 
 func _get_touch_damage_type() -> EnemyConfig.DamageType:
 	return EnemyConfig.DamageType.PHYSICAL
+
+
+func _get_multiplayer_touch_source_type() -> StringName:
+	return &"enemy_touch"
+
+
+## Variant enemies can add a status only after the direct touch damage was
+## accepted. Multiplayer player hits apply their status in MPGame's host
+## confirmation path instead of this local hook.
+func _on_touch_damage_applied(_target: Node) -> void:
+	pass
 
 
 func _get_multiplayer_touch_source_id() -> int:

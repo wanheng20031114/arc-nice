@@ -7,13 +7,17 @@ const STATUS_SOURCE_NAMESPACE := 130_000_000
 const AUTHORED_RAIN_RADIUS := 160.0
 const RAIN_VISUAL_FADE_IN_SECONDS := 0.36
 const RAIN_FIELD_DISSIPATE_SECONDS := 0.9
-const TARGET_RAIN_START_DELAY_SECONDS := 0.32
+const TARGET_RAIN_START_DELAY_SECONDS := 0.24
+const TARGET_RAIN_START_CLEARANCE := 24.0
+const TARGET_RAIN_VISIBILITY_MARGIN := 28.0
+const TARGET_RAIN_EMISSION_FADE_SECONDS := 0.28
+const TARGET_RAIN_DISSIPATE_SECONDS := 0.78
 const BLOOM_OPEN_TRANSITION_SECONDS := 0.24
 const BLOOM_CLOSE_TRANSITION_SECONDS := 0.32
 const GROUND_DEW_EMISSION_FADE_SECONDS := 1.0
 const GROUND_DEW_DISSIPATE_SECONDS := 1.4
 const IDLE_CORE_LIGHT_STRENGTH := 1.0
-const BLOOM_CORE_LIGHT_STRENGTH := 1.9
+const BLOOM_CORE_LIGHT_STRENGTH := 3.2
 const BLOOM_CORE_LIGHT_COLOR := Color(0.38, 0.44, 1.0, 1.0)
 const IDLE_CORE_GLOW_SCALE := Vector2(0.3, 0.3)
 const BLOOM_CORE_GLOW_SCALE := Vector2(0.38, 0.38)
@@ -28,8 +32,11 @@ const BLOOM_CORE_GLOW_SCALE := Vector2(0.38, 0.38)
 @onready var upper_canopy: Sprite2D = $VisualRoot/UpperCanopy
 @onready var core_glow: Sprite2D = $CoreGlow
 @onready var core_night_light: NightPointLight2D = $CoreNightLight
+@onready var bloom_core_night_light: NightPointLight2D = $BloomCoreNightLight
 @onready var rain_field: Polygon2D = $RainField
 @onready var dew_burst: GPUParticles2D = $DewBurst
+@onready var target_rain_drops: GPUParticles2D = $TargetRainDrops
+@onready var target_rain_ripples: GPUParticles2D = $TargetRainRipples
 @onready var ground_dew_rise: GPUParticles2D = $GroundDewRise
 @onready var bloom_animation_player: AnimationPlayer = $BloomAnimationPlayer
 @onready var cycle_timer: Timer = $CycleTimer
@@ -58,10 +65,10 @@ var next_effect_tick_index := 0
 var total_effect_tick_count := 0
 var rain_field_tween: Tween = null
 var bloom_visual_tween: Tween = null
+var target_rain_dissolve_tween: Tween = null
 var ground_dew_dissolve_tween: Tween = null
 var rain_visual_intensity := 0.0
 var bloom_visual_progress := 0.0
-var idle_core_light_color := Color(0.62, 0.42, 1.0, 1.0)
 var pending_proxy_cycle_elapsed_seconds := -1.0
 var pending_proxy_rain_elapsed_seconds := -1.0
 var pending_proxy_rain_target_position := Vector2.ZERO
@@ -89,15 +96,58 @@ func _on_setup_completed() -> void:
 	)
 	if ground_particle_material != null:
 		ground_particle_material.emission_sphere_radius = rain_config.rain_radius
-	var particle_visibility_margin := 28.0
+	var target_rain_material := (
+		target_rain_drops.process_material as ParticleProcessMaterial
+	)
+	if target_rain_material != null:
+		var fall_distance := _get_target_rain_fall_distance()
+		target_rain_material.emission_shape = (
+			ParticleProcessMaterial.EMISSION_SHAPE_RING
+		)
+		target_rain_material.emission_shape_offset = Vector3(
+			0.0,
+			-fall_distance,
+			0.0
+		)
+		target_rain_material.emission_ring_axis = Vector3(0.0, 0.0, 1.0)
+		target_rain_material.emission_ring_height = 0.0
+		target_rain_material.emission_ring_inner_radius = 0.0
+		target_rain_material.emission_ring_radius = rain_config.rain_radius
+		target_rain_material.direction = Vector3(0.0, 1.0, 0.0)
+		target_rain_material.spread = 0.0
+		target_rain_material.gravity = Vector3.ZERO
+		target_rain_material.lifetime_randomness = 0.0
+		var fixed_fall_speed := fall_distance / target_rain_drops.lifetime
+		target_rain_material.initial_velocity_min = fixed_fall_speed
+		target_rain_material.initial_velocity_max = fixed_fall_speed
+	var particle_visibility_margin := TARGET_RAIN_VISIBILITY_MARGIN
 	ground_dew_rise.visibility_rect = Rect2(
 		Vector2.ONE * (-rain_config.rain_radius - particle_visibility_margin),
 		Vector2.ONE * (
 			(rain_config.rain_radius + particle_visibility_margin) * 2.0
 		)
 	)
+	var target_rain_fall_distance := _get_target_rain_fall_distance()
+	target_rain_drops.visibility_rect = Rect2(
+		Vector2(
+			-rain_config.rain_radius - particle_visibility_margin,
+			-target_rain_fall_distance
+			- rain_config.rain_radius
+			- particle_visibility_margin
+		),
+		Vector2(
+			(rain_config.rain_radius + particle_visibility_margin) * 2.0,
+			target_rain_fall_distance
+			+ (rain_config.rain_radius + particle_visibility_margin) * 2.0
+		)
+	)
+	target_rain_ripples.visibility_rect = Rect2(
+		Vector2.ONE * (-rain_config.rain_radius - particle_visibility_margin),
+		Vector2.ONE * (
+			(rain_config.rain_radius + particle_visibility_margin) * 2.0
+		)
+	)
 	_set_action_rain_seed()
-	idle_core_light_color = core_night_light.color
 
 	health_bar.setup(max_health, current_health)
 	if not health_changed.is_connected(_on_health_changed):
@@ -180,6 +230,7 @@ func _select_lowest_health_target() -> PlantDefense:
 
 func _on_construction_started() -> void:
 	core_night_light.set_emission_allowed(false)
+	bloom_core_night_light.set_emission_allowed(false)
 	core_glow.hide()
 	_hide_rain_visual_immediate()
 
@@ -187,6 +238,11 @@ func _on_construction_started() -> void:
 func _on_construction_finished(_was_animated: bool) -> void:
 	core_glow.show()
 	core_night_light.set_emission_allowed(true)
+	bloom_core_night_light.set_emission_allowed(
+		is_operational
+		and not is_removing
+		and bloom_visual_progress > 0.001
+	)
 
 
 func _on_operational_started() -> void:
@@ -240,6 +296,7 @@ func _on_removal_started(_mode: RemovalMode) -> void:
 	_stop_rain_field_tween()
 	bloom_animation_player.stop()
 	core_night_light.set_emission_allowed(false)
+	bloom_core_night_light.set_emission_allowed(false)
 	core_glow.hide()
 	health_bar.hide()
 	_hide_rain_visual_immediate()
@@ -486,6 +543,10 @@ func _begin_rain_visual(
 	rain_started_at_seconds = _now_seconds() - safe_elapsed
 	rain_field.global_position = target_position
 	ground_dew_rise.global_position = target_position
+	target_rain_drops.global_position = target_position
+	target_rain_ripples.global_position = target_position
+	target_rain_drops.global_rotation = 0.0
+	target_rain_ripples.global_rotation = 0.0
 	_set_action_rain_seed()
 	_show_rain_visual(safe_elapsed)
 	rain_end_timer.start(maxf(
@@ -502,6 +563,7 @@ func _finish_rain_visual() -> void:
 	rain_end_timer.stop()
 	_begin_flower_close()
 	_begin_rain_field_dissolve()
+	_begin_target_rain_dissolve()
 	_begin_ground_dew_dissolve()
 
 
@@ -514,8 +576,12 @@ func _show_rain_visual(elapsed_seconds: float) -> void:
 
 func _start_rain_field_timeline(elapsed_seconds: float) -> void:
 	_stop_rain_field_tween()
+	_stop_target_rain_dissolve_tween()
 	_stop_ground_dew_dissolve_tween()
+	_stop_particles_immediate(target_rain_drops)
+	_stop_particles_immediate(target_rain_ripples)
 	_stop_particles_immediate(ground_dew_rise)
+	_reset_target_rain_visual_properties()
 	_reset_ground_dew_visual_properties()
 	_set_rain_intensity(0.0)
 	rain_field.hide()
@@ -561,10 +627,25 @@ func _start_rain_field_timeline(elapsed_seconds: float) -> void:
 			1.0,
 			fade_in_end - cursor
 		)
+		cursor = fade_in_end
+	var first_impact_at := (
+		TARGET_RAIN_START_DELAY_SECONDS + target_rain_drops.lifetime
+	)
+	if cursor < first_impact_at:
+		rain_field_tween.tween_interval(first_impact_at - cursor)
+		rain_field_tween.tween_callback(_start_ground_impact_visual)
+	else:
+		_start_ground_impact_visual()
 
 
 func _start_target_rain_visual() -> void:
 	rain_field.show()
+	_prepare_target_rain_for_emission()
+
+
+func _start_ground_impact_visual() -> void:
+	if not rain_active:
+		return
 	_prepare_ground_dew_rise_for_emission()
 
 
@@ -604,8 +685,12 @@ func _complete_rain_field_dissolve() -> void:
 
 func _hide_rain_effect_nodes_immediate() -> void:
 	_hide_rain_field_immediate()
+	_stop_target_rain_dissolve_tween()
 	_stop_ground_dew_dissolve_tween()
+	_stop_particles_immediate(target_rain_drops)
+	_stop_particles_immediate(target_rain_ripples)
 	_stop_particles_immediate(ground_dew_rise)
+	_reset_target_rain_visual_properties()
 	_reset_ground_dew_visual_properties()
 
 
@@ -688,18 +773,15 @@ func _set_flower_state(is_raining: bool) -> void:
 
 func _set_bloom_visual_progress(value: float) -> void:
 	bloom_visual_progress = clampf(value, 0.0, 1.0)
-	core_night_light.color = (
-		idle_core_light_color.lerp(
-			BLOOM_CORE_LIGHT_COLOR,
-			bloom_visual_progress
-		)
+	core_night_light.set_emission_strength(IDLE_CORE_LIGHT_STRENGTH)
+	bloom_core_night_light.color = BLOOM_CORE_LIGHT_COLOR
+	bloom_core_night_light.set_emission_strength(
+		BLOOM_CORE_LIGHT_STRENGTH * bloom_visual_progress
 	)
-	core_night_light.set_emission_strength(
-		lerpf(
-			IDLE_CORE_LIGHT_STRENGTH,
-			BLOOM_CORE_LIGHT_STRENGTH,
-			bloom_visual_progress
-		)
+	bloom_core_night_light.set_emission_allowed(
+		is_operational
+		and not is_removing
+		and bloom_visual_progress > 0.001
 	)
 	core_glow.scale = IDLE_CORE_GLOW_SCALE.lerp(
 		BLOOM_CORE_GLOW_SCALE,
@@ -730,6 +812,57 @@ func _stop_bloom_visual_tween() -> void:
 	if bloom_visual_tween != null and bloom_visual_tween.is_valid():
 		bloom_visual_tween.kill()
 	bloom_visual_tween = null
+
+
+func _prepare_target_rain_for_emission() -> void:
+	_stop_target_rain_dissolve_tween()
+	_reset_target_rain_visual_properties()
+	target_rain_drops.restart()
+	target_rain_drops.emitting = true
+
+
+func _begin_target_rain_dissolve() -> void:
+	_stop_target_rain_dissolve_tween()
+	if not target_rain_drops.emitting:
+		_reset_target_rain_visual_properties()
+		return
+	target_rain_dissolve_tween = create_tween()
+	target_rain_dissolve_tween.set_parallel(true)
+	target_rain_dissolve_tween.tween_property(
+		target_rain_drops,
+		"amount_ratio",
+		0.0,
+		TARGET_RAIN_EMISSION_FADE_SECONDS
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	target_rain_dissolve_tween.tween_property(
+		target_rain_drops,
+		"self_modulate:a",
+		0.0,
+		TARGET_RAIN_DISSIPATE_SECONDS
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	target_rain_dissolve_tween.chain().tween_callback(
+		_complete_target_rain_dissolve
+	)
+
+
+func _complete_target_rain_dissolve() -> void:
+	target_rain_dissolve_tween = null
+	_stop_particles_immediate(target_rain_drops)
+	_reset_target_rain_visual_properties()
+
+
+func _stop_target_rain_dissolve_tween() -> void:
+	if (
+		target_rain_dissolve_tween != null
+		and target_rain_dissolve_tween.is_valid()
+	):
+		target_rain_dissolve_tween.kill()
+	target_rain_dissolve_tween = null
+
+
+func _reset_target_rain_visual_properties() -> void:
+	target_rain_drops.amount_ratio = 1.0
+	target_rain_drops.self_modulate = Color.WHITE
 
 
 func _prepare_ground_dew_rise_for_emission() -> void:
@@ -794,10 +927,22 @@ func _set_rain_intensity(value: float) -> void:
 func _set_action_rain_seed() -> void:
 	var source_seed := float(_get_effect_source_id() % 997) / 997.0
 	var action_seed := float(rain_action_id % 251) / 251.0
+	var particle_seed := int(
+		(absi(_get_effect_source_id()) % 2_147_483_647 + rain_action_id * 65_537)
+		% 2_147_483_647
+	)
 	rain_field.set_instance_shader_parameter(
 		&"rain_seed",
 		fposmod(source_seed + action_seed, 1.0)
 	)
+	target_rain_drops.seed = particle_seed
+	target_rain_ripples.seed = (particle_seed + 104_729) % 2_147_483_647
+
+
+func _get_target_rain_fall_distance() -> float:
+	if rain_config == null:
+		return TARGET_RAIN_START_CLEARANCE
+	return rain_config.rain_radius * 2.0 + TARGET_RAIN_START_CLEARANCE
 
 
 func _stop_rain_field_tween() -> void:
