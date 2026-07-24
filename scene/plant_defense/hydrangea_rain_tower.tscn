@@ -1,4 +1,4 @@
-[gd_scene load_steps=24 format=3]
+[gd_scene load_steps=25 format=3]
 
 [ext_resource type="Script" path="res://scene/plant_defense/hydrangea_rain_tower.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/plant_defense/hydrangea_rain_tower/idle.png" id="2_idle"]
@@ -92,6 +92,18 @@ tracks/0/keys = {
 "update": 0,
 "values": [Vector2(1, 1)]
 }
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("VisualRoot/UpperCanopy:self_modulate")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Color(1, 1, 1, 1)]
+}
 
 [sub_resource type="Animation" id="Animation_bloom"]
 resource_name = "bloom"
@@ -109,10 +121,39 @@ tracks/0/keys = {
 "values": [Vector2(1, 1), Vector2(1.045, 1.045), Vector2(1, 1)]
 }
 
+[sub_resource type="Animation" id="Animation_close"]
+resource_name = "close"
+length = 0.32
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("VisualRoot/UpperCanopy:scale")
+tracks/0/interp = 2
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.32),
+"transitions": PackedFloat32Array(1.3, 1),
+"update": 0,
+"values": [Vector2(1, 1), Vector2(0.955, 0.955)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("VisualRoot/UpperCanopy:self_modulate")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.32),
+"transitions": PackedFloat32Array(1.25, 1),
+"update": 0,
+"values": [Color(1, 1, 1, 1), Color(1, 1, 1, 0)]
+}
+
 [sub_resource type="AnimationLibrary" id="AnimationLibrary_bloom"]
 _data = {
 &"RESET": SubResource("Animation_bloom_reset"),
-&"bloom": SubResource("Animation_bloom")
+&"bloom": SubResource("Animation_bloom"),
+&"close": SubResource("Animation_close")
 }
 
 [node name="HydrangeaRainTower" type="StaticBody2D"]
@@ -186,7 +227,7 @@ process_material = SubResource("ParticleProcessMaterial_dew")
 z_index = 6
 texture_filter = 1
 emitting = false
-amount = 72
+amount = 84
 lifetime = 1.0
 randomness = 0.42
 visibility_rect = Rect2(-58, -62, 116, 124)
@@ -236,3 +277,4 @@ one_shot = true
 [connection signal="timeout" from="RainTickTimer" to="." method="_on_rain_tick_timer_timeout"]
 [connection signal="timeout" from="RainEndTimer" to="." method="_on_rain_end_timer_timeout"]
 [connection signal="timeout" from="EffectEndTimer" to="." method="_on_effect_end_timer_timeout"]
+[connection signal="animation_finished" from="BloomAnimationPlayer" to="." method="_on_bloom_animation_finished"]

@@ -7,6 +7,15 @@ const STATUS_SOURCE_NAMESPACE := 130_000_000
 const AUTHORED_RAIN_RADIUS := 160.0
 const RAIN_VISUAL_FADE_SECONDS := 0.28
 const LAUNCH_DROPLET_TRAVEL_SECONDS := 0.58
+const BLOOM_OPEN_TRANSITION_SECONDS := 0.24
+const BLOOM_CLOSE_TRANSITION_SECONDS := 0.32
+const GROUND_DEW_EMISSION_FADE_SECONDS := 0.45
+const GROUND_DEW_DISSIPATE_SECONDS := 0.65
+const IDLE_CORE_LIGHT_STRENGTH := 1.0
+const BLOOM_CORE_LIGHT_STRENGTH := 3.2
+const BLOOM_CORE_LIGHT_COLOR := Color(0.38, 0.44, 1.0, 1.0)
+const IDLE_CORE_GLOW_SCALE := Vector2(0.3, 0.3)
+const BLOOM_CORE_GLOW_SCALE := Vector2(0.38, 0.38)
 
 @export_group("128像素双状态素材")
 @export var idle_texture: Texture2D
@@ -47,6 +56,10 @@ var effect_started_at_seconds := 0.0
 var next_effect_tick_index := 0
 var total_effect_tick_count := 0
 var rain_field_tween: Tween = null
+var bloom_visual_tween: Tween = null
+var ground_dew_dissolve_tween: Tween = null
+var bloom_visual_progress := 0.0
+var idle_core_light_color := Color(0.62, 0.42, 1.0, 1.0)
 var pending_proxy_cycle_elapsed_seconds := -1.0
 var pending_proxy_rain_elapsed_seconds := -1.0
 var pending_proxy_rain_target_position := Vector2.ZERO
@@ -82,6 +95,7 @@ func _on_setup_completed() -> void:
 		)
 	)
 	_set_action_rain_seed()
+	idle_core_light_color = core_night_light.color
 
 	health_bar.setup(max_health, current_health)
 	if not health_changed.is_connected(_on_health_changed):
@@ -484,27 +498,18 @@ func _finish_rain_visual() -> void:
 	rain_active = false
 	rain_started_at_seconds = 0.0
 	rain_end_timer.stop()
-	_set_flower_state(false)
-	core_night_light.set_emission_strength(1.0)
-	core_glow.scale = Vector2.ONE * 0.3
-	bloom_animation_player.stop()
-	upper_canopy.scale = Vector2.ONE
-	_hide_rain_effect_nodes_immediate()
+	_begin_flower_close()
+	_hide_rain_field_immediate()
+	_begin_ground_dew_dissolve()
 
 
 func _show_rain_visual(elapsed_seconds: float) -> void:
-	_set_flower_state(true)
+	_begin_flower_open(elapsed_seconds)
 	rain_field.show()
-	core_night_light.set_emission_strength(1.28)
-	core_glow.scale = Vector2.ONE * 0.38
-	ground_dew_rise.restart()
-	ground_dew_rise.emitting = true
+	_prepare_ground_dew_rise_for_emission()
 	_start_rain_field_timeline(elapsed_seconds)
 	if elapsed_seconds < 0.08:
 		_launch_dew_burst(rain_target_global_position)
-		bloom_animation_player.play(&"bloom")
-	else:
-		upper_canopy.scale = Vector2.ONE
 
 
 func _start_rain_field_timeline(elapsed_seconds: float) -> void:
@@ -568,11 +573,17 @@ func _launch_dew_burst(target_position: Vector2) -> void:
 	dew_burst.emitting = true
 
 
-func _hide_rain_effect_nodes_immediate() -> void:
+func _hide_rain_field_immediate() -> void:
 	_stop_rain_field_tween()
 	_set_rain_intensity(0.0)
 	rain_field.hide()
+
+
+func _hide_rain_effect_nodes_immediate() -> void:
+	_hide_rain_field_immediate()
+	_stop_ground_dew_dissolve_tween()
 	_stop_particles_immediate(ground_dew_rise)
+	_reset_ground_dew_visual_properties()
 
 
 func _hide_rain_visual_immediate() -> void:
@@ -587,11 +598,166 @@ func _stop_particles_immediate(particles: GPUParticles2D) -> void:
 	particles.emitting = false
 
 
+func _begin_flower_open(elapsed_seconds: float) -> void:
+	_stop_bloom_visual_tween()
+	bloom_animation_player.stop()
+	main_sprite.texture = rain_texture
+	upper_canopy.texture = rain_upper_texture
+	upper_canopy.self_modulate = Color.WHITE
+	upper_canopy.scale = Vector2.ONE
+	var safe_elapsed := maxf(elapsed_seconds, 0.0)
+	var initial_progress := clampf(
+		safe_elapsed / BLOOM_OPEN_TRANSITION_SECONDS,
+		0.0,
+		1.0
+	)
+	_set_bloom_visual_progress(initial_progress)
+	if initial_progress < 1.0:
+		_start_bloom_visual_tween(
+			1.0,
+			BLOOM_OPEN_TRANSITION_SECONDS - safe_elapsed
+		)
+	var bloom_animation_length := bloom_animation_player.get_animation(
+		&"bloom"
+	).length
+	if safe_elapsed < bloom_animation_length:
+		bloom_animation_player.play(&"bloom")
+		bloom_animation_player.seek(safe_elapsed, true)
+
+
+func _begin_flower_close() -> void:
+	_stop_bloom_visual_tween()
+	bloom_animation_player.stop()
+	main_sprite.texture = idle_texture
+	upper_canopy.texture = rain_upper_texture
+	upper_canopy.self_modulate = Color.WHITE
+	upper_canopy.scale = Vector2.ONE
+	_start_bloom_visual_tween(0.0, BLOOM_CLOSE_TRANSITION_SECONDS)
+	bloom_animation_player.play(&"close")
+
+
+func _on_bloom_animation_finished(animation_name: StringName) -> void:
+	if animation_name != &"close" or rain_active:
+		return
+	_complete_flower_close()
+
+
+func _complete_flower_close() -> void:
+	_stop_bloom_visual_tween()
+	main_sprite.texture = idle_texture
+	upper_canopy.texture = idle_upper_texture
+	upper_canopy.self_modulate = Color.WHITE
+	upper_canopy.scale = Vector2.ONE
+	_set_bloom_visual_progress(0.0)
+
+
 func _set_flower_state(is_raining: bool) -> void:
+	_stop_bloom_visual_tween()
+	bloom_animation_player.stop()
 	main_sprite.texture = rain_texture if is_raining else idle_texture
 	upper_canopy.texture = (
 		rain_upper_texture if is_raining else idle_upper_texture
 	)
+	upper_canopy.self_modulate = Color.WHITE
+	upper_canopy.scale = Vector2.ONE
+	_set_bloom_visual_progress(1.0 if is_raining else 0.0)
+
+
+func _set_bloom_visual_progress(value: float) -> void:
+	bloom_visual_progress = clampf(value, 0.0, 1.0)
+	core_night_light.color = (
+		idle_core_light_color.lerp(
+			BLOOM_CORE_LIGHT_COLOR,
+			bloom_visual_progress
+		)
+	)
+	core_night_light.set_emission_strength(
+		lerpf(
+			IDLE_CORE_LIGHT_STRENGTH,
+			BLOOM_CORE_LIGHT_STRENGTH,
+			bloom_visual_progress
+		)
+	)
+	core_glow.scale = IDLE_CORE_GLOW_SCALE.lerp(
+		BLOOM_CORE_GLOW_SCALE,
+		bloom_visual_progress
+	)
+
+
+func _start_bloom_visual_tween(target_progress: float, duration: float) -> void:
+	_stop_bloom_visual_tween()
+	var safe_target := clampf(target_progress, 0.0, 1.0)
+	var safe_duration := maxf(duration, 0.0)
+	if safe_duration <= 0.0001:
+		_set_bloom_visual_progress(safe_target)
+		return
+	bloom_visual_tween = create_tween()
+	bloom_visual_tween.set_trans(Tween.TRANS_SINE).set_ease(
+		Tween.EASE_IN_OUT
+	)
+	bloom_visual_tween.tween_method(
+		_set_bloom_visual_progress,
+		bloom_visual_progress,
+		safe_target,
+		safe_duration
+	)
+
+
+func _stop_bloom_visual_tween() -> void:
+	if bloom_visual_tween != null and bloom_visual_tween.is_valid():
+		bloom_visual_tween.kill()
+	bloom_visual_tween = null
+
+
+func _prepare_ground_dew_rise_for_emission() -> void:
+	_stop_ground_dew_dissolve_tween()
+	_reset_ground_dew_visual_properties()
+	ground_dew_rise.restart()
+	ground_dew_rise.emitting = true
+
+
+func _begin_ground_dew_dissolve() -> void:
+	_stop_ground_dew_dissolve_tween()
+	if not ground_dew_rise.emitting:
+		_reset_ground_dew_visual_properties()
+		return
+	ground_dew_dissolve_tween = create_tween()
+	ground_dew_dissolve_tween.set_parallel(true)
+	ground_dew_dissolve_tween.tween_property(
+		ground_dew_rise,
+		"amount_ratio",
+		0.0,
+		GROUND_DEW_EMISSION_FADE_SECONDS
+	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	ground_dew_dissolve_tween.tween_property(
+		ground_dew_rise,
+		"self_modulate:a",
+		0.0,
+		GROUND_DEW_DISSIPATE_SECONDS
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	ground_dew_dissolve_tween.chain().tween_callback(
+		_complete_ground_dew_dissolve
+	)
+
+
+func _complete_ground_dew_dissolve() -> void:
+	ground_dew_dissolve_tween = null
+	_stop_particles_immediate(ground_dew_rise)
+	_reset_ground_dew_visual_properties()
+
+
+func _stop_ground_dew_dissolve_tween() -> void:
+	if (
+		ground_dew_dissolve_tween != null
+		and ground_dew_dissolve_tween.is_valid()
+	):
+		ground_dew_dissolve_tween.kill()
+	ground_dew_dissolve_tween = null
+
+
+func _reset_ground_dew_visual_properties() -> void:
+	ground_dew_rise.amount_ratio = 1.0
+	ground_dew_rise.self_modulate = Color.WHITE
 
 
 func _set_rain_intensity(value: float) -> void:

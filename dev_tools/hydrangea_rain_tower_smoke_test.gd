@@ -29,6 +29,8 @@ const EXPECTED_ATTACK_MULTIPLIER := 0.8
 const EXPECTED_EFFECT_DURATION := 5.0
 const EXPECTED_TARGET_RADIUS_CELLS := 12.0
 const EXPECTED_RAIN_RADIUS := 48.0
+const EXPECTED_BLOOM_LIGHT_COLOR := Color(0.38, 0.44, 1.0, 1.0)
+const EXPECTED_BLOOM_LIGHT_STRENGTH := 3.2
 
 var failures: Array[String] = []
 var fixture: RainTickRuntime
@@ -235,9 +237,41 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 			ground_material.emission_sphere_radius,
 			EXPECTED_RAIN_RADIUS
 		)
+		and tower.ground_dew_rise.amount == 84
 		and not tower.ground_dew_rise.one_shot,
-		"发射雨滴与地面上升粒子必须从预设紫阳花色带随机取初始色，地面发射盘半径为3格。"
+		"发射雨滴与84个地面上升粒子必须从预设紫阳花色带随机取初始色，地面发射盘半径为3格。"
 	)
+
+	var idle_light_color := tower.core_night_light.color
+	tower.core_night_light.set_night_factor(1.0)
+	var idle_night_energy := tower.core_night_light.energy
+	tower.call("_set_flower_state", true)
+	_expect(
+		tower.core_night_light.color == EXPECTED_BLOOM_LIGHT_COLOR
+		and is_equal_approx(
+			tower.core_night_light.get_emission_strength(),
+			EXPECTED_BLOOM_LIGHT_STRENGTH
+		)
+		and tower.core_night_light.energy > idle_night_energy * 3.0,
+		"开花状态必须在夜间发出显著增强的蓝紫色中心光。"
+	)
+	tower.call("_set_flower_state", false)
+	_expect(
+		tower.core_night_light.color == idle_light_color
+		and is_equal_approx(
+			tower.core_night_light.get_emission_strength(),
+			1.0
+		)
+		and is_equal_approx(tower.core_night_light.energy, idle_night_energy),
+		"花期结束后必须恢复原有夜间核心光。"
+	)
+	tower.core_night_light.set_night_factor(0.0)
+	tower.call("_set_flower_state", true)
+	_expect(
+		is_zero_approx(tower.core_night_light.energy),
+		"白天即使处于开花状态也不得产生额外夜间光照。"
+	)
+	tower.call("_set_flower_state", false)
 
 	var preview := PLACEMENT_PREVIEW_SCENE.instantiate() as PlantPlacementPreview
 	fixture.add_child(preview)
@@ -343,8 +377,19 @@ func _test_three_second_visual_and_five_second_effect_timeline() -> void:
 		not tower.rain_active
 		and tower.effect_active
 		and not tower.rain_field.visible
-		and not tower.ground_dew_rise.emitting,
-		"第3秒雨幕与地面粒子必须停止，但第5秒前治疗/减攻结算仍应活动。"
+		and tower.ground_dew_rise.emitting
+		and tower.ground_dew_rise.amount_ratio > 0.0
+		and tower.ground_dew_rise.amount_ratio < 1.0
+		and tower.ground_dew_rise.self_modulate.a > 0.0
+		and tower.ground_dew_rise.self_modulate.a < 1.0
+		and tower.main_sprite.texture == tower.idle_texture
+		and tower.upper_canopy.texture == tower.rain_upper_texture
+		and tower.upper_canopy.self_modulate.a > 0.0
+		and tower.upper_canopy.self_modulate.a < 1.0
+		and tower.core_night_light.get_emission_strength() > 1.0
+		and tower.core_night_light.get_emission_strength()
+		< EXPECTED_BLOOM_LIGHT_STRENGTH,
+		"第3秒雨幕必须结束；花冠、夜光与地面粒子应从该时刻开始平滑闭合、减量和渐隐。"
 	)
 	await create_timer(0.12, true, false, false).timeout
 	await process_frame
@@ -354,6 +399,19 @@ func _test_three_second_visual_and_five_second_effect_timeline() -> void:
 	)
 	await create_timer(0.25, true, false, false).timeout
 	await process_frame
+	_expect(
+		tower.main_sprite.texture == tower.idle_texture
+		and tower.upper_canopy.texture == tower.idle_upper_texture
+		and tower.upper_canopy.self_modulate == Color.WHITE
+		and tower.upper_canopy.scale == Vector2.ONE
+		and is_equal_approx(
+			tower.core_night_light.get_emission_strength(),
+			1.0
+		)
+		and tower.ground_dew_rise.emitting
+		and tower.ground_dew_rise.self_modulate.a < 1.0,
+		"短时反向收缩结束后花冠与夜光必须恢复待机态，持续粒子则继续完成尾部消散。"
+	)
 	var completed_tick_count := (
 		fixture.combat_query_call_count - query_count_before
 	)
@@ -381,6 +439,14 @@ func _test_three_second_visual_and_five_second_effect_timeline() -> void:
 	_expect(
 		tower.current_health == tower.max_health - 50,
 		"5秒效果窗口必须实际执行5个每次50点的建筑治疗tick。"
+	)
+	await create_timer(0.3, true, false, false).timeout
+	await process_frame
+	_expect(
+		not tower.ground_dew_rise.emitting
+		and is_equal_approx(tower.ground_dew_rise.amount_ratio, 1.0)
+		and tower.ground_dew_rise.self_modulate == Color.WHITE,
+		"粒子消散完成后必须停止并恢复可复用的发射比例与透明度。"
 	)
 	fixture.plant_targets.clear()
 	tower.queue_free()
