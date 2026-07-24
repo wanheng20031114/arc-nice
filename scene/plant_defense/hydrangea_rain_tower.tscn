@@ -1,4 +1,4 @@
-[gd_scene load_steps=25 format=3]
+[gd_scene load_steps=27 format=3]
 
 [ext_resource type="Script" path="res://scene/plant_defense/hydrangea_rain_tower.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/plant_defense/hydrangea_rain_tower/idle.png" id="2_idle"]
@@ -31,6 +31,17 @@ colors = PackedColorArray(0.35, 0.72, 1, 1, 0.55, 0.32, 1, 1, 1, 0.48, 0.92, 1, 
 [sub_resource type="GradientTexture1D" id="GradientTexture_dew_colors"]
 gradient = SubResource("Gradient_dew_colors")
 
+[sub_resource type="Gradient" id="Gradient_dew_line_texture"]
+offsets = PackedFloat32Array(0, 0.16, 0.78, 1)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 0.96, 1, 1, 1, 0.68, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_dew_line"]
+gradient = SubResource("Gradient_dew_line_texture")
+width = 2
+height = 8
+fill_from = Vector2(0.5, 0)
+fill_to = Vector2(0.5, 1)
+
 [sub_resource type="Gradient" id="Gradient_particle_alpha"]
 offsets = PackedFloat32Array(0, 0.72, 1)
 colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 0.92, 1, 1, 1, 0)
@@ -41,15 +52,16 @@ gradient = SubResource("Gradient_particle_alpha")
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_dew"]
 resource_local_to_scene = true
 particle_flag_disable_z = true
+particle_flag_align_y = true
 emission_shape = 1
-emission_sphere_radius = 7.0
+emission_sphere_radius = 5.0
 direction = Vector3(0, -1, 0)
-spread = 9.0
-initial_velocity_min = 18.0
-initial_velocity_max = 34.0
-gravity = Vector3(0, 0, 0)
-scale_min = 0.7
-scale_max = 1.35
+spread = 18.0
+initial_velocity_min = 70.0
+initial_velocity_max = 115.0
+gravity = Vector3(0, 14, 0)
+scale_min = 0.55
+scale_max = 1.1
 color_initial_ramp = SubResource("GradientTexture_dew_colors")
 color_ramp = SubResource("GradientTexture_particle_alpha")
 
@@ -215,12 +227,13 @@ z_index = 6
 texture_filter = 1
 position = Vector2(0, -5)
 emitting = false
-amount = 26
-lifetime = 0.58
+amount = 56
+lifetime = 0.34
 one_shot = true
-explosiveness = 0.88
-randomness = 0.45
-visibility_rect = Rect2(-208, -208, 416, 416)
+explosiveness = 0.92
+randomness = 0.38
+visibility_rect = Rect2(-64, -64, 128, 96)
+texture = SubResource("GradientTexture2D_dew_line")
 process_material = SubResource("ParticleProcessMaterial_dew")
 
 [node name="GroundDewRise" type="GPUParticles2D" parent="."]

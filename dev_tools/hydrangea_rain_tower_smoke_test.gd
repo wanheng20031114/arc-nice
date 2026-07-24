@@ -145,6 +145,7 @@ func _run() -> void:
 
 	_test_config_and_registration_contract()
 	await _test_native_128_to_32_and_particle_contract()
+	await _test_two_stage_launch_visual()
 	await _test_target_cache_and_lowest_current_health_priority()
 	await _test_three_second_visual_and_five_second_effect_timeline()
 	await _test_proxy_target_position_sync_and_deduplication()
@@ -215,6 +216,7 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 	var visual_root := tower.get_node("VisualRoot") as Node2D
 	var main_sprite := tower.get_node("VisualRoot/MainSprite") as Sprite2D
 	var launch_material := tower.dew_burst.process_material as ParticleProcessMaterial
+	var launch_texture := tower.dew_burst.texture as GradientTexture2D
 	var ground_material := (
 		tower.ground_dew_rise.process_material as ParticleProcessMaterial
 	)
@@ -228,6 +230,15 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 	)
 	_expect(
 		launch_material != null
+		and launch_texture != null
+		and launch_texture.width == 2
+		and launch_texture.height == 8
+		and tower.dew_burst.amount == 56
+		and is_equal_approx(tower.dew_burst.lifetime, 0.34)
+		and launch_material.particle_flag_align_y
+		and launch_material.direction == Vector3(0.0, -1.0, 0.0)
+		and is_equal_approx(launch_material.initial_velocity_min, 70.0)
+		and is_equal_approx(launch_material.initial_velocity_max, 115.0)
 		and launch_material.color_initial_ramp != null
 		and launch_material.color_ramp != null
 		and ground_material != null
@@ -239,7 +250,14 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 		)
 		and tower.ground_dew_rise.amount == 84
 		and not tower.ground_dew_rise.one_shot,
-		"发射雨滴与84个地面上升粒子必须从预设紫阳花色带随机取初始色，地面发射盘半径为3格。"
+		"源点必须向上喷出56条色域线性光雨；目标地面84个上升粒子继续使用同一预设色带与3格发射盘。"
+	)
+	var rain_material := tower.rain_field.material as ShaderMaterial
+	_expect(
+		rain_material != null
+		and rain_material.shader != null
+		and rain_material.shader.code.contains("(UV.y - time_offset)"),
+		"目标雨幕Shader必须让雨纹沿屏幕Y正方向下落。"
 	)
 
 	var idle_light_color := tower.core_night_light.color
@@ -296,6 +314,74 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 
 	inventory_slot.queue_free()
 	preview.queue_free()
+	tower.queue_free()
+	await process_frame
+
+
+func _test_two_stage_launch_visual() -> void:
+	var tower := _make_tower(HYDRANGEA_CONFIG)
+	var launch_material := (
+		tower.dew_burst.process_material as ParticleProcessMaterial
+	)
+	var launch_speed_min := launch_material.initial_velocity_min
+	var launch_speed_max := launch_material.initial_velocity_max
+	var near_target := Vector2(64.0, 24.0)
+	tower.call("_begin_rain_visual", near_target, 0.0)
+	await process_frame
+	var first_source_position := tower.dew_burst.global_position
+	_expect(
+		tower.rain_active
+		and tower.dew_burst.emitting
+		and is_zero_approx(tower.dew_burst.global_rotation)
+		and not tower.rain_field.visible
+		and not tower.ground_dew_rise.emitting,
+		"施法起点必须只在塔身向上喷发线性光雨，目标雨幕和地面粒子不得同帧出现。"
+	)
+	await create_timer(0.24, true, false, false).timeout
+	await process_frame
+	_expect(
+		tower.rain_field.visible
+		and tower.ground_dew_rise.emitting
+		and tower.rain_field.global_position == near_target
+		and tower.ground_dew_rise.global_position == near_target
+		and tower.dew_burst.global_position == first_source_position,
+		"短延迟后雨幕与回溅粒子必须只在目标位置独立启动，源点粒子不得与目标连线。"
+	)
+	tower.call("_finish_rain_visual")
+	tower.call("_hide_rain_visual_immediate")
+
+	var far_target := Vector2(224.0, 144.0)
+	tower.call("_begin_rain_visual", far_target, 0.0)
+	await process_frame
+	_expect(
+		is_zero_approx(tower.dew_burst.global_rotation)
+		and tower.dew_burst.global_position == first_source_position
+		and is_equal_approx(
+			launch_material.initial_velocity_min,
+			launch_speed_min
+		)
+		and is_equal_approx(
+			launch_material.initial_velocity_max,
+			launch_speed_max
+		)
+		and not tower.rain_field.visible
+		and not tower.ground_dew_rise.emitting,
+		"不同距离的治疗目标不得改变源点上喷方向或速度，也不得重新形成直飞目标的投射物。"
+	)
+	tower.call("_finish_rain_visual")
+	tower.call("_hide_rain_visual_immediate")
+
+	tower.call("_begin_rain_visual", far_target, 0.35)
+	await process_frame
+	_expect(
+		not tower.dew_burst.emitting
+		and tower.rain_field.visible
+		and tower.ground_dew_rise.emitting
+		and tower.rain_field.global_position == far_target,
+		"同步恢复到延迟之后的动作相位时，必须跳过源点上喷并立即恢复目标降雨。"
+	)
+	tower.call("_finish_rain_visual")
+	tower.call("_hide_rain_visual_immediate")
 	tower.queue_free()
 	await process_frame
 

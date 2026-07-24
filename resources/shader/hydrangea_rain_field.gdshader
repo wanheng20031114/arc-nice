@@ -41,7 +41,7 @@ void fragment() {
 	float time_offset = TIME * 1.65;
 	vec2 rain_grid = vec2(
 		UV.x * 38.0 + sin(TIME * 0.37) * 0.35,
-		(UV.y + time_offset) * 24.0
+		(UV.y - time_offset) * 24.0
 	);
 	vec2 rain_cell = floor(rain_grid);
 	vec2 rain_local = fract(rain_grid) - vec2(0.5);

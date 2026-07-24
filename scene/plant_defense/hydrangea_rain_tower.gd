@@ -6,7 +6,7 @@ const ATTACK_REDUCTION_STATUS_ID := &"hydrangea_attack_reduction"
 const STATUS_SOURCE_NAMESPACE := 130_000_000
 const AUTHORED_RAIN_RADIUS := 160.0
 const RAIN_VISUAL_FADE_SECONDS := 0.28
-const LAUNCH_DROPLET_TRAVEL_SECONDS := 0.58
+const TARGET_RAIN_START_DELAY_SECONDS := 0.18
 const BLOOM_OPEN_TRANSITION_SECONDS := 0.24
 const BLOOM_CLOSE_TRANSITION_SECONDS := 0.32
 const GROUND_DEW_EMISSION_FADE_SECONDS := 0.45
@@ -505,35 +505,65 @@ func _finish_rain_visual() -> void:
 
 func _show_rain_visual(elapsed_seconds: float) -> void:
 	_begin_flower_open(elapsed_seconds)
-	rain_field.show()
-	_prepare_ground_dew_rise_for_emission()
+	if elapsed_seconds < TARGET_RAIN_START_DELAY_SECONDS:
+		_launch_dew_burst()
 	_start_rain_field_timeline(elapsed_seconds)
-	if elapsed_seconds < 0.08:
-		_launch_dew_burst(rain_target_global_position)
 
 
 func _start_rain_field_timeline(elapsed_seconds: float) -> void:
 	_stop_rain_field_tween()
+	_stop_ground_dew_dissolve_tween()
+	_stop_particles_immediate(ground_dew_rise)
+	_reset_ground_dew_visual_properties()
+	_set_rain_intensity(0.0)
+	rain_field.hide()
+	var safe_elapsed := clampf(
+		elapsed_seconds,
+		0.0,
+		rain_config.rain_duration_seconds
+	)
 	var fade_in_end := minf(
-		RAIN_VISUAL_FADE_SECONDS,
-		rain_config.rain_duration_seconds * 0.5
+		TARGET_RAIN_START_DELAY_SECONDS + RAIN_VISUAL_FADE_SECONDS,
+		maxf(
+			TARGET_RAIN_START_DELAY_SECONDS,
+			rain_config.rain_duration_seconds * 0.5
+		)
 	)
 	var fade_out_start := maxf(
 		rain_config.rain_duration_seconds - RAIN_VISUAL_FADE_SECONDS,
 		fade_in_end
 	)
-	var initial_intensity := 1.0
-	if elapsed_seconds < fade_in_end:
-		initial_intensity = elapsed_seconds / maxf(fade_in_end, 0.001)
-	elif elapsed_seconds > fade_out_start:
+	var initial_intensity := 0.0
+	if safe_elapsed >= TARGET_RAIN_START_DELAY_SECONDS:
+		initial_intensity = 1.0
+	if (
+		safe_elapsed >= TARGET_RAIN_START_DELAY_SECONDS
+		and safe_elapsed < fade_in_end
+	):
 		initial_intensity = (
-			(rain_config.rain_duration_seconds - elapsed_seconds)
+			(safe_elapsed - TARGET_RAIN_START_DELAY_SECONDS)
+			/ maxf(
+				fade_in_end - TARGET_RAIN_START_DELAY_SECONDS,
+				0.001
+			)
+		)
+	elif safe_elapsed > fade_out_start:
+		initial_intensity = (
+			(rain_config.rain_duration_seconds - safe_elapsed)
 			/ maxf(rain_config.rain_duration_seconds - fade_out_start, 0.001)
 		)
-	_set_rain_intensity(initial_intensity)
 	rain_field_tween = create_tween()
 	rain_field_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	var cursor := elapsed_seconds
+	var cursor := safe_elapsed
+	if cursor < TARGET_RAIN_START_DELAY_SECONDS:
+		rain_field_tween.tween_interval(
+			TARGET_RAIN_START_DELAY_SECONDS - cursor
+		)
+		rain_field_tween.tween_callback(_start_target_rain_visual)
+		cursor = TARGET_RAIN_START_DELAY_SECONDS
+	else:
+		_start_target_rain_visual()
+		_set_rain_intensity(initial_intensity)
 	if cursor < fade_in_end:
 		rain_field_tween.tween_method(
 			_set_rain_intensity,
@@ -555,20 +585,13 @@ func _start_rain_field_timeline(elapsed_seconds: float) -> void:
 	rain_field_tween.tween_callback(rain_field.hide)
 
 
-func _launch_dew_burst(target_position: Vector2) -> void:
-	var launch_origin := global_position + Vector2(0.0, -5.0)
-	var launch_offset := target_position - launch_origin
-	if launch_offset.length_squared() > 0.01:
-		dew_burst.global_rotation = launch_offset.angle() + PI * 0.5
-		var process_material := (
-			dew_burst.process_material as ParticleProcessMaterial
-		)
-		if process_material != null:
-			var launch_speed := (
-				launch_offset.length() / LAUNCH_DROPLET_TRAVEL_SECONDS
-			)
-			process_material.initial_velocity_min = launch_speed * 0.9
-			process_material.initial_velocity_max = launch_speed * 1.1
+func _start_target_rain_visual() -> void:
+	rain_field.show()
+	_prepare_ground_dew_rise_for_emission()
+
+
+func _launch_dew_burst() -> void:
+	dew_burst.rotation = 0.0
 	dew_burst.restart()
 	dew_burst.emitting = true
 
