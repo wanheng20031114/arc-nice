@@ -10,6 +10,11 @@ uniform vec4 blue_color : source_color = vec4(0.35, 0.72, 1.0, 1.0);
 uniform vec4 violet_color : source_color = vec4(0.55, 0.32, 1.0, 1.0);
 uniform vec4 pink_color : source_color = vec4(1.0, 0.48, 0.92, 1.0);
 uniform vec4 white_violet_color : source_color = vec4(0.9, 0.86, 1.0, 1.0);
+uniform float rain_speed : hint_range(0.1, 2.0) = 0.75;
+uniform float rain_columns : hint_range(8.0, 48.0) = 28.0;
+uniform float rain_rows : hint_range(8.0, 40.0) = 20.0;
+uniform float rain_spawn_threshold : hint_range(0.0, 1.0) = 0.5;
+uniform float rain_line_width : hint_range(0.05, 0.3) = 0.17;
 
 
 float hash21(vec2 value) {
@@ -38,10 +43,10 @@ void fragment() {
 	float radial_distance = length(centered);
 	float circle_mask = 1.0 - smoothstep(0.82, 1.0, radial_distance);
 
-	float time_offset = TIME * 1.65;
+	float time_offset = TIME * rain_speed;
 	vec2 rain_grid = vec2(
-		UV.x * 38.0 + sin(TIME * 0.37) * 0.35,
-		(UV.y - time_offset) * 24.0
+		UV.x * rain_columns,
+		(UV.y - time_offset) * rain_rows
 	);
 	vec2 rain_cell = floor(rain_grid);
 	vec2 rain_local = fract(rain_grid) - vec2(0.5);
@@ -51,9 +56,13 @@ void fragment() {
 	float drop_color_random = hash21(
 		rain_cell.yx + vec2(91.37 + rain_seed * 2.11, 17.53)
 	);
-	float drop_exists = step(0.66, drop_exists_random);
-	float narrow_body = 1.0 - smoothstep(0.035, 0.095, abs(rain_local.x));
-	float short_body = 1.0 - smoothstep(0.12, 0.42, abs(rain_local.y));
+	float drop_exists = step(rain_spawn_threshold, drop_exists_random);
+	float narrow_body = 1.0 - smoothstep(
+		rain_line_width * 0.3,
+		rain_line_width,
+		abs(rain_local.x)
+	);
+	float short_body = 1.0 - smoothstep(0.08, 0.4, abs(rain_local.y));
 	float rain_drop = drop_exists * narrow_body * short_body;
 
 	float ring_distance = abs(radial_distance - 0.78);
@@ -63,12 +72,12 @@ void fragment() {
 	vec3 drop_color = pick_hydrangea_color(drop_color_random);
 	vec3 aura_color = mix(blue_color.rgb, violet_color.rgb, 0.58);
 	vec3 final_color = (
-		drop_color * rain_drop * 1.25
+		drop_color * rain_drop * 1.4
 		+ aura_color * edge_ring * 0.22
 		+ pink_color.rgb * ground_aura * 0.085 * pulse
 	);
 	float alpha = (
-		rain_drop * 0.78
+		rain_drop * 0.9
 		+ edge_ring * 0.18
 		+ ground_aura * 0.08
 	) * circle_mask * rain_intensity;

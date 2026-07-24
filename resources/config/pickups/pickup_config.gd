@@ -1,6 +1,8 @@
 extends Resource
 class_name PickupConfig
 
+const INVENTORY_ICON_MAX_SIDE := 32.0
+
 enum PickupType {
 	SPEED,
 	RAPID,
@@ -163,8 +165,20 @@ static func get_inventory_stack_limit(item: PickupConfig) -> int:
 
 @export_group("显示资源")
 @export var icon_texture : Texture2D
+# 仅控制物品作为世界掉落物时的显示尺寸；背包图标按源纹理尺寸独立适配。
 @export var icon_scale: Vector2 = Vector2.ONE
 @export_range(0.0, 300.0, 1.0, "or_greater") var world_lifetime: float = 12.0
+
+
+func get_inventory_icon_scale() -> Vector2:
+	if icon_texture == null:
+		return Vector2.ONE
+	var texture_size := icon_texture.get_size()
+	var max_side := maxf(texture_size.x, texture_size.y)
+	if max_side <= INVENTORY_ICON_MAX_SIDE:
+		return Vector2.ONE
+	var fit_scale := INVENTORY_ICON_MAX_SIDE / max_side
+	return Vector2(fit_scale, fit_scale)
 
 @export_group("建筑物品")
 # 建筑物品被使用时进入指定植物建筑的放置模式；真正落地后才消耗 1 个。

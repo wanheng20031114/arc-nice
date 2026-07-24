@@ -5,14 +5,15 @@ const RUNTIME_STATE_SCHEMA := 2
 const ATTACK_REDUCTION_STATUS_ID := &"hydrangea_attack_reduction"
 const STATUS_SOURCE_NAMESPACE := 130_000_000
 const AUTHORED_RAIN_RADIUS := 160.0
-const RAIN_VISUAL_FADE_SECONDS := 0.28
-const TARGET_RAIN_START_DELAY_SECONDS := 0.18
+const RAIN_VISUAL_FADE_IN_SECONDS := 0.36
+const RAIN_FIELD_DISSIPATE_SECONDS := 0.9
+const TARGET_RAIN_START_DELAY_SECONDS := 0.32
 const BLOOM_OPEN_TRANSITION_SECONDS := 0.24
 const BLOOM_CLOSE_TRANSITION_SECONDS := 0.32
-const GROUND_DEW_EMISSION_FADE_SECONDS := 0.45
-const GROUND_DEW_DISSIPATE_SECONDS := 0.65
+const GROUND_DEW_EMISSION_FADE_SECONDS := 1.0
+const GROUND_DEW_DISSIPATE_SECONDS := 1.4
 const IDLE_CORE_LIGHT_STRENGTH := 1.0
-const BLOOM_CORE_LIGHT_STRENGTH := 3.2
+const BLOOM_CORE_LIGHT_STRENGTH := 1.9
 const BLOOM_CORE_LIGHT_COLOR := Color(0.38, 0.44, 1.0, 1.0)
 const IDLE_CORE_GLOW_SCALE := Vector2(0.3, 0.3)
 const BLOOM_CORE_GLOW_SCALE := Vector2(0.38, 0.38)
@@ -58,6 +59,7 @@ var total_effect_tick_count := 0
 var rain_field_tween: Tween = null
 var bloom_visual_tween: Tween = null
 var ground_dew_dissolve_tween: Tween = null
+var rain_visual_intensity := 0.0
 var bloom_visual_progress := 0.0
 var idle_core_light_color := Color(0.62, 0.42, 1.0, 1.0)
 var pending_proxy_cycle_elapsed_seconds := -1.0
@@ -499,7 +501,7 @@ func _finish_rain_visual() -> void:
 	rain_started_at_seconds = 0.0
 	rain_end_timer.stop()
 	_begin_flower_close()
-	_hide_rain_field_immediate()
+	_begin_rain_field_dissolve()
 	_begin_ground_dew_dissolve()
 
 
@@ -523,15 +525,8 @@ func _start_rain_field_timeline(elapsed_seconds: float) -> void:
 		rain_config.rain_duration_seconds
 	)
 	var fade_in_end := minf(
-		TARGET_RAIN_START_DELAY_SECONDS + RAIN_VISUAL_FADE_SECONDS,
-		maxf(
-			TARGET_RAIN_START_DELAY_SECONDS,
-			rain_config.rain_duration_seconds * 0.5
-		)
-	)
-	var fade_out_start := maxf(
-		rain_config.rain_duration_seconds - RAIN_VISUAL_FADE_SECONDS,
-		fade_in_end
+		TARGET_RAIN_START_DELAY_SECONDS + RAIN_VISUAL_FADE_IN_SECONDS,
+		rain_config.rain_duration_seconds
 	)
 	var initial_intensity := 0.0
 	if safe_elapsed >= TARGET_RAIN_START_DELAY_SECONDS:
@@ -546,11 +541,6 @@ func _start_rain_field_timeline(elapsed_seconds: float) -> void:
 				fade_in_end - TARGET_RAIN_START_DELAY_SECONDS,
 				0.001
 			)
-		)
-	elif safe_elapsed > fade_out_start:
-		initial_intensity = (
-			(rain_config.rain_duration_seconds - safe_elapsed)
-			/ maxf(rain_config.rain_duration_seconds - fade_out_start, 0.001)
 		)
 	rain_field_tween = create_tween()
 	rain_field_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
@@ -571,18 +561,6 @@ func _start_rain_field_timeline(elapsed_seconds: float) -> void:
 			1.0,
 			fade_in_end - cursor
 		)
-		cursor = fade_in_end
-	if cursor < fade_out_start:
-		rain_field_tween.tween_interval(fade_out_start - cursor)
-		cursor = fade_out_start
-	if cursor < rain_config.rain_duration_seconds:
-		rain_field_tween.tween_method(
-			_set_rain_intensity,
-			1.0 if cursor <= fade_out_start else initial_intensity,
-			0.0,
-			rain_config.rain_duration_seconds - cursor
-		)
-	rain_field_tween.tween_callback(rain_field.hide)
 
 
 func _start_target_rain_visual() -> void:
@@ -598,6 +576,28 @@ func _launch_dew_burst() -> void:
 
 func _hide_rain_field_immediate() -> void:
 	_stop_rain_field_tween()
+	_set_rain_intensity(0.0)
+	rain_field.hide()
+
+
+func _begin_rain_field_dissolve() -> void:
+	_stop_rain_field_tween()
+	if not rain_field.visible or rain_visual_intensity <= 0.0001:
+		_hide_rain_field_immediate()
+		return
+	rain_field_tween = create_tween()
+	rain_field_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	rain_field_tween.tween_method(
+		_set_rain_intensity,
+		rain_visual_intensity,
+		0.0,
+		RAIN_FIELD_DISSIPATE_SECONDS
+	)
+	rain_field_tween.tween_callback(_complete_rain_field_dissolve)
+
+
+func _complete_rain_field_dissolve() -> void:
+	rain_field_tween = null
 	_set_rain_intensity(0.0)
 	rain_field.hide()
 
@@ -751,13 +751,13 @@ func _begin_ground_dew_dissolve() -> void:
 		"amount_ratio",
 		0.0,
 		GROUND_DEW_EMISSION_FADE_SECONDS
-	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	ground_dew_dissolve_tween.tween_property(
 		ground_dew_rise,
 		"self_modulate:a",
 		0.0,
 		GROUND_DEW_DISSIPATE_SECONDS
-	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	ground_dew_dissolve_tween.chain().tween_callback(
 		_complete_ground_dew_dissolve
 	)
@@ -784,9 +784,10 @@ func _reset_ground_dew_visual_properties() -> void:
 
 
 func _set_rain_intensity(value: float) -> void:
+	rain_visual_intensity = clampf(value, 0.0, 1.0)
 	rain_field.set_instance_shader_parameter(
 		&"rain_intensity",
-		clampf(value, 0.0, 1.0)
+		rain_visual_intensity
 	)
 
 

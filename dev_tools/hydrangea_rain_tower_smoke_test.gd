@@ -30,7 +30,7 @@ const EXPECTED_EFFECT_DURATION := 5.0
 const EXPECTED_TARGET_RADIUS_CELLS := 12.0
 const EXPECTED_RAIN_RADIUS := 48.0
 const EXPECTED_BLOOM_LIGHT_COLOR := Color(0.38, 0.44, 1.0, 1.0)
-const EXPECTED_BLOOM_LIGHT_STRENGTH := 3.2
+const EXPECTED_BLOOM_LIGHT_STRENGTH := 1.9
 
 var failures: Array[String] = []
 var fixture: RainTickRuntime
@@ -150,6 +150,7 @@ func _run() -> void:
 	await _test_three_second_visual_and_five_second_effect_timeline()
 	await _test_proxy_target_position_sync_and_deduplication()
 	await _test_one_authoritative_rain_tick()
+	await _test_overlapping_towers_stack_healing_not_reduction()
 
 	scheduler.call("clear_all")
 	fixture.queue_free()
@@ -233,12 +234,17 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 		and launch_texture != null
 		and launch_texture.width == 2
 		and launch_texture.height == 8
-		and tower.dew_burst.amount == 56
-		and is_equal_approx(tower.dew_burst.lifetime, 0.34)
+		and tower.dew_burst.amount == 72
+		and is_equal_approx(tower.dew_burst.lifetime, 0.76)
+		and is_equal_approx(tower.dew_burst.explosiveness, 0.42)
 		and launch_material.particle_flag_align_y
+		and launch_material.emission_shape
+		== ParticleProcessMaterial.EMISSION_SHAPE_BOX
+		and launch_material.emission_box_extents == Vector3(13.0, 1.5, 1.0)
 		and launch_material.direction == Vector3(0.0, -1.0, 0.0)
-		and is_equal_approx(launch_material.initial_velocity_min, 70.0)
-		and is_equal_approx(launch_material.initial_velocity_max, 115.0)
+		and is_zero_approx(launch_material.spread)
+		and is_equal_approx(launch_material.initial_velocity_min, 58.0)
+		and is_equal_approx(launch_material.initial_velocity_max, 84.0)
 		and launch_material.color_initial_ramp != null
 		and launch_material.color_ramp != null
 		and ground_material != null
@@ -250,14 +256,27 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 		)
 		and tower.ground_dew_rise.amount == 84
 		and not tower.ground_dew_rise.one_shot,
-		"源点必须向上喷出56条色域线性光雨；目标地面84个上升粒子继续使用同一预设色带与3格发射盘。"
+		"源点必须从花冠宽度内持续竖直喷出72条色域线；目标地面84个上升粒子继续使用同一预设色带与3格发射盘。"
 	)
 	var rain_material := tower.rain_field.material as ShaderMaterial
 	_expect(
 		rain_material != null
 		and rain_material.shader != null
-		and rain_material.shader.code.contains("(UV.y - time_offset)"),
-		"目标雨幕Shader必须让雨纹沿屏幕Y正方向下落。"
+		and rain_material.shader.code.contains("(UV.y - time_offset)")
+		and not rain_material.shader.code.contains("sin(TIME * 0.37)")
+		and is_equal_approx(
+			float(rain_material.get_shader_parameter(&"rain_speed")),
+			0.75
+		)
+		and is_equal_approx(
+			float(rain_material.get_shader_parameter(&"rain_columns")),
+			28.0
+		)
+		and is_equal_approx(
+			float(rain_material.get_shader_parameter(&"rain_spawn_threshold")),
+			0.5
+		),
+		"目标雨幕必须使用无横向漂移、足够密集可见且持续竖直下落的随机雨线。"
 	)
 
 	var idle_light_color := tower.core_night_light.color
@@ -266,12 +285,17 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 	tower.call("_set_flower_state", true)
 	_expect(
 		tower.core_night_light.color == EXPECTED_BLOOM_LIGHT_COLOR
+		and tower.core_night_light.texture != null
+		and tower.core_night_light.texture.get_size() == Vector2(32.0, 32.0)
+		and tower.core_night_light.texture.get_size().x
+		* tower.core_night_light.texture_scale <= 12.0
 		and is_equal_approx(
 			tower.core_night_light.get_emission_strength(),
 			EXPECTED_BLOOM_LIGHT_STRENGTH
 		)
-		and tower.core_night_light.energy > idle_night_energy * 3.0,
-		"开花状态必须在夜间发出显著增强的蓝紫色中心光。"
+		and tower.core_night_light.energy > idle_night_energy * 1.8
+		and tower.core_night_light.energy <= idle_night_energy * 2.0,
+		"开花状态必须使用微型光纹理，只在花蕊内形成适度增强的蓝紫色夜光。"
 	)
 	tower.call("_set_flower_state", false)
 	_expect(
@@ -337,15 +361,23 @@ func _test_two_stage_launch_visual() -> void:
 		and not tower.ground_dew_rise.emitting,
 		"施法起点必须只在塔身向上喷发线性光雨，目标雨幕和地面粒子不得同帧出现。"
 	)
-	await create_timer(0.24, true, false, false).timeout
+	await create_timer(0.1, true, false, false).timeout
+	await process_frame
+	_expect(
+		not tower.rain_field.visible
+		and not tower.ground_dew_rise.emitting,
+		"上射线必须先独立表现一小段时间，目标雨不能过早同帧弹出。"
+	)
+	await create_timer(0.32, true, false, false).timeout
 	await process_frame
 	_expect(
 		tower.rain_field.visible
 		and tower.ground_dew_rise.emitting
+		and is_zero_approx(tower.rain_field.global_rotation)
 		and tower.rain_field.global_position == near_target
 		and tower.ground_dew_rise.global_position == near_target
 		and tower.dew_burst.global_position == first_source_position,
-		"短延迟后雨幕与回溅粒子必须只在目标位置独立启动，源点粒子不得与目标连线。"
+		"约三分之一秒后目标竖直雨幕必须启动，并与上射尾段短暂重合以建立联动。"
 	)
 	tower.call("_finish_rain_visual")
 	tower.call("_hide_rain_visual_immediate")
@@ -371,7 +403,7 @@ func _test_two_stage_launch_visual() -> void:
 	tower.call("_finish_rain_visual")
 	tower.call("_hide_rain_visual_immediate")
 
-	tower.call("_begin_rain_visual", far_target, 0.35)
+	tower.call("_begin_rain_visual", far_target, 0.45)
 	await process_frame
 	_expect(
 		not tower.dew_burst.emitting
@@ -462,7 +494,9 @@ func _test_three_second_visual_and_five_second_effect_timeline() -> void:
 	_expect(
 		not tower.rain_active
 		and tower.effect_active
-		and not tower.rain_field.visible
+		and tower.rain_field.visible
+		and tower.rain_visual_intensity > 0.0
+		and tower.rain_visual_intensity < 1.0
 		and tower.ground_dew_rise.emitting
 		and tower.ground_dew_rise.amount_ratio > 0.0
 		and tower.ground_dew_rise.amount_ratio < 1.0
@@ -475,7 +509,7 @@ func _test_three_second_visual_and_five_second_effect_timeline() -> void:
 		and tower.core_night_light.get_emission_strength() > 1.0
 		and tower.core_night_light.get_emission_strength()
 		< EXPECTED_BLOOM_LIGHT_STRENGTH,
-		"第3秒雨幕必须结束；花冠、夜光与地面粒子应从该时刻开始平滑闭合、减量和渐隐。"
+		"第3秒结算雨幕必须结束；可见雨线、花冠、夜光与地面粒子应从该时刻进入独立柔和消散。"
 	)
 	await create_timer(0.12, true, false, false).timeout
 	await process_frame
@@ -494,9 +528,11 @@ func _test_three_second_visual_and_five_second_effect_timeline() -> void:
 			tower.core_night_light.get_emission_strength(),
 			1.0
 		)
+		and tower.rain_field.visible
+		and tower.rain_visual_intensity > 0.0
 		and tower.ground_dew_rise.emitting
 		and tower.ground_dew_rise.self_modulate.a < 1.0,
-		"短时反向收缩结束后花冠与夜光必须恢复待机态，持续粒子则继续完成尾部消散。"
+		"短时反向收缩结束后花冠与夜光必须恢复待机态，雨线和范围粒子仍应继续柔和消散。"
 	)
 	var completed_tick_count := (
 		fixture.combat_query_call_count - query_count_before
@@ -526,13 +562,15 @@ func _test_three_second_visual_and_five_second_effect_timeline() -> void:
 		tower.current_health == tower.max_health - 50,
 		"5秒效果窗口必须实际执行5个每次50点的建筑治疗tick。"
 	)
-	await create_timer(0.3, true, false, false).timeout
+	await create_timer(1.1, true, false, false).timeout
 	await process_frame
 	_expect(
-		not tower.ground_dew_rise.emitting
+		not tower.rain_field.visible
+		and is_zero_approx(tower.rain_visual_intensity)
+		and not tower.ground_dew_rise.emitting
 		and is_equal_approx(tower.ground_dew_rise.amount_ratio, 1.0)
 		and tower.ground_dew_rise.self_modulate == Color.WHITE,
-		"粒子消散完成后必须停止并恢复可复用的发射比例与透明度。"
+		"较长消散期结束后雨线与范围粒子必须停止，并恢复可复用的发射比例与透明度。"
 	)
 	fixture.plant_targets.clear()
 	tower.queue_free()
@@ -732,6 +770,67 @@ func _test_one_authoritative_rain_tick() -> void:
 	fixture.player_targets.clear()
 	tower.effect_active = false
 	tower.queue_free()
+	enemy.queue_free()
+	player.queue_free()
+	await process_frame
+
+
+func _test_overlapping_towers_stack_healing_not_reduction() -> void:
+	var tower_a := _make_tower(HYDRANGEA_CONFIG)
+	var tower_b := _make_tower(HYDRANGEA_CONFIG)
+	var healing_target := _make_tower(HYDRANGEA_CONFIG)
+	var target_position := Vector2(96.0, 64.0)
+	var player := PLAYER_SCENE.instantiate() as Player
+	fixture.add_child(player)
+	player.set_controls_locked(true)
+	player.set_physics_process(false)
+
+	var enemy := ENEMY_CONFIG.enemy_scene.instantiate() as Enemy
+	fixture.add_child(enemy)
+	enemy.setup(ENEMY_CONFIG, player, null)
+	enemy.set_physics_process(false)
+	healing_target.current_health = healing_target.max_health - EXPECTED_HEAL * 3
+	healing_target.health_bar.set_health(
+		healing_target.current_health,
+		healing_target.max_health
+	)
+	var healing_before := healing_target.current_health
+	var enemy_health_before := enemy.current_health
+	var source_a := int(tower_a.call("_get_effect_source_id"))
+	var source_b := int(tower_b.call("_get_effect_source_id"))
+
+	fixture.enemy_targets.append(enemy)
+	fixture.plant_targets.append(healing_target)
+	for tower in [tower_a, tower_b]:
+		tower.effect_active = true
+		tower.rain_target_global_position = target_position
+		tower.effect_started_at_seconds = float(tower.call("_now_seconds"))
+		tower.call("_apply_authoritative_rain_tick", 0)
+
+	_expect(
+		source_a != source_b
+		and enemy.collectible_status_effects.size() == 2
+		and enemy.outgoing_attack_damage_multiplier_modifiers.size() == 2
+		and is_equal_approx(
+			enemy.get_outgoing_attack_damage_multiplier(),
+			EXPECTED_ATTACK_MULTIPLIER
+		)
+		and enemy.get_effective_attack_damage(10) == 8,
+		"多个紫阳花必须保留各自减攻时长，但最终20%减攻只能取一次，禁止乘算叠加为36%。"
+	)
+	_expect(
+		healing_target.current_health == healing_before + EXPECTED_HEAL * 2
+		and enemy.current_health == enemy_health_before - EXPECTED_MAGIC_DAMAGE * 2,
+		"多个紫阳花的每次50点治疗与可见雨幕伤害必须按塔独立结算并允许相加。"
+	)
+
+	fixture.enemy_targets.clear()
+	fixture.plant_targets.clear()
+	enemy.clear_collectible_statuses()
+	for tower in [tower_a, tower_b]:
+		tower.effect_active = false
+		tower.queue_free()
+	healing_target.queue_free()
 	enemy.queue_free()
 	player.queue_free()
 	await process_frame
