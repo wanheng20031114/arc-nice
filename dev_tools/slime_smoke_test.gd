@@ -90,7 +90,7 @@ func _run() -> void:
 
 func _test_config_contract() -> void:
 	_expect(SLIME_CONFIG.display_name == "史莱姆", "基础史莱姆必须使用独立显示名称。")
-	_expect(SLIME_CONFIG.max_health == 40, "基础史莱姆生命值必须为 40。")
+	_expect(SLIME_CONFIG.max_health == 100, "基础史莱姆生命值必须为 100。")
 	_expect(SLIME_CONFIG.attack_damage == 10, "基础史莱姆攻击力必须为 10。")
 	_expect(SLIME_CONFIG.physical_defense == 0, "基础史莱姆物理防御必须为 0。")
 	_expect(SLIME_CONFIG.magic_defense == 0, "基础史莱姆法术防御必须为 0。")

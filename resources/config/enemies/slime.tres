@@ -9,6 +9,6 @@ script = ExtResource("1_script")
 display_name = "史莱姆"
 category_tags = PackedStringArray("slime")
 enemy_scene = ExtResource("2_scene")
-max_health = 40
+max_health = 100
 attack_damage = 10
 move_speed = 20.0
