@@ -1,11 +1,12 @@
 extends PlantDefense
 class_name HydrangeaRainTower
 
-const RUNTIME_STATE_SCHEMA := 1
+const RUNTIME_STATE_SCHEMA := 2
 const ATTACK_REDUCTION_STATUS_ID := &"hydrangea_attack_reduction"
 const STATUS_SOURCE_NAMESPACE := 130_000_000
 const AUTHORED_RAIN_RADIUS := 160.0
 const RAIN_VISUAL_FADE_SECONDS := 0.28
+const LAUNCH_DROPLET_TRAVEL_SECONDS := 0.58
 
 @export_group("128像素双状态素材")
 @export var idle_texture: Texture2D
@@ -19,13 +20,17 @@ const RAIN_VISUAL_FADE_SECONDS := 0.28
 @onready var core_night_light: NightPointLight2D = $CoreNightLight
 @onready var rain_field: Polygon2D = $RainField
 @onready var dew_burst: GPUParticles2D = $DewBurst
+@onready var ground_dew_rise: GPUParticles2D = $GroundDewRise
 @onready var bloom_animation_player: AnimationPlayer = $BloomAnimationPlayer
 @onready var cycle_timer: Timer = $CycleTimer
 @onready var rain_tick_timer: Timer = $RainTickTimer
 @onready var rain_end_timer: Timer = $RainEndTimer
+@onready var effect_end_timer: Timer = $EffectEndTimer
 @onready var health_bar: PlantHealthBar = $HealthBar
 
 var rain_config: HydrangeaRainTowerConfig = null
+var plant_system = null
+var heal_target_candidates: Array[PlantDefense] = []
 var enemy_candidates: Array[Enemy] = []
 var plant_candidates: Array[PlantDefense] = []
 var player_candidates: Array[Player] = []
@@ -33,13 +38,20 @@ var damage_amounts := PackedInt32Array()
 var damage_hit_counts := PackedInt32Array()
 
 var rain_active := false
+var effect_active := false
 var rain_action_id := 0
+var rain_target_global_position := Vector2.ZERO
 var cycle_started_at_seconds := 0.0
 var rain_started_at_seconds := 0.0
-var rain_ticks_remaining := 0
+var effect_started_at_seconds := 0.0
+var next_effect_tick_index := 0
+var total_effect_tick_count := 0
 var rain_field_tween: Tween = null
 var pending_proxy_cycle_elapsed_seconds := -1.0
 var pending_proxy_rain_elapsed_seconds := -1.0
+var pending_proxy_rain_target_position := Vector2.ZERO
+var pending_proxy_has_rain := false
+var pending_proxy_recorded_at_seconds := -1.0
 
 
 func _on_setup_completed() -> void:
@@ -51,21 +63,103 @@ func _on_setup_completed() -> void:
 	cycle_timer.wait_time = rain_config.rain_interval_seconds
 	rain_tick_timer.wait_time = rain_config.rain_tick_interval_seconds
 	rain_end_timer.wait_time = rain_config.rain_duration_seconds
+	effect_end_timer.wait_time = rain_config.effect_duration_seconds
 	damage_amounts = PackedInt32Array([rain_config.magic_damage_per_tick])
 	damage_hit_counts = PackedInt32Array([1])
 	rain_field.scale = Vector2.ONE * (
 		rain_config.rain_radius / AUTHORED_RAIN_RADIUS
 	)
-	rain_field.set_instance_shader_parameter(
-		&"rain_seed",
-		float(_get_effect_source_id() % 997) / 997.0
+	var ground_particle_material := (
+		ground_dew_rise.process_material as ParticleProcessMaterial
 	)
+	if ground_particle_material != null:
+		ground_particle_material.emission_sphere_radius = rain_config.rain_radius
+	var particle_visibility_margin := 28.0
+	ground_dew_rise.visibility_rect = Rect2(
+		Vector2.ONE * (-rain_config.rain_radius - particle_visibility_margin),
+		Vector2.ONE * (
+			(rain_config.rain_radius + particle_visibility_margin) * 2.0
+		)
+	)
+	_set_action_rain_seed()
 
 	health_bar.setup(max_health, current_health)
 	if not health_changed.is_connected(_on_health_changed):
 		health_changed.connect(_on_health_changed)
 	_set_flower_state(false)
 	_hide_rain_visual_immediate()
+
+
+func set_plant_system(new_plant_system) -> void:
+	if plant_system == new_plant_system:
+		return
+	_disconnect_plant_system_signals()
+	plant_system = new_plant_system
+	heal_target_candidates.clear()
+	if plant_system == null or is_multiplayer_proxy:
+		return
+	if not plant_system.plant_placed.is_connected(_on_plant_roster_changed):
+		plant_system.plant_placed.connect(_on_plant_roster_changed)
+	if not plant_system.plant_removed.is_connected(_on_plant_roster_changed):
+		plant_system.plant_removed.connect(_on_plant_roster_changed)
+	_refresh_healable_building_cache()
+
+
+func _disconnect_plant_system_signals() -> void:
+	if plant_system == null or not is_instance_valid(plant_system):
+		return
+	if plant_system.plant_placed.is_connected(_on_plant_roster_changed):
+		plant_system.plant_placed.disconnect(_on_plant_roster_changed)
+	if plant_system.plant_removed.is_connected(_on_plant_roster_changed):
+		plant_system.plant_removed.disconnect(_on_plant_roster_changed)
+
+
+func _on_plant_roster_changed(_plant: PlantDefense) -> void:
+	_refresh_healable_building_cache()
+
+
+func _refresh_healable_building_cache() -> void:
+	heal_target_candidates.clear()
+	if (
+		plant_system == null
+		or rain_config == null
+		or is_multiplayer_proxy
+		or not is_inside_tree()
+	):
+		return
+	plant_system.query_living_plants_in_logical_radius_into(
+		global_position,
+		rain_config.target_search_radius_cells,
+		heal_target_candidates
+	)
+
+
+func _select_lowest_health_target() -> PlantDefense:
+	var selected: PlantDefense = null
+	var selected_health := 0
+	var selected_stable_id := 0
+	for candidate in heal_target_candidates:
+		if (
+			candidate == null
+			or not is_instance_valid(candidate)
+			or candidate.is_dead
+			or candidate.is_removing
+			or candidate.is_queued_for_deletion()
+		):
+			continue
+		var candidate_stable_id := _get_plant_stable_id(candidate)
+		if (
+			selected == null
+			or candidate.current_health < selected_health
+			or (
+				candidate.current_health == selected_health
+				and candidate_stable_id < selected_stable_id
+			)
+		):
+			selected = candidate
+			selected_health = candidate.current_health
+			selected_stable_id = candidate_stable_id
+	return selected
 
 
 func _on_construction_started() -> void:
@@ -83,25 +177,50 @@ func _on_operational_started() -> void:
 	if rain_config == null:
 		return
 	var initial_cycle_elapsed := 0.0
+	var pending_age_seconds := 0.0
+	if is_multiplayer_proxy and pending_proxy_recorded_at_seconds >= 0.0:
+		pending_age_seconds = maxf(
+			_now_seconds() - pending_proxy_recorded_at_seconds,
+			0.0
+		)
 	if is_multiplayer_proxy and pending_proxy_cycle_elapsed_seconds >= 0.0:
-		initial_cycle_elapsed = pending_proxy_cycle_elapsed_seconds
+		initial_cycle_elapsed = (
+			pending_proxy_cycle_elapsed_seconds + pending_age_seconds
+		)
 	pending_proxy_cycle_elapsed_seconds = -1.0
 	_set_cycle_elapsed(initial_cycle_elapsed)
-	if is_multiplayer_proxy and pending_proxy_rain_elapsed_seconds >= 0.0:
-		_begin_rain(pending_proxy_rain_elapsed_seconds)
+	var aged_pending_rain_elapsed := (
+		pending_proxy_rain_elapsed_seconds + pending_age_seconds
+	)
+	if (
+		is_multiplayer_proxy
+		and pending_proxy_has_rain
+		and aged_pending_rain_elapsed >= 0.0
+		and aged_pending_rain_elapsed < rain_config.rain_duration_seconds
+	):
+		_begin_rain_visual(
+			pending_proxy_rain_target_position,
+			aged_pending_rain_elapsed
+		)
 	pending_proxy_rain_elapsed_seconds = -1.0
+	pending_proxy_rain_target_position = Vector2.ZERO
+	pending_proxy_has_rain = false
+	pending_proxy_recorded_at_seconds = -1.0
 
 
 func _on_multiplayer_proxy_configured() -> void:
-	# Proxies retain the synchronized visual cycle, but never execute a combat
-	# tick or write authoritative health/status state.
 	rain_tick_timer.stop()
+	effect_end_timer.stop()
+	effect_active = false
 
 
 func _on_removal_started(_mode: RemovalMode) -> void:
 	cycle_timer.stop()
 	rain_tick_timer.stop()
 	rain_end_timer.stop()
+	effect_end_timer.stop()
+	_disconnect_plant_system_signals()
+	heal_target_candidates.clear()
 	_stop_rain_field_tween()
 	bloom_animation_player.stop()
 	core_night_light.set_emission_allowed(false)
@@ -109,11 +228,17 @@ func _on_removal_started(_mode: RemovalMode) -> void:
 	health_bar.hide()
 	_hide_rain_visual_immediate()
 	rain_active = false
+	effect_active = false
 	cycle_started_at_seconds = 0.0
 	rain_started_at_seconds = 0.0
-	rain_ticks_remaining = 0
+	effect_started_at_seconds = 0.0
+	next_effect_tick_index = 0
+	total_effect_tick_count = 0
 	pending_proxy_cycle_elapsed_seconds = -1.0
 	pending_proxy_rain_elapsed_seconds = -1.0
+	pending_proxy_rain_target_position = Vector2.ZERO
+	pending_proxy_has_rain = false
+	pending_proxy_recorded_at_seconds = -1.0
 
 
 func _on_health_changed(new_health: int, new_max_health: int) -> void:
@@ -123,9 +248,6 @@ func _on_health_changed(new_health: int, new_max_health: int) -> void:
 func _on_cycle_timer_timeout() -> void:
 	if not is_operational or is_dead or is_removing or rain_config == null:
 		return
-	# Advance the intended anchor by exactly one configured interval instead of
-	# resetting it to this rendered frame. Timer jitter therefore never
-	# accumulates into a different Host/client rain phase.
 	var scheduled_cycle_start := (
 		cycle_started_at_seconds + rain_config.rain_interval_seconds
 	)
@@ -135,86 +257,113 @@ func _on_cycle_timer_timeout() -> void:
 		rain_config.rain_interval_seconds - callback_lateness,
 		0.01
 	))
-	if not is_multiplayer_proxy:
-		rain_action_id += 1
-	_begin_rain(minf(callback_lateness, rain_config.rain_duration_seconds))
+	if is_multiplayer_proxy:
+		return
+	var target := _select_lowest_health_target()
+	if target == null:
+		return
+	rain_action_id += 1
+	var action_elapsed := minf(
+		callback_lateness,
+		rain_config.effect_duration_seconds - 0.001
+	)
+	_begin_authoritative_rain(
+		target.global_position,
+		action_elapsed
+	)
+	_broadcast_rain_action(action_elapsed)
 
 
 func _on_rain_tick_timer_timeout() -> void:
-	if not rain_active or is_multiplayer_proxy or rain_ticks_remaining <= 0:
+	if (
+		not effect_active
+		or is_multiplayer_proxy
+		or next_effect_tick_index >= total_effect_tick_count
+	):
 		rain_tick_timer.stop()
 		return
-	_apply_authoritative_rain_tick()
-	rain_ticks_remaining -= 1
-	if rain_ticks_remaining <= 0:
-		rain_tick_timer.stop()
+	_apply_authoritative_rain_tick(next_effect_tick_index)
+	next_effect_tick_index += 1
+	_schedule_next_effect_tick()
 
 
 func _on_rain_end_timer_timeout() -> void:
-	_finish_rain()
+	_finish_rain_visual()
 
 
-func _begin_rain(elapsed_seconds: float) -> void:
-	if rain_config == null:
+func _on_effect_end_timer_timeout() -> void:
+	_finish_gameplay_effect()
+
+
+func _begin_authoritative_rain(
+	target_position: Vector2,
+	elapsed_seconds: float
+) -> void:
+	if rain_config == null or not target_position.is_finite():
 		return
-	if rain_active:
-		_finish_rain()
-	rain_active = true
+	if effect_active:
+		_finish_gameplay_effect()
 	var safe_elapsed := clampf(
 		elapsed_seconds,
 		0.0,
-		rain_config.rain_duration_seconds
+		rain_config.effect_duration_seconds - 0.001
 	)
-	rain_started_at_seconds = _now_seconds() - safe_elapsed
-	rain_ticks_remaining = maxi(
-		floori(
-			rain_config.rain_duration_seconds
+	effect_active = true
+	rain_target_global_position = target_position
+	effect_started_at_seconds = _now_seconds() - safe_elapsed
+	total_effect_tick_count = maxi(
+		ceili(
+			rain_config.effect_duration_seconds
 			/ rain_config.rain_tick_interval_seconds
-			+ 0.0001
+			- 0.0001
 		),
 		1
 	)
-	_show_rain_visual(safe_elapsed)
-	rain_end_timer.start(
-		maxf(rain_config.rain_duration_seconds - safe_elapsed, 0.01)
+	var current_tick_index := mini(
+		floori(safe_elapsed / rain_config.rain_tick_interval_seconds + 0.0001),
+		total_effect_tick_count - 1
 	)
-	if is_multiplayer_proxy:
-		rain_ticks_remaining = 0
-		return
-	_apply_authoritative_rain_tick()
-	rain_ticks_remaining -= 1
-	if rain_ticks_remaining <= 0:
-		rain_tick_timer.stop()
-		return
-	var first_tick_delay := rain_config.rain_tick_interval_seconds
-	if safe_elapsed > 0.0:
-		first_tick_delay = (
-			rain_config.rain_tick_interval_seconds
-			- fposmod(safe_elapsed, rain_config.rain_tick_interval_seconds)
-		)
-	rain_tick_timer.start(maxf(first_tick_delay, 0.01))
+	if safe_elapsed < rain_config.rain_duration_seconds:
+		_begin_rain_visual(target_position, safe_elapsed)
+	else:
+		_finish_rain_visual()
+	effect_end_timer.start(maxf(
+		rain_config.effect_duration_seconds - safe_elapsed,
+		0.01
+	))
+	_apply_authoritative_rain_tick(current_tick_index)
+	next_effect_tick_index = current_tick_index + 1
+	_schedule_next_effect_tick()
 
 
-func _finish_rain() -> void:
-	if not rain_active:
-		return
-	rain_active = false
-	rain_started_at_seconds = 0.0
-	rain_ticks_remaining = 0
+func _schedule_next_effect_tick() -> void:
 	rain_tick_timer.stop()
-	rain_end_timer.stop()
-	_set_flower_state(false)
-	core_night_light.set_emission_strength(1.0)
-	core_glow.scale = Vector2.ONE * 0.3
-	bloom_animation_player.stop()
-	upper_canopy.scale = Vector2.ONE
-	_fade_out_rain_field()
+	if (
+		not effect_active
+		or next_effect_tick_index >= total_effect_tick_count
+		or rain_config == null
+	):
+		return
+	var elapsed := maxf(_now_seconds() - effect_started_at_seconds, 0.0)
+	var intended_elapsed := (
+		float(next_effect_tick_index) * rain_config.rain_tick_interval_seconds
+	)
+	rain_tick_timer.start(maxf(intended_elapsed - elapsed, 0.01))
 
 
-func _apply_authoritative_rain_tick() -> void:
+func _finish_gameplay_effect() -> void:
+	effect_active = false
+	effect_started_at_seconds = 0.0
+	next_effect_tick_index = 0
+	total_effect_tick_count = 0
+	rain_tick_timer.stop()
+	effect_end_timer.stop()
+
+
+func _apply_authoritative_rain_tick(tick_index: int) -> void:
 	if (
 		is_multiplayer_proxy
-		or not rain_active
+		or not effect_active
 		or rain_config == null
 		or is_dead
 		or is_removing
@@ -223,14 +372,25 @@ func _apply_authoritative_rain_tick() -> void:
 	var current_scene := get_tree().current_scene
 	if current_scene == null:
 		return
+	var effect_remaining_seconds := (
+		effect_started_at_seconds
+		+ rain_config.effect_duration_seconds
+		- _now_seconds()
+	)
+	if effect_remaining_seconds <= 0.0:
+		return
 
 	current_scene.call(
 		"query_combat_targets_unordered_into",
-		global_position,
+		rain_target_global_position,
 		rain_config.rain_radius,
 		enemy_candidates
 	)
 	var effect_source_id := _get_effect_source_id()
+	var deals_magic_damage := (
+		float(tick_index) * rain_config.rain_tick_interval_seconds
+		< rain_config.rain_duration_seconds - 0.0001
+	)
 	for enemy in enemy_candidates:
 		if (
 			enemy == null
@@ -239,21 +399,22 @@ func _apply_authoritative_rain_tick() -> void:
 			or enemy.is_queued_for_deletion()
 		):
 			continue
-		current_scene.call(
-			"apply_authoritative_plant_enemy_damage_batch",
-			effect_source_id,
-			enemy,
-			damage_amounts,
-			damage_hit_counts,
-			global_position.direction_to(enemy.global_position),
-			EnemyConfig.DamageType.MAGIC
-		)
+		if deals_magic_damage:
+			current_scene.call(
+				"apply_authoritative_plant_enemy_damage_batch",
+				effect_source_id,
+				enemy,
+				damage_amounts,
+				damage_hit_counts,
+				rain_target_global_position.direction_to(enemy.global_position),
+				EnemyConfig.DamageType.MAGIC
+			)
 		if enemy.is_dead:
 			continue
 		enemy.apply_collectible_status(
 			ATTACK_REDUCTION_STATUS_ID,
 			effect_source_id,
-			rain_config.attack_reduction_duration_seconds,
+			maxf(effect_remaining_seconds, 0.01),
 			0,
 			0.5,
 			EnemyConfig.DamageType.MAGIC,
@@ -265,7 +426,7 @@ func _apply_authoritative_rain_tick() -> void:
 
 	current_scene.call(
 		"query_living_plants_in_radius_into",
-		global_position,
+		rain_target_global_position,
 		rain_config.rain_radius,
 		plant_candidates
 	)
@@ -275,7 +436,7 @@ func _apply_authoritative_rain_tick() -> void:
 
 	current_scene.call(
 		"query_living_players_in_radius_into",
-		global_position,
+		rain_target_global_position,
 		rain_config.rain_radius,
 		player_candidates
 	)
@@ -289,54 +450,141 @@ func _apply_authoritative_rain_tick() -> void:
 		)
 
 
+func _begin_rain_visual(
+	target_position: Vector2,
+	elapsed_seconds: float
+) -> void:
+	if rain_config == null or not target_position.is_finite():
+		return
+	if rain_active:
+		_finish_rain_visual()
+	var safe_elapsed := clampf(
+		elapsed_seconds,
+		0.0,
+		rain_config.rain_duration_seconds
+	)
+	if safe_elapsed >= rain_config.rain_duration_seconds:
+		return
+	rain_active = true
+	rain_target_global_position = target_position
+	rain_started_at_seconds = _now_seconds() - safe_elapsed
+	rain_field.global_position = target_position
+	ground_dew_rise.global_position = target_position
+	_set_action_rain_seed()
+	_show_rain_visual(safe_elapsed)
+	rain_end_timer.start(maxf(
+		rain_config.rain_duration_seconds - safe_elapsed,
+		0.01
+	))
+
+
+func _finish_rain_visual() -> void:
+	if not rain_active:
+		return
+	rain_active = false
+	rain_started_at_seconds = 0.0
+	rain_end_timer.stop()
+	_set_flower_state(false)
+	core_night_light.set_emission_strength(1.0)
+	core_glow.scale = Vector2.ONE * 0.3
+	bloom_animation_player.stop()
+	upper_canopy.scale = Vector2.ONE
+	_hide_rain_effect_nodes_immediate()
+
+
 func _show_rain_visual(elapsed_seconds: float) -> void:
 	_set_flower_state(true)
 	rain_field.show()
 	core_night_light.set_emission_strength(1.28)
 	core_glow.scale = Vector2.ONE * 0.38
-	var initial_intensity := clampf(
-		elapsed_seconds / RAIN_VISUAL_FADE_SECONDS,
-		0.0,
-		1.0
-	)
-	_set_rain_intensity(initial_intensity)
-	_stop_rain_field_tween()
-	if initial_intensity < 1.0:
-		rain_field_tween = create_tween()
-		rain_field_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-		rain_field_tween.tween_method(
-			_set_rain_intensity,
-			initial_intensity,
-			1.0,
-			RAIN_VISUAL_FADE_SECONDS * (1.0 - initial_intensity)
-		)
-	if elapsed_seconds < 0.45:
-		dew_burst.restart()
-		dew_burst.emitting = true
+	ground_dew_rise.restart()
+	ground_dew_rise.emitting = true
+	_start_rain_field_timeline(elapsed_seconds)
+	if elapsed_seconds < 0.08:
+		_launch_dew_burst(rain_target_global_position)
 		bloom_animation_player.play(&"bloom")
 	else:
 		upper_canopy.scale = Vector2.ONE
 
 
-func _fade_out_rain_field() -> void:
+func _start_rain_field_timeline(elapsed_seconds: float) -> void:
 	_stop_rain_field_tween()
-	rain_field_tween = create_tween()
-	rain_field_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
-	rain_field_tween.tween_method(
-		_set_rain_intensity,
-		float(rain_field.get_instance_shader_parameter(&"rain_intensity")),
-		0.0,
-		RAIN_VISUAL_FADE_SECONDS
+	var fade_in_end := minf(
+		RAIN_VISUAL_FADE_SECONDS,
+		rain_config.rain_duration_seconds * 0.5
 	)
+	var fade_out_start := maxf(
+		rain_config.rain_duration_seconds - RAIN_VISUAL_FADE_SECONDS,
+		fade_in_end
+	)
+	var initial_intensity := 1.0
+	if elapsed_seconds < fade_in_end:
+		initial_intensity = elapsed_seconds / maxf(fade_in_end, 0.001)
+	elif elapsed_seconds > fade_out_start:
+		initial_intensity = (
+			(rain_config.rain_duration_seconds - elapsed_seconds)
+			/ maxf(rain_config.rain_duration_seconds - fade_out_start, 0.001)
+		)
+	_set_rain_intensity(initial_intensity)
+	rain_field_tween = create_tween()
+	rain_field_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	var cursor := elapsed_seconds
+	if cursor < fade_in_end:
+		rain_field_tween.tween_method(
+			_set_rain_intensity,
+			initial_intensity,
+			1.0,
+			fade_in_end - cursor
+		)
+		cursor = fade_in_end
+	if cursor < fade_out_start:
+		rain_field_tween.tween_interval(fade_out_start - cursor)
+		cursor = fade_out_start
+	if cursor < rain_config.rain_duration_seconds:
+		rain_field_tween.tween_method(
+			_set_rain_intensity,
+			1.0 if cursor <= fade_out_start else initial_intensity,
+			0.0,
+			rain_config.rain_duration_seconds - cursor
+		)
 	rain_field_tween.tween_callback(rain_field.hide)
 
 
-func _hide_rain_visual_immediate() -> void:
+func _launch_dew_burst(target_position: Vector2) -> void:
+	var launch_origin := global_position + Vector2(0.0, -5.0)
+	var launch_offset := target_position - launch_origin
+	if launch_offset.length_squared() > 0.01:
+		dew_burst.global_rotation = launch_offset.angle() + PI * 0.5
+		var process_material := (
+			dew_burst.process_material as ParticleProcessMaterial
+		)
+		if process_material != null:
+			var launch_speed := (
+				launch_offset.length() / LAUNCH_DROPLET_TRAVEL_SECONDS
+			)
+			process_material.initial_velocity_min = launch_speed * 0.9
+			process_material.initial_velocity_max = launch_speed * 1.1
+	dew_burst.restart()
+	dew_burst.emitting = true
+
+
+func _hide_rain_effect_nodes_immediate() -> void:
 	_stop_rain_field_tween()
 	_set_rain_intensity(0.0)
 	rain_field.hide()
-	dew_burst.emitting = false
+	_stop_particles_immediate(ground_dew_rise)
+
+
+func _hide_rain_visual_immediate() -> void:
+	_hide_rain_effect_nodes_immediate()
+	_stop_particles_immediate(dew_burst)
 	_set_flower_state(false)
+
+
+func _stop_particles_immediate(particles: GPUParticles2D) -> void:
+	particles.emitting = false
+	particles.restart()
+	particles.emitting = false
 
 
 func _set_flower_state(is_raining: bool) -> void:
@@ -353,10 +601,69 @@ func _set_rain_intensity(value: float) -> void:
 	)
 
 
+func _set_action_rain_seed() -> void:
+	var source_seed := float(_get_effect_source_id() % 997) / 997.0
+	var action_seed := float(rain_action_id % 251) / 251.0
+	rain_field.set_instance_shader_parameter(
+		&"rain_seed",
+		fposmod(source_seed + action_seed, 1.0)
+	)
+
+
 func _stop_rain_field_tween() -> void:
 	if rain_field_tween != null and rain_field_tween.is_valid():
 		rain_field_tween.kill()
 	rain_field_tween = null
+
+
+func _broadcast_rain_action(action_elapsed_seconds: float) -> void:
+	var current_scene := get_tree().current_scene
+	var plant_net_id := int(get_meta(&"net_id", 0))
+	if (
+		current_scene == null
+		or plant_net_id <= 0
+		or not current_scene.has_method("queue_hydrangea_rain_visual")
+	):
+		return
+	current_scene.call(
+		"queue_hydrangea_rain_visual",
+		plant_net_id,
+		rain_action_id,
+		rain_target_global_position,
+		maxf(action_elapsed_seconds, 0.0)
+	)
+
+
+func play_multiplayer_rain_action(
+	action_id: int,
+	target_position: Vector2,
+	elapsed_seconds: float
+) -> void:
+	if (
+		not is_multiplayer_proxy
+		or rain_config == null
+		or action_id <= rain_action_id
+		or not target_position.is_finite()
+		or not is_finite(elapsed_seconds)
+	):
+		return
+	rain_action_id = action_id
+	if not is_operational:
+		pending_proxy_cycle_elapsed_seconds = maxf(elapsed_seconds, 0.0)
+		pending_proxy_has_rain = (
+			elapsed_seconds < rain_config.rain_duration_seconds
+		)
+		pending_proxy_rain_elapsed_seconds = (
+			maxf(elapsed_seconds, 0.0) if pending_proxy_has_rain else -1.0
+		)
+		pending_proxy_rain_target_position = target_position
+		pending_proxy_recorded_at_seconds = _now_seconds()
+		return
+	_set_cycle_elapsed(maxf(elapsed_seconds, 0.0))
+	if elapsed_seconds < rain_config.rain_duration_seconds:
+		_begin_rain_visual(target_position, maxf(elapsed_seconds, 0.0))
+	else:
+		_finish_rain_visual()
 
 
 func export_multiplayer_runtime_state() -> Dictionary:
@@ -382,6 +689,7 @@ func export_multiplayer_runtime_state() -> Dictionary:
 			0.0,
 			rain_config.rain_duration_seconds
 		)
+		state["rain_target_position"] = rain_target_global_position
 	return state
 
 
@@ -399,46 +707,40 @@ func apply_multiplayer_runtime_state(
 		float(state.get("cycle_elapsed_seconds", 0.0)),
 		0.0
 	)
+	if not is_finite(received_cycle_elapsed):
+		return
 	var received_action_id := maxi(int(state.get("rain_action_id", 0)), 0)
-	var crossed_cycle_count := floori(
-		received_cycle_elapsed / rain_config.rain_interval_seconds
-	)
-	rain_action_id = received_action_id + crossed_cycle_count
+	if received_action_id < rain_action_id:
+		return
+	rain_action_id = received_action_id
 	var received_rain_elapsed := maxf(
 		float(state.get("rain_elapsed_seconds", 0.0)),
 		0.0
 	)
-	var corrected_cycle_elapsed := fposmod(
-		received_cycle_elapsed,
-		rain_config.rain_interval_seconds
+	var received_target: Vector2 = state.get(
+		"rain_target_position",
+		Vector2.ZERO
 	)
-	var should_restore_rain := false
-	var corrected_rain_elapsed := received_rain_elapsed
-	if crossed_cycle_count > 0:
-		corrected_rain_elapsed = corrected_cycle_elapsed
-		should_restore_rain = (
-			corrected_rain_elapsed < rain_config.rain_duration_seconds
-		)
-	else:
-		should_restore_rain = (
-			bool(state.get("rain_active", false))
-			and corrected_rain_elapsed < rain_config.rain_duration_seconds
-		)
+	var should_restore_rain := (
+		bool(state.get("rain_active", false))
+		and is_finite(received_rain_elapsed)
+		and received_target.is_finite()
+		and received_rain_elapsed < rain_config.rain_duration_seconds
+	)
 	if not is_operational:
-		# Ordinary remote placement snapshots arrive while both peers are still
-		# constructing. Preserve the age already added by MpGame and consume it
-		# when this proxy becomes operational instead of restarting a fresh 10 s
-		# cycle from the client-side construction completion frame.
 		pending_proxy_cycle_elapsed_seconds = received_cycle_elapsed
+		pending_proxy_has_rain = should_restore_rain
 		pending_proxy_rain_elapsed_seconds = (
-			corrected_rain_elapsed if should_restore_rain else -1.0
+			received_rain_elapsed if should_restore_rain else -1.0
 		)
+		pending_proxy_rain_target_position = received_target
+		pending_proxy_recorded_at_seconds = _now_seconds()
 		return
 	_set_cycle_elapsed(received_cycle_elapsed)
 	if should_restore_rain:
-		_begin_rain(corrected_rain_elapsed)
+		_begin_rain_visual(received_target, received_rain_elapsed)
 	else:
-		_finish_rain()
+		_finish_rain_visual()
 
 
 func _set_cycle_elapsed(elapsed_seconds: float) -> void:
@@ -453,6 +755,13 @@ func _set_cycle_elapsed(elapsed_seconds: float) -> void:
 		rain_config.rain_interval_seconds - cycle_elapsed,
 		0.01
 	))
+
+
+func _get_plant_stable_id(plant: PlantDefense) -> int:
+	var stable_id := int(plant.get_meta(&"net_id", 0))
+	if stable_id <= 0:
+		stable_id = int(plant.get_instance_id())
+	return stable_id
 
 
 func _get_effect_source_id() -> int:

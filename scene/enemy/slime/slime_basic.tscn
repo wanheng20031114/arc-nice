@@ -28,11 +28,11 @@ shader_parameter/revive_glow_color = Color(3.2, 3.2, 3.2, 1)
 shader_parameter/revive_glow_outline_width = 4.5
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_body"]
-radius = 6.0
+radius = 5.0
 height = 16.0
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_touch"]
-radius = 6.0
+radius = 5.0
 height = 16.0
 
 [node name="SlimeBasic" unique_id=1620768714 instance=ExtResource("1_base")]
@@ -41,7 +41,7 @@ height = 16.0
 material = SubResource("ShaderMaterial_status")
 sprite_frames = ExtResource("3_frames")
 animation = &"move"
-frame_progress = 0.89881986
+frame_progress = 0.86138076
 
 [node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
 rotation = 1.5707964

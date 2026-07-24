@@ -38,6 +38,7 @@ func _run() -> void:
 		"net_plant_removed",
 		"net_plant_projectile_visual",
 		"net_bamboo_mortar_visual_batch",
+		"net_hydrangea_rain_visual",
 		"net_corn_machine_gun_burst_batch",
 		"net_linglan_skill1_ring_batch",
 		"net_enemy_lightning_chain",
@@ -121,10 +122,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 17,
-		"Lightning-chain VFX replication requires protocol version 17."
+		NetConstants.PROTOCOL_VERSION == 18,
+		"Targeted hydrangea-rain replication requires protocol version 18."
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v17 must provision eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v18 must provision eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -217,7 +218,7 @@ func _test_relay_channel_count() -> void:
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
 		and relay_source.contains("create_server(_port, MAX_CLIENTS, CHANNEL_COUNT)"),
-		"Relay server must provision the same eight ENet channels as protocol v17 clients."
+		"Relay server must provision the same eight ENet channels as protocol v18 clients."
 	)
 
 
@@ -250,7 +251,7 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		and mp_game_source.contains("const TERRAIN_TYPE_EMPTY := -1")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_PER_SECOND := 1.0")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_BURST := 2.0"),
-		"Protocol v17 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
+		"Protocol v18 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
 	)
 	_expect(
 		mp_game_source.contains(
@@ -265,7 +266,7 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		and mp_game_source.contains(
 			"building.try_start_global_research(research_config.research_id)"
 		),
-		"Protocol v17 research commands must use schema2 and resolve a Host-owned research whitelist."
+		"Protocol v18 research commands must use schema2 and resolve a Host-owned research whitelist."
 	)
 	for signature_fragment in [
 		"plant_net_ids:PackedInt32Array",

@@ -46,6 +46,9 @@ const AGAVE_CANNONBALL_SCENE_PATH := "res://scene/plant_defense/agave_cannonball
 const BAMBOO_MORTAR_SCRIPT := preload(
 	"res://scene/plant_defense/bamboo_mortar.gd"
 )
+const HYDRANGEA_RAIN_TOWER_SCRIPT := preload(
+	"res://scene/plant_defense/hydrangea_rain_tower.gd"
+)
 const CORN_MACHINE_GUN_SCRIPT := preload("res://scene/plant_defense/corn_machine_gun.gd")
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const BULLET_SCENE_PATH := "res://scene/bullet.tscn"
@@ -155,7 +158,7 @@ const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
-## 协议 v17 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
+## 协议 v18 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
 ## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
 const SHARED_SNAPSHOT_COHORT_ID := -1
 const ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES := 56
@@ -1405,6 +1408,41 @@ func _clear_bamboo_mortar_visuals() -> void:
 	_pending_bamboo_mortar_spawn_positions.clear()
 	_pending_bamboo_mortar_landing_positions.clear()
 	_pending_bamboo_mortar_host_times.clear()
+
+
+func queue_hydrangea_rain_visual(
+	plant_net_id: int,
+	action_id: int,
+	target_position: Vector2,
+	action_elapsed_seconds: float
+) -> void:
+	if (
+		not is_inside_tree()
+		or not net_manager.is_host()
+		or game == null
+		or plant_net_id <= 0
+		or action_id <= 0
+		or not _is_finite_vector2(target_position)
+		or not is_finite(action_elapsed_seconds)
+		or action_elapsed_seconds < 0.0
+	):
+		return
+	var hydrangea := game.get_multiplayer_plant_node(plant_net_id)
+	if (
+		hydrangea == null
+		or not is_instance_valid(hydrangea)
+		or hydrangea.get_script() != HYDRANGEA_RAIN_TOWER_SCRIPT
+	):
+		return
+	_rpc_to_connected_clients(
+		&"net_hydrangea_rain_visual",
+		[
+			plant_net_id,
+			action_id,
+			target_position,
+			_get_net_time() - action_elapsed_seconds,
+		]
+	)
 
 
 func queue_corn_machine_gun_burst_visual(
@@ -7613,7 +7651,7 @@ func net_player_healed(
 	player_node.queue_healing_number(confirmed_healing)
 
 
-# Legacy compatibility shells retained in protocol v17. Xirang orbs no longer exist, but keeping the
+# Legacy compatibility shells retained in protocol v18. Xirang orbs no longer exist, but keeping the
 # annotated signatures avoids a partial wire-protocol break until the next
 # coordinated protocol-version upgrade.
 @rpc("authority", "call_remote", "reliable", 5)
@@ -9863,6 +9901,44 @@ func net_bamboo_mortar_visual_batch(
 			landing_positions[record_index],
 			elapsed
 		)
+
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_hydrangea_rain_visual(
+	plant_net_id: int,
+	action_id: int,
+	target_position: Vector2,
+	host_action_time: float
+) -> void:
+	if (
+		game == null
+		or net_manager.is_host()
+		or plant_net_id <= 0
+		or action_id <= 0
+		or not _is_finite_vector2(target_position)
+		or not is_finite(host_action_time)
+	):
+		return
+	var hydrangea := game.get_multiplayer_plant_node(plant_net_id)
+	if (
+		hydrangea == null
+		or not is_instance_valid(hydrangea)
+		or hydrangea.get_script() != HYDRANGEA_RAIN_TOWER_SCRIPT
+	):
+		return
+	var mapped_action_time := _map_host_timestamp_to_client_time(
+		host_action_time,
+		false
+	)
+	var elapsed := maxf(_get_net_time() - mapped_action_time, 0.0)
+	if not is_finite(elapsed):
+		return
+	hydrangea.call(
+		"play_multiplayer_rain_action",
+		action_id,
+		target_position,
+		elapsed
+	)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 4)

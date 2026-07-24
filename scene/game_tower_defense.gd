@@ -960,6 +960,9 @@ func _on_plant_placement_mode_changed(active: bool) -> void:
 func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 	if plant == null:
 		return
+	var hydrangea := plant as HydrangeaRainTower
+	if hydrangea != null:
+		hydrangea.set_plant_system(plant_system)
 	_request_enemy_retarget_after_objective_change()
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		var damage_callback := _on_authoritative_plant_damage_applied.bind(plant)

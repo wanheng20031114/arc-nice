@@ -45,8 +45,13 @@ void fragment() {
 	);
 	vec2 rain_cell = floor(rain_grid);
 	vec2 rain_local = fract(rain_grid) - vec2(0.5);
-	float drop_random = hash21(rain_cell + vec2(rain_seed, rain_seed * 1.73));
-	float drop_exists = step(0.66, drop_random);
+	float drop_exists_random = hash21(
+		rain_cell + vec2(rain_seed, rain_seed * 1.73)
+	);
+	float drop_color_random = hash21(
+		rain_cell.yx + vec2(91.37 + rain_seed * 2.11, 17.53)
+	);
+	float drop_exists = step(0.66, drop_exists_random);
 	float narrow_body = 1.0 - smoothstep(0.035, 0.095, abs(rain_local.x));
 	float short_body = 1.0 - smoothstep(0.12, 0.42, abs(rain_local.y));
 	float rain_drop = drop_exists * narrow_body * short_body;
@@ -55,7 +60,7 @@ void fragment() {
 	float edge_ring = 1.0 - smoothstep(0.012, 0.045, ring_distance);
 	float ground_aura = pow(max(1.0 - radial_distance, 0.0), 2.2);
 	float pulse = 0.92 + sin(TIME * 2.1) * 0.08;
-	vec3 drop_color = pick_hydrangea_color(drop_random);
+	vec3 drop_color = pick_hydrangea_color(drop_color_random);
 	vec3 aura_color = mix(blue_color.rgb, violet_color.rgb, 0.58);
 	vec3 final_color = (
 		drop_color * rain_drop * 1.25

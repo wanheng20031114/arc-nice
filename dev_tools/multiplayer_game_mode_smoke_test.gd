@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 17,
-		"Lightning-chain VFX replication requires multiplayer protocol v17."
+		NetConstants.PROTOCOL_VERSION == 18,
+		"Targeted hydrangea-rain replication requires multiplayer protocol v18."
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),

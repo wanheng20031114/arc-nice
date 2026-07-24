@@ -531,6 +531,15 @@ func net_bamboo_mortar_visual_batch(
 ) -> void:
 	pass
 
+@rpc("authority", "call_remote", "reliable", 5)
+func net_hydrangea_rain_visual(
+	plant_net_id: int,
+	action_id: int,
+	target_position: Vector2,
+	host_action_time: float
+) -> void:
+	pass
+
 @rpc("authority", "call_remote", "unreliable_ordered", 4)
 func net_corn_machine_gun_burst_batch(
 	plant_net_ids: PackedInt32Array,

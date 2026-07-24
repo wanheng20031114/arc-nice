@@ -467,6 +467,47 @@ func find_nearest_living_plant(
 	return nearest_plant
 
 
+## Fills caller-owned storage with living buildings inside an exact logical-cell
+## circle. The stationary plant index is only the broad phase, so callers can
+## cache this result without walking the complete building population.
+func query_living_plants_in_logical_radius_into(
+	from_global_position: Vector2,
+	max_radius_cells: float,
+	result: Array[PlantDefense]
+) -> void:
+	result.clear()
+	if (
+		ground_tile_map == null
+		or ground_tile_map.tile_set == null
+		or plant_footprints.is_empty()
+		or not from_global_position.is_finite()
+		or max_radius_cells < 0.0
+		or not is_finite(max_radius_cells)
+	):
+		return
+	var tile_size := Vector2(ground_tile_map.tile_set.tile_size).abs()
+	if tile_size.x <= 0.0 or tile_size.y <= 0.0:
+		return
+	var from_local := ground_tile_map.to_local(from_global_position)
+	var maximum_distance_squared := max_radius_cells * max_radius_cells
+	var candidates := _query_plant_targets_for_logical_radius(
+		from_global_position,
+		tile_size,
+		max_radius_cells
+	)
+	for candidate_variant in candidates:
+		var plant := candidate_variant as PlantDefense
+		if not _is_living_plant_target(plant):
+			continue
+		var plant_local := ground_tile_map.to_local(plant.global_position)
+		var offset_in_cells := Vector2(
+			(plant_local.x - from_local.x) / tile_size.x,
+			(plant_local.y - from_local.y) / tile_size.y
+		)
+		if offset_in_cells.length_squared() <= maximum_distance_squared:
+			result.append(plant)
+
+
 ## Exact world-space query for enemy attacks. All finite radii share the same
 ## one-membership anchor index; only the number of covered coarse buckets varies.
 func find_nearest_living_plant_world(
