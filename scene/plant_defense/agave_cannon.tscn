@@ -40,7 +40,7 @@ animation = &"idle"
 autoplay = "idle"
 
 [node name="CannonPivot" type="Node2D" parent="VisualRoot" unique_id=1291920717]
-z_index = 2
+z_index = 4
 position = Vector2(4, 0)
 
 [node name="CannonSprite" type="AnimatedSprite2D" parent="VisualRoot/CannonPivot" unique_id=83471690]

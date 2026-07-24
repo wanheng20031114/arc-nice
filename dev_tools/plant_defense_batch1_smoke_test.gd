@@ -573,6 +573,11 @@ func _test_config_and_scene_contracts() -> void:
 			and muzzle.position == Vector2(14, 1),
 			"龙舌兰必须围绕炮管后半主体中心旋转，并保持原始炮口合成坐标。"
 		)
+		_expect(
+			body_sprite.z_index == 1
+			and cannon_pivot.z_index == 4,
+			"龙舌兰必须保持身体z=1、炮管z=4，使炮管严格高于玩家、史莱姆及其他敌人身体。"
+		)
 		var pivot_world_position := visual_root.transform * cannon_pivot.position
 		var muzzle_world_position := (
 			visual_root.transform * (cannon_pivot.transform * muzzle.position)
@@ -687,6 +692,7 @@ func _test_config_and_scene_contracts() -> void:
 	_expect(corn != null, "玉米机枪场景根节点必须继承PlantDefense。")
 	if corn != null:
 		var corn_body := corn.get_node("VisualRoot/BodySprite") as AnimatedSprite2D
+		var corn_aim_pivot := corn.get_node("VisualRoot/AimPivot") as Node2D
 		var corn_turret := corn.get_node(
 			"VisualRoot/AimPivot/TurretSprite"
 		) as AnimatedSprite2D
@@ -707,6 +713,11 @@ func _test_config_and_scene_contracts() -> void:
 			corn_flash_material != null
 			and corn_flash_material.shader == PLANT_VISUAL_PIXEL_SNAP_SHADER,
 			"玉米枪口火焰不参与溶解，必须继续使用独立像素相位修正shader。"
+		)
+		_expect(
+			corn_body.z_index == 1
+			and corn_aim_pivot.z_index == 4,
+			"玉米机枪必须保持身体z=1、枪管z=4，使枪管严格高于玩家、史莱姆及其他敌人身体。"
 		)
 		corn.free()
 	tower_instance.free()

@@ -153,7 +153,7 @@ autoplay = "idle"
 frame_progress = 0.8176119
 
 [node name="AimPivot" type="Node2D" parent="VisualRoot" unique_id=1711015965]
-z_index = 2
+z_index = 4
 position = Vector2(3, -1)
 
 [node name="TurretSprite" type="AnimatedSprite2D" parent="VisualRoot/AimPivot" unique_id=2121598685]
