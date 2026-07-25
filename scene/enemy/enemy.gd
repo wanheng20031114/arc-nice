@@ -42,6 +42,9 @@ const SLOW_OVERLAY_ACTIVE_STRENGTH := 0.36
 const BURN_OVERLAY_ACTIVE_STRENGTH := 0.26
 const BLEED_OVERLAY_ACTIVE_STRENGTH := 0.42
 const BURN_STATUS_TICK_INTERVAL := 1.0
+const DEFAULT_BLEED_TICK_INTERVAL_SECONDS := 0.5
+const BURN_STATUS_ID := &"burn"
+const BLEED_STATUS_ID := &"bleed"
 const COLD_STATUS_SCHEDULER_PATH := NodePath("/root/ColdStatusScheduler")
 const COLLECTIBLE_STATUS_SCHEDULER_PATH := NodePath(
 	"/root/EnemyCollectibleStatusScheduler"
@@ -169,6 +172,8 @@ var cold_stack_count := 0
 var damage_taken_multiplier_modifiers: Dictionary = {}
 var outgoing_attack_damage_multiplier_modifiers: Dictionary = {}
 var collectible_status_effects: Dictionary = {}
+var _external_damage_status_source_ids: Dictionary = {}
+var _next_external_damage_status_source_id := -1
 var expired_collectible_status_keys: Array = []
 var due_collectible_status_tick_keys: Array = []
 var collectible_status_clock := 0.0
@@ -1398,6 +1403,124 @@ func has_collectible_status(status_id: StringName) -> bool:
 	return _has_collectible_status(status_id)
 
 
+## Incoming combat statuses share the same public contract as Player and
+## PlantDefense. Enemy keeps them on its collectible timeline so expiry,
+## defense modifiers and same-timestamp damage retain one deterministic order.
+func apply_burn_status(
+	source_family: StringName,
+	duration: float,
+	tick_damage: int
+) -> bool:
+	return _apply_external_damage_over_time_status(
+		BURN_STATUS_ID,
+		source_family,
+		duration,
+		tick_damage,
+		BURN_STATUS_TICK_INTERVAL,
+		EnemyConfig.DamageType.MAGIC
+	)
+
+
+func apply_bleed_status(
+	source_family: StringName,
+	duration: float,
+	tick_damage: int,
+	tick_interval: float = DEFAULT_BLEED_TICK_INTERVAL_SECONDS
+) -> bool:
+	return _apply_external_damage_over_time_status(
+		BLEED_STATUS_ID,
+		source_family,
+		duration,
+		tick_damage,
+		tick_interval,
+		EnemyConfig.DamageType.PHYSICAL
+	)
+
+
+func _apply_external_damage_over_time_status(
+	status_id: StringName,
+	source_family: StringName,
+	duration: float,
+	tick_damage: int,
+	tick_interval: float,
+	damage_type: EnemyConfig.DamageType
+) -> bool:
+	if (
+		is_dead
+		or is_multiplayer_proxy
+		or is_queued_for_deletion()
+		or status_id not in [BURN_STATUS_ID, BLEED_STATUS_ID]
+		or source_family == &""
+		or duration <= 0.0
+		or tick_damage <= 0
+		or tick_interval <= 0.0
+	):
+		return false
+	var source_id := _get_external_damage_status_source_id(source_family)
+	apply_collectible_status(
+		status_id,
+		source_id,
+		duration,
+		tick_damage,
+		tick_interval,
+		damage_type
+	)
+	return _has_collectible_status(status_id)
+
+
+func _get_external_damage_status_source_id(
+	source_family: StringName
+) -> int:
+	if _external_damage_status_source_ids.has(source_family):
+		return int(_external_damage_status_source_ids[source_family])
+	var source_id := _next_external_damage_status_source_id
+	_next_external_damage_status_source_id -= 1
+	_external_damage_status_source_ids[source_family] = source_id
+	return source_id
+
+
+func has_damage_over_time_status(
+	status_id: StringName,
+	source_family: StringName = &""
+) -> bool:
+	if status_id not in [BURN_STATUS_ID, BLEED_STATUS_ID]:
+		return false
+	if source_family == &"":
+		return _has_collectible_status(status_id)
+	if not _external_damage_status_source_ids.has(source_family):
+		return false
+	var effect_key := "%s:%s" % [
+		int(_external_damage_status_source_ids[source_family]),
+		status_id,
+	]
+	var status := collectible_status_effects.get(effect_key, {}) as Dictionary
+	return (
+		not status.is_empty()
+		and float(status.get("expires_at", 0.0))
+			> collectible_status_clock + COLLECTIBLE_STATUS_DEADLINE_EPSILON
+	)
+
+
+func clear_burn_status() -> void:
+	_clear_collectible_status_id(BURN_STATUS_ID)
+
+
+func clear_bleed_status() -> void:
+	_clear_collectible_status_id(BLEED_STATUS_ID)
+
+
+func clear_damage_over_time_status(status_id: StringName) -> bool:
+	if status_id not in [BURN_STATUS_ID, BLEED_STATUS_ID]:
+		return false
+	_clear_collectible_status_id(status_id)
+	return true
+
+
+func clear_damage_over_time_statuses() -> void:
+	_clear_collectible_status_id(BURN_STATUS_ID)
+	_clear_collectible_status_id(BLEED_STATUS_ID)
+
+
 func get_collectible_visual_status_mask() -> int:
 	var result := 0
 	if _has_collectible_status(&"burn"):
@@ -1425,11 +1548,11 @@ func apply_multiplayer_visual_status_mask(status_mask: int) -> void:
 	)
 	_set_visual_shader_parameter(
 		BURN_OVERLAY_STRENGTH_SHADER_PARAMETER,
-		0.72 if (safe_mask & 1) != 0 else 0.0
+		BURN_OVERLAY_ACTIVE_STRENGTH if (safe_mask & 1) != 0 else 0.0
 	)
 	_set_visual_shader_parameter(
 		BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER,
-		0.7 if (safe_mask & 2) != 0 else 0.0
+		BLEED_OVERLAY_ACTIVE_STRENGTH if (safe_mask & 2) != 0 else 0.0
 	)
 	if (added_mask & 8) != 0:
 		_play_collectible_status_feedback(&"mark")
@@ -1815,11 +1938,40 @@ func _remove_collectible_status(effect_key: Variant, status: Dictionary) -> void
 	_remove_collectible_status_modifiers(status)
 
 
+func _clear_collectible_status_id(status_id: StringName) -> bool:
+	if status_id == &"" or collectible_status_effects.is_empty():
+		return false
+	var scheduler := _get_collectible_status_scheduler()
+	if scheduler != null:
+		_advance_collectible_status_effects_to(
+			float(scheduler.call("get_clock"))
+		)
+	if is_dead or collectible_status_effects.is_empty():
+		return false
+	var matching_keys: Array = []
+	for effect_key in collectible_status_effects:
+		var status := collectible_status_effects.get(effect_key, {}) as Dictionary
+		if StringName(status.get("status_id", &"")) == status_id:
+			matching_keys.append(effect_key)
+	if matching_keys.is_empty():
+		return false
+	for effect_key in matching_keys:
+		var status := collectible_status_effects.get(effect_key, {}) as Dictionary
+		if not status.is_empty():
+			_remove_collectible_status(effect_key, status)
+	_reschedule_collectible_status_deadline()
+	_update_movement_status_visuals()
+	_refresh_status_process_enabled()
+	return true
+
+
 func clear_collectible_statuses() -> void:
 	var scheduler := _get_collectible_status_scheduler()
 	if scheduler != null:
 		scheduler.call("clear_target", self)
 	if collectible_status_effects.is_empty():
+		_external_damage_status_source_ids.clear()
+		_next_external_damage_status_source_id = -1
 		return
 	expired_collectible_status_keys.clear()
 	expired_collectible_status_keys.assign(collectible_status_effects.keys())
@@ -1829,6 +1981,8 @@ func clear_collectible_statuses() -> void:
 			continue
 		_remove_collectible_status(effect_key, status)
 	collectible_status_effects.clear()
+	_external_damage_status_source_ids.clear()
+	_next_external_damage_status_source_id = -1
 	expired_collectible_status_keys.clear()
 	due_collectible_status_tick_keys.clear()
 	_update_movement_status_visuals()

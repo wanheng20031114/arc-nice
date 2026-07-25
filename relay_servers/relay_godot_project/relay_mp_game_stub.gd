@@ -507,6 +507,15 @@ func net_warehouse_storage_snapshot(warehouse_net_id: int, snapshot: Dictionary)
 	pass
 
 @rpc("authority", "call_remote", "reliable", 5)
+func net_plant_damage_status_changed(
+	net_id: int,
+	status_mask: int,
+	status_revision: int
+) -> void:
+	pass
+
+
+@rpc("authority", "call_remote", "reliable", 5)
 func net_plant_removed(net_id: int, was_destroyed: bool = false) -> void:
 	pass
 

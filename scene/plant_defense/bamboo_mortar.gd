@@ -83,6 +83,7 @@ var _last_projectile_started_at_seconds := -INF
 var _last_projectile_spawn_position := Vector2.ZERO
 var _last_projectile_landing_position := Vector2.ZERO
 var _split_lifecycle_state := Vector4(1.0, 0.0, -1.0, 0.0)
+var _damage_status_strength := Vector2.ZERO
 var _split_removal_progress := 0.0
 var _split_removal_enabled := false
 var _transition_lifecycle_material: ShaderMaterial = null
@@ -157,12 +158,15 @@ func _on_lifecycle_parameter_changed(
 	parameter_name: StringName,
 	value: Variant
 ) -> void:
-	var state_changed := true
+	var lifecycle_state_changed := false
+	var damage_status_changed := false
 	match parameter_name:
 		&"construction_progress":
 			_split_lifecycle_state.x = clampf(float(value), 0.0, 1.0)
+			lifecycle_state_changed = true
 		&"construction_front_strength":
 			_split_lifecycle_state.y = clampf(float(value), 0.0, 1.0)
+			lifecycle_state_changed = true
 		&"removal_enabled":
 			_split_removal_enabled = bool(value)
 			_split_lifecycle_state.z = (
@@ -170,10 +174,12 @@ func _on_lifecycle_parameter_changed(
 				if _split_removal_enabled
 				else -1.0
 			)
+			lifecycle_state_changed = true
 		&"removal_progress":
 			_split_removal_progress = clampf(float(value), 0.0, 1.0)
 			if _split_removal_enabled:
 				_split_lifecycle_state.z = _split_removal_progress
+			lifecycle_state_changed = true
 		&"noise_offset":
 			var noise_offset: Vector2 = value
 			var noise_x_index := clampi(
@@ -189,14 +195,21 @@ func _on_lifecycle_parameter_changed(
 			_split_lifecycle_state.w = float(
 				noise_x_index * 1024 + noise_y_index
 			)
-		_:
-			state_changed = false
-	if state_changed:
+			lifecycle_state_changed = true
+		PlantDefense.BURN_OVERLAY_PARAMETER:
+			_damage_status_strength.x = clampf(float(value), 0.0, 1.0)
+			damage_status_changed = true
+		PlantDefense.BLEED_OVERLAY_PARAMETER:
+			_damage_status_strength.y = clampf(float(value), 0.0, 1.0)
+			damage_status_changed = true
+	if lifecycle_state_changed:
 		if _transition_lifecycle_material != null:
 			_transition_lifecycle_material.set_shader_parameter(
 				&"lifecycle_state",
 				_split_lifecycle_state
 			)
+	if damage_status_changed:
+		_sync_damage_status_material()
 
 
 func _activate_transition_lifecycle_material() -> void:
@@ -210,14 +223,50 @@ func _activate_transition_lifecycle_material() -> void:
 		&"lifecycle_state",
 		_split_lifecycle_state
 	)
+	_transition_lifecycle_material.set_shader_parameter(
+		&"damage_status_strength",
+		_damage_status_strength
+	)
 
 
 func _release_transition_lifecycle_material() -> void:
-	if _transition_lifecycle_material == null:
+	if (
+		_transition_lifecycle_material == null
+		or _has_damage_status_visual()
+	):
 		return
 	lower_body.material = SPLIT_LIFECYCLE_MATERIAL
 	main_sprite.material = SPLIT_LIFECYCLE_MATERIAL
 	_transition_lifecycle_material = null
+
+
+func _sync_damage_status_material() -> void:
+	if _has_damage_status_visual():
+		_activate_transition_lifecycle_material()
+		_transition_lifecycle_material.set_shader_parameter(
+			&"damage_status_strength",
+			_damage_status_strength
+		)
+		return
+	if _transition_lifecycle_material == null:
+		return
+	_transition_lifecycle_material.set_shader_parameter(
+		&"damage_status_strength",
+		Vector2.ZERO
+	)
+	if (
+		not _construction_visual_active
+		and not _split_removal_enabled
+		and not is_removing
+	):
+		_release_transition_lifecycle_material()
+
+
+func _has_damage_status_visual() -> bool:
+	return (
+		_damage_status_strength.x > 0.0
+		or _damage_status_strength.y > 0.0
+	)
 
 
 func _on_health_changed(new_health: int, new_max_health: int) -> void:

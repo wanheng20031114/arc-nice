@@ -35,6 +35,7 @@ func _run() -> void:
 		"net_plant_spawned",
 		"net_plant_placement_rejected",
 		"net_plant_health_changed",
+		"net_plant_damage_status_changed",
 		"net_plant_removed",
 		"net_plant_projectile_visual",
 		"net_bamboo_mortar_visual_batch",
@@ -122,10 +123,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 18,
+		NetConstants.PROTOCOL_VERSION == 19,
 		"Targeted hydrangea-rain replication requires protocol version 18."
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v18 must provision eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v19 must provision eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -218,7 +219,7 @@ func _test_relay_channel_count() -> void:
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
 		and relay_source.contains("create_server(_port, MAX_CLIENTS, CHANNEL_COUNT)"),
-		"Relay server must provision the same eight ENet channels as protocol v18 clients."
+		"Relay server must provision the same eight ENet channels as protocol v19 clients."
 	)
 
 
@@ -238,6 +239,16 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		_expect_rpc_signature_contains(rpcs, terrain_method, "terrain_types:PackedInt32Array")
 	_expect_rpc_signature_contains(rpcs, "net_plant_spawned", "runtime_state:Dictionary")
 	_expect_rpc_signature_contains(rpcs, "net_plant_spawned", "host_sample_time:float")
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_plant_damage_status_changed",
+		"status_mask:int"
+	)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_plant_damage_status_changed",
+		"status_revision:int"
+	)
 	for signature_fragment in [
 		"peer_id:int",
 		"current_health:int",
@@ -247,11 +258,21 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		_expect_rpc_signature_contains(rpcs, "net_player_healed", signature_fragment)
 	var mp_game_source := FileAccess.get_file_as_string(MAIN_MP_GAME_PATH)
 	_expect(
+		mp_game_source.contains(
+			'runtime_state["damage_status_mask"] = plant.get_damage_status_mask()'
+		)
+		and mp_game_source.contains(
+			'runtime_state["damage_status_revision"] = plant.damage_status_revision'
+		)
+		and mp_game_source.contains("plant.apply_remote_damage_status_mask("),
+		"Late-join plant runtime snapshots must carry and apply revisioned damage-status masks."
+	)
+	_expect(
 		mp_game_source.contains("const TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS := 96")
 		and mp_game_source.contains("const TERRAIN_TYPE_EMPTY := -1")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_PER_SECOND := 1.0")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_BURST := 2.0"),
-		"Protocol v18 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
+		"Protocol v19 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
 	)
 	_expect(
 		mp_game_source.contains(
@@ -266,7 +287,7 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		and mp_game_source.contains(
 			"building.try_start_global_research(research_config.research_id)"
 		),
-		"Protocol v18 research commands must use schema2 and resolve a Host-owned research whitelist."
+		"Protocol v19 research commands must use schema2 and resolve a Host-owned research whitelist."
 	)
 	for signature_fragment in [
 		"plant_net_ids:PackedInt32Array",
@@ -500,6 +521,7 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		"net_enemy_spawned_batch",
 		"net_enemy_terminal",
 		"net_plant_spawned",
+		"net_plant_damage_status_changed",
 		"net_plant_removed",
 		"net_base_health_changed",
 		"net_terrain_snapshot_chunk",

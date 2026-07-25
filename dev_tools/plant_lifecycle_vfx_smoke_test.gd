@@ -11,6 +11,12 @@ const REMOVAL_SMOKE_SCENE := preload(
 	"res://scene/plant_defense/effects/plant_removal_smoke.tscn"
 )
 const LIFECYCLE_SHADER := preload("res://resources/shader/plant_lifecycle.gdshader")
+const CULTIVATION_LIFECYCLE_SHADER := preload(
+	"res://resources/shader/plant_cultivation_center_lifecycle_glow.gdshader"
+)
+const RESEARCH_LIFECYCLE_SHADER := preload(
+	"res://resources/shader/research_center_lifecycle_glow.gdshader"
+)
 const LIFECYCLE_MATERIAL := preload(
 	"res://resources/shader/plant_lifecycle_material.tres"
 )
@@ -32,6 +38,7 @@ func _run() -> void:
 
 	_test_scene_lifecycle_contracts()
 	await _test_instance_uniform_isolation()
+	await _test_damage_status_visuals()
 	await _test_construction_operational_gates()
 	await _test_animated_external_removal()
 	await _test_lethal_removal()
@@ -87,7 +94,10 @@ func _test_scene_lifecycle_contracts() -> void:
 		{
 			"name": "植被桩",
 			"scene": VEGETATION_STAKE_SCENE,
-			"paths": [NodePath("MainSprite")],
+			"paths": [
+				NodePath("MainSprite"),
+				NodePath("UpperCanopy"),
+			],
 			"top": -5.0,
 			"bottom": 7.0,
 			"particle_scale": 0.65,
@@ -161,6 +171,25 @@ func _test_scene_lifecycle_contracts() -> void:
 		and is_equal_approx(PlantDefense.REMOVAL_DURATION_SECONDS, 0.7),
 		"植物构建与溶解时长必须分别固定为0.7秒。"
 	)
+	for damage_status_shader in [
+		LIFECYCLE_SHADER,
+		CULTIVATION_LIFECYCLE_SHADER,
+		RESEARCH_LIFECYCLE_SHADER,
+	]:
+		var damage_status_code := (damage_status_shader as Shader).code
+		_expect(
+			damage_status_code.contains(
+				"instance uniform float burn_overlay_strength"
+			)
+			and damage_status_code.contains(
+				"instance uniform float bleed_overlay_strength"
+			)
+			and damage_status_code.contains("burn_overlay_color")
+			and damage_status_code.contains("bleed_overlay_color")
+			and not damage_status_code.contains("slow_overlay_strength")
+			and not damage_status_code.contains("dash_effect_strength"),
+			"建筑主体shader必须仅开放燃烧与流血视觉，不得混入减速或加速移动特效。"
+		)
 
 
 func _test_instance_uniform_isolation() -> void:
@@ -196,6 +225,95 @@ func _test_instance_uniform_isolation() -> void:
 
 	constructing.begin_removal(PlantDefense.RemovalMode.SILENT)
 	complete.begin_removal(PlantDefense.RemovalMode.SILENT)
+	await process_frame
+
+
+func _test_damage_status_visuals() -> void:
+	var burn_scheduler := root.get_node("BurnStatusScheduler")
+	var bleed_scheduler := root.get_node("BleedStatusScheduler")
+	burn_scheduler.call("clear_all")
+	bleed_scheduler.call("clear_all")
+	var config := PlantDefenseRegistry.get_config(&"agave_cannon")
+	var plant := AGAVE_SCENE.instantiate() as AgaveCannon
+	fixture_root.add_child(plant)
+	plant.setup(config, null, [], false, -1, 0, -1, false)
+	plant.attack_timer.stop()
+	var body := plant.get_node(
+		"VisualRoot/BodySprite"
+	) as AnimatedSprite2D
+	var cannon := plant.get_node(
+		"VisualRoot/CannonPivot/CannonSprite"
+	) as AnimatedSprite2D
+
+	_expect(
+		plant.apply_burn_status(&"plant_visual_test", 0.2, 1)
+		and is_equal_approx(float(body.get_instance_shader_parameter(
+			PlantDefense.BURN_OVERLAY_PARAMETER
+		)), PlantDefense.BURN_OVERLAY_ACTIVE_STRENGTH)
+		and is_equal_approx(float(cannon.get_instance_shader_parameter(
+			PlantDefense.BURN_OVERLAY_PARAMETER
+		)), PlantDefense.BURN_OVERLAY_ACTIVE_STRENGTH),
+		"建筑燃烧开始时，所有主体分层必须同步启用橙色燃烧着色。"
+	)
+	burn_scheduler.call("_advance_active_burns", 0.21)
+	_expect(
+		is_zero_approx(float(body.get_instance_shader_parameter(
+			PlantDefense.BURN_OVERLAY_PARAMETER
+		)))
+		and is_zero_approx(float(cannon.get_instance_shader_parameter(
+			PlantDefense.BURN_OVERLAY_PARAMETER
+		))),
+		"最后一个燃烧来源自然到期后，建筑燃烧着色必须同步关闭。"
+	)
+
+	var health_before_bleed := plant.current_health
+	var raw_bleed_damage := plant.get_effective_physical_defense() + 7
+	_expect(
+		plant.apply_bleed_status(
+			&"plant_bleed_visual_test",
+			0.8,
+			raw_bleed_damage,
+			0.5
+		)
+		and plant.has_damage_over_time_status(
+			&"bleed",
+			&"plant_bleed_visual_test"
+		)
+		and is_equal_approx(float(body.get_instance_shader_parameter(
+			PlantDefense.BLEED_OVERLAY_PARAMETER
+		)), PlantDefense.BLEED_OVERLAY_ACTIVE_STRENGTH)
+		and is_equal_approx(float(cannon.get_instance_shader_parameter(
+			PlantDefense.BLEED_OVERLAY_PARAMETER
+		)), PlantDefense.BLEED_OVERLAY_ACTIVE_STRENGTH),
+		"建筑真实流血状态必须同步覆盖全部主体分层。"
+	)
+	bleed_scheduler.call("_advance_active_statuses", 0.51)
+	_expect(
+		plant.current_health == health_before_bleed - 7,
+		"建筑流血每跳必须按当前物理防御结算物理伤害。"
+	)
+	_expect(
+		not plant.set_damage_status_visual_active(&"cold", true)
+		and not plant.set_damage_status_visual_active(&"slow", true)
+		and not plant.set_damage_status_visual_active(&"haste", true),
+		"静态建筑必须明确拒绝寒冷、减速与加速等移动类视觉。"
+	)
+	bleed_scheduler.call("_advance_active_statuses", 0.30)
+	_expect(
+		not plant.has_damage_over_time_status(&"bleed")
+		and
+		is_zero_approx(float(body.get_instance_shader_parameter(
+			PlantDefense.BLEED_OVERLAY_PARAMETER
+		)))
+		and is_zero_approx(float(cannon.get_instance_shader_parameter(
+			PlantDefense.BLEED_OVERLAY_PARAMETER
+		))),
+		"建筑最后一个流血来源自然到期后不得残留红色描边。"
+	)
+
+	plant.begin_removal(PlantDefense.RemovalMode.SILENT)
+	burn_scheduler.call("clear_all")
+	bleed_scheduler.call("clear_all")
 	await process_frame
 
 

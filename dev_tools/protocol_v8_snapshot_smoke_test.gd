@@ -120,7 +120,7 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 18, "Protocol must be v18.")
+	_expect(NetConstants.PROTOCOL_VERSION == 19, "Protocol must be v19.")
 	_expect(NetConstants.CHANNEL_COUNT == 8, "ENet must provision eight channels.")
 	_expect(NetConstants.MAX_PLAYERS == 8, "Protocol capacity must accept an eight-player roster.")
 	_expect(
@@ -132,7 +132,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v18 channel assignments must remain stable."
+		"Protocol v19 channel assignments must remain stable."
 	)
 func _test_terrain_delta_revision_repair_contract() -> void:
 	var mp_game := TerrainRepairMpGame.new()
@@ -1249,7 +1249,7 @@ func _test_enemy_codec_reuse_and_packet_budget() -> void:
 	var keyframe := sender.encode_enemy_snapshots_for_peer(8, states, true)
 	_expect(
 		keyframe.size() == 1122,
-		"A v18 56-enemy keyframe must use 1122 bytes and stay within the 1200-byte budget."
+		"A v19 56-enemy keyframe must use 1122 bytes and stay within the 1200-byte budget."
 	)
 	var decoded_keyframe := receiver.decode_enemy_snapshots_with_baseline(keyframe)
 	_expect(decoded_keyframe.size() == 56, "The complete 56-enemy keyframe must decode.")

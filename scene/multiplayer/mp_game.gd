@@ -162,7 +162,7 @@ const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
-## 协议 v18 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
+## 协议 v19 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
 ## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
 const SHARED_SNAPSHOT_COHORT_ID := -1
 const ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES := 56
@@ -2556,6 +2556,9 @@ func _setup_game(mode: int) -> bool:
 			_on_host_plant_placement_rejected
 		)
 		game.multiplayer_plant_health_changed.connect(_on_host_plant_health_changed)
+		game.multiplayer_plant_damage_status_changed.connect(
+			_on_host_plant_damage_status_changed
+		)
 		game.multiplayer_plant_damage_applied.connect(_on_host_plant_damage_applied)
 		game.multiplayer_plant_healing_applied.connect(_on_host_plant_healing_applied)
 		game.multiplayer_plant_removed.connect(_on_host_plant_removed)
@@ -7214,17 +7217,51 @@ func request_multiplayer_player_burn_tick(
 	player_peer_id: int,
 	source_family: StringName
 ) -> bool:
+	var trusted_family := _get_enemy_burn_family(source_family)
+	var trusted_burn_level := _get_enemy_burn_level(trusted_family)
+	if trusted_family == &"" or trusted_burn_level <= 0:
+		return false
+	return request_multiplayer_player_damage_over_time_tick(
+		player_peer_id,
+		&"burn",
+		trusted_family,
+		trusted_burn_level
+	)
+
+
+## Host-only sink used by authoritative Player status schedulers. This is a
+## local method, not an RPC: clients cannot submit arbitrary periodic damage.
+func request_multiplayer_player_damage_over_time_tick(
+	player_peer_id: int,
+	status_id: StringName,
+	source_family: StringName,
+	tick_damage: int
+) -> bool:
 	if (
 		net_manager == null
 		or not net_manager.is_host()
 		or game == null
 		or player_peer_id <= 0
+		or source_family == &""
+		or tick_damage <= 0
 	):
 		return false
-	var trusted_family := _get_enemy_burn_family(source_family)
-	var trusted_burn_level := _get_enemy_burn_level(trusted_family)
-	if trusted_family == &"" or trusted_burn_level <= 0:
-		return false
+	var damage_type := EnemyConfig.DamageType.PHYSICAL
+	match status_id:
+		&"burn":
+			var trusted_family := _get_enemy_burn_family(source_family)
+			var trusted_burn_level := _get_enemy_burn_level(trusted_family)
+			if (
+				trusted_family == &""
+				or trusted_burn_level <= 0
+				or tick_damage != trusted_burn_level
+			):
+				return false
+			damage_type = EnemyConfig.DamageType.MAGIC
+		&"bleed":
+			damage_type = EnemyConfig.DamageType.PHYSICAL
+		_:
+			return false
 	var player_node := game.get_player_for_peer(player_peer_id)
 	if (
 		player_node == null
@@ -7233,8 +7270,8 @@ func request_multiplayer_player_burn_tick(
 	):
 		return false
 	if not player_node.apply_periodic_damage(
-		trusted_burn_level,
-		EnemyConfig.DamageType.MAGIC
+		tick_damage,
+		damage_type
 	):
 		return false
 
@@ -7244,7 +7281,7 @@ func request_multiplayer_player_burn_tick(
 		player_node,
 		confirmed_damage,
 		Vector2.ZERO,
-		EnemyConfig.DamageType.MAGIC
+		damage_type
 	)
 	if confirmed_dead and _is_valid_tiyi_player(player_node):
 		_clear_projectiles_for_peer(player_peer_id)
@@ -7259,7 +7296,7 @@ func request_multiplayer_player_burn_tick(
 		health_revision,
 		confirmed_damage,
 		Vector2.ZERO,
-		int(EnemyConfig.DamageType.MAGIC),
+		int(damage_type),
 		false,
 	]
 	_rpc_to_connected_clients(
@@ -7273,7 +7310,7 @@ func request_multiplayer_player_burn_tick(
 		health_revision,
 		confirmed_damage,
 		Vector2.ZERO,
-		int(EnemyConfig.DamageType.MAGIC),
+		int(damage_type),
 		false
 	)
 	return true
@@ -7682,7 +7719,7 @@ func net_player_healed(
 	player_node.queue_healing_number(confirmed_healing)
 
 
-# Legacy compatibility shells retained in protocol v18. Xirang orbs no longer exist, but keeping the
+# Legacy compatibility shells retained in protocol v19. Xirang orbs no longer exist, but keeping the
 # annotated signatures avoids a partial wire-protocol break until the next
 # coordinated protocol-version upgrade.
 @rpc("authority", "call_remote", "reliable", 5)
@@ -8467,6 +8504,24 @@ func _on_host_plant_health_changed(
 	_pending_plant_health_updates[net_id] = previous
 
 
+func _on_host_plant_damage_status_changed(
+	net_id: int,
+	status_mask: int,
+	status_revision: int
+) -> void:
+	if (
+		not is_inside_tree()
+		or not net_manager.is_host()
+		or net_id <= 0
+		or status_revision <= 0
+	):
+		return
+	_rpc_to_connected_clients(
+		&"net_plant_damage_status_changed",
+		[net_id, status_mask, status_revision]
+	)
+
+
 func _on_host_plant_damage_applied(
 	net_id: int,
 	applied_damage: int,
@@ -8578,7 +8633,10 @@ func _on_host_terrain_delta(
 func _export_plant_runtime_state(plant: PlantDefense) -> Dictionary:
 	if plant == null or not is_instance_valid(plant):
 		return {}
-	return plant.export_multiplayer_runtime_state().duplicate(true)
+	var runtime_state := plant.export_multiplayer_runtime_state().duplicate(true)
+	runtime_state["damage_status_mask"] = plant.get_damage_status_mask()
+	runtime_state["damage_status_revision"] = plant.damage_status_revision
+	return runtime_state
 
 
 func _apply_plant_runtime_state(
@@ -8589,6 +8647,14 @@ func _apply_plant_runtime_state(
 	if plant == null or not is_instance_valid(plant) or not is_finite(host_sample_time):
 		return
 	var corrected_state := runtime_state.duplicate(true)
+	if (
+		corrected_state.has("damage_status_mask")
+		and corrected_state.has("damage_status_revision")
+	):
+		plant.apply_remote_damage_status_mask(
+			int(corrected_state.get("damage_status_mask", 0)),
+			int(corrected_state.get("damage_status_revision", 0))
+		)
 	var mapped_sample_time := _map_host_timestamp_to_client_time(host_sample_time, false)
 	var sample_age := maxf(_get_net_time() - mapped_sample_time, 0.0)
 	if corrected_state.has("spread_elapsed_seconds"):
@@ -9828,6 +9894,20 @@ func net_plant_health_changed(
 		maximum_health,
 		health_revision
 	)
+
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_plant_damage_status_changed(
+	net_id: int,
+	status_mask: int,
+	status_revision: int
+) -> void:
+	if game == null or net_manager.is_host() or net_id <= 0:
+		return
+	var plant := game.get_multiplayer_plant_node(net_id)
+	if plant == null or not is_instance_valid(plant):
+		return
+	plant.apply_remote_damage_status_mask(status_mask, status_revision)
 
 
 @rpc("authority", "call_remote", "reliable", 5)

@@ -21,6 +21,8 @@ class BurnProbe:
 	var last_source_family := StringName()
 	var scheduler: Node = null
 	var clear_on_first_tick := false
+	var state_events: Array[bool] = []
+	var reapply_on_state_clear := false
 
 	func receive_burn_tick(
 		source_family: StringName,
@@ -32,6 +34,25 @@ class BurnProbe:
 		if clear_on_first_tick and tick_count == 1 and scheduler != null:
 			scheduler.call("clear_target", self)
 		return true
+
+	func receive_burn_state(active: bool) -> void:
+		state_events.append(active)
+		if (
+			active
+			or not reapply_on_state_clear
+			or scheduler == null
+		):
+			return
+		reapply_on_state_clear = false
+		scheduler.call(
+			"apply_burn",
+			self,
+			Callable(self, "receive_burn_tick"),
+			&"reentrant_burn",
+			1.0,
+			1,
+			Callable(self, "receive_burn_state")
+		)
 
 
 class LegacyBurnState:
@@ -62,6 +83,7 @@ func _run() -> void:
 	_test_mixed_due_cohort_keeps_scheduler_active()
 	_test_large_delta_catches_up_ticks()
 	_test_callback_clear_stops_catch_up()
+	_test_state_lifecycle_callbacks()
 	await _test_destroyed_target_is_reclaimed_without_callback()
 	_test_event_queue_ab_comparison()
 	_test_staggered_due_events_stay_sparse()
@@ -128,6 +150,79 @@ func _test_same_family_refreshes_without_stacking() -> void:
 		and target.tick_damage_total == 5
 		and target.last_source_family == NORMAL_BURN_FAMILY,
 		"Normal burn must tick once for level-5 damage after one second."
+	)
+
+
+func _test_state_lifecycle_callbacks() -> void:
+	scheduler.call("clear_all")
+	var target := BurnProbe.new()
+	target.scheduler = scheduler
+	var state_callback := Callable(target, "receive_burn_state")
+	_expect(
+		bool(scheduler.call(
+			"apply_burn",
+			target,
+			Callable(target, "receive_burn_tick"),
+			NORMAL_BURN_FAMILY,
+			0.2,
+			5,
+			state_callback
+		)),
+		"Burn state callback fixture must accept its first source."
+	)
+	scheduler.call(
+		"apply_burn",
+		target,
+		Callable(target, "receive_burn_tick"),
+		NORMAL_BURN_FAMILY,
+		0.2,
+		5,
+		state_callback
+	)
+	scheduler.call(
+		"apply_burn",
+		target,
+		Callable(target, "receive_burn_tick"),
+		ELITE_BURN_FAMILY,
+		0.4,
+		10,
+		state_callback
+	)
+	_expect(
+		target.state_events == [true],
+		"Burn refreshes and additional sources must not clear or restart an active visual."
+	)
+	scheduler.call("_advance_active_burns", 0.21)
+	_expect(
+		target.state_events == [true],
+		"One expired source must not clear the visual while another burn remains."
+	)
+	scheduler.call("_advance_active_burns", 0.20)
+	_expect(
+		target.state_events == [true, false],
+		"The final naturally expired burn source must clear the visual exactly once."
+	)
+
+	target.reapply_on_state_clear = true
+	scheduler.call(
+		"apply_burn",
+		target,
+		Callable(target, "receive_burn_tick"),
+		NORMAL_BURN_FAMILY,
+		1.0,
+		5,
+		state_callback
+	)
+	scheduler.call("clear_all")
+	_expect(
+		target.state_events == [true, false, true, false, true]
+		and bool(scheduler.call("has_burn", target)),
+		"A clear callback that reapplies burn must keep the replacement state and its active visual."
+	)
+	scheduler.call("clear_all")
+	_expect(
+		target.state_events == [true, false, true, false, true, false],
+		"Clearing the replacement burn must emit one final inactive state."
 	)
 
 

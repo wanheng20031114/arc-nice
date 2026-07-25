@@ -145,8 +145,9 @@ func _run() -> void:
 
 	_test_config_and_registration_contract()
 	await _test_native_128_to_32_and_particle_contract()
+	await _test_ground_dew_night_self_emission()
 	await _test_two_stage_launch_visual()
-	await _test_target_cache_and_lowest_current_health_priority()
+	await _test_target_cache_and_injured_first_health_priority()
 	await _test_three_second_visual_and_five_second_effect_timeline()
 	await _test_proxy_target_position_sync_and_deduplication()
 	await _test_one_authoritative_rain_tick()
@@ -236,12 +237,26 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 	var ground_material := (
 		tower.ground_dew_rise.process_material as ParticleProcessMaterial
 	)
+	var ground_draw_material := (
+		tower.ground_dew_rise.material as ShaderMaterial
+	)
+	var ground_texture := tower.ground_dew_rise.texture as GradientTexture2D
 	var fall_distance := float(tower.call("_get_target_rain_fall_distance"))
 	var fixed_fall_speed := fall_distance / tower.target_rain_drops.lifetime
+	var target_drop_rate := (
+		float(tower.target_rain_drops.amount) / tower.target_rain_drops.lifetime
+	)
+	var visible_ripple_ratio := float(
+		ripple_draw_material.get_shader_parameter(&"visible_ratio")
+	)
+	var ground_mote_rate := (
+		float(tower.ground_dew_rise.amount) / tower.ground_dew_rise.lifetime
+	)
 	var minimum_ripple_capacity := ceili(
 		float(tower.target_rain_drops.amount)
 		/ tower.target_rain_drops.lifetime
 		* tower.target_rain_ripples.lifetime
+		* target_rain_material.sub_emitter_amount_at_end
 	)
 	_expect(
 		main_sprite.texture != null
@@ -304,6 +319,7 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 		and target_rain_texture.width == 1
 		and target_rain_texture.height == 8
 		and tower.target_rain_drops.amount == 144
+		and target_drop_rate > 300.0
 		and is_equal_approx(tower.target_rain_drops.lifetime, 0.44)
 		and is_zero_approx(tower.target_rain_drops.randomness)
 		and not tower.target_rain_drops.local_coords
@@ -341,31 +357,78 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 		and ripple_material.gravity == Vector3.ZERO
 		and is_zero_approx(ripple_material.initial_velocity_min)
 		and is_zero_approx(ripple_material.initial_velocity_max)
+		and is_equal_approx(ripple_material.scale_min, 0.7)
+		and is_equal_approx(ripple_material.scale_max, 1.0)
+		and is_zero_approx(ripple_material.anim_offset_min)
+		and is_equal_approx(ripple_material.anim_offset_max, 1.0)
 		and ripple_material.color_initial_ramp != null
 		and ripple_material.color_ramp != null
 		and ripple_texture != null
-		and ripple_texture.get_size() == Vector2(24.0, 24.0)
+		and ripple_texture.get_size() == Vector2(8.0, 8.0)
+		and ripple_texture.width * ripple_material.scale_max <= 8.0
 		and ripple_draw_material != null
 		and ripple_draw_material.shader != null
+		and ripple_draw_material.shader.code.contains("blend_mix")
+		and not ripple_draw_material.shader.code.contains("blend_add")
 		and ripple_draw_material.shader.code.contains("INSTANCE_CUSTOM.y")
+		and ripple_draw_material.shader.code.contains("INSTANCE_CUSTOM.z")
+		and ripple_draw_material.shader.code.contains("visible_ratio")
 		and ripple_draw_material.shader.code.contains("length(centered)")
 		and ripple_draw_material.shader.code.contains("ring_radius")
 		and ripple_draw_material.shader.code.contains("fade_out")
+		and is_equal_approx(visible_ripple_ratio, 0.16)
+		and target_drop_rate * visible_ripple_ratio < 60.0
 		and not tower.target_rain_ripples.emitting
 		and not tower.target_rain_ripples.one_shot
 		and not tower.target_rain_ripples.local_coords
 		and tower.target_rain_ripples.use_fixed_seed
 		and tower.target_rain_ripples.amount >= minimum_ripple_capacity
+		and tower.target_rain_ripples.amount <= minimum_ripple_capacity + 24
 		and ground_material != null
 		and ground_material.color_initial_ramp != null
 		and ground_material.color_ramp != null
+		and tower.ground_dew_rise is NightSelfEmissionParticles2D
+		and ground_draw_material != null
+		and ground_draw_material.shader != null
+		and ground_draw_material.shader.code.contains("blend_mix")
+		and ground_draw_material.shader.code.contains("unshaded")
+		and not ground_draw_material.shader.code.contains("blend_add")
+		and ground_draw_material.shader.code.contains("night_factor")
+		and ground_draw_material.shader.code.contains("environment_tint")
+		and ground_draw_material.shader.code.contains("vec4 source = COLOR")
+		and ground_draw_material.shader.code.contains("source.a")
 		and is_equal_approx(
-			ground_material.emission_sphere_radius,
+			float(ground_draw_material.get_shader_parameter(
+				&"night_emission_strength"
+			)),
+			1.45
+		)
+		and is_zero_approx(float(
+			tower.ground_dew_rise.get_instance_shader_parameter(
+				&"night_factor"
+			)
+		))
+		and ground_texture != null
+		and ground_texture.get_size() == Vector2(1.0, 3.0)
+		and ground_material.emission_shape
+		== ParticleProcessMaterial.EMISSION_SHAPE_RING
+		and ground_material.emission_ring_axis == Vector3(0.0, 0.0, 1.0)
+		and is_zero_approx(ground_material.emission_ring_height)
+		and is_zero_approx(ground_material.emission_ring_inner_radius)
+		and is_equal_approx(
+			ground_material.emission_ring_radius,
 			EXPECTED_RAIN_RADIUS
 		)
-		and tower.ground_dew_rise.amount == 84
+		and is_equal_approx(ground_material.initial_velocity_min, 10.0)
+		and is_equal_approx(ground_material.initial_velocity_max, 20.0)
+		and ground_material.gravity == Vector3(0.0, 4.0, 0.0)
+		and is_equal_approx(ground_material.scale_min, 0.9)
+		and is_equal_approx(ground_material.scale_max, 1.15)
+		and tower.ground_dew_rise.amount == 96
+		and is_equal_approx(tower.ground_dew_rise.lifetime, 1.0)
+		and ground_mote_rate > 90.0
 		and not tower.ground_dew_rise.one_shot,
-		"目标雨必须以圆盘随机落点反推起点、固定速度垂直落地，并逐滴触发容量充足的彩色圆形波纹。"
+		"目标雨必须低频触发像素级细波纹，同时以更清晰的彩色微粒持续表现地面作用范围。"
 	)
 	var rain_material := tower.rain_field.material as ShaderMaterial
 	_expect(
@@ -463,6 +526,65 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 	await process_frame
 
 
+func _test_ground_dew_night_self_emission() -> void:
+	var controller := DayNightController.new()
+	controller.name = "DayNightController"
+	fixture.add_child(controller)
+	var tower := _make_tower(HYDRANGEA_CONFIG)
+	await process_frame
+	await process_frame
+	var ground_particles := (
+		tower.ground_dew_rise as NightSelfEmissionParticles2D
+	)
+	tower.call("_prepare_ground_dew_rise_for_emission")
+	controller.set_night_factor_immediate(0.0)
+	_expect(
+		ground_particles.emitting
+		and is_zero_approx(float(
+			ground_particles.get_instance_shader_parameter(&"night_factor")
+		))
+		and (
+			ground_particles.get_instance_shader_parameter(
+				&"environment_tint"
+			) as Color
+		).is_equal_approx(Color.WHITE),
+		"白天的地面水珠必须保持普通粒子表现，不得残留自发光增益。"
+	)
+	controller.set_night_factor_immediate(0.5)
+	_expect(
+		is_equal_approx(float(
+			ground_particles.get_instance_shader_parameter(&"night_factor")
+		), 0.5)
+		and (
+			ground_particles.get_instance_shader_parameter(
+				&"environment_tint"
+			) as Color
+		).is_equal_approx(controller.color),
+		"昼夜过渡期间地面水珠的自发光必须随连续夜间因子平滑变化。"
+	)
+	controller.set_night_factor_immediate(1.0)
+	_expect(
+		is_equal_approx(float(
+			ground_particles.get_instance_shader_parameter(&"night_factor")
+		), 1.0)
+		and ground_particles.emitting,
+		"夜晚地面水珠必须保持发射，并启用完整的粒子自身发光。"
+	)
+	controller.set_night_factor_immediate(0.0)
+	_expect(
+		is_zero_approx(float(
+			ground_particles.get_instance_shader_parameter(&"night_factor")
+		))
+		and ground_particles.emitting,
+		"切回白天后必须立即清除夜间增益，同时保留正常地面粒子。"
+	)
+	tower.call("_hide_rain_visual_immediate")
+	tower.queue_free()
+	controller.queue_free()
+	await process_frame
+	await process_frame
+
+
 func _test_two_stage_launch_visual() -> void:
 	var tower := _make_tower(HYDRANGEA_CONFIG)
 	var launch_material := (
@@ -505,7 +627,12 @@ func _test_two_stage_launch_visual() -> void:
 		and tower.dew_burst.global_position == first_source_position,
 		"约三分之一秒后目标竖直雨必须启动；地面氛围要等首批雨滴真正到达。"
 	)
-	await create_timer(0.4, true, false, false).timeout
+	await create_timer(
+		tower.target_rain_drops.lifetime + 0.08,
+		true,
+		false,
+		false
+	).timeout
 	await process_frame
 	_expect(
 		tower.target_rain_drops.emitting
@@ -558,12 +685,13 @@ func _test_two_stage_launch_visual() -> void:
 	await process_frame
 
 
-func _test_target_cache_and_lowest_current_health_priority() -> void:
+func _test_target_cache_and_injured_first_health_priority() -> void:
 	var tower := _make_tower(HYDRANGEA_CONFIG)
 	var target_a := _make_tower(HYDRANGEA_CONFIG)
 	var target_b := _make_tower(HYDRANGEA_CONFIG)
 	var target_c := _make_tower(HYDRANGEA_CONFIG)
 	target_a.current_health = 240
+	target_b.max_health = 80
 	target_b.current_health = 80
 	target_c.current_health = 160
 	var fake_system := TargetCachePlantSystem.new()
@@ -580,9 +708,9 @@ func _test_target_cache_and_lowest_current_health_priority() -> void:
 			fake_system.last_radius_cells,
 			EXPECTED_TARGET_RADIUS_CELLS
 		)
-		and first_selection == target_b
-		and repeated_selection == target_b,
-		"目标名单必须只初始化查询一次，并按12格内最低当前生命值选择建筑。"
+		and first_selection == target_c
+		and repeated_selection == target_c,
+		"目标名单必须只初始化查询一次；12格内受伤建筑必须优先于当前生命值更低的满血建筑。"
 	)
 
 	target_a.current_health = 40
@@ -593,6 +721,16 @@ func _test_target_cache_and_lowest_current_health_priority() -> void:
 		live_health_selection == target_a
 		and fake_system.logical_query_call_count == 1,
 		"生命值优先级必须在施法时读取实时值，不能为此重扫建筑名单。"
+	)
+	target_a.current_health = target_a.max_health
+	target_c.current_health = target_c.max_health
+	var all_full_selection := (
+		tower.call("_select_lowest_health_target") as PlantDefense
+	)
+	_expect(
+		all_full_selection == target_b
+		and fake_system.logical_query_call_count == 1,
+		"所有候选均满血时仍应按最低当前生命值选择，并保持缓存不重扫。"
 	)
 	fake_system.plant_placed.emit(target_c)
 	fake_system.plant_removed.emit(target_c)

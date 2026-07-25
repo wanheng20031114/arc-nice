@@ -1,4 +1,4 @@
-[gd_scene load_steps=35 format=3]
+[gd_scene load_steps=40 format=3]
 
 [ext_resource type="Script" path="res://scene/plant_defense/hydrangea_rain_tower.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/plant_defense/hydrangea_rain_tower/idle.png" id="2_idle"]
@@ -9,6 +9,8 @@
 [ext_resource type="Texture2D" path="res://resources/lighting/soft_micro_point_light.tres" id="7_core_texture"]
 [ext_resource type="Shader" path="res://resources/shader/hydrangea_rain_field.gdshader" id="8_rain_shader"]
 [ext_resource type="Shader" path="res://resources/shader/hydrangea_rain_ripple.gdshader" id="9_ripple_shader"]
+[ext_resource type="Shader" path="res://resources/shader/night_self_emission_particle.gdshader" id="10_ground_emission_shader"]
+[ext_resource type="Script" path="res://scene/lighting/night_self_emission_particles_2d.gd" id="11_ground_emission_script"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_idle_upper"]
 atlas = ExtResource("2_idle")
@@ -30,13 +32,31 @@ colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 1)
 
 [sub_resource type="GradientTexture2D" id="GradientTexture2D_ripple"]
 gradient = SubResource("Gradient_ripple_texture")
-width = 24
-height = 24
+width = 8
+height = 8
 fill_from = Vector2(0, 0)
 fill_to = Vector2(1, 1)
 
+[sub_resource type="Gradient" id="Gradient_ground_mote_texture"]
+offsets = PackedFloat32Array(0, 0.28, 0.72, 1)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 0.82, 1, 1, 1, 0.46, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_ground_mote"]
+gradient = SubResource("Gradient_ground_mote_texture")
+width = 1
+height = 3
+fill_from = Vector2(0.5, 0)
+fill_to = Vector2(0.5, 1)
+
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_ripple"]
 shader = ExtResource("9_ripple_shader")
+shader_parameter/visible_ratio = 0.16
+shader_parameter/ripple_opacity = 0.52
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_ground_emission"]
+shader = ExtResource("10_ground_emission_shader")
+shader_parameter/night_emission_strength = 1.45
+shader_parameter/night_emission_tint = Color(0.82, 0.72, 1, 1)
 
 [sub_resource type="Gradient" id="Gradient_dew_colors"]
 offsets = PackedFloat32Array(0, 0.32, 0.66, 1)
@@ -105,7 +125,7 @@ sub_emitter_keep_velocity = false
 
 [sub_resource type="Gradient" id="Gradient_ripple_alpha"]
 offsets = PackedFloat32Array(0, 0.48, 0.82, 1)
-colors = PackedColorArray(1, 1, 1, 0.94, 1, 1, 1, 0.82, 1, 1, 1, 0.36, 1, 1, 1, 0)
+colors = PackedColorArray(1, 1, 1, 0.72, 1, 1, 1, 0.58, 1, 1, 1, 0.2, 1, 1, 1, 0)
 
 [sub_resource type="GradientTexture1D" id="GradientTexture_ripple_alpha"]
 gradient = SubResource("Gradient_ripple_alpha")
@@ -114,23 +134,29 @@ gradient = SubResource("Gradient_ripple_alpha")
 resource_local_to_scene = true
 particle_flag_disable_z = true
 gravity = Vector3(0, 0, 0)
-scale_min = 0.65
-scale_max = 1.1
+scale_min = 0.7
+scale_max = 1.0
+anim_offset_min = 0.0
+anim_offset_max = 1.0
 color_initial_ramp = SubResource("GradientTexture_dew_colors")
 color_ramp = SubResource("GradientTexture_ripple_alpha")
 
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_ground_dew"]
 resource_local_to_scene = true
 particle_flag_disable_z = true
-emission_shape = 1
-emission_sphere_radius = 48.0
+emission_shape = 6
+emission_ring_axis = Vector3(0, 0, 1)
+emission_ring_height = 0.0
+emission_ring_radius = 48.0
+emission_ring_inner_radius = 0.0
+emission_ring_cone_angle = 90.0
 direction = Vector3(0, -1, 0)
-spread = 28.0
-initial_velocity_min = 9.0
-initial_velocity_max = 18.0
-gravity = Vector3(0, 5, 0)
-scale_min = 0.65
-scale_max = 1.25
+spread = 24.0
+initial_velocity_min = 10.0
+initial_velocity_max = 20.0
+gravity = Vector3(0, 4, 0)
+scale_min = 0.9
+scale_max = 1.15
 color_initial_ramp = SubResource("GradientTexture_dew_colors")
 color_ramp = SubResource("GradientTexture_particle_alpha")
 
@@ -303,8 +329,8 @@ z_index = 6
 texture_filter = 1
 material = SubResource("ShaderMaterial_ripple")
 emitting = false
-amount = 224
-lifetime = 0.56
+amount = 112
+lifetime = 0.28
 local_coords = false
 fixed_fps = 60
 interpolate = true
@@ -333,12 +359,15 @@ process_material = SubResource("ParticleProcessMaterial_target_rain")
 [node name="GroundDewRise" type="GPUParticles2D" parent="."]
 z_index = 6
 texture_filter = 1
+material = SubResource("ShaderMaterial_ground_emission")
 emitting = false
-amount = 84
+amount = 96
 lifetime = 1.0
-randomness = 0.42
+randomness = 0.35
 visibility_rect = Rect2(-58, -62, 116, 124)
+texture = SubResource("GradientTexture2D_ground_mote")
 process_material = SubResource("ParticleProcessMaterial_ground_dew")
+script = ExtResource("11_ground_emission_script")
 
 [node name="BloomAnimationPlayer" type="AnimationPlayer" parent="."]
 libraries = {

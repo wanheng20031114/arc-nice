@@ -430,6 +430,12 @@ func _test_semantic_layers_and_z_order(mortar: BambooMortar) -> void:
 			"uniform vec4 lifecycle_state"
 		)
 		and split_shader_source.contains(
+			"uniform vec2 damage_status_strength"
+		)
+		and split_shader_source.contains("burn_overlay_color")
+		and split_shader_source.contains("bleed_overlay_color")
+		and not split_shader_source.contains("slow_overlay_strength")
+		and split_shader_source.contains(
 			"noise_x_index / NOISE_X_DENOMINATOR"
 		)
 		and split_shader_source.contains(
@@ -614,6 +620,54 @@ func _test_semantic_layers_and_z_order(mortar: BambooMortar) -> void:
 			) as Vector4
 		).is_equal_approx(Vector4(1.0, 0.0, -1.0, 0.0)),
 		"生命周期结束后上下层必须恢复只读共享材质，且不得污染其默认状态。"
+	)
+
+	_expect(
+		mortar.set_damage_status_visual_active(&"burn", true),
+		"竹筒迫击炮必须接受燃烧主体着色。"
+	)
+	var burn_status_material := mortar.lower_body.material as ShaderMaterial
+	var burn_status_strength := (
+		burn_status_material.get_shader_parameter(
+			&"damage_status_strength"
+		) as Vector2
+	)
+	mortar.call("_release_transition_lifecycle_material")
+	_expect(
+		burn_status_material != SPLIT_LIFECYCLE_MATERIAL
+		and mortar.main_sprite.material == burn_status_material
+		and is_equal_approx(
+			burn_status_strength.x,
+			PlantDefense.BURN_OVERLAY_ACTIVE_STRENGTH
+		),
+		"迫击炮燃烧期间必须保留实例独立材质，构建结束释放路径不得清掉状态。"
+	)
+	mortar.set_damage_status_visual_active(&"bleed", true)
+	mortar.set_damage_status_visual_active(&"burn", false)
+	var bleed_status_strength := (
+		burn_status_material.get_shader_parameter(
+			&"damage_status_strength"
+		) as Vector2
+	)
+	_expect(
+		is_zero_approx(bleed_status_strength.x)
+		and is_equal_approx(
+			bleed_status_strength.y,
+			PlantDefense.BLEED_OVERLAY_ACTIVE_STRENGTH
+		)
+		and not mortar.set_damage_status_visual_active(&"cold", true),
+		"迫击炮必须可从燃烧切换到流血着色，同时拒绝寒冷移动视觉。"
+	)
+	mortar.set_damage_status_visual_active(&"bleed", false)
+	_expect(
+		mortar.lower_body.material == SPLIT_LIFECYCLE_MATERIAL
+		and mortar.main_sprite.material == SPLIT_LIFECYCLE_MATERIAL
+		and (
+			SPLIT_LIFECYCLE_MATERIAL.get_shader_parameter(
+				&"damage_status_strength"
+			) as Vector2
+		).is_zero_approx(),
+		"迫击炮伤害状态结束后必须恢复共享零状态材质，不得污染其他实例。"
 	)
 
 	var source_names := PackedStringArray([

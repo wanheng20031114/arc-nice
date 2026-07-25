@@ -8,6 +8,7 @@ enum RemovalMode {
 
 signal health_changed(current_health: int, maximum_health: int)
 signal authoritative_health_changed(current_health: int, maximum_health: int, revision: int)
+signal authoritative_damage_status_changed(status_mask: int, revision: int)
 signal damage_applied(
 	applied_damage: int,
 	impact_direction: Vector2,
@@ -23,6 +24,19 @@ const CONSTRUCTION_DURATION_SECONDS: float = 0.7
 const REMOVAL_DURATION_SECONDS: float = 0.7
 const BUILDING_INTERACTION_GROUP := &"plant_building_interaction"
 const BURN_STATUS_SCHEDULER_PATH := NodePath("/root/BurnStatusScheduler")
+const BLEED_STATUS_SCHEDULER_PATH := NodePath("/root/BleedStatusScheduler")
+const BURN_STATUS_VISUAL_ID := &"burn"
+const BLEED_STATUS_VISUAL_ID := &"bleed"
+const BURN_OVERLAY_PARAMETER := &"burn_overlay_strength"
+const BLEED_OVERLAY_PARAMETER := &"bleed_overlay_strength"
+const BURN_OVERLAY_ACTIVE_STRENGTH := 0.26
+const BLEED_OVERLAY_ACTIVE_STRENGTH := 0.42
+const DEFAULT_BLEED_TICK_INTERVAL_SECONDS := 0.5
+const BURN_DAMAGE_STATUS_MASK := 1
+const BLEED_DAMAGE_STATUS_MASK := 2
+const VALID_DAMAGE_STATUS_MASK := (
+	BURN_DAMAGE_STATUS_MASK | BLEED_DAMAGE_STATUS_MASK
+)
 
 @export_range(0.0, 12.0, 0.5, "or_greater") var enemy_approach_depth: float = 3.0
 
@@ -43,11 +57,15 @@ var global_physical_defense_bonus: int = 0
 var is_dead: bool = false
 var is_multiplayer_proxy: bool = false
 var health_revision: int = 0
+var damage_status_mask: int = 0
+var damage_status_revision: int = 0
 var is_operational: bool = false
 var is_removing: bool = false
 var removal_mode: RemovalMode = RemovalMode.SILENT
 
 var _lifecycle_visuals: Array[CanvasItem] = []
+var _burn_overlay_strength := 0.0
+var _bleed_overlay_strength := 0.0
 var _construction_tween: Tween = null
 var _removal_tween: Tween = null
 var _construction_progress: float = 1.0
@@ -64,6 +82,10 @@ func _ready() -> void:
 	add_to_group(&"plant_defense")
 
 
+func _exit_tree() -> void:
+	clear_damage_over_time_statuses()
+
+
 func setup(
 	new_config: PlantDefenseConfig,
 	new_owner_player: Player,
@@ -77,7 +99,9 @@ func setup(
 	if new_config == null or not new_config.is_valid():
 		push_error("PlantDefense setup requires a valid config.")
 		return
-	clear_burn_status()
+	clear_damage_over_time_statuses()
+	damage_status_mask = 0
+	damage_status_revision = 0
 
 	config = new_config
 	owner_player = new_owner_player
@@ -158,16 +182,207 @@ func apply_burn_status(
 		Callable(self, "_receive_incoming_burn_tick"),
 		source_family,
 		duration,
-		tick_damage
+		tick_damage,
+		Callable(self, "_on_burn_status_active_changed")
 	))
 
 
 func clear_burn_status() -> void:
-	if not is_inside_tree():
+	if is_inside_tree():
+		var scheduler := get_node_or_null(BURN_STATUS_SCHEDULER_PATH)
+		if scheduler != null:
+			scheduler.call("clear_target", self)
+	_set_damage_status_active(BURN_STATUS_VISUAL_ID, false)
+
+
+func apply_bleed_status(
+	source_family: StringName,
+	duration: float,
+	tick_damage: int,
+	tick_interval: float = DEFAULT_BLEED_TICK_INTERVAL_SECONDS
+) -> bool:
+	if (
+		is_multiplayer_proxy
+		or is_dead
+		or is_removing
+		or not is_inside_tree()
+		or source_family == &""
+		or duration <= 0.0
+		or tick_damage <= 0
+		or tick_interval <= 0.0
+	):
+		return false
+	var scheduler := get_node_or_null(BLEED_STATUS_SCHEDULER_PATH)
+	if scheduler == null:
+		push_error("BleedStatusScheduler autoload is missing.")
+		return false
+	return bool(scheduler.call(
+		"apply_bleed",
+		self,
+		Callable(self, "_receive_incoming_bleed_tick"),
+		source_family,
+		duration,
+		tick_damage,
+		tick_interval,
+		Callable(self, "_on_bleed_status_active_changed")
+	))
+
+
+func clear_bleed_status() -> void:
+	if is_inside_tree():
+		var scheduler := get_node_or_null(BLEED_STATUS_SCHEDULER_PATH)
+		if scheduler != null:
+			scheduler.call("clear_target", self)
+	_set_damage_status_active(BLEED_STATUS_VISUAL_ID, false)
+
+
+func has_damage_over_time_status(
+	status_id: StringName,
+	source_family: StringName = &""
+) -> bool:
+	var scheduler_path := NodePath()
+	match status_id:
+		BURN_STATUS_VISUAL_ID:
+			scheduler_path = BURN_STATUS_SCHEDULER_PATH
+		BLEED_STATUS_VISUAL_ID:
+			scheduler_path = BLEED_STATUS_SCHEDULER_PATH
+		_:
+			return false
+	var scheduler := get_node_or_null(scheduler_path)
+	return (
+		scheduler != null
+		and bool(scheduler.call("has_status", self, source_family))
+	)
+
+
+func clear_damage_over_time_status(status_id: StringName) -> bool:
+	match status_id:
+		BURN_STATUS_VISUAL_ID:
+			clear_burn_status()
+			return true
+		BLEED_STATUS_VISUAL_ID:
+			clear_bleed_status()
+			return true
+		_:
+			return false
+
+
+func clear_damage_over_time_statuses() -> void:
+	clear_burn_status()
+	clear_bleed_status()
+
+
+func get_damage_status_mask() -> int:
+	return damage_status_mask & VALID_DAMAGE_STATUS_MASK
+
+
+func apply_remote_damage_status_mask(
+	status_mask: int,
+	revision: int
+) -> bool:
+	if (
+		not is_multiplayer_proxy
+		or is_removing
+		or revision <= damage_status_revision
+	):
+		return false
+	damage_status_revision = revision
+	damage_status_mask = status_mask & VALID_DAMAGE_STATUS_MASK
+	_apply_damage_status_mask_visuals()
+	return true
+
+
+func _set_damage_status_active(
+	status_id: StringName,
+	active: bool
+) -> void:
+	var status_bit := 0
+	match status_id:
+		BURN_STATUS_VISUAL_ID:
+			status_bit = BURN_DAMAGE_STATUS_MASK
+		BLEED_STATUS_VISUAL_ID:
+			status_bit = BLEED_DAMAGE_STATUS_MASK
+		_:
+			return
+	var next_mask := (
+		damage_status_mask | status_bit
+		if active
+		else damage_status_mask & ~status_bit
+	) & VALID_DAMAGE_STATUS_MASK
+	if next_mask == damage_status_mask:
+		_apply_damage_status_mask_visuals()
 		return
-	var scheduler := get_node_or_null(BURN_STATUS_SCHEDULER_PATH)
-	if scheduler != null:
-		scheduler.call("clear_target", self)
+	damage_status_mask = next_mask
+	_apply_damage_status_mask_visuals()
+	if is_multiplayer_proxy:
+		return
+	damage_status_revision += 1
+	authoritative_damage_status_changed.emit(
+		damage_status_mask,
+		damage_status_revision
+	)
+
+
+func _apply_damage_status_mask_visuals() -> void:
+	set_damage_status_visual_active(
+		BURN_STATUS_VISUAL_ID,
+		(damage_status_mask & BURN_DAMAGE_STATUS_MASK) != 0
+	)
+	set_damage_status_visual_active(
+		BLEED_STATUS_VISUAL_ID,
+		(damage_status_mask & BLEED_DAMAGE_STATUS_MASK) != 0
+	)
+
+
+## Rendering-only sink for scheduler callbacks and future replicated masks.
+## Gameplay code must use apply_burn_status/apply_bleed_status instead. Building
+## sprites deliberately reject cold, slow and haste because they never move.
+func set_damage_status_visual_active(
+	status_id: StringName,
+	active: bool
+) -> bool:
+	match status_id:
+		BURN_STATUS_VISUAL_ID:
+			_set_damage_status_overlay_strength(
+				BURN_OVERLAY_PARAMETER,
+				BURN_OVERLAY_ACTIVE_STRENGTH if active else 0.0
+			)
+			return true
+		BLEED_STATUS_VISUAL_ID:
+			_set_damage_status_overlay_strength(
+				BLEED_OVERLAY_PARAMETER,
+				BLEED_OVERLAY_ACTIVE_STRENGTH if active else 0.0
+			)
+			return true
+		_:
+			return false
+
+
+func _on_burn_status_active_changed(active: bool) -> void:
+	_set_damage_status_active(BURN_STATUS_VISUAL_ID, active)
+
+
+func _on_bleed_status_active_changed(active: bool) -> void:
+	_set_damage_status_active(BLEED_STATUS_VISUAL_ID, active)
+
+
+func _set_damage_status_overlay_strength(
+	parameter_name: StringName,
+	strength: float
+) -> void:
+	var safe_strength := clampf(strength, 0.0, 1.0)
+	match parameter_name:
+		BURN_OVERLAY_PARAMETER:
+			if is_equal_approx(_burn_overlay_strength, safe_strength):
+				return
+			_burn_overlay_strength = safe_strength
+		BLEED_OVERLAY_PARAMETER:
+			if is_equal_approx(_bleed_overlay_strength, safe_strength):
+				return
+			_bleed_overlay_strength = safe_strength
+		_:
+			return
+	_set_lifecycle_parameter(parameter_name, safe_strength)
 
 
 func _receive_incoming_burn_tick(
@@ -179,6 +394,18 @@ func _receive_incoming_burn_tick(
 		null,
 		Vector2.ZERO,
 		EnemyConfig.DamageType.MAGIC
+	)
+
+
+func _receive_incoming_bleed_tick(
+	_source_family: StringName,
+	tick_damage: int
+) -> bool:
+	return receive_damage(
+		tick_damage,
+		null,
+		Vector2.ZERO,
+		EnemyConfig.DamageType.PHYSICAL
 	)
 
 
@@ -480,7 +707,7 @@ func _begin_death() -> void:
 	if is_dead or is_removing:
 		return
 	is_dead = true
-	clear_burn_status()
+	clear_damage_over_time_statuses()
 	current_health = 0
 	died.emit()
 	begin_removal(RemovalMode.ANIMATED)
@@ -495,7 +722,7 @@ func begin_removal(mode: RemovalMode = RemovalMode.ANIMATED) -> void:
 		return
 
 	is_removing = true
-	clear_burn_status()
+	clear_damage_over_time_statuses()
 	removal_mode = mode
 	is_operational = false
 	_stop_construction_tween()
@@ -536,6 +763,14 @@ func _prepare_lifecycle_visuals() -> void:
 			push_error("PlantDefense lifecycle visual is missing: %s" % visual_path)
 			continue
 		_lifecycle_visuals.append(visual)
+	_set_lifecycle_parameter(
+		BURN_OVERLAY_PARAMETER,
+		_burn_overlay_strength
+	)
+	_set_lifecycle_parameter(
+		BLEED_OVERLAY_PARAMETER,
+		_bleed_overlay_strength
+	)
 
 	var noise_offset := _make_lifecycle_noise_offset()
 	var effect_top_world_y := to_global(Vector2(0.0, lifecycle_effect_top_y)).y

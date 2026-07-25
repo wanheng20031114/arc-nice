@@ -1523,6 +1523,12 @@ func _spawn_authoritative_multiplayer_plant(
 		plant.authoritative_health_changed.connect(
 			_on_authoritative_plant_health_changed.bind(plant_net_id)
 		)
+	if not plant.authoritative_damage_status_changed.is_connected(
+		_on_authoritative_plant_damage_status_changed.bind(plant_net_id)
+	):
+		plant.authoritative_damage_status_changed.connect(
+			_on_authoritative_plant_damage_status_changed.bind(plant_net_id)
+		)
 	multiplayer_plant_spawned.emit(
 		request_id,
 		requester_peer_id,
@@ -1559,6 +1565,22 @@ func _on_authoritative_plant_health_changed(
 		current_health,
 		maximum_health,
 		health_revision
+	)
+
+
+func _on_authoritative_plant_damage_status_changed(
+	status_mask: int,
+	status_revision: int,
+	net_id: int
+) -> void:
+	if runtime_mode != RuntimeMode.HOST_AUTHORITY or net_id <= 0:
+		return
+	if plant_system == null or plant_system.get_plant_by_net_id(net_id) == null:
+		return
+	multiplayer_plant_damage_status_changed.emit(
+		net_id,
+		status_mask,
+		status_revision
 	)
 
 

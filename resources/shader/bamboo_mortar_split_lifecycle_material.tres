@@ -6,4 +6,9 @@
 [resource]
 shader = ExtResource("1_shader")
 shader_parameter/lifecycle_state = Vector4(1, 0, -1, 0)
+shader_parameter/damage_status_strength = Vector2(0, 0)
 shader_parameter/lifecycle_noise = ExtResource("2_noise")
+shader_parameter/burn_overlay_color = Color(1, 0.56, 0.18, 0.46)
+shader_parameter/burn_edge_width = 2.0
+shader_parameter/bleed_overlay_color = Color(0.95, 0.02, 0.08, 0.58)
+shader_parameter/bleed_outline_width = 2.0

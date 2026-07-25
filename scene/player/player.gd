@@ -126,6 +126,8 @@ const DASH_EFFECT_STRENGTH_SHADER_PARAMETER := &"dash_effect_strength"
 const DASH_DIRECTION_SHADER_PARAMETER := &"dash_direction"
 const DASH_READY_STRENGTH_SHADER_PARAMETER := &"ready_strength"
 const SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER := &"slow_overlay_strength"
+const BURN_OVERLAY_STRENGTH_SHADER_PARAMETER := &"burn_overlay_strength"
+const BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER := &"bleed_overlay_strength"
 const REVIVE_GLOW_STRENGTH_SHADER_PARAMETER := &"revive_glow_strength"
 const REVIVE_GLOW_COLOR_SHADER_PARAMETER := &"revive_glow_color"
 const REVIVE_GLOW_OUTLINE_WIDTH_SHADER_PARAMETER := &"revive_glow_outline_width"
@@ -138,6 +140,8 @@ const REVIVE_GLOW_DURATION := 0.82
 const REVIVE_GLOW_OUTLINE_WIDTH := 4.5
 const REVIVE_GLOW_COLOR := Color(3.2, 3.2, 3.2, 1.0)
 const SLOW_OVERLAY_ACTIVE_STRENGTH := 0.34
+const BURN_OVERLAY_ACTIVE_STRENGTH := 0.26
+const BLEED_OVERLAY_ACTIVE_STRENGTH := 0.42
 const ATTACK_SPEED_UPGRADE_INTERVAL_MULTIPLIER := 0.95
 const DODGE_UPGRADE_CHANCE_STEP := 0.02
 const DEFAULT_MAGIC_DEFENSE_LIMIT := 100
@@ -145,7 +149,11 @@ const RANGED_DIRECTION_SIDE_THRESHOLD := 0.35
 const DEFAULT_SKILL1_DISPLAY_NAME := "技能"
 const STATUS_EFFECT_EXPIRY_SCHEDULER_PATH := NodePath("/root/StatusEffectExpiryScheduler")
 const BURN_STATUS_SCHEDULER_PATH := NodePath("/root/BurnStatusScheduler")
+const BLEED_STATUS_SCHEDULER_PATH := NodePath("/root/BleedStatusScheduler")
 const COLD_STATUS_SCHEDULER_PATH := NodePath("/root/ColdStatusScheduler")
+const BURN_STATUS_ID := &"burn"
+const BLEED_STATUS_ID := &"bleed"
+const DEFAULT_BLEED_TICK_INTERVAL_SECONDS := 0.5
 
 static var _collectible_temporary_source_serial: int = 0
 # Keep the former one-SceneTreeTimer-per-enemy path available for deterministic
@@ -256,6 +264,8 @@ var _wall_overlap_expected_position := Vector2.ZERO
 var _homing_target_shape := CircleShape2D.new()
 var _homing_target_query := PhysicsShapeQueryParameters2D.new()
 var _slow_overlay_strength := -1.0
+var _burn_overlay_strength := -1.0
+var _bleed_overlay_strength := -1.0
 var _speed_trail_effect_active := false
 var _speed_trail_motion_direction := Vector2.ZERO
 
@@ -333,6 +343,8 @@ func _ready() -> void:
 	_set_hurt_blink_enabled(false)
 	_set_dash_effect_strength(0.0)
 	_set_revive_glow_strength(0.0)
+	_set_burn_overlay_strength(0.0)
+	_set_bleed_overlay_strength(0.0)
 	_update_movement_status_visuals(Vector2.ZERO)
 	_cache_multiplayer_visual_base_positions()
 	_refresh_dash_ready_visual()
@@ -351,6 +363,7 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	clear_damage_over_time_statuses()
 	clear_cold_status()
 
 
@@ -817,16 +830,106 @@ func apply_burn_status(
 		Callable(self, "_receive_incoming_burn_tick"),
 		source_family,
 		duration,
-		tick_damage
+		tick_damage,
+		Callable(self, "_on_burn_status_active_changed")
 	))
 
 
 func clear_burn_status() -> void:
+	_set_burn_overlay_strength(0.0)
 	if not is_inside_tree():
 		return
 	var scheduler := get_node_or_null(BURN_STATUS_SCHEDULER_PATH)
 	if scheduler != null:
 		scheduler.call("clear_target", self)
+
+
+func apply_bleed_status(
+	source_family: StringName,
+	duration: float,
+	tick_damage: int,
+	tick_interval: float = DEFAULT_BLEED_TICK_INTERVAL_SECONDS
+) -> bool:
+	if (
+		is_dead
+		or not is_inside_tree()
+		or source_family == &""
+		or duration <= 0.0
+		or tick_damage <= 0
+		or tick_interval <= 0.0
+	):
+		return false
+	var scheduler := get_node_or_null(BLEED_STATUS_SCHEDULER_PATH)
+	if scheduler == null:
+		push_error("BleedStatusScheduler autoload is missing.")
+		return false
+	return bool(scheduler.call(
+		"apply_bleed",
+		self,
+		Callable(self, "_receive_incoming_bleed_tick"),
+		source_family,
+		duration,
+		tick_damage,
+		tick_interval,
+		Callable(self, "_on_bleed_status_active_changed")
+	))
+
+
+func clear_bleed_status() -> void:
+	_set_bleed_overlay_strength(0.0)
+	if not is_inside_tree():
+		return
+	var scheduler := get_node_or_null(BLEED_STATUS_SCHEDULER_PATH)
+	if scheduler != null:
+		scheduler.call("clear_target", self)
+
+
+func has_damage_over_time_status(
+	status_id: StringName,
+	source_family: StringName = &""
+) -> bool:
+	var scheduler_path := NodePath()
+	match status_id:
+		BURN_STATUS_ID:
+			scheduler_path = BURN_STATUS_SCHEDULER_PATH
+		BLEED_STATUS_ID:
+			scheduler_path = BLEED_STATUS_SCHEDULER_PATH
+		_:
+			return false
+	var scheduler := get_node_or_null(scheduler_path)
+	return (
+		scheduler != null
+		and bool(scheduler.call("has_status", self, source_family))
+	)
+
+
+func clear_damage_over_time_status(status_id: StringName) -> bool:
+	match status_id:
+		BURN_STATUS_ID:
+			clear_burn_status()
+			return true
+		BLEED_STATUS_ID:
+			clear_bleed_status()
+			return true
+		_:
+			return false
+
+
+func clear_damage_over_time_statuses() -> void:
+	clear_burn_status()
+	clear_bleed_status()
+
+
+func _on_burn_status_active_changed(active: bool) -> void:
+	_set_burn_overlay_strength(
+		BURN_OVERLAY_ACTIVE_STRENGTH if active else 0.0
+	)
+
+
+func _on_bleed_status_active_changed(active: bool) -> void:
+	_set_bleed_overlay_strength(
+		BLEED_OVERLAY_ACTIVE_STRENGTH if active else 0.0
+	)
 
 
 func apply_cold_status() -> bool:
@@ -879,6 +982,32 @@ func _receive_incoming_burn_tick(
 	source_family: StringName,
 	tick_damage: int
 ) -> bool:
+	return _receive_incoming_damage_over_time_tick(
+		BURN_STATUS_ID,
+		source_family,
+		tick_damage,
+		EnemyConfig.DamageType.MAGIC
+	)
+
+
+func _receive_incoming_bleed_tick(
+	source_family: StringName,
+	tick_damage: int
+) -> bool:
+	return _receive_incoming_damage_over_time_tick(
+		BLEED_STATUS_ID,
+		source_family,
+		tick_damage,
+		EnemyConfig.DamageType.PHYSICAL
+	)
+
+
+func _receive_incoming_damage_over_time_tick(
+	status_id: StringName,
+	source_family: StringName,
+	tick_damage: int,
+	damage_type: EnemyConfig.DamageType
+) -> bool:
 	if is_dead:
 		return false
 	if peer_id > 0:
@@ -886,17 +1015,19 @@ func _receive_incoming_burn_tick(
 		if (
 			current_scene != null
 			and current_scene.has_method(
-				"request_multiplayer_player_burn_tick"
+				"request_multiplayer_player_damage_over_time_tick"
 			)
 		):
 			return bool(current_scene.call(
-				"request_multiplayer_player_burn_tick",
+				"request_multiplayer_player_damage_over_time_tick",
 				peer_id,
-				source_family
+				status_id,
+				source_family,
+				tick_damage
 			))
 	return apply_periodic_damage(
 		tick_damage,
-		EnemyConfig.DamageType.MAGIC
+		damage_type
 	)
 
 
@@ -1589,7 +1720,7 @@ func set_multiplayer_health_state(new_health: int, new_is_dead: bool) -> void:
 
 func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invincible_seconds: float = 0.0) -> void:
 	var was_dead := is_dead
-	clear_burn_status()
+	clear_damage_over_time_statuses()
 	clear_cold_status()
 	tower_defense_death_presentation_active = false
 	global_position = revive_position
@@ -1640,7 +1771,7 @@ func apply_multiplayer_death_state() -> void:
 	_set_multiplayer_visual_offset(Vector2.ZERO)
 	is_dead = true
 	night_light.set_emission_allowed(false)
-	clear_burn_status()
+	clear_damage_over_time_statuses()
 	clear_cold_status()
 	controls_locked = true
 	_finish_dash()
@@ -4100,6 +4231,44 @@ func _set_slow_overlay_strength(strength: float) -> void:
 	_slow_overlay_strength = clamped_strength
 
 
+func _set_burn_overlay_strength(strength: float) -> void:
+	_set_damage_status_overlay_strength(
+		BURN_OVERLAY_STRENGTH_SHADER_PARAMETER,
+		strength
+	)
+
+
+func _set_bleed_overlay_strength(strength: float) -> void:
+	_set_damage_status_overlay_strength(
+		BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER,
+		strength
+	)
+
+
+func _set_damage_status_overlay_strength(
+	parameter_name: StringName,
+	strength: float
+) -> void:
+	if body_sprite.material == null:
+		return
+	var clamped_strength := clampf(strength, 0.0, 1.0)
+	match parameter_name:
+		BURN_OVERLAY_STRENGTH_SHADER_PARAMETER:
+			if is_equal_approx(_burn_overlay_strength, clamped_strength):
+				return
+			_burn_overlay_strength = clamped_strength
+		BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER:
+			if is_equal_approx(_bleed_overlay_strength, clamped_strength):
+				return
+			_bleed_overlay_strength = clamped_strength
+		_:
+			return
+	body_sprite.set_instance_shader_parameter(
+		parameter_name,
+		clamped_strength
+	)
+
+
 func _set_speed_trail_effect_active(enabled: bool) -> void:
 	if _speed_trail_effect_active == enabled:
 		return
@@ -4376,7 +4545,7 @@ func _die() -> void:
 		return
 	is_dead = true
 	night_light.set_emission_allowed(false)
-	clear_burn_status()
+	clear_damage_over_time_statuses()
 	clear_cold_status()
 	_finish_dash()
 	_stop_remote_dash_visual()

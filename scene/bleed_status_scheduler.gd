@@ -1,14 +1,16 @@
 extends PeriodicDamageStatusScheduler
 
-const BURN_TICK_INTERVAL_SECONDS := 1.0
+const DEFAULT_BLEED_TICK_INTERVAL_SECONDS := 0.5
+const MIN_BLEED_TICK_INTERVAL_SECONDS := 0.1
 
 
-func apply_burn(
+func apply_bleed(
 	target: Object,
 	tick_callback: Callable,
 	source_family: StringName,
 	duration: float,
 	tick_damage: int,
+	tick_interval: float = DEFAULT_BLEED_TICK_INTERVAL_SECONDS,
 	state_callback: Callable = Callable()
 ) -> bool:
 	return apply_periodic_status(
@@ -17,16 +19,11 @@ func apply_burn(
 		source_family,
 		duration,
 		tick_damage,
-		BURN_TICK_INTERVAL_SECONDS,
-		TickPolicy.STRONGEST_SOURCE,
+		maxf(tick_interval, MIN_BLEED_TICK_INTERVAL_SECONDS),
+		TickPolicy.ALL_SOURCES,
 		state_callback
 	)
 
 
-func has_burn(target: Object, source_family: StringName = &"") -> bool:
+func has_bleed(target: Object, source_family: StringName = &"") -> bool:
 	return has_status(target, source_family)
-
-
-## Compatibility seam for deterministic smoke tests and profiling tools.
-func _advance_active_burns(delta: float) -> void:
-	_advance_active_statuses(delta)

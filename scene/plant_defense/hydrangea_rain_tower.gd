@@ -95,7 +95,7 @@ func _on_setup_completed() -> void:
 		ground_dew_rise.process_material as ParticleProcessMaterial
 	)
 	if ground_particle_material != null:
-		ground_particle_material.emission_sphere_radius = rain_config.rain_radius
+		ground_particle_material.emission_ring_radius = rain_config.rain_radius
 	var target_rain_material := (
 		target_rain_drops.process_material as ParticleProcessMaterial
 	)
@@ -202,6 +202,7 @@ func _refresh_healable_building_cache() -> void:
 
 func _select_lowest_health_target() -> PlantDefense:
 	var selected: PlantDefense = null
+	var selected_is_full_health := false
 	var selected_health := 0
 	var selected_stable_id := 0
 	for candidate in heal_target_candidates:
@@ -213,16 +214,29 @@ func _select_lowest_health_target() -> PlantDefense:
 			or candidate.is_queued_for_deletion()
 		):
 			continue
+		var candidate_is_full_health := (
+			candidate.current_health >= candidate.max_health
+		)
 		var candidate_stable_id := _get_plant_stable_id(candidate)
 		if (
 			selected == null
-			or candidate.current_health < selected_health
 			or (
-				candidate.current_health == selected_health
-				and candidate_stable_id < selected_stable_id
+				selected_is_full_health
+				and not candidate_is_full_health
+			)
+			or (
+				candidate_is_full_health == selected_is_full_health
+				and (
+					candidate.current_health < selected_health
+					or (
+						candidate.current_health == selected_health
+						and candidate_stable_id < selected_stable_id
+					)
+				)
 			)
 		):
 			selected = candidate
+			selected_is_full_health = candidate_is_full_health
 			selected_health = candidate.current_health
 			selected_stable_id = candidate_stable_id
 	return selected

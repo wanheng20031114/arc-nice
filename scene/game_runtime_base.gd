@@ -75,6 +75,11 @@ signal multiplayer_plant_health_changed(
 	maximum_health: int,
 	health_revision: int
 )
+signal multiplayer_plant_damage_status_changed(
+	net_id: int,
+	status_mask: int,
+	status_revision: int
+)
 signal multiplayer_plant_damage_applied(
 	net_id: int,
 	applied_damage: int,
