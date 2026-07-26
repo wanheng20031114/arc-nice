@@ -31,17 +31,7 @@ func _rpc_client_player_state(
 	buttons: int,
 	dash_request_sequence: int,
 	dash_direction: Vector2,
-	dash_start_move_input: Vector2,
-	current_health: int,
-	max_health: int,
-	current_xirang: int,
-	is_dead: bool,
-	invincibility_time_left: float,
-	skill1_unlocked: bool,
-	skill1_charge: float,
-	skill1_charge_duration: float,
-	form_mode: int,
-	shot_pattern: int
+	dash_start_move_input: Vector2
 ) -> void:
 	pass
 
@@ -164,11 +154,11 @@ func net_linglan_skill1_ring_batch(
 
 @rpc("any_peer", "call_remote", "reliable", 4)
 func _rpc_enemy_hit_report(
-	projectile_id: int,
-	owner_peer_id: int,
-	enemy_net_id: int,
-	damage: int,
-	impact_direction: Vector2
+	_projectile_id: int,
+	_owner_peer_id: int,
+	_enemy_net_id: int,
+	_damage: int,
+	_impact_direction: Vector2
 ) -> void:
 	pass
 
@@ -186,6 +176,7 @@ func net_tiyi_sniper_hit_confirmed(
 func net_enemy_damage_feedback_batch(
 	net_ids: PackedInt32Array,
 	health_values: PackedInt32Array,
+	health_revisions: PackedInt32Array,
 	damage_values: PackedInt32Array,
 	directions: PackedVector2Array,
 	damage_types: PackedByteArray,
@@ -197,6 +188,7 @@ func net_enemy_damage_feedback_batch(
 func net_enemy_damage_applied(
 	enemy_net_id: int,
 	current_health: int,
+	health_revision: int,
 	is_dead: bool,
 	confirmed_damage: int,
 	impact_direction: Vector2,
@@ -207,16 +199,11 @@ func net_enemy_damage_applied(
 
 @rpc("any_peer", "call_remote", "reliable", 5)
 func _rpc_player_hit_report(
-	source_id: int,
-	player_peer_id: int,
-	damage: int,
-	source_type: String,
-	reported_health_after: int,
-	reported_is_dead: bool,
-	hit_revision: int,
-	reported_applied_damage: int,
-	impact_direction: Vector2,
-	damage_type: int
+	_source_id: int,
+	_player_peer_id: int,
+	_attack_wire_id: int,
+	_impact_direction: Vector2,
+	_damage_flags: int
 ) -> void:
 	pass
 
@@ -230,7 +217,8 @@ func net_player_damage_applied(
 	impact_direction: Vector2,
 	damage_type: int,
 	grant_hit_invincibility: bool = true,
-	apply_confirmed_cold: bool = false
+	apply_confirmed_cold: bool = false,
+	combat_outcome: int = 0
 ) -> void:
 	pass
 
@@ -352,6 +340,7 @@ func net_enemy_terminal(
 	reason: int,
 	event_position: Vector2,
 	current_health: int = 0,
+	health_revision: int = 0,
 	confirmed_damage: int = 0,
 	impact_direction: Vector2 = Vector2.ZERO,
 	damage_type: int = 0,

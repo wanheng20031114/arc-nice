@@ -141,7 +141,7 @@ Godot 官方文档也建议将物理模拟保持在固定 Tick，并用插值把
 - `scene/game_runtime_base.gd:112-128` 已区分 `SINGLEPLAYER`、`HOST_AUTHORITY` 和 `CLIENT_VIEW`。
 - `scene/enemy/enemy.gd:737-763` 将多人客户端敌人配置为代理，关闭自身物理/处理与原生物理插值；注释明确说明位置由网络快照在渲染更新中插值，避免双重插值。
 - Host 在 `scene/multiplayer/mp_game.gd:2652-2681` 以玩家 60 Hz、敌人 30 Hz 的频率发快照；敌人达到 200 后降为 20 Hz（`scene/multiplayer/mp_game.gd:152-153`、`:2672-2679`）。
-- 敌人快照按 56 个实体分块并做 cohort / delta 编码（`scene/multiplayer/mp_game.gd:2741-2807`），状态包含位置、速度、生命和视觉状态等（`scene/multiplayer/snapshot_manager.gd:279-286`、`:746-793`）。
+- 敌人快照按 46 个实体分块并做 cohort / delta 编码（`scene/multiplayer/mp_game.gd`），状态包含位置、速度、生命、生命修订号和视觉状态等（`scene/multiplayer/snapshot_manager.gd`）。
 - 客户端在 `_process` 中插值远端玩家和敌人（`scene/multiplayer/mp_game.gd:3227-3273`）；离屏敌人进一步按 15 Hz 和 64 个相位桶更新（`:3276-3299`）。
 - `scene/multiplayer/net_interpolator.gd:62-162` 已实现带渲染延迟的快照缓冲、插值与受限外推。
 - 敌人攻击动作不依赖位置快照轮询，而由 Host 广播带时间戳动作，客户端把动作位置插入同一时间线后播放视觉事件（`scene/multiplayer/mp_game.gd:8115-8142`、`:9277-9359`）。

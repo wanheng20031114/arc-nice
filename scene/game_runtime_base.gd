@@ -803,6 +803,7 @@ func _append_enemy_snapshot_states_from_container(container: Node) -> void:
 		state.velocity = enemy.velocity
 		state.locomotion_state = enemy.get_locomotion_state()
 		state.health = enemy.current_health
+		state.health_revision = enemy.health_revision
 		state.is_dead = enemy.is_dead
 		state.visual_status_mask = enemy.get_collectible_visual_status_mask()
 		_enemy_snapshot_output.append(state)

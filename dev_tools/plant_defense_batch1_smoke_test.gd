@@ -203,6 +203,11 @@ func _test_config_and_scene_contracts() -> void:
 		hydrangea_config != null and hydrangea_config.is_valid(),
 		"紫阳花雨幕塔配置必须有效。"
 	)
+	var grape_arc_config := PlantDefenseRegistry.get_config(&"grape_arc_tower")
+	_expect(
+		grape_arc_config != null and grape_arc_config.is_valid(),
+		"葡萄电弧塔配置必须有效。"
+	)
 	if (
 		oak_config == null
 		or wood_station_config == null
@@ -211,11 +216,12 @@ func _test_config_and_scene_contracts() -> void:
 		or cultivation_center_config == null
 		or planting_base_config == null
 		or hydrangea_config == null
+		or grape_arc_config == null
 	):
 		return
 	var registered_configs := PlantDefenseRegistry.get_all_configs()
 	_expect(
-		registered_configs.size() == 11
+		registered_configs.size() == 12
 		and registered_configs.has(agave_config)
 		and registered_configs.has(bamboo_mortar_config)
 		and registered_configs.has(corn_config)
@@ -227,9 +233,10 @@ func _test_config_and_scene_contracts() -> void:
 		and registered_configs.has(cultivation_center_config)
 		and registered_configs.has(planting_base_config)
 		and registered_configs.has(hydrangea_config)
+		and registered_configs.has(grape_arc_config)
 		and registered_configs[8] == bamboo_mortar_config
 		and registered_configs.back() == planting_base_config,
-		"植物注册表必须公开全部11种建筑，包括植物培育中心、竹筒迫击炮、种植基地与紫阳花雨幕塔。"
+		"植物注册表必须公开全部12种建筑，包括植物培育中心、竹筒迫击炮、紫阳花雨幕塔与葡萄电弧塔。"
 	)
 	_expect(
 		bamboo_mortar_config.max_health == 2000
@@ -405,7 +412,7 @@ func _test_config_and_scene_contracts() -> void:
 		)
 		_expect(
 			config.icon != null and config.icon.get_size() == expected_icon_size,
-			"旧植物必须保留64×64图标，紫阳花雨幕塔必须原生使用128×128图标。"
+			"紫阳花雨幕塔必须保持128×128图标，其余植物必须限制为64×64。"
 		)
 
 	var vegetation_stake := vegetation_stake_config.plant_scene.instantiate() as PlantDefense
@@ -1440,7 +1447,7 @@ func _test_realtime_selection_and_cancel() -> void:
 	_expect(controller.is_selecting(), "打开后状态必须为SELECTING。")
 	_expect(controller.selection_hud.is_open(), "真实plant动作输入必须显示植物选择界面。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 11
+		controller.selection_hud.available_configs.size() == 12
 		and controller.selection_hud.available_configs.has(agave_config)
 		and controller.selection_hud.available_configs.has(
 			bamboo_mortar_config
@@ -1468,8 +1475,11 @@ func _test_realtime_selection_and_cancel() -> void:
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"hydrangea_rain_tower")
 		)
-		and controller.selection_hud.cards.size() == 11,
-		"单人T键调试界面必须显示全部11种建筑，包括植物培育中心、竹筒迫击炮、种植基地与紫阳花雨幕塔。"
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"grape_arc_tower")
+		)
+		and controller.selection_hud.cards.size() == 12,
+		"单人T键调试界面必须显示全部12种建筑，包括紫阳花雨幕塔与葡萄电弧塔。"
 	)
 	var agave_card: PlantSelectionCard = null
 	var bamboo_mortar_card: PlantSelectionCard = null
@@ -1718,7 +1728,7 @@ func _test_multiplayer_authority_contracts() -> void:
 	controller.set_multiplayer_request_mode(true)
 	_expect(controller.open_selection(), "多人植物选择必须仍可打开。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 11
+		controller.selection_hud.available_configs.size() == 12
 		and controller.selection_hud.available_configs.has(agave_config)
 		and controller.selection_hud.available_configs.has(
 			bamboo_mortar_config
@@ -1746,8 +1756,11 @@ func _test_multiplayer_authority_contracts() -> void:
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"hydrangea_rain_tower")
 		)
-		and controller.selection_hud.cards.size() == 11,
-		"多人T键调试界面必须显示全部11种支持联机的建筑。"
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"grape_arc_tower")
+		)
+		and controller.selection_hud.cards.size() == 12,
+		"多人T键调试界面必须显示全部12种支持联机的建筑。"
 	)
 	controller.cancel_placement()
 	var placement_requests: Array[Dictionary] = []

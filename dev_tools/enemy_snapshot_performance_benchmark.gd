@@ -1,7 +1,7 @@
 extends SceneTree
 
 const ENTITY_COUNT := 300
-const CHUNK_SIZE := 56
+const CHUNK_SIZE := 46
 # 300 entities use MpGame's high-pressure cadence. Keep the benchmark aligned
 # with production so its bytes/s result measures the actual acceptance path.
 const SNAPSHOT_HZ := 20
@@ -51,6 +51,7 @@ func _run() -> void:
 			state.position += state.velocity / float(SNAPSHOT_HZ)
 			if enemy_index == tick % ENTITY_COUNT:
 				state.health = maxi(state.health - 1, 0)
+				state.health_revision += 1
 
 		var force_keyframe := tick % KEYFRAME_INTERVAL_TICKS == 0
 		var live_ids: Dictionary = {}

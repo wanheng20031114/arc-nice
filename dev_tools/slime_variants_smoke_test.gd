@@ -10,6 +10,9 @@ const FIRE_CONFIG: SlimeConfig = preload(
 const FROST_CONFIG: SlimeConfig = preload(
 	"res://resources/config/enemies/slime_frost.tres"
 )
+const GREEN_CONFIG: SlimeConfig = preload(
+	"res://resources/config/enemies/slime_green.tres"
+)
 const BASE_FRAMES: SpriteFrames = preload("res://resources/animation/slime.tres")
 const GOLDEN_FRAMES: SpriteFrames = preload(
 	"res://resources/animation/slime_golden.tres"
@@ -19,6 +22,9 @@ const FIRE_FRAMES: SpriteFrames = preload(
 )
 const FROST_FRAMES: SpriteFrames = preload(
 	"res://resources/animation/slime_frost.tres"
+)
+const GREEN_FRAMES: SpriteFrames = preload(
+	"res://resources/animation/slime_green.tres"
 )
 const PLAYER_SCENE := preload("res://scene/player/hoe_cat/player_hoe_cat.tscn")
 const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
@@ -73,6 +79,7 @@ func _run() -> void:
 	_test_sprite_and_scene_contracts()
 	_test_multiplayer_status_mapping()
 	await _test_elemental_touch_contracts()
+	await _test_green_regeneration_contract()
 
 	fixture.queue_free()
 	await process_frame
@@ -93,6 +100,8 @@ func _test_config_contracts() -> void:
 			"variant": SlimeConfig.Variant.BASIC,
 			"health": 100,
 			"damage": 10,
+			"physical_defense": 0,
+			"magic_defense": 0,
 		},
 		{
 			"config": GOLDEN_CONFIG,
@@ -100,6 +109,8 @@ func _test_config_contracts() -> void:
 			"variant": SlimeConfig.Variant.GOLDEN,
 			"health": 1000,
 			"damage": 50,
+			"physical_defense": 0,
+			"magic_defense": 0,
 		},
 		{
 			"config": FIRE_CONFIG,
@@ -107,6 +118,8 @@ func _test_config_contracts() -> void:
 			"variant": SlimeConfig.Variant.FIRE,
 			"health": 200,
 			"damage": 10,
+			"physical_defense": 0,
+			"magic_defense": 0,
 		},
 		{
 			"config": FROST_CONFIG,
@@ -114,6 +127,17 @@ func _test_config_contracts() -> void:
 			"variant": SlimeConfig.Variant.FROST,
 			"health": 200,
 			"damage": 10,
+			"physical_defense": 0,
+			"magic_defense": 0,
+		},
+		{
+			"config": GREEN_CONFIG,
+			"name": "绿色史莱姆",
+			"variant": SlimeConfig.Variant.GREEN,
+			"health": 300,
+			"damage": 10,
+			"physical_defense": 50,
+			"magic_defense": 50,
 		},
 	]
 	for contract in contracts:
@@ -123,8 +147,9 @@ func _test_config_contracts() -> void:
 		_expect(config.max_health == contract["health"], "%s 生命值错误。" % config.display_name)
 		_expect(config.attack_damage == contract["damage"], "%s 攻击力错误。" % config.display_name)
 		_expect(
-			config.physical_defense == 0 and config.magic_defense == 0,
-			"%s 双防必须都为0。" % config.display_name
+			config.physical_defense == contract["physical_defense"]
+			and config.magic_defense == contract["magic_defense"],
+			"%s 双防错误。" % config.display_name
 		)
 		_expect(is_equal_approx(config.move_speed, 20.0), "%s 必须沿用基础史莱姆移速。" % config.display_name)
 		_expect(
@@ -138,6 +163,7 @@ func _test_sprite_and_scene_contracts() -> void:
 		{"config": GOLDEN_CONFIG, "frames": GOLDEN_FRAMES},
 		{"config": FIRE_CONFIG, "frames": FIRE_FRAMES},
 		{"config": FROST_CONFIG, "frames": FROST_FRAMES},
+		{"config": GREEN_CONFIG, "frames": GREEN_FRAMES},
 	]
 	var base_image := _get_sheet_image(BASE_FRAMES)
 	_expect(base_image != null and base_image.get_size() == SHEET_SIZE, "基础史莱姆图集必须有效。")
@@ -151,6 +177,8 @@ func _test_sprite_and_scene_contracts() -> void:
 		_expect(image != null and image.get_size() == SHEET_SIZE, "%s 图集必须为96×64。" % config.display_name)
 		if image != null and image.get_size() == SHEET_SIZE:
 			_test_locked_geometry(base_image, image, config.display_name)
+			if config == GREEN_CONFIG:
+				_test_green_palette(image)
 		_test_scene_contract(config, frames)
 
 
@@ -250,6 +278,25 @@ func _measure_frame_geometry(image: Image, frame_index: int) -> Dictionary:
 	if visible_count > 0:
 		bounds = Rect2i(minimum, maximum - minimum + Vector2i.ONE)
 	return {"bounds": bounds, "visible_count": visible_count}
+
+
+func _test_green_palette(image: Image) -> void:
+	var opaque_colors := {}
+	for y in range(SHEET_SIZE.y):
+		for x in range(SHEET_SIZE.x):
+			var color := image.get_pixel(x, y)
+			if color.a < 0.99:
+				continue
+			opaque_colors[color.to_rgba32()] = true
+			_expect(
+				color.g > color.r + 8.0 / 255.0
+				and color.g > color.b + 8.0 / 255.0,
+				"绿色史莱姆所有可见像素必须保持草绿色主导。"
+			)
+	_expect(
+		opaque_colors.size() == 8,
+		"绿色史莱姆运行时图集必须严格使用8色有限色板，禁止生成噪点和脏渐变。"
+	)
 
 
 func _test_scene_contract(config: SlimeConfig, frames: SpriteFrames) -> void:
@@ -387,6 +434,77 @@ func _test_elemental_touch_contracts() -> void:
 	fire_slime.queue_free()
 	frost_slime.queue_free()
 	player.queue_free()
+	await process_frame
+
+
+func _test_green_regeneration_contract() -> void:
+	var green_slime := GREEN_CONFIG.enemy_scene.instantiate() as GreenSlime
+	_expect(green_slime != null, "绿色史莱姆场景必须实例化 GreenSlime。")
+	if green_slime == null:
+		return
+	fixture.add_child(green_slime)
+	green_slime.setup(GREEN_CONFIG, null, null)
+	green_slime.set_process(false)
+	green_slime.set_physics_process(false)
+	await process_frame
+
+	var regeneration_timer := green_slime.get_node_or_null(
+		"RegenerationTimer"
+	) as Timer
+	_expect(regeneration_timer != null, "绿色史莱姆必须使用场景内原生 Timer 回血。")
+	if regeneration_timer == null:
+		green_slime.queue_free()
+		await process_frame
+		return
+	_expect(
+		is_equal_approx(
+			regeneration_timer.wait_time,
+			GreenSlime.REGENERATION_INTERVAL_SECONDS
+		)
+		and regeneration_timer.process_callback == Timer.TIMER_PROCESS_PHYSICS
+		and not regeneration_timer.one_shot
+		and not regeneration_timer.is_stopped(),
+		"绿色史莱姆回血 Timer 必须每0.5秒按物理帧循环并自动启动。"
+	)
+	_expect(
+		regeneration_timer.timeout.is_connected(
+			green_slime._on_regeneration_timer_timeout
+		),
+		"绿色史莱姆回血 Timer 必须连接到专用超时处理。"
+	)
+	regeneration_timer.stop()
+
+	green_slime.current_health = 200
+	var revision_before_heal := green_slime.health_revision
+	green_slime._on_regeneration_timer_timeout()
+	_expect(
+		green_slime.current_health == 215
+		and green_slime.health_revision == revision_before_heal + 1,
+		"绿色史莱姆每次必须恢复15生命并推进生命修订号。"
+	)
+	green_slime.current_health = 295
+	green_slime._on_regeneration_timer_timeout()
+	var capped_revision := green_slime.health_revision
+	green_slime._on_regeneration_timer_timeout()
+	_expect(
+		green_slime.current_health == GREEN_CONFIG.max_health
+		and green_slime.health_revision == capped_revision,
+		"绿色史莱姆回血不得超过300，满血空转不得推进修订号。"
+	)
+
+	green_slime.current_health = 200
+	green_slime.is_multiplayer_proxy = true
+	green_slime._on_regeneration_timer_timeout()
+	_expect(
+		green_slime.current_health == 200,
+		"多人代理不得在客户端自行回血。"
+	)
+	green_slime.is_multiplayer_proxy = false
+	green_slime.is_dead = true
+	green_slime._on_regeneration_timer_timeout()
+	_expect(green_slime.current_health == 200, "死亡绿色史莱姆不得回血。")
+
+	green_slime.queue_free()
 	await process_frame
 
 

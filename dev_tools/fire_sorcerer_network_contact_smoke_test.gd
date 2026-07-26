@@ -24,27 +24,23 @@ class TestMpGame:
 	var report_count := 0
 	var last_reported_source_id := 0
 	var last_reported_peer_id := 0
-	var last_reported_health := -1
-	var last_reported_applied_damage := -1
+	var last_reported_source_type: StringName = &""
+	var last_reported_damage_flags := 0
 	var sent_methods: Array[StringName] = []
 	var sent_arguments: Array[Array] = []
 
 	func request_player_hit_report(
 		source_id: int,
 		player_peer_id: int,
-		_damage: int,
-		_source_type: StringName,
-		reported_health_after: int,
-		_reported_is_dead: bool,
-		reported_applied_damage: int,
+		source_type: StringName,
 		_impact_direction: Vector2,
-		_damage_type: EnemyConfig.DamageType
+		damage_flags: int
 	) -> void:
 		report_count += 1
 		last_reported_source_id = source_id
 		last_reported_peer_id = player_peer_id
-		last_reported_health = reported_health_after
-		last_reported_applied_damage = reported_applied_damage
+		last_reported_source_type = source_type
+		last_reported_damage_flags = damage_flags
 
 	func _rpc_to_connected_clients(
 		method_name: StringName,
@@ -606,17 +602,15 @@ func _test_client_invincible_first_contact_reports_zero() -> void:
 		true
 	)
 	_expect(
-		mp_game.report_count == 1
-		and mp_game.last_reported_source_id == projectile_id
-		and mp_game.last_reported_peer_id == 4
-		and mp_game.last_reported_health == TEST_HEALTH
-		and mp_game.last_reported_applied_damage == 0
+		mp_game.report_count == 0
+		and invincible_player.current_health == TEST_HEALTH
+		and not invincible_player.is_dead
 		and not bool(burn_scheduler.call(
 			"has_burn",
 			invincible_player,
 			FIREBALL_TYPE
 		)),
-		"Client invincibility must report one zero-damage consumption event without leaking stale damage or registering burn."
+		"Client contact must not mutate life state, send a hit claim, or register authoritative burn."
 	)
 	mp_game.request_multiplayer_player_damage(
 		projectile_id,
@@ -628,9 +622,9 @@ func _test_client_invincible_first_contact_reports_zero() -> void:
 		true
 	)
 	_expect(
-		mp_game.report_count == 1
+		mp_game.report_count == 0
 		and second_player.current_health == TEST_HEALTH,
-		"Client global Fire B consumption must suppress every later target for the same source tuple."
+		"Client global Fire B consumption must suppress later local prediction without sending a claim."
 	)
 	burn_scheduler.call("clear_all")
 	game.peer_players.clear()

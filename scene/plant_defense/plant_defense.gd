@@ -51,6 +51,7 @@ var owner_player: Player = null
 var footprint_cells: Array[Vector2i] = []
 var current_health: int = 0
 var max_health: int = 0
+var last_damage_result: DamageResult = null
 var physical_defense: int = 0
 var magic_defense: int = 0
 var global_physical_defense_bonus: int = 0
@@ -145,16 +146,67 @@ func receive_damage(
 	impact_direction: Vector2 = Vector2.ZERO,
 	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
 ) -> bool:
-	if is_multiplayer_proxy or is_dead or is_removing or amount <= 0:
-		return false
+	var request := DamageRequest.new(amount, int(damage_type))
+	request.with_source(source)
+	request.with_directions(impact_direction)
+	return apply_combat_damage(request).accepted
 
-	var mitigated_damage := _calculate_incoming_damage(amount, damage_type)
-	var applied_damage := _apply_damage_to_health(mitigated_damage)
-	_report_damage_applied(applied_damage, impact_direction, damage_type)
-	_on_damage_received(applied_damage, source, impact_direction, damage_type)
-	if current_health <= 0:
+
+## Unified authoritative sink for plants and production buildings. Multiplayer
+## replicas reject the request explicitly instead of silently sharing a formula
+## with the Host.
+func apply_combat_damage(request: DamageRequest) -> DamageResult:
+	if request == null:
+		return _reject_combat_damage(
+			request,
+			CombatTypes.DamageRejectionReason.INVALID_REQUEST
+		)
+	if is_multiplayer_proxy:
+		return _reject_combat_damage(
+			request,
+			CombatTypes.DamageRejectionReason.NOT_AUTHORITY
+		)
+	if is_dead:
+		return _reject_combat_damage(
+			request,
+			CombatTypes.DamageRejectionReason.TARGET_DEAD
+		)
+	if is_removing:
+		return _reject_combat_damage(
+			request,
+			CombatTypes.DamageRejectionReason.TARGET_UNAVAILABLE
+		)
+
+	var result := DamageResolver.resolve(
+		request,
+		DamageTargetProfile.new(
+			current_health,
+			get_effective_physical_defense(),
+			get_effective_magic_defense()
+		)
+	)
+	last_damage_result = result
+	if not result.accepted:
+		return result
+
+	current_health = result.health_after
+	health_changed.emit(current_health, max_health)
+	_bump_health_revision()
+	var impact_direction := request.get_safe_impact_direction()
+	var damage_type := request.damage_type as EnemyConfig.DamageType
+	_report_damage_applied(result.applied_damage, impact_direction, damage_type)
+	if request.has_flag(CombatTypes.DamageFlag.BYPASS_MITIGATION):
+		_on_unmitigated_damage_received(result.applied_damage, request.source)
+	else:
+		_on_damage_received(
+			result.applied_damage,
+			request.source,
+			impact_direction,
+			damage_type
+		)
+	if result.lethal:
 		_begin_death()
-	return true
+	return result
 
 
 func apply_burn_status(
@@ -412,19 +464,13 @@ func _receive_incoming_bleed_tick(
 ## Applies damage without physical or magic mitigation while preserving the
 ## authoritative health revision, signals and normal death lifecycle.
 func receive_unmitigated_damage(amount: int, source: Node = null) -> bool:
-	if is_multiplayer_proxy or is_dead or is_removing or amount <= 0:
-		return false
-
-	var applied_damage := _apply_damage_to_health(amount)
-	_report_damage_applied(
-		applied_damage,
-		Vector2.ZERO,
-		EnemyConfig.DamageType.PHYSICAL
+	var request := DamageRequest.new(
+		amount,
+		CombatTypes.DamageType.PHYSICAL
 	)
-	_on_unmitigated_damage_received(applied_damage, source)
-	if current_health <= 0:
-		_begin_death()
-	return true
+	request.with_source(source)
+	request.with_flag(CombatTypes.DamageFlag.BYPASS_MITIGATION)
+	return apply_combat_damage(request).accepted
 
 
 func receive_healing(amount: int, source: Node = null) -> bool:
@@ -601,22 +647,12 @@ func _bump_health_revision() -> void:
 	authoritative_health_changed.emit(current_health, max_health, health_revision)
 
 
-func _calculate_incoming_damage(amount: int, damage_type: EnemyConfig.DamageType) -> int:
-	match damage_type:
-		EnemyConfig.DamageType.MAGIC:
-			var defense_ratio := float(100 - get_effective_magic_defense()) / 100.0
-			return maxi(floori(float(amount) * defense_ratio), 1)
-		_:
-			return maxi(amount - get_effective_physical_defense(), 1)
-
-
-func _apply_damage_to_health(amount: int) -> int:
-	var applied_damage := mini(amount, current_health)
-	current_health -= applied_damage
-	health_changed.emit(current_health, max_health)
-	_bump_health_revision()
-	return applied_damage
-
+func _reject_combat_damage(
+	request: DamageRequest,
+	reason: int
+) -> DamageResult:
+	last_damage_result = DamageResult.rejected(request, reason, current_health)
+	return last_damage_result
 
 func _report_damage_applied(
 	applied_damage: int,

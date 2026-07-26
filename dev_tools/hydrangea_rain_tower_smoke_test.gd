@@ -26,7 +26,10 @@ const EXPECTED_SCALE := Vector2(0.25, 0.25)
 const EXPECTED_HEAL := 50
 const EXPECTED_MAGIC_DAMAGE := 5
 const EXPECTED_ATTACK_MULTIPLIER := 0.8
+const EXPECTED_RAIN_DURATION := 1.5
 const EXPECTED_EFFECT_DURATION := 5.0
+const EXPECTED_EFFECT_START_DELAY := 0.68
+const EXPECTED_ACTION_DURATION := 5.68
 const EXPECTED_TARGET_RADIUS_CELLS := 12.0
 const EXPECTED_RAIN_RADIUS := 48.0
 const EXPECTED_BLOOM_LIGHT_COLOR := Color(0.38, 0.44, 1.0, 1.0)
@@ -148,7 +151,7 @@ func _run() -> void:
 	await _test_ground_dew_night_self_emission()
 	await _test_two_stage_launch_visual()
 	await _test_target_cache_and_injured_first_health_priority()
-	await _test_three_second_visual_and_five_second_effect_timeline()
+	await _test_delayed_impact_and_particle_tail_timeline()
 	await _test_proxy_target_position_sync_and_deduplication()
 	await _test_one_authoritative_rain_tick()
 	await _test_overlapping_towers_stack_healing_not_reduction()
@@ -192,7 +195,10 @@ func _test_config_and_registration_contract() -> void:
 	_expect(
 		rain_config != null
 		and is_equal_approx(rain_config.rain_interval_seconds, 6.0)
-		and is_equal_approx(rain_config.rain_duration_seconds, 3.0)
+		and is_equal_approx(
+			rain_config.rain_duration_seconds,
+			EXPECTED_RAIN_DURATION
+		)
 		and is_equal_approx(
 			rain_config.effect_duration_seconds,
 			EXPECTED_EFFECT_DURATION
@@ -209,7 +215,22 @@ func _test_config_and_registration_contract() -> void:
 			EXPECTED_TARGET_RADIUS_CELLS
 		)
 		and is_equal_approx(rain_config.rain_radius, EXPECTED_RAIN_RADIUS),
-		"雨幕必须为6秒周期、3秒可见、5秒结算、12格选目标与3格作用半径。"
+		"雨幕必须为6秒周期、1.5秒落雨、5秒结算、12格选目标与3格作用半径。"
+	)
+	_expect(
+		is_equal_approx(
+			HydrangeaRainTowerConfig.RAIN_EMISSION_START_DELAY_SECONDS,
+			0.24
+		)
+		and is_equal_approx(
+			HydrangeaRainTowerConfig.RAIN_DROP_FALL_SECONDS,
+			0.44
+		)
+		and is_equal_approx(
+			HydrangeaRainTowerConfig.EFFECT_START_DELAY_SECONDS,
+			EXPECTED_EFFECT_START_DELAY
+		),
+		"时间轴必须明确分为0.24秒起雨与0.44秒下落，治疗统一从0.68秒首次落地开始。"
 	)
 
 
@@ -321,6 +342,14 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 		and tower.target_rain_drops.amount == 144
 		and target_drop_rate > 300.0
 		and is_equal_approx(tower.target_rain_drops.lifetime, 0.44)
+		and is_equal_approx(
+			tower.effect_start_timer.wait_time,
+			EXPECTED_EFFECT_START_DELAY
+		)
+		and is_equal_approx(
+			tower.ground_effect_end_timer.wait_time,
+			EXPECTED_ACTION_DURATION
+		)
 		and is_zero_approx(tower.target_rain_drops.randomness)
 		and not tower.target_rain_drops.local_coords
 		and tower.target_rain_drops.fixed_fps == 60
@@ -426,8 +455,16 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 		and is_equal_approx(ground_material.scale_max, 1.15)
 		and tower.ground_dew_rise.amount == 96
 		and is_equal_approx(tower.ground_dew_rise.lifetime, 1.0)
+		and HydrangeaRainTower.GROUND_DEW_PARTICLE_TAIL_SECONDS
+		>= tower.ground_dew_rise.lifetime
+		and is_equal_approx(
+			HYDRANGEA_CONFIG.rain_interval_seconds
+			- HYDRANGEA_CONFIG.effect_duration_seconds,
+			tower.ground_dew_rise.lifetime
+		)
 		and ground_mote_rate > 90.0
-		and not tower.ground_dew_rise.one_shot,
+		and not tower.ground_dew_rise.one_shot
+		and not tower.ground_dew_rise.local_coords,
 		"目标雨必须低频触发像素级细波纹，同时以更清晰的彩色微粒持续表现地面作用范围。"
 	)
 	var rain_material := tower.rain_field.material as ShaderMaterial
@@ -749,10 +786,10 @@ func _test_target_cache_and_injured_first_health_priority() -> void:
 	await process_frame
 
 
-func _test_three_second_visual_and_five_second_effect_timeline() -> void:
+func _test_delayed_impact_and_particle_tail_timeline() -> void:
 	var short_config := HYDRANGEA_CONFIG.duplicate(true) as HydrangeaRainTowerConfig
-	short_config.rain_interval_seconds = 1.2
-	short_config.rain_duration_seconds = 0.8
+	short_config.rain_interval_seconds = 2.0
+	short_config.rain_duration_seconds = 0.85
 	short_config.effect_duration_seconds = 1.0
 	short_config.rain_tick_interval_seconds = 0.2
 	var tower := _make_tower(short_config)
@@ -761,21 +798,55 @@ func _test_three_second_visual_and_five_second_effect_timeline() -> void:
 	fixture.plant_targets.append(tower)
 	var query_count_before := fixture.combat_query_call_count
 	tower.call("_begin_authoritative_rain", target_position, 0.0)
-	await create_timer(0.72, true, false, false).timeout
+	await create_timer(0.50, true, false, false).timeout
+	await process_frame
+	_expect(
+		tower.rain_active
+		and not tower.effect_active
+		and not tower.effect_start_timer.is_stopped()
+		and tower.rain_visual_phase
+		== HydrangeaRainTower.RainVisualPhase.RAIN_DESCENT
+		and tower.rain_field.visible
+		and tower.target_rain_drops.emitting
+		and not tower.ground_dew_rise.emitting
+		and fixture.combat_query_call_count == query_count_before
+		and tower.current_health == tower.max_health - 300,
+		"雨滴尚未落地时只能播放下落视觉，不得提前治疗、伤害或减攻。"
+	)
+	await create_timer(0.24, true, false, false).timeout
 	await process_frame
 	_expect(
 		tower.rain_active
 		and tower.effect_active
-		and tower.rain_field.visible
-		and tower.target_rain_drops.emitting
+		and tower.effect_start_timer.is_stopped()
+		and tower.rain_visual_phase
+		== HydrangeaRainTower.RainVisualPhase.GROUND_IMPACT
+		and fixture.combat_query_call_count == query_count_before + 1
+		and tower.current_health == tower.max_health - 250
 		and tower.ground_dew_rise.emitting,
-		"3秒视觉窗口结束前，目标雨幕必须仍然可见。"
+		"首批雨滴在0.68秒附近落地后，地面粒子与首个治疗结算必须同步启动。"
 	)
-	await create_timer(0.12, true, false, false).timeout
+	var active_runtime_state := tower.export_multiplayer_runtime_state()
+	var exported_ground_elapsed := float(
+		active_runtime_state.get("ground_effect_elapsed_seconds", -1.0)
+	)
+	_expect(
+		bool(active_runtime_state.get("ground_effect_active", false))
+		and exported_ground_elapsed >= EXPECTED_EFFECT_START_DELAY
+		and exported_ground_elapsed < 0.9
+		and active_runtime_state.get(
+			"ground_effect_target_position",
+			Vector2.ZERO
+		) == target_position,
+		"权威快照必须在落雨结束后仍能同步地面粒子的动作年龄与目标位置。"
+	)
+	await create_timer(0.16, true, false, false).timeout
 	await process_frame
 	_expect(
 		not tower.rain_active
 		and tower.effect_active
+		and tower.rain_visual_phase
+		== HydrangeaRainTower.RainVisualPhase.GROUND_SUSTAIN
 		and tower.rain_field.visible
 		and tower.rain_visual_intensity > 0.0
 		and tower.rain_visual_intensity < 1.0
@@ -785,10 +856,8 @@ func _test_three_second_visual_and_five_second_effect_timeline() -> void:
 		and tower.target_rain_drops.self_modulate.a > 0.0
 		and tower.target_rain_drops.self_modulate.a < 1.0
 		and tower.ground_dew_rise.emitting
-		and tower.ground_dew_rise.amount_ratio > 0.0
-		and tower.ground_dew_rise.amount_ratio < 1.0
-		and tower.ground_dew_rise.self_modulate.a > 0.0
-		and tower.ground_dew_rise.self_modulate.a < 1.0
+		and is_equal_approx(tower.ground_dew_rise.amount_ratio, 1.0)
+		and is_equal_approx(tower.ground_dew_rise.self_modulate.a, 1.0)
 		and tower.main_sprite.texture == tower.idle_texture
 		and tower.upper_canopy.texture == tower.rain_upper_texture
 		and tower.upper_canopy.self_modulate.a > 0.0
@@ -800,37 +869,20 @@ func _test_three_second_visual_and_five_second_effect_timeline() -> void:
 		and tower.bloom_core_night_light.get_emission_strength() > 0.0
 		and tower.bloom_core_night_light.get_emission_strength()
 		< EXPECTED_BLOOM_LIGHT_STRENGTH,
-		"第3秒结算雨幕必须结束；两种雨线、花冠、核心夜光与地面粒子应从该时刻进入独立柔和消散，常驻扩散光保持不变。"
+		"落雨窗口结束后花冠、雨线与地面范围应消散，但地面粒子必须满强度覆盖剩余治疗窗口。"
 	)
-	await create_timer(0.06, true, false, false).timeout
+	await create_timer(0.72, true, false, false).timeout
 	await process_frame
 	_expect(
-		tower.effect_active,
-		"第5秒效果窗口结束前，治疗与减攻结算必须仍保持活动。"
-	)
-	await create_timer(0.34, true, false, false).timeout
-	await process_frame
-	_expect(
-		tower.main_sprite.texture == tower.idle_texture
-		and tower.upper_canopy.texture == tower.idle_upper_texture
-		and tower.upper_canopy.self_modulate == Color.WHITE
-		and tower.upper_canopy.scale == Vector2.ONE
-		and is_equal_approx(
-			tower.core_night_light.get_emission_strength(),
-			1.0
-		)
-		and not tower.bloom_core_night_light.is_emission_allowed()
-		and is_zero_approx(
-			tower.bloom_core_night_light.get_emission_strength()
-		)
-		and tower.rain_field.visible
-		and tower.rain_visual_intensity > 0.0
-		and tower.target_rain_drops.emitting
-		and tower.target_rain_drops.self_modulate.a < 1.0
+		tower.effect_active
 		and tower.ground_dew_rise.emitting
-		and tower.ground_dew_rise.self_modulate.a < 1.0,
-		"短时反向收缩结束后花冠与核心夜光必须恢复待机态，常驻扩散光保留，雨线和范围粒子仍应继续柔和消散。"
+		and is_equal_approx(tower.ground_dew_rise.amount_ratio, 1.0)
+		and is_equal_approx(tower.ground_dew_rise.self_modulate.a, 1.0)
+		and not tower.ground_effect_end_timer.is_stopped(),
+		"从首批落地起计算的效果窗口结束前，治疗、减攻和地面粒子必须同时保持活动。"
 	)
+	await create_timer(0.12, true, false, false).timeout
+	await process_frame
 	var completed_tick_count := (
 		fixture.combat_query_call_count - query_count_before
 	)
@@ -850,16 +902,36 @@ func _test_three_second_visual_and_five_second_effect_timeline() -> void:
 	_expect(
 		completed_tick_count == 5
 		and not tower.effect_active
+		and tower.effect_start_timer.is_stopped()
 		and tower.rain_tick_timer.is_stopped()
 		and tower.effect_end_timer.is_stopped()
+		and tower.ground_effect_end_timer.is_stopped()
+		and not tower.ground_dew_rise.emitting
+		and is_zero_approx(tower.ground_dew_rise.amount_ratio)
+		and tower.ground_dew_rise.self_modulate.a > 0.0
+		and tower.ground_dew_rise.self_modulate.a < 1.0
+		and tower.rain_visual_phase
+		== HydrangeaRainTower.RainVisualPhase.DISSIPATING
 		and all_queries_target_centered,
-		"完整技能必须围绕选中建筑的3格范围恰好结算5次，且在第5秒结束。"
+		"完整效果必须在落地后结算5次，地面粒子只能在效果结束后停止新增并进入尾声。"
 	)
 	_expect(
 		tower.current_health == tower.max_health - 50,
 		"5秒效果窗口必须实际执行5个每次50点的建筑治疗tick。"
 	)
-	await create_timer(1.1, true, false, false).timeout
+	await create_timer(0.12, true, false, false).timeout
+	await process_frame
+	_expect(
+		not tower.rain_field.visible
+		and is_zero_approx(tower.rain_visual_intensity)
+		and not tower.ground_dew_rise.emitting
+		and tower.ground_dew_rise.self_modulate.a > 0.0
+		and tower.ground_dew_rise.self_modulate.a < 1.0
+		and tower.rain_visual_phase
+		== HydrangeaRainTower.RainVisualPhase.DISSIPATING,
+		"地面范围光消失后，地面水珠必须仍保留至少一个完整粒子尾声期。"
+	)
+	await create_timer(1.15, true, false, false).timeout
 	await process_frame
 	_expect(
 		not tower.rain_field.visible
@@ -872,8 +944,9 @@ func _test_three_second_visual_and_five_second_effect_timeline() -> void:
 		and tower.target_rain_ripples.self_modulate == Color.WHITE
 		and not tower.ground_dew_rise.emitting
 		and is_equal_approx(tower.ground_dew_rise.amount_ratio, 1.0)
-		and tower.ground_dew_rise.self_modulate == Color.WHITE,
-		"较长消散期结束后两端雨线与范围粒子必须停止，并恢复可复用的发射比例与透明度。"
+		and tower.ground_dew_rise.self_modulate == Color.WHITE
+		and tower.rain_visual_phase == HydrangeaRainTower.RainVisualPhase.IDLE,
+		"粒子尾声结束后所有雨幕节点必须停止并恢复到可重用待机状态。"
 	)
 	fixture.plant_targets.clear()
 	tower.queue_free()
@@ -912,9 +985,9 @@ func _test_proxy_target_position_sync_and_deduplication() -> void:
 		0.35
 	)
 	_expect(
-		constructing_proxy.pending_proxy_has_rain
+		constructing_proxy.pending_proxy_has_action_visual
 		and constructing_proxy.rain_action_id == 3
-		and constructing_proxy.pending_proxy_rain_target_position
+		and constructing_proxy.pending_proxy_action_target_position
 		== newer_target_position
 		and constructing_proxy.cycle_timer.is_stopped(),
 		"施工中的代理必须缓存较新动作的目标位置与已计入包龄的雨幕相位。"
@@ -975,10 +1048,46 @@ func _test_proxy_target_position_sync_and_deduplication() -> void:
 		and live_proxy.rain_field.global_position == target_position,
 		"可靠雨幕动作必须同步目标位置，并拒绝重复动作及旧快照覆盖。"
 	)
-	live_proxy.play_multiplayer_rain_action(9, target_position, 3.2)
+	live_proxy.play_multiplayer_rain_action(9, target_position, 1.7)
 	_expect(
-		not live_proxy.rain_active and live_proxy.rain_action_id == 9,
-		"包龄超过3秒的可靠动作不得重新显示已经结束的雨幕。"
+		not live_proxy.rain_active
+		and live_proxy.rain_action_id == 9
+		and live_proxy.ground_dew_rise.emitting
+		and live_proxy.ground_dew_rise.global_position == target_position
+		and not live_proxy.ground_effect_end_timer.is_stopped()
+		and live_proxy.rain_visual_phase
+		== HydrangeaRainTower.RainVisualPhase.GROUND_SUSTAIN,
+		"包龄超过1.5秒的动作不得重播落雨，但必须恢复至5.68秒的地面粒子。"
+	)
+	live_proxy.apply_multiplayer_runtime_state(
+		{
+			"schema": HydrangeaRainTower.RUNTIME_STATE_SCHEMA,
+			"cycle_elapsed_seconds": 2.2,
+			"rain_active": false,
+			"ground_effect_active": true,
+			"rain_action_id": 10,
+			"ground_effect_elapsed_seconds": 2.2,
+			"ground_effect_target_position": newer_target_position,
+		},
+		0.0
+	)
+	_expect(
+		not live_proxy.rain_active
+		and live_proxy.rain_action_id == 10
+		and live_proxy.ground_dew_rise.emitting
+		and live_proxy.ground_dew_rise.global_position
+		== newer_target_position
+		and live_proxy.ground_effect_end_timer.time_left > 3.3
+		and live_proxy.ground_effect_end_timer.time_left < 3.5,
+		"中途加入客户端必须从快照恢复完整效果期内剩余的地面粒子时长。"
+	)
+	live_proxy.play_multiplayer_rain_action(11, target_position, 5.8)
+	_expect(
+		not live_proxy.rain_active
+		and live_proxy.rain_action_id == 11
+		and not live_proxy.ground_dew_rise.emitting
+		and live_proxy.ground_effect_end_timer.is_stopped(),
+		"包龄超过5.68秒的动作不得重新发射已经结束的地面粒子。"
 	)
 	live_proxy.queue_free()
 	await process_frame

@@ -797,11 +797,11 @@ func _test_hud_follow_focus(
 		card_scroll != null
 		and card_scroll.follow_focus
 		and hud.open(configs)
-		and configs.size() == 11
+		and configs.size() == 12
 		and configs.back() == config
-		and hud.cards.size() == 11
+		and hud.cards.size() == 12
 		and hud.cards.back().plant_config == config,
-		"11张植物卡必须把种植基地放在末位，CardScroll须启用follow_focus。"
+		"12张植物卡必须把种植基地放在末位，CardScroll须启用follow_focus。"
 	)
 	if card_scroll == null or not hud.is_open():
 		return

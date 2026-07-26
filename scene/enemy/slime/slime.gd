@@ -1,10 +1,8 @@
 extends YuanshiInsect
 class_name Slime
 
-const FIRE_TOUCH_SOURCE_FAMILY := &"fire_slime_touch"
-const FROST_TOUCH_SOURCE_TYPE := &"frost_slime_touch"
-const ELEMENTAL_STATUS_DURATION_SECONDS := 3.0
-const FIRE_BURN_LEVEL := 10
+const FIRE_TOUCH_SOURCE_FAMILY := CombatAttackRegistry.FIRE_SLIME_TOUCH
+const FROST_TOUCH_SOURCE_TYPE := CombatAttackRegistry.FROST_SLIME_TOUCH
 
 
 func _get_touch_damage_type() -> EnemyConfig.DamageType:
@@ -37,16 +35,16 @@ func _apply_fire_status(target: Node) -> void:
 		if not player.is_dead:
 			player.apply_burn_status(
 				FIRE_TOUCH_SOURCE_FAMILY,
-				ELEMENTAL_STATUS_DURATION_SECONDS,
-				FIRE_BURN_LEVEL
+				CombatAttackRegistry.get_burn_duration(FIRE_TOUCH_SOURCE_FAMILY),
+				CombatAttackRegistry.get_burn_tick_damage(FIRE_TOUCH_SOURCE_FAMILY)
 			)
 		return
 	var plant := target as PlantDefense
 	if plant != null and not plant.is_dead and not plant.is_removing:
 		plant.apply_burn_status(
 			FIRE_TOUCH_SOURCE_FAMILY,
-			ELEMENTAL_STATUS_DURATION_SECONDS,
-			FIRE_BURN_LEVEL
+			CombatAttackRegistry.get_burn_duration(FIRE_TOUCH_SOURCE_FAMILY),
+			CombatAttackRegistry.get_burn_tick_damage(FIRE_TOUCH_SOURCE_FAMILY)
 		)
 
 

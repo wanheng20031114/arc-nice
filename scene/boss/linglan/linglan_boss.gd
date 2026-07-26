@@ -141,40 +141,8 @@ func set_active(active: bool) -> void:
 		_reset_skill_state()
 
 
-func apply_damage(
-	amount: int,
-	impact_direction: Vector2 = Vector2.ZERO,
-	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
-	show_hit_particles: bool = true
-) -> bool:
-	var accepted := super.apply_damage(
-		amount,
-		impact_direction,
-		damage_type,
-		show_hit_particles
-	)
-	if accepted:
-		_emit_health_changed()
-	return accepted
-
-
-func apply_damage_batch(
-	damage_amounts: PackedInt32Array,
-	hit_counts: PackedInt32Array,
-	impact_direction: Vector2 = Vector2.ZERO,
-	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
-	show_hit_particles: bool = true
-) -> bool:
-	var accepted := super.apply_damage_batch(
-		damage_amounts,
-		hit_counts,
-		impact_direction,
-		damage_type,
-		show_hit_particles
-	)
-	if accepted:
-		_emit_health_changed()
-	return accepted
+func _on_combat_damage_applied(_result: DamageResult) -> void:
+	_emit_health_changed()
 
 
 func _physics_process(delta: float) -> void:
@@ -235,7 +203,7 @@ func _emit_health_changed() -> void:
 
 
 func apply_multiplayer_health_snapshot(new_current_health: int) -> void:
-	current_health = maxi(new_current_health, 0)
+	super.apply_multiplayer_health_snapshot(new_current_health)
 	_emit_health_changed()
 
 

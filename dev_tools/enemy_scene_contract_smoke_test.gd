@@ -28,6 +28,7 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/slime_golden.tres"),
 	preload("res://resources/config/enemies/slime_fire.tres"),
 	preload("res://resources/config/enemies/slime_frost.tres"),
+	preload("res://resources/config/enemies/slime_green.tres"),
 ]
 const STANDARD_YUANSHI_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/yuanshi_insect_basic.tres"),
@@ -77,6 +78,7 @@ const SLIME_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/slime_golden.tres"),
 	preload("res://resources/config/enemies/slime_fire.tres"),
 	preload("res://resources/config/enemies/slime_frost.tres"),
+	preload("res://resources/config/enemies/slime_green.tres"),
 ]
 const DEFAULT_ENEMY_DROP_TABLE: EnemyDropTable = preload(
 	"res://resources/config/enemies/default_enemy_drop_table.tres"

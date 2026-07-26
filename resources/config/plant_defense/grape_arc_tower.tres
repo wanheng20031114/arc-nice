@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="GrapeArcTowerConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/plant_defense/grape_arc_tower_config.gd" id="1_config"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/grape_arc_tower/icon.png" id="2_icon"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/grape_arc_tower.tscn" id="3_scene"]
+
+[resource]
+script = ExtResource("1_config")
+plant_id = &"grape_arc_tower"
+display_name = "葡萄电弧塔"
+description = "每1.6秒充能并释放一次电弧，在6格范围内造成72点法术伤害；命中后会向4.5格内尚未命中的敌人继续跳跃，最多命中4个目标。密集敌群中的总伤害很高，但不会在单一目标间反复弹射。"
+icon = ExtResource("2_icon")
+plant_scene = ExtResource("3_scene")
+supports_multiplayer = true
+max_health = 2600
+physical_defense = 8
+magic_defense = 30
+attack_damage = 72
+attack_speed = 62.5
+attack_range = 96.0
+footprint_size = Vector2i(2, 2)
+placement_surface = 0
+max_chain_targets = 4
+chain_jump_range = 72.0
+charge_seconds = 0.42

@@ -19,33 +19,23 @@ class TestMpGame:
 	var report_count := 0
 	var last_reported_source_id := 0
 	var last_reported_peer_id := 0
-	var last_reported_damage := -1
-	var last_reported_health := -1
-	var last_reported_applied_damage := -1
 	var last_reported_source_type: StringName = &""
-	var last_reported_damage_type := int(EnemyConfig.DamageType.PHYSICAL)
+	var last_reported_damage_flags := 0
 	var sent_methods: Array[StringName] = []
 	var sent_arguments: Array[Array] = []
 
 	func request_player_hit_report(
 		source_id: int,
 		player_peer_id: int,
-		damage: int,
 		source_type: StringName,
-		reported_health_after: int,
-		_reported_is_dead: bool,
-		reported_applied_damage: int,
 		_impact_direction: Vector2,
-		damage_type: EnemyConfig.DamageType
+		damage_flags: int
 	) -> void:
 		report_count += 1
 		last_reported_source_id = source_id
 		last_reported_peer_id = player_peer_id
-		last_reported_damage = damage
-		last_reported_health = reported_health_after
-		last_reported_applied_damage = reported_applied_damage
 		last_reported_source_type = source_type
-		last_reported_damage_type = int(damage_type)
+		last_reported_damage_flags = damage_flags
 
 	func _rpc_to_connected_clients(
 		method_name: StringName,
@@ -382,11 +372,13 @@ func _test_host_authoritative_damage_and_cold_guards() -> void:
 		and hit_player.last_damage_taken == 16
 		and not hit_player.is_dead
 		and _get_cold_stack_count(hit_player) == 1
-		and damage_event_arguments.size() == 9
+		and damage_event_arguments.size() == 10
 		and int(damage_event_arguments[4]) == 16
 		and int(damage_event_arguments[6])
 			== int(EnemyConfig.DamageType.MAGIC)
-		and bool(damage_event_arguments[8]),
+		and bool(damage_event_arguments[8])
+		and int(damage_event_arguments[9])
+			== CombatTypes.DamageRejectionReason.NONE,
 		"Host Frost contact must replace forged 999 physical damage with the recorded 20 magic damage, apply the 20-percent magic-defense result once, and add exactly L1 cold while the player survives."
 	)
 
@@ -423,7 +415,9 @@ func _test_host_authoritative_damage_and_cold_guards() -> void:
 		dodge_player.current_health == TEST_HEALTH
 		and dodge_player.last_damage_taken == 0
 		and _get_cold_stack_count(dodge_player) == 0
-		and _last_sent_cold_flag(mp_game) == false,
+		and _last_sent_cold_flag(mp_game) == false
+		and _last_sent_combat_outcome(mp_game)
+			== CombatTypes.DamageRejectionReason.DODGED,
 		"A fully dodged Host Frost contact must be consumed without adding cold."
 	)
 
@@ -496,6 +490,8 @@ func _test_client_confirmation_and_revision_deduplication() -> void:
 
 	var projectile_id := 82020
 	_remember_ice_spike_record(mp_game, projectile_id)
+	player.current_health = 10
+	player.health_bar.set_health(10, TEST_HEALTH)
 	var request_was_handled := mp_game.request_multiplayer_player_damage(
 		projectile_id,
 		player.peer_id,
@@ -507,19 +503,15 @@ func _test_client_confirmation_and_revision_deduplication() -> void:
 	)
 	_expect(
 		request_was_handled
-		and player.current_health == TEST_HEALTH - 16
+		and player.current_health == 10
+		and not player.is_dead
+		and player.last_damage_taken == 0
 		and _get_cold_stack_count(player) == 0
-		and mp_game.report_count == 1
-		and mp_game.last_reported_source_id == projectile_id
-		and mp_game.last_reported_peer_id == player.peer_id
-		and mp_game.last_reported_damage == ICE_SPIKE_DAMAGE
-		and mp_game.last_reported_health == TEST_HEALTH - 16
-		and mp_game.last_reported_applied_damage == 16
-		and mp_game.last_reported_source_type == ICE_SPIKE_TYPE
-		and mp_game.last_reported_damage_type
-			== int(EnemyConfig.DamageType.MAGIC),
-		"Client Frost contact may predict authoritative 20 magic damage and report it, but must not predict a cold stack."
+		and mp_game.report_count == 0,
+		"A false-positive lethal client contact must not mutate health, enter death lifecycle, add cold, or send a claim."
 	)
+	player.current_health = TEST_HEALTH
+	player.health_bar.set_health(TEST_HEALTH, TEST_HEALTH)
 
 	mp_game.net_player_damage_applied(
 		player.peer_id,
@@ -555,9 +547,28 @@ func _test_client_confirmation_and_revision_deduplication() -> void:
 
 	mp_game.net_player_damage_applied(
 		player.peer_id,
+		TEST_HEALTH - 16,
+		false,
+		3,
+		0,
+		Vector2.ZERO,
+		int(EnemyConfig.DamageType.MAGIC),
+		false,
+		false,
+		CombatTypes.DamageRejectionReason.DODGED
+	)
+	_expect(
+		player.current_health == TEST_HEALTH - 16
+		and not player.is_dead
+		and player.dodge_feedback_tween != null,
+		"A confirmed client dodge must play presentation only without changing life state."
+	)
+
+	mp_game.net_player_damage_applied(
+		player.peer_id,
 		900,
 		false,
-		2,
+		3,
 		16,
 		Vector2.LEFT,
 		int(EnemyConfig.DamageType.MAGIC),
@@ -574,7 +585,7 @@ func _test_client_confirmation_and_revision_deduplication() -> void:
 		player.peer_id,
 		TEST_HEALTH - 16,
 		false,
-		3,
+		4,
 		0,
 		Vector2.ZERO,
 		int(EnemyConfig.DamageType.MAGIC),
@@ -641,6 +652,20 @@ func _last_sent_cold_flag(mp_game: TestMpGame) -> bool:
 		return false
 	var event_arguments := mp_game.sent_arguments[event_index]
 	return event_arguments.size() >= 9 and bool(event_arguments[8])
+
+
+func _last_sent_combat_outcome(mp_game: TestMpGame) -> int:
+	var event_index := mp_game.sent_methods.rfind(
+		&"net_player_damage_applied"
+	)
+	if event_index < 0:
+		return CombatTypes.DamageRejectionReason.NONE
+	var event_arguments := mp_game.sent_arguments[event_index]
+	return (
+		int(event_arguments[9])
+		if event_arguments.size() >= 10
+		else CombatTypes.DamageRejectionReason.NONE
+	)
 
 
 func _expect(condition: bool, message: String) -> void:

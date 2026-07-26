@@ -139,13 +139,8 @@ const FIRE_SORCERER_FIREBALL_VOLLEY_TYPE: StringName = (
 const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_TYPE: StringName = (
 	&"fire_sorcerer_elite_fireball_volley"
 )
-const FIRE_SORCERER_BURN_DURATION_SECONDS := 5.0
-const FIRE_SORCERER_BURN_LEVEL := 5
-const FIRE_SORCERER_ELITE_BURN_LEVEL := 10
 const FIRE_SLIME_TOUCH_TYPE: StringName = &"fire_slime_touch"
 const FROST_SLIME_TOUCH_TYPE: StringName = &"frost_slime_touch"
-const SLIME_ELEMENTAL_STATUS_DURATION_SECONDS := 3.0
-const FIRE_SLIME_BURN_LEVEL := 10
 const FIRE_SORCERER_CONSUMED_SOURCE_MASK_KEY: StringName = (
 	&"fire_sorcerer_consumed_source_mask"
 )
@@ -162,10 +157,12 @@ const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
-## 协议 v19 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
+## 协议 v20 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
 ## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
 const SHARED_SNAPSHOT_COHORT_ID := -1
-const ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES := 56
+# A full enemy keyframe is 24 bytes after adding health_revision. Forty-six
+# records plus the uint16 count stay at 1106 bytes, below the 1200-byte budget.
+const ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES := 46
 const ENEMY_HIGH_PRESSURE_THRESHOLD := 200
 const ENEMY_HIGH_PRESSURE_SNAPSHOT_HZ := 20
 const COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS := 0.05
@@ -316,8 +313,12 @@ var _processed_collectible_effect_event_ids: Dictionary = {}
 var _host_player_snapshot_sequence: int = 0
 var _host_enemy_snapshot_batch_sequence: int = 0
 var _host_enemy_snapshot_live_ids: Dictionary = {}
+# Highest reliable life-event revision processed per player. On Host this is
+# also the allocator; on clients it deduplicates presentation events.
 var _player_health_revisions: Dictionary = {}
-var _local_player_hit_revision: int = 0
+# Highest revision whose health/dead/invincibility state was applied, whether
+# it arrived through a realtime snapshot or a reliable life event.
+var _player_applied_health_revisions: Dictionary = {}
 var _dead_player_revive_times: Dictionary = {}
 var _dead_player_revive_last_seconds: Dictionary = {}
 var _recent_event_prune_time_left: float = RECENT_EVENT_PRUNE_INTERVAL_SECONDS
@@ -2922,6 +2923,9 @@ func _host_broadcast_player_snapshots(client_peer_ids: Array[int] = []) -> void:
 	_host_player_snapshot_sequence += 1
 	for state in states:
 		state.sequence = _host_player_snapshot_sequence
+		state.health_revision = int(
+			_player_health_revisions.get(state.peer_id, 0)
+		)
 	var snapshot_time := _get_net_time()
 	var force_keyframe := _snapshot_cohort_requires_keyframe(
 		_player_snapshot_cohort_peers,
@@ -3402,15 +3406,12 @@ func _client_send_input_if_needed(buttons: int) -> void:
 	var keepalive_due := (
 		_input_frames_since_last_send >= _NetConstants.INPUT_KEEPALIVE_INTERVAL_FRAMES
 	)
-	var active_realtime_state := (
+	var active_input_state := (
 		move_input != Vector2.ZERO
 		or shoot_input != Vector2.ZERO
 		or player_node.velocity.length_squared() > INPUT_CHANGE_EPSILON
-		or player_node.skill1_unlocked
-		or player_node.invincibility_time_left > 0.0
-		or player_node.has_active_multiplayer_character_state()
 	)
-	if not input_changed and not keepalive_due and buttons == 0 and not active_realtime_state:
+	if not input_changed and not keepalive_due and buttons == 0 and not active_input_state:
 		return
 	input_sequence += 1
 	_has_sent_input = true
@@ -3427,17 +3428,7 @@ func _client_send_input_if_needed(buttons: int) -> void:
 		buttons,
 		_pending_dash_request_sequence,
 		_pending_dash_direction,
-		_pending_dash_start_move_input,
-		player_node.current_health,
-		player_node.max_health,
-		player_node.current_xirang,
-		player_node.is_dead,
-		player_node.invincibility_time_left,
-		player_node.skill1_unlocked,
-		player_node.skill1_charge,
-		player_node.skill1_charge_duration,
-		player_node.get_multiplayer_form_mode(),
-		player_node.get_multiplayer_shot_pattern()
+		_pending_dash_start_move_input
 	)
 
 
@@ -3603,12 +3594,23 @@ func _apply_player_realtime_snapshot(
 ) -> void:
 	if player_node == null or player_state == null or not is_instance_valid(player_node):
 		return
+	# Realtime snapshots and reliable damage/heal/revive events use independent
+	# ENet channels. Preserve the latest reliable life state when an older
+	# snapshot arrives after it, while still applying unrelated realtime fields.
+	var apply_snapshot_health := (
+		player_state.health_revision
+		>= int(_player_applied_health_revisions.get(player_state.peer_id, 0))
+	)
 	player_node.apply_multiplayer_realtime_state(
-		player_state.current_health,
-		player_state.max_health,
+		player_state.current_health if apply_snapshot_health else player_node.current_health,
+		player_state.max_health if apply_snapshot_health else player_node.max_health,
 		player_state.current_xirang,
-		player_state.is_dead,
-		player_state.invincibility_time_left,
+		player_state.is_dead if apply_snapshot_health else player_node.is_dead,
+		(
+			player_state.invincibility_time_left
+			if apply_snapshot_health
+			else player_node.invincibility_time_left
+		),
 		player_state.skill1_unlocked,
 		player_state.skill1_charge,
 		player_state.skill1_charge_duration,
@@ -3623,6 +3625,11 @@ func _apply_player_realtime_snapshot(
 	player_node.apply_multiplayer_effective_move_speed_multiplier(
 		player_state.effective_move_speed_multiplier
 	)
+	if apply_snapshot_health:
+		_mark_player_health_revision_applied(
+			player_state.peer_id,
+			player_state.health_revision
+		)
 
 
 func _warn_player_character_snapshot_mismatch(
@@ -3730,7 +3737,11 @@ func _rpc_receive_enemy_snapshot(
 			var dead_enemy: Enemy = _get_valid_client_enemy_for_net_id(enemy_state.net_id)
 			if dead_enemy != null and is_instance_valid(dead_enemy):
 				dead_enemy.global_position = enemy_state.position
-				_apply_enemy_network_health(dead_enemy, enemy_state.health)
+				_apply_enemy_network_health(
+					dead_enemy,
+					enemy_state.health,
+					enemy_state.health_revision
+				)
 			_remove_client_enemy(enemy_state.net_id, true)
 			continue
 		if not enemy_interpolators.has(enemy_state.net_id):
@@ -3747,7 +3758,11 @@ func _rpc_receive_enemy_snapshot(
 		)
 		var enemy_node: Enemy = _get_valid_client_enemy_for_net_id(enemy_state.net_id)
 		if enemy_node != null and is_instance_valid(enemy_node):
-			_apply_enemy_network_health(enemy_node, enemy_state.health)
+			_apply_enemy_network_health(
+				enemy_node,
+				enemy_state.health,
+				enemy_state.health_revision
+			)
 			enemy_node.is_dead = enemy_state.is_dead
 			enemy_node.apply_multiplayer_visual_status_mask(enemy_state.visual_status_mask)
 	if not is_chunked_batch:
@@ -3792,13 +3807,16 @@ func _is_complete_enemy_snapshot_batch(data: PackedByteArray, decoded_count: int
 	return decoded_count == expected_count
 
 
-func _apply_enemy_network_health(enemy_node: Enemy, current_health: int) -> void:
-	if enemy_node == null:
-		return
-	if enemy_node.has_method("apply_multiplayer_health_snapshot"):
-		enemy_node.call("apply_multiplayer_health_snapshot", current_health)
-	else:
-		enemy_node.current_health = current_health
+func _apply_enemy_network_health(
+	enemy_node: Enemy,
+	current_health: int,
+	health_revision: int
+) -> bool:
+	if enemy_node == null or health_revision <= enemy_node.health_revision:
+		return false
+	enemy_node.apply_multiplayer_health_snapshot(maxi(current_health, 0))
+	enemy_node.health_revision = health_revision
+	return true
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)
@@ -3811,17 +3829,7 @@ func _rpc_client_player_state(
 	buttons: int,
 	dash_request_sequence: int,
 	dash_direction: Vector2,
-	dash_start_move_input: Vector2,
-	current_health: int,
-	max_health: int,
-	current_xirang: int,
-	is_dead: bool,
-	invincibility_time_left: float,
-	skill1_unlocked: bool,
-	skill1_charge: float,
-	skill1_charge_duration: float,
-	form_mode: int,
-	shot_pattern: int
+	dash_start_move_input: Vector2
 ) -> void:
 	if not net_manager.is_host() or game == null:
 		return
@@ -3832,9 +3840,6 @@ func _rpc_client_player_state(
 	if player_node == null or not is_instance_valid(player_node):
 		return
 	if player_node.is_dead or player_node.controls_locked:
-		net_player_state_corrected.rpc_id(sender_id, player_node.global_position, player_node.velocity)
-		return
-	if is_dead or current_health <= 0:
 		net_player_state_corrected.rpc_id(sender_id, player_node.global_position, player_node.velocity)
 		return
 	if not _accept_client_player_state(sender_id, sequence, reported_position, reported_velocity):
@@ -5586,41 +5591,26 @@ func _get_fire_sorcerer_projectile_type_for_source(
 func _get_fire_sorcerer_burn_family(
 	source_type: StringName
 ) -> StringName:
-	if (
-		source_type == FIRE_SORCERER_FIREBALL_VOLLEY_TYPE
-		or source_type == FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_TYPE
-	):
-		return source_type
-	return _get_fire_sorcerer_projectile_type_for_source(source_type)
+	var burn_family := CombatAttackRegistry.get_burn_family(source_type)
+	if burn_family == FIRE_SLIME_TOUCH_TYPE:
+		return &""
+	return burn_family
 
 
 func _get_fire_sorcerer_burn_level(source_type: StringName) -> int:
-	match _get_fire_sorcerer_burn_family(source_type):
-		FIRE_SORCERER_FIREBALL_VOLLEY_TYPE:
-			return FIRE_SORCERER_BURN_LEVEL
-		FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_TYPE:
-			return FIRE_SORCERER_ELITE_BURN_LEVEL
-		_:
-			return 0
+	return CombatAttackRegistry.get_burn_tick_damage(source_type)
 
 
 func _get_enemy_burn_family(source_type: StringName) -> StringName:
-	if source_type == FIRE_SLIME_TOUCH_TYPE:
-		return FIRE_SLIME_TOUCH_TYPE
-	return _get_fire_sorcerer_burn_family(source_type)
+	return CombatAttackRegistry.get_burn_family(source_type)
 
 
 func _get_enemy_burn_level(source_type: StringName) -> int:
-	var burn_family := _get_enemy_burn_family(source_type)
-	if burn_family == FIRE_SLIME_TOUCH_TYPE:
-		return FIRE_SLIME_BURN_LEVEL
-	return _get_fire_sorcerer_burn_level(burn_family)
+	return CombatAttackRegistry.get_burn_tick_damage(source_type)
 
 
 func _get_enemy_burn_duration(source_type: StringName) -> float:
-	if _get_enemy_burn_family(source_type) == FIRE_SLIME_TOUCH_TYPE:
-		return SLIME_ELEMENTAL_STATUS_DURATION_SECONDS
-	return FIRE_SORCERER_BURN_DURATION_SECONDS
+	return CombatAttackRegistry.get_burn_duration(source_type)
 
 
 func _get_fire_sorcerer_fireball_source_bit(source_type: StringName) -> int:
@@ -6198,17 +6188,10 @@ func request_enemy_hit_report(
 	damage: int,
 	impact_direction: Vector2
 ) -> void:
-	if net_manager.is_host():
+	if net_manager != null and net_manager.is_host():
 		_apply_enemy_hit_report(projectile_id, owner_peer_id, enemy_net_id, damage, impact_direction)
-	else:
-		_rpc_enemy_hit_report.rpc_id(
-			_get_host_peer_id(),
-			projectile_id,
-			owner_peer_id,
-			enemy_net_id,
-			damage,
-			impact_direction
-		)
+	# Client projectile replicas are visual/predictive only. The Host has already
+	# rebuilt the accepted projectile and settles its own collision callback.
 
 
 func apply_multiplayer_collectible_enemy_damage(
@@ -6224,12 +6207,14 @@ func apply_multiplayer_collectible_enemy_damage(
 		return false
 	var enemy_net_id := int(enemy.get_meta("net_id", 0))
 	if enemy_net_id <= 0:
-		return enemy.apply_damage(
-			damage,
-			impact_direction,
-			damage_type as EnemyConfig.DamageType,
-			show_hit_particles
+		var request := DamageRequest.new(damage, damage_type)
+		request.with_source(null, 0, &"collectible_effect")
+		request.with_directions(impact_direction)
+		request.with_flag(
+			CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES,
+			not show_hit_particles
 		)
+		return enemy.apply_combat_damage(request).accepted
 	return _apply_confirmed_enemy_damage(
 		enemy_net_id,
 		enemy,
@@ -6242,45 +6227,15 @@ func apply_multiplayer_collectible_enemy_damage(
 
 @rpc("any_peer", "call_remote", "reliable", 4)
 func _rpc_enemy_hit_report(
-	projectile_id: int,
-	owner_peer_id: int,
-	enemy_net_id: int,
-	damage: int,
-	impact_direction: Vector2
+	_projectile_id: int,
+	_owner_peer_id: int,
+	_enemy_net_id: int,
+	_damage: int,
+	_impact_direction: Vector2
 ) -> void:
-	if not net_manager.is_host():
-		return
-	var sender_id := multiplayer.get_remote_sender_id()
-	if not _is_client_enemy_hit_report_allowed(projectile_id, owner_peer_id, sender_id):
-		return
-	_apply_enemy_hit_report(projectile_id, owner_peer_id, enemy_net_id, damage, impact_direction)
-
-
-func _is_client_enemy_hit_report_allowed(
-	projectile_id: int,
-	owner_peer_id: int,
-	sender_id: int
-) -> bool:
-	if sender_id > 0:
-		if owner_peer_id != sender_id:
-			return false
-		# Host-origin identities are simulated and settled by Host. A remote
-		# client may only report collisions for its own prediction lane; otherwise
-		# it could submit a hit for an unrelated Host-authoritative projectile
-		# whose owner field happens to match that peer.
-		if not _is_projectile_id_valid_for_client_owner(
-			projectile_id,
-			owner_peer_id
-		):
-			return false
-	var projectile_record_variant: Variant = _projectile_records.get(projectile_id)
-	if projectile_record_variant is Dictionary:
-		var projectile_record := projectile_record_variant as Dictionary
-		var projectile_type := StringName(projectile_record.get("projectile_type", &""))
-		if projectile_type == TIYI_SNIPER_PROJECTILE_TYPE or projectile_type == &"skill1_bomb":
-			# These projectiles are simulated and settled by Host. Clients cannot claim hits.
-			return false
-	return true
+	# Protocol-v20 compatibility shell. Client-selected enemy IDs are not
+	# collision evidence, so even an old or malicious client cannot settle here.
+	return
 
 
 func _apply_enemy_hit_report(
@@ -6441,29 +6396,30 @@ func _apply_confirmed_enemy_damage(
 ) -> bool:
 	if enemy_net_id <= 0 or enemy == null or not is_instance_valid(enemy):
 		return false
+	var request := DamageRequest.new(damage, int(damage_type))
+	request.with_directions(impact_direction)
+	request.with_flag(
+		CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES,
+		not show_hit_particles
+	)
 	_active_enemy_damage_feedback_context[enemy_net_id] = {
 		"impact_direction": impact_direction,
 		"damage_type": int(damage_type),
 		"show_hit_particles": show_hit_particles,
 	}
-	var applied := enemy.apply_damage(
-		damage,
-		impact_direction,
-		damage_type,
-		show_hit_particles
-	)
+	var result := enemy.apply_combat_damage(request)
 	_active_enemy_damage_feedback_context.erase(enemy_net_id)
-	if not applied:
+	if not result.accepted:
 		return false
-	if enemy.is_dead:
+	if result.lethal:
 		# The synchronous defeated signal already sent a reliable terminal
 		# event containing this final confirmed hit.
 		return true
-	var confirmed_damage := enemy.last_damage_taken
 	_queue_enemy_damage_feedback(
 		enemy_net_id,
-		enemy.current_health,
-		confirmed_damage,
+		result.health_after,
+		enemy.health_revision,
+		result.applied_damage,
 		impact_direction,
 		damage_type,
 		show_hit_particles
@@ -6486,30 +6442,34 @@ func _apply_confirmed_enemy_damage_batch(
 		or not is_instance_valid(enemy)
 	):
 		return false
+	var request := DamageBatchRequest.new(
+		damage_amounts,
+		hit_counts,
+		int(damage_type)
+	)
+	request.with_directions(impact_direction)
+	request.with_flag(
+		CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES,
+		not show_hit_particles
+	)
 	_active_enemy_damage_feedback_context[enemy_net_id] = {
 		"impact_direction": impact_direction,
 		"damage_type": int(damage_type),
 		"show_hit_particles": show_hit_particles,
 	}
-	var applied := enemy.apply_damage_batch(
-		damage_amounts,
-		hit_counts,
-		impact_direction,
-		damage_type,
-		show_hit_particles
-	)
+	var result := enemy.apply_combat_damage(request)
 	_active_enemy_damage_feedback_context.erase(enemy_net_id)
-	if not applied:
+	if not result.accepted:
 		return false
-	if enemy.is_dead:
+	if result.lethal:
 		# The synchronous defeated signal already sent a reliable terminal
 		# event containing this final confirmed batch.
 		return true
-	var confirmed_damage := enemy.last_damage_taken
 	_queue_enemy_damage_feedback(
 		enemy_net_id,
-		enemy.current_health,
-		confirmed_damage,
+		result.health_after,
+		enemy.health_revision,
+		result.applied_damage,
 		impact_direction,
 		damage_type,
 		show_hit_particles
@@ -6520,6 +6480,7 @@ func _apply_confirmed_enemy_damage_batch(
 func _queue_enemy_damage_feedback(
 	enemy_net_id: int,
 	current_health: int,
+	health_revision: int,
 	confirmed_damage: int,
 	impact_direction: Vector2,
 	damage_type: EnemyConfig.DamageType,
@@ -6531,12 +6492,14 @@ func _queue_enemy_damage_feedback(
 	if feedback.is_empty():
 		feedback = {
 			"current_health": current_health,
+			"health_revision": health_revision,
 			"damage": 0,
 			"impact_direction": impact_direction,
 			"damage_type": int(damage_type),
 			"show_hit_particles": show_hit_particles,
 		}
 	feedback["current_health"] = current_health
+	feedback["health_revision"] = health_revision
 	feedback["damage"] = int(feedback.get("damage", 0)) + maxi(confirmed_damage, 0)
 	feedback["impact_direction"] = impact_direction
 	feedback["damage_type"] = int(damage_type)
@@ -6706,6 +6669,7 @@ func _flush_enemy_damage_feedback() -> void:
 		)
 		var net_ids := PackedInt32Array()
 		var health_values := PackedInt32Array()
+		var health_revisions := PackedInt32Array()
 		var damage_values := PackedInt32Array()
 		var directions := PackedVector2Array()
 		var damage_types := PackedByteArray()
@@ -6715,13 +6679,22 @@ func _flush_enemy_damage_feedback() -> void:
 			var feedback := _pending_enemy_damage_feedback.get(enemy_id, {}) as Dictionary
 			net_ids.append(enemy_id)
 			health_values.append(int(feedback.get("current_health", 0)))
+			health_revisions.append(int(feedback.get("health_revision", 0)))
 			damage_values.append(int(feedback.get("damage", 0)))
 			directions.append(feedback.get("impact_direction", Vector2.ZERO) as Vector2)
 			damage_types.append(int(feedback.get("damage_type", 0)))
 			particle_flags.append(1 if bool(feedback.get("show_hit_particles", false)) else 0)
 		_rpc_to_connected_clients(
 			&"net_enemy_damage_feedback_batch",
-			[net_ids, health_values, damage_values, directions, damage_types, particle_flags]
+			[
+				net_ids,
+				health_values,
+				health_revisions,
+				damage_values,
+				directions,
+				damage_types,
+				particle_flags,
+			]
 		)
 	_pending_enemy_damage_feedback.clear()
 
@@ -7011,6 +6984,7 @@ func _clear_remote_plant_health_state() -> void:
 func net_enemy_damage_feedback_batch(
 	net_ids: PackedInt32Array,
 	health_values: PackedInt32Array,
+	health_revisions: PackedInt32Array,
 	damage_values: PackedInt32Array,
 	directions: PackedVector2Array,
 	damage_types: PackedByteArray,
@@ -7021,8 +6995,14 @@ func net_enemy_damage_feedback_batch(
 		mini(
 			health_values.size(),
 			mini(
-				damage_values.size(),
-				mini(directions.size(), mini(damage_types.size(), particle_flags.size()))
+				health_revisions.size(),
+				mini(
+					damage_values.size(),
+					mini(
+						directions.size(),
+						mini(damage_types.size(), particle_flags.size())
+					)
+				)
 			)
 		)
 	)
@@ -7030,7 +7010,11 @@ func net_enemy_damage_feedback_batch(
 		var enemy := _get_client_enemy_for_net_id(net_ids[record_index])
 		if enemy == null or not is_instance_valid(enemy):
 			continue
-		_apply_enemy_network_health(enemy, health_values[record_index])
+		_apply_enemy_network_health(
+			enemy,
+			health_values[record_index],
+			health_revisions[record_index]
+		)
 		enemy.show_damage_number(
 			damage_values[record_index],
 			directions[record_index],
@@ -7047,6 +7031,7 @@ func net_enemy_damage_feedback_batch(
 func net_enemy_damage_applied(
 	enemy_net_id: int,
 	current_health: int,
+	health_revision: int,
 	is_dead: bool,
 	confirmed_damage: int,
 	impact_direction: Vector2,
@@ -7056,7 +7041,7 @@ func net_enemy_damage_applied(
 	var enemy := _get_client_enemy_for_net_id(enemy_net_id)
 	if enemy == null or not is_instance_valid(enemy):
 		return
-	_apply_enemy_network_health(enemy, current_health)
+	_apply_enemy_network_health(enemy, current_health, health_revision)
 	enemy.show_damage_number(
 		confirmed_damage,
 		impact_direction,
@@ -7066,11 +7051,6 @@ func net_enemy_damage_applied(
 		enemy.play_multiplayer_damage_feedback(impact_direction, show_hit_particles)
 	if is_dead:
 		_remove_client_enemy(enemy_net_id, true)
-
-
-func _next_player_hit_revision() -> int:
-	_local_player_hit_revision += 1
-	return _local_player_hit_revision
 
 
 func request_multiplayer_player_damage(
@@ -7085,6 +7065,8 @@ func request_multiplayer_player_damage(
 ) -> bool:
 	if source_id <= 0 or target_peer_id <= 0 or damage <= 0:
 		return false
+	# This Variant adapter is retained only for existing enemy/projectile call
+	# sites. It normalizes immediately into one typed DamageRequest below.
 	var resolved_damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
 	var source_direction := Vector2.ZERO
 	var resolved_is_ranged := is_ranged
@@ -7112,7 +7094,6 @@ func request_multiplayer_player_damage(
 		resolved_damage_type = EnemyConfig.DamageType.MAGIC
 	elif is_fire_slime_touch or is_frost_slime_touch:
 		resolved_damage_type = EnemyConfig.DamageType.MAGIC
-	var damage_context := _build_player_damage_context(source_direction, resolved_is_ranged)
 	var impact_direction := Vector2.ZERO
 	if source_direction.is_finite() and source_direction.length_squared() > 0.001:
 		impact_direction = -source_direction.normalized()
@@ -7158,57 +7139,30 @@ func request_multiplayer_player_damage(
 			return true
 		if player_node.is_dead:
 			return true
-		var damage_was_applied := player_node.apply_damage(
-			damage,
-			resolved_damage_type,
-			damage_context
+		# Client contact only retires the local projectile presentation and its
+		# duplicate key. It must not enter Player's stateful sink: a false-positive
+		# local collision could otherwise trigger death/spectator lifecycle before
+		# the Host rejects the hit. Reliable Host results own health and feedback.
+		_remember_recent_event(
+			_processed_player_hit_ids,
+			hit_key,
+			HIT_DEDUP_RETENTION_SECONDS,
+			now
 		)
-		if damage_was_applied or contact_was_consumed:
-			var applied_damage_for_report := (
-				player_node.last_damage_taken
-				if damage_was_applied
-				else 0
-			)
-			_remember_recent_event(_processed_player_hit_ids, hit_key, HIT_DEDUP_RETENTION_SECONDS, now)
-			request_player_hit_report(
-				source_id,
-				target_peer_id,
-				damage,
-				source_type,
-				player_node.current_health,
-				player_node.is_dead,
-				applied_damage_for_report,
-				impact_direction,
-				resolved_damage_type
-			)
 		return true
 	if net_manager.is_host():
 		if player_node.is_dead:
 			return true
-		var damage_was_applied := player_node.apply_damage(
+		_apply_player_hit_report(
+			source_id,
+			target_peer_id,
 			damage,
+			source_type,
+			impact_direction,
 			resolved_damage_type,
-			damage_context
+			CombatTypes.DamageFlag.RANGED if resolved_is_ranged else 0,
+			contact_was_consumed
 		)
-		if damage_was_applied or contact_was_consumed:
-			var applied_damage_for_report := (
-				player_node.last_damage_taken
-				if damage_was_applied
-				else 0
-			)
-			_apply_player_hit_report(
-				source_id,
-				target_peer_id,
-				damage,
-				source_type,
-				player_node.current_health,
-				player_node.is_dead,
-				_next_player_hit_revision(),
-				applied_damage_for_report,
-				impact_direction,
-				resolved_damage_type,
-				contact_was_consumed
-			)
 		return true
 	return false
 
@@ -7269,14 +7223,20 @@ func request_multiplayer_player_damage_over_time_tick(
 		or player_node.is_dead
 	):
 		return false
-	if not player_node.apply_periodic_damage(
-		tick_damage,
-		damage_type
-	):
+	var request := DamageRequest.new(tick_damage, int(damage_type))
+	request.with_source(null, 0, source_family)
+	request.flags = (
+		CombatTypes.DamageFlag.PERIODIC
+		| CombatTypes.DamageFlag.BYPASS_INVULNERABILITY
+		| CombatTypes.DamageFlag.BYPASS_DODGE
+		| CombatTypes.DamageFlag.NO_HIT_INVINCIBILITY
+	)
+	var result := player_node.apply_combat_damage(request)
+	if not result.accepted:
 		return false
 
-	var confirmed_damage := player_node.last_damage_taken
-	var confirmed_dead := player_node.is_dead
+	var confirmed_damage := result.applied_damage
+	var confirmed_dead := result.lethal
 	_show_confirmed_player_damage_number(
 		player_node,
 		confirmed_damage,
@@ -7291,7 +7251,7 @@ func request_multiplayer_player_damage_over_time_tick(
 		_schedule_player_revive(player_peer_id)
 	var event_arguments := [
 		player_peer_id,
-		player_node.current_health,
+		result.health_after,
 		confirmed_dead,
 		health_revision,
 		confirmed_damage,
@@ -7305,7 +7265,7 @@ func request_multiplayer_player_damage_over_time_tick(
 	)
 	net_player_damage_applied(
 		player_peer_id,
-		player_node.current_health,
+		result.health_after,
 		confirmed_dead,
 		health_revision,
 		confirmed_damage,
@@ -7316,90 +7276,45 @@ func request_multiplayer_player_damage_over_time_tick(
 	return true
 
 
-func _build_player_damage_context(source_direction: Vector2, is_ranged: bool) -> Dictionary:
-	if not is_ranged:
-		return {}
-	return {
-		"is_ranged": true,
-		"source_direction": (
-			source_direction.normalized()
-			if source_direction.is_finite() and source_direction.length_squared() > 0.001
-			else Vector2.ZERO
-		),
-	}
+func _build_player_damage_request(
+	damage: int,
+	damage_type: int,
+	source_id: int,
+	source_type: StringName,
+	impact_direction: Vector2,
+	is_ranged: bool
+) -> DamageRequest:
+	var request := DamageRequest.new(damage, damage_type)
+	request.with_source(null, source_id, source_type)
+	request.with_directions(impact_direction, -impact_direction)
+	request.with_flag(CombatTypes.DamageFlag.RANGED, is_ranged)
+	return request
 
 
 func request_player_hit_report(
-	source_id: int,
-	player_peer_id: int,
-	damage: int,
-	source_type: StringName,
-	reported_health_after: int,
-	reported_is_dead: bool,
-	reported_applied_damage: int,
-	impact_direction: Vector2,
-	damage_type: EnemyConfig.DamageType
+	_source_id: int,
+	_player_peer_id: int,
+	_source_type: StringName,
+	_impact_direction: Vector2,
+	_damage_flags: int
 ) -> void:
-	var hit_revision := _next_player_hit_revision()
-	if net_manager.is_host():
-		_apply_player_hit_report(
-			source_id,
-			player_peer_id,
-			damage,
-			source_type,
-			reported_health_after,
-			reported_is_dead,
-			hit_revision,
-			reported_applied_damage,
-			impact_direction,
-			damage_type
-		)
-	else:
-		_rpc_player_hit_report.rpc_id(
-			_get_host_peer_id(),
-			source_id,
-			player_peer_id,
-			damage,
-			String(source_type),
-			reported_health_after,
-			reported_is_dead,
-			hit_revision,
-			reported_applied_damage,
-			impact_direction,
-			int(damage_type)
-		)
+	# Protocol-v20 compatibility shell. Client hit claims are intentionally
+	# disabled: every eligible attack already has a live Host simulation, and a
+	# proximity-only client hint is not proof of collision.
+	return
 
 
 @rpc("any_peer", "call_remote", "reliable", 5)
 func _rpc_player_hit_report(
-	source_id: int,
-	player_peer_id: int,
-	damage: int,
-	source_type: String,
-	reported_health_after: int,
-	reported_is_dead: bool,
-	hit_revision: int,
-	reported_applied_damage: int,
-	impact_direction: Vector2,
-	damage_type: int
+	_source_id: int,
+	_player_peer_id: int,
+	_attack_wire_id: int,
+	_impact_direction: Vector2,
+	_damage_flags: int
 ) -> void:
-	if not net_manager.is_host():
-		return
-	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id > 0 and sender_id != player_peer_id:
-		return
-	_apply_player_hit_report(
-		source_id,
-		player_peer_id,
-		damage,
-		StringName(source_type),
-		reported_health_after,
-		reported_is_dead,
-		hit_revision,
-		reported_applied_damage,
-		impact_direction,
-		damage_type as EnemyConfig.DamageType
-	)
+	# Fail closed for old or malicious clients. Host collision callbacks enter
+	# the canonical local sink directly and never pass through this RPC.
+	return
 
 
 func _apply_player_hit_report(
@@ -7407,16 +7322,38 @@ func _apply_player_hit_report(
 	player_peer_id: int,
 	damage: int,
 	source_type: StringName,
-	reported_health_after: int,
-	reported_is_dead: bool,
-	_hit_revision: int,
-	reported_applied_damage: int,
 	impact_direction: Vector2,
 	damage_type: EnemyConfig.DamageType,
+	damage_flags: int,
 	contact_preconsumed: bool = false
-) -> void:
-	if source_id <= 0 or player_peer_id <= 0 or damage <= 0:
-		return
+) -> DamageResult:
+	var request := _build_player_damage_request(
+		damage,
+		int(damage_type),
+		source_id,
+		source_type,
+		impact_direction,
+		CombatTypes.has_flag(damage_flags, CombatTypes.DamageFlag.RANGED)
+	)
+	if source_id <= 0 or player_peer_id <= 0:
+		return DamageResult.rejected(
+			request,
+			CombatTypes.DamageRejectionReason.INVALID_REQUEST
+		)
+	var player_node: Player = null
+	if game != null:
+		player_node = game.get_player_for_peer(player_peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return DamageResult.rejected(
+			request,
+			CombatTypes.DamageRejectionReason.TARGET_UNAVAILABLE
+		)
+	if damage <= 0:
+		return DamageResult.rejected(
+			request,
+			CombatTypes.DamageRejectionReason.INVALID_AMOUNT,
+			player_node.current_health
+		)
 	var is_fire_sorcerer_fireball := (
 		_get_fire_sorcerer_fireball_source_bit(source_type) != 0
 	)
@@ -7429,8 +7366,13 @@ func _apply_player_hit_report(
 			source_type
 		)
 		if authoritative_damage <= 0:
-			return
+			return DamageResult.rejected(
+				request,
+				CombatTypes.DamageRejectionReason.UNTRUSTED_SOURCE,
+				player_node.current_health
+			)
 		damage = authoritative_damage
+		request.amount = damage
 	var hit_key := _get_multiplayer_player_hit_key(
 		source_id,
 		player_peer_id,
@@ -7438,16 +7380,17 @@ func _apply_player_hit_report(
 	)
 	var now := _get_net_time()
 	if _is_recent_event_cached(_processed_player_hit_ids, hit_key, now):
-		if is_fire_sorcerer_fireball or is_frost_ice_spike:
-			_send_authoritative_player_health_correction(player_peer_id)
-		return
-	var player_node: Player = null
-	if game != null:
-		player_node = game.get_player_for_peer(player_peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
-	if player_node.is_dead and not reported_is_dead:
-		return
+		return DamageResult.rejected(
+			request,
+			CombatTypes.DamageRejectionReason.DUPLICATE_EVENT,
+			player_node.current_health
+		)
+	if player_node.is_dead:
+		return DamageResult.rejected(
+			request,
+			CombatTypes.DamageRejectionReason.TARGET_DEAD,
+			player_node.current_health
+		)
 	if is_fire_sorcerer_fireball:
 		var contact_consumed := (
 			_is_fire_sorcerer_fireball_contact_consumed(
@@ -7461,11 +7404,11 @@ func _apply_player_hit_report(
 			)
 		)
 		if not contact_consumed:
-			_send_authoritative_player_health_correction(
-				player_peer_id,
-				player_node
+			return DamageResult.rejected(
+				request,
+				CombatTypes.DamageRejectionReason.DUPLICATE_EVENT,
+				player_node.current_health
 			)
-			return
 	elif is_frost_ice_spike:
 		var contact_consumed := (
 			_is_frost_ice_spike_contact_consumed(source_id, source_type)
@@ -7476,19 +7419,15 @@ func _apply_player_hit_report(
 			)
 		)
 		if not contact_consumed:
-			_send_authoritative_player_health_correction(
-				player_peer_id,
-				player_node
+			return DamageResult.rejected(
+				request,
+				CombatTypes.DamageRejectionReason.DUPLICATE_EVENT,
+				player_node.current_health
 			)
-			return
 	_remember_recent_event(_processed_player_hit_ids, hit_key, HIT_DEDUP_RETENTION_SECONDS, now)
-	var confirmed_health := clampi(reported_health_after, 0, player_node.max_health)
-	if player_node.current_health > 0:
-		confirmed_health = mini(confirmed_health, player_node.current_health)
-	var confirmed_dead := reported_is_dead or confirmed_health <= 0
-	var confirmed_damage := clampi(reported_applied_damage, 0, player_node.max_health)
-	if is_frost_ice_spike:
-		confirmed_damage = mini(confirmed_damage, damage)
+	var result := player_node.apply_combat_damage(request)
+	var confirmed_dead := result.lethal
+	var confirmed_damage := result.applied_damage
 	var confirmed_impact_direction := Vector2.ZERO
 	if impact_direction.is_finite() and impact_direction.length_squared() > 0.001:
 		confirmed_impact_direction = impact_direction.normalized()
@@ -7502,9 +7441,8 @@ func _apply_player_hit_report(
 		)
 		else EnemyConfig.DamageType.PHYSICAL
 	)
-	player_node.set_multiplayer_health_state(confirmed_health, confirmed_dead)
 	var confirmed_cold_applied := false
-	if confirmed_damage > 0 and not confirmed_dead:
+	if result.accepted and confirmed_damage > 0 and not confirmed_dead:
 		var burn_family := _get_enemy_burn_family(source_type)
 		var burn_level := _get_enemy_burn_level(burn_family)
 		if burn_family != &"" and burn_level > 0:
@@ -7513,7 +7451,7 @@ func _apply_player_hit_report(
 				_get_enemy_burn_duration(burn_family),
 				burn_level
 			)
-		if is_frost_ice_spike or is_frost_slime_touch:
+		if CombatAttackRegistry.applies_cold(source_type):
 			confirmed_cold_applied = player_node.apply_cold_status()
 	_show_confirmed_player_damage_number(
 		player_node,
@@ -7531,51 +7469,30 @@ func _apply_player_hit_report(
 		&"net_player_damage_applied",
 		[
 			player_peer_id,
-			player_node.current_health,
-			player_node.is_dead,
+			result.health_after,
+			confirmed_dead,
 			health_revision,
 			confirmed_damage,
 			confirmed_impact_direction,
 			int(confirmed_damage_type),
-			true,
+			result.accepted and not confirmed_dead,
 			confirmed_cold_applied,
+			result.rejection_reason,
 		]
 	)
 	net_player_damage_applied(
 		player_peer_id,
-		player_node.current_health,
-		player_node.is_dead,
+		result.health_after,
+		confirmed_dead,
 		health_revision,
 		confirmed_damage,
 		confirmed_impact_direction,
 		int(confirmed_damage_type),
-		true,
-		confirmed_cold_applied
+		result.accepted and not confirmed_dead,
+		confirmed_cold_applied,
+		result.rejection_reason
 	)
-
-
-func _send_authoritative_player_health_correction(
-	player_peer_id: int,
-	player_node_override: Player = null
-) -> void:
-	var player_node := player_node_override
-	if player_node == null and game != null:
-		player_node = game.get_player_for_peer(player_peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
-	var health_revision := _next_player_health_revision(player_peer_id)
-	_rpc_to_connected_clients(
-		&"net_player_damage_applied",
-		[
-			player_peer_id,
-			player_node.current_health,
-			player_node.is_dead,
-			health_revision,
-			0,
-			Vector2.ZERO,
-			int(EnemyConfig.DamageType.MAGIC),
-		]
-	)
+	return result
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -7588,7 +7505,8 @@ func net_player_damage_applied(
 	impact_direction: Vector2,
 	damage_type: int,
 	grant_hit_invincibility: bool = true,
-	apply_confirmed_cold: bool = false
+	apply_confirmed_cold: bool = false,
+	combat_outcome: int = 0
 ) -> void:
 	if player_peer_id <= 0:
 		return
@@ -7600,7 +7518,21 @@ func net_player_damage_applied(
 	if health_revision <= int(_player_health_revisions.get(player_peer_id, 0)):
 		return
 	_player_health_revisions[player_peer_id] = health_revision
-	player_node.set_multiplayer_health_state(current_health, is_dead)
+	var applied_life_state := _try_apply_player_health_event(
+		player_node,
+		player_peer_id,
+		current_health,
+		is_dead,
+		health_revision
+	)
+	if (
+		combat_outcome == CombatTypes.DamageRejectionReason.DODGED
+		and confirmed_damage <= 0
+		and not is_dead
+		and net_manager != null
+		and net_manager.is_client()
+	):
+		player_node.play_confirmed_dodge_feedback()
 	if apply_confirmed_cold and confirmed_damage > 0 and not is_dead:
 		player_node.apply_cold_status()
 	_show_confirmed_player_damage_number(
@@ -7613,13 +7545,14 @@ func net_player_damage_applied(
 		if damage_type == EnemyConfig.DamageType.MAGIC
 		else EnemyConfig.DamageType.PHYSICAL
 	)
-	if is_dead and _is_valid_tiyi_player(player_node):
+	if is_dead and applied_life_state and _is_valid_tiyi_player(player_node):
 		_active_tiyi_activations_by_peer.erase(player_peer_id)
 		_tiyi_target_ids_by_peer.erase(player_peer_id)
 		_clear_projectiles_for_peer(player_peer_id)
 		_clear_projectile_records_for_peer(player_peer_id)
 	if (
 		grant_hit_invincibility
+		and applied_life_state
 		and is_client_view_runtime()
 		and player_peer_id == _get_client_view_local_peer_id()
 		and not player_node.is_dead
@@ -7715,11 +7648,17 @@ func net_player_healed(
 	if player_node.is_dead:
 		return
 	_player_health_revisions[peer_id] = health_revision
-	player_node.set_multiplayer_health_state(current_health, false)
+	_try_apply_player_health_event(
+		player_node,
+		peer_id,
+		current_health,
+		false,
+		health_revision
+	)
 	player_node.queue_healing_number(confirmed_healing)
 
 
-# Legacy compatibility shells retained in protocol v19. Xirang orbs no longer exist, but keeping the
+# Legacy compatibility shells retained in protocol v20. Xirang orbs no longer exist, but keeping the
 # annotated signatures avoids a partial wire-protocol break until the next
 # coordinated protocol-version upgrade.
 @rpc("authority", "call_remote", "reliable", 5)
@@ -7975,7 +7914,37 @@ func _get_valid_client_enemy_for_net_id(enemy_net_id: int) -> Enemy:
 func _next_player_health_revision(peer_id: int) -> int:
 	var next_revision := int(_player_health_revisions.get(peer_id, 0)) + 1
 	_player_health_revisions[peer_id] = next_revision
+	_mark_player_health_revision_applied(peer_id, next_revision)
 	return next_revision
+
+
+func _try_apply_player_health_event(
+	player_node: Player,
+	peer_id: int,
+	current_health: int,
+	is_dead: bool,
+	health_revision: int
+) -> bool:
+	if (
+		player_node == null
+		or peer_id <= 0
+		or health_revision < int(
+			_player_applied_health_revisions.get(peer_id, 0)
+		)
+	):
+		return false
+	player_node.set_multiplayer_health_state(current_health, is_dead)
+	_mark_player_health_revision_applied(peer_id, health_revision)
+	return true
+
+
+func _mark_player_health_revision_applied(peer_id: int, health_revision: int) -> void:
+	if peer_id <= 0 or health_revision < 0:
+		return
+	_player_applied_health_revisions[peer_id] = maxi(
+		int(_player_applied_health_revisions.get(peer_id, 0)),
+		health_revision
+	)
 
 
 func _schedule_player_revive(peer_id: int) -> void:
@@ -8167,6 +8136,10 @@ func net_player_revived(
 	if health_revision <= int(_player_health_revisions.get(peer_id, 0)):
 		return
 	_player_health_revisions[peer_id] = health_revision
+	# Revive is a reliable lifecycle transition and must run even when a newer
+	# alive snapshot was observed first: tower-defense death presentation
+	# intentionally refuses to revive from realtime snapshots.
+	_mark_player_health_revision_applied(peer_id, health_revision)
 	_dead_player_revive_times.erase(peer_id)
 	_dead_player_revive_last_seconds.erase(peer_id)
 	_active_tiyi_activations_by_peer.erase(peer_id)
@@ -8272,6 +8245,7 @@ func _broadcast_enemy_terminal(net_id: int, reason: int, event_position: Vector2
 			reason,
 			event_position,
 			int(terminal_feedback.get("current_health", 0)),
+			int(terminal_feedback.get("health_revision", 0)),
 			int(terminal_feedback.get("damage", 0)),
 			terminal_feedback.get(
 				"impact_direction",
@@ -8311,15 +8285,13 @@ func _collect_enemy_terminal_feedback(enemy_net_id: int) -> Dictionary:
 	var current_health := int(
 		pending_feedback.get("current_health", 0)
 	)
+	var health_revision := int(
+		pending_feedback.get("health_revision", 0)
+	)
 	var confirmed_damage := maxi(
 		int(pending_feedback.get("damage", 0)),
 		0
 	)
-	if enemy != null and is_instance_valid(enemy):
-		current_health = maxi(enemy.current_health, 0)
-		# defeated is emitted synchronously from Enemy._die(), before the
-		# normal feedback queue call returns, so the lethal hit lives here.
-		confirmed_damage += maxi(enemy.last_damage_taken, 0)
 	var impact_direction := pending_feedback.get(
 		"impact_direction",
 		Vector2.ZERO
@@ -8333,6 +8305,21 @@ func _collect_enemy_terminal_feedback(enemy_net_id: int) -> Dictionary:
 	var show_hit_particles := bool(
 		pending_feedback.get("show_hit_particles", false)
 	)
+	if enemy != null and is_instance_valid(enemy):
+		current_health = maxi(enemy.current_health, 0)
+		health_revision = enemy.health_revision
+		# defeated is emitted synchronously from Enemy._die(), before the
+		# normal feedback queue call returns. The structured result is already
+		# installed on the receiver and is the single source of truth here.
+		var lethal_result := enemy.last_damage_result
+		if lethal_result != null and lethal_result.accepted and lethal_result.lethal:
+			confirmed_damage += lethal_result.applied_damage
+			if lethal_result.request != null:
+				impact_direction = lethal_result.request.get_safe_impact_direction()
+				damage_type = lethal_result.request.damage_type
+				show_hit_particles = not lethal_result.request.has_flag(
+					CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES
+				)
 	if not active_context.is_empty():
 		impact_direction = active_context.get(
 			"impact_direction",
@@ -8352,6 +8339,7 @@ func _collect_enemy_terminal_feedback(enemy_net_id: int) -> Dictionary:
 		)
 	return {
 		"current_health": current_health,
+		"health_revision": health_revision,
 		"damage": confirmed_damage,
 		"impact_direction": impact_direction,
 		"damage_type": damage_type,
@@ -8667,6 +8655,7 @@ func _apply_plant_runtime_state(
 		"projectile_elapsed_seconds",
 		"cycle_elapsed_seconds",
 		"rain_elapsed_seconds",
+		"ground_effect_elapsed_seconds",
 	]:
 		if not corrected_state.has(elapsed_key):
 			continue
@@ -9724,6 +9713,7 @@ func net_enemy_terminal(
 	reason: int,
 	event_position: Vector2,
 	current_health: int = 0,
+	health_revision: int = 0,
 	confirmed_damage: int = 0,
 	impact_direction: Vector2 = Vector2.ZERO,
 	damage_type: int = EnemyConfig.DamageType.PHYSICAL,
@@ -9737,7 +9727,11 @@ func net_enemy_terminal(
 			var enemy := _get_valid_client_enemy_for_net_id(net_id)
 			if enemy != null and is_instance_valid(enemy):
 				enemy.global_position = event_position
-				_apply_enemy_network_health(enemy, current_health)
+				_apply_enemy_network_health(
+					enemy,
+					current_health,
+					health_revision
+				)
 				if confirmed_damage > 0:
 					enemy.show_damage_number(
 						confirmed_damage,
@@ -11859,6 +11853,7 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_accepted_player_state_times.erase(peer_id)
 	_host_latest_client_player_snapshot_states.erase(peer_id)
 	_player_health_revisions.erase(peer_id)
+	_player_applied_health_revisions.erase(peer_id)
 	_dead_player_revive_times.erase(peer_id)
 	_dead_player_revive_last_seconds.erase(peer_id)
 	_luoxi_offer_states_by_peer.erase(peer_id)

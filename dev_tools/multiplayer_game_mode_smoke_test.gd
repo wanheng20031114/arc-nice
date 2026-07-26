@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 19,
-		"Replicated plant damage-status masks require multiplayer protocol v19."
+		NetConstants.PROTOCOL_VERSION == 20,
+		"Host-authoritative damage claims require multiplayer protocol v20."
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),

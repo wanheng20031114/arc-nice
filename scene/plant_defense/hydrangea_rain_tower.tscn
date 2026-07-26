@@ -1,4 +1,4 @@
-[gd_scene load_steps=40 format=3]
+[gd_scene load_steps=41 format=3]
 
 [ext_resource type="Script" path="res://scene/plant_defense/hydrangea_rain_tower.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/plant_defense/hydrangea_rain_tower/idle.png" id="2_idle"]
@@ -11,6 +11,7 @@
 [ext_resource type="Shader" path="res://resources/shader/hydrangea_rain_ripple.gdshader" id="9_ripple_shader"]
 [ext_resource type="Shader" path="res://resources/shader/night_self_emission_particle.gdshader" id="10_ground_emission_shader"]
 [ext_resource type="Script" path="res://scene/lighting/night_self_emission_particles_2d.gd" id="11_ground_emission_script"]
+[ext_resource type="AudioStream" path="res://resources/audio/hydrangea_rain_cast.wav" id="12_rain_audio"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_idle_upper"]
 atlas = ExtResource("2_idle")
@@ -364,6 +365,7 @@ emitting = false
 amount = 96
 lifetime = 1.0
 randomness = 0.35
+local_coords = false
 visibility_rect = Rect2(-58, -62, 116, 124)
 texture = SubResource("GradientTexture2D_ground_mote")
 process_material = SubResource("ParticleProcessMaterial_ground_dew")
@@ -401,16 +403,32 @@ one_shot = true
 wait_time = 1.0
 one_shot = true
 
+[node name="EffectStartTimer" type="Timer" parent="."]
+wait_time = 0.68
+one_shot = true
+
 [node name="RainEndTimer" type="Timer" parent="."]
-wait_time = 3.0
+wait_time = 1.5
 one_shot = true
 
 [node name="EffectEndTimer" type="Timer" parent="."]
 wait_time = 5.0
 one_shot = true
 
+[node name="GroundEffectEndTimer" type="Timer" parent="."]
+wait_time = 5.68
+one_shot = true
+
+[node name="RainAudio" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("12_rain_audio")
+volume_db = -13.0
+max_distance = 240.0
+bus = &"SFX"
+
 [connection signal="timeout" from="CycleTimer" to="." method="_on_cycle_timer_timeout"]
 [connection signal="timeout" from="RainTickTimer" to="." method="_on_rain_tick_timer_timeout"]
+[connection signal="timeout" from="EffectStartTimer" to="." method="_on_effect_start_timer_timeout"]
 [connection signal="timeout" from="RainEndTimer" to="." method="_on_rain_end_timer_timeout"]
 [connection signal="timeout" from="EffectEndTimer" to="." method="_on_effect_end_timer_timeout"]
+[connection signal="timeout" from="GroundEffectEndTimer" to="." method="_on_ground_effect_end_timer_timeout"]
 [connection signal="animation_finished" from="BloomAnimationPlayer" to="." method="_on_bloom_animation_finished"]

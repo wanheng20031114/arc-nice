@@ -12,10 +12,12 @@ const RED_GATE_CELLS: Array[Vector2i] = [
 	Vector2i(15, 7),
 	Vector2i(15, 8),
 ]
+const DEBUG_DESTROY_PLANT_RADIUS_CELLS := 3.0
 
 @onready var test_controls_hint: Label = $TestControlsHint/Hint
 
 var manual_night_enabled := false
+var _nearby_plant_destroy_scratch: Array[PlantDefense] = []
 
 
 func _ready() -> void:
@@ -23,24 +25,6 @@ func _ready() -> void:
 	manual_night_enabled = false
 	day_night_controller.set_night_factor_immediate(0.0)
 	_update_test_controls_hint()
-
-
-## 测试波按配置条目轮询，便于连续观察每一种敌人的表现；正式波次仍保留随机顺序。
-func _build_wave_spawn_queue(wave_config: WaveConfig) -> void:
-	pending_enemy_configs.clear()
-	pending_enemy_config_index = 0
-	var maximum_entry_count := 0
-	for entry in wave_config.enemy_entries:
-		if entry != null and entry.enemy_config != null:
-			maximum_entry_count = maxi(maximum_entry_count, entry.count)
-	for cycle_index in range(maximum_entry_count):
-		for entry in wave_config.enemy_entries:
-			if (
-				entry != null
-				and entry.enemy_config != null
-				and cycle_index < maxi(entry.count, 0)
-			):
-				pending_enemy_configs.append(entry.enemy_config)
 
 
 ## 测试场景的昼夜只接受玩家手动控制，忽略正式流程的自动入夜请求。
@@ -59,12 +43,45 @@ func _unhandled_input(event: InputEvent) -> void:
 		key_event != null
 		and key_event.pressed
 		and not key_event.echo
-		and key_event.physical_keycode == KEY_L
 	):
-		set_manual_night_enabled(not manual_night_enabled)
-		get_viewport().set_input_as_handled()
-		return
+		match key_event.physical_keycode:
+			KEY_DELETE:
+				_destroy_plants_near_player()
+				get_viewport().set_input_as_handled()
+				return
+			KEY_L:
+				set_manual_night_enabled(not manual_night_enabled)
+				get_viewport().set_input_as_handled()
+				return
 	super._unhandled_input(event)
+
+
+func _destroy_plants_near_player() -> int:
+	if (
+		runtime_mode == RuntimeMode.CLIENT_VIEW
+		or player == null
+		or not is_instance_valid(player)
+		or plant_system == null
+	):
+		return 0
+	plant_system.query_living_plants_in_logical_radius_into(
+		player.global_position,
+		DEBUG_DESTROY_PLANT_RADIUS_CELLS,
+		_nearby_plant_destroy_scratch
+	)
+	var destroyed_count := 0
+	for plant in _nearby_plant_destroy_scratch:
+		if (
+			plant == null
+			or not is_instance_valid(plant)
+			or plant.is_dead
+			or plant.is_removing
+		):
+			continue
+		if plant.receive_unmitigated_damage(plant.current_health, player):
+			destroyed_count += 1
+	_nearby_plant_destroy_scratch.clear()
+	return destroyed_count
 
 
 func set_manual_night_enabled(
@@ -82,6 +99,6 @@ func set_manual_night_enabled(
 
 func _update_test_controls_hint() -> void:
 	test_controls_hint.text = (
-		"草地测试场景｜当前：%s\nT：自由放置植物　L：切换昼夜"
-		% ("夜晚" if manual_night_enabled else "白天")
-	)
+		"草地测试场景｜当前：%s\n"
+		+ "T：自由放置植物　L：切换昼夜　Del：摧毁周围3格植物"
+	) % ("夜晚" if manual_night_enabled else "白天")

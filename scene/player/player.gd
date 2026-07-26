@@ -25,6 +25,7 @@ signal revived
 
 var current_health: int = 0
 var last_damage_taken: int = 0
+var last_damage_result: DamageResult = null
 var last_healing_received: int = 0
 var current_xirang: int = 0
 var invincibility_time_left: float = 0.0
@@ -732,47 +733,91 @@ func apply_damage(
 	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
 	damage_context: Dictionary = {}
 ) -> bool:
+	var request := DamageRequest.new(amount, int(damage_type))
+	var is_ranged := bool(damage_context.get("is_ranged", false))
+	request.with_flag(CombatTypes.DamageFlag.RANGED, is_ranged)
+	var source_direction := Vector2.ZERO
+	var source_direction_variant: Variant = damage_context.get(
+		"source_direction",
+		Vector2.ZERO
+	)
+	if source_direction_variant is Vector2:
+		source_direction = source_direction_variant as Vector2
+	request.with_directions(-source_direction, source_direction)
+	return apply_combat_damage(request).accepted
+
+
+## Unified damage sink. Avoidance remains target-owned because it depends on
+## live dash, invincibility, facing and collectible state; all numeric stages
+## after acceptance are delegated to DamageResolver.
+func apply_combat_damage(request: DamageRequest) -> DamageResult:
 	last_damage_taken = 0
+	if request == null:
+		return _reject_combat_damage(
+			request,
+			CombatTypes.DamageRejectionReason.INVALID_REQUEST
+		)
 	if is_dead:
-		return false
+		return _reject_combat_damage(
+			request,
+			CombatTypes.DamageRejectionReason.TARGET_DEAD
+		)
+	if request.amount <= 0:
+		return _reject_combat_damage(
+			request,
+			CombatTypes.DamageRejectionReason.INVALID_AMOUNT
+		)
+	if (
+		not request.has_flag(CombatTypes.DamageFlag.BYPASS_INVULNERABILITY)
+		and (is_dash_invulnerable() or invincibility_time_left > 0.0)
+	):
+		return _reject_combat_damage(
+			request,
+			CombatTypes.DamageRejectionReason.INVULNERABLE
+		)
+	if not request.has_flag(CombatTypes.DamageFlag.BYPASS_DODGE):
+		if dodge_chance > 0.0 and randf() < dodge_chance:
+			_start_dodge_feedback()
+			_start_invincibility(false)
+			return _reject_combat_damage(
+				request,
+				CombatTypes.DamageRejectionReason.DODGED
+			)
+		if _try_collectible_ranged_dodge_request(request):
+			_start_dodge_feedback()
+			_start_invincibility(false)
+			return _reject_combat_damage(
+				request,
+				CombatTypes.DamageRejectionReason.DODGED
+			)
 
-	if amount <= 0:
-		return false
+	var result := DamageResolver.resolve(
+		request,
+		_create_damage_target_profile(request)
+	)
+	last_damage_result = result
+	if not result.accepted:
+		return result
 
-	if is_dash_invulnerable() or invincibility_time_left > 0.0:
-		return false
-
-	if dodge_chance > 0.0 and randf() < dodge_chance:
-		_start_dodge_feedback()
-		_start_invincibility(false)
-		return false
-
-	if _try_collectible_ranged_dodge(damage_context):
-		_start_dodge_feedback()
-		_start_invincibility(false)
-		return false
-
-	var adjusted_amount := _apply_collectible_ranged_damage_multiplier(amount, damage_context)
-	var final_damage := _calculate_incoming_damage(adjusted_amount, damage_type)
-	var health_before_damage := maxi(current_health, 0)
-	current_health = maxi(current_health - final_damage, 0)
-	last_damage_taken = maxi(health_before_damage - current_health, 0)
+	current_health = result.health_after
+	last_damage_taken = result.applied_damage
 	if peer_id <= 0:
 		show_damage_number(
-			last_damage_taken,
-			_get_damage_number_impact_direction(damage_context),
-			damage_type
+			result.applied_damage,
+			_get_damage_number_impact_direction_request(request),
+			request.damage_type as EnemyConfig.DamageType
 		)
 	health_bar.set_health(current_health, max_health)
 	health_changed.emit(current_health, max_health)
 	_refresh_collectible_stats(false)
-	if current_health <= 0:
+	if result.lethal:
 		_die()
-		return true
+		return result
 
 	_trigger_collectible_hurt_effects()
-	_start_invincibility()
-	return true
+	if not request.has_flag(CombatTypes.DamageFlag.NO_HIT_INVINCIBILITY):
+		_start_invincibility()
+	return result
 
 
 ## Applies an already-established periodic effect. It still respects the
@@ -782,29 +827,14 @@ func apply_periodic_damage(
 	amount: int,
 	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.MAGIC
 ) -> bool:
-	last_damage_taken = 0
-	if is_dead or amount <= 0:
-		return false
-
-	var final_damage := _calculate_incoming_damage(amount, damage_type)
-	var health_before_damage := maxi(current_health, 0)
-	current_health = maxi(current_health - final_damage, 0)
-	last_damage_taken = maxi(health_before_damage - current_health, 0)
-	if peer_id <= 0:
-		show_damage_number(
-			last_damage_taken,
-			Vector2.ZERO,
-			damage_type
-		)
-	health_bar.set_health(current_health, max_health)
-	health_changed.emit(current_health, max_health)
-	_refresh_collectible_stats(false)
-	if current_health <= 0:
-		_die()
-		return true
-
-	_trigger_collectible_hurt_effects()
-	return true
+	var request := DamageRequest.new(amount, int(damage_type))
+	request.flags = (
+		CombatTypes.DamageFlag.PERIODIC
+		| CombatTypes.DamageFlag.BYPASS_INVULNERABILITY
+		| CombatTypes.DamageFlag.BYPASS_DODGE
+		| CombatTypes.DamageFlag.NO_HIT_INVINCIBILITY
+	)
+	return apply_combat_damage(request).accepted
 
 
 func apply_burn_status(
@@ -1039,6 +1069,14 @@ func _try_collectible_ranged_dodge(damage_context: Dictionary) -> bool:
 	return randf() < collectible_ranged_dodge_chance
 
 
+func _try_collectible_ranged_dodge_request(request: DamageRequest) -> bool:
+	return (
+		request.has_flag(CombatTypes.DamageFlag.RANGED)
+		and collectible_ranged_dodge_chance > 0.0
+		and randf() < collectible_ranged_dodge_chance
+	)
+
+
 func _apply_collectible_ranged_damage_multiplier(
 	amount: int,
 	damage_context: Dictionary
@@ -1077,6 +1115,32 @@ func _get_damage_source_side_direction(damage_context: Dictionary) -> Vector2:
 
 func _get_damage_number_impact_direction(damage_context: Dictionary) -> Vector2:
 	return -_get_damage_source_side_direction(damage_context)
+
+
+func _get_collectible_ranged_damage_multiplier_request(
+	request: DamageRequest
+) -> float:
+	if not request.has_flag(CombatTypes.DamageFlag.RANGED):
+		return 1.0
+	var source_side := request.get_safe_source_direction()
+	if source_side == Vector2.ZERO:
+		return 1.0
+	var facing_direction := _facing_suffix_to_vector(facing_suffix)
+	var side_dot := facing_direction.dot(source_side)
+	if side_dot >= RANGED_DIRECTION_SIDE_THRESHOLD:
+		return maxf(collectible_ranged_front_damage_multiplier, 0.0)
+	if side_dot <= -RANGED_DIRECTION_SIDE_THRESHOLD:
+		return maxf(collectible_ranged_back_damage_multiplier, 0.0)
+	return 1.0
+
+
+func _get_damage_number_impact_direction_request(
+	request: DamageRequest
+) -> Vector2:
+	var impact_direction := request.get_safe_impact_direction()
+	if impact_direction != Vector2.ZERO:
+		return impact_direction
+	return -request.get_safe_source_direction()
 
 
 func show_damage_number(
@@ -1133,25 +1197,32 @@ func _flush_pending_healing_number() -> void:
 		combat_number_owner = combat_number_owner.get_parent()
 
 
-func _calculate_incoming_damage(
-	amount: int,
-	damage_type: EnemyConfig.DamageType
-) -> int:
-	match damage_type:
-		EnemyConfig.DamageType.MAGIC:
-			var defense_ratio := float(100 - clampi(magic_defense, 0, 100)) / 100.0
-			return _apply_damage_reduction(maxi(floori(float(amount) * defense_ratio), 1))
-		_:
-			return _apply_damage_reduction(maxi(amount - maxi(physical_defense, 0), 1))
-
-
-func _apply_damage_reduction(amount: int) -> int:
+func _create_damage_target_profile(request: DamageRequest) -> DamageTargetProfile:
+	var profile := DamageTargetProfile.new(
+		current_health,
+		physical_defense,
+		magic_defense
+	)
+	profile.pre_mitigation_multiplier = (
+		_get_collectible_ranged_damage_multiplier_request(request)
+	)
+	profile.pre_multiplier_rounding = CombatTypes.RoundingMode.NEAREST
 	var strongest_reduction := 0.0
 	for reduction in damage_reduction_modifiers.values():
 		strongest_reduction = maxf(strongest_reduction, float(reduction))
-	if strongest_reduction <= 0.0:
-		return amount
-	return maxi(floori(float(amount) * (1.0 - clampf(strongest_reduction, 0.0, 0.95))), 1)
+	profile.post_mitigation_multiplier = (
+		1.0 - clampf(strongest_reduction, 0.0, 0.95)
+	)
+	profile.post_multiplier_rounding = CombatTypes.RoundingMode.FLOOR
+	return profile
+
+
+func _reject_combat_damage(
+	request: DamageRequest,
+	reason: int
+) -> DamageResult:
+	last_damage_result = DamageResult.rejected(request, reason, current_health)
+	return last_damage_result
 	
 # 获取当前生命值
 func get_current_health() -> int:
@@ -3466,7 +3537,14 @@ func _apply_authoritative_collectible_enemy_damage(
 			int(damage_type),
 			show_hit_particles
 		))
-	return enemy.apply_damage(damage, impact_direction, damage_type, show_hit_particles)
+	var request := DamageRequest.new(damage, int(damage_type))
+	request.with_source(self, get_instance_id(), &"collectible_effect")
+	request.with_directions(impact_direction)
+	request.with_flag(
+		CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES,
+		not show_hit_particles
+	)
+	return enemy.apply_combat_damage(request).accepted
 
 
 func _apply_authoritative_player_heal(target_player: Player, heal_amount: int) -> bool:
@@ -4484,6 +4562,13 @@ func _set_revive_glow_strength(strength: float) -> void:
 			REVIVE_GLOW_STRENGTH_SHADER_PARAMETER,
 			clampf(strength, 0.0, 1.0)
 		)
+
+
+## Presentation-only consumer for an authoritative multiplayer dodge result.
+## It deliberately does not roll dodge or mutate health/invincibility.
+func play_confirmed_dodge_feedback() -> void:
+	if not is_dead:
+		_start_dodge_feedback()
 
 
 func _start_dodge_feedback() -> void:

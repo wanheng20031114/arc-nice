@@ -14,11 +14,18 @@ const FIRE_SLIME_CONFIG := preload(
 const FROST_SLIME_CONFIG := preload(
 	"res://resources/config/enemies/slime_frost.tres"
 )
+const GREEN_SLIME_CONFIG := preload(
+	"res://resources/config/enemies/slime_green.tres"
+)
+const WOOD_PROCESSING_STATION_CONFIG := preload(
+	"res://resources/config/plant_defense/wood_processing_station.tres"
+)
 const ORDERED_SLIME_CONFIGS := [
 	SLIME_CONFIG,
 	GOLDEN_SLIME_CONFIG,
 	FIRE_SLIME_CONFIG,
 	FROST_SLIME_CONFIG,
+	GREEN_SLIME_CONFIG,
 ]
 const RED_GATE_COORDS := Vector2i(0, 0)
 const BLUE_GATE_COORDS := Vector2i(0, 3)
@@ -47,6 +54,7 @@ func _run() -> void:
 	_test_arena_layout()
 	_test_navigation()
 	await _test_plant_shortcut()
+	await _test_delete_plant_shortcut()
 	await _test_manual_day_night()
 
 	arena.queue_free()
@@ -67,15 +75,15 @@ func _test_campaign() -> void:
 		return
 	var wave := waves[0]
 	_expect(wave.get_total_enemy_count() == 1000, "第一波必须正好包含1000个敌人。")
-	_expect(wave.enemy_entries.size() == 4, "第一波必须包含四种史莱姆条目。")
-	if wave.enemy_entries.size() == 4:
+	_expect(wave.enemy_entries.size() == 5, "第一波必须包含五种史莱姆条目。")
+	if wave.enemy_entries.size() == ORDERED_SLIME_CONFIGS.size():
 		for entry_index in range(ORDERED_SLIME_CONFIGS.size()):
 			var entry := wave.enemy_entries[entry_index]
 			_expect(
 				entry.enemy_config == ORDERED_SLIME_CONFIGS[entry_index],
-				"第一波史莱姆条目必须按基础、黄金、火焰、寒冰排序。"
+				"第一波史莱姆条目必须按基础、黄金、火焰、寒冰、绿色排序。"
 			)
-			_expect(entry.count == 250, "四种史莱姆必须各生成250只。")
+			_expect(entry.count == 200, "五种史莱姆必须各生成200只。")
 	_expect(is_equal_approx(wave.spawn_interval, 3.0), "史莱姆生成间隔必须为3秒。")
 	_expect(wave.spawn_count_per_tick == 1, "每次生成必须只有1只史莱姆。")
 	_expect(wave.max_alive_enemies == 1000, "测试波次不得被旧的20只场上上限暂停。")
@@ -85,14 +93,22 @@ func _test_campaign() -> void:
 		"第一波出生点必须精确解析为 Spawn1 和 Spawn2。"
 	)
 
+	arena.random_generator.seed = 0x5A17
 	arena.call("_build_wave_spawn_queue", wave)
 	_expect(arena.pending_enemy_configs.size() == 1000, "运行时生成队列必须正好构建1000项。")
+	var queue_counts: Dictionary = {}
+	var remains_strict_cycle := true
 	for queue_index in range(arena.pending_enemy_configs.size()):
+		var queued_config := arena.pending_enemy_configs[queue_index]
+		queue_counts[queued_config] = int(queue_counts.get(queued_config, 0)) + 1
+		if queued_config != ORDERED_SLIME_CONFIGS[queue_index % ORDERED_SLIME_CONFIGS.size()]:
+			remains_strict_cycle = false
+	for expected_config in ORDERED_SLIME_CONFIGS:
 		_expect(
-			arena.pending_enemy_configs[queue_index]
-			== ORDERED_SLIME_CONFIGS[queue_index % ORDERED_SLIME_CONFIGS.size()],
-			"运行时队列必须严格循环基础、黄金、火焰、寒冰。"
+			int(queue_counts.get(expected_config, 0)) == 200,
+			"随机队列必须包含每种史莱姆各200只，且必须包含绿色史莱姆。"
 		)
+	_expect(not remains_strict_cycle, "测试场景生成队列必须随机混合，不能继续固定轮询。")
 	arena.call("_clear_pending_enemy_spawn_queue")
 
 
@@ -194,6 +210,97 @@ func _test_plant_shortcut() -> void:
 	_expect(has_valid_grass_anchor, "玩家出生位置附近必须至少存在一个可放置草地锚点。")
 
 
+func _test_delete_plant_shortcut() -> void:
+	var plant_system := arena.plant_system
+	var near_anchors := _find_valid_anchors_in_distance_band(0.5, 3.0, 2)
+	_expect(near_anchors.size() == 2, "测试玩家3格内必须能放置至少两株植物。")
+	if near_anchors.size() < 2:
+		return
+
+	var nearby_plants: Array[PlantDefense] = []
+	for anchor in near_anchors:
+		var placed := plant_system.try_place(WOOD_PROCESSING_STATION_CONFIG, anchor)
+		_expect(placed != null, "Del快捷键测试必须成功放置近处植物。")
+		if placed != null:
+			nearby_plants.append(placed)
+	if nearby_plants.size() != 2:
+		plant_system.clear_all_plants()
+		await process_frame
+		return
+
+	var far_anchors := _find_valid_anchors_in_distance_band(3.01, 4.0, 1)
+	_expect(far_anchors.size() == 1, "测试玩家3格外、4格内必须存在对照锚点。")
+	if far_anchors.is_empty():
+		plant_system.clear_all_plants()
+		await process_frame
+		return
+	var far_plant := plant_system.try_place(
+		WOOD_PROCESSING_STATION_CONFIG,
+		far_anchors[0]
+	)
+	_expect(far_plant != null, "Del快捷键测试必须成功放置范围外对照植物。")
+	if far_plant == null:
+		plant_system.clear_all_plants()
+		await process_frame
+		return
+
+	await _send_key(KEY_DELETE)
+	for nearby_plant in nearby_plants:
+		_expect(
+			nearby_plant.current_health == 0
+			and nearby_plant.is_dead
+			and nearby_plant.is_removing,
+			"按Del必须直接摧毁玩家3格内的全部植物。"
+		)
+		_expect(
+			not plant_system.plant_footprints.has(nearby_plant),
+			"被Del摧毁的植物必须立即释放占格。"
+		)
+	_expect(
+		far_plant.current_health > 0
+		and not far_plant.is_dead
+		and not far_plant.is_removing,
+		"按Del不得摧毁玩家3格半径之外的植物。"
+	)
+	_expect(
+		"Del：摧毁周围3格植物" in arena.test_controls_hint.text,
+		"测试提示必须展示Del快捷键。"
+	)
+	plant_system.clear_all_plants()
+	await process_frame
+
+
+func _find_valid_anchors_in_distance_band(
+	minimum_distance: float,
+	maximum_distance: float,
+	maximum_count: int
+) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for anchor in arena.plant_system.get_valid_anchors(WOOD_PROCESSING_STATION_CONFIG):
+		var distance := _get_anchor_distance_from_player(anchor)
+		if distance < minimum_distance or distance > maximum_distance:
+			continue
+		result.append(anchor)
+		if result.size() >= maximum_count:
+			break
+	return result
+
+
+func _get_anchor_distance_from_player(anchor: Vector2i) -> float:
+	var tile_map := arena.plant_system.ground_tile_map
+	var tile_size := Vector2(tile_map.tile_set.tile_size).abs()
+	var player_local := tile_map.to_local(arena.player.global_position)
+	var anchor_world := arena.plant_system.get_anchor_world_position(
+		anchor,
+		WOOD_PROCESSING_STATION_CONFIG
+	)
+	var anchor_local := tile_map.to_local(anchor_world)
+	return Vector2(
+		(anchor_local.x - player_local.x) / tile_size.x,
+		(anchor_local.y - player_local.y) / tile_size.y
+	).length()
+
+
 func _test_manual_day_night() -> void:
 	var controller := arena.day_night_controller
 	controller.transition_duration = 0.0
@@ -214,13 +321,17 @@ func _test_manual_day_night() -> void:
 
 
 func _send_l_key() -> void:
+	await _send_key(KEY_L)
+
+
+func _send_key(physical_keycode: Key) -> void:
 	var press := InputEventKey.new()
-	press.physical_keycode = KEY_L
+	press.physical_keycode = physical_keycode
 	press.pressed = true
 	Input.parse_input_event(press)
 	await process_frame
 	var release := InputEventKey.new()
-	release.physical_keycode = KEY_L
+	release.physical_keycode = physical_keycode
 	release.pressed = false
 	Input.parse_input_event(release)
 	await process_frame

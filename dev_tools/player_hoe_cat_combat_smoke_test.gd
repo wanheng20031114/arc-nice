@@ -21,22 +21,12 @@ class TestEnemy:
 	func _physics_process(_delta: float) -> void:
 		pass
 
-	func apply_damage(
-		amount: int,
-		_impact_direction: Vector2 = Vector2.ZERO,
-		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
-		_show_hit_particles: bool = true
-	) -> bool:
-		if is_dead or amount <= 0:
-			return false
-		last_requested_damage = amount
-		last_damage_type = damage_type
-		var applied_damage := _calculate_incoming_damage(amount, damage_type)
-		total_damage_taken += applied_damage
-		current_health -= applied_damage
-		if current_health <= 0:
-			is_dead = true
-		return true
+	func _on_combat_damage_applied(result: DamageResult) -> void:
+		# Observe the unified sink after Enemy has resolved and committed health;
+		# the test double must not reconstruct mitigation or death independently.
+		last_requested_damage = result.requested_amount
+		last_damage_type = result.request.damage_type as EnemyConfig.DamageType
+		total_damage_taken += result.applied_damage
 
 
 var failures: Array[String] = []

@@ -31,7 +31,7 @@ const PACKED_VECTOR2_BYTES := 4
 const PACKED_U8_BYTES := 1
 const PACKED_U16_BYTES := 2
 const PACKED_U32_BYTES := 4
-const PLAYER_META_BYTES := 38
+const PLAYER_META_BYTES := 42
 const MOVE_MULTIPLIER_SCALE := 1000.0
 const DEFAULT_CHARACTER_ID := &"weishidaier"
 const HOE_CAT_CHARACTER_ID := &"hoe_cat"
@@ -73,6 +73,8 @@ class PlayerState:
 	var anim_state: int = 0   # 动画枚举
 	var current_health: int = 0
 	var max_health: int = 0
+	## 与可靠生命事件共用的 Host 单调修订号，用于跨 RPC 通道拒绝陈旧生命快照。
+	var health_revision: int = 0
 	var current_xirang: int = 0
 	var is_dead: bool = false
 	var invincibility_time_left: float = 0.0
@@ -154,6 +156,7 @@ static func encode_player_snapshot(
 	if mask & MASK_PLAYER_META:
 		buf.put_16(current.current_health)
 		buf.put_16(current.max_health)
+		buf.put_u32(maxi(current.health_revision, 0))
 		buf.put_32(current.current_xirang)
 		buf.put_u8(1 if current.is_dead else 0)
 		buf.put_float(current.invincibility_time_left)
@@ -183,6 +186,7 @@ static func _player_meta_changed(current: PlayerState, previous: PlayerState) ->
 	return (
 		current.current_health != previous.current_health
 		or current.max_health != previous.max_health
+		or current.health_revision != previous.health_revision
 		or current.current_xirang != previous.current_xirang
 		or current.is_dead != previous.is_dead
 		or not is_equal_approx(current.invincibility_time_left, previous.invincibility_time_left)
@@ -237,6 +241,7 @@ static func decode_player_snapshot(
 	if mask & MASK_PLAYER_META:
 		target.current_health = buf.get_16()
 		target.max_health = buf.get_16()
+		target.health_revision = buf.get_u32()
 		target.current_xirang = buf.get_32()
 		target.is_dead = buf.get_u8() != 0
 		target.invincibility_time_left = buf.get_float()
@@ -288,6 +293,8 @@ class EnemyState:
 	## 离散移动语义：0=静止、1=移动。不得由接收端的量化速度反推。
 	var locomotion_state: int = ENEMY_LOCOMOTION_IDLE
 	var health: int = 0
+	## 与伤害反馈共用的 Host 单调修订号，允许敌人在同一 net-id 生命周期内治疗。
+	var health_revision: int = 0
 	var is_dead: bool = false
 	## 纯表现状态位：burn=1、bleed=2、chill=4、mark=8；伤害仍只由 Host 结算。
 	var visual_status_mask: int = 0
@@ -326,7 +333,10 @@ static func _get_enemy_change_mask(current: EnemyState, previous: EnemyState) ->
 		!= _normalize_enemy_locomotion_state(previous.locomotion_state)
 	):
 		mask |= MASK_ENEMY_LOCOMOTION
-	if current.health != previous.health:
+	if (
+		current.health != previous.health
+		or current.health_revision != previous.health_revision
+	):
 		mask |= MASK_HEALTH
 	if current.is_dead != previous.is_dead:
 		mask |= MASK_IS_DEAD
@@ -355,6 +365,7 @@ static func _write_enemy_snapshot(
 		buf.put_u8(_normalize_enemy_locomotion_state(current.locomotion_state))
 	if mask & MASK_HEALTH:
 		buf.put_32(current.health)
+		buf.put_u32(maxi(current.health_revision, 0))
 	if mask & MASK_IS_DEAD:
 		buf.put_u8(1 if current.is_dead else 0)
 	if mask & MASK_ENEMY_VISUAL_STATUS:
@@ -391,6 +402,7 @@ static func _read_enemy_snapshot(buf: StreamPeerBuffer, target: EnemyState) -> v
 		target.locomotion_state = _normalize_enemy_locomotion_state(buf.get_u8())
 	if mask & MASK_HEALTH:
 		target.health = buf.get_32()
+		target.health_revision = buf.get_u32()
 	if mask & MASK_IS_DEAD:
 		target.is_dead = buf.get_u8() != 0
 	if mask & MASK_ENEMY_VISUAL_STATUS:
@@ -409,7 +421,7 @@ static func _get_enemy_snapshot_size(data: PackedByteArray, offset: int) -> int:
 	if mask & MASK_ENEMY_LOCOMOTION:
 		size += PACKED_U8_BYTES
 	if mask & MASK_HEALTH:
-		size += PACKED_U32_BYTES
+		size += PACKED_U32_BYTES * 2
 	if mask & MASK_IS_DEAD:
 		size += PACKED_U8_BYTES
 	if mask & MASK_ENEMY_VISUAL_STATUS:
@@ -475,6 +487,7 @@ static func _copy_player_state_into(source: PlayerState, target: PlayerState) ->
 	target.anim_state = source.anim_state
 	target.current_health = source.current_health
 	target.max_health = source.max_health
+	target.health_revision = source.health_revision
 	target.current_xirang = source.current_xirang
 	target.is_dead = source.is_dead
 	target.invincibility_time_left = source.invincibility_time_left
@@ -506,6 +519,7 @@ static func _copy_enemy_state_into(source: EnemyState, target: EnemyState) -> vo
 	target.velocity = source.velocity
 	target.locomotion_state = _normalize_enemy_locomotion_state(source.locomotion_state)
 	target.health = source.health
+	target.health_revision = source.health_revision
 	target.is_dead = source.is_dead
 	target.visual_status_mask = source.visual_status_mask
 
@@ -524,6 +538,7 @@ static func _apply_player_delta(target: PlayerState, delta: PlayerState, mask: i
 	if mask & MASK_PLAYER_META:
 		target.current_health = delta.current_health
 		target.max_health = delta.max_health
+		target.health_revision = delta.health_revision
 		target.current_xirang = delta.current_xirang
 		target.is_dead = delta.is_dead
 		target.invincibility_time_left = delta.invincibility_time_left
@@ -552,6 +567,7 @@ static func _apply_enemy_delta(target: EnemyState, delta: EnemyState, mask: int)
 		target.locomotion_state = delta.locomotion_state
 	if mask & MASK_HEALTH:
 		target.health = delta.health
+		target.health_revision = delta.health_revision
 	if mask & MASK_IS_DEAD:
 		target.is_dead = delta.is_dead
 	if mask & MASK_ENEMY_VISUAL_STATUS:

@@ -1,0 +1,18 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scene/enemy/slime/slime_basic.tscn" id="1_base"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/slime_green.tres" id="2_frames"]
+[ext_resource type="Script" path="res://scene/enemy/slime/slime_green.gd" id="3_script"]
+
+[node name="SlimeGreen" instance=ExtResource("1_base")]
+script = ExtResource("3_script")
+
+[node name="AnimatedSprite2D" parent="." index="0"]
+sprite_frames = ExtResource("2_frames")
+
+[node name="RegenerationTimer" type="Timer" parent="."]
+process_callback = 0
+wait_time = 0.5
+autostart = true
+
+[connection signal="timeout" from="RegenerationTimer" to="." method="_on_regeneration_timer_timeout"]

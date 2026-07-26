@@ -123,10 +123,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 19,
-		"Targeted hydrangea-rain replication requires protocol version 18."
+		NetConstants.PROTOCOL_VERSION == 20,
+		"Host-authoritative damage claims require protocol version 20."
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v19 must provision eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v20 must provision eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -219,7 +219,7 @@ func _test_relay_channel_count() -> void:
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
 		and relay_source.contains("create_server(_port, MAX_CLIENTS, CHANNEL_COUNT)"),
-		"Relay server must provision the same eight ENet channels as protocol v19 clients."
+		"Relay server must provision the same eight ENet channels as protocol v20 clients."
 	)
 
 
@@ -272,7 +272,7 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		and mp_game_source.contains("const TERRAIN_TYPE_EMPTY := -1")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_PER_SECOND := 1.0")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_BURST := 2.0"),
-		"Protocol v19 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
+		"Protocol v20 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
 	)
 	_expect(
 		mp_game_source.contains(
@@ -287,7 +287,7 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		and mp_game_source.contains(
 			"building.try_start_global_research(research_config.research_id)"
 		),
-		"Protocol v19 research commands must use schema2 and resolve a Host-owned research whitelist."
+		"Protocol v20 research commands must use schema2 and resolve a Host-owned research whitelist."
 	)
 	for signature_fragment in [
 		"plant_net_ids:PackedInt32Array",

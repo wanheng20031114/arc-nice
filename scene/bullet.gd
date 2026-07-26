@@ -243,11 +243,14 @@ func try_hit_enemy(enemy: Enemy) -> bool:
 	if reported_multiplayer_hit:
 		hit_registered = true
 	else:
-		hit_registered = enemy.apply_damage(
-			resolved_damage,
-			-direction,
-			get_damage_type()
+		var request := DamageRequest.new(resolved_damage, int(get_damage_type()))
+		request.with_source(
+			collectible_owner if collectible_owner != null else self,
+			projectile_id,
+			&"player_bullet"
 		)
+		request.with_directions(-direction)
+		hit_registered = enemy.apply_combat_damage(request).accepted
 
 	if not hit_registered:
 		hit_enemy_instance_ids.erase(enemy.get_instance_id())

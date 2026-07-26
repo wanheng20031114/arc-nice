@@ -207,8 +207,8 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 19, "The multiplayer protocol version must be 19.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v19 must provision eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 20, "The multiplayer protocol version must be 20.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v20 must provision eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
@@ -490,7 +490,7 @@ func _test_snapshot_packet_metrics() -> void:
 
 
 func _test_enemy_snapshot_chunk_codec() -> void:
-	const CHUNK_SIZE := 56
+	const CHUNK_SIZE := 46
 	const ENTITY_COUNT := 300
 	const PACKET_BUDGET := 1200
 	var sender := SnapshotManager.new()
@@ -519,7 +519,7 @@ func _test_enemy_snapshot_chunk_codec() -> void:
 		)
 		_expect(
 			packet.size() <= PACKET_BUDGET,
-			"A full 56-enemy snapshot chunk must stay below the packet budget."
+			"A full 46-enemy snapshot chunk must stay below the packet budget."
 		)
 		var decoded := receiver.decode_enemy_snapshots_with_baseline(packet, false)
 		decoded_total += decoded.size()
@@ -540,6 +540,7 @@ func _test_enemy_snapshot_chunk_codec() -> void:
 	for state in states:
 		state.position += Vector2(1.0, 0.0)
 	states[299].health = 73
+	states[299].health_revision += 1
 	decoded_total = 0
 	var last_health := -1
 	for chunk_start in range(0, states.size(), CHUNK_SIZE):
@@ -553,7 +554,7 @@ func _test_enemy_snapshot_chunk_codec() -> void:
 		)
 		_expect(
 			packet.size() <= PACKET_BUDGET,
-			"A moving 56-enemy delta chunk must stay below the packet budget."
+			"A moving 46-enemy delta chunk must stay below the packet budget."
 		)
 		var decoded := receiver.decode_enemy_snapshots_with_baseline(packet, false)
 		decoded_total += decoded.size()
@@ -1449,8 +1450,9 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 		)
 		if sprite != null:
 			_expect(
-				sprite.animation == KNIGHT_CONFIG.move_animation_name,
-				"Stale enemy action events must not replay outdated proxy action animation."
+				sprite.animation == KNIGHT_CONFIG.windup_animation_name
+				and int(enemy.get("latest_proxy_action_id")) == 1,
+				"A transform-stale enemy action must leave snapshot position untouched while its newer action id still advances proxy visuals."
 			)
 		mp_game.call("net_enemy_action", 42, "windup", Vector2.RIGHT, Vector2(20.0, 5.0), 2, 10.0)
 		var latest_timestamp := (mp_game.enemy_interpolators[42] as NetInterpolator).get_latest_timestamp()
@@ -1500,8 +1502,11 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 				"Stale enemy target action events must not pull proxy position off the snapshot timeline."
 			)
 			_expect(
-				sniper.lock_reticle == null and (aim_glow == null or not aim_glow.visible),
-				"Stale enemy target action events must not start outdated target lock visuals."
+				sniper.lock_reticle != null
+				and aim_glow != null
+				and aim_glow.visible
+				and sniper.latest_proxy_target_action_id == 1,
+				"A transform-stale enemy target action must leave snapshot position untouched while its newer action id still advances target-lock visuals."
 			)
 			mp_game.call(
 				"net_enemy_target_action",
@@ -2793,16 +2798,17 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			0.35
 		)
 		var health_before_forged_sniper_hit := second_host_enemy.current_health
-		var forged_sniper_hit_allowed := bool(mp_game.call(
-			"_is_client_enemy_hit_report_allowed",
+		mp_game.call(
+			"_rpc_enemy_hit_report",
 			sniper_projectile_id,
 			2,
-			2
-		))
+			2,
+			999,
+			Vector2.LEFT
+		)
 		_expect(
-			not forged_sniper_hit_allowed
-			and second_host_enemy.current_health == health_before_forged_sniper_hit,
-			"Client-style hit reports must never settle Tiyi sniper damage."
+			second_host_enemy.current_health == health_before_forged_sniper_hit,
+			"The disabled client enemy-hit RPC must never settle Tiyi sniper damage."
 		)
 		mp_game.call(
 			"_remember_projectile_record",
@@ -2812,14 +2818,18 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			11,
 			2.0
 		)
+		var health_before_forged_bomb_hit := second_host_enemy.current_health
+		mp_game.call(
+			"_rpc_enemy_hit_report",
+			skill1_bomb_projectile_id,
+			2,
+			2,
+			999,
+			Vector2.LEFT
+		)
 		_expect(
-			not bool(mp_game.call(
-				"_is_client_enemy_hit_report_allowed",
-				skill1_bomb_projectile_id,
-				2,
-				2
-			)),
-			"Client hit reports must never settle Host-authoritative Skill1 bomb damage."
+			second_host_enemy.current_health == health_before_forged_bomb_hit,
+			"The disabled client enemy-hit RPC must never settle Host-authoritative Skill1 bomb damage."
 		)
 		mp_game.call(
 			"_apply_enemy_hit_report",
@@ -3012,6 +3022,7 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			"net_enemy_damage_applied",
 			78,
 			health_after_magic,
+			magic_enemy.health_revision + 1,
 			false,
 			5,
 			Vector2.LEFT,
@@ -3697,6 +3708,7 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 	current_scene = client_runtime_stub
 
 	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
+	var authoritative_enemy: Enemy = null
 	var rocket := LINGLAN_SKILL2_ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
 	_expect(enemy != null and rocket != null, "Linglan skill2 client proxy damage test must instantiate enemy and rocket.")
 	if enemy != null and rocket != null:
@@ -3714,16 +3726,29 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 		)
 
 		current_scene = previous_scene
-		rocket.call("_apply_enemy_damage", enemy)
+		authoritative_enemy = BASIC_CONFIG.enemy_scene.instantiate() as Enemy
 		_expect(
-			enemy.current_health == health_before_client_proxy_hit - 1,
-			"Linglan skill2 rocket must still damage enemies outside client-view proxy runtime."
+			authoritative_enemy != null,
+			"Linglan skill2 authority test must instantiate an authoritative enemy."
 		)
+		if authoritative_enemy != null:
+			authoritative_enemy.global_position = Vector2(256.0, 256.0)
+			root.add_child(authoritative_enemy)
+			authoritative_enemy.setup(BASIC_CONFIG, null, null)
+			authoritative_enemy.set_physics_process(false)
+			var authoritative_health_before := authoritative_enemy.current_health
+			rocket.call("_apply_enemy_damage", authoritative_enemy)
+			_expect(
+				authoritative_enemy.current_health == authoritative_health_before - 1,
+				"Linglan skill2 rocket must damage authoritative enemies outside client-view runtime."
+			)
 
 	if rocket != null:
 		rocket.queue_free()
 	if enemy != null:
 		enemy.queue_free()
+	if authoritative_enemy != null:
+		authoritative_enemy.queue_free()
 	client_runtime_stub.queue_free()
 	current_scene = previous_scene
 	await process_frame

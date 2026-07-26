@@ -6,6 +6,7 @@ enum Variant {
 	GOLDEN,
 	FIRE,
 	FROST,
+	GREEN,
 }
 
 @export_group("史莱姆")

@@ -8,7 +8,7 @@
 script = ExtResource("1_config")
 plant_id = &"hydrangea_rain_tower"
 display_name = "紫阳花雨幕塔"
-description = "每6秒从12格内选择当前生命值最低的建筑，在其周围3格降下持续3秒的绚彩雨幕；治疗与减攻结算持续5秒，每秒恢复50点生命，雨幕期间对敌人造成5点法术伤害，并使其攻击力降低20%。"
+description = "每6秒从12格内选择当前生命值最低的建筑，在其周围3格降下持续1.5秒的绚彩雨幕；首批雨滴落地后开始持续5秒的治疗与减攻结算，每秒恢复50点生命，雨滴落地期间对敌人造成5点法术伤害，并使其攻击力降低20%。"
 icon = ExtResource("2_icon")
 plant_scene = ExtResource("3_scene")
 supports_multiplayer = true

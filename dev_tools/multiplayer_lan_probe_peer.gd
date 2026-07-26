@@ -20,6 +20,7 @@ const PROBE_SCENARIO_LEAVE := "leave"
 const PROBE_SCENARIO_WAVE := "wave"
 const PROBE_SCENARIO_BOSS := "boss"
 const PROBE_SCENARIO_TOWER_DEFENSE := "tower_defense"
+const PROBE_SCENARIO_DEATH_REVIVE := "death_revive"
 const PROBE_OWNED_ROOT_NODE_NAMES := {
 	"MpGame": true,
 	"Game": true,
@@ -271,6 +272,14 @@ func _run_mp_game_probe(
 		if is_host_probe and mp_game != null and is_instance_valid(mp_game):
 			_validate_and_print_runtime_metrics(mp_game, true, expected_players)
 		_detach_probe_scene_disconnect_handlers(net_manager, mp_game, game)
+		await _cleanup_probe_game(net_manager, mp_game)
+		return
+	if probe_scenario == PROBE_SCENARIO_DEATH_REVIVE:
+		await _run_death_revive_scenario(net_manager, mp_game, game, is_host_probe)
+		_validate_and_print_runtime_metrics(mp_game, is_host_probe, expected_players)
+		_detach_probe_scene_disconnect_handlers(net_manager, mp_game, game)
+		if not is_host_probe and keepalive_seconds > 0.0:
+			await _wait_seconds(keepalive_seconds)
 		await _cleanup_probe_game(net_manager, mp_game)
 		return
 	await _wait_seconds(1.5)
@@ -1099,6 +1108,12 @@ func _run_host_replication_probe(net_manager: Node, mp_game: Node, game: Variant
 	var spawned_enemy_id := await _spawn_host_probe_enemy(game)
 	if spawned_enemy_id <= 0:
 		return
+	if not _prepare_host_projectile_probe_target(
+		game,
+		spawned_enemy_id,
+		client2_player
+	):
+		return
 	print("LAN_PROBE_EVENT host_enemy_spawned net_id=%d" % spawned_enemy_id)
 	if not await _run_host_projectile_hit_probe(mp_game, game, client2_peer_id, spawned_enemy_id):
 		return
@@ -1137,9 +1152,59 @@ func _run_host_replication_probe(net_manager: Node, mp_game: Node, game: Variant
 		"LAN_PROBE_EVENT host_xirang_confirmed reward=%d players=%d"
 		% [BASIC_ENEMY_CONFIG.xirang_kill_reward, xirang_before_by_peer.size()]
 	)
+	if not await _run_host_client2_death_revive_probe(
+		mp_game,
+		client2_player,
+		client2_peer_id
+	):
+		return
+
+
+func _run_death_revive_scenario(
+	net_manager: Node,
+	mp_game: Node,
+	game: Variant,
+	is_host_probe: bool
+) -> void:
+	await _wait_seconds(1.0)
+	var client2_peer_id := _get_peer_id_by_name(net_manager, CLIENT2_PLAYER_NAME)
+	if client2_peer_id <= 0:
+		_fail("Death/revive scenario could not find client2 peer id.")
+		return
+	var client2_player := game.get_player_for_peer(client2_peer_id) as Player
+	if client2_player == null or not is_instance_valid(client2_player):
+		_fail("Death/revive scenario missing client2 player node.")
+		return
+	if is_host_probe:
+		await _run_host_client2_death_revive_probe(
+			mp_game,
+			client2_player,
+			client2_peer_id
+		)
+		# Let at least one post-invincibility player snapshot reach every client
+		# before the focused scenario tears down its transport.
+		await _wait_seconds(1.0)
+		return
+	await _run_remote_client2_death_view_probe(net_manager, mp_game, game)
+
+
+func _run_host_client2_death_revive_probe(
+	mp_game: Node,
+	client2_player: Player,
+	client2_peer_id: int
+) -> bool:
+	if not await _wait_for_player_invincibility_clear(client2_player, 7.0):
+		_fail("Host client2 was not damageable before the authoritative death probe.")
+		return false
+	if not _trigger_host_authoritative_player_death(
+		mp_game,
+		client2_player,
+		client2_peer_id
+	):
+		return false
 	if not await _wait_for_player_dead(client2_player, 10.0):
 		_fail("Host did not observe client2 death.")
-		return
+		return false
 	print("LAN_PROBE_EVENT host_death_confirmed peer=%d" % client2_peer_id)
 	var death_revision := _get_player_health_revision(mp_game, client2_peer_id)
 	if not await _wait_for_player_state_at_revision(
@@ -1151,11 +1216,47 @@ func _run_host_replication_probe(net_manager: Node, mp_game: Node, game: Variant
 		14.0
 	):
 		_fail("Host did not revive client2.")
-		return
+		return false
 	if not await _wait_for_player_invincibility_clear(client2_player, 5.0):
 		_fail("Host client2 invincibility did not clear after revive.")
-		return
+		return false
 	print("LAN_PROBE_EVENT host_revive_confirmed peer=%d" % client2_peer_id)
+	return true
+
+
+func _trigger_host_authoritative_player_death(
+	mp_game: Node,
+	player: Player,
+	peer_id: int
+) -> bool:
+	if (
+		mp_game == null
+		or not is_instance_valid(mp_game)
+		or player == null
+		or not is_instance_valid(player)
+		or peer_id <= 0
+	):
+		_fail("Host death probe is missing its authoritative target.")
+		return false
+	var source_id := peer_id * 1000000 + 770001
+	var lethal_damage := maxi(player.max_health * 100, player.current_health + 9999)
+	var result := mp_game.call(
+		"_apply_player_hit_report",
+		source_id,
+		peer_id,
+		lethal_damage,
+		&"probe_host_authoritative_death",
+		Vector2.ZERO,
+		EnemyConfig.DamageType.PHYSICAL,
+		0,
+		false
+	) as DamageResult
+	if result == null or not result.accepted or not result.lethal:
+		_fail(
+			"Host authoritative death probe did not produce an accepted lethal DamageResult."
+		)
+		return false
+	return true
 
 
 func _run_host_projectile_hit_probe(
@@ -1173,13 +1274,38 @@ func _run_host_projectile_hit_probe(
 		_fail("Host projectile hit probe enemy health is too low.")
 		return false
 	if not await _wait_for_enemy_health_below(enemy, health_before, 6.0):
-		_fail("Host did not apply client projectile hit report.")
+		_fail("Host-simulated client projectile did not hit the aligned probe enemy.")
 		return false
 	var projectile_id := _get_latest_projectile_record_for_peer(mp_game, owner_peer_id)
 	print(
 		"LAN_PROBE_EVENT host_projectile_hit_confirmed projectile_id=%d enemy=%d health=%d"
 		% [projectile_id, enemy_net_id, enemy.current_health]
 	)
+	return true
+
+
+func _prepare_host_projectile_probe_target(
+	game: Variant,
+	enemy_net_id: int,
+	owner_player: Player
+) -> bool:
+	var enemy := game.get_enemy_for_net_id(enemy_net_id) as Enemy
+	if (
+		enemy == null
+		or not is_instance_valid(enemy)
+		or owner_player == null
+		or not is_instance_valid(owner_player)
+	):
+		_fail("Host projectile probe could not align its authoritative target.")
+		return false
+	# Keep the real Host projectile/collision path deterministic: the ordinary AI
+	# target can otherwise move off the client's latency-delayed aim line between
+	# spawn replication and fire. The probe target remains a real Enemy with its
+	# real collision shape and damage sink; only locomotion is frozen.
+	enemy.set_physics_process(false)
+	enemy.velocity = Vector2.ZERO
+	enemy.global_position = owner_player.global_position + Vector2.RIGHT * 80.0
+	enemy.reset_physics_interpolation()
 	return true
 
 
@@ -1219,7 +1345,9 @@ func _run_client_replication_probe(
 		"LAN_PROBE_EVENT client_xirang_confirmed reward=%d current_xirang=%d"
 		% [BASIC_ENEMY_CONFIG.xirang_kill_reward, player.current_xirang]
 	)
-	if not drive_local_actions:
+	if drive_local_actions:
+		await _run_client_death_revive_probe(mp_game, game)
+	else:
 		await _run_remote_client2_death_view_probe(net_manager, mp_game, game)
 
 
@@ -1251,6 +1379,7 @@ func _run_client_projectile_hit_probe(mp_game: Node, game: Variant, enemy_id: in
 	var direction := (enemy.global_position - player.global_position).normalized()
 	if direction == Vector2.ZERO:
 		direction = Vector2.RIGHT
+	var health_before := enemy.current_health
 	previous_ids = _get_projectile_ids_for_peer(mp_game, int(player.peer_id))
 	var spawned := bool(player.call("_spawn_bullet", direction))
 	if not spawned:
@@ -1265,17 +1394,8 @@ func _run_client_projectile_hit_probe(mp_game: Node, game: Variant, enemy_id: in
 	if projectile_id <= 0:
 		_fail("Client projectile hit probe did not register local projectile.")
 		return
-	var health_before := enemy.current_health
-	mp_game.call(
-		"request_enemy_hit_report",
-		projectile_id,
-		int(player.peer_id),
-		enemy_id,
-		player.attack_damage,
-		direction
-	)
 	if not await _wait_for_enemy_health_below(enemy, health_before, 6.0):
-		_fail("Client did not receive projectile damage confirmation.")
+		_fail("Client did not receive Host-simulated projectile damage confirmation.")
 		return
 	print(
 		"LAN_PROBE_EVENT client_projectile_hit_confirmed projectile_id=%d enemy=%d health=%d"
@@ -1319,7 +1439,6 @@ func _run_client_reliable_event_probe(mp_game: Node, game: Variant) -> void:
 		_fail("Reliable event probe skill1 purchase did not deduct xirang.")
 		return
 	print("LAN_PROBE_EVENT skill1_confirmed current_xirang=%d" % player.current_xirang)
-	await _run_client_death_revive_probe(mp_game, game)
 
 
 func _run_client_death_revive_probe(mp_game: Node, game: Variant) -> void:
@@ -1328,27 +1447,20 @@ func _run_client_death_revive_probe(mp_game: Node, game: Variant) -> void:
 		_fail("Death/revive probe missing local player.")
 		return
 	var local_peer_id := int(game.multiplayer_local_peer_id)
-	var source_id := local_peer_id * 1000000 + 770001
 	var revision_before_death := _get_player_health_revision(mp_game, local_peer_id)
-	var accepted := bool(mp_game.call(
-		"request_multiplayer_player_damage",
-		source_id,
-		local_peer_id,
-		player.max_health + 999,
-		&"probe_death"
-	))
-	if not accepted:
-		_fail("Death/revive probe damage request was rejected.")
-		return
+	var minimum_death_revision := maxi(
+		revision_before_death + (0 if player.is_dead else 1),
+		1
+	)
 	if not await _wait_for_player_state_at_revision(
 		mp_game,
 		player,
 		local_peer_id,
-		revision_before_death + 1,
+		minimum_death_revision,
 		true,
-		3.0
+		8.0
 	):
-		_fail("Death/revive probe did not enter dead state.")
+		_fail("Death/revive probe did not receive Host-authoritative death.")
 		return
 	print("LAN_PROBE_EVENT death_confirmed peer=%d" % local_peer_id)
 	var death_revision := _get_player_health_revision(mp_game, local_peer_id)
@@ -1362,7 +1474,7 @@ func _run_client_death_revive_probe(mp_game: Node, game: Variant) -> void:
 	):
 		_fail("Death/revive probe did not receive Host revive.")
 		return
-	if not await _wait_for_player_invincibility_clear(player, 5.0):
+	if not await _wait_for_player_invincibility_clear(player, 7.0):
 		_fail("Death/revive probe invincibility did not clear after revive.")
 		return
 	print(
@@ -1409,6 +1521,9 @@ func _run_remote_client2_death_view_probe(
 		14.0
 	):
 		_fail("Remote clients did not see client2 revive.")
+		return
+	if not await _wait_for_player_invincibility_clear(remote_player, 7.0):
+		_fail("Remote clients did not see client2 revive invincibility expire.")
 		return
 	print("LAN_PROBE_EVENT remote_revive_confirmed peer=%d" % client2_peer_id)
 

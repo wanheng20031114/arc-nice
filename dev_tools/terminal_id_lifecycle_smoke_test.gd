@@ -295,8 +295,16 @@ func _test_reliable_terminal_feedback_payload() -> void:
 	var runtime := TOWER_DEFENSE_GAME_SCRIPT.new()
 	var enemy := Enemy.new()
 	var net_id := 606
+	var lethal_request := DamageRequest.new(
+		25,
+		CombatTypes.DamageType.PHYSICAL
+	)
+	lethal_request.with_directions(Vector2.RIGHT)
+	enemy.last_damage_result = DamageResolver.resolve(
+		lethal_request,
+		DamageTargetProfile.new(25)
+	)
 	enemy.current_health = 0
-	enemy.last_damage_taken = 25
 	enemy.is_dead = true
 	runtime.multiplayer_enemies_by_net_id[net_id] = enemy
 	mp_game.game = runtime
@@ -367,7 +375,6 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	lethal_config.max_health = 40
 	lethal_config.physical_defense = 0
 	enemy.setup(lethal_config, null, null)
-	enemy.is_multiplayer_proxy = true
 	enemy.set_process(false)
 	enemy.set_physics_process(false)
 	var net_id := 707

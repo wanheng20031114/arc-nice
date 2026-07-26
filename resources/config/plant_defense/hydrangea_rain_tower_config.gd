@@ -1,9 +1,15 @@
 extends PlantDefenseConfig
 class_name HydrangeaRainTowerConfig
 
+const RAIN_EMISSION_START_DELAY_SECONDS := 0.24
+const RAIN_DROP_FALL_SECONDS := 0.44
+const EFFECT_START_DELAY_SECONDS := (
+	RAIN_EMISSION_START_DELAY_SECONDS + RAIN_DROP_FALL_SECONDS
+)
+
 @export_group("雨幕技能")
 @export_range(0.1, 120.0, 0.1, "or_greater") var rain_interval_seconds := 6.0
-@export_range(0.1, 30.0, 0.1, "or_greater") var rain_duration_seconds := 3.0
+@export_range(0.1, 30.0, 0.1, "or_greater") var rain_duration_seconds := 1.5
 @export_range(0.1, 30.0, 0.1, "or_greater") var effect_duration_seconds := 5.0
 @export_range(0.1, 10.0, 0.1, "or_greater") var rain_tick_interval_seconds := 1.0
 @export_range(0, 9999, 1, "or_greater") var healing_per_tick := 50
@@ -19,10 +25,11 @@ func is_valid() -> bool:
 		and is_finite(rain_interval_seconds)
 		and rain_interval_seconds > 0.0
 		and is_finite(rain_duration_seconds)
-		and rain_duration_seconds > 0.0
+		and rain_duration_seconds > RAIN_EMISSION_START_DELAY_SECONDS
 		and is_finite(effect_duration_seconds)
 		and effect_duration_seconds >= rain_duration_seconds
-		and rain_interval_seconds >= effect_duration_seconds
+		and rain_interval_seconds
+		>= EFFECT_START_DELAY_SECONDS + effect_duration_seconds
 		and is_finite(rain_tick_interval_seconds)
 		and rain_tick_interval_seconds > 0.0
 		and rain_tick_interval_seconds <= effect_duration_seconds

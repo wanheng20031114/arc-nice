@@ -156,7 +156,9 @@ var objective_target: Node2D = null
 var pathfinder: Node = null
 var projectile_motion_system: Node = null
 var current_health: int = 1
+var health_revision: int = 0
 var is_dead: bool = false
+var last_damage_result: DamageResult = null
 var touch_damage_cooldown_left: float = 0.0
 var touched_player: Player = null
 var touching_players: Dictionary[int, Player] = {}
@@ -897,24 +899,82 @@ func apply_damage(
 	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
 	show_hit_particles: bool = true
 ) -> bool:
+	var request := DamageRequest.new(amount, int(damage_type))
+	request.with_directions(impact_direction)
+	request.with_flag(
+		CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES,
+		not show_hit_particles
+	)
+	return apply_combat_damage(request).accepted
+
+
+func restore_health(amount: int) -> int:
+	if amount <= 0 or is_dead or is_multiplayer_proxy or config == null:
+		return 0
+	var health_before := current_health
+	current_health = mini(current_health + amount, config.max_health)
+	var restored_amount := current_health - health_before
+	if restored_amount > 0:
+		health_revision += 1
+	return restored_amount
+
+
+func apply_multiplayer_health_snapshot(new_current_health: int) -> void:
+	current_health = maxi(new_current_health, 0)
+
+
+## Unified authoritative sink shared by direct hits, status ticks and Host
+## confirmations. Presentation and death remain entity-owned side effects.
+func apply_combat_damage(request: DamageRequest) -> DamageResult:
 	last_damage_taken = 0
+	if request == null:
+		last_damage_result = DamageResult.rejected(
+			request,
+			CombatTypes.DamageRejectionReason.INVALID_REQUEST,
+			current_health
+		)
+		return last_damage_result
+	if is_multiplayer_proxy:
+		last_damage_result = DamageResult.rejected(
+			request,
+			CombatTypes.DamageRejectionReason.NOT_AUTHORITY,
+			current_health
+		)
+		return last_damage_result
 	if is_dead:
-		return false
-	if amount <= 0:
-		return false
+		last_damage_result = DamageResult.rejected(
+			request,
+			CombatTypes.DamageRejectionReason.TARGET_DEAD,
+			current_health
+		)
+		return last_damage_result
 
-	var final_damage := _calculate_incoming_damage(amount, damage_type)
-	last_damage_taken = final_damage
-	current_health -= final_damage
-	show_damage_number(final_damage, impact_direction, damage_type)
-	play_multiplayer_damage_feedback(impact_direction, show_hit_particles)
+	var result := DamageResolver.resolve(
+		request,
+		_create_damage_target_profile()
+	)
+	last_damage_result = result
+	if not result.accepted:
+		return result
 
-	if current_health <= 0:
+	last_damage_taken = result.applied_damage
+	current_health = result.health_after
+	health_revision += 1
+	var impact_direction := request.get_safe_impact_direction()
+	var damage_type := request.damage_type as EnemyConfig.DamageType
+	show_damage_number(result.applied_damage, impact_direction, damage_type)
+	play_multiplayer_damage_feedback(
+		impact_direction,
+		not request.has_flag(CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES)
+	)
+	_on_combat_damage_applied(result)
+
+	if result.lethal:
 		_die()
-		return true
+		return result
 
 	AUDIO_LIMITER.play_enemy_hit(hit_audio)
-	return true
+	return result
 
 
 func apply_damage_batch(
@@ -924,68 +984,17 @@ func apply_damage_batch(
 	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
 	show_hit_particles: bool = true
 ) -> bool:
-	last_damage_taken = 0
-	if is_dead or damage_amounts.is_empty():
-		return false
-	var damage_group_count := mini(
-		damage_amounts.size(),
-		hit_counts.size()
+	var request := DamageBatchRequest.new(
+		damage_amounts,
+		hit_counts,
+		int(damage_type)
 	)
-	if damage_group_count <= 0:
-		return false
-
-	# Each group's mitigation is calculated for one hit before multiplication.
-	# Physical/magic defense, damage multipliers and the one-point minimum stay
-	# identical to repeated hits. The lethal aggregate is capped to remaining
-	# health so merged damage groups cannot produce order-dependent overkill
-	# health or multiplayer damage numbers.
-	var accumulated_damage := 0
-	for group_index in range(damage_group_count):
-		var raw_damage := damage_amounts[group_index]
-		var requested_hit_count := hit_counts[group_index]
-		if raw_damage <= 0 or requested_hit_count <= 0:
-			continue
-		var damage_per_hit := _calculate_incoming_damage(
-			raw_damage,
-			damage_type
-		)
-		var remaining_health := current_health - accumulated_damage
-		if remaining_health <= 0:
-			break
-		var hits_until_lethal := ceili(
-			float(remaining_health) / float(damage_per_hit)
-		)
-		var accepted_hit_count := mini(
-			requested_hit_count,
-			hits_until_lethal
-		)
-		accumulated_damage += mini(
-			damage_per_hit * accepted_hit_count,
-			remaining_health
-		)
-		if accumulated_damage >= current_health:
-			break
-	if accumulated_damage <= 0:
-		return false
-
-	last_damage_taken = accumulated_damage
-	current_health -= accumulated_damage
-	show_damage_number(
-		accumulated_damage,
-		impact_direction,
-		damage_type
+	request.with_directions(impact_direction)
+	request.with_flag(
+		CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES,
+		not show_hit_particles
 	)
-	play_multiplayer_damage_feedback(
-		impact_direction,
-		show_hit_particles
-	)
-
-	if current_health <= 0:
-		_die()
-		return true
-
-	AUDIO_LIMITER.play_enemy_hit(hit_audio)
-	return true
+	return apply_combat_damage(request).accepted
 
 
 func show_damage_number(
@@ -1610,18 +1619,19 @@ func _set_visual_shader_parameter(parameter_name: StringName, value: Variant) ->
 		animated_sprite.material = null
 
 
-func _calculate_incoming_damage(
-	amount: int,
-	damage_type: EnemyConfig.DamageType
-) -> int:
-	var mitigated_damage := 1
-	match damage_type:
-		EnemyConfig.DamageType.MAGIC:
-			var defense_ratio := float(100 - get_effective_magic_defense()) / 100.0
-			mitigated_damage = maxi(floori(float(amount) * defense_ratio), 1)
-		_:
-			mitigated_damage = maxi(amount - get_effective_physical_defense(), 1)
-	return maxi(roundi(float(mitigated_damage) * get_damage_taken_multiplier()), 1)
+func _create_damage_target_profile() -> DamageTargetProfile:
+	var profile := DamageTargetProfile.new(
+		current_health,
+		get_effective_physical_defense(),
+		get_effective_magic_defense()
+	)
+	profile.post_mitigation_multiplier = get_damage_taken_multiplier()
+	profile.post_multiplier_rounding = CombatTypes.RoundingMode.NEAREST
+	return profile
+
+
+func _on_combat_damage_applied(_result: DamageResult) -> void:
+	pass
 
 
 func apply_collectible_status(
@@ -2040,6 +2050,7 @@ func _apply_config() -> void:
 	navigation_agent_profile = null
 	_apply_terrain_collision_profile()
 	current_health = config.max_health
+	health_revision = 0
 	_refresh_effective_physical_defense_cache()
 	_refresh_effective_move_speed_cache()
 	_play_scene_animation(config.move_animation_name)

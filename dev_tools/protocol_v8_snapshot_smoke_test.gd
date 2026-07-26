@@ -111,7 +111,7 @@ func _run() -> void:
 	_test_shared_snapshot_cohort_lifecycle()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V17_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V20_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -120,7 +120,7 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 19, "Protocol must be v19.")
+	_expect(NetConstants.PROTOCOL_VERSION == 20, "Protocol must be v20.")
 	_expect(NetConstants.CHANNEL_COUNT == 8, "ENet must provision eight channels.")
 	_expect(NetConstants.MAX_PLAYERS == 8, "Protocol capacity must accept an eight-player roster.")
 	_expect(
@@ -132,7 +132,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v19 channel assignments must remain stable."
+		"Protocol v20 channel assignments must remain stable."
 	)
 func _test_terrain_delta_revision_repair_contract() -> void:
 	var mp_game := TerrainRepairMpGame.new()
@@ -1109,35 +1109,23 @@ func _test_projectile_id_codec_contract() -> void:
 		and not bool(mp_game.call("_is_host_origin_projectile_id", client_lane_id)),
 		"Concurrent Host/client allocation for one owner must use collision-free origin lanes."
 	)
-	records[client_lane_id] = {
-		"owner_peer_id": 2,
-		"projectile_type": &"player_bullet",
-	}
-	records[host_lane_id] = {
-		"owner_peer_id": 2,
-		"projectile_type": &"player_bullet",
-	}
 	_expect(
 		bool(mp_game.call(
-			"_is_client_enemy_hit_report_allowed",
+			"_is_projectile_id_valid_for_client_owner",
 			client_lane_id,
-			2,
 			2
 		))
 		and not bool(mp_game.call(
-			"_is_client_enemy_hit_report_allowed",
+			"_is_projectile_id_valid_for_client_owner",
 			host_lane_id,
-			2,
 			2
 		))
 		and bool(mp_game.call(
-			"_is_client_enemy_hit_report_allowed",
+			"_is_projectile_id_valid_for_host_owner",
 			host_lane_id,
-			2,
-			0
+			2
 		)),
-		"Remote hit RPCs must accept the owner's client lane, reject its Host lane, "
-		+ "and leave Host-local authoritative settlement valid."
+		"Origin lanes must remain structurally distinct even though neither lane authorizes a remote enemy-hit claim."
 	)
 	mp_game.free()
 
@@ -1237,29 +1225,31 @@ func _test_enemy_codec_reuse_and_packet_budget() -> void:
 	var sender := SnapshotManager.new()
 	var receiver := SnapshotManager.new()
 	var states: Array[SnapshotManager.EnemyState] = []
-	for enemy_index in range(56):
+	for enemy_index in range(46):
 		var state := SnapshotManager.EnemyState.new()
 		state.net_id = enemy_index + 1
 		state.position = Vector2(enemy_index * 2.0, enemy_index * -1.5)
 		state.velocity = Vector2(1.0, -1.0)
 		state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 		state.health = 100 + enemy_index
+		state.health_revision = enemy_index + 3
 		state.visual_status_mask = 0b1101 if enemy_index == 0 else 0
 		states.append(state)
 	var keyframe := sender.encode_enemy_snapshots_for_peer(8, states, true)
 	_expect(
-		keyframe.size() == 1122,
-		"A v19 56-enemy keyframe must use 1122 bytes and stay within the 1200-byte budget."
+		keyframe.size() == 1106,
+		"A v20 46-enemy keyframe must use 1106 bytes and stay within the 1200-byte budget."
 	)
 	var decoded_keyframe := receiver.decode_enemy_snapshots_with_baseline(keyframe)
-	_expect(decoded_keyframe.size() == 56, "The complete 56-enemy keyframe must decode.")
+	_expect(decoded_keyframe.size() == 46, "The complete 46-enemy keyframe must decode.")
 	if decoded_keyframe.is_empty():
 		return
 	_expect(
 		decoded_keyframe[0].visual_status_mask == 0b1101
 		and decoded_keyframe[0].locomotion_state
-			== SnapshotManager.ENEMY_LOCOMOTION_MOVING,
-		"Enemy visual status and locomotion bits must round-trip in a keyframe."
+			== SnapshotManager.ENEMY_LOCOMOTION_MOVING
+		and decoded_keyframe[0].health_revision == 3,
+		"Enemy visual status, locomotion and health revision must round-trip in a keyframe."
 	)
 	states[0].position.x += 2.0
 	states[0].visual_status_mask = 0b0100
@@ -1267,7 +1257,7 @@ func _test_enemy_codec_reuse_and_packet_budget() -> void:
 	var delta := sender.encode_enemy_snapshots_for_peer(8, states, false)
 	var decoded_delta := receiver.decode_enemy_snapshots_with_baseline(delta)
 	_expect(
-		decoded_delta.size() == 56
+		decoded_delta.size() == 46
 		and is_same(decoded_keyframe[0], decoded_delta[0])
 		and decoded_delta[0].visual_status_mask == 0b0100
 		and decoded_delta[0].locomotion_state

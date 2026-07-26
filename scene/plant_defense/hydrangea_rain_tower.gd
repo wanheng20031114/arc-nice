@@ -1,26 +1,39 @@
 extends PlantDefense
 class_name HydrangeaRainTower
 
-const RUNTIME_STATE_SCHEMA := 2
+const AUDIO_LIMITER := preload(
+	"res://scene/plant_defense/plant_attack_audio_limiter.gd"
+)
+const RUNTIME_STATE_SCHEMA := 3
 const ATTACK_REDUCTION_STATUS_ID := &"hydrangea_attack_reduction"
 const STATUS_SOURCE_NAMESPACE := 130_000_000
 const AUTHORED_RAIN_RADIUS := 160.0
 const RAIN_VISUAL_FADE_IN_SECONDS := 0.36
 const RAIN_FIELD_DISSIPATE_SECONDS := 0.9
-const TARGET_RAIN_START_DELAY_SECONDS := 0.24
+const TARGET_RAIN_START_DELAY_SECONDS := (
+	HydrangeaRainTowerConfig.RAIN_EMISSION_START_DELAY_SECONDS
+)
 const TARGET_RAIN_START_CLEARANCE := 24.0
 const TARGET_RAIN_VISIBILITY_MARGIN := 28.0
 const TARGET_RAIN_EMISSION_FADE_SECONDS := 0.28
 const TARGET_RAIN_DISSIPATE_SECONDS := 0.78
 const BLOOM_OPEN_TRANSITION_SECONDS := 0.24
 const BLOOM_CLOSE_TRANSITION_SECONDS := 0.32
-const GROUND_DEW_EMISSION_FADE_SECONDS := 1.0
-const GROUND_DEW_DISSIPATE_SECONDS := 1.4
+const GROUND_DEW_PARTICLE_TAIL_SECONDS := 1.15
 const IDLE_CORE_LIGHT_STRENGTH := 1.0
 const BLOOM_CORE_LIGHT_STRENGTH := 3.2
 const BLOOM_CORE_LIGHT_COLOR := Color(0.38, 0.44, 1.0, 1.0)
 const IDLE_CORE_GLOW_SCALE := Vector2(0.3, 0.3)
 const BLOOM_CORE_GLOW_SCALE := Vector2(0.38, 0.38)
+
+enum RainVisualPhase {
+	IDLE,
+	CAST_ASCENT,
+	RAIN_DESCENT,
+	GROUND_IMPACT,
+	GROUND_SUSTAIN,
+	DISSIPATING,
+}
 
 @export_group("128像素双状态素材")
 @export var idle_texture: Texture2D
@@ -41,9 +54,12 @@ const BLOOM_CORE_GLOW_SCALE := Vector2(0.38, 0.38)
 @onready var bloom_animation_player: AnimationPlayer = $BloomAnimationPlayer
 @onready var cycle_timer: Timer = $CycleTimer
 @onready var rain_tick_timer: Timer = $RainTickTimer
+@onready var effect_start_timer: Timer = $EffectStartTimer
 @onready var rain_end_timer: Timer = $RainEndTimer
 @onready var effect_end_timer: Timer = $EffectEndTimer
+@onready var ground_effect_end_timer: Timer = $GroundEffectEndTimer
 @onready var health_bar: PlantHealthBar = $HealthBar
+@onready var rain_audio: AudioStreamPlayer2D = $RainAudio
 
 var rain_config: HydrangeaRainTowerConfig = null
 var plant_system = null
@@ -69,10 +85,11 @@ var target_rain_dissolve_tween: Tween = null
 var ground_dew_dissolve_tween: Tween = null
 var rain_visual_intensity := 0.0
 var bloom_visual_progress := 0.0
+var rain_visual_phase := RainVisualPhase.IDLE
 var pending_proxy_cycle_elapsed_seconds := -1.0
-var pending_proxy_rain_elapsed_seconds := -1.0
-var pending_proxy_rain_target_position := Vector2.ZERO
-var pending_proxy_has_rain := false
+var pending_proxy_action_elapsed_seconds := -1.0
+var pending_proxy_action_target_position := Vector2.ZERO
+var pending_proxy_has_action_visual := false
 var pending_proxy_recorded_at_seconds := -1.0
 
 
@@ -84,8 +101,12 @@ func _on_setup_completed() -> void:
 
 	cycle_timer.wait_time = rain_config.rain_interval_seconds
 	rain_tick_timer.wait_time = rain_config.rain_tick_interval_seconds
+	effect_start_timer.wait_time = (
+		HydrangeaRainTowerConfig.EFFECT_START_DELAY_SECONDS
+	)
 	rain_end_timer.wait_time = rain_config.rain_duration_seconds
 	effect_end_timer.wait_time = rain_config.effect_duration_seconds
+	ground_effect_end_timer.wait_time = _get_action_timeline_duration_seconds()
 	damage_amounts = PackedInt32Array([rain_config.magic_damage_per_tick])
 	damage_hit_counts = PackedInt32Array([1])
 	rain_field.scale = Vector2.ONE * (
@@ -275,26 +296,28 @@ func _on_operational_started() -> void:
 		)
 	pending_proxy_cycle_elapsed_seconds = -1.0
 	_set_cycle_elapsed(initial_cycle_elapsed)
-	var aged_pending_rain_elapsed := (
-		pending_proxy_rain_elapsed_seconds + pending_age_seconds
+	var aged_pending_action_elapsed := (
+		pending_proxy_action_elapsed_seconds + pending_age_seconds
 	)
 	if (
 		is_multiplayer_proxy
-		and pending_proxy_has_rain
-		and aged_pending_rain_elapsed >= 0.0
-		and aged_pending_rain_elapsed < rain_config.rain_duration_seconds
+		and pending_proxy_has_action_visual
+		and aged_pending_action_elapsed >= 0.0
+		and aged_pending_action_elapsed
+		< _get_action_timeline_duration_seconds()
 	):
-		_begin_rain_visual(
-			pending_proxy_rain_target_position,
-			aged_pending_rain_elapsed
+		_play_rain_action_visual(
+			pending_proxy_action_target_position,
+			aged_pending_action_elapsed
 		)
-	pending_proxy_rain_elapsed_seconds = -1.0
-	pending_proxy_rain_target_position = Vector2.ZERO
-	pending_proxy_has_rain = false
+	pending_proxy_action_elapsed_seconds = -1.0
+	pending_proxy_action_target_position = Vector2.ZERO
+	pending_proxy_has_action_visual = false
 	pending_proxy_recorded_at_seconds = -1.0
 
 
 func _on_multiplayer_proxy_configured() -> void:
+	effect_start_timer.stop()
 	rain_tick_timer.stop()
 	effect_end_timer.stop()
 	effect_active = false
@@ -302,9 +325,11 @@ func _on_multiplayer_proxy_configured() -> void:
 
 func _on_removal_started(_mode: RemovalMode) -> void:
 	cycle_timer.stop()
+	effect_start_timer.stop()
 	rain_tick_timer.stop()
 	rain_end_timer.stop()
 	effect_end_timer.stop()
+	ground_effect_end_timer.stop()
 	_disconnect_plant_system_signals()
 	heal_target_candidates.clear()
 	_stop_rain_field_tween()
@@ -313,6 +338,7 @@ func _on_removal_started(_mode: RemovalMode) -> void:
 	bloom_core_night_light.set_emission_allowed(false)
 	core_glow.hide()
 	health_bar.hide()
+	rain_audio.stop()
 	_hide_rain_visual_immediate()
 	rain_active = false
 	effect_active = false
@@ -322,9 +348,9 @@ func _on_removal_started(_mode: RemovalMode) -> void:
 	next_effect_tick_index = 0
 	total_effect_tick_count = 0
 	pending_proxy_cycle_elapsed_seconds = -1.0
-	pending_proxy_rain_elapsed_seconds = -1.0
-	pending_proxy_rain_target_position = Vector2.ZERO
-	pending_proxy_has_rain = false
+	pending_proxy_action_elapsed_seconds = -1.0
+	pending_proxy_action_target_position = Vector2.ZERO
+	pending_proxy_has_action_visual = false
 	pending_proxy_recorded_at_seconds = -1.0
 
 
@@ -352,7 +378,7 @@ func _on_cycle_timer_timeout() -> void:
 	rain_action_id += 1
 	var action_elapsed := minf(
 		callback_lateness,
-		rain_config.effect_duration_seconds - 0.001
+		_get_action_timeline_duration_seconds() - 0.001
 	)
 	_begin_authoritative_rain(
 		target.global_position,
@@ -374,6 +400,18 @@ func _on_rain_tick_timer_timeout() -> void:
 	_schedule_next_effect_tick()
 
 
+func _on_effect_start_timer_timeout() -> void:
+	if (
+		is_multiplayer_proxy
+		or not is_operational
+		or is_dead
+		or is_removing
+		or rain_config == null
+	):
+		return
+	_start_authoritative_gameplay_effect(0.0)
+
+
 func _on_rain_end_timer_timeout() -> void:
 	_finish_rain_visual()
 
@@ -382,21 +420,47 @@ func _on_effect_end_timer_timeout() -> void:
 	_finish_gameplay_effect()
 
 
+func _on_ground_effect_end_timer_timeout() -> void:
+	_begin_ground_dew_dissolve()
+
+
 func _begin_authoritative_rain(
 	target_position: Vector2,
 	elapsed_seconds: float
 ) -> void:
 	if rain_config == null or not target_position.is_finite():
 		return
-	if effect_active:
-		_finish_gameplay_effect()
+	_finish_gameplay_effect()
+	var safe_elapsed := clampf(
+		elapsed_seconds,
+		0.0,
+		_get_action_timeline_duration_seconds() - 0.001
+	)
+	_play_rain_action_visual(target_position, safe_elapsed)
+	var effect_elapsed := (
+		safe_elapsed - HydrangeaRainTowerConfig.EFFECT_START_DELAY_SECONDS
+	)
+	if effect_elapsed < 0.0:
+		effect_start_timer.start(-effect_elapsed)
+		return
+	if effect_elapsed < rain_config.effect_duration_seconds:
+		_start_authoritative_gameplay_effect(effect_elapsed)
+
+
+func _start_authoritative_gameplay_effect(elapsed_seconds: float) -> void:
+	if (
+		is_multiplayer_proxy
+		or rain_config == null
+		or not rain_target_global_position.is_finite()
+	):
+		return
+	effect_start_timer.stop()
 	var safe_elapsed := clampf(
 		elapsed_seconds,
 		0.0,
 		rain_config.effect_duration_seconds - 0.001
 	)
 	effect_active = true
-	rain_target_global_position = target_position
 	effect_started_at_seconds = _now_seconds() - safe_elapsed
 	total_effect_tick_count = maxi(
 		ceili(
@@ -410,10 +474,6 @@ func _begin_authoritative_rain(
 		floori(safe_elapsed / rain_config.rain_tick_interval_seconds + 0.0001),
 		total_effect_tick_count - 1
 	)
-	if safe_elapsed < rain_config.rain_duration_seconds:
-		_begin_rain_visual(target_position, safe_elapsed)
-	else:
-		_finish_rain_visual()
 	effect_end_timer.start(maxf(
 		rain_config.effect_duration_seconds - safe_elapsed,
 		0.01
@@ -439,6 +499,7 @@ func _schedule_next_effect_tick() -> void:
 
 
 func _finish_gameplay_effect() -> void:
+	effect_start_timer.stop()
 	effect_active = false
 	effect_started_at_seconds = 0.0
 	next_effect_tick_index = 0
@@ -476,7 +537,7 @@ func _apply_authoritative_rain_tick(tick_index: int) -> void:
 	var effect_source_id := _get_effect_source_id()
 	var deals_magic_damage := (
 		float(tick_index) * rain_config.rain_tick_interval_seconds
-		< rain_config.rain_duration_seconds - 0.0001
+		< _get_rain_impact_window_seconds() - 0.0001
 	)
 	for enemy in enemy_candidates:
 		if (
@@ -537,6 +598,37 @@ func _apply_authoritative_rain_tick(tick_index: int) -> void:
 		)
 
 
+func _play_rain_action_visual(
+	target_position: Vector2,
+	elapsed_seconds: float
+) -> void:
+	if rain_config == null or not target_position.is_finite():
+		return
+	var action_duration := _get_action_timeline_duration_seconds()
+	var safe_elapsed := clampf(elapsed_seconds, 0.0, action_duration)
+	ground_effect_end_timer.stop()
+	rain_target_global_position = target_position
+	ground_dew_rise.global_position = target_position
+	if safe_elapsed < rain_config.rain_duration_seconds:
+		_begin_rain_visual(target_position, safe_elapsed)
+	else:
+		_finish_rain_visual()
+		if (
+			safe_elapsed
+			>= HydrangeaRainTowerConfig.EFFECT_START_DELAY_SECONDS
+			and safe_elapsed < action_duration
+		):
+			_prepare_ground_dew_rise_for_emission()
+			rain_visual_phase = RainVisualPhase.GROUND_SUSTAIN
+	if safe_elapsed < action_duration:
+		ground_effect_end_timer.start(maxf(
+			action_duration - safe_elapsed,
+			0.01
+		))
+	else:
+		_begin_ground_dew_dissolve()
+
+
 func _begin_rain_visual(
 	target_position: Vector2,
 	elapsed_seconds: float
@@ -553,8 +645,15 @@ func _begin_rain_visual(
 	if safe_elapsed >= rain_config.rain_duration_seconds:
 		return
 	rain_active = true
+	if safe_elapsed < TARGET_RAIN_START_DELAY_SECONDS:
+		rain_visual_phase = RainVisualPhase.CAST_ASCENT
+	elif safe_elapsed < HydrangeaRainTowerConfig.EFFECT_START_DELAY_SECONDS:
+		rain_visual_phase = RainVisualPhase.RAIN_DESCENT
+	else:
+		rain_visual_phase = RainVisualPhase.GROUND_IMPACT
 	rain_target_global_position = target_position
 	rain_started_at_seconds = _now_seconds() - safe_elapsed
+	AUDIO_LIMITER.play_burst(rain_audio, safe_elapsed)
 	rain_field.global_position = target_position
 	ground_dew_rise.global_position = target_position
 	target_rain_drops.global_position = target_position
@@ -573,12 +672,18 @@ func _finish_rain_visual() -> void:
 	if not rain_active:
 		return
 	rain_active = false
+	rain_visual_phase = (
+		RainVisualPhase.GROUND_SUSTAIN
+		if not ground_effect_end_timer.is_stopped()
+		else RainVisualPhase.DISSIPATING
+	)
 	rain_started_at_seconds = 0.0
 	rain_end_timer.stop()
 	_begin_flower_close()
 	_begin_rain_field_dissolve()
 	_begin_target_rain_dissolve()
-	_begin_ground_dew_dissolve()
+	if ground_effect_end_timer.is_stopped() and ground_dew_rise.emitting:
+		_begin_ground_dew_dissolve()
 
 
 func _show_rain_visual(elapsed_seconds: float) -> void:
@@ -591,12 +696,12 @@ func _show_rain_visual(elapsed_seconds: float) -> void:
 func _start_rain_field_timeline(elapsed_seconds: float) -> void:
 	_stop_rain_field_tween()
 	_stop_target_rain_dissolve_tween()
-	_stop_ground_dew_dissolve_tween()
 	_stop_particles_immediate(target_rain_drops)
 	_stop_particles_immediate(target_rain_ripples)
-	_stop_particles_immediate(ground_dew_rise)
 	_reset_target_rain_visual_properties()
-	_reset_ground_dew_visual_properties()
+	# GroundDewRise belongs to the full 5-second gameplay window.  It uses
+	# world-space particles, so the previous tail can finish while the next
+	# cast prepares a different target and is only restarted at ground impact.
 	_set_rain_intensity(0.0)
 	rain_field.hide()
 	var safe_elapsed := clampf(
@@ -653,6 +758,9 @@ func _start_rain_field_timeline(elapsed_seconds: float) -> void:
 
 
 func _start_target_rain_visual() -> void:
+	if not rain_active:
+		return
+	rain_visual_phase = RainVisualPhase.RAIN_DESCENT
 	rain_field.show()
 	_prepare_target_rain_for_emission()
 
@@ -660,6 +768,7 @@ func _start_target_rain_visual() -> void:
 func _start_ground_impact_visual() -> void:
 	if not rain_active:
 		return
+	rain_visual_phase = RainVisualPhase.GROUND_IMPACT
 	_prepare_ground_dew_rise_for_emission()
 
 
@@ -695,9 +804,11 @@ func _complete_rain_field_dissolve() -> void:
 	rain_field_tween = null
 	_set_rain_intensity(0.0)
 	rain_field.hide()
+	_try_complete_visual_dissipation()
 
 
 func _hide_rain_effect_nodes_immediate() -> void:
+	ground_effect_end_timer.stop()
 	_hide_rain_field_immediate()
 	_stop_target_rain_dissolve_tween()
 	_stop_ground_dew_dissolve_tween()
@@ -712,6 +823,7 @@ func _hide_rain_visual_immediate() -> void:
 	_hide_rain_effect_nodes_immediate()
 	_stop_particles_immediate(dew_burst)
 	_set_flower_state(false)
+	rain_visual_phase = RainVisualPhase.IDLE
 
 
 func _stop_particles_immediate(particles: GPUParticles2D) -> void:
@@ -863,6 +975,7 @@ func _complete_target_rain_dissolve() -> void:
 	target_rain_dissolve_tween = null
 	_stop_particles_immediate(target_rain_drops)
 	_reset_target_rain_visual_properties()
+	_try_complete_visual_dissipation()
 
 
 func _stop_target_rain_dissolve_tween() -> void:
@@ -887,25 +1000,30 @@ func _prepare_ground_dew_rise_for_emission() -> void:
 
 
 func _begin_ground_dew_dissolve() -> void:
-	_stop_ground_dew_dissolve_tween()
+	ground_effect_end_timer.stop()
+	if (
+		ground_dew_dissolve_tween != null
+		and ground_dew_dissolve_tween.is_valid()
+	):
+		return
 	if not ground_dew_rise.emitting:
 		_reset_ground_dew_visual_properties()
+		_try_complete_visual_dissipation()
 		return
+	rain_visual_phase = RainVisualPhase.DISSIPATING
+	ground_dew_rise.amount_ratio = 0.0
+	ground_dew_rise.emitting = false
 	ground_dew_dissolve_tween = create_tween()
-	ground_dew_dissolve_tween.set_parallel(true)
-	ground_dew_dissolve_tween.tween_property(
-		ground_dew_rise,
-		"amount_ratio",
-		0.0,
-		GROUND_DEW_EMISSION_FADE_SECONDS
-	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	ground_dew_dissolve_tween.tween_property(
 		ground_dew_rise,
 		"self_modulate:a",
 		0.0,
-		GROUND_DEW_DISSIPATE_SECONDS
+		maxf(
+			GROUND_DEW_PARTICLE_TAIL_SECONDS,
+			ground_dew_rise.lifetime
+		)
 	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	ground_dew_dissolve_tween.chain().tween_callback(
+	ground_dew_dissolve_tween.tween_callback(
 		_complete_ground_dew_dissolve
 	)
 
@@ -914,6 +1032,7 @@ func _complete_ground_dew_dissolve() -> void:
 	ground_dew_dissolve_tween = null
 	_stop_particles_immediate(ground_dew_rise)
 	_reset_ground_dew_visual_properties()
+	_try_complete_visual_dissipation()
 
 
 func _stop_ground_dew_dissolve_tween() -> void:
@@ -928,6 +1047,19 @@ func _stop_ground_dew_dissolve_tween() -> void:
 func _reset_ground_dew_visual_properties() -> void:
 	ground_dew_rise.amount_ratio = 1.0
 	ground_dew_rise.self_modulate = Color.WHITE
+
+
+func _try_complete_visual_dissipation() -> void:
+	if (
+		rain_active
+		or not ground_effect_end_timer.is_stopped()
+		or ground_dew_rise.emitting
+		or rain_field_tween != null
+		or target_rain_dissolve_tween != null
+		or ground_dew_dissolve_tween != null
+	):
+		return
+	rain_visual_phase = RainVisualPhase.IDLE
 
 
 func _set_rain_intensity(value: float) -> void:
@@ -957,6 +1089,24 @@ func _get_target_rain_fall_distance() -> float:
 	if rain_config == null:
 		return TARGET_RAIN_START_CLEARANCE
 	return rain_config.rain_radius * 2.0 + TARGET_RAIN_START_CLEARANCE
+
+
+func _get_rain_impact_window_seconds() -> float:
+	if rain_config == null:
+		return 0.0
+	return maxf(
+		rain_config.rain_duration_seconds - TARGET_RAIN_START_DELAY_SECONDS,
+		0.0
+	)
+
+
+func _get_action_timeline_duration_seconds() -> float:
+	if rain_config == null:
+		return HydrangeaRainTowerConfig.EFFECT_START_DELAY_SECONDS
+	return (
+		HydrangeaRainTowerConfig.EFFECT_START_DELAY_SECONDS
+		+ rain_config.effect_duration_seconds
+	)
 
 
 func _stop_rain_field_tween() -> void:
@@ -997,22 +1147,20 @@ func play_multiplayer_rain_action(
 	):
 		return
 	rain_action_id = action_id
+	var safe_elapsed := maxf(elapsed_seconds, 0.0)
 	if not is_operational:
-		pending_proxy_cycle_elapsed_seconds = maxf(elapsed_seconds, 0.0)
-		pending_proxy_has_rain = (
-			elapsed_seconds < rain_config.rain_duration_seconds
+		pending_proxy_cycle_elapsed_seconds = safe_elapsed
+		pending_proxy_has_action_visual = (
+			safe_elapsed < _get_action_timeline_duration_seconds()
 		)
-		pending_proxy_rain_elapsed_seconds = (
-			maxf(elapsed_seconds, 0.0) if pending_proxy_has_rain else -1.0
+		pending_proxy_action_elapsed_seconds = (
+			safe_elapsed if pending_proxy_has_action_visual else -1.0
 		)
-		pending_proxy_rain_target_position = target_position
+		pending_proxy_action_target_position = target_position
 		pending_proxy_recorded_at_seconds = _now_seconds()
 		return
-	_set_cycle_elapsed(maxf(elapsed_seconds, 0.0))
-	if elapsed_seconds < rain_config.rain_duration_seconds:
-		_begin_rain_visual(target_position, maxf(elapsed_seconds, 0.0))
-	else:
-		_finish_rain_visual()
+	_set_cycle_elapsed(safe_elapsed)
+	_play_rain_action_visual(target_position, safe_elapsed)
 
 
 func export_multiplayer_runtime_state() -> Dictionary:
@@ -1030,6 +1178,7 @@ func export_multiplayer_runtime_state() -> Dictionary:
 		"schema": RUNTIME_STATE_SCHEMA,
 		"cycle_elapsed_seconds": cycle_elapsed,
 		"rain_active": rain_active,
+		"ground_effect_active": effect_active,
 		"rain_action_id": rain_action_id,
 	}
 	if rain_active and rain_started_at_seconds > 0.0:
@@ -1039,6 +1188,16 @@ func export_multiplayer_runtime_state() -> Dictionary:
 			rain_config.rain_duration_seconds
 		)
 		state["rain_target_position"] = rain_target_global_position
+	if effect_active and effect_started_at_seconds > 0.0:
+		state["ground_effect_elapsed_seconds"] = clampf(
+			HydrangeaRainTowerConfig.EFFECT_START_DELAY_SECONDS
+			+ now_seconds - effect_started_at_seconds,
+			HydrangeaRainTowerConfig.EFFECT_START_DELAY_SECONDS,
+			_get_action_timeline_duration_seconds()
+		)
+		state["ground_effect_target_position"] = (
+			rain_target_global_position
+		)
 	return state
 
 
@@ -1059,6 +1218,7 @@ func apply_multiplayer_runtime_state(
 	if not is_finite(received_cycle_elapsed):
 		return
 	var received_action_id := maxi(int(state.get("rain_action_id", 0)), 0)
+	var received_newer_action := received_action_id > rain_action_id
 	if received_action_id < rain_action_id:
 		return
 	rain_action_id = received_action_id
@@ -1076,20 +1236,61 @@ func apply_multiplayer_runtime_state(
 		and received_target.is_finite()
 		and received_rain_elapsed < rain_config.rain_duration_seconds
 	)
+	var received_ground_elapsed := maxf(
+		float(state.get("ground_effect_elapsed_seconds", 0.0)),
+		0.0
+	)
+	var received_ground_target: Vector2 = state.get(
+		"ground_effect_target_position",
+		Vector2.ZERO
+	)
+	var should_restore_ground := (
+		bool(state.get("ground_effect_active", false))
+		and is_finite(received_ground_elapsed)
+		and received_ground_target.is_finite()
+		and received_ground_elapsed
+		>= HydrangeaRainTowerConfig.EFFECT_START_DELAY_SECONDS
+		and received_ground_elapsed < _get_action_timeline_duration_seconds()
+	)
+	var should_restore_action := should_restore_rain or should_restore_ground
+	var received_action_elapsed := (
+		received_rain_elapsed
+		if should_restore_rain
+		else received_ground_elapsed
+	)
+	var received_action_target := (
+		received_target
+		if should_restore_rain
+		else received_ground_target
+	)
 	if not is_operational:
 		pending_proxy_cycle_elapsed_seconds = received_cycle_elapsed
-		pending_proxy_has_rain = should_restore_rain
-		pending_proxy_rain_elapsed_seconds = (
-			received_rain_elapsed if should_restore_rain else -1.0
+		pending_proxy_has_action_visual = should_restore_action
+		pending_proxy_action_elapsed_seconds = (
+			received_action_elapsed if should_restore_action else -1.0
 		)
-		pending_proxy_rain_target_position = received_target
+		pending_proxy_action_target_position = received_action_target
 		pending_proxy_recorded_at_seconds = _now_seconds()
 		return
 	_set_cycle_elapsed(received_cycle_elapsed)
-	if should_restore_rain:
-		_begin_rain_visual(received_target, received_rain_elapsed)
-	else:
+	var has_current_action_visual := (
+		rain_active
+		or not ground_effect_end_timer.is_stopped()
+		or ground_dew_rise.emitting
+		or ground_dew_dissolve_tween != null
+	)
+	if (
+		should_restore_action
+		and (received_newer_action or not has_current_action_visual)
+	):
+		_play_rain_action_visual(
+			received_action_target,
+			received_action_elapsed
+		)
+	elif received_newer_action and not should_restore_action:
 		_finish_rain_visual()
+		ground_effect_end_timer.stop()
+		_begin_ground_dew_dissolve()
 
 
 func _set_cycle_elapsed(elapsed_seconds: float) -> void:

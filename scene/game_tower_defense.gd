@@ -556,7 +556,7 @@ func queue_bamboo_mortar_explosion(
 
 
 func apply_authoritative_plant_enemy_damage_batch(
-	_damage_source_id: int,
+	damage_source_id: int,
 	enemy: Enemy,
 	damage_amounts: PackedInt32Array,
 	hit_counts: PackedInt32Array,
@@ -576,12 +576,14 @@ func apply_authoritative_plant_enemy_damage_batch(
 		if impact_direction.is_finite()
 		else Vector2.ZERO
 	)
-	return enemy.apply_damage_batch(
+	var request := DamageBatchRequest.new(
 		damage_amounts,
 		hit_counts,
-		safe_direction,
-		damage_type
+		int(damage_type)
 	)
+	request.with_source(null, damage_source_id, &"plant_damage_batch")
+	request.with_directions(safe_direction)
+	return enemy.apply_combat_damage(request).accepted
 
 
 func query_living_plants_in_radius_into(
@@ -813,7 +815,15 @@ func _emit_multiplayer_enemy_escaped(enemy: Enemy) -> void:
 func _apply_base_damage(amount: int) -> void:
 	if amount <= 0 or current_base_health <= 0:
 		return
-	current_base_health = maxi(current_base_health - amount, 0)
+	var request := DamageRequest.new(amount, CombatTypes.DamageType.PHYSICAL)
+	request.with_flag(CombatTypes.DamageFlag.BYPASS_MITIGATION)
+	var result := DamageResolver.resolve(
+		request,
+		DamageTargetProfile.new(current_base_health)
+	)
+	if not result.accepted:
+		return
+	current_base_health = result.health_after
 	base_health_revision += 1
 	_update_base_health_display()
 	if tower_defense_status_hud != null:
