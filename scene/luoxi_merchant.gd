@@ -1,8 +1,6 @@
 extends Node2D
 class_name LuoxiMerchant
 
-const COLLECTIBLE_CONFIG_DIR := "res://resources/config/collectibles"
-const COLLECTIBLE_CONFIG_PREFIX := "collectible_"
 const DIALOGUE_LINES := [
 	"我是终末地的爪牙！",
 	"我能为你提供收藏品来强化自己。",
@@ -77,11 +75,6 @@ var authoritative_offer_paths: Array[String] = []
 var authoritative_offer_pending: bool = false
 var _authoritative_request_kind := AuthoritativeRequestKind.NONE
 
-static var _collectible_pool_cache: Array[PickupConfig] = []
-static var _collectible_by_path_cache: Dictionary = {}
-static var _collectible_cache_ready := false
-
-
 static func get_choice_count() -> int:
 	return CHOICE_COUNT
 
@@ -97,8 +90,7 @@ static func get_refresh_cost(refresh_count: int) -> int:
 
 
 static func get_collectible_pool() -> Array:
-	_ensure_collectible_cache()
-	return _collectible_pool_cache.duplicate()
+	return CollectibleRegistry.get_all()
 
 
 static func get_collectible_for_choice(choice_index: int) -> PickupConfig:
@@ -109,43 +101,31 @@ static func get_collectible_for_choice(choice_index: int) -> PickupConfig:
 
 
 static func get_collectible_for_path(config_path: String) -> PickupConfig:
-	if config_path.is_empty():
-		return null
-	_ensure_collectible_cache()
-	return _collectible_by_path_cache.get(config_path) as PickupConfig
+	return CollectibleRegistry.get_for_path(config_path)
 
 
 static func is_collectible_cache_ready() -> bool:
-	return _collectible_cache_ready
+	return CollectibleRegistry.is_cache_ready()
 
 
 static func get_collectible_config_paths() -> Array[String]:
-	return _get_collectible_config_paths()
+	return CollectibleRegistry.get_config_paths()
 
 
 static func cache_collectible_config(item: PickupConfig) -> void:
-	if item == null or item.resource_path.is_empty():
-		return
-	if _collectible_by_path_cache.has(item.resource_path):
-		return
-	_collectible_by_path_cache[item.resource_path] = item
-	_collectible_pool_cache.append(item)
+	CollectibleRegistry.cache_config(item)
 
 
 static func finish_collectible_cache_warmup() -> void:
-	_collectible_cache_ready = true
+	CollectibleRegistry.finish_cache_warmup()
 
 
 static func _ensure_collectible_cache() -> void:
-	if _collectible_cache_ready:
-		return
-	for config_path in _get_collectible_config_paths():
-		cache_collectible_config(load(config_path) as PickupConfig)
-	finish_collectible_cache_warmup()
+	CollectibleRegistry.ensure_cache()
 
 
 static func is_collectible_pool_path(config_path: String) -> bool:
-	return get_collectible_for_path(config_path) != null
+	return CollectibleRegistry.is_collectible_path(config_path)
 
 
 static func get_collectible_effect_key(item: PickupConfig) -> String:
@@ -759,18 +739,6 @@ func _are_collectible_choices_available_for_player(choices: Array, player: Playe
 		):
 			return false
 	return true
-
-
-static func _get_collectible_config_paths() -> Array[String]:
-	var paths: Array[String] = []
-	for file_name in DirAccess.get_files_at(COLLECTIBLE_CONFIG_DIR):
-		if file_name.get_extension() != "tres":
-			continue
-		if not file_name.begins_with(COLLECTIBLE_CONFIG_PREFIX):
-			continue
-		paths.append("%s/%s" % [COLLECTIBLE_CONFIG_DIR, file_name])
-	paths.sort()
-	return paths
 
 
 func _get_current_choice_item(choice_index: int) -> PickupConfig:

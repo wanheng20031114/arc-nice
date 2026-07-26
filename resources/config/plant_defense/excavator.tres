@@ -1,14 +1,14 @@
 [gd_resource type="Resource" script_class="PlantDefenseConfig" format=3]
 
 [ext_resource type="Script" path="res://resources/config/plant_defense/plant_defense_config.gd" id="1_config"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/water_collector/water_collector.png" id="2_icon"]
-[ext_resource type="PackedScene" path="res://scene/plant_defense/water_collector.tscn" id="3_scene"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/excavator/excavator.png" id="2_icon"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/excavator.tscn" id="3_scene"]
 
 [resource]
 script = ExtResource("1_config")
-plant_id = &"water_collector"
-display_name = "水源采集器"
-description = "四格水上生产建筑。四个占用格必须全部为水面；每20秒采集1个水瓶并自动存入全场仓库。"
+plant_id = &"excavator"
+display_name = "挖土装置"
+description = "2×2生产建筑。无需材料，每20秒随机产出：50%土块、25%木板、20%生命药瓶、4%普通收藏品、1%非普通收藏品。产物格未领取时自动停机。"
 icon = ExtResource("2_icon")
 plant_scene = ExtResource("3_scene")
 supports_multiplayer = true
@@ -20,4 +20,4 @@ attack_speed = 0.0
 attack_range = 0.0
 footprint_size = Vector2i(2, 2)
 requires_grass = false
-requires_water_source = true
+requires_water_source = false

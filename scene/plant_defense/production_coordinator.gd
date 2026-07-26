@@ -10,6 +10,7 @@ const RESULT_MISSING_INPUT := &"missing_input"
 const RESULT_STORAGE_FULL := &"storage_full"
 const RESULT_UNAVAILABLE := &"unavailable"
 const RESULT_OUTPUT_PEER_UNAVAILABLE := &"output_peer_unavailable"
+const RESULT_OUTPUT_SLOT_OCCUPIED := &"output_slot_occupied"
 
 
 ## Sparse overlay for one warehouse. The first write to a slot captures both
@@ -461,6 +462,59 @@ func try_commit_recipe(
 		personal_inventory_output_committed.emit(output_peer_id)
 	_finish_storage_transaction(transaction_was_already_in_progress)
 	return RESULT_SUCCESS
+
+
+## Commits one building-local output into a player's inventory without emitting
+## inventory signals. The building clears its output slot and advances its own
+## revision before calling publish_personal_output_commit(), so signal listeners
+## can never observe the item in both places at once.
+func try_commit_personal_output_without_notification(
+	item: PickupConfig,
+	count: int,
+	output_peer_id: int
+) -> StringName:
+	if (
+		not authoritative_processing_enabled
+		or run_state == null
+		or item == null
+		or not item.can_store_in_inventory
+		or count <= 0
+		or not is_personal_output_peer_available(output_peer_id)
+	):
+		return (
+			RESULT_OUTPUT_PEER_UNAVAILABLE
+			if not is_personal_output_peer_available(output_peer_id)
+			else RESULT_UNAVAILABLE
+		)
+	var inventory_revision := (
+		run_state.get_inventory_revision_for_peer(output_peer_id)
+		if output_peer_id > 0
+		else run_state.get_inventory_revision()
+	)
+	var committed := (
+		run_state.try_add_item_count_for_peer_if_revision(
+			output_peer_id,
+			item,
+			count,
+			inventory_revision,
+			false
+		)
+		if output_peer_id > 0
+		else run_state.try_add_item_count_if_revision(
+			item,
+			count,
+			inventory_revision,
+			false
+		)
+	)
+	return RESULT_SUCCESS if committed else RESULT_STORAGE_FULL
+
+
+func publish_personal_output_commit(output_peer_id: int) -> void:
+	if run_state == null:
+		return
+	run_state.notify_inventory_transaction_completed()
+	personal_inventory_output_committed.emit(output_peer_id)
 
 
 func _simulate_journal_consume_item_count(

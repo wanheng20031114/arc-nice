@@ -15,3 +15,5 @@ supports_multiplayer = true
 max_health = 1500
 physical_defense = 10
 magic_defense = 10
+requires_grass = true
+requires_water_source = false

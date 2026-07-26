@@ -210,6 +210,11 @@ func _test_config_and_scene_contracts() -> void:
 		grape_arc_config != null and grape_arc_config.is_valid(),
 		"葡萄电弧塔配置必须有效。"
 	)
+	var excavator_config := PlantDefenseRegistry.get_config(&"excavator")
+	_expect(
+		excavator_config != null and excavator_config.is_valid(),
+		"挖土装置配置必须有效。"
+	)
 	if (
 		oak_config == null
 		or wood_station_config == null
@@ -220,11 +225,12 @@ func _test_config_and_scene_contracts() -> void:
 		or planting_base_config == null
 		or hydrangea_config == null
 		or grape_arc_config == null
+		or excavator_config == null
 	):
 		return
 	var registered_configs := PlantDefenseRegistry.get_all_configs()
 	_expect(
-		registered_configs.size() == 13
+		registered_configs.size() == 14
 		and registered_configs.has(agave_config)
 		and registered_configs.has(bamboo_mortar_config)
 		and registered_configs.has(corn_config)
@@ -238,10 +244,12 @@ func _test_config_and_scene_contracts() -> void:
 		and registered_configs.has(planting_base_config)
 		and registered_configs.has(hydrangea_config)
 		and registered_configs.has(grape_arc_config)
+		and registered_configs.has(excavator_config)
 		and registered_configs[8] == bamboo_mortar_config
 		and registered_configs[11] == stone_mill_config
+		and registered_configs[12] == excavator_config
 		and registered_configs.back() == planting_base_config,
-		"植物注册表必须公开全部13种建筑，并在不改变竹筒迫击炮索引和种植基地末位的前提下加入石磨台。"
+		"植物注册表必须公开全部14种建筑，并在不改变竹筒迫击炮索引和种植基地末位的前提下加入石磨台与挖土装置。"
 	)
 	_expect(
 		bamboo_mortar_config.max_health == 2000
@@ -256,8 +264,8 @@ func _test_config_and_scene_contracts() -> void:
 			192.0
 		)
 		and bamboo_mortar_config.footprint_size == Vector2i(2, 2)
-		and bamboo_mortar_config.placement_surface
-		== PlantDefenseConfig.PlacementSurface.GRASS
+		and bamboo_mortar_config.requires_grass
+		and not bamboo_mortar_config.requires_water_source
 		and bamboo_mortar_config.supports_multiplayer,
 		"竹筒迫击炮必须拥有2000生命、10物防、20法防、100中心伤害、无额外攻击间隔、192范围并占草地2×2格。"
 	)
@@ -280,8 +288,8 @@ func _test_config_and_scene_contracts() -> void:
 		and water_collector_config.physical_defense == 10
 		and water_collector_config.magic_defense == 0
 		and water_collector_config.footprint_size == Vector2i(2, 2)
-		and water_collector_config.placement_surface
-		== PlantDefenseConfig.PlacementSurface.WATER,
+		and not water_collector_config.requires_grass
+		and water_collector_config.requires_water_source,
 		"水源采集器必须拥有2000生命、10物防、0法防、占2×2格且仅支持水面。"
 	)
 	_expect(
@@ -1452,7 +1460,7 @@ func _test_realtime_selection_and_cancel() -> void:
 	_expect(controller.is_selecting(), "打开后状态必须为SELECTING。")
 	_expect(controller.selection_hud.is_open(), "真实plant动作输入必须显示植物选择界面。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 13
+		controller.selection_hud.available_configs.size() == 14
 		and controller.selection_hud.available_configs.has(agave_config)
 		and controller.selection_hud.available_configs.has(
 			bamboo_mortar_config
@@ -1486,8 +1494,11 @@ func _test_realtime_selection_and_cancel() -> void:
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"grape_arc_tower")
 		)
-		and controller.selection_hud.cards.size() == 13,
-		"单人T键调试界面必须显示包括石磨台在内的全部13种建筑。"
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"excavator")
+		)
+		and controller.selection_hud.cards.size() == 14,
+		"单人T键调试界面必须显示包括挖土装置和石磨台在内的全部14种建筑。"
 	)
 	var agave_card: PlantSelectionCard = null
 	var bamboo_mortar_card: PlantSelectionCard = null
@@ -1736,7 +1747,7 @@ func _test_multiplayer_authority_contracts() -> void:
 	controller.set_multiplayer_request_mode(true)
 	_expect(controller.open_selection(), "多人植物选择必须仍可打开。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 13
+		controller.selection_hud.available_configs.size() == 14
 		and controller.selection_hud.available_configs.has(agave_config)
 		and controller.selection_hud.available_configs.has(
 			bamboo_mortar_config
@@ -1770,8 +1781,11 @@ func _test_multiplayer_authority_contracts() -> void:
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"grape_arc_tower")
 		)
-		and controller.selection_hud.cards.size() == 13,
-		"多人T键调试界面必须显示包括石磨台在内的全部13种支持联机建筑。"
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"excavator")
+		)
+		and controller.selection_hud.cards.size() == 14,
+		"多人T键调试界面必须显示包括挖土装置和石磨台在内的全部14种支持联机建筑。"
 	)
 	controller.cancel_placement()
 	var placement_requests: Array[Dictionary] = []

@@ -43,6 +43,7 @@ const DEFAULT_PANEL_BACKGROUND := preload(
 	$Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow4,
 	$Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow5,
 	$Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow6,
+	$Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow7,
 ]
 @onready var status_label: Label = $Overlay/PanelRoot/StatusLabel
 @onready var close_button: Button = $Overlay/PanelRoot/CloseButton
@@ -65,6 +66,10 @@ func _ready() -> void:
 	for input_index in input_slots.size():
 		input_slots[input_index].pressed.connect(
 			_on_input_slot_pressed.bind(input_index)
+		)
+	for output_index in output_slots.size():
+		output_slots[output_index].pressed.connect(
+			_on_output_slot_pressed.bind(output_index)
 		)
 	toggle_button.pressed.connect(_on_toggle_pressed)
 	close_button.pressed.connect(close)
@@ -214,11 +219,32 @@ func _refresh_all(_replicate: bool = false) -> void:
 				input_amount,
 				coordinator
 			)
-		for output_index in mini(display_recipe.output_items.size(), output_slots.size()):
-			output_slots[output_index].set_item(
-				display_recipe.output_items[output_index],
-				display_recipe.output_amounts[output_index]
+		if display_recipe.outputs_to_local_slot():
+			var buffered_item := building.get_buffered_output_item()
+			output_slots[0].set_item(
+				buffered_item,
+				building.get_buffered_output_count()
 			)
+			output_slots[0].disabled = (
+				buffered_item == null or _is_multiplayer_control_locked()
+			)
+			output_slots[0].tooltip_text = (
+				"%s\n点击领取到背包。\n%s" % [
+					buffered_item.display_name,
+					buffered_item.description,
+				]
+				if buffered_item != null
+				else "产物格为空；挖掘完成后会在这里停留一个物品。"
+			)
+		else:
+			for output_index in mini(
+				display_recipe.output_items.size(),
+				output_slots.size()
+			):
+				output_slots[output_index].set_item(
+					display_recipe.output_items[output_index],
+					display_recipe.output_amounts[output_index]
+				)
 
 	_last_visual_remaining_seconds = -1
 	_refresh_visual_progress()
@@ -235,6 +261,9 @@ func _refresh_progress_text() -> void:
 	if not building.production_enabled:
 		progress_label.text = "已暂停 · 本轮进度已清空"
 		return
+	if recipe.outputs_to_local_slot() and building.has_buffered_output():
+		progress_label.text = "产物格已满 · 领取后继续"
+		return
 	var remaining := ceili(building.get_visual_remaining_seconds())
 	if remaining <= 0:
 		progress_label.text = (
@@ -248,7 +277,9 @@ func _refresh_progress_text() -> void:
 		)
 	else:
 		progress_label.text = (
-			"采集中 · 剩余 %d 秒" % remaining
+			"挖掘中 · 剩余 %d 秒" % remaining
+			if recipe.outputs_to_local_slot()
+			else "采集中 · 剩余 %d 秒" % remaining
 			if recipe.uses_environment_source()
 			else "剩余 %d 秒" % remaining
 		)
@@ -266,7 +297,14 @@ func _refresh_visual_progress() -> void:
 
 
 func _refresh_recipe_rows() -> void:
-	if building.uses_environment_source():
+	var display_recipe := building.get_display_recipe()
+	if (
+		building.uses_environment_source()
+		or (
+			display_recipe != null
+			and display_recipe.outputs_to_local_slot()
+		)
+	):
 		for row in recipe_rows:
 			row.hide()
 		return
@@ -319,7 +357,11 @@ func _refresh_material_rows() -> void:
 	for button in material_buttons:
 		button.hide()
 	var recipe := building.get_display_recipe()
-	if recipe == null or recipe.uses_environment_source():
+	if (
+		recipe == null
+		or recipe.uses_environment_source()
+		or recipe.input_items.is_empty()
+	):
 		material_list.hide()
 		return
 	var coordinator := building.production_coordinator
@@ -354,6 +396,17 @@ func _refresh_status() -> void:
 		return
 	if building.completion_wait_reason == ProductionCoordinator.RESULT_OUTPUT_PEER_UNAVAILABLE:
 		status_label.text = "原配方选择者已离开，生产已安全停止；请重新选择配方。"
+		return
+	var active_recipe := building.get_active_recipe()
+	if active_recipe != null and active_recipe.outputs_to_local_slot():
+		if not building.production_enabled:
+			status_label.text = "挖土装置已暂停；已有产物仍可领取。"
+		elif building.has_buffered_output():
+			status_label.text = "产物格已堵塞；点击产物领取后自动开始下一轮。"
+		else:
+			status_label.text = (
+				"无需材料；每20秒产出土块、木板、生命药瓶或随机收藏品。"
+			)
 		return
 	if building.uses_environment_source():
 		if building.get_active_recipe() == null:
@@ -414,6 +467,11 @@ func _on_toggle_pressed() -> void:
 
 
 func _on_input_slot_pressed(input_index: int) -> void:
+	var display_recipe := building.get_display_recipe() if building != null else null
+	if display_recipe != null and display_recipe.input_items.is_empty():
+		material_list.hide()
+		_show_transient_status("挖土装置无需投入任何材料。")
+		return
 	if building != null and building.uses_environment_source():
 		material_list.hide()
 		_show_transient_status("水面是环境来源，不会消耗仓库内的任何物品。")
@@ -426,6 +484,31 @@ func _on_input_slot_pressed(input_index: int) -> void:
 		and material_buttons[input_index].visible
 	):
 		material_buttons[input_index].grab_focus()
+
+
+func _on_output_slot_pressed(output_index: int) -> void:
+	if building == null or tracked_player == null or output_index != 0:
+		return
+	var recipe := building.get_active_recipe()
+	if recipe == null or not recipe.outputs_to_local_slot():
+		return
+	if not building.has_buffered_output():
+		_show_transient_status("产物格目前为空。")
+		return
+	if building.multiplayer_production_enabled:
+		if not building.request_multiplayer_output_collection():
+			_show_transient_status("产物状态尚未同步，请稍后重试。")
+			return
+		_show_transient_status("已提交领取请求，等待主机确认。")
+		return
+	var result := building.try_collect_buffered_output(tracked_player.peer_id)
+	match result:
+		ProductionBuildingProtocol.RESULT_SUCCESS:
+			_show_transient_status("已领取产物；挖土装置开始下一轮生产。")
+		ProductionBuildingProtocol.RESULT_INVENTORY_FULL:
+			_show_transient_status("背包空间不足，产物仍保留在格子内。")
+		_:
+			_show_transient_status("当前无法领取该产物。")
 
 
 func _on_material_button_pressed(input_index: int) -> void:
@@ -498,6 +581,10 @@ func _on_multiplayer_production_result(success: bool, reason: StringName) -> voi
 			_show_transient_status("配方无效，操作未执行。")
 		ProductionBuildingProtocol.RESULT_INVALID_PLAYER:
 			_show_transient_status("当前玩家无法操作加工站。")
+		ProductionBuildingProtocol.RESULT_OUTPUT_EMPTY:
+			_show_transient_status("产物已被队友领取，产物格现为空。")
+		ProductionBuildingProtocol.RESULT_INVENTORY_FULL:
+			_show_transient_status("背包空间不足，产物仍保留在格子内。")
 		_:
 			_show_transient_status("主机拒绝了本次操作，状态已重新同步。")
 
@@ -557,13 +644,18 @@ func _clear_slots() -> void:
 		input_slot.set_item(null, 0)
 	for output_slot in output_slots:
 		output_slot.set_item(null, 0)
+		output_slot.disabled = false
+		output_slot.tooltip_text = ""
 
 
 func _apply_panel_layout(recipe: ProductionRecipe) -> void:
-	var environment_layout := (
+	var automatic_layout := (
 		building != null
 		and recipe != null
-		and recipe.uses_environment_source()
+		and (
+			recipe.uses_environment_source()
+			or recipe.outputs_to_local_slot()
+		)
 	)
 	background.texture = (
 		building.production_panel_background_override
@@ -571,17 +663,21 @@ func _apply_panel_layout(recipe: ProductionRecipe) -> void:
 		else DEFAULT_PANEL_BACKGROUND
 	)
 	_apply_panel_theme()
-	if environment_layout:
+	if automatic_layout:
 		material_list.hide()
 		recipe_title.hide()
 		recipe_scroll.hide()
 		for input_index in input_slots.size():
-			input_slots[input_index].visible = input_index == 0
+			input_slots[input_index].visible = input_index < recipe.input_items.size()
 			input_slots[input_index].disabled = false
 		for output_index in output_slots.size():
 			output_slots[output_index].visible = output_index == 0
-		input_title.text = "水源"
-		output_title.text = "采集产物"
+		input_title.text = "水源" if recipe.uses_environment_source() else "无需材料"
+		output_title.text = (
+			"产物格（点击领取）"
+			if recipe.outputs_to_local_slot()
+			else "采集产物"
+		)
 		_set_control_rect(building_title, Rect2(128, 112, 472, 38))
 		_set_control_rect(input_title, Rect2(126, 190, 128, 28))
 		_set_control_rect(output_title, Rect2(478, 190, 128, 28))
@@ -602,7 +698,11 @@ func _apply_panel_layout(recipe: ProductionRecipe) -> void:
 	output_title.text = (
 		"背包产物"
 		if recipe != null and recipe.outputs_to_player_inventory()
-		else "产物"
+		else (
+			"产物格（点击领取）"
+			if recipe != null and recipe.outputs_to_local_slot()
+			else "产物"
+		)
 	)
 	_set_control_rect(building_title, Rect2(96, 23, 536, 39))
 	_set_control_rect(input_title, Rect2(42, 196, 164, 28))
@@ -614,7 +714,11 @@ func _apply_panel_layout(recipe: ProductionRecipe) -> void:
 	)
 	_layout_slot_group(
 		output_slots,
-		recipe.output_items.size() if recipe != null else 0,
+		(
+			1
+			if recipe != null and recipe.outputs_to_local_slot()
+			else recipe.output_items.size() if recipe != null else 0
+		),
 		Rect2(304, 257, 164, 58)
 	)
 	_set_control_rect(progress_bar, Rect2(214, 271, 82, 25))

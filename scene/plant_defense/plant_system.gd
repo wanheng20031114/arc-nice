@@ -435,8 +435,7 @@ func find_nearest_living_plant(
 		if (
 			not include_water_plants
 			and plant.config != null
-			and plant.config.placement_surface
-				== PlantDefenseConfig.PlacementSurface.WATER
+			and plant.config.requires_water_source
 		):
 			continue
 		# Eligibility and distance stay in the typed exact pass. The shared spatial
@@ -912,7 +911,7 @@ func _is_floor_cell_available(
 		return (
 			tile_data != null
 			and config != null
-			and config.placement_surface == PlantDefenseConfig.PlacementSurface.GRASS
+			and not config.requires_water_source
 		)
 	var world_cell_center := ground_tile_map.to_global(ground_tile_map.map_to_local(cell))
 	return _is_terrain_supported_for_config(
@@ -927,14 +926,16 @@ func _is_terrain_supported_for_config(
 ) -> bool:
 	if terrain_map == null or config == null:
 		return false
-	match config.placement_surface:
-		PlantDefenseConfig.PlacementSurface.WATER:
-			return (
-				terrain_map.get_terrain_type(cell)
-				== DualGridTilemap.TerrainType.WATER
-			)
-		_:
-			return terrain_map.is_cell_plantable(cell)
+	if config.requires_grass and config.requires_water_source:
+		return false
+	if config.requires_water_source:
+		return (
+			terrain_map.get_terrain_type(cell)
+			== DualGridTilemap.TerrainType.WATER
+		)
+	if config.requires_grass:
+		return terrain_map.is_cell_plantable(cell)
+	return terrain_map.get_terrain_type(cell) != DualGridTilemap.TerrainType.WATER
 
 
 func _is_entity_space_clear(

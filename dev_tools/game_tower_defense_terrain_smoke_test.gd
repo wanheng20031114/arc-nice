@@ -437,7 +437,11 @@ func _verify_open_ground_terrain_rules(
 	terrain.set_tile(terrain_cell, DualGridTilemap.TerrainType.WATER)
 	pathfinder.rebuild()
 	_expect(
-		not bool(game.plant_system.call("_is_floor_cell_available", ground_cell)),
+		not bool(game.plant_system.call(
+			"_is_floor_cell_available",
+			ground_cell,
+			PlantDefenseRegistry.get_config(&"agave_cannon")
+		)),
 		"PlantSystem must reject water even when the gameplay ground cell is open."
 	)
 	_expect(
@@ -468,7 +472,11 @@ func _verify_open_ground_terrain_rules(
 
 	terrain.set_tile(terrain_cell, DualGridTilemap.TerrainType.GRASS)
 	_expect(
-		bool(game.plant_system.call("_is_floor_cell_available", ground_cell)),
+		bool(game.plant_system.call(
+			"_is_floor_cell_available",
+			ground_cell,
+			PlantDefenseRegistry.get_config(&"agave_cannon")
+		)),
 		"PlantSystem must accept an open semantic grass cell."
 	)
 	terrain.set_tile(terrain_cell, original_terrain_type)
@@ -577,7 +585,11 @@ func _verify_reachable_grass_placement(game: GameTowerDefense) -> void:
 			var all_grass := true
 			var closest_cell_distance := 1 << 30
 			for cell in cells:
-				if not bool(game.plant_system.call("_is_floor_cell_available", cell)):
+				if not bool(game.plant_system.call(
+					"_is_floor_cell_available",
+					cell,
+					config
+				)):
 					all_grass = false
 					break
 				closest_cell_distance = mini(

@@ -12,6 +12,7 @@ enum InputSource {
 enum OutputDestination {
 	SHARED_STORAGE,
 	PLAYER_INVENTORY,
+	LOCAL_OUTPUT_SLOT,
 }
 
 @export_group("基础信息")
@@ -37,7 +38,6 @@ func is_valid() -> bool:
 	if (
 		recipe_id == &""
 		or display_name.is_empty()
-		or input_items.is_empty()
 		or input_items.size() != input_amounts.size()
 		or input_items.size() > MAX_INPUT_ITEMS
 		or input_source < InputSource.SHARED_STORAGE
@@ -46,7 +46,7 @@ func is_valid() -> bool:
 		or output_items.size() != output_amounts.size()
 		or output_items.size() > MAX_OUTPUT_ITEMS
 		or output_destination < OutputDestination.SHARED_STORAGE
-		or output_destination > OutputDestination.PLAYER_INVENTORY
+		or output_destination > OutputDestination.LOCAL_OUTPUT_SLOT
 		or not is_finite(duration_seconds)
 		or duration_seconds <= 0.0
 	):
@@ -66,6 +66,12 @@ func is_valid() -> bool:
 	for output_index in output_items.size():
 		if output_items[output_index] == null or output_amounts[output_index] <= 0:
 			return false
+	if outputs_to_local_slot() and (
+		output_items.size() != 1
+		or output_amounts[0]
+			> PickupConfig.get_inventory_stack_limit(output_items[0])
+	):
+		return false
 	return true
 
 
@@ -81,11 +87,17 @@ func outputs_to_player_inventory() -> bool:
 	return output_destination == OutputDestination.PLAYER_INVENTORY
 
 
+func outputs_to_local_slot() -> bool:
+	return output_destination == OutputDestination.LOCAL_OUTPUT_SLOT
+
+
 func inputs_from_player_inventory() -> bool:
 	return input_source == InputSource.PLAYER_INVENTORY
 
 
 func get_input_summary() -> String:
+	if input_items.is_empty():
+		return "无需材料"
 	var parts: PackedStringArray = []
 	for input_index in input_items.size():
 		var amount := input_amounts[input_index]
