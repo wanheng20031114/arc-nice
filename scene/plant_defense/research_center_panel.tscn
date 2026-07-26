@@ -390,6 +390,40 @@ theme_override_styles/focus = SubResource("StyleBoxFlat_entry_active")
 text = "全员移动训练\n待研究 · 60秒"
 alignment = 0
 
+[node name="BambooMortarResearchButton" type="Button" parent="Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList"]
+custom_minimum_size = Vector2(150, 72)
+layout_mode = 2
+toggle_mode = true
+action_mode = 0
+theme_override_colors/font_color = Color(0.66, 0.82, 0.91, 1)
+theme_override_colors/font_hover_color = Color(0.82, 0.96, 1, 1)
+theme_override_colors/font_pressed_color = Color(0.88, 1, 1, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_entry")
+theme_override_styles/hover = SubResource("StyleBoxFlat_entry_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_entry_active")
+theme_override_styles/focus = SubResource("StyleBoxFlat_entry_active")
+text = "迫击炮简易装配\n待研究 · 30秒"
+alignment = 0
+
+[node name="HydrangeaResearchButton" type="Button" parent="Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList"]
+custom_minimum_size = Vector2(150, 72)
+layout_mode = 2
+toggle_mode = true
+action_mode = 0
+theme_override_colors/font_color = Color(0.66, 0.82, 0.91, 1)
+theme_override_colors/font_hover_color = Color(0.82, 0.96, 1, 1)
+theme_override_colors/font_pressed_color = Color(0.88, 1, 1, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_entry")
+theme_override_styles/hover = SubResource("StyleBoxFlat_entry_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_entry_active")
+theme_override_styles/focus = SubResource("StyleBoxFlat_entry_active")
+text = "紫阳花简易培育\n待研究 · 30秒"
+alignment = 0
+
 [node name="ResearchDetailFrame" type="Panel" parent="Overlay/PanelRoot/GlobalPage"]
 offset_left = 234.0
 offset_top = 129.0

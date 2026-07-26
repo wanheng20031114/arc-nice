@@ -14,6 +14,15 @@ const STONE_MILL_ITEM := preload(
 const WOOD_STATION_ITEM := preload(
 	"res://resources/config/buildings/building_wood_processing_station.tres"
 )
+const WOODEN_CORE := preload(
+	"res://resources/config/materials/material_wooden_core.tres"
+)
+const PLANK := preload(
+	"res://resources/config/materials/material_plank.tres"
+)
+const BAMBOO_MORTAR_ITEM := preload(
+	"res://resources/config/buildings/building_bamboo_mortar.tres"
+)
 
 const REMOTE_PEER_ID := 2
 
@@ -117,10 +126,11 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 21,
-		"石磨台wire id、建筑资源路径和plant id必须由多人协议v21隔离旧客户端。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 22,
+		"科研解锁配方与扩展后的科研目录必须由多人协议v22隔离旧客户端。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_crafting()
+	_test_host_research_gated_crafting()
 	_test_inventory_building_placement_authenticity(authoritative_snapshot)
 	_test_client_rejects_bad_authoritative_snapshot(authoritative_snapshot)
 
@@ -280,6 +290,130 @@ func _test_host_authoritative_crafting() -> Dictionary:
 	round_trip_state.free()
 	run_state.free()
 	return authoritative_snapshot
+
+
+func _test_host_research_gated_crafting() -> void:
+	var run_state := RunStateStore.new()
+	run_state.begin_new_run(&"weishidaier", false)
+	run_state.ensure_multiplayer_peer_state(REMOTE_PEER_ID)
+	_expect(
+		run_state.try_add_item_count_for_peer(
+			REMOTE_PEER_ID,
+			WOODEN_CORE,
+			1
+		)
+		and run_state.try_add_item_count_for_peer(
+			REMOTE_PEER_ID,
+			PLANK,
+			10
+		),
+		"科研门槛夹具必须能为远端Peer准备迫击炮配方材料。"
+	)
+
+	var player := Player.new()
+	var research_coordinator := ResearchCoordinator.new()
+	var runtime := TestTowerRuntime.new()
+	runtime.peer_players = {REMOTE_PEER_ID: player}
+	runtime.research_coordinator = research_coordinator
+	var net_manager := HostNetManagerStub.new()
+	var mp_game := CapturingMpGame.new()
+	mp_game.net_manager = net_manager
+	mp_game.run_state = run_state
+	mp_game.game = runtime
+
+	var locked_revision := run_state.get_inventory_revision_for_peer(
+		REMOTE_PEER_ID
+	)
+	mp_game.call(
+		"_apply_authoritative_simple_crafting_request",
+		REMOTE_PEER_ID,
+		51,
+		String(SimpleCraftingRegistry.BAMBOO_MORTAR_ID),
+		locked_revision
+	)
+	var locked_result := _result_at(mp_game.simple_crafting_results, 0)
+	_expect(
+		str(locked_result.get("result", ""))
+		== String(RunStateStore.CRAFT_RESULT_RESEARCH_LOCKED)
+		and run_state.get_inventory_revision_for_peer(REMOTE_PEER_ID)
+		== locked_revision
+		and run_state.get_inventory_item_total_for_peer(
+			REMOTE_PEER_ID,
+			WOODEN_CORE
+		) == 1
+		and run_state.get_inventory_item_total_for_peer(
+			REMOTE_PEER_ID,
+			PLANK
+		) == 10
+		and run_state.get_inventory_item_total_for_peer(
+			REMOTE_PEER_ID,
+			BAMBOO_MORTAR_ITEM
+		) == 0,
+		"Host必须拒绝未完成全局科研的迫击炮配方，且不能扣料、产出或推进revision。"
+	)
+
+	research_coordinator.global_research_states[
+		GlobalResearchRegistry.BAMBOO_MORTAR_CRAFTING_ID
+	] = ResearchCoordinator.GlobalResearchState.COMPLETED
+	research_coordinator.global_research_elapsed[
+		GlobalResearchRegistry.BAMBOO_MORTAR_CRAFTING_ID
+	] = 30.0
+	mp_game.call(
+		"_apply_authoritative_simple_crafting_request",
+		REMOTE_PEER_ID,
+		52,
+		String(SimpleCraftingRegistry.BAMBOO_MORTAR_ID),
+		locked_revision
+	)
+	var success_result := _result_at(mp_game.simple_crafting_results, 1)
+	var committed_revision := run_state.get_inventory_revision_for_peer(
+		REMOTE_PEER_ID
+	)
+	_expect(
+		str(success_result.get("result", ""))
+		== String(RunStateStore.CRAFT_RESULT_SUCCESS)
+		and committed_revision == locked_revision + 1
+		and run_state.get_inventory_item_total_for_peer(
+			REMOTE_PEER_ID,
+			WOODEN_CORE
+		) == 0
+		and run_state.get_inventory_item_total_for_peer(
+			REMOTE_PEER_ID,
+			PLANK
+		) == 0
+		and run_state.get_inventory_item_total_for_peer(
+			REMOTE_PEER_ID,
+			BAMBOO_MORTAR_ITEM
+		) == 1,
+		"科研完成后Host必须为所有Peer解锁迫击炮简易制作并原子结算配方。"
+	)
+
+	mp_game.call(
+		"_apply_authoritative_simple_crafting_request",
+		REMOTE_PEER_ID,
+		52,
+		String(SimpleCraftingRegistry.BAMBOO_MORTAR_ID),
+		locked_revision
+	)
+	var replay_result := _result_at(mp_game.simple_crafting_results, 2)
+	_expect(
+		str(replay_result.get("result", ""))
+		== String(RunStateStore.CRAFT_RESULT_SUCCESS)
+		and run_state.get_inventory_revision_for_peer(REMOTE_PEER_ID)
+		== committed_revision
+		and run_state.get_inventory_item_total_for_peer(
+			REMOTE_PEER_ID,
+			BAMBOO_MORTAR_ITEM
+		) == 1,
+		"科研解锁后的重复request_id只能重放结果，不能重复制造。"
+	)
+
+	mp_game.free()
+	net_manager.free()
+	runtime.free()
+	research_coordinator.free()
+	player.free()
+	run_state.free()
 
 
 func _test_inventory_building_placement_authenticity(

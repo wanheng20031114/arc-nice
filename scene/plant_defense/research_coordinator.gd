@@ -21,10 +21,16 @@ const RESULT_MAX_LEVEL := &"max_level"
 
 const BUILDING_DEFENSE_RESEARCH_ID := GlobalResearchRegistry.BUILDING_DEFENSE_ID
 const PLAYER_MOVE_SPEED_RESEARCH_ID := GlobalResearchRegistry.PLAYER_MOVE_SPEED_ID
+const BAMBOO_MORTAR_CRAFTING_RESEARCH_ID := (
+	GlobalResearchRegistry.BAMBOO_MORTAR_CRAFTING_ID
+)
+const HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID := (
+	GlobalResearchRegistry.HYDRANGEA_RAIN_TOWER_CRAFTING_ID
+)
 const GLOBAL_RESEARCH_DURATION_SECONDS := 60.0
 const GLOBAL_PHYSICAL_DEFENSE_BONUS := 10
 const GLOBAL_PLAYER_MOVE_SPEED_BONUS := 15.0
-const RUNTIME_STATE_SCHEMA := 2
+const RUNTIME_STATE_SCHEMA := 3
 const MAX_MULTIPLAYER_PLAYER_LEVEL_ENTRIES := 64
 
 const PLANK := preload("res://resources/config/materials/material_plank.tres")
@@ -159,6 +165,17 @@ func get_global_research_requirements(
 
 func get_active_global_research_id() -> StringName:
 	return active_global_research_id
+
+
+func get_completed_global_research_ids() -> Array[StringName]:
+	var completed_ids: Array[StringName] = []
+	for config in GlobalResearchRegistry.get_all_configs():
+		if (
+			get_global_research_state(config.research_id)
+			== GlobalResearchState.COMPLETED
+		):
+			completed_ids.append(config.research_id)
+	return completed_ids
 
 
 func get_global_material_total(item: PickupConfig) -> int:

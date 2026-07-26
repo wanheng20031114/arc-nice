@@ -50,6 +50,7 @@ const ITEM_CATEGORY_ITEM_TEXTURE := preload("res://resources/texture/item_catego
 @onready var net_manager: Node = get_node("/root/NetManager")
 
 var tracked_player: Player = null
+var research_coordinator: ResearchCoordinator = null
 var slots: Array[InventorySlot] = []
 var selected_slot_index := -1
 var current_tab := 0  # 0 = 背包, 1 = 升级, 2 = 简易制造
@@ -74,6 +75,7 @@ func _ready() -> void:
 	simple_crafting_panel.craft_request_cancelled.connect(
 		_on_simple_crafting_request_cancelled
 	)
+	simple_crafting_panel.set_research_coordinator(research_coordinator)
 
 	# 升级行信号
 	attack_row.upgrade_requested.connect(_on_upgrade_requested)
@@ -134,6 +136,14 @@ func bind_player(player: Player) -> void:
 	_on_health_changed(tracked_player.current_health, tracked_player.max_health)
 	_refresh_inventory()
 	_refresh_upgrades()
+
+
+func set_research_coordinator(
+	new_research_coordinator: ResearchCoordinator
+) -> void:
+	research_coordinator = new_research_coordinator
+	if is_node_ready():
+		simple_crafting_panel.set_research_coordinator(research_coordinator)
 
 
 func _refresh_character_portrait() -> void:
@@ -442,6 +452,17 @@ func _on_simple_crafting_requested(
 			request_token
 		)
 		return
+	var completed_research_ids := _get_completed_global_research_ids()
+	if not SimpleCraftingRegistry.is_recipe_unlocked(
+		recipe,
+		completed_research_ids
+	):
+		simple_crafting_panel.show_result(
+			recipe_id,
+			RunStateStore.CRAFT_RESULT_RESEARCH_LOCKED,
+			request_token
+		)
+		return
 	var current_scene := get_tree().current_scene
 	if (
 		current_scene != null
@@ -462,9 +483,18 @@ func _on_simple_crafting_requested(
 	)
 	var result := run_state.try_craft_inventory_recipe_if_revision(
 		recipe,
-		expected_revision
+		expected_revision,
+		true,
+		completed_research_ids
 	)
 	simple_crafting_panel.show_result(recipe_id, result, request_token)
+
+
+func _get_completed_global_research_ids() -> Array[StringName]:
+	if research_coordinator != null and is_instance_valid(research_coordinator):
+		return research_coordinator.get_completed_global_research_ids()
+	var completed_ids: Array[StringName] = []
+	return completed_ids
 
 
 func _on_simple_crafting_request_cancelled(request_token: int) -> void:

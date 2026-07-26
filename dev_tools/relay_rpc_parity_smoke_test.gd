@@ -123,10 +123,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 21,
-		"Stone Mill network content and atomic warehouse batches require protocol v21."
+		NetConstants.PROTOCOL_VERSION == 22,
+		"Research-gated crafting and the expanded research catalog require protocol v22."
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v21 must provision eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v22 must provision eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -219,7 +219,7 @@ func _test_relay_channel_count() -> void:
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
 		and relay_source.contains("create_server(_port, MAX_CLIENTS, CHANNEL_COUNT)"),
-		"Relay server must provision the same eight ENet channels as protocol v21 clients."
+		"Relay server must provision the same eight ENet channels as protocol v22 clients."
 	)
 
 
@@ -272,7 +272,7 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		and mp_game_source.contains("const TERRAIN_TYPE_EMPTY := -1")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_PER_SECOND := 1.0")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_BURST := 2.0"),
-		"Protocol v21 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
+		"Protocol v22 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
 	)
 	_expect(
 		mp_game_source.contains(
@@ -287,7 +287,7 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		and mp_game_source.contains(
 			"building.try_start_global_research(research_config.research_id)"
 		),
-		"Protocol v21 research commands must use schema2 and resolve a Host-owned research whitelist."
+		"Protocol v22 research commands must use schema2 and resolve a Host-owned research whitelist."
 	)
 	for signature_fragment in [
 		"plant_net_ids:PackedInt32Array",
@@ -361,7 +361,7 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 			not String(rpcs[confirmation_method]).contains(
 				"inventory_snapshot:Dictionary={}"
 			),
-			"Protocol v21 inventory confirmations must require an authoritative snapshot."
+			"Protocol v22 inventory confirmations must require an authoritative snapshot."
 		)
 		_expect_rpc_signature_contains(
 			rpcs,

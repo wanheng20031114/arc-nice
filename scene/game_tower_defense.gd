@@ -405,6 +405,7 @@ func _ready() -> void:
 	_configure_minimap()
 	_apply_initial_player_xirang()
 	currency_hud.bind_player(player)
+	player_profile_panel.set_research_coordinator(research_coordinator)
 	player_profile_panel.bind_player(player)
 	currency_hud.settings_requested.connect(_on_currency_hud_settings_requested)
 	currency_hud.profile_requested.connect(_on_currency_hud_profile_requested)

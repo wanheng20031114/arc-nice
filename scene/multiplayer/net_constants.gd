@@ -1,8 +1,8 @@
 extends RefCounted
 
 ## 协议与版本
-## v21：石磨台网络目录、原子仓库快照批次，以及强制权威背包确认。
-const PROTOCOL_VERSION := 21
+## v22：新增科研项目目录、科研解锁型简易制作配方与主机权威门槛。
+const PROTOCOL_VERSION := 22
 
 ## 玩家限制
 const MAX_PLAYERS := 8

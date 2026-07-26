@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 21,
-		"Stone Mill network content and atomic warehouse batches require protocol v21."
+		NetConstants.PROTOCOL_VERSION == 22,
+		"Research-gated crafting and the expanded research catalog require protocol v22."
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),
