@@ -63,7 +63,7 @@ func _run() -> void:
 		"net_warehouse_command_requested",
 		"net_warehouse_snapshot_requested",
 		"net_warehouse_command_result",
-		"net_warehouse_storage_snapshot",
+		"net_warehouse_storage_snapshot_batch",
 		"net_production_command_requested",
 		"net_production_snapshot_requested",
 		"net_production_command_result",
@@ -123,10 +123,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 20,
-		"Host-authoritative damage claims require protocol version 20."
+		NetConstants.PROTOCOL_VERSION == 21,
+		"Stone Mill network content and atomic warehouse batches require protocol v21."
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v20 must provision eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v21 must provision eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -219,7 +219,7 @@ func _test_relay_channel_count() -> void:
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
 		and relay_source.contains("create_server(_port, MAX_CLIENTS, CHANNEL_COUNT)"),
-		"Relay server must provision the same eight ENet channels as protocol v20 clients."
+		"Relay server must provision the same eight ENet channels as protocol v21 clients."
 	)
 
 
@@ -272,7 +272,7 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		and mp_game_source.contains("const TERRAIN_TYPE_EMPTY := -1")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_PER_SECOND := 1.0")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_BURST := 2.0"),
-		"Protocol v20 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
+		"Protocol v21 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
 	)
 	_expect(
 		mp_game_source.contains(
@@ -287,7 +287,7 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		and mp_game_source.contains(
 			"building.try_start_global_research(research_config.research_id)"
 		),
-		"Protocol v20 research commands must use schema2 and resolve a Host-owned research whitelist."
+		"Protocol v21 research commands must use schema2 and resolve a Host-owned research whitelist."
 	)
 	for signature_fragment in [
 		"plant_net_ids:PackedInt32Array",
@@ -355,7 +355,13 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		_expect_rpc_signature_contains(
 			rpcs,
 			confirmation_method,
-			"inventory_snapshot:Dictionary={}"
+			"inventory_snapshot:Dictionary"
+		)
+		_expect(
+			not String(rpcs[confirmation_method]).contains(
+				"inventory_snapshot:Dictionary={}"
+			),
+			"Protocol v21 inventory confirmations must require an authoritative snapshot."
 		)
 		_expect_rpc_signature_contains(
 			rpcs,
@@ -425,6 +431,15 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		"net_warehouse_command_result",
 		"result:Dictionary"
 	)
+	for signature_fragment in [
+		"warehouse_net_ids:PackedInt32Array",
+		"snapshots:Array",
+	]:
+		_expect_rpc_signature_contains(
+			rpcs,
+			"net_warehouse_storage_snapshot_batch",
+			signature_fragment
+		)
 	_expect_rpc_signature_contains(
 		rpcs,
 		"net_production_command_requested",
@@ -544,7 +559,7 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		"net_warehouse_command_requested",
 		"net_warehouse_snapshot_requested",
 		"net_warehouse_command_result",
-		"net_warehouse_storage_snapshot",
+		"net_warehouse_storage_snapshot_batch",
 		"net_production_command_requested",
 		"net_production_snapshot_requested",
 		"net_production_command_result",

@@ -130,6 +130,7 @@ func _run() -> void:
 		CAPOO_BLUE_CRYSTAL_POWDER,
 		"蓝晶研磨"
 	)
+	_test_multiplayer_recipe_authority(mill)
 
 	_finish(test_root)
 
@@ -291,6 +292,45 @@ func _test_recipe_contract(mill: ProductionBuilding) -> void:
 		and CAPOO_BLUE_CRYSTAL_POWDER.stackable
 		and CAPOO_BLUE_CRYSTAL_POWDER.inventory_stack_limit >= 999,
 		"两种新晶粉必须是可堆叠并可进入仓库/背包的材料。"
+	)
+
+
+func _test_multiplayer_recipe_authority(mill: ProductionBuilding) -> void:
+	mill.configure_multiplayer_production(9101, 1, true)
+	var starting_revision := mill.production_revision
+	var white_recipe_command := (
+		ProductionBuildingProtocol.make_select_recipe_command(
+			1,
+			9101,
+			1,
+			starting_revision,
+			&"white_crystal_to_powder"
+		)
+	)
+	var white_result := (
+		mill.apply_authoritative_multiplayer_production_command(
+			white_recipe_command
+		)
+	)
+	var committed_revision := mill.production_revision
+	var foreign_recipe_command := (
+		ProductionBuildingProtocol.make_select_recipe_command(
+			2,
+			9101,
+			1,
+			committed_revision,
+			&"wood_to_plank"
+		)
+	)
+	_expect(
+		white_result == ProductionBuildingProtocol.RESULT_SUCCESS
+		and mill.active_recipe_id == &"white_crystal_to_powder"
+		and committed_revision == starting_revision + 1
+		and mill.apply_authoritative_multiplayer_production_command(
+			foreign_recipe_command
+		) == ProductionBuildingProtocol.RESULT_INVALID_RECIPE
+		and mill.production_revision == committed_revision,
+		"多人Host必须接受石磨台自身晶粉配方，并以实例白名单零写入拒绝其他建筑配方。"
 	)
 
 

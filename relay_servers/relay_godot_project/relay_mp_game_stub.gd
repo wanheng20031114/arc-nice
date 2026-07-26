@@ -492,7 +492,10 @@ func net_inventory_snapshot(
 	pass
 
 @rpc("authority", "call_remote", "reliable", 6)
-func net_warehouse_storage_snapshot(warehouse_net_id: int, snapshot: Dictionary) -> void:
+func net_warehouse_storage_snapshot_batch(
+	warehouse_net_ids: PackedInt32Array,
+	snapshots: Array
+) -> void:
 	pass
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -685,7 +688,7 @@ func net_inventory_item_used(
 	slot_index: int,
 	config_path: String,
 	success: bool,
-	inventory_snapshot: Dictionary = {},
+	inventory_snapshot: Dictionary,
 	force_inventory_repair: bool = false
 ) -> void:
 	pass
@@ -695,7 +698,7 @@ func net_inventory_item_discarded(
 	peer_id: int,
 	slot_index: int,
 	success: bool,
-	inventory_snapshot: Dictionary = {},
+	inventory_snapshot: Dictionary,
 	force_inventory_repair: bool = false
 ) -> void:
 	pass

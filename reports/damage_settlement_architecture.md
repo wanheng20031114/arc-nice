@@ -2,7 +2,7 @@
 
 > 日期：2026-07-26
 > 范围：玩家、敌人、植物、基地的伤害数值结算；多人玩家受伤的 Host 权威边界；伤害反馈、死亡和生命同步的相关路径。
-> 协议版本：v20。
+> 协议版本：v21。
 
 ## 1. 结论
 
@@ -185,7 +185,7 @@ PERIODIC
 - 任意 source type 字符串。
 - player-hit claim 本身。
 
-协议 v20 仍保留五字段 `_rpc_player_hit_report` 兼容签名：
+协议 v21 仍保留五字段 `_rpc_player_hit_report` 兼容签名：
 
 ```text
 source_id
@@ -235,7 +235,7 @@ damage_flags
 - 高频客户端状态 RPC：188 bytes -> 104 bytes，移除了 health/dead/invincibility/xirang/技能和战斗形态等 Host 权威字段；
 - 两条命中声明相对旧结果上报都减少 100%。
 
-协议已升级到 v20，relay stub 和 RPC parity 契约同步更新。
+当前协议为 v21，relay stub 和 RPC parity 契约已同步更新。
 
 ### 5.5 跨通道生命顺序
 
