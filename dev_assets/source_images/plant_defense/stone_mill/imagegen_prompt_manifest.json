@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "mode": "built-in imagegen",
+  "workflow": "precise-object-edit with flat #FF00FF chroma-key background",
+  "assets": [
+    {
+      "id": "stone_mill_v2",
+      "source": "stone_mill_imagegen_magenta_v2.png",
+      "references": [
+        "stone_mill_imagegen_magenta.png"
+      ],
+      "task_mode": "precise-object-edit",
+      "prompt": "Use case: precise-object-edit; Asset type: top-down pixel-art game building sprite master; Image 1 is edit target. Preserve exact appealing stone mill design, stacked gray grindstones, center feed hole, wooden crank, compact base, viewpoint, palette, and #FF00FF background. Make exactly one structural change: redraw the entire subject on a coarser and smaller logical pixel grid, with the full visible bounding box no larger than 28x28 logical cells; keep it centered; on the 1254 master each cell is approximately 28-36 physical pixels; shorten the bottom wooden point. Use coarse retro pixel art, flat square cells, hard edges, a limited palette, and a heavy outline; use a uniform #FF00FF background. No shadows, gradients, texture, floor, background variation, magenta inside the subject, antialiasing, dithering, sub-cell detail, additional objects, text, UI, logo, or watermark.",
+      "v1_iteration": {
+        "source": "stone_mill_imagegen_magenta.png",
+        "reason": "The v1 analyzer measured 32x34 logical cells, exceeding the height contract; v2 requested a coarser grid and shorter bottom wooden point.",
+        "v1_detected_logical_subject_size": [
+          32,
+          34
+        ],
+        "v2_detected_logical_subject_size": [
+          25,
+          27
+        ],
+        "v2_grid_confidence": 0.866
+      }
+    },
+    {
+      "id": "capoo_blue_crystal_powder_v2",
+      "source": "capoo_blue_crystal_powder_imagegen_magenta_v2.png",
+      "references": [
+        "capoo_blue_crystal_powder_imagegen_magenta.png"
+      ],
+      "task_mode": "precise-object-edit",
+      "prompt": "Use case: precise-object-edit inventory icon; Image 1 is the edit target. Preserve the vivid cyan-blue crystal-powder identity, palette, coarse pixel style, and #FF00FF background. Redraw it as a tighter compact central mound with very few nearby granules; keep the complete subject within 28x22 logical cells; center it with no far isolated particles; on the 1254 master each cell is approximately 30-38 physical pixels. Use hard square cells and a limited cyan, electric-blue, navy, and white palette. No antialiasing, dithering, gradients, sub-cell detail, intact crystal, container, text, UI, logo, or watermark; depict one pile on a uniform #FF00FF key background.",
+      "v1_iteration": {
+        "source": "capoo_blue_crystal_powder_imagegen_magenta.png",
+        "reason": "The v1 analyzer measured 41x25 logical cells because of widely scattered granules; v2 compacted the mound and removed far isolated particles.",
+        "v1_detected_logical_subject_size": [
+          41,
+          25
+        ],
+        "v2_detected_logical_subject_size": [
+          25,
+          16
+        ],
+        "v2_grid_confidence": 0.973
+      }
+    },
+    {
+      "id": "white_crystal_powder_v2",
+      "source": "white_crystal_powder_imagegen_magenta_v2.png",
+      "references": [
+        "white_crystal_powder_imagegen_magenta.png"
+      ],
+      "task_mode": "precise-object-edit",
+      "prompt": "Use case: precise-object-edit inventory icon; Image 1 is the edit target. Preserve the pearly white crystal-powder identity with icy-cyan and warm-cream highlights, coarse pixel style, and #FF00FF background. Redraw it as a tighter compact central mound with very few nearby granules; keep the complete subject within 28x22 logical cells; center it with no far isolated particles; on the 1254 master each cell is approximately 30-38 physical pixels. Use hard square cells and a limited white, silver, icy-cyan, and cream palette. No antialiasing, dithering, gradients, sub-cell detail, intact crystal, container, text, UI, logo, or watermark; depict one pile on a uniform #FF00FF key background.",
+      "v1_iteration": {
+        "source": "white_crystal_powder_imagegen_magenta.png",
+        "reason": "The v1 analyzer measured 34x21 logical cells because of widely scattered granules; v2 compacted the mound and removed far isolated particles.",
+        "v1_detected_logical_subject_size": [
+          34,
+          21
+        ],
+        "v2_detected_logical_subject_size": [
+          22,
+          15
+        ],
+        "v2_grid_confidence": 0.903
+      }
+    }
+  ]
+}

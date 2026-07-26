@@ -92,8 +92,11 @@ func _run() -> void:
 		"植物培育中心必须占2×2格，拥有1500生命、10物防、10法防并支持联机。"
 	)
 	_expect(
-		PlantDefenseRegistry.get_all_configs().size() == 12,
-		"公共注册表必须同时包含植物培育中心、竹筒迫击炮、种植基地、紫阳花雨幕塔与葡萄电弧塔，共12种建筑。"
+		PlantDefenseRegistry.get_all_configs().size() == 13
+		and PlantDefenseRegistry.get_all_configs().has(
+			PlantDefenseRegistry.get_config(&"stone_mill")
+		),
+		"公共注册表必须同时包含石磨台、植物培育中心、竹筒迫击炮、种植基地、紫阳花雨幕塔与葡萄电弧塔，共13种建筑。"
 	)
 	if config == null:
 		_finish(test_root)
@@ -805,8 +808,11 @@ func _test_inventory_placement_request(
 	)
 	_expect(
 		controller.open_selection()
-		and controller.selection_hud.available_configs.size() == 12,
-		"T键免费调试入口必须继续展示全部12种建筑。"
+		and controller.selection_hud.available_configs.size() == 13
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"stone_mill")
+		),
+		"T键免费调试入口必须继续展示包括石磨台在内的全部13种建筑。"
 	)
 	controller.cancel_placement()
 

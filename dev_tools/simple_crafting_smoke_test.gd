@@ -28,6 +28,9 @@ const HEALTH_PICKUP := preload(
 const WOOD_PROCESSING_STATION_ITEM := preload(
 	"res://resources/config/buildings/building_wood_processing_station.tres"
 )
+const STONE_MILL_ITEM := preload(
+	"res://resources/config/buildings/building_stone_mill.tres"
+)
 const OAK_WAREHOUSE_ITEM := preload(
 	"res://resources/config/buildings/building_oak_warehouse.tres"
 )
@@ -111,18 +114,23 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 	var vegetation_stake_recipe := SimpleCraftingRegistry.get_recipe(
 		SimpleCraftingRegistry.VEGETATION_STAKE_ID
 	)
+	var stone_mill_recipe := SimpleCraftingRegistry.get_recipe(
+		SimpleCraftingRegistry.STONE_MILL_ID
+	)
 	_expect(recipe != null, "简易制造白名单必须能解析草药生命药瓶配方。")
 	_expect(
 		wood_station_recipe != null
 		and oak_warehouse_recipe != null
-		and vegetation_stake_recipe != null,
-		"简易制造白名单必须能解析木头加工站、橡木仓库与植被桩配方。"
+		and vegetation_stake_recipe != null
+		and stone_mill_recipe != null,
+		"简易制造白名单必须能解析木头加工站、橡木仓库、植被桩与石磨台配方。"
 	)
 	if (
 		recipe == null
 		or wood_station_recipe == null
 		or oak_warehouse_recipe == null
 		or vegetation_stake_recipe == null
+		or stone_mill_recipe == null
 	):
 		return
 	_expect(
@@ -143,17 +151,21 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 			String(SimpleCraftingRegistry.VEGETATION_STAKE_ID)
 		) == vegetation_stake_recipe
 		and SimpleCraftingRegistry.get_recipe_by_wire_id(
+			String(SimpleCraftingRegistry.STONE_MILL_ID)
+		) == stone_mill_recipe
+		and SimpleCraftingRegistry.get_recipe_by_wire_id(
 			"x".repeat(SimpleCraftingRegistry.MAX_WIRE_RECIPE_ID_LENGTH + 1)
 		) == null,
 		"多人配方ID必须只按有界字符串解析，不得接受超长网络输入。"
 	)
 	var registered_recipes := SimpleCraftingRegistry.get_all_recipes()
 	_expect(
-		registered_recipes.size() == 4
+		registered_recipes.size() == 5
 		and registered_recipes[0] == recipe
 		and registered_recipes[1] == wood_station_recipe
 		and registered_recipes[2] == oak_warehouse_recipe
-		and registered_recipes[3] == vegetation_stake_recipe,
+		and registered_recipes[3] == vegetation_stake_recipe
+		and registered_recipes[4] == stone_mill_recipe,
 		"简易制造配方列表只能暴露白名单中的有效配方。"
 	)
 	for registered_recipe in registered_recipes:
@@ -198,6 +210,15 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 		"植被桩配方必须消耗10木板和1树苗并产出1个植被桩建筑物品。"
 	)
 	_expect(
+		stone_mill_recipe.is_valid()
+		and stone_mill_recipe.input_items == [WOOD, WATER_BOTTLE]
+		and stone_mill_recipe.input_amounts == [10, 10]
+		and stone_mill_recipe.output_items == [STONE_MILL_ITEM]
+		and stone_mill_recipe.output_amounts == [1]
+		and is_equal_approx(stone_mill_recipe.duration_seconds, 0.1),
+		"石磨台配方必须以0.1秒合法占位时长消耗10木头和10水瓶，并产出1个石磨台建筑物品。"
+	)
+	_expect(
 		_is_valid_unstackable_building_item(
 			WOOD_PROCESSING_STATION_ITEM,
 			&"wood_processing_station"
@@ -209,8 +230,12 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 		and _is_valid_unstackable_building_item(
 			VEGETATION_STAKE_ITEM,
 			&"vegetation_stake"
+		)
+		and _is_valid_unstackable_building_item(
+			STONE_MILL_ITEM,
+			&"stone_mill"
 		),
-		"三种简易制造建筑产物必须复用原图、以32×32有效尺寸显示并指向正确建筑。"
+		"四种简易制造建筑产物必须复用原图、以32×32有效尺寸显示并指向正确建筑。"
 	)
 
 	var shared_storage_recipe := recipe.duplicate() as ProductionRecipe
@@ -239,10 +264,14 @@ func _test_building_recipe_transactions(run_state: RunStateStore) -> void:
 	var vegetation_stake_recipe := SimpleCraftingRegistry.get_recipe(
 		SimpleCraftingRegistry.VEGETATION_STAKE_ID
 	)
+	var stone_mill_recipe := SimpleCraftingRegistry.get_recipe(
+		SimpleCraftingRegistry.STONE_MILL_ID
+	)
 	if (
 		wood_station_recipe == null
 		or oak_warehouse_recipe == null
 		or vegetation_stake_recipe == null
+		or stone_mill_recipe == null
 	):
 		return
 
@@ -295,6 +324,66 @@ func _test_building_recipe_transactions(run_state: RunStateStore) -> void:
 		and run_state.get_inventory_item_total(SAPLING) == 0
 		and run_state.get_inventory_item_total(VEGETATION_STAKE_ITEM) == 1,
 		"植被桩必须在一次原子事务中扣除10木板和1树苗并进入背包。"
+	)
+
+	run_state.begin_new_run(&"weishidaier")
+	_expect(
+		run_state.try_add_item_count(WOOD, 5)
+		and run_state.try_add_item_count(WATER_BOTTLE, 10),
+		"石磨台成功事务必须在初始5木头外补齐5木头，并准备10个水瓶。"
+	)
+	var stone_mill_revision := run_state.get_inventory_revision()
+	inventory_change_count = 0
+	var stone_mill_result := run_state.try_craft_inventory_recipe_if_revision(
+		stone_mill_recipe,
+		stone_mill_revision
+	)
+	_expect(
+		stone_mill_result == RunStateStore.CRAFT_RESULT_SUCCESS
+		and run_state.get_inventory_item_total(WOOD) == 0
+		and run_state.get_inventory_item_total(WATER_BOTTLE) == 0
+		and run_state.get_inventory_item_total(STONE_MILL_ITEM) == 1
+		and run_state.get_inventory_revision() == stone_mill_revision + 1
+		and inventory_change_count == 1,
+		"石磨台必须忽略0.1秒占位时长，在一次同步原子事务中扣除10木头和10水瓶并进入背包。"
+	)
+
+	run_state.begin_new_run(&"weishidaier")
+	_expect(
+		run_state.try_add_item_count(WOOD, 5),
+		"石磨台缺水瓶用例必须先准备完整的10木头。"
+	)
+	var missing_water_revision := run_state.get_inventory_revision()
+	var missing_water_inventory := _local_inventory_signature(run_state)
+	inventory_change_count = 0
+	_expect(
+		run_state.try_craft_inventory_recipe_if_revision(
+			stone_mill_recipe,
+			missing_water_revision
+		) == RunStateStore.CRAFT_RESULT_MISSING_INPUT
+		and _local_inventory_signature(run_state) == missing_water_inventory
+		and run_state.get_inventory_revision() == missing_water_revision
+		and inventory_change_count == 0,
+		"石磨台缺少水瓶时不得部分扣除已有木头或推进背包revision。"
+	)
+
+	run_state.begin_new_run(&"weishidaier")
+	_expect(
+		run_state.try_add_item_count(WATER_BOTTLE, 10),
+		"石磨台缺木头用例必须先准备完整的10个水瓶。"
+	)
+	var missing_wood_revision := run_state.get_inventory_revision()
+	var missing_wood_inventory := _local_inventory_signature(run_state)
+	inventory_change_count = 0
+	_expect(
+		run_state.try_craft_inventory_recipe_if_revision(
+			stone_mill_recipe,
+			missing_wood_revision
+		) == RunStateStore.CRAFT_RESULT_MISSING_INPUT
+		and _local_inventory_signature(run_state) == missing_wood_inventory
+		and run_state.get_inventory_revision() == missing_wood_revision
+		and inventory_change_count == 0,
+		"石磨台缺少木头时不得部分扣除已有水瓶或推进背包revision。"
 	)
 
 
@@ -727,12 +816,13 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 		"物品框必须按当前配方自适应，只显示实际的2项输入和1项产出。"
 	)
 	_expect(
-		_count_visible_recipe_buttons(crafting_panel) == 4
+		_count_visible_recipe_buttons(crafting_panel) == 5
 		and crafting_panel.recipe_buttons[0].text == "草药生命药瓶"
 		and crafting_panel.recipe_buttons[1].text == "木头加工站"
 		and crafting_panel.recipe_buttons[2].text == "橡木仓库"
-		and crafting_panel.recipe_buttons[3].text == "植被桩",
-		"简易制造界面必须展示四条已登记配方。"
+		and crafting_panel.recipe_buttons[3].text == "植被桩"
+		and crafting_panel.recipe_buttons[4].text == "石磨台",
+		"简易制造界面必须按注册顺序展示五条已登记配方，石磨台位于第五条。"
 	)
 	_expect(
 		_has_vertical_text_safety(recipe_name, 2.0)

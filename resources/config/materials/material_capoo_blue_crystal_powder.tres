@@ -1,14 +1,14 @@
 [gd_resource type="Resource" script_class="PickupConfig" format=3]
 
-[ext_resource type="Texture2D" path="res://resources/texture/materials/capoo_blue_crystal.png" id="1_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/materials/capoo_blue_crystal_powder.png" id="1_icon"]
 [ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
 
 [resource]
 script = ExtResource("2_script")
 pickup_type = 6
-display_name = "卡普蓝晶"
+display_name = "卡普蓝晶粉"
 drop_weight = 0.0
-description = "卡普族敌人偶尔留下的蓝色晶体，可在石磨台研磨成卡普蓝晶粉。"
+description = "由石磨台研磨卡普蓝晶得到的明亮蓝色晶粉。"
 can_store_in_inventory = true
 stackable = true
 inventory_stack_limit = 999

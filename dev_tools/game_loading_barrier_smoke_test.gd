@@ -40,6 +40,8 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://scene/plant_defense/corn_machine_gun.tscn",
 	"res://resources/config/plant_defense/oak_warehouse.tres",
 	"res://scene/plant_defense/oak_warehouse.tscn",
+	"res://resources/config/plant_defense/stone_mill.tres",
+	"res://scene/plant_defense/stone_mill.tscn",
 	"res://resources/shader/plant_lifecycle.gdshader",
 	"res://resources/shader/plant_lifecycle_material.tres",
 	"res://resources/shader/plant_lifecycle_noise.tres",

@@ -1,0 +1,2 @@
+extends ProductionProgressBorderBuilding
+class_name StoneMill

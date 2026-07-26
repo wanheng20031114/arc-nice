@@ -797,11 +797,12 @@ func _test_hud_follow_focus(
 		card_scroll != null
 		and card_scroll.follow_focus
 		and hud.open(configs)
-		and configs.size() == 12
+		and configs.size() == 13
+		and configs.has(PlantDefenseRegistry.get_config(&"stone_mill"))
 		and configs.back() == config
-		and hud.cards.size() == 12
+		and hud.cards.size() == 13
 		and hud.cards.back().plant_config == config,
-		"12张植物卡必须把种植基地放在末位，CardScroll须启用follow_focus。"
+		"13张植物卡必须包含石磨台并把种植基地放在末位，CardScroll须启用follow_focus。"
 	)
 	if card_scroll == null or not hud.is_open():
 		return

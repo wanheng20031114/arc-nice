@@ -217,9 +217,12 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 	_expect(
 		PlantDefenseRegistry.get_config(&"bamboo_mortar")
 		== MORTAR_CONFIG
-		and PlantDefenseRegistry.get_all_configs().size() == 12
+		and PlantDefenseRegistry.get_all_configs().size() == 13
+		and PlantDefenseRegistry.get_all_configs().has(
+			PlantDefenseRegistry.get_config(&"stone_mill")
+		)
 		and PlantDefenseRegistry.get_all_configs()[8] == MORTAR_CONFIG,
-		"迫击炮必须保留为第九种植物，并与种植基地、紫阳花雨幕塔、葡萄电弧塔共同进入公共注册表。"
+		"迫击炮必须保留为第九种植物，并与石磨台、种植基地、紫阳花雨幕塔、葡萄电弧塔共同进入13项公共注册表。"
 	)
 	_expect(
 		mortar.main_sprite.sprite_frames.get_frame_count(&"charge") == 8

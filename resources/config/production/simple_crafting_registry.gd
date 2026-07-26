@@ -17,12 +17,17 @@ const VEGETATION_STAKE_ID: StringName = &"vegetation_stake"
 const VEGETATION_STAKE_RECIPE: ProductionRecipe = preload(
 	"res://resources/config/production/simple_vegetation_stake.tres"
 )
+const STONE_MILL_ID: StringName = &"stone_mill"
+const STONE_MILL_RECIPE: ProductionRecipe = preload(
+	"res://resources/config/production/simple_stone_mill.tres"
+)
 
 const RECIPES := {
 	HERBAL_HEALTH_POTION_ID: HERBAL_HEALTH_POTION_RECIPE,
 	WOOD_PROCESSING_STATION_ID: WOOD_PROCESSING_STATION_RECIPE,
 	OAK_WAREHOUSE_ID: OAK_WAREHOUSE_RECIPE,
 	VEGETATION_STAKE_ID: VEGETATION_STAKE_RECIPE,
+	STONE_MILL_ID: STONE_MILL_RECIPE,
 }
 const MAX_WIRE_RECIPE_ID_LENGTH := 64
 

@@ -180,6 +180,8 @@ func _test_config_and_scene_contracts() -> void:
 	_expect(oak_config != null and oak_config.is_valid(), "橡木仓库配置必须有效。")
 	var wood_station_config := PlantDefenseRegistry.get_config(&"wood_processing_station")
 	_expect(wood_station_config != null and wood_station_config.is_valid(), "木头加工站配置必须有效。")
+	var stone_mill_config := PlantDefenseRegistry.get_config(&"stone_mill")
+	_expect(stone_mill_config != null and stone_mill_config.is_valid(), "石磨台配置必须有效。")
 	var water_collector_config := PlantDefenseRegistry.get_config(&"water_collector")
 	_expect(water_collector_config != null and water_collector_config.is_valid(), "水源采集器配置必须有效。")
 	var research_center_config := PlantDefenseRegistry.get_config(&"research_center")
@@ -211,6 +213,7 @@ func _test_config_and_scene_contracts() -> void:
 	if (
 		oak_config == null
 		or wood_station_config == null
+		or stone_mill_config == null
 		or water_collector_config == null
 		or research_center_config == null
 		or cultivation_center_config == null
@@ -221,13 +224,14 @@ func _test_config_and_scene_contracts() -> void:
 		return
 	var registered_configs := PlantDefenseRegistry.get_all_configs()
 	_expect(
-		registered_configs.size() == 12
+		registered_configs.size() == 13
 		and registered_configs.has(agave_config)
 		and registered_configs.has(bamboo_mortar_config)
 		and registered_configs.has(corn_config)
 		and registered_configs.has(oak_config)
 		and registered_configs.has(vegetation_stake_config)
 		and registered_configs.has(wood_station_config)
+		and registered_configs.has(stone_mill_config)
 		and registered_configs.has(water_collector_config)
 		and registered_configs.has(research_center_config)
 		and registered_configs.has(cultivation_center_config)
@@ -235,8 +239,9 @@ func _test_config_and_scene_contracts() -> void:
 		and registered_configs.has(hydrangea_config)
 		and registered_configs.has(grape_arc_config)
 		and registered_configs[8] == bamboo_mortar_config
+		and registered_configs[11] == stone_mill_config
 		and registered_configs.back() == planting_base_config,
-		"植物注册表必须公开全部12种建筑，包括植物培育中心、竹筒迫击炮、紫阳花雨幕塔与葡萄电弧塔。"
+		"植物注册表必须公开全部13种建筑，并在不改变竹筒迫击炮索引和种植基地末位的前提下加入石磨台。"
 	)
 	_expect(
 		bamboo_mortar_config.max_health == 2000
@@ -1447,7 +1452,7 @@ func _test_realtime_selection_and_cancel() -> void:
 	_expect(controller.is_selecting(), "打开后状态必须为SELECTING。")
 	_expect(controller.selection_hud.is_open(), "真实plant动作输入必须显示植物选择界面。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 12
+		controller.selection_hud.available_configs.size() == 13
 		and controller.selection_hud.available_configs.has(agave_config)
 		and controller.selection_hud.available_configs.has(
 			bamboo_mortar_config
@@ -1459,6 +1464,9 @@ func _test_realtime_selection_and_cancel() -> void:
 		and controller.selection_hud.available_configs.has(vegetation_stake_config)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"wood_processing_station")
+		)
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"stone_mill")
 		)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"water_collector")
@@ -1478,8 +1486,8 @@ func _test_realtime_selection_and_cancel() -> void:
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"grape_arc_tower")
 		)
-		and controller.selection_hud.cards.size() == 12,
-		"单人T键调试界面必须显示全部12种建筑，包括紫阳花雨幕塔与葡萄电弧塔。"
+		and controller.selection_hud.cards.size() == 13,
+		"单人T键调试界面必须显示包括石磨台在内的全部13种建筑。"
 	)
 	var agave_card: PlantSelectionCard = null
 	var bamboo_mortar_card: PlantSelectionCard = null
@@ -1728,7 +1736,7 @@ func _test_multiplayer_authority_contracts() -> void:
 	controller.set_multiplayer_request_mode(true)
 	_expect(controller.open_selection(), "多人植物选择必须仍可打开。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 12
+		controller.selection_hud.available_configs.size() == 13
 		and controller.selection_hud.available_configs.has(agave_config)
 		and controller.selection_hud.available_configs.has(
 			bamboo_mortar_config
@@ -1740,6 +1748,9 @@ func _test_multiplayer_authority_contracts() -> void:
 		and controller.selection_hud.available_configs.has(vegetation_stake_config)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"wood_processing_station")
+		)
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"stone_mill")
 		)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"water_collector")
@@ -1759,8 +1770,8 @@ func _test_multiplayer_authority_contracts() -> void:
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"grape_arc_tower")
 		)
-		and controller.selection_hud.cards.size() == 12,
-		"多人T键调试界面必须显示全部12种支持联机的建筑。"
+		and controller.selection_hud.cards.size() == 13,
+		"多人T键调试界面必须显示包括石磨台在内的全部13种支持联机建筑。"
 	)
 	controller.cancel_placement()
 	var placement_requests: Array[Dictionary] = []
