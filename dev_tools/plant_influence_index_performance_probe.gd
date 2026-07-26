@@ -1,5 +1,9 @@
 extends SceneTree
 
+const PROACTIVE_PLANT_CONFIG := preload(
+	"res://resources/config/plant_defense/agave_cannon.tres"
+)
+
 # Headless A/B for the enemy -> plant objective broad phase. The legacy side
 # reproduces one cold query-cache miss per distinct enemy cell: a 19 x 19
 # occupied_cells scan followed by exact world-distance selection. Production
@@ -25,7 +29,7 @@ class ProbePlantSystem:
 	var legacy_candidate_checks := 0
 
 	func register_probe_plant(plant: PlantDefense, cells: Array[Vector2i]) -> void:
-		_register_plant_footprint(plant, cells)
+		_register_plant_footprint(plant, cells, PROACTIVE_PLANT_CONFIG)
 
 	func get_index_candidate_count(center_cell: Vector2i, search_radius: int) -> int:
 		var tile_size := Vector2(ground_tile_map.tile_set.tile_size).abs()
@@ -234,7 +238,7 @@ func _run_case(plant_count: int) -> void:
 func _verify_semantic_parity(plant_system: ProbePlantSystem, plant_count: int) -> void:
 	for query_index in range(query_world_positions.size()):
 		var query_position := query_world_positions[query_index]
-		var indexed_target := plant_system.find_nearest_living_plant(
+		var indexed_target := plant_system.find_nearest_enemy_objective(
 			query_position,
 			QUERY_RADIUS_CELLS
 		)
@@ -263,7 +267,7 @@ func _measure_legacy_cold_sweep(plant_system: ProbePlantSystem) -> float:
 
 func _run_indexed_sweep(plant_system: ProbePlantSystem) -> void:
 	for query_position in query_world_positions:
-		plant_system.find_nearest_living_plant(query_position, QUERY_RADIUS_CELLS)
+		plant_system.find_nearest_enemy_objective(query_position, QUERY_RADIUS_CELLS)
 
 
 func _run_legacy_cold_sweep(plant_system: ProbePlantSystem) -> void:

@@ -9,6 +9,11 @@ param(
     [ValidateRange(1, 5000)]
     [int]$EnemyCount = 300,
 
+    [ValidateRange(0, 10000)]
+    [int]$FenceCount = 0,
+
+    [bool]$FenceAbMetrics = $false,
+
     [ValidateRange(0, 3600)]
     [int]$WarmupFrames = 60,
 
@@ -25,6 +30,11 @@ param(
 
     [ValidateRange(0, 1000)]
     [int]$MaxFps = 60,
+
+    [bool]$Headless = $false,
+
+    [ValidateRange(0, 240)]
+    [int]$FixedFps = 0,
 
     [ValidateRange(0, 60)]
     [int]$NavigationInterval = 0,
@@ -92,12 +102,21 @@ $tempStem = "arc_nice_enemy_cohort_{0}" -f ([Guid]::NewGuid().ToString("N"))
 $stdoutPath = Join-Path ([IO.Path]::GetTempPath()) ($tempStem + ".out")
 $stderrPath = Join-Path ([IO.Path]::GetTempPath()) ($tempStem + ".err")
 
-$godotArguments = @(
+$godotArguments = @()
+if ($Headless) {
+    $godotArguments += "--headless"
+}
+if ($FixedFps -gt 0) {
+    $godotArguments += @("--fixed-fps", $FixedFps)
+}
+$godotArguments += @(
     "--path", $resolvedProjectRoot,
     "--script", $probeScript,
     "--",
     "--phase=$Phase",
     "--enemies=$EnemyCount",
+    "--fences=$FenceCount",
+    "--fence-ab-metrics=$($FenceAbMetrics.ToString().ToLowerInvariant())",
     "--warmup=$WarmupFrames",
     "--samples=$SampleFrames",
     "--seed=$Seed",

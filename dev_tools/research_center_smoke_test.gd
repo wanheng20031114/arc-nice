@@ -985,6 +985,9 @@ func _test_simple_crafting_unlock_research(
 	plant_system: PlantSystem,
 	test_root: Node
 ) -> void:
+	var simple_fence_recipe := SimpleCraftingRegistry.get_recipe(
+		SimpleCraftingRegistry.SIMPLE_FENCE_ID
+	)
 	var bamboo_recipe := SimpleCraftingRegistry.get_recipe(
 		SimpleCraftingRegistry.BAMBOO_MORTAR_ID
 	)
@@ -1000,10 +1003,11 @@ func _test_simple_crafting_unlock_research(
 			BUILDING_DEFENSE_RESEARCH_ID,
 			PLAYER_MOVE_SPEED_RESEARCH_ID,
 		]
-		and available_recipes.size() == 5
+		and available_recipes.size() == 6
+		and available_recipes.has(simple_fence_recipe)
 		and not available_recipes.has(bamboo_recipe)
 		and not available_recipes.has(hydrangea_recipe),
-		"两项配方研究开始前，完成ID只能包含已有科技且两条新配方必须保持锁定。"
+		"两项配方研究开始前，简易围栏必须直接可用且两条研究配方保持锁定。"
 	)
 	_expect(
 		production.get_total_item_count(SAPLING) == 10
@@ -1048,7 +1052,8 @@ func _test_simple_crafting_unlock_research(
 			PLAYER_MOVE_SPEED_RESEARCH_ID,
 			BAMBOO_MORTAR_CRAFTING_RESEARCH_ID,
 		]
-		and available_recipes.size() == 6
+		and available_recipes.size() == 7
+		and available_recipes.has(simple_fence_recipe)
 		and available_recipes.has(bamboo_recipe)
 		and not available_recipes.has(hydrangea_recipe),
 		"迫击炮研发满30秒后必须导出完成ID并只解锁迫击炮简易配方。"
@@ -1096,10 +1101,11 @@ func _test_simple_crafting_unlock_research(
 		) == ResearchCoordinator.GlobalResearchState.COMPLETED
 		and research.get_active_global_research_id().is_empty()
 		and completed_ids == expected_completed_ids
-		and available_recipes.size() == 7
+		and available_recipes.size() == 8
+		and available_recipes.has(simple_fence_recipe)
 		and available_recipes.has(bamboo_recipe)
 		and available_recipes.has(hydrangea_recipe),
-		"紫阳花研发满30秒后必须导出四项完成ID，并让全部七条简易配方可用。"
+		"紫阳花研发满30秒后必须导出四项完成ID，并让全部八条简易配方可用。"
 	)
 
 	var remote_research := (

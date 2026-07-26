@@ -798,12 +798,14 @@ func _test_hud_follow_focus(
 		card_scroll != null
 		and card_scroll.follow_focus
 		and hud.open(configs)
-		and configs.size() == 14
+		and configs.size() == 15
+		and configs.has(PlantDefenseRegistry.get_config(&"excavator"))
 		and configs.has(PlantDefenseRegistry.get_config(&"stone_mill"))
+		and configs.has(PlantDefenseRegistry.get_config(&"simple_fence"))
 		and configs.back() == config
-		and hud.cards.size() == 14
+		and hud.cards.size() == 15
 		and hud.cards.back().plant_config == config,
-		"14张植物卡必须包含挖土装置、石磨台并把种植基地放在末位，CardScroll须启用follow_focus。"
+		"15张植物卡必须包含挖土装置、石磨台与简易围栏，并把种植基地放在末位，CardScroll须启用follow_focus。"
 	)
 	if card_scroll == null or not hud.is_open():
 		return

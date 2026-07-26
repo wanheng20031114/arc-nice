@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="PlantDefenseConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/plant_defense/plant_defense_config.gd" id="1_config"]
+[ext_resource type="Texture2D" path="res://resources/atlas/building_simple_fence.tres" id="2_icon"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/simple_fence.tscn" id="3_scene"]
+
+[resource]
+script = ExtResource("1_config")
+plant_id = &"simple_fence"
+display_name = "简易围栏"
+description = "一格木质路障。不会进入敌人主动索敌与寻路目标；敌人局部接触后会停下并攻击。"
+icon = ExtResource("2_icon")
+plant_scene = ExtResource("3_scene")
+supports_multiplayer = true
+enemy_engagement_mode = 1
+cardinal_connection_group = &"simple_fence"
+max_health = 500
+physical_defense = 0
+magic_defense = 0
+attack_damage = 0
+attack_speed = 0.0
+attack_range = 0.0
+footprint_size = Vector2i(1, 1)

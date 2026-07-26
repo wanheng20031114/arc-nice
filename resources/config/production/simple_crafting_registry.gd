@@ -21,6 +21,10 @@ const STONE_MILL_ID: StringName = &"stone_mill"
 const STONE_MILL_RECIPE: ProductionRecipe = preload(
 	"res://resources/config/production/simple_stone_mill.tres"
 )
+const SIMPLE_FENCE_ID: StringName = &"simple_fence"
+const SIMPLE_FENCE_RECIPE: ProductionRecipe = preload(
+	"res://resources/config/production/simple_simple_fence.tres"
+)
 const BAMBOO_MORTAR_ID: StringName = &"bamboo_mortar"
 const BAMBOO_MORTAR_RECIPE: ProductionRecipe = preload(
 	"res://resources/config/production/simple_bamboo_mortar.tres"
@@ -36,6 +40,7 @@ const RECIPES := {
 	OAK_WAREHOUSE_ID: OAK_WAREHOUSE_RECIPE,
 	VEGETATION_STAKE_ID: VEGETATION_STAKE_RECIPE,
 	STONE_MILL_ID: STONE_MILL_RECIPE,
+	SIMPLE_FENCE_ID: SIMPLE_FENCE_RECIPE,
 	BAMBOO_MORTAR_ID: BAMBOO_MORTAR_RECIPE,
 	HYDRANGEA_RAIN_TOWER_ID: HYDRANGEA_RAIN_TOWER_RECIPE,
 }
@@ -45,6 +50,7 @@ const BASE_RECIPE_IDS := {
 	OAK_WAREHOUSE_ID: true,
 	VEGETATION_STAKE_ID: true,
 	STONE_MILL_ID: true,
+	SIMPLE_FENCE_ID: true,
 }
 const RESEARCH_GATED_RECIPE_IDS := {
 	BAMBOO_MORTAR_ID: true,
@@ -76,6 +82,7 @@ static func get_all_recipes() -> Array[ProductionRecipe]:
 		OAK_WAREHOUSE_ID,
 		VEGETATION_STAKE_ID,
 		STONE_MILL_ID,
+		SIMPLE_FENCE_ID,
 		BAMBOO_MORTAR_ID,
 		HYDRANGEA_RAIN_TOWER_ID,
 	]:

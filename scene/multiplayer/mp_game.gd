@@ -157,7 +157,7 @@ const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
-## 协议 v22 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
+## 协议 v23 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
 ## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
 const SHARED_SNAPSHOT_COHORT_ID := -1
 # A full enemy keyframe is 24 bytes after adding health_revision. Forty-six
@@ -6280,7 +6280,7 @@ func _rpc_enemy_hit_report(
 	_damage: int,
 	_impact_direction: Vector2
 ) -> void:
-	# Protocol-v22 compatibility shell. Client-selected enemy IDs are not
+	# Protocol-v23 compatibility shell. Client-selected enemy IDs are not
 	# collision evidence, so even an old or malicious client cannot settle here.
 	return
 
@@ -7345,7 +7345,7 @@ func request_player_hit_report(
 	_impact_direction: Vector2,
 	_damage_flags: int
 ) -> void:
-	# Protocol-v22 compatibility shell. Client hit claims are intentionally
+	# Protocol-v23 compatibility shell. Client hit claims are intentionally
 	# disabled: every eligible attack already has a live Host simulation, and a
 	# proximity-only client hint is not proof of collision.
 	return
@@ -7705,7 +7705,7 @@ func net_player_healed(
 	player_node.queue_healing_number(confirmed_healing)
 
 
-# Protocol v22 retains these compatibility shells for older relay deployments.
+# Protocol v23 retains these compatibility shells for older relay deployments.
 # Xirang orbs no longer exist; both annotated endpoints remain deliberate no-ops.
 @rpc("authority", "call_remote", "reliable", 5)
 func net_xirang_orb_spawned(orb_id: int, amount: int, spawn_position: Vector2) -> void:

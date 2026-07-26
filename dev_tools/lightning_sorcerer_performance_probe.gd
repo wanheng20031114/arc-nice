@@ -1,5 +1,9 @@
 extends SceneTree
 
+const PROACTIVE_PLANT_CONFIG := preload(
+	"res://resources/config/plant_defense/agave_cannon.tres"
+)
+
 # Headless CPU/capacity probe for Lightning Sorcerer. It intentionally splits
 # authoritative chain resolution from optional rendering work: the first case
 # drives 300 real enemy instances through one five-target cast, while the second
@@ -52,7 +56,7 @@ class ProbePlantSystem:
 		plant: PlantDefense,
 		cell: Vector2i
 	) -> void:
-		_register_plant_footprint(plant, [cell])
+		_register_plant_footprint(plant, [cell], PROACTIVE_PLANT_CONFIG)
 
 	func reset_query_metrics() -> void:
 		spatial_query_count = 0
@@ -70,17 +74,17 @@ class ProbePlantSystem:
 			float(search_radius)
 		).size()
 
-	func find_nearest_living_plant_world(
+	func find_nearest_enemy_attack_target_world(
 		from_global_position: Vector2,
 		max_world_distance: float,
 		excluded_instance_ids: Dictionary = {}
 	) -> PlantDefense:
-		var nearest := super.find_nearest_living_plant_world(
+		var nearest := super.find_nearest_enemy_attack_target_world(
 			from_global_position,
 			max_world_distance,
 			excluded_instance_ids
 		)
-		var metrics := get_last_plant_target_query_metrics()
+		var metrics := get_last_enemy_target_query_metrics()
 		spatial_query_count += 1
 		spatial_candidate_visits += int(metrics.get("candidates_visited", 0))
 		if metrics.get("query_mode") == &"registry":
@@ -95,7 +99,7 @@ class ProbeRuntime:
 	var session_object_pool: SessionObjectPool = null
 	var attack_target_query_count := 0
 
-	func find_nearest_enemy_attack_target(
+	func find_nearest_enemy_attack_target_world(
 		from_position: Vector2,
 		max_distance: float,
 		excluded_instance_ids: Dictionary = {}
@@ -103,7 +107,7 @@ class ProbeRuntime:
 		attack_target_query_count += 1
 		if plant_system == null:
 			return null
-		return plant_system.find_nearest_living_plant_world(
+		return plant_system.find_nearest_enemy_attack_target_world(
 			from_position,
 			max_distance,
 			excluded_instance_ids
@@ -239,7 +243,7 @@ func _build_fixture() -> void:
 		plant_container,
 		Rect2i(-4096, -4096, 8192, 8192)
 	)
-	plant_system.set_plant_target_query_metrics_enabled(true)
+	plant_system.set_enemy_target_query_metrics_enabled(true)
 	runtime.plant_system = plant_system
 
 	pathfinder = Node.new()
@@ -379,7 +383,7 @@ func _run_chain_sweep() -> Dictionary:
 	var total_hits := 0
 	var started_usec := Time.get_ticks_usec()
 	for enemy in enemies:
-		var first_target := runtime.find_nearest_enemy_attack_target(
+		var first_target := runtime.find_nearest_enemy_attack_target_world(
 			enemy.global_position,
 			LIGHTNING_CONFIG.attack_range
 		)
@@ -461,7 +465,7 @@ func _run_query_only_sweep(center_world: Vector2) -> Dictionary:
 	plant_system.reset_query_metrics()
 	var started_usec := Time.get_ticks_usec()
 	for _query_index in range(DENSITY_QUERY_COUNT):
-		plant_system.find_nearest_living_plant_world(
+		plant_system.find_nearest_enemy_attack_target_world(
 			center_world,
 			LIGHTNING_CONFIG.chain_range
 		)

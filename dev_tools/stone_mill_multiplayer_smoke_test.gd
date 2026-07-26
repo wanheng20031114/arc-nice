@@ -126,8 +126,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 22,
-		"科研解锁配方与扩展后的科研目录必须由多人协议v22隔离旧客户端。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 23,
+		"科研解锁配方、扩展后的科研目录，以及简易围栏wire id、建筑资源路径和plant id必须由多人协议v23隔离旧客户端。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_crafting()
 	_test_host_research_gated_crafting()

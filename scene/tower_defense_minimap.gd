@@ -21,7 +21,7 @@ func setup(
 	players_root: Node,
 	enemy_container: Node2D,
 	boss_container: Node2D,
-	plant_container: Node2D
+	plant_system: PlantSystem
 ) -> void:
 	minimap_canvas.setup(
 		local_player,
@@ -32,7 +32,7 @@ func setup(
 		players_root,
 		enemy_container,
 		boss_container,
-		plant_container
+		plant_system
 	)
 	sample_timer.start()
 

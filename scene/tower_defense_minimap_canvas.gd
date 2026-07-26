@@ -18,7 +18,8 @@ var overlay_tile_map_layer: TileMapLayer = null
 var players_root: Node = null
 var enemy_container: Node2D = null
 var boss_container: Node2D = null
-var plant_container: Node2D = null
+var plant_system: PlantSystem = null
+var _visible_plants: Array[PlantDefense] = []
 
 var _sample_camera_phase := true
 var _static_rebuild_pending := false
@@ -35,7 +36,7 @@ func setup(
 	new_players_root: Node,
 	new_enemy_container: Node2D,
 	new_boss_container: Node2D,
-	new_plant_container: Node2D
+	new_plant_system: PlantSystem
 ) -> void:
 	_disconnect_topology_signals()
 	local_player = new_local_player
@@ -46,7 +47,7 @@ func setup(
 	players_root = new_players_root
 	enemy_container = new_enemy_container
 	boss_container = new_boss_container
-	plant_container = new_plant_container
+	plant_system = new_plant_system
 	_has_tile_coordinate = false
 
 	_rebuild_static_topology()
@@ -112,11 +113,13 @@ func _sample_world_entities() -> void:
 	_append_enemy_positions(boss_container, enemy_positions)
 
 	var plant_positions := PackedVector2Array()
-	if plant_container != null and is_instance_valid(plant_container):
-		for child in plant_container.get_children():
-			var plant := child as PlantDefense
-			if plant != null and not plant.is_dead and not plant.is_removing:
-				plant_positions.append(plant.global_position)
+	if plant_system != null and is_instance_valid(plant_system):
+		plant_system.query_living_plants_in_world_aabb_into(
+			dynamic_layer.get_overview_world_aabb(),
+			_visible_plants
+		)
+		for plant in _visible_plants:
+			plant_positions.append(plant.global_position)
 
 	dynamic_layer.set_world_entities(
 		remote_player_positions,

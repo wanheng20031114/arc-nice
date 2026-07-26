@@ -312,7 +312,7 @@ func unregister_combat_target(net_id: int) -> void:
 	combat_target_index.unregister_enemy(net_id)
 
 
-func find_nearest_enemy_attack_target(
+func find_nearest_enemy_attack_target_world(
 	from_position: Vector2,
 	max_distance: float,
 	excluded_instance_ids: Dictionary = {}

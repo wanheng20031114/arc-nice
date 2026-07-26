@@ -40,6 +40,9 @@ const WOOD_PROCESSING_STATION_ITEM := preload(
 const STONE_MILL_ITEM := preload(
 	"res://resources/config/buildings/building_stone_mill.tres"
 )
+const SIMPLE_FENCE_ITEM := preload(
+	"res://resources/config/buildings/building_simple_fence.tres"
+)
 const OAK_WAREHOUSE_ITEM := preload(
 	"res://resources/config/buildings/building_oak_warehouse.tres"
 )
@@ -139,6 +142,9 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 	var hydrangea_recipe := SimpleCraftingRegistry.get_recipe(
 		SimpleCraftingRegistry.HYDRANGEA_RAIN_TOWER_ID
 	)
+	var simple_fence_recipe := SimpleCraftingRegistry.get_recipe(
+		SimpleCraftingRegistry.SIMPLE_FENCE_ID
+	)
 	_expect(recipe != null, "简易制造白名单必须能解析草药生命药瓶配方。")
 	_expect(
 		wood_station_recipe != null
@@ -146,8 +152,9 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 		and vegetation_stake_recipe != null
 		and stone_mill_recipe != null
 		and bamboo_mortar_recipe != null
-		and hydrangea_recipe != null,
-		"简易制造白名单必须能解析五条基础配方及两条科研解锁配方。"
+		and hydrangea_recipe != null
+		and simple_fence_recipe != null,
+		"简易制造白名单必须能解析六条基础配方及两条科研解锁配方。"
 	)
 	if (
 		recipe == null
@@ -157,6 +164,7 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 		or stone_mill_recipe == null
 		or bamboo_mortar_recipe == null
 		or hydrangea_recipe == null
+		or simple_fence_recipe == null
 	):
 		return
 	_expect(
@@ -180,6 +188,9 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 			String(SimpleCraftingRegistry.STONE_MILL_ID)
 		) == stone_mill_recipe
 		and SimpleCraftingRegistry.get_recipe_by_wire_id(
+			String(SimpleCraftingRegistry.SIMPLE_FENCE_ID)
+		) == simple_fence_recipe
+		and SimpleCraftingRegistry.get_recipe_by_wire_id(
 			String(SimpleCraftingRegistry.BAMBOO_MORTAR_ID)
 		) == bamboo_mortar_recipe
 		and SimpleCraftingRegistry.get_recipe_by_wire_id(
@@ -192,15 +203,16 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 	)
 	var registered_recipes := SimpleCraftingRegistry.get_all_recipes()
 	_expect(
-		registered_recipes.size() == 7
+		registered_recipes.size() == 8
 		and registered_recipes[0] == recipe
 		and registered_recipes[1] == wood_station_recipe
 		and registered_recipes[2] == oak_warehouse_recipe
 		and registered_recipes[3] == vegetation_stake_recipe
 		and registered_recipes[4] == stone_mill_recipe
-		and registered_recipes[5] == bamboo_mortar_recipe
-		and registered_recipes[6] == hydrangea_recipe,
-		"简易制造注册表必须按固定顺序保留五条基础配方与两条科研配方。"
+		and registered_recipes[5] == simple_fence_recipe
+		and registered_recipes[6] == bamboo_mortar_recipe
+		and registered_recipes[7] == hydrangea_recipe,
+		"简易制造注册表必须按固定顺序保留六条基础配方与两条科研配方。"
 	)
 	var bamboo_completed_ids: Array[StringName] = [
 		GlobalResearchRegistry.BAMBOO_MORTAR_CRAFTING_ID,
@@ -217,13 +229,15 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 		all_crafting_research_ids
 	)
 	_expect(
-		default_available_recipes.size() == 5
+		default_available_recipes.size() == 6
 		and default_available_recipes[4] == stone_mill_recipe
-		and bamboo_available_recipes.size() == 6
-		and bamboo_available_recipes[5] == bamboo_mortar_recipe
-		and all_available_recipes.size() == 7
-		and all_available_recipes[6] == hydrangea_recipe,
-		"未研发时只能看到五条基础配方，完成对应科研后必须依次扩展为六条和七条。"
+		and default_available_recipes[5] == simple_fence_recipe
+		and bamboo_available_recipes.size() == 7
+		and bamboo_available_recipes[5] == simple_fence_recipe
+		and bamboo_available_recipes[6] == bamboo_mortar_recipe
+		and all_available_recipes.size() == 8
+		and all_available_recipes[7] == hydrangea_recipe,
+		"未研发时只能看到六条基础配方，完成对应科研后必须依次扩展为七条和八条。"
 	)
 	for registered_recipe in registered_recipes:
 		_expect(
@@ -301,6 +315,15 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 		"紫阳花雨幕塔简易配方必须消耗2木制核心和1卡普蓝晶粉，并由对应全局科研解锁。"
 	)
 	_expect(
+		simple_fence_recipe.is_valid()
+		and simple_fence_recipe.input_items == [WOOD]
+		and simple_fence_recipe.input_amounts == [1]
+		and simple_fence_recipe.output_items == [SIMPLE_FENCE_ITEM]
+		and simple_fence_recipe.output_amounts == [1]
+		and is_equal_approx(simple_fence_recipe.duration_seconds, 0.1),
+		"简易围栏配方必须以0.1秒合法占位时长消耗1木头，并立即产出1个简易围栏。"
+	)
+	_expect(
 		_is_valid_unstackable_building_item(
 			WOOD_PROCESSING_STATION_ITEM,
 			&"wood_processing_station"
@@ -324,8 +347,12 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 		and _is_valid_unstackable_building_item(
 			HYDRANGEA_RAIN_TOWER_ITEM,
 			&"hydrangea_rain_tower"
+		)
+		and _is_valid_stackable_building_item(
+			SIMPLE_FENCE_ITEM,
+			&"simple_fence"
 		),
-		"六种简易制造建筑产物必须复用原图、以32×32有效尺寸显示并指向正确建筑。"
+		"七种简易制造建筑产物必须复用原图、以32×32有效尺寸显示并指向正确建筑；围栏须可堆叠至999。"
 	)
 
 	var shared_storage_recipe := recipe.duplicate() as ProductionRecipe
@@ -357,11 +384,15 @@ func _test_building_recipe_transactions(run_state: RunStateStore) -> void:
 	var stone_mill_recipe := SimpleCraftingRegistry.get_recipe(
 		SimpleCraftingRegistry.STONE_MILL_ID
 	)
+	var simple_fence_recipe := SimpleCraftingRegistry.get_recipe(
+		SimpleCraftingRegistry.SIMPLE_FENCE_ID
+	)
 	if (
 		wood_station_recipe == null
 		or oak_warehouse_recipe == null
 		or vegetation_stake_recipe == null
 		or stone_mill_recipe == null
+		or simple_fence_recipe == null
 	):
 		return
 
@@ -474,6 +505,73 @@ func _test_building_recipe_transactions(run_state: RunStateStore) -> void:
 		and run_state.get_inventory_revision() == missing_wood_revision
 		and inventory_change_count == 0,
 		"石磨台缺少木头时不得部分扣除已有水瓶或推进背包revision。"
+	)
+
+	run_state.begin_new_run(&"weishidaier")
+	var fence_revision_before := run_state.get_inventory_revision()
+	inventory_change_count = 0
+	for _craft_index in range(RunStateStore.STARTING_WOOD_COUNT):
+		_expect(
+			run_state.try_craft_inventory_recipe_if_revision(
+				simple_fence_recipe,
+				run_state.get_inventory_revision()
+			) == RunStateStore.CRAFT_RESULT_SUCCESS,
+			"每份木头必须能在同步原子事务中立即制造1个简易围栏。"
+		)
+	_expect(
+		run_state.get_inventory_item_total(WOOD) == 0
+		and run_state.get_inventory_item_total(SIMPLE_FENCE_ITEM)
+		== RunStateStore.STARTING_WOOD_COUNT
+		and _count_local_item_slots(run_state, SIMPLE_FENCE_ITEM) == 1
+		and run_state.get_inventory_revision()
+		== fence_revision_before + RunStateStore.STARTING_WOOD_COUNT
+		and inventory_change_count == RunStateStore.STARTING_WOOD_COUNT,
+		"连续制造的简易围栏必须合并在同一999上限堆栈，每次事务仅推进一次revision和通知。"
+	)
+	var exhausted_revision := run_state.get_inventory_revision()
+	var exhausted_inventory := _local_inventory_signature(run_state)
+	inventory_change_count = 0
+	_expect(
+		run_state.try_craft_inventory_recipe_if_revision(
+			simple_fence_recipe,
+			exhausted_revision
+		) == RunStateStore.CRAFT_RESULT_MISSING_INPUT
+		and _local_inventory_signature(run_state) == exhausted_inventory
+		and run_state.get_inventory_revision() == exhausted_revision
+		and inventory_change_count == 0,
+		"木头耗尽后制造围栏必须原子拒绝，既有围栏堆栈与revision不得改变。"
+	)
+
+	run_state.begin_new_run(&"weishidaier")
+	var stale_fence_revision := run_state.get_inventory_revision()
+	var stale_fence_inventory := _local_inventory_signature(run_state)
+	inventory_change_count = 0
+	_expect(
+		run_state.try_craft_inventory_recipe_if_revision(
+			simple_fence_recipe,
+			stale_fence_revision - 1
+		) == RunStateStore.CRAFT_RESULT_STALE_REVISION
+		and _local_inventory_signature(run_state) == stale_fence_inventory
+		and run_state.get_inventory_revision() == stale_fence_revision
+		and inventory_change_count == 0,
+		"过期revision制造围栏必须在扣除木头前原子拒绝。"
+	)
+
+	run_state.begin_new_run(&"weishidaier")
+	_fill_remaining_slots_with_apples(run_state)
+	var full_fence_revision := run_state.get_inventory_revision()
+	var full_fence_inventory := _local_inventory_signature(run_state)
+	inventory_change_count = 0
+	_expect(
+		_count_occupied_local_slots(run_state) == RunStateStore.INVENTORY_CAPACITY
+		and run_state.try_craft_inventory_recipe_if_revision(
+			simple_fence_recipe,
+			full_fence_revision
+		) == RunStateStore.CRAFT_RESULT_INVENTORY_FULL
+		and _local_inventory_signature(run_state) == full_fence_inventory
+		and run_state.get_inventory_revision() == full_fence_revision
+		and inventory_change_count == 0,
+		"满背包且木头堆栈不会清空时，围栏制造必须原子拒绝且不得部分扣木头。"
 	)
 
 
@@ -1009,20 +1107,21 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 		"物品框必须按当前配方自适应，只显示实际的2项输入和1项产出。"
 	)
 	_expect(
-		_count_visible_recipe_buttons(crafting_panel) == 5
+		_count_visible_recipe_buttons(crafting_panel) == 6
 		and crafting_panel.recipe_buttons[0].text == "草药生命药瓶"
 		and crafting_panel.recipe_buttons[1].text == "木头加工站"
 		and crafting_panel.recipe_buttons[2].text == "橡木仓库"
 		and crafting_panel.recipe_buttons[3].text == "植被桩"
-		and crafting_panel.recipe_buttons[4].text == "石磨台",
-		"未绑定已完成科研时，简易制造界面只能按注册顺序展示五条基础配方。"
+		and crafting_panel.recipe_buttons[4].text == "石磨台"
+		and crafting_panel.recipe_buttons[5].text == "简易围栏",
+		"未绑定已完成科研时，简易制造界面只能按注册顺序展示六条基础配方。"
 	)
 	_expect(
-		crafting_panel.recipe_buttons.size() == 7
+		crafting_panel.recipe_buttons.size() == 8
 		and recipe_scroll != null
 		and recipe_list != null
-		and recipe_list.get_child_count() == 7,
-		"七条注册配方必须由场景原生预建七个按钮，并放在可滚动列表中。"
+		and recipe_list.get_child_count() == 8,
+		"八条注册配方必须由场景原生预建八个按钮，并放在可滚动列表中。"
 	)
 
 	var research := (
@@ -1033,28 +1132,28 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 	research.research_tick_timer.stop()
 	crafting_panel.set_research_coordinator(research)
 	_expect(
-		_count_visible_recipe_buttons(crafting_panel) == 5,
-		"绑定尚未完成任何配方科研的协调器后仍只能显示五条基础配方。"
+		_count_visible_recipe_buttons(crafting_panel) == 6,
+		"绑定尚未完成任何配方科研的协调器后仍只能显示六条基础配方。"
 	)
 	research.global_research_states[
 		GlobalResearchRegistry.BAMBOO_MORTAR_CRAFTING_ID
 	] = ResearchCoordinator.GlobalResearchState.COMPLETED
 	research.research_state_changed.emit()
 	_expect(
-		_count_visible_recipe_buttons(crafting_panel) == 6
-		and crafting_panel.recipe_buttons[5].text == "竹筒迫击炮",
-		"迫击炮科研完成事件必须立即把竹筒迫击炮追加为第六条可见配方。"
+		_count_visible_recipe_buttons(crafting_panel) == 7
+		and crafting_panel.recipe_buttons[6].text == "竹筒迫击炮",
+		"迫击炮科研完成事件必须立即把竹筒迫击炮追加为第七条可见配方。"
 	)
 	research.global_research_states[
 		GlobalResearchRegistry.HYDRANGEA_RAIN_TOWER_CRAFTING_ID
 	] = ResearchCoordinator.GlobalResearchState.COMPLETED
 	research.research_state_changed.emit()
 	_expect(
-		_count_visible_recipe_buttons(crafting_panel) == 7
-		and crafting_panel.recipe_buttons[6].text == "紫阳花雨幕塔",
-		"紫阳花科研完成事件必须立即把紫阳花追加为第七条可见配方。"
+		_count_visible_recipe_buttons(crafting_panel) == 8
+		and crafting_panel.recipe_buttons[7].text == "紫阳花雨幕塔",
+		"紫阳花科研完成事件必须立即把紫阳花追加为第八条可见配方。"
 	)
-	crafting_panel.call("_on_recipe_pressed", 6)
+	crafting_panel.call("_on_recipe_pressed", 7)
 	await process_frame
 	recipe_scroll.scroll_vertical = 10000
 	await process_frame
@@ -1062,9 +1161,9 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 		crafting_panel.selected_recipe_id
 		== SimpleCraftingRegistry.HYDRANGEA_RAIN_TOWER_ID
 		and _count_pressed_recipe_buttons(crafting_panel) == 1
-		and crafting_panel.recipe_buttons[6].button_pressed
+		and crafting_panel.recipe_buttons[7].button_pressed
 		and recipe_scroll.scroll_vertical > 0,
-		"第七条配方必须可滚动到达，并保持唯一选中态。"
+		"第八条配方必须可滚动到达，并保持唯一选中态。"
 	)
 	var replacement_research := (
 		RESEARCH_COORDINATOR_SCENE.instantiate() as ResearchCoordinator
@@ -1074,7 +1173,7 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 	replacement_research.research_tick_timer.stop()
 	crafting_panel.set_research_coordinator(replacement_research)
 	_expect(
-		_count_visible_recipe_buttons(crafting_panel) == 5
+		_count_visible_recipe_buttons(crafting_panel) == 6
 		and crafting_panel.selected_recipe_id
 		== SimpleCraftingRegistry.HERBAL_HEALTH_POTION_ID
 		and not research.research_state_changed.is_connected(
@@ -1087,7 +1186,7 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 	)
 	crafting_panel.set_research_coordinator(null)
 	_expect(
-		_count_visible_recipe_buttons(crafting_panel) == 5
+		_count_visible_recipe_buttons(crafting_panel) == 6
 		and not replacement_research.research_state_changed.is_connected(
 			crafting_panel._on_research_state_changed
 		),
@@ -1334,6 +1433,20 @@ func _find_local_item_slot(
 	return -1
 
 
+func _count_local_item_slots(
+	run_state: RunStateStore,
+	item: PickupConfig
+) -> int:
+	var count := 0
+	for slot_index in range(RunStateStore.INVENTORY_CAPACITY):
+		if PickupConfig.inventory_identity_matches(
+			run_state.get_item(slot_index),
+			item
+		):
+			count += 1
+	return count
+
+
 func _is_valid_unstackable_building_item(
 	item: PickupConfig,
 	expected_plant_id: StringName
@@ -1364,6 +1477,29 @@ func _is_valid_unstackable_building_item(
 		and uses_original_building_texture
 		and item.icon_texture.get_size() * item.icon_scale
 		== Vector2(32, 32)
+	)
+
+
+func _is_valid_stackable_building_item(
+	item: PickupConfig,
+	expected_plant_id: StringName
+) -> bool:
+	var plant_config := PlantDefenseRegistry.get_config(expected_plant_id)
+	if item == null or plant_config == null or item.icon_texture == null:
+		return false
+	var atlas_icon := item.icon_texture as AtlasTexture
+	return (
+		item.pickup_type == PickupConfig.PickupType.BUILDING
+		and item.can_store_in_inventory
+		and item.stackable
+		and item.inventory_stack_limit == 999
+		and item.placeable_plant_id == expected_plant_id
+		and atlas_icon != null
+		and atlas_icon.atlas != null
+		and item.icon_texture.resource_path == plant_config.icon.resource_path
+		and atlas_icon.atlas.resource_path
+		== "res://resources/texture/plant_defense/simple_fence/simple_fence_atlas.png"
+		and item.icon_texture.get_size() * item.icon_scale == Vector2(32, 32)
 	)
 
 

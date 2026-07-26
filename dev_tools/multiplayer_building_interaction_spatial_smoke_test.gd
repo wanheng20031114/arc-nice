@@ -1,5 +1,9 @@
 extends SceneTree
 
+const INTERACTION_BUILDING_CONFIG := preload(
+	"res://resources/config/plant_defense/wood_processing_station.tres"
+)
+
 const MP_GAME_PATH := "res://scene/multiplayer/mp_game.gd"
 const INTERACTION_DISTANCE := 48.0
 const FAR_BUILDING_COUNT := 512
@@ -10,7 +14,11 @@ class QueryProbePlantSystem:
 	extends PlantSystem
 
 	func register_probe_plant(plant: PlantDefense) -> void:
-		_register_plant_footprint(plant, [Vector2i.ZERO])
+		_register_plant_footprint(
+			plant,
+			[Vector2i.ZERO],
+			INTERACTION_BUILDING_CONFIG
+		)
 
 	func move_probe_plant(plant: PlantDefense, world_position: Vector2) -> void:
 		plant.global_position = world_position

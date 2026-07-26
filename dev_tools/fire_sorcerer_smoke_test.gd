@@ -55,7 +55,7 @@ class TargetRuntime:
 	var nearest_target: Node2D = null
 	var query_count := 0
 
-	func find_nearest_enemy_attack_target(
+	func find_nearest_enemy_attack_target_world(
 		from_position: Vector2,
 		max_distance: float
 	) -> Node2D:
@@ -786,8 +786,8 @@ func _test_nearest_assigned_target_selection() -> void:
 	enemy.set_physics_process(false)
 	enemy.set_objective_target(plant)
 	_expect(
-		enemy.call("_get_preferred_ranged_combat_target") == player,
-		"Fire Sorcerer must prefer the nearer player over a farther assigned plant."
+		enemy.call("_get_preferred_ranged_combat_target") == plant,
+		"An explicit proactive objective must win over a nearer family-range player."
 	)
 	plant.global_position = Vector2(80.0, 0.0)
 	_expect(
@@ -823,6 +823,10 @@ func _test_runtime_nearest_target_selection() -> void:
 	runtime.add_child(pathfinder)
 	var enemy := _spawn_sorcerer(Vector2.ZERO, player, pathfinder)
 	enemy.set_physics_process(false)
+	var navigation_gate := Node2D.new()
+	runtime.add_child(navigation_gate)
+	navigation_gate.global_position = Vector2(640.0, 0.0)
+	enemy.set_objective_target(navigation_gate)
 	await physics_frame
 
 	_expect(
@@ -852,6 +856,7 @@ func _test_runtime_nearest_target_selection() -> void:
 	enemy.queue_free()
 	pathfinder.queue_free()
 	runtime.queue_free()
+	navigation_gate.queue_free()
 	nearest_plant.queue_free()
 	player.queue_free()
 	await process_frame

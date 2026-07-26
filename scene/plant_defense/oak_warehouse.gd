@@ -328,7 +328,8 @@ func set_multiplayer_storage_snapshot_ready(is_ready: bool) -> void:
 
 func is_multiplayer_storage_ready() -> bool:
 	return (
-		is_operational
+		is_inside_tree()
+		and is_operational
 		and not is_removing
 		and multiplayer_storage_enabled
 		and multiplayer_storage_snapshot_ready
@@ -337,7 +338,14 @@ func is_multiplayer_storage_ready() -> bool:
 
 
 func request_multiplayer_storage_snapshot() -> bool:
-	if not multiplayer_storage_enabled or warehouse_net_id <= 0:
+	if (
+		not is_inside_tree()
+		or not is_operational
+		or is_dead
+		or is_removing
+		or not multiplayer_storage_enabled
+		or warehouse_net_id <= 0
+	):
 		return false
 	set_multiplayer_storage_snapshot_ready(false)
 	multiplayer_storage_request_timer.start(MULTIPLAYER_STORAGE_REQUEST_TIMEOUT_SECONDS)

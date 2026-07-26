@@ -11,7 +11,7 @@ const TargetWarningScript := preload(
 	"res://scene/enemy/sorcerer/lightning_sorcerer_target_warning.gd"
 )
 const ATTACK_TARGET_REFRESH_INTERVAL := 0.35
-const ATTACK_TARGET_QUERY_METHOD := &"find_nearest_enemy_attack_target"
+const ATTACK_TARGET_QUERY_METHOD := &"find_nearest_enemy_attack_target_world"
 const DAMAGE_SOURCE_TYPE := &"lightning_sorcerer_chain"
 const TARGET_WARNING_RETRY_DELAY := 0.2
 const PLAYER_WINDUP_ACTION := &"lightning_windup"
@@ -47,32 +47,6 @@ var proxy_warning_elapsed := 0.0
 
 func _get_touch_damage_type() -> EnemyConfig.DamageType:
 	return EnemyConfig.DamageType.MAGIC
-
-
-func _get_preferred_ranged_combat_target() -> Node2D:
-	var objective_candidate := get_attackable_objective()
-	var player_candidate: Player = null
-	if (
-		target_player != null
-		and is_instance_valid(target_player)
-		and not target_player.is_dead
-	):
-		player_candidate = target_player
-	if objective_candidate == null:
-		return player_candidate
-	if player_candidate == null or objective_candidate == player_candidate:
-		return objective_candidate
-	var objective_distance_squared := global_position.distance_squared_to(
-		objective_candidate.global_position
-	)
-	var player_distance_squared := global_position.distance_squared_to(
-		player_candidate.global_position
-	)
-	return (
-		objective_candidate
-		if objective_distance_squared <= player_distance_squared
-		else player_candidate
-	)
 
 
 func _select_nearest_attack_target(
@@ -148,14 +122,15 @@ func _physics_process(delta: float) -> void:
 		return
 
 	var lightning_config := config as LightningConfig
-	var combat_target := _get_preferred_ranged_combat_target()
-	if lightning_config != null:
-		combat_target = _select_nearest_attack_target(
-			combat_target,
+	var combat_target := get_resolved_combat_target()
+	if combat_target == null and lightning_config != null:
+		var family_target := _select_nearest_attack_target(
+			_get_family_proactive_ranged_combat_target(),
 			lightning_config,
 			initial_attack_stagger_left <= 0.0
 				and attack_cooldown_left <= 0.0
 		)
+		combat_target = get_resolved_combat_target(family_target)
 	if (
 		combat_target != null
 		and lightning_config != null
@@ -273,11 +248,17 @@ func _try_start_windup(
 ) -> bool:
 	if attack_cooldown_left > 0.0:
 		return false
-	attack_target = _select_nearest_attack_target(
-		attack_target,
-		lightning_config,
-		true
-	)
+	var priority_target := get_resolved_combat_target()
+	if priority_target != null:
+		attack_target = priority_target
+	else:
+		attack_target = get_resolved_combat_target(
+			_select_nearest_attack_target(
+				attack_target,
+				lightning_config,
+				true
+			)
+		)
 	if not _is_ranged_combat_target_in_range(
 		attack_target,
 		lightning_config.attack_range

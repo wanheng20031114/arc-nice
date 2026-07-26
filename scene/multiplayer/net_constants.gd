@@ -1,8 +1,8 @@
 extends RefCounted
 
 ## 协议与版本
-## v22：新增科研项目目录、科研解锁型简易制作配方与主机权威门槛。
-const PROTOCOL_VERSION := 22
+## v23：合并科研解锁型简易制作，以及简易围栏目录与确定性四向连接图。
+const PROTOCOL_VERSION := 23
 
 ## 玩家限制
 const MAX_PLAYERS := 8

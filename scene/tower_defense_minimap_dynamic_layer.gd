@@ -103,6 +103,10 @@ func set_local_player_position(world_position: Vector2) -> void:
 	_request_redraw()
 
 
+func get_overview_world_aabb() -> Rect2:
+	return _cached_overview_rect
+
+
 func set_world_entities(
 	new_remote_player_world_positions: PackedVector2Array,
 	new_enemy_world_positions: PackedVector2Array,

@@ -1,0 +1,39 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/cardinal_connected_plant.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/simple_fence/simple_fence_atlas.png" id="2_sprite"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
+[ext_resource type="Material" path="res://resources/shader/plant_lifecycle_material.tres" id="4_lifecycle_material"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+resource_local_to_scene = true
+size = Vector2(15, 15)
+
+[node name="SimpleFence" type="StaticBody2D"]
+collision_layer = 1536
+collision_mask = 2
+script = ExtResource("1_script")
+enemy_approach_depth = 0.0
+lifecycle_visual_paths = Array[NodePath]([NodePath("Sprite2D")])
+lifecycle_effect_top_y = -8.0
+lifecycle_effect_bottom_y = 8.0
+lifecycle_particle_scale = 0.65
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+z_index = 1
+texture_filter = 1
+material = ExtResource("4_lifecycle_material")
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("2_sprite")
+hframes = 4
+vframes = 4
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_body")
+
+[node name="HealthBar" parent="." instance=ExtResource("3_health_bar")]
+custom_minimum_size = Vector2(12, 3)
+offset_left = -6.0
+offset_top = -10.0
+offset_right = 6.0
+offset_bottom = -7.0

@@ -452,8 +452,14 @@ func find_nearest_world_anchor(
 ##
 ## Very broad queries scan the compact registry instead of walking more empty
 ## bucket cells than there are registered targets. Both modes apply the exact same
-## stored-anchor filter and expose their work through last-query metrics.
-func query_world_aabb_into(world_aabb: Rect2, result: Array) -> int:
+## stored-anchor filter and expose their work through last-query metrics. Local
+## viewport consumers may request bucket traversal whenever the finite bounds are
+## representable, making distant-population work independent of registry size.
+func query_world_aabb_into(
+	world_aabb: Rect2,
+	result: Array,
+	prefer_bucket_scan: bool = false
+) -> int:
 	result.clear()
 	if _query_metrics_enabled:
 		_queries_total += 1
@@ -504,8 +510,11 @@ func query_world_aabb_into(world_aabb: Rect2, result: Array) -> int:
 		bucket_columns = maximum_bucket.x - minimum_bucket.x + 1
 		bucket_rows = maximum_bucket.y - minimum_bucket.y + 1
 		should_scan_registry = (
-			bucket_columns >= _plants_by_instance_id.size()
-			or bucket_rows > _plants_by_instance_id.size() / bucket_columns
+			not prefer_bucket_scan
+			and (
+				bucket_columns >= _plants_by_instance_id.size()
+				or bucket_rows > _plants_by_instance_id.size() / bucket_columns
+			)
 		)
 	if _query_metrics_enabled:
 		# Keep observability safe even when a finite AABB spans enough Vector2i

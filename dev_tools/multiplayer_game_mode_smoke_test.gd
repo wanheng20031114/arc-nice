@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 22,
-		"Research-gated crafting and the expanded research catalog require protocol v22."
+		NetConstants.PROTOCOL_VERSION == 23,
+		"Combined research-gated crafting and Simple Fence deterministic connection masks require protocol v23."
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),

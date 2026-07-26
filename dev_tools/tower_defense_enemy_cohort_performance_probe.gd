@@ -38,6 +38,9 @@ const DEFAULT_ENEMY_COUNT := 300
 const DEFAULT_WARMUP_FRAMES := 60
 const DEFAULT_SAMPLE_FRAMES := 240
 const DEFAULT_FIXED_SEED := 20260717
+const SIMPLE_FENCE_NET_ID_BASE := 50_000
+const SIMPLE_FENCE_GRID_COLUMNS := 50
+const SIMPLE_FENCE_FAR_CELL_ORIGIN := Vector2i(1000, 1000)
 const LINGLAN_SKILL_RANDOM_SEED_OFFSET := 1_000_000
 const LINGLAN_SKILL_RANDOM_SEED_STRIDE := 3
 const LINGLAN_BOSS_CONFIG_PATH := (
@@ -76,13 +79,17 @@ var cohort_configs: Array[EnemyConfig] = []
 var enemies: Array[Enemy] = []
 var corn_towers: Array[CornMachineGun] = []
 var agave_towers: Array[AgaveCannon] = []
+var simple_fences: Array[CardinalConnectedPlant] = []
 var forbidden_enemy_cells: Dictionary[Vector2i, bool] = {}
 var viewport_rid := RID()
+var simple_fence_fixture_metrics := {}
 
 var enemy_config_path := DEFAULT_ENEMY_CONFIG_PATH
 var wave_config_path := ""
 var phase := ProbePhase.APPROACH
 var requested_enemy_count := DEFAULT_ENEMY_COUNT
+var requested_simple_fence_count := 0
+var requested_simple_fence_ab_metrics := false
 var warmup_frames := DEFAULT_WARMUP_FRAMES
 var sample_frames := DEFAULT_SAMPLE_FRAMES
 var fixed_seed := DEFAULT_FIXED_SEED
@@ -144,6 +151,15 @@ func _parse_user_arguments() -> void:
 			phase = _parse_phase(argument.get_slice("=", 1))
 		elif argument.begins_with("--enemies="):
 			requested_enemy_count = maxi(int(argument.get_slice("=", 1)), 1)
+		elif argument.begins_with("--fences="):
+			requested_simple_fence_count = maxi(
+				int(argument.get_slice("=", 1)),
+				0
+			)
+		elif argument.begins_with("--fence-ab-metrics="):
+			requested_simple_fence_ab_metrics = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
 		elif argument.begins_with("--warmup="):
 			warmup_frames = maxi(int(argument.get_slice("=", 1)), 0)
 		elif argument.begins_with("--samples="):
@@ -397,6 +413,10 @@ func _run() -> void:
 	viewport_rid = game.get_viewport().get_viewport_rid()
 	RenderingServer.viewport_set_measure_render_time(viewport_rid, true)
 	_prepare_runtime()
+	await _spawn_simple_fence_fixture()
+	if simple_fences.size() != requested_simple_fence_count:
+		await _finish()
+		return
 
 	var tower_setup_started_usec := Time.get_ticks_usec()
 	_spawn_tower_fixture()
@@ -430,7 +450,7 @@ func _run() -> void:
 	print(
 		(
 			"TOWER_DEFENSE_ENEMY_COHORT_FIXTURE source=%s display_name=%s "
-			+ "phase=%s enemies=%d corn=%d agave=%d warmup=%d samples=%d "
+			+ "phase=%s enemies=%d fences=%d corn=%d agave=%d warmup=%d samples=%d "
 			+ "setup_ms=%.3f tower_setup_ms=%.3f runtime_setup_ms=%.3f "
 			+ "projectile_pool_registration_ms=%.3f expanded_prewarm=%s "
 			+ "seed=%d max_fps=%d physics_hz=%d renderer=%s driver=%s gpu=%s"
@@ -440,6 +460,7 @@ func _run() -> void:
 			_get_cohort_display_name(),
 			_phase_name(),
 			enemies.size(),
+			simple_fences.size(),
 			corn_towers.size(),
 			agave_towers.size(),
 			warmup_frames,
@@ -527,6 +548,160 @@ func _prepare_runtime() -> void:
 	movement_direction = 0
 	if phase != ProbePhase.BURST:
 		_set_movement_direction(1)
+
+
+func _spawn_simple_fence_fixture() -> void:
+	var plant_system := game.plant_system as PlantSystem
+	_expect(
+		plant_system != null,
+		"The production fence cohort requires PlantSystem."
+	)
+	if plant_system == null:
+		return
+	if requested_simple_fence_ab_metrics:
+		plant_system.set_plant_target_query_metrics_enabled(true)
+		plant_system.set_enemy_target_query_metrics_enabled(true)
+
+	# These cells remain thousands of authored tiles away from the player and
+	# cohort. They therefore exercise real StaticBody2D registration and scene
+	# ownership without creating a contact workload or changing an objective.
+	plant_system.placement_area = Rect2i(-20_000, -20_000, 40_000, 40_000)
+	await process_frame
+	await physics_frame
+	var node_count_before := Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
+	var static_memory_mib_before := (
+		Performance.get_monitor(Performance.MEMORY_STATIC) / (1024.0 * 1024.0)
+	)
+	var all_index_before := plant_system.get_plant_target_spatial_index_metrics()
+	var enemy_index_before := plant_system.get_enemy_target_spatial_index_metrics()
+	var navigation_before := _capture_static_navigation_signature()
+	var setup_started_usec := Time.get_ticks_usec()
+
+	for fence_index in range(requested_simple_fence_count):
+		var cell := SIMPLE_FENCE_FAR_CELL_ORIGIN + Vector2i(
+			fence_index % SIMPLE_FENCE_GRID_COLUMNS,
+			fence_index / SIMPLE_FENCE_GRID_COLUMNS
+		)
+		var fence := plant_system.spawn_multiplayer_replica(
+			&"simple_fence",
+			cell,
+			null,
+			SIMPLE_FENCE_NET_ID_BASE + fence_index,
+			500,
+			500,
+			0,
+			false
+		) as CardinalConnectedPlant
+		if fence != null:
+			simple_fences.append(fence)
+		var cardinal_metrics := (
+			plant_system.get_last_cardinal_connection_refresh_metrics()
+		)
+		_expect(
+			int(cardinal_metrics.get("cells_visited", -1)) <= 5,
+			"A fence fixture mutation must visit no more than five cells."
+		)
+
+	await process_frame
+	await physics_frame
+	var fence_setup_ms := float(
+		Time.get_ticks_usec() - setup_started_usec
+	) / 1000.0
+	var node_count_after := Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
+	var static_memory_mib_after := (
+		Performance.get_monitor(Performance.MEMORY_STATIC) / (1024.0 * 1024.0)
+	)
+	var all_index_after := plant_system.get_plant_target_spatial_index_metrics()
+	var enemy_index_after := plant_system.get_enemy_target_spatial_index_metrics()
+	var navigation_after := _capture_static_navigation_signature()
+
+	_expect(
+		simple_fences.size() == requested_simple_fence_count,
+		"The complete requested real simple-fence fixture must instantiate."
+	)
+	_expect(
+		int(all_index_after.get("registered_count", -1))
+		== int(all_index_before.get("registered_count", -1))
+		+ requested_simple_fence_count,
+		"Every real fence must enter the all-building target index exactly once."
+	)
+	_expect(
+		int(enemy_index_after.get("registered_count", -1))
+		== int(enemy_index_before.get("registered_count", -1)),
+		"CONTACT_ONLY fences must never enter the proactive enemy target index."
+	)
+	_expect(
+		bool(all_index_after.get("structure_counts_consistent", false))
+		and bool(enemy_index_after.get("structure_counts_consistent", false)),
+		"Fence fixture target-index membership counters must remain consistent."
+	)
+	_expect(
+		navigation_after == navigation_before,
+		"Real fence registration must not mutate the production navigation snapshot."
+	)
+
+	simple_fence_fixture_metrics = {
+		"requested": requested_simple_fence_count,
+		"spawned": simple_fences.size(),
+		"real_static_body_count": simple_fences.size(),
+		"real_collision_shape_count": _count_fence_collision_shapes(),
+		"fence_subtree_node_count": _count_fence_subtree_nodes(),
+		"setup_ms": fence_setup_ms,
+		"node_count_before": node_count_before,
+		"node_count_after": node_count_after,
+		"node_count_delta": node_count_after - node_count_before,
+		"static_memory_mib_before": static_memory_mib_before,
+		"static_memory_mib_after": static_memory_mib_after,
+		"static_memory_mib_delta": (
+			static_memory_mib_after - static_memory_mib_before
+		),
+		"all_target_index_before": all_index_before,
+		"all_target_index_after_spawn": all_index_after,
+		"enemy_target_index_before": enemy_index_before,
+		"enemy_target_index_after_spawn": enemy_index_after,
+		"navigation_before": navigation_before,
+		"navigation_after_spawn": navigation_after,
+	}
+
+
+func _capture_static_navigation_signature() -> Dictionary:
+	return {
+		"generation": pathfinder.navigation_generation,
+		"raw_generation": pathfinder.raw_navigation_snapshot_generation,
+		"raw_region": pathfinder.raw_navigation_snapshot_region,
+		"raw_cell_count": pathfinder.raw_navigation_cell_snapshot.size(),
+		"raw_cell_hash": hash(pathfinder.raw_navigation_cell_snapshot),
+		"raw_obstacle_count": pathfinder.raw_obstacle_integral_snapshot.size(),
+		"raw_obstacle_hash": hash(pathfinder.raw_obstacle_integral_snapshot),
+		"raw_obstacle_stride": pathfinder.raw_obstacle_integral_stride,
+	}
+
+
+func _count_fence_subtree_nodes() -> int:
+	var total := 0
+	for fence in simple_fences:
+		if fence != null and is_instance_valid(fence):
+			total += _count_subtree_nodes(fence)
+	return total
+
+
+func _count_subtree_nodes(node: Node) -> int:
+	var total := 1
+	for child in node.get_children():
+		total += _count_subtree_nodes(child)
+	return total
+
+
+func _count_fence_collision_shapes() -> int:
+	var total := 0
+	for fence in simple_fences:
+		if (
+			fence != null
+			and is_instance_valid(fence)
+			and fence.get_node_or_null("CollisionShape2D") is CollisionShape2D
+		):
+			total += 1
+	return total
 
 
 func _build_scaled_wave_configs(source_wave: WaveConfig) -> Array[EnemyConfig]:
@@ -1158,6 +1333,25 @@ func _measure_sample_window(
 	var pool_buckets_after := _get_pool_bucket_metrics()
 	var projectile_pool_after := _get_projectile_pool_metrics()
 	var wall_summary := _summarize(wall_samples)
+	var final_fence_metrics := simple_fence_fixture_metrics.duplicate(true)
+	final_fence_metrics["all_target_index_final"] = (
+		game.plant_system.get_plant_target_spatial_index_metrics()
+	)
+	final_fence_metrics["all_target_last_query"] = (
+		game.plant_system.get_last_plant_target_query_metrics()
+	)
+	final_fence_metrics["enemy_target_index_final"] = (
+		game.plant_system.get_enemy_target_spatial_index_metrics()
+	)
+	final_fence_metrics["enemy_target_last_query"] = (
+		game.plant_system.get_last_enemy_target_query_metrics()
+	)
+	final_fence_metrics["navigation_final"] = (
+		_capture_static_navigation_signature()
+	)
+	final_fence_metrics["terrain_support_final"] = (
+		game.plant_system.get_unsupported_terrain_metrics()
+	)
 
 	var result := {
 		"scope": (
@@ -1172,6 +1366,10 @@ func _measure_sample_window(
 		"composition": _get_cohort_composition(),
 		"phase": _phase_name(),
 		"requested_enemies": requested_enemy_count,
+		"requested_simple_fences": requested_simple_fence_count,
+		"simple_fences": simple_fences.size(),
+		"simple_fence_ab_metrics": requested_simple_fence_ab_metrics,
+		"simple_fence_fixture": final_fence_metrics,
 		"corn_towers": corn_towers.size(),
 		"agave_towers": agave_towers.size(),
 		"alive_start": alive_start,
@@ -1321,6 +1519,28 @@ func _measure_sample_window(
 	}
 
 	_expect(wall_samples.size() == sample_frames, "Every requested frame sample must be recorded.")
+	_expect(
+		simple_fences.size() == requested_simple_fence_count,
+		"Every requested real simple fence must survive the measured window."
+	)
+	var final_enemy_target_index := (
+		final_fence_metrics["enemy_target_index_final"] as Dictionary
+	)
+	_expect(
+		int(final_enemy_target_index.get("registered_count", -1))
+		== int(
+			(simple_fence_fixture_metrics["enemy_target_index_before"] as Dictionary).get(
+				"registered_count",
+				-1
+			)
+		),
+		"CONTACT_ONLY fences must remain absent from the proactive index."
+	)
+	_expect(
+		_capture_static_navigation_signature()
+		== simple_fence_fixture_metrics["navigation_before"],
+		"The measured real-fence cohort must retain the original navigation snapshot."
+	)
 	_expect(
 		_count_alive_towers() == corn_towers.size() + agave_towers.size(),
 		"Every requested production tower must survive the measured window."

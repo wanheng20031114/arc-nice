@@ -7,6 +7,9 @@ const WOOD := preload("res://resources/config/materials/material_wood.tres")
 const APPLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 const PLANT_HEALTH_BAR_SCRIPT := preload("res://scene/plant_defense/ui/plant_health_bar.gd")
 const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
+const OAK_WAREHOUSE_CONFIG := preload(
+	"res://resources/config/plant_defense/oak_warehouse.tres"
+)
 
 var failures: Array[String] = []
 
@@ -33,7 +36,11 @@ class AuthoritativePlantSystemStub:
 
 	func register_warehouse(net_id: int, warehouse: OakWarehouse) -> void:
 		plants_by_net_id[net_id] = warehouse
-		_register_plant_footprint(warehouse, [Vector2i.ZERO])
+		_register_plant_footprint(
+			warehouse,
+			[Vector2i.ZERO],
+			OAK_WAREHOUSE_CONFIG
+		)
 
 
 func _init() -> void:
@@ -80,6 +87,14 @@ func _run() -> void:
 			config,
 			fixture
 		)
+	warehouse.configure_multiplayer_storage(44, 2, true)
+	fixture.remove_child(warehouse)
+	_expect(
+		not warehouse.is_multiplayer_storage_ready()
+		and not warehouse.request_multiplayer_storage_snapshot(),
+		"仓库离开场景树后必须拒绝网络请求，不得启动已脱离场景树的计时器。"
+	)
+	warehouse.queue_free()
 
 	fixture.queue_free()
 	for _frame in range(3):
@@ -113,11 +128,17 @@ func _test_config_and_scene(config: PlantDefenseConfig, warehouse: OakWarehouse)
 	)
 	_expect(config.supports_multiplayer, "共享仓库权威事务就绪后，橡木仓库必须允许多人放置。")
 	_expect(
-		PlantDefenseRegistry.get_all_configs().size() == 14
+		PlantDefenseRegistry.get_all_configs().size() == 15
+		and PlantDefenseRegistry.get_all_configs().has(
+			PlantDefenseRegistry.get_config(&"excavator")
+		)
 		and PlantDefenseRegistry.get_all_configs().has(
 			PlantDefenseRegistry.get_config(&"stone_mill")
+		)
+		and PlantDefenseRegistry.get_all_configs().has(
+			PlantDefenseRegistry.get_config(&"simple_fence")
 		),
-		"植物选择必须包含全部14种建筑，包括挖土装置、石磨台、植物培育中心、竹筒迫击炮、紫阳花雨幕塔与葡萄电弧塔。"
+		"植物选择必须包含全部15种建筑，包括挖土装置、石磨台、简易围栏、植物培育中心、竹筒迫击炮、紫阳花雨幕塔与葡萄电弧塔。"
 	)
 	_expect(warehouse.storage_items.size() == 20, "仓库必须拥有20个物品格。")
 	_expect(

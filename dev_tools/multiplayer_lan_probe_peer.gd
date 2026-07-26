@@ -32,6 +32,7 @@ var failures: Array[String] = []
 var probe_scenario := PROBE_SCENARIO_FULL
 var probe_game_mode := "standard"
 var probe_transport_mode := PROBE_MODE_LAN
+var tower_defense_warehouse_transaction_submitted := false
 
 
 func _init() -> void:
@@ -328,10 +329,29 @@ func _validate_and_print_runtime_metrics(
 	var transaction_p95_ms := float(metrics.get("transaction_latency_p95_ms", 0.0))
 	if probe_scenario == PROBE_SCENARIO_TOWER_DEFENSE and not is_host_probe:
 		var latency_limit_ms := 350.0 if probe_transport_mode == PROBE_MODE_RELAY else 100.0
-		if transaction_sample_count <= 0 or transaction_p95_ms > latency_limit_ms:
+		var sample_count_matches_submission := (
+			transaction_sample_count > 0
+			if tower_defense_warehouse_transaction_submitted
+			else transaction_sample_count == 0
+		)
+		if (
+			not sample_count_matches_submission
+			or (
+				transaction_sample_count > 0
+				and transaction_p95_ms > latency_limit_ms
+			)
+		):
 			_fail(
-				"Tower-defense warehouse transaction latency exceeded %.0fms: samples=%d p95=%.3fms."
-				% [latency_limit_ms, transaction_sample_count, transaction_p95_ms]
+				(
+					"Tower-defense warehouse transaction metrics mismatched submission=%s "
+					+ "or exceeded %.0fms: samples=%d p95=%.3fms."
+				)
+				% [
+					str(tower_defense_warehouse_transaction_submitted),
+					latency_limit_ms,
+					transaction_sample_count,
+					transaction_p95_ms,
+				]
 			)
 	print(
 		(
@@ -607,6 +627,14 @@ func _run_host_tower_defense_runtime_probe(
 	if warehouse == null or not is_instance_valid(warehouse):
 		_fail("Competing warehouse placement did not create authoritative net_id 2.")
 		return
+	if not _prepare_host_clients_for_building_interaction(
+		mp_game,
+		net_manager,
+		game,
+		warehouse
+	):
+		_fail("Host could not establish every client's authoritative warehouse range.")
+		return
 	if not warehouse.try_add_storage_item_count(WOOD_MATERIAL, 1):
 		_fail("Host could not seed the shared warehouse transaction probe.")
 		return
@@ -615,9 +643,18 @@ func _run_host_tower_defense_runtime_probe(
 	# the new automatic warehouse broadcast path.
 	mp_game.call("_broadcast_warehouse_snapshot", warehouse)
 	await _wait_seconds(0.75)
-	if not await _wait_for_host_warehouse_transactions(mp_game, net_manager, 5.0):
-		_fail("Host did not settle every competing warehouse transaction.")
+	# A one-item shared stack is an intentionally transient revision: a faster
+	# client may consume it before another client observes that intermediate
+	# snapshot. Request 103 is therefore the phase-completion barrier; every
+	# client emits it only after seeing either the seeded revision or the newer
+	# authoritative empty revision and converging its inventory view.
+	if not await _wait_for_host_plant_requests(mp_game, net_manager, 103, 8.0):
+		_fail("Host did not receive every client's warehouse phase completion marker.")
 		return
+	if not await _wait_for_host_warehouse_transactions(mp_game, 1, 1.0):
+		_fail("Host did not settle the authoritative warehouse retrieval transaction.")
+		return
+	var warehouse_transaction_count := _count_host_warehouse_transactions(mp_game)
 	if warehouse.get_storage_item(0) != null:
 		_fail("Competing shared-warehouse retrieval must consume its only source stack once.")
 		return
@@ -628,14 +665,22 @@ func _run_host_tower_defense_runtime_probe(
 	):
 		_fail("Shared-warehouse competition duplicated or lost the authoritative stack.")
 		return
-	print("LAN_PROBE_EVENT host_td_warehouse_atomic net_id=2")
+	print(
+		"LAN_PROBE_EVENT host_td_warehouse_atomic net_id=2 transactions=%d"
+		% warehouse_transaction_count
+	)
 
-	if not await _wait_for_host_plant_requests(mp_game, net_manager, 103, 5.0):
-		_fail("Host did not receive every client's wood-station placement request.")
-		return
 	var station := game.plant_system.get_plant_by_net_id(3) as ProductionBuilding
 	if station == null or not is_instance_valid(station):
 		_fail("Competing wood-station placement did not create authoritative net_id 3.")
+		return
+	if not _prepare_host_clients_for_building_interaction(
+		mp_game,
+		net_manager,
+		game,
+		station
+	):
+		_fail("Host could not establish every client's authoritative production range.")
 		return
 	if not warehouse.try_add_storage_item_count(WOOD_MATERIAL, 1):
 		_fail("Host could not seed the multiplayer production cycle.")
@@ -777,6 +822,14 @@ func _run_client_tower_defense_runtime_probe(
 	if local_player == null or not is_instance_valid(local_player):
 		_fail("Client could not resolve its local player before warehouse interaction.")
 		return
+	# Resolve the common station anchor before any peer can advance past the
+	# warehouse phase and place it. This keeps all competing request 103 payloads
+	# identical even when one peer observes the winning warehouse revision first.
+	var station_config := PlantDefenseRegistry.get_config(&"wood_processing_station")
+	var station_anchor := _find_shared_multiplayer_plant_anchor(game, station_config)
+	if station_anchor == Vector2i.MAX:
+		_fail("Client could not resolve a valid shared wood-station anchor.")
+		return
 	var approach_direction := warehouse.global_position.direction_to(local_player.global_position)
 	if approach_direction == Vector2.ZERO:
 		approach_direction = Vector2.DOWN
@@ -784,19 +837,47 @@ func _run_client_tower_defense_runtime_probe(
 	local_player.velocity = Vector2.ZERO
 	mp_game.set("_has_sent_input", false)
 	mp_game.call("_client_send_input_if_needed", 0)
-	await _wait_seconds(0.5)
-	if not await _wait_for_warehouse_storage_count(warehouse, 0, 1, 5.0):
-		_fail("Client did not receive the seeded shared warehouse snapshot.")
-		return
-	if not warehouse.request_multiplayer_stack_transfer(
-		OakWarehouseProtocol.TransferDirection.STORAGE_TO_PLAYER,
-		0
+	# Force one endpoint to behave like a slow observer. It must accept revision 2
+	# (the already-consumed empty stack) as convergence instead of requiring the
+	# transient revision 1 payload that triggered the original false failure.
+	var minimum_warehouse_revision := (
+		2
+		if net_manager.local_player_name == CLIENT4_PLAYER_NAME
+		else 1
+	)
+	if not await _wait_for_warehouse_revision(
+		warehouse,
+		minimum_warehouse_revision,
+		5.0
 	):
-		_fail("Client could not submit the shared warehouse retrieval transaction.")
+		_fail("Client did not receive an authoritative shared warehouse revision.")
 		return
-	if not await _wait_for_warehouse_request_settled(warehouse, 5.0):
-		_fail("Client warehouse transaction did not receive a Host result.")
+	var observed_revision := warehouse.get_storage_revision()
+	var observed_source_count := warehouse.get_storage_item_count(0)
+	var submitted_warehouse_transaction := false
+	if observed_source_count == 1:
+		if not warehouse.request_multiplayer_stack_transfer(
+			OakWarehouseProtocol.TransferDirection.STORAGE_TO_PLAYER,
+			0
+		):
+			_fail("Client could not submit the shared warehouse retrieval transaction.")
+			return
+		submitted_warehouse_transaction = true
+		tower_defense_warehouse_transaction_submitted = true
+		if not await _wait_for_warehouse_request_settled(warehouse, 5.0):
+			_fail("Client warehouse transaction did not receive a Host result.")
+			return
+	elif observed_source_count != 0:
+		_fail("Client observed an invalid shared warehouse source count.")
 		return
+	print(
+		"LAN_PROBE_EVENT client_td_warehouse_observed revision=%d source_count=%d submitted=%s"
+		% [
+			observed_revision,
+			observed_source_count,
+			str(submitted_warehouse_transaction),
+		]
+	)
 	if not await _wait_for_warehouse_storage_count(warehouse, 0, 0, 5.0):
 		_fail("Client warehouse state did not converge after competing retrievals.")
 		return
@@ -806,11 +887,6 @@ func _run_client_tower_defense_runtime_probe(
 		!= wood_total_before_warehouse_competition + 1
 	):
 		_fail("Client inventory snapshots did not converge on one warehouse winner.")
-		return
-	var station_config := PlantDefenseRegistry.get_config(&"wood_processing_station")
-	var station_anchor := _find_shared_multiplayer_plant_anchor(game, station_config)
-	if station_anchor == Vector2i.MAX:
-		_fail("Client could not resolve a valid shared wood-station anchor.")
 		return
 	mp_game.call(
 		"_on_local_plant_placement_requested",
@@ -837,7 +913,6 @@ func _run_client_tower_defense_runtime_probe(
 	local_player.velocity = Vector2.ZERO
 	mp_game.set("_has_sent_input", false)
 	mp_game.call("_client_send_input_if_needed", 0)
-	await _wait_seconds(0.5)
 	if not await _wait_for_warehouse_item_total(
 		warehouse,
 		WOOD_MATERIAL,
@@ -1757,32 +1832,149 @@ func _wait_for_host_plant_requests(
 	return false
 
 
-func _wait_for_host_warehouse_transactions(
+func _prepare_host_clients_for_building_interaction(
 	mp_game: Node,
 	net_manager: Node,
-	timeout_seconds: float
+	game: Variant,
+	building: PlantDefense
 ) -> bool:
+	if building == null or not is_instance_valid(building):
+		return false
 	var expected_client_ids: Array[int] = []
 	var local_peer_id := int(net_manager.get_local_peer_id())
 	for peer_id_variant in net_manager.connected_players:
 		var peer_id := int(peer_id_variant)
-		if peer_id != local_peer_id:
+		if peer_id > 0 and peer_id != local_peer_id:
 			expected_client_ids.append(peer_id)
+	if expected_client_ids.is_empty():
+		return false
+	var accepted_positions := mp_game.get(
+		"_accepted_player_state_positions"
+	) as Dictionary
+	var accepted_times := mp_game.get("_accepted_player_state_times") as Dictionary
+	var latest_snapshot_states := mp_game.get(
+		"_host_latest_client_player_snapshot_states"
+	) as Dictionary
+	var authoritative_time := float(mp_game.call("_get_net_time"))
+	for peer_id in expected_client_ids:
+		var player_node := game.get_player_for_peer(peer_id) as Player
+		if (
+			player_node == null
+			or not is_instance_valid(player_node)
+			or not bool(net_manager.call("is_peer_send_ready", peer_id))
+		):
+			return false
+		var original_position := player_node.global_position
+		var preferred_direction := building.global_position.direction_to(
+			original_position
+		)
+		if preferred_direction == Vector2.ZERO:
+			preferred_direction = Vector2.DOWN
+		var candidate_directions: Array[Vector2] = [
+			preferred_direction.normalized(),
+			Vector2.DOWN,
+			Vector2.RIGHT,
+			Vector2.UP,
+			Vector2.LEFT,
+			Vector2(1.0, 1.0).normalized(),
+			Vector2(1.0, -1.0).normalized(),
+			Vector2(-1.0, -1.0).normalized(),
+			Vector2(-1.0, 1.0).normalized(),
+		]
+		var accepted_position := Vector2(INF, INF)
+		for radius in [24.0, 32.0, 40.0]:
+			for direction in candidate_directions:
+				var candidate: Vector2 = building.global_position + direction * float(radius)
+				player_node.global_position = candidate
+				if _is_host_player_in_building_interaction_range(
+					mp_game,
+					player_node,
+					building
+				):
+					accepted_position = candidate
+					break
+			if accepted_position.is_finite():
+				break
+		if not accepted_position.is_finite():
+			player_node.global_position = original_position
+			return false
+		player_node.global_position = accepted_position
+		player_node.velocity = Vector2.ZERO
+		accepted_positions[peer_id] = accepted_position
+		accepted_times[peer_id] = authoritative_time
+		latest_snapshot_states[peer_id] = {
+			"position": accepted_position,
+			"velocity": Vector2.ZERO,
+			"facing": player_node.get_multiplayer_facing_id(),
+			"anim_state": player_node.get_multiplayer_anim_state(),
+		}
+		mp_game.call(
+			"_record_outbound_rpc",
+			&"net_player_state_corrected",
+			[accepted_position, Vector2.ZERO]
+		)
+		mp_game.rpc_id(
+			peer_id,
+			&"net_player_state_corrected",
+			accepted_position,
+			Vector2.ZERO
+		)
+	return true
+
+
+func _is_host_player_in_building_interaction_range(
+	mp_game: Node,
+	player_node: Player,
+	building: PlantDefense
+) -> bool:
+	if building is OakWarehouse:
+		return bool(
+			mp_game.call(
+				"_is_authoritative_nearest_warehouse",
+				player_node,
+				building
+			)
+		)
+	if building is ProductionBuilding:
+		return bool(
+			mp_game.call(
+				"_is_authoritative_nearest_production_building",
+				player_node,
+				building
+			)
+		)
+	return false
+
+
+func _wait_for_host_warehouse_transactions(
+	mp_game: Node,
+	minimum_result_count: int,
+	timeout_seconds: float
+) -> bool:
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
 		var results_by_peer := mp_game.get(
 			"_warehouse_transaction_results_by_peer"
 		) as Dictionary
-		var all_processed := not expected_client_ids.is_empty()
-		for peer_id in expected_client_ids:
-			var peer_results := results_by_peer.get(peer_id, {}) as Dictionary
-			if peer_results.is_empty():
-				all_processed = false
-				break
-		if all_processed:
+		var result_count := 0
+		for peer_results_variant in results_by_peer.values():
+			var peer_results := peer_results_variant as Dictionary
+			result_count += peer_results.size()
+		if result_count >= minimum_result_count:
 			return true
 		await process_frame
 	return false
+
+
+func _count_host_warehouse_transactions(mp_game: Node) -> int:
+	var results_by_peer := mp_game.get(
+		"_warehouse_transaction_results_by_peer"
+	) as Dictionary
+	var result_count := 0
+	for peer_results_variant in results_by_peer.values():
+		var peer_results := peer_results_variant as Dictionary
+		result_count += peer_results.size()
+	return result_count
 
 
 func _wait_for_host_production_results(
@@ -1840,6 +2032,24 @@ func _wait_for_warehouse_request_settled(
 	return false
 
 
+func _wait_for_warehouse_revision(
+	warehouse: OakWarehouse,
+	minimum_revision: int,
+	timeout_seconds: float
+) -> bool:
+	var end_time := _now_seconds() + timeout_seconds
+	while _now_seconds() <= end_time:
+		if warehouse == null or not is_instance_valid(warehouse):
+			return false
+		if (
+			warehouse.multiplayer_storage_snapshot_ready
+			and warehouse.get_storage_revision() >= minimum_revision
+		):
+			return true
+		await process_frame
+	return false
+
+
 func _wait_for_warehouse_storage_count(
 	warehouse: OakWarehouse,
 	slot_index: int,
@@ -1847,16 +2057,11 @@ func _wait_for_warehouse_storage_count(
 	timeout_seconds: float
 ) -> bool:
 	var end_time := _now_seconds() + timeout_seconds
-	var next_snapshot_request_time := 0.0
 	while _now_seconds() <= end_time:
 		if warehouse == null or not is_instance_valid(warehouse):
 			return false
 		if warehouse.get_storage_item_count(slot_index) == expected_count:
 			return true
-		var now := _now_seconds()
-		if now >= next_snapshot_request_time:
-			warehouse.request_multiplayer_storage_snapshot()
-			next_snapshot_request_time = now + 0.6
 		await process_frame
 	return false
 
@@ -1868,16 +2073,11 @@ func _wait_for_warehouse_item_total(
 	timeout_seconds: float
 ) -> bool:
 	var end_time := _now_seconds() + timeout_seconds
-	var next_snapshot_request_time := 0.0
 	while _now_seconds() <= end_time:
 		if warehouse == null or not is_instance_valid(warehouse):
 			return false
 		if warehouse.get_storage_item_total(item) == expected_count:
 			return true
-		var now := _now_seconds()
-		if now >= next_snapshot_request_time:
-			warehouse.request_multiplayer_storage_snapshot()
-			next_snapshot_request_time = now + 0.6
 		await process_frame
 	return false
 

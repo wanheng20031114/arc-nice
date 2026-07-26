@@ -17,6 +17,13 @@ func can_target_water_plant_objectives() -> bool:
 	return true
 
 
+# These families commit damage through their authored weapon state machines.
+# Contact overlap remains active for target resolution and movement stopping,
+# but must not add a second invisible touch hit.
+func _uses_inherited_touch_damage() -> bool:
+	return false
+
+
 func _get_move_speed() -> float:
 	return get_effective_move_speed()
 

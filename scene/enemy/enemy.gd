@@ -165,6 +165,7 @@ var touching_players: Dictionary[int, Player] = {}
 var touched_plant: PlantDefense = null
 var touching_plants: Dictionary[int, PlantDefense] = {}
 var touching_plant_entry_distances: Dictionary[int, float] = {}
+var touching_plant_removal_callbacks: Dictionary[int, Callable] = {}
 var death_sequence_stage: DeathSequenceStage = DeathSequenceStage.NONE
 var death_animation_name_in_use: StringName = &""
 var physical_defense_modifiers: Dictionary = {}
@@ -605,6 +606,41 @@ func has_attackable_objective() -> bool:
 	return get_attackable_objective() != null
 
 
+## Returns only a target discovered through the local physics contact sensor.
+## Contact never replaces objective_target: navigation keeps following the
+## proactive objective while combat can temporarily commit to a fence/player.
+func get_contact_combat_target() -> Node2D:
+	touched_plant = _select_touching_plant()
+	if touched_plant != null:
+		return touched_plant
+	touched_player = _select_touching_player()
+	return touched_player
+
+
+## Resolves combat categories in strict order without changing navigation:
+## contacted plant, contacted player, proactive objective, family range target.
+func get_resolved_combat_target(
+	family_proactive_target: Node2D = null
+) -> Node2D:
+	var contact_target := get_contact_combat_target()
+	if contact_target != null:
+		return contact_target
+	var attackable_objective := get_attackable_objective()
+	if attackable_objective != null:
+		return attackable_objective
+	return (
+		family_proactive_target
+		if _is_live_ranged_combat_target(family_proactive_target)
+		else null
+	)
+
+
+func has_resolved_combat_target(
+	family_proactive_target: Node2D = null
+) -> bool:
+	return get_resolved_combat_target(family_proactive_target) != null
+
+
 ## Land-only melee enemies must not navigate toward water buildings they cannot
 ## reach. Amphibious enemies can still use them as objectives; ranged enemy
 ## families override this capability because they can attack from the shore.
@@ -623,14 +659,23 @@ func is_attackable_objective_in_range(attack_range: float) -> bool:
 	)
 
 
+func is_resolved_combat_target_in_range(
+	attack_range: float,
+	family_proactive_target: Node2D = null
+) -> bool:
+	return _is_ranged_combat_target_in_range(
+		get_resolved_combat_target(family_proactive_target),
+		attack_range
+	)
+
+
 func _get_preferred_ranged_combat_target() -> Node2D:
-	# Tower-defense navigation may point at a Home gate which is deliberately not
-	# damageable. Ranged enemies opt into this combat target without replacing
-	# their navigation objective: a live plant/player objective wins, otherwise
-	# the live session player remains a valid ranged target.
-	var attackable_objective := get_attackable_objective()
-	if attackable_objective != null:
-		return attackable_objective
+	return get_resolved_combat_target(
+		_get_family_proactive_ranged_combat_target()
+	)
+
+
+func _get_family_proactive_ranged_combat_target() -> Node2D:
 	if (
 		target_player != null
 		and is_instance_valid(target_player)
@@ -811,11 +856,7 @@ func configure_multiplayer_proxy() -> void:
 	_invalidate_ranged_combat_line_cache()
 	_reset_ranged_attack_position_state()
 	projectile_motion_system = null
-	touched_player = null
-	touching_players.clear()
-	touched_plant = null
-	touching_plants.clear()
-	touching_plant_entry_distances.clear()
+	_clear_touching_players()
 	touch_damage_cooldown_left = 0.0
 	proxy_action_animation_name_in_use = &""
 	_update_movement_status_visuals()
@@ -845,11 +886,7 @@ func remove_for_home_escape() -> bool:
 	velocity = Vector2.ZERO
 	set_process(false)
 	set_physics_process(false)
-	touched_player = null
-	touching_players.clear()
-	touched_plant = null
-	touching_plants.clear()
-	touching_plant_entry_distances.clear()
+	_clear_touching_players()
 	objective_target = null
 	proxy_action_animation_name_in_use = &""
 	proxy_action_restore_token += 1
@@ -1031,11 +1068,7 @@ func play_multiplayer_death_sequence() -> void:
 	_update_movement_status_visuals()
 	set_process(false)
 	set_physics_process(false)
-	touched_player = null
-	touching_players.clear()
-	touched_plant = null
-	touching_plants.clear()
-	touching_plant_entry_distances.clear()
+	_clear_touching_players()
 	proxy_action_animation_name_in_use = &""
 	proxy_action_restore_token += 1
 	_set_collision_shapes_disabled(body_collision_shapes, true)
@@ -1347,6 +1380,7 @@ func _release_speed_trail_effect() -> void:
 func _exit_tree() -> void:
 	clear_cold_status()
 	clear_collectible_statuses()
+	_clear_touching_players()
 	if combat_target_index_binding != null and combat_target_index_net_id > 0:
 		var bound_index := combat_target_index_binding
 		var bound_net_id := combat_target_index_net_id
@@ -3544,10 +3578,16 @@ func _has_player_contact() -> bool:
 
 
 func _clear_touching_players() -> void:
+	var tracked_plant_ids := touching_plant_removal_callbacks.keys()
+	for tracked_id_variant in tracked_plant_ids:
+		var tracked_id := int(tracked_id_variant)
+		var tracked_plant := touching_plants.get(tracked_id) as PlantDefense
+		_disconnect_touching_plant_removal_signal(tracked_plant, tracked_id)
 	touching_players.clear()
 	touched_player = null
 	touching_plants.clear()
 	touching_plant_entry_distances.clear()
+	touching_plant_removal_callbacks.clear()
 	touched_plant = null
 
 
@@ -3562,16 +3602,7 @@ func _on_touch_damage_area_body_entered(body: Node2D) -> void:
 	if plant != null:
 		if plant.is_dead or plant.is_removing:
 			return
-		var plant_instance_id := plant.get_instance_id()
-		touching_plants[plant_instance_id] = plant
-		if not touching_plant_entry_distances.has(plant_instance_id):
-			touching_plant_entry_distances[plant_instance_id] = (
-				global_position.distance_to(plant.global_position)
-			)
-		touched_plant = plant
-		var removal_callback := _on_touched_plant_removal_started.bind(plant)
-		if not plant.removal_started.is_connected(removal_callback):
-			plant.removal_started.connect(removal_callback, CONNECT_ONE_SHOT)
+		_track_touching_plant(plant)
 		_try_deal_touch_damage()
 		return
 
@@ -3580,18 +3611,14 @@ func _on_touch_damage_area_body_entered(body: Node2D) -> void:
 		return
 
 	touching_players[player.get_instance_id()] = player
-	touched_player = player
+	touched_player = _select_touching_player()
 	_try_deal_touch_damage()
 
 
 func _on_touch_damage_area_body_exited(body: Node2D) -> void:
 	var plant := body as PlantDefense
 	if plant != null:
-		var plant_instance_id := plant.get_instance_id()
-		touching_plants.erase(plant_instance_id)
-		touching_plant_entry_distances.erase(plant_instance_id)
-		if plant == touched_plant:
-			touched_plant = _select_touching_plant()
+		_untrack_touching_plant(plant)
 		return
 
 	var player := body as Player
@@ -3603,32 +3630,140 @@ func _on_touch_damage_area_body_exited(body: Node2D) -> void:
 
 
 func _select_touching_player() -> Player:
+	if touching_players.is_empty():
+		return null
+	var best_player: Player = null
+	var best_peer_id := 0
+	var best_instance_id := 0
+	var stale_player_ids: Array[int] = []
 	for instance_id in touching_players:
 		var player := touching_players[instance_id] as Player
-		if is_instance_valid(player):
-			return player
-	touching_players.clear()
-	return null
+		if player == null or not is_instance_valid(player) or player.is_dead:
+			stale_player_ids.append(instance_id)
+			continue
+		var peer_id := player.peer_id
+		if (
+			best_player == null
+			or peer_id < best_peer_id
+			or (
+				peer_id == best_peer_id
+				and instance_id < best_instance_id
+			)
+		):
+			best_player = player
+			best_peer_id = peer_id
+			best_instance_id = instance_id
+	for stale_id in stale_player_ids:
+		touching_players.erase(stale_id)
+	return best_player
 
 
 func _select_touching_plant() -> PlantDefense:
+	if touching_plants.is_empty():
+		return null
+	var best_plant: PlantDefense = null
+	var best_distance_squared := INF
+	var best_network_id := 0
+	var best_instance_id := 0
+	var stale_plant_ids: Array[int] = []
 	for instance_id in touching_plants:
 		var plant := touching_plants[instance_id] as PlantDefense
-		if is_instance_valid(plant) and not plant.is_dead and not plant.is_removing:
-			return plant
-	touching_plants.clear()
-	touching_plant_entry_distances.clear()
-	return null
+		if (
+			plant == null
+			or not is_instance_valid(plant)
+			or plant.is_dead
+			or plant.is_removing
+		):
+			stale_plant_ids.append(instance_id)
+			continue
+		var distance_squared := global_position.distance_squared_to(
+			plant.global_position
+		)
+		var network_id := int(plant.get_meta(&"net_id", 0))
+		if network_id <= 0:
+			network_id = instance_id
+		var distance_ties := distance_squared == best_distance_squared
+		if (
+			best_plant == null
+			or distance_squared < best_distance_squared
+			or (
+				distance_ties
+				and (
+					network_id < best_network_id
+					or (
+						network_id == best_network_id
+						and instance_id < best_instance_id
+					)
+				)
+			)
+		):
+			best_plant = plant
+			best_distance_squared = distance_squared
+			best_network_id = network_id
+			best_instance_id = instance_id
+	for stale_id in stale_plant_ids:
+		var stale_plant := touching_plants.get(stale_id) as PlantDefense
+		_erase_touching_plant_record(stale_plant, stale_id)
+	return best_plant
+
+
+func _track_touching_plant(plant: PlantDefense) -> void:
+	var plant_instance_id := plant.get_instance_id()
+	touching_plants[plant_instance_id] = plant
+	if not touching_plant_entry_distances.has(plant_instance_id):
+		touching_plant_entry_distances[plant_instance_id] = (
+			global_position.distance_to(plant.global_position)
+		)
+	if not touching_plant_removal_callbacks.has(plant_instance_id):
+		var removal_callback := _on_touched_plant_removal_started.bind(plant)
+		touching_plant_removal_callbacks[plant_instance_id] = removal_callback
+		plant.removal_started.connect(removal_callback)
+	touched_plant = _select_touching_plant()
+
+
+func _untrack_touching_plant(
+	plant: PlantDefense,
+	refresh_selection: bool = true
+) -> void:
+	if plant == null:
+		return
+	var plant_instance_id := plant.get_instance_id()
+	_erase_touching_plant_record(plant, plant_instance_id)
+	if refresh_selection:
+		touched_plant = _select_touching_plant()
+
+
+func _erase_touching_plant_record(
+	plant: PlantDefense,
+	plant_instance_id: int
+) -> void:
+	_disconnect_touching_plant_removal_signal(plant, plant_instance_id)
+	touching_plants.erase(plant_instance_id)
+	touching_plant_entry_distances.erase(plant_instance_id)
+
+
+func _disconnect_touching_plant_removal_signal(
+	plant: PlantDefense,
+	plant_instance_id: int
+) -> void:
+	var removal_callback: Callable = touching_plant_removal_callbacks.get(
+		plant_instance_id,
+		Callable()
+	)
+	if (
+		removal_callback.is_valid()
+		and plant != null
+		and is_instance_valid(plant)
+		and plant.removal_started.is_connected(removal_callback)
+	):
+		plant.removal_started.disconnect(removal_callback)
+	touching_plant_removal_callbacks.erase(plant_instance_id)
 
 
 func _on_touched_plant_removal_started(_mode: int, plant: PlantDefense) -> void:
 	if plant == null:
 		return
-	var plant_instance_id := plant.get_instance_id()
-	touching_plants.erase(plant_instance_id)
-	touching_plant_entry_distances.erase(plant_instance_id)
-	if touched_plant == plant:
-		touched_plant = _select_touching_plant()
+	_untrack_touching_plant(plant)
 
 
 func _update_touch_damage(delta: float) -> void:
@@ -3660,13 +3795,7 @@ func _update_touch_damage_unprofiled(delta: float) -> void:
 		touched_player = null
 		return
 
-	if (
-		touched_plant == null
-		or not is_instance_valid(touched_plant)
-		or touched_plant.is_dead
-		or touched_plant.is_removing
-	):
-		touched_plant = _select_touching_plant()
+	touched_plant = _select_touching_plant()
 	if touched_plant != null:
 		if touch_damage_cooldown_left <= 0.0:
 			_try_deal_touch_damage()
@@ -3688,6 +3817,8 @@ func _update_touch_damage_unprofiled(delta: float) -> void:
 
 func _try_deal_touch_damage() -> void:
 	if is_dead:
+		return
+	if not _uses_inherited_touch_damage():
 		return
 	if touch_damage_cooldown_left > 0.0:
 		return
@@ -3733,6 +3864,10 @@ func _try_deal_touch_damage() -> void:
 	if damage_was_applied:
 		_on_touch_damage_applied(touched_player)
 	touch_damage_cooldown_left = touch_damage_interval
+
+
+func _uses_inherited_touch_damage() -> bool:
+	return true
 
 
 func _get_touch_damage_type() -> EnemyConfig.DamageType:
@@ -3805,11 +3940,7 @@ func _die() -> void:
 	_update_movement_status_visuals()
 	set_process(false)
 	set_physics_process(false)
-	touched_player = null
-	touching_players.clear()
-	touched_plant = null
-	touching_plants.clear()
-	touching_plant_entry_distances.clear()
+	_clear_touching_players()
 	_set_collision_shapes_disabled(body_collision_shapes, true)
 	_set_collision_shapes_disabled(touch_damage_shapes, true)
 	touch_damage_area.set_deferred("monitoring", false)

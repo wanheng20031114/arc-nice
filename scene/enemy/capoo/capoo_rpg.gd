@@ -27,6 +27,7 @@ var fire_time_left: float = 0.0
 var fire_direction := Vector2.RIGHT
 var action_sequence: int = 0
 var latest_proxy_action_id: int = 0
+var committed_attack_target: Node2D = null
 
 
 func _ready() -> void:
@@ -45,7 +46,10 @@ func _physics_process(delta: float) -> void:
 
 	_update_touch_damage(delta)
 	_update_attack_cooldown(delta)
-	if combat_state != CombatState.CHASE and not has_attackable_objective():
+	if (
+		combat_state != CombatState.CHASE
+		and not _is_ranged_combat_target_valid(committed_attack_target)
+	):
 		_cancel_attack()
 
 	match combat_state:
@@ -56,15 +60,15 @@ func _physics_process(delta: float) -> void:
 			_update_fire(delta)
 			return
 
-	if not is_instance_valid(objective_target):
-		velocity = Vector2.ZERO
-		_move_until_player_contact()
-		return
-
-	if has_attackable_objective() and _try_start_windup():
+	var combat_target := _get_preferred_ranged_combat_target()
+	if combat_target != null and _try_start_windup(combat_target):
 		return
 	if _has_player_contact():
 		velocity = Vector2.ZERO
+		return
+	if not is_instance_valid(objective_target):
+		velocity = Vector2.ZERO
+		_move_until_player_contact()
 		return
 
 	var move_direction := _get_navigation_move_direction(delta)
@@ -79,6 +83,7 @@ func _apply_config() -> void:
 	attack_cooldown_left = 0.0
 	windup_time_left = 0.0
 	fire_time_left = 0.0
+	committed_attack_target = null
 
 	var rpg_config := config as CapooRPGConfigScript
 	if rpg_config != null:
@@ -88,12 +93,14 @@ func _apply_config() -> void:
 
 func _die() -> void:
 	combat_state = CombatState.CHASE
+	committed_attack_target = null
 	_set_muzzle_heat(0.0, fire_direction)
 	super._die()
 
 
 func play_multiplayer_death_sequence() -> void:
 	latest_proxy_action_id += 1
+	committed_attack_target = null
 	_set_muzzle_heat(0.0, fire_direction)
 	super.play_multiplayer_death_sequence()
 
@@ -104,25 +111,32 @@ func _update_attack_cooldown(delta: float) -> void:
 	attack_cooldown_left = maxf(attack_cooldown_left - delta, 0.0)
 
 
-func _try_start_windup() -> bool:
+func _try_start_windup(candidate_target: Node2D = null) -> bool:
 	var rpg_config := config as CapooRPGConfigScript
 	if rpg_config == null:
 		return false
 	if attack_cooldown_left > 0.0:
 		return false
-	var attack_target := get_attackable_objective()
-	if attack_target == null:
+	if candidate_target == null:
+		candidate_target = _get_preferred_ranged_combat_target()
+	if not _is_ranged_combat_target_valid(candidate_target):
 		return false
 	if rpg_config.projectile_scene == null:
 		return false
-	if not is_attackable_objective_in_range(rpg_config.attack_range):
+	if not _is_ranged_combat_target_in_range(
+		candidate_target,
+		rpg_config.attack_range
+	):
 		return false
-	if not _has_clear_world_line_to_target():
+	if not _has_clear_world_line_to_target(candidate_target):
 		return false
 
+	committed_attack_target = candidate_target
 	combat_state = CombatState.WINDUP
 	windup_time_left = maxf(rpg_config.attack_windup, 0.0)
-	fire_direction = global_position.direction_to(attack_target.global_position)
+	fire_direction = global_position.direction_to(
+		committed_attack_target.global_position
+	)
 	if fire_direction == Vector2.ZERO:
 		fire_direction = Vector2.RIGHT
 	velocity = Vector2.ZERO
@@ -136,13 +150,17 @@ func _try_start_windup() -> bool:
 
 func _update_windup(delta: float) -> void:
 	var rpg_config := config as CapooRPGConfigScript
-	var attack_target := get_attackable_objective()
-	if rpg_config == null or attack_target == null:
+	if (
+		rpg_config == null
+		or not _is_ranged_combat_target_valid(committed_attack_target)
+	):
 		_cancel_attack()
 		return
 
 	velocity = Vector2.ZERO
-	fire_direction = global_position.direction_to(attack_target.global_position)
+	fire_direction = global_position.direction_to(
+		committed_attack_target.global_position
+	)
 	if fire_direction == Vector2.ZERO:
 		fire_direction = Vector2.RIGHT
 	_update_facing(fire_direction)
@@ -152,7 +170,7 @@ func _update_windup(delta: float) -> void:
 
 	if windup_time_left > 0.0:
 		return
-	if not _has_clear_world_line_to_target():
+	if not _has_clear_world_line_to_target(committed_attack_target):
 		_cancel_attack()
 		return
 
@@ -248,6 +266,7 @@ func _fire_rocket() -> bool:
 
 func _finish_fire() -> void:
 	combat_state = CombatState.CHASE
+	committed_attack_target = null
 	fire_time_left = 0.0
 	_set_muzzle_heat(0.0, fire_direction)
 	var rpg_config := config as CapooRPGConfigScript
@@ -257,6 +276,7 @@ func _finish_fire() -> void:
 
 func _cancel_attack() -> void:
 	combat_state = CombatState.CHASE
+	committed_attack_target = null
 	windup_time_left = 0.0
 	fire_time_left = 0.0
 	_set_muzzle_heat(0.0, fire_direction)
@@ -325,12 +345,15 @@ func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> voi
 		)
 
 
-func _has_clear_world_line_to_target() -> bool:
-	var attack_target := get_attackable_objective()
-	if attack_target == null:
+func _has_clear_world_line_to_target(attack_target: Node2D) -> bool:
+	if not _is_ranged_combat_target_valid(attack_target):
 		return false
 
 	return _has_throttled_world_line_of_sight(attack_target, WORLD_COLLISION_MASK)
+
+
+func _uses_inherited_touch_damage() -> bool:
+	return false
 
 
 func _get_move_speed() -> float:
