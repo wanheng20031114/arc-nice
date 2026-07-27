@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://scene/plant_defense/plant_selection_hud.gd" id="1_script"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
@@ -19,6 +19,12 @@ shadow_size = 12
 shadow_offset = Vector2(0, 5)
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_scroll"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_text"]
+content_margin_left = 2.0
+content_margin_top = 2.0
+content_margin_right = 2.0
+content_margin_bottom = 2.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_confirm"]
 bg_color = Color(0.2, 0.46, 0.22, 1)
@@ -145,6 +151,7 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 1, 0.82, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 24
+theme_override_styles/normal = SubResource("StyleBoxEmpty_text")
 text = "建筑目录"
 
 [node name="SelectedSummary" type="Label" parent="Root/ScreenMargin/Content/Margin/Layout/Header"]
@@ -153,6 +160,7 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.66, 0.86, 0.64, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxEmpty_text")
 text = "请选择建筑"
 horizontal_alignment = 2
 vertical_alignment = 1
@@ -163,6 +171,7 @@ mouse_filter = 2
 theme_override_colors/font_color = Color(0.58, 0.72, 0.58, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxEmpty_text")
 text = "全部建筑均可查看；只有背包持有数量大于 0 时才能确认放置"
 
 [node name="Divider" type="ColorRect" parent="Root/ScreenMargin/Content/Margin/Layout"]
@@ -194,20 +203,14 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.78, 0.96, 0.7, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxEmpty_text")
 text = "防御塔"
 
-[node name="Scroll" type="ScrollContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/DefenseRow"]
-custom_minimum_size = Vector2(0, 178)
+[node name="Cards" type="HFlowContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/DefenseRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-follow_focus = true
-horizontal_scroll_mode = 1
-vertical_scroll_mode = 0
-theme_override_styles/panel = SubResource("StyleBoxEmpty_scroll")
-
-[node name="Cards" type="HBoxContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/DefenseRow/Scroll"]
-layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 10
 
 [node name="SupportRow" type="VBoxContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows"]
 layout_mode = 2
@@ -218,20 +221,14 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.78, 0.96, 0.7, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxEmpty_text")
 text = "支援塔"
 
-[node name="Scroll" type="ScrollContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/SupportRow"]
-custom_minimum_size = Vector2(0, 178)
+[node name="Cards" type="HFlowContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/SupportRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-follow_focus = true
-horizontal_scroll_mode = 1
-vertical_scroll_mode = 0
-theme_override_styles/panel = SubResource("StyleBoxEmpty_scroll")
-
-[node name="Cards" type="HBoxContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/SupportRow/Scroll"]
-layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 10
 
 [node name="ProductionRow" type="VBoxContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows"]
 layout_mode = 2
@@ -242,20 +239,14 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.78, 0.96, 0.7, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxEmpty_text")
 text = "生产建筑"
 
-[node name="Scroll" type="ScrollContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/ProductionRow"]
-custom_minimum_size = Vector2(0, 178)
+[node name="Cards" type="HFlowContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/ProductionRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-follow_focus = true
-horizontal_scroll_mode = 1
-vertical_scroll_mode = 0
-theme_override_styles/panel = SubResource("StyleBoxEmpty_scroll")
-
-[node name="Cards" type="HBoxContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/ProductionRow/Scroll"]
-layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 10
 
 [node name="TechnologyRow" type="VBoxContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows"]
 layout_mode = 2
@@ -266,20 +257,14 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.78, 0.96, 0.7, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxEmpty_text")
 text = "科技建筑"
 
-[node name="Scroll" type="ScrollContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/TechnologyRow"]
-custom_minimum_size = Vector2(0, 178)
+[node name="Cards" type="HFlowContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/TechnologyRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-follow_focus = true
-horizontal_scroll_mode = 1
-vertical_scroll_mode = 0
-theme_override_styles/panel = SubResource("StyleBoxEmpty_scroll")
-
-[node name="Cards" type="HBoxContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/TechnologyRow/Scroll"]
-layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 10
 
 [node name="FenceRow" type="VBoxContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows"]
 layout_mode = 2
@@ -290,20 +275,14 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.78, 0.96, 0.7, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxEmpty_text")
 text = "围栏"
 
-[node name="Scroll" type="ScrollContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/FenceRow"]
-custom_minimum_size = Vector2(0, 178)
+[node name="Cards" type="HFlowContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/FenceRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-follow_focus = true
-horizontal_scroll_mode = 1
-vertical_scroll_mode = 0
-theme_override_styles/panel = SubResource("StyleBoxEmpty_scroll")
-
-[node name="Cards" type="HBoxContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/FenceRow/Scroll"]
-layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 10
 
 [node name="TerrainRow" type="VBoxContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows"]
 layout_mode = 2
@@ -314,20 +293,14 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.78, 0.96, 0.7, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxEmpty_text")
 text = "地形建筑"
 
-[node name="Scroll" type="ScrollContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/TerrainRow"]
-custom_minimum_size = Vector2(0, 178)
+[node name="Cards" type="HFlowContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/TerrainRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-follow_focus = true
-horizontal_scroll_mode = 1
-vertical_scroll_mode = 0
-theme_override_styles/panel = SubResource("StyleBoxEmpty_scroll")
-
-[node name="Cards" type="HBoxContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/TerrainRow/Scroll"]
-layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 10
 
 [node name="StorageRow" type="VBoxContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows"]
 layout_mode = 2
@@ -338,20 +311,14 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.78, 0.96, 0.7, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxEmpty_text")
 text = "仓储建筑"
 
-[node name="Scroll" type="ScrollContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/StorageRow"]
-custom_minimum_size = Vector2(0, 178)
+[node name="Cards" type="HFlowContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/StorageRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-follow_focus = true
-horizontal_scroll_mode = 1
-vertical_scroll_mode = 0
-theme_override_styles/panel = SubResource("StyleBoxEmpty_scroll")
-
-[node name="Cards" type="HBoxContainer" parent="Root/ScreenMargin/Content/Margin/Layout/CatalogScroll/Rows/StorageRow/Scroll"]
-layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 10
 
 [node name="Footer" type="HBoxContainer" parent="Root/ScreenMargin/Content/Margin/Layout"]
 layout_mode = 2
@@ -390,5 +357,6 @@ mouse_filter = 2
 theme_override_colors/font_color = Color(0.48, 0.58, 0.48, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = SubResource("StyleBoxEmpty_text")
 text = "左右切换建筑  ·  上下切换分类  ·  Enter / F 确认  ·  Esc / 右键 / T 关闭"
 horizontal_alignment = 1

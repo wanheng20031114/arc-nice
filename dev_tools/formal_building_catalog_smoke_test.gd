@@ -121,35 +121,22 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 
 	hud.call("_select_config", stone_mill)
 	await _wait_layout_frames(2)
-	var production_scroll := hud.get_category_scroll(
-		PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING
-	)
 	var vertical_bar := hud.outer_scroll.get_v_scroll_bar()
-	var horizontal_bar := production_scroll.get_h_scroll_bar()
 	hud.outer_scroll.scroll_vertical = mini(
 		180,
 		maxi(roundi(vertical_bar.max_value - vertical_bar.page), 0)
 	)
-	production_scroll.scroll_horizontal = mini(
-		30,
-		maxi(roundi(horizontal_bar.max_value - horizontal_bar.page), 0)
-	)
 	await process_frame
 	var remembered_vertical := hud.outer_scroll.scroll_vertical
-	var remembered_horizontal := production_scroll.scroll_horizontal
 	controller.cancel_placement()
 	await create_timer(PlantSelectionHUD.TRANSITION_SECONDS + 0.03).timeout
 	_expect(not hud.visible, "Catalog close fade must finish by 150 ms.")
 	_expect(controller.open_selection(), "Catalog must reopen after cancellation.")
 	await _wait_layout_frames(4)
-	production_scroll = hud.get_category_scroll(
-		PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING
-	)
 	_expect(
 		hud.selected_config == stone_mill
-		and hud.outer_scroll.scroll_vertical == remembered_vertical
-		and production_scroll.scroll_horizontal == remembered_horizontal,
-		"HUD-local selection and nested scroll positions must survive reopen."
+		and hud.outer_scroll.scroll_vertical == remembered_vertical,
+		"HUD-local selection and outer vertical position must survive reopen."
 	)
 
 	hud.call("_select_config", agave)
@@ -209,21 +196,36 @@ func _test_catalog_layout(viewport_size: Vector2i) -> void:
 	)
 	_expect(
 		hud.outer_scroll.follow_focus
+		and hud.outer_scroll.horizontal_scroll_mode
+		== ScrollContainer.SCROLL_MODE_DISABLED
 		and hud.outer_scroll.vertical_scroll_mode
 		== ScrollContainer.SCROLL_MODE_AUTO,
-		"Catalog must use an outer vertical follow-focus scroll."
+		"Catalog must keep only the outer vertical follow-focus scroll."
 	)
 	for category_variant in EXPECTED_CATEGORY_COUNTS:
 		var category := int(category_variant)
-		var row_scroll := hud.get_category_scroll(category)
+		var flow := hud.get_category_flow(category)
 		_expect(
-			row_scroll != null
-			and row_scroll.follow_focus
-			and row_scroll.horizontal_scroll_mode
-			== ScrollContainer.SCROLL_MODE_AUTO
-			and row_scroll.vertical_scroll_mode
-			== ScrollContainer.SCROLL_MODE_DISABLED,
-			"Every fixed category row must own an independent horizontal scroll."
+			flow != null
+			and hud.get_category_row_count(category) <= 2,
+			"Every category flow must wrap its cards into at most two rows."
+		)
+		if flow != null:
+			var flow_rect := flow.get_global_rect()
+			for card_variant in hud.category_cards[category]:
+				var card := card_variant as PlantSelectionCard
+				var card_rect := card.get_global_rect()
+				_expect(
+					card_rect.end.x <= flow_rect.end.x + 0.5,
+					"Wrapped cards must not overflow horizontally at %s."
+					% viewport_size
+				)
+	for label_variant in hud.find_children("*", "Label", true, false):
+		var label := label_variant as Label
+		_expect(
+			_label_has_text_inset(label)
+			and label.get_visible_line_count() == label.get_line_count(),
+			"Every catalog label must keep inset space and show all of its text lines."
 		)
 	hud.close()
 	await create_timer(PlantSelectionHUD.TRANSITION_SECONDS + 0.03).timeout
@@ -305,6 +307,16 @@ func _wait_until_freed(node: Node) -> void:
 			return
 		await process_frame
 		await physics_frame
+
+
+func _label_has_text_inset(label: Label) -> bool:
+	var normal_style := label.get_theme_stylebox("normal")
+	return (
+		normal_style.content_margin_left >= 2.0
+		and normal_style.content_margin_top >= 2.0
+		and normal_style.content_margin_right >= 2.0
+		and normal_style.content_margin_bottom >= 2.0
+	)
 
 
 func _cleanup_root() -> void:

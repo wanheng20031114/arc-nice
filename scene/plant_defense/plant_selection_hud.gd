@@ -37,12 +37,10 @@ var available_configs: Array[PlantDefenseConfig] = []
 var selected_config: PlantDefenseConfig = null
 var free_placement_mode := false
 var item_counts_by_plant_id: Dictionary = {}
-var category_scrolls: Dictionary = {}
 var category_card_rows: Dictionary = {}
 var category_headers: Dictionary = {}
 var category_cards: Dictionary = {}
 var category_last_selected_ids: Dictionary = {}
-var saved_horizontal_scrolls: Dictionary = {}
 var saved_outer_scroll := 0
 var last_selected_plant_id: StringName = &""
 var selected_category_index := 0
@@ -154,8 +152,18 @@ func get_category_card_count(category: int) -> int:
 	return typed_cards.size()
 
 
-func get_category_scroll(category: int) -> ScrollContainer:
-	return category_scrolls.get(category) as ScrollContainer
+func get_category_flow(category: int) -> HFlowContainer:
+	return category_card_rows.get(category) as HFlowContainer
+
+
+func get_category_row_count(category: int) -> int:
+	var card_count := get_category_card_count(category)
+	if card_count == 0:
+		return 0
+	var flow := get_category_flow(category)
+	if flow == null:
+		return 0
+	return flow.get_line_count()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -219,14 +227,13 @@ func _configure_category_nodes() -> void:
 
 func _register_category_nodes(category: int, row: VBoxContainer) -> void:
 	category_headers[category] = row.get_node("Header") as Label
-	category_scrolls[category] = row.get_node("Scroll") as ScrollContainer
-	category_card_rows[category] = row.get_node("Scroll/Cards") as HBoxContainer
+	category_card_rows[category] = row.get_node("Cards") as HFlowContainer
 	category_cards[category] = []
 
 
 func _build_cards() -> void:
 	for category in CATEGORY_ORDER:
-		var card_row := category_card_rows[category] as HBoxContainer
+		var card_row := category_card_rows[category] as HFlowContainer
 		for child in card_row.get_children():
 			child.free()
 		category_cards[category] = []
@@ -235,7 +242,7 @@ func _build_cards() -> void:
 		if not category_card_rows.has(config.building_category):
 			continue
 		var card := PLANT_CARD_SCENE.instantiate() as PlantSelectionCard
-		var card_row := category_card_rows[config.building_category] as HBoxContainer
+		var card_row := category_card_rows[config.building_category] as HFlowContainer
 		card_row.add_child(card)
 		card.setup(
 			config,
@@ -389,11 +396,6 @@ func _focus_selected_card(ensure_visible: bool) -> void:
 			continue
 		card.grab_focus()
 		if ensure_visible:
-			var category_scroll := category_scrolls.get(
-				selected_config.building_category
-			) as ScrollContainer
-			if category_scroll != null:
-				category_scroll.ensure_control_visible(card)
 			outer_scroll.ensure_control_visible(card)
 		return
 
@@ -407,19 +409,12 @@ func _restore_scroll_and_focus() -> void:
 	if not _open:
 		return
 	outer_scroll.scroll_vertical = saved_outer_scroll
-	for category in CATEGORY_ORDER:
-		var scroll := category_scrolls[category] as ScrollContainer
-		scroll.scroll_horizontal = int(saved_horizontal_scrolls.get(category, 0))
 
 
 func _capture_scroll_positions() -> void:
 	if outer_scroll == null:
 		return
 	saved_outer_scroll = outer_scroll.scroll_vertical
-	for category in CATEGORY_ORDER:
-		var scroll := category_scrolls.get(category) as ScrollContainer
-		if scroll != null:
-			saved_horizontal_scrolls[category] = scroll.scroll_horizontal
 
 
 func _confirm_selection() -> void:
